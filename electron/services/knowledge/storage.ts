@@ -1,6 +1,7 @@
 /**
  * LanceDB 向量存储服务
  * 提供向量存储和语义搜索功能
+ * 支持 BM25 + 向量混合搜索 (RRF 融合)
  */
 import * as fs from 'fs'
 import * as path from 'path'
@@ -11,6 +12,7 @@ import type {
   SearchResult, 
   KnowledgeStats 
 } from './types'
+import { getBM25Index, type BM25SearchResult } from './bm25'
 
 // LanceDB 记录类型
 export interface VectorRecord {
@@ -242,31 +244,108 @@ export class VectorStorage extends EventEmitter {
   }
 
   /**
-   * 混合搜索（向量搜索）
+   * 混合搜索（BM25 + 向量搜索 + RRF 融合）
    */
   async hybridSearch(
     query: string,
     embedding: number[],
     options: Partial<SearchOptions> = {}
   ): Promise<SearchResult[]> {
-    if (!this.table) {
-      console.log('[VectorStorage] No table, returning empty results')
-      return []
-    }
-
     const limit = options.limit || 10
+    const k = 60  // RRF 参数，经验最优值
 
     try {
-      const results = await this.table
-        .vectorSearch(embedding)
-        .limit(limit)
-        .toArray()
+      // 1. 向量搜索
+      let vectorResults: SearchResult[] = []
+      if (this.table) {
+        const vectorHits = await this.table
+          .vectorSearch(embedding)
+          .limit(limit * 2)  // 多取一些用于融合
+          .toArray()
+        vectorResults = this.formatResults(vectorHits, options)
+      }
 
-      return this.formatResults(results, options)
+      // 2. BM25 搜索
+      const bm25Index = getBM25Index()
+      let bm25Results: BM25SearchResult[] = []
+      if (bm25Index.isReady()) {
+        bm25Results = await bm25Index.search(query, limit * 2, {
+          hostId: options.hostId,
+          tags: options.tags
+        })
+      }
+
+      // 3. RRF 融合
+      const fusedResults = this.rrfFusion(vectorResults, bm25Results, k)
+
+      // 4. 返回前 limit 个结果
+      return fusedResults.slice(0, limit)
     } catch (error) {
       console.error('[VectorStorage] Hybrid search failed:', error)
       return []
     }
+  }
+
+  /**
+   * Reciprocal Rank Fusion (RRF) 融合算法
+   * 合并向量搜索和 BM25 搜索结果
+   */
+  private rrfFusion(
+    vectorResults: SearchResult[],
+    bm25Results: BM25SearchResult[],
+    k: number = 60
+  ): SearchResult[] {
+    // 分数映射: id -> { score, result }
+    const scoreMap = new Map<string, { score: number; result: SearchResult }>()
+
+    // 向量搜索结果贡献分数
+    vectorResults.forEach((result, rank) => {
+      const rrfScore = 1 / (k + rank + 1)
+      scoreMap.set(result.id, {
+        score: rrfScore,
+        result
+      })
+    })
+
+    // BM25 结果贡献分数
+    bm25Results.forEach((bm25Result, rank) => {
+      const rrfScore = 1 / (k + rank + 1)
+      
+      if (scoreMap.has(bm25Result.id)) {
+        // 已存在，累加分数
+        const existing = scoreMap.get(bm25Result.id)!
+        existing.score += rrfScore
+      } else {
+        // 新结果，转换为 SearchResult 格式
+        scoreMap.set(bm25Result.id, {
+          score: rrfScore,
+          result: {
+            id: bm25Result.id,
+            docId: bm25Result.docId,
+            content: bm25Result.content,
+            score: bm25Result.score,
+            metadata: {
+              filename: bm25Result.filename,
+              hostId: bm25Result.hostId || '',
+              tags: bm25Result.tags ? bm25Result.tags.split(',').filter(t => t) : [],
+              startOffset: 0,
+              endOffset: bm25Result.content?.length || 0
+            },
+            source: 'local' as const
+          }
+        })
+      }
+    })
+
+    // 按融合分数排序
+    const results = Array.from(scoreMap.values())
+      .sort((a, b) => b.score - a.score)
+      .map(({ score, result }) => ({
+        ...result,
+        score  // 使用 RRF 融合分数
+      }))
+
+    return results
   }
 
   /**

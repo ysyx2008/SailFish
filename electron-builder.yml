@@ -14,6 +14,7 @@ files:
   - node_modules/@homebridge/node-pty-prebuilt-multiarch/**/*
   - node_modules/ssh2/**/*
   - node_modules/electron-store/**/*
+  - node_modules/jieba-wasm/**/*
 asarUnpack:
   - node_modules/@homebridge/node-pty-prebuilt-multiarch/**/*
 extraResources:

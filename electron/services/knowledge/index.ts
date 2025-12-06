@@ -28,6 +28,7 @@ import { getVectorStorage, VectorStorage, VectorRecord } from './storage'
 import { getChunker, Chunker } from './chunker'
 import { McpKnowledgeAdapter } from './mcp-adapter'
 import { createReranker, Reranker } from './reranker'
+import { getBM25Index, BM25Index } from './bm25'
 
 import type { AiService } from '../ai.service'
 import type { McpService } from '../mcp.service'
@@ -41,6 +42,7 @@ export class KnowledgeService extends EventEmitter {
   private chunker: Chunker
   private reranker: Reranker | null = null
   private mcpAdapter: McpKnowledgeAdapter | null = null
+  private bm25Index: BM25Index
   
   private configService: ConfigService
   private aiService: AiService
@@ -69,6 +71,7 @@ export class KnowledgeService extends EventEmitter {
     this.embeddingService = getEmbeddingService()
     this.vectorStorage = getVectorStorage()
     this.chunker = getChunker()
+    this.bm25Index = getBM25Index()
     
     // 设置分块选项
     this.chunker.setOptions({
@@ -106,6 +109,9 @@ export class KnowledgeService extends EventEmitter {
       const dimensions = this.embeddingService.getDimensions()
       await this.vectorStorage.initialize(dimensions)
 
+      // 初始化 BM25 索引
+      await this.bm25Index.initialize()
+
       // 初始化重排序服务
       if (this.settings.enableRerank) {
         this.reranker = createReranker(this.aiService)
@@ -140,9 +146,12 @@ export class KnowledgeService extends EventEmitter {
     if (docs.length === 0) return
     
     const stats = await this.vectorStorage.getStats()
-    if (stats.chunkCount > 0) return
+    const bm25Stats = this.bm25Index.getStats()
     
-    console.log(`[KnowledgeService] Found ${docs.length} documents without vectors, rebuilding index...`)
+    // 如果向量库和 BM25 索引都有数据，跳过重建
+    if (stats.chunkCount > 0 && bm25Stats.documentCount > 0) return
+    
+    console.log(`[KnowledgeService] Found ${docs.length} documents, rebuilding index...`)
     
     for (const doc of docs) {
       if (!doc.content) continue
@@ -162,13 +171,30 @@ export class KnowledgeService extends EventEmitter {
           content: chunk.content,
           vector: embeddings[index],
           filename: doc.filename,
-          hostId: '',
+          hostId: doc.hostId || '',
           tags: (doc.tags || []).join(','),
           chunkIndex: chunk.chunkIndex,
           createdAt: doc.createdAt
         }))
         
-        await this.vectorStorage.addRecords(records)
+        // 添加到向量存储（仅当向量库为空时）
+        if (stats.chunkCount === 0) {
+          await this.vectorStorage.addRecords(records)
+        }
+        
+        // 添加到 BM25 索引（仅当 BM25 索引为空时）
+        if (bm25Stats.documentCount === 0) {
+          const bm25Docs = records.map(record => ({
+            id: record.id,
+            docId: record.docId,
+            content: record.content,
+            filename: record.filename,
+            hostId: record.hostId,
+            tags: record.tags
+          }))
+          await this.bm25Index.addDocuments(bm25Docs)
+        }
+        
         console.log(`[KnowledgeService] Rebuilt index for: ${doc.filename} (${chunks.length} chunks)`)
       } catch (error) {
         console.error(`[KnowledgeService] Failed to rebuild index for ${doc.filename}:`, error)
@@ -314,6 +340,17 @@ export class KnowledgeService extends EventEmitter {
     // 添加到向量存储
     await this.vectorStorage.addRecords(records)
 
+    // 添加到 BM25 索引
+    const bm25Docs = records.map(record => ({
+      id: record.id,
+      docId: record.docId,
+      content: record.content,
+      filename: record.filename,
+      hostId: record.hostId,
+      tags: record.tags
+    }))
+    await this.bm25Index.addDocuments(bm25Docs)
+
     // 保存文档索引
     this.documentsIndex.set(docId, document)
     this.saveDocumentsIndex()
@@ -334,6 +371,9 @@ export class KnowledgeService extends EventEmitter {
 
     // 删除向量记录
     await this.vectorStorage.removeDocumentChunks(docId)
+
+    // 删除 BM25 索引记录
+    await this.bm25Index.removeDocumentChunks(docId)
 
     // 删除文档索引
     this.documentsIndex.delete(docId)
@@ -636,6 +676,7 @@ export class KnowledgeService extends EventEmitter {
    */
   async clear(): Promise<void> {
     await this.vectorStorage.clear()
+    await this.bm25Index.clear()
     this.documentsIndex.clear()
     this.saveDocumentsIndex()
     this.emit('cleared')
@@ -781,4 +822,5 @@ export { getVectorStorage } from './storage'
 export { getChunker, createChunker } from './chunker'
 export { McpKnowledgeAdapter } from './mcp-adapter'
 export { createReranker } from './reranker'
+export { getBM25Index } from './bm25'
 

@@ -1,8 +1,12 @@
 /**
  * 智能分块服务
  * 将长文档切分成适合向量化的小块
+ * 支持 Markdown 标题识别，为 chunk 添加上下文前缀
  */
 import type { ChunkOptions, ChunkStrategy, DocumentChunk, ChunkMetadata } from './types'
+
+// 注：LangChain 的 MarkdownTextSplitter 用于按 Markdown 语法分割
+// 我们自己实现了更适合 RAG 的标题识别分块逻辑
 
 // 默认分块选项
 const DEFAULT_CHUNK_OPTIONS: ChunkOptions = {
@@ -16,6 +20,12 @@ const SENTENCE_ENDINGS = /[。！？.!?]/
 
 // 段落分隔标记
 const PARAGRAPH_SEPARATOR = /\n\s*\n/
+
+// Markdown 标题正则
+const MARKDOWN_HEADING_PATTERN = /^(#{1,6})\s+(.+)$/gm
+
+// 数字编号标题正则
+const NUMBERED_HEADING_PATTERN = /^(\d+\.)+\s+(.+)$/gm
 
 /**
  * 估算 token 数量（粗略估计）
@@ -46,7 +56,7 @@ export class Chunker {
   }
 
   /**
-   * 对文本进行分块
+   * 对文本进行分块（同步版本，保持向后兼容）
    */
   chunk(
     text: string, 
@@ -55,15 +65,211 @@ export class Chunker {
   ): DocumentChunk[] {
     const cleanText = this.preprocessText(text)
     
+    // 检测是否是 Markdown 文档
+    const isMarkdown = this.isMarkdownDocument(cleanText)
+    
     switch (this.options.strategy) {
       case 'paragraph':
+        // 对于 Markdown 文档，使用智能分块（添加标题上下文）
+        if (isMarkdown) {
+          return this.chunkMarkdownWithContext(cleanText, docId, metadata)
+        }
         return this.chunkByParagraph(cleanText, docId, metadata)
       case 'semantic':
+        if (isMarkdown) {
+          return this.chunkMarkdownWithContext(cleanText, docId, metadata)
+        }
         return this.chunkBySemantic(cleanText, docId, metadata)
       case 'fixed':
       default:
         return this.chunkByFixed(cleanText, docId, metadata)
     }
+  }
+
+  /**
+   * 检测是否是 Markdown 文档
+   */
+  private isMarkdownDocument(text: string): boolean {
+    // 检测 Markdown 标题
+    const headingMatches = text.match(/^#{1,6}\s+.+$/gm)
+    return (headingMatches?.length || 0) >= 1
+  }
+
+  /**
+   * 智能 Markdown 分块（带标题上下文）
+   */
+  private chunkMarkdownWithContext(
+    text: string,
+    docId: string,
+    metadata: Omit<ChunkMetadata, 'startOffset' | 'endOffset'>
+  ): DocumentChunk[] {
+    // 解析标题结构
+    const sections = this.parseMarkdownSections(text)
+    const chunks: DocumentChunk[] = []
+    let chunkIndex = 0
+
+    for (const section of sections) {
+      // 构建标题上下文前缀
+      const contextPrefix = section.headings.length > 0 
+        ? `[${section.headings.join(' > ')}]\n` 
+        : ''
+      
+      // 如果内容太长，需要进一步切分
+      const contentWithContext = contextPrefix + section.content
+      
+      if (estimateTokens(contentWithContext) > this.options.maxChunkSize) {
+        // 内容太长，切分成多个块，每个块都带相同的标题上下文
+        const subChunks = this.splitLongContent(section.content, contextPrefix)
+        
+        for (const subContent of subChunks) {
+          chunks.push(this.createChunk(
+            subContent,
+            docId,
+            chunkIndex++,
+            section.startOffset,
+            section.endOffset,
+            metadata
+          ))
+        }
+      } else if (section.content.trim()) {
+        chunks.push(this.createChunk(
+          contentWithContext,
+          docId,
+          chunkIndex++,
+          section.startOffset,
+          section.endOffset,
+          metadata
+        ))
+      }
+    }
+
+    // 更新总块数
+    for (const chunk of chunks) {
+      chunk.totalChunks = chunks.length
+    }
+
+    return chunks
+  }
+
+  /**
+   * 解析 Markdown 文档的标题结构
+   */
+  private parseMarkdownSections(text: string): Array<{
+    headings: string[]
+    content: string
+    startOffset: number
+    endOffset: number
+  }> {
+    const sections: Array<{
+      headings: string[]
+      content: string
+      startOffset: number
+      endOffset: number
+    }> = []
+
+    const lines = text.split('\n')
+    const headingStack: Array<{ level: number; title: string }> = []
+    
+    let currentContent = ''
+    let currentStart = 0
+    let offset = 0
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      const headingMatch = line.match(/^(#{1,6})\s+(.+)$/)
+      
+      if (headingMatch) {
+        // 遇到新标题，保存之前的内容
+        if (currentContent.trim()) {
+          sections.push({
+            headings: headingStack.map(h => h.title),
+            content: currentContent.trim(),
+            startOffset: currentStart,
+            endOffset: offset
+          })
+        }
+        
+        // 更新标题栈
+        const level = headingMatch[1].length
+        const title = headingMatch[2].trim()
+        
+        // 弹出所有级别 >= 当前标题的旧标题
+        while (headingStack.length > 0 && headingStack[headingStack.length - 1].level >= level) {
+          headingStack.pop()
+        }
+        headingStack.push({ level, title })
+        
+        // 重置内容
+        currentContent = ''
+        currentStart = offset + line.length + 1
+      } else {
+        currentContent += line + '\n'
+      }
+      
+      offset += line.length + 1
+    }
+
+    // 保存最后一段
+    if (currentContent.trim()) {
+      sections.push({
+        headings: headingStack.map(h => h.title),
+        content: currentContent.trim(),
+        startOffset: currentStart,
+        endOffset: text.length
+      })
+    }
+
+    return sections
+  }
+
+  /**
+   * 切分过长的内容，每个块都带标题上下文前缀
+   */
+  private splitLongContent(content: string, contextPrefix: string): string[] {
+    const results: string[] = []
+    const maxChars = estimateCharsFromTokens(this.options.maxChunkSize)
+    const prefixChars = contextPrefix.length
+    const availableChars = maxChars - prefixChars - 10  // 留一点余量
+    
+    // 按段落或句子切分
+    const paragraphs = content.split(PARAGRAPH_SEPARATOR)
+    let currentChunk = ''
+    
+    for (const para of paragraphs) {
+      const trimmedPara = para.trim()
+      if (!trimmedPara) continue
+      
+      if (currentChunk && (currentChunk.length + trimmedPara.length + 2) > availableChars) {
+        // 保存当前块
+        if (currentChunk.trim()) {
+          results.push(contextPrefix + currentChunk.trim())
+        }
+        currentChunk = trimmedPara
+      } else {
+        if (currentChunk) {
+          currentChunk += '\n\n' + trimmedPara
+        } else {
+          currentChunk = trimmedPara
+        }
+      }
+    }
+    
+    // 保存最后一块
+    if (currentChunk.trim()) {
+      results.push(contextPrefix + currentChunk.trim())
+    }
+    
+    // 如果结果为空（可能整个内容就是一个超长段落），强制切分
+    if (results.length === 0 && content.trim()) {
+      let start = 0
+      while (start < content.length) {
+        const end = Math.min(start + availableChars, content.length)
+        results.push(contextPrefix + content.slice(start, end).trim())
+        start = end
+      }
+    }
+    
+    return results
   }
 
   /**
