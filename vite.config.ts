@@ -19,7 +19,8 @@ export default defineConfig({
                 'ssh2', 
                 'electron-store',
                 '@xenova/transformers',
-                '@orama/orama'
+                '@lancedb/lancedb',
+                'apache-arrow'
               ]
             }
           }

@@ -154,18 +154,5 @@ export interface KnowledgeStats {
   lastUpdated?: number
 }
 
-// ==================== Orama 数据库 Schema ====================
-
-/** Orama 记录类型 */
-export interface OramaRecord {
-  id: string
-  docId: string
-  content: string
-  embedding: number[]
-  filename: string
-  hostId: string
-  tags: string[]
-  chunkIndex: number
-  createdAt: number
-}
+// VectorRecord 类型定义在 storage.ts 中
 

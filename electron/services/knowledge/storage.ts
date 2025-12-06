@@ -1,42 +1,54 @@
 /**
- * Orama 向量存储服务
- * 提供向量存储、全文搜索和混合搜索功能
+ * LanceDB 向量存储服务
+ * 提供向量存储和语义搜索功能
  */
 import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
 import { EventEmitter } from 'events'
 import type { 
-  OramaRecord, 
   SearchOptions, 
   SearchResult, 
-  KnowledgeDocument,
   KnowledgeStats 
 } from './types'
 
-// 动态导入 Orama
-let orama: any = null
+// LanceDB 记录类型
+export interface VectorRecord {
+  id: string
+  docId: string
+  content: string
+  vector: number[]
+  filename: string
+  hostId: string
+  tags: string  // 改为字符串，用逗号分隔（LanceDB 对空数组类型推断有问题）
+  chunkIndex: number
+  createdAt: number
+}
 
-async function loadOrama() {
-  if (!orama) {
-    orama = await import('@orama/orama')
+// 兼容旧接口
+export type OramaRecord = VectorRecord
+
+// 动态导入 LanceDB
+let lancedb: any = null
+
+async function loadLanceDB() {
+  if (!lancedb) {
+    lancedb = await import('@lancedb/lancedb')
   }
-  return orama
+  return lancedb
 }
 
 export class VectorStorage extends EventEmitter {
   private db: any = null
+  private table: any = null
   private storagePath: string
-  private documentsPath: string
+  private tableName = 'knowledge_vectors'
   private isInitialized: boolean = false
-  // 内存中保存完整记录（包含 embedding），用于持久化
-  private recordsCache: Map<string, OramaRecord> = new Map()
+  private dimensions: number = 384
 
   constructor() {
     super()
-    this.storagePath = path.join(app.getPath('userData'), 'knowledge')
-    this.documentsPath = path.join(this.storagePath, 'documents.json')
-    
+    this.storagePath = path.join(app.getPath('userData'), 'knowledge', 'lancedb')
     this.ensureDirectories()
   }
 
@@ -57,144 +69,97 @@ export class VectorStorage extends EventEmitter {
       return
     }
 
-    const { create, insert } = await loadOrama()
-
-    // 创建数据库 schema
-    this.db = await create({
-      schema: {
-        id: 'string',
-        docId: 'string',
-        content: 'string',
-        embedding: `vector[${dimensions}]`,
-        filename: 'string',
-        hostId: 'string',
-        tags: 'string[]',
-        chunkIndex: 'number',
-        createdAt: 'number'
-      }
-    })
-
-    // 加载持久化数据
-    await this.loadFromDisk()
-
-    this.isInitialized = true
-    this.emit('initialized')
-  }
-
-  /**
-   * 从磁盘加载数据
-   */
-  private async loadFromDisk(): Promise<void> {
-    const dataPath = path.join(this.storagePath, 'vectors.json')
+    this.dimensions = dimensions
     
-    console.log(`[VectorStorage] Loading from: ${dataPath}`)
-    
-    if (!fs.existsSync(dataPath)) {
-      console.log('[VectorStorage] No vectors.json found')
-      return
-    }
-
     try {
-      const data = JSON.parse(fs.readFileSync(dataPath, 'utf-8'))
-      console.log(`[VectorStorage] Found ${data.records?.length || 0} records in file`)
+      const { connect } = await loadLanceDB()
       
-      const { insert } = await loadOrama()
-
-      let insertedCount = 0
-      for (const record of data.records || []) {
-        // 跳过没有 embedding 的记录
-        if (!record.embedding || record.embedding === null) {
-          console.warn(`[VectorStorage] Skipping record without embedding: ${record.id}`)
-          continue
-        }
-        try {
-          await insert(this.db, record)
-          // 同时加入缓存
-          this.recordsCache.set(record.id, record)
-          insertedCount++
-        } catch (e) {
-          console.error(`[VectorStorage] Failed to insert record ${record.id}:`, e)
-        }
+      console.log(`[VectorStorage] Connecting to LanceDB at: ${this.storagePath}`)
+      this.db = await connect(this.storagePath)
+      
+      // 检查表是否存在
+      const tableNames = await this.db.tableNames()
+      
+      if (tableNames.includes(this.tableName)) {
+        this.table = await this.db.openTable(this.tableName)
+        const count = await this.table.countRows()
+        console.log(`[VectorStorage] Opened existing table with ${count} records`)
+      } else {
+        console.log('[VectorStorage] Creating new table')
+        // 创建空表（LanceDB 需要至少一条数据来推断 schema）
+        // 我们在第一次添加记录时创建表
+        this.table = null
       }
-      console.log(`[VectorStorage] Inserted ${insertedCount} records into Orama`)
 
-      // 验证数据库中的记录数
-      const { count } = await loadOrama()
-      const dbCount = await count(this.db)
-      console.log(`[VectorStorage] Loaded ${this.recordsCache.size} records from disk, DB count: ${dbCount}`)
+      this.isInitialized = true
+      this.emit('initialized')
     } catch (error) {
-      console.error('[VectorStorage] Failed to load data from disk:', error)
+      console.error('[VectorStorage] Initialization failed:', error)
+      throw error
     }
   }
 
   /**
-   * 持久化数据到磁盘
+   * 确保表存在
    */
-  private async saveToDisk(): Promise<void> {
-    if (!this.db) return
-
-    const dataPath = path.join(this.storagePath, 'vectors.json')
-
-    try {
-      // 从缓存获取所有记录（包含完整的 embedding）
-      const records: OramaRecord[] = Array.from(this.recordsCache.values())
-
-      const data = {
-        version: 1,
-        lastUpdated: Date.now(),
-        recordCount: records.length,
-        records: records
+  private async ensureTable(sampleRecord?: VectorRecord): Promise<void> {
+    if (this.table) return
+    
+    if (!sampleRecord) {
+      // 创建一个临时记录来初始化表结构
+      sampleRecord = {
+        id: '__init__',
+        docId: '__init__',
+        content: '',
+        vector: new Array(this.dimensions).fill(0),
+        filename: '',
+        hostId: '',
+        tags: '',
+        chunkIndex: 0,
+        createdAt: Date.now()
       }
-
-      fs.writeFileSync(dataPath, JSON.stringify(data), 'utf-8')
-      console.log(`[VectorStorage] Saved ${records.length} records to disk`)
-    } catch (error) {
-      console.error('[VectorStorage] Failed to save data to disk:', error)
+      
+      this.table = await this.db.createTable(this.tableName, [sampleRecord])
+      await this.table.delete('id = "__init__"')
+    } else {
+      this.table = await this.db.createTable(this.tableName, [sampleRecord])
     }
+    
+    console.log('[VectorStorage] Table created')
   }
 
   /**
    * 添加记录
    */
-  async addRecord(record: OramaRecord): Promise<string> {
+  async addRecord(record: VectorRecord): Promise<string> {
     if (!this.db) {
       throw new Error('数据库未初始化')
     }
 
-    const { insert } = await loadOrama()
-    await insert(this.db, record)
-    
-    // 保存到缓存
-    this.recordsCache.set(record.id, record)
-    
-    // 异步保存到磁盘
-    this.saveToDisk().catch(console.error)
+    await this.ensureTable(record)
+    await this.table.add([record])
     
     this.emit('recordAdded', record.id)
+    console.log(`[VectorStorage] Added record: ${record.id}`)
     return record.id
   }
 
   /**
    * 批量添加记录
    */
-  async addRecords(records: OramaRecord[]): Promise<string[]> {
+  async addRecords(records: VectorRecord[]): Promise<string[]> {
     if (!this.db) {
       throw new Error('数据库未初始化')
     }
 
-    const { insertMultiple } = await loadOrama()
-    await insertMultiple(this.db, records)
-    
-    // 保存到缓存
-    for (const record of records) {
-      this.recordsCache.set(record.id, record)
-    }
-    
-    // 异步保存到磁盘
-    this.saveToDisk().catch(console.error)
+    if (records.length === 0) return []
+
+    await this.ensureTable(records[0])
+    await this.table.add(records)
     
     const ids = records.map(r => r.id)
     this.emit('recordsAdded', ids)
+    console.log(`[VectorStorage] Added ${records.length} records`)
     return ids
   }
 
@@ -202,17 +167,10 @@ export class VectorStorage extends EventEmitter {
    * 删除记录
    */
   async removeRecord(id: string): Promise<boolean> {
-    if (!this.db) {
-      throw new Error('数据库未初始化')
-    }
+    if (!this.table) return false
 
-    const { remove } = await loadOrama()
-    
     try {
-      await remove(this.db, id)
-      // 从缓存删除
-      this.recordsCache.delete(id)
-      this.saveToDisk().catch(console.error)
+      await this.table.delete(`id = "${id}"`)
       this.emit('recordRemoved', id)
       return true
     } catch {
@@ -224,37 +182,23 @@ export class VectorStorage extends EventEmitter {
    * 删除文档的所有分块
    */
   async removeDocumentChunks(docId: string): Promise<number> {
-    if (!this.db) {
-      throw new Error('数据库未初始化')
-    }
+    if (!this.table) return 0
 
-    const { remove } = await loadOrama()
-    
-    // 从缓存中找出所有属于该文档的分块
-    const idsToRemove: string[] = []
-    Array.from(this.recordsCache.entries()).forEach(([id, record]) => {
-      if (record.docId === docId) {
-        idsToRemove.push(id)
+    try {
+      const beforeCount = await this.table.countRows()
+      await this.table.delete(`docId = "${docId}"`)
+      const afterCount = await this.table.countRows()
+      const removed = beforeCount - afterCount
+      
+      if (removed > 0) {
+        this.emit('documentRemoved', { docId, chunksRemoved: removed })
       }
-    })
-
-    let removed = 0
-    for (const id of idsToRemove) {
-      try {
-        await remove(this.db, id)
-        this.recordsCache.delete(id)
-        removed++
-      } catch {
-        // 忽略删除失败
-      }
+      
+      return removed
+    } catch (error) {
+      console.error('[VectorStorage] Failed to remove chunks:', error)
+      return 0
     }
-
-    if (removed > 0) {
-      this.saveToDisk().catch(console.error)
-      this.emit('documentRemoved', { docId, chunksRemoved: removed })
-    }
-
-    return removed
   }
 
   /**
@@ -264,93 +208,65 @@ export class VectorStorage extends EventEmitter {
     embedding: number[], 
     options: Partial<SearchOptions> = {}
   ): Promise<SearchResult[]> {
-    if (!this.db) {
-      throw new Error('数据库未初始化')
+    if (!this.table) {
+      return []
     }
 
-    const { search } = await loadOrama()
     const limit = options.limit || 10
-    const similarity = options.similarity || 0.7
 
-    const results = await search(this.db, {
-      mode: 'vector',
-      vector: {
-        value: embedding,
-        property: 'embedding'
-      },
-      similarity,
-      limit: limit * 2  // 获取更多结果用于后续过滤
-    })
+    try {
+      const results = await this.table
+        .vectorSearch(embedding)
+        .limit(limit * 2)
+        .toArray()
 
-    return this.formatResults(results.hits, options)
+      return this.formatResults(results, options)
+    } catch (error) {
+      console.error('[VectorStorage] Vector search failed:', error)
+      return []
+    }
   }
 
   /**
-   * 全文搜索
+   * 全文搜索（基于向量相似度）
+   * LanceDB 原生支持中文，无需分词
    */
   async searchByText(
     query: string, 
     options: Partial<SearchOptions> = {}
   ): Promise<SearchResult[]> {
-    if (!this.db) {
-      throw new Error('数据库未初始化')
-    }
-
-    const { search } = await loadOrama()
-    const limit = options.limit || 10
-
-    const results = await search(this.db, {
-      term: query,
-      properties: ['content', 'filename'],
-      limit: limit * 2
-    })
-
-    return this.formatResults(results.hits, options)
+    // LanceDB 没有内置全文搜索，使用向量搜索
+    // 调用方需要先将 query 转为 embedding
+    console.warn('[VectorStorage] searchByText requires embedding, use hybridSearch instead')
+    return []
   }
 
   /**
-   * 混合搜索（向量 + 全文）
+   * 混合搜索（向量搜索）
    */
   async hybridSearch(
     query: string,
     embedding: number[],
     options: Partial<SearchOptions> = {}
   ): Promise<SearchResult[]> {
-    if (!this.db) {
-      throw new Error('数据库未初始化')
+    if (!this.table) {
+      console.log('[VectorStorage] No table, returning empty results')
+      return []
     }
 
-    console.log(`[VectorStorage] hybridSearch: query="${query}", cache size=${this.recordsCache.size}`)
-
-    const { search } = await loadOrama()
     const limit = options.limit || 10
-    const similarity = options.similarity || 0.5  // 降低相似度阈值
-    
-    // 向量搜索（语义搜索，不受分词影响）
-    let results: any = { hits: [] }
-    
-    try {
-      // 尝试多个相似度阈值
-      for (const sim of [0.3, 0.2, 0.1, 0]) {
-        results = await search(this.db, {
-          mode: 'vector',
-          vector: {
-            value: embedding,
-            property: 'embedding'
-          },
-          similarity: sim,
-          limit: limit * 2
-        })
-        console.log(`[VectorStorage] vector search (sim=${sim}): ${results.hits?.length || 0} hits`)
-        if (results.hits.length > 0) break
-      }
-    } catch (e) {
-      console.error('[VectorStorage] Vector search error:', e)
-    }
-    
-    console.log(`[VectorStorage] final results: ${results.hits?.length || 0} hits`)
 
-    return this.formatResults(results.hits, options)
+    try {
+      const results = await this.table
+        .vectorSearch(embedding)
+        .limit(limit)
+        .toArray()
+
+      return this.formatResults(results, options)
+    } catch (error) {
+      console.error('[VectorStorage] Hybrid search failed:', error)
+      return []
+    }
   }
 
   /**
@@ -362,22 +278,22 @@ export class VectorStorage extends EventEmitter {
   ): SearchResult[] {
     let results: SearchResult[] = hits.map(hit => ({
       id: hit.id,
-      docId: hit.document.docId,
-      content: hit.document.content,
-      score: hit.score,
+      docId: hit.docId,
+      content: hit.content,
+      score: hit._distance ? 1 - hit._distance : 1,
       metadata: {
-        filename: hit.document.filename,
-        hostId: hit.document.hostId,
-        tags: hit.document.tags || [],
+        filename: hit.filename,
+        hostId: hit.hostId || '',
+        tags: hit.tags ? hit.tags.split(',').filter((t: string) => t) : [],
         startOffset: 0,
-        endOffset: hit.document.content.length
+        endOffset: hit.content?.length || 0
       },
       source: 'local' as const
     }))
 
-    // 按主机过滤
-    if (options.hostId) {
-      results = results.filter(r => r.metadata.hostId === options.hostId)
+    // 按主机过滤（空 hostId 的记录对所有主机可见）
+    if (options.hostId && options.hostId.trim()) {
+      results = results.filter(r => !r.metadata.hostId || r.metadata.hostId === options.hostId)
     }
 
     // 按标签过滤
@@ -387,7 +303,6 @@ export class VectorStorage extends EventEmitter {
       )
     }
 
-    // 限制结果数量
     const limit = options.limit || 10
     return results.slice(0, limit)
   }
@@ -396,7 +311,7 @@ export class VectorStorage extends EventEmitter {
    * 获取统计信息
    */
   async getStats(): Promise<KnowledgeStats> {
-    if (!this.db) {
+    if (!this.table) {
       return {
         documentCount: 0,
         chunkCount: 0,
@@ -404,19 +319,25 @@ export class VectorStorage extends EventEmitter {
       }
     }
 
-    // 从缓存获取统计信息
-    const chunkCount = this.recordsCache.size
-    const uniqueDocIds = new Set<string>()
-    
-    Array.from(this.recordsCache.values()).forEach(record => {
-      uniqueDocIds.add(record.docId)
-    })
+    try {
+      const chunkCount = await this.table.countRows()
+      
+      // 获取唯一文档数
+      const allRows = await this.table.toArray()
+      const uniqueDocIds = new Set(allRows.map((r: any) => r.docId))
 
-    return {
-      documentCount: uniqueDocIds.size,
-      chunkCount,
-      totalSize: 0,  // TODO: 计算实际大小
-      lastUpdated: Date.now()
+      return {
+        documentCount: uniqueDocIds.size,
+        chunkCount,
+        totalSize: 0,
+        lastUpdated: Date.now()
+      }
+    } catch {
+      return {
+        documentCount: 0,
+        chunkCount: 0,
+        totalSize: 0
+      }
     }
   }
 
@@ -424,33 +345,10 @@ export class VectorStorage extends EventEmitter {
    * 清空所有数据
    */
   async clear(): Promise<void> {
-    const { create } = await loadOrama()
-    
-    // 清空缓存
-    this.recordsCache.clear()
-    
-    // 重新创建空数据库
-    const dimensions = 384  // 使用默认维度
-    this.db = await create({
-      schema: {
-        id: 'string',
-        docId: 'string',
-        content: 'string',
-        embedding: `vector[${dimensions}]`,
-        filename: 'string',
-        hostId: 'string',
-        tags: 'string[]',
-        chunkIndex: 'number',
-        createdAt: 'number'
-      }
-    })
-
-    // 清除磁盘数据
-    const dataPath = path.join(this.storagePath, 'vectors.json')
-    if (fs.existsSync(dataPath)) {
-      fs.unlinkSync(dataPath)
+    if (this.table) {
+      await this.db.dropTable(this.tableName)
+      this.table = null
     }
-
     this.emit('cleared')
   }
 
@@ -478,4 +376,3 @@ export function getVectorStorage(): VectorStorage {
   }
   return vectorStorage
 }
-

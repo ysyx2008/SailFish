@@ -15,7 +15,6 @@ import type {
   SearchResult,
   AddDocumentOptions,
   KnowledgeStats,
-  OramaRecord,
   ModelTier,
   ModelInfo,
   ModelStatus
@@ -24,7 +23,7 @@ import { DEFAULT_KNOWLEDGE_SETTINGS } from './types'
 
 import { getModelManager, ModelManager } from './model-manager'
 import { getEmbeddingService, EmbeddingService } from './embedding'
-import { getVectorStorage, VectorStorage } from './storage'
+import { getVectorStorage, VectorStorage, VectorRecord } from './storage'
 import { getChunker, Chunker } from './chunker'
 import { McpKnowledgeAdapter } from './mcp-adapter'
 import { createReranker, Reranker } from './reranker'
@@ -122,11 +121,60 @@ export class KnowledgeService extends EventEmitter {
       this.isInitialized = true
       this.emit('initialized')
       console.log('[KnowledgeService] Initialized successfully')
+      
+      // 检查是否需要重建索引（有文档但向量库是空的）
+      await this.checkAndRebuildIndex()
     } catch (error) {
       console.error('[KnowledgeService] Initialization failed:', error)
       this.emit('error', error)
       throw error
     }
+  }
+  
+  /**
+   * 检查并重建索引
+   */
+  private async checkAndRebuildIndex(): Promise<void> {
+    const docs = this.getDocuments()
+    if (docs.length === 0) return
+    
+    const stats = await this.vectorStorage.getStats()
+    if (stats.chunkCount > 0) return
+    
+    console.log(`[KnowledgeService] Found ${docs.length} documents without vectors, rebuilding index...`)
+    
+    for (const doc of docs) {
+      if (!doc.content) continue
+      
+      try {
+        // 重新分块
+        const chunks = this.chunker.chunk(doc.content, doc.id, { filename: doc.filename })
+        
+        // 生成 embedding
+        const texts = chunks.map(c => c.content)
+        const embeddings = await this.embeddingService.embed(texts)
+        
+        // 创建向量记录
+        const records: VectorRecord[] = chunks.map((chunk, index) => ({
+          id: chunk.id,
+          docId: doc.id,
+          content: chunk.content,
+          vector: embeddings[index],
+          filename: doc.filename,
+          hostId: '',
+          tags: (doc.tags || []).join(','),
+          chunkIndex: chunk.chunkIndex,
+          createdAt: doc.createdAt
+        }))
+        
+        await this.vectorStorage.addRecords(records)
+        console.log(`[KnowledgeService] Rebuilt index for: ${doc.filename} (${chunks.length} chunks)`)
+      } catch (error) {
+        console.error(`[KnowledgeService] Failed to rebuild index for ${doc.filename}:`, error)
+      }
+    }
+    
+    console.log('[KnowledgeService] Index rebuild complete')
   }
 
   /**
@@ -216,14 +264,14 @@ export class KnowledgeService extends EventEmitter {
     const embeddings = await this.embeddingService.embed(texts)
 
     // 创建向量记录
-    const records: OramaRecord[] = chunks.map((chunk, index) => ({
+    const records: VectorRecord[] = chunks.map((chunk, index) => ({
       id: chunk.id,
       docId,
       content: chunk.content,
-      embedding: embeddings[index],
+      vector: embeddings[index],
       filename: doc.filename,
       hostId: options?.hostId || '',
-      tags: options?.tags || [],
+      tags: (options?.tags || []).join(','),
       chunkIndex: chunk.chunkIndex,
       createdAt: now
     }))
@@ -264,10 +312,7 @@ export class KnowledgeService extends EventEmitter {
    * 搜索知识库
    */
   async search(query: string, options?: Partial<SearchOptions>): Promise<SearchResult[]> {
-    console.log(`[KnowledgeService] Search query: "${query}"`)
-    
     if (!this.isInitialized) {
-      console.log('[KnowledgeService] Not initialized, initializing...')
       await this.initialize()
     }
 
@@ -285,18 +330,13 @@ export class KnowledgeService extends EventEmitter {
 
     // 本地向量搜索
     if (this.settings.embeddingMode === 'local') {
-      console.log('[KnowledgeService] Using local embedding for search')
       const queryEmbedding = await this.embeddingService.embedSingle(query)
-      console.log(`[KnowledgeService] Query embedding length: ${queryEmbedding.length}`)
       const localResults = await this.vectorStorage.hybridSearch(
         query,
         queryEmbedding,
         searchOptions
       )
-      console.log(`[KnowledgeService] Local search results: ${localResults.length}`)
       results.push(...localResults)
-    } else {
-      console.log(`[KnowledgeService] Embedding mode: ${this.settings.embeddingMode}`)
     }
 
     // MCP 知识库搜索
