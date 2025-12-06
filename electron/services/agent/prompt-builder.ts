@@ -320,7 +320,7 @@ ${buildPlanningGuidance()}
    - 当前操作系统：**${osType}**
    - 当前 Shell：**${shellType}**
    - 你必须使用与此系统匹配的命令，禁止使用其他系统的命令
-7. **异常处理**：命令超时时用 check_terminal_status 检查，必要时用 send_control_key 发送 Ctrl+C${documentRule}
+7. **超时处理**：命令超时不一定是卡住，可能只是执行时间长。先用 get_terminal_context 查看输出进度，确认卡住后再用 Ctrl+C${documentRule}
 8. **【重要】严格聚焦，禁止发散**：
    - 只做用户明确要求的事情，禁止自作主张扩展任务
    - **做不到就说做不到**：如果尝试 2-3 次仍无法完成，直接告诉用户"无法完成"及原因，不要自己想替代方案

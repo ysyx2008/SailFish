@@ -72,7 +72,7 @@ function getErrorRecoverySuggestion(error: string, category: ErrorCategory): str
     case 'not_found':
       return '资源不存在。建议：1) 检查路径是否正确；2) 使用 ls 或 find 确认文件位置；3) 检查命令是否已安装。'
     case 'timeout':
-      return '命令执行超时。建议：1) 检查网络连接；2) 使用 check_terminal_status 查看终端状态；3) 可能需要 send_control_key 发送 Ctrl+C。'
+      return '命令执行超时，但可能仍在运行中。建议：1) 先用 check_terminal_status 确认是否还在执行；2)  再用 get_terminal_context 查看终端最新输出，了解执行进度；3) 如果确实卡住了再用 send_control_key 发送 Ctrl+C。'
     case 'fatal':
       return '执行失败。请分析错误信息，考虑更换方法或向用户请求帮助。'
   }
