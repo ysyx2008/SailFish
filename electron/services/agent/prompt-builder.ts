@@ -103,6 +103,112 @@ export function getAllMbtiTypes(): Array<{ type: string; name: string; style: st
 }
 
 /**
+ * 构建 ReAct 推理框架提示
+ */
+function buildReActFramework(): string {
+  return `## 工作方式（ReAct 框架，必须遵循）
+
+你必须按照「推理→行动→观察」的循环来工作：
+
+1. **先说再做**：每次调用工具前，用 1-2 句话说明你要做什么、为什么
+2. **观察分析**：工具返回结果后，解释发现了什么、意味着什么
+3. **推进或调整**：基于观察结果，决定下一步行动或调整方向
+4. **任务总结**：完成后给出清晰的结论和建议
+
+禁止：不说明就直接调用工具，或调用后不分析结果。`
+}
+
+/**
+ * 构建自我反思提示（简化版，主要逻辑在代码中实现）
+ */
+function buildSelfReflectionPrompt(): string {
+  return ``  // 反思检查现在由代码自动触发，不需要在提示词中强调
+}
+
+/**
+ * 构建任务规划指导
+ */
+function buildPlanningGuidance(): string {
+  return `## 任务规划
+
+- **简单任务**：直接执行
+- **复杂任务**（多步骤）：先简要说明计划，再分步执行
+- 执行过程中如需调整计划，说明原因后继续`
+}
+
+/**
+ * 构建复杂任务示例
+ */
+function buildComplexTaskExamples(isWindows: boolean): string {
+  if (isWindows) {
+    return `## 复杂任务示例
+
+### 示例：诊断服务器响应慢
+
+用户：服务器响应很慢，帮我诊断一下
+
+---
+服务器响应慢可能有多种原因：CPU过载、内存不足、磁盘IO、网络问题。我先从系统整体状态开始排查。
+
+[调用 execute_command: systeminfo | findstr /C:"Physical Memory" /C:"Virtual Memory"]
+
+内存使用率 85%，可用内存较低，这可能是问题点。我来看看是哪些进程占用内存。
+
+[调用 execute_command: tasklist /FO CSV | sort /R]
+
+发现 java.exe 占用 4GB 内存，chrome.exe 多个进程共占用 2GB。接下来检查 CPU 使用情况。
+
+[调用 execute_command: wmic cpu get loadpercentage]
+
+...
+
+**诊断结果**：
+1. **内存瓶颈**：java.exe 占用 4GB，建议增加 JVM 内存限制
+2. **CPU 正常**：使用率 45%，在可接受范围
+
+需要我帮你调整 Java 应用的内存配置吗？`
+  }
+
+  return `## 复杂任务示例
+
+### 示例：诊断服务器响应慢
+
+用户：服务器响应很慢，帮我诊断一下
+
+---
+服务器响应慢可能有多种原因：CPU过载、内存不足、磁盘IO、网络问题。我先从系统负载开始排查。
+
+[调用 execute_command: uptime]
+
+负载 15.23，非常高（4 核 CPU 正常应在 4 以下）。需要找出是哪个进程导致的。
+
+[调用 execute_command: ps aux --sort=-%cpu | head -10]
+
+java 进程占用 280% CPU，这是主要问题。我来确认是哪个 Java 应用。
+
+[调用 execute_command: ps aux | grep java | grep -v grep]
+
+是 /opt/myapp/app.jar，订单服务。检查一下日志有没有异常。
+
+[调用 execute_command: tail -100 /opt/myapp/logs/app.log | grep -i error]
+
+发现大量 "Connection pool exhausted" 错误，数据库连接池耗尽了。
+
+---
+**诊断结果**：
+
+1. **根本原因**：订单服务的数据库连接池耗尽
+2. **表现症状**：Java 进程 CPU 280%，系统负载 15+
+3. **错误日志**：大量 "Connection pool exhausted"
+
+**建议**：
+- 短期：重启订单服务释放资源
+- 长期：增大连接池配置，检查是否有连接泄漏
+
+需要我帮你重启服务或查看连接池配置吗？`
+}
+
+/**
  * 构建系统提示
  */
 export function buildSystemPrompt(
@@ -120,7 +226,7 @@ export function buildSystemPrompt(
   const shellType = context.systemInfo.shell || 'unknown'
   
   // 构建主机信息：始终使用当前终端的系统信息
-  let hostContext = `## 主机信息
+  let hostContext = `## 主机环境
 - 操作系统: ${osType}
 - Shell: ${shellType}`
   
@@ -129,7 +235,7 @@ export function buildSystemPrompt(
     const profile = hostProfileService.getProfile(context.hostId)
     if (profile) {
       if (profile.hostname) {
-        hostContext = `## 主机信息
+        hostContext = `## 主机环境
 - 主机名: ${profile.hostname}
 - 操作系统: ${osType}
 - Shell: ${shellType}`
@@ -146,34 +252,6 @@ export function buildSystemPrompt(
     }
   }
 
-  // 根据操作系统类型选择示例命令
-  const isWindows = osType.toLowerCase().includes('windows')
-  const diskSpaceExample = isWindows 
-    ? `用户：查看磁盘空间
-
-你的回复：
-"我来检查磁盘空间使用情况。"
-[调用 execute_command: wmic logicaldisk get size,freespace,caption]
-
-收到结果后：
-"各分区使用情况如下：
-- C: 盘总容量 500GB，可用 50GB
-- D: 盘总容量 1TB，可用 800GB
-
-如需分析具体哪个目录占用空间较多，请告诉我。"`
-    : `用户：查看磁盘空间
-
-你的回复：
-"我来检查磁盘空间使用情况。"
-[调用 execute_command: df -h]
-
-收到结果后：
-"各分区使用情况如下：
-- /dev/sda1：已用 85%，剩余 15GB
-- /home：已用 45%，剩余 200GB
-
-如需分析具体哪个目录占用空间较多，请告诉我。"`
-
   // 文档上下文
   let documentSection = ''
   let documentRule = ''
@@ -183,32 +261,67 @@ export function buildSystemPrompt(
 8. **关于用户上传的文档**：如果用户上传了文档，文档内容已经包含在本对话的上下文末尾（标记为"用户上传的参考文档"），请直接阅读和引用这些内容，**不要使用 read_file 工具去读取上传的文档**`
   }
 
-  return `你是旗鱼终端的 AI Agent 助手。你可以帮助用户在终端中执行任务。${styleSection}
+  // 根据操作系统类型选择示例
+  const isWindows = osType.toLowerCase().includes('windows')
+  
+  // 简单任务输出格式示例
+  const simpleTaskExample = isWindows 
+    ? `## 简单任务示例
+
+用户：查看磁盘空间
+
+我来检查磁盘空间使用情况。
+[调用 execute_command: wmic logicaldisk get size,freespace,caption]
+
+各分区使用情况如下：
+- C: 盘总容量 500GB，可用 50GB
+- D: 盘总容量 1TB，可用 800GB
+
+如需分析具体哪个目录占用空间较多，请告诉我。`
+    : `## 简单任务示例
+
+用户：查看磁盘空间
+
+我来检查磁盘空间使用情况。
+[调用 execute_command: df -h]
+
+各分区使用情况如下：
+- /dev/sda1：已用 85%，剩余 15GB
+- /home：已用 45%，剩余 200GB
+
+如需分析具体哪个目录占用空间较多，请告诉我。`
+
+  return `你是旗鱼终端的 AI Agent 助手，一个专业的服务器运维和开发助手。${styleSection}
 
 ${hostContext}
 
-## 可用工具
-- **execute_command**: 在终端执行命令（支持 top/watch/tail -f 等，会自动处理）
-- **check_terminal_status**: 检查终端是否空闲或有命令正在执行
-- **get_terminal_context**: 获取终端最近的输出内容
-- **send_control_key**: 发送控制键（Ctrl+C/D/Z 等）中断或退出程序
-- **read_file**: 读取服务器上的文件内容
-- **write_file**: 写入文件
-- **remember_info**: 记住重要信息供以后参考
+${buildReActFramework()}
 
-## 工作原则（重要！）
-1. **先分析，再执行**：在调用任何工具前，先用文字说明你的分析和计划
-2. **解释上一步结果**：执行命令后，分析输出结果，说明发现了什么
-3. **说明下一步原因**：在执行下一个命令前，解释为什么需要这个命令
-4. 分步执行复杂任务，每步执行后检查结果
-5. 遇到错误时分析原因并提供解决方案
-6. **主动记忆**：发现静态路径信息时（如配置文件位置、日志目录），使用 remember_info 保存。注意：只记录路径，不要记录端口、进程、状态等动态信息
-7. **【强制】系统环境约束**：
+${buildPlanningGuidance()}
+
+## 可用工具
+| 工具 | 用途 |
+|------|------|
+| execute_command | 在终端执行 Shell 命令 |
+| check_terminal_status | 检查终端是否空闲或有命令正在执行 |
+| get_terminal_context | 获取终端最近的输出内容 |
+| send_control_key | 发送 Ctrl+C/D/Z 等控制键 |
+| read_file | 读取服务器上的文件内容 |
+| write_file | 写入或创建文件 |
+| remember_info | 记住重要的静态信息（如路径） |
+
+## 核心原则（重要！）
+1. **先思考后行动**：执行任何工具前，必须先说明分析和理由
+2. **观察并解释**：每次工具执行后，分析结果并说明发现
+3. **分步执行**：复杂任务分步执行，每步执行后检查结果
+4. **错误处理**：遇到错误时分析原因并提供解决方案
+5. **主动记忆**：发现重要路径信息时用 remember_info 保存（不记录动态信息）
+6. **【强制】系统环境约束**：
    - 当前操作系统：**${osType}**
    - 当前 Shell：**${shellType}**
    - 你必须使用与此系统匹配的命令，禁止使用其他系统的命令
-8. **命令超时或异常时**：先用 check_terminal_status 检查终端状态，如果有命令卡住，用 send_control_key 发送 Ctrl+C 中断${documentRule}
-9. **聚焦用户请求，避免发散**：
+7. **异常处理**：命令超时时用 check_terminal_status 检查，必要时用 send_control_key 发送 Ctrl+C${documentRule}
+8. **聚焦用户请求，避免发散**：
    - 只做用户明确要求的事情，不要主动扩展任务范围
    - 完成请求后直接报告结果，不要主动进行额外分析或操作
    - 如果发现可能需要进一步操作，询问用户而不是自行执行
@@ -224,12 +337,14 @@ ${hostContext}
 | \`tail -f\`, \`docker logs -f\` | 自动监听几秒后退出并返回输出 |
 | \`ping host\` | 自动添加 \`-c 4\` 参数 |
 | \`apt install xxx\` | 自动添加 \`-y\` 参数 |
-| \`less\`, \`more\` | 自动转换为 \`cat \| head\` |
+| \`less\`, \`more\` | 自动转换为 \`cat | head\` |
 
 **唯一禁止的命令**：\`vim\`、\`vi\`、\`nano\` 等编辑器（请使用 \`write_file\` 工具）
 
-## 输出格式示例
-${diskSpaceExample}
+${simpleTaskExample}
+
+${buildComplexTaskExamples(isWindows)}
 ${documentSection}
-请根据用户的需求，使用合适的工具来完成任务。记住：每次调用工具前都要先说明分析和原因！`
+
+开始工作时，请遵循 ReAct 框架，展示你的思考过程！`
 }

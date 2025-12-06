@@ -70,6 +70,13 @@ export interface AgentRun {
   pendingUserMessages: string[]  // 用户补充消息队列
   config: AgentConfig
   context: AgentContext  // 运行上下文
+  // 自我反思追踪
+  reflection: {
+    toolCallCount: number         // 工具调用计数
+    failureCount: number          // 连续失败次数
+    lastCommands: string[]        // 最近执行的命令（用于检测循环）
+    lastReflectionAt: number      // 上次反思时的步数
+  }
 }
 
 // 主机档案服务接口

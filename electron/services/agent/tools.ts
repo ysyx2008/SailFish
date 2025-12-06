@@ -127,6 +127,40 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
           required: ['info']
         }
       }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'report_progress',
+        description: '报告当前任务进度。用于复杂任务的关键节点，让用户了解执行状态。',
+        parameters: {
+          type: 'object',
+          properties: {
+            status: {
+              type: 'string',
+              enum: ['started', 'in_progress', 'completed', 'blocked'],
+              description: 'started: 开始执行; in_progress: 执行中; completed: 已完成; blocked: 遇到阻碍'
+            },
+            current_step: {
+              type: 'string',
+              description: '当前正在执行的步骤描述'
+            },
+            findings: {
+              type: 'string',
+              description: '到目前为止的发现或结果摘要'
+            },
+            next_action: {
+              type: 'string',
+              description: '下一步计划（如果有）'
+            },
+            blocked_reason: {
+              type: 'string',
+              description: '如果 status 是 blocked，说明阻碍原因'
+            }
+          },
+          required: ['status', 'current_step']
+        }
+      }
     }
   ]
 
