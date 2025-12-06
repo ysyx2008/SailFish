@@ -78,7 +78,7 @@ const openEditProfile = (profile: AiProfile) => {
 }
 
 const saveProfile = async () => {
-  if (!formData.value.name || !formData.value.apiUrl || !formData.value.apiKey || !formData.value.model) {
+  if (!formData.value.name || !formData.value.apiUrl || !formData.value.model) {
     return
   }
 
@@ -265,7 +265,7 @@ const applyTemplate = (template: typeof templates[0]) => {
           <input v-model="formData.apiUrl" type="text" class="input" placeholder="http://10.0.1.100:8080/v1/chat/completions" />
         </div>
         <div class="form-group">
-          <label class="form-label">API Key *</label>
+          <label class="form-label">API Key</label>
           <input v-model="formData.apiKey" type="password" class="input" placeholder="sk-..." />
         </div>
         <div class="form-group">
