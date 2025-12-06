@@ -437,10 +437,13 @@ export class KnowledgeService extends EventEmitter {
   // ==================== 设置管理 ====================
 
   /**
-   * 获取当前设置
+   * 获取当前设置（始终从配置服务读取最新值）
    */
   getSettings(): KnowledgeSettings {
-    return { ...this.settings }
+    // 从配置服务获取最新设置
+    const currentSettings = this.configService.getKnowledgeSettings()
+    this.settings = currentSettings
+    return { ...currentSettings }
   }
 
   /**

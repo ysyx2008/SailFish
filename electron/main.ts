@@ -1226,6 +1226,7 @@ ipcMain.handle('knowledge:updateSettings', async (_event, settings: Partial<Know
     await getKnowledge().updateSettings(settings)
     return { success: true }
   } catch (error) {
+    console.error('[Knowledge] 更新设置失败:', error)
     return { 
       success: false, 
       error: error instanceof Error ? error.message : '更新设置失败' 
