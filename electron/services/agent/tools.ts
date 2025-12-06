@@ -132,13 +132,13 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'search_knowledge',
-        description: '从用户的知识库中搜索相关信息。知识库包含用户上传的文档、笔记等参考资料。当预加载的知识库内容不够详细，或需要查找特定信息时使用。',
+        description: '搜索用户的知识库文档。搜索结果已包含文档内容，直接使用即可。',
         parameters: {
           type: 'object',
           properties: {
             query: {
               type: 'string',
-              description: '搜索查询词，描述你想查找的信息'
+              description: '简短的搜索词，1-3个核心关键词即可，避免堆砌'
             },
             limit: {
               type: 'number',
