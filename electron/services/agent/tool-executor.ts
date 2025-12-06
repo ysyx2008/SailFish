@@ -181,9 +181,6 @@ export async function executeTool(
     case 'remember_info':
       return rememberInfo(args, executor)
 
-    case 'report_progress':
-      return reportProgress(args, executor)
-
     default:
       // 检查是否是 MCP 工具调用
       if (name.startsWith('mcp_') && executor.mcpService) {
@@ -803,65 +800,4 @@ function rememberInfo(
   })
 
   return { success: true, output: `信息已保存到主机档案` }
-}
-
-/**
- * 报告任务进度
- */
-function reportProgress(
-  args: Record<string, unknown>,
-  executor: ToolExecutorConfig
-): ToolResult {
-  const status = args.status as string
-  const currentStep = args.current_step as string
-  const findings = args.findings as string | undefined
-  const nextAction = args.next_action as string | undefined
-  const blockedReason = args.blocked_reason as string | undefined
-
-  if (!status || !currentStep) {
-    return { success: false, output: '', error: '必须提供 status 和 current_step' }
-  }
-
-  // 构建进度报告
-  const statusIcons: Record<string, string> = {
-    started: '🚀',
-    in_progress: '🔄',
-    completed: '✅',
-    blocked: '⚠️'
-  }
-
-  const icon = statusIcons[status] || '📋'
-  let progressReport = `${icon} **${currentStep}**\n`
-
-  if (findings) {
-    progressReport += `\n**发现**: ${findings}`
-  }
-
-  if (status === 'blocked' && blockedReason) {
-    progressReport += `\n**阻碍原因**: ${blockedReason}`
-  }
-
-  if (nextAction && status !== 'completed') {
-    progressReport += `\n**下一步**: ${nextAction}`
-  }
-
-  executor.addStep({
-    type: 'tool_call',
-    content: `进度报告: ${status}`,
-    toolName: 'report_progress',
-    toolArgs: args,
-    riskLevel: 'safe'
-  })
-
-  executor.addStep({
-    type: 'tool_result',
-    content: progressReport,
-    toolName: 'report_progress',
-    toolResult: progressReport
-  })
-
-  return { 
-    success: true, 
-    output: `进度已记录。状态: ${status}, 当前步骤: ${currentStep}` 
-  }
 }
