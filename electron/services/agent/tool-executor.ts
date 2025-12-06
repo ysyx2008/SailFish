@@ -17,6 +17,108 @@ import type {
 } from './types'
 import { assessCommandRisk, analyzeCommand } from './risk-assessor'
 
+// 错误分类
+type ErrorCategory = 'transient' | 'permission' | 'not_found' | 'timeout' | 'fatal'
+
+/**
+ * 分析错误类型
+ */
+function categorizeError(error: string): ErrorCategory {
+  const errorLower = error.toLowerCase()
+  
+  // 暂时性错误（可重试）
+  if (errorLower.includes('connection reset') ||
+      errorLower.includes('network') ||
+      errorLower.includes('temporarily') ||
+      errorLower.includes('busy') ||
+      errorLower.includes('try again')) {
+    return 'transient'
+  }
+  
+  // 权限错误
+  if (errorLower.includes('permission denied') ||
+      errorLower.includes('access denied') ||
+      errorLower.includes('not permitted') ||
+      errorLower.includes('operation not allowed')) {
+    return 'permission'
+  }
+  
+  // 资源不存在
+  if (errorLower.includes('not found') ||
+      errorLower.includes('no such file') ||
+      errorLower.includes('does not exist') ||
+      errorLower.includes('command not found')) {
+    return 'not_found'
+  }
+  
+  // 超时
+  if (errorLower.includes('timeout') ||
+      errorLower.includes('timed out')) {
+    return 'timeout'
+  }
+  
+  return 'fatal'
+}
+
+/**
+ * 获取错误恢复建议
+ */
+function getErrorRecoverySuggestion(error: string, category: ErrorCategory): string {
+  switch (category) {
+    case 'transient':
+      return '这是一个暂时性错误，可以稍后重试。'
+    case 'permission':
+      return '权限不足。建议：1) 检查文件/目录权限；2) 尝试使用 sudo（如果合适）；3) 确认用户是否有相应权限。'
+    case 'not_found':
+      return '资源不存在。建议：1) 检查路径是否正确；2) 使用 ls 或 find 确认文件位置；3) 检查命令是否已安装。'
+    case 'timeout':
+      return '命令执行超时，但可能仍在运行中。建议：1) 先用 check_terminal_status 确认是否还在执行；2)  再用 get_terminal_context 查看终端最新输出，了解执行进度；3) 如果确实卡住了再用 send_control_key 发送 Ctrl+C。'
+    case 'fatal':
+      return '执行失败。请分析错误信息，考虑更换方法或向用户请求帮助。'
+  }
+}
+
+/**
+ * 带重试的异步执行
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: {
+    maxRetries?: number
+    retryDelay?: number
+    shouldRetry?: (error: Error) => boolean
+  } = {}
+): Promise<T> {
+  const { maxRetries = 2, retryDelay = 1000, shouldRetry } = options
+  
+  let lastError: Error | null = null
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error as Error
+      
+      // 检查是否应该重试
+      if (attempt < maxRetries) {
+        const category = categorizeError(lastError.message)
+        const canRetry = category === 'transient' || category === 'timeout'
+        
+        if (shouldRetry ? shouldRetry(lastError) : canRetry) {
+          // 指数退避
+          const delay = retryDelay * Math.pow(2, attempt)
+          await new Promise(resolve => setTimeout(resolve, delay))
+          continue
+        }
+      }
+      
+      throw lastError
+    }
+  }
+  
+  throw lastError
+}
+
 // 工具执行器配置
 export interface ToolExecutorConfig {
   ptyService: PtyService
@@ -261,17 +363,26 @@ async function executeCommand(
     )
   }
 
-  // 正常执行命令
+  // 正常执行命令（带重试机制）
   try {
-    const result = await executor.ptyService.executeInTerminal(
-      ptyId,
-      command,
-      config.commandTimeout
+    const result = await withRetry(
+      () => executor.ptyService.executeInTerminal(ptyId, command, config.commandTimeout),
+      {
+        maxRetries: 1,
+        retryDelay: 500,
+        shouldRetry: (err) => {
+          const category = categorizeError(err.message)
+          return category === 'transient'
+        }
+      }
     )
 
     // 检测是否超时
     const isTimeout = result.output.includes('[命令执行超时]')
     if (isTimeout) {
+      const errorCategory = categorizeError('timeout')
+      const suggestion = getErrorRecoverySuggestion('timeout', errorCategory)
+      
       executor.addStep({
         type: 'tool_result',
         content: `⏱️ 命令执行超时 (${config.commandTimeout / 1000}秒)`,
@@ -281,7 +392,7 @@ async function executeCommand(
       return {
         success: false,
         output: result.output,
-        error: `命令执行超时。可能原因：1) 命令需要更长时间；2) 命令正在等待用户输入；3) 命令是持续运行的程序。可以使用 send_control_key 发送 Ctrl+C 中断，或用 get_terminal_context 查看当前状态。`
+        error: `命令执行超时。${suggestion}`
       }
     }
 
@@ -295,13 +406,16 @@ async function executeCommand(
     return { success: true, output: result.output }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '命令执行失败'
+    const errorCategory = categorizeError(errorMsg)
+    const suggestion = getErrorRecoverySuggestion(errorMsg, errorCategory)
+    
     executor.addStep({
       type: 'tool_result',
       content: `命令执行失败: ${errorMsg}`,
       toolName: 'execute_command',
-      toolResult: errorMsg
+      toolResult: `${errorMsg}\n\n💡 ${suggestion}`
     })
-    return { success: false, output: '', error: errorMsg }
+    return { success: false, output: '', error: `${errorMsg}\n\n💡 恢复建议: ${suggestion}` }
   }
 }
 
@@ -556,7 +670,16 @@ function readFile(
     return { success: true, output: content }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '读取失败'
-    return { success: false, output: '', error: errorMsg }
+    const errorCategory = categorizeError(errorMsg)
+    const suggestion = getErrorRecoverySuggestion(errorMsg, errorCategory)
+    
+    executor.addStep({
+      type: 'tool_result',
+      content: `文件读取失败: ${errorMsg}`,
+      toolName: 'read_file',
+      toolResult: `${errorMsg}\n\n💡 ${suggestion}`
+    })
+    return { success: false, output: '', error: `${errorMsg}\n\n💡 恢复建议: ${suggestion}` }
   }
 }
 
@@ -609,7 +732,16 @@ async function writeFile(
     return { success: true, output: `文件已写入: ${filePath}` }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '写入失败'
-    return { success: false, output: '', error: errorMsg }
+    const errorCategory = categorizeError(errorMsg)
+    const suggestion = getErrorRecoverySuggestion(errorMsg, errorCategory)
+    
+    executor.addStep({
+      type: 'tool_result',
+      content: `文件写入失败: ${errorMsg}`,
+      toolName: 'write_file',
+      toolResult: `${errorMsg}\n\n💡 ${suggestion}`
+    })
+    return { success: false, output: '', error: `${errorMsg}\n\n💡 恢复建议: ${suggestion}` }
   }
 }
 

@@ -26,6 +26,7 @@ import { assessCommandRisk, analyzeCommand } from './risk-assessor'
 import type { CommandHandlingInfo } from './risk-assessor'
 import { executeTool, ToolExecutorConfig } from './tool-executor'
 import { buildSystemPrompt } from './prompt-builder'
+import { analyzeTaskComplexity, generatePlanningPrompt } from './planner'
 
 // 重新导出类型，供外部使用
 export type {
@@ -93,6 +94,232 @@ export class AgentService {
    */
   private generateId(): string {
     return `agent_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
+  }
+
+  /**
+   * 检测是否存在命令循环（重复执行相同命令）
+   */
+  private detectCommandLoop(commands: string[]): boolean {
+    if (commands.length < 3) return false
+    
+    // 检查最后 3 个命令是否相同
+    const last3 = commands.slice(-3)
+    if (last3[0] === last3[1] && last3[1] === last3[2]) {
+      return true
+    }
+    
+    // 检查是否有 AB-AB 模式的循环
+    if (commands.length >= 4) {
+      const last4 = commands.slice(-4)
+      if (last4[0] === last4[2] && last4[1] === last4[3]) {
+        return true
+      }
+    }
+    
+    return false
+  }
+
+  /**
+   * 生成反思提示消息
+   * 只在检测到问题时触发，提示简洁自然
+   */
+  private generateReflectionPrompt(run: AgentRun): string {
+    const { reflection } = run
+    
+    // 检测到循环
+    if (this.detectCommandLoop(reflection.lastCommands)) {
+      return `（注意：你似乎在重复相同的操作，请换个方法试试，或者告诉用户遇到了什么困难）`
+    }
+    
+    // 连续失败
+    if (reflection.failureCount >= 3) {
+      return `（注意：已连续失败 ${reflection.failureCount} 次，建议换个思路或向用户说明情况）`
+    }
+    
+    return ''
+  }
+
+  /**
+   * 检查是否需要触发反思
+   * 只在真正出问题时触发，避免打扰正常流程
+   */
+  private shouldTriggerReflection(run: AgentRun): boolean {
+    const { reflection } = run
+    
+    // 连续失败 3 次以上触发
+    if (reflection.failureCount >= 3) {
+      return true
+    }
+    
+    // 检测到命令循环时触发
+    if (this.detectCommandLoop(reflection.lastCommands)) {
+      return true
+    }
+    
+    return false
+  }
+
+  /**
+   * 更新反思追踪状态
+   */
+  private updateReflectionTracking(
+    run: AgentRun, 
+    toolName: string, 
+    toolArgs: Record<string, unknown>,
+    success: boolean
+  ): void {
+    run.reflection.toolCallCount++
+    
+    // 追踪命令执行
+    if (toolName === 'execute_command' && toolArgs.command) {
+      run.reflection.lastCommands.push(toolArgs.command as string)
+      // 只保留最近 5 个命令
+      if (run.reflection.lastCommands.length > 5) {
+        run.reflection.lastCommands.shift()
+      }
+    }
+    
+    // 更新失败计数
+    if (success) {
+      run.reflection.failureCount = 0
+    } else {
+      run.reflection.failureCount++
+    }
+  }
+
+  /**
+   * 估算消息的 token 数量（粗略估计）
+   * 中文约 1.5 token/字符，英文约 0.25 token/字符
+   */
+  private estimateTokens(text: string): number {
+    const chineseChars = (text.match(/[\u4e00-\u9fa5]/g) || []).length
+    const otherChars = text.length - chineseChars
+    return Math.ceil(chineseChars * 1.5 + otherChars * 0.25)
+  }
+
+  /**
+   * 估算消息数组的总 token 数
+   */
+  private estimateTotalTokens(messages: AiMessage[]): number {
+    return messages.reduce((sum, msg) => {
+      let tokens = this.estimateTokens(msg.content)
+      // 工具调用也占用 token
+      if (msg.tool_calls) {
+        tokens += msg.tool_calls.reduce((t, tc) => 
+          t + this.estimateTokens(tc.function.name) + this.estimateTokens(tc.function.arguments), 0)
+      }
+      if (msg.reasoning_content) {
+        tokens += this.estimateTokens(msg.reasoning_content)
+      }
+      return sum + tokens
+    }, 0)
+  }
+
+  /**
+   * 压缩工具输出内容
+   * 对于长输出，只保留关键信息
+   */
+  private compressToolOutput(output: string, maxLength: number = 2000): string {
+    if (output.length <= maxLength) {
+      return output
+    }
+
+    // 分析输出类型，采用不同压缩策略
+    const lines = output.split('\n')
+    
+    // 如果是结构化输出（如命令结果），保留头尾
+    if (lines.length > 20) {
+      const headLines = lines.slice(0, 10)
+      const tailLines = lines.slice(-10)
+      const omitted = lines.length - 20
+      return [
+        ...headLines,
+        `\n... [省略 ${omitted} 行] ...\n`,
+        ...tailLines
+      ].join('\n')
+    }
+
+    // 普通文本，直接截断
+    return output.substring(0, maxLength) + `\n... [截断，原长度: ${output.length} 字符]`
+  }
+
+  /**
+   * 压缩消息历史以节省上下文空间
+   * 保留 system prompt、最近的对话和关键信息
+   */
+  private async compressMessages(
+    messages: AiMessage[], 
+    maxTokens: number = 12000
+  ): Promise<AiMessage[]> {
+    const totalTokens = this.estimateTotalTokens(messages)
+    
+    // 如果在限制内，不需要压缩
+    if (totalTokens <= maxTokens) {
+      return messages
+    }
+
+    console.log(`[Agent] 消息压缩: ${totalTokens} tokens -> 目标 ${maxTokens} tokens`)
+
+    const result: AiMessage[] = []
+    
+    // 1. 保留 system prompt
+    const systemMsg = messages.find(m => m.role === 'system')
+    if (systemMsg) {
+      result.push(systemMsg)
+    }
+
+    // 2. 找到最近的用户消息和相关的助手回复
+    const nonSystemMessages = messages.filter(m => m.role !== 'system')
+    
+    // 3. 压缩工具输出
+    const compressedMessages = nonSystemMessages.map(msg => {
+      if (msg.role === 'tool' && msg.content.length > 2000) {
+        return {
+          ...msg,
+          content: this.compressToolOutput(msg.content)
+        }
+      }
+      // 压缩超长的 assistant 回复
+      if (msg.role === 'assistant' && msg.content.length > 3000) {
+        return {
+          ...msg,
+          content: msg.content.substring(0, 3000) + '\n... [回复已截断]'
+        }
+      }
+      return msg
+    })
+
+    // 4. 计算压缩后的 token
+    const compressedTokens = this.estimateTotalTokens([...result, ...compressedMessages])
+    
+    if (compressedTokens <= maxTokens) {
+      return [...result, ...compressedMessages]
+    }
+
+    // 5. 如果还是太长，只保留最近的 N 条消息
+    const reserveCount = Math.max(10, Math.floor(maxTokens / 500))
+    const recentMessages = compressedMessages.slice(-reserveCount)
+    
+    // 添加一条摘要消息，说明之前的对话被压缩了
+    const summaryMsg: AiMessage = {
+      role: 'user',
+      content: `[系统提示：之前的对话历史因上下文限制已被压缩。请继续当前任务，如需了解之前的上下文，请询问用户。]`
+    }
+
+    return [...result, summaryMsg, ...recentMessages]
+  }
+
+  /**
+   * 分析任务并添加规划提示
+   */
+  private enhanceUserMessage(userMessage: string): string {
+    const complexity = analyzeTaskComplexity(userMessage)
+    const planningPrompt = generatePlanningPrompt(userMessage, complexity)
+    
+    if (planningPrompt) {
+      return userMessage + '\n' + planningPrompt
+    }
+    return userMessage
   }
 
   /**
@@ -240,7 +467,14 @@ export class AgentService {
       aborted: false,
       pendingUserMessages: [],  // 用户补充消息队列
       config: fullConfig,
-      context  // 保存上下文供工具使用
+      context,  // 保存上下文供工具使用
+      // 初始化反思追踪
+      reflection: {
+        toolCallCount: 0,
+        failureCount: 0,
+        lastCommands: [],
+        lastReflectionAt: 0
+      }
     }
     this.runs.set(agentId, run)
 
@@ -263,8 +497,9 @@ export class AgentService {
       }
     }
 
-    // 添加当前用户消息
-    run.messages.push({ role: 'user', content: userMessage })
+    // 添加当前用户消息（包含任务复杂度分析和规划提示）
+    const enhancedMessage = this.enhanceUserMessage(userMessage)
+    run.messages.push({ role: 'user', content: enhancedMessage })
 
     // 添加开始步骤
     this.addStep(agentId, {
@@ -307,6 +542,11 @@ export class AgentService {
             content: `[用户补充信息]\n${supplementMsg}` 
           })
           run.pendingUserMessages = []
+        }
+
+        // 上下文压缩：如果消息过长，进行压缩
+        if (stepCount > 3) {  // 只在多轮对话后检查压缩
+          run.messages = await this.compressMessages(run.messages)
         }
 
         // 创建流式消息步骤
@@ -381,6 +621,14 @@ export class AgentService {
           for (const toolCall of response.tool_calls) {
             if (run.aborted) break
 
+            // 解析工具参数
+            let toolArgs: Record<string, unknown> = {}
+            try {
+              toolArgs = JSON.parse(toolCall.function.arguments)
+            } catch {
+              // 忽略解析错误
+            }
+
             const result = await executeTool(
               ptyId,
               toolCall,
@@ -388,6 +636,9 @@ export class AgentService {
               context.terminalOutput,
               toolExecutorConfig
             )
+
+            // 更新反思追踪状态
+            this.updateReflectionTracking(run, toolCall.function.name, toolArgs, result.success)
 
             // 将工具结果添加到消息历史
             run.messages.push({
@@ -397,6 +648,18 @@ export class AgentService {
                 : `错误: ${result.error}`,
               tool_call_id: toolCall.id
             })
+          }
+
+          // 检查是否需要触发反思
+          if (this.shouldTriggerReflection(run)) {
+            const reflectionPrompt = this.generateReflectionPrompt(run)
+            run.messages.push({
+              role: 'user',
+              content: reflectionPrompt
+            })
+            run.reflection.lastReflectionAt = run.reflection.toolCallCount
+            // 重置失败计数，给 Agent 新的机会
+            run.reflection.failureCount = 0
           }
         } else {
           // 没有工具调用，Agent 完成
