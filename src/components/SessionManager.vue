@@ -144,12 +144,6 @@ const groupedSessions = computed(() => {
   return groups
 })
 
-// 获取分组的跳板机配置
-const getGroupJumpHost = (groupName: string): JumpHostConfig | undefined => {
-  const groupData = groupedSessions.value[groupName]
-  return groupData?.group?.jumpHost
-}
-
 // 重置表单
 const resetForm = () => {
   formData.value = {

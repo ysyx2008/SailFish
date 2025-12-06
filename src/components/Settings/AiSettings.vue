@@ -21,9 +21,9 @@ const profiles = computed(() => configStore.aiProfiles)
 const activeProfileId = computed(() => configStore.activeAiProfileId)
 const currentMbti = computed(() => configStore.agentMbti)
 
-// MBTI 类型数据
+// MBTI 类型数据 (排除 null，因为这是选项列表)
 const mbtiTypes: Array<{
-  type: AgentMbtiType
+  type: Exclude<AgentMbtiType, null>
   name: string
   desc: string
   group: string

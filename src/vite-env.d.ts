@@ -11,7 +11,7 @@ type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
 
 interface AgentStep {
   id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result'
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement'
   content: string
   toolName?: string
   toolArgs?: Record<string, unknown>
@@ -133,6 +133,15 @@ interface Window {
         passphrase?: string
         cols?: number
         rows?: number
+        jumpHost?: {
+          host: string
+          port: number
+          username: string
+          authType: 'password' | 'privateKey'
+          password?: string
+          privateKeyPath?: string
+          passphrase?: string
+        }
       }) => Promise<string>
       write: (id: string, data: string) => Promise<void>
       resize: (id: string, cols: number, rows: number) => Promise<void>
@@ -210,6 +219,36 @@ interface Window {
       ) => Promise<void>
       getTheme: () => Promise<string>
       setTheme: (theme: string) => Promise<void>
+      // 会话分组
+      getSessionGroups: () => Promise<Array<{
+        id: string
+        name: string
+        jumpHost?: {
+          host: string
+          port: number
+          username: string
+          authType: 'password' | 'privateKey'
+          password?: string
+          privateKeyPath?: string
+          passphrase?: string
+        }
+      }>>
+      setSessionGroups: (groups: Array<{
+        id: string
+        name: string
+        jumpHost?: {
+          host: string
+          port: number
+          username: string
+          authType: 'password' | 'privateKey'
+          password?: string
+          privateKeyPath?: string
+          passphrase?: string
+        }
+      }>) => Promise<void>
+      // Agent MBTI
+      getAgentMbti: () => Promise<string | null>
+      setAgentMbti: (mbti: string | null) => Promise<void>
     }
     xshell: {
       selectFiles: () => Promise<{ canceled: boolean; filePaths: string[] }>
@@ -273,6 +312,7 @@ interface Window {
       getStatus: (agentId: string) => Promise<unknown>
       cleanup: (agentId: string) => Promise<void>
       updateConfig: (agentId: string, config: { strictMode?: boolean; commandTimeout?: number }) => Promise<boolean>
+      addMessage: (agentId: string, message: string) => Promise<boolean>
       onStep: (callback: (data: { agentId: string; step: AgentStep }) => void) => () => void
       onNeedConfirm: (callback: (data: PendingConfirmation) => void) => () => void
       onComplete: (callback: (data: { agentId: string; result: string }) => void) => () => void
