@@ -741,5 +741,155 @@ interface Window {
       onError: (callback: (data: { serverId: string; error?: string }) => void) => () => void
       onRefreshed: (callback: (serverId: string) => void) => () => void
     }
+    // 知识库操作
+    knowledge: {
+      initialize: () => Promise<{ success: boolean; error?: string }>
+      getSettings: () => Promise<{
+        enabled: boolean
+        embeddingMode: 'local' | 'mcp'
+        localModel: 'auto' | 'lite' | 'standard' | 'large'
+        embeddingMcpServerId?: string
+        autoSaveUploads: boolean
+        maxChunkSize: number
+        chunkStrategy: 'fixed' | 'semantic' | 'paragraph'
+        searchTopK: number
+        enableRerank: boolean
+        mcpKnowledgeServerId?: string
+      }>
+      updateSettings: (settings: Partial<{
+        enabled: boolean
+        embeddingMode: 'local' | 'mcp'
+        localModel: 'auto' | 'lite' | 'standard' | 'large'
+        embeddingMcpServerId?: string
+        autoSaveUploads: boolean
+        maxChunkSize: number
+        chunkStrategy: 'fixed' | 'semantic' | 'paragraph'
+        searchTopK: number
+        enableRerank: boolean
+        mcpKnowledgeServerId?: string
+      }>) => Promise<{ success: boolean; error?: string }>
+      addDocument: (doc: {
+        filename: string
+        fileType: string
+        content: string
+        fileSize: number
+        parseTime: number
+        pageCount?: number
+        error?: string
+      }, options?: {
+        hostId?: string
+        tags?: string[]
+      }) => Promise<{
+        success: boolean
+        docId?: string
+        error?: string
+      }>
+      removeDocument: (docId: string) => Promise<{ success: boolean; error?: string }>
+      search: (query: string, options?: {
+        limit?: number
+        hostId?: string
+        tags?: string[]
+        similarity?: number
+        enableRerank?: boolean
+      }) => Promise<{
+        success: boolean
+        results: Array<{
+          id: string
+          docId: string
+          content: string
+          score: number
+          metadata: {
+            filename: string
+            hostId?: string
+            tags: string[]
+          }
+          source: 'local' | 'mcp'
+        }>
+        error?: string
+      }>
+      getHostKnowledge: (hostId: string) => Promise<{
+        success: boolean
+        results: Array<{
+          id: string
+          docId: string
+          content: string
+          score: number
+          metadata: object
+          source: 'local' | 'mcp'
+        }>
+        error?: string
+      }>
+      buildContext: (query: string, options?: { hostId?: string; maxTokens?: number }) => Promise<{
+        success: boolean
+        context: string
+        error?: string
+      }>
+      getDocuments: () => Promise<Array<{
+        id: string
+        filename: string
+        content: string
+        fileSize: number
+        fileType: string
+        hostId?: string
+        tags: string[]
+        createdAt: number
+        updatedAt: number
+        chunkCount: number
+      }>>
+      getDocument: (docId: string) => Promise<{
+        id: string
+        filename: string
+        content: string
+        fileSize: number
+        fileType: string
+        hostId?: string
+        tags: string[]
+        createdAt: number
+        updatedAt: number
+        chunkCount: number
+      } | undefined>
+      getStats: () => Promise<{
+        success: boolean
+        stats?: {
+          documentCount: number
+          chunkCount: number
+          totalSize: number
+          lastUpdated?: number
+        }
+        error?: string
+      }>
+      clear: () => Promise<{ success: boolean; error?: string }>
+      isReady: () => Promise<boolean>
+      isEnabled: () => Promise<boolean>
+      getModels: () => Promise<Array<{
+        id: 'lite' | 'standard' | 'large'
+        name: string
+        huggingfaceId: string
+        size: number
+        dimensions: number
+        bundled: boolean
+      }>>
+      getModelStatuses: () => Promise<Array<{
+        id: 'lite' | 'standard' | 'large'
+        available: boolean
+        downloading: boolean
+        progress?: number
+        error?: string
+      }>>
+      downloadModel: (modelId: 'lite' | 'standard' | 'large') => Promise<{
+        success: boolean
+        error?: string
+      }>
+      switchModel: (modelId: 'lite' | 'standard' | 'large') => Promise<{
+        success: boolean
+        error?: string
+      }>
+      onDownloadProgress: (callback: (data: {
+        modelId: string
+        percent: number
+        downloaded: number
+        total: number
+      }) => void) => () => void
+    }
   }
 }

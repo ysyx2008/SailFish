@@ -741,7 +741,7 @@ onMounted(() => {
           <!-- 上传按钮 -->
           <button 
             class="upload-btn" 
-            @click="selectAndUploadDocs" 
+            @click="() => selectAndUploadDocs()" 
             :disabled="isUploadingDocs"
             title="上传文档 (PDF/Word/文本)"
           >
