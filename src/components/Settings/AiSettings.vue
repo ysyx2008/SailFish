@@ -82,6 +82,16 @@ const saveProfile = async () => {
     return
   }
 
+  // API Key 未填写时给予提示确认
+  if (!formData.value.apiKey) {
+    const confirmed = confirm(
+      '您没有填写 API Key。\n\n大多数 API 服务需要提供 Key 才能正常使用（本地部署的 Ollama 等除外）。\n\n确定要继续保存吗？'
+    )
+    if (!confirmed) {
+      return
+    }
+  }
+
   if (editingProfile.value) {
     await configStore.updateAiProfile({
       ...editingProfile.value,
@@ -198,40 +208,9 @@ const applyTemplate = (template: typeof templates[0]) => {
       </div>
     </div>
 
-    <!-- Agent 风格设置 -->
-    <div class="settings-section">
-      <div class="section-header">
-        <h4>Agent 风格</h4>
-        <button 
-          v-if="currentMbti" 
-          class="btn btn-sm" 
-          @click="setMbti(null)"
-        >
-          重置为默认
-        </button>
-      </div>
-      <p class="section-desc">
-        选择 MBTI 人格类型来个性化 AI Agent 的对话风格，让交互更有趣
-      </p>
-
-      <div class="mbti-grid">
-        <div
-          v-for="item in mbtiTypes"
-          :key="item.type"
-          class="mbti-card"
-          :class="{ active: currentMbti === item.type }"
-          @click="setMbti(item.type)"
-        >
-          <div class="mbti-type">{{ item.type }}</div>
-          <div class="mbti-name">{{ item.name }}</div>
-          <div class="mbti-desc">{{ item.desc }}</div>
-          <div class="mbti-group">{{ item.group }}</div>
-        </div>
-      </div>
-    </div>
-
     <!-- 添加/编辑表单 -->
     <div v-if="showForm" class="profile-form">
+
       <div class="form-header">
         <h4>{{ editingProfile ? '编辑配置' : '添加配置' }}</h4>
         <button class="btn-icon" @click="showForm = false" title="关闭">
@@ -287,6 +266,38 @@ const applyTemplate = (template: typeof templates[0]) => {
       <div class="form-footer">
         <button class="btn" @click="showForm = false">取消</button>
         <button class="btn btn-primary" @click="saveProfile">保存</button>
+      </div>
+    </div>
+
+    <!-- Agent 风格设置 -->
+    <div class="settings-section">
+      <div class="section-header">
+        <h4>Agent 风格</h4>
+        <button 
+          v-if="currentMbti" 
+          class="btn btn-sm" 
+          @click="setMbti(null)"
+        >
+          重置为默认
+        </button>
+      </div>
+      <p class="section-desc">
+        选择 MBTI 人格类型来个性化 AI Agent 的对话风格，让交互更有趣
+      </p>
+
+      <div class="mbti-grid">
+        <div
+          v-for="item in mbtiTypes"
+          :key="item.type"
+          class="mbti-card"
+          :class="{ active: currentMbti === item.type }"
+          @click="setMbti(item.type)"
+        >
+          <div class="mbti-type">{{ item.type }}</div>
+          <div class="mbti-name">{{ item.name }}</div>
+          <div class="mbti-desc">{{ item.desc }}</div>
+          <div class="mbti-group">{{ item.group }}</div>
+        </div>
       </div>
     </div>
   </div>
