@@ -209,7 +209,7 @@ const saveSession = async () => {
 
 // 删除会话
 const deleteSession = async (session: SshSession) => {
-  if (confirm(`确定要删除会话 "${session.name}" 吗？`)) {
+  if (confirm(`确定要删除主机 "${session.name}" 吗？`)) {
     await configStore.deleteSshSession(session.id)
   }
 }
@@ -395,7 +395,7 @@ const deleteGroup = async (groupName: string) => {
   const groupData = groupedSessions.value[groupName]
   if (!groupData?.group) return
   
-  if (confirm(`确定要删除分组 "${groupName}" 吗？组内会话不会被删除，将移到"默认"分组。`)) {
+  if (confirm(`确定要删除分组 "${groupName}" 吗？组内主机不会被删除，将移到"默认"分组。`)) {
     await configStore.deleteSessionGroup(groupData.group.id)
   }
 }
@@ -426,7 +426,7 @@ const deleteGroup = async (groupName: string) => {
               <line x1="8" y1="21" x2="16" y2="21"/>
               <line x1="12" y1="17" x2="12" y2="21"/>
             </svg>
-            新建会话
+            新建主机
           </button>
           <button class="new-menu-item" @click="openNewGroup(); showNewMenu = false">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -556,8 +556,8 @@ const deleteGroup = async (groupName: string) => {
           <p class="tip">尝试其他关键词</p>
         </template>
         <template v-else>
-          <p>暂无保存的会话</p>
-          <p class="tip">点击"新建"添加 SSH 会话</p>
+          <p>暂无保存的主机</p>
+          <p class="tip">点击"新建"添加主机</p>
         </template>
       </div>
     </div>
@@ -566,7 +566,7 @@ const deleteGroup = async (groupName: string) => {
     <div v-if="showNewSession" class="modal-overlay" @click.self="showNewSession = false">
       <div class="modal session-modal">
         <div class="modal-header">
-          <h3>{{ editingSession ? '编辑会话' : '新建 SSH 会话' }}</h3>
+          <h3>{{ editingSession ? '编辑主机' : '新建主机' }}</h3>
           <button class="btn-icon" @click="showNewSession = false" title="关闭">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
@@ -661,7 +661,7 @@ const deleteGroup = async (groupName: string) => {
                 />
                 <span>启用跳板机</span>
               </label>
-              <span class="form-section-hint">组内所有会话将通过此跳板机连接</span>
+              <span class="form-section-hint">组内所有主机将通过此跳板机连接</span>
             </div>
             
             <template v-if="groupFormData.jumpHost">
