@@ -783,6 +783,8 @@ interface Window {
         success: boolean
         docId?: string
         error?: string
+        duplicate?: boolean
+        existingFilename?: string
       }>
       removeDocument: (docId: string) => Promise<{ success: boolean; error?: string }>
       search: (query: string, options?: {

@@ -218,7 +218,7 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
       isSavingToKnowledge.value = false
     }
     
-    return { success, failed }
+    return { success, failed, skipped }
   }
 
   // 检查知识库是否启用
