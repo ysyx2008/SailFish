@@ -148,7 +148,7 @@ export class KnowledgeService extends EventEmitter {
       
       try {
         // 重新分块
-        const chunks = this.chunker.chunk(doc.content, doc.id, { filename: doc.filename })
+        const chunks = this.chunker.chunk(doc.content, doc.id, { filename: doc.filename, tags: doc.tags || [] })
         
         // 生成 embedding
         const texts = chunks.map(c => c.content)
