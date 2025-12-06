@@ -29,6 +29,8 @@ export class VectorStorage extends EventEmitter {
   private storagePath: string
   private documentsPath: string
   private isInitialized: boolean = false
+  // 内存中保存完整记录（包含 embedding），用于持久化
+  private recordsCache: Map<string, OramaRecord> = new Map()
 
   constructor() {
     super()
@@ -85,19 +87,41 @@ export class VectorStorage extends EventEmitter {
   private async loadFromDisk(): Promise<void> {
     const dataPath = path.join(this.storagePath, 'vectors.json')
     
+    console.log(`[VectorStorage] Loading from: ${dataPath}`)
+    
     if (!fs.existsSync(dataPath)) {
+      console.log('[VectorStorage] No vectors.json found')
       return
     }
 
     try {
       const data = JSON.parse(fs.readFileSync(dataPath, 'utf-8'))
+      console.log(`[VectorStorage] Found ${data.records?.length || 0} records in file`)
+      
       const { insert } = await loadOrama()
 
+      let insertedCount = 0
       for (const record of data.records || []) {
-        await insert(this.db, record)
+        // 跳过没有 embedding 的记录
+        if (!record.embedding || record.embedding === null) {
+          console.warn(`[VectorStorage] Skipping record without embedding: ${record.id}`)
+          continue
+        }
+        try {
+          await insert(this.db, record)
+          // 同时加入缓存
+          this.recordsCache.set(record.id, record)
+          insertedCount++
+        } catch (e) {
+          console.error(`[VectorStorage] Failed to insert record ${record.id}:`, e)
+        }
       }
+      console.log(`[VectorStorage] Inserted ${insertedCount} records into Orama`)
 
-      console.log(`[VectorStorage] Loaded ${data.records?.length || 0} records from disk`)
+      // 验证数据库中的记录数
+      const { count } = await loadOrama()
+      const dbCount = await count(this.db)
+      console.log(`[VectorStorage] Loaded ${this.recordsCache.size} records from disk, DB count: ${dbCount}`)
     } catch (error) {
       console.error('[VectorStorage] Failed to load data from disk:', error)
     }
@@ -109,25 +133,21 @@ export class VectorStorage extends EventEmitter {
   private async saveToDisk(): Promise<void> {
     if (!this.db) return
 
-    const { getByID, count } = await loadOrama()
     const dataPath = path.join(this.storagePath, 'vectors.json')
 
     try {
-      // 获取所有记录
-      const total = await count(this.db)
-      const records: OramaRecord[] = []
-      
-      // 注意：Orama 没有直接获取所有记录的方法，需要通过搜索
-      // 这里我们保存文档元数据，实际向量在内存中重建
+      // 从缓存获取所有记录（包含完整的 embedding）
+      const records: OramaRecord[] = Array.from(this.recordsCache.values())
 
       const data = {
         version: 1,
         lastUpdated: Date.now(),
-        recordCount: total,
+        recordCount: records.length,
         records: records
       }
 
-      fs.writeFileSync(dataPath, JSON.stringify(data, null, 2), 'utf-8')
+      fs.writeFileSync(dataPath, JSON.stringify(data), 'utf-8')
+      console.log(`[VectorStorage] Saved ${records.length} records to disk`)
     } catch (error) {
       console.error('[VectorStorage] Failed to save data to disk:', error)
     }
@@ -143,6 +163,9 @@ export class VectorStorage extends EventEmitter {
 
     const { insert } = await loadOrama()
     await insert(this.db, record)
+    
+    // 保存到缓存
+    this.recordsCache.set(record.id, record)
     
     // 异步保存到磁盘
     this.saveToDisk().catch(console.error)
@@ -161,6 +184,11 @@ export class VectorStorage extends EventEmitter {
 
     const { insertMultiple } = await loadOrama()
     await insertMultiple(this.db, records)
+    
+    // 保存到缓存
+    for (const record of records) {
+      this.recordsCache.set(record.id, record)
+    }
     
     // 异步保存到磁盘
     this.saveToDisk().catch(console.error)
@@ -182,6 +210,8 @@ export class VectorStorage extends EventEmitter {
     
     try {
       await remove(this.db, id)
+      // 从缓存删除
+      this.recordsCache.delete(id)
       this.saveToDisk().catch(console.error)
       this.emit('recordRemoved', id)
       return true
@@ -198,19 +228,21 @@ export class VectorStorage extends EventEmitter {
       throw new Error('数据库未初始化')
     }
 
-    const { search, remove } = await loadOrama()
+    const { remove } = await loadOrama()
     
-    // 先搜索出所有属于该文档的分块
-    const results = await search(this.db, {
-      term: docId,
-      properties: ['docId'],
-      limit: 10000
+    // 从缓存中找出所有属于该文档的分块
+    const idsToRemove: string[] = []
+    Array.from(this.recordsCache.entries()).forEach(([id, record]) => {
+      if (record.docId === docId) {
+        idsToRemove.push(id)
+      }
     })
 
     let removed = 0
-    for (const hit of results.hits) {
+    for (const id of idsToRemove) {
       try {
-        await remove(this.db, hit.id)
+        await remove(this.db, id)
+        this.recordsCache.delete(id)
         removed++
       } catch {
         // 忽略删除失败
@@ -288,23 +320,35 @@ export class VectorStorage extends EventEmitter {
       throw new Error('数据库未初始化')
     }
 
+    console.log(`[VectorStorage] hybridSearch: query="${query}", cache size=${this.recordsCache.size}`)
+
     const { search } = await loadOrama()
     const limit = options.limit || 10
-    const similarity = options.similarity || 0.7
-    const hybridWeight = options.hybridWeight || 0.7  // 向量权重
-
-    // Orama 支持混合搜索
-    const results = await search(this.db, {
-      mode: 'hybrid',
-      term: query,
-      vector: {
-        value: embedding,
-        property: 'embedding'
-      },
-      similarity,
-      limit: limit * 2,
-      properties: ['content', 'filename']
-    })
+    const similarity = options.similarity || 0.5  // 降低相似度阈值
+    
+    // 向量搜索（语义搜索，不受分词影响）
+    let results: any = { hits: [] }
+    
+    try {
+      // 尝试多个相似度阈值
+      for (const sim of [0.3, 0.2, 0.1, 0]) {
+        results = await search(this.db, {
+          mode: 'vector',
+          vector: {
+            value: embedding,
+            property: 'embedding'
+          },
+          similarity: sim,
+          limit: limit * 2
+        })
+        console.log(`[VectorStorage] vector search (sim=${sim}): ${results.hits?.length || 0} hits`)
+        if (results.hits.length > 0) break
+      }
+    } catch (e) {
+      console.error('[VectorStorage] Vector search error:', e)
+    }
+    
+    console.log(`[VectorStorage] final results: ${results.hits?.length || 0} hits`)
 
     return this.formatResults(results.hits, options)
   }
@@ -360,17 +404,13 @@ export class VectorStorage extends EventEmitter {
       }
     }
 
-    const { count } = await loadOrama()
-    const chunkCount = await count(this.db)
-
-    // 获取唯一文档数
-    const { search } = await loadOrama()
-    const allResults = await search(this.db, {
-      term: '',
-      limit: 100000
-    })
+    // 从缓存获取统计信息
+    const chunkCount = this.recordsCache.size
+    const uniqueDocIds = new Set<string>()
     
-    const uniqueDocIds = new Set(allResults.hits.map((h: any) => h.document.docId))
+    Array.from(this.recordsCache.values()).forEach(record => {
+      uniqueDocIds.add(record.docId)
+    })
 
     return {
       documentCount: uniqueDocIds.size,
@@ -385,6 +425,9 @@ export class VectorStorage extends EventEmitter {
    */
   async clear(): Promise<void> {
     const { create } = await loadOrama()
+    
+    // 清空缓存
+    this.recordsCache.clear()
     
     // 重新创建空数据库
     const dimensions = 384  // 使用默认维度

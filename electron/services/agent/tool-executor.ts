@@ -16,6 +16,7 @@ import type {
   HostProfileServiceInterface 
 } from './types'
 import { assessCommandRisk, analyzeCommand } from './risk-assessor'
+import { getKnowledgeService } from '../knowledge'
 
 // 错误分类
 type ErrorCategory = 'transient' | 'permission' | 'not_found' | 'timeout' | 'fatal'
@@ -180,6 +181,9 @@ export async function executeTool(
 
     case 'remember_info':
       return rememberInfo(args, executor)
+
+    case 'search_knowledge':
+      return searchKnowledge(args, executor)
 
     default:
       // 检查是否是 MCP 工具调用
@@ -800,4 +804,87 @@ function rememberInfo(
   })
 
   return { success: true, output: `信息已保存到主机档案` }
+}
+
+/**
+ * 搜索知识库
+ */
+async function searchKnowledge(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const query = args.query as string
+  const limit = Math.min(Math.max(1, (args.limit as number) || 5), 20)
+  
+  if (!query) {
+    return { success: false, output: '', error: '查询内容不能为空' }
+  }
+
+  executor.addStep({
+    type: 'tool_call',
+    content: `搜索知识库: "${query}"`,
+    toolName: 'search_knowledge',
+    toolArgs: args,
+    riskLevel: 'safe'
+  })
+
+  try {
+    const knowledgeService = getKnowledgeService()
+    
+    if (!knowledgeService) {
+      executor.addStep({
+        type: 'tool_result',
+        content: '知识库服务未初始化',
+        toolName: 'search_knowledge'
+      })
+      return { success: false, output: '', error: '知识库服务未初始化' }
+    }
+
+    if (!knowledgeService.isEnabled()) {
+      executor.addStep({
+        type: 'tool_result',
+        content: '知识库未启用',
+        toolName: 'search_knowledge'
+      })
+      return { success: false, output: '', error: '知识库未启用，请在设置中开启' }
+    }
+
+    const results = await knowledgeService.search(query, { 
+      limit,
+      hostId: executor.getHostId()
+    })
+
+    if (results.length === 0) {
+      executor.addStep({
+        type: 'tool_result',
+        content: '未找到相关内容',
+        toolName: 'search_knowledge'
+      })
+      return { success: true, output: '知识库中未找到与查询相关的内容' }
+    }
+
+    // 格式化结果
+    const formattedResults = results.map((r, i) => {
+      return `### ${i + 1}. ${r.metadata.filename}\n${r.content}`
+    }).join('\n\n')
+
+    const output = `找到 ${results.length} 条相关内容：\n\n${formattedResults}`
+
+    executor.addStep({
+      type: 'tool_result',
+      content: `找到 ${results.length} 条相关内容`,
+      toolName: 'search_knowledge',
+      toolResult: output
+    })
+
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : '搜索失败'
+    executor.addStep({
+      type: 'tool_result',
+      content: `搜索失败: ${errorMsg}`,
+      toolName: 'search_knowledge'
+    })
+    return { success: false, output: '', error: errorMsg }
+  }
 }

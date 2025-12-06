@@ -216,7 +216,8 @@ export function buildSystemPrompt(
   context: AgentContext,
   hostProfileService?: HostProfileServiceInterface,
   mbtiType?: AgentMbtiType,
-  knowledgeContext?: string
+  knowledgeContext?: string,
+  knowledgeEnabled?: boolean
 ): string {
   // MBTI 风格提示
   const mbtiStyle = getMbtiStylePrompt(mbtiType ?? null)
@@ -266,10 +267,19 @@ export function buildSystemPrompt(
   // 知识库上下文
   let knowledgeSection = ''
   let knowledgeRule = ''
-  if (knowledgeContext) {
-    knowledgeSection = `\n\n${knowledgeContext}`
-    knowledgeRule = `
-9. **关于知识库内容**：如果有知识库相关内容，它们来自用户保存的参考文档，请在回答时参考这些信息`
+  if (knowledgeEnabled) {
+    if (knowledgeContext) {
+      knowledgeSection = `\n\n${knowledgeContext}`
+      knowledgeRule = `
+9. **【重要】你有知识库**：你可以访问用户保存的知识库文档。
+   - 上面的"相关知识库内容"部分包含了与当前问题相关的预加载内容
+   - 如果预加载内容不够详细，使用 \`search_knowledge\` 工具搜索更多信息
+   - 主动引用知识库中的相关内容，告诉用户答案来源于知识库`
+    } else {
+      // 知识库启用但没有预加载内容时，提醒 Agent 可以使用工具查询
+      knowledgeRule = `
+9. **知识库工具**：用户有知识库，你可以使用 \`search_knowledge\` 工具搜索用户保存的文档和笔记`
+    }
   }
 
   // 根据操作系统类型选择示例

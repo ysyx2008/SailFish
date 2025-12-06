@@ -88,14 +88,25 @@ export class EmbeddingService extends EventEmitter {
 
       const { pipeline, env } = await loadTransformers()
       
-      // 设置本地模型路径
+      // 获取模型路径
       const modelPath = this.modelManager.getModelPath(model.id)
-      env.localModelPath = modelPath
+      console.log(`[Embedding] Model path: ${modelPath}`)
+      
+      // 获取模型父目录和文件夹名
+      const path = await import('path')
+      const modelDir = path.dirname(modelPath)  // 父目录：resources/models/embedding
+      const modelName = path.basename(modelPath) // 文件夹名：all-MiniLM-L6-v2
+      
+      console.log(`[Embedding] Model dir: ${modelDir}, name: ${modelName}`)
+      
+      // 禁止远程下载，设置本地模型路径为父目录
+      env.allowRemoteModels = false
+      env.localModelPath = modelDir
 
       // 创建 feature-extraction pipeline
-      this.extractor = await pipeline('feature-extraction', model.huggingfaceId, {
-        local_files_only: true,
-        cache_dir: modelPath
+      // 使用文件夹名作为模型标识符（会在 localModelPath 下查找）
+      this.extractor = await pipeline('feature-extraction', modelName, {
+        local_files_only: true
       })
 
       this.currentModelId = model.id

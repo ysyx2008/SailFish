@@ -484,19 +484,25 @@ export class AgentService {
     
     // 获取知识库上下文（如果启用）
     let knowledgeContext = ''
+    let knowledgeEnabled = false
     try {
       const knowledgeService = getKnowledgeService()
-      if (knowledgeService.isEnabled() && knowledgeService.isReady()) {
+      if (knowledgeService && knowledgeService.isEnabled()) {
+        knowledgeEnabled = true
+        // buildContext 内部会自动初始化服务
         knowledgeContext = await knowledgeService.buildContext(userMessage, {
           hostId: context.hostId
         })
+        if (knowledgeContext) {
+          console.log('[Agent] 知识库上下文已加载，长度:', knowledgeContext.length)
+        }
       }
     } catch (e) {
-      // 知识库服务未初始化或出错，忽略
-      console.log('[Agent] Knowledge service not available:', e)
+      // 知识库服务出错，忽略
+      console.log('[Agent] Knowledge service error:', e)
     }
     
-    const systemPrompt = buildSystemPrompt(context, this.hostProfileService, mbtiType, knowledgeContext)
+    const systemPrompt = buildSystemPrompt(context, this.hostProfileService, mbtiType, knowledgeContext, knowledgeEnabled)
     run.messages.push({ role: 'system', content: systemPrompt })
 
     // 添加历史对话（保持 Agent 记忆）

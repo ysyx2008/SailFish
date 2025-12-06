@@ -127,6 +127,27 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
           required: ['info']
         }
       }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'search_knowledge',
+        description: '从用户的知识库中搜索相关信息。知识库包含用户上传的文档、笔记等参考资料。当预加载的知识库内容不够详细，或需要查找特定信息时使用。',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: '搜索查询词，描述你想查找的信息'
+            },
+            limit: {
+              type: 'number',
+              description: '返回结果数量，默认 5，最大 20'
+            }
+          },
+          required: ['query']
+        }
+      }
     }
   ]
 

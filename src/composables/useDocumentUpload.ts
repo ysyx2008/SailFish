@@ -35,7 +35,7 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
   }
 
   // 选择并上传文档（替换模式：新文档替换旧文档）
-  const selectAndUploadDocs = async () => {
+  const selectAndUploadDocs = async (hostId?: string) => {
     if (isUploadingDocs.value || !currentTabId.value) return
     
     const tabId = currentTabId.value
@@ -64,6 +64,11 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
       if (errorCount > 0) {
         console.warn(`文档解析: ${successCount} 成功, ${errorCount} 失败`)
       }
+      
+      // 自动保存到知识库（如果启用）
+      if (successCount > 0) {
+        autoSaveToKnowledgeIfEnabled(parsedDocs, hostId)
+      }
     } catch (error) {
       console.error('上传文档失败:', error)
     } finally {
@@ -72,7 +77,7 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
   }
 
   // 处理拖放的文件（替换模式）
-  const handleDroppedFiles = async (files: FileList | File[]) => {
+  const handleDroppedFiles = async (files: FileList | File[], hostId?: string) => {
     if (isUploadingDocs.value || !currentTabId.value) return
     
     const tabId = currentTabId.value
@@ -115,6 +120,11 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
       
       if (errorCount > 0) {
         console.warn(`文档解析: ${successCount} 成功, ${errorCount} 失败`)
+      }
+      
+      // 自动保存到知识库（如果启用）
+      if (successCount > 0) {
+        autoSaveToKnowledgeIfEnabled(parsedDocs, hostId)
       }
     } catch (error) {
       console.error('处理拖放文档失败:', error)

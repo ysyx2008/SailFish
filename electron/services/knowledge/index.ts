@@ -264,7 +264,10 @@ export class KnowledgeService extends EventEmitter {
    * 搜索知识库
    */
   async search(query: string, options?: Partial<SearchOptions>): Promise<SearchResult[]> {
+    console.log(`[KnowledgeService] Search query: "${query}"`)
+    
     if (!this.isInitialized) {
+      console.log('[KnowledgeService] Not initialized, initializing...')
       await this.initialize()
     }
 
@@ -282,13 +285,18 @@ export class KnowledgeService extends EventEmitter {
 
     // 本地向量搜索
     if (this.settings.embeddingMode === 'local') {
+      console.log('[KnowledgeService] Using local embedding for search')
       const queryEmbedding = await this.embeddingService.embedSingle(query)
+      console.log(`[KnowledgeService] Query embedding length: ${queryEmbedding.length}`)
       const localResults = await this.vectorStorage.hybridSearch(
         query,
         queryEmbedding,
         searchOptions
       )
+      console.log(`[KnowledgeService] Local search results: ${localResults.length}`)
       results.push(...localResults)
+    } else {
+      console.log(`[KnowledgeService] Embedding mode: ${this.settings.embeddingMode}`)
     }
 
     // MCP 知识库搜索
@@ -339,6 +347,21 @@ export class KnowledgeService extends EventEmitter {
   }
 
   /**
+   * 清理文本中的无效转义序列，确保可以安全序列化为 JSON
+   */
+  private sanitizeText(text: string): string {
+    if (!text) return ''
+    return text
+      // 移除无效的 hex escape 序列（如 \x 后面不是有效的十六进制）
+      .replace(/\\x[^0-9a-fA-F]/g, ' ')
+      .replace(/\\x[0-9a-fA-F](?![0-9a-fA-F])/g, ' ')
+      // 移除其他可能导致 JSON 解析问题的控制字符
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+      // 确保反斜杠被正确处理
+      .replace(/\\/g, '\\\\')
+  }
+
+  /**
    * 构建 AI 上下文
    */
   async buildContext(
@@ -358,7 +381,8 @@ export class KnowledgeService extends EventEmitter {
     
     for (const result of results) {
       parts.push(`### ${result.metadata.filename}`)
-      parts.push(result.content)
+      // 清理内容中的特殊字符
+      parts.push(this.sanitizeText(result.content))
       parts.push('')
     }
 
@@ -559,12 +583,9 @@ export function getKnowledgeService(
   configService?: ConfigService,
   aiService?: AiService,
   mcpService?: McpService
-): KnowledgeService {
+): KnowledgeService | null {
   if (!knowledgeService && configService && aiService) {
     knowledgeService = new KnowledgeService(configService, aiService, mcpService)
-  }
-  if (!knowledgeService) {
-    throw new Error('KnowledgeService 未初始化')
   }
   return knowledgeService
 }

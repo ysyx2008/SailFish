@@ -55,8 +55,27 @@ let knowledgeService: KnowledgeService | null = null
 function getKnowledge(): KnowledgeService {
   if (!knowledgeService) {
     knowledgeService = getKnowledgeService(configService, aiService, mcpService)
+    if (!knowledgeService) {
+      throw new Error('Failed to initialize KnowledgeService')
+    }
   }
   return knowledgeService
+}
+
+// 在应用启动时初始化知识库服务（确保 Agent 可以访问）
+async function initKnowledgeService(): Promise<void> {
+  try {
+    knowledgeService = getKnowledgeService(configService, aiService, mcpService)
+    
+    // 如果知识库已启用，初始化服务（加载向量数据）
+    if (knowledgeService.isEnabled()) {
+      await knowledgeService.initialize()
+    }
+    
+    console.log('[Main] KnowledgeService initialized')
+  } catch (e) {
+    console.error('[Main] Failed to initialize KnowledgeService:', e)
+  }
 }
 
 // MCP 服务事件转发
@@ -118,9 +137,12 @@ function createWindow() {
 }
 
 // 应用准备就绪
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // 移除默认菜单栏
   Menu.setApplicationMenu(null)
+  
+  // 初始化知识库服务（确保 Agent 可以访问）
+  await initKnowledgeService()
   
   createWindow()
 
