@@ -2,6 +2,17 @@ import { Client, ClientChannel } from 'ssh2'
 import { v4 as uuidv4 } from 'uuid'
 import * as fs from 'fs'
 
+// 跳板机配置
+export interface JumpHostConfig {
+  host: string
+  port: number
+  username: string
+  authType: 'password' | 'privateKey'
+  password?: string
+  privateKeyPath?: string
+  passphrase?: string
+}
+
 export interface SshConfig {
   host: string
   port: number
@@ -12,10 +23,12 @@ export interface SshConfig {
   passphrase?: string
   cols?: number
   rows?: number
+  jumpHost?: JumpHostConfig  // 跳板机配置
 }
 
 interface SshInstance {
   client: Client
+  jumpClient?: Client  // 跳板机客户端（如果通过跳板机连接）
   stream: ClientChannel | null
   dataCallbacks: ((data: string) => void)[]
   config: SshConfig
@@ -25,11 +38,24 @@ export class SshService {
   private instances: Map<string, SshInstance> = new Map()
 
   /**
-   * 建立 SSH 连接
+   * 建立 SSH 连接（支持跳板机）
    */
   async connect(config: SshConfig): Promise<string> {
     const id = uuidv4()
 
+    // 如果配置了跳板机，先通过跳板机建立连接
+    if (config.jumpHost) {
+      return this.connectViaJumpHost(id, config)
+    }
+
+    // 直接连接
+    return this.directConnect(id, config)
+  }
+
+  /**
+   * 直接建立 SSH 连接
+   */
+  private async directConnect(id: string, config: SshConfig, sock?: NodeJS.ReadableStream): Promise<string> {
     return new Promise((resolve, reject) => {
       const client = new Client()
 
@@ -61,12 +87,18 @@ export class SshService {
         passphrase?: string
         readyTimeout: number
         keepaliveInterval: number
+        sock?: NodeJS.ReadableStream
       } = {
         host: config.host,
         port: config.port,
         username: config.username,
         readyTimeout: 30000,
         keepaliveInterval: 10000
+      }
+
+      // 如果通过跳板机连接，使用传入的 socket
+      if (sock) {
+        connectConfig.sock = sock
       }
 
       if (privateKey) {
@@ -129,6 +161,108 @@ export class SshService {
   }
 
   /**
+   * 通过跳板机建立 SSH 连接
+   */
+  private async connectViaJumpHost(id: string, config: SshConfig): Promise<string> {
+    const jumpHost = config.jumpHost!
+    
+    return new Promise((resolve, reject) => {
+      const jumpClient = new Client()
+
+      // 准备跳板机私钥
+      let jumpPrivateKey: string | Buffer | undefined
+      if (jumpHost.authType === 'privateKey' && jumpHost.privateKeyPath) {
+        try {
+          jumpPrivateKey = fs.readFileSync(jumpHost.privateKeyPath)
+        } catch (err) {
+          reject(new Error(`无法读取跳板机私钥文件: ${jumpHost.privateKeyPath}`))
+          return
+        }
+      }
+
+      // 跳板机连接配置
+      const jumpConnectConfig: {
+        host: string
+        port: number
+        username: string
+        password?: string
+        privateKey?: string | Buffer
+        passphrase?: string
+        readyTimeout: number
+        keepaliveInterval: number
+      } = {
+        host: jumpHost.host,
+        port: jumpHost.port,
+        username: jumpHost.username,
+        readyTimeout: 30000,
+        keepaliveInterval: 10000
+      }
+
+      if (jumpPrivateKey) {
+        jumpConnectConfig.privateKey = jumpPrivateKey
+        if (jumpHost.passphrase) {
+          jumpConnectConfig.passphrase = jumpHost.passphrase
+        }
+      } else if (jumpHost.password) {
+        jumpConnectConfig.password = jumpHost.password
+      }
+
+      jumpClient.on('ready', () => {
+        console.log(`[SSH] Jump host connected: ${jumpHost.username}@${jumpHost.host}`)
+        
+        // 通过跳板机建立到目标服务器的隧道
+        jumpClient.forwardOut(
+          '127.0.0.1',
+          0,
+          config.host,
+          config.port,
+          async (err, stream) => {
+            if (err) {
+              console.error(`[SSH] Forward failed:`, err)
+              jumpClient.end()
+              reject(new Error(`通过跳板机建立隧道失败: ${err.message}`))
+              return
+            }
+
+            try {
+              // 在隧道上建立到目标服务器的 SSH 连接
+              await this.directConnect(id, config, stream as unknown as NodeJS.ReadableStream)
+              
+              // 保存跳板机客户端引用，以便断开时一起清理
+              const instance = this.instances.get(id)
+              if (instance) {
+                instance.jumpClient = jumpClient
+              }
+              
+              resolve(id)
+            } catch (connectErr) {
+              jumpClient.end()
+              reject(connectErr)
+            }
+          }
+        )
+      })
+
+      jumpClient.on('error', err => {
+        console.error(`[SSH] Jump host error:`, err)
+        reject(new Error(`连接跳板机失败: ${err.message}`))
+      })
+
+      jumpClient.on('close', () => {
+        console.log(`[SSH] Jump host connection closed`)
+        // 跳板机关闭时，也关闭目标连接
+        const instance = this.instances.get(id)
+        if (instance) {
+          instance.client.end()
+          this.instances.delete(id)
+        }
+      })
+
+      jumpClient.connect(jumpConnectConfig)
+    })
+  }
+
+  /**
    * 向 SSH 写入数据
    */
   write(id: string, data: string): void {
@@ -165,6 +299,10 @@ export class SshService {
     const instance = this.instances.get(id)
     if (instance) {
       instance.client.end()
+      // 如果有跳板机连接，也关闭它
+      if (instance.jumpClient) {
+        instance.jumpClient.end()
+      }
       this.instances.delete(id)
     }
   }
@@ -175,6 +313,10 @@ export class SshService {
   disposeAll(): void {
     this.instances.forEach((instance, id) => {
       instance.client.end()
+      // 如果有跳板机连接，也关闭它
+      if (instance.jumpClient) {
+        instance.jumpClient.end()
+      }
       this.instances.delete(id)
     })
   }

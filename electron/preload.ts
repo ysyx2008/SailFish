@@ -18,6 +18,7 @@ export interface SshConfig {
   passphrase?: string
   cols?: number
   rows?: number
+  jumpHost?: JumpHostConfig  // 跳板机配置
 }
 
 export interface AiMessage {
@@ -34,6 +35,24 @@ export interface AiProfile {
   proxy?: string
 }
 
+// 跳板机配置
+export interface JumpHostConfig {
+  host: string
+  port: number
+  username: string
+  authType: 'password' | 'privateKey'
+  password?: string
+  privateKeyPath?: string
+  passphrase?: string
+}
+
+// 会话分组
+export interface SessionGroup {
+  id: string
+  name: string
+  jumpHost?: JumpHostConfig
+}
+
 export interface SshSession {
   id: string
   name: string
@@ -44,7 +63,9 @@ export interface SshSession {
   password?: string
   privateKeyPath?: string
   passphrase?: string
-  group?: string
+  group?: string           // 保留旧字段，兼容迁移
+  groupId?: string         // 新字段：引用分组 ID
+  jumpHostOverride?: JumpHostConfig | null  // 覆盖分组跳板机
 }
 
 export interface XshellSession {
@@ -301,6 +322,11 @@ const electronAPI = {
     getSshSessions: () => ipcRenderer.invoke('config:getSshSessions'),
     setSshSessions: (sessions: SshSession[]) =>
       ipcRenderer.invoke('config:setSshSessions', sessions),
+
+    // 会话分组
+    getSessionGroups: () => ipcRenderer.invoke('config:getSessionGroups') as Promise<SessionGroup[]>,
+    setSessionGroups: (groups: SessionGroup[]) =>
+      ipcRenderer.invoke('config:setSessionGroups', groups),
 
     // 主题
     getTheme: () => ipcRenderer.invoke('config:getTheme'),

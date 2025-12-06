@@ -272,6 +272,15 @@ ipcMain.handle('config:setSshSessions', async (_event, sessions) => {
   configService.setSshSessions(sessions)
 })
 
+// 会话分组配置
+ipcMain.handle('config:getSessionGroups', async () => {
+  return configService.getSessionGroups()
+})
+
+ipcMain.handle('config:setSessionGroups', async (_event, groups) => {
+  configService.setSessionGroups(groups)
+})
+
 // 主题配置
 ipcMain.handle('config:getTheme', async () => {
   return configService.getTheme()

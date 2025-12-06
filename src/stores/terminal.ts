@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
 import stripAnsiLib from 'strip-ansi'
+import type { JumpHostConfig } from './config'
 
 export type ShellType = 'powershell' | 'cmd' | 'bash' | 'zsh' | 'sh' | 'unknown'
 export type OSType = 'windows' | 'linux' | 'macos' | 'unknown'
@@ -318,7 +319,14 @@ export const useTerminalStore = defineStore('terminal', () => {
    */
   async function createTab(
     type: 'local' | 'ssh',
-    sshConfig?: { host: string; port: number; username: string; password?: string; privateKey?: string },
+    sshConfig?: { 
+      host: string
+      port: number
+      username: string
+      password?: string
+      privateKey?: string
+      jumpHost?: JumpHostConfig  // 跳板机配置
+    },
     shell?: string  // 本地终端可指定 shell (cmd/powershell/bash 等)
   ): Promise<string> {
     const id = uuidv4()
@@ -331,9 +339,11 @@ export const useTerminalStore = defineStore('terminal', () => {
       title = shellName ? `${shellName} ${localTerminalCounter.value}` : `本地终端 ${localTerminalCounter.value}`
     } else if (sshConfig) {
       const sshKey = `${sshConfig.username}@${sshConfig.host}`
+      // 如果有跳板机，在标题中显示
+      const jumpSuffix = sshConfig.jumpHost ? ` (via ${sshConfig.jumpHost.host})` : ''
       sshTerminalCounters.value[sshKey] = (sshTerminalCounters.value[sshKey] || 0) + 1
       const count = sshTerminalCounters.value[sshKey]
-      title = count > 1 ? `${sshKey} (${count})` : sshKey
+      title = count > 1 ? `${sshKey}${jumpSuffix} (${count})` : `${sshKey}${jumpSuffix}`
     } else {
       title = 'SSH 终端'
     }
@@ -379,16 +389,18 @@ export const useTerminalStore = defineStore('terminal', () => {
           username: sshConfig.username,
           password: sshConfig.password,
           privateKey: sshConfig.privateKey,
+          jumpHost: sshConfig.jumpHost,  // 传递跳板机配置
           cols: 80,
           rows: 24
         })
         reactiveTab.ptyId = sshId
         reactiveTab.isConnected = true
         // SSH 连接默认假设是 Linux/Unix 系统
+        const jumpInfo = sshConfig.jumpHost ? ` (via ${sshConfig.jumpHost.host})` : ''
         reactiveTab.systemInfo = {
           os: 'linux',
           shell: 'bash',
-          description: `SSH 连接: ${sshConfig.username}@${sshConfig.host}`
+          description: `SSH 连接: ${sshConfig.username}@${sshConfig.host}${jumpInfo}`
         }
       }
     } catch (error) {

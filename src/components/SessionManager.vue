@@ -1,17 +1,26 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
-import { useConfigStore, type SshSession } from '../stores/config'
+import { useConfigStore, type SshSession, type SessionGroup, type JumpHostConfig } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
 import { v4 as uuidv4 } from 'uuid'
 
 const configStore = useConfigStore()
 const terminalStore = useTerminalStore()
 
+// 分组编辑弹窗
+const showGroupEditor = ref(false)
+const editingGroup = ref<SessionGroup | null>(null)
+const groupFormData = ref<Partial<SessionGroup & { jumpHost?: Partial<JumpHostConfig> }>>({
+  name: '',
+  jumpHost: undefined
+})
+
 const emit = defineEmits<{
   openSftp: [session: SshSession]
 }>()
 
 const showNewSession = ref(false)
+const showNewMenu = ref(false)
 const showImportMenu = ref(false)
 const nameInputRef = ref<HTMLInputElement | null>(null)
 
@@ -28,11 +37,14 @@ const handleKeydown = (e: KeyboardEvent) => {
   }
 }
 
-// 点击外部关闭导入菜单
+// 点击外部关闭菜单
 const handleClickOutside = (e: MouseEvent) => {
   const target = e.target as HTMLElement
   if (!target.closest('.import-dropdown')) {
     showImportMenu.value = false
+  }
+  if (!target.closest('.new-dropdown')) {
+    showNewMenu.value = false
   }
 }
 
@@ -45,12 +57,22 @@ watch(showNewSession, (isOpen) => {
   }
 })
 
+// 监听新建菜单状态
+watch(showNewMenu, (isOpen) => {
+  if (isOpen) {
+    document.addEventListener('click', handleClickOutside)
+    document.addEventListener('keydown', handleKeydown)
+  } else if (!showImportMenu.value) {
+    document.removeEventListener('click', handleClickOutside)
+  }
+})
+
 // 监听导入菜单状态
 watch(showImportMenu, (isOpen) => {
   if (isOpen) {
     document.addEventListener('click', handleClickOutside)
     document.addEventListener('keydown', handleKeydown)
-  } else {
+  } else if (!showNewMenu.value) {
     document.removeEventListener('click', handleClickOutside)
   }
 })
@@ -72,7 +94,7 @@ const formData = ref<Partial<SshSession>>({
   password: '',
   privateKeyPath: '',
   passphrase: '',
-  group: ''
+  groupId: ''
 })
 
 // 过滤后的会话列表
@@ -89,16 +111,44 @@ const filteredSessions = computed(() => {
 
 // 按组分类的会话
 const groupedSessions = computed(() => {
-  const groups: Record<string, SshSession[]> = {}
-  filteredSessions.value.forEach(session => {
-    const group = session.group || '默认'
-    if (!groups[group]) {
-      groups[group] = []
-    }
-    groups[group].push(session)
+  const groups: Record<string, { group: SessionGroup | null; sessions: SshSession[] }> = {}
+  
+  // 先添加所有已定义的分组（即使没有会话）
+  configStore.sessionGroups.forEach(group => {
+    groups[group.name] = { group, sessions: [] }
   })
+  
+  filteredSessions.value.forEach(session => {
+    // 优先使用 groupId，否则使用旧的 group 字段
+    let groupName = '默认'
+    let groupEntity: SessionGroup | null = null
+    
+    if (session.groupId) {
+      const found = configStore.sessionGroups.find(g => g.id === session.groupId)
+      if (found) {
+        groupName = found.name
+        groupEntity = found
+      }
+    } else if (session.group) {
+      groupName = session.group
+      // 尝试查找对应的分组实体
+      groupEntity = configStore.sessionGroups.find(g => g.name === session.group) || null
+    }
+    
+    if (!groups[groupName]) {
+      groups[groupName] = { group: groupEntity, sessions: [] }
+    }
+    groups[groupName].sessions.push(session)
+  })
+  
   return groups
 })
+
+// 获取分组的跳板机配置
+const getGroupJumpHost = (groupName: string): JumpHostConfig | undefined => {
+  const groupData = groupedSessions.value[groupName]
+  return groupData?.group?.jumpHost
+}
 
 // 重置表单
 const resetForm = () => {
@@ -111,7 +161,7 @@ const resetForm = () => {
     password: '',
     privateKeyPath: '',
     passphrase: '',
-    group: ''
+    groupId: ''
   }
   editingSession.value = null
 }
@@ -166,12 +216,16 @@ const deleteSession = async (session: SshSession) => {
 
 // 连接会话
 const connectSession = async (session: SshSession) => {
+  // 获取有效的跳板机配置
+  const jumpHost = configStore.getEffectiveJumpHost(session)
+  
   await terminalStore.createTab('ssh', {
     host: session.host,
     port: session.port,
     username: session.username,
     password: session.password,
-    privateKey: session.privateKeyPath
+    privateKey: session.privateKeyPath,
+    jumpHost  // 传递跳板机配置
   })
 }
 
@@ -236,6 +290,115 @@ const handleImportResult = async (importResult: { success: boolean; sessions: an
   }
   alert(message)
 }
+
+// ==================== 分组管理 ====================
+
+// 新建分组
+const openNewGroup = () => {
+  editingGroup.value = null
+  groupFormData.value = {
+    name: '',
+    jumpHost: undefined
+  }
+  showGroupEditor.value = true
+}
+
+// 打开分组编辑弹窗
+const openGroupEditor = (groupName: string) => {
+  const groupData = groupedSessions.value[groupName]
+  if (groupData?.group) {
+    // 编辑已有分组
+    editingGroup.value = groupData.group
+    groupFormData.value = {
+      name: groupData.group.name,
+      jumpHost: groupData.group.jumpHost ? { ...groupData.group.jumpHost } : undefined
+    }
+  } else {
+    // 创建新分组
+    editingGroup.value = null
+    groupFormData.value = {
+      name: groupName === '默认' ? '' : groupName,
+      jumpHost: undefined
+    }
+  }
+  showGroupEditor.value = true
+}
+
+// 重置分组表单
+const resetGroupForm = () => {
+  groupFormData.value = {
+    name: '',
+    jumpHost: undefined
+  }
+  editingGroup.value = null
+}
+
+// 启用/禁用跳板机
+const toggleJumpHost = (enabled: boolean) => {
+  if (enabled) {
+    groupFormData.value.jumpHost = {
+      host: '',
+      port: 22,
+      username: '',
+      authType: 'password'
+    }
+  } else {
+    groupFormData.value.jumpHost = undefined
+  }
+}
+
+// 保存分组
+const saveGroup = async () => {
+  if (!groupFormData.value.name) {
+    alert('请输入分组名称')
+    return
+  }
+
+  // 验证跳板机配置
+  if (groupFormData.value.jumpHost) {
+    const jh = groupFormData.value.jumpHost
+    if (!jh.host || !jh.username) {
+      alert('请填写跳板机主机和用户名')
+      return
+    }
+  }
+
+  const groupData: SessionGroup = {
+    id: editingGroup.value?.id || uuidv4(),
+    name: groupFormData.value.name,
+    jumpHost: groupFormData.value.jumpHost as JumpHostConfig | undefined
+  }
+
+  if (editingGroup.value) {
+    await configStore.updateSessionGroup(groupData)
+  } else {
+    await configStore.addSessionGroup(groupData)
+    
+    // 更新使用旧 group 字段的会话，让它们使用新的 groupId
+    const sessionsToUpdate = configStore.sshSessions.filter(
+      s => s.group === groupFormData.value.name && !s.groupId
+    )
+    for (const session of sessionsToUpdate) {
+      await configStore.updateSshSession({
+        ...session,
+        groupId: groupData.id
+      })
+    }
+  }
+
+  showGroupEditor.value = false
+  resetGroupForm()
+}
+
+// 删除分组
+const deleteGroup = async (groupName: string) => {
+  const groupData = groupedSessions.value[groupName]
+  if (!groupData?.group) return
+  
+  if (confirm(`确定要删除分组 "${groupName}" 吗？组内会话不会被删除，将移到"默认"分组。`)) {
+    await configStore.deleteSessionGroup(groupData.group.id)
+  }
+}
 </script>
 
 <template>
@@ -248,13 +411,33 @@ const handleImportResult = async (importResult: { success: boolean; sessions: an
         class="input search-input"
         placeholder="搜索主机..."
       />
-      <button class="btn btn-primary btn-sm" @click="openNewSession">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="12" y1="5" x2="12" y2="19"/>
-          <line x1="5" y1="12" x2="19" y2="12"/>
-        </svg>
-        新建
-      </button>
+      <div class="new-dropdown">
+        <button class="btn btn-primary btn-sm" @click="showNewMenu = !showNewMenu">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          新建
+        </button>
+        <div v-if="showNewMenu" class="new-menu" @click.stop>
+          <button class="new-menu-item" @click="openNewSession(); showNewMenu = false">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+              <line x1="8" y1="21" x2="16" y2="21"/>
+              <line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            新建会话
+          </button>
+          <button class="new-menu-item" @click="openNewGroup(); showNewMenu = false">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              <line x1="12" y1="11" x2="12" y2="17"/>
+              <line x1="9" y1="14" x2="15" y2="14"/>
+            </svg>
+            新建分组
+          </button>
+        </div>
+      </div>
       <div class="import-dropdown">
         <button class="btn btn-sm" @click="showImportMenu = !showImportMenu">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -297,16 +480,34 @@ const handleImportResult = async (importResult: { success: boolean; sessions: an
     <div class="session-list">
       <template v-if="Object.keys(groupedSessions).length > 0">
         <div
-          v-for="(sessions, group) in groupedSessions"
-          :key="group"
+          v-for="(groupData, groupName) in groupedSessions"
+          :key="groupName"
           class="session-group"
         >
-          <div class="group-header" v-if="sessions.length > 0">
-            <span>{{ group }}</span>
-            <span class="group-count">{{ sessions.length }}</span>
+          <div class="group-header" v-if="groupData.sessions.length > 0 || groupData.group">
+            <div class="group-header-left">
+              <span>{{ groupName }}</span>
+              <span v-if="groupData.group?.jumpHost" class="jump-host-badge" title="跳板机">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                  <polyline points="15 3 21 3 21 9"/>
+                  <line x1="10" y1="14" x2="21" y2="3"/>
+                </svg>
+                {{ groupData.group.jumpHost.host }}
+              </span>
+            </div>
+            <div class="group-header-right">
+              <span class="group-count">{{ groupData.sessions.length }}</span>
+              <button class="btn-icon btn-xs" @click.stop="openGroupEditor(groupName)" title="编辑分组">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+              </button>
+            </div>
           </div>
           <div
-            v-for="session in sessions"
+            v-for="session in groupData.sessions"
             :key="session.id"
             class="session-item"
             @dblclick="connectSession(session)"
@@ -414,13 +615,99 @@ const handleImportResult = async (importResult: { success: boolean; sessions: an
             </div>
           </template>
           <div class="form-group">
-            <label class="form-label">分组（可选）</label>
-            <input v-model="formData.group" type="text" class="input" placeholder="默认" />
+            <label class="form-label">分组</label>
+            <select v-model="formData.groupId" class="select">
+              <option value="">默认</option>
+              <option v-for="group in configStore.sessionGroups" :key="group.id" :value="group.id">
+                {{ group.name }}
+                <template v-if="group.jumpHost"> (跳板机: {{ group.jumpHost.host }})</template>
+              </option>
+            </select>
           </div>
         </div>
         <div class="modal-footer">
           <button class="btn" @click="showNewSession = false">取消</button>
           <button class="btn btn-primary" @click="saveSession">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 分组编辑弹窗 -->
+    <div v-if="showGroupEditor" class="modal-overlay" @click.self="showGroupEditor = false">
+      <div class="modal session-modal">
+        <div class="modal-header">
+          <h3>{{ editingGroup ? '编辑分组' : (groupFormData.name ? '配置分组' : '新建分组') }}</h3>
+          <button class="btn-icon" @click="showGroupEditor = false" title="关闭">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">分组名称 *</label>
+            <input v-model="groupFormData.name" type="text" class="input" placeholder="例如：生产环境" />
+          </div>
+          
+          <!-- 跳板机配置 -->
+          <div class="form-section">
+            <div class="form-section-header">
+              <label class="checkbox-label">
+                <input 
+                  type="checkbox" 
+                  :checked="!!groupFormData.jumpHost"
+                  @change="toggleJumpHost(($event.target as HTMLInputElement).checked)"
+                />
+                <span>启用跳板机</span>
+              </label>
+              <span class="form-section-hint">组内所有会话将通过此跳板机连接</span>
+            </div>
+            
+            <template v-if="groupFormData.jumpHost">
+              <div class="form-row">
+                <div class="form-group" style="flex: 2">
+                  <label class="form-label">跳板机主机 *</label>
+                  <input v-model="groupFormData.jumpHost.host" type="text" class="input" placeholder="IP 或域名" />
+                </div>
+                <div class="form-group" style="flex: 1">
+                  <label class="form-label">端口</label>
+                  <input v-model.number="groupFormData.jumpHost.port" type="number" class="input" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">用户名 *</label>
+                <input v-model="groupFormData.jumpHost.username" type="text" class="input" placeholder="root" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">认证方式</label>
+                <select v-model="groupFormData.jumpHost.authType" class="select">
+                  <option value="password">密码</option>
+                  <option value="privateKey">私钥</option>
+                </select>
+              </div>
+              <div v-if="groupFormData.jumpHost.authType === 'password'" class="form-group">
+                <label class="form-label">密码</label>
+                <input v-model="groupFormData.jumpHost.password" type="password" class="input" />
+              </div>
+              <template v-else>
+                <div class="form-group">
+                  <label class="form-label">私钥路径</label>
+                  <input v-model="groupFormData.jumpHost.privateKeyPath" type="text" class="input" placeholder="~/.ssh/id_rsa" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">私钥密码（可选）</label>
+                  <input v-model="groupFormData.jumpHost.passphrase" type="password" class="input" />
+                </div>
+              </template>
+            </template>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button v-if="editingGroup" class="btn btn-danger" @click="deleteGroup(editingGroup.name); showGroupEditor = false">删除分组</button>
+          <div style="flex: 1"></div>
+          <button class="btn" @click="showGroupEditor = false">取消</button>
+          <button class="btn btn-primary" @click="saveGroup">保存</button>
         </div>
       </div>
     </div>
@@ -450,6 +737,48 @@ const handleImportResult = async (importResult: { success: boolean; sessions: an
   height: 32px;
   min-width: fit-content;
   white-space: nowrap;
+}
+
+/* 新建下拉菜单 */
+.new-dropdown {
+  position: relative;
+}
+
+.new-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 140px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.new-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.new-menu-item:hover {
+  background: var(--bg-surface);
+}
+
+.new-menu-item svg {
+  color: var(--text-muted);
 }
 
 /* 导入下拉菜单 */
@@ -539,11 +868,54 @@ const handleImportResult = async (importResult: { success: boolean; sessions: an
   text-transform: uppercase;
 }
 
+.group-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.group-header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .group-count {
   background: var(--bg-surface);
   padding: 2px 6px;
   border-radius: 10px;
   font-size: 11px;
+}
+
+.jump-host-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: normal;
+  text-transform: none;
+  color: var(--accent-primary);
+  background: rgba(var(--accent-primary-rgb, 66, 153, 225), 0.15);
+  border-radius: 4px;
+}
+
+.jump-host-badge svg {
+  opacity: 0.8;
+}
+
+.btn-xs {
+  padding: 2px 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.group-header:hover .btn-xs {
+  opacity: 0.6;
+}
+
+.btn-xs:hover {
+  opacity: 1 !important;
 }
 
 .session-item {
@@ -658,6 +1030,52 @@ const handleImportResult = async (importResult: { success: boolean; sessions: an
 .form-row {
   display: flex;
   gap: 12px;
+}
+
+/* 分组编辑弹窗样式 */
+.form-section {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+}
+
+.form-section-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.form-section-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 22px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.btn-danger {
+  background: #e53e3e;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #c53030;
 }
 </style>
 

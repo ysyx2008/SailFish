@@ -294,6 +294,13 @@ export class AgentService {
 
         // 处理用户补充消息（如果有）
         if (run.pendingUserMessages.length > 0) {
+          // 为每条补充消息添加步骤（在正确的时机显示）
+          for (const msg of run.pendingUserMessages) {
+            this.addStep(agentId, {
+              type: 'user_supplement',
+              content: msg
+            })
+          }
           const supplementMsg = run.pendingUserMessages.join('\n')
           run.messages.push({ 
             role: 'user', 
@@ -520,20 +527,14 @@ export class AgentService {
 
   /**
    * 添加用户补充消息（在 Agent 执行过程中）
-   * 消息会在下一轮 AI 请求时被包含
+   * 消息会在下一轮 AI 请求时被包含并显示
    */
   addUserMessage(agentId: string, message: string): boolean {
     const run = this.runs.get(agentId)
     if (!run || !run.isRunning) return false
 
-    // 添加到待处理队列
+    // 添加到待处理队列（步骤会在处理时添加，确保顺序正确）
     run.pendingUserMessages.push(message)
-
-    // 添加步骤通知前端
-    this.addStep(agentId, {
-      type: 'user_supplement',
-      content: message
-    })
 
     return true
   }

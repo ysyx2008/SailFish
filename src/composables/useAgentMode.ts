@@ -48,6 +48,7 @@ export function useAgentMode(
   const strictMode = ref(true)       // 严格模式（默认开启）
   const commandTimeout = ref(10)     // 命令超时时间（秒），默认 10 秒
   const collapsedTaskIds = ref<Set<string>>(new Set())  // 已折叠的任务 ID
+  const pendingSupplements = ref<string[]>([])  // 等待处理的补充消息
 
   // 清理事件监听的函数
   let cleanupStepListener: (() => void) | null = null
@@ -221,18 +222,10 @@ export function useAgentMode(
     // 如果 Agent 正在运行，发送补充消息而不是启动新任务
     if (isAgentRunning.value && agentState.value?.agentId) {
       inputText.value = ''
-      
-      // 添加补充消息到步骤显示
-      terminalStore.addAgentStep(tabId, {
-        id: `supplement_${Date.now()}`,
-        type: 'user_supplement',
-        content: message,
-        timestamp: Date.now()
-      })
-      
-      // 发送到后端
+      // 添加到待处理列表，立即显示给用户
+      pendingSupplements.value.push(message)
+      // 发送到后端，步骤会在下一轮 AI 请求时由后端添加
       await window.electronAPI.agent.addMessage(agentState.value.agentId, message)
-      await scrollToBottomIfNeeded()
       return
     }
 
@@ -427,6 +420,15 @@ export function useAgentMode(
         // 只设置 agentId 用于关联，不改变 isRunning 状态
         // 因为 IPC 事件可能在 runAgent 的 finally 块之后到达
         terminalStore.setAgentId(tabId, data.agentId)
+        
+        // 如果是用户补充消息步骤，从待处理列表中移除
+        if (data.step.type === 'user_supplement') {
+          const idx = pendingSupplements.value.indexOf(data.step.content)
+          if (idx !== -1) {
+            pendingSupplements.value.splice(idx, 1)
+          }
+        }
+        
         // 使用智能滚动，不打断用户查看历史
         scrollToBottomIfNeeded()
       }
@@ -447,6 +449,8 @@ export function useAgentMode(
       const tabId = terminalStore.findTabIdByAgentId(data.agentId) || currentTabId.value
       if (tabId) {
         terminalStore.setAgentRunning(tabId, false)
+        // 清空待处理的补充消息
+        pendingSupplements.value = []
       }
     })
 
@@ -455,6 +459,8 @@ export function useAgentMode(
       const tabId = terminalStore.findTabIdByAgentId(data.agentId) || currentTabId.value
       if (tabId) {
         terminalStore.setAgentRunning(tabId, false)
+        // 清空待处理的补充消息
+        pendingSupplements.value = []
         terminalStore.addAgentStep(tabId, {
           id: `error_${Date.now()}`,
           type: 'error',
@@ -499,6 +505,7 @@ export function useAgentMode(
     strictMode,
     commandTimeout,
     collapsedTaskIds,
+    pendingSupplements,
     agentState,
     isAgentRunning,
     pendingConfirm,

@@ -10,6 +10,24 @@ export interface AiProfile {
   proxy?: string
 }
 
+// 跳板机配置
+export interface JumpHostConfig {
+  host: string
+  port: number
+  username: string
+  authType: 'password' | 'privateKey'
+  password?: string
+  privateKeyPath?: string
+  passphrase?: string
+}
+
+// 会话分组
+export interface SessionGroup {
+  id: string
+  name: string
+  jumpHost?: JumpHostConfig
+}
+
 export interface SshSession {
   id: string
   name: string
@@ -20,7 +38,9 @@ export interface SshSession {
   password?: string
   privateKeyPath?: string
   passphrase?: string
-  group?: string
+  group?: string           // 保留旧字段，兼容迁移
+  groupId?: string         // 新字段：引用分组 ID
+  jumpHostOverride?: JumpHostConfig | null  // 覆盖分组跳板机
 }
 
 export interface TerminalSettings {
@@ -59,6 +79,7 @@ interface StoreSchema {
   aiProfiles: AiProfile[]
   activeAiProfile: string
   sshSessions: SshSession[]
+  sessionGroups: SessionGroup[]
   theme: string
   terminalSettings: TerminalSettings
   proxySettings: {
@@ -73,6 +94,7 @@ const defaultConfig: StoreSchema = {
   aiProfiles: [],
   activeAiProfile: '',
   sshSessions: [],
+  sessionGroups: [],
   theme: 'one-dark',
   terminalSettings: {
     fontSize: 14,
@@ -238,6 +260,52 @@ export class ConfigService {
     const sessions = this.getSshSessions()
     const filtered = sessions.filter(s => s.id !== id)
     this.setSshSessions(filtered)
+  }
+
+  // ==================== 会话分组配置 ====================
+
+  /**
+   * 获取所有会话分组
+   */
+  getSessionGroups(): SessionGroup[] {
+    return this.store.get('sessionGroups') || []
+  }
+
+  /**
+   * 设置会话分组
+   */
+  setSessionGroups(groups: SessionGroup[]): void {
+    this.store.set('sessionGroups', groups)
+  }
+
+  /**
+   * 添加会话分组
+   */
+  addSessionGroup(group: SessionGroup): void {
+    const groups = this.getSessionGroups()
+    groups.push(group)
+    this.setSessionGroups(groups)
+  }
+
+  /**
+   * 更新会话分组
+   */
+  updateSessionGroup(group: SessionGroup): void {
+    const groups = this.getSessionGroups()
+    const index = groups.findIndex(g => g.id === group.id)
+    if (index !== -1) {
+      groups[index] = group
+      this.setSessionGroups(groups)
+    }
+  }
+
+  /**
+   * 删除会话分组
+   */
+  deleteSessionGroup(id: string): void {
+    const groups = this.getSessionGroups()
+    const filtered = groups.filter(g => g.id !== id)
+    this.setSessionGroups(filtered)
   }
 
   // ==================== 主题配置 ====================

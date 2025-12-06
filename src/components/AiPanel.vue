@@ -101,6 +101,7 @@ const {
   agentMode,
   strictMode,
   commandTimeout,
+  pendingSupplements,
   agentState,
   isAgentRunning,
   pendingConfirm,
@@ -628,6 +629,26 @@ onMounted(() => {
           </template>
         </template>
 
+        <!-- 等待处理的补充消息 -->
+        <template v-if="isAgentRunning && pendingSupplements.length > 0">
+          <div 
+            v-for="(supplement, idx) in pendingSupplements" 
+            :key="`pending_${idx}`" 
+            class="message assistant"
+          >
+            <div class="message-wrapper">
+              <div class="message-content pending-supplement">
+                <div class="pending-supplement-header">
+                  <span class="pending-icon">💡</span>
+                  <span class="pending-label">补充信息（等待处理）</span>
+                  <span class="pending-spinner"></span>
+                </div>
+                <div class="pending-supplement-content">{{ supplement }}</div>
+              </div>
+            </div>
+          </div>
+        </template>
+
         <!-- Agent 确认对话框（融入对话流） -->
         <div v-if="pendingConfirm" class="message assistant">
           <div class="message-wrapper">
@@ -746,30 +767,28 @@ onMounted(() => {
               <rect x="6" y="6" width="12" height="12" rx="2"/>
             </svg>
           </button>
-          <!-- Agent 运行中：停止按钮 + 补充消息发送按钮 -->
-          <template v-else-if="isAgentRunning">
-            <button
-              class="send-btn send-btn-supplement"
-              :disabled="!inputText.trim()"
-              title="发送补充信息 (Enter)"
-              @click="handleSend"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="12" y1="8" x2="12" y2="16"/>
-                <line x1="8" y1="12" x2="16" y2="12"/>
-              </svg>
-            </button>
-            <button
-              class="btn btn-danger stop-btn"
-              @click="abortAgent"
-              title="停止 Agent"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="6" width="12" height="12" rx="2"/>
-              </svg>
-            </button>
-          </template>
+          <!-- Agent 运行中：有输入显示补充按钮，无输入显示停止按钮 -->
+          <button
+            v-else-if="isAgentRunning && inputText.trim()"
+            class="send-btn send-btn-supplement"
+            title="发送补充信息 (Enter)"
+            @click="handleSend"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+          <button
+            v-else-if="isAgentRunning"
+            class="btn btn-danger stop-btn"
+            @click="abortAgent"
+            title="停止 Agent"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="6" width="12" height="12" rx="2"/>
+            </svg>
+          </button>
           <!-- 发送按钮 -->
           <button
             v-else
@@ -2423,6 +2442,45 @@ onMounted(() => {
 
 .agent-step-inline.user_supplement .step-icon {
   color: #f59e0b;
+}
+
+/* 等待处理的补充消息 */
+.pending-supplement {
+  background: rgba(245, 158, 11, 0.08) !important;
+  border: 1px dashed rgba(245, 158, 11, 0.4) !important;
+  border-radius: 8px !important;
+}
+
+.pending-supplement-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.pending-icon {
+  font-size: 14px;
+}
+
+.pending-label {
+  color: #f59e0b;
+  font-weight: 500;
+}
+
+.pending-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(245, 158, 11, 0.2);
+  border-top-color: #f59e0b;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.pending-supplement-content {
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 /* 风险等级颜色 */

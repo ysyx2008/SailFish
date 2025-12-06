@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { v4 as uuidv4 } from 'uuid'
 
 export interface AiProfile {
   id: string
@@ -9,6 +10,24 @@ export interface AiProfile {
   model: string
   proxy?: string
   contextLength?: number  // 模型上下文长度（tokens），默认 8000
+}
+
+// 跳板机配置
+export interface JumpHostConfig {
+  host: string
+  port: number
+  username: string
+  authType: 'password' | 'privateKey'
+  password?: string
+  privateKeyPath?: string
+  passphrase?: string
+}
+
+// 会话分组（支持跳板机继承）
+export interface SessionGroup {
+  id: string
+  name: string
+  jumpHost?: JumpHostConfig  // 可选的跳板机配置，组内会话自动继承
 }
 
 export interface SshSession {
@@ -21,7 +40,9 @@ export interface SshSession {
   password?: string
   privateKeyPath?: string
   passphrase?: string
-  group?: string
+  group?: string           // 保留旧字段，兼容迁移
+  groupId?: string         // 新字段：引用分组 ID
+  jumpHostOverride?: JumpHostConfig | null  // 覆盖分组跳板机：null 表示显式禁用，undefined 表示继承
 }
 
 export interface TerminalSettings {
@@ -47,6 +68,9 @@ export const useConfigStore = defineStore('config', () => {
 
   // SSH 会话
   const sshSessions = ref<SshSession[]>([])
+
+  // 会话分组
+  const sessionGroups = ref<SessionGroup[]>([])
 
   // 主题
   const currentTheme = ref<string>('one-dark')
@@ -85,6 +109,13 @@ export const useConfigStore = defineStore('config', () => {
       // 加载 SSH 会话
       const sessions = await window.electronAPI.config.getSshSessions()
       sshSessions.value = sessions || []
+
+      // 加载会话分组
+      const groups = await window.electronAPI.config.getSessionGroups()
+      sessionGroups.value = groups || []
+
+      // 数据迁移：将旧的 group 字符串转换为 SessionGroup
+      await migrateGroupStringsToEntities()
 
       // 加载主题
       const theme = await window.electronAPI.config.getTheme()
@@ -165,6 +196,66 @@ export const useConfigStore = defineStore('config', () => {
     await saveSshSessions()
   }
 
+  // ==================== 会话分组 ====================
+
+  async function saveSessionGroups(): Promise<void> {
+    const plainGroups = JSON.parse(JSON.stringify(sessionGroups.value))
+    await window.electronAPI.config.setSessionGroups(plainGroups)
+  }
+
+  async function addSessionGroup(group: SessionGroup): Promise<void> {
+    sessionGroups.value.push(group)
+    await saveSessionGroups()
+  }
+
+  async function updateSessionGroup(group: SessionGroup): Promise<void> {
+    const index = sessionGroups.value.findIndex(g => g.id === group.id)
+    if (index !== -1) {
+      sessionGroups.value[index] = group
+      await saveSessionGroups()
+    }
+  }
+
+  async function deleteSessionGroup(id: string): Promise<void> {
+    sessionGroups.value = sessionGroups.value.filter(g => g.id !== id)
+    await saveSessionGroups()
+    // 清除引用该分组的会话的 groupId
+    sshSessions.value.forEach(s => {
+      if (s.groupId === id) {
+        s.groupId = undefined
+      }
+    })
+    await saveSshSessions()
+  }
+
+  /**
+   * 根据分组名称获取分组
+   */
+  function getGroupByName(name: string): SessionGroup | undefined {
+    return sessionGroups.value.find(g => g.name === name)
+  }
+
+  /**
+   * 获取会话最终生效的跳板机配置
+   * 优先级：会话自定义 > 分组继承 > 无
+   */
+  function getEffectiveJumpHost(session: SshSession): JumpHostConfig | undefined {
+    // 如果会话显式禁用跳板机
+    if (session.jumpHostOverride === null) {
+      return undefined
+    }
+    // 如果会话有自定义跳板机
+    if (session.jumpHostOverride) {
+      return session.jumpHostOverride
+    }
+    // 继承分组的跳板机
+    if (session.groupId) {
+      const group = sessionGroups.value.find(g => g.id === session.groupId)
+      return group?.jumpHost
+    }
+    return undefined
+  }
+
   // ==================== 主题 ====================
 
   async function setTheme(theme: string): Promise<void> {
@@ -179,6 +270,51 @@ export const useConfigStore = defineStore('config', () => {
     await window.electronAPI.config.setAgentMbti(mbti)
   }
 
+  // ==================== 数据迁移 ====================
+
+  /**
+   * 将旧的 group 字符串迁移为 SessionGroup 实体
+   * 只在首次加载时执行一次
+   */
+  async function migrateGroupStringsToEntities(): Promise<void> {
+    // 收集所有使用旧 group 字段但没有 groupId 的会话
+    const sessionsToMigrate = sshSessions.value.filter(s => s.group && !s.groupId)
+    if (sessionsToMigrate.length === 0) return
+
+    // 收集所有唯一的分组名称
+    const groupNames = new Set(sessionsToMigrate.map(s => s.group!))
+
+    // 为每个分组名称创建 SessionGroup（如果不存在）
+    let groupsChanged = false
+    for (const name of groupNames) {
+      if (!sessionGroups.value.find(g => g.name === name)) {
+        sessionGroups.value.push({
+          id: uuidv4(),
+          name
+        })
+        groupsChanged = true
+      }
+    }
+
+    // 更新会话的 groupId
+    let sessionsChanged = false
+    for (const session of sessionsToMigrate) {
+      const group = sessionGroups.value.find(g => g.name === session.group)
+      if (group) {
+        session.groupId = group.id
+        sessionsChanged = true
+      }
+    }
+
+    // 保存更改
+    if (groupsChanged) {
+      await saveSessionGroups()
+    }
+    if (sessionsChanged) {
+      await saveSshSessions()
+    }
+  }
+
   return {
     // 状态
     aiProfiles,
@@ -186,6 +322,7 @@ export const useConfigStore = defineStore('config', () => {
     activeAiProfile,
     hasAiConfig,
     sshSessions,
+    sessionGroups,
     currentTheme,
     terminalSettings,
     agentMbti,
@@ -199,6 +336,11 @@ export const useConfigStore = defineStore('config', () => {
     addSshSession,
     updateSshSession,
     deleteSshSession,
+    addSessionGroup,
+    updateSessionGroup,
+    deleteSessionGroup,
+    getGroupByName,
+    getEffectiveJumpHost,
     setTheme,
     setAgentMbti
   }
