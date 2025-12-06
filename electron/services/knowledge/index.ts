@@ -5,6 +5,7 @@
 import { EventEmitter } from 'events'
 import * as fs from 'fs'
 import * as path from 'path'
+import * as crypto from 'crypto'
 import { app } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -217,6 +218,29 @@ export class KnowledgeService extends EventEmitter {
   }
 
   /**
+   * 计算内容哈希
+   */
+  private computeContentHash(content: string): string {
+    return crypto.createHash('md5').update(content).digest('hex')
+  }
+
+  /**
+   * 检查文档是否重复
+   */
+  isDuplicate(content: string): { isDuplicate: boolean; existingDoc?: KnowledgeDocument } {
+    const hash = this.computeContentHash(content)
+    
+    const docs = Array.from(this.documentsIndex.values())
+    for (const doc of docs) {
+      if (doc.contentHash === hash) {
+        return { isDuplicate: true, existingDoc: doc }
+      }
+    }
+    
+    return { isDuplicate: false }
+  }
+
+  /**
    * 添加文档到知识库
    */
   async addDocument(
@@ -225,6 +249,16 @@ export class KnowledgeService extends EventEmitter {
   ): Promise<string> {
     if (!this.isInitialized) {
       await this.initialize()
+    }
+
+    // 检查重复
+    const contentHash = this.computeContentHash(doc.content)
+    const duplicateCheck = this.isDuplicate(doc.content)
+    
+    if (duplicateCheck.isDuplicate && duplicateCheck.existingDoc) {
+      console.log(`[KnowledgeService] 文档重复，已跳过: ${doc.filename} (与 ${duplicateCheck.existingDoc.filename} 相同)`)
+      // 返回已存在文档的 ID，不重复添加
+      return duplicateCheck.existingDoc.id
     }
 
     const docId = uuidv4()
@@ -237,6 +271,7 @@ export class KnowledgeService extends EventEmitter {
       content: doc.content,
       fileSize: doc.fileSize,
       fileType: doc.fileType,
+      contentHash,
       hostId: options?.hostId,
       tags: options?.tags || [],
       createdAt: now,
@@ -604,6 +639,114 @@ export class KnowledgeService extends EventEmitter {
     this.documentsIndex.clear()
     this.saveDocumentsIndex()
     this.emit('cleared')
+  }
+
+  /**
+   * 导出知识库数据
+   */
+  async exportData(exportPath: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const fs = await import('fs')
+      const pathModule = await import('path')
+      
+      // 确保目录存在
+      if (!fs.existsSync(exportPath)) {
+        fs.mkdirSync(exportPath, { recursive: true })
+      }
+      
+      // 1. 导出文档元数据
+      const documents = this.getDocuments()
+      const metaPath = pathModule.join(exportPath, 'knowledge-documents.json')
+      fs.writeFileSync(metaPath, JSON.stringify(documents, null, 2), 'utf-8')
+      
+      // 2. 导出设置
+      const settings = this.getSettings()
+      const settingsPath = pathModule.join(exportPath, 'knowledge-settings.json')
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8')
+      
+      // 3. 复制 LanceDB 数据目录
+      const lancedbSrc = pathModule.join(app.getPath('userData'), 'knowledge', 'lancedb')
+      const lancedbDst = pathModule.join(exportPath, 'lancedb')
+      if (fs.existsSync(lancedbSrc)) {
+        this.copyDirectory(lancedbSrc, lancedbDst)
+      }
+      
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : '导出失败' }
+    }
+  }
+
+  /**
+   * 导入知识库数据
+   */
+  async importData(importPath: string): Promise<{ success: boolean; error?: string; imported?: number }> {
+    try {
+      const fs = await import('fs')
+      const pathModule = await import('path')
+      
+      // 1. 导入设置
+      const settingsPath = pathModule.join(importPath, 'knowledge-settings.json')
+      if (fs.existsSync(settingsPath)) {
+        const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+        await this.updateSettings(settings)
+      }
+      
+      // 2. 复制 LanceDB 数据
+      const lancedbSrc = pathModule.join(importPath, 'lancedb')
+      const lancedbDst = pathModule.join(app.getPath('userData'), 'knowledge', 'lancedb')
+      if (fs.existsSync(lancedbSrc)) {
+        // 先清空现有数据
+        if (fs.existsSync(lancedbDst)) {
+          fs.rmSync(lancedbDst, { recursive: true, force: true })
+        }
+        this.copyDirectory(lancedbSrc, lancedbDst)
+      }
+      
+      // 3. 导入文档元数据
+      const metaPath = pathModule.join(importPath, 'knowledge-documents.json')
+      let importedCount = 0
+      if (fs.existsSync(metaPath)) {
+        const documents = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
+        this.documentsIndex.clear()
+        for (const doc of documents) {
+          this.documentsIndex.set(doc.id, doc)
+          importedCount++
+        }
+        this.saveDocumentsIndex()
+      }
+      
+      // 重新初始化存储
+      await this.vectorStorage.initialize()
+      
+      return { success: true, imported: importedCount }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : '导入失败' }
+    }
+  }
+
+  /**
+   * 复制目录
+   */
+  private copyDirectory(src: string, dst: string): void {
+    const fs = require('fs')
+    const path = require('path')
+    
+    if (!fs.existsSync(dst)) {
+      fs.mkdirSync(dst, { recursive: true })
+    }
+    
+    const entries = fs.readdirSync(src, { withFileTypes: true })
+    for (const entry of entries) {
+      const srcPath = path.join(src, entry.name)
+      const dstPath = path.join(dst, entry.name)
+      
+      if (entry.isDirectory()) {
+        this.copyDirectory(srcPath, dstPath)
+      } else {
+        fs.copyFileSync(srcPath, dstPath)
+      }
+    }
   }
 
   /**

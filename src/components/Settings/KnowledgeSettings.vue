@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 
 // 获取 API（类型在 preload 中定义）
 const api = window.electronAPI as any
@@ -23,10 +23,19 @@ interface McpServerStatus {
   connected: boolean
 }
 
+interface KnowledgeDocument {
+  id: string
+  filename: string
+  fileSize: number
+  fileType: string
+  chunkCount: number
+  createdAt: number
+}
+
 const settings = ref<KnowledgeSettings>({
   enabled: false,
   embeddingMode: 'local',
-  localModel: 'lite', // 固定使用轻量模型
+  localModel: 'lite',
   autoSaveUploads: false,
   maxChunkSize: 512,
   chunkStrategy: 'paragraph',
@@ -35,8 +44,41 @@ const settings = ref<KnowledgeSettings>({
 })
 
 const mcpServers = ref<McpServerStatus[]>([])
+const documents = ref<KnowledgeDocument[]>([])
 const loading = ref(true)
 const saving = ref(false)
+const deletingDocId = ref<string | null>(null)
+const currentPage = ref(1)
+const pageSize = 10
+const showDocManager = ref(false)
+const exporting = ref(false)
+const importing = ref(false)
+
+// 分页计算
+const totalPages = computed(() => Math.ceil(documents.value.length / pageSize))
+const paginatedDocs = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return documents.value.slice(start, start + pageSize)
+})
+
+// 翻页
+const goToPage = (page: number) => {
+  if (page >= 1 && page <= totalPages.value) {
+    currentPage.value = page
+  }
+}
+
+// 格式化文件大小
+const formatSize = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+// 格式化日期
+const formatDate = (timestamp: number): string => {
+  return new Date(timestamp).toLocaleDateString('zh-CN')
+}
 
 // 加载设置
 const loadSettings = async () => {
@@ -45,12 +87,16 @@ const loadSettings = async () => {
     
     // 获取知识库设置
     settings.value = await api.knowledge.getSettings()
-    // 强制使用轻量模型
     settings.value.localModel = 'lite'
     settings.value.embeddingMode = 'local'
     
     // 获取 MCP 服务器状态
     mcpServers.value = await api.mcp.getServerStatuses()
+    
+    // 获取文档列表
+    if (settings.value.enabled) {
+      await loadDocuments()
+    }
   } catch (error) {
     console.error('加载设置失败:', error)
   } finally {
@@ -58,25 +104,102 @@ const loadSettings = async () => {
   }
 }
 
+// 加载文档列表
+const loadDocuments = async () => {
+  try {
+    documents.value = await api.knowledge.getDocuments() || []
+  } catch (error) {
+    console.error('加载文档列表失败:', error)
+  }
+}
+
 // 保存设置
 const saveSettings = async () => {
   try {
     saving.value = true
-    // 强制使用轻量模型
     settings.value.localModel = 'lite'
     settings.value.embeddingMode = 'local'
     
-    // 转换为普通对象（Vue 响应式对象不能直接通过 IPC 发送）
     const plainSettings = JSON.parse(JSON.stringify(settings.value))
     
     const result = await api.knowledge.updateSettings(plainSettings)
     if (!result.success) {
       console.error('保存设置失败:', result.error)
     }
+    
+    // 如果启用了知识库，加载文档列表
+    if (settings.value.enabled) {
+      await loadDocuments()
+    }
   } catch (error) {
     console.error('保存设置异常:', error)
   } finally {
     saving.value = false
+  }
+}
+
+// 删除文档
+const deleteDocument = async (doc: KnowledgeDocument) => {
+  if (!confirm(`确定要删除文档"${doc.filename}"吗？此操作不可恢复。`)) {
+    return
+  }
+  
+  try {
+    deletingDocId.value = doc.id
+    const result = await api.knowledge.removeDocument(doc.id)
+    if (result.success) {
+      documents.value = documents.value.filter(d => d.id !== doc.id)
+    } else {
+      alert('删除失败: ' + (result.error || '未知错误'))
+    }
+  } catch (error) {
+    console.error('删除文档失败:', error)
+    alert('删除失败')
+  } finally {
+    deletingDocId.value = null
+  }
+}
+
+// 导出知识库
+const exportKnowledge = async () => {
+  try {
+    exporting.value = true
+    const result = await api.knowledge.exportData()
+    if (result.canceled) return
+    if (result.success) {
+      alert(`导出成功！\n保存位置: ${result.path}`)
+    } else {
+      alert('导出失败: ' + (result.error || '未知错误'))
+    }
+  } catch (error) {
+    console.error('导出失败:', error)
+    alert('导出失败')
+  } finally {
+    exporting.value = false
+  }
+}
+
+// 导入知识库
+const importKnowledge = async () => {
+  if (!confirm('导入将覆盖现有知识库数据，确定继续吗？')) {
+    return
+  }
+  
+  try {
+    importing.value = true
+    const result = await api.knowledge.importData()
+    if (result.canceled) return
+    if (result.success) {
+      alert(`导入成功！共导入 ${result.imported || 0} 个文档`)
+      await loadDocuments()
+    } else {
+      alert('导入失败: ' + (result.error || '未知错误'))
+    }
+  } catch (error) {
+    console.error('导入失败:', error)
+    alert('导入失败')
+  } finally {
+    importing.value = false
   }
 }
 
@@ -236,8 +359,97 @@ onMounted(() => {
             />
           </div>
         </div>
+
+        <!-- 文档管理 -->
+        <div class="setting-group">
+          <h4 class="group-title">文档管理</h4>
+          
+          <div class="doc-summary">
+            <span class="doc-stat">
+              📄 {{ documents.length }} 个文档
+            </span>
+            <button class="btn btn-sm" @click="showDocManager = true; loadDocuments()">
+              管理文档
+            </button>
+          </div>
+        </div>
       </template>
     </template>
+    
+    <!-- 文档管理弹窗 -->
+    <Teleport to="body">
+      <div v-if="showDocManager" class="doc-modal-overlay" @click.self="showDocManager = false">
+        <div class="doc-modal">
+          <div class="doc-modal-header">
+            <h3>📚 知识库文档</h3>
+            <button class="close-btn" @click="showDocManager = false">✕</button>
+          </div>
+          
+          <div class="doc-modal-content">
+            <div v-if="documents.length === 0" class="empty-docs">
+              暂无文档，上传文档后会自动添加到知识库
+            </div>
+            
+            <template v-else>
+              <div class="doc-list">
+                <div 
+                  v-for="doc in paginatedDocs" 
+                  :key="doc.id" 
+                  class="doc-item"
+                >
+                  <div class="doc-info">
+                    <span class="doc-name">{{ doc.filename }}</span>
+                    <span class="doc-meta">
+                      {{ formatSize(doc.fileSize) }} · {{ doc.chunkCount }} 个分块 · {{ formatDate(doc.createdAt) }}
+                    </span>
+                  </div>
+                  <button 
+                    class="btn-delete"
+                    :disabled="deletingDocId === doc.id"
+                    @click="deleteDocument(doc)"
+                    :title="'删除 ' + doc.filename"
+                  >
+                    {{ deletingDocId === doc.id ? '...' : '🗑️' }}
+                  </button>
+                </div>
+              </div>
+              
+              <!-- 分页 -->
+              <div v-if="totalPages > 1" class="pagination">
+                <button 
+                  class="page-btn" 
+                  :disabled="currentPage === 1"
+                  @click="goToPage(currentPage - 1)"
+                >
+                  ‹
+                </button>
+                <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
+                <button 
+                  class="page-btn" 
+                  :disabled="currentPage === totalPages"
+                  @click="goToPage(currentPage + 1)"
+                >
+                  ›
+                </button>
+              </div>
+            </template>
+          </div>
+          
+          <div class="doc-modal-footer">
+            <span class="doc-count-info">共 {{ documents.length }} 个文档</span>
+            <div class="footer-actions">
+              <button class="btn btn-sm" @click="exportKnowledge" :disabled="exporting">
+                {{ exporting ? '导出中...' : '📤 导出' }}
+              </button>
+              <button class="btn btn-sm" @click="importKnowledge" :disabled="importing">
+                {{ importing ? '导入中...' : '📥 导入' }}
+              </button>
+              <button class="btn btn-sm" @click="loadDocuments">🔄 刷新</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -387,5 +599,239 @@ input:checked + .slider:before {
 
 .input-sm {
   width: 80px;
+}
+
+/* 文档摘要 */
+.doc-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+}
+
+.doc-stat {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* 文档管理弹窗 */
+.doc-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+}
+
+.doc-modal {
+  width: 90%;
+  max-width: 600px;
+  max-height: 70vh;
+  background: var(--bg-primary);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-color);
+}
+
+.doc-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.doc-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.close-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.doc-modal-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  min-height: 200px;
+}
+
+.doc-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-color);
+}
+
+.doc-count-info {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.footer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 文档列表 */
+.empty-docs {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.doc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.doc-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.doc-item:hover {
+  background: var(--bg-hover);
+}
+
+.doc-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.doc-name {
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.doc-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.btn-delete {
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.btn-delete:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.btn-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 分页 */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.page-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
+}
+
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.page-info {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn:hover {
+  background: var(--bg-hover);
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
 }
 </style>

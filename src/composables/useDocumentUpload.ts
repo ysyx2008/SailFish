@@ -165,8 +165,8 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
   }
 
   // 保存单个文档到知识库
-  const saveToKnowledge = async (doc: ParsedDocument, options?: { hostId?: string; tags?: string[] }): Promise<boolean> => {
-    if (doc.error || !doc.content) return false
+  const saveToKnowledge = async (doc: ParsedDocument, options?: { hostId?: string; tags?: string[] }): Promise<{ success: boolean; duplicate?: boolean; existingFilename?: string }> => {
+    if (doc.error || !doc.content) return { success: false }
     
     try {
       isSavingToKnowledge.value = true
@@ -176,30 +176,40 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
       const plainDoc = JSON.parse(JSON.stringify(doc))
       
       const result = await knowledgeAPI.addDocument(plainDoc, options)
-      return result.success
+      return { 
+        success: result.success, 
+        duplicate: result.duplicate,
+        existingFilename: result.existingFilename
+      }
     } catch (error) {
       console.error('保存到知识库失败:', error)
-      return false
+      return { success: false }
     } finally {
       isSavingToKnowledge.value = false
     }
   }
 
   // 批量保存文档到知识库
-  const saveAllToKnowledge = async (options?: { hostId?: string; tags?: string[] }): Promise<{ success: number; failed: number }> => {
+  const saveAllToKnowledge = async (options?: { hostId?: string; tags?: string[] }): Promise<{ success: number; failed: number; skipped: number }> => {
     const validDocs = uploadedDocs.value.filter(d => !d.error && d.content)
-    if (validDocs.length === 0) return { success: 0, failed: 0 }
+    if (validDocs.length === 0) return { success: 0, failed: 0, skipped: 0 }
     
     let success = 0
     let failed = 0
+    let skipped = 0
     
     isSavingToKnowledge.value = true
     
     try {
       for (const doc of validDocs) {
-        const saved = await saveToKnowledge(doc, options)
-        if (saved) {
-          success++
+        const result = await saveToKnowledge(doc, options)
+        if (result.success) {
+          if (result.duplicate) {
+            skipped++
+            console.log(`文档已存在，跳过: ${doc.filename} (与 ${result.existingFilename} 相同)`)
+          } else {
+            success++
+          }
         } else {
           failed++
         }

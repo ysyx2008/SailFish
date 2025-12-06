@@ -312,7 +312,8 @@ export class HistoryService {
       const settingsData = {
         theme: config.theme,
         terminalSettings: config.terminalSettings,
-        proxySettings: config.proxySettings
+        proxySettings: config.proxySettings,
+        knowledgeSettings: config.knowledgeSettings
       }
       const settingsPath = path.join(exportPath, 'settings.json')
       fs.writeFileSync(settingsPath, JSON.stringify(settingsData, null, 2), 'utf-8')

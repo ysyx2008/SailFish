@@ -44,6 +44,7 @@ export interface KnowledgeDocument {
   content: string
   fileSize: number
   fileType: string
+  contentHash?: string   // 内容哈希，用于去重
   hostId?: string        // 关联的主机
   tags: string[]
   createdAt: number

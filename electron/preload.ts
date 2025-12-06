@@ -1083,6 +1083,8 @@ const electronAPI = {
         success: boolean
         docId?: string
         error?: string
+        duplicate?: boolean
+        existingFilename?: string
       }>,
 
     // 删除文档
@@ -1183,6 +1185,14 @@ const electronAPI = {
     // 清空知识库
     clear: () =>
       ipcRenderer.invoke('knowledge:clear') as Promise<{ success: boolean; error?: string }>,
+
+    // 导出知识库数据
+    exportData: () =>
+      ipcRenderer.invoke('knowledge:exportData') as Promise<{ success?: boolean; canceled?: boolean; error?: string; path?: string }>,
+
+    // 导入知识库数据
+    importData: () =>
+      ipcRenderer.invoke('knowledge:importData') as Promise<{ success?: boolean; canceled?: boolean; error?: string; imported?: number }>,
 
     // 检查服务状态
     isReady: () =>

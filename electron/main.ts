@@ -1259,8 +1259,21 @@ ipcMain.handle('knowledge:updateSettings', async (_event, settings: Partial<Know
 // 添加文档到知识库
 ipcMain.handle('knowledge:addDocument', async (_event, doc: ParsedDocument, options?: AddDocumentOptions) => {
   try {
-    const docId = await getKnowledge().addDocument(doc, options)
-    return { success: true, docId }
+    const knowledgeService = getKnowledge()
+    
+    // 先检查是否重复
+    const duplicateCheck = knowledgeService.isDuplicate(doc.content)
+    if (duplicateCheck.isDuplicate && duplicateCheck.existingDoc) {
+      return { 
+        success: true, 
+        docId: duplicateCheck.existingDoc.id,
+        duplicate: true,
+        existingFilename: duplicateCheck.existingDoc.filename
+      }
+    }
+    
+    const docId = await knowledgeService.addDocument(doc, options)
+    return { success: true, docId, duplicate: false }
   } catch (error) {
     return { 
       success: false, 
@@ -1356,6 +1369,54 @@ ipcMain.handle('knowledge:clear', async () => {
     return { 
       success: false, 
       error: error instanceof Error ? error.message : '清空失败' 
+    }
+  }
+})
+
+// 导出知识库数据
+ipcMain.handle('knowledge:exportData', async () => {
+  try {
+    const { dialog } = require('electron')
+    const result = await dialog.showOpenDialog({
+      title: '选择导出目录',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    
+    if (result.canceled || !result.filePaths[0]) {
+      return { canceled: true }
+    }
+    
+    const path = require('path')
+    const exportPath = path.join(result.filePaths[0], `knowledge-backup-${Date.now()}`)
+    const exportResult = await getKnowledge().exportData(exportPath)
+    
+    return { ...exportResult, path: exportPath }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '导出失败' 
+    }
+  }
+})
+
+// 导入知识库数据
+ipcMain.handle('knowledge:importData', async () => {
+  try {
+    const { dialog } = require('electron')
+    const result = await dialog.showOpenDialog({
+      title: '选择知识库备份目录',
+      properties: ['openDirectory']
+    })
+    
+    if (result.canceled || !result.filePaths[0]) {
+      return { canceled: true }
+    }
+    
+    return await getKnowledge().importData(result.filePaths[0])
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '导入失败' 
     }
   }
 })
