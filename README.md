@@ -39,6 +39,7 @@
   - `send_control_key` - 发送控制键（Ctrl+C/D/Z 等），处理卡住的命令
   - `read_file` / `write_file` - 文件读写操作
   - `remember_info` - 记住关键信息，跨会话记忆
+  - `search_knowledge` - 搜索本地知识库文档
 - 🔌 **MCP 扩展**：支持 Model Context Protocol，可接入外部工具和资源
 - ⚠️ **严格模式**：危险命令执行前需要用户确认，默认开启
 - ⏱️ **命令超时控制**：可配置命令执行超时时间，避免长时间等待
@@ -62,12 +63,22 @@
 - 🏢 **内网友好**：支持配置内网 AI API 和 HTTP/SOCKS 代理
 - 🔒 **数据安全**：所有数据本地存储，支持私有化部署的 AI 模型
 
+### 本地知识库 (RAG)
+- 📚 **文档导入**：支持 PDF、Word、TXT、Markdown 等格式文档
+- 🧠 **本地 Embedding**：内置轻量级向量模型，完全离线运行，无需外部 API
+- 🔍 **语义搜索**：基于向量相似度的智能检索，理解文档语义
+- 📖 **智能分块**：支持多种分块策略（固定长度/段落/语义）
+- 📊 **重排序优化**：可选 Rerank 模型优化搜索结果排序
+- 💾 **向量存储**：基于 LanceDB 的高效本地向量数据库
+- 🔗 **Agent 集成**：知识库与 Agent 深度集成，自动检索相关文档辅助回答
+
 ## 技术栈
 
 - **框架**：Electron 28 + Vue 3 + TypeScript
 - **终端**：xterm.js 5.x
 - **构建**：Vite + electron-builder
 - **AI**：OpenAI 兼容 API（支持 Function Calling）
+- **知识库**：LanceDB + Transformers.js（本地 Embedding）
 
 ## 快速开始
 
@@ -174,6 +185,35 @@ MCP (Model Context Protocol) 允许扩展 Agent 的能力，接入外部工具�
 
 更多 MCP 服务器请参考：[MCP Servers](https://github.com/modelcontextprotocol/servers)
 
+## 知识库配置
+
+本地知识库功能允许导入文档，让 AI Agent 在执行任务时自动检索相关信息。
+
+### 启用知识库
+
+1. 打开设置 → 知识库
+2. 开启「启用知识库」选项
+3. 等待本地 Embedding 模型加载完成
+
+### 导入文档
+
+支持的文档格式：
+- **PDF**：自动提取文本内容
+- **Word**：支持 .doc 和 .docx 格式
+- **文本**：TXT、Markdown、代码文件等
+
+### 分块策略
+
+- **固定长度**：按字符数均匀分块
+- **段落分块**：保持段落完整性
+- **语义分块**：基于内容语义智能分割（推荐）
+
+### 使用场景
+
+- 导入项目文档，让 Agent 了解项目架构和规范
+- 导入运维手册，Agent 自动参考处理故障
+- 导入 API 文档，辅助开发和调试
+
 ## Xshell 会话导入
 
 支持从 Xshell 导入已有的会话配置：
@@ -202,6 +242,15 @@ MCP (Model Context Protocol) 允许扩展 Agent 的能力，接入外部工具�
 │       │   ├── tool-executor.ts   # 工具执行器
 │       │   ├── tools.ts      # 工具定义
 │       │   └── types.ts      # 类型定义
+│       ├── knowledge/        # 知识库模块
+│       │   ├── index.ts      # 知识库服务入口
+│       │   ├── embedding.ts  # Embedding 服务
+│       │   ├── storage.ts    # 向量存储（LanceDB）
+│       │   ├── chunker.ts    # 文档分块
+│       │   ├── reranker.ts   # 重排序
+│       │   ├── model-manager.ts   # 模型管理
+│       │   ├── mcp-adapter.ts     # MCP 适配器
+│       │   └── types.ts      # 类型定义
 │       ├── ai.service.ts     # AI API 对话
 │       ├── pty.service.ts    # 本地终端
 │       ├── ssh.service.ts    # SSH 连接
@@ -224,7 +273,9 @@ MCP (Model Context Protocol) 允许扩展 Agent 的能力，接入外部工具�
 │   │   │   ├── PathBreadcrumb.vue # 路径导航
 │   │   │   ├── FileContextMenu.vue # 右键菜单
 │   │   │   └── TransferQueue.vue  # 传输队列
+│   │   ├── KnowledgeManager.vue   # 知识库管理
 │   │   └── Settings/         # 设置组件
+│   │       └── KnowledgeSettings.vue # 知识库设置
 │   ├── composables/          # 组合式函数
 │   │   ├── useAgentMode.ts   # Agent 模式逻辑
 │   │   ├── useAiChat.ts      # AI 对话逻辑
@@ -242,6 +293,21 @@ MCP (Model Context Protocol) 允许扩展 Agent 的能力，接入外部工具�
 ```
 
 ## 版本历史
+
+### v4.1.0
+- 🧠 **本地知识库增强**：
+  - 优化向量检索性能
+  - 改进文档分块算法
+  - Agent 工具集新增 `search_knowledge` 知识库搜索
+
+### v4.0.0
+- 📚 **本地知识库 (RAG)**：全新离线知识库功能
+  - 内置本地 Embedding 模型（all-MiniLM-L6-v2），完全离线运行
+  - 基于 LanceDB 的高效向量存储和检索
+  - 支持 PDF、Word、TXT、Markdown 等多种文档格式
+  - 智能分块策略：固定长度、段落、语义分块
+  - 可选 Rerank 模型优化搜索结果
+  - 知识库与 Agent 深度集成，自动检索相关文档
 
 ### v3.0.0
 - 🔌 **MCP 协议支持**：全新 Model Context Protocol 扩展能力
@@ -298,3 +364,5 @@ MCP (Model Context Protocol) 允许扩展 Agent 的能力，接入外部工具�
 - [Vue.js](https://vuejs.org/)
 - [node-pty](https://github.com/microsoft/node-pty)
 - [ssh2](https://github.com/mscdex/ssh2)
+- [LanceDB](https://lancedb.com/)
+- [Transformers.js](https://huggingface.co/docs/transformers.js)
