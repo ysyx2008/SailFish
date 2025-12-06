@@ -1,5 +1,7 @@
 import Store from 'electron-store'
 import { safeStorage } from 'electron'
+import type { KnowledgeSettings } from './knowledge/types'
+import { DEFAULT_KNOWLEDGE_SETTINGS } from './knowledge/types'
 
 export interface AiProfile {
   id: string
@@ -88,6 +90,7 @@ interface StoreSchema {
   }
   mcpServers: McpServerConfig[]
   agentMbti: AgentMbtiType
+  knowledgeSettings: KnowledgeSettings
 }
 
 const defaultConfig: StoreSchema = {
@@ -108,7 +111,8 @@ const defaultConfig: StoreSchema = {
     url: ''
   },
   mcpServers: [],
-  agentMbti: null
+  agentMbti: null,
+  knowledgeSettings: DEFAULT_KNOWLEDGE_SETTINGS
 }
 
 export class ConfigService {
@@ -423,6 +427,30 @@ export class ConfigService {
    */
   setAgentMbti(mbti: AgentMbtiType): void {
     this.store.set('agentMbti', mbti)
+  }
+
+  // ==================== 知识库设置 ====================
+
+  /**
+   * 获取知识库设置
+   */
+  getKnowledgeSettings(): KnowledgeSettings {
+    return this.store.get('knowledgeSettings') || DEFAULT_KNOWLEDGE_SETTINGS
+  }
+
+  /**
+   * 设置知识库设置
+   */
+  setKnowledgeSettings(settings: KnowledgeSettings): void {
+    this.store.set('knowledgeSettings', settings)
+  }
+
+  /**
+   * 更新部分知识库设置
+   */
+  updateKnowledgeSettings(settings: Partial<KnowledgeSettings>): void {
+    const current = this.getKnowledgeSettings()
+    this.store.set('knowledgeSettings', { ...current, ...settings })
   }
 }
 

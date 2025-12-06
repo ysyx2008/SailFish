@@ -19,6 +19,8 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
   const isUploadingDocs = ref(false)
   // 拖放悬停状态
   const isDraggingOver = ref(false)
+  // 保存到知识库中
+  const isSavingToKnowledge = ref(false)
 
   // 当前终端的已上传文档列表（computed，自动响应终端切换）
   const uploadedDocs = computed(() => {
@@ -152,15 +154,92 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     return await documentAPI.formatAsContext(plainDocs)
   }
 
+  // 保存单个文档到知识库
+  const saveToKnowledge = async (doc: ParsedDocument, options?: { hostId?: string; tags?: string[] }): Promise<boolean> => {
+    if (doc.error || !doc.content) return false
+    
+    try {
+      isSavingToKnowledge.value = true
+      const knowledgeAPI = window.electronAPI.knowledge
+      
+      // 将 Vue Proxy 对象转换为普通对象
+      const plainDoc = JSON.parse(JSON.stringify(doc))
+      
+      const result = await knowledgeAPI.addDocument(plainDoc, options)
+      return result.success
+    } catch (error) {
+      console.error('保存到知识库失败:', error)
+      return false
+    } finally {
+      isSavingToKnowledge.value = false
+    }
+  }
+
+  // 批量保存文档到知识库
+  const saveAllToKnowledge = async (options?: { hostId?: string; tags?: string[] }): Promise<{ success: number; failed: number }> => {
+    const validDocs = uploadedDocs.value.filter(d => !d.error && d.content)
+    if (validDocs.length === 0) return { success: 0, failed: 0 }
+    
+    let success = 0
+    let failed = 0
+    
+    isSavingToKnowledge.value = true
+    
+    try {
+      for (const doc of validDocs) {
+        const saved = await saveToKnowledge(doc, options)
+        if (saved) {
+          success++
+        } else {
+          failed++
+        }
+      }
+    } finally {
+      isSavingToKnowledge.value = false
+    }
+    
+    return { success, failed }
+  }
+
+  // 检查知识库是否启用
+  const checkKnowledgeEnabled = async (): Promise<boolean> => {
+    try {
+      return await window.electronAPI.knowledge.isEnabled()
+    } catch {
+      return false
+    }
+  }
+
+  // 自动保存到知识库（根据设置）
+  const autoSaveToKnowledgeIfEnabled = async (docs: ParsedDocument[], hostId?: string) => {
+    try {
+      const settings = await window.electronAPI.knowledge.getSettings()
+      if (!settings.enabled || !settings.autoSaveUploads) return
+      
+      for (const doc of docs) {
+        if (!doc.error && doc.content) {
+          await saveToKnowledge(doc, { hostId })
+        }
+      }
+    } catch (error) {
+      console.error('自动保存到知识库失败:', error)
+    }
+  }
+
   return {
     uploadedDocs,
     isUploadingDocs,
     isDraggingOver,
+    isSavingToKnowledge,
     selectAndUploadDocs,
     handleDroppedFiles,
     removeUploadedDoc,
     clearUploadedDocs,
     formatFileSize,
-    getDocumentContext
+    getDocumentContext,
+    saveToKnowledge,
+    saveAllToKnowledge,
+    checkKnowledgeEnabled,
+    autoSaveToKnowledgeIfEnabled
   }
 }

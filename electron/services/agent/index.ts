@@ -27,6 +27,7 @@ import type { CommandHandlingInfo } from './risk-assessor'
 import { executeTool, ToolExecutorConfig } from './tool-executor'
 import { buildSystemPrompt } from './prompt-builder'
 import { analyzeTaskComplexity, generatePlanningPrompt } from './planner'
+import { getKnowledgeService } from '../knowledge'
 
 // 重新导出类型，供外部使用
 export type {
@@ -480,7 +481,22 @@ export class AgentService {
 
     // 构建系统提示（包含 MBTI 风格）
     const mbtiType = this.configService?.getAgentMbti() ?? null
-    const systemPrompt = buildSystemPrompt(context, this.hostProfileService, mbtiType)
+    
+    // 获取知识库上下文（如果启用）
+    let knowledgeContext = ''
+    try {
+      const knowledgeService = getKnowledgeService()
+      if (knowledgeService.isEnabled() && knowledgeService.isReady()) {
+        knowledgeContext = await knowledgeService.buildContext(userMessage, {
+          hostId: context.hostId
+        })
+      }
+    } catch (e) {
+      // 知识库服务未初始化或出错，忽略
+      console.log('[Agent] Knowledge service not available:', e)
+    }
+    
+    const systemPrompt = buildSystemPrompt(context, this.hostProfileService, mbtiType, knowledgeContext)
     run.messages.push({ role: 'system', content: systemPrompt })
 
     // 添加历史对话（保持 Agent 记忆）

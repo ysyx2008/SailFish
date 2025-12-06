@@ -1028,6 +1028,223 @@ const electronAPI = {
         ipcRenderer.removeListener('mcp:refreshed', handler)
       }
     }
+  },
+
+  // 知识库操作
+  knowledge: {
+    // 初始化
+    initialize: () =>
+      ipcRenderer.invoke('knowledge:initialize') as Promise<{ success: boolean; error?: string }>,
+
+    // 获取设置
+    getSettings: () =>
+      ipcRenderer.invoke('knowledge:getSettings') as Promise<{
+        enabled: boolean
+        embeddingMode: 'local' | 'mcp'
+        localModel: 'auto' | 'lite' | 'standard' | 'large'
+        embeddingMcpServerId?: string
+        autoSaveUploads: boolean
+        maxChunkSize: number
+        chunkStrategy: 'fixed' | 'semantic' | 'paragraph'
+        searchTopK: number
+        enableRerank: boolean
+        mcpKnowledgeServerId?: string
+      }>,
+
+    // 更新设置
+    updateSettings: (settings: Partial<{
+      enabled: boolean
+      embeddingMode: 'local' | 'mcp'
+      localModel: 'auto' | 'lite' | 'standard' | 'large'
+      embeddingMcpServerId?: string
+      autoSaveUploads: boolean
+      maxChunkSize: number
+      chunkStrategy: 'fixed' | 'semantic' | 'paragraph'
+      searchTopK: number
+      enableRerank: boolean
+      mcpKnowledgeServerId?: string
+    }>) =>
+      ipcRenderer.invoke('knowledge:updateSettings', settings) as Promise<{ success: boolean; error?: string }>,
+
+    // 添加文档
+    addDocument: (doc: {
+      filename: string
+      fileType: string
+      content: string
+      fileSize: number
+      parseTime: number
+      pageCount?: number
+      error?: string
+    }, options?: {
+      hostId?: string
+      tags?: string[]
+    }) =>
+      ipcRenderer.invoke('knowledge:addDocument', doc, options) as Promise<{
+        success: boolean
+        docId?: string
+        error?: string
+      }>,
+
+    // 删除文档
+    removeDocument: (docId: string) =>
+      ipcRenderer.invoke('knowledge:removeDocument', docId) as Promise<{ success: boolean; error?: string }>,
+
+    // 搜索
+    search: (query: string, options?: {
+      limit?: number
+      hostId?: string
+      tags?: string[]
+      similarity?: number
+      enableRerank?: boolean
+    }) =>
+      ipcRenderer.invoke('knowledge:search', query, options) as Promise<{
+        success: boolean
+        results: Array<{
+          id: string
+          docId: string
+          content: string
+          score: number
+          metadata: {
+            filename: string
+            hostId?: string
+            tags: string[]
+          }
+          source: 'local' | 'mcp'
+        }>
+        error?: string
+      }>,
+
+    // 获取主机相关知识
+    getHostKnowledge: (hostId: string) =>
+      ipcRenderer.invoke('knowledge:getHostKnowledge', hostId) as Promise<{
+        success: boolean
+        results: Array<{
+          id: string
+          docId: string
+          content: string
+          score: number
+          metadata: object
+          source: 'local' | 'mcp'
+        }>
+        error?: string
+      }>,
+
+    // 构建 AI 上下文
+    buildContext: (query: string, options?: { hostId?: string; maxTokens?: number }) =>
+      ipcRenderer.invoke('knowledge:buildContext', query, options) as Promise<{
+        success: boolean
+        context: string
+        error?: string
+      }>,
+
+    // 获取所有文档
+    getDocuments: () =>
+      ipcRenderer.invoke('knowledge:getDocuments') as Promise<Array<{
+        id: string
+        filename: string
+        content: string
+        fileSize: number
+        fileType: string
+        hostId?: string
+        tags: string[]
+        createdAt: number
+        updatedAt: number
+        chunkCount: number
+      }>>,
+
+    // 获取指定文档
+    getDocument: (docId: string) =>
+      ipcRenderer.invoke('knowledge:getDocument', docId) as Promise<{
+        id: string
+        filename: string
+        content: string
+        fileSize: number
+        fileType: string
+        hostId?: string
+        tags: string[]
+        createdAt: number
+        updatedAt: number
+        chunkCount: number
+      } | undefined>,
+
+    // 获取统计信息
+    getStats: () =>
+      ipcRenderer.invoke('knowledge:getStats') as Promise<{
+        success: boolean
+        stats?: {
+          documentCount: number
+          chunkCount: number
+          totalSize: number
+          lastUpdated?: number
+        }
+        error?: string
+      }>,
+
+    // 清空知识库
+    clear: () =>
+      ipcRenderer.invoke('knowledge:clear') as Promise<{ success: boolean; error?: string }>,
+
+    // 检查服务状态
+    isReady: () =>
+      ipcRenderer.invoke('knowledge:isReady') as Promise<boolean>,
+
+    // 检查是否启用
+    isEnabled: () =>
+      ipcRenderer.invoke('knowledge:isEnabled') as Promise<boolean>,
+
+    // 获取所有模型
+    getModels: () =>
+      ipcRenderer.invoke('knowledge:getModels') as Promise<Array<{
+        id: 'lite' | 'standard' | 'large'
+        name: string
+        huggingfaceId: string
+        size: number
+        dimensions: number
+        bundled: boolean
+      }>>,
+
+    // 获取模型状态
+    getModelStatuses: () =>
+      ipcRenderer.invoke('knowledge:getModelStatuses') as Promise<Array<{
+        id: 'lite' | 'standard' | 'large'
+        available: boolean
+        downloading: boolean
+        progress?: number
+        error?: string
+      }>>,
+
+    // 下载模型
+    downloadModel: (modelId: 'lite' | 'standard' | 'large') =>
+      ipcRenderer.invoke('knowledge:downloadModel', modelId) as Promise<{
+        success: boolean
+        error?: string
+      }>,
+
+    // 切换模型
+    switchModel: (modelId: 'lite' | 'standard' | 'large') =>
+      ipcRenderer.invoke('knowledge:switchModel', modelId) as Promise<{
+        success: boolean
+        error?: string
+      }>,
+
+    // 监听下载进度
+    onDownloadProgress: (callback: (data: {
+      modelId: string
+      percent: number
+      downloaded: number
+      total: number
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: {
+        modelId: string
+        percent: number
+        downloaded: number
+        total: number
+      }) => callback(data)
+      ipcRenderer.on('knowledge:downloadProgress', handler)
+      return () => {
+        ipcRenderer.removeListener('knowledge:downloadProgress', handler)
+      }
+    }
   }
 }
 

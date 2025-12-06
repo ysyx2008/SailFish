@@ -12,6 +12,8 @@ import { HostProfileService, HostProfile } from './services/host-profile.service
 import { getDocumentParserService, UploadedFile, ParseOptions, ParsedDocument } from './services/document-parser.service'
 import { SftpService, SftpConfig } from './services/sftp.service'
 import { McpService } from './services/mcp.service'
+import { getKnowledgeService, KnowledgeService } from './services/knowledge'
+import type { KnowledgeSettings, SearchOptions, AddDocumentOptions, ModelTier } from './services/knowledge/types'
 
 // 禁用 GPU 加速可能导致的问题（可选）
 // app.disableHardwareAcceleration()
@@ -47,6 +49,15 @@ const agentService = new AgentService(aiService, ptyService, hostProfileService,
 const historyService = new HistoryService()
 const documentParserService = getDocumentParserService()
 const sftpService = new SftpService()
+
+// 知识库服务（延迟初始化，需要其他服务已就绪）
+let knowledgeService: KnowledgeService | null = null
+function getKnowledge(): KnowledgeService {
+  if (!knowledgeService) {
+    knowledgeService = getKnowledgeService(configService, aiService, mcpService)
+  }
+  return knowledgeService
+}
 
 // MCP 服务事件转发
 mcpService.on('connected', (serverId: string) => {
@@ -1186,5 +1197,203 @@ ipcMain.handle('mcp:connectEnabledServers', async () => {
 // 断开所有 MCP 连接
 ipcMain.handle('mcp:disconnectAll', async () => {
   await mcpService.disconnectAll()
+})
+
+// ==================== 知识库相关 ====================
+
+// 初始化知识库服务
+ipcMain.handle('knowledge:initialize', async () => {
+  try {
+    const service = getKnowledge()
+    await service.initialize()
+    return { success: true }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '初始化失败' 
+    }
+  }
+})
+
+// 获取知识库设置
+ipcMain.handle('knowledge:getSettings', async () => {
+  return getKnowledge().getSettings()
+})
+
+// 更新知识库设置
+ipcMain.handle('knowledge:updateSettings', async (_event, settings: Partial<KnowledgeSettings>) => {
+  try {
+    await getKnowledge().updateSettings(settings)
+    return { success: true }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '更新设置失败' 
+    }
+  }
+})
+
+// 添加文档到知识库
+ipcMain.handle('knowledge:addDocument', async (_event, doc: ParsedDocument, options?: AddDocumentOptions) => {
+  try {
+    const docId = await getKnowledge().addDocument(doc, options)
+    return { success: true, docId }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '添加文档失败' 
+    }
+  }
+})
+
+// 删除文档
+ipcMain.handle('knowledge:removeDocument', async (_event, docId: string) => {
+  try {
+    const result = await getKnowledge().removeDocument(docId)
+    return { success: result }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '删除文档失败' 
+    }
+  }
+})
+
+// 搜索知识库
+ipcMain.handle('knowledge:search', async (_event, query: string, options?: Partial<SearchOptions>) => {
+  try {
+    const results = await getKnowledge().search(query, options)
+    return { success: true, results }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '搜索失败',
+      results: []
+    }
+  }
+})
+
+// 获取主机相关知识
+ipcMain.handle('knowledge:getHostKnowledge', async (_event, hostId: string) => {
+  try {
+    const results = await getKnowledge().getHostKnowledge(hostId)
+    return { success: true, results }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '获取知识失败',
+      results: []
+    }
+  }
+})
+
+// 构建 AI 上下文
+ipcMain.handle('knowledge:buildContext', async (_event, query: string, options?: { hostId?: string; maxTokens?: number }) => {
+  try {
+    const context = await getKnowledge().buildContext(query, options)
+    return { success: true, context }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '构建上下文失败',
+      context: ''
+    }
+  }
+})
+
+// 获取所有文档
+ipcMain.handle('knowledge:getDocuments', async () => {
+  return getKnowledge().getDocuments()
+})
+
+// 获取指定文档
+ipcMain.handle('knowledge:getDocument', async (_event, docId: string) => {
+  return getKnowledge().getDocument(docId)
+})
+
+// 获取统计信息
+ipcMain.handle('knowledge:getStats', async () => {
+  try {
+    const stats = await getKnowledge().getStats()
+    return { success: true, stats }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '获取统计失败' 
+    }
+  }
+})
+
+// 清空知识库
+ipcMain.handle('knowledge:clear', async () => {
+  try {
+    await getKnowledge().clear()
+    return { success: true }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '清空失败' 
+    }
+  }
+})
+
+// 检查服务状态
+ipcMain.handle('knowledge:isReady', async () => {
+  try {
+    return getKnowledge().isReady()
+  } catch {
+    return false
+  }
+})
+
+// 检查服务是否启用
+ipcMain.handle('knowledge:isEnabled', async () => {
+  try {
+    return getKnowledge().isEnabled()
+  } catch {
+    return false
+  }
+})
+
+// ==================== 模型管理相关 ====================
+
+// 获取所有模型
+ipcMain.handle('knowledge:getModels', async () => {
+  return getKnowledge().getModels()
+})
+
+// 获取模型状态
+ipcMain.handle('knowledge:getModelStatuses', async () => {
+  return getKnowledge().getModelStatuses()
+})
+
+// 下载模型
+ipcMain.handle('knowledge:downloadModel', async (event, modelId: ModelTier) => {
+  try {
+    await getKnowledge().downloadModel(modelId, (percent, downloaded, total) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('knowledge:downloadProgress', { modelId, percent, downloaded, total })
+      }
+    })
+    return { success: true }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '下载失败' 
+    }
+  }
+})
+
+// 切换模型
+ipcMain.handle('knowledge:switchModel', async (_event, modelId: ModelTier) => {
+  try {
+    await getKnowledge().switchModel(modelId)
+    return { success: true }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '切换模型失败' 
+    }
+  }
 })
 

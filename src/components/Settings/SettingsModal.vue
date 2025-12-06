@@ -5,6 +5,7 @@ import ThemeSettings from './ThemeSettings.vue'
 import TerminalSettings from './TerminalSettings.vue'
 import DataSettings from './DataSettings.vue'
 import McpSettings from './McpSettings.vue'
+import KnowledgeSettings from './KnowledgeSettings.vue'
 
 // Props
 const props = defineProps<{
@@ -15,12 +16,12 @@ const emit = defineEmits<{
   close: []
 }>()
 
-type SettingsTab = 'ai' | 'mcp' | 'theme' | 'terminal' | 'data' | 'about'
+type SettingsTab = 'ai' | 'mcp' | 'knowledge' | 'theme' | 'terminal' | 'data' | 'about'
 const activeTab = ref<SettingsTab>('ai')
 
 // 初始化时设置初始 tab
 onMounted(() => {
-  if (props.initialTab && ['ai', 'mcp', 'theme', 'terminal', 'data', 'about'].includes(props.initialTab)) {
+  if (props.initialTab && ['ai', 'mcp', 'knowledge', 'theme', 'terminal', 'data', 'about'].includes(props.initialTab)) {
     activeTab.value = props.initialTab as SettingsTab
   }
 })
@@ -28,6 +29,7 @@ onMounted(() => {
 const tabs = [
   { id: 'ai' as const, label: 'AI 配置', icon: '🤖' },
   { id: 'mcp' as const, label: 'MCP 服务器', icon: '🔌' },
+  { id: 'knowledge' as const, label: '知识库', icon: '📚' },
   { id: 'theme' as const, label: '主题配色', icon: '🎨' },
   { id: 'terminal' as const, label: '终端设置', icon: '⚙️' },
   { id: 'data' as const, label: '数据管理', icon: '💾' },
@@ -63,6 +65,7 @@ const tabs = [
         <div class="settings-content">
           <AiSettings v-if="activeTab === 'ai'" />
           <McpSettings v-else-if="activeTab === 'mcp'" />
+          <KnowledgeSettings v-else-if="activeTab === 'knowledge'" />
           <ThemeSettings v-else-if="activeTab === 'theme'" />
           <TerminalSettings v-else-if="activeTab === 'terminal'" />
           <DataSettings v-else-if="activeTab === 'data'" />
@@ -104,10 +107,10 @@ const tabs = [
 }
 
 .settings-modal {
-  width: 700px;
+  width: 750px;
   max-width: 90vw;
-  height: 500px;
-  max-height: 80vh;
+  height: 560px;
+  max-height: 85vh;
   background: var(--bg-secondary);
   border-radius: 12px;
   box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);

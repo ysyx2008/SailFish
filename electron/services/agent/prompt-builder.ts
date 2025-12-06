@@ -3,6 +3,7 @@
  */
 import type { AgentContext, HostProfileServiceInterface } from './types'
 import type { AgentMbtiType } from '../config.service'
+import type { KnowledgeService } from '../knowledge'
 
 /**
  * MBTI 风格描述映射
@@ -214,7 +215,8 @@ java 进程占用 280% CPU，这是主要问题。我来确认是哪个 Java 应
 export function buildSystemPrompt(
   context: AgentContext,
   hostProfileService?: HostProfileServiceInterface,
-  mbtiType?: AgentMbtiType
+  mbtiType?: AgentMbtiType,
+  knowledgeContext?: string
 ): string {
   // MBTI 风格提示
   const mbtiStyle = getMbtiStylePrompt(mbtiType ?? null)
@@ -259,6 +261,15 @@ export function buildSystemPrompt(
     documentSection = `\n\n${context.documentContext}`
     documentRule = `
 8. **关于用户上传的文档**：如果用户上传了文档，文档内容已经包含在本对话的上下文末尾（标记为"用户上传的参考文档"），请直接阅读和引用这些内容，**不要使用 read_file 工具去读取上传的文档**`
+  }
+
+  // 知识库上下文
+  let knowledgeSection = ''
+  let knowledgeRule = ''
+  if (knowledgeContext) {
+    knowledgeSection = `\n\n${knowledgeContext}`
+    knowledgeRule = `
+9. **关于知识库内容**：如果有知识库相关内容，它们来自用户保存的参考文档，请在回答时参考这些信息`
   }
 
   // 根据操作系统类型选择示例
@@ -320,7 +331,7 @@ ${buildPlanningGuidance()}
    - 当前操作系统：**${osType}**
    - 当前 Shell：**${shellType}**
    - 你必须使用与此系统匹配的命令，禁止使用其他系统的命令
-7. **超时处理**：命令超时不一定是卡住，可能只是执行时间长。先用 get_terminal_context 查看输出进度，确认卡住后再用 Ctrl+C${documentRule}
+7. **超时处理**：命令超时不一定是卡住，可能只是执行时间长。先用 get_terminal_context 查看输出进度，确认卡住后再用 Ctrl+C${documentRule}${knowledgeRule}
 8. **【重要】严格聚焦，禁止发散**：
    - 只做用户明确要求的事情，禁止自作主张扩展任务
    - **做不到就说做不到**：如果尝试 2-3 次仍无法完成，直接告诉用户"无法完成"及原因，不要自己想替代方案
@@ -346,6 +357,7 @@ ${simpleTaskExample}
 
 ${buildComplexTaskExamples(isWindows)}
 ${documentSection}
+${knowledgeSection}
 
 开始工作时，请遵循 ReAct 框架，展示你的思考过程！`
 }
