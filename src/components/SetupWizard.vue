@@ -163,10 +163,10 @@ const manualImport = async () => {
     if (result.canceled) return
 
     importing.value = true
-    const importResult = await window.electronAPI.xshell.importDirectory(result.dirPath)
+    const importResponse = await window.electronAPI.xshell.importDirectory(result.dirPath)
     
-    if (importResult.success && importResult.sessions.length > 0) {
-      const sessions = importResult.sessions.map(session => ({
+    if (importResponse.success && importResponse.sessions.length > 0) {
+      const sessions = importResponse.sessions.map(session => ({
         id: uuidv4(),
         name: session.name,
         host: session.host,
@@ -185,13 +185,13 @@ const manualImport = async () => {
       importResult.value = {
         success: true,
         sessions: sessions.length,
-        errors: importResult.errors || []
+        errors: importResponse.errors || []
       }
     } else {
       importResult.value = {
         success: false,
         sessions: 0,
-        errors: importResult.errors || ['导入失败']
+        errors: importResponse.errors || ['导入失败']
       }
     }
   } catch (error) {
