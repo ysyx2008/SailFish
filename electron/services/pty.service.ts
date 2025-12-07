@@ -552,6 +552,77 @@ export class PtyService {
   }
 
   /**
+   * 通过系统调用获取终端的当前工作目录（无需在终端中执行命令）
+   */
+  async getCwd(id: string): Promise<string | null> {
+    const instance = this.instances.get(id)
+    if (!instance) return null
+
+    const shellPid = instance.pty.pid
+    if (!shellPid) return null
+
+    try {
+      if (process.platform === 'darwin') {
+        // macOS: 使用 lsof 获取 cwd
+        const { stdout } = await execAsync(
+          `lsof -p ${shellPid} -Fn | grep '^n' | grep 'cwd' -A1 | tail -1 | sed 's/^n//'`,
+          { timeout: 2000 }
+        )
+        const cwd = stdout.trim()
+        if (cwd && cwd.startsWith('/')) {
+          return cwd
+        }
+        // 备用方案：使用 pwdx（如果安装了 proctools）
+        try {
+          const { stdout: pwdxOut } = await execAsync(
+            `pwdx ${shellPid} 2>/dev/null | awk '{print $2}'`,
+            { timeout: 1000 }
+          )
+          const pwdxCwd = pwdxOut.trim()
+          if (pwdxCwd && pwdxCwd.startsWith('/')) {
+            return pwdxCwd
+          }
+        } catch {
+          // pwdx 不可用，忽略
+        }
+      } else if (process.platform === 'linux') {
+        // Linux: 读取 /proc/pid/cwd 符号链接
+        const { stdout } = await execAsync(
+          `readlink /proc/${shellPid}/cwd`,
+          { timeout: 1000 }
+        )
+        const cwd = stdout.trim()
+        if (cwd && cwd.startsWith('/')) {
+          return cwd
+        }
+      } else if (process.platform === 'win32') {
+        // Windows: 获取进程 CWD 比较困难
+        // 尝试使用 PowerShell 和 WMI 查询，但成功率不高
+        // 主要依赖 handleInput 中的命令预测方式
+        try {
+          // 方法1：使用 WMI 查询进程的 ExecutablePath，然后获取其目录
+          // 这不是真正的 CWD，但对于某些 shell 可能有效
+          const { stdout } = await execAsync(
+            `powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter 'ProcessId=${shellPid}').ExecutablePath | Split-Path -Parent"`,
+            { timeout: 3000 }
+          )
+          // 这个方法通常返回的是 shell 可执行文件的目录，不是工作目录，所以不使用
+          // 仅作为占位符，实际 Windows 上主要依赖命令预测
+        } catch {
+          // 忽略错误
+        }
+        // Windows 上获取其他进程的 CWD 需要 Native API (NtQueryInformationProcess)
+        // 这需要额外的原生模块，目前返回 null，依赖命令预测方式
+        return null
+      }
+      return null
+    } catch (error) {
+      // 静默失败，返回 null 让调用方决定是否回退
+      return null
+    }
+  }
+
+  /**
    * 获取终端状态（判断是否空闲/有命令正在执行）
    */
   async getTerminalStatus(id: string): Promise<TerminalStatus> {

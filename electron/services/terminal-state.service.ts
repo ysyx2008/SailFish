@@ -227,13 +227,23 @@ export class TerminalStateService {
       
       // 延迟检查 CWD（等待命令执行完成）
       setTimeout(() => {
-        this.refreshCwd(id, 'command')
+        this.refreshCwd(id, 'command').then(newCwd => {
+          // 如果系统调用获取 CWD 失败（返回原值），尝试通过路径解析预测新目录
+          // 这对于 Windows 系统特别有用，因为 Windows 上无法通过系统调用获取进程 CWD
+          if (newCwd === state.cwd && analysis.targetPath !== undefined) {
+            const predictedCwd = this.resolveCwdPath(state.cwd, analysis.targetPath)
+            if (predictedCwd && predictedCwd !== state.cwd) {
+              // 使用预测的路径更新 CWD
+              this.updateCwd(id, predictedCwd, 'command')
+            }
+          }
+        })
       }, 500)
     }
   }
 
   /**
-   * 刷新 CWD（通过执行 pwd 命令）
+   * 刷新 CWD（优先通过系统调用，避免在终端中执行命令）
    */
   async refreshCwd(id: string, trigger: 'command' | 'pwd_check' | 'initial' = 'pwd_check'): Promise<string> {
     const state = this.states.get(id)
@@ -246,21 +256,27 @@ export class TerminalStateService {
     }
 
     try {
-      let newCwd: string
+      let newCwd: string | null = null
 
       if (state.type === 'local' && this.ptyService) {
-        // 本地终端：执行 pwd 命令
-        const result = await this.ptyService.executeInTerminal(id, 'pwd', 3000)
-        newCwd = this.parsePwdOutput(result.output)
-      } else if (state.type === 'ssh' && this.sshService) {
-        // SSH 终端：通过 SSH 服务执行 pwd
-        const result = await this.sshService.executeCommand(id, 'pwd', 3000)
-        newCwd = this.parsePwdOutput(result.output)
-      } else {
+        // 本地终端：优先使用系统调用获取 CWD（无需在终端中执行命令）
+        newCwd = await this.ptyService.getCwd(id)
+        
+        // 如果系统调用失败，回退到执行 pwd 命令（仅用于初始化场景）
+        if (!newCwd && trigger === 'initial') {
+          const result = await this.ptyService.executeInTerminal(id, 'pwd', 3000)
+          newCwd = this.parsePwdOutput(result.output)
+        }
+      }
+      // SSH 终端：不通过执行命令获取 CWD，依赖 handleInput 的命令预测
+      // 因为在远程终端执行 pwd 会显示在用户界面上
+
+      if (!newCwd) {
+        state.cwdUpdatedAt = now
         return state.cwd
       }
 
-      if (newCwd && newCwd !== state.cwd) {
+      if (newCwd !== state.cwd) {
         const oldCwd = state.cwd
         state.cwd = newCwd
         state.cwdUpdatedAt = now
@@ -531,46 +547,80 @@ export class TerminalStateService {
    * 用于预测 cd 命令后的新路径
    */
   resolveCwdPath(currentCwd: string, targetPath: string): string {
+    // 检测是否是 Windows 风格路径
+    const isWindows = process.platform === 'win32' || /^[A-Z]:[/\\]/i.test(currentCwd)
+    const sep = isWindows ? '\\' : '/'
+    
+    // 规范化路径分隔符（Windows 路径可能混用 / 和 \）
+    const normalizePath = (p: string): string => {
+      if (isWindows) {
+        return p.replace(/\//g, '\\')
+      }
+      return p
+    }
+    
     if (!targetPath) {
       // cd 不带参数，返回 home
+      if (isWindows) {
+        return process.env.USERPROFILE || process.env.HOME || 'C:\\'
+      }
       return process.env.HOME || '~'
     }
 
-    // 绝对路径
-    if (targetPath.startsWith('/') || /^[A-Z]:\\/.test(targetPath)) {
+    // 规范化目标路径
+    targetPath = normalizePath(targetPath)
+
+    // Windows 绝对路径
+    if (/^[A-Z]:[/\\]/i.test(targetPath)) {
+      return targetPath
+    }
+    
+    // Unix 绝对路径
+    if (targetPath.startsWith('/')) {
       return targetPath
     }
 
-    // 相对路径
-    if (targetPath === '~' || targetPath.startsWith('~/')) {
-      const home = process.env.HOME || ''
-      return targetPath === '~' ? home : targetPath.replace('~', home)
-    }
-
-    if (targetPath === '..') {
-      // 父目录
-      const parts = currentCwd.split('/').filter(p => p)
-      parts.pop()
-      return '/' + parts.join('/')
+    // Home 目录展开
+    if (targetPath === '~' || targetPath.startsWith('~' + sep) || targetPath.startsWith('~/')) {
+      const home = isWindows 
+        ? (process.env.USERPROFILE || process.env.HOME || '') 
+        : (process.env.HOME || '')
+      if (targetPath === '~') return home
+      return home + sep + targetPath.slice(2)
     }
 
     if (targetPath === '.') {
       return currentCwd
     }
 
-    // 处理相对路径中的 .. 和 .
-    const baseParts = currentCwd.split('/').filter(p => p)
-    const targetParts = targetPath.split('/').filter(p => p)
+    // 分割路径
+    const splitPath = (p: string): string[] => {
+      return p.split(/[/\\]/).filter(part => part && part !== '.')
+    }
 
+    const baseParts = splitPath(currentCwd)
+    const targetParts = splitPath(targetPath)
+    
+    // 保留 Windows 盘符
+    let prefix = ''
+    if (isWindows && baseParts.length > 0 && /^[A-Z]:$/i.test(baseParts[0])) {
+      prefix = baseParts.shift() + sep
+    } else if (!isWindows) {
+      prefix = '/'
+    }
+
+    // 处理 .. 和普通路径
     for (const part of targetParts) {
       if (part === '..') {
-        baseParts.pop()
-      } else if (part !== '.') {
+        if (baseParts.length > 0) {
+          baseParts.pop()
+        }
+      } else {
         baseParts.push(part)
       }
     }
 
-    return '/' + baseParts.join('/')
+    return prefix + baseParts.join(sep)
   }
 }
 
