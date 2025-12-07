@@ -484,9 +484,9 @@ onMounted(async () => {
               </div>
               <div v-else class="no-sessions">
                 <span class="no-sessions-icon">📭</span>
-                <p>未找到 Xshell 会话目录</p>
-                <p class="hint">您可以手动选择目录导入，或稍后在设置中添加主机</p>
-                <button class="btn btn-primary" @click="manualImport" :disabled="importing">
+                <p class="no-sessions-title">未找到 Xshell 会话目录</p>
+                <p class="no-sessions-hint">您可以手动选择目录导入，或稍后在设置中添加主机</p>
+                <button class="btn btn-primary no-sessions-btn" @click="manualImport" :disabled="importing">
                   {{ importing ? '导入中...' : '手动选择目录' }}
                 </button>
                 <div v-if="importResult && !importResult.success" class="error-message">
@@ -525,7 +525,7 @@ onMounted(async () => {
                     <span class="slider"></span>
                   </label>
                 </label>
-                <p class="switch-hint">开启后可在设置中上传和管理文档</p>
+                <p class="switch-hint">开启后可将对话中上传的文档保存供Agent使用</p>
               </div>
             </div>
           </div>
@@ -1069,14 +1069,41 @@ onMounted(async () => {
 
 .no-sessions {
   text-align: center;
-  padding: 40px;
+  padding: 60px 40px;
   color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .no-sessions-icon {
-  font-size: 48px;
+  font-size: 64px;
   display: block;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
+  opacity: 0.6;
+  filter: grayscale(0.3);
+}
+
+.no-sessions-title {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin: 0 0 12px;
+}
+
+.no-sessions-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 32px;
+  line-height: 1.6;
+  max-width: 400px;
+}
+
+.no-sessions-btn {
+  min-width: 160px;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .import-result {

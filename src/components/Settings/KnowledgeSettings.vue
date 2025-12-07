@@ -36,7 +36,7 @@ const settings = ref<KnowledgeSettings>({
   enabled: false,
   embeddingMode: 'local',
   localModel: 'lite',
-  autoSaveUploads: false,
+  autoSaveUploads: true,
   maxChunkSize: 512,
   chunkStrategy: 'paragraph',
   searchTopK: 10,

@@ -138,7 +138,7 @@ export const DEFAULT_KNOWLEDGE_SETTINGS: KnowledgeSettings = {
   enabled: false,
   embeddingMode: 'local',
   localModel: 'auto',
-  autoSaveUploads: false,
+  autoSaveUploads: true,
   maxChunkSize: 512,
   chunkStrategy: 'paragraph',
   searchTopK: 10,
