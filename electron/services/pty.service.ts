@@ -144,11 +144,22 @@ export class PtyService {
 
   /**
    * 注册数据回调
+   * @returns 取消监听的函数
    */
-  onData(id: string, callback: (data: string) => void): void {
+  onData(id: string, callback: (data: string) => void): () => void {
     const instance = this.instances.get(id)
     if (instance) {
       instance.dataCallbacks.push(callback)
+    }
+    // 返回取消监听的函数
+    return () => {
+      const inst = this.instances.get(id)
+      if (inst) {
+        const index = inst.dataCallbacks.indexOf(callback)
+        if (index !== -1) {
+          inst.dataCallbacks.splice(index, 1)
+        }
+      }
     }
   }
 

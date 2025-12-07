@@ -167,7 +167,7 @@ export async function executeTool(
       return executeCommand(ptyId, args, toolCall.id, config, executor)
 
     case 'get_terminal_context':
-      return getTerminalContext(args, terminalOutput, executor)
+      return getTerminalContext(ptyId, args, terminalOutput, executor)
 
     case 'check_terminal_status':
       return checkTerminalStatus(ptyId, executor)
@@ -241,7 +241,7 @@ async function executeMcpTool(
     const result = await executor.mcpService.callTool(serverId, toolName, args)
 
     if (result.success) {
-      // UI 显示截断到 5000 字符（保留最新内容），但返回给 agent 的 output 是完整的
+      // UI 显示截断到 500 字符（保留最新内容），但返回给 agent 的 output 是完整的
       const displayContent = result.content || ''
       const truncatedDisplay = displayContent.length > 500
         ? truncateFromEnd(displayContent, 500)
@@ -406,6 +406,18 @@ async function executeCommand(
   }
 
   // 正常执行命令（带重试机制）
+  // 使用 terminal-state.service 追踪命令执行，以便 get_terminal_context 可以获取实时输出
+  const terminalStateService = getTerminalStateService()
+  
+  // 开始追踪命令执行
+  terminalStateService.startCommandExecution(ptyId, command)
+  
+  // 注册输出监听器，将输出实时同步到 terminal-state.service
+  const outputHandler = (data: string) => {
+    terminalStateService.appendCommandOutput(ptyId, data)
+  }
+  const unsubscribe = executor.ptyService.onData(ptyId, outputHandler)
+  
   try {
     const result = await withRetry(
       () => executor.ptyService.executeInTerminal(ptyId, command, config.commandTimeout),
@@ -425,6 +437,9 @@ async function executeCommand(
       const errorCategory = categorizeError('timeout')
       const suggestion = getErrorRecoverySuggestion('timeout', errorCategory)
       
+      // 超时：不移除监听器，不完成追踪（命令可能还在运行）
+      // 这样后续调用 get_terminal_context 仍能获取到新输出
+      
       executor.addStep({
         type: 'tool_result',
         content: `⏱️ 命令执行超时 (${config.commandTimeout / 1000}秒)`,
@@ -438,6 +453,10 @@ async function executeCommand(
       }
     }
 
+    // 命令正常完成，移除监听器并完成追踪
+    unsubscribe()
+    terminalStateService.completeCommandExecution(ptyId, 0, 'completed')
+
     executor.addStep({
       type: 'tool_result',
       content: `命令执行完成 (耗时: ${result.duration}ms)`,
@@ -447,6 +466,10 @@ async function executeCommand(
 
     return { success: true, output: result.output }
   } catch (error) {
+    // 命令执行出错，移除监听器并完成追踪
+    unsubscribe()
+    terminalStateService.completeCommandExecution(ptyId, 1, 'failed')
+    
     const errorMsg = error instanceof Error ? error.message : '命令执行失败'
     const errorCategory = categorizeError(errorMsg)
     const suggestion = getErrorRecoverySuggestion(errorMsg, errorCategory)
@@ -596,8 +619,13 @@ function truncateFromEnd(text: string, maxLength: number): string {
 /**
  * 获取终端上下文
  * 支持多种读取方式：按行数、按字符数、从开头读取
+ * 
+ * 数据来源优先级：
+ * 1. 当前正在执行的命令输出（从 terminal-state.service 获取，实时）
+ * 2. 传入的 terminalOutput（Agent 启动时的快照）
  */
 function getTerminalContext(
+  ptyId: string,
   args: Record<string, unknown>,
   terminalOutput: string[],
   executor: ToolExecutorConfig
@@ -606,24 +634,43 @@ function getTerminalContext(
   const maxChars = args.max_chars as number | undefined
   const fromStartLines = args.from_start_lines as number | undefined
   
+  // 获取输出数据
+  let allOutput: string[] = []
+  
+  try {
+    const terminalStateService = getTerminalStateService()
+    const currentExecution = terminalStateService.getCurrentExecution(ptyId)
+    
+    if (currentExecution?.output && currentExecution.output.length > 0) {
+      // 有当前执行的命令输出，使用它（实时数据）
+      allOutput = currentExecution.output.split('\n')
+    } else {
+      // 没有当前执行，使用传入的 terminalOutput
+      allOutput = terminalOutput
+    }
+  } catch (e) {
+    // 如果获取失败，使用传入的 terminalOutput
+    allOutput = terminalOutput
+  }
+  
   let output = ''
   let readInfo = ''
   
   // 从开头读取
   if (fromStartLines !== undefined) {
     const startLines = Math.max(1, fromStartLines)
-    const selectedLines = terminalOutput.slice(0, startLines)
+    const selectedLines = allOutput.slice(0, startLines)
     output = selectedLines.join('\n')
     readInfo = `从开头读取 ${startLines} 行`
   }
   // 按字符数读取（从末尾）
   else if (maxChars !== undefined) {
-    const maxCharsValue = Math.max(100, Math.min(maxChars, 50000)) // 限制在 100-50000 之间
+    const maxCharsValue = Math.max(100, Math.min(maxChars, 10000)) // 限制在 100-50000 之间
     // 从后向前累积行，直到达到字符数限制
     let charCount = 0
     const selectedLines: string[] = []
-    for (let i = terminalOutput.length - 1; i >= 0; i--) {
-      const line = terminalOutput[i]
+    for (let i = allOutput.length - 1; i >= 0; i--) {
+      const line = allOutput[i]
       const lineWithNewline = (selectedLines.length > 0 ? '\n' : '') + line
       if (charCount + lineWithNewline.length > maxCharsValue) {
         break
@@ -637,25 +684,28 @@ function getTerminalContext(
   // 按行数读取（从末尾，默认）
   else {
     const linesValue = lines || 50
-    const selectedLines = terminalOutput.slice(-linesValue)
+    const selectedLines = allOutput.slice(-linesValue)
     output = selectedLines.join('\n')
     readInfo = `从末尾读取 ${selectedLines.length} 行`
   }
   
-  // UI 显示截断到 5000 字符（保留最新内容），避免超出上下文限制
+  // 清理 ANSI 转义序列
+  const cleanOutput = stripAnsi(output)
+  
+  // UI 显示截断到 500 字符（保留最新内容），避免超出上下文限制
   // 注意：返回给 agent 的 output 字段是完整的，但建议使用 max_chars 参数控制大小
-  const truncatedForDisplay = truncateFromEnd(output, 5000)
+  const truncatedForDisplay = truncateFromEnd(cleanOutput, 500)
   
   executor.addStep({
     type: 'tool_result',
-    content: `获取终端输出: ${readInfo} (${output.length} 字符)`,
+    content: `获取终端输出: ${readInfo} (${cleanOutput.length} 字符)`,
     toolName: 'get_terminal_context',
     toolResult: truncatedForDisplay
   })
 
   // 返回完整输出给 agent
   // 注意：如果输出很大，建议 agent 使用 max_chars 参数限制大小
-  return { success: true, output: output || '(终端输出为空)' }
+  return { success: true, output: cleanOutput || '(终端输出为空)' }
 }
 
 /**
@@ -1285,9 +1335,9 @@ async function searchKnowledge(
 
     const output = `找到 ${results.length} 条相关内容：\n\n${formattedResults}`
     
-    // UI 显示截断到 5000 字符（保留最新内容）
-    const displayOutput = output.length > 5000
-      ? truncateFromEnd(output, 5000)
+    // UI 显示截断到 500 字符（保留最新内容）
+    const displayOutput = output.length > 500
+      ? truncateFromEnd(output, 500)
       : output
 
     executor.addStep({
