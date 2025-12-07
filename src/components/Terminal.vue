@@ -37,6 +37,26 @@ let dprMediaQuery: MediaQueryList | null = null
 let dprChangeHandler: (() => void) | null = null
 // 用户输入缓冲区（用于 CWD 追踪）
 let inputBuffer = ''
+// 屏幕分析防抖定时器
+let screenAnalysisTimeout: ReturnType<typeof setTimeout> | null = null
+const SCREEN_ANALYSIS_DEBOUNCE = 100 // 100ms 防抖
+
+// 推送屏幕分析结果到后端
+const pushScreenAnalysis = () => {
+  if (screenAnalysisTimeout) {
+    clearTimeout(screenAnalysisTimeout)
+  }
+  screenAnalysisTimeout = setTimeout(() => {
+    if (screenService && !isDisposed) {
+      try {
+        const awarenessState = screenService.getAwarenessState()
+        window.electronAPI.terminalAwareness.updateScreenAnalysis(props.ptyId, awarenessState)
+      } catch (e) {
+        // 忽略分析错误
+      }
+    }
+  }, SCREEN_ANALYSIS_DEBOUNCE)
+}
 
 // 右键菜单状态
 const contextMenu = ref({
@@ -184,6 +204,8 @@ onMounted(async () => {
           terminal.write(data)
           // 捕获输出用于 AI 分析
           terminalStore.appendOutput(props.tabId, data)
+          // 推送屏幕分析结果到后端（用于终端状态感知）
+          pushScreenAnalysis()
         } catch (e) {
           // 忽略写入错误
         }
@@ -196,6 +218,8 @@ onMounted(async () => {
           terminal.write(data)
           // 捕获输出用于 AI 分析
           terminalStore.appendOutput(props.tabId, data)
+          // 推送屏幕分析结果到后端（用于终端状态感知）
+          pushScreenAnalysis()
         } catch (e) {
           // 忽略写入错误
         }
@@ -254,6 +278,10 @@ onUnmounted(() => {
   // 先标记为已销毁，防止后续回调执行
   isDisposed = true
   
+  if (screenAnalysisTimeout) {
+    clearTimeout(screenAnalysisTimeout)
+    screenAnalysisTimeout = null
+  }
   if (resizeTimeout) {
     clearTimeout(resizeTimeout)
     resizeTimeout = null
