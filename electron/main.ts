@@ -15,6 +15,7 @@ import { McpService } from './services/mcp.service'
 import { getKnowledgeService, KnowledgeService } from './services/knowledge'
 import type { KnowledgeSettings, SearchOptions, AddDocumentOptions, ModelTier } from './services/knowledge/types'
 import { initTerminalStateService, getTerminalStateService, type TerminalState, type CwdChangeEvent, type CommandExecution, type CommandExecutionEvent } from './services/terminal-state.service'
+import { initTerminalAwarenessService, getTerminalAwarenessService, type TerminalAwareness, type ScreenAnalysisResult } from './services/terminal-awareness'
 
 // 禁用 GPU 加速可能导致的问题（可选）
 // app.disableHardwareAcceleration()
@@ -53,6 +54,9 @@ const sftpService = new SftpService()
 
 // 终端状态服务（CWD 追踪、命令状态等）
 const terminalStateService = initTerminalStateService(ptyService, sshService)
+
+// 终端感知服务（整合屏幕分析和进程监控）
+const terminalAwarenessService = initTerminalAwarenessService(ptyService, terminalStateService)
 
 // 监听 CWD 变化，转发到前端
 terminalStateService.onCwdChange((event: CwdChangeEvent) => {
@@ -328,6 +332,38 @@ ipcMain.handle('terminalState:getLastExecution', async (_event, id: string): Pro
 // 清除命令执行历史
 ipcMain.handle('terminalState:clearExecutionHistory', async (_event, id: string) => {
   terminalStateService.clearExecutionHistory(id)
+})
+
+// ==================== 终端感知服务 ====================
+
+// 获取终端感知状态（综合分析）
+ipcMain.handle('terminalAwareness:getAwareness', async (_event, ptyId: string): Promise<TerminalAwareness> => {
+  return terminalAwarenessService.getAwareness(ptyId)
+})
+
+// 更新前端屏幕分析结果（前端 -> 后端）
+ipcMain.handle('terminalAwareness:updateScreenAnalysis', async (_event, ptyId: string, analysis: ScreenAnalysisResult) => {
+  terminalAwarenessService.updateScreenAnalysis(ptyId, analysis)
+})
+
+// 追踪输出（用于输出速率计算）
+ipcMain.handle('terminalAwareness:trackOutput', async (_event, ptyId: string, lineCount: number) => {
+  terminalAwarenessService.trackOutput(ptyId, lineCount)
+})
+
+// 检查是否可以执行命令
+ipcMain.handle('terminalAwareness:canExecute', async (_event, ptyId: string): Promise<boolean> => {
+  return terminalAwarenessService.canExecute(ptyId)
+})
+
+// 获取执行命令前的建议
+ipcMain.handle('terminalAwareness:getPreExecutionAdvice', async (_event, ptyId: string, command: string) => {
+  return terminalAwarenessService.getPreExecutionAdvice(ptyId, command)
+})
+
+// 清理终端感知数据
+ipcMain.handle('terminalAwareness:clear', async (_event, ptyId: string) => {
+  terminalAwarenessService.clearTerminal(ptyId)
 })
 
 // AI 相关

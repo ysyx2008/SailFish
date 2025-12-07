@@ -32,7 +32,17 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'check_terminal_status',
-        description: '检查终端当前状态：是否空闲（等待输入）还是有命令正在执行。在执行命令前或命令超时后调用，可以判断终端是否卡住。',
+        description: `检查终端的完整状态，返回丰富的感知信息：
+1. **运行状态**: 空闲/忙碌/等待输入/可能卡死
+2. **输入等待**: 检测是否在等待密码、确认(y/n)、选择、或其他输入
+3. **进程信息**: 前台进程、运行时长、输出速率
+4. **环境信息**: 当前目录、用户、激活的虚拟环境
+5. **输出模式**: 是否有进度条、测试输出、日志流等
+
+在以下情况使用此工具：
+- 执行命令前，确认终端可以接受新命令
+- 命令超时后，判断是卡死还是正常运行
+- 需要了解终端当前在做什么`,
         parameters: {
           type: 'object',
           properties: {}

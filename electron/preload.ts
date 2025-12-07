@@ -422,6 +422,126 @@ const electronAPI = {
     }
   },
 
+  // 终端感知服务
+  terminalAwareness: {
+    // 获取终端感知状态（综合分析）
+    getAwareness: (ptyId: string) =>
+      ipcRenderer.invoke('terminalAwareness:getAwareness', ptyId) as Promise<{
+        status: 'idle' | 'busy' | 'waiting_input' | 'stuck'
+        input: {
+          isWaiting: boolean
+          type: 'password' | 'confirmation' | 'selection' | 'pager' | 'prompt' | 'editor' | 'custom_input' | 'none'
+          prompt?: string
+          options?: string[]
+          suggestedResponse?: string
+          confidence: number
+        }
+        process: {
+          status: 'idle' | 'running_interactive' | 'running_streaming' | 'running_silent' | 'possibly_stuck' | 'waiting_input'
+          foregroundProcess?: string
+          pid?: number
+          runningTime?: number
+          lastOutputTime?: number
+          outputRate?: number
+          isKnownLongRunning?: boolean
+          suggestion?: string
+        }
+        context: {
+          user?: string
+          hostname?: string
+          isRoot: boolean
+          cwdFromPrompt?: string
+          activeEnvs: string[]
+          sshDepth: number
+          promptType: 'bash' | 'zsh' | 'fish' | 'powershell' | 'cmd' | 'unknown'
+        }
+        output: {
+          type: 'progress' | 'compilation' | 'test' | 'log_stream' | 'error' | 'table' | 'normal'
+          confidence: number
+          details?: {
+            progress?: number
+            testsPassed?: number
+            testsFailed?: number
+            errorCount?: number
+            eta?: string
+          }
+        }
+        terminalState?: {
+          cwd: string
+          lastCommand?: string
+          lastExitCode?: number
+          isIdle: boolean
+        }
+        currentExecution?: {
+          id: string
+          terminalId: string
+          command: string
+          startTime: number
+          cwdBefore: string
+          status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+          output?: string
+        }
+        suggestion: string
+        canExecuteCommand: boolean
+        needsUserInput: boolean
+        timestamp: number
+      }>,
+
+    // 更新前端屏幕分析结果（前端 -> 后端）
+    updateScreenAnalysis: (ptyId: string, analysis: {
+      input: {
+        isWaiting: boolean
+        type: 'password' | 'confirmation' | 'selection' | 'pager' | 'prompt' | 'editor' | 'custom_input' | 'none'
+        prompt?: string
+        options?: string[]
+        suggestedResponse?: string
+        confidence: number
+      }
+      output: {
+        type: 'progress' | 'compilation' | 'test' | 'log_stream' | 'error' | 'table' | 'normal'
+        confidence: number
+        details?: {
+          progress?: number
+          testsPassed?: number
+          testsFailed?: number
+          errorCount?: number
+          eta?: string
+        }
+      }
+      context: {
+        user?: string
+        hostname?: string
+        isRoot: boolean
+        cwdFromPrompt?: string
+        activeEnvs: string[]
+        sshDepth: number
+        promptType: 'bash' | 'zsh' | 'fish' | 'powershell' | 'cmd' | 'unknown'
+      }
+      timestamp: number
+    }) =>
+      ipcRenderer.invoke('terminalAwareness:updateScreenAnalysis', ptyId, analysis),
+
+    // 追踪输出（用于输出速率计算）
+    trackOutput: (ptyId: string, lineCount: number) =>
+      ipcRenderer.invoke('terminalAwareness:trackOutput', ptyId, lineCount),
+
+    // 检查是否可以执行命令
+    canExecute: (ptyId: string) =>
+      ipcRenderer.invoke('terminalAwareness:canExecute', ptyId) as Promise<boolean>,
+
+    // 获取执行命令前的建议
+    getPreExecutionAdvice: (ptyId: string, command: string) =>
+      ipcRenderer.invoke('terminalAwareness:getPreExecutionAdvice', ptyId, command) as Promise<{
+        canExecute: boolean
+        reason?: string
+        suggestion?: string
+      }>,
+
+    // 清理终端感知数据
+    clear: (ptyId: string) =>
+      ipcRenderer.invoke('terminalAwareness:clear', ptyId)
+  },
+
   // AI 操作
   ai: {
     chat: (messages: AiMessage[], profileId?: string) =>

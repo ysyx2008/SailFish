@@ -18,6 +18,7 @@ import type {
 import { assessCommandRisk, analyzeCommand } from './risk-assessor'
 import { getKnowledgeService } from '../knowledge'
 import { getTerminalStateService } from '../terminal-state.service'
+import { getTerminalAwarenessService } from '../terminal-awareness'
 
 // 错误分类
 type ErrorCategory = 'transient' | 'permission' | 'not_found' | 'timeout' | 'fatal'
@@ -526,7 +527,8 @@ function getTerminalContext(
 }
 
 /**
- * 检查终端状态
+ * 检查终端状态（增强版）
+ * 使用终端感知服务提供更丰富的状态信息
  */
 async function checkTerminalStatus(
   ptyId: string,
@@ -541,48 +543,130 @@ async function checkTerminalStatus(
   })
 
   try {
-    const status = await executor.ptyService.getTerminalStatus(ptyId)
+    // 使用增强的终端感知服务
+    const awarenessService = getTerminalAwarenessService()
+    const awareness = await awarenessService.getAwareness(ptyId)
     
-    // 获取增强的终端状态信息
-    const terminalStateService = getTerminalStateService()
-    const terminalState = terminalStateService.getState(ptyId)
-    
+    // 构建状态文本
+    let statusIcon = ''
     let statusText = ''
-    if (status.isIdle) {
-      statusText = `✓ 终端空闲，等待用户输入`
-    } else {
-      statusText = `⏳ 终端忙碌`
-      if (status.foregroundProcess) {
-        statusText += `，正在执行: ${status.foregroundProcess}`
+    
+    switch (awareness.status) {
+      case 'idle':
+        statusIcon = '✓'
+        statusText = '终端空闲，可以执行命令'
+        break
+      case 'busy':
+        statusIcon = '⏳'
+        statusText = '终端忙碌'
+        if (awareness.process.foregroundProcess) {
+          statusText += `，正在执行: ${awareness.process.foregroundProcess}`
+        }
+        break
+      case 'waiting_input':
+        statusIcon = '⌨️'
+        statusText = `终端等待输入 (${awareness.input.type})`
+        if (awareness.input.prompt) {
+          statusText += `\n提示: "${awareness.input.prompt}"`
+        }
+        break
+      case 'stuck':
+        statusIcon = '⚠️'
+        statusText = '终端可能卡死'
+        break
+    }
+
+    // 构建详情
+    const details: string[] = [
+      `## 终端状态: ${statusIcon} ${awareness.status === 'idle' ? '空闲' : awareness.status === 'busy' ? '忙碌' : awareness.status === 'waiting_input' ? '等待输入' : '可能卡死'}`
+    ]
+
+    // 输入等待信息
+    if (awareness.input.isWaiting && awareness.input.type !== 'prompt' && awareness.input.type !== 'none') {
+      details.push('')
+      details.push('### 输入等待')
+      details.push(`- 类型: ${awareness.input.type}`)
+      if (awareness.input.prompt) {
+        details.push(`- 提示: ${awareness.input.prompt}`)
       }
-      if (status.foregroundPid) {
-        statusText += ` (PID: ${status.foregroundPid})`
+      if (awareness.input.options && awareness.input.options.length > 0) {
+        details.push(`- 选项: ${awareness.input.options.slice(0, 5).join(', ')}${awareness.input.options.length > 5 ? '...' : ''}`)
+      }
+      if (awareness.input.suggestedResponse) {
+        details.push(`- 建议响应: ${awareness.input.suggestedResponse}`)
       }
     }
-    
-    const details = [
-      `状态: ${status.isIdle ? '空闲' : '忙碌'}`,
-      status.stateDescription,
-      terminalState?.cwd ? `当前目录: ${terminalState.cwd}` : null,
-      terminalState?.lastCommand ? `最后命令: ${terminalState.lastCommand}` : null,
-      terminalState?.lastExitCode !== undefined ? `退出码: ${terminalState.lastExitCode}` : null,
-      status.shellPid ? `Shell PID: ${status.shellPid}` : null,
-      status.foregroundProcess ? `前台进程: ${status.foregroundProcess}` : null,
-    ].filter(Boolean).join('\n')
+
+    // 进程信息
+    if (awareness.process.status !== 'idle') {
+      details.push('')
+      details.push('### 进程状态')
+      details.push(`- 状态: ${awareness.process.status}`)
+      if (awareness.process.foregroundProcess) {
+        details.push(`- 前台进程: ${awareness.process.foregroundProcess}`)
+      }
+      if (awareness.process.runningTime) {
+        details.push(`- 运行时长: ${Math.round(awareness.process.runningTime / 1000)}秒`)
+      }
+      if (awareness.process.outputRate !== undefined) {
+        details.push(`- 输出速率: ${awareness.process.outputRate.toFixed(1)} 行/秒`)
+      }
+    }
+
+    // 环境信息
+    if (awareness.terminalState?.cwd || awareness.context.activeEnvs.length > 0) {
+      details.push('')
+      details.push('### 环境')
+      if (awareness.terminalState?.cwd) {
+        details.push(`- 当前目录: ${awareness.terminalState.cwd}`)
+      }
+      if (awareness.context.user) {
+        details.push(`- 用户: ${awareness.context.user}${awareness.context.isRoot ? ' (root)' : ''}`)
+      }
+      if (awareness.context.activeEnvs.length > 0) {
+        details.push(`- 激活环境: ${awareness.context.activeEnvs.join(', ')}`)
+      }
+    }
+
+    // 最后命令信息
+    if (awareness.terminalState?.lastCommand) {
+      details.push('')
+      details.push('### 最近命令')
+      details.push(`- 命令: ${awareness.terminalState.lastCommand}`)
+      if (awareness.terminalState.lastExitCode !== undefined) {
+        details.push(`- 退出码: ${awareness.terminalState.lastExitCode}`)
+      }
+    }
+
+    // 输出模式
+    if (awareness.output.type !== 'normal' && awareness.output.confidence > 0.6) {
+      details.push('')
+      details.push('### 输出模式')
+      details.push(`- 类型: ${awareness.output.type}`)
+      if (awareness.output.details?.progress !== undefined) {
+        details.push(`- 进度: ${awareness.output.details.progress}%`)
+      }
+      if (awareness.output.details?.eta) {
+        details.push(`- 预计剩余: ${awareness.output.details.eta}`)
+      }
+      if (awareness.output.details?.testsPassed !== undefined || awareness.output.details?.testsFailed !== undefined) {
+        details.push(`- 测试: ${awareness.output.details.testsPassed || 0} 通过, ${awareness.output.details.testsFailed || 0} 失败`)
+      }
+    }
+
+    const detailsText = details.join('\n')
 
     executor.addStep({
       type: 'tool_result',
-      content: statusText,
+      content: `${statusIcon} ${statusText}`,
       toolName: 'check_terminal_status',
-      toolResult: details
+      toolResult: detailsText
     })
 
-    return { 
-      success: true, 
-      output: `${statusText}\n\n详情:\n${details}\n\n${status.isIdle 
-        ? '可以执行新命令。' 
-        : '建议：使用 send_control_key 发送 ctrl+c 中断当前命令，或等待命令完成。'}`
-    }
+    // 构建完整输出
+    const output = `${statusIcon} ${statusText}\n\n${detailsText}\n\n---\n**建议**: ${awareness.suggestion}\n**可执行命令**: ${awareness.canExecuteCommand ? '是' : '否'}\n**需要用户输入**: ${awareness.needsUserInput ? '是' : '否'}`
+
+    return { success: true, output }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '状态检测失败'
     executor.addStep({
