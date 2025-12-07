@@ -175,6 +175,9 @@ export async function executeTool(
     case 'send_control_key':
       return sendControlKey(ptyId, args, executor)
 
+    case 'send_input':
+      return sendInput(ptyId, args, executor)
+
     case 'read_file':
       return readFile(args, executor)
 
@@ -754,6 +757,63 @@ async function sendControlKey(
     return { 
       success: true, 
       output: `已发送 ${key}。请使用 get_terminal_context 查看终端当前状态。`
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : '发送失败'
+    return { success: false, output: '', error: errorMsg }
+  }
+}
+
+/**
+ * 发送文本输入到终端
+ */
+async function sendInput(
+  ptyId: string,
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const text = args.text as string
+  const pressEnter = args.press_enter !== false // 默认 true
+
+  if (text === undefined || text === null) {
+    return { success: false, output: '', error: '必须指定要发送的文本' }
+  }
+
+  // 安全检查：限制输入长度，防止发送过长的内容
+  if (text.length > 1000) {
+    return { success: false, output: '', error: '输入文本过长（最大 1000 字符），请使用 write_file 工具处理大量内容' }
+  }
+
+  executor.addStep({
+    type: 'tool_call',
+    content: `发送输入: "${text}"${pressEnter ? ' + Enter' : ''}`,
+    toolName: 'send_input',
+    toolArgs: { text, press_enter: pressEnter },
+    riskLevel: 'safe'
+  })
+
+  try {
+    // 发送文本
+    executor.ptyService.write(ptyId, text)
+    
+    // 如果需要按回车
+    if (pressEnter) {
+      executor.ptyService.write(ptyId, '\r')
+    }
+    
+    // 等待一小段时间让终端响应
+    await new Promise(resolve => setTimeout(resolve, 300))
+
+    executor.addStep({
+      type: 'tool_result',
+      content: `已发送: "${text}"${pressEnter ? ' + Enter' : ''}`,
+      toolName: 'send_input',
+      toolResult: '输入已发送'
+    })
+
+    return { 
+      success: true, 
+      output: `已发送输入 "${text}"${pressEnter ? ' 并按下回车' : ''}。请使用 get_terminal_context 查看终端响应。`
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '发送失败'

@@ -86,6 +86,35 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
     {
       type: 'function',
       function: {
+        name: 'send_input',
+        description: `向终端发送文本输入。用于响应终端的交互式提示，如：
+- 确认提示 (y/n, yes/no)
+- 数字选择 (1, 2, 3...)
+- 密码或其他简短输入
+
+注意：
+- 默认会自动添加回车键发送输入
+- 如果只想输入文字不发送，设置 press_enter 为 false
+- 建议先用 check_terminal_status 确认终端正在等待输入`,
+        parameters: {
+          type: 'object',
+          properties: {
+            text: {
+              type: 'string',
+              description: '要发送的文本内容，如 "y", "n", "1", "yes" 等'
+            },
+            press_enter: {
+              type: 'boolean',
+              description: '是否在文本后自动按回车键，默认 true'
+            }
+          },
+          required: ['text']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
         name: 'read_file',
         description: '读取文件内容',
         parameters: {
