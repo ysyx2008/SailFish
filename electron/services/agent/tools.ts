@@ -53,13 +53,26 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'get_terminal_context',
-        description: '获取终端最近的输出内容，用于查看命令执行结果或当前终端显示内容。',
+        description: `获取终端最近的输出内容，用于查看命令执行结果或当前终端显示内容。支持多种读取方式：
+1. **按行数读取**：使用 lines 参数指定行数（从末尾向前）
+2. **按字符数读取**：使用 max_chars 参数指定最大字符数（从末尾向前）
+3. **从开头读取**：使用 from_start_lines 参数从终端输出开头读取指定行数
+
+对于大量输出，建议使用 max_chars 限制字符数，避免超出上下文限制。`,
         parameters: {
           type: 'object',
           properties: {
             lines: {
-              type: 'string',
-              description: '要获取的行数，默认 50'
+              type: 'number',
+              description: '从终端输出末尾获取的行数，默认 50。与 max_chars 二选一使用。'
+            },
+            max_chars: {
+              type: 'number',
+              description: '从终端输出末尾获取的最大字符数。与 lines 二选一使用。建议值：5000-10000。'
+            },
+            from_start_lines: {
+              type: 'number',
+              description: '从终端输出开头获取的行数（用于查看历史输出）'
             }
           }
         }

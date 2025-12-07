@@ -241,12 +241,19 @@ async function executeMcpTool(
     const result = await executor.mcpService.callTool(serverId, toolName, args)
 
     if (result.success) {
+      // UI 显示截断到 5000 字符（保留最新内容），但返回给 agent 的 output 是完整的
+      const displayContent = result.content || ''
+      const truncatedDisplay = displayContent.length > 500
+        ? truncateFromEnd(displayContent, 500)
+        : displayContent
+      
       executor.addStep({
         type: 'tool_result',
-        content: `[MCP] 工具执行成功`,
+        content: `[MCP] 工具执行成功 (${displayContent.length} 字符)`,
         toolName: fullName,
-        toolResult: result.content?.substring(0, 500) + (result.content && result.content.length > 500 ? '...' : '')
+        toolResult: truncatedDisplay
       })
+      // 返回完整内容给 agent，不进行截断
       return { success: true, output: result.content || '' }
     } else {
       executor.addStep({
@@ -516,13 +523,17 @@ async function executeTimedCommand(
 
       const finalOutput = meaningfulLines.join('\n').trim()
 
+      // UI 显示截断到 500 字符（保留最新内容），但返回给 agent 的 output 是完整的
+      const truncatedDisplay = truncateFromEnd(finalOutput, 500)
+
       executor.addStep({
         type: 'tool_result',
-        content: `✓ 命令执行了 ${timeout/1000} 秒`,
+        content: `✓ 命令执行了 ${timeout/1000} 秒 (${finalOutput.length} 字符)`,
         toolName: 'execute_command',
-        toolResult: truncateFromEnd(finalOutput, 500)
+        toolResult: truncatedDisplay
       })
 
+      // 返回完整输出给 agent，不进行截断
       resolve({ 
         success: true, 
         output: finalOutput || `命令执行了 ${timeout/1000} 秒，但没有输出内容。`
@@ -584,27 +595,66 @@ function truncateFromEnd(text: string, maxLength: number): string {
 
 /**
  * 获取终端上下文
+ * 支持多种读取方式：按行数、按字符数、从开头读取
  */
 function getTerminalContext(
   args: Record<string, unknown>,
   terminalOutput: string[],
   executor: ToolExecutorConfig
 ): ToolResult {
-  const lines = parseInt(args.lines as string) || 50
-  const output = terminalOutput.slice(-lines).join('\n')
+  const lines = args.lines as number | undefined
+  const maxChars = args.max_chars as number | undefined
+  const fromStartLines = args.from_start_lines as number | undefined
   
-  // 从后向前截断，保留最新的输出内容（增加到 50000 字符，确保 agent 能看到完整输出）
-  // 注意：返回给 agent 的 output 字段始终是完整的，不进行截断
-  const truncatedForDisplay = truncateFromEnd(output, 50000)
+  let output = ''
+  let readInfo = ''
+  
+  // 从开头读取
+  if (fromStartLines !== undefined) {
+    const startLines = Math.max(1, fromStartLines)
+    const selectedLines = terminalOutput.slice(0, startLines)
+    output = selectedLines.join('\n')
+    readInfo = `从开头读取 ${startLines} 行`
+  }
+  // 按字符数读取（从末尾）
+  else if (maxChars !== undefined) {
+    const maxCharsValue = Math.max(100, Math.min(maxChars, 50000)) // 限制在 100-50000 之间
+    // 从后向前累积行，直到达到字符数限制
+    let charCount = 0
+    const selectedLines: string[] = []
+    for (let i = terminalOutput.length - 1; i >= 0; i--) {
+      const line = terminalOutput[i]
+      const lineWithNewline = (selectedLines.length > 0 ? '\n' : '') + line
+      if (charCount + lineWithNewline.length > maxCharsValue) {
+        break
+      }
+      selectedLines.unshift(line)
+      charCount += lineWithNewline.length
+    }
+    output = selectedLines.join('\n')
+    readInfo = `从末尾读取约 ${maxCharsValue} 字符 (实际 ${output.length} 字符, ${selectedLines.length} 行)`
+  }
+  // 按行数读取（从末尾，默认）
+  else {
+    const linesValue = lines || 50
+    const selectedLines = terminalOutput.slice(-linesValue)
+    output = selectedLines.join('\n')
+    readInfo = `从末尾读取 ${selectedLines.length} 行`
+  }
+  
+  // UI 显示截断到 5000 字符（保留最新内容），避免超出上下文限制
+  // 注意：返回给 agent 的 output 字段是完整的，但建议使用 max_chars 参数控制大小
+  const truncatedForDisplay = truncateFromEnd(output, 5000)
   
   executor.addStep({
     type: 'tool_result',
-    content: `获取终端最近 ${lines} 行输出 (${output.length} 字符)`,
+    content: `获取终端输出: ${readInfo} (${output.length} 字符)`,
     toolName: 'get_terminal_context',
     toolResult: truncatedForDisplay
   })
 
-  // 返回完整的输出给 agent，不进行截断
+  // 返回完整输出给 agent
+  // 注意：如果输出很大，建议 agent 使用 max_chars 参数限制大小
   return { success: true, output: output || '(终端输出为空)' }
 }
 
@@ -1028,7 +1078,7 @@ ${sampleContent ? `### 文件预览（前10行）\n\`\`\`\n${sampleContent}\n\`\
       type: 'tool_result',
       content: `文件读取成功: ${readInfo.join(', ')}`,
       toolName: 'read_file',
-      toolResult: truncateFromEnd(content, 2000) // UI 显示截断到 2000 字符
+      toolResult: truncateFromEnd(content, 500) // UI 显示截断到 500 字符（保留最新内容）
     })
     
     // 返回完整内容给 agent（UI 显示已截断）
@@ -1224,20 +1274,30 @@ async function searchKnowledge(
       return { success: true, output: '知识库中未找到与查询相关的内容' }
     }
 
-    // 格式化结果
+    // 格式化结果，对每个结果的内容进行截断（避免单个结果过长）
+    const maxContentLength = 1000 // 每个结果最多 2000 字符
     const formattedResults = results.map((r, i) => {
-      return `### ${i + 1}. ${r.metadata.filename}\n${r.content}`
+      const content = r.content.length > maxContentLength
+        ? r.content.substring(0, maxContentLength) + `\n\n... [内容已截断，完整内容共 ${r.content.length} 字符]`
+        : r.content
+      return `### ${i + 1}. ${r.metadata.filename}\n${content}`
     }).join('\n\n')
 
     const output = `找到 ${results.length} 条相关内容：\n\n${formattedResults}`
+    
+    // UI 显示截断到 5000 字符（保留最新内容）
+    const displayOutput = output.length > 5000
+      ? truncateFromEnd(output, 5000)
+      : output
 
     executor.addStep({
       type: 'tool_result',
-      content: `找到 ${results.length} 条相关内容`,
+      content: `找到 ${results.length} 条相关内容 (${output.length} 字符)`,
       toolName: 'search_knowledge',
-      toolResult: output
+      toolResult: displayOutput
     })
 
+    // 返回完整结果给 agent（但每个结果的内容已截断到 2000 字符）
     return { success: true, output }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '搜索失败'
