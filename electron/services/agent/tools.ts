@@ -116,13 +116,40 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'read_file',
-        description: '读取文件内容',
+        description: `读取文件内容。支持多种读取方式：
+1. **完整读取**：不指定任何范围参数，读取整个文件（文件需小于 500KB）
+2. **按行范围读取**：使用 start_line 和 end_line 指定行号范围（从1开始）
+3. **按行数读取**：使用 max_lines 指定从文件开头读取的行数
+4. **从末尾读取**：使用 tail_lines 指定从文件末尾读取的行数
+5. **文件信息查询**：只设置 info_only=true，获取文件大小、行数等信息，不读取内容
+
+对于大文件，建议先使用 info_only=true 查看文件信息，然后根据需要读取特定部分。`,
         parameters: {
           type: 'object',
           properties: {
             path: {
               type: 'string',
               description: '文件路径（绝对路径或相对于当前目录）'
+            },
+            info_only: {
+              type: 'boolean',
+              description: '仅获取文件信息（大小、行数等），不读取内容。对于大文件，建议先查询信息再决定读取范围。'
+            },
+            start_line: {
+              type: 'number',
+              description: '起始行号（从1开始）。与 end_line 配合使用可读取指定行范围。'
+            },
+            end_line: {
+              type: 'number',
+              description: '结束行号（包含）。与 start_line 配合使用可读取指定行范围。'
+            },
+            max_lines: {
+              type: 'number',
+              description: '从文件开头读取的最大行数。例如设置为 100 可读取前100行。'
+            },
+            tail_lines: {
+              type: 'number',
+              description: '从文件末尾读取的行数。例如设置为 50 可读取最后50行（类似 tail -n 50）。'
             }
           },
           required: ['path']

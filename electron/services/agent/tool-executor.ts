@@ -520,7 +520,7 @@ async function executeTimedCommand(
         type: 'tool_result',
         content: `✓ 命令执行了 ${timeout/1000} 秒`,
         toolName: 'execute_command',
-        toolResult: finalOutput.substring(0, 500) + (finalOutput.length > 500 ? '...' : '')
+        toolResult: truncateFromEnd(finalOutput, 500)
       })
 
       resolve({ 
@@ -529,6 +529,57 @@ async function executeTimedCommand(
       })
     }, timeout)
   })
+}
+
+/**
+ * 从后向前截断字符串，保留最新的内容
+ * @param text 要截断的文本
+ * @param maxLength 最大长度
+ * @returns 截断后的文本（如果超长，前面会加上省略号）
+ */
+function truncateFromEnd(text: string, maxLength: number): string {
+  if (text.length <= maxLength) {
+    return text
+  }
+  
+  // 按行分割，从后向前保留行
+  const lines = text.split('\n')
+  const result: string[] = []
+  let currentLength = 0
+  const ellipsisLength = 3 // '...' 的长度
+  const availableLength = maxLength - ellipsisLength // 可用于内容的长度
+  
+  // 从最后一行开始向前累积
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]
+    const isLastLine = i === lines.length - 1
+    
+    // 计算加上这一行后的总长度（最后一行不需要换行符）
+    const lineLength = isLastLine ? line.length : line.length + 1 // +1 for \n
+    const neededLength = currentLength + lineLength
+    
+    if (neededLength > availableLength) {
+      // 如果加上这一行会超长
+      if (isLastLine && currentLength === 0) {
+        // 这是最后一行且还没有任何内容，必须从行尾截取
+        const truncatedLine = line.slice(-availableLength)
+        result.unshift(truncatedLine)
+        return '...' + truncatedLine
+      }
+      // 否则停止，不再添加更多行
+      break
+    }
+    
+    result.unshift(line)
+    currentLength += lineLength
+  }
+  
+  // 如果截断了，在前面加上省略号
+  if (result.length < lines.length) {
+    return '...' + result.join('\n')
+  }
+  
+  return result.join('\n')
 }
 
 /**
@@ -542,13 +593,18 @@ function getTerminalContext(
   const lines = parseInt(args.lines as string) || 50
   const output = terminalOutput.slice(-lines).join('\n')
   
+  // 从后向前截断，保留最新的输出内容（增加到 50000 字符，确保 agent 能看到完整输出）
+  // 注意：返回给 agent 的 output 字段始终是完整的，不进行截断
+  const truncatedForDisplay = truncateFromEnd(output, 50000)
+  
   executor.addStep({
     type: 'tool_result',
-    content: `获取终端最近 ${lines} 行输出`,
+    content: `获取终端最近 ${lines} 行输出 (${output.length} 字符)`,
     toolName: 'get_terminal_context',
-    toolResult: output.substring(0, 500) + (output.length > 500 ? '...' : '')
+    toolResult: truncatedForDisplay
   })
 
+  // 返回完整的输出给 agent，不进行截断
   return { success: true, output: output || '(终端输出为空)' }
 }
 
@@ -823,6 +879,7 @@ async function sendInput(
 
 /**
  * 读取文件
+ * 支持多种读取方式：完整读取、按行范围读取、从开头/末尾读取、仅查询文件信息
  */
 function readFile(
   args: Record<string, unknown>,
@@ -833,22 +890,148 @@ function readFile(
     return { success: false, output: '', error: '文件路径不能为空' }
   }
 
+  const infoOnly = args.info_only === true
+  const startLine = args.start_line as number | undefined
+  const endLine = args.end_line as number | undefined
+  const maxLines = args.max_lines as number | undefined
+  const tailLines = args.tail_lines as number | undefined
+
   executor.addStep({
     type: 'tool_call',
-    content: `读取文件: ${filePath}`,
+    content: `读取文件: ${filePath}${infoOnly ? ' (仅查询信息)' : ''}`,
     toolName: 'read_file',
     toolArgs: args,
     riskLevel: 'safe'
   })
 
   try {
-    const content = fs.readFileSync(filePath, 'utf-8')
+    const stats = fs.statSync(filePath)
+    const fileSize = stats.size
+    const sizeMB = (fileSize / (1024 * 1024)).toFixed(2)
+    const sizeKB = (fileSize / 1024).toFixed(2)
+
+    // 如果只查询文件信息
+    if (infoOnly) {
+      // 尝试读取文件前部分来计算行数和预览
+      let totalLines = 0
+      let sampleContent = ''
+      let estimated = false
+      
+      try {
+        // 对于小文件，直接读取全部
+        if (fileSize <= 10 * 1024 * 1024) { // 10MB 以下
+          const fullContent = fs.readFileSync(filePath, 'utf-8')
+          const lines = fullContent.split('\n')
+          totalLines = lines.length
+          sampleContent = lines.slice(0, 10).join('\n') // 前10行作为预览
+        } else {
+          // 对于大文件，只读取前 100KB 来估算
+          const sampleSize = Math.min(100 * 1024, fileSize)
+          const buffer = Buffer.alloc(sampleSize)
+          const fd = fs.openSync(filePath, 'r')
+          fs.readSync(fd, buffer, 0, sampleSize, 0)
+          fs.closeSync(fd)
+          
+          const sample = buffer.toString('utf-8')
+          const sampleLines = sample.split('\n')
+          // 基于采样估算总行数
+          const avgLineLength = sample.length / sampleLines.length
+          totalLines = Math.floor(fileSize / avgLineLength)
+          estimated = true
+          sampleContent = sampleLines.slice(0, 10).join('\n')
+        }
+      } catch (err) {
+        // 如果读取失败，使用粗略估算
+        totalLines = Math.floor(fileSize / 80) // 假设平均每行80字符
+        estimated = true
+      }
+
+      const info = `## 文件信息
+- **路径**: ${filePath}
+- **大小**: ${sizeMB} MB (${fileSize.toLocaleString()} 字节)
+- **总行数**: ${totalLines.toLocaleString()} 行${estimated ? ' (估算值)' : ''}
+- **建议**: ${fileSize > 500 * 1024 ? '文件较大，建议使用以下方式读取特定部分：\n  - `start_line` 和 `end_line`: 读取指定行范围\n  - `max_lines`: 读取前N行（如 `max_lines: 100`）\n  - `tail_lines`: 读取最后N行（如 `tail_lines: 50`）' : '文件大小在限制内，可以完整读取'}
+
+${sampleContent ? `### 文件预览（前10行）\n\`\`\`\n${sampleContent}\n\`\`\`` : ''}`
+
+      executor.addStep({
+        type: 'tool_result',
+        content: `文件信息: ${sizeMB} MB, ${totalLines.toLocaleString()} 行`,
+        toolName: 'read_file',
+        toolResult: info
+      })
+      return { success: true, output: info }
+    }
+
+    // 读取文件内容
+    let content = ''
+    let actualLines: string[] = []
+
+    // 如果指定了行范围
+    if (startLine !== undefined || endLine !== undefined) {
+      const fullContent = fs.readFileSync(filePath, 'utf-8')
+      const allLines = fullContent.split('\n')
+      const start = startLine !== undefined ? Math.max(1, startLine) - 1 : 0 // 转换为0-based索引
+      const end = endLine !== undefined ? Math.min(allLines.length, endLine) : allLines.length
+      actualLines = allLines.slice(start, end)
+      content = actualLines.join('\n')
+    }
+    // 如果指定了最大行数（从开头读取）
+    else if (maxLines !== undefined) {
+      const fullContent = fs.readFileSync(filePath, 'utf-8')
+      const allLines = fullContent.split('\n')
+      actualLines = allLines.slice(0, maxLines)
+      content = actualLines.join('\n')
+    }
+    // 如果指定了从末尾读取的行数
+    else if (tailLines !== undefined) {
+      const fullContent = fs.readFileSync(filePath, 'utf-8')
+      const allLines = fullContent.split('\n')
+      actualLines = allLines.slice(-tailLines)
+      content = actualLines.join('\n')
+    }
+    // 完整读取（仅当文件小于 500KB 时）
+    else {
+      const maxFileSize = 500 * 1024 // 500KB
+      if (fileSize > maxFileSize) {
+        const errorMsg = `文件过大 (${sizeMB} MB)，超过完整读取限制 (500KB)。请使用以下方式之一：
+1. 设置 info_only=true 查看文件信息
+2. 使用 start_line 和 end_line 读取指定行范围
+3. 使用 max_lines 读取前N行
+4. 使用 tail_lines 读取最后N行`
+        executor.addStep({
+          type: 'tool_result',
+          content: `文件读取失败: 文件过大`,
+          toolName: 'read_file',
+          toolResult: errorMsg
+        })
+        return { success: false, output: '', error: errorMsg }
+      }
+      content = fs.readFileSync(filePath, 'utf-8')
+      actualLines = content.split('\n')
+    }
+
+    // 构建返回信息
+    const readInfo: string[] = []
+    if (startLine !== undefined || endLine !== undefined) {
+      readInfo.push(`读取行范围: ${startLine || 1}-${endLine || '末尾'}`)
+    } else if (maxLines !== undefined) {
+      readInfo.push(`读取前 ${maxLines} 行`)
+    } else if (tailLines !== undefined) {
+      readInfo.push(`读取最后 ${tailLines} 行`)
+    } else {
+      readInfo.push('完整读取')
+    }
+    readInfo.push(`实际读取: ${actualLines.length} 行, ${content.length.toLocaleString()} 字符`)
+
     executor.addStep({
       type: 'tool_result',
-      content: `文件读取成功 (${content.length} 字符)`,
+      content: `文件读取成功: ${readInfo.join(', ')}`,
       toolName: 'read_file',
-      toolResult: content.substring(0, 500) + (content.length > 500 ? '...' : '')
+      toolResult: truncateFromEnd(content, 2000) // UI 显示截断到 2000 字符
     })
+    
+    // 返回完整内容给 agent（UI 显示已截断）
     return { success: true, output: content }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '读取失败'
