@@ -228,6 +228,11 @@ export interface PendingConfirmation {
 
 // 暴露给渲染进程的 API
 const electronAPI = {
+  // 应用信息
+  app: {
+    getVersion: () => ipcRenderer.invoke('app:getVersion') as Promise<string>
+  },
+
   // PTY 操作
   pty: {
     create: (options: PtyOptions) => ipcRenderer.invoke('pty:create', options),

@@ -18,12 +18,15 @@ const emit = defineEmits<{
 
 type SettingsTab = 'ai' | 'mcp' | 'knowledge' | 'theme' | 'terminal' | 'data' | 'about'
 const activeTab = ref<SettingsTab>('ai')
+const appVersion = ref<string>('')
 
-// 初始化时设置初始 tab
-onMounted(() => {
+// 初始化时设置初始 tab 和获取版本号
+onMounted(async () => {
   if (props.initialTab && ['ai', 'mcp', 'knowledge', 'theme', 'terminal', 'data', 'about'].includes(props.initialTab)) {
     activeTab.value = props.initialTab as SettingsTab
   }
+  // 获取应用版本号
+  appVersion.value = await window.electronAPI.app.getVersion()
 })
 
 const tabs = [
@@ -72,7 +75,7 @@ const tabs = [
           <div v-else-if="activeTab === 'about'" class="about-content">
             <div class="about-logo">🐟</div>
             <h3>旗鱼终端</h3>
-            <p class="version">版本 1.0.0</p>
+            <p class="version">版本 {{ appVersion }}</p>
             <p class="description">
               AI 驱动的跨平台终端，助力运维提效
             </p>

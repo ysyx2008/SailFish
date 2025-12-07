@@ -401,6 +401,11 @@ ipcMain.handle('ai:abort', async (_event, requestId?: string) => {
   aiService.abort(requestId)
 })
 
+// 应用信息
+ipcMain.handle('app:getVersion', async () => {
+  return app.getVersion()
+})
+
 // 配置相关
 ipcMain.handle('config:get', async (_event, key: string) => {
   return configService.get(key)
