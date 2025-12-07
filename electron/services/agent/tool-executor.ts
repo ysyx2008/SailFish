@@ -281,6 +281,29 @@ async function executeCommand(
     return { success: false, output: '', error: '命令不能为空' }
   }
 
+  // 先检查终端状态，确认是否可以执行命令
+  const awarenessService = getTerminalAwarenessService()
+  const preAdvice = await awarenessService.getPreExecutionAdvice(ptyId, command)
+  
+  if (!preAdvice.canExecute) {
+    // 终端当前不能执行命令，返回详细信息给 agent
+    const errorMsg = `⚠️ 无法执行命令：${preAdvice.reason}\n\n💡 ${preAdvice.suggestion}`
+    executor.addStep({
+      type: 'tool_call',
+      content: `🚫 ${command}`,
+      toolName: 'execute_command',
+      toolArgs: { command },
+      riskLevel: 'blocked'
+    })
+    executor.addStep({
+      type: 'tool_result',
+      content: `终端状态不允许执行: ${preAdvice.reason}`,
+      toolName: 'execute_command',
+      toolResult: errorMsg
+    })
+    return { success: false, output: '', error: errorMsg }
+  }
+
   // 分析命令，获取处理策略
   const handling = analyzeCommand(command)
 

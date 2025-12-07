@@ -139,13 +139,27 @@ export class ProcessMonitor {
     
     // 获取输出追踪信息
     const outputTracker = this.outputTrackers.get(ptyId)
-    const outputRate = this.calculateOutputRate(ptyId)
     
     // 当前执行的命令
     const currentExecution = terminalState.currentExecution
 
-    // 1. 如果 PTY 报告空闲，检查是否真的空闲
+    // 获取输出速率（在判断空闲前计算）
+    const outputRate = this.calculateOutputRate(ptyId)
+
+    // 1. 如果 PTY 报告空闲，需要进一步检查
     if (ptyStatus.isIdle) {
+      // 检查是否有持续输出（表示有命令在后台/子进程中运行）
+      // 例如 tail -f 会持续输出，但 PTY 可能报告为空闲
+      if (outputRate && outputRate > 0.1) {
+        // 有持续输出，说明不是真正的空闲
+        return {
+          status: 'running_streaming',
+          outputRate,
+          lastOutputTime: outputTracker?.lastOutputTime,
+          suggestion: `检测到持续输出，可能有命令正在运行。输出速率: ${outputRate.toFixed(1)} 行/秒`
+        }
+      }
+      
       return {
         status: 'idle',
         suggestion: '终端空闲，可以执行新命令'

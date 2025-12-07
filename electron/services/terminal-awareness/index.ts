@@ -155,6 +155,15 @@ export class TerminalAwarenessService {
    * 更新前端屏幕分析结果（由 IPC 调用）
    */
   updateScreenAnalysis(ptyId: string, analysis: ScreenAnalysisResult): void {
+    const isWaitingInput = analysis.input?.isWaiting && 
+                           analysis.input?.type !== 'prompt' && 
+                           analysis.input?.type !== 'none'
+    
+    // 仅在检测到特殊输入等待状态时打印日志
+    if (isWaitingInput) {
+      console.log(`[TerminalAwareness] 检测到输入等待: type=${analysis.input.type}, prompt="${analysis.input.prompt}"`)
+    }
+    
     this.screenAnalysisCache.set(ptyId, {
       ...analysis,
       timestamp: Date.now()
@@ -168,8 +177,24 @@ export class TerminalAwarenessService {
     const cached = this.screenAnalysisCache.get(ptyId)
     if (!cached) return null
     
-    // 检查缓存是否过期
-    if (Date.now() - cached.timestamp > this.CACHE_TTL) {
+    const age = Date.now() - cached.timestamp
+    
+    // 智能缓存策略：
+    // 1. 如果检测到等待输入状态（密码、确认、选择等），缓存不过期
+    //    因为等待输入时终端不会有新输出，状态保持不变
+    // 2. 普通状态使用标准 TTL
+    const isWaitingInput = cached.input?.isWaiting && 
+                           cached.input?.type !== 'prompt' && 
+                           cached.input?.type !== 'none'
+    
+    if (isWaitingInput) {
+      // 等待输入状态：缓存最长保持 5 分钟（防止极端情况）
+      if (age > 300000) return null
+      return cached
+    }
+    
+    // 普通状态：使用标准 TTL
+    if (age > this.CACHE_TTL) {
       return null
     }
     
@@ -235,46 +260,49 @@ export class TerminalAwarenessService {
     let canExecuteCommand: boolean
     let needsUserInput: boolean
 
-    // 判断逻辑：
-    // 1. 如果检测到输入等待（密码、确认等），状态为 waiting_input
-    // 2. 如果进程状态为 possibly_stuck，状态为 stuck
-    // 3. 如果进程空闲，状态为 idle
-    // 4. 否则状态为 busy
+    // 判断逻辑（优先级从高到低）：
+    // 1. 如果前端检测到特殊输入等待（密码、确认等），状态为 waiting_input
+    // 2. 如果后端进程状态为 possibly_stuck，状态为 stuck
+    // 3. 如果后端进程状态为 idle，状态为 idle
+    // 4. 否则状态为 busy（即使前端误判为 prompt 也不影响）
 
-    if (input.isWaiting && input.type !== 'prompt' && input.type !== 'none') {
+    // 辅助函数：生成输入等待建议
+    const getInputWaitingSuggestion = (inputType: string, prompt?: string, suggestedResponse?: string, options?: string[]): string => {
+      switch (inputType) {
+        case 'password':
+          return `终端正在等待密码输入。提示: "${prompt || 'Password:'}"。请让用户输入密码，或发送 Ctrl+C 取消。`
+        case 'confirmation':
+          return `终端正在等待确认。提示: "${prompt || '(y/n)'}"。${suggestedResponse ? `建议响应: ${suggestedResponse}` : '请选择 y 或 n。'}`
+        case 'selection':
+          return `终端正在等待选择。${options?.length ? `可选项: ${options.join(', ')}` : '请输入选项编号。'}`
+        case 'pager':
+          return `终端处于分页器模式。按 q 退出，空格翻页，Enter 下一行。`
+        case 'editor':
+          return `终端处于编辑器模式 (${prompt || 'vim/nano'})。请使用 write_file 工具代替编辑器操作，或发送退出命令。`
+        case 'custom_input':
+          return `终端正在等待输入。提示: "${prompt || 'Input:'}"。`
+        default:
+          return '终端正在等待用户输入。'
+      }
+    }
+
+    // 检查是否有特殊输入等待（不是普通 prompt）
+    const hasSpecialInputWaiting = input.isWaiting && input.type !== 'prompt' && input.type !== 'none'
+
+    if (hasSpecialInputWaiting) {
+      // 最高优先级：前端检测到等待输入（密码、确认、选择等）
       status = 'waiting_input'
       needsUserInput = true
       canExecuteCommand = false
-      
-      // 根据输入类型生成建议
-      switch (input.type) {
-        case 'password':
-          suggestion = `终端正在等待密码输入。提示: "${input.prompt || 'Password:'}"。请让用户输入密码，或发送 Ctrl+C 取消。`
-          break
-        case 'confirmation':
-          suggestion = `终端正在等待确认。提示: "${input.prompt || '(y/n)'}"。${input.suggestedResponse ? `建议响应: ${input.suggestedResponse}` : '请选择 y 或 n。'}`
-          break
-        case 'selection':
-          suggestion = `终端正在等待选择。${input.options?.length ? `可选项: ${input.options.join(', ')}` : '请输入选项编号。'}`
-          break
-        case 'pager':
-          suggestion = `终端处于分页器模式。按 q 退出，空格翻页，Enter 下一行。`
-          break
-        case 'editor':
-          suggestion = `终端处于编辑器模式 (${input.prompt || 'vim/nano'})。请使用 write_file 工具代替编辑器操作，或发送退出命令。`
-          break
-        case 'custom_input':
-          suggestion = `终端正在等待输入。提示: "${input.prompt || 'Input:'}"。`
-          break
-        default:
-          suggestion = '终端正在等待用户输入。'
-      }
+      suggestion = getInputWaitingSuggestion(input.type, input.prompt, input.suggestedResponse, input.options)
     } else if (processState.status === 'possibly_stuck') {
+      // 进程可能卡死
       status = 'stuck'
       needsUserInput = false
       canExecuteCommand = false
       suggestion = processState.suggestion || '命令可能已卡死。建议使用 send_control_key 发送 Ctrl+C 中断。'
-    } else if (processState.status === 'idle' || (input.isWaiting && input.type === 'prompt')) {
+    } else if (processState.status === 'idle') {
+      // 后端认为空闲 = 真正的空闲
       status = 'idle'
       needsUserInput = false
       canExecuteCommand = true
@@ -288,6 +316,8 @@ export class TerminalAwarenessService {
         suggestion += ` 激活的环境: ${context.activeEnvs.join(', ')}`
       }
     } else {
+      // 后端认为进程在运行（running_interactive, running_streaming, running_silent 等）
+      // 即使前端误判为 prompt 也不影响，以后端为准
       status = 'busy'
       needsUserInput = false
       canExecuteCommand = false
