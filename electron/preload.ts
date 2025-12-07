@@ -269,6 +269,159 @@ const electronAPI = {
     }
   },
 
+  // 终端状态服务
+  terminalState: {
+    // 初始化终端状态
+    init: (id: string, type: 'local' | 'ssh', initialCwd?: string) =>
+      ipcRenderer.invoke('terminalState:init', id, type, initialCwd),
+    // 移除终端状态
+    remove: (id: string) => ipcRenderer.invoke('terminalState:remove', id),
+    // 获取终端状态
+    get: (id: string) => ipcRenderer.invoke('terminalState:get', id) as Promise<{
+      id: string
+      type: 'local' | 'ssh'
+      cwd: string
+      cwdUpdatedAt: number
+      lastCommand?: string
+      lastExitCode?: number
+      isIdle: boolean
+      lastActivityAt: number
+    } | undefined>,
+    // 获取当前工作目录
+    getCwd: (id: string) => ipcRenderer.invoke('terminalState:getCwd', id) as Promise<string>,
+    // 刷新 CWD（执行 pwd 验证）
+    refreshCwd: (id: string) => ipcRenderer.invoke('terminalState:refreshCwd', id) as Promise<string>,
+    // 手动更新 CWD
+    updateCwd: (id: string, newCwd: string) =>
+      ipcRenderer.invoke('terminalState:updateCwd', id, newCwd),
+    // 处理用户输入（追踪可能的 CWD 变化）
+    handleInput: (id: string, input: string) =>
+      ipcRenderer.invoke('terminalState:handleInput', id, input),
+    // 获取终端空闲状态
+    getIdleState: (id: string) =>
+      ipcRenderer.invoke('terminalState:getIdleState', id) as Promise<boolean>,
+    // 监听 CWD 变化事件
+    onCwdChange: (callback: (event: {
+      terminalId: string
+      oldCwd: string
+      newCwd: string
+      timestamp: number
+      trigger: 'command' | 'pwd_check' | 'initial'
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data as Parameters<typeof callback>[0])
+      ipcRenderer.on('terminal:cwdChange', handler)
+      return () => {
+        ipcRenderer.removeListener('terminal:cwdChange', handler)
+      }
+    },
+    
+    // ==================== 命令执行追踪 ====================
+    
+    // 开始追踪命令执行
+    startExecution: (id: string, command: string) =>
+      ipcRenderer.invoke('terminalState:startExecution', id, command) as Promise<{
+        id: string
+        terminalId: string
+        command: string
+        startTime: number
+        cwdBefore: string
+        status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+        output?: string
+      } | null>,
+    
+    // 追加命令输出
+    appendOutput: (id: string, output: string) =>
+      ipcRenderer.invoke('terminalState:appendOutput', id, output),
+    
+    // 完成命令执行
+    completeExecution: (id: string, exitCode?: number, status?: 'completed' | 'failed' | 'timeout' | 'cancelled') =>
+      ipcRenderer.invoke('terminalState:completeExecution', id, exitCode, status) as Promise<{
+        id: string
+        terminalId: string
+        command: string
+        startTime: number
+        endTime?: number
+        duration?: number
+        exitCode?: number
+        output?: string
+        cwdBefore: string
+        cwdAfter?: string
+        status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+      } | null>,
+    
+    // 获取当前正在执行的命令
+    getCurrentExecution: (id: string) =>
+      ipcRenderer.invoke('terminalState:getCurrentExecution', id) as Promise<{
+        id: string
+        terminalId: string
+        command: string
+        startTime: number
+        cwdBefore: string
+        status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+        output?: string
+      } | undefined>,
+    
+    // 获取命令执行历史
+    getExecutionHistory: (id: string, limit?: number) =>
+      ipcRenderer.invoke('terminalState:getExecutionHistory', id, limit) as Promise<Array<{
+        id: string
+        terminalId: string
+        command: string
+        startTime: number
+        endTime?: number
+        duration?: number
+        exitCode?: number
+        output?: string
+        cwdBefore: string
+        cwdAfter?: string
+        status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+      }>>,
+    
+    // 获取最后一次命令执行
+    getLastExecution: (id: string) =>
+      ipcRenderer.invoke('terminalState:getLastExecution', id) as Promise<{
+        id: string
+        terminalId: string
+        command: string
+        startTime: number
+        endTime?: number
+        duration?: number
+        exitCode?: number
+        output?: string
+        cwdBefore: string
+        cwdAfter?: string
+        status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+      } | undefined>,
+    
+    // 清除命令执行历史
+    clearExecutionHistory: (id: string) =>
+      ipcRenderer.invoke('terminalState:clearExecutionHistory', id),
+    
+    // 监听命令执行事件
+    onCommandExecution: (callback: (event: {
+      type: 'start' | 'output' | 'complete'
+      execution: {
+        id: string
+        terminalId: string
+        command: string
+        startTime: number
+        endTime?: number
+        duration?: number
+        exitCode?: number
+        output?: string
+        cwdBefore: string
+        cwdAfter?: string
+        status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+      }
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data as Parameters<typeof callback>[0])
+      ipcRenderer.on('terminal:commandExecution', handler)
+      return () => {
+        ipcRenderer.removeListener('terminal:commandExecution', handler)
+      }
+    }
+  },
+
   // AI 操作
   ai: {
     chat: (messages: AiMessage[], profileId?: string) =>

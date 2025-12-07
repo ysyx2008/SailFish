@@ -14,6 +14,7 @@ import { SftpService, SftpConfig } from './services/sftp.service'
 import { McpService } from './services/mcp.service'
 import { getKnowledgeService, KnowledgeService } from './services/knowledge'
 import type { KnowledgeSettings, SearchOptions, AddDocumentOptions, ModelTier } from './services/knowledge/types'
+import { initTerminalStateService, getTerminalStateService, type TerminalState, type CwdChangeEvent, type CommandExecution, type CommandExecutionEvent } from './services/terminal-state.service'
 
 // 禁用 GPU 加速可能导致的问题（可选）
 // app.disableHardwareAcceleration()
@@ -49,6 +50,19 @@ const agentService = new AgentService(aiService, ptyService, hostProfileService,
 const historyService = new HistoryService()
 const documentParserService = getDocumentParserService()
 const sftpService = new SftpService()
+
+// 终端状态服务（CWD 追踪、命令状态等）
+const terminalStateService = initTerminalStateService(ptyService, sshService)
+
+// 监听 CWD 变化，转发到前端
+terminalStateService.onCwdChange((event: CwdChangeEvent) => {
+  mainWindow?.webContents.send('terminal:cwdChange', event)
+})
+
+// 监听命令执行事件，转发到前端
+terminalStateService.onCommandExecution((event: CommandExecutionEvent) => {
+  mainWindow?.webContents.send('terminal:commandExecution', event)
+})
 
 // 知识库服务（延迟初始化，需要其他服务已就绪）
 let knowledgeService: KnowledgeService | null = null
@@ -229,6 +243,91 @@ ipcMain.on('ssh:subscribe', (event, id: string) => {
       // 忽略发送错误（窗口可能已关闭）
     }
   })
+})
+
+// ==================== 终端状态服务 ====================
+
+// 初始化终端状态
+ipcMain.handle('terminalState:init', async (_event, id: string, type: 'local' | 'ssh', initialCwd?: string) => {
+  terminalStateService.initTerminal(id, type, initialCwd)
+})
+
+// 移除终端状态
+ipcMain.handle('terminalState:remove', async (_event, id: string) => {
+  terminalStateService.removeTerminal(id)
+})
+
+// 获取终端状态
+ipcMain.handle('terminalState:get', async (_event, id: string): Promise<TerminalState | undefined> => {
+  return terminalStateService.getState(id)
+})
+
+// 获取当前工作目录
+ipcMain.handle('terminalState:getCwd', async (_event, id: string): Promise<string> => {
+  return terminalStateService.getCwd(id)
+})
+
+// 刷新 CWD（执行 pwd 命令验证）
+ipcMain.handle('terminalState:refreshCwd', async (_event, id: string): Promise<string> => {
+  return terminalStateService.refreshCwd(id, 'pwd_check')
+})
+
+// 手动更新 CWD
+ipcMain.handle('terminalState:updateCwd', async (_event, id: string, newCwd: string) => {
+  terminalStateService.updateCwd(id, newCwd)
+})
+
+// 处理用户输入（追踪可能的 CWD 变化）
+ipcMain.handle('terminalState:handleInput', async (_event, id: string, input: string) => {
+  terminalStateService.handleInput(id, input)
+})
+
+// 获取终端空闲状态
+ipcMain.handle('terminalState:getIdleState', async (_event, id: string): Promise<boolean> => {
+  const state = terminalStateService.getState(id)
+  return state?.isIdle ?? true
+})
+
+// ==================== 命令执行追踪 ====================
+
+// 开始追踪命令执行
+ipcMain.handle('terminalState:startExecution', async (_event, id: string, command: string): Promise<CommandExecution | null> => {
+  return terminalStateService.startCommandExecution(id, command)
+})
+
+// 追加命令输出
+ipcMain.handle('terminalState:appendOutput', async (_event, id: string, output: string) => {
+  terminalStateService.appendCommandOutput(id, output)
+})
+
+// 完成命令执行
+ipcMain.handle('terminalState:completeExecution', async (
+  _event,
+  id: string,
+  exitCode?: number,
+  status?: 'completed' | 'failed' | 'timeout' | 'cancelled'
+): Promise<CommandExecution | null> => {
+  return terminalStateService.completeCommandExecution(id, exitCode, status)
+})
+
+// 获取当前正在执行的命令
+ipcMain.handle('terminalState:getCurrentExecution', async (_event, id: string): Promise<CommandExecution | undefined> => {
+  return terminalStateService.getCurrentExecution(id)
+})
+
+// 获取命令执行历史
+ipcMain.handle('terminalState:getExecutionHistory', async (_event, id: string, limit?: number): Promise<CommandExecution[]> => {
+  return terminalStateService.getExecutionHistory(id, limit)
+})
+
+// 获取最后一次命令执行
+ipcMain.handle('terminalState:getLastExecution', async (_event, id: string): Promise<CommandExecution | undefined> => {
+  return terminalStateService.getLastExecution(id)
+})
+
+// 清除命令执行历史
+ipcMain.handle('terminalState:clearExecutionHistory', async (_event, id: string) => {
+  terminalStateService.clearExecutionHistory(id)
 })
 
 // AI 相关

@@ -3,6 +3,8 @@ import { ref, computed } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
 import stripAnsiLib from 'strip-ansi'
 import type { JumpHostConfig } from './config'
+import type { TerminalScreenService, ScreenContent } from '../services/terminal-screen.service'
+import type { TerminalSnapshotManager, TerminalSnapshot, TerminalDiff } from '../services/terminal-snapshot.service'
 
 export type ShellType = 'powershell' | 'cmd' | 'bash' | 'zsh' | 'sh' | 'unknown'
 export type OSType = 'windows' | 'linux' | 'macos' | 'unknown'
@@ -126,6 +128,13 @@ export const useTerminalStore = defineStore('terminal', () => {
   const sshTerminalCounters = ref<Record<string, number>>({})
   // 需要获得焦点的终端 ID（用于从 AI 助手发送代码后自动聚焦）
   const pendingFocusTabId = ref<string>('')
+  
+  // 屏幕服务实例存储（tabId -> TerminalScreenService）
+  // 使用普通对象而非 ref，因为 TerminalScreenService 实例不需要响应式
+  const screenServices = new Map<string, TerminalScreenService>()
+  
+  // 快照管理器存储（tabId -> TerminalSnapshotManager）
+  const snapshotManagers = new Map<string, TerminalSnapshotManager>()
 
   // 计算属性
   const activeTab = computed(() => tabs.value.find(t => t.id === activeTabId.value))
@@ -744,19 +753,42 @@ export const useTerminalStore = defineStore('terminal', () => {
     const tab = tabs.value.find(t => t.id === tabId)
     if (!tab) return null
 
-    // 清理终端输出中的 ANSI 转义序列
-    const cleanOutput = (tab.outputBuffer || [])
-      .slice(-50)
-      .map(line => stripAnsi(line))
+    // 优先使用屏幕服务获取更准确的终端内容
+    const screenService = screenServices.get(tabId)
+    let terminalOutput: string[]
+    
+    if (screenService) {
+      // 使用屏幕服务获取最近 50 行（更准确，直接从 xterm buffer 读取）
+      terminalOutput = screenService.getLastNLines(50)
+    } else {
+      // 降级到输出缓冲区
+      terminalOutput = (tab.outputBuffer || [])
+        .slice(-50)
+        .map(line => stripAnsi(line))
+    }
+
+    // 获取快照管理器的额外信息
+    const snapshotManager = snapshotManagers.get(tabId)
+    let isAtPrompt = false
+    let cursorPosition = null
+    
+    if (screenService) {
+      isAtPrompt = screenService.isAtPrompt()
+      cursorPosition = screenService.getCursorPosition()
+    }
 
     // 使用 JSON.parse(JSON.stringify()) 确保返回纯对象，移除 Proxy
     return JSON.parse(JSON.stringify({
       ptyId: tab.ptyId || '',
-      terminalOutput: cleanOutput, // 只取最近50行，已清理 ANSI
+      terminalOutput, // 使用更准确的屏幕内容
       systemInfo: {
         os: tab.systemInfo?.os || 'unknown',
         shell: tab.systemInfo?.shell || 'unknown'
-      }
+      },
+      // 增强的状态信息
+      isAtPrompt,
+      cursorPosition,
+      hasContentChanged: snapshotManager?.hasContentChanged() ?? true
     }))
   }
 
@@ -813,6 +845,156 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
   }
 
+  // ==================== 屏幕服务管理 ====================
+
+  /**
+   * 注册屏幕服务实例
+   * 由 Terminal.vue 组件在创建时调用
+   */
+  function registerScreenService(tabId: string, service: TerminalScreenService): void {
+    screenServices.set(tabId, service)
+  }
+
+  /**
+   * 注销屏幕服务实例
+   * 由 Terminal.vue 组件在销毁时调用
+   */
+  function unregisterScreenService(tabId: string): void {
+    screenServices.delete(tabId)
+  }
+
+  /**
+   * 获取屏幕服务实例
+   */
+  function getScreenService(tabId: string): TerminalScreenService | undefined {
+    return screenServices.get(tabId)
+  }
+
+  /**
+   * 获取终端屏幕内容
+   * 比 getRecentOutput 更准确，直接从 xterm buffer 读取
+   */
+  function getScreenContent(tabId: string): ScreenContent | null {
+    const service = screenServices.get(tabId)
+    if (!service) return null
+    return service.getScreenContent()
+  }
+
+  /**
+   * 获取终端最近 N 行（从屏幕服务获取，更准确）
+   */
+  function getScreenLastNLines(tabId: string, n: number): string[] {
+    const service = screenServices.get(tabId)
+    if (!service) {
+      // 降级到 outputBuffer
+      const tab = tabs.value.find(t => t.id === tabId)
+      if (!tab?.outputBuffer) return []
+      return tab.outputBuffer.slice(-n).map(line => stripAnsi(line))
+    }
+    return service.getLastNLines(n)
+  }
+
+  /**
+   * 检测终端是否处于命令提示符状态
+   */
+  function isTerminalAtPrompt(tabId: string): boolean {
+    const service = screenServices.get(tabId)
+    if (!service) return false
+    return service.isAtPrompt()
+  }
+
+  /**
+   * 获取终端光标位置
+   */
+  function getCursorPosition(tabId: string): { x: number; y: number } | null {
+    const service = screenServices.get(tabId)
+    if (!service) return null
+    return service.getCursorPosition()
+  }
+
+  /**
+   * 检测终端屏幕中的错误信息
+   */
+  function detectScreenErrors(tabId: string, maxLines?: number): Array<{ line: number; content: string; type: string }> {
+    const service = screenServices.get(tabId)
+    if (!service) return []
+    return service.detectErrors(maxLines)
+  }
+
+  // ==================== 快照管理器管理 ====================
+
+  /**
+   * 注册快照管理器实例
+   */
+  function registerSnapshotManager(tabId: string, manager: TerminalSnapshotManager): void {
+    snapshotManagers.set(tabId, manager)
+  }
+
+  /**
+   * 注销快照管理器实例
+   */
+  function unregisterSnapshotManager(tabId: string): void {
+    snapshotManagers.delete(tabId)
+  }
+
+  /**
+   * 获取快照管理器实例
+   */
+  function getSnapshotManager(tabId: string): TerminalSnapshotManager | undefined {
+    return snapshotManagers.get(tabId)
+  }
+
+  /**
+   * 创建终端状态快照
+   */
+  function createSnapshot(tabId: string, name?: string): TerminalSnapshot | null {
+    const manager = snapshotManagers.get(tabId)
+    if (!manager) return null
+    return manager.createSnapshot(name)
+  }
+
+  /**
+   * 创建快照并与上一个比较
+   */
+  function snapshotAndCompare(tabId: string): { snapshot: TerminalSnapshot; diff: TerminalDiff | null } | null {
+    const manager = snapshotManagers.get(tabId)
+    if (!manager) return null
+    return manager.snapshotAndCompare()
+  }
+
+  /**
+   * 检查终端内容是否变化
+   */
+  function hasContentChanged(tabId: string): boolean {
+    const manager = snapshotManagers.get(tabId)
+    if (!manager) return true
+    return manager.hasContentChanged()
+  }
+
+  /**
+   * 获取自上次快照以来的新输出
+   */
+  function getNewOutputSinceLastSnapshot(tabId: string): string[] {
+    const manager = snapshotManagers.get(tabId)
+    if (!manager) return []
+    return manager.getNewOutputSinceLastSnapshot()
+  }
+
+  /**
+   * 更新快照管理器的外部状态
+   */
+  function updateSnapshotExternalState(tabId: string, state: {
+    cwd?: string
+    lastCommand?: string
+    lastExitCode?: number
+    isIdle?: boolean
+  }): void {
+    const manager = snapshotManagers.get(tabId)
+    if (manager) {
+      manager.updateExternalState(state)
+    }
+  }
+
   return {
     tabs,
     activeTabId,
@@ -858,7 +1040,25 @@ export const useTerminalStore = defineStore('terminal', () => {
     setUploadedDocs,
     addUploadedDocs,
     removeUploadedDoc,
-    clearUploadedDocs
+    clearUploadedDocs,
+    // 屏幕服务管理
+    registerScreenService,
+    unregisterScreenService,
+    getScreenService,
+    getScreenContent,
+    getScreenLastNLines,
+    isTerminalAtPrompt,
+    getCursorPosition,
+    detectScreenErrors,
+    // 快照管理器管理
+    registerSnapshotManager,
+    unregisterSnapshotManager,
+    getSnapshotManager,
+    createSnapshot,
+    snapshotAndCompare,
+    hasContentChanged,
+    getNewOutputSinceLastSnapshot,
+    updateSnapshotExternalState
   }
 })
 

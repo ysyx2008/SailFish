@@ -7,6 +7,8 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { useConfigStore } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
 import { getTheme } from '../themes'
+import { TerminalScreenService, type ScreenContent } from '../services/terminal-screen.service'
+import { TerminalSnapshotManager, type TerminalSnapshot, type TerminalDiff } from '../services/terminal-snapshot.service'
 import '@xterm/xterm/css/xterm.css'
 
 const props = defineProps<{
@@ -23,6 +25,8 @@ const terminalRef = ref<HTMLDivElement | null>(null)
 let terminal: XTerm | null = null
 let fitAddon: FitAddon | null = null
 let searchAddon: SearchAddon | null = null
+let screenService: TerminalScreenService | null = null
+let snapshotManager: TerminalSnapshotManager | null = null
 let unsubscribe: (() => void) | null = null
 let resizeObserver: ResizeObserver | null = null
 let isDisposed = false
@@ -31,6 +35,8 @@ let keyDownHandler: ((event: KeyboardEvent) => void) | null = null
 let resizeTimeout: ReturnType<typeof setTimeout> | null = null
 let dprMediaQuery: MediaQueryList | null = null
 let dprChangeHandler: (() => void) | null = null
+// 用户输入缓冲区（用于 CWD 追踪）
+let inputBuffer = ''
 
 // 右键菜单状态
 const contextMenu = ref({
@@ -73,6 +79,19 @@ onMounted(async () => {
   // 挂载到 DOM
   terminal.open(terminalRef.value)
 
+  // 创建屏幕服务实例
+  screenService = new TerminalScreenService(terminal)
+  
+  // 创建快照管理器
+  snapshotManager = new TerminalSnapshotManager(screenService)
+  
+  // 注册屏幕服务和快照管理器到 store（供外部访问）
+  terminalStore.registerScreenService(props.tabId, screenService)
+  terminalStore.registerSnapshotManager(props.tabId, snapshotManager)
+
+  // 初始化终端状态服务（CWD 追踪等）
+  window.electronAPI.terminalState.init(props.ptyId, props.type)
+
   // 适配大小 - 使用 setTimeout 确保 DOM 完全渲染和布局完成
   await nextTick()
   setTimeout(async () => {
@@ -93,6 +112,24 @@ onMounted(async () => {
   if (!terminal) return
   terminal.onData(data => {
     terminalStore.writeToTerminal(props.tabId, data)
+    
+    // 追踪用户输入（用于 CWD 变化检测）
+    // 当用户按下回车时，发送完整命令给终端状态服务
+    if (data === '\r' || data === '\n') {
+      if (inputBuffer.trim()) {
+        window.electronAPI.terminalState.handleInput(props.ptyId, inputBuffer)
+      }
+      inputBuffer = ''
+    } else if (data === '\x7f' || data === '\b') {
+      // 退格键，删除缓冲区最后一个字符
+      inputBuffer = inputBuffer.slice(0, -1)
+    } else if (data.length === 1 && data.charCodeAt(0) >= 32) {
+      // 普通可打印字符
+      inputBuffer += data
+    } else if (data.length > 1 && !data.includes('\x1b')) {
+      // 粘贴的文本（不包含转义序列）
+      inputBuffer += data
+    }
   })
 
   // 处理 Ctrl+C 复制
@@ -238,6 +275,16 @@ onUnmounted(() => {
     terminalRef.value.removeEventListener('keydown', keyDownHandler, true)
     keyDownHandler = null
   }
+  // 注销屏幕服务和快照管理器
+  terminalStore.unregisterScreenService(props.tabId)
+  terminalStore.unregisterSnapshotManager(props.tabId)
+  screenService = null
+  snapshotManager = null
+  
+  // 移除终端状态
+  window.electronAPI.terminalState.remove(props.ptyId)
+  inputBuffer = ''
+  
   if (terminal) {
     terminal.dispose()
     terminal = null
@@ -349,7 +396,22 @@ const menuClear = () => {
 defineExpose({
   focus: () => terminal?.focus(),
   search: (text: string) => searchAddon?.findNext(text),
-  clear: () => terminal?.clear()
+  clear: () => terminal?.clear(),
+  // 屏幕内容读取方法
+  getScreenContent: (): ScreenContent | null => screenService?.getScreenContent() ?? null,
+  getVisibleContent: (): string[] => screenService?.getVisibleContent() ?? [],
+  getLastNLines: (n: number): string[] => screenService?.getLastNLines(n) ?? [],
+  getCursorPosition: () => screenService?.getCursorPosition() ?? { x: 0, y: 0 },
+  getCurrentLine: () => screenService?.getCurrentLine() ?? '',
+  isAtPrompt: () => screenService?.isAtPrompt() ?? false,
+  detectErrors: (maxLines?: number) => screenService?.detectErrors(maxLines) ?? [],
+  // 快照相关方法
+  createSnapshot: (name?: string): TerminalSnapshot | null => snapshotManager?.createSnapshot(name) ?? null,
+  getSnapshot: (name: string): TerminalSnapshot | undefined => snapshotManager?.getSnapshot(name),
+  snapshotAndCompare: (): { snapshot: TerminalSnapshot; diff: TerminalDiff | null } | null => 
+    snapshotManager?.snapshotAndCompare() ?? null,
+  hasContentChanged: (): boolean => snapshotManager?.hasContentChanged() ?? true,
+  getNewOutputSinceLastSnapshot: (): string[] => snapshotManager?.getNewOutputSinceLastSnapshot() ?? []
 })
 </script>
 

@@ -17,6 +17,7 @@ import type {
 } from './types'
 import { assessCommandRisk, analyzeCommand } from './risk-assessor'
 import { getKnowledgeService } from '../knowledge'
+import { getTerminalStateService } from '../terminal-state.service'
 
 // 错误分类
 type ErrorCategory = 'transient' | 'permission' | 'not_found' | 'timeout' | 'fatal'
@@ -184,6 +185,9 @@ export async function executeTool(
 
     case 'search_knowledge':
       return searchKnowledge(args, executor)
+
+    case 'get_terminal_state':
+      return getTerminalState(ptyId, args, executor)
 
     default:
       // 检查是否是 MCP 工具调用
@@ -539,6 +543,10 @@ async function checkTerminalStatus(
   try {
     const status = await executor.ptyService.getTerminalStatus(ptyId)
     
+    // 获取增强的终端状态信息
+    const terminalStateService = getTerminalStateService()
+    const terminalState = terminalStateService.getState(ptyId)
+    
     let statusText = ''
     if (status.isIdle) {
       statusText = `✓ 终端空闲，等待用户输入`
@@ -555,6 +563,9 @@ async function checkTerminalStatus(
     const details = [
       `状态: ${status.isIdle ? '空闲' : '忙碌'}`,
       status.stateDescription,
+      terminalState?.cwd ? `当前目录: ${terminalState.cwd}` : null,
+      terminalState?.lastCommand ? `最后命令: ${terminalState.lastCommand}` : null,
+      terminalState?.lastExitCode !== undefined ? `退出码: ${terminalState.lastExitCode}` : null,
       status.shellPid ? `Shell PID: ${status.shellPid}` : null,
       status.foregroundProcess ? `前台进程: ${status.foregroundProcess}` : null,
     ].filter(Boolean).join('\n')
@@ -884,6 +895,106 @@ async function searchKnowledge(
       type: 'tool_result',
       content: `搜索失败: ${errorMsg}`,
       toolName: 'search_knowledge'
+    })
+    return { success: false, output: '', error: errorMsg }
+  }
+}
+
+/**
+ * 获取终端完整状态
+ */
+async function getTerminalState(
+  ptyId: string,
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const includeHistory = args.include_history === true
+  const historyLimit = typeof args.history_limit === 'number' ? args.history_limit : 5
+
+  executor.addStep({
+    type: 'tool_call',
+    content: '获取终端状态',
+    toolName: 'get_terminal_state',
+    toolArgs: args,
+    riskLevel: 'safe'
+  })
+
+  try {
+    const terminalStateService = getTerminalStateService()
+    const state = terminalStateService.getState(ptyId)
+    const ptyStatus = await executor.ptyService.getTerminalStatus(ptyId)
+
+    if (!state) {
+      executor.addStep({
+        type: 'tool_result',
+        content: '终端状态未初始化',
+        toolName: 'get_terminal_state',
+        toolResult: '未找到终端状态'
+      })
+      return { success: false, output: '', error: '终端状态未初始化' }
+    }
+
+    const lines: string[] = [
+      '## 终端状态',
+      '',
+      `- **运行状态**: ${ptyStatus.isIdle ? '空闲' : '忙碌'}`,
+      `- **当前目录 (CWD)**: ${state.cwd}`,
+      `- **最后命令**: ${state.lastCommand || '无'}`,
+      `- **最后退出码**: ${state.lastExitCode !== undefined ? state.lastExitCode : '无'}`,
+    ]
+
+    if (ptyStatus.foregroundProcess) {
+      lines.push(`- **前台进程**: ${ptyStatus.foregroundProcess} (PID: ${ptyStatus.foregroundPid})`)
+    }
+
+    // 如果有正在执行的命令
+    const currentExecution = terminalStateService.getCurrentExecution(ptyId)
+    if (currentExecution) {
+      lines.push('')
+      lines.push('## 正在执行的命令')
+      lines.push(`- **命令**: ${currentExecution.command}`)
+      lines.push(`- **开始时间**: ${new Date(currentExecution.startTime).toLocaleString()}`)
+      lines.push(`- **执行目录**: ${currentExecution.cwdBefore}`)
+      if (currentExecution.output) {
+        const outputPreview = currentExecution.output.slice(-500)
+        lines.push(`- **输出预览** (最后500字符):`)
+        lines.push('```')
+        lines.push(outputPreview)
+        lines.push('```')
+      }
+    }
+
+    // 如果需要历史记录
+    if (includeHistory) {
+      const history = terminalStateService.getExecutionHistory(ptyId, historyLimit)
+      if (history.length > 0) {
+        lines.push('')
+        lines.push(`## 最近 ${history.length} 条命令历史`)
+        for (const exec of history) {
+          const duration = exec.duration ? `${exec.duration}ms` : '未知'
+          const status = exec.exitCode === 0 ? '✓' : `✗ (退出码: ${exec.exitCode})`
+          lines.push(`- ${status} \`${exec.command}\` (耗时: ${duration})`)
+        }
+      }
+    }
+
+    const output = lines.join('\n')
+
+    executor.addStep({
+      type: 'tool_result',
+      content: `CWD: ${state.cwd}, 状态: ${ptyStatus.isIdle ? '空闲' : '忙碌'}`,
+      toolName: 'get_terminal_state',
+      toolResult: output
+    })
+
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : '获取状态失败'
+    executor.addStep({
+      type: 'tool_result',
+      content: `获取状态失败: ${errorMsg}`,
+      toolName: 'get_terminal_state',
+      toolResult: errorMsg
     })
     return { success: false, output: '', error: errorMsg }
   }

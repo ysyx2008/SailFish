@@ -148,6 +148,26 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
           required: ['query']
         }
       }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'get_terminal_state',
+        description: '获取终端的完整状态信息，包括当前工作目录、最近执行的命令、命令执行历史等。比 check_terminal_status 更详细。',
+        parameters: {
+          type: 'object',
+          properties: {
+            include_history: {
+              type: 'boolean',
+              description: '是否包含命令执行历史，默认 false'
+            },
+            history_limit: {
+              type: 'number',
+              description: '历史记录数量限制，默认 5'
+            }
+          }
+        }
+      }
     }
   ]
 
