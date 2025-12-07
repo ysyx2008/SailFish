@@ -266,7 +266,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     const hasError = errorPatterns.some(pattern => pattern.test(output))
     if (hasError) {
       tab.lastError = {
-        content: output.trim().slice(0, 500), // 限制长度
+        content: stripAnsi(output.trim()).slice(0, 500), // 清理 ANSI 转义码并限制长度
         timestamp: new Date()
       }
     }
