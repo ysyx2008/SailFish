@@ -384,6 +384,30 @@ export class KnowledgeService extends EventEmitter {
   }
 
   /**
+   * 批量删除文档
+   */
+  async removeDocuments(docIds: string[]): Promise<{ success: number; failed: number }> {
+    let success = 0
+    let failed = 0
+
+    for (const docId of docIds) {
+      try {
+        const result = await this.removeDocument(docId)
+        if (result) {
+          success++
+        } else {
+          failed++
+        }
+      } catch (error) {
+        console.error(`[KnowledgeService] Failed to remove document ${docId}:`, error)
+        failed++
+      }
+    }
+
+    return { success, failed }
+  }
+
+  /**
    * 搜索知识库
    */
   async search(query: string, options?: Partial<SearchOptions>): Promise<SearchResult[]> {

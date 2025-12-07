@@ -30,6 +30,9 @@ const stats = ref<KnowledgeStats | null>(null)
 const loading = ref(true)
 const searchQuery = ref('')
 const selectedDoc = ref<KnowledgeDocument | null>(null)
+const selectedDocIds = ref<Set<string>>(new Set())
+const batchDeleting = ref(false)
+const clearing = ref(false)
 
 // 过滤后的文档
 const filteredDocuments = computed(() => {
@@ -40,6 +43,15 @@ const filteredDocuments = computed(() => {
     doc.tags.some(tag => tag.toLowerCase().includes(query))
   )
 })
+
+// 是否全选
+const isAllSelected = computed(() => {
+  if (filteredDocuments.value.length === 0) return false
+  return filteredDocuments.value.every(doc => selectedDocIds.value.has(doc.id))
+})
+
+// 是否有选中项
+const hasSelection = computed(() => selectedDocIds.value.size > 0)
 
 // 格式化文件大小
 const formatSize = (bytes: number): string => {
@@ -79,6 +91,32 @@ const loadData = async () => {
   }
 }
 
+// 切换单个文档选择
+const toggleDocSelection = (docId: string, event: Event) => {
+  event.stopPropagation()
+  if (selectedDocIds.value.has(docId)) {
+    selectedDocIds.value.delete(docId)
+  } else {
+    selectedDocIds.value.add(docId)
+  }
+  selectedDocIds.value = new Set(selectedDocIds.value)
+}
+
+// 全选/取消全选
+const toggleSelectAll = () => {
+  if (isAllSelected.value) {
+    filteredDocuments.value.forEach(doc => selectedDocIds.value.delete(doc.id))
+  } else {
+    filteredDocuments.value.forEach(doc => selectedDocIds.value.add(doc.id))
+  }
+  selectedDocIds.value = new Set(selectedDocIds.value)
+}
+
+// 清空选择
+const clearSelection = () => {
+  selectedDocIds.value = new Set()
+}
+
 // 删除文档
 const deleteDocument = async (doc: KnowledgeDocument) => {
   if (!confirm(`确定要删除 "${doc.filename}" 吗？`)) {
@@ -89,6 +127,8 @@ const deleteDocument = async (doc: KnowledgeDocument) => {
     const result = await window.electronAPI.knowledge.removeDocument(doc.id)
     if (result.success) {
       await loadData()
+      selectedDocIds.value.delete(doc.id)
+      selectedDocIds.value = new Set(selectedDocIds.value)
       if (selectedDoc.value?.id === doc.id) {
         selectedDoc.value = null
       }
@@ -100,22 +140,58 @@ const deleteDocument = async (doc: KnowledgeDocument) => {
   }
 }
 
-// 清空知识库
-const clearKnowledge = async () => {
-  if (!confirm('确定要清空整个知识库吗？此操作不可恢复！')) {
+// 批量删除文档
+const batchDeleteDocuments = async () => {
+  const count = selectedDocIds.value.size
+  if (count === 0) return
+  
+  if (!confirm(`确定要删除选中的 ${count} 个文档吗？此操作不可恢复。`)) {
     return
   }
   
   try {
+    batchDeleting.value = true
+    const docIds = Array.from(selectedDocIds.value)
+    const result = await window.electronAPI.knowledge.removeDocuments(docIds)
+    
+    if (result.success) {
+      await loadData()
+      clearSelection()
+      if (selectedDoc.value && docIds.includes(selectedDoc.value.id)) {
+        selectedDoc.value = null
+      }
+    } else {
+      alert(`批量删除失败: ${result.error}`)
+    }
+  } catch (error) {
+    console.error('批量删除文档失败:', error)
+  } finally {
+    batchDeleting.value = false
+  }
+}
+
+// 清空知识库
+const clearKnowledge = async () => {
+  if (documents.value.length === 0) return
+  
+  if (!confirm(`确定要清空整个知识库吗？将删除全部 ${documents.value.length} 个文档，此操作不可恢复！`)) {
+    return
+  }
+  
+  try {
+    clearing.value = true
     const result = await window.electronAPI.knowledge.clear()
     if (result.success) {
       await loadData()
       selectedDoc.value = null
+      clearSelection()
     } else {
       alert(`清空失败: ${result.error}`)
     }
   } catch (error) {
     console.error('清空知识库失败:', error)
+  } finally {
+    clearing.value = false
   }
 }
 
@@ -162,15 +238,38 @@ onMounted(() => {
             />
           </div>
 
+          <!-- 批量操作栏 -->
+          <div class="batch-actions-bar" v-if="filteredDocuments.length > 0">
+            <label class="checkbox-wrapper">
+              <input 
+                type="checkbox" 
+                :checked="isAllSelected"
+                @change="toggleSelectAll"
+              />
+              <span class="checkbox-label">全选</span>
+            </label>
+            <span v-if="hasSelection" class="selection-info">
+              已选 {{ selectedDocIds.size }} 个
+              <button class="btn-link" @click="clearSelection">取消</button>
+            </span>
+          </div>
+
           <!-- 文档列表 -->
           <div class="doc-list" v-if="!loading">
             <div 
               v-for="doc in filteredDocuments" 
               :key="doc.id"
               class="doc-item"
-              :class="{ active: selectedDoc?.id === doc.id }"
+              :class="{ active: selectedDoc?.id === doc.id, selected: selectedDocIds.has(doc.id) }"
               @click="viewDocument(doc)"
             >
+              <label class="doc-checkbox" @click.stop>
+                <input 
+                  type="checkbox" 
+                  :checked="selectedDocIds.has(doc.id)"
+                  @change="toggleDocSelection(doc.id, $event)"
+                />
+              </label>
               <div class="doc-icon">
                 {{ doc.fileType === 'pdf' ? '📄' : doc.fileType === 'docx' ? '📝' : '📃' }}
               </div>
@@ -205,11 +304,19 @@ onMounted(() => {
           <!-- 操作按钮 -->
           <div class="list-actions">
             <button 
+              v-if="hasSelection"
+              class="btn btn-danger btn-sm"
+              @click="batchDeleteDocuments"
+              :disabled="batchDeleting"
+            >
+              {{ batchDeleting ? '删除中...' : `删除选中 (${selectedDocIds.size})` }}
+            </button>
+            <button 
               class="btn btn-danger btn-sm"
               @click="clearKnowledge"
-              :disabled="documents.length === 0"
+              :disabled="documents.length === 0 || clearing"
             >
-              清空知识库
+              {{ clearing ? '清空中...' : '清空全部' }}
             </button>
           </div>
         </div>
@@ -355,7 +462,8 @@ onMounted(() => {
   padding: 10px 12px;
   border-radius: 6px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
+  border: 1px solid transparent;
 }
 
 .doc-item:hover {
@@ -365,6 +473,11 @@ onMounted(() => {
 .doc-item.active {
   background: var(--accent-primary);
   color: white;
+}
+
+.doc-item.selected:not(.active) {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.3);
 }
 
 .doc-icon {
@@ -549,6 +662,65 @@ onMounted(() => {
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* 批量操作栏 */
+.batch-actions-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.checkbox-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.checkbox-wrapper input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.selection-info {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--accent-primary);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
+/* 文档复选框 */
+.doc-checkbox {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.doc-checkbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
 }
 </style>
 

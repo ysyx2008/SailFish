@@ -1430,6 +1430,19 @@ ipcMain.handle('knowledge:removeDocument', async (_event, docId: string) => {
   }
 })
 
+// 批量删除文档
+ipcMain.handle('knowledge:removeDocuments', async (_event, docIds: string[]) => {
+  try {
+    const result = await getKnowledge().removeDocuments(docIds)
+    return { success: true, ...result }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '批量删除文档失败' 
+    }
+  }
+})
+
 // 搜索知识库
 ipcMain.handle('knowledge:search', async (_event, query: string, options?: Partial<SearchOptions>) => {
   try {

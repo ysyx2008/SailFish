@@ -1364,6 +1364,10 @@ const electronAPI = {
     removeDocument: (docId: string) =>
       ipcRenderer.invoke('knowledge:removeDocument', docId) as Promise<{ success: boolean; error?: string }>,
 
+    // 批量删除文档
+    removeDocuments: (docIds: string[]) =>
+      ipcRenderer.invoke('knowledge:removeDocuments', docIds) as Promise<{ success: boolean; deleted?: number; failed?: number; error?: string }>,
+
     // 搜索
     search: (query: string, options?: {
       limit?: number
