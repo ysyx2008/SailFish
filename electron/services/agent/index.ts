@@ -18,7 +18,10 @@ import type {
   AgentRun,
   AgentCallbacks,
   HostProfileServiceInterface,
-  RiskLevel
+  RiskLevel,
+  ExecutionStrategy,
+  ReflectionState,
+  ExecutionQualityScore
 } from './types'
 import { DEFAULT_AGENT_CONFIG } from './types'
 import { getAgentTools } from './tools'
@@ -121,39 +124,215 @@ export class AgentService {
   }
 
   /**
-   * 生成反思提示消息
-   * 只在检测到问题时触发，提示简洁自然
+   * 检测执行中的问题（增强版）
    */
-  private generateReflectionPrompt(run: AgentRun): string {
+  private detectExecutionIssues(run: AgentRun): string[] {
+    const issues: string[] = []
     const { reflection } = run
     
-    // 检测到循环
+    // 检测命令循环
     if (this.detectCommandLoop(reflection.lastCommands)) {
-      return `（注意：你似乎在重复相同的操作，请换个方法试试，或者告诉用户遇到了什么困难）`
+      issues.push('detected_command_loop')
     }
     
-    // 连续失败
+    // 检测连续失败
     if (reflection.failureCount >= 3) {
-      return `（注意：已连续失败 ${reflection.failureCount} 次，建议换个思路或向用户说明情况）`
+      issues.push('consecutive_failures')
     }
     
-    return ''
+    // 检测高失败率
+    const totalAttempts = reflection.successCount + reflection.totalFailures
+    if (totalAttempts >= 5 && reflection.totalFailures / totalAttempts > 0.6) {
+      issues.push('high_failure_rate')
+    }
+    
+    // 检测策略切换过于频繁
+    const recentSwitches = reflection.strategySwitches.filter(
+      s => Date.now() - s.timestamp < 60000  // 1 分钟内
+    )
+    if (recentSwitches.length >= 3) {
+      issues.push('frequent_strategy_changes')
+    }
+    
+    return issues
   }
 
   /**
-   * 检查是否需要触发反思
-   * 只在真正出问题时触发，避免打扰正常流程
+   * 计算执行质量评分
+   */
+  private calculateQualityScore(reflection: ReflectionState): ExecutionQualityScore {
+    const totalAttempts = reflection.successCount + reflection.totalFailures
+    
+    // 成功率
+    const successRate = totalAttempts > 0 
+      ? reflection.successCount / totalAttempts 
+      : 1
+    
+    // 效率（基于工具调用次数和失败次数）
+    const efficiency = totalAttempts > 0
+      ? Math.max(0, 1 - (reflection.totalFailures / totalAttempts) * 0.5)
+      : 1
+    
+    // 适应性（基于策略切换的效果）
+    let adaptability = 0.7  // 默认值
+    if (reflection.strategySwitches.length > 0) {
+      // 如果有策略切换，检查切换后是否有改善
+      const lastSwitch = reflection.strategySwitches[reflection.strategySwitches.length - 1]
+      const timeSinceSwitch = Date.now() - lastSwitch.timestamp
+      if (timeSinceSwitch > 10000 && reflection.failureCount === 0) {
+        adaptability = 0.9  // 切换后成功
+      } else if (reflection.failureCount > 0) {
+        adaptability = 0.5  // 切换后仍有失败
+      }
+    }
+    
+    // 综合评分
+    const overallScore = successRate * 0.5 + efficiency * 0.3 + adaptability * 0.2
+    
+    return { successRate, efficiency, adaptability, overallScore }
+  }
+
+  /**
+   * 决定是否需要切换策略
+   */
+  private shouldSwitchStrategy(run: AgentRun): { 
+    should: boolean
+    newStrategy?: ExecutionStrategy
+    reason?: string 
+  } {
+    const { reflection } = run
+    const issues = this.detectExecutionIssues(run)
+    
+    // 如果刚切换过策略，先观察一下
+    const lastSwitch = reflection.strategySwitches[reflection.strategySwitches.length - 1]
+    if (lastSwitch && Date.now() - lastSwitch.timestamp < 30000) {
+      return { should: false }
+    }
+    
+    // 连续失败 -> 切换到保守策略
+    if (issues.includes('consecutive_failures') && reflection.currentStrategy !== 'conservative') {
+      return {
+        should: true,
+        newStrategy: 'conservative',
+        reason: `连续失败 ${reflection.failureCount} 次，切换到保守策略`
+      }
+    }
+    
+    // 检测到循环 -> 切换到诊断策略
+    if (issues.includes('detected_command_loop') && reflection.currentStrategy !== 'diagnostic') {
+      return {
+        should: true,
+        newStrategy: 'diagnostic',
+        reason: '检测到命令循环，切换到诊断策略进行问题分析'
+      }
+    }
+    
+    // 高失败率 -> 切换到保守策略
+    if (issues.includes('high_failure_rate') && reflection.currentStrategy === 'aggressive') {
+      return {
+        should: true,
+        newStrategy: 'conservative',
+        reason: '失败率较高，从激进策略切换到保守策略'
+      }
+    }
+    
+    // 如果一切顺利且当前是保守策略，可以考虑切换回默认
+    if (issues.length === 0 && 
+        reflection.currentStrategy === 'conservative' && 
+        reflection.successCount >= 3 &&
+        reflection.failureCount === 0) {
+      return {
+        should: true,
+        newStrategy: 'default',
+        reason: '执行顺利，切换回默认策略'
+      }
+    }
+    
+    return { should: false }
+  }
+
+  /**
+   * 执行策略切换
+   */
+  private switchStrategy(run: AgentRun, newStrategy: ExecutionStrategy, reason: string): void {
+    const oldStrategy = run.reflection.currentStrategy
+    
+    run.reflection.strategySwitches.push({
+      timestamp: Date.now(),
+      fromStrategy: oldStrategy,
+      toStrategy: newStrategy,
+      reason,
+      triggerCondition: this.detectExecutionIssues(run).join(', ') || 'manual'
+    })
+    
+    run.reflection.currentStrategy = newStrategy
+    
+    console.log(`[Agent] 策略切换: ${oldStrategy} -> ${newStrategy}, 原因: ${reason}`)
+  }
+
+  /**
+   * 生成反思提示消息（增强版）
+   * 基于当前策略和检测到的问题生成更有针对性的提示
+   */
+  private generateReflectionPrompt(run: AgentRun): string {
+    const { reflection } = run
+    const issues = this.detectExecutionIssues(run)
+    
+    // 更新检测到的问题列表
+    for (const issue of issues) {
+      if (!reflection.detectedIssues.includes(issue)) {
+        reflection.detectedIssues.push(issue)
+      }
+    }
+    
+    // 根据当前策略和问题生成提示
+    const prompts: string[] = []
+    
+    // 检测到循环
+    if (issues.includes('detected_command_loop')) {
+      if (reflection.currentStrategy === 'diagnostic') {
+        prompts.push('你在重复相同的操作。请分析：1) 为什么会陷入循环？2) 有什么根本原因导致方法无效？3) 是否需要完全不同的方法？')
+      } else {
+        prompts.push('你似乎在重复相同的操作，请换个方法试试，或者告诉用户遇到了什么困难。')
+      }
+    }
+    
+    // 连续失败
+    if (issues.includes('consecutive_failures')) {
+      const failCount = reflection.failureCount
+      if (reflection.currentStrategy === 'conservative') {
+        prompts.push(`已连续失败 ${failCount} 次。保守策略建议：暂停执行，向用户说明具体困难和可能的原因。`)
+      } else {
+        prompts.push(`已连续失败 ${failCount} 次，建议换个思路或向用户说明情况。`)
+      }
+    }
+    
+    // 高失败率
+    if (issues.includes('high_failure_rate')) {
+      prompts.push('整体失败率较高，建议重新评估任务方案或寻求用户指导。')
+    }
+    
+    if (prompts.length === 0) {
+      return ''
+    }
+    
+    return `（注意：${prompts.join(' ')}）`
+  }
+
+  /**
+   * 检查是否需要触发反思（增强版）
    */
   private shouldTriggerReflection(run: AgentRun): boolean {
     const { reflection } = run
+    const issues = this.detectExecutionIssues(run)
     
-    // 连续失败 3 次以上触发
-    if (reflection.failureCount >= 3) {
+    // 有问题就触发
+    if (issues.length > 0) {
       return true
     }
     
-    // 检测到命令循环时触发
-    if (this.detectCommandLoop(reflection.lastCommands)) {
+    // 定期检查（每 10 次工具调用）
+    if (reflection.toolCallCount - reflection.lastReflectionAt >= 10) {
       return true
     }
     
@@ -161,7 +340,7 @@ export class AgentService {
   }
 
   /**
-   * 更新反思追踪状态
+   * 更新反思追踪状态（增强版）
    */
   private updateReflectionTracking(
     run: AgentRun, 
@@ -169,22 +348,35 @@ export class AgentService {
     toolArgs: Record<string, unknown>,
     success: boolean
   ): void {
-    run.reflection.toolCallCount++
+    const { reflection } = run
+    
+    reflection.toolCallCount++
     
     // 追踪命令执行
     if (toolName === 'execute_command' && toolArgs.command) {
-      run.reflection.lastCommands.push(toolArgs.command as string)
+      reflection.lastCommands.push(toolArgs.command as string)
       // 只保留最近 5 个命令
-      if (run.reflection.lastCommands.length > 5) {
-        run.reflection.lastCommands.shift()
+      if (reflection.lastCommands.length > 5) {
+        reflection.lastCommands.shift()
       }
     }
     
-    // 更新失败计数
+    // 更新成功/失败计数
     if (success) {
-      run.reflection.failureCount = 0
+      reflection.successCount++
+      reflection.failureCount = 0
     } else {
-      run.reflection.failureCount++
+      reflection.failureCount++
+      reflection.totalFailures++
+    }
+    
+    // 更新质量评分
+    reflection.qualityScore = this.calculateQualityScore(reflection)
+    
+    // 检查是否需要切换策略
+    const switchDecision = this.shouldSwitchStrategy(run)
+    if (switchDecision.should && switchDecision.newStrategy && switchDecision.reason) {
+      this.switchStrategy(run, switchDecision.newStrategy, switchDecision.reason)
     }
   }
 
@@ -218,7 +410,7 @@ export class AgentService {
 
   /**
    * 压缩工具输出内容
-   * 对于长输出，只保留关键信息
+   * 对于长输出，智能保留关键信息
    */
   private compressToolOutput(output: string, maxLength: number = 2000): string {
     if (output.length <= maxLength) {
@@ -245,8 +437,83 @@ export class AgentService {
   }
 
   /**
-   * 压缩消息历史以节省上下文空间
-   * 保留 system prompt、最近的对话和关键信息
+   * 提取消息中的关键信息（记忆锚点）
+   * 借鉴 DeepAgent 的 Memory Folding 思想
+   */
+  private extractKeyPoints(messages: AiMessage[]): string[] {
+    const keyPoints: string[] = []
+    
+    for (const msg of messages) {
+      // 从 assistant 消息中提取关键决策和发现
+      if (msg.role === 'assistant' && msg.content) {
+        // 提取诊断结果
+        const diagMatch = msg.content.match(/(?:诊断结果|分析结果|发现|结论)[：:]\s*([^\n]+)/g)
+        if (diagMatch) {
+          keyPoints.push(...diagMatch.map(m => m.trim()))
+        }
+        
+        // 提取执行的关键操作
+        const actionMatch = msg.content.match(/(?:已执行|已完成|成功)[：:]\s*([^\n]+)/g)
+        if (actionMatch) {
+          keyPoints.push(...actionMatch.map(m => m.trim()))
+        }
+        
+        // 提取错误信息
+        const errorMatch = msg.content.match(/(?:错误|失败|问题)[：:]\s*([^\n]+)/g)
+        if (errorMatch) {
+          keyPoints.push(...errorMatch.map(m => m.trim()))
+        }
+      }
+      
+      // 从 tool 消息中提取关键结果
+      if (msg.role === 'tool' && msg.content) {
+        // 提取错误信息
+        if (msg.content.includes('错误') || msg.content.includes('Error') || msg.content.includes('failed')) {
+          const firstLine = msg.content.split('\n')[0]
+          if (firstLine.length < 200) {
+            keyPoints.push(`[工具结果] ${firstLine}`)
+          }
+        }
+      }
+    }
+    
+    // 去重并限制数量
+    return [...new Set(keyPoints)].slice(-10)
+  }
+
+  /**
+   * 计算消息的重要性分数
+   * 用于决定压缩时的保留优先级
+   */
+  private calculateMessageImportance(msg: AiMessage, index: number, total: number): number {
+    let score = 0
+    
+    // 位置因素：越新的消息越重要
+    score += (index / total) * 30
+    
+    // 角色因素
+    if (msg.role === 'user') score += 20  // 用户消息重要
+    if (msg.role === 'assistant' && msg.tool_calls) score += 15  // 包含工具调用的回复重要
+    
+    // 内容因素
+    if (msg.content) {
+      // 包含关键信息的消息更重要
+      if (msg.content.includes('结果') || msg.content.includes('发现')) score += 10
+      if (msg.content.includes('错误') || msg.content.includes('失败')) score += 15
+      if (msg.content.includes('成功') || msg.content.includes('完成')) score += 10
+      
+      // 太长的消息降低优先级（可能是原始输出）
+      if (msg.content.length > 2000) score -= 10
+    }
+    
+    return score
+  }
+
+  /**
+   * 智能压缩消息历史（借鉴 DeepAgent Memory Folding）
+   * 1. 保留 system prompt 和最近对话
+   * 2. 对中间历史进行智能摘要
+   * 3. 保留关键决策点和执行结果
    */
   private async compressMessages(
     messages: AiMessage[], 
@@ -259,17 +526,17 @@ export class AgentService {
       return messages
     }
 
-    console.log(`[Agent] 消息压缩: ${totalTokens} tokens -> 目标 ${maxTokens} tokens`)
+    console.log(`[Agent] 智能记忆压缩: ${totalTokens} tokens -> 目标 ${maxTokens} tokens`)
 
     const result: AiMessage[] = []
     
-    // 1. 保留 system prompt
+    // 1. 保留 system prompt（必须）
     const systemMsg = messages.find(m => m.role === 'system')
     if (systemMsg) {
       result.push(systemMsg)
     }
 
-    // 2. 找到最近的用户消息和相关的助手回复
+    // 2. 分离非系统消息
     const nonSystemMessages = messages.filter(m => m.role !== 'system')
     
     // 3. 压缩工具输出
@@ -297,17 +564,63 @@ export class AgentService {
       return [...result, ...compressedMessages]
     }
 
-    // 5. 如果还是太长，只保留最近的 N 条消息
-    const reserveCount = Math.max(10, Math.floor(maxTokens / 500))
-    const recentMessages = compressedMessages.slice(-reserveCount)
+    // 5. 需要进一步压缩，使用 Memory Folding 策略
+    console.log('[Agent] 启用 Memory Folding 策略')
     
-    // 添加一条摘要消息，说明之前的对话被压缩了
+    // 提取关键信息作为记忆锚点
+    const keyPoints = this.extractKeyPoints(compressedMessages)
+    
+    // 计算每条消息的重要性
+    const messagesWithScore = compressedMessages.map((msg, index) => ({
+      msg,
+      score: this.calculateMessageImportance(msg, index, compressedMessages.length)
+    }))
+    
+    // 确定要保留的消息数量
+    const recentCount = 8  // 保留最近的 8 条消息
+    const importantCount = Math.max(4, Math.floor((maxTokens - this.estimateTotalTokens(result)) / 800))
+    
+    // 分离最近消息和历史消息
+    const recentMessages = compressedMessages.slice(-recentCount)
+    const historyMessages = compressedMessages.slice(0, -recentCount)
+    
+    // 从历史消息中选择最重要的
+    const historyWithScore = historyMessages.map((msg, index) => ({
+      msg,
+      score: this.calculateMessageImportance(msg, index, historyMessages.length)
+    }))
+    
+    // 按重要性排序，选择 top N
+    const importantHistory = historyWithScore
+      .sort((a, b) => b.score - a.score)
+      .slice(0, importantCount)
+      .sort((a, b) => historyMessages.indexOf(a.msg) - historyMessages.indexOf(b.msg))  // 恢复时间顺序
+      .map(item => item.msg)
+    
+    // 6. 构建摘要消息
+    let summaryContent = '[系统提示：对话历史已被智能压缩，以下是关键信息摘要]\n\n'
+    
+    if (keyPoints.length > 0) {
+      summaryContent += '**关键记录**：\n'
+      keyPoints.forEach(point => {
+        summaryContent += `- ${point}\n`
+      })
+      summaryContent += '\n'
+    }
+    
+    summaryContent += '如需了解更多历史细节，请询问用户。'
+    
     const summaryMsg: AiMessage = {
       role: 'user',
-      content: `[系统提示：之前的对话历史因上下文限制已被压缩。请继续当前任务，如需了解之前的上下文，请询问用户。]`
+      content: summaryContent
     }
 
-    return [...result, summaryMsg, ...recentMessages]
+    // 7. 组合最终结果
+    const finalMessages = [...result, summaryMsg, ...importantHistory, ...recentMessages]
+    
+    console.log(`[Agent] Memory Folding 完成: 保留 ${finalMessages.length} 条消息，提取 ${keyPoints.length} 个关键点`)
+    
+    return finalMessages
   }
 
   /**
@@ -469,12 +782,18 @@ export class AgentService {
       pendingUserMessages: [],  // 用户补充消息队列
       config: fullConfig,
       context,  // 保存上下文供工具使用
-      // 初始化反思追踪
+      // 初始化反思追踪（增强版）
       reflection: {
         toolCallCount: 0,
         failureCount: 0,
+        totalFailures: 0,
+        successCount: 0,
         lastCommands: [],
-        lastReflectionAt: 0
+        lastReflectionAt: 0,
+        currentStrategy: 'default',
+        strategySwitches: [],
+        detectedIssues: [],
+        appliedFixes: []
       }
     }
     this.runs.set(agentId, run)

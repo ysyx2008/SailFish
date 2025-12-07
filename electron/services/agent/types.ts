@@ -58,6 +58,44 @@ export interface PendingConfirmation {
   resolve: (approved: boolean, modifiedArgs?: Record<string, unknown>) => void
 }
 
+// 执行策略（与 planner 中的定义保持一致）
+export type ExecutionStrategy = 'default' | 'conservative' | 'aggressive' | 'diagnostic'
+
+// 策略切换记录
+export interface StrategySwitchRecord {
+  timestamp: number
+  fromStrategy: ExecutionStrategy
+  toStrategy: ExecutionStrategy
+  reason: string
+  triggerCondition: string  // 触发切换的条件
+}
+
+// 执行质量评分
+export interface ExecutionQualityScore {
+  successRate: number       // 成功率 (0-1)
+  efficiency: number        // 效率评分 (0-1)
+  adaptability: number      // 适应性评分 (0-1)
+  overallScore: number      // 综合评分 (0-1)
+}
+
+// 增强版反思追踪
+export interface ReflectionState {
+  toolCallCount: number           // 工具调用计数
+  failureCount: number            // 连续失败次数
+  totalFailures: number           // 总失败次数
+  successCount: number            // 成功次数
+  lastCommands: string[]          // 最近执行的命令（用于检测循环）
+  lastReflectionAt: number        // 上次反思时的步数
+  // 新增：策略相关
+  currentStrategy: ExecutionStrategy  // 当前执行策略
+  strategySwitches: StrategySwitchRecord[]  // 策略切换历史
+  // 新增：质量追踪
+  qualityScore?: ExecutionQualityScore  // 执行质量评分
+  // 新增：问题分析
+  detectedIssues: string[]        // 检测到的问题列表
+  appliedFixes: string[]          // 已应用的修复措施
+}
+
 // Agent 运行状态
 export interface AgentRun {
   id: string
@@ -70,13 +108,8 @@ export interface AgentRun {
   pendingUserMessages: string[]  // 用户补充消息队列
   config: AgentConfig
   context: AgentContext  // 运行上下文
-  // 自我反思追踪
-  reflection: {
-    toolCallCount: number         // 工具调用计数
-    failureCount: number          // 连续失败次数
-    lastCommands: string[]        // 最近执行的命令（用于检测循环）
-    lastReflectionAt: number      // 上次反思时的步数
-  }
+  // 自我反思追踪（增强版）
+  reflection: ReflectionState
 }
 
 // 主机档案服务接口

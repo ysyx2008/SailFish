@@ -187,6 +187,15 @@ const formatConfirmArgs = (confirm: typeof pendingConfirm.value) => {
   return JSON.stringify(args, null, 2)
 }
 
+// 检查任务组是否正在流式输出（AI 已开始返回内容）
+const isStreamingOutput = (group: typeof agentTaskGroups.value[0]) => {
+  if (group.steps.length === 0) return false
+  const lastStep = group.steps[group.steps.length - 1]
+  // 如果最后一个步骤是 message 类型且正在流式输出，或者最后一个步骤是 message 类型且有内容
+  // 说明 AI 已经开始返回内容了，不需要显示"思考中"
+  return lastStep.type === 'message' && (lastStep.isStreaming || lastStep.content.length > 0)
+}
+
 // ==================== 发送消息 ====================
 
 // 发送消息（根据模式选择普通对话或 Agent）
@@ -577,6 +586,18 @@ onMounted(() => {
               </div>
             </div>
             
+            <!-- Agent 初始加载提示（刚启动还没有步骤时） -->
+            <div v-if="group.isCurrentTask && isAgentRunning && group.steps.length === 0" class="message assistant">
+              <div class="message-wrapper">
+                <div class="message-content agent-initial-loading">
+                  <div class="agent-thinking-indicator">
+                    <span class="thinking-spinner"></span>
+                    <span class="thinking-text">Agent 启动中...</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
             <!-- 执行步骤（折叠块） -->
             <div v-if="group.steps.length > 0" class="message assistant">
               <div class="message-wrapper agent-steps-wrapper">
@@ -608,6 +629,14 @@ onMounted(() => {
                           <pre>{{ step.toolResult }}</pre>
                         </div>
                       </div>
+                    </div>
+                    <!-- AI 思考中指示器（当 Agent 运行中且没有流式输出时显示） -->
+                    <div 
+                      v-if="group.isCurrentTask && isAgentRunning && !pendingConfirm && !isStreamingOutput(group)"
+                      class="agent-thinking-indicator"
+                    >
+                      <span class="thinking-spinner"></span>
+                      <span class="thinking-text">AI 正在思考中...</span>
                     </div>
                   </div>
                 </div>
@@ -2181,6 +2210,38 @@ onMounted(() => {
   margin-top: 10px;
 }
 
+/* AI 思考中指示器 */
+.agent-thinking-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  margin-top: 10px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.08));
+  border-radius: 8px;
+  border: 1px solid rgba(99, 102, 241, 0.15);
+}
+
+.thinking-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(99, 102, 241, 0.2);
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.thinking-text {
+  font-size: 13px;
+  color: rgba(99, 102, 241, 0.9);
+  animation: pulse-text 2s ease-in-out infinite;
+}
+
+@keyframes pulse-text {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 /* Agent 最终回复 - 美化样式 */
 .agent-final-wrapper {
   background: transparent !important;
@@ -2413,6 +2474,18 @@ onMounted(() => {
   white-space: pre-wrap;
   word-break: break-all;
   color: var(--text-muted);
+}
+
+.agent-step-inline.thinking {
+  color: rgba(99, 102, 241, 0.9);
+}
+
+.agent-step-inline.thinking .step-icon {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.agent-step-inline.thinking .step-text {
+  animation: pulse-text 2s ease-in-out infinite;
 }
 
 .agent-step-inline.tool_call {
