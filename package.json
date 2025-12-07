@@ -16,7 +16,7 @@
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx --fix",
     "format": "prettier --write src/",
-    "postversion": "git push && git push --tags"
+    "postversion": "git push && git push origin v$npm_package_version"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.22.3",
