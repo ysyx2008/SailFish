@@ -510,94 +510,202 @@ export class AgentService {
   }
 
   /**
+   * 将消息按对话轮次分组
+   * 确保 assistant 的 tool_calls 和对应的 tool 消息保持在一起
+   */
+  private groupMessagesByTurn(messages: AiMessage[]): AiMessage[][] {
+    const groups: AiMessage[][] = []
+    let currentGroup: AiMessage[] = []
+    let expectingToolResponses = false
+    let expectedToolCallIds: Set<string> = new Set()
+    
+    for (const msg of messages) {
+      if (msg.role === 'system') {
+        // system 消息单独一组
+        if (currentGroup.length > 0) {
+          groups.push(currentGroup)
+          currentGroup = []
+        }
+        groups.push([msg])
+        expectingToolResponses = false
+        expectedToolCallIds.clear()
+        continue
+      }
+      
+      if (msg.role === 'user') {
+        // 新的用户消息开始新的一轮
+        if (currentGroup.length > 0) {
+          groups.push(currentGroup)
+          currentGroup = []
+        }
+        currentGroup.push(msg)
+        expectingToolResponses = false
+        expectedToolCallIds.clear()
+        continue
+      }
+      
+      if (msg.role === 'assistant') {
+        // assistant 消息加入当前组
+        currentGroup.push(msg)
+        // 如果有 tool_calls，标记需要等待 tool 响应
+        if (msg.tool_calls && msg.tool_calls.length > 0) {
+          expectingToolResponses = true
+          expectedToolCallIds = new Set(msg.tool_calls.map(tc => tc.id))
+        } else {
+          // 没有 tool_calls，这轮结束
+          if (currentGroup.length > 0) {
+            groups.push(currentGroup)
+            currentGroup = []
+          }
+          expectingToolResponses = false
+          expectedToolCallIds.clear()
+        }
+        continue
+      }
+      
+      if (msg.role === 'tool') {
+        // tool 消息必须跟在 assistant 后面
+        currentGroup.push(msg)
+        // 移除已响应的 tool_call_id
+        if (msg.tool_call_id) {
+          expectedToolCallIds.delete(msg.tool_call_id)
+        }
+        // 如果所有 tool_calls 都已响应，这轮结束
+        if (expectedToolCallIds.size === 0) {
+          if (currentGroup.length > 0) {
+            groups.push(currentGroup)
+            currentGroup = []
+          }
+          expectingToolResponses = false
+        }
+        continue
+      }
+    }
+    
+    // 处理剩余的消息
+    if (currentGroup.length > 0) {
+      groups.push(currentGroup)
+    }
+    
+    return groups
+  }
+
+  /**
+   * 获取当前 AI Profile 的上下文长度
+   */
+  private getContextLength(profileId?: string): number {
+    if (!this.configService) {
+      return 32000  // 默认 32K
+    }
+    
+    const profiles = this.configService.getAiProfiles()
+    if (profiles.length === 0) {
+      return 32000
+    }
+    
+    let profile
+    if (profileId) {
+      profile = profiles.find(p => p.id === profileId)
+    } else {
+      const activeId = this.configService.getActiveAiProfile()
+      profile = profiles.find(p => p.id === activeId) || profiles[0]
+    }
+    
+    // 返回配置的上下文长度，默认 32000
+    return profile?.contextLength || 32000
+  }
+
+  /**
    * 智能压缩消息历史（借鉴 DeepAgent Memory Folding）
-   * 1. 保留 system prompt 和最近对话
-   * 2. 对中间历史进行智能摘要
-   * 3. 保留关键决策点和执行结果
+   * 关键改进：以消息组为单位压缩，确保 tool_calls 和 tool 消息配对
+   * @param maxTokens 压缩阈值，默认根据模型上下文长度的 80% 计算
    */
   private async compressMessages(
     messages: AiMessage[], 
-    maxTokens: number = 12000
+    maxTokens?: number
   ): Promise<AiMessage[]> {
+    // 如果未指定阈值，使用模型上下文长度的 80%
+    const threshold = maxTokens ?? Math.floor(this.getContextLength() * 0.8)
     const totalTokens = this.estimateTotalTokens(messages)
     
     // 如果在限制内，不需要压缩
-    if (totalTokens <= maxTokens) {
+    if (totalTokens <= threshold) {
       return messages
     }
 
-    console.log(`[Agent] 智能记忆压缩: ${totalTokens} tokens -> 目标 ${maxTokens} tokens`)
+    console.log(`[Agent] 智能记忆压缩: ${totalTokens} tokens -> 目标 ${threshold} tokens`)
 
+    // 1. 将消息按轮次分组（保证 tool_calls 和 tool 消息配对）
+    const messageGroups = this.groupMessagesByTurn(messages)
+    
     const result: AiMessage[] = []
     
-    // 1. 保留 system prompt（必须）
-    const systemMsg = messages.find(m => m.role === 'system')
-    if (systemMsg) {
-      result.push(systemMsg)
+    // 2. 保留 system prompt（必须）
+    const systemGroup = messageGroups.find(g => g.length === 1 && g[0].role === 'system')
+    if (systemGroup) {
+      result.push(systemGroup[0])
     }
 
-    // 2. 分离非系统消息
-    const nonSystemMessages = messages.filter(m => m.role !== 'system')
+    // 3. 获取非系统消息组
+    const nonSystemGroups = messageGroups.filter(g => !(g.length === 1 && g[0].role === 'system'))
     
-    // 3. 压缩工具输出
-    const compressedMessages = nonSystemMessages.map(msg => {
-      if (msg.role === 'tool' && msg.content.length > 2000) {
-        return {
-          ...msg,
-          content: this.compressToolOutput(msg.content)
+    // 4. 压缩每个组内的工具输出
+    const compressedGroups = nonSystemGroups.map(group => 
+      group.map(msg => {
+        if (msg.role === 'tool' && msg.content.length > 2000) {
+          return {
+            ...msg,
+            content: this.compressToolOutput(msg.content)
+          }
         }
-      }
-      // 压缩超长的 assistant 回复
-      if (msg.role === 'assistant' && msg.content.length > 3000) {
-        return {
-          ...msg,
-          content: msg.content.substring(0, 3000) + '\n... [回复已截断]'
+        if (msg.role === 'assistant' && msg.content.length > 3000) {
+          return {
+            ...msg,
+            content: msg.content.substring(0, 3000) + '\n... [回复已截断]'
+          }
         }
-      }
-      return msg
-    })
+        return msg
+      })
+    )
 
-    // 4. 计算压缩后的 token
-    const compressedTokens = this.estimateTotalTokens([...result, ...compressedMessages])
+    // 5. 计算压缩后的 token
+    const allCompressedMessages = compressedGroups.flat()
+    const compressedTokens = this.estimateTotalTokens([...result, ...allCompressedMessages])
     
-    if (compressedTokens <= maxTokens) {
-      return [...result, ...compressedMessages]
+    if (compressedTokens <= threshold) {
+      return [...result, ...allCompressedMessages]
     }
 
-    // 5. 需要进一步压缩，使用 Memory Folding 策略
+    // 6. 需要进一步压缩，使用 Memory Folding 策略
     console.log('[Agent] 启用 Memory Folding 策略')
     
     // 提取关键信息作为记忆锚点
-    const keyPoints = this.extractKeyPoints(compressedMessages)
+    const keyPoints = this.extractKeyPoints(allCompressedMessages)
     
-    // 计算每条消息的重要性
-    const messagesWithScore = compressedMessages.map((msg, index) => ({
-      msg,
-      score: this.calculateMessageImportance(msg, index, compressedMessages.length)
-    }))
+    // 7. 以组为单位计算重要性并选择
+    const recentGroupCount = 3  // 保留最近的 3 组对话
+    const recentGroups = compressedGroups.slice(-recentGroupCount)
+    const historyGroups = compressedGroups.slice(0, -recentGroupCount)
     
-    // 确定要保留的消息数量
-    const recentCount = 8  // 保留最近的 8 条消息
-    const importantCount = Math.max(4, Math.floor((maxTokens - this.estimateTotalTokens(result)) / 800))
+    // 计算历史组的重要性（取组内最高分）
+    const historyWithScore = historyGroups.map((group, groupIndex) => {
+      const groupScore = Math.max(
+        ...group.map((msg, msgIndex) => 
+          this.calculateMessageImportance(msg, groupIndex * 10 + msgIndex, historyGroups.length * 10)
+        )
+      )
+      return { group, score: groupScore }
+    })
     
-    // 分离最近消息和历史消息
-    const recentMessages = compressedMessages.slice(-recentCount)
-    const historyMessages = compressedMessages.slice(0, -recentCount)
-    
-    // 从历史消息中选择最重要的
-    const historyWithScore = historyMessages.map((msg, index) => ({
-      msg,
-      score: this.calculateMessageImportance(msg, index, historyMessages.length)
-    }))
-    
-    // 按重要性排序，选择 top N
-    const importantHistory = historyWithScore
+    // 选择最重要的历史组
+    const targetHistoryGroups = Math.max(2, Math.floor((threshold - this.estimateTotalTokens(result)) / 2000))
+    const importantHistoryGroups = historyWithScore
       .sort((a, b) => b.score - a.score)
-      .slice(0, importantCount)
-      .sort((a, b) => historyMessages.indexOf(a.msg) - historyMessages.indexOf(b.msg))  // 恢复时间顺序
-      .map(item => item.msg)
+      .slice(0, targetHistoryGroups)
+      .sort((a, b) => historyGroups.indexOf(a.group) - historyGroups.indexOf(b.group))  // 恢复时间顺序
+      .map(item => item.group)
     
-    // 6. 构建摘要消息
+    // 8. 构建摘要消息
     let summaryContent = '[系统提示：对话历史已被智能压缩，以下是关键信息摘要]\n\n'
     
     if (keyPoints.length > 0) {
@@ -615,8 +723,13 @@ export class AgentService {
       content: summaryContent
     }
 
-    // 7. 组合最终结果
-    const finalMessages = [...result, summaryMsg, ...importantHistory, ...recentMessages]
+    // 9. 组合最终结果（按组展开）
+    const finalMessages = [
+      ...result, 
+      summaryMsg, 
+      ...importantHistoryGroups.flat(), 
+      ...recentGroups.flat()
+    ]
     
     console.log(`[Agent] Memory Folding 完成: 保留 ${finalMessages.length} 条消息，提取 ${keyPoints.length} 个关键点`)
     
