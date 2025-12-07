@@ -77,16 +77,13 @@ const tabs = [
             <h3>旗鱼终端</h3>
             <p class="version">版本 {{ appVersion }}</p>
             <p class="description">
-              AI 驱动的跨平台终端，助力运维提效
+              AI 驱动的跨平台智慧终端
             </p>
             <div class="about-links">
               <a href="#" class="about-link">使用文档</a>
               <a href="#" class="about-link">问题反馈</a>
               <a href="#" class="about-link">开源协议</a>
             </div>
-            <p class="producer">
-              国元证券股份有限公司·金融科技创新实验室 出品
-            </p>
             <p class="copyright">
               © 2024 旗鱼
             </p>
