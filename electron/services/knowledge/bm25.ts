@@ -13,7 +13,7 @@ let jiebaModule: any = null
 async function loadJieba() {
   if (!jiebaModule) {
     jiebaModule = await import('jieba-wasm')
-    await jiebaModule.default()  // 初始化 WASM
+    // Node.js 版本的 jieba-wasm 在模块加载时自动初始化 WASM，无需手动调用
   }
   return jiebaModule
 }
