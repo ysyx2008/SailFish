@@ -443,12 +443,12 @@ export class TerminalStateService {
 
     const execution = state.currentExecution
     
-    // 限制输出长度
-    if ((execution.output?.length || 0) < this.MAX_OUTPUT_LENGTH) {
-      execution.output = (execution.output || '') + output
-      if (execution.output.length > this.MAX_OUTPUT_LENGTH) {
-        execution.output = execution.output.substring(0, this.MAX_OUTPUT_LENGTH) + '\n... [输出已截断]'
-      }
+    // 追加输出
+    execution.output = (execution.output || '') + output
+    
+    // 限制输出长度：保留最新的内容（末尾），截断标记放在最前面
+    if (execution.output.length > this.MAX_OUTPUT_LENGTH) {
+      execution.output = '... [前面内容已省略]\n' + execution.output.slice(-this.MAX_OUTPUT_LENGTH)
     }
 
     state.lastActivityAt = Date.now()
