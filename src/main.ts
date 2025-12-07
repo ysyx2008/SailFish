@@ -9,3 +9,8 @@ const pinia = createPinia()
 app.use(pinia)
 app.mount('#app')
 
+// 设置窗口标题包含版本号
+window.electronAPI?.app.getVersion().then((version: string) => {
+  document.title = `旗鱼终端 v${version}`
+})
+

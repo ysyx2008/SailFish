@@ -1,6 +1,10 @@
 import { app, BrowserWindow, ipcMain, shell, Menu, dialog } from 'electron'
 import path, { join } from 'path'
 import * as fs from 'fs'
+
+// 读取 package.json 获取版本号（开发模式下 app.getVersion() 返回 Electron 版本）
+const packageJson = JSON.parse(fs.readFileSync(join(__dirname, '../package.json'), 'utf-8'))
+const APP_VERSION = packageJson.version
 import { PtyService } from './services/pty.service'
 import { SshService } from './services/ssh.service'
 import { AiService } from './services/ai.service'
@@ -123,7 +127,7 @@ function createWindow() {
     height: 800,
     minWidth: 800,
     minHeight: 600,
-    title: '旗鱼终端',
+    title: `旗鱼终端 v${APP_VERSION}`,
     icon: iconPath,
     frame: true,
     webPreferences: {
@@ -403,7 +407,7 @@ ipcMain.handle('ai:abort', async (_event, requestId?: string) => {
 
 // 应用信息
 ipcMain.handle('app:getVersion', async () => {
-  return app.getVersion()
+  return APP_VERSION
 })
 
 // 配置相关
