@@ -105,6 +105,10 @@ interface McpServerStatus {
 // Electron API 类型
 interface Window {
   electronAPI: {
+    // 应用信息
+    app: {
+      getVersion: () => Promise<string>
+    }
     pty: {
       create: (options?: {
         cols?: number
@@ -452,6 +456,9 @@ interface Window {
       // Agent MBTI
       getAgentMbti: () => Promise<string | null>
       setAgentMbti: (mbti: string | null) => Promise<void>
+      // 首次设置向导
+      getSetupCompleted: () => Promise<boolean>
+      setSetupCompleted: (completed: boolean) => Promise<void>
     }
     xshell: {
       selectFiles: () => Promise<{ canceled: boolean; filePaths: string[] }>
@@ -482,6 +489,7 @@ interface Window {
         }>
         errors: string[]
       }>
+      scanDefaultPaths: () => Promise<{ found: boolean; paths: string[]; sessionCount: number }>
     }
     // Agent 操作
     agent: {

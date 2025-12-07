@@ -9,6 +9,7 @@ import SessionManager from './components/SessionManager.vue'
 import SettingsModal from './components/Settings/SettingsModal.vue'
 import FileExplorer from './components/FileExplorer/FileExplorer.vue'
 import McpStatusPopover from './components/McpStatusPopover.vue'
+import SetupWizard from './components/SetupWizard.vue'
 import type { SftpConnectionConfig } from './composables/useSftp'
 
 const terminalStore = useTerminalStore()
@@ -20,6 +21,7 @@ const showSettings = ref(false)
 const settingsInitialTab = ref<string | undefined>(undefined)
 const showFileExplorer = ref(false)
 const sftpConfig = ref<SftpConnectionConfig | null>(null)
+const showSetupWizard = ref(false)
 
 // AI 面板宽度
 const aiPanelWidth = ref(420)
@@ -37,6 +39,19 @@ onMounted(async () => {
   // 加载配置
   await configStore.loadConfig()
 
+  // 检查是否完成首次设置
+  const setupCompleted = await window.electronAPI.config.getSetupCompleted()
+  if (!setupCompleted) {
+    showSetupWizard.value = true
+    return // 显示向导，暂不创建终端
+  }
+
+  // 已完成设置，正常启动
+  await initializeApp()
+})
+
+// 初始化应用（正常启动流程）
+const initializeApp = async () => {
   // 创建初始终端标签页
   await terminalStore.createTab('local')
 
@@ -54,7 +69,14 @@ onMounted(async () => {
   } catch (error) {
     console.error('[MCP] 自动连接服务器失败:', error)
   }
-})
+}
+
+// 完成引导向导
+const onSetupComplete = async () => {
+  showSetupWizard.value = false
+  // 向导完成后初始化应用
+  await initializeApp()
+}
 
 // 切换侧边栏
 const toggleSidebar = () => {
@@ -102,6 +124,11 @@ const openMcpSettings = () => {
 const closeSettings = () => {
   showSettings.value = false
   settingsInitialTab.value = undefined
+}
+
+// 重新运行引导
+const restartSetup = async () => {
+  showSetupWizard.value = true
 }
 
 // AI 面板拖拽调整宽度
@@ -216,7 +243,8 @@ onUnmounted(() => {
     <SettingsModal 
       v-if="showSettings" 
       :initial-tab="settingsInitialTab"
-      @close="closeSettings" 
+      @close="closeSettings"
+      @restart-setup="restartSetup"
     />
 
     <!-- SFTP 文件管理器弹窗 -->
@@ -224,6 +252,12 @@ onUnmounted(() => {
       v-if="showFileExplorer && sftpConfig"
       :config="sftpConfig"
       @close="closeSftp"
+    />
+
+    <!-- 首次启动引导向导 -->
+    <SetupWizard
+      v-if="showSetupWizard"
+      @complete="onSetupComplete"
     />
   </div>
 </template>

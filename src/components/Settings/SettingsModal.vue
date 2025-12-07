@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useConfigStore } from '../../stores/config'
 import AiSettings from './AiSettings.vue'
 import ThemeSettings from './ThemeSettings.vue'
 import TerminalSettings from './TerminalSettings.vue'
@@ -14,7 +15,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
+  restartSetup: []
 }>()
+
+const configStore = useConfigStore()
 
 type SettingsTab = 'ai' | 'mcp' | 'knowledge' | 'theme' | 'terminal' | 'data' | 'about'
 const activeTab = ref<SettingsTab>('ai')
@@ -38,6 +42,14 @@ const tabs = [
   { id: 'data' as const, label: '数据管理', icon: '💾' },
   { id: 'about' as const, label: '关于', icon: 'ℹ️' }
 ]
+
+const restartSetup = async () => {
+  if (confirm('确定要重新运行首次启动引导吗？')) {
+    await configStore.setSetupCompleted(false)
+    emit('restartSetup')
+    emit('close')
+  }
+}
 </script>
 
 <template>
@@ -83,6 +95,11 @@ const tabs = [
               <a href="#" class="about-link">使用文档</a>
               <a href="#" class="about-link">问题反馈</a>
               <a href="#" class="about-link">开源协议</a>
+            </div>
+            <div class="about-actions">
+              <button class="btn btn-outline" @click="restartSetup">
+                🔄 重新运行引导
+              </button>
             </div>
             <p class="copyright">
               © 2024 旗鱼
@@ -236,6 +253,29 @@ const tabs = [
   color: var(--text-secondary);
   font-size: 13px;
   margin-bottom: 12px;
+}
+
+.about-actions {
+  margin: 24px 0;
+}
+
+.about-actions .btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.about-actions .btn:hover {
+  background: var(--bg-hover);
+}
+
+.btn-outline {
+  background: transparent;
 }
 
 .copyright {

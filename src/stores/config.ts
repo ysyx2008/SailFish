@@ -87,6 +87,9 @@ export const useConfigStore = defineStore('config', () => {
   // Agent MBTI 设置
   const agentMbti = ref<AgentMbtiType>(null)
 
+  // 首次设置向导
+  const setupCompleted = ref<boolean>(false)
+
   // 计算属性
   const activeAiProfile = computed(() =>
     aiProfiles.value.find(p => p.id === activeAiProfileId.value)
@@ -124,6 +127,10 @@ export const useConfigStore = defineStore('config', () => {
       // 加载 Agent MBTI
       const mbti = await window.electronAPI.config.getAgentMbti()
       agentMbti.value = mbti as AgentMbtiType
+
+      // 加载首次设置状态
+      const completed = await window.electronAPI.config.getSetupCompleted()
+      setupCompleted.value = completed || false
     } catch (error) {
       console.error('Failed to load config:', error)
     }
@@ -270,6 +277,13 @@ export const useConfigStore = defineStore('config', () => {
     await window.electronAPI.config.setAgentMbti(mbti)
   }
 
+  // ==================== 首次设置向导 ====================
+
+  async function setSetupCompleted(completed: boolean): Promise<void> {
+    setupCompleted.value = completed
+    await window.electronAPI.config.setSetupCompleted(completed)
+  }
+
   // ==================== 数据迁移 ====================
 
   /**
@@ -326,6 +340,7 @@ export const useConfigStore = defineStore('config', () => {
     currentTheme,
     terminalSettings,
     agentMbti,
+    setupCompleted,
 
     // 方法
     loadConfig,
@@ -342,7 +357,8 @@ export const useConfigStore = defineStore('config', () => {
     getGroupByName,
     getEffectiveJumpHost,
     setTheme,
-    setAgentMbti
+    setAgentMbti,
+    setSetupCompleted
   }
 })
 

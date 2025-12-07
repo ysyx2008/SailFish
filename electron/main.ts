@@ -472,6 +472,15 @@ ipcMain.handle('config:setAgentMbti', async (_event, mbti: string | null) => {
   configService.setAgentMbti(mbti as import('./services/config.service').AgentMbtiType)
 })
 
+// 首次设置向导
+ipcMain.handle('config:getSetupCompleted', async () => {
+  return configService.getSetupCompleted()
+})
+
+ipcMain.handle('config:setSetupCompleted', async (_event, completed: boolean) => {
+  configService.setSetupCompleted(completed)
+})
+
 // Xshell 导入相关
 ipcMain.handle('xshell:selectFiles', async () => {
   const result = await dialog.showOpenDialog({
@@ -509,6 +518,10 @@ ipcMain.handle('xshell:importFiles', async (_event, filePaths: string[]) => {
 
 ipcMain.handle('xshell:importDirectory', async (_event, dirPath: string) => {
   return xshellImportService.importFromDirectory(dirPath)
+})
+
+ipcMain.handle('xshell:scanDefaultPaths', async () => {
+  return xshellImportService.scanDefaultPaths()
 })
 
 // ==================== Agent 相关 ====================

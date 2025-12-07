@@ -91,6 +91,7 @@ interface StoreSchema {
   mcpServers: McpServerConfig[]
   agentMbti: AgentMbtiType
   knowledgeSettings: KnowledgeSettings
+  setupCompleted: boolean
 }
 
 const defaultConfig: StoreSchema = {
@@ -112,7 +113,8 @@ const defaultConfig: StoreSchema = {
   },
   mcpServers: [],
   agentMbti: null,
-  knowledgeSettings: DEFAULT_KNOWLEDGE_SETTINGS
+  knowledgeSettings: DEFAULT_KNOWLEDGE_SETTINGS,
+  setupCompleted: false
 }
 
 export class ConfigService {
@@ -451,6 +453,22 @@ export class ConfigService {
   updateKnowledgeSettings(settings: Partial<KnowledgeSettings>): void {
     const current = this.getKnowledgeSettings()
     this.store.set('knowledgeSettings', { ...current, ...settings })
+  }
+
+  // ==================== 首次设置向导 ====================
+
+  /**
+   * 获取是否完成首次设置
+   */
+  getSetupCompleted(): boolean {
+    return this.store.get('setupCompleted') || false
+  }
+
+  /**
+   * 设置是否完成首次设置
+   */
+  setSetupCompleted(completed: boolean): void {
+    this.store.set('setupCompleted', completed)
   }
 }
 

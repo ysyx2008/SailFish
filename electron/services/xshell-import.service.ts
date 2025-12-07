@@ -1,5 +1,6 @@
 import * as fs from 'fs'
 import * as path from 'path'
+import * as os from 'os'
 
 export interface XshellSession {
   name: string
@@ -249,6 +250,143 @@ export class XshellImportService {
       success: sessions.length > 0,
       sessions,
       errors
+    }
+  }
+
+  /**
+   * 扫描常见的 Xshell 会话目录路径
+   */
+  scanDefaultPaths(): { found: boolean; paths: string[]; sessionCount: number } {
+    const paths: string[] = []
+    let sessionCount = 0
+
+    // Windows 常见路径
+    if (process.platform === 'win32') {
+      const userProfile = process.env.USERPROFILE || ''
+      const appData = process.env.APPDATA || ''
+
+      // %USERPROFILE%\Documents\NetSarang Computer\*\Xshell\Sessions
+      if (userProfile) {
+        const netsarangBase = path.join(userProfile, 'Documents', 'NetSarang Computer')
+        if (fs.existsSync(netsarangBase)) {
+          try {
+            const versions = fs.readdirSync(netsarangBase, { withFileTypes: true })
+            for (const version of versions) {
+              if (version.isDirectory()) {
+                const sessionsPath = path.join(netsarangBase, version.name, 'Xshell', 'Sessions')
+                if (fs.existsSync(sessionsPath)) {
+                  paths.push(sessionsPath)
+                  // 统计会话数量
+                  const files = fs.readdirSync(sessionsPath)
+                  sessionCount += files.filter(f => f.toLowerCase().endsWith('.xsh')).length
+                }
+              }
+            }
+          } catch (e) {
+            // 忽略读取错误
+          }
+        }
+
+        // %USERPROFILE%\Documents\NetSarang\Xshell\Sessions
+        const altPath = path.join(userProfile, 'Documents', 'NetSarang', 'Xshell', 'Sessions')
+        if (fs.existsSync(altPath)) {
+          paths.push(altPath)
+          try {
+            const files = fs.readdirSync(altPath)
+            sessionCount += files.filter(f => f.toLowerCase().endsWith('.xsh')).length
+          } catch (e) {
+            // 忽略读取错误
+          }
+        }
+      }
+
+      // %APPDATA%\NetSarang\Xshell\Sessions
+      if (appData) {
+        const appDataPath = path.join(appData, 'NetSarang', 'Xshell', 'Sessions')
+        if (fs.existsSync(appDataPath)) {
+          paths.push(appDataPath)
+          try {
+            const files = fs.readdirSync(appDataPath)
+            sessionCount += files.filter(f => f.toLowerCase().endsWith('.xsh')).length
+          } catch (e) {
+            // 忽略读取错误
+          }
+        }
+      }
+    }
+
+    // macOS/Linux (Wine 环境)
+    if (process.platform === 'darwin' || process.platform === 'linux') {
+      const homeDir = os.homedir()
+      const winePrefixes = [
+        path.join(homeDir, '.wine'),
+        path.join(homeDir, '.wine32'),
+        path.join(homeDir, 'Wine')
+      ]
+
+      for (const winePrefix of winePrefixes) {
+        if (fs.existsSync(winePrefix)) {
+          const driveC = path.join(winePrefix, 'drive_c')
+          if (fs.existsSync(driveC)) {
+            try {
+              const usersDir = path.join(driveC, 'users')
+              if (fs.existsSync(usersDir)) {
+                const users = fs.readdirSync(usersDir, { withFileTypes: true })
+                for (const user of users) {
+                  if (user.isDirectory()) {
+                    // Documents\NetSarang Computer\*\Xshell\Sessions
+                    const netsarangBase = path.join(usersDir, user.name, 'Documents', 'NetSarang Computer')
+                    if (fs.existsSync(netsarangBase)) {
+                      try {
+                        const versions = fs.readdirSync(netsarangBase, { withFileTypes: true })
+                        for (const version of versions) {
+                          if (version.isDirectory()) {
+                            const sessionsPath = path.join(netsarangBase, version.name, 'Xshell', 'Sessions')
+                            if (fs.existsSync(sessionsPath)) {
+                              paths.push(sessionsPath)
+                              try {
+                                const files = fs.readdirSync(sessionsPath)
+                                sessionCount += files.filter(f => f.toLowerCase().endsWith('.xsh')).length
+                              } catch (e) {
+                                // 忽略读取错误
+                              }
+                            }
+                          }
+                        }
+                      } catch (e) {
+                        // 忽略读取错误
+                      }
+                    }
+
+                    // Documents\NetSarang\Xshell\Sessions
+                    const altPath = path.join(usersDir, user.name, 'Documents', 'NetSarang', 'Xshell', 'Sessions')
+                    if (fs.existsSync(altPath)) {
+                      paths.push(altPath)
+                      try {
+                        const files = fs.readdirSync(altPath)
+                        sessionCount += files.filter(f => f.toLowerCase().endsWith('.xsh')).length
+                      } catch (e) {
+                        // 忽略读取错误
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              // 忽略读取错误
+            }
+          }
+        }
+      }
+    }
+
+    // 去重路径
+    const uniquePaths = Array.from(new Set(paths))
+
+    return {
+      found: uniquePaths.length > 0,
+      paths: uniquePaths,
+      sessionCount
     }
   }
 }

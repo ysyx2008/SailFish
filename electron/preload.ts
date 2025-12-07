@@ -612,7 +612,11 @@ const electronAPI = {
 
     // Agent MBTI
     getAgentMbti: () => ipcRenderer.invoke('config:getAgentMbti') as Promise<string | null>,
-    setAgentMbti: (mbti: string | null) => ipcRenderer.invoke('config:setAgentMbti', mbti)
+    setAgentMbti: (mbti: string | null) => ipcRenderer.invoke('config:setAgentMbti', mbti),
+
+    // 首次设置向导
+    getSetupCompleted: () => ipcRenderer.invoke('config:getSetupCompleted') as Promise<boolean>,
+    setSetupCompleted: (completed: boolean) => ipcRenderer.invoke('config:setSetupCompleted', completed)
   },
 
   // Xshell 导入操作
@@ -620,7 +624,8 @@ const electronAPI = {
     selectFiles: () => ipcRenderer.invoke('xshell:selectFiles') as Promise<{ canceled: boolean; filePaths: string[] }>,
     selectDirectory: () => ipcRenderer.invoke('xshell:selectDirectory') as Promise<{ canceled: boolean; dirPath: string }>,
     importFiles: (filePaths: string[]) => ipcRenderer.invoke('xshell:importFiles', filePaths) as Promise<ImportResult>,
-    importDirectory: (dirPath: string) => ipcRenderer.invoke('xshell:importDirectory', dirPath) as Promise<ImportResult>
+    importDirectory: (dirPath: string) => ipcRenderer.invoke('xshell:importDirectory', dirPath) as Promise<ImportResult>,
+    scanDefaultPaths: () => ipcRenderer.invoke('xshell:scanDefaultPaths') as Promise<{ found: boolean; paths: string[]; sessionCount: number }>
   },
 
   // Agent 操作
