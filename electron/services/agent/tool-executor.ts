@@ -635,6 +635,7 @@ function getTerminalContext(
   const fromStartLines = args.from_start_lines as number | undefined
   
   // 获取输出数据
+  // 优先级：1. 当前执行的命令输出 2. 最近完成的命令输出 3. Agent 启动时的快照
   let allOutput: string[] = []
   
   try {
@@ -645,8 +646,14 @@ function getTerminalContext(
       // 有当前执行的命令输出，使用它（实时数据）
       allOutput = currentExecution.output.split('\n')
     } else {
-      // 没有当前执行，使用传入的 terminalOutput
-      allOutput = terminalOutput
+      // 没有当前执行，尝试获取最近完成的命令输出
+      const lastExecution = terminalStateService.getLastExecution(ptyId)
+      if (lastExecution?.output && lastExecution.output.length > 0) {
+        allOutput = lastExecution.output.split('\n')
+      } else {
+        // 都没有，使用传入的 terminalOutput（Agent 启动时的快照）
+        allOutput = terminalOutput
+      }
     }
   } catch (e) {
     // 如果获取失败，使用传入的 terminalOutput
