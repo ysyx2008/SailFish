@@ -18,6 +18,7 @@ interface AgentStep {
   toolResult?: string
   riskLevel?: RiskLevel
   timestamp: number
+  isStreaming?: boolean
 }
 
 interface PendingConfirmation {
@@ -147,6 +148,208 @@ interface Window {
       resize: (id: string, cols: number, rows: number) => Promise<void>
       disconnect: (id: string) => Promise<void>
       onData: (id: string, callback: (data: string) => void) => () => void
+    }
+    terminalState: {
+      init: (id: string, type: 'local' | 'ssh', initialCwd?: string) => Promise<void>
+      remove: (id: string) => Promise<void>
+      get: (id: string) => Promise<{
+        id: string
+        type: 'local' | 'ssh'
+        cwd: string
+        cwdUpdatedAt: number
+        lastCommand?: string
+        lastExitCode?: number
+        isIdle: boolean
+        lastActivityAt: number
+      } | undefined>
+      getCwd: (id: string) => Promise<string>
+      refreshCwd: (id: string) => Promise<string>
+      updateCwd: (id: string, newCwd: string) => Promise<void>
+      handleInput: (id: string, input: string) => Promise<void>
+      getIdleState: (id: string) => Promise<boolean>
+      onCwdChange: (callback: (event: {
+        terminalId: string
+        oldCwd: string
+        newCwd: string
+        timestamp: number
+        trigger: 'command' | 'pwd_check' | 'initial'
+      }) => void) => () => void
+      startExecution: (id: string, command: string) => Promise<{
+        id: string
+        terminalId: string
+        command: string
+        startTime: number
+        cwdBefore: string
+        status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+        output?: string
+      } | null>
+      appendOutput: (id: string, output: string) => Promise<void>
+      completeExecution: (id: string, exitCode?: number, status?: 'completed' | 'failed' | 'timeout' | 'cancelled') => Promise<{
+        id: string
+        terminalId: string
+        command: string
+        startTime: number
+        endTime?: number
+        duration?: number
+        exitCode?: number
+        output?: string
+        cwdBefore: string
+        cwdAfter?: string
+        status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+      } | null>
+      getCurrentExecution: (id: string) => Promise<{
+        id: string
+        terminalId: string
+        command: string
+        startTime: number
+        cwdBefore: string
+        status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+        output?: string
+      } | undefined>
+      getExecutionHistory: (id: string, limit?: number) => Promise<Array<{
+        id: string
+        terminalId: string
+        command: string
+        startTime: number
+        endTime?: number
+        duration?: number
+        exitCode?: number
+        output?: string
+        cwdBefore: string
+        cwdAfter?: string
+        status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+      }>>
+      getLastExecution: (id: string) => Promise<{
+        id: string
+        terminalId: string
+        command: string
+        startTime: number
+        endTime?: number
+        duration?: number
+        exitCode?: number
+        output?: string
+        cwdBefore: string
+        cwdAfter?: string
+        status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+      } | undefined>
+      clearExecutionHistory: (id: string) => Promise<void>
+      onCommandExecution: (callback: (event: {
+        type: 'start' | 'output' | 'complete'
+        execution: {
+          id: string
+          terminalId: string
+          command: string
+          startTime: number
+          endTime?: number
+          duration?: number
+          exitCode?: number
+          output?: string
+          cwdBefore: string
+          cwdAfter?: string
+          status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+        }
+      }) => void) => () => void
+    }
+    terminalAwareness: {
+      getAwareness: (ptyId: string) => Promise<{
+        status: 'idle' | 'busy' | 'waiting_input' | 'stuck'
+        input: {
+          isWaiting: boolean
+          type: 'password' | 'confirmation' | 'selection' | 'pager' | 'prompt' | 'editor' | 'custom_input' | 'none'
+          prompt?: string
+          options?: string[]
+          suggestedResponse?: string
+          confidence: number
+        }
+        process: {
+          status: 'idle' | 'running_interactive' | 'running_streaming' | 'running_silent' | 'possibly_stuck' | 'waiting_input'
+          foregroundProcess?: string
+          pid?: number
+          runningTime?: number
+          lastOutputTime?: number
+          outputRate?: number
+          isKnownLongRunning?: boolean
+          suggestion?: string
+        }
+        context: {
+          user?: string
+          hostname?: string
+          isRoot: boolean
+          cwdFromPrompt?: string
+          activeEnvs: string[]
+          sshDepth: number
+          promptType: 'bash' | 'zsh' | 'fish' | 'powershell' | 'cmd' | 'unknown'
+        }
+        output: {
+          type: 'progress' | 'compilation' | 'test' | 'log_stream' | 'error' | 'table' | 'normal'
+          confidence: number
+          details?: {
+            progress?: number
+            testsPassed?: number
+            testsFailed?: number
+            errorCount?: number
+            eta?: string
+          }
+        }
+        terminalState?: {
+          cwd: string
+          lastCommand?: string
+          lastExitCode?: number
+          isIdle: boolean
+        }
+        currentExecution?: {
+          id: string
+          terminalId: string
+          command: string
+          startTime: number
+          cwdBefore: string
+          status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+          output?: string
+        }
+        suggestion: string
+        canExecuteCommand: boolean
+        needsUserInput: boolean
+        timestamp: number
+      }>
+      updateScreenAnalysis: (ptyId: string, analysis: {
+        input: {
+          isWaiting: boolean
+          type: 'password' | 'confirmation' | 'selection' | 'pager' | 'prompt' | 'editor' | 'custom_input' | 'none'
+          prompt?: string
+          options?: string[]
+          suggestedResponse?: string
+          confidence: number
+        }
+        output: {
+          type: 'progress' | 'compilation' | 'test' | 'log_stream' | 'error' | 'table' | 'normal'
+          confidence: number
+          details?: {
+            progress?: number
+            testsPassed?: number
+            testsFailed?: number
+            errorCount?: number
+            eta?: string
+          }
+        }
+        context: {
+          user?: string
+          hostname?: string
+          isRoot: boolean
+          cwdFromPrompt?: string
+          activeEnvs: string[]
+          sshDepth: number
+          promptType: 'bash' | 'zsh' | 'fish' | 'powershell' | 'cmd' | 'unknown'
+        }
+        timestamp: number
+      }) => Promise<void>
+      trackOutput: (ptyId: string, lineCount: number) => Promise<void>
+      canExecute: (ptyId: string) => Promise<boolean>
+      getPreExecutionAdvice: (ptyId: string, command: string) => Promise<{
+        canExecute: boolean
+        reason?: string
+        suggestion?: string
+      }>
+      clear: (ptyId: string) => Promise<void>
     }
     ai: {
       chat: (
@@ -787,6 +990,7 @@ interface Window {
         existingFilename?: string
       }>
       removeDocument: (docId: string) => Promise<{ success: boolean; error?: string }>
+      removeDocuments: (docIds: string[]) => Promise<{ success: boolean; deleted?: number; failed?: number; error?: string }>
       search: (query: string, options?: {
         limit?: number
         hostId?: string

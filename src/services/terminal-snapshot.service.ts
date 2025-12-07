@@ -2,7 +2,7 @@
  * 终端状态快照与 Diff 服务
  * 管理终端状态的快照创建、存储和差异计算
  */
-import type { TerminalScreenService, ScreenContent, CursorPosition } from './terminal-screen.service'
+import type { TerminalScreenService, CursorPosition } from './terminal-screen.service'
 
 /**
  * 终端状态快照

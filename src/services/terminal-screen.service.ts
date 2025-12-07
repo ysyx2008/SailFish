@@ -634,7 +634,7 @@ export class TerminalScreenService {
   /**
    * 检测编辑器模式 (vim/nano 等)
    */
-  private detectEditorMode(recentLines: string[]): InputWaitingState {
+  private detectEditorMode(_recentLines: string[]): InputWaitingState {
     const visibleLines = this.getVisibleContent()
     const allContent = visibleLines.join('\n')
     

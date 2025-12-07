@@ -35,6 +35,7 @@ export interface AgentStep {
   toolResult?: string
   riskLevel?: RiskLevel
   timestamp: number
+  isStreaming?: boolean
 }
 
 export interface PendingConfirmation {
