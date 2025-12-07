@@ -262,7 +262,8 @@ export function assessCommandRisk(command: string): RiskLevel {
     /dd\s+.*of=\/dev\/[sh]d[a-z]/,     // dd 写入磁盘
     />\s*\/dev\/[sh]d[a-z]/,           // 重定向到磁盘
     /chmod\s+777\s+\//,                 // chmod 777 /
-    /chown\s+.*\s+\//                   // chown /
+    /chown\s+.*\s+\//,                  // chown /
+    />\s*\/etc\/(passwd|shadow|sudoers)/, // 清空系统关键文件
   ]
   if (blocked.some(p => p.test(cmd))) return 'blocked'
 
@@ -284,7 +285,9 @@ export function assessCommandRisk(command: string): RiskLevel {
     /\byum\s+remove/,                   // yum remove
     /\bdnf\s+remove/,                   // dnf remove
     />\s*\/etc\//,                      // 重定向到 /etc
-    />\s*\/var\//                       // 重定向到 /var
+    />\s*\/var\//,                      // 重定向到 /var
+    /\bcurl\s+.*\|\s*(ba)?sh/,          // curl ... | bash (远程代码执行)
+    /\bwget\s+.*-O\s*-?\s*\|\s*(ba)?sh/, // wget -O- | sh (远程代码执行)
   ]
   if (dangerous.some(p => p.test(cmd))) return 'dangerous'
 
