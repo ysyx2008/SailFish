@@ -15,7 +15,8 @@
     "typecheck": "vue-tsc --noEmit",
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx --fix",
-    "format": "prettier --write src/"
+    "format": "prettier --write src/",
+    "postversion": "git push && git push --tags"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.22.3",
