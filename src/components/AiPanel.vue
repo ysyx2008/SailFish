@@ -116,6 +116,7 @@ const {
   runAgent,
   abortAgent,
   confirmToolCall,
+  sendAgentReply,
   getStepIcon,
   getRiskClass
 } = useAgentMode(
@@ -196,8 +197,8 @@ const isStreamingOutput = (group: typeof agentTaskGroups.value[0]) => {
   if (lastStep.type === 'message' && (lastStep.isStreaming || lastStep.content.length > 0)) {
     return true
   }
-  // 如果最后一个步骤是 waiting 类型（Agent 正在主动等待），也不需要显示"思考中"
-  if (lastStep.type === 'waiting') {
+  // 如果最后一个步骤是 waiting 或 asking 类型（Agent 正在等待或提问），也不需要显示"思考中"
+  if (lastStep.type === 'waiting' || lastStep.type === 'asking') {
     return true
   }
   return false
@@ -629,6 +630,36 @@ onMounted(() => {
                           class="step-text step-analysis markdown-content"
                           v-html="renderMarkdown(step.content)"
                         ></div>
+                        <!-- 提问类型特殊渲染：显示问题、选项按钮、状态 -->
+                        <div v-else-if="step.type === 'asking'" class="step-text asking-content">
+                          <div class="asking-question">{{ step.content }}</div>
+                          <!-- 默认值提示 -->
+                          <div v-if="step.toolArgs?.default_value" class="asking-default">
+                            默认：{{ step.toolArgs.default_value }}
+                          </div>
+                          <!-- 可点击的选项按钮 -->
+                          <div v-if="step.toolArgs?.options && (step.toolArgs.options as string[]).length > 0" class="asking-options">
+                            <button 
+                              v-for="(opt, idx) in (step.toolArgs.options as string[])" 
+                              :key="idx"
+                              class="asking-option-btn"
+                              :class="{ 'selected': step.toolResult?.includes(opt) }"
+                              :disabled="!isAgentRunning || step.toolResult?.includes('✅') || step.toolResult?.includes('⏰') || step.toolResult?.includes('🛑')"
+                              @click="sendAgentReply(opt)"
+                            >
+                              {{ opt }}
+                            </button>
+                          </div>
+                          <!-- 状态显示 -->
+                          <div v-if="step.toolResult" class="asking-status" :class="{ 
+                            'status-waiting': step.toolResult.includes('⏳'),
+                            'status-done': step.toolResult.includes('✅'),
+                            'status-timeout': step.toolResult.includes('⏰'),
+                            'status-cancelled': step.toolResult.includes('🛑')
+                          }">
+                            {{ step.toolResult }}
+                          </div>
+                        </div>
                         <div v-else class="step-text">
                           {{ step.content }}
                         </div>
@@ -2522,6 +2553,111 @@ onMounted(() => {
 
 .agent-step-inline.user_supplement .step-icon {
   color: #f59e0b;
+}
+
+.agent-step-inline.waiting {
+  background: rgba(59, 130, 246, 0.1);
+  border-left: 3px solid #3b82f6;
+  padding-left: 10px;
+  margin-left: -2px;
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+
+.agent-step-inline.waiting .step-icon {
+  color: #3b82f6;
+}
+
+.agent-step-inline.asking {
+  background: rgba(96, 165, 250, 0.08);
+  border-left: 3px solid #60a5fa;
+  padding-left: 10px;
+  margin-left: -2px;
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+
+.agent-step-inline.asking .step-icon {
+  color: #60a5fa;
+}
+
+/* 提问内容样式 */
+.asking-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.asking-question {
+  white-space: pre-wrap;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.asking-default {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.asking-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.asking-option-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.08);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.asking-option-btn:hover:not(:disabled) {
+  background: rgba(96, 165, 250, 0.15);
+  border-color: rgba(96, 165, 250, 0.4);
+}
+
+.asking-option-btn:active:not(:disabled) {
+  background: rgba(96, 165, 250, 0.2);
+}
+
+.asking-option-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.asking-option-btn.selected {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.4);
+  color: #22c55e;
+}
+
+.asking-status {
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.asking-status.status-waiting {
+  color: var(--text-muted);
+}
+
+.asking-status.status-done {
+  color: #22c55e;
+}
+
+.asking-status.status-timeout {
+  color: #f59e0b;
+}
+
+.asking-status.status-cancelled {
+  color: #ef4444;
 }
 
 /* 等待处理的补充消息 */

@@ -382,6 +382,17 @@ export function useAgentMode(
     }
   }
 
+  // 发送 Agent 回复（用于用户点击选项快速回复）
+  const sendAgentReply = async (message: string) => {
+    if (!message.trim() || !currentTabId.value) return
+
+    // 只有在 Agent 运行中才能发送回复
+    if (!isAgentRunning.value || !agentState.value?.agentId) return
+
+    // 直接发送到后端，不添加到 pendingSupplements（选项点击不需要显示等待状态）
+    await window.electronAPI.agent.addMessage(agentState.value.agentId, message)
+  }
+
   // 获取步骤类型的图标
   const getStepIcon = (type: AgentStep['type']): string => {
     switch (type) {
@@ -394,6 +405,8 @@ export function useAgentMode(
       case 'user_task': return '👤'
       case 'final_result': return '✅'
       case 'user_supplement': return '💡'
+      case 'waiting': return '⏳'
+      case 'asking': return '❓'
       default: return '•'
     }
   }
@@ -516,6 +529,7 @@ export function useAgentMode(
     runAgent,
     abortAgent,
     confirmToolCall,
+    sendAgentReply,
     getStepIcon,
     getRiskClass
   }

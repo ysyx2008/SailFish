@@ -275,6 +275,45 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
           required: ['seconds']
         }
       }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'ask_user',
+        description: `向用户提问并等待回复。当你需要更多信息才能继续执行任务时使用此工具。
+
+使用场景：
+- 需要用户提供特定信息（如配置参数、路径、选项等）
+- 任务有多种执行方式，需要用户选择
+- 执行前需要用户确认关键决策
+- 遇到歧义或不确定性，需要澄清用户意图
+- 需要用户输入敏感信息（如密码、密钥），但不要在问题中提示用户输入密码
+
+注意：
+- 问题要清晰、具体，让用户知道如何回答
+- 如果有可选项，可以列出供用户选择
+- 调用此工具后会暂停执行，直到用户回复
+- 等待时间最长 5 分钟，超时后会提示用户未回复`,
+        parameters: {
+          type: 'object',
+          properties: {
+            question: {
+              type: 'string',
+              description: '要向用户提出的问题，应清晰明确'
+            },
+            options: {
+              type: 'array',
+              items: { type: 'string' },
+              description: '可选项列表（如果问题有固定选项）。例如：["选项A", "选项B", "选项C"]'
+            },
+            default_value: {
+              type: 'string',
+              description: '默认值（如果用户直接按回车或不回复时使用）'
+            }
+          },
+          required: ['question']
+        }
+      }
     }
   ]
 

@@ -201,6 +201,9 @@ export async function executeTool(
     case 'wait':
       return wait(args, executor)
 
+    case 'ask_user':
+      return askUser(args, executor)
+
     default:
       // 检查是否是 MCP 工具调用
       if (name.startsWith('mcp_') && executor.mcpService) {
@@ -1646,5 +1649,119 @@ async function wait(
   return { 
     success: true, 
     output: `已等待 ${totalTimeDisplay}，继续执行。现在你可以检查终端状态或继续其他操作。`
+  }
+}
+
+/**
+ * 向用户提问并等待回复
+ * 让 Agent 可以主动向用户获取更多信息
+ */
+async function askUser(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const question = args.question as string
+  const options = args.options as string[] | undefined
+  const defaultValue = args.default_value as string | undefined
+  
+  // 参数校验
+  if (!question || typeof question !== 'string') {
+    return { success: false, output: '', error: '问题不能为空' }
+  }
+
+  // 添加提问步骤（content 只保存问题，状态信息通过 toolResult 显示）
+  const step = executor.addStep({
+    type: 'asking',
+    content: question,
+    toolName: 'ask_user',
+    toolArgs: { question, options, default_value: defaultValue },
+    toolResult: '⏳ 等待回复中...',
+    riskLevel: 'safe'
+  })
+
+  // 等待用户回复（最长 5 分钟）
+  const maxWaitSeconds = 300  // 5 分钟
+  const pollInterval = 2  // 每 2 秒检查一次
+  let elapsedSeconds = 0
+  let userResponse: string | undefined
+
+  while (elapsedSeconds < maxWaitSeconds) {
+    // 检查是否被中止
+    if (executor.isAborted()) {
+      executor.updateStep(step.id, {
+        toolResult: '🛑 已取消'
+      })
+      return { success: false, output: '', error: '操作已中止' }
+    }
+
+    // 检查是否有用户回复
+    if (executor.hasPendingUserMessage()) {
+      userResponse = executor.consumePendingUserMessage()
+      break
+    }
+
+    // 等待一个间隔
+    await new Promise(resolve => setTimeout(resolve, pollInterval * 1000))
+    elapsedSeconds += pollInterval
+
+    // 更新等待状态显示（通过 toolResult 字段）
+    const remainingSeconds = maxWaitSeconds - elapsedSeconds
+    const remainingMinutes = Math.floor(remainingSeconds / 60)
+    const remainingSecs = remainingSeconds % 60
+    const remainingDisplay = remainingMinutes > 0 
+      ? `${remainingMinutes}分${remainingSecs}秒` 
+      : `${remainingSecs}秒`
+    
+    executor.updateStep(step.id, {
+      toolResult: `⏳ 等待回复中...（剩余 ${remainingDisplay}）`
+    })
+  }
+
+  // 处理用户回复或超时
+  if (userResponse !== undefined) {
+    // 用户回复了
+    // 处理选项回复：如果用户输入的是数字，尝试匹配选项
+    let finalResponse = userResponse.trim()
+    if (options && options.length > 0) {
+      const numMatch = finalResponse.match(/^(\d+)$/)
+      if (numMatch) {
+        const idx = parseInt(numMatch[1], 10) - 1
+        if (idx >= 0 && idx < options.length) {
+          finalResponse = options[idx]
+        }
+      }
+    }
+
+    // 空回复使用默认值
+    if (!finalResponse && defaultValue) {
+      finalResponse = defaultValue
+    }
+
+    executor.updateStep(step.id, {
+      toolResult: `✅ ${finalResponse || '(空)'}`
+    })
+
+    return {
+      success: true,
+      output: `用户回复：${finalResponse || '(用户未提供内容)'}\n\n请根据用户的回复继续执行任务。`
+    }
+  } else {
+    // 超时
+    executor.updateStep(step.id, {
+      toolResult: '⏰ 等待超时'
+    })
+
+    if (defaultValue) {
+      return {
+        success: true,
+        output: `用户未在 5 分钟内回复，使用默认值：${defaultValue}\n\n请使用默认值继续执行任务。`
+      }
+    }
+
+    return {
+      success: false,
+      output: '',
+      error: '等待用户回复超时（5分钟）。你可以：1) 再次询问用户；2) 采用合理的默认方案；3) 向用户说明需要更多信息才能继续。'
+    }
   }
 }
