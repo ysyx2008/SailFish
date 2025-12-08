@@ -806,6 +806,8 @@ const deleteGroup = async (groupName: string) => {
 
 .search-input {
   flex: 1;
+  height: 32px;
+  box-sizing: border-box;
 }
 
 /* 工具栏按钮统一样式 */
