@@ -86,6 +86,79 @@ onUnmounted(() => {
 const editingSession = ref<SshSession | null>(null)
 const searchText = ref('')
 
+// ==================== 拖拽相关 ====================
+const draggingSession = ref<SshSession | null>(null)
+const dragOverGroupName = ref<string | null>(null)
+
+// 拖拽开始
+const handleDragStart = (session: SshSession, event: DragEvent) => {
+  draggingSession.value = session
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', session.id)
+  }
+  // 添加拖拽样式
+  const target = event.target as HTMLElement
+  setTimeout(() => {
+    target.classList.add('dragging')
+  }, 0)
+}
+
+// 拖拽结束
+const handleDragEnd = (event: DragEvent) => {
+  draggingSession.value = null
+  dragOverGroupName.value = null
+  const target = event.target as HTMLElement
+  target.classList.remove('dragging')
+}
+
+// 拖拽经过分组
+const handleDragOverGroup = (groupName: string, event: DragEvent) => {
+  event.preventDefault()
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move'
+  }
+  dragOverGroupName.value = groupName
+}
+
+// 拖拽离开分组
+const handleDragLeaveGroup = () => {
+  dragOverGroupName.value = null
+}
+
+// 放置到分组
+const handleDropToGroup = async (groupName: string, event: DragEvent) => {
+  event.preventDefault()
+  dragOverGroupName.value = null
+  
+  if (!draggingSession.value) return
+  
+  const session = draggingSession.value
+  const groupData = groupedSessions.value[groupName]
+  
+  // 获取目标分组的 ID
+  let targetGroupId: string | undefined = undefined
+  if (groupData?.group) {
+    targetGroupId = groupData.group.id
+  }
+  
+  // 如果分组没有变化，不需要更新
+  const currentGroupId = session.groupId || undefined
+  if (currentGroupId === targetGroupId) {
+    draggingSession.value = null
+    return
+  }
+  
+  // 更新主机的分组
+  await configStore.updateSshSession({
+    ...session,
+    groupId: targetGroupId,
+    group: undefined // 清除旧的 group 字段
+  })
+  
+  draggingSession.value = null
+}
+
 // 表单数据
 const formData = ref<Partial<SshSession>>({
   name: '',
@@ -479,6 +552,10 @@ const deleteGroup = async (groupName: string) => {
           v-for="(groupData, groupName) in groupedSessions"
           :key="groupName"
           class="session-group"
+          :class="{ 'drag-over': dragOverGroupName === groupName }"
+          @dragover="handleDragOverGroup(groupName as string, $event)"
+          @dragleave="handleDragLeaveGroup"
+          @drop="handleDropToGroup(groupName as string, $event)"
         >
           <div class="group-header" v-if="groupData.sessions.length > 0 || groupData.group">
             <div class="group-header-left">
@@ -506,6 +583,9 @@ const deleteGroup = async (groupName: string) => {
             v-for="session in groupData.sessions"
             :key="session.id"
             class="session-item"
+            draggable="true"
+            @dragstart="handleDragStart(session, $event)"
+            @dragend="handleDragEnd"
             @dblclick="connectSession(session)"
           >
             <div class="session-icon">
@@ -852,6 +932,15 @@ const deleteGroup = async (groupName: string) => {
 
 .session-group {
   margin-bottom: 12px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.session-group.drag-over {
+  border-color: var(--accent-primary);
+  background: rgba(var(--accent-primary-rgb, 66, 153, 225), 0.08);
 }
 
 .group-header {
@@ -922,12 +1011,20 @@ const deleteGroup = async (groupName: string) => {
   margin-bottom: 4px;
   background: var(--bg-tertiary);
   border-radius: 6px;
-  cursor: pointer;
+  cursor: grab;
   transition: all 0.2s ease;
 }
 
 .session-item:hover {
   background: var(--bg-surface);
+}
+
+.session-item:active {
+  cursor: grabbing;
+}
+
+.session-item.dragging {
+  opacity: 0.5;
 }
 
 .session-icon {
