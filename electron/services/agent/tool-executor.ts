@@ -128,6 +128,7 @@ export interface ToolExecutorConfig {
   hostProfileService?: HostProfileServiceInterface
   mcpService?: McpService
   addStep: (step: Omit<AgentStep, 'id' | 'timestamp'>) => AgentStep
+  updateStep: (stepId: string, updates: Partial<Omit<AgentStep, 'id' | 'timestamp'>>) => void
   waitForConfirmation: (
     toolCallId: string,
     toolName: string,
@@ -136,6 +137,7 @@ export interface ToolExecutorConfig {
   ) => Promise<boolean>
   isAborted: () => boolean
   getHostId: () => string | undefined
+  hasPendingUserMessage: () => boolean  // 检查是否有待处理的用户消息
 }
 
 /**
@@ -1492,48 +1494,136 @@ async function getTerminalState(
 }
 
 /**
+ * 格式化剩余时间显示
+ */
+function formatRemainingTime(totalSeconds: number, elapsedSeconds: number): string {
+  const remaining = Math.max(0, totalSeconds - elapsedSeconds)
+  const minutes = Math.floor(remaining / 60)
+  const seconds = remaining % 60
+  
+  if (minutes > 0) {
+    return `${minutes}分${seconds}秒`
+  }
+  return `${seconds}秒`
+}
+
+/**
+ * 格式化总时间显示
+ */
+function formatTotalTime(seconds: number): string {
+  const minutes = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  
+  if (minutes > 0) {
+    return secs > 0 ? `${minutes}分${secs}秒` : `${minutes}分钟`
+  }
+  return `${seconds}秒`
+}
+
+/**
  * 等待指定时间
  * 让 Agent 可以主动等待，避免频繁轮询消耗步骤
+ * 支持：
+ * - 显示等待进度（计划等待多久，还剩多久）
+ * - 用户发送消息时立即中断等待
  */
 async function wait(
   args: Record<string, unknown>,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
-  const seconds = args.seconds as number
-  const message = args.message as string || `等待 ${seconds} 秒...`
+  const totalSeconds = args.seconds as number
+  const message = args.message as string || `等待中...`
   
   // 参数校验
-  if (typeof seconds !== 'number' || seconds <= 0) {
+  if (typeof totalSeconds !== 'number' || totalSeconds <= 0) {
     return { success: false, output: '', error: '等待秒数必须是正数' }
   }
   
-  // 虽然不限制上限，但给出一些友好的提示
-  const waitMinutes = Math.floor(seconds / 60)
-  const waitSeconds = seconds % 60
-  const timeDisplay = waitMinutes > 0 
-    ? `${waitMinutes} 分 ${waitSeconds} 秒`
-    : `${seconds} 秒`
-
-  executor.addStep({
+  const totalTimeDisplay = formatTotalTime(totalSeconds)
+  
+  // 添加等待步骤，显示计划等待时间
+  const step = executor.addStep({
     type: 'waiting',
-    content: `☕ ${message}`,
+    content: `☕ ${message}\n⏱️ 计划等待 ${totalTimeDisplay}，剩余 ${totalTimeDisplay}`,
     toolName: 'wait',
-    toolArgs: { seconds, message },
+    toolArgs: { seconds: totalSeconds, message },
     riskLevel: 'safe'
   })
 
-  // 实际等待
-  await new Promise(resolve => setTimeout(resolve, seconds * 1000))
+  // 轮询间隔（秒），用于更新进度和检查中断
+  const pollInterval = Math.min(5, Math.max(1, Math.floor(totalSeconds / 20)))
+  let elapsedSeconds = 0
+  let interrupted = false
+  let interruptReason = ''
 
-  executor.addStep({
-    type: 'tool_result',
-    content: `等待完成 (${timeDisplay})`,
-    toolName: 'wait',
-    toolResult: `已等待 ${timeDisplay}，继续执行。`
+  // 轮询等待，支持中断
+  while (elapsedSeconds < totalSeconds) {
+    // 等待一个间隔
+    await new Promise(resolve => setTimeout(resolve, pollInterval * 1000))
+    elapsedSeconds += pollInterval
+    
+    // 检查是否被中止
+    if (executor.isAborted()) {
+      interrupted = true
+      interruptReason = 'aborted'
+      break
+    }
+    
+    // 检查是否有用户消息
+    if (executor.hasPendingUserMessage()) {
+      interrupted = true
+      interruptReason = 'user_message'
+      break
+    }
+    
+    // 更新进度显示
+    const remainingTime = formatRemainingTime(totalSeconds, elapsedSeconds)
+    const progress = Math.min(100, Math.round((elapsedSeconds / totalSeconds) * 100))
+    
+    executor.updateStep(step.id, {
+      type: 'waiting',
+      content: `☕ ${message}\n⏱️ 计划等待 ${totalTimeDisplay}，剩余 ${remainingTime} (${progress}%)`
+    })
+  }
+
+  // 等待完成或被中断
+  const actualTimeDisplay = formatTotalTime(Math.min(elapsedSeconds, totalSeconds))
+  
+  if (interrupted) {
+    // 根据中断原因显示不同的友好提示
+    const interruptMessages = {
+      user_message: {
+        display: `☕ ${message}\n📨 收到新消息！已等待 ${actualTimeDisplay}，马上处理~`,
+        output: `收到新消息，已等待 ${actualTimeDisplay}。让我看看有什么新情况...`
+      },
+      aborted: {
+        display: `☕ ${message}\n🛑 好的，停下来了。已等待 ${actualTimeDisplay}`,
+        output: `操作已中止，等待了 ${actualTimeDisplay}。`
+      }
+    }
+    
+    const msg = interruptMessages[interruptReason as keyof typeof interruptMessages] 
+      || interruptMessages.aborted
+    
+    executor.updateStep(step.id, {
+      type: 'waiting',
+      content: msg.display
+    })
+
+    return {
+      success: true,
+      output: msg.output
+    }
+  }
+
+  // 正常完成
+  executor.updateStep(step.id, {
+    type: 'waiting',
+    content: `☕ ${message}\n✅ 等待完成，共等待 ${totalTimeDisplay}`
   })
 
   return { 
     success: true, 
-    output: `已等待 ${timeDisplay}，继续执行。现在你可以检查终端状态或继续其他操作。`
+    output: `已等待 ${totalTimeDisplay}，继续执行。现在你可以检查终端状态或继续其他操作。`
   }
 }

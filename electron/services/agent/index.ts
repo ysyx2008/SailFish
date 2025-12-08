@@ -977,10 +977,12 @@ export class AgentService {
       hostProfileService: this.hostProfileService,
       mcpService: this.mcpService,
       addStep: (step) => this.addStep(agentId, step),
-      waitForConfirmation: (toolCallId, toolName, toolArgs, riskLevel) => 
+      updateStep: (stepId, updates) => this.updateStep(agentId, stepId, updates),
+      waitForConfirmation: (toolCallId, toolName, toolArgs, riskLevel) =>
         this.waitForConfirmation(agentId, toolCallId, toolName, toolArgs, riskLevel),
       isAborted: () => run.aborted,
-      getHostId: () => run.context.hostId
+      getHostId: () => run.context.hostId,
+      hasPendingUserMessage: () => run.pendingUserMessages.length > 0
     }
 
     try {
