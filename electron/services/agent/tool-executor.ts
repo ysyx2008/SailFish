@@ -138,6 +138,8 @@ export interface ToolExecutorConfig {
   isAborted: () => boolean
   getHostId: () => string | undefined
   hasPendingUserMessage: () => boolean  // 检查是否有待处理的用户消息
+  peekPendingUserMessage: () => string | undefined  // 查看（不消费）第一条待处理消息
+  consumePendingUserMessage: () => string | undefined  // 消费并返回第一条待处理消息
 }
 
 /**
@@ -1520,6 +1522,7 @@ function formatTotalTime(seconds: number): string {
   return `${seconds}秒`
 }
 
+
 /**
  * 等待指定时间
  * 让 Agent 可以主动等待，避免频繁轮询消耗步骤
@@ -1554,7 +1557,8 @@ async function wait(
   const pollInterval = Math.min(5, Math.max(1, Math.floor(totalSeconds / 20)))
   let elapsedSeconds = 0
   let interrupted = false
-  let interruptReason = ''
+  let interruptReason: 'aborted' | 'user_message' | '' = ''
+  let userMessageContent = ''
 
   // 轮询等待，支持中断
   while (elapsedSeconds < totalSeconds) {
@@ -1573,6 +1577,8 @@ async function wait(
     if (executor.hasPendingUserMessage()) {
       interrupted = true
       interruptReason = 'user_message'
+      // 查看用户消息内容（不消费，让 Agent 循环来处理）
+      userMessageContent = executor.peekPendingUserMessage() || ''
       break
     }
     
@@ -1588,31 +1594,32 @@ async function wait(
 
   // 等待完成或被中断
   const actualTimeDisplay = formatTotalTime(Math.min(elapsedSeconds, totalSeconds))
+  const remainingSeconds = totalSeconds - elapsedSeconds
+  const remainingTimeDisplay = formatTotalTime(Math.max(0, remainingSeconds))
   
   if (interrupted) {
-    // 根据中断原因显示不同的友好提示
-    const interruptMessages = {
-      user_message: {
-        display: `☕ ${message}\n📨 收到新消息！已等待 ${actualTimeDisplay}，马上处理~`,
-        output: `收到新消息，已等待 ${actualTimeDisplay}。让我看看有什么新情况...`
-      },
-      aborted: {
-        display: `☕ ${message}\n🛑 好的，停下来了。已等待 ${actualTimeDisplay}`,
+    if (interruptReason === 'user_message') {
+      // 用户发消息中断 - 把消息内容告诉 Agent，让它决定怎么做
+      executor.updateStep(step.id, {
+        type: 'waiting',
+        content: `☕ ${message}\n📨 收到新消息！已等待 ${actualTimeDisplay}，原计划还剩 ${remainingTimeDisplay}`
+      })
+
+      return {
+        success: true,
+        output: `用户发来消息："${userMessageContent}"\n\n已等待 ${actualTimeDisplay}，原计划还剩 ${remainingTimeDisplay}。\n请根据用户消息决定下一步：如果用户说不用等了/快好了，可以立即检查终端状态；如果用户说还要等/没那么快，可以再次调用 wait 继续等待。`
+      }
+    } else {
+      // abort 中断
+      executor.updateStep(step.id, {
+        type: 'waiting',
+        content: `☕ ${message}\n🛑 好的，停下来了。已等待 ${actualTimeDisplay}`
+      })
+
+      return {
+        success: true,
         output: `操作已中止，等待了 ${actualTimeDisplay}。`
       }
-    }
-    
-    const msg = interruptMessages[interruptReason as keyof typeof interruptMessages] 
-      || interruptMessages.aborted
-    
-    executor.updateStep(step.id, {
-      type: 'waiting',
-      content: msg.display
-    })
-
-    return {
-      success: true,
-      output: msg.output
     }
   }
 

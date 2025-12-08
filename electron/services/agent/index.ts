@@ -982,7 +982,9 @@ export class AgentService {
         this.waitForConfirmation(agentId, toolCallId, toolName, toolArgs, riskLevel),
       isAborted: () => run.aborted,
       getHostId: () => run.context.hostId,
-      hasPendingUserMessage: () => run.pendingUserMessages.length > 0
+      hasPendingUserMessage: () => run.pendingUserMessages.length > 0,
+      peekPendingUserMessage: () => run.pendingUserMessages[0],
+      consumePendingUserMessage: () => run.pendingUserMessages.shift()
     }
 
     try {
