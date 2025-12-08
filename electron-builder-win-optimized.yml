@@ -1,0 +1,85 @@
+# 专门针对Windows的优化配置
+appId: com.qiyu.terminal
+productName: 旗鱼终端
+directories:
+  buildResources: resources
+  output: release
+
+# 构建加速配置
+electronDownload:
+  cache: ./electron-cache
+buildDependenciesFromSource: false
+nodeGypRebuild: false
+
+# 压缩配置
+compression: maximum
+asar: true
+
+# 文件包含配置 - 只包含Windows必要的文件
+files:
+  - dist
+  - dist-electron
+  # 只包含Windows必要的node_modules
+  - node_modules/@homebridge/node-pty-prebuilt-multiarch/**/*
+  - node_modules/ssh2/**/*
+  - node_modules/electron-store/**/*
+  - node_modules/jieba-wasm/**/*
+  # 排除其他平台的二进制文件
+  - "!node_modules/**/darwin/**"
+  - "!node_modules/**/linux/**"
+  - "!node_modules/**/macos/**"
+  - "!node_modules/**/android/**"
+  - "!node_modules/**/ios/**"
+  # 排除开发文件
+  - "!node_modules/**/*.md"
+  - "!node_modules/**/*.map"
+  - "!node_modules/**/test/**"
+  - "!node_modules/**/tests/**"
+  - "!node_modules/**/example/**"
+  - "!node_modules/**/examples/**"
+  - "!node_modules/**/benchmark/**"
+  - "!node_modules/**/doc/**"
+  - "!node_modules/**/docs/**"
+
+# 需要解压的文件
+asarUnpack:
+  - node_modules/@homebridge/node-pty-prebuilt-multiarch/**/*
+
+# 额外资源 - 考虑模型优化
+extraResources:
+  # 轻量 Embedding 模型
+  - from: "resources/models/embedding/all-MiniLM-L6-v2"
+    to: "models/embedding/all-MiniLM-L6-v2"
+    filter:
+      - "*.onnx"  # 只包含必要的模型文件
+      - "*.json"
+      - "*.txt"
+
+# Windows专用配置
+win:
+  icon: resources/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  # 只包含Windows运行时
+  extraFiles:
+    - from: "node_modules/onnxruntime-node/bin/napi-v3/win32/x64/onnxruntime.dll"
+      to: "."
+
+# NSIS配置
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 旗鱼终端
+  # 注意：electron-builder 24.13.3 不支持 nsis.compression 属性
+  # compression: zlib  # 已移除，因为会导致构建失败
+
+# 不构建其他平台
+mac: false
+linux: false
+
+# 注意：移除了 afterPack 钩子，因为项目中没有 scripts/cleanup.js 文件
+# afterPack: ./scripts/cleanup.js
