@@ -260,6 +260,7 @@ export default {
     sendMessage: '发送消息 (Enter)',
     executeTask: '执行任务 (Enter)',
     sendSupplement: '发送补充信息 (Enter)',
+    useDefault: '使用默认值 (Enter)',
     stopGeneration: '停止生成',
     stopAgent: '停止 Agent',
     uploadDocument: '上传文档 (PDF/Word/文本)',

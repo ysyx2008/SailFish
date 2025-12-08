@@ -260,6 +260,7 @@ export default {
     sendMessage: 'Send Message (Enter)',
     executeTask: 'Execute Task (Enter)',
     sendSupplement: 'Send Supplement (Enter)',
+    useDefault: 'Use Default (Enter)',
     stopGeneration: 'Stop Generation',
     stopAgent: 'Stop Agent',
     uploadDocument: 'Upload Document (PDF/Word/Text)',
