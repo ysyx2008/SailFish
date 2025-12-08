@@ -914,9 +914,24 @@ export class AgentService {
         strategySwitches: [],
         detectedIssues: [],
         appliedFixes: []
-      }
+      },
+      // 初始化实时输出缓冲区（从传入的快照开始，然后实时更新）
+      realtimeOutputBuffer: [...context.terminalOutput]
     }
     this.runs.set(agentId, run)
+    
+    // 注册终端输出监听器，实时收集输出
+    const MAX_BUFFER_LINES = 200  // 缓冲区最大行数
+    run.outputUnsubscribe = this.ptyService.onData(ptyId, (data: string) => {
+      // 将新输出按行分割并追加到缓冲区
+      const newLines = data.split('\n')
+      run.realtimeOutputBuffer.push(...newLines)
+      
+      // 保持缓冲区在限制内（保留最新的行）
+      if (run.realtimeOutputBuffer.length > MAX_BUFFER_LINES) {
+        run.realtimeOutputBuffer = run.realtimeOutputBuffer.slice(-MAX_BUFFER_LINES)
+      }
+    })
 
     // 构建系统提示（包含 MBTI 风格）
     const mbtiType = this.configService?.getAgentMbti() ?? null
@@ -984,7 +999,9 @@ export class AgentService {
       getHostId: () => run.context.hostId,
       hasPendingUserMessage: () => run.pendingUserMessages.length > 0,
       peekPendingUserMessage: () => run.pendingUserMessages[0],
-      consumePendingUserMessage: () => run.pendingUserMessages.shift()
+      consumePendingUserMessage: () => run.pendingUserMessages.shift(),
+      // 获取实时终端输出（Agent 运行期间收集的最新数据）
+      getRealtimeTerminalOutput: () => [...run.realtimeOutputBuffer]
     }
 
     try {
@@ -1195,6 +1212,13 @@ export class AgentService {
       }
 
       throw error
+    } finally {
+      // 清理终端输出监听器
+      if (run.outputUnsubscribe) {
+        run.outputUnsubscribe()
+        run.outputUnsubscribe = undefined
+        console.log('[Agent] 已清理终端输出监听器')
+      }
     }
   }
 
@@ -1215,6 +1239,13 @@ export class AgentService {
 
     // 中止所有正在执行的命令
     this.commandExecutor.abortAll()
+    
+    // 清理终端输出监听器
+    if (run.outputUnsubscribe) {
+      run.outputUnsubscribe()
+      run.outputUnsubscribe = undefined
+      console.log('[Agent] abort: 已清理终端输出监听器')
+    }
 
     this.addStep(agentId, {
       type: 'error',

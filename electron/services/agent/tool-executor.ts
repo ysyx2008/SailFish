@@ -140,6 +140,7 @@ export interface ToolExecutorConfig {
   hasPendingUserMessage: () => boolean  // 检查是否有待处理的用户消息
   peekPendingUserMessage: () => string | undefined  // 查看（不消费）第一条待处理消息
   consumePendingUserMessage: () => string | undefined  // 消费并返回第一条待处理消息
+  getRealtimeTerminalOutput: () => string[]  // 获取实时终端输出（Agent 运行期间收集）
 }
 
 /**
@@ -650,7 +651,8 @@ function truncateFromEnd(text: string, maxLength: number): string {
  * 
  * 数据来源优先级：
  * 1. 当前正在执行的命令输出（从 terminal-state.service 获取，实时）
- * 2. 传入的 terminalOutput（Agent 启动时的快照）
+ * 2. 实时终端输出缓冲区（Agent 运行期间收集的）
+ * 3. 传入的 terminalOutput（Agent 启动时的快照，作为最后的 fallback）
  */
 function getTerminalContext(
   ptyId: string,
@@ -663,8 +665,9 @@ function getTerminalContext(
   const fromStartLines = args.from_start_lines as number | undefined
   
   // 获取输出数据
-  // 优先级：1. 当前执行的命令输出 2. 最近完成的命令输出 3. Agent 启动时的快照
+  // 优先级：1. 当前执行的命令输出 2. 实时缓冲区 3. Agent 启动时的快照
   let allOutput: string[] = []
+  let dataSource = 'unknown'
   
   try {
     const terminalStateService = getTerminalStateService()
@@ -673,19 +676,30 @@ function getTerminalContext(
     if (currentExecution?.output && currentExecution.output.length > 0) {
       // 有当前执行的命令输出，使用它（实时数据）
       allOutput = currentExecution.output.split('\n')
+      dataSource = 'current_execution'
     } else {
-      // 没有当前执行，尝试获取最近完成的命令输出
-      const lastExecution = terminalStateService.getLastExecution(ptyId)
-      if (lastExecution?.output && lastExecution.output.length > 0) {
-        allOutput = lastExecution.output.split('\n')
+      // 没有当前执行，优先使用实时缓冲区（Agent 运行期间收集的最新输出）
+      const realtimeOutput = executor.getRealtimeTerminalOutput()
+      if (realtimeOutput && realtimeOutput.length > 0) {
+        allOutput = realtimeOutput
+        dataSource = 'realtime_buffer'
       } else {
-        // 都没有，使用传入的 terminalOutput（Agent 启动时的快照）
-        allOutput = terminalOutput
+        // 实时缓冲区也为空，尝试获取最近完成的命令输出
+        const lastExecution = terminalStateService.getLastExecution(ptyId)
+        if (lastExecution?.output && lastExecution.output.length > 0) {
+          allOutput = lastExecution.output.split('\n')
+          dataSource = 'last_execution'
+        } else {
+          // 都没有，使用传入的 terminalOutput（Agent 启动时的快照）
+          allOutput = terminalOutput
+          dataSource = 'initial_snapshot'
+        }
       }
     }
   } catch (e) {
     // 如果获取失败，使用传入的 terminalOutput
     allOutput = terminalOutput
+    dataSource = 'fallback_snapshot'
   }
   
   let output = ''

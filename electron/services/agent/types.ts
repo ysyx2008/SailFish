@@ -111,6 +111,10 @@ export interface AgentRun {
   context: AgentContext  // 运行上下文
   // 自我反思追踪（增强版）
   reflection: ReflectionState
+  // 实时终端输出缓冲区（Agent 运行期间收集）
+  realtimeOutputBuffer: string[]
+  // 终端输出监听器的取消订阅函数
+  outputUnsubscribe?: () => void
 }
 
 // 主机档案服务接口
