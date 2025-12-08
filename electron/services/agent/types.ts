@@ -5,7 +5,7 @@
 // Agent 配置
 export interface AgentConfig {
   enabled: boolean
-  maxSteps: number              // 最大执行步数，默认 20
+  maxSteps: number              // 最大执行步数，0 表示无限制（由 Agent 自行决定结束）
   commandTimeout: number        // 命令超时时间（毫秒），默认 30000
   autoExecuteSafe: boolean      // safe 命令自动执行
   autoExecuteModerate: boolean  // moderate 命令是否自动执行
@@ -18,7 +18,7 @@ export type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
 // Agent 执行步骤
 export interface AgentStep {
   id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement'
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting'
   content: string
   toolName?: string
   toolArgs?: Record<string, unknown>
@@ -46,6 +46,7 @@ export interface ToolResult {
   success: boolean
   output: string
   error?: string
+  isRunning?: boolean  // 命令仍在后台执行（用于长耗时命令超时但未失败的情况）
 }
 
 // 待确认的工具调用
@@ -138,7 +139,7 @@ export interface AgentCallbacks {
 // 默认配置
 export const DEFAULT_AGENT_CONFIG: AgentConfig = {
   enabled: true,
-  maxSteps: 50,
+  maxSteps: 0,                // 0 表示无限制，由 Agent 自行决定何时结束
   commandTimeout: 30000,
   autoExecuteSafe: true,
   autoExecuteModerate: true,

@@ -18,7 +18,7 @@ import type {
 import { assessCommandRisk, analyzeCommand } from './risk-assessor'
 import { getKnowledgeService } from '../knowledge'
 import { getTerminalStateService } from '../terminal-state.service'
-import { getTerminalAwarenessService } from '../terminal-awareness'
+import { getTerminalAwarenessService, getProcessMonitor } from '../terminal-awareness'
 
 // 错误分类
 type ErrorCategory = 'transient' | 'permission' | 'not_found' | 'timeout' | 'fatal'
@@ -192,6 +192,9 @@ export async function executeTool(
 
     case 'get_terminal_state':
       return getTerminalState(ptyId, args, executor)
+
+    case 'wait':
+      return wait(args, executor)
 
     default:
       // 检查是否是 MCP 工具调用
@@ -434,12 +437,33 @@ async function executeCommand(
     // 检测是否超时
     const isTimeout = result.output.includes('[命令执行超时]')
     if (isTimeout) {
-      const errorCategory = categorizeError('timeout')
-      const suggestion = getErrorRecoverySuggestion('timeout', errorCategory)
-      
       // 超时：不移除监听器，不完成追踪（命令可能还在运行）
       // 这样后续调用 get_terminal_context 仍能获取到新输出
       
+      // 检查是否是长耗时命令（构建、编译等）
+      const processMonitor = getProcessMonitor()
+      const isLongRunningCommand = processMonitor.isKnownLongRunningCommand(command)
+      
+      if (isLongRunningCommand) {
+        // 长耗时命令超时：这是正常的，不算失败
+        // 返回 isRunning: true，告诉反思追踪不要计入失败
+        executor.addStep({
+          type: 'tool_result',
+          content: `⏳ 命令仍在执行中 (已超过 ${config.commandTimeout / 1000}秒)`,
+          toolName: 'execute_command',
+          toolResult: result.output + '\n\n💡 这是一个长耗时命令，超时不代表失败。建议使用 wait 工具等待一段时间后再检查状态。'
+        })
+        return {
+          success: true,  // 长耗时命令超时不算失败
+          output: result.output + '\n\n💡 命令仍在后台执行中。建议：\n1. 使用 wait 工具等待一段时间（如 60-180 秒）\n2. 然后使用 check_terminal_status 确认执行状态\n3. 使用 get_terminal_context 查看最新输出',
+          isRunning: true  // 标记命令仍在运行
+        }
+      }
+      
+      // 普通命令超时：可能有问题
+      const errorCategory = categorizeError('timeout')
+      const suggestion = getErrorRecoverySuggestion('timeout', errorCategory)
+
       executor.addStep({
         type: 'tool_result',
         content: `⏱️ 命令执行超时 (${config.commandTimeout / 1000}秒)`,
@@ -1464,5 +1488,52 @@ async function getTerminalState(
       toolResult: errorMsg
     })
     return { success: false, output: '', error: errorMsg }
+  }
+}
+
+/**
+ * 等待指定时间
+ * 让 Agent 可以主动等待，避免频繁轮询消耗步骤
+ */
+async function wait(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const seconds = args.seconds as number
+  const message = args.message as string || `等待 ${seconds} 秒...`
+  
+  // 参数校验
+  if (typeof seconds !== 'number' || seconds <= 0) {
+    return { success: false, output: '', error: '等待秒数必须是正数' }
+  }
+  
+  // 虽然不限制上限，但给出一些友好的提示
+  const waitMinutes = Math.floor(seconds / 60)
+  const waitSeconds = seconds % 60
+  const timeDisplay = waitMinutes > 0 
+    ? `${waitMinutes} 分 ${waitSeconds} 秒`
+    : `${seconds} 秒`
+
+  executor.addStep({
+    type: 'waiting',
+    content: `☕ ${message}`,
+    toolName: 'wait',
+    toolArgs: { seconds, message },
+    riskLevel: 'safe'
+  })
+
+  // 实际等待
+  await new Promise(resolve => setTimeout(resolve, seconds * 1000))
+
+  executor.addStep({
+    type: 'tool_result',
+    content: `等待完成 (${timeDisplay})`,
+    toolName: 'wait',
+    toolResult: `已等待 ${timeDisplay}，继续执行。`
+  })
+
+  return { 
+    success: true, 
+    output: `已等待 ${timeDisplay}，继续执行。现在你可以检查终端状态或继续其他操作。`
   }
 }

@@ -343,15 +343,15 @@ export class AgentService {
    * 更新反思追踪状态（增强版）
    */
   private updateReflectionTracking(
-    run: AgentRun, 
-    toolName: string, 
+    run: AgentRun,
+    toolName: string,
     toolArgs: Record<string, unknown>,
-    success: boolean
+    result: ToolResult
   ): void {
     const { reflection } = run
-    
+
     reflection.toolCallCount++
-    
+
     // 追踪命令执行
     if (toolName === 'execute_command' && toolArgs.command) {
       reflection.lastCommands.push(toolArgs.command as string)
@@ -360,9 +360,16 @@ export class AgentService {
         reflection.lastCommands.shift()
       }
     }
-    
+
+    // 如果命令仍在运行（长耗时命令超时），不计入失败
+    if (result.isRunning) {
+      // 命令仍在执行，不更新成功/失败计数
+      // 这种情况通常是构建、编译等长耗时命令的正常超时
+      return
+    }
+
     // 更新成功/失败计数
-    if (success) {
+    if (result.success) {
       reflection.successCount++
       reflection.failureCount = 0
     } else {
@@ -978,7 +985,8 @@ export class AgentService {
 
     try {
       // Agent 执行循环
-      while (stepCount < fullConfig.maxSteps && run.isRunning && !run.aborted) {
+      // maxSteps = 0 表示无限制，由 Agent 自行决定何时结束
+      while ((fullConfig.maxSteps === 0 || stepCount < fullConfig.maxSteps) && run.isRunning && !run.aborted) {
         stepCount++
 
         // 处理用户补充消息（如果有）
@@ -1092,7 +1100,7 @@ export class AgentService {
             )
 
             // 更新反思追踪状态
-            this.updateReflectionTracking(run, toolCall.function.name, toolArgs, result.success)
+            this.updateReflectionTracking(run, toolCall.function.name, toolArgs, result)
 
             // 将工具结果添加到消息历史
             run.messages.push({

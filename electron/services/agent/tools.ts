@@ -247,6 +247,34 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
           }
         }
       }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'wait',
+        description: `等待指定时间后继续执行。用于长耗时命令执行期间，避免频繁查询状态消耗步骤。
+
+使用场景：
+- 执行构建、编译等长时间命令后，等待一段时间再检查结果
+- 等待服务启动、进程完成等
+- 给自己"休息"一下，稍后继续
+
+你可以设置一条有趣的等待消息，让等待过程更生动！`,
+        parameters: {
+          type: 'object',
+          properties: {
+            seconds: {
+              type: 'number',
+              description: '等待的秒数。建议根据任务类型选择：简单检查 10-30 秒，构建任务 60-180 秒，大型编译 300+ 秒'
+            },
+            message: {
+              type: 'string',
+              description: '等待时显示的消息。可以有趣一点，如"我去喝杯咖啡☕"、"容我思考片刻🤔"、"编译中，先摸会儿鱼🐟"'
+            }
+          },
+          required: ['seconds']
+        }
+      }
     }
   ]
 

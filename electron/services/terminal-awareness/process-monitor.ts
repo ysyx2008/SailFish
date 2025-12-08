@@ -70,19 +70,87 @@ const STREAMING_COMMANDS = [
 
 /** 已知的静默命令（可能长时间无输出）*/
 const SILENT_COMMANDS = [
+  // 等待/睡眠
   'sleep',
   'read',
   'wait',
+  
+  // 文件传输
   'dd',
   'rsync',
-  'scp',
+  'scp', 'sftp',
   'wget', 'curl',  // 下载大文件时
-  'tar', 'zip', 'unzip', 'gzip',
-  'make', 'cmake',
-  'gcc', 'g++', 'clang',
-  'cargo build', 'go build',
-  'mvn', 'gradle',
-  'npm install', 'yarn install', 'pnpm install',
+  'ftp',
+  
+  // 压缩解压
+  'tar', 'zip', 'unzip', 'gzip', 'gunzip',
+  'bzip2', 'bunzip2', 'xz', 'unxz',
+  '7z', 'rar', 'unrar',
+  
+  // C/C++ 编译
+  'make', 'cmake', 'ninja',
+  'gcc', 'g++', 'clang', 'clang++',
+  'cc', 'c++',
+  
+  // Rust
+  'cargo build', 'cargo test', 'cargo run',
+  'cargo check', 'cargo clippy',
+  'rustc',
+  
+  // Go
+  'go build', 'go test', 'go run',
+  'go install', 'go mod',
+  
+  // Java/JVM
+  'mvn', 'mvn compile', 'mvn package', 'mvn install', 'mvn test',
+  'gradle', 'gradle build', 'gradle test', 'gradle assemble',
+  'javac', 'java -jar',
+  'ant',
+  
+  // Node.js/JavaScript
+  'npm install', 'npm ci', 'npm run build', 'npm run test',
+  'npm run compile', 'npm run dist', 'npm run bundle',
+  'yarn install', 'yarn build', 'yarn test',
+  'pnpm install', 'pnpm build', 'pnpm test',
+  'npx', 'bunx',
+  'bun install', 'bun build', 'bun test',
+  'webpack', 'rollup', 'vite build', 'esbuild',
+  'tsc', 'tsc --build',
+  
+  // Python
+  'pip install', 'pip3 install',
+  'python setup.py', 'python3 setup.py',
+  'pytest', 'python -m pytest',
+  'poetry install', 'poetry build',
+  'pdm install', 'pdm build',
+  
+  // Ruby
+  'bundle install', 'bundle exec',
+  'gem install',
+  'rake',
+  
+  // .NET
+  'dotnet build', 'dotnet publish', 'dotnet test',
+  'dotnet restore', 'dotnet run',
+  'msbuild',
+  
+  // iOS/macOS
+  'xcodebuild',
+  'swift build', 'swift test',
+  'pod install',
+  
+  // Android
+  './gradlew', 'gradlew.bat',
+  
+  // Docker
+  'docker build', 'docker-compose build',
+  'docker pull', 'docker push',
+  
+  // 其他构建工具
+  'bazel build', 'bazel test',
+  'buck build',
+  'pants',
+  'scons',
 ]
 
 /** 卡死检测的默认超时（毫秒）*/
