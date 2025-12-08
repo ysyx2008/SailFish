@@ -206,8 +206,14 @@ const isStreamingOutput = (group: typeof agentTaskGroups.value[0]) => {
 
 // ==================== 发送消息 ====================
 
+// IME 组合输入状态
+const isComposing = ref(false)
+
 // 发送消息（根据模式选择普通对话或 Agent）
 const handleSend = () => {
+  // 如果正在 IME 组合输入（如中文输入法选词），不发送
+  if (isComposing.value) return
+  
   if (agentMode.value) {
     runAgent()
   } else {
@@ -822,6 +828,8 @@ onMounted(() => {
             :placeholder="isAgentRunning ? t('ai.inputPlaceholderSupplement') : (agentMode ? t('ai.inputPlaceholderAgent') : t('ai.inputPlaceholder'))"
             rows="1"
             @keydown.enter.exact.prevent="handleSend"
+            @compositionstart="isComposing = true"
+            @compositionend="isComposing = false"
           ></textarea>
           <!-- 停止按钮 (普通对话模式) -->
           <button

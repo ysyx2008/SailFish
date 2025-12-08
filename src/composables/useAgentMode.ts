@@ -222,9 +222,20 @@ export function useAgentMode(
     // 如果 Agent 正在运行，发送补充消息而不是启动新任务
     if (isAgentRunning.value && agentState.value?.agentId) {
       inputText.value = ''
-      // 添加到待处理列表，立即显示给用户
-      pendingSupplements.value.push(message)
-      // 发送到后端，步骤会在下一轮 AI 请求时由后端添加
+      
+      // 检查是否有 asking 步骤在等待回复
+      const hasWaitingAsk = agentTaskGroups.value.some(group => 
+        group.isCurrentTask && group.steps.some(step => 
+          step.type === 'asking' && step.toolResult?.includes('⏳')
+        )
+      )
+      
+      // 如果不是在回复提问，才显示为待处理的补充消息
+      if (!hasWaitingAsk) {
+        pendingSupplements.value.push(message)
+      }
+      
+      // 发送到后端
       await window.electronAPI.agent.addMessage(agentState.value.agentId, message)
       return
     }
