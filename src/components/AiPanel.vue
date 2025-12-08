@@ -187,13 +187,20 @@ const formatConfirmArgs = (confirm: typeof pendingConfirm.value) => {
   return JSON.stringify(args, null, 2)
 }
 
-// 检查任务组是否正在流式输出（AI 已开始返回内容）
+// 检查任务组是否正在流式输出或等待中（不需要显示"AI 正在思考中"）
 const isStreamingOutput = (group: typeof agentTaskGroups.value[0]) => {
   if (group.steps.length === 0) return false
   const lastStep = group.steps[group.steps.length - 1]
   // 如果最后一个步骤是 message 类型且正在流式输出，或者最后一个步骤是 message 类型且有内容
   // 说明 AI 已经开始返回内容了，不需要显示"思考中"
-  return lastStep.type === 'message' && (lastStep.isStreaming || lastStep.content.length > 0)
+  if (lastStep.type === 'message' && (lastStep.isStreaming || lastStep.content.length > 0)) {
+    return true
+  }
+  // 如果最后一个步骤是 waiting 类型（Agent 正在主动等待），也不需要显示"思考中"
+  if (lastStep.type === 'waiting') {
+    return true
+  }
+  return false
 }
 
 // ==================== 发送消息 ====================
