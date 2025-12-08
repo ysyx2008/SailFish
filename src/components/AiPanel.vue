@@ -4,6 +4,7 @@
  * 重构版本：使用 composables 模块化管理逻辑
  */
 import { ref, computed, watch, inject, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useConfigStore } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
 
@@ -21,6 +22,9 @@ import {
 const emit = defineEmits<{
   close: []
 }>()
+
+// i18n
+const { t } = useI18n()
 
 // Stores
 const configStore = useConfigStore()
@@ -160,15 +164,11 @@ const clearMessages = () => {
 
 // ==================== 确认框辅助函数 ====================
 
-// 工具名称中文映射
+// 工具名称映射
 const getToolDisplayName = (toolName: string) => {
-  const names: Record<string, string> = {
-    execute_command: '执行命令',
-    read_file: '读取文件',
-    write_file: '写入文件',
-    get_terminal_context: '获取终端上下文'
-  }
-  return names[toolName] || toolName
+  const key = `ai.toolNames.${toolName}`
+  const translated = t(key)
+  return translated !== key ? translated : toolName
 }
 
 // 格式化确认参数显示（简化显示）
@@ -307,33 +307,33 @@ onMounted(() => {
           <polyline points="17 8 12 3 7 8"/>
           <line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
-        <p>释放以上传文档</p>
-        <span class="drop-hint">支持 PDF、Word、文本等格式</span>
+        <p>{{ t('ai.dropToUpload') }}</p>
+        <span class="drop-hint">{{ t('ai.dropHint') }}</span>
       </div>
     </div>
 
     <div class="ai-header">
-      <h3>AI 助手</h3>
+      <h3>{{ t('ai.assistant') }}</h3>
       <div class="ai-header-actions">
         <!-- 模型选择 -->
         <select 
           v-if="aiProfiles.length > 0"
           class="model-select"
           :value="activeAiProfile?.id || ''"
-          title="切换 AI 模型"
+          :title="t('ai.switchModel')"
           @change="changeAiProfile(($event.target as HTMLSelectElement).value)"
         >
           <option v-for="profile in aiProfiles" :key="profile.id" :value="profile.id">
             {{ profile.name }} ({{ profile.model }})
           </option>
         </select>
-        <button class="btn-icon" @click="clearMessages" title="清空对话">
+        <button class="btn-icon" @click="clearMessages" :title="t('ai.clearChat')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6"/>
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
           </svg>
         </button>
-        <button class="btn-icon" @click="emit('close')" title="关闭面板">
+        <button class="btn-icon" @click="emit('close')" :title="t('ai.closePanel')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>
@@ -349,9 +349,9 @@ onMounted(() => {
         <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
         <line x1="12" y1="17" x2="12.01" y2="17"/>
       </svg>
-      <p>尚未配置 AI 模型</p>
+      <p>{{ t('ai.noConfig') }}</p>
       <button class="btn btn-primary btn-sm" @click="showSettings?.()">
-        前往设置
+        {{ t('ai.goToSettings') }}
       </button>
     </div>
 
@@ -361,18 +361,18 @@ onMounted(() => {
         <button 
           class="mode-btn" 
           :class="{ active: agentMode }"
-          title="Agent 模式：AI 自主执行命令完成任务"
+          :title="t('ai.agentModeTitle')"
           @click="agentMode = true"
         >
-          🤖 Agent
+          🤖 {{ t('ai.modeAgent') }}
         </button>
         <button 
           class="mode-btn" 
           :class="{ active: !agentMode }"
-          title="对话模式：与 AI 进行问答交流"
+          :title="t('ai.chatModeTitle')"
           @click="agentMode = false"
         >
-          💬 对话
+          💬 {{ t('ai.modeChat') }}
         </button>
       </div>
 
@@ -388,8 +388,8 @@ onMounted(() => {
         <!-- Agent 模式设置 -->
         <div v-if="agentMode" class="agent-settings">
           <!-- 超时设置 -->
-          <div class="timeout-setting" title="命令执行超时时间">
-            <span class="timeout-label">超时</span>
+          <div class="timeout-setting" :title="t('ai.timeout')">
+            <span class="timeout-label">{{ t('ai.timeout') }}</span>
             <select v-model.number="commandTimeout" class="timeout-select">
               <option :value="5">5s</option>
               <option :value="10">10s</option>
@@ -400,8 +400,8 @@ onMounted(() => {
             </select>
           </div>
           <!-- 严格模式开关 -->
-          <div class="strict-mode-toggle" @click.stop="strictMode = !strictMode" :title="strictMode ? '严格模式：每个命令都需确认' : '宽松模式：仅危险命令需确认'">
-            <span class="toggle-label">{{ strictMode ? '严格' : '宽松' }}</span>
+          <div class="strict-mode-toggle" @click.stop="strictMode = !strictMode" :title="strictMode ? t('ai.strictModeTitle') : t('ai.relaxedModeTitle')">
+            <span class="toggle-label">{{ strictMode ? t('ai.strict') : t('ai.relaxed') }}</span>
             <span class="toggle-switch" :class="{ active: strictMode }">
               <span class="toggle-dot"></span>
             </span>
@@ -413,13 +413,13 @@ onMounted(() => {
       <div v-if="lastError && !isAgentRunning" class="error-alert">
         <div class="error-alert-icon">⚠️</div>
         <div class="error-alert-content">
-          <div class="error-alert-title">检测到错误</div>
+          <div class="error-alert-title">{{ t('ai.errorDetected') }}</div>
           <div class="error-alert-text">{{ lastError.content.slice(0, 80) }}{{ lastError.content.length > 80 ? '...' : '' }}</div>
         </div>
         <button class="error-alert-btn" @click="handleDiagnoseError" :disabled="isLoading">
-          AI 诊断
+          {{ t('ai.aiDiagnose') }}
         </button>
-        <button class="error-alert-close" @click="terminalStore.clearError(terminalStore.activeTab?.id || '')" title="关闭错误提示">
+        <button class="error-alert-close" @click="terminalStore.clearError(terminalStore.activeTab?.id || '')" :title="t('ai.closeError')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>
@@ -431,11 +431,11 @@ onMounted(() => {
       <div v-if="terminalSelectedText && !lastError && !isAgentRunning" class="selection-alert">
         <div class="selection-alert-icon">📋</div>
         <div class="selection-alert-content">
-          <div class="selection-alert-title">已选中终端内容</div>
+          <div class="selection-alert-title">{{ t('ai.selectedContent') }}</div>
           <div class="selection-alert-text">{{ terminalSelectedText.slice(0, 60) }}{{ terminalSelectedText.length > 60 ? '...' : '' }}</div>
         </div>
         <button class="selection-alert-btn" @click="handleAnalyzeSelection" :disabled="isLoading">
-          AI 分析
+          {{ t('ai.aiAnalyze') }}
         </button>
       </div>
 
@@ -455,102 +455,102 @@ onMounted(() => {
       <!-- 消息列表 -->
       <div ref="messagesRef" class="ai-messages" @click="handleCodeBlockClick" @scroll="updateScrollPosition">
         <div v-if="messages.length === 0 && !agentMode" class="ai-welcome">
-          <p>👋 你好！我是旗鱼终端的 AI 助手。</p>
-          <p class="welcome-section-title">💬 直接对话</p>
-          <p class="welcome-desc">在下方输入框输入任何问题，我会尽力帮你解答。</p>
+          <p>👋 {{ t('ai.welcome.greeting') }}</p>
+          <p class="welcome-section-title">💬 {{ t('ai.welcome.directChat') }}</p>
+          <p class="welcome-desc">{{ t('ai.welcome.directChatDesc') }}</p>
           
-          <p class="welcome-section-title">🚀 快捷功能</p>
+          <p class="welcome-section-title">🚀 {{ t('ai.welcome.quickFeatures') }}</p>
           <ul>
-            <li><strong>解释命令</strong> - 选中终端内容后点击按钮解释，或直接点击查看示例</li>
-            <li><strong>错误诊断</strong> - 终端出错时自动提示，点击「AI 诊断」</li>
-            <li><strong>生成命令</strong> - 用自然语言描述需求，如「查找大于100M的文件」</li>
-            <li><strong>分析输出</strong> - 选中终端内容后，自动显示「AI 分析」按钮</li>
+            <li><strong>{{ t('ai.welcome.explainCommand') }}</strong> - {{ t('ai.welcome.explainCommandDesc') }}</li>
+            <li><strong>{{ t('ai.welcome.errorDiagnose') }}</strong> - {{ t('ai.welcome.errorDiagnoseDesc') }}</li>
+            <li><strong>{{ t('ai.welcome.generateCommand') }}</strong> - {{ t('ai.welcome.generateCommandDesc') }}</li>
+            <li><strong>{{ t('ai.welcome.analyzeOutput') }}</strong> - {{ t('ai.welcome.analyzeOutputDesc') }}</li>
           </ul>
 
-          <p class="welcome-section-title">✨ 使用技巧</p>
+          <p class="welcome-section-title">✨ {{ t('ai.welcome.usageTips') }}</p>
           <ul>
-            <li>终端右键菜单可「发送到 AI 分析」</li>
-            <li>AI 回复中的代码块可一键发送到终端</li>
-            <li>每个终端标签页有独立的对话记录</li>
-            <li>我会根据你的系统环境生成合适的命令</li>
+            <li>{{ t('ai.welcome.tip1') }}</li>
+            <li>{{ t('ai.welcome.tip2') }}</li>
+            <li>{{ t('ai.welcome.tip3') }}</li>
+            <li>{{ t('ai.welcome.tip4') }}</li>
           </ul>
         </div>
         <div v-if="agentMode && !agentUserTask" class="ai-welcome">
-          <p>🤖 Agent 模式已启用</p>
+          <p>🤖 {{ t('ai.agentWelcome.enabled') }}</p>
           
           <!-- 主机档案信息 -->
           <div class="host-profile-section">
             <p class="welcome-section-title">
-              🖥️ 主机信息
+              🖥️ {{ t('ai.agentWelcome.hostInfo') }}
               <button 
                 class="refresh-profile-btn" 
                 @click="refreshHostProfile" 
                 :disabled="isProbing"
-                :title="isProbing ? '探测中...' : '刷新主机信息'"
+                :title="isProbing ? t('ai.agentWelcome.probing') : t('ai.agentWelcome.refreshHost')"
               >
                 <span :class="{ spinning: isProbing }">🔄</span>
               </button>
             </p>
             <div v-if="currentHostProfile" class="host-profile-info">
               <div class="profile-row">
-                <span class="profile-label">主机:</span>
-                <span class="profile-value">{{ currentHostProfile.hostname || '未知' }}</span>
+                <span class="profile-label">{{ t('ai.agentWelcome.hostname') }}:</span>
+                <span class="profile-value">{{ currentHostProfile.hostname || t('common.unknown') }}</span>
                 <span v-if="currentHostProfile.username" class="profile-value-secondary">@ {{ currentHostProfile.username }}</span>
               </div>
               <div v-if="currentHostProfile.osVersion || currentHostProfile.os" class="profile-row">
-                <span class="profile-label">系统:</span>
+                <span class="profile-label">{{ t('ai.agentWelcome.system') }}:</span>
                 <span class="profile-value">{{ currentHostProfile.osVersion || currentHostProfile.os }}</span>
               </div>
               <div v-if="currentHostProfile.shell" class="profile-row">
-                <span class="profile-label">Shell:</span>
+                <span class="profile-label">{{ t('ai.agentWelcome.shell') }}:</span>
                 <span class="profile-value">{{ currentHostProfile.shell }}</span>
                 <span v-if="currentHostProfile.packageManager" class="profile-value-secondary">| {{ currentHostProfile.packageManager }}</span>
               </div>
               <div v-if="currentHostProfile.installedTools?.length" class="profile-row">
-                <span class="profile-label">工具:</span>
+                <span class="profile-label">{{ t('ai.agentWelcome.tools') }}:</span>
                 <span class="profile-value tools-list">{{ currentHostProfile.installedTools.join(', ') }}</span>
               </div>
               <div v-if="currentHostProfile.notes?.length" class="profile-notes">
-                <span class="profile-label">📝 已知信息:</span>
+                <span class="profile-label">📝 {{ t('ai.agentWelcome.knownInfo') }}:</span>
                 <ul>
                   <li v-for="(note, idx) in currentHostProfile.notes.slice(-5)" :key="idx">{{ note }}</li>
                 </ul>
               </div>
             </div>
             <div v-else-if="isLoadingProfile" class="host-profile-loading">
-              加载中...
+              {{ t('common.loading') }}
             </div>
             <div v-else class="host-profile-empty">
-              <span>尚未探测，点击刷新按钮探测主机信息</span>
+              <span>{{ t('ai.agentWelcome.notProbed') }}</span>
             </div>
           </div>
 
-          <p class="welcome-section-title">💡 什么是 Agent 模式？</p>
-          <p class="welcome-desc">Agent 可以自主执行命令来完成你的任务，你可以看到完整的执行过程。</p>
+          <p class="welcome-section-title">💡 {{ t('ai.agentWelcome.whatIsAgent') }}</p>
+          <p class="welcome-desc">{{ t('ai.agentWelcome.agentDesc') }}</p>
           
-          <p class="welcome-section-title">🎯 使用示例</p>
+          <p class="welcome-section-title">🎯 {{ t('ai.agentWelcome.examples') }}</p>
           <ul>
-            <li>「查看服务器磁盘空间，如果超过80%就清理日志」</li>
-            <li>「检查 nginx 服务状态，如果没运行就启动它」</li>
-            <li>「找出占用内存最多的进程并显示详情」</li>
-            <li>「在当前目录创建一个 backup 文件夹并备份所有配置文件」</li>
+            <li>{{ t('ai.agentWelcome.example1') }}</li>
+            <li>{{ t('ai.agentWelcome.example2') }}</li>
+            <li>{{ t('ai.agentWelcome.example3') }}</li>
+            <li>{{ t('ai.agentWelcome.example4') }}</li>
           </ul>
 
-          <p class="welcome-section-title">{{ strictMode ? '🔒 严格模式' : '🔓 宽松模式' }} <span class="strict-badge" :class="{ relaxed: !strictMode }">{{ strictMode ? '已开启' : '已开启' }}</span></p>
+          <p class="welcome-section-title">{{ strictMode ? '🔒 ' + t('ai.agentWelcome.strictMode') : '🔓 ' + t('ai.agentWelcome.relaxedMode') }} <span class="strict-badge" :class="{ relaxed: !strictMode }">{{ t('ai.agentWelcome.strictModeOn') }}</span></p>
           <ul>
-            <li v-if="strictMode"><strong>每个命令都需要你确认</strong>后才会执行</li>
-            <li v-if="strictMode">适合敏感环境，完全掌控每一步操作</li>
-            <li v-if="!strictMode"><strong>安全命令自动执行</strong>，只有危险命令需要确认</li>
-            <li v-if="!strictMode">适合日常使用，提高效率的同时保障安全</li>
-            <li>所有命令都在终端执行，你可以看到完整输入输出</li>
+            <li v-if="strictMode"><strong>{{ t('ai.agentWelcome.strictModeDesc1') }}</strong></li>
+            <li v-if="strictMode">{{ t('ai.agentWelcome.strictModeDesc2') }}</li>
+            <li v-if="!strictMode"><strong>{{ t('ai.agentWelcome.relaxedModeDesc1') }}</strong></li>
+            <li v-if="!strictMode">{{ t('ai.agentWelcome.relaxedModeDesc2') }}</li>
+            <li>{{ t('ai.agentWelcome.allCommandsVisible') }}</li>
           </ul>
 
-          <p class="welcome-section-title">⚠️ 注意事项</p>
+          <p class="welcome-section-title">⚠️ {{ t('ai.agentWelcome.cautions') }}</p>
           <ul>
-            <li>危险命令（如删除、修改系统文件）始终需要确认</li>
-            <li>你可以随时点击「停止」中止 Agent 执行</li>
-            <li><strong>不适合</strong>长时间运行的命令（如大型编译、数据迁移）</li>
-            <li><strong>不适合</strong>循环/交互式命令（如 <code>watch</code>、<code>top</code>、<code>tail -f</code>、<code>vim</code>）</li>
+            <li>{{ t('ai.agentWelcome.caution1') }}</li>
+            <li>{{ t('ai.agentWelcome.caution2') }}</li>
+            <li><strong>{{ t('ai.agentWelcome.caution3') }}</strong></li>
+            <li><strong>{{ t('ai.agentWelcome.caution4') }}</strong></li>
           </ul>
         </div>
         <!-- 普通对话模式的消息 -->
@@ -599,7 +599,7 @@ onMounted(() => {
                 <div class="message-content agent-initial-loading">
                   <div class="agent-thinking-indicator">
                     <span class="thinking-spinner"></span>
-                    <span class="thinking-text">Agent 启动中...</span>
+                    <span class="thinking-text">{{ t('ai.agentStarting') }}</span>
                   </div>
                 </div>
               </div>
@@ -610,9 +610,9 @@ onMounted(() => {
               <div class="message-wrapper agent-steps-wrapper">
                 <div class="message-content agent-steps-content">
                   <div class="agent-steps-header-inline" @click="toggleStepsCollapse(group.id)">
-                    <span>🤖 {{ group.isCurrentTask && isAgentRunning ? 'Agent 执行中' : 'Agent 执行记录' }}</span>
+                    <span>🤖 {{ group.isCurrentTask && isAgentRunning ? t('ai.agentRunning') : t('ai.agentHistory') }}</span>
                     <span v-if="group.isCurrentTask && isAgentRunning" class="agent-running-dot"></span>
-                    <span class="steps-count">{{ group.steps.length }} 步</span>
+                    <span class="steps-count">{{ group.steps.length }} {{ t('ai.steps') }}</span>
                     <span class="collapse-icon" :class="{ collapsed: isStepsCollapsed(group.id) }">▼</span>
                   </div>
                   <div v-show="!isStepsCollapsed(group.id)" class="agent-steps-body">
@@ -643,7 +643,7 @@ onMounted(() => {
                       class="agent-thinking-indicator"
                     >
                       <span class="thinking-spinner"></span>
-                      <span class="thinking-text">AI 正在思考中...</span>
+                      <span class="thinking-text">{{ t('ai.thinking') }}</span>
                     </div>
                   </div>
                 </div>
@@ -656,7 +656,7 @@ onMounted(() => {
                 <div class="message-content agent-final-content" :class="{ 'is-error': group.finalResult.startsWith('❌') }">
                   <div class="agent-final-header">
                     <span class="final-icon">{{ group.finalResult.startsWith('❌') ? '❌' : '✅' }}</span>
-                    <span class="final-title">{{ group.finalResult.startsWith('❌') ? '任务失败' : '任务完成' }}</span>
+                    <span class="final-title">{{ group.finalResult.startsWith('❌') ? t('ai.taskFailed') : t('ai.taskComplete') }}</span>
                   </div>
                   <div class="agent-final-body markdown-content" v-html="renderMarkdown(group.finalResult.replace(/^[❌✅]\s*(Agent\s*(执行失败|运行出错)[:\s]*)?/, ''))"></div>
                 </div>
@@ -676,7 +676,7 @@ onMounted(() => {
               <div class="message-content pending-supplement">
                 <div class="pending-supplement-header">
                   <span class="pending-icon">💡</span>
-                  <span class="pending-label">补充信息（等待处理）</span>
+                  <span class="pending-label">{{ t('ai.supplementInfo') }}（{{ t('ai.pendingProcess') }}）</span>
                   <span class="pending-spinner"></span>
                 </div>
                 <div class="pending-supplement-content">{{ supplement }}</div>
@@ -691,9 +691,9 @@ onMounted(() => {
             <div class="message-content agent-confirm-inline">
               <div class="confirm-header-inline">
                 <span class="confirm-icon">⚠️</span>
-                <span class="confirm-title">需要确认</span>
+                <span class="confirm-title">{{ t('ai.needConfirm') }}</span>
                 <span class="confirm-risk-badge" :class="getRiskClass(pendingConfirm.riskLevel)">
-                  {{ pendingConfirm.riskLevel === 'dangerous' ? '高风险' : '中风险' }}
+                  {{ pendingConfirm.riskLevel === 'dangerous' ? t('ai.highRisk') : t('ai.mediumRisk') }}
                 </span>
               </div>
               <div class="confirm-detail">
@@ -702,10 +702,10 @@ onMounted(() => {
               </div>
               <div class="confirm-actions-inline">
                 <button class="btn btn-sm btn-outline-danger" @click="confirmToolCall(false)">
-                  拒绝
+                  {{ t('ai.reject') }}
                 </button>
                 <button class="btn btn-sm btn-primary" @click="confirmToolCall(true)">
-                  允许执行
+                  {{ t('ai.allowExecute') }}
                 </button>
               </div>
             </div>
@@ -713,21 +713,21 @@ onMounted(() => {
         </div>
 
         <!-- 新消息指示器 -->
-        <div v-if="hasNewMessage" class="new-message-indicator" @click="scrollToBottom" title="点击滚动到底部">
+        <div v-if="hasNewMessage" class="new-message-indicator" @click="scrollToBottom" :title="t('ai.newMessage')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="6 9 12 15 18 9"/>
           </svg>
-          <span>新消息</span>
+          <span>{{ t('ai.newMessage') }}</span>
         </div>
       </div>
 
       <!-- 上下文使用情况 -->
       <div v-if="messages.length > 0 || (agentMode && agentUserTask)" class="context-stats">
         <div class="context-info">
-          <span class="context-label">上下文</span>
+          <span class="context-label">{{ t('ai.context') }}</span>
           <span class="context-value">~{{ contextStats.tokenEstimate.toLocaleString() }} / {{ (contextStats.maxTokens / 1000).toFixed(0) }}K</span>
         </div>
-        <div class="context-bar" :title="`${contextStats.percentage}% 已使用`">
+        <div class="context-bar" :title="`${contextStats.percentage}% ${t('ai.contextUsed')}`">
           <div 
             class="context-bar-fill" 
             :style="{ width: contextStats.percentage + '%' }"
@@ -742,8 +742,8 @@ onMounted(() => {
       <!-- 已上传文档列表 -->
       <div v-if="uploadedDocs.length > 0" class="uploaded-docs">
         <div class="uploaded-docs-header">
-          <span class="uploaded-docs-title">📎 已上传文档 ({{ uploadedDocs.length }})</span>
-          <button class="btn-clear-docs" @click="clearUploadedDocs" title="清空所有文档">
+          <span class="uploaded-docs-title">📎 {{ t('ai.uploadedDocs') }} ({{ uploadedDocs.length }})</span>
+          <button class="btn-clear-docs" @click="clearUploadedDocs" :title="t('ai.clearDocs')">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>
@@ -761,7 +761,7 @@ onMounted(() => {
             <span class="doc-name" :title="doc.filename">{{ doc.filename }}</span>
             <span class="doc-size">{{ formatFileSize(doc.fileSize) }}</span>
             <span v-if="doc.error" class="doc-error" :title="doc.error">⚠️</span>
-            <button class="btn-remove-doc" @click="removeUploadedDoc(index)" title="移除">
+            <button class="btn-remove-doc" @click="removeUploadedDoc(index)" :title="t('ai.removeDoc')">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="18" y1="6" x2="6" y2="18"/>
                 <line x1="6" y1="6" x2="18" y2="18"/>
@@ -779,7 +779,7 @@ onMounted(() => {
             class="upload-btn" 
             @click="() => selectAndUploadDocs()" 
             :disabled="isUploadingDocs"
-            title="上传文档 (PDF/Word/文本)"
+            :title="t('ai.uploadDocument')"
           >
             <svg v-if="!isUploadingDocs" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
@@ -788,7 +788,7 @@ onMounted(() => {
           </button>
           <textarea
             v-model="inputText"
-            :placeholder="isAgentRunning ? '输入补充信息（将在下一步生效）...' : (agentMode ? '描述你想让 Agent 完成的任务...' : '输入问题或描述你想要的命令...')"
+            :placeholder="isAgentRunning ? t('ai.inputPlaceholderSupplement') : (agentMode ? t('ai.inputPlaceholderAgent') : t('ai.inputPlaceholder'))"
             rows="1"
             @keydown.enter.exact.prevent="handleSend"
           ></textarea>
@@ -797,7 +797,7 @@ onMounted(() => {
             v-if="isLoading && !agentMode"
             class="btn btn-danger stop-btn"
             @click="stopGeneration"
-            title="停止生成"
+            :title="t('ai.stopGeneration')"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <rect x="6" y="6" width="12" height="12" rx="2"/>
@@ -807,7 +807,7 @@ onMounted(() => {
           <button
             v-else-if="isAgentRunning && inputText.trim()"
             class="send-btn send-btn-supplement"
-            title="发送补充信息 (Enter)"
+            :title="t('ai.sendSupplement')"
             @click="handleSend"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -819,7 +819,7 @@ onMounted(() => {
             v-else-if="isAgentRunning"
             class="btn btn-danger stop-btn"
             @click="abortAgent"
-            title="停止 Agent"
+            :title="t('ai.stopAgent')"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <rect x="6" y="6" width="12" height="12" rx="2"/>
@@ -831,7 +831,7 @@ onMounted(() => {
             class="send-btn"
             :class="{ 'send-btn-agent': agentMode }"
             :disabled="!inputText.trim()"
-            :title="agentMode ? '执行任务 (Enter)' : '发送消息 (Enter)'"
+            :title="agentMode ? t('ai.executeTask') : t('ai.sendMessage')"
             @click="handleSend"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

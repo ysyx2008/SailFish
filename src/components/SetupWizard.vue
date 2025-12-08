@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useConfigStore, type AiProfile } from '../stores/config'
 import { v4 as uuidv4 } from 'uuid'
+
+const { t } = useI18n()
 
 const emit = defineEmits<{
   complete: []
@@ -25,34 +28,34 @@ const aiFormData = ref<Partial<AiProfile>>({
   contextLength: 8000
 })
 
-const aiTemplates = [
+const aiTemplates = computed(() => [
   {
     name: 'OpenAI',
     apiUrl: 'https://api.openai.com/v1/chat/completions',
     model: 'gpt-3.5-turbo',
-    desc: 'OpenAI 官方 API，支持 GPT-3.5、GPT-4 等模型'
+    desc: t('aiSettings.templates.openai')
   },
   {
-    name: '通义千问',
+    name: t('aiSettings.templates.qwen').includes('Qwen') ? 'Qwen' : '通义千问',
     apiUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
     model: 'qwen-turbo',
-    desc: '阿里云通义千问，国内访问速度快'
+    desc: t('aiSettings.templates.qwen')
   },
   {
     name: 'DeepSeek',
     apiUrl: 'https://api.deepseek.com/v1/chat/completions',
     model: 'deepseek-chat',
-    desc: 'DeepSeek 大模型，性价比高'
+    desc: t('aiSettings.templates.deepseek')
   },
   {
-    name: 'Ollama 本地',
+    name: 'Ollama',
     apiUrl: 'http://localhost:11434/v1/chat/completions',
     model: 'llama2',
-    desc: '本地部署的 Ollama，数据不出本地'
+    desc: t('aiSettings.templates.ollama')
   }
-]
+])
 
-const applyAiTemplate = (template: typeof aiTemplates[0]) => {
+const applyAiTemplate = (template: typeof aiTemplates.value[0]) => {
   aiFormData.value.name = template.name
   aiFormData.value.apiUrl = template.apiUrl
   aiFormData.value.model = template.model
@@ -318,43 +321,42 @@ onMounted(async () => {
         <!-- 步骤1: 欢迎 -->
         <div v-if="currentStep === 1" class="step-panel">
           <div class="step-header">
-            <h2>欢迎使用旗鱼终端</h2>
-            <p class="step-intro">AI 驱动的智能终端工具，让运维更高效</p>
+            <h2>{{ t('setup.welcome.title') }}</h2>
+            <p class="step-intro">{{ t('setup.welcome.subtitle') }}</p>
           </div>
           <div class="welcome-content">
             <div class="welcome-intro">
               <p class="intro-text">
-                旗鱼终端是一款专为运维人员设计的智能终端工具，集成了强大的 AI 能力，让您的工作更加高效便捷。
-                通过简单的引导，我们将帮助您完成初始配置，快速开始使用。
+                {{ t('setup.welcome.intro') }}
               </p>
             </div>
             <div class="feature-list">
               <div class="feature-item">
                 <span class="feature-icon">💬</span>
                 <div class="feature-text">
-                  <h3>AI 对话助手</h3>
-                  <p>在终端中直接与 AI 对话，询问命令用法、排查问题、获取帮助。支持多种大模型，包括 OpenAI、通义千问、DeepSeek 等，也支持本地部署的 Ollama。</p>
+                  <h3>{{ t('setup.welcome.features.aiChat.title') }}</h3>
+                  <p>{{ t('setup.welcome.features.aiChat.desc') }}</p>
                 </div>
               </div>
               <div class="feature-item">
                 <span class="feature-icon">⚡</span>
                 <div class="feature-text">
-                  <h3>Agent 自动执行</h3>
-                  <p>AI Agent 可以理解您的自然语言指令，自动执行复杂的运维任务。支持命令执行、文件操作、系统监控等，让 AI 成为您的得力助手。</p>
+                  <h3>{{ t('setup.welcome.features.agent.title') }}</h3>
+                  <p>{{ t('setup.welcome.features.agent.desc') }}</p>
                 </div>
               </div>
               <div class="feature-item">
                 <span class="feature-icon">🖥️</span>
                 <div class="feature-text">
-                  <h3>SSH 会话管理</h3>
-                  <p>统一管理多台服务器，支持分组、跳板机、快速连接。可以一键导入 Xshell 会话配置，快速迁移现有环境。</p>
+                  <h3>{{ t('setup.welcome.features.ssh.title') }}</h3>
+                  <p>{{ t('setup.welcome.features.ssh.desc') }}</p>
                 </div>
               </div>
               <div class="feature-item">
                 <span class="feature-icon">📚</span>
                 <div class="feature-text">
-                  <h3>本地知识库</h3>
-                  <p>上传文档到本地知识库，AI 对话时自动检索相关内容，提供更精准的答案。支持 PDF、Word、文本等多种格式，使用轻量级向量模型，无需额外下载。</p>
+                  <h3>{{ t('setup.welcome.features.knowledge.title') }}</h3>
+                  <p>{{ t('setup.welcome.features.knowledge.desc') }}</p>
                 </div>
               </div>
             </div>
@@ -364,18 +366,18 @@ onMounted(async () => {
         <!-- 步骤2: 配置大模型 -->
         <div v-if="currentStep === 2" class="step-panel">
           <div class="step-header">
-            <h2>配置大模型</h2>
-            <p class="step-intro">配置大语言模型，让终端更智能</p>
+            <h2>{{ t('setup.aiConfig.title') }}</h2>
+            <p class="step-intro">{{ t('setup.aiConfig.subtitle') }}</p>
           </div>
           <div class="config-content">
             <div class="config-intro">
-              <p>大模型是 AI 功能的核心，您需要配置至少一个模型才能使用 AI 对话和 Agent 功能。</p>
-              <p class="hint">支持 OpenAI 兼容接口，包括 vLLM、FastChat、Ollama 等私有化部署方案。</p>
+              <p>{{ t('setup.aiConfig.intro') }}</p>
+              <p class="hint">{{ t('setup.aiConfig.hint') }}</p>
             </div>
 
             <!-- 已配置的模型列表 -->
             <div v-if="configStore.aiProfiles.length > 0" class="configured-models">
-              <h3 class="section-title">已配置的模型</h3>
+              <h3 class="section-title">{{ t('setup.aiConfig.configuredModels') }}</h3>
               <div class="model-list">
                 <div
                   v-for="profile in configStore.aiProfiles"
@@ -387,16 +389,16 @@ onMounted(async () => {
                     <div class="model-name">{{ profile.name }}</div>
                     <div class="model-detail">{{ profile.model }} · {{ profile.apiUrl }}</div>
                   </div>
-                  <div v-if="profile.id === configStore.activeAiProfileId" class="active-badge">当前使用</div>
+                  <div v-if="profile.id === configStore.activeAiProfileId" class="active-badge">{{ t('aiSettings.currentlyUsing') }}</div>
                 </div>
               </div>
             </div>
 
             <!-- 添加新模型 -->
             <div class="add-model-section">
-              <h3 class="section-title">添加新模型</h3>
+              <h3 class="section-title">{{ t('setup.aiConfig.addNewModel') }}</h3>
               <div class="templates">
-                <span class="template-label">快速模板：</span>
+                <span class="template-label">{{ t('setup.aiConfig.quickTemplates') }}</span>
                 <div class="template-grid">
                   <button
                     v-for="template in aiTemplates"
@@ -411,22 +413,22 @@ onMounted(async () => {
               </div>
               <div class="config-form">
                 <div class="form-group">
-                  <label class="form-label">配置名称 *</label>
-                  <input v-model="aiFormData.name" type="text" class="input" placeholder="例如：公司内网模型" />
+                  <label class="form-label">{{ t('aiSettings.profileName') }} *</label>
+                  <input v-model="aiFormData.name" type="text" class="input" :placeholder="t('aiSettings.profileNamePlaceholder')" />
                 </div>
                 <div class="form-group">
-                  <label class="form-label">API 地址 *</label>
-                  <input v-model="aiFormData.apiUrl" type="text" class="input" placeholder="http://10.0.1.100:8080/v1/chat/completions" />
+                  <label class="form-label">{{ t('aiSettings.apiUrl') }} *</label>
+                  <input v-model="aiFormData.apiUrl" type="text" class="input" :placeholder="t('aiSettings.apiUrlPlaceholder')" />
                 </div>
                 <div class="form-group">
-                  <label class="form-label">API Key</label>
-                  <input v-model="aiFormData.apiKey" type="password" class="input" placeholder="sk-...（本地部署可留空）" />
+                  <label class="form-label">{{ t('aiSettings.apiKey') }}</label>
+                  <input v-model="aiFormData.apiKey" type="password" class="input" :placeholder="t('aiSettings.apiKeyPlaceholder')" />
                 </div>
                 <div class="form-group">
-                  <label class="form-label">模型名称 *</label>
-                  <input v-model="aiFormData.model" type="text" class="input" placeholder="例如：qwen-72b, gpt-3.5-turbo" />
+                  <label class="form-label">{{ t('aiSettings.model') }} *</label>
+                  <input v-model="aiFormData.model" type="text" class="input" :placeholder="t('aiSettings.modelPlaceholder')" />
                 </div>
-                <button class="btn btn-primary" @click="saveAiConfig">保存配置</button>
+                <button class="btn btn-primary" @click="saveAiConfig">{{ t('aiSettings.saveProfile') }}</button>
               </div>
             </div>
           </div>
@@ -435,22 +437,22 @@ onMounted(async () => {
         <!-- 步骤3: 导入主机 -->
         <div v-if="currentStep === 3" class="step-panel">
           <div class="step-header">
-            <h2>导入 SSH 主机</h2>
-            <p class="step-intro">快速导入已有的 SSH 主机配置</p>
+            <h2>{{ t('setup.import.title') }}</h2>
+            <p class="step-intro">{{ t('setup.import.subtitle') }}</p>
           </div>
           <div class="import-content">
             <div class="import-intro">
-              <p>如果您之前使用 Xshell，可以一键导入所有会话配置，快速迁移到旗鱼终端。</p>
+              <p>{{ t('setup.import.intro') }}</p>
             </div>
             <div v-if="scanning" class="scanning">
               <div class="spinner"></div>
-              <span>正在扫描 Xshell 会话目录...</span>
+              <span>{{ t('setup.import.scanning') }}</span>
             </div>
             <div v-else-if="scanResult">
               <div v-if="scanResult.found" class="scan-result">
                 <div class="result-info">
                   <span class="result-icon">✓</span>
-                  <span>找到 {{ scanResult.sessionCount }} 个会话</span>
+                  <span>{{ t('setup.import.found', { count: scanResult.sessionCount }) }}</span>
                 </div>
                 <div class="result-paths">
                   <div v-for="(path, idx) in scanResult.paths" :key="idx" class="path-item">
@@ -463,34 +465,34 @@ onMounted(async () => {
                     @click="importXshell"
                     :disabled="importing || importResult?.success"
                   >
-                    {{ importing ? '导入中...' : importResult?.success ? '已导入' : '一键导入' }}
+                    {{ importing ? t('setup.import.importing') : importResult?.success ? t('setup.import.imported') : t('setup.import.import') }}
                   </button>
                   <button
                     class="btn btn-outline"
                     @click="manualImport"
                     :disabled="importing"
                   >
-                    手动选择目录
+                    {{ t('setup.import.manualSelect') }}
                   </button>
                 </div>
                 <div v-if="importResult" class="import-result">
                   <div v-if="importResult.success" class="success-message">
-                    ✓ 成功导入 {{ importResult.sessions }} 个主机
+                    ✓ {{ t('setup.import.importSuccess', { count: importResult.sessions }) }}
                   </div>
                   <div v-else class="error-message">
-                    ✗ 导入失败：{{ importResult.errors.join(', ') }}
+                    ✗ {{ t('setup.import.importFailed') }}：{{ importResult.errors.join(', ') }}
                   </div>
                 </div>
               </div>
               <div v-else class="no-sessions">
                 <span class="no-sessions-icon">📭</span>
-                <p class="no-sessions-title">未找到 Xshell 会话目录</p>
-                <p class="no-sessions-hint">您可以手动选择目录导入，或稍后在设置中添加主机</p>
+                <p class="no-sessions-title">{{ t('setup.import.notFound') }}</p>
+                <p class="no-sessions-hint">{{ t('setup.import.notFoundHint') }}</p>
                 <button class="btn btn-primary no-sessions-btn" @click="manualImport" :disabled="importing">
-                  {{ importing ? '导入中...' : '手动选择目录' }}
+                  {{ importing ? t('setup.import.importing') : t('setup.import.manualSelect') }}
                 </button>
                 <div v-if="importResult && !importResult.success" class="error-message">
-                  ✗ 导入失败：{{ importResult.errors.join(', ') }}
+                  ✗ {{ t('setup.import.importFailed') }}：{{ importResult.errors.join(', ') }}
                 </div>
               </div>
             </div>
@@ -500,32 +502,32 @@ onMounted(async () => {
         <!-- 步骤4: 知识库 -->
         <div v-if="currentStep === 4" class="step-panel">
           <div class="step-header">
-            <h2>启用本地知识库</h2>
-            <p class="step-intro">启用本地知识库，让 AI 更懂你的文档</p>
+            <h2>{{ t('setup.knowledge.title') }}</h2>
+            <p class="step-intro">{{ t('setup.knowledge.subtitle') }}</p>
           </div>
           <div class="knowledge-content">
             <div class="knowledge-info">
               <div class="info-box">
                 <span class="info-icon">📚</span>
                 <div class="info-text">
-                  <h3>知识库功能</h3>
+                  <h3>{{ t('setup.knowledge.features.title') }}</h3>
                   <ul>
-                    <li>上传文档到本地知识库，支持 PDF、Word、文本等多种格式</li>
-                    <li>AI 对话时自动检索相关内容，提供更精准的答案</li>
-                    <li>使用轻量级向量模型（all-MiniLM-L6-v2），已随软件打包，无需额外下载</li>
-                    <li>支持语义搜索和重排序，提高检索准确性</li>
+                    <li>{{ t('setup.knowledge.features.item1') }}</li>
+                    <li>{{ t('setup.knowledge.features.item2') }}</li>
+                    <li>{{ t('setup.knowledge.features.item3') }}</li>
+                    <li>{{ t('setup.knowledge.features.item4') }}</li>
                   </ul>
                 </div>
               </div>
               <div class="knowledge-switch">
                 <label class="switch-label">
-                  <span>启用知识库</span>
+                  <span>{{ t('setup.knowledge.enableSwitch') }}</span>
                   <label class="switch">
                     <input type="checkbox" v-model="knowledgeEnabled" />
                     <span class="slider"></span>
                   </label>
                 </label>
-                <p class="switch-hint">开启后可将对话中上传的文档保存供Agent使用</p>
+                <p class="switch-hint">{{ t('setup.knowledge.enableHint') }}</p>
               </div>
             </div>
           </div>
@@ -534,20 +536,20 @@ onMounted(async () => {
         <!-- 步骤5: MCP 服务 -->
         <div v-if="currentStep === 5" class="step-panel">
           <div class="step-header">
-            <h2>配置 MCP 服务</h2>
-            <p class="step-intro">连接 MCP 服务器，扩展 AI 能力</p>
+            <h2>{{ t('setup.mcp.title') }}</h2>
+            <p class="step-intro">{{ t('setup.mcp.subtitle') }}</p>
           </div>
           <div class="mcp-content">
             <div class="mcp-intro">
-              <p>MCP (Model Context Protocol) 是一种协议，允许 AI 访问外部工具和资源。</p>
-              <p class="hint">您可以稍后在设置中添加 MCP 服务器，现在可以跳过此步骤。</p>
+              <p>{{ t('setup.mcp.intro') }}</p>
+              <p class="hint">{{ t('setup.mcp.hint') }}</p>
             </div>
             <div v-if="loadingMcp" class="loading">
               <div class="spinner"></div>
-              <span>加载中...</span>
+              <span>{{ t('common.loading') }}</span>
             </div>
             <div v-else-if="mcpServers.length > 0" class="mcp-servers">
-              <h3 class="section-title">已配置的 MCP 服务器</h3>
+              <h3 class="section-title">{{ t('setup.mcp.configuredServers') }}</h3>
               <div class="server-list">
                 <div
                   v-for="server in mcpServers"
@@ -556,18 +558,18 @@ onMounted(async () => {
                 >
                   <div class="server-info">
                     <div class="server-name">{{ server.name }}</div>
-                    <div class="server-detail">{{ server.transport === 'stdio' ? '标准输入输出' : 'SSE' }}</div>
+                    <div class="server-detail">{{ server.transport === 'stdio' ? t('mcpSettings.transportStdio') : t('mcpSettings.transportSse') }}</div>
                   </div>
                   <div class="server-status" :class="{ enabled: server.enabled }">
-                    {{ server.enabled ? '已启用' : '未启用' }}
+                    {{ server.enabled ? t('common.enabled') : t('common.disabled') }}
                   </div>
                 </div>
               </div>
             </div>
             <div v-else class="no-mcp">
               <span class="no-mcp-icon">🔌</span>
-              <p>尚未配置 MCP 服务器</p>
-              <p class="hint">您可以在设置中添加 MCP 服务器，扩展 AI 的功能</p>
+              <p>{{ t('setup.mcp.noServers') }}</p>
+              <p class="hint">{{ t('setup.mcp.noServersHint') }}</p>
             </div>
           </div>
         </div>
@@ -575,30 +577,30 @@ onMounted(async () => {
         <!-- 步骤6: 完成 -->
         <div v-if="currentStep === 6" class="step-panel">
           <div class="step-header">
-            <h2>一切就绪！</h2>
-            <p class="step-intro">开始使用旗鱼终端吧</p>
+            <h2>{{ t('setup.complete.title') }}</h2>
+            <p class="step-intro">{{ t('setup.complete.subtitle') }}</p>
           </div>
           <div class="complete-content">
             <div class="summary">
               <div class="summary-item" :class="{ active: summary.aiConfigured }">
                 <span class="summary-icon">{{ summary.aiConfigured ? '✓' : '○' }}</span>
-                <span>大模型{{ summary.aiConfigured ? '已配置' : '未配置' }}</span>
+                <span>{{ summary.aiConfigured ? t('setup.complete.summary.aiConfigured') : t('setup.complete.summary.aiNotConfigured') }}</span>
               </div>
               <div class="summary-item" :class="{ active: summary.hostsImported > 0 }">
                 <span class="summary-icon">{{ summary.hostsImported > 0 ? '✓' : '○' }}</span>
-                <span>已导入 {{ summary.hostsImported }} 个主机</span>
+                <span>{{ t('setup.complete.summary.hostsImported', { count: summary.hostsImported }) }}</span>
               </div>
               <div class="summary-item" :class="{ active: summary.knowledgeEnabled }">
                 <span class="summary-icon">{{ summary.knowledgeEnabled ? '✓' : '○' }}</span>
-                <span>知识库{{ summary.knowledgeEnabled ? '已启用' : '未启用' }}</span>
+                <span>{{ summary.knowledgeEnabled ? t('setup.complete.summary.knowledgeEnabled') : t('setup.complete.summary.knowledgeNotEnabled') }}</span>
               </div>
               <div class="summary-item" :class="{ active: summary.mcpConfigured }">
                 <span class="summary-icon">{{ summary.mcpConfigured ? '✓' : '○' }}</span>
-                <span>MCP 服务{{ summary.mcpConfigured ? '已配置' : '未配置' }}</span>
+                <span>{{ summary.mcpConfigured ? t('setup.complete.summary.mcpConfigured') : t('setup.complete.summary.mcpNotConfigured') }}</span>
               </div>
             </div>
             <div class="complete-tips">
-              <p>💡 提示：您可以在设置中随时修改这些配置</p>
+              <p>💡 {{ t('setup.complete.tip') }}</p>
             </div>
           </div>
         </div>
@@ -611,14 +613,14 @@ onMounted(async () => {
           @click="prevStep"
           :disabled="!canGoPrev"
         >
-          上一步
+          {{ t('common.prev') }}
         </button>
         <div class="footer-center" v-if="currentStep === 1">
           <button
             class="btn btn-outline"
             @click="skipWizard"
           >
-            跳过引导
+            {{ t('setup.welcome.skipWizard') }}
           </button>
         </div>
         <div class="footer-right">
@@ -627,13 +629,13 @@ onMounted(async () => {
             class="btn btn-outline"
             @click="skipStep"
           >
-            跳过
+            {{ t('common.skip') }}
           </button>
           <button
             class="btn btn-primary"
             @click="nextStep"
           >
-            {{ currentStep === totalSteps ? '完成' : '下一步' }}
+            {{ currentStep === totalSteps ? t('common.finish') : t('common.next') }}
           </button>
         </div>
       </div>

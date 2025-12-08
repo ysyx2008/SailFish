@@ -573,6 +573,15 @@ ipcMain.handle('config:setSetupCompleted', async (_event, completed: boolean) =>
   configService.setSetupCompleted(completed)
 })
 
+// 语言设置
+ipcMain.handle('config:getLanguage', async () => {
+  return configService.getLanguage()
+})
+
+ipcMain.handle('config:setLanguage', async (_event, language: string) => {
+  configService.setLanguage(language as import('./services/config.service').LocaleType)
+})
+
 // Xshell 导入相关
 ipcMain.handle('xshell:selectFiles', async () => {
   const result = await dialog.showOpenDialog({

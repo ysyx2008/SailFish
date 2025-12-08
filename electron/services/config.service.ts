@@ -77,6 +77,9 @@ export type AgentMbtiType =
   | 'ISTP' | 'ISFP' | 'ESTP' | 'ESFP'
   | null
 
+// 语言类型
+export type LocaleType = 'zh-CN' | 'en-US'
+
 interface StoreSchema {
   aiProfiles: AiProfile[]
   activeAiProfile: string
@@ -92,6 +95,7 @@ interface StoreSchema {
   agentMbti: AgentMbtiType
   knowledgeSettings: KnowledgeSettings
   setupCompleted: boolean
+  language: LocaleType
 }
 
 const defaultConfig: StoreSchema = {
@@ -114,7 +118,8 @@ const defaultConfig: StoreSchema = {
   mcpServers: [],
   agentMbti: null,
   knowledgeSettings: DEFAULT_KNOWLEDGE_SETTINGS,
-  setupCompleted: false
+  setupCompleted: false,
+  language: 'zh-CN'
 }
 
 export class ConfigService {
@@ -469,6 +474,22 @@ export class ConfigService {
    */
   setSetupCompleted(completed: boolean): void {
     this.store.set('setupCompleted', completed)
+  }
+
+  // ==================== 语言设置 ====================
+
+  /**
+   * 获取当前语言
+   */
+  getLanguage(): LocaleType {
+    return this.store.get('language') || 'zh-CN'
+  }
+
+  /**
+   * 设置语言
+   */
+  setLanguage(language: LocaleType): void {
+    this.store.set('language', language)
   }
 }
 

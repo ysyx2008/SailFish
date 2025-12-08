@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useConfigStore } from '../../stores/config'
 import { themes, type ThemeName } from '../../themes'
 
+const { t } = useI18n()
 const configStore = useConfigStore()
 
 const currentTheme = computed(() => configStore.currentTheme)
@@ -17,8 +19,8 @@ const setTheme = async (themeName: string) => {
 <template>
   <div class="theme-settings">
     <div class="settings-section">
-      <h4>终端配色方案</h4>
-      <p class="section-desc">选择你喜欢的终端配色主题</p>
+      <h4>{{ t('themeSettings.title') }}</h4>
+      <p class="section-desc">{{ t('themeSettings.selectTheme') }}</p>
 
       <div class="theme-grid">
         <div

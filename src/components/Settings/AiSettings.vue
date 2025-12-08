@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useConfigStore, type AiProfile, type AgentMbtiType } from '../../stores/config'
 import { v4 as uuidv4 } from 'uuid'
+
+const { t } = useI18n()
 
 const configStore = useConfigStore()
 
@@ -22,33 +25,29 @@ const activeProfileId = computed(() => configStore.activeAiProfileId)
 const currentMbti = computed(() => configStore.agentMbti)
 
 // MBTI 类型数据 (排除 null，因为这是选项列表)
-const mbtiTypes: Array<{
-  type: Exclude<AgentMbtiType, null>
-  name: string
-  desc: string
-  group: string
-}> = [
+// 使用 computed 以便翻译能够响应语言切换
+const mbtiTypes = computed(() => [
   // 分析师型 (NT)
-  { type: 'INTJ', name: '策略家', desc: '逻辑严谨、直接高效', group: '分析师' },
-  { type: 'INTP', name: '逻辑学家', desc: '追求精确、深度分析', group: '分析师' },
-  { type: 'ENTJ', name: '指挥官', desc: '果断自信、目标导向', group: '分析师' },
-  { type: 'ENTP', name: '辩论家', desc: '思维活跃、善于创新', group: '分析师' },
+  { type: 'INTJ' as const, name: '策略家', desc: '逻辑严谨、直接高效', group: t('aiSettings.mbtiGroups.analyst') },
+  { type: 'INTP' as const, name: '逻辑学家', desc: '追求精确、深度分析', group: t('aiSettings.mbtiGroups.analyst') },
+  { type: 'ENTJ' as const, name: '指挥官', desc: '果断自信、目标导向', group: t('aiSettings.mbtiGroups.analyst') },
+  { type: 'ENTP' as const, name: '辩论家', desc: '思维活跃、善于创新', group: t('aiSettings.mbtiGroups.analyst') },
   // 外交官型 (NF)
-  { type: 'INFJ', name: '提倡者', desc: '深思熟虑、富有洞察', group: '外交官' },
-  { type: 'INFP', name: '调停者', desc: '富有同理心、追求完美', group: '外交官' },
-  { type: 'ENFJ', name: '主人公', desc: '热情洋溢、善于激励', group: '外交官' },
-  { type: 'ENFP', name: '竞选者', desc: '积极乐观、富有创意', group: '外交官' },
+  { type: 'INFJ' as const, name: '提倡者', desc: '深思熟虑、富有洞察', group: t('aiSettings.mbtiGroups.diplomat') },
+  { type: 'INFP' as const, name: '调停者', desc: '富有同理心、追求完美', group: t('aiSettings.mbtiGroups.diplomat') },
+  { type: 'ENFJ' as const, name: '主人公', desc: '热情洋溢、善于激励', group: t('aiSettings.mbtiGroups.diplomat') },
+  { type: 'ENFP' as const, name: '竞选者', desc: '积极乐观、富有创意', group: t('aiSettings.mbtiGroups.diplomat') },
   // 哨兵型 (SJ)
-  { type: 'ISTJ', name: '物流师', desc: '条理清晰、稳健务实', group: '哨兵' },
-  { type: 'ISFJ', name: '守卫者', desc: '细心周到、耐心负责', group: '哨兵' },
-  { type: 'ESTJ', name: '总经理', desc: '组织有序、执行力强', group: '哨兵' },
-  { type: 'ESFJ', name: '执政官', desc: '友善热心、善于协调', group: '哨兵' },
+  { type: 'ISTJ' as const, name: '物流师', desc: '条理清晰、稳健务实', group: t('aiSettings.mbtiGroups.sentinel') },
+  { type: 'ISFJ' as const, name: '守卫者', desc: '细心周到、耐心负责', group: t('aiSettings.mbtiGroups.sentinel') },
+  { type: 'ESTJ' as const, name: '总经理', desc: '组织有序、执行力强', group: t('aiSettings.mbtiGroups.sentinel') },
+  { type: 'ESFJ' as const, name: '执政官', desc: '友善热心、善于协调', group: t('aiSettings.mbtiGroups.sentinel') },
   // 探险家型 (SP)
-  { type: 'ISTP', name: '鉴赏家', desc: '冷静务实、追求效率', group: '探险家' },
-  { type: 'ISFP', name: '探险家', desc: '灵活变通、追求美感', group: '探险家' },
-  { type: 'ESTP', name: '企业家', desc: '反应敏捷、敢于冒险', group: '探险家' },
-  { type: 'ESFP', name: '表演者', desc: '乐观开朗、善于表达', group: '探险家' }
-]
+  { type: 'ISTP' as const, name: '鉴赏家', desc: '冷静务实、追求效率', group: t('aiSettings.mbtiGroups.explorer') },
+  { type: 'ISFP' as const, name: '探险家', desc: '灵活变通、追求美感', group: t('aiSettings.mbtiGroups.explorer') },
+  { type: 'ESTP' as const, name: '企业家', desc: '反应敏捷、敢于冒险', group: t('aiSettings.mbtiGroups.explorer') },
+  { type: 'ESFP' as const, name: '表演者', desc: '乐观开朗、善于表达', group: t('aiSettings.mbtiGroups.explorer') }
+])
 
 const setMbti = async (mbti: AgentMbtiType) => {
   await configStore.setAgentMbti(mbti)
@@ -84,9 +83,7 @@ const saveProfile = async () => {
 
   // API Key 未填写时给予提示确认
   if (!formData.value.apiKey) {
-    const confirmed = confirm(
-      '您没有填写 API Key。\n\n大多数 API 服务需要提供 Key 才能正常使用（本地部署的 Ollama 等除外）。\n\n确定要继续保存吗？'
-    )
+    const confirmed = confirm(t('aiSettings.confirmNoApiKey'))
     if (!confirmed) {
       return
     }
@@ -109,7 +106,7 @@ const saveProfile = async () => {
 }
 
 const deleteProfile = async (profile: AiProfile) => {
-  if (confirm(`确定要删除配置 "${profile.name}" 吗？`)) {
+  if (confirm(t('aiSettings.confirmDeleteProfile'))) {
     await configStore.deleteAiProfile(profile.id)
   }
 }
@@ -153,17 +150,17 @@ const applyTemplate = (template: typeof templates[0]) => {
   <div class="ai-settings">
     <div class="settings-section">
       <div class="section-header">
-        <h4>AI 模型配置</h4>
+        <h4>{{ t('aiSettings.title') }}</h4>
         <button class="btn btn-primary btn-sm" @click="openNewProfile">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="12" y1="5" x2="12" y2="19"/>
             <line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
-          添加配置
+          {{ t('aiSettings.addProfile') }}
         </button>
       </div>
       <p class="section-desc">
-        配置 AI 模型 API，支持 OpenAI 兼容接口（包括 vLLM、FastChat、Ollama 等私有化部署）
+        {{ t('aiSettings.apiKeyNotRequired') }}
       </p>
 
       <!-- 配置列表 -->
@@ -187,13 +184,13 @@ const applyTemplate = (template: typeof templates[0]) => {
             <div class="profile-detail">{{ profile.model }} · {{ profile.apiUrl }}</div>
           </div>
           <div class="profile-actions">
-            <button class="btn-icon btn-sm" @click="openEditProfile(profile)" title="编辑配置">
+            <button class="btn-icon btn-sm" @click="openEditProfile(profile)" :title="t('aiSettings.editProfile')">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
               </svg>
             </button>
-            <button class="btn-icon btn-sm" @click="deleteProfile(profile)" title="删除配置">
+            <button class="btn-icon btn-sm" @click="deleteProfile(profile)" :title="t('aiSettings.deleteProfile')">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="3 6 5 6 21 6"/>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -202,8 +199,8 @@ const applyTemplate = (template: typeof templates[0]) => {
           </div>
         </div>
         <div v-if="profiles.length === 0" class="empty-profiles">
-          <p>尚未添加 AI 配置</p>
-          <p class="tip">点击"添加配置"开始使用 AI 功能</p>
+          <p>{{ t('aiSettings.noProfiles') }}</p>
+          <p class="tip">{{ t('aiSettings.addProfile') }}</p>
         </div>
       </div>
     </div>
@@ -212,8 +209,8 @@ const applyTemplate = (template: typeof templates[0]) => {
     <div v-if="showForm" class="profile-form">
 
       <div class="form-header">
-        <h4>{{ editingProfile ? '编辑配置' : '添加配置' }}</h4>
-        <button class="btn-icon" @click="showForm = false" title="关闭">
+        <h4>{{ editingProfile ? t('aiSettings.editProfile') : t('aiSettings.addProfile') }}</h4>
+        <button class="btn-icon" @click="showForm = false" :title="t('common.close')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>
@@ -223,7 +220,7 @@ const applyTemplate = (template: typeof templates[0]) => {
 
       <!-- 快速模板 -->
       <div class="templates" v-if="!editingProfile">
-        <span class="template-label">快速填充：</span>
+        <span class="template-label">{{ t('setup.aiConfig.quickTemplates') }}</span>
         <button
           v-for="template in templates"
           :key="template.name"
@@ -236,53 +233,53 @@ const applyTemplate = (template: typeof templates[0]) => {
 
       <div class="form-body">
         <div class="form-group">
-          <label class="form-label">配置名称 *</label>
-          <input v-model="formData.name" type="text" class="input" placeholder="例如：公司内网模型" />
+          <label class="form-label">{{ t('aiSettings.profileName') }} *</label>
+          <input v-model="formData.name" type="text" class="input" :placeholder="t('aiSettings.profileNamePlaceholder')" />
         </div>
         <div class="form-group">
-          <label class="form-label">API 地址 *</label>
-          <input v-model="formData.apiUrl" type="text" class="input" placeholder="http://10.0.1.100:8080/v1/chat/completions" />
+          <label class="form-label">{{ t('aiSettings.apiUrl') }} *</label>
+          <input v-model="formData.apiUrl" type="text" class="input" :placeholder="t('aiSettings.apiUrlPlaceholder')" />
         </div>
         <div class="form-group">
-          <label class="form-label">API Key</label>
-          <input v-model="formData.apiKey" type="password" class="input" placeholder="sk-..." />
+          <label class="form-label">{{ t('aiSettings.apiKey') }}</label>
+          <input v-model="formData.apiKey" type="password" class="input" :placeholder="t('aiSettings.apiKeyPlaceholder')" />
         </div>
         <div class="form-group">
-          <label class="form-label">模型名称 *</label>
-          <input v-model="formData.model" type="text" class="input" placeholder="例如：qwen-72b, gpt-3.5-turbo" />
+          <label class="form-label">{{ t('aiSettings.model') }} *</label>
+          <input v-model="formData.model" type="text" class="input" :placeholder="t('aiSettings.modelPlaceholder')" />
         </div>
         <div class="form-row">
           <div class="form-group flex-1">
-            <label class="form-label">上下文长度（tokens）</label>
+            <label class="form-label">{{ t('aiSettings.contextLength') }}（{{ t('aiSettings.contextLengthHint') }}）</label>
             <input v-model.number="formData.contextLength" type="number" class="input" placeholder="8000" />
-            <span class="form-hint">常见值：GPT-3.5(4K/16K)、GPT-4(8K/128K)、Claude(200K)、Qwen(32K)</span>
+            <span class="form-hint">GPT-3.5(4K/16K)、GPT-4(8K/128K)、Claude(200K)、Qwen(32K)</span>
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">代理地址（可选）</label>
-          <input v-model="formData.proxy" type="text" class="input" placeholder="http://proxy:3128 或 socks5://proxy:1080" />
+          <label class="form-label">{{ t('aiSettings.proxy') }}</label>
+          <input v-model="formData.proxy" type="text" class="input" :placeholder="t('aiSettings.proxyPlaceholder')" />
         </div>
       </div>
       <div class="form-footer">
-        <button class="btn" @click="showForm = false">取消</button>
-        <button class="btn btn-primary" @click="saveProfile">保存</button>
+        <button class="btn" @click="showForm = false">{{ t('common.cancel') }}</button>
+        <button class="btn btn-primary" @click="saveProfile">{{ t('common.save') }}</button>
       </div>
     </div>
 
     <!-- Agent 风格设置 -->
     <div class="settings-section">
       <div class="section-header">
-        <h4>Agent 风格</h4>
+        <h4>{{ t('aiSettings.agentPersonality') }}</h4>
         <button 
           v-if="currentMbti" 
           class="btn btn-sm" 
           @click="setMbti(null)"
         >
-          重置为默认
+          {{ t('common.reset') }}
         </button>
       </div>
       <p class="section-desc">
-        选择 MBTI 人格类型来个性化 AI Agent 的对话风格，让交互更有趣
+        {{ t('aiSettings.agentPersonalityDesc') }}
       </p>
 
       <div class="mbti-grid">

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, provide, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useTerminalStore } from './stores/terminal'
 import { useConfigStore, type SshSession } from './stores/config'
 import TabBar from './components/TabBar.vue'
@@ -12,6 +13,7 @@ import McpStatusPopover from './components/McpStatusPopover.vue'
 import SetupWizard from './components/SetupWizard.vue'
 import type { SftpConnectionConfig } from './composables/useSftp'
 
+const { t } = useI18n()
 const terminalStore = useTerminalStore()
 const configStore = useConfigStore()
 
@@ -172,7 +174,7 @@ onUnmounted(() => {
     <!-- 顶部工具栏 -->
     <header class="app-header">
       <div class="header-left">
-        <button class="btn-icon" @click="toggleSidebar" title="会话管理">
+        <button class="btn-icon" @click="toggleSidebar" :title="t('header.sessionManager')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="3" y="3" width="7" height="7" rx="1"/>
             <rect x="14" y="3" width="7" height="7" rx="1"/>
@@ -180,13 +182,13 @@ onUnmounted(() => {
             <rect x="3" y="14" width="7" height="7" rx="1"/>
           </svg>
         </button>
-        <span class="app-title">旗鱼终端</span>
+        <span class="app-title">{{ t('app.title') }}</span>
       </div>
       <div class="header-center">
         <TabBar />
       </div>
       <div class="header-right">
-        <button class="btn-icon" @click="toggleAiPanel" title="AI 助手">
+        <button class="btn-icon" @click="toggleAiPanel" :title="t('header.aiAssistant')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/>
             <circle cx="7.5" cy="14.5" r="1.5"/>
@@ -194,7 +196,7 @@ onUnmounted(() => {
           </svg>
         </button>
         <McpStatusPopover @open-settings="openMcpSettings" />
-        <button class="btn-icon" @click="showSettings = true" title="设置">
+        <button class="btn-icon" @click="showSettings = true" :title="t('header.settings')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3"/>
             <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
@@ -208,8 +210,8 @@ onUnmounted(() => {
       <!-- 左侧边栏 - 主机管理 -->
       <aside v-show="showSidebar" class="sidebar">
         <div class="sidebar-header">
-          <span>主机管理</span>
-          <button class="btn-icon btn-sm" @click="showSidebar = false" title="关闭侧边栏">
+          <span>{{ t('header.hostManager') }}</span>
+          <button class="btn-icon btn-sm" @click="showSidebar = false" :title="t('header.closeSidebar')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>

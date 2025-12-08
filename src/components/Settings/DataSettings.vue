@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
+
+const { t } = useI18n()
 
 // 历史记录类型
 interface ChatRecord {
@@ -422,7 +425,7 @@ onMounted(() => {
 
 <template>
   <div class="data-settings">
-    <h3>数据管理</h3>
+    <h3>{{ t('dataSettings.title') }}</h3>
     
     <!-- 消息提示 -->
     <div v-if="message" class="message" :class="message.type">

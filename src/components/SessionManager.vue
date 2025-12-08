@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useConfigStore, type SshSession, type SessionGroup, type JumpHostConfig } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
 import { v4 as uuidv4 } from 'uuid'
 
+const { t } = useI18n()
 const configStore = useConfigStore()
 const terminalStore = useTerminalStore()
 
@@ -403,7 +405,7 @@ const deleteGroup = async (groupName: string) => {
         v-model="searchText"
         type="text"
         class="input search-input"
-        placeholder="搜索主机..."
+        :placeholder="t('session.searchPlaceholder')"
       />
       <div class="new-dropdown">
         <button class="btn btn-primary btn-sm" @click="showNewMenu = !showNewMenu">
@@ -411,7 +413,7 @@ const deleteGroup = async (groupName: string) => {
             <line x1="12" y1="5" x2="12" y2="19"/>
             <line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
-          新建
+          {{ t('common.new') }}
         </button>
         <div v-if="showNewMenu" class="new-menu" @click.stop>
           <button class="new-menu-item" @click="openNewSession(); showNewMenu = false">
@@ -420,7 +422,7 @@ const deleteGroup = async (groupName: string) => {
               <line x1="8" y1="21" x2="16" y2="21"/>
               <line x1="12" y1="17" x2="12" y2="21"/>
             </svg>
-            新建主机
+            {{ t('session.newHost') }}
           </button>
           <button class="new-menu-item" @click="openNewGroup(); showNewMenu = false">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -428,7 +430,7 @@ const deleteGroup = async (groupName: string) => {
               <line x1="12" y1="11" x2="12" y2="17"/>
               <line x1="9" y1="14" x2="15" y2="14"/>
             </svg>
-            新建分组
+            {{ t('session.newGroup') }}
           </button>
         </div>
       </div>
@@ -439,7 +441,7 @@ const deleteGroup = async (groupName: string) => {
             <polyline points="7 10 12 15 17 10"/>
             <line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
-          导入
+          {{ t('common.import') }}
         </button>
         <div v-if="showImportMenu" class="import-menu" @click.stop>
           <button class="import-menu-item" @click="importXshellFiles">
@@ -466,7 +468,7 @@ const deleteGroup = async (groupName: string) => {
           <polyline points="4 17 10 11 4 5"/>
           <line x1="12" y1="19" x2="20" y2="19"/>
         </svg>
-        <span>本地终端</span>
+        <span>{{ t('terminal.localTerminal') }}</span>
       </button>
     </div>
 

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useTerminalStore } from '../stores/terminal'
 
+const { t } = useI18n()
 const terminalStore = useTerminalStore()
 
 // 拖拽状态
@@ -176,7 +178,7 @@ const handleDragEnd = () => {
       v-show="canScrollLeft" 
       class="scroll-btn scroll-left" 
       @click="scroll('left')"
-      title="向左滚动"
+      :title="t('tabs.scrollLeft')"
     >
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <polyline points="15 18 9 12 15 6"/>
@@ -222,7 +224,7 @@ const handleDragEnd = () => {
           v-else
           class="tab-close"
           @click="handleCloseTab(tab.id, $event)"
-          title="关闭标签"
+          :title="t('tabs.closeTab')"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
@@ -237,7 +239,7 @@ const handleDragEnd = () => {
       v-show="canScrollRight" 
       class="scroll-btn scroll-right" 
       @click="scroll('right')"
-      title="向右滚动"
+      :title="t('tabs.scrollRight')"
     >
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <polyline points="9 18 15 12 9 6"/>
@@ -246,13 +248,13 @@ const handleDragEnd = () => {
     
     <!-- 新建终端按钮（带下拉菜单） -->
     <div class="new-tab-wrapper">
-      <button class="btn-new-tab" @click="handleNewTab()" title="新建终端">
+      <button class="btn-new-tab" @click="handleNewTab()" :title="t('tabs.newTab')">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="12" y1="5" x2="12" y2="19"/>
           <line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
       </button>
-      <button class="btn-new-tab-dropdown" @click="toggleNewMenu" title="选择 Shell">
+      <button class="btn-new-tab-dropdown" @click="toggleNewMenu" :title="t('tabs.selectShell')">
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="6 9 12 15 18 9"/>
         </svg>

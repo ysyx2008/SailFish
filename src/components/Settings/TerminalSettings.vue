@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useConfigStore } from '../../stores/config'
 
+const { t } = useI18n()
 const configStore = useConfigStore()
 
 const settings = ref({ ...configStore.terminalSettings })
@@ -33,10 +35,10 @@ const fontFamilies = [
 <template>
   <div class="terminal-settings">
     <div class="settings-section">
-      <h4>终端外观</h4>
+      <h4>{{ t('terminalSettings.title') }}</h4>
       
       <div class="form-group">
-        <label class="form-label">字体大小</label>
+        <label class="form-label">{{ t('terminalSettings.fontSize') }}</label>
         <div class="slider-group">
           <input
             v-model.number="settings.fontSize"
@@ -51,7 +53,7 @@ const fontFamilies = [
       </div>
 
       <div class="form-group">
-        <label class="form-label">字体</label>
+        <label class="form-label">{{ t('terminalSettings.fontFamily') }}</label>
         <select v-model="settings.fontFamily" class="select">
           <option v-for="font in fontFamilies" :key="font.value" :value="font.value">
             {{ font.label }}
@@ -60,22 +62,22 @@ const fontFamilies = [
       </div>
 
       <div class="form-group">
-        <label class="form-label">光标样式</label>
+        <label class="form-label">{{ t('terminalSettings.cursorStyle') }}</label>
         <div class="radio-group">
           <label class="radio-item">
             <input v-model="settings.cursorStyle" type="radio" value="block" />
             <span class="cursor-preview block"></span>
-            <span>方块</span>
+            <span>{{ t('terminalSettings.cursorStyles.block') }}</span>
           </label>
           <label class="radio-item">
             <input v-model="settings.cursorStyle" type="radio" value="underline" />
             <span class="cursor-preview underline"></span>
-            <span>下划线</span>
+            <span>{{ t('terminalSettings.cursorStyles.underline') }}</span>
           </label>
           <label class="radio-item">
             <input v-model="settings.cursorStyle" type="radio" value="bar" />
             <span class="cursor-preview bar"></span>
-            <span>竖线</span>
+            <span>{{ t('terminalSettings.cursorStyles.bar') }}</span>
           </label>
         </div>
       </div>
@@ -83,16 +85,16 @@ const fontFamilies = [
       <div class="form-group">
         <label class="checkbox-item">
           <input v-model="settings.cursorBlink" type="checkbox" />
-          <span>光标闪烁</span>
+          <span>{{ t('terminalSettings.cursorBlink') }}</span>
         </label>
       </div>
     </div>
 
     <div class="settings-section">
-      <h4>滚动缓冲</h4>
+      <h4>{{ t('terminalSettings.scrollback') }}</h4>
       
       <div class="form-group">
-        <label class="form-label">历史行数</label>
+        <label class="form-label">{{ t('terminalSettings.scrollback') }}</label>
         <div class="slider-group">
           <input
             v-model.number="settings.scrollback"
@@ -104,12 +106,12 @@ const fontFamilies = [
           />
           <span class="slider-value">{{ settings.scrollback }}</span>
         </div>
-        <p class="form-hint">保留的历史输出行数，值越大占用内存越多</p>
+        <p class="form-hint">{{ t('terminalSettings.scrollbackHint') }}</p>
       </div>
     </div>
 
     <div class="settings-section preview-section">
-      <h4>预览</h4>
+      <h4>{{ t('themeSettings.preview') }}</h4>
       <div
         class="terminal-preview"
         :style="{
