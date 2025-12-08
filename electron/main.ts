@@ -112,6 +112,12 @@ import { initTerminalAwarenessService, getTerminalAwarenessService, type Termina
 // 禁用 GPU 加速可能导致的问题（可选）
 // app.disableHardwareAcceleration()
 
+// 禁用开发模式下的安全警告（CSP unsafe-eval 是 Vite 热更新所需）
+// 打包后的生产版本不会有这个警告
+if (process.env.VITE_DEV_SERVER_URL) {
+  process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true'
+}
+
 // 捕获未处理的异常，防止 EPIPE 等错误导致崩溃
 process.on('uncaughtException', (error) => {
   // 忽略 EPIPE 错误（管道关闭时的正常错误）
