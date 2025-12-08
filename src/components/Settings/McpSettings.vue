@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, toRaw } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { v4 as uuidv4 } from 'uuid'
+
+const { t } = useI18n()
 
 // 类型定义
 interface McpServerConfig {
@@ -392,26 +395,26 @@ onUnmounted(() => {
     <div class="settings-section">
       <div class="section-header">
         <div class="header-left">
-          <h4>MCP 服务器</h4>
+          <h4>{{ t('mcpSettings.title') }}</h4>
           <span class="connection-badge" v-if="connectedCount > 0">
-            {{ connectedCount }} 已连接
+            {{ connectedCount }} {{ t('mcpSettings.connected') }}
           </span>
         </div>
         <div class="header-actions">
           <button class="btn btn-sm" @click="connectAllEnabled" v-if="servers.some(s => s.enabled)">
-            连接全部
+            {{ t('common.connect') }}
           </button>
           <button class="btn btn-primary btn-sm" @click="openNewServer">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"/>
               <line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
-            添加服务器
+            {{ t('mcpSettings.addServer') }}
           </button>
         </div>
       </div>
       <p class="section-desc">
-        配置 MCP (Model Context Protocol) 服务器，让 AI 能调用外部工具和知识库
+        {{ t('mcpSettings.description') }}
       </p>
 
       <!-- 服务器列表 -->
@@ -488,8 +491,8 @@ onUnmounted(() => {
           </div>
         </div>
         <div v-if="servers.length === 0" class="empty-servers">
-          <p>尚未添加 MCP 服务器</p>
-          <p class="tip">点击"添加服务器"开始配置</p>
+          <p>{{ t('mcpSettings.noServers') }}</p>
+          <p class="tip">{{ t('mcpSettings.addServer') }}</p>
         </div>
       </div>
     </div>
@@ -497,8 +500,8 @@ onUnmounted(() => {
     <!-- 添加/编辑表单 -->
     <div v-if="showForm" class="server-form">
       <div class="form-header">
-        <h4>{{ editingServer ? '编辑服务器' : '添加服务器' }}</h4>
-        <button class="btn-icon" @click="showForm = false" title="关闭">
+        <h4>{{ editingServer ? t('mcpSettings.editServer') : t('mcpSettings.addServer') }}</h4>
+        <button class="btn-icon" @click="showForm = false" :title="t('common.close')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>

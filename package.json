@@ -51,6 +51,7 @@
     "strip-ansi": "^7.1.2",
     "uuid": "^9.0.1",
     "vue": "^3.4.21",
+    "vue-i18n": "^9.14.5",
     "word-extractor": "^1.0.4"
   },
   "devDependencies": {

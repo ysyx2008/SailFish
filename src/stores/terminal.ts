@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
 import stripAnsiLib from 'strip-ansi'
+import i18n from '../i18n'
 import type { JumpHostConfig } from './config'
 import type { TerminalScreenService, ScreenContent } from '../services/terminal-screen.service'
 import type { TerminalSnapshotManager, TerminalSnapshot, TerminalDiff } from '../services/terminal-snapshot.service'
@@ -342,11 +343,12 @@ export const useTerminalStore = defineStore('terminal', () => {
     const id = uuidv4()
     
     // 生成唯一标题
+    const t = i18n.global.t
     let title: string
     if (type === 'local') {
       localTerminalCounter.value++
       const shellName = shell ? (shell.includes('powershell') ? 'PowerShell' : shell.includes('cmd') ? 'CMD' : shell.split(/[/\\]/).pop()) : ''
-      title = shellName ? `${shellName} ${localTerminalCounter.value}` : `本地终端 ${localTerminalCounter.value}`
+      title = shellName ? `${shellName} ${localTerminalCounter.value}` : `${t('tabs.localTerminal')} ${localTerminalCounter.value}`
     } else if (sshConfig) {
       const sshKey = `${sshConfig.username}@${sshConfig.host}`
       // 如果有跳板机，在标题中显示
@@ -355,7 +357,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       const count = sshTerminalCounters.value[sshKey]
       title = count > 1 ? `${sshKey}${jumpSuffix} (${count})` : `${sshKey}${jumpSuffix}`
     } else {
-      title = 'SSH 终端'
+      title = t('tabs.sshTerminal')
     }
     
     const tab: TerminalTab = {

@@ -459,6 +459,9 @@ interface Window {
       // 首次设置向导
       getSetupCompleted: () => Promise<boolean>
       setSetupCompleted: (completed: boolean) => Promise<void>
+      // 语言设置
+      getLanguage: () => Promise<string>
+      setLanguage: (language: string) => Promise<void>
     }
     xshell: {
       selectFiles: () => Promise<{ canceled: boolean; filePaths: string[] }>

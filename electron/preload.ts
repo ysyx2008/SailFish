@@ -616,7 +616,11 @@ const electronAPI = {
 
     // 首次设置向导
     getSetupCompleted: () => ipcRenderer.invoke('config:getSetupCompleted') as Promise<boolean>,
-    setSetupCompleted: (completed: boolean) => ipcRenderer.invoke('config:setSetupCompleted', completed)
+    setSetupCompleted: (completed: boolean) => ipcRenderer.invoke('config:setSetupCompleted', completed),
+
+    // 语言设置
+    getLanguage: () => ipcRenderer.invoke('config:getLanguage') as Promise<string>,
+    setLanguage: (language: string) => ipcRenderer.invoke('config:setLanguage', language)
   },
 
   // Xshell 导入操作

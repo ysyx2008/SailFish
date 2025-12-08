@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 // 获取 API（类型在 preload 中定义）
 const api = window.electronAPI as any
@@ -312,7 +315,7 @@ onMounted(() => {
 <template>
   <div class="knowledge-settings">
     <div v-if="loading" class="loading">
-      加载中...
+      {{ t('common.loading') }}
     </div>
     
     <template v-else>
@@ -320,8 +323,8 @@ onMounted(() => {
       <div class="setting-group">
         <div class="setting-row">
           <div class="setting-info">
-            <label class="setting-label">启用知识库</label>
-            <p class="setting-desc">开启后可将文档存储到本地知识库，AI 对话时自动检索相关内容</p>
+            <label class="setting-label">{{ t('knowledgeSettings.enable') }}</label>
+            <p class="setting-desc">{{ t('knowledgeSettings.enableHint') }}</p>
           </div>
           <label class="switch">
             <input 

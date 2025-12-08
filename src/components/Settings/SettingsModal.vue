@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useConfigStore } from '../../stores/config'
 import AiSettings from './AiSettings.vue'
 import ThemeSettings from './ThemeSettings.vue'
@@ -7,6 +8,9 @@ import TerminalSettings from './TerminalSettings.vue'
 import DataSettings from './DataSettings.vue'
 import McpSettings from './McpSettings.vue'
 import KnowledgeSettings from './KnowledgeSettings.vue'
+import LanguageSettings from './LanguageSettings.vue'
+
+const { t } = useI18n()
 
 // Props
 const props = defineProps<{
@@ -20,31 +24,32 @@ const emit = defineEmits<{
 
 const configStore = useConfigStore()
 
-type SettingsTab = 'ai' | 'mcp' | 'knowledge' | 'theme' | 'terminal' | 'data' | 'about'
+type SettingsTab = 'ai' | 'mcp' | 'knowledge' | 'theme' | 'terminal' | 'data' | 'language' | 'about'
 const activeTab = ref<SettingsTab>('ai')
 const appVersion = ref<string>('')
 
 // 初始化时设置初始 tab 和获取版本号
 onMounted(async () => {
-  if (props.initialTab && ['ai', 'mcp', 'knowledge', 'theme', 'terminal', 'data', 'about'].includes(props.initialTab)) {
+  if (props.initialTab && ['ai', 'mcp', 'knowledge', 'theme', 'terminal', 'data', 'language', 'about'].includes(props.initialTab)) {
     activeTab.value = props.initialTab as SettingsTab
   }
   // 获取应用版本号
   appVersion.value = await window.electronAPI.app.getVersion()
 })
 
-const tabs = [
-  { id: 'ai' as const, label: 'AI 配置', icon: '🤖' },
-  { id: 'mcp' as const, label: 'MCP 服务器', icon: '🔌' },
-  { id: 'knowledge' as const, label: '知识库', icon: '📚' },
-  { id: 'theme' as const, label: '主题配色', icon: '🎨' },
-  { id: 'terminal' as const, label: '终端设置', icon: '⚙️' },
-  { id: 'data' as const, label: '数据管理', icon: '💾' },
-  { id: 'about' as const, label: '关于', icon: 'ℹ️' }
-]
+const tabs = computed(() => [
+  { id: 'ai' as const, label: t('settings.tabs.ai'), icon: '🤖' },
+  { id: 'mcp' as const, label: t('settings.tabs.mcp'), icon: '🔌' },
+  { id: 'knowledge' as const, label: t('settings.tabs.knowledge'), icon: '📚' },
+  { id: 'theme' as const, label: t('settings.tabs.theme'), icon: '🎨' },
+  { id: 'terminal' as const, label: t('settings.tabs.terminal'), icon: '⚙️' },
+  { id: 'data' as const, label: t('settings.tabs.data'), icon: '💾' },
+  { id: 'language' as const, label: t('settings.tabs.language'), icon: '🌐' },
+  { id: 'about' as const, label: t('settings.tabs.about'), icon: 'ℹ️' }
+])
 
 const restartSetup = async () => {
-  if (confirm('确定要重新运行首次启动引导吗？')) {
+  if (confirm(t('settings.restartSetupConfirm'))) {
     await configStore.setSetupCompleted(false)
     emit('restartSetup')
     emit('close')
@@ -56,8 +61,8 @@ const restartSetup = async () => {
   <div class="modal-overlay" @click.self="emit('close')">
     <div class="settings-modal">
       <div class="settings-header">
-        <h2>设置</h2>
-        <button class="btn-icon" @click="emit('close')" title="关闭设置">
+        <h2>{{ t('settings.title') }}</h2>
+        <button class="btn-icon" @click="emit('close')" :title="t('settings.closeSettings')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>
@@ -84,25 +89,26 @@ const restartSetup = async () => {
           <ThemeSettings v-else-if="activeTab === 'theme'" />
           <TerminalSettings v-else-if="activeTab === 'terminal'" />
           <DataSettings v-else-if="activeTab === 'data'" />
+          <LanguageSettings v-else-if="activeTab === 'language'" />
           <div v-else-if="activeTab === 'about'" class="about-content">
             <div class="about-logo">🐟</div>
-            <h3>旗鱼终端</h3>
-            <p class="version">版本 {{ appVersion }}</p>
+            <h3>{{ t('about.title') }}</h3>
+            <p class="version">{{ t('common.version') }} {{ appVersion }}</p>
             <p class="description">
-              AI 驱动的跨平台智慧终端
+              {{ t('about.description') }}
             </p>
             <div class="about-links">
-              <a href="#" class="about-link">使用文档</a>
-              <a href="#" class="about-link">问题反馈</a>
-              <a href="#" class="about-link">开源协议</a>
+              <a href="#" class="about-link">{{ t('about.docs') }}</a>
+              <a href="#" class="about-link">{{ t('about.feedback') }}</a>
+              <a href="#" class="about-link">{{ t('about.license') }}</a>
             </div>
             <div class="about-actions">
               <button class="btn btn-outline" @click="restartSetup">
-                🔄 重新运行引导
+                🔄 {{ t('settings.restartSetup') }}
               </button>
             </div>
             <p class="copyright">
-              © 2024 旗鱼
+              {{ t('about.copyright') }}
             </p>
           </div>
         </div>

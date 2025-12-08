@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
+import { setLocale, type LocaleType } from '../i18n'
 
 export interface AiProfile {
   id: string
@@ -90,6 +91,9 @@ export const useConfigStore = defineStore('config', () => {
   // 首次设置向导
   const setupCompleted = ref<boolean>(false)
 
+  // 语言设置
+  const language = ref<LocaleType>('zh-CN')
+
   // 计算属性
   const activeAiProfile = computed(() =>
     aiProfiles.value.find(p => p.id === activeAiProfileId.value)
@@ -131,6 +135,13 @@ export const useConfigStore = defineStore('config', () => {
       // 加载首次设置状态
       const completed = await window.electronAPI.config.getSetupCompleted()
       setupCompleted.value = completed || false
+
+      // 加载语言设置
+      const lang = await window.electronAPI.config.getLanguage()
+      if (lang) {
+        language.value = lang as LocaleType
+        setLocale(lang as LocaleType)
+      }
     } catch (error) {
       console.error('Failed to load config:', error)
     }
@@ -284,6 +295,14 @@ export const useConfigStore = defineStore('config', () => {
     await window.electronAPI.config.setSetupCompleted(completed)
   }
 
+  // ==================== 语言设置 ====================
+
+  async function setLanguage(lang: LocaleType): Promise<void> {
+    language.value = lang
+    setLocale(lang)
+    await window.electronAPI.config.setLanguage(lang)
+  }
+
   // ==================== 数据迁移 ====================
 
   /**
@@ -341,6 +360,7 @@ export const useConfigStore = defineStore('config', () => {
     terminalSettings,
     agentMbti,
     setupCompleted,
+    language,
 
     // 方法
     loadConfig,
@@ -358,7 +378,8 @@ export const useConfigStore = defineStore('config', () => {
     getEffectiveJumpHost,
     setTheme,
     setAgentMbti,
-    setSetupCompleted
+    setSetupCompleted,
+    setLanguage
   }
 })
 
