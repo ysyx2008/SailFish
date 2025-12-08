@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { useTerminalStore } from '../stores/terminal'
 import Terminal from './Terminal.vue'
 
+const { t } = useI18n()
 const terminalStore = useTerminalStore()
 
 </script>
@@ -24,7 +26,7 @@ const terminalStore = useTerminalStore()
         />
         <div v-else-if="tab.isLoading" class="terminal-loading">
           <div class="loading-spinner"></div>
-          <span>正在连接...</span>
+          <span>{{ t('terminal.connecting') }}</span>
         </div>
         <div v-else class="terminal-error">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -32,8 +34,8 @@ const terminalStore = useTerminalStore()
             <line x1="12" y1="8" x2="12" y2="12"/>
             <line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
-          <span>连接失败</span>
-          <button class="btn btn-sm" @click="terminalStore.closeTab(tab.id)">关闭</button>
+          <span>{{ t('terminal.connectionFailed') }}</span>
+          <button class="btn btn-sm" @click="terminalStore.closeTab(tab.id)">{{ t('common.close') }}</button>
         </div>
       </div>
     </template>
@@ -43,10 +45,10 @@ const terminalStore = useTerminalStore()
           <polyline points="4 17 10 11 4 5"/>
           <line x1="12" y1="19" x2="20" y2="19"/>
         </svg>
-        <h3>欢迎使用旗鱼终端</h3>
-        <p>点击 + 按钮创建新的终端会话</p>
+        <h3>{{ t('terminal.welcome.title') }}</h3>
+        <p>{{ t('terminal.welcome.hint') }}</p>
         <button class="btn btn-primary" @click="terminalStore.createTab('local')">
-          新建本地终端
+          {{ t('terminal.newLocalTerminal') }}
         </button>
       </div>
     </div>

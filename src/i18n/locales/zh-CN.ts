@@ -545,6 +545,12 @@ export default {
       sendToAi: '发送到 AI 分析',
       search: '搜索'
     },
+    welcome: {
+      title: '欢迎使用旗鱼终端',
+      hint: '点击 + 按钮创建新的终端会话'
+    },
+    newLocalTerminal: '新建本地终端',
+    connecting: '正在连接...',
     connectionFailed: '连接失败',
     connectionClosed: '连接已关闭',
     reconnect: '重新连接',

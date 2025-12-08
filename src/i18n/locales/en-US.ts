@@ -545,6 +545,12 @@ export default {
       sendToAi: 'Send to AI Analysis',
       search: 'Search'
     },
+    welcome: {
+      title: 'Welcome to SFTerminal',
+      hint: 'Click + to create a new terminal session'
+    },
+    newLocalTerminal: 'New Local Terminal',
+    connecting: 'Connecting...',
     connectionFailed: 'Connection failed',
     connectionClosed: 'Connection closed',
     reconnect: 'Reconnect',
