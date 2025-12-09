@@ -750,11 +750,13 @@ export class SshService {
           const parts = line.trim().split(/\s+/)
           if (parts.length >= 2) {
             const pid = parseInt(parts[0])
-            if (!isNaN(pid)) {
+            const comm = parts[2] || 'unknown'
+            // 排除 ps 命令本身（它是我们用于检测的命令）
+            if (!isNaN(pid) && comm !== 'ps') {
               children.push({
                 pid,
                 stat: parts[1],
-                comm: parts[2] || 'unknown'
+                comm
               })
             }
           }
