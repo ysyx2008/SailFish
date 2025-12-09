@@ -312,6 +312,10 @@ ipcMain.on('pty:subscribe', (event, id: string) => {
       if (!event.sender.isDestroyed()) {
         event.sender.send(`pty:data:${id}`, data)
       }
+      // 追踪本地终端输出（用于检测命令是否在运行）
+      // 计算行数（包括 \n 和 \r 都算换行，适用于 curl 进度条等）
+      const lineCount = (data.match(/[\n\r]/g) || []).length
+      terminalAwarenessService.trackOutput(id, lineCount, data.length)
     } catch (e) {
       // 忽略发送错误（窗口可能已关闭）
     }

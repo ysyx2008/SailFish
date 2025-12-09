@@ -236,18 +236,20 @@ export class ProcessMonitor {
 
     // 获取输出速率（在判断空闲前计算）
     const outputRate = this.calculateOutputRate(ptyId)
+    const dataRate = this.calculateDataRate(ptyId)
+    const hasActivity = this.hasActiveOutput(ptyId)
 
     // 1. 如果 PTY 报告空闲，需要进一步检查
     if (ptyStatus.isIdle) {
       // 检查是否有持续输出（表示有命令在后台/子进程中运行）
-      // 例如 tail -f 会持续输出，但 PTY 可能报告为空闲
-      if (outputRate && outputRate > 0.1) {
+      // 例如 tail -f 会持续输出，curl 进度条也会持续输出数据
+      if (hasActivity) {
         // 有持续输出，说明不是真正的空闲
         return {
           status: 'running_streaming',
           outputRate,
           lastOutputTime: outputTracker?.lastOutputTime,
-          suggestion: `检测到持续输出，可能有命令正在运行。输出速率: ${outputRate.toFixed(1)} 行/秒`
+          suggestion: `检测到持续输出，可能有命令正在运行。${dataRate ? `数据速率: ${(dataRate / 1024).toFixed(1)} KB/秒` : `输出速率: ${outputRate?.toFixed(1) || 0} 行/秒`}`
         }
       }
       
