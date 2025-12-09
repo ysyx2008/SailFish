@@ -262,12 +262,12 @@ export class TerminalAwarenessService {
     const isSshTerminal = terminalState?.type === 'ssh'
 
     if (isSshTerminal) {
-      // SSH 终端：简化处理，状态交给模型根据屏幕内容判断
-      // 只做基本的空闲判断：如果没有正在执行的 Agent 命令，就认为可以执行
-      const hasAgentExecution = !!terminalState?.currentExecution
-      status = hasAgentExecution ? 'busy' : 'idle'
+      // SSH 终端：状态完全交给模型根据屏幕内容判断
+      // 无法通过 pgrep 检测远程进程状态，所以不限制命令执行
+      // 模型应根据屏幕上是否显示提示符来判断终端是否空闲
+      status = 'idle'
       needsUserInput = false
-      canExecuteCommand = !hasAgentExecution
+      canExecuteCommand = true
       suggestion = 'SSH 终端状态请根据屏幕内容判断'
     } else {
       // 本地终端：基于 pgrep 进程检测，状态准确
