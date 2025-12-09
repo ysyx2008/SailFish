@@ -108,6 +108,7 @@ import { getKnowledgeService, KnowledgeService } from './services/knowledge'
 import type { KnowledgeSettings, SearchOptions, AddDocumentOptions, ModelTier } from './services/knowledge/types'
 import { initTerminalStateService, getTerminalStateService, type TerminalState, type CwdChangeEvent, type CommandExecution, type CommandExecutionEvent } from './services/terminal-state.service'
 import { initTerminalAwarenessService, getTerminalAwarenessService, type TerminalAwareness, type ScreenAnalysisResult } from './services/terminal-awareness'
+import { initScreenContentService } from './services/screen-content.service'
 
 // 禁用 GPU 加速可能导致的问题（可选）
 // app.disableHardwareAcceleration()
@@ -256,10 +257,13 @@ function createWindow() {
 app.whenReady().then(async () => {
   // 移除默认菜单栏
   Menu.setApplicationMenu(null)
-  
+
   // 初始化知识库服务（确保 Agent 可以访问）
   await initKnowledgeService()
   
+  // 初始化屏幕内容服务（供 Agent 获取准确的终端输出）
+  initScreenContentService()
+
   createWindow()
 
   app.on('activate', () => {

@@ -29,6 +29,8 @@ let screenService: TerminalScreenService | null = null
 let snapshotManager: TerminalSnapshotManager | null = null
 let unsubscribe: (() => void) | null = null
 let unsubscribeDisconnect: (() => void) | null = null  // SSH 断开连接事件取消订阅
+let unsubscribeScreenRequest: (() => void) | null = null  // 主进程屏幕内容请求监听
+let unsubscribeVisibleRequest: (() => void) | null = null  // 主进程可视内容请求监听
 let resizeObserver: ResizeObserver | null = null
 let isDisposed = false
 let isPasting = false
@@ -295,6 +297,32 @@ onMounted(async () => {
   }
 
   updateDprListener()
+
+  // 注册主进程屏幕内容请求监听器
+  // 当主进程需要获取准确的终端输出时，会发送请求到渲染进程
+  unsubscribeScreenRequest = window.electronAPI.screen.onRequestLastNLines((data) => {
+    // 检查是否是发给当前终端的请求
+    if (data.ptyId === props.ptyId && screenService && !isDisposed) {
+      try {
+        const lines = screenService.getLastNLines(data.lines)
+        window.electronAPI.screen.responseLastNLines(data.requestId, lines)
+      } catch (e) {
+        // 出错时返回 null，让主进程回退到其他方式
+        window.electronAPI.screen.responseLastNLines(data.requestId, null)
+      }
+    }
+  })
+
+  unsubscribeVisibleRequest = window.electronAPI.screen.onRequestVisibleContent((data) => {
+    if (data.ptyId === props.ptyId && screenService && !isDisposed) {
+      try {
+        const lines = screenService.getVisibleContent()
+        window.electronAPI.screen.responseVisibleContent(data.requestId, lines)
+      } catch (e) {
+        window.electronAPI.screen.responseVisibleContent(data.requestId, null)
+      }
+    }
+  })
 })
 
 // 清理
@@ -322,6 +350,14 @@ onUnmounted(() => {
   if (unsubscribeDisconnect) {
     unsubscribeDisconnect()
     unsubscribeDisconnect = null
+  }
+  if (unsubscribeScreenRequest) {
+    unsubscribeScreenRequest()
+    unsubscribeScreenRequest = null
+  }
+  if (unsubscribeVisibleRequest) {
+    unsubscribeVisibleRequest()
+    unsubscribeVisibleRequest = null
   }
   if (resizeObserver) {
     resizeObserver.disconnect()
