@@ -129,12 +129,15 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'read_file',
-        description: `读取文件内容。支持多种读取方式：
+        description: `读取本地文件内容。支持多种读取方式：
 1. **完整读取**：不指定任何范围参数，读取整个文件（文件需小于 500KB）
 2. **按行范围读取**：使用 start_line 和 end_line 指定行号范围（从1开始）
 3. **按行数读取**：使用 max_lines 指定从文件开头读取的行数
 4. **从末尾读取**：使用 tail_lines 指定从文件末尾读取的行数
 5. **文件信息查询**：只设置 info_only=true，获取文件大小、行数等信息，不读取内容
+
+⚠️ **仅支持本地文件**：此工具只能读取运行终端程序的本地机器上的文件。
+对于 SSH 远程主机，请使用 execute_command 执行 cat/head/tail/sed 等命令读取远程文件。
 
 对于大文件，建议先使用 info_only=true 查看文件信息，然后根据需要读取特定部分。`,
         parameters: {
@@ -173,13 +176,20 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'write_file',
-        description: '写入或创建文件',
+        description: `写入或创建本地文件。
+
+⚠️ **仅支持本地文件**：此工具只能写入运行终端程序的本地机器上的文件。
+对于 SSH 远程主机，请使用 execute_command 执行命令来写入，例如：
+- 简单内容：echo "content" > file.txt
+- 多行内容：cat > file.txt << 'EOF'
+- 修改文件：sed -i 's/old/new/g' file.txt
+- 追加内容：echo "line" >> file.txt`,
         parameters: {
           type: 'object',
           properties: {
             path: {
               type: 'string',
-              description: '文件路径'
+              description: '本地文件路径'
             },
             content: {
               type: 'string',
