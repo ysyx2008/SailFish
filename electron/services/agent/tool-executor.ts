@@ -578,6 +578,9 @@ async function executeSudoCommand(
   const startTime = Date.now()
   const pollInterval = 500  // 每 500ms 检查一次
   
+  // 记录检测到密码提示时的输出长度，用于判断用户是否已输入
+  let outputLengthAtPasswordPrompt = 0
+  
   try {
     // 轮询等待命令完成
     while (true) {
@@ -591,41 +594,66 @@ async function executeSudoCommand(
       // 检查终端是否回到空闲状态（命令执行完成）
       const status = await executor.terminalService.getTerminalStatus(ptyId)
       const timeSinceLastOutput = Date.now() - lastOutputTime
-      
-      // 命令完成的判断：终端空闲且超过 1 秒没有新输出
-      if (status.isIdle && timeSinceLastOutput > 1000) {
-        break
-      }
-      
-      // 检查超时（仅在未检测到密码提示时）
       const elapsed = Date.now() - startTime
-      if (elapsed > sudoTimeout && !passwordPromptDetected) {
-        // 超时处理
-        unsubscribe()
-        terminalStateService.completeCommandExecution(ptyId, 124, 'timeout')
-        
-        executor.addStep({
-          type: 'tool_result',
-          content: `⏱️ sudo 命令执行超时 (${sudoTimeout / 1000}秒)`,
-          toolName: 'execute_command',
-          toolResult: stripAnsi(output)
-        })
-        
-        return {
-          success: false,
-          output: stripAnsi(output),
-          error: '命令执行超时。请检查终端状态。'
-        }
-      }
       
-      // 如果检测到密码提示，给予更长的等待时间
-      if (passwordPromptDetected && elapsed > sudoTimeout) {
-        // 即使超时，如果还在等待密码，也继续等待
-        // 但更新提示信息
-        if (passwordStepId) {
-          executor.updateStep(passwordStepId, {
-            content: `🔐 请在终端中输入密码\n⏰ 已等待较长时间，请尽快输入或按 Ctrl+C 取消`
+      // 如果检测到密码提示，需要等待用户输入
+      if (passwordPromptDetected) {
+        // 记录检测到密码时的输出长度
+        if (outputLengthAtPasswordPrompt === 0) {
+          outputLengthAtPasswordPrompt = output.length
+        }
+        
+        // 判断用户是否已输入密码：有新的输出产生（不只是密码提示）
+        const hasNewOutputAfterPrompt = output.length > outputLengthAtPasswordPrompt + 10
+        
+        // 只有在用户输入密码后（有新输出），且终端空闲时才认为完成
+        if (hasNewOutputAfterPrompt && status.isIdle && timeSinceLastOutput > 1000) {
+          break
+        }
+        
+        // 检查是否用户取消了（Ctrl+C 会产生特定输出或终端回到空闲但无新输出）
+        const cleanOutput = stripAnsi(output)
+        if (cleanOutput.includes('Sorry, try again') || 
+            cleanOutput.includes('sudo: ') && cleanOutput.includes('incorrect password') ||
+            cleanOutput.includes('Authentication failure') ||
+            cleanOutput.includes('Permission denied')) {
+          // 密码错误或认证失败，继续等待（可能会再次提示输入）
+          outputLengthAtPasswordPrompt = output.length  // 重置，等待下一次输入
+        }
+        
+        // 超时处理（等待密码的超时）
+        if (elapsed > sudoTimeout) {
+          if (passwordStepId) {
+            executor.updateStep(passwordStepId, {
+              content: `🔐 请在终端中输入密码\n⏰ 已等待较长时间，请尽快输入或按 Ctrl+C 取消`
+            })
+          }
+        }
+      } else {
+        // 未检测到密码提示的正常流程
+        // 命令完成的判断：终端空闲且超过 1 秒没有新输出
+        if (status.isIdle && timeSinceLastOutput > 1000) {
+          break
+        }
+        
+        // 检查超时
+        if (elapsed > sudoTimeout) {
+          // 超时处理
+          unsubscribe()
+          terminalStateService.completeCommandExecution(ptyId, 124, 'timeout')
+          
+          executor.addStep({
+            type: 'tool_result',
+            content: `⏱️ sudo 命令执行超时 (${sudoTimeout / 1000}秒)`,
+            toolName: 'execute_command',
+            toolResult: stripAnsi(output)
           })
+          
+          return {
+            success: false,
+            output: stripAnsi(output),
+            error: '命令执行超时。请检查终端状态。'
+          }
         }
       }
       
