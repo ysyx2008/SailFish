@@ -29,7 +29,7 @@ export type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
 
 export interface AgentStep {
   id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement' | 'waiting' | 'asking'
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password'
   content: string
   toolName?: string
   toolArgs?: Record<string, unknown>

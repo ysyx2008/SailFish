@@ -418,6 +418,7 @@ export function useAgentMode(
       case 'user_supplement': return '💡'
       case 'waiting': return '⏳'
       case 'asking': return '❓'
+      case 'waiting_password': return '🔐'
       default: return '•'
     }
   }

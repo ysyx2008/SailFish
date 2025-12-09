@@ -226,6 +226,71 @@ export function analyzeCommand(command: string): CommandHandlingInfo {
   return { strategy: 'allow' }
 }
 
+/**
+ * 检测命令是否需要特权提升（sudo/su/doas 等）
+ * 这类命令可能会提示用户输入密码
+ */
+export function isSudoCommand(command: string): boolean {
+  const cmd = command.trim()
+  const cmdLower = cmd.toLowerCase()
+  
+  // sudo 命令模式
+  if (/^sudo\s+/.test(cmdLower)) return true
+  if (/\|\s*sudo\s+/.test(cmdLower)) return true  // 管道到 sudo
+  
+  // su 命令模式
+  if (/^su\s+(-c\s+)?/.test(cmdLower)) return true
+  if (/^su$/.test(cmdLower)) return true
+  
+  // pkexec (polkit)
+  if (/^pkexec\s+/.test(cmdLower)) return true
+  
+  // doas (OpenBSD/部分 Linux)
+  if (/^doas\s+/.test(cmdLower)) return true
+  
+  // macOS 的 osascript 提权
+  if (/osascript\s+.*administrator\s+privileges/i.test(cmdLower)) return true
+  
+  return false
+}
+
+/**
+ * 密码提示检测模式（用于终端输出检测）
+ */
+export const PASSWORD_PROMPT_PATTERNS = [
+  /password\s*:/i,
+  /password\s+for\s+\w+/i,
+  /\[sudo\]\s*password/i,
+  /\w+'s\s*password/i,
+  /enter\s*passphrase/i,
+  /enter\s*password/i,
+  /authentication\s*password/i,
+  /login\s*password/i,
+  /SUDO password/i,
+  /authentication\s*token/i,
+  /密码\s*[:：]/,
+  /^\s*password\s*$/i,
+]
+
+/**
+ * 检测终端输出中是否包含密码提示
+ */
+export function detectPasswordPrompt(output: string): { detected: boolean; prompt?: string } {
+  const lines = output.split('\n')
+  // 检查最后几行（密码提示通常在最后）
+  const recentLines = lines.slice(-5)
+  
+  for (const line of recentLines) {
+    for (const pattern of PASSWORD_PROMPT_PATTERNS) {
+      if (pattern.test(line)) {
+        return { detected: true, prompt: line.trim() }
+      }
+    }
+  }
+  
+  return { detected: false }
+}
+
 // 兼容旧接口
 export interface InteractiveCommandInfo {
   isInteractive: boolean

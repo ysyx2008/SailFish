@@ -80,12 +80,16 @@ export type AgentMbtiType =
 // 语言类型
 export type LocaleType = 'zh-CN' | 'en-US'
 
+// UI 主题类型
+export type UiThemeType = 'dark' | 'light' | 'blue'
+
 interface StoreSchema {
   aiProfiles: AiProfile[]
   activeAiProfile: string
   sshSessions: SshSession[]
   sessionGroups: SessionGroup[]
   theme: string
+  uiTheme: UiThemeType
   terminalSettings: TerminalSettings
   proxySettings: {
     enabled: boolean
@@ -104,6 +108,7 @@ const defaultConfig: StoreSchema = {
   sshSessions: [],
   sessionGroups: [],
   theme: 'one-dark',
+  uiTheme: 'dark',
   terminalSettings: {
     fontSize: 14,
     fontFamily: '"Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, monospace',
@@ -333,6 +338,20 @@ export class ConfigService {
    */
   setTheme(theme: string): void {
     this.store.set('theme', theme)
+  }
+
+  /**
+   * 获取 UI 主题
+   */
+  getUiTheme(): UiThemeType {
+    return this.store.get('uiTheme') || 'dark'
+  }
+
+  /**
+   * 设置 UI 主题
+   */
+  setUiTheme(theme: UiThemeType): void {
+    this.store.set('uiTheme', theme)
   }
 
   // ==================== 终端设置 ====================

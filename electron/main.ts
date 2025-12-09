@@ -611,6 +611,15 @@ ipcMain.handle('config:setTheme', async (_event, theme: string) => {
   configService.setTheme(theme)
 })
 
+// UI 主题配置
+ipcMain.handle('config:getUiTheme', async () => {
+  return configService.getUiTheme()
+})
+
+ipcMain.handle('config:setUiTheme', async (_event, theme: string) => {
+  configService.setUiTheme(theme as 'dark' | 'light' | 'blue')
+})
+
 // Agent MBTI 配置
 ipcMain.handle('config:getAgentMbti', async () => {
   return configService.getAgentMbti()

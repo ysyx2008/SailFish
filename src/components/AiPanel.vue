@@ -197,8 +197,8 @@ const isStreamingOutput = (group: typeof agentTaskGroups.value[0]) => {
   if (lastStep.type === 'message' && (lastStep.isStreaming || lastStep.content.length > 0)) {
     return true
   }
-  // 如果最后一个步骤是 waiting 或 asking 类型（Agent 正在等待或提问），也不需要显示"思考中"
-  if (lastStep.type === 'waiting' || lastStep.type === 'asking') {
+  // 如果最后一个步骤是 waiting、asking 或 waiting_password 类型，也不需要显示"思考中"
+  if (lastStep.type === 'waiting' || lastStep.type === 'asking' || lastStep.type === 'waiting_password') {
     return true
   }
   return false
@@ -2693,6 +2693,37 @@ onMounted(() => {
 
 .agent-step-inline.asking .step-icon {
   color: #60a5fa;
+}
+
+.agent-step-inline.waiting_password {
+  background: rgba(251, 191, 36, 0.12);
+  border-left: 3px solid #fbbf24;
+  padding-left: 10px;
+  margin-left: -2px;
+  border-radius: 4px;
+  color: var(--text-primary);
+  animation: password-pulse 2s ease-in-out infinite;
+}
+
+.agent-step-inline.waiting_password .step-icon {
+  color: #fbbf24;
+  animation: key-bounce 1s ease-in-out infinite;
+}
+
+@keyframes password-pulse {
+  0%, 100% { 
+    background: rgba(251, 191, 36, 0.12);
+    border-left-color: #fbbf24;
+  }
+  50% { 
+    background: rgba(251, 191, 36, 0.2);
+    border-left-color: #f59e0b;
+  }
+}
+
+@keyframes key-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
 }
 
 /* 提问内容样式 */

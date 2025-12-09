@@ -14,7 +14,7 @@ import type {
   PendingConfirmation,
   HostProfileServiceInterface 
 } from './types'
-import { assessCommandRisk, analyzeCommand } from './risk-assessor'
+import { assessCommandRisk, analyzeCommand, isSudoCommand, detectPasswordPrompt } from './risk-assessor'
 import { getKnowledgeService } from '../knowledge'
 import { getTerminalStateService } from '../terminal-state.service'
 import { getTerminalAwarenessService, getProcessMonitor } from '../terminal-awareness'
@@ -417,6 +417,11 @@ async function executeCommand(
     )
   }
 
+  // 策略4: sudo/特权命令 - 需要等待用户输入密码
+  if (isSudoCommand(command)) {
+    return executeSudoCommand(ptyId, command, toolCallId, config, executor)
+  }
+
   // 正常执行命令（带重试机制）
   // 使用 terminal-state.service 追踪命令执行，以便 get_terminal_context 可以获取实时输出
   const terminalStateService = getTerminalStateService()
@@ -514,6 +519,156 @@ async function executeCommand(
       toolResult: `${errorMsg}\n\n💡 ${suggestion}`
     })
     return { success: false, output: '', error: `${errorMsg}\n\n💡 恢复建议: ${suggestion}` }
+  }
+}
+
+/**
+ * 执行需要特权提升的命令（sudo/su 等）
+ * 检测密码提示并等待用户在终端中输入密码
+ */
+async function executeSudoCommand(
+  ptyId: string,
+  command: string,
+  toolCallId: string,
+  config: AgentConfig,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const terminalStateService = getTerminalStateService()
+  
+  // 开始追踪命令执行
+  terminalStateService.startCommandExecution(ptyId, command)
+  
+  // 输出收集
+  let output = ''
+  let passwordPromptDetected = false
+  let passwordStepId: string | null = null
+  let lastOutputTime = Date.now()
+  
+  // 注册输出监听器
+  const outputHandler = (data: string) => {
+    output += data
+    lastOutputTime = Date.now()
+    terminalStateService.appendCommandOutput(ptyId, data)
+    
+    // 检测密码提示（只检测一次）
+    if (!passwordPromptDetected) {
+      const cleanOutput = stripAnsi(output)
+      const detection = detectPasswordPrompt(cleanOutput)
+      if (detection.detected) {
+        passwordPromptDetected = true
+        // 添加密码等待步骤
+        const step = executor.addStep({
+          type: 'waiting_password',
+          content: `🔐 请在终端中输入密码\n提示: ${detection.prompt || 'Password:'}`,
+          toolName: 'execute_command',
+          toolArgs: { command },
+          riskLevel: 'moderate'
+        })
+        passwordStepId = step.id
+      }
+    }
+  }
+  const unsubscribe = executor.terminalService.onData(ptyId, outputHandler)
+  
+  // 发送命令到终端（不等待完成）
+  executor.terminalService.write(ptyId, command + '\r')
+  
+  // sudo 命令的超时时间：5分钟（等待用户输入密码）
+  const sudoTimeout = 5 * 60 * 1000
+  const startTime = Date.now()
+  const pollInterval = 500  // 每 500ms 检查一次
+  
+  try {
+    // 轮询等待命令完成
+    while (true) {
+      // 检查是否被中止
+      if (executor.isAborted()) {
+        unsubscribe()
+        terminalStateService.completeCommandExecution(ptyId, 130, 'cancelled')
+        return { success: false, output: stripAnsi(output), error: '操作已中止' }
+      }
+      
+      // 检查终端是否回到空闲状态（命令执行完成）
+      const status = await executor.terminalService.getTerminalStatus(ptyId)
+      const timeSinceLastOutput = Date.now() - lastOutputTime
+      
+      // 命令完成的判断：终端空闲且超过 1 秒没有新输出
+      if (status.isIdle && timeSinceLastOutput > 1000) {
+        break
+      }
+      
+      // 检查超时（仅在未检测到密码提示时）
+      const elapsed = Date.now() - startTime
+      if (elapsed > sudoTimeout && !passwordPromptDetected) {
+        // 超时处理
+        unsubscribe()
+        terminalStateService.completeCommandExecution(ptyId, 124, 'timeout')
+        
+        executor.addStep({
+          type: 'tool_result',
+          content: `⏱️ sudo 命令执行超时 (${sudoTimeout / 1000}秒)`,
+          toolName: 'execute_command',
+          toolResult: stripAnsi(output)
+        })
+        
+        return {
+          success: false,
+          output: stripAnsi(output),
+          error: '命令执行超时。请检查终端状态。'
+        }
+      }
+      
+      // 如果检测到密码提示，给予更长的等待时间
+      if (passwordPromptDetected && elapsed > sudoTimeout) {
+        // 即使超时，如果还在等待密码，也继续等待
+        // 但更新提示信息
+        if (passwordStepId) {
+          executor.updateStep(passwordStepId, {
+            content: `🔐 请在终端中输入密码\n⏰ 已等待较长时间，请尽快输入或按 Ctrl+C 取消`
+          })
+        }
+      }
+      
+      // 等待下一次轮询
+      await new Promise(resolve => setTimeout(resolve, pollInterval))
+    }
+    
+    // 命令完成
+    unsubscribe()
+    terminalStateService.completeCommandExecution(ptyId, 0, 'completed')
+    
+    // 清理输出
+    const cleanOutput = stripAnsi(output).replace(/\r/g, '').trim()
+    
+    // 更新密码等待步骤（如果有）
+    if (passwordStepId) {
+      executor.updateStep(passwordStepId, {
+        type: 'tool_result',
+        content: `🔐 密码验证完成`
+      })
+    }
+    
+    executor.addStep({
+      type: 'tool_result',
+      content: `命令执行完成`,
+      toolName: 'execute_command',
+      toolResult: cleanOutput
+    })
+    
+    return { success: true, output: cleanOutput }
+    
+  } catch (error) {
+    unsubscribe()
+    terminalStateService.completeCommandExecution(ptyId, 1, 'failed')
+    
+    const errorMsg = error instanceof Error ? error.message : '命令执行失败'
+    executor.addStep({
+      type: 'tool_result',
+      content: `命令执行失败: ${errorMsg}`,
+      toolName: 'execute_command',
+      toolResult: errorMsg
+    })
+    return { success: false, output: '', error: errorMsg }
   }
 }
 

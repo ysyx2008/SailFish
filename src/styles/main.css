@@ -1,6 +1,20 @@
 /* 全局样式 */
 :root {
-  /* 颜色变量 */
+  /* 通用变量（不随主题变化） */
+  --border-radius: 8px;
+  
+  /* 字体 */
+  --font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+  
+  /* 尺寸 */
+  --header-height: 40px;
+  --sidebar-width: 280px;
+  --tab-height: 36px;
+}
+
+/* 深色主题（默认） */
+[data-ui-theme="dark"], :root {
   --bg-primary: #1e1e2e;
   --bg-secondary: #181825;
   --bg-tertiary: #11111b;
@@ -18,16 +32,48 @@
   --accent-error: #f38ba8;
   
   --border-color: #45475a;
-  --border-radius: 8px;
+}
+
+/* 浅色主题 */
+[data-ui-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f5;
+  --bg-tertiary: #e8e8e8;
+  --bg-surface: #ffffff;
+  --bg-hover: #e0e0e0;
   
-  /* 字体 */
-  --font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-  --font-mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+  --text-primary: #1a1a1a;
+  --text-secondary: #4a4a4a;
+  --text-muted: #8a8a8a;
   
-  /* 尺寸 */
-  --header-height: 40px;
-  --sidebar-width: 280px;
-  --tab-height: 36px;
+  --accent-primary: #0078d4;
+  --accent-secondary: #106ebe;
+  --accent-success: #107c10;
+  --accent-warning: #ca5010;
+  --accent-error: #d13438;
+  
+  --border-color: #d1d1d1;
+}
+
+/* 蓝色主题（VS 经典风格） */
+[data-ui-theme="blue"] {
+  --bg-primary: #1e3a5f;
+  --bg-secondary: #152d4a;
+  --bg-tertiary: #0d1f33;
+  --bg-surface: #264b73;
+  --bg-hover: #2d5a8a;
+  
+  --text-primary: #e8f0f8;
+  --text-secondary: #b8d0e8;
+  --text-muted: #7a9aba;
+  
+  --accent-primary: #4db8ff;
+  --accent-secondary: #66c2ff;
+  --accent-success: #6dd400;
+  --accent-warning: #ffb900;
+  --accent-error: #ff6b6b;
+  
+  --border-color: #3a6a9a;
 }
 
 * {
@@ -234,4 +280,3 @@ html, body {
   transform: translateX(20px);
   opacity: 0;
 }
-
