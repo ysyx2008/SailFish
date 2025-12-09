@@ -313,9 +313,16 @@ export default {
 
   // Theme Settings
   themeSettings: {
-    title: 'Theme Settings',
-    selectTheme: 'Select Theme',
-    preview: 'Preview'
+    title: 'Terminal Theme',
+    selectTheme: 'Select terminal color scheme',
+    preview: 'Preview',
+    uiTheme: 'UI Theme',
+    selectUiTheme: 'Select application interface color style',
+    uiThemes: {
+      dark: 'Dark',
+      light: 'Light',
+      blue: 'Blue'
+    }
   },
 
   // Data Settings

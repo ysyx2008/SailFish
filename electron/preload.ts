@@ -621,6 +621,10 @@ const electronAPI = {
     getTheme: () => ipcRenderer.invoke('config:getTheme'),
     setTheme: (theme: string) => ipcRenderer.invoke('config:setTheme', theme),
 
+    // UI 主题
+    getUiTheme: () => ipcRenderer.invoke('config:getUiTheme') as Promise<'dark' | 'light' | 'blue'>,
+    setUiTheme: (theme: 'dark' | 'light' | 'blue') => ipcRenderer.invoke('config:setUiTheme', theme),
+
     // Agent MBTI
     getAgentMbti: () => ipcRenderer.invoke('config:getAgentMbti') as Promise<string | null>,
     setAgentMbti: (mbti: string | null) => ipcRenderer.invoke('config:setAgentMbti', mbti),

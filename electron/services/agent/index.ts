@@ -46,6 +46,67 @@ export type {
 }
 export { assessCommandRisk, analyzeCommand }
 
+/**
+ * 检查是否是可重试的网络错误
+ */
+function isRetryableNetworkError(errorMessage: string): boolean {
+  const retryablePatterns = [
+    'ECONNRESET',
+    'ECONNREFUSED',
+    'ETIMEDOUT',
+    'ENOTFOUND',
+    'ENETUNREACH',
+    'EHOSTUNREACH',
+    'EPIPE',
+    'socket hang up',
+    'network',
+    'connection reset',
+    'connection refused',
+    'timeout'
+  ]
+  const lowerMsg = errorMessage.toLowerCase()
+  return retryablePatterns.some(pattern => lowerMsg.includes(pattern.toLowerCase()))
+}
+
+/**
+ * 带重试的 AI 请求包装器
+ */
+async function withAiRetry<T>(
+  fn: () => Promise<T>,
+  options: {
+    maxRetries?: number
+    retryDelay?: number
+    onRetry?: (attempt: number, error: Error) => void
+  } = {}
+): Promise<T> {
+  const { maxRetries = 2, retryDelay = 1000, onRetry } = options
+  let lastError: Error | null = null
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error as Error
+      const errorMessage = lastError.message || ''
+
+      // 检查是否是可重试的网络错误
+      if (attempt < maxRetries && isRetryableNetworkError(errorMessage)) {
+        // 指数退避
+        const delay = retryDelay * Math.pow(2, attempt)
+        console.log(`[Agent] AI 请求失败 (${errorMessage})，${delay}ms 后重试 (${attempt + 1}/${maxRetries})`)
+        onRetry?.(attempt + 1, lastError)
+        await new Promise(resolve => setTimeout(resolve, delay))
+        continue
+      }
+
+      // 不可重试或已达到最大重试次数
+      throw lastError
+    }
+  }
+
+  throw lastError
+}
+
 export class AgentService {
   private aiService: AiService
   private commandExecutor: CommandExecutorService
@@ -1061,44 +1122,61 @@ export class AgentService {
         const streamStepId = this.generateId()
         let streamContent = ''
         
-        // 使用流式 API 调用 AI
-        const response = await new Promise<ChatWithToolsResult>((resolve, reject) => {
-          this.aiService.chatWithToolsStream(
-            run.messages,
-            getAgentTools(this.mcpService),
-            // onChunk: 流式文本更新
-            (chunk) => {
-              streamContent += chunk
-              // 发送流式更新
-              this.updateStep(agentId, streamStepId, {
-                type: 'message',
-                content: streamContent,
-                isStreaming: true
-              })
-            },
-            // onToolCall: 工具调用（流式结束时）
-            (_toolCalls) => {
-              // 工具调用会在 onDone 中处理
-            },
-            // onDone: 完成
-            (result) => {
-              // 标记流式结束
-              if (streamContent) {
+        // 使用带重试的流式 API 调用 AI
+        const response = await withAiRetry(
+          () => new Promise<ChatWithToolsResult>((resolve, reject) => {
+            // 重试时重置 streamContent
+            streamContent = ''
+            
+            this.aiService.chatWithToolsStream(
+              run.messages,
+              getAgentTools(this.mcpService),
+              // onChunk: 流式文本更新
+              (chunk) => {
+                streamContent += chunk
+                // 发送流式更新
                 this.updateStep(agentId, streamStepId, {
                   type: 'message',
                   content: streamContent,
-                  isStreaming: false
+                  isStreaming: true
                 })
-              }
-              resolve(result)
-            },
-            // onError: 错误
-            (error) => {
-              reject(new Error(error))
-            },
-            profileId
-          )
-        })
+              },
+              // onToolCall: 工具调用（流式结束时）
+              (_toolCalls) => {
+                // 工具调用会在 onDone 中处理
+              },
+              // onDone: 完成
+              (result) => {
+                // 标记流式结束
+                if (streamContent) {
+                  this.updateStep(agentId, streamStepId, {
+                    type: 'message',
+                    content: streamContent,
+                    isStreaming: false
+                  })
+                }
+                resolve(result)
+              },
+              // onError: 错误
+              (error) => {
+                reject(new Error(error))
+              },
+              profileId
+            )
+          }),
+          {
+            maxRetries: 2,
+            retryDelay: 1000,
+            onRetry: (attempt, error) => {
+              // 通知用户正在重试
+              this.updateStep(agentId, streamStepId, {
+                type: 'message',
+                content: `⚠️ 网络请求失败 (${error.message})，正在重试 (${attempt}/2)...`,
+                isStreaming: true
+              })
+            }
+          }
+        )
         
         lastResponse = response
 

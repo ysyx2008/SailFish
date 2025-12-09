@@ -313,9 +313,16 @@ export default {
 
   // 主题设置
   themeSettings: {
-    title: '主题设置',
-    selectTheme: '选择主题',
-    preview: '预览'
+    title: '终端主题',
+    selectTheme: '选择终端配色方案',
+    preview: '预览',
+    uiTheme: '界面主题',
+    selectUiTheme: '选择应用界面的配色风格',
+    uiThemes: {
+      dark: '深色',
+      light: '浅色',
+      blue: '蓝色'
+    }
   },
 
   // 数据管理
