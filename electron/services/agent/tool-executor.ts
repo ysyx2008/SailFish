@@ -1661,7 +1661,8 @@ async function askUser(
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   const question = args.question as string
-  const options = args.options as string[] | undefined
+  let options = args.options as string[] | undefined
+  const allowMultiple = args.allow_multiple as boolean | undefined
   const defaultValue = args.default_value as string | undefined
   
   // 参数校验
@@ -1669,12 +1670,17 @@ async function askUser(
     return { success: false, output: '', error: '问题不能为空' }
   }
 
+  // 限制选项数量为 10 个
+  if (options && options.length > 10) {
+    options = options.slice(0, 10)
+  }
+
   // 添加提问步骤（content 只保存问题，状态信息通过 toolResult 显示）
   const step = executor.addStep({
     type: 'asking',
     content: question,
     toolName: 'ask_user',
-    toolArgs: { question, options, default_value: defaultValue },
+    toolArgs: { question, options, allow_multiple: allowMultiple, default_value: defaultValue },
     toolResult: '⏳ 等待回复中...',
     riskLevel: 'safe'
   })
@@ -1720,9 +1726,23 @@ async function askUser(
   // 处理用户回复或超时
   if (userResponse !== undefined) {
     // 用户回复了
-    // 处理选项回复：如果用户输入的是数字，尝试匹配选项
     let finalResponse = userResponse.trim()
-    if (options && options.length > 0) {
+    
+    // 尝试解析多选回复（JSON 数组格式）
+    let selectedOptions: string[] = []
+    if (finalResponse.startsWith('[') && finalResponse.endsWith(']')) {
+      try {
+        selectedOptions = JSON.parse(finalResponse)
+        if (Array.isArray(selectedOptions)) {
+          finalResponse = selectedOptions.join(', ')
+        }
+      } catch {
+        // 不是有效的 JSON，保持原样
+      }
+    }
+    
+    // 处理选项回复：如果用户输入的是数字，尝试匹配选项
+    if (options && options.length > 0 && selectedOptions.length === 0) {
       const numMatch = finalResponse.match(/^(\d+)$/)
       if (numMatch) {
         const idx = parseInt(numMatch[1], 10) - 1

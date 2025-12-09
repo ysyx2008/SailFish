@@ -209,13 +209,49 @@ const isStreamingOutput = (group: typeof agentTaskGroups.value[0]) => {
 // IME 组合输入状态
 const isComposing = ref(false)
 
-// 点击中的选项（用于即时视觉反馈）
+// 点击中的选项（用于即时视觉反馈，单选时使用）
 const clickingOption = ref<string | null>(null)
 
+// 多选已选中的选项（stepId -> 已选选项数组）
+const multiSelectOptions = ref<Map<string, string[]>>(new Map())
+
+// 获取步骤的已选选项
+const getSelectedOptions = (stepId: string): string[] => {
+  return multiSelectOptions.value.get(stepId) || []
+}
+
+// 切换多选选项
+const toggleMultiOption = (stepId: string, opt: string) => {
+  const current = multiSelectOptions.value.get(stepId) || []
+  const idx = current.indexOf(opt)
+  if (idx === -1) {
+    current.push(opt)
+  } else {
+    current.splice(idx, 1)
+  }
+  multiSelectOptions.value.set(stepId, [...current])
+}
+
+// 确认多选结果
+const confirmMultiSelect = (stepId: string) => {
+  const selected = multiSelectOptions.value.get(stepId) || []
+  if (selected.length === 0) return
+  // 发送 JSON 数组格式
+  sendAgentReply(JSON.stringify(selected))
+  // 清理本地状态
+  multiSelectOptions.value.delete(stepId)
+}
+
 // 处理选项点击（添加即时视觉反馈）
-const handleOptionClick = (opt: string) => {
-  clickingOption.value = opt
-  sendAgentReply(opt)
+const handleOptionClick = (stepId: string, opt: string, allowMultiple: boolean) => {
+  if (allowMultiple) {
+    // 多选：切换选中状态
+    toggleMultiOption(stepId, opt)
+  } else {
+    // 单选：直接发送
+    clickingOption.value = opt
+    sendAgentReply(opt)
+  }
 }
 
 // 检查是否有等待回复的 asking 步骤（用于判断是否可以按回车发送默认值）
@@ -683,18 +719,27 @@ onMounted(() => {
                           <!-- 可点击的选项按钮 -->
                           <div v-if="step.toolArgs?.options && (step.toolArgs.options as string[]).length > 0" class="asking-options">
                             <button 
-                              v-for="(opt, idx) in (step.toolArgs.options as string[])" 
+                              v-for="(opt, idx) in (step.toolArgs.options as string[]).slice(0, 10)" 
                               :key="idx"
                               class="asking-option-btn"
                               :class="{ 
-                                'selected': step.toolResult?.includes(opt),
-                                'clicking': clickingOption === opt && step.toolResult?.includes('⏳')
+                                'selected': step.toolResult?.includes(opt) || getSelectedOptions(step.id).includes(opt),
+                                'clicking': clickingOption === opt && step.toolResult?.includes('⏳') && !step.toolArgs?.allow_multiple
                               }"
                               :disabled="!isAgentRunning || step.toolResult?.includes('✅') || step.toolResult?.includes('⏰') || step.toolResult?.includes('🛑')"
-                              @click="handleOptionClick(opt)"
+                              @click="handleOptionClick(step.id, opt, !!step.toolArgs?.allow_multiple)"
                             >
                               <span class="option-label">{{ String.fromCharCode(65 + idx) }}</span>
                               {{ opt }}
+                            </button>
+                            <!-- 多选确认按钮 -->
+                            <button 
+                              v-if="step.toolArgs?.allow_multiple && step.toolResult?.includes('⏳')"
+                              class="asking-confirm-btn"
+                              :disabled="getSelectedOptions(step.id).length === 0"
+                              @click="confirmMultiSelect(step.id)"
+                            >
+                              确认选择 ({{ getSelectedOptions(step.id).length }})
                             </button>
                           </div>
                           <!-- 状态显示 -->
@@ -2682,6 +2727,7 @@ onMounted(() => {
   flex-direction: column;
   gap: 6px;
   margin-top: 2px;
+  max-width: 400px;
 }
 
 .asking-option-btn {
@@ -2748,6 +2794,33 @@ onMounted(() => {
 .asking-option-btn.selected .option-label {
   background: rgba(34, 197, 94, 0.25);
   color: #22c55e;
+}
+
+/* 多选确认按钮 */
+.asking-confirm-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.asking-confirm-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #93c5fd 0%, #60a5fa 100%);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35);
+}
+
+.asking-confirm-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .asking-status {

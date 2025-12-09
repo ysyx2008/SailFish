@@ -291,7 +291,7 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
 
 注意：
 - 问题要清晰、具体，让用户知道如何回答
-- 如果有可选项，可以列出供用户选择
+- 如果有可选项，可以列出供用户选择（最多 10 个选项）
 - 调用此工具后会暂停执行，直到用户回复
 - 等待时间最长 5 分钟，超时后会提示用户未回复`,
         parameters: {
@@ -304,7 +304,11 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
             options: {
               type: 'array',
               items: { type: 'string' },
-              description: '可选项列表（如果问题有固定选项）。例如：["选项A", "选项B", "选项C"]'
+              description: '可选项列表（如果问题有固定选项，最多 10 个）。例如：["选项A", "选项B", "选项C"]'
+            },
+            allow_multiple: {
+              type: 'boolean',
+              description: '是否允许多选（默认 false 为单选）。设为 true 时用户可以选择多个选项'
             },
             default_value: {
               type: 'string',
