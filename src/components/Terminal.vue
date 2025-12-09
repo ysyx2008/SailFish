@@ -31,6 +31,7 @@ let unsubscribe: (() => void) | null = null
 let unsubscribeDisconnect: (() => void) | null = null  // SSH 断开连接事件取消订阅
 let unsubscribeScreenRequest: (() => void) | null = null  // 主进程屏幕内容请求监听
 let unsubscribeVisibleRequest: (() => void) | null = null  // 主进程可视内容请求监听
+let unsubscribeAnalysisRequest: (() => void) | null = null  // 主进程屏幕分析请求监听
 let resizeObserver: ResizeObserver | null = null
 let isDisposed = false
 let isPasting = false
@@ -323,6 +324,25 @@ onMounted(async () => {
       }
     }
   })
+
+  // 注册屏幕分析请求监听器
+  // 当主进程（Agent）需要实时获取终端状态分析时调用
+  unsubscribeAnalysisRequest = window.electronAPI.screen.onRequestScreenAnalysis((data) => {
+    if (data.ptyId === props.ptyId && screenService && !isDisposed) {
+      try {
+        // 获取完整的终端感知状态（包含输入等待检测、输出模式识别、环境分析）
+        const awarenessState = screenService.getAwarenessState()
+        // 同时获取可视区域内容
+        const visibleContent = screenService.getVisibleContent()
+        window.electronAPI.screen.responseScreenAnalysis(data.requestId, {
+          ...awarenessState,
+          visibleContent
+        })
+      } catch (e) {
+        window.electronAPI.screen.responseScreenAnalysis(data.requestId, null)
+      }
+    }
+  })
 })
 
 // 清理
@@ -358,6 +378,10 @@ onUnmounted(() => {
   if (unsubscribeVisibleRequest) {
     unsubscribeVisibleRequest()
     unsubscribeVisibleRequest = null
+  }
+  if (unsubscribeAnalysisRequest) {
+    unsubscribeAnalysisRequest()
+    unsubscribeAnalysisRequest = null
   }
   if (resizeObserver) {
     resizeObserver.disconnect()

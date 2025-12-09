@@ -1565,6 +1565,87 @@ const electronAPI = {
         ipcRenderer.removeListener('knowledge:downloadProgress', handler)
       }
     }
+  },
+
+  // 终端屏幕内容服务（供主进程请求渲染进程数据）
+  screen: {
+    // 注册获取最近 N 行的处理函数
+    onRequestLastNLines: (handler: (data: { requestId: string; ptyId: string; lines: number }) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, data: { requestId: string; ptyId: string; lines: number }) => {
+        handler(data)
+      }
+      ipcRenderer.on('screen:requestLastNLines', listener)
+      return () => {
+        ipcRenderer.removeListener('screen:requestLastNLines', listener)
+      }
+    },
+
+    // 注册获取可视内容的处理函数
+    onRequestVisibleContent: (handler: (data: { requestId: string; ptyId: string }) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, data: { requestId: string; ptyId: string }) => {
+        handler(data)
+      }
+      ipcRenderer.on('screen:requestVisibleContent', listener)
+      return () => {
+        ipcRenderer.removeListener('screen:requestVisibleContent', listener)
+      }
+    },
+
+    // 响应最近 N 行请求
+    responseLastNLines: (requestId: string, lines: string[] | null) => {
+      ipcRenderer.send('screen:responseLastNLines', { requestId, lines })
+    },
+
+    // 响应可视内容请求
+    responseVisibleContent: (requestId: string, lines: string[] | null) => {
+      ipcRenderer.send('screen:responseVisibleContent', { requestId, lines })
+    },
+
+    // 注册获取屏幕分析的处理函数
+    onRequestScreenAnalysis: (handler: (data: { requestId: string; ptyId: string }) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, data: { requestId: string; ptyId: string }) => {
+        handler(data)
+      }
+      ipcRenderer.on('screen:requestScreenAnalysis', listener)
+      return () => {
+        ipcRenderer.removeListener('screen:requestScreenAnalysis', listener)
+      }
+    },
+
+    // 响应屏幕分析请求
+    responseScreenAnalysis: (requestId: string, analysis: {
+      input: {
+        isWaiting: boolean
+        type: string
+        prompt?: string
+        options?: string[]
+        suggestedResponse?: string
+        confidence: number
+      }
+      output: {
+        type: string
+        confidence: number
+        details?: {
+          progress?: number
+          testsPassed?: number
+          testsFailed?: number
+          errorCount?: number
+          eta?: string
+        }
+      }
+      context: {
+        user?: string
+        hostname?: string
+        isRoot: boolean
+        cwdFromPrompt?: string
+        activeEnvs: string[]
+        sshDepth: number
+        promptType: string
+      }
+      visibleContent?: string[]
+    } | null) => {
+      ipcRenderer.send('screen:responseScreenAnalysis', { requestId, analysis })
+    }
   }
 }
 

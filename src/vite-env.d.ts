@@ -1119,10 +1119,44 @@ interface Window {
       onRequestLastNLines: (handler: (data: { requestId: string; ptyId: string; lines: number }) => void) => () => void
       // 注册获取可视内容的请求处理器
       onRequestVisibleContent: (handler: (data: { requestId: string; ptyId: string }) => void) => () => void
+      // 注册获取屏幕分析的请求处理器
+      onRequestScreenAnalysis: (handler: (data: { requestId: string; ptyId: string }) => void) => () => void
       // 响应最近 N 行请求
       responseLastNLines: (requestId: string, lines: string[] | null) => void
       // 响应可视内容请求
       responseVisibleContent: (requestId: string, lines: string[] | null) => void
+      // 响应屏幕分析请求
+      responseScreenAnalysis: (requestId: string, analysis: {
+        input: {
+          isWaiting: boolean
+          type: string
+          prompt?: string
+          options?: string[]
+          suggestedResponse?: string
+          confidence: number
+        }
+        output: {
+          type: string
+          confidence: number
+          details?: {
+            progress?: number
+            testsPassed?: number
+            testsFailed?: number
+            errorCount?: number
+            eta?: string
+          }
+        }
+        context: {
+          user?: string
+          hostname?: string
+          isRoot: boolean
+          cwdFromPrompt?: string
+          activeEnvs: string[]
+          sshDepth: number
+          promptType: string
+        }
+        visibleContent?: string[]
+      } | null) => void
     }
   }
 }

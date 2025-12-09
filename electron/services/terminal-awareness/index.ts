@@ -1,11 +1,17 @@
 /**
  * 终端感知服务
  * 整合前端屏幕分析和后端进程监控，提供统一的终端状态感知能力
+ * 
+ * 架构说明：
+ * - xterm.js（前端）是终端状态的唯一真实来源
+ * - 本服务通过 IPC 实时从前端获取屏幕分析结果
+ * - 缓存仅作为 IPC 获取失败时的回退方案
  */
 import type { PtyService } from '../pty.service'
 import type { SshService } from '../ssh.service'
 import type { TerminalStateService, TerminalState, CommandExecution } from '../terminal-state.service'
 import { ProcessMonitor, getProcessMonitor, initProcessMonitor, type ProcessState, type ProcessStatus } from './process-monitor'
+import { getScreenAnalysisFromFrontend, type ScreenAnalysis } from '../screen-content.service'
 
 // ==================== 类型定义 ====================
 
@@ -228,16 +234,35 @@ export class TerminalAwarenessService {
   async getAwareness(ptyId: string): Promise<TerminalAwareness> {
     // 1. 获取进程状态（后端）
     const processState = await this.processMonitor.getProcessState(ptyId)
-    
+
     // 2. 获取终端基本状态
     const terminalState = this.terminalStateService?.getState(ptyId)
-    
-    // 3. 获取前端屏幕分析（从缓存）
-    const screenAnalysis = this.getScreenAnalysis(ptyId)
-    
-    // 4. 综合判断
+
+    // 3. 优先从前端实时获取屏幕分析（xterm.js 是唯一真实来源）
+    let screenAnalysis: ScreenAnalysisResult | null = null
+    try {
+      const realtimeAnalysis = await getScreenAnalysisFromFrontend(ptyId, 2000)
+      if (realtimeAnalysis) {
+        screenAnalysis = realtimeAnalysis
+        // 同时更新缓存，供其他地方使用
+        this.screenAnalysisCache.set(ptyId, {
+          ...realtimeAnalysis,
+          timestamp: Date.now()
+        })
+      }
+    } catch (e) {
+      // 实时获取失败，记录日志
+      console.warn(`[TerminalAwareness] 实时获取屏幕分析失败: ${e}`)
+    }
+
+    // 4. 如果实时获取失败，回退到缓存
+    if (!screenAnalysis) {
+      screenAnalysis = this.getScreenAnalysis(ptyId)
+    }
+
+    // 5. 综合判断
     const awareness = this.synthesizeAwareness(processState, terminalState, screenAnalysis)
-    
+
     return awareness
   }
 
