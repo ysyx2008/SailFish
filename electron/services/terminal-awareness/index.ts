@@ -383,9 +383,12 @@ export class TerminalAwarenessService {
 
   /**
    * 追踪输出（传递给 ProcessMonitor）
+   * @param ptyId 终端 ID
+   * @param lineCount 行数（可选，默认为 1）
+   * @param dataSize 数据大小（字节，可选）- 用于追踪非换行输出如 curl 进度条
    */
-  trackOutput(ptyId: string, lineCount: number = 1): void {
-    this.processMonitor.trackOutput(ptyId, lineCount)
+  trackOutput(ptyId: string, lineCount: number = 1, dataSize?: number): void {
+    this.processMonitor.trackOutput(ptyId, lineCount, dataSize)
   }
 
   /**

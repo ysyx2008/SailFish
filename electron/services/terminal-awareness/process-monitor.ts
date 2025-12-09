@@ -39,10 +39,14 @@ export interface ProcessState {
 interface OutputTracker {
   /** 最近 N 秒的输出行数记录 */
   recentOutputCounts: { timestamp: number; lineCount: number }[]
+  /** 最近 N 秒的数据包记录（用于追踪非换行输出，如 curl 进度条） */
+  recentDataChunks: { timestamp: number; size: number }[]
   /** 最后一次输出时间 */
   lastOutputTime: number
   /** 总输出行数 */
   totalLines: number
+  /** 总数据量（字节） */
+  totalBytes: number
 }
 
 /** 已知的交互式命令（全屏） */
@@ -317,7 +321,9 @@ export class ProcessMonitor {
     // 获取输出追踪信息
     const outputTracker = this.outputTrackers.get(ptyId)
     const outputRate = this.calculateOutputRate(ptyId)
+    const dataRate = this.calculateDataRate(ptyId)
     const lastOutputTime = outputTracker?.lastOutputTime
+    const hasActivity = this.hasActiveOutput(ptyId)
 
     // 当前执行的命令
     const currentExecution = terminalState.currentExecution
@@ -329,7 +335,24 @@ export class ProcessMonitor {
       ? Date.now() - lastOutputTime 
       : undefined
 
-    // 优先使用 SSH exec channel 获取远程进程状态
+    // **重要**: 首先检查是否有持续输出（适用于 curl 进度条等非换行输出）
+    // 这比 exec channel 检测更可靠，因为 exec channel 的 $$ 不是终端 shell 的 PID
+    if (hasActivity) {
+      // 有活动输出，说明命令正在执行
+      const command = currentExecution?.command || terminalState.lastCommand || ''
+      const commandType = this.classifyCommand(command)
+      
+      return {
+        status: commandType === 'interactive' ? 'running_interactive' : 'running_streaming',
+        foregroundProcess: command ? command.split(' ')[0] : undefined,
+        runningTime,
+        lastOutputTime,
+        outputRate,
+        suggestion: `SSH 终端检测到持续数据输出，命令正在运行。${dataRate ? `数据速率: ${(dataRate / 1024).toFixed(1)} KB/秒` : ''}`
+      }
+    }
+
+    // 尝试使用 SSH exec channel 获取远程进程状态（作为补充检测）
     if (this.sshService) {
       try {
         const remoteProcesses = await this.sshService.getRemoteProcesses(ptyId)
@@ -359,48 +382,24 @@ export class ProcessMonitor {
             outputRate,
             suggestion: `SSH 终端: 进程 ${child.comm} (PID: ${child.pid}) 正在运行。${outputRate ? `输出速率: ${outputRate.toFixed(1)} 行/秒` : ''}`
           }
-        } else if (remoteProcesses) {
-          // 没有子进程，shell 空闲
-          // 但还需要检查是否有持续输出（可能是后台任务）
-          if (outputRate && outputRate > 0.1) {
-            return {
-              status: 'running_streaming',
-              outputRate,
-              lastOutputTime,
-              suggestion: `SSH 终端检测到持续输出，可能有后台任务。输出速率: ${outputRate.toFixed(1)} 行/秒`
-            }
-          }
-          
-          return {
-            status: 'idle',
-            suggestion: 'SSH 终端空闲（通过 exec channel 确认），可以执行新命令'
-          }
         }
+        // 注意：即使 exec channel 报告没有子进程，也不直接返回空闲
+        // 因为 exec channel 的 $$ 不是终端 shell 的 PID，检测不准确
       } catch (err) {
-        // exec channel 失败，回退到传统检测
+        // exec channel 失败，继续使用传统检测
         console.log(`[ProcessMonitor] SSH exec channel 检测失败，回退到传统方式: ${err}`)
       }
     }
 
     // 回退方案：基于 terminalState 和输出分析
     // SSH 终端状态判断优先级：
-    // 1. 如果 terminalState.isIdle 为 true（由提示符检测更新），认为空闲
-    // 2. 如果有持续输出，认为正在执行命令
+    // 1. 如果有持续输出，认为正在执行命令（已在上面处理）
+    // 2. 如果 terminalState.isIdle 为 true（由提示符检测更新），认为空闲
     // 3. 如果有当前执行的命令且运行时间较长无输出，可能卡死
     // 4. 否则认为正在执行命令
 
     if (terminalState.isIdle && !currentExecution) {
-      // 终端空闲（通过提示符检测确认）
-      // 额外检查是否有持续输出（可能是后台任务）
-      if (outputRate && outputRate > 0.1) {
-        return {
-          status: 'running_streaming',
-          outputRate,
-          lastOutputTime,
-          suggestion: `SSH 终端检测到持续输出，可能有命令正在运行。输出速率: ${outputRate.toFixed(1)} 行/秒`
-        }
-      }
-      
+      // 终端空闲（通过提示符检测确认），且无持续输出
       return {
         status: 'idle',
         suggestion: 'SSH 终端空闲，可以执行新命令'
@@ -507,15 +506,20 @@ export class ProcessMonitor {
 
   /**
    * 追踪输出（由外部调用更新）
+   * @param ptyId 终端 ID
+   * @param lineCount 行数（可选，默认为 1）
+   * @param dataSize 数据大小（字节，可选）- 用于追踪非换行输出如 curl 进度条
    */
-  trackOutput(ptyId: string, lineCount: number = 1): void {
+  trackOutput(ptyId: string, lineCount: number = 1, dataSize?: number): void {
     let tracker = this.outputTrackers.get(ptyId)
     
     if (!tracker) {
       tracker = {
         recentOutputCounts: [],
+        recentDataChunks: [],
         lastOutputTime: Date.now(),
-        totalLines: 0
+        totalLines: 0,
+        totalBytes: 0
       }
       this.outputTrackers.set(ptyId, tracker)
     }
@@ -525,9 +529,16 @@ export class ProcessMonitor {
     tracker.totalLines += lineCount
     tracker.recentOutputCounts.push({ timestamp: now, lineCount })
 
+    // 追踪数据包（用于检测 curl 进度条等非换行输出）
+    if (dataSize !== undefined && dataSize > 0) {
+      tracker.totalBytes += dataSize
+      tracker.recentDataChunks.push({ timestamp: now, size: dataSize })
+    }
+
     // 清理超出时间窗口的记录
     const cutoff = now - OUTPUT_TRACKING_WINDOW
     tracker.recentOutputCounts = tracker.recentOutputCounts.filter(r => r.timestamp > cutoff)
+    tracker.recentDataChunks = tracker.recentDataChunks.filter(r => r.timestamp > cutoff)
   }
 
   /**
@@ -551,6 +562,55 @@ export class ProcessMonitor {
     const timeSpan = (now - recentRecords[0].timestamp) / 1000 // 转换为秒
 
     return timeSpan > 0 ? totalLines / timeSpan : totalLines
+  }
+
+  /**
+   * 检查是否有持续数据输出（用于检测 curl 进度条等非换行输出）
+   * 返回数据流速率（字节/秒）或 undefined
+   */
+  private calculateDataRate(ptyId: string): number | undefined {
+    const tracker = this.outputTrackers.get(ptyId)
+    if (!tracker || tracker.recentDataChunks.length === 0) {
+      return undefined
+    }
+
+    const now = Date.now()
+    const cutoff = now - OUTPUT_TRACKING_WINDOW
+    const recentChunks = tracker.recentDataChunks.filter(r => r.timestamp > cutoff)
+
+    if (recentChunks.length === 0) {
+      return 0
+    }
+
+    const totalBytes = recentChunks.reduce((sum, r) => sum + r.size, 0)
+    const timeSpan = (now - recentChunks[0].timestamp) / 1000 // 转换为秒
+
+    return timeSpan > 0 ? totalBytes / timeSpan : totalBytes
+  }
+
+  /**
+   * 检查终端是否有活动输出（综合行数和数据量）
+   * 用于判断如 curl 下载进度这样的命令是否在运行
+   */
+  private hasActiveOutput(ptyId: string): boolean {
+    const tracker = this.outputTrackers.get(ptyId)
+    if (!tracker) return false
+
+    const now = Date.now()
+    // 如果最后输出时间在 3 秒内，认为有活动
+    if (now - tracker.lastOutputTime < 3000) {
+      return true
+    }
+
+    // 检查输出速率
+    const outputRate = this.calculateOutputRate(ptyId)
+    if (outputRate && outputRate > 0.1) return true
+
+    // 检查数据流速率（用于 curl 进度条等）
+    const dataRate = this.calculateDataRate(ptyId)
+    if (dataRate && dataRate > 10) return true  // 超过 10 字节/秒认为有活动
+
+    return false
   }
 
   /**
