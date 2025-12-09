@@ -84,34 +84,45 @@ const formData = ref<Partial<McpServerConfig>>({
 const argsText = ref('')
 const envText = ref('')
 
-// 预设模板
-const templates = [
+// 模板类型
+interface McpTemplate {
+  name: string
+  transport: 'stdio' | 'sse'
+  command: string
+  args: string[]
+  env?: Record<string, string>
+}
+
+// 获取预设模板
+const getTemplates = (): McpTemplate[] => [
   {
-    name: 'Filesystem (本地文件)',
-    transport: 'stdio' as const,
+    name: t('mcpSettings.templates.filesystem'),
+    transport: 'stdio',
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-filesystem', '/path/to/allowed/dir']
   },
   {
-    name: 'GitHub',
-    transport: 'stdio' as const,
+    name: t('mcpSettings.templates.github'),
+    transport: 'stdio',
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-github'],
-    env: { GITHUB_PERSONAL_ACCESS_TOKEN: '<在此填入你的GitHub Token>' }
+    env: { GITHUB_PERSONAL_ACCESS_TOKEN: t('mcpSettings.placeholders.githubToken') }
   },
   {
-    name: 'PostgreSQL',
-    transport: 'stdio' as const,
+    name: t('mcpSettings.templates.postgres'),
+    transport: 'stdio',
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-postgres', 'postgresql://localhost/mydb']
   },
   {
-    name: 'SQLite',
-    transport: 'stdio' as const,
+    name: t('mcpSettings.templates.sqlite'),
+    transport: 'stdio',
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-sqlite', '/path/to/database.db']
   }
 ]
+
+const templates = computed(() => getTemplates())
 
 // 计算属性
 const connectedCount = computed(() => {
@@ -172,7 +183,7 @@ const openEditServer = (server: McpServerConfig) => {
 }
 
 // 应用模板
-const applyTemplate = (template: typeof templates[0]) => {
+const applyTemplate = (template: McpTemplate) => {
   formData.value.name = template.name
   formData.value.transport = template.transport
   formData.value.command = template.command
@@ -208,7 +219,7 @@ const parseEnv = () => {
 // 测试连接
 const testConnection = async () => {
   if (!formData.value.name) {
-    testResult.value = { success: false, message: '请填写服务器名称' }
+    testResult.value = { success: false, message: t('mcpSettings.pleaseInputServerName') }
     return
   }
 
@@ -237,15 +248,15 @@ const testConnection = async () => {
     if (result.success) {
       testResult.value = {
         success: true,
-        message: `连接成功! 工具: ${result.toolCount}, 资源: ${result.resourceCount}, 提示: ${result.promptCount}`
+        message: t('mcpSettings.connectionSuccess', { tools: result.toolCount, resources: result.resourceCount, prompts: result.promptCount })
       }
     } else {
-      testResult.value = { success: false, message: result.error || '连接失败' }
+      testResult.value = { success: false, message: result.error || t('mcpSettings.connectionFailed') }
     }
   } catch (error) {
     testResult.value = {
       success: false,
-      message: error instanceof Error ? error.message : '测试失败'
+      message: error instanceof Error ? error.message : t('mcpSettings.testFailed')
     }
   } finally {
     testing.value = false
@@ -290,7 +301,7 @@ const saveServer = async () => {
 
 // 删除服务器
 const deleteServer = async (server: McpServerConfig) => {
-  if (confirm(`确定要删除 "${server.name}" 吗？`)) {
+  if (confirm(t('mcpSettings.confirmDelete', { name: server.name }))) {
     await window.electronAPI.mcp.deleteServer(server.id)
     await loadServers()
   }
@@ -318,10 +329,10 @@ const connectServer = async (server: McpServerConfig) => {
     const plainServer = JSON.parse(JSON.stringify(server))
     const result = await window.electronAPI.mcp.connect(plainServer)
     if (!result.success) {
-      alert(`连接失败: ${result.error}`)
+      alert(`${t('mcpSettings.connectFailed')}: ${result.error}`)
     }
   } catch (error) {
-    alert(`连接失败: ${error instanceof Error ? error.message : '未知错误'}`)
+    alert(`${t('mcpSettings.connectFailed')}: ${error instanceof Error ? error.message : t('common.unknown')}`)
   } finally {
     connecting.value = null
     await refreshStatuses()
@@ -355,7 +366,7 @@ const connectAllEnabled = async () => {
   const results = await window.electronAPI.mcp.connectEnabledServers()
   const failed = results.filter(r => !r.success)
   if (failed.length > 0) {
-    alert(`部分服务器连接失败:\n${failed.map(f => `${f.id}: ${f.error}`).join('\n')}`)
+    alert(`${t('mcpSettings.partialConnectFailed')}:\n${failed.map(f => `${f.id}: ${f.error}`).join('\n')}`)
   }
   await refreshStatuses()
 }
@@ -433,20 +444,20 @@ onUnmounted(() => {
               type="checkbox"
               :checked="server.enabled"
               @change="toggleEnabled(server)"
-              title="启用/禁用"
+              :title="t('mcpSettings.toggleEnable')"
             />
           </div>
           <div class="server-info" @click="server.enabled && viewServerDetails(server)">
             <div class="server-name">
               {{ server.name }}
               <span class="server-status" v-if="getServerStatus(server.id)?.connected">
-                ● 已连接
+                ● {{ t('mcpSettings.connected') }}
               </span>
             </div>
             <div class="server-detail">
               {{ server.transport === 'stdio' ? server.command : server.url }}
               <template v-if="getServerStatus(server.id)?.connected">
-                · {{ getServerStatus(server.id)?.toolCount }} 工具
+                · {{ t('mcpSettings.toolsCount', { count: getServerStatus(server.id)?.toolCount }) }}
               </template>
             </div>
           </div>
@@ -457,7 +468,7 @@ onUnmounted(() => {
                 class="btn-icon btn-sm" 
                 @click="connectServer(server)"
                 :disabled="connecting === server.id"
-                title="连接"
+                :title="t('common.connect')"
               >
                 <svg v-if="connecting !== server.id" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polygon points="5 3 19 12 5 21 5 3"/>
@@ -468,7 +479,7 @@ onUnmounted(() => {
                 v-else
                 class="btn-icon btn-sm" 
                 @click="disconnectServer(server)"
-                title="断开"
+                :title="t('common.disconnect')"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="6" y="4" width="4" height="16"/>
@@ -476,13 +487,13 @@ onUnmounted(() => {
                 </svg>
               </button>
             </template>
-            <button class="btn-icon btn-sm" @click="openEditServer(server)" title="编辑">
+            <button class="btn-icon btn-sm" @click="openEditServer(server)" :title="t('common.edit')">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
               </svg>
             </button>
-            <button class="btn-icon btn-sm" @click="deleteServer(server)" title="删除">
+            <button class="btn-icon btn-sm" @click="deleteServer(server)" :title="t('common.delete')">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="3 6 5 6 21 6"/>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -511,7 +522,7 @@ onUnmounted(() => {
 
       <!-- 快速模板 -->
       <div class="templates" v-if="!editingServer">
-        <span class="template-label">快速填充：</span>
+        <span class="template-label">{{ t('mcpSettings.quickFill') }}</span>
         <button
           v-for="template in templates"
           :key="template.name"
@@ -524,48 +535,48 @@ onUnmounted(() => {
 
       <div class="form-body">
         <div class="form-group">
-          <label class="form-label">服务器名称 *</label>
-          <input v-model="formData.name" type="text" class="input" placeholder="例如：本地文件服务" />
+          <label class="form-label">{{ t('mcpSettings.serverName') }} *</label>
+          <input v-model="formData.name" type="text" class="input" :placeholder="t('mcpSettings.serverNamePlaceholder2')" />
         </div>
 
         <div class="form-group">
-          <label class="form-label">传输方式</label>
+          <label class="form-label">{{ t('mcpSettings.transport') }}</label>
           <div class="transport-select">
             <label class="radio-item">
               <input type="radio" v-model="formData.transport" value="stdio" />
-              <span>Stdio (本地进程)</span>
+              <span>{{ t('mcpSettings.transportStdioLabel') }}</span>
             </label>
             <label class="radio-item">
               <input type="radio" v-model="formData.transport" value="sse" />
-              <span>SSE (远程服务)</span>
+              <span>{{ t('mcpSettings.transportSseLabel') }}</span>
             </label>
           </div>
         </div>
 
         <template v-if="formData.transport === 'stdio'">
           <div class="form-group">
-            <label class="form-label">命令 *</label>
-            <input v-model="formData.command" type="text" class="input" placeholder="例如：npx、node、python" />
+            <label class="form-label">{{ t('mcpSettings.command') }} *</label>
+            <input v-model="formData.command" type="text" class="input" :placeholder="t('mcpSettings.commandPlaceholder2')" />
           </div>
           <div class="form-group">
-            <label class="form-label">参数 (每行一个)</label>
+            <label class="form-label">{{ t('mcpSettings.argsPerLine') }}</label>
             <textarea v-model="argsText" class="input textarea" placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/path/to/dir" rows="3"></textarea>
           </div>
           <div class="form-group">
-            <label class="form-label">环境变量 (KEY=VALUE 格式，每行一个)</label>
+            <label class="form-label">{{ t('mcpSettings.envPerLine') }}</label>
             <textarea v-model="envText" class="input textarea" placeholder="GITHUB_PERSONAL_ACCESS_TOKEN=ghp_xxxx&#10;API_KEY=sk-xxxx" rows="2"></textarea>
-            <span class="form-hint">GitHub Token 需要有 repo 权限；其他 API Key 请参考对应服务文档</span>
+            <span class="form-hint">{{ t('mcpSettings.envHint') }}</span>
           </div>
           <div class="form-group">
-            <label class="form-label">工作目录</label>
-            <input v-model="formData.cwd" type="text" class="input" placeholder="可选，留空使用默认" />
+            <label class="form-label">{{ t('mcpSettings.workingDir') }}</label>
+            <input v-model="formData.cwd" type="text" class="input" :placeholder="t('mcpSettings.workingDirPlaceholder')" />
           </div>
         </template>
 
         <template v-else>
           <div class="form-group">
-            <label class="form-label">SSE URL *</label>
-            <input v-model="formData.url" type="text" class="input" placeholder="http://localhost:3000/sse" />
+            <label class="form-label">{{ t('mcpSettings.sseUrl') }} *</label>
+            <input v-model="formData.url" type="text" class="input" :placeholder="t('mcpSettings.urlPlaceholder')" />
           </div>
         </template>
 
@@ -577,11 +588,11 @@ onUnmounted(() => {
 
       <div class="form-footer">
         <button class="btn" @click="testConnection" :disabled="testing">
-          {{ testing ? '测试中...' : '测试连接' }}
+          {{ testing ? t('mcpSettings.testing') : t('mcpSettings.testConnection') }}
         </button>
         <div class="form-footer-right">
-          <button class="btn" @click="showForm = false">取消</button>
-          <button class="btn btn-primary" @click="saveServer">保存</button>
+          <button class="btn" @click="showForm = false">{{ t('common.cancel') }}</button>
+          <button class="btn btn-primary" @click="saveServer">{{ t('common.save') }}</button>
         </div>
       </div>
     </div>
@@ -601,38 +612,38 @@ onUnmounted(() => {
         <div class="details-body">
           <!-- 工具列表 -->
           <div class="details-section">
-            <h5>工具 ({{ serverTools.length }})</h5>
+            <h5>{{ t('mcpSettings.tools') }} ({{ serverTools.length }})</h5>
             <div v-if="serverTools.length > 0" class="details-list">
               <div v-for="tool in serverTools" :key="tool.name" class="details-item">
                 <div class="item-name">{{ tool.name }}</div>
                 <div class="item-desc">{{ tool.description }}</div>
               </div>
             </div>
-            <div v-else class="empty-list">无可用工具</div>
+            <div v-else class="empty-list">{{ t('mcpSettings.noToolsAvailable') }}</div>
           </div>
 
           <!-- 资源列表 -->
           <div class="details-section">
-            <h5>资源 ({{ serverResources.length }})</h5>
+            <h5>{{ t('mcpSettings.resources') }} ({{ serverResources.length }})</h5>
             <div v-if="serverResources.length > 0" class="details-list">
               <div v-for="resource in serverResources" :key="resource.uri" class="details-item">
                 <div class="item-name">{{ resource.name }}</div>
                 <div class="item-desc">{{ resource.uri }}</div>
               </div>
             </div>
-            <div v-else class="empty-list">无可用资源</div>
+            <div v-else class="empty-list">{{ t('mcpSettings.noResources') }}</div>
           </div>
 
           <!-- 提示模板列表 -->
           <div class="details-section">
-            <h5>提示模板 ({{ serverPrompts.length }})</h5>
+            <h5>{{ t('mcpSettings.prompts') }} ({{ serverPrompts.length }})</h5>
             <div v-if="serverPrompts.length > 0" class="details-list">
               <div v-for="prompt in serverPrompts" :key="prompt.name" class="details-item">
                 <div class="item-name">{{ prompt.name }}</div>
                 <div class="item-desc">{{ prompt.description }}</div>
               </div>
             </div>
-            <div v-else class="empty-list">无可用提示模板</div>
+            <div v-else class="empty-list">{{ t('mcpSettings.noPrompts') }}</div>
           </div>
         </div>
       </div>
