@@ -271,6 +271,16 @@ const electronAPI = {
       ipcRenderer.on(`ssh:data:${id}`, handler)
       return () => {
         ipcRenderer.removeListener(`ssh:data:${id}`, handler)
+        // 通知后端取消订阅，释放资源
+        ipcRenderer.send('ssh:unsubscribe', id)
+      }
+    },
+    // 监听 SSH 断开连接事件
+    onDisconnected: (id: string, callback: (event: { reason: string; error?: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { reason: string; error?: string }) => callback(data)
+      ipcRenderer.on(`ssh:disconnected:${id}`, handler)
+      return () => {
+        ipcRenderer.removeListener(`ssh:disconnected:${id}`, handler)
       }
     }
   },

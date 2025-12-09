@@ -152,6 +152,7 @@ interface Window {
       resize: (id: string, cols: number, rows: number) => Promise<void>
       disconnect: (id: string) => Promise<void>
       onData: (id: string, callback: (data: string) => void) => () => void
+      onDisconnected: (id: string, callback: (event: { reason: string; error?: string }) => void) => () => void
     }
     terminalState: {
       init: (id: string, type: 'local' | 'ssh', initialCwd?: string) => Promise<void>

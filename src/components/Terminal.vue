@@ -28,6 +28,7 @@ let searchAddon: SearchAddon | null = null
 let screenService: TerminalScreenService | null = null
 let snapshotManager: TerminalSnapshotManager | null = null
 let unsubscribe: (() => void) | null = null
+let unsubscribeDisconnect: (() => void) | null = null  // SSH 断开连接事件取消订阅
 let resizeObserver: ResizeObserver | null = null
 let isDisposed = false
 let isPasting = false
@@ -225,6 +226,24 @@ onMounted(async () => {
         }
       }
     })
+
+    // 监听 SSH 断开连接事件
+    unsubscribeDisconnect = window.electronAPI.ssh.onDisconnected(props.ptyId, (event) => {
+      if (!isDisposed && terminal) {
+        // 更新连接状态
+        terminalStore.updateConnectionStatus(props.tabId, false)
+        // 在终端显示断开连接消息
+        const reasonMap: Record<string, string> = {
+          'closed': '连接已关闭',
+          'error': '连接错误',
+          'stream_closed': '数据流已关闭',
+          'jump_host_closed': '跳板机连接已断开'
+        }
+        const reasonText = reasonMap[event.reason] || event.reason
+        const errorText = event.error ? `: ${event.error}` : ''
+        terminal.write(`\r\n\x1b[31m[SSH 连接断开] ${reasonText}${errorText}\x1b[0m\r\n`)
+      }
+    })
   }
 
   // 监听选中文本变化
@@ -294,6 +313,10 @@ onUnmounted(() => {
   if (unsubscribe) {
     unsubscribe()
     unsubscribe = null
+  }
+  if (unsubscribeDisconnect) {
+    unsubscribeDisconnect()
+    unsubscribeDisconnect = null
   }
   if (resizeObserver) {
     resizeObserver.disconnect()

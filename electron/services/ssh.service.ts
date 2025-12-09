@@ -44,8 +44,17 @@ interface SshInstance {
   config: SshConfig
 }
 
+// 断开连接事件类型
+export interface SshDisconnectEvent {
+  id: string
+  reason: 'closed' | 'error' | 'stream_closed' | 'jump_host_closed'
+  error?: Error
+}
+
 export class SshService {
   private instances: Map<string, SshInstance> = new Map()
+  // 断开连接回调
+  private disconnectCallbacks: Map<string, ((event: SshDisconnectEvent) => void)[]> = new Map()
 
   /**
    * 建立 SSH 连接（支持跳板机）
@@ -146,6 +155,8 @@ export class SshService {
             // 监听关闭
             stream.on('close', () => {
               console.log(`SSH ${id} stream closed`)
+              // 触发断开连接事件（stream 关闭通常意味着连接断开）
+              this.emitDisconnect({ id, reason: 'stream_closed' })
               client.end()
             })
 
@@ -157,12 +168,16 @@ export class SshService {
 
       client.on('error', err => {
         console.error(`SSH ${id} error:`, err)
+        // 触发断开连接事件
+        this.emitDisconnect({ id, reason: 'error', error: err })
         this.instances.delete(id)
         reject(err)
       })
 
       client.on('close', () => {
         console.log(`SSH ${id} connection closed`)
+        // 触发断开连接事件（如果还没触发过）
+        this.emitDisconnect({ id, reason: 'closed' })
         this.instances.delete(id)
       })
 
@@ -263,6 +278,8 @@ export class SshService {
         // 跳板机关闭时，也关闭目标连接
         const instance = this.instances.get(id)
         if (instance) {
+          // 触发断开连接事件
+          this.emitDisconnect({ id, reason: 'jump_host_closed' })
           instance.client.end()
           this.instances.delete(id)
         }
@@ -317,6 +334,51 @@ export class SshService {
    */
   hasInstance(id: string): boolean {
     return this.instances.has(id)
+  }
+
+  /**
+   * 注册断开连接回调
+   * 当 SSH 连接断开时（无论是正常断开还是异常断开）都会触发
+   */
+  onDisconnect(id: string, callback: (event: SshDisconnectEvent) => void): () => void {
+    if (!this.disconnectCallbacks.has(id)) {
+      this.disconnectCallbacks.set(id, [])
+    }
+    this.disconnectCallbacks.get(id)!.push(callback)
+    
+    // 返回取消订阅函数
+    return () => {
+      const callbacks = this.disconnectCallbacks.get(id)
+      if (callbacks) {
+        const idx = callbacks.indexOf(callback)
+        if (idx > -1) {
+          callbacks.splice(idx, 1)
+        }
+        if (callbacks.length === 0) {
+          this.disconnectCallbacks.delete(id)
+        }
+      }
+    }
+  }
+
+  /**
+   * 触发断开连接事件
+   */
+  private emitDisconnect(event: SshDisconnectEvent): void {
+    const callbacks = this.disconnectCallbacks.get(event.id)
+    if (callbacks) {
+      // 复制数组，因为回调可能会修改原数组
+      const callbacksCopy = [...callbacks]
+      for (const callback of callbacksCopy) {
+        try {
+          callback(event)
+        } catch (e) {
+          console.error(`[SshService] Disconnect callback error:`, e)
+        }
+      }
+      // 清理回调
+      this.disconnectCallbacks.delete(event.id)
+    }
   }
 
   /**
@@ -536,9 +598,9 @@ export class SshService {
   }
 
   /**
-   * 获取 SSH 终端状态
-   * SSH 终端无法像本地 PTY 那样通过进程检测状态
-   * 需要依赖 TerminalStateService 的状态追踪
+   * 获取 SSH 终端状态（增强版）
+   * 使用独立的 exec channel 执行命令检测远程进程状态
+   * 不会影响主 shell 的显示
    */
   async getTerminalStatus(id: string): Promise<TerminalStatus> {
     const instance = this.instances.get(id)
@@ -549,10 +611,6 @@ export class SshService {
       }
     }
 
-    // SSH 终端无法直接获取远程进程状态
-    // 依赖 TerminalStateService 的状态追踪（通过 currentExecution 判断）
-    // 这里返回基本状态，让 TerminalAwarenessService 做进一步判断
-    
     // 检查 stream 是否可用
     if (!instance.stream) {
       return {
@@ -561,11 +619,151 @@ export class SshService {
       }
     }
 
-    // 对于 SSH 终端，默认返回"可能空闲"状态
-    // 实际的空闲判断由 TerminalAwarenessService 结合屏幕分析完成
+    // 尝试通过 exec channel 获取远程进程状态
+    try {
+      const processInfo = await this.execCommand(id, 'ps -o pid=,stat=,comm= -p $$ 2>/dev/null || echo "unknown"', 2000)
+      
+      if (processInfo && !processInfo.includes('unknown')) {
+        // 解析 ps 输出，检查 shell 进程状态
+        // S/S+ 表示睡眠（空闲），R 表示运行中
+        const lines = processInfo.trim().split('\n')
+        const lastLine = lines[lines.length - 1]
+        const parts = lastLine.trim().split(/\s+/)
+        
+        if (parts.length >= 2) {
+          const stat = parts[1]
+          const comm = parts[2] || 'shell'
+          
+          // S, S+, Ss, Ss+ 等表示睡眠状态（空闲）
+          // R, R+ 等表示运行状态
+          const isIdle = stat.startsWith('S') || stat.startsWith('I')
+          
+          return {
+            isIdle,
+            shellPid: parseInt(parts[0]) || undefined,
+            foregroundProcess: comm,
+            stateDescription: isIdle 
+              ? 'SSH 终端空闲（通过 exec channel 检测）' 
+              : `SSH 终端忙碌，进程: ${comm}`
+          }
+        }
+      }
+    } catch (err) {
+      // exec channel 失败，回退到基本检测
+      console.log(`[SshService] exec channel 状态检测失败: ${err}`)
+    }
+
+    // 回退方案：依赖 TerminalStateService 的状态追踪
+    // 这里返回基本状态，让 TerminalAwarenessService 结合屏幕分析判断
     return {
       isIdle: true,
       stateDescription: 'SSH 终端（状态由屏幕分析确定）'
+    }
+  }
+
+  /**
+   * 通过独立的 exec channel 执行命令
+   * 不会影响主 shell 的显示，适合用于状态检测
+   */
+  private execCommand(id: string, command: string, timeout: number = 5000): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const instance = this.instances.get(id)
+      if (!instance) {
+        reject(new Error('SSH instance not found'))
+        return
+      }
+
+      let output = ''
+      let resolved = false
+
+      // 设置超时
+      const timer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true
+          reject(new Error('exec timeout'))
+        }
+      }, timeout)
+
+      // 使用 exec 在独立 channel 上执行命令
+      instance.client.exec(command, (err, stream) => {
+        if (err) {
+          clearTimeout(timer)
+          if (!resolved) {
+            resolved = true
+            reject(err)
+          }
+          return
+        }
+
+        stream.on('data', (data: Buffer) => {
+          output += data.toString('utf-8')
+        })
+
+        stream.stderr.on('data', (data: Buffer) => {
+          // 忽略 stderr，或者可以记录
+          console.log(`[SshService] exec stderr: ${data.toString('utf-8')}`)
+        })
+
+        stream.on('close', () => {
+          clearTimeout(timer)
+          if (!resolved) {
+            resolved = true
+            resolve(output)
+          }
+        })
+
+        stream.on('error', (err: Error) => {
+          clearTimeout(timer)
+          if (!resolved) {
+            resolved = true
+            reject(err)
+          }
+        })
+      })
+    })
+  }
+
+  /**
+   * 获取远程 shell 的子进程信息
+   * 用于更精确地判断是否有命令正在执行
+   */
+  async getRemoteProcesses(id: string): Promise<{
+    shellPid?: number
+    children: { pid: number; comm: string; stat: string }[]
+  } | null> {
+    try {
+      // 获取当前 shell 的 PID 和子进程
+      const output = await this.execCommand(
+        id,
+        'echo "SHELL_PID=$$" && ps --ppid $$ -o pid=,stat=,comm= 2>/dev/null || ps -o pid=,stat=,comm= 2>/dev/null',
+        3000
+      )
+
+      const lines = output.trim().split('\n')
+      let shellPid: number | undefined
+      const children: { pid: number; comm: string; stat: string }[] = []
+
+      for (const line of lines) {
+        if (line.startsWith('SHELL_PID=')) {
+          shellPid = parseInt(line.split('=')[1])
+        } else {
+          const parts = line.trim().split(/\s+/)
+          if (parts.length >= 2) {
+            const pid = parseInt(parts[0])
+            if (!isNaN(pid)) {
+              children.push({
+                pid,
+                stat: parts[1],
+                comm: parts[2] || 'unknown'
+              })
+            }
+          }
+        }
+      }
+
+      return { shellPid, children }
+    } catch {
+      return null
     }
   }
 }

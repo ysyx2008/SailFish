@@ -154,7 +154,7 @@ const sftpService = new SftpService()
 const terminalStateService = initTerminalStateService(ptyService, sshService)
 
 // 终端感知服务（整合屏幕分析和进程监控）
-const terminalAwarenessService = initTerminalAwarenessService(ptyService, terminalStateService)
+const terminalAwarenessService = initTerminalAwarenessService(ptyService, terminalStateService, sshService)
 
 // 监听 CWD 变化，转发到前端
 terminalStateService.onCwdChange((event: CwdChangeEvent) => {
@@ -332,11 +332,28 @@ ipcMain.handle('ssh:resize', async (_event, id: string, cols: number, rows: numb
 })
 
 ipcMain.handle('ssh:disconnect', async (_event, id: string) => {
+  // 清理订阅
+  const unsubscribe = sshDataUnsubscribes.get(id)
+  if (unsubscribe) {
+    unsubscribe()
+    sshDataUnsubscribes.delete(id)
+  }
+  const disconnectUnsub = sshDisconnectUnsubscribes.get(id)
+  if (disconnectUnsub) {
+    disconnectUnsub()
+    sshDisconnectUnsubscribes.delete(id)
+  }
   sshService.disconnect(id)
 })
 
+// SSH 数据订阅的取消函数存储
+const sshDataUnsubscribes = new Map<string, () => void>()
+// SSH 断开连接订阅的取消函数存储
+const sshDisconnectUnsubscribes = new Map<string, () => void>()
+
 ipcMain.on('ssh:subscribe', (event, id: string) => {
-  sshService.onData(id, (data: string) => {
+  // 注册数据回调
+  const dataUnsubscribe = sshService.onData(id, (data: string) => {
     try {
       if (!event.sender.isDestroyed()) {
         event.sender.send(`ssh:data:${id}`, data)
@@ -345,6 +362,39 @@ ipcMain.on('ssh:subscribe', (event, id: string) => {
       // 忽略发送错误（窗口可能已关闭）
     }
   })
+  sshDataUnsubscribes.set(id, dataUnsubscribe)
+
+  // 注册断开连接回调，通知前端
+  const disconnectUnsubscribe = sshService.onDisconnect(id, (disconnectEvent) => {
+    try {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send(`ssh:disconnected:${id}`, {
+          reason: disconnectEvent.reason,
+          error: disconnectEvent.error?.message
+        })
+      }
+    } catch (e) {
+      // 忽略发送错误
+    }
+    // 清理订阅
+    sshDataUnsubscribes.delete(id)
+    sshDisconnectUnsubscribes.delete(id)
+  })
+  sshDisconnectUnsubscribes.set(id, disconnectUnsubscribe)
+})
+
+// SSH 取消订阅
+ipcMain.on('ssh:unsubscribe', (_event, id: string) => {
+  const dataUnsubscribe = sshDataUnsubscribes.get(id)
+  if (dataUnsubscribe) {
+    dataUnsubscribe()
+    sshDataUnsubscribes.delete(id)
+  }
+  const disconnectUnsubscribe = sshDisconnectUnsubscribes.get(id)
+  if (disconnectUnsubscribe) {
+    disconnectUnsubscribe()
+    sshDisconnectUnsubscribes.delete(id)
+  }
 })
 
 // ==================== 终端状态服务 ====================

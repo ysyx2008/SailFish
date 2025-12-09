@@ -476,6 +476,16 @@ export const useTerminalStore = defineStore('terminal', () => {
   }
 
   /**
+   * 更新连接状态
+   */
+  function updateConnectionStatus(tabId: string, isConnected: boolean): void {
+    const tab = tabs.value.find(t => t.id === tabId)
+    if (tab) {
+      tab.isConnected = isConnected
+    }
+  }
+
+  /**
    * 向终端写入数据
    */
   async function writeToTerminal(tabId: string, data: string): Promise<void> {
@@ -1010,6 +1020,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     closeTab,
     setActiveTab,
     updateTabTitle,
+    updateConnectionStatus,
     updateSystemInfo,
     appendOutput,
     clearError,

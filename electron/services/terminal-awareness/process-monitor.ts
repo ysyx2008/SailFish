@@ -3,6 +3,7 @@
  * 负责检测命令执行状态、卡死检测、输出速率分析等
  */
 import type { PtyService } from '../pty.service'
+import type { SshService } from '../ssh.service'
 import type { TerminalStateService, TerminalState, CommandExecution } from '../terminal-state.service'
 
 /** 进程运行状态 */
@@ -161,6 +162,7 @@ const OUTPUT_TRACKING_WINDOW = 10000
 
 export class ProcessMonitor {
   private ptyService?: PtyService
+  private sshService?: SshService
   private terminalStateService?: TerminalStateService
   
   /** 输出追踪器（按终端 ID）*/
@@ -169,17 +171,28 @@ export class ProcessMonitor {
   /** 卡死超时配置（毫秒）*/
   private stuckTimeout: number = DEFAULT_STUCK_TIMEOUT
 
-  constructor(ptyService?: PtyService, terminalStateService?: TerminalStateService) {
+  constructor(ptyService?: PtyService, terminalStateService?: TerminalStateService, sshService?: SshService) {
     this.ptyService = ptyService
     this.terminalStateService = terminalStateService
+    this.sshService = sshService
   }
 
   /**
    * 设置依赖服务
    */
-  setServices(ptyService: PtyService, terminalStateService: TerminalStateService): void {
+  setServices(ptyService: PtyService, terminalStateService: TerminalStateService, sshService?: SshService): void {
     this.ptyService = ptyService
     this.terminalStateService = terminalStateService
+    if (sshService) {
+      this.sshService = sshService
+    }
+  }
+
+  /**
+   * 设置 SSH 服务
+   */
+  setSshService(sshService: SshService): void {
+    this.sshService = sshService
   }
 
   /**
@@ -297,10 +310,10 @@ export class ProcessMonitor {
   }
 
   /**
-   * 获取 SSH 终端的进程状态
-   * SSH 终端无法通过本地进程检测，需要依赖其他信息
+   * 获取 SSH 终端的进程状态（增强版）
+   * 优先使用 exec channel 获取远程进程状态，回退到输出分析
    */
-  private getProcessStateForSsh(terminalState: TerminalState, ptyId: string): ProcessState {
+  private async getProcessStateForSsh(terminalState: TerminalState, ptyId: string): Promise<ProcessState> {
     // 获取输出追踪信息
     const outputTracker = this.outputTrackers.get(ptyId)
     const outputRate = this.calculateOutputRate(ptyId)
@@ -316,6 +329,60 @@ export class ProcessMonitor {
       ? Date.now() - lastOutputTime 
       : undefined
 
+    // 优先使用 SSH exec channel 获取远程进程状态
+    if (this.sshService) {
+      try {
+        const remoteProcesses = await this.sshService.getRemoteProcesses(ptyId)
+        if (remoteProcesses && remoteProcesses.children.length > 0) {
+          // 有子进程在运行，说明有命令正在执行
+          const child = remoteProcesses.children[0]
+          const commandType = this.classifyCommand(child.comm)
+          
+          if (commandType === 'interactive') {
+            return {
+              status: 'running_interactive',
+              foregroundProcess: child.comm,
+              pid: child.pid,
+              runningTime,
+              lastOutputTime,
+              outputRate,
+              suggestion: `SSH 终端: 交互式程序 ${child.comm} 正在运行（通过 exec channel 检测）。如需退出，可发送 Ctrl+C 或 q。`
+            }
+          }
+          
+          return {
+            status: outputRate && outputRate > 0.1 ? 'running_streaming' : 'running_silent',
+            foregroundProcess: child.comm,
+            pid: child.pid,
+            runningTime,
+            lastOutputTime,
+            outputRate,
+            suggestion: `SSH 终端: 进程 ${child.comm} (PID: ${child.pid}) 正在运行。${outputRate ? `输出速率: ${outputRate.toFixed(1)} 行/秒` : ''}`
+          }
+        } else if (remoteProcesses) {
+          // 没有子进程，shell 空闲
+          // 但还需要检查是否有持续输出（可能是后台任务）
+          if (outputRate && outputRate > 0.1) {
+            return {
+              status: 'running_streaming',
+              outputRate,
+              lastOutputTime,
+              suggestion: `SSH 终端检测到持续输出，可能有后台任务。输出速率: ${outputRate.toFixed(1)} 行/秒`
+            }
+          }
+          
+          return {
+            status: 'idle',
+            suggestion: 'SSH 终端空闲（通过 exec channel 确认），可以执行新命令'
+          }
+        }
+      } catch (err) {
+        // exec channel 失败，回退到传统检测
+        console.log(`[ProcessMonitor] SSH exec channel 检测失败，回退到传统方式: ${err}`)
+      }
+    }
+
+    // 回退方案：基于 terminalState 和输出分析
     // SSH 终端状态判断优先级：
     // 1. 如果 terminalState.isIdle 为 true（由提示符检测更新），认为空闲
     // 2. 如果有持续输出，认为正在执行命令
@@ -539,8 +606,8 @@ export function getProcessMonitor(): ProcessMonitor {
   return processMonitorInstance
 }
 
-export function initProcessMonitor(ptyService: PtyService, terminalStateService: TerminalStateService): ProcessMonitor {
+export function initProcessMonitor(ptyService: PtyService, terminalStateService: TerminalStateService, sshService?: SshService): ProcessMonitor {
   const monitor = getProcessMonitor()
-  monitor.setServices(ptyService, terminalStateService)
+  monitor.setServices(ptyService, terminalStateService, sshService)
   return monitor
 }

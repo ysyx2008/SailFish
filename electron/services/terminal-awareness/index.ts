@@ -3,6 +3,7 @@
  * 整合前端屏幕分析和后端进程监控，提供统一的终端状态感知能力
  */
 import type { PtyService } from '../pty.service'
+import type { SshService } from '../ssh.service'
 import type { TerminalStateService, TerminalState, CommandExecution } from '../terminal-state.service'
 import { ProcessMonitor, getProcessMonitor, initProcessMonitor, type ProcessState, type ProcessStatus } from './process-monitor'
 
@@ -123,6 +124,7 @@ export interface TerminalAwareness {
 
 export class TerminalAwarenessService {
   private ptyService?: PtyService
+  private sshService?: SshService
   private terminalStateService?: TerminalStateService
   private processMonitor: ProcessMonitor
   
@@ -132,23 +134,25 @@ export class TerminalAwarenessService {
   /** 缓存过期时间（毫秒）*/
   private readonly CACHE_TTL = 2000
 
-  constructor(ptyService?: PtyService, terminalStateService?: TerminalStateService) {
+  constructor(ptyService?: PtyService, terminalStateService?: TerminalStateService, sshService?: SshService) {
     this.ptyService = ptyService
+    this.sshService = sshService
     this.terminalStateService = terminalStateService
     this.processMonitor = getProcessMonitor()
     
     if (ptyService && terminalStateService) {
-      initProcessMonitor(ptyService, terminalStateService)
+      initProcessMonitor(ptyService, terminalStateService, sshService)
     }
   }
 
   /**
    * 设置依赖服务
    */
-  setServices(ptyService: PtyService, terminalStateService: TerminalStateService): void {
+  setServices(ptyService: PtyService, terminalStateService: TerminalStateService, sshService?: SshService): void {
     this.ptyService = ptyService
+    this.sshService = sshService
     this.terminalStateService = terminalStateService
-    initProcessMonitor(ptyService, terminalStateService)
+    initProcessMonitor(ptyService, terminalStateService, sshService)
   }
 
   /**
@@ -450,10 +454,11 @@ export function getTerminalAwarenessService(): TerminalAwarenessService {
 
 export function initTerminalAwarenessService(
   ptyService: PtyService, 
-  terminalStateService: TerminalStateService
+  terminalStateService: TerminalStateService,
+  sshService?: SshService
 ): TerminalAwarenessService {
   const service = getTerminalAwarenessService()
-  service.setServices(ptyService, terminalStateService)
+  service.setServices(ptyService, terminalStateService, sshService)
   return service
 }
 
