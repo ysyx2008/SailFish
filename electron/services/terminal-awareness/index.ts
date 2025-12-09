@@ -106,6 +106,7 @@ export interface TerminalAwareness {
   
   /** 终端基本状态（来自 TerminalStateService）*/
   terminalState?: {
+    type: 'local' | 'ssh'
     cwd: string
     lastCommand?: string
     lastExitCode?: number
@@ -257,74 +258,52 @@ export class TerminalAwarenessService {
       }
     }
 
-    // 检查是否有特殊输入等待（不是普通 prompt）
-    const hasSpecialInputWaiting = input.isWaiting && input.type !== 'prompt' && input.type !== 'none'
-    
-    // 检查前端是否检测到提示符（用于SSH终端的空闲判断）
-    const hasPromptFromScreen = input.isWaiting && input.type === 'prompt' && input.confidence > 0.7
-    
     // 是否是SSH终端
     const isSshTerminal = terminalState?.type === 'ssh'
 
-    if (hasSpecialInputWaiting) {
-      // 最高优先级：前端检测到等待输入（密码、确认、选择等）
-      status = 'waiting_input'
-      needsUserInput = true
-      canExecuteCommand = false
-      suggestion = getInputWaitingSuggestion(input.type, input.prompt, input.suggestedResponse, input.options)
-    } else if (processState.status === 'possibly_stuck') {
-      // 进程可能卡死
-      status = 'stuck'
+    if (isSshTerminal) {
+      // SSH 终端：简化处理，状态交给模型根据屏幕内容判断
+      // 只做基本的空闲判断：如果没有正在执行的 Agent 命令，就认为可以执行
+      const hasAgentExecution = !!terminalState?.currentExecution
+      status = hasAgentExecution ? 'busy' : 'idle'
       needsUserInput = false
-      canExecuteCommand = false
-      suggestion = processState.suggestion || '命令可能已卡死。建议使用 send_control_key 发送 Ctrl+C 中断。'
-    } else if (processState.status === 'idle') {
-      // 后端认为空闲 = 真正的空闲
-      status = 'idle'
-      needsUserInput = false
-      canExecuteCommand = true
-      suggestion = '终端空闲，可以执行新命令。'
-      
-      // 添加上下文信息
-      if (context.cwdFromPrompt) {
-        suggestion += ` 当前目录: ${context.cwdFromPrompt}`
-      }
-      if (context.activeEnvs.length > 0) {
-        suggestion += ` 激活的环境: ${context.activeEnvs.join(', ')}`
-      }
-    } else if (isSshTerminal && hasPromptFromScreen && !terminalState?.currentExecution) {
-      // SSH终端特殊处理：后端无法准确检测远程进程状态
-      // 如果前端检测到提示符且没有正在执行的Agent命令，认为是空闲
-      status = 'idle'
-      needsUserInput = false
-      canExecuteCommand = true
-      suggestion = 'SSH 终端空闲（通过屏幕分析检测到提示符），可以执行新命令。'
-      
-      if (context.cwdFromPrompt) {
-        suggestion += ` 当前目录: ${context.cwdFromPrompt}`
-      }
+      canExecuteCommand = !hasAgentExecution
+      suggestion = 'SSH 终端状态请根据屏幕内容判断'
     } else {
-      // 后端认为进程在运行（running_interactive, running_streaming, running_silent 等）
-      // 对于本地终端，即使前端误判为 prompt 也以后端为准
-      // 对于SSH终端，如果前端没检测到提示符，说明确实在忙
-      status = 'busy'
-      needsUserInput = false
-      canExecuteCommand = false
-      suggestion = processState.suggestion || '命令正在执行中，请等待完成。'
+      // 本地终端：基于 pgrep 进程检测，状态准确
       
-      // 如果有输出模式信息，添加到建议中
-      if (output.type === 'progress' && output.details?.progress !== undefined) {
-        suggestion += ` 进度: ${output.details.progress}%`
-        if (output.details.eta) {
-          suggestion += ` ETA: ${output.details.eta}`
+      // 检查是否有特殊输入等待（不是普通 prompt）
+      const hasSpecialInputWaiting = input.isWaiting && input.type !== 'prompt' && input.type !== 'none'
+
+      if (hasSpecialInputWaiting) {
+        // 最高优先级：前端检测到等待输入（密码、确认、选择等）
+        status = 'waiting_input'
+        needsUserInput = true
+        canExecuteCommand = false
+        suggestion = getInputWaitingSuggestion(input.type, input.prompt, input.suggestedResponse, input.options)
+      } else if (processState.status === 'possibly_stuck') {
+        // 进程可能卡死
+        status = 'stuck'
+        needsUserInput = false
+        canExecuteCommand = false
+        suggestion = processState.suggestion || '命令可能已卡死。建议使用 send_control_key 发送 Ctrl+C 中断。'
+      } else if (processState.status === 'idle') {
+        // 后端认为空闲 = 真正的空闲
+        status = 'idle'
+        needsUserInput = false
+        canExecuteCommand = true
+        suggestion = '终端空闲，可以执行新命令。'
+      } else {
+        // 后端认为进程在运行
+        status = 'busy'
+        needsUserInput = false
+        canExecuteCommand = false
+        suggestion = processState.suggestion || '命令正在执行中，请等待完成。'
+        
+        // 如果有进度信息，添加到建议中
+        if (output.type === 'progress' && output.details?.progress !== undefined) {
+          suggestion += ` 进度: ${output.details.progress}%`
         }
-      } else if (output.type === 'test' && output.details) {
-        const { testsPassed, testsFailed } = output.details
-        if (testsPassed !== undefined || testsFailed !== undefined) {
-          suggestion += ` 测试: ${testsPassed || 0} 通过, ${testsFailed || 0} 失败`
-        }
-      } else if (output.type === 'compilation') {
-        suggestion += ' (编译中...)'
       }
     }
 
@@ -335,6 +314,7 @@ export class TerminalAwarenessService {
       context,
       output,
       terminalState: terminalState ? {
+        type: terminalState.type === 'ssh' ? 'ssh' : 'local',
         cwd: terminalState.cwd,
         lastCommand: terminalState.lastCommand,
         lastExitCode: terminalState.lastExitCode,

@@ -32,17 +32,13 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'check_terminal_status',
-        description: `检查终端的完整状态，返回丰富的感知信息：
-1. **运行状态**: 空闲/忙碌/等待输入/可能卡死
-2. **输入等待**: 检测是否在等待密码、确认(y/n)、选择、或其他输入
-3. **进程信息**: 前台进程、运行时长、输出速率
-4. **环境信息**: 当前目录、用户、激活的虚拟环境
-5. **输出模式**: 是否有进度条、测试输出、日志流等
+        description: `检查终端状态并获取当前屏幕内容。返回：
+1. **终端类型**: 本地终端或 SSH 终端
+2. **运行状态**: 空闲/忙碌/未知（SSH 终端状态由你根据屏幕内容判断）
+3. **屏幕内容**: 当前可视区域的完整内容（用户看到的画面）
+4. **基本信息**: 当前目录、最近命令等
 
-在以下情况使用此工具：
-- 执行命令前，确认终端可以接受新命令
-- 命令超时后，判断是卡死还是正常运行
-- 需要了解终端当前在做什么`,
+本地终端状态检测准确（基于进程检测）；SSH 终端返回屏幕内容供你判断。`,
         parameters: {
           type: 'object',
           properties: {}
@@ -235,50 +231,6 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
             }
           },
           required: ['query']
-        }
-      }
-    },
-    {
-      type: 'function',
-      function: {
-        name: 'get_terminal_state',
-        description: '获取终端的完整状态信息，包括当前工作目录、最近执行的命令、命令执行历史等。比 check_terminal_status 更详细。',
-        parameters: {
-          type: 'object',
-          properties: {
-            include_history: {
-              type: 'boolean',
-              description: '是否包含命令执行历史，默认 false'
-            },
-            history_limit: {
-              type: 'number',
-              description: '历史记录数量限制，默认 5'
-            }
-          }
-        }
-      }
-    },
-    {
-      type: 'function',
-      function: {
-        name: 'get_visible_screen',
-        description: `获取终端当前可视区域的内容（用户看到的屏幕）。不同于 get_terminal_context 读取历史缓冲区，此工具返回的是终端窗口当前显示的实际内容。
-
-适用场景：
-- 查看全屏交互式程序的当前界面（如 top, htop, vim 状态行）
-- 检查终端当前显示的提示符或输出
-- 分析用户实际看到的内容
-- 检查进度条、状态栏等实时更新的信息
-
-注意：返回内容受终端窗口大小限制，通常为 80-120 列 x 24-40 行。`,
-        parameters: {
-          type: 'object',
-          properties: {
-            trim_empty: {
-              type: 'boolean',
-              description: '是否移除末尾空行，默认 true'
-            }
-          }
         }
       }
     },

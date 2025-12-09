@@ -197,12 +197,6 @@ export async function executeTool(
     case 'search_knowledge':
       return searchKnowledge(args, executor)
 
-    case 'get_terminal_state':
-      return getTerminalState(ptyId, args, executor)
-
-    case 'get_visible_screen':
-      return getVisibleScreen(ptyId, args, executor)
-
     case 'wait':
       return wait(args, executor)
 
@@ -969,8 +963,9 @@ async function getTerminalContext(
 }
 
 /**
- * 检查终端状态（增强版）
- * 使用终端感知服务提供更丰富的状态信息
+ * 检查终端状态（简化版）
+ * 本地终端：基于进程检测，状态准确
+ * SSH 终端：返回屏幕内容，由模型判断状态
  */
 async function checkTerminalStatus(
   ptyId: string,
@@ -985,130 +980,104 @@ async function checkTerminalStatus(
   })
 
   try {
-    // 使用增强的终端感知服务
     const awarenessService = getTerminalAwarenessService()
     const awareness = await awarenessService.getAwareness(ptyId)
+    const terminalType = awareness.terminalState?.type || 'local'
+    const isSsh = terminalType === 'ssh'
     
-    // 构建状态文本
-    let statusIcon = ''
-    let statusText = ''
+    // 获取屏幕可视内容
+    let screenContent: string[] = []
+    try {
+      const visibleContent = await awarenessService.getVisibleContent(ptyId)
+      if (visibleContent) {
+        // 移除末尾空行
+        screenContent = visibleContent
+        while (screenContent.length > 0 && screenContent[screenContent.length - 1].trim() === '') {
+          screenContent.pop()
+        }
+      }
+    } catch {
+      // 获取屏幕内容失败，继续
+    }
     
-    switch (awareness.status) {
-      case 'idle':
-        statusIcon = '✓'
-        statusText = '终端空闲，可以执行命令'
-        break
-      case 'busy':
-        statusIcon = '⏳'
-        statusText = '终端忙碌'
-        if (awareness.process.foregroundProcess) {
-          statusText += `，正在执行: ${awareness.process.foregroundProcess}`
-        }
-        break
-      case 'waiting_input':
-        statusIcon = '⌨️'
-        statusText = `终端等待输入 (${awareness.input.type})`
-        if (awareness.input.prompt) {
-          statusText += `\n提示: "${awareness.input.prompt}"`
-        }
-        break
-      case 'stuck':
-        statusIcon = '⚠️'
-        statusText = '终端可能卡死'
-        break
+    // 构建输出
+    const output: string[] = []
+    
+    // 1. 基本信息
+    output.push(`## 终端信息`)
+    output.push(`- 类型: ${isSsh ? 'SSH 远程终端' : '本地终端'}`)
+    if (awareness.terminalState?.cwd) {
+      output.push(`- 当前目录: ${awareness.terminalState.cwd}`)
     }
-
-    // 构建详情
-    const details: string[] = [
-      `## 终端状态: ${statusIcon} ${awareness.status === 'idle' ? '空闲' : awareness.status === 'busy' ? '忙碌' : awareness.status === 'waiting_input' ? '等待输入' : '可能卡死'}`
-    ]
-
-    // 输入等待信息
-    if (awareness.input.isWaiting && awareness.input.type !== 'prompt' && awareness.input.type !== 'none') {
-      details.push('')
-      details.push('### 输入等待')
-      details.push(`- 类型: ${awareness.input.type}`)
-      if (awareness.input.prompt) {
-        details.push(`- 提示: ${awareness.input.prompt}`)
-      }
-      if (awareness.input.options && awareness.input.options.length > 0) {
-        details.push(`- 选项: ${awareness.input.options.slice(0, 5).join(', ')}${awareness.input.options.length > 5 ? '...' : ''}`)
-      }
-      if (awareness.input.suggestedResponse) {
-        details.push(`- 建议响应: ${awareness.input.suggestedResponse}`)
-      }
-    }
-
-    // 进程信息
-    if (awareness.process.status !== 'idle') {
-      details.push('')
-      details.push('### 进程状态')
-      details.push(`- 状态: ${awareness.process.status}`)
-      if (awareness.process.foregroundProcess) {
-        details.push(`- 前台进程: ${awareness.process.foregroundProcess}`)
-      }
-      if (awareness.process.runningTime) {
-        details.push(`- 运行时长: ${Math.round(awareness.process.runningTime / 1000)}秒`)
-      }
-      if (awareness.process.outputRate !== undefined) {
-        details.push(`- 输出速率: ${awareness.process.outputRate.toFixed(1)} 行/秒`)
-      }
-    }
-
-    // 环境信息
-    if (awareness.terminalState?.cwd || awareness.context.activeEnvs.length > 0) {
-      details.push('')
-      details.push('### 环境')
-      if (awareness.terminalState?.cwd) {
-        details.push(`- 当前目录: ${awareness.terminalState.cwd}`)
-      }
-      if (awareness.context.user) {
-        details.push(`- 用户: ${awareness.context.user}${awareness.context.isRoot ? ' (root)' : ''}`)
-      }
-      if (awareness.context.activeEnvs.length > 0) {
-        details.push(`- 激活环境: ${awareness.context.activeEnvs.join(', ')}`)
-      }
-    }
-
-    // 最后命令信息
     if (awareness.terminalState?.lastCommand) {
-      details.push('')
-      details.push('### 最近命令')
-      details.push(`- 命令: ${awareness.terminalState.lastCommand}`)
+      output.push(`- 最近命令: ${awareness.terminalState.lastCommand}`)
       if (awareness.terminalState.lastExitCode !== undefined) {
-        details.push(`- 退出码: ${awareness.terminalState.lastExitCode}`)
+        output.push(`- 退出码: ${awareness.terminalState.lastExitCode}`)
       }
     }
-
-    // 输出模式
-    if (awareness.output.type !== 'normal' && awareness.output.confidence > 0.6) {
-      details.push('')
-      details.push('### 输出模式')
-      details.push(`- 类型: ${awareness.output.type}`)
-      if (awareness.output.details?.progress !== undefined) {
-        details.push(`- 进度: ${awareness.output.details.progress}%`)
+    
+    // 2. 状态判断
+    output.push('')
+    output.push(`## 状态`)
+    
+    if (isSsh) {
+      // SSH 终端：不做复杂判断，让模型根据屏幕内容自行判断
+      output.push(`- 状态: **请根据下方屏幕内容判断**`)
+      output.push(`- 说明: SSH 终端无法可靠检测远程进程状态，请观察屏幕内容：`)
+      output.push(`  - 如果看到 shell 提示符（如 $ 或 #），终端空闲`)
+      output.push(`  - 如果看到程序输出或进度，命令正在执行`)
+      output.push(`  - 如果看到 password/密码 提示，需要输入密码`)
+      output.push(`  - 如果看到 [y/n] 或选择提示，需要用户确认`)
+    } else {
+      // 本地终端：基于 pgrep 检测，状态准确
+      let statusText = ''
+      switch (awareness.status) {
+        case 'idle':
+          statusText = '✅ 空闲，可以执行命令'
+          break
+        case 'busy':
+          statusText = '⏳ 忙碌'
+          if (awareness.process.foregroundProcess) {
+            statusText += `，正在执行: ${awareness.process.foregroundProcess}`
+          }
+          if (awareness.process.runningTime) {
+            statusText += ` (${Math.round(awareness.process.runningTime / 1000)}秒)`
+          }
+          break
+        case 'waiting_input':
+          statusText = `⌨️ 等待输入 (${awareness.input.type})`
+          break
+        case 'stuck':
+          statusText = '⚠️ 可能卡死（长时间无输出）'
+          break
       }
-      if (awareness.output.details?.eta) {
-        details.push(`- 预计剩余: ${awareness.output.details.eta}`)
-      }
-      if (awareness.output.details?.testsPassed !== undefined || awareness.output.details?.testsFailed !== undefined) {
-        details.push(`- 测试: ${awareness.output.details.testsPassed || 0} 通过, ${awareness.output.details.testsFailed || 0} 失败`)
-      }
+      output.push(`- 状态: ${statusText}`)
+      output.push(`- 可执行命令: ${awareness.canExecuteCommand ? '是' : '否'}`)
     }
-
-    const detailsText = details.join('\n')
-
+    
+    // 3. 屏幕内容（关键！）
+    output.push('')
+    output.push(`## 当前屏幕内容`)
+    if (screenContent.length > 0) {
+      output.push('```')
+      output.push(screenContent.join('\n'))
+      output.push('```')
+    } else {
+      output.push('(无法获取屏幕内容)')
+    }
+    
+    const outputText = output.join('\n')
+    
+    // UI 显示简化版本
+    const displayStatus = isSsh ? '查看屏幕内容判断' : awareness.status
     executor.addStep({
       type: 'tool_result',
-      content: `${statusIcon} ${statusText}`,
+      content: `终端状态: ${displayStatus}`,
       toolName: 'check_terminal_status',
-      toolResult: detailsText
+      toolResult: screenContent.length > 0 ? `屏幕 ${screenContent.length} 行` : '(无屏幕内容)'
     })
 
-    // 构建完整输出
-    const output = `${statusIcon} ${statusText}\n\n${detailsText}\n\n---\n**建议**: ${awareness.suggestion}\n**可执行命令**: ${awareness.canExecuteCommand ? '是' : '否'}\n**需要用户输入**: ${awareness.needsUserInput ? '是' : '否'}`
-
-    return { success: true, output }
+    return { success: true, output: outputText }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '状态检测失败'
     executor.addStep({
@@ -1615,175 +1584,6 @@ async function searchKnowledge(
       type: 'tool_result',
       content: `搜索失败: ${errorMsg}`,
       toolName: 'search_knowledge'
-    })
-    return { success: false, output: '', error: errorMsg }
-  }
-}
-
-/**
- * 获取终端完整状态
- */
-async function getTerminalState(
-  ptyId: string,
-  args: Record<string, unknown>,
-  executor: ToolExecutorConfig
-): Promise<ToolResult> {
-  const includeHistory = args.include_history === true
-  const historyLimit = typeof args.history_limit === 'number' ? args.history_limit : 5
-
-  executor.addStep({
-    type: 'tool_call',
-    content: '获取终端状态',
-    toolName: 'get_terminal_state',
-    toolArgs: args,
-    riskLevel: 'safe'
-  })
-
-  try {
-    const terminalStateService = getTerminalStateService()
-    const state = terminalStateService.getState(ptyId)
-    const ptyStatus = await executor.terminalService.getTerminalStatus(ptyId)
-
-    if (!state) {
-      executor.addStep({
-        type: 'tool_result',
-        content: '终端状态未初始化',
-        toolName: 'get_terminal_state',
-        toolResult: '未找到终端状态'
-      })
-      return { success: false, output: '', error: '终端状态未初始化' }
-    }
-
-    const lines: string[] = [
-      '## 终端状态',
-      '',
-      `- **运行状态**: ${ptyStatus.isIdle ? '空闲' : '忙碌'}`,
-      `- **当前目录 (CWD)**: ${state.cwd}`,
-      `- **最后命令**: ${state.lastCommand || '无'}`,
-      `- **最后退出码**: ${state.lastExitCode !== undefined ? state.lastExitCode : '无'}`,
-    ]
-
-    if (ptyStatus.foregroundProcess) {
-      lines.push(`- **前台进程**: ${ptyStatus.foregroundProcess} (PID: ${ptyStatus.foregroundPid})`)
-    }
-
-    // 如果有正在执行的命令
-    const currentExecution = terminalStateService.getCurrentExecution(ptyId)
-    if (currentExecution) {
-      lines.push('')
-      lines.push('## 正在执行的命令')
-      lines.push(`- **命令**: ${currentExecution.command}`)
-      lines.push(`- **开始时间**: ${new Date(currentExecution.startTime).toLocaleString()}`)
-      lines.push(`- **执行目录**: ${currentExecution.cwdBefore}`)
-      if (currentExecution.output) {
-        const outputPreview = currentExecution.output.slice(-500)
-        lines.push(`- **输出预览** (最后500字符):`)
-        lines.push('```')
-        lines.push(outputPreview)
-        lines.push('```')
-      }
-    }
-
-    // 如果需要历史记录
-    if (includeHistory) {
-      const history = terminalStateService.getExecutionHistory(ptyId, historyLimit)
-      if (history.length > 0) {
-        lines.push('')
-        lines.push(`## 最近 ${history.length} 条命令历史`)
-        for (const exec of history) {
-          const duration = exec.duration ? `${exec.duration}ms` : '未知'
-          const status = exec.exitCode === 0 ? '✓' : `✗ (退出码: ${exec.exitCode})`
-          lines.push(`- ${status} \`${exec.command}\` (耗时: ${duration})`)
-        }
-      }
-    }
-
-    const output = lines.join('\n')
-
-    executor.addStep({
-      type: 'tool_result',
-      content: `CWD: ${state.cwd}, 状态: ${ptyStatus.isIdle ? '空闲' : '忙碌'}`,
-      toolName: 'get_terminal_state',
-      toolResult: output
-    })
-
-    return { success: true, output }
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : '获取状态失败'
-    executor.addStep({
-      type: 'tool_result',
-      content: `获取状态失败: ${errorMsg}`,
-      toolName: 'get_terminal_state',
-      toolResult: errorMsg
-    })
-    return { success: false, output: '', error: errorMsg }
-  }
-}
-
-/**
- * 获取终端可视区域内容
- */
-async function getVisibleScreen(
-  ptyId: string,
-  args: Record<string, unknown>,
-  executor: ToolExecutorConfig
-): Promise<ToolResult> {
-  const trimEmpty = args.trim_empty !== false // 默认 true
-
-  executor.addStep({
-    type: 'tool_call',
-    content: '获取终端屏幕内容',
-    toolName: 'get_visible_screen',
-    toolArgs: args,
-    riskLevel: 'safe'
-  })
-
-  try {
-    const awarenessService = getTerminalAwarenessService()
-    let visibleContent = awarenessService.getVisibleContent(ptyId)
-
-    if (!visibleContent || visibleContent.length === 0) {
-      executor.addStep({
-        type: 'tool_result',
-        content: '无法获取屏幕内容（可能终端还未初始化或缓存已过期）',
-        toolName: 'get_visible_screen',
-        toolResult: '屏幕内容不可用'
-      })
-      return { 
-        success: false, 
-        output: '', 
-        error: '无法获取屏幕内容。可能原因：终端未初始化、窗口未聚焦、或缓存已过期。请稍后重试或使用 get_terminal_context 获取历史输出。' 
-      }
-    }
-
-    // 移除末尾空行
-    if (trimEmpty) {
-      while (visibleContent.length > 0 && visibleContent[visibleContent.length - 1].trim() === '') {
-        visibleContent.pop()
-      }
-    }
-
-    const lineCount = visibleContent.length
-    const output = visibleContent.join('\n')
-
-    executor.addStep({
-      type: 'tool_result',
-      content: `获取屏幕内容: ${lineCount} 行`,
-      toolName: 'get_visible_screen',
-      toolResult: output.length > 500 ? output.slice(0, 500) + '...' : output
-    })
-
-    return { 
-      success: true, 
-      output: `## 终端可视区域 (${lineCount} 行)\n\`\`\`\n${output}\n\`\`\`` 
-    }
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : '获取屏幕内容失败'
-    executor.addStep({
-      type: 'tool_result',
-      content: `获取屏幕失败: ${errorMsg}`,
-      toolName: 'get_visible_screen',
-      toolResult: errorMsg
     })
     return { success: false, output: '', error: errorMsg }
   }
