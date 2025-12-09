@@ -5,7 +5,6 @@ import * as fs from 'fs'
 import * as path from 'path'
 import stripAnsi from 'strip-ansi'
 import type { ToolCall } from '../ai.service'
-import type { PtyService } from '../pty.service'
 import type { McpService } from '../mcp.service'
 import type { 
   AgentConfig, 
@@ -19,6 +18,7 @@ import { assessCommandRisk, analyzeCommand } from './risk-assessor'
 import { getKnowledgeService } from '../knowledge'
 import { getTerminalStateService } from '../terminal-state.service'
 import { getTerminalAwarenessService, getProcessMonitor } from '../terminal-awareness'
+import type { UnifiedTerminalInterface } from '../unified-terminal.service'
 
 // 错误分类
 type ErrorCategory = 'transient' | 'permission' | 'not_found' | 'timeout' | 'fatal'
@@ -124,7 +124,8 @@ async function withRetry<T>(
 
 // 工具执行器配置
 export interface ToolExecutorConfig {
-  ptyService: PtyService
+  /** 统一终端服务（支持 PTY 和 SSH） */
+  terminalService: UnifiedTerminalInterface
   hostProfileService?: HostProfileServiceInterface
   mcpService?: McpService
   addStep: (step: Omit<AgentStep, 'id' | 'timestamp'>) => AgentStep
@@ -427,11 +428,11 @@ async function executeCommand(
   const outputHandler = (data: string) => {
     terminalStateService.appendCommandOutput(ptyId, data)
   }
-  const unsubscribe = executor.ptyService.onData(ptyId, outputHandler)
+  const unsubscribe = executor.terminalService.onData(ptyId, outputHandler)
   
   try {
     const result = await withRetry(
-      () => executor.ptyService.executeInTerminal(ptyId, command, config.commandTimeout),
+      () => executor.terminalService.executeInTerminal(ptyId, command, config.commandTimeout),
       {
         maxRetries: 1,
         retryDelay: 500,
@@ -535,10 +536,10 @@ async function executeTimedCommand(
     dataHandler = (data: string) => {
       output += data
     }
-    executor.ptyService.onData(ptyId, dataHandler)
+    executor.terminalService.onData(ptyId, dataHandler)
     
     // 发送命令
-    executor.ptyService.write(ptyId, command + '\r')
+    executor.terminalService.write(ptyId, command + '\r')
     
     // 设置超时后发送退出信号
     setTimeout(async () => {
@@ -548,14 +549,14 @@ async function executeTimedCommand(
         'ctrl_d': '\x04',
         'q': 'q'
       }
-      executor.ptyService.write(ptyId, exitKeys[exitAction])
+      executor.terminalService.write(ptyId, exitKeys[exitAction])
       
       // 等待程序退出
       await new Promise(r => setTimeout(r, 500))
       
       // 如果是 q，可能还需要回车
       if (exitAction === 'q') {
-        executor.ptyService.write(ptyId, '\r')
+        executor.terminalService.write(ptyId, '\r')
         await new Promise(r => setTimeout(r, 200))
       }
 
@@ -950,7 +951,7 @@ async function sendControlKey(
 
   try {
     // 直接写入 PTY
-    executor.ptyService.write(ptyId, keySequence)
+    executor.terminalService.write(ptyId, keySequence)
     
     // 等待一小段时间让终端响应
     await new Promise(resolve => setTimeout(resolve, 300))
@@ -1002,11 +1003,11 @@ async function sendInput(
 
   try {
     // 发送文本
-    executor.ptyService.write(ptyId, text)
+    executor.terminalService.write(ptyId, text)
     
     // 如果需要按回车
     if (pressEnter) {
-      executor.ptyService.write(ptyId, '\r')
+      executor.terminalService.write(ptyId, '\r')
     }
     
     // 等待一小段时间让终端响应
@@ -1434,7 +1435,7 @@ async function getTerminalState(
   try {
     const terminalStateService = getTerminalStateService()
     const state = terminalStateService.getState(ptyId)
-    const ptyStatus = await executor.ptyService.getTerminalStatus(ptyId)
+    const ptyStatus = await executor.terminalService.getTerminalStatus(ptyId)
 
     if (!state) {
       executor.addStep({

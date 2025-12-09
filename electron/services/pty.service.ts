@@ -204,6 +204,13 @@ export class PtyService {
   }
 
   /**
+   * 检查 PTY 实例是否存在
+   */
+  hasInstance(id: string): boolean {
+    return this.instances.has(id)
+  }
+
+  /**
    * 生成唯一标记 ID
    */
   private generateMarkerId(): string {

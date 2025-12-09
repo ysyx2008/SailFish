@@ -5,8 +5,10 @@
 import type { AiService, AiMessage, ToolCall, ChatWithToolsResult } from '../ai.service'
 import { CommandExecutorService } from '../command-executor.service'
 import type { PtyService } from '../pty.service'
+import type { SshService } from '../ssh.service'
 import type { McpService } from '../mcp.service'
 import type { ConfigService } from '../config.service'
+import { UnifiedTerminalService } from '../unified-terminal.service'
 
 // 导入子模块
 import type {
@@ -48,6 +50,8 @@ export class AgentService {
   private aiService: AiService
   private commandExecutor: CommandExecutorService
   private ptyService: PtyService
+  private sshService?: SshService
+  private unifiedTerminalService?: UnifiedTerminalService
   private hostProfileService?: HostProfileServiceInterface
   private mcpService?: McpService
   private configService?: ConfigService
@@ -65,14 +69,31 @@ export class AgentService {
     ptyService: PtyService,
     hostProfileService?: HostProfileServiceInterface,
     mcpService?: McpService,
-    configService?: ConfigService
+    configService?: ConfigService,
+    sshService?: SshService
   ) {
     this.aiService = aiService
     this.ptyService = ptyService
+    this.sshService = sshService
     this.hostProfileService = hostProfileService
     this.mcpService = mcpService
     this.configService = configService
     this.commandExecutor = new CommandExecutorService()
+    
+    // 如果提供了 sshService，创建统一终端服务
+    if (sshService) {
+      this.unifiedTerminalService = new UnifiedTerminalService(ptyService, sshService)
+    }
+  }
+
+  /**
+   * 设置 SSH 服务（延迟初始化）
+   */
+  setSshService(sshService: SshService): void {
+    this.sshService = sshService
+    if (this.ptyService) {
+      this.unifiedTerminalService = new UnifiedTerminalService(this.ptyService, sshService)
+    }
   }
 
   /**
@@ -922,7 +943,9 @@ export class AgentService {
     
     // 注册终端输出监听器，实时收集输出
     const MAX_BUFFER_LINES = 200  // 缓冲区最大行数
-    run.outputUnsubscribe = this.ptyService.onData(ptyId, (data: string) => {
+    // 使用统一终端服务（支持 PTY 和 SSH），如果没有则回退到 ptyService
+    const terminalService = this.unifiedTerminalService || this.ptyService
+    run.outputUnsubscribe = terminalService.onData(ptyId, (data: string) => {
       // 将新输出按行分割并追加到缓冲区
       const newLines = data.split('\n')
       run.realtimeOutputBuffer.push(...newLines)
@@ -987,8 +1010,10 @@ export class AgentService {
     let lastResponse: ChatWithToolsResult | null = null
 
     // 创建工具执行器配置
+    // 使用统一终端服务（支持 PTY 和 SSH），如果没有则回退到 ptyService
+    const terminalServiceForExecutor = this.unifiedTerminalService || this.ptyService
     const toolExecutorConfig: ToolExecutorConfig = {
-      ptyService: this.ptyService,
+      terminalService: terminalServiceForExecutor as any,  // 类型兼容：PtyService 也实现了必要的方法
       hostProfileService: this.hostProfileService,
       mcpService: this.mcpService,
       addStep: (step) => this.addStep(agentId, step),

@@ -1,6 +1,16 @@
 import { Client, ClientChannel } from 'ssh2'
 import { v4 as uuidv4 } from 'uuid'
 import * as fs from 'fs'
+import stripAnsi from 'strip-ansi'
+
+// 终端状态接口（与 pty.service.ts 保持一致）
+export interface TerminalStatus {
+  isIdle: boolean
+  shellPid?: number
+  foregroundPid?: number
+  foregroundProcess?: string
+  stateDescription?: string
+}
 
 // 跳板机配置
 export interface JumpHostConfig {
@@ -284,12 +294,29 @@ export class SshService {
 
   /**
    * 注册数据回调
+   * 返回取消订阅函数
    */
-  onData(id: string, callback: (data: string) => void): void {
+  onData(id: string, callback: (data: string) => void): () => void {
     const instance = this.instances.get(id)
     if (instance) {
       instance.dataCallbacks.push(callback)
+      // 返回取消订阅函数
+      return () => {
+        const idx = instance.dataCallbacks.indexOf(callback)
+        if (idx > -1) {
+          instance.dataCallbacks.splice(idx, 1)
+        }
+      }
     }
+    // 如果实例不存在，返回空函数
+    return () => {}
+  }
+
+  /**
+   * 检查 SSH 实例是否存在
+   */
+  hasInstance(id: string): boolean {
+    return this.instances.has(id)
   }
 
   /**
@@ -381,6 +408,165 @@ export class SshService {
   getConfig(id: string): SshConfig | null {
     const instance = this.instances.get(id)
     return instance?.config || null
+  }
+
+  /**
+   * 在 SSH 终端执行命令并收集输出
+   * 通过检测 shell 提示符来判断命令完成
+   */
+  executeInTerminal(
+    id: string,
+    command: string,
+    timeout: number = 30000
+  ): Promise<{ output: string; duration: number }> {
+    return new Promise((resolve) => {
+      const instance = this.instances.get(id)
+      if (!instance?.stream) {
+        console.error(`[SshService] SSH 实例不存在: id=${id}, 现有实例: ${Array.from(this.instances.keys()).join(', ')}`)
+        resolve({ output: `SSH 终端实例不存在 (id=${id})`, duration: 0 })
+        return
+      }
+
+      // 保存 stream 引用，避免 TypeScript 的闭包分析问题
+      const stream = instance.stream
+      const startTime = Date.now()
+      let output = ''
+      let timeoutTimer: NodeJS.Timeout | null = null
+      let resolved = false
+      let commandStarted = false
+      let lastOutputTime = Date.now()
+      let checkTimer: NodeJS.Timeout | null = null
+
+      // 去除 ANSI 转义序列和控制字符（用于提示符检测）
+      const stripAnsiAndControlChars = (str: string): string => {
+        return stripAnsi(str)
+          .replace(/[\x00-\x09\x0b\x0c\x0e-\x1f]/g, '')
+      }
+
+      // 常见的 shell 提示符模式
+      const promptPatterns = [
+        /[$#%>❯➜»⟩›]\s*$/,                    // 常见结束符
+        /\w+@[\w.-]+\s+[~\/][\w\/.-]*\s*%\s*$/,  // macOS zsh: user@host ~ %
+        /\w+@[\w.-]+[^$#%]*[$#%]\s*$/,        // user@host 格式
+        /\[\w+@[\w.-]+[^\]]*\]\s*[$#%]\s*$/,  // [user@host path]$ 格式
+        /\w+\s*[$#%>❯➜»⟩›]\s*$/,             // 简单的 user$ 格式
+        /[~\/][\w\/.-]*\s*[$#%>❯]\s*$/,       // 路径 + 提示符
+        />\s*$/,                               // 简单的 > 提示符 (fish/powershell)
+      ]
+
+      const isPrompt = (text: string): boolean => {
+        const cleanText = stripAnsiAndControlChars(text)
+        const lines = cleanText.split(/[\r\n]/).filter(l => l.trim())
+        const lastLine = lines[lines.length - 1] || ''
+        const last80 = cleanText.slice(-80)
+        return promptPatterns.some(p => p.test(lastLine) || p.test(last80))
+      }
+
+      const cleanup = () => {
+        if (timeoutTimer) clearTimeout(timeoutTimer)
+        if (checkTimer) clearTimeout(checkTimer)
+        const idx = instance.dataCallbacks.indexOf(outputHandler)
+        if (idx !== -1) {
+          instance.dataCallbacks.splice(idx, 1)
+        }
+      }
+
+      const finish = () => {
+        if (resolved) return
+        resolved = true
+        cleanup()
+
+        // 清理输出
+        let cleanOutput = output
+        // 移除命令回显
+        const commandLines = command.split('\n')
+        for (const cmdLine of commandLines) {
+          const escaped = cmdLine.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          cleanOutput = cleanOutput.replace(new RegExp(`^.*${escaped}.*[\r\n]*`, 'm'), '')
+        }
+        // 移除末尾的提示符行
+        cleanOutput = cleanOutput.replace(/[\r\n][^\r\n]*[$#%>❯➜»⟩›]\s*$/, '')
+        // 清理多余的空行
+        cleanOutput = cleanOutput.replace(/^\s*[\r\n]+/, '').replace(/[\r\n]+\s*$/, '')
+
+        resolve({
+          output: cleanOutput,
+          duration: Date.now() - startTime
+        })
+      }
+
+      const outputHandler = (data: string) => {
+        output += data
+        lastOutputTime = Date.now()
+
+        // 命令开始后，检测提示符表示命令完成
+        if (!commandStarted && output.includes(command.split('\n')[0])) {
+          commandStarted = true
+        }
+
+        if (commandStarted) {
+          // 使用延迟检测，等待输出稳定
+          if (checkTimer) clearTimeout(checkTimer)
+          checkTimer = setTimeout(() => {
+            if (isPrompt(output)) {
+              finish()
+            }
+          }, 300) // 300ms 延迟，等待输出稳定
+        }
+      }
+
+      // 添加临时数据处理器
+      instance.dataCallbacks.push(outputHandler)
+
+      // 发送命令
+      stream.write(command + '\r')
+
+      // 超时处理
+      timeoutTimer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true
+          cleanup()
+          resolve({
+            output: output + '\n[命令执行超时]',
+            duration: Date.now() - startTime
+          })
+        }
+      }, timeout)
+    })
+  }
+
+  /**
+   * 获取 SSH 终端状态
+   * SSH 终端无法像本地 PTY 那样通过进程检测状态
+   * 需要依赖 TerminalStateService 的状态追踪
+   */
+  async getTerminalStatus(id: string): Promise<TerminalStatus> {
+    const instance = this.instances.get(id)
+    if (!instance) {
+      return {
+        isIdle: false,
+        stateDescription: 'SSH 终端实例不存在'
+      }
+    }
+
+    // SSH 终端无法直接获取远程进程状态
+    // 依赖 TerminalStateService 的状态追踪（通过 currentExecution 判断）
+    // 这里返回基本状态，让 TerminalAwarenessService 做进一步判断
+    
+    // 检查 stream 是否可用
+    if (!instance.stream) {
+      return {
+        isIdle: false,
+        stateDescription: 'SSH stream 不可用'
+      }
+    }
+
+    // 对于 SSH 终端，默认返回"可能空闲"状态
+    // 实际的空闲判断由 TerminalAwarenessService 结合屏幕分析完成
+    return {
+      isIdle: true,
+      stateDescription: 'SSH 终端（状态由屏幕分析确定）'
+    }
   }
 }
 
