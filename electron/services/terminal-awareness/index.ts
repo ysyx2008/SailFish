@@ -4,14 +4,14 @@
  * 
  * 架构说明：
  * - xterm.js（前端）是终端状态的唯一真实来源
- * - 本服务通过 IPC 实时从前端获取屏幕分析结果
- * - 缓存仅作为 IPC 获取失败时的回退方案
+ * - 本服务通过 IPC 实时从前端获取屏幕分析结果，无缓存
+ * - ProcessMonitor 负责本地进程检测、命令分类、卡死检测
  */
 import type { PtyService } from '../pty.service'
 import type { SshService } from '../ssh.service'
 import type { TerminalStateService, TerminalState, CommandExecution } from '../terminal-state.service'
 import { ProcessMonitor, getProcessMonitor, initProcessMonitor, type ProcessState, type ProcessStatus } from './process-monitor'
-import { getScreenAnalysisFromFrontend, type ScreenAnalysis } from '../screen-content.service'
+import { getScreenAnalysisFromFrontend, getVisibleContentFromBuffer, type ScreenAnalysis } from '../screen-content.service'
 
 // ==================== 类型定义 ====================
 
@@ -135,12 +135,6 @@ export class TerminalAwarenessService {
   private sshService?: SshService
   private terminalStateService?: TerminalStateService
   private processMonitor: ProcessMonitor
-  
-  /** 缓存的前端分析结果（通过 IPC 更新）*/
-  private screenAnalysisCache: Map<string, ScreenAnalysisResult> = new Map()
-  
-  /** 缓存过期时间（毫秒）*/
-  private readonly CACHE_TTL = 2000
 
   constructor(ptyService?: PtyService, terminalStateService?: TerminalStateService, sshService?: SshService) {
     this.ptyService = ptyService
@@ -164,72 +158,16 @@ export class TerminalAwarenessService {
   }
 
   /**
-   * 更新前端屏幕分析结果（由 IPC 调用）
-   */
-  updateScreenAnalysis(ptyId: string, analysis: ScreenAnalysisResult): void {
-    const isWaitingInput = analysis.input?.isWaiting && 
-                           analysis.input?.type !== 'prompt' && 
-                           analysis.input?.type !== 'none'
-    
-    // 仅在检测到特殊输入等待状态时打印日志
-    if (isWaitingInput) {
-      console.log(`[TerminalAwareness] 检测到输入等待: type=${analysis.input.type}, prompt="${analysis.input.prompt}"`)
-    }
-    
-    this.screenAnalysisCache.set(ptyId, {
-      ...analysis,
-      timestamp: Date.now()
-    })
-  }
-
-  /**
-   * 获取缓存的屏幕分析结果
-   */
-  private getScreenAnalysis(ptyId: string): ScreenAnalysisResult | null {
-    const cached = this.screenAnalysisCache.get(ptyId)
-    if (!cached) return null
-    
-    const age = Date.now() - cached.timestamp
-    
-    // 智能缓存策略：
-    // 1. 如果检测到等待输入状态（密码、确认、选择等），缓存不过期
-    //    因为等待输入时终端不会有新输出，状态保持不变
-    // 2. 普通状态使用标准 TTL
-    const isWaitingInput = cached.input?.isWaiting && 
-                           cached.input?.type !== 'prompt' && 
-                           cached.input?.type !== 'none'
-    
-    if (isWaitingInput) {
-      // 等待输入状态：缓存最长保持 5 分钟（防止极端情况）
-      if (age > 300000) return null
-      return cached
-    }
-    
-    // 普通状态：使用标准 TTL
-    if (age > this.CACHE_TTL) {
-      return null
-    }
-    
-    return cached
-  }
-
-  /**
    * 获取终端当前可视区域内容
-   * 从缓存的屏幕分析结果中获取
+   * 实时从前端 xterm.js 获取
    */
-  getVisibleContent(ptyId: string): string[] | null {
-    const cached = this.screenAnalysisCache.get(ptyId)
-    if (!cached || !cached.visibleContent) return null
-    
-    // 可视内容使用更宽松的 TTL（5秒），因为屏幕内容变化相对较慢
-    const age = Date.now() - cached.timestamp
-    if (age > 5000) return null
-    
-    return cached.visibleContent
+  async getVisibleContent(ptyId: string): Promise<string[] | null> {
+    return getVisibleContentFromBuffer(ptyId, 2000)
   }
 
   /**
    * 获取完整的终端感知状态
+   * 实时从前端 xterm.js 获取屏幕分析结果
    */
   async getAwareness(ptyId: string): Promise<TerminalAwareness> {
     // 1. 获取进程状态（后端）
@@ -238,29 +176,16 @@ export class TerminalAwarenessService {
     // 2. 获取终端基本状态
     const terminalState = this.terminalStateService?.getState(ptyId)
 
-    // 3. 优先从前端实时获取屏幕分析（xterm.js 是唯一真实来源）
+    // 3. 实时从前端获取屏幕分析（xterm.js 是唯一真实来源）
     let screenAnalysis: ScreenAnalysisResult | null = null
     try {
-      const realtimeAnalysis = await getScreenAnalysisFromFrontend(ptyId, 2000)
-      if (realtimeAnalysis) {
-        screenAnalysis = realtimeAnalysis
-        // 同时更新缓存，供其他地方使用
-        this.screenAnalysisCache.set(ptyId, {
-          ...realtimeAnalysis,
-          timestamp: Date.now()
-        })
-      }
+      screenAnalysis = await getScreenAnalysisFromFrontend(ptyId, 2000)
     } catch (e) {
-      // 实时获取失败，记录日志
-      console.warn(`[TerminalAwareness] 实时获取屏幕分析失败: ${e}`)
+      // 实时获取失败，使用默认值（synthesizeAwareness 会处理 null）
+      console.warn(`[TerminalAwareness] 获取屏幕分析失败: ${e}`)
     }
 
-    // 4. 如果实时获取失败，回退到缓存
-    if (!screenAnalysis) {
-      screenAnalysis = this.getScreenAnalysis(ptyId)
-    }
-
-    // 5. 综合判断
+    // 4. 综合判断
     const awareness = this.synthesizeAwareness(processState, terminalState, screenAnalysis)
 
     return awareness
@@ -437,7 +362,6 @@ export class TerminalAwarenessService {
    * 清理终端数据
    */
   clearTerminal(ptyId: string): void {
-    this.screenAnalysisCache.delete(ptyId)
     this.processMonitor.clearTracker(ptyId)
   }
 

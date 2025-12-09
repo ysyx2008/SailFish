@@ -107,7 +107,7 @@ import { McpService } from './services/mcp.service'
 import { getKnowledgeService, KnowledgeService } from './services/knowledge'
 import type { KnowledgeSettings, SearchOptions, AddDocumentOptions, ModelTier } from './services/knowledge/types'
 import { initTerminalStateService, getTerminalStateService, type TerminalState, type CwdChangeEvent, type CommandExecution, type CommandExecutionEvent } from './services/terminal-state.service'
-import { initTerminalAwarenessService, getTerminalAwarenessService, type TerminalAwareness, type ScreenAnalysisResult } from './services/terminal-awareness'
+import { initTerminalAwarenessService, getTerminalAwarenessService, type TerminalAwareness } from './services/terminal-awareness'
 import { initScreenContentService } from './services/screen-content.service'
 
 // 禁用 GPU 加速可能导致的问题（可选）
@@ -499,11 +499,6 @@ ipcMain.handle('terminalState:clearExecutionHistory', async (_event, id: string)
 // 获取终端感知状态（综合分析）
 ipcMain.handle('terminalAwareness:getAwareness', async (_event, ptyId: string): Promise<TerminalAwareness> => {
   return terminalAwarenessService.getAwareness(ptyId)
-})
-
-// 更新前端屏幕分析结果（前端 -> 后端）
-ipcMain.handle('terminalAwareness:updateScreenAnalysis', async (_event, ptyId: string, analysis: ScreenAnalysisResult) => {
-  terminalAwarenessService.updateScreenAnalysis(ptyId, analysis)
 })
 
 // 追踪输出（用于输出速率计算）

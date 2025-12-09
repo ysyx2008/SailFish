@@ -503,40 +503,6 @@ const electronAPI = {
         timestamp: number
       }>,
 
-    // 更新前端屏幕分析结果（前端 -> 后端）
-    updateScreenAnalysis: (ptyId: string, analysis: {
-      input: {
-        isWaiting: boolean
-        type: 'password' | 'confirmation' | 'selection' | 'pager' | 'prompt' | 'editor' | 'custom_input' | 'none'
-        prompt?: string
-        options?: string[]
-        suggestedResponse?: string
-        confidence: number
-      }
-      output: {
-        type: 'progress' | 'compilation' | 'test' | 'log_stream' | 'error' | 'table' | 'normal'
-        confidence: number
-        details?: {
-          progress?: number
-          testsPassed?: number
-          testsFailed?: number
-          errorCount?: number
-          eta?: string
-        }
-      }
-      context: {
-        user?: string
-        hostname?: string
-        isRoot: boolean
-        cwdFromPrompt?: string
-        activeEnvs: string[]
-        sshDepth: number
-        promptType: 'bash' | 'zsh' | 'fish' | 'powershell' | 'cmd' | 'unknown'
-      }
-      timestamp: number
-    }) =>
-      ipcRenderer.invoke('terminalAwareness:updateScreenAnalysis', ptyId, analysis),
-
     // 追踪输出（用于输出速率计算）
     trackOutput: (ptyId: string, lineCount: number) =>
       ipcRenderer.invoke('terminalAwareness:trackOutput', ptyId, lineCount),

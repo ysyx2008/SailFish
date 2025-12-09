@@ -316,38 +316,6 @@ interface Window {
         needsUserInput: boolean
         timestamp: number
       }>
-      updateScreenAnalysis: (ptyId: string, analysis: {
-        input: {
-          isWaiting: boolean
-          type: 'password' | 'confirmation' | 'selection' | 'pager' | 'prompt' | 'editor' | 'custom_input' | 'none'
-          prompt?: string
-          options?: string[]
-          suggestedResponse?: string
-          confidence: number
-        }
-        output: {
-          type: 'progress' | 'compilation' | 'test' | 'log_stream' | 'error' | 'table' | 'normal'
-          confidence: number
-          details?: {
-            progress?: number
-            testsPassed?: number
-            testsFailed?: number
-            errorCount?: number
-            eta?: string
-          }
-        }
-        context: {
-          user?: string
-          hostname?: string
-          isRoot: boolean
-          cwdFromPrompt?: string
-          activeEnvs: string[]
-          sshDepth: number
-          promptType: 'bash' | 'zsh' | 'fish' | 'powershell' | 'cmd' | 'unknown'
-        }
-        visibleContent?: string[]
-        timestamp: number
-      }) => Promise<void>
       getVisibleContent: (ptyId: string) => Promise<string[] | null>
       trackOutput: (ptyId: string, lineCount: number) => Promise<void>
       canExecute: (ptyId: string) => Promise<boolean>
