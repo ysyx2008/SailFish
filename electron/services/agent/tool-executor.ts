@@ -186,10 +186,10 @@ export async function executeTool(
       return sendInput(ptyId, args, executor)
 
     case 'read_file':
-      return readFile(args, executor)
+      return readFile(ptyId, args, executor)
 
     case 'write_file':
-      return writeFile(args, toolCall.id, executor)
+      return writeFile(ptyId, args, toolCall.id, executor)
 
     case 'remember_info':
       return rememberInfo(args, executor)
@@ -1211,12 +1211,20 @@ async function sendInput(
  * 支持多种读取方式：完整读取、按行范围读取、从开头/末尾读取、仅查询文件信息
  */
 function readFile(
+  ptyId: string,
   args: Record<string, unknown>,
   executor: ToolExecutorConfig
 ): ToolResult {
-  const filePath = args.path as string
+  let filePath = args.path as string
   if (!filePath) {
     return { success: false, output: '', error: '文件路径不能为空' }
+  }
+
+  // 如果是相对路径，基于终端当前工作目录解析
+  if (!path.isAbsolute(filePath)) {
+    const terminalStateService = getTerminalStateService()
+    const cwd = terminalStateService.getCwd(ptyId)
+    filePath = path.resolve(cwd, filePath)
   }
 
   const infoOnly = args.info_only === true
@@ -1381,14 +1389,22 @@ ${sampleContent ? `### 文件预览（前10行）\n\`\`\`\n${sampleContent}\n\`\
  * 写入文件
  */
 async function writeFile(
+  ptyId: string,
   args: Record<string, unknown>,
   toolCallId: string,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
-  const filePath = args.path as string
+  let filePath = args.path as string
   const content = args.content as string
   if (!filePath) {
     return { success: false, output: '', error: '文件路径不能为空' }
+  }
+
+  // 如果是相对路径，基于终端当前工作目录解析
+  if (!path.isAbsolute(filePath)) {
+    const terminalStateService = getTerminalStateService()
+    const cwd = terminalStateService.getCwd(ptyId)
+    filePath = path.resolve(cwd, filePath)
   }
 
   // 文件写入需要确认
