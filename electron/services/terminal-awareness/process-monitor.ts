@@ -80,6 +80,10 @@ const SILENT_COMMANDS = [
   'read',
   'wait',
   
+  // Git 网络操作（克隆/拉取/推送可能较慢，且进度输出使用 \r 覆盖）
+  'git clone', 'git pull', 'git push', 'git fetch',
+  'git submodule update', 'git lfs pull', 'git lfs fetch',
+  
   // 文件传输
   'dd',
   'rsync',
