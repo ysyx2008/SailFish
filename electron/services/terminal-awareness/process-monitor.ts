@@ -202,7 +202,13 @@ export class ProcessMonitor {
       return { status: 'idle' }
     }
 
-    // 获取 PTY 级别的状态
+    // 对于 SSH 终端，无法通过本地进程检测状态
+    // 需要依赖 terminalState.isIdle（由提示符检测等机制更新）
+    if (terminalState.type === 'ssh') {
+      return this.getProcessStateForSsh(terminalState, ptyId)
+    }
+
+    // 获取 PTY 级别的状态（仅适用于本地终端）
     const ptyStatus = await this.ptyService.getTerminalStatus(ptyId)
     
     // 获取输出追踪信息
@@ -282,6 +288,92 @@ export class ProcessMonitor {
       status,
       foregroundProcess: ptyStatus.foregroundProcess,
       pid: ptyStatus.foregroundPid,
+      runningTime,
+      lastOutputTime,
+      outputRate,
+      isKnownLongRunning: commandType === 'silent',
+      suggestion
+    }
+  }
+
+  /**
+   * 获取 SSH 终端的进程状态
+   * SSH 终端无法通过本地进程检测，需要依赖其他信息
+   */
+  private getProcessStateForSsh(terminalState: TerminalState, ptyId: string): ProcessState {
+    // 获取输出追踪信息
+    const outputTracker = this.outputTrackers.get(ptyId)
+    const outputRate = this.calculateOutputRate(ptyId)
+    const lastOutputTime = outputTracker?.lastOutputTime
+
+    // 当前执行的命令
+    const currentExecution = terminalState.currentExecution
+    const runningTime = currentExecution 
+      ? Date.now() - currentExecution.startTime 
+      : undefined
+
+    const timeSinceLastOutput = lastOutputTime 
+      ? Date.now() - lastOutputTime 
+      : undefined
+
+    // SSH 终端状态判断优先级：
+    // 1. 如果 terminalState.isIdle 为 true（由提示符检测更新），认为空闲
+    // 2. 如果有持续输出，认为正在执行命令
+    // 3. 如果有当前执行的命令且运行时间较长无输出，可能卡死
+    // 4. 否则认为正在执行命令
+
+    if (terminalState.isIdle && !currentExecution) {
+      // 终端空闲（通过提示符检测确认）
+      // 额外检查是否有持续输出（可能是后台任务）
+      if (outputRate && outputRate > 0.1) {
+        return {
+          status: 'running_streaming',
+          outputRate,
+          lastOutputTime,
+          suggestion: `SSH 终端检测到持续输出，可能有命令正在运行。输出速率: ${outputRate.toFixed(1)} 行/秒`
+        }
+      }
+      
+      return {
+        status: 'idle',
+        suggestion: 'SSH 终端空闲，可以执行新命令'
+      }
+    }
+
+    // 有命令正在执行或终端非空闲
+    const command = currentExecution?.command || terminalState.lastCommand || ''
+    const commandType = this.classifyCommand(command)
+
+    let status: ProcessStatus
+    let suggestion: string | undefined
+
+    if (commandType === 'interactive') {
+      status = 'running_interactive'
+      suggestion = `SSH 终端: 交互式程序 ${command} 正在运行。如需退出，可发送 Ctrl+C 或 q。`
+    } else if (commandType === 'streaming' || (outputRate && outputRate > 0.5)) {
+      status = 'running_streaming'
+      suggestion = `SSH 终端: 持续输出命令正在运行。输出速率: ${outputRate?.toFixed(1) || 0} 行/秒`
+    } else if (commandType === 'silent') {
+      status = 'running_silent'
+      suggestion = `SSH 终端: 命令可能需要较长时间执行，请耐心等待。${runningTime ? `已运行: ${this.formatDuration(runningTime)}` : ''}`
+    } else {
+      // 普通命令，需要检测是否卡死
+      const isStuck = this.detectStuck(runningTime, timeSinceLastOutput, outputRate)
+      
+      if (isStuck) {
+        status = 'possibly_stuck'
+        suggestion = `SSH 终端: 命令可能已卡死（${this.formatDuration(timeSinceLastOutput || 0)} 无输出）。建议：1) 使用 get_terminal_context 查看最新输出；2) 如确认卡死，使用 send_control_key 发送 Ctrl+C。`
+      } else if (outputRate && outputRate > 0) {
+        status = 'running_streaming'
+        suggestion = `SSH 终端: 命令正在执行中，有持续输出。输出速率: ${outputRate.toFixed(1)} 行/秒`
+      } else {
+        status = 'running_silent'
+        suggestion = `SSH 终端: 命令正在执行中，暂无输出。${runningTime ? `已运行: ${this.formatDuration(runningTime)}` : ''}`
+      }
+    }
+
+    return {
+      status,
       runningTime,
       lastOutputTime,
       outputRate,

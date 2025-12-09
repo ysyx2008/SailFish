@@ -288,6 +288,12 @@ export class TerminalAwarenessService {
 
     // 检查是否有特殊输入等待（不是普通 prompt）
     const hasSpecialInputWaiting = input.isWaiting && input.type !== 'prompt' && input.type !== 'none'
+    
+    // 检查前端是否检测到提示符（用于SSH终端的空闲判断）
+    const hasPromptFromScreen = input.isWaiting && input.type === 'prompt' && input.confidence > 0.7
+    
+    // 是否是SSH终端
+    const isSshTerminal = terminalState?.type === 'ssh'
 
     if (hasSpecialInputWaiting) {
       // 最高优先级：前端检测到等待输入（密码、确认、选择等）
@@ -315,9 +321,21 @@ export class TerminalAwarenessService {
       if (context.activeEnvs.length > 0) {
         suggestion += ` 激活的环境: ${context.activeEnvs.join(', ')}`
       }
+    } else if (isSshTerminal && hasPromptFromScreen && !terminalState?.currentExecution) {
+      // SSH终端特殊处理：后端无法准确检测远程进程状态
+      // 如果前端检测到提示符且没有正在执行的Agent命令，认为是空闲
+      status = 'idle'
+      needsUserInput = false
+      canExecuteCommand = true
+      suggestion = 'SSH 终端空闲（通过屏幕分析检测到提示符），可以执行新命令。'
+      
+      if (context.cwdFromPrompt) {
+        suggestion += ` 当前目录: ${context.cwdFromPrompt}`
+      }
     } else {
       // 后端认为进程在运行（running_interactive, running_streaming, running_silent 等）
-      // 即使前端误判为 prompt 也不影响，以后端为准
+      // 对于本地终端，即使前端误判为 prompt 也以后端为准
+      // 对于SSH终端，如果前端没检测到提示符，说明确实在忙
       status = 'busy'
       needsUserInput = false
       canExecuteCommand = false
