@@ -366,7 +366,8 @@ ${buildPlanningGuidance()}
 |------|------|
 | execute_command | 在终端执行 Shell 命令 |
 | check_terminal_status | **【增强】** 检查终端完整状态，包括输入等待类型、进程状态、环境信息 |
-| get_terminal_context | 获取终端最近的输出内容 |
+| get_terminal_context | 获取终端最近的输出内容（历史缓冲区） |
+| get_visible_screen | 获取终端当前可视区域内容（用户看到的屏幕） |
 | send_control_key | 发送 Ctrl+C/D/Z 等控制键 |
 | wait | 等待指定时间，用于长耗时命令执行期间 |
 | read_file | 读取服务器上的文件内容 |

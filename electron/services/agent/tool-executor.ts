@@ -199,6 +199,9 @@ export async function executeTool(
     case 'get_terminal_state':
       return getTerminalState(ptyId, args, executor)
 
+    case 'get_visible_screen':
+      return getVisibleScreen(ptyId, args, executor)
+
     case 'wait':
       return wait(args, executor)
 
@@ -1690,6 +1693,75 @@ async function getTerminalState(
       type: 'tool_result',
       content: `获取状态失败: ${errorMsg}`,
       toolName: 'get_terminal_state',
+      toolResult: errorMsg
+    })
+    return { success: false, output: '', error: errorMsg }
+  }
+}
+
+/**
+ * 获取终端可视区域内容
+ */
+async function getVisibleScreen(
+  ptyId: string,
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const trimEmpty = args.trim_empty !== false // 默认 true
+
+  executor.addStep({
+    type: 'tool_call',
+    content: '获取终端屏幕内容',
+    toolName: 'get_visible_screen',
+    toolArgs: args,
+    riskLevel: 'safe'
+  })
+
+  try {
+    const awarenessService = getTerminalAwarenessService()
+    let visibleContent = awarenessService.getVisibleContent(ptyId)
+
+    if (!visibleContent || visibleContent.length === 0) {
+      executor.addStep({
+        type: 'tool_result',
+        content: '无法获取屏幕内容（可能终端还未初始化或缓存已过期）',
+        toolName: 'get_visible_screen',
+        toolResult: '屏幕内容不可用'
+      })
+      return { 
+        success: false, 
+        output: '', 
+        error: '无法获取屏幕内容。可能原因：终端未初始化、窗口未聚焦、或缓存已过期。请稍后重试或使用 get_terminal_context 获取历史输出。' 
+      }
+    }
+
+    // 移除末尾空行
+    if (trimEmpty) {
+      while (visibleContent.length > 0 && visibleContent[visibleContent.length - 1].trim() === '') {
+        visibleContent.pop()
+      }
+    }
+
+    const lineCount = visibleContent.length
+    const output = visibleContent.join('\n')
+
+    executor.addStep({
+      type: 'tool_result',
+      content: `获取屏幕内容: ${lineCount} 行`,
+      toolName: 'get_visible_screen',
+      toolResult: output.length > 500 ? output.slice(0, 500) + '...' : output
+    })
+
+    return { 
+      success: true, 
+      output: `## 终端可视区域 (${lineCount} 行)\n\`\`\`\n${output}\n\`\`\`` 
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : '获取屏幕内容失败'
+    executor.addStep({
+      type: 'tool_result',
+      content: `获取屏幕失败: ${errorMsg}`,
+      toolName: 'get_visible_screen',
       toolResult: errorMsg
     })
     return { success: false, output: '', error: errorMsg }

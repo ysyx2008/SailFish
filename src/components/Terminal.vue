@@ -51,7 +51,12 @@ const pushScreenAnalysis = () => {
     if (screenService && !isDisposed) {
       try {
         const awarenessState = screenService.getAwarenessState()
-        window.electronAPI.terminalAwareness.updateScreenAnalysis(props.ptyId, awarenessState)
+        // 同时推送可视区域内容，供 Agent 使用
+        const visibleContent = screenService.getVisibleContent()
+        window.electronAPI.terminalAwareness.updateScreenAnalysis(props.ptyId, {
+          ...awarenessState,
+          visibleContent
+        })
       } catch (e) {
         // 忽略分析错误
       }

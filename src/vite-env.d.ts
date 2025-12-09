@@ -345,8 +345,10 @@ interface Window {
           sshDepth: number
           promptType: 'bash' | 'zsh' | 'fish' | 'powershell' | 'cmd' | 'unknown'
         }
+        visibleContent?: string[]
         timestamp: number
       }) => Promise<void>
+      getVisibleContent: (ptyId: string) => Promise<string[] | null>
       trackOutput: (ptyId: string, lineCount: number) => Promise<void>
       canExecute: (ptyId: string) => Promise<boolean>
       getPreExecutionAdvice: (ptyId: string, command: string) => Promise<{

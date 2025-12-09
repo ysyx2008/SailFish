@@ -507,6 +507,11 @@ ipcMain.handle('terminalAwareness:trackOutput', async (_event, ptyId: string, li
   terminalAwarenessService.trackOutput(ptyId, lineCount)
 })
 
+// 获取终端可视区域内容
+ipcMain.handle('terminalAwareness:getVisibleContent', async (_event, ptyId: string): Promise<string[] | null> => {
+  return terminalAwarenessService.getVisibleContent(ptyId)
+})
+
 // 检查是否可以执行命令
 ipcMain.handle('terminalAwareness:canExecute', async (_event, ptyId: string): Promise<boolean> => {
   return terminalAwarenessService.canExecute(ptyId)

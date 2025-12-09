@@ -69,6 +69,8 @@ export interface ScreenAnalysisResult {
   input: InputWaitingState
   output: OutputPattern
   context: EnvironmentContext
+  /** 当前可视区域内容（按行） */
+  visibleContent?: string[]
   timestamp: number
 }
 
@@ -203,6 +205,21 @@ export class TerminalAwarenessService {
     }
     
     return cached
+  }
+
+  /**
+   * 获取终端当前可视区域内容
+   * 从缓存的屏幕分析结果中获取
+   */
+  getVisibleContent(ptyId: string): string[] | null {
+    const cached = this.screenAnalysisCache.get(ptyId)
+    if (!cached || !cached.visibleContent) return null
+    
+    // 可视内容使用更宽松的 TTL（5秒），因为屏幕内容变化相对较慢
+    const age = Date.now() - cached.timestamp
+    if (age > 5000) return null
+    
+    return cached.visibleContent
   }
 
   /**

@@ -541,6 +541,10 @@ const electronAPI = {
     trackOutput: (ptyId: string, lineCount: number) =>
       ipcRenderer.invoke('terminalAwareness:trackOutput', ptyId, lineCount),
 
+    // 获取终端可视区域内容
+    getVisibleContent: (ptyId: string) =>
+      ipcRenderer.invoke('terminalAwareness:getVisibleContent', ptyId) as Promise<string[] | null>,
+
     // 检查是否可以执行命令
     canExecute: (ptyId: string) =>
       ipcRenderer.invoke('terminalAwareness:canExecute', ptyId) as Promise<boolean>,

@@ -261,6 +261,30 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
     {
       type: 'function',
       function: {
+        name: 'get_visible_screen',
+        description: `获取终端当前可视区域的内容（用户看到的屏幕）。不同于 get_terminal_context 读取历史缓冲区，此工具返回的是终端窗口当前显示的实际内容。
+
+适用场景：
+- 查看全屏交互式程序的当前界面（如 top, htop, vim 状态行）
+- 检查终端当前显示的提示符或输出
+- 分析用户实际看到的内容
+- 检查进度条、状态栏等实时更新的信息
+
+注意：返回内容受终端窗口大小限制，通常为 80-120 列 x 24-40 行。`,
+        parameters: {
+          type: 'object',
+          properties: {
+            trim_empty: {
+              type: 'boolean',
+              description: '是否移除末尾空行，默认 true'
+            }
+          }
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
         name: 'wait',
         description: `等待指定时间后继续执行。用于长耗时命令执行期间，避免频繁查询状态消耗步骤。
 
