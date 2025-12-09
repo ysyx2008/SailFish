@@ -317,7 +317,6 @@ export class ProcessMonitor {
     const outputRate = this.calculateOutputRate(ptyId)
     const dataRate = this.calculateDataRate(ptyId)
     const lastOutputTime = outputTracker?.lastOutputTime
-    const hasActivity = this.hasActiveOutput(ptyId)
 
     // 当前执行的命令
     const currentExecution = terminalState.currentExecution
@@ -329,25 +328,7 @@ export class ProcessMonitor {
       ? Date.now() - lastOutputTime 
       : undefined
 
-    // **重要**: 首先检查是否有持续输出（适用于 curl 进度条等非换行输出）
-    // 这比 exec channel 检测更可靠，因为 exec channel 的 $$ 不是终端 shell 的 PID
-    if (hasActivity) {
-      // 有活动输出，说明命令正在执行
-      const command = currentExecution?.command || terminalState.lastCommand || ''
-      const commandType = this.classifyCommand(command)
-      
-      return {
-        status: commandType === 'interactive' ? 'running_interactive' : 'running_streaming',
-        foregroundProcess: command ? command.split(' ')[0] : undefined,
-        runningTime,
-        lastOutputTime,
-        outputRate,
-        suggestion: `SSH 终端检测到持续数据输出，命令正在运行。${dataRate ? `数据速率: ${(dataRate / 1024).toFixed(1)} KB/秒` : ''}`
-      }
-    }
-
-    // 尝试使用 SSH exec channel 获取远程进程状态（作为补充检测）
-    let execChannelDetectedIdle = false
+    // 1. 首先尝试使用 SSH exec channel 获取远程进程状态（最可靠的方式）
     if (this.sshService) {
       try {
         const remoteProcesses = await this.sshService.getRemoteProcesses(ptyId)
@@ -364,7 +345,7 @@ export class ProcessMonitor {
               runningTime,
               lastOutputTime,
               outputRate,
-              suggestion: `SSH 终端: 交互式程序 ${child.comm} 正在运行（通过 exec channel 检测）。如需退出，可发送 Ctrl+C 或 q。`
+              suggestion: `SSH 终端: 交互式程序 ${child.comm} 正在运行。如需退出，可发送 Ctrl+C 或 q。`
             }
           }
           
@@ -378,8 +359,16 @@ export class ProcessMonitor {
             suggestion: `SSH 终端: 进程 ${child.comm} (PID: ${child.pid}) 正在运行。${outputRate ? `输出速率: ${outputRate.toFixed(1)} 行/秒` : ''}`
           }
         } else {
-          // exec channel 检测到没有子进程运行，标记为空闲
-          execChannelDetectedIdle = true
+          // exec channel 检测到没有子进程运行，直接返回空闲
+          // 如果存在未清理的 currentExecution，自动清理它
+          if (currentExecution && this.terminalStateService) {
+            console.log(`[ProcessMonitor] SSH 终端检测到空闲，自动完成未清理的命令执行: ${currentExecution.command}`)
+            this.terminalStateService.completeCommandExecution(ptyId, 0, 'completed')
+          }
+          return {
+            status: 'idle',
+            suggestion: 'SSH 终端空闲，可以执行新命令'
+          }
         }
       } catch (err) {
         // exec channel 失败，继续使用传统检测
@@ -387,20 +376,27 @@ export class ProcessMonitor {
       }
     }
 
-    // 回退方案：基于 terminalState 和输出分析
-    // SSH 终端状态判断优先级：
-    // 1. 如果有持续输出，认为正在执行命令（已在上面处理）
-    // 2. 如果 terminalState.isIdle 为 true（由提示符检测更新），认为空闲
-    // 3. 如果 exec channel 检测没有子进程且无输出活动，认为空闲
-    // 4. 如果有当前执行的命令且运行时间较长无输出，可能卡死
-    // 5. 否则认为正在执行命令
-
-    // **关键修复**: 当检测到终端空闲时，即使 currentExecution 存在也应返回空闲
-    // 这修复了长耗时命令（如 curl）超时后 currentExecution 未被清理的问题
-    const detectedIdle = terminalState.isIdle || execChannelDetectedIdle
+    // 2. exec channel 不可用时，回退到传统检测方式
+    // 检查是否有持续输出（适用于 curl 进度条等非换行输出）
+    const hasActivity = this.hasActiveOutput(ptyId)
     
-    if (detectedIdle && !hasActivity) {
-      // 终端空闲（通过提示符检测或 exec channel 确认），且无持续输出
+    if (hasActivity) {
+      // 有活动输出，说明命令正在执行
+      const command = currentExecution?.command || terminalState.lastCommand || ''
+      const commandType = this.classifyCommand(command)
+      
+      return {
+        status: commandType === 'interactive' ? 'running_interactive' : 'running_streaming',
+        foregroundProcess: command ? command.split(' ')[0] : undefined,
+        runningTime,
+        lastOutputTime,
+        outputRate,
+        suggestion: `SSH 终端检测到持续数据输出，命令正在运行。${dataRate ? `数据速率: ${(dataRate / 1024).toFixed(1)} KB/秒` : ''}`
+      }
+    }
+
+    // 3. 检查 terminalState.isIdle（由提示符检测更新）
+    if (terminalState.isIdle) {
       // 如果存在未清理的 currentExecution，自动清理它
       if (currentExecution && this.terminalStateService) {
         console.log(`[ProcessMonitor] SSH 终端检测到空闲，自动完成未清理的命令执行: ${currentExecution.command}`)
