@@ -3,6 +3,13 @@ import path, { join } from 'path'
 import * as fs from 'fs'
 import { execSync } from 'child_process'
 
+// 开发模式下禁用硬件加速，避免热重载时 GPU 进程崩溃
+// 这个调用必须在 app.whenReady() 之前
+if (!app.isPackaged) {
+  app.disableHardwareAcceleration()
+  console.log('[Main] 开发模式：已禁用硬件加速以防止热重载崩溃')
+}
+
 // 读取 package.json 获取版本号（开发模式下 app.getVersion() 返回 Electron 版本）
 const packageJson = JSON.parse(fs.readFileSync(join(__dirname, '../package.json'), 'utf-8'))
 const APP_VERSION = packageJson.version
