@@ -18,7 +18,7 @@ import { assessCommandRisk, analyzeCommand, isSudoCommand, detectPasswordPrompt 
 import { getKnowledgeService } from '../knowledge'
 import { getTerminalStateService } from '../terminal-state.service'
 import { getTerminalAwarenessService, getProcessMonitor } from '../terminal-awareness'
-import { getLastNLinesFromBuffer } from '../screen-content.service'
+import { getLastNLinesFromBuffer, getScreenAnalysisFromFrontend } from '../screen-content.service'
 import type { UnifiedTerminalInterface } from '../unified-terminal.service'
 
 // 错误分类
@@ -879,9 +879,8 @@ async function getTerminalContext(
 }
 
 /**
- * 检查终端状态（简化版）
- * 本地终端：基于进程检测，状态准确
- * SSH 终端：返回屏幕内容，由模型判断状态
+ * 检查终端状态
+ * 结合进程检测和屏幕分析，提供准确的终端状态
  */
 async function checkTerminalStatus(
   ptyId: string,
@@ -901,19 +900,21 @@ async function checkTerminalStatus(
     const terminalType = awareness.terminalState?.type || 'local'
     const isSsh = terminalType === 'ssh'
     
-    // 从 xterm buffer 获取最后 50 行（不受用户滚动窗口影响）
-    let screenContent: string[] = []
+    // 1. 从前端获取完整的屏幕分析（输入等待、输出类型、环境信息）
+    let screenAnalysis = await getScreenAnalysisFromFrontend(ptyId, 2000)
+    
+    // 2. 从 xterm buffer 获取最后 50 行（不受用户滚动窗口影响）
+    let terminalOutput: string[] = []
     try {
       const bufferLines = await getLastNLinesFromBuffer(ptyId, 50, 3000)
       if (bufferLines && bufferLines.length > 0) {
-        // 移除 ANSI 转义序列和末尾空行
-        screenContent = bufferLines.map(line => stripAnsi(line))
-        while (screenContent.length > 0 && screenContent[screenContent.length - 1].trim() === '') {
-          screenContent.pop()
+        terminalOutput = bufferLines.map(line => stripAnsi(line))
+        while (terminalOutput.length > 0 && terminalOutput[terminalOutput.length - 1].trim() === '') {
+          terminalOutput.pop()
         }
       }
     } catch {
-      // 获取屏幕内容失败，继续
+      // 获取失败，继续
     }
     
     // 构建输出
@@ -928,21 +929,67 @@ async function checkTerminalStatus(
     if (awareness.terminalState?.lastCommand) {
       output.push(`- 最近命令: ${awareness.terminalState.lastCommand}`)
     }
+    // 环境信息（来自屏幕分析）
+    if (screenAnalysis?.context) {
+      const ctx = screenAnalysis.context
+      if (ctx.user || ctx.hostname) {
+        output.push(`- 用户@主机: ${ctx.user || '?'}@${ctx.hostname || '?'}${ctx.isRoot ? ' (root)' : ''}`)
+      }
+      if (ctx.activeEnvs.length > 0) {
+        output.push(`- 活跃环境: ${ctx.activeEnvs.join(', ')}`)
+      }
+      if (ctx.sshDepth > 0) {
+        output.push(`- SSH 嵌套层数: ${ctx.sshDepth}`)
+      }
+    }
     
     // 2. 状态判断
     output.push('')
     output.push(`## 状态`)
     
-    if (isSsh) {
-      // SSH 终端：不做复杂判断，让模型根据终端输出自行判断
+    // 2.1 输入等待检测（来自屏幕分析，优先级最高）
+    if (screenAnalysis?.input.isWaiting && screenAnalysis.input.confidence > 0.5) {
+      const input = screenAnalysis.input
+      let inputStatus = ''
+      switch (input.type) {
+        case 'password':
+          inputStatus = `🔐 等待密码输入`
+          break
+        case 'confirmation':
+          inputStatus = `❓ 等待确认 (${input.prompt || 'y/n'})`
+          break
+        case 'selection':
+          inputStatus = `📋 等待选择`
+          if (input.options && input.options.length > 0) {
+            inputStatus += `: ${input.options.slice(0, 5).join(', ')}${input.options.length > 5 ? '...' : ''}`
+          }
+          break
+        case 'pager':
+          inputStatus = `📖 分页器模式 (按 q 退出, 空格翻页)`
+          break
+        case 'editor':
+          inputStatus = `📝 编辑器模式 (无法通过 Agent 操作)`
+          break
+        case 'prompt':
+          inputStatus = `⌨️ 等待输入: ${input.prompt || ''}`
+          break
+        case 'custom_input':
+          inputStatus = `⌨️ 等待自定义输入: ${input.prompt || ''}`
+          break
+        default:
+          inputStatus = `⌨️ 等待输入`
+      }
+      output.push(`- 状态: ${inputStatus}`)
+      if (input.suggestedResponse) {
+        output.push(`- 建议响应: ${input.suggestedResponse}`)
+      }
+      output.push(`- 可执行命令: 否（需要先响应当前输入）`)
+    } else if (isSsh) {
+      // SSH 终端：基于屏幕分析判断
       output.push(`- 状态: **请根据下方终端输出判断**`)
-      output.push(`- 说明: SSH 终端无法可靠检测远程进程状态，请观察终端输出：`)
-      output.push(`  - 如果看到 shell 提示符（如 $ 或 #），终端空闲`)
-      output.push(`  - 如果看到程序输出或进度，命令正在执行`)
-      output.push(`  - 如果看到 password/密码 提示，需要输入密码`)
-      output.push(`  - 如果看到 [y/n] 或选择提示，需要用户确认`)
+      output.push(`- 说明: SSH 终端状态需要根据输出内容判断`)
     } else {
-      // 本地终端：基于 pgrep 检测，状态准确
+      // 本地终端：基于进程检测
       let statusText = ''
       switch (awareness.status) {
         case 'idle':
@@ -968,12 +1015,43 @@ async function checkTerminalStatus(
       output.push(`- 可执行命令: ${awareness.canExecuteCommand ? '是' : '否'}`)
     }
     
-    // 3. 最近终端输出（关键！）
+    // 2.2 输出模式识别（来自屏幕分析）
+    if (screenAnalysis && screenAnalysis.output.type !== 'normal' && (screenAnalysis.output.confidence ?? 0) > 0.5) {
+      const out = screenAnalysis.output
+      output.push('')
+      output.push(`## 输出类型`)
+      switch (out.type) {
+        case 'progress':
+          output.push(`- 📊 进度输出${out.details?.progress !== undefined ? ` (${out.details.progress}%)` : ''}`)
+          if (out.details?.eta) output.push(`- 预计剩余: ${out.details.eta}`)
+          break
+        case 'compilation':
+          output.push(`- 🔨 编译输出`)
+          if (out.details?.errorCount) output.push(`- 错误数: ${out.details.errorCount}`)
+          break
+        case 'test':
+          output.push(`- 🧪 测试输出`)
+          if (out.details?.testsPassed !== undefined) output.push(`- 通过: ${out.details.testsPassed}`)
+          if (out.details?.testsFailed !== undefined) output.push(`- 失败: ${out.details.testsFailed}`)
+          break
+        case 'log_stream':
+          output.push(`- 📜 日志流`)
+          break
+        case 'error':
+          output.push(`- ❌ 错误输出`)
+          break
+        case 'table':
+          output.push(`- 📋 表格输出`)
+          break
+      }
+    }
+    
+    // 3. 最近终端输出
     output.push('')
-    output.push(`## 最近终端输出（最后 ${screenContent.length} 行）`)
-    if (screenContent.length > 0) {
+    output.push(`## 最近终端输出（最后 ${terminalOutput.length} 行）`)
+    if (terminalOutput.length > 0) {
       output.push('```')
-      output.push(screenContent.join('\n'))
+      output.push(terminalOutput.join('\n'))
       output.push('```')
     } else {
       output.push('(无法获取终端输出)')
@@ -982,12 +1060,17 @@ async function checkTerminalStatus(
     const outputText = output.join('\n')
     
     // UI 显示简化版本
-    const displayStatus = isSsh ? '查看终端输出判断' : awareness.status
+    let displayStatus: string = awareness.status
+    if (screenAnalysis?.input.isWaiting && screenAnalysis.input.confidence > 0.5) {
+      displayStatus = `等待${screenAnalysis.input.type}`
+    } else if (isSsh) {
+      displayStatus = '查看输出判断'
+    }
     executor.addStep({
       type: 'tool_result',
       content: `终端状态: ${displayStatus}`,
       toolName: 'check_terminal_status',
-      toolResult: screenContent.length > 0 ? `输出 ${screenContent.length} 行` : '(无输出)'
+      toolResult: terminalOutput.length > 0 ? `输出 ${terminalOutput.length} 行` : '(无输出)'
     })
 
     return { success: true, output: outputText }
