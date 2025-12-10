@@ -172,14 +172,20 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'write_file',
-        description: `写入或创建本地文件。
+        description: `写入或创建本地文件。支持多种写入模式：
 
-⚠️ **仅支持本地文件**：此工具只能写入运行终端程序的本地机器上的文件。
-对于 SSH 远程主机，请使用 execute_command 执行命令来写入，例如：
-- 简单内容：echo "content" > file.txt
-- 多行内容：cat > file.txt << 'EOF'
-- 修改文件：sed -i 's/old/new/g' file.txt
-- 追加内容：echo "line" >> file.txt`,
+1. **覆盖模式（默认）**：mode='overwrite'，用 content 替换整个文件
+2. **追加模式**：mode='append'，在文件末尾追加 content
+3. **插入模式**：mode='insert'，在 insert_at_line 行之前插入 content
+4. **行替换模式**：mode='replace_lines'，用 content 替换 start_line 到 end_line 的内容
+5. **正则替换模式**：mode='regex_replace'，用正则表达式查找替换
+
+⚠️ **重要文件请先备份**：修改配置文件、脚本等重要文件前，必须先执行备份命令：
+\`cp file.txt file.txt.$(date +%Y%m%d_%H%M%S).bak\`
+不需要备份：新建文件、临时文件、日志文件、明确不重要的文件
+
+⚠️ **仅支持本地文件**：此工具只能写入本地机器上的文件。
+对于 SSH 远程主机，请使用 execute_command 执行命令来写入。`,
         parameters: {
           type: 'object',
           properties: {
@@ -189,10 +195,39 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
             },
             content: {
               type: 'string',
-              description: '文件内容'
+              description: '文件内容（覆盖/追加/插入/行替换模式必填）'
+            },
+            mode: {
+              type: 'string',
+              enum: ['overwrite', 'append', 'insert', 'replace_lines', 'regex_replace'],
+              description: '写入模式：overwrite（覆盖，默认）、append（追加）、insert（插入）、replace_lines（行替换）、regex_replace（正则替换）'
+            },
+            insert_at_line: {
+              type: 'number',
+              description: '插入位置的行号（insert 模式必填，在该行之前插入，从1开始）'
+            },
+            start_line: {
+              type: 'number',
+              description: '替换起始行号（replace_lines 模式必填，从1开始，包含该行）'
+            },
+            end_line: {
+              type: 'number',
+              description: '替换结束行号（replace_lines 模式必填，包含该行）'
+            },
+            pattern: {
+              type: 'string',
+              description: '正则表达式（regex_replace 模式必填）'
+            },
+            replacement: {
+              type: 'string',
+              description: '替换内容（regex_replace 模式必填，可使用 $1 $2 等捕获组）'
+            },
+            replace_all: {
+              type: 'boolean',
+              description: '是否替换所有匹配项（regex_replace 模式，默认 true）'
             }
           },
-          required: ['path', 'content']
+          required: ['path']
         }
       }
     },

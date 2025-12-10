@@ -1398,6 +1398,7 @@ ${sampleContent ? `### 文件预览（前10行）\n\`\`\`\n${sampleContent}\n\`\
 
 /**
  * 写入文件
+ * 支持多种模式：overwrite（覆盖）、append（追加）、insert（插入）、replace_lines（行替换）、regex_replace（正则替换）
  */
 async function writeFile(
   ptyId: string,
@@ -1406,9 +1407,54 @@ async function writeFile(
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   let filePath = args.path as string
-  const content = args.content as string
+  const content = args.content as string | undefined
+  const mode = (args.mode as string) || 'overwrite'
+  const insertAtLine = args.insert_at_line as number | undefined
+  const startLine = args.start_line as number | undefined
+  const endLine = args.end_line as number | undefined
+  const pattern = args.pattern as string | undefined
+  const replacement = args.replacement as string | undefined
+  const replaceAll = args.replace_all !== false // 默认 true
+
   if (!filePath) {
     return { success: false, output: '', error: '文件路径不能为空' }
+  }
+
+  // 验证模式和必要参数
+  const validModes = ['overwrite', 'append', 'insert', 'replace_lines', 'regex_replace']
+  if (!validModes.includes(mode)) {
+    return { success: false, output: '', error: `无效的写入模式: ${mode}，支持的模式: ${validModes.join(', ')}` }
+  }
+
+  // 验证各模式的必要参数
+  if (mode === 'overwrite' || mode === 'append') {
+    if (content === undefined) {
+      return { success: false, output: '', error: `${mode} 模式需要提供 content 参数` }
+    }
+  } else if (mode === 'insert') {
+    if (content === undefined) {
+      return { success: false, output: '', error: 'insert 模式需要提供 content 参数' }
+    }
+    if (insertAtLine === undefined || insertAtLine < 1) {
+      return { success: false, output: '', error: 'insert 模式需要提供有效的 insert_at_line 参数（从1开始）' }
+    }
+  } else if (mode === 'replace_lines') {
+    if (content === undefined) {
+      return { success: false, output: '', error: 'replace_lines 模式需要提供 content 参数' }
+    }
+    if (startLine === undefined || startLine < 1) {
+      return { success: false, output: '', error: 'replace_lines 模式需要提供有效的 start_line 参数（从1开始）' }
+    }
+    if (endLine === undefined || endLine < startLine) {
+      return { success: false, output: '', error: 'replace_lines 模式需要提供有效的 end_line 参数（必须 >= start_line）' }
+    }
+  } else if (mode === 'regex_replace') {
+    if (pattern === undefined) {
+      return { success: false, output: '', error: 'regex_replace 模式需要提供 pattern 参数' }
+    }
+    if (replacement === undefined) {
+      return { success: false, output: '', error: 'regex_replace 模式需要提供 replacement 参数' }
+    }
   }
 
   // 如果是相对路径，基于终端当前工作目录解析
@@ -1418,12 +1464,41 @@ async function writeFile(
     filePath = path.resolve(cwd, filePath)
   }
 
+  // 生成操作描述
+  let operationDesc = ''
+  switch (mode) {
+    case 'overwrite':
+      operationDesc = `覆盖写入文件: ${filePath}`
+      break
+    case 'append':
+      operationDesc = `追加写入文件: ${filePath}`
+      break
+    case 'insert':
+      operationDesc = `在第 ${insertAtLine} 行插入内容: ${filePath}`
+      break
+    case 'replace_lines':
+      operationDesc = `替换第 ${startLine}-${endLine} 行: ${filePath}`
+      break
+    case 'regex_replace':
+      operationDesc = `正则替换 (${replaceAll ? '全部' : '首个'}): ${filePath}`
+      break
+  }
+
   // 文件写入需要确认
   executor.addStep({
     type: 'tool_call',
-    content: `写入文件: ${filePath}`,
+    content: operationDesc,
     toolName: 'write_file',
-    toolArgs: { path: filePath, content: content?.substring(0, 100) + '...' },
+    toolArgs: { 
+      path: filePath, 
+      mode,
+      ...(content !== undefined && { content: content.length > 100 ? content.substring(0, 100) + '...' : content }),
+      ...(insertAtLine !== undefined && { insert_at_line: insertAtLine }),
+      ...(startLine !== undefined && { start_line: startLine }),
+      ...(endLine !== undefined && { end_line: endLine }),
+      ...(pattern !== undefined && { pattern }),
+      ...(replacement !== undefined && { replacement })
+    },
     riskLevel: 'moderate'
   })
 
@@ -1444,13 +1519,78 @@ async function writeFile(
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true })
     }
-    fs.writeFileSync(filePath, content, 'utf-8')
+
+    let resultMsg = ''
+    const fileExists = fs.existsSync(filePath)
+
+    switch (mode) {
+      case 'overwrite': {
+        fs.writeFileSync(filePath, content!, 'utf-8')
+        resultMsg = `文件已${fileExists ? '覆盖' : '创建'}: ${filePath}`
+        break
+      }
+      case 'append': {
+        fs.appendFileSync(filePath, content!, 'utf-8')
+        resultMsg = `内容已追加到: ${filePath}`
+        break
+      }
+      case 'insert': {
+        if (!fileExists) {
+          return { success: false, output: '', error: '文件不存在，无法执行插入操作' }
+        }
+        const lines = fs.readFileSync(filePath, 'utf-8').split('\n')
+        const insertIndex = Math.min(insertAtLine! - 1, lines.length)
+        const contentLines = content!.split('\n')
+        lines.splice(insertIndex, 0, ...contentLines)
+        fs.writeFileSync(filePath, lines.join('\n'), 'utf-8')
+        resultMsg = `已在第 ${insertAtLine} 行插入 ${contentLines.length} 行内容: ${filePath}`
+        break
+      }
+      case 'replace_lines': {
+        if (!fileExists) {
+          return { success: false, output: '', error: '文件不存在，无法执行行替换操作' }
+        }
+        const lines = fs.readFileSync(filePath, 'utf-8').split('\n')
+        const totalLines = lines.length
+        if (startLine! > totalLines) {
+          return { success: false, output: '', error: `起始行 ${startLine} 超出文件总行数 ${totalLines}` }
+        }
+        const actualEndLine = Math.min(endLine!, totalLines)
+        const deleteCount = actualEndLine - startLine! + 1
+        const contentLines = content!.split('\n')
+        lines.splice(startLine! - 1, deleteCount, ...contentLines)
+        fs.writeFileSync(filePath, lines.join('\n'), 'utf-8')
+        resultMsg = `已替换第 ${startLine}-${actualEndLine} 行（共 ${deleteCount} 行）为 ${contentLines.length} 行新内容: ${filePath}`
+        break
+      }
+      case 'regex_replace': {
+        if (!fileExists) {
+          return { success: false, output: '', error: '文件不存在，无法执行正则替换操作' }
+        }
+        const fileContent = fs.readFileSync(filePath, 'utf-8')
+        let regex: RegExp
+        try {
+          regex = new RegExp(pattern!, replaceAll ? 'g' : '')
+        } catch (e) {
+          return { success: false, output: '', error: `无效的正则表达式: ${pattern}` }
+        }
+        const matches = fileContent.match(regex)
+        if (!matches || matches.length === 0) {
+          return { success: false, output: '', error: `未找到匹配的内容: ${pattern}` }
+        }
+        const newContent = fileContent.replace(regex, replacement!)
+        fs.writeFileSync(filePath, newContent, 'utf-8')
+        resultMsg = `已替换 ${matches.length} 处匹配内容: ${filePath}`
+        break
+      }
+    }
+
     executor.addStep({
       type: 'tool_result',
-      content: `文件写入成功`,
+      content: resultMsg,
       toolName: 'write_file'
     })
-    return { success: true, output: `文件已写入: ${filePath}` }
+    return { success: true, output: resultMsg }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '写入失败'
     const errorCategory = categorizeError(errorMsg)
