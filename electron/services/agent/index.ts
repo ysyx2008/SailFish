@@ -1158,12 +1158,14 @@ export class AgentService {
         // 创建流式消息步骤
         const streamStepId = this.generateId()
         let streamContent = ''
+        let lastProgressUpdate = 0  // 上次更新进度的时间
         
         // 使用带重试的流式 API 调用 AI
         const response = await withAiRetry(
           () => new Promise<ChatWithToolsResult>((resolve, reject) => {
             // 重试时重置 streamContent
             streamContent = ''
+            lastProgressUpdate = 0
             
             this.aiService.chatWithToolsStream(
               run.messages,
@@ -1171,11 +1173,24 @@ export class AgentService {
               // onChunk: 流式文本更新
               (chunk) => {
                 streamContent += chunk
+                const now = Date.now()
+                // 生成进度提示（内容超过 200 字符且距离上次更新超过 300ms）
+                let progressHint: string | undefined
+                const charCount = streamContent.length
+                if (charCount > 200 && now - lastProgressUpdate > 300) {
+                  lastProgressUpdate = now
+                  if (charCount >= 1000) {
+                    progressHint = `⏳ 生成中... ${(charCount / 1000).toFixed(1)}K 字符`
+                  } else {
+                    progressHint = `⏳ 生成中... ${charCount} 字符`
+                  }
+                }
                 // 发送流式更新
                 this.updateStep(agentId, streamStepId, {
                   type: 'message',
                   content: streamContent,
-                  isStreaming: true
+                  isStreaming: true,
+                  toolResult: progressHint  // 用 toolResult 显示进度提示
                 })
               },
               // onToolCall: 工具调用（流式结束时）
@@ -1184,12 +1199,13 @@ export class AgentService {
               },
               // onDone: 完成
               (result) => {
-                // 标记流式结束
+                // 标记流式结束，清除进度提示
                 if (streamContent) {
                   this.updateStep(agentId, streamStepId, {
                     type: 'message',
                     content: streamContent,
-                    isStreaming: false
+                    isStreaming: false,
+                    toolResult: undefined  // 清除进度提示
                   })
                 }
                 resolve(result)
