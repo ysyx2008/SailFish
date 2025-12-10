@@ -404,7 +404,7 @@ async function executeCommand(
     }
   }
 
-  // 策略3: 限时执行（如 top、tail -f）
+  // 策略3: 限时执行（保留用于特殊场景）
   if (handling.strategy === 'timed_execution') {
     return executeTimedCommand(
       ptyId, 
@@ -413,6 +413,11 @@ async function executeCommand(
       handling.timeoutAction || 'ctrl_c',
       executor
     )
+  }
+
+  // 策略4: 发送即返回（如 tail -f、ping、top 等持续运行的命令）
+  if (handling.strategy === 'fire_and_forget') {
+    return executeFireAndForget(ptyId, command, handling, executor)
   }
 
   // 策略4: sudo/特权命令 - 需要等待用户输入密码
@@ -707,6 +712,51 @@ async function executeSudoCommand(
       toolResult: errorMsg
     })
     return { success: false, output: '', error: errorMsg }
+  }
+}
+
+/**
+ * 执行"发送即返回"命令（如 tail -f、ping、top 等）
+ * 发送命令后立即返回，让 Agent 自己控制何时停止
+ */
+async function executeFireAndForget(
+  ptyId: string,
+  command: string,
+  handling: { reason?: string; hint?: string },
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  // 发送命令到终端
+  executor.terminalService.write(ptyId, command + '\r')
+  
+  // 等待一小段时间让命令启动并产生一些初始输出
+  await new Promise(resolve => setTimeout(resolve, 1000))
+  
+  // 获取初始输出（从 xterm buffer 读取最后 20 行）
+  let initialOutput = ''
+  try {
+    const bufferLines = await getLastNLinesFromBuffer(ptyId, 20, 2000)
+    if (bufferLines && bufferLines.length > 0) {
+      initialOutput = stripAnsi(bufferLines.join('\n'))
+    }
+  } catch {
+    // 获取失败，继续
+  }
+  
+  const hint = handling.hint || '用 get_terminal_context 查看输出，用 send_control_key("ctrl+c") 停止'
+  
+  executor.addStep({
+    type: 'tool_result',
+    content: `🚀 ${handling.reason || '命令已启动'}`,
+    toolName: 'execute_command',
+    toolResult: initialOutput ? `初始输出:\n${truncateFromEnd(initialOutput, 300)}\n\n💡 ${hint}` : `💡 ${hint}`
+  })
+  
+  return {
+    success: true,
+    output: initialOutput 
+      ? `命令已启动，正在持续运行。\n\n初始输出:\n${initialOutput}\n\n💡 ${hint}`
+      : `命令已启动，正在持续运行。\n\n💡 ${hint}`,
+    isRunning: true
   }
 }
 

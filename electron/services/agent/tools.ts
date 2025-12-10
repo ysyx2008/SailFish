@@ -22,16 +22,20 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
 - tmux、screen 等终端复用器 → 不支持
 - mc、ranger 等全屏文件管理器 → 请使用 ls、cd 等命令
 
+**持续运行的命令**（发送后立即返回，不等待超时）：
+- tail -f、ping、watch、top、htop、journalctl -f 等 → 命令启动后立即返回
+- 用 get_terminal_context 查看输出
+- 用 send_control_key("ctrl+c") 或 send_control_key("q") 停止
+
 **需要你自行控制的命令**：
-- top、htop、less、more 等全屏/分页程序 → 用 check_terminal_status 观察输出，适时发送 q 或 ctrl+c 退出
-- ping、tail -f、watch 等持续运行命令 → 根据任务需要决定运行时长，用 ctrl+c 终止
+- less、more 等分页程序 → 用 check_terminal_status 观察，发送 q 退出
 - 交互式确认（apt install 等）→ 系统会自动添加 -y 参数
 
 返回值包含：
 - **success**: 命令是否成功执行（true/false）
 - **output**: 命令的完整输出内容（超时时会返回终端最后 50 行）
 - **error**: 失败时的错误信息和恢复建议
-- **isRunning**: 长耗时命令超时时为 true，表示命令仍在后台执行
+- **isRunning**: 为 true 时表示命令仍在运行（持续运行命令或长耗时命令超时）
 
 注意：success=false 时应分析 output/error 内容判断问题原因。`,
         parameters: {

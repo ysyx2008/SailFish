@@ -8,7 +8,7 @@ import type { RiskLevel } from './types'
  */
 export interface CommandHandlingInfo {
   /** 处理策略 */
-  strategy: 'allow' | 'auto_fix' | 'timed_execution' | 'block'
+  strategy: 'allow' | 'auto_fix' | 'timed_execution' | 'fire_and_forget' | 'block'
   /** 原因说明 */
   reason?: string
   /** 修正后的命令（用于 auto_fix 策略）*/
@@ -68,9 +68,63 @@ export function analyzeCommand(command: string): CommandHandlingInfo {
     }
   }
 
-  // ==================== 其他命令由 Agent 自行决定如何处理 ====================
-  // ping、top、htop、less、more、watch、tail -f 等命令不再自动转换
-  // Agent 可以读取终端可视区域内容，自行决定运行时长和退出时机
+  // ==================== 持续运行的命令（发送即返回）====================
+  // 这类命令会持续运行，没有明确的"完成"信号，不应该等待超时
+  // 发送后立即返回，让 Agent 用 get_terminal_context 查看输出，用 send_control_key 停止
+  
+  // tail -f / tail --follow
+  if (/\btail\s+.*(-f|--follow)\b/.test(cmd) || /\btail\s+-[a-zA-Z]*f/.test(cmd)) {
+    return {
+      strategy: 'fire_and_forget',
+      reason: 'tail -f 会持续输出',
+      hint: '命令已启动。用 get_terminal_context 查看输出，用 send_control_key("ctrl+c") 停止'
+    }
+  }
+  
+  // ping（没有 -c 参数的）
+  if (/\bping\s+/.test(cmdLower) && !/\s-c\s*\d+/.test(cmd)) {
+    return {
+      strategy: 'fire_and_forget',
+      reason: 'ping 会持续运行',
+      hint: '命令已启动。用 get_terminal_context 查看输出，用 send_control_key("ctrl+c") 停止'
+    }
+  }
+  
+  // watch 命令
+  if (/\bwatch\s+/.test(cmdLower)) {
+    return {
+      strategy: 'fire_and_forget',
+      reason: 'watch 会持续刷新',
+      hint: '命令已启动。用 get_terminal_context 查看输出，用 send_control_key("ctrl+c") 停止'
+    }
+  }
+  
+  // top/htop/btop 等监控工具
+  if (/\b(top|htop|btop|atop|iotop|iftop|nload|bmon)\b/.test(cmdLower)) {
+    return {
+      strategy: 'fire_and_forget',
+      reason: `${cmdName} 是实时监控工具`,
+      hint: '命令已启动。用 get_terminal_context 查看输出，用 send_control_key("q") 或 send_control_key("ctrl+c") 退出'
+    }
+  }
+  
+  // journalctl -f (follow 模式)
+  if (/\bjournalctl\s+.*-f\b/.test(cmd) || /\bjournalctl\s+-[a-zA-Z]*f/.test(cmd)) {
+    return {
+      strategy: 'fire_and_forget',
+      reason: 'journalctl -f 会持续输出',
+      hint: '命令已启动。用 get_terminal_context 查看输出，用 send_control_key("ctrl+c") 停止'
+    }
+  }
+  
+  // dmesg -w (watch 模式)
+  if (/\bdmesg\s+.*-w\b/.test(cmd) || /\bdmesg\s+-[a-zA-Z]*w/.test(cmd)) {
+    return {
+      strategy: 'fire_and_forget',
+      reason: 'dmesg -w 会持续输出',
+      hint: '命令已启动。用 get_terminal_context 查看输出，用 send_control_key("ctrl+c") 停止'
+    }
+  }
 
   // ==================== 正常执行 ====================
   return { strategy: 'allow' }
