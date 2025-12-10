@@ -575,7 +575,7 @@ async function executeSudoCommand(
         // 添加密码等待步骤
         const step = executor.addStep({
           type: 'waiting_password',
-          content: `🔐 请在终端中输入密码\n提示: ${detection.prompt || 'Password:'}`,
+          content: `请在终端中输入密码\n提示: ${detection.prompt || 'Password:'}`,
           toolName: 'execute_command',
           toolArgs: { command },
           riskLevel: 'moderate'
@@ -641,7 +641,7 @@ async function executeSudoCommand(
         if (elapsed > sudoTimeout) {
           if (passwordStepId) {
             executor.updateStep(passwordStepId, {
-              content: `🔐 请在终端中输入密码\n⏰ 已等待较长时间，请尽快输入或按 Ctrl+C 取消`
+              content: `请在终端中输入密码\n⏰ 已等待较长时间，请尽快输入或按 Ctrl+C 取消`
             })
           }
         }
@@ -703,7 +703,7 @@ async function executeSudoCommand(
     if (passwordStepId) {
       executor.updateStep(passwordStepId, {
         type: 'tool_result',
-        content: `🔐 密码验证完成`
+        content: `密码验证完成`
       })
     }
     
