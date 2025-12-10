@@ -63,12 +63,30 @@ export interface SshSession {
   encoding?: SshEncoding   // 字符编码，默认 utf-8
 }
 
+// 本地终端编码类型（与 SSH 编码共用）
+export type LocalEncoding = 
+  | 'auto'       // 自动检测（Windows 根据系统语言，其他系统 UTF-8）
+  | 'utf-8'      // UTF-8
+  | 'gbk'        // 简体中文 (Windows)
+  | 'gb2312'     // 简体中文
+  | 'gb18030'    // 简体中文 (完整)
+  | 'big5'       // 繁体中文
+  | 'shift_jis'  // 日语
+  | 'euc-jp'     // 日语 (Unix)
+  | 'euc-kr'     // 韩语
+  | 'iso-8859-1' // Latin-1 (西欧语言)
+  | 'iso-8859-15'// Latin-9 (西欧语言，含欧元符号)
+  | 'windows-1252' // Windows 西欧
+  | 'koi8-r'     // 俄语
+  | 'windows-1251' // 俄语 (Windows)
+
 export interface TerminalSettings {
   fontSize: number
   fontFamily: string
   cursorBlink: boolean
   cursorStyle: 'block' | 'underline' | 'bar'
   scrollback: number
+  localEncoding: LocalEncoding  // 本地终端编码
 }
 
 // Agent MBTI 类型
@@ -102,7 +120,8 @@ export const useConfigStore = defineStore('config', () => {
     fontFamily: '"Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, monospace',
     cursorBlink: true,
     cursorStyle: 'block',
-    scrollback: 10000
+    scrollback: 10000,
+    localEncoding: 'auto'  // 默认自动检测
   })
 
   // Agent MBTI 设置

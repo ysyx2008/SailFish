@@ -308,7 +308,26 @@ export default {
       bar: 'Bar'
     },
     scrollback: 'Scrollback Lines',
-    scrollbackHint: 'Number of lines to keep in terminal history'
+    scrollbackHint: 'Number of lines to keep in terminal history',
+    encoding: 'Character Encoding',
+    localEncoding: 'Local Terminal Encoding',
+    localEncodingHint: 'Character encoding for local terminal. "Auto" detects based on system language. Changes apply to new terminals.',
+    encodings: {
+      'auto': 'Auto Detect',
+      'utf-8': 'UTF-8 (Recommended)',
+      'gbk': 'GBK (Simplified Chinese Windows)',
+      'gb2312': 'GB2312 (Simplified Chinese)',
+      'gb18030': 'GB18030 (Simplified Chinese Full)',
+      'big5': 'Big5 (Traditional Chinese)',
+      'shift_jis': 'Shift-JIS (Japanese)',
+      'euc-jp': 'EUC-JP (Japanese Unix)',
+      'euc-kr': 'EUC-KR (Korean)',
+      'iso-8859-1': 'ISO-8859-1 (Western European)',
+      'iso-8859-15': 'ISO-8859-15 (Western European w/€)',
+      'windows-1252': 'Windows-1252 (Western)',
+      'koi8-r': 'KOI8-R (Russian)',
+      'windows-1251': 'Windows-1251 (Russian)'
+    }
   },
 
   // Theme Settings

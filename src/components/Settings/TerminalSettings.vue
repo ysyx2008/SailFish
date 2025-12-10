@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useConfigStore } from '../../stores/config'
+import { useConfigStore, type LocalEncoding } from '../../stores/config'
 
 const { t } = useI18n()
 const configStore = useConfigStore()
@@ -15,6 +15,7 @@ const saveSettings = async () => {
   configStore.terminalSettings.cursorBlink = settings.value.cursorBlink
   configStore.terminalSettings.cursorStyle = settings.value.cursorStyle
   configStore.terminalSettings.scrollback = settings.value.scrollback
+  configStore.terminalSettings.localEncoding = settings.value.localEncoding
   
   await window.electronAPI.config.set('terminalSettings', settings.value)
 }
@@ -29,6 +30,24 @@ const fontFamilies = [
   { value: 'Consolas, "Courier New", monospace', label: 'Consolas' },
   { value: '"Source Code Pro", monospace', label: 'Source Code Pro' },
   { value: '"Ubuntu Mono", monospace', label: 'Ubuntu Mono' }
+]
+
+// 本地终端编码选项
+const encodingOptions: LocalEncoding[] = [
+  'auto',
+  'utf-8',
+  'gbk',
+  'gb2312',
+  'gb18030',
+  'big5',
+  'shift_jis',
+  'euc-jp',
+  'euc-kr',
+  'iso-8859-1',
+  'iso-8859-15',
+  'windows-1252',
+  'koi8-r',
+  'windows-1251'
 ]
 </script>
 
@@ -107,6 +126,20 @@ const fontFamilies = [
           <span class="slider-value">{{ settings.scrollback }}</span>
         </div>
         <p class="form-hint">{{ t('terminalSettings.scrollbackHint') }}</p>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h4>{{ t('terminalSettings.encoding') }}</h4>
+      
+      <div class="form-group">
+        <label class="form-label">{{ t('terminalSettings.localEncoding') }}</label>
+        <select v-model="settings.localEncoding" class="select">
+          <option v-for="enc in encodingOptions" :key="enc" :value="enc">
+            {{ t(`terminalSettings.encodings.${enc}`) }}
+          </option>
+        </select>
+        <p class="form-hint">{{ t('terminalSettings.localEncodingHint') }}</p>
       </div>
     </div>
 

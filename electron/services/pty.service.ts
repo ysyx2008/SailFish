@@ -4,6 +4,7 @@ import * as os from 'os'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import stripAnsi from 'strip-ansi'
+import * as iconv from 'iconv-lite'
 
 const execAsync = promisify(exec)
 
@@ -13,6 +14,7 @@ export interface PtyOptions {
   cwd?: string
   shell?: string
   env?: Record<string, string>
+  encoding?: string  // 字符编码：'auto' | 'utf-8' | 'gbk' | 'big5' | 'shift_jis' 等
 }
 
 export interface CommandResult {
@@ -26,6 +28,8 @@ interface PtyInstance {
   pty: pty.IPty
   dataCallbacks: ((data: string) => void)[]
   disposed: boolean
+  encoding: string  // 字符编码
+  useRawData: boolean  // 是否直接使用原始数据（不转换编码）
 }
 
 // 用于追踪正在执行的命令
@@ -61,6 +65,60 @@ export class PtyService {
   }
 
   /**
+   * 根据系统语言自动检测编码
+   */
+  private detectSystemEncoding(): string {
+    const isWindows = process.platform === 'win32'
+    
+    if (!isWindows) {
+      // macOS/Linux 默认使用 UTF-8
+      return 'utf-8'
+    }
+    
+    // Windows: 根据系统语言检测编码
+    // 检查环境变量中的语言设置
+    const lang = process.env.LANG || process.env.LC_ALL || ''
+    
+    // 如果明确设置了 UTF-8，使用 UTF-8
+    if (lang.includes('UTF-8') || lang.includes('utf-8') || process.env.CHCP === '65001') {
+      return 'utf-8'
+    }
+    
+    // 尝试通过 Windows 区域设置检测
+    // 可以通过 LCID 或系统语言检测
+    const winLang = process.env.LANG || process.env.SystemRoot || ''
+    
+    // 简体中文
+    if (winLang.includes('zh_CN') || winLang.includes('Chinese_Simplified') || winLang.includes('CHS')) {
+      return 'gbk'
+    }
+    // 繁体中文
+    if (winLang.includes('zh_TW') || winLang.includes('zh_HK') || winLang.includes('Chinese_Traditional') || winLang.includes('CHT')) {
+      return 'big5'
+    }
+    // 日语
+    if (winLang.includes('ja_JP') || winLang.includes('Japanese')) {
+      return 'shift_jis'
+    }
+    // 韩语
+    if (winLang.includes('ko_KR') || winLang.includes('Korean')) {
+      return 'euc-kr'
+    }
+    // 俄语
+    if (winLang.includes('ru_RU') || winLang.includes('Russian')) {
+      return 'windows-1251'
+    }
+    // 西欧语言
+    if (winLang.includes('en_') || winLang.includes('de_') || winLang.includes('fr_') || winLang.includes('es_') || winLang.includes('it_')) {
+      return 'windows-1252'
+    }
+    
+    // 默认使用 GBK（假设简体中文 Windows 最常见）
+    // 用户可以在设置中手动更改
+    return 'gbk'
+  }
+
+  /**
    * 创建新的 PTY 实例
    */
   create(options: PtyOptions = {}): string {
@@ -71,13 +129,27 @@ export class PtyService {
     const cols = options.cols || 80
     const rows = options.rows || 24
 
+    // 确定编码
+    const isWindows = process.platform === 'win32'
+    let encoding: string
+    if (options.encoding === 'auto' || !options.encoding) {
+      encoding = this.detectSystemEncoding()
+    } else {
+      encoding = options.encoding
+    }
+    
+    // 是否需要手动处理编码（非 UTF-8 在 Windows 上需要）
+    const needManualEncoding = isWindows && encoding !== 'utf-8'
+    
+    console.log(`[PtyService] 创建终端: encoding=${encoding}, needManualEncoding=${needManualEncoding}`)
+
     // 合并环境变量
     const env = {
       ...process.env,
       ...options.env,
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
-      // 确保 UTF-8 编码支持中文文件名
+      // 确保 UTF-8 编码支持中文文件名（macOS/Linux）
       LANG: process.env.LANG || 'en_US.UTF-8',
       LC_ALL: process.env.LC_ALL || process.env.LANG || 'en_US.UTF-8',
       // macOS: 让 ls 等命令显示颜色
@@ -88,27 +160,41 @@ export class PtyService {
     } as Record<string, string>
 
     // 创建 PTY
+    // 需要手动编码转换时，使用 encoding: null 获取原始 Buffer
     const ptyProcess = pty.spawn(shell, [], {
       name: 'xterm-256color',
       cols,
       rows,
       cwd,
-      env
-    })
+      env,
+      encoding: needManualEncoding ? null : 'utf8'
+    } as pty.IPtyForkOptions)
 
     const instance: PtyInstance = {
       pty: ptyProcess,
       dataCallbacks: [],
-      disposed: false
+      disposed: false,
+      encoding,
+      useRawData: needManualEncoding
     }
 
     // 监听数据输出
-    ptyProcess.onData((data: string) => {
+    ptyProcess.onData((data: string | Buffer) => {
       // 如果已销毁，不再触发回调
       if (instance.disposed) return
+      
+      // 处理编码
+      let str: string
+      if (instance.useRawData && Buffer.isBuffer(data)) {
+        // Windows 上使用 iconv-lite 解码
+        str = iconv.decode(data, instance.encoding)
+      } else {
+        str = data as string
+      }
+      
       instance.dataCallbacks.forEach(callback => {
         try {
-          callback(data)
+          callback(str)
         } catch (e) {
           // 忽略回调错误（如 EPIPE）
         }
@@ -131,7 +217,14 @@ export class PtyService {
   write(id: string, data: string): void {
     const instance = this.instances.get(id)
     if (instance) {
-      instance.pty.write(data)
+      if (instance.useRawData && instance.encoding !== 'utf-8') {
+        // Windows 上使用 iconv-lite 编码
+        const encoded = iconv.encode(data, instance.encoding)
+        // node-pty 在 encoding: null 模式下接受 Buffer，但类型定义未更新
+        ;(instance.pty as unknown as { write: (data: Buffer) => void }).write(encoded)
+      } else {
+        instance.pty.write(data)
+      }
     }
   }
 

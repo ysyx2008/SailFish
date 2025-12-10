@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid'
 import stripAnsiLib from 'strip-ansi'
 import i18n from '../i18n'
 import type { JumpHostConfig } from './config'
+import { useConfigStore } from './config'
 import type { TerminalScreenService, ScreenContent } from '../services/terminal-screen.service'
 import type { TerminalSnapshotManager, TerminalSnapshot, TerminalDiff } from '../services/terminal-snapshot.service'
 
@@ -388,10 +389,15 @@ export const useTerminalStore = defineStore('terminal', () => {
     // 初始化终端连接
     try {
       if (type === 'local') {
+        // 获取本地终端编码设置
+        const configStore = useConfigStore()
+        const localEncoding = configStore.terminalSettings.localEncoding || 'auto'
+        
         const ptyId = await window.electronAPI.pty.create({
           cols: 80,
           rows: 24,
-          shell: shell
+          shell: shell,
+          encoding: localEncoding
         })
         reactiveTab.ptyId = ptyId
         reactiveTab.isConnected = true

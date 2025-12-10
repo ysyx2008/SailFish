@@ -7,6 +7,7 @@ export interface PtyOptions {
   cwd?: string
   shell?: string
   env?: Record<string, string>
+  encoding?: string  // 字符编码：'auto' | 'utf-8' | 'gbk' | 'big5' | 'shift_jis' 等
 }
 
 export interface SshConfig {
