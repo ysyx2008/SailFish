@@ -1137,6 +1137,61 @@ async function checkTerminalStatus(
 }
 
 /**
+ * 等待终端输出稳定（用于发送输入/控制键后获取响应）
+ * 采用轮询方式，等待输出不再变化，适应网络延迟场景
+ */
+async function waitForStableOutput(
+  ptyId: string,
+  options: {
+    minWait?: number      // 最小等待时间（ms），默认 300
+    maxWait?: number      // 最大等待时间（ms），默认 2000
+    pollInterval?: number // 轮询间隔（ms），默认 200
+    stableCount?: number  // 输出稳定次数，默认 2
+  } = {}
+): Promise<string> {
+  const {
+    minWait = 300,
+    maxWait = 2000,
+    pollInterval = 200,
+    stableCount = 2
+  } = options
+
+  // 先等待最小时间
+  await new Promise(resolve => setTimeout(resolve, minWait))
+
+  let lastOutput = ''
+  let stableCounter = 0
+  const startTime = Date.now()
+
+  // 轮询等待输出稳定
+  while (Date.now() - startTime < maxWait) {
+    try {
+      const bufferLines = await getLastNLinesFromBuffer(ptyId, 15, 1000)
+      const currentOutput = bufferLines ? stripAnsi(bufferLines.join('\n')) : ''
+
+      if (currentOutput === lastOutput) {
+        stableCounter++
+        if (stableCounter >= stableCount) {
+          // 输出已稳定
+          return currentOutput
+        }
+      } else {
+        // 有新输出，重置计数
+        stableCounter = 0
+        lastOutput = currentOutput
+      }
+    } catch {
+      // 获取失败，继续等待
+    }
+
+    await new Promise(resolve => setTimeout(resolve, pollInterval))
+  }
+
+  // 超时，返回最后获取到的输出
+  return lastOutput
+}
+
+/**
  * 发送控制键到终端
  */
 async function sendControlKey(
@@ -1175,19 +1230,21 @@ async function sendControlKey(
     // 直接写入 PTY
     executor.terminalService.write(ptyId, keySequence)
     
-    // 等待一小段时间让终端响应
-    await new Promise(resolve => setTimeout(resolve, 300))
+    // 等待终端输出稳定（适应网络延迟）
+    const terminalOutput = await waitForStableOutput(ptyId)
 
     executor.addStep({
       type: 'tool_result',
       content: `已发送 ${key}`,
       toolName: 'send_control_key',
-      toolResult: '控制键已发送'
+      toolResult: terminalOutput ? truncateFromEnd(terminalOutput, 300) : '控制键已发送'
     })
 
     return { 
       success: true, 
-      output: `已发送 ${key}。请使用 get_terminal_context 查看终端当前状态。`
+      output: terminalOutput 
+        ? `已发送 ${key}。\n\n终端最新输出:\n${terminalOutput}`
+        : `已发送 ${key}。`
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '发送失败'
@@ -1232,19 +1289,23 @@ async function sendInput(
       executor.terminalService.write(ptyId, '\r')
     }
     
-    // 等待一小段时间让终端响应
-    await new Promise(resolve => setTimeout(resolve, 300))
+    // 等待终端输出稳定（适应网络延迟）
+    const terminalOutput = await waitForStableOutput(ptyId)
 
+    const inputDesc = `"${text}"${pressEnter ? ' + Enter' : ''}`
+    
     executor.addStep({
       type: 'tool_result',
-      content: `已发送: "${text}"${pressEnter ? ' + Enter' : ''}`,
+      content: `已发送: ${inputDesc}`,
       toolName: 'send_input',
-      toolResult: '输入已发送'
+      toolResult: terminalOutput ? truncateFromEnd(terminalOutput, 300) : '输入已发送'
     })
 
     return { 
       success: true, 
-      output: `已发送输入 "${text}"${pressEnter ? ' 并按下回车' : ''}。请使用 get_terminal_context 查看终端响应。`
+      output: terminalOutput 
+        ? `已发送输入 ${inputDesc}。\n\n终端最新输出:\n${terminalOutput}`
+        : `已发送输入 ${inputDesc}。`
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '发送失败'
