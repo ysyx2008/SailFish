@@ -479,6 +479,7 @@ interface Window {
           terminalType: 'local' | 'ssh'
           hostId?: string
           historyMessages?: { role: string; content: string }[]
+          documentContext?: string
         },
         config?: {
           enabled?: boolean

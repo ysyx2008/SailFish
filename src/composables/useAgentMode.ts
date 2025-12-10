@@ -297,7 +297,7 @@ export function useAgentMode(
           hostId,  // 主机档案 ID
           historyMessages,  // 添加历史对话
           documentContext   // 添加文档上下文
-        } as { ptyId: string; terminalOutput: string[]; systemInfo: { os: string; shell: string }; hostId?: string; historyMessages?: { role: string; content: string }[]; documentContext?: string },
+        } as { ptyId: string; terminalOutput: string[]; systemInfo: { os: string; shell: string }; terminalType: 'local' | 'ssh'; hostId?: string; historyMessages?: { role: string; content: string }[]; documentContext?: string },
         { strictMode: strictMode.value, commandTimeout: commandTimeout.value * 1000 }  // 传递配置（超时时间转为毫秒）
       )
 
