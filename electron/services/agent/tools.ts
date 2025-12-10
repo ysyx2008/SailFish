@@ -15,7 +15,16 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'execute_command',
-        description: '在当前终端执行 shell 命令。支持大部分命令，包括 top/htop/watch/tail -f 等（会自动限时执行）。仅 vim/nano 等编辑器不支持（请用 write_file 工具）。',
+        description: `在当前终端执行 shell 命令。支持大部分命令，包括 top/htop/watch/tail -f 等（会自动限时执行）。仅 vim/nano 等编辑器不支持（请用 write_file 工具）。
+
+返回值包含：
+- **success**: 命令是否成功执行（true/false）
+- **output**: 命令的完整输出内容
+- **exitCode**: 命令退出状态码（0 表示成功，非0 表示有错误）
+- **error**: 失败时的错误信息和恢复建议
+- **isRunning**: 长耗时命令超时时为 true，表示命令仍在后台执行
+
+注意：exitCode 非0 或 success=false 时应分析 output/error 内容判断问题原因。`,
         parameters: {
           type: 'object',
           properties: {
