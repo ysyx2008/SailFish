@@ -18,8 +18,6 @@ export function useAiChat(
   
   // 是否有新消息（用户不在底部时显示提示）
   const hasNewMessage = ref(false)
-  // 用户是否在底部附近（每个对话独立，使用 Map 存储）
-  const isUserNearBottomMap = ref<Map<string, boolean>>(new Map())
 
   // 当前终端的 AI 消息（每个终端独立）
   const messages = computed(() => {
@@ -30,18 +28,18 @@ export function useAiChat(
   // 当前终端 ID
   const currentTabId = computed(() => terminalStore.activeTabId)
 
-  // 获取当前 tab 的 isUserNearBottom 状态（默认为 true）
+  // 用户是否在底部附近（从 store 获取，每个终端独立）
   const isUserNearBottom = computed(() => {
     const tabId = currentTabId.value
     if (!tabId) return true
-    return isUserNearBottomMap.value.get(tabId) ?? true
+    return terminalStore.getAiScrollNearBottom(tabId)
   })
 
   // 设置当前 tab 的 isUserNearBottom 状态
   const setIsUserNearBottom = (value: boolean) => {
     const tabId = currentTabId.value
     if (tabId) {
-      isUserNearBottomMap.value.set(tabId, value)
+      terminalStore.setAiScrollNearBottom(tabId, value)
     }
   }
 
