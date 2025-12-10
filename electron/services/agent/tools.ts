@@ -247,13 +247,25 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'remember_info',
-        description: `记住用户项目的关键路径。只在发现用户自定义的、非常规的配置或日志路径时使用。不要记录系统默认路径（如/etc/nginx/）或动态信息。`,
+        description: `保存重要发现到主机档案，下次交互时会自动提供这些信息。
+
+适合记忆的内容：
+- **项目路径**：用户项目的关键目录（如 "/data/myapp/config/"）
+- **环境配置**：特殊的运行环境（如 "使用 JDK 17, JAVA_HOME=/opt/jdk17"）
+- **服务架构**：服务端口和依赖（如 "订单服务在 8080，依赖 Redis:6379"）
+- **诊断结论**：发现的问题根因（如 "之前内存泄漏是因为连接池未正确关闭"）
+- **用户偏好**：用户的习惯做法（如 "用户习惯用 vim 编辑配置"）
+
+不要记录：
+- 系统默认路径（如 /etc/nginx/）
+- 临时性的动态数据（如当前 CPU 使用率）
+- 一次性信息（如某次命令的输出）`,
         parameters: {
           type: 'object',
           properties: {
             info: {
               type: 'string',
-              description: '用户项目的关键路径（如"项目配置在/data/myapp/config/"）'
+              description: '要记住的信息，建议简洁明了'
             }
           },
           required: ['info']
