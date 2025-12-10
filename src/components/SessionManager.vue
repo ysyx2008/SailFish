@@ -1,13 +1,30 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useConfigStore, type SshSession, type SessionGroup, type JumpHostConfig } from '../stores/config'
+import { useConfigStore, type SshSession, type SessionGroup, type JumpHostConfig, type SshEncoding } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
 import { v4 as uuidv4 } from 'uuid'
 
 const { t } = useI18n()
 const configStore = useConfigStore()
 const terminalStore = useTerminalStore()
+
+// 可用的编码选项（与后端保持一致）
+const encodingOptions: SshEncoding[] = [
+  'utf-8',
+  'gbk',
+  'gb2312',
+  'gb18030',
+  'big5',
+  'shift_jis',
+  'euc-jp',
+  'euc-kr',
+  'iso-8859-1',
+  'iso-8859-15',
+  'windows-1252',
+  'koi8-r',
+  'windows-1251'
+]
 
 // 分组编辑弹窗
 const showGroupEditor = ref(false)
@@ -169,7 +186,8 @@ const formData = ref<Partial<SshSession>>({
   password: '',
   privateKeyPath: '',
   passphrase: '',
-  groupId: ''
+  groupId: '',
+  encoding: 'utf-8'
 })
 
 // 过滤后的会话列表
@@ -230,7 +248,8 @@ const resetForm = () => {
     password: '',
     privateKeyPath: '',
     passphrase: '',
-    groupId: ''
+    groupId: '',
+    encoding: 'utf-8'
   }
   editingSession.value = null
 }
@@ -294,7 +313,8 @@ const connectSession = async (session: SshSession) => {
     username: session.username,
     password: session.password,
     privateKey: session.privateKeyPath,
-    jumpHost  // 传递跳板机配置
+    jumpHost,  // 传递跳板机配置
+    encoding: session.encoding || 'utf-8'  // 传递编码配置
   })
 }
 
@@ -699,6 +719,15 @@ const deleteGroup = async (groupName: string) => {
                 <template v-if="group.jumpHost"> ({{ t('session.form.jumpHost') }}: {{ group.jumpHost.host }})</template>
               </option>
             </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ t('session.form.encoding') }}</label>
+            <select v-model="formData.encoding" class="select">
+              <option v-for="enc in encodingOptions" :key="enc" :value="enc">
+                {{ t(`session.form.encodings.${enc}`) }}
+              </option>
+            </select>
+            <span class="form-hint">{{ t('session.form.encodingHint') }}</span>
           </div>
         </div>
         <div class="modal-footer">
@@ -1125,6 +1154,13 @@ const deleteGroup = async (groupName: string) => {
 .form-row {
   display: flex;
   gap: 12px;
+}
+
+.form-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
 }
 
 /* 分组编辑弹窗样式 */

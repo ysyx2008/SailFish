@@ -608,7 +608,24 @@ export default {
       jumpHostHint: '组内所有主机将通过此跳板机连接',
       jumpHostInherit: '继承分组配置',
       jumpHostCustom: '自定义配置',
-      jumpHostDisable: '禁用跳板机'
+      jumpHostDisable: '禁用跳板机',
+      encoding: '字符编码',
+      encodingHint: '远程服务器使用的字符编码，默认 UTF-8',
+      encodings: {
+        'utf-8': 'UTF-8（默认，支持所有语言）',
+        'gbk': 'GBK（简体中文 Windows）',
+        'gb2312': 'GB2312（简体中文）',
+        'gb18030': 'GB18030（简体中文完整）',
+        'big5': 'Big5（繁体中文）',
+        'shift_jis': 'Shift-JIS（日语）',
+        'euc-jp': 'EUC-JP（日语 Unix）',
+        'euc-kr': 'EUC-KR（韩语）',
+        'iso-8859-1': 'ISO-8859-1（西欧语言）',
+        'iso-8859-15': 'ISO-8859-15（西欧语言含€）',
+        'windows-1252': 'Windows-1252（西欧）',
+        'koi8-r': 'KOI8-R（俄语）',
+        'windows-1251': 'Windows-1251（俄语）'
+      }
     }
   },
 

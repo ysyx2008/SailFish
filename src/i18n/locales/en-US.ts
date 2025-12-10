@@ -608,7 +608,24 @@ export default {
       jumpHostHint: 'All hosts in this group will connect via this jump host',
       jumpHostInherit: 'Inherit from Group',
       jumpHostCustom: 'Custom',
-      jumpHostDisable: 'Disable Jump Host'
+      jumpHostDisable: 'Disable Jump Host',
+      encoding: 'Character Encoding',
+      encodingHint: 'Character encoding used by remote server, default UTF-8',
+      encodings: {
+        'utf-8': 'UTF-8 (Default, all languages)',
+        'gbk': 'GBK (Simplified Chinese Windows)',
+        'gb2312': 'GB2312 (Simplified Chinese)',
+        'gb18030': 'GB18030 (Simplified Chinese Full)',
+        'big5': 'Big5 (Traditional Chinese)',
+        'shift_jis': 'Shift-JIS (Japanese)',
+        'euc-jp': 'EUC-JP (Japanese Unix)',
+        'euc-kr': 'EUC-KR (Korean)',
+        'iso-8859-1': 'ISO-8859-1 (Western European)',
+        'iso-8859-15': 'ISO-8859-15 (Western European w/€)',
+        'windows-1252': 'Windows-1252 (Western)',
+        'koi8-r': 'KOI8-R (Russian)',
+        'windows-1251': 'Windows-1251 (Russian)'
+      }
     }
   },
 

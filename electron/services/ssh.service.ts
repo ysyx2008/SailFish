@@ -2,6 +2,23 @@ import { Client, ClientChannel } from 'ssh2'
 import { v4 as uuidv4 } from 'uuid'
 import * as fs from 'fs'
 import stripAnsi from 'strip-ansi'
+import * as iconv from 'iconv-lite'
+
+// 支持的字符编码（与前端保持一致）
+export type SshEncoding = 
+  | 'utf-8'      // UTF-8 (默认，支持所有语言)
+  | 'gbk'        // 简体中文 (Windows)
+  | 'gb2312'     // 简体中文
+  | 'gb18030'    // 简体中文 (完整)
+  | 'big5'       // 繁体中文
+  | 'shift_jis'  // 日语
+  | 'euc-jp'     // 日语 (Unix)
+  | 'euc-kr'     // 韩语
+  | 'iso-8859-1' // Latin-1 (西欧语言)
+  | 'iso-8859-15'// Latin-9 (西欧语言，含欧元符号)
+  | 'windows-1252' // Windows 西欧
+  | 'koi8-r'     // 俄语
+  | 'windows-1251' // 俄语 (Windows)
 
 // 终端状态接口（与 pty.service.ts 保持一致）
 export interface TerminalStatus {
@@ -34,6 +51,7 @@ export interface SshConfig {
   cols?: number
   rows?: number
   jumpHost?: JumpHostConfig  // 跳板机配置
+  encoding?: SshEncoding     // 字符编码，默认 utf-8
 }
 
 interface SshInstance {
@@ -42,6 +60,7 @@ interface SshInstance {
   stream: ClientChannel | null
   dataCallbacks: ((data: string) => void)[]
   config: SshConfig
+  encoding: string     // 实际使用的编码
 }
 
 // 断开连接事件类型
@@ -77,12 +96,16 @@ export class SshService {
   private async directConnect(id: string, config: SshConfig, sock?: NodeJS.ReadableStream): Promise<string> {
     return new Promise((resolve, reject) => {
       const client = new Client()
+      
+      // 确定使用的编码，默认 utf-8
+      const encoding = config.encoding || 'utf-8'
 
       const instance: SshInstance = {
         client,
         stream: null,
         dataCallbacks: [],
-        config
+        config,
+        encoding
       }
 
       // 准备私钥
@@ -146,9 +169,15 @@ export class SshService {
 
             instance.stream = stream
 
-            // 监听数据
+            // 监听数据（使用配置的编码解码）
             stream.on('data', (data: Buffer) => {
-              const str = data.toString('utf-8')
+              let str: string
+              if (encoding === 'utf-8') {
+                str = data.toString('utf-8')
+              } else {
+                // 使用 iconv-lite 解码非 UTF-8 编码
+                str = iconv.decode(data, encoding)
+              }
               instance.dataCallbacks.forEach(callback => callback(str))
             })
 
@@ -290,12 +319,18 @@ export class SshService {
   }
 
   /**
-   * 向 SSH 写入数据
+   * 向 SSH 写入数据（使用配置的编码）
    */
   write(id: string, data: string): void {
     const instance = this.instances.get(id)
     if (instance?.stream) {
-      instance.stream.write(data)
+      if (instance.encoding === 'utf-8') {
+        instance.stream.write(data)
+      } else {
+        // 使用 iconv-lite 编码非 UTF-8 数据
+        const encoded = iconv.encode(data, instance.encoding)
+        instance.stream.write(encoded)
+      }
     }
   }
 

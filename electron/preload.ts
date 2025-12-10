@@ -19,6 +19,7 @@ export interface SshConfig {
   cols?: number
   rows?: number
   jumpHost?: JumpHostConfig  // 跳板机配置
+  encoding?: string  // 字符编码，默认 utf-8
 }
 
 export interface AiMessage {

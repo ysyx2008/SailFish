@@ -31,6 +31,22 @@ export interface SessionGroup {
   jumpHost?: JumpHostConfig  // 可选的跳板机配置，组内会话自动继承
 }
 
+// 支持的字符编码
+export type SshEncoding = 
+  | 'utf-8'      // UTF-8 (默认，支持所有语言)
+  | 'gbk'        // 简体中文 (Windows)
+  | 'gb2312'     // 简体中文
+  | 'gb18030'    // 简体中文 (完整)
+  | 'big5'       // 繁体中文
+  | 'shift_jis'  // 日语
+  | 'euc-jp'     // 日语 (Unix)
+  | 'euc-kr'     // 韩语
+  | 'iso-8859-1' // Latin-1 (西欧语言)
+  | 'iso-8859-15'// Latin-9 (西欧语言，含欧元符号)
+  | 'windows-1252' // Windows 西欧
+  | 'koi8-r'     // 俄语
+  | 'windows-1251' // 俄语 (Windows)
+
 export interface SshSession {
   id: string
   name: string
@@ -44,6 +60,7 @@ export interface SshSession {
   group?: string           // 保留旧字段，兼容迁移
   groupId?: string         // 新字段：引用分组 ID
   jumpHostOverride?: JumpHostConfig | null  // 覆盖分组跳板机：null 表示显式禁用，undefined 表示继承
+  encoding?: SshEncoding   // 字符编码，默认 utf-8
 }
 
 export interface TerminalSettings {

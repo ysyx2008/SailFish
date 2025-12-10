@@ -339,6 +339,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       password?: string
       privateKey?: string
       jumpHost?: JumpHostConfig  // 跳板机配置
+      encoding?: string  // 字符编码，默认 utf-8
     },
     shell?: string  // 本地终端可指定 shell (cmd/powershell/bash 等)
   ): Promise<string> {
@@ -404,6 +405,7 @@ export const useTerminalStore = defineStore('terminal', () => {
           password: sshConfig.password,
           privateKey: sshConfig.privateKey,
           jumpHost: sshConfig.jumpHost,  // 传递跳板机配置
+          encoding: sshConfig.encoding,  // 传递编码配置
           cols: 80,
           rows: 24
         })
