@@ -259,13 +259,15 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
 不要记录：
 - 系统默认路径（如 /etc/nginx/）
 - 临时性的动态数据（如当前 CPU 使用率）
-- 一次性信息（如某次命令的输出）`,
+- 一次性信息（如某次命令的输出）
+
+**关键信息必须完整准确**：记录路径等关键信息时必须使用完整信息，禁止缩写、简化或"创造性"压缩，会影响后续使用`,
         parameters: {
           type: 'object',
           properties: {
             info: {
               type: 'string',
-              description: '要记住的信息，建议简洁明了'
+              description: '要记住的信息。路径之类的信息必须完整准确，禁止缩写或简化'
             }
           },
           required: ['info']

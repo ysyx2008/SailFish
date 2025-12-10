@@ -396,7 +396,7 @@ ${buildPlanningGuidance()}
 - **等待服务启动**：启动服务后，等待几秒再确认状态
 - **避免无意义循环**：不要频繁查询状态消耗步骤，学会耐心等待
 
-等待时可以留下有趣的消息，让过程更生动：
+等待时可以创造一些有趣的消息，让过程更生动。比如说：
 - "我去喝杯咖啡☕，马上回来"
 - "容我思考片刻🤔"
 - "编译中，先摸会儿鱼🐟"
@@ -438,6 +438,7 @@ ${buildPlanningGuidance()}
    - 服务架构信息（如用户的服务端口、依赖关系）
    - 诊断结论（如发现的性能瓶颈、配置问题的根因）
    - 用户偏好（如习惯使用的工具、命名规范）
+   - **关键信息必须完整准确**：禁止缩写、简化或"创造性"压缩！如 /Users/yushen/Source/SFTerminal/ 不能写成 /Users/yushen/SouSFT/
 6. **【强制】关键文件保护**：
    - **修改重要配置文件前必须先备份**：.zshrc, .bashrc, .bash_profile, .profile, .zprofile, .vimrc, .gitconfig, .ssh/config, /etc/ 下的配置文件等
    - 备份命令示例：\`cp ~/.zshrc ~/.zshrc.bak.$(date +%Y%m%d%H%M%S)\`
