@@ -77,6 +77,9 @@ export class PtyService {
       ...options.env,
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
+      // 确保 UTF-8 编码支持中文文件名
+      LANG: process.env.LANG || 'en_US.UTF-8',
+      LC_ALL: process.env.LC_ALL || process.env.LANG || 'en_US.UTF-8',
       // macOS: 让 ls 等命令显示颜色
       CLICOLOR: '1',
       CLICOLOR_FORCE: '1',
