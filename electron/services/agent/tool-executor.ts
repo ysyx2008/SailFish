@@ -1609,6 +1609,25 @@ async function writeFile(
     return { success: false, output: '', error: '用户拒绝写入文件' }
   }
 
+  // 计算内容大小，用于进度提示
+  const contentLength = content?.length || 0
+  const contentSizeKB = (contentLength / 1024).toFixed(1)
+  const isLargeContent = contentLength > 10000 // 10KB 以上显示进度
+
+  // 对于大文件，添加写入进度提示
+  let progressStepId: string | undefined
+  if (isLargeContent) {
+    const progressStep = executor.addStep({
+      type: 'tool_result',
+      content: `⏳ 正在写入文件...（${contentSizeKB} KB）`,
+      toolName: 'write_file',
+      isStreaming: true
+    })
+    progressStepId = progressStep.id
+    // 给前端一点时间显示进度提示
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+
   try {
     // 确保目录存在
     const dir = path.dirname(filePath)
@@ -1681,23 +1700,44 @@ async function writeFile(
       }
     }
 
-    executor.addStep({
-      type: 'tool_result',
-      content: resultMsg,
-      toolName: 'write_file'
-    })
+    // 如果有进度步骤，更新为完成状态
+    if (progressStepId) {
+      executor.updateStep(progressStepId, {
+        type: 'tool_result',
+        content: `✅ ${resultMsg}`,
+        toolName: 'write_file',
+        isStreaming: false
+      })
+    } else {
+      executor.addStep({
+        type: 'tool_result',
+        content: resultMsg,
+        toolName: 'write_file'
+      })
+    }
     return { success: true, output: resultMsg }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '写入失败'
     const errorCategory = categorizeError(errorMsg)
     const suggestion = getErrorRecoverySuggestion(errorMsg, errorCategory)
     
-    executor.addStep({
-      type: 'tool_result',
-      content: `文件写入失败: ${errorMsg}`,
-      toolName: 'write_file',
-      toolResult: `${errorMsg}\n\n💡 ${suggestion}`
-    })
+    // 如果有进度步骤，更新为错误状态
+    if (progressStepId) {
+      executor.updateStep(progressStepId, {
+        type: 'tool_result',
+        content: `❌ 文件写入失败: ${errorMsg}`,
+        toolName: 'write_file',
+        toolResult: `${errorMsg}\n\n💡 ${suggestion}`,
+        isStreaming: false
+      })
+    } else {
+      executor.addStep({
+        type: 'tool_result',
+        content: `文件写入失败: ${errorMsg}`,
+        toolName: 'write_file',
+        toolResult: `${errorMsg}\n\n💡 ${suggestion}`
+      })
+    }
     return { success: false, output: '', error: `${errorMsg}\n\n💡 恢复建议: ${suggestion}` }
   }
 }

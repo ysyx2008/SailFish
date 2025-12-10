@@ -518,7 +518,8 @@ export class AiService {
     onToolCall: (toolCalls: ToolCall[]) => void,
     onDone: (result: ChatWithToolsResult) => void,
     onError: (error: string) => void,
-    profileId?: string
+    profileId?: string,
+    onToolCallProgress?: (toolName: string, argsLength: number) => void  // 工具调用参数生成进度
   ): Promise<void> {
     const profile = await this.getCurrentProfile(profileId)
     if (!profile) {
@@ -691,6 +692,12 @@ export class AiService {
                       if (tc.function?.arguments) {
                         toolCalls[index].function.arguments += tc.function.arguments
                       }
+                    }
+                    // 通知工具调用参数生成进度
+                    if (onToolCallProgress && toolCalls[index]) {
+                      const toolName = toolCalls[index].function.name
+                      const argsLength = toolCalls[index].function.arguments.length
+                      onToolCallProgress(toolName, argsLength)
                     }
                   }
                 }

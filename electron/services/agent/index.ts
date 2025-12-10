@@ -1159,6 +1159,8 @@ export class AgentService {
         const streamStepId = this.generateId()
         let streamContent = ''
         let lastProgressUpdate = 0  // 上次更新进度的时间
+        let toolCallProgressStepId: string | undefined  // 工具调用进度步骤 ID
+        let lastToolCallProgressUpdate = 0  // 上次更新工具调用进度的时间
         
         // 使用带重试的流式 API 调用 AI
         const response = await withAiRetry(
@@ -1166,6 +1168,8 @@ export class AgentService {
             // 重试时重置 streamContent
             streamContent = ''
             lastProgressUpdate = 0
+            toolCallProgressStepId = undefined
+            lastToolCallProgressUpdate = 0
             
             this.aiService.chatWithToolsStream(
               run.messages,
@@ -1174,16 +1178,12 @@ export class AgentService {
               (chunk) => {
                 streamContent += chunk
                 const now = Date.now()
-                // 生成进度提示（内容超过 200 字符且距离上次更新超过 300ms）
+                // 生成进度提示（内容超过 50 字符且距离上次更新超过 300ms）
                 let progressHint: string | undefined
                 const charCount = streamContent.length
-                if (charCount > 200 && now - lastProgressUpdate > 300) {
+                if (charCount > 50 && now - lastProgressUpdate > 300) {
                   lastProgressUpdate = now
-                  if (charCount >= 1000) {
-                    progressHint = `⏳ 生成中... ${(charCount / 1000).toFixed(1)}K 字符`
-                  } else {
-                    progressHint = `⏳ 生成中... ${charCount} 字符`
-                  }
+                  progressHint = `⏳ 生成中... ${charCount} 字符`
                 }
                 // 发送流式更新
                 this.updateStep(agentId, streamStepId, {
@@ -1208,13 +1208,48 @@ export class AgentService {
                     toolResult: undefined  // 清除进度提示
                   })
                 }
+                // 清除工具调用进度步骤
+                if (toolCallProgressStepId) {
+                  this.updateStep(agentId, toolCallProgressStepId, {
+                    type: 'thinking',
+                    content: '⚙️ 准备执行工具...',
+                    isStreaming: false
+                  })
+                }
                 resolve(result)
               },
               // onError: 错误
               (error) => {
                 reject(new Error(error))
               },
-              profileId
+              profileId,
+              // onToolCallProgress: 工具调用参数生成进度
+              (toolName, argsLength) => {
+                const now = Date.now()
+                // 超过 50 字符且距离上次更新超过 200ms 才显示
+                if (argsLength > 50 && now - lastToolCallProgressUpdate > 200) {
+                  lastToolCallProgressUpdate = now
+                  const sizeDisplay = `${argsLength}`
+                  const progressContent = `⏳ 正在生成 ${toolName} 参数... ${sizeDisplay} 字符`
+                  
+                  if (!toolCallProgressStepId) {
+                    // 创建新的进度步骤
+                    const step = this.addStep(agentId, {
+                      type: 'thinking',
+                      content: progressContent,
+                      isStreaming: true
+                    })
+                    toolCallProgressStepId = step.id
+                  } else {
+                    // 更新现有步骤
+                    this.updateStep(agentId, toolCallProgressStepId, {
+                      type: 'thinking',
+                      content: progressContent,
+                      isStreaming: true
+                    })
+                  }
+                }
+              }
             )
           }),
           {
