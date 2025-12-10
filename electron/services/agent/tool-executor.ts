@@ -306,7 +306,31 @@ async function executeCommand(
   const preAdvice = await awarenessService.getPreExecutionAdvice(ptyId, command)
   
   if (!preAdvice.canExecute) {
-    // 终端当前不能执行命令，返回详细信息给 agent
+    // 终端当前不能执行命令
+    const isBusy = preAdvice.reason?.includes('终端正在执行命令')
+    
+    if (isBusy) {
+      // 终端正在执行命令：这不是错误，而是需要等待的状态
+      // 返回 isRunning: true，不计入失败，引导 agent 使用 wait 工具
+      const waitMsg = `⏳ 终端正在执行其他命令，无法立即执行新命令。\n\n💡 建议：\n1. 使用 wait 工具等待当前命令完成（如 60-120 秒）\n2. 使用 check_terminal_status 检查终端状态\n3. 如果需要中断当前命令，使用 send_control_key("ctrl+c")`
+      executor.addStep({
+        type: 'tool_call',
+        content: `⏳ ${command}`,
+        toolName: 'execute_command',
+        toolArgs: { command },
+        riskLevel: 'safe'  // 不是 blocked，只是需要等待
+      })
+      executor.addStep({
+        type: 'tool_result',
+        content: `终端忙碌中，需要等待`,
+        toolName: 'execute_command',
+        toolResult: waitMsg
+      })
+      // 返回 isRunning: true，这样不会被计入失败，agent 会知道需要等待
+      return { success: true, output: waitMsg, isRunning: true }
+    }
+    
+    // 其他原因（等待输入、卡死等）：返回错误让 agent 处理
     const errorMsg = `⚠️ 无法执行命令：${preAdvice.reason}\n\n💡 ${preAdvice.suggestion}`
     executor.addStep({
       type: 'tool_call',
