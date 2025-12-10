@@ -870,77 +870,52 @@ function truncateFromEnd(text: string, maxLength: number): string {
  * 获取终端上下文
  * 支持多种读取方式：按行数、按字符数、从开头读取
  * 
- * 数据来源优先级（改进后）：
- * 1. xterm buffer 直接读取（最准确，通过 IPC 从渲染进程获取）
- * 2. 当前正在执行的命令输出（从 terminal-state.service 获取）
- * 3. 实时终端输出缓冲区（Agent 运行期间收集的）
- * 4. 传入的 terminalOutput（Agent 启动时的快照，作为最后的 fallback）
+ * 数据来源：直接从 xterm buffer 实时读取（通过 IPC 从渲染进程获取）
+ * 不使用回退机制，避免返回过时数据误导模型
  */
 async function getTerminalContext(
   ptyId: string,
   args: Record<string, unknown>,
-  terminalOutput: string[],
+  _terminalOutput: string[],
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   const lines = args.lines as number | undefined
   const maxChars = args.max_chars as number | undefined
   const fromStartLines = args.from_start_lines as number | undefined
   
-  // 获取输出数据
-  let allOutput: string[] = []
-  let dataSource = 'unknown'
-  
   // 计算需要获取的行数（根据参数决定）
   const requestLines = fromStartLines ?? lines ?? 50
   // 为了确保有足够的数据进行按字符截取，多请求一些行
   const linesToFetch = maxChars ? Math.max(requestLines, 200) : requestLines
   
-  // 优先尝试从 xterm buffer 直接读取（最准确的数据源）
+  // 直接从 xterm buffer 读取（最准确的实时数据源）
+  // 不使用回退机制，避免返回过时数据误导模型
+  let allOutput: string[] = []
   try {
-    const bufferLines = await getLastNLinesFromBuffer(ptyId, linesToFetch, 2000)
+    const bufferLines = await getLastNLinesFromBuffer(ptyId, linesToFetch, 3000)
     if (bufferLines && bufferLines.length > 0) {
       allOutput = bufferLines
-      dataSource = 'xterm_buffer'
     }
   } catch (e) {
-    // xterm buffer 获取失败，继续尝试其他方式
-    console.warn('[getTerminalContext] 从 xterm buffer 获取失败:', e)
+    const errorMsg = e instanceof Error ? e.message : '未知错误'
+    executor.addStep({
+      type: 'tool_result',
+      content: '获取终端输出失败',
+      toolName: 'get_terminal_context',
+      toolResult: `错误: ${errorMsg}`
+    })
+    return { success: false, output: '', error: `从终端获取输出失败: ${errorMsg}` }
   }
   
-  // 如果 xterm buffer 获取失败，回退到原有逻辑
+  // 如果获取到的内容为空，返回明确的错误
   if (allOutput.length === 0) {
-    try {
-      const terminalStateService = getTerminalStateService()
-      const currentExecution = terminalStateService.getCurrentExecution(ptyId)
-      
-      if (currentExecution?.output && currentExecution.output.length > 0) {
-        // 有当前执行的命令输出，使用它
-        allOutput = currentExecution.output.split('\n')
-        dataSource = 'current_execution'
-      } else {
-        // 没有当前执行，优先使用实时缓冲区
-        const realtimeOutput = executor.getRealtimeTerminalOutput()
-        if (realtimeOutput && realtimeOutput.length > 0) {
-          allOutput = realtimeOutput
-          dataSource = 'realtime_buffer'
-        } else {
-          // 实时缓冲区也为空，尝试获取最近完成的命令输出
-          const lastExecution = terminalStateService.getLastExecution(ptyId)
-          if (lastExecution?.output && lastExecution.output.length > 0) {
-            allOutput = lastExecution.output.split('\n')
-            dataSource = 'last_execution'
-          } else {
-            // 都没有，使用传入的 terminalOutput（Agent 启动时的快照）
-            allOutput = terminalOutput
-            dataSource = 'initial_snapshot'
-          }
-        }
-      }
-    } catch (e) {
-      // 如果获取失败，使用传入的 terminalOutput
-      allOutput = terminalOutput
-      dataSource = 'fallback_snapshot'
-    }
+    executor.addStep({
+      type: 'tool_result',
+      content: '终端输出为空',
+      toolName: 'get_terminal_context',
+      toolResult: '(终端缓冲区为空)'
+    })
+    return { success: true, output: '(终端输出为空)' }
   }
   
   let output = ''
