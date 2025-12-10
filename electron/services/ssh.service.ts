@@ -412,55 +412,54 @@ export class SshService {
 
   /**
    * 执行探测命令获取主机信息
-   * 通过执行一个组合命令来探测远程主机的操作系统类型
+   * 通过单独的 exec 通道执行命令，不会在终端中显示
    */
   async probe(id: string, timeout: number = 5000): Promise<string> {
     const instance = this.instances.get(id)
-    if (!instance?.stream) {
-      throw new Error('SSH connection not found or stream not available')
+    if (!instance?.client) {
+      throw new Error('SSH connection not found')
     }
 
     return new Promise((resolve) => {
-      let output = ''
-      let resolved = false
+      // 探测命令：检测操作系统类型
+      const probeCommand = 'uname -s 2>/dev/null || echo %OS%'
       
-      // 生成一个唯一的结束标记
-      const endMarker = `__PROBE_END_${Date.now()}__`
-      
-      // 探测命令：先尝试检测是Windows还是Unix系统
-      // Windows 会有 %OS% 变量，Unix 系统会有 uname
-      const probeCommand = `echo "---PROBE_START---" && (uname -s 2>/dev/null || echo %OS%) && echo "${endMarker}"\n`
-      
-      const dataHandler = (data: string) => {
-        output += data
-        // 检查是否收到结束标记
-        if (output.includes(endMarker)) {
-          resolved = true
-          // 移除这个临时处理器
-          const idx = instance.dataCallbacks.indexOf(dataHandler)
-          if (idx > -1) {
-            instance.dataCallbacks.splice(idx, 1)
-          }
-          resolve(output)
+      // 使用 exec 在单独的通道执行，不影响终端
+      instance.client.exec(probeCommand, (err, stream) => {
+        if (err) {
+          console.error('[SSH Probe] exec 失败:', err)
+          resolve('error')
+          return
         }
-      }
-      
-      // 添加临时数据处理器
-      instance.dataCallbacks.push(dataHandler)
-      
-      // 发送探测命令
-      instance.stream.write(probeCommand)
-      
-      // 超时处理
-      setTimeout(() => {
-        if (!resolved) {
-          const idx = instance.dataCallbacks.indexOf(dataHandler)
-          if (idx > -1) {
-            instance.dataCallbacks.splice(idx, 1)
+        
+        let output = ''
+        let resolved = false
+        
+        stream.on('data', (data: Buffer) => {
+          output += data.toString()
+        })
+        
+        stream.stderr.on('data', (data: Buffer) => {
+          // 忽略 stderr，但记录日志
+          console.log('[SSH Probe] stderr:', data.toString())
+        })
+        
+        stream.on('close', () => {
+          if (!resolved) {
+            resolved = true
+            resolve(output.trim() || 'unknown')
           }
-          resolve(output || 'timeout')
-        }
-      }, timeout)
+        })
+        
+        // 超时处理
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true
+            stream.close()
+            resolve(output.trim() || 'timeout')
+          }
+        }, timeout)
+      })
     })
   }
 
