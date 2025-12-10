@@ -476,6 +476,7 @@ interface Window {
           ptyId: string
           terminalOutput: string[]
           systemInfo: { os: string; shell: string }
+          terminalType: 'local' | 'ssh'
           hostId?: string
           historyMessages?: { role: string; content: string }[]
         },

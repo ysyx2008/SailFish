@@ -818,6 +818,7 @@ export const useTerminalStore = defineStore('terminal', () => {
         os: tab.systemInfo?.os || 'unknown',
         shell: tab.systemInfo?.shell || 'unknown'
       },
+      terminalType: tab.type, // 终端类型：'local' 或 'ssh'
       // 增强的状态信息
       isAtPrompt,
       cursorPosition,

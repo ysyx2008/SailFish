@@ -266,9 +266,12 @@ export function buildSystemPrompt(
   // 优先使用 context.systemInfo（来自当前终端 tab，是准确的）
   const osType = context.systemInfo.os || 'unknown'
   const shellType = context.systemInfo.shell || 'unknown'
+  const terminalType = context.terminalType || 'local'
+  const isSshTerminal = terminalType === 'ssh'
   
   // 构建主机信息：始终使用当前终端的系统信息
   let hostContext = `## 主机环境
+- **终端类型**: ${isSshTerminal ? '🌐 SSH 远程终端' : '💻 本地终端'}
 - 操作系统: ${osType}
 - Shell: ${shellType}`
   
@@ -362,16 +365,26 @@ ${buildReActFramework()}
 ${buildPlanningGuidance()}
 
 ## 可用工具
-| 工具 | 用途 |
-|------|------|
-| execute_command | 在终端执行 Shell 命令 |
-| check_terminal_status | 检查终端状态并获取当前屏幕内容（本地终端状态准确，SSH 终端需根据屏幕内容判断） |
-| get_terminal_context | 获取终端最近的输出内容（历史缓冲区，用于查看大量输出） |
-| send_control_key | 发送 Ctrl+C/D/Z 等控制键 |
-| wait | 等待指定时间，用于长耗时命令执行期间 |
-| read_file | 读取服务器上的文件内容 |
-| write_file | 写入或创建文件 |
-| remember_info | 记住重要的静态信息（如路径） |
+| 工具 | 用途 |${isSshTerminal ? ' 可用性 |' : ''}
+|------|------|${isSshTerminal ? '--------|' : ''}
+| execute_command | 在终端执行 Shell 命令 |${isSshTerminal ? ' ✅ |' : ''}
+| check_terminal_status | 检查终端状态并获取当前屏幕内容 |${isSshTerminal ? ' ✅ |' : ''}
+| get_terminal_context | 获取终端最近的输出内容 |${isSshTerminal ? ' ✅ |' : ''}
+| send_control_key | 发送 Ctrl+C/D/Z 等控制键 |${isSshTerminal ? ' ✅ |' : ''}
+| wait | 等待指定时间 |${isSshTerminal ? ' ✅ |' : ''}
+| read_file | 读取**本地**文件内容 |${isSshTerminal ? ' ❌ 不可用 |' : ''}
+| write_file | 写入**本地**文件 |${isSshTerminal ? ' ❌ 不可用 |' : ''}
+| remember_info | 记住重要的静态信息 |${isSshTerminal ? ' ✅ |' : ''}${isSshTerminal ? `
+
+### ⚠️ 重要：SSH 远程终端文件操作限制
+
+当前是 **SSH 远程终端**，\`read_file\` 和 \`write_file\` 工具**不可用**！
+这两个工具只能操作运行本程序的本地机器上的文件，无法操作 SSH 远程主机上的文件。
+
+**远程文件操作替代方案**：
+- 读取远程文件：使用 \`execute_command\` 执行 \`cat\`、\`head\`、\`tail\`、\`sed -n 'Np'\` 等命令
+- 写入远程文件：使用 \`execute_command\` 执行 \`echo "内容" > 文件\`、\`cat << 'EOF' > 文件\` 等命令
+- 编辑远程文件：使用 \`execute_command\` 执行 \`sed -i\` 等命令` : ''}
 
 ## 时间控制能力（重要！）
 
