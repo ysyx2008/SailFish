@@ -491,16 +491,34 @@ async function executeCommand(
 
     // 命令正常完成，移除监听器并完成追踪
     unsubscribe()
-    terminalStateService.completeCommandExecution(ptyId, 0, 'completed')
+    
+    // 获取命令退出状态码
+    let exitCode: number | undefined
+    try {
+      // 执行 echo $? 获取上一个命令的退出码
+      const exitCodeResult = await executor.terminalService.executeInTerminal(ptyId, 'echo $?', 3000)
+      const exitCodeStr = exitCodeResult.output.trim()
+      const parsedCode = parseInt(exitCodeStr, 10)
+      if (!isNaN(parsedCode)) {
+        exitCode = parsedCode
+      }
+    } catch {
+      // 获取退出码失败，忽略（不影响主流程）
+    }
+    
+    terminalStateService.completeCommandExecution(ptyId, exitCode ?? 0, 'completed')
 
+    // 构建输出信息，包含退出状态码
+    const exitCodeInfo = exitCode !== undefined ? `\n\n[退出状态码: ${exitCode}]${exitCode === 0 ? '' : ' ⚠️ 非零退出码可能表示命令执行有问题'}` : ''
+    
     executor.addStep({
       type: 'tool_result',
-      content: `命令执行完成 (耗时: ${result.duration}ms)`,
+      content: `命令执行完成 (耗时: ${result.duration}ms${exitCode !== undefined ? `, 退出码: ${exitCode}` : ''})`,
       toolName: 'execute_command',
       toolResult: result.output
     })
 
-    return { success: true, output: result.output }
+    return { success: true, output: result.output + exitCodeInfo, exitCode }
   } catch (error) {
     // 命令执行出错，移除监听器并完成追踪
     unsubscribe()
@@ -661,10 +679,25 @@ async function executeSudoCommand(
     
     // 命令完成
     unsubscribe()
-    terminalStateService.completeCommandExecution(ptyId, 0, 'completed')
     
     // 清理输出
     const cleanOutput = stripAnsi(output).replace(/\r/g, '').trim()
+    
+    // 获取命令退出状态码
+    let exitCode: number | undefined
+    try {
+      // 执行 echo $? 获取上一个命令的退出码
+      const exitCodeResult = await executor.terminalService.executeInTerminal(ptyId, 'echo $?', 3000)
+      const exitCodeStr = exitCodeResult.output.trim()
+      const parsedCode = parseInt(exitCodeStr, 10)
+      if (!isNaN(parsedCode)) {
+        exitCode = parsedCode
+      }
+    } catch {
+      // 获取退出码失败，忽略
+    }
+    
+    terminalStateService.completeCommandExecution(ptyId, exitCode ?? 0, 'completed')
     
     // 更新密码等待步骤（如果有）
     if (passwordStepId) {
@@ -674,14 +707,17 @@ async function executeSudoCommand(
       })
     }
     
+    // 构建输出信息，包含退出状态码
+    const exitCodeInfo = exitCode !== undefined ? `\n\n[退出状态码: ${exitCode}]${exitCode === 0 ? '' : ' ⚠️ 非零退出码可能表示命令执行有问题'}` : ''
+    
     executor.addStep({
       type: 'tool_result',
-      content: `命令执行完成`,
+      content: `命令执行完成${exitCode !== undefined ? ` (退出码: ${exitCode})` : ''}`,
       toolName: 'execute_command',
       toolResult: cleanOutput
     })
     
-    return { success: true, output: cleanOutput }
+    return { success: true, output: cleanOutput + exitCodeInfo, exitCode }
     
   } catch (error) {
     unsubscribe()
