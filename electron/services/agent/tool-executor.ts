@@ -901,13 +901,13 @@ async function checkTerminalStatus(
     const terminalType = awareness.terminalState?.type || 'local'
     const isSsh = terminalType === 'ssh'
     
-    // 获取屏幕可视内容
+    // 从 xterm buffer 获取最后 50 行（不受用户滚动窗口影响）
     let screenContent: string[] = []
     try {
-      const visibleContent = await awarenessService.getVisibleContent(ptyId)
-      if (visibleContent) {
-        // 移除末尾空行
-        screenContent = visibleContent
+      const bufferLines = await getLastNLinesFromBuffer(ptyId, 50, 3000)
+      if (bufferLines && bufferLines.length > 0) {
+        // 移除 ANSI 转义序列和末尾空行
+        screenContent = bufferLines.map(line => stripAnsi(line))
         while (screenContent.length > 0 && screenContent[screenContent.length - 1].trim() === '') {
           screenContent.pop()
         }
@@ -934,9 +934,9 @@ async function checkTerminalStatus(
     output.push(`## 状态`)
     
     if (isSsh) {
-      // SSH 终端：不做复杂判断，让模型根据屏幕内容自行判断
-      output.push(`- 状态: **请根据下方屏幕内容判断**`)
-      output.push(`- 说明: SSH 终端无法可靠检测远程进程状态，请观察屏幕内容：`)
+      // SSH 终端：不做复杂判断，让模型根据终端输出自行判断
+      output.push(`- 状态: **请根据下方终端输出判断**`)
+      output.push(`- 说明: SSH 终端无法可靠检测远程进程状态，请观察终端输出：`)
       output.push(`  - 如果看到 shell 提示符（如 $ 或 #），终端空闲`)
       output.push(`  - 如果看到程序输出或进度，命令正在执行`)
       output.push(`  - 如果看到 password/密码 提示，需要输入密码`)
@@ -968,26 +968,26 @@ async function checkTerminalStatus(
       output.push(`- 可执行命令: ${awareness.canExecuteCommand ? '是' : '否'}`)
     }
     
-    // 3. 屏幕内容（关键！）
+    // 3. 最近终端输出（关键！）
     output.push('')
-    output.push(`## 当前屏幕内容`)
+    output.push(`## 最近终端输出（最后 ${screenContent.length} 行）`)
     if (screenContent.length > 0) {
       output.push('```')
       output.push(screenContent.join('\n'))
       output.push('```')
     } else {
-      output.push('(无法获取屏幕内容)')
+      output.push('(无法获取终端输出)')
     }
     
     const outputText = output.join('\n')
     
     // UI 显示简化版本
-    const displayStatus = isSsh ? '查看屏幕内容判断' : awareness.status
+    const displayStatus = isSsh ? '查看终端输出判断' : awareness.status
     executor.addStep({
       type: 'tool_result',
       content: `终端状态: ${displayStatus}`,
       toolName: 'check_terminal_status',
-      toolResult: screenContent.length > 0 ? `屏幕 ${screenContent.length} 行` : '(无屏幕内容)'
+      toolResult: screenContent.length > 0 ? `输出 ${screenContent.length} 行` : '(无输出)'
     })
 
     return { success: true, output: outputText }

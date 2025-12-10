@@ -40,13 +40,13 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'check_terminal_status',
-        description: `检查终端状态并获取当前屏幕内容。返回：
+        description: `检查终端状态并获取最近终端输出（最后 50 行）。返回：
 1. **终端类型**: 本地终端或 SSH 终端
-2. **运行状态**: 空闲/忙碌/未知（SSH 终端状态由你根据屏幕内容判断）
-3. **屏幕内容**: 当前可视区域的完整内容（用户看到的画面）
+2. **运行状态**: 空闲/忙碌/未知（SSH 终端状态由你根据终端输出判断）
+3. **终端输出**: 最近 50 行输出（不受用户滚动窗口影响）
 4. **基本信息**: 当前目录、最近命令等
 
-本地终端状态检测准确（基于进程检测）；SSH 终端返回屏幕内容供你判断。`,
+本地终端状态检测准确（基于进程检测）；SSH 终端返回终端输出供你判断。`,
         parameters: {
           type: 'object',
           properties: {}
