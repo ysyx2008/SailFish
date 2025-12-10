@@ -52,19 +52,7 @@ export function analyzeCommand(command: string): CommandHandlingInfo {
 
   // ==================== 可以自动修正的命令 ====================
   
-  // ping 没有 -c 参数 → 添加 -c 4
-  if (/\bping\s+/.test(cmdLower) && !/\s-c\s*\d/.test(cmdLower)) {
-    // 找到 ping 后的目标，添加 -c 4
-    const fixedCommand = cmd.replace(/\b(ping\s+)/, '$1-c 4 ')
-    return {
-      strategy: 'auto_fix',
-      reason: 'ping 不带 -c 会持续运行',
-      fixedCommand,
-      hint: '已自动添加 -c 4 限制次数'
-    }
-  }
-
-  // apt/yum/dnf install 没有 -y → 添加 -y
+  // apt/yum/dnf install 没有 -y → 添加 -y（交互式确认难以可靠处理）
   const pkgInstallMatch = cmdLower.match(/\b(apt(?:-get)?|yum|dnf)\s+install\b/)
   if (pkgInstallMatch && !/\s-y\b|\s--yes\b/.test(cmdLower)) {
     const pkgManager = pkgInstallMatch[1]
@@ -80,147 +68,9 @@ export function analyzeCommand(command: string): CommandHandlingInfo {
     }
   }
 
-  // | less 或 | more → 移除分页器
-  if (/\|\s*(less|more)\s*$/.test(cmdLower)) {
-    const fixedCommand = cmd.replace(/\s*\|\s*(less|more)\s*$/, '')
-    return {
-      strategy: 'auto_fix',
-      reason: 'less/more 是交互式分页器',
-      fixedCommand,
-      hint: '已移除分页器，直接输出'
-    }
-  }
-
-  // less/more 文件 → cat 文件 | head -200
-  if (/^(less|more)\s+/.test(cmdLower)) {
-    const file = cmd.replace(/^(less|more)\s+/i, '')
-    const fixedCommand = `cat ${file} | head -200`
-    return {
-      strategy: 'auto_fix',
-      reason: 'less/more 是交互式分页器',
-      fixedCommand,
-      hint: '已改为 cat | head -200'
-    }
-  }
-
-  // ==================== 自动转换为非交互式版本 ====================
-  
-  // top → 使用非交互式模式获取一次快照
-  if (cmdName === 'top') {
-    // macOS 和 Linux 的 top 参数不同
-    // macOS: top -l 1 (list mode, 1 sample)
-    // Linux: top -bn1 (batch mode, 1 iteration)
-    // 我们生成一个兼容命令，让 shell 自己判断
-    const fixedCommand = `(top -bn1 2>/dev/null || top -l 1 -n 0 2>/dev/null) | head -30`
-    return {
-      strategy: 'auto_fix',
-      reason: 'top 是全屏程序，退出后会清屏',
-      fixedCommand,
-      hint: '已转换为非交互式模式 (top -bn1 或 top -l 1)'
-    }
-  }
-
-  // htop → 没有非交互式模式，用 ps 替代
-  if (cmdName === 'htop' || cmdName === 'btop') {
-    const fixedCommand = `echo "=== CPU/内存占用 TOP 10 ===" && ps aux --sort=-%cpu 2>/dev/null | head -11 || ps aux -r | head -11`
-    return {
-      strategy: 'auto_fix',
-      reason: `${cmdName} 是全屏程序，无非交互式模式`,
-      fixedCommand,
-      hint: '已替换为 ps aux 查看进程'
-    }
-  }
-
-  // iotop → 用 iostat 替代
-  if (cmdName === 'iotop') {
-    const fixedCommand = `iostat -x 1 2 2>/dev/null || echo "iostat 未安装，尝试使用 sar" && sar -d 1 1 2>/dev/null || echo "请安装 sysstat 包"`
-    return {
-      strategy: 'auto_fix',
-      reason: 'iotop 是全屏程序',
-      fixedCommand,
-      hint: '已替换为 iostat'
-    }
-  }
-
-  // iftop → 用 ss 或 netstat 替代
-  if (cmdName === 'iftop') {
-    const fixedCommand = `ss -tunp 2>/dev/null | head -20 || netstat -tunp 2>/dev/null | head -20`
-    return {
-      strategy: 'auto_fix',
-      reason: 'iftop 是全屏程序',
-      fixedCommand,
-      hint: '已替换为 ss/netstat 查看网络连接'
-    }
-  }
-
-  // nmon → 用 vmstat 替代
-  if (cmdName === 'nmon') {
-    const fixedCommand = `echo "=== 系统状态 ===" && vmstat 1 3 && echo "=== 内存 ===" && free -h 2>/dev/null || vm_stat`
-    return {
-      strategy: 'auto_fix',
-      reason: 'nmon 是全屏程序',
-      fixedCommand,
-      hint: '已替换为 vmstat + free'
-    }
-  }
-
-  // watch 命令 → 直接执行被监控的命令一次
-  if (/^watch\s+/.test(cmdLower)) {
-    // 提取 watch 后面的实际命令
-    const watchedCmd = cmd.replace(/^watch\s+(-n\s*\d+\s+)?(-d\s+)?/i, '').trim()
-    if (watchedCmd) {
-      return {
-        strategy: 'auto_fix',
-        reason: 'watch 会持续刷新',
-        fixedCommand: watchedCmd,
-        hint: `已移除 watch，直接执行: ${watchedCmd}`
-      }
-    }
-  }
-
-  // tail -f → 执行 5 秒收集输出
-  if (/\btail\s+.*(-[fF]|--follow)/.test(cmd)) {
-    return {
-      strategy: 'timed_execution',
-      reason: 'tail -f 会持续监听',
-      suggestedTimeout: 5000,
-      timeoutAction: 'ctrl_c',
-      hint: '将监听 5 秒后自动退出'
-    }
-  }
-
-  // journalctl -f → 执行 5 秒
-  if (/\bjournalctl\s+.*(-f|--follow)/.test(cmd)) {
-    return {
-      strategy: 'timed_execution',
-      reason: 'journalctl -f 会持续监听',
-      suggestedTimeout: 5000,
-      timeoutAction: 'ctrl_c',
-      hint: '将监听 5 秒后自动退出'
-    }
-  }
-
-  // docker logs -f → 执行 5 秒
-  if (/\bdocker\s+logs\s+.*(-f|--follow)/.test(cmd)) {
-    return {
-      strategy: 'timed_execution',
-      reason: 'docker logs -f 会持续监听',
-      suggestedTimeout: 5000,
-      timeoutAction: 'ctrl_c',
-      hint: '将监听 5 秒后自动退出'
-    }
-  }
-
-  // kubectl logs -f → 执行 5 秒
-  if (/\bkubectl\s+logs\s+.*(-f|--follow)/.test(cmd)) {
-    return {
-      strategy: 'timed_execution',
-      reason: 'kubectl logs -f 会持续监听',
-      suggestedTimeout: 5000,
-      timeoutAction: 'ctrl_c',
-      hint: '将监听 5 秒后自动退出'
-    }
-  }
+  // ==================== 其他命令由 Agent 自行决定如何处理 ====================
+  // ping、top、htop、less、more、watch、tail -f 等命令不再自动转换
+  // Agent 可以读取终端可视区域内容，自行决定运行时长和退出时机
 
   // ==================== 正常执行 ====================
   return { strategy: 'allow' }

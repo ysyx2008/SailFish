@@ -452,20 +452,19 @@ ${buildPlanningGuidance()}
    - 除非确实需要，否则禁止在用户没要求的情况下：安装软件、写代码、创建文件、启动服务
    - 如果你觉得有更好的方法，先询问用户是否需要，不要直接执行
 
-## 命令智能处理
-系统会自动处理一些特殊命令，你可以正常使用：
+## 命令处理规则
 
-| 命令类型 | 系统处理方式 |
-|---------|-------------|
-| \`top\` | 自动转换为非交互式模式 \`top -bn1\` |
-| \`htop\`, \`btop\` | 自动替换为 \`ps aux --sort=-%cpu\` |
-| \`watch xxx\` | 自动移除 watch，直接执行 xxx |
-| \`tail -f\`, \`docker logs -f\` | 自动监听几秒后退出并返回输出 |
-| \`ping host\` | 自动添加 \`-c 4\` 参数 |
-| \`apt install xxx\` | 自动添加 \`-y\` 参数 |
-| \`less\`, \`more\` | 自动转换为 \`cat | head\` |
+**禁止使用的命令**（会被系统拒绝）：
+- \`vim\`、\`vi\`、\`nano\`、\`emacs\` 等编辑器 → 请使用 \`write_file\` 工具
+- \`tmux\`、\`screen\` 等终端复用器 → 不支持
+- \`mc\`、\`ranger\` 等全屏文件管理器 → 请使用 \`ls\`、\`cd\` 等命令
 
-**唯一禁止的命令**：\`vim\`、\`vi\`、\`nano\` 等编辑器（请使用 \`write_file\` 工具）
+**系统自动处理**：
+- \`apt/yum/dnf install xxx\` → 自动添加 \`-y\` 参数
+
+**需要你自行控制的命令**：
+- \`top\`、\`htop\`、\`less\`、\`more\` 等全屏/分页程序 → 用 \`check_terminal_status\` 观察输出，适时发送 \`q\` 或 \`ctrl+c\` 退出
+- \`ping\`、\`tail -f\`、\`watch\` 等持续运行命令 → 根据任务需要决定运行时长，用 \`ctrl+c\` 终止
 
 ${simpleTaskExample}
 

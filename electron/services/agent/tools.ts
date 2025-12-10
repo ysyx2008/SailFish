@@ -15,7 +15,17 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'execute_command',
-        description: `在当前终端执行 shell 命令。支持大部分命令，包括 top/htop/watch/tail -f 等（会自动限时执行）。仅 vim/nano 等编辑器不支持（请用 write_file 工具）。
+        description: `在当前终端执行 shell 命令。
+
+**禁止使用的命令**（会被系统拒绝）：
+- vim、vi、nano、emacs 等编辑器 → 请使用 write_file 工具
+- tmux、screen 等终端复用器 → 不支持
+- mc、ranger 等全屏文件管理器 → 请使用 ls、cd 等命令
+
+**需要你自行控制的命令**：
+- top、htop、less、more 等全屏/分页程序 → 用 check_terminal_status 观察输出，适时发送 q 或 ctrl+c 退出
+- ping、tail -f、watch 等持续运行命令 → 根据任务需要决定运行时长，用 ctrl+c 终止
+- 交互式确认（apt install 等）→ 系统会自动添加 -y 参数
 
 返回值包含：
 - **success**: 命令是否成功执行（true/false）
