@@ -116,6 +116,7 @@ interface Window {
         cwd?: string
         shell?: string
         env?: Record<string, string>
+        encoding?: string
       }) => Promise<string>
       write: (id: string, data: string) => Promise<void>
       resize: (id: string, cols: number, rows: number) => Promise<void>
@@ -147,6 +148,7 @@ interface Window {
           privateKeyPath?: string
           passphrase?: string
         }
+        encoding?: string
       }) => Promise<string>
       write: (id: string, data: string) => Promise<void>
       resize: (id: string, cols: number, rows: number) => Promise<void>
