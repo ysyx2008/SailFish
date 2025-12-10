@@ -2369,23 +2369,23 @@ onMounted(() => {
   gap: 8px;
   padding: 12px 16px;
   margin-top: 10px;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.08));
+  background: linear-gradient(135deg, rgba(52, 211, 153, 0.06), rgba(16, 185, 129, 0.06));
   border-radius: 8px;
-  border: 1px solid rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(52, 211, 153, 0.12);
 }
 
 .thinking-spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(99, 102, 241, 0.2);
-  border-top-color: #6366f1;
+  border: 2px solid rgba(52, 211, 153, 0.2);
+  border-top-color: #34d399;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
 
 .thinking-text {
   font-size: 13px;
-  color: rgba(99, 102, 241, 0.9);
+  color: rgba(110, 231, 183, 0.75);
   animation: pulse-text 2s ease-in-out infinite;
 }
 
@@ -2629,7 +2629,7 @@ onMounted(() => {
 }
 
 .agent-step-inline.thinking {
-  color: rgba(99, 102, 241, 0.9);
+  color: rgba(110, 231, 183, 0.75);
 }
 
 .agent-step-inline.thinking .step-icon {
