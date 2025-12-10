@@ -558,59 +558,16 @@ export class TerminalScreenService {
 
   /**
    * 检测选择提示
+   * 
+   * 注意：selection 类型不再阻止命令执行，交给大模型根据屏幕内容自主判断。
+   * 这里只做非常保守的检测，仅作为参考信息，避免误判。
    */
-  private detectSelectionPrompt(recentLines: string[]): InputWaitingState {
-    // 检测数字选项模式
-    const optionPatterns = [
-      /^\s*\d+\)\s+.+/,           // 1) Option
-      /^\s*\[\d+\]\s+.+/,         // [1] Option
-      /^\s*\d+\.\s+.+/,           // 1. Option
-      /^\s*[a-z]\)\s+.+/i,        // a) Option
-    ]
-
-    const selectPromptPatterns = [
-      /select\s*(an?\s*)?option/i,
-      /choose\s*(an?\s*)?option/i,
-      /enter\s*(your\s*)?choice/i,
-      /请选择/,
-      /输入.*编号/,
-      /selection\s*:/i,
-    ]
-
-    // 检查是否有选项列表
-    const options: string[] = []
-    for (const line of recentLines) {
-      for (const pattern of optionPatterns) {
-        if (pattern.test(line)) {
-          options.push(line.trim())
-        }
-      }
-    }
-
-    if (options.length >= 2) {
-      // 有选项列表，检查是否有选择提示
-      const lastLines = recentLines.slice(-2).join(' ')
-      for (const pattern of selectPromptPatterns) {
-        if (pattern.test(lastLines)) {
-          return {
-            isWaiting: true,
-            type: 'selection',
-            prompt: lastLines.trim(),
-            options,
-            confidence: 0.85
-          }
-        }
-      }
-
-      // 即使没有明确的选择提示，有多个选项也可能是选择状态
-      return {
-        isWaiting: true,
-        type: 'selection',
-        options,
-        confidence: 0.6
-      }
-    }
-
+  private detectSelectionPrompt(_recentLines: string[]): InputWaitingState {
+    // 禁用自动检测，完全交给大模型根据屏幕内容自主判断
+    // 原因：
+    // 1. 数字列表（如 "1. xxx 2. xxx"）很容易被误识别为交互式选项
+    // 2. 大模型可以看到屏幕内容，能够更准确地判断是否需要选择输入
+    // 3. 即使误判也不会阻止命令执行，因为 selection 类型不在阻止列表中
     return { isWaiting: false, type: 'none', confidence: 0 }
   }
 

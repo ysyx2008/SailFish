@@ -272,11 +272,15 @@ export class TerminalAwarenessService {
     } else {
       // 本地终端：基于 pgrep 进程检测，状态准确
       
-      // 检查是否有特殊输入等待（不是普通 prompt）
-      const hasSpecialInputWaiting = input.isWaiting && input.type !== 'prompt' && input.type !== 'none'
+      // 检查是否有明确需要用户交互的输入等待
+      // 注意：selection（选择）类型不阻止命令执行，交给大模型根据屏幕内容自主判断
+      // 因为数字列表（如提示信息 "1. xxx 2. xxx"）很容易被误识别为选择状态
+      const blockingInputTypes: Array<typeof input.type> = ['password', 'confirmation', 'pager', 'editor', 'custom_input']
+      const hasBlockingInputWaiting = input.isWaiting && blockingInputTypes.includes(input.type)
 
-      if (hasSpecialInputWaiting) {
-        // 最高优先级：前端检测到等待输入（密码、确认、选择等）
+      if (hasBlockingInputWaiting) {
+        // 最高优先级：前端检测到明确需要用户交互的输入（密码、确认等）
+        // selection 类型不在此列，交给大模型自主判断
         status = 'waiting_input'
         needsUserInput = true
         canExecuteCommand = false
