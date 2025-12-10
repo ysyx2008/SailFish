@@ -255,6 +255,21 @@ function createWindow() {
     return { action: 'deny' }
   })
 
+  // 拦截页面内链接点击，防止应用内导航到外部网页
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    // 允许开发环境的热更新导航
+    if (process.env.VITE_DEV_SERVER_URL && url.startsWith(process.env.VITE_DEV_SERVER_URL)) {
+      return
+    }
+    // 允许导航到本地文件（生产环境）
+    if (url.startsWith('file://')) {
+      return
+    }
+    // 阻止导航到外部 URL，改为在系统浏览器中打开
+    event.preventDefault()
+    shell.openExternal(url)
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
   })
