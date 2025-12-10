@@ -1098,12 +1098,6 @@ export class AgentService {
     const enhancedMessage = this.enhanceUserMessage(userMessage)
     run.messages.push({ role: 'user', content: enhancedMessage })
 
-    // 添加开始步骤
-    this.addStep(agentId, {
-      type: 'thinking',
-      content: '正在分析任务...'
-    })
-
     let stepCount = 0
     let lastResponse: ChatWithToolsResult | null = null
 
