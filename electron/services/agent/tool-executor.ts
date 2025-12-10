@@ -310,8 +310,8 @@ async function executeCommand(
     const isBusy = preAdvice.reason?.includes('终端正在执行命令')
     
     if (isBusy) {
-      // 终端正在执行命令：这不是错误，而是需要等待的状态
-      // 返回 isRunning: true，不计入失败，引导 agent 使用 wait 工具
+      // 终端正在执行命令：命令确实没执行，但这不是 Agent 的错误，是需要等待的状态
+      // 返回 isRunning: true，不计入失败统计，避免触发无意义的重试循环
       const waitMsg = `⏳ 终端正在执行其他命令，无法立即执行新命令。\n\n💡 建议：\n1. 使用 wait 工具等待当前命令完成（如 60-120 秒）\n2. 使用 check_terminal_status 检查终端状态\n3. 如果需要中断当前命令，使用 send_control_key("ctrl+c")`
       executor.addStep({
         type: 'tool_call',
@@ -326,8 +326,9 @@ async function executeCommand(
         toolName: 'execute_command',
         toolResult: waitMsg
       })
-      // 返回 isRunning: true，这样不会被计入失败，agent 会知道需要等待
-      return { success: true, output: waitMsg, isRunning: true }
+      // success: false（命令确实没执行）
+      // isRunning: true（但不计入失败统计，因为这是外部状态导致的，不是 Agent 决策错误）
+      return { success: false, output: waitMsg, error: waitMsg, isRunning: true }
     }
     
     // 其他原因（等待输入、卡死等）：返回错误让 agent 处理
