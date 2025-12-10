@@ -188,13 +188,14 @@ export type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
 
 export interface AgentStep {
   id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm'
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement' | 'waiting' | 'asking'
   content: string
   toolName?: string
   toolArgs?: Record<string, unknown>
   toolResult?: string
   riskLevel?: RiskLevel
   timestamp: number
+  isStreaming?: boolean
 }
 
 export interface AgentContext {
@@ -270,6 +271,16 @@ const electronAPI = {
       ipcRenderer.on(`ssh:data:${id}`, handler)
       return () => {
         ipcRenderer.removeListener(`ssh:data:${id}`, handler)
+        // 通知后端取消订阅，释放资源
+        ipcRenderer.send('ssh:unsubscribe', id)
+      }
+    },
+    // 监听 SSH 断开连接事件
+    onDisconnected: (id: string, callback: (event: { reason: string; error?: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { reason: string; error?: string }) => callback(data)
+      ipcRenderer.on(`ssh:disconnected:${id}`, handler)
+      return () => {
+        ipcRenderer.removeListener(`ssh:disconnected:${id}`, handler)
       }
     }
   },
@@ -492,43 +503,13 @@ const electronAPI = {
         timestamp: number
       }>,
 
-    // 更新前端屏幕分析结果（前端 -> 后端）
-    updateScreenAnalysis: (ptyId: string, analysis: {
-      input: {
-        isWaiting: boolean
-        type: 'password' | 'confirmation' | 'selection' | 'pager' | 'prompt' | 'editor' | 'custom_input' | 'none'
-        prompt?: string
-        options?: string[]
-        suggestedResponse?: string
-        confidence: number
-      }
-      output: {
-        type: 'progress' | 'compilation' | 'test' | 'log_stream' | 'error' | 'table' | 'normal'
-        confidence: number
-        details?: {
-          progress?: number
-          testsPassed?: number
-          testsFailed?: number
-          errorCount?: number
-          eta?: string
-        }
-      }
-      context: {
-        user?: string
-        hostname?: string
-        isRoot: boolean
-        cwdFromPrompt?: string
-        activeEnvs: string[]
-        sshDepth: number
-        promptType: 'bash' | 'zsh' | 'fish' | 'powershell' | 'cmd' | 'unknown'
-      }
-      timestamp: number
-    }) =>
-      ipcRenderer.invoke('terminalAwareness:updateScreenAnalysis', ptyId, analysis),
-
     // 追踪输出（用于输出速率计算）
     trackOutput: (ptyId: string, lineCount: number) =>
       ipcRenderer.invoke('terminalAwareness:trackOutput', ptyId, lineCount),
+
+    // 获取终端可视区域内容
+    getVisibleContent: (ptyId: string) =>
+      ipcRenderer.invoke('terminalAwareness:getVisibleContent', ptyId) as Promise<string[] | null>,
 
     // 检查是否可以执行命令
     canExecute: (ptyId: string) =>
@@ -609,6 +590,10 @@ const electronAPI = {
     // 主题
     getTheme: () => ipcRenderer.invoke('config:getTheme'),
     setTheme: (theme: string) => ipcRenderer.invoke('config:setTheme', theme),
+
+    // UI 主题
+    getUiTheme: () => ipcRenderer.invoke('config:getUiTheme') as Promise<'dark' | 'light' | 'blue'>,
+    setUiTheme: (theme: 'dark' | 'light' | 'blue') => ipcRenderer.invoke('config:setUiTheme', theme),
 
     // Agent MBTI
     getAgentMbti: () => ipcRenderer.invoke('config:getAgentMbti') as Promise<string | null>,
@@ -1545,6 +1530,87 @@ const electronAPI = {
       return () => {
         ipcRenderer.removeListener('knowledge:downloadProgress', handler)
       }
+    }
+  },
+
+  // 终端屏幕内容服务（供主进程请求渲染进程数据）
+  screen: {
+    // 注册获取最近 N 行的处理函数
+    onRequestLastNLines: (handler: (data: { requestId: string; ptyId: string; lines: number }) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, data: { requestId: string; ptyId: string; lines: number }) => {
+        handler(data)
+      }
+      ipcRenderer.on('screen:requestLastNLines', listener)
+      return () => {
+        ipcRenderer.removeListener('screen:requestLastNLines', listener)
+      }
+    },
+
+    // 注册获取可视内容的处理函数
+    onRequestVisibleContent: (handler: (data: { requestId: string; ptyId: string }) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, data: { requestId: string; ptyId: string }) => {
+        handler(data)
+      }
+      ipcRenderer.on('screen:requestVisibleContent', listener)
+      return () => {
+        ipcRenderer.removeListener('screen:requestVisibleContent', listener)
+      }
+    },
+
+    // 响应最近 N 行请求
+    responseLastNLines: (requestId: string, lines: string[] | null) => {
+      ipcRenderer.send('screen:responseLastNLines', { requestId, lines })
+    },
+
+    // 响应可视内容请求
+    responseVisibleContent: (requestId: string, lines: string[] | null) => {
+      ipcRenderer.send('screen:responseVisibleContent', { requestId, lines })
+    },
+
+    // 注册获取屏幕分析的处理函数
+    onRequestScreenAnalysis: (handler: (data: { requestId: string; ptyId: string }) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, data: { requestId: string; ptyId: string }) => {
+        handler(data)
+      }
+      ipcRenderer.on('screen:requestScreenAnalysis', listener)
+      return () => {
+        ipcRenderer.removeListener('screen:requestScreenAnalysis', listener)
+      }
+    },
+
+    // 响应屏幕分析请求
+    responseScreenAnalysis: (requestId: string, analysis: {
+      input: {
+        isWaiting: boolean
+        type: string
+        prompt?: string
+        options?: string[]
+        suggestedResponse?: string
+        confidence: number
+      }
+      output: {
+        type: string
+        confidence: number
+        details?: {
+          progress?: number
+          testsPassed?: number
+          testsFailed?: number
+          errorCount?: number
+          eta?: string
+        }
+      }
+      context: {
+        user?: string
+        hostname?: string
+        isRoot: boolean
+        cwdFromPrompt?: string
+        activeEnvs: string[]
+        sshDepth: number
+        promptType: string
+      }
+      visibleContent?: string[]
+    } | null) => {
+      ipcRenderer.send('screen:responseScreenAnalysis', { requestId, analysis })
     }
   }
 }

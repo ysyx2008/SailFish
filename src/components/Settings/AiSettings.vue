@@ -28,25 +28,25 @@ const currentMbti = computed(() => configStore.agentMbti)
 // 使用 computed 以便翻译能够响应语言切换
 const mbtiTypes = computed(() => [
   // 分析师型 (NT)
-  { type: 'INTJ' as const, name: '策略家', desc: '逻辑严谨、直接高效', group: t('aiSettings.mbtiGroups.analyst') },
-  { type: 'INTP' as const, name: '逻辑学家', desc: '追求精确、深度分析', group: t('aiSettings.mbtiGroups.analyst') },
-  { type: 'ENTJ' as const, name: '指挥官', desc: '果断自信、目标导向', group: t('aiSettings.mbtiGroups.analyst') },
-  { type: 'ENTP' as const, name: '辩论家', desc: '思维活跃、善于创新', group: t('aiSettings.mbtiGroups.analyst') },
+  { type: 'INTJ' as const, name: t('aiSettings.mbtiTypes.INTJ.name'), desc: t('aiSettings.mbtiTypes.INTJ.desc'), group: t('aiSettings.mbtiGroups.analyst') },
+  { type: 'INTP' as const, name: t('aiSettings.mbtiTypes.INTP.name'), desc: t('aiSettings.mbtiTypes.INTP.desc'), group: t('aiSettings.mbtiGroups.analyst') },
+  { type: 'ENTJ' as const, name: t('aiSettings.mbtiTypes.ENTJ.name'), desc: t('aiSettings.mbtiTypes.ENTJ.desc'), group: t('aiSettings.mbtiGroups.analyst') },
+  { type: 'ENTP' as const, name: t('aiSettings.mbtiTypes.ENTP.name'), desc: t('aiSettings.mbtiTypes.ENTP.desc'), group: t('aiSettings.mbtiGroups.analyst') },
   // 外交官型 (NF)
-  { type: 'INFJ' as const, name: '提倡者', desc: '深思熟虑、富有洞察', group: t('aiSettings.mbtiGroups.diplomat') },
-  { type: 'INFP' as const, name: '调停者', desc: '富有同理心、追求完美', group: t('aiSettings.mbtiGroups.diplomat') },
-  { type: 'ENFJ' as const, name: '主人公', desc: '热情洋溢、善于激励', group: t('aiSettings.mbtiGroups.diplomat') },
-  { type: 'ENFP' as const, name: '竞选者', desc: '积极乐观、富有创意', group: t('aiSettings.mbtiGroups.diplomat') },
+  { type: 'INFJ' as const, name: t('aiSettings.mbtiTypes.INFJ.name'), desc: t('aiSettings.mbtiTypes.INFJ.desc'), group: t('aiSettings.mbtiGroups.diplomat') },
+  { type: 'INFP' as const, name: t('aiSettings.mbtiTypes.INFP.name'), desc: t('aiSettings.mbtiTypes.INFP.desc'), group: t('aiSettings.mbtiGroups.diplomat') },
+  { type: 'ENFJ' as const, name: t('aiSettings.mbtiTypes.ENFJ.name'), desc: t('aiSettings.mbtiTypes.ENFJ.desc'), group: t('aiSettings.mbtiGroups.diplomat') },
+  { type: 'ENFP' as const, name: t('aiSettings.mbtiTypes.ENFP.name'), desc: t('aiSettings.mbtiTypes.ENFP.desc'), group: t('aiSettings.mbtiGroups.diplomat') },
   // 哨兵型 (SJ)
-  { type: 'ISTJ' as const, name: '物流师', desc: '条理清晰、稳健务实', group: t('aiSettings.mbtiGroups.sentinel') },
-  { type: 'ISFJ' as const, name: '守卫者', desc: '细心周到、耐心负责', group: t('aiSettings.mbtiGroups.sentinel') },
-  { type: 'ESTJ' as const, name: '总经理', desc: '组织有序、执行力强', group: t('aiSettings.mbtiGroups.sentinel') },
-  { type: 'ESFJ' as const, name: '执政官', desc: '友善热心、善于协调', group: t('aiSettings.mbtiGroups.sentinel') },
+  { type: 'ISTJ' as const, name: t('aiSettings.mbtiTypes.ISTJ.name'), desc: t('aiSettings.mbtiTypes.ISTJ.desc'), group: t('aiSettings.mbtiGroups.sentinel') },
+  { type: 'ISFJ' as const, name: t('aiSettings.mbtiTypes.ISFJ.name'), desc: t('aiSettings.mbtiTypes.ISFJ.desc'), group: t('aiSettings.mbtiGroups.sentinel') },
+  { type: 'ESTJ' as const, name: t('aiSettings.mbtiTypes.ESTJ.name'), desc: t('aiSettings.mbtiTypes.ESTJ.desc'), group: t('aiSettings.mbtiGroups.sentinel') },
+  { type: 'ESFJ' as const, name: t('aiSettings.mbtiTypes.ESFJ.name'), desc: t('aiSettings.mbtiTypes.ESFJ.desc'), group: t('aiSettings.mbtiGroups.sentinel') },
   // 探险家型 (SP)
-  { type: 'ISTP' as const, name: '鉴赏家', desc: '冷静务实、追求效率', group: t('aiSettings.mbtiGroups.explorer') },
-  { type: 'ISFP' as const, name: '探险家', desc: '灵活变通、追求美感', group: t('aiSettings.mbtiGroups.explorer') },
-  { type: 'ESTP' as const, name: '企业家', desc: '反应敏捷、敢于冒险', group: t('aiSettings.mbtiGroups.explorer') },
-  { type: 'ESFP' as const, name: '表演者', desc: '乐观开朗、善于表达', group: t('aiSettings.mbtiGroups.explorer') }
+  { type: 'ISTP' as const, name: t('aiSettings.mbtiTypes.ISTP.name'), desc: t('aiSettings.mbtiTypes.ISTP.desc'), group: t('aiSettings.mbtiGroups.explorer') },
+  { type: 'ISFP' as const, name: t('aiSettings.mbtiTypes.ISFP.name'), desc: t('aiSettings.mbtiTypes.ISFP.desc'), group: t('aiSettings.mbtiGroups.explorer') },
+  { type: 'ESTP' as const, name: t('aiSettings.mbtiTypes.ESTP.name'), desc: t('aiSettings.mbtiTypes.ESTP.desc'), group: t('aiSettings.mbtiGroups.explorer') },
+  { type: 'ESFP' as const, name: t('aiSettings.mbtiTypes.ESFP.name'), desc: t('aiSettings.mbtiTypes.ESFP.desc'), group: t('aiSettings.mbtiGroups.explorer') }
 ])
 
 const setMbti = async (mbti: AgentMbtiType) => {

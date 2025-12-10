@@ -222,9 +222,20 @@ export function useAgentMode(
     // 如果 Agent 正在运行，发送补充消息而不是启动新任务
     if (isAgentRunning.value && agentState.value?.agentId) {
       inputText.value = ''
-      // 添加到待处理列表，立即显示给用户
-      pendingSupplements.value.push(message)
-      // 发送到后端，步骤会在下一轮 AI 请求时由后端添加
+      
+      // 检查是否有 asking 步骤在等待回复
+      const hasWaitingAsk = agentTaskGroups.value.some(group => 
+        group.isCurrentTask && group.steps.some(step => 
+          step.type === 'asking' && step.toolResult?.includes('⏳')
+        )
+      )
+      
+      // 如果不是在回复提问，才显示为待处理的补充消息
+      if (!hasWaitingAsk) {
+        pendingSupplements.value.push(message)
+      }
+      
+      // 发送到后端
       await window.electronAPI.agent.addMessage(agentState.value.agentId, message)
       return
     }
@@ -382,6 +393,17 @@ export function useAgentMode(
     }
   }
 
+  // 发送 Agent 回复（用于用户点击选项快速回复）
+  const sendAgentReply = async (message: string) => {
+    if (!message.trim() || !currentTabId.value) return
+
+    // 只有在 Agent 运行中才能发送回复
+    if (!isAgentRunning.value || !agentState.value?.agentId) return
+
+    // 直接发送到后端，不添加到 pendingSupplements（选项点击不需要显示等待状态）
+    await window.electronAPI.agent.addMessage(agentState.value.agentId, message)
+  }
+
   // 获取步骤类型的图标
   const getStepIcon = (type: AgentStep['type']): string => {
     switch (type) {
@@ -394,6 +416,9 @@ export function useAgentMode(
       case 'user_task': return '👤'
       case 'final_result': return '✅'
       case 'user_supplement': return '💡'
+      case 'waiting': return '⏳'
+      case 'asking': return '❓'
+      case 'waiting_password': return '🔐'
       default: return '•'
     }
   }
@@ -516,6 +541,7 @@ export function useAgentMode(
     runAgent,
     abortAgent,
     confirmToolCall,
+    sendAgentReply,
     getStepIcon,
     getRiskClass
   }

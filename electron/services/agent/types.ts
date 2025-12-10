@@ -18,7 +18,7 @@ export type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
 // Agent 执行步骤
 export interface AgentStep {
   id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting'
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password'
   content: string
   toolName?: string
   toolArgs?: Record<string, unknown>
@@ -47,6 +47,7 @@ export interface ToolResult {
   output: string
   error?: string
   isRunning?: boolean  // 命令仍在后台执行（用于长耗时命令超时但未失败的情况）
+  exitCode?: number    // 命令退出状态码（0 表示成功，非 0 表示失败）
 }
 
 // 待确认的工具调用

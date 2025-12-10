@@ -107,10 +107,17 @@ import { McpService } from './services/mcp.service'
 import { getKnowledgeService, KnowledgeService } from './services/knowledge'
 import type { KnowledgeSettings, SearchOptions, AddDocumentOptions, ModelTier } from './services/knowledge/types'
 import { initTerminalStateService, getTerminalStateService, type TerminalState, type CwdChangeEvent, type CommandExecution, type CommandExecutionEvent } from './services/terminal-state.service'
-import { initTerminalAwarenessService, getTerminalAwarenessService, type TerminalAwareness, type ScreenAnalysisResult } from './services/terminal-awareness'
+import { initTerminalAwarenessService, getTerminalAwarenessService, type TerminalAwareness } from './services/terminal-awareness'
+import { initScreenContentService } from './services/screen-content.service'
 
 // 禁用 GPU 加速可能导致的问题（可选）
 // app.disableHardwareAcceleration()
+
+// 禁用开发模式下的安全警告（CSP unsafe-eval 是 Vite 热更新所需）
+// 打包后的生产版本不会有这个警告
+if (process.env.VITE_DEV_SERVER_URL) {
+  process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true'
+}
 
 // 捕获未处理的异常，防止 EPIPE 等错误导致崩溃
 process.on('uncaughtException', (error) => {
@@ -139,7 +146,7 @@ const configService = new ConfigService()
 const xshellImportService = new XshellImportService()
 const hostProfileService = new HostProfileService()
 const mcpService = new McpService()
-const agentService = new AgentService(aiService, ptyService, hostProfileService, mcpService, configService)
+const agentService = new AgentService(aiService, ptyService, hostProfileService, mcpService, configService, sshService)
 const historyService = new HistoryService()
 const documentParserService = getDocumentParserService()
 const sftpService = new SftpService()
@@ -148,7 +155,7 @@ const sftpService = new SftpService()
 const terminalStateService = initTerminalStateService(ptyService, sshService)
 
 // 终端感知服务（整合屏幕分析和进程监控）
-const terminalAwarenessService = initTerminalAwarenessService(ptyService, terminalStateService)
+const terminalAwarenessService = initTerminalAwarenessService(ptyService, terminalStateService, sshService)
 
 // 监听 CWD 变化，转发到前端
 terminalStateService.onCwdChange((event: CwdChangeEvent) => {
@@ -250,10 +257,13 @@ function createWindow() {
 app.whenReady().then(async () => {
   // 移除默认菜单栏
   Menu.setApplicationMenu(null)
-  
+
   // 初始化知识库服务（确保 Agent 可以访问）
   await initKnowledgeService()
   
+  // 初始化屏幕内容服务（供 Agent 获取准确的终端输出）
+  initScreenContentService()
+
   createWindow()
 
   app.on('activate', () => {
@@ -306,6 +316,10 @@ ipcMain.on('pty:subscribe', (event, id: string) => {
       if (!event.sender.isDestroyed()) {
         event.sender.send(`pty:data:${id}`, data)
       }
+      // 追踪本地终端输出（用于检测命令是否在运行）
+      // 计算行数（包括 \n 和 \r 都算换行，适用于 curl 进度条等）
+      const lineCount = (data.match(/[\n\r]/g) || []).length
+      terminalAwarenessService.trackOutput(id, lineCount, data.length)
     } catch (e) {
       // 忽略发送错误（窗口可能已关闭）
     }
@@ -326,19 +340,73 @@ ipcMain.handle('ssh:resize', async (_event, id: string, cols: number, rows: numb
 })
 
 ipcMain.handle('ssh:disconnect', async (_event, id: string) => {
+  // 清理订阅
+  const unsubscribe = sshDataUnsubscribes.get(id)
+  if (unsubscribe) {
+    unsubscribe()
+    sshDataUnsubscribes.delete(id)
+  }
+  const disconnectUnsub = sshDisconnectUnsubscribes.get(id)
+  if (disconnectUnsub) {
+    disconnectUnsub()
+    sshDisconnectUnsubscribes.delete(id)
+  }
   sshService.disconnect(id)
 })
 
+// SSH 数据订阅的取消函数存储
+const sshDataUnsubscribes = new Map<string, () => void>()
+// SSH 断开连接订阅的取消函数存储
+const sshDisconnectUnsubscribes = new Map<string, () => void>()
+
 ipcMain.on('ssh:subscribe', (event, id: string) => {
-  sshService.onData(id, (data: string) => {
+  // 注册数据回调
+  const dataUnsubscribe = sshService.onData(id, (data: string) => {
     try {
       if (!event.sender.isDestroyed()) {
         event.sender.send(`ssh:data:${id}`, data)
       }
+      // 追踪 SSH 终端输出（用于检测命令是否在运行）
+      // 计算行数（包括 \n 和 \r 都算换行，适用于 curl 进度条等）
+      const lineCount = (data.match(/[\n\r]/g) || []).length
+      terminalAwarenessService.trackOutput(id, lineCount, data.length)
     } catch (e) {
       // 忽略发送错误（窗口可能已关闭）
     }
   })
+  sshDataUnsubscribes.set(id, dataUnsubscribe)
+
+  // 注册断开连接回调，通知前端
+  const disconnectUnsubscribe = sshService.onDisconnect(id, (disconnectEvent) => {
+    try {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send(`ssh:disconnected:${id}`, {
+          reason: disconnectEvent.reason,
+          error: disconnectEvent.error?.message
+        })
+      }
+    } catch (e) {
+      // 忽略发送错误
+    }
+    // 清理订阅
+    sshDataUnsubscribes.delete(id)
+    sshDisconnectUnsubscribes.delete(id)
+  })
+  sshDisconnectUnsubscribes.set(id, disconnectUnsubscribe)
+})
+
+// SSH 取消订阅
+ipcMain.on('ssh:unsubscribe', (_event, id: string) => {
+  const dataUnsubscribe = sshDataUnsubscribes.get(id)
+  if (dataUnsubscribe) {
+    dataUnsubscribe()
+    sshDataUnsubscribes.delete(id)
+  }
+  const disconnectUnsubscribe = sshDisconnectUnsubscribes.get(id)
+  if (disconnectUnsubscribe) {
+    disconnectUnsubscribe()
+    sshDisconnectUnsubscribes.delete(id)
+  }
 })
 
 // ==================== 终端状态服务 ====================
@@ -433,14 +501,14 @@ ipcMain.handle('terminalAwareness:getAwareness', async (_event, ptyId: string): 
   return terminalAwarenessService.getAwareness(ptyId)
 })
 
-// 更新前端屏幕分析结果（前端 -> 后端）
-ipcMain.handle('terminalAwareness:updateScreenAnalysis', async (_event, ptyId: string, analysis: ScreenAnalysisResult) => {
-  terminalAwarenessService.updateScreenAnalysis(ptyId, analysis)
-})
-
 // 追踪输出（用于输出速率计算）
 ipcMain.handle('terminalAwareness:trackOutput', async (_event, ptyId: string, lineCount: number) => {
   terminalAwarenessService.trackOutput(ptyId, lineCount)
+})
+
+// 获取终端可视区域内容
+ipcMain.handle('terminalAwareness:getVisibleContent', async (_event, ptyId: string): Promise<string[] | null> => {
+  return terminalAwarenessService.getVisibleContent(ptyId)
 })
 
 // 检查是否可以执行命令
@@ -553,6 +621,15 @@ ipcMain.handle('config:getTheme', async () => {
 
 ipcMain.handle('config:setTheme', async (_event, theme: string) => {
   configService.setTheme(theme)
+})
+
+// UI 主题配置
+ipcMain.handle('config:getUiTheme', async () => {
+  return configService.getUiTheme()
+})
+
+ipcMain.handle('config:setUiTheme', async (_event, theme: string) => {
+  configService.setUiTheme(theme as 'dark' | 'light' | 'blue')
 })
 
 // Agent MBTI 配置

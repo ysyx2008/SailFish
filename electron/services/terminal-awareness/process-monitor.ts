@@ -3,6 +3,7 @@
  * 负责检测命令执行状态、卡死检测、输出速率分析等
  */
 import type { PtyService } from '../pty.service'
+import type { SshService } from '../ssh.service'
 import type { TerminalStateService, TerminalState, CommandExecution } from '../terminal-state.service'
 
 /** 进程运行状态 */
@@ -38,10 +39,14 @@ export interface ProcessState {
 interface OutputTracker {
   /** 最近 N 秒的输出行数记录 */
   recentOutputCounts: { timestamp: number; lineCount: number }[]
+  /** 最近 N 秒的数据包记录（用于追踪非换行输出，如 curl 进度条） */
+  recentDataChunks: { timestamp: number; size: number }[]
   /** 最后一次输出时间 */
   lastOutputTime: number
   /** 总输出行数 */
   totalLines: number
+  /** 总数据量（字节） */
+  totalBytes: number
 }
 
 /** 已知的交互式命令（全屏） */
@@ -74,6 +79,10 @@ const SILENT_COMMANDS = [
   'sleep',
   'read',
   'wait',
+  
+  // Git 网络操作（克隆/拉取/推送可能较慢，且进度输出使用 \r 覆盖）
+  'git clone', 'git pull', 'git push', 'git fetch',
+  'git submodule update', 'git lfs pull', 'git lfs fetch',
   
   // 文件传输
   'dd',
@@ -161,6 +170,7 @@ const OUTPUT_TRACKING_WINDOW = 10000
 
 export class ProcessMonitor {
   private ptyService?: PtyService
+  private sshService?: SshService
   private terminalStateService?: TerminalStateService
   
   /** 输出追踪器（按终端 ID）*/
@@ -169,17 +179,28 @@ export class ProcessMonitor {
   /** 卡死超时配置（毫秒）*/
   private stuckTimeout: number = DEFAULT_STUCK_TIMEOUT
 
-  constructor(ptyService?: PtyService, terminalStateService?: TerminalStateService) {
+  constructor(ptyService?: PtyService, terminalStateService?: TerminalStateService, sshService?: SshService) {
     this.ptyService = ptyService
     this.terminalStateService = terminalStateService
+    this.sshService = sshService
   }
 
   /**
    * 设置依赖服务
    */
-  setServices(ptyService: PtyService, terminalStateService: TerminalStateService): void {
+  setServices(ptyService: PtyService, terminalStateService: TerminalStateService, sshService?: SshService): void {
     this.ptyService = ptyService
     this.terminalStateService = terminalStateService
+    if (sshService) {
+      this.sshService = sshService
+    }
+  }
+
+  /**
+   * 设置 SSH 服务
+   */
+  setSshService(sshService: SshService): void {
+    this.sshService = sshService
   }
 
   /**
@@ -202,7 +223,13 @@ export class ProcessMonitor {
       return { status: 'idle' }
     }
 
-    // 获取 PTY 级别的状态
+    // 对于 SSH 终端，无法通过本地进程检测状态
+    // 需要依赖 terminalState.isIdle（由提示符检测等机制更新）
+    if (terminalState.type === 'ssh') {
+      return this.getProcessStateForSsh(terminalState, ptyId)
+    }
+
+    // 获取 PTY 级别的状态（仅适用于本地终端）
     const ptyStatus = await this.ptyService.getTerminalStatus(ptyId)
     
     // 获取输出追踪信息
@@ -214,20 +241,10 @@ export class ProcessMonitor {
     // 获取输出速率（在判断空闲前计算）
     const outputRate = this.calculateOutputRate(ptyId)
 
-    // 1. 如果 PTY 报告空闲，需要进一步检查
+    // 1. 如果 PTY 报告空闲（没有子进程在运行），直接返回空闲状态
+    // PTY 通过 pgrep 检测子进程非常可靠，应该优先信任
+    // 注意：hasActiveOutput 检查主要是为 SSH 终端设计的，本地终端不需要
     if (ptyStatus.isIdle) {
-      // 检查是否有持续输出（表示有命令在后台/子进程中运行）
-      // 例如 tail -f 会持续输出，但 PTY 可能报告为空闲
-      if (outputRate && outputRate > 0.1) {
-        // 有持续输出，说明不是真正的空闲
-        return {
-          status: 'running_streaming',
-          outputRate,
-          lastOutputTime: outputTracker?.lastOutputTime,
-          suggestion: `检测到持续输出，可能有命令正在运行。输出速率: ${outputRate.toFixed(1)} 行/秒`
-        }
-      }
-      
       return {
         status: 'idle',
         suggestion: '终端空闲，可以执行新命令'
@@ -291,6 +308,41 @@ export class ProcessMonitor {
   }
 
   /**
+   * 获取 SSH 终端的进程状态（简化版）
+   * SSH 终端状态由模型根据屏幕内容判断，这里只返回基本信息
+   */
+  private async getProcessStateForSsh(terminalState: TerminalState, ptyId: string): Promise<ProcessState> {
+    // 当前执行的命令
+    const currentExecution = terminalState.currentExecution
+    const runningTime = currentExecution 
+      ? Date.now() - currentExecution.startTime 
+      : undefined
+
+    // 获取输出追踪信息（仅用于基本信息）
+    const outputTracker = this.outputTrackers.get(ptyId)
+    const outputRate = this.calculateOutputRate(ptyId)
+    const lastOutputTime = outputTracker?.lastOutputTime
+
+    // SSH 终端简化处理：
+    // - 如果有正在执行的 Agent 命令，返回 busy
+    // - 否则返回 idle（具体状态由模型根据屏幕内容判断）
+    if (currentExecution) {
+      return {
+        status: 'running_silent',
+        runningTime,
+        lastOutputTime,
+        outputRate,
+        suggestion: 'SSH 终端有命令正在执行，请查看屏幕内容确认状态'
+      }
+    }
+
+    return {
+      status: 'idle',
+      suggestion: 'SSH 终端状态请根据屏幕内容判断'
+    }
+  }
+
+  /**
    * 分类命令类型
    */
   private classifyCommand(command: string): 'interactive' | 'streaming' | 'silent' | 'normal' {
@@ -348,15 +400,20 @@ export class ProcessMonitor {
 
   /**
    * 追踪输出（由外部调用更新）
+   * @param ptyId 终端 ID
+   * @param lineCount 行数（可选，默认为 1）
+   * @param dataSize 数据大小（字节，可选）- 用于追踪非换行输出如 curl 进度条
    */
-  trackOutput(ptyId: string, lineCount: number = 1): void {
+  trackOutput(ptyId: string, lineCount: number = 1, dataSize?: number): void {
     let tracker = this.outputTrackers.get(ptyId)
     
     if (!tracker) {
       tracker = {
         recentOutputCounts: [],
+        recentDataChunks: [],
         lastOutputTime: Date.now(),
-        totalLines: 0
+        totalLines: 0,
+        totalBytes: 0
       }
       this.outputTrackers.set(ptyId, tracker)
     }
@@ -366,9 +423,16 @@ export class ProcessMonitor {
     tracker.totalLines += lineCount
     tracker.recentOutputCounts.push({ timestamp: now, lineCount })
 
+    // 追踪数据包（用于检测 curl 进度条等非换行输出）
+    if (dataSize !== undefined && dataSize > 0) {
+      tracker.totalBytes += dataSize
+      tracker.recentDataChunks.push({ timestamp: now, size: dataSize })
+    }
+
     // 清理超出时间窗口的记录
     const cutoff = now - OUTPUT_TRACKING_WINDOW
     tracker.recentOutputCounts = tracker.recentOutputCounts.filter(r => r.timestamp > cutoff)
+    tracker.recentDataChunks = tracker.recentDataChunks.filter(r => r.timestamp > cutoff)
   }
 
   /**
@@ -392,6 +456,55 @@ export class ProcessMonitor {
     const timeSpan = (now - recentRecords[0].timestamp) / 1000 // 转换为秒
 
     return timeSpan > 0 ? totalLines / timeSpan : totalLines
+  }
+
+  /**
+   * 检查是否有持续数据输出（用于检测 curl 进度条等非换行输出）
+   * 返回数据流速率（字节/秒）或 undefined
+   */
+  private calculateDataRate(ptyId: string): number | undefined {
+    const tracker = this.outputTrackers.get(ptyId)
+    if (!tracker || tracker.recentDataChunks.length === 0) {
+      return undefined
+    }
+
+    const now = Date.now()
+    const cutoff = now - OUTPUT_TRACKING_WINDOW
+    const recentChunks = tracker.recentDataChunks.filter(r => r.timestamp > cutoff)
+
+    if (recentChunks.length === 0) {
+      return 0
+    }
+
+    const totalBytes = recentChunks.reduce((sum, r) => sum + r.size, 0)
+    const timeSpan = (now - recentChunks[0].timestamp) / 1000 // 转换为秒
+
+    return timeSpan > 0 ? totalBytes / timeSpan : totalBytes
+  }
+
+  /**
+   * 检查终端是否有活动输出（综合行数和数据量）
+   * 用于判断如 curl 下载进度这样的命令是否在运行
+   */
+  private hasActiveOutput(ptyId: string): boolean {
+    const tracker = this.outputTrackers.get(ptyId)
+    if (!tracker) return false
+
+    const now = Date.now()
+    // 如果最后输出时间在 3 秒内，认为有活动
+    if (now - tracker.lastOutputTime < 3000) {
+      return true
+    }
+
+    // 检查输出速率
+    const outputRate = this.calculateOutputRate(ptyId)
+    if (outputRate && outputRate > 0.1) return true
+
+    // 检查数据流速率（用于 curl 进度条等）
+    const dataRate = this.calculateDataRate(ptyId)
+    if (dataRate && dataRate > 10) return true  // 超过 10 字节/秒认为有活动
+
+    return false
   }
 
   /**
@@ -447,8 +560,8 @@ export function getProcessMonitor(): ProcessMonitor {
   return processMonitorInstance
 }
 
-export function initProcessMonitor(ptyService: PtyService, terminalStateService: TerminalStateService): ProcessMonitor {
+export function initProcessMonitor(ptyService: PtyService, terminalStateService: TerminalStateService, sshService?: SshService): ProcessMonitor {
   const monitor = getProcessMonitor()
-  monitor.setServices(ptyService, terminalStateService)
+  monitor.setServices(ptyService, terminalStateService, sshService)
   return monitor
 }

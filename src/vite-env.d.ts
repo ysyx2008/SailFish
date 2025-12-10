@@ -11,7 +11,7 @@ type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
 
 interface AgentStep {
   id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement' | 'waiting'
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password'
   content: string
   toolName?: string
   toolArgs?: Record<string, unknown>
@@ -152,6 +152,7 @@ interface Window {
       resize: (id: string, cols: number, rows: number) => Promise<void>
       disconnect: (id: string) => Promise<void>
       onData: (id: string, callback: (data: string) => void) => () => void
+      onDisconnected: (id: string, callback: (event: { reason: string; error?: string }) => void) => () => void
     }
     terminalState: {
       init: (id: string, type: 'local' | 'ssh', initialCwd?: string) => Promise<void>
@@ -315,37 +316,7 @@ interface Window {
         needsUserInput: boolean
         timestamp: number
       }>
-      updateScreenAnalysis: (ptyId: string, analysis: {
-        input: {
-          isWaiting: boolean
-          type: 'password' | 'confirmation' | 'selection' | 'pager' | 'prompt' | 'editor' | 'custom_input' | 'none'
-          prompt?: string
-          options?: string[]
-          suggestedResponse?: string
-          confidence: number
-        }
-        output: {
-          type: 'progress' | 'compilation' | 'test' | 'log_stream' | 'error' | 'table' | 'normal'
-          confidence: number
-          details?: {
-            progress?: number
-            testsPassed?: number
-            testsFailed?: number
-            errorCount?: number
-            eta?: string
-          }
-        }
-        context: {
-          user?: string
-          hostname?: string
-          isRoot: boolean
-          cwdFromPrompt?: string
-          activeEnvs: string[]
-          sshDepth: number
-          promptType: 'bash' | 'zsh' | 'fish' | 'powershell' | 'cmd' | 'unknown'
-        }
-        timestamp: number
-      }) => Promise<void>
+      getVisibleContent: (ptyId: string) => Promise<string[] | null>
       trackOutput: (ptyId: string, lineCount: number) => Promise<void>
       canExecute: (ptyId: string) => Promise<boolean>
       getPreExecutionAdvice: (ptyId: string, command: string) => Promise<{
@@ -426,6 +397,8 @@ interface Window {
       ) => Promise<void>
       getTheme: () => Promise<string>
       setTheme: (theme: string) => Promise<void>
+      getUiTheme: () => Promise<'dark' | 'light' | 'blue'>
+      setUiTheme: (theme: 'dark' | 'light' | 'blue') => Promise<void>
       // 会话分组
       getSessionGroups: () => Promise<Array<{
         id: string
@@ -1107,6 +1080,51 @@ interface Window {
         downloaded: number
         total: number
       }) => void) => () => void
+    }
+    // 终端屏幕内容服务（主进程请求渲染进程数据）
+    screen: {
+      // 注册获取最近 N 行的请求处理器
+      onRequestLastNLines: (handler: (data: { requestId: string; ptyId: string; lines: number }) => void) => () => void
+      // 注册获取可视内容的请求处理器
+      onRequestVisibleContent: (handler: (data: { requestId: string; ptyId: string }) => void) => () => void
+      // 注册获取屏幕分析的请求处理器
+      onRequestScreenAnalysis: (handler: (data: { requestId: string; ptyId: string }) => void) => () => void
+      // 响应最近 N 行请求
+      responseLastNLines: (requestId: string, lines: string[] | null) => void
+      // 响应可视内容请求
+      responseVisibleContent: (requestId: string, lines: string[] | null) => void
+      // 响应屏幕分析请求
+      responseScreenAnalysis: (requestId: string, analysis: {
+        input: {
+          isWaiting: boolean
+          type: string
+          prompt?: string
+          options?: string[]
+          suggestedResponse?: string
+          confidence: number
+        }
+        output: {
+          type: string
+          confidence: number
+          details?: {
+            progress?: number
+            testsPassed?: number
+            testsFailed?: number
+            errorCount?: number
+            eta?: string
+          }
+        }
+        context: {
+          user?: string
+          hostname?: string
+          isRoot: boolean
+          cwdFromPrompt?: string
+          activeEnvs: string[]
+          sshDepth: number
+          promptType: string
+        }
+        visibleContent?: string[]
+      } | null) => void
     }
   }
 }

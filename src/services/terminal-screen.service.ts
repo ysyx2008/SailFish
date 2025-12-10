@@ -483,6 +483,17 @@ export class TerminalScreenService {
       /authentication\s*password/i,
       /login\s*password/i,
       /^\s*password\s*$/i,
+      // 增强的模式
+      /password\s+for\s+\w+/i,        // password for username
+      /\w+'s\s*password/i,             // user's password (SSH)
+      /SUDO password/i,                // macOS sudo
+      /authentication\s*token/i,       // PAM token
+      /doas.*password/i,               // doas (OpenBSD)
+      /su:\s*password/i,               // su password prompt
+      /pkexec.*password/i,             // polkit password
+      /unlock.*password/i,             // keyring unlock
+      /gpg.*passphrase/i,              // GPG passphrase
+      /ssh.*passphrase/i,              // SSH key passphrase
     ]
 
     // 检查当前行和最近几行

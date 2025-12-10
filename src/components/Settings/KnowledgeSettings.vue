@@ -92,7 +92,8 @@ const formatSize = (bytes: number): string => {
 
 // 格式化日期
 const formatDate = (timestamp: number): string => {
-  return new Date(timestamp).toLocaleDateString('zh-CN')
+  const { locale } = useI18n()
+  return new Date(timestamp).toLocaleDateString(locale.value)
 }
 
 // 加载设置
@@ -183,7 +184,7 @@ const clearSelection = () => {
 
 // 删除文档
 const deleteDocument = async (doc: KnowledgeDocument) => {
-  if (!confirm(`确定要删除文档"${doc.filename}"吗？此操作不可恢复。`)) {
+  if (!confirm(t('knowledgeSettings.confirmDeleteDoc', { name: doc.filename }))) {
     return
   }
   
@@ -195,11 +196,11 @@ const deleteDocument = async (doc: KnowledgeDocument) => {
       selectedDocIds.value.delete(doc.id)
       selectedDocIds.value = new Set(selectedDocIds.value)
     } else {
-      alert('删除失败: ' + (result.error || '未知错误'))
+      alert(t('knowledgeSettings.deleteFailed') + ': ' + (result.error || t('knowledgeSettings.unknownError')))
     }
   } catch (error) {
-    console.error('删除文档失败:', error)
-    alert('删除失败')
+    console.error('Delete document failed:', error)
+    alert(t('knowledgeSettings.deleteFailed'))
   } finally {
     deletingDocId.value = null
   }
@@ -210,7 +211,7 @@ const batchDeleteDocuments = async () => {
   const count = selectedDocIds.value.size
   if (count === 0) return
   
-  if (!confirm(`确定要删除选中的 ${count} 个文档吗？此操作不可恢复。`)) {
+  if (!confirm(t('knowledgeSettings.confirmBatchDelete', { count }))) {
     return
   }
   
@@ -225,14 +226,14 @@ const batchDeleteDocuments = async () => {
       clearSelection()
       
       if (result.failed && result.failed > 0) {
-        alert(`删除完成：成功 ${result.deleted || 0} 个，失败 ${result.failed} 个`)
+        alert(t('knowledgeSettings.batchDeleteResult', { success: result.deleted || 0, failed: result.failed }))
       }
     } else {
-      alert('批量删除失败: ' + (result.error || '未知错误'))
+      alert(t('knowledgeSettings.batchDeleteFailed') + ': ' + (result.error || t('knowledgeSettings.unknownError')))
     }
   } catch (error) {
-    console.error('批量删除文档失败:', error)
-    alert('批量删除失败')
+    console.error('Batch delete documents failed:', error)
+    alert(t('knowledgeSettings.batchDeleteFailed'))
   } finally {
     batchDeleting.value = false
   }
@@ -242,7 +243,7 @@ const batchDeleteDocuments = async () => {
 const clearKnowledge = async () => {
   if (documents.value.length === 0) return
   
-  if (!confirm(`确定要清空整个知识库吗？将删除全部 ${documents.value.length} 个文档，此操作不可恢复！`)) {
+  if (!confirm(t('knowledgeSettings.confirmClearAll', { count: documents.value.length }))) {
     return
   }
   
@@ -254,11 +255,11 @@ const clearKnowledge = async () => {
       documents.value = []
       clearSelection()
     } else {
-      alert('清空失败: ' + (result.error || '未知错误'))
+      alert(t('knowledgeSettings.clearFailed') + ': ' + (result.error || t('knowledgeSettings.unknownError')))
     }
   } catch (error) {
-    console.error('清空知识库失败:', error)
-    alert('清空失败')
+    console.error('Clear knowledge base failed:', error)
+    alert(t('knowledgeSettings.clearFailed'))
   } finally {
     clearing.value = false
   }
@@ -271,13 +272,13 @@ const exportKnowledge = async () => {
     const result = await api.knowledge.exportData()
     if (result.canceled) return
     if (result.success) {
-      alert(`导出成功！\n保存位置: ${result.path}`)
+      alert(t('knowledgeSettings.exportSuccess', { path: result.path }))
     } else {
-      alert('导出失败: ' + (result.error || '未知错误'))
+      alert(t('knowledgeSettings.exportFailed') + ': ' + (result.error || t('knowledgeSettings.unknownError')))
     }
   } catch (error) {
-    console.error('导出失败:', error)
-    alert('导出失败')
+    console.error('Export failed:', error)
+    alert(t('knowledgeSettings.exportFailed'))
   } finally {
     exporting.value = false
   }
@@ -285,7 +286,7 @@ const exportKnowledge = async () => {
 
 // 导入知识库
 const importKnowledge = async () => {
-  if (!confirm('导入将覆盖现有知识库数据，确定继续吗？')) {
+  if (!confirm(t('knowledgeSettings.confirmImport'))) {
     return
   }
   
@@ -294,14 +295,14 @@ const importKnowledge = async () => {
     const result = await api.knowledge.importData()
     if (result.canceled) return
     if (result.success) {
-      alert(`导入成功！共导入 ${result.imported || 0} 个文档`)
+      alert(t('knowledgeSettings.importSuccess', { count: result.imported || 0 }))
       await loadDocuments()
     } else {
-      alert('导入失败: ' + (result.error || '未知错误'))
+      alert(t('knowledgeSettings.importFailed') + ': ' + (result.error || t('knowledgeSettings.unknownError')))
     }
   } catch (error) {
-    console.error('导入失败:', error)
-    alert('导入失败')
+    console.error('Import failed:', error)
+    alert(t('knowledgeSettings.importFailed'))
   } finally {
     importing.value = false
   }
@@ -340,32 +341,32 @@ onMounted(() => {
       <template v-if="settings.enabled">
         <!-- 向量嵌入说明 -->
         <div class="setting-group">
-          <h4 class="group-title">向量嵌入</h4>
+          <h4 class="group-title">{{ t('knowledgeSettings.vectorEmbedding') }}</h4>
           
           <div class="info-box">
             <span class="info-icon">📦</span>
             <div class="info-content">
-              <p class="info-title">使用内置轻量模型</p>
-              <p class="info-desc">采用 all-MiniLM-L6-v2 模型（21MB），已随软件打包，无需额外下载</p>
+              <p class="info-title">{{ t('knowledgeSettings.builtinModel') }}</p>
+              <p class="info-desc">{{ t('knowledgeSettings.builtinModelDesc') }}</p>
             </div>
           </div>
         </div>
 
         <!-- MCP 知识库 -->
         <div class="setting-group">
-          <h4 class="group-title">外部知识库</h4>
+          <h4 class="group-title">{{ t('knowledgeSettings.externalKnowledge') }}</h4>
           
           <div class="setting-row">
             <div class="setting-info">
-              <label class="setting-label">MCP 知识库服务</label>
-              <p class="setting-desc">可选接入外部知识库 MCP 服务，与本地知识库协同搜索</p>
+              <label class="setting-label">{{ t('knowledgeSettings.mcpKnowledgeService') }}</label>
+              <p class="setting-desc">{{ t('knowledgeSettings.mcpKnowledgeDesc') }}</p>
             </div>
             <select 
               v-model="settings.mcpKnowledgeServerId" 
               class="select"
               @change="saveSettings"
             >
-              <option value="">不使用</option>
+              <option value="">{{ t('knowledgeSettings.notUse') }}</option>
               <option 
                 v-for="server in mcpServers.filter(s => s.connected)" 
                 :key="server.id"
@@ -379,12 +380,12 @@ onMounted(() => {
 
         <!-- 搜索设置 -->
         <div class="setting-group">
-          <h4 class="group-title">搜索设置</h4>
+          <h4 class="group-title">{{ t('knowledgeSettings.searchSettings') }}</h4>
           
           <div class="setting-row">
             <div class="setting-info">
-              <label class="setting-label">返回结果数</label>
-              <p class="setting-desc">每次搜索返回的最大结果数量</p>
+              <label class="setting-label">{{ t('knowledgeSettings.searchTopK') }}</label>
+              <p class="setting-desc">{{ t('knowledgeSettings.searchTopKDesc') }}</p>
             </div>
             <input 
               type="number" 
@@ -398,8 +399,8 @@ onMounted(() => {
 
           <div class="setting-row">
             <div class="setting-info">
-              <label class="setting-label">启用重排序</label>
-              <p class="setting-desc">使用 LLM 对搜索结果进行重新排序，提高准确性</p>
+              <label class="setting-label">{{ t('knowledgeSettings.enableRerank') }}</label>
+              <p class="setting-desc">{{ t('knowledgeSettings.enableRerankDesc') }}</p>
             </div>
             <label class="switch">
               <input 
@@ -414,12 +415,12 @@ onMounted(() => {
 
         <!-- 文档处理 -->
         <div class="setting-group">
-          <h4 class="group-title">文档处理</h4>
+          <h4 class="group-title">{{ t('knowledgeSettings.docProcessing') }}</h4>
           
           <div class="setting-row">
             <div class="setting-info">
-              <label class="setting-label">自动保存上传文档</label>
-              <p class="setting-desc">上传的文档自动保存到知识库</p>
+              <label class="setting-label">{{ t('knowledgeSettings.autoSaveUploads') }}</label>
+              <p class="setting-desc">{{ t('knowledgeSettings.autoSaveUploadsDesc') }}</p>
             </div>
             <label class="switch">
               <input 
@@ -433,24 +434,24 @@ onMounted(() => {
 
           <div class="setting-row">
             <div class="setting-info">
-              <label class="setting-label">分块策略</label>
-              <p class="setting-desc">长文档的切分方式</p>
+              <label class="setting-label">{{ t('knowledgeSettings.chunkStrategy') }}</label>
+              <p class="setting-desc">{{ t('knowledgeSettings.chunkStrategyDesc') }}</p>
             </div>
             <select 
               v-model="settings.chunkStrategy" 
               class="select"
               @change="saveSettings"
             >
-              <option value="paragraph">按段落</option>
-              <option value="semantic">语义分块</option>
-              <option value="fixed">固定大小</option>
+              <option value="paragraph">{{ t('knowledgeSettings.chunkParagraph') }}</option>
+              <option value="semantic">{{ t('knowledgeSettings.chunkSemantic') }}</option>
+              <option value="fixed">{{ t('knowledgeSettings.chunkFixed') }}</option>
             </select>
           </div>
 
           <div class="setting-row">
             <div class="setting-info">
-              <label class="setting-label">最大分块大小</label>
-              <p class="setting-desc">每个分块的最大 token 数（128-4096）</p>
+              <label class="setting-label">{{ t('knowledgeSettings.maxChunkSize') }}</label>
+              <p class="setting-desc">{{ t('knowledgeSettings.maxChunkSizeDesc') }}</p>
             </div>
             <input 
               type="number" 
@@ -466,14 +467,14 @@ onMounted(() => {
 
         <!-- 文档管理 -->
         <div class="setting-group">
-          <h4 class="group-title">文档管理</h4>
+          <h4 class="group-title">{{ t('knowledgeSettings.docManagement') }}</h4>
           
           <div class="doc-summary">
             <span class="doc-stat">
-              📄 {{ documents.length }} 个文档
+              📄 {{ t('knowledgeSettings.docCount', { count: documents.length }) }}
             </span>
             <button class="btn btn-sm" @click="showDocManager = true; loadDocuments()">
-              管理文档
+              {{ t('knowledgeSettings.manageDoc') }}
             </button>
           </div>
         </div>
@@ -485,13 +486,13 @@ onMounted(() => {
       <div v-if="showDocManager" class="doc-modal-overlay" @click.self="showDocManager = false">
         <div class="doc-modal">
           <div class="doc-modal-header">
-            <h3>📚 知识库文档</h3>
+            <h3>📚 {{ t('knowledgeSettings.knowledgeDocs') }}</h3>
             <button class="close-btn" @click="showDocManager = false">✕</button>
           </div>
           
           <div class="doc-modal-content">
             <div v-if="documents.length === 0" class="empty-docs">
-              暂无文档，上传文档后会自动添加到知识库
+              {{ t('knowledgeSettings.emptyDocs') }}
             </div>
             
             <template v-else>
@@ -503,11 +504,11 @@ onMounted(() => {
                     :checked="isAllSelected"
                     @change="toggleSelectAll"
                   />
-                  <span class="checkbox-label">全选本页</span>
+                  <span class="checkbox-label">{{ t('knowledgeSettings.selectThisPage') }}</span>
                 </label>
                 <span v-if="hasSelection" class="selection-info">
-                  已选 {{ selectedDocIds.size }} 个
-                  <button class="btn-link" @click="clearSelection">取消</button>
+                  {{ t('knowledgeSettings.selected', { count: selectedDocIds.size }) }}
+                  <button class="btn-link" @click="clearSelection">{{ t('knowledgeSettings.cancel') }}</button>
                 </span>
               </div>
 
@@ -528,14 +529,14 @@ onMounted(() => {
                   <div class="doc-info">
                     <span class="doc-name">{{ doc.filename }}</span>
                     <span class="doc-meta">
-                      {{ formatSize(doc.fileSize) }} · {{ doc.chunkCount }} 个分块 · {{ formatDate(doc.createdAt) }}
+                      {{ formatSize(doc.fileSize) }} · {{ doc.chunkCount }} {{ t('knowledgeSettings.chunks') }} · {{ formatDate(doc.createdAt) }}
                     </span>
                   </div>
                   <button 
                     class="btn-delete"
                     :disabled="deletingDocId === doc.id"
                     @click="deleteDocument(doc)"
-                    :title="'删除 ' + doc.filename"
+                    :title="t('knowledgeSettings.deleteDoc') + ' ' + doc.filename"
                   >
                     {{ deletingDocId === doc.id ? '...' : '🗑️' }}
                   </button>
@@ -564,7 +565,7 @@ onMounted(() => {
           </div>
           
           <div class="doc-modal-footer">
-            <span class="doc-count-info">共 {{ documents.length }} 个文档</span>
+            <span class="doc-count-info">{{ t('knowledgeSettings.totalDocs', { count: documents.length }) }}</span>
             <div class="footer-actions">
               <button 
                 class="btn btn-sm btn-danger"
@@ -572,22 +573,22 @@ onMounted(() => {
                 :disabled="!hasSelection || batchDeleting"
                 v-if="hasSelection"
               >
-                {{ batchDeleting ? '删除中...' : `🗑️ 删除选中 (${selectedDocIds.size})` }}
+                {{ batchDeleting ? t('knowledgeSettings.deleting') : `🗑️ ${t('knowledgeSettings.deleteSelected')} (${selectedDocIds.size})` }}
               </button>
               <button 
                 class="btn btn-sm btn-danger"
                 @click="clearKnowledge" 
                 :disabled="documents.length === 0 || clearing"
               >
-                {{ clearing ? '清空中...' : '🗑️ 清空全部' }}
+                {{ clearing ? t('knowledgeSettings.clearing') : `🗑️ ${t('knowledgeSettings.clearAll')}` }}
               </button>
               <button class="btn btn-sm" @click="exportKnowledge" :disabled="exporting">
-                {{ exporting ? '导出中...' : '📤 导出' }}
+                {{ exporting ? t('knowledgeSettings.exporting') : `📤 ${t('knowledgeSettings.export')}` }}
               </button>
               <button class="btn btn-sm" @click="importKnowledge" :disabled="importing">
-                {{ importing ? '导入中...' : '📥 导入' }}
+                {{ importing ? t('knowledgeSettings.importing') : `📥 ${t('knowledgeSettings.import')}` }}
               </button>
-              <button class="btn btn-sm" @click="loadDocuments">🔄 刷新</button>
+              <button class="btn btn-sm" @click="loadDocuments">🔄 {{ t('knowledgeSettings.refresh') }}</button>
             </div>
           </div>
         </div>

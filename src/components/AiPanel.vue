@@ -116,6 +116,7 @@ const {
   runAgent,
   abortAgent,
   confirmToolCall,
+  sendAgentReply,
   getStepIcon,
   getRiskClass
 } = useAgentMode(
@@ -196,8 +197,8 @@ const isStreamingOutput = (group: typeof agentTaskGroups.value[0]) => {
   if (lastStep.type === 'message' && (lastStep.isStreaming || lastStep.content.length > 0)) {
     return true
   }
-  // 如果最后一个步骤是 waiting 类型（Agent 正在主动等待），也不需要显示"思考中"
-  if (lastStep.type === 'waiting') {
+  // 如果最后一个步骤是 waiting、asking 或 waiting_password 类型，也不需要显示"思考中"
+  if (lastStep.type === 'waiting' || lastStep.type === 'asking' || lastStep.type === 'waiting_password') {
     return true
   }
   return false
@@ -205,8 +206,86 @@ const isStreamingOutput = (group: typeof agentTaskGroups.value[0]) => {
 
 // ==================== 发送消息 ====================
 
+// IME 组合输入状态
+const isComposing = ref(false)
+
+// 点击中的选项（用于即时视觉反馈，单选时使用）
+const clickingOption = ref<string | null>(null)
+
+// 多选已选中的选项（stepId -> 已选选项数组）
+const multiSelectOptions = ref<Map<string, string[]>>(new Map())
+
+// 获取步骤的已选选项
+const getSelectedOptions = (stepId: string): string[] => {
+  return multiSelectOptions.value.get(stepId) || []
+}
+
+// 切换多选选项
+const toggleMultiOption = (stepId: string, opt: string) => {
+  const current = multiSelectOptions.value.get(stepId) || []
+  const idx = current.indexOf(opt)
+  if (idx === -1) {
+    current.push(opt)
+  } else {
+    current.splice(idx, 1)
+  }
+  multiSelectOptions.value.set(stepId, [...current])
+}
+
+// 确认多选结果
+const confirmMultiSelect = (stepId: string) => {
+  const selected = multiSelectOptions.value.get(stepId) || []
+  if (selected.length === 0) return
+  // 发送 JSON 数组格式
+  sendAgentReply(JSON.stringify(selected))
+  // 清理本地状态
+  multiSelectOptions.value.delete(stepId)
+}
+
+// 处理选项点击（添加即时视觉反馈）
+const handleOptionClick = (stepId: string, opt: string, allowMultiple: boolean) => {
+  if (allowMultiple) {
+    // 多选：切换选中状态
+    toggleMultiOption(stepId, opt)
+  } else {
+    // 单选：直接发送
+    clickingOption.value = opt
+    sendAgentReply(opt)
+  }
+}
+
+// 检查是否有等待回复的 asking 步骤（用于判断是否可以按回车发送默认值）
+const waitingAskStep = computed(() => {
+  for (const group of agentTaskGroups.value) {
+    if (group.isCurrentTask) {
+      for (const step of group.steps) {
+        if (step.type === 'asking' && step.toolResult?.includes('⏳')) {
+          return step
+        }
+      }
+    }
+  }
+  return null
+})
+
+// 是否可以发送空消息（有等待的提问且有默认值或选项）
+const canSendEmpty = computed(() => {
+  const step = waitingAskStep.value
+  if (!step) return false
+  return !!step.toolArgs?.default_value
+})
+
 // 发送消息（根据模式选择普通对话或 Agent）
 const handleSend = () => {
+  // 如果正在 IME 组合输入（如中文输入法选词），不发送
+  if (isComposing.value) return
+  
+  // 如果输入为空且有等待的提问有默认值，发送空消息让后端使用默认值
+  if (!inputText.value.trim() && canSendEmpty.value && isAgentRunning.value && agentState.value?.agentId) {
+    window.electronAPI.agent.addMessage(agentState.value.agentId, '')
+    return
+  }
+  
   if (agentMode.value) {
     runAgent()
   } else {
@@ -629,10 +708,54 @@ onMounted(() => {
                           class="step-text step-analysis markdown-content"
                           v-html="renderMarkdown(step.content)"
                         ></div>
+                        <!-- 提问类型特殊渲染：显示问题、选项按钮、状态 -->
+                        <div v-else-if="step.type === 'asking'" class="step-text asking-content">
+                          <div class="asking-question">{{ step.content }}</div>
+                          <!-- 默认值提示 -->
+                          <div v-if="step.toolArgs?.default_value" class="asking-default">
+                            <span class="default-label">默认：</span>{{ step.toolArgs.default_value }}
+                            <span v-if="step.toolResult?.includes('⏳')" class="default-hint">（直接按回车使用默认值）</span>
+                          </div>
+                          <!-- 可点击的选项按钮 -->
+                          <div v-if="step.toolArgs?.options && (step.toolArgs.options as string[]).length > 0" class="asking-options">
+                            <button 
+                              v-for="(opt, idx) in (step.toolArgs.options as string[]).slice(0, 10)" 
+                              :key="idx"
+                              class="asking-option-btn"
+                              :class="{ 
+                                'selected': step.toolResult?.includes(opt) || getSelectedOptions(step.id).includes(opt),
+                                'clicking': clickingOption === opt && step.toolResult?.includes('⏳') && !step.toolArgs?.allow_multiple
+                              }"
+                              :disabled="!isAgentRunning || step.toolResult?.includes('✅') || step.toolResult?.includes('⏰') || step.toolResult?.includes('🛑')"
+                              @click="handleOptionClick(step.id, opt, !!step.toolArgs?.allow_multiple)"
+                            >
+                              <span class="option-label">{{ String.fromCharCode(65 + idx) }}</span>
+                              {{ opt }}
+                            </button>
+                            <!-- 多选确认按钮 -->
+                            <button 
+                              v-if="step.toolArgs?.allow_multiple && step.toolResult?.includes('⏳')"
+                              class="asking-confirm-btn"
+                              :disabled="getSelectedOptions(step.id).length === 0"
+                              @click="confirmMultiSelect(step.id)"
+                            >
+                              确认选择 ({{ getSelectedOptions(step.id).length }})
+                            </button>
+                          </div>
+                          <!-- 状态显示 -->
+                          <div v-if="step.toolResult" class="asking-status" :class="{ 
+                            'status-waiting': step.toolResult.includes('⏳'),
+                            'status-done': step.toolResult.includes('✅'),
+                            'status-timeout': step.toolResult.includes('⏰'),
+                            'status-cancelled': step.toolResult.includes('🛑')
+                          }">
+                            {{ step.toolResult }}
+                          </div>
+                        </div>
                         <div v-else class="step-text">
                           {{ step.content }}
                         </div>
-                        <div v-if="step.toolResult && step.toolResult !== '已拒绝'" class="step-result">
+                        <div v-if="step.toolResult && step.toolResult !== '已拒绝' && step.type !== 'asking'" class="step-result">
                           <pre>{{ step.toolResult }}</pre>
                         </div>
                       </div>
@@ -791,6 +914,8 @@ onMounted(() => {
             :placeholder="isAgentRunning ? t('ai.inputPlaceholderSupplement') : (agentMode ? t('ai.inputPlaceholderAgent') : t('ai.inputPlaceholder'))"
             rows="1"
             @keydown.enter.exact.prevent="handleSend"
+            @compositionstart="isComposing = true"
+            @compositionend="isComposing = false"
           ></textarea>
           <!-- 停止按钮 (普通对话模式) -->
           <button
@@ -803,7 +928,7 @@ onMounted(() => {
               <rect x="6" y="6" width="12" height="12" rx="2"/>
             </svg>
           </button>
-          <!-- Agent 运行中：有输入显示补充按钮，无输入显示停止按钮 -->
+          <!-- Agent 运行中：有输入显示补充按钮，有默认值提问时显示使用默认值按钮，否则显示停止按钮 -->
           <button
             v-else-if="isAgentRunning && inputText.trim()"
             class="send-btn send-btn-supplement"
@@ -813,6 +938,16 @@ onMounted(() => {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="22" y1="2" x2="11" y2="13"/>
               <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+          <button
+            v-else-if="isAgentRunning && canSendEmpty"
+            class="send-btn send-btn-default"
+            :title="t('ai.useDefault')"
+            @click="handleSend"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 6 9 17 4 12"/>
             </svg>
           </button>
           <button
@@ -2015,6 +2150,16 @@ onMounted(() => {
   box-shadow: 0 4px 16px rgba(245, 158, 11, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
+.send-btn-default {
+  background: linear-gradient(135deg, #6ee7b7 0%, #10b981 50%, #059669 100%);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.send-btn-default:hover:not(:disabled) {
+  background: linear-gradient(135deg, #a7f3d0 0%, #34d399 50%, #10b981 100%);
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
 .stop-btn {
   flex-shrink: 0;
   padding: 10px 14px;
@@ -2522,6 +2667,212 @@ onMounted(() => {
 
 .agent-step-inline.user_supplement .step-icon {
   color: #f59e0b;
+}
+
+.agent-step-inline.waiting {
+  background: rgba(59, 130, 246, 0.1);
+  border-left: 3px solid #3b82f6;
+  padding-left: 10px;
+  margin-left: -2px;
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+
+.agent-step-inline.waiting .step-icon {
+  color: #3b82f6;
+}
+
+.agent-step-inline.asking {
+  background: rgba(96, 165, 250, 0.08);
+  border-left: 3px solid #60a5fa;
+  padding-left: 10px;
+  margin-left: -2px;
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+
+.agent-step-inline.asking .step-icon {
+  color: #60a5fa;
+}
+
+.agent-step-inline.waiting_password {
+  background: rgba(251, 191, 36, 0.12);
+  border-left: 3px solid #fbbf24;
+  padding-left: 10px;
+  margin-left: -2px;
+  border-radius: 4px;
+  color: var(--text-primary);
+  animation: password-pulse 2s ease-in-out infinite;
+}
+
+.agent-step-inline.waiting_password .step-icon {
+  color: #fbbf24;
+  animation: key-bounce 1s ease-in-out infinite;
+}
+
+@keyframes password-pulse {
+  0%, 100% { 
+    background: rgba(251, 191, 36, 0.12);
+    border-left-color: #fbbf24;
+  }
+  50% { 
+    background: rgba(251, 191, 36, 0.2);
+    border-left-color: #f59e0b;
+  }
+}
+
+@keyframes key-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+/* 提问内容样式 */
+.asking-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.asking-question {
+  white-space: pre-wrap;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.asking-default {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.asking-default .default-label {
+  font-style: italic;
+}
+
+.asking-default .default-hint {
+  color: #10b981;
+  margin-left: 6px;
+}
+
+.asking-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
+  max-width: 400px;
+}
+
+.asking-option-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: rgba(96, 165, 250, 0.06);
+  border: 1px solid rgba(96, 165, 250, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.asking-option-btn .option-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+}
+
+.asking-option-btn:hover:not(:disabled) {
+  background: rgba(96, 165, 250, 0.12);
+  border-color: rgba(96, 165, 250, 0.35);
+}
+
+.asking-option-btn:active:not(:disabled) {
+  background: rgba(96, 165, 250, 0.18);
+}
+
+.asking-option-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.asking-option-btn.clicking {
+  background: rgba(96, 165, 250, 0.2);
+  border-color: rgba(96, 165, 250, 0.5);
+  color: #60a5fa;
+}
+
+.asking-option-btn.clicking .option-label {
+  background: rgba(96, 165, 250, 0.3);
+  color: #60a5fa;
+}
+
+.asking-option-btn.selected {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #22c55e;
+}
+
+.asking-option-btn.selected .option-label {
+  background: rgba(34, 197, 94, 0.25);
+  color: #22c55e;
+}
+
+/* 多选确认按钮 */
+.asking-confirm-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.asking-confirm-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #93c5fd 0%, #60a5fa 100%);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35);
+}
+
+.asking-confirm-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.asking-status {
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.asking-status.status-waiting {
+  color: var(--text-muted);
+}
+
+.asking-status.status-done {
+  color: #22c55e;
+}
+
+.asking-status.status-timeout {
+  color: #f59e0b;
+}
+
+.asking-status.status-cancelled {
+  color: #ef4444;
 }
 
 /* 等待处理的补充消息 */

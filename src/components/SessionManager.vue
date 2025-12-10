@@ -86,6 +86,79 @@ onUnmounted(() => {
 const editingSession = ref<SshSession | null>(null)
 const searchText = ref('')
 
+// ==================== 拖拽相关 ====================
+const draggingSession = ref<SshSession | null>(null)
+const dragOverGroupName = ref<string | null>(null)
+
+// 拖拽开始
+const handleDragStart = (session: SshSession, event: DragEvent) => {
+  draggingSession.value = session
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', session.id)
+  }
+  // 添加拖拽样式
+  const target = event.target as HTMLElement
+  setTimeout(() => {
+    target.classList.add('dragging')
+  }, 0)
+}
+
+// 拖拽结束
+const handleDragEnd = (event: DragEvent) => {
+  draggingSession.value = null
+  dragOverGroupName.value = null
+  const target = event.target as HTMLElement
+  target.classList.remove('dragging')
+}
+
+// 拖拽经过分组
+const handleDragOverGroup = (groupName: string, event: DragEvent) => {
+  event.preventDefault()
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move'
+  }
+  dragOverGroupName.value = groupName
+}
+
+// 拖拽离开分组
+const handleDragLeaveGroup = () => {
+  dragOverGroupName.value = null
+}
+
+// 放置到分组
+const handleDropToGroup = async (groupName: string, event: DragEvent) => {
+  event.preventDefault()
+  dragOverGroupName.value = null
+  
+  if (!draggingSession.value) return
+  
+  const session = draggingSession.value
+  const groupData = groupedSessions.value[groupName]
+  
+  // 获取目标分组的 ID
+  let targetGroupId: string | undefined = undefined
+  if (groupData?.group) {
+    targetGroupId = groupData.group.id
+  }
+  
+  // 如果分组没有变化，不需要更新
+  const currentGroupId = session.groupId || undefined
+  if (currentGroupId === targetGroupId) {
+    draggingSession.value = null
+    return
+  }
+  
+  // 更新主机的分组
+  await configStore.updateSshSession({
+    ...session,
+    groupId: targetGroupId,
+    group: undefined // 清除旧的 group 字段
+  })
+  
+  draggingSession.value = null
+}
+
 // 表单数据
 const formData = ref<Partial<SshSession>>({
   name: '',
@@ -122,7 +195,7 @@ const groupedSessions = computed(() => {
   
   filteredSessions.value.forEach(session => {
     // 优先使用 groupId，否则使用旧的 group 字段
-    let groupName = '默认'
+    let groupName = t('session.defaultGroup')
     let groupEntity: SessionGroup | null = null
     
     if (session.groupId) {
@@ -205,7 +278,7 @@ const saveSession = async () => {
 
 // 删除会话
 const deleteSession = async (session: SshSession) => {
-  if (confirm(`确定要删除主机 "${session.name}" 吗？`)) {
+  if (confirm(t('session.confirmDeleteHost', { name: session.name }))) {
     await configStore.deleteSshSession(session.id)
   }
 }
@@ -258,7 +331,7 @@ const importXshellDirectory = async () => {
 // 处理导入结果
 const handleImportResult = async (importResult: { success: boolean; sessions: any[]; errors: string[] }) => {
   if (!importResult.success && importResult.sessions.length === 0) {
-    alert(`导入失败：${importResult.errors.join('\n')}`)
+    alert(`${t('session.importFailed')}：${importResult.errors.join('\n')}`)
     return
   }
   
@@ -280,9 +353,9 @@ const handleImportResult = async (importResult: { success: boolean; sessions: an
   }
   
   // 显示结果
-  let message = `成功导入 ${importedCount} 个会话`
+  let message = t('session.importSuccess', { count: importedCount })
   if (importResult.errors.length > 0) {
-    message += `\n\n以下文件导入失败：\n${importResult.errors.join('\n')}`
+    message += `\n\n${t('session.importPartialFailed')}\n${importResult.errors.join('\n')}`
   }
   alert(message)
 }
@@ -313,7 +386,7 @@ const openGroupEditor = (groupName: string) => {
     // 创建新分组
     editingGroup.value = null
     groupFormData.value = {
-      name: groupName === '默认' ? '' : groupName,
+      name: groupName === t('session.defaultGroup') ? '' : groupName,
       jumpHost: undefined
     }
   }
@@ -346,7 +419,7 @@ const toggleJumpHost = (enabled: boolean) => {
 // 保存分组
 const saveGroup = async () => {
   if (!groupFormData.value.name) {
-    alert('请输入分组名称')
+    alert(t('session.pleaseInputGroupName'))
     return
   }
 
@@ -354,7 +427,7 @@ const saveGroup = async () => {
   if (groupFormData.value.jumpHost) {
     const jh = groupFormData.value.jumpHost
     if (!jh.host || !jh.username) {
-      alert('请填写跳板机主机和用户名')
+      alert(t('session.pleaseInputJumpHostInfo'))
       return
     }
   }
@@ -391,7 +464,7 @@ const deleteGroup = async (groupName: string) => {
   const groupData = groupedSessions.value[groupName]
   if (!groupData?.group) return
   
-  if (confirm(`确定要删除分组 "${groupName}" 吗？组内主机不会被删除，将移到"默认"分组。`)) {
+  if (confirm(t('session.confirmDeleteGroupNamed', { name: groupName }))) {
     await configStore.deleteSessionGroup(groupData.group.id)
   }
 }
@@ -449,13 +522,13 @@ const deleteGroup = async (groupName: string) => {
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
               <polyline points="14 2 14 8 20 8"/>
             </svg>
-            导入 Xshell 文件...
+            {{ t('session.importXshellFiles') }}
           </button>
           <button class="import-menu-item" @click="importXshellDirectory">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
             </svg>
-            导入 Xshell 目录...
+            {{ t('session.importXshellDir') }}
           </button>
         </div>
       </div>
@@ -479,11 +552,15 @@ const deleteGroup = async (groupName: string) => {
           v-for="(groupData, groupName) in groupedSessions"
           :key="groupName"
           class="session-group"
+          :class="{ 'drag-over': dragOverGroupName === groupName }"
+          @dragover="handleDragOverGroup(groupName as string, $event)"
+          @dragleave="handleDragLeaveGroup"
+          @drop="handleDropToGroup(groupName as string, $event)"
         >
           <div class="group-header" v-if="groupData.sessions.length > 0 || groupData.group">
             <div class="group-header-left">
               <span>{{ groupName }}</span>
-              <span v-if="groupData.group?.jumpHost" class="jump-host-badge" title="跳板机">
+              <span v-if="groupData.group?.jumpHost" class="jump-host-badge" :title="t('session.form.jumpHost')">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
                   <polyline points="15 3 21 3 21 9"/>
@@ -494,7 +571,7 @@ const deleteGroup = async (groupName: string) => {
             </div>
             <div class="group-header-right">
               <span class="group-count">{{ groupData.sessions.length }}</span>
-              <button class="btn-icon btn-xs" @click.stop="openGroupEditor(groupName)" title="编辑分组">
+              <button class="btn-icon btn-xs" @click.stop="openGroupEditor(groupName)" :title="t('session.editGroup')">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="12" cy="12" r="3"/>
                   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -506,6 +583,9 @@ const deleteGroup = async (groupName: string) => {
             v-for="session in groupData.sessions"
             :key="session.id"
             class="session-item"
+            draggable="true"
+            @dragstart="handleDragStart(session, $event)"
+            @dragend="handleDragEnd"
             @dblclick="connectSession(session)"
           >
             <div class="session-icon">
@@ -520,23 +600,23 @@ const deleteGroup = async (groupName: string) => {
               <div class="session-host">{{ session.username }}@{{ session.host }}:{{ session.port }}</div>
             </div>
             <div class="session-actions">
-              <button class="btn-icon btn-sm" @click.stop="connectSession(session)" title="连接">
+              <button class="btn-icon btn-sm" @click.stop="connectSession(session)" :title="t('session.connect')">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polygon points="5 3 19 12 5 21 5 3"/>
                 </svg>
               </button>
-              <button class="btn-icon btn-sm" @click.stop="openSftp(session)" title="文件管理">
+              <button class="btn-icon btn-sm" @click.stop="openSftp(session)" :title="t('session.fileManager')">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
                 </svg>
               </button>
-              <button class="btn-icon btn-sm" @click.stop="openEditSession(session)" title="编辑">
+              <button class="btn-icon btn-sm" @click.stop="openEditSession(session)" :title="t('common.edit')">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                 </svg>
               </button>
-              <button class="btn-icon btn-sm" @click.stop="deleteSession(session)" title="删除">
+              <button class="btn-icon btn-sm" @click.stop="deleteSession(session)" :title="t('common.delete')">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="3 6 5 6 21 6"/>
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -548,12 +628,12 @@ const deleteGroup = async (groupName: string) => {
       </template>
       <div v-else class="empty-sessions">
         <template v-if="searchText">
-          <p>未找到匹配的主机</p>
-          <p class="tip">尝试其他关键词</p>
+          <p>{{ t('session.noMatchingHosts') }}</p>
+          <p class="tip">{{ t('session.tryOtherKeywords') }}</p>
         </template>
         <template v-else>
-          <p>暂无保存的主机</p>
-          <p class="tip">点击"新建"添加主机</p>
+          <p>{{ t('session.noHostsSaved') }}</p>
+          <p class="tip">{{ t('session.noHostsHint') }}</p>
         </template>
       </div>
     </div>
@@ -562,8 +642,8 @@ const deleteGroup = async (groupName: string) => {
     <div v-if="showNewSession" class="modal-overlay" @click.self="showNewSession = false">
       <div class="modal session-modal">
         <div class="modal-header">
-          <h3>{{ editingSession ? '编辑主机' : '新建主机' }}</h3>
-          <button class="btn-icon" @click="showNewSession = false" title="关闭">
+          <h3>{{ editingSession ? t('session.editHost') : t('session.newHost') }}</h3>
+          <button class="btn-icon" @click="showNewSession = false" :title="t('common.close')">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>
@@ -572,58 +652,58 @@ const deleteGroup = async (groupName: string) => {
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label class="form-label">名称 *</label>
-            <input ref="nameInputRef" v-model="formData.name" type="text" class="input" placeholder="例如：生产服务器" />
+            <label class="form-label">{{ t('session.form.name') }} *</label>
+            <input ref="nameInputRef" v-model="formData.name" type="text" class="input" :placeholder="t('session.form.sessionNamePlaceholder')" />
           </div>
           <div class="form-row">
             <div class="form-group" style="flex: 2">
-              <label class="form-label">主机 *</label>
-              <input v-model="formData.host" type="text" class="input" placeholder="IP 或域名" />
+              <label class="form-label">{{ t('session.form.host') }} *</label>
+              <input v-model="formData.host" type="text" class="input" :placeholder="t('session.form.hostPlaceholder')" />
             </div>
             <div class="form-group" style="flex: 1">
-              <label class="form-label">端口</label>
+              <label class="form-label">{{ t('session.form.port') }}</label>
               <input v-model.number="formData.port" type="number" class="input" />
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label">用户名 *</label>
-            <input v-model="formData.username" type="text" class="input" placeholder="root" />
+            <label class="form-label">{{ t('session.form.username') }} *</label>
+            <input v-model="formData.username" type="text" class="input" :placeholder="t('session.form.usernamePlaceholder')" />
           </div>
           <div class="form-group">
-            <label class="form-label">认证方式</label>
+            <label class="form-label">{{ t('session.form.authType') }}</label>
             <select v-model="formData.authType" class="select">
-              <option value="password">密码</option>
-              <option value="privateKey">私钥</option>
+              <option value="password">{{ t('session.form.authPassword') }}</option>
+              <option value="privateKey">{{ t('session.form.authKey') }}</option>
             </select>
           </div>
           <div v-if="formData.authType === 'password'" class="form-group">
-            <label class="form-label">密码</label>
+            <label class="form-label">{{ t('session.form.password') }}</label>
             <input v-model="formData.password" type="password" class="input" />
           </div>
           <template v-else>
             <div class="form-group">
-              <label class="form-label">私钥路径</label>
-              <input v-model="formData.privateKeyPath" type="text" class="input" placeholder="~/.ssh/id_rsa" />
+              <label class="form-label">{{ t('session.form.privateKeyPath') }}</label>
+              <input v-model="formData.privateKeyPath" type="text" class="input" :placeholder="t('session.form.privateKeyPathPlaceholder')" />
             </div>
             <div class="form-group">
-              <label class="form-label">私钥密码（可选）</label>
+              <label class="form-label">{{ t('session.form.passphraseOptional') }}</label>
               <input v-model="formData.passphrase" type="password" class="input" />
             </div>
           </template>
           <div class="form-group">
-            <label class="form-label">分组</label>
+            <label class="form-label">{{ t('session.form.group') }}</label>
             <select v-model="formData.groupId" class="select">
-              <option value="">默认</option>
+              <option value="">{{ t('session.defaultGroup') }}</option>
               <option v-for="group in configStore.sessionGroups" :key="group.id" :value="group.id">
                 {{ group.name }}
-                <template v-if="group.jumpHost"> (跳板机: {{ group.jumpHost.host }})</template>
+                <template v-if="group.jumpHost"> ({{ t('session.form.jumpHost') }}: {{ group.jumpHost.host }})</template>
               </option>
             </select>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn" @click="showNewSession = false">取消</button>
-          <button class="btn btn-primary" @click="saveSession">保存</button>
+          <button class="btn" @click="showNewSession = false">{{ t('common.cancel') }}</button>
+          <button class="btn btn-primary" @click="saveSession">{{ t('common.save') }}</button>
         </div>
       </div>
     </div>
@@ -632,8 +712,8 @@ const deleteGroup = async (groupName: string) => {
     <div v-if="showGroupEditor" class="modal-overlay" @click.self="showGroupEditor = false">
       <div class="modal session-modal">
         <div class="modal-header">
-          <h3>{{ editingGroup ? '编辑分组' : (groupFormData.name ? '配置分组' : '新建分组') }}</h3>
-          <button class="btn-icon" @click="showGroupEditor = false" title="关闭">
+          <h3>{{ editingGroup ? t('session.editGroup') : (groupFormData.name ? t('session.configGroup') : t('session.newGroup')) }}</h3>
+          <button class="btn-icon" @click="showGroupEditor = false" :title="t('common.close')">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>
@@ -642,8 +722,8 @@ const deleteGroup = async (groupName: string) => {
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label class="form-label">分组名称 *</label>
-            <input v-model="groupFormData.name" type="text" class="input" placeholder="例如：生产环境" />
+            <label class="form-label">{{ t('session.form.groupName') }} *</label>
+            <input v-model="groupFormData.name" type="text" class="input" :placeholder="t('session.form.groupNamePlaceholder')" />
           </div>
           
           <!-- 跳板机配置 -->
@@ -655,44 +735,44 @@ const deleteGroup = async (groupName: string) => {
                   :checked="!!groupFormData.jumpHost"
                   @change="toggleJumpHost(($event.target as HTMLInputElement).checked)"
                 />
-                <span>启用跳板机</span>
+                <span>{{ t('session.form.jumpHostEnable') }}</span>
               </label>
-              <span class="form-section-hint">组内所有主机将通过此跳板机连接</span>
+              <span class="form-section-hint">{{ t('session.form.jumpHostHint') }}</span>
             </div>
             
             <template v-if="groupFormData.jumpHost">
               <div class="form-row">
                 <div class="form-group" style="flex: 2">
-                  <label class="form-label">跳板机主机 *</label>
-                  <input v-model="groupFormData.jumpHost.host" type="text" class="input" placeholder="IP 或域名" />
+                  <label class="form-label">{{ t('session.form.jumpHostHost') }} *</label>
+                  <input v-model="groupFormData.jumpHost.host" type="text" class="input" :placeholder="t('session.form.hostPlaceholder')" />
                 </div>
                 <div class="form-group" style="flex: 1">
-                  <label class="form-label">端口</label>
+                  <label class="form-label">{{ t('session.form.port') }}</label>
                   <input v-model.number="groupFormData.jumpHost.port" type="number" class="input" />
                 </div>
               </div>
               <div class="form-group">
-                <label class="form-label">用户名 *</label>
-                <input v-model="groupFormData.jumpHost.username" type="text" class="input" placeholder="root" />
+                <label class="form-label">{{ t('session.form.username') }} *</label>
+                <input v-model="groupFormData.jumpHost.username" type="text" class="input" :placeholder="t('session.form.usernamePlaceholder')" />
               </div>
               <div class="form-group">
-                <label class="form-label">认证方式</label>
+                <label class="form-label">{{ t('session.form.authType') }}</label>
                 <select v-model="groupFormData.jumpHost.authType" class="select">
-                  <option value="password">密码</option>
-                  <option value="privateKey">私钥</option>
+                  <option value="password">{{ t('session.form.authPassword') }}</option>
+                  <option value="privateKey">{{ t('session.form.authKey') }}</option>
                 </select>
               </div>
               <div v-if="groupFormData.jumpHost.authType === 'password'" class="form-group">
-                <label class="form-label">密码</label>
+                <label class="form-label">{{ t('session.form.password') }}</label>
                 <input v-model="groupFormData.jumpHost.password" type="password" class="input" />
               </div>
               <template v-else>
                 <div class="form-group">
-                  <label class="form-label">私钥路径</label>
-                  <input v-model="groupFormData.jumpHost.privateKeyPath" type="text" class="input" placeholder="~/.ssh/id_rsa" />
+                  <label class="form-label">{{ t('session.form.privateKeyPath') }}</label>
+                  <input v-model="groupFormData.jumpHost.privateKeyPath" type="text" class="input" :placeholder="t('session.form.privateKeyPathPlaceholder')" />
                 </div>
                 <div class="form-group">
-                  <label class="form-label">私钥密码（可选）</label>
+                  <label class="form-label">{{ t('session.form.passphraseOptional') }}</label>
                   <input v-model="groupFormData.jumpHost.passphrase" type="password" class="input" />
                 </div>
               </template>
@@ -700,10 +780,10 @@ const deleteGroup = async (groupName: string) => {
           </div>
         </div>
         <div class="modal-footer">
-          <button v-if="editingGroup" class="btn btn-danger" @click="deleteGroup(editingGroup.name); showGroupEditor = false">删除分组</button>
+          <button v-if="editingGroup" class="btn btn-danger" @click="deleteGroup(editingGroup.name); showGroupEditor = false">{{ t('session.deleteGroup') }}</button>
           <div style="flex: 1"></div>
-          <button class="btn" @click="showGroupEditor = false">取消</button>
-          <button class="btn btn-primary" @click="saveGroup">保存</button>
+          <button class="btn" @click="showGroupEditor = false">{{ t('common.cancel') }}</button>
+          <button class="btn btn-primary" @click="saveGroup">{{ t('common.save') }}</button>
         </div>
       </div>
     </div>
@@ -726,6 +806,8 @@ const deleteGroup = async (groupName: string) => {
 
 .search-input {
   flex: 1;
+  height: 32px;
+  box-sizing: border-box;
 }
 
 /* 工具栏按钮统一样式 */
@@ -852,6 +934,15 @@ const deleteGroup = async (groupName: string) => {
 
 .session-group {
   margin-bottom: 12px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.session-group.drag-over {
+  border-color: var(--accent-primary);
+  background: rgba(var(--accent-primary-rgb, 66, 153, 225), 0.08);
 }
 
 .group-header {
@@ -922,12 +1013,20 @@ const deleteGroup = async (groupName: string) => {
   margin-bottom: 4px;
   background: var(--bg-tertiary);
   border-radius: 6px;
-  cursor: pointer;
+  cursor: grab;
   transition: all 0.2s ease;
 }
 
 .session-item:hover {
   background: var(--bg-surface);
+}
+
+.session-item:active {
+  cursor: grabbing;
+}
+
+.session-item.dragging {
+  opacity: 0.5;
 }
 
 .session-icon {

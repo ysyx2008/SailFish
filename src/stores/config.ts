@@ -76,6 +76,9 @@ export const useConfigStore = defineStore('config', () => {
   // 主题
   const currentTheme = ref<string>('one-dark')
 
+  // UI 主题
+  const uiTheme = ref<'dark' | 'light' | 'blue'>('dark')
+
   // 终端设置
   const terminalSettings = ref<TerminalSettings>({
     fontSize: 14,
@@ -127,6 +130,10 @@ export const useConfigStore = defineStore('config', () => {
       // 加载主题
       const theme = await window.electronAPI.config.getTheme()
       currentTheme.value = theme || 'one-dark'
+
+      // 加载 UI 主题
+      const uiThemeValue = await window.electronAPI.config.getUiTheme()
+      uiTheme.value = uiThemeValue || 'dark'
 
       // 加载 Agent MBTI
       const mbti = await window.electronAPI.config.getAgentMbti()
@@ -281,6 +288,11 @@ export const useConfigStore = defineStore('config', () => {
     await window.electronAPI.config.setTheme(theme)
   }
 
+  async function setUiTheme(theme: 'dark' | 'light' | 'blue'): Promise<void> {
+    uiTheme.value = theme
+    await window.electronAPI.config.setUiTheme(theme)
+  }
+
   // ==================== Agent MBTI ====================
 
   async function setAgentMbti(mbti: AgentMbtiType): Promise<void> {
@@ -357,6 +369,7 @@ export const useConfigStore = defineStore('config', () => {
     sshSessions,
     sessionGroups,
     currentTheme,
+    uiTheme,
     terminalSettings,
     agentMbti,
     setupCompleted,
@@ -377,6 +390,7 @@ export const useConfigStore = defineStore('config', () => {
     getGroupByName,
     getEffectiveJumpHost,
     setTheme,
+    setUiTheme,
     setAgentMbti,
     setSetupCompleted,
     setLanguage

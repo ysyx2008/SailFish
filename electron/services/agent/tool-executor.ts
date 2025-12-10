@@ -5,7 +5,6 @@ import * as fs from 'fs'
 import * as path from 'path'
 import stripAnsi from 'strip-ansi'
 import type { ToolCall } from '../ai.service'
-import type { PtyService } from '../pty.service'
 import type { McpService } from '../mcp.service'
 import type { 
   AgentConfig, 
@@ -15,10 +14,12 @@ import type {
   PendingConfirmation,
   HostProfileServiceInterface 
 } from './types'
-import { assessCommandRisk, analyzeCommand } from './risk-assessor'
+import { assessCommandRisk, analyzeCommand, isSudoCommand, detectPasswordPrompt } from './risk-assessor'
 import { getKnowledgeService } from '../knowledge'
 import { getTerminalStateService } from '../terminal-state.service'
 import { getTerminalAwarenessService, getProcessMonitor } from '../terminal-awareness'
+import { getLastNLinesFromBuffer } from '../screen-content.service'
+import type { UnifiedTerminalInterface } from '../unified-terminal.service'
 
 // 错误分类
 type ErrorCategory = 'transient' | 'permission' | 'not_found' | 'timeout' | 'fatal'
@@ -124,7 +125,8 @@ async function withRetry<T>(
 
 // 工具执行器配置
 export interface ToolExecutorConfig {
-  ptyService: PtyService
+  /** 统一终端服务（支持 PTY 和 SSH） */
+  terminalService: UnifiedTerminalInterface
   hostProfileService?: HostProfileServiceInterface
   mcpService?: McpService
   addStep: (step: Omit<AgentStep, 'id' | 'timestamp'>) => AgentStep
@@ -172,7 +174,7 @@ export async function executeTool(
       return executeCommand(ptyId, args, toolCall.id, config, executor)
 
     case 'get_terminal_context':
-      return getTerminalContext(ptyId, args, terminalOutput, executor)
+      return await getTerminalContext(ptyId, args, executor)
 
     case 'check_terminal_status':
       return checkTerminalStatus(ptyId, executor)
@@ -184,10 +186,10 @@ export async function executeTool(
       return sendInput(ptyId, args, executor)
 
     case 'read_file':
-      return readFile(args, executor)
+      return readFile(ptyId, args, executor)
 
     case 'write_file':
-      return writeFile(args, toolCall.id, executor)
+      return writeFile(ptyId, args, toolCall.id, executor)
 
     case 'remember_info':
       return rememberInfo(args, executor)
@@ -195,11 +197,11 @@ export async function executeTool(
     case 'search_knowledge':
       return searchKnowledge(args, executor)
 
-    case 'get_terminal_state':
-      return getTerminalState(ptyId, args, executor)
-
     case 'wait':
       return wait(args, executor)
+
+    case 'ask_user':
+      return askUser(args, executor)
 
     default:
       // 检查是否是 MCP 工具调用
@@ -413,6 +415,11 @@ async function executeCommand(
     )
   }
 
+  // 策略4: sudo/特权命令 - 需要等待用户输入密码
+  if (isSudoCommand(command)) {
+    return executeSudoCommand(ptyId, command, toolCallId, config, executor)
+  }
+
   // 正常执行命令（带重试机制）
   // 使用 terminal-state.service 追踪命令执行，以便 get_terminal_context 可以获取实时输出
   const terminalStateService = getTerminalStateService()
@@ -424,11 +431,11 @@ async function executeCommand(
   const outputHandler = (data: string) => {
     terminalStateService.appendCommandOutput(ptyId, data)
   }
-  const unsubscribe = executor.ptyService.onData(ptyId, outputHandler)
+  const unsubscribe = executor.terminalService.onData(ptyId, outputHandler)
   
   try {
     const result = await withRetry(
-      () => executor.ptyService.executeInTerminal(ptyId, command, config.commandTimeout),
+      () => executor.terminalService.executeInTerminal(ptyId, command, config.commandTimeout),
       {
         maxRetries: 1,
         retryDelay: 500,
@@ -484,16 +491,34 @@ async function executeCommand(
 
     // 命令正常完成，移除监听器并完成追踪
     unsubscribe()
-    terminalStateService.completeCommandExecution(ptyId, 0, 'completed')
+    
+    // 获取命令退出状态码
+    let exitCode: number | undefined
+    try {
+      // 执行 echo $? 获取上一个命令的退出码
+      const exitCodeResult = await executor.terminalService.executeInTerminal(ptyId, 'echo $?', 3000)
+      const exitCodeStr = exitCodeResult.output.trim()
+      const parsedCode = parseInt(exitCodeStr, 10)
+      if (!isNaN(parsedCode)) {
+        exitCode = parsedCode
+      }
+    } catch {
+      // 获取退出码失败，忽略（不影响主流程）
+    }
+    
+    terminalStateService.completeCommandExecution(ptyId, exitCode ?? 0, 'completed')
 
+    // 构建输出信息，包含退出状态码
+    const exitCodeInfo = exitCode !== undefined ? `\n\n[退出状态码: ${exitCode}]${exitCode === 0 ? '' : ' ⚠️ 非零退出码可能表示命令执行有问题'}` : ''
+    
     executor.addStep({
       type: 'tool_result',
-      content: `命令执行完成 (耗时: ${result.duration}ms)`,
+      content: `命令执行完成 (耗时: ${result.duration}ms${exitCode !== undefined ? `, 退出码: ${exitCode}` : ''})`,
       toolName: 'execute_command',
       toolResult: result.output
     })
 
-    return { success: true, output: result.output }
+    return { success: true, output: result.output + exitCodeInfo, exitCode }
   } catch (error) {
     // 命令执行出错，移除监听器并完成追踪
     unsubscribe()
@@ -510,6 +535,202 @@ async function executeCommand(
       toolResult: `${errorMsg}\n\n💡 ${suggestion}`
     })
     return { success: false, output: '', error: `${errorMsg}\n\n💡 恢复建议: ${suggestion}` }
+  }
+}
+
+/**
+ * 执行需要特权提升的命令（sudo/su 等）
+ * 检测密码提示并等待用户在终端中输入密码
+ */
+async function executeSudoCommand(
+  ptyId: string,
+  command: string,
+  toolCallId: string,
+  config: AgentConfig,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const terminalStateService = getTerminalStateService()
+  
+  // 开始追踪命令执行
+  terminalStateService.startCommandExecution(ptyId, command)
+  
+  // 输出收集
+  let output = ''
+  let passwordPromptDetected = false
+  let passwordStepId: string | null = null
+  let lastOutputTime = Date.now()
+  
+  // 注册输出监听器
+  const outputHandler = (data: string) => {
+    output += data
+    lastOutputTime = Date.now()
+    terminalStateService.appendCommandOutput(ptyId, data)
+    
+    // 检测密码提示（只检测一次）
+    if (!passwordPromptDetected) {
+      const cleanOutput = stripAnsi(output)
+      const detection = detectPasswordPrompt(cleanOutput)
+      if (detection.detected) {
+        passwordPromptDetected = true
+        // 添加密码等待步骤
+        const step = executor.addStep({
+          type: 'waiting_password',
+          content: `请在终端中输入密码\n提示: ${detection.prompt || 'Password:'}`,
+          toolName: 'execute_command',
+          toolArgs: { command },
+          riskLevel: 'moderate'
+        })
+        passwordStepId = step.id
+      }
+    }
+  }
+  const unsubscribe = executor.terminalService.onData(ptyId, outputHandler)
+  
+  // 发送命令到终端（不等待完成）
+  executor.terminalService.write(ptyId, command + '\r')
+  
+  // sudo 命令的超时时间：5分钟（等待用户输入密码）
+  const sudoTimeout = 5 * 60 * 1000
+  const startTime = Date.now()
+  const pollInterval = 500  // 每 500ms 检查一次
+  
+  // 记录检测到密码提示时的输出长度，用于判断用户是否已输入
+  let outputLengthAtPasswordPrompt = 0
+  
+  try {
+    // 轮询等待命令完成
+    while (true) {
+      // 检查是否被中止
+      if (executor.isAborted()) {
+        unsubscribe()
+        terminalStateService.completeCommandExecution(ptyId, 130, 'cancelled')
+        return { success: false, output: stripAnsi(output), error: '操作已中止' }
+      }
+      
+      // 检查终端是否回到空闲状态（命令执行完成）
+      const status = await executor.terminalService.getTerminalStatus(ptyId)
+      const timeSinceLastOutput = Date.now() - lastOutputTime
+      const elapsed = Date.now() - startTime
+      
+      // 如果检测到密码提示，需要等待用户输入
+      if (passwordPromptDetected) {
+        // 记录检测到密码时的输出长度
+        if (outputLengthAtPasswordPrompt === 0) {
+          outputLengthAtPasswordPrompt = output.length
+        }
+        
+        // 判断用户是否已输入密码：有新的输出产生（不只是密码提示）
+        const hasNewOutputAfterPrompt = output.length > outputLengthAtPasswordPrompt + 10
+        
+        // 只有在用户输入密码后（有新输出），且终端空闲时才认为完成
+        if (hasNewOutputAfterPrompt && status.isIdle && timeSinceLastOutput > 1000) {
+          break
+        }
+        
+        // 检查是否用户取消了（Ctrl+C 会产生特定输出或终端回到空闲但无新输出）
+        const cleanOutput = stripAnsi(output)
+        if (cleanOutput.includes('Sorry, try again') || 
+            cleanOutput.includes('sudo: ') && cleanOutput.includes('incorrect password') ||
+            cleanOutput.includes('Authentication failure') ||
+            cleanOutput.includes('Permission denied')) {
+          // 密码错误或认证失败，继续等待（可能会再次提示输入）
+          outputLengthAtPasswordPrompt = output.length  // 重置，等待下一次输入
+        }
+        
+        // 超时处理（等待密码的超时）
+        if (elapsed > sudoTimeout) {
+          if (passwordStepId) {
+            executor.updateStep(passwordStepId, {
+              content: `请在终端中输入密码\n⏰ 已等待较长时间，请尽快输入或按 Ctrl+C 取消`
+            })
+          }
+        }
+      } else {
+        // 未检测到密码提示的正常流程
+        // 命令完成的判断：终端空闲且超过 1 秒没有新输出
+        if (status.isIdle && timeSinceLastOutput > 1000) {
+          break
+        }
+        
+        // 检查超时
+        if (elapsed > sudoTimeout) {
+          // 超时处理
+          unsubscribe()
+          terminalStateService.completeCommandExecution(ptyId, 124, 'timeout')
+          
+          executor.addStep({
+            type: 'tool_result',
+            content: `⏱️ sudo 命令执行超时 (${sudoTimeout / 1000}秒)`,
+            toolName: 'execute_command',
+            toolResult: stripAnsi(output)
+          })
+          
+          return {
+            success: false,
+            output: stripAnsi(output),
+            error: '命令执行超时。请检查终端状态。'
+          }
+        }
+      }
+      
+      // 等待下一次轮询
+      await new Promise(resolve => setTimeout(resolve, pollInterval))
+    }
+    
+    // 命令完成
+    unsubscribe()
+    
+    // 清理输出
+    const cleanOutput = stripAnsi(output).replace(/\r/g, '').trim()
+    
+    // 获取命令退出状态码
+    let exitCode: number | undefined
+    try {
+      // 执行 echo $? 获取上一个命令的退出码
+      const exitCodeResult = await executor.terminalService.executeInTerminal(ptyId, 'echo $?', 3000)
+      const exitCodeStr = exitCodeResult.output.trim()
+      const parsedCode = parseInt(exitCodeStr, 10)
+      if (!isNaN(parsedCode)) {
+        exitCode = parsedCode
+      }
+    } catch {
+      // 获取退出码失败，忽略
+    }
+    
+    terminalStateService.completeCommandExecution(ptyId, exitCode ?? 0, 'completed')
+    
+    // 更新密码等待步骤（如果有）
+    if (passwordStepId) {
+      executor.updateStep(passwordStepId, {
+        type: 'tool_result',
+        content: `密码验证完成`
+      })
+    }
+    
+    // 构建输出信息，包含退出状态码
+    const exitCodeInfo = exitCode !== undefined ? `\n\n[退出状态码: ${exitCode}]${exitCode === 0 ? '' : ' ⚠️ 非零退出码可能表示命令执行有问题'}` : ''
+    
+    executor.addStep({
+      type: 'tool_result',
+      content: `命令执行完成${exitCode !== undefined ? ` (退出码: ${exitCode})` : ''}`,
+      toolName: 'execute_command',
+      toolResult: cleanOutput
+    })
+    
+    return { success: true, output: cleanOutput + exitCodeInfo, exitCode }
+    
+  } catch (error) {
+    unsubscribe()
+    terminalStateService.completeCommandExecution(ptyId, 1, 'failed')
+    
+    const errorMsg = error instanceof Error ? error.message : '命令执行失败'
+    executor.addStep({
+      type: 'tool_result',
+      content: `命令执行失败: ${errorMsg}`,
+      toolName: 'execute_command',
+      toolResult: errorMsg
+    })
+    return { success: false, output: '', error: errorMsg }
   }
 }
 
@@ -532,10 +753,10 @@ async function executeTimedCommand(
     dataHandler = (data: string) => {
       output += data
     }
-    executor.ptyService.onData(ptyId, dataHandler)
+    executor.terminalService.onData(ptyId, dataHandler)
     
     // 发送命令
-    executor.ptyService.write(ptyId, command + '\r')
+    executor.terminalService.write(ptyId, command + '\r')
     
     // 设置超时后发送退出信号
     setTimeout(async () => {
@@ -545,14 +766,14 @@ async function executeTimedCommand(
         'ctrl_d': '\x04',
         'q': 'q'
       }
-      executor.ptyService.write(ptyId, exitKeys[exitAction])
+      executor.terminalService.write(ptyId, exitKeys[exitAction])
       
       // 等待程序退出
       await new Promise(r => setTimeout(r, 500))
       
       // 如果是 q，可能还需要回车
       if (exitAction === 'q') {
-        executor.ptyService.write(ptyId, '\r')
+        executor.terminalService.write(ptyId, '\r')
         await new Promise(r => setTimeout(r, 200))
       }
 
@@ -646,120 +867,45 @@ function truncateFromEnd(text: string, maxLength: number): string {
 }
 
 /**
- * 获取终端上下文
- * 支持多种读取方式：按行数、按字符数、从开头读取
- * 
- * 数据来源优先级：
- * 1. 当前正在执行的命令输出（从 terminal-state.service 获取，实时）
- * 2. 实时终端输出缓冲区（Agent 运行期间收集的）
- * 3. 传入的 terminalOutput（Agent 启动时的快照，作为最后的 fallback）
+ * 获取终端上下文（从末尾读取 N 行）
+ * 直接从 xterm buffer 实时读取
  */
-function getTerminalContext(
+async function getTerminalContext(
   ptyId: string,
   args: Record<string, unknown>,
-  terminalOutput: string[],
   executor: ToolExecutorConfig
-): ToolResult {
-  const lines = args.lines as number | undefined
-  const maxChars = args.max_chars as number | undefined
-  const fromStartLines = args.from_start_lines as number | undefined
+): Promise<ToolResult> {
+  const lines = Math.min(Math.max((args.lines as number) || 50, 1), 500) // 限制 1-500 行
   
-  // 获取输出数据
-  // 优先级：1. 当前执行的命令输出 2. 实时缓冲区 3. Agent 启动时的快照
-  let allOutput: string[] = []
-  let dataSource = 'unknown'
-  
+  // 从 xterm buffer 实时读取
+  let bufferLines: string[] | null = null
   try {
-    const terminalStateService = getTerminalStateService()
-    const currentExecution = terminalStateService.getCurrentExecution(ptyId)
-    
-    if (currentExecution?.output && currentExecution.output.length > 0) {
-      // 有当前执行的命令输出，使用它（实时数据）
-      allOutput = currentExecution.output.split('\n')
-      dataSource = 'current_execution'
-    } else {
-      // 没有当前执行，优先使用实时缓冲区（Agent 运行期间收集的最新输出）
-      const realtimeOutput = executor.getRealtimeTerminalOutput()
-      if (realtimeOutput && realtimeOutput.length > 0) {
-        allOutput = realtimeOutput
-        dataSource = 'realtime_buffer'
-      } else {
-        // 实时缓冲区也为空，尝试获取最近完成的命令输出
-        const lastExecution = terminalStateService.getLastExecution(ptyId)
-        if (lastExecution?.output && lastExecution.output.length > 0) {
-          allOutput = lastExecution.output.split('\n')
-          dataSource = 'last_execution'
-        } else {
-          // 都没有，使用传入的 terminalOutput（Agent 启动时的快照）
-          allOutput = terminalOutput
-          dataSource = 'initial_snapshot'
-        }
-      }
-    }
+    bufferLines = await getLastNLinesFromBuffer(ptyId, lines, 3000)
   } catch (e) {
-    // 如果获取失败，使用传入的 terminalOutput
-    allOutput = terminalOutput
-    dataSource = 'fallback_snapshot'
+    const errorMsg = e instanceof Error ? e.message : '未知错误'
+    return { success: false, output: '', error: `获取终端输出失败: ${errorMsg}` }
   }
   
-  let output = ''
-  let readInfo = ''
-  
-  // 从开头读取
-  if (fromStartLines !== undefined) {
-    const startLines = Math.max(1, fromStartLines)
-    const selectedLines = allOutput.slice(0, startLines)
-    output = selectedLines.join('\n')
-    readInfo = `从开头读取 ${startLines} 行`
-  }
-  // 按字符数读取（从末尾）
-  else if (maxChars !== undefined) {
-    const maxCharsValue = Math.max(100, Math.min(maxChars, 10000)) // 限制在 100-50000 之间
-    // 从后向前累积行，直到达到字符数限制
-    let charCount = 0
-    const selectedLines: string[] = []
-    for (let i = allOutput.length - 1; i >= 0; i--) {
-      const line = allOutput[i]
-      const lineWithNewline = (selectedLines.length > 0 ? '\n' : '') + line
-      if (charCount + lineWithNewline.length > maxCharsValue) {
-        break
-      }
-      selectedLines.unshift(line)
-      charCount += lineWithNewline.length
-    }
-    output = selectedLines.join('\n')
-    readInfo = `从末尾读取约 ${maxCharsValue} 字符 (实际 ${output.length} 字符, ${selectedLines.length} 行)`
-  }
-  // 按行数读取（从末尾，默认）
-  else {
-    const linesValue = lines || 50
-    const selectedLines = allOutput.slice(-linesValue)
-    output = selectedLines.join('\n')
-    readInfo = `从末尾读取 ${selectedLines.length} 行`
+  if (!bufferLines || bufferLines.length === 0) {
+    return { success: true, output: '(终端输出为空)' }
   }
   
-  // 清理 ANSI 转义序列
-  const cleanOutput = stripAnsi(output)
-  
-  // UI 显示截断到 500 字符（保留最新内容），避免超出上下文限制
-  // 注意：返回给 agent 的 output 字段是完整的，但建议使用 max_chars 参数控制大小
-  const truncatedForDisplay = truncateFromEnd(cleanOutput, 500)
+  const output = stripAnsi(bufferLines.join('\n'))
   
   executor.addStep({
     type: 'tool_result',
-    content: `获取终端输出: ${readInfo} (${cleanOutput.length} 字符)`,
+    content: `获取终端输出: ${bufferLines.length} 行`,
     toolName: 'get_terminal_context',
-    toolResult: truncatedForDisplay
+    toolResult: truncateFromEnd(output, 500)
   })
 
-  // 返回完整输出给 agent
-  // 注意：如果输出很大，建议 agent 使用 max_chars 参数限制大小
-  return { success: true, output: cleanOutput || '(终端输出为空)' }
+  return { success: true, output }
 }
 
 /**
- * 检查终端状态（增强版）
- * 使用终端感知服务提供更丰富的状态信息
+ * 检查终端状态（简化版）
+ * 本地终端：基于进程检测，状态准确
+ * SSH 终端：返回屏幕内容，由模型判断状态
  */
 async function checkTerminalStatus(
   ptyId: string,
@@ -774,130 +920,104 @@ async function checkTerminalStatus(
   })
 
   try {
-    // 使用增强的终端感知服务
     const awarenessService = getTerminalAwarenessService()
     const awareness = await awarenessService.getAwareness(ptyId)
+    const terminalType = awareness.terminalState?.type || 'local'
+    const isSsh = terminalType === 'ssh'
     
-    // 构建状态文本
-    let statusIcon = ''
-    let statusText = ''
+    // 获取屏幕可视内容
+    let screenContent: string[] = []
+    try {
+      const visibleContent = await awarenessService.getVisibleContent(ptyId)
+      if (visibleContent) {
+        // 移除末尾空行
+        screenContent = visibleContent
+        while (screenContent.length > 0 && screenContent[screenContent.length - 1].trim() === '') {
+          screenContent.pop()
+        }
+      }
+    } catch {
+      // 获取屏幕内容失败，继续
+    }
     
-    switch (awareness.status) {
-      case 'idle':
-        statusIcon = '✓'
-        statusText = '终端空闲，可以执行命令'
-        break
-      case 'busy':
-        statusIcon = '⏳'
-        statusText = '终端忙碌'
-        if (awareness.process.foregroundProcess) {
-          statusText += `，正在执行: ${awareness.process.foregroundProcess}`
-        }
-        break
-      case 'waiting_input':
-        statusIcon = '⌨️'
-        statusText = `终端等待输入 (${awareness.input.type})`
-        if (awareness.input.prompt) {
-          statusText += `\n提示: "${awareness.input.prompt}"`
-        }
-        break
-      case 'stuck':
-        statusIcon = '⚠️'
-        statusText = '终端可能卡死'
-        break
+    // 构建输出
+    const output: string[] = []
+    
+    // 1. 基本信息
+    output.push(`## 终端信息`)
+    output.push(`- 类型: ${isSsh ? 'SSH 远程终端' : '本地终端'}`)
+    if (awareness.terminalState?.cwd) {
+      output.push(`- 当前目录: ${awareness.terminalState.cwd}`)
     }
-
-    // 构建详情
-    const details: string[] = [
-      `## 终端状态: ${statusIcon} ${awareness.status === 'idle' ? '空闲' : awareness.status === 'busy' ? '忙碌' : awareness.status === 'waiting_input' ? '等待输入' : '可能卡死'}`
-    ]
-
-    // 输入等待信息
-    if (awareness.input.isWaiting && awareness.input.type !== 'prompt' && awareness.input.type !== 'none') {
-      details.push('')
-      details.push('### 输入等待')
-      details.push(`- 类型: ${awareness.input.type}`)
-      if (awareness.input.prompt) {
-        details.push(`- 提示: ${awareness.input.prompt}`)
-      }
-      if (awareness.input.options && awareness.input.options.length > 0) {
-        details.push(`- 选项: ${awareness.input.options.slice(0, 5).join(', ')}${awareness.input.options.length > 5 ? '...' : ''}`)
-      }
-      if (awareness.input.suggestedResponse) {
-        details.push(`- 建议响应: ${awareness.input.suggestedResponse}`)
-      }
-    }
-
-    // 进程信息
-    if (awareness.process.status !== 'idle') {
-      details.push('')
-      details.push('### 进程状态')
-      details.push(`- 状态: ${awareness.process.status}`)
-      if (awareness.process.foregroundProcess) {
-        details.push(`- 前台进程: ${awareness.process.foregroundProcess}`)
-      }
-      if (awareness.process.runningTime) {
-        details.push(`- 运行时长: ${Math.round(awareness.process.runningTime / 1000)}秒`)
-      }
-      if (awareness.process.outputRate !== undefined) {
-        details.push(`- 输出速率: ${awareness.process.outputRate.toFixed(1)} 行/秒`)
-      }
-    }
-
-    // 环境信息
-    if (awareness.terminalState?.cwd || awareness.context.activeEnvs.length > 0) {
-      details.push('')
-      details.push('### 环境')
-      if (awareness.terminalState?.cwd) {
-        details.push(`- 当前目录: ${awareness.terminalState.cwd}`)
-      }
-      if (awareness.context.user) {
-        details.push(`- 用户: ${awareness.context.user}${awareness.context.isRoot ? ' (root)' : ''}`)
-      }
-      if (awareness.context.activeEnvs.length > 0) {
-        details.push(`- 激活环境: ${awareness.context.activeEnvs.join(', ')}`)
-      }
-    }
-
-    // 最后命令信息
     if (awareness.terminalState?.lastCommand) {
-      details.push('')
-      details.push('### 最近命令')
-      details.push(`- 命令: ${awareness.terminalState.lastCommand}`)
+      output.push(`- 最近命令: ${awareness.terminalState.lastCommand}`)
       if (awareness.terminalState.lastExitCode !== undefined) {
-        details.push(`- 退出码: ${awareness.terminalState.lastExitCode}`)
+        output.push(`- 退出码: ${awareness.terminalState.lastExitCode}`)
       }
     }
-
-    // 输出模式
-    if (awareness.output.type !== 'normal' && awareness.output.confidence > 0.6) {
-      details.push('')
-      details.push('### 输出模式')
-      details.push(`- 类型: ${awareness.output.type}`)
-      if (awareness.output.details?.progress !== undefined) {
-        details.push(`- 进度: ${awareness.output.details.progress}%`)
+    
+    // 2. 状态判断
+    output.push('')
+    output.push(`## 状态`)
+    
+    if (isSsh) {
+      // SSH 终端：不做复杂判断，让模型根据屏幕内容自行判断
+      output.push(`- 状态: **请根据下方屏幕内容判断**`)
+      output.push(`- 说明: SSH 终端无法可靠检测远程进程状态，请观察屏幕内容：`)
+      output.push(`  - 如果看到 shell 提示符（如 $ 或 #），终端空闲`)
+      output.push(`  - 如果看到程序输出或进度，命令正在执行`)
+      output.push(`  - 如果看到 password/密码 提示，需要输入密码`)
+      output.push(`  - 如果看到 [y/n] 或选择提示，需要用户确认`)
+    } else {
+      // 本地终端：基于 pgrep 检测，状态准确
+      let statusText = ''
+      switch (awareness.status) {
+        case 'idle':
+          statusText = '✅ 空闲，可以执行命令'
+          break
+        case 'busy':
+          statusText = '⏳ 忙碌'
+          if (awareness.process.foregroundProcess) {
+            statusText += `，正在执行: ${awareness.process.foregroundProcess}`
+          }
+          if (awareness.process.runningTime) {
+            statusText += ` (${Math.round(awareness.process.runningTime / 1000)}秒)`
+          }
+          break
+        case 'waiting_input':
+          statusText = `⌨️ 等待输入 (${awareness.input.type})`
+          break
+        case 'stuck':
+          statusText = '⚠️ 可能卡死（长时间无输出）'
+          break
       }
-      if (awareness.output.details?.eta) {
-        details.push(`- 预计剩余: ${awareness.output.details.eta}`)
-      }
-      if (awareness.output.details?.testsPassed !== undefined || awareness.output.details?.testsFailed !== undefined) {
-        details.push(`- 测试: ${awareness.output.details.testsPassed || 0} 通过, ${awareness.output.details.testsFailed || 0} 失败`)
-      }
+      output.push(`- 状态: ${statusText}`)
+      output.push(`- 可执行命令: ${awareness.canExecuteCommand ? '是' : '否'}`)
     }
-
-    const detailsText = details.join('\n')
-
+    
+    // 3. 屏幕内容（关键！）
+    output.push('')
+    output.push(`## 当前屏幕内容`)
+    if (screenContent.length > 0) {
+      output.push('```')
+      output.push(screenContent.join('\n'))
+      output.push('```')
+    } else {
+      output.push('(无法获取屏幕内容)')
+    }
+    
+    const outputText = output.join('\n')
+    
+    // UI 显示简化版本
+    const displayStatus = isSsh ? '查看屏幕内容判断' : awareness.status
     executor.addStep({
       type: 'tool_result',
-      content: `${statusIcon} ${statusText}`,
+      content: `终端状态: ${displayStatus}`,
       toolName: 'check_terminal_status',
-      toolResult: detailsText
+      toolResult: screenContent.length > 0 ? `屏幕 ${screenContent.length} 行` : '(无屏幕内容)'
     })
 
-    // 构建完整输出
-    const output = `${statusIcon} ${statusText}\n\n${detailsText}\n\n---\n**建议**: ${awareness.suggestion}\n**可执行命令**: ${awareness.canExecuteCommand ? '是' : '否'}\n**需要用户输入**: ${awareness.needsUserInput ? '是' : '否'}`
-
-    return { success: true, output }
+    return { success: true, output: outputText }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '状态检测失败'
     executor.addStep({
@@ -947,7 +1067,7 @@ async function sendControlKey(
 
   try {
     // 直接写入 PTY
-    executor.ptyService.write(ptyId, keySequence)
+    executor.terminalService.write(ptyId, keySequence)
     
     // 等待一小段时间让终端响应
     await new Promise(resolve => setTimeout(resolve, 300))
@@ -999,11 +1119,11 @@ async function sendInput(
 
   try {
     // 发送文本
-    executor.ptyService.write(ptyId, text)
+    executor.terminalService.write(ptyId, text)
     
     // 如果需要按回车
     if (pressEnter) {
-      executor.ptyService.write(ptyId, '\r')
+      executor.terminalService.write(ptyId, '\r')
     }
     
     // 等待一小段时间让终端响应
@@ -1031,12 +1151,20 @@ async function sendInput(
  * 支持多种读取方式：完整读取、按行范围读取、从开头/末尾读取、仅查询文件信息
  */
 function readFile(
+  ptyId: string,
   args: Record<string, unknown>,
   executor: ToolExecutorConfig
 ): ToolResult {
-  const filePath = args.path as string
+  let filePath = args.path as string
   if (!filePath) {
     return { success: false, output: '', error: '文件路径不能为空' }
+  }
+
+  // 如果是相对路径，基于终端当前工作目录解析
+  if (!path.isAbsolute(filePath)) {
+    const terminalStateService = getTerminalStateService()
+    const cwd = terminalStateService.getCwd(ptyId)
+    filePath = path.resolve(cwd, filePath)
   }
 
   const infoOnly = args.info_only === true
@@ -1199,24 +1327,107 @@ ${sampleContent ? `### 文件预览（前10行）\n\`\`\`\n${sampleContent}\n\`\
 
 /**
  * 写入文件
+ * 支持多种模式：overwrite（覆盖）、append（追加）、insert（插入）、replace_lines（行替换）、regex_replace（正则替换）
  */
 async function writeFile(
+  ptyId: string,
   args: Record<string, unknown>,
   toolCallId: string,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
-  const filePath = args.path as string
-  const content = args.content as string
+  let filePath = args.path as string
+  const content = args.content as string | undefined
+  const mode = (args.mode as string) || 'overwrite'
+  const insertAtLine = args.insert_at_line as number | undefined
+  const startLine = args.start_line as number | undefined
+  const endLine = args.end_line as number | undefined
+  const pattern = args.pattern as string | undefined
+  const replacement = args.replacement as string | undefined
+  const replaceAll = args.replace_all !== false // 默认 true
+
   if (!filePath) {
     return { success: false, output: '', error: '文件路径不能为空' }
+  }
+
+  // 验证模式和必要参数
+  const validModes = ['overwrite', 'append', 'insert', 'replace_lines', 'regex_replace']
+  if (!validModes.includes(mode)) {
+    return { success: false, output: '', error: `无效的写入模式: ${mode}，支持的模式: ${validModes.join(', ')}` }
+  }
+
+  // 验证各模式的必要参数
+  if (mode === 'overwrite' || mode === 'append') {
+    if (content === undefined) {
+      return { success: false, output: '', error: `${mode} 模式需要提供 content 参数` }
+    }
+  } else if (mode === 'insert') {
+    if (content === undefined) {
+      return { success: false, output: '', error: 'insert 模式需要提供 content 参数' }
+    }
+    if (insertAtLine === undefined || insertAtLine < 1) {
+      return { success: false, output: '', error: 'insert 模式需要提供有效的 insert_at_line 参数（从1开始）' }
+    }
+  } else if (mode === 'replace_lines') {
+    if (content === undefined) {
+      return { success: false, output: '', error: 'replace_lines 模式需要提供 content 参数' }
+    }
+    if (startLine === undefined || startLine < 1) {
+      return { success: false, output: '', error: 'replace_lines 模式需要提供有效的 start_line 参数（从1开始）' }
+    }
+    if (endLine === undefined || endLine < startLine) {
+      return { success: false, output: '', error: 'replace_lines 模式需要提供有效的 end_line 参数（必须 >= start_line）' }
+    }
+  } else if (mode === 'regex_replace') {
+    if (pattern === undefined) {
+      return { success: false, output: '', error: 'regex_replace 模式需要提供 pattern 参数' }
+    }
+    if (replacement === undefined) {
+      return { success: false, output: '', error: 'regex_replace 模式需要提供 replacement 参数' }
+    }
+  }
+
+  // 如果是相对路径，基于终端当前工作目录解析
+  if (!path.isAbsolute(filePath)) {
+    const terminalStateService = getTerminalStateService()
+    const cwd = terminalStateService.getCwd(ptyId)
+    filePath = path.resolve(cwd, filePath)
+  }
+
+  // 生成操作描述
+  let operationDesc = ''
+  switch (mode) {
+    case 'overwrite':
+      operationDesc = `覆盖写入文件: ${filePath}`
+      break
+    case 'append':
+      operationDesc = `追加写入文件: ${filePath}`
+      break
+    case 'insert':
+      operationDesc = `在第 ${insertAtLine} 行插入内容: ${filePath}`
+      break
+    case 'replace_lines':
+      operationDesc = `替换第 ${startLine}-${endLine} 行: ${filePath}`
+      break
+    case 'regex_replace':
+      operationDesc = `正则替换 (${replaceAll ? '全部' : '首个'}): ${filePath}`
+      break
   }
 
   // 文件写入需要确认
   executor.addStep({
     type: 'tool_call',
-    content: `写入文件: ${filePath}`,
+    content: operationDesc,
     toolName: 'write_file',
-    toolArgs: { path: filePath, content: content?.substring(0, 100) + '...' },
+    toolArgs: { 
+      path: filePath, 
+      mode,
+      ...(content !== undefined && { content: content.length > 100 ? content.substring(0, 100) + '...' : content }),
+      ...(insertAtLine !== undefined && { insert_at_line: insertAtLine }),
+      ...(startLine !== undefined && { start_line: startLine }),
+      ...(endLine !== undefined && { end_line: endLine }),
+      ...(pattern !== undefined && { pattern }),
+      ...(replacement !== undefined && { replacement })
+    },
     riskLevel: 'moderate'
   })
 
@@ -1237,13 +1448,78 @@ async function writeFile(
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true })
     }
-    fs.writeFileSync(filePath, content, 'utf-8')
+
+    let resultMsg = ''
+    const fileExists = fs.existsSync(filePath)
+
+    switch (mode) {
+      case 'overwrite': {
+        fs.writeFileSync(filePath, content!, 'utf-8')
+        resultMsg = `文件已${fileExists ? '覆盖' : '创建'}: ${filePath}`
+        break
+      }
+      case 'append': {
+        fs.appendFileSync(filePath, content!, 'utf-8')
+        resultMsg = `内容已追加到: ${filePath}`
+        break
+      }
+      case 'insert': {
+        if (!fileExists) {
+          return { success: false, output: '', error: '文件不存在，无法执行插入操作' }
+        }
+        const lines = fs.readFileSync(filePath, 'utf-8').split('\n')
+        const insertIndex = Math.min(insertAtLine! - 1, lines.length)
+        const contentLines = content!.split('\n')
+        lines.splice(insertIndex, 0, ...contentLines)
+        fs.writeFileSync(filePath, lines.join('\n'), 'utf-8')
+        resultMsg = `已在第 ${insertAtLine} 行插入 ${contentLines.length} 行内容: ${filePath}`
+        break
+      }
+      case 'replace_lines': {
+        if (!fileExists) {
+          return { success: false, output: '', error: '文件不存在，无法执行行替换操作' }
+        }
+        const lines = fs.readFileSync(filePath, 'utf-8').split('\n')
+        const totalLines = lines.length
+        if (startLine! > totalLines) {
+          return { success: false, output: '', error: `起始行 ${startLine} 超出文件总行数 ${totalLines}` }
+        }
+        const actualEndLine = Math.min(endLine!, totalLines)
+        const deleteCount = actualEndLine - startLine! + 1
+        const contentLines = content!.split('\n')
+        lines.splice(startLine! - 1, deleteCount, ...contentLines)
+        fs.writeFileSync(filePath, lines.join('\n'), 'utf-8')
+        resultMsg = `已替换第 ${startLine}-${actualEndLine} 行（共 ${deleteCount} 行）为 ${contentLines.length} 行新内容: ${filePath}`
+        break
+      }
+      case 'regex_replace': {
+        if (!fileExists) {
+          return { success: false, output: '', error: '文件不存在，无法执行正则替换操作' }
+        }
+        const fileContent = fs.readFileSync(filePath, 'utf-8')
+        let regex: RegExp
+        try {
+          regex = new RegExp(pattern!, replaceAll ? 'g' : '')
+        } catch (e) {
+          return { success: false, output: '', error: `无效的正则表达式: ${pattern}` }
+        }
+        const matches = fileContent.match(regex)
+        if (!matches || matches.length === 0) {
+          return { success: false, output: '', error: `未找到匹配的内容: ${pattern}` }
+        }
+        const newContent = fileContent.replace(regex, replacement!)
+        fs.writeFileSync(filePath, newContent, 'utf-8')
+        resultMsg = `已替换 ${matches.length} 处匹配内容: ${filePath}`
+        break
+      }
+    }
+
     executor.addStep({
       type: 'tool_result',
-      content: `文件写入成功`,
+      content: resultMsg,
       toolName: 'write_file'
     })
-    return { success: true, output: `文件已写入: ${filePath}` }
+    return { success: true, output: resultMsg }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '写入失败'
     const errorCategory = categorizeError(errorMsg)
@@ -1410,106 +1686,6 @@ async function searchKnowledge(
 }
 
 /**
- * 获取终端完整状态
- */
-async function getTerminalState(
-  ptyId: string,
-  args: Record<string, unknown>,
-  executor: ToolExecutorConfig
-): Promise<ToolResult> {
-  const includeHistory = args.include_history === true
-  const historyLimit = typeof args.history_limit === 'number' ? args.history_limit : 5
-
-  executor.addStep({
-    type: 'tool_call',
-    content: '获取终端状态',
-    toolName: 'get_terminal_state',
-    toolArgs: args,
-    riskLevel: 'safe'
-  })
-
-  try {
-    const terminalStateService = getTerminalStateService()
-    const state = terminalStateService.getState(ptyId)
-    const ptyStatus = await executor.ptyService.getTerminalStatus(ptyId)
-
-    if (!state) {
-      executor.addStep({
-        type: 'tool_result',
-        content: '终端状态未初始化',
-        toolName: 'get_terminal_state',
-        toolResult: '未找到终端状态'
-      })
-      return { success: false, output: '', error: '终端状态未初始化' }
-    }
-
-    const lines: string[] = [
-      '## 终端状态',
-      '',
-      `- **运行状态**: ${ptyStatus.isIdle ? '空闲' : '忙碌'}`,
-      `- **当前目录 (CWD)**: ${state.cwd}`,
-      `- **最后命令**: ${state.lastCommand || '无'}`,
-      `- **最后退出码**: ${state.lastExitCode !== undefined ? state.lastExitCode : '无'}`,
-    ]
-
-    if (ptyStatus.foregroundProcess) {
-      lines.push(`- **前台进程**: ${ptyStatus.foregroundProcess} (PID: ${ptyStatus.foregroundPid})`)
-    }
-
-    // 如果有正在执行的命令
-    const currentExecution = terminalStateService.getCurrentExecution(ptyId)
-    if (currentExecution) {
-      lines.push('')
-      lines.push('## 正在执行的命令')
-      lines.push(`- **命令**: ${currentExecution.command}`)
-      lines.push(`- **开始时间**: ${new Date(currentExecution.startTime).toLocaleString()}`)
-      lines.push(`- **执行目录**: ${currentExecution.cwdBefore}`)
-      if (currentExecution.output) {
-        const outputPreview = currentExecution.output.slice(-500)
-        lines.push(`- **输出预览** (最后500字符):`)
-        lines.push('```')
-        lines.push(outputPreview)
-        lines.push('```')
-      }
-    }
-
-    // 如果需要历史记录
-    if (includeHistory) {
-      const history = terminalStateService.getExecutionHistory(ptyId, historyLimit)
-      if (history.length > 0) {
-        lines.push('')
-        lines.push(`## 最近 ${history.length} 条命令历史`)
-        for (const exec of history) {
-          const duration = exec.duration ? `${exec.duration}ms` : '未知'
-          const status = exec.exitCode === 0 ? '✓' : `✗ (退出码: ${exec.exitCode})`
-          lines.push(`- ${status} \`${exec.command}\` (耗时: ${duration})`)
-        }
-      }
-    }
-
-    const output = lines.join('\n')
-
-    executor.addStep({
-      type: 'tool_result',
-      content: `CWD: ${state.cwd}, 状态: ${ptyStatus.isIdle ? '空闲' : '忙碌'}`,
-      toolName: 'get_terminal_state',
-      toolResult: output
-    })
-
-    return { success: true, output }
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : '获取状态失败'
-    executor.addStep({
-      type: 'tool_result',
-      content: `获取状态失败: ${errorMsg}`,
-      toolName: 'get_terminal_state',
-      toolResult: errorMsg
-    })
-    return { success: false, output: '', error: errorMsg }
-  }
-}
-
-/**
  * 格式化剩余时间显示
  */
 function formatRemainingTime(totalSeconds: number, elapsedSeconds: number): string {
@@ -1646,5 +1822,139 @@ async function wait(
   return { 
     success: true, 
     output: `已等待 ${totalTimeDisplay}，继续执行。现在你可以检查终端状态或继续其他操作。`
+  }
+}
+
+/**
+ * 向用户提问并等待回复
+ * 让 Agent 可以主动向用户获取更多信息
+ */
+async function askUser(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const question = args.question as string
+  let options = args.options as string[] | undefined
+  const allowMultiple = args.allow_multiple as boolean | undefined
+  const defaultValue = args.default_value as string | undefined
+  
+  // 参数校验
+  if (!question || typeof question !== 'string') {
+    return { success: false, output: '', error: '问题不能为空' }
+  }
+
+  // 限制选项数量为 10 个
+  if (options && options.length > 10) {
+    options = options.slice(0, 10)
+  }
+
+  // 添加提问步骤（content 只保存问题，状态信息通过 toolResult 显示）
+  const step = executor.addStep({
+    type: 'asking',
+    content: question,
+    toolName: 'ask_user',
+    toolArgs: { question, options, allow_multiple: allowMultiple, default_value: defaultValue },
+    toolResult: '⏳ 等待回复中...',
+    riskLevel: 'safe'
+  })
+
+  // 等待用户回复（最长 5 分钟）
+  const maxWaitSeconds = 300  // 5 分钟
+  const pollInterval = 2  // 每 2 秒检查一次
+  let elapsedSeconds = 0
+  let userResponse: string | undefined
+
+  while (elapsedSeconds < maxWaitSeconds) {
+    // 检查是否被中止
+    if (executor.isAborted()) {
+      executor.updateStep(step.id, {
+        toolResult: '🛑 已取消'
+      })
+      return { success: false, output: '', error: '操作已中止' }
+    }
+
+    // 检查是否有用户回复
+    if (executor.hasPendingUserMessage()) {
+      userResponse = executor.consumePendingUserMessage()
+      break
+    }
+
+    // 等待一个间隔
+    await new Promise(resolve => setTimeout(resolve, pollInterval * 1000))
+    elapsedSeconds += pollInterval
+
+    // 更新等待状态显示（通过 toolResult 字段）
+    const remainingSeconds = maxWaitSeconds - elapsedSeconds
+    const remainingMinutes = Math.floor(remainingSeconds / 60)
+    const remainingSecs = remainingSeconds % 60
+    const remainingDisplay = remainingMinutes > 0 
+      ? `${remainingMinutes}分${remainingSecs}秒` 
+      : `${remainingSecs}秒`
+    
+    executor.updateStep(step.id, {
+      toolResult: `⏳ 等待回复中...（剩余 ${remainingDisplay}）`
+    })
+  }
+
+  // 处理用户回复或超时
+  if (userResponse !== undefined) {
+    // 用户回复了
+    let finalResponse = userResponse.trim()
+    
+    // 尝试解析多选回复（JSON 数组格式）
+    let selectedOptions: string[] = []
+    if (finalResponse.startsWith('[') && finalResponse.endsWith(']')) {
+      try {
+        selectedOptions = JSON.parse(finalResponse)
+        if (Array.isArray(selectedOptions)) {
+          finalResponse = selectedOptions.join(', ')
+        }
+      } catch {
+        // 不是有效的 JSON，保持原样
+      }
+    }
+    
+    // 处理选项回复：如果用户输入的是数字，尝试匹配选项
+    if (options && options.length > 0 && selectedOptions.length === 0) {
+      const numMatch = finalResponse.match(/^(\d+)$/)
+      if (numMatch) {
+        const idx = parseInt(numMatch[1], 10) - 1
+        if (idx >= 0 && idx < options.length) {
+          finalResponse = options[idx]
+        }
+      }
+    }
+
+    // 空回复使用默认值
+    if (!finalResponse && defaultValue) {
+      finalResponse = defaultValue
+    }
+
+    executor.updateStep(step.id, {
+      toolResult: `✅ ${finalResponse || '(空)'}`
+    })
+
+    return {
+      success: true,
+      output: `用户回复：${finalResponse || '(用户未提供内容)'}\n\n请根据用户的回复继续执行任务。`
+    }
+  } else {
+    // 超时
+    executor.updateStep(step.id, {
+      toolResult: '⏰ 等待超时'
+    })
+
+    if (defaultValue) {
+      return {
+        success: true,
+        output: `用户未在 5 分钟内回复，使用默认值：${defaultValue}\n\n请使用默认值继续执行任务。`
+      }
+    }
+
+    return {
+      success: false,
+      output: '',
+      error: '等待用户回复超时（5分钟）。你可以：1) 再次询问用户；2) 采用合理的默认方案；3) 向用户说明需要更多信息才能继续。'
+    }
   }
 }

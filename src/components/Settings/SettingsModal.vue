@@ -98,9 +98,8 @@ const restartSetup = async () => {
               {{ t('about.description') }}
             </p>
             <div class="about-links">
-              <a href="#" class="about-link">{{ t('about.docs') }}</a>
-              <a href="#" class="about-link">{{ t('about.feedback') }}</a>
-              <a href="#" class="about-link">{{ t('about.license') }}</a>
+              <a href="mailto:nuoyan_cfan@163.com" class="about-link">{{ t('about.contact') }}</a>
+              <a href="www.gnu.org/licenses/agpl-3.0.html" target="_blank" class="about-link">{{ t('about.license') }}</a>
             </div>
             <div class="about-actions">
               <button class="btn btn-outline" @click="restartSetup">

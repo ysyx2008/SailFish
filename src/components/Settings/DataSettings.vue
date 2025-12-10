@@ -104,8 +104,8 @@ const loadHistory = async () => {
       agentRecords.value = await window.electronAPI.history.getAgentRecords(start, end) || []
     }
   } catch (e) {
-    console.error('加载历史记录失败:', e)
-    showMessage('error', '加载历史记录失败')
+    console.error('Failed to load history:', e)
+    showMessage('error', t('dataSettings.loadHistoryFailed'))
   } finally {
     historyLoading.value = false
   }
@@ -140,8 +140,9 @@ const closeHistoryViewer = () => {
 
 // 格式化时间
 const formatTime = (timestamp: number) => {
+  const { locale } = useI18n()
   const date = new Date(timestamp)
-  return date.toLocaleString('zh-CN', {
+  return date.toLocaleString(locale.value, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -179,6 +180,7 @@ const filteredAgentRecords = computed(() => {
 
 // 按对话分组聊天记录
 const groupedChatRecords = computed(() => {
+  const { locale } = useI18n()
   const groups: Array<{
     date: string
     records: ChatRecord[]
@@ -188,7 +190,7 @@ const groupedChatRecords = computed(() => {
   let currentGroup: ChatRecord[] = []
   
   for (const record of filteredChatRecords.value) {
-    const date = new Date(record.timestamp).toLocaleDateString('zh-CN')
+    const date = new Date(record.timestamp).toLocaleDateString(locale.value)
     if (date !== currentDate) {
       if (currentGroup.length > 0) {
         groups.push({ date: currentDate, records: currentGroup })
@@ -250,9 +252,9 @@ const getStatusClass = (status: string) => {
 // 获取状态文本
 const getStatusText = (status: string) => {
   switch (status) {
-    case 'completed': return '完成'
-    case 'failed': return '失败'
-    case 'aborted': return '中止'
+    case 'completed': return t('dataSettings.statusCompleted')
+    case 'failed': return t('dataSettings.statusFailed')
+    case 'aborted': return t('dataSettings.statusAborted')
     default: return status
   }
 }
@@ -263,7 +265,7 @@ const loadStorageStats = async () => {
     storageStats.value = await window.electronAPI.history.getStorageStats()
     dataPath.value = await window.electronAPI.history.getDataPath()
   } catch (e) {
-    console.error('加载存储统计失败:', e)
+    console.error('Failed to load storage stats:', e)
   }
 }
 
@@ -279,7 +281,7 @@ const openDataFolder = async () => {
   try {
     await window.electronAPI.history.openDataFolder()
   } catch (e) {
-    showMessage('error', '打开目录失败')
+    showMessage('error', t('dataSettings.openFolderFailed'))
   }
 }
 
@@ -303,12 +305,12 @@ const exportToFolder = async () => {
     if (result.canceled) {
       // 用户取消
     } else if (result.success) {
-      showMessage('success', `已导出 ${result.files?.length || 0} 个文件`)
+      showMessage('success', t('dataSettings.exportedFiles', { count: result.files?.length || 0 }))
     } else {
-      showMessage('error', result.error || '导出失败')
+      showMessage('error', result.error || t('dataSettings.exportFailed'))
     }
   } catch (e) {
-    showMessage('error', `导出失败: ${e}`)
+    showMessage('error', `${t('dataSettings.exportFailed')}: ${e}`)
   } finally {
     isExporting.value = false
   }
@@ -330,9 +332,9 @@ const exportSingleFile = async () => {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
     
-    showMessage('success', '数据导出成功')
+    showMessage('success', t('dataSettings.exportSuccess'))
   } catch (e) {
-    showMessage('error', `导出失败: ${e}`)
+    showMessage('error', `${t('dataSettings.exportFailed')}: ${e}`)
   } finally {
     isExporting.value = false
   }
@@ -347,13 +349,13 @@ const importFromFolder = async () => {
     if (result.canceled) {
       // 用户取消
     } else if (result.success) {
-      showMessage('success', `已导入: ${result.imported?.join(', ') || '无'}`)
+      showMessage('success', t('dataSettings.importedItems', { items: result.imported?.join(', ') || t('dataSettings.importNone') }))
       await loadStorageStats()
     } else {
-      showMessage('error', result.error || '导入失败')
+      showMessage('error', result.error || t('dataSettings.importFailed'))
     }
   } catch (e) {
-    showMessage('error', `导入失败: ${e}`)
+    showMessage('error', `${t('dataSettings.importFailed')}: ${e}`)
   } finally {
     isImporting.value = false
   }
@@ -377,13 +379,13 @@ const importSingleFile = async () => {
       const result = await window.electronAPI.history.importData(data)
       
       if (result.success) {
-        showMessage('success', '数据导入成功')
+        showMessage('success', t('dataSettings.importSuccess'))
         await loadStorageStats()
       } else {
-        showMessage('error', result.error || '导入失败')
+        showMessage('error', result.error || t('dataSettings.importFailed'))
       }
     } catch (e) {
-      showMessage('error', `导入失败: ${e}`)
+      showMessage('error', `${t('dataSettings.importFailed')}: ${e}`)
     } finally {
       isImporting.value = false
     }
@@ -394,17 +396,21 @@ const importSingleFile = async () => {
 
 // 清理旧记录
 const cleanupOldRecords = async (days: number) => {
-  if (!confirm(`确定要清理 ${days} 天前的历史记录吗？此操作不可恢复。`)) {
+  const confirmMsg = days === 0 
+    ? t('dataSettings.confirmClearAll')
+    : t('dataSettings.confirmCleanup', { days })
+  
+  if (!confirm(confirmMsg)) {
     return
   }
   
   isLoading.value = true
   try {
     const result = await window.electronAPI.history.cleanup(days)
-    showMessage('success', `已清理 ${result.chatDeleted} 个聊天文件和 ${result.agentDeleted} 个 Agent 文件`)
+    showMessage('success', t('dataSettings.cleanupResult', { chatDeleted: result.chatDeleted, agentDeleted: result.agentDeleted }))
     await loadStorageStats()
   } catch (e) {
-    showMessage('error', `清理失败: ${e}`)
+    showMessage('error', `${t('dataSettings.cleanupFailed')}: ${e}`)
   } finally {
     isLoading.value = false
   }
@@ -434,99 +440,99 @@ onMounted(() => {
     
     <!-- 存储统计 -->
     <div class="section">
-      <h4>存储统计</h4>
+      <h4>{{ t('dataSettings.storageStats') }}</h4>
       <div v-if="storageStats" class="stats-grid">
         <div class="stat-item">
-          <span class="stat-label">聊天记录</span>
-          <span class="stat-value">{{ storageStats.chatFiles }} 天</span>
+          <span class="stat-label">{{ t('dataSettings.chatRecords') }}</span>
+          <span class="stat-value">{{ storageStats.chatFiles }} {{ t('dataSettings.days') }}</span>
         </div>
         <div class="stat-item">
-          <span class="stat-label">Agent 记录</span>
-          <span class="stat-value">{{ storageStats.agentFiles }} 天</span>
+          <span class="stat-label">{{ t('dataSettings.agentRecords') }}</span>
+          <span class="stat-value">{{ storageStats.agentFiles }} {{ t('dataSettings.days') }}</span>
         </div>
         <div class="stat-item">
-          <span class="stat-label">总大小</span>
+          <span class="stat-label">{{ t('dataSettings.totalSize') }}</span>
           <span class="stat-value">{{ formatSize(storageStats.totalSize) }}</span>
         </div>
         <div class="stat-item">
-          <span class="stat-label">记录范围</span>
+          <span class="stat-label">{{ t('dataSettings.recordRange') }}</span>
           <span class="stat-value">
-            {{ storageStats.oldestRecord || '无' }} ~ {{ storageStats.newestRecord || '无' }}
+            {{ storageStats.oldestRecord || t('dataSettings.noData') }} ~ {{ storageStats.newestRecord || t('dataSettings.noData') }}
           </span>
         </div>
       </div>
-      <div v-else class="loading">加载中...</div>
+      <div v-else class="loading">{{ t('dataSettings.loading') }}</div>
       
       <!-- 查看历史记录按钮 -->
       <button class="btn btn-primary view-history-btn" @click="openHistoryViewer">
-        📜 查看历史记录
+        📜 {{ t('dataSettings.viewHistory') }}
       </button>
     </div>
     
     <!-- 数据目录 -->
     <div class="section">
-      <h4>数据目录</h4>
+      <h4>{{ t('dataSettings.dataDirectory') }}</h4>
       <div class="data-path">
         <code>{{ dataPath }}</code>
         <button class="btn btn-sm" @click="openDataFolder">
-          📂 打开目录
+          📂 {{ t('dataSettings.openFolder') }}
         </button>
       </div>
-      <p class="hint">更换电脑时，可直接复制此目录下的文件进行迁移</p>
+      <p class="hint">{{ t('dataSettings.migrationHint') }}</p>
     </div>
     
     <!-- 导出/导入 -->
     <div class="section">
-      <h4>备份与恢复</h4>
+      <h4>{{ t('dataSettings.backupRestore') }}</h4>
       
       <!-- 导出选项 -->
       <div class="export-options">
         <label class="checkbox-label">
           <input type="checkbox" v-model="exportOptions.includeSshPasswords">
-          <span>包含 SSH 密码</span>
+          <span>{{ t('dataSettings.includeSshPasswords') }}</span>
         </label>
         <label class="checkbox-label">
           <input type="checkbox" v-model="exportOptions.includeApiKeys">
-          <span>包含 API Key</span>
+          <span>{{ t('dataSettings.includeApiKeys') }}</span>
         </label>
       </div>
       
       <div class="actions">
         <button class="btn btn-primary" @click="exportToFolder" :disabled="isExporting">
-          {{ isExporting ? '导出中...' : '📂 导出到文件夹' }}
+          {{ isExporting ? t('dataSettings.exporting') : `📂 ${t('dataSettings.exportToFolder')}` }}
         </button>
         <button class="btn" @click="importFromFolder" :disabled="isImporting">
-          {{ isImporting ? '导入中...' : '📂 从文件夹导入' }}
+          {{ isImporting ? t('dataSettings.importing') : `📂 ${t('dataSettings.importFromFolder')}` }}
         </button>
       </div>
-      <p class="hint">导出为独立文件，可选择性分享给他人</p>
+      <p class="hint">{{ t('dataSettings.exportHint') }}</p>
       
       <div class="actions" style="margin-top: 8px;">
         <button class="btn btn-sm btn-outline" @click="exportSingleFile" :disabled="isExporting">
-          📄 导出单文件
+          📄 {{ t('dataSettings.exportSingleFile') }}
         </button>
         <button class="btn btn-sm btn-outline" @click="importSingleFile" :disabled="isImporting">
-          📄 导入单文件
+          📄 {{ t('dataSettings.importSingleFile') }}
         </button>
       </div>
-      <p class="hint">单文件适合完整备份，包含所有数据</p>
+      <p class="hint">{{ t('dataSettings.singleFileHint') }}</p>
     </div>
     
     <!-- 清理 -->
     <div class="section">
-      <h4>清理历史</h4>
+      <h4>{{ t('dataSettings.cleanupHistory') }}</h4>
       <div class="actions">
         <button class="btn btn-outline" @click="cleanupOldRecords(30)" :disabled="isLoading">
-          清理 30 天前
+          {{ t('dataSettings.cleanup30Days') }}
         </button>
         <button class="btn btn-outline" @click="cleanupOldRecords(90)" :disabled="isLoading">
-          清理 90 天前
+          {{ t('dataSettings.cleanup90Days') }}
         </button>
         <button class="btn btn-outline btn-danger" @click="cleanupOldRecords(0)" :disabled="isLoading">
-          清空全部
+          {{ t('dataSettings.clearAll') }}
         </button>
       </div>
-      <p class="hint">清理旧记录可释放存储空间，此操作不可恢复</p>
+      <p class="hint">{{ t('dataSettings.cleanupHint') }}</p>
     </div>
     
     <!-- 历史记录查看器弹窗 -->
@@ -534,7 +540,7 @@ onMounted(() => {
       <div v-if="showHistoryViewer" class="history-modal-overlay" @click.self="closeHistoryViewer">
         <div class="history-modal">
           <div class="history-modal-header">
-            <h3>📜 历史记录</h3>
+            <h3>📜 {{ t('dataSettings.historyViewer') }}</h3>
             <button class="close-btn" @click="closeHistoryViewer">✕</button>
           </div>
           
@@ -546,13 +552,13 @@ onMounted(() => {
                 :class="['tab-btn', { active: historyTab === 'agent' }]"
                 @click="switchHistoryTab('agent')"
               >
-                🤖 Agent 任务
+                🤖 {{ t('dataSettings.agentTasks') }}
               </button>
               <button 
                 :class="['tab-btn', { active: historyTab === 'chat' }]"
                 @click="switchHistoryTab('chat')"
               >
-                💬 聊天记录
+                💬 {{ t('dataSettings.chatHistory') }}
               </button>
             </div>
             
@@ -560,10 +566,10 @@ onMounted(() => {
             <div class="date-range-switcher">
               <button 
                 v-for="range in [
-                  { value: 'today', label: '今天' },
-                  { value: 'week', label: '近7天' },
-                  { value: 'month', label: '近30天' },
-                  { value: 'all', label: '全部' }
+                  { value: 'today', label: t('dataSettings.today') },
+                  { value: 'week', label: t('dataSettings.last7Days') },
+                  { value: 'month', label: t('dataSettings.last30Days') },
+                  { value: 'all', label: t('dataSettings.all') }
                 ]" 
                 :key="range.value"
                 :class="['range-btn', { active: selectedDateRange === range.value }]"
@@ -578,7 +584,7 @@ onMounted(() => {
               <input 
                 v-model="searchKeyword"
                 type="text" 
-                placeholder="搜索关键词..."
+                :placeholder="t('dataSettings.searchPlaceholder')"
                 class="search-input"
               />
               <span v-if="searchKeyword" class="clear-search" @click="searchKeyword = ''">✕</span>
@@ -590,13 +596,13 @@ onMounted(() => {
             <!-- 加载中 -->
             <div v-if="historyLoading" class="loading-state">
               <span class="spinner"></span>
-              加载中...
+              {{ t('dataSettings.loading') }}
             </div>
             
             <!-- Agent 记录 -->
             <div v-else-if="historyTab === 'agent'" class="agent-history">
               <div v-if="filteredAgentRecords.length === 0" class="empty-state">
-                暂无 Agent 任务记录
+                {{ t('dataSettings.noAgentRecords') }}
               </div>
               <div v-else class="agent-list">
                 <div 
@@ -613,7 +619,7 @@ onMounted(() => {
                     </div>
                     <div class="agent-meta">
                       <span v-if="record.sshHost" class="agent-host">🖥️ {{ record.sshHost }}</span>
-                      <span v-else class="agent-host">💻 本地</span>
+                      <span v-else class="agent-host">💻 {{ t('dataSettings.local') }}</span>
                       <span class="agent-time">{{ formatTime(record.timestamp) }}</span>
                       <span class="agent-duration">⏱️ {{ formatDuration(record.duration) }}</span>
                       <span class="expand-icon">{{ expandedAgentIds.has(record.id) ? '▼' : '▶' }}</span>
@@ -624,7 +630,7 @@ onMounted(() => {
                   <div v-if="expandedAgentIds.has(record.id)" class="agent-details">
                     <!-- 步骤列表 -->
                     <div class="steps-list">
-                      <div class="steps-label">📝 执行步骤 ({{ record.steps.length }})</div>
+                      <div class="steps-label">📝 {{ t('dataSettings.executionSteps') }} ({{ record.steps.length }})</div>
                       <div 
                         v-for="step in record.steps" 
                         :key="step.id"
@@ -648,7 +654,7 @@ onMounted(() => {
                     
                     <!-- 最终结果（在步骤下方） -->
                     <div v-if="record.finalResult" class="final-result">
-                      <div class="result-label">📋 最终结果</div>
+                      <div class="result-label">📋 {{ t('dataSettings.finalResult') }}</div>
                       <div class="result-content" v-html="renderMarkdown(record.finalResult)"></div>
                     </div>
                   </div>
@@ -659,7 +665,7 @@ onMounted(() => {
             <!-- 聊天记录 -->
             <div v-else class="chat-history">
               <div v-if="groupedChatRecords.length === 0" class="empty-state">
-                暂无聊天记录
+                {{ t('dataSettings.noChatRecords') }}
               </div>
               <div v-else>
                 <div v-for="group in groupedChatRecords" :key="group.date" class="date-group">
@@ -671,10 +677,10 @@ onMounted(() => {
                       :class="['chat-item', record.role]"
                     >
                       <div class="chat-meta">
-                        <span class="chat-role">{{ record.role === 'user' ? '👤 用户' : '🤖 AI' }}</span>
+                        <span class="chat-role">{{ record.role === 'user' ? `👤 ${t('dataSettings.user')}` : `🤖 ${t('dataSettings.ai')}` }}</span>
                         <span class="chat-time">{{ formatTime(record.timestamp) }}</span>
                         <span v-if="record.sshHost" class="chat-host">🖥️ {{ record.sshHost }}</span>
-                        <span v-else class="chat-host">💻 本地</span>
+                        <span v-else class="chat-host">💻 {{ t('dataSettings.local') }}</span>
                       </div>
                       <div class="chat-content" v-html="renderMarkdown(record.content)"></div>
                     </div>
@@ -687,10 +693,10 @@ onMounted(() => {
           <!-- 统计信息 -->
           <div class="history-footer">
             <span v-if="historyTab === 'agent'">
-              共 {{ filteredAgentRecords.length }} 个任务
+              {{ t('dataSettings.totalTasks', { count: filteredAgentRecords.length }) }}
             </span>
             <span v-else>
-              共 {{ filteredChatRecords.length }} 条记录
+              {{ t('dataSettings.totalRecords', { count: filteredChatRecords.length }) }}
             </span>
           </div>
         </div>

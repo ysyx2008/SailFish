@@ -28,6 +28,10 @@ let searchAddon: SearchAddon | null = null
 let screenService: TerminalScreenService | null = null
 let snapshotManager: TerminalSnapshotManager | null = null
 let unsubscribe: (() => void) | null = null
+let unsubscribeDisconnect: (() => void) | null = null  // SSH 断开连接事件取消订阅
+let unsubscribeScreenRequest: (() => void) | null = null  // 主进程屏幕内容请求监听
+let unsubscribeVisibleRequest: (() => void) | null = null  // 主进程可视内容请求监听
+let unsubscribeAnalysisRequest: (() => void) | null = null  // 主进程屏幕分析请求监听
 let resizeObserver: ResizeObserver | null = null
 let isDisposed = false
 let isPasting = false
@@ -37,26 +41,6 @@ let dprMediaQuery: MediaQueryList | null = null
 let dprChangeHandler: (() => void) | null = null
 // 用户输入缓冲区（用于 CWD 追踪）
 let inputBuffer = ''
-// 屏幕分析防抖定时器
-let screenAnalysisTimeout: ReturnType<typeof setTimeout> | null = null
-const SCREEN_ANALYSIS_DEBOUNCE = 100 // 100ms 防抖
-
-// 推送屏幕分析结果到后端
-const pushScreenAnalysis = () => {
-  if (screenAnalysisTimeout) {
-    clearTimeout(screenAnalysisTimeout)
-  }
-  screenAnalysisTimeout = setTimeout(() => {
-    if (screenService && !isDisposed) {
-      try {
-        const awarenessState = screenService.getAwarenessState()
-        window.electronAPI.terminalAwareness.updateScreenAnalysis(props.ptyId, awarenessState)
-      } catch (e) {
-        // 忽略分析错误
-      }
-    }
-  }, SCREEN_ANALYSIS_DEBOUNCE)
-}
 
 // 右键菜单状态
 const contextMenu = ref({
@@ -204,8 +188,6 @@ onMounted(async () => {
           terminal.write(data)
           // 捕获输出用于 AI 分析
           terminalStore.appendOutput(props.tabId, data)
-          // 推送屏幕分析结果到后端（用于终端状态感知）
-          pushScreenAnalysis()
         } catch (e) {
           // 忽略写入错误
         }
@@ -218,11 +200,27 @@ onMounted(async () => {
           terminal.write(data)
           // 捕获输出用于 AI 分析
           terminalStore.appendOutput(props.tabId, data)
-          // 推送屏幕分析结果到后端（用于终端状态感知）
-          pushScreenAnalysis()
         } catch (e) {
           // 忽略写入错误
         }
+      }
+    })
+
+    // 监听 SSH 断开连接事件
+    unsubscribeDisconnect = window.electronAPI.ssh.onDisconnected(props.ptyId, (event) => {
+      if (!isDisposed && terminal) {
+        // 更新连接状态
+        terminalStore.updateConnectionStatus(props.tabId, false)
+        // 在终端显示断开连接消息
+        const reasonMap: Record<string, string> = {
+          'closed': '连接已关闭',
+          'error': '连接错误',
+          'stream_closed': '数据流已关闭',
+          'jump_host_closed': '跳板机连接已断开'
+        }
+        const reasonText = reasonMap[event.reason] || event.reason
+        const errorText = event.error ? `: ${event.error}` : ''
+        terminal.write(`\r\n\x1b[31m[SSH 连接断开] ${reasonText}${errorText}\x1b[0m\r\n`)
       }
     })
   }
@@ -271,6 +269,51 @@ onMounted(async () => {
   }
 
   updateDprListener()
+
+  // 注册主进程屏幕内容请求监听器
+  // 当主进程需要获取准确的终端输出时，会发送请求到渲染进程
+  unsubscribeScreenRequest = window.electronAPI.screen.onRequestLastNLines((data) => {
+    // 检查是否是发给当前终端的请求
+    if (data.ptyId === props.ptyId && screenService && !isDisposed) {
+      try {
+        const lines = screenService.getLastNLines(data.lines)
+        window.electronAPI.screen.responseLastNLines(data.requestId, lines)
+      } catch (e) {
+        // 出错时返回 null，让主进程回退到其他方式
+        window.electronAPI.screen.responseLastNLines(data.requestId, null)
+      }
+    }
+  })
+
+  unsubscribeVisibleRequest = window.electronAPI.screen.onRequestVisibleContent((data) => {
+    if (data.ptyId === props.ptyId && screenService && !isDisposed) {
+      try {
+        const lines = screenService.getVisibleContent()
+        window.electronAPI.screen.responseVisibleContent(data.requestId, lines)
+      } catch (e) {
+        window.electronAPI.screen.responseVisibleContent(data.requestId, null)
+      }
+    }
+  })
+
+  // 注册屏幕分析请求监听器
+  // 当主进程（Agent）需要实时获取终端状态分析时调用
+  unsubscribeAnalysisRequest = window.electronAPI.screen.onRequestScreenAnalysis((data) => {
+    if (data.ptyId === props.ptyId && screenService && !isDisposed) {
+      try {
+        // 获取完整的终端感知状态（包含输入等待检测、输出模式识别、环境分析）
+        const awarenessState = screenService.getAwarenessState()
+        // 同时获取可视区域内容
+        const visibleContent = screenService.getVisibleContent()
+        window.electronAPI.screen.responseScreenAnalysis(data.requestId, {
+          ...awarenessState,
+          visibleContent
+        })
+      } catch (e) {
+        window.electronAPI.screen.responseScreenAnalysis(data.requestId, null)
+      }
+    }
+  })
 })
 
 // 清理
@@ -278,10 +321,6 @@ onUnmounted(() => {
   // 先标记为已销毁，防止后续回调执行
   isDisposed = true
   
-  if (screenAnalysisTimeout) {
-    clearTimeout(screenAnalysisTimeout)
-    screenAnalysisTimeout = null
-  }
   if (resizeTimeout) {
     clearTimeout(resizeTimeout)
     resizeTimeout = null
@@ -294,6 +333,22 @@ onUnmounted(() => {
   if (unsubscribe) {
     unsubscribe()
     unsubscribe = null
+  }
+  if (unsubscribeDisconnect) {
+    unsubscribeDisconnect()
+    unsubscribeDisconnect = null
+  }
+  if (unsubscribeScreenRequest) {
+    unsubscribeScreenRequest()
+    unsubscribeScreenRequest = null
+  }
+  if (unsubscribeVisibleRequest) {
+    unsubscribeVisibleRequest()
+    unsubscribeVisibleRequest = null
+  }
+  if (unsubscribeAnalysisRequest) {
+    unsubscribeAnalysisRequest()
+    unsubscribeAnalysisRequest = null
   }
   if (resizeObserver) {
     resizeObserver.disconnect()

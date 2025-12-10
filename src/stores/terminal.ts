@@ -29,7 +29,7 @@ export type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
 
 export interface AgentStep {
   id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement' | 'waiting'
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password'
   content: string
   toolName?: string
   toolArgs?: Record<string, unknown>
@@ -103,6 +103,8 @@ export interface TerminalTab {
   aiMessages?: AiMessage[]
   // AI 是否正在生成回复
   aiLoading?: boolean
+  // AI 对话滚动位置状态（用户是否在底部附近）
+  aiScrollNearBottom?: boolean
   // Agent 状态（每个终端独立）
   agentState?: AgentState
   // 上传的文档（每个终端独立）
@@ -476,6 +478,16 @@ export const useTerminalStore = defineStore('terminal', () => {
   }
 
   /**
+   * 更新连接状态
+   */
+  function updateConnectionStatus(tabId: string, isConnected: boolean): void {
+    const tab = tabs.value.find(t => t.id === tabId)
+    if (tab) {
+      tab.isConnected = isConnected
+    }
+  }
+
+  /**
    * 向终端写入数据
    */
   async function writeToTerminal(tabId: string, data: string): Promise<void> {
@@ -575,6 +587,24 @@ export const useTerminalStore = defineStore('terminal', () => {
     if (tab) {
       tab.aiLoading = loading
     }
+  }
+
+  /**
+   * 设置 AI 对话滚动位置状态
+   */
+  function setAiScrollNearBottom(tabId: string, nearBottom: boolean): void {
+    const tab = tabs.value.find(t => t.id === tabId)
+    if (tab) {
+      tab.aiScrollNearBottom = nearBottom
+    }
+  }
+
+  /**
+   * 获取 AI 对话滚动位置状态
+   */
+  function getAiScrollNearBottom(tabId: string): boolean {
+    const tab = tabs.value.find(t => t.id === tabId)
+    return tab?.aiScrollNearBottom ?? true  // 默认为 true
   }
 
   /**
@@ -1010,6 +1040,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     closeTab,
     setActiveTab,
     updateTabTitle,
+    updateConnectionStatus,
     updateSystemInfo,
     appendOutput,
     clearError,
@@ -1026,6 +1057,8 @@ export const useTerminalStore = defineStore('terminal', () => {
     updateAiMessage,
     clearAiMessages,
     setAiLoading,
+    setAiScrollNearBottom,
+    getAiScrollNearBottom,
     focusTerminal,
     clearPendingFocus,
     // Agent 状态管理

@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 interface KnowledgeDocument {
   id: string
@@ -62,7 +65,8 @@ const formatSize = (bytes: number): string => {
 
 // 格式化日期
 const formatDate = (timestamp: number): string => {
-  return new Date(timestamp).toLocaleString('zh-CN', {
+  const { locale } = useI18n()
+  return new Date(timestamp).toLocaleString(locale.value, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -119,7 +123,7 @@ const clearSelection = () => {
 
 // 删除文档
 const deleteDocument = async (doc: KnowledgeDocument) => {
-  if (!confirm(`确定要删除 "${doc.filename}" 吗？`)) {
+  if (!confirm(t('knowledgeManager.confirmDelete', { name: doc.filename }))) {
     return
   }
   
@@ -133,10 +137,10 @@ const deleteDocument = async (doc: KnowledgeDocument) => {
         selectedDoc.value = null
       }
     } else {
-      alert(`删除失败: ${result.error}`)
+      alert(`${t('knowledgeManager.deleteFailed')}: ${result.error}`)
     }
   } catch (error) {
-    console.error('删除文档失败:', error)
+    console.error('Delete document failed:', error)
   }
 }
 
@@ -145,7 +149,7 @@ const batchDeleteDocuments = async () => {
   const count = selectedDocIds.value.size
   if (count === 0) return
   
-  if (!confirm(`确定要删除选中的 ${count} 个文档吗？此操作不可恢复。`)) {
+  if (!confirm(t('knowledgeManager.confirmBatchDelete', { count }))) {
     return
   }
   
@@ -161,10 +165,10 @@ const batchDeleteDocuments = async () => {
         selectedDoc.value = null
       }
     } else {
-      alert(`批量删除失败: ${result.error}`)
+      alert(`${t('knowledgeManager.batchDeleteFailed')}: ${result.error}`)
     }
   } catch (error) {
-    console.error('批量删除文档失败:', error)
+    console.error('Batch delete documents failed:', error)
   } finally {
     batchDeleting.value = false
   }
@@ -174,7 +178,7 @@ const batchDeleteDocuments = async () => {
 const clearKnowledge = async () => {
   if (documents.value.length === 0) return
   
-  if (!confirm(`确定要清空整个知识库吗？将删除全部 ${documents.value.length} 个文档，此操作不可恢复！`)) {
+  if (!confirm(t('knowledgeManager.confirmClear', { count: documents.value.length }))) {
     return
   }
   
@@ -186,10 +190,10 @@ const clearKnowledge = async () => {
       selectedDoc.value = null
       clearSelection()
     } else {
-      alert(`清空失败: ${result.error}`)
+      alert(`${t('knowledgeManager.clearFailed')}: ${result.error}`)
     }
   } catch (error) {
-    console.error('清空知识库失败:', error)
+    console.error('Clear knowledge base failed:', error)
   } finally {
     clearing.value = false
   }
@@ -209,8 +213,8 @@ onMounted(() => {
   <div class="modal-overlay" @click.self="emit('close')">
     <div class="knowledge-manager">
       <div class="manager-header">
-        <h2>📚 知识库管理</h2>
-        <button class="btn-icon" @click="emit('close')" title="关闭">
+        <h2>📚 {{ t('knowledgeManager.title') }}</h2>
+        <button class="btn-icon" @click="emit('close')" :title="t('knowledgeManager.close')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>
@@ -223,8 +227,8 @@ onMounted(() => {
         <div class="doc-list-panel">
           <!-- 统计信息 -->
           <div v-if="stats" class="stats-bar">
-            <span>{{ stats.documentCount }} 个文档</span>
-            <span>{{ stats.chunkCount }} 个分块</span>
+            <span>{{ stats.documentCount }} {{ t('knowledgeManager.documents') }}</span>
+            <span>{{ stats.chunkCount }} {{ t('knowledgeManager.chunks') }}</span>
             <span>{{ formatSize(stats.totalSize) }}</span>
           </div>
 
@@ -233,7 +237,7 @@ onMounted(() => {
             <input 
               type="text"
               v-model="searchQuery"
-              placeholder="搜索文档..."
+              :placeholder="t('knowledgeManager.searchPlaceholder')"
               class="search-input"
             />
           </div>
@@ -246,11 +250,11 @@ onMounted(() => {
                 :checked="isAllSelected"
                 @change="toggleSelectAll"
               />
-              <span class="checkbox-label">全选</span>
+              <span class="checkbox-label">{{ t('knowledgeManager.selectAll') }}</span>
             </label>
             <span v-if="hasSelection" class="selection-info">
-              已选 {{ selectedDocIds.size }} 个
-              <button class="btn-link" @click="clearSelection">取消</button>
+              {{ t('knowledgeManager.selected', { count: selectedDocIds.size }) }}
+              <button class="btn-link" @click="clearSelection">{{ t('knowledgeManager.cancel') }}</button>
             </span>
           </div>
 
@@ -277,13 +281,13 @@ onMounted(() => {
                 <div class="doc-name">{{ doc.filename }}</div>
                 <div class="doc-meta">
                   <span>{{ formatSize(doc.fileSize) }}</span>
-                  <span>{{ doc.chunkCount }} 块</span>
+                  <span>{{ doc.chunkCount }} {{ t('knowledgeManager.chunk') }}</span>
                 </div>
               </div>
               <button 
                 class="btn-icon btn-delete"
                 @click.stop="deleteDocument(doc)"
-                title="删除"
+                :title="t('knowledgeManager.delete')"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="3 6 5 6 21 6"/>
@@ -293,12 +297,12 @@ onMounted(() => {
             </div>
 
             <div v-if="filteredDocuments.length === 0" class="empty-state">
-              {{ searchQuery ? '没有找到匹配的文档' : '知识库为空' }}
+              {{ searchQuery ? t('knowledgeManager.noMatchingDocs') : t('knowledgeManager.emptyKnowledge') }}
             </div>
           </div>
 
           <div v-else class="loading-state">
-            加载中...
+            {{ t('knowledgeManager.loading') }}
           </div>
 
           <!-- 操作按钮 -->
@@ -309,14 +313,14 @@ onMounted(() => {
               @click="batchDeleteDocuments"
               :disabled="batchDeleting"
             >
-              {{ batchDeleting ? '删除中...' : `删除选中 (${selectedDocIds.size})` }}
+              {{ batchDeleting ? t('knowledgeManager.deleting') : `${t('knowledgeManager.deleteSelected')} (${selectedDocIds.size})` }}
             </button>
             <button 
               class="btn btn-danger btn-sm"
               @click="clearKnowledge"
               :disabled="documents.length === 0 || clearing"
             >
-              {{ clearing ? '清空中...' : '清空全部' }}
+              {{ clearing ? t('knowledgeManager.clearing') : t('knowledgeManager.clearAll') }}
             </button>
           </div>
         </div>
@@ -327,45 +331,45 @@ onMounted(() => {
             <div class="detail-header">
               <h3>{{ selectedDoc.filename }}</h3>
               <div class="detail-meta">
-                <span>类型：{{ selectedDoc.fileType }}</span>
-                <span>大小：{{ formatSize(selectedDoc.fileSize) }}</span>
-                <span>分块：{{ selectedDoc.chunkCount }}</span>
+                <span>{{ t('knowledgeManager.type') }}：{{ selectedDoc.fileType }}</span>
+                <span>{{ t('knowledgeManager.size') }}：{{ formatSize(selectedDoc.fileSize) }}</span>
+                <span>{{ t('knowledgeManager.chunkCount') }}：{{ selectedDoc.chunkCount }}</span>
               </div>
             </div>
 
             <div class="detail-section">
-              <h4>标签</h4>
+              <h4>{{ t('knowledgeManager.tags') }}</h4>
               <div class="tags-list">
                 <span v-for="tag in selectedDoc.tags" :key="tag" class="tag">
                   {{ tag }}
                 </span>
                 <span v-if="selectedDoc.tags.length === 0" class="no-tags">
-                  无标签
+                  {{ t('knowledgeManager.noTags') }}
                 </span>
               </div>
             </div>
 
             <div class="detail-section">
-              <h4>时间信息</h4>
+              <h4>{{ t('knowledgeManager.timeInfo') }}</h4>
               <div class="time-info">
-                <div>创建时间：{{ formatDate(selectedDoc.createdAt) }}</div>
-                <div>更新时间：{{ formatDate(selectedDoc.updatedAt) }}</div>
+                <div>{{ t('knowledgeManager.createdAt') }}：{{ formatDate(selectedDoc.createdAt) }}</div>
+                <div>{{ t('knowledgeManager.updatedAt') }}：{{ formatDate(selectedDoc.updatedAt) }}</div>
               </div>
             </div>
 
             <div class="detail-section">
-              <h4>内容预览</h4>
+              <h4>{{ t('knowledgeManager.contentPreview') }}</h4>
               <div class="content-preview">
                 {{ selectedDoc.content.slice(0, 1000) }}
                 <span v-if="selectedDoc.content.length > 1000" class="more">
-                  ... (共 {{ selectedDoc.content.length }} 字符)
+                  ... ({{ t('knowledgeManager.totalChars', { count: selectedDoc.content.length }) }})
                 </span>
               </div>
             </div>
           </template>
 
           <div v-else class="no-selection">
-            <p>选择一个文档查看详情</p>
+            <p>{{ t('knowledgeManager.selectDocToView') }}</p>
           </div>
         </div>
       </div>

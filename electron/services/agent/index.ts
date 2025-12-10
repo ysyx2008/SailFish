@@ -5,8 +5,10 @@
 import type { AiService, AiMessage, ToolCall, ChatWithToolsResult } from '../ai.service'
 import { CommandExecutorService } from '../command-executor.service'
 import type { PtyService } from '../pty.service'
+import type { SshService } from '../ssh.service'
 import type { McpService } from '../mcp.service'
 import type { ConfigService } from '../config.service'
+import { UnifiedTerminalService } from '../unified-terminal.service'
 
 // 导入子模块
 import type {
@@ -44,10 +46,73 @@ export type {
 }
 export { assessCommandRisk, analyzeCommand }
 
+/**
+ * 检查是否是可重试的网络错误
+ */
+function isRetryableNetworkError(errorMessage: string): boolean {
+  const retryablePatterns = [
+    'ECONNRESET',
+    'ECONNREFUSED',
+    'ETIMEDOUT',
+    'ENOTFOUND',
+    'ENETUNREACH',
+    'EHOSTUNREACH',
+    'EPIPE',
+    'socket hang up',
+    'network',
+    'connection reset',
+    'connection refused',
+    'timeout'
+  ]
+  const lowerMsg = errorMessage.toLowerCase()
+  return retryablePatterns.some(pattern => lowerMsg.includes(pattern.toLowerCase()))
+}
+
+/**
+ * 带重试的 AI 请求包装器
+ */
+async function withAiRetry<T>(
+  fn: () => Promise<T>,
+  options: {
+    maxRetries?: number
+    retryDelay?: number
+    onRetry?: (attempt: number, error: Error) => void
+  } = {}
+): Promise<T> {
+  const { maxRetries = 2, retryDelay = 1000, onRetry } = options
+  let lastError: Error | null = null
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error as Error
+      const errorMessage = lastError.message || ''
+
+      // 检查是否是可重试的网络错误
+      if (attempt < maxRetries && isRetryableNetworkError(errorMessage)) {
+        // 指数退避
+        const delay = retryDelay * Math.pow(2, attempt)
+        console.log(`[Agent] AI 请求失败 (${errorMessage})，${delay}ms 后重试 (${attempt + 1}/${maxRetries})`)
+        onRetry?.(attempt + 1, lastError)
+        await new Promise(resolve => setTimeout(resolve, delay))
+        continue
+      }
+
+      // 不可重试或已达到最大重试次数
+      throw lastError
+    }
+  }
+
+  throw lastError
+}
+
 export class AgentService {
   private aiService: AiService
   private commandExecutor: CommandExecutorService
   private ptyService: PtyService
+  private sshService?: SshService
+  private unifiedTerminalService?: UnifiedTerminalService
   private hostProfileService?: HostProfileServiceInterface
   private mcpService?: McpService
   private configService?: ConfigService
@@ -65,14 +130,31 @@ export class AgentService {
     ptyService: PtyService,
     hostProfileService?: HostProfileServiceInterface,
     mcpService?: McpService,
-    configService?: ConfigService
+    configService?: ConfigService,
+    sshService?: SshService
   ) {
     this.aiService = aiService
     this.ptyService = ptyService
+    this.sshService = sshService
     this.hostProfileService = hostProfileService
     this.mcpService = mcpService
     this.configService = configService
     this.commandExecutor = new CommandExecutorService()
+    
+    // 如果提供了 sshService，创建统一终端服务
+    if (sshService) {
+      this.unifiedTerminalService = new UnifiedTerminalService(ptyService, sshService)
+    }
+  }
+
+  /**
+   * 设置 SSH 服务（延迟初始化）
+   */
+  setSshService(sshService: SshService): void {
+    this.sshService = sshService
+    if (this.ptyService) {
+      this.unifiedTerminalService = new UnifiedTerminalService(this.ptyService, sshService)
+    }
   }
 
   /**
@@ -922,7 +1004,9 @@ export class AgentService {
     
     // 注册终端输出监听器，实时收集输出
     const MAX_BUFFER_LINES = 200  // 缓冲区最大行数
-    run.outputUnsubscribe = this.ptyService.onData(ptyId, (data: string) => {
+    // 使用统一终端服务（支持 PTY 和 SSH），如果没有则回退到 ptyService
+    const terminalService = this.unifiedTerminalService || this.ptyService
+    run.outputUnsubscribe = terminalService.onData(ptyId, (data: string) => {
       // 将新输出按行分割并追加到缓冲区
       const newLines = data.split('\n')
       run.realtimeOutputBuffer.push(...newLines)
@@ -987,8 +1071,10 @@ export class AgentService {
     let lastResponse: ChatWithToolsResult | null = null
 
     // 创建工具执行器配置
+    // 使用统一终端服务（支持 PTY 和 SSH），如果没有则回退到 ptyService
+    const terminalServiceForExecutor = this.unifiedTerminalService || this.ptyService
     const toolExecutorConfig: ToolExecutorConfig = {
-      ptyService: this.ptyService,
+      terminalService: terminalServiceForExecutor as any,  // 类型兼容：PtyService 也实现了必要的方法
       hostProfileService: this.hostProfileService,
       mcpService: this.mcpService,
       addStep: (step) => this.addStep(agentId, step),
@@ -1036,44 +1122,61 @@ export class AgentService {
         const streamStepId = this.generateId()
         let streamContent = ''
         
-        // 使用流式 API 调用 AI
-        const response = await new Promise<ChatWithToolsResult>((resolve, reject) => {
-          this.aiService.chatWithToolsStream(
-            run.messages,
-            getAgentTools(this.mcpService),
-            // onChunk: 流式文本更新
-            (chunk) => {
-              streamContent += chunk
-              // 发送流式更新
-              this.updateStep(agentId, streamStepId, {
-                type: 'message',
-                content: streamContent,
-                isStreaming: true
-              })
-            },
-            // onToolCall: 工具调用（流式结束时）
-            (_toolCalls) => {
-              // 工具调用会在 onDone 中处理
-            },
-            // onDone: 完成
-            (result) => {
-              // 标记流式结束
-              if (streamContent) {
+        // 使用带重试的流式 API 调用 AI
+        const response = await withAiRetry(
+          () => new Promise<ChatWithToolsResult>((resolve, reject) => {
+            // 重试时重置 streamContent
+            streamContent = ''
+            
+            this.aiService.chatWithToolsStream(
+              run.messages,
+              getAgentTools(this.mcpService),
+              // onChunk: 流式文本更新
+              (chunk) => {
+                streamContent += chunk
+                // 发送流式更新
                 this.updateStep(agentId, streamStepId, {
                   type: 'message',
                   content: streamContent,
-                  isStreaming: false
+                  isStreaming: true
                 })
-              }
-              resolve(result)
-            },
-            // onError: 错误
-            (error) => {
-              reject(new Error(error))
-            },
-            profileId
-          )
-        })
+              },
+              // onToolCall: 工具调用（流式结束时）
+              (_toolCalls) => {
+                // 工具调用会在 onDone 中处理
+              },
+              // onDone: 完成
+              (result) => {
+                // 标记流式结束
+                if (streamContent) {
+                  this.updateStep(agentId, streamStepId, {
+                    type: 'message',
+                    content: streamContent,
+                    isStreaming: false
+                  })
+                }
+                resolve(result)
+              },
+              // onError: 错误
+              (error) => {
+                reject(new Error(error))
+              },
+              profileId
+            )
+          }),
+          {
+            maxRetries: 2,
+            retryDelay: 1000,
+            onRetry: (attempt, error) => {
+              // 通知用户正在重试
+              this.updateStep(agentId, streamStepId, {
+                type: 'message',
+                content: `⚠️ 网络请求失败 (${error.message})，正在重试 (${attempt}/2)...`,
+                isStreaming: true
+              })
+            }
+          }
+        )
         
         lastResponse = response
 

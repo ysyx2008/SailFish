@@ -15,7 +15,16 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'execute_command',
-        description: '在当前终端执行 shell 命令。支持大部分命令，包括 top/htop/watch/tail -f 等（会自动限时执行）。仅 vim/nano 等编辑器不支持（请用 write_file 工具）。',
+        description: `在当前终端执行 shell 命令。支持大部分命令，包括 top/htop/watch/tail -f 等（会自动限时执行）。仅 vim/nano 等编辑器不支持（请用 write_file 工具）。
+
+返回值包含：
+- **success**: 命令是否成功执行（true/false）
+- **output**: 命令的完整输出内容
+- **exitCode**: 命令退出状态码（0 表示成功，非0 表示有错误）
+- **error**: 失败时的错误信息和恢复建议
+- **isRunning**: 长耗时命令超时时为 true，表示命令仍在后台执行
+
+注意：exitCode 非0 或 success=false 时应分析 output/error 内容判断问题原因。`,
         parameters: {
           type: 'object',
           properties: {
@@ -32,17 +41,13 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'check_terminal_status',
-        description: `检查终端的完整状态，返回丰富的感知信息：
-1. **运行状态**: 空闲/忙碌/等待输入/可能卡死
-2. **输入等待**: 检测是否在等待密码、确认(y/n)、选择、或其他输入
-3. **进程信息**: 前台进程、运行时长、输出速率
-4. **环境信息**: 当前目录、用户、激活的虚拟环境
-5. **输出模式**: 是否有进度条、测试输出、日志流等
+        description: `检查终端状态并获取当前屏幕内容。返回：
+1. **终端类型**: 本地终端或 SSH 终端
+2. **运行状态**: 空闲/忙碌/未知（SSH 终端状态由你根据屏幕内容判断）
+3. **屏幕内容**: 当前可视区域的完整内容（用户看到的画面）
+4. **基本信息**: 当前目录、最近命令等
 
-在以下情况使用此工具：
-- 执行命令前，确认终端可以接受新命令
-- 命令超时后，判断是卡死还是正常运行
-- 需要了解终端当前在做什么`,
+本地终端状态检测准确（基于进程检测）；SSH 终端返回屏幕内容供你判断。`,
         parameters: {
           type: 'object',
           properties: {}
@@ -53,26 +58,13 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'get_terminal_context',
-        description: `获取终端最近的输出内容，用于查看命令执行结果或当前终端显示内容。支持多种读取方式：
-1. **按行数读取**：使用 lines 参数指定行数（从末尾向前）
-2. **按字符数读取**：使用 max_chars 参数指定最大字符数（从末尾向前）
-3. **从开头读取**：使用 from_start_lines 参数从终端输出开头读取指定行数
-
-对于大量输出，建议使用 max_chars 限制字符数，避免超出上下文限制。`,
+        description: '获取终端最近的输出内容（从末尾向前读取）',
         parameters: {
           type: 'object',
           properties: {
             lines: {
               type: 'number',
-              description: '从终端输出末尾获取的行数，默认 50。与 max_chars 二选一使用。'
-            },
-            max_chars: {
-              type: 'number',
-              description: '从终端输出末尾获取的最大字符数。与 lines 二选一使用。建议值：5000-10000。'
-            },
-            from_start_lines: {
-              type: 'number',
-              description: '从终端输出开头获取的行数（用于查看历史输出）'
+              description: '获取的行数，默认 50，最大 500'
             }
           }
         }
@@ -129,12 +121,15 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'read_file',
-        description: `读取文件内容。支持多种读取方式：
+        description: `读取本地文件内容。支持多种读取方式：
 1. **完整读取**：不指定任何范围参数，读取整个文件（文件需小于 500KB）
 2. **按行范围读取**：使用 start_line 和 end_line 指定行号范围（从1开始）
 3. **按行数读取**：使用 max_lines 指定从文件开头读取的行数
 4. **从末尾读取**：使用 tail_lines 指定从文件末尾读取的行数
 5. **文件信息查询**：只设置 info_only=true，获取文件大小、行数等信息，不读取内容
+
+⚠️ **仅支持本地文件**：此工具只能读取运行终端程序的本地机器上的文件。
+对于 SSH 远程主机，请使用 execute_command 执行 cat/head/tail/sed 等命令读取远程文件。
 
 对于大文件，建议先使用 info_only=true 查看文件信息，然后根据需要读取特定部分。`,
         parameters: {
@@ -173,20 +168,62 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'write_file',
-        description: '写入或创建文件',
+        description: `写入或创建本地文件。支持多种写入模式：
+
+1. **覆盖模式（默认）**：mode='overwrite'，用 content 替换整个文件
+2. **追加模式**：mode='append'，在文件末尾追加 content
+3. **插入模式**：mode='insert'，在 insert_at_line 行之前插入 content
+4. **行替换模式**：mode='replace_lines'，用 content 替换 start_line 到 end_line 的内容
+5. **正则替换模式**：mode='regex_replace'，用正则表达式查找替换
+
+⚠️ **重要文件请先备份**：修改配置文件、脚本等重要文件前，必须先执行备份命令：
+\`cp file.txt file.txt.$(date +%Y%m%d_%H%M%S).bak\`
+不需要备份：新建文件、临时文件、日志文件、明确不重要的文件
+
+⚠️ **仅支持本地文件**：此工具只能写入本地机器上的文件。
+对于 SSH 远程主机，请使用 execute_command 执行命令来写入。`,
         parameters: {
           type: 'object',
           properties: {
             path: {
               type: 'string',
-              description: '文件路径'
+              description: '本地文件路径'
             },
             content: {
               type: 'string',
-              description: '文件内容'
+              description: '文件内容（覆盖/追加/插入/行替换模式必填）'
+            },
+            mode: {
+              type: 'string',
+              enum: ['overwrite', 'append', 'insert', 'replace_lines', 'regex_replace'],
+              description: '写入模式：overwrite（覆盖，默认）、append（追加）、insert（插入）、replace_lines（行替换）、regex_replace（正则替换）'
+            },
+            insert_at_line: {
+              type: 'number',
+              description: '插入位置的行号（insert 模式必填，在该行之前插入，从1开始）'
+            },
+            start_line: {
+              type: 'number',
+              description: '替换起始行号（replace_lines 模式必填，从1开始，包含该行）'
+            },
+            end_line: {
+              type: 'number',
+              description: '替换结束行号（replace_lines 模式必填，包含该行）'
+            },
+            pattern: {
+              type: 'string',
+              description: '正则表达式（regex_replace 模式必填）'
+            },
+            replacement: {
+              type: 'string',
+              description: '替换内容（regex_replace 模式必填，可使用 $1 $2 等捕获组）'
+            },
+            replace_all: {
+              type: 'boolean',
+              description: '是否替换所有匹配项（regex_replace 模式，默认 true）'
             }
           },
-          required: ['path', 'content']
+          required: ['path']
         }
       }
     },
@@ -231,26 +268,6 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
     {
       type: 'function',
       function: {
-        name: 'get_terminal_state',
-        description: '获取终端的完整状态信息，包括当前工作目录、最近执行的命令、命令执行历史等。比 check_terminal_status 更详细。',
-        parameters: {
-          type: 'object',
-          properties: {
-            include_history: {
-              type: 'boolean',
-              description: '是否包含命令执行历史，默认 false'
-            },
-            history_limit: {
-              type: 'number',
-              description: '历史记录数量限制，默认 5'
-            }
-          }
-        }
-      }
-    },
-    {
-      type: 'function',
-      function: {
         name: 'wait',
         description: `等待指定时间后继续执行。用于长耗时命令执行期间，避免频繁查询状态消耗步骤。
 
@@ -273,6 +290,49 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
             }
           },
           required: ['seconds']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'ask_user',
+        description: `向用户提问并等待回复。当你需要更多信息才能继续执行任务时使用此工具。
+
+使用场景：
+- 需要用户提供特定信息（如配置参数、路径、选项等）
+- 任务有多种执行方式，需要用户选择
+- 执行前需要用户确认关键决策
+- 遇到歧义或不确定性，需要澄清用户意图
+- 需要用户输入敏感信息（如密码、密钥），但不要在问题中提示用户输入密码
+
+注意：
+- 问题要清晰、具体，让用户知道如何回答
+- 如果有可选项，可以列出供用户选择（最多 10 个选项）
+- 调用此工具后会暂停执行，直到用户回复
+- 等待时间最长 5 分钟，超时后会提示用户未回复`,
+        parameters: {
+          type: 'object',
+          properties: {
+            question: {
+              type: 'string',
+              description: '要向用户提出的问题，应清晰明确'
+            },
+            options: {
+              type: 'array',
+              items: { type: 'string' },
+              description: '可选项列表（如果问题有固定选项，最多 10 个）。例如：["选项A", "选项B", "选项C"]'
+            },
+            allow_multiple: {
+              type: 'boolean',
+              description: '是否允许多选（默认 false 为单选）。设为 true 时用户可以选择多个选项'
+            },
+            default_value: {
+              type: 'string',
+              description: '默认值（如果用户直接按回车或不回复时使用）'
+            }
+          },
+          required: ['question']
         }
       }
     }

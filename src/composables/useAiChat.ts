@@ -2,7 +2,7 @@
  * AI 对话 composable
  * 处理普通对话模式的消息发送、命令解释、命令生成等
  */
-import { ref, computed, nextTick, Ref } from 'vue'
+import { ref, computed, nextTick, watch, Ref } from 'vue'
 import { useTerminalStore } from '../stores/terminal'
 import type { AiMessage } from '../stores/terminal'
 
@@ -18,8 +18,6 @@ export function useAiChat(
   
   // 是否有新消息（用户不在底部时显示提示）
   const hasNewMessage = ref(false)
-  // 用户是否在底部附近
-  const isUserNearBottom = ref(true)
 
   // 当前终端的 AI 消息（每个终端独立）
   const messages = computed(() => {
@@ -29,6 +27,26 @@ export function useAiChat(
 
   // 当前终端 ID
   const currentTabId = computed(() => terminalStore.activeTabId)
+
+  // 用户是否在底部附近（从 store 获取，每个终端独立）
+  const isUserNearBottom = computed(() => {
+    const tabId = currentTabId.value
+    if (!tabId) return true
+    return terminalStore.getAiScrollNearBottom(tabId)
+  })
+
+  // 设置当前 tab 的 isUserNearBottom 状态
+  const setIsUserNearBottom = (value: boolean) => {
+    const tabId = currentTabId.value
+    if (tabId) {
+      terminalStore.setAiScrollNearBottom(tabId, value)
+    }
+  }
+
+  // 当切换 tab 时，重置新消息提示（因为每个 tab 的滚动位置是独立的）
+  watch(currentTabId, () => {
+    hasNewMessage.value = false
+  })
 
   // 获取当前终端信息（用于历史记录）
   const getTerminalInfo = () => {
@@ -76,7 +94,7 @@ export function useAiChat(
   // 更新用户滚动位置状态（由组件的 scroll 事件调用）
   const updateScrollPosition = () => {
     const nearBottom = checkIsNearBottom()
-    isUserNearBottom.value = nearBottom
+    setIsUserNearBottom(nearBottom)
     // 如果用户滚动到底部，清除新消息提示
     if (nearBottom) {
       hasNewMessage.value = false
@@ -90,7 +108,7 @@ export function useAiChat(
       messagesRef.value.scrollTop = messagesRef.value.scrollHeight
     }
     hasNewMessage.value = false
-    isUserNearBottom.value = true
+    setIsUserNearBottom(true)
   }
 
   // 智能滚动：只有用户在底部附近时才自动滚动

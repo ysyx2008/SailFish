@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, provide, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, provide, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTerminalStore } from './stores/terminal'
 import { useConfigStore, type SshSession } from './stores/config'
@@ -20,6 +20,9 @@ const configStore = useConfigStore()
 const showSidebar = ref(false)
 const showAiPanel = ref(true)
 const showSettings = ref(false)
+
+// UI 主题
+const currentUiTheme = computed(() => configStore.uiTheme)
 const settingsInitialTab = ref<string | undefined>(undefined)
 const showFileExplorer = ref(false)
 const sftpConfig = ref<SftpConnectionConfig | null>(null)
@@ -170,7 +173,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-container" :class="{ 'sidebar-open': showSidebar, 'ai-open': showAiPanel }">
+  <div class="app-container" :class="{ 'sidebar-open': showSidebar, 'ai-open': showAiPanel }" :data-ui-theme="currentUiTheme">
     <!-- 顶部工具栏 -->
     <header class="app-header">
       <div class="header-left">

@@ -1,10 +1,17 @@
 /**
  * 终端感知服务
  * 整合前端屏幕分析和后端进程监控，提供统一的终端状态感知能力
+ * 
+ * 架构说明：
+ * - xterm.js（前端）是终端状态的唯一真实来源
+ * - 本服务通过 IPC 实时从前端获取屏幕分析结果，无缓存
+ * - ProcessMonitor 负责本地进程检测、命令分类、卡死检测
  */
 import type { PtyService } from '../pty.service'
+import type { SshService } from '../ssh.service'
 import type { TerminalStateService, TerminalState, CommandExecution } from '../terminal-state.service'
 import { ProcessMonitor, getProcessMonitor, initProcessMonitor, type ProcessState, type ProcessStatus } from './process-monitor'
+import { getScreenAnalysisFromFrontend, getVisibleContentFromBuffer, type ScreenAnalysis } from '../screen-content.service'
 
 // ==================== 类型定义 ====================
 
@@ -68,6 +75,8 @@ export interface ScreenAnalysisResult {
   input: InputWaitingState
   output: OutputPattern
   context: EnvironmentContext
+  /** 当前可视区域内容（按行） */
+  visibleContent?: string[]
   timestamp: number
 }
 
@@ -97,6 +106,7 @@ export interface TerminalAwareness {
   
   /** 终端基本状态（来自 TerminalStateService）*/
   terminalState?: {
+    type: 'local' | 'ssh'
     cwd: string
     lastCommand?: string
     lastExitCode?: number
@@ -123,100 +133,62 @@ export interface TerminalAwareness {
 
 export class TerminalAwarenessService {
   private ptyService?: PtyService
+  private sshService?: SshService
   private terminalStateService?: TerminalStateService
   private processMonitor: ProcessMonitor
-  
-  /** 缓存的前端分析结果（通过 IPC 更新）*/
-  private screenAnalysisCache: Map<string, ScreenAnalysisResult> = new Map()
-  
-  /** 缓存过期时间（毫秒）*/
-  private readonly CACHE_TTL = 2000
 
-  constructor(ptyService?: PtyService, terminalStateService?: TerminalStateService) {
+  constructor(ptyService?: PtyService, terminalStateService?: TerminalStateService, sshService?: SshService) {
     this.ptyService = ptyService
+    this.sshService = sshService
     this.terminalStateService = terminalStateService
     this.processMonitor = getProcessMonitor()
     
     if (ptyService && terminalStateService) {
-      initProcessMonitor(ptyService, terminalStateService)
+      initProcessMonitor(ptyService, terminalStateService, sshService)
     }
   }
 
   /**
    * 设置依赖服务
    */
-  setServices(ptyService: PtyService, terminalStateService: TerminalStateService): void {
+  setServices(ptyService: PtyService, terminalStateService: TerminalStateService, sshService?: SshService): void {
     this.ptyService = ptyService
+    this.sshService = sshService
     this.terminalStateService = terminalStateService
-    initProcessMonitor(ptyService, terminalStateService)
+    initProcessMonitor(ptyService, terminalStateService, sshService)
   }
 
   /**
-   * 更新前端屏幕分析结果（由 IPC 调用）
+   * 获取终端当前可视区域内容
+   * 实时从前端 xterm.js 获取
    */
-  updateScreenAnalysis(ptyId: string, analysis: ScreenAnalysisResult): void {
-    const isWaitingInput = analysis.input?.isWaiting && 
-                           analysis.input?.type !== 'prompt' && 
-                           analysis.input?.type !== 'none'
-    
-    // 仅在检测到特殊输入等待状态时打印日志
-    if (isWaitingInput) {
-      console.log(`[TerminalAwareness] 检测到输入等待: type=${analysis.input.type}, prompt="${analysis.input.prompt}"`)
-    }
-    
-    this.screenAnalysisCache.set(ptyId, {
-      ...analysis,
-      timestamp: Date.now()
-    })
-  }
-
-  /**
-   * 获取缓存的屏幕分析结果
-   */
-  private getScreenAnalysis(ptyId: string): ScreenAnalysisResult | null {
-    const cached = this.screenAnalysisCache.get(ptyId)
-    if (!cached) return null
-    
-    const age = Date.now() - cached.timestamp
-    
-    // 智能缓存策略：
-    // 1. 如果检测到等待输入状态（密码、确认、选择等），缓存不过期
-    //    因为等待输入时终端不会有新输出，状态保持不变
-    // 2. 普通状态使用标准 TTL
-    const isWaitingInput = cached.input?.isWaiting && 
-                           cached.input?.type !== 'prompt' && 
-                           cached.input?.type !== 'none'
-    
-    if (isWaitingInput) {
-      // 等待输入状态：缓存最长保持 5 分钟（防止极端情况）
-      if (age > 300000) return null
-      return cached
-    }
-    
-    // 普通状态：使用标准 TTL
-    if (age > this.CACHE_TTL) {
-      return null
-    }
-    
-    return cached
+  async getVisibleContent(ptyId: string): Promise<string[] | null> {
+    return getVisibleContentFromBuffer(ptyId, 2000)
   }
 
   /**
    * 获取完整的终端感知状态
+   * 实时从前端 xterm.js 获取屏幕分析结果
    */
   async getAwareness(ptyId: string): Promise<TerminalAwareness> {
     // 1. 获取进程状态（后端）
     const processState = await this.processMonitor.getProcessState(ptyId)
-    
+
     // 2. 获取终端基本状态
     const terminalState = this.terminalStateService?.getState(ptyId)
-    
-    // 3. 获取前端屏幕分析（从缓存）
-    const screenAnalysis = this.getScreenAnalysis(ptyId)
-    
+
+    // 3. 实时从前端获取屏幕分析（xterm.js 是唯一真实来源）
+    let screenAnalysis: ScreenAnalysisResult | null = null
+    try {
+      screenAnalysis = await getScreenAnalysisFromFrontend(ptyId, 2000)
+    } catch (e) {
+      // 实时获取失败，使用默认值（synthesizeAwareness 会处理 null）
+      console.warn(`[TerminalAwareness] 获取屏幕分析失败: ${e}`)
+    }
+
     // 4. 综合判断
     const awareness = this.synthesizeAwareness(processState, terminalState, screenAnalysis)
-    
+
     return awareness
   }
 
@@ -286,56 +258,52 @@ export class TerminalAwarenessService {
       }
     }
 
-    // 检查是否有特殊输入等待（不是普通 prompt）
-    const hasSpecialInputWaiting = input.isWaiting && input.type !== 'prompt' && input.type !== 'none'
+    // 是否是SSH终端
+    const isSshTerminal = terminalState?.type === 'ssh'
 
-    if (hasSpecialInputWaiting) {
-      // 最高优先级：前端检测到等待输入（密码、确认、选择等）
-      status = 'waiting_input'
-      needsUserInput = true
-      canExecuteCommand = false
-      suggestion = getInputWaitingSuggestion(input.type, input.prompt, input.suggestedResponse, input.options)
-    } else if (processState.status === 'possibly_stuck') {
-      // 进程可能卡死
-      status = 'stuck'
-      needsUserInput = false
-      canExecuteCommand = false
-      suggestion = processState.suggestion || '命令可能已卡死。建议使用 send_control_key 发送 Ctrl+C 中断。'
-    } else if (processState.status === 'idle') {
-      // 后端认为空闲 = 真正的空闲
+    if (isSshTerminal) {
+      // SSH 终端：状态完全交给模型根据屏幕内容判断
+      // 无法通过 pgrep 检测远程进程状态，所以不限制命令执行
+      // 模型应根据屏幕上是否显示提示符来判断终端是否空闲
       status = 'idle'
       needsUserInput = false
       canExecuteCommand = true
-      suggestion = '终端空闲，可以执行新命令。'
-      
-      // 添加上下文信息
-      if (context.cwdFromPrompt) {
-        suggestion += ` 当前目录: ${context.cwdFromPrompt}`
-      }
-      if (context.activeEnvs.length > 0) {
-        suggestion += ` 激活的环境: ${context.activeEnvs.join(', ')}`
-      }
+      suggestion = 'SSH 终端状态请根据屏幕内容判断'
     } else {
-      // 后端认为进程在运行（running_interactive, running_streaming, running_silent 等）
-      // 即使前端误判为 prompt 也不影响，以后端为准
-      status = 'busy'
-      needsUserInput = false
-      canExecuteCommand = false
-      suggestion = processState.suggestion || '命令正在执行中，请等待完成。'
+      // 本地终端：基于 pgrep 进程检测，状态准确
       
-      // 如果有输出模式信息，添加到建议中
-      if (output.type === 'progress' && output.details?.progress !== undefined) {
-        suggestion += ` 进度: ${output.details.progress}%`
-        if (output.details.eta) {
-          suggestion += ` ETA: ${output.details.eta}`
+      // 检查是否有特殊输入等待（不是普通 prompt）
+      const hasSpecialInputWaiting = input.isWaiting && input.type !== 'prompt' && input.type !== 'none'
+
+      if (hasSpecialInputWaiting) {
+        // 最高优先级：前端检测到等待输入（密码、确认、选择等）
+        status = 'waiting_input'
+        needsUserInput = true
+        canExecuteCommand = false
+        suggestion = getInputWaitingSuggestion(input.type, input.prompt, input.suggestedResponse, input.options)
+      } else if (processState.status === 'possibly_stuck') {
+        // 进程可能卡死
+        status = 'stuck'
+        needsUserInput = false
+        canExecuteCommand = false
+        suggestion = processState.suggestion || '命令可能已卡死。建议使用 send_control_key 发送 Ctrl+C 中断。'
+      } else if (processState.status === 'idle') {
+        // 后端认为空闲 = 真正的空闲
+        status = 'idle'
+        needsUserInput = false
+        canExecuteCommand = true
+        suggestion = '终端空闲，可以执行新命令。'
+      } else {
+        // 后端认为进程在运行
+        status = 'busy'
+        needsUserInput = false
+        canExecuteCommand = false
+        suggestion = processState.suggestion || '命令正在执行中，请等待完成。'
+        
+        // 如果有进度信息，添加到建议中
+        if (output.type === 'progress' && output.details?.progress !== undefined) {
+          suggestion += ` 进度: ${output.details.progress}%`
         }
-      } else if (output.type === 'test' && output.details) {
-        const { testsPassed, testsFailed } = output.details
-        if (testsPassed !== undefined || testsFailed !== undefined) {
-          suggestion += ` 测试: ${testsPassed || 0} 通过, ${testsFailed || 0} 失败`
-        }
-      } else if (output.type === 'compilation') {
-        suggestion += ' (编译中...)'
       }
     }
 
@@ -346,6 +314,7 @@ export class TerminalAwarenessService {
       context,
       output,
       terminalState: terminalState ? {
+        type: terminalState.type === 'ssh' ? 'ssh' : 'local',
         cwd: terminalState.cwd,
         lastCommand: terminalState.lastCommand,
         lastExitCode: terminalState.lastExitCode,
@@ -361,16 +330,18 @@ export class TerminalAwarenessService {
 
   /**
    * 追踪输出（传递给 ProcessMonitor）
+   * @param ptyId 终端 ID
+   * @param lineCount 行数（可选，默认为 1）
+   * @param dataSize 数据大小（字节，可选）- 用于追踪非换行输出如 curl 进度条
    */
-  trackOutput(ptyId: string, lineCount: number = 1): void {
-    this.processMonitor.trackOutput(ptyId, lineCount)
+  trackOutput(ptyId: string, lineCount: number = 1, dataSize?: number): void {
+    this.processMonitor.trackOutput(ptyId, lineCount, dataSize)
   }
 
   /**
    * 清理终端数据
    */
   clearTerminal(ptyId: string): void {
-    this.screenAnalysisCache.delete(ptyId)
     this.processMonitor.clearTracker(ptyId)
   }
 
@@ -432,10 +403,11 @@ export function getTerminalAwarenessService(): TerminalAwarenessService {
 
 export function initTerminalAwarenessService(
   ptyService: PtyService, 
-  terminalStateService: TerminalStateService
+  terminalStateService: TerminalStateService,
+  sshService?: SshService
 ): TerminalAwarenessService {
   const service = getTerminalAwarenessService()
-  service.setServices(ptyService, terminalStateService)
+  service.setServices(ptyService, terminalStateService, sshService)
   return service
 }
 
