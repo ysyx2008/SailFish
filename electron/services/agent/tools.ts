@@ -19,12 +19,11 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
 
 返回值包含：
 - **success**: 命令是否成功执行（true/false）
-- **output**: 命令的完整输出内容
-- **exitCode**: 命令退出状态码（0 表示成功，非0 表示有错误）
+- **output**: 命令的完整输出内容（超时时会返回终端最后 50 行）
 - **error**: 失败时的错误信息和恢复建议
 - **isRunning**: 长耗时命令超时时为 true，表示命令仍在后台执行
 
-注意：exitCode 非0 或 success=false 时应分析 output/error 内容判断问题原因。`,
+注意：success=false 时应分析 output/error 内容判断问题原因。`,
         parameters: {
           type: 'object',
           properties: {

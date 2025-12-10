@@ -48,7 +48,6 @@ export interface ToolResult {
   output: string
   error?: string
   isRunning?: boolean  // 命令仍在后台执行（用于长耗时命令超时但未失败的情况）
-  exitCode?: number    // 命令退出状态码（0 表示成功，非 0 表示失败）
 }
 
 // 待确认的工具调用

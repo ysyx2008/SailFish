@@ -452,6 +452,17 @@ async function executeCommand(
       // 超时：不移除监听器，不完成追踪（命令可能还在运行）
       // 这样后续调用 get_terminal_context 仍能获取到新输出
       
+      // 从 xterm buffer 获取最后 50 行作为超时时的输出（避免用户翻页导致可视区域不准确）
+      let latestOutput = result.output
+      try {
+        const bufferLines = await getLastNLinesFromBuffer(ptyId, 50, 3000)
+        if (bufferLines && bufferLines.length > 0) {
+          latestOutput = stripAnsi(bufferLines.join('\n'))
+        }
+      } catch {
+        // 获取失败则使用原始输出
+      }
+      
       // 检查是否是长耗时命令（构建、编译等）
       const processMonitor = getProcessMonitor()
       const isLongRunningCommand = processMonitor.isKnownLongRunningCommand(command)
@@ -463,11 +474,11 @@ async function executeCommand(
           type: 'tool_result',
           content: `⏳ 命令仍在执行中 (已超过 ${config.commandTimeout / 1000}秒)`,
           toolName: 'execute_command',
-          toolResult: result.output + '\n\n💡 这是一个长耗时命令，超时不代表失败。建议使用 wait 工具等待一段时间后再检查状态。'
+          toolResult: latestOutput + '\n\n💡 这是一个长耗时命令，超时不代表失败。建议使用 wait 工具等待一段时间后再检查状态。'
         })
         return {
           success: true,  // 长耗时命令超时不算失败
-          output: result.output + '\n\n💡 命令仍在后台执行中。建议：\n1. 使用 wait 工具等待一段时间（如 60-180 秒）\n2. 然后使用 check_terminal_status 确认执行状态\n3. 使用 get_terminal_context 查看最新输出',
+          output: latestOutput + '\n\n💡 命令仍在后台执行中。建议：\n1. 使用 wait 工具等待一段时间（如 60-180 秒）\n2. 然后使用 check_terminal_status 确认执行状态\n3. 使用 get_terminal_context 查看最新输出',
           isRunning: true  // 标记命令仍在运行
         }
       }
@@ -480,36 +491,27 @@ async function executeCommand(
         type: 'tool_result',
         content: `⏱️ 命令执行超时 (${config.commandTimeout / 1000}秒)`,
         toolName: 'execute_command',
-        toolResult: result.output
+        toolResult: latestOutput
       })
       return {
         success: false,
-        output: result.output,
+        output: latestOutput,
         error: `命令执行超时。${suggestion}`
       }
     }
 
     // 命令正常完成，移除监听器并完成追踪
     unsubscribe()
-    
-    // 获取命令退出状态码
-    // 注：SSH 终端使用独立的 exec channel 获取，不会显示 echo $?
-    //     本地 PTY 终端会在终端中显示 echo $?（这是 PTY 的技术限制，不是 bug）
-    const exitCode = await executor.terminalService.getLastExitCode(ptyId, 3000)
-    
-    terminalStateService.completeCommandExecution(ptyId, exitCode ?? 0, 'completed')
-
-    // 构建输出信息，包含退出状态码
-    const exitCodeInfo = exitCode !== undefined ? `\n\n[退出状态码: ${exitCode}]${exitCode === 0 ? '' : ' ⚠️ 非零退出码可能表示命令执行有问题'}` : ''
+    terminalStateService.completeCommandExecution(ptyId, 0, 'completed')
     
     executor.addStep({
       type: 'tool_result',
-      content: `命令执行完成 (耗时: ${result.duration}ms${exitCode !== undefined ? `, 退出码: ${exitCode}` : ''})`,
+      content: `命令执行完成 (耗时: ${result.duration}ms)`,
       toolName: 'execute_command',
       toolResult: result.output
     })
 
-    return { success: true, output: result.output + exitCodeInfo, exitCode }
+    return { success: true, output: result.output }
   } catch (error) {
     // 命令执行出错，移除监听器并完成追踪
     unsubscribe()
@@ -674,12 +676,7 @@ async function executeSudoCommand(
     // 清理输出
     const cleanOutput = stripAnsi(output).replace(/\r/g, '').trim()
     
-    // 获取命令退出状态码
-    // 注：SSH 终端使用独立的 exec channel 获取，不会显示 echo $?
-    //     本地 PTY 终端会在终端中显示 echo $?（这是 PTY 的技术限制，不是 bug）
-    const exitCode = await executor.terminalService.getLastExitCode(ptyId, 3000)
-    
-    terminalStateService.completeCommandExecution(ptyId, exitCode ?? 0, 'completed')
+    terminalStateService.completeCommandExecution(ptyId, 0, 'completed')
     
     // 更新密码等待步骤（如果有）
     if (passwordStepId) {
@@ -689,17 +686,14 @@ async function executeSudoCommand(
       })
     }
     
-    // 构建输出信息，包含退出状态码
-    const exitCodeInfo = exitCode !== undefined ? `\n\n[退出状态码: ${exitCode}]${exitCode === 0 ? '' : ' ⚠️ 非零退出码可能表示命令执行有问题'}` : ''
-    
     executor.addStep({
       type: 'tool_result',
-      content: `命令执行完成${exitCode !== undefined ? ` (退出码: ${exitCode})` : ''}`,
+      content: `命令执行完成`,
       toolName: 'execute_command',
       toolResult: cleanOutput
     })
     
-    return { success: true, output: cleanOutput + exitCodeInfo, exitCode }
+    return { success: true, output: cleanOutput }
     
   } catch (error) {
     unsubscribe()
@@ -933,9 +927,6 @@ async function checkTerminalStatus(
     }
     if (awareness.terminalState?.lastCommand) {
       output.push(`- 最近命令: ${awareness.terminalState.lastCommand}`)
-      if (awareness.terminalState.lastExitCode !== undefined) {
-        output.push(`- 退出码: ${awareness.terminalState.lastExitCode}`)
-      }
     }
     
     // 2. 状态判断
