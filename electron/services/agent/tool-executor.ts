@@ -174,7 +174,7 @@ export async function executeTool(
       return executeCommand(ptyId, args, toolCall.id, config, executor)
 
     case 'get_terminal_context':
-      return await getTerminalContext(ptyId, args, terminalOutput, executor)
+      return await getTerminalContext(ptyId, args, executor)
 
     case 'check_terminal_status':
       return checkTerminalStatus(ptyId, executor)
@@ -867,110 +867,39 @@ function truncateFromEnd(text: string, maxLength: number): string {
 }
 
 /**
- * 获取终端上下文
- * 支持多种读取方式：按行数、按字符数、从开头读取
- * 
- * 数据来源：直接从 xterm buffer 实时读取（通过 IPC 从渲染进程获取）
- * 不使用回退机制，避免返回过时数据误导模型
+ * 获取终端上下文（从末尾读取 N 行）
+ * 直接从 xterm buffer 实时读取
  */
 async function getTerminalContext(
   ptyId: string,
   args: Record<string, unknown>,
-  _terminalOutput: string[],
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
-  const lines = args.lines as number | undefined
-  const maxChars = args.max_chars as number | undefined
-  const fromStartLines = args.from_start_lines as number | undefined
+  const lines = Math.min(Math.max((args.lines as number) || 50, 1), 500) // 限制 1-500 行
   
-  // 计算需要获取的行数（根据参数决定）
-  const requestLines = fromStartLines ?? lines ?? 50
-  // 为了确保有足够的数据进行按字符截取，多请求一些行
-  const linesToFetch = maxChars ? Math.max(requestLines, 200) : requestLines
-  
-  // 直接从 xterm buffer 读取（最准确的实时数据源）
-  // 不使用回退机制，避免返回过时数据误导模型
-  let allOutput: string[] = []
+  // 从 xterm buffer 实时读取
+  let bufferLines: string[] | null = null
   try {
-    const bufferLines = await getLastNLinesFromBuffer(ptyId, linesToFetch, 3000)
-    if (bufferLines && bufferLines.length > 0) {
-      allOutput = bufferLines
-    }
+    bufferLines = await getLastNLinesFromBuffer(ptyId, lines, 3000)
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : '未知错误'
-    executor.addStep({
-      type: 'tool_result',
-      content: '获取终端输出失败',
-      toolName: 'get_terminal_context',
-      toolResult: `错误: ${errorMsg}`
-    })
-    return { success: false, output: '', error: `从终端获取输出失败: ${errorMsg}` }
+    return { success: false, output: '', error: `获取终端输出失败: ${errorMsg}` }
   }
   
-  // 如果获取到的内容为空，返回明确的错误
-  if (allOutput.length === 0) {
-    executor.addStep({
-      type: 'tool_result',
-      content: '终端输出为空',
-      toolName: 'get_terminal_context',
-      toolResult: '(终端缓冲区为空)'
-    })
+  if (!bufferLines || bufferLines.length === 0) {
     return { success: true, output: '(终端输出为空)' }
   }
   
-  let output = ''
-  let readInfo = ''
-  
-  // 从开头读取
-  if (fromStartLines !== undefined) {
-    const startLines = Math.max(1, fromStartLines)
-    const selectedLines = allOutput.slice(0, startLines)
-    output = selectedLines.join('\n')
-    readInfo = `从开头读取 ${startLines} 行`
-  }
-  // 按字符数读取（从末尾）
-  else if (maxChars !== undefined) {
-    const maxCharsValue = Math.max(100, Math.min(maxChars, 10000)) // 限制在 100-50000 之间
-    // 从后向前累积行，直到达到字符数限制
-    let charCount = 0
-    const selectedLines: string[] = []
-    for (let i = allOutput.length - 1; i >= 0; i--) {
-      const line = allOutput[i]
-      const lineWithNewline = (selectedLines.length > 0 ? '\n' : '') + line
-      if (charCount + lineWithNewline.length > maxCharsValue) {
-        break
-      }
-      selectedLines.unshift(line)
-      charCount += lineWithNewline.length
-    }
-    output = selectedLines.join('\n')
-    readInfo = `从末尾读取约 ${maxCharsValue} 字符 (实际 ${output.length} 字符, ${selectedLines.length} 行)`
-  }
-  // 按行数读取（从末尾，默认）
-  else {
-    const linesValue = lines || 50
-    const selectedLines = allOutput.slice(-linesValue)
-    output = selectedLines.join('\n')
-    readInfo = `从末尾读取 ${selectedLines.length} 行`
-  }
-  
-  // 清理 ANSI 转义序列
-  const cleanOutput = stripAnsi(output)
-  
-  // UI 显示截断到 500 字符（保留最新内容），避免超出上下文限制
-  // 注意：返回给 agent 的 output 字段是完整的，但建议使用 max_chars 参数控制大小
-  const truncatedForDisplay = truncateFromEnd(cleanOutput, 500)
+  const output = stripAnsi(bufferLines.join('\n'))
   
   executor.addStep({
     type: 'tool_result',
-    content: `获取终端输出: ${readInfo} (${cleanOutput.length} 字符)`,
+    content: `获取终端输出: ${bufferLines.length} 行`,
     toolName: 'get_terminal_context',
-    toolResult: truncatedForDisplay
+    toolResult: truncateFromEnd(output, 500)
   })
 
-  // 返回完整输出给 agent
-  // 注意：如果输出很大，建议 agent 使用 max_chars 参数限制大小
-  return { success: true, output: cleanOutput || '(终端输出为空)' }
+  return { success: true, output }
 }
 
 /**
