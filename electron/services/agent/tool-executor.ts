@@ -493,18 +493,9 @@ async function executeCommand(
     unsubscribe()
     
     // 获取命令退出状态码
-    let exitCode: number | undefined
-    try {
-      // 执行 echo $? 获取上一个命令的退出码
-      const exitCodeResult = await executor.terminalService.executeInTerminal(ptyId, 'echo $?', 3000)
-      const exitCodeStr = exitCodeResult.output.trim()
-      const parsedCode = parseInt(exitCodeStr, 10)
-      if (!isNaN(parsedCode)) {
-        exitCode = parsedCode
-      }
-    } catch {
-      // 获取退出码失败，忽略（不影响主流程）
-    }
+    // 注：SSH 终端使用独立的 exec channel 获取，不会显示 echo $?
+    //     本地 PTY 终端会在终端中显示 echo $?（这是 PTY 的技术限制，不是 bug）
+    const exitCode = await executor.terminalService.getLastExitCode(ptyId, 3000)
     
     terminalStateService.completeCommandExecution(ptyId, exitCode ?? 0, 'completed')
 
@@ -684,18 +675,9 @@ async function executeSudoCommand(
     const cleanOutput = stripAnsi(output).replace(/\r/g, '').trim()
     
     // 获取命令退出状态码
-    let exitCode: number | undefined
-    try {
-      // 执行 echo $? 获取上一个命令的退出码
-      const exitCodeResult = await executor.terminalService.executeInTerminal(ptyId, 'echo $?', 3000)
-      const exitCodeStr = exitCodeResult.output.trim()
-      const parsedCode = parseInt(exitCodeStr, 10)
-      if (!isNaN(parsedCode)) {
-        exitCode = parsedCode
-      }
-    } catch {
-      // 获取退出码失败，忽略
-    }
+    // 注：SSH 终端使用独立的 exec channel 获取，不会显示 echo $?
+    //     本地 PTY 终端会在终端中显示 echo $?（这是 PTY 的技术限制，不是 bug）
+    const exitCode = await executor.terminalService.getLastExitCode(ptyId, 3000)
     
     terminalStateService.completeCommandExecution(ptyId, exitCode ?? 0, 'completed')
     

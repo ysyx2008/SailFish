@@ -597,6 +597,71 @@ export class SshService {
   }
 
   /**
+   * 获取上一个命令的退出码
+   * 使用独立的 exec channel 执行 echo $?，不会在终端中显示
+   * 这样可以避免在远程终端中看到 echo $? 命令
+   */
+  async getLastExitCode(id: string, timeout: number = 3000): Promise<number | undefined> {
+    return new Promise((resolve) => {
+      const instance = this.instances.get(id)
+      if (!instance) {
+        resolve(undefined)
+        return
+      }
+
+      let output = ''
+      let resolved = false
+
+      const timer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true
+          resolve(undefined)
+        }
+      }, timeout)
+
+      // 使用 exec channel 执行 echo $?，不会影响终端显示
+      instance.client.exec('echo $?', (err, stream) => {
+        if (err) {
+          clearTimeout(timer)
+          if (!resolved) {
+            resolved = true
+            resolve(undefined)
+          }
+          return
+        }
+
+        stream.on('data', (data: Buffer) => {
+          output += data.toString('utf-8')
+        })
+
+        stream.on('close', (code: number | null) => {
+          clearTimeout(timer)
+          if (!resolved) {
+            resolved = true
+            // 优先使用 exec channel 返回的退出码
+            // 但对于 echo $? 来说，我们需要解析输出
+            const exitCodeStr = output.trim()
+            const parsedCode = parseInt(exitCodeStr, 10)
+            if (!isNaN(parsedCode)) {
+              resolve(parsedCode)
+            } else {
+              resolve(undefined)
+            }
+          }
+        })
+
+        stream.on('error', () => {
+          clearTimeout(timer)
+          if (!resolved) {
+            resolved = true
+            resolve(undefined)
+          }
+        })
+      })
+    })
+  }
+
+  /**
    * 获取 SSH 终端状态（增强版）
    * 使用独立的 exec channel 执行命令检测远程进程状态
    * 不会影响主 shell 的显示
