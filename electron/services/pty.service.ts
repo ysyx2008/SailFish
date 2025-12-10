@@ -728,25 +728,58 @@ export class PtyService {
 
       // 检查是否有子进程（正在执行的命令）
       if (childPids.length > 0) {
-        // 获取第一个子进程的详细信息
+        // 获取所有子进程的详细信息
         try {
           const { stdout: childOutput } = await execAsync(
-            `ps -o pid=,stat=,comm= -p ${childPids[0]}`,
+            `ps -o pid=,stat=,comm= -p ${childPids.join(',')}`,
             { timeout: 2000 }
           )
-          const childLine = childOutput.trim()
-          if (childLine) {
-            const childParts = childLine.split(/\s+/)
+          const childLines = childOutput.trim().split('\n').filter((l: string) => l.trim())
+          
+          // 检查是否所有子进程都处于暂停状态 (T = stopped by job control signal)
+          let allStopped = true
+          let activeChildPid: number | undefined
+          let activeChildComm: string | undefined
+          let activeChildStat: string | undefined
+          
+          for (const childLine of childLines) {
+            const childParts = childLine.trim().split(/\s+/)
             const childPid = parseInt(childParts[0])
             const childStat = childParts[1] || ''
             const childComm = childParts[2] || 'unknown'
             
+            // 检查进程状态：T 表示被暂停（Ctrl+Z）
+            // macOS/BSD 的 ps 输出状态码：
+            // T = stopped by job control signal (Ctrl+Z)
+            // S = sleeping, R = running, Z = zombie, etc.
+            const isStopped = childStat.startsWith('T')
+            
+            if (!isStopped) {
+              allStopped = false
+              activeChildPid = childPid
+              activeChildComm = childComm
+              activeChildStat = childStat
+              break
+            }
+          }
+          
+          // 如果所有子进程都被暂停了，终端实际上是空闲的
+          if (allStopped) {
+            return {
+              isIdle: true,
+              shellPid,
+              stateDescription: `终端空闲（有 ${childPids.length} 个后台暂停的作业）`
+            }
+          }
+          
+          // 有活动的子进程
+          if (activeChildPid !== undefined) {
             return {
               isIdle: false,
-              foregroundProcess: childComm,
-              foregroundPid: childPid,
+              foregroundProcess: activeChildComm,
+              foregroundPid: activeChildPid,
               shellPid,
-              stateDescription: `正在执行: ${childComm} (PID: ${childPid}, 状态: ${childStat})`
+              stateDescription: `正在执行: ${activeChildComm} (PID: ${activeChildPid}, 状态: ${activeChildStat})`
             }
           }
         } catch {
@@ -810,6 +843,16 @@ export class PtyService {
         const commMatch = fgStatContent.match(/\(([^)]+)\)/)
         const fgComm = commMatch ? commMatch[1] : 'unknown'
         const fgState = fgParts[2]
+
+        // 检查前台进程是否处于 stopped 状态 (T = stopped by signal)
+        // 如果前台进程被暂停了（Ctrl+Z），终端实际上是空闲的
+        if (fgState === 'T') {
+          return {
+            isIdle: true,
+            shellPid,
+            stateDescription: `终端空闲（前台进程 ${fgComm} 已暂停）`
+          }
+        }
 
         return {
           isIdle: false,
@@ -943,6 +986,36 @@ export class PtyService {
       const childPids = stdout.trim().split('\n').filter((l: string) => l.trim())
       
       if (childPids.length > 0) {
+        // 检查子进程状态，判断是否都是被暂停的
+        try {
+          const { stdout: psOutput } = await execAsync(
+            `ps -o pid=,stat= -p ${childPids.join(',')} 2>/dev/null`,
+            { timeout: 1000 }
+          )
+          const psLines = psOutput.trim().split('\n').filter((l: string) => l.trim())
+          
+          // 检查是否所有子进程都处于暂停状态 (T = stopped)
+          let allStopped = true
+          for (const line of psLines) {
+            const parts = line.trim().split(/\s+/)
+            const stat = parts[1] || ''
+            if (!stat.startsWith('T')) {
+              allStopped = false
+              break
+            }
+          }
+          
+          if (allStopped) {
+            return {
+              isIdle: true,
+              shellPid,
+              stateDescription: `终端空闲（有 ${childPids.length} 个后台暂停的作业）`
+            }
+          }
+        } catch {
+          // 忽略 ps 命令失败
+        }
+        
         return {
           isIdle: false,
           shellPid,
