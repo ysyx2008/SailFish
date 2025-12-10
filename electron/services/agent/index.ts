@@ -1043,18 +1043,55 @@ export class AgentService {
     const systemPrompt = buildSystemPrompt(context, this.hostProfileService, mbtiType, knowledgeContext, knowledgeEnabled)
     run.messages.push({ role: 'system', content: systemPrompt })
 
-    // 添加历史对话（保持 Agent 记忆）
+    // 智能添加历史对话（根据上下文长度动态计算可保留的轮数）
     if (context.historyMessages && context.historyMessages.length > 0) {
-      // 只保留最近的对话历史，避免超出上下文限制
-      const recentHistory = context.historyMessages.slice(-10)
-      for (const msg of recentHistory) {
+      const contextLength = this.getContextLength(profileId)
+      // 预留 50% 的上下文给当前任务执行（工具调用、输出等）
+      const historyBudget = Math.floor(contextLength * 0.3)
+      // 已使用的 token（system prompt）
+      const systemTokens = this.estimateTokens(systemPrompt)
+      // 当前用户消息的 token
+      const userMessageTokens = this.estimateTokens(userMessage)
+      // 可用于历史的 token 预算
+      const availableForHistory = historyBudget - systemTokens - userMessageTokens
+      
+      // 从最近的历史开始，逐对添加，直到达到预算
+      const historyToAdd: AiMessage[] = []
+      let historyTokens = 0
+      
+      // 倒序遍历历史消息（从最近的开始）
+      for (let i = context.historyMessages.length - 1; i >= 0; i--) {
+        const msg = context.historyMessages[i]
         if (msg.role === 'user' || msg.role === 'assistant') {
-          run.messages.push({ 
+          const msgTokens = this.estimateTokens(msg.content)
+          
+          // 检查是否超出预算
+          if (historyTokens + msgTokens > availableForHistory) {
+            break
+          }
+          
+          // 添加到历史列表（头部，因为是倒序遍历）
+          historyToAdd.unshift({ 
             role: msg.role as 'user' | 'assistant', 
             content: msg.content 
           })
+          historyTokens += msgTokens
         }
       }
+      
+      // 确保历史对话是成对的（user + assistant）
+      // 如果开头是 assistant，移除它
+      if (historyToAdd.length > 0 && historyToAdd[0].role === 'assistant') {
+        historyToAdd.shift()
+      }
+      
+      // 添加到消息列表
+      run.messages.push(...historyToAdd)
+      
+      const totalHistory = context.historyMessages.length
+      const keptHistory = historyToAdd.length
+      const keptRounds = Math.floor(keptHistory / 2)
+      console.log(`[Agent] 历史对话: 保留 ${keptHistory}/${totalHistory} 条消息 (${keptRounds} 轮), 使用 ${historyTokens} tokens (预算: ${availableForHistory}, 上下文: ${contextLength})`)
     }
 
     // 添加当前用户消息（包含任务复杂度分析和规划提示）
