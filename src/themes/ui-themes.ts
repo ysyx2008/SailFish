@@ -110,46 +110,46 @@ const sponsorGoldTheme: UiThemeVars = {
   borderColor: '#4a4035'
 }
 
-// 赞助者专属樱花粉主题（温馨浪漫风格）
+// 赞助者专属樱花粉主题（温柔优雅风格）
 const sponsorSakuraTheme: UiThemeVars = {
-  bgPrimary: '#1f1a1d',
-  bgSecondary: '#2a2226',
-  bgTertiary: '#171315',
-  bgSurface: '#352a30',
-  bgHover: '#453a40',
+  bgPrimary: '#1e1921',
+  bgSecondary: '#252028',
+  bgTertiary: '#16121a',
+  bgSurface: '#2e2733',
+  bgHover: '#3d3444',
   
-  textPrimary: '#f5e6ee',
-  textSecondary: '#d4b8c8',
-  textMuted: '#9a7a8a',
+  textPrimary: '#f0e4ec',
+  textSecondary: '#c9b6c4',
+  textMuted: '#8a7585',
   
-  accentPrimary: '#ff8fab',
-  accentSecondary: '#f472b6',
-  accentSuccess: '#86efac',
-  accentWarning: '#fcd34d',
-  accentError: '#fb7185',
+  accentPrimary: '#d4a5b9',
+  accentSecondary: '#c792ac',
+  accentSuccess: '#a3d9a5',
+  accentWarning: '#e8c87a',
+  accentError: '#e07a7a',
   
-  borderColor: '#4a3a42'
+  borderColor: '#423848'
 }
 
 // 赞助者专属森林绿主题（清新自然风格）
 const sponsorForestTheme: UiThemeVars = {
-  bgPrimary: '#151a16',
-  bgSecondary: '#1c231e',
-  bgTertiary: '#101410',
-  bgSurface: '#243027',
-  bgHover: '#2f4033',
+  bgPrimary: '#181d1a',
+  bgSecondary: '#1e2521',
+  bgTertiary: '#121614',
+  bgSurface: '#262e28',
+  bgHover: '#313b34',
   
-  textPrimary: '#e6f5ea',
-  textSecondary: '#b8d4be',
-  textMuted: '#7a9a80',
+  textPrimary: '#e2ede6',
+  textSecondary: '#b5c9bb',
+  textMuted: '#7a9482',
   
-  accentPrimary: '#4ade80',
-  accentSecondary: '#22c55e',
-  accentSuccess: '#86efac',
-  accentWarning: '#fbbf24',
-  accentError: '#f87171',
+  accentPrimary: '#7ec9a0',
+  accentSecondary: '#6bb58d',
+  accentSuccess: '#8fd4a8',
+  accentWarning: '#d4b87a',
+  accentError: '#d98b8b',
   
-  borderColor: '#3a4a3c'
+  borderColor: '#354038'
 }
 
 // 主题集合
