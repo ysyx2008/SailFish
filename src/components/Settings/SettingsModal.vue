@@ -31,6 +31,8 @@ const activeTab = ref<SettingsTab>('ai')
 const appVersion = ref<string>('')
 const showConfirmDialog = ref(false)
 const showUnlockAnimation = ref(false)
+const showBadgeWithAnimation = ref(false)
+const aboutContentRef = ref<HTMLElement | null>(null)
 
 // 品牌信息
 const brandName = computed(() => {
@@ -50,20 +52,102 @@ const isSponsor = computed(() => configStore.isSponsor)
 const showSponsor = computed(() => oemConfig.features.showSponsor)
 const showFireworks = ref(false)
 
+// 烟花数据 - 减少数量优化性能
+const fireworkColors = ['#ff0044', '#ffd700', '#00ff88', '#ff6b6b', '#4ecdc4', '#a855f7', '#ff9f43', '#00ffcc', '#ff0066']
+const fireworksWave1 = Array.from({ length: 8 }, (_, i) => ({
+  color: fireworkColors[i % fireworkColors.length],
+  height: `${55 + Math.random() * 30}vh`,
+  left: `${10 + i * 10}%`
+}))
+const fireworksWave2 = Array.from({ length: 6 }, (_, i) => ({
+  color: fireworkColors[(i + 3) % fireworkColors.length],
+  height: `${55 + Math.random() * 30}vh`,
+  left: `${15 + i * 12}%`
+}))
+const fireworksWave3 = Array.from({ length: 6 }, (_, i) => ({
+  color: fireworkColors[(i + 5) % fireworkColors.length],
+  height: `${55 + Math.random() * 30}vh`,
+  left: `${12 + i * 13}%`
+}))
+const shootingStars = [
+  { color: '#ff6b6b', left: '20%', top: '10%' },
+  { color: '#ffd700', left: '70%', top: '15%' },
+  { color: '#4ecdc4', left: '40%', top: '8%' },
+  { color: '#a855f7', left: '85%', top: '20%' },
+  { color: '#00ff88', left: '10%', top: '25%' },
+  { color: '#ff9f43', left: '55%', top: '12%' },
+  { color: '#ff0066', left: '30%', top: '18%' },
+  { color: '#00ffcc', left: '75%', top: '5%' }
+]
+
+// 预计算12个粒子的方向 (均匀分布360度) - 减少数量优化性能
+const particleDirections = Array.from({ length: 12 }, (_, i) => {
+  const angle = (i * 30) * Math.PI / 180 // 每个粒子间隔30度
+  const distance = 60 + Math.random() * 40 // 60-100px 距离
+  return {
+    tx: Math.round(Math.cos(angle) * distance),
+    ty: Math.round(Math.sin(angle) * distance)
+  }
+})
+
+// 平滑滚动到顶部
+const smoothScrollToTop = (element: HTMLElement, duration: number = 1500): Promise<void> => {
+  return new Promise((resolve) => {
+    const start = element.scrollTop
+    const end = 0 // 滚动到顶部
+    const distance = end - start
+    const startTime = performance.now()
+
+    const easeInOutCubic = (t: number): number => {
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+    }
+
+    const scroll = (currentTime: number) => {
+      const elapsed = currentTime - startTime
+      const progress = Math.min(elapsed / duration, 1)
+      const easeProgress = easeInOutCubic(progress)
+      
+      element.scrollTop = start + distance * easeProgress
+
+      if (progress < 1) {
+        requestAnimationFrame(scroll)
+      } else {
+        resolve()
+      }
+    }
+
+    requestAnimationFrame(scroll)
+  })
+}
+
 // 确认支持
 const handleConfirmSupport = async () => {
   showConfirmDialog.value = false
   await configStore.setSponsorStatus(true)
   showUnlockAnimation.value = true
   showFireworks.value = true
+  
   // 延长庆祝时间，让用户充分感受
-  setTimeout(() => {
+  setTimeout(async () => {
     showUnlockAnimation.value = false
+    
+    // 等待1秒，增加戏剧感
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    
+    // 获取滚动容器并执行渐进式滚动到顶部（徽章在顶部）
+    const scrollContainer = aboutContentRef.value?.closest('.settings-content') as HTMLElement
+    if (scrollContainer) {
+      await smoothScrollToTop(scrollContainer, 1500)
+    }
+    
+    // 滚动完成后，显示赞助者徽章（带动画）
+    showBadgeWithAnimation.value = true
   }, 4000)
-  // 烟花持续 6 秒
+  
+  // 烟花持续 10 秒（三波烟花）
   setTimeout(() => {
     showFireworks.value = false
-  }, 6000)
+  }, 10000)
 }
 
 // 重置赞助状态（用于测试）
@@ -117,9 +201,55 @@ const onQrImageError = (event: Event) => {
   <div class="modal-overlay" @click.self="emit('close')">
     <!-- 全屏烟花效果 -->
     <div v-if="showFireworks" class="fireworks-container">
-      <div class="firework" v-for="i in 12" :key="i" :style="{ '--i': i }">
-        <div class="firework-particle" v-for="j in 12" :key="j" :style="{ '--j': j }"></div>
+      <!-- 第一波烟花 -->
+      <div 
+        v-for="(fw, i) in fireworksWave1" 
+        :key="`w1-${i}`" 
+        class="firework wave-1"
+        :style="{ '--i': i, '--color': fw.color, '--height': fw.height, left: fw.left }"
+      >
+        <div 
+          v-for="(p, j) in particleDirections" 
+          :key="j" 
+          class="firework-particle"
+          :style="{ '--tx': p.tx + 'px', '--ty': p.ty + 'px' }"
+        ></div>
       </div>
+      <!-- 第二波烟花 -->
+      <div 
+        v-for="(fw, i) in fireworksWave2" 
+        :key="`w2-${i}`" 
+        class="firework wave-2"
+        :style="{ '--i': i, '--color': fw.color, '--height': fw.height, left: fw.left }"
+      >
+        <div 
+          v-for="(p, j) in particleDirections" 
+          :key="j" 
+          class="firework-particle"
+          :style="{ '--tx': p.tx + 'px', '--ty': p.ty + 'px' }"
+        ></div>
+      </div>
+      <!-- 第三波烟花 -->
+      <div 
+        v-for="(fw, i) in fireworksWave3" 
+        :key="`w3-${i}`" 
+        class="firework wave-3"
+        :style="{ '--i': i, '--color': fw.color, '--height': fw.height, left: fw.left }"
+      >
+        <div 
+          v-for="(p, j) in particleDirections" 
+          :key="j" 
+          class="firework-particle"
+          :style="{ '--tx': p.tx + 'px', '--ty': p.ty + 'px' }"
+        ></div>
+      </div>
+      <!-- 流星尾迹 -->
+      <div 
+        v-for="(star, i) in shootingStars" 
+        :key="`star-${i}`" 
+        class="shooting-star"
+        :style="{ '--i': i, '--color': star.color, left: star.left, top: star.top }"
+      ></div>
     </div>
     <div class="settings-modal">
       <div class="settings-header">
@@ -152,7 +282,7 @@ const onQrImageError = (event: Event) => {
           <TerminalSettings v-else-if="activeTab === 'terminal'" />
           <DataSettings v-else-if="activeTab === 'data'" />
           <LanguageSettings v-else-if="activeTab === 'language'" />
-          <div v-else-if="activeTab === 'about'" class="about-content">
+          <div v-else-if="activeTab === 'about'" ref="aboutContentRef" class="about-content">
             <div class="about-logo">{{ brandLogo }}</div>
             <h3>{{ brandName }}</h3>
             <p class="version">{{ t('common.version') }} {{ oemConfig.brand.version || appVersion }}</p>
@@ -165,7 +295,11 @@ const onQrImageError = (event: Event) => {
             </div>
             
             <!-- 赞助者徽章（放大醒目版） -->
-            <div v-if="showSponsor && isSponsor" class="sponsor-badge sponsor-badge-large">
+            <div 
+              v-if="showSponsor && isSponsor && (showBadgeWithAnimation || !showFireworks)" 
+              class="sponsor-badge sponsor-badge-large"
+              :class="{ 'badge-dramatic-entrance': showBadgeWithAnimation }"
+            >
               <span class="badge-icon">✨</span>
               <span class="badge-text">{{ t('sponsor.badge') }}</span>
               <!-- 常驻彩带效果 -->
@@ -463,7 +597,7 @@ const onQrImageError = (event: Event) => {
 .qr-codes {
   display: flex;
   justify-content: center;
-  gap: 32px;
+  gap: 60px;
   margin-bottom: 20px;
 }
 
@@ -519,8 +653,8 @@ const onQrImageError = (event: Event) => {
 }
 
 .qr-image {
-  width: 120px;
-  height: 120px;
+  width: 160px;
+  height: 160px;
   border-radius: 8px;
   object-fit: contain;
   background: white;
@@ -528,8 +662,8 @@ const onQrImageError = (event: Event) => {
 }
 
 .qr-placeholder {
-  width: 120px;
-  height: 120px;
+  width: 160px;
+  height: 160px;
   border-radius: 8px;
   border: 1px dashed var(--border-color);
   display: flex;
@@ -878,87 +1012,161 @@ const onQrImageError = (event: Event) => {
   pointer-events: none;
   z-index: 3000;
   overflow: hidden;
+  background: radial-gradient(ellipse at center bottom, rgba(0, 0, 0, 0.1) 0%, transparent 70%);
 }
 
 .firework {
   position: absolute;
   bottom: 0;
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  animation: fireworkLaunch 1.5s ease-out forwards;
-  animation-delay: calc(var(--i) * 0.3s);
+  animation: fireworkMove 1.2s ease-out forwards;
+  will-change: transform;
+  contain: layout style;
 }
 
-.firework:nth-child(1) { left: 10%; --color: #ffd700; }
-.firework:nth-child(2) { left: 20%; --color: #ff6b6b; }
-.firework:nth-child(3) { left: 30%; --color: #4ecdc4; }
-.firework:nth-child(4) { left: 40%; --color: #a855f7; }
-.firework:nth-child(5) { left: 50%; --color: #ffd700; }
-.firework:nth-child(6) { left: 60%; --color: #ff9f43; }
-.firework:nth-child(7) { left: 70%; --color: #ff6b6b; }
-.firework:nth-child(8) { left: 80%; --color: #4ecdc4; }
-.firework:nth-child(9) { left: 15%; --color: #a855f7; }
-.firework:nth-child(10) { left: 45%; --color: #ffd700; }
-.firework:nth-child(11) { left: 65%; --color: #ff9f43; }
-.firework:nth-child(12) { left: 85%; --color: #ff6b6b; }
+.firework::before {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--color);
+  box-shadow: 0 0 8px var(--color);
+  animation: fireworkLaunch 1.2s ease-out forwards;
+}
 
-@keyframes fireworkLaunch {
+/* 第一波烟花 - 立即发射 */
+.firework.wave-1 {
+  animation-delay: calc(var(--i) * 0.15s);
+}
+.firework.wave-1::before {
+  animation-delay: calc(var(--i) * 0.15s);
+}
+
+/* 第二波烟花 - 延迟发射 */
+.firework.wave-2 {
+  animation-delay: calc(2s + var(--i) * 0.18s);
+}
+.firework.wave-2::before {
+  animation-delay: calc(2s + var(--i) * 0.18s);
+}
+
+/* 第三波烟花 - 更晚发射 */
+.firework.wave-3 {
+  animation-delay: calc(4s + var(--i) * 0.2s);
+}
+.firework.wave-3::before {
+  animation-delay: calc(4s + var(--i) * 0.2s);
+}
+
+/* fireworkMove 让父元素移动到爆炸位置并保持在那里（粒子跟随） */
+@keyframes fireworkMove {
   0% {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-    background: var(--color);
-    box-shadow: 0 0 6px var(--color);
+    transform: translateY(0);
   }
   50% {
-    transform: translateY(-50vh) scale(1);
+    transform: translateY(calc(var(--height) * -1));
+  }
+  100% {
+    transform: translateY(calc(var(--height) * -1));
+  }
+}
+
+/* fireworkLaunch 控制烟花弹（::before 伪元素）的发光和消失 */
+@keyframes fireworkLaunch {
+  0% {
+    transform: scale(1);
     opacity: 1;
   }
-  60% {
-    transform: translateY(-55vh) scale(0);
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  51% {
+    transform: scale(2);
     opacity: 0;
   }
   100% {
-    transform: translateY(-55vh) scale(0);
+    transform: scale(2);
     opacity: 0;
   }
 }
 
 .firework-particle {
   position: absolute;
+  top: 50%;
+  left: 50%;
+  margin-left: -3px;
+  margin-top: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color);
+  opacity: 0;
+  will-change: transform, opacity;
+  contain: layout style;
+}
+
+.wave-1 .firework-particle {
+  animation: fireworkExplode 1.8s ease-out forwards;
+  animation-delay: calc(var(--i) * 0.15s + 0.6s);
+}
+
+.wave-2 .firework-particle {
+  animation: fireworkExplode 1.8s ease-out forwards;
+  animation-delay: calc(2s + var(--i) * 0.18s + 0.6s);
+}
+
+.wave-3 .firework-particle {
+  animation: fireworkExplode 1.8s ease-out forwards;
+  animation-delay: calc(4s + var(--i) * 0.2s + 0.6s);
+}
+
+@keyframes fireworkExplode {
+  0% {
+    transform: translate(0, 0) scale(0);
+    opacity: 1;
+  }
+  10% {
+    transform: translate(0, 0) scale(1.5);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--tx), var(--ty)) scale(0);
+    opacity: 0;
+  }
+}
+
+/* 流星尾迹效果 */
+.shooting-star {
+  position: absolute;
   width: 4px;
   height: 4px;
   border-radius: 50%;
   background: var(--color);
   opacity: 0;
-  animation: fireworkExplode 1.5s ease-out forwards;
-  animation-delay: calc(var(--i) * 0.3s + 0.75s);
+  animation: shootingStar 3s ease-out infinite;
+  animation-delay: calc(var(--i) * 0.7s);
 }
 
-.firework-particle:nth-child(1) { --angle: 0deg; --distance: 80px; }
-.firework-particle:nth-child(2) { --angle: 30deg; --distance: 90px; }
-.firework-particle:nth-child(3) { --angle: 60deg; --distance: 70px; }
-.firework-particle:nth-child(4) { --angle: 90deg; --distance: 85px; }
-.firework-particle:nth-child(5) { --angle: 120deg; --distance: 75px; }
-.firework-particle:nth-child(6) { --angle: 150deg; --distance: 95px; }
-.firework-particle:nth-child(7) { --angle: 180deg; --distance: 80px; }
-.firework-particle:nth-child(8) { --angle: 210deg; --distance: 70px; }
-.firework-particle:nth-child(9) { --angle: 240deg; --distance: 90px; }
-.firework-particle:nth-child(10) { --angle: 270deg; --distance: 85px; }
-.firework-particle:nth-child(11) { --angle: 300deg; --distance: 75px; }
-.firework-particle:nth-child(12) { --angle: 330deg; --distance: 80px; }
-
-@keyframes fireworkExplode {
+@keyframes shootingStar {
   0% {
-    transform: translate(0, -55vh) scale(1);
+    transform: translateX(0) translateY(0) scale(1);
+    opacity: 0;
+    background: var(--color);
+    box-shadow: 0 0 6px var(--color);
+  }
+  5% {
     opacity: 1;
-    box-shadow: 0 0 6px var(--color), 0 0 12px var(--color);
+  }
+  40% {
+    transform: translateX(150px) translateY(80px) scale(0.5);
+    opacity: 0.8;
   }
   100% {
-    transform: translate(
-      calc(cos(var(--angle)) * var(--distance)),
-      calc(-55vh + sin(var(--angle)) * var(--distance) + 40px)
-    ) scale(0);
+    transform: translateX(300px) translateY(160px) scale(0);
     opacity: 0;
   }
 }
@@ -978,15 +1186,15 @@ const onQrImageError = (event: Event) => {
 
 /* 赞助者模式下二维码缩小 */
 .qr-codes-small {
-  transform: scale(0.75);
+  transform: scale(0.7);
   transform-origin: center;
-  margin: -10px 0;
+  margin: -15px 0;
   opacity: 0.85;
 }
 
 .qr-codes-small .qr-image {
-  width: 100px;
-  height: 100px;
+  width: 120px;
+  height: 120px;
 }
 
 /* 放大版赞助者徽章 */
@@ -995,6 +1203,68 @@ const onQrImageError = (event: Event) => {
   font-size: 15px;
   position: relative;
   overflow: visible;
+}
+
+/* 戏剧性入场动画 */
+.badge-dramatic-entrance {
+  animation: dramaticBadgeAppear 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards, 
+             badgeShine 3s ease-in-out infinite 1.2s !important;
+}
+
+@keyframes dramaticBadgeAppear {
+  0% {
+    transform: scale(0) rotate(-180deg);
+    opacity: 0;
+    filter: blur(10px);
+  }
+  30% {
+    transform: scale(0.3) rotate(-90deg);
+    opacity: 0.3;
+    filter: blur(5px);
+  }
+  60% {
+    transform: scale(1.3) rotate(10deg);
+    opacity: 1;
+    filter: blur(0);
+  }
+  75% {
+    transform: scale(0.9) rotate(-5deg);
+  }
+  90% {
+    transform: scale(1.1) rotate(2deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+/* 入场时的光芒爆发效果 */
+.badge-dramatic-entrance::after {
+  content: '';
+  position: absolute;
+  inset: -20px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 215, 0, 0.6) 0%, transparent 70%);
+  animation: badgeBurst 1s ease-out forwards;
+  pointer-events: none;
+  z-index: -1;
+}
+
+@keyframes badgeBurst {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(2);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(3);
+    opacity: 0;
+  }
 }
 
 .sponsor-badge-large .badge-icon {
