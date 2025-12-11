@@ -7,8 +7,6 @@ dist-electron/
 release/
 electron-cache/
 
-assets/
-
 # Editor
 .vscode/*
 !.vscode/extensions.json
@@ -36,5 +34,5 @@ Thumbs.db
 *.tsbuildinfo
 
 
-electron-cache
-assets/
+/electron-cache
+/assets/
