@@ -102,10 +102,8 @@ export default {
     supportDescription: 'If you find this software helpful, consider buying me a coffee ☕',
     wechatPay: 'WeChat Pay',
     alipay: 'Alipay',
-    internationalSupport: 'International',
-    githubSponsors: 'GitHub Sponsors',
-    paypal: 'PayPal',
-    thanksMessage: 'Thank you for your support! 🙏'
+    thanksMessage: 'Every support fuels my motivation!',
+    thanksDetail: 'Your recognition means the world. SFTerminal will keep evolving ✨'
   },
 
   // AI Settings
