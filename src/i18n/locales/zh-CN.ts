@@ -96,7 +96,16 @@ export default {
     description: 'AI 驱动的跨平台智慧终端',
     contact: '联系我们',
     license: '开源协议',
-    copyright: '© 2024 旗鱼'
+    copyright: '© 2024 旗鱼',
+    // 赞助支持
+    supportTitle: '支持作者',
+    supportDescription: '如果这个软件对你有帮助，欢迎请作者喝杯咖啡 ☕',
+    wechatPay: '微信支付',
+    alipay: '支付宝',
+    internationalSupport: '国际用户',
+    githubSponsors: 'GitHub Sponsors',
+    paypal: 'PayPal',
+    thanksMessage: '感谢你的支持！🙏'
   },
 
   // AI 配置

@@ -96,7 +96,16 @@ export default {
     description: 'AI-powered cross-platform smart terminal',
     contact: 'Contact Us',
     license: 'License',
-    copyright: '© 2024 SFTerminal'
+    copyright: '© 2024 SFTerminal',
+    // Sponsor support
+    supportTitle: 'Support the Author',
+    supportDescription: 'If you find this software helpful, consider buying me a coffee ☕',
+    wechatPay: 'WeChat Pay',
+    alipay: 'Alipay',
+    internationalSupport: 'International',
+    githubSponsors: 'GitHub Sponsors',
+    paypal: 'PayPal',
+    thanksMessage: 'Thank you for your support! 🙏'
   },
 
   // AI Settings
