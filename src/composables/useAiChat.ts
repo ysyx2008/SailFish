@@ -8,6 +8,8 @@ import type { AiMessage } from '../stores/terminal'
 
 // 判断用户是否在底部附近的阈值（像素）
 const SCROLL_THRESHOLD = 100
+// 滚动节流间隔（毫秒）
+const SCROLL_THROTTLE_MS = 200
 
 export function useAiChat(
   getDocumentContext: () => Promise<string>,
@@ -111,8 +113,32 @@ export function useAiChat(
     setIsUserNearBottom(true)
   }
 
-  // 智能滚动：只有用户在底部附近时才自动滚动
+  // 智能滚动节流状态
+  let scrollPending = false
+  let lastScrollTime = 0
+
+  // 智能滚动：只有用户在底部附近时才自动滚动（带节流）
   const scrollToBottomIfNeeded = async () => {
+    const now = Date.now()
+    
+    // 节流：如果距离上次滚动时间过短，标记为待处理
+    if (now - lastScrollTime < SCROLL_THROTTLE_MS) {
+      if (!scrollPending) {
+        scrollPending = true
+        requestAnimationFrame(() => {
+          scrollPending = false
+          doScrollIfNeeded()
+        })
+      }
+      return
+    }
+    
+    await doScrollIfNeeded()
+  }
+
+  // 实际执行滚动
+  const doScrollIfNeeded = async () => {
+    lastScrollTime = Date.now()
     await nextTick()
     if (isUserNearBottom.value) {
       if (messagesRef.value) {

@@ -1305,6 +1305,8 @@ onMounted(() => {
   padding: 12px;
   user-select: text;
   position: relative;
+  /* 启用滚动锚定，防止内容变化时滚动位置跳动 */
+  overflow-anchor: auto;
 }
 
 /* 新消息指示器 */
@@ -1605,6 +1607,8 @@ onMounted(() => {
   word-wrap: break-word;
   user-select: text;
   cursor: text;
+  /* 限制重绘范围，减少布局抖动 */
+  contain: layout style;
 }
 
 .message-content pre {
@@ -1715,6 +1719,9 @@ onMounted(() => {
 /* Markdown 样式 - 使用 :deep() 穿透 v-html */
 .markdown-content {
   line-height: 1.6;
+  /* 开启 GPU 加速，减少流式输出时的重绘闪动 */
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .markdown-content :deep(p) {
@@ -2557,6 +2564,8 @@ onMounted(() => {
 .step-content {
   flex: 1;
   min-width: 0;
+  /* 限制重绘范围，减少流式输出时的布局抖动 */
+  contain: layout style;
 }
 
 .step-text {

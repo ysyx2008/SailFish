@@ -476,7 +476,7 @@ export default {
     closeError: '关闭错误提示',
     selectedContent: '已选中终端内容',
     aiAnalyze: 'AI 分析',
-    thinking: 'AI 正在思考中...',
+    thinking: '让我想想...',
     agentStarting: 'Agent 启动中...',
     agentRunning: 'Agent 执行中',
     agentHistory: 'Agent 执行记录',

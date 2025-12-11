@@ -476,7 +476,7 @@ export default {
     closeError: 'Close Error',
     selectedContent: 'Terminal Content Selected',
     aiAnalyze: 'AI Analyze',
-    thinking: 'AI is thinking...',
+    thinking: 'Let me thinking...',
     agentStarting: 'Agent starting...',
     agentRunning: 'Agent Running',
     agentHistory: 'Agent Execution History',
