@@ -9,7 +9,7 @@ import type { AiMessage } from '../stores/terminal'
 // 判断用户是否在底部附近的阈值（像素）
 const SCROLL_THRESHOLD = 100
 // 滚动节流间隔（毫秒）
-const SCROLL_THROTTLE_MS = 200
+const SCROLL_THROTTLE_MS = 1000
 
 export function useAiChat(
   getDocumentContext: () => Promise<string>,

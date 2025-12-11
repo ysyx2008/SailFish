@@ -706,6 +706,7 @@ onMounted(() => {
                         <div 
                           v-if="step.type === 'message'" 
                           class="step-text step-analysis markdown-content"
+                          :class="{ 'is-streaming': step.isStreaming }"
                           v-html="renderMarkdown(step.content)"
                         ></div>
                         <!-- 提问类型特殊渲染：显示问题、选项按钮、状态 -->
@@ -2585,6 +2586,14 @@ onMounted(() => {
 /* Agent 步骤中的 markdown 样式 */
 .step-text.step-analysis.markdown-content {
   font-size: 13px;
+}
+
+/* 流式输出时的样式优化 */
+.step-text.step-analysis.markdown-content.is-streaming {
+  /* 设置最小高度，减少内容从少到多时的高度跳动 */
+  min-height: 120px;
+  /* 提示浏览器内容会变化 */
+  will-change: contents;
 }
 
 .step-text.step-analysis.markdown-content :deep(p) {

@@ -1153,8 +1153,25 @@ export class AgentService {
         const streamStepId = this.generateId()
         let streamContent = ''
         let lastProgressUpdate = 0  // 上次更新进度的时间
+        let lastContentUpdate = 0   // 上次发送内容更新的时间
+        let pendingUpdate = false   // 是否有待发送的更新
         let toolCallProgressStepId: string | undefined  // 工具调用进度步骤 ID
         let lastToolCallProgressUpdate = 0  // 上次更新工具调用进度的时间
+        
+        // 流式内容更新节流间隔（毫秒）
+        const STREAM_THROTTLE_MS = 100
+        
+        // 发送内容更新的函数
+        const sendContentUpdate = (progressHint?: string) => {
+          this.updateStep(agentId, streamStepId, {
+            type: 'message',
+            content: streamContent,
+            isStreaming: true,
+            toolResult: progressHint
+          })
+          lastContentUpdate = Date.now()
+          pendingUpdate = false
+        }
         
         // 使用带重试的流式 API 调用 AI
         const response = await withAiRetry(
@@ -1162,16 +1179,19 @@ export class AgentService {
             // 重试时重置 streamContent
             streamContent = ''
             lastProgressUpdate = 0
+            lastContentUpdate = 0
+            pendingUpdate = false
             toolCallProgressStepId = undefined
             lastToolCallProgressUpdate = 0
             
             this.aiService.chatWithToolsStream(
               run.messages,
               getAgentTools(this.mcpService),
-              // onChunk: 流式文本更新
+              // onChunk: 流式文本更新（带节流）
               (chunk) => {
                 streamContent += chunk
                 const now = Date.now()
+                
                 // 生成进度提示（内容超过 50 字符且距离上次更新超过 300ms）
                 let progressHint: string | undefined
                 const charCount = streamContent.length
@@ -1179,13 +1199,21 @@ export class AgentService {
                   lastProgressUpdate = now
                   progressHint = `⏳ 生成中... ${charCount} 字符`
                 }
-                // 发送流式更新
-                this.updateStep(agentId, streamStepId, {
-                  type: 'message',
-                  content: streamContent,
-                  isStreaming: true,
-                  toolResult: progressHint  // 用 toolResult 显示进度提示
-                })
+                
+                // 节流：只在以下情况发送更新
+                // 1. 距离上次更新超过 STREAM_THROTTLE_MS
+                // 2. 这是第一次更新（让用户尽快看到内容）
+                if (now - lastContentUpdate >= STREAM_THROTTLE_MS || lastContentUpdate === 0) {
+                  sendContentUpdate(progressHint)
+                } else if (!pendingUpdate) {
+                  // 设置延迟更新，确保最后的内容也能发送
+                  pendingUpdate = true
+                  setTimeout(() => {
+                    if (pendingUpdate) {
+                      sendContentUpdate()
+                    }
+                  }, STREAM_THROTTLE_MS)
+                }
               },
               // onToolCall: 工具调用（流式结束时）
               (_toolCalls) => {
@@ -1193,6 +1221,9 @@ export class AgentService {
               },
               // onDone: 完成
               (result) => {
+                // 清除待发送标志，防止延迟更新在完成后发送
+                pendingUpdate = false
+                
                 // 标记流式结束，清除进度提示
                 if (streamContent) {
                   this.updateStep(agentId, streamStepId, {
