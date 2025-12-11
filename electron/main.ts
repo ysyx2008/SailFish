@@ -651,7 +651,7 @@ ipcMain.handle('config:getUiTheme', async () => {
 })
 
 ipcMain.handle('config:setUiTheme', async (_event, theme: string) => {
-  configService.setUiTheme(theme as 'dark' | 'light' | 'blue')
+  configService.setUiTheme(theme as 'dark' | 'light' | 'blue' | 'sponsor-gold')
 })
 
 // Agent MBTI 配置

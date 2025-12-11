@@ -399,8 +399,8 @@ interface Window {
       ) => Promise<void>
       getTheme: () => Promise<string>
       setTheme: (theme: string) => Promise<void>
-      getUiTheme: () => Promise<'dark' | 'light' | 'blue'>
-      setUiTheme: (theme: 'dark' | 'light' | 'blue') => Promise<void>
+      getUiTheme: () => Promise<'dark' | 'light' | 'blue' | 'sponsor-gold'>
+      setUiTheme: (theme: 'dark' | 'light' | 'blue' | 'sponsor-gold') => Promise<void>
       // 会话分组
       getSessionGroups: () => Promise<Array<{
         id: string

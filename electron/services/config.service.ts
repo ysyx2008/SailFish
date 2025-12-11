@@ -81,7 +81,7 @@ export type AgentMbtiType =
 export type LocaleType = 'zh-CN' | 'en-US'
 
 // UI 主题类型
-export type UiThemeType = 'dark' | 'light' | 'blue'
+export type UiThemeType = 'dark' | 'light' | 'blue' | 'sponsor-gold'
 
 interface StoreSchema {
   aiProfiles: AiProfile[]
