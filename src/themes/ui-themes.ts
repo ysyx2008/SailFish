@@ -89,7 +89,7 @@ const blueTheme: UiThemeVars = {
   borderColor: '#3a6a9a'
 }
 
-// 赞助者专属金色主题（尊贵风格）
+// 赞助者专属暗金色主题（尊贵内敛风格）
 const sponsorGoldTheme: UiThemeVars = {
   bgPrimary: '#1a1612',
   bgSecondary: '#231f1a',
@@ -97,59 +97,59 @@ const sponsorGoldTheme: UiThemeVars = {
   bgSurface: '#2d2720',
   bgHover: '#3d352a',
   
-  textPrimary: '#f5e6d3',
-  textSecondary: '#c9b89a',
-  textMuted: '#8a7a65',
+  textPrimary: '#e8dcc8',
+  textSecondary: '#b8a88a',
+  textMuted: '#7a6b55',
   
-  accentPrimary: '#d4af37',
-  accentSecondary: '#b8962e',
-  accentSuccess: '#9acd32',
-  accentWarning: '#ffa500',
-  accentError: '#cd5c5c',
+  accentPrimary: '#b8860b',
+  accentSecondary: '#996b08',
+  accentSuccess: '#7a9a32',
+  accentWarning: '#cc8800',
+  accentError: '#b85050',
   
   borderColor: '#4a4035'
 }
 
-// 赞助者专属樱花粉主题（温柔优雅风格）
+// 赞助者专属樱花粉主题（浅色温柔风格）
 const sponsorSakuraTheme: UiThemeVars = {
-  bgPrimary: '#1e1921',
-  bgSecondary: '#252028',
-  bgTertiary: '#16121a',
-  bgSurface: '#2e2733',
-  bgHover: '#3d3444',
+  bgPrimary: '#fdf8fa',
+  bgSecondary: '#f8f0f4',
+  bgTertiary: '#f2e8ed',
+  bgSurface: '#ffffff',
+  bgHover: '#f5e5ec',
   
-  textPrimary: '#f0e4ec',
-  textSecondary: '#c9b6c4',
-  textMuted: '#8a7585',
+  textPrimary: '#4a3040',
+  textSecondary: '#6b4a5a',
+  textMuted: '#9a7a8a',
   
-  accentPrimary: '#d4a5b9',
-  accentSecondary: '#c792ac',
-  accentSuccess: '#a3d9a5',
-  accentWarning: '#e8c87a',
-  accentError: '#e07a7a',
+  accentPrimary: '#d4728a',
+  accentSecondary: '#c25d78',
+  accentSuccess: '#5a9a6a',
+  accentWarning: '#c98a40',
+  accentError: '#c95050',
   
-  borderColor: '#423848'
+  borderColor: '#e8d0dc'
 }
 
-// 赞助者专属森林绿主题（清新自然风格）
+// 赞助者专属森林绿主题（浅色清新风格）
 const sponsorForestTheme: UiThemeVars = {
-  bgPrimary: '#181d1a',
-  bgSecondary: '#1e2521',
-  bgTertiary: '#121614',
-  bgSurface: '#262e28',
-  bgHover: '#313b34',
+  bgPrimary: '#f6fbf8',
+  bgSecondary: '#eef6f0',
+  bgTertiary: '#e5f0e8',
+  bgSurface: '#ffffff',
+  bgHover: '#e0ede4',
   
-  textPrimary: '#e2ede6',
-  textSecondary: '#b5c9bb',
-  textMuted: '#7a9482',
+  textPrimary: '#2a403a',
+  textSecondary: '#4a665a',
+  textMuted: '#7a9a8a',
   
-  accentPrimary: '#7ec9a0',
-  accentSecondary: '#6bb58d',
-  accentSuccess: '#8fd4a8',
-  accentWarning: '#d4b87a',
-  accentError: '#d98b8b',
+  accentPrimary: '#4a9a70',
+  accentSecondary: '#3a8560',
+  accentSuccess: '#5aaa75',
+  accentWarning: '#aa8540',
+  accentError: '#b85555',
   
-  borderColor: '#354038'
+  borderColor: '#c8dcd0'
 }
 
 // 主题集合

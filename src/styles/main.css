@@ -76,7 +76,7 @@
   --border-color: #3a6a9a;
 }
 
-/* 赞助者专属金色主题（尊贵风格） */
+/* 赞助者专属暗金色主题（尊贵内敛风格） */
 [data-ui-theme="sponsor-gold"] {
   --bg-primary: #1a1612;
   --bg-secondary: #231f1a;
@@ -84,59 +84,59 @@
   --bg-surface: #2d2720;
   --bg-hover: #3d352a;
   
-  --text-primary: #f5e6d3;
-  --text-secondary: #c9b89a;
-  --text-muted: #8a7a65;
+  --text-primary: #e8dcc8;
+  --text-secondary: #b8a88a;
+  --text-muted: #7a6b55;
   
-  --accent-primary: #d4af37;
-  --accent-secondary: #b8962e;
-  --accent-success: #9acd32;
-  --accent-warning: #ffa500;
-  --accent-error: #cd5c5c;
+  --accent-primary: #b8860b;
+  --accent-secondary: #996b08;
+  --accent-success: #7a9a32;
+  --accent-warning: #cc8800;
+  --accent-error: #b85050;
   
   --border-color: #4a4035;
 }
 
-/* 赞助者专属樱花粉主题（温馨浪漫风格） */
+/* 赞助者专属樱花粉主题（浅色温柔风格） */
 [data-ui-theme="sponsor-sakura"] {
-  --bg-primary: #1f1a1d;
-  --bg-secondary: #2a2226;
-  --bg-tertiary: #171315;
-  --bg-surface: #352a30;
-  --bg-hover: #453a40;
+  --bg-primary: #fdf8fa;
+  --bg-secondary: #f8f0f4;
+  --bg-tertiary: #f2e8ed;
+  --bg-surface: #ffffff;
+  --bg-hover: #f5e5ec;
   
-  --text-primary: #f5e6ee;
-  --text-secondary: #d4b8c8;
+  --text-primary: #4a3040;
+  --text-secondary: #6b4a5a;
   --text-muted: #9a7a8a;
   
-  --accent-primary: #ff8fab;
-  --accent-secondary: #f472b6;
-  --accent-success: #86efac;
-  --accent-warning: #fcd34d;
-  --accent-error: #fb7185;
+  --accent-primary: #d4728a;
+  --accent-secondary: #c25d78;
+  --accent-success: #5a9a6a;
+  --accent-warning: #c98a40;
+  --accent-error: #c95050;
   
-  --border-color: #4a3a42;
+  --border-color: #e8d0dc;
 }
 
-/* 赞助者专属森林绿主题（清新自然风格） */
+/* 赞助者专属森林绿主题（浅色清新风格） */
 [data-ui-theme="sponsor-forest"] {
-  --bg-primary: #151a16;
-  --bg-secondary: #1c231e;
-  --bg-tertiary: #101410;
-  --bg-surface: #243027;
-  --bg-hover: #2f4033;
+  --bg-primary: #f6fbf8;
+  --bg-secondary: #eef6f0;
+  --bg-tertiary: #e5f0e8;
+  --bg-surface: #ffffff;
+  --bg-hover: #e0ede4;
   
-  --text-primary: #e6f5ea;
-  --text-secondary: #b8d4be;
-  --text-muted: #7a9a80;
+  --text-primary: #2a403a;
+  --text-secondary: #4a665a;
+  --text-muted: #7a9a8a;
   
-  --accent-primary: #4ade80;
-  --accent-secondary: #22c55e;
-  --accent-success: #86efac;
-  --accent-warning: #fbbf24;
-  --accent-error: #f87171;
+  --accent-primary: #4a9a70;
+  --accent-secondary: #3a8560;
+  --accent-success: #5aaa75;
+  --accent-warning: #aa8540;
+  --accent-error: #b85555;
   
-  --border-color: #3a4a3c;
+  --border-color: #c8dcd0;
 }
 
 * {
