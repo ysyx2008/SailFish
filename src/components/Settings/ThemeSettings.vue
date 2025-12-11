@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore } from '../../stores/config'
 import { themes, type ThemeName, sponsorThemes } from '../../themes'
-import { uiThemes, type UiThemeName } from '../../themes/ui-themes'
+import { uiThemes, type UiThemeName, sponsorUiThemes } from '../../themes/ui-themes'
 import { oemConfig } from '../../config/oem.config'
 
 const { t } = useI18n()
@@ -13,15 +13,20 @@ const configStore = useConfigStore()
 const isSponsor = computed(() => configStore.isSponsor)
 const showSponsor = computed(() => oemConfig.features.showSponsor)
 
-// 检查主题是否为赞助者专属
+// 检查终端主题是否为赞助者专属
 const isSponsorTheme = (themeName: ThemeName): boolean => {
   return sponsorThemes.includes(themeName)
 }
 
-// 检查主题是否被锁定
+// 检查终端主题是否被锁定
 const isThemeLocked = (themeName: ThemeName): boolean => {
   if (!showSponsor.value) return false  // OEM 版本隐藏赞助功能，不锁定
   return isSponsorTheme(themeName) && !isSponsor.value
+}
+
+// 检查 UI 主题是否为赞助者专属
+const isSponsorUiTheme = (themeName: UiThemeName): boolean => {
+  return sponsorUiThemes.includes(themeName)
 }
 
 // 终端主题
@@ -38,9 +43,17 @@ const setTheme = async (themeName: string) => {
   await configStore.setTheme(themeName)
 }
 
-// UI 主题
+// UI 主题（赞助者专属主题隐藏，赞助后才显示作为惊喜）
 const currentUiTheme = computed(() => configStore.uiTheme)
-const uiThemeList: UiThemeName[] = ['dark', 'light', 'blue']
+const uiThemeList = computed<UiThemeName[]>(() => {
+  const baseThemes: UiThemeName[] = ['dark', 'light', 'blue']
+  // OEM 版本或赞助者：显示所有主题（包括专属主题）
+  if (!showSponsor.value || isSponsor.value) {
+    return [...baseThemes, ...sponsorUiThemes]
+  }
+  // 非赞助者：隐藏专属主题，赞助后才显示作为惊喜
+  return baseThemes
+})
 
 const setUiTheme = async (themeName: UiThemeName) => {
   await configStore.setUiTheme(themeName)
@@ -131,7 +144,12 @@ const getUiThemeAccentStyle = (themeName: UiThemeName) => {
             </div>
           </div>
           <div class="ui-theme-info">
-            <span class="theme-name">{{ t(`themeSettings.uiThemes.${themeName}`) }}</span>
+            <span class="theme-name">
+              {{ t(`themeSettings.uiThemes.${themeName}`) }}
+              <span v-if="isSponsorUiTheme(themeName)" class="exclusive-badge">
+                {{ t('sponsor.exclusive') }}
+              </span>
+            </span>
             <span v-if="currentUiTheme === themeName" class="theme-active">✓</span>
           </div>
         </div>

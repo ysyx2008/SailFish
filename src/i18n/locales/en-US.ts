@@ -114,7 +114,9 @@ export default {
     confirmMessage: 'Thank you for your support! Click confirm to unlock exclusive perks 🎁',
     exclusive: 'Exclusive',
     unlockHint: 'Unlock after supporting',
-    thanksUnlock: 'Thanks for support! Exclusive perks unlocked 🎉'
+    thanksUnlock: 'Thanks for support! Exclusive perks unlocked 🎉',
+    resetButton: 'Reset sponsor status (for testing)',
+    resetConfirm: 'Are you sure you want to reset sponsor status? This will remove sponsor perks and can be used to test the sponsor flow again.'
   },
 
   // AI Settings
@@ -358,7 +360,8 @@ export default {
     uiThemes: {
       dark: 'Dark',
       light: 'Light',
-      blue: 'Blue'
+      blue: 'Blue',
+      'sponsor-gold': 'Royal Gold'
     }
   },
 

@@ -76,6 +76,27 @@
   --border-color: #3a6a9a;
 }
 
+/* 赞助者专属金色主题（尊贵风格） */
+[data-ui-theme="sponsor-gold"] {
+  --bg-primary: #1a1612;
+  --bg-secondary: #231f1a;
+  --bg-tertiary: #141210;
+  --bg-surface: #2d2720;
+  --bg-hover: #3d352a;
+  
+  --text-primary: #f5e6d3;
+  --text-secondary: #c9b89a;
+  --text-muted: #8a7a65;
+  
+  --accent-primary: #d4af37;
+  --accent-secondary: #b8962e;
+  --accent-success: #9acd32;
+  --accent-warning: #ffa500;
+  --accent-error: #cd5c5c;
+  
+  --border-color: #4a4035;
+}
+
 * {
   margin: 0;
   padding: 0;

@@ -1,5 +1,5 @@
 // UI 主题类型
-export type UiThemeName = 'dark' | 'light' | 'blue'
+export type UiThemeName = 'dark' | 'light' | 'blue' | 'sponsor-gold'
 
 // UI 主题 CSS 变量定义
 export interface UiThemeVars {
@@ -89,12 +89,37 @@ const blueTheme: UiThemeVars = {
   borderColor: '#3a6a9a'
 }
 
+// 赞助者专属金色主题（尊贵风格）
+const sponsorGoldTheme: UiThemeVars = {
+  bgPrimary: '#1a1612',
+  bgSecondary: '#231f1a',
+  bgTertiary: '#141210',
+  bgSurface: '#2d2720',
+  bgHover: '#3d352a',
+  
+  textPrimary: '#f5e6d3',
+  textSecondary: '#c9b89a',
+  textMuted: '#8a7a65',
+  
+  accentPrimary: '#d4af37',
+  accentSecondary: '#b8962e',
+  accentSuccess: '#9acd32',
+  accentWarning: '#ffa500',
+  accentError: '#cd5c5c',
+  
+  borderColor: '#4a4035'
+}
+
 // 主题集合
 export const uiThemes: Record<UiThemeName, UiThemeVars> = {
   dark: darkTheme,
   light: lightTheme,
-  blue: blueTheme
+  blue: blueTheme,
+  'sponsor-gold': sponsorGoldTheme
 }
+
+// 赞助者专属 UI 主题列表
+export const sponsorUiThemes: UiThemeName[] = ['sponsor-gold']
 
 // 获取 UI 主题
 export function getUiTheme(name: string): UiThemeVars {

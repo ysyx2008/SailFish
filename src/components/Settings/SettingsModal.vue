@@ -48,16 +48,29 @@ const brandLogo = computed(() => oemConfig.brand.logo)
 // 赞助状态
 const isSponsor = computed(() => configStore.isSponsor)
 const showSponsor = computed(() => oemConfig.features.showSponsor)
+const showFireworks = ref(false)
 
 // 确认支持
 const handleConfirmSupport = async () => {
   showConfirmDialog.value = false
   await configStore.setSponsorStatus(true)
   showUnlockAnimation.value = true
+  showFireworks.value = true
   // 延长庆祝时间，让用户充分感受
   setTimeout(() => {
     showUnlockAnimation.value = false
   }, 4000)
+  // 烟花持续 6 秒
+  setTimeout(() => {
+    showFireworks.value = false
+  }, 6000)
+}
+
+// 重置赞助状态（用于测试）
+const resetSponsorStatus = async () => {
+  if (confirm(t('sponsor.resetConfirm'))) {
+    await configStore.setSponsorStatus(false)
+  }
 }
 
 // 初始化时设置初始 tab 和获取版本号
@@ -102,6 +115,12 @@ const onQrImageError = (event: Event) => {
 
 <template>
   <div class="modal-overlay" @click.self="emit('close')">
+    <!-- 全屏烟花效果 -->
+    <div v-if="showFireworks" class="fireworks-container">
+      <div class="firework" v-for="i in 12" :key="i" :style="{ '--i': i }">
+        <div class="firework-particle" v-for="j in 12" :key="j" :style="{ '--j': j }"></div>
+      </div>
+    </div>
     <div class="settings-modal">
       <div class="settings-header">
         <h2>{{ t('settings.title') }}</h2>
@@ -145,20 +164,24 @@ const onQrImageError = (event: Event) => {
               <a href="www.gnu.org/licenses/agpl-3.0.html" target="_blank" class="about-link">{{ t('about.license') }}</a>
             </div>
             
-            <!-- 赞助者徽章 -->
-            <div v-if="showSponsor && isSponsor" class="sponsor-badge">
+            <!-- 赞助者徽章（放大醒目版） -->
+            <div v-if="showSponsor && isSponsor" class="sponsor-badge sponsor-badge-large">
               <span class="badge-icon">✨</span>
               <span class="badge-text">{{ t('sponsor.badge') }}</span>
+              <!-- 常驻彩带效果 -->
+              <div class="badge-confetti">
+                <div class="mini-confetti" v-for="i in 8" :key="i" :style="{ '--i': i }"></div>
+              </div>
             </div>
             
             <!-- 赞助支持部分 -->
-            <div v-if="showSponsor" class="support-section">
+            <div v-if="showSponsor" class="support-section" :class="{ 'sponsor-mode': isSponsor }">
               <div class="support-divider"></div>
               <h4 class="support-title">☕ {{ t('about.supportTitle') }}</h4>
               <p class="support-description">{{ t('about.supportDescription') }}</p>
               
-              <!-- 收款码 -->
-              <div v-if="!isSponsor" class="qr-codes">
+              <!-- 收款码（赞助者模式下也保留显示） -->
+              <div class="qr-codes" :class="{ 'qr-codes-small': isSponsor }">
                 <div class="qr-code-item">
                   <div class="qr-wrapper wechat">
                     <img src="../../assets/wechat-pay.png" alt="WeChat Pay" class="qr-image" @error="onQrImageError" />
@@ -175,7 +198,7 @@ const onQrImageError = (event: Event) => {
                 </div>
               </div>
               
-              <!-- 我已支持按钮 -->
+              <!-- 我已支持按钮（仅非赞助者显示） -->
               <div v-if="!isSponsor" class="support-action">
                 <button class="btn btn-primary sponsor-confirm-btn" @click="showConfirmDialog = true">
                   {{ t('sponsor.confirmButton') }}
@@ -200,6 +223,11 @@ const onQrImageError = (event: Event) => {
                   <span class="perk-item">🏅 {{ t('sponsor.badge') }}</span>
                 </div>
               </div>
+              
+              <!-- 重置赞助状态（仅赞助者可见，用于测试） -->
+              <button v-if="isSponsor" class="reset-sponsor-btn" @click="resetSponsorStatus">
+                {{ t('sponsor.resetButton') }}
+              </button>
             </div>
             
             <div class="about-actions">
@@ -326,9 +354,9 @@ const onQrImageError = (event: Event) => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  height: 100%;
   text-align: center;
+  padding-top: 20px;
+  padding-bottom: 20px;
 }
 
 .about-logo {
@@ -841,6 +869,205 @@ const onQrImageError = (event: Event) => {
     transform: translateY(0);
     opacity: 1;
   }
+}
+
+/* 全屏烟花效果 */
+.fireworks-container {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3000;
+  overflow: hidden;
+}
+
+.firework {
+  position: absolute;
+  bottom: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: fireworkLaunch 1.5s ease-out forwards;
+  animation-delay: calc(var(--i) * 0.3s);
+}
+
+.firework:nth-child(1) { left: 10%; --color: #ffd700; }
+.firework:nth-child(2) { left: 20%; --color: #ff6b6b; }
+.firework:nth-child(3) { left: 30%; --color: #4ecdc4; }
+.firework:nth-child(4) { left: 40%; --color: #a855f7; }
+.firework:nth-child(5) { left: 50%; --color: #ffd700; }
+.firework:nth-child(6) { left: 60%; --color: #ff9f43; }
+.firework:nth-child(7) { left: 70%; --color: #ff6b6b; }
+.firework:nth-child(8) { left: 80%; --color: #4ecdc4; }
+.firework:nth-child(9) { left: 15%; --color: #a855f7; }
+.firework:nth-child(10) { left: 45%; --color: #ffd700; }
+.firework:nth-child(11) { left: 65%; --color: #ff9f43; }
+.firework:nth-child(12) { left: 85%; --color: #ff6b6b; }
+
+@keyframes fireworkLaunch {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+    background: var(--color);
+    box-shadow: 0 0 6px var(--color);
+  }
+  50% {
+    transform: translateY(-50vh) scale(1);
+    opacity: 1;
+  }
+  60% {
+    transform: translateY(-55vh) scale(0);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(-55vh) scale(0);
+    opacity: 0;
+  }
+}
+
+.firework-particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--color);
+  opacity: 0;
+  animation: fireworkExplode 1.5s ease-out forwards;
+  animation-delay: calc(var(--i) * 0.3s + 0.75s);
+}
+
+.firework-particle:nth-child(1) { --angle: 0deg; --distance: 80px; }
+.firework-particle:nth-child(2) { --angle: 30deg; --distance: 90px; }
+.firework-particle:nth-child(3) { --angle: 60deg; --distance: 70px; }
+.firework-particle:nth-child(4) { --angle: 90deg; --distance: 85px; }
+.firework-particle:nth-child(5) { --angle: 120deg; --distance: 75px; }
+.firework-particle:nth-child(6) { --angle: 150deg; --distance: 95px; }
+.firework-particle:nth-child(7) { --angle: 180deg; --distance: 80px; }
+.firework-particle:nth-child(8) { --angle: 210deg; --distance: 70px; }
+.firework-particle:nth-child(9) { --angle: 240deg; --distance: 90px; }
+.firework-particle:nth-child(10) { --angle: 270deg; --distance: 85px; }
+.firework-particle:nth-child(11) { --angle: 300deg; --distance: 75px; }
+.firework-particle:nth-child(12) { --angle: 330deg; --distance: 80px; }
+
+@keyframes fireworkExplode {
+  0% {
+    transform: translate(0, -55vh) scale(1);
+    opacity: 1;
+    box-shadow: 0 0 6px var(--color), 0 0 12px var(--color);
+  }
+  100% {
+    transform: translate(
+      calc(cos(var(--angle)) * var(--distance)),
+      calc(-55vh + sin(var(--angle)) * var(--distance) + 40px)
+    ) scale(0);
+    opacity: 0;
+  }
+}
+
+/* 赞助者模式下的样式弱化 */
+.support-section.sponsor-mode .support-title {
+  font-size: 13px;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.support-section.sponsor-mode .support-description {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+/* 赞助者模式下二维码缩小 */
+.qr-codes-small {
+  transform: scale(0.75);
+  transform-origin: center;
+  margin: -10px 0;
+  opacity: 0.85;
+}
+
+.qr-codes-small .qr-image {
+  width: 100px;
+  height: 100px;
+}
+
+/* 放大版赞助者徽章 */
+.sponsor-badge-large {
+  padding: 12px 24px !important;
+  font-size: 15px;
+  position: relative;
+  overflow: visible;
+}
+
+.sponsor-badge-large .badge-icon {
+  font-size: 20px !important;
+}
+
+.sponsor-badge-large .badge-text {
+  font-size: 15px !important;
+}
+
+/* 徽章常驻彩带效果 */
+.badge-confetti {
+  position: absolute;
+  inset: -20px;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.mini-confetti {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: miniConfettiFall 3s ease-in-out infinite;
+  animation-delay: calc(var(--i) * 0.4s);
+}
+
+.mini-confetti:nth-child(1) { left: 0%; top: 50%; background: #ffd700; }
+.mini-confetti:nth-child(2) { left: 100%; top: 50%; background: #ff6b6b; }
+.mini-confetti:nth-child(3) { left: 20%; top: 0%; background: #4ecdc4; }
+.mini-confetti:nth-child(4) { left: 80%; top: 0%; background: #a855f7; }
+.mini-confetti:nth-child(5) { left: 10%; top: 100%; background: #ff9f43; }
+.mini-confetti:nth-child(6) { left: 90%; top: 100%; background: #ffd700; }
+.mini-confetti:nth-child(7) { left: 50%; top: 0%; background: #ff6b6b; }
+.mini-confetti:nth-child(8) { left: 50%; top: 100%; background: #4ecdc4; }
+
+@keyframes miniConfettiFall {
+  0%, 100% {
+    transform: translateY(0) scale(0.5);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translateY(5px) scale(0.8);
+  }
+  90% {
+    opacity: 0.3;
+    transform: translateY(10px) scale(0.5);
+  }
+}
+
+/* 重置赞助状态按钮 */
+.reset-sponsor-btn {
+  margin-top: 12px;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: all 0.2s ease;
+}
+
+.reset-sponsor-btn:hover {
+  opacity: 1;
+  color: var(--text-secondary);
+  border-color: var(--text-muted);
 }
 </style>
 
