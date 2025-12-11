@@ -2262,7 +2262,8 @@ onMounted(() => {
 
 .timeout-select {
   font-size: 11px;
-  padding: 2px 4px;
+  height: 18px;
+  padding: 0 4px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   border-radius: 4px;
