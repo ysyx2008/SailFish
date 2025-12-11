@@ -42,17 +42,45 @@ export function useHostProfile(agentState: ComputedRef<AgentState | undefined>) 
 
   // 获取当前终端的主机 ID
   const getHostId = async (): Promise<string> => {
+    try {
     const activeTab = terminalStore.activeTab
     if (!activeTab) return 'local'
     
     if (activeTab.type === 'ssh' && activeTab.sshConfig) {
-      return await window.electronAPI.hostProfile.generateHostId(
+        const hostId = await window.electronAPI.hostProfile.generateHostId(
         'ssh',
         activeTab.sshConfig.host,
         activeTab.sshConfig.username
       )
+        // 确保返回有效值
+        return hostId || 'local'
     }
     return 'local'
+    } catch (e) {
+      console.warn('[HostProfile] getHostId failed, using "local":', e)
+      return 'local'
+    }
+  }
+  
+  // 根据 tabId 获取主机 ID（不依赖 activeTab，适用于 Agent 等异步场景）
+  const getHostIdByTabId = async (tabId: string): Promise<string> => {
+    try {
+      const tab = terminalStore.tabs.find(t => t.id === tabId)
+      if (!tab) return 'local'
+      
+      if (tab.type === 'ssh' && tab.sshConfig) {
+        const hostId = await window.electronAPI.hostProfile.generateHostId(
+          'ssh',
+          tab.sshConfig.host,
+          tab.sshConfig.username
+        )
+        return hostId || 'local'
+      }
+      return 'local'
+    } catch (e) {
+      console.warn('[HostProfile] getHostIdByTabId failed, using "local":', e)
+      return 'local'
+    }
   }
 
   // 加载当前主机档案
@@ -245,6 +273,7 @@ ${recentInteractions.join('\n\n')}
     isLoadingProfile,
     isProbing,
     getHostId,
+    getHostIdByTabId,
     loadHostProfile,
     refreshHostProfile,
     summarizeAgentFindings,
