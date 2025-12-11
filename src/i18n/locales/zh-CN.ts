@@ -100,7 +100,7 @@ export default {
     // 赞助支持
     supportTitle: '支持作者',
     supportDescription: '如果旗鱼让你的工作更高效，欢迎请作者喝杯咖啡 ☕',
-    wechatPay: '微信支付',
+    wechatPay: '微信赞赏',
     alipay: '支付宝',
     thanksMessage: '每一份支持都是前进的动力！',
     thanksDetail: '你的认可是对作者最大的鼓励，旗鱼会持续进化，不负期待 ✨'

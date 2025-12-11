@@ -323,13 +323,6 @@ const onQrImageError = (event: Event) => {
                   </div>
                   <span class="qr-label">💚 {{ t('about.wechatPay') }}</span>
                 </div>
-                <div class="qr-code-item">
-                  <div class="qr-wrapper alipay">
-                    <img src="../../assets/alipay.png" alt="Alipay" class="qr-image" @error="onQrImageError" />
-                    <div class="qr-hover-heart">❤️</div>
-                  </div>
-                  <span class="qr-label">🔵 {{ t('about.alipay') }}</span>
-                </div>
               </div>
               
               <!-- 我已支持按钮（仅非赞助者显示） -->
@@ -618,10 +611,6 @@ const onQrImageError = (event: Event) => {
 
 .qr-wrapper.wechat {
   background: linear-gradient(135deg, #07c160 0%, #2aae67 100%);
-}
-
-.qr-wrapper.alipay {
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
 }
 
 .qr-wrapper:hover {
