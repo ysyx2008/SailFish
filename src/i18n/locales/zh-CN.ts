@@ -361,7 +361,9 @@ export default {
       dark: '深色',
       light: '浅色',
       blue: '蓝色',
-      'sponsor-gold': '尊贵金'
+      'sponsor-gold': '尊贵金',
+      'sponsor-sakura': '樱花粉',
+      'sponsor-forest': '森林绿'
     }
   },
 

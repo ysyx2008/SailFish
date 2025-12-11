@@ -361,7 +361,9 @@ export default {
       dark: 'Dark',
       light: 'Light',
       blue: 'Blue',
-      'sponsor-gold': 'Royal Gold'
+      'sponsor-gold': 'Royal Gold',
+      'sponsor-sakura': 'Sakura Pink',
+      'sponsor-forest': 'Forest Green'
     }
   },
 

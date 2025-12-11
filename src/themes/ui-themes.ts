@@ -1,5 +1,5 @@
 // UI 主题类型
-export type UiThemeName = 'dark' | 'light' | 'blue' | 'sponsor-gold'
+export type UiThemeName = 'dark' | 'light' | 'blue' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-forest'
 
 // UI 主题 CSS 变量定义
 export interface UiThemeVars {
@@ -110,16 +110,60 @@ const sponsorGoldTheme: UiThemeVars = {
   borderColor: '#4a4035'
 }
 
+// 赞助者专属樱花粉主题（温馨浪漫风格）
+const sponsorSakuraTheme: UiThemeVars = {
+  bgPrimary: '#1f1a1d',
+  bgSecondary: '#2a2226',
+  bgTertiary: '#171315',
+  bgSurface: '#352a30',
+  bgHover: '#453a40',
+  
+  textPrimary: '#f5e6ee',
+  textSecondary: '#d4b8c8',
+  textMuted: '#9a7a8a',
+  
+  accentPrimary: '#ff8fab',
+  accentSecondary: '#f472b6',
+  accentSuccess: '#86efac',
+  accentWarning: '#fcd34d',
+  accentError: '#fb7185',
+  
+  borderColor: '#4a3a42'
+}
+
+// 赞助者专属森林绿主题（清新自然风格）
+const sponsorForestTheme: UiThemeVars = {
+  bgPrimary: '#151a16',
+  bgSecondary: '#1c231e',
+  bgTertiary: '#101410',
+  bgSurface: '#243027',
+  bgHover: '#2f4033',
+  
+  textPrimary: '#e6f5ea',
+  textSecondary: '#b8d4be',
+  textMuted: '#7a9a80',
+  
+  accentPrimary: '#4ade80',
+  accentSecondary: '#22c55e',
+  accentSuccess: '#86efac',
+  accentWarning: '#fbbf24',
+  accentError: '#f87171',
+  
+  borderColor: '#3a4a3c'
+}
+
 // 主题集合
 export const uiThemes: Record<UiThemeName, UiThemeVars> = {
   dark: darkTheme,
   light: lightTheme,
   blue: blueTheme,
-  'sponsor-gold': sponsorGoldTheme
+  'sponsor-gold': sponsorGoldTheme,
+  'sponsor-sakura': sponsorSakuraTheme,
+  'sponsor-forest': sponsorForestTheme
 }
 
 // 赞助者专属 UI 主题列表
-export const sponsorUiThemes: UiThemeName[] = ['sponsor-gold']
+export const sponsorUiThemes: UiThemeName[] = ['sponsor-gold', 'sponsor-sakura', 'sponsor-forest']
 
 // 获取 UI 主题
 export function getUiTheme(name: string): UiThemeVars {

@@ -97,6 +97,48 @@
   --border-color: #4a4035;
 }
 
+/* 赞助者专属樱花粉主题（温馨浪漫风格） */
+[data-ui-theme="sponsor-sakura"] {
+  --bg-primary: #1f1a1d;
+  --bg-secondary: #2a2226;
+  --bg-tertiary: #171315;
+  --bg-surface: #352a30;
+  --bg-hover: #453a40;
+  
+  --text-primary: #f5e6ee;
+  --text-secondary: #d4b8c8;
+  --text-muted: #9a7a8a;
+  
+  --accent-primary: #ff8fab;
+  --accent-secondary: #f472b6;
+  --accent-success: #86efac;
+  --accent-warning: #fcd34d;
+  --accent-error: #fb7185;
+  
+  --border-color: #4a3a42;
+}
+
+/* 赞助者专属森林绿主题（清新自然风格） */
+[data-ui-theme="sponsor-forest"] {
+  --bg-primary: #151a16;
+  --bg-secondary: #1c231e;
+  --bg-tertiary: #101410;
+  --bg-surface: #243027;
+  --bg-hover: #2f4033;
+  
+  --text-primary: #e6f5ea;
+  --text-secondary: #b8d4be;
+  --text-muted: #7a9a80;
+  
+  --accent-primary: #4ade80;
+  --accent-secondary: #22c55e;
+  --accent-success: #86efac;
+  --accent-warning: #fbbf24;
+  --accent-error: #f87171;
+  
+  --border-color: #3a4a3c;
+}
+
 * {
   margin: 0;
   padding: 0;
