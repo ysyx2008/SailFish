@@ -54,9 +54,10 @@ const handleConfirmSupport = async () => {
   showConfirmDialog.value = false
   await configStore.setSponsorStatus(true)
   showUnlockAnimation.value = true
+  // 延长庆祝时间，让用户充分感受
   setTimeout(() => {
     showUnlockAnimation.value = false
-  }, 2000)
+  }, 4000)
 }
 
 // 初始化时设置初始 tab 和获取版本号
@@ -182,11 +183,22 @@ const onQrImageError = (event: Event) => {
               </div>
               
               <!-- 感谢寄语 -->
-              <div class="thanks-card" :class="{ 'unlocked': isSponsor }">
-                <div class="thanks-icon" :class="{ 'animate': showUnlockAnimation }">🎁</div>
-                <p class="thanks-message">{{ t('about.thanksMessage') }}</p>
-                <p class="thanks-detail">{{ t('about.thanksDetail') }}</p>
-                <p v-if="showUnlockAnimation" class="unlock-message">{{ t('sponsor.thanksUnlock') }}</p>
+              <div class="thanks-card" :class="{ 'unlocked': isSponsor, 'celebrating': showUnlockAnimation }">
+                <!-- 庆祝彩带效果 -->
+                <div v-if="showUnlockAnimation" class="confetti-container">
+                  <div class="confetti" v-for="i in 20" :key="i" :style="{ '--i': i }"></div>
+                </div>
+                <div class="thanks-icon" :class="{ 'animate': showUnlockAnimation }">
+                  {{ showUnlockAnimation ? '🎉' : '🎁' }}
+                </div>
+                <p class="thanks-message" :class="{ 'celebrate-text': showUnlockAnimation }">
+                  {{ showUnlockAnimation ? '🎊 ' + t('sponsor.thanksUnlock') + ' 🎊' : t('about.thanksMessage') }}
+                </p>
+                <p v-if="!showUnlockAnimation" class="thanks-detail">{{ t('about.thanksDetail') }}</p>
+                <div v-if="showUnlockAnimation" class="unlock-perks">
+                  <span class="perk-item">✨ {{ t('sponsor.exclusive') }}{{ t('themeSettings.title') }}</span>
+                  <span class="perk-item">🏅 {{ t('sponsor.badge') }}</span>
+                </div>
               </div>
             </div>
             
@@ -547,22 +559,132 @@ const onQrImageError = (event: Event) => {
   border-color: rgba(255, 215, 0, 0.3);
 }
 
+.thanks-card.celebrating {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.25) 0%, rgba(255, 165, 0, 0.25) 100%);
+  border-color: rgba(255, 215, 0, 0.5);
+  animation: cardGlow 1s ease-in-out infinite alternate;
+  position: relative;
+  overflow: hidden;
+}
+
+@keyframes cardGlow {
+  from {
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.3), 0 0 20px rgba(255, 165, 0, 0.2);
+  }
+  to {
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.5), 0 0 40px rgba(255, 165, 0, 0.3);
+  }
+}
+
+/* 彩带容器 */
+.confetti-container {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.confetti {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  top: -10px;
+  left: calc(var(--i) * 5%);
+  animation: confettiFall 3s ease-out forwards;
+  animation-delay: calc(var(--i) * 0.1s);
+}
+
+.confetti:nth-child(odd) {
+  background: #ffd700;
+  border-radius: 50%;
+}
+
+.confetti:nth-child(even) {
+  background: #ff6b6b;
+  transform: rotate(45deg);
+}
+
+.confetti:nth-child(3n) {
+  background: #4ecdc4;
+  border-radius: 2px;
+}
+
+.confetti:nth-child(4n) {
+  background: #ff9f43;
+  width: 8px;
+  height: 8px;
+}
+
+@keyframes confettiFall {
+  0% {
+    transform: translateY(0) rotate(0deg) scale(0);
+    opacity: 1;
+  }
+  20% {
+    transform: translateY(20px) rotate(90deg) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(150px) rotate(720deg) scale(0.5);
+    opacity: 0;
+  }
+}
+
 .thanks-icon.animate {
-  animation: unlockCelebrate 0.6s ease-out;
+  animation: unlockCelebrate 1s ease-out;
+  font-size: 36px;
 }
 
 @keyframes unlockCelebrate {
-  0% { transform: scale(1) rotate(0deg); }
-  50% { transform: scale(1.3) rotate(180deg); }
-  100% { transform: scale(1) rotate(360deg); }
+  0% { transform: scale(0) rotate(-180deg); opacity: 0; }
+  50% { transform: scale(1.4) rotate(10deg); opacity: 1; }
+  70% { transform: scale(0.9) rotate(-5deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
 }
 
-.unlock-message {
-  font-size: 13px;
+.celebrate-text {
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  background: linear-gradient(90deg, #ffd700, #ff6b6b, #ffd700);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 2s linear infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: 200% center;
+  }
+}
+
+.unlock-perks {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 12px;
+  animation: fadeInUp 0.5s ease-out 0.3s both;
+}
+
+.perk-item {
+  padding: 6px 12px;
+  background: rgba(255, 215, 0, 0.2);
+  border: 1px solid rgba(255, 215, 0, 0.4);
+  border-radius: 16px;
+  font-size: 12px;
   font-weight: 600;
   color: #ffd700;
-  margin-top: 8px;
-  animation: fadeInUp 0.5s ease-out;
+  animation: perkPop 0.4s ease-out backwards;
+}
+
+.perk-item:nth-child(1) { animation-delay: 0.5s; }
+.perk-item:nth-child(2) { animation-delay: 0.7s; }
+
+@keyframes perkPop {
+  0% { transform: scale(0); opacity: 0; }
+  70% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 @keyframes fadeInUp {
@@ -581,21 +703,58 @@ const onQrImageError = (event: Event) => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.2) 0%, rgba(255, 165, 0, 0.2) 100%);
-  border: 1px solid rgba(255, 215, 0, 0.4);
+  padding: 8px 16px;
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.25) 0%, rgba(255, 165, 0, 0.25) 100%);
+  border: 1px solid rgba(255, 215, 0, 0.5);
   border-radius: 20px;
   margin-bottom: 16px;
+  animation: badgeAppear 0.6s ease-out, badgeShine 3s ease-in-out infinite;
+  position: relative;
+  overflow: hidden;
+}
+
+.sponsor-badge::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  animation: badgeSweep 3s ease-in-out infinite;
+}
+
+@keyframes badgeAppear {
+  0% { transform: scale(0) rotate(-10deg); opacity: 0; }
+  60% { transform: scale(1.1) rotate(3deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes badgeShine {
+  0%, 100% { box-shadow: 0 0 10px rgba(255, 215, 0, 0.3); }
+  50% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.5), 0 0 30px rgba(255, 165, 0, 0.3); }
+}
+
+@keyframes badgeSweep {
+  0%, 100% { left: -100%; }
+  50% { left: 100%; }
 }
 
 .badge-icon {
   font-size: 16px;
+  animation: badgeIconPulse 2s ease-in-out infinite;
+}
+
+@keyframes badgeIconPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
 }
 
 .badge-text {
   font-size: 13px;
   font-weight: 600;
   color: #ffd700;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
 }
 
 /* 支持按钮 */
