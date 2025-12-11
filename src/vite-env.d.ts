@@ -437,6 +437,9 @@ interface Window {
       // 语言设置
       getLanguage: () => Promise<string>
       setLanguage: (language: string) => Promise<void>
+      // 赞助状态
+      getSponsorStatus: () => Promise<boolean>
+      setSponsorStatus: (status: boolean) => Promise<void>
     }
     xshell: {
       selectFiles: () => Promise<{ canceled: boolean; filePaths: string[] }>

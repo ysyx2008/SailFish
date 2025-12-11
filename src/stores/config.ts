@@ -133,6 +133,9 @@ export const useConfigStore = defineStore('config', () => {
   // 语言设置
   const language = ref<LocaleType>('zh-CN')
 
+  // 赞助状态
+  const isSponsor = ref<boolean>(false)
+
   // 计算属性
   const activeAiProfile = computed(() =>
     aiProfiles.value.find(p => p.id === activeAiProfileId.value)
@@ -185,6 +188,10 @@ export const useConfigStore = defineStore('config', () => {
         language.value = lang as LocaleType
         setLocale(lang as LocaleType)
       }
+
+      // 加载赞助状态
+      const sponsorStatus = await window.electronAPI.config.getSponsorStatus()
+      isSponsor.value = sponsorStatus || false
     } catch (error) {
       console.error('Failed to load config:', error)
     }
@@ -351,6 +358,13 @@ export const useConfigStore = defineStore('config', () => {
     await window.electronAPI.config.setLanguage(lang)
   }
 
+  // ==================== 赞助状态 ====================
+
+  async function setSponsorStatus(status: boolean): Promise<void> {
+    isSponsor.value = status
+    await window.electronAPI.config.setSponsorStatus(status)
+  }
+
   // ==================== 数据迁移 ====================
 
   /**
@@ -410,6 +424,7 @@ export const useConfigStore = defineStore('config', () => {
     agentMbti,
     setupCompleted,
     language,
+    isSponsor,
 
     // 方法
     loadConfig,
@@ -429,7 +444,8 @@ export const useConfigStore = defineStore('config', () => {
     setUiTheme,
     setAgentMbti,
     setSetupCompleted,
-    setLanguage
+    setLanguage,
+    setSponsorStatus
   }
 })
 

@@ -681,6 +681,14 @@ ipcMain.handle('config:setLanguage', async (_event, language: string) => {
   configService.setLanguage(language as import('./services/config.service').LocaleType)
 })
 
+ipcMain.handle('config:getSponsorStatus', async () => {
+  return configService.getSponsorStatus()
+})
+
+ipcMain.handle('config:setSponsorStatus', async (_event, status: boolean) => {
+  configService.setSponsorStatus(status)
+})
+
 // Xshell 导入相关
 ipcMain.handle('xshell:selectFiles', async () => {
   const result = await dialog.showOpenDialog({

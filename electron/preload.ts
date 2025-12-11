@@ -607,7 +607,11 @@ const electronAPI = {
 
     // 语言设置
     getLanguage: () => ipcRenderer.invoke('config:getLanguage') as Promise<string>,
-    setLanguage: (language: string) => ipcRenderer.invoke('config:setLanguage', language)
+    setLanguage: (language: string) => ipcRenderer.invoke('config:setLanguage', language),
+
+    // 赞助状态
+    getSponsorStatus: () => ipcRenderer.invoke('config:getSponsorStatus') as Promise<boolean>,
+    setSponsorStatus: (status: boolean) => ipcRenderer.invoke('config:setSponsorStatus', status)
   },
 
   // Xshell 导入操作

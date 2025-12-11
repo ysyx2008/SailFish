@@ -510,5 +510,19 @@ export class ConfigService {
   setLanguage(language: LocaleType): void {
     this.store.set('language', language)
   }
+
+  /**
+   * 获取赞助状态
+   */
+  getSponsorStatus(): boolean {
+    return this.store.get('sponsorStatus') || false
+  }
+
+  /**
+   * 设置赞助状态
+   */
+  setSponsorStatus(status: boolean): void {
+    this.store.set('sponsorStatus', status)
+  }
 }
 

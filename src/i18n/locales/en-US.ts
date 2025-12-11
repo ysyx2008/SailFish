@@ -106,6 +106,17 @@ export default {
     thanksDetail: 'Your recognition means the world. SFTerminal will keep evolving ✨'
   },
 
+  // Sponsor features
+  sponsor: {
+    badge: '✨ Sponsor',
+    confirmButton: 'I Supported',
+    confirmTitle: 'Confirm Support',
+    confirmMessage: 'Thank you for your support! Click confirm to unlock exclusive perks 🎁',
+    exclusive: 'Exclusive',
+    unlockHint: 'Unlock after supporting',
+    thanksUnlock: 'Thanks for support! Exclusive perks unlocked 🎉'
+  },
+
   // AI Settings
   aiSettings: {
     title: 'AI Model Configuration',

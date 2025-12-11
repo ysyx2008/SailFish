@@ -2,17 +2,39 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore } from '../../stores/config'
-import { themes, type ThemeName } from '../../themes'
+import { themes, type ThemeName, sponsorThemes } from '../../themes'
 import { uiThemes, type UiThemeName } from '../../themes/ui-themes'
+import { oemConfig } from '../../config/oem.config'
 
 const { t } = useI18n()
 const configStore = useConfigStore()
+
+// 赞助状态和功能开关
+const isSponsor = computed(() => configStore.isSponsor)
+const showSponsor = computed(() => oemConfig.features.showSponsor)
+
+// 检查主题是否为赞助者专属
+const isSponsorTheme = (themeName: ThemeName): boolean => {
+  return sponsorThemes.includes(themeName)
+}
+
+// 检查主题是否被锁定
+const isThemeLocked = (themeName: ThemeName): boolean => {
+  if (!showSponsor.value) return false  // OEM 版本隐藏赞助功能，不锁定
+  return isSponsorTheme(themeName) && !isSponsor.value
+}
 
 // 终端主题
 const currentTheme = computed(() => configStore.currentTheme)
 const themeList = Object.keys(themes) as ThemeName[]
 
 const setTheme = async (themeName: string) => {
+  const theme = themeName as ThemeName
+  if (isThemeLocked(theme)) {
+    // 提示用户去支持
+    alert(t('sponsor.unlockHint'))
+    return
+  }
   await configStore.setTheme(themeName)
 }
 
@@ -126,12 +148,16 @@ const getUiThemeAccentStyle = (themeName: UiThemeName) => {
           v-for="themeName in themeList"
           :key="themeName"
           class="theme-card"
-          :class="{ active: currentTheme === themeName }"
+          :class="{ 
+            active: currentTheme === themeName,
+            locked: isThemeLocked(themeName as ThemeName)
+          }"
           @click="setTheme(themeName)"
         >
           <div class="theme-preview" :style="{
             background: themes[themeName].background,
-            color: themes[themeName].foreground
+            color: themes[themeName].foreground,
+            opacity: isThemeLocked(themeName as ThemeName) ? 0.5 : 1
           }">
             <div class="preview-line">
               <span :style="{ color: themes[themeName].green }">user@host</span>
@@ -150,9 +176,19 @@ const getUiThemeAccentStyle = (themeName: UiThemeName) => {
               <span :style="{ color: themes[themeName].red }">-rw-r--r--</span>
               <span :style="{ color: themes[themeName].foreground }"> file.txt</span>
             </div>
+            <!-- 锁定遮罩 -->
+            <div v-if="isThemeLocked(themeName as ThemeName)" class="theme-lock-overlay">
+              <div class="lock-icon">🔒</div>
+              <div class="lock-hint">{{ t('sponsor.exclusive') }}</div>
+            </div>
           </div>
           <div class="theme-info">
-            <span class="theme-name">{{ themeName }}</span>
+            <span class="theme-name">
+              {{ themeName }}
+              <span v-if="isSponsorTheme(themeName as ThemeName) && !isThemeLocked(themeName as ThemeName)" class="exclusive-badge">
+                {{ t('sponsor.exclusive') }}
+              </span>
+            </span>
             <span v-if="currentTheme === themeName" class="theme-active">✓</span>
           </div>
         </div>
@@ -316,9 +352,10 @@ const getUiThemeAccentStyle = (themeName: UiThemeName) => {
   overflow: hidden;
   cursor: pointer;
   transition: all 0.2s ease;
+  position: relative;
 }
 
-.theme-card:hover {
+.theme-card:hover:not(.locked) {
   border-color: var(--text-muted);
 }
 
@@ -326,11 +363,45 @@ const getUiThemeAccentStyle = (themeName: UiThemeName) => {
   border-color: var(--accent-primary);
 }
 
+.theme-card.locked {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.theme-card.locked:hover {
+  border-color: var(--border-color);
+}
+
 .theme-preview {
   padding: 12px;
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.4;
+  position: relative;
+}
+
+.theme-lock-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 6px;
+}
+
+.lock-icon {
+  font-size: 24px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+.lock-hint {
+  font-size: 11px;
+  color: #ffd700;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .preview-line {
@@ -352,6 +423,19 @@ const getUiThemeAccentStyle = (themeName: UiThemeName) => {
   font-size: 12px;
   font-weight: 500;
   text-transform: capitalize;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.exclusive-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.2) 0%, rgba(255, 165, 0, 0.2) 100%);
+  border: 1px solid rgba(255, 215, 0, 0.4);
+  border-radius: 10px;
+  color: #ffd700;
+  font-weight: 600;
 }
 
 .theme-active {

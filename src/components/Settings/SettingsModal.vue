@@ -2,6 +2,8 @@
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore } from '../../stores/config'
+import { oemConfig } from '../../config/oem.config'
+import { getLocale } from '../../i18n'
 import AiSettings from './AiSettings.vue'
 import ThemeSettings from './ThemeSettings.vue'
 import TerminalSettings from './TerminalSettings.vue'
@@ -27,6 +29,35 @@ const configStore = useConfigStore()
 type SettingsTab = 'ai' | 'mcp' | 'knowledge' | 'theme' | 'terminal' | 'data' | 'language' | 'about'
 const activeTab = ref<SettingsTab>('ai')
 const appVersion = ref<string>('')
+const showConfirmDialog = ref(false)
+const showUnlockAnimation = ref(false)
+
+// 品牌信息
+const brandName = computed(() => {
+  const locale = getLocale()
+  return locale === 'zh-CN' ? oemConfig.brand.name.zh : oemConfig.brand.name.en
+})
+
+const brandCopyright = computed(() => {
+  const locale = getLocale()
+  return locale === 'zh-CN' ? oemConfig.brand.copyright.zh : oemConfig.brand.copyright.en
+})
+
+const brandLogo = computed(() => oemConfig.brand.logo)
+
+// 赞助状态
+const isSponsor = computed(() => configStore.isSponsor)
+const showSponsor = computed(() => oemConfig.features.showSponsor)
+
+// 确认支持
+const handleConfirmSupport = async () => {
+  showConfirmDialog.value = false
+  await configStore.setSponsorStatus(true)
+  showUnlockAnimation.value = true
+  setTimeout(() => {
+    showUnlockAnimation.value = false
+  }, 2000)
+}
 
 // 初始化时设置初始 tab 和获取版本号
 onMounted(async () => {
@@ -102,9 +133,9 @@ const onQrImageError = (event: Event) => {
           <DataSettings v-else-if="activeTab === 'data'" />
           <LanguageSettings v-else-if="activeTab === 'language'" />
           <div v-else-if="activeTab === 'about'" class="about-content">
-            <div class="about-logo">🐟</div>
-            <h3>{{ t('about.title') }}</h3>
-            <p class="version">{{ t('common.version') }} {{ appVersion }}</p>
+            <div class="about-logo">{{ brandLogo }}</div>
+            <h3>{{ brandName }}</h3>
+            <p class="version">{{ t('common.version') }} {{ oemConfig.brand.version || appVersion }}</p>
             <p class="description">
               {{ t('about.description') }}
             </p>
@@ -113,14 +144,20 @@ const onQrImageError = (event: Event) => {
               <a href="www.gnu.org/licenses/agpl-3.0.html" target="_blank" class="about-link">{{ t('about.license') }}</a>
             </div>
             
+            <!-- 赞助者徽章 -->
+            <div v-if="showSponsor && isSponsor" class="sponsor-badge">
+              <span class="badge-icon">✨</span>
+              <span class="badge-text">{{ t('sponsor.badge') }}</span>
+            </div>
+            
             <!-- 赞助支持部分 -->
-            <div class="support-section">
+            <div v-if="showSponsor" class="support-section">
               <div class="support-divider"></div>
               <h4 class="support-title">☕ {{ t('about.supportTitle') }}</h4>
               <p class="support-description">{{ t('about.supportDescription') }}</p>
               
               <!-- 收款码 -->
-              <div class="qr-codes">
+              <div v-if="!isSponsor" class="qr-codes">
                 <div class="qr-code-item">
                   <div class="qr-wrapper wechat">
                     <img src="../../assets/wechat-pay.png" alt="WeChat Pay" class="qr-image" @error="onQrImageError" />
@@ -137,11 +174,19 @@ const onQrImageError = (event: Event) => {
                 </div>
               </div>
               
+              <!-- 我已支持按钮 -->
+              <div v-if="!isSponsor" class="support-action">
+                <button class="btn btn-primary sponsor-confirm-btn" @click="showConfirmDialog = true">
+                  {{ t('sponsor.confirmButton') }}
+                </button>
+              </div>
+              
               <!-- 感谢寄语 -->
-              <div class="thanks-card">
-                <div class="thanks-icon">🎁</div>
+              <div class="thanks-card" :class="{ 'unlocked': isSponsor }">
+                <div class="thanks-icon" :class="{ 'animate': showUnlockAnimation }">🎁</div>
                 <p class="thanks-message">{{ t('about.thanksMessage') }}</p>
                 <p class="thanks-detail">{{ t('about.thanksDetail') }}</p>
+                <p v-if="showUnlockAnimation" class="unlock-message">{{ t('sponsor.thanksUnlock') }}</p>
               </div>
             </div>
             
@@ -151,8 +196,24 @@ const onQrImageError = (event: Event) => {
               </button>
             </div>
             <p class="copyright">
-              {{ t('about.copyright') }}
+              {{ brandCopyright }}
             </p>
+          </div>
+          
+          <!-- 确认支持弹窗 -->
+          <div v-if="showConfirmDialog" class="confirm-dialog-overlay" @click.self="showConfirmDialog = false">
+            <div class="confirm-dialog">
+              <h3>{{ t('sponsor.confirmTitle') }}</h3>
+              <p>{{ t('sponsor.confirmMessage') }}</p>
+              <div class="dialog-actions">
+                <button class="btn btn-outline" @click="showConfirmDialog = false">
+                  {{ t('common.cancel') }}
+                </button>
+                <button class="btn btn-primary" @click="handleConfirmSupport">
+                  {{ t('common.confirm') }}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -479,6 +540,132 @@ const onQrImageError = (event: Event) => {
   color: var(--text-secondary);
   margin: 0;
   line-height: 1.5;
+}
+
+.thanks-card.unlocked {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 165, 0, 0.15) 100%);
+  border-color: rgba(255, 215, 0, 0.3);
+}
+
+.thanks-icon.animate {
+  animation: unlockCelebrate 0.6s ease-out;
+}
+
+@keyframes unlockCelebrate {
+  0% { transform: scale(1) rotate(0deg); }
+  50% { transform: scale(1.3) rotate(180deg); }
+  100% { transform: scale(1) rotate(360deg); }
+}
+
+.unlock-message {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffd700;
+  margin-top: 8px;
+  animation: fadeInUp 0.5s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 赞助者徽章 */
+.sponsor-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.2) 0%, rgba(255, 165, 0, 0.2) 100%);
+  border: 1px solid rgba(255, 215, 0, 0.4);
+  border-radius: 20px;
+  margin-bottom: 16px;
+}
+
+.badge-icon {
+  font-size: 16px;
+}
+
+.badge-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffd700;
+}
+
+/* 支持按钮 */
+.support-action {
+  margin: 16px 0;
+  text-align: center;
+}
+
+.sponsor-confirm-btn {
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #ffd700 0%, #ffa500 100%);
+  color: #1a1a1a;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.sponsor-confirm-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(255, 215, 0, 0.3);
+}
+
+/* 确认弹窗 */
+.confirm-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: fadeIn 0.2s ease;
+}
+
+.confirm-dialog {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+  animation: slideIn 0.3s ease;
+}
+
+.confirm-dialog h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text-primary);
+}
+
+.confirm-dialog p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+  line-height: 1.6;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.dialog-actions .btn {
+  padding: 8px 16px;
+  font-size: 14px;
 }
 
 @keyframes fadeIn {

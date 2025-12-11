@@ -8,6 +8,7 @@ export type ThemeName =
   | 'nord'
   | 'github-dark'
   | 'catppuccin'
+  | 'sponsor-gold'
 
 // One Dark 主题
 const oneDark: ITheme = {
@@ -184,6 +185,31 @@ const catppuccin: ITheme = {
   brightWhite: '#a6adc8'
 }
 
+// 赞助者专属主题 - 金色暖色调
+const sponsorGold: ITheme = {
+  background: '#1a1a1a',
+  foreground: '#e8d4b0',
+  cursor: '#ffd700',
+  cursorAccent: '#1a1a1a',
+  selectionBackground: '#3d3522',
+  black: '#2a2a2a',
+  red: '#ff6b6b',
+  green: '#c9a961',
+  yellow: '#ffd700',
+  blue: '#d4af37',
+  magenta: '#daa520',
+  cyan: '#f4a460',
+  white: '#e8d4b0',
+  brightBlack: '#4a4a4a',
+  brightRed: '#ff8787',
+  brightGreen: '#d4c085',
+  brightYellow: '#ffed4e',
+  brightBlue: '#e5c158',
+  brightMagenta: '#e5b858',
+  brightCyan: '#f5b87a',
+  brightWhite: '#f5e6d3'
+}
+
 // 主题集合
 export const themes: Record<ThemeName, ITheme> = {
   'one-dark': oneDark,
@@ -192,8 +218,12 @@ export const themes: Record<ThemeName, ITheme> = {
   'solarized-dark': solarizedDark,
   nord,
   'github-dark': githubDark,
-  catppuccin
+  catppuccin,
+  'sponsor-gold': sponsorGold
 }
+
+// 赞助者专属主题列表
+export const sponsorThemes: ThemeName[] = ['sponsor-gold']
 
 /**
  * 获取主题配置
