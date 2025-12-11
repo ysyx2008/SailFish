@@ -126,6 +126,10 @@ export class HostProfileService {
    * 创建或更新档案
    */
   updateProfile(hostId: string, updates: Partial<HostProfile>): HostProfile {
+    if (!hostId) {
+      console.warn('[HostProfile] updateProfile called with undefined hostId, using "local"')
+      hostId = 'local'
+    }
     const existing = this.profiles.get(hostId)
     const now = Date.now()
 

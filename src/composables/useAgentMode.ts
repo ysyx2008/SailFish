@@ -37,7 +37,7 @@ export function useAgentMode(
   scrollToBottom: () => Promise<void>,           // 强制滚动（用户发送时）
   scrollToBottomIfNeeded: () => Promise<void>,   // 智能滚动（收到新内容时）
   getDocumentContext: () => Promise<string>,
-  getHostId: () => Promise<string>,
+  getHostIdByTabId: (tabId: string) => Promise<string>,  // 根据 tabId 获取 hostId（不依赖 activeTab）
   autoProbeHostProfile: () => Promise<void>,
   summarizeAgentFindings: (hostId: string) => Promise<void>
 ) {
@@ -250,8 +250,8 @@ export function useAgentMode(
       return
     }
 
-    // 获取主机 ID
-    const hostId = await getHostId()
+    // 获取主机 ID（基于 tabId 而非 activeTab，防止用户在 Agent 执行期间切换标签导致 hostId 错误）
+    const hostId = await getHostIdByTabId(tabId)
 
     // 首次运行时自动探测主机信息（后台执行，不阻塞）
     autoProbeHostProfile().catch(e => {

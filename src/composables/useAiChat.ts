@@ -50,6 +50,9 @@ export function useAiChat(
     hasNewMessage.value = false
   })
 
+  // 标志：是否跳过 scroll 事件的状态更新（用于避免强制滚动时被 scroll 事件覆盖）
+  let skipScrollUpdate = false
+
   // 获取当前终端信息（用于历史记录）
   const getTerminalInfo = () => {
     const activeTab = terminalStore.activeTab
@@ -95,6 +98,8 @@ export function useAiChat(
 
   // 更新用户滚动位置状态（由组件的 scroll 事件调用）
   const updateScrollPosition = () => {
+    // 跳过强制滚动期间的状态更新，避免被 scroll 事件覆盖
+    if (skipScrollUpdate) return
     const nearBottom = checkIsNearBottom()
     setIsUserNearBottom(nearBottom)
     // 如果用户滚动到底部，清除新消息提示
@@ -103,14 +108,22 @@ export function useAiChat(
     }
   }
 
-  // 强制滚动到底部（用户主动点击时调用）
+  // 强制滚动到底部（用户主动发送消息或点击时调用）
   const scrollToBottom = async () => {
+    // 先设置状态，防止被 scroll 事件覆盖
+    skipScrollUpdate = true
+    setIsUserNearBottom(true)
+    hasNewMessage.value = false
+    
     await nextTick()
     if (messagesRef.value) {
       messagesRef.value.scrollTop = messagesRef.value.scrollHeight
     }
-    hasNewMessage.value = false
-    setIsUserNearBottom(true)
+    
+    // 延迟恢复 scroll 事件更新，确保滚动完成后才开始监听用户滚动
+    requestAnimationFrame(() => {
+      skipScrollUpdate = false
+    })
   }
 
   // 智能滚动节流状态

@@ -93,7 +93,7 @@ const {
   currentHostProfile,
   isLoadingProfile,
   isProbing,
-  getHostId,
+  getHostIdByTabId,
   loadHostProfile,
   refreshHostProfile,
   summarizeAgentFindings,
@@ -124,7 +124,7 @@ const {
   scrollToBottom,
   scrollToBottomIfNeeded,
   getDocumentContext,
-  getHostId,
+  getHostIdByTabId,
   autoProbeHostProfile,
   summarizeAgentFindings
 )
