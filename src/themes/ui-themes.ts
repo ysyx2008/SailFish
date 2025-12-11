@@ -1,3 +1,11 @@
+/**
+ * UI 主题定义（用于主题预览卡片）
+ * 
+ * ⚠️ 注意：修改主题颜色时，需要同步修改以下两个文件：
+ * 1. 本文件 (ui-themes.ts) - 用于设置界面的主题预览卡片
+ * 2. src/styles/main.css - 实际应用到 UI 的 CSS 变量
+ */
+
 // UI 主题类型
 export type UiThemeName = 'dark' | 'light' | 'blue' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-forest'
 
