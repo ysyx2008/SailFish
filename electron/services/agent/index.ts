@@ -233,18 +233,22 @@ export class AgentService {
   }
 
   /**
-   * 检测是否存在工具调用循环（重复调用相同工具）
+   * 检测是否存在工具调用循环（重复调用相同工具+相同参数）
+   * 简化版：只检测最明显的死循环，避免误判
+   * 依赖 Agent 自我监控来判断是否在做无效重复
    */
   private detectToolCallLoop(toolCalls: string[]): boolean {
-    if (toolCalls.length < 4) return false
+    // 需要至少 5 次完全相同的调用才判定为循环
+    // 这是非常明显的死循环，正常测试不太可能触发
+    if (toolCalls.length < 5) return false
     
-    // 检查最后 4 次是否调用相同工具
-    const last4 = toolCalls.slice(-4)
-    if (last4.every(t => t === last4[0])) {
+    // 检查最后 5 次是否是完全相同的工具签名（包含参数）
+    const last5 = toolCalls.slice(-5)
+    if (last5.every(t => t === last5[0])) {
       return true
     }
     
-    // 检查是否有 AB-AB 模式（两个工具交替调用）
+    // AB-AB-AB 模式（完全相同的两个调用交替出现 3 次）
     if (toolCalls.length >= 6) {
       const last6 = toolCalls.slice(-6)
       if (last6[0] === last6[2] && last6[2] === last6[4] &&
