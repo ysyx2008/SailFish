@@ -195,7 +195,7 @@ export async function executeTool(
       return readFile(ptyId, args, executor)
 
     case 'write_file':
-      return writeFile(ptyId, args, toolCall.id, executor)
+      return writeFile(ptyId, args, toolCall.id, config, executor)
 
     case 'remember_info':
       return rememberInfo(args, executor)
@@ -1538,6 +1538,7 @@ async function writeFile(
   ptyId: string,
   args: Record<string, unknown>,
   toolCallId: string,
+  config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   let filePath = args.path as string
@@ -1636,15 +1637,17 @@ async function writeFile(
     riskLevel: 'moderate'
   })
 
-  // 等待确认
-  const approved = await executor.waitForConfirmation(
-    toolCallId, 
-    'write_file', 
-    args, 
-    'moderate'
-  )
-  if (!approved) {
-    return { success: false, output: '', error: '用户拒绝写入文件' }
+  // 自由模式跳过确认，否则等待确认
+  if (!config.freeMode) {
+    const approved = await executor.waitForConfirmation(
+      toolCallId, 
+      'write_file', 
+      args, 
+      'moderate'
+    )
+    if (!approved) {
+      return { success: false, output: '', error: '用户拒绝写入文件' }
+    }
   }
 
   // 计算内容大小，用于进度提示
