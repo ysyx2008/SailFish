@@ -744,12 +744,13 @@ ipcMain.handle('agent:run', async (event, { ptyId, message, context, config, pro
 }) => {
   // 设置事件回调，将 Agent 事件转发到渲染进程
   // 使用 JSON.parse(JSON.stringify()) 确保对象可序列化
+  // 在事件中携带 ptyId，前端可以用它可靠地匹配 tab
   agentService.setCallbacks({
     onStep: (agentId: string, step: AgentStep) => {
       if (!event.sender.isDestroyed()) {
         // 序列化 step 对象，确保可以通过 IPC 传递
         const serializedStep = JSON.parse(JSON.stringify(step))
-        event.sender.send('agent:step', { agentId, step: serializedStep })
+        event.sender.send('agent:step', { agentId, ptyId, step: serializedStep })
       }
     },
     onNeedConfirm: (confirmation: PendingConfirmation) => {
@@ -757,6 +758,7 @@ ipcMain.handle('agent:run', async (event, { ptyId, message, context, config, pro
         // 只发送可序列化的字段，不包含 resolve 函数
         event.sender.send('agent:needConfirm', {
           agentId: confirmation.agentId,
+          ptyId,
           toolCallId: confirmation.toolCallId,
           toolName: confirmation.toolName,
           toolArgs: JSON.parse(JSON.stringify(confirmation.toolArgs)),
@@ -766,12 +768,12 @@ ipcMain.handle('agent:run', async (event, { ptyId, message, context, config, pro
     },
     onComplete: (agentId: string, result: string) => {
       if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:complete', { agentId, result })
+        event.sender.send('agent:complete', { agentId, ptyId, result })
       }
     },
     onError: (agentId: string, error: string) => {
       if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:error', { agentId, error })
+        event.sender.send('agent:error', { agentId, ptyId, error })
       }
     }
   })

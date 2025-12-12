@@ -660,6 +660,15 @@ export const useTerminalStore = defineStore('terminal', () => {
   }
 
   /**
+   * 根据 ptyId 查找对应的终端 ID
+   * 用于 Agent 事件匹配（比 agentId 更可靠，因为 ptyId 在启动前就已知）
+   */
+  function findTabIdByPtyId(ptyId: string): string | undefined {
+    const tab = tabs.value.find(t => t.ptyId === ptyId)
+    return tab?.id
+  }
+
+  /**
    * 获取当前终端的 Agent 状态
    */
   function getAgentState(tabId: string): AgentState | undefined {
@@ -1102,6 +1111,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     clearPendingFocus,
     // Agent 状态管理
     findTabIdByAgentId,
+    findTabIdByPtyId,
     getAgentState,
     setAgentRunning,
     setAgentId,

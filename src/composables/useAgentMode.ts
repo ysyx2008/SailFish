@@ -442,37 +442,43 @@ export function useAgentMode(
   // 设置 Agent 事件监听
   // 注意：每个 AiPanel 实例都会注册监听器，所以需要确保只处理属于自己 tab 的事件
   const setupAgentListeners = () => {
-    // 判断事件是否属于当前 tab
-    const isEventForThisTab = (agentId: string): boolean => {
-      // 1. 首先尝试通过 agentId 查找对应的 tab
+    // 判断事件是否属于当前 tab（优先使用 ptyId 匹配，更可靠）
+    const isEventForThisTab = (agentId: string, ptyId?: string): boolean => {
+      // 优先使用 ptyId 匹配（最可靠，因为 ptyId 在启动前就已知）
+      if (ptyId) {
+        const foundTabId = terminalStore.findTabIdByPtyId(ptyId)
+        if (foundTabId === currentTabId.value) {
+          // 确保 agentId 关联已设置
+          terminalStore.setAgentId(currentTabId.value, agentId)
+          return true
+        }
+        return false
+      }
+      
+      // 降级：使用 agentId 匹配（兼容旧逻辑）
       const foundTabId = terminalStore.findTabIdByAgentId(agentId)
       if (foundTabId) {
-        // 如果找到了，检查是否是当前 tab
         return foundTabId === currentTabId.value
       }
       
-      // 2. 如果找不到（说明这是新 Agent 的第一个事件），检查当前 tab 是否正在等待 Agent 启动
-      //    条件：当前 tab 正在运行 Agent 且还没有 agentId
+      // 最后的降级：检查当前 tab 是否正在等待 Agent 启动
+      // 注意：这种情况在多 tab 同时启动时可能不可靠
       const currentState = agentState.value
       if (currentState?.isRunning && !currentState.agentId) {
-        // 设置 agentId 关联，这样后续事件就能正确匹配
         terminalStore.setAgentId(currentTabId.value, agentId)
         return true
       }
       
-      // 3. 不属于当前 tab
       return false
     }
     
     // 监听步骤更新
-    cleanupStepListener = window.electronAPI.agent.onStep((data) => {
-      // 只处理属于当前 tab 的事件
-      if (!isEventForThisTab(data.agentId)) return
+    cleanupStepListener = window.electronAPI.agent.onStep((data: { agentId: string; ptyId?: string; step: AgentStep }) => {
+      // 只处理属于当前 tab 的事件（使用 ptyId 可靠匹配）
+      if (!isEventForThisTab(data.agentId, data.ptyId)) return
       
       const tabId = currentTabId.value
       terminalStore.addAgentStep(tabId, data.step)
-      // 确保 agentId 关联已设置（可能在 isEventForThisTab 中已设置）
-      terminalStore.setAgentId(tabId, data.agentId)
       
       // 如果是用户补充消息步骤，从待处理列表中移除
       if (data.step.type === 'user_supplement') {
@@ -488,8 +494,10 @@ export function useAgentMode(
 
     // 监听需要确认
     cleanupConfirmListener = window.electronAPI.agent.onNeedConfirm((data) => {
-      // 只处理属于当前 tab 的事件
-      if (!isEventForThisTab(data.agentId)) return
+      // 类型转换，添加 ptyId 支持
+      const eventData = data as { agentId: string; ptyId?: string; toolCallId: string; toolName: string; toolArgs: Record<string, unknown>; riskLevel: string }
+      // 只处理属于当前 tab 的事件（使用 ptyId 可靠匹配）
+      if (!isEventForThisTab(eventData.agentId, eventData.ptyId)) return
       
       terminalStore.setAgentPendingConfirm(currentTabId.value, data)
       // 需要确认时强制滚动，确保用户看到确认框
@@ -497,10 +505,15 @@ export function useAgentMode(
     })
 
     // 监听完成
-    cleanupCompleteListener = window.electronAPI.agent.onComplete((data) => {
-      // 只处理属于当前 tab 的事件
-      const foundTabId = terminalStore.findTabIdByAgentId(data.agentId)
-      if (foundTabId !== currentTabId.value) return
+    cleanupCompleteListener = window.electronAPI.agent.onComplete((data: { agentId: string; ptyId?: string; result: string }) => {
+      // 只处理属于当前 tab 的事件（优先使用 ptyId 匹配）
+      if (data.ptyId) {
+        const foundTabId = terminalStore.findTabIdByPtyId(data.ptyId)
+        if (foundTabId !== currentTabId.value) return
+      } else {
+        const foundTabId = terminalStore.findTabIdByAgentId(data.agentId)
+        if (foundTabId !== currentTabId.value) return
+      }
       
       terminalStore.setAgentRunning(currentTabId.value, false)
       // 清空待处理的补充消息
@@ -508,10 +521,15 @@ export function useAgentMode(
     })
 
     // 监听错误
-    cleanupErrorListener = window.electronAPI.agent.onError((data) => {
-      // 只处理属于当前 tab 的事件
-      const foundTabId = terminalStore.findTabIdByAgentId(data.agentId)
-      if (foundTabId !== currentTabId.value) return
+    cleanupErrorListener = window.electronAPI.agent.onError((data: { agentId: string; ptyId?: string; error: string }) => {
+      // 只处理属于当前 tab 的事件（优先使用 ptyId 匹配）
+      if (data.ptyId) {
+        const foundTabId = terminalStore.findTabIdByPtyId(data.ptyId)
+        if (foundTabId !== currentTabId.value) return
+      } else {
+        const foundTabId = terminalStore.findTabIdByAgentId(data.agentId)
+        if (foundTabId !== currentTabId.value) return
+      }
       
       terminalStore.setAgentRunning(currentTabId.value, false)
       // 清空待处理的补充消息

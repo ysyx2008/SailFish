@@ -659,36 +659,36 @@ const electronAPI = {
     addMessage: (agentId: string, message: string) =>
       ipcRenderer.invoke('agent:addMessage', agentId, message) as Promise<boolean>,
 
-    // 监听 Agent 步骤更新
-    onStep: (callback: (data: { agentId: string; step: AgentStep }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { agentId: string; step: AgentStep }) => callback(data)
+    // 监听 Agent 步骤更新（携带 ptyId 用于可靠匹配 tab）
+    onStep: (callback: (data: { agentId: string; ptyId?: string; step: AgentStep }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { agentId: string; ptyId?: string; step: AgentStep }) => callback(data)
       ipcRenderer.on('agent:step', handler)
       return () => {
         ipcRenderer.removeListener('agent:step', handler)
       }
     },
 
-    // 监听需要确认的工具调用
-    onNeedConfirm: (callback: (data: PendingConfirmation) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: PendingConfirmation) => callback(data)
+    // 监听需要确认的工具调用（携带 ptyId 用于可靠匹配 tab）
+    onNeedConfirm: (callback: (data: PendingConfirmation & { ptyId?: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: PendingConfirmation & { ptyId?: string }) => callback(data)
       ipcRenderer.on('agent:needConfirm', handler)
       return () => {
         ipcRenderer.removeListener('agent:needConfirm', handler)
       }
     },
 
-    // 监听 Agent 完成
-    onComplete: (callback: (data: { agentId: string; result: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { agentId: string; result: string }) => callback(data)
+    // 监听 Agent 完成（携带 ptyId 用于可靠匹配 tab）
+    onComplete: (callback: (data: { agentId: string; ptyId?: string; result: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { agentId: string; ptyId?: string; result: string }) => callback(data)
       ipcRenderer.on('agent:complete', handler)
       return () => {
         ipcRenderer.removeListener('agent:complete', handler)
       }
     },
 
-    // 监听 Agent 错误
-    onError: (callback: (data: { agentId: string; error: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { agentId: string; error: string }) => callback(data)
+    // 监听 Agent 错误（携带 ptyId 用于可靠匹配 tab）
+    onError: (callback: (data: { agentId: string; ptyId?: string; error: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { agentId: string; ptyId?: string; error: string }) => callback(data)
       ipcRenderer.on('agent:error', handler)
       return () => {
         ipcRenderer.removeListener('agent:error', handler)
