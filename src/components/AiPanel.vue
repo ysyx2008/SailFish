@@ -430,6 +430,11 @@ onMounted(() => {
 <template>
   <div 
     class="ai-panel"
+    :class="{
+      'mode-strict': agentMode && strictMode && !freeMode,
+      'mode-relaxed': agentMode && !strictMode && !freeMode,
+      'mode-free': agentMode && freeMode
+    }"
     @dragenter="handleDragEnter"
     @dragover="handleDragOver"
     @dragleave="handleDragLeave"
@@ -1118,6 +1123,33 @@ onMounted(() => {
   flex-direction: column;
   height: 100%;
   position: relative;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Agent 执行模式颜色区分 - 宽松模式绿色边框 */
+.ai-panel.mode-relaxed {
+  border-color: #10b981;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.15);
+}
+
+/* Agent 执行模式颜色区分 - 自由模式红色边框 + 脉冲警示 */
+.ai-panel.mode-free {
+  border-color: #ef4444;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
+  animation: free-mode-pulse 2s ease-in-out infinite;
+}
+
+@keyframes free-mode-pulse {
+  0%, 100% {
+    border-color: #ef4444;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
+  }
+  50% {
+    border-color: #f87171;
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.35);
+  }
 }
 
 /* 拖放覆盖层 */
