@@ -471,6 +471,7 @@ export default {
     modeChat: '对话',
     agentModeTitle: 'Agent 模式：AI 自主执行命令完成任务',
     chatModeTitle: '对话模式：与 AI 进行问答交流',
+    pendingConfirmHint: '有操作需要确认，点击切换到 Agent 模式',
     timeout: '超时',
     strict: '严格',
     relaxed: '宽松',

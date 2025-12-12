@@ -441,11 +441,12 @@ onMounted(() => {
       <div class="mode-switcher">
         <button 
           class="mode-btn" 
-          :class="{ active: agentMode }"
-          :title="t('ai.agentModeTitle')"
+          :class="{ active: agentMode, 'needs-attention': !agentMode && pendingConfirm }"
+          :title="!agentMode && pendingConfirm ? t('ai.pendingConfirmHint') : t('ai.agentModeTitle')"
           @click="agentMode = true"
         >
           🤖 {{ t('ai.modeAgent') }}
+          <span v-if="!agentMode && pendingConfirm" class="attention-badge">!</span>
         </button>
         <button 
           class="mode-btn" 
@@ -811,8 +812,8 @@ onMounted(() => {
           </div>
         </template>
 
-        <!-- Agent 确认对话框（融入对话流） -->
-        <div v-if="pendingConfirm" class="message assistant">
+        <!-- Agent 确认对话框（融入对话流，只在 Agent 模式下显示） -->
+        <div v-if="agentMode && pendingConfirm" class="message assistant">
           <div class="message-wrapper">
             <div class="message-content agent-confirm-inline">
               <div class="confirm-header-inline">
@@ -2241,6 +2242,54 @@ onMounted(() => {
   background: var(--accent-primary);
   color: #fff;
   border-color: var(--accent-primary);
+}
+
+/* 需要注意的状态（有待确认操作） */
+.mode-btn.needs-attention {
+  position: relative;
+  animation: attention-pulse 1.5s ease-in-out infinite;
+  border-color: var(--warning-color, #f59e0b);
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--warning-color, #f59e0b);
+}
+
+.mode-btn.needs-attention:hover {
+  background: rgba(245, 158, 11, 0.25);
+}
+
+@keyframes attention-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
+  }
+}
+
+.attention-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  background: var(--warning-color, #f59e0b);
+  color: #fff;
+  font-size: 10px;
+  font-weight: bold;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: badge-bounce 1s ease-in-out infinite;
+}
+
+@keyframes badge-bounce {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
 }
 
 /* Agent 设置区域 */

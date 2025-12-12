@@ -193,7 +193,8 @@ const handleDragEnd = () => {
         :class="{ 
           active: tab.id === terminalStore.activeTabId,
           dragging: dragIndex === index,
-          'drag-over': dragOverIndex === index && dragIndex !== index
+          'drag-over': dragOverIndex === index && dragIndex !== index,
+          'needs-attention': tab.id !== terminalStore.activeTabId && terminalStore.hasPendingConfirm(tab.id)
         }"
         draggable="true"
         @click="terminalStore.setActiveTab(tab.id)"
@@ -375,6 +376,30 @@ const handleDragEnd = () => {
 .tab.drag-over {
   border-left: 2px solid var(--accent-primary);
   margin-left: -2px;
+}
+
+/* 需要注意的状态（有待确认操作） */
+.tab.needs-attention {
+  animation: tab-attention-pulse 1.5s ease-in-out infinite;
+  border-color: var(--warning-color, #f59e0b);
+  background: rgba(245, 158, 11, 0.15);
+}
+
+.tab.needs-attention .tab-title {
+  color: var(--warning-color, #f59e0b);
+}
+
+.tab.needs-attention .tab-icon {
+  color: var(--warning-color, #f59e0b);
+}
+
+@keyframes tab-attention-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(245, 158, 11, 0);
+  }
 }
 
 .tab-icon {

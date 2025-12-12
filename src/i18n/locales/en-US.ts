@@ -471,6 +471,7 @@ export default {
     modeChat: 'Chat',
     agentModeTitle: 'Agent Mode: AI autonomously executes commands to complete tasks',
     chatModeTitle: 'Chat Mode: Have conversations with AI',
+    pendingConfirmHint: 'Action pending confirmation, click to switch to Agent mode',
     timeout: 'Timeout',
     strict: 'Strict',
     relaxed: 'Relaxed',

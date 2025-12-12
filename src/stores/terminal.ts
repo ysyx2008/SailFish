@@ -1037,6 +1037,14 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
   }
 
+  /**
+   * 检查指定终端是否有待确认操作
+   */
+  function hasPendingConfirm(tabId: string): boolean {
+    const tab = tabs.value.find(t => t.id === tabId)
+    return !!tab?.agentState?.pendingConfirm
+  }
+
   return {
     tabs,
     activeTabId,
@@ -1103,7 +1111,8 @@ export const useTerminalStore = defineStore('terminal', () => {
     snapshotAndCompare,
     hasContentChanged,
     getNewOutputSinceLastSnapshot,
-    updateSnapshotExternalState
+    updateSnapshotExternalState,
+    hasPendingConfirm
   }
 })
 
