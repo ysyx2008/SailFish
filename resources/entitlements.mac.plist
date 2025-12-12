@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- 允许应用作为网络客户端，发起出站连接（SSH、SFTP等需要） -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    
+    <!-- 允许应用作为网络服务端（如果需要监听端口） -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+    
+    <!-- 允许访问用户选择的文件（文件管理功能需要） -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    
+    <!-- 允许访问下载文件夹 -->
+    <key>com.apple.security.files.downloads.read-write</key>
+    <true/>
+</dict>
+</plist>
+

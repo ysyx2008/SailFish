@@ -37,6 +37,13 @@ nsis:
   shortcutName: 旗鱼终端
 mac:
   icon: resources/icon.icns
+  # 启用硬化运行时（macOS安全要求）
+  hardenedRuntime: true
+  # 权限声明文件（允许网络连接等）
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
+  # 跳过公证（如果没有Apple开发者账号）
+  notarize: false
   target:
     - target: dmg
       arch:
