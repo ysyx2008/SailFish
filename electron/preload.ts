@@ -219,6 +219,7 @@ export interface AgentConfig {
   autoExecuteSafe?: boolean
   autoExecuteModerate?: boolean
   strictMode?: boolean           // 严格模式：所有命令都需确认，在终端执行
+  freeMode?: boolean             // 自由模式：所有命令自动执行，不做任何提示
 }
 
 export interface PendingConfirmation {

@@ -10,6 +10,7 @@ export interface AgentConfig {
   autoExecuteSafe: boolean      // safe 命令自动执行
   autoExecuteModerate: boolean  // moderate 命令是否自动执行
   strictMode: boolean           // 严格模式：所有命令都需确认，在终端执行
+  freeMode: boolean             // 自由模式：所有命令自动执行，不做任何提示（危险！）
 }
 
 // 命令风险等级
@@ -191,5 +192,6 @@ export const DEFAULT_AGENT_CONFIG: AgentConfig = {
   commandTimeout: 30000,
   autoExecuteSafe: true,
   autoExecuteModerate: true,
-  strictMode: false           // 默认关闭严格模式
+  strictMode: false,          // 默认关闭严格模式
+  freeMode: false             // 默认关闭自由模式（需手动输入"确认"启用）
 }

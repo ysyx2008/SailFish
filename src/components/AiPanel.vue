@@ -115,6 +115,7 @@ const {
 const {
   agentMode,
   strictMode,
+  freeMode,
   commandTimeout,
   pendingSupplements,
   agentState,
@@ -223,6 +224,44 @@ const isStreamingOutput = (group: typeof agentTaskGroups.value[0]) => {
 
 // IME 组合输入状态
 const isComposing = ref(false)
+
+// 自由模式确认输入框状态
+const showFreeModeConfirm = ref(false)
+const freeModeConfirmInput = ref('')
+
+// 请求启用自由模式（显示确认输入框）
+const requestFreeMode = () => {
+  showFreeModeConfirm.value = true
+  freeModeConfirmInput.value = ''
+}
+
+// 确认启用自由模式
+const confirmEnableFreeMode = () => {
+  if (freeModeConfirmInput.value === '确认') {
+    freeMode.value = true
+    strictMode.value = false
+    showFreeModeConfirm.value = false
+    freeModeConfirmInput.value = ''
+  }
+}
+
+// 取消启用自由模式
+const cancelFreeMode = () => {
+  showFreeModeConfirm.value = false
+  freeModeConfirmInput.value = ''
+}
+
+// 切换到严格模式
+const switchToStrictMode = () => {
+  strictMode.value = true
+  freeMode.value = false
+}
+
+// 切换到宽松模式
+const switchToRelaxedMode = () => {
+  strictMode.value = false
+  freeMode.value = false
+}
 
 // 点击中的选项（用于即时视觉反馈，单选时使用）
 const clickingOption = ref<string | null>(null)
@@ -471,6 +510,44 @@ onMounted(() => {
         </button>
       </div>
 
+      <!-- 自由模式确认对话框 -->
+      <div v-if="showFreeModeConfirm" class="free-mode-confirm-overlay">
+        <div class="free-mode-confirm-dialog">
+          <div class="confirm-dialog-header">
+            <span class="confirm-dialog-icon">⚠️</span>
+            <span class="confirm-dialog-title">{{ t('ai.freeModeConfirmTitle') }}</span>
+          </div>
+          <div class="confirm-dialog-content">
+            <p>{{ t('ai.freeModeConfirmDesc') }}</p>
+            <ul class="confirm-dialog-warnings">
+              <li>{{ t('ai.freeModeWarning1') }}</li>
+              <li>{{ t('ai.freeModeWarning2') }}</li>
+              <li>{{ t('ai.freeModeWarning3') }}</li>
+            </ul>
+            <p class="confirm-dialog-instruction">{{ t('ai.freeModeConfirmInstruction') }}</p>
+            <input 
+              type="text" 
+              v-model="freeModeConfirmInput"
+              class="confirm-dialog-input"
+              :placeholder="t('ai.freeModeConfirmPlaceholder')"
+              @keydown.enter="confirmEnableFreeMode"
+            />
+          </div>
+          <div class="confirm-dialog-actions">
+            <button class="btn btn-sm btn-outline" @click="cancelFreeMode">
+              {{ t('common.cancel') }}
+            </button>
+            <button 
+              class="btn btn-sm btn-danger" 
+              :disabled="freeModeConfirmInput !== '确认'"
+              @click="confirmEnableFreeMode"
+            >
+              {{ t('ai.enableFreeMode') }}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- 系统环境信息 + Agent 设置 -->
       <div class="system-info-bar">
         <div v-if="currentSystemInfo" class="system-info-left">
@@ -494,12 +571,32 @@ onMounted(() => {
               <option :value="300">5m</option>
             </select>
           </div>
-          <!-- 严格模式开关 -->
-          <div class="strict-mode-toggle" @click.stop="strictMode = !strictMode" :title="strictMode ? t('ai.strictModeTitle') : t('ai.relaxedModeTitle')">
-            <span class="toggle-label">{{ strictMode ? t('ai.strict') : t('ai.relaxed') }}</span>
-            <span class="toggle-switch" :class="{ active: strictMode }">
-              <span class="toggle-dot"></span>
-            </span>
+          <!-- 执行模式选择器（三选一：严格/宽松/自由） -->
+          <div class="execution-mode-selector">
+            <button 
+              class="mode-option" 
+              :class="{ active: strictMode && !freeMode }"
+              @click="switchToStrictMode"
+              :title="t('ai.strictModeTitle')"
+            >
+              {{ t('ai.strict') }}
+            </button>
+            <button 
+              class="mode-option" 
+              :class="{ active: !strictMode && !freeMode }"
+              @click="switchToRelaxedMode"
+              :title="t('ai.relaxedModeTitle')"
+            >
+              {{ t('ai.relaxed') }}
+            </button>
+            <button 
+              class="mode-option mode-option-free" 
+              :class="{ active: freeMode }"
+              @click="freeMode ? (freeMode = false, strictMode = true) : requestFreeMode()"
+              :title="t('ai.freeModeTitle')"
+            >
+              {{ t('ai.free') }}
+            </button>
           </div>
         </div>
       </div>
@@ -631,12 +728,18 @@ onMounted(() => {
             <li>{{ t('ai.agentWelcome.example4') }}</li>
           </ul>
 
-          <p class="welcome-section-title">{{ strictMode ? '🔒 ' + t('ai.agentWelcome.strictMode') : '🔓 ' + t('ai.agentWelcome.relaxedMode') }} <span class="strict-badge" :class="{ relaxed: !strictMode }">{{ t('ai.agentWelcome.strictModeOn') }}</span></p>
+          <p class="welcome-section-title">
+            <template v-if="freeMode">🔥 {{ t('ai.agentWelcome.freeMode') }} <span class="strict-badge free">{{ t('ai.agentWelcome.freeModeOn') }}</span></template>
+            <template v-else-if="strictMode">🔒 {{ t('ai.agentWelcome.strictMode') }} <span class="strict-badge">{{ t('ai.agentWelcome.strictModeOn') }}</span></template>
+            <template v-else>🔓 {{ t('ai.agentWelcome.relaxedMode') }} <span class="strict-badge relaxed">{{ t('ai.agentWelcome.relaxedModeOn') }}</span></template>
+          </p>
           <ul>
-            <li v-if="strictMode"><strong>{{ t('ai.agentWelcome.strictModeDesc1') }}</strong></li>
-            <li v-if="strictMode">{{ t('ai.agentWelcome.strictModeDesc2') }}</li>
-            <li v-if="!strictMode"><strong>{{ t('ai.agentWelcome.relaxedModeDesc1') }}</strong></li>
-            <li v-if="!strictMode">{{ t('ai.agentWelcome.relaxedModeDesc2') }}</li>
+            <li v-if="freeMode"><strong class="warning-text">{{ t('ai.agentWelcome.freeModeDesc1') }}</strong></li>
+            <li v-if="freeMode">{{ t('ai.agentWelcome.freeModeDesc2') }}</li>
+            <li v-if="strictMode && !freeMode"><strong>{{ t('ai.agentWelcome.strictModeDesc1') }}</strong></li>
+            <li v-if="strictMode && !freeMode">{{ t('ai.agentWelcome.strictModeDesc2') }}</li>
+            <li v-if="!strictMode && !freeMode"><strong>{{ t('ai.agentWelcome.relaxedModeDesc1') }}</strong></li>
+            <li v-if="!strictMode && !freeMode">{{ t('ai.agentWelcome.relaxedModeDesc2') }}</li>
             <li>{{ t('ai.agentWelcome.allCommandsVisible') }}</li>
           </ul>
 
@@ -1586,6 +1689,10 @@ onMounted(() => {
   background: var(--accent-secondary, #10b981);
 }
 
+.strict-badge.free {
+  background: #ef4444;
+}
+
 .message {
   margin-bottom: 12px;
 }
@@ -2393,6 +2500,160 @@ onMounted(() => {
 
 .toggle-switch.active .toggle-dot {
   transform: translateX(14px);
+}
+
+/* 执行模式选择器 */
+.execution-mode-selector {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  padding: 2px;
+  border: 1px solid var(--border-color);
+}
+
+.mode-option {
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-option:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.mode-option.active {
+  background: var(--accent-primary);
+  color: #fff;
+}
+
+.mode-option-free.active {
+  background: #ef4444;
+}
+
+.mode-option-free:hover:not(.active) {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+/* 自由模式确认对话框 */
+.free-mode-confirm-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.free-mode-confirm-dialog {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.confirm-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.confirm-dialog-icon {
+  font-size: 24px;
+}
+
+.confirm-dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ef4444;
+}
+
+.confirm-dialog-content {
+  margin-bottom: 20px;
+}
+
+.confirm-dialog-content p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
+.confirm-dialog-warnings {
+  margin: 12px 0;
+  padding-left: 20px;
+}
+
+.confirm-dialog-warnings li {
+  font-size: 12px;
+  color: #ef4444;
+  margin: 6px 0;
+  line-height: 1.4;
+}
+
+.confirm-dialog-instruction {
+  font-weight: 500;
+  color: var(--text-primary) !important;
+}
+
+.confirm-dialog-input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  background: var(--bg-tertiary);
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.confirm-dialog-input:focus {
+  border-color: #ef4444;
+}
+
+.confirm-dialog-input::placeholder {
+  color: var(--text-muted);
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.btn-outline:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+/* 警告文本样式 */
+.warning-text {
+  color: #ef4444 !important;
 }
 
 /* Agent 步骤（融入对话） */

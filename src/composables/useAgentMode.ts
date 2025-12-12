@@ -81,6 +81,7 @@ export function useAgentMode(
   // Agent 模式状态（每个 AiPanel 实例独立，无需保存到 store）
   const agentMode = ref(true)
   const strictMode = ref(true)       // 严格模式（默认开启）
+  const freeMode = ref(false)        // 自由模式（需手动确认启用）
   const commandTimeout = ref(10)     // 命令超时时间（秒），默认 10 秒
   const collapsedTaskIds = ref<Set<string>>(new Set())  // 已折叠的任务 ID
   const pendingSupplements = ref<string[]>([])  // 等待处理的补充消息
@@ -145,6 +146,14 @@ export function useAgentMode(
     const agentId = agentState.value?.agentId
     if (agentId && isAgentRunning.value) {
       await window.electronAPI.agent.updateConfig(agentId, { strictMode: newValue })
+    }
+  })
+
+  // 监听自由模式变化，实时更新运行中的 Agent
+  watch(freeMode, async (newValue) => {
+    const agentId = agentState.value?.agentId
+    if (agentId && isAgentRunning.value) {
+      await window.electronAPI.agent.updateConfig(agentId, { freeMode: newValue })
     }
   })
 
@@ -347,7 +356,7 @@ export function useAgentMode(
           historyMessages,  // 添加历史对话
           documentContext   // 添加文档上下文
         } as { ptyId: string; terminalOutput: string[]; systemInfo: { os: string; shell: string }; terminalType: 'local' | 'ssh'; hostId?: string; historyMessages?: { role: string; content: string }[]; documentContext?: string },
-        { strictMode: strictMode.value, commandTimeout: commandTimeout.value * 1000 }  // 传递配置（超时时间转为毫秒）
+        { strictMode: strictMode.value, freeMode: freeMode.value, commandTimeout: commandTimeout.value * 1000 }  // 传递配置（超时时间转为毫秒）
       )
 
       // 添加最终结果到步骤中
@@ -619,6 +628,7 @@ export function useAgentMode(
   return {
     agentMode,
     strictMode,
+    freeMode,
     commandTimeout,
     collapsedTaskIds,
     pendingSupplements,
