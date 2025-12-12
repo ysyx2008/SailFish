@@ -161,6 +161,8 @@ const clearMessages = () => {
   }
   // 清空上传的文档
   clearUploadedDocs()
+  // 清空待处理的补充消息
+  pendingSupplements.value = []
 }
 
 // ==================== 确认框辅助函数 ====================
