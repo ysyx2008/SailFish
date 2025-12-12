@@ -149,7 +149,7 @@ const handleToggle = () => {
     </div>
 
     <!-- 展开模式 -->
-    <template v-else>
+    <div v-else class="plan-expanded">
       <!-- 计划头部 -->
       <div class="plan-header" @click="handleToggle">
         <div class="plan-title">
@@ -203,7 +203,7 @@ const handleToggle = () => {
           </div>
         </div>
       </div>
-    </template>
+    </div>
   </div>
 </template>
 
@@ -340,6 +340,10 @@ const handleToggle = () => {
 }
 
 /* ==================== 展开模式样式 ==================== */
+.plan-expanded {
+  display: contents;
+}
+
 .plan-header {
   display: flex;
   justify-content: space-between;

@@ -1870,6 +1870,21 @@ ipcMain.handle('knowledge:lock', async () => {
   return { success: true }
 })
 
+// 清除密码（需要先验证当前密码）
+ipcMain.handle('knowledge:clearPassword', async (_event, password: string) => {
+  try {
+    const { verifyPassword, clearPassword } = await import('./services/knowledge/crypto')
+    // 先验证密码
+    if (!verifyPassword(password)) {
+      return { success: false, error: '密码错误' }
+    }
+    clearPassword()
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: (error as Error).message }
+  }
+})
+
 // 导出知识库数据
 ipcMain.handle('knowledge:exportData', async () => {
   try {

@@ -41,6 +41,11 @@ provide('showSettings', () => {
   showSettings.value = true
 })
 
+// 同步主题到 body，让 Teleport 到 body 的弹窗也能使用正确的主题
+watch(currentUiTheme, (theme) => {
+  document.body.setAttribute('data-ui-theme', theme)
+}, { immediate: true })
+
 onMounted(async () => {
   // 加载配置
   await configStore.loadConfig()

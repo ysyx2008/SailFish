@@ -61,7 +61,7 @@ const passwordInfo = ref<{ hasPassword: boolean; isUnlocked: boolean; createdAt?
   isUnlocked: false
 })
 const showPasswordDialog = ref(false)
-const passwordDialogMode = ref<'set' | 'verify' | 'change'>('set')
+const passwordDialogMode = ref<'set' | 'verify' | 'change' | 'clear'>('set')
 const passwordInput = ref('')
 const newPasswordInput = ref('')
 const confirmPasswordInput = ref('')
@@ -151,8 +151,16 @@ const handleEnableChange = async () => {
       settings.value.enabled = false
       return
     }
+    // 如果已有密码但未解锁，需要验证密码才能启用
+    if (passwordInfo.value.hasPassword && !passwordInfo.value.isUnlocked) {
+      pendingEnable.value = true
+      openPasswordDialog('verify')
+      // 暂时恢复为未启用状态，等密码验证成功后再启用
+      settings.value.enabled = false
+      return
+    }
   }
-  // 直接保存设置（禁用知识库或已有密码）
+  // 直接保存设置（禁用知识库或已有密码且已解锁）
   await saveSettings()
 }
 
@@ -223,6 +231,12 @@ const handlePasswordSubmit = async () => {
       if (result.success) {
         showPasswordDialog.value = false
         await loadPasswordInfo()
+        // 如果是启用流程中验证密码，现在正式启用知识库
+        if (pendingEnable.value) {
+          pendingEnable.value = false
+          settings.value.enabled = true
+          await saveSettings()
+        }
         // 解锁后加载文档
         await loadDocuments()
       } else {
@@ -260,6 +274,28 @@ const handlePasswordSubmit = async () => {
       }
     } catch (error) {
       passwordError.value = '修改密码失败'
+    } finally {
+      passwordLoading.value = false
+    }
+  } else if (passwordDialogMode.value === 'clear') {
+    // 清除密码
+    if (!passwordInput.value) {
+      passwordError.value = '请输入当前密码'
+      return
+    }
+    
+    try {
+      passwordLoading.value = true
+      const result = await api.knowledge.clearPassword(passwordInput.value)
+      if (result.success) {
+        showPasswordDialog.value = false
+        await loadPasswordInfo()
+        alert('密码已清除，知识库数据将不再加密保护')
+      } else {
+        passwordError.value = result.error || '清除密码失败'
+      }
+    } catch (error) {
+      passwordError.value = '清除密码失败'
     } finally {
       passwordLoading.value = false
     }
@@ -334,6 +370,9 @@ onMounted(() => {
                 </button>
                 <button class="btn btn-sm" @click="lockKnowledge">
                   🔒 锁定
+                </button>
+                <button class="btn btn-sm btn-danger" @click="openPasswordDialog('clear')">
+                  🗑️ 清除密码
                 </button>
               </template>
             </div>
@@ -491,13 +530,16 @@ onMounted(() => {
     <Teleport to="body">
       <div v-if="showPasswordDialog" class="doc-modal-overlay" @click.self="closePasswordDialog">
         <div class="password-modal">
-          <div class="doc-modal-header">
+          <div class="password-modal-header">
             <h3>
-              {{ pendingEnable ? '🔐 启用知识库 - 设置密码' : 
-                 passwordDialogMode === 'set' ? '🔑 设置知识库密码' : 
-                 passwordDialogMode === 'verify' ? '🔓 解锁知识库' : '✏️ 修改密码' }}
+              {{ pendingEnable 
+                 ? (passwordDialogMode === 'verify' ? '🔐 启用知识库 - 验证密码' : '🔐 启用知识库 - 设置密码')
+                 : passwordDialogMode === 'set' ? '🔑 设置知识库密码' 
+                 : passwordDialogMode === 'verify' ? '🔓 解锁知识库' 
+                 : passwordDialogMode === 'clear' ? '🗑️ 清除密码' 
+                 : '✏️ 修改密码' }}
             </h3>
-            <button class="close-btn" @click="closePasswordDialog">✕</button>
+            <button class="password-close-btn" @click="closePasswordDialog">&times;</button>
           </div>
           
           <div class="password-modal-content">
@@ -509,13 +551,16 @@ onMounted(() => {
             <p v-if="passwordDialogMode === 'verify'" class="password-hint">
               请输入知识库密码以解锁加密数据。如果是从其他设备导入的知识库，请使用原来设置的密码。
             </p>
+            <p v-if="passwordDialogMode === 'clear'" class="password-hint password-hint-warning">
+              ⚠️ 清除密码后，知识库数据将不再加密保护。已加密的数据将无法访问。请确认您要执行此操作。
+            </p>
             
             <div class="password-field">
-              <label>{{ passwordDialogMode === 'change' ? '当前密码' : '密码' }}</label>
+              <label>{{ passwordDialogMode === 'change' || passwordDialogMode === 'clear' ? '当前密码' : '密码' }}</label>
               <input 
                 type="password" 
                 v-model="passwordInput" 
-                :placeholder="passwordDialogMode === 'verify' ? '请输入密码' : '请输入密码（至少 4 位）'"
+                :placeholder="passwordDialogMode === 'verify' || passwordDialogMode === 'clear' ? '请输入密码' : '请输入密码（至少 4 位）'"
                 @keyup.enter="handlePasswordSubmit"
               />
             </div>
@@ -549,13 +594,15 @@ onMounted(() => {
           <div class="password-modal-footer">
             <button class="btn btn-sm" @click="closePasswordDialog">{{ pendingEnable ? '暂不启用' : '取消' }}</button>
             <button 
-              class="btn btn-sm btn-primary" 
+              class="btn btn-sm" 
+              :class="passwordDialogMode === 'clear' ? 'btn-danger' : 'btn-primary'"
               @click="handlePasswordSubmit"
               :disabled="passwordLoading"
             >
               {{ passwordLoading ? '处理中...' : 
                  passwordDialogMode === 'set' ? '设置密码' : 
-                 passwordDialogMode === 'verify' ? '解锁' : '修改密码' }}
+                 passwordDialogMode === 'verify' ? '解锁' : 
+                 passwordDialogMode === 'clear' ? '确认清除' : '修改密码' }}
             </button>
           </div>
         </div>
@@ -819,12 +866,47 @@ input:checked + .slider:before {
 .password-modal {
   width: 90%;
   max-width: 400px;
-  background: var(--bg-primary);
+  background: var(--bg-secondary);
   border-radius: 12px;
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
   border: 1px solid var(--border-color);
+}
+
+.password-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.password-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.password-close-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.password-close-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .password-modal-content {
@@ -836,6 +918,14 @@ input:checked + .slider:before {
   color: var(--text-secondary);
   margin: 0 0 16px;
   line-height: 1.5;
+}
+
+.password-hint-warning {
+  color: var(--accent-error);
+  background: rgba(239, 68, 68, 0.1);
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
 .password-field {

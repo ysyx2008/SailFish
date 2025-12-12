@@ -1563,7 +1563,10 @@ const electronAPI = {
 
     // 锁定知识库
     lock: () =>
-      ipcRenderer.invoke('knowledge:lock') as Promise<{ success: boolean }>
+      ipcRenderer.invoke('knowledge:lock') as Promise<{ success: boolean }>,
+
+    clearPassword: (password: string) =>
+      ipcRenderer.invoke('knowledge:clearPassword', password) as Promise<{ success: boolean; error?: string }>
   },
 
   // 终端屏幕内容服务（供主进程请求渲染进程数据）
