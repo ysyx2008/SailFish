@@ -440,68 +440,88 @@ export function useAgentMode(
   }
 
   // 设置 Agent 事件监听
+  // 注意：每个 AiPanel 实例都会注册监听器，所以需要确保只处理属于自己 tab 的事件
   const setupAgentListeners = () => {
+    // 判断事件是否属于当前 tab
+    const isEventForThisTab = (agentId: string): boolean => {
+      // 1. 首先尝试通过 agentId 查找对应的 tab
+      const foundTabId = terminalStore.findTabIdByAgentId(agentId)
+      if (foundTabId) {
+        // 如果找到了，检查是否是当前 tab
+        return foundTabId === currentTabId.value
+      }
+      
+      // 2. 如果找不到（说明这是新 Agent 的第一个事件），检查当前 tab 是否正在等待 Agent 启动
+      //    条件：当前 tab 正在运行 Agent 且还没有 agentId
+      const currentState = agentState.value
+      if (currentState?.isRunning && !currentState.agentId) {
+        // 设置 agentId 关联，这样后续事件就能正确匹配
+        terminalStore.setAgentId(currentTabId.value, agentId)
+        return true
+      }
+      
+      // 3. 不属于当前 tab
+      return false
+    }
+    
     // 监听步骤更新
     cleanupStepListener = window.electronAPI.agent.onStep((data) => {
-      // 优先使用 agentId 查找对应的终端，如果找不到则使用当前终端
-      const tabId = terminalStore.findTabIdByAgentId(data.agentId) || currentTabId.value
-      if (tabId) {
-        terminalStore.addAgentStep(tabId, data.step)
-        // 只设置 agentId 用于关联，不改变 isRunning 状态
-        // 因为 IPC 事件可能在 runAgent 的 finally 块之后到达
-        terminalStore.setAgentId(tabId, data.agentId)
-        
-        // 如果是用户补充消息步骤，从待处理列表中移除
-        if (data.step.type === 'user_supplement') {
-          const idx = pendingSupplements.value.indexOf(data.step.content)
-          if (idx !== -1) {
-            pendingSupplements.value.splice(idx, 1)
-          }
-        }
-        
-        // 只有当事件属于当前 AiPanel 实例时，才调用滚动
-        if (tabId === currentTabId.value) {
-          scrollToBottomIfNeeded()
+      // 只处理属于当前 tab 的事件
+      if (!isEventForThisTab(data.agentId)) return
+      
+      const tabId = currentTabId.value
+      terminalStore.addAgentStep(tabId, data.step)
+      // 确保 agentId 关联已设置（可能在 isEventForThisTab 中已设置）
+      terminalStore.setAgentId(tabId, data.agentId)
+      
+      // 如果是用户补充消息步骤，从待处理列表中移除
+      if (data.step.type === 'user_supplement') {
+        const idx = pendingSupplements.value.indexOf(data.step.content)
+        if (idx !== -1) {
+          pendingSupplements.value.splice(idx, 1)
         }
       }
+      
+      // 使用智能滚动，不打断用户查看历史
+      scrollToBottomIfNeeded()
     })
 
     // 监听需要确认
     cleanupConfirmListener = window.electronAPI.agent.onNeedConfirm((data) => {
-      const tabId = terminalStore.findTabIdByAgentId(data.agentId) || currentTabId.value
-      if (tabId) {
-        terminalStore.setAgentPendingConfirm(tabId, data)
-        // 只有当事件属于当前 AiPanel 实例时，才调用滚动
-        if (tabId === currentTabId.value) {
-          scrollToBottom()
-        }
-      }
+      // 只处理属于当前 tab 的事件
+      if (!isEventForThisTab(data.agentId)) return
+      
+      terminalStore.setAgentPendingConfirm(currentTabId.value, data)
+      // 需要确认时强制滚动，确保用户看到确认框
+      scrollToBottom()
     })
 
     // 监听完成
     cleanupCompleteListener = window.electronAPI.agent.onComplete((data) => {
-      const tabId = terminalStore.findTabIdByAgentId(data.agentId) || currentTabId.value
-      if (tabId) {
-        terminalStore.setAgentRunning(tabId, false)
-        // 清空待处理的补充消息
-        pendingSupplements.value = []
-      }
+      // 只处理属于当前 tab 的事件
+      const foundTabId = terminalStore.findTabIdByAgentId(data.agentId)
+      if (foundTabId !== currentTabId.value) return
+      
+      terminalStore.setAgentRunning(currentTabId.value, false)
+      // 清空待处理的补充消息
+      pendingSupplements.value = []
     })
 
     // 监听错误
     cleanupErrorListener = window.electronAPI.agent.onError((data) => {
-      const tabId = terminalStore.findTabIdByAgentId(data.agentId) || currentTabId.value
-      if (tabId) {
-        terminalStore.setAgentRunning(tabId, false)
-        // 清空待处理的补充消息
-        pendingSupplements.value = []
-        terminalStore.addAgentStep(tabId, {
-          id: `error_${Date.now()}`,
-          type: 'error',
-          content: data.error,
-          timestamp: Date.now()
-        })
-      }
+      // 只处理属于当前 tab 的事件
+      const foundTabId = terminalStore.findTabIdByAgentId(data.agentId)
+      if (foundTabId !== currentTabId.value) return
+      
+      terminalStore.setAgentRunning(currentTabId.value, false)
+      // 清空待处理的补充消息
+      pendingSupplements.value = []
+      terminalStore.addAgentStep(currentTabId.value, {
+        id: `error_${Date.now()}`,
+        type: 'error',
+        content: data.error,
+        timestamp: Date.now()
+      })
     })
   }
 
