@@ -1289,8 +1289,8 @@ input:checked + .slider:before {
 }
 
 .btn-delete:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background: var(--bg-hover);
+  color: var(--accent-error);
 }
 
 .btn-delete:disabled {
@@ -1363,14 +1363,13 @@ input:checked + .slider:before {
 }
 
 .btn-danger {
-  background: rgba(239, 68, 68, 0.15);
-  border-color: rgba(239, 68, 68, 0.3);
-  color: #ef4444;
+  background: var(--bg-tertiary);
+  border-color: var(--accent-error);
+  color: var(--accent-error);
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.25);
-  border-color: rgba(239, 68, 68, 0.5);
+  background: var(--bg-hover);
 }
 
 .btn-danger:disabled {
@@ -1439,8 +1438,8 @@ input:checked + .slider:before {
 }
 
 .doc-item.selected {
-  background: rgba(59, 130, 246, 0.1);
-  border-color: rgba(59, 130, 246, 0.3);
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
 }
 
 /* 密码相关样式 */
@@ -1464,11 +1463,11 @@ input:checked + .slider:before {
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--accent-warning);
   border-radius: 8px;
   font-size: 13px;
-  color: #f59e0b;
+  color: var(--accent-warning);
   margin-top: 12px;
 }
 
@@ -1528,7 +1527,7 @@ input:checked + .slider:before {
 
 .password-error {
   font-size: 13px;
-  color: #ef4444;
+  color: var(--accent-error);
   margin: 0;
 }
 
@@ -1665,8 +1664,8 @@ input:checked + .slider:before {
 }
 
 .btn-delete-small:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background: var(--bg-hover);
+  color: var(--accent-error);
 }
 
 .btn-delete-small:disabled {

@@ -627,8 +627,8 @@ onMounted(() => {
 }
 
 .doc-item.selected:not(.active) {
-  background: rgba(59, 130, 246, 0.1);
-  border-color: rgba(59, 130, 246, 0.3);
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
 }
 
 .doc-icon {
@@ -802,7 +802,7 @@ onMounted(() => {
 }
 
 .btn-danger {
-  background: var(--danger-color, #ef4444);
+  background: var(--accent-error);
   color: white;
 }
 
@@ -960,7 +960,7 @@ onMounted(() => {
 
 .memory-item.active {
   border-color: var(--accent-primary);
-  background: rgba(59, 130, 246, 0.1);
+  background: var(--bg-hover);
 }
 
 .memory-content {
@@ -994,7 +994,7 @@ onMounted(() => {
 }
 
 .btn-delete-small:hover {
-  color: var(--danger-color, #ef4444);
+  color: var(--accent-error);
 }
 </style>
 
