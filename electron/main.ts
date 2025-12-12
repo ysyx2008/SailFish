@@ -1768,7 +1768,18 @@ ipcMain.handle('knowledge:buildContext', async (_event, query: string, options?:
 
 // 获取所有文档
 ipcMain.handle('knowledge:getDocuments', async () => {
-  return getKnowledge().getDocuments()
+  const { decrypt } = await import('./services/knowledge/crypto')
+  const docs = getKnowledge().getDocuments()
+  // 解密主机记忆内容（用于前端显示）
+  return docs.map(doc => {
+    if (doc.fileType === 'host-memory') {
+      return {
+        ...doc,
+        content: decrypt(doc.content)
+      }
+    }
+    return doc
+  })
 })
 
 // 获取指定文档
@@ -1800,6 +1811,63 @@ ipcMain.handle('knowledge:clear', async () => {
       error: error instanceof Error ? error.message : '清空失败' 
     }
   }
+})
+
+// ==================== 知识库密码管理 ====================
+
+// 获取密码状态
+ipcMain.handle('knowledge:getPasswordInfo', async () => {
+  const { getPasswordInfo } = await import('./services/knowledge/crypto')
+  return getPasswordInfo()
+})
+
+// 设置密码
+ipcMain.handle('knowledge:setPassword', async (_event, password: string) => {
+  try {
+    const { setPassword } = await import('./services/knowledge/crypto')
+    setPassword(password)
+    return { success: true }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '设置密码失败' 
+    }
+  }
+})
+
+// 验证密码（解锁知识库）
+ipcMain.handle('knowledge:verifyPassword', async (_event, password: string) => {
+  try {
+    const { verifyPassword } = await import('./services/knowledge/crypto')
+    const valid = verifyPassword(password)
+    return { success: valid, error: valid ? undefined : '密码错误' }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '验证失败' 
+    }
+  }
+})
+
+// 修改密码
+ipcMain.handle('knowledge:changePassword', async (_event, oldPassword: string, newPassword: string) => {
+  try {
+    const { changePassword } = await import('./services/knowledge/crypto')
+    changePassword(oldPassword, newPassword)
+    return { success: true }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '修改密码失败' 
+    }
+  }
+})
+
+// 锁定知识库
+ipcMain.handle('knowledge:lock', async () => {
+  const { lock } = await import('./services/knowledge/crypto')
+  lock()
+  return { success: true }
 })
 
 // 导出知识库数据

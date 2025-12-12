@@ -1537,7 +1537,33 @@ const electronAPI = {
       return () => {
         ipcRenderer.removeListener('knowledge:downloadProgress', handler)
       }
-    }
+    },
+
+    // ==================== 密码管理 ====================
+    
+    // 获取密码状态
+    getPasswordInfo: () =>
+      ipcRenderer.invoke('knowledge:getPasswordInfo') as Promise<{
+        hasPassword: boolean
+        isUnlocked: boolean
+        createdAt?: number
+      }>,
+
+    // 设置密码
+    setPassword: (password: string) =>
+      ipcRenderer.invoke('knowledge:setPassword', password) as Promise<{ success: boolean; error?: string }>,
+
+    // 验证密码（解锁）
+    verifyPassword: (password: string) =>
+      ipcRenderer.invoke('knowledge:verifyPassword', password) as Promise<{ success: boolean; error?: string }>,
+
+    // 修改密码
+    changePassword: (oldPassword: string, newPassword: string) =>
+      ipcRenderer.invoke('knowledge:changePassword', oldPassword, newPassword) as Promise<{ success: boolean; error?: string }>,
+
+    // 锁定知识库
+    lock: () =>
+      ipcRenderer.invoke('knowledge:lock') as Promise<{ success: boolean }>
   },
 
   // 终端屏幕内容服务（供主进程请求渲染进程数据）

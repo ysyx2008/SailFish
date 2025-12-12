@@ -60,6 +60,19 @@ const selectedDocIds = ref<Set<string>>(new Set())
 const batchDeleting = ref(false)
 const clearing = ref(false)
 
+// 密码相关状态
+const passwordInfo = ref<{ hasPassword: boolean; isUnlocked: boolean; createdAt?: number }>({
+  hasPassword: false,
+  isUnlocked: false
+})
+const showPasswordDialog = ref(false)
+const passwordDialogMode = ref<'set' | 'verify' | 'change'>('set')
+const passwordInput = ref('')
+const newPasswordInput = ref('')
+const confirmPasswordInput = ref('')
+const passwordError = ref('')
+const passwordLoading = ref(false)
+
 // 分页计算
 const totalPages = computed(() => Math.ceil(documents.value.length / pageSize))
 const paginatedDocs = computed(() => {
@@ -308,8 +321,119 @@ const importKnowledge = async () => {
   }
 }
 
+// 加载密码状态
+const loadPasswordInfo = async () => {
+  try {
+    passwordInfo.value = await api.knowledge.getPasswordInfo()
+  } catch (error) {
+    console.error('加载密码状态失败:', error)
+  }
+}
+
+// 打开密码对话框
+const openPasswordDialog = (mode: 'set' | 'verify' | 'change') => {
+  passwordDialogMode.value = mode
+  passwordInput.value = ''
+  newPasswordInput.value = ''
+  confirmPasswordInput.value = ''
+  passwordError.value = ''
+  showPasswordDialog.value = true
+}
+
+// 处理密码提交
+const handlePasswordSubmit = async () => {
+  passwordError.value = ''
+  
+  if (passwordDialogMode.value === 'set') {
+    // 设置新密码
+    if (passwordInput.value.length < 4) {
+      passwordError.value = '密码长度至少为 4 位'
+      return
+    }
+    if (passwordInput.value !== confirmPasswordInput.value) {
+      passwordError.value = '两次输入的密码不一致'
+      return
+    }
+    
+    try {
+      passwordLoading.value = true
+      const result = await api.knowledge.setPassword(passwordInput.value)
+      if (result.success) {
+        showPasswordDialog.value = false
+        await loadPasswordInfo()
+      } else {
+        passwordError.value = result.error || '设置密码失败'
+      }
+    } catch (error) {
+      passwordError.value = '设置密码失败'
+    } finally {
+      passwordLoading.value = false
+    }
+  } else if (passwordDialogMode.value === 'verify') {
+    // 验证密码（解锁）
+    if (!passwordInput.value) {
+      passwordError.value = '请输入密码'
+      return
+    }
+    
+    try {
+      passwordLoading.value = true
+      const result = await api.knowledge.verifyPassword(passwordInput.value)
+      if (result.success) {
+        showPasswordDialog.value = false
+        await loadPasswordInfo()
+        // 解锁后加载文档
+        await loadDocuments()
+      } else {
+        passwordError.value = result.error || '密码错误'
+      }
+    } catch (error) {
+      passwordError.value = '验证失败'
+    } finally {
+      passwordLoading.value = false
+    }
+  } else if (passwordDialogMode.value === 'change') {
+    // 修改密码
+    if (!passwordInput.value) {
+      passwordError.value = '请输入当前密码'
+      return
+    }
+    if (newPasswordInput.value.length < 4) {
+      passwordError.value = '新密码长度至少为 4 位'
+      return
+    }
+    if (newPasswordInput.value !== confirmPasswordInput.value) {
+      passwordError.value = '两次输入的新密码不一致'
+      return
+    }
+    
+    try {
+      passwordLoading.value = true
+      const result = await api.knowledge.changePassword(passwordInput.value, newPasswordInput.value)
+      if (result.success) {
+        showPasswordDialog.value = false
+        await loadPasswordInfo()
+        alert('密码修改成功')
+      } else {
+        passwordError.value = result.error || '修改密码失败'
+      }
+    } catch (error) {
+      passwordError.value = '修改密码失败'
+    } finally {
+      passwordLoading.value = false
+    }
+  }
+}
+
+// 锁定知识库
+const lockKnowledge = async () => {
+  await api.knowledge.lock()
+  await loadPasswordInfo()
+}
+
 onMounted(() => {
   loadSettings()
+  loadPasswordInfo()
 })
 </script>
 
@@ -339,6 +463,47 @@ onMounted(() => {
       </div>
 
       <template v-if="settings.enabled">
+        <!-- 安全设置 -->
+        <div class="setting-group">
+          <h4 class="group-title">🔐 安全设置</h4>
+          
+          <div class="setting-row">
+            <div class="setting-info">
+              <label class="setting-label">知识库密码</label>
+              <p class="setting-desc">
+                {{ passwordInfo.hasPassword 
+                  ? (passwordInfo.isUnlocked ? '已解锁，主机记忆已加密存储' : '已锁定，需要密码才能访问')
+                  : '未设置密码，主机记忆将不加密存储' }}
+              </p>
+            </div>
+            <div class="password-actions">
+              <template v-if="!passwordInfo.hasPassword">
+                <button class="btn btn-sm" @click="openPasswordDialog('set')">
+                  🔑 设置密码
+                </button>
+              </template>
+              <template v-else-if="!passwordInfo.isUnlocked">
+                <button class="btn btn-sm btn-primary" @click="openPasswordDialog('verify')">
+                  🔓 解锁
+                </button>
+              </template>
+              <template v-else>
+                <button class="btn btn-sm" @click="openPasswordDialog('change')">
+                  ✏️ 修改密码
+                </button>
+                <button class="btn btn-sm" @click="lockKnowledge">
+                  🔒 锁定
+                </button>
+              </template>
+            </div>
+          </div>
+          
+          <div v-if="passwordInfo.hasPassword && !passwordInfo.isUnlocked" class="warning-box">
+            <span class="warning-icon">⚠️</span>
+            <span>知识库已锁定，主机记忆功能暂不可用。请先解锁。</span>
+          </div>
+        </div>
+
         <!-- 向量嵌入说明 -->
         <div class="setting-group">
           <h4 class="group-title">{{ t('knowledgeSettings.vectorEmbedding') }}</h4>
@@ -481,6 +646,75 @@ onMounted(() => {
       </template>
     </template>
     
+    <!-- 密码对话框 -->
+    <Teleport to="body">
+      <div v-if="showPasswordDialog" class="doc-modal-overlay" @click.self="showPasswordDialog = false">
+        <div class="password-modal">
+          <div class="doc-modal-header">
+            <h3>
+              {{ passwordDialogMode === 'set' ? '🔑 设置知识库密码' : 
+                 passwordDialogMode === 'verify' ? '🔓 解锁知识库' : '✏️ 修改密码' }}
+            </h3>
+            <button class="close-btn" @click="showPasswordDialog = false">✕</button>
+          </div>
+          
+          <div class="password-modal-content">
+            <p v-if="passwordDialogMode === 'set'" class="password-hint">
+              设置密码后，主机记忆将被加密存储。导出的知识库可以在其他设备上使用相同密码解密。
+            </p>
+            
+            <div class="password-field">
+              <label>{{ passwordDialogMode === 'change' ? '当前密码' : '密码' }}</label>
+              <input 
+                type="password" 
+                v-model="passwordInput" 
+                :placeholder="passwordDialogMode === 'verify' ? '请输入密码' : '请输入密码（至少 4 位）'"
+                @keyup.enter="handlePasswordSubmit"
+              />
+            </div>
+            
+            <template v-if="passwordDialogMode === 'change'">
+              <div class="password-field">
+                <label>新密码</label>
+                <input 
+                  type="password" 
+                  v-model="newPasswordInput" 
+                  placeholder="请输入新密码（至少 4 位）"
+                />
+              </div>
+            </template>
+            
+            <template v-if="passwordDialogMode === 'set' || passwordDialogMode === 'change'">
+              <div class="password-field">
+                <label>确认{{ passwordDialogMode === 'change' ? '新' : '' }}密码</label>
+                <input 
+                  type="password" 
+                  v-model="confirmPasswordInput" 
+                  placeholder="请再次输入密码"
+                  @keyup.enter="handlePasswordSubmit"
+                />
+              </div>
+            </template>
+            
+            <p v-if="passwordError" class="password-error">{{ passwordError }}</p>
+          </div>
+          
+          <div class="password-modal-footer">
+            <button class="btn btn-sm" @click="showPasswordDialog = false">取消</button>
+            <button 
+              class="btn btn-sm btn-primary" 
+              @click="handlePasswordSubmit"
+              :disabled="passwordLoading"
+            >
+              {{ passwordLoading ? '处理中...' : 
+                 passwordDialogMode === 'set' ? '设置密码' : 
+                 passwordDialogMode === 'verify' ? '解锁' : '修改密码' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- 文档管理弹窗 -->
     <Teleport to="body">
       <div v-if="showDocManager" class="doc-modal-overlay" @click.self="showDocManager = false">
@@ -1058,5 +1292,102 @@ input:checked + .slider:before {
 .doc-item.selected {
   background: rgba(59, 130, 246, 0.1);
   border-color: rgba(59, 130, 246, 0.3);
+}
+
+/* 密码相关样式 */
+.password-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-primary {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.warning-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+  font-size: 13px;
+  color: #f59e0b;
+  margin-top: 12px;
+}
+
+.warning-icon {
+  font-size: 16px;
+}
+
+.password-modal {
+  width: 90%;
+  max-width: 400px;
+  background: var(--bg-primary);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-color);
+}
+
+.password-modal-content {
+  padding: 20px;
+}
+
+.password-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.password-field {
+  margin-bottom: 16px;
+}
+
+.password-field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.password-field input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.password-field input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.password-error {
+  font-size: 13px;
+  color: #ef4444;
+  margin: 0;
+}
+
+.password-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-color);
 }
 </style>

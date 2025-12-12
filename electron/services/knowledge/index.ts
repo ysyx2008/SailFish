@@ -29,6 +29,7 @@ import { getChunker, Chunker } from './chunker'
 import { McpKnowledgeAdapter } from './mcp-adapter'
 import { createReranker, Reranker } from './reranker'
 import { getBM25Index, BM25Index } from './bm25'
+import { encrypt, decrypt, isEncrypted } from './crypto'
 
 import type { AiService } from '../ai.service'
 import type { McpService } from '../mcp.service'
@@ -848,15 +849,18 @@ export class KnowledgeService extends EventEmitter {
 
       const docId = uuidv4()
       const now = Date.now()
+      
+      // 加密记忆内容
+      const encryptedMemory = encrypt(memory)
 
-      // 创建记忆文档
+      // 创建记忆文档（存储加密内容）
       const document: KnowledgeDocument = {
         id: docId,
         filename: `memory_${hostId}_${now}`,
-        content: memory,
+        content: encryptedMemory,  // 存储加密后的内容
         fileSize: Buffer.from(memory).length,
         fileType: 'host-memory',  // 特殊类型标记
-        contentHash: this.computeContentHash(memory),
+        contentHash: this.computeContentHash(memory),  // 使用原文计算哈希（用于去重）
         hostId: hostId,
         tags: ['host-memory', hostId],
         createdAt: now,
@@ -864,14 +868,14 @@ export class KnowledgeService extends EventEmitter {
         chunkCount: 1  // 记忆通常很短，只有一个 chunk
       }
 
-      // 生成 embedding（记忆通常很短，不需要分块）
+      // 生成 embedding（使用原文生成，确保语义搜索正常工作）
       const embedding = await this.embeddingService.embedSingle(memory)
 
-      // 创建向量记录
+      // 创建向量记录（存储加密内容）
       const record: VectorRecord = {
         id: uuidv4(),
         docId,
-        content: memory,
+        content: encryptedMemory,  // 存储加密后的内容
         vector: embedding,
         filename: document.filename,
         hostId: hostId,
@@ -927,20 +931,24 @@ export class KnowledgeService extends EventEmitter {
           .sort((a, b) => b.createdAt - a.createdAt)
           .slice(0, limit)
 
-        return hostDocs.map(doc => ({
-          id: doc.id,
-          docId: doc.id,
-          content: doc.content,
-          score: 1.0,
-          metadata: {
-            filename: doc.filename,
-            hostId: doc.hostId,
-            tags: doc.tags,
-            startOffset: 0,
-            endOffset: doc.content.length
-          },
-          source: 'local' as const
-        }))
+        return hostDocs.map(doc => {
+          // 解密内容
+          const decryptedContent = decrypt(doc.content)
+          return {
+            id: doc.id,
+            docId: doc.id,
+            content: decryptedContent,
+            score: 1.0,
+            metadata: {
+              filename: doc.filename,
+              hostId: doc.hostId,
+              tags: doc.tags,
+              startOffset: 0,
+              endOffset: decryptedContent.length
+            },
+            source: 'local' as const
+          }
+        })
       }
 
       // 使用语义搜索
@@ -957,7 +965,11 @@ export class KnowledgeService extends EventEmitter {
         }
       )
 
-      return results
+      // 解密搜索结果中的内容
+      return results.map(result => ({
+        ...result,
+        content: decrypt(result.content)
+      }))
     } catch (error) {
       console.error('[KnowledgeService] 搜索主机记忆失败:', error)
       return []
