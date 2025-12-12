@@ -710,7 +710,7 @@ export class KnowledgeService extends EventEmitter {
   /**
    * 导出知识库数据
    */
-  async exportData(exportPath: string): Promise<{ success: boolean; error?: string }> {
+  async exportData(exportPath: string): Promise<{ success: boolean; error?: string; hasPassword?: boolean }> {
     try {
       const fs = await import('fs')
       const pathModule = await import('path')
@@ -737,19 +737,71 @@ export class KnowledgeService extends EventEmitter {
         this.copyDirectory(lancedbSrc, lancedbDst)
       }
       
-      return { success: true }
+      // 4. 导出密码验证文件（如果存在）
+      const passwordSrc = pathModule.join(app.getPath('userData'), 'knowledge', '.password')
+      const passwordDst = pathModule.join(exportPath, '.password')
+      let hasPassword = false
+      if (fs.existsSync(passwordSrc)) {
+        fs.copyFileSync(passwordSrc, passwordDst)
+        hasPassword = true
+      }
+      
+      return { success: true, hasPassword }
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : '导出失败' }
     }
   }
 
   /**
-   * 导入知识库数据
+   * 检查导入数据是否包含加密内容
    */
-  async importData(importPath: string): Promise<{ success: boolean; error?: string; imported?: number }> {
+  async checkImportData(importPath: string): Promise<{ hasPassword: boolean; hasEncryptedData: boolean }> {
     try {
       const fs = await import('fs')
       const pathModule = await import('path')
+      
+      // 检查是否有密码文件
+      const passwordPath = pathModule.join(importPath, '.password')
+      const hasPassword = fs.existsSync(passwordPath)
+      
+      // 检查文档中是否有加密数据
+      let hasEncryptedData = false
+      const metaPath = pathModule.join(importPath, 'knowledge-documents.json')
+      if (fs.existsSync(metaPath)) {
+        const documents = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
+        for (const doc of documents) {
+          if (doc.content?.startsWith('ENC:v1:')) {
+            hasEncryptedData = true
+            break
+          }
+        }
+      }
+      
+      return { hasPassword, hasEncryptedData }
+    } catch (error) {
+      return { hasPassword: false, hasEncryptedData: false }
+    }
+  }
+
+  /**
+   * 导入知识库数据
+   */
+  async importData(importPath: string): Promise<{ success: boolean; error?: string; imported?: number; needsPassword?: boolean }> {
+    try {
+      const fs = await import('fs')
+      const pathModule = await import('path')
+      
+      // 0. 检查并导入密码文件
+      const passwordSrc = pathModule.join(importPath, '.password')
+      const passwordDst = pathModule.join(app.getPath('userData'), 'knowledge', '.password')
+      if (fs.existsSync(passwordSrc)) {
+        // 确保目录存在
+        const passwordDir = pathModule.dirname(passwordDst)
+        if (!fs.existsSync(passwordDir)) {
+          fs.mkdirSync(passwordDir, { recursive: true })
+        }
+        fs.copyFileSync(passwordSrc, passwordDst)
+      }
       
       // 1. 导入设置
       const settingsPath = pathModule.join(importPath, 'knowledge-settings.json')
@@ -785,7 +837,11 @@ export class KnowledgeService extends EventEmitter {
       // 重新初始化存储
       await this.vectorStorage.initialize()
       
-      return { success: true, imported: importedCount }
+      // 检查是否需要密码解锁
+      const { hasPassword } = require('./crypto')
+      const needsPassword = hasPassword()
+      
+      return { success: true, imported: importedCount, needsPassword }
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : '导入失败' }
     }

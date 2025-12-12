@@ -282,7 +282,11 @@ const exportKnowledge = async () => {
     const result = await window.electronAPI.knowledge.exportData()
     if (result.canceled) return
     if (result.success) {
-      alert(t('knowledgeManager.exportSuccess', { path: result.path }))
+      let msg = t('knowledgeManager.exportSuccess', { path: result.path })
+      if (result.hasPassword) {
+        msg += '\n\n⚠️ 导出的数据包含加密内容，在其他设备导入时需要使用相同的密码解锁。'
+      }
+      alert(msg)
     } else {
       alert(t('knowledgeManager.exportFailed') + ': ' + (result.error || '未知错误'))
     }
@@ -296,7 +300,7 @@ const exportKnowledge = async () => {
 
 // 导入知识库
 const importKnowledge = async () => {
-  if (!confirm(t('knowledgeManager.confirmImport'))) {
+  if (!confirm(t('knowledgeManager.confirmImport') + '\n\n💡 如果导入的知识库设置了密码，您需要使用原来的密码才能访问加密数据。')) {
     return
   }
   
@@ -305,7 +309,11 @@ const importKnowledge = async () => {
     const result = await window.electronAPI.knowledge.importData()
     if (result.canceled) return
     if (result.success) {
-      alert(t('knowledgeManager.importSuccess', { count: result.imported || 0 }))
+      let msg = t('knowledgeManager.importSuccess', { count: result.imported || 0 })
+      if (result.needsPassword) {
+        msg += '\n\n🔐 导入的知识库包含加密数据，请前往设置页面使用原密码解锁。'
+      }
+      alert(msg)
       await loadData()
     } else {
       alert(t('knowledgeManager.importFailed') + ': ' + (result.error || '未知错误'))

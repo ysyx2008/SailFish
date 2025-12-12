@@ -503,8 +503,11 @@ onMounted(() => {
           <div class="password-modal-content">
             <p v-if="passwordDialogMode === 'set'" class="password-hint">
               {{ pendingEnable 
-                ? '知识库可存储文档和主机记忆等敏感信息，请设置密码以加密保护这些数据。' 
-                : '设置密码后，主机记忆将被加密存储。导出的知识库可以在其他设备上使用相同密码解密。' }}
+                ? '知识库可存储文档和主机记忆等敏感信息，请设置密码以加密保护这些数据。导出的知识库在其他设备导入后，需要使用相同密码解锁。' 
+                : '设置密码后，数据将被加密存储。导出的知识库可以在其他设备上使用相同密码解密。' }}
+            </p>
+            <p v-if="passwordDialogMode === 'verify'" class="password-hint">
+              请输入知识库密码以解锁加密数据。如果是从其他设备导入的知识库，请使用原来设置的密码。
             </p>
             
             <div class="password-field">
