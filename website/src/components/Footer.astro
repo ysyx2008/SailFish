@@ -1,0 +1,228 @@
+---
+// 页脚组件 - 包含双授权协议说明
+const currentYear = new Date().getFullYear();
+---
+
+<footer class="footer">
+  <div class="container">
+    <!-- 授权协议说明 -->
+    <div class="license-section fade-in">
+      <h3 class="license-title">开源授权</h3>
+      <div class="license-grid">
+        <div class="license-card">
+          <div class="license-badge open-source">开源许可</div>
+          <h4>AGPL v3.0</h4>
+          <p>以下场景免费使用：</p>
+          <ul>
+            <li>个人学习、研究、日常使用</li>
+            <li>企业内部使用（≤10 套）</li>
+            <li>非盈利组织 / 教育机构</li>
+          </ul>
+          <p class="license-note">需遵守 AGPL v3.0 全部条款，修改需开源</p>
+        </div>
+        <div class="license-card">
+          <div class="license-badge commercial">商业授权</div>
+          <h4>企业许可</h4>
+          <p>以下场景需要商业授权：</p>
+          <ul>
+            <li>企业内部使用超过 10 套</li>
+            <li>作为产品/服务的一部分提供</li>
+            <li>不希望开源修改的代码</li>
+          </ul>
+          <a href="mailto:contact@qiyu-terminal.com" class="license-contact">联系获取商业授权 →</a>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 底部信息 -->
+    <div class="footer-bottom">
+      <div class="footer-brand">
+        <img src="/logo.png" alt="旗鱼终端" class="footer-logo" />
+        <span>旗鱼终端</span>
+      </div>
+      
+      <div class="footer-links">
+        <a href="https://github.com/nicerui/qiyu-terminal" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+          </svg>
+          GitHub
+        </a>
+        <a href="https://github.com/nicerui/qiyu-terminal/issues" target="_blank" rel="noopener">问题反馈</a>
+        <a href="https://github.com/nicerui/qiyu-terminal/blob/main/LICENSE" target="_blank" rel="noopener">许可证</a>
+      </div>
+      
+      <p class="copyright">
+        © {currentYear} 旗鱼终端. 保留所有权利.
+      </p>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    background: var(--color-bg-secondary);
+    padding: 80px 0 40px;
+    border-top: 1px solid var(--color-border);
+  }
+  
+  .license-section {
+    margin-bottom: 60px;
+  }
+  
+  .license-title {
+    font-size: 24px;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 32px;
+    color: var(--color-text-primary);
+  }
+  
+  .license-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  
+  .license-card {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 28px;
+  }
+  
+  .license-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 100px;
+    margin-bottom: 16px;
+  }
+  
+  .license-badge.open-source {
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+  }
+  
+  .license-badge.commercial {
+    background: rgba(139, 92, 246, 0.1);
+    color: #8b5cf6;
+    border: 1px solid rgba(139, 92, 246, 0.2);
+  }
+  
+  .license-card h4 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 12px;
+  }
+  
+  .license-card p {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    margin-bottom: 12px;
+  }
+  
+  .license-card ul {
+    list-style: none;
+    margin-bottom: 16px;
+  }
+  
+  .license-card li {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    padding: 6px 0;
+    padding-left: 20px;
+    position: relative;
+  }
+  
+  .license-card li::before {
+    content: '✓';
+    position: absolute;
+    left: 0;
+    color: var(--color-accent-primary);
+  }
+  
+  .license-note {
+    font-size: 12px !important;
+    color: var(--color-text-muted) !important;
+    padding-top: 12px;
+    border-top: 1px solid var(--color-border);
+  }
+  
+  .license-contact {
+    display: inline-block;
+    font-size: 14px;
+    color: var(--color-accent-primary);
+    font-weight: 500;
+    margin-top: 8px;
+  }
+  
+  .license-contact:hover {
+    color: var(--color-accent-secondary);
+  }
+  
+  .footer-bottom {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    padding-top: 40px;
+    border-top: 1px solid var(--color-border);
+  }
+  
+  .footer-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+  
+  .footer-logo {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+  }
+  
+  .footer-links {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .footer-links a {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    color: var(--color-text-secondary);
+  }
+  
+  .footer-links a:hover {
+    color: var(--color-text-primary);
+  }
+  
+  .copyright {
+    font-size: 13px;
+    color: var(--color-text-muted);
+  }
+  
+  @media (max-width: 768px) {
+    .license-grid {
+      grid-template-columns: 1fr;
+    }
+    
+    .footer-links {
+      gap: 16px;
+    }
+  }
+</style>
+

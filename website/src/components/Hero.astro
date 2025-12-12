@@ -1,0 +1,374 @@
+---
+// Hero 首屏组件
+const version = "v7.1.0";
+---
+
+<section class="hero">
+  <!-- 背景效果 -->
+  <div class="grid-bg"></div>
+  <div class="glow-effect glow-1"></div>
+  <div class="glow-effect glow-2"></div>
+  
+  <div class="container hero-content">
+    <!-- 版本标签 -->
+    <div class="version-badge fade-in">
+      <span class="version-dot"></span>
+      最新版本 {version}
+    </div>
+    
+    <!-- 主标题 -->
+    <h1 class="hero-title fade-in fade-in-delay-1">
+      <span class="highlight">AI 驱动</span>的跨平台终端
+    </h1>
+    
+    <!-- 副标题 -->
+    <p class="hero-subtitle fade-in fade-in-delay-2">
+      助力运维提效，让命令行操作更加高效、智能。<br />
+      遇到问题？让 AI 帮你分析。不知道命令？用自然语言描述即可。
+    </p>
+    
+    <!-- 下载按钮组 -->
+    <div class="hero-actions fade-in fade-in-delay-3">
+      <a href="#download" class="btn btn-primary btn-lg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+        </svg>
+        免费下载
+      </a>
+      <a href="https://github.com/nicerui/qiyu-terminal" target="_blank" rel="noopener" class="btn btn-secondary btn-lg">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+          <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+        </svg>
+        查看源码
+      </a>
+    </div>
+    
+    <!-- 平台支持标签 -->
+    <div class="platforms fade-in fade-in-delay-4">
+      <span class="platform-item">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+          <path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.1 22C7.79 22.05 6.8 20.68 5.96 19.47C4.25 17 2.94 12.45 4.7 9.39C5.57 7.87 7.13 6.91 8.82 6.88C10.1 6.86 11.32 7.75 12.11 7.75C12.89 7.75 14.37 6.68 15.92 6.84C16.57 6.87 18.39 7.1 19.56 8.82C19.47 8.88 17.39 10.1 17.41 12.63C17.44 15.65 20.06 16.66 20.09 16.67C20.06 16.74 19.67 18.11 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z"/>
+        </svg>
+        macOS
+      </span>
+      <span class="platform-item">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+          <path d="M3 5.5A2.5 2.5 0 0 1 5.5 3h13A2.5 2.5 0 0 1 21 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 18.5v-13zm2.5-.5a.5.5 0 0 0-.5.5v13a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5v-13a.5.5 0 0 0-.5-.5h-13zm4.586 4.086a2 2 0 1 1 2.828 2.828 2 2 0 0 1-2.828-2.828z"/>
+        </svg>
+        Windows
+      </span>
+      <span class="platform-item">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+          <path d="M12.504 0c-.155 0-.311.002-.465.007a9.934 9.934 0 0 0-.873.053 9.933 9.933 0 0 0-.855.113 10.004 10.004 0 0 0-.826.178c-.278.07-.55.151-.818.24a10.046 10.046 0 0 0-.782.303 9.998 9.998 0 0 0-.744.367c-.242.13-.479.268-.71.413-.23.146-.453.3-.67.46-.217.161-.426.33-.627.506a10.04 10.04 0 0 0-.577.56c-.183.189-.358.383-.526.583-.168.2-.328.406-.48.617a9.99 9.99 0 0 0-.424.655c-.131.225-.254.454-.369.688-.115.234-.222.472-.32.714-.098.242-.187.488-.267.737-.08.249-.151.502-.213.758a10.065 10.065 0 0 0-.153.795c-.036.272-.063.547-.082.824-.019.277-.03.555-.03.834 0 .279.011.557.03.834.019.277.046.552.082.824.036.272.082.544.136.813.055.27.12.537.194.801.073.265.156.526.248.784.092.258.194.512.304.762.11.25.229.496.357.738.128.242.265.48.41.713.145.233.299.461.461.684.162.223.332.441.51.653.178.212.363.419.556.62.193.2.393.395.6.584.207.189.42.372.641.549.22.177.447.348.68.512.233.164.472.322.716.473.244.15.494.294.749.431.255.137.515.267.78.39.265.123.534.24.808.348.274.108.552.21.834.304.282.093.568.18.857.258.289.078.582.148.877.21.296.062.594.116.895.162.3.046.603.084.907.113.304.029.61.051.917.064.308.012.616.018.925.018.309 0 .617-.006.925-.018.307-.013.613-.035.917-.064.304-.029.606-.067.907-.113.3-.046.599-.1.895-.162.295-.062.588-.132.877-.21.29-.078.575-.165.857-.258.282-.094.56-.196.834-.304.274-.108.543-.225.808-.348.265-.123.525-.253.78-.39.255-.137.505-.28.749-.431.244-.151.483-.309.716-.473.233-.164.46-.335.68-.512.221-.177.434-.36.641-.549.207-.189.407-.383.6-.584.193-.201.378-.408.556-.62.178-.212.348-.43.51-.653.162-.223.316-.451.461-.684.145-.233.282-.471.41-.713.128-.242.247-.488.357-.738.11-.25.212-.504.304-.762.092-.258.175-.519.248-.784.074-.264.139-.531.194-.801.054-.269.1-.541.136-.813.036-.272.063-.547.082-.824.019-.277.03-.555.03-.834 0-.279-.011-.557-.03-.834a10.065 10.065 0 0 0-.082-.824 10.065 10.065 0 0 0-.153-.795 9.993 9.993 0 0 0-.213-.758c-.08-.249-.169-.495-.267-.737a9.99 9.99 0 0 0-.32-.714 9.99 9.99 0 0 0-.369-.688 9.99 9.99 0 0 0-.424-.655c-.152-.211-.312-.417-.48-.617-.168-.2-.343-.394-.526-.583a10.04 10.04 0 0 0-.577-.56c-.201-.176-.41-.345-.627-.506a10.01 10.01 0 0 0-.67-.46c-.231-.145-.468-.283-.71-.413a9.998 9.998 0 0 0-.744-.367c-.256-.116-.517-.222-.782-.303a10.046 10.046 0 0 0-.818-.24 10.004 10.004 0 0 0-.826-.178c-.28-.047-.566-.085-.855-.113a9.934 9.934 0 0 0-.873-.053A10.254 10.254 0 0 0 12.504 0zM6.75 8.727c.088-.017.168.037.193.121.14.462.274.945.418 1.408.155.5.349 1.01.518 1.507.06.177.121.354.179.532l.009.026c.028.082.057.165.086.247l.149-.017a7.667 7.667 0 0 1 1.136-.041c.33.016.657.069.98.133l.003.001c.38.075.755.172 1.122.29.353.115.715.242 1.038.418.253.137.48.305.681.502.244.238.453.511.617.81.165.3.287.625.356.963.117.572.097 1.17-.052 1.73a3.504 3.504 0 0 1-.63 1.23c-.293.375-.66.69-1.072.927-.48.276-1.012.45-1.558.523a5.56 5.56 0 0 1-1.169.032 5.02 5.02 0 0 1-1.068-.2 4.228 4.228 0 0 1-.987-.427 3.683 3.683 0 0 1-.806-.628 3.43 3.43 0 0 1-.572-.79 3.385 3.385 0 0 1-.327-.945 3.93 3.93 0 0 1-.063-.978c.02-.333.083-.662.188-.98a3.35 3.35 0 0 1 .431-.858c.192-.27.424-.509.687-.708.285-.215.602-.383.94-.501a5.138 5.138 0 0 1 1.115-.252c.205-.023.411-.032.617-.03l.114.002c.022 0 .044 0 .066.002l.044.001.028-.08c-.069-.202-.138-.404-.208-.607-.152-.442-.311-.883-.46-1.326a37.62 37.62 0 0 0-.454-1.29c-.03-.084.012-.162.097-.184a.125.125 0 0 1 .046-.006zm6.48.005c.088-.017.168.037.193.121.14.462.274.945.417 1.408.156.5.35 1.01.519 1.507.06.177.121.354.179.532.003.009.006.017.01.026.027.082.056.165.085.247l.149-.017a7.667 7.667 0 0 1 1.136-.041c.33.016.657.069.98.133l.004.001c.379.075.755.172 1.121.29.354.115.716.242 1.039.418.252.137.48.305.68.502.245.238.454.511.618.81.165.3.287.625.355.963.118.572.098 1.17-.051 1.73a3.504 3.504 0 0 1-.63 1.23c-.294.375-.661.69-1.072.927-.481.276-1.013.45-1.559.523a5.56 5.56 0 0 1-1.168.032 5.02 5.02 0 0 1-1.069-.2 4.228 4.228 0 0 1-.987-.427 3.683 3.683 0 0 1-.805-.628 3.43 3.43 0 0 1-.572-.79 3.385 3.385 0 0 1-.328-.945 3.93 3.93 0 0 1-.062-.978c.02-.333.082-.662.187-.98a3.35 3.35 0 0 1 .431-.858c.193-.27.425-.509.688-.708.285-.215.601-.383.94-.501a5.138 5.138 0 0 1 1.114-.252 5.56 5.56 0 0 1 .618-.03l.114.002c.022 0 .044 0 .065.002l.045.001.028-.08a77.65 77.65 0 0 1-.208-.607c-.152-.442-.312-.883-.46-1.326a37.62 37.62 0 0 0-.454-1.29c-.03-.084.012-.162.097-.184a.125.125 0 0 1 .046-.006z"/>
+        </svg>
+        Linux
+      </span>
+    </div>
+    
+    <!-- 产品截图 -->
+    <div class="hero-screenshot fade-in fade-in-delay-5">
+      <div class="screenshot-frame">
+        <div class="screenshot-header">
+          <span class="dot red"></span>
+          <span class="dot yellow"></span>
+          <span class="dot green"></span>
+        </div>
+        <div class="screenshot-content">
+          <div class="terminal-demo">
+            <div class="terminal-sidebar">
+              <div class="sidebar-item active">🖥️ 生产服务器</div>
+              <div class="sidebar-item">📦 测试环境</div>
+              <div class="sidebar-item">🔧 开发机</div>
+            </div>
+            <div class="terminal-main">
+              <div class="terminal-line"><span class="prompt">$</span> <span class="cmd">df -h</span></div>
+              <div class="terminal-output">Filesystem      Size  Used Avail Use% Mounted on</div>
+              <div class="terminal-output">/dev/sda1       100G   45G   55G  45% /</div>
+              <div class="terminal-line"><span class="prompt">$</span> <span class="cursor">▌</span></div>
+            </div>
+            <div class="ai-panel">
+              <div class="ai-header">
+                <span class="ai-icon">✨</span>
+                <span>AI 助手</span>
+              </div>
+              <div class="ai-message">
+                <div class="ai-bubble">磁盘使用率 45%，状态良好。建议定期清理日志文件以释放空间。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="screenshot-glow"></div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero {
+    position: relative;
+    min-height: 100vh;
+    padding: 140px 0 80px;
+    overflow: hidden;
+    background: var(--gradient-hero);
+  }
+  
+  .glow-1 {
+    top: -200px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  
+  .glow-2 {
+    bottom: -200px;
+    right: -100px;
+    background: radial-gradient(ellipse at center, rgba(139, 92, 246, 0.1) 0%, transparent 70%);
+  }
+  
+  .hero-content {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+  }
+  
+  .version-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: 100px;
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    margin-bottom: 32px;
+  }
+  
+  .version-dot {
+    width: 8px;
+    height: 8px;
+    background: #10b981;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+  
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  
+  .hero-title {
+    font-size: clamp(40px, 8vw, 72px);
+    font-weight: 800;
+    line-height: 1.1;
+    margin-bottom: 24px;
+    letter-spacing: -0.02em;
+  }
+  
+  .highlight {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  .hero-subtitle {
+    font-size: 20px;
+    color: var(--color-text-secondary);
+    max-width: 600px;
+    margin: 0 auto 40px;
+    line-height: 1.7;
+  }
+  
+  .hero-actions {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 32px;
+    flex-wrap: wrap;
+  }
+  
+  .btn-lg {
+    padding: 16px 32px;
+    font-size: 16px;
+  }
+  
+  .platforms {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-bottom: 60px;
+    flex-wrap: wrap;
+  }
+  
+  .platform-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    color: var(--color-text-muted);
+  }
+  
+  .hero-screenshot {
+    position: relative;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  
+  .screenshot-frame {
+    position: relative;
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+  }
+  
+  .screenshot-header {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--color-bg-tertiary);
+    border-bottom: 1px solid var(--color-border);
+  }
+  
+  .dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+  }
+  
+  .dot.red { background: #ef4444; }
+  .dot.yellow { background: #f59e0b; }
+  .dot.green { background: #10b981; }
+  
+  .screenshot-content {
+    padding: 0;
+  }
+  
+  .terminal-demo {
+    display: grid;
+    grid-template-columns: 180px 1fr 280px;
+    min-height: 320px;
+  }
+  
+  .terminal-sidebar {
+    background: var(--color-bg-tertiary);
+    border-right: 1px solid var(--color-border);
+    padding: 12px;
+  }
+  
+  .sidebar-item {
+    padding: 10px 12px;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    margin-bottom: 4px;
+  }
+  
+  .sidebar-item.active {
+    background: var(--color-bg-card);
+    color: var(--color-text-primary);
+  }
+  
+  .terminal-main {
+    padding: 16px 20px;
+    font-family: var(--font-mono);
+    font-size: 14px;
+  }
+  
+  .terminal-line {
+    margin-bottom: 8px;
+  }
+  
+  .prompt {
+    color: var(--color-accent-primary);
+  }
+  
+  .cmd {
+    color: var(--color-text-primary);
+  }
+  
+  .terminal-output {
+    color: var(--color-text-secondary);
+    margin-bottom: 4px;
+    font-size: 13px;
+  }
+  
+  .cursor {
+    color: var(--color-accent-primary);
+    animation: blink 1s infinite;
+  }
+  
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+  
+  .ai-panel {
+    background: linear-gradient(180deg, rgba(6, 182, 212, 0.05) 0%, transparent 100%);
+    border-left: 1px solid var(--color-border);
+    padding: 16px;
+  }
+  
+  .ai-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 16px;
+  }
+  
+  .ai-icon {
+    font-size: 16px;
+  }
+  
+  .ai-bubble {
+    background: var(--color-bg-card);
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+    border: 1px solid var(--color-border);
+  }
+  
+  .screenshot-glow {
+    position: absolute;
+    inset: -2px;
+    background: var(--gradient-primary);
+    border-radius: var(--radius-lg);
+    z-index: -1;
+    opacity: 0.15;
+    filter: blur(20px);
+  }
+  
+  @media (max-width: 900px) {
+    .terminal-demo {
+      grid-template-columns: 1fr;
+    }
+    
+    .terminal-sidebar,
+    .ai-panel {
+      display: none;
+    }
+  }
+  
+  @media (max-width: 768px) {
+    .hero {
+      padding: 120px 0 60px;
+    }
+    
+    .hero-subtitle {
+      font-size: 16px;
+    }
+    
+    .btn-lg {
+      padding: 14px 24px;
+      font-size: 14px;
+    }
+  }
+</style>
+
