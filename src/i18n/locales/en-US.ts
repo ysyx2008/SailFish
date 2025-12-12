@@ -883,6 +883,16 @@ export default {
     totalChars: '{count} characters total',
     selectDocToView: 'Select a document to view details',
     delete: 'Delete',
-    chunk: 'chunks'
+    chunk: 'chunks',
+    export: 'Export',
+    import: 'Import',
+    refresh: 'Refresh',
+    exporting: 'Exporting...',
+    importing: 'Importing...',
+    exportSuccess: 'Export successful: {path}',
+    exportFailed: 'Export failed',
+    importSuccess: 'Import successful, {count} documents imported',
+    importFailed: 'Import failed',
+    confirmImport: 'Import will merge with existing data. Continue?'
   }
 }

@@ -38,6 +38,8 @@ const batchDeleting = ref(false)
 const clearing = ref(false)
 const activeTab = ref<'documents' | 'memories'>('documents')
 const showMemoryDetail = ref(false)
+const exporting = ref(false)
+const importing = ref(false)
 
 // 普通文档（排除主机记忆）
 const normalDocuments = computed(() => {
@@ -273,6 +275,49 @@ const viewDocument = (doc: KnowledgeDocument) => {
   selectedDoc.value = doc
 }
 
+// 导出知识库
+const exportKnowledge = async () => {
+  try {
+    exporting.value = true
+    const result = await window.electronAPI.knowledge.exportData()
+    if (result.canceled) return
+    if (result.success) {
+      alert(t('knowledgeManager.exportSuccess', { path: result.path }))
+    } else {
+      alert(t('knowledgeManager.exportFailed') + ': ' + (result.error || '未知错误'))
+    }
+  } catch (error) {
+    console.error('Export failed:', error)
+    alert(t('knowledgeManager.exportFailed'))
+  } finally {
+    exporting.value = false
+  }
+}
+
+// 导入知识库
+const importKnowledge = async () => {
+  if (!confirm(t('knowledgeManager.confirmImport'))) {
+    return
+  }
+  
+  try {
+    importing.value = true
+    const result = await window.electronAPI.knowledge.importData()
+    if (result.canceled) return
+    if (result.success) {
+      alert(t('knowledgeManager.importSuccess', { count: result.imported || 0 }))
+      await loadData()
+    } else {
+      alert(t('knowledgeManager.importFailed') + ': ' + (result.error || '未知错误'))
+    }
+  } catch (error) {
+    console.error('Import failed:', error)
+    alert(t('knowledgeManager.importFailed'))
+  } finally {
+    importing.value = false
+  }
+}
+
 onMounted(() => {
   loadData()
 })
@@ -411,6 +456,13 @@ onMounted(() => {
               >
                 {{ clearing ? t('knowledgeManager.clearing') : t('knowledgeManager.clearAll') }}
               </button>
+              <button class="btn btn-sm" @click="exportKnowledge" :disabled="exporting">
+                {{ exporting ? t('knowledgeManager.exporting') : `📤 ${t('knowledgeManager.export')}` }}
+              </button>
+              <button class="btn btn-sm" @click="importKnowledge" :disabled="importing">
+                {{ importing ? t('knowledgeManager.importing') : `📥 ${t('knowledgeManager.import')}` }}
+              </button>
+              <button class="btn btn-sm" @click="loadData">🔄 {{ t('knowledgeManager.refresh') }}</button>
             </div>
           </template>
 
@@ -680,6 +732,9 @@ onMounted(() => {
 .list-actions {
   padding: 12px 16px;
   border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 /* 右侧详情 */

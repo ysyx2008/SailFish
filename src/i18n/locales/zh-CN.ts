@@ -883,6 +883,16 @@ export default {
     totalChars: '共 {count} 字符',
     selectDocToView: '选择一个文档查看详情',
     delete: '删除',
-    chunk: '块'
+    chunk: '块',
+    export: '导出',
+    import: '导入',
+    refresh: '刷新',
+    exporting: '导出中...',
+    importing: '导入中...',
+    exportSuccess: '导出成功: {path}',
+    exportFailed: '导出失败',
+    importSuccess: '导入成功，共导入 {count} 个文档',
+    importFailed: '导入失败',
+    confirmImport: '导入将与现有数据合并，确定要继续吗？'
   }
 }
