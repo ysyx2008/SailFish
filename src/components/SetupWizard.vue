@@ -211,17 +211,48 @@ const manualImport = async () => {
 
 // 步骤4: 知识库
 const knowledgeEnabled = ref(false)
+const knowledgePassword = ref('')
+const knowledgePasswordConfirm = ref('')
+const knowledgePasswordError = ref('')
+const savingKnowledge = ref(false)
 
 const saveKnowledgeSettings = async () => {
-  try {
-    await window.electronAPI.knowledge.updateSettings({
-      enabled: knowledgeEnabled.value
-    })
-    return true
-  } catch (error) {
-    console.error('保存知识库设置失败:', error)
-    return false
+  // 如果要启用知识库，需要先设置密码
+  if (knowledgeEnabled.value) {
+    if (knowledgePassword.value.length < 4) {
+      knowledgePasswordError.value = '密码长度至少为 4 位'
+      return false
+    }
+    if (knowledgePassword.value !== knowledgePasswordConfirm.value) {
+      knowledgePasswordError.value = '两次输入的密码不一致'
+      return false
+    }
+    
+    try {
+      savingKnowledge.value = true
+      // 先设置密码
+      const passwordResult = await window.electronAPI.knowledge.setPassword(knowledgePassword.value)
+      if (!passwordResult.success) {
+        knowledgePasswordError.value = passwordResult.error || '设置密码失败'
+        return false
+      }
+      
+      // 再启用知识库
+      await window.electronAPI.knowledge.updateSettings({
+        enabled: true
+      })
+      return true
+    } catch (error) {
+      console.error('保存知识库设置失败:', error)
+      knowledgePasswordError.value = '保存失败'
+      return false
+    } finally {
+      savingKnowledge.value = false
+    }
   }
+  
+  // 不启用知识库，直接返回
+  return true
 }
 
 // 步骤5: MCP 服务
@@ -267,7 +298,11 @@ const skipWizard = async () => {
 const nextStep = async () => {
   // 保存当前步骤的数据
   if (currentStep.value === 4) {
-    await saveKnowledgeSettings()
+    const success = await saveKnowledgeSettings()
+    if (!success) {
+      // 保存失败，不前进
+      return
+    }
   }
 
   if (currentStep.value < totalSteps) {
@@ -528,6 +563,35 @@ onMounted(async () => {
                   </label>
                 </label>
                 <p class="switch-hint">{{ t('setup.knowledge.enableHint') }}</p>
+              </div>
+              
+              <!-- 密码设置（启用时显示） -->
+              <div v-if="knowledgeEnabled" class="password-setup">
+                <div class="password-intro">
+                  <span class="password-icon">🔐</span>
+                  <p>知识库可存储文档和主机记忆等敏感信息，请设置密码以加密保护这些数据。</p>
+                </div>
+                <div class="password-form">
+                  <div class="form-group">
+                    <label class="form-label">设置密码 *</label>
+                    <input 
+                      type="password" 
+                      v-model="knowledgePassword" 
+                      class="input" 
+                      placeholder="请输入密码（至少 4 位）"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">确认密码 *</label>
+                    <input 
+                      type="password" 
+                      v-model="knowledgePasswordConfirm" 
+                      class="input" 
+                      placeholder="请再次输入密码"
+                    />
+                  </div>
+                  <p v-if="knowledgePasswordError" class="password-error">{{ knowledgePasswordError }}</p>
+                </div>
               </div>
             </div>
           </div>
@@ -1190,6 +1254,48 @@ onMounted(async () => {
 .switch-hint {
   font-size: 12px;
   color: var(--text-muted);
+  margin: 0;
+}
+
+/* 密码设置 */
+.password-setup {
+  margin-top: 24px;
+  padding: 20px;
+  background: var(--bg-tertiary);
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+}
+
+.password-intro {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.password-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.password-intro p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.6;
+}
+
+.password-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.password-error {
+  font-size: 13px;
+  color: var(--accent-error, #ef4444);
   margin: 0;
 }
 

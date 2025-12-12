@@ -136,6 +136,26 @@ const loadPasswordInfo = async () => {
   }
 }
 
+// 是否正在启用知识库（用于密码设置流程）
+const pendingEnable = ref(false)
+
+// 处理启用开关变化
+const handleEnableChange = async () => {
+  // 如果是要启用知识库
+  if (settings.value.enabled) {
+    // 如果还没有设置密码，先弹出密码设置对话框
+    if (!passwordInfo.value.hasPassword) {
+      pendingEnable.value = true
+      openPasswordDialog('set')
+      // 暂时恢复为未启用状态，等密码设置成功后再启用
+      settings.value.enabled = false
+      return
+    }
+  }
+  // 直接保存设置（禁用知识库或已有密码）
+  await saveSettings()
+}
+
 // 打开密码对话框
 const openPasswordDialog = (mode: 'set' | 'verify' | 'change') => {
   passwordDialogMode.value = mode
@@ -144,6 +164,15 @@ const openPasswordDialog = (mode: 'set' | 'verify' | 'change') => {
   confirmPasswordInput.value = ''
   passwordError.value = ''
   showPasswordDialog.value = true
+}
+
+// 关闭密码对话框
+const closePasswordDialog = () => {
+  showPasswordDialog.value = false
+  // 如果是启用流程中取消了，清除 pending 状态
+  if (pendingEnable.value) {
+    pendingEnable.value = false
+  }
 }
 
 // 处理密码提交
@@ -167,6 +196,12 @@ const handlePasswordSubmit = async () => {
       if (result.success) {
         showPasswordDialog.value = false
         await loadPasswordInfo()
+        // 如果是启用流程中设置密码，现在正式启用知识库
+        if (pendingEnable.value) {
+          pendingEnable.value = false
+          settings.value.enabled = true
+          await saveSettings()
+        }
       } else {
         passwordError.value = result.error || '设置密码失败'
       }
@@ -261,7 +296,7 @@ onMounted(() => {
             <input 
               type="checkbox" 
               v-model="settings.enabled"
-              @change="saveSettings"
+              @change="handleEnableChange"
             />
             <span class="slider"></span>
           </label>
@@ -278,8 +313,8 @@ onMounted(() => {
               <label class="setting-label">知识库密码</label>
               <p class="setting-desc">
                 {{ passwordInfo.hasPassword 
-                  ? (passwordInfo.isUnlocked ? '已解锁，主机记忆已加密存储' : '已锁定，需要密码才能访问')
-                  : '未设置密码，主机记忆将不加密存储' }}
+                  ? (passwordInfo.isUnlocked ? '已解锁，知识库数据已加密保护' : '已锁定，需要密码才能访问')
+                  : '未设置密码（旧版本遗留），建议设置密码以保护数据安全' }}
               </p>
             </div>
             <div class="password-actions">
@@ -454,19 +489,22 @@ onMounted(() => {
     
     <!-- 密码对话框 -->
     <Teleport to="body">
-      <div v-if="showPasswordDialog" class="doc-modal-overlay" @click.self="showPasswordDialog = false">
+      <div v-if="showPasswordDialog" class="doc-modal-overlay" @click.self="closePasswordDialog">
         <div class="password-modal">
           <div class="doc-modal-header">
             <h3>
-              {{ passwordDialogMode === 'set' ? '🔑 设置知识库密码' : 
+              {{ pendingEnable ? '🔐 启用知识库 - 设置密码' : 
+                 passwordDialogMode === 'set' ? '🔑 设置知识库密码' : 
                  passwordDialogMode === 'verify' ? '🔓 解锁知识库' : '✏️ 修改密码' }}
             </h3>
-            <button class="close-btn" @click="showPasswordDialog = false">✕</button>
+            <button class="close-btn" @click="closePasswordDialog">✕</button>
           </div>
           
           <div class="password-modal-content">
             <p v-if="passwordDialogMode === 'set'" class="password-hint">
-              设置密码后，主机记忆将被加密存储。导出的知识库可以在其他设备上使用相同密码解密。
+              {{ pendingEnable 
+                ? '知识库可存储文档和主机记忆等敏感信息，请设置密码以加密保护这些数据。' 
+                : '设置密码后，主机记忆将被加密存储。导出的知识库可以在其他设备上使用相同密码解密。' }}
             </p>
             
             <div class="password-field">
@@ -506,7 +544,7 @@ onMounted(() => {
           </div>
           
           <div class="password-modal-footer">
-            <button class="btn btn-sm" @click="showPasswordDialog = false">取消</button>
+            <button class="btn btn-sm" @click="closePasswordDialog">{{ pendingEnable ? '暂不启用' : '取消' }}</button>
             <button 
               class="btn btn-sm btn-primary" 
               @click="handlePasswordSubmit"

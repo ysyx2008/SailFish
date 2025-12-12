@@ -246,9 +246,9 @@ export default {
   // 知识库设置
   knowledgeSettings: {
     title: '知识库设置',
-    description: '本地知识库让 AI 能够理解您上传的文档',
+    description: '本地知识库让 AI 能够理解您的文档和主机记忆',
     enable: '启用知识库',
-    enableHint: '开启后可将对话中上传的文档保存供 Agent 使用',
+    enableHint: '开启后可存储文档和主机记忆，让 Agent 更智能地协助您',
     stats: '知识库统计',
     documentCount: '文档数量',
     chunkCount: '分块数量',
@@ -778,16 +778,16 @@ export default {
     },
     knowledge: {
       title: '启用本地知识库',
-      subtitle: '启用本地知识库，让 AI 更懂你的文档',
+      subtitle: '启用本地知识库，让 AI 更懂你的文档和操作习惯',
       features: {
         title: '知识库功能',
         item1: '上传文档到本地知识库，支持 PDF、Word、文本等多种格式',
-        item2: 'AI 对话时自动检索相关内容，提供更精准的答案',
-        item3: '使用轻量级向量模型（all-MiniLM-L6-v2），已随软件打包，无需额外下载',
-        item4: '支持语义搜索和重排序，提高检索准确性'
+        item2: '自动记录主机操作记忆，AI 能学习您的使用习惯和偏好',
+        item3: 'AI 对话时自动检索相关内容，提供更精准的答案',
+        item4: '数据加密存储，保护您的敏感信息安全'
       },
       enableSwitch: '启用知识库',
-      enableHint: '开启后可将对话中上传的文档保存供Agent使用'
+      enableHint: '开启后可存储文档和主机记忆，让 Agent 更智能地协助您'
     },
     mcp: {
       title: '配置 MCP 服务',

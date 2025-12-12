@@ -246,9 +246,9 @@ export default {
   // Knowledge Settings
   knowledgeSettings: {
     title: 'Knowledge Base Settings',
-    description: 'Local knowledge base allows AI to understand your uploaded documents',
+    description: 'Local knowledge base allows AI to understand your documents and host memories',
     enable: 'Enable Knowledge Base',
-    enableHint: 'When enabled, uploaded documents in conversations can be saved for Agent use',
+    enableHint: 'When enabled, documents and host memories can be stored to make Agent smarter',
     stats: 'Knowledge Base Statistics',
     documentCount: 'Documents',
     chunkCount: 'Chunks',
@@ -778,16 +778,16 @@ export default {
     },
     knowledge: {
       title: 'Enable Local Knowledge Base',
-      subtitle: 'Enable local knowledge base for AI to better understand your documents',
+      subtitle: 'Enable local knowledge base for AI to better understand your documents and habits',
       features: {
         title: 'Knowledge Base Features',
         item1: 'Upload documents to local knowledge base, supports PDF, Word, text and more',
-        item2: 'AI automatically retrieves relevant content during conversations for more accurate answers',
-        item3: 'Uses lightweight vector model (all-MiniLM-L6-v2), bundled with app, no additional download',
-        item4: 'Supports semantic search and reranking for improved retrieval accuracy'
+        item2: 'Automatically record host operation memories, AI learns your usage habits and preferences',
+        item3: 'AI automatically retrieves relevant content during conversations for more accurate answers',
+        item4: 'Data encrypted storage to protect your sensitive information'
       },
       enableSwitch: 'Enable Knowledge Base',
-      enableHint: 'When enabled, uploaded documents in conversations can be saved for Agent use'
+      enableHint: 'When enabled, documents and host memories can be stored to make Agent smarter'
     },
     mcp: {
       title: 'Configure MCP Services',
