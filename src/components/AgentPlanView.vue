@@ -122,6 +122,13 @@ const handleToggle = () => {
       'is-compact': compact
     }"
   >
+    <!-- 顶部进度条 -->
+    <div 
+      class="top-progress-bar"
+      :style="{ '--progress': progressPercent + '%' }"
+      :class="{ 'failed': hasFailed }"
+    ></div>
+
     <!-- 紧凑模式 -->
     <div v-if="compact" class="plan-compact" @click="handleToggle">
       <div class="compact-left">
@@ -140,13 +147,6 @@ const handleToggle = () => {
         <span class="expand-icon">▼</span>
       </div>
     </div>
-    <!-- 顶部进度条 -->
-    <div 
-      v-if="compact" 
-      class="top-progress-bar"
-      :style="{ '--progress': progressPercent + '%' }"
-      :class="{ 'failed': hasFailed }"
-    ></div>
 
     <!-- 展开模式 -->
     <template v-else>
@@ -160,12 +160,6 @@ const handleToggle = () => {
           <span class="progress-text">{{ completedCount }}/{{ plan.steps.length }}</span>
           <span class="collapse-icon">▲</span>
         </div>
-        <!-- 头部底部进度条 -->
-        <div 
-          class="header-progress-bar"
-          :style="{ '--progress': progressPercent + '%' }"
-          :class="{ 'failed': hasFailed }"
-        ></div>
       </div>
       
       <!-- 步骤列表 -->
@@ -218,7 +212,7 @@ const handleToggle = () => {
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  padding: 14px 16px;
+  padding: 16px 16px 14px;
   transition: all 0.2s ease;
   position: relative;
   overflow: hidden;
@@ -329,30 +323,6 @@ const handleToggle = () => {
   background: linear-gradient(90deg, #f87171, #ef4444);
 }
 
-/* 头部进度条 - 展开模式 */
-.header-progress-bar {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.header-progress-bar::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: var(--progress, 0%);
-  background: linear-gradient(90deg, #10b981, #34d399);
-  transition: width 0.4s ease;
-}
-
-.header-progress-bar.failed::after {
-  background: linear-gradient(90deg, #f87171, #ef4444);
-}
 
 .expand-icon,
 .collapse-icon {
@@ -375,9 +345,9 @@ const handleToggle = () => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 14px;
-  padding-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-color);
   cursor: pointer;
-  position: relative;
 }
 
 .plan-header:hover {
