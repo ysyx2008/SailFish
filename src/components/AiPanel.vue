@@ -41,6 +41,9 @@ const showSettings = inject<() => void>('showSettings')
 // Refs
 const messagesRef = ref<HTMLDivElement | null>(null)
 
+// Plan 展开状态
+const planExpanded = ref(false)
+
 // ==================== 初始化 Composables ====================
 
 // 当前终端 ID（使用 prop，每个实例固定绑定一个 tab）
@@ -644,6 +647,15 @@ onMounted(() => {
         </button>
       </div>
 
+      <!-- Plan 固定顶部区域 -->
+      <div v-if="currentPlan && agentMode" class="plan-sticky-header">
+        <AgentPlanView 
+          :plan="currentPlan" 
+          :compact="!planExpanded" 
+          @toggle="planExpanded = !planExpanded" 
+        />
+      </div>
+
       <!-- 消息列表 -->
       <div ref="messagesRef" class="ai-messages" @click="handleCodeBlockClick" @scroll="updateScrollPosition">
         <div v-if="messages.length === 0 && !agentMode" class="ai-welcome">
@@ -800,13 +812,6 @@ onMounted(() => {
                     <span class="thinking-text">{{ t('ai.agentStarting') }}</span>
                   </div>
                 </div>
-              </div>
-            </div>
-            
-            <!-- Agent 执行计划（Plan）- 当前任务有计划时显示 -->
-            <div v-if="group.isCurrentTask && currentPlan" class="message assistant">
-              <div class="message-wrapper">
-                <AgentPlanView :plan="currentPlan" />
               </div>
             </div>
             
@@ -1424,6 +1429,16 @@ onMounted(() => {
 
 .action-icon {
   font-size: 14px;
+}
+
+/* Plan 固定顶部区域 */
+.plan-sticky-header {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 10;
 }
 
 .ai-messages {

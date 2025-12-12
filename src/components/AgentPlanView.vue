@@ -2,6 +2,7 @@
 /**
  * Agent 任务计划展示组件
  * 显示任务执行进度和步骤状态
+ * 支持紧凑模式（顶部固定）和展开模式
  */
 import { computed } from 'vue'
 
@@ -38,8 +39,15 @@ interface AgentPlan {
   updatedAt: number
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   plan: AgentPlan
+  compact?: boolean
+}>(), {
+  compact: false
+})
+
+const emit = defineEmits<{
+  toggle: []
 }>()
 
 // 计算完成的步骤数
@@ -53,9 +61,9 @@ const progressPercent = computed(() => {
   return Math.round((completedCount.value / props.plan.steps.length) * 100)
 })
 
-// 当前执行中的步骤索引
-const currentStepIndex = computed(() => 
-  props.plan.steps.findIndex(s => s.status === 'in_progress')
+// 当前执行中的步骤
+const currentStep = computed(() => 
+  props.plan.steps.find(s => s.status === 'in_progress')
 )
 
 // 是否全部完成
@@ -98,18 +106,37 @@ const formatProgress = (progress: StepProgress): string => {
   
   return text
 }
+
+// 点击切换展开/折叠
+const handleToggle = () => {
+  emit('toggle')
+}
 </script>
 
 <template>
-  <div class="agent-plan" :class="{ 'is-completed': isAllCompleted, 'has-failed': hasFailed }">
-    <!-- 计划头部 -->
-    <div class="plan-header">
-      <div class="plan-title">
+  <div 
+    class="agent-plan" 
+    :class="{ 
+      'is-completed': isAllCompleted, 
+      'has-failed': hasFailed,
+      'is-compact': compact
+    }"
+  >
+    <!-- 紧凑模式 -->
+    <div v-if="compact" class="plan-compact" @click="handleToggle">
+      <div class="compact-left">
         <span class="plan-icon">📋</span>
         <span class="plan-title-text">{{ plan.title }}</span>
+        <span class="compact-separator">·</span>
+        <span v-if="currentStep" class="current-step-hint">
+          <span class="current-step-spinner"></span>
+          {{ currentStep.title }}
+        </span>
+        <span v-else-if="isAllCompleted" class="completed-hint">✓ 已完成</span>
+        <span v-else-if="hasFailed" class="failed-hint">✗ 执行失败</span>
       </div>
-      <div class="plan-progress">
-        <div class="progress-bar">
+      <div class="compact-right">
+        <div class="progress-bar compact-progress">
           <div 
             class="progress-fill" 
             :class="{ 'failed': hasFailed }"
@@ -117,50 +144,75 @@ const formatProgress = (progress: StepProgress): string => {
           ></div>
         </div>
         <span class="progress-text">{{ completedCount }}/{{ plan.steps.length }}</span>
+        <span class="expand-icon">▼</span>
       </div>
     </div>
-    
-    <!-- 步骤列表 -->
-    <div class="plan-steps">
-      <div 
-        v-for="(step, index) in plan.steps" 
-        :key="step.id"
-        class="plan-step"
-        :class="step.status"
-      >
-        <!-- 步骤指示器 -->
-        <div class="step-indicator">
-          <span v-if="step.status === 'in_progress'" class="step-spinner"></span>
-          <span v-else-if="getStepIcon(step.status)" class="step-icon" :class="step.status">
-            {{ getStepIcon(step.status) }}
-          </span>
-          <span v-else class="step-number">{{ index + 1 }}</span>
+
+    <!-- 展开模式 -->
+    <template v-else>
+      <!-- 计划头部 -->
+      <div class="plan-header" @click="handleToggle">
+        <div class="plan-title">
+          <span class="plan-icon">📋</span>
+          <span class="plan-title-text">{{ plan.title }}</span>
         </div>
-        
-        <!-- 步骤内容 -->
-        <div class="step-content">
-          <div class="step-title">{{ step.title }}</div>
-          <div v-if="step.description && step.status === 'pending'" class="step-description">
-            {{ step.description }}
-          </div>
-          <div v-if="step.result" class="step-result" :class="step.status">
-            {{ step.result }}
-          </div>
-          
-          <!-- 步骤进度条 -->
-          <div v-if="step.progress && step.status === 'in_progress'" class="step-progress">
-            <div class="mini-progress-bar">
+        <div class="plan-header-right">
+          <div class="plan-progress">
+            <div class="progress-bar">
               <div 
-                class="mini-progress-fill" 
-                :class="{ 'indeterminate': step.progress.isIndeterminate }"
-                :style="{ width: step.progress.isIndeterminate ? '100%' : step.progress.value + '%' }"
+                class="progress-fill" 
+                :class="{ 'failed': hasFailed }"
+                :style="{ width: progressPercent + '%' }"
               ></div>
             </div>
-            <span class="mini-progress-text">{{ formatProgress(step.progress) }}</span>
+            <span class="progress-text">{{ completedCount }}/{{ plan.steps.length }}</span>
+          </div>
+          <span class="collapse-icon">▲</span>
+        </div>
+      </div>
+      
+      <!-- 步骤列表 -->
+      <div class="plan-steps">
+        <div 
+          v-for="(step, index) in plan.steps" 
+          :key="step.id"
+          class="plan-step"
+          :class="step.status"
+        >
+          <!-- 步骤指示器 -->
+          <div class="step-indicator">
+            <span v-if="step.status === 'in_progress'" class="step-spinner"></span>
+            <span v-else-if="getStepIcon(step.status)" class="step-icon" :class="step.status">
+              {{ getStepIcon(step.status) }}
+            </span>
+            <span v-else class="step-number">{{ index + 1 }}</span>
+          </div>
+          
+          <!-- 步骤内容 -->
+          <div class="step-content">
+            <div class="step-title">{{ step.title }}</div>
+            <div v-if="step.description && step.status === 'pending'" class="step-description">
+              {{ step.description }}
+            </div>
+            <div v-if="step.result" class="step-result" :class="step.status">
+              {{ step.result }}
+            </div>
+            
+            <!-- 步骤进度条 -->
+            <div v-if="step.progress && step.status === 'in_progress'" class="step-progress">
+              <div class="mini-progress-bar">
+                <div 
+                  class="mini-progress-fill" 
+                  :class="{ 'indeterminate': step.progress.isIndeterminate }"
+                  :style="{ width: step.progress.isIndeterminate ? '100%' : step.progress.value + '%' }"
+                ></div>
+              </div>
+              <span class="mini-progress-text">{{ formatProgress(step.progress) }}</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </template>
   </div>
 </template>
 
@@ -170,7 +222,12 @@ const formatProgress = (progress: StepProgress): string => {
   border: 1px solid var(--border-color);
   border-radius: 12px;
   padding: 14px 16px;
-  margin: 8px 0;
+  transition: all 0.2s ease;
+}
+
+.agent-plan.is-compact {
+  padding: 10px 14px;
+  border-radius: 8px;
 }
 
 .agent-plan.is-completed {
@@ -183,6 +240,91 @@ const formatProgress = (progress: StepProgress): string => {
   background: linear-gradient(135deg, rgba(239, 68, 68, 0.05), transparent);
 }
 
+/* ==================== 紧凑模式样式 ==================== */
+.plan-compact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  gap: 12px;
+}
+
+.plan-compact:hover {
+  opacity: 0.9;
+}
+
+.compact-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.compact-separator {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.current-step-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #3b82f6;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.current-step-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(59, 130, 246, 0.2);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  flex-shrink: 0;
+}
+
+.completed-hint {
+  color: #10b981;
+  font-size: 13px;
+}
+
+.failed-hint {
+  color: #ef4444;
+  font-size: 13px;
+}
+
+.compact-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.compact-progress {
+  width: 60px;
+}
+
+.expand-icon,
+.collapse-icon {
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.expand-icon {
+  transform: rotate(0deg);
+}
+
+.collapse-icon {
+  transform: rotate(0deg);
+}
+
+/* ==================== 展开模式样式 ==================== */
 .plan-header {
   display: flex;
   justify-content: space-between;
@@ -190,6 +332,17 @@ const formatProgress = (progress: StepProgress): string => {
   margin-bottom: 14px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+}
+
+.plan-header:hover {
+  opacity: 0.9;
+}
+
+.plan-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .plan-title {
@@ -237,7 +390,7 @@ const formatProgress = (progress: StepProgress): string => {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-muted);
-  min-width: 36px;
+  min-width: 32px;
   text-align: right;
 }
 
@@ -405,4 +558,3 @@ const formatProgress = (progress: StepProgress): string => {
   min-width: 60px;
 }
 </style>
-
