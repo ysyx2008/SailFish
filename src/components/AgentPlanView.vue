@@ -136,17 +136,17 @@ const handleToggle = () => {
         <span v-else-if="hasFailed" class="failed-hint">✗ 执行失败</span>
       </div>
       <div class="compact-right">
-        <div class="progress-bar compact-progress">
-          <div 
-            class="progress-fill" 
-            :class="{ 'failed': hasFailed }"
-            :style="{ width: progressPercent + '%' }"
-          ></div>
-        </div>
         <span class="progress-text">{{ completedCount }}/{{ plan.steps.length }}</span>
         <span class="expand-icon">▼</span>
       </div>
     </div>
+    <!-- 底部进度条 -->
+    <div 
+      v-if="compact" 
+      class="bottom-progress-bar"
+      :style="{ '--progress': progressPercent + '%' }"
+      :class="{ 'failed': hasFailed }"
+    ></div>
 
     <!-- 展开模式 -->
     <template v-else>
@@ -157,18 +157,15 @@ const handleToggle = () => {
           <span class="plan-title-text">{{ plan.title }}</span>
         </div>
         <div class="plan-header-right">
-          <div class="plan-progress">
-            <div class="progress-bar">
-              <div 
-                class="progress-fill" 
-                :class="{ 'failed': hasFailed }"
-                :style="{ width: progressPercent + '%' }"
-              ></div>
-            </div>
-            <span class="progress-text">{{ completedCount }}/{{ plan.steps.length }}</span>
-          </div>
+          <span class="progress-text">{{ completedCount }}/{{ plan.steps.length }}</span>
           <span class="collapse-icon">▲</span>
         </div>
+        <!-- 头部底部进度条 -->
+        <div 
+          class="header-progress-bar"
+          :style="{ '--progress': progressPercent + '%' }"
+          :class="{ 'failed': hasFailed }"
+        ></div>
       </div>
       
       <!-- 步骤列表 -->
@@ -223,10 +220,12 @@ const handleToggle = () => {
   border-radius: 12px;
   padding: 14px 16px;
   transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
 }
 
 .agent-plan.is-compact {
-  padding: 10px 14px;
+  padding: 10px 14px 12px;
   border-radius: 8px;
 }
 
@@ -301,12 +300,58 @@ const handleToggle = () => {
 .compact-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
-.compact-progress {
-  width: 60px;
+/* 底部进度条 - 紧凑模式 */
+.bottom-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.bottom-progress-bar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--progress, 0%);
+  background: linear-gradient(90deg, #10b981, #34d399);
+  transition: width 0.4s ease;
+}
+
+.bottom-progress-bar.failed::after {
+  background: linear-gradient(90deg, #f87171, #ef4444);
+}
+
+/* 头部进度条 - 展开模式 */
+.header-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.header-progress-bar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--progress, 0%);
+  background: linear-gradient(90deg, #10b981, #34d399);
+  transition: width 0.4s ease;
+}
+
+.header-progress-bar.failed::after {
+  background: linear-gradient(90deg, #f87171, #ef4444);
 }
 
 .expand-icon,
@@ -330,9 +375,9 @@ const handleToggle = () => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 14px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 12px;
   cursor: pointer;
+  position: relative;
 }
 
 .plan-header:hover {
@@ -361,37 +406,10 @@ const handleToggle = () => {
   color: var(--text-primary);
 }
 
-.plan-progress {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.progress-bar {
-  width: 80px;
-  height: 6px;
-  background: var(--bg-surface);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #10b981, #34d399);
-  border-radius: 3px;
-  transition: width 0.4s ease;
-}
-
-.progress-fill.failed {
-  background: linear-gradient(90deg, #f87171, #ef4444);
-}
-
 .progress-text {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-muted);
-  min-width: 32px;
-  text-align: right;
 }
 
 .plan-steps {
@@ -555,6 +573,6 @@ const handleToggle = () => {
   font-size: 11px;
   color: var(--text-muted);
   white-space: nowrap;
-  min-width: 60px;
+  flex-shrink: 0;
 }
 </style>
