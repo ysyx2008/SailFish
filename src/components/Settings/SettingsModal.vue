@@ -431,7 +431,7 @@ const onQrImageError = (event: Event) => {
               </div>
               
               <!-- 重置赞助状态（仅赞助者可见，用于测试） -->
-              <button v-if="isSponsor" class="reset-sponsor-btn" @click="resetSponsorStatus">
+              <button hidden v-if="isSponsor" class="reset-sponsor-btn" @click="resetSponsorStatus">
                 {{ t('sponsor.resetButton') }}
               </button>
             </div>
