@@ -1796,25 +1796,23 @@ async function rememberInfo(
     return { success: false, output: '', error: '信息不能为空' }
   }
 
-  // 过滤明显的动态/临时信息
-  const dynamicPatterns = [
-    /\b\d+%\b/,        // 百分比数值
-    /\b\d+\s*(mb|gb|kb)\b/i,  // 内存/磁盘大小
-    /\bpid\s*[:=]?\s*\d+/i,   // 进程 ID
-    /\b(running|stopped|active|inactive)\b/i,  // 运行状态
-    /\b(usage|使用率|占用率)\b/i  // 使用率
+  // 只过滤纯粹的动态数据（非常短且只包含动态值）
+  const pureDynamicPatterns = [
+    /^(cpu|内存|磁盘|memory|disk)\s*(使用率|usage|占用)?\s*[:：]?\s*\d+(\.\d+)?%$/i,  // 纯使用率
+    /^pid\s*[:=]?\s*\d+$/i,   // 纯进程 ID
+    /^(uptime|运行时间)\s*[:：]?\s*[\d\s]+$/i,  // 纯运行时间
   ]
   
-  const isDynamic = dynamicPatterns.some(p => p.test(info))
+  const isPureDynamic = pureDynamicPatterns.some(p => p.test(info.trim()))
   
-  // 如果只是纯动态数据（没有任何有用的描述），跳过
-  if (isDynamic && info.length < 30) {
+  // 只跳过纯动态数据（很短且只有动态值）
+  if (isPureDynamic) {
     executor.addStep({
       type: 'tool_result',
-      content: `跳过: "${info}" (临时数据)`,
+      content: `跳过: "${info}" (纯动态数据)`,
       toolName: 'remember_info'
     })
-    return { success: true, output: '此信息为临时数据，不适合长期记忆' }
+    return { success: true, output: '此信息为纯动态数据，不适合长期记忆' }
   }
 
   executor.addStep({

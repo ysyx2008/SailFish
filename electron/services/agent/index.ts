@@ -1114,7 +1114,7 @@ export class AgentService {
           hostMemories = await knowledgeService.getHostMemoriesForPrompt(
             context.hostId, 
             userMessage,  // 使用用户消息作为上下文提示，获取相关记忆
-            15
+            30  // 增加到30条，知识库容量充足
           )
           if (hostMemories.length > 0) {
             console.log(`[Agent] 已加载 ${hostMemories.length} 条主机记忆`)
