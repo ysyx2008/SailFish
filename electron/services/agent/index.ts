@@ -1096,6 +1096,7 @@ export class AgentService {
     // 获取知识库上下文（如果启用）
     let knowledgeContext = ''
     let knowledgeEnabled = false
+    let hostMemories: string[] = []
     try {
       const knowledgeService = getKnowledgeService()
       if (knowledgeService && knowledgeService.isEnabled()) {
@@ -1107,13 +1108,25 @@ export class AgentService {
         if (knowledgeContext) {
           console.log('[Agent] 知识库上下文已加载，长度:', knowledgeContext.length)
         }
+        
+        // 获取主机记忆（优先从知识库获取）
+        if (context.hostId) {
+          hostMemories = await knowledgeService.getHostMemoriesForPrompt(
+            context.hostId, 
+            userMessage,  // 使用用户消息作为上下文提示，获取相关记忆
+            15
+          )
+          if (hostMemories.length > 0) {
+            console.log(`[Agent] 已加载 ${hostMemories.length} 条主机记忆`)
+          }
+        }
       }
     } catch (e) {
       // 知识库服务出错，忽略
       console.log('[Agent] Knowledge service error:', e)
     }
     
-    const systemPrompt = buildSystemPrompt(context, this.hostProfileService, mbtiType, knowledgeContext, knowledgeEnabled)
+    const systemPrompt = buildSystemPrompt(context, this.hostProfileService, mbtiType, knowledgeContext, knowledgeEnabled, hostMemories)
     run.messages.push({ role: 'system', content: systemPrompt })
 
     // 智能添加历史对话（根据上下文长度动态计算可保留的轮数）

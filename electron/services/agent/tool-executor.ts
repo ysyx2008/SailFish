@@ -198,7 +198,7 @@ export async function executeTool(
       return writeFile(ptyId, args, toolCall.id, config, executor)
 
     case 'remember_info':
-      return rememberInfo(args, executor)
+      return await rememberInfo(args, executor)
 
     case 'search_knowledge':
       return searchKnowledge(args, executor)
@@ -1785,36 +1785,36 @@ async function writeFile(
 
 /**
  * 记住信息
+ * 使用知识库存储主机记忆，支持语义搜索
  */
-function rememberInfo(
+async function rememberInfo(
   args: Record<string, unknown>,
   executor: ToolExecutorConfig
-): ToolResult {
+): Promise<ToolResult> {
   const info = args.info as string
   if (!info) {
     return { success: false, output: '', error: '信息不能为空' }
   }
 
-  // 过滤动态信息
+  // 过滤明显的动态/临时信息
   const dynamicPatterns = [
-    /端口/i, /port/i, /监听/i, /listen/i,
-    /进程/i, /process/i, /pid/i,
-    /运行中/i, /running/i, /stopped/i, /状态/i,
-    /使用率/i, /占用/i, /usage/i,
-    /\d+%/, /\d+mb/i, /\d+gb/i,
-    /连接/i, /connection/i
+    /\b\d+%\b/,        // 百分比数值
+    /\b\d+\s*(mb|gb|kb)\b/i,  // 内存/磁盘大小
+    /\bpid\s*[:=]?\s*\d+/i,   // 进程 ID
+    /\b(running|stopped|active|inactive)\b/i,  // 运行状态
+    /\b(usage|使用率|占用率)\b/i  // 使用率
   ]
   
   const isDynamic = dynamicPatterns.some(p => p.test(info))
-  const hasPath = info.includes('/') || info.includes('\\')
   
-  if (isDynamic || !hasPath) {
+  // 如果只是纯动态数据（没有任何有用的描述），跳过
+  if (isDynamic && info.length < 30) {
     executor.addStep({
       type: 'tool_result',
-      content: `跳过: "${info}" (动态信息或非路径)`,
+      content: `跳过: "${info}" (临时数据)`,
       toolName: 'remember_info'
     })
-    return { success: true, output: '此信息为动态信息，不适合长期记忆' }
+    return { success: true, output: '此信息为临时数据，不适合长期记忆' }
   }
 
   executor.addStep({
@@ -1825,19 +1825,48 @@ function rememberInfo(
     riskLevel: 'safe'
   })
 
-  // 保存到主机档案
+  // 优先保存到知识库
   const hostId = executor.getHostId()
-  if (hostId && executor.hostProfileService) {
+  let savedToKnowledge = false
+  
+  if (hostId) {
+    try {
+      const knowledgeService = getKnowledgeService()
+      if (knowledgeService && knowledgeService.isEnabled()) {
+        const docId = await knowledgeService.addHostMemory(hostId, info)
+        if (docId) {
+          savedToKnowledge = true
+          const memoryCount = knowledgeService.getHostMemoryCount(hostId)
+          executor.addStep({
+            type: 'tool_result',
+            content: `已记住: ${info} (知识库, 共 ${memoryCount} 条记忆)`,
+            toolName: 'remember_info'
+          })
+          return { success: true, output: `信息已保存到知识库 (当前主机共 ${memoryCount} 条记忆)` }
+        }
+      }
+    } catch (error) {
+      console.error('[rememberInfo] 保存到知识库失败:', error)
+    }
+  }
+
+  // 如果知识库不可用，回退到主机档案
+  if (!savedToKnowledge && hostId && executor.hostProfileService) {
     executor.hostProfileService.addNote(hostId, info)
+    executor.addStep({
+      type: 'tool_result',
+      content: `已记住: ${info} (主机档案)`,
+      toolName: 'remember_info'
+    })
+    return { success: true, output: `信息已保存到主机档案` }
   }
 
   executor.addStep({
     type: 'tool_result',
-    content: `已记住: ${info}`,
+    content: `无法保存: 主机ID未知`,
     toolName: 'remember_info'
   })
-
-  return { success: true, output: `信息已保存到主机档案` }
+  return { success: false, output: '', error: '无法保存：主机ID未知' }
 }
 
 /**

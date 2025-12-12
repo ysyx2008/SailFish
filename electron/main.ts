@@ -192,13 +192,66 @@ async function initKnowledgeService(): Promise<void> {
     knowledgeService = getKnowledgeService(configService, aiService, mcpService)
     
     // 如果知识库已启用，初始化服务（加载向量数据）
-    if (knowledgeService.isEnabled()) {
+    if (knowledgeService && knowledgeService.isEnabled()) {
       await knowledgeService.initialize()
+      
+      // 迁移旧的主机 notes 到知识库
+      await migrateHostNotesToKnowledge()
     }
     
     console.log('[Main] KnowledgeService initialized')
   } catch (e) {
     console.error('[Main] Failed to initialize KnowledgeService:', e)
+  }
+}
+
+// 迁移旧的主机 notes 到知识库
+async function migrateHostNotesToKnowledge(): Promise<void> {
+  if (!knowledgeService) return
+  
+  const fs = await import('fs')
+  const path = await import('path')
+  
+  // 检查是否已迁移（使用标记文件）
+  const userDataPath = app.getPath('userData')
+  const migrationFlagPath = path.join(userDataPath, 'host-notes-migrated.flag')
+  
+  if (fs.existsSync(migrationFlagPath)) {
+    return  // 已迁移过，跳过
+  }
+  
+  console.log('[Main] 开始迁移主机 notes 到知识库...')
+  
+  try {
+    const profiles = hostProfileService.getAllProfiles()
+    let totalMigrated = 0
+    
+    for (const profile of profiles) {
+      if (profile.notes && profile.notes.length > 0) {
+        const migrated = await knowledgeService.migrateNotesToKnowledge(
+          profile.hostId, 
+          profile.notes
+        )
+        totalMigrated += migrated
+        
+        // 迁移完成后清空旧的 notes（但保留其他档案信息）
+        if (migrated > 0) {
+          hostProfileService.updateProfile(profile.hostId, { notes: [] })
+          console.log(`[Main] 已迁移主机 ${profile.hostId} 的 ${migrated} 条 notes`)
+        }
+      }
+    }
+    
+    // 创建迁移标记文件
+    fs.writeFileSync(migrationFlagPath, new Date().toISOString(), 'utf-8')
+    
+    if (totalMigrated > 0) {
+      console.log(`[Main] 主机 notes 迁移完成，共迁移 ${totalMigrated} 条记忆`)
+    } else {
+      console.log('[Main] 没有需要迁移的主机 notes')
+    }
+  } catch (e) {
+    console.error('[Main] 迁移主机 notes 失败:', e)
   }
 }
 

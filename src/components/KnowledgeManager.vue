@@ -36,14 +36,54 @@ const selectedDoc = ref<KnowledgeDocument | null>(null)
 const selectedDocIds = ref<Set<string>>(new Set())
 const batchDeleting = ref(false)
 const clearing = ref(false)
+const activeTab = ref<'documents' | 'memories'>('documents')
+const showMemoryDetail = ref(false)
 
-// 过滤后的文档
+// 普通文档（排除主机记忆）
+const normalDocuments = computed(() => {
+  return documents.value.filter(doc => doc.fileType !== 'host-memory')
+})
+
+// 主机记忆文档
+const memoryDocuments = computed(() => {
+  return documents.value.filter(doc => doc.fileType === 'host-memory')
+})
+
+// 按主机分组的记忆
+const memoriesByHost = computed(() => {
+  const grouped = new Map<string, KnowledgeDocument[]>()
+  for (const doc of memoryDocuments.value) {
+    const hostId = doc.hostId || 'unknown'
+    if (!grouped.has(hostId)) {
+      grouped.set(hostId, [])
+    }
+    grouped.get(hostId)!.push(doc)
+  }
+  // 按时间倒序排序每个主机的记忆
+  for (const [, memories] of grouped) {
+    memories.sort((a, b) => b.createdAt - a.createdAt)
+  }
+  return grouped
+})
+
+// 过滤后的文档（仅普通文档）
 const filteredDocuments = computed(() => {
-  if (!searchQuery.value) return documents.value
+  const docs = normalDocuments.value
+  if (!searchQuery.value) return docs
   const query = searchQuery.value.toLowerCase()
-  return documents.value.filter(doc => 
+  return docs.filter(doc => 
     doc.filename.toLowerCase().includes(query) ||
     doc.tags.some(tag => tag.toLowerCase().includes(query))
+  )
+})
+
+// 过滤后的记忆
+const filteredMemories = computed(() => {
+  if (!searchQuery.value) return memoryDocuments.value
+  const query = searchQuery.value.toLowerCase()
+  return memoryDocuments.value.filter(doc => 
+    doc.content.toLowerCase().includes(query) ||
+    (doc.hostId || '').toLowerCase().includes(query)
   )
 })
 
@@ -174,17 +214,19 @@ const batchDeleteDocuments = async () => {
   }
 }
 
-// 清空知识库
+// 清空知识库（仅普通文档）
 const clearKnowledge = async () => {
-  if (documents.value.length === 0) return
+  if (normalDocuments.value.length === 0) return
   
-  if (!confirm(t('knowledgeManager.confirmClear', { count: documents.value.length }))) {
+  if (!confirm(t('knowledgeManager.confirmClear', { count: normalDocuments.value.length }))) {
     return
   }
   
   try {
     clearing.value = true
-    const result = await window.electronAPI.knowledge.clear()
+    // 只删除普通文档，保留主机记忆
+    const docIds = normalDocuments.value.map(d => d.id)
+    const result = await window.electronAPI.knowledge.removeDocuments(docIds)
     if (result.success) {
       await loadData()
       selectedDoc.value = null
@@ -194,6 +236,33 @@ const clearKnowledge = async () => {
     }
   } catch (error) {
     console.error('Clear knowledge base failed:', error)
+  } finally {
+    clearing.value = false
+  }
+}
+
+// 清空所有主机记忆
+const clearAllMemories = async () => {
+  if (memoryDocuments.value.length === 0) return
+  
+  if (!confirm(`确定要清空所有主机记忆吗？共 ${memoryDocuments.value.length} 条记忆将被删除。`)) {
+    return
+  }
+  
+  try {
+    clearing.value = true
+    const docIds = memoryDocuments.value.map(d => d.id)
+    const result = await window.electronAPI.knowledge.removeDocuments(docIds)
+    if (result.success) {
+      await loadData()
+      if (selectedDoc.value && selectedDoc.value.fileType === 'host-memory') {
+        selectedDoc.value = null
+      }
+    } else {
+      alert(`清空记忆失败: ${result.error}`)
+    }
+  } catch (error) {
+    console.error('Clear memories failed:', error)
   } finally {
     clearing.value = false
   }
@@ -227,9 +296,27 @@ onMounted(() => {
         <div class="doc-list-panel">
           <!-- 统计信息 -->
           <div v-if="stats" class="stats-bar">
-            <span>{{ stats.documentCount }} {{ t('knowledgeManager.documents') }}</span>
-            <span>{{ stats.chunkCount }} {{ t('knowledgeManager.chunks') }}</span>
+            <span>{{ normalDocuments.length }} 文档</span>
+            <span>{{ memoryDocuments.length }} 记忆</span>
             <span>{{ formatSize(stats.totalSize) }}</span>
+          </div>
+
+          <!-- 标签页切换 -->
+          <div class="tab-bar">
+            <button 
+              class="tab-btn" 
+              :class="{ active: activeTab === 'documents' }"
+              @click="activeTab = 'documents'"
+            >
+              📄 文档 ({{ normalDocuments.length }})
+            </button>
+            <button 
+              class="tab-btn" 
+              :class="{ active: activeTab === 'memories' }"
+              @click="activeTab = 'memories'"
+            >
+              🧠 主机记忆 ({{ memoryDocuments.length }})
+            </button>
           </div>
 
           <!-- 搜索框 -->
@@ -237,92 +324,152 @@ onMounted(() => {
             <input 
               type="text"
               v-model="searchQuery"
-              :placeholder="t('knowledgeManager.searchPlaceholder')"
+              :placeholder="activeTab === 'documents' ? t('knowledgeManager.searchPlaceholder') : '搜索记忆内容...'"
               class="search-input"
             />
           </div>
 
-          <!-- 批量操作栏 -->
-          <div class="batch-actions-bar" v-if="filteredDocuments.length > 0">
-            <label class="checkbox-wrapper">
-              <input 
-                type="checkbox" 
-                :checked="isAllSelected"
-                @change="toggleSelectAll"
-              />
-              <span class="checkbox-label">{{ t('knowledgeManager.selectAll') }}</span>
-            </label>
-            <span v-if="hasSelection" class="selection-info">
-              {{ t('knowledgeManager.selected', { count: selectedDocIds.size }) }}
-              <button class="btn-link" @click="clearSelection">{{ t('knowledgeManager.cancel') }}</button>
-            </span>
-          </div>
-
-          <!-- 文档列表 -->
-          <div class="doc-list" v-if="!loading">
-            <div 
-              v-for="doc in filteredDocuments" 
-              :key="doc.id"
-              class="doc-item"
-              :class="{ active: selectedDoc?.id === doc.id, selected: selectedDocIds.has(doc.id) }"
-              @click="viewDocument(doc)"
-            >
-              <label class="doc-checkbox" @click.stop>
+          <!-- 文档标签页 -->
+          <template v-if="activeTab === 'documents'">
+            <!-- 批量操作栏 -->
+            <div class="batch-actions-bar" v-if="filteredDocuments.length > 0">
+              <label class="checkbox-wrapper">
                 <input 
                   type="checkbox" 
-                  :checked="selectedDocIds.has(doc.id)"
-                  @change="toggleDocSelection(doc.id, $event)"
+                  :checked="isAllSelected"
+                  @change="toggleSelectAll"
                 />
+                <span class="checkbox-label">{{ t('knowledgeManager.selectAll') }}</span>
               </label>
-              <div class="doc-icon">
-                {{ doc.fileType === 'pdf' ? '📄' : doc.fileType === 'docx' ? '📝' : '📃' }}
-              </div>
-              <div class="doc-info">
-                <div class="doc-name">{{ doc.filename }}</div>
-                <div class="doc-meta">
-                  <span>{{ formatSize(doc.fileSize) }}</span>
-                  <span>{{ doc.chunkCount }} {{ t('knowledgeManager.chunk') }}</span>
-                </div>
-              </div>
-              <button 
-                class="btn-icon btn-delete"
-                @click.stop="deleteDocument(doc)"
-                :title="t('knowledgeManager.delete')"
+              <span v-if="hasSelection" class="selection-info">
+                {{ t('knowledgeManager.selected', { count: selectedDocIds.size }) }}
+                <button class="btn-link" @click="clearSelection">{{ t('knowledgeManager.cancel') }}</button>
+              </span>
+            </div>
+
+            <!-- 文档列表 -->
+            <div class="doc-list" v-if="!loading">
+              <div 
+                v-for="doc in filteredDocuments" 
+                :key="doc.id"
+                class="doc-item"
+                :class="{ active: selectedDoc?.id === doc.id, selected: selectedDocIds.has(doc.id) }"
+                @click="viewDocument(doc)"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="3 6 5 6 21 6"/>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                </svg>
+                <label class="doc-checkbox" @click.stop>
+                  <input 
+                    type="checkbox" 
+                    :checked="selectedDocIds.has(doc.id)"
+                    @change="toggleDocSelection(doc.id, $event)"
+                  />
+                </label>
+                <div class="doc-icon">
+                  {{ doc.fileType === 'pdf' ? '📄' : doc.fileType === 'docx' ? '📝' : '📃' }}
+                </div>
+                <div class="doc-info">
+                  <div class="doc-name">{{ doc.filename }}</div>
+                  <div class="doc-meta">
+                    <span>{{ formatSize(doc.fileSize) }}</span>
+                    <span>{{ doc.chunkCount }} {{ t('knowledgeManager.chunk') }}</span>
+                  </div>
+                </div>
+                <button 
+                  class="btn-icon btn-delete"
+                  @click.stop="deleteDocument(doc)"
+                  :title="t('knowledgeManager.delete')"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  </svg>
+                </button>
+              </div>
+
+              <div v-if="filteredDocuments.length === 0" class="empty-state">
+                {{ searchQuery ? t('knowledgeManager.noMatchingDocs') : t('knowledgeManager.emptyKnowledge') }}
+              </div>
+            </div>
+
+            <div v-else class="loading-state">
+              {{ t('knowledgeManager.loading') }}
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="list-actions">
+              <button 
+                v-if="hasSelection"
+                class="btn btn-danger btn-sm"
+                @click="batchDeleteDocuments"
+                :disabled="batchDeleting"
+              >
+                {{ batchDeleting ? t('knowledgeManager.deleting') : `${t('knowledgeManager.deleteSelected')} (${selectedDocIds.size})` }}
+              </button>
+              <button 
+                class="btn btn-danger btn-sm"
+                @click="clearKnowledge"
+                :disabled="normalDocuments.length === 0 || clearing"
+              >
+                {{ clearing ? t('knowledgeManager.clearing') : t('knowledgeManager.clearAll') }}
               </button>
             </div>
+          </template>
 
-            <div v-if="filteredDocuments.length === 0" class="empty-state">
-              {{ searchQuery ? t('knowledgeManager.noMatchingDocs') : t('knowledgeManager.emptyKnowledge') }}
+          <!-- 主机记忆标签页 -->
+          <template v-else>
+            <div class="memory-list" v-if="!loading">
+              <!-- 按主机分组显示 -->
+              <div v-for="[hostId, memories] in memoriesByHost" :key="hostId" class="memory-group">
+                <div class="memory-group-header">
+                  <span class="host-icon">{{ hostId === 'local' ? '💻' : '🌐' }}</span>
+                  <span class="host-name">{{ hostId }}</span>
+                  <span class="memory-count">{{ memories.length }} 条记忆</span>
+                </div>
+                <div class="memory-items">
+                  <div 
+                    v-for="memory in (searchQuery ? memories.filter(m => m.content.toLowerCase().includes(searchQuery.toLowerCase())) : memories)" 
+                    :key="memory.id"
+                    class="memory-item"
+                    :class="{ active: selectedDoc?.id === memory.id }"
+                    @click="viewDocument(memory)"
+                  >
+                    <div class="memory-content">{{ memory.content }}</div>
+                    <div class="memory-meta">
+                      <span>{{ formatDate(memory.createdAt) }}</span>
+                      <button 
+                        class="btn-icon btn-delete-small"
+                        @click.stop="deleteDocument(memory)"
+                        title="删除"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <line x1="18" y1="6" x2="6" y2="18"/>
+                          <line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="filteredMemories.length === 0" class="empty-state">
+                {{ searchQuery ? '没有匹配的记忆' : '暂无主机记忆' }}
+              </div>
             </div>
-          </div>
 
-          <div v-else class="loading-state">
-            {{ t('knowledgeManager.loading') }}
-          </div>
+            <div v-else class="loading-state">
+              {{ t('knowledgeManager.loading') }}
+            </div>
 
-          <!-- 操作按钮 -->
-          <div class="list-actions">
-            <button 
-              v-if="hasSelection"
-              class="btn btn-danger btn-sm"
-              @click="batchDeleteDocuments"
-              :disabled="batchDeleting"
-            >
-              {{ batchDeleting ? t('knowledgeManager.deleting') : `${t('knowledgeManager.deleteSelected')} (${selectedDocIds.size})` }}
-            </button>
-            <button 
-              class="btn btn-danger btn-sm"
-              @click="clearKnowledge"
-              :disabled="documents.length === 0 || clearing"
-            >
-              {{ clearing ? t('knowledgeManager.clearing') : t('knowledgeManager.clearAll') }}
-            </button>
-          </div>
+            <!-- 记忆操作按钮 -->
+            <div class="list-actions" v-if="memoryDocuments.length > 0">
+              <button 
+                class="btn btn-danger btn-sm"
+                @click="clearAllMemories"
+                :disabled="clearing"
+              >
+                {{ clearing ? '清除中...' : '清空所有记忆' }}
+              </button>
+            </div>
+          </template>
         </div>
 
         <!-- 右侧：文档详情 -->
@@ -725,6 +872,129 @@ onMounted(() => {
   width: 14px;
   height: 14px;
   cursor: pointer;
+}
+
+/* 标签页样式 */
+.tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.tab-btn.active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+/* 主机记忆列表样式 */
+.memory-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.memory-group {
+  margin-bottom: 16px;
+}
+
+.memory-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.host-icon {
+  font-size: 16px;
+}
+
+.host-name {
+  font-size: 13px;
+  font-weight: 600;
+  flex: 1;
+}
+
+.memory-count {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.memory-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.memory-item {
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.memory-item:hover {
+  border-color: var(--accent-primary);
+}
+
+.memory-item.active {
+  border-color: var(--accent-primary);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.memory-content {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.memory-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.btn-delete-small {
+  width: 20px;
+  height: 20px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.memory-item:hover .btn-delete-small {
+  opacity: 1;
+}
+
+.btn-delete-small:hover {
+  color: var(--danger-color, #ef4444);
 }
 </style>
 

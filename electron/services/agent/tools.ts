@@ -247,7 +247,7 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'remember_info',
-        description: `保存重要发现到主机档案，下次交互时会自动提供这些信息。
+        description: `保存重要发现到知识库，下次交互时会基于语义相关性自动提供这些信息。
 
 适合记忆的内容：
 - **项目路径**：用户项目的关键目录（如 "/data/myapp/config/"）
@@ -255,13 +255,15 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
 - **服务架构**：服务端口和依赖（如 "订单服务在 8080，依赖 Redis:6379"）
 - **诊断结论**：发现的问题根因（如 "之前内存泄漏是因为连接池未正确关闭"）
 - **用户偏好**：用户的习惯做法（如 "用户习惯用 vim 编辑配置"）
+- **重要发现**：任何对未来交互有价值的信息
 
 不要记录：
-- 系统默认路径（如 /etc/nginx/）
-- 临时性的动态数据（如当前 CPU 使用率）
-- 一次性信息（如某次命令的输出）
+- 临时性的动态数据（如当前 CPU 使用率 85%）
+- 一次性查询结果（如某次命令的完整输出）
 
-**关键信息必须完整准确**：记录路径等关键信息时必须使用完整信息，禁止缩写、简化或"创造性"压缩，会影响后续使用`,
+**关键信息必须完整准确**：记录路径等关键信息时必须使用完整信息，禁止缩写、简化或"创造性"压缩，会影响后续使用。
+
+信息保存到知识库后支持语义搜索，相关信息会在后续交互中自动召回。`,
         parameters: {
           type: 'object',
           properties: {

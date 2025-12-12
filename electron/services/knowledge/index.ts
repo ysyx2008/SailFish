@@ -822,6 +822,222 @@ export class KnowledgeService extends EventEmitter {
     this.isInitialized = false
     this.emit('disposed')
   }
+
+  // ==================== 主机记忆功能 ====================
+
+  /**
+   * 添加主机记忆
+   * 将记忆信息保存到知识库，支持语义搜索
+   */
+  async addHostMemory(hostId: string, memory: string): Promise<string | null> {
+    if (!hostId || !memory) {
+      return null
+    }
+
+    try {
+      if (!this.isInitialized) {
+        await this.initialize()
+      }
+
+      // 检查是否已存在相同的记忆（避免重复）
+      const existingCheck = this.isDuplicate(memory)
+      if (existingCheck.isDuplicate) {
+        console.log(`[KnowledgeService] 主机记忆已存在，跳过: ${memory.slice(0, 50)}...`)
+        return existingCheck.existingDoc?.id || null
+      }
+
+      const docId = uuidv4()
+      const now = Date.now()
+
+      // 创建记忆文档
+      const document: KnowledgeDocument = {
+        id: docId,
+        filename: `memory_${hostId}_${now}`,
+        content: memory,
+        fileSize: Buffer.from(memory).length,
+        fileType: 'host-memory',  // 特殊类型标记
+        contentHash: this.computeContentHash(memory),
+        hostId: hostId,
+        tags: ['host-memory', hostId],
+        createdAt: now,
+        updatedAt: now,
+        chunkCount: 1  // 记忆通常很短，只有一个 chunk
+      }
+
+      // 生成 embedding（记忆通常很短，不需要分块）
+      const embedding = await this.embeddingService.embedSingle(memory)
+
+      // 创建向量记录
+      const record: VectorRecord = {
+        id: uuidv4(),
+        docId,
+        content: memory,
+        vector: embedding,
+        filename: document.filename,
+        hostId: hostId,
+        tags: document.tags.join(','),
+        chunkIndex: 0,
+        createdAt: now
+      }
+
+      // 添加到向量存储
+      await this.vectorStorage.addRecords([record])
+
+      // 添加到 BM25 索引
+      await this.bm25Index.addDocuments([{
+        id: record.id,
+        docId: record.docId,
+        content: record.content,
+        filename: record.filename,
+        hostId: record.hostId,
+        tags: record.tags
+      }])
+
+      // 保存文档索引
+      this.documentsIndex.set(docId, document)
+      this.saveDocumentsIndex()
+
+      console.log(`[KnowledgeService] 已保存主机记忆: ${memory.slice(0, 50)}...`)
+      return docId
+    } catch (error) {
+      console.error('[KnowledgeService] 保存主机记忆失败:', error)
+      return null
+    }
+  }
+
+  /**
+   * 搜索主机记忆
+   * 返回与查询相关的主机记忆
+   */
+  async searchHostMemories(
+    hostId: string, 
+    query?: string, 
+    limit: number = 10
+  ): Promise<SearchResult[]> {
+    if (!this.isInitialized) {
+      await this.initialize()
+    }
+
+    try {
+      // 如果没有 query，返回该主机的最近记忆
+      if (!query) {
+        // 获取该主机的所有记忆文档
+        const hostDocs = this.getDocumentsByHost(hostId)
+          .filter(doc => doc.fileType === 'host-memory')
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, limit)
+
+        return hostDocs.map(doc => ({
+          id: doc.id,
+          docId: doc.id,
+          content: doc.content,
+          score: 1.0,
+          metadata: {
+            filename: doc.filename,
+            hostId: doc.hostId,
+            tags: doc.tags,
+            startOffset: 0,
+            endOffset: doc.content.length
+          },
+          source: 'local' as const
+        }))
+      }
+
+      // 使用语义搜索
+      const queryEmbedding = await this.embeddingService.embedSingle(query)
+      const results = await this.vectorStorage.hybridSearch(
+        query,
+        queryEmbedding,
+        {
+          query,
+          limit,
+          hostId,
+          tags: ['host-memory'],
+          similarity: 0.5  // 较低的阈值，确保能找到相关记忆
+        }
+      )
+
+      return results
+    } catch (error) {
+      console.error('[KnowledgeService] 搜索主机记忆失败:', error)
+      return []
+    }
+  }
+
+  /**
+   * 获取主机的所有记忆（用于构建 prompt）
+   * 优先返回与当前上下文相关的记忆
+   */
+  async getHostMemoriesForPrompt(
+    hostId: string, 
+    contextHint?: string,
+    maxMemories: number = 15
+  ): Promise<string[]> {
+    try {
+      let memories: SearchResult[] = []
+
+      if (contextHint) {
+        // 如果有上下文提示，先搜索相关记忆
+        memories = await this.searchHostMemories(hostId, contextHint, maxMemories)
+      }
+
+      // 如果搜索结果不足，补充最近的记忆
+      if (memories.length < maxMemories) {
+        const recentMemories = await this.searchHostMemories(hostId, undefined, maxMemories - memories.length)
+        // 合并并去重
+        const existingIds = new Set(memories.map(m => m.docId))
+        for (const m of recentMemories) {
+          if (!existingIds.has(m.docId)) {
+            memories.push(m)
+          }
+        }
+      }
+
+      return memories.map(m => m.content)
+    } catch (error) {
+      console.error('[KnowledgeService] 获取主机记忆失败:', error)
+      return []
+    }
+  }
+
+  /**
+   * 获取主机记忆数量
+   */
+  getHostMemoryCount(hostId: string): number {
+    return this.getDocumentsByHost(hostId)
+      .filter(doc => doc.fileType === 'host-memory')
+      .length
+  }
+
+  /**
+   * 删除主机的所有记忆
+   */
+  async clearHostMemories(hostId: string): Promise<number> {
+    const memoryDocs = this.getDocumentsByHost(hostId)
+      .filter(doc => doc.fileType === 'host-memory')
+    
+    let deleted = 0
+    for (const doc of memoryDocs) {
+      const success = await this.removeDocument(doc.id)
+      if (success) deleted++
+    }
+
+    return deleted
+  }
+
+  /**
+   * 迁移旧的 notes 到知识库
+   * 用于从 HostProfile.notes 迁移到知识库
+   */
+  async migrateNotesToKnowledge(hostId: string, notes: string[]): Promise<number> {
+    let migrated = 0
+    for (const note of notes) {
+      const result = await this.addHostMemory(hostId, note)
+      if (result) migrated++
+    }
+    console.log(`[KnowledgeService] 迁移了 ${migrated}/${notes.length} 条主机记忆`)
+    return migrated
+  }
 }
 
 // 导出单例

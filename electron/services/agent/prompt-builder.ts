@@ -274,6 +274,19 @@ java 进程占用 280% CPU，这是主要问题。我来确认是哪个 Java 应
 }
 
 /**
+ * 构建系统提示的选项
+ */
+export interface BuildSystemPromptOptions {
+  context: AgentContext
+  hostProfileService?: HostProfileServiceInterface
+  mbtiType?: AgentMbtiType
+  knowledgeContext?: string
+  knowledgeEnabled?: boolean
+  /** 从知识库获取的主机记忆（优先于 notes） */
+  hostMemories?: string[]
+}
+
+/**
  * 构建系统提示
  */
 export function buildSystemPrompt(
@@ -281,7 +294,8 @@ export function buildSystemPrompt(
   hostProfileService?: HostProfileServiceInterface,
   mbtiType?: AgentMbtiType,
   knowledgeContext?: string,
-  knowledgeEnabled?: boolean
+  knowledgeEnabled?: boolean,
+  hostMemories?: string[]
 ): string {
   // MBTI 风格提示
   const mbtiStyle = getMbtiStylePrompt(mbtiType ?? null)
@@ -313,12 +327,20 @@ export function buildSystemPrompt(
       if (profile.installedTools && profile.installedTools.length > 0) {
         hostContext += `\n- 已安装工具: ${profile.installedTools.join(', ')}`
       }
-      if (profile.notes && profile.notes.length > 0) {
-        hostContext += '\n\n## 已知信息（来自历史交互）'
-        for (const note of profile.notes.slice(-10)) {
-          hostContext += `\n- ${note}`
-        }
-      }
+    }
+  }
+
+  // 添加主机记忆：优先使用知识库记忆，否则使用旧的 notes
+  const memories = hostMemories && hostMemories.length > 0 
+    ? hostMemories 
+    : (context.hostId && hostProfileService 
+        ? hostProfileService.getProfile(context.hostId)?.notes?.slice(-10) 
+        : undefined)
+  
+  if (memories && memories.length > 0) {
+    hostContext += '\n\n## 已知信息（来自历史交互）'
+    for (const memory of memories.slice(0, 15)) {  // 最多显示 15 条
+      hostContext += `\n- ${memory}`
     }
   }
 
@@ -389,7 +411,7 @@ ${buildReActFramework()}
 
 ${buildPlanningGuidance()}
 
-**在结束前记得**：如果发现了值得记忆的信息（安装了的程序、路径、关键配置、服务架构等），用 \`remember_info\` 保存。
+**在结束前记得**：如果发现了值得记忆的信息（安装了的程序、路径、关键配置、服务架构等），用 \`remember_info\` 保存到知识库，下次交互时会自动召回相关信息。
 
 ## 任务规划能力（Plan）
 
