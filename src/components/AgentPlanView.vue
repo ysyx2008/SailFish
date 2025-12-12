@@ -140,10 +140,10 @@ const handleToggle = () => {
         <span class="expand-icon">▼</span>
       </div>
     </div>
-    <!-- 底部进度条 -->
+    <!-- 顶部进度条 -->
     <div 
       v-if="compact" 
-      class="bottom-progress-bar"
+      class="top-progress-bar"
       :style="{ '--progress': progressPercent + '%' }"
       :class="{ 'failed': hasFailed }"
     ></div>
@@ -225,7 +225,7 @@ const handleToggle = () => {
 }
 
 .agent-plan.is-compact {
-  padding: 10px 14px 12px;
+  padding: 12px 14px 10px;
   border-radius: 8px;
 }
 
@@ -304,17 +304,17 @@ const handleToggle = () => {
   flex-shrink: 0;
 }
 
-/* 底部进度条 - 紧凑模式 */
-.bottom-progress-bar {
+/* 顶部进度条 - 紧凑模式 */
+.top-progress-bar {
   position: absolute;
-  bottom: 0;
+  top: 0;
   left: 0;
   right: 0;
   height: 3px;
   background: rgba(255, 255, 255, 0.08);
 }
 
-.bottom-progress-bar::after {
+.top-progress-bar::after {
   content: '';
   position: absolute;
   left: 0;
@@ -325,7 +325,7 @@ const handleToggle = () => {
   transition: width 0.4s ease;
 }
 
-.bottom-progress-bar.failed::after {
+.top-progress-bar.failed::after {
   background: linear-gradient(90deg, #f87171, #ef4444);
 }
 
