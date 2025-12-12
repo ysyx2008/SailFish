@@ -39,7 +39,8 @@ export function useAgentMode(
   getDocumentContext: () => Promise<string>,
   getHostIdByTabId: (tabId: string) => Promise<string>,  // 根据 tabId 获取 hostId（不依赖 activeTab）
   autoProbeHostProfile: () => Promise<void>,
-  summarizeAgentFindings: (hostId: string) => Promise<void>
+  summarizeAgentFindings: (hostId: string) => Promise<void>,
+  tabId: Ref<string>  // 每个 AiPanel 实例固定绑定的 tab ID
 ) {
   const terminalStore = useTerminalStore()
 
@@ -56,13 +57,17 @@ export function useAgentMode(
   let cleanupCompleteListener: (() => void) | null = null
   let cleanupErrorListener: (() => void) | null = null
 
-  // 当前终端 ID
-  const currentTabId = computed(() => terminalStore.activeTabId)
+  // 当前终端 ID（使用传入的 tabId，不再依赖 activeTabId）
+  const currentTabId = tabId
+
+  // 获取当前 tab（基于固定的 tabId）
+  const currentTab = computed(() => {
+    return terminalStore.tabs.find(t => t.id === currentTabId.value)
+  })
 
   // Agent 状态
   const agentState = computed((): AgentState | undefined => {
-    const activeTab = terminalStore.activeTab
-    return activeTab?.agentState as AgentState | undefined
+    return currentTab.value?.agentState as AgentState | undefined
   })
 
   const isAgentRunning = computed(() => {
@@ -160,12 +165,12 @@ export function useAgentMode(
 
   // 获取当前终端信息（用于历史记录）
   const getTerminalInfo = () => {
-    const activeTab = terminalStore.activeTab
-    if (!activeTab) return null
+    const tab = currentTab.value
+    if (!tab) return null
     return {
-      terminalId: activeTab.id,
-      terminalType: activeTab.type as 'local' | 'ssh',
-      sshHost: activeTab.sshConfig?.host
+      terminalId: tab.id,
+      terminalType: tab.type as 'local' | 'ssh',
+      sshHost: tab.sshConfig?.host
     }
   }
 

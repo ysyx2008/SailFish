@@ -2,8 +2,9 @@
 /**
  * AI 面板组件
  * 重构版本：使用 composables 模块化管理逻辑
+ * 每个 tab 独立实例，通过 tabId prop 绑定
  */
-import { ref, computed, watch, inject, onMounted } from 'vue'
+import { ref, computed, watch, inject, onMounted, toRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
@@ -17,6 +18,11 @@ import {
   useAiChat,
   useAgentMode
 } from '../composables'
+
+// Props - 每个 AiPanel 实例绑定到特定的 tab
+const props = defineProps<{
+  tabId: string
+}>()
 
 // Emits
 const emit = defineEmits<{
@@ -36,8 +42,8 @@ const messagesRef = ref<HTMLDivElement | null>(null)
 
 // ==================== 初始化 Composables ====================
 
-// 当前终端 ID（先从 store 获取，供 useDocumentUpload 使用）
-const currentTabId = computed(() => terminalStore.activeTabId)
+// 当前终端 ID（使用 prop，每个实例固定绑定一个 tab）
+const currentTabId = toRef(props, 'tabId')
 
 // 文档上传（传入 currentTabId，每个终端独立管理文档）
 const {
@@ -79,13 +85,17 @@ const {
   analyzeSelection,
   analyzeTerminalContent,
   quickActions
-} = useAiChat(getDocumentContext, messagesRef)
+} = useAiChat(getDocumentContext, messagesRef, currentTabId)
+
+// 获取当前 tab（基于固定的 tabId）
+const currentTab = computed(() => {
+  return terminalStore.tabs.find(t => t.id === currentTabId.value)
+})
 
 // Agent 模式（需要 inputText 和 scrollToBottom）
 // 先创建一个临时的 agentState computed 用于 useHostProfile
 const tempAgentState = computed(() => {
-  const activeTab = terminalStore.activeTab
-  return activeTab?.agentState
+  return currentTab.value?.agentState
 })
 
 // 主机档案
@@ -126,7 +136,8 @@ const {
   getDocumentContext,
   getHostIdByTabId,
   autoProbeHostProfile,
-  summarizeAgentFindings
+  summarizeAgentFindings,
+  currentTabId
 )
 
 // 上下文统计
@@ -501,7 +512,7 @@ onMounted(() => {
         <button class="error-alert-btn" @click="handleDiagnoseError" :disabled="isLoading">
           {{ t('ai.aiDiagnose') }}
         </button>
-        <button class="error-alert-close" @click="terminalStore.clearError(terminalStore.activeTab?.id || '')" :title="t('ai.closeError')">
+        <button class="error-alert-close" @click="terminalStore.clearError(currentTabId)" :title="t('ai.closeError')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>

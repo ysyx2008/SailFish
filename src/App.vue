@@ -231,7 +231,7 @@ onUnmounted(() => {
         <TerminalContainer />
       </main>
 
-      <!-- AI 面板 -->
+      <!-- AI 面板 - 每个 tab 独立实例 -->
       <template v-if="showAiPanel">
         <div 
           class="resize-handle" 
@@ -239,7 +239,13 @@ onUnmounted(() => {
           :class="{ resizing: isResizing }"
         ></div>
         <aside class="ai-sidebar" :style="{ width: aiPanelWidth + 'px' }">
-          <AiPanel @close="showAiPanel = false" />
+          <template v-for="tab in terminalStore.tabs" :key="tab.id">
+            <AiPanel 
+              v-show="tab.id === terminalStore.activeTabId"
+              :tab-id="tab.id"
+              @close="showAiPanel = false" 
+            />
+          </template>
         </aside>
       </template>
     </div>

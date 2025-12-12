@@ -1,8 +1,9 @@
 /**
  * AI 对话 composable
  * 处理普通对话模式的消息发送、命令解释、命令生成等
+ * 每个 tab 有独立的 AiPanel 实例，tabId 通过参数传入
  */
-import { ref, computed, nextTick, watch, Ref } from 'vue'
+import { ref, computed, nextTick, Ref } from 'vue'
 import { useTerminalStore } from '../stores/terminal'
 import type { AiMessage } from '../stores/terminal'
 
@@ -13,7 +14,8 @@ const SCROLL_THROTTLE_MS = 1000
 
 export function useAiChat(
   getDocumentContext: () => Promise<string>,
-  messagesRef: Ref<HTMLDivElement | null>
+  messagesRef: Ref<HTMLDivElement | null>,
+  tabId: Ref<string>  // 每个 AiPanel 实例固定绑定的 tab ID
 ) {
   const terminalStore = useTerminalStore()
   const inputText = ref('')
@@ -21,95 +23,74 @@ export function useAiChat(
   // 是否有新消息（用户不在底部时显示提示）
   const hasNewMessage = ref(false)
 
-  // 当前终端的 AI 消息（每个终端独立）
-  const messages = computed(() => {
-    const activeTab = terminalStore.activeTab
-    return activeTab?.aiMessages || []
-  })
+  // 当前终端 ID（使用传入的 tabId，不再依赖 activeTabId）
+  const currentTabId = tabId
 
-  // 当前终端 ID
-  const currentTabId = computed(() => terminalStore.activeTabId)
+  // 当前终端的 AI 消息（基于固定的 tabId）
+  const messages = computed(() => {
+    const tab = terminalStore.tabs.find(t => t.id === currentTabId.value)
+    return tab?.aiMessages || []
+  })
 
   // 用户是否在底部附近（从 store 获取，每个终端独立）
   const isUserNearBottom = computed(() => {
-    const tabId = currentTabId.value
-    if (!tabId) return true
-    return terminalStore.getAiScrollNearBottom(tabId)
+    const id = currentTabId.value
+    if (!id) return true
+    return terminalStore.getAiScrollNearBottom(id)
   })
 
   // 设置当前 tab 的 isUserNearBottom 状态
   const setIsUserNearBottom = (value: boolean) => {
-    const tabId = currentTabId.value
-    if (tabId) {
-      terminalStore.setAiScrollNearBottom(tabId, value)
+    const id = currentTabId.value
+    if (id) {
+      terminalStore.setAiScrollNearBottom(id, value)
     }
   }
 
-  // 当切换 tab 时，保存旧 tab 的滚动位置，恢复新 tab 的滚动位置
-  watch(currentTabId, (newTabId, oldTabId) => {
-    // 保存旧 tab 的滚动位置
-    if (oldTabId && messagesRef.value) {
-      terminalStore.setAiScrollTop(oldTabId, messagesRef.value.scrollTop)
-    }
-    
-    // 重置新消息提示
-    hasNewMessage.value = false
-    
-    // 恢复新 tab 的滚动位置
-    if (newTabId) {
-      nextTick(() => {
-        if (messagesRef.value) {
-          const savedScrollTop = terminalStore.getAiScrollTop(newTabId)
-          if (savedScrollTop !== undefined) {
-            // 恢复保存的滚动位置
-            skipScrollUpdate = true
-            messagesRef.value.scrollTop = savedScrollTop
-            requestAnimationFrame(() => {
-              skipScrollUpdate = false
-            })
-          }
-        }
-      })
-    }
-  })
+  // 每个 tab 有独立的 AiPanel 实例，不需要切换 tab 时保存/恢复滚动位置
+  // 滚动位置由 DOM 元素自然保持
 
   // 标志：是否跳过 scroll 事件的状态更新（用于避免强制滚动时被 scroll 事件覆盖）
   let skipScrollUpdate = false
 
+  // 获取当前 tab（基于固定的 tabId）
+  const currentTab = computed(() => {
+    return terminalStore.tabs.find(t => t.id === currentTabId.value)
+  })
+
   // 获取当前终端信息（用于历史记录）
   const getTerminalInfo = () => {
-    const activeTab = terminalStore.activeTab
-    if (!activeTab) return null
+    const tab = currentTab.value
+    if (!tab) return null
     return {
-      terminalId: activeTab.id,
-      terminalType: activeTab.type as 'local' | 'ssh',
-      sshHost: activeTab.sshConfig?.host
+      terminalId: tab.id,
+      terminalType: tab.type as 'local' | 'ssh',
+      sshHost: tab.sshConfig?.host
     }
   }
 
   // 当前终端的 AI 加载状态（每个终端独立）
   const isLoading = computed(() => {
-    const activeTab = terminalStore.activeTab
-    return activeTab?.aiLoading || false
+    return currentTab.value?.aiLoading || false
   })
 
   // 获取当前终端的系统信息
   const currentSystemInfo = computed(() => {
-    const activeTab = terminalStore.activeTab
-    if (activeTab?.systemInfo) {
-      return activeTab.systemInfo
+    const tab = currentTab.value
+    if (tab?.systemInfo) {
+      return tab.systemInfo
     }
     return null
   })
 
   // 获取当前终端选中的文本
   const terminalSelectedText = computed(() => {
-    return terminalStore.activeTab?.selectedText || ''
+    return currentTab.value?.selectedText || ''
   })
 
   // 获取最近的错误
   const lastError = computed(() => {
-    return terminalStore.activeTab?.lastError
+    return currentTab.value?.lastError
   })
 
   // 检查用户是否在底部附近
