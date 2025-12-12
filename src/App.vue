@@ -11,6 +11,7 @@ import SettingsModal from './components/Settings/SettingsModal.vue'
 import FileExplorer from './components/FileExplorer/FileExplorer.vue'
 import McpStatusPopover from './components/McpStatusPopover.vue'
 import SetupWizard from './components/SetupWizard.vue'
+import WelcomePage from './components/WelcomePage.vue'
 import type { SftpConnectionConfig } from './composables/useSftp'
 
 const { t } = useI18n()
@@ -57,8 +58,7 @@ onMounted(async () => {
 
 // 初始化应用（正常启动流程）
 const initializeApp = async () => {
-  // 创建初始终端标签页
-  await terminalStore.createTab('local')
+  // 不再自动创建本地终端，显示欢迎页让用户选择
 
   // 自动连接启用的 MCP 服务器
   try {
@@ -74,6 +74,35 @@ const initializeApp = async () => {
   } catch (error) {
     console.error('[MCP] 自动连接服务器失败:', error)
   }
+}
+
+// 是否显示欢迎页（没有打开任何终端时显示）
+const showWelcomePage = computed(() => terminalStore.tabs.length === 0)
+
+// 从欢迎页打开本地终端
+const openLocalFromWelcome = async () => {
+  await terminalStore.createTab('local')
+}
+
+// 从欢迎页连接 SSH
+const openSshFromWelcome = async (session: SshSession) => {
+  // 获取有效的跳板机配置
+  const jumpHost = configStore.getEffectiveJumpHost(session)
+  
+  await terminalStore.createTab('ssh', {
+    host: session.host,
+    port: session.port,
+    username: session.username,
+    password: session.password,
+    privateKey: session.privateKeyPath,
+    jumpHost,
+    encoding: session.encoding || 'utf-8'
+  })
+}
+
+// 从欢迎页打开会话管理器
+const openSessionManagerFromWelcome = () => {
+  showSidebar.value = true
 }
 
 // 完成引导向导
@@ -226,13 +255,19 @@ onUnmounted(() => {
         </div>
       </aside>
 
-      <!-- 终端区域 -->
+      <!-- 终端区域 / 欢迎页 -->
       <main class="terminal-area">
-        <TerminalContainer />
+        <WelcomePage 
+          v-if="showWelcomePage"
+          @open-local="openLocalFromWelcome"
+          @open-ssh="openSshFromWelcome"
+          @open-session-manager="openSessionManagerFromWelcome"
+        />
+        <TerminalContainer v-else />
       </main>
 
-      <!-- AI 面板 - 每个 tab 独立实例 -->
-      <template v-if="showAiPanel">
+      <!-- AI 面板 - 每个 tab 独立实例（仅在有终端时显示） -->
+      <template v-if="showAiPanel && !showWelcomePage">
         <div 
           class="resize-handle" 
           @mousedown="startResize"

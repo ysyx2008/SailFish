@@ -5,6 +5,23 @@ export default {
     description: 'AI 驱动的跨平台终端'
   },
 
+  // 欢迎页
+  welcome: {
+    title: '欢迎使用旗鱼终端',
+    subtitle: 'AI 驱动的跨平台终端工具',
+    quickStart: '快速开始',
+    localTerminal: '本地终端',
+    localTerminalDesc: '打开本机命令行终端',
+    sshConnect: 'SSH 连接',
+    sshConnectDesc: '连接远程服务器',
+    smartPatrol: '智能巡检',
+    smartPatrolDesc: 'AI 自动巡检多台服务器',
+    comingSoon: '即将推出',
+    recentConnections: '最近连接',
+    viewAllSessions: '查看全部会话',
+    tip1: '按 Ctrl+Shift+T 可快速新建终端标签页'
+  },
+
   // 通用按钮和操作
   common: {
     save: '保存',

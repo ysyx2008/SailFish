@@ -5,6 +5,23 @@ export default {
     description: 'AI-powered cross-platform terminal'
   },
 
+  // Welcome page
+  welcome: {
+    title: 'Welcome to SFTerminal',
+    subtitle: 'AI-powered cross-platform terminal',
+    quickStart: 'Quick Start',
+    localTerminal: 'Local Terminal',
+    localTerminalDesc: 'Open local command line',
+    sshConnect: 'SSH Connect',
+    sshConnectDesc: 'Connect to remote servers',
+    smartPatrol: 'Smart Patrol',
+    smartPatrolDesc: 'AI auto-inspect multiple servers',
+    comingSoon: 'Coming Soon',
+    recentConnections: 'Recent Connections',
+    viewAllSessions: 'View All Sessions',
+    tip1: 'Press Ctrl+Shift+T to quickly create a new terminal tab'
+  },
+
   // Common buttons and actions
   common: {
     save: 'Save',
