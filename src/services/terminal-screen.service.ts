@@ -472,6 +472,9 @@ export class TerminalScreenService {
 
   /**
    * 检测密码输入提示
+   * 
+   * 重要改进：不仅检测密码提示的存在，还要判断当前是否真正处于等待密码输入的状态。
+   * 如果密码提示之后已经有了其他输出（说明密码已输入），则不应返回等待状态。
    */
   private detectPasswordPrompt(currentLine: string, recentLines: string[]): InputWaitingState {
     const passwordPatterns = [
@@ -496,18 +499,81 @@ export class TerminalScreenService {
       /ssh.*passphrase/i,              // SSH key passphrase
     ]
 
-    // 检查当前行和最近几行
-    const linesToCheck = [currentLine, ...recentLines.slice(-3)]
+    // 首先检查当前行（光标所在行）是否是密码提示
+    // 如果光标在密码提示行，这是最可靠的等待状态指示
+    for (const pattern of passwordPatterns) {
+      if (pattern.test(currentLine)) {
+        return {
+          isWaiting: true,
+          type: 'password',
+          prompt: currentLine.trim(),
+          confidence: 0.95
+        }
+      }
+    }
+
+    // 检查最近几行是否有密码提示
+    // 但需要判断密码提示之后是否已经有了其他输出
+    const allLines = [...recentLines]
     
-    for (const line of linesToCheck) {
+    // 从最新到最旧检查
+    for (let i = allLines.length - 1; i >= 0; i--) {
+      const line = allLines[i]
+      let matchedPasswordPrompt = false
+      
       for (const pattern of passwordPatterns) {
         if (pattern.test(line)) {
-          return {
-            isWaiting: true,
-            type: 'password',
-            prompt: line.trim(),
-            confidence: 0.95
+          matchedPasswordPrompt = true
+          break
+        }
+      }
+      
+      if (matchedPasswordPrompt) {
+        // 找到了密码提示，检查之后是否有有效输出
+        // 密码提示之后的行
+        const linesAfterPrompt = allLines.slice(i + 1)
+        
+        // 如果密码提示之后有非空行（不只是空白行），说明密码已输入，命令在执行
+        const hasOutputAfterPrompt = linesAfterPrompt.some(l => {
+          const trimmed = l.trim()
+          // 排除空行
+          if (!trimmed) return false
+          // 排除可能是相同密码提示的重复（密码错误时会再次提示）
+          for (const pattern of passwordPatterns) {
+            if (pattern.test(l)) return false
           }
+          // 排除典型的密码错误提示（这些提示后通常还会再要密码）
+          if (/sorry.*try again/i.test(l)) return false
+          if (/incorrect password/i.test(l)) return false
+          if (/authentication failure/i.test(l)) return false
+          return true
+        })
+        
+        if (hasOutputAfterPrompt) {
+          // 密码已输入，有后续输出，不是等待状态
+          return { isWaiting: false, type: 'none', confidence: 0 }
+        }
+        
+        // 检查当前行（光标行）是否是空的或只有提示符
+        // 密码输入时光标通常在密码提示行的末尾
+        const currentTrimmed = currentLine.trim()
+        
+        // 如果当前行是空的，且最近有密码提示，可能正在等待输入
+        // 但也可能是密码已输入完成，命令正在执行的短暂空白
+        // 需要结合位置判断
+        if (!currentTrimmed || this.isAtPrompt()) {
+          // 如果已经回到了 shell 提示符，说明命令已完成
+          if (this.isAtPrompt()) {
+            return { isWaiting: false, type: 'none', confidence: 0 }
+          }
+        }
+        
+        // 密码提示还在最近几行，且之后没有有效输出，认为在等待
+        return {
+          isWaiting: true,
+          type: 'password',
+          prompt: line.trim(),
+          confidence: 0.85  // 稍低的置信度，因为不是在当前行检测到
         }
       }
     }
