@@ -52,22 +52,22 @@ const isSponsor = computed(() => configStore.isSponsor)
 const showSponsor = computed(() => oemConfig.features.showSponsor)
 const showFireworks = ref(false)
 
-// 烟花数据 - 减少数量优化性能
-const fireworkColors = ['#ff0044', '#ffd700', '#00ff88', '#ff6b6b', '#4ecdc4', '#a855f7', '#ff9f43', '#00ffcc', '#ff0066']
-const fireworksWave1 = Array.from({ length: 8 }, (_, i) => ({
+// 烟花数据 - 丰富多彩的烟花效果
+const fireworkColors = ['#ff0044', '#ffd700', '#00ff88', '#ff6b6b', '#4ecdc4', '#a855f7', '#ff9f43', '#00ffcc', '#ff0066', '#ff1493', '#00ffff', '#ff4500']
+const fireworksWave1 = Array.from({ length: 12 }, (_, i) => ({
   color: fireworkColors[i % fireworkColors.length],
-  height: `${55 + Math.random() * 30}vh`,
-  left: `${10 + i * 10}%`
+  height: `${50 + Math.random() * 35}vh`,
+  left: `${5 + i * 8}%`
 }))
-const fireworksWave2 = Array.from({ length: 6 }, (_, i) => ({
-  color: fireworkColors[(i + 3) % fireworkColors.length],
-  height: `${55 + Math.random() * 30}vh`,
-  left: `${15 + i * 12}%`
+const fireworksWave2 = Array.from({ length: 10 }, (_, i) => ({
+  color: fireworkColors[(i + 4) % fireworkColors.length],
+  height: `${50 + Math.random() * 35}vh`,
+  left: `${8 + i * 9}%`
 }))
-const fireworksWave3 = Array.from({ length: 6 }, (_, i) => ({
-  color: fireworkColors[(i + 5) % fireworkColors.length],
-  height: `${55 + Math.random() * 30}vh`,
-  left: `${12 + i * 13}%`
+const fireworksWave3 = Array.from({ length: 10 }, (_, i) => ({
+  color: fireworkColors[(i + 7) % fireworkColors.length],
+  height: `${50 + Math.random() * 35}vh`,
+  left: `${3 + i * 10}%`
 }))
 const shootingStars = [
   { color: '#ff6b6b', left: '20%', top: '10%' },
@@ -77,18 +77,84 @@ const shootingStars = [
   { color: '#00ff88', left: '10%', top: '25%' },
   { color: '#ff9f43', left: '55%', top: '12%' },
   { color: '#ff0066', left: '30%', top: '18%' },
-  { color: '#00ffcc', left: '75%', top: '5%' }
+  { color: '#00ffcc', left: '75%', top: '5%' },
+  { color: '#ff0044', left: '5%', top: '30%' },
+  { color: '#ffd700', left: '90%', top: '8%' },
+  { color: '#00ff88', left: '50%', top: '22%' },
+  { color: '#a855f7', left: '15%', top: '5%' }
 ]
 
-// 预计算12个粒子的方向 (均匀分布360度) - 减少数量优化性能
-const particleDirections = Array.from({ length: 12 }, (_, i) => {
-  const angle = (i * 30) * Math.PI / 180 // 每个粒子间隔30度
-  const distance = 60 + Math.random() * 40 // 60-100px 距离
-  return {
-    tx: Math.round(Math.cos(angle) * distance),
-    ty: Math.round(Math.sin(angle) * distance)
-  }
+// 闪烁星星
+const sparkleStars = Array.from({ length: 30 }, () => ({
+  color: fireworkColors[Math.floor(Math.random() * fireworkColors.length)],
+  left: `${Math.random() * 100}%`,
+  top: `${Math.random() * 60}%`,
+  delay: Math.random() * 8,
+  size: 3 + Math.random() * 4
+}))
+
+// 多种烟花爆炸形状
+// 形状1: 大圆形爆炸 (24个粒子，更大距离)
+const shapeCircle = Array.from({ length: 24 }, (_, i) => {
+  const angle = (i * 15) * Math.PI / 180
+  const distance = 100 + Math.random() * 60
+  return { tx: Math.round(Math.cos(angle) * distance), ty: Math.round(Math.sin(angle) * distance) }
 })
+
+// 形状2: 心形爆炸
+const shapeHeart = Array.from({ length: 32 }, (_, i) => {
+  const t = (i / 32) * Math.PI * 2
+  const scale = 8
+  const x = scale * 16 * Math.pow(Math.sin(t), 3)
+  const y = -scale * (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t))
+  return { tx: Math.round(x), ty: Math.round(y) }
+})
+
+// 形状3: 星形爆炸 (5角星)
+const shapeStar = Array.from({ length: 30 }, (_, i) => {
+  const angle = (i * 12) * Math.PI / 180
+  const isOuter = i % 2 === 0
+  const distance = isOuter ? (120 + Math.random() * 40) : (50 + Math.random() * 20)
+  return { tx: Math.round(Math.cos(angle) * distance), ty: Math.round(Math.sin(angle) * distance) }
+})
+
+// 形状4: 双层圆环爆炸
+const shapeDoubleRing = [
+  ...Array.from({ length: 16 }, (_, i) => {
+    const angle = (i * 22.5) * Math.PI / 180
+    const distance = 70 + Math.random() * 20
+    return { tx: Math.round(Math.cos(angle) * distance), ty: Math.round(Math.sin(angle) * distance) }
+  }),
+  ...Array.from({ length: 16 }, (_, i) => {
+    const angle = ((i * 22.5) + 11.25) * Math.PI / 180
+    const distance = 130 + Math.random() * 30
+    return { tx: Math.round(Math.cos(angle) * distance), ty: Math.round(Math.sin(angle) * distance) }
+  })
+]
+
+// 形状5: 螺旋爆炸
+const shapeSpiral = Array.from({ length: 28 }, (_, i) => {
+  const angle = (i * 40) * Math.PI / 180
+  const distance = 40 + i * 4 + Math.random() * 15
+  return { tx: Math.round(Math.cos(angle) * distance), ty: Math.round(Math.sin(angle) * distance) }
+})
+
+// 形状6: 菊花爆炸（带尾迹感）
+const shapeChrysanthemum = Array.from({ length: 36 }, (_, i) => {
+  const angle = (i * 10) * Math.PI / 180
+  const wave = Math.sin(i * 3) * 20
+  const distance = 90 + wave + Math.random() * 30
+  return { tx: Math.round(Math.cos(angle) * distance), ty: Math.round(Math.sin(angle) * distance) }
+})
+
+// 所有形状数组
+const allShapes = [shapeCircle, shapeHeart, shapeStar, shapeDoubleRing, shapeSpiral, shapeChrysanthemum]
+
+// 为每个烟花预分配形状
+const getRandomShape = () => allShapes[Math.floor(Math.random() * allShapes.length)]
+const fireworkShapes1 = fireworksWave1.map(() => getRandomShape())
+const fireworkShapes2 = fireworksWave2.map(() => getRandomShape())
+const fireworkShapes3 = fireworksWave3.map(() => getRandomShape())
 
 // 平滑滚动到顶部
 const smoothScrollToTop = (element: HTMLElement, duration: number = 1500): Promise<void> => {
@@ -209,7 +275,7 @@ const onQrImageError = (event: Event) => {
         :style="{ '--i': i, '--color': fw.color, '--height': fw.height, left: fw.left }"
       >
         <div 
-          v-for="(p, j) in particleDirections" 
+          v-for="(p, j) in fireworkShapes1[i]" 
           :key="j" 
           class="firework-particle"
           :style="{ '--tx': p.tx + 'px', '--ty': p.ty + 'px' }"
@@ -223,7 +289,7 @@ const onQrImageError = (event: Event) => {
         :style="{ '--i': i, '--color': fw.color, '--height': fw.height, left: fw.left }"
       >
         <div 
-          v-for="(p, j) in particleDirections" 
+          v-for="(p, j) in fireworkShapes2[i]" 
           :key="j" 
           class="firework-particle"
           :style="{ '--tx': p.tx + 'px', '--ty': p.ty + 'px' }"
@@ -237,7 +303,7 @@ const onQrImageError = (event: Event) => {
         :style="{ '--i': i, '--color': fw.color, '--height': fw.height, left: fw.left }"
       >
         <div 
-          v-for="(p, j) in particleDirections" 
+          v-for="(p, j) in fireworkShapes3[i]" 
           :key="j" 
           class="firework-particle"
           :style="{ '--tx': p.tx + 'px', '--ty': p.ty + 'px' }"
@@ -249,6 +315,19 @@ const onQrImageError = (event: Event) => {
         :key="`star-${i}`" 
         class="shooting-star"
         :style="{ '--i': i, '--color': star.color, left: star.left, top: star.top }"
+      ></div>
+      <!-- 闪烁星星 -->
+      <div 
+        v-for="(star, i) in sparkleStars" 
+        :key="`sparkle-${i}`" 
+        class="sparkle-star"
+        :style="{ 
+          '--color': star.color, 
+          '--delay': star.delay + 's',
+          '--size': star.size + 'px',
+          left: star.left, 
+          top: star.top 
+        }"
       ></div>
     </div>
     <div class="settings-modal">
@@ -1007,8 +1086,8 @@ const onQrImageError = (event: Event) => {
 .firework {
   position: absolute;
   bottom: 0;
-  width: 8px;
-  height: 8px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   animation: fireworkMove 1.2s ease-out forwards;
   will-change: transform;
@@ -1022,8 +1101,30 @@ const onQrImageError = (event: Event) => {
   height: 100%;
   border-radius: 50%;
   background: var(--color);
-  box-shadow: 0 0 8px var(--color);
+  box-shadow: 0 0 12px var(--color), 0 0 24px var(--color), 0 0 36px rgba(255, 255, 255, 0.3);
   animation: fireworkLaunch 1.2s ease-out forwards;
+}
+
+/* 烟花发射尾迹 */
+.firework::after {
+  content: '';
+  position: absolute;
+  width: 4px;
+  height: 30px;
+  background: linear-gradient(to bottom, var(--color), transparent);
+  border-radius: 2px;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  opacity: 0.8;
+  animation: fireworkTrail 1.2s ease-out forwards;
+}
+
+@keyframes fireworkTrail {
+  0% { opacity: 0.8; height: 30px; }
+  50% { opacity: 0.4; height: 15px; }
+  51% { opacity: 0; }
+  100% { opacity: 0; }
 }
 
 /* 第一波烟花 - 立即发射 */
@@ -1087,12 +1188,13 @@ const onQrImageError = (event: Event) => {
   position: absolute;
   top: 50%;
   left: 50%;
-  margin-left: -3px;
-  margin-top: -3px;
-  width: 6px;
-  height: 6px;
+  margin-left: -5px;
+  margin-top: -5px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--color);
+  box-shadow: 0 0 6px var(--color), 0 0 12px var(--color);
   opacity: 0;
   will-change: transform, opacity;
   contain: layout style;
@@ -1117,14 +1219,32 @@ const onQrImageError = (event: Event) => {
   0% {
     transform: translate(0, 0) scale(0);
     opacity: 1;
+    filter: brightness(2);
   }
-  10% {
-    transform: translate(0, 0) scale(1.5);
+  8% {
+    transform: translate(0, 0) scale(1.8);
     opacity: 1;
+    filter: brightness(2);
+  }
+  15% {
+    transform: translate(calc(var(--tx) * 0.15), calc(var(--ty) * 0.15)) scale(1.4);
+    opacity: 1;
+    filter: brightness(1.5);
+  }
+  40% {
+    transform: translate(calc(var(--tx) * 0.6), calc(var(--ty) * 0.6)) scale(1);
+    opacity: 0.9;
+    filter: brightness(1.2);
+  }
+  70% {
+    transform: translate(calc(var(--tx) * 0.9), calc(var(--ty) * 0.9 + 20px)) scale(0.6);
+    opacity: 0.5;
+    filter: brightness(1);
   }
   100% {
-    transform: translate(var(--tx), var(--ty)) scale(0);
+    transform: translate(var(--tx), calc(var(--ty) + 40px)) scale(0.1);
     opacity: 0;
+    filter: brightness(0.8);
   }
 }
 
@@ -1157,6 +1277,53 @@ const onQrImageError = (event: Event) => {
   100% {
     transform: translateX(300px) translateY(160px) scale(0);
     opacity: 0;
+  }
+}
+
+/* 闪烁星星效果 */
+.sparkle-star {
+  position: absolute;
+  width: var(--size);
+  height: var(--size);
+  background: var(--color);
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--color), 0 0 12px var(--color);
+  animation: sparkle 1.5s ease-in-out infinite;
+  animation-delay: var(--delay);
+}
+
+.sparkle-star::before,
+.sparkle-star::after {
+  content: '';
+  position: absolute;
+  background: var(--color);
+}
+
+.sparkle-star::before {
+  width: 100%;
+  height: 2px;
+  top: 50%;
+  left: -50%;
+  transform: translateY(-50%);
+  width: 200%;
+}
+
+.sparkle-star::after {
+  width: 2px;
+  height: 200%;
+  left: 50%;
+  top: -50%;
+  transform: translateX(-50%);
+}
+
+@keyframes sparkle {
+  0%, 100% {
+    transform: scale(0.3) rotate(0deg);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1.2) rotate(180deg);
+    opacity: 1;
   }
 }
 
