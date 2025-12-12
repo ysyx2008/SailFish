@@ -1870,16 +1870,49 @@ ipcMain.handle('knowledge:lock', async () => {
   return { success: true }
 })
 
+// 检查是否存在加密数据
+ipcMain.handle('knowledge:checkEncryptedData', async () => {
+  const { checkEncryptedData } = await import('./services/knowledge/crypto')
+  return checkEncryptedData()
+})
+
 // 清除密码（需要先验证当前密码）
+// 会自动解密所有加密数据后再清除密码，确保数据不会丢失
 ipcMain.handle('knowledge:clearPassword', async (_event, password: string) => {
   try {
-    const { verifyPassword, clearPassword } = await import('./services/knowledge/crypto')
+    const { verifyPassword, clearPassword, decryptAllData, checkEncryptedData } = await import('./services/knowledge/crypto')
+    
     // 先验证密码
     if (!verifyPassword(password)) {
       return { success: false, error: '密码错误' }
     }
+    
+    // 检查并解密所有加密数据
+    const { hasEncryptedData, encryptedCount } = checkEncryptedData()
+    
+    if (hasEncryptedData) {
+      console.log(`[Crypto] 清除密码前，正在解密 ${encryptedCount} 条加密数据...`)
+      const decryptResult = decryptAllData()
+      
+      if (!decryptResult.success) {
+        return { 
+          success: false, 
+          error: `解密数据失败: ${decryptResult.error}，密码未清除` 
+        }
+      }
+      
+      console.log(`[Crypto] 成功解密 ${decryptResult.decryptedCount} 条数据`)
+    }
+    
+    // 解密成功后清除密码
     clearPassword()
-    return { success: true }
+    return { 
+      success: true, 
+      decryptedCount: hasEncryptedData ? encryptedCount : 0,
+      message: hasEncryptedData 
+        ? `已解密 ${encryptedCount} 条数据，密码已清除` 
+        : '密码已清除'
+    }
   } catch (error) {
     return { success: false, error: (error as Error).message }
   }

@@ -293,3 +293,89 @@ export function getPasswordInfo(): { hasPassword: boolean; isUnlocked: boolean; 
     createdAt
   }
 }
+
+/**
+ * 检查知识库目录中是否存在加密数据
+ * 用于在清除密码前警告用户
+ */
+export function checkEncryptedData(): { hasEncryptedData: boolean; encryptedCount: number } {
+  try {
+    const knowledgeDir = path.join(app.getPath('userData'), 'knowledge')
+    const metaPath = path.join(knowledgeDir, 'documents.json')
+    
+    if (!fs.existsSync(metaPath)) {
+      return { hasEncryptedData: false, encryptedCount: 0 }
+    }
+    
+    const data = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
+    const documents = data.documents || []
+    let encryptedCount = 0
+    
+    for (const doc of documents) {
+      // 检查文档内容是否已加密
+      if (doc.content?.startsWith('ENC:v1:')) {
+        encryptedCount++
+      }
+    }
+    
+    return { 
+      hasEncryptedData: encryptedCount > 0, 
+      encryptedCount 
+    }
+  } catch (error) {
+    console.error('[Crypto] 检查加密数据失败:', error)
+    return { hasEncryptedData: false, encryptedCount: 0 }
+  }
+}
+
+/**
+ * 解密所有加密数据并保存为明文
+ * 在清除密码前调用，确保数据不会丢失
+ * 必须在密码验证后（密钥已缓存）调用
+ */
+export function decryptAllData(): { success: boolean; decryptedCount: number; error?: string } {
+  if (!cachedKey) {
+    return { success: false, decryptedCount: 0, error: '密钥未解锁，无法解密' }
+  }
+
+  try {
+    const knowledgeDir = path.join(app.getPath('userData'), 'knowledge')
+    const metaPath = path.join(knowledgeDir, 'documents.json')
+    
+    if (!fs.existsSync(metaPath)) {
+      return { success: true, decryptedCount: 0 }
+    }
+    
+    const data = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
+    const documents = data.documents || []
+    let decryptedCount = 0
+    
+    for (const doc of documents) {
+      // 检查文档内容是否已加密
+      if (doc.content?.startsWith('ENC:v1:')) {
+        const decrypted = decrypt(doc.content)
+        // 只有成功解密才更新（不是 [解密失败]）
+        if (decrypted && !decrypted.startsWith('[')) {
+          doc.content = decrypted
+          decryptedCount++
+        }
+      }
+    }
+    
+    if (decryptedCount > 0) {
+      // 保存解密后的数据
+      data.lastUpdated = Date.now()
+      fs.writeFileSync(metaPath, JSON.stringify(data, null, 2), 'utf-8')
+      console.log(`[Crypto] 已解密 ${decryptedCount} 条数据并保存`)
+    }
+    
+    return { success: true, decryptedCount }
+  } catch (error) {
+    console.error('[Crypto] 解密数据失败:', error)
+    return { 
+      success: false, 
+      decryptedCount: 0, 
+      error: error instanceof Error ? error.message : '解密失败' 
+    }
+  }
+}

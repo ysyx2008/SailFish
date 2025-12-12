@@ -286,11 +286,18 @@ const handlePasswordSubmit = async () => {
     
     try {
       passwordLoading.value = true
+      // 清除密码时会自动解密所有加密数据
       const result = await api.knowledge.clearPassword(passwordInput.value)
+      
       if (result.success) {
         showPasswordDialog.value = false
         await loadPasswordInfo()
-        alert('密码已清除，知识库数据将不再加密保护')
+        // 显示结果信息
+        if (result.decryptedCount && result.decryptedCount > 0) {
+          alert(`✅ ${result.message || `已解密 ${result.decryptedCount} 条数据，密码已清除`}\n\n知识库数据将不再加密保护，但所有数据已保留。`)
+        } else {
+          alert('密码已清除，知识库数据将不再加密保护')
+        }
       } else {
         passwordError.value = result.error || '清除密码失败'
       }

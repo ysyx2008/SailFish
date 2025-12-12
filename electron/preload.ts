@@ -1565,8 +1565,18 @@ const electronAPI = {
     lock: () =>
       ipcRenderer.invoke('knowledge:lock') as Promise<{ success: boolean }>,
 
+    // 检查是否存在加密数据
+    checkEncryptedData: () =>
+      ipcRenderer.invoke('knowledge:checkEncryptedData') as Promise<{ hasEncryptedData: boolean; encryptedCount: number }>,
+
+    // 清除密码（会自动解密所有加密数据后再清除）
     clearPassword: (password: string) =>
-      ipcRenderer.invoke('knowledge:clearPassword', password) as Promise<{ success: boolean; error?: string }>
+      ipcRenderer.invoke('knowledge:clearPassword', password) as Promise<{ 
+        success: boolean; 
+        error?: string;
+        decryptedCount?: number;
+        message?: string;
+      }>
   },
 
   // 终端屏幕内容服务（供主进程请求渲染进程数据）
