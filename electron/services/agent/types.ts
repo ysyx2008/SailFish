@@ -87,7 +87,9 @@ export interface ReflectionState {
   totalFailures: number           // 总失败次数
   successCount: number            // 成功次数
   lastCommands: string[]          // 最近执行的命令（用于检测循环）
+  lastToolCalls: string[]         // 最近调用的工具（用于检测工具循环）
   lastReflectionAt: number        // 上次反思时的步数
+  reflectionCount: number         // 反思次数（用于限制反思上限）
   // 新增：策略相关
   currentStrategy: ExecutionStrategy  // 当前执行策略
   strategySwitches: StrategySwitchRecord[]  // 策略切换历史
