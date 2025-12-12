@@ -1158,7 +1158,13 @@ export class AgentService {
       peekPendingUserMessage: () => run.pendingUserMessages[0],
       consumePendingUserMessage: () => run.pendingUserMessages.shift(),
       // 获取实时终端输出（Agent 运行期间收集的最新数据）
-      getRealtimeTerminalOutput: () => [...run.realtimeOutputBuffer]
+      getRealtimeTerminalOutput: () => [...run.realtimeOutputBuffer],
+      // Plan/Todo 功能
+      getCurrentPlan: () => run.currentPlan,
+      setCurrentPlan: (plan) => {
+        run.currentPlan = plan
+        // 计划更新会通过 addStep (plan_created/plan_updated) 触发 onStepCallback
+      }
     }
 
     try {

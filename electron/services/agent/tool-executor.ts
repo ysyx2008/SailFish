@@ -12,7 +12,10 @@ import type {
   ToolResult, 
   RiskLevel,
   PendingConfirmation,
-  HostProfileServiceInterface 
+  HostProfileServiceInterface,
+  AgentPlan,
+  AgentPlanStep,
+  PlanStepStatus
 } from './types'
 import { assessCommandRisk, analyzeCommand, isSudoCommand, detectPasswordPrompt } from './risk-assessor'
 import { getKnowledgeService } from '../knowledge'
@@ -143,6 +146,9 @@ export interface ToolExecutorConfig {
   peekPendingUserMessage: () => string | undefined  // 查看（不消费）第一条待处理消息
   consumePendingUserMessage: () => string | undefined  // 消费并返回第一条待处理消息
   getRealtimeTerminalOutput: () => string[]  // 获取实时终端输出（Agent 运行期间收集）
+  // Plan/Todo 功能
+  getCurrentPlan: () => AgentPlan | undefined  // 获取当前计划
+  setCurrentPlan: (plan: AgentPlan | undefined) => void  // 设置当前计划
 }
 
 /**
@@ -202,6 +208,12 @@ export async function executeTool(
 
     case 'ask_user':
       return askUser(args, executor)
+
+    case 'create_plan':
+      return createPlan(args, executor)
+
+    case 'update_plan':
+      return updatePlan(args, executor)
 
     default:
       // 检查是否是 MCP 工具调用
@@ -2189,4 +2201,189 @@ async function askUser(
       error: '等待用户回复超时（5分钟）。你可以：1) 再次询问用户；2) 采用合理的默认方案；3) 向用户说明需要更多信息才能继续。'
     }
   }
+}
+
+// ==================== Plan/Todo 工具实现 ====================
+
+/**
+ * 生成唯一 ID
+ */
+function generatePlanId(): string {
+  return `plan_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
+}
+
+/**
+ * 创建任务执行计划
+ */
+function createPlan(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): ToolResult {
+  const title = args.title as string
+  const stepsInput = args.steps as Array<{ title: string; description?: string }>
+  
+  // 参数校验
+  if (!title || typeof title !== 'string') {
+    return { success: false, output: '', error: '计划标题不能为空' }
+  }
+  
+  if (!Array.isArray(stepsInput) || stepsInput.length === 0) {
+    return { success: false, output: '', error: '计划步骤不能为空' }
+  }
+  
+  if (stepsInput.length > 10) {
+    return { success: false, output: '', error: '计划步骤最多 10 个' }
+  }
+  
+  // 检查是否已有计划
+  const existingPlan = executor.getCurrentPlan()
+  if (existingPlan) {
+    return { 
+      success: false, 
+      output: '', 
+      error: `已存在计划"${existingPlan.title}"，请先完成当前计划或使用 update_plan 更新步骤状态` 
+    }
+  }
+  
+  // 创建计划
+  const now = Date.now()
+  const plan: AgentPlan = {
+    id: generatePlanId(),
+    title,
+    steps: stepsInput.map((step, index) => ({
+      id: `step_${index}`,
+      title: step.title,
+      description: step.description,
+      status: 'pending' as PlanStepStatus
+    })),
+    createdAt: now,
+    updatedAt: now
+  }
+  
+  // 保存计划
+  executor.setCurrentPlan(plan)
+  
+  // 添加步骤（包含计划数据）
+  executor.addStep({
+    type: 'plan_created',
+    content: `📋 创建计划: ${title}`,
+    toolName: 'create_plan',
+    toolArgs: { title, steps: stepsInput.length },
+    plan: plan,
+    riskLevel: 'safe'
+  })
+  
+  // 构建返回信息
+  const stepsList = plan.steps.map((s, i) => `${i + 1}. ${s.title}`).join('\n')
+  const output = `计划已创建: ${title}\n\n步骤:\n${stepsList}\n\n开始执行第一步时，请先调用 update_plan(0, "in_progress") 标记步骤为进行中。`
+  
+  return { success: true, output }
+}
+
+/**
+ * 更新计划步骤状态
+ */
+function updatePlan(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): ToolResult {
+  const stepIndex = args.step_index as number
+  const status = args.status as PlanStepStatus
+  const result = args.result as string | undefined
+  
+  // 参数校验
+  if (typeof stepIndex !== 'number' || stepIndex < 0) {
+    return { success: false, output: '', error: '步骤索引必须是非负整数' }
+  }
+  
+  const validStatuses: PlanStepStatus[] = ['pending', 'in_progress', 'completed', 'failed', 'skipped']
+  if (!validStatuses.includes(status)) {
+    return { success: false, output: '', error: `无效的状态，可选值: ${validStatuses.join(', ')}` }
+  }
+  
+  // 获取当前计划
+  const plan = executor.getCurrentPlan()
+  if (!plan) {
+    return { success: false, output: '', error: '当前没有执行中的计划，请先使用 create_plan 创建计划' }
+  }
+  
+  if (stepIndex >= plan.steps.length) {
+    return { success: false, output: '', error: `步骤索引超出范围，计划共有 ${plan.steps.length} 个步骤（索引 0-${plan.steps.length - 1}）` }
+  }
+  
+  // 更新步骤状态
+  const step = plan.steps[stepIndex]
+  const oldStatus = step.status
+  step.status = status
+  step.result = result
+  
+  // 记录时间戳
+  const now = Date.now()
+  if (status === 'in_progress' && !step.startedAt) {
+    step.startedAt = now
+  }
+  if (status === 'completed' || status === 'failed' || status === 'skipped') {
+    step.completedAt = now
+  }
+  
+  plan.updatedAt = now
+  
+  // 更新计划
+  executor.setCurrentPlan(plan)
+  
+  // 构建状态图标
+  const statusIcons: Record<PlanStepStatus, string> = {
+    pending: '○',
+    in_progress: '●',
+    completed: '✓',
+    failed: '✗',
+    skipped: '–'
+  }
+  
+  // 添加更新步骤
+  const stepInfo = `步骤 ${stepIndex + 1}: ${step.title}`
+  const statusText = `${statusIcons[status]} ${status}`
+  const resultText = result ? ` - ${result}` : ''
+  
+  executor.addStep({
+    type: 'plan_updated',
+    content: `📋 ${stepInfo} → ${statusText}${resultText}`,
+    toolName: 'update_plan',
+    toolArgs: { step_index: stepIndex, status, result },
+    plan: plan,
+    riskLevel: 'safe'
+  })
+  
+  // 计算进度
+  const completedCount = plan.steps.filter(s => s.status === 'completed').length
+  const totalCount = plan.steps.length
+  const progressPercent = Math.round((completedCount / totalCount) * 100)
+  
+  // 检查计划是否完成
+  const allDone = plan.steps.every(s => 
+    s.status === 'completed' || s.status === 'failed' || s.status === 'skipped'
+  )
+  
+  let output = `已更新: ${stepInfo} → ${status}`
+  if (result) output += `\n结果: ${result}`
+  output += `\n\n进度: ${completedCount}/${totalCount} (${progressPercent}%)`
+  
+  if (allDone) {
+    const failedCount = plan.steps.filter(s => s.status === 'failed').length
+    if (failedCount > 0) {
+      output += `\n\n⚠️ 计划执行完成，但有 ${failedCount} 个步骤失败`
+    } else {
+      output += `\n\n✅ 计划执行完成！`
+    }
+    // 清除计划（可选，也可以保留供查看）
+    // executor.setCurrentPlan(undefined)
+  } else {
+    // 提示下一步
+    const nextPendingIndex = plan.steps.findIndex(s => s.status === 'pending')
+    if (nextPendingIndex !== -1) {
+      output += `\n\n下一步: ${nextPendingIndex + 1}. ${plan.steps[nextPendingIndex].title}`
+    }
+  }
+  
+  return { success: true, output }
 }

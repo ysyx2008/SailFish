@@ -28,9 +28,39 @@ export interface AiMessage {
 // Agent 相关类型
 export type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
 
+// 计划步骤进度
+export interface PlanStepProgress {
+  value: number
+  current?: number
+  total?: number
+  eta?: string
+  speed?: string
+  isIndeterminate: boolean
+  statusText?: string
+}
+
+// 计划步骤
+export interface AgentPlanStep {
+  id: string
+  title: string
+  description?: string
+  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped'
+  result?: string
+  progress?: PlanStepProgress
+}
+
+// Agent 执行计划
+export interface AgentPlan {
+  id: string
+  title: string
+  steps: AgentPlanStep[]
+  createdAt: number
+  updatedAt: number
+}
+
 export interface AgentStep {
   id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password'
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'plan_created' | 'plan_updated'
   content: string
   toolName?: string
   toolArgs?: Record<string, unknown>
@@ -38,6 +68,7 @@ export interface AgentStep {
   riskLevel?: RiskLevel
   timestamp: number
   isStreaming?: boolean
+  plan?: AgentPlan  // 计划数据（仅 plan_created/plan_updated 类型使用）
 }
 
 export interface PendingConfirmation {

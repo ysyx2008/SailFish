@@ -365,6 +365,86 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
           required: ['question']
         }
       }
+    },
+    // ==================== Plan/Todo 工具 ====================
+    {
+      type: 'function',
+      function: {
+        name: 'create_plan',
+        description: `创建任务执行计划，向用户展示清晰的执行步骤和进度。
+
+**何时使用**：
+- 任务涉及 3 个以上步骤
+- 多系统/多服务操作（如部署、迁移）
+- 诊断排查类任务
+- 用户要求"帮我规划"或需要了解整体进度
+
+**何时不需要**：
+- 单个简单查询或 1-2 步操作
+- 用户说"直接做"/"快速帮我"
+
+创建计划后，在执行每个步骤时使用 update_plan 更新状态。`,
+        parameters: {
+          type: 'object',
+          properties: {
+            title: {
+              type: 'string',
+              description: '计划标题，简短描述任务目标（如"服务器性能诊断"、"部署 Node.js 应用"）'
+            },
+            steps: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  title: { 
+                    type: 'string', 
+                    description: '步骤标题，简洁明了（如"检查系统负载"、"安装依赖"）' 
+                  },
+                  description: { 
+                    type: 'string', 
+                    description: '步骤详细说明（可选，说明这一步要做什么）' 
+                  }
+                },
+                required: ['title']
+              },
+              description: '计划步骤列表，建议 3-8 步，不超过 10 步'
+            }
+          },
+          required: ['title', 'steps']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'update_plan',
+        description: `更新计划步骤状态。在执行每个步骤前后调用，让用户实时了解进度。
+
+**使用流程**：
+1. 开始步骤前：update_plan(step_index, "in_progress")
+2. 步骤完成后：update_plan(step_index, "completed", "结果说明")
+3. 步骤失败时：update_plan(step_index, "failed", "失败原因")
+4. 跳过步骤时：update_plan(step_index, "skipped", "跳过原因")`,
+        parameters: {
+          type: 'object',
+          properties: {
+            step_index: {
+              type: 'number',
+              description: '步骤索引（从 0 开始）'
+            },
+            status: {
+              type: 'string',
+              enum: ['pending', 'in_progress', 'completed', 'failed', 'skipped'],
+              description: '步骤状态：pending（等待）、in_progress（执行中）、completed（完成）、failed（失败）、skipped（跳过）'
+            },
+            result: {
+              type: 'string',
+              description: '步骤结果说明（可选，如"负载正常: 0.52"、"发现 3 个错误"）'
+            }
+          },
+          required: ['step_index', 'status']
+        }
+      }
     }
   ]
 

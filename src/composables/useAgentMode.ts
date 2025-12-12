@@ -16,6 +16,36 @@ export interface AgentTaskGroup {
 }
 
 // Agent 状态类型
+// 计划步骤进度
+interface PlanStepProgress {
+  value: number
+  current?: number
+  total?: number
+  eta?: string
+  speed?: string
+  isIndeterminate: boolean
+  statusText?: string
+}
+
+// 计划步骤
+interface AgentPlanStep {
+  id: string
+  title: string
+  description?: string
+  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped'
+  result?: string
+  progress?: PlanStepProgress
+}
+
+// Agent 执行计划
+interface AgentPlan {
+  id: string
+  title: string
+  steps: AgentPlanStep[]
+  createdAt: number
+  updatedAt: number
+}
+
 interface AgentState {
   isRunning: boolean
   agentId?: string
@@ -30,6 +60,7 @@ interface AgentState {
   userTask?: string
   finalResult?: string
   history: Array<{ userTask: string; finalResult: string }>
+  currentPlan?: AgentPlan
 }
 
 export function useAgentMode(
@@ -80,6 +111,19 @@ export function useAgentMode(
 
   const agentUserTask = computed(() => {
     return agentState.value?.userTask
+  })
+
+  // 当前执行计划 - 从 steps 中提取最新的 plan
+  const currentPlan = computed((): AgentPlan | undefined => {
+    const steps = agentState.value?.steps || []
+    // 倒序查找最新的 plan_created 或 plan_updated
+    for (let i = steps.length - 1; i >= 0; i--) {
+      const step = steps[i]
+      if ((step.type === 'plan_created' || step.type === 'plan_updated') && step.plan) {
+        return step.plan as AgentPlan
+      }
+    }
+    return undefined
   })
 
   // 切换任务步骤折叠状态
@@ -582,6 +626,7 @@ export function useAgentMode(
     isAgentRunning,
     pendingConfirm,
     agentUserTask,
+    currentPlan,
     agentTaskGroups,
     toggleStepsCollapse,
     isStepsCollapsed,

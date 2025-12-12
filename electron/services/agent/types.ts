@@ -18,7 +18,7 @@ export type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
 // Agent 执行步骤
 export interface AgentStep {
   id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password'
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'plan_created' | 'plan_updated'
   content: string
   toolName?: string
   toolArgs?: Record<string, unknown>
@@ -26,6 +26,45 @@ export interface AgentStep {
   riskLevel?: RiskLevel
   timestamp: number
   isStreaming?: boolean  // 是否正在流式输出
+  plan?: AgentPlan       // 任务计划（仅 plan_created/plan_updated 类型使用）
+  progress?: StepProgress  // 命令执行进度（仅 tool_result 类型使用）
+}
+
+// 步骤进度信息
+export interface StepProgress {
+  value: number           // 进度值 (0-100)
+  current?: number        // 当前值
+  total?: number          // 总数
+  eta?: string            // 预计剩余时间
+  speed?: string          // 速度
+  isIndeterminate: boolean // 是否为不确定进度
+  statusText?: string     // 状态文本
+}
+
+// ==================== Plan/Todo 相关类型 ====================
+
+// 计划步骤状态
+export type PlanStepStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped'
+
+// 计划步骤
+export interface AgentPlanStep {
+  id: string
+  title: string
+  description?: string
+  status: PlanStepStatus
+  result?: string
+  startedAt?: number
+  completedAt?: number
+  progress?: StepProgress
+}
+
+// Agent 执行计划
+export interface AgentPlan {
+  id: string
+  title: string
+  steps: AgentPlanStep[]
+  createdAt: number
+  updatedAt: number
 }
 
 // Agent 上下文
@@ -118,6 +157,8 @@ export interface AgentRun {
   realtimeOutputBuffer: string[]
   // 终端输出监听器的取消订阅函数
   outputUnsubscribe?: () => void
+  // 当前执行计划（Plan/Todo 功能）
+  currentPlan?: AgentPlan
 }
 
 // 主机档案服务接口

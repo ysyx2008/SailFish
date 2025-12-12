@@ -8,6 +8,7 @@ import { ref, computed, watch, inject, onMounted, toRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
+import AgentPlanView from './AgentPlanView.vue'
 
 // 导入 composables
 import {
@@ -120,6 +121,7 @@ const {
   isAgentRunning,
   pendingConfirm,
   agentUserTask,
+  currentPlan,
   agentTaskGroups,
   toggleStepsCollapse,
   isStepsCollapsed,
@@ -695,6 +697,13 @@ onMounted(() => {
                     <span class="thinking-text">{{ t('ai.agentStarting') }}</span>
                   </div>
                 </div>
+              </div>
+            </div>
+            
+            <!-- Agent 执行计划（Plan）- 当前任务有计划时显示 -->
+            <div v-if="group.isCurrentTask && currentPlan" class="message assistant">
+              <div class="message-wrapper">
+                <AgentPlanView :plan="currentPlan" />
               </div>
             </div>
             

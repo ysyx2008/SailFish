@@ -9,9 +9,39 @@ declare module '*.vue' {
 // Agent 相关类型
 type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
 
+// 计划步骤进度
+interface PlanStepProgress {
+  value: number
+  current?: number
+  total?: number
+  eta?: string
+  speed?: string
+  isIndeterminate: boolean
+  statusText?: string
+}
+
+// 计划步骤
+interface AgentPlanStep {
+  id: string
+  title: string
+  description?: string
+  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped'
+  result?: string
+  progress?: PlanStepProgress
+}
+
+// Agent 执行计划
+interface AgentPlan {
+  id: string
+  title: string
+  steps: AgentPlanStep[]
+  createdAt: number
+  updatedAt: number
+}
+
 interface AgentStep {
   id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password'
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'plan_created' | 'plan_updated'
   content: string
   toolName?: string
   toolArgs?: Record<string, unknown>
@@ -19,6 +49,7 @@ interface AgentStep {
   riskLevel?: RiskLevel
   timestamp: number
   isStreaming?: boolean
+  plan?: AgentPlan  // 计划数据
 }
 
 interface PendingConfirmation {
