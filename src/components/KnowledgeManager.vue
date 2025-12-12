@@ -536,27 +536,29 @@ onMounted(() => {
               </div>
             </div>
 
-            <div class="detail-section">
-              <h4>{{ t('knowledgeManager.tags') }}</h4>
-              <div class="tags-list">
-                <span v-for="tag in selectedDoc.tags" :key="tag" class="tag">
-                  {{ tag }}
-                </span>
-                <span v-if="selectedDoc.tags.length === 0" class="no-tags">
-                  {{ t('knowledgeManager.noTags') }}
-                </span>
+            <div class="detail-row">
+              <div class="detail-section detail-section-half">
+                <h4>{{ t('knowledgeManager.tags') }}</h4>
+                <div class="tags-list">
+                  <span v-for="tag in selectedDoc.tags" :key="tag" class="tag">
+                    {{ tag }}
+                  </span>
+                  <span v-if="selectedDoc.tags.length === 0" class="no-tags">
+                    {{ t('knowledgeManager.noTags') }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="detail-section detail-section-half">
+                <h4>{{ t('knowledgeManager.timeInfo') }}</h4>
+                <div class="time-info">
+                  <div>{{ t('knowledgeManager.createdAt') }}：{{ formatDate(selectedDoc.createdAt) }}</div>
+                  <div>{{ t('knowledgeManager.updatedAt') }}：{{ formatDate(selectedDoc.updatedAt) }}</div>
+                </div>
               </div>
             </div>
 
-            <div class="detail-section">
-              <h4>{{ t('knowledgeManager.timeInfo') }}</h4>
-              <div class="time-info">
-                <div>{{ t('knowledgeManager.createdAt') }}：{{ formatDate(selectedDoc.createdAt) }}</div>
-                <div>{{ t('knowledgeManager.updatedAt') }}：{{ formatDate(selectedDoc.updatedAt) }}</div>
-              </div>
-            </div>
-
-            <div class="detail-section">
+            <div class="detail-section detail-section-content">
               <h4>{{ t('knowledgeManager.contentPreview') }}</h4>
               <div class="content-preview">
                 {{ selectedDoc.content.slice(0, 1000) }}
@@ -741,7 +743,9 @@ onMounted(() => {
 .doc-detail-panel {
   flex: 1;
   padding: 20px;
-  overflow-y: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .detail-header {
@@ -761,8 +765,28 @@ onMounted(() => {
   color: var(--text-muted);
 }
 
+.detail-row {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 16px;
+}
+
 .detail-section {
   margin-bottom: 20px;
+}
+
+.detail-section-half {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.detail-section-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin-bottom: 0;
 }
 
 .detail-section h4 {
@@ -804,7 +828,8 @@ onMounted(() => {
   background: var(--bg-tertiary);
   padding: 12px;
   border-radius: 6px;
-  max-height: 200px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-all;
