@@ -14,6 +14,7 @@ const emit = defineEmits<{
   'open-local': []
   'open-ssh': [session: SshSession]
   'open-session-manager': []
+  'open-smart-patrol': []
 }>()
 
 // 最近连接的会话（最多显示 5 个）
@@ -38,6 +39,11 @@ const openLocalTerminal = () => {
 // 打开会话管理器选择更多
 const openSessionManager = () => {
   emit('open-session-manager')
+}
+
+// 打开智能巡检
+const openSmartPatrol = () => {
+  emit('open-smart-patrol')
 }
 
 // 格式化主机显示
@@ -102,8 +108,8 @@ const getGroupName = (session: SshSession) => {
             </div>
           </div>
 
-          <!-- 智能巡检（预留） -->
-          <div class="action-card disabled" :title="t('welcome.comingSoon')">
+          <!-- 智能巡检 -->
+          <div class="action-card" @click="openSmartPatrol">
             <div class="card-icon patrol">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/>
@@ -115,7 +121,6 @@ const getGroupName = (session: SshSession) => {
               <div class="card-title">{{ t('welcome.smartPatrol') }}</div>
               <div class="card-desc">{{ t('welcome.smartPatrolDesc') }}</div>
             </div>
-            <div class="coming-soon-badge">{{ t('welcome.comingSoon') }}</div>
           </div>
         </div>
       </div>

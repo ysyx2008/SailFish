@@ -697,6 +697,154 @@ const electronAPI = {
     }
   },
 
+  // 智能巡检协调器
+  orchestrator: {
+    // 启动智能巡检任务
+    start: (task: string, config?: {
+      maxParallelWorkers?: number
+      workerTimeout?: number
+      autoCloseTerminals?: boolean
+      confirmStrategy?: 'cautious' | 'batch' | 'free'
+    }) => ipcRenderer.invoke('orchestrator:start', task, config) as Promise<string>,
+
+    // 停止智能巡检任务
+    stop: (orchestratorId: string) => ipcRenderer.invoke('orchestrator:stop', orchestratorId) as Promise<void>,
+
+    // 获取可用主机列表
+    listHosts: () => ipcRenderer.invoke('orchestrator:listHosts') as Promise<Array<{
+      hostId: string
+      name: string
+      host: string
+      port: number
+      username: string
+      group?: string
+      groupId?: string
+      tags?: string[]
+    }>>,
+
+    // 响应批量确认
+    batchConfirmResponse: (
+      orchestratorId: string,
+      action: 'cancel' | 'current' | 'all',
+      selectedTerminals?: string[]
+    ) => ipcRenderer.invoke('orchestrator:batchConfirmResponse', orchestratorId, action, selectedTerminals) as Promise<void>,
+
+    // 获取协调器状态
+    getStatus: (orchestratorId: string) => ipcRenderer.invoke('orchestrator:getStatus', orchestratorId),
+
+    // 监听协调器消息
+    onMessage: (callback: (data: {
+      orchestratorId: string
+      message: {
+        id: string
+        type: 'user' | 'agent' | 'system' | 'progress'
+        content: string
+        timestamp: number
+      }
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data as Parameters<typeof callback>[0])
+      ipcRenderer.on('orchestrator:message', handler)
+      return () => {
+        ipcRenderer.removeListener('orchestrator:message', handler)
+      }
+    },
+
+    // 监听 Worker 状态更新
+    onWorkerUpdate: (callback: (data: {
+      orchestratorId: string
+      worker: {
+        terminalId: string
+        hostId: string
+        hostName: string
+        status: 'connecting' | 'idle' | 'running' | 'completed' | 'failed' | 'timeout'
+        currentTask?: string
+        result?: string
+        error?: string
+      }
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data as Parameters<typeof callback>[0])
+      ipcRenderer.on('orchestrator:workerUpdate', handler)
+      return () => {
+        ipcRenderer.removeListener('orchestrator:workerUpdate', handler)
+      }
+    },
+
+    // 监听计划更新
+    onPlanUpdate: (callback: (data: {
+      orchestratorId: string
+      plan: {
+        id: string
+        title: string
+        steps: Array<{
+          id: string
+          title: string
+          status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped'
+          terminalId?: string
+          terminalName?: string
+          result?: string
+        }>
+        createdAt: number
+        updatedAt: number
+      }
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data as Parameters<typeof callback>[0])
+      ipcRenderer.on('orchestrator:planUpdate', handler)
+      return () => {
+        ipcRenderer.removeListener('orchestrator:planUpdate', handler)
+      }
+    },
+
+    // 监听需要批量确认
+    onNeedBatchConfirm: (callback: (data: {
+      orchestratorId: string
+      command: string
+      riskLevel: 'safe' | 'moderate' | 'dangerous' | 'blocked'
+      targetTerminals: Array<{
+        terminalId: string
+        terminalName: string
+        selected: boolean
+      }>
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data as Parameters<typeof callback>[0])
+      ipcRenderer.on('orchestrator:needBatchConfirm', handler)
+      return () => {
+        ipcRenderer.removeListener('orchestrator:needBatchConfirm', handler)
+      }
+    },
+
+    // 监听任务完成
+    onComplete: (callback: (data: {
+      orchestratorId: string
+      result: {
+        totalCount: number
+        successCount: number
+        failedCount: number
+        results: Array<{
+          terminalId: string
+          terminalName: string
+          success: boolean
+          result?: string
+          error?: string
+        }>
+      }
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data as Parameters<typeof callback>[0])
+      ipcRenderer.on('orchestrator:complete', handler)
+      return () => {
+        ipcRenderer.removeListener('orchestrator:complete', handler)
+      }
+    },
+
+    // 监听任务错误
+    onError: (callback: (data: { orchestratorId: string; error: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { orchestratorId: string; error: string }) => callback(data)
+      ipcRenderer.on('orchestrator:error', handler)
+      return () => {
+        ipcRenderer.removeListener('orchestrator:error', handler)
+      }
+    }
+  },
+
   // 历史记录操作
   history: {
     // 保存聊天记录

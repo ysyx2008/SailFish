@@ -23,7 +23,8 @@ import type {
   RiskLevel,
   ExecutionStrategy,
   ReflectionState,
-  ExecutionQualityScore
+  ExecutionQualityScore,
+  WorkerAgentOptions
 } from './types'
 import { DEFAULT_AGENT_CONFIG } from './types'
 import { getAgentTools } from './tools'
@@ -927,6 +928,11 @@ export class AgentService {
     if (this.onStepCallback) {
       this.onStepCallback(agentId, fullStep)
     }
+    
+    // Worker 模式：报告进度给协调器
+    if (run.workerOptions?.reportProgress) {
+      run.workerOptions.reportProgress(fullStep)
+    }
 
     return fullStep
   }
@@ -1033,13 +1039,20 @@ export class AgentService {
 
   /**
    * 运行 Agent
+   * @param ptyId 终端 ID
+   * @param userMessage 用户消息/任务描述
+   * @param context 终端上下文
+   * @param config Agent 配置
+   * @param profileId AI 配置档案 ID
+   * @param workerOptions Worker 模式选项（智能巡检时使用）
    */
   async run(
     ptyId: string,
     userMessage: string,
     context: AgentContext,
     config?: Partial<AgentConfig>,
-    profileId?: string
+    profileId?: string,
+    workerOptions?: WorkerAgentOptions
   ): Promise<string> {
     const agentId = this.generateId()
     const fullConfig = { ...DEFAULT_AGENT_CONFIG, ...config }
@@ -1071,9 +1084,16 @@ export class AgentService {
         appliedFixes: []
       },
       // 初始化实时输出缓冲区（从传入的快照开始，然后实时更新）
-      realtimeOutputBuffer: [...context.terminalOutput]
+      realtimeOutputBuffer: [...context.terminalOutput],
+      // Worker 模式选项
+      workerOptions
     }
     this.runs.set(agentId, run)
+    
+    // Worker 模式日志
+    if (workerOptions?.isWorker) {
+      console.log(`[Agent] Running as Worker for orchestrator ${workerOptions.orchestratorId}, terminal: ${workerOptions.terminalName}`)
+    }
     
     // 注册终端输出监听器，实时收集输出
     const MAX_BUFFER_LINES = 200  // 缓冲区最大行数

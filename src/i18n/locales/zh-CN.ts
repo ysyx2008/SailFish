@@ -22,6 +22,20 @@ export default {
     tip1: '按 Ctrl+Shift+T 可快速新建终端标签页'
   },
 
+  // 智能巡检
+  patrol: {
+    noSessions: '暂无 SSH 会话',
+    noSessionsDesc: '请先在会话管理器中添加 SSH 服务器配置',
+    noSessionsHint: '暂无 SSH 会话，可添加远程服务器或仅使用本地终端',
+    goAddSessions: '添加会话',
+    inputPlaceholder: '描述你的巡检任务，例如：检查所有生产服务器的磁盘使用情况...',
+    startExecution: '开始执行',
+    stopExecution: '停止执行',
+    emptyTitle: '准备好开始智能巡检了',
+    emptyDesc: '描述你的任务，Agent 会自动识别需要检查的服务器并执行',
+    exampleTasks: '示例任务'
+  },
+
   // 通用按钮和操作
   common: {
     save: '保存',

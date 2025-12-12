@@ -106,6 +106,8 @@ import { AiService } from './services/ai.service'
 import { ConfigService, McpServerConfig } from './services/config.service'
 import { XshellImportService } from './services/xshell-import.service'
 import { AgentService, AgentStep, PendingConfirmation, AgentContext } from './services/agent'
+import { orchestratorService } from './services/agent/orchestrator'
+import type { OrchestratorConfig } from './services/agent/orchestrator-types'
 import { HistoryService, ChatRecord, AgentRecord } from './services/history.service'
 import { HostProfileService, HostProfile } from './services/host-profile.service'
 import { getDocumentParserService, UploadedFile, ParseOptions, ParsedDocument } from './services/document-parser.service'
@@ -875,6 +877,130 @@ ipcMain.handle('agent:updateConfig', async (_event, agentId: string, config: { s
 // 添加用户补充消息（Agent 执行过程中）
 ipcMain.handle('agent:addMessage', async (_event, agentId: string, message: string) => {
   return agentService.addUserMessage(agentId, message)
+})
+
+// ==================== 智能巡检协调器相关 ====================
+
+// 初始化协调器服务依赖
+// 记录终端类型（用于 Worker Agent 获取正确的上下文）
+const terminalTypes = new Map<string, 'local' | 'ssh'>()
+
+function initOrchestratorService() {
+  orchestratorService.setServices({
+    aiService,
+    getSshSessions: () => configService.getSshSessions(),
+    createLocalTerminal: async () => {
+      // 创建本地终端
+      const tabId = `tab_${Date.now()}`
+      await ptyService.spawn(tabId, {})
+      terminalTypes.set(tabId, 'local')
+      return tabId
+    },
+    createSshTerminal: async (sshConfig) => {
+      // 创建 SSH 终端
+      const tabId = `tab_${Date.now()}`
+      const config = sshConfig as {
+        host: string
+        port: number
+        username: string
+        password?: string
+        privateKey?: string
+      }
+      await sshService.connect(tabId, {
+        host: config.host,
+        port: config.port,
+        username: config.username,
+        password: config.password,
+        privateKey: config.privateKey
+      })
+      terminalTypes.set(tabId, 'ssh')
+      return tabId
+    },
+    closeTerminal: async (terminalId) => {
+      const type = terminalTypes.get(terminalId)
+      if (type === 'local') {
+        ptyService.kill(terminalId)
+      } else {
+        sshService.disconnect(terminalId)
+      }
+      terminalTypes.delete(terminalId)
+    },
+    getTerminalType: (terminalId) => {
+      return terminalTypes.get(terminalId) || 'ssh'
+    },
+    runWorkerAgent: async (ptyId, task, workerOptions) => {
+      const type = terminalTypes.get(ptyId) || 'ssh'
+      let terminalOutput: string[]
+      
+      if (type === 'local') {
+        // 本地终端输出
+        terminalOutput = ptyService.getTerminalOutput(ptyId, 50)
+      } else {
+        // SSH 终端输出
+        terminalOutput = sshService.getTerminalOutput(ptyId, 50)
+      }
+      
+      const context: AgentContext = {
+        ptyId,
+        terminalOutput,
+        systemInfo: { 
+          os: type === 'local' ? process.platform : 'linux', 
+          shell: type === 'local' ? (process.env.SHELL || 'bash') : 'bash' 
+        },
+        terminalType: type
+      }
+      // 运行 Worker Agent
+      return agentService.run(ptyId, task, context, { freeMode: false }, undefined, workerOptions)
+    }
+  })
+}
+
+// 启动智能巡检任务
+ipcMain.handle('orchestrator:start', async (_event, task: string, config?: Partial<OrchestratorConfig>) => {
+  // 确保协调器服务已初始化
+  initOrchestratorService()
+  return orchestratorService.startTask(task, config)
+})
+
+// 停止智能巡检任务
+ipcMain.handle('orchestrator:stop', async (_event, orchestratorId: string) => {
+  return orchestratorService.stopTask(orchestratorId)
+})
+
+// 获取可用主机列表（直接从 configService 获取，不依赖协调器初始化）
+ipcMain.handle('orchestrator:listHosts', async () => {
+  const sessions = configService.getSshSessions()
+  return sessions.map(session => ({
+    hostId: session.id,
+    name: session.name,
+    host: session.host,
+    port: session.port,
+    username: session.username,
+    group: session.group,
+    groupId: session.groupId,
+    tags: session.tags
+  }))
+})
+
+// 响应批量确认
+ipcMain.handle('orchestrator:batchConfirmResponse', async (
+  _event,
+  orchestratorId: string,
+  action: 'cancel' | 'current' | 'all',
+  selectedTerminals?: string[]
+) => {
+  orchestratorService.respondBatchConfirm(orchestratorId, action, selectedTerminals)
+})
+
+// 获取协调器状态
+ipcMain.handle('orchestrator:getStatus', async (_event, orchestratorId: string) => {
+  const status = orchestratorService.getStatus(orchestratorId)
+  if (!status) return null
+  // 序列化 Map 为数组
+  return {
+    ...status,
+    workers: Array.from(status.workers.values())
+  }
 })
 
 // ==================== 历史记录相关 ====================

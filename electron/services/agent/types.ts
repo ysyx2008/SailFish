@@ -57,6 +57,11 @@ export interface AgentPlanStep {
   startedAt?: number
   completedAt?: number
   progress?: StepProgress
+  // 多终端支持（智能巡检模式）
+  terminalId?: string       // 关联的终端 ID
+  terminalName?: string     // 终端显示名（如 "prod-web-1"）
+  hostId?: string           // 主机配置 ID
+  isParallel?: boolean      // 是否与其他步骤并行执行
 }
 
 // Agent 执行计划
@@ -140,6 +145,15 @@ export interface ReflectionState {
   appliedFixes: string[]          // 已应用的修复措施
 }
 
+// Worker Agent 选项（智能巡检模式）
+export interface WorkerAgentOptions {
+  isWorker: boolean               // 是否作为 Worker 运行
+  orchestratorId: string          // 所属协调器 ID
+  planStepId?: string             // 对应的 AgentPlanStep ID
+  terminalName: string            // 终端显示名
+  reportProgress?: (step: AgentStep) => void  // 进度回调
+}
+
 // Agent 运行状态
 export interface AgentRun {
   id: string
@@ -160,6 +174,8 @@ export interface AgentRun {
   outputUnsubscribe?: () => void
   // 当前执行计划（Plan/Todo 功能）
   currentPlan?: AgentPlan
+  // Worker 模式选项（智能巡检）
+  workerOptions?: WorkerAgentOptions
 }
 
 // 主机档案服务接口

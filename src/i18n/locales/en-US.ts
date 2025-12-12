@@ -22,6 +22,20 @@ export default {
     tip1: 'Press Ctrl+Shift+T to quickly create a new terminal tab'
   },
 
+  // Smart Patrol
+  patrol: {
+    noSessions: 'No SSH Sessions',
+    noSessionsDesc: 'Please add SSH server configurations in Session Manager first',
+    noSessionsHint: 'No SSH sessions. Add remote servers or use local terminal only',
+    goAddSessions: 'Add Sessions',
+    inputPlaceholder: 'Describe your patrol task, e.g., Check disk usage on all production servers...',
+    startExecution: 'Start',
+    stopExecution: 'Stop',
+    emptyTitle: 'Ready to start smart patrol',
+    emptyDesc: 'Describe your task, Agent will automatically identify servers and execute',
+    exampleTasks: 'Example Tasks'
+  },
+
   // Common buttons and actions
   common: {
     save: 'Save',

@@ -28,6 +28,8 @@ interface AgentPlanStep {
   status: PlanStepStatus
   result?: string
   progress?: StepProgress
+  // 多终端支持
+  terminalName?: string
 }
 
 // Agent 执行计划
@@ -181,7 +183,10 @@ const handleToggle = () => {
           
           <!-- 步骤内容 -->
           <div class="step-content">
-            <div class="step-title">{{ step.title }}</div>
+            <div class="step-title">
+              <span v-if="step.terminalName" class="terminal-badge">[{{ step.terminalName }}]</span>
+              {{ step.title }}
+            </div>
             <div v-if="step.description && step.status === 'pending'" class="step-description">
               {{ step.description }}
             </div>
@@ -479,6 +484,12 @@ const handleToggle = () => {
   font-weight: 500;
   color: var(--text-primary);
   line-height: 1.4;
+}
+
+.terminal-badge {
+  color: var(--accent-primary);
+  font-weight: 600;
+  margin-right: 4px;
 }
 
 .step-description {
