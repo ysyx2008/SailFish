@@ -45,9 +45,32 @@ export function useAiChat(
     }
   }
 
-  // 当切换 tab 时，重置新消息提示（因为每个 tab 的滚动位置是独立的）
-  watch(currentTabId, () => {
+  // 当切换 tab 时，保存旧 tab 的滚动位置，恢复新 tab 的滚动位置
+  watch(currentTabId, (newTabId, oldTabId) => {
+    // 保存旧 tab 的滚动位置
+    if (oldTabId && messagesRef.value) {
+      terminalStore.setAiScrollTop(oldTabId, messagesRef.value.scrollTop)
+    }
+    
+    // 重置新消息提示
     hasNewMessage.value = false
+    
+    // 恢复新 tab 的滚动位置
+    if (newTabId) {
+      nextTick(() => {
+        if (messagesRef.value) {
+          const savedScrollTop = terminalStore.getAiScrollTop(newTabId)
+          if (savedScrollTop !== undefined) {
+            // 恢复保存的滚动位置
+            skipScrollUpdate = true
+            messagesRef.value.scrollTop = savedScrollTop
+            requestAnimationFrame(() => {
+              skipScrollUpdate = false
+            })
+          }
+        }
+      })
+    }
   })
 
   // 标志：是否跳过 scroll 事件的状态更新（用于避免强制滚动时被 scroll 事件覆盖）

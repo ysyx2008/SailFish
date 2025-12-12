@@ -106,6 +106,8 @@ export interface TerminalTab {
   aiLoading?: boolean
   // AI 对话滚动位置状态（用户是否在底部附近）
   aiScrollNearBottom?: boolean
+  // AI 对话滚动位置（用于切换 tab 时恢复）
+  aiScrollTop?: number
   // Agent 状态（每个终端独立）
   agentState?: AgentState
   // 上传的文档（每个终端独立）
@@ -616,6 +618,24 @@ export const useTerminalStore = defineStore('terminal', () => {
   }
 
   /**
+   * 设置 AI 对话滚动位置
+   */
+  function setAiScrollTop(tabId: string, scrollTop: number): void {
+    const tab = tabs.value.find(t => t.id === tabId)
+    if (tab) {
+      tab.aiScrollTop = scrollTop
+    }
+  }
+
+  /**
+   * 获取 AI 对话滚动位置
+   */
+  function getAiScrollTop(tabId: string): number | undefined {
+    const tab = tabs.value.find(t => t.id === tabId)
+    return tab?.aiScrollTop
+  }
+
+  /**
    * 请求终端获得焦点
    */
   function focusTerminal(tabId?: string): void {
@@ -1076,6 +1096,8 @@ export const useTerminalStore = defineStore('terminal', () => {
     setAiLoading,
     setAiScrollNearBottom,
     getAiScrollNearBottom,
+    setAiScrollTop,
+    getAiScrollTop,
     focusTerminal,
     clearPendingFocus,
     // Agent 状态管理
