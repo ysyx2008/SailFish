@@ -576,9 +576,7 @@ export default {
       allCommandsVisible: 'All commands execute in terminal, you can see complete input and output',
       cautions: 'Cautions',
       caution1: 'Dangerous commands (like delete, modify system files) always require confirmation',
-      caution2: 'You can click "Stop" at any time to abort Agent execution',
-      caution3: 'Not suitable for long-running commands (like large compilations, data migrations)',
-      caution4: 'Not suitable for loop/interactive commands (like watch, top, tail -f, vim)'
+      caution2: 'You can click "Stop" at any time to abort Agent execution'
     },
     quickActions: {
       explainCommand: 'Explain Command',

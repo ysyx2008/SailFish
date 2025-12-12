@@ -576,9 +576,7 @@ export default {
       allCommandsVisible: '所有命令都在终端执行，你可以看到完整输入输出',
       cautions: '注意事项',
       caution1: '危险命令（如删除、修改系统文件）始终需要确认',
-      caution2: '你可以随时点击「停止」中止 Agent 执行',
-      caution3: '不适合长时间运行的命令（如大型编译、数据迁移）',
-      caution4: '不适合循环/交互式命令（如 watch、top、tail -f、vim）'
+      caution2: '你可以随时点击「停止」中止 Agent 执行'
     },
     quickActions: {
       explainCommand: '解释命令',

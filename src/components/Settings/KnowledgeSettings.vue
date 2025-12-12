@@ -29,8 +29,10 @@ interface McpServerStatus {
 interface KnowledgeDocument {
   id: string
   filename: string
+  content: string
   fileSize: number
   fileType: string
+  hostId?: string
   chunkCount: number
   createdAt: number
 }
@@ -73,11 +75,41 @@ const confirmPasswordInput = ref('')
 const passwordError = ref('')
 const passwordLoading = ref(false)
 
-// 分页计算
-const totalPages = computed(() => Math.ceil(documents.value.length / pageSize))
+// 文档分类 - 标签页
+const docTab = ref<'documents' | 'memories'>('documents')
+
+// 普通文档（排除主机记忆）
+const normalDocuments = computed(() => {
+  return documents.value.filter(doc => doc.fileType !== 'host-memory')
+})
+
+// 主机记忆文档
+const memoryDocuments = computed(() => {
+  return documents.value.filter(doc => doc.fileType === 'host-memory')
+})
+
+// 按主机分组的记忆
+const memoriesByHost = computed(() => {
+  const grouped = new Map<string, KnowledgeDocument[]>()
+  for (const doc of memoryDocuments.value) {
+    const hostId = doc.hostId || 'unknown'
+    if (!grouped.has(hostId)) {
+      grouped.set(hostId, [])
+    }
+    grouped.get(hostId)!.push(doc)
+  }
+  // 按时间倒序排序
+  for (const [, memories] of grouped) {
+    memories.sort((a, b) => b.createdAt - a.createdAt)
+  }
+  return grouped
+})
+
+// 分页计算（仅普通文档）
+const totalPages = computed(() => Math.ceil(normalDocuments.value.length / pageSize))
 const paginatedDocs = computed(() => {
   const start = (currentPage.value - 1) * pageSize
-  return documents.value.slice(start, start + pageSize)
+  return normalDocuments.value.slice(start, start + pageSize)
 })
 
 // 是否全选当前页
@@ -252,20 +284,21 @@ const batchDeleteDocuments = async () => {
   }
 }
 
-// 清空知识库
+// 清空知识库（仅普通文档）
 const clearKnowledge = async () => {
-  if (documents.value.length === 0) return
+  if (normalDocuments.value.length === 0) return
   
-  if (!confirm(t('knowledgeSettings.confirmClearAll', { count: documents.value.length }))) {
+  if (!confirm(t('knowledgeSettings.confirmClearAll', { count: normalDocuments.value.length }))) {
     return
   }
   
   try {
     clearing.value = true
-    const result = await api.knowledge.clear()
+    const docIds = normalDocuments.value.map(d => d.id)
+    const result = await api.knowledge.removeDocuments(docIds)
     
     if (result.success) {
-      documents.value = []
+      await loadDocuments()
       clearSelection()
     } else {
       alert(t('knowledgeSettings.clearFailed') + ': ' + (result.error || t('knowledgeSettings.unknownError')))
@@ -275,6 +308,49 @@ const clearKnowledge = async () => {
     alert(t('knowledgeSettings.clearFailed'))
   } finally {
     clearing.value = false
+  }
+}
+
+// 清空所有主机记忆
+const clearAllMemories = async () => {
+  if (memoryDocuments.value.length === 0) return
+  
+  if (!confirm(`确定要清空所有主机记忆吗？共 ${memoryDocuments.value.length} 条记忆将被删除。`)) {
+    return
+  }
+  
+  try {
+    clearing.value = true
+    const docIds = memoryDocuments.value.map(d => d.id)
+    const result = await api.knowledge.removeDocuments(docIds)
+    
+    if (result.success) {
+      await loadDocuments()
+    } else {
+      alert('清空记忆失败: ' + (result.error || '未知错误'))
+    }
+  } catch (error) {
+    console.error('Clear memories failed:', error)
+    alert('清空记忆失败')
+  } finally {
+    clearing.value = false
+  }
+}
+
+// 删除单条记忆
+const deleteMemory = async (doc: KnowledgeDocument) => {
+  try {
+    deletingDocId.value = doc.id
+    const result = await api.knowledge.removeDocument(doc.id)
+    if (result.success) {
+      await loadDocuments()
+    } else {
+      alert('删除失败: ' + (result.error || '未知错误'))
+    }
+  } catch (error) {
+    console.error('Delete memory failed:', error)
+  } finally {
+    deletingDocId.value = null
   }
 }
 
@@ -718,104 +794,177 @@ onMounted(() => {
     <!-- 文档管理弹窗 -->
     <Teleport to="body">
       <div v-if="showDocManager" class="doc-modal-overlay" @click.self="showDocManager = false">
-        <div class="doc-modal">
+        <div class="doc-modal doc-modal-large">
           <div class="doc-modal-header">
             <h3>📚 {{ t('knowledgeSettings.knowledgeDocs') }}</h3>
             <button class="close-btn" @click="showDocManager = false">✕</button>
           </div>
           
+          <!-- 标签页切换 -->
+          <div class="doc-tabs">
+            <button 
+              class="doc-tab" 
+              :class="{ active: docTab === 'documents' }"
+              @click="docTab = 'documents'"
+            >
+              📄 文档 ({{ normalDocuments.length }})
+            </button>
+            <button 
+              class="doc-tab" 
+              :class="{ active: docTab === 'memories' }"
+              @click="docTab = 'memories'"
+            >
+              🧠 主机记忆 ({{ memoryDocuments.length }})
+            </button>
+          </div>
+          
           <div class="doc-modal-content">
-            <div v-if="documents.length === 0" class="empty-docs">
-              {{ t('knowledgeSettings.emptyDocs') }}
-            </div>
-            
-            <template v-else>
-              <!-- 批量操作栏 -->
-              <div class="batch-actions-bar">
-                <label class="checkbox-wrapper">
-                  <input 
-                    type="checkbox" 
-                    :checked="isAllSelected"
-                    @change="toggleSelectAll"
-                  />
-                  <span class="checkbox-label">{{ t('knowledgeSettings.selectThisPage') }}</span>
-                </label>
-                <span v-if="hasSelection" class="selection-info">
-                  {{ t('knowledgeSettings.selected', { count: selectedDocIds.size }) }}
-                  <button class="btn-link" @click="clearSelection">{{ t('knowledgeSettings.cancel') }}</button>
-                </span>
-              </div>
-
-              <div class="doc-list">
-                <div 
-                  v-for="doc in paginatedDocs" 
-                  :key="doc.id" 
-                  class="doc-item"
-                  :class="{ selected: selectedDocIds.has(doc.id) }"
-                >
-                  <label class="doc-checkbox">
-                    <input 
-                      type="checkbox" 
-                      :checked="selectedDocIds.has(doc.id)"
-                      @change="toggleDocSelection(doc.id)"
-                    />
-                  </label>
-                  <div class="doc-info">
-                    <span class="doc-name">{{ doc.filename }}</span>
-                    <span class="doc-meta">
-                      {{ formatSize(doc.fileSize) }} · {{ doc.chunkCount }} {{ t('knowledgeSettings.chunks') }} · {{ formatDate(doc.createdAt) }}
-                    </span>
-                  </div>
-                  <button 
-                    class="btn-delete"
-                    :disabled="deletingDocId === doc.id"
-                    @click="deleteDocument(doc)"
-                    :title="t('knowledgeSettings.deleteDoc') + ' ' + doc.filename"
-                  >
-                    {{ deletingDocId === doc.id ? '...' : '🗑️' }}
-                  </button>
-                </div>
+            <!-- 文档标签页 -->
+            <template v-if="docTab === 'documents'">
+              <div v-if="normalDocuments.length === 0" class="empty-docs">
+                {{ t('knowledgeSettings.emptyDocs') }}
               </div>
               
-              <!-- 分页 -->
-              <div v-if="totalPages > 1" class="pagination">
-                <button 
-                  class="page-btn" 
-                  :disabled="currentPage === 1"
-                  @click="goToPage(currentPage - 1)"
-                >
-                  ‹
-                </button>
-                <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
-                <button 
-                  class="page-btn" 
-                  :disabled="currentPage === totalPages"
-                  @click="goToPage(currentPage + 1)"
-                >
-                  ›
-                </button>
+              <template v-else>
+                <!-- 批量操作栏 -->
+                <div class="batch-actions-bar">
+                  <label class="checkbox-wrapper">
+                    <input 
+                      type="checkbox" 
+                      :checked="isAllSelected"
+                      @change="toggleSelectAll"
+                    />
+                    <span class="checkbox-label">{{ t('knowledgeSettings.selectThisPage') }}</span>
+                  </label>
+                  <span v-if="hasSelection" class="selection-info">
+                    {{ t('knowledgeSettings.selected', { count: selectedDocIds.size }) }}
+                    <button class="btn-link" @click="clearSelection">{{ t('knowledgeSettings.cancel') }}</button>
+                  </span>
+                </div>
+
+                <div class="doc-list">
+                  <div 
+                    v-for="doc in paginatedDocs" 
+                    :key="doc.id" 
+                    class="doc-item"
+                    :class="{ selected: selectedDocIds.has(doc.id) }"
+                  >
+                    <label class="doc-checkbox">
+                      <input 
+                        type="checkbox" 
+                        :checked="selectedDocIds.has(doc.id)"
+                        @change="toggleDocSelection(doc.id)"
+                      />
+                    </label>
+                    <div class="doc-info">
+                      <span class="doc-name">{{ doc.filename }}</span>
+                      <span class="doc-meta">
+                        {{ formatSize(doc.fileSize) }} · {{ doc.chunkCount }} {{ t('knowledgeSettings.chunks') }} · {{ formatDate(doc.createdAt) }}
+                      </span>
+                    </div>
+                    <button 
+                      class="btn-delete"
+                      :disabled="deletingDocId === doc.id"
+                      @click="deleteDocument(doc)"
+                      :title="t('knowledgeSettings.deleteDoc') + ' ' + doc.filename"
+                    >
+                      {{ deletingDocId === doc.id ? '...' : '🗑️' }}
+                    </button>
+                  </div>
+                </div>
+                
+                <!-- 分页 -->
+                <div v-if="totalPages > 1" class="pagination">
+                  <button 
+                    class="page-btn" 
+                    :disabled="currentPage === 1"
+                    @click="goToPage(currentPage - 1)"
+                  >
+                    ‹
+                  </button>
+                  <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
+                  <button 
+                    class="page-btn" 
+                    :disabled="currentPage === totalPages"
+                    @click="goToPage(currentPage + 1)"
+                  >
+                    ›
+                  </button>
+                </div>
+              </template>
+            </template>
+            
+            <!-- 主机记忆标签页 -->
+            <template v-else>
+              <div v-if="memoryDocuments.length === 0" class="empty-docs">
+                暂无主机记忆
               </div>
+              
+              <template v-else>
+                <div class="memory-list">
+                  <div v-for="[hostId, memories] in memoriesByHost" :key="hostId" class="memory-group">
+                    <div class="memory-group-header">
+                      <span class="host-icon">{{ hostId === 'local' ? '💻' : '🌐' }}</span>
+                      <span class="host-name">{{ hostId }}</span>
+                      <span class="memory-count">{{ memories.length }} 条</span>
+                    </div>
+                    <div class="memory-items">
+                      <div v-for="memory in memories" :key="memory.id" class="memory-item">
+                        <div class="memory-content">{{ memory.content }}</div>
+                        <div class="memory-actions">
+                          <span class="memory-time">{{ formatDate(memory.createdAt) }}</span>
+                          <button 
+                            class="btn-delete-small"
+                            :disabled="deletingDocId === memory.id"
+                            @click="deleteMemory(memory)"
+                            title="删除"
+                          >
+                            {{ deletingDocId === memory.id ? '...' : '✕' }}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </template>
             </template>
           </div>
           
           <div class="doc-modal-footer">
-            <span class="doc-count-info">{{ t('knowledgeSettings.totalDocs', { count: documents.length }) }}</span>
+            <span class="doc-count-info">
+              {{ docTab === 'documents' 
+                ? t('knowledgeSettings.totalDocs', { count: normalDocuments.length })
+                : `共 ${memoryDocuments.length} 条主机记忆` }}
+            </span>
             <div class="footer-actions">
-              <button 
-                class="btn btn-sm btn-danger"
-                @click="batchDeleteDocuments" 
-                :disabled="!hasSelection || batchDeleting"
-                v-if="hasSelection"
-              >
-                {{ batchDeleting ? t('knowledgeSettings.deleting') : `🗑️ ${t('knowledgeSettings.deleteSelected')} (${selectedDocIds.size})` }}
-              </button>
-              <button 
-                class="btn btn-sm btn-danger"
-                @click="clearKnowledge" 
-                :disabled="documents.length === 0 || clearing"
-              >
-                {{ clearing ? t('knowledgeSettings.clearing') : `🗑️ ${t('knowledgeSettings.clearAll')}` }}
-              </button>
+              <!-- 文档标签页的按钮 -->
+              <template v-if="docTab === 'documents'">
+                <button 
+                  class="btn btn-sm btn-danger"
+                  @click="batchDeleteDocuments" 
+                  :disabled="!hasSelection || batchDeleting"
+                  v-if="hasSelection"
+                >
+                  {{ batchDeleting ? t('knowledgeSettings.deleting') : `🗑️ ${t('knowledgeSettings.deleteSelected')} (${selectedDocIds.size})` }}
+                </button>
+                <button 
+                  class="btn btn-sm btn-danger"
+                  @click="clearKnowledge" 
+                  :disabled="normalDocuments.length === 0 || clearing"
+                >
+                  {{ clearing ? t('knowledgeSettings.clearing') : `🗑️ ${t('knowledgeSettings.clearAll')}` }}
+                </button>
+              </template>
+              <!-- 主机记忆标签页的按钮 -->
+              <template v-else>
+                <button 
+                  class="btn btn-sm btn-danger"
+                  @click="clearAllMemories" 
+                  :disabled="memoryDocuments.length === 0 || clearing"
+                >
+                  {{ clearing ? '清除中...' : '🗑️ 清空所有记忆' }}
+                </button>
+              </template>
               <button class="btn btn-sm" @click="exportKnowledge" :disabled="exporting">
                 {{ exporting ? t('knowledgeSettings.exporting') : `📤 ${t('knowledgeSettings.export')}` }}
               </button>
@@ -1389,5 +1538,139 @@ input:checked + .slider:before {
   gap: 8px;
   padding: 12px 20px;
   border-top: 1px solid var(--border-color);
+}
+
+/* 文档管理标签页 */
+.doc-modal-large {
+  max-width: 700px;
+  max-height: 80vh;
+}
+
+.doc-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.doc-tab {
+  flex: 1;
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.doc-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.doc-tab.active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+/* 主机记忆列表 */
+.memory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.memory-group {
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.memory-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-hover);
+  font-size: 13px;
+}
+
+.host-icon {
+  font-size: 16px;
+}
+
+.host-name {
+  font-weight: 600;
+  flex: 1;
+}
+
+.memory-count {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.memory-items {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.memory-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.memory-content {
+  flex: 1;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.memory-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.memory-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.btn-delete-small {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.btn-delete-small:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.btn-delete-small:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

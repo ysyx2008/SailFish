@@ -764,8 +764,6 @@ onMounted(() => {
           <ul>
             <li>{{ t('ai.agentWelcome.caution1') }}</li>
             <li>{{ t('ai.agentWelcome.caution2') }}</li>
-            <li><strong>{{ t('ai.agentWelcome.caution3') }}</strong></li>
-            <li><strong>{{ t('ai.agentWelcome.caution4') }}</strong></li>
           </ul>
         </div>
         <!-- 普通对话模式的消息 -->
