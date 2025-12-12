@@ -44,7 +44,10 @@ export function useAgentMode(
 ) {
   const terminalStore = useTerminalStore()
 
-  // Agent 模式状态
+  // 当前终端 ID（使用传入的 tabId，不再依赖 activeTabId）
+  const currentTabId = tabId
+
+  // Agent 模式状态（每个 AiPanel 实例独立，无需保存到 store）
   const agentMode = ref(true)
   const strictMode = ref(true)       // 严格模式（默认开启）
   const commandTimeout = ref(10)     // 命令超时时间（秒），默认 10 秒
@@ -56,9 +59,6 @@ export function useAgentMode(
   let cleanupConfirmListener: (() => void) | null = null
   let cleanupCompleteListener: (() => void) | null = null
   let cleanupErrorListener: (() => void) | null = null
-
-  // 当前终端 ID（使用传入的 tabId，不再依赖 activeTabId）
-  const currentTabId = tabId
 
   // 获取当前 tab（基于固定的 tabId）
   const currentTab = computed(() => {
@@ -459,8 +459,10 @@ export function useAgentMode(
           }
         }
         
-        // 使用智能滚动，不打断用户查看历史
-        scrollToBottomIfNeeded()
+        // 只有当事件属于当前 AiPanel 实例时，才调用滚动
+        if (tabId === currentTabId.value) {
+          scrollToBottomIfNeeded()
+        }
       }
     })
 
@@ -469,8 +471,10 @@ export function useAgentMode(
       const tabId = terminalStore.findTabIdByAgentId(data.agentId) || currentTabId.value
       if (tabId) {
         terminalStore.setAgentPendingConfirm(tabId, data)
-        // 需要确认时强制滚动，确保用户看到确认框
-        scrollToBottom()
+        // 只有当事件属于当前 AiPanel 实例时，才调用滚动
+        if (tabId === currentTabId.value) {
+          scrollToBottom()
+        }
       }
     })
 
