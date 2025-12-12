@@ -183,6 +183,33 @@ export class AgentService {
   }
 
   /**
+   * 生成工具调用签名
+   * 用于区分相同工具的不同调用（考虑关键参数）
+   */
+  private generateToolSignature(toolName: string, toolArgs: Record<string, unknown>): string {
+    // 对于某些工具，需要考虑关键参数来区分不同调用
+    const keyParams: Record<string, string[]> = {
+      'read_file': ['path', 'start_line', 'end_line', 'tail_lines', 'info_only'],
+      'write_file': ['path'],
+      'execute_command': ['command'],
+      'send_control_key': ['key'],
+    }
+    
+    const paramsToHash = keyParams[toolName]
+    if (!paramsToHash) {
+      return toolName  // 没有定义关键参数的工具，只用工具名
+    }
+    
+    // 提取关键参数值生成签名
+    const paramValues = paramsToHash
+      .map(p => toolArgs[p] !== undefined ? `${p}=${JSON.stringify(toolArgs[p])}` : '')
+      .filter(Boolean)
+      .join('|')
+    
+    return paramValues ? `${toolName}:${paramValues}` : toolName
+  }
+
+  /**
    * 检测是否存在命令循环（重复执行相同命令）
    */
   private detectCommandLoop(commands: string[]): boolean {
@@ -466,7 +493,9 @@ export class AgentService {
     reflection.toolCallCount++
 
     // 追踪工具调用（用于检测工具循环）
-    reflection.lastToolCalls.push(toolName)
+    // 生成工具签名：工具名 + 关键参数的哈希，用于区分相同工具的不同调用
+    const toolSignature = this.generateToolSignature(toolName, toolArgs)
+    reflection.lastToolCalls.push(toolSignature)
     // 只保留最近 8 个工具调用
     if (reflection.lastToolCalls.length > 8) {
       reflection.lastToolCalls.shift()
