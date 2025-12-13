@@ -894,6 +894,7 @@ function initOrchestratorService() {
       const tabId = `tab_${Date.now()}`
       await ptyService.spawn(tabId, {})
       terminalTypes.set(tabId, 'local')
+      terminalStateService.initTerminal(tabId, 'local')
       return tabId
     },
     createSshTerminal: async (sshConfig) => {
@@ -914,6 +915,7 @@ function initOrchestratorService() {
         privateKey: config.privateKey
       })
       terminalTypes.set(tabId, 'ssh')
+      terminalStateService.initTerminal(tabId, 'ssh')
       return tabId
     },
     closeTerminal: async (terminalId) => {
@@ -924,6 +926,7 @@ function initOrchestratorService() {
         sshService.disconnect(terminalId)
       }
       terminalTypes.delete(terminalId)
+      terminalStateService.removeTerminal(terminalId)
     },
     getTerminalType: (terminalId) => {
       return terminalTypes.get(terminalId) || 'ssh'

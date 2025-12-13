@@ -16,6 +16,7 @@ export interface OrchestratorConfig {
   workerTimeout: number           // Worker 任务超时（毫秒），默认 60000
   autoCloseTerminals: boolean     // 任务完成后自动关闭终端，默认 false
   confirmStrategy: ConfirmStrategy  // 确认策略：审慎/批量确认/自由模式
+  profileId?: string              // AI 配置档案 ID（可选，默认使用当前激活的配置）
 }
 
 // 默认协调器配置

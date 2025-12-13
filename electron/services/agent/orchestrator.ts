@@ -215,8 +215,8 @@ export class OrchestratorService {
     
     while (run.status === 'running' && maxIterations-- > 0) {
       try {
-        // 调用 AI
-        const response = await this.aiService.chat(messages, { tools })
+        // 调用 AI（使用支持工具调用的方法，传递配置的 profileId）
+        const response = await this.aiService.chatWithTools(messages, tools, run.config.profileId)
         
         // 处理响应
         if (response.content) {
@@ -239,6 +239,10 @@ export class OrchestratorService {
           run.result = result
           
           this.callbacks.onComplete?.(orchestratorId, result)
+          this.sendToRenderer('orchestrator:complete', {
+            orchestratorId,
+            result
+          })
           break
         }
         
@@ -468,6 +472,10 @@ export class OrchestratorService {
       this.updatePlanWithWorker(orchestratorId, terminalId, alias)
       
       this.callbacks.onWorkerUpdate?.(orchestratorId, worker)
+      this.sendToRenderer('orchestrator:workerUpdate', {
+        orchestratorId,
+        worker
+      })
       
       return { success: true, terminalId, alias, type }
       
@@ -505,6 +513,10 @@ export class OrchestratorService {
     worker.currentTask = task
     worker.taskStartedAt = Date.now()
     this.callbacks.onWorkerUpdate?.(orchestratorId, worker)
+    this.sendToRenderer('orchestrator:workerUpdate', {
+      orchestratorId,
+      worker
+    })
     
     // 更新计划步骤状态
     this.updatePlanStepStatus(orchestratorId, realId, 'in_progress')
@@ -528,6 +540,10 @@ export class OrchestratorService {
       worker.status = 'completed'
       worker.result = result || 'Task completed'
       this.callbacks.onWorkerUpdate?.(orchestratorId, worker)
+      this.sendToRenderer('orchestrator:workerUpdate', {
+        orchestratorId,
+        worker
+      })
       
       // 更新计划步骤状态
       this.updatePlanStepStatus(orchestratorId, realId, 'completed', worker.result)
@@ -544,6 +560,10 @@ export class OrchestratorService {
       worker.status = 'failed'
       worker.error = error instanceof Error ? error.message : String(error)
       this.callbacks.onWorkerUpdate?.(orchestratorId, worker)
+      this.sendToRenderer('orchestrator:workerUpdate', {
+        orchestratorId,
+        worker
+      })
       
       // 更新计划步骤状态
       this.updatePlanStepStatus(orchestratorId, realId, 'failed', worker.error)

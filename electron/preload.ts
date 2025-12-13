@@ -705,6 +705,7 @@ const electronAPI = {
       workerTimeout?: number
       autoCloseTerminals?: boolean
       confirmStrategy?: 'cautious' | 'batch' | 'free'
+      profileId?: string
     }) => ipcRenderer.invoke('orchestrator:start', task, config) as Promise<string>,
 
     // 停止智能巡检任务

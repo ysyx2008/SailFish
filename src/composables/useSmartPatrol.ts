@@ -13,6 +13,7 @@ export interface OrchestratorConfig {
   workerTimeout?: number
   autoCloseTerminals?: boolean
   confirmStrategy?: ConfirmStrategy
+  profileId?: string
 }
 
 // Worker 状态

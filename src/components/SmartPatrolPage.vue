@@ -3,12 +3,14 @@
  * 智能巡检全屏界面
  * 多终端 Agent 协调模式的主界面
  */
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSmartPatrol, type ConfirmStrategy } from '../composables/useSmartPatrol'
+import { useConfigStore } from '../stores/config'
 import AgentPlanView from './AgentPlanView.vue'
 
 const { t } = useI18n()
+const configStore = useConfigStore()
 
 const emit = defineEmits<{
   back: []
@@ -24,6 +26,18 @@ const {
   stopTask: doStopTask,
   clearSession
 } = useSmartPatrol()
+
+// AI 配置
+const aiProfiles = computed(() => configStore.aiProfiles)
+const activeAiProfile = computed(() => configStore.activeAiProfile)
+const selectedProfileId = ref(activeAiProfile.value?.id || '')
+
+// 同步选中的 profile（当全局配置改变时）
+watch(activeAiProfile, (newProfile) => {
+  if (newProfile && !selectedProfileId.value) {
+    selectedProfileId.value = newProfile.id
+  }
+}, { immediate: true })
 
 // 任务输入
 const taskInput = ref('')
@@ -55,7 +69,8 @@ const startTask = async () => {
   if (!taskInput.value.trim() || isRunning.value) return
   
   await doStartTask(taskInput.value, {
-    confirmStrategy: confirmStrategy.value
+    confirmStrategy: confirmStrategy.value,
+    profileId: selectedProfileId.value || undefined
   })
 }
 
@@ -102,6 +117,18 @@ onUnmounted(() => {
         {{ t('welcome.smartPatrol') }}
       </h1>
       <div class="header-actions">
+        <!-- 模型选择 -->
+        <select 
+          v-if="aiProfiles.length > 0"
+          v-model="selectedProfileId"
+          class="model-select"
+          :disabled="isRunning"
+          :title="t('ai.switchModel')"
+        >
+          <option v-for="profile in aiProfiles" :key="profile.id" :value="profile.id">
+            {{ profile.name }} ({{ profile.model }})
+          </option>
+        </select>
         <button class="btn-icon" @click="clearMessages" :title="t('common.clear')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -294,7 +321,30 @@ onUnmounted(() => {
 .header-actions {
   display: flex;
   gap: 8px;
+  align-items: center;
   -webkit-app-region: no-drag;
+}
+
+.model-select {
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+  max-width: 180px;
+  transition: border-color 0.15s ease;
+}
+
+.model-select:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+}
+
+.model-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .btn-icon {
