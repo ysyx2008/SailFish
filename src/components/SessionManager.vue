@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted, nextTick, onMounted } from 'vue'
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore, type SshSession, type SessionGroup, type JumpHostConfig, type SshEncoding } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
@@ -46,15 +46,20 @@ const nameInputRef = ref<HTMLInputElement | null>(null)
 // ESC 关闭弹窗
 const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
+    // 按优先级关闭弹窗，并阻止其他监听器被调用
     if (showNewSession.value) {
+      e.stopImmediatePropagation()
       showNewSession.value = false
       resetForm()
     } else if (showGroupEditor.value) {
+      e.stopImmediatePropagation()
       showGroupEditor.value = false
       resetGroupForm()
     } else if (showImportMenu.value) {
+      e.stopImmediatePropagation()
       showImportMenu.value = false
     } else if (showNewMenu.value) {
+      e.stopImmediatePropagation()
       showNewMenu.value = false
     }
   }

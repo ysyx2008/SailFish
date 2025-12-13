@@ -430,6 +430,7 @@ const historySearchRef = ref<HTMLInputElement | null>(null)
 // ESC 关闭历史记录弹窗
 const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape' && showHistoryViewer.value) {
+    e.stopImmediatePropagation() // 阻止其他监听器被调用，防止同时关闭父级弹窗
     closeHistoryViewer()
   }
 }
@@ -444,11 +445,12 @@ watch(showHistoryViewer, async (isOpen) => {
 
 onMounted(() => {
   loadStorageStats()
-  document.addEventListener('keydown', handleKeydown)
+  // 使用捕获阶段，确保在父组件之前处理事件
+  document.addEventListener('keydown', handleKeydown, true)
 })
 
 onUnmounted(() => {
-  document.removeEventListener('keydown', handleKeydown)
+  document.removeEventListener('keydown', handleKeydown, true)
 })
 </script>
 

@@ -226,8 +226,9 @@ const resetSponsorStatus = async () => {
 // ESC 关闭处理
 const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
-    // 如果有内部弹窗，先关闭内部弹窗
+    // 如果有内部弹窗，先关闭内部弹窗，并阻止事件继续传播
     if (showConfirmDialog.value) {
+      e.stopImmediatePropagation()
       showConfirmDialog.value = false
     } else {
       emit('close')

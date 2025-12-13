@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import KnowledgeManager from '../KnowledgeManager.vue'
 
@@ -321,6 +321,7 @@ const passwordInputRef = ref<HTMLInputElement | null>(null)
 // ESC 关闭密码弹窗
 const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape' && showPasswordDialog.value) {
+    e.stopImmediatePropagation() // 阻止其他监听器被调用，防止同时关闭父级弹窗
     closePasswordDialog()
   }
 }
@@ -336,11 +337,12 @@ watch(showPasswordDialog, async (isOpen) => {
 onMounted(() => {
   loadSettings()
   loadPasswordInfo()
-  document.addEventListener('keydown', handleKeydown)
+  // 使用捕获阶段，确保在父组件之前处理事件
+  document.addEventListener('keydown', handleKeydown, true)
 })
 
 onUnmounted(() => {
-  document.removeEventListener('keydown', handleKeydown)
+  document.removeEventListener('keydown', handleKeydown, true)
 })
 </script>
 
