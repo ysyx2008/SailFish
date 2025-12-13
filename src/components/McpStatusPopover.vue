@@ -121,6 +121,13 @@ const handleClickOutside = (e: MouseEvent) => {
   }
 }
 
+// ESC 关闭
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && showPopover.value) {
+    closePopover()
+  }
+}
+
 // 连接服务器
 const connectServer = async (server: McpServerConfig) => {
   connecting.value = server.id
@@ -180,6 +187,8 @@ onMounted(async () => {
   
   // 点击外部关闭
   document.addEventListener('click', handleClickOutside)
+  // ESC 关闭
+  document.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
@@ -187,6 +196,7 @@ onUnmounted(() => {
   unsubDisconnected?.()
   unsubError?.()
   document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', handleKeydown)
 })
 </script>
 

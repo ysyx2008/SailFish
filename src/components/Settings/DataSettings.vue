@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
 
@@ -424,8 +424,31 @@ const showMessage = (type: 'success' | 'error', text: string) => {
   }, 3000)
 }
 
+// 搜索框引用
+const historySearchRef = ref<HTMLInputElement | null>(null)
+
+// ESC 关闭历史记录弹窗
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && showHistoryViewer.value) {
+    closeHistoryViewer()
+  }
+}
+
+// 监听弹窗打开，自动聚焦到搜索框
+watch(showHistoryViewer, async (isOpen) => {
+  if (isOpen) {
+    await nextTick()
+    historySearchRef.value?.focus()
+  }
+})
+
 onMounted(() => {
   loadStorageStats()
+  document.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown)
 })
 </script>
 
@@ -582,6 +605,7 @@ onMounted(() => {
             <!-- 搜索框 -->
             <div class="search-box">
               <input 
+                ref="historySearchRef"
                 v-model="searchKeyword"
                 type="text" 
                 :placeholder="t('dataSettings.searchPlaceholder')"

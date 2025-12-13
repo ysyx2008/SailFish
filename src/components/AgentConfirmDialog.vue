@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted, ref, nextTick } from 'vue'
 import type { PendingConfirmation } from '../stores/terminal'
 
 const props = defineProps<{
@@ -9,6 +9,27 @@ const props = defineProps<{
 const emit = defineEmits<{
   confirm: [approved: boolean]
 }>()
+
+// 确认按钮引用
+const confirmBtnRef = ref<HTMLButtonElement | null>(null)
+
+// ESC 关闭
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') {
+    handleReject()
+  }
+}
+
+onMounted(async () => {
+  document.addEventListener('keydown', handleKeydown)
+  // 自动聚焦到确认按钮
+  await nextTick()
+  confirmBtnRef.value?.focus()
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown)
+})
 
 // 获取风险等级的显示文本
 const riskText = computed(() => {
@@ -92,6 +113,7 @@ const handleReject = () => {
           取消
         </button>
         <button 
+          ref="confirmBtnRef"
           class="btn" 
           :class="confirmation.riskLevel === 'dangerous' ? 'btn-danger' : 'btn-primary'"
           @click="handleConfirm"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onUnmounted, nextTick, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore, type SshSession, type SessionGroup, type JumpHostConfig, type SshEncoding } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
@@ -49,9 +49,13 @@ const handleKeydown = (e: KeyboardEvent) => {
     if (showNewSession.value) {
       showNewSession.value = false
       resetForm()
-    }
-    if (showImportMenu.value) {
+    } else if (showGroupEditor.value) {
+      showGroupEditor.value = false
+      resetGroupForm()
+    } else if (showImportMenu.value) {
       showImportMenu.value = false
+    } else if (showNewMenu.value) {
+      showNewMenu.value = false
     }
   }
 }
@@ -93,6 +97,20 @@ watch(showImportMenu, (isOpen) => {
     document.addEventListener('keydown', handleKeydown)
   } else if (!showNewMenu.value) {
     document.removeEventListener('click', handleClickOutside)
+  }
+})
+
+// 分组编辑弹窗名称输入框引用
+const groupNameInputRef = ref<HTMLInputElement | null>(null)
+
+// 监听分组编辑弹窗状态
+watch(showGroupEditor, async (isOpen) => {
+  if (isOpen) {
+    document.addEventListener('keydown', handleKeydown)
+    await nextTick()
+    groupNameInputRef.value?.focus()
+  } else {
+    document.removeEventListener('keydown', handleKeydown)
   }
 })
 
@@ -752,7 +770,7 @@ const deleteGroup = async (groupName: string) => {
         <div class="modal-body">
           <div class="form-group">
             <label class="form-label">{{ t('session.form.groupName') }} *</label>
-            <input v-model="groupFormData.name" type="text" class="input" :placeholder="t('session.form.groupNamePlaceholder')" />
+            <input ref="groupNameInputRef" v-model="groupFormData.name" type="text" class="input" :placeholder="t('session.form.groupNamePlaceholder')" />
           </div>
           
           <!-- 跳板机配置 -->

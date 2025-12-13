@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore } from '../../stores/config'
 import { oemConfig } from '../../config/oem.config'
@@ -223,6 +223,21 @@ const resetSponsorStatus = async () => {
   }
 }
 
+// ESC 关闭处理
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') {
+    // 如果有内部弹窗，先关闭内部弹窗
+    if (showConfirmDialog.value) {
+      showConfirmDialog.value = false
+    } else {
+      emit('close')
+    }
+  }
+}
+
+// 模态框引用
+const modalRef = ref<HTMLElement | null>(null)
+
 // 初始化时设置初始 tab 和获取版本号
 onMounted(async () => {
   if (props.initialTab && ['ai', 'mcp', 'knowledge', 'theme', 'terminal', 'data', 'language', 'about'].includes(props.initialTab)) {
@@ -230,6 +245,17 @@ onMounted(async () => {
   }
   // 获取应用版本号
   appVersion.value = await window.electronAPI.app.getVersion()
+  
+  // 添加键盘事件监听
+  document.addEventListener('keydown', handleKeydown)
+  
+  // 聚焦到模态框容器使其可接收键盘事件
+  await nextTick()
+  modalRef.value?.focus()
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown)
 })
 
 const tabs = computed(() => [
@@ -330,7 +356,7 @@ const onQrImageError = (event: Event) => {
         }"
       ></div>
     </div>
-    <div class="settings-modal">
+    <div ref="modalRef" class="settings-modal" tabindex="-1">
       <div class="settings-header">
         <h2>{{ t('settings.title') }}</h2>
         <button class="btn-icon" @click="emit('close')" :title="t('settings.closeSettings')">

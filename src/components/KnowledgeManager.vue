@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -326,8 +326,29 @@ const importKnowledge = async () => {
   }
 }
 
-onMounted(() => {
+// 搜索框引用
+const searchInputRef = ref<HTMLInputElement | null>(null)
+
+// ESC 关闭处理
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') {
+    emit('close')
+  }
+}
+
+onMounted(async () => {
   loadData()
+  
+  // 添加键盘事件监听
+  document.addEventListener('keydown', handleKeydown)
+  
+  // 聚焦到搜索框
+  await nextTick()
+  searchInputRef.value?.focus()
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown)
 })
 </script>
 
@@ -375,6 +396,7 @@ onMounted(() => {
           <!-- 搜索框 -->
           <div class="search-bar">
             <input 
+              ref="searchInputRef"
               type="text"
               v-model="searchQuery"
               :placeholder="activeTab === 'documents' ? t('knowledgeManager.searchPlaceholder') : '搜索记忆内容...'"

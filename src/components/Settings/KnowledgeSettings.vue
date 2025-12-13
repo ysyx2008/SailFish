@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import KnowledgeManager from '../KnowledgeManager.vue'
 
@@ -315,9 +315,32 @@ const lockKnowledge = async () => {
   await loadPasswordInfo()
 }
 
+// 密码输入框引用
+const passwordInputRef = ref<HTMLInputElement | null>(null)
+
+// ESC 关闭密码弹窗
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && showPasswordDialog.value) {
+    closePasswordDialog()
+  }
+}
+
+// 监听弹窗打开，自动聚焦到密码输入框
+watch(showPasswordDialog, async (isOpen) => {
+  if (isOpen) {
+    await nextTick()
+    passwordInputRef.value?.focus()
+  }
+})
+
 onMounted(() => {
   loadSettings()
   loadPasswordInfo()
+  document.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown)
 })
 </script>
 
@@ -565,6 +588,7 @@ onMounted(() => {
             <div class="password-field">
               <label>{{ passwordDialogMode === 'change' || passwordDialogMode === 'clear' ? '当前密码' : '密码' }}</label>
               <input 
+                ref="passwordInputRef"
                 type="password" 
                 v-model="passwordInput" 
                 :placeholder="passwordDialogMode === 'verify' || passwordDialogMode === 'clear' ? '请输入密码' : '请输入密码（至少 4 位）'"
