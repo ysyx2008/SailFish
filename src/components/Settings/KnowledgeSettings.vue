@@ -584,7 +584,7 @@ onUnmounted(() => {
               请输入知识库密码以解锁加密数据。如果是从其他设备导入的知识库，请使用原来设置的密码。
             </p>
             <p v-if="passwordDialogMode === 'clear'" class="password-hint password-hint-warning">
-              ⚠️ 清除密码后，知识库数据将不再加密保护。已加密的数据将无法访问。请确认您要执行此操作。
+              ⚠️ 清除密码后，已加密的数据将被自动解密，知识库数据将不再加密保护。请确认您要执行此操作。
             </p>
             
             <div class="password-field">
