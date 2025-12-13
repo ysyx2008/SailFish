@@ -118,9 +118,7 @@ onUnmounted(() => {
         <button class="btn-link" @click="goBack">{{ t('patrol.goAddSessions') }}</button>
       </div>
 
-      <!-- 正常界面 -->
-      <template>
-        <!-- 任务输入区 -->
+      <!-- 任务输入区 -->
         <div class="task-input-section">
           <div class="input-wrapper">
             <textarea
@@ -236,7 +234,6 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-      </template>
     </div>
   </div>
 </template>
