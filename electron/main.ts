@@ -930,19 +930,11 @@ function initOrchestratorService() {
     },
     runWorkerAgent: async (ptyId, task, workerOptions) => {
       const type = terminalTypes.get(ptyId) || 'ssh'
-      let terminalOutput: string[]
       
-      if (type === 'local') {
-        // 本地终端输出
-        terminalOutput = ptyService.getTerminalOutput(ptyId, 50)
-      } else {
-        // SSH 终端输出
-        terminalOutput = sshService.getTerminalOutput(ptyId, 50)
-      }
-      
+      // Worker Agent 的上下文：初始输出为空，Agent 运行时会通过工具获取最新输出
       const context: AgentContext = {
         ptyId,
-        terminalOutput,
+        terminalOutput: [],  // Worker 启动时输出为空，实际输出会在运行时获取
         systemInfo: { 
           os: type === 'local' ? process.platform : 'linux', 
           shell: type === 'local' ? (process.env.SHELL || 'bash') : 'bash' 
