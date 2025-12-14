@@ -154,6 +154,15 @@ export interface WorkerAgentOptions {
   reportProgress?: (step: AgentStep) => void  // 进度回调
 }
 
+// Agent 执行阶段（用于智能打断判断）
+export type AgentExecutionPhase = 
+  | 'thinking'           // AI 思考/生成响应中（安全打断）
+  | 'executing_command'  // 执行终端命令中（可能可打断）
+  | 'writing_file'       // 写入文件中（危险，不建议打断）
+  | 'waiting'            // wait 工具等待中（安全打断）
+  | 'confirming'         // 等待用户确认中（安全打断）
+  | 'idle'               // 空闲
+
 // Agent 运行状态
 export interface AgentRun {
   id: string
@@ -176,6 +185,10 @@ export interface AgentRun {
   currentPlan?: AgentPlan
   // Worker 模式选项（智能巡检）
   workerOptions?: WorkerAgentOptions
+  // 当前执行阶段（用于智能打断）
+  executionPhase: AgentExecutionPhase
+  // 当前正在执行的工具名（用于显示）
+  currentToolName?: string
 }
 
 // 主机档案服务接口
@@ -196,7 +209,7 @@ export interface HostProfileServiceInterface {
 export interface AgentCallbacks {
   onStep?: (agentId: string, step: AgentStep) => void
   onNeedConfirm?: (confirmation: PendingConfirmation) => void
-  onComplete?: (agentId: string, result: string) => void
+  onComplete?: (agentId: string, result: string, pendingUserMessages?: string[]) => void  // 附带未处理的用户消息
   onError?: (agentId: string, error: string) => void
   onTextChunk?: (agentId: string, chunk: string) => void  // 流式文本回调
 }

@@ -538,9 +538,15 @@ interface Window {
       cleanup: (agentId: string) => Promise<void>
       updateConfig: (agentId: string, config: { strictMode?: boolean; commandTimeout?: number }) => Promise<boolean>
       addMessage: (agentId: string, message: string) => Promise<boolean>
+      getExecutionPhase: (agentId: string) => Promise<{
+        phase: 'thinking' | 'executing_command' | 'writing_file' | 'waiting' | 'confirming' | 'idle'
+        currentToolName?: string
+        canInterrupt: boolean
+        interruptWarning?: string
+      } | null>
       onStep: (callback: (data: { agentId: string; step: AgentStep }) => void) => () => void
       onNeedConfirm: (callback: (data: PendingConfirmation) => void) => () => void
-      onComplete: (callback: (data: { agentId: string; result: string }) => void) => () => void
+      onComplete: (callback: (data: { agentId: string; result: string; pendingUserMessages?: string[] }) => void) => () => void
       onError: (callback: (data: { agentId: string; error: string }) => void) => () => void
     }
     // 历史记录操作

@@ -3054,17 +3054,27 @@ onMounted(() => {
   color: var(--text-primary);
 }
 
+/* 用户补充消息：样式类似用户消息气泡，但略有区分 */
 .agent-step-inline.user_supplement {
-  background: rgba(245, 158, 11, 0.1);
-  border-left: 3px solid #f59e0b;
-  padding-left: 10px;
-  margin-left: -2px;
-  border-radius: 4px;
-  color: var(--text-primary);
+  display: flex;
+  justify-content: flex-end;
+  background: transparent;
+  border-left: none;
+  padding-left: 0;
+  margin-left: 0;
+}
+
+.agent-step-inline.user_supplement .step-content {
+  background: var(--accent-primary);
+  opacity: 0.85;
+  color: var(--bg-primary);
+  border-radius: 12px 12px 4px 12px;
+  padding: 8px 12px;
+  max-width: 80%;
 }
 
 .agent-step-inline.user_supplement .step-icon {
-  color: #f59e0b;
+  display: none;  /* 隐藏图标，让消息看起来更自然 */
 }
 
 .agent-step-inline.waiting {
