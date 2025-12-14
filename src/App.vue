@@ -151,6 +151,15 @@ onMounted(async () => {
     // 设置 Worker 终端的 Agent 状态为运行中
     // ptyId 就是 tab id（在 createLegionWorkerTab 中设置的）
     terminalStore.setAgentRunning(data.ptyId, true, undefined, data.task)
+    
+    // 添加用户任务步骤，让 AiPanel 显示发送给 Worker 的指令
+    // 这样用户可以看到军团发给各个终端的命令
+    terminalStore.addAgentStep(data.ptyId, {
+      id: `user_task_${Date.now()}`,
+      type: 'user_task',
+      content: data.task,
+      timestamp: Date.now()
+    })
   })
 })
 
@@ -355,16 +364,6 @@ onUnmounted(() => {
         <TabBar />
       </div>
       <div class="header-right">
-        <!-- 钢铁军团按钮 -->
-        <button 
-          class="btn-icon" 
-          :class="{ active: legionStore.isActive }"
-          @click="toggleIronLegion" 
-          :title="t('welcome.ironLegion')"
-        >
-          <span class="legion-icon">🤖</span>
-          <span v-if="legionStore.isRunning" class="running-indicator"></span>
-        </button>
         <button class="btn-icon" @click="toggleAiPanel" :title="t('header.aiAssistant')">
           <Bot :size="18" />
         </button>
@@ -577,36 +576,6 @@ onUnmounted(() => {
   color: var(--text-primary);
   margin-left: 8px;
   letter-spacing: 0.3px;
-}
-
-/* 钢铁军团按钮样式 */
-.btn-icon {
-  position: relative;
-}
-
-.btn-icon.active {
-  background: rgba(139, 92, 246, 0.1);
-  border-color: rgba(139, 92, 246, 0.3);
-}
-
-.legion-icon {
-  font-size: 14px;
-}
-
-.running-indicator {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 6px;
-  height: 6px;
-  background: #10b981;
-  border-radius: 50%;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
 }
 
 /* 主体 */
