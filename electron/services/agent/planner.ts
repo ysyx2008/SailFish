@@ -134,7 +134,7 @@ export function generatePlanningPrompt(task: string, complexity: TaskComplexity)
 【任务规划】
 中等复杂度任务。开始前：
 1. 说明执行思路（1-2 句）
-2. 列出 2-4 个关键步骤
+2. 列出几个关键步骤
 3. 标注可能需要调整的环节
 `
   }
