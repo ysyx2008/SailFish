@@ -63,19 +63,15 @@ export default {
     emptyTitle: 'Ready to start multi-terminal collaboration',
     emptyDesc: 'Describe your task, Agent will automatically identify servers and execute',
     exampleTasks: 'Example Tasks',
-    strategyLabels: {
-      cautious: 'Cautious Mode',
-      batch: 'Batch Confirm',
-      free: 'Free Mode'
-    },
-    strategyDescs: {
-      cautious: 'Confirm each dangerous command',
-      batch: 'Batch confirm same commands',
-      free: 'Auto execute (use with caution)'
-    },
     exampleTask1: 'Check disk usage on all production servers',
     exampleTask2: 'View memory and CPU load on each server',
-    exampleTask3: 'Check if nginx service is running properly'
+    exampleTask3: 'Check if nginx service is running properly',
+    // Status bar
+    minimizePanel: 'Minimize panel',
+    expandPanel: 'Expand panel',
+    statusIdle: 'Idle',
+    statusCompleted: 'Completed',
+    noActiveTask: 'No active task'
   },
 
   // Common buttons and actions

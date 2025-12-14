@@ -63,9 +63,18 @@ export default {
     emptyTitle: '准备好开始多终端协作了',
     emptyDesc: '描述你的任务，Agent 会自动识别需要操作的服务器并执行',
     exampleTasks: '示例任务',
+<<<<<<< HEAD
     exampleTask1: '检查所有生产服务器的磁盘使用情况',
     exampleTask2: '查看各服务器的内存和CPU负载',
     exampleTask3: '检查 nginx 服务是否正常运行'
+=======
+    // 状态栏
+    minimizePanel: '最小化面板',
+    expandPanel: '展开面板',
+    statusIdle: '就绪',
+    statusCompleted: '已完成',
+    noActiveTask: '无活跃任务'
+>>>>>>> 0b50145 (feat: 实现钢铁军团功能，增强多终端协作体验)
   },
 
   // 通用按钮和操作

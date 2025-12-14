@@ -151,6 +151,10 @@ export interface TerminalTab {
   agentState?: AgentState
   // 上传的文档（每个终端独立）
   uploadedDocs?: ParsedDocument[]
+  // 钢铁军团 Worker 相关
+  isLegionWorker?: boolean  // 是否为钢铁军团 Worker 终端
+  legionOrchestorId?: string  // 所属协调器 ID
+  legionAlias?: string  // Worker 别名（如 prod-web-1）
 }
 
 export interface SplitPane {
@@ -1315,6 +1319,69 @@ export const useTerminalStore = defineStore('terminal', () => {
     return !!tab?.agentState?.pendingConfirm
   }
 
+  /**
+   * 创建钢铁军团 Worker 终端 tab
+   * 由后端创建终端后通知前端调用此方法
+   */
+  function createLegionWorkerTab(options: {
+    ptyId: string
+    type: 'local' | 'ssh'
+    title: string
+    orchestratorId: string
+    alias: string
+    sshConfig?: {
+      host: string
+      port: number
+      username: string
+    }
+  }): void {
+    const { ptyId, type, title, orchestratorId, alias, sshConfig } = options
+    
+    const tab: TerminalTab = {
+      id: ptyId, // 使用后端的 ptyId 作为 tab id
+      title, // Worker 图标在 TabBar 中显示
+      type,
+      ptyId,
+      isConnected: true,
+      isLoading: false,
+      isLegionWorker: true,
+      legionOrchestorId: orchestratorId,
+      legionAlias: alias,
+      sshConfig,
+      systemInfo: type === 'local' 
+        ? detectLocalSystemInfo()
+        : {
+            os: 'linux',
+            shell: 'bash',
+            description: `SSH 连接: ${sshConfig?.username}@${sshConfig?.host}`
+          }
+    }
+    
+    tabs.value.push(tab)
+    // 不自动切换到新 tab，让用户可以继续查看当前终端
+    // 但如果没有活跃 tab，则切换到新 tab
+    if (!activeTabId.value) {
+      activeTabId.value = ptyId
+    }
+  }
+
+  /**
+   * 关闭所有指定协调器的 Worker 终端
+   */
+  function closeLegionWorkerTabs(orchestratorId: string): void {
+    const workerTabs = tabs.value.filter(t => t.legionOrchestorId === orchestratorId)
+    for (const tab of workerTabs) {
+      closeTab(tab.id)
+    }
+  }
+
+  /**
+   * 获取指定协调器的所有 Worker 终端
+   */
+  function getLegionWorkerTabs(orchestratorId: string): TerminalTab[] {
+    return tabs.value.filter(t => t.legionOrchestorId === orchestratorId)
+  }
+
   return {
     tabs,
     activeTabId,
@@ -1388,7 +1455,11 @@ export const useTerminalStore = defineStore('terminal', () => {
     hasContentChanged,
     getNewOutputSinceLastSnapshot,
     updateSnapshotExternalState,
-    hasPendingConfirm
+    hasPendingConfirm,
+    // 钢铁军团 Worker 终端管理
+    createLegionWorkerTab,
+    closeLegionWorkerTabs,
+    getLegionWorkerTabs
   }
 })
 

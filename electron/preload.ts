@@ -1002,6 +1002,38 @@ const electronAPI = {
       return () => {
         ipcRenderer.removeListener('orchestrator:error', handler)
       }
+    },
+
+    // 监听 Worker 终端创建（钢铁军团在标签栏显示终端）
+    onWorkerCreated: (callback: (data: {
+      ptyId: string
+      type: 'local' | 'ssh'
+      title: string
+      orchestratorId: string
+      alias: string
+      sshConfig?: {
+        host: string
+        port: number
+        username: string
+      }
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data as Parameters<typeof callback>[0])
+      ipcRenderer.on('legion:workerCreated', handler)
+      return () => {
+        ipcRenderer.removeListener('legion:workerCreated', handler)
+      }
+    },
+
+    // 监听 Worker Agent 开始执行
+    onWorkerAgentStart: (callback: (data: {
+      ptyId: string
+      task: string
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data as Parameters<typeof callback>[0])
+      ipcRenderer.on('legion:workerAgentStart', handler)
+      return () => {
+        ipcRenderer.removeListener('legion:workerAgentStart', handler)
+      }
     }
   },
 

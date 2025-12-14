@@ -32,8 +32,8 @@ export class OrchestratorService {
   // 依赖服务（通过 setServices 注入）
   private aiService?: AiService
   private getSshSessions?: () => SshSession[]
-  private createLocalTerminal?: () => Promise<string>
-  private createSshTerminal?: (sshConfig: unknown) => Promise<string>
+  private createLocalTerminal?: (orchestratorId: string, alias: string) => Promise<string>
+  private createSshTerminal?: (sshConfig: unknown, orchestratorId: string, alias: string) => Promise<string>
   private closeTerminal?: (terminalId: string) => Promise<void>
   private getTerminalType?: (terminalId: string) => 'local' | 'ssh'
   private runWorkerAgent?: (
@@ -48,8 +48,8 @@ export class OrchestratorService {
   setServices(services: {
     aiService: AiService
     getSshSessions: () => SshSession[]
-    createLocalTerminal: () => Promise<string>
-    createSshTerminal: (sshConfig: unknown) => Promise<string>
+    createLocalTerminal: (orchestratorId: string, alias: string) => Promise<string>
+    createSshTerminal: (sshConfig: unknown, orchestratorId: string, alias: string) => Promise<string>
     closeTerminal: (terminalId: string) => Promise<void>
     getTerminalType: (terminalId: string) => 'local' | 'ssh'
     runWorkerAgent: (ptyId: string, task: string, workerOptions: WorkerAgentOptions) => Promise<string>
@@ -475,7 +475,7 @@ export class OrchestratorService {
       
       if (type === 'local') {
         // 创建本地终端
-        terminalId = await this.createLocalTerminal?.()
+        terminalId = await this.createLocalTerminal?.(orchestratorId, alias)
         hostName = 'localhost'
       } else {
         // 创建 SSH 终端
@@ -494,8 +494,9 @@ export class OrchestratorService {
           port: session.port,
           username: session.username,
           password: session.password,
-          privateKey: session.privateKeyPath
-        })
+          privateKey: session.privateKeyPath,
+          hostName: session.name  // 传递主机名用于显示
+        }, orchestratorId, alias)
         hostName = session.name
       }
       

@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { Server, Bot, Settings, X, Loader2 } from 'lucide-vue-next'
 import { useTerminalStore } from './stores/terminal'
 import { useConfigStore, type SshSession } from './stores/config'
+import { useIronLegionStore } from './stores/ironLegion'
 import TabBar from './components/TabBar.vue'
 import TerminalContainer from './components/TerminalContainer.vue'
 import AiPanel from './components/AiPanel.vue'
@@ -16,6 +17,7 @@ import WelcomePage from './components/WelcomePage.vue'
 import IronLegionPage from './components/IronLegionPage.vue'
 import Toast from './components/common/Toast.vue'
 import ConfirmDialog from './components/common/ConfirmDialog.vue'
+import IronLegionStatusBar from './components/IronLegionStatusBar.vue'
 import { useConfirm } from './composables/useConfirm'
 import type { SftpConnectionConfig } from './composables/useSftp'
 import { uiThemes } from './themes/ui-themes'
@@ -27,12 +29,12 @@ const knowledgeUpgrading = ref(false)
 const knowledgeUpgradeProgress = ref({ current: 0, total: 0, filename: '' })
 const terminalStore = useTerminalStore()
 const configStore = useConfigStore()
+const legionStore = useIronLegionStore()
 const { show: showConfirmDialog, options: confirmOptions, handleConfirm, handleCancel, handleClose } = useConfirm()
 
 const showSidebar = ref(false)
 const showAiPanel = ref(true)
 const showSettings = ref(false)
-const showIronLegion = ref(false)
 
 // UI 主题
 const currentUiTheme = computed(() => configStore.uiTheme)
@@ -95,6 +97,9 @@ let cleanupTerminalCountListener: (() => void) | null = null
 let cleanupKnowledgeUpgrading: (() => void) | null = null
 let cleanupKnowledgeProgress: (() => void) | null = null
 let cleanupKnowledgeReady: (() => void) | null = null
+// 钢铁军团 Worker 监听器清理函数
+let cleanupWorkerCreatedListener: (() => void) | null = null
+let cleanupWorkerAgentStartListener: (() => void) | null = null
 
 onMounted(async () => {
   // 注册全局快捷键
@@ -128,6 +133,25 @@ onMounted(async () => {
 
   // 已完成设置，正常启动
   await initializeApp()
+  
+  // 监听钢铁军团 Worker 终端创建事件
+  cleanupWorkerCreatedListener = window.electronAPI.orchestrator.onWorkerCreated((data) => {
+    terminalStore.createLegionWorkerTab({
+      ptyId: data.ptyId,
+      type: data.type,
+      title: data.title,
+      orchestratorId: data.orchestratorId,
+      alias: data.alias,
+      sshConfig: data.sshConfig
+    })
+  })
+  
+  // 监听钢铁军团 Worker Agent 开始执行事件
+  cleanupWorkerAgentStartListener = window.electronAPI.orchestrator.onWorkerAgentStart((data) => {
+    // 设置 Worker 终端的 Agent 状态为运行中
+    // ptyId 就是 tab id（在 createLegionWorkerTab 中设置的）
+    terminalStore.setAgentRunning(data.ptyId, true, undefined, data.task)
+  })
 })
 
 // 初始化应用（正常启动流程）
@@ -160,8 +184,15 @@ const initializeApp = async () => {
   }
 }
 
-// 是否显示欢迎页（没有打开任何终端且不在钢铁军团界面时显示）
-const showWelcomePage = computed(() => terminalStore.tabs.length === 0 && !showIronLegion.value)
+// 是否显示欢迎页（没有打开任何终端且钢铁军团未展开时显示）
+const showWelcomePage = computed(() => 
+  terminalStore.tabs.length === 0 && !legionStore.isExpanded
+)
+
+// 是否显示终端区域
+const showTerminals = computed(() => 
+  terminalStore.tabs.length > 0 && !legionStore.isExpanded
+)
 
 // 从欢迎页打开本地终端
 const openLocalFromWelcome = async () => {
@@ -196,12 +227,8 @@ const openSessionManagerFromWelcome = () => {
 
 // 从欢迎页打开钢铁军团
 const openIronLegionFromWelcome = () => {
-  showIronLegion.value = true
-}
-
-// 从钢铁军团返回欢迎页
-const backFromIronLegion = () => {
-  showIronLegion.value = false
+  legionStore.activate()
+  legionStore.expand()
 }
 
 // 完成引导向导
@@ -219,6 +246,16 @@ const toggleSidebar = () => {
 // 切换 AI 面板
 const toggleAiPanel = () => {
   showAiPanel.value = !showAiPanel.value
+}
+
+// 切换钢铁军团面板
+const toggleIronLegion = () => {
+  if (legionStore.isExpanded) {
+    legionStore.minimize()
+  } else {
+    legionStore.activate()
+    legionStore.expand()
+  }
 }
 
 // 打开 SFTP 文件管理器（模态框模式）
@@ -303,6 +340,9 @@ onUnmounted(() => {
   cleanupKnowledgeUpgrading?.()
   cleanupKnowledgeProgress?.()
   cleanupKnowledgeReady?.()
+  // 清理钢铁军团 Worker 监听器
+  cleanupWorkerCreatedListener?.()
+  cleanupWorkerAgentStartListener?.()
 })
 </script>
 
@@ -320,6 +360,16 @@ onUnmounted(() => {
         <TabBar />
       </div>
       <div class="header-right">
+        <!-- 钢铁军团按钮 -->
+        <button 
+          class="btn-icon" 
+          :class="{ active: legionStore.isActive }"
+          @click="toggleIronLegion" 
+          :title="t('welcome.ironLegion')"
+        >
+          <span class="legion-icon">🤖</span>
+          <span v-if="legionStore.isRunning" class="running-indicator"></span>
+        </button>
         <button class="btn-icon" @click="toggleAiPanel" :title="t('header.aiAssistant')">
           <Bot :size="18" />
         </button>
@@ -355,14 +405,13 @@ onUnmounted(() => {
           @open-iron-legion="openIronLegionFromWelcome"
         />
         <IronLegionPage 
-          v-else-if="showIronLegion"
-          @back="backFromIronLegion"
+          v-else-if="legionStore.isExpanded"
         />
         <TerminalContainer v-else />
       </main>
 
-      <!-- AI 面板 - 每个 tab 独立实例（仅在有终端时显示） -->
-      <template v-if="showAiPanel && !showWelcomePage">
+      <!-- AI 面板 - 每个 tab 独立实例（仅在有终端且不在钢铁军团时显示） -->
+      <template v-if="showAiPanel && showTerminals">
         <div 
           class="resize-handle" 
           @mousedown="startResize"
@@ -379,6 +428,18 @@ onUnmounted(() => {
         </aside>
       </template>
     </div>
+
+    <!-- 钢铁军团状态栏（最小化时显示） -->
+    <IronLegionStatusBar
+      v-if="legionStore.shouldShowStatusBar"
+      :is-running="legionStore.isRunning"
+      :task-title="legionStore.taskTitle"
+      :progress="legionStore.progress"
+      :completed-count="legionStore.completedCount"
+      :total-steps="legionStore.totalSteps"
+      @expand="legionStore.expand()"
+      @stop="legionStore.stopTask()"
+    />
 
     <!-- 设置弹窗 -->
     <SettingsModal 
@@ -514,6 +575,36 @@ onUnmounted(() => {
   color: var(--text-primary);
   margin-left: 8px;
   letter-spacing: 0.3px;
+}
+
+/* 钢铁军团按钮样式 */
+.btn-icon {
+  position: relative;
+}
+
+.btn-icon.active {
+  background: rgba(139, 92, 246, 0.1);
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.legion-icon {
+  font-size: 14px;
+}
+
+.running-indicator {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  background: #10b981;
+  border-radius: 50%;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 /* 主体 */
@@ -724,4 +815,3 @@ onUnmounted(() => {
 }
 
 </style>
-

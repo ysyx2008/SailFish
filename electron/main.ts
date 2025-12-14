@@ -1476,14 +1476,27 @@ function initOrchestratorService() {
   orchestratorService.setServices({
     aiService,
     getSshSessions: () => configService.getSshSessions(),
-    createLocalTerminal: async () => {
+    createLocalTerminal: async (orchestratorId: string, alias: string) => {
       // 创建本地终端
       const tabId = ptyService.create({})
       terminalTypes.set(tabId, 'local')
       terminalStateService.initTerminal(tabId, 'local')
+      
+      // 通知前端创建 Worker tab
+      const windows = BrowserWindow.getAllWindows()
+      windows.forEach(win => {
+        win.webContents.send('legion:workerCreated', {
+          ptyId: tabId,
+          type: 'local',
+          title: alias,
+          orchestratorId,
+          alias
+        })
+      })
+      
       return tabId
     },
-    createSshTerminal: async (sshConfig) => {
+    createSshTerminal: async (sshConfig, orchestratorId: string, alias: string) => {
       // 创建 SSH 终端
       const config = sshConfig as {
         host: string
@@ -1491,6 +1504,7 @@ function initOrchestratorService() {
         username: string
         password?: string
         privateKey?: string
+        hostName?: string  // 用于显示的名称
       }
       const tabId = await sshService.connect({
         host: config.host,
@@ -1501,6 +1515,24 @@ function initOrchestratorService() {
       })
       terminalTypes.set(tabId, 'ssh')
       terminalStateService.initTerminal(tabId, 'ssh')
+      
+      // 通知前端创建 Worker tab
+      const windows = BrowserWindow.getAllWindows()
+      windows.forEach(win => {
+        win.webContents.send('legion:workerCreated', {
+          ptyId: tabId,
+          type: 'ssh',
+          title: config.hostName || alias,
+          orchestratorId,
+          alias,
+          sshConfig: {
+            host: config.host,
+            port: config.port,
+            username: config.username
+          }
+        })
+      })
+      
       return tabId
     },
     closeTerminal: async (terminalId) => {
@@ -1529,6 +1561,60 @@ function initOrchestratorService() {
         },
         terminalType: type
       }
+      
+      // 通知前端 Worker Agent 开始执行
+      const windows = BrowserWindow.getAllWindows()
+      windows.forEach(win => {
+        if (!win.isDestroyed()) {
+          win.webContents.send('legion:workerAgentStart', { ptyId, task })
+        }
+      })
+      
+      // 设置回调，将 Worker Agent 事件发送到前端（所有窗口）
+      // 这样 Worker 终端的 AI Panel 可以显示执行过程
+      agentService.setCallbacks({
+        onStep: (agentId: string, step: AgentStep) => {
+          const serializedStep = JSON.parse(JSON.stringify(step))
+          const windows = BrowserWindow.getAllWindows()
+          windows.forEach(win => {
+            if (!win.isDestroyed()) {
+              win.webContents.send('agent:step', { agentId, ptyId, step: serializedStep })
+            }
+          })
+        },
+        onNeedConfirm: (confirmation: PendingConfirmation) => {
+          const windows = BrowserWindow.getAllWindows()
+          windows.forEach(win => {
+            if (!win.isDestroyed()) {
+              win.webContents.send('agent:needConfirm', {
+                agentId: confirmation.agentId,
+                ptyId,
+                toolCallId: confirmation.toolCallId,
+                toolName: confirmation.toolName,
+                toolArgs: JSON.parse(JSON.stringify(confirmation.toolArgs)),
+                riskLevel: confirmation.riskLevel
+              })
+            }
+          })
+        },
+        onComplete: (agentId: string, result: string) => {
+          const windows = BrowserWindow.getAllWindows()
+          windows.forEach(win => {
+            if (!win.isDestroyed()) {
+              win.webContents.send('agent:complete', { agentId, ptyId, result })
+            }
+          })
+        },
+        onError: (agentId: string, error: string) => {
+          const windows = BrowserWindow.getAllWindows()
+          windows.forEach(win => {
+            if (!win.isDestroyed()) {
+              win.webContents.send('agent:error', { agentId, ptyId, error })
+            }
+          })
+        }
+      })
+      
       // 运行 Worker Agent（使用严格模式）
       return agentService.run(ptyId, task, context, { executionMode: 'strict' }, undefined, workerOptions)
     }
