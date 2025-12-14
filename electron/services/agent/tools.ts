@@ -193,9 +193,11 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
 4. **行替换模式**：mode='replace_lines'，用 content 替换 start_line 到 end_line 的内容
 5. **正则替换模式**：mode='regex_replace'，用正则表达式查找替换
 
-**SSH 远程终端**：通过 SFTP 写入文件，终端会显示写入进度。
-- 目前支持 overwrite 和 append 模式
-- 不需要担心特殊字符转义问题
+**SSH 远程终端** - 仅支持 overwrite 和 append 模式：
+- 通过 SFTP 写入，不用担心特殊字符转义问题
+- 适合：创建新文件、完全替换文件、追加日志/配置
+- **不支持** insert、replace_lines、regex_replace 模式
+- 需要局部修改时，请用 execute_command 执行命令，如sed、awk等
 
 ⚠️ **重要文件请先备份**：修改配置文件、脚本等重要文件前，必须先执行备份命令：
 \`cp file.txt file.txt.$(date +%Y%m%d_%H%M%S).bak\`
