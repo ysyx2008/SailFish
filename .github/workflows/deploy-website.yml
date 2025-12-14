@@ -39,6 +39,7 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftps  # 启用 FTPS (FTP over TLS)
+          security: loose  # 放宽 TLS 安全检查
           local-dir: ./website/dist/
           server-dir: ${{ secrets.FTP_SERVER_DIR }}  # 例如: /wwwroot/
 
