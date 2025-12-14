@@ -187,13 +187,14 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
         description: `写入或创建文件。支持本地文件和 SSH 远程文件。
 
 **本地终端**：支持多种写入模式：
-1. **覆盖模式（默认）**：mode='overwrite'，用 content 替换整个文件
-2. **追加模式**：mode='append'，在文件末尾追加 content
-3. **插入模式**：mode='insert'，在 insert_at_line 行之前插入 content
-4. **行替换模式**：mode='replace_lines'，用 content 替换 start_line 到 end_line 的内容
-5. **正则替换模式**：mode='regex_replace'，用正则表达式查找替换
+1. **新建模式（默认）**：mode='create'，仅创建新文件，如果文件已存在则报错
+2. **覆盖模式**：mode='overwrite'，用 content 替换整个文件（文件存在会覆盖）
+3. **追加模式**：mode='append'，在文件末尾追加 content
+4. **插入模式**：mode='insert'，在 insert_at_line 行之前插入 content
+5. **行替换模式**：mode='replace_lines'，用 content 替换 start_line 到 end_line 的内容
+6. **正则替换模式**：mode='regex_replace'，用正则表达式查找替换
 
-**SSH 远程终端** - 仅支持 overwrite 和 append 模式：
+**SSH 远程终端** - 仅支持 overwrite、create 和 append 模式：
 - 通过 SFTP 写入，不用担心特殊字符转义问题
 - 适合：创建新文件、完全替换文件、追加日志/配置
 - **不支持** insert、replace_lines、regex_replace 模式
@@ -215,8 +216,8 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
             },
             mode: {
               type: 'string',
-              enum: ['overwrite', 'append', 'insert', 'replace_lines', 'regex_replace'],
-              description: '写入模式：overwrite（覆盖，默认）、append（追加）、insert（插入）、replace_lines（行替换）、regex_replace（正则替换）'
+              enum: ['create', 'overwrite', 'append', 'insert', 'replace_lines', 'regex_replace'],
+              description: '写入模式：create（新建，默认，文件存在则报错）、overwrite（覆盖）、append（追加）、insert（插入）、replace_lines（行替换）、regex_replace（正则替换）'
             },
             insert_at_line: {
               type: 'number',

@@ -1543,7 +1543,7 @@ async function writeFileViaSftp(
   ptyId: string,
   filePath: string,
   content: string,
-  mode: string,
+  mode: 'overwrite' | 'create' | 'append',
   toolCallId: string,
   config: AgentConfig,
   executor: ToolExecutorConfig
@@ -1568,14 +1568,6 @@ async function writeFileViaSftp(
     }
   }
 
-  // 目前只支持 overwrite 和 append 模式
-  if (mode !== 'overwrite' && mode !== 'append') {
-    return { 
-      success: false, 
-      output: '', 
-      error: `SSH 远程文件写入目前只支持 overwrite 和 append 模式，不支持 ${mode} 模式` 
-    }
-  }
 
   const contentLength = content.length
   const contentSizeKB = (contentLength / 1024).toFixed(1)
@@ -1611,7 +1603,22 @@ async function writeFileViaSftp(
     }
 
     // 根据模式写入文件
-    if (mode === 'append') {
+    let resultMsg: string
+    if (mode === 'create') {
+      // 新建模式：检查文件是否存在
+      let fileExists = false
+      try {
+        await sftpService.readFile(ptyId, filePath)
+        fileExists = true
+      } catch {
+        // 文件不存在，可以创建
+      }
+      if (fileExists) {
+        return { success: false, output: '', error: `文件已存在，无法创建: ${filePath}。如需覆盖请使用 mode='overwrite'` }
+      }
+      await sftpService.writeFile(ptyId, filePath, content)
+      resultMsg = `远程文件已创建: ${filePath}`
+    } else if (mode === 'append') {
       // 追加模式：先读取现有内容，再写入
       let existingContent = ''
       try {
@@ -1620,9 +1627,11 @@ async function writeFileViaSftp(
         // 文件不存在，忽略错误
       }
       await sftpService.writeFile(ptyId, filePath, existingContent + content)
+      resultMsg = `内容已追加到远程文件: ${filePath}`
     } else {
       // 覆盖模式
       await sftpService.writeFile(ptyId, filePath, content)
+      resultMsg = `远程文件已写入: ${filePath}`
     }
 
     // 在终端显示完成提示
@@ -1630,10 +1639,6 @@ async function writeFileViaSftp(
     
     // 等待 echo 命令执行
     await new Promise(resolve => setTimeout(resolve, 300))
-
-    const resultMsg = mode === 'append' 
-      ? `内容已追加到远程文件: ${filePath}` 
-      : `远程文件已写入: ${filePath}`
 
     executor.addStep({
       type: 'tool_result',
@@ -1672,7 +1677,7 @@ async function writeFile(
 ): Promise<ToolResult> {
   let filePath = args.path as string
   const content = args.content as string | undefined
-  const mode = (args.mode as string) || 'overwrite'
+  const mode = (args.mode as string) || 'create'
   const insertAtLine = args.insert_at_line as number | undefined
   const startLine = args.start_line as number | undefined
   const endLine = args.end_line as number | undefined
@@ -1685,13 +1690,13 @@ async function writeFile(
   }
 
   // 验证模式和必要参数
-  const validModes = ['overwrite', 'append', 'insert', 'replace_lines', 'regex_replace']
+  const validModes = ['overwrite', 'create', 'append', 'insert', 'replace_lines', 'regex_replace']
   if (!validModes.includes(mode)) {
     return { success: false, output: '', error: `无效的写入模式: ${mode}，支持的模式: ${validModes.join(', ')}` }
   }
 
   // 验证各模式的必要参数
-  if (mode === 'overwrite' || mode === 'append') {
+  if (mode === 'overwrite' || mode === 'create' || mode === 'append') {
     if (content === undefined) {
       return { success: false, output: '', error: `${mode} 模式需要提供 content 参数` }
     }
@@ -1724,7 +1729,10 @@ async function writeFile(
   // 检测终端类型，SSH 终端使用 SFTP 写入
   const terminalType = executor.terminalService.getTerminalType(ptyId)
   if (terminalType === 'ssh') {
-    // SSH 终端：使用 SFTP 写入远程文件
+    // SSH 终端只支持 overwrite、create 和 append 模式
+    if (mode !== 'overwrite' && mode !== 'create' && mode !== 'append') {
+      return { success: false, output: '', error: `SSH 远程终端不支持 ${mode} 模式，仅支持 overwrite、create 和 append。如需局部修改，请使用 execute_command 执行 sed/awk 等命令` }
+    }
     if (content === undefined) {
       return { success: false, output: '', error: 'SSH 远程文件写入需要提供 content 参数' }
     }
@@ -1744,6 +1752,9 @@ async function writeFile(
   switch (mode) {
     case 'overwrite':
       operationDesc = `覆盖写入文件: ${filePath}`
+      break
+    case 'create':
+      operationDesc = `新建文件: ${filePath}`
       break
     case 'append':
       operationDesc = `追加写入文件: ${filePath}`
@@ -1823,6 +1834,14 @@ async function writeFile(
       case 'overwrite': {
         fs.writeFileSync(filePath, content!, 'utf-8')
         resultMsg = `文件已${fileExists ? '覆盖' : '创建'}: ${filePath}`
+        break
+      }
+      case 'create': {
+        if (fileExists) {
+          return { success: false, output: '', error: `文件已存在，无法创建: ${filePath}。如需覆盖请使用 mode='overwrite'` }
+        }
+        fs.writeFileSync(filePath, content!, 'utf-8')
+        resultMsg = `文件已创建: ${filePath}`
         break
       }
       case 'append': {
