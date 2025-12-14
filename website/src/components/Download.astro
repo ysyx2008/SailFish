@@ -1,6 +1,24 @@
 ---
 // 下载区域组件
-const version = "7.1.0";
+// 从 GitHub API 获取最新版本号
+let version = "7.1.0"; // 默认版本，API 失败时使用
+
+try {
+  const response = await fetch('https://api.github.com/repos/ysyx2008/SFTerminal/releases/latest', {
+    headers: {
+      'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'SFTerminal-Website'
+    }
+  });
+  
+  if (response.ok) {
+    const data = await response.json();
+    // tag_name 格式为 "v7.1.0"，去掉 "v" 前缀
+    version = data.tag_name.replace(/^v/, '');
+  }
+} catch (error) {
+  console.warn('Failed to fetch latest release, using default version:', version);
+}
 
 const downloads = [
   {
