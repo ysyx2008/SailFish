@@ -524,6 +524,7 @@ interface Window {
           autoExecuteSafe?: boolean
           autoExecuteModerate?: boolean
           strictMode?: boolean
+          freeMode?: boolean
         },
         profileId?: string
       ) => Promise<{ success: boolean; result?: string; error?: string }>
@@ -536,7 +537,7 @@ interface Window {
       ) => Promise<boolean>
       getStatus: (agentId: string) => Promise<unknown>
       cleanup: (agentId: string) => Promise<void>
-      updateConfig: (agentId: string, config: { strictMode?: boolean; commandTimeout?: number }) => Promise<boolean>
+      updateConfig: (agentId: string, config: { strictMode?: boolean; commandTimeout?: number; freeMode?: boolean }) => Promise<boolean>
       addMessage: (agentId: string, message: string) => Promise<boolean>
       getExecutionPhase: (agentId: string) => Promise<{
         phase: 'thinking' | 'executing_command' | 'writing_file' | 'waiting' | 'confirming' | 'idle'
@@ -1123,6 +1124,117 @@ interface Window {
         percent: number
         downloaded: number
         total: number
+      }) => void) => () => void
+      exportData: () => Promise<{
+        canceled?: boolean
+        success?: boolean
+        path?: string
+        hasPassword?: boolean
+        error?: string
+      }>
+      importData: () => Promise<{
+        canceled?: boolean
+        success?: boolean
+        imported?: number
+        needsPassword?: boolean
+        error?: string
+      }>
+      setPassword: (password: string) => Promise<{
+        success: boolean
+        error?: string
+      }>
+    }
+    // 协调器（智能巡检）
+    orchestrator: {
+      listHosts: () => Promise<Array<{
+        hostId: string
+        name: string
+        host: string
+        port: number
+        username: string
+        group?: string
+        groupId?: string
+        tags?: string[]
+      }>>
+      start: (task: string, config?: {
+        maxParallelWorkers?: number
+        workerTimeout?: number
+        autoCloseTerminals?: boolean
+        confirmStrategy?: 'cautious' | 'batch' | 'free'
+        profileId?: string
+      }) => Promise<string>
+      stop: (orchestratorId: string) => Promise<void>
+      batchConfirmResponse: (
+        orchestratorId: string,
+        action: 'cancel' | 'current' | 'all',
+        selectedTerminals?: string[]
+      ) => Promise<void>
+      onMessage: (callback: (data: {
+        orchestratorId: string
+        message: {
+          id: string
+          type: 'user' | 'agent' | 'system' | 'progress'
+          content: string
+          timestamp: number
+        }
+      }) => void) => () => void
+      onWorkerUpdate: (callback: (data: {
+        orchestratorId: string
+        worker: {
+          terminalId: string
+          hostId: string
+          hostName: string
+          status: 'connecting' | 'idle' | 'running' | 'completed' | 'failed' | 'timeout'
+          currentTask?: string
+          result?: string
+          error?: string
+        }
+      }) => void) => () => void
+      onPlanUpdate: (callback: (data: {
+        orchestratorId: string
+        plan: {
+          id: string
+          title: string
+          steps: Array<{
+            id: string
+            title: string
+            status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped'
+            terminalId?: string
+            terminalName?: string
+            result?: string
+          }>
+          createdAt: number
+          updatedAt: number
+        }
+      }) => void) => () => void
+      onNeedBatchConfirm: (callback: (data: {
+        orchestratorId: string
+        command: string
+        riskLevel: 'safe' | 'moderate' | 'dangerous' | 'blocked'
+        targetTerminals: Array<{
+          terminalId: string
+          terminalName: string
+          selected: boolean
+        }>
+      }) => void) => () => void
+      onComplete: (callback: (data: {
+        orchestratorId: string
+        result: {
+          totalCount: number
+          successCount: number
+          failedCount: number
+          results: Array<{
+            terminalId: string
+            terminalName: string
+            success: boolean
+            result?: string
+            error?: string
+          }>
+        }
+      }) => void) => () => void
+      onError: (callback: (data: {
+        orchestratorId: string
+        error: string
       }) => void) => () => void
     }
     // 终端屏幕内容服务（主进程请求渲染进程数据）

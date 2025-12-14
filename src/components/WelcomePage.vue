@@ -3,7 +3,7 @@
  * 欢迎页组件
  * 程序启动后显示，提供快速启动各类终端的入口
  */
-import { ref, computed, onMounted } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore, type SshSession } from '../stores/config'
 
@@ -39,11 +39,6 @@ const openLocalTerminal = () => {
 // 打开会话管理器选择更多
 const openSessionManager = () => {
   emit('open-session-manager')
-}
-
-// 打开智能巡检
-const openSmartPatrol = () => {
-  emit('open-smart-patrol')
 }
 
 // 格式化主机显示

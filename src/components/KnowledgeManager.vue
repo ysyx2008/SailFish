@@ -37,7 +37,6 @@ const selectedDocIds = ref<Set<string>>(new Set())
 const batchDeleting = ref(false)
 const clearing = ref(false)
 const activeTab = ref<'documents' | 'memories'>('documents')
-const showMemoryDetail = ref(false)
 const exporting = ref(false)
 const importing = ref(false)
 

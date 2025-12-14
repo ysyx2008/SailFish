@@ -165,7 +165,7 @@ const handleEnableChange = async () => {
 }
 
 // 打开密码对话框
-const openPasswordDialog = (mode: 'set' | 'verify' | 'change') => {
+const openPasswordDialog = (mode: 'set' | 'verify' | 'change' | 'clear') => {
   passwordDialogMode.value = mode
   passwordInput.value = ''
   newPasswordInput.value = ''
