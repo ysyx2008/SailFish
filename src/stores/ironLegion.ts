@@ -182,6 +182,9 @@ export const useIronLegionStore = defineStore('ironLegion', () => {
   
   // 设置事件监听器
   const setupListeners = () => {
+    // 避免重复注册监听器
+    if (cleanupFns.length > 0) return
+    
     // 监听消息
     const unsubMessage = window.electronAPI.orchestrator.onMessage((data) => {
       if (data.orchestratorId !== orchestratorId.value) return

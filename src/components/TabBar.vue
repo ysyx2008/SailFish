@@ -212,24 +212,12 @@ const handleDragEnd = () => {
         @dragend="handleDragEnd"
       >
         <span class="tab-icon">
-<<<<<<< HEAD
-          <Terminal v-if="tab.type === 'local'" :size="14" />
-          <Monitor v-else :size="14" />
-=======
           <!-- 钢铁军团 Worker 终端图标 -->
           <span v-if="tab.isLegionWorker" class="legion-worker-icon">🤖</span>
           <!-- 普通本地终端图标 -->
-          <svg v-else-if="tab.type === 'local'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="4 17 10 11 4 5"/>
-            <line x1="12" y1="19" x2="20" y2="19"/>
-          </svg>
+          <Terminal v-else-if="tab.type === 'local'" :size="14" />
           <!-- 普通 SSH 终端图标 -->
-          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-            <line x1="8" y1="21" x2="16" y2="21"/>
-            <line x1="12" y1="17" x2="12" y2="21"/>
-          </svg>
->>>>>>> 0b50145 (feat: 实现钢铁军团功能，增强多终端协作体验)
+          <Monitor v-else :size="14" />
         </span>
         <span class="tab-title">{{ tab.title }}</span>
         <span v-if="tab.isLoading" class="tab-loading">

@@ -1506,21 +1506,22 @@ function initOrchestratorService() {
         privateKey?: string
         hostName?: string  // 用于显示的名称
       }
-      const tabId = await sshService.connect({
+      // sshService.connect 只接受一个参数（配置对象），返回生成的连接 ID
+      const connectionId = await sshService.connect({
         host: config.host,
         port: config.port,
         username: config.username,
         password: config.password,
         privateKey: config.privateKey
       })
-      terminalTypes.set(tabId, 'ssh')
-      terminalStateService.initTerminal(tabId, 'ssh')
+      terminalTypes.set(connectionId, 'ssh')
+      terminalStateService.initTerminal(connectionId, 'ssh')
       
       // 通知前端创建 Worker tab
       const windows = BrowserWindow.getAllWindows()
       windows.forEach(win => {
         win.webContents.send('legion:workerCreated', {
-          ptyId: tabId,
+          ptyId: connectionId,
           type: 'ssh',
           title: config.hostName || alias,
           orchestratorId,
@@ -1533,7 +1534,7 @@ function initOrchestratorService() {
         })
       })
       
-      return tabId
+      return connectionId
     },
     closeTerminal: async (terminalId) => {
       const type = terminalTypes.get(terminalId)
