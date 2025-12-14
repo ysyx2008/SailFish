@@ -16,6 +16,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# 全局权限设置 - 允许创建 Release 和上传资源
+permissions:
+  contents: write
+
 jobs:
   # Windows 构建
   build-windows:
