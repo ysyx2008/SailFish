@@ -189,11 +189,6 @@ const showWelcomePage = computed(() =>
   terminalStore.tabs.length === 0 && !legionStore.isExpanded
 )
 
-// 是否显示终端区域
-const showTerminals = computed(() => 
-  terminalStore.tabs.length > 0 && !legionStore.isExpanded
-)
-
 // 从欢迎页打开本地终端
 const openLocalFromWelcome = async () => {
   await terminalStore.createTab('local')
@@ -407,17 +402,24 @@ onUnmounted(() => {
         <IronLegionPage 
           v-else-if="legionStore.isExpanded"
         />
-        <TerminalContainer v-else />
+        <!-- 终端容器始终渲染以保持 xterm 组件挂载，钢铁军团展开时隐藏 -->
+        <TerminalContainer v-show="!showWelcomePage && !legionStore.isExpanded" />
       </main>
 
-      <!-- AI 面板 - 每个 tab 独立实例（仅在有终端且不在钢铁军团时显示） -->
-      <template v-if="showAiPanel && showTerminals">
+      <!-- AI 面板 - 每个 tab 独立实例 -->
+      <!-- 钢铁军团展开时隐藏但保持渲染，以便 Worker Agent 事件能被监听 -->
+      <template v-if="showAiPanel && terminalStore.tabs.length > 0">
         <div 
+          v-show="!legionStore.isExpanded"
           class="resize-handle" 
           @mousedown="startResize"
           :class="{ resizing: isResizing }"
         ></div>
-        <aside class="ai-sidebar" :style="{ width: aiPanelWidth + 'px' }">
+        <aside 
+          class="ai-sidebar" 
+          :style="{ width: aiPanelWidth + 'px' }"
+          :class="{ 'visually-hidden': legionStore.isExpanded }"
+        >
           <template v-for="tab in terminalStore.tabs" :key="tab.id">
             <AiPanel 
               v-show="tab.id === terminalStore.activeTabId"
@@ -707,6 +709,19 @@ onUnmounted(() => {
   width: 1px;
   background: linear-gradient(180deg, transparent, rgba(var(--accent-secondary-rgb, 116, 199, 236), 0.15), transparent);
   pointer-events: none;
+}
+
+/* 钢铁军团展开时隐藏 AI 面板但保持渲染 */
+.ai-sidebar.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* 拖拽调整宽度手柄 */
