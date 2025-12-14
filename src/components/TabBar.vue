@@ -3,9 +3,23 @@ import { ref, watch, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ChevronLeft, ChevronRight, ChevronDown, Terminal, Monitor, Loader2, X, Plus } from 'lucide-vue-next'
 import { useTerminalStore } from '../stores/terminal'
+import { useIronLegionStore } from '../stores/ironLegion'
 
 const { t } = useI18n()
 const terminalStore = useTerminalStore()
+const legionStore = useIronLegionStore()
+
+// 点击钢铁军团 Tab
+const handleLegionTabClick = () => {
+  legionStore.activate()
+  legionStore.expand()
+}
+
+// 点击普通终端 Tab（需要取消钢铁军团展开状态）
+const handleTerminalTabClick = (tabId: string) => {
+  legionStore.minimize()
+  terminalStore.setActiveTab(tabId)
+}
 
 // 拖拽状态
 const dragIndex = ref<number | null>(null)
@@ -182,6 +196,22 @@ const handleDragEnd = () => {
 
 <template>
   <div class="tab-bar">
+    <!-- 钢铁军团固定 Tab（始终在第一位） -->
+    <div
+      class="tab legion-tab"
+      :class="{ active: legionStore.isExpanded }"
+      @click="handleLegionTabClick"
+    >
+      <span class="tab-icon">
+        <span class="legion-icon-emoji">🤖</span>
+        <span v-if="legionStore.isRunning" class="running-indicator"></span>
+      </span>
+      <span class="tab-title">{{ t('welcome.ironLegion') }}</span>
+    </div>
+    
+    <!-- 分隔线 -->
+    <div class="tab-divider"></div>
+    
     <!-- 左滚动按钮 -->
     <button 
       v-show="canScrollLeft" 
@@ -198,13 +228,13 @@ const handleDragEnd = () => {
         :key="tab.id"
         class="tab"
         :class="{ 
-          active: tab.id === terminalStore.activeTabId,
+          active: tab.id === terminalStore.activeTabId && !legionStore.isExpanded,
           dragging: dragIndex === index,
           'drag-over': dragOverIndex === index && dragIndex !== index,
           'needs-attention': tab.id !== terminalStore.activeTabId && terminalStore.hasPendingConfirm(tab.id)
         }"
         draggable="true"
-        @click="terminalStore.setActiveTab(tab.id)"
+        @click="handleTerminalTabClick(tab.id)"
         @dragstart="handleDragStart(index, $event)"
         @dragover="handleDragOver(index, $event)"
         @dragleave="handleDragLeave"
@@ -627,5 +657,63 @@ const handleDragEnd = () => {
 
 .shell-icon {
   font-size: 14px;
+}
+
+/* 钢铁军团固定 Tab */
+.legion-tab {
+  flex-shrink: 0;
+  cursor: pointer;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(59, 130, 246, 0.1));
+  border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.legion-tab:hover {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(59, 130, 246, 0.2));
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.legion-tab.active {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(59, 130, 246, 0.25));
+  border-color: rgba(139, 92, 246, 0.5);
+  border-bottom: 2px solid #8b5cf6;
+  box-shadow: 0 -2px 8px rgba(139, 92, 246, 0.2);
+}
+
+.legion-tab.active::before {
+  background: linear-gradient(90deg, #8b5cf6, #3b82f6);
+}
+
+.legion-tab .tab-icon {
+  position: relative;
+}
+
+.legion-icon-emoji {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.legion-tab .running-indicator {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  width: 6px;
+  height: 6px;
+  background: #10b981;
+  border-radius: 50%;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Tab 分隔线 */
+.tab-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-color);
+  margin: 0 4px;
+  flex-shrink: 0;
 }
 </style>
