@@ -2,7 +2,7 @@
 node_modules/
 
 # Build outputs
-dist/
+/dist/
 dist-electron/
 release/
 electron-cache/
