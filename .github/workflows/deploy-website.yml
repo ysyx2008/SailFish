@@ -30,13 +30,15 @@ jobs:
         working-directory: website
         run: npm run build
 
-      # 方案 1: 使用 FTP 部署（推荐用于 Windows 服务器）
-      - name: Deploy via FTP
+      # 使用 FTPS 部署（FTP over TLS，更安全）
+      - name: Deploy via FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
+          port: ${{ secrets.FTP_PORT }}  # 自定义端口，默认 21
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps  # 启用 FTPS (FTP over TLS)
           local-dir: ./website/dist/
           server-dir: ${{ secrets.FTP_SERVER_DIR }}  # 例如: /wwwroot/
 
