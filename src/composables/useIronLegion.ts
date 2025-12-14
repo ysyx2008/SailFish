@@ -1,6 +1,6 @@
 /**
- * 智能巡检 Composable
- * 处理智能巡检（多终端协调）的前端逻辑
+ * 钢铁军团 Composable
+ * 处理钢铁军团（多终端协调）的前端逻辑
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 
@@ -28,7 +28,7 @@ export interface WorkerState {
 }
 
 // 计划步骤
-export interface PatrolPlanStep {
+export interface LegionPlanStep {
   id: string
   title: string
   status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped'
@@ -38,16 +38,16 @@ export interface PatrolPlanStep {
 }
 
 // 执行计划
-export interface PatrolPlan {
+export interface LegionPlan {
   id: string
   title: string
-  steps: PatrolPlanStep[]
+  steps: LegionPlanStep[]
   createdAt: number
   updatedAt: number
 }
 
 // 消息
-export interface PatrolMessage {
+export interface LegionMessage {
   id: string
   type: 'user' | 'agent' | 'system' | 'progress'
   content: string
@@ -78,7 +78,7 @@ export interface BatchConfirmData {
 }
 
 // 执行结果
-export interface PatrolResult {
+export interface LegionResult {
   totalCount: number
   successCount: number
   failedCount: number
@@ -91,16 +91,16 @@ export interface PatrolResult {
   }>
 }
 
-export function useSmartPatrol() {
+export function useIronLegion() {
   // 状态
   const orchestratorId = ref<string | null>(null)
   const isRunning = ref(false)
-  const messages = ref<PatrolMessage[]>([])
-  const currentPlan = ref<PatrolPlan | null>(null)
+  const messages = ref<LegionMessage[]>([])
+  const currentPlan = ref<LegionPlan | null>(null)
   const workers = ref<WorkerState[]>([])
   const availableHosts = ref<AvailableHost[]>([])
   const pendingBatchConfirm = ref<BatchConfirmData | null>(null)
-  const result = ref<PatrolResult | null>(null)
+  const result = ref<LegionResult | null>(null)
   const error = ref<string | null>(null)
 
   // 事件监听器清理函数
@@ -121,12 +121,12 @@ export function useSmartPatrol() {
     try {
       availableHosts.value = await window.electronAPI.orchestrator.listHosts()
     } catch (e) {
-      console.error('[SmartPatrol] Failed to load hosts:', e)
+      console.error('[IronLegion] Failed to load hosts:', e)
     }
   }
 
   // 添加消息
-  const addMessage = (message: Omit<PatrolMessage, 'id' | 'timestamp'>) => {
+  const addMessage = (message: Omit<LegionMessage, 'id' | 'timestamp'>) => {
     messages.value.push({
       ...message,
       id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -153,7 +153,7 @@ export function useSmartPatrol() {
 
       // 启动协调器
       orchestratorId.value = await window.electronAPI.orchestrator.start(task, config)
-      console.log('[SmartPatrol] Started with ID:', orchestratorId.value)
+      console.log('[IronLegion] Started with ID:', orchestratorId.value)
 
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
@@ -177,7 +177,7 @@ export function useSmartPatrol() {
         content: '任务已停止'
       })
     } catch (e) {
-      console.error('[SmartPatrol] Failed to stop:', e)
+      console.error('[IronLegion] Failed to stop:', e)
     }
   }
 
@@ -196,7 +196,7 @@ export function useSmartPatrol() {
       )
       pendingBatchConfirm.value = null
     } catch (e) {
-      console.error('[SmartPatrol] Failed to respond batch confirm:', e)
+      console.error('[IronLegion] Failed to respond batch confirm:', e)
     }
   }
 
@@ -317,4 +317,3 @@ export function useSmartPatrol() {
     addMessage
   }
 }
-

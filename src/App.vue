@@ -13,7 +13,7 @@ import FileExplorer from './components/FileExplorer/FileExplorer.vue'
 import McpStatusPopover from './components/McpStatusPopover.vue'
 import SetupWizard from './components/SetupWizard.vue'
 import WelcomePage from './components/WelcomePage.vue'
-import SmartPatrolPage from './components/SmartPatrolPage.vue'
+import IronLegionPage from './components/IronLegionPage.vue'
 import Toast from './components/common/Toast.vue'
 import ConfirmDialog from './components/common/ConfirmDialog.vue'
 import { useConfirm } from './composables/useConfirm'
@@ -32,7 +32,7 @@ const { show: showConfirmDialog, options: confirmOptions, handleConfirm, handleC
 const showSidebar = ref(false)
 const showAiPanel = ref(true)
 const showSettings = ref(false)
-const showSmartPatrol = ref(false)
+const showIronLegion = ref(false)
 
 // UI 主题
 const currentUiTheme = computed(() => configStore.uiTheme)
@@ -160,8 +160,8 @@ const initializeApp = async () => {
   }
 }
 
-// 是否显示欢迎页（没有打开任何终端且不在智能巡检界面时显示）
-const showWelcomePage = computed(() => terminalStore.tabs.length === 0 && !showSmartPatrol.value)
+// 是否显示欢迎页（没有打开任何终端且不在钢铁军团界面时显示）
+const showWelcomePage = computed(() => terminalStore.tabs.length === 0 && !showIronLegion.value)
 
 // 从欢迎页打开本地终端
 const openLocalFromWelcome = async () => {
@@ -194,14 +194,14 @@ const openSessionManagerFromWelcome = () => {
   showSidebar.value = true
 }
 
-// 从欢迎页打开智能巡检
-const openSmartPatrolFromWelcome = () => {
-  showSmartPatrol.value = true
+// 从欢迎页打开钢铁军团
+const openIronLegionFromWelcome = () => {
+  showIronLegion.value = true
 }
 
-// 从智能巡检返回欢迎页
-const backFromSmartPatrol = () => {
-  showSmartPatrol.value = false
+// 从钢铁军团返回欢迎页
+const backFromIronLegion = () => {
+  showIronLegion.value = false
 }
 
 // 完成引导向导
@@ -345,18 +345,18 @@ onUnmounted(() => {
         </div>
       </aside>
 
-      <!-- 终端区域 / 欢迎页 / 智能巡检 -->
+      <!-- 终端区域 / 欢迎页 / 钢铁军团 -->
       <main class="terminal-area">
         <WelcomePage 
           v-if="showWelcomePage"
           @open-local="openLocalFromWelcome"
           @open-ssh="openSshFromWelcome"
           @open-session-manager="openSessionManagerFromWelcome"
-          @open-smart-patrol="openSmartPatrolFromWelcome"
+          @open-iron-legion="openIronLegionFromWelcome"
         />
-        <SmartPatrolPage 
-          v-else-if="showSmartPatrol"
-          @back="backFromSmartPatrol"
+        <IronLegionPage 
+          v-else-if="showIronLegion"
+          @back="backFromIronLegion"
         />
         <TerminalContainer v-else />
       </main>

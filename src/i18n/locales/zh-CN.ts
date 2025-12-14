@@ -14,8 +14,8 @@ export default {
     localTerminalDesc: '打开本机命令行终端',
     sshConnect: 'SSH 连接',
     sshConnectDesc: '连接远程服务器',
-    smartPatrol: '智能巡检',
-    smartPatrolDesc: 'AI 自动巡检多台服务器',
+    ironLegion: '钢铁军团',
+    ironLegionDesc: 'AI 多终端协作执行任务',
     comingSoon: '即将推出',
     recentConnections: '最近连接',
     viewAllSessions: '查看全部会话',
@@ -51,28 +51,18 @@ export default {
     tip30: '终端出错时会自动提示，点击即可让 AI 诊断'
   },
 
-  // 智能巡检
-  patrol: {
+  // 钢铁军团
+  legion: {
     noSessions: '暂无 SSH 会话',
     noSessionsDesc: '请先在会话管理器中添加 SSH 服务器配置',
     noSessionsHint: '暂无 SSH 会话，可添加远程服务器或仅使用本地终端',
     goAddSessions: '添加会话',
-    inputPlaceholder: '描述你的巡检任务，例如：检查所有生产服务器的磁盘使用情况...',
+    inputPlaceholder: '描述你的任务，例如：检查所有生产服务器的磁盘使用情况...',
     startExecution: '开始执行',
     stopExecution: '停止执行',
-    emptyTitle: '准备好开始智能巡检了',
-    emptyDesc: '描述你的任务，助手会自动识别需要检查的服务器并执行',
+    emptyTitle: '准备好开始多终端协作了',
+    emptyDesc: '描述你的任务，Agent 会自动识别需要操作的服务器并执行',
     exampleTasks: '示例任务',
-    strategyLabels: {
-      cautious: '审慎模式',
-      batch: '批量确认',
-      free: '自由模式'
-    },
-    strategyDescs: {
-      cautious: '每个危险命令都确认',
-      batch: '相同命令批量确认',
-      free: '自动执行（谨慎使用）'
-    },
     exampleTask1: '检查所有生产服务器的磁盘使用情况',
     exampleTask2: '查看各服务器的内存和CPU负载',
     exampleTask3: '检查 nginx 服务是否正常运行'

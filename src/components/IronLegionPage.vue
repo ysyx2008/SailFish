@@ -1,12 +1,12 @@
 <script setup lang="ts">
 /**
- * 智能巡检全屏界面
+ * 钢铁军团全屏界面
  * 多终端 Agent 协调模式的主界面
  */
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ArrowLeft, Trash2, ChevronDown, Play, Square, User } from 'lucide-vue-next'
-import { useSmartPatrol, type ConfirmStrategy } from '../composables/useSmartPatrol'
+import { useIronLegion, type ConfirmStrategy } from '../composables/useIronLegion'
 import { useConfigStore } from '../stores/config'
 import AgentPlanView from './AgentPlanView.vue'
 
@@ -17,7 +17,7 @@ const emit = defineEmits<{
   back: []
 }>()
 
-// 使用智能巡检 composable
+// 使用钢铁军团 composable
 const {
   isRunning,
   messages,
@@ -26,7 +26,7 @@ const {
   startTask: doStartTask,
   stopTask: doStopTask,
   clearSession
-} = useSmartPatrol()
+} = useIronLegion()
 
 // AI 配置
 const aiProfiles = computed(() => configStore.aiProfiles)
@@ -104,16 +104,16 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="smart-patrol-page">
+  <div class="iron-legion-page">
     <!-- 顶部导航栏 -->
-    <header class="patrol-header">
+    <header class="legion-header">
       <button class="btn-back" @click="goBack">
         <ArrowLeft :size="20" />
         <span>{{ t('common.back') }}</span>
       </button>
-      <h1 class="patrol-title">
+      <h1 class="legion-title">
         <span class="title-icon">🤖</span>
-        {{ t('welcome.smartPatrol') }}
+        {{ t('welcome.ironLegion') }}
       </h1>
       <div class="header-actions">
         <!-- 模型选择 -->
@@ -135,11 +135,11 @@ onUnmounted(() => {
     </header>
 
     <!-- 主体内容 -->
-    <div class="patrol-body">
+    <div class="legion-body">
       <!-- 无 SSH 会话提示（但仍可使用本地终端） -->
       <div v-if="!hasHosts" class="no-sessions-hint-banner">
-        <span class="hint-text">💡 {{ t('patrol.noSessionsHint') }}</span>
-        <button class="btn-link" @click="goBack">{{ t('patrol.goAddSessions') }}</button>
+        <span class="hint-text">💡 {{ t('legion.noSessionsHint') }}</span>
+        <button class="btn-link" @click="goBack">{{ t('legion.goAddSessions') }}</button>
       </div>
 
       <!-- 任务输入区 -->
@@ -148,7 +148,7 @@ onUnmounted(() => {
             <textarea
               v-model="taskInput"
               class="task-input"
-              :placeholder="t('patrol.inputPlaceholder')"
+              :placeholder="t('legion.inputPlaceholder')"
               :disabled="isRunning"
               rows="3"
               @keydown.ctrl.enter="startTask"
@@ -183,7 +183,7 @@ onUnmounted(() => {
               @click="startTask"
             >
               <Play :size="18" />
-              {{ t('patrol.startExecution') }}
+              {{ t('legion.startExecution') }}
             </button>
             <button 
               v-else
@@ -191,7 +191,7 @@ onUnmounted(() => {
               @click="stopTask"
             >
               <Square :size="18" />
-              {{ t('patrol.stopExecution') }}
+              {{ t('legion.stopExecution') }}
             </button>
           </div>
         </div>
@@ -201,18 +201,18 @@ onUnmounted(() => {
           <!-- 空状态 -->
           <div v-if="messages.length === 0 && !currentPlan" class="empty-state">
             <div class="empty-icon">🔍</div>
-            <div class="empty-title">{{ t('patrol.emptyTitle') }}</div>
-            <div class="empty-desc">{{ t('patrol.emptyDesc') }}</div>
+            <div class="empty-title">{{ t('legion.emptyTitle') }}</div>
+            <div class="empty-desc">{{ t('legion.emptyDesc') }}</div>
             <div class="example-tasks">
-              <div class="example-label">{{ t('patrol.exampleTasks') }}</div>
-              <div class="example-item" @click="taskInput = t('patrol.exampleTask1')">
-                {{ t('patrol.exampleTask1') }}
+              <div class="example-label">{{ t('legion.exampleTasks') }}</div>
+              <div class="example-item" @click="taskInput = t('legion.exampleTask1')">
+                {{ t('legion.exampleTask1') }}
               </div>
-              <div class="example-item" @click="taskInput = t('patrol.exampleTask2')">
-                {{ t('patrol.exampleTask2') }}
+              <div class="example-item" @click="taskInput = t('legion.exampleTask2')">
+                {{ t('legion.exampleTask2') }}
               </div>
-              <div class="example-item" @click="taskInput = t('patrol.exampleTask3')">
-                {{ t('patrol.exampleTask3') }}
+              <div class="example-item" @click="taskInput = t('legion.exampleTask3')">
+                {{ t('legion.exampleTask3') }}
               </div>
             </div>
           </div>
@@ -254,7 +254,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.smart-patrol-page {
+.iron-legion-page {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -262,7 +262,7 @@ onUnmounted(() => {
 }
 
 /* 顶部导航栏 */
-.patrol-header {
+.legion-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -292,7 +292,7 @@ onUnmounted(() => {
   color: var(--text-primary);
 }
 
-.patrol-title {
+.legion-title {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -355,7 +355,7 @@ onUnmounted(() => {
 }
 
 /* 主体内容 */
-.patrol-body {
+.legion-body {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -691,4 +691,3 @@ onUnmounted(() => {
   font-size: 13px;
 }
 </style>
-

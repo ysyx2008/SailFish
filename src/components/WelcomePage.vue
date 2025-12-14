@@ -59,7 +59,7 @@ const emit = defineEmits<{
   'open-local': []
   'open-ssh': [session: SshSession]
   'open-session-manager': []
-  'open-smart-patrol': []
+  'open-iron-legion': []
 }>()
 
 // 最近连接的会话（最多显示 5 个，按最近使用时间逆序排序）
@@ -85,6 +85,11 @@ const openLocalTerminal = () => {
 // 打开会话管理器选择更多
 const openSessionManager = () => {
   emit('open-session-manager')
+}
+
+// 打开钢铁军团
+const openIronLegion = () => {
+  emit('open-iron-legion')
 }
 
 // 格式化主机显示
@@ -133,17 +138,20 @@ const formatHost = (session: SshSession) => {
             </div>
           </div>
 
-          <!-- 智能巡检（暂时隐藏）
-          <div class="action-card" @click="openSmartPatrol">
-            <div class="card-icon patrol">
-              <Bot :size="32" :stroke-width="1.5" />
+          <!-- 钢铁军团 -->
+          <div class="action-card" @click="openIronLegion">
+            <div class="card-icon legion">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/>
+                <circle cx="7.5" cy="14.5" r="1.5"/>
+                <circle cx="16.5" cy="14.5" r="1.5"/>
+              </svg>
             </div>
             <div class="card-content">
-              <div class="card-title">{{ t('welcome.smartPatrol') }}</div>
-              <div class="card-desc">{{ t('welcome.smartPatrolDesc') }}</div>
+              <div class="card-title">{{ t('welcome.ironLegion') }}</div>
+              <div class="card-desc">{{ t('welcome.ironLegionDesc') }}</div>
             </div>
           </div>
-          -->
         </div>
       </div>
 
@@ -476,7 +484,7 @@ const formatHost = (session: SshSession) => {
   box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
 }
 
-.card-icon.patrol {
+.card-icon.legion {
   background: linear-gradient(135deg, #8b5cf6, #7c3aed);
   box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
 }

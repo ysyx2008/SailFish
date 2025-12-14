@@ -14,8 +14,8 @@ export default {
     localTerminalDesc: 'Open local command line',
     sshConnect: 'SSH Connect',
     sshConnectDesc: 'Connect to remote servers',
-    smartPatrol: 'Smart Patrol',
-    smartPatrolDesc: 'AI auto-inspect multiple servers',
+    ironLegion: 'Iron Legion',
+    ironLegionDesc: 'AI multi-terminal collaborative tasks',
     comingSoon: 'Coming Soon',
     recentConnections: 'Recent Connections',
     viewAllSessions: 'View All Sessions',
@@ -51,16 +51,16 @@ export default {
     tip30: 'Auto error detection in terminal, click for AI diagnosis'
   },
 
-  // Smart Patrol
-  patrol: {
+  // Iron Legion
+  legion: {
     noSessions: 'No SSH Sessions',
     noSessionsDesc: 'Please add SSH server configurations in Session Manager first',
     noSessionsHint: 'No SSH sessions. Add remote servers or use local terminal only',
     goAddSessions: 'Add Sessions',
-    inputPlaceholder: 'Describe your patrol task, e.g., Check disk usage on all production servers...',
+    inputPlaceholder: 'Describe your task, e.g., Check disk usage on all production servers...',
     startExecution: 'Start',
     stopExecution: 'Stop',
-    emptyTitle: 'Ready to start smart patrol',
+    emptyTitle: 'Ready to start multi-terminal collaboration',
     emptyDesc: 'Describe your task, Agent will automatically identify servers and execute',
     exampleTasks: 'Example Tasks',
     strategyLabels: {
