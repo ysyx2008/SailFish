@@ -108,7 +108,7 @@ const getGroupName = (session: SshSession) => {
             </div>
           </div>
 
-          <!-- 智能巡检 -->
+          <!-- 智能巡检（暂时隐藏）
           <div class="action-card" @click="openSmartPatrol">
             <div class="card-icon patrol">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -122,6 +122,7 @@ const getGroupName = (session: SshSession) => {
               <div class="card-desc">{{ t('welcome.smartPatrolDesc') }}</div>
             </div>
           </div>
+          -->
         </div>
       </div>
 
@@ -235,14 +236,15 @@ const getGroupName = (session: SshSession) => {
 }
 
 .action-cards {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  display: flex;
+  justify-content: center;
   gap: 16px;
 }
 
 @media (max-width: 640px) {
   .action-cards {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: center;
   }
 }
 
@@ -257,8 +259,12 @@ const getGroupName = (session: SshSession) => {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   text-align: center;
   gap: 12px;
+  width: 180px;
+  height: 180px;
+  flex-shrink: 0;
 }
 
 .action-card:hover:not(.disabled) {
@@ -295,7 +301,7 @@ const getGroupName = (session: SshSession) => {
 }
 
 .card-content {
-  flex: 1;
+  /* 移除 flex: 1 以实现垂直居中 */
 }
 
 .card-title {
