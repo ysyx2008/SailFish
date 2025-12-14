@@ -1,0 +1,50 @@
+name: Deploy Website
+
+on:
+  push:
+    branches: [main, master, feature/Website]
+    paths:
+      - 'website/**'
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Build website
+        working-directory: website
+        run: npm run build
+
+      # 使用 FTPS 部署（FTP over TLS，更安全）
+      - name: Deploy via FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          port: ${{ secrets.FTP_PORT }}  # 自定义端口，默认 21
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps  # 启用 FTPS (FTP over TLS)
+          local-dir: ./website/dist/
+          server-dir: ${{ secrets.FTP_SERVER_DIR }}  # 例如: /wwwroot/
+
+      # 方案 2: 上传构建产物供手动下载（备选）
+      # - name: Upload artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: website-dist
+      #     path: website/dist/

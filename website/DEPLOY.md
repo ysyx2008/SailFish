@@ -65,9 +65,12 @@ notepad deploy.ps1
 | Secret 名称 | 说明 | 示例 |
 |------------|------|------|
 | `FTP_SERVER` | FTP 服务器地址 | `ftp.example.com` 或 IP |
+| `FTP_PORT` | FTPS 端口（可自定义） | `990` 或 `21` |
 | `FTP_USERNAME` | FTP 用户名 | `ftpuser` |
 | `FTP_PASSWORD` | FTP 密码 | `yourpassword` |
 | `FTP_SERVER_DIR` | 服务器目录 | `/` 或 `/wwwroot/` |
+
+> ⚠️ **安全提示**：已启用 FTPS（FTP over TLS），所有传输数据都会加密。请确保服务器 FTP 服务已启用 SSL/TLS。
 
 #### 3. 触发部署
 
