@@ -1,6 +1,6 @@
 # 专门针对Windows的优化配置
-appId: com.qiyu.terminal
-productName: 旗鱼终端
+appId: com.sfterm.terminal
+productName: SFTerm
 directories:
   buildResources: resources
   output: release
@@ -73,7 +73,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: 旗鱼终端
+  shortcutName: SFTerm
   # 注意：electron-builder 24.13.3 不支持 nsis.compression 属性
   # compression: zlib  # 已移除，因为会导致构建失败
 
