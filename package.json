@@ -76,6 +76,9 @@
     "vite-plugin-electron-renderer": "^0.14.5",
     "vue-tsc": "^2.0.6"
   },
-  "author": "旗鱼",
+  "author": {
+    "name": "旗鱼",
+    "email": "nuoyan_cfan@163.com"
+  },
   "license": "AGPL-3.0"
 }
