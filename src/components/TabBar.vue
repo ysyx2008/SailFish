@@ -663,24 +663,6 @@ const handleDragEnd = () => {
 .legion-tab {
   flex-shrink: 0;
   cursor: pointer;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(59, 130, 246, 0.1));
-  border: 1px solid rgba(139, 92, 246, 0.2);
-}
-
-.legion-tab:hover {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(59, 130, 246, 0.2));
-  border-color: rgba(139, 92, 246, 0.3);
-}
-
-.legion-tab.active {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(59, 130, 246, 0.25));
-  border-color: rgba(139, 92, 246, 0.5);
-  border-bottom: 2px solid #8b5cf6;
-  box-shadow: 0 -2px 8px rgba(139, 92, 246, 0.2);
-}
-
-.legion-tab.active::before {
-  background: linear-gradient(90deg, #8b5cf6, #3b82f6);
 }
 
 .legion-tab .tab-icon {
