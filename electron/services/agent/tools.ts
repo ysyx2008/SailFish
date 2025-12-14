@@ -184,26 +184,28 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'write_file',
-        description: `写入或创建本地文件。支持多种写入模式：
+        description: `写入或创建文件。支持本地文件和 SSH 远程文件。
 
+**本地终端**：支持多种写入模式：
 1. **覆盖模式（默认）**：mode='overwrite'，用 content 替换整个文件
 2. **追加模式**：mode='append'，在文件末尾追加 content
 3. **插入模式**：mode='insert'，在 insert_at_line 行之前插入 content
 4. **行替换模式**：mode='replace_lines'，用 content 替换 start_line 到 end_line 的内容
 5. **正则替换模式**：mode='regex_replace'，用正则表达式查找替换
 
+**SSH 远程终端**：通过 SFTP 写入文件，终端会显示写入进度。
+- 目前支持 overwrite 和 append 模式
+- 不需要担心特殊字符转义问题
+
 ⚠️ **重要文件请先备份**：修改配置文件、脚本等重要文件前，必须先执行备份命令：
 \`cp file.txt file.txt.$(date +%Y%m%d_%H%M%S).bak\`
-不需要备份：新建文件、临时文件、日志文件、明确不重要的文件
-
-⚠️ **仅支持本地文件**：此工具只能写入本地机器上的文件。
-对于 SSH 远程主机，请使用 execute_command 执行命令来写入。`,
+不需要备份：新建文件、临时文件、日志文件、明确不重要的文件`,
         parameters: {
           type: 'object',
           properties: {
             path: {
               type: 'string',
-              description: '本地文件路径'
+              description: '文件路径（本地或远程，根据当前终端类型自动识别）'
             },
             content: {
               type: 'string',

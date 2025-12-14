@@ -23,6 +23,8 @@ import { getTerminalStateService } from '../terminal-state.service'
 import { getTerminalAwarenessService, getProcessMonitor } from '../terminal-awareness'
 import { getLastNLinesFromBuffer, getScreenAnalysisFromFrontend } from '../screen-content.service'
 import type { UnifiedTerminalInterface } from '../unified-terminal.service'
+import type { SftpService } from '../sftp.service'
+import type { SshConfig } from '../ssh.service'
 
 // 错误分类
 type ErrorCategory = 'transient' | 'permission' | 'not_found' | 'timeout' | 'fatal'
@@ -149,6 +151,9 @@ export interface ToolExecutorConfig {
   // Plan/Todo 功能
   getCurrentPlan: () => AgentPlan | undefined  // 获取当前计划
   setCurrentPlan: (plan: AgentPlan | undefined) => void  // 设置当前计划
+  // SFTP 功能（用于 SSH 终端的文件写入）
+  getSftpService?: () => SftpService | undefined  // 获取 SFTP 服务
+  getSshConfig?: (terminalId: string) => SshConfig | null  // 获取 SSH 连接配置
 }
 
 /**
@@ -1531,6 +1536,130 @@ ${sampleContent ? `### 文件预览（前10行）\n\`\`\`\n${sampleContent}\n\`\
 }
 
 /**
+ * 通过 SFTP 写入远程文件（用于 SSH 终端）
+ * 在终端显示写入提示，让用户感知操作过程
+ */
+async function writeFileViaSftp(
+  ptyId: string,
+  filePath: string,
+  content: string,
+  mode: string,
+  toolCallId: string,
+  config: AgentConfig,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const sftpService = executor.getSftpService?.()
+  const sshConfig = executor.getSshConfig?.(ptyId)
+
+  // 检查 SFTP 服务是否可用
+  if (!sftpService) {
+    return { 
+      success: false, 
+      output: '', 
+      error: 'SFTP 服务未初始化，无法写入远程文件。请检查 SSH 连接状态。' 
+    }
+  }
+
+  if (!sshConfig) {
+    return { 
+      success: false, 
+      output: '', 
+      error: '无法获取 SSH 连接配置，无法写入远程文件。' 
+    }
+  }
+
+  // 目前只支持 overwrite 和 append 模式
+  if (mode !== 'overwrite' && mode !== 'append') {
+    return { 
+      success: false, 
+      output: '', 
+      error: `SSH 远程文件写入目前只支持 overwrite 和 append 模式，不支持 ${mode} 模式` 
+    }
+  }
+
+  const contentLength = content.length
+  const contentSizeKB = (contentLength / 1024).toFixed(1)
+
+  // 在终端显示写入提示
+  executor.terminalService.write(ptyId, `echo "📝 正在写入文件: ${filePath} (${contentSizeKB} KB)..."\r`)
+  
+  // 等待 echo 命令执行
+  await new Promise(resolve => setTimeout(resolve, 300))
+
+  try {
+    // 确保 SFTP 连接已建立
+    if (!sftpService.hasSession(ptyId)) {
+      executor.addStep({
+        type: 'tool_result',
+        content: `正在建立 SFTP 连接...`,
+        toolName: 'write_file',
+        isStreaming: true
+      })
+
+      // 构建 SFTP 配置（从 SSH 配置转换）
+      const sftpConfig = {
+        host: sshConfig.host,
+        port: sshConfig.port,
+        username: sshConfig.username,
+        password: sshConfig.password,
+        privateKey: sshConfig.privateKey,
+        privateKeyPath: sshConfig.privateKeyPath,
+        passphrase: sshConfig.passphrase
+      }
+
+      await sftpService.connect(ptyId, sftpConfig)
+    }
+
+    // 根据模式写入文件
+    if (mode === 'append') {
+      // 追加模式：先读取现有内容，再写入
+      let existingContent = ''
+      try {
+        existingContent = await sftpService.readFile(ptyId, filePath)
+      } catch {
+        // 文件不存在，忽略错误
+      }
+      await sftpService.writeFile(ptyId, filePath, existingContent + content)
+    } else {
+      // 覆盖模式
+      await sftpService.writeFile(ptyId, filePath, content)
+    }
+
+    // 在终端显示完成提示
+    executor.terminalService.write(ptyId, `echo "✅ 文件写入完成: ${filePath}"\r`)
+    
+    // 等待 echo 命令执行
+    await new Promise(resolve => setTimeout(resolve, 300))
+
+    const resultMsg = mode === 'append' 
+      ? `内容已追加到远程文件: ${filePath}` 
+      : `远程文件已写入: ${filePath}`
+
+    executor.addStep({
+      type: 'tool_result',
+      content: resultMsg,
+      toolName: 'write_file'
+    })
+
+    return { success: true, output: resultMsg }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : '远程文件写入失败'
+    
+    // 在终端显示错误提示
+    executor.terminalService.write(ptyId, `echo "❌ 文件写入失败: ${errorMsg}"\r`)
+    
+    executor.addStep({
+      type: 'tool_result',
+      content: `远程文件写入失败: ${errorMsg}`,
+      toolName: 'write_file',
+      toolResult: errorMsg
+    })
+
+    return { success: false, output: '', error: `远程文件写入失败: ${errorMsg}` }
+  }
+}
+
+/**
  * 写入文件
  * 支持多种模式：overwrite（覆盖）、append（追加）、insert（插入）、replace_lines（行替换）、regex_replace（正则替换）
  */
@@ -1592,6 +1721,17 @@ async function writeFile(
     }
   }
 
+  // 检测终端类型，SSH 终端使用 SFTP 写入
+  const terminalType = executor.terminalService.getTerminalType(ptyId)
+  if (terminalType === 'ssh') {
+    // SSH 终端：使用 SFTP 写入远程文件
+    if (content === undefined) {
+      return { success: false, output: '', error: 'SSH 远程文件写入需要提供 content 参数' }
+    }
+    return writeFileViaSftp(ptyId, filePath, content, mode, toolCallId, config, executor)
+  }
+
+  // 本地终端：使用本地文件系统
   // 如果是相对路径，基于终端当前工作目录解析
   if (!path.isAbsolute(filePath)) {
     const terminalStateService = getTerminalStateService()

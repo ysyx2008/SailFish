@@ -160,6 +160,9 @@ const historyService = new HistoryService()
 const documentParserService = getDocumentParserService()
 const sftpService = new SftpService()
 
+// 设置 SFTP 服务到 Agent（用于 SSH 终端的文件写入）
+agentService.setSftpService(sftpService)
+
 // 终端状态服务（CWD 追踪、命令状态等）
 const terminalStateService = initTerminalStateService(ptyService, sshService)
 

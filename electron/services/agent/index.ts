@@ -6,6 +6,7 @@ import type { AiService, AiMessage, ToolCall, ChatWithToolsResult } from '../ai.
 import { CommandExecutorService } from '../command-executor.service'
 import type { PtyService } from '../pty.service'
 import type { SshService } from '../ssh.service'
+import type { SftpService } from '../sftp.service'
 import type { McpService } from '../mcp.service'
 import type { ConfigService } from '../config.service'
 import { UnifiedTerminalService } from '../unified-terminal.service'
@@ -113,6 +114,7 @@ export class AgentService {
   private commandExecutor: CommandExecutorService
   private ptyService: PtyService
   private sshService?: SshService
+  private sftpService?: SftpService
   private unifiedTerminalService?: UnifiedTerminalService
   private hostProfileService?: HostProfileServiceInterface
   private mcpService?: McpService
@@ -132,11 +134,13 @@ export class AgentService {
     hostProfileService?: HostProfileServiceInterface,
     mcpService?: McpService,
     configService?: ConfigService,
-    sshService?: SshService
+    sshService?: SshService,
+    sftpService?: SftpService
   ) {
     this.aiService = aiService
     this.ptyService = ptyService
     this.sshService = sshService
+    this.sftpService = sftpService
     this.hostProfileService = hostProfileService
     this.mcpService = mcpService
     this.configService = configService
@@ -156,6 +160,13 @@ export class AgentService {
     if (this.ptyService) {
       this.unifiedTerminalService = new UnifiedTerminalService(this.ptyService, sshService)
     }
+  }
+
+  /**
+   * 设置 SFTP 服务（延迟初始化，用于 SSH 终端的文件写入）
+   */
+  setSftpService(sftpService: SftpService): void {
+    this.sftpService = sftpService
   }
 
   /**
@@ -1230,7 +1241,10 @@ export class AgentService {
       setCurrentPlan: (plan) => {
         run.currentPlan = plan
         // 计划更新会通过 addStep (plan_created/plan_updated) 触发 onStepCallback
-      }
+      },
+      // SFTP 功能（用于 SSH 终端的文件写入）
+      getSftpService: () => this.sftpService,
+      getSshConfig: (terminalId) => this.sshService?.getConfig(terminalId) || null
     }
 
     try {
