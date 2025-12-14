@@ -160,6 +160,9 @@ const historyService = new HistoryService()
 const documentParserService = getDocumentParserService()
 const sftpService = new SftpService()
 
+// 设置 SFTP 服务到 Agent（用于 SSH 终端的文件写入）
+agentService.setSftpService(sftpService)
+
 // 终端状态服务（CWD 追踪、命令状态等）
 const terminalStateService = initTerminalStateService(ptyService, sshService)
 
@@ -821,9 +824,9 @@ ipcMain.handle('agent:run', async (event, { ptyId, message, context, config, pro
         })
       }
     },
-    onComplete: (agentId: string, result: string) => {
+    onComplete: (agentId: string, result: string, pendingUserMessages?: string[]) => {
       if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:complete', { agentId, ptyId, result })
+        event.sender.send('agent:complete', { agentId, ptyId, result, pendingUserMessages })
       }
     },
     onError: (agentId: string, error: string) => {
@@ -862,6 +865,11 @@ ipcMain.handle('agent:confirm', async (_event, { agentId, toolCallId, approved, 
 // 获取 Agent 状态
 ipcMain.handle('agent:getStatus', async (_event, agentId: string) => {
   return agentService.getRunStatus(agentId)
+})
+
+// 获取 Agent 执行阶段状态（用于智能打断判断）
+ipcMain.handle('agent:getExecutionPhase', async (_event, agentId: string) => {
+  return agentService.getExecutionPhase(agentId)
 })
 
 // 清理 Agent 运行记录

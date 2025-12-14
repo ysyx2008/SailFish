@@ -660,6 +660,15 @@ const electronAPI = {
     addMessage: (agentId: string, message: string) =>
       ipcRenderer.invoke('agent:addMessage', agentId, message) as Promise<boolean>,
 
+    // 获取执行阶段状态（用于智能打断判断）
+    getExecutionPhase: (agentId: string) =>
+      ipcRenderer.invoke('agent:getExecutionPhase', agentId) as Promise<{
+        phase: 'thinking' | 'executing_command' | 'writing_file' | 'waiting' | 'confirming' | 'idle'
+        currentToolName?: string
+        canInterrupt: boolean
+        interruptWarning?: string
+      } | null>,
+
     // 监听 Agent 步骤更新（携带 ptyId 用于可靠匹配 tab）
     onStep: (callback: (data: { agentId: string; ptyId?: string; step: AgentStep }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: { agentId: string; ptyId?: string; step: AgentStep }) => callback(data)
@@ -678,9 +687,9 @@ const electronAPI = {
       }
     },
 
-    // 监听 Agent 完成（携带 ptyId 用于可靠匹配 tab）
-    onComplete: (callback: (data: { agentId: string; ptyId?: string; result: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { agentId: string; ptyId?: string; result: string }) => callback(data)
+    // 监听 Agent 完成（携带 ptyId 用于可靠匹配 tab，可能附带未处理的用户消息）
+    onComplete: (callback: (data: { agentId: string; ptyId?: string; result: string; pendingUserMessages?: string[] }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { agentId: string; ptyId?: string; result: string; pendingUserMessages?: string[] }) => callback(data)
       ipcRenderer.on('agent:complete', handler)
       return () => {
         ipcRenderer.removeListener('agent:complete', handler)

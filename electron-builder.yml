@@ -1,5 +1,5 @@
-appId: com.qiyu.terminal
-productName: 旗鱼终端
+appId: com.sfterm.terminal
+productName: SFTerm
 directories:
   buildResources: resources
   output: release
@@ -34,7 +34,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: 旗鱼终端
+  shortcutName: SFTerm
 mac:
   icon: resources/icon.icns
   target:

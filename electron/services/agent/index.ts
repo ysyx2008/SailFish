@@ -6,6 +6,7 @@ import type { AiService, AiMessage, ToolCall, ChatWithToolsResult } from '../ai.
 import { CommandExecutorService } from '../command-executor.service'
 import type { PtyService } from '../pty.service'
 import type { SshService } from '../ssh.service'
+import type { SftpService } from '../sftp.service'
 import type { McpService } from '../mcp.service'
 import type { ConfigService } from '../config.service'
 import { UnifiedTerminalService } from '../unified-terminal.service'
@@ -24,7 +25,8 @@ import type {
   ExecutionStrategy,
   ReflectionState,
   ExecutionQualityScore,
-  WorkerAgentOptions
+  WorkerAgentOptions,
+  AgentExecutionPhase
 } from './types'
 import { DEFAULT_AGENT_CONFIG } from './types'
 import { getAgentTools } from './tools'
@@ -113,6 +115,7 @@ export class AgentService {
   private commandExecutor: CommandExecutorService
   private ptyService: PtyService
   private sshService?: SshService
+  private sftpService?: SftpService
   private unifiedTerminalService?: UnifiedTerminalService
   private hostProfileService?: HostProfileServiceInterface
   private mcpService?: McpService
@@ -132,11 +135,13 @@ export class AgentService {
     hostProfileService?: HostProfileServiceInterface,
     mcpService?: McpService,
     configService?: ConfigService,
-    sshService?: SshService
+    sshService?: SshService,
+    sftpService?: SftpService
   ) {
     this.aiService = aiService
     this.ptyService = ptyService
     this.sshService = sshService
+    this.sftpService = sftpService
     this.hostProfileService = hostProfileService
     this.mcpService = mcpService
     this.configService = configService
@@ -156,6 +161,13 @@ export class AgentService {
     if (this.ptyService) {
       this.unifiedTerminalService = new UnifiedTerminalService(this.ptyService, sshService)
     }
+  }
+
+  /**
+   * 设置 SFTP 服务（延迟初始化，用于 SSH 终端的文件写入）
+   */
+  setSftpService(sftpService: SftpService): void {
+    this.sftpService = sftpService
   }
 
   /**
@@ -985,6 +997,9 @@ export class AgentService {
         return
       }
 
+      // 设置执行阶段为等待确认（安全打断）
+      this.setExecutionPhase(agentId, 'confirming', toolName)
+
       // 添加确认步骤
       this.addStep(agentId, {
         type: 'confirm',
@@ -1002,6 +1017,8 @@ export class AgentService {
         riskLevel,
         resolve: (approved, modifiedArgs) => {
           run.pendingConfirmation = undefined
+          // 确认后恢复 thinking 阶段
+          this.setExecutionPhase(agentId, 'thinking')
           if (modifiedArgs) {
             Object.assign(toolArgs, modifiedArgs)
           }
@@ -1086,7 +1103,9 @@ export class AgentService {
       // 初始化实时输出缓冲区（从传入的快照开始，然后实时更新）
       realtimeOutputBuffer: [...context.terminalOutput],
       // Worker 模式选项
-      workerOptions
+      workerOptions,
+      // 初始化执行阶段
+      executionPhase: 'thinking'
     }
     this.runs.set(agentId, run)
     
@@ -1230,7 +1249,10 @@ export class AgentService {
       setCurrentPlan: (plan) => {
         run.currentPlan = plan
         // 计划更新会通过 addStep (plan_created/plan_updated) 触发 onStepCallback
-      }
+      },
+      // SFTP 功能（用于 SSH 终端的文件写入）
+      getSftpService: () => this.sftpService,
+      getSshConfig: (terminalId) => this.sshService?.getConfig(terminalId) || null
     }
 
     try {
@@ -1248,10 +1270,11 @@ export class AgentService {
               content: msg
             })
           }
+          // 以自然对话的方式注入用户消息，不使用系统标记
           const supplementMsg = run.pendingUserMessages.join('\n')
           run.messages.push({ 
             role: 'user', 
-            content: `[用户补充信息]\n${supplementMsg}` 
+            content: supplementMsg  // 直接使用用户原始消息，让对话更自然
           })
           run.pendingUserMessages = []
         }
@@ -1440,6 +1463,18 @@ export class AgentService {
               // 忽略解析错误
             }
 
+            // 根据工具类型设置执行阶段
+            const toolName = toolCall.function.name
+            if (toolName === 'write_file' || toolName === 'edit_file') {
+              this.setExecutionPhase(agentId, 'writing_file', toolName)
+            } else if (toolName === 'execute_command' || toolName === 'run_command') {
+              this.setExecutionPhase(agentId, 'executing_command', toolName)
+            } else if (toolName === 'wait') {
+              this.setExecutionPhase(agentId, 'waiting', toolName)
+            } else {
+              this.setExecutionPhase(agentId, 'executing_command', toolName)
+            }
+
             const result = await executeTool(
               ptyId,
               toolCall,
@@ -1447,6 +1482,9 @@ export class AgentService {
               context.terminalOutput,
               toolExecutorConfig
             )
+
+            // 工具执行完成，恢复到 thinking 阶段
+            this.setExecutionPhase(agentId, 'thinking')
 
             // 更新反思追踪状态
             this.updateReflectionTracking(run, toolCall.function.name, toolArgs, result)
@@ -1493,6 +1531,10 @@ export class AgentService {
         }
       }
 
+      // 完成前检查是否有待处理的用户消息
+      // 这种情况发生在：用户在 Agent 生成最终总结时发送了消息
+      const pendingMessages = [...run.pendingUserMessages]
+      
       // 完成
       run.isRunning = false
 
@@ -1507,7 +1549,9 @@ export class AgentService {
 
       console.log('[Agent] run completed normally, calling onCompleteCallback')
       if (this.onCompleteCallback) {
-        this.onCompleteCallback(agentId, finalMessage)
+        // 如果有待处理的用户消息，附带在完成回调中
+        // 前端可以据此决定是否自动启动新对话
+        this.onCompleteCallback(agentId, finalMessage, pendingMessages)
       }
 
       console.log('[Agent] returning finalMessage')
@@ -1613,6 +1657,67 @@ export class AgentService {
       isRunning: run.isRunning,
       steps: run.steps,
       pendingConfirmation: run.pendingConfirmation
+    }
+  }
+
+  /**
+   * 获取 Agent 执行阶段状态（用于智能打断判断）
+   */
+  getExecutionPhase(agentId: string): {
+    phase: AgentExecutionPhase
+    currentToolName?: string
+    canInterrupt: boolean
+    interruptWarning?: string
+  } | null {
+    const run = this.runs.get(agentId)
+    if (!run) return null
+
+    const phase = run.executionPhase
+    const currentToolName = run.currentToolName
+
+    // 判断是否可以安全打断
+    let canInterrupt = true
+    let interruptWarning: string | undefined
+
+    switch (phase) {
+      case 'writing_file':
+        canInterrupt = false
+        interruptWarning = '正在写入文件，打断可能导致文件损坏'
+        break
+      case 'executing_command':
+        // 命令执行中可以打断，但给予警告
+        canInterrupt = true
+        interruptWarning = '正在执行命令，打断可能导致操作不完整'
+        break
+      case 'thinking':
+      case 'waiting':
+      case 'confirming':
+      case 'idle':
+        canInterrupt = true
+        break
+    }
+
+    return {
+      phase,
+      currentToolName,
+      canInterrupt,
+      interruptWarning
+    }
+  }
+
+  /**
+   * 更新执行阶段（内部使用）
+   */
+  private setExecutionPhase(agentId: string, phase: AgentExecutionPhase, toolName?: string): void {
+    const run = this.runs.get(agentId)
+    if (!run) return
+
+    run.executionPhase = phase
+    run.currentToolName = toolName
+
+    // 发送阶段更新事件到前端
+    if (this.onStepCallback) {
+      // 使用现有的 step 机制发送阶段更新（可选，取决于是否需要实时更新 UI）
     }
   }
 

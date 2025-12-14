@@ -184,26 +184,31 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'write_file',
-        description: `写入或创建本地文件。支持多种写入模式：
+        description: `写入或创建文件。支持本地文件和 SSH 远程文件。
 
-1. **覆盖模式（默认）**：mode='overwrite'，用 content 替换整个文件
-2. **追加模式**：mode='append'，在文件末尾追加 content
-3. **插入模式**：mode='insert'，在 insert_at_line 行之前插入 content
-4. **行替换模式**：mode='replace_lines'，用 content 替换 start_line 到 end_line 的内容
-5. **正则替换模式**：mode='regex_replace'，用正则表达式查找替换
+**本地终端**：支持多种写入模式：
+1. **新建模式（默认）**：mode='create'，仅创建新文件，如果文件已存在则报错
+2. **覆盖模式**：mode='overwrite'，用 content 替换整个文件（文件存在会覆盖）
+3. **追加模式**：mode='append'，在文件末尾追加 content
+4. **插入模式**：mode='insert'，在 insert_at_line 行之前插入 content
+5. **行替换模式**：mode='replace_lines'，用 content 替换 start_line 到 end_line 的内容
+6. **正则替换模式**：mode='regex_replace'，用正则表达式查找替换
+
+**SSH 远程终端** - 仅支持 overwrite、create 和 append 模式：
+- 通过 SFTP 写入，不用担心特殊字符转义问题
+- 适合：创建新文件、完全替换文件、追加日志/配置
+- **不支持** insert、replace_lines、regex_replace 模式
+- 需要局部修改时，请用 execute_command 执行命令，如sed、awk等
 
 ⚠️ **重要文件请先备份**：修改配置文件、脚本等重要文件前，必须先执行备份命令：
 \`cp file.txt file.txt.$(date +%Y%m%d_%H%M%S).bak\`
-不需要备份：新建文件、临时文件、日志文件、明确不重要的文件
-
-⚠️ **仅支持本地文件**：此工具只能写入本地机器上的文件。
-对于 SSH 远程主机，请使用 execute_command 执行命令来写入。`,
+不需要备份：新建文件、临时文件、日志文件、明确不重要的文件`,
         parameters: {
           type: 'object',
           properties: {
             path: {
               type: 'string',
-              description: '本地文件路径'
+              description: '文件路径（本地或远程，根据当前终端类型自动识别）'
             },
             content: {
               type: 'string',
@@ -211,8 +216,8 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
             },
             mode: {
               type: 'string',
-              enum: ['overwrite', 'append', 'insert', 'replace_lines', 'regex_replace'],
-              description: '写入模式：overwrite（覆盖，默认）、append（追加）、insert（插入）、replace_lines（行替换）、regex_replace（正则替换）'
+              enum: ['create', 'overwrite', 'append', 'insert', 'replace_lines', 'regex_replace'],
+              description: '写入模式：create（新建，默认，文件存在则报错）、overwrite（覆盖）、append（追加）、insert（插入）、replace_lines（行替换）、regex_replace（正则替换）'
             },
             insert_at_line: {
               type: 'number',

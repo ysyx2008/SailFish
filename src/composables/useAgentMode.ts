@@ -558,7 +558,7 @@ export function useAgentMode(
     })
 
     // 监听完成
-    cleanupCompleteListener = window.electronAPI.agent.onComplete((data: { agentId: string; ptyId?: string; result: string }) => {
+    cleanupCompleteListener = window.electronAPI.agent.onComplete((data: { agentId: string; ptyId?: string; result: string; pendingUserMessages?: string[] }) => {
       // 只处理属于当前 tab 的事件（优先使用 ptyId 匹配）
       if (data.ptyId) {
         const foundTabId = terminalStore.findTabIdByPtyId(data.ptyId)
@@ -571,6 +571,17 @@ export function useAgentMode(
       terminalStore.setAgentRunning(currentTabId.value, false)
       // 清空待处理的补充消息
       pendingSupplements.value = []
+      
+      // 如果有未处理的用户消息（用户在 Agent 总结时发送的），自动作为新任务启动
+      if (data.pendingUserMessages && data.pendingUserMessages.length > 0) {
+        const pendingMessage = data.pendingUserMessages.join('\n')
+        console.log('[Agent] 发现未处理的用户消息，将作为新任务启动:', pendingMessage)
+        // 延迟一点启动，让当前完成状态先更新到 UI
+        setTimeout(() => {
+          inputText.value = pendingMessage
+          runAgent()
+        }, 100)
+      }
     })
 
     // 监听错误
