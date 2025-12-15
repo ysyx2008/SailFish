@@ -1275,31 +1275,6 @@ ipcMain.handle('history:getStorageStats', async () => {
   return historyService.getStorageStats()
 })
 
-// 导出数据
-ipcMain.handle('history:exportData', async () => {
-  const configData = configService.getAll()
-  const hostProfiles = hostProfileService.getAllProfiles()
-  return historyService.exportData(configData, hostProfiles)
-})
-
-// 导入数据（单文件）
-ipcMain.handle('history:importData', async (_event, data: { version: string; exportTime: number; config: object; history: { chat: ChatRecord[]; agent: AgentRecord[] }; hostProfiles?: unknown[] }) => {
-  // 先导入历史记录
-  const historyResult = historyService.importData(data)
-  if (!historyResult.success) {
-    return historyResult
-  }
-
-  // 导入主机档案
-  if (historyResult.hostProfiles && historyResult.hostProfiles.length > 0) {
-    hostProfileService.importProfiles(historyResult.hostProfiles as HostProfile[])
-  }
-
-  // 导入配置（需要用户确认是否覆盖）
-  // 这里只返回成功，配置的导入由前端单独处理
-  return { success: true, configIncluded: !!data.config, hostProfilesImported: historyResult.hostProfiles?.length || 0 }
-})
-
 // 导出到文件夹
 ipcMain.handle('history:exportToFolder', async (_event, options?: { includeSshPasswords?: boolean; includeApiKeys?: boolean }) => {
   try {

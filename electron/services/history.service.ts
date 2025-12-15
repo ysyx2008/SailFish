@@ -54,17 +54,6 @@ export interface HostProfileData {
   lastUpdated?: number
 }
 
-export interface ExportData {
-  version: string
-  exportTime: number
-  config: object
-  history: {
-    chat: ChatRecord[]
-    agent: AgentRecord[]
-  }
-  hostProfiles?: HostProfileData[]
-}
-
 // ==================== 历史记录服务 ====================
 
 export class HistoryService {
@@ -246,23 +235,7 @@ export class HistoryService {
   }
 
   /**
-   * 导出所有数据（单文件）
-   */
-  exportData(configData: object, hostProfiles?: HostProfileData[]): ExportData {
-    return {
-      version: '1.0',
-      exportTime: Date.now(),
-      config: configData,
-      history: {
-        chat: this.getChatRecords(),
-        agent: this.getAgentRecords()
-      },
-      hostProfiles
-    }
-  }
-
-  /**
-   * 导出到文件夹（多文件）
+   * 导出到文件夹
    */
   exportToFolder(exportPath: string, configData: object, hostProfiles?: HostProfileData[], options?: {
     includeSshPasswords?: boolean
@@ -434,35 +407,6 @@ export class HistoryService {
       return { success: true, imported, config, hostProfiles }
     } catch (e) {
       return { success: false, imported: [], error: e instanceof Error ? e.message : '导入失败' }
-    }
-  }
-
-  /**
-   * 导入数据
-   */
-  importData(data: ExportData): { success: boolean; error?: string; hostProfiles?: HostProfileData[] } {
-    try {
-      // 验证版本
-      if (!data.version || !data.exportTime) {
-        return { success: false, error: '无效的备份文件格式' }
-      }
-
-      // 导入聊天记录
-      if (data.history?.chat?.length > 0) {
-        this.saveChatRecords(data.history.chat)
-      }
-
-      // 导入 Agent 记录
-      if (data.history?.agent?.length > 0) {
-        for (const record of data.history.agent) {
-          this.saveAgentRecord(record)
-        }
-      }
-
-      // 返回主机档案，让调用者处理
-      return { success: true, hostProfiles: data.hostProfiles }
-    } catch (e) {
-      return { success: false, error: e instanceof Error ? e.message : '导入失败' }
     }
   }
 

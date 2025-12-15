@@ -316,30 +316,6 @@ const exportToFolder = async () => {
   }
 }
 
-// 导出单文件（旧方式，保留兼容）
-const exportSingleFile = async () => {
-  isExporting.value = true
-  try {
-    const data = await window.electronAPI.history.exportData()
-    
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `sfterm-backup-${new Date().toISOString().split('T')[0]}.json`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-    
-    showMessage('success', t('dataSettings.exportSuccess'))
-  } catch (e) {
-    showMessage('error', `${t('dataSettings.exportFailed')}: ${e}`)
-  } finally {
-    isExporting.value = false
-  }
-}
-
 // 从文件夹导入
 const importFromFolder = async () => {
   isImporting.value = true
@@ -359,39 +335,6 @@ const importFromFolder = async () => {
   } finally {
     isImporting.value = false
   }
-}
-
-// 导入单文件（旧方式，保留兼容）
-const importSingleFile = async () => {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = '.json'
-  
-  input.onchange = async (e) => {
-    const file = (e.target as HTMLInputElement).files?.[0]
-    if (!file) return
-    
-    isImporting.value = true
-    try {
-      const text = await file.text()
-      const data = JSON.parse(text)
-      
-      const result = await window.electronAPI.history.importData(data)
-      
-      if (result.success) {
-        showMessage('success', t('dataSettings.importSuccess'))
-        await loadStorageStats()
-      } else {
-        showMessage('error', result.error || t('dataSettings.importFailed'))
-      }
-    } catch (e) {
-      showMessage('error', `${t('dataSettings.importFailed')}: ${e}`)
-    } finally {
-      isImporting.value = false
-    }
-  }
-  
-  input.click()
 }
 
 // 清理旧记录
@@ -531,16 +474,6 @@ onUnmounted(() => {
         </button>
       </div>
       <p class="hint">{{ t('dataSettings.exportHint') }}</p>
-      
-      <div class="actions" style="margin-top: 8px;">
-        <button class="btn btn-sm btn-outline" @click="exportSingleFile" :disabled="isExporting">
-          📄 {{ t('dataSettings.exportSingleFile') }}
-        </button>
-        <button class="btn btn-sm btn-outline" @click="importSingleFile" :disabled="isImporting">
-          📄 {{ t('dataSettings.importSingleFile') }}
-        </button>
-      </div>
-      <p class="hint">{{ t('dataSettings.singleFileHint') }}</p>
     </div>
     
     <!-- 清理 -->
