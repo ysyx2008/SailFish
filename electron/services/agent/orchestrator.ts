@@ -212,6 +212,9 @@ export class OrchestratorService {
     })
     
     let maxIterations = 50  // 防止无限循环
+    let hasExecutedAnyTool = false  // 追踪是否执行过任何工具
+    let noToolCallRetryCount = 0  // 无工具调用时的重试次数
+    const MAX_NO_TOOL_RETRIES = 2  // 最大重试次数
     
     while (run.status === 'running' && maxIterations-- > 0) {
       try {
@@ -230,7 +233,47 @@ export class OrchestratorService {
         
         // 检查是否有工具调用
         if (!response.tool_calls || response.tool_calls.length === 0) {
-          // 没有工具调用，任务完成
+          // 没有工具调用
+          
+          // 情况1：从未执行过任何工具，说明 AI 可能不支持 function calling 或没理解任务
+          if (!hasExecutedAnyTool) {
+            noToolCallRetryCount++
+            
+            if (noToolCallRetryCount >= MAX_NO_TOOL_RETRIES) {
+              // 多次重试后仍然没有工具调用，可能是模型不支持
+              this.handleError(orchestratorId, 
+                '任务未能执行：AI 模型未调用任何工具。\n\n' +
+                '可能的原因：\n' +
+                '• 当前模型可能不支持 Function Calling（工具调用）\n' +
+                '• 请尝试使用支持 Function Calling 的模型，如 GPT-4、Claude 或 DeepSeek-Chat 最新版\n' +
+                '• 或者换一种方式描述你的任务'
+              )
+              break
+            }
+            
+            // 添加提示消息，要求 AI 使用工具
+            messages.push({
+              role: 'assistant',
+              content: response.content || ''
+            })
+            messages.push({
+              role: 'user',
+              content: '请注意：你需要使用提供的工具来完成任务，而不是只给出文字回复。' +
+                '请先调用 list_available_hosts 查看可用的服务器，然后使用 connect_terminal 连接服务器，' +
+                '最后使用 dispatch_task 派发任务。请现在开始执行。'
+            })
+            
+            this.addMessage(orchestratorId, {
+              id: uuidv4(),
+              type: 'system',
+              content: '🔄 正在要求 AI 使用工具执行任务...',
+              timestamp: Date.now()
+            })
+            
+            continue  // 重试
+          }
+          
+          // 情况2：已经执行过工具，现在没有新的工具调用，说明任务真正完成
           run.status = 'completed'
           run.completedAt = Date.now()
           
@@ -245,6 +288,10 @@ export class OrchestratorService {
           })
           break
         }
+        
+        // 标记已执行工具
+        hasExecutedAnyTool = true
+        noToolCallRetryCount = 0  // 重置重试计数
         
         // 处理工具调用
         messages.push({

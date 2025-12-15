@@ -1511,6 +1511,10 @@ export class AgentService {
               context.terminalOutput,
               toolExecutorConfig
             )
+            
+            // 标记已执行工具
+            hasExecutedAnyTool = true
+            noToolCallRetryCount = 0  // 重置重试计数
 
             // 工具执行完成，恢复到 thinking 阶段
             this.setExecutionPhase(agentId, 'thinking')

@@ -106,36 +106,26 @@ try {
     <div class="hero-screenshot fade-in fade-in-delay-6">
       <div class="screenshot-frame">
         <div class="screenshot-carousel" id="carousel">
-          <img 
-            src="/screenshot-welcome.png" 
-            alt={lang === 'zh' ? '旗鱼终端欢迎页面' : 'SFTerminal Welcome Page'} 
-            class="screenshot-image active"
-            loading="eager"
-          />
-          <img 
-            src="/screenshot-agent-intro.png" 
-            alt={lang === 'zh' ? 'AI Agent 介绍' : 'AI Agent Introduction'} 
-            class="screenshot-image"
-            loading="lazy"
-          />
-          <img 
-            src="/screenshot-agent-exec.png" 
-            alt={lang === 'zh' ? 'AI Agent 执行' : 'AI Agent Execution'} 
-            class="screenshot-image"
-            loading="lazy"
-          />
-          <img 
-            src="/screenshot-chat.png" 
-            alt={lang === 'zh' ? 'AI 对话' : 'AI Chat'} 
-            class="screenshot-image"
-            loading="lazy"
-          />
-          <img 
-            src="/screenshot-analyse.png" 
-            alt={lang === 'zh' ? '智能分析' : 'Smart Analysis'} 
-            class="screenshot-image"
-            loading="lazy"
-          />
+          <div class="slide active" data-title={lang === 'zh' ? '欢迎页面' : 'Welcome Page'}>
+            <img src="/screenshot-welcome.png" alt={lang === 'zh' ? '旗鱼终端欢迎页面' : 'SFTerminal Welcome Page'} loading="eager" />
+          </div>
+          <div class="slide" data-title={lang === 'zh' ? 'AI Agent 介绍' : 'AI Agent Introduction'}>
+            <img src="/screenshot-agent-intro.png" alt={lang === 'zh' ? 'AI Agent 介绍' : 'AI Agent Introduction'} loading="lazy" />
+          </div>
+          <div class="slide" data-title={lang === 'zh' ? 'AI Agent 执行' : 'AI Agent Execution'}>
+            <img src="/screenshot-agent-exec.png" alt={lang === 'zh' ? 'AI Agent 执行' : 'AI Agent Execution'} loading="lazy" />
+          </div>
+          <div class="slide" data-title={lang === 'zh' ? 'AI 对话' : 'AI Chat'}>
+            <img src="/screenshot-chat.png" alt={lang === 'zh' ? 'AI 对话' : 'AI Chat'} loading="lazy" />
+          </div>
+          <div class="slide" data-title={lang === 'zh' ? '智能分析' : 'Smart Analysis'}>
+            <img src="/screenshot-analyse.png" alt={lang === 'zh' ? '智能分析' : 'Smart Analysis'} loading="lazy" />
+          </div>
+        </div>
+        
+        <!-- 标题显示 -->
+        <div class="slide-title" id="slideTitle">
+          {lang === 'zh' ? '欢迎页面' : 'Welcome Page'}
         </div>
         
         <!-- 左右切换按钮 -->
@@ -164,38 +154,73 @@ try {
     
     <script>
       // 轮播逻辑
-      const carousel = document.querySelector('.hero-screenshot');
-      const images = document.querySelectorAll('.screenshot-carousel .screenshot-image');
+      const carouselContainer = document.querySelector('.hero-screenshot');
+      const carousel = document.getElementById('carousel');
+      const slides = document.querySelectorAll('.screenshot-carousel .slide');
       const indicators = document.querySelectorAll('.carousel-indicators .indicator');
+      const slideTitle = document.getElementById('slideTitle');
       const prevBtn = document.getElementById('prevBtn');
       const nextBtn = document.getElementById('nextBtn');
       let currentIndex = 0;
       let intervalId: ReturnType<typeof setInterval>;
       let isPaused = false;
       
-      function showSlide(index: number) {
-        images.forEach((img, i) => {
-          img.classList.toggle('active', i === index);
+      function showSlide(index: number, direction: 'left' | 'right' = 'right') {
+        const currentSlide = slides[currentIndex] as HTMLElement;
+        const nextSlide = slides[index] as HTMLElement;
+        
+        // 设置动画方向
+        carousel?.setAttribute('data-direction', direction);
+        
+        // 移除所有状态类
+        slides.forEach(slide => {
+          slide.classList.remove('active', 'exit-left', 'exit-right', 'enter-left', 'enter-right');
         });
+        
+        // 当前幻灯片退出动画
+        if (direction === 'right') {
+          currentSlide.classList.add('exit-left');
+          nextSlide.classList.add('enter-right');
+        } else {
+          currentSlide.classList.add('exit-right');
+          nextSlide.classList.add('enter-left');
+        }
+        
+        // 延迟后设置为 active
+        setTimeout(() => {
+          slides.forEach(slide => {
+            slide.classList.remove('exit-left', 'exit-right', 'enter-left', 'enter-right');
+          });
+          nextSlide.classList.add('active');
+        }, 500);
+        
+        // 更新指示器
         indicators.forEach((ind, i) => {
           ind.classList.toggle('active', i === index);
         });
+        
+        // 更新标题
+        const title = nextSlide.getAttribute('data-title') || '';
+        if (slideTitle) {
+          slideTitle.textContent = title;
+        }
+        
         currentIndex = index;
       }
       
       function nextSlide() {
-        const next = (currentIndex + 1) % images.length;
-        showSlide(next);
+        const next = (currentIndex + 1) % slides.length;
+        showSlide(next, 'right');
       }
       
       function prevSlide() {
-        const prev = (currentIndex - 1 + images.length) % images.length;
-        showSlide(prev);
+        const prev = (currentIndex - 1 + slides.length) % slides.length;
+        showSlide(prev, 'left');
       }
       
       function startAutoPlay() {
         if (!isPaused) {
-          intervalId = setInterval(nextSlide, 5000); // 每5秒切换
+          intervalId = setInterval(nextSlide, 5000);
         }
       }
       
@@ -209,12 +234,12 @@ try {
       }
       
       // 鼠标悬浮暂停
-      carousel?.addEventListener('mouseenter', () => {
+      carouselContainer?.addEventListener('mouseenter', () => {
         isPaused = true;
         stopAutoPlay();
       });
       
-      carousel?.addEventListener('mouseleave', () => {
+      carouselContainer?.addEventListener('mouseleave', () => {
         isPaused = false;
         startAutoPlay();
       });
@@ -223,7 +248,8 @@ try {
       indicators.forEach((indicator) => {
         indicator.addEventListener('click', () => {
           const index = parseInt(indicator.getAttribute('data-index') || '0');
-          showSlide(index);
+          const direction = index > currentIndex ? 'right' : 'left';
+          showSlide(index, direction);
           resetAutoPlay();
         });
       });
@@ -404,22 +430,84 @@ try {
     background: var(--color-bg-secondary);
   }
   
-  .screenshot-image {
+  .slide {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    object-fit: cover;
-    border-radius: 14px;
     opacity: 0;
-    transform: scale(1.02);
-    transition: opacity 0.8s ease, transform 0.8s ease;
+    transform: translateX(100%);
+    transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s ease;
   }
   
-  .screenshot-image.active {
+  .slide img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 14px;
+  }
+  
+  .slide.active {
     opacity: 1;
-    transform: scale(1);
+    transform: translateX(0);
+  }
+  
+  /* 左滑退出（向右翻页） */
+  .slide.exit-left {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  
+  /* 右滑退出（向左翻页） */
+  .slide.exit-right {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  
+  /* 从右侧进入 */
+  .slide.enter-right {
+    opacity: 1;
+    transform: translateX(0);
+    animation: slide-in-right 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  /* 从左侧进入 */
+  .slide.enter-left {
+    opacity: 1;
+    transform: translateX(0);
+    animation: slide-in-left 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  @keyframes slide-in-right {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  
+  @keyframes slide-in-left {
+    from { transform: translateX(-100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  
+  /* 标题样式 */
+  .slide-title {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 20px;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    border-radius: 100px;
+    font-size: 14px;
+    color: white;
+    font-weight: 500;
+    z-index: 5;
+    transition: opacity 0.3s ease;
+  }
+  
+  .screenshot-frame:hover .slide-title {
+    opacity: 0.8;
   }
   
   .carousel-indicators {
