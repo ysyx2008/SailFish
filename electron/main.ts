@@ -148,6 +148,7 @@ process.on('unhandledRejection', (reason) => {
 
 let mainWindow: BrowserWindow | null = null
 let forceQuit = false  // 是否强制退出（跳过确认）
+let isQuitting = false  // 是否正在退出应用（Cmd+Q 触发，区分于 Cmd+W 关闭窗口）
 
 // 服务实例
 const ptyService = new PtyService()
@@ -384,6 +385,9 @@ app.whenReady().then(async () => {
 
 // macOS 上处理 Cmd+Q 退出
 app.on('before-quit', (event) => {
+  // 标记正在退出应用（区分于 Cmd+W 关闭窗口）
+  isQuitting = true
+  
   // 如果已经强制退出，不拦截
   if (forceQuit) {
     return
@@ -404,11 +408,13 @@ app.on('window-all-closed', () => {
   sftpService.disconnectAll()
   mcpService.disconnectAll()
 
-  // 保存强制退出标志，然后重置
-  const shouldQuit = forceQuit
+  // 保存退出标志，然后重置
+  const shouldQuit = isQuitting
   forceQuit = false
+  isQuitting = false
 
   // macOS 上只有在用户明确退出（Cmd+Q）时才退出应用
+  // Cmd+W 关闭窗口后应用保持在 Dock 中运行
   // 其他平台总是退出
   if (process.platform !== 'darwin' || shouldQuit) {
     app.quit()
@@ -722,8 +728,10 @@ ipcMain.on('window:terminalCountResponse', async (_event, terminalCount: number)
       // 用户确认退出
       forceQuit = true
       mainWindow?.close()
+    } else {
+      // 用户取消，重置退出标志
+      isQuitting = false
     }
-    // 用户取消，不做任何操作
   } else {
     // 没有终端，直接退出
     forceQuit = true

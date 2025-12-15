@@ -3,12 +3,26 @@
  * 欢迎页组件
  * 程序启动后显示，提供快速启动各类终端的入口
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore, type SshSession } from '../stores/config'
 
 const { t } = useI18n()
 const configStore = useConfigStore()
+
+// 随机选择一条 tip 显示，支持点击切换
+const tipKeys = [
+  'tip1', 'tip2', 'tip3', 'tip4', 'tip5', 'tip6', 'tip7', 'tip8', 'tip9', 'tip10',
+  'tip11', 'tip12', 'tip13', 'tip14', 'tip15', 'tip16', 'tip17', 'tip18', 'tip19', 'tip20',
+  'tip21', 'tip22', 'tip23', 'tip24', 'tip25', 'tip26', 'tip27', 'tip28', 'tip29', 'tip30'
+]
+const currentTipIndex = ref(Math.floor(Math.random() * tipKeys.length))
+const currentTip = computed(() => t(`welcome.${tipKeys[currentTipIndex.value]}`))
+
+// 点击切换到下一条 tip
+const nextTip = () => {
+  currentTipIndex.value = (currentTipIndex.value + 1) % tipKeys.length
+}
 
 const emit = defineEmits<{
   'open-local': []
@@ -144,10 +158,11 @@ const formatHost = (session: SshSession) => {
       </div>
 
       <!-- 提示信息 -->
-      <div class="tips">
+      <div class="tips" @click="nextTip" title="点击切换提示">
         <div class="tip-item">
           <span class="tip-icon">💡</span>
-          <span>{{ t('welcome.tip1') }}</span>
+          <span class="tip-text">{{ currentTip }}</span>
+          <span class="tip-next">↻</span>
         </div>
       </div>
     </div>
@@ -403,6 +418,18 @@ const formatHost = (session: SshSession) => {
   background: rgba(59, 130, 246, 0.05);
   border: 1px solid rgba(59, 130, 246, 0.1);
   border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.tips:hover {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.2);
+}
+
+.tips:active {
+  transform: scale(0.99);
 }
 
 .tip-item {
@@ -415,6 +442,24 @@ const formatHost = (session: SshSession) => {
 
 .tip-icon {
   font-size: 16px;
+  flex-shrink: 0;
+}
+
+.tip-text {
+  flex: 1;
+  transition: opacity 0.15s ease;
+}
+
+.tip-next {
+  font-size: 14px;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  flex-shrink: 0;
+}
+
+.tips:hover .tip-next {
+  opacity: 0.6;
 }
 </style>
 
