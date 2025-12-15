@@ -1,0 +1,1030 @@
+---
+interface Props {
+  lang?: string;
+}
+
+const { lang = 'zh' } = Astro.props;
+
+// 多语言文本
+const t = {
+  title: lang === 'zh' ? '下载量统计' : 'Download Stats',
+  subtitle: lang === 'zh' ? '基于 GitHub Release 的实时下载数据' : 'Real-time download data from GitHub Releases',
+  totalDownloads: lang === 'zh' ? '总下载量' : 'Total Downloads',
+  totalReleases: lang === 'zh' ? '发布版本' : 'Releases',
+  latestVersion: lang === 'zh' ? '最新版本' : 'Latest Version',
+  platformDistribution: lang === 'zh' ? '平台分布' : 'Platform Distribution',
+  downloadTrend: lang === 'zh' ? '下载趋势' : 'Download Trend',
+  versionDetails: lang === 'zh' ? '版本详情' : 'Version Details',
+  loading: lang === 'zh' ? '正在加载数据...' : 'Loading data...',
+  dataSource: lang === 'zh' ? '数据来源于 GitHub Release API，实时获取' : 'Data sourced from GitHub Release API in real-time',
+  downloads: lang === 'zh' ? '下载' : 'downloads',
+  latest: lang === 'zh' ? '最新' : 'Latest',
+  preview: lang === 'zh' ? '预览' : 'Preview',
+  other: lang === 'zh' ? '其他' : 'Other',
+  errorMessage: lang === 'zh' ? '无法加载数据，请稍后重试' : 'Failed to load data, please try again later',
+  cumulativeDownloads: lang === 'zh' ? '累计下载量' : 'Cumulative Downloads',
+};
+---
+
+<section class="stats-section" id="stats" data-lang={lang}>
+  <div class="container">
+    <div class="stats-header">
+      <h1 class="section-title">{t.title}</h1>
+      <p class="section-subtitle">{t.subtitle}</p>
+    </div>
+
+    <!-- 总体统计卡片 -->
+    <div class="stats-summary">
+      <div class="summary-card total-downloads">
+        <div class="summary-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7,10 12,15 17,10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </div>
+        <div class="summary-content">
+          <span class="summary-value" id="total-downloads">-</span>
+          <span class="summary-label">{t.totalDownloads}</span>
+        </div>
+      </div>
+
+      <div class="summary-card total-releases">
+        <div class="summary-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div class="summary-content">
+          <span class="summary-value" id="total-releases">-</span>
+          <span class="summary-label">{t.totalReleases}</span>
+        </div>
+      </div>
+
+      <div class="summary-card latest-version">
+        <div class="summary-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12,6 12,12 16,14"/>
+          </svg>
+        </div>
+        <div class="summary-content">
+          <span class="summary-value" id="latest-version">-</span>
+          <span class="summary-label">{t.latestVersion}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 下载趋势图 -->
+    <div class="trend-section">
+      <h2 class="subsection-title">{t.downloadTrend}</h2>
+      <div class="chart-container">
+        <canvas id="downloads-chart"></canvas>
+        <div class="chart-loading" id="chart-loading">
+          <div class="loading-spinner"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 平台统计 -->
+    <div class="platform-stats">
+      <h2 class="subsection-title">{t.platformDistribution}</h2>
+      <div class="platform-grid">
+        <div class="platform-card" data-platform="macos">
+          <div class="platform-icon macos">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+            </svg>
+          </div>
+          <div class="platform-info">
+            <span class="platform-name">macOS</span>
+            <span class="platform-count" id="macos-count">-</span>
+          </div>
+          <div class="platform-bar">
+            <div class="platform-bar-fill" id="macos-bar"></div>
+          </div>
+        </div>
+
+        <div class="platform-card" data-platform="windows">
+          <div class="platform-icon windows">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 12V6.75l6-1.32v6.48L3 12zm17-9v8.75l-10 .15V5.21L20 3zm-10 9.1l10 .15V21l-10-1.91V12.1zM3 12.75l6 .15v6.82l-6-1.03V12.75z"/>
+            </svg>
+          </div>
+          <div class="platform-info">
+            <span class="platform-name">Windows</span>
+            <span class="platform-count" id="windows-count">-</span>
+          </div>
+          <div class="platform-bar">
+            <div class="platform-bar-fill" id="windows-bar"></div>
+          </div>
+        </div>
+
+        <div class="platform-card" data-platform="linux">
+          <div class="platform-icon linux">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12.504 0c-.155 0-.311.002-.465.006C6.878.163 2.809 4.694 3.05 9.798c.092 1.954.512 3.717 1.212 5.248a.51.51 0 0 0 .007.012c.004.008.007.015.012.023.079.159.158.319.239.477a.5.5 0 0 0 .053.098c.079.143.159.284.241.424.015.027.031.053.047.079.082.135.166.268.252.4.017.026.034.052.052.078.09.133.182.264.276.393.014.02.029.039.044.058.098.131.199.261.302.388.01.013.02.026.031.038.107.129.217.256.33.38l.038.04c.117.127.237.251.359.373l.041.04c.126.124.255.245.387.364l.042.038c.136.121.275.239.417.355l.042.035c.146.118.296.233.449.345l.04.03c.158.113.319.223.484.331l.037.024c.169.109.342.214.519.316l.031.019c.182.104.369.203.559.299l.024.013c.194.096.393.188.596.275l.016.007c.207.087.42.168.636.244l.007.003c.221.077.448.148.68.214l.002.001c.236.066.477.126.724.179.054.012.108.024.163.035.21.042.424.079.642.11.073.01.147.02.221.03.194.024.392.044.593.058.07.005.14.01.212.014.209.011.422.017.638.017.22 0 .436-.006.65-.018.07-.004.14-.009.21-.014.2-.014.397-.034.59-.058.075-.01.149-.02.223-.03.216-.031.429-.068.637-.11.056-.011.11-.023.165-.035.246-.053.487-.113.722-.178l.003-.001c.231-.066.458-.136.679-.213l.008-.003c.215-.076.427-.157.634-.243l.017-.007c.203-.087.4-.178.594-.274l.025-.013c.19-.096.376-.195.557-.298l.032-.019c.176-.102.349-.207.517-.316l.038-.025c.164-.107.325-.217.482-.33l.041-.03c.153-.112.302-.227.448-.345l.043-.035c.141-.115.28-.233.415-.354l.043-.038c.132-.119.261-.24.386-.363l.042-.04c.122-.122.242-.246.358-.372l.039-.041c.112-.124.222-.25.329-.379l.032-.039c.103-.127.203-.257.301-.387l.044-.059c.094-.129.186-.26.275-.392l.052-.078c.086-.132.17-.265.251-.399l.047-.079c.082-.14.162-.281.24-.423a.5.5 0 0 0 .054-.099c.08-.158.159-.317.238-.476l.012-.023.007-.012c.7-1.531 1.12-3.294 1.212-5.248.241-5.104-3.828-9.635-8.989-9.792A10 10 0 0 0 12.504 0z"/>
+            </svg>
+          </div>
+          <div class="platform-info">
+            <span class="platform-name">Linux</span>
+            <span class="platform-count" id="linux-count">-</span>
+          </div>
+          <div class="platform-bar">
+            <div class="platform-bar-fill" id="linux-bar"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 版本详情列表 -->
+    <div class="releases-section">
+      <h2 class="subsection-title">{t.versionDetails}</h2>
+      <div class="releases-list" id="releases-list">
+        <div class="loading-state">
+          <div class="loading-spinner"></div>
+          <span>{t.loading}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 数据来源说明 -->
+    <div class="data-source">
+      <p>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="16" x2="12" y2="12"/>
+          <line x1="12" y1="8" x2="12.01" y2="8"/>
+        </svg>
+        {t.dataSource}
+      </p>
+    </div>
+  </div>
+</section>
+
+<style>
+  .stats-section {
+    padding: 140px 0 80px;
+    min-height: 100vh;
+    position: relative;
+    background: var(--gradient-hero);
+  }
+
+  .stats-section::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: 
+      linear-gradient(rgba(148, 163, 184, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+  }
+
+  .stats-header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  /* 总体统计卡片 */
+  .stats-summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin-bottom: 64px;
+  }
+
+  .summary-card {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 32px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+  }
+
+  .summary-card:hover {
+    border-color: var(--color-border-hover);
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-glow);
+  }
+
+  .summary-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .summary-icon svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .total-downloads .summary-icon {
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(59, 130, 246, 0.2));
+    color: var(--color-accent-primary);
+  }
+
+  .total-releases .summary-icon {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(236, 72, 153, 0.2));
+    color: var(--color-accent-tertiary);
+  }
+
+  .latest-version .summary-icon {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(6, 182, 212, 0.2));
+    color: #22c55e;
+  }
+
+  .summary-content {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .summary-value {
+    font-size: 36px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1.2;
+  }
+
+  .summary-label {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    margin-top: 4px;
+  }
+
+  /* 下载趋势图 */
+  .trend-section {
+    margin-bottom: 64px;
+  }
+
+  .chart-container {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    backdrop-filter: blur(10px);
+    position: relative;
+    min-height: 320px;
+  }
+
+  .chart-container canvas {
+    width: 100% !important;
+    height: 280px !important;
+  }
+
+  .chart-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg-card);
+    border-radius: var(--radius-lg);
+    z-index: 10;
+  }
+
+  .chart-loading.hidden {
+    display: none;
+  }
+
+  /* 平台统计 */
+  .platform-stats {
+    margin-bottom: 64px;
+  }
+
+  .subsection-title {
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .subsection-title::before {
+    content: '';
+    width: 4px;
+    height: 24px;
+    background: var(--gradient-primary);
+    border-radius: 2px;
+  }
+
+  .platform-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+  }
+
+  .platform-card {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+  }
+
+  .platform-card:hover {
+    border-color: var(--color-border-hover);
+  }
+
+  .platform-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+
+  .platform-icon svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .platform-icon.macos {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+    color: var(--color-text-primary);
+  }
+
+  .platform-icon.windows {
+    background: linear-gradient(135deg, rgba(0, 120, 212, 0.2), rgba(0, 120, 212, 0.1));
+    color: #0078d4;
+  }
+
+  .platform-icon.linux {
+    background: linear-gradient(135deg, rgba(255, 193, 7, 0.2), rgba(255, 152, 0, 0.1));
+    color: #ffc107;
+  }
+
+  .platform-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .platform-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  .platform-count {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: var(--color-accent-primary);
+  }
+
+  .platform-bar {
+    height: 8px;
+    background: var(--color-bg-tertiary);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .platform-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.8s ease;
+    width: 0%;
+  }
+
+  .platform-card[data-platform="macos"] .platform-bar-fill {
+    background: linear-gradient(90deg, #64748b, #94a3b8);
+  }
+
+  .platform-card[data-platform="windows"] .platform-bar-fill {
+    background: linear-gradient(90deg, #0078d4, #00a2ed);
+  }
+
+  .platform-card[data-platform="linux"] .platform-bar-fill {
+    background: linear-gradient(90deg, #ffc107, #ff9800);
+  }
+
+  /* 版本列表 */
+  .releases-section {
+    margin-bottom: 48px;
+  }
+
+  .releases-list {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+  }
+
+  /* 动态生成的内容需要使用 :global */
+  .releases-list :global(.release-card) {
+    display: grid;
+    grid-template-columns: 140px 1fr 100px;
+    align-items: center;
+    gap: 24px;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--color-border);
+    transition: background 0.2s ease;
+  }
+
+  .releases-list :global(.release-card:last-child) {
+    border-bottom: none;
+  }
+
+  .releases-list :global(.release-card:hover) {
+    background: rgba(6, 182, 212, 0.03);
+  }
+
+  .releases-list :global(.release-card.latest) {
+    background: rgba(6, 182, 212, 0.05);
+  }
+
+  .releases-list :global(.release-info) {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .releases-list :global(.release-title) {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .releases-list :global(.release-version) {
+    font-size: 16px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: var(--color-text-primary);
+  }
+
+  .releases-list :global(.release-badge) {
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    border-radius: 10px;
+    background: var(--gradient-primary);
+    color: white;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .releases-list :global(.release-badge.preview) {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+  }
+
+  .releases-list :global(.release-date) {
+    font-size: 12px;
+    color: var(--color-text-muted);
+  }
+
+  .releases-list :global(.release-assets) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .releases-list :global(.asset-tag) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    background: var(--color-bg-tertiary);
+    border-radius: 6px;
+    border: 1px solid var(--color-border);
+  }
+
+  .releases-list :global(.asset-icon) {
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .releases-list :global(.asset-name) {
+    font-weight: 500;
+    color: var(--color-text-secondary);
+  }
+
+  .releases-list :global(.asset-count) {
+    font-weight: 700;
+    color: var(--color-accent-primary);
+    font-family: var(--font-mono);
+  }
+
+  .releases-list :global(.release-total) {
+    text-align: right;
+  }
+
+  .releases-list :global(.release-total-value) {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: var(--color-accent-primary);
+  }
+
+  .releases-list :global(.release-total-label) {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* 加载状态 */
+  .loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    color: var(--color-text-secondary);
+    gap: 16px;
+  }
+
+  .loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--color-border);
+    border-top-color: var(--color-accent-primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* 错误状态 */
+  .error-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    color: var(--color-text-secondary);
+    gap: 12px;
+  }
+
+  .error-state svg {
+    width: 48px;
+    height: 48px;
+    color: #ef4444;
+  }
+
+  /* 数据来源说明 */
+  .data-source {
+    text-align: center;
+    padding-top: 24px;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .data-source p {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: var(--color-text-muted);
+  }
+
+  /* 响应式 */
+  @media (max-width: 768px) {
+    .stats-section {
+      padding: 120px 0 60px;
+    }
+
+    .stats-summary {
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    .platform-grid {
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    .summary-card {
+      padding: 24px;
+    }
+
+    .summary-value {
+      font-size: 28px;
+    }
+
+    .chart-container {
+      padding: 16px;
+      min-height: 280px;
+    }
+
+    .chart-container canvas {
+      height: 240px !important;
+    }
+
+    .releases-list :global(.release-card) {
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .releases-list :global(.release-info) {
+      display: flex;
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .releases-list :global(.release-total) {
+      text-align: left;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .releases-list :global(.release-total-value) {
+      font-size: 16px;
+    }
+
+    .releases-list :global(.release-total-label) {
+      display: inline;
+    }
+
+    .releases-list :global(.asset-tag) {
+      padding: 4px 8px;
+      font-size: 11px;
+    }
+
+    .releases-list :global(.asset-icon) {
+      font-size: 12px;
+    }
+  }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+  const GITHUB_API_URL = 'https://api.github.com/repos/ysyx2008/SFTerminal/releases';
+
+  // 获取页面语言
+  const statsSection = document.getElementById('stats');
+  const lang = statsSection?.dataset.lang || 'zh';
+  const isZh = lang === 'zh';
+
+  // 翻译文本
+  const texts = {
+    latest: isZh ? '最新' : 'Latest',
+    preview: isZh ? '预览' : 'Preview',
+    downloads: isZh ? '下载' : 'downloads',
+    other: isZh ? '其他' : 'Other',
+    errorMessage: isZh ? '无法加载数据，请稍后重试' : 'Failed to load data, please try again later',
+    cumulativeDownloads: isZh ? '累计下载量' : 'Cumulative Downloads',
+  };
+
+  interface Asset {
+    name: string;
+    download_count: number;
+    browser_download_url: string;
+  }
+
+  interface Release {
+    tag_name: string;
+    name: string;
+    published_at: string;
+    prerelease: boolean;
+    assets: Asset[];
+  }
+
+  function formatNumber(num: number): string {
+    if (num >= 1000) {
+      return (num / 1000).toFixed(1) + 'k';
+    }
+    return num.toLocaleString();
+  }
+
+  function formatDate(dateString: string): string {
+    const date = new Date(dateString);
+    return date.toLocaleDateString(isZh ? 'zh-CN' : 'en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  }
+
+  function getPlatformFromAsset(name: string): 'macos' | 'windows' | 'linux' | 'other' {
+    const lowerName = name.toLowerCase();
+    if (lowerName.includes('.dmg') || lowerName.includes('mac') || lowerName.includes('darwin')) {
+      return 'macos';
+    }
+    if (lowerName.includes('.exe') || lowerName.includes('win') || lowerName.includes('setup')) {
+      return 'windows';
+    }
+    if (lowerName.includes('.appimage') || lowerName.includes('.deb') || lowerName.includes('.rpm') || lowerName.includes('linux')) {
+      return 'linux';
+    }
+    return 'other';
+  }
+
+  async function fetchReleases() {
+    try {
+      const response = await fetch(GITHUB_API_URL);
+      if (!response.ok) {
+        throw new Error('Failed to fetch releases');
+      }
+      const releases: Release[] = await response.json();
+      return releases;
+    } catch (error) {
+      console.error('Error fetching releases:', error);
+      throw error;
+    }
+  }
+
+  let chartInstance: any = null;
+
+  function renderChart(releases: Release[]) {
+    const canvas = document.getElementById('downloads-chart') as HTMLCanvasElement;
+    const chartLoading = document.getElementById('chart-loading');
+    
+    if (!canvas) return;
+
+    // 按发布时间排序（从早到晚）
+    const sortedReleases = [...releases].sort((a, b) => 
+      new Date(a.published_at).getTime() - new Date(b.published_at).getTime()
+    );
+
+    // 计算累计下载量
+    let cumulative = 0;
+    const chartData = sortedReleases.map(release => {
+      const releaseDownloads = release.assets.reduce((sum, asset) => sum + asset.download_count, 0);
+      cumulative += releaseDownloads;
+      return {
+        date: new Date(release.published_at),
+        version: release.tag_name,
+        downloads: releaseDownloads,
+        cumulative: cumulative
+      };
+    });
+
+    // 销毁旧图表
+    if (chartInstance) {
+      chartInstance.destroy();
+    }
+
+    // 隐藏加载状态
+    if (chartLoading) {
+      chartLoading.classList.add('hidden');
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // 获取CSS变量颜色
+    const computedStyle = getComputedStyle(document.documentElement);
+    const accentColor = '#06b6d4'; // cyan-500
+    const textColor = computedStyle.getPropertyValue('--color-text-secondary').trim() || '#94a3b8';
+    const gridColor = computedStyle.getPropertyValue('--color-border').trim() || 'rgba(148, 163, 184, 0.1)';
+
+    chartInstance = new (window as any).Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: chartData.map(d => d.version),
+        datasets: [{
+          label: texts.cumulativeDownloads,
+          data: chartData.map(d => d.cumulative),
+          borderColor: accentColor,
+          backgroundColor: 'rgba(6, 182, 212, 0.1)',
+          borderWidth: 3,
+          fill: true,
+          tension: 0.4,
+          pointRadius: 6,
+          pointBackgroundColor: accentColor,
+          pointBorderColor: '#0f172a',
+          pointBorderWidth: 2,
+          pointHoverRadius: 8,
+          pointHoverBackgroundColor: accentColor,
+          pointHoverBorderColor: '#fff',
+          pointHoverBorderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          intersect: false,
+          mode: 'index',
+        },
+        plugins: {
+          legend: {
+            display: false,
+          },
+          tooltip: {
+            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+            titleColor: '#fff',
+            bodyColor: '#94a3b8',
+            borderColor: 'rgba(6, 182, 212, 0.3)',
+            borderWidth: 1,
+            padding: 12,
+            cornerRadius: 8,
+            displayColors: false,
+            callbacks: {
+              title: (items: any) => {
+                if (items.length > 0) {
+                  const idx = items[0].dataIndex;
+                  const data = chartData[idx];
+                  return `${data.version} - ${formatDate(data.date.toISOString())}`;
+                }
+                return '';
+              },
+              label: (item: any) => {
+                const idx = item.dataIndex;
+                const data = chartData[idx];
+                return [
+                  `${texts.cumulativeDownloads}: ${formatNumber(data.cumulative)}`,
+                  `${isZh ? '本版本' : 'This version'}: +${formatNumber(data.downloads)}`
+                ];
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: {
+              color: gridColor,
+              drawBorder: false,
+            },
+            ticks: {
+              color: textColor,
+              font: {
+                family: "'JetBrains Mono', monospace",
+                size: 11,
+              },
+              maxRotation: 45,
+              minRotation: 0,
+            }
+          },
+          y: {
+            beginAtZero: true,
+            grid: {
+              color: gridColor,
+              drawBorder: false,
+            },
+            ticks: {
+              color: textColor,
+              font: {
+                family: "'JetBrains Mono', monospace",
+                size: 11,
+              },
+              callback: (value: number) => formatNumber(value)
+            }
+          }
+        }
+      }
+    });
+  }
+
+  function renderReleases(releases: Release[]) {
+    const releasesList = document.getElementById('releases-list');
+    if (!releasesList) return;
+
+    // 渲染折线图
+    renderChart(releases);
+
+    // 计算统计数据
+    let totalDownloads = 0;
+    const platformCounts = { macos: 0, windows: 0, linux: 0 };
+
+    releases.forEach(release => {
+      release.assets.forEach(asset => {
+        totalDownloads += asset.download_count;
+        const platform = getPlatformFromAsset(asset.name);
+        if (platform !== 'other') {
+          platformCounts[platform] += asset.download_count;
+        }
+      });
+    });
+
+    // 更新总体统计
+    const totalDownloadsEl = document.getElementById('total-downloads');
+    const totalReleasesEl = document.getElementById('total-releases');
+    const latestVersionEl = document.getElementById('latest-version');
+
+    if (totalDownloadsEl) totalDownloadsEl.textContent = formatNumber(totalDownloads);
+    if (totalReleasesEl) totalReleasesEl.textContent = releases.length.toString();
+    if (latestVersionEl && releases.length > 0) {
+      latestVersionEl.textContent = releases[0].tag_name;
+    }
+
+    // 更新平台统计
+    const maxPlatformCount = Math.max(...Object.values(platformCounts));
+    
+    Object.entries(platformCounts).forEach(([platform, count]) => {
+      const countEl = document.getElementById(`${platform}-count`);
+      const barEl = document.getElementById(`${platform}-bar`);
+      
+      if (countEl) countEl.textContent = formatNumber(count);
+      if (barEl) {
+        const percentage = maxPlatformCount > 0 ? (count / maxPlatformCount) * 100 : 0;
+        barEl.style.width = `${percentage}%`;
+      }
+    });
+
+    // 渲染版本列表
+    releasesList.innerHTML = releases.map((release, index) => {
+      const releaseDownloads = release.assets.reduce((sum, asset) => sum + asset.download_count, 0);
+      const isLatest = index === 0;
+      
+      // 按平台分组资源
+      const assetsByPlatform: Record<string, { count: number; downloads: number }> = {};
+      release.assets.forEach(asset => {
+        const platform = getPlatformFromAsset(asset.name);
+        if (!assetsByPlatform[platform]) {
+          assetsByPlatform[platform] = { count: 0, downloads: 0 };
+        }
+        assetsByPlatform[platform].count++;
+        assetsByPlatform[platform].downloads += asset.download_count;
+      });
+
+      const platformLabels: Record<string, string> = {
+        macos: 'macOS',
+        windows: 'Windows',
+        linux: 'Linux',
+        other: texts.other
+      };
+
+      const platformIcons: Record<string, string> = {
+        macos: '🍎',
+        windows: '🪟',
+        linux: '🐧',
+        other: '📦'
+      };
+
+      return `
+        <div class="release-card ${isLatest ? 'latest' : ''}">
+          <div class="release-info">
+            <div class="release-title">
+              <span class="release-version">${release.tag_name}</span>
+              ${isLatest ? `<span class="release-badge">${texts.latest}</span>` : ''}
+              ${release.prerelease ? `<span class="release-badge preview">${texts.preview}</span>` : ''}
+            </div>
+            <span class="release-date">${formatDate(release.published_at)}</span>
+          </div>
+          <div class="release-assets">
+            ${Object.entries(assetsByPlatform)
+              .filter(([_, data]) => data.downloads > 0)
+              .sort((a, b) => b[1].downloads - a[1].downloads)
+              .map(([platform, data]) => `
+                <span class="asset-tag">
+                  <span class="asset-icon">${platformIcons[platform]}</span>
+                  <span class="asset-name">${platformLabels[platform]}</span>
+                  <span class="asset-count">${formatNumber(data.downloads)}</span>
+                </span>
+              `).join('')}
+          </div>
+          <div class="release-total">
+            <div class="release-total-value">${formatNumber(releaseDownloads)}</div>
+            <div class="release-total-label">${texts.downloads}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function showError() {
+    const releasesList = document.getElementById('releases-list');
+    if (releasesList) {
+      releasesList.innerHTML = `
+        <div class="error-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="48" height="48">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span>${texts.errorMessage}</span>
+        </div>
+      `;
+    }
+  }
+
+  // 初始化
+  document.addEventListener('DOMContentLoaded', async () => {
+    try {
+      const releases = await fetchReleases();
+      renderReleases(releases);
+    } catch (error) {
+      showError();
+    }
+  });
+</script>
+
