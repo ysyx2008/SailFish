@@ -14,7 +14,6 @@ interface KnowledgeSettings {
   localModel: 'auto' | 'lite' | 'standard' | 'large'
   embeddingMcpServerId?: string
   autoSaveUploads: boolean
-  maxChunkSize: number
   chunkStrategy: 'fixed' | 'semantic' | 'paragraph'
   searchTopK: number
   enableRerank: boolean
@@ -43,7 +42,6 @@ const settings = ref<KnowledgeSettings>({
   embeddingMode: 'local',
   localModel: 'lite',
   autoSaveUploads: true,
-  maxChunkSize: 512,
   chunkStrategy: 'paragraph',
   searchTopK: 10,
   enableRerank: true
@@ -525,21 +523,6 @@ onUnmounted(() => {
             </select>
           </div>
 
-          <div class="setting-row">
-            <div class="setting-info">
-              <label class="setting-label">{{ t('knowledgeSettings.maxChunkSize') }}</label>
-              <p class="setting-desc">{{ t('knowledgeSettings.maxChunkSizeDesc') }}</p>
-            </div>
-            <input 
-              type="number" 
-              v-model.number="settings.maxChunkSize" 
-              class="input input-sm"
-              min="128"
-              max="4096"
-              step="64"
-              @change="saveSettings"
-            />
-          </div>
         </div>
 
         <!-- 文档管理 -->

@@ -63,7 +63,7 @@ const applyAiTemplate = (template: typeof aiTemplates.value[0]) => {
 
 const saveAiConfig = async () => {
   if (!aiFormData.value.name || !aiFormData.value.apiUrl || !aiFormData.value.model) {
-    alert('请填写完整的配置信息')
+    alert(t('setup.aiConfig.fillRequired'))
     return false
   }
 
@@ -83,7 +83,7 @@ const saveAiConfig = async () => {
     return true
   } catch (error) {
     console.error('保存配置失败:', error)
-    alert('保存失败')
+    alert(t('setup.aiConfig.saveFailed'))
     return false
   }
 }
@@ -144,7 +144,7 @@ const importXshell = async () => {
       importResult.value = {
         success: false,
         sessions: 0,
-        errors: result.errors || ['导入失败']
+        errors: result.errors || [t('setup.import.importFailed')]
       }
     }
   } catch (error) {
@@ -194,7 +194,7 @@ const manualImport = async () => {
       importResult.value = {
         success: false,
         sessions: 0,
-        errors: importResponse.errors || ['导入失败']
+        errors: importResponse.errors || [t('setup.import.importFailed')]
       }
     }
   } catch (error) {
@@ -220,11 +220,11 @@ const saveKnowledgeSettings = async () => {
   // 如果要启用知识库，需要先设置密码
   if (knowledgeEnabled.value) {
     if (knowledgePassword.value.length < 4) {
-      knowledgePasswordError.value = '密码长度至少为 4 位'
+      knowledgePasswordError.value = t('setup.knowledge.passwordMinLength')
       return false
     }
     if (knowledgePassword.value !== knowledgePasswordConfirm.value) {
-      knowledgePasswordError.value = '两次输入的密码不一致'
+      knowledgePasswordError.value = t('setup.knowledge.passwordMismatch')
       return false
     }
     
@@ -233,7 +233,7 @@ const saveKnowledgeSettings = async () => {
       // 先设置密码
       const passwordResult = await window.electronAPI.knowledge.setPassword(knowledgePassword.value)
       if (!passwordResult.success) {
-        knowledgePasswordError.value = passwordResult.error || '设置密码失败'
+        knowledgePasswordError.value = passwordResult.error || t('setup.knowledge.saveFailed')
         return false
       }
       
@@ -244,7 +244,7 @@ const saveKnowledgeSettings = async () => {
       return true
     } catch (error) {
       console.error('保存知识库设置失败:', error)
-      knowledgePasswordError.value = '保存失败'
+      knowledgePasswordError.value = t('setup.knowledge.saveFailed')
       return false
     } finally {
       savingKnowledge.value = false
@@ -569,25 +569,25 @@ onMounted(async () => {
               <div v-if="knowledgeEnabled" class="password-setup">
                 <div class="password-intro">
                   <span class="password-icon">🔐</span>
-                  <p>知识库可存储文档和主机记忆等敏感信息，请设置密码以加密保护这些数据。</p>
+                  <p>{{ t('setup.knowledge.passwordIntro') }}</p>
                 </div>
                 <div class="password-form">
                   <div class="form-group">
-                    <label class="form-label">设置密码 *</label>
+                    <label class="form-label">{{ t('setup.knowledge.passwordLabel') }} *</label>
                     <input 
                       type="password" 
                       v-model="knowledgePassword" 
                       class="input" 
-                      placeholder="请输入密码（至少 4 位）"
+                      :placeholder="t('setup.knowledge.passwordPlaceholder')"
                     />
                   </div>
                   <div class="form-group">
-                    <label class="form-label">确认密码 *</label>
+                    <label class="form-label">{{ t('setup.knowledge.confirmPasswordLabel') }} *</label>
                     <input 
                       type="password" 
                       v-model="knowledgePasswordConfirm" 
                       class="input" 
-                      placeholder="请再次输入密码"
+                      :placeholder="t('setup.knowledge.confirmPasswordPlaceholder')"
                     />
                   </div>
                   <p v-if="knowledgePasswordError" class="password-error">{{ knowledgePasswordError }}</p>

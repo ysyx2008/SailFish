@@ -25,10 +25,10 @@ export interface OemConfig {
 
 export const oemConfig: OemConfig = {
   brand: {
-    name: { zh: '旗鱼终端', en: 'SFTerminal' },
+    name: { zh: '旗鱼终端', en: 'SFTerm' },
     logo: '🐟',  // emoji 或图片路径如 '/assets/logo.png'
     version: '',  // 留空使用 package.json 版本
-    copyright: { zh: '© 2024 旗鱼', en: '© 2024 SFTerminal' }
+    copyright: { zh: '© 2024 旗鱼', en: '© 2024 SFTerm' }
   },
   features: {
     showSponsor: true  // 赞助功能开关

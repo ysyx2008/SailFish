@@ -173,8 +173,40 @@ const changeAiProfile = async (profileId: string) => {
 
 // ==================== 消息清空 ====================
 
-// 清空对话（包括 Agent 状态和历史）
-const clearMessages = () => {
+// 清空对话确认框状态
+const showClearConfirm = ref(false)
+
+// 请求清空对话（如果 Agent 正在执行，需要用户确认）
+const requestClearMessages = () => {
+  if (isAgentRunning.value) {
+    // Agent 正在执行，需要确认
+    showClearConfirm.value = true
+  } else {
+    // Agent 未运行，直接清空
+    doClearMessages()
+  }
+}
+
+// 确认清空对话（先停止 Agent，再清空）
+const confirmClearMessages = async () => {
+  showClearConfirm.value = false
+  
+  // 如果 Agent 正在执行，先停止它
+  if (isAgentRunning.value) {
+    await abortAgent()
+  }
+  
+  // 然后清空对话
+  doClearMessages()
+}
+
+// 取消清空对话
+const cancelClearMessages = () => {
+  showClearConfirm.value = false
+}
+
+// 执行清空对话（包括 Agent 状态和历史）
+const doClearMessages = () => {
   if (currentTabId.value) {
     terminalStore.clearAiMessages(currentTabId.value)
     terminalStore.clearAgentState(currentTabId.value, false)  // 不保留历史
@@ -184,6 +216,9 @@ const clearMessages = () => {
   // 清空待处理的补充消息
   pendingSupplements.value = []
 }
+
+// 兼容旧的 clearMessages（现在改为 requestClearMessages）
+const clearMessages = requestClearMessages
 
 // ==================== 确认框辅助函数 ====================
 
@@ -579,6 +614,31 @@ onMounted(() => {
         </div>
       </div>
 
+      <!-- 清空对话确认对话框（Agent 执行中） -->
+      <div v-if="showClearConfirm" class="free-mode-confirm-overlay">
+        <div class="free-mode-confirm-dialog clear-confirm-dialog">
+          <div class="confirm-dialog-header">
+            <span class="confirm-dialog-icon">⚠️</span>
+            <span class="confirm-dialog-title">{{ t('ai.clearConfirmTitle') }}</span>
+          </div>
+          <div class="confirm-dialog-content">
+            <p>{{ t('ai.clearConfirmDesc') }}</p>
+            <ul class="confirm-dialog-warnings">
+              <li>{{ t('ai.clearConfirmWarning1') }}</li>
+              <li>{{ t('ai.clearConfirmWarning2') }}</li>
+            </ul>
+          </div>
+          <div class="confirm-dialog-actions">
+            <button class="btn btn-sm btn-outline" @click="cancelClearMessages">
+              {{ t('common.cancel') }}
+            </button>
+            <button class="btn btn-sm btn-danger" @click="confirmClearMessages">
+              {{ t('ai.clearConfirmButton') }}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- 系统环境信息 + Agent 设置 -->
       <div class="system-info-bar">
         <div v-if="currentSystemInfo" class="system-info-left">
@@ -806,7 +866,7 @@ onMounted(() => {
               v-if="msg.role === 'assistant' && msg.content && !msg.content.includes('中...')"
               class="copy-btn"
               @click="copyMessage(msg.content)"
-              title="复制"
+              :title="t('common.copy')"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
@@ -871,8 +931,8 @@ onMounted(() => {
                           <div class="asking-question">{{ step.content }}</div>
                           <!-- 默认值提示 -->
                           <div v-if="step.toolArgs?.default_value" class="asking-default">
-                            <span class="default-label">默认：</span>{{ step.toolArgs.default_value }}
-                            <span v-if="step.toolResult?.includes('⏳')" class="default-hint">（直接按回车使用默认值）</span>
+                            <span class="default-label">{{ t('ai.askingDefault') }}</span>{{ step.toolArgs.default_value }}
+                            <span v-if="step.toolResult?.includes('⏳')" class="default-hint">{{ t('ai.askingDefaultHint') }}</span>
                           </div>
                           <!-- 可点击的选项按钮 -->
                           <div v-if="step.toolArgs?.options && (step.toolArgs.options as string[]).length > 0" class="asking-options">
@@ -897,7 +957,7 @@ onMounted(() => {
                               :disabled="getSelectedOptions(step.id).length === 0"
                               @click="confirmMultiSelect(step.id)"
                             >
-                              确认选择 ({{ getSelectedOptions(step.id).length }})
+                              {{ t('ai.confirmMultiSelect') }} ({{ getSelectedOptions(step.id).length }})
                             </button>
                           </div>
                           <!-- 状态显示 -->

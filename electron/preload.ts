@@ -1011,16 +1011,6 @@ const electronAPI = {
       newestRecord?: string
     }>,
 
-    // 导出数据
-    exportData: () => ipcRenderer.invoke('history:exportData'),
-
-    // 导入数据
-    importData: (data: object) => ipcRenderer.invoke('history:importData', data) as Promise<{
-      success: boolean
-      error?: string
-      configIncluded?: boolean
-    }>,
-
     // 清理旧记录
     cleanup: (daysToKeep: number) => ipcRenderer.invoke('history:cleanup', daysToKeep) as Promise<{
       chatDeleted: number
@@ -1570,7 +1560,6 @@ const electronAPI = {
         localModel: 'auto' | 'lite' | 'standard' | 'large'
         embeddingMcpServerId?: string
         autoSaveUploads: boolean
-        maxChunkSize: number
         chunkStrategy: 'fixed' | 'semantic' | 'paragraph'
         searchTopK: number
         enableRerank: boolean
@@ -1584,7 +1573,6 @@ const electronAPI = {
       localModel: 'auto' | 'lite' | 'standard' | 'large'
       embeddingMcpServerId?: string
       autoSaveUploads: boolean
-      maxChunkSize: number
       chunkStrategy: 'fixed' | 'semantic' | 'paragraph'
       searchTopK: number
       enableRerank: boolean

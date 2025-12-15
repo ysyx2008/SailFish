@@ -116,14 +116,14 @@ const setActive = async (profileId: string) => {
 }
 
 // 预设模板
-const templates = [
+const templates = computed(() => [
   {
     name: 'OpenAI',
     apiUrl: 'https://api.openai.com/v1/chat/completions',
     model: 'gpt-3.5-turbo'
   },
   {
-    name: '通义千问',
+    name: 'Qwen',
     apiUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
     model: 'qwen-turbo'
   },
@@ -133,13 +133,13 @@ const templates = [
     model: 'deepseek-chat'
   },
   {
-    name: 'Ollama 本地',
+    name: 'Ollama',
     apiUrl: 'http://localhost:11434/v1/chat/completions',
     model: 'llama2'
   }
-]
+])
 
-const applyTemplate = (template: typeof templates[0]) => {
+const applyTemplate = (template: typeof templates.value[0]) => {
   formData.value.name = template.name
   formData.value.apiUrl = template.apiUrl
   formData.value.model = template.model

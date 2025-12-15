@@ -1037,7 +1037,6 @@ interface Window {
         localModel: 'auto' | 'lite' | 'standard' | 'large'
         embeddingMcpServerId?: string
         autoSaveUploads: boolean
-        maxChunkSize: number
         chunkStrategy: 'fixed' | 'semantic' | 'paragraph'
         searchTopK: number
         enableRerank: boolean
@@ -1049,7 +1048,6 @@ interface Window {
         localModel: 'auto' | 'lite' | 'standard' | 'large'
         embeddingMcpServerId?: string
         autoSaveUploads: boolean
-        maxChunkSize: number
         chunkStrategy: 'fixed' | 'semantic' | 'paragraph'
         searchTopK: number
         enableRerank: boolean

@@ -33,7 +33,20 @@ export default {
     stopExecution: '停止执行',
     emptyTitle: '准备好开始智能巡检了',
     emptyDesc: '描述你的任务，Agent 会自动识别需要检查的服务器并执行',
-    exampleTasks: '示例任务'
+    exampleTasks: '示例任务',
+    strategyLabels: {
+      cautious: '审慎模式',
+      batch: '批量确认',
+      free: '自由模式'
+    },
+    strategyDescs: {
+      cautious: '每个危险命令都确认',
+      batch: '相同命令批量确认',
+      free: '自动执行（谨慎使用）'
+    },
+    exampleTask1: '检查所有生产服务器的磁盘使用情况',
+    exampleTask2: '查看各服务器的内存和CPU负载',
+    exampleTask3: '检查 nginx 服务是否正常运行'
   },
 
   // 通用按钮和操作
@@ -319,8 +332,6 @@ export default {
     chunkParagraph: '按段落',
     chunkSemantic: '语义分块',
     chunkFixed: '固定大小',
-    maxChunkSize: '最大分块大小',
-    maxChunkSizeDesc: '每个分块的最大 token 数（128-4096）',
     docManagement: '文档管理',
     docCount: '{count} 个文档',
     manageDoc: '管理文档',
@@ -445,9 +456,6 @@ export default {
     importing: '导入中...',
     importFromFolder: '从文件夹导入',
     exportHint: '导出为独立文件，可选择性分享给他人',
-    exportSingleFile: '导出单文件',
-    importSingleFile: '导入单文件',
-    singleFileHint: '单文件适合完整备份，包含所有数据',
     exportedFiles: '已导出 {count} 个文件',
     exportFailed: '导出失败',
     importedItems: '已导入: {items}',
@@ -537,6 +545,11 @@ export default {
     useDefault: '使用默认值 (Enter)',
     stopGeneration: '停止生成',
     stopAgent: '停止 Agent',
+    clearConfirmTitle: '停止 Agent 并清空对话',
+    clearConfirmDesc: 'Agent 正在执行任务中，清空对话将会：',
+    clearConfirmWarning1: '立即中止当前正在执行的操作',
+    clearConfirmWarning2: '清空所有对话历史和执行记录',
+    clearConfirmButton: '停止并清空',
     uploadDocument: '上传文档 (PDF/Word/文本)',
     dropToUpload: '释放以上传文档',
     dropHint: '支持 PDF、Word、文本等格式',
@@ -624,14 +637,32 @@ export default {
       explainCommand: '解释命令',
       generateCommand: '生成命令',
       analyzeError: '分析错误',
-      systemStatus: '系统状态'
+      systemStatus: '系统状态',
+      findFiles: '查找文件',
+      viewProcesses: '查看进程',
+      diskSpace: '磁盘空间'
+    },
+    quickActionPrompts: {
+      findFiles: '查找当前目录下所有的日志文件',
+      viewProcesses: '查看占用内存最多的前10个进程',
+      diskSpace: '查看磁盘空间使用情况'
     },
     toolNames: {
       execute_command: '执行命令',
       read_file: '读取文件',
       write_file: '写入文件',
       get_terminal_context: '获取终端上下文'
-    }
+    },
+    askingDefault: '默认：',
+    askingDefaultHint: '（直接按回车使用默认值）',
+    confirmMultiSelect: '确认选择',
+    // 分析功能相关
+    analyzeErrorPrompt: '请帮我分析这个错误：',
+    analyzeOutputPrompt: '请帮我分析这段终端输出：',
+    analyzeContentPrompt: '请帮我分析这段终端内容：',
+    diagnosing: '诊断中...',
+    analyzing: '分析中...',
+    errorPrefix: '错误：'
   },
 
   // 会话管理器
@@ -765,7 +796,15 @@ export default {
     permissions: '权限',
     pathBreadcrumb: '路径',
     goToParent: '返回上级',
-    emptyFolder: '空文件夹'
+    emptyFolder: '空文件夹',
+    sftpFileManager: 'SFTP 文件管理',
+    connecting: '正在连接...',
+    connectionFailed: '连接失败',
+    retry: '重试',
+    goBack: '后退',
+    goForward: '前进',
+    goUp: '上级目录',
+    goHome: '主目录'
   },
 
   // 首次设置向导
@@ -801,7 +840,9 @@ export default {
       hint: '支持 OpenAI 兼容接口，包括 vLLM、FastChat、Ollama 等私有化部署方案。',
       configuredModels: '已配置的模型',
       addNewModel: '添加新模型',
-      quickTemplates: '快速模板：'
+      quickTemplates: '快速模板：',
+      fillRequired: '请填写完整的配置信息',
+      saveFailed: '保存失败'
     },
     import: {
       title: '导入 SSH 主机',
@@ -829,7 +870,15 @@ export default {
         item4: '数据加密存储，保护您的敏感信息安全'
       },
       enableSwitch: '启用知识库',
-      enableHint: '开启后可存储文档和主机记忆，让 Agent 更智能地协助您'
+      enableHint: '开启后可存储文档和主机记忆，让 Agent 更智能地协助您',
+      passwordIntro: '知识库可存储文档和主机记忆等敏感信息，请设置密码以加密保护这些数据。',
+      passwordLabel: '设置密码',
+      passwordPlaceholder: '请输入密码（至少 4 位）',
+      confirmPasswordLabel: '确认密码',
+      confirmPasswordPlaceholder: '请再次输入密码',
+      passwordMinLength: '密码长度至少为 4 位',
+      passwordMismatch: '两次输入的密码不一致',
+      saveFailed: '保存失败'
     },
     mcp: {
       title: '配置 MCP 服务',
@@ -875,7 +924,16 @@ export default {
     connectionFailed: '连接失败',
     connectionClosed: '连接已关闭',
     reconnect: '重新连接',
-    localTerminal: '本地终端'
+    localTerminal: '本地终端',
+    sshDisconnected: '[SSH 连接断开]',
+    disconnectReasons: {
+      closed: '连接已关闭',
+      error: '连接错误',
+      stream_closed: '数据流已关闭',
+      jump_host_closed: '跳板机连接已断开'
+    },
+    reconnectHint: '点击右下角按钮或按 Ctrl+Shift+R 重新连接',
+    noSessionSavedHint: '该连接未保存为会话，请从会话管理器重新连接'
   },
 
   // MCP 状态
@@ -887,7 +945,14 @@ export default {
     error: '错误',
     servers: '服务器',
     noServers: '未配置服务器',
-    openSettings: '打开设置'
+    openSettings: '打开设置',
+    serverList: 'MCP 服务器',
+    connectAll: '全部连接',
+    connect: '连接',
+    disconnect: '断开',
+    tools: '工具',
+    disabled: '已禁用',
+    noServersConfigured: '尚未配置 MCP 服务器'
   },
 
   // 知识库管理器
@@ -935,6 +1000,11 @@ export default {
     exportFailed: '导出失败',
     importSuccess: '导入成功，共导入 {count} 个文档',
     importFailed: '导入失败',
-    confirmImport: '导入将与现有数据合并，确定要继续吗？'
+    confirmImport: '导入将与现有数据合并，确定要继续吗？',
+    memoryCount: '{count} 条记忆',
+    noMatchingMemories: '没有匹配的记忆',
+    noMemories: '暂无主机记忆',
+    clearingMemories: '清除中...',
+    clearAllMemories: '清空所有记忆'
   }
 }

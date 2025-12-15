@@ -18,6 +18,7 @@ import type {
   PlanStepStatus
 } from './types'
 import { assessCommandRisk, analyzeCommand, isSudoCommand, detectPasswordPrompt } from './risk-assessor'
+import { t } from './i18n'
 import { getKnowledgeService } from '../knowledge'
 import { getTerminalStateService } from '../terminal-state.service'
 import { getTerminalAwarenessService, getProcessMonitor } from '../terminal-awareness'
@@ -75,15 +76,15 @@ function categorizeError(error: string): ErrorCategory {
 function getErrorRecoverySuggestion(error: string, category: ErrorCategory): string {
   switch (category) {
     case 'transient':
-      return '这是一个暂时性错误，可以稍后重试。'
+      return t('error.transient')
     case 'permission':
-      return '权限不足。建议：1) 检查文件/目录权限；2) 尝试使用 sudo（如果合适）；3) 确认用户是否有相应权限。'
+      return t('error.permission')
     case 'not_found':
-      return '资源不存在。建议：1) 检查路径是否正确；2) 使用 ls 或 find 确认文件位置；3) 检查命令是否已安装。'
+      return t('error.not_found')
     case 'timeout':
-      return '命令执行超时，但可能仍在运行中。建议：1) 先用 check_terminal_status 确认是否还在执行；2)  再用 get_terminal_context 查看终端最新输出，了解执行进度；3) 如果确实卡住了再用 send_control_key 发送 Ctrl+C。'
+      return t('error.timeout')
     case 'fatal':
-      return '执行失败。请分析错误信息，考虑更换方法或向用户请求帮助。'
+      return t('error.execution_failed')
   }
 }
 
@@ -167,7 +168,7 @@ export async function executeTool(
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   if (executor.isAborted()) {
-    return { success: false, output: '', error: '操作已中止' }
+    return { success: false, output: '', error: t('error.operation_aborted') }
   }
 
   const { name, arguments: argsStr } = toolCall.function
@@ -176,7 +177,7 @@ export async function executeTool(
   try {
     args = JSON.parse(argsStr)
   } catch {
-    return { success: false, output: '', error: '工具参数解析失败' }
+    return { success: false, output: '', error: t('error.tool_param_parse_failed') }
   }
 
   // 根据工具类型执行
@@ -225,7 +226,7 @@ export async function executeTool(
       if (name.startsWith('mcp_') && executor.mcpService) {
         return executeMcpTool(name, args, toolCall.id, executor)
       }
-      return { success: false, output: '', error: `未知工具: ${name}` }
+      return { success: false, output: '', error: t('error.unknown_tool', { name }) }
   }
 }
 
@@ -239,26 +240,26 @@ async function executeMcpTool(
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   if (!executor.mcpService) {
-    return { success: false, output: '', error: 'MCP 服务未初始化' }
+    return { success: false, output: '', error: t('error.mcp_not_initialized') }
   }
 
   // 解析工具名称: mcp_{serverId}_{toolName}
   const parsed = executor.mcpService.parseToolCallName(fullName)
   if (!parsed) {
-    return { success: false, output: '', error: `无效的 MCP 工具名称: ${fullName}` }
+    return { success: false, output: '', error: t('error.invalid_mcp_tool_name', { name: fullName }) }
   }
 
   const { serverId, toolName } = parsed
 
   // 检查服务器是否已连接
   if (!executor.mcpService.isConnected(serverId)) {
-    return { success: false, output: '', error: `MCP 服务器 ${serverId} 未连接` }
+    return { success: false, output: '', error: t('error.mcp_server_not_connected', { server: serverId }) }
   }
 
   // 添加工具调用步骤
   executor.addStep({
     type: 'tool_call',
-    content: `[MCP] 调用工具: ${toolName}`,
+    content: `${t('mcp.calling_tool')}: ${toolName}`,
     toolName: fullName,
     toolArgs: args,
     riskLevel: 'moderate'
@@ -276,7 +277,7 @@ async function executeMcpTool(
       
       executor.addStep({
         type: 'tool_result',
-        content: `[MCP] 工具执行成功 (${displayContent.length} 字符)`,
+        content: `${t('mcp.tool_success')} (${displayContent.length} ${t('misc.characters')})`,
         toolName: fullName,
         toolResult: truncatedDisplay
       })
@@ -285,17 +286,17 @@ async function executeMcpTool(
     } else {
       executor.addStep({
         type: 'tool_result',
-        content: `[MCP] 工具执行失败: ${result.error}`,
+        content: `${t('mcp.tool_failed')}: ${result.error}`,
         toolName: fullName,
         toolResult: result.error
       })
       return { success: false, output: '', error: result.error }
     }
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : 'MCP 工具执行失败'
+    const errorMsg = error instanceof Error ? error.message : t('mcp.tool_failed')
     executor.addStep({
       type: 'tool_result',
-      content: `[MCP] 错误: ${errorMsg}`,
+      content: `${t('mcp.error')}: ${errorMsg}`,
       toolName: fullName,
       toolResult: errorMsg
     })
@@ -315,7 +316,7 @@ async function executeCommand(
 ): Promise<ToolResult> {
   let command = args.command as string
   if (!command) {
-    return { success: false, output: '', error: '命令不能为空' }
+    return { success: false, output: '', error: t('hint.command_empty') }
   }
 
   // 先检查终端状态，确认是否可以执行命令
@@ -329,7 +330,7 @@ async function executeCommand(
     if (isBusy) {
       // 终端正在执行命令：命令确实没执行，但这不是 Agent 的错误，是需要等待的状态
       // 返回 isRunning: true，不计入失败统计，避免触发无意义的重试循环
-      const waitMsg = `⏳ 终端正在执行其他命令，无法立即执行新命令。\n\n💡 建议：\n1. 使用 wait 工具等待当前命令完成（如 60-120 秒）\n2. 使用 check_terminal_status 检查终端状态\n3. 如果需要中断当前命令，使用 send_control_key("ctrl+c")`
+      const waitMsg = `⏳ ${t('hint.wait_terminal')}\n\n💡 ${t('hint.wait_suggestions')}`
       executor.addStep({
         type: 'tool_call',
         content: `⏳ ${command}`,
@@ -339,7 +340,7 @@ async function executeCommand(
       })
       executor.addStep({
         type: 'tool_result',
-        content: `终端忙碌中，需要等待`,
+        content: t('status.terminal_busy'),
         toolName: 'execute_command',
         toolResult: waitMsg
       })
@@ -349,7 +350,7 @@ async function executeCommand(
     }
     
     // 其他原因（等待输入、卡死等）：返回错误让 agent 处理
-    const errorMsg = `⚠️ 无法执行命令：${preAdvice.reason}\n\n💡 ${preAdvice.suggestion}`
+    const errorMsg = `⚠️ ${t('hint.cannot_execute_reason')}：${preAdvice.reason}\n\n💡 ${preAdvice.suggestion}`
     executor.addStep({
       type: 'tool_call',
       content: `🚫 ${command}`,
@@ -359,7 +360,7 @@ async function executeCommand(
     })
     executor.addStep({
       type: 'tool_result',
-      content: `终端状态不允许执行: ${preAdvice.reason}`,
+      content: `${t('status.terminal_not_allowed')}: ${preAdvice.reason}`,
       toolName: 'execute_command',
       toolResult: errorMsg
     })
@@ -379,7 +380,7 @@ async function executeCommand(
       riskLevel: 'blocked'
     })
     
-    const errorMsg = `无法执行: ${handling.reason}。${handling.hint}`
+    const errorMsg = `${t('hint.command_cannot_execute')}: ${handling.reason}。${handling.hint}`
     executor.addStep({
       type: 'tool_result',
       content: errorMsg,
@@ -403,7 +404,7 @@ async function executeCommand(
     return { 
       success: false, 
       output: '', 
-      error: '该命令被安全策略阻止执行' 
+      error: t('hint.security_blocked')
     }
   }
 
@@ -419,7 +420,7 @@ async function executeCommand(
     type: 'tool_call',
     content: handling.strategy === 'timed_execution'
       ? `⏱️ ${command} (${handling.hint})`
-      : `执行命令: ${command}`,
+      : `${t('status.executing')}: ${command}`,
     toolName: 'execute_command',
     toolArgs: { command },
     riskLevel
@@ -435,11 +436,11 @@ async function executeCommand(
     if (!approved) {
       executor.addStep({
         type: 'tool_result',
-        content: '⛔ 用户拒绝执行此命令',
+        content: `⛔ ${t('status.user_rejected')}`,
         toolName: 'execute_command',
-        toolResult: '已拒绝'
+        toolResult: t('status.user_rejected')
       })
-      return { success: false, output: '', error: '用户拒绝执行该命令' }
+      return { success: false, output: '', error: t('error.user_rejected_command') }
     }
   }
 
@@ -514,15 +515,15 @@ async function executeCommand(
       if (isLongRunningCommand) {
         // 长耗时命令超时：这是正常的，不算失败
         // 返回 isRunning: true，告诉反思追踪不要计入失败
-        executor.addStep({
-          type: 'tool_result',
-          content: `⏳ 命令仍在执行中 (已超过 ${config.commandTimeout / 1000}秒)`,
-          toolName: 'execute_command',
-          toolResult: latestOutput + '\n\n💡 这是一个长耗时命令，超时不代表失败。建议使用 wait 工具等待一段时间后再检查状态。'
-        })
+          executor.addStep({
+            type: 'tool_result',
+            content: `⏳ ${t('status.command_running')} (${config.commandTimeout / 1000}${t('misc.seconds')})`,
+            toolName: 'execute_command',
+            toolResult: latestOutput + '\n\n💡 ' + t('hint.long_running_command')
+          })
         return {
           success: true,  // 长耗时命令超时不算失败
-          output: latestOutput + '\n\n💡 命令仍在后台执行中。建议：\n1. 使用 wait 工具等待一段时间（如 60-180 秒）\n2. 然后使用 check_terminal_status 确认执行状态\n3. 使用 get_terminal_context 查看最新输出',
+          output: latestOutput + '\n\n💡 ' + t('error.command_still_running'),
           isRunning: true  // 标记命令仍在运行
         }
       }
@@ -533,14 +534,14 @@ async function executeCommand(
 
       executor.addStep({
         type: 'tool_result',
-        content: `⏱️ 命令执行超时 (${config.commandTimeout / 1000}秒)`,
+        content: `⏱️ ${t('status.command_timeout')} (${config.commandTimeout / 1000}${t('misc.seconds')})`,
         toolName: 'execute_command',
         toolResult: latestOutput
       })
       return {
         success: false,
         output: latestOutput,
-        error: `命令执行超时。${suggestion}`
+        error: t('error.command_timeout_with_hint', { suggestion })
       }
     }
 
@@ -550,7 +551,7 @@ async function executeCommand(
     
     executor.addStep({
       type: 'tool_result',
-      content: `命令执行完成 (耗时: ${result.duration}ms)`,
+      content: `${t('status.command_complete')} (${t('misc.duration')}: ${result.duration}ms)`,
       toolName: 'execute_command',
       toolResult: result.output
     })
@@ -561,17 +562,17 @@ async function executeCommand(
     unsubscribe()
     terminalStateService.completeCommandExecution(ptyId, 1, 'failed')
     
-    const errorMsg = error instanceof Error ? error.message : '命令执行失败'
+    const errorMsg = error instanceof Error ? error.message : t('status.command_failed')
     const errorCategory = categorizeError(errorMsg)
     const suggestion = getErrorRecoverySuggestion(errorMsg, errorCategory)
     
     executor.addStep({
       type: 'tool_result',
-      content: `命令执行失败: ${errorMsg}`,
+      content: `${t('status.command_failed')}: ${errorMsg}`,
       toolName: 'execute_command',
       toolResult: `${errorMsg}\n\n💡 ${suggestion}`
     })
-    return { success: false, output: '', error: `${errorMsg}\n\n💡 恢复建议: ${suggestion}` }
+    return { success: false, output: '', error: t('error.recovery_hint', { error: errorMsg, suggestion }) }
   }
 }
 
@@ -612,7 +613,7 @@ async function executeSudoCommand(
         // 添加密码等待步骤
         const step = executor.addStep({
           type: 'waiting_password',
-          content: `请在终端中输入密码\n提示: ${detection.prompt || 'Password:'}`,
+          content: `${t('password.enter_in_terminal')}\n${t('password.prompt')}: ${detection.prompt || 'Password:'}`,
           toolName: 'execute_command',
           toolArgs: { command },
           riskLevel: 'moderate'
@@ -641,7 +642,7 @@ async function executeSudoCommand(
       if (executor.isAborted()) {
         unsubscribe()
         terminalStateService.completeCommandExecution(ptyId, 130, 'cancelled')
-        return { success: false, output: stripAnsi(output), error: '操作已中止' }
+        return { success: false, output: stripAnsi(output), error: t('error.operation_aborted') }
       }
       
       // 检查终端是否回到空闲状态（命令执行完成）
@@ -678,7 +679,7 @@ async function executeSudoCommand(
         if (elapsed > sudoTimeout) {
           if (passwordStepId) {
             executor.updateStep(passwordStepId, {
-              content: `请在终端中输入密码\n⏰ 已等待较长时间，请尽快输入或按 Ctrl+C 取消`
+              content: `${t('password.enter_in_terminal')}\n⏰ ${t('password.waiting_long')}`
             })
           }
         }
@@ -695,17 +696,17 @@ async function executeSudoCommand(
           unsubscribe()
           terminalStateService.completeCommandExecution(ptyId, 124, 'timeout')
           
-          executor.addStep({
-            type: 'tool_result',
-            content: `⏱️ sudo 命令执行超时 (${sudoTimeout / 1000}秒)`,
-            toolName: 'execute_command',
-            toolResult: stripAnsi(output)
-          })
+            executor.addStep({
+              type: 'tool_result',
+              content: `⏱️ ${t('password.sudo_timeout')} (${sudoTimeout / 1000}${t('misc.seconds')})`,
+              toolName: 'execute_command',
+              toolResult: stripAnsi(output)
+            })
           
           return {
             success: false,
             output: stripAnsi(output),
-            error: '命令执行超时。请检查终端状态。'
+            error: t('error.check_terminal_status')
           }
         }
       }
@@ -726,13 +727,13 @@ async function executeSudoCommand(
     if (passwordStepId) {
       executor.updateStep(passwordStepId, {
         type: 'tool_result',
-        content: `密码验证完成`
+        content: t('password.verification_complete')
       })
     }
     
     executor.addStep({
       type: 'tool_result',
-      content: `命令执行完成`,
+      content: t('status.command_complete'),
       toolName: 'execute_command',
       toolResult: cleanOutput
     })
@@ -743,10 +744,10 @@ async function executeSudoCommand(
     unsubscribe()
     terminalStateService.completeCommandExecution(ptyId, 1, 'failed')
     
-    const errorMsg = error instanceof Error ? error.message : '命令执行失败'
+    const errorMsg = error instanceof Error ? error.message : t('status.command_failed')
     executor.addStep({
       type: 'tool_result',
-      content: `命令执行失败: ${errorMsg}`,
+      content: `${t('status.command_failed')}: ${errorMsg}`,
       toolName: 'execute_command',
       toolResult: errorMsg
     })
@@ -785,9 +786,9 @@ async function executeFireAndForget(
   
   executor.addStep({
     type: 'tool_result',
-    content: `🚀 ${handling.reason || '命令已启动'}`,
+    content: `🚀 ${handling.reason || t('status.command_started')}`,
     toolName: 'execute_command',
-    toolResult: initialOutput ? `初始输出:\n${truncateFromEnd(initialOutput, 300)}\n\n💡 ${hint}` : `💡 ${hint}`
+    toolResult: initialOutput ? t('command.initial_output', { output: truncateFromEnd(initialOutput, 300), hint }) : `💡 ${hint}`
   })
   
   return {
@@ -868,7 +869,7 @@ async function executeTimedCommand(
 
       executor.addStep({
         type: 'tool_result',
-        content: `✓ 命令执行了 ${timeout/1000} 秒 (${finalOutput.length} 字符)`,
+        content: `✓ ${t('timed.command_executed', { seconds: timeout/1000, chars: finalOutput.length })}`,
         toolName: 'execute_command',
         toolResult: truncatedDisplay
       })
@@ -876,7 +877,7 @@ async function executeTimedCommand(
       // 返回完整输出给 agent，不进行截断
       resolve({ 
         success: true, 
-        output: finalOutput || `命令执行了 ${timeout/1000} 秒，但没有输出内容。`
+        output: finalOutput || t('command.no_output', { seconds: timeout/1000 })
       })
     }, timeout)
   })
@@ -950,18 +951,18 @@ async function getTerminalContext(
     bufferLines = await getLastNLinesFromBuffer(ptyId, lines, 3000)
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : '未知错误'
-    return { success: false, output: '', error: `获取终端输出失败: ${errorMsg}` }
+    return { success: false, output: '', error: t('error.get_terminal_output_failed', { error: errorMsg }) }
   }
   
   if (!bufferLines || bufferLines.length === 0) {
-    return { success: true, output: '(终端输出为空)' }
+    return { success: true, output: t('error.terminal_output_empty') }
   }
   
   const output = stripAnsi(bufferLines.join('\n'))
   
   executor.addStep({
     type: 'tool_result',
-    content: `获取终端输出: ${bufferLines.length} 行`,
+    content: `${t('context.get_output')}: ${bufferLines.length}`,
     toolName: 'get_terminal_context',
     toolResult: truncateFromEnd(output, 500)
   })
@@ -979,7 +980,7 @@ async function checkTerminalStatus(
 ): Promise<ToolResult> {
   executor.addStep({
     type: 'tool_call',
-    content: '检查终端状态',
+    content: t('terminal.checking_status'),
     toolName: 'check_terminal_status',
     toolArgs: {},
     riskLevel: 'safe'
@@ -1159,17 +1160,17 @@ async function checkTerminalStatus(
     }
     executor.addStep({
       type: 'tool_result',
-      content: `终端状态: ${displayStatus}`,
+      content: `${t('terminal.status')}: ${displayStatus}`,
       toolName: 'check_terminal_status',
-      toolResult: terminalOutput.length > 0 ? `输出 ${terminalOutput.length} 行` : '(无输出)'
+      toolResult: terminalOutput.length > 0 ? t('terminal.output_lines', { count: terminalOutput.length }) : t('terminal.no_output')
     })
 
     return { success: true, output: outputText }
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : '状态检测失败'
+    const errorMsg = error instanceof Error ? error.message : t('terminal.status_detection_failed')
     executor.addStep({
       type: 'tool_result',
-      content: `状态检测失败: ${errorMsg}`,
+      content: `${t('terminal.status_detection_failed')}: ${errorMsg}`,
       toolName: 'check_terminal_status',
       toolResult: errorMsg
     })
@@ -1242,7 +1243,7 @@ async function sendControlKey(
 ): Promise<ToolResult> {
   const key = args.key as string
   if (!key) {
-    return { success: false, output: '', error: '必须指定要发送的控制键' }
+    return { success: false, output: '', error: t('error.control_key_required') }
   }
 
   // 控制键映射
@@ -1256,12 +1257,12 @@ async function sendControlKey(
 
   const keySequence = keyMap[key.toLowerCase()]
   if (!keySequence) {
-    return { success: false, output: '', error: `不支持的控制键: ${key}` }
+    return { success: false, output: '', error: t('error.control_key_not_supported', { key }) }
   }
 
   executor.addStep({
     type: 'tool_call',
-    content: `发送控制键: ${key}`,
+    content: `${t('control.send_key')}: ${key}`,
     toolName: 'send_control_key',
     toolArgs: { key },
     riskLevel: 'safe'
@@ -1276,9 +1277,9 @@ async function sendControlKey(
 
     executor.addStep({
       type: 'tool_result',
-      content: `已发送 ${key}`,
+      content: `${t('control.key_sent')} ${key}`,
       toolName: 'send_control_key',
-      toolResult: terminalOutput ? truncateFromEnd(terminalOutput, 300) : '控制键已发送'
+      toolResult: terminalOutput ? truncateFromEnd(terminalOutput, 300) : t('control.key_sent_result')
     })
 
     return { 
@@ -1305,17 +1306,17 @@ async function sendInput(
   const pressEnter = args.press_enter !== false // 默认 true
 
   if (text === undefined || text === null) {
-    return { success: false, output: '', error: '必须指定要发送的文本' }
+    return { success: false, output: '', error: t('error.input_text_required') }
   }
 
   // 安全检查：限制输入长度，防止发送过长的内容
   if (text.length > 1000) {
-    return { success: false, output: '', error: '输入文本过长（最大 1000 字符），请使用 write_file 工具处理大量内容' }
+    return { success: false, output: '', error: t('error.input_text_too_long') }
   }
 
   executor.addStep({
     type: 'tool_call',
-    content: `发送输入: "${text}"${pressEnter ? ' + Enter' : ''}`,
+    content: `${t('input.send')}: "${text}"${pressEnter ? ' + Enter' : ''}`,
     toolName: 'send_input',
     toolArgs: { text, press_enter: pressEnter },
     riskLevel: 'safe'
@@ -1337,9 +1338,9 @@ async function sendInput(
     
     executor.addStep({
       type: 'tool_result',
-      content: `已发送: ${inputDesc}`,
+      content: `${t('input.sent')}: ${inputDesc}`,
       toolName: 'send_input',
-      toolResult: terminalOutput ? truncateFromEnd(terminalOutput, 300) : '输入已发送'
+      toolResult: terminalOutput ? truncateFromEnd(terminalOutput, 300) : t('input.sent')
     })
 
     return { 
@@ -1365,7 +1366,7 @@ function readFile(
 ): ToolResult {
   let filePath = args.path as string
   if (!filePath) {
-    return { success: false, output: '', error: '文件路径不能为空' }
+    return { success: false, output: '', error: t('error.file_path_required') }
   }
 
   // 如果是相对路径，基于终端当前工作目录解析
@@ -1383,7 +1384,7 @@ function readFile(
 
   executor.addStep({
     type: 'tool_call',
-    content: `读取文件: ${filePath}${infoOnly ? ' (仅查询信息)' : ''}`,
+    content: infoOnly ? `${t('file.reading_info_only')}: ${filePath}` : `${t('file.reading')}: ${filePath}`,
     toolName: 'read_file',
     toolArgs: args,
     riskLevel: 'safe'
@@ -1441,7 +1442,7 @@ ${sampleContent ? `### 文件预览（前10行）\n\`\`\`\n${sampleContent}\n\`\
 
       executor.addStep({
         type: 'tool_result',
-        content: `文件信息: ${sizeMB} MB, ${totalLines.toLocaleString()} 行`,
+        content: `${t('file.file_info')}: ${sizeMB} MB, ${totalLines.toLocaleString()}`,
         toolName: 'read_file',
         toolResult: info
       })
@@ -1486,7 +1487,7 @@ ${sampleContent ? `### 文件预览（前10行）\n\`\`\`\n${sampleContent}\n\`\
 4. 使用 tail_lines 读取最后N行`
         executor.addStep({
           type: 'tool_result',
-          content: `文件读取失败: 文件过大`,
+          content: `${t('file.read_failed')}: ${t('file.file_too_large')}`,
           toolName: 'read_file',
           toolResult: errorMsg
         })
@@ -1511,7 +1512,7 @@ ${sampleContent ? `### 文件预览（前10行）\n\`\`\`\n${sampleContent}\n\`\
 
     executor.addStep({
       type: 'tool_result',
-      content: `文件读取成功: ${readInfo.join(', ')}`,
+      content: `${t('file.read_success')}: ${readInfo.join(', ')}`,
       toolName: 'read_file',
       toolResult: truncateFromEnd(content, 500) // UI 显示截断到 500 字符（保留最新内容）
     })
@@ -1525,11 +1526,11 @@ ${sampleContent ? `### 文件预览（前10行）\n\`\`\`\n${sampleContent}\n\`\
     
     executor.addStep({
       type: 'tool_result',
-      content: `文件读取失败: ${errorMsg}`,
+      content: `${t('file.read_failed')}: ${errorMsg}`,
       toolName: 'read_file',
       toolResult: `${errorMsg}\n\n💡 ${suggestion}`
     })
-    return { success: false, output: '', error: `${errorMsg}\n\n💡 恢复建议: ${suggestion}` }
+    return { success: false, output: '', error: t('error.recovery_hint', { error: errorMsg, suggestion }) }
   }
 }
 
@@ -1554,7 +1555,7 @@ async function writeFileViaSftp(
     return { 
       success: false, 
       output: '', 
-      error: 'SFTP 服务未初始化，无法写入远程文件。请检查 SSH 连接状态。' 
+      error: t('error.sftp_not_initialized') 
     }
   }
 
@@ -1562,7 +1563,7 @@ async function writeFileViaSftp(
     return { 
       success: false, 
       output: '', 
-      error: '无法获取 SSH 连接配置，无法写入远程文件。' 
+      error: t('error.ssh_config_unavailable') 
     }
   }
 
@@ -1581,7 +1582,7 @@ async function writeFileViaSftp(
     if (!sftpService.hasSession(ptyId)) {
       executor.addStep({
         type: 'tool_result',
-        content: `正在建立 SFTP 连接...`,
+        content: t('file.establishing_sftp'),
         toolName: 'write_file',
         isStreaming: true
       })
@@ -1612,7 +1613,7 @@ async function writeFileViaSftp(
         // 文件不存在，可以创建
       }
       if (fileExists) {
-        return { success: false, output: '', error: `文件已存在，无法创建: ${filePath}。如需覆盖请使用 mode='overwrite'` }
+        return { success: false, output: '', error: t('error.file_exists_cannot_create', { path: filePath }) }
       }
       await sftpService.writeFile(ptyId, filePath, content)
       resultMsg = `远程文件已创建: ${filePath}`
@@ -1646,19 +1647,19 @@ async function writeFileViaSftp(
 
     return { success: true, output: resultMsg }
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : '远程文件写入失败'
+    const errorMsg = error instanceof Error ? error.message : t('file.remote_write_failed')
     
     // 在终端显示错误提示
-    executor.terminalService.write(ptyId, `echo "❌ 文件写入失败: ${errorMsg}"\r`)
+    executor.terminalService.write(ptyId, `echo "❌ ${t('file.write_failed')}: ${errorMsg}"\r`)
     
     executor.addStep({
       type: 'tool_result',
-      content: `远程文件写入失败: ${errorMsg}`,
+      content: `${t('file.remote_write_failed')}: ${errorMsg}`,
       toolName: 'write_file',
       toolResult: errorMsg
     })
 
-    return { success: false, output: '', error: `远程文件写入失败: ${errorMsg}` }
+    return { success: false, output: '', error: `${t('file.remote_write_failed')}: ${errorMsg}` }
   }
 }
 
@@ -1684,43 +1685,43 @@ async function writeFile(
   const replaceAll = args.replace_all !== false // 默认 true
 
   if (!filePath) {
-    return { success: false, output: '', error: '文件路径不能为空' }
+    return { success: false, output: '', error: t('error.file_path_required') }
   }
 
   // 验证模式和必要参数
   const validModes = ['overwrite', 'create', 'append', 'insert', 'replace_lines', 'regex_replace']
   if (!validModes.includes(mode)) {
-    return { success: false, output: '', error: `无效的写入模式: ${mode}，支持的模式: ${validModes.join(', ')}` }
+    return { success: false, output: '', error: t('error.invalid_write_mode', { mode, modes: validModes.join(', ') }) }
   }
 
   // 验证各模式的必要参数
   if (mode === 'overwrite' || mode === 'create' || mode === 'append') {
     if (content === undefined) {
-      return { success: false, output: '', error: `${mode} 模式需要提供 content 参数` }
+      return { success: false, output: '', error: t('error.content_required_for_mode', { mode }) }
     }
   } else if (mode === 'insert') {
     if (content === undefined) {
-      return { success: false, output: '', error: 'insert 模式需要提供 content 参数' }
+      return { success: false, output: '', error: t('error.insert_content_required') }
     }
     if (insertAtLine === undefined || insertAtLine < 1) {
-      return { success: false, output: '', error: 'insert 模式需要提供有效的 insert_at_line 参数（从1开始）' }
+      return { success: false, output: '', error: t('error.insert_line_required') }
     }
   } else if (mode === 'replace_lines') {
     if (content === undefined) {
-      return { success: false, output: '', error: 'replace_lines 模式需要提供 content 参数' }
+      return { success: false, output: '', error: t('error.replace_content_required') }
     }
     if (startLine === undefined || startLine < 1) {
-      return { success: false, output: '', error: 'replace_lines 模式需要提供有效的 start_line 参数（从1开始）' }
+      return { success: false, output: '', error: t('error.replace_start_line_required') }
     }
     if (endLine === undefined || endLine < startLine) {
-      return { success: false, output: '', error: 'replace_lines 模式需要提供有效的 end_line 参数（必须 >= start_line）' }
+      return { success: false, output: '', error: t('error.replace_end_line_required') }
     }
   } else if (mode === 'regex_replace') {
     if (pattern === undefined) {
-      return { success: false, output: '', error: 'regex_replace 模式需要提供 pattern 参数' }
+      return { success: false, output: '', error: t('error.regex_pattern_required') }
     }
     if (replacement === undefined) {
-      return { success: false, output: '', error: 'regex_replace 模式需要提供 replacement 参数' }
+      return { success: false, output: '', error: t('error.regex_replacement_required') }
     }
   }
 
@@ -1729,10 +1730,10 @@ async function writeFile(
   if (terminalType === 'ssh') {
     // SSH 终端只支持 overwrite、create 和 append 模式
     if (mode !== 'overwrite' && mode !== 'create' && mode !== 'append') {
-      return { success: false, output: '', error: `SSH 远程终端不支持 ${mode} 模式，仅支持 overwrite、create 和 append。如需局部修改，请使用 execute_command 执行 sed/awk 等命令` }
+      return { success: false, output: '', error: t('error.ssh_mode_not_supported', { mode }) }
     }
     if (content === undefined) {
-      return { success: false, output: '', error: 'SSH 远程文件写入需要提供 content 参数' }
+      return { success: false, output: '', error: t('error.ssh_content_required') }
     }
     return writeFileViaSftp(ptyId, filePath, content, mode, toolCallId, config, executor)
   }
@@ -1749,13 +1750,13 @@ async function writeFile(
   let operationDesc = ''
   switch (mode) {
     case 'overwrite':
-      operationDesc = `覆盖写入文件: ${filePath}`
+      operationDesc = `${t('file.overwrite')}: ${filePath}`
       break
     case 'create':
       operationDesc = `新建文件: ${filePath}`
       break
     case 'append':
-      operationDesc = `追加写入文件: ${filePath}`
+      operationDesc = `${t('file.append')}: ${filePath}`
       break
     case 'insert':
       operationDesc = `在第 ${insertAtLine} 行插入内容: ${filePath}`
@@ -1795,7 +1796,7 @@ async function writeFile(
       'moderate'
     )
     if (!approved) {
-      return { success: false, output: '', error: '用户拒绝写入文件' }
+      return { success: false, output: '', error: t('file.user_rejected_write') }
     }
   }
 
@@ -1807,10 +1808,10 @@ async function writeFile(
   // 对于大文件，添加写入进度提示
   let progressStepId: string | undefined
   if (isLargeContent) {
-    const progressStep = executor.addStep({
-      type: 'tool_result',
-      content: `⏳ 正在写入文件...（${contentSizeKB} KB）`,
-      toolName: 'write_file',
+    const progressStep =       executor.addStep({
+        type: 'tool_result',
+        content: `⏳ ${t('file.writing_progress')}（${contentSizeKB} KB）`,
+        toolName: 'write_file',
       isStreaming: true
     })
     progressStepId = progressStep.id
@@ -1836,7 +1837,7 @@ async function writeFile(
       }
       case 'create': {
         if (fileExists) {
-          return { success: false, output: '', error: `文件已存在，无法创建: ${filePath}。如需覆盖请使用 mode='overwrite'` }
+          return { success: false, output: '', error: t('error.file_exists_cannot_create', { path: filePath }) }
         }
         fs.writeFileSync(filePath, content!, 'utf-8')
         resultMsg = `文件已创建: ${filePath}`
@@ -1849,7 +1850,7 @@ async function writeFile(
       }
       case 'insert': {
         if (!fileExists) {
-          return { success: false, output: '', error: '文件不存在，无法执行插入操作' }
+          return { success: false, output: '', error: t('error.file_not_exists_for_insert') }
         }
         const lines = fs.readFileSync(filePath, 'utf-8').split('\n')
         const insertIndex = Math.min(insertAtLine! - 1, lines.length)
@@ -1861,12 +1862,12 @@ async function writeFile(
       }
       case 'replace_lines': {
         if (!fileExists) {
-          return { success: false, output: '', error: '文件不存在，无法执行行替换操作' }
+          return { success: false, output: '', error: t('error.file_not_exists_for_replace') }
         }
         const lines = fs.readFileSync(filePath, 'utf-8').split('\n')
         const totalLines = lines.length
         if (startLine! > totalLines) {
-          return { success: false, output: '', error: `起始行 ${startLine} 超出文件总行数 ${totalLines}` }
+          return { success: false, output: '', error: t('error.start_line_exceeds_total', { start: startLine!, total: totalLines }) }
         }
         const actualEndLine = Math.min(endLine!, totalLines)
         const deleteCount = actualEndLine - startLine! + 1
@@ -1878,18 +1879,18 @@ async function writeFile(
       }
       case 'regex_replace': {
         if (!fileExists) {
-          return { success: false, output: '', error: '文件不存在，无法执行正则替换操作' }
+          return { success: false, output: '', error: t('error.file_not_exists_for_regex') }
         }
         const fileContent = fs.readFileSync(filePath, 'utf-8')
         let regex: RegExp
         try {
           regex = new RegExp(pattern!, replaceAll ? 'g' : '')
         } catch (e) {
-          return { success: false, output: '', error: `无效的正则表达式: ${pattern}` }
+          return { success: false, output: '', error: t('error.invalid_regex_pattern', { pattern: pattern! }) }
         }
         const matches = fileContent.match(regex)
         if (!matches || matches.length === 0) {
-          return { success: false, output: '', error: `未找到匹配的内容: ${pattern}` }
+          return { success: false, output: '', error: t('error.regex_no_match', { pattern: pattern! }) }
         }
         const newContent = fileContent.replace(regex, replacement!)
         fs.writeFileSync(filePath, newContent, 'utf-8')
@@ -1923,20 +1924,20 @@ async function writeFile(
     if (progressStepId) {
       executor.updateStep(progressStepId, {
         type: 'tool_result',
-        content: `❌ 文件写入失败: ${errorMsg}`,
+        content: `❌ ${t('file.write_failed')}: ${errorMsg}`,
         toolName: 'write_file',
         toolResult: `${errorMsg}\n\n💡 ${suggestion}`,
         isStreaming: false
       })
     } else {
-      executor.addStep({
-        type: 'tool_result',
-        content: `文件写入失败: ${errorMsg}`,
-        toolName: 'write_file',
+        executor.addStep({
+          type: 'tool_result',
+          content: `${t('file.write_failed')}: ${errorMsg}`,
+          toolName: 'write_file',
         toolResult: `${errorMsg}\n\n💡 ${suggestion}`
       })
     }
-    return { success: false, output: '', error: `${errorMsg}\n\n💡 恢复建议: ${suggestion}` }
+    return { success: false, output: '', error: t('error.recovery_hint', { error: errorMsg, suggestion }) }
   }
 }
 
@@ -1950,7 +1951,7 @@ async function rememberInfo(
 ): Promise<ToolResult> {
   const info = args.info as string
   if (!info) {
-    return { success: false, output: '', error: '信息不能为空' }
+    return { success: false, output: '', error: t('error.info_required') }
   }
 
   // 只过滤纯粹的动态数据（非常短且只包含动态值）
@@ -1966,15 +1967,15 @@ async function rememberInfo(
   if (isPureDynamic) {
     executor.addStep({
       type: 'tool_result',
-      content: `跳过: "${info}" (纯动态数据)`,
+      content: `${t('memory.skip_dynamic')}: "${info}"`,
       toolName: 'remember_info'
     })
-    return { success: true, output: '此信息为纯动态数据，不适合长期记忆' }
+    return { success: true, output: t('success.dynamic_data_skip') }
   }
 
   executor.addStep({
     type: 'tool_call',
-    content: `记住信息: ${info}`,
+    content: `${t('memory.remember')}: ${info}`,
     toolName: 'remember_info',
     toolArgs: args,
     riskLevel: 'safe'
@@ -1994,10 +1995,10 @@ async function rememberInfo(
           const memoryCount = knowledgeService.getHostMemoryCount(hostId)
           executor.addStep({
             type: 'tool_result',
-            content: `已记住: ${info} (知识库, 共 ${memoryCount} 条记忆)`,
+            content: `${t('memory.remembered')}: ${info} ${t('memory.remembered_knowledge', { count: memoryCount })}`,
             toolName: 'remember_info'
           })
-          return { success: true, output: `信息已保存到知识库 (当前主机共 ${memoryCount} 条记忆)` }
+          return { success: true, output: t('success.info_saved_to_knowledge', { count: memoryCount }) }
         }
       }
     } catch (error) {
@@ -2010,18 +2011,18 @@ async function rememberInfo(
     executor.hostProfileService.addNote(hostId, info)
     executor.addStep({
       type: 'tool_result',
-      content: `已记住: ${info} (主机档案)`,
+      content: `${t('memory.remembered')}: ${info} (${t('memory.remembered_profile')})`,
       toolName: 'remember_info'
     })
-    return { success: true, output: `信息已保存到主机档案` }
+    return { success: true, output: t('success.info_saved_to_profile') }
   }
 
   executor.addStep({
     type: 'tool_result',
-    content: `无法保存: 主机ID未知`,
+    content: t('memory.cannot_save'),
     toolName: 'remember_info'
   })
-  return { success: false, output: '', error: '无法保存：主机ID未知' }
+  return { success: false, output: '', error: t('error.cannot_save_unknown_host') }
 }
 
 /**
@@ -2035,12 +2036,12 @@ async function searchKnowledge(
   const limit = Math.min(Math.max(1, (args.limit as number) || 5), 20)
   
   if (!query) {
-    return { success: false, output: '', error: '查询内容不能为空' }
+    return { success: false, output: '', error: t('error.query_required') }
   }
 
   executor.addStep({
     type: 'tool_call',
-    content: `搜索知识库: "${query}"`,
+    content: `${t('knowledge.search')}: "${query}"`,
     toolName: 'search_knowledge',
     toolArgs: args,
     riskLevel: 'safe'
@@ -2052,19 +2053,19 @@ async function searchKnowledge(
     if (!knowledgeService) {
       executor.addStep({
         type: 'tool_result',
-        content: '知识库服务未初始化',
+        content: t('knowledge.not_initialized'),
         toolName: 'search_knowledge'
       })
-      return { success: false, output: '', error: '知识库服务未初始化' }
+      return { success: false, output: '', error: t('error.knowledge_not_initialized') }
     }
 
     if (!knowledgeService.isEnabled()) {
       executor.addStep({
         type: 'tool_result',
-        content: '知识库未启用',
+        content: t('knowledge.not_enabled'),
         toolName: 'search_knowledge'
       })
-      return { success: false, output: '', error: '知识库未启用，请在设置中开启' }
+      return { success: false, output: '', error: t('error.knowledge_not_enabled') }
     }
 
     const results = await knowledgeService.search(query, { 
@@ -2075,10 +2076,10 @@ async function searchKnowledge(
     if (results.length === 0) {
       executor.addStep({
         type: 'tool_result',
-        content: '未找到相关内容',
+        content: t('knowledge.no_results'),
         toolName: 'search_knowledge'
       })
-      return { success: true, output: '知识库中未找到与查询相关的内容' }
+      return { success: true, output: t('success.no_knowledge_found') }
     }
 
     // 格式化结果，对每个结果的内容进行截断（避免单个结果过长）
@@ -2099,7 +2100,7 @@ async function searchKnowledge(
 
     executor.addStep({
       type: 'tool_result',
-      content: `找到 ${results.length} 条相关内容 (${output.length} 字符)`,
+      content: t('knowledge.found_results', { count: results.length, chars: output.length }),
       toolName: 'search_knowledge',
       toolResult: displayOutput
     })
@@ -2110,7 +2111,7 @@ async function searchKnowledge(
     const errorMsg = error instanceof Error ? error.message : '搜索失败'
     executor.addStep({
       type: 'tool_result',
-      content: `搜索失败: ${errorMsg}`,
+      content: `${t('knowledge.search_failed')}: ${errorMsg}`,
       toolName: 'search_knowledge'
     })
     return { success: false, output: '', error: errorMsg }
@@ -2161,7 +2162,7 @@ async function wait(
   
   // 参数校验
   if (typeof totalSeconds !== 'number' || totalSeconds <= 0) {
-    return { success: false, output: '', error: '等待秒数必须是正数' }
+    return { success: false, output: '', error: t('error.wait_seconds_positive') }
   }
   
   const totalTimeDisplay = formatTotalTime(totalSeconds)
@@ -2169,7 +2170,7 @@ async function wait(
   // 添加等待步骤，显示计划等待时间
   const step = executor.addStep({
     type: 'waiting',
-    content: `☕ ${message}\n⏱️ 计划等待 ${totalTimeDisplay}，剩余 ${totalTimeDisplay}`,
+    content: `☕ ${message}\n${t('wait.planned', { total: totalTimeDisplay, remaining: totalTimeDisplay })}`,
     toolName: 'wait',
     toolArgs: { seconds: totalSeconds, message },
     riskLevel: 'safe'
@@ -2210,7 +2211,7 @@ async function wait(
     
     executor.updateStep(step.id, {
       type: 'waiting',
-      content: `☕ ${message}\n⏱️ 计划等待 ${totalTimeDisplay}，剩余 ${remainingTime} (${progress}%)`
+      content: `☕ ${message}\n${t('wait.progress', { total: totalTimeDisplay, remaining: remainingTime, progress })}`
     })
   }
 
@@ -2224,23 +2225,23 @@ async function wait(
       // 用户发消息中断 - 把消息内容告诉 Agent，让它决定怎么做
       executor.updateStep(step.id, {
         type: 'waiting',
-        content: `☕ ${message}\n📨 收到新消息！已等待 ${actualTimeDisplay}，原计划还剩 ${remainingTimeDisplay}`
+        content: `☕ ${message}\n${t('wait.new_message', { elapsed: actualTimeDisplay, remaining: remainingTimeDisplay })}`
       })
 
       return {
         success: true,
-        output: `用户发来消息："${userMessageContent}"\n\n已等待 ${actualTimeDisplay}，原计划还剩 ${remainingTimeDisplay}。\n请根据用户消息决定下一步：如果用户说不用等了/快好了，可以立即检查终端状态；如果用户说还要等/没那么快，可以再次调用 wait 继续等待。`
+        output: t('wait.user_message', { message: userMessageContent, elapsed: actualTimeDisplay, remaining: remainingTimeDisplay })
       }
     } else {
       // abort 中断
       executor.updateStep(step.id, {
         type: 'waiting',
-        content: `☕ ${message}\n🛑 好的，停下来了。已等待 ${actualTimeDisplay}`
+        content: `☕ ${message}\n${t('wait.stopped', { elapsed: actualTimeDisplay })}`
       })
 
       return {
         success: true,
-        output: `操作已中止，等待了 ${actualTimeDisplay}。`
+        output: t('wait.aborted', { elapsed: actualTimeDisplay })
       }
     }
   }
@@ -2248,12 +2249,12 @@ async function wait(
   // 正常完成
   executor.updateStep(step.id, {
     type: 'waiting',
-    content: `☕ ${message}\n✅ 等待完成，共等待 ${totalTimeDisplay}`
+    content: `☕ ${message}\n${t('wait.complete', { total: totalTimeDisplay })}`
   })
 
   return { 
     success: true, 
-    output: `已等待 ${totalTimeDisplay}，继续执行。现在你可以检查终端状态或继续其他操作。`
+    output: t('wait.finished', { total: totalTimeDisplay })
   }
 }
 
@@ -2272,7 +2273,7 @@ async function askUser(
   
   // 参数校验
   if (!question || typeof question !== 'string') {
-    return { success: false, output: '', error: '问题不能为空' }
+    return { success: false, output: '', error: t('error.question_required') }
   }
 
   // 限制选项数量为 10 个
@@ -2286,7 +2287,7 @@ async function askUser(
     content: question,
     toolName: 'ask_user',
     toolArgs: { question, options, allow_multiple: allowMultiple, default_value: defaultValue },
-    toolResult: '⏳ 等待回复中...',
+    toolResult: t('ask.waiting_reply'),
     riskLevel: 'safe'
   })
 
@@ -2300,9 +2301,9 @@ async function askUser(
     // 检查是否被中止
     if (executor.isAborted()) {
       executor.updateStep(step.id, {
-        toolResult: '🛑 已取消'
+        toolResult: t('ask.cancelled')
       })
-      return { success: false, output: '', error: '操作已中止' }
+      return { success: false, output: '', error: t('error.operation_aborted') }
     }
 
     // 检查是否有用户回复
@@ -2324,7 +2325,7 @@ async function askUser(
       : `${remainingSecs}秒`
     
     executor.updateStep(step.id, {
-      toolResult: `⏳ 等待回复中...（剩余 ${remainingDisplay}）`
+      toolResult: t('ask.waiting_remaining', { remaining: remainingDisplay })
     })
   }
 
@@ -2363,30 +2364,30 @@ async function askUser(
     }
 
     executor.updateStep(step.id, {
-      toolResult: `✅ ${finalResponse || '(空)'}`
+      toolResult: t('ask.received', { response: finalResponse || t('ask.empty') })
     })
 
     return {
       success: true,
-      output: `用户回复：${finalResponse || '(用户未提供内容)'}\n\n请根据用户的回复继续执行任务。`
+      output: t('ask.user_replied', { response: finalResponse || t('ask.user_no_content') })
     }
   } else {
     // 超时
     executor.updateStep(step.id, {
-      toolResult: '⏰ 等待超时'
+      toolResult: t('ask.timeout')
     })
 
     if (defaultValue) {
       return {
         success: true,
-        output: `用户未在 5 分钟内回复，使用默认值：${defaultValue}\n\n请使用默认值继续执行任务。`
+        output: t('ask.using_default', { default: defaultValue })
       }
     }
 
     return {
       success: false,
       output: '',
-      error: '等待用户回复超时（5分钟）。你可以：1) 再次询问用户；2) 采用合理的默认方案；3) 向用户说明需要更多信息才能继续。'
+      error: t('error.user_reply_timeout')
     }
   }
 }
@@ -2412,15 +2413,15 @@ function createPlan(
   
   // 参数校验
   if (!title || typeof title !== 'string') {
-    return { success: false, output: '', error: '计划标题不能为空' }
+    return { success: false, output: '', error: t('error.plan_title_required') }
   }
   
   if (!Array.isArray(stepsInput) || stepsInput.length === 0) {
-    return { success: false, output: '', error: '计划步骤不能为空' }
+    return { success: false, output: '', error: t('error.plan_steps_required') }
   }
   
   if (stepsInput.length > 10) {
-    return { success: false, output: '', error: '计划步骤最多 10 个' }
+    return { success: false, output: '', error: t('error.plan_steps_max') }
   }
   
   // 检查是否已有计划
@@ -2429,7 +2430,7 @@ function createPlan(
     return { 
       success: false, 
       output: '', 
-      error: `已存在计划"${existingPlan.title}"，请先完成当前计划或使用 update_plan 更新步骤状态` 
+      error: t('error.plan_exists', { title: existingPlan.title }) 
     }
   }
   
@@ -2454,7 +2455,7 @@ function createPlan(
   // 添加步骤（包含计划数据）
   executor.addStep({
     type: 'plan_created',
-    content: `📋 创建计划: ${title}`,
+    content: `📋 ${t('plan.create')}: ${title}`,
     toolName: 'create_plan',
     toolArgs: { title, steps: stepsInput.length },
     plan: plan,
@@ -2481,22 +2482,22 @@ function updatePlan(
   
   // 参数校验
   if (typeof stepIndex !== 'number' || stepIndex < 0) {
-    return { success: false, output: '', error: '步骤索引必须是非负整数' }
+    return { success: false, output: '', error: t('error.step_index_positive') }
   }
   
   const validStatuses: PlanStepStatus[] = ['pending', 'in_progress', 'completed', 'failed', 'skipped']
   if (!validStatuses.includes(status)) {
-    return { success: false, output: '', error: `无效的状态，可选值: ${validStatuses.join(', ')}` }
+    return { success: false, output: '', error: t('error.invalid_plan_status', { statuses: validStatuses.join(', ') }) }
   }
   
   // 获取当前计划
   const plan = executor.getCurrentPlan()
   if (!plan) {
-    return { success: false, output: '', error: '当前没有执行中的计划，请先使用 create_plan 创建计划' }
+    return { success: false, output: '', error: t('error.no_active_plan') }
   }
   
   if (stepIndex >= plan.steps.length) {
-    return { success: false, output: '', error: `步骤索引超出范围，计划共有 ${plan.steps.length} 个步骤（索引 0-${plan.steps.length - 1}）` }
+    return { success: false, output: '', error: t('error.step_index_out_of_range', { count: plan.steps.length, max: plan.steps.length - 1 }) }
   }
   
   // 更新步骤状态

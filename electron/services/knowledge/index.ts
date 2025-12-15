@@ -74,9 +74,8 @@ export class KnowledgeService extends EventEmitter {
     this.chunker = getChunker()
     this.bm25Index = getBM25Index()
     
-    // 设置分块选项
+    // 设置分块选项（maxChunkSize 在初始化后根据模型自动设置）
     this.chunker.setOptions({
-      maxChunkSize: this.settings.maxChunkSize,
       strategy: this.settings.chunkStrategy
     })
     
@@ -104,6 +103,16 @@ export class KnowledgeService extends EventEmitter {
           ? undefined 
           : this.settings.localModel
         await this.embeddingService.initialize(modelId)
+        
+        // 根据模型的 maxTokens 自动设置分块大小
+        const currentModel = this.embeddingService.getCurrentModel()
+        if (currentModel) {
+          this.chunker.setOptions({
+            maxChunkSize: currentModel.maxTokens,
+            strategy: this.settings.chunkStrategy
+          })
+          console.log(`[KnowledgeService] Auto-set maxChunkSize to ${currentModel.maxTokens} based on model ${currentModel.id}`)
+        }
       }
 
       // 初始化向量存储
@@ -617,10 +626,9 @@ export class KnowledgeService extends EventEmitter {
     this.settings = { ...this.settings, ...settings }
     this.configService.setKnowledgeSettings(this.settings)
 
-    // 更新分块选项
-    if (settings.maxChunkSize || settings.chunkStrategy) {
+    // 更新分块策略（maxChunkSize 由模型自动决定）
+    if (settings.chunkStrategy) {
       this.chunker.setOptions({
-        maxChunkSize: this.settings.maxChunkSize,
         strategy: this.settings.chunkStrategy
       })
     }
