@@ -561,6 +561,7 @@ export default {
     needConfirm: '需要确认',
     highRisk: '高风险',
     mediumRisk: '中风险',
+    lowRisk: '低风险',
     reject: '拒绝',
     allowExecute: '允许执行',
     supplementInfo: '补充信息',

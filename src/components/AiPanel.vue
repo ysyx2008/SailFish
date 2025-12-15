@@ -951,7 +951,7 @@ onMounted(() => {
                 <span class="confirm-icon">⚠️</span>
                 <span class="confirm-title">{{ t('ai.needConfirm') }}</span>
                 <span class="confirm-risk-badge" :class="getRiskClass(pendingConfirm.riskLevel)">
-                  {{ pendingConfirm.riskLevel === 'dangerous' ? t('ai.highRisk') : t('ai.mediumRisk') }}
+                  {{ pendingConfirm.riskLevel === 'dangerous' ? t('ai.highRisk') : (pendingConfirm.riskLevel === 'moderate' ? t('ai.mediumRisk') : t('ai.lowRisk')) }}
                 </span>
               </div>
               <div class="confirm-detail">
@@ -3395,6 +3395,11 @@ onMounted(() => {
 .confirm-risk-badge.risk-moderate {
   background: rgba(245, 158, 11, 0.2);
   color: #f59e0b;
+}
+
+.confirm-risk-badge.risk-safe {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
 }
 
 .confirm-detail {

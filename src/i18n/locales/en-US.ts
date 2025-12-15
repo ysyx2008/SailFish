@@ -561,6 +561,7 @@ export default {
     needConfirm: 'Confirmation Required',
     highRisk: 'High Risk',
     mediumRisk: 'Medium Risk',
+    lowRisk: 'Low Risk',
     reject: 'Reject',
     allowExecute: 'Allow Execute',
     supplementInfo: 'Supplement Info',
