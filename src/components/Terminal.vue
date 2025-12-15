@@ -662,7 +662,7 @@ defineExpose({
         @click="contextMenu.hasSelection && menuSendToAi()"
       >
         <span class="menu-icon">🤖</span>
-        <span>发送到 AI 分析</span>
+        <span>{{ t('terminal.contextMenu.sendToAi') }}</span>
       </div>
       <div class="menu-divider"></div>
       <div 
@@ -671,18 +671,18 @@ defineExpose({
         @click="contextMenu.hasSelection && menuCopy()"
       >
         <span class="menu-icon">📋</span>
-        <span>复制</span>
+        <span>{{ t('terminal.contextMenu.copy') }}</span>
         <span class="shortcut">Ctrl+C</span>
       </div>
       <div class="menu-item" @click="menuPaste()">
         <span class="menu-icon">📄</span>
-        <span>粘贴</span>
+        <span>{{ t('terminal.contextMenu.paste') }}</span>
         <span class="shortcut">Ctrl+V</span>
       </div>
       <div class="menu-divider"></div>
       <div class="menu-item" @click="menuClear()">
         <span class="menu-icon">🗑️</span>
-        <span>清屏</span>
+        <span>{{ t('terminal.contextMenu.clear') }}</span>
       </div>
     </div>
     <div 
