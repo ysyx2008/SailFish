@@ -140,6 +140,13 @@ interface Window {
     app: {
       getVersion: () => Promise<string>
     }
+    // 窗口操作
+    window: {
+      close: () => Promise<void>
+      forceQuit: () => Promise<void>
+      onRequestTerminalCount: (callback: () => void) => () => void
+      responseTerminalCount: (count: number) => void
+    }
     // 自动更新
     updater: {
       checkForUpdates: () => Promise<{
