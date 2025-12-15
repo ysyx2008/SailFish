@@ -14,6 +14,7 @@ export interface ModelInfo {
   huggingfaceId: string
   size: number           // 字节
   dimensions: number
+  maxTokens: number      // 模型支持的最大 token 数
   bundled: boolean       // 是否随软件打包
   downloadUrl?: string
   sha256?: string
@@ -125,7 +126,6 @@ export interface KnowledgeSettings {
   embeddingMcpServerId?: string
   // 搜索配置
   autoSaveUploads: boolean
-  maxChunkSize: number
   chunkStrategy: ChunkStrategy
   searchTopK: number
   enableRerank: boolean
@@ -139,7 +139,6 @@ export const DEFAULT_KNOWLEDGE_SETTINGS: KnowledgeSettings = {
   embeddingMode: 'local',
   localModel: 'auto',
   autoSaveUploads: true,
-  maxChunkSize: 512,
   chunkStrategy: 'paragraph',
   searchTopK: 10,
   enableRerank: true

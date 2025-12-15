@@ -319,8 +319,6 @@ export default {
     chunkParagraph: '按段落',
     chunkSemantic: '语义分块',
     chunkFixed: '固定大小',
-    maxChunkSize: '最大分块大小',
-    maxChunkSizeDesc: '每个分块的最大 token 数（128-4096）',
     docManagement: '文档管理',
     docCount: '{count} 个文档',
     manageDoc: '管理文档',

@@ -20,6 +20,7 @@ const MODELS: Record<ModelTier, ModelInfo> = {
     huggingfaceId: 'Xenova/all-MiniLM-L6-v2',
     size: 22_000_000,  // ~22MB
     dimensions: 384,
+    maxTokens: 512,    // max_position_embeddings
     bundled: true,
     sha256: undefined  // 打包模型不需要校验
   },
@@ -29,6 +30,7 @@ const MODELS: Record<ModelTier, ModelInfo> = {
     huggingfaceId: 'Xenova/bge-small-zh-v1.5',
     size: 95_000_000,  // ~95MB
     dimensions: 512,
+    maxTokens: 512,    // max_position_embeddings
     bundled: false,
     downloadUrl: 'https://huggingface.co/Xenova/bge-small-zh-v1.5/resolve/main',
     sha256: undefined
@@ -39,6 +41,7 @@ const MODELS: Record<ModelTier, ModelInfo> = {
     huggingfaceId: 'Xenova/bge-base-zh-v1.5',
     size: 400_000_000,  // ~400MB
     dimensions: 768,
+    maxTokens: 512,    // max_position_embeddings
     bundled: false,
     downloadUrl: 'https://huggingface.co/Xenova/bge-base-zh-v1.5/resolve/main',
     sha256: undefined

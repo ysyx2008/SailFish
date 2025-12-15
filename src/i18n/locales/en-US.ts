@@ -319,8 +319,6 @@ export default {
     chunkParagraph: 'By Paragraph',
     chunkSemantic: 'Semantic Chunking',
     chunkFixed: 'Fixed Size',
-    maxChunkSize: 'Max Chunk Size',
-    maxChunkSizeDesc: 'Maximum tokens per chunk (128-4096)',
     docManagement: 'Document Management',
     docCount: '{count} documents',
     manageDoc: 'Manage Documents',
