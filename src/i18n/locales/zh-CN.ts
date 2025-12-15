@@ -128,6 +128,16 @@ export default {
     contact: '联系我们',
     license: '开源协议',
     copyright: '© 2024 旗鱼',
+    // 更新检测
+    checkUpdate: '检查更新',
+    checkingUpdate: '正在检查更新...',
+    newVersionAvailable: '发现新版本 {version}',
+    downloadUpdate: '下载更新',
+    downloadingUpdate: '正在下载更新...',
+    updateReady: '版本 {version} 已准备就绪',
+    installAndRestart: '安装并重启',
+    upToDate: '当前已是最新版本',
+    updateError: '检查更新失败',
     // 赞助支持
     supportTitle: '支持作者',
     supportDescription: '如果旗鱼让你的工作更高效，欢迎请作者喝杯咖啡 ☕',
