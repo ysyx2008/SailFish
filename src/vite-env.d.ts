@@ -208,6 +208,11 @@ interface Window {
         exitCode?: number
         error?: string
       }>
+      getAvailableShells: () => Promise<Array<{
+        label: string
+        value: string
+        icon: string
+      }>>
       onData: (id: string, callback: (data: string) => void) => () => void
     }
     ssh: {
