@@ -1,0 +1,17 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Header from '../../components/Header.astro';
+import Stats from '../../components/Stats.astro';
+import Footer from '../../components/Footer.astro';
+
+const lang = 'en';
+---
+
+<Layout title="Download Stats - SFTerminal" lang={lang}>
+  <Header lang={lang} />
+  <main>
+    <Stats lang={lang} />
+  </main>
+  <Footer lang={lang} />
+</Layout>
+

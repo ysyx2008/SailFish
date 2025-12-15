@@ -4,13 +4,31 @@ interface Props {
 }
 
 const { lang = 'zh' } = Astro.props;
+
+// 多语言文本
+const t = {
+  title: lang === 'zh' ? '下载量统计' : 'Download Stats',
+  subtitle: lang === 'zh' ? '基于 GitHub Release 的实时下载数据' : 'Real-time download data from GitHub Releases',
+  totalDownloads: lang === 'zh' ? '总下载量' : 'Total Downloads',
+  totalReleases: lang === 'zh' ? '发布版本' : 'Releases',
+  latestVersion: lang === 'zh' ? '最新版本' : 'Latest Version',
+  platformDistribution: lang === 'zh' ? '平台分布' : 'Platform Distribution',
+  versionDetails: lang === 'zh' ? '版本详情' : 'Version Details',
+  loading: lang === 'zh' ? '正在加载数据...' : 'Loading data...',
+  dataSource: lang === 'zh' ? '数据来源于 GitHub Release API，实时获取' : 'Data sourced from GitHub Release API in real-time',
+  downloads: lang === 'zh' ? '下载' : 'downloads',
+  latest: lang === 'zh' ? '最新' : 'Latest',
+  preview: lang === 'zh' ? '预览' : 'Preview',
+  other: lang === 'zh' ? '其他' : 'Other',
+  errorMessage: lang === 'zh' ? '无法加载数据，请稍后重试' : 'Failed to load data, please try again later',
+};
 ---
 
-<section class="stats-section" id="stats">
+<section class="stats-section" id="stats" data-lang={lang}>
   <div class="container">
     <div class="stats-header">
-      <h1 class="section-title">下载量统计</h1>
-      <p class="section-subtitle">基于 GitHub Release 的实时下载数据</p>
+      <h1 class="section-title">{t.title}</h1>
+      <p class="section-subtitle">{t.subtitle}</p>
     </div>
 
     <!-- 总体统计卡片 -->
@@ -25,7 +43,7 @@ const { lang = 'zh' } = Astro.props;
         </div>
         <div class="summary-content">
           <span class="summary-value" id="total-downloads">-</span>
-          <span class="summary-label">总下载量</span>
+          <span class="summary-label">{t.totalDownloads}</span>
         </div>
       </div>
 
@@ -39,7 +57,7 @@ const { lang = 'zh' } = Astro.props;
         </div>
         <div class="summary-content">
           <span class="summary-value" id="total-releases">-</span>
-          <span class="summary-label">发布版本</span>
+          <span class="summary-label">{t.totalReleases}</span>
         </div>
       </div>
 
@@ -52,14 +70,14 @@ const { lang = 'zh' } = Astro.props;
         </div>
         <div class="summary-content">
           <span class="summary-value" id="latest-version">-</span>
-          <span class="summary-label">最新版本</span>
+          <span class="summary-label">{t.latestVersion}</span>
         </div>
       </div>
     </div>
 
     <!-- 平台统计 -->
     <div class="platform-stats">
-      <h2 class="subsection-title">平台分布</h2>
+      <h2 class="subsection-title">{t.platformDistribution}</h2>
       <div class="platform-grid">
         <div class="platform-card" data-platform="macos">
           <div class="platform-icon macos">
@@ -110,11 +128,11 @@ const { lang = 'zh' } = Astro.props;
 
     <!-- 版本详情列表 -->
     <div class="releases-section">
-      <h2 class="subsection-title">版本详情</h2>
+      <h2 class="subsection-title">{t.versionDetails}</h2>
       <div class="releases-list" id="releases-list">
         <div class="loading-state">
           <div class="loading-spinner"></div>
-          <span>正在加载数据...</span>
+          <span>{t.loading}</span>
         </div>
       </div>
     </div>
@@ -127,7 +145,7 @@ const { lang = 'zh' } = Astro.props;
           <line x1="12" y1="16" x2="12" y2="12"/>
           <line x1="12" y1="8" x2="12.01" y2="8"/>
         </svg>
-        数据来源于 GitHub Release API，实时获取
+        {t.dataSource}
       </p>
     </div>
   </div>
@@ -601,6 +619,20 @@ const { lang = 'zh' } = Astro.props;
 <script>
   const GITHUB_API_URL = 'https://api.github.com/repos/ysyx2008/SFTerminal/releases';
 
+  // 获取页面语言
+  const statsSection = document.getElementById('stats');
+  const lang = statsSection?.dataset.lang || 'zh';
+  const isZh = lang === 'zh';
+
+  // 翻译文本
+  const texts = {
+    latest: isZh ? '最新' : 'Latest',
+    preview: isZh ? '预览' : 'Preview',
+    downloads: isZh ? '下载' : 'downloads',
+    other: isZh ? '其他' : 'Other',
+    errorMessage: isZh ? '无法加载数据，请稍后重试' : 'Failed to load data, please try again later',
+  };
+
   interface Asset {
     name: string;
     download_count: number;
@@ -624,7 +656,7 @@ const { lang = 'zh' } = Astro.props;
 
   function formatDate(dateString: string): string {
     const date = new Date(dateString);
-    return date.toLocaleDateString('zh-CN', {
+    return date.toLocaleDateString(isZh ? 'zh-CN' : 'en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
@@ -722,7 +754,7 @@ const { lang = 'zh' } = Astro.props;
         macos: 'macOS',
         windows: 'Windows',
         linux: 'Linux',
-        other: '其他'
+        other: texts.other
       };
 
       const platformIcons: Record<string, string> = {
@@ -737,8 +769,8 @@ const { lang = 'zh' } = Astro.props;
           <div class="release-info">
             <div class="release-title">
               <span class="release-version">${release.tag_name}</span>
-              ${isLatest ? '<span class="release-badge">最新</span>' : ''}
-              ${release.prerelease ? '<span class="release-badge preview">预览</span>' : ''}
+              ${isLatest ? `<span class="release-badge">${texts.latest}</span>` : ''}
+              ${release.prerelease ? `<span class="release-badge preview">${texts.preview}</span>` : ''}
             </div>
             <span class="release-date">${formatDate(release.published_at)}</span>
           </div>
@@ -756,14 +788,14 @@ const { lang = 'zh' } = Astro.props;
           </div>
           <div class="release-total">
             <div class="release-total-value">${formatNumber(releaseDownloads)}</div>
-            <div class="release-total-label">下载</div>
+            <div class="release-total-label">${texts.downloads}</div>
           </div>
         </div>
       `;
     }).join('');
   }
 
-  function showError(message: string) {
+  function showError() {
     const releasesList = document.getElementById('releases-list');
     if (releasesList) {
       releasesList.innerHTML = `
@@ -773,7 +805,7 @@ const { lang = 'zh' } = Astro.props;
             <line x1="12" y1="8" x2="12" y2="12"/>
             <line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
-          <span>${message}</span>
+          <span>${texts.errorMessage}</span>
         </div>
       `;
     }
@@ -785,7 +817,7 @@ const { lang = 'zh' } = Astro.props;
       const releases = await fetchReleases();
       renderReleases(releases);
     } catch (error) {
-      showError('无法加载数据，请稍后重试');
+      showError();
     }
   });
 </script>
