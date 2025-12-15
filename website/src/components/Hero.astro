@@ -102,41 +102,146 @@ try {
       </span>
     </div>
     
-    <!-- 产品截图 -->
+    <!-- 产品截图轮播 -->
     <div class="hero-screenshot fade-in fade-in-delay-6">
       <div class="screenshot-frame">
-        <div class="screenshot-header">
-          <span class="dot red"></span>
-          <span class="dot yellow"></span>
-          <span class="dot green"></span>
+        <div class="screenshot-carousel" id="carousel">
+          <img 
+            src="/screenshot-welcome.png" 
+            alt={lang === 'zh' ? '旗鱼终端欢迎页面' : 'SFTerminal Welcome Page'} 
+            class="screenshot-image active"
+            loading="eager"
+          />
+          <img 
+            src="/screenshot-agent-intro.png" 
+            alt={lang === 'zh' ? 'AI Agent 介绍' : 'AI Agent Introduction'} 
+            class="screenshot-image"
+            loading="lazy"
+          />
+          <img 
+            src="/screenshot-agent-exec.png" 
+            alt={lang === 'zh' ? 'AI Agent 执行' : 'AI Agent Execution'} 
+            class="screenshot-image"
+            loading="lazy"
+          />
+          <img 
+            src="/screenshot-chat.png" 
+            alt={lang === 'zh' ? 'AI 对话' : 'AI Chat'} 
+            class="screenshot-image"
+            loading="lazy"
+          />
+          <img 
+            src="/screenshot-analyse.png" 
+            alt={lang === 'zh' ? '智能分析' : 'Smart Analysis'} 
+            class="screenshot-image"
+            loading="lazy"
+          />
         </div>
-        <div class="screenshot-content">
-          <div class="terminal-demo">
-            <div class="terminal-sidebar">
-              <div class="sidebar-item active">{t.hero.screenshot.production}</div>
-              <div class="sidebar-item">{t.hero.screenshot.test}</div>
-              <div class="sidebar-item">{t.hero.screenshot.dev}</div>
-            </div>
-            <div class="terminal-main">
-              <div class="terminal-line"><span class="prompt">$</span> <span class="cmd">df -h</span></div>
-              <div class="terminal-output">Filesystem      Size  Used Avail Use% Mounted on</div>
-              <div class="terminal-output">/dev/sda1       100G   45G   55G  45% /</div>
-              <div class="terminal-line"><span class="prompt">$</span> <span class="cursor">▌</span></div>
-            </div>
-            <div class="ai-panel">
-              <div class="ai-header">
-                <span class="ai-icon">✨</span>
-                <span>{t.hero.screenshot.aiAssistant}</span>
-              </div>
-              <div class="ai-message">
-                <div class="ai-bubble">{t.hero.screenshot.aiMessage}</div>
-              </div>
-            </div>
-          </div>
-        </div>
+        
+        <!-- 左右切换按钮 -->
+        <button class="carousel-btn carousel-prev" id="prevBtn" aria-label="Previous">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">
+            <path d="M15 18l-6-6 6-6"/>
+          </svg>
+        </button>
+        <button class="carousel-btn carousel-next" id="nextBtn" aria-label="Next">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">
+            <path d="M9 18l6-6-6-6"/>
+          </svg>
+        </button>
       </div>
       <div class="screenshot-glow"></div>
+      
+      <!-- 轮播指示器 -->
+      <div class="carousel-indicators">
+        <button class="indicator active" data-index="0" aria-label="Slide 1"></button>
+        <button class="indicator" data-index="1" aria-label="Slide 2"></button>
+        <button class="indicator" data-index="2" aria-label="Slide 3"></button>
+        <button class="indicator" data-index="3" aria-label="Slide 4"></button>
+        <button class="indicator" data-index="4" aria-label="Slide 5"></button>
+      </div>
     </div>
+    
+    <script>
+      // 轮播逻辑
+      const carousel = document.querySelector('.hero-screenshot');
+      const images = document.querySelectorAll('.screenshot-carousel .screenshot-image');
+      const indicators = document.querySelectorAll('.carousel-indicators .indicator');
+      const prevBtn = document.getElementById('prevBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      let currentIndex = 0;
+      let intervalId: ReturnType<typeof setInterval>;
+      let isPaused = false;
+      
+      function showSlide(index: number) {
+        images.forEach((img, i) => {
+          img.classList.toggle('active', i === index);
+        });
+        indicators.forEach((ind, i) => {
+          ind.classList.toggle('active', i === index);
+        });
+        currentIndex = index;
+      }
+      
+      function nextSlide() {
+        const next = (currentIndex + 1) % images.length;
+        showSlide(next);
+      }
+      
+      function prevSlide() {
+        const prev = (currentIndex - 1 + images.length) % images.length;
+        showSlide(prev);
+      }
+      
+      function startAutoPlay() {
+        if (!isPaused) {
+          intervalId = setInterval(nextSlide, 5000); // 每5秒切换
+        }
+      }
+      
+      function stopAutoPlay() {
+        clearInterval(intervalId);
+      }
+      
+      function resetAutoPlay() {
+        stopAutoPlay();
+        startAutoPlay();
+      }
+      
+      // 鼠标悬浮暂停
+      carousel?.addEventListener('mouseenter', () => {
+        isPaused = true;
+        stopAutoPlay();
+      });
+      
+      carousel?.addEventListener('mouseleave', () => {
+        isPaused = false;
+        startAutoPlay();
+      });
+      
+      // 点击指示器切换
+      indicators.forEach((indicator) => {
+        indicator.addEventListener('click', () => {
+          const index = parseInt(indicator.getAttribute('data-index') || '0');
+          showSlide(index);
+          resetAutoPlay();
+        });
+      });
+      
+      // 左右按钮切换
+      prevBtn?.addEventListener('click', () => {
+        prevSlide();
+        resetAutoPlay();
+      });
+      
+      nextBtn?.addEventListener('click', () => {
+        nextSlide();
+        resetAutoPlay();
+      });
+      
+      // 开始自动轮播
+      startAutoPlay();
+    </script>
   </div>
 </section>
 
@@ -264,150 +369,139 @@ try {
   
   .hero-screenshot {
     position: relative;
-    max-width: 1000px;
+    max-width: 950px;
     margin: 0 auto;
+    perspective: 1000px;
   }
   
   .screenshot-frame {
     position: relative;
-    background: var(--color-bg-secondary);
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--color-border);
+    border-radius: 16px;
     overflow: hidden;
-    box-shadow: var(--shadow-card);
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.3), rgba(59, 130, 246, 0.3), rgba(139, 92, 246, 0.3));
+    padding: 2px;
+    box-shadow: 
+      0 0 0 1px rgba(255, 255, 255, 0.1),
+      0 25px 50px -12px rgba(0, 0, 0, 0.6),
+      0 0 80px -20px rgba(6, 182, 212, 0.4);
+    transition: transform 0.4s ease, box-shadow 0.4s ease;
   }
   
-  .screenshot-header {
+  .screenshot-frame:hover {
+    transform: translateY(-8px) scale(1.01);
+    box-shadow: 
+      0 0 0 1px rgba(255, 255, 255, 0.15),
+      0 35px 60px -15px rgba(0, 0, 0, 0.7),
+      0 0 100px -10px rgba(6, 182, 212, 0.5);
+  }
+  
+  .screenshot-carousel {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--color-bg-secondary);
+  }
+  
+  .screenshot-image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 14px;
+    opacity: 0;
+    transform: scale(1.02);
+    transition: opacity 0.8s ease, transform 0.8s ease;
+  }
+  
+  .screenshot-image.active {
+    opacity: 1;
+    transform: scale(1);
+  }
+  
+  .carousel-indicators {
     display: flex;
-    gap: 8px;
-    padding: 12px 16px;
-    background: var(--color-bg-tertiary);
-    border-bottom: 1px solid var(--color-border);
+    justify-content: center;
+    gap: 10px;
+    margin-top: 20px;
   }
   
-  .dot {
-    width: 12px;
-    height: 12px;
+  .indicator {
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
-  }
-  
-  .dot.red { background: #ef4444; }
-  .dot.yellow { background: #f59e0b; }
-  .dot.green { background: #10b981; }
-  
-  .screenshot-content {
+    border: none;
+    background: rgba(255, 255, 255, 0.2);
+    cursor: pointer;
+    transition: all 0.3s ease;
     padding: 0;
   }
   
-  .terminal-demo {
-    display: grid;
-    grid-template-columns: 180px 1fr 280px;
-    min-height: 320px;
+  .indicator:hover {
+    background: rgba(255, 255, 255, 0.4);
+    transform: scale(1.2);
   }
   
-  .terminal-sidebar {
-    background: var(--color-bg-tertiary);
-    border-right: 1px solid var(--color-border);
-    padding: 12px;
+  .indicator.active {
+    background: var(--color-accent-primary);
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+    transform: scale(1.1);
   }
   
-  .sidebar-item {
-    padding: 10px 12px;
-    font-size: 13px;
-    color: var(--color-text-secondary);
-    border-radius: var(--radius-sm);
+  /* 左右切换按钮 */
+  .carousel-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 44px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    color: white;
     cursor: pointer;
-    margin-bottom: 4px;
-  }
-  
-  .sidebar-item.active {
-    background: var(--color-bg-card);
-    color: var(--color-text-primary);
-  }
-  
-  .terminal-main {
-    padding: 16px 20px;
-    font-family: var(--font-mono);
-    font-size: 14px;
-  }
-  
-  .terminal-line {
-    margin-bottom: 8px;
-  }
-  
-  .prompt {
-    color: var(--color-accent-primary);
-  }
-  
-  .cmd {
-    color: var(--color-text-primary);
-  }
-  
-  .terminal-output {
-    color: var(--color-text-secondary);
-    margin-bottom: 4px;
-    font-size: 13px;
-  }
-  
-  .cursor {
-    color: var(--color-accent-primary);
-    animation: blink 1s infinite;
-  }
-  
-  @keyframes blink {
-    0%, 50% { opacity: 1; }
-    51%, 100% { opacity: 0; }
-  }
-  
-  .ai-panel {
-    background: linear-gradient(180deg, rgba(6, 182, 212, 0.05) 0%, transparent 100%);
-    border-left: 1px solid var(--color-border);
-    padding: 16px;
-  }
-  
-  .ai-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--color-text-primary);
-    margin-bottom: 16px;
+    justify-content: center;
+    opacity: 0;
+    transition: all 0.3s ease;
+    z-index: 10;
   }
   
-  .ai-icon {
-    font-size: 16px;
+  .screenshot-frame:hover .carousel-btn {
+    opacity: 1;
   }
   
-  .ai-bubble {
-    background: var(--color-bg-card);
-    padding: 12px 16px;
-    border-radius: var(--radius-md);
-    font-size: 13px;
-    color: var(--color-text-secondary);
-    line-height: 1.6;
-    border: 1px solid var(--color-border);
+  .carousel-btn:hover {
+    background: rgba(6, 182, 212, 0.7);
+    transform: translateY(-50%) scale(1.1);
+  }
+  
+  .carousel-prev {
+    left: 16px;
+  }
+  
+  .carousel-next {
+    right: 16px;
   }
   
   .screenshot-glow {
     position: absolute;
-    inset: -2px;
-    background: var(--gradient-primary);
-    border-radius: var(--radius-lg);
+    inset: -40px;
+    background: radial-gradient(ellipse at center, rgba(6, 182, 212, 0.25) 0%, rgba(59, 130, 246, 0.15) 40%, transparent 70%);
+    border-radius: 50%;
     z-index: -1;
-    opacity: 0.15;
-    filter: blur(20px);
+    filter: blur(40px);
+    animation: glow-pulse 4s ease-in-out infinite;
   }
   
-  @media (max-width: 900px) {
-    .terminal-demo {
-      grid-template-columns: 1fr;
-    }
-    
-    .terminal-sidebar,
-    .ai-panel {
-      display: none;
-    }
+  @keyframes glow-pulse {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.05); }
   }
   
   @media (max-width: 768px) {

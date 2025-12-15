@@ -1251,6 +1251,9 @@ export class AgentService {
 
     let stepCount = 0
     let lastResponse: ChatWithToolsResult | null = null
+    let hasExecutedAnyTool = false  // 追踪是否执行过任何工具
+    let noToolCallRetryCount = 0  // 无工具调用时的重试次数
+    const MAX_NO_TOOL_RETRIES = 2  // 最大重试次数
 
     // 创建工具执行器配置
     // 使用统一终端服务（支持 PTY 和 SSH），如果没有则回退到 ptyService
@@ -1512,6 +1515,9 @@ export class AgentService {
             // 工具执行完成，恢复到 thinking 阶段
             this.setExecutionPhase(agentId, 'thinking')
 
+            // 标记已执行过工具
+            hasExecutedAnyTool = true
+
             // 更新反思追踪状态
             this.updateReflectionTracking(run, toolCall.function.name, toolArgs, result)
 
@@ -1552,7 +1558,64 @@ export class AgentService {
             run.reflection.failureCount = 0
           }
         } else {
-          // 没有工具调用，检查是否有未完成的计划步骤
+          // 没有工具调用
+          
+          // 情况1：从未执行过任何工具，提示 AI 使用工具
+          if (!hasExecutedAnyTool) {
+            noToolCallRetryCount++
+            
+            // 如果 AI 返回了内容，先显示给用户
+            if (response.content && response.content.trim()) {
+              // 已经在上面的流式步骤中显示了，这里只需要记录
+              console.log('[Agent] AI 返回了文字但未调用工具:', response.content.substring(0, 100))
+            }
+            
+            if (noToolCallRetryCount >= MAX_NO_TOOL_RETRIES) {
+              // 多次重试后仍然没有工具调用
+              // 添加警告步骤提示用户
+              this.addStep(agentId, {
+                type: 'error',
+                content: '⚠️ AI 没有执行任何实际操作。\n\n' +
+                  '可能的原因：\n' +
+                  '• 当前模型可能不支持工具调用（Function Calling）\n' +
+                  '• 请尝试使用支持 Function Calling 的模型，如 GPT-4、Claude 或 DeepSeek-Chat\n' +
+                  '• 或者换一种方式描述你的任务'
+              })
+              
+              // 不算作成功完成，而是以警告方式结束
+              run.isRunning = false
+              
+              // 使用 AI 的回复作为最终消息（如果有的话）
+              const warningMessage = response.content || '任务未执行：AI 未调用任何工具'
+              
+              const noToolCallbacks = this.getCallbacks(agentId)
+              if (noToolCallbacks.onComplete) {
+                noToolCallbacks.onComplete(agentId, warningMessage, [])
+              }
+              
+              return warningMessage
+            }
+            
+            // 添加提示消息，要求 AI 使用工具
+            run.messages.push({
+              role: 'assistant',
+              content: response.content || ''
+            })
+            run.messages.push({
+              role: 'user',
+              content: '请注意：你需要使用提供的工具来完成任务，而不是只给出文字回复。' +
+                '请使用 execute_command 执行命令，或使用其他合适的工具来实际完成任务。'
+            })
+            
+            this.addStep(agentId, {
+              type: 'thinking',
+              content: '🔄 正在要求 AI 使用工具执行任务...'
+            })
+            
+            continue  // 重试
+          }
+          
+          // 情况2：已执行过工具，检查是否有未完成的计划步骤
           if (run.currentPlan) {
             const pendingSteps = run.currentPlan.steps.filter(s => 
               s.status === 'pending' || s.status === 'in_progress'
@@ -1561,7 +1624,7 @@ export class AgentService {
             const planReminderCount = (run as any)._planReminderCount || 0
             if (pendingSteps.length > 0 && planReminderCount < 2) {
               // 有未完成的步骤，提示 AI 继续执行
-              const pendingStepTitles = pendingSteps.map((s, i) => 
+              const pendingStepTitles = pendingSteps.map((s, _i) => 
                 `${run.currentPlan!.steps.indexOf(s) + 1}. ${s.title}`
               ).join('\n')
               
@@ -1579,7 +1642,8 @@ export class AgentService {
               continue
             }
           }
-          // 没有计划或计划已完成，Agent 完成
+          
+          // 情况3：已执行过工具且没有未完成的计划，Agent 完成
           break
         }
       }
