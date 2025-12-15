@@ -147,6 +147,7 @@ process.on('unhandledRejection', (reason) => {
 })
 
 let mainWindow: BrowserWindow | null = null
+let forceQuit = false  // 是否强制退出（跳过确认）
 
 // 服务实例
 const ptyService = new PtyService()
@@ -332,6 +333,25 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null
   })
+
+  // 拦截窗口关闭事件，检查是否有打开的终端
+  mainWindow.on('close', async (event) => {
+    // 如果是强制退出，直接关闭
+    if (forceQuit) {
+      return
+    }
+
+    // 向渲染进程请求终端数量
+    event.preventDefault()
+    
+    try {
+      mainWindow?.webContents.send('window:requestTerminalCount')
+    } catch (e) {
+      // 如果发送失败，直接关闭
+      forceQuit = true
+      mainWindow?.close()
+    }
+  })
 }
 
 // 应用准备就绪
@@ -354,6 +374,20 @@ app.whenReady().then(async () => {
   })
 })
 
+// macOS 上处理 Cmd+Q 退出
+app.on('before-quit', (event) => {
+  // 如果已经强制退出，不拦截
+  if (forceQuit) {
+    return
+  }
+  
+  // 拦截退出，让窗口的 close 事件处理确认逻辑
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    event.preventDefault()
+    mainWindow.close()  // 触发窗口的 close 事件
+  }
+})
+
 // 所有窗口关闭时退出应用（Windows & Linux）
 app.on('window-all-closed', () => {
   // 清理所有 PTY、SSH、SFTP 和 MCP 连接
@@ -361,6 +395,9 @@ app.on('window-all-closed', () => {
   sshService.disposeAll()
   sftpService.disconnectAll()
   mcpService.disconnectAll()
+
+  // 重置强制退出标志
+  forceQuit = false
 
   if (process.platform !== 'darwin') {
     app.quit()
@@ -649,6 +686,44 @@ ipcMain.handle('ai:abort', async (_event, requestId?: string) => {
 // 应用信息
 ipcMain.handle('app:getVersion', async () => {
   return APP_VERSION
+})
+
+// 关闭当前窗口
+ipcMain.handle('window:close', async () => {
+  mainWindow?.close()
+})
+
+// 响应终端数量查询，决定是否需要确认退出
+ipcMain.on('window:terminalCountResponse', async (_event, terminalCount: number) => {
+  if (terminalCount > 0) {
+    // 有终端，显示确认对话框
+    const result = await dialog.showMessageBox(mainWindow!, {
+      type: 'question',
+      buttons: ['取消', '退出'],
+      defaultId: 0,
+      cancelId: 0,
+      title: '确认退出',
+      message: '确定要退出程序吗？',
+      detail: `当前有 ${terminalCount} 个终端会话正在运行，退出将关闭所有会话。`
+    })
+
+    if (result.response === 1) {
+      // 用户确认退出
+      forceQuit = true
+      mainWindow?.close()
+    }
+    // 用户取消，不做任何操作
+  } else {
+    // 没有终端，直接退出
+    forceQuit = true
+    mainWindow?.close()
+  }
+})
+
+// 强制退出（跳过确认）
+ipcMain.handle('window:forceQuit', async () => {
+  forceQuit = true
+  mainWindow?.close()
 })
 
 // ==================== 自动更新 ====================

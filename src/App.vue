@@ -55,11 +55,36 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
     event.preventDefault()
     terminalStore.createTab('local')
   }
+
+  // Ctrl+W / Cmd+W 关闭当前终端或窗口
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'w') {
+    event.preventDefault()
+    handleCloseShortcut()
+  }
 }
+
+// 处理关闭快捷键
+const handleCloseShortcut = async () => {
+  // 如果有活跃终端，关闭当前终端
+  if (terminalStore.tabs.length > 0 && terminalStore.activeTabId) {
+    await terminalStore.closeTab(terminalStore.activeTabId)
+  } else {
+    // 没有活跃终端时关闭窗口
+    await window.electronAPI.window.close()
+  }
+}
+
+// 清理函数存储
+let cleanupTerminalCountListener: (() => void) | null = null
 
 onMounted(async () => {
   // 注册全局快捷键
   document.addEventListener('keydown', handleGlobalKeydown)
+
+  // 注册终端数量查询响应（用于退出确认）
+  cleanupTerminalCountListener = window.electronAPI.window.onRequestTerminalCount(() => {
+    window.electronAPI.window.responseTerminalCount(terminalStore.tabs.length)
+  })
 
   // 加载配置
   await configStore.loadConfig()
@@ -232,6 +257,8 @@ onUnmounted(() => {
   document.removeEventListener('keydown', handleGlobalKeydown)
   document.removeEventListener('mousemove', handleResize)
   document.removeEventListener('mouseup', stopResize)
+  // 清理终端数量查询监听器
+  cleanupTerminalCountListener?.()
 })
 </script>
 

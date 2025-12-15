@@ -237,6 +237,24 @@ const electronAPI = {
     getVersion: () => ipcRenderer.invoke('app:getVersion') as Promise<string>
   },
 
+  // 窗口操作
+  window: {
+    close: () => ipcRenderer.invoke('window:close'),
+    forceQuit: () => ipcRenderer.invoke('window:forceQuit'),
+    // 监听主进程请求终端数量
+    onRequestTerminalCount: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on('window:requestTerminalCount', handler)
+      return () => {
+        ipcRenderer.removeListener('window:requestTerminalCount', handler)
+      }
+    },
+    // 响应终端数量
+    responseTerminalCount: (count: number) => {
+      ipcRenderer.send('window:terminalCountResponse', count)
+    }
+  },
+
   // 自动更新
   updater: {
     // 检查更新
