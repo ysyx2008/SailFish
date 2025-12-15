@@ -6,6 +6,11 @@ on:
     paths:
       - 'website/**'
   workflow_dispatch:
+  # 当 Build Release 工作流完成时自动触发
+  workflow_run:
+    workflows: ["Build Release"]
+    types:
+      - completed
 
 permissions:
   contents: read
