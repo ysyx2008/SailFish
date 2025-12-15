@@ -273,7 +273,8 @@ export function assessCommandRisk(command: string): RiskLevel {
     /\bdnf\s+install/,                  // dnf install
     /\bnpm\s+install/,                  // npm install
     /\bpip\s+install/,                  // pip install
-    /\bgit\s+(pull|push|commit)/        // git 修改操作
+    /\bgit\s+(pull|push|commit)/,       // git 修改操作
+    /[^>]>\s*[^>]/,                     // 重定向覆盖文件（> file，但排除 >> 追加）
   ]
   if (moderate.some(p => p.test(cmd))) return 'moderate'
 
