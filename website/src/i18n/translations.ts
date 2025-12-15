@@ -16,6 +16,7 @@ export const translations = {
     nav: {
       features: '功能特性',
       download: '下载',
+      stats: '统计',
       github: 'GitHub',
       cta: '立即下载',
     },
@@ -151,6 +152,7 @@ export const translations = {
     nav: {
       features: 'Features',
       download: 'Download',
+      stats: 'Stats',
       github: 'GitHub',
       cta: 'Download Now',
     },
