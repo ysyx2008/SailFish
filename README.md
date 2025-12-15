@@ -377,7 +377,7 @@ MCP (Model Context Protocol) 允许扩展 Agent 的能力，接入外部工具�
 ### 开源许可：AGPL v3.0
 以下场景可免费使用，需遵守 [AGPL v3.0](https://www.gnu.org/licenses/agpl-3.0.html) 全部条款：
 - ✅ 个人学习、研究、日常使用
-- ✅ 企业内部使用（**≤10 套**，且修改需开源）
+- ✅ 企业内部使用（**≤1000 套**，且修改需开源）
 - ✅ 非盈利组织 / 教育机构
 
 详细及商用条款请查看 [LICENSE](./LICENSE) 文件。
