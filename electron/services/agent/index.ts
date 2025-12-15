@@ -122,12 +122,11 @@ export class AgentService {
   private configService?: ConfigService
   private runs: Map<string, AgentRun> = new Map()
 
-  // 事件回调
-  private onStepCallback?: AgentCallbacks['onStep']
-  private onNeedConfirmCallback?: AgentCallbacks['onNeedConfirm']
-  private onCompleteCallback?: AgentCallbacks['onComplete']
-  private onErrorCallback?: AgentCallbacks['onError']
-  private onTextChunkCallback?: AgentCallbacks['onTextChunk']
+  // 事件回调 - 每个 run 独立的回调存储在 runCallbacks 中
+  // 类级别回调作为默认/全局回调（向后兼容）
+  private defaultCallbacks: AgentCallbacks = {}
+  // 每个 agentId 对应的回调
+  private runCallbacks: Map<string, AgentCallbacks> = new Map()
 
   constructor(
     aiService: AiService, 
@@ -178,14 +177,31 @@ export class AgentService {
   }
 
   /**
-   * 设置事件回调
+   * 设置默认事件回调（向后兼容）
    */
   setCallbacks(callbacks: AgentCallbacks): void {
-    this.onStepCallback = callbacks.onStep
-    this.onNeedConfirmCallback = callbacks.onNeedConfirm
-    this.onCompleteCallback = callbacks.onComplete
-    this.onErrorCallback = callbacks.onError
-    this.onTextChunkCallback = callbacks.onTextChunk
+    this.defaultCallbacks = callbacks
+  }
+
+  /**
+   * 为特定 run 设置回调（解决多终端同时运行时回调覆盖问题）
+   */
+  setRunCallbacks(agentId: string, callbacks: AgentCallbacks): void {
+    this.runCallbacks.set(agentId, callbacks)
+  }
+
+  /**
+   * 获取特定 run 的回调（优先使用 run 级别回调，否则使用默认回调）
+   */
+  private getCallbacks(agentId: string): AgentCallbacks {
+    return this.runCallbacks.get(agentId) || this.defaultCallbacks
+  }
+
+  /**
+   * 清理 run 的回调
+   */
+  private clearRunCallbacks(agentId: string): void {
+    this.runCallbacks.delete(agentId)
   }
 
   /**
@@ -936,9 +952,10 @@ export class AgentService {
     }
     run.steps.push(fullStep)
 
-    // 触发回调
-    if (this.onStepCallback) {
-      this.onStepCallback(agentId, fullStep)
+    // 触发回调（使用 run 级别回调）
+    const callbacks = this.getCallbacks(agentId)
+    if (callbacks.onStep) {
+      callbacks.onStep(agentId, fullStep)
     }
     
     // Worker 模式：报告进度给协调器
@@ -974,9 +991,10 @@ export class AgentService {
       Object.assign(step, updates)
     }
 
-    // 触发回调
-    if (this.onStepCallback) {
-      this.onStepCallback(agentId, step)
+    // 触发回调（使用 run 级别回调）
+    const callbacks = this.getCallbacks(agentId)
+    if (callbacks.onStep) {
+      callbacks.onStep(agentId, step)
     }
   }
 
@@ -1028,9 +1046,10 @@ export class AgentService {
 
       run.pendingConfirmation = confirmation
 
-      // 通知前端需要确认
-      if (this.onNeedConfirmCallback) {
-        this.onNeedConfirmCallback(confirmation)
+      // 通知前端需要确认（使用 run 级别回调）
+      const callbacks = this.getCallbacks(agentId)
+      if (callbacks.onNeedConfirm) {
+        callbacks.onNeedConfirm(confirmation)
       }
     })
   }
@@ -1062,6 +1081,7 @@ export class AgentService {
    * @param config Agent 配置
    * @param profileId AI 配置档案 ID
    * @param workerOptions Worker 模式选项（智能巡检时使用）
+   * @param callbacks 可选的回调函数（每个 run 独立，解决多终端并发问题）
    */
   async run(
     ptyId: string,
@@ -1069,10 +1089,16 @@ export class AgentService {
     context: AgentContext,
     config?: Partial<AgentConfig>,
     profileId?: string,
-    workerOptions?: WorkerAgentOptions
+    workerOptions?: WorkerAgentOptions,
+    callbacks?: AgentCallbacks
   ): Promise<string> {
     const agentId = this.generateId()
     const fullConfig = { ...DEFAULT_AGENT_CONFIG, ...config }
+
+    // 如果提供了回调，注册为 run 级别回调（解决多终端同时运行时回调覆盖问题）
+    if (callbacks) {
+      this.setRunCallbacks(agentId, callbacks)
+    }
 
     // 初始化运行状态
     const run: AgentRun = {
@@ -1548,10 +1574,11 @@ export class AgentService {
       const finalMessage = lastResponse?.content || '任务完成'
 
       console.log('[Agent] run completed normally, calling onCompleteCallback')
-      if (this.onCompleteCallback) {
+      const callbacks = this.getCallbacks(agentId)
+      if (callbacks.onComplete) {
         // 如果有待处理的用户消息，附带在完成回调中
         // 前端可以据此决定是否自动启动新对话
-        this.onCompleteCallback(agentId, finalMessage, pendingMessages)
+        callbacks.onComplete(agentId, finalMessage, pendingMessages)
       }
 
       console.log('[Agent] returning finalMessage')
@@ -1581,8 +1608,9 @@ export class AgentService {
         console.log('[Agent] AI request aborted but has valid response, treating as success')
         const finalMessage = lastResponse!.content || '任务完成'
         
-        if (this.onCompleteCallback) {
-          this.onCompleteCallback(agentId, finalMessage)
+        const successCallbacks = this.getCallbacks(agentId)
+        if (successCallbacks.onComplete) {
+          successCallbacks.onComplete(agentId, finalMessage)
         }
         
         return finalMessage
@@ -1594,8 +1622,9 @@ export class AgentService {
         content: `执行出错: ${errorMsg}`
       })
 
-      if (this.onErrorCallback) {
-        this.onErrorCallback(agentId, errorMsg)
+      const errorCallbacks = this.getCallbacks(agentId)
+      if (errorCallbacks.onError) {
+        errorCallbacks.onError(agentId, errorMsg)
       }
 
       throw error
@@ -1606,6 +1635,8 @@ export class AgentService {
         run.outputUnsubscribe = undefined
         console.log('[Agent] 已清理终端输出监听器')
       }
+      // 清理 run 级别的回调
+      this.clearRunCallbacks(agentId)
     }
   }
 
@@ -1715,10 +1746,8 @@ export class AgentService {
     run.executionPhase = phase
     run.currentToolName = toolName
 
-    // 发送阶段更新事件到前端
-    if (this.onStepCallback) {
-      // 使用现有的 step 机制发送阶段更新（可选，取决于是否需要实时更新 UI）
-    }
+    // 发送阶段更新事件到前端（可选，取决于是否需要实时更新 UI）
+    // 如需要，可通过 this.getCallbacks(agentId).onStep 发送
   }
 
   /**
