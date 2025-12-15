@@ -1,5 +1,7 @@
 appId: com.sfterm.terminal
 productName: SFTerm
+# macOS 本地化应用名称修复钩子
+afterPack: ./scripts/afterPack.js
 directories:
   buildResources: resources
   output: release
@@ -39,7 +41,13 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: SFTerminal
+  shortcutName: 旗鱼终端
+  # 多语言安装程序
+  installerLanguages:
+    - en_US
+    - zh_CN
+    - zh_TW
+  language: 2052
 mac:
   icon: resources/icon.icns
   target:
@@ -47,18 +55,24 @@ mac:
       arch:
         - x64
         - arm64
-  # 本地化应用名称支持 - 将 .lproj 文件复制到 Contents/Resources/
+  # 本地化应用名称支持 - 将 .lproj 文件复制到 Resources/
   extraFiles:
     - from: "resources/zh-Hans.lproj"
-      to: "Contents/Resources/zh-Hans.lproj"
+      to: "Resources/zh-Hans.lproj"
     - from: "resources/zh-Hant.lproj"
-      to: "Contents/Resources/zh-Hant.lproj"
+      to: "Resources/zh-Hant.lproj"
     - from: "resources/en.lproj"
-      to: "Contents/Resources/en.lproj"
+      to: "Resources/en.lproj"
   extendInfo:
-    CFBundleDisplayName: SFTerminal
+    # 不设置 CFBundleDisplayName，让系统从 InfoPlist.strings 读取本地化名称
     CFBundleDevelopmentRegion: en
     LSHasLocalizedDisplayName: true
+    CFBundleLocalizations:
+      - en
+      - zh_CN
+      - zh_TW
+      - zh-Hans
+      - zh-Hant
 linux:
   icon: resources
   target:
