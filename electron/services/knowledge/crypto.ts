@@ -2,11 +2,12 @@
  * 知识库加密工具
  * 使用 AES-256-GCM 加密主机记忆等敏感数据
  * 支持用户密码派生密钥（PBKDF2）
+ * 支持使用系统钥匙串记住密码
  */
 import * as crypto from 'crypto'
 import * as fs from 'fs'
 import * as path from 'path'
-import { app } from 'electron'
+import { app, safeStorage } from 'electron'
 
 const ALGORITHM = 'aes-256-gcm'
 const IV_LENGTH = 16
@@ -30,6 +31,123 @@ function getPasswordFilePath(): string {
 // 缓存派生的密钥
 let cachedKey: Buffer | null = null
 let cachedSalt: Buffer | null = null
+
+// 系统钥匙串存储密码的文件路径
+let savedPasswordFilePath: string | null = null
+function getSavedPasswordFilePath(): string {
+  if (!savedPasswordFilePath) {
+    savedPasswordFilePath = path.join(app.getPath('userData'), 'knowledge', '.saved_password')
+  }
+  return savedPasswordFilePath
+}
+
+/**
+ * 将密码保存到系统钥匙串（使用 safeStorage 加密存储）
+ * @param password 用户密码
+ */
+export function savePasswordToKeychain(password: string): boolean {
+  try {
+    if (!safeStorage.isEncryptionAvailable()) {
+      console.warn('[Crypto] safeStorage 不可用，无法保存密码')
+      return false
+    }
+
+    const encrypted = safeStorage.encryptString(password)
+    const dir = path.dirname(getSavedPasswordFilePath())
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
+    }
+    fs.writeFileSync(getSavedPasswordFilePath(), encrypted)
+    console.log('[Crypto] 密码已保存到系统钥匙串')
+    return true
+  } catch (e) {
+    console.error('[Crypto] 保存密码到钥匙串失败:', e)
+    return false
+  }
+}
+
+/**
+ * 从系统钥匙串获取保存的密码
+ * @returns 密码字符串，如果未保存或解密失败则返回 null
+ */
+export function getPasswordFromKeychain(): string | null {
+  try {
+    const filePath = getSavedPasswordFilePath()
+    if (!fs.existsSync(filePath)) {
+      return null
+    }
+
+    if (!safeStorage.isEncryptionAvailable()) {
+      console.warn('[Crypto] safeStorage 不可用，无法读取密码')
+      return null
+    }
+
+    const encrypted = fs.readFileSync(filePath)
+    const password = safeStorage.decryptString(encrypted)
+    return password
+  } catch (e) {
+    console.error('[Crypto] 从钥匙串读取密码失败:', e)
+    return null
+  }
+}
+
+/**
+ * 清除系统钥匙串中保存的密码
+ */
+export function clearSavedPassword(): void {
+  try {
+    const filePath = getSavedPasswordFilePath()
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath)
+      console.log('[Crypto] 已清除钥匙串中的密码')
+    }
+  } catch (e) {
+    console.error('[Crypto] 清除钥匙串密码失败:', e)
+  }
+}
+
+/**
+ * 检查是否有保存的密码
+ */
+export function hasSavedPassword(): boolean {
+  return fs.existsSync(getSavedPasswordFilePath())
+}
+
+/**
+ * 自动解锁知识库（使用保存的密码）
+ * @returns 是否成功解锁
+ */
+export function autoUnlock(): boolean {
+  // 如果没有设置密码，不需要解锁
+  if (!hasPassword()) {
+    console.log('[Crypto] 未设置知识库密码，无需解锁')
+    return true
+  }
+
+  // 如果已经解锁，不需要再次解锁
+  if (isUnlocked()) {
+    console.log('[Crypto] 知识库已解锁')
+    return true
+  }
+
+  // 尝试从钥匙串获取密码
+  const savedPassword = getPasswordFromKeychain()
+  if (!savedPassword) {
+    console.log('[Crypto] 钥匙串中没有保存的密码，需要用户手动输入')
+    return false
+  }
+
+  // 验证并解锁
+  const success = verifyPassword(savedPassword)
+  if (success) {
+    console.log('[Crypto] 使用保存的密码自动解锁成功')
+  } else {
+    console.log('[Crypto] 保存的密码验证失败，可能密码已更改')
+    // 清除无效的保存密码
+    clearSavedPassword()
+  }
+  return success
+}
 
 /**
  * 从密码派生密钥
@@ -177,11 +295,14 @@ export function clearPassword(): void {
 }
 
 /**
- * 锁定知识库（清除缓存的密钥）
+ * 锁定知识库（清除缓存的密钥，并清除钥匙串中的密码）
+ * 只有用户手动锁定时才会清除保存的密码，这样下次启动需要重新输入
  */
 export function lock(): void {
   cachedKey = null
-  console.log('[Crypto] 知识库已锁定')
+  // 手动锁定时，清除钥匙串中的密码
+  clearSavedPassword()
+  console.log('[Crypto] 知识库已锁定，保存的密码已清除')
 }
 
 /**

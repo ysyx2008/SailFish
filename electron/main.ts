@@ -362,6 +362,14 @@ app.whenReady().then(async () => {
   // 初始化知识库服务（确保 Agent 可以访问）
   await initKnowledgeService()
   
+  // 自动解锁知识库（使用系统钥匙串中保存的密码）
+  try {
+    const { autoUnlock } = await import('./services/knowledge/crypto')
+    autoUnlock()
+  } catch (e) {
+    console.error('[Main] 知识库自动解锁失败:', e)
+  }
+  
   // 初始化屏幕内容服务（供 Agent 获取准确的终端输出）
   initScreenContentService()
 
@@ -2177,8 +2185,10 @@ ipcMain.handle('knowledge:getPasswordInfo', async () => {
 // 设置密码
 ipcMain.handle('knowledge:setPassword', async (_event, password: string) => {
   try {
-    const { setPassword } = await import('./services/knowledge/crypto')
+    const { setPassword, savePasswordToKeychain } = await import('./services/knowledge/crypto')
     setPassword(password)
+    // 设置密码成功后，自动保存到系统钥匙串
+    savePasswordToKeychain(password)
     return { success: true }
   } catch (error) {
     return { 
@@ -2191,8 +2201,12 @@ ipcMain.handle('knowledge:setPassword', async (_event, password: string) => {
 // 验证密码（解锁知识库）
 ipcMain.handle('knowledge:verifyPassword', async (_event, password: string) => {
   try {
-    const { verifyPassword } = await import('./services/knowledge/crypto')
+    const { verifyPassword, savePasswordToKeychain } = await import('./services/knowledge/crypto')
     const valid = verifyPassword(password)
+    if (valid) {
+      // 验证成功后，自动保存到系统钥匙串（下次启动自动解锁）
+      savePasswordToKeychain(password)
+    }
     return { success: valid, error: valid ? undefined : '密码错误' }
   } catch (error) {
     return { 
@@ -2205,8 +2219,10 @@ ipcMain.handle('knowledge:verifyPassword', async (_event, password: string) => {
 // 修改密码
 ipcMain.handle('knowledge:changePassword', async (_event, oldPassword: string, newPassword: string) => {
   try {
-    const { changePassword } = await import('./services/knowledge/crypto')
+    const { changePassword, savePasswordToKeychain } = await import('./services/knowledge/crypto')
     changePassword(oldPassword, newPassword)
+    // 修改密码成功后，保存新密码到系统钥匙串
+    savePasswordToKeychain(newPassword)
     return { success: true }
   } catch (error) {
     return { 
@@ -2233,7 +2249,7 @@ ipcMain.handle('knowledge:checkEncryptedData', async () => {
 // 会自动解密所有加密数据后再清除密码，确保数据不会丢失
 ipcMain.handle('knowledge:clearPassword', async (_event, password: string) => {
   try {
-    const { verifyPassword, clearPassword, decryptAllData, checkEncryptedData } = await import('./services/knowledge/crypto')
+    const { verifyPassword, clearPassword, decryptAllData, checkEncryptedData, clearSavedPassword } = await import('./services/knowledge/crypto')
     
     // 先验证密码
     if (!verifyPassword(password)) {
@@ -2259,6 +2275,8 @@ ipcMain.handle('knowledge:clearPassword', async (_event, password: string) => {
     
     // 解密成功后清除密码
     clearPassword()
+    // 同时清除系统钥匙串中保存的密码
+    clearSavedPassword()
     return { 
       success: true, 
       decryptedCount: hasEncryptedData ? encryptedCount : 0,
