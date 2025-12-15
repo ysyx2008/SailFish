@@ -34,6 +34,7 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron',
+            emptyOutDir: true,  // 构建前清空输出目录，防止旧文件堆积
             rollupOptions: {
               external: [
                 'node-pty', 
