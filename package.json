@@ -26,6 +26,7 @@
     "postversion": "git push && git push origin v$npm_package_version"
   },
   "dependencies": {
+    "electron-updater": "^6.1.7",
     "@lancedb/lancedb": "^0.22.3",
     "@langchain/textsplitters": "^1.0.1",
     "@modelcontextprotocol/sdk": "^1.24.3",

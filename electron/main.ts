@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, shell, Menu, dialog } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import path, { join } from 'path'
 import * as fs from 'fs'
 import { execSync } from 'child_process'
@@ -644,6 +645,148 @@ ipcMain.handle('ai:abort', async (_event, requestId?: string) => {
 // 应用信息
 ipcMain.handle('app:getVersion', async () => {
   return APP_VERSION
+})
+
+// ==================== 自动更新 ====================
+
+// 配置自动更新
+autoUpdater.autoDownload = false  // 禁用自动下载，由用户手动触发
+autoUpdater.autoInstallOnAppQuit = true
+
+// 更新状态
+let updateStatus: {
+  status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
+  info?: {
+    version?: string
+    releaseNotes?: string
+    releaseDate?: string
+  }
+  progress?: {
+    percent: number
+    bytesPerSecond: number
+    total: number
+    transferred: number
+  }
+  error?: string
+} = { status: 'idle' }
+
+// 自动更新事件处理
+autoUpdater.on('checking-for-update', () => {
+  console.log('[AutoUpdater] 正在检查更新...')
+  updateStatus = { status: 'checking' }
+  mainWindow?.webContents.send('updater:status-changed', updateStatus)
+})
+
+autoUpdater.on('update-available', (info) => {
+  console.log('[AutoUpdater] 发现新版本:', info.version)
+  updateStatus = {
+    status: 'available',
+    info: {
+      version: info.version,
+      releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined,
+      releaseDate: info.releaseDate
+    }
+  }
+  mainWindow?.webContents.send('updater:status-changed', updateStatus)
+})
+
+autoUpdater.on('update-not-available', () => {
+  console.log('[AutoUpdater] 当前已是最新版本')
+  updateStatus = { status: 'not-available' }
+  mainWindow?.webContents.send('updater:status-changed', updateStatus)
+})
+
+autoUpdater.on('download-progress', (progress) => {
+  console.log(`[AutoUpdater] 下载进度: ${progress.percent.toFixed(1)}%`)
+  updateStatus = {
+    status: 'downloading',
+    progress: {
+      percent: progress.percent,
+      bytesPerSecond: progress.bytesPerSecond,
+      total: progress.total,
+      transferred: progress.transferred
+    }
+  }
+  mainWindow?.webContents.send('updater:status-changed', updateStatus)
+})
+
+autoUpdater.on('update-downloaded', (info) => {
+  console.log('[AutoUpdater] 更新下载完成:', info.version)
+  updateStatus = {
+    status: 'downloaded',
+    info: {
+      version: info.version,
+      releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined,
+      releaseDate: info.releaseDate
+    }
+  }
+  mainWindow?.webContents.send('updater:status-changed', updateStatus)
+})
+
+autoUpdater.on('error', (error) => {
+  console.error('[AutoUpdater] 更新错误:', error)
+  updateStatus = {
+    status: 'error',
+    error: error.message || '未知错误'
+  }
+  mainWindow?.webContents.send('updater:status-changed', updateStatus)
+})
+
+// 检查更新
+ipcMain.handle('updater:checkForUpdates', async () => {
+  try {
+    // 开发模式下模拟检查更新
+    if (!app.isPackaged) {
+      console.log('[AutoUpdater] 开发模式，模拟检查更新')
+      updateStatus = { status: 'checking' }
+      mainWindow?.webContents.send('updater:status-changed', updateStatus)
+      
+      // 模拟延迟
+      await new Promise(resolve => setTimeout(resolve, 1500))
+      
+      updateStatus = { status: 'not-available' }
+      mainWindow?.webContents.send('updater:status-changed', updateStatus)
+      return { success: true, status: updateStatus }
+    }
+    
+    const result = await autoUpdater.checkForUpdates()
+    return { success: true, updateInfo: result?.updateInfo }
+  } catch (error) {
+    console.error('[AutoUpdater] 检查更新失败:', error)
+    return { success: false, error: error instanceof Error ? error.message : '检查更新失败' }
+  }
+})
+
+// 下载更新
+ipcMain.handle('updater:downloadUpdate', async () => {
+  try {
+    if (!app.isPackaged) {
+      console.log('[AutoUpdater] 开发模式，模拟下载更新')
+      return { success: false, error: '开发模式不支持下载更新' }
+    }
+    
+    await autoUpdater.downloadUpdate()
+    return { success: true }
+  } catch (error) {
+    console.error('[AutoUpdater] 下载更新失败:', error)
+    return { success: false, error: error instanceof Error ? error.message : '下载更新失败' }
+  }
+})
+
+// 安装更新并重启
+ipcMain.handle('updater:quitAndInstall', async () => {
+  try {
+    autoUpdater.quitAndInstall(false, true)
+    return { success: true }
+  } catch (error) {
+    console.error('[AutoUpdater] 安装更新失败:', error)
+    return { success: false, error: error instanceof Error ? error.message : '安装更新失败' }
+  }
+})
+
+// 获取当前更新状态
+ipcMain.handle('updater:getStatus', async () => {
+  return updateStatus
 })
 
 // 配置相关

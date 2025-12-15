@@ -30,6 +30,23 @@ type SettingsTab = 'ai' | 'mcp' | 'knowledge' | 'theme' | 'terminal' | 'data' | 
 const activeTab = ref<SettingsTab>('ai')
 const appVersion = ref<string>('')
 const showConfirmDialog = ref(false)
+
+// 更新相关状态
+const updateStatus = ref<{
+  status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
+  info?: {
+    version?: string
+    releaseNotes?: string
+    releaseDate?: string
+  }
+  progress?: {
+    percent: number
+    bytesPerSecond: number
+    total: number
+    transferred: number
+  }
+  error?: string
+}>({ status: 'idle' })
 const showUnlockAnimation = ref(false)
 const showBadgeWithAnimation = ref(false)
 const aboutContentRef = ref<HTMLElement | null>(null)
@@ -223,6 +240,37 @@ const resetSponsorStatus = async () => {
   }
 }
 
+// 检查更新
+const checkForUpdates = async () => {
+  updateStatus.value = { status: 'checking' }
+  const result = await window.electronAPI.updater.checkForUpdates()
+  if (!result.success && result.error) {
+    updateStatus.value = { status: 'error', error: result.error }
+  }
+}
+
+// 下载更新
+const downloadUpdate = async () => {
+  const result = await window.electronAPI.updater.downloadUpdate()
+  if (!result.success && result.error) {
+    updateStatus.value = { status: 'error', error: result.error }
+  }
+}
+
+// 安装更新并重启
+const installUpdate = async () => {
+  await window.electronAPI.updater.quitAndInstall()
+}
+
+// 格式化文件大小
+const formatBytes = (bytes: number): string => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
 // ESC 关闭处理
 const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
@@ -239,6 +287,9 @@ const handleKeydown = (e: KeyboardEvent) => {
 // 模态框引用
 const modalRef = ref<HTMLElement | null>(null)
 
+// 更新状态变化监听器清理函数
+let unsubscribeUpdater: (() => void) | null = null
+
 // 初始化时设置初始 tab 和获取版本号
 onMounted(async () => {
   if (props.initialTab && ['ai', 'mcp', 'knowledge', 'theme', 'terminal', 'data', 'language', 'about'].includes(props.initialTab)) {
@@ -250,6 +301,14 @@ onMounted(async () => {
   // 添加键盘事件监听
   document.addEventListener('keydown', handleKeydown)
   
+  // 监听更新状态变化
+  unsubscribeUpdater = window.electronAPI.updater.onStatusChanged((status) => {
+    updateStatus.value = status
+  })
+  
+  // 获取当前更新状态
+  updateStatus.value = await window.electronAPI.updater.getStatus()
+  
   // 聚焦到模态框容器使其可接收键盘事件
   await nextTick()
   modalRef.value?.focus()
@@ -257,6 +316,11 @@ onMounted(async () => {
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown)
+  // 清理更新状态监听器
+  if (unsubscribeUpdater) {
+    unsubscribeUpdater()
+    unsubscribeUpdater = null
+  }
 })
 
 const tabs = computed(() => [
@@ -392,6 +456,73 @@ const onQrImageError = (event: Event) => {
             <div class="about-logo">{{ brandLogo }}</div>
             <h3>{{ brandName }}</h3>
             <p class="version">{{ t('common.version') }} {{ oemConfig.brand.version || appVersion }}</p>
+            
+            <!-- 更新检测区域 -->
+            <div class="update-section">
+              <!-- 检查更新按钮 -->
+              <button 
+                v-if="updateStatus.status === 'idle' || updateStatus.status === 'not-available' || updateStatus.status === 'error'"
+                class="btn btn-outline update-btn"
+                @click="checkForUpdates"
+                :disabled="updateStatus.status === 'checking'"
+              >
+                🔄 {{ t('about.checkUpdate') }}
+              </button>
+              
+              <!-- 检查中状态 -->
+              <div v-else-if="updateStatus.status === 'checking'" class="update-status checking">
+                <span class="update-spinner"></span>
+                <span>{{ t('about.checkingUpdate') }}</span>
+              </div>
+              
+              <!-- 发现新版本 -->
+              <div v-else-if="updateStatus.status === 'available'" class="update-status available">
+                <div class="update-info">
+                  <span class="update-icon">🎉</span>
+                  <span>{{ t('about.newVersionAvailable', { version: updateStatus.info?.version }) }}</span>
+                </div>
+                <button class="btn btn-primary update-btn" @click="downloadUpdate">
+                  ⬇️ {{ t('about.downloadUpdate') }}
+                </button>
+              </div>
+              
+              <!-- 下载中状态 -->
+              <div v-else-if="updateStatus.status === 'downloading'" class="update-status downloading">
+                <div class="update-info">
+                  <span>{{ t('about.downloadingUpdate') }}</span>
+                  <span class="download-percent">{{ updateStatus.progress?.percent.toFixed(1) }}%</span>
+                </div>
+                <div class="progress-bar">
+                  <div class="progress-fill" :style="{ width: `${updateStatus.progress?.percent || 0}%` }"></div>
+                </div>
+                <div class="download-details">
+                  <span>{{ formatBytes(updateStatus.progress?.transferred || 0) }} / {{ formatBytes(updateStatus.progress?.total || 0) }}</span>
+                  <span>{{ formatBytes(updateStatus.progress?.bytesPerSecond || 0) }}/s</span>
+                </div>
+              </div>
+              
+              <!-- 下载完成，等待安装 -->
+              <div v-else-if="updateStatus.status === 'downloaded'" class="update-status downloaded">
+                <div class="update-info">
+                  <span class="update-icon">✅</span>
+                  <span>{{ t('about.updateReady', { version: updateStatus.info?.version }) }}</span>
+                </div>
+                <button class="btn btn-primary update-btn" @click="installUpdate">
+                  🚀 {{ t('about.installAndRestart') }}
+                </button>
+              </div>
+              
+              <!-- 已是最新版本（刚检查完） -->
+              <div v-if="updateStatus.status === 'not-available'" class="update-hint success">
+                ✓ {{ t('about.upToDate') }}
+              </div>
+              
+              <!-- 错误状态 -->
+              <div v-if="updateStatus.status === 'error'" class="update-hint error">
+                ⚠️ {{ updateStatus.error || t('about.updateError') }}
+              </div>
+            </div>
+            
             <p class="description">
               {{ t('about.description') }}
             </p>
@@ -606,7 +737,131 @@ const onQrImageError = (event: Event) => {
 .version {
   color: var(--text-muted);
   font-size: 14px;
+  margin-bottom: 12px;
+}
+
+/* 更新检测区域 */
+.update-section {
   margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.update-btn {
+  padding: 6px 16px;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.update-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.update-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.update-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  min-width: 280px;
+}
+
+.update-status.checking {
+  color: var(--text-secondary);
+}
+
+.update-status.available {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(139, 195, 74, 0.1) 100%);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.update-status.downloading {
+  background: linear-gradient(135deg, rgba(33, 150, 243, 0.1) 0%, rgba(3, 169, 244, 0.1) 100%);
+  border: 1px solid rgba(33, 150, 243, 0.3);
+}
+
+.update-status.downloaded {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.15) 0%, rgba(139, 195, 74, 0.15) 100%);
+  border: 1px solid rgba(76, 175, 80, 0.4);
+}
+
+.update-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.update-icon {
+  font-size: 18px;
+}
+
+.update-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-primary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-primary), #4ecdc4);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.download-percent {
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+.download-details {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.update-hint {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 12px;
+}
+
+.update-hint.success {
+  color: #4caf50;
+  background: rgba(76, 175, 80, 0.1);
+}
+
+.update-hint.error {
+  color: #f44336;
+  background: rgba(244, 67, 54, 0.1);
 }
 
 .description {

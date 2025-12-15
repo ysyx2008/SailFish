@@ -3,6 +3,11 @@ productName: SFTerm
 directories:
   buildResources: resources
   output: release
+# 自动更新配置
+publish:
+  provider: github
+  owner: ysyx2008
+  repo: SFTerminal
 # 构建加速配置
 electronDownload:
   cache: ./electron-cache

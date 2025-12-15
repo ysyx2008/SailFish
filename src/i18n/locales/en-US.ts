@@ -128,6 +128,16 @@ export default {
     contact: 'Contact Us',
     license: 'License',
     copyright: '© 2024 SFTerminal',
+    // Update check
+    checkUpdate: 'Check for Updates',
+    checkingUpdate: 'Checking for updates...',
+    newVersionAvailable: 'New version {version} available',
+    downloadUpdate: 'Download Update',
+    downloadingUpdate: 'Downloading update...',
+    updateReady: 'Version {version} is ready',
+    installAndRestart: 'Install and Restart',
+    upToDate: 'You are up to date',
+    updateError: 'Failed to check for updates',
     // Sponsor support
     supportTitle: 'Support the Author',
     supportDescription: 'If you find this software helpful, consider buying me a coffee ☕',
