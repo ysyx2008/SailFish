@@ -21,7 +21,7 @@ const emit = defineEmits<{
 const recentSessions = computed(() => {
   return [...configStore.sshSessions]
     .sort((a, b) => (b.lastUsedAt || 0) - (a.lastUsedAt || 0))
-    .slice(0, 5)
+    .slice(0, 3)
 })
 
 // 是否有保存的会话
