@@ -641,7 +641,7 @@ const deleteGroup = async (groupName: string) => {
             </div>
             <div class="session-info">
               <div class="session-name">{{ session.name }}</div>
-              <div class="session-host">{{ session.username }}@{{ session.host }}:{{ session.port }}</div>
+              <div class="session-host">{{ session.username }}@{{ session.host }}{{ session.port !== 22 ? ':' + session.port : '' }}</div>
             </div>
             <div class="session-actions">
               <button class="btn-icon btn-sm" @click.stop="connectSession(session)" :title="t('session.connect')">
