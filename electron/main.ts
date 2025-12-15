@@ -8,7 +8,6 @@ import { execSync } from 'child_process'
 // 这个调用必须在 app.whenReady() 之前
 if (!app.isPackaged) {
   app.disableHardwareAcceleration()
-  console.log('[Main] 开发模式：已禁用硬件加速以防止热重载崩溃')
 }
 
 // 读取 package.json 获取版本号（开发模式下 app.getVersion() 返回 Electron 版本）
@@ -47,12 +46,9 @@ function fixPath(): void {
       const shellPaths = shellPath.split(':')
       const allPaths = [...new Set([...shellPaths, ...currentPaths])]
       process.env.PATH = allPaths.join(':')
-      
-      console.log('[Main] PATH 已修复，添加了用户 shell 的路径')
     }
   } catch (error) {
     // 如果获取失败，手动添加常见的开发工具路径
-    console.warn('[Main] 无法从 shell 获取 PATH，使用备用方案:', error)
     
     const homeDir = process.env.HOME || ''
     const commonPaths = [
@@ -94,7 +90,6 @@ function fixPath(): void {
       const currentPaths = (process.env.PATH || '').split(':')
       const allPaths = [...new Set([...expandedPaths, ...currentPaths])]
       process.env.PATH = allPaths.join(':')
-      console.log('[Main] PATH 备用修复完成，添加了常见开发工具路径')
     }
   }
 }
@@ -206,8 +201,6 @@ async function initKnowledgeService(): Promise<void> {
       // 迁移旧的主机 notes 到知识库
       await migrateHostNotesToKnowledge()
     }
-    
-    console.log('[Main] KnowledgeService initialized')
   } catch (e) {
     console.error('[Main] Failed to initialize KnowledgeService:', e)
   }
@@ -228,8 +221,6 @@ async function migrateHostNotesToKnowledge(): Promise<void> {
     return  // 已迁移过，跳过
   }
   
-  console.log('[Main] 开始迁移主机 notes 到知识库...')
-  
   try {
     const profiles = hostProfileService.getAllProfiles()
     let totalMigrated = 0
@@ -245,19 +236,12 @@ async function migrateHostNotesToKnowledge(): Promise<void> {
         // 迁移完成后清空旧的 notes（但保留其他档案信息）
         if (migrated > 0) {
           hostProfileService.updateProfile(profile.hostId, { notes: [] })
-          console.log(`[Main] 已迁移主机 ${profile.hostId} 的 ${migrated} 条 notes`)
         }
       }
     }
     
     // 创建迁移标记文件
     fs.writeFileSync(migrationFlagPath, new Date().toISOString(), 'utf-8')
-    
-    if (totalMigrated > 0) {
-      console.log(`[Main] 主机 notes 迁移完成，共迁移 ${totalMigrated} 条记忆`)
-    } else {
-      console.log('[Main] 没有需要迁移的主机 notes')
-    }
   } catch (e) {
     console.error('[Main] 迁移主机 notes 失败:', e)
   }

@@ -85,7 +85,6 @@ export class BM25Index extends EventEmitter {
       await this.loadIndex()
 
       this.isInitialized = true
-      console.log(`[BM25] Initialized with ${this.documents.size} documents`)
     } catch (error) {
       console.error('[BM25] Initialization failed:', error)
       throw error
@@ -347,7 +346,6 @@ export class BM25Index extends EventEmitter {
       }
 
       fs.writeFileSync(this.indexPath, JSON.stringify(data), 'utf-8')
-      console.log(`[BM25] Index saved: ${this.documents.size} documents`)
     } catch (error) {
       console.error('[BM25] Failed to save index:', error)
     }
@@ -359,7 +357,6 @@ export class BM25Index extends EventEmitter {
   private async loadIndex(): Promise<void> {
     try {
       if (!fs.existsSync(this.indexPath)) {
-        console.log('[BM25] No existing index found')
         return
       }
 
@@ -382,8 +379,6 @@ export class BM25Index extends EventEmitter {
       for (const [term, postings] of (data.invertedIndex || [])) {
         this.invertedIndex.set(term, new Map(postings))
       }
-
-      console.log(`[BM25] Index loaded: ${this.documents.size} documents`)
     } catch (error) {
       console.error('[BM25] Failed to load index:', error)
       // 清空重建
@@ -409,8 +404,6 @@ export class BM25Index extends EventEmitter {
     if (fs.existsSync(this.indexPath)) {
       fs.unlinkSync(this.indexPath)
     }
-
-    console.log('[BM25] Index cleared')
   }
 
   /**

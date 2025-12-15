@@ -84,20 +84,15 @@ export class EmbeddingService extends EventEmitter {
    */
   private async doInitialize(model: ModelInfo): Promise<void> {
     try {
-      console.log(`[Embedding] Loading model: ${model.id} (${model.huggingfaceId})`)
-
       const { pipeline, env } = await loadTransformers()
       
       // 获取模型路径
       const modelPath = this.modelManager.getModelPath(model.id)
-      console.log(`[Embedding] Model path: ${modelPath}`)
       
       // 获取模型父目录和文件夹名
       const path = await import('path')
       const modelDir = path.dirname(modelPath)  // 父目录：resources/models/embedding
       const modelName = path.basename(modelPath) // 文件夹名：all-MiniLM-L6-v2
-      
-      console.log(`[Embedding] Model dir: ${modelDir}, name: ${modelName}`)
       
       // 禁止远程下载，设置本地模型路径为父目录
       env.allowRemoteModels = false
@@ -111,8 +106,6 @@ export class EmbeddingService extends EventEmitter {
 
       this.currentModelId = model.id
       this.emit('loaded', model.id)
-      
-      console.log(`[Embedding] Model ${model.id} loaded successfully`)
     } catch (error) {
       console.error(`[Embedding] Failed to load model:`, error)
       this.emit('error', error)

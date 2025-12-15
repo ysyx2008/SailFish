@@ -94,8 +94,6 @@ export class KnowledgeService extends EventEmitter {
       return
     }
 
-    console.log('[KnowledgeService] Initializing...')
-
     try {
       // 初始化 Embedding 服务
       if (this.settings.embeddingMode === 'local') {
@@ -111,7 +109,6 @@ export class KnowledgeService extends EventEmitter {
             maxChunkSize: currentModel.maxTokens,
             strategy: this.settings.chunkStrategy
           })
-          console.log(`[KnowledgeService] Auto-set maxChunkSize to ${currentModel.maxTokens} based on model ${currentModel.id}`)
         }
       }
 
@@ -137,7 +134,6 @@ export class KnowledgeService extends EventEmitter {
 
       this.isInitialized = true
       this.emit('initialized')
-      console.log('[KnowledgeService] Initialized successfully')
       
       // 检查是否需要重建索引（有文档但向量库是空的）
       await this.checkAndRebuildIndex()
@@ -160,8 +156,6 @@ export class KnowledgeService extends EventEmitter {
     
     // 如果向量库和 BM25 索引都有数据，跳过重建
     if (stats.chunkCount > 0 && bm25Stats.documentCount > 0) return
-    
-    console.log(`[KnowledgeService] Found ${docs.length} documents, rebuilding index...`)
     
     for (const doc of docs) {
       if (!doc.content) continue
@@ -204,14 +198,10 @@ export class KnowledgeService extends EventEmitter {
           }))
           await this.bm25Index.addDocuments(bm25Docs)
         }
-        
-        console.log(`[KnowledgeService] Rebuilt index for: ${doc.filename} (${chunks.length} chunks)`)
       } catch (error) {
         console.error(`[KnowledgeService] Failed to rebuild index for ${doc.filename}:`, error)
       }
     }
-    
-    console.log('[KnowledgeService] Index rebuild complete')
   }
 
   /**
@@ -224,7 +214,6 @@ export class KnowledgeService extends EventEmitter {
         for (const doc of data.documents || []) {
           this.documentsIndex.set(doc.id, doc)
         }
-        console.log(`[KnowledgeService] Loaded ${this.documentsIndex.size} documents`)
       }
     } catch (error) {
       console.error('[KnowledgeService] Failed to load documents index:', error)
@@ -366,7 +355,6 @@ export class KnowledgeService extends EventEmitter {
     this.saveDocumentsIndex()
 
     this.emit('documentAdded', document)
-    console.log(`[KnowledgeService] Added document: ${doc.filename} (${chunks.length} chunks)`)
 
     return docId
   }
@@ -907,7 +895,6 @@ export class KnowledgeService extends EventEmitter {
       // 检查是否已存在相同的记忆（避免重复）
       const existingCheck = this.isDuplicate(memory)
       if (existingCheck.isDuplicate) {
-        console.log(`[KnowledgeService] 主机记忆已存在，跳过: ${memory.slice(0, 50)}...`)
         return existingCheck.existingDoc?.id || null
       }
 
@@ -965,7 +952,6 @@ export class KnowledgeService extends EventEmitter {
       this.documentsIndex.set(docId, document)
       this.saveDocumentsIndex()
 
-      console.log(`[KnowledgeService] 已保存主机记忆: ${memory.slice(0, 50)}...`)
       return docId
     } catch (error) {
       console.error('[KnowledgeService] 保存主机记忆失败:', error)
@@ -1111,7 +1097,6 @@ export class KnowledgeService extends EventEmitter {
       const result = await this.addHostMemory(hostId, note)
       if (result) migrated++
     }
-    console.log(`[KnowledgeService] 迁移了 ${migrated}/${notes.length} 条主机记忆`)
     return migrated
   }
 }

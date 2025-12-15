@@ -58,7 +58,6 @@ export function savePasswordToKeychain(password: string): boolean {
       fs.mkdirSync(dir, { recursive: true })
     }
     fs.writeFileSync(getSavedPasswordFilePath(), encrypted)
-    console.log('[Crypto] 密码已保存到系统钥匙串')
     return true
   } catch (e) {
     console.error('[Crypto] 保存密码到钥匙串失败:', e)
@@ -99,7 +98,6 @@ export function clearSavedPassword(): void {
     const filePath = getSavedPasswordFilePath()
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath)
-      console.log('[Crypto] 已清除钥匙串中的密码')
     }
   } catch (e) {
     console.error('[Crypto] 清除钥匙串密码失败:', e)
@@ -120,29 +118,23 @@ export function hasSavedPassword(): boolean {
 export function autoUnlock(): boolean {
   // 如果没有设置密码，不需要解锁
   if (!hasPassword()) {
-    console.log('[Crypto] 未设置知识库密码，无需解锁')
     return true
   }
 
   // 如果已经解锁，不需要再次解锁
   if (isUnlocked()) {
-    console.log('[Crypto] 知识库已解锁')
     return true
   }
 
   // 尝试从钥匙串获取密码
   const savedPassword = getPasswordFromKeychain()
   if (!savedPassword) {
-    console.log('[Crypto] 钥匙串中没有保存的密码，需要用户手动输入')
     return false
   }
 
   // 验证并解锁
   const success = verifyPassword(savedPassword)
-  if (success) {
-    console.log('[Crypto] 使用保存的密码自动解锁成功')
-  } else {
-    console.log('[Crypto] 保存的密码验证失败，可能密码已更改')
+  if (!success) {
     // 清除无效的保存密码
     clearSavedPassword()
   }
@@ -201,7 +193,6 @@ export function setPassword(password: string): boolean {
     cachedKey = key
     cachedSalt = salt
     
-    console.log('[Crypto] 知识库密码已设置')
     return true
   } catch (e) {
     console.error('[Crypto] 设置密码失败:', e)
@@ -239,13 +230,11 @@ export function verifyPassword(password: string): boolean {
       // 密码正确，缓存密钥
       cachedKey = key
       cachedSalt = salt
-      console.log('[Crypto] 知识库密码验证成功')
       return true
     }
     
     return false
   } catch (e) {
-    console.log('[Crypto] 密码验证失败:', e)
     return false
   }
 }
@@ -291,7 +280,6 @@ export function clearPassword(): void {
   }
   cachedKey = null
   cachedSalt = null
-  console.log('[Crypto] 知识库密码已清除')
 }
 
 /**
@@ -302,7 +290,6 @@ export function lock(): void {
   cachedKey = null
   // 手动锁定时，清除钥匙串中的密码
   clearSavedPassword()
-  console.log('[Crypto] 知识库已锁定，保存的密码已清除')
 }
 
 /**
@@ -487,7 +474,6 @@ export function decryptAllData(): { success: boolean; decryptedCount: number; er
       // 保存解密后的数据
       data.lastUpdated = Date.now()
       fs.writeFileSync(metaPath, JSON.stringify(data, null, 2), 'utf-8')
-      console.log(`[Crypto] 已解密 ${decryptedCount} 条数据并保存`)
     }
     
     return { success: true, decryptedCount }

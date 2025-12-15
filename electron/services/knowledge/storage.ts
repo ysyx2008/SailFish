@@ -76,7 +76,6 @@ export class VectorStorage extends EventEmitter {
     try {
       const { connect } = await loadLanceDB()
       
-      console.log(`[VectorStorage] Connecting to LanceDB at: ${this.storagePath}`)
       this.db = await connect(this.storagePath)
       
       // 检查表是否存在
@@ -84,10 +83,7 @@ export class VectorStorage extends EventEmitter {
       
       if (tableNames.includes(this.tableName)) {
         this.table = await this.db.openTable(this.tableName)
-        const count = await this.table.countRows()
-        console.log(`[VectorStorage] Opened existing table with ${count} records`)
       } else {
-        console.log('[VectorStorage] Creating new table')
         // 创建空表（LanceDB 需要至少一条数据来推断 schema）
         // 我们在第一次添加记录时创建表
         this.table = null
@@ -126,8 +122,6 @@ export class VectorStorage extends EventEmitter {
     } else {
       this.table = await this.db.createTable(this.tableName, [sampleRecord])
     }
-    
-    console.log('[VectorStorage] Table created')
   }
 
   /**
@@ -142,7 +136,6 @@ export class VectorStorage extends EventEmitter {
     await this.table.add([record])
     
     this.emit('recordAdded', record.id)
-    console.log(`[VectorStorage] Added record: ${record.id}`)
     return record.id
   }
 
@@ -161,7 +154,6 @@ export class VectorStorage extends EventEmitter {
     
     const ids = records.map(r => r.id)
     this.emit('recordsAdded', ids)
-    console.log(`[VectorStorage] Added ${records.length} records`)
     return ids
   }
 
