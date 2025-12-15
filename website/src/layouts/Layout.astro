@@ -1,19 +1,26 @@
 ---
+import { getLangFromUrl, useTranslations, type Lang } from '../i18n/utils';
+import { defaultLanguage } from '../i18n/translations';
+
 interface Props {
   title: string;
   description?: string;
+  lang?: Lang;
 }
 
-const { title, description = "AI 驱动的跨平台终端，助力运维提效" } = Astro.props;
+const { title, description, lang } = Astro.props;
+const currentLang = lang || getLangFromUrl(Astro.url);
+const t = useTranslations(currentLang);
+const pageDescription = description || (currentLang === 'zh' ? 'AI 驱动的跨平台终端，助力运维提效' : 'AI-powered cross-platform terminal for DevOps efficiency');
 ---
 
 <!doctype html>
-<html lang="zh-CN">
+<html lang={currentLang === 'zh' ? 'zh-CN' : 'en'}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content={description} />
-    <meta name="keywords" content="旗鱼终端, AI终端, SSH客户端, 终端模拟器, 运维工具, AI Agent" />
+    <meta name="description" content={pageDescription} />
+    <meta name="keywords" content={currentLang === 'zh' ? '旗鱼终端, AI终端, SSH客户端, 终端模拟器, 运维工具, AI Agent' : 'SFTerminal, AI Terminal, SSH Client, Terminal Emulator, DevOps Tools, AI Agent'} />
     <meta name="author" content="旗鱼" />
     
     <!-- Open Graph -->
@@ -51,6 +58,26 @@ const { title, description = "AI 驱动的跨平台终端，助力运维提效" 
           observer.observe(el);
         });
       });
+
+      // 浏览器语言自动检测
+      (function() {
+        // 检查是否已经记住用户选择
+        const savedLang = localStorage.getItem('preferred-lang');
+        if (savedLang) return;
+
+        // 检查当前路径
+        const currentPath = window.location.pathname;
+        const isEnglishPath = currentPath.startsWith('/en');
+
+        // 检测浏览器语言
+        const browserLang = navigator.language || navigator.languages?.[0] || 'en';
+        const prefersEnglish = browserLang.startsWith('en') && !browserLang.startsWith('zh');
+
+        // 如果浏览器是英文且当前在中文页，跳转到英文页
+        if (prefersEnglish && !isEnglishPath) {
+          window.location.href = '/en' + currentPath;
+        }
+      })();
     </script>
   </body>
 </html>
