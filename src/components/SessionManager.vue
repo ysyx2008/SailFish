@@ -513,6 +513,8 @@ const deleteGroup = async (groupName: string) => {
   
   if (confirm(t('session.confirmDeleteGroupNamed', { name: groupName }))) {
     await configStore.deleteSessionGroup(groupData.group.id)
+    showGroupEditor.value = false
+    resetGroupForm()
   }
 }
 </script>
@@ -606,7 +608,8 @@ const deleteGroup = async (groupName: string) => {
         >
           <div class="group-header" v-if="groupData.sessions.length > 0 || groupData.group">
             <div class="group-header-left">
-              <span>{{ groupName }}</span>
+              <span class="group-name">{{ groupName }}</span>
+              <span class="group-count">{{ groupData.sessions.length }}</span>
               <span v-if="groupData.group?.jumpHost" class="jump-host-badge" :title="t('session.form.jumpHost')">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
@@ -617,7 +620,6 @@ const deleteGroup = async (groupName: string) => {
               </span>
             </div>
             <div class="group-header-right">
-              <span class="group-count">{{ groupData.sessions.length }}</span>
               <button class="btn-icon btn-xs" @click.stop="openGroupEditor(groupName)" :title="t('session.editGroup')">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="12" cy="12" r="3"/>
@@ -836,7 +838,7 @@ const deleteGroup = async (groupName: string) => {
           </div>
         </div>
         <div class="modal-footer">
-          <button v-if="editingGroup" class="btn btn-danger" @click="deleteGroup(editingGroup.name); showGroupEditor = false">{{ t('session.deleteGroup') }}</button>
+          <button v-if="editingGroup" class="btn btn-danger" @click="deleteGroup(editingGroup.name)">{{ t('session.deleteGroup') }}</button>
           <div style="flex: 1"></div>
           <button class="btn" @click="showGroupEditor = false">{{ t('common.cancel') }}</button>
           <button class="btn btn-primary" @click="saveGroup">{{ t('common.save') }}</button>
@@ -1014,7 +1016,11 @@ const deleteGroup = async (groupName: string) => {
 .group-header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+}
+
+.group-name {
+  font-weight: 500;
 }
 
 .group-header-right {
@@ -1024,10 +1030,10 @@ const deleteGroup = async (groupName: string) => {
 }
 
 .group-count {
-  background: var(--bg-surface);
-  padding: 2px 6px;
-  border-radius: 10px;
+  color: var(--text-muted);
   font-size: 11px;
+  font-weight: normal;
+  text-transform: none;
 }
 
 .jump-host-badge {

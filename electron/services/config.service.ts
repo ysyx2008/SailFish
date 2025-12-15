@@ -100,6 +100,7 @@ interface StoreSchema {
   knowledgeSettings: KnowledgeSettings
   setupCompleted: boolean
   language: LocaleType
+  sponsorStatus: boolean
 }
 
 const defaultConfig: StoreSchema = {
@@ -124,7 +125,8 @@ const defaultConfig: StoreSchema = {
   agentMbti: null,
   knowledgeSettings: DEFAULT_KNOWLEDGE_SETTINGS,
   setupCompleted: false,
-  language: 'zh-CN'
+  language: 'zh-CN',
+  sponsorStatus: false
 }
 
 export class ConfigService {
