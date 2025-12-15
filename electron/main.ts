@@ -651,6 +651,11 @@ ipcMain.handle('app:getVersion', async () => {
   return APP_VERSION
 })
 
+// 关闭当前窗口
+ipcMain.handle('window:close', async () => {
+  mainWindow?.close()
+})
+
 // ==================== 自动更新 ====================
 
 // 配置自动更新

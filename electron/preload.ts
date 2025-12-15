@@ -237,6 +237,11 @@ const electronAPI = {
     getVersion: () => ipcRenderer.invoke('app:getVersion') as Promise<string>
   },
 
+  // 窗口操作
+  window: {
+    close: () => ipcRenderer.invoke('window:close')
+  },
+
   // 自动更新
   updater: {
     // 检查更新

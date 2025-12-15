@@ -55,6 +55,23 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
     event.preventDefault()
     terminalStore.createTab('local')
   }
+
+  // Ctrl+W / Cmd+W 关闭当前终端或窗口
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'w') {
+    event.preventDefault()
+    handleCloseShortcut()
+  }
+}
+
+// 处理关闭快捷键
+const handleCloseShortcut = async () => {
+  // 如果有活跃终端，关闭当前终端
+  if (terminalStore.tabs.length > 0 && terminalStore.activeTabId) {
+    await terminalStore.closeTab(terminalStore.activeTabId)
+  } else {
+    // 没有活跃终端时关闭窗口
+    await window.electronAPI.window.close()
+  }
 }
 
 onMounted(async () => {
