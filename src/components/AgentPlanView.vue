@@ -395,6 +395,27 @@ const handleToggle = () => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* 自定义滚动条 */
+.plan-steps::-webkit-scrollbar {
+  width: 4px;
+}
+
+.plan-steps::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.plan-steps::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+
+.plan-steps::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 
 .plan-step {
