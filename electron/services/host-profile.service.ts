@@ -242,7 +242,8 @@ export class HostProfileService {
       'whoami 2>/dev/null || echo "unknown"',
       'uname -s 2>/dev/null || echo "unknown"',
       // 系统版本（优先获取 PRETTY_NAME，它包含完整的发行版名称和版本）
-      'cat /etc/os-release 2>/dev/null | grep -E "^(PRETTY_NAME|NAME|VERSION)=" | head -3 || sw_vers 2>/dev/null || echo "unknown"',
+      // 支持 Linux (/etc/os-release)、macOS (sw_vers)、AIX (oslevel)
+      'cat /etc/os-release 2>/dev/null | grep -E "^(PRETTY_NAME|NAME|VERSION)=" | head -3 || sw_vers 2>/dev/null || oslevel 2>/dev/null || echo "unknown"',
       'echo $SHELL',
       'echo $HOME',
       'pwd',
@@ -296,6 +297,8 @@ export class HostProfileService {
       }
     } else if (output.includes('Darwin')) {
       result.os = 'macos'
+    } else if (output.includes('AIX')) {
+      result.os = 'aix'
     } else if (output.includes('Linux')) {
       result.os = 'linux'
     }
@@ -320,6 +323,12 @@ export class HostProfileService {
         if (productMatch) {
           result.osVersion = `${productMatch[1]} ${versionMatch2?.[1] || ''}`.trim()
         }
+      } else if (result.os === 'aix') {
+        // AIX: 解析 oslevel 输出（如 "7.2.0.0"）
+        const oslevelMatch = output.match(/(\d+\.\d+\.\d+\.\d+)/)
+        if (oslevelMatch) {
+          result.osVersion = `AIX ${oslevelMatch[1]}`
+        }
       }
     }
 
@@ -329,6 +338,7 @@ export class HostProfileService {
       if (shellLine.includes('zsh')) result.shell = 'zsh'
       else if (shellLine.includes('bash')) result.shell = 'bash'
       else if (shellLine.includes('fish')) result.shell = 'fish'
+      else if (shellLine.includes('ksh')) result.shell = 'ksh'  // AIX 常用 Korn Shell
       else if (shellLine.includes('sh')) result.shell = 'sh'
     }
 

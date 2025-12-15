@@ -463,7 +463,8 @@ export class SshService {
         'whoami 2>/dev/null || echo "unknown"',
         'uname -s 2>/dev/null || echo "unknown"',
         // 系统版本（优先获取 PRETTY_NAME，它包含完整的发行版名称和版本）
-        'cat /etc/os-release 2>/dev/null | grep -E "^(PRETTY_NAME|NAME|VERSION)=" | head -3 || sw_vers 2>/dev/null || echo "unknown"',
+        // 支持 Linux (/etc/os-release)、macOS (sw_vers)、AIX (oslevel)
+        'cat /etc/os-release 2>/dev/null | grep -E "^(PRETTY_NAME|NAME|VERSION)=" | head -3 || sw_vers 2>/dev/null || oslevel 2>/dev/null || echo "unknown"',
         'echo $SHELL',
         'echo $HOME',
         'pwd',
