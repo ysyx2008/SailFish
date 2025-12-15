@@ -48,7 +48,19 @@ watch(currentUiTheme, (theme) => {
   document.body.setAttribute('data-ui-theme', theme)
 }, { immediate: true })
 
+// 全局快捷键处理
+const handleGlobalKeydown = (event: KeyboardEvent) => {
+  // Ctrl+Shift+T / Cmd+Shift+T 新建终端标签页
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 't') {
+    event.preventDefault()
+    terminalStore.createTab('local')
+  }
+}
+
 onMounted(async () => {
+  // 注册全局快捷键
+  document.addEventListener('keydown', handleGlobalKeydown)
+
   // 加载配置
   await configStore.loadConfig()
 
@@ -214,6 +226,7 @@ const stopResize = () => {
 }
 
 onUnmounted(() => {
+  document.removeEventListener('keydown', handleGlobalKeydown)
   document.removeEventListener('mousemove', handleResize)
   document.removeEventListener('mouseup', stopResize)
 })
