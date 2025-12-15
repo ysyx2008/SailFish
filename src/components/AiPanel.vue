@@ -866,7 +866,7 @@ onMounted(() => {
               v-if="msg.role === 'assistant' && msg.content && !msg.content.includes('中...')"
               class="copy-btn"
               @click="copyMessage(msg.content)"
-              title="复制"
+              :title="t('common.copy')"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
@@ -931,8 +931,8 @@ onMounted(() => {
                           <div class="asking-question">{{ step.content }}</div>
                           <!-- 默认值提示 -->
                           <div v-if="step.toolArgs?.default_value" class="asking-default">
-                            <span class="default-label">默认：</span>{{ step.toolArgs.default_value }}
-                            <span v-if="step.toolResult?.includes('⏳')" class="default-hint">（直接按回车使用默认值）</span>
+                            <span class="default-label">{{ t('ai.askingDefault') }}</span>{{ step.toolArgs.default_value }}
+                            <span v-if="step.toolResult?.includes('⏳')" class="default-hint">{{ t('ai.askingDefaultHint') }}</span>
                           </div>
                           <!-- 可点击的选项按钮 -->
                           <div v-if="step.toolArgs?.options && (step.toolArgs.options as string[]).length > 0" class="asking-options">
@@ -957,7 +957,7 @@ onMounted(() => {
                               :disabled="getSelectedOptions(step.id).length === 0"
                               @click="confirmMultiSelect(step.id)"
                             >
-                              确认选择 ({{ getSelectedOptions(step.id).length }})
+                              {{ t('ai.confirmMultiSelect') }} ({{ getSelectedOptions(step.id).length }})
                             </button>
                           </div>
                           <!-- 状态显示 -->

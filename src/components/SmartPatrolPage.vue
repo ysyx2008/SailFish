@@ -47,11 +47,11 @@ const confirmStrategy = ref<ConfirmStrategy>('batch')
 const showStrategyMenu = ref(false)
 
 // 策略显示名称
-const strategyLabels: Record<ConfirmStrategy, string> = {
-  cautious: '审慎模式',
-  batch: '批量确认',
-  free: '自由模式'
-}
+const strategyLabels = computed<Record<ConfirmStrategy, string>>(() => ({
+  cautious: t('patrol.strategyLabels.cautious'),
+  batch: t('patrol.strategyLabels.batch'),
+  free: t('patrol.strategyLabels.free')
+}))
 
 // 返回欢迎页
 const goBack = () => {
@@ -161,7 +161,7 @@ onUnmounted(() => {
           <div class="input-actions">
             <div class="strategy-dropdown" v-if="!isRunning">
               <button class="btn-strategy" @click.stop="showStrategyMenu = !showStrategyMenu">
-                {{ strategyLabels[confirmStrategy] }}
+                {{ strategyLabels[confirmStrategy as ConfirmStrategy] }}
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M6 9l6 6 6-6"/>
                 </svg>
@@ -175,9 +175,9 @@ onUnmounted(() => {
                   @click="selectStrategy(key as ConfirmStrategy)"
                 >
                   <span class="option-label">{{ label }}</span>
-                  <span v-if="key === 'cautious'" class="option-desc">每个危险命令都确认</span>
-                  <span v-if="key === 'batch'" class="option-desc">相同命令批量确认</span>
-                  <span v-if="key === 'free'" class="option-desc">自动执行（谨慎使用）</span>
+                  <span v-if="key === 'cautious'" class="option-desc">{{ t('patrol.strategyDescs.cautious') }}</span>
+                  <span v-if="key === 'batch'" class="option-desc">{{ t('patrol.strategyDescs.batch') }}</span>
+                  <span v-if="key === 'free'" class="option-desc">{{ t('patrol.strategyDescs.free') }}</span>
                 </div>
               </div>
             </div>
@@ -214,14 +214,14 @@ onUnmounted(() => {
             <div class="empty-desc">{{ t('patrol.emptyDesc') }}</div>
             <div class="example-tasks">
               <div class="example-label">{{ t('patrol.exampleTasks') }}</div>
-              <div class="example-item" @click="taskInput = '检查所有生产服务器的磁盘使用情况'">
-                检查所有生产服务器的磁盘使用情况
+              <div class="example-item" @click="taskInput = t('patrol.exampleTask1')">
+                {{ t('patrol.exampleTask1') }}
               </div>
-              <div class="example-item" @click="taskInput = '查看各服务器的内存和CPU负载'">
-                查看各服务器的内存和CPU负载
+              <div class="example-item" @click="taskInput = t('patrol.exampleTask2')">
+                {{ t('patrol.exampleTask2') }}
               </div>
-              <div class="example-item" @click="taskInput = '检查 nginx 服务是否正常运行'">
-                检查 nginx 服务是否正常运行
+              <div class="example-item" @click="taskInput = t('patrol.exampleTask3')">
+                {{ t('patrol.exampleTask3') }}
               </div>
             </div>
           </div>

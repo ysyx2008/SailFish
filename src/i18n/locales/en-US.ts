@@ -33,7 +33,20 @@ export default {
     stopExecution: 'Stop',
     emptyTitle: 'Ready to start smart patrol',
     emptyDesc: 'Describe your task, Agent will automatically identify servers and execute',
-    exampleTasks: 'Example Tasks'
+    exampleTasks: 'Example Tasks',
+    strategyLabels: {
+      cautious: 'Cautious Mode',
+      batch: 'Batch Confirm',
+      free: 'Free Mode'
+    },
+    strategyDescs: {
+      cautious: 'Confirm each dangerous command',
+      batch: 'Batch confirm same commands',
+      free: 'Auto execute (use with caution)'
+    },
+    exampleTask1: 'Check disk usage on all production servers',
+    exampleTask2: 'View memory and CPU load on each server',
+    exampleTask3: 'Check if nginx service is running properly'
   },
 
   // Common buttons and actions
@@ -624,14 +637,25 @@ export default {
       explainCommand: 'Explain Command',
       generateCommand: 'Generate Command',
       analyzeError: 'Analyze Error',
-      systemStatus: 'System Status'
+      systemStatus: 'System Status',
+      findFiles: 'Find Files',
+      viewProcesses: 'View Processes',
+      diskSpace: 'Disk Space'
+    },
+    quickActionPrompts: {
+      findFiles: 'Find all log files in the current directory',
+      viewProcesses: 'View the top 10 processes by memory usage',
+      diskSpace: 'View disk space usage'
     },
     toolNames: {
       execute_command: 'Execute Command',
       read_file: 'Read File',
       write_file: 'Write File',
       get_terminal_context: 'Get Terminal Context'
-    }
+    },
+    askingDefault: 'Default:',
+    askingDefaultHint: '(Press Enter to use default value)',
+    confirmMultiSelect: 'Confirm Selection'
   },
 
   // Session Manager
@@ -765,7 +789,15 @@ export default {
     permissions: 'Permissions',
     pathBreadcrumb: 'Path',
     goToParent: 'Go to Parent',
-    emptyFolder: 'Empty folder'
+    emptyFolder: 'Empty folder',
+    sftpFileManager: 'SFTP File Manager',
+    connecting: 'Connecting...',
+    connectionFailed: 'Connection failed',
+    retry: 'Retry',
+    goBack: 'Back',
+    goForward: 'Forward',
+    goUp: 'Parent directory',
+    goHome: 'Home directory'
   },
 
   // Setup Wizard
@@ -801,7 +833,9 @@ export default {
       hint: 'Supports OpenAI-compatible APIs, including vLLM, FastChat, Ollama and other private deployment solutions.',
       configuredModels: 'Configured Models',
       addNewModel: 'Add New Model',
-      quickTemplates: 'Quick Templates:'
+      quickTemplates: 'Quick Templates:',
+      fillRequired: 'Please fill in all required fields',
+      saveFailed: 'Save failed'
     },
     import: {
       title: 'Import SSH Hosts',
@@ -829,7 +863,15 @@ export default {
         item4: 'Data encrypted storage to protect your sensitive information'
       },
       enableSwitch: 'Enable Knowledge Base',
-      enableHint: 'When enabled, documents and host memories can be stored to make Agent smarter'
+      enableHint: 'When enabled, documents and host memories can be stored to make Agent smarter',
+      passwordIntro: 'Knowledge base can store sensitive information like documents and host memories. Please set a password to encrypt this data.',
+      passwordLabel: 'Set Password',
+      passwordPlaceholder: 'Enter password (at least 4 characters)',
+      confirmPasswordLabel: 'Confirm Password',
+      confirmPasswordPlaceholder: 'Enter password again',
+      passwordMinLength: 'Password must be at least 4 characters',
+      passwordMismatch: 'Passwords do not match',
+      saveFailed: 'Save failed'
     },
     mcp: {
       title: 'Configure MCP Services',
@@ -875,7 +917,16 @@ export default {
     connectionFailed: 'Connection failed',
     connectionClosed: 'Connection closed',
     reconnect: 'Reconnect',
-    localTerminal: 'Local Terminal'
+    localTerminal: 'Local Terminal',
+    sshDisconnected: '[SSH Disconnected]',
+    disconnectReasons: {
+      closed: 'Connection closed',
+      error: 'Connection error',
+      stream_closed: 'Data stream closed',
+      jump_host_closed: 'Jump host connection closed'
+    },
+    reconnectHint: 'Click the button at bottom right or press Ctrl+Shift+R to reconnect',
+    noSessionSavedHint: 'This connection is not saved as a session, please reconnect from Session Manager'
   },
 
   // MCP Status
@@ -887,7 +938,14 @@ export default {
     error: 'Error',
     servers: 'Servers',
     noServers: 'No servers configured',
-    openSettings: 'Open Settings'
+    openSettings: 'Open Settings',
+    serverList: 'MCP Servers',
+    connectAll: 'Connect All',
+    connect: 'Connect',
+    disconnect: 'Disconnect',
+    tools: 'tools',
+    disabled: 'Disabled',
+    noServersConfigured: 'No MCP servers configured'
   },
 
   // Knowledge Manager
@@ -935,6 +993,11 @@ export default {
     exportFailed: 'Export failed',
     importSuccess: 'Import successful, {count} documents imported',
     importFailed: 'Import failed',
-    confirmImport: 'Import will merge with existing data. Continue?'
+    confirmImport: 'Import will merge with existing data. Continue?',
+    memoryCount: '{count} memories',
+    noMatchingMemories: 'No matching memories',
+    noMemories: 'No host memories',
+    clearingMemories: 'Clearing...',
+    clearAllMemories: 'Clear All Memories'
   }
 }

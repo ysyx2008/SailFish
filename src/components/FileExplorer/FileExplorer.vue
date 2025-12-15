@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSftp, type SftpFileInfo, type SftpConnectionConfig } from '../../composables/useSftp'
 import FileList from './FileList.vue'
 import PathBreadcrumb from './PathBreadcrumb.vue'
 import FileContextMenu from './FileContextMenu.vue'
 import TransferQueue from './TransferQueue.vue'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   config: SftpConnectionConfig
@@ -223,9 +226,9 @@ const handleDrop = async (fileList: FileList) => {
           <span v-if="connectionInfo">
             SFTP - {{ connectionInfo.username }}@{{ connectionInfo.host }}
           </span>
-          <span v-else>SFTP 文件管理</span>
+          <span v-else>{{ t('fileExplorer.sftpFileManager') }}</span>
         </div>
-        <button class="btn-icon" @click="$emit('close')" title="关闭">
+        <button class="btn-icon" @click="$emit('close')" :title="t('fileExplorer.close')"
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>
@@ -236,7 +239,7 @@ const handleDrop = async (fileList: FileList) => {
       <!-- 连接中状态 -->
       <div v-if="isConnecting" class="connecting-state">
         <div class="spinner"></div>
-        <span>正在连接...</span>
+        <span>{{ t('fileExplorer.connecting') }}</span>
       </div>
 
       <!-- 连接错误 -->
@@ -246,9 +249,9 @@ const handleDrop = async (fileList: FileList) => {
           <line x1="15" y1="9" x2="9" y2="15"/>
           <line x1="9" y1="9" x2="15" y2="15"/>
         </svg>
-        <p>连接失败</p>
+        <p>{{ t('fileExplorer.connectionFailed') }}</p>
         <p class="error-message">{{ error }}</p>
-        <button class="btn btn-primary" @click="connect(props.config)">重试</button>
+        <button class="btn btn-primary" @click="connect(props.config)">{{ t('fileExplorer.retry') }}</button>
       </div>
 
       <!-- 已连接 -->
@@ -260,7 +263,7 @@ const handleDrop = async (fileList: FileList) => {
               class="btn-icon"
               :disabled="!canGoBack"
               @click="goBack"
-              title="后退"
+              :title="t('fileExplorer.goBack')"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="15 18 9 12 15 6"/>
@@ -270,7 +273,7 @@ const handleDrop = async (fileList: FileList) => {
               class="btn-icon"
               :disabled="!canGoForward"
               @click="goForward"
-              title="前进"
+              :title="t('fileExplorer.goForward')"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="9 18 15 12 9 6"/>
@@ -280,13 +283,13 @@ const handleDrop = async (fileList: FileList) => {
               class="btn-icon"
               :disabled="currentPath === '/'"
               @click="goUp"
-              title="上级目录"
+              :title="t('fileExplorer.goUp')"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="18 15 12 9 6 15"/>
               </svg>
             </button>
-            <button class="btn-icon" @click="goHome" title="主目录">
+            <button class="btn-icon" @click="goHome" :title="t('fileExplorer.goHome')"
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
                 <polyline points="9 22 9 12 15 12 15 22"/>

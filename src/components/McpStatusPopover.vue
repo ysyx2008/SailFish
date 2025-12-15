@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 // 类型定义
 interface McpServerConfig {
@@ -226,21 +229,21 @@ onUnmounted(() => {
     <Teleport to="body">
       <div v-if="showPopover" ref="popoverRef" class="mcp-popover">
         <div class="popover-header">
-          <span class="popover-title">MCP 服务器</span>
+          <span class="popover-title">{{ t('mcp.serverList') }}</span>
           <button 
             v-if="enabledServers.length > 0 && connectedCount < enabledCount"
             class="btn-connect-all"
             @click="connectAll"
-            title="连接所有启用的服务器"
+            :title="t('mcp.connectAll')"
           >
-            全部连接
+            {{ t('mcp.connectAll') }}
           </button>
         </div>
 
         <div class="popover-body">
           <!-- 无服务器提示 -->
           <div v-if="servers.length === 0" class="empty-hint">
-            <span>尚未配置 MCP 服务器</span>
+            <span>{{ t('mcp.noServersConfigured') }}</span>
           </div>
 
           <!-- 服务器列表 -->
@@ -267,10 +270,10 @@ onUnmounted(() => {
               <div class="server-info">
                 <span class="server-name">{{ server.name }}</span>
                 <span v-if="getServerStatus(server.id)?.connected" class="server-tools">
-                  {{ getServerStatus(server.id)?.toolCount }} 工具
+                  {{ getServerStatus(server.id)?.toolCount }} {{ t('mcp.tools') }}
                 </span>
                 <span v-else-if="!server.enabled" class="server-disabled-tag">
-                  已禁用
+                  {{ t('mcp.disabled') }}
                 </span>
               </div>
 
@@ -282,18 +285,18 @@ onUnmounted(() => {
                     class="btn-action btn-connect"
                     :disabled="connecting === server.id"
                     @click="connectServer(server)"
-                    title="连接"
+                    :title="t('mcp.connect')"
                   >
                     <span v-if="connecting === server.id" class="spinner-small"></span>
-                    <span v-else>连接</span>
+                    <span v-else>{{ t('mcp.connect') }}</span>
                   </button>
                   <button 
                     v-else
                     class="btn-action btn-disconnect"
                     @click="disconnectServer(server)"
-                    title="断开"
+                    :title="t('mcp.disconnect')"
                   >
-                    断开
+                    {{ t('mcp.disconnect') }}
                   </button>
                 </template>
               </div>

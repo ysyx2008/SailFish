@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
@@ -10,6 +11,8 @@ import { getTheme } from '../themes'
 import { TerminalScreenService, type ScreenContent } from '../services/terminal-screen.service'
 import { TerminalSnapshotManager, type TerminalSnapshot, type TerminalDiff } from '../services/terminal-snapshot.service'
 import '@xterm/xterm/css/xterm.css'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   tabId: string
@@ -225,23 +228,23 @@ onMounted(async () => {
         
         // 在终端显示断开连接消息
         const reasonMap: Record<string, string> = {
-          'closed': '连接已关闭',
-          'error': '连接错误',
-          'stream_closed': '数据流已关闭',
-          'jump_host_closed': '跳板机连接已断开'
+          'closed': t('terminal.disconnectReasons.closed'),
+          'error': t('terminal.disconnectReasons.error'),
+          'stream_closed': t('terminal.disconnectReasons.stream_closed'),
+          'jump_host_closed': t('terminal.disconnectReasons.jump_host_closed')
         }
         const reasonText = reasonMap[event.reason] || event.reason
         const errorText = event.error ? `: ${event.error}` : ''
-        terminal.write(`\r\n\x1b[31m[SSH 连接断开] ${reasonText}${errorText}\x1b[0m\r\n`)
+        terminal.write(`\r\n\x1b[31m${t('terminal.sshDisconnected')} ${reasonText}${errorText}\x1b[0m\r\n`)
         
         // 检查是否可以重连（有保存的会话 ID）
-        const tab = terminalStore.tabs.find(t => t.id === props.tabId)
+        const tab = terminalStore.tabs.find(tb => tb.id === props.tabId)
         if (tab?.sshSessionId) {
           // 设置断开状态（用于显示重连按钮）
           sshDisconnected.value = true
-          terminal.write(`\x1b[33m点击右下角按钮或按 Ctrl+Shift+R 重新连接\x1b[0m\r\n`)
+          terminal.write(`\x1b[33m${t('terminal.reconnectHint')}\x1b[0m\r\n`)
         } else {
-          terminal.write(`\x1b[33m该连接未保存为会话，请从会话管理器重新连接\x1b[0m\r\n`)
+          terminal.write(`\x1b[33m${t('terminal.noSessionSavedHint')}\x1b[0m\r\n`)
         }
       }
     })

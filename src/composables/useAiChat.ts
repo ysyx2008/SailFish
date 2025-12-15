@@ -4,6 +4,7 @@
  * 每个 tab 有独立的 AiPanel 实例，tabId 通过参数传入
  */
 import { ref, computed, nextTick, Ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useTerminalStore } from '../stores/terminal'
 import type { AiMessage } from '../stores/terminal'
 
@@ -17,6 +18,7 @@ export function useAiChat(
   messagesRef: Ref<HTMLDivElement | null>,
   tabId: Ref<string>  // 每个 AiPanel 实例固定绑定的 tab ID
 ) {
+  const { t } = useI18n()
   const terminalStore = useTerminalStore()
   const inputText = ref('')
   
@@ -662,12 +664,12 @@ export function useAiChat(
   }
 
   // 快捷操作
-  const quickActions = [
-    { label: '解释命令', icon: '💡', action: () => explainCommand(terminalSelectedText.value || 'ls -la') },
-    { label: '查找文件', icon: '🔍', action: () => generateCommand('查找当前目录下所有的日志文件') },
-    { label: '查看进程', icon: '📊', action: () => generateCommand('查看占用内存最多的前10个进程') },
-    { label: '磁盘空间', icon: '💾', action: () => generateCommand('查看磁盘空间使用情况') }
-  ]
+  const quickActions = computed(() => [
+    { label: t('ai.quickActions.explainCommand'), icon: '💡', action: () => explainCommand(terminalSelectedText.value || 'ls -la') },
+    { label: t('ai.quickActions.findFiles'), icon: '🔍', action: () => generateCommand(t('ai.quickActionPrompts.findFiles')) },
+    { label: t('ai.quickActions.viewProcesses'), icon: '📊', action: () => generateCommand(t('ai.quickActionPrompts.viewProcesses')) },
+    { label: t('ai.quickActions.diskSpace'), icon: '💾', action: () => generateCommand(t('ai.quickActionPrompts.diskSpace')) }
+  ])
 
   return {
     inputText,

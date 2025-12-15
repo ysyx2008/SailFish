@@ -503,7 +503,7 @@ onUnmounted(() => {
                 <div class="memory-group-header">
                   <span class="host-icon">{{ hostId === 'local' ? '💻' : '🌐' }}</span>
                   <span class="host-name">{{ hostId }}</span>
-                  <span class="memory-count">{{ memories.length }} 条记忆</span>
+                  <span class="memory-count">{{ t('knowledgeManager.memoryCount', { count: memories.length }) }}</span>
                 </div>
                 <div class="memory-items">
                   <div 
@@ -519,7 +519,7 @@ onUnmounted(() => {
                       <button 
                         class="btn-icon btn-delete-small"
                         @click.stop="deleteDocument(memory)"
-                        title="删除"
+                        :title="t('knowledgeManager.delete')"
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <line x1="18" y1="6" x2="6" y2="18"/>
@@ -532,7 +532,7 @@ onUnmounted(() => {
               </div>
 
               <div v-if="filteredMemories.length === 0" class="empty-state">
-                {{ searchQuery ? '没有匹配的记忆' : '暂无主机记忆' }}
+                {{ searchQuery ? t('knowledgeManager.noMatchingMemories') : t('knowledgeManager.noMemories') }}
               </div>
             </div>
 
@@ -547,7 +547,7 @@ onUnmounted(() => {
                 @click="clearAllMemories"
                 :disabled="clearing"
               >
-                {{ clearing ? '清除中...' : '清空所有记忆' }}
+                {{ clearing ? t('knowledgeManager.clearingMemories') : t('knowledgeManager.clearAllMemories') }}
               </button>
             </div>
           </template>
