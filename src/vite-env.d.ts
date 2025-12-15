@@ -140,6 +140,56 @@ interface Window {
     app: {
       getVersion: () => Promise<string>
     }
+    // 自动更新
+    updater: {
+      checkForUpdates: () => Promise<{
+        success: boolean
+        updateInfo?: {
+          version: string
+          releaseNotes?: string
+          releaseDate?: string
+        }
+        error?: string
+      }>
+      downloadUpdate: () => Promise<{
+        success: boolean
+        error?: string
+      }>
+      quitAndInstall: () => Promise<{
+        success: boolean
+        error?: string
+      }>
+      getStatus: () => Promise<{
+        status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
+        info?: {
+          version?: string
+          releaseNotes?: string
+          releaseDate?: string
+        }
+        progress?: {
+          percent: number
+          bytesPerSecond: number
+          total: number
+          transferred: number
+        }
+        error?: string
+      }>
+      onStatusChanged: (callback: (status: {
+        status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
+        info?: {
+          version?: string
+          releaseNotes?: string
+          releaseDate?: string
+        }
+        progress?: {
+          percent: number
+          bytesPerSecond: number
+          total: number
+          transferred: number
+        }
+        error?: string
+      }) => void) => () => void
+    }
     pty: {
       create: (options?: {
         cols?: number

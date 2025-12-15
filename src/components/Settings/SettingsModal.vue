@@ -464,7 +464,6 @@ const onQrImageError = (event: Event) => {
                 v-if="updateStatus.status === 'idle' || updateStatus.status === 'not-available' || updateStatus.status === 'error'"
                 class="btn btn-outline update-btn"
                 @click="checkForUpdates"
-                :disabled="updateStatus.status === 'checking'"
               >
                 🔄 {{ t('about.checkUpdate') }}
               </button>
