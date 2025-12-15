@@ -157,9 +157,25 @@ export function useAiChat(
   const doScrollIfNeeded = async () => {
     lastScrollTime = Date.now()
     await nextTick()
-    if (isUserNearBottom.value) {
+    
+    // 在执行滚动前再次检测是否在底部附近
+    // 这样可以避免内容突然增加导致的误判
+    const nearBottomNow = checkIsNearBottom()
+    
+    if (isUserNearBottom.value || nearBottomNow) {
       if (messagesRef.value) {
+        // 滚动期间跳过状态更新，避免 scroll 事件错误地更新状态
+        skipScrollUpdate = true
+        setIsUserNearBottom(true)
+        hasNewMessage.value = false
+        
         messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+        
+        // 延迟恢复 scroll 事件监听，等待滚动完成
+        // 使用 50ms 延迟，确保滚动动画完成，同时不影响用户后续手动滚动
+        setTimeout(() => {
+          skipScrollUpdate = false
+        }, 50)
       }
     } else {
       // 用户在上方查看历史，显示新消息提示
