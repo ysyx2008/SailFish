@@ -36,6 +36,7 @@ import { executeTool, ToolExecutorConfig } from './tool-executor'
 import { buildSystemPrompt } from './prompt-builder'
 import { analyzeTaskComplexity, generatePlanningPrompt } from './planner'
 import { getKnowledgeService } from '../knowledge'
+import { setConfigService as setI18nConfigService } from './i18n'
 
 // 重新导出类型，供外部使用
 export type {
@@ -145,6 +146,11 @@ export class AgentService {
     this.mcpService = mcpService
     this.configService = configService
     this.commandExecutor = new CommandExecutorService()
+    
+    // 初始化 i18n 模块（使用 configService 获取当前语言）
+    if (configService) {
+      setI18nConfigService(configService)
+    }
     
     // 如果提供了 sshService，创建统一终端服务
     if (sshService) {
