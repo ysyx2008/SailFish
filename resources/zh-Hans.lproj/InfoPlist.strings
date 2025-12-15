@@ -1,0 +1,3 @@
+/* Localized application name for Simplified Chinese */
+CFBundleDisplayName = "旗鱼终端";
+CFBundleName = "旗鱼终端";
