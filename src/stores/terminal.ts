@@ -109,6 +109,17 @@ export interface ParsedDocument {
   error?: string
 }
 
+// 完整的 SSH 配置（用于重连）
+export interface SshConnectionConfig {
+  host: string
+  port: number
+  username: string
+  password?: string
+  privateKey?: string
+  jumpHost?: JumpHostConfig
+  encoding?: string
+}
+
 export interface TerminalTab {
   id: string
   title: string
@@ -119,6 +130,8 @@ export interface TerminalTab {
     port: number
     username: string
   }
+  // 完整的 SSH 配置（用于重连）
+  sshConnectionConfig?: SshConnectionConfig
   systemInfo?: SystemInfo
   isConnected: boolean
   isLoading: boolean
@@ -411,6 +424,16 @@ export const useTerminalStore = defineStore('terminal', () => {
         port: sshConfig.port,
         username: sshConfig.username
       }
+      // 保存完整的 SSH 配置用于重连
+      tab.sshConnectionConfig = {
+        host: sshConfig.host,
+        port: sshConfig.port,
+        username: sshConfig.username,
+        password: sshConfig.password,
+        privateKey: sshConfig.privateKey,
+        jumpHost: sshConfig.jumpHost,
+        encoding: sshConfig.encoding
+      }
     }
 
     tabs.value.push(tab)
@@ -496,6 +519,66 @@ export const useTerminalStore = defineStore('terminal', () => {
       } else {
         activeTabId.value = ''
       }
+    }
+  }
+
+  /**
+   * 重新连接 SSH 终端
+   */
+  async function reconnectSsh(tabId: string): Promise<boolean> {
+    const tab = tabs.value.find(t => t.id === tabId)
+    if (!tab || tab.type !== 'ssh' || !tab.sshConnectionConfig) {
+      console.error('Cannot reconnect: tab not found or not SSH type')
+      return false
+    }
+
+    // 标记正在重连
+    tab.isLoading = true
+    tab.isConnected = false
+
+    try {
+      // 尝试断开旧连接（如果还存在）
+      if (tab.ptyId) {
+        try {
+          await window.electronAPI.ssh.disconnect(tab.ptyId)
+        } catch (e) {
+          // 忽略断开连接的错误
+        }
+      }
+
+      // 使用保存的配置重新连接
+      const config = tab.sshConnectionConfig
+      const sshId = await window.electronAPI.ssh.connect({
+        host: config.host,
+        port: config.port,
+        username: config.username,
+        password: config.password,
+        privateKey: config.privateKey,
+        jumpHost: config.jumpHost,
+        encoding: config.encoding,
+        cols: 80,
+        rows: 24
+      })
+
+      // 更新 tab
+      tab.ptyId = sshId
+      tab.isConnected = true
+      
+      // 更新系统信息
+      const jumpInfo = config.jumpHost ? ` (via ${config.jumpHost.host})` : ''
+      tab.systemInfo = {
+        os: 'linux',
+        shell: 'bash',
+        description: `SSH 连接: ${config.username}@${config.host}${jumpInfo}`
+      }
+
+      return true
+    } catch (error) {
+      console.error('Failed to reconnect SSH:', error)
+      tab.isConnected = false
+      throw error
+    } finally {
+      tab.isLoading = false
     }
   }
 
@@ -1115,6 +1198,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     pendingFocusTabId,
     createTab,
     closeTab,
+    reconnectSsh,
     setActiveTab,
     updateTabTitle,
     updateConnectionStatus,

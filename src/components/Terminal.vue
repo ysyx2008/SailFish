@@ -51,6 +51,10 @@ const contextMenu = ref({
   selectedText: ''
 })
 
+// SSH 断开连接状态（用于显示重连按钮）
+const sshDisconnected = ref(false)
+const isReconnecting = ref(false)
+
 // 初始化终端
 onMounted(async () => {
   if (!terminalRef.value) return
@@ -136,7 +140,7 @@ onMounted(async () => {
     }
   })
 
-  // 处理 Ctrl+C 复制
+  // 处理 Ctrl+C 复制和 Ctrl+Shift+R 重连
   terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
     // Ctrl+C 复制选中内容
     if ((event.ctrlKey || event.metaKey) && event.key === 'c' && event.type === 'keydown') {
@@ -147,6 +151,13 @@ onMounted(async () => {
       }
       // 没有选中内容时，让 Ctrl+C 发送到终端（作为中断信号）
       return true
+    }
+    // Ctrl+Shift+R SSH 重连
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'R' && event.type === 'keydown') {
+      if (props.type === 'ssh' && sshDisconnected.value) {
+        handleReconnect()
+        return false
+      }
     }
     return true
   })
@@ -211,6 +222,8 @@ onMounted(async () => {
       if (!isDisposed && terminal) {
         // 更新连接状态
         terminalStore.updateConnectionStatus(props.tabId, false)
+        // 设置断开状态（用于显示重连按钮）
+        sshDisconnected.value = true
         // 在终端显示断开连接消息
         const reasonMap: Record<string, string> = {
           'closed': '连接已关闭',
@@ -221,6 +234,7 @@ onMounted(async () => {
         const reasonText = reasonMap[event.reason] || event.reason
         const errorText = event.error ? `: ${event.error}` : ''
         terminal.write(`\r\n\x1b[31m[SSH 连接断开] ${reasonText}${errorText}\x1b[0m\r\n`)
+        terminal.write(`\x1b[33m点击右下角按钮或按 Ctrl+Shift+R 重新连接\x1b[0m\r\n`)
       }
     })
   }
@@ -474,6 +488,79 @@ const menuClear = () => {
   hideContextMenu()
 }
 
+// SSH 重新连接
+const handleReconnect = async () => {
+  if (props.type !== 'ssh' || isReconnecting.value) return
+  
+  isReconnecting.value = true
+  
+  try {
+    // 在终端显示正在重连的消息
+    terminal?.write(`\r\n\x1b[36m[正在重新连接...]\x1b[0m\r\n`)
+    
+    // 调用 store 的重连方法
+    await terminalStore.reconnectSsh(props.tabId)
+    
+    // 重连成功，清除断开状态
+    sshDisconnected.value = false
+    
+    // 在终端显示成功消息
+    terminal?.write(`\r\n\x1b[32m[连接成功]\x1b[0m\r\n`)
+    
+    // 重新订阅数据
+    if (unsubscribe) {
+      unsubscribe()
+    }
+    const tab = terminalStore.tabs.find(t => t.id === props.tabId)
+    if (tab?.ptyId) {
+      unsubscribe = window.electronAPI.ssh.onData(tab.ptyId, (data: string) => {
+        if (!isDisposed && terminal) {
+          try {
+            terminal.write(data)
+            terminalStore.appendOutput(props.tabId, data)
+          } catch (e) {
+            // 忽略写入错误
+          }
+        }
+      })
+      
+      // 重新订阅断开事件
+      if (unsubscribeDisconnect) {
+        unsubscribeDisconnect()
+      }
+      unsubscribeDisconnect = window.electronAPI.ssh.onDisconnected(tab.ptyId, (event) => {
+        if (!isDisposed && terminal) {
+          terminalStore.updateConnectionStatus(props.tabId, false)
+          sshDisconnected.value = true
+          const reasonMap: Record<string, string> = {
+            'closed': '连接已关闭',
+            'error': '连接错误',
+            'stream_closed': '数据流已关闭',
+            'jump_host_closed': '跳板机连接已断开'
+          }
+          const reasonText = reasonMap[event.reason] || event.reason
+          const errorText = event.error ? `: ${event.error}` : ''
+          terminal.write(`\r\n\x1b[31m[SSH 连接断开] ${reasonText}${errorText}\x1b[0m\r\n`)
+          terminal.write(`\x1b[33m点击右下角按钮或按 Ctrl+Shift+R 重新连接\x1b[0m\r\n`)
+        }
+      })
+      
+      // 重新调整终端大小
+      if (fitAddon && terminal) {
+        fitAddon.fit()
+        await terminalStore.resizeTerminal(props.tabId, terminal.cols, terminal.rows)
+      }
+    }
+  } catch (error) {
+    // 在终端显示错误消息
+    const errorMsg = error instanceof Error ? error.message : '未知错误'
+    terminal?.write(`\r\n\x1b[31m[重连失败] ${errorMsg}\x1b[0m\r\n`)
+    terminal?.write(`\x1b[33m点击右下角按钮或按 Ctrl+Shift+R 重试\x1b[0m\r\n`)
+  } finally {
+    isReconnecting.value = false
+  }
+}
+
 
 // 暴露方法供外部调用
 defineExpose({
@@ -505,6 +592,22 @@ defineExpose({
     @click="hideContextMenu"
   >
     <div ref="terminalRef" class="terminal-inner"></div>
+    
+    <!-- SSH 重连按钮 -->
+    <div 
+      v-if="type === 'ssh' && sshDisconnected" 
+      class="reconnect-overlay"
+    >
+      <button 
+        class="reconnect-btn"
+        :disabled="isReconnecting"
+        @click="handleReconnect"
+      >
+        <span v-if="isReconnecting" class="reconnect-spinner">⟳</span>
+        <span v-else>🔌</span>
+        {{ isReconnecting ? '连接中...' : '重新连接' }}
+      </button>
+    </div>
   </div>
   
   <!-- 右键菜单 -->
@@ -554,6 +657,7 @@ defineExpose({
 
 <style scoped>
 .terminal-wrapper {
+  position: relative;
   width: 100%;
   height: 100%;
   padding: 8px;
@@ -632,6 +736,54 @@ defineExpose({
   height: 1px;
   background: var(--border-color, #404040);
   margin: 4px 0;
+}
+
+/* SSH 重连按钮 */
+.reconnect-overlay {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 10;
+}
+
+.reconnect-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--bg-accent, #094771);
+  color: var(--text-primary, #fff);
+  border: 1px solid var(--border-color, #404040);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.reconnect-btn:hover:not(:disabled) {
+  background: var(--bg-hover, #0d5a8c);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.reconnect-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.reconnect-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.reconnect-spinner {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 </style>
 
