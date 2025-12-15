@@ -5,15 +5,19 @@ import Hero from '../components/Hero.astro';
 import Features from '../components/Features.astro';
 import Download from '../components/Download.astro';
 import Footer from '../components/Footer.astro';
+import { useTranslations, getLangFromUrl } from '../i18n/utils';
+
+const lang = getLangFromUrl(Astro.url);
+const t = useTranslations(lang);
 ---
 
-<Layout title="旗鱼终端 - AI 驱动的跨平台终端">
-  <Header />
+<Layout title={lang === 'zh' ? '旗鱼终端 - AI 驱动的跨平台终端' : 'SFTerminal - AI-Powered Cross-Platform Terminal'} lang={lang}>
+  <Header lang={lang} />
   <main>
-    <Hero />
-    <Features />
-    <Download />
+    <Hero lang={lang} />
+    <Features lang={lang} />
+    <Download lang={lang} />
   </main>
-  <Footer />
+  <Footer lang={lang} />
 </Layout>
 

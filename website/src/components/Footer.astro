@@ -1,5 +1,13 @@
 ---
-// 页脚组件 - 包含双授权协议说明
+import { useTranslations, type Lang } from '../i18n/utils';
+import { defaultLanguage } from '../i18n/translations';
+
+interface Props {
+  lang?: Lang;
+}
+
+const { lang = defaultLanguage } = Astro.props;
+const t = useTranslations(lang);
 const currentYear = new Date().getFullYear();
 ---
 
@@ -7,32 +15,29 @@ const currentYear = new Date().getFullYear();
   <div class="container">
     <!-- 授权协议说明 -->
     <div class="license-section fade-in">
-      <h3 class="license-title">开源授权</h3>
+      <h3 class="license-title">{t.footer.licenseTitle}</h3>
       <div class="license-grid">
         <div class="license-card">
-          <div class="license-badge open-source">开源许可</div>
-          <h4>AGPL v3.0</h4>
-          <p>以下场景免费使用：</p>
+          <div class="license-badge open-source">{t.footer.openSource.badge}</div>
+          <h4>{t.footer.openSource.title}</h4>
+          <p>{t.footer.openSource.description}</p>
           <ul>
-            <li>个人学习、研究、日常使用</li>
-            <li>企业内部使用 ≤ 1000套</li>
-            <li>非盈利组织 / 教育机构</li>
-            <li>医疗及医疗研究机构</li>
+            {t.footer.openSource.items.map(item => (
+              <li>{item}</li>
+            ))}
           </ul>
-          <p class="license-note">需遵守 AGPL v3.0 全部条款，修改需开源</p>
+          <p class="license-note">{t.footer.openSource.note}</p>
         </div>
         <div class="license-card">
-          <div class="license-badge commercial">商业授权</div>
-          <h4>企业许可</h4>
-          <p>以下场景需要商业授权：</p>
+          <div class="license-badge commercial">{t.footer.commercial.badge}</div>
+          <h4>{t.footer.commercial.title}</h4>
+          <p>{t.footer.commercial.description}</p>
           <ul>
-            <li>企业内部使用超过 1000 套</li>
-            <li>作为产品/服务的一部分提供</li>
-            <li>不希望开源修改的代码</li>
-            <li>修改本软件的 Logo 或名称</li>
-            <li>删除或修改"支持作者"功能</li>
+            {t.footer.commercial.items.map(item => (
+              <li>{item}</li>
+            ))}
           </ul>
-          <a href="mailto:nuoyan_cfan@163.com" class="license-contact">联系获取商业授权 →</a>
+          <a href="mailto:nuoyan_cfan@163.com" class="license-contact">{t.footer.commercial.contact}</a>
         </div>
       </div>
     </div>
@@ -40,8 +45,8 @@ const currentYear = new Date().getFullYear();
     <!-- 底部信息 -->
     <div class="footer-bottom">
       <div class="footer-brand">
-        <img src="/logo.png" alt="旗鱼终端" class="footer-logo" />
-        <span>旗鱼终端</span>
+        <img src="/logo.png" alt={t.common.brandName} class="footer-logo" />
+        <span>{t.common.brandName}</span>
       </div>
       
       <div class="footer-links">
@@ -49,14 +54,14 @@ const currentYear = new Date().getFullYear();
           <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
             <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
           </svg>
-          GitHub
+          {t.footer.links.github}
         </a>
-        <a href="https://github.com/ysyx2008/SFTerminal/issues" target="_blank" rel="noopener">问题反馈</a>
-        <a href="https://github.com/ysyx2008/SFTerminal/blob/main/LICENSE" target="_blank" rel="noopener">许可证</a>
+        <a href="https://github.com/ysyx2008/SFTerminal/issues" target="_blank" rel="noopener">{t.footer.links.issues}</a>
+        <a href="https://github.com/ysyx2008/SFTerminal/blob/main/LICENSE" target="_blank" rel="noopener">{t.footer.links.license}</a>
       </div>
       
       <p class="copyright">
-        © {currentYear} 旗鱼终端. 保留所有权利.
+        © {currentYear} {t.common.brandName}. {t.footer.copyright}
       </p>
     </div>
   </div>
