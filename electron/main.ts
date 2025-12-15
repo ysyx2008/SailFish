@@ -390,6 +390,10 @@ ipcMain.handle('pty:dispose', async (_event, id: string) => {
   ptyService.dispose(id)
 })
 
+ipcMain.handle('pty:getAvailableShells', async () => {
+  return ptyService.getAvailableShells()
+})
+
 // PTY 数据输出 - 转发到渲染进程
 ipcMain.on('pty:subscribe', (event, id: string) => {
   ptyService.onData(id, (data: string) => {

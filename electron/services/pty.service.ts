@@ -1132,6 +1132,60 @@ export class PtyService {
       }
     }
   }
+
+  /**
+   * 获取系统可用的 Shell 列表
+   * 检测系统上实际安装的 shell，只返回可用的选项
+   */
+  async getAvailableShells(): Promise<Array<{ label: string; value: string; icon: string }>> {
+    const isWindows = process.platform === 'win32'
+    const fs = await import('fs')
+    
+    if (isWindows) {
+      const shells: Array<{ label: string; value: string; icon: string }> = []
+      
+      // PowerShell 通常总是可用的
+      shells.push({ label: 'PowerShell', value: 'powershell.exe', icon: '⚡' })
+      
+      // CMD 总是可用的
+      shells.push({ label: 'CMD', value: 'cmd.exe', icon: '📟' })
+      
+      // 检测 Git Bash
+      const gitBashPaths = [
+        'C:\\Program Files\\Git\\bin\\bash.exe',
+        'C:\\Program Files (x86)\\Git\\bin\\bash.exe'
+      ]
+      for (const path of gitBashPaths) {
+        if (fs.existsSync(path)) {
+          shells.push({ label: 'Git Bash', value: path, icon: '🐱' })
+          break
+        }
+      }
+      
+      return shells
+    } else {
+      // macOS / Linux
+      const shells: Array<{ label: string; value: string; icon: string }> = []
+      
+      // 定义可能的 shell 及其检测路径
+      const shellCandidates = [
+        { label: 'Bash', paths: ['/bin/bash', '/usr/bin/bash'], icon: '🐚' },
+        { label: 'Zsh', paths: ['/bin/zsh', '/usr/bin/zsh'], icon: '🔮' },
+        { label: 'Fish', paths: ['/usr/local/bin/fish', '/opt/homebrew/bin/fish', '/usr/bin/fish'], icon: '🐟' }
+      ]
+      
+      for (const candidate of shellCandidates) {
+        for (const shellPath of candidate.paths) {
+          if (fs.existsSync(shellPath)) {
+            shells.push({ label: candidate.label, value: shellPath, icon: candidate.icon })
+            break // 找到一个路径就够了，不重复添加
+          }
+        }
+      }
+      
+      return shells
+    }
+  }
 }
 
 /**

@@ -317,6 +317,11 @@ const electronAPI = {
         exitCode?: number
         error?: string
       }>,
+    getAvailableShells: () => ipcRenderer.invoke('pty:getAvailableShells') as Promise<Array<{
+      label: string
+      value: string
+      icon: string
+    }>>,
     onData: (id: string, callback: (data: string) => void) => {
       ipcRenderer.send('pty:subscribe', id)
       const handler = (_event: Electron.IpcRendererEvent, data: string) => callback(data)

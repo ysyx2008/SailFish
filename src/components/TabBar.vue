@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, watch, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTerminalStore } from '../stores/terminal'
 
@@ -19,25 +19,31 @@ const tabsContainerRef = ref<HTMLElement | null>(null)
 const canScrollLeft = ref(false)
 const canScrollRight = ref(false)
 
-// 检测操作系统
-const isWindows = computed(() => navigator.platform.toLowerCase().includes('win'))
+// Shell 选项（动态检测系统可用的 shell）
+const shellOptions = ref<Array<{ label: string; value: string; icon: string }>>([])
 
-// Shell 选项
-const shellOptions = computed(() => {
-  if (isWindows.value) {
-    return [
-      { label: 'PowerShell', value: 'powershell.exe', icon: '⚡' },
-      { label: 'CMD', value: 'cmd.exe', icon: '📟' },
-      { label: 'Git Bash', value: 'C:\\Program Files\\Git\\bin\\bash.exe', icon: '🐱' }
-    ]
-  } else {
-    return [
-      { label: 'Bash', value: '/bin/bash', icon: '🐚' },
-      { label: 'Zsh', value: '/bin/zsh', icon: '🔮' },
-      { label: 'Fish', value: '/usr/bin/fish', icon: '🐟' }
-    ]
+// 加载可用的 shell 列表
+const loadAvailableShells = async () => {
+  try {
+    const shells = await window.electronAPI.pty.getAvailableShells()
+    shellOptions.value = shells
+  } catch (e) {
+    console.error('Failed to load available shells:', e)
+    // 降级：使用默认列表
+    const isWindows = navigator.platform.toLowerCase().includes('win')
+    if (isWindows) {
+      shellOptions.value = [
+        { label: 'PowerShell', value: 'powershell.exe', icon: '⚡' },
+        { label: 'CMD', value: 'cmd.exe', icon: '📟' }
+      ]
+    } else {
+      shellOptions.value = [
+        { label: 'Bash', value: '/bin/bash', icon: '🐚' },
+        { label: 'Zsh', value: '/bin/zsh', icon: '🔮' }
+      ]
+    }
   }
-})
+}
 
 // 检查滚动状态
 const checkScrollState = () => {
@@ -102,6 +108,8 @@ onMounted(() => {
   tabsContainerRef.value?.addEventListener('scroll', checkScrollState)
   // 监听窗口大小变化
   window.addEventListener('resize', checkScrollState)
+  // 加载可用的 shell 列表
+  loadAvailableShells()
 })
 
 const handleNewTab = (shell?: string) => {
