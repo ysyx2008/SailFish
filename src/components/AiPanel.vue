@@ -4,7 +4,7 @@
  * 重构版本：使用 composables 模块化管理逻辑
  * 每个 tab 独立实例，通过 tabId prop 绑定
  */
-import { ref, computed, watch, inject, onMounted, toRef } from 'vue'
+import { ref, computed, watch, inject, onMounted, toRef, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
@@ -43,6 +43,9 @@ const messagesRef = ref<HTMLDivElement | null>(null)
 
 // Plan 展开状态
 const planExpanded = ref(false)
+
+// 保存每个模式的滚动位置（用于模式切换时恢复）
+const scrollPositions = ref<{ agent: number; chat: number }>({ agent: 0, chat: 0 })
 
 // ==================== 初始化 Composables ====================
 
@@ -360,6 +363,26 @@ watch(() => terminalStore.pendingAiText, (text) => {
     terminalStore.clearPendingAiText()
   }
 }, { immediate: true })
+
+// 监听模式切换，保存和恢复滚动位置
+watch(agentMode, async (newMode, oldMode) => {
+  if (!messagesRef.value || oldMode === undefined) return
+  
+  // 保存当前模式的滚动位置
+  const currentScrollTop = messagesRef.value.scrollTop
+  if (oldMode) {
+    scrollPositions.value.agent = currentScrollTop
+  } else {
+    scrollPositions.value.chat = currentScrollTop
+  }
+  
+  // 等待 DOM 更新后恢复目标模式的滚动位置
+  await nextTick()
+  if (messagesRef.value) {
+    const targetScrollTop = newMode ? scrollPositions.value.agent : scrollPositions.value.chat
+    messagesRef.value.scrollTop = targetScrollTop
+  }
+})
 
 // ==================== 诊断和分析（包装函数） ====================
 
@@ -946,9 +969,9 @@ onMounted(() => {
         <!-- Agent 确认对话框（融入对话流，只在 Agent 模式下显示） -->
         <div v-if="agentMode && pendingConfirm" class="message assistant">
           <div class="message-wrapper">
-            <div class="message-content agent-confirm-inline">
+            <div class="message-content agent-confirm-inline" :class="getRiskClass(pendingConfirm.riskLevel)">
               <div class="confirm-header-inline">
-                <span class="confirm-icon">⚠️</span>
+                <span class="confirm-icon">{{ pendingConfirm.riskLevel === 'dangerous' ? '🔴' : (pendingConfirm.riskLevel === 'moderate' ? '🟡' : '🟢') }}</span>
                 <span class="confirm-title">{{ t('ai.needConfirm') }}</span>
                 <span class="confirm-risk-badge" :class="getRiskClass(pendingConfirm.riskLevel)">
                   {{ pendingConfirm.riskLevel === 'dangerous' ? t('ai.highRisk') : (pendingConfirm.riskLevel === 'moderate' ? t('ai.mediumRisk') : t('ai.lowRisk')) }}
@@ -959,10 +982,14 @@ onMounted(() => {
                 <pre class="confirm-args-inline">{{ formatConfirmArgs(pendingConfirm) }}</pre>
               </div>
               <div class="confirm-actions-inline">
-                <button class="btn btn-sm btn-outline-danger" @click="confirmToolCall(false)">
+                <button class="btn btn-sm btn-outline-secondary" @click="confirmToolCall(false)">
                   {{ t('ai.reject') }}
                 </button>
-                <button class="btn btn-sm btn-primary" @click="confirmToolCall(true)">
+                <button 
+                  class="btn btn-sm" 
+                  :class="pendingConfirm.riskLevel === 'dangerous' ? 'btn-danger' : (pendingConfirm.riskLevel === 'moderate' ? 'btn-warning' : 'btn-success')"
+                  @click="confirmToolCall(true)"
+                >
                   {{ t('ai.allowExecute') }}
                 </button>
               </div>
@@ -3358,8 +3385,28 @@ onMounted(() => {
 /* Agent 确认对话框（融入对话） */
 .agent-confirm-inline {
   padding: 14px !important;
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.05)) !important;
-  border: 1px solid rgba(245, 158, 11, 0.3) !important;
+  border-radius: 10px !important;
+}
+
+/* ===== 高风险 - 红色系 ===== */
+.agent-confirm-inline.risk-dangerous {
+  background: linear-gradient(135deg, #3b1018 0%, #2a0a10 100%) !important;
+  border: 2px solid #ef4444 !important;
+  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.2);
+}
+
+/* ===== 中风险 - 橙黄色系 ===== */
+.agent-confirm-inline.risk-moderate {
+  background: linear-gradient(135deg, #3d2f10 0%, #2a2008 100%) !important;
+  border: 2px solid #f59e0b !important;
+  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.15);
+}
+
+/* ===== 低风险 - 绿色系 ===== */
+.agent-confirm-inline.risk-safe {
+  background: linear-gradient(135deg, #0f2920 0%, #081a14 100%) !important;
+  border: 2px solid #10b981 !important;
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.1);
 }
 
 .confirm-header-inline {
@@ -3370,36 +3417,36 @@ onMounted(() => {
 }
 
 .confirm-icon {
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .confirm-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: #fff;
 }
 
 .confirm-risk-badge {
-  padding: 3px 8px;
-  font-size: 10px;
-  font-weight: 600;
-  border-radius: 10px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 4px;
   margin-left: auto;
 }
 
 .confirm-risk-badge.risk-dangerous {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+  background: #ef4444;
+  color: #fff;
 }
 
 .confirm-risk-badge.risk-moderate {
-  background: rgba(245, 158, 11, 0.2);
-  color: #f59e0b;
+  background: #f59e0b;
+  color: #000;
 }
 
 .confirm-risk-badge.risk-safe {
-  background: rgba(16, 185, 129, 0.2);
-  color: #10b981;
+  background: #10b981;
+  color: #fff;
 }
 
 .confirm-detail {
@@ -3409,13 +3456,14 @@ onMounted(() => {
 .confirm-tool-name {
   font-size: 12px;
   font-weight: 600;
-  color: var(--accent-primary);
+  color: rgba(255, 255, 255, 0.7);
   margin-bottom: 6px;
 }
 
 .confirm-args-inline {
   padding: 10px;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   font-family: var(--font-mono);
   font-size: 12px;
@@ -3424,7 +3472,7 @@ onMounted(() => {
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-all;
-  color: var(--text-primary);
+  color: #fff;
 }
 
 .confirm-actions-inline {
@@ -3433,14 +3481,37 @@ onMounted(() => {
   justify-content: flex-end;
 }
 
-.btn-outline-danger {
-  background: transparent;
-  border: 1px solid #ef4444;
-  color: #ef4444;
+.btn-outline-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.8);
 }
 
-.btn-outline-danger:hover {
-  background: rgba(239, 68, 68, 0.1);
+.btn-outline-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.btn-warning {
+  background: #f59e0b;
+  border: 1px solid #f59e0b;
+  color: #000;
+}
+
+.btn-warning:hover:not(:disabled) {
+  background: #d97706;
+  border-color: #d97706;
+}
+
+.btn-danger {
+  background: #ef4444;
+  border: 1px solid #ef4444;
+  color: #fff;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #dc2626;
+  border-color: #dc2626;
 }
 
 /* 成功按钮样式 */
