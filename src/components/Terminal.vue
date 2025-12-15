@@ -222,8 +222,7 @@ onMounted(async () => {
       if (!isDisposed && terminal) {
         // 更新连接状态
         terminalStore.updateConnectionStatus(props.tabId, false)
-        // 设置断开状态（用于显示重连按钮）
-        sshDisconnected.value = true
+        
         // 在终端显示断开连接消息
         const reasonMap: Record<string, string> = {
           'closed': '连接已关闭',
@@ -234,7 +233,16 @@ onMounted(async () => {
         const reasonText = reasonMap[event.reason] || event.reason
         const errorText = event.error ? `: ${event.error}` : ''
         terminal.write(`\r\n\x1b[31m[SSH 连接断开] ${reasonText}${errorText}\x1b[0m\r\n`)
-        terminal.write(`\x1b[33m点击右下角按钮或按 Ctrl+Shift+R 重新连接\x1b[0m\r\n`)
+        
+        // 检查是否可以重连（有保存的会话 ID）
+        const tab = terminalStore.tabs.find(t => t.id === props.tabId)
+        if (tab?.sshSessionId) {
+          // 设置断开状态（用于显示重连按钮）
+          sshDisconnected.value = true
+          terminal.write(`\x1b[33m点击右下角按钮或按 Ctrl+Shift+R 重新连接\x1b[0m\r\n`)
+        } else {
+          terminal.write(`\x1b[33m该连接未保存为会话，请从会话管理器重新连接\x1b[0m\r\n`)
+        }
       }
     })
   }
@@ -499,7 +507,20 @@ const handleReconnect = async () => {
     terminal?.write(`\r\n\x1b[36m[正在重新连接...]\x1b[0m\r\n`)
     
     // 调用 store 的重连方法
-    await terminalStore.reconnectSsh(props.tabId)
+    const result = await terminalStore.reconnectSsh(props.tabId)
+    
+    // 如果会话未保存，无法重连
+    if (result.needsSession) {
+      terminal?.write(`\r\n\x1b[33m[无法重连] 该连接未保存为会话，请从会话管理器重新连接\x1b[0m\r\n`)
+      // 隐藏重连按钮（无法重连）
+      sshDisconnected.value = false
+      return
+    }
+    
+    if (!result.success) {
+      terminal?.write(`\r\n\x1b[31m[重连失败] 未知错误\x1b[0m\r\n`)
+      return
+    }
     
     // 重连成功，清除断开状态
     sshDisconnected.value = false

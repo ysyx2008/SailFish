@@ -109,17 +109,6 @@ export interface ParsedDocument {
   error?: string
 }
 
-// 完整的 SSH 配置（用于重连）
-export interface SshConnectionConfig {
-  host: string
-  port: number
-  username: string
-  password?: string
-  privateKey?: string
-  jumpHost?: JumpHostConfig
-  encoding?: string
-}
-
 export interface TerminalTab {
   id: string
   title: string
@@ -130,8 +119,8 @@ export interface TerminalTab {
     port: number
     username: string
   }
-  // 完整的 SSH 配置（用于重连）
-  sshConnectionConfig?: SshConnectionConfig
+  // SSH 会话 ID（用于重连时从 configStore 获取完整配置）
+  sshSessionId?: string
   systemInfo?: SystemInfo
   isConnected: boolean
   isLoading: boolean
@@ -387,6 +376,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       privateKey?: string
       jumpHost?: JumpHostConfig  // 跳板机配置
       encoding?: string  // 字符编码，默认 utf-8
+      sessionId?: string  // SSH 会话 ID（用于重连）
     },
     shell?: string  // 本地终端可指定 shell (cmd/powershell/bash 等)
   ): Promise<string> {
@@ -424,15 +414,9 @@ export const useTerminalStore = defineStore('terminal', () => {
         port: sshConfig.port,
         username: sshConfig.username
       }
-      // 保存完整的 SSH 配置用于重连
-      tab.sshConnectionConfig = {
-        host: sshConfig.host,
-        port: sshConfig.port,
-        username: sshConfig.username,
-        password: sshConfig.password,
-        privateKey: sshConfig.privateKey,
-        jumpHost: sshConfig.jumpHost,
-        encoding: sshConfig.encoding
+      // 保存 SSH 会话 ID（用于重连时从 configStore 获取完整配置）
+      if (sshConfig.sessionId) {
+        tab.sshSessionId = sshConfig.sessionId
       }
     }
 
@@ -524,12 +508,27 @@ export const useTerminalStore = defineStore('terminal', () => {
 
   /**
    * 重新连接 SSH 终端
+   * 需要从 configStore 获取会话配置，返回 { success, needsSession } 指示结果
    */
-  async function reconnectSsh(tabId: string): Promise<boolean> {
+  async function reconnectSsh(tabId: string): Promise<{ success: boolean; needsSession?: boolean }> {
     const tab = tabs.value.find(t => t.id === tabId)
-    if (!tab || tab.type !== 'ssh' || !tab.sshConnectionConfig) {
+    if (!tab || tab.type !== 'ssh') {
       console.error('Cannot reconnect: tab not found or not SSH type')
-      return false
+      return { success: false }
+    }
+
+    // 如果没有 sessionId，无法重连（配置未保存）
+    if (!tab.sshSessionId) {
+      console.warn('Cannot reconnect: no sessionId saved (session was not saved)')
+      return { success: false, needsSession: true }
+    }
+
+    // 从 configStore 获取会话配置
+    const configStore = useConfigStore()
+    const session = configStore.sshSessions.find(s => s.id === tab.sshSessionId)
+    if (!session) {
+      console.error('Cannot reconnect: session not found in config')
+      return { success: false, needsSession: true }
     }
 
     // 标记正在重连
@@ -546,16 +545,18 @@ export const useTerminalStore = defineStore('terminal', () => {
         }
       }
 
-      // 使用保存的配置重新连接
-      const config = tab.sshConnectionConfig
+      // 获取跳板机配置
+      const jumpHost = configStore.getEffectiveJumpHost(session)
+
+      // 使用会话配置重新连接
       const sshId = await window.electronAPI.ssh.connect({
-        host: config.host,
-        port: config.port,
-        username: config.username,
-        password: config.password,
-        privateKey: config.privateKey,
-        jumpHost: config.jumpHost,
-        encoding: config.encoding,
+        host: session.host,
+        port: session.port,
+        username: session.username,
+        password: session.password,
+        privateKey: session.privateKeyPath,
+        jumpHost,
+        encoding: session.encoding || 'utf-8',
         cols: 80,
         rows: 24
       })
@@ -565,14 +566,14 @@ export const useTerminalStore = defineStore('terminal', () => {
       tab.isConnected = true
       
       // 更新系统信息
-      const jumpInfo = config.jumpHost ? ` (via ${config.jumpHost.host})` : ''
+      const jumpInfo = jumpHost ? ` (via ${jumpHost.host})` : ''
       tab.systemInfo = {
         os: 'linux',
         shell: 'bash',
-        description: `SSH 连接: ${config.username}@${config.host}${jumpInfo}`
+        description: `SSH 连接: ${session.username}@${session.host}${jumpInfo}`
       }
 
-      return true
+      return { success: true }
     } catch (error) {
       console.error('Failed to reconnect SSH:', error)
       tab.isConnected = false
