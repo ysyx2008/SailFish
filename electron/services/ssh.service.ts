@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import * as fs from 'fs'
 import stripAnsi from 'strip-ansi'
 import * as iconv from 'iconv-lite'
+import { getUnixProbeCommands } from './host-profile.service'
 
 // 支持的字符编码（与前端保持一致）
 export type SshEncoding = 
@@ -456,40 +457,8 @@ export class SshService {
     }
 
     return new Promise((resolve) => {
-      // 完整的探测命令，与 HostProfileService.getProbeCommands() 保持一致
-      // 每个命令用分号分隔，在一次 exec 调用中执行所有命令
-      const probeCommands = [
-        'hostname 2>/dev/null || echo "unknown"',
-        'whoami 2>/dev/null || echo "unknown"',
-        'uname -s 2>/dev/null || echo "unknown"',
-        // 系统版本（支持多种系统）
-        // Linux: /etc/os-release, macOS: sw_vers, AIX: oslevel, BSD: freebsd-version/uname -r
-        'cat /etc/os-release 2>/dev/null | grep -E "^(PRETTY_NAME|NAME|VERSION)=" | head -3 || sw_vers 2>/dev/null || freebsd-version 2>/dev/null || oslevel 2>/dev/null || uname -r 2>/dev/null || echo "unknown"',
-        'echo $SHELL',
-        'echo $HOME',
-        'pwd',
-        // 检测包管理器（Linux）
-        'command -v apt >/dev/null 2>&1 && echo "[PKG_APT]"',
-        'command -v yum >/dev/null 2>&1 && echo "[PKG_YUM]"',
-        'command -v dnf >/dev/null 2>&1 && echo "[PKG_DNF]"',
-        'command -v brew >/dev/null 2>&1 && echo "[PKG_BREW]"',
-        'command -v pacman >/dev/null 2>&1 && echo "[PKG_PACMAN]"',
-        // 检测包管理器（BSD）
-        'command -v pkg >/dev/null 2>&1 && echo "[PKG_PKG]"',        // FreeBSD
-        'command -v pkg_add >/dev/null 2>&1 && echo "[PKG_PKGADD]"', // OpenBSD
-        'command -v pkgin >/dev/null 2>&1 && echo "[PKG_PKGIN]"',    // NetBSD
-        // 检测常用工具
-        'command -v git >/dev/null 2>&1 && echo "[HAS_GIT]"',
-        'command -v docker >/dev/null 2>&1 && echo "[HAS_DOCKER]"',
-        'command -v python3 >/dev/null 2>&1 && echo "[HAS_PYTHON3]"',
-        'command -v python >/dev/null 2>&1 && echo "[HAS_PYTHON]"',
-        'command -v node >/dev/null 2>&1 && echo "[HAS_NODE]"',
-        'command -v nginx >/dev/null 2>&1 && echo "[HAS_NGINX]"',
-        'command -v systemctl >/dev/null 2>&1 && echo "[HAS_SYSTEMD]"',
-        'command -v vim >/dev/null 2>&1 && echo "[HAS_VIM]"',
-        'command -v nano >/dev/null 2>&1 && echo "[HAS_NANO]"',
-      ]
-      const probeCommand = probeCommands.join('; ')
+      // 使用公共探测命令，用分号分隔在一次 exec 调用中执行
+      const probeCommand = getUnixProbeCommands().join('; ')
       
       // 使用 exec 在单独的通道执行，不影响终端
       instance.client.exec(probeCommand, (err, stream) => {
