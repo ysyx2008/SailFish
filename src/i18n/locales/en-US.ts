@@ -1,13 +1,13 @@
 export default {
   // App level
   app: {
-    title: 'SFTerminal',
+    title: 'SFTerm',
     description: 'AI-powered cross-platform terminal'
   },
 
   // Welcome page
   welcome: {
-    title: 'Welcome to SFTerminal',
+    title: 'Welcome to SFTerm',
     subtitle: 'AI-powered cross-platform terminal',
     quickStart: 'Quick Start',
     localTerminal: 'Local Terminal',
@@ -136,11 +136,11 @@ export default {
 
   // About page
   about: {
-    title: 'SFTerminal',
+    title: 'SFTerm',
     description: 'AI-powered cross-platform smart terminal',
     contact: 'Contact Us',
     license: 'License',
-    copyright: '© 2024 SFTerminal',
+    copyright: '© 2024 SFTerm',
     // Update check
     checkUpdate: 'Check for Updates',
     checkingUpdate: 'Checking for updates...',
@@ -157,7 +157,7 @@ export default {
     wechatPay: 'WeChat Pay',
     alipay: 'Alipay',
     thanksMessage: 'Every support fuels my motivation!',
-    thanksDetail: 'Your recognition means the world. SFTerminal will keep evolving ✨'
+    thanksDetail: 'Your recognition means the world. SFTerm will keep evolving ✨'
   },
 
   // Sponsor features
@@ -580,7 +580,7 @@ export default {
     supplementInfo: 'Supplement Info',
     pendingProcess: 'Pending',
     welcome: {
-      greeting: 'Hello! I\'m your AI assistant for SFTerminal.',
+      greeting: 'Hello! I\'m your AI assistant for SFTerm.',
       directChat: 'Direct Chat',
       directChatDesc: 'Enter any question in the input box below, and I\'ll do my best to help.',
       quickFeatures: 'Quick Features',
@@ -810,9 +810,9 @@ export default {
   // Setup Wizard
   setup: {
     welcome: {
-      title: 'Welcome to SFTerminal',
+      title: 'Welcome to SFTerm',
       subtitle: 'AI-powered smart terminal for efficient operations',
-      intro: 'SFTerminal is a smart terminal tool designed for operations engineers, integrating powerful AI capabilities to make your work more efficient. This wizard will help you complete the initial setup and get started quickly.',
+      intro: 'SFTerm is a smart terminal tool designed for operations engineers, integrating powerful AI capabilities to make your work more efficient. This wizard will help you complete the initial setup and get started quickly.',
       features: {
         aiChat: {
           title: 'AI Chat Assistant',
@@ -847,7 +847,7 @@ export default {
     import: {
       title: 'Import SSH Hosts',
       subtitle: 'Quickly import existing SSH host configurations',
-      intro: 'If you previously used Xshell, you can import all session configurations with one click to quickly migrate to SFTerminal.',
+      intro: 'If you previously used Xshell, you can import all session configurations with one click to quickly migrate to SFTerm.',
       scanning: 'Scanning Xshell session directory...',
       found: 'Found {count} sessions',
       import: 'Import',
@@ -891,7 +891,7 @@ export default {
     },
     complete: {
       title: 'All Set!',
-      subtitle: 'Start using SFTerminal',
+      subtitle: 'Start using SFTerm',
       summary: {
         aiConfigured: 'AI model configured',
         aiNotConfigured: 'AI model not configured',
@@ -916,7 +916,7 @@ export default {
       search: 'Search'
     },
     welcome: {
-      title: 'Welcome to SFTerminal',
+      title: 'Welcome to SFTerm',
       hint: 'Click + to create a new terminal session'
     },
     newLocalTerminal: 'New Local Terminal',
