@@ -173,8 +173,40 @@ const changeAiProfile = async (profileId: string) => {
 
 // ==================== 消息清空 ====================
 
-// 清空对话（包括 Agent 状态和历史）
-const clearMessages = () => {
+// 清空对话确认框状态
+const showClearConfirm = ref(false)
+
+// 请求清空对话（如果 Agent 正在执行，需要用户确认）
+const requestClearMessages = () => {
+  if (isAgentRunning.value) {
+    // Agent 正在执行，需要确认
+    showClearConfirm.value = true
+  } else {
+    // Agent 未运行，直接清空
+    doClearMessages()
+  }
+}
+
+// 确认清空对话（先停止 Agent，再清空）
+const confirmClearMessages = async () => {
+  showClearConfirm.value = false
+  
+  // 如果 Agent 正在执行，先停止它
+  if (isAgentRunning.value) {
+    await abortAgent()
+  }
+  
+  // 然后清空对话
+  doClearMessages()
+}
+
+// 取消清空对话
+const cancelClearMessages = () => {
+  showClearConfirm.value = false
+}
+
+// 执行清空对话（包括 Agent 状态和历史）
+const doClearMessages = () => {
   if (currentTabId.value) {
     terminalStore.clearAiMessages(currentTabId.value)
     terminalStore.clearAgentState(currentTabId.value, false)  // 不保留历史
@@ -184,6 +216,9 @@ const clearMessages = () => {
   // 清空待处理的补充消息
   pendingSupplements.value = []
 }
+
+// 兼容旧的 clearMessages（现在改为 requestClearMessages）
+const clearMessages = requestClearMessages
 
 // ==================== 确认框辅助函数 ====================
 
@@ -574,6 +609,31 @@ onMounted(() => {
               @click="confirmEnableFreeMode"
             >
               {{ t('ai.enableFreeMode') }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 清空对话确认对话框（Agent 执行中） -->
+      <div v-if="showClearConfirm" class="free-mode-confirm-overlay">
+        <div class="free-mode-confirm-dialog clear-confirm-dialog">
+          <div class="confirm-dialog-header">
+            <span class="confirm-dialog-icon">⚠️</span>
+            <span class="confirm-dialog-title">{{ t('ai.clearConfirmTitle') }}</span>
+          </div>
+          <div class="confirm-dialog-content">
+            <p>{{ t('ai.clearConfirmDesc') }}</p>
+            <ul class="confirm-dialog-warnings">
+              <li>{{ t('ai.clearConfirmWarning1') }}</li>
+              <li>{{ t('ai.clearConfirmWarning2') }}</li>
+            </ul>
+          </div>
+          <div class="confirm-dialog-actions">
+            <button class="btn btn-sm btn-outline" @click="cancelClearMessages">
+              {{ t('common.cancel') }}
+            </button>
+            <button class="btn btn-sm btn-danger" @click="confirmClearMessages">
+              {{ t('ai.clearConfirmButton') }}
             </button>
           </div>
         </div>
