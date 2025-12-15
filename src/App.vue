@@ -74,9 +74,17 @@ const handleCloseShortcut = async () => {
   }
 }
 
+// 清理函数存储
+let cleanupTerminalCountListener: (() => void) | null = null
+
 onMounted(async () => {
   // 注册全局快捷键
   document.addEventListener('keydown', handleGlobalKeydown)
+
+  // 注册终端数量查询响应（用于退出确认）
+  cleanupTerminalCountListener = window.electronAPI.window.onRequestTerminalCount(() => {
+    window.electronAPI.window.responseTerminalCount(terminalStore.tabs.length)
+  })
 
   // 加载配置
   await configStore.loadConfig()
@@ -249,6 +257,8 @@ onUnmounted(() => {
   document.removeEventListener('keydown', handleGlobalKeydown)
   document.removeEventListener('mousemove', handleResize)
   document.removeEventListener('mouseup', stopResize)
+  // 清理终端数量查询监听器
+  cleanupTerminalCountListener?.()
 })
 </script>
 
