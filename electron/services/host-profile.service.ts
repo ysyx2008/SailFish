@@ -236,23 +236,27 @@ export class HostProfileService {
       ]
     }
 
-    // Unix/Linux/macOS
+    // Unix/Linux/macOS/BSD
     return [
       'hostname 2>/dev/null || echo "unknown"',
       'whoami 2>/dev/null || echo "unknown"',
       'uname -s 2>/dev/null || echo "unknown"',
-      // 系统版本（优先获取 PRETTY_NAME，它包含完整的发行版名称和版本）
-      // 支持 Linux (/etc/os-release)、macOS (sw_vers)、AIX (oslevel)
-      'cat /etc/os-release 2>/dev/null | grep -E "^(PRETTY_NAME|NAME|VERSION)=" | head -3 || sw_vers 2>/dev/null || oslevel 2>/dev/null || echo "unknown"',
+      // 系统版本（支持多种系统）
+      // Linux: /etc/os-release, macOS: sw_vers, AIX: oslevel, BSD: freebsd-version/uname -r
+      'cat /etc/os-release 2>/dev/null | grep -E "^(PRETTY_NAME|NAME|VERSION)=" | head -3 || sw_vers 2>/dev/null || freebsd-version 2>/dev/null || oslevel 2>/dev/null || uname -r 2>/dev/null || echo "unknown"',
       'echo $SHELL',
       'echo $HOME',
       'pwd',
-      // 检测包管理器
+      // 检测包管理器（Linux）
       'command -v apt >/dev/null 2>&1 && echo "[PKG_APT]"',
       'command -v yum >/dev/null 2>&1 && echo "[PKG_YUM]"',
       'command -v dnf >/dev/null 2>&1 && echo "[PKG_DNF]"',
       'command -v brew >/dev/null 2>&1 && echo "[PKG_BREW]"',
       'command -v pacman >/dev/null 2>&1 && echo "[PKG_PACMAN]"',
+      // 检测包管理器（BSD）
+      'command -v pkg >/dev/null 2>&1 && echo "[PKG_PKG]"',        // FreeBSD
+      'command -v pkg_add >/dev/null 2>&1 && echo "[PKG_PKGADD]"', // OpenBSD
+      'command -v pkgin >/dev/null 2>&1 && echo "[PKG_PKGIN]"',    // NetBSD
       // 检测常用工具
       'command -v git >/dev/null 2>&1 && echo "[HAS_GIT]"',
       'command -v docker >/dev/null 2>&1 && echo "[HAS_DOCKER]"',
@@ -297,8 +301,20 @@ export class HostProfileService {
       }
     } else if (output.includes('Darwin')) {
       result.os = 'macos'
+    } else if (output.includes('FreeBSD')) {
+      result.os = 'freebsd'
+    } else if (output.includes('OpenBSD')) {
+      result.os = 'openbsd'
+    } else if (output.includes('NetBSD')) {
+      result.os = 'netbsd'
+    } else if (output.includes('DragonFly')) {
+      result.os = 'dragonfly'
     } else if (output.includes('AIX')) {
       result.os = 'aix'
+    } else if (output.includes('HP-UX')) {
+      result.os = 'hpux'
+    } else if (output.includes('SunOS')) {
+      result.os = 'solaris'
     } else if (output.includes('Linux')) {
       result.os = 'linux'
     }
@@ -329,6 +345,42 @@ export class HostProfileService {
         if (oslevelMatch) {
           result.osVersion = `AIX ${oslevelMatch[1]}`
         }
+      } else if (result.os === 'freebsd') {
+        // FreeBSD: 解析 freebsd-version 或 uname -r 输出
+        const freebsdMatch = output.match(/(\d+\.\d+[-\w]*)/)
+        if (freebsdMatch) {
+          result.osVersion = `FreeBSD ${freebsdMatch[1]}`
+        }
+      } else if (result.os === 'openbsd') {
+        // OpenBSD: 解析 uname -r 输出
+        const openbsdMatch = output.match(/OpenBSD[\s\S]*?(\d+\.\d+)/)
+        if (openbsdMatch) {
+          result.osVersion = `OpenBSD ${openbsdMatch[1]}`
+        }
+      } else if (result.os === 'netbsd') {
+        // NetBSD: 解析 uname -r 输出
+        const netbsdMatch = output.match(/NetBSD[\s\S]*?(\d+\.\d+)/)
+        if (netbsdMatch) {
+          result.osVersion = `NetBSD ${netbsdMatch[1]}`
+        }
+      } else if (result.os === 'dragonfly') {
+        // DragonFly BSD: 解析 uname -r 输出
+        const dragonflyMatch = output.match(/(\d+\.\d+\.\d+)/)
+        if (dragonflyMatch) {
+          result.osVersion = `DragonFly BSD ${dragonflyMatch[1]}`
+        }
+      } else if (result.os === 'hpux') {
+        // HP-UX: 解析 uname -r 输出
+        const hpuxMatch = output.match(/B\.(\d+\.\d+)/)
+        if (hpuxMatch) {
+          result.osVersion = `HP-UX ${hpuxMatch[1]}`
+        }
+      } else if (result.os === 'solaris') {
+        // Solaris/SunOS: 解析版本
+        const solarisMatch = output.match(/(\d+\.\d+)/)
+        if (solarisMatch) {
+          result.osVersion = `Solaris ${solarisMatch[1]}`
+        }
       }
     }
 
@@ -338,7 +390,9 @@ export class HostProfileService {
       if (shellLine.includes('zsh')) result.shell = 'zsh'
       else if (shellLine.includes('bash')) result.shell = 'bash'
       else if (shellLine.includes('fish')) result.shell = 'fish'
-      else if (shellLine.includes('ksh')) result.shell = 'ksh'  // AIX 常用 Korn Shell
+      else if (shellLine.includes('tcsh')) result.shell = 'tcsh'  // BSD 常用
+      else if (shellLine.includes('csh')) result.shell = 'csh'    // BSD 常用
+      else if (shellLine.includes('ksh')) result.shell = 'ksh'    // AIX/Solaris 常用
       else if (shellLine.includes('sh')) result.shell = 'sh'
     }
 
@@ -360,6 +414,9 @@ export class HostProfileService {
     else if (output.includes('[PKG_YUM]')) result.packageManager = 'yum'
     else if (output.includes('[PKG_BREW]')) result.packageManager = 'brew'
     else if (output.includes('[PKG_PACMAN]')) result.packageManager = 'pacman'
+    else if (output.includes('[PKG_PKG]')) result.packageManager = 'pkg'        // FreeBSD
+    else if (output.includes('[PKG_PKGADD]')) result.packageManager = 'pkg_add' // OpenBSD
+    else if (output.includes('[PKG_PKGIN]')) result.packageManager = 'pkgin'    // NetBSD
 
     // 解析已安装工具
     const tools: string[] = []
