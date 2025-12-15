@@ -456,8 +456,35 @@ export class SshService {
     }
 
     return new Promise((resolve) => {
-      // 探测命令：检测操作系统类型
-      const probeCommand = 'uname -s 2>/dev/null || echo %OS%'
+      // 完整的探测命令，与 HostProfileService.getProbeCommands() 保持一致
+      // 每个命令用分号分隔，在一次 exec 调用中执行所有命令
+      const probeCommands = [
+        'hostname 2>/dev/null || echo "unknown"',
+        'whoami 2>/dev/null || echo "unknown"',
+        'uname -s 2>/dev/null || echo "unknown"',
+        // 系统版本（优先获取 PRETTY_NAME，它包含完整的发行版名称和版本）
+        'cat /etc/os-release 2>/dev/null | grep -E "^(PRETTY_NAME|NAME|VERSION)=" | head -3 || sw_vers 2>/dev/null || echo "unknown"',
+        'echo $SHELL',
+        'echo $HOME',
+        'pwd',
+        // 检测包管理器
+        'command -v apt >/dev/null 2>&1 && echo "[PKG_APT]"',
+        'command -v yum >/dev/null 2>&1 && echo "[PKG_YUM]"',
+        'command -v dnf >/dev/null 2>&1 && echo "[PKG_DNF]"',
+        'command -v brew >/dev/null 2>&1 && echo "[PKG_BREW]"',
+        'command -v pacman >/dev/null 2>&1 && echo "[PKG_PACMAN]"',
+        // 检测常用工具
+        'command -v git >/dev/null 2>&1 && echo "[HAS_GIT]"',
+        'command -v docker >/dev/null 2>&1 && echo "[HAS_DOCKER]"',
+        'command -v python3 >/dev/null 2>&1 && echo "[HAS_PYTHON3]"',
+        'command -v python >/dev/null 2>&1 && echo "[HAS_PYTHON]"',
+        'command -v node >/dev/null 2>&1 && echo "[HAS_NODE]"',
+        'command -v nginx >/dev/null 2>&1 && echo "[HAS_NGINX]"',
+        'command -v systemctl >/dev/null 2>&1 && echo "[HAS_SYSTEMD]"',
+        'command -v vim >/dev/null 2>&1 && echo "[HAS_VIM]"',
+        'command -v nano >/dev/null 2>&1 && echo "[HAS_NANO]"',
+      ]
+      const probeCommand = probeCommands.join('; ')
       
       // 使用 exec 在单独的通道执行，不影响终端
       instance.client.exec(probeCommand, (err, stream) => {

@@ -102,13 +102,23 @@ export function useHostProfile(agentState: ComputedRef<AgentState | undefined>) 
     
     isProbing.value = true
     try {
+      const activeTab = terminalStore.activeTab
       const hostId = await getHostId()
       
       if (hostId === 'local') {
         // 本地主机：使用后台静默探测
         currentHostProfile.value = await window.electronAPI.hostProfile.probeLocal()
+      } else if (activeTab?.type === 'ssh' && activeTab.ptyId) {
+        // SSH 主机：执行后台探测
+        const profile = await window.electronAPI.hostProfile.probeSsh(activeTab.ptyId, hostId)
+        if (profile) {
+          currentHostProfile.value = profile
+        } else {
+          // 探测失败，从缓存加载
+          currentHostProfile.value = await window.electronAPI.hostProfile.get(hostId)
+        }
       } else {
-        // SSH 主机：暂时只从缓存加载（TODO: 实现 SSH 后台探测）
+        // 回退：从缓存加载
         currentHostProfile.value = await window.electronAPI.hostProfile.get(hostId)
       }
       

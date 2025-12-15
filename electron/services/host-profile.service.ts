@@ -241,8 +241,8 @@ export class HostProfileService {
       'hostname 2>/dev/null || echo "unknown"',
       'whoami 2>/dev/null || echo "unknown"',
       'uname -s 2>/dev/null || echo "unknown"',
-      // 系统版本
-      'cat /etc/os-release 2>/dev/null | grep -E "^(NAME|VERSION)=" | head -2 || sw_vers 2>/dev/null || echo "unknown"',
+      // 系统版本（优先获取 PRETTY_NAME，它包含完整的发行版名称和版本）
+      'cat /etc/os-release 2>/dev/null | grep -E "^(PRETTY_NAME|NAME|VERSION)=" | head -3 || sw_vers 2>/dev/null || echo "unknown"',
       'echo $SHELL',
       'echo $HOME',
       'pwd',
@@ -301,16 +301,25 @@ export class HostProfileService {
     }
 
     // 解析系统版本
-    const nameMatch = output.match(/NAME="?([^"\n]+)"?/)
-    const versionMatch = output.match(/VERSION="?([^"\n]+)"?/)
-    if (nameMatch && versionMatch) {
-      result.osVersion = `${nameMatch[1]} ${versionMatch[1]}`
-    } else if (output.includes('ProductName')) {
-      // macOS
-      const productMatch = output.match(/ProductName:\s*(.+)/)
-      const versionMatch2 = output.match(/ProductVersion:\s*(.+)/)
-      if (productMatch) {
-        result.osVersion = `${productMatch[1]} ${versionMatch2?.[1] || ''}`.trim()
+    // 优先使用 PRETTY_NAME（如 "Ubuntu 20.04.6 LTS"）
+    const prettyNameMatch = output.match(/PRETTY_NAME="([^"]+)"/)
+    if (prettyNameMatch) {
+      result.osVersion = prettyNameMatch[1]
+    } else {
+      // 回退到 NAME + VERSION
+      const nameMatch = output.match(/NAME="([^"]+)"/)
+      const versionMatch = output.match(/VERSION="([^"]+)"/)
+      if (nameMatch) {
+        result.osVersion = versionMatch 
+          ? `${nameMatch[1]} ${versionMatch[1]}`
+          : nameMatch[1]
+      } else if (output.includes('ProductName')) {
+        // macOS
+        const productMatch = output.match(/ProductName:\s*(.+)/)
+        const versionMatch2 = output.match(/ProductVersion:\s*(.+)/)
+        if (productMatch) {
+          result.osVersion = `${productMatch[1]} ${versionMatch2?.[1] || ''}`.trim()
+        }
       }
     }
 
