@@ -198,7 +198,14 @@ function buildPlanningGuidance(): string {
 1. **发现新信息**：根据执行结果更新对问题的理解
 2. **遇到障碍**：某步骤无法执行时，使用 \`update_plan(index, "skipped", "原因")\`
 3. **目标变化**：用户补充信息时，重新评估任务范围
-4. **及时止损**：连续失败时，暂停并向用户说明情况`
+4. **及时止损**：连续失败时，暂停并向用户说明情况
+
+### 计划完成检查
+
+创建计划后，在给出总结前请确保：
+- 每个步骤都有明确状态（completed/failed/skipped）
+- 如果某步骤不再需要，用 \`update_plan(index, "skipped", "原因")\` 标记
+- 不要遗漏 pending 状态的步骤`
 }
 
 /**
@@ -431,6 +438,7 @@ ${buildPlanningGuidance()}
 2. 每步开始 → \`update_plan(index, "in_progress")\`
 3. 每步完成 → \`update_plan(index, "completed", "结果")\`
 4. 失败/跳过 → \`update_plan(index, "failed/skipped", "原因")\`
+5. 所有步骤都有明确状态后 → 给出总结
 
 ## 可用工具
 | 工具 | 用途 |${isSshTerminal ? ' 可用性 |' : ''}

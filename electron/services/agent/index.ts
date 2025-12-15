@@ -1552,7 +1552,34 @@ export class AgentService {
             run.reflection.failureCount = 0
           }
         } else {
-          // 没有工具调用，Agent 完成
+          // 没有工具调用，检查是否有未完成的计划步骤
+          if (run.currentPlan) {
+            const pendingSteps = run.currentPlan.steps.filter(s => 
+              s.status === 'pending' || s.status === 'in_progress'
+            )
+            // 限制提醒次数，最多提醒 2 次，避免无限循环
+            const planReminderCount = (run as any)._planReminderCount || 0
+            if (pendingSteps.length > 0 && planReminderCount < 2) {
+              // 有未完成的步骤，提示 AI 继续执行
+              const pendingStepTitles = pendingSteps.map((s, i) => 
+                `${run.currentPlan!.steps.indexOf(s) + 1}. ${s.title}`
+              ).join('\n')
+              
+              console.log(`[Agent] 检测到 ${pendingSteps.length} 个未完成的计划步骤，提示 AI 继续执行 (提醒次数: ${planReminderCount + 1}/2)`)
+              
+              run.messages.push({
+                role: 'user',
+                content: `⚠️ 计划中还有 ${pendingSteps.length} 个步骤未完成：\n${pendingStepTitles}\n\n请继续执行这些步骤，并使用 update_plan 更新状态。所有步骤完成后才能给出总结。`
+              })
+              
+              // 增加提醒计数
+              ;(run as any)._planReminderCount = planReminderCount + 1
+              
+              // 继续循环，不 break
+              continue
+            }
+          }
+          // 没有计划或计划已完成，Agent 完成
           break
         }
       }
