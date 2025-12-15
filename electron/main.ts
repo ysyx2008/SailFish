@@ -396,7 +396,7 @@ app.on('before-quit', (event) => {
   }
 })
 
-// 所有窗口关闭时退出应用（Windows & Linux）
+// 所有窗口关闭时退出应用
 app.on('window-all-closed', () => {
   // 清理所有 PTY、SSH、SFTP 和 MCP 连接
   ptyService.disposeAll()
@@ -404,10 +404,13 @@ app.on('window-all-closed', () => {
   sftpService.disconnectAll()
   mcpService.disconnectAll()
 
-  // 重置强制退出标志
+  // 保存强制退出标志，然后重置
+  const shouldQuit = forceQuit
   forceQuit = false
 
-  if (process.platform !== 'darwin') {
+  // macOS 上只有在用户明确退出（Cmd+Q）时才退出应用
+  // 其他平台总是退出
+  if (process.platform !== 'darwin' || shouldQuit) {
     app.quit()
   }
 })
