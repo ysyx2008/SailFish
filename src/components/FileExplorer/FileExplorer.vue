@@ -228,7 +228,7 @@ const handleDrop = async (fileList: FileList) => {
           </span>
           <span v-else>{{ t('fileExplorer.sftpFileManager') }}</span>
         </div>
-        <button class="btn-icon" @click="$emit('close')" :title="t('fileExplorer.close')"
+        <button class="btn-icon" @click="$emit('close')" :title="t('fileExplorer.close')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>
@@ -289,7 +289,7 @@ const handleDrop = async (fileList: FileList) => {
                 <polyline points="18 15 12 9 6 15"/>
               </svg>
             </button>
-            <button class="btn-icon" @click="goHome" :title="t('fileExplorer.goHome')"
+            <button class="btn-icon" @click="goHome" :title="t('fileExplorer.goHome')">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
                 <polyline points="9 22 9 12 15 12 15 22"/>
@@ -300,13 +300,13 @@ const handleDrop = async (fileList: FileList) => {
           <PathBreadcrumb :path="currentPath" @navigate="navigateTo" />
 
           <div class="toolbar-actions">
-            <button class="btn-icon" @click="refresh" title="刷新">
+            <button class="btn-icon" @click="refresh" :title="t('fileExplorer.refresh')">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="23 4 23 10 17 10"/>
                 <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
               </svg>
             </button>
-            <button class="btn-icon" @click="openNewFolderDialog" title="新建文件夹">
+            <button class="btn-icon" @click="openNewFolderDialog" :title="t('fileExplorer.newFolder')">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
                 <line x1="12" y1="11" x2="12" y2="17"/>
