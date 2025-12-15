@@ -655,7 +655,14 @@ export default {
     },
     askingDefault: 'Default:',
     askingDefaultHint: '(Press Enter to use default value)',
-    confirmMultiSelect: 'Confirm Selection'
+    confirmMultiSelect: 'Confirm Selection',
+    // Analysis related
+    analyzeErrorPrompt: 'Please help me analyze this error:',
+    analyzeOutputPrompt: 'Please help me analyze this terminal output:',
+    analyzeContentPrompt: 'Please help me analyze this terminal content:',
+    diagnosing: 'Diagnosing...',
+    analyzing: 'Analyzing...',
+    errorPrefix: 'Error:'
   },
 
   // Session Manager

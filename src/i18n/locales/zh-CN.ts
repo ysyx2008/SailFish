@@ -655,7 +655,14 @@ export default {
     },
     askingDefault: '默认：',
     askingDefaultHint: '（直接按回车使用默认值）',
-    confirmMultiSelect: '确认选择'
+    confirmMultiSelect: '确认选择',
+    // 分析功能相关
+    analyzeErrorPrompt: '请帮我分析这个错误：',
+    analyzeOutputPrompt: '请帮我分析这段终端输出：',
+    analyzeContentPrompt: '请帮我分析这段终端内容：',
+    diagnosing: '诊断中...',
+    analyzing: '分析中...',
+    errorPrefix: '错误：'
   },
 
   // 会话管理器

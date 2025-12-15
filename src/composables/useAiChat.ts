@@ -484,7 +484,7 @@ export function useAiChat(
     const userMessage: AiMessage = {
       id: Date.now().toString(),
       role: 'user',
-      content: `请帮我分析这个错误：\n\`\`\`\n${error.content}\n\`\`\``,
+      content: `${t('ai.analyzeErrorPrompt')}\n\`\`\`\n${error.content}\n\`\`\``,
       timestamp: new Date()
     }
     terminalStore.addAiMessage(tabId, userMessage)
@@ -494,7 +494,7 @@ export function useAiChat(
     const assistantMessage: AiMessage = {
       id: (Date.now() + 1).toString(),
       role: 'assistant',
-      content: '诊断中...',
+      content: t('ai.diagnosing'),
       timestamp: new Date()
     }
     const messageIndex = terminalStore.addAiMessage(tabId, assistantMessage)
@@ -529,7 +529,7 @@ export function useAiChat(
         scrollToBottomIfNeeded()
       },
       err => {
-        terminalStore.updateAiMessage(tabId, messageIndex, `错误: ${err}`)
+        terminalStore.updateAiMessage(tabId, messageIndex, `${t('ai.errorPrefix')} ${err}`)
         terminalStore.setAiLoading(tabId, false)
       },
       undefined,
@@ -549,7 +549,7 @@ export function useAiChat(
     const userMessage: AiMessage = {
       id: Date.now().toString(),
       role: 'user',
-      content: `请帮我分析这段终端输出：\n\`\`\`\n${selection}\n\`\`\``,
+      content: `${t('ai.analyzeOutputPrompt')}\n\`\`\`\n${selection}\n\`\`\``,
       timestamp: new Date()
     }
     terminalStore.addAiMessage(tabId, userMessage)
@@ -559,7 +559,7 @@ export function useAiChat(
     const assistantMessage: AiMessage = {
       id: (Date.now() + 1).toString(),
       role: 'assistant',
-      content: '分析中...',
+      content: t('ai.analyzing'),
       timestamp: new Date()
     }
     const messageIndex = terminalStore.addAiMessage(tabId, assistantMessage)
@@ -594,7 +594,7 @@ export function useAiChat(
         scrollToBottomIfNeeded()
       },
       err => {
-        terminalStore.updateAiMessage(tabId, messageIndex, `错误: ${err}`)
+        terminalStore.updateAiMessage(tabId, messageIndex, `${t('ai.errorPrefix')} ${err}`)
         terminalStore.setAiLoading(tabId, false)
       },
       undefined,
@@ -610,7 +610,7 @@ export function useAiChat(
     const userMessage: AiMessage = {
       id: Date.now().toString(),
       role: 'user',
-      content: `请帮我分析这段终端内容：\n\`\`\`\n${text}\n\`\`\``,
+      content: `${t('ai.analyzeContentPrompt')}\n\`\`\`\n${text}\n\`\`\``,
       timestamp: new Date()
     }
     terminalStore.addAiMessage(tabId, userMessage)
@@ -620,7 +620,7 @@ export function useAiChat(
     const assistantMessage: AiMessage = {
       id: (Date.now() + 1).toString(),
       role: 'assistant',
-      content: '分析中...',
+      content: t('ai.analyzing'),
       timestamp: new Date()
     }
     const messageIndex = terminalStore.addAiMessage(tabId, assistantMessage)
@@ -655,7 +655,7 @@ export function useAiChat(
         scrollToBottomIfNeeded()
       },
       err => {
-        terminalStore.updateAiMessage(tabId, messageIndex, `错误: ${err}`)
+        terminalStore.updateAiMessage(tabId, messageIndex, `${t('ai.errorPrefix')} ${err}`)
         terminalStore.setAiLoading(tabId, false)
       },
       undefined,
