@@ -294,6 +294,20 @@ onMounted(async () => {
 
   // 注册主进程屏幕内容请求监听器
   // 当主进程需要获取准确的终端输出时，会发送请求到渲染进程
+  // 先清理旧的监听器，防止热重载时重复注册
+  if (unsubscribeScreenRequest) {
+    unsubscribeScreenRequest()
+    unsubscribeScreenRequest = null
+  }
+  if (unsubscribeVisibleRequest) {
+    unsubscribeVisibleRequest()
+    unsubscribeVisibleRequest = null
+  }
+  if (unsubscribeAnalysisRequest) {
+    unsubscribeAnalysisRequest()
+    unsubscribeAnalysisRequest = null
+  }
+  
   unsubscribeScreenRequest = window.electronAPI.screen.onRequestLastNLines((data) => {
     // 检查是否是发给当前终端的请求
     if (data.ptyId === props.ptyId && screenService && !isDisposed) {

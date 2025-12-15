@@ -495,6 +495,8 @@ export function useAgentMode(
   // 设置 Agent 事件监听
   // 注意：每个 AiPanel 实例都会注册监听器，所以需要确保只处理属于自己 tab 的事件
   const setupAgentListeners = () => {
+    // 先清理旧的监听器，防止热重载时重复注册
+    cleanupAgentListeners()
     // 判断事件是否属于当前 tab（优先使用 ptyId 匹配，更可靠）
     const isEventForThisTab = (agentId: string, ptyId?: string): boolean => {
       // 优先使用 ptyId 匹配（最可靠，因为 ptyId 在启动前就已知）
