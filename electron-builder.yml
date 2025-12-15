@@ -1,6 +1,11 @@
+# ⚠️ [高风险配置] 应用标识符
+# 如果 macOS 打包后 SSH 连接失败，尝试改回旧值排查
+# 安全回退值：appId: com.qiyu.terminal, productName: 旗鱼终端
 appId: com.sfterm.terminal
 productName: SFTerm
-# macOS 本地化应用名称修复钩子
+# ⚠️ [高风险配置] macOS 本地化应用名称修复钩子
+# 如果 macOS 打包后 SSH 连接失败，请先删除此行排查
+# 安全回退值：删除整行 afterPack
 afterPack: ./scripts/afterPack.js
 directories:
   buildResources: resources
@@ -54,7 +59,9 @@ mac:
       arch:
         - x64
         - arm64
-  # 本地化应用名称支持 - 将 .lproj 文件复制到 Resources/
+  # ⚠️ [高风险配置] 本地化应用名称支持
+  # 如果 macOS 打包后 SSH 连接失败，请删除下方 extraFiles 和 extendInfo 整块配置
+  # 安全回退：只保留上面的 icon 和 target
   extraFiles:
     - from: "resources/zh-Hans.lproj"
       to: "Resources/zh-Hans.lproj"
