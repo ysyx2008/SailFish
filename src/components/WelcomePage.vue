@@ -17,10 +17,11 @@ const emit = defineEmits<{
   'open-smart-patrol': []
 }>()
 
-// 最近连接的会话（最多显示 5 个）
+// 最近连接的会话（最多显示 5 个，按最近使用时间逆序排序）
 const recentSessions = computed(() => {
-  // 按最近使用排序（这里简单取前 5 个，后续可以加上 lastUsedAt 字段）
-  return configStore.sshSessions.slice(0, 5)
+  return [...configStore.sshSessions]
+    .sort((a, b) => (b.lastUsedAt || 0) - (a.lastUsedAt || 0))
+    .slice(0, 5)
 })
 
 // 是否有保存的会话
@@ -44,15 +45,6 @@ const openSessionManager = () => {
 // 格式化主机显示
 const formatHost = (session: SshSession) => {
   return `${session.username}@${session.host}:${session.port}`
-}
-
-// 获取分组名称
-const getGroupName = (session: SshSession) => {
-  if (session.groupId) {
-    const group = configStore.sessionGroups.find(g => g.id === session.groupId)
-    return group?.name
-  }
-  return session.group
 }
 </script>
 
@@ -123,8 +115,13 @@ const getGroupName = (session: SshSession) => {
 
       <!-- 最近连接 -->
       <div v-if="hasSessions" class="recent-sessions">
-        <h2 class="section-title">{{ t('welcome.recentConnections') }}</h2>
-        <div class="session-list">
+        <div class="section-header">
+          <h2 class="section-title">{{ t('welcome.recentConnections') }}</h2>
+          <div v-if="configStore.sshSessions.length > 3" class="view-all" @click="openSessionManager">
+            {{ t('welcome.viewAllSessions') }} →
+          </div>
+        </div>
+        <div class="session-grid">
           <div 
             v-for="session in recentSessions" 
             :key="session.id"
@@ -132,7 +129,7 @@ const getGroupName = (session: SshSession) => {
             @click="connectToSession(session)"
           >
             <div class="session-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="2" y="3" width="20" height="14" rx="2"/>
                 <path d="M8 21h8"/>
                 <path d="M12 17v4"/>
@@ -142,13 +139,7 @@ const getGroupName = (session: SshSession) => {
               <div class="session-name">{{ session.name }}</div>
               <div class="session-host">{{ formatHost(session) }}</div>
             </div>
-            <div v-if="getGroupName(session)" class="session-group">
-              {{ getGroupName(session) }}
-            </div>
           </div>
-        </div>
-        <div v-if="configStore.sshSessions.length > 5" class="view-all" @click="openSessionManager">
-          {{ t('welcome.viewAllSessions') }} →
         </div>
       </div>
 
@@ -167,8 +158,7 @@ const getGroupName = (session: SshSession) => {
 .welcome-page {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   background: var(--bg-primary);
   overflow-y: auto;
   padding: 40px 20px;
@@ -177,6 +167,7 @@ const getGroupName = (session: SshSession) => {
 .welcome-content {
   max-width: 720px;
   width: 100%;
+  margin: auto;
 }
 
 /* Header */
@@ -295,10 +286,6 @@ const getGroupName = (session: SshSession) => {
   background: linear-gradient(135deg, #8b5cf6, #7c3aed);
 }
 
-.card-content {
-  /* 移除 flex: 1 以实现垂直居中 */
-}
-
 .card-title {
   font-size: 15px;
   font-weight: 600;
@@ -329,20 +316,31 @@ const getGroupName = (session: SshSession) => {
   margin-bottom: 32px;
 }
 
-.session-list {
+.section-header {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.section-header .section-title {
+  margin-bottom: 0;
+}
+
+.session-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
 }
 
 .session-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: 10px;
+  padding: 10px 12px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -353,10 +351,10 @@ const getGroupName = (session: SshSession) => {
 }
 
 .session-icon {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   background: rgba(59, 130, 246, 0.1);
-  border-radius: 8px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -370,7 +368,7 @@ const getGroupName = (session: SshSession) => {
 }
 
 .session-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
   white-space: nowrap;
@@ -379,27 +377,20 @@ const getGroupName = (session: SshSession) => {
 }
 
 .session-host {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: 'SF Mono', Monaco, monospace;
-}
-
-.session-group {
   font-size: 11px;
   color: var(--text-muted);
-  background: var(--bg-tertiary);
-  padding: 2px 8px;
-  border-radius: 4px;
-  flex-shrink: 0;
+  font-family: 'SF Mono', Monaco, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .view-all {
-  margin-top: 12px;
-  text-align: center;
   font-size: 13px;
   color: var(--accent-primary);
   cursor: pointer;
   transition: opacity 0.15s ease;
+  white-space: nowrap;
 }
 
 .view-all:hover {

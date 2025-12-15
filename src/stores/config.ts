@@ -61,6 +61,7 @@ export interface SshSession {
   groupId?: string         // 新字段：引用分组 ID
   jumpHostOverride?: JumpHostConfig | null  // 覆盖分组跳板机：null 表示显式禁用，undefined 表示继承
   encoding?: SshEncoding   // 字符编码，默认 utf-8
+  lastUsedAt?: number      // 最近使用时间戳（毫秒）
 }
 
 // 本地终端编码类型（与 SSH 编码共用）
@@ -264,6 +265,15 @@ export const useConfigStore = defineStore('config', () => {
     await saveSshSessions()
   }
 
+  // 更新会话的最近使用时间
+  async function updateSessionLastUsed(id: string): Promise<void> {
+    const session = sshSessions.value.find(s => s.id === id)
+    if (session) {
+      session.lastUsedAt = Date.now()
+      await saveSshSessions()
+    }
+  }
+
   // ==================== 会话分组 ====================
 
   async function saveSessionGroups(): Promise<void> {
@@ -435,6 +445,7 @@ export const useConfigStore = defineStore('config', () => {
     addSshSession,
     updateSshSession,
     deleteSshSession,
+    updateSessionLastUsed,
     addSessionGroup,
     updateSessionGroup,
     deleteSessionGroup,

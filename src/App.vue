@@ -105,6 +105,9 @@ const openLocalFromWelcome = async () => {
 
 // 从欢迎页连接 SSH
 const openSshFromWelcome = async (session: SshSession) => {
+  // 更新最近使用时间
+  await configStore.updateSessionLastUsed(session.id)
+  
   // 获取有效的跳板机配置
   const jumpHost = configStore.getEffectiveJumpHost(session)
   

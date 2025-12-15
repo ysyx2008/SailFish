@@ -327,6 +327,9 @@ const deleteSession = async (session: SshSession) => {
 
 // 连接会话
 const connectSession = async (session: SshSession) => {
+  // 更新最近使用时间
+  await configStore.updateSessionLastUsed(session.id)
+  
   // 获取有效的跳板机配置
   const jumpHost = configStore.getEffectiveJumpHost(session)
   
