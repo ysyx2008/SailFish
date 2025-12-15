@@ -115,6 +115,7 @@ export interface OrchestratorRun {
   config: OrchestratorConfig      // 配置
   status: 'running' | 'completed' | 'failed' | 'aborted'
   workers: Map<string, WorkerState>  // Worker 状态映射
+  terminalAliasMap: Map<string, string>  // alias -> terminalId（每个 run 独立，避免冲突）
   currentPlan?: AgentPlan         // 当前执行计划
   messages: OrchestratorMessage[] // 消息记录
   startedAt: number               // 开始时间

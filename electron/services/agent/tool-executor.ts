@@ -816,19 +816,21 @@ async function executeTimedCommand(
 ): Promise<ToolResult> {
   return new Promise((resolve) => {
     let output = ''
-    let dataHandler: ((data: string) => void) | null = null
     
-    // 注册输出收集器
-    dataHandler = (data: string) => {
+    // 注册输出收集器并保存 unsubscribe 函数
+    const dataHandler = (data: string) => {
       output += data
     }
-    executor.terminalService.onData(ptyId, dataHandler)
+    const unsubscribe = executor.terminalService.onData(ptyId, dataHandler)
     
     // 发送命令
     executor.terminalService.write(ptyId, command + '\r')
     
     // 设置超时后发送退出信号
     setTimeout(async () => {
+      // 清理监听器（重要：防止内存泄漏）
+      unsubscribe()
+      
       // 发送退出信号
       const exitKeys: Record<string, string> = {
         'ctrl_c': '\x03',

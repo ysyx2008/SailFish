@@ -28,7 +28,6 @@ import type { SshSession } from '../config.service'
 export class OrchestratorService {
   private runs: Map<string, OrchestratorRun> = new Map()
   private callbacks: OrchestratorCallbacks = {}
-  private terminalAliasMap: Map<string, string> = new Map()  // alias -> terminalId
   
   // 依赖服务（通过 setServices 注入）
   private aiService?: AiService
@@ -90,6 +89,7 @@ export class OrchestratorService {
       config: fullConfig,
       status: 'running',
       workers: new Map(),
+      terminalAliasMap: new Map(),  // 每个 run 独立的别名映射，避免多任务冲突
       messages: [],
       startedAt: Date.now()
     }
@@ -347,7 +347,7 @@ export class OrchestratorService {
       
       case 'get_task_status': {
         const { terminal_id } = args as { terminal_id: string }
-        const realId = this.resolveTerminalId(terminal_id)
+        const realId = this.resolveTerminalId(terminal_id, run)
         const worker = run.workers.get(realId)
         if (!worker) {
           return JSON.stringify({
@@ -465,8 +465,8 @@ export class OrchestratorService {
       }
       run.workers.set(terminalId, worker)
       
-      // 注册别名
-      this.terminalAliasMap.set(alias, terminalId)
+      // 注册别名（使用 run 级别的 Map，避免多任务冲突）
+      run.terminalAliasMap.set(alias, terminalId)
       
       // 更新计划（如果有）
       this.updatePlanWithWorker(orchestratorId, terminalId, alias)
@@ -497,7 +497,7 @@ export class OrchestratorService {
     waitForResult: boolean
   ): Promise<DispatchResult> {
     const run = this.runs.get(orchestratorId)
-    const realId = this.resolveTerminalId(terminalId)
+    const realId = this.resolveTerminalId(terminalId, run)
     const worker = run?.workers.get(realId)
     
     if (!run || !worker) {
@@ -631,7 +631,7 @@ export class OrchestratorService {
     
     const workers = Array.from(run.workers.values())
       .filter(w => !terminalIds || terminalIds.some(id => {
-        const realId = this.resolveTerminalId(id)
+        const realId = this.resolveTerminalId(id, run)
         return w.terminalId === realId
       }))
     
@@ -693,7 +693,7 @@ export class OrchestratorService {
     terminalId: string
   ): Promise<void> {
     const run = this.runs.get(orchestratorId)
-    const realId = this.resolveTerminalId(terminalId)
+    const realId = this.resolveTerminalId(terminalId, run)
     
     if (run?.workers.has(realId)) {
       await this.closeTerminal?.(realId)
@@ -703,9 +703,12 @@ export class OrchestratorService {
   
   /**
    * 解析终端 ID（支持别名）
+   * @param idOrAlias 终端 ID 或别名
+   * @param run 协调器运行实例（用于获取该 run 的别名映射）
    */
-  private resolveTerminalId(idOrAlias: string): string {
-    return this.terminalAliasMap.get(idOrAlias) || idOrAlias
+  private resolveTerminalId(idOrAlias: string, run?: OrchestratorRun): string {
+    // 使用 run 级别的别名映射，避免多任务冲突
+    return run?.terminalAliasMap.get(idOrAlias) || idOrAlias
   }
   
   /**
