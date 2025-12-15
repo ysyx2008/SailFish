@@ -926,16 +926,57 @@ export class AgentService {
   }
 
   /**
+   * 检测用户消息的语言
+   * 返回 'zh' (中文), 'en' (英文/拉丁语系), 或 'other' (其他)
+   */
+  private detectLanguage(text: string): 'zh' | 'en' | 'other' {
+    // 统计中文字符数量
+    const chineseChars = (text.match(/[\u4e00-\u9fff]/g) || []).length
+    // 统计日文假名数量
+    const japaneseChars = (text.match(/[\u3040-\u309f\u30a0-\u30ff]/g) || []).length
+    // 统计韩文字符数量
+    const koreanChars = (text.match(/[\uac00-\ud7af]/g) || []).length
+    // 统计拉丁字母数量
+    const latinChars = (text.match(/[a-zA-Z]/g) || []).length
+    // 总字符数（去除空格和标点）
+    const totalChars = text.replace(/[\s\p{P}]/gu, '').length || 1
+    
+    // 计算各语言占比
+    const chineseRatio = chineseChars / totalChars
+    const japaneseRatio = japaneseChars / totalChars
+    const koreanRatio = koreanChars / totalChars
+    const latinRatio = latinChars / totalChars
+    
+    // 判断语言
+    if (chineseRatio > 0.3) return 'zh'
+    if (japaneseRatio > 0.2) return 'other'  // 日语
+    if (koreanRatio > 0.2) return 'other'    // 韩语
+    if (latinRatio > 0.5) return 'en'        // 英语/拉丁语系
+    return 'zh'  // 默认中文
+  }
+
+  /**
    * 分析任务并添加规划提示
    */
   private enhanceUserMessage(userMessage: string): string {
     const complexity = analyzeTaskComplexity(userMessage)
     const planningPrompt = generatePlanningPrompt(userMessage, complexity)
     
-    if (planningPrompt) {
-      return userMessage + '\n' + planningPrompt
+    // 检测用户语言并添加语言指示
+    const lang = this.detectLanguage(userMessage)
+    let languageHint = ''
+    if (lang === 'en') {
+      languageHint = '[Respond in English]\n'
+    } else if (lang === 'other') {
+      languageHint = '[Respond in the same language as the user]\n'
     }
-    return userMessage
+    // 中文不需要特别提示，因为系统提示是中文
+    
+    let result = languageHint + userMessage
+    if (planningPrompt) {
+      result += '\n' + planningPrompt
+    }
+    return result
   }
 
   /**
