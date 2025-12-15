@@ -45,13 +45,14 @@ mac:
   # 本地化应用名称支持 - 将 .lproj 文件复制到 Contents/Resources/
   extraFiles:
     - from: "resources/zh-Hans.lproj"
-      to: "Resources/zh-Hans.lproj"
+      to: "Contents/Resources/zh-Hans.lproj"
     - from: "resources/zh-Hant.lproj"
-      to: "Resources/zh-Hant.lproj"
+      to: "Contents/Resources/zh-Hant.lproj"
     - from: "resources/en.lproj"
-      to: "Resources/en.lproj"
+      to: "Contents/Resources/en.lproj"
   extendInfo:
     CFBundleDisplayName: SFTerminal
+    CFBundleDevelopmentRegion: en
     LSHasLocalizedDisplayName: true
 linux:
   icon: resources
