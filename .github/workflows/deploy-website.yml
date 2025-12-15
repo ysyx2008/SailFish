@@ -1,10 +1,12 @@
 name: Deploy Website to GitHub Pages
 
 on:
+  # Push 触发：当 website/** 目录有变化并推送到 main、master 或 feature/Website 分支时
   push:
     branches: [main, master, feature/Website]
     paths:
       - 'website/**'
+  # 通过 workflow_dispatch 手动触发
   workflow_dispatch:
   # 当 Build Release 工作流完成时自动触发
   workflow_run:
