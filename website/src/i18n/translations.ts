@@ -281,7 +281,7 @@ export const translations = {
       copyright: 'All rights reserved.',
     },
     common: {
-      brandName: 'SFTerminal',
+      brandName: 'SFTerm',
     },
   },
 } as const;
