@@ -1,7 +1,7 @@
 {
   "name": "qiyu-terminal-website",
   "type": "module",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "旗鱼终端官方网站",
   "scripts": {
     "dev": "astro dev",
@@ -13,4 +13,3 @@
     "astro": "^4.16.0"
   }
 }
-
