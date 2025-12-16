@@ -47,7 +47,7 @@ jobs:
           name: windows-release
           path: |
             release/*.exe
-            release/*.yml
+            release/latest.yml
             release/*.blockmap
           if-no-files-found: error
 
@@ -86,7 +86,7 @@ jobs:
           name: macos-release
           path: |
             release/*.dmg
-            release/*.yml
+            release/latest-mac.yml
             release/*.blockmap
           if-no-files-found: error
 
@@ -118,7 +118,7 @@ jobs:
             release/*.AppImage
             release/*.deb
             release/*.snap
-            release/*.yml
+            release/latest-linux.yml
             release/*.blockmap
           if-no-files-found: warn
 
