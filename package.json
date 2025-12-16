@@ -6,9 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build && electron-builder && node scripts/fix-mac-yml.js",
-    "build:win": "vue-tsc --noEmit && vite build && electron-builder --win",
-    "build:mac": "vue-tsc --noEmit && vite build && electron-builder --mac && node scripts/fix-mac-yml.js",
-    "build:linux": "vue-tsc --noEmit && vite build && electron-builder --linux",
+    "build:win": "vue-tsc --noEmit && vite build && electron-builder --win --publish never",
+    "build:mac": "vue-tsc --noEmit && vite build && electron-builder --mac --publish never && node scripts/fix-mac-yml.js",
+    "build:linux": "vue-tsc --noEmit && vite build && electron-builder --linux --publish never",
     "build:win:fast": "vite build && electron-builder --win",
     "build:mac:fast": "vite build && electron-builder --mac && node scripts/fix-mac-yml.js",
     "build:linux:fast": "vite build && electron-builder --linux",

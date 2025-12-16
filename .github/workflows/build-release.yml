@@ -39,7 +39,7 @@ jobs:
         run: npm ci
 
       - name: Build application
-        run: npm run build:win -- --publish never
+        run: npm run build:win
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -69,7 +69,7 @@ jobs:
         run: npm ci
 
       - name: Build application
-        run: npm run build:mac -- --publish never
+        run: npm run build:mac
         # fix-mac-yml.js 会在本地修复 latest-mac.yml 添加 arch 字段
         env:
           # 如果需要代码签名，取消注释以下配置
@@ -108,7 +108,7 @@ jobs:
         run: npm ci
 
       - name: Build application
-        run: npm run build:linux -- --publish never
+        run: npm run build:linux
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
