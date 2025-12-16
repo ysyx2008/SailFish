@@ -6,6 +6,10 @@
 
 ## 产品介绍
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome.png" width="900" alt="旗鱼终端欢迎页面">
+</p>
+
 旗鱼终端是一款面向运维工程师和开发者的现代化终端工具。它将传统终端的强大功能与AI智能助手深度融合，让命令行操作变得更加高效、智能。
 
 遇到不熟悉的命令？让AI帮你解释。
@@ -28,6 +32,11 @@
 - ⚡ **高性能**：基于 xterm.js，流畅的终端体验
 
 ### AI Agent 模式
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-agent-exec.png" width="900" alt="AI Agent 执行">
+</p>
+
 - 🤖 **自动化任务执行**：描述任务，Agent 自动规划并执行多步命令
 - 🎭 **Agent 性格系统**：支持 16 种 MBTI 性格类型，自定义 Agent 回复风格
   - INTJ、INTP、ENTJ、ENTP（理性主义者）
@@ -54,6 +63,11 @@
 - 🎛️ **可视化管理**：图形化界面配置和管理 MCP 服务器连接
 
 ### AI 对话能力
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-analyse.png" width="900" alt="AI 对话">
+</p>
+
 - 💬 **智能对话**：命令解释、错误诊断、自然语言生成命令，流式响应实时输出
 - 📊 **终端内容分析**：选中终端输出，右键一键分析，快速定位问题
 - 📄 **文档上传**：上传 PDF、Word、文本等文档作为 AI 上下文，让 AI 结合文档内容回答问题
