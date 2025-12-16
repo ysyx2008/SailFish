@@ -39,8 +39,7 @@ jobs:
         run: npm ci
 
       - name: Build application
-        run: npm run build:win
-        # 不设置 GH_TOKEN，禁用 electron-builder 自动发布
+        run: npm run build:win -- --publish never
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -70,8 +69,7 @@ jobs:
         run: npm ci
 
       - name: Build application
-        run: npm run build:mac
-        # 不设置 GH_TOKEN，禁用 electron-builder 自动发布
+        run: npm run build:mac -- --publish never
         # fix-mac-yml.js 会在本地修复 latest-mac.yml 添加 arch 字段
         env:
           # 如果需要代码签名，取消注释以下配置
@@ -110,8 +108,7 @@ jobs:
         run: npm ci
 
       - name: Build application
-        run: npm run build:linux
-        # 不设置 GH_TOKEN，禁用 electron-builder 自动发布
+        run: npm run build:linux -- --publish never
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
