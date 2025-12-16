@@ -88,8 +88,9 @@ linux:
   # 本地化应用名称支持
   executableName: sfterm
   desktop:
-    Name: SFTerm
-    Name[zh_CN]: 旗鱼终端
-    Comment: AI-Powered Cross-Platform Terminal
-    Comment[zh_CN]: AI 驱动的跨平台终端
+    entry:
+      Name: SFTerm
+      Name[zh_CN]: 旗鱼终端
+      Comment: AI-Powered Cross-Platform Terminal
+      Comment[zh_CN]: AI 驱动的跨平台终端
 
