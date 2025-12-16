@@ -156,6 +156,7 @@ const toggleGroupCollapse = (groupName: string) => {
 const draggingSession = ref<SshSession | null>(null)
 const dragOverGroupName = ref<string | null>(null)
 const dragOverSessionId = ref<string | null>(null)
+const dragOverPosition = ref<'before' | 'after'>('before')  // 拖放位置：目标前面或后面
 const draggingGroupName = ref<string | null>(null)  // 使用分组名称而非对象
 const dragOverTargetGroupName = ref<string | null>(null)
 
@@ -232,6 +233,13 @@ const handleDragOverSession = (sessionId: string, event: DragEvent) => {
     event.dataTransfer.dropEffect = 'move'
   }
   dragOverSessionId.value = sessionId
+  
+  // 检测鼠标在元素上的位置，判断是插入到前面还是后面
+  const target = event.currentTarget as HTMLElement
+  const rect = target.getBoundingClientRect()
+  const mouseY = event.clientY
+  const threshold = rect.top + rect.height / 2
+  dragOverPosition.value = mouseY < threshold ? 'before' : 'after'
 }
 
 // 拖拽离开分组
@@ -379,9 +387,12 @@ const handleDropToSession = async (targetSessionId: string, groupName: string, e
   const dropIndex = sortedSessions.findIndex(s => s.id === targetSessionId)
   if (dropIndex === -1) return
   
+  // 根据鼠标位置决定插入到目标的前面还是后面
+  const insertIndex = dragOverPosition.value === 'before' ? dropIndex : dropIndex + 1
+  
   // 在目标位置插入被拖动会话的 ID（用于计算 sortOrder）
   const newOrder: string[] = sortedSessions.map(s => s.id)
-  newOrder.splice(dropIndex, 0, draggedSessionId)
+  newOrder.splice(insertIndex, 0, draggedSessionId)
   
   // 更新被拖动会话的分组（如果是跨分组）
   if (isCrossGroup) {
@@ -1054,7 +1065,10 @@ const deleteGroup = async (groupName: string) => {
               v-for="session in groupData.sessions"
               :key="session.id"
               class="session-item"
-              :class="{ 'drag-over': dragOverSessionId === session.id }"
+              :class="{ 
+                'drag-over-before': dragOverSessionId === session.id && dragOverPosition === 'before',
+                'drag-over-after': dragOverSessionId === session.id && dragOverPosition === 'after'
+              }"
               draggable="true"
               @dragstart="handleDragStart(session, $event)"
               @dragover="handleDragOverSession(session.id, $event)"
@@ -1634,16 +1648,28 @@ const deleteGroup = async (groupName: string) => {
   opacity: 0.5;
 }
 
-.session-item.drag-over {
+.session-item.drag-over-before,
+.session-item.drag-over-after {
   position: relative;
 }
 
-.session-item.drag-over::before {
+.session-item.drag-over-before::before {
   content: '';
   position: absolute;
   left: 0;
   right: 0;
-  top: -3px;
+  top: -2px;
+  height: 2px;
+  background: var(--accent-primary);
+  border-radius: 1px;
+}
+
+.session-item.drag-over-after::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
   height: 2px;
   background: var(--accent-primary);
   border-radius: 1px;
