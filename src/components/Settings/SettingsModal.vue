@@ -51,6 +51,9 @@ const showUnlockAnimation = ref(false)
 const showBadgeWithAnimation = ref(false)
 const aboutContentRef = ref<HTMLElement | null>(null)
 
+// 平台检测 - macOS 上隐藏自动更新功能（签名问题）
+const isMac = computed(() => navigator.platform.toLowerCase().includes('mac'))
+
 // 品牌信息
 const brandName = computed(() => {
   const locale = getLocale()
@@ -457,8 +460,8 @@ const onQrImageError = (event: Event) => {
             <h3>{{ brandName }}</h3>
             <p class="version">{{ t('common.version') }} {{ oemConfig.brand.version || appVersion }}</p>
             
-            <!-- 更新检测区域 -->
-            <div class="update-section">
+            <!-- 更新检测区域 - macOS 上隐藏（签名问题导致更新失败） -->
+            <div v-if="!isMac" class="update-section">
               <!-- 检查更新按钮 -->
               <button 
                 v-if="updateStatus.status === 'idle' || updateStatus.status === 'not-available' || updateStatus.status === 'error'"
