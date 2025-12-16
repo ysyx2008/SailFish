@@ -7,6 +7,7 @@ import { ref, computed, nextTick, Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTerminalStore } from '../stores/terminal'
 import type { AiMessage } from '../stores/terminal'
+import { getLocale } from '../i18n'
 
 // 判断用户是否在底部附近的阈值（像素）
 const SCROLL_THRESHOLD = 100
@@ -14,49 +15,26 @@ const SCROLL_THRESHOLD = 100
 const SCROLL_THROTTLE_MS = 1000
 
 /**
- * 检测文本的语言
- * 返回 'zh' (中文), 'en' (英文/拉丁语系), 或 'other' (其他)
+ * 根据程序设置的语言生成语言提示
  */
-function detectLanguage(text: string): 'zh' | 'en' | 'other' {
-  // 统计中文字符数量
-  const chineseChars = (text.match(/[\u4e00-\u9fff]/g) || []).length
-  // 统计日文假名数量
-  const japaneseChars = (text.match(/[\u3040-\u309f\u30a0-\u30ff]/g) || []).length
-  // 统计韩文字符数量
-  const koreanChars = (text.match(/[\uac00-\ud7af]/g) || []).length
-  // 统计拉丁字母数量
-  const latinChars = (text.match(/[a-zA-Z]/g) || []).length
-  // 总字符数（去除空格和标点）
-  const totalChars = text.replace(/[\s\p{P}]/gu, '').length || 1
-  
-  // 计算各语言占比
-  const chineseRatio = chineseChars / totalChars
-  const japaneseRatio = japaneseChars / totalChars
-  const koreanRatio = koreanChars / totalChars
-  const latinRatio = latinChars / totalChars
-  
-  // 判断语言
-  if (chineseRatio > 0.3) return 'zh'
-  if (japaneseRatio > 0.2) return 'other'  // 日语
-  if (koreanRatio > 0.2) return 'other'    // 韩语
-  if (latinRatio > 0.5) return 'en'        // 英语/拉丁语系
-  return 'zh'  // 默认中文
-}
-
-/**
- * 根据检测到的语言生成语言提示
- */
-function getLanguageHint(lang: 'zh' | 'en' | 'other'): string {
-  if (lang === 'en') {
+function getLanguageHint(): string {
+  const locale = getLocale()
+  if (locale === 'en-US') {
     return '[Respond in English]\n'
-  } else if (lang === 'other') {
-    return '[Respond in the same language as the user]\n'
   }
   return ''  // 中文不需要特别提示
 }
 
-// 语言规则（与 Agent 保持一致）
-const LANGUAGE_RULE = '**CRITICAL RULE: You MUST respond in the SAME language the user uses. If user writes in English, reply in English. If user writes in Japanese, reply in Japanese. If user writes in Chinese, reply in Chinese.**\n\n'
+/**
+ * 根据程序设置的语言生成语言规则
+ */
+function getLanguageRule(): string {
+  const locale = getLocale()
+  if (locale === 'en-US') {
+    return '**CRITICAL RULE: You MUST respond in English.**\n\n'
+  }
+  return '**CRITICAL RULE: You MUST respond in Chinese (中文).**\n\n'
+}
 
 export function useAiChat(
   getDocumentContext: () => Promise<string>,
@@ -263,7 +241,7 @@ Examples: Linux/macOS uses ls, cat, grep; Windows CMD uses dir, type, findstr; P
       systemContext = `Current platform: ${navigator.platform}.`
     }
     
-    return `${LANGUAGE_RULE}You are the AI assistant of SFTerm (旗鱼终端), helping operations engineers solve command-line problems.${systemContext}Be concise and practical.`
+    return `${getLanguageRule()}You are the AI assistant of SFTerm (旗鱼终端), helping operations engineers solve command-line problems.${systemContext}Be concise and practical.`
   }
 
   // 发送消息
@@ -301,16 +279,15 @@ Examples: Linux/macOS uses ls, cat, grep; Windows CMD uses dir, type, findstr; P
       const currentMessages = terminalStore.getAiMessages(tabId)
       // 过滤掉占位消息（内容包含"中..."的），并转换格式
       // 对最后一条用户消息添加语言提示
+      const languageHint = getLanguageHint()
       const historyMessages = currentMessages
         .filter(msg => !msg.content.includes('中...'))
         .map((msg, idx, arr) => {
-          // 检测最后一条用户消息的语言并添加语言提示
+          // 为最后一条用户消息添加语言提示
           if (msg.role === 'user' && idx === arr.length - 1) {
-            const lang = detectLanguage(msg.content)
-            const hint = getLanguageHint(lang)
             return {
               role: msg.role as 'user' | 'assistant',
-              content: hint + msg.content
+              content: languageHint + msg.content
             }
           }
           return {
@@ -417,18 +394,15 @@ Examples: Linux/macOS uses ls, cat, grep; Windows CMD uses dir, type, findstr; P
       ? `[System Environment] OS: ${info.os === 'windows' ? 'Windows' : info.os === 'macos' ? 'macOS' : 'Linux'}, Shell: ${info.shell}. Explain the command based on this environment.` 
       : ''
     
-    // 检测用户消息语言（这里根据命令内容或上下文检测）
     const userContent = `请解释这个命令：\n\`\`\`\n${command}\n\`\`\``
-    const lang = detectLanguage(userContent)
-    const languageHint = getLanguageHint(lang)
     
     window.electronAPI.ai.chatStream(
       [
         {
           role: 'system',
-          content: `${LANGUAGE_RULE}You are a professional system administrator assistant.${osContext} The user will give you a command. Concisely explain what the command does, the meaning of its parameters, and any important notes.`
+          content: `${getLanguageRule()}You are a professional system administrator assistant.${osContext} The user will give you a command. Concisely explain what the command does, the meaning of its parameters, and any important notes.`
         },
-        { role: 'user', content: languageHint + userContent }
+        { role: 'user', content: getLanguageHint() + userContent }
       ],
       chunk => {
         const currentContent = terminalStore.getAiMessages(tabId)[messageIndex]?.content || ''
@@ -488,17 +462,13 @@ Examples: Linux/macOS uses ls, cat, grep; Windows CMD uses dir, type, findstr; P
       systemContext = `Current platform: ${navigator.platform}.`
     }
     
-    // 检测用户描述的语言
-    const lang = detectLanguage(description)
-    const languageHint = getLanguageHint(lang)
-    
     window.electronAPI.ai.chatStream(
       [
         {
           role: 'system',
-          content: `${LANGUAGE_RULE}You are a professional command-line assistant. ${systemContext} The user will describe what they want to do in natural language. Generate the corresponding command and briefly explain it.`
+          content: `${getLanguageRule()}You are a professional command-line assistant. ${systemContext} The user will describe what they want to do in natural language. Generate the corresponding command and briefly explain it.`
         },
-        { role: 'user', content: languageHint + description }
+        { role: 'user', content: getLanguageHint() + description }
       ],
       chunk => {
         const currentContent = terminalStore.getAiMessages(tabId)[messageIndex]?.content || ''
@@ -571,19 +541,16 @@ Examples: Linux/macOS uses ls, cat, grep; Windows CMD uses dir, type, findstr; P
       ? `[System Environment] OS: ${info.os === 'windows' ? 'Windows' : info.os === 'macos' ? 'macOS' : 'Linux'}, Shell: ${info.shell}. Analyze the error and provide solutions based on this environment.` 
       : ''
 
-    // 检测用户消息语言
     const userContent = `请分析这个错误并提供解决方案：\n\`\`\`\n${error.content}\n\`\`\``
-    const lang = detectLanguage(userContent)
-    const languageHint = getLanguageHint(lang)
 
     let firstChunk = true
     window.electronAPI.ai.chatStream(
       [
         {
           role: 'system',
-          content: `${LANGUAGE_RULE}You are a professional operations engineer assistant. ${osContext} The user will give you an error message. Analyze the error cause and provide possible solutions.`
+          content: `${getLanguageRule()}You are a professional operations engineer assistant. ${osContext} The user will give you an error message. Analyze the error cause and provide possible solutions.`
         },
-        { role: 'user', content: languageHint + userContent }
+        { role: 'user', content: getLanguageHint() + userContent }
       ],
       chunk => {
         const currentContent = terminalStore.getAiMessages(tabId)[messageIndex]?.content || ''
@@ -641,19 +608,16 @@ Examples: Linux/macOS uses ls, cat, grep; Windows CMD uses dir, type, findstr; P
       ? `[System Environment] OS: ${info.os === 'windows' ? 'Windows' : info.os === 'macos' ? 'macOS' : 'Linux'}, Shell: ${info.shell}. Analyze content based on this environment.` 
       : ''
 
-    // 检测用户消息语言
     const userContent = `请分析这段终端输出：\n\`\`\`\n${selection}\n\`\`\``
-    const lang = detectLanguage(userContent)
-    const languageHint = getLanguageHint(lang)
 
     let firstChunk = true
     window.electronAPI.ai.chatStream(
       [
         {
           role: 'system',
-          content: `${LANGUAGE_RULE}You are a professional operations engineer assistant. ${osContext} The user will give you terminal output. Analyze this content, explain its meaning, and provide solutions if there are errors.`
+          content: `${getLanguageRule()}You are a professional operations engineer assistant. ${osContext} The user will give you terminal output. Analyze this content, explain its meaning, and provide solutions if there are errors.`
         },
-        { role: 'user', content: languageHint + userContent }
+        { role: 'user', content: getLanguageHint() + userContent }
       ],
       chunk => {
         const currentContent = terminalStore.getAiMessages(tabId)[messageIndex]?.content || ''
@@ -707,19 +671,16 @@ Examples: Linux/macOS uses ls, cat, grep; Windows CMD uses dir, type, findstr; P
       ? `[System Environment] OS: ${info.os === 'windows' ? 'Windows' : info.os === 'macos' ? 'macOS' : 'Linux'}, Shell: ${info.shell}. Analyze content based on this environment.` 
       : ''
 
-    // 检测用户消息语言
     const userContent = `请分析这段终端内容：\n\`\`\`\n${text}\n\`\`\``
-    const lang = detectLanguage(userContent)
-    const languageHint = getLanguageHint(lang)
 
     let firstChunk = true
     window.electronAPI.ai.chatStream(
       [
         {
           role: 'system',
-          content: `${LANGUAGE_RULE}You are a professional operations engineer assistant. ${osContext} The user will give you terminal content. Analyze this content, explain its meaning, and provide solutions if there are errors.`
+          content: `${getLanguageRule()}You are a professional operations engineer assistant. ${osContext} The user will give you terminal content. Analyze this content, explain its meaning, and provide solutions if there are errors.`
         },
-        { role: 'user', content: languageHint + userContent }
+        { role: 'user', content: getLanguageHint() + userContent }
       ],
       chunk => {
         const currentContent = terminalStore.getAiMessages(tabId)[messageIndex]?.content || ''
