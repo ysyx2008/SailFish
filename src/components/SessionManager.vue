@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useConfigStore, type SshSession, type SessionGroup, type JumpHostConfig, type SshEncoding } from '../stores/config'
+import { useConfigStore, type SshSession, type SessionGroup, type JumpHostConfig, type SshEncoding, type SessionSortBy } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -41,6 +41,7 @@ const emit = defineEmits<{
 const showNewSession = ref(false)
 const showNewMenu = ref(false)
 const showImportMenu = ref(false)
+const showSortMenu = ref(false)
 const nameInputRef = ref<HTMLInputElement | null>(null)
 
 // ESC 关闭弹窗
@@ -74,6 +75,9 @@ const handleClickOutside = (e: MouseEvent) => {
   if (!target.closest('.new-dropdown')) {
     showNewMenu.value = false
   }
+  if (!target.closest('.sort-dropdown')) {
+    showSortMenu.value = false
+  }
 }
 
 // 监听弹窗状态，添加/移除键盘事件
@@ -100,7 +104,16 @@ watch(showImportMenu, (isOpen) => {
   if (isOpen) {
     document.addEventListener('click', handleClickOutside)
     document.addEventListener('keydown', handleKeydown)
-  } else if (!showNewMenu.value) {
+  } else if (!showNewMenu.value && !showSortMenu.value) {
+    document.removeEventListener('click', handleClickOutside)
+  }
+})
+
+// 监听排序菜单状态
+watch(showSortMenu, (isOpen) => {
+  if (isOpen) {
+    document.addEventListener('click', handleClickOutside)
+  } else if (!showNewMenu.value && !showImportMenu.value) {
     document.removeEventListener('click', handleClickOutside)
   }
 })
@@ -126,16 +139,34 @@ onUnmounted(() => {
 const editingSession = ref<SshSession | null>(null)
 const searchText = ref('')
 
+// ==================== 分组折叠 ====================
+const collapsedGroups = ref<Set<string>>(new Set())
+const savedCollapsedState = ref<Set<string> | null>(null)  // 拖拽前保存的折叠状态
+
+// 切换分组折叠状态
+const toggleGroupCollapse = (groupName: string) => {
+  if (collapsedGroups.value.has(groupName)) {
+    collapsedGroups.value.delete(groupName)
+  } else {
+    collapsedGroups.value.add(groupName)
+  }
+}
+
 // ==================== 拖拽相关 ====================
 const draggingSession = ref<SshSession | null>(null)
 const dragOverGroupName = ref<string | null>(null)
+const dragOverSessionId = ref<string | null>(null)
+const draggingGroupName = ref<string | null>(null)  // 使用分组名称而非对象
+const dragOverTargetGroupName = ref<string | null>(null)
 
-// 拖拽开始
+// 拖拽开始 - 主机
 const handleDragStart = (session: SshSession, event: DragEvent) => {
   draggingSession.value = session
+  draggingGroupName.value = null
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', session.id)
+    event.dataTransfer.setData('application/x-session', 'true')
   }
   // 添加拖拽样式
   const target = event.target as HTMLElement
@@ -144,10 +175,42 @@ const handleDragStart = (session: SshSession, event: DragEvent) => {
   }, 0)
 }
 
+// 拖拽开始 - 分组（支持默认分组）
+const handleGroupDragStart = (groupName: string, event: DragEvent) => {
+  draggingGroupName.value = groupName
+  draggingSession.value = null
+  
+  // 保存当前折叠状态并折叠所有分组
+  savedCollapsedState.value = new Set(collapsedGroups.value)
+  const allGroupNames = Object.keys(groupedSessions.value)
+  allGroupNames.forEach(name => {
+    collapsedGroups.value.add(name)
+  })
+  
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', groupName)
+    event.dataTransfer.setData('application/x-group', 'true')
+  }
+  const target = event.target as HTMLElement
+  setTimeout(() => {
+    target.classList.add('dragging')
+  }, 0)
+}
+
 // 拖拽结束
 const handleDragEnd = (event: DragEvent) => {
+  // 恢复折叠状态
+  if (savedCollapsedState.value !== null) {
+    collapsedGroups.value = new Set(savedCollapsedState.value)
+    savedCollapsedState.value = null
+  }
+  
   draggingSession.value = null
+  draggingGroupName.value = null
   dragOverGroupName.value = null
+  dragOverSessionId.value = null
+  dragOverTargetGroupName.value = null
   const target = event.target as HTMLElement
   target.classList.remove('dragging')
 }
@@ -161,15 +224,191 @@ const handleDragOverGroup = (groupName: string, event: DragEvent) => {
   dragOverGroupName.value = groupName
 }
 
+// 拖拽经过主机（用于组内排序）
+const handleDragOverSession = (sessionId: string, event: DragEvent) => {
+  event.preventDefault()
+  event.stopPropagation()
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move'
+  }
+  dragOverSessionId.value = sessionId
+}
+
 // 拖拽离开分组
 const handleDragLeaveGroup = () => {
   dragOverGroupName.value = null
+}
+
+// 拖拽经过分组标题（用于分组排序或会话拖入分组）
+const handleDragOverGroupHeader = (targetGroupName: string, event: DragEvent) => {
+  event.preventDefault()
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move'
+  }
+  
+  // 如果正在拖动分组
+  if (draggingGroupName.value) {
+    event.stopPropagation()
+    dragOverTargetGroupName.value = targetGroupName
+  } else if (draggingSession.value) {
+    // 如果正在拖动会话，设置分组的拖放效果
+    dragOverGroupName.value = targetGroupName
+  }
+}
+
+// 放置到分组标题（分组排序）
+const handleDropToGroupHeader = async (targetGroupName: string, event: DragEvent) => {
+  event.preventDefault()
+  dragOverTargetGroupName.value = null
+  
+  // 如果正在拖动会话（而不是分组），让事件冒泡到父元素处理
+  if (!draggingGroupName.value) {
+    // 手动调用 handleDropToGroup 来处理会话拖放到分组标题的情况
+    if (draggingSession.value) {
+      await handleDropToGroup(targetGroupName, event)
+    }
+    return
+  }
+  
+  event.stopPropagation()
+  
+  if (draggingGroupName.value === targetGroupName) {
+    draggingGroupName.value = null
+    return
+  }
+  
+  const defaultGroupName = t('session.defaultGroup')
+  const defaultGroupOrder = configStore.defaultGroupSortOrder
+  
+  // 构建包含默认分组的完整分组列表
+  type SortItem = { name: string; order: number; group: SessionGroup | null }
+  const sortItems: SortItem[] = []
+  
+  // 添加已定义的分组
+  const sortedGroupList = [...configStore.sessionGroups].sort((a, b) => 
+    (a.sortOrder ?? Infinity) - (b.sortOrder ?? Infinity)
+  )
+  sortedGroupList.forEach(g => {
+    sortItems.push({ name: g.name, order: g.sortOrder ?? Infinity, group: g })
+  })
+  
+  // 始终添加默认分组（无论是否有会话）
+  sortItems.push({ 
+    name: defaultGroupName, 
+    order: defaultGroupOrder === -1 ? Infinity : defaultGroupOrder, 
+    group: null 
+  })
+  
+  // 按 order 排序
+  sortItems.sort((a, b) => a.order - b.order)
+  
+  const dragIndex = sortItems.findIndex(item => item.name === draggingGroupName.value)
+  const dropIndex = sortItems.findIndex(item => item.name === targetGroupName)
+  
+  if (dragIndex === -1 || dropIndex === -1) {
+    draggingGroupName.value = null
+    return
+  }
+  
+  // 移动分组
+  const [movedItem] = sortItems.splice(dragIndex, 1)
+  sortItems.splice(dropIndex, 0, movedItem)
+  
+  // 更新所有分组的 sortOrder
+  const updates: { id: string; sortOrder: number }[] = []
+  let newDefaultGroupOrder = -1
+  
+  sortItems.forEach((item, index) => {
+    if (item.group) {
+      updates.push({ id: item.group.id, sortOrder: index })
+    } else if (item.name === defaultGroupName) {
+      newDefaultGroupOrder = index
+    }
+  })
+  
+  // 更新有实体的分组
+  if (updates.length > 0) {
+    await configStore.updateGroupsSortOrder(updates)
+  }
+  
+  // 更新默认分组的排序位置
+  if (newDefaultGroupOrder !== configStore.defaultGroupSortOrder) {
+    await configStore.setDefaultGroupSortOrder(newDefaultGroupOrder)
+  }
+  
+  draggingGroupName.value = null
+}
+
+// 放置到主机位置（组内排序或跨分组拖放到指定位置）
+const handleDropToSession = async (targetSessionId: string, groupName: string, event: DragEvent) => {
+  event.preventDefault()
+  event.stopPropagation()
+  dragOverSessionId.value = null
+  dragOverGroupName.value = null
+  
+  if (!draggingSession.value || draggingSession.value.id === targetSessionId) {
+    return
+  }
+  
+  // 只有在自定义排序模式下才支持拖拽排序
+  if (configStore.sessionSortBy !== 'custom') {
+    await configStore.setSessionSortBy('custom')
+  }
+  
+  const groupData = groupedSessions.value[groupName]
+  if (!groupData) return
+  
+  const targetGroupId = groupData.group?.id
+  const sourceGroupId = draggingSession.value.groupId
+  const isCrossGroup = sourceGroupId !== targetGroupId
+  const draggedSessionId = draggingSession.value.id
+  
+  // 获取目标分组中的会话（不包含被拖动的会话）
+  const targetGroupSessions = configStore.sshSessions.filter(s => {
+    if (s.id === draggedSessionId) return false // 排除被拖动的会话
+    const gId = s.groupId
+    return gId === targetGroupId || (!gId && !targetGroupId)
+  })
+  
+  // 按 sortOrder 排序
+  const sortedSessions = [...targetGroupSessions].sort((a, b) => 
+    (a.sortOrder ?? Infinity) - (b.sortOrder ?? Infinity)
+  )
+  
+  // 找到目标位置
+  const dropIndex = sortedSessions.findIndex(s => s.id === targetSessionId)
+  if (dropIndex === -1) return
+  
+  // 在目标位置插入被拖动会话的 ID（用于计算 sortOrder）
+  const newOrder: string[] = sortedSessions.map(s => s.id)
+  newOrder.splice(dropIndex, 0, draggedSessionId)
+  
+  // 更新被拖动会话的分组（如果是跨分组）
+  if (isCrossGroup) {
+    await configStore.updateSshSession({
+      ...draggingSession.value,
+      groupId: targetGroupId,
+      group: undefined,
+      sortOrder: dropIndex // 临时设置，后面会被覆盖
+    })
+  }
+  
+  // 更新所有会话的 sortOrder
+  const updates: { id: string; sortOrder: number }[] = newOrder.map((id, index) => ({
+    id,
+    sortOrder: index
+  }))
+  
+  await configStore.updateSessionsSortOrder(updates)
 }
 
 // 放置到分组
 const handleDropToGroup = async (groupName: string, event: DragEvent) => {
   event.preventDefault()
   dragOverGroupName.value = null
+  
+  // 如果是分组拖拽，忽略
+  if (draggingGroupName.value) return
   
   if (!draggingSession.value) return
   
@@ -189,14 +428,24 @@ const handleDropToGroup = async (groupName: string, event: DragEvent) => {
     return
   }
   
-  // 更新主机的分组
+  // 更新主机的分组，并设置为最后一个
+  const targetGroupSessions = configStore.sshSessions.filter(s => s.groupId === targetGroupId)
+  const maxOrder = Math.max(...targetGroupSessions.map(s => s.sortOrder ?? 0), -1)
+  
   await configStore.updateSshSession({
     ...session,
     groupId: targetGroupId,
-    group: undefined // 清除旧的 group 字段
+    group: undefined,
+    sortOrder: maxOrder + 1
   })
   
   draggingSession.value = null
+}
+
+// 切换排序方式
+const handleSortChange = async (sortBy: SessionSortBy) => {
+  await configStore.setSessionSortBy(sortBy)
+  showSortMenu.value = false
 }
 
 // 表单数据
@@ -225,18 +474,62 @@ const filteredSessions = computed(() => {
   )
 })
 
+// 对会话进行排序
+const sortSessions = (sessions: SshSession[]): SshSession[] => {
+  const sortBy = configStore.sessionSortBy
+  const sorted = [...sessions]
+  
+  switch (sortBy) {
+    case 'name':
+      sorted.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+      break
+    case 'name-desc':
+      sorted.sort((a, b) => b.name.localeCompare(a.name, 'zh-CN'))
+      break
+    case 'lastUsed':
+      sorted.sort((a, b) => (b.lastUsedAt || 0) - (a.lastUsedAt || 0))
+      break
+    case 'custom':
+    default:
+      sorted.sort((a, b) => (a.sortOrder ?? Infinity) - (b.sortOrder ?? Infinity))
+      break
+  }
+  
+  return sorted
+}
+
+// 排序后的分组列表（包含默认分组）
+const sortedGroups = computed(() => {
+  const defaultGroupName = t('session.defaultGroup')
+  const defaultGroupOrder = configStore.defaultGroupSortOrder
+  
+  // 获取所有分组并排序
+  const groups = [...configStore.sessionGroups].sort((a, b) => 
+    (a.sortOrder ?? Infinity) - (b.sortOrder ?? Infinity)
+  )
+  
+  // 构建包含默认分组位置信息的结果
+  return { groups, defaultGroupName, defaultGroupOrder }
+})
+
 // 按组分类的会话
 const groupedSessions = computed(() => {
   const groups: Record<string, { group: SessionGroup | null; sessions: SshSession[] }> = {}
+  const { groups: sortedGroupList, defaultGroupName, defaultGroupOrder } = sortedGroups.value
   
-  // 先添加所有已定义的分组（即使没有会话）
-  configStore.sessionGroups.forEach(group => {
+  // 先添加所有已定义的分组（按排序顺序）
+  sortedGroupList.forEach(group => {
     groups[group.name] = { group, sessions: [] }
   })
   
+  // 始终添加默认分组（即使为空）
+  if (!groups[defaultGroupName]) {
+    groups[defaultGroupName] = { group: null, sessions: [] }
+  }
+  
   filteredSessions.value.forEach(session => {
     // 优先使用 groupId，否则使用旧的 group 字段
-    let groupName = t('session.defaultGroup')
+    let groupName = defaultGroupName
     let groupEntity: SessionGroup | null = null
     
     if (session.groupId) {
@@ -257,7 +550,43 @@ const groupedSessions = computed(() => {
     groups[groupName].sessions.push(session)
   })
   
-  return groups
+  // 对每个分组内的会话进行排序
+  for (const groupName of Object.keys(groups)) {
+    groups[groupName].sessions = sortSessions(groups[groupName].sessions)
+  }
+  
+  // 构建排序项数组（分组名称 + 排序值）
+  type SortItem = { name: string; order: number }
+  const sortItems: SortItem[] = []
+  
+  sortedGroupList.forEach(group => {
+    if (groups[group.name]) {
+      sortItems.push({ name: group.name, order: group.sortOrder ?? Infinity })
+    }
+  })
+  
+  // 始终添加默认分组
+  sortItems.push({ name: defaultGroupName, order: defaultGroupOrder === -1 ? Infinity : defaultGroupOrder })
+  
+  // 添加其他未定义的分组
+  Object.keys(groups).forEach(groupName => {
+    if (!sortItems.find(item => item.name === groupName)) {
+      sortItems.push({ name: groupName, order: Infinity })
+    }
+  })
+  
+  // 按 order 排序
+  sortItems.sort((a, b) => a.order - b.order)
+  
+  // 返回有序的分组对象
+  const orderedGroups: typeof groups = {}
+  sortItems.forEach(item => {
+    if (groups[item.name]) {
+      orderedGroups[item.name] = groups[item.name]
+    }
+  })
+  
+  return orderedGroups
 })
 
 // 重置表单
@@ -581,6 +910,65 @@ const deleteGroup = async (groupName: string) => {
           </button>
         </div>
       </div>
+      <div class="sort-dropdown">
+        <button class="btn btn-sm btn-icon-only" @click="showSortMenu = !showSortMenu" :title="t('session.sort.title')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="4" y1="6" x2="20" y2="6"/>
+            <line x1="4" y1="12" x2="14" y2="12"/>
+            <line x1="4" y1="18" x2="8" y2="18"/>
+          </svg>
+        </button>
+        <div v-if="showSortMenu" class="sort-menu" @click.stop>
+          <button 
+            class="sort-menu-item" 
+            :class="{ active: configStore.sessionSortBy === 'custom' }"
+            @click="handleSortChange('custom')"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="8" y1="13" x2="16" y2="13"/>
+              <line x1="8" y1="17" x2="16" y2="17"/>
+            </svg>
+            {{ t('session.sort.custom') }}
+          </button>
+          <button 
+            class="sort-menu-item"
+            :class="{ active: configStore.sessionSortBy === 'name' }"
+            @click="handleSortChange('name')"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18"/>
+              <path d="M3 12h12"/>
+              <path d="M3 18h6"/>
+            </svg>
+            {{ t('session.sort.nameAsc') }}
+          </button>
+          <button 
+            class="sort-menu-item"
+            :class="{ active: configStore.sessionSortBy === 'name-desc' }"
+            @click="handleSortChange('name-desc')"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h6"/>
+              <path d="M3 12h12"/>
+              <path d="M3 18h18"/>
+            </svg>
+            {{ t('session.sort.nameDesc') }}
+          </button>
+          <button 
+            class="sort-menu-item"
+            :class="{ active: configStore.sessionSortBy === 'lastUsed' }"
+            @click="handleSortChange('lastUsed')"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            {{ t('session.sort.lastUsed') }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- 快速操作 -->
@@ -601,13 +989,46 @@ const deleteGroup = async (groupName: string) => {
           v-for="(groupData, groupName) in groupedSessions"
           :key="groupName"
           class="session-group"
-          :class="{ 'drag-over': dragOverGroupName === groupName }"
+          :class="{ 
+            'drag-over': dragOverGroupName === groupName && !draggingGroupName,
+            'is-empty': groupData.sessions.length === 0
+          }"
           @dragover="handleDragOverGroup(groupName as string, $event)"
           @dragleave="handleDragLeaveGroup"
           @drop="handleDropToGroup(groupName as string, $event)"
         >
-          <div class="group-header" v-if="groupData.sessions.length > 0 || groupData.group">
-            <div class="group-header-left">
+          <div 
+            class="group-header" 
+            :class="{ 
+              'draggable': true,
+              'drag-over': dragOverTargetGroupName === groupName 
+            }"
+            draggable="true"
+            @dragstart="handleGroupDragStart(groupName as string, $event)"
+            @dragend="handleDragEnd"
+            @dragover="handleDragOverGroupHeader(groupName as string, $event)"
+            @drop="handleDropToGroupHeader(groupName as string, $event)"
+          >
+            <div class="group-header-left" @click.stop="toggleGroupCollapse(groupName as string)">
+              <svg class="drag-handle" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="9" cy="5" r="1"/>
+                <circle cx="9" cy="12" r="1"/>
+                <circle cx="9" cy="19" r="1"/>
+                <circle cx="15" cy="5" r="1"/>
+                <circle cx="15" cy="12" r="1"/>
+                <circle cx="15" cy="19" r="1"/>
+              </svg>
+              <svg 
+                class="collapse-icon" 
+                :class="{ collapsed: collapsedGroups.has(groupName as string) }"
+                width="12" height="12" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                stroke-width="2"
+              >
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
               <span class="group-name">{{ groupName }}</span>
               <span class="group-count">{{ groupData.sessions.length }}</span>
               <span v-if="groupData.group?.jumpHost" class="jump-host-badge" :title="t('session.form.jumpHost')">
@@ -628,49 +1049,54 @@ const deleteGroup = async (groupName: string) => {
               </button>
             </div>
           </div>
-          <div
-            v-for="session in groupData.sessions"
-            :key="session.id"
-            class="session-item"
-            draggable="true"
-            @dragstart="handleDragStart(session, $event)"
-            @dragend="handleDragEnd"
-            @dblclick="connectSession(session)"
-          >
-            <div class="session-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-                <line x1="8" y1="21" x2="16" y2="21"/>
-                <line x1="12" y1="17" x2="12" y2="21"/>
-              </svg>
-            </div>
-            <div class="session-info">
-              <div class="session-name">{{ session.name }}</div>
-              <div class="session-host">{{ session.username }}@{{ session.host }}{{ session.port !== 22 ? ':' + session.port : '' }}</div>
-            </div>
-            <div class="session-actions">
-              <button class="btn-icon btn-sm" @click.stop="connectSession(session)" :title="t('session.connect')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polygon points="5 3 19 12 5 21 5 3"/>
+          <div class="group-sessions" v-show="!collapsedGroups.has(groupName as string)">
+            <div
+              v-for="session in groupData.sessions"
+              :key="session.id"
+              class="session-item"
+              :class="{ 'drag-over': dragOverSessionId === session.id }"
+              draggable="true"
+              @dragstart="handleDragStart(session, $event)"
+              @dragover="handleDragOverSession(session.id, $event)"
+              @drop="handleDropToSession(session.id, groupName as string, $event)"
+              @dragend="handleDragEnd"
+              @dblclick="connectSession(session)"
+            >
+              <div class="session-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                  <line x1="8" y1="21" x2="16" y2="21"/>
+                  <line x1="12" y1="17" x2="12" y2="21"/>
                 </svg>
-              </button>
-              <button class="btn-icon btn-sm" @click.stop="openSftp(session)" :title="t('session.fileManager')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                </svg>
-              </button>
-              <button class="btn-icon btn-sm" @click.stop="openEditSession(session)" :title="t('common.edit')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                </svg>
-              </button>
-              <button class="btn-icon btn-sm" @click.stop="deleteSession(session)" :title="t('common.delete')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="3 6 5 6 21 6"/>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                </svg>
-              </button>
+              </div>
+              <div class="session-info">
+                <div class="session-name">{{ session.name }}</div>
+                <div class="session-host">{{ session.username }}@{{ session.host }}{{ session.port !== 22 ? ':' + session.port : '' }}</div>
+              </div>
+              <div class="session-actions">
+                <button class="btn-icon btn-sm" @click.stop="connectSession(session)" :title="t('session.connect')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="5 3 19 12 5 21 5 3"/>
+                  </svg>
+                </button>
+                <button class="btn-icon btn-sm" @click.stop="openSftp(session)" :title="t('session.fileManager')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                  </svg>
+                </button>
+                <button class="btn-icon btn-sm" @click.stop="openEditSession(session)" :title="t('common.edit')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+                <button class="btn-icon btn-sm" @click.stop="deleteSession(session)" :title="t('common.delete')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -959,6 +1385,62 @@ const deleteGroup = async (groupName: string) => {
   color: var(--text-muted);
 }
 
+/* 排序下拉菜单 */
+.sort-dropdown {
+  position: relative;
+}
+
+.btn-icon-only {
+  padding: 0 8px;
+  min-width: 32px;
+}
+
+.sort-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  min-width: 140px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.sort-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.sort-menu-item:hover {
+  background: var(--bg-surface);
+}
+
+.sort-menu-item.active {
+  color: var(--accent-primary);
+  background: rgba(var(--accent-primary-rgb, 66, 153, 225), 0.1);
+}
+
+.sort-menu-item svg {
+  color: var(--text-muted);
+}
+
+.sort-menu-item.active svg {
+  color: var(--accent-primary);
+}
+
 .quick-connect {
   padding: 12px;
   border-bottom: 1px solid var(--border-color);
@@ -991,32 +1473,93 @@ const deleteGroup = async (groupName: string) => {
 }
 
 .session-group {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   padding: 4px;
   border-radius: 8px;
   border: 2px solid transparent;
   transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
+.session-group.is-empty {
+  margin-bottom: 4px;
+}
+
+.session-group.is-empty .group-sessions {
+  min-height: 4px;
+}
+
 .session-group.drag-over {
   border-color: var(--accent-primary);
   background: rgba(var(--accent-primary-rgb, 66, 153, 225), 0.08);
+  min-height: 40px;
 }
 
 .group-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 8px;
-  font-size: 12px;
+  padding: 4px 6px;
+  font-size: 11px;
   color: var(--text-muted);
   text-transform: uppercase;
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+  position: relative;
+}
+
+.group-header.draggable {
+  cursor: grab;
+}
+
+.group-header.draggable:active {
+  cursor: grabbing;
+}
+
+.group-header.drag-over {
+  background: rgba(var(--accent-primary-rgb, 66, 153, 225), 0.15);
+}
+
+.group-header.drag-over::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 2px;
+  background: var(--accent-primary);
+  border-radius: 1px;
+}
+
+.drag-handle {
+  opacity: 0;
+  color: var(--text-muted);
+  transition: opacity 0.15s ease;
+  flex-shrink: 0;
+}
+
+.group-header:hover .drag-handle {
+  opacity: 0.5;
+}
+
+.collapse-icon {
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.collapse-icon.collapsed {
+  transform: rotate(-90deg);
+}
+
+.group-sessions {
+  /* 会话列表容器 */
 }
 
 .group-header-left {
   display: flex;
   align-items: center;
   gap: 6px;
+  cursor: pointer;
 }
 
 .group-name {
@@ -1089,6 +1632,21 @@ const deleteGroup = async (groupName: string) => {
 
 .session-item.dragging {
   opacity: 0.5;
+}
+
+.session-item.drag-over {
+  position: relative;
+}
+
+.session-item.drag-over::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -3px;
+  height: 2px;
+  background: var(--accent-primary);
+  border-radius: 1px;
 }
 
 .session-icon {

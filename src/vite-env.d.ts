@@ -533,6 +533,11 @@ interface Window {
       // 赞助状态
       getSponsorStatus: () => Promise<boolean>
       setSponsorStatus: (status: boolean) => Promise<void>
+      // 排序设置
+      getSessionSortBy: () => Promise<string>
+      setSessionSortBy: (sortBy: string) => Promise<void>
+      getDefaultGroupSortOrder: () => Promise<number>
+      setDefaultGroupSortOrder: (order: number) => Promise<void>
     }
     xshell: {
       selectFiles: () => Promise<{ canceled: boolean; filePaths: string[] }>

@@ -701,7 +701,13 @@ const electronAPI = {
 
     // 赞助状态
     getSponsorStatus: () => ipcRenderer.invoke('config:getSponsorStatus') as Promise<boolean>,
-    setSponsorStatus: (status: boolean) => ipcRenderer.invoke('config:setSponsorStatus', status)
+    setSponsorStatus: (status: boolean) => ipcRenderer.invoke('config:setSponsorStatus', status),
+
+    // 排序设置
+    getSessionSortBy: () => ipcRenderer.invoke('config:getSessionSortBy') as Promise<string>,
+    setSessionSortBy: (sortBy: string) => ipcRenderer.invoke('config:setSessionSortBy', sortBy),
+    getDefaultGroupSortOrder: () => ipcRenderer.invoke('config:getDefaultGroupSortOrder') as Promise<number>,
+    setDefaultGroupSortOrder: (order: number) => ipcRenderer.invoke('config:setDefaultGroupSortOrder', order)
   },
 
   // Xshell 导入操作

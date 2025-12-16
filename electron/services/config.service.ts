@@ -28,7 +28,11 @@ export interface SessionGroup {
   id: string
   name: string
   jumpHost?: JumpHostConfig
+  sortOrder?: number
 }
+
+// 主机排序方式
+export type SessionSortBy = 'custom' | 'name' | 'name-desc' | 'lastUsed'
 
 export interface SshSession {
   id: string
@@ -43,6 +47,7 @@ export interface SshSession {
   group?: string           // 保留旧字段，兼容迁移
   groupId?: string         // 新字段：引用分组 ID
   jumpHostOverride?: JumpHostConfig | null  // 覆盖分组跳板机
+  sortOrder?: number       // 排序顺序
 }
 
 export interface TerminalSettings {
@@ -101,6 +106,8 @@ interface StoreSchema {
   setupCompleted: boolean
   language: LocaleType
   sponsorStatus: boolean
+  sessionSortBy: SessionSortBy
+  defaultGroupSortOrder: number
 }
 
 const defaultConfig: StoreSchema = {
@@ -126,7 +133,9 @@ const defaultConfig: StoreSchema = {
   knowledgeSettings: DEFAULT_KNOWLEDGE_SETTINGS,
   setupCompleted: false,
   language: 'zh-CN',
-  sponsorStatus: false
+  sponsorStatus: false,
+  sessionSortBy: 'custom',
+  defaultGroupSortOrder: -1
 }
 
 export class ConfigService {
@@ -525,6 +534,36 @@ export class ConfigService {
    */
   setSponsorStatus(status: boolean): void {
     this.store.set('sponsorStatus', status)
+  }
+
+  // ==================== 排序设置 ====================
+
+  /**
+   * 获取主机排序方式
+   */
+  getSessionSortBy(): SessionSortBy {
+    return this.store.get('sessionSortBy') || 'custom'
+  }
+
+  /**
+   * 设置主机排序方式
+   */
+  setSessionSortBy(sortBy: SessionSortBy): void {
+    this.store.set('sessionSortBy', sortBy)
+  }
+
+  /**
+   * 获取默认分组排序位置
+   */
+  getDefaultGroupSortOrder(): number {
+    return this.store.get('defaultGroupSortOrder') ?? -1
+  }
+
+  /**
+   * 设置默认分组排序位置
+   */
+  setDefaultGroupSortOrder(order: number): void {
+    this.store.set('defaultGroupSortOrder', order)
   }
 }
 

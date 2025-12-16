@@ -972,6 +972,23 @@ ipcMain.handle('config:setSponsorStatus', async (_event, status: boolean) => {
   configService.setSponsorStatus(status)
 })
 
+// 排序设置
+ipcMain.handle('config:getSessionSortBy', async () => {
+  return configService.getSessionSortBy()
+})
+
+ipcMain.handle('config:setSessionSortBy', async (_event, sortBy: string) => {
+  configService.setSessionSortBy(sortBy as import('./services/config.service').SessionSortBy)
+})
+
+ipcMain.handle('config:getDefaultGroupSortOrder', async () => {
+  return configService.getDefaultGroupSortOrder()
+})
+
+ipcMain.handle('config:setDefaultGroupSortOrder', async (_event, order: number) => {
+  configService.setDefaultGroupSortOrder(order)
+})
+
 // Xshell 导入相关
 ipcMain.handle('xshell:selectFiles', async () => {
   const result = await dialog.showOpenDialog({

@@ -730,6 +730,14 @@ export default {
     importXshellDir: 'Import Xshell Directory...',
     importManual: 'Select Directory',
     importFailed: 'Import failed',
+    sort: {
+      title: 'Sort',
+      custom: 'Custom Order',
+      nameAsc: 'Name A-Z',
+      nameDesc: 'Name Z-A',
+      lastUsed: 'Recently Used'
+    },
+    dropHere: 'Drop here',
     importSuccess: 'Successfully imported {count} sessions',
     importPartialFailed: 'The following files failed to import:',
     pleaseInputGroupName: 'Please enter group name',

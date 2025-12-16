@@ -730,6 +730,14 @@ export default {
     importXshellDir: '导入 Xshell 目录...',
     importManual: '手动选择目录',
     importFailed: '导入失败',
+    sort: {
+      title: '排序',
+      custom: '自定义排序',
+      nameAsc: '按名称 A-Z',
+      nameDesc: '按名称 Z-A',
+      lastUsed: '按最近使用'
+    },
+    dropHere: '拖放到此处',
     importSuccess: '成功导入 {count} 个会话',
     importPartialFailed: '以下文件导入失败：',
     pleaseInputGroupName: '请输入分组名称',

@@ -29,7 +29,11 @@ export interface SessionGroup {
   id: string
   name: string
   jumpHost?: JumpHostConfig  // 可选的跳板机配置，组内会话自动继承
+  sortOrder?: number         // 排序顺序
 }
+
+// 主机排序方式
+export type SessionSortBy = 'custom' | 'name' | 'name-desc' | 'lastUsed'
 
 // 支持的字符编码
 export type SshEncoding = 
@@ -62,6 +66,7 @@ export interface SshSession {
   jumpHostOverride?: JumpHostConfig | null  // 覆盖分组跳板机：null 表示显式禁用，undefined 表示继承
   encoding?: SshEncoding   // 字符编码，默认 utf-8
   lastUsedAt?: number      // 最近使用时间戳（毫秒）
+  sortOrder?: number       // 排序顺序
 }
 
 // 本地终端编码类型（与 SSH 编码共用）
@@ -137,6 +142,12 @@ export const useConfigStore = defineStore('config', () => {
   // 赞助状态
   const isSponsor = ref<boolean>(false)
 
+  // 主机排序方式
+  const sessionSortBy = ref<SessionSortBy>('custom')
+
+  // 默认分组的排序位置（-1 表示在最后）
+  const defaultGroupSortOrder = ref<number>(-1)
+
   // 计算属性
   const activeAiProfile = computed(() =>
     aiProfiles.value.find(p => p.id === activeAiProfileId.value)
@@ -193,6 +204,14 @@ export const useConfigStore = defineStore('config', () => {
       // 加载赞助状态
       const sponsorStatus = await window.electronAPI.config.getSponsorStatus()
       isSponsor.value = sponsorStatus || false
+
+      // 加载排序设置
+      const sortBy = await window.electronAPI.config.getSessionSortBy()
+      sessionSortBy.value = (sortBy as SessionSortBy) || 'custom'
+
+      // 加载默认分组排序位置
+      const defaultOrder = await window.electronAPI.config.getDefaultGroupSortOrder()
+      defaultGroupSortOrder.value = defaultOrder ?? -1
     } catch (error) {
       console.error('Failed to load config:', error)
     }
@@ -375,6 +394,66 @@ export const useConfigStore = defineStore('config', () => {
     await window.electronAPI.config.setSponsorStatus(status)
   }
 
+  // ==================== 排序设置 ====================
+
+  async function setSessionSortBy(sortBy: SessionSortBy): Promise<void> {
+    sessionSortBy.value = sortBy
+    await window.electronAPI.config.setSessionSortBy(sortBy)
+  }
+
+  async function setDefaultGroupSortOrder(order: number): Promise<void> {
+    defaultGroupSortOrder.value = order
+    await window.electronAPI.config.setDefaultGroupSortOrder(order)
+  }
+
+  /**
+   * 更新主机排序顺序
+   */
+  async function updateSessionSortOrder(sessionId: string, newOrder: number): Promise<void> {
+    const session = sshSessions.value.find(s => s.id === sessionId)
+    if (session) {
+      session.sortOrder = newOrder
+      await saveSshSessions()
+    }
+  }
+
+  /**
+   * 批量更新主机排序顺序
+   */
+  async function updateSessionsSortOrder(updates: { id: string; sortOrder: number }[]): Promise<void> {
+    for (const update of updates) {
+      const session = sshSessions.value.find(s => s.id === update.id)
+      if (session) {
+        session.sortOrder = update.sortOrder
+      }
+    }
+    await saveSshSessions()
+  }
+
+  /**
+   * 更新分组排序顺序
+   */
+  async function updateGroupSortOrder(groupId: string, newOrder: number): Promise<void> {
+    const group = sessionGroups.value.find(g => g.id === groupId)
+    if (group) {
+      group.sortOrder = newOrder
+      await saveSessionGroups()
+    }
+  }
+
+  /**
+   * 批量更新分组排序顺序
+   */
+  async function updateGroupsSortOrder(updates: { id: string; sortOrder: number }[]): Promise<void> {
+    for (const update of updates) {
+      const group = sessionGroups.value.find(g => g.id === update.id)
+      if (group) {
+        group.sortOrder = update.sortOrder
+      }
+    }
+    await saveSessionGroups()
+  }
+
   // ==================== 数据迁移 ====================
 
   /**
@@ -435,6 +514,8 @@ export const useConfigStore = defineStore('config', () => {
     setupCompleted,
     language,
     isSponsor,
+    sessionSortBy,
+    defaultGroupSortOrder,
 
     // 方法
     loadConfig,
@@ -456,7 +537,13 @@ export const useConfigStore = defineStore('config', () => {
     setAgentMbti,
     setSetupCompleted,
     setLanguage,
-    setSponsorStatus
+    setSponsorStatus,
+    setSessionSortBy,
+    setDefaultGroupSortOrder,
+    updateSessionSortOrder,
+    updateSessionsSortOrder,
+    updateGroupSortOrder,
+    updateGroupsSortOrder
   }
 })
 
