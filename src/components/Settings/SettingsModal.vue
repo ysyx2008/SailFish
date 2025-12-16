@@ -721,6 +721,8 @@ const onQrImageError = (event: Event) => {
   text-align: center;
   padding-top: 20px;
   padding-bottom: 20px;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .about-logo {
