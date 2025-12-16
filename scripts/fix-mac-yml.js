@@ -20,9 +20,10 @@ if (content.includes('    arch:')) {
   process.exit(0)
 }
 
-const fileEntryRegex = /(  - url: (.+\.dmg)\n    sha512: [^\n]+\n    size: \d+)(\n(?!    arch:))/g
+// 匹配 dmg 和 zip 文件条目
+const fileEntryRegex = /(  - url: (.+\.(dmg|zip))\n    sha512: [^\n]+\n    size: \d+)(\n(?!    arch:))/g
 
-const fixed = content.replace(fileEntryRegex, (match, entry, url, trailing) => {
+const fixed = content.replace(fileEntryRegex, (match, entry, url, ext, trailing) => {
   const arch = (url.includes('-arm64.') || url.includes('_arm64.')) ? 'arm64' : 'x64'
   console.log(`[fix-mac-yml] 为 ${url} 添加 arch: ${arch}`)
   return `${entry}\n    arch: ${arch}${trailing}`

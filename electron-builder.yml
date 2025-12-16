@@ -59,6 +59,11 @@ mac:
       arch:
         - x64
         - arm64
+    # zip 文件是自动更新必需的（Squirrel.Mac 需要 zip 而非 dmg）
+    - target: zip
+      arch:
+        - x64
+        - arm64
   # ⚠️ [高风险配置] 本地化应用名称支持
   # 如果 macOS 打包后 SSH 连接失败，请删除下方 extraFiles 和 extendInfo 整块配置
   # 安全回退：只保留上面的 icon 和 target

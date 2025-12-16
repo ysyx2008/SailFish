@@ -86,6 +86,7 @@ jobs:
           name: macos-release
           path: |
             release/*.dmg
+            release/*.zip
             release/latest-mac.yml
             release/*.blockmap
           if-no-files-found: error
