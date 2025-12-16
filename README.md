@@ -1,20 +1,22 @@
 # 旗鱼终端
 
+[English](./README_EN.md) | 中文
+
 > AI 驱动的跨平台终端，助力运维提效
 
 🌐 **官方网站**：[www.sfterm.com](http://www.sfterm.com/)
 
 ## 产品介绍
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome.png" width="900" alt="旗鱼终端欢迎页面">
-</p>
-
 旗鱼终端是一款面向运维工程师和开发者的现代化终端工具。它将传统终端的强大功能与AI智能助手深度融合，让命令行操作变得更加高效、智能。
 
 遇到不熟悉的命令？让AI帮你解释。
 看到报错信息一头雾水？AI帮你分析原因并给出解决方案。
 想要执行某个操作但不知道命令？用自然语言描述，AI为你生成。
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome.png" width="900" alt="旗鱼终端欢迎页面">
+</p>
 
 对于企业用户，旗鱼终端充分考虑了内网环境的需求：支持配置私有化部署的 AI 模型，可以一键导入 Xshell 会话配置，让团队快速上手、平滑迁移。
 
