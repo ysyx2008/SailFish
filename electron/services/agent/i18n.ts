@@ -268,6 +268,10 @@ const translations = {
     'misc.duration': '耗时',
     'misc.characters': '字符',
     'misc.seconds': '秒',
+    
+    // AI 思考
+    'ai.thinking': '思考中...',
+    'ai.thinking_with_emoji': '🤔 **思考中...**\n\n> ',
   },
   'en-US': {
     // Tool names
@@ -527,6 +531,10 @@ const translations = {
     'misc.duration': 'Duration',
     'misc.characters': 'characters',
     'misc.seconds': 'seconds',
+    
+    // AI thinking
+    'ai.thinking': 'Thinking...',
+    'ai.thinking_with_emoji': '🤔 **Thinking...**\n\n> ',
   }
 } as const
 

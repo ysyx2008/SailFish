@@ -266,7 +266,7 @@ Examples: Linux/macOS uses ls, cat, grep; Windows CMD uses dir, type, findstr; P
     const assistantMessage: AiMessage = {
       id: (Date.now() + 1).toString(),
       role: 'assistant',
-      content: '思考中...',
+      content: t('ai.thinking'),
       timestamp: new Date()
     }
     const messageIndex = terminalStore.addAiMessage(tabId, assistantMessage)

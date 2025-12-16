@@ -3,6 +3,7 @@ import { HttpsProxyAgent } from 'https-proxy-agent'
 import { SocksProxyAgent } from 'socks-proxy-agent'
 import * as https from 'https'
 import * as http from 'http'
+import { t } from './agent/i18n'
 
 export interface AiMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
@@ -645,7 +646,7 @@ export class AiService {
                   if (!hasReasoningOutput) {
                     hasReasoningOutput = true
                     // Agent 模式：简单的思考指示，不使用 HTML
-                    onChunk('🤔 **思考中...**\n\n> ')
+                    onChunk(t('ai.thinking_with_emoji'))
                   }
                   reasoningContent += delta.reasoning_content
                   // 输出思考内容，使用引用格式
