@@ -169,6 +169,7 @@ export default {
     description: 'AI-powered cross-platform smart terminal',
     contact: 'Contact Us',
     license: 'License',
+    website: 'Website',
     copyright: '© 2024 SFTerm',
     // Update check
     checkUpdate: 'Check for Updates',

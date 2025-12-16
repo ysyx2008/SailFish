@@ -526,8 +526,9 @@ const onQrImageError = (event: Event) => {
               {{ t('about.description') }}
             </p>
             <div class="about-links">
+              <a href="http://www.sfterm.com/" target="_blank" class="about-link">{{ t('about.website') }}</a>
               <a href="mailto:nuoyan_cfan@163.com" class="about-link">{{ t('about.contact') }}</a>
-              <a href="www.gnu.org/licenses/agpl-3.0.html" target="_blank" class="about-link">{{ t('about.license') }}</a>
+              <a href="http://www.gnu.org/licenses/agpl-3.0.html" target="_blank" class="about-link">{{ t('about.license') }}</a>
             </div>
             
             <!-- 赞助者徽章（放大醒目版） -->

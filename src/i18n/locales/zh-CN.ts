@@ -169,6 +169,7 @@ export default {
     description: 'AI 驱动的跨平台智慧终端',
     contact: '联系我们',
     license: '开源协议',
+    website: '官方网站',
     copyright: '© 2024 旗鱼',
     // 更新检测
     checkUpdate: '检查更新',
