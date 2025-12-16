@@ -1,6 +1,6 @@
 {
   "name": "SFTerm",
-  "version": "7.6.5",
+  "version": "7.6.6",
   "description": "旗鱼终端 - AI 驱动的跨平台终端",
   "main": "dist-electron/main.js",
   "scripts": {
