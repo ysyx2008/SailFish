@@ -40,8 +40,7 @@ jobs:
 
       - name: Build application
         run: npm run build:win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # 不设置 GH_TOKEN，禁用 electron-builder 自动发布
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -49,7 +48,8 @@ jobs:
           name: windows-release
           path: |
             release/*.exe
-            release/*.zip
+            release/*.yml
+            release/*.blockmap
           if-no-files-found: error
 
   # macOS 构建
@@ -71,14 +71,16 @@ jobs:
 
       - name: Build application
         run: npm run build:mac
+        # 不设置 GH_TOKEN，禁用 electron-builder 自动发布
+        # fix-mac-yml.js 会在本地修复 latest-mac.yml 添加 arch 字段
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # 如果需要代码签名，取消注释以下配置
           # CSC_LINK: ${{ secrets.MAC_CERTS }}
           # CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
           # APPLE_ID: ${{ secrets.APPLE_ID }}
           # APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          PLACEHOLDER: "placeholder"  # 保持 env 块存在以便将来添加签名配置
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
@@ -86,7 +88,8 @@ jobs:
           name: macos-release
           path: |
             release/*.dmg
-            release/*.zip
+            release/*.yml
+            release/*.blockmap
           if-no-files-found: error
 
   # Linux 构建
@@ -108,8 +111,7 @@ jobs:
 
       - name: Build application
         run: npm run build:linux
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # 不设置 GH_TOKEN，禁用 electron-builder 自动发布
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
@@ -119,6 +121,8 @@ jobs:
             release/*.AppImage
             release/*.deb
             release/*.snap
+            release/*.yml
+            release/*.blockmap
           if-no-files-found: warn
 
   # 创建 GitHub Release 并上传构建产物
