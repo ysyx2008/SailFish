@@ -1585,59 +1585,43 @@ export class AgentService {
         } else {
           // 没有工具调用
           
-          // 情况1：从未执行过任何工具，提示 AI 使用工具
+          // 情况1：从未执行过任何工具
           if (!hasExecutedAnyTool) {
-            noToolCallRetryCount++
-            
-            // 如果 AI 返回了内容，先显示给用户
+            // 如果 AI 返回了有内容的回复，直接接受（信任 AI 的判断）
+            // AI 会自己决定是否需要使用工具，简单问候/闲聊不需要工具
             if (response.content && response.content.trim()) {
-              // 已经在上面的流式步骤中显示了，这里只需要记录
-              console.log('[Agent] AI 返回了文字但未调用工具:', response.content.substring(0, 100))
-            }
-            
-            if (noToolCallRetryCount >= MAX_NO_TOOL_RETRIES) {
-              // 多次重试后仍然没有工具调用
-              // 添加警告步骤提示用户
-              this.addStep(agentId, {
-                type: 'error',
-                content: '⚠️ AI 没有执行任何实际操作。\n\n' +
-                  '可能的原因：\n' +
-                  '• 当前模型可能不支持工具调用（Function Calling）\n' +
-                  '• 请尝试使用支持 Function Calling 的模型，如 GPT-4、Claude 或 DeepSeek-Chat\n' +
-                  '• 或者换一种方式描述你的任务'
-              })
-              
-              // 不算作成功完成，而是以警告方式结束
+              console.log('[Agent] AI 返回纯文字回复（无工具调用），正常结束')
               run.isRunning = false
               
-              // 使用 AI 的回复作为最终消息（如果有的话）
-              const warningMessage = response.content || '任务未执行：AI 未调用任何工具'
-              
-              const noToolCallbacks = this.getCallbacks(agentId)
-              if (noToolCallbacks.onComplete) {
-                noToolCallbacks.onComplete(agentId, warningMessage, [])
+              const textCallbacks = this.getCallbacks(agentId)
+              if (textCallbacks.onComplete) {
+                textCallbacks.onComplete(agentId, response.content, [])
               }
               
-              return warningMessage
+              return response.content
             }
             
-            // 添加提示消息，要求 AI 使用工具
-            run.messages.push({
-              role: 'assistant',
-              content: response.content || ''
-            })
-            run.messages.push({
-              role: 'user',
-              content: '请注意：你需要使用提供的工具来完成任务，而不是只给出文字回复。' +
-                '请使用 execute_command 执行命令，或使用其他合适的工具来实际完成任务。'
-            })
+            // AI 既没调用工具也没返回内容，可能是模型问题
+            noToolCallRetryCount++
+            if (noToolCallRetryCount >= MAX_NO_TOOL_RETRIES) {
+              this.addStep(agentId, {
+                type: 'error',
+                content: '⚠️ AI 没有返回任何内容。\n\n' +
+                  '可能的原因：\n' +
+                  '• 当前模型可能不支持工具调用（Function Calling）\n' +
+                  '• 请尝试使用支持 Function Calling 的模型，如 GPT-4、Claude 或 DeepSeek-Chat'
+              })
+              
+              run.isRunning = false
+              const emptyCallbacks = this.getCallbacks(agentId)
+              if (emptyCallbacks.onComplete) {
+                emptyCallbacks.onComplete(agentId, 'AI 未返回任何内容', [])
+              }
+              return 'AI 未返回任何内容'
+            }
             
-            this.addStep(agentId, {
-              type: 'thinking',
-              content: '🔄 正在要求 AI 使用工具执行任务...'
-            })
-            
-            continue  // 重试
+            // 重试一次（针对空回复的情况）
+            continue
           }
           
           // 情况2：已执行过工具，检查是否有未完成的计划步骤
