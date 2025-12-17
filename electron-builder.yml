@@ -82,6 +82,23 @@ mac:
       - en
       - zh_CN
       - zh-Hans
+dmg:
+  # DMG 窗口配置
+  window:
+    width: 660
+    height: 500
+  contents:
+    - x: 180
+      y: 170
+      type: file
+    - x: 480
+      y: 170
+      type: link
+      path: /Applications
+    - x: 330
+      y: 370
+      type: file
+      path: resources/dmg/Installation Guide - 安装说明.txt
 linux:
   icon: resources
   target:

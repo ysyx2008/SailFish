@@ -154,6 +154,29 @@ jobs:
           name: 旗鱼终端 ${{ steps.get_version.outputs.VERSION }}
           draft: false  # 不作为草稿，直接发布
           generate_release_notes: true
+          body: |
+            ## 安装说明
+
+            ### Windows
+            下载 `.exe` 文件，双击安装即可。
+
+            ### macOS
+            下载 `.dmg` 文件，打开后将应用拖入 Applications 文件夹。
+
+            ⚠️ **首次运行提示"已损坏"的解决方法：**
+
+            由于应用未进行 Apple 签名，macOS 可能会阻止运行。请打开终端执行：
+            ```bash
+            xattr -cr /Applications/SFTerm.app
+            ```
+            然后重新打开应用即可。
+
+            ### Linux
+            - **AppImage**: 下载后添加执行权限 `chmod +x *.AppImage`，然后双击运行
+            - **deb**: 使用 `sudo dpkg -i *.deb` 安装
+
+            ---
+
           files: |
             artifacts/windows-release/*
             artifacts/macos-release/*
