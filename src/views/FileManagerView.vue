@@ -3,11 +3,16 @@ import { ref, onMounted, onUnmounted, provide, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import FilePane from '../components/FileManager/FilePane.vue'
 import TransferQueue from '../components/FileExplorer/TransferQueue.vue'
+import Toast from '../components/common/Toast.vue'
+import ConfirmDialog from '../components/common/ConfirmDialog.vue'
 import type { SftpConnectionConfig, TransferProgress } from '../composables/useSftp'
 import type { LocalFileInfo } from '../composables/useLocalFs'
 import type { SftpFileInfo } from '../composables/useSftp'
 import { toast } from '../composables/useToast'
-import { showConfirm } from '../composables/useConfirm'
+import { useConfirm } from '../composables/useConfirm'
+
+// 确认对话框
+const { show: showConfirmDialog, options: confirmOptions, handleConfirm, handleCancel } = useConfirm()
 
 const { t } = useI18n()
 
@@ -412,6 +417,18 @@ const handleClearAllTransfers = () => {
       @retry="handleRetryTransfer"
       @clear="handleClearTransfers"
       @clear-all="handleClearAllTransfers"
+    />
+
+    <!-- Toast 通知 -->
+    <Toast />
+
+    <!-- 确认对话框 -->
+    <ConfirmDialog
+      :show="showConfirmDialog"
+      :options="confirmOptions"
+      @confirm="handleConfirm"
+      @cancel="handleCancel"
+      @close="handleCancel"
     />
   </div>
 </template>
