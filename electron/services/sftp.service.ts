@@ -208,7 +208,28 @@ export class SftpService extends EventEmitter {
     const sftp = this.sessions.get(sessionId)
     if (!sftp) throw new Error('SFTP 会话不存在')
 
-    const stats = fs.statSync(localPath)
+    // 检查本地文件是否存在和可读
+    let stats: fs.Stats
+    try {
+      stats = fs.statSync(localPath)
+    } catch (err: unknown) {
+      const nodeErr = err as NodeJS.ErrnoException
+      if (nodeErr.code === 'ENOENT') {
+        throw new Error(`文件不存在: ${localPath}`)
+      } else if (nodeErr.code === 'EACCES' || nodeErr.code === 'EPERM') {
+        throw new Error(`无权限读取文件: ${localPath}，请检查文件权限设置`)
+      } else {
+        throw new Error(`无法读取文件: ${localPath}，${nodeErr.message}`)
+      }
+    }
+
+    // 检查是否有读取权限
+    try {
+      fs.accessSync(localPath, fs.constants.R_OK)
+    } catch {
+      throw new Error(`无权限读取文件: ${localPath}，请检查文件权限设置`)
+    }
+
     const totalBytes = stats.size
 
     const progress: TransferProgress = {
@@ -239,11 +260,28 @@ export class SftpService extends EventEmitter {
       progress.percent = 100
       progress.transferredBytes = totalBytes
       this.emit('transfer-complete', { ...progress })
-    } catch (err) {
+    } catch (err: unknown) {
+      const nodeErr = err as NodeJS.ErrnoException
+      let errorMessage = '上传失败'
+
+      // 处理本地文件读取权限错误
+      if (nodeErr.code === 'EACCES' || nodeErr.code === 'EPERM') {
+        errorMessage = `无权限读取文件: ${localPath}，请检查文件权限设置`
+      } else if (nodeErr.code === 'ENOENT') {
+        errorMessage = `文件不存在: ${localPath}`
+      } else if (nodeErr.message) {
+        // 检查是否是远程服务器权限错误
+        if (nodeErr.message.includes('Permission denied') || nodeErr.message.includes('permission denied')) {
+          errorMessage = `远程服务器拒绝写入: ${remotePath}，请检查目标目录权限`
+        } else {
+          errorMessage = nodeErr.message
+        }
+      }
+
       progress.status = 'failed'
-      progress.error = err instanceof Error ? err.message : '上传失败'
+      progress.error = errorMessage
       this.emit('transfer-error', { ...progress })
-      throw err
+      throw new Error(errorMessage)
     } finally {
       this.transfers.delete(transferId)
     }
@@ -319,7 +357,42 @@ export class SftpService extends EventEmitter {
   ): Promise<void> {
     const sftp = this.sessions.get(sessionId)
     if (!sftp) throw new Error('SFTP 会话不存在')
-    await sftp.uploadDir(localDir, remoteDir)
+
+    // 检查本地目录是否存在和可读
+    try {
+      const stats = fs.statSync(localDir)
+      if (!stats.isDirectory()) {
+        throw new Error(`路径不是目录: ${localDir}`)
+      }
+    } catch (err: unknown) {
+      const nodeErr = err as NodeJS.ErrnoException
+      if (nodeErr.code === 'ENOENT') {
+        throw new Error(`目录不存在: ${localDir}`)
+      } else if (nodeErr.code === 'EACCES' || nodeErr.code === 'EPERM') {
+        throw new Error(`无权限访问目录: ${localDir}，请检查目录权限设置`)
+      } else if (nodeErr.message?.includes('路径不是目录')) {
+        throw nodeErr
+      } else {
+        throw new Error(`无法访问目录: ${localDir}，${nodeErr.message}`)
+      }
+    }
+
+    try {
+      fs.accessSync(localDir, fs.constants.R_OK)
+    } catch {
+      throw new Error(`无权限读取目录: ${localDir}，请检查目录权限设置`)
+    }
+
+    try {
+      await sftp.uploadDir(localDir, remoteDir)
+    } catch (err: unknown) {
+      const nodeErr = err as NodeJS.ErrnoException
+      // 处理上传过程中可能遇到的权限问题
+      if (nodeErr.code === 'EACCES' || nodeErr.code === 'EPERM') {
+        throw new Error(`上传目录时权限不足，可能某些文件无法读取: ${nodeErr.message}`)
+      }
+      throw err
+    }
   }
 
   /**
