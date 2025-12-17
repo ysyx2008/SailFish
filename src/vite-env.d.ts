@@ -1207,6 +1207,8 @@ interface Window {
         success: boolean
         error?: string
       }>
+      // 监听知识库服务就绪事件
+      onReady: (callback: () => void) => () => void
     }
     // 协调器（智能巡检）
     orchestrator: {

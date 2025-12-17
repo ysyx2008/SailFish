@@ -344,21 +344,30 @@ app.whenReady().then(async () => {
   // 移除默认菜单栏
   Menu.setApplicationMenu(null)
 
-  // 初始化知识库服务（确保 Agent 可以访问）
-  await initKnowledgeService()
-  
-  // 自动解锁知识库（使用系统钥匙串中保存的密码）
-  try {
-    const { autoUnlock } = await import('./services/knowledge/crypto')
-    autoUnlock()
-  } catch (e) {
-    console.error('[Main] 知识库自动解锁失败:', e)
-  }
-  
-  // 初始化屏幕内容服务（供 Agent 获取准确的终端输出）
+  // 初始化屏幕内容服务（轻量，可以同步初始化）
   initScreenContentService()
 
+  // 先创建窗口，让用户尽快看到界面
   createWindow()
+
+  // 窗口内容加载完成后，异步初始化重量级服务
+  mainWindow?.webContents.on('did-finish-load', () => {
+    // 延迟初始化知识库服务（非阻塞）
+    initKnowledgeService().then(() => {
+      console.log('[Main] 知识库服务初始化完成')
+      // 初始化完成后通知前端
+      mainWindow?.webContents.send('knowledge:ready')
+    }).catch(e => {
+      console.error('[Main] 知识库服务初始化失败:', e)
+    })
+    
+    // 自动解锁知识库（异步，不阻塞）
+    import('./services/knowledge/crypto').then(({ autoUnlock }) => {
+      autoUnlock()
+    }).catch(e => {
+      console.error('[Main] 知识库自动解锁失败:', e)
+    })
+  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

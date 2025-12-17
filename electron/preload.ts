@@ -1816,7 +1816,16 @@ const electronAPI = {
         error?: string;
         decryptedCount?: number;
         message?: string;
-      }>
+      }>,
+
+    // 监听知识库服务就绪事件
+    onReady: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on('knowledge:ready', handler)
+      return () => {
+        ipcRenderer.removeListener('knowledge:ready', handler)
+      }
+    }
   },
 
   // 终端屏幕内容服务（供主进程请求渲染进程数据）
