@@ -809,7 +809,9 @@ export default {
     connecting: '连接中...',
     scrollLeft: '向左滚动',
     scrollRight: '向右滚动',
-    selectShell: '选择 Shell'
+    selectShell: '选择 Shell',
+    confirmCloseAgentRunning: 'AI Agent 正在执行任务中，关闭终端将中断执行。确定要关闭吗？',
+    confirmCloseWithChat: '当前终端有 AI 对话记录，关闭后将丢失。确定要关闭吗？'
   },
 
   // 文件管理器

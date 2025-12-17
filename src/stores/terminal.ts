@@ -486,10 +486,26 @@ export const useTerminalStore = defineStore('terminal', () => {
 
   /**
    * 关闭标签页
+   * @param tabId 标签页 ID
+   * @param skipConfirm 是否跳过确认（默认 false）
    */
-  async function closeTab(tabId: string): Promise<void> {
+  async function closeTab(tabId: string, skipConfirm: boolean = false): Promise<boolean> {
     const tab = tabs.value.find(t => t.id === tabId)
-    if (!tab) return
+    if (!tab) return false
+
+    const t = i18n.global.t
+
+    // 如果不跳过确认，检查是否需要确认
+    if (!skipConfirm) {
+      // 检查 Agent 是否正在运行
+      const isAgentRunning = tab.agentState?.isRunning === true
+
+      if (isAgentRunning) {
+        // Agent 正在运行，显示警告确认
+        const confirmed = window.confirm(t('tabs.confirmCloseAgentRunning'))
+        if (!confirmed) return false
+      }
+    }
 
     // 清理终端连接
     if (tab.ptyId) {
@@ -513,6 +529,8 @@ export const useTerminalStore = defineStore('terminal', () => {
         activeTabId.value = ''
       }
     }
+
+    return true
   }
 
   /**
