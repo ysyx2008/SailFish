@@ -805,7 +805,6 @@ input:checked + .slider:before {
   align-items: center;
   justify-content: center;
   z-index: 10000;
-  backdrop-filter: blur(4px);
 }
 
 .btn {
