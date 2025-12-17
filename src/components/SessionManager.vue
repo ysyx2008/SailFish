@@ -678,7 +678,8 @@ const connectSession = async (session: SshSession) => {
     port: session.port,
     username: session.username,
     password: session.password,
-    privateKey: session.privateKeyPath,
+    privateKeyPath: session.privateKeyPath,  // 私钥文件路径
+    passphrase: session.passphrase,  // 私钥密码
     jumpHost,  // 传递跳板机配置
     encoding: session.encoding || 'utf-8',  // 传递编码配置
     sessionId: session.id  // 传递会话 ID（用于重连）

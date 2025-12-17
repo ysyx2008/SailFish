@@ -15,8 +15,9 @@ export interface SshConfig {
   port: number
   username: string
   password?: string
-  privateKey?: string
-  passphrase?: string
+  privateKey?: string  // 私钥内容（直接传递）
+  privateKeyPath?: string  // 私钥文件路径（从文件读取）
+  passphrase?: string  // 私钥密码（可选）
   cols?: number
   rows?: number
   jumpHost?: JumpHostConfig  // 跳板机配置

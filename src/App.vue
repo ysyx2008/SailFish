@@ -151,7 +151,8 @@ const openSshFromWelcome = async (session: SshSession) => {
     port: session.port,
     username: session.username,
     password: session.password,
-    privateKey: session.privateKeyPath,
+    privateKeyPath: session.privateKeyPath,  // 私钥文件路径
+    passphrase: session.passphrase,  // 私钥密码
     jumpHost,
     encoding: session.encoding || 'utf-8',
     sessionId: session.id  // 传递会话 ID（用于重连）
