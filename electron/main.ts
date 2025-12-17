@@ -964,11 +964,12 @@ ipcMain.handle('updater:getStatus', async () => {
 
 // 配置相关
 ipcMain.handle('config:get', async (_event, key: string) => {
-  return configService.get(key)
+  return configService.get(key as keyof typeof configService extends { get(key: infer K): unknown } ? K : never)
 })
 
 ipcMain.handle('config:set', async (_event, key: string, value: unknown) => {
-  configService.set(key, value)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  configService.set(key as any, value as any)
 })
 
 ipcMain.handle('config:getAll', async () => {
@@ -1234,15 +1235,13 @@ function initOrchestratorService() {
     getSshSessions: () => configService.getSshSessions(),
     createLocalTerminal: async () => {
       // 创建本地终端
-      const tabId = `tab_${Date.now()}`
-      await ptyService.spawn(tabId, {})
+      const tabId = ptyService.create({})
       terminalTypes.set(tabId, 'local')
       terminalStateService.initTerminal(tabId, 'local')
       return tabId
     },
     createSshTerminal: async (sshConfig) => {
       // 创建 SSH 终端
-      const tabId = `tab_${Date.now()}`
       const config = sshConfig as {
         host: string
         port: number
@@ -1250,7 +1249,7 @@ function initOrchestratorService() {
         password?: string
         privateKey?: string
       }
-      await sshService.connect(tabId, {
+      const tabId = await sshService.connect({
         host: config.host,
         port: config.port,
         username: config.username,
@@ -1264,7 +1263,7 @@ function initOrchestratorService() {
     closeTerminal: async (terminalId) => {
       const type = terminalTypes.get(terminalId)
       if (type === 'local') {
-        ptyService.kill(terminalId)
+        ptyService.dispose(terminalId)
       } else {
         sshService.disconnect(terminalId)
       }
@@ -1315,8 +1314,7 @@ ipcMain.handle('orchestrator:listHosts', async () => {
     port: session.port,
     username: session.username,
     group: session.group,
-    groupId: session.groupId,
-    tags: session.tags
+    groupId: session.groupId
   }))
 })
 
@@ -1455,7 +1453,7 @@ ipcMain.handle('history:importFromFolder', async () => {
         const mergedSessions = [...existingSessions]
         for (const session of newSessions) {
           if (!mergedSessions.some(s => s.id === session.id)) {
-            mergedSessions.push(session as typeof existingSessions[0])
+            mergedSessions.push(session as unknown as typeof existingSessions[0])
           }
         }
         configService.set('sshSessions', mergedSessions)
@@ -1468,7 +1466,7 @@ ipcMain.handle('history:importFromFolder', async () => {
         const mergedProfiles = [...existingProfiles]
         for (const profile of newProfiles) {
           if (!mergedProfiles.some(p => p.id === profile.id)) {
-            mergedProfiles.push(profile as typeof existingProfiles[0])
+            mergedProfiles.push(profile as unknown as typeof existingProfiles[0])
           }
         }
         configService.set('aiProfiles', mergedProfiles)
@@ -2154,10 +2152,10 @@ ipcMain.handle('knowledge:removeDocument', async (_event, docId: string) => {
 ipcMain.handle('knowledge:removeDocuments', async (_event, docIds: string[]) => {
   try {
     const result = await getKnowledge().removeDocuments(docIds)
-    return { success: true, ...result }
+    return { ok: true, successCount: result.success, failedCount: result.failed }
   } catch (error) {
     return { 
-      success: false, 
+      ok: false, 
       error: error instanceof Error ? error.message : '批量删除文档失败' 
     }
   }
