@@ -36,6 +36,7 @@ const groupFormData = ref<Partial<SessionGroup & { jumpHost?: Partial<JumpHostCo
 
 const emit = defineEmits<{
   openSftp: [session: SshSession]
+  openFileManagerWindow: [session: SshSession]
 }>()
 
 const showNewSession = ref(false)
@@ -686,9 +687,24 @@ const connectSession = async (session: SshSession) => {
   })
 }
 
-// 打开 SFTP 文件管理
+// 打开 SFTP 文件管理（模态框）
 const openSftp = (session: SshSession) => {
   emit('openSftp', session)
+}
+
+// 打开独立文件管理器窗口（XFTP 风格双栏）
+const openFileManagerWindow = async (session: SshSession) => {
+  await window.electronAPI.fileManager.open({
+    sessionId: session.id,
+    sftpConfig: {
+      host: session.host,
+      port: session.port,
+      username: session.username,
+      password: session.password,
+      privateKeyPath: session.privateKeyPath,
+      passphrase: session.passphrase
+    }
+  })
 }
 
 // 创建本地终端
@@ -1094,7 +1110,7 @@ const deleteGroup = async (groupName: string) => {
                     <polygon points="5 3 19 12 5 21 5 3"/>
                   </svg>
                 </button>
-                <button class="btn-icon btn-sm" @click.stop="openSftp(session)" :title="t('session.fileManager')">
+                <button class="btn-icon btn-sm" @click.stop="openFileManagerWindow(session)" :title="t('session.fileManager')">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
                   </svg>

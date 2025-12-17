@@ -191,7 +191,7 @@ const toggleAiPanel = () => {
   showAiPanel.value = !showAiPanel.value
 }
 
-// 打开 SFTP 文件管理器
+// 打开 SFTP 文件管理器（模态框模式）
 const openSftp = (session: SshSession) => {
   sftpConfig.value = {
     host: session.host,

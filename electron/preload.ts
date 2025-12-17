@@ -1932,6 +1932,185 @@ const electronAPI = {
     } | null) => {
       ipcRenderer.send('screen:responseScreenAnalysis', { requestId, analysis })
     }
+  },
+
+  // 本地文件系统操作
+  localFs: {
+    // 获取主目录
+    getHomeDir: () =>
+      ipcRenderer.invoke('localFs:getHomeDir') as Promise<string>,
+
+    // 获取驱动器列表
+    getDrives: () =>
+      ipcRenderer.invoke('localFs:getDrives') as Promise<Array<{
+        name: string
+        path: string
+        label?: string
+        type: 'fixed' | 'removable' | 'network' | 'cdrom' | 'unknown'
+      }>>,
+
+    // 列出目录内容
+    list: (dirPath: string) =>
+      ipcRenderer.invoke('localFs:list', dirPath) as Promise<{
+        success: boolean
+        data?: Array<{
+          name: string
+          path: string
+          size: number
+          modifyTime: number
+          accessTime: number
+          isDirectory: boolean
+          isSymlink: boolean
+          permissions: { user: string; group: string; other: string }
+        }>
+        error?: string
+      }>,
+
+    // 获取文件信息
+    stat: (filePath: string) =>
+      ipcRenderer.invoke('localFs:stat', filePath) as Promise<{
+        success: boolean
+        data?: {
+          name: string
+          path: string
+          size: number
+          modifyTime: number
+          accessTime: number
+          isDirectory: boolean
+          isSymlink: boolean
+          permissions: { user: string; group: string; other: string }
+        }
+        error?: string
+      }>,
+
+    // 检查路径是否存在
+    exists: (filePath: string) =>
+      ipcRenderer.invoke('localFs:exists', filePath) as Promise<{
+        success: boolean
+        data?: false | 'd' | '-' | 'l'
+        error?: string
+      }>,
+
+    // 创建目录
+    mkdir: (dirPath: string) =>
+      ipcRenderer.invoke('localFs:mkdir', dirPath) as Promise<{
+        success: boolean
+        error?: string
+      }>,
+
+    // 删除文件
+    delete: (filePath: string) =>
+      ipcRenderer.invoke('localFs:delete', filePath) as Promise<{
+        success: boolean
+        error?: string
+      }>,
+
+    // 删除目录
+    rmdir: (dirPath: string) =>
+      ipcRenderer.invoke('localFs:rmdir', dirPath) as Promise<{
+        success: boolean
+        error?: string
+      }>,
+
+    // 重命名/移动
+    rename: (oldPath: string, newPath: string) =>
+      ipcRenderer.invoke('localFs:rename', oldPath, newPath) as Promise<{
+        success: boolean
+        error?: string
+      }>,
+
+    // 复制文件
+    copyFile: (src: string, dest: string) =>
+      ipcRenderer.invoke('localFs:copyFile', src, dest) as Promise<{
+        success: boolean
+        error?: string
+      }>,
+
+    // 复制目录
+    copyDir: (src: string, dest: string) =>
+      ipcRenderer.invoke('localFs:copyDir', src, dest) as Promise<{
+        success: boolean
+        error?: string
+      }>,
+
+    // 读取文本文件
+    readFile: (filePath: string) =>
+      ipcRenderer.invoke('localFs:readFile', filePath) as Promise<{
+        success: boolean
+        data?: string
+        error?: string
+      }>,
+
+    // 写入文本文件
+    writeFile: (filePath: string, content: string) =>
+      ipcRenderer.invoke('localFs:writeFile', filePath, content) as Promise<{
+        success: boolean
+        error?: string
+      }>,
+
+    // 获取上级目录
+    getParentDir: (filePath: string) =>
+      ipcRenderer.invoke('localFs:getParentDir', filePath) as Promise<string>,
+
+    // 拼接路径
+    joinPath: (...parts: string[]) =>
+      ipcRenderer.invoke('localFs:joinPath', ...parts) as Promise<string>,
+
+    // 获取路径分隔符
+    getSeparator: () =>
+      ipcRenderer.invoke('localFs:getSeparator') as Promise<string>,
+
+    // 获取常用目录
+    getSpecialFolders: () =>
+      ipcRenderer.invoke('localFs:getSpecialFolders') as Promise<Array<{
+        name: string
+        path: string
+        icon: string
+      }>>,
+
+    // 在系统文件管理器中显示
+    showInExplorer: (filePath: string) =>
+      ipcRenderer.invoke('localFs:showInExplorer', filePath),
+
+    // 用系统默认程序打开
+    openFile: (filePath: string) =>
+      ipcRenderer.invoke('localFs:openFile', filePath)
+  },
+
+  // 文件管理器窗口操作
+  fileManager: {
+    // 打开文件管理器窗口
+    open: (config: {
+      sessionId?: string
+      sftpConfig?: SftpConfig
+      initialLocalPath?: string
+      initialRemotePath?: string
+    }) => ipcRenderer.invoke('fileManager:open', config),
+
+    // 关闭文件管理器窗口
+    close: () => ipcRenderer.invoke('fileManager:close'),
+
+    // 获取窗口初始化参数
+    getInitParams: () => ipcRenderer.invoke('fileManager:getInitParams') as Promise<{
+      sessionId?: string
+      sftpConfig?: SftpConfig
+      initialLocalPath?: string
+      initialRemotePath?: string
+    } | null>,
+
+    // 监听窗口参数更新
+    onParamsUpdate: (callback: (params: {
+      sessionId?: string
+      sftpConfig?: SftpConfig
+      initialLocalPath?: string
+      initialRemotePath?: string
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, params: Parameters<typeof callback>[0]) => callback(params)
+      ipcRenderer.on('fileManager:paramsUpdate', handler)
+      return () => {
+        ipcRenderer.removeListener('fileManager:paramsUpdate', handler)
+      }
+    }
   }
 }
 

@@ -261,6 +261,45 @@ export function useAgentMode(
     })
   }
 
+  // 检测前一个任务是否失败，并构建失败上下文
+  const buildPreviousFailedContext = () => {
+    const groups = agentTaskGroups.value
+    if (groups.length === 0) return undefined
+
+    // 获取最后一个任务组
+    const lastGroup = groups[groups.length - 1]
+    
+    // 检测是否失败：
+    // 1. finalResult 以错误标记开头
+    // 2. 或者最后一个步骤是 error 类型
+    const isFailed = lastGroup.finalResult?.startsWith('❌') ||
+      lastGroup.steps.some(s => s.type === 'error')
+    
+    if (!isFailed) return undefined
+
+    // 构建失败上下文
+    const previousFailedContext = {
+      userTask: lastGroup.userTask,
+      steps: lastGroup.steps.map(s => ({
+        type: s.type,
+        content: s.content,
+        toolName: s.toolName,
+        toolArgs: s.toolArgs ? JSON.parse(JSON.stringify(s.toolArgs)) : undefined,
+        toolResult: s.toolResult,
+        riskLevel: s.riskLevel
+      })),
+      finalResult: lastGroup.finalResult || '执行失败',
+      timestamp: Date.now()
+    }
+
+    console.log('[Agent] 检测到前一个任务失败，构建失败上下文:', {
+      userTask: previousFailedContext.userTask,
+      stepsCount: previousFailedContext.steps.length
+    })
+
+    return previousFailedContext
+  }
+
   // 运行 Agent 或发送补充消息
   const runAgent = async () => {
     if (!inputText.value.trim() || !currentTabId.value) return
@@ -301,6 +340,9 @@ export function useAgentMode(
 
     // 获取主机 ID（基于 tabId 而非 activeTab，防止用户在 Agent 执行期间切换标签导致 hostId 错误）
     const hostId = await getHostIdByTabId(tabId)
+
+    // 检测前一个任务是否失败，如果失败则构建失败上下文
+    const previousFailedAgent = buildPreviousFailedContext()
 
     // 首次运行时自动探测主机信息（后台执行，不阻塞）
     autoProbeHostProfile().catch(e => {
@@ -345,8 +387,9 @@ export function useAgentMode(
           ...context,
           hostId,  // 主机档案 ID
           historyMessages,  // 添加历史对话
-          documentContext   // 添加文档上下文
-        } as { ptyId: string; terminalOutput: string[]; systemInfo: { os: string; shell: string }; terminalType: 'local' | 'ssh'; hostId?: string; historyMessages?: { role: string; content: string }[]; documentContext?: string },
+          documentContext,  // 添加文档上下文
+          previousFailedAgent  // 前一个失败 Agent 的上下文（如果有）
+        } as { ptyId: string; terminalOutput: string[]; systemInfo: { os: string; shell: string }; terminalType: 'local' | 'ssh'; hostId?: string; historyMessages?: { role: string; content: string }[]; documentContext?: string; previousFailedAgent?: { userTask: string; steps: { type: string; content: string; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: string; riskLevel?: string }[]; finalResult: string; timestamp: number } },
         { executionMode: executionMode.value, commandTimeout: commandTimeout.value * 1000 }  // 传递配置（超时时间转为毫秒）
       )
 

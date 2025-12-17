@@ -960,6 +960,123 @@ export class AgentService {
   }
 
   /**
+   * 构建前一个失败 Agent 的上下文信息
+   * 如果内容过长会让 AI 提炼摘要
+   */
+  private async buildPreviousFailedAgentContext(
+    failedAgent: import('./types').PreviousFailedAgentContext,
+    profileId?: string
+  ): Promise<string | null> {
+    const contextLength = this.getContextLength(profileId)
+    // 为失败上下文分配的 token 预算（上下文长度的 20%，最多 8000）
+    const maxTokens = Math.min(Math.floor(contextLength * 0.2), 8000)
+
+    // 构建步骤描述
+    const formatStep = (step: import('./types').PreviousAgentStep, index: number): string => {
+      let stepDesc = `${index + 1}. [${step.type}]`
+      
+      if (step.toolName) {
+        stepDesc += ` 工具: ${step.toolName}`
+        if (step.toolArgs) {
+          stepDesc += `\n   参数: ${JSON.stringify(step.toolArgs)}`
+        }
+      }
+      
+      if (step.content) {
+        stepDesc += `\n   内容: ${step.content}`
+      }
+      
+      if (step.toolResult) {
+        stepDesc += `\n   结果: ${step.toolResult}`
+      }
+      
+      return stepDesc
+    }
+
+    // 构建完整上下文
+    const stepDescriptions = failedAgent.steps.map((step, index) => formatStep(step, index))
+    const fullContext = [
+      '⚠️ **前一次任务执行失败，以下是失败的详细信息：**',
+      '',
+      `**原始任务**: ${failedAgent.userTask}`,
+      '',
+      '**执行步骤**:',
+      ...stepDescriptions,
+      '',
+      `**失败结果**: ${failedAgent.finalResult}`,
+      '',
+      '请分析上述失败原因，在本次执行中避免同样的问题。如果任务本身不可行，请直接告知用户。'
+    ].join('\n')
+
+    // 检查 token 数量
+    const estimatedTokens = this.estimateTokens(fullContext)
+    
+    if (estimatedTokens <= maxTokens) {
+      return fullContext
+    }
+
+    // 内容过长，需要让 AI 提炼摘要
+    console.log(`[Agent] 失败上下文过长 (${estimatedTokens} tokens)，使用 AI 提炼摘要 (目标: ${maxTokens} tokens)`)
+
+    try {
+      const summaryPrompt = `你是一个技术分析助手。以下是一个失败的任务执行记录，请提炼出关键信息摘要，帮助下一次执行避免同样的问题。
+
+**要求**：
+1. 保留原始任务描述
+2. 提炼关键的执行步骤和结果（不需要全部，只要关键的）
+3. 重点保留失败原因和错误信息
+4. 总结失败的根本原因
+5. 给出避免重复失败的建议
+6. 输出控制在 ${Math.floor(maxTokens * 0.8)} 个 token 以内
+
+---
+${fullContext}
+---
+
+请用以下格式输出摘要：
+
+**原始任务**: [任务描述]
+
+**关键执行过程**:
+[提炼的关键步骤]
+
+**失败原因分析**:
+[分析失败的根本原因]
+
+**避坑建议**:
+[给下一次执行的建议]`
+
+      const summary = await this.aiService.chat([
+        { role: 'user', content: summaryPrompt }
+      ], profileId)
+
+      if (summary && summary.trim()) {
+        console.log(`[Agent] AI 摘要生成成功，长度: ${summary.length} 字符`)
+        return `⚠️ **前一次任务执行失败（AI 提炼摘要）：**\n\n${summary}\n\n请基于以上分析，在本次执行中避免同样的问题。`
+      }
+    } catch (error) {
+      console.warn('[Agent] AI 摘要生成失败，使用简化版本:', error)
+    }
+
+    // AI 摘要失败时的兜底：只保留任务和错误信息
+    const errorSteps = failedAgent.steps.filter(s => s.type === 'error')
+    const errorInfo = errorSteps.length > 0 
+      ? errorSteps.map(s => s.content).join('\n')
+      : failedAgent.finalResult
+
+    return [
+      '⚠️ **前一次任务执行失败：**',
+      '',
+      `**原始任务**: ${failedAgent.userTask}`,
+      `**执行了 ${failedAgent.steps.length} 个步骤后失败**`,
+      '',
+      `**错误信息**: ${errorInfo}`,
+      '',
+      '请分析失败原因，避免重复相同的错误。如果任务不可行，请告知用户。'
+    ].join('\n')
+  }
+
+  /**
    * 添加执行步骤
    */
   private addStep(agentId: string, step: Omit<AgentStep, 'id' | 'timestamp'>): AgentStep {
@@ -1264,6 +1381,19 @@ export class AgentService {
       const keptHistory = historyToAdd.length
       const keptRounds = Math.floor(keptHistory / 2)
       console.log(`[Agent] 历史对话: 保留 ${keptHistory}/${totalHistory} 条消息 (${keptRounds} 轮), 使用 ${historyTokens} tokens (预算: ${availableForHistory}, 上下文: ${contextLength})`)
+    }
+
+    // 处理前一个失败 Agent 的上下文（如果有）
+    if (context.previousFailedAgent) {
+      const failedContext = await this.buildPreviousFailedAgentContext(context.previousFailedAgent, profileId)
+      if (failedContext) {
+        run.messages.push({ role: 'user', content: failedContext })
+        run.messages.push({ 
+          role: 'assistant', 
+          content: '我了解了，前一次任务失败了。我会分析失败原因，并在这次尝试中避免同样的问题。'
+        })
+        console.log('[Agent] 已注入前一个失败任务的上下文')
+      }
     }
 
     // 添加当前用户消息（包含任务复杂度分析和规划提示）

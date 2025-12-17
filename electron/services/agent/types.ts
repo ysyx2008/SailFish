@@ -75,6 +75,24 @@ export interface AgentPlan {
   updatedAt: number
 }
 
+// 前一个失败 Agent 的执行步骤（用于重试上下文）
+export interface PreviousAgentStep {
+  type: string
+  content: string
+  toolName?: string
+  toolArgs?: Record<string, unknown>
+  toolResult?: string
+  riskLevel?: string
+}
+
+// 前一个失败 Agent 的上下文信息
+export interface PreviousFailedAgentContext {
+  userTask: string  // 用户的原始任务
+  steps: PreviousAgentStep[]  // 执行步骤
+  finalResult: string  // 最终结果（错误信息）
+  timestamp: number  // 失败时间
+}
+
 // Agent 上下文
 export interface AgentContext {
   ptyId: string
@@ -87,6 +105,7 @@ export interface AgentContext {
   hostId?: string  // 主机档案 ID
   historyMessages?: { role: string; content: string }[]  // 历史对话记录
   documentContext?: string  // 用户上传的文档内容
+  previousFailedAgent?: PreviousFailedAgentContext  // 前一个失败 Agent 的上下文（用于重试）
 }
 
 // 工具执行结果
