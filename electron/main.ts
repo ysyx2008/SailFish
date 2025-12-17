@@ -2152,10 +2152,10 @@ ipcMain.handle('knowledge:removeDocument', async (_event, docId: string) => {
 ipcMain.handle('knowledge:removeDocuments', async (_event, docIds: string[]) => {
   try {
     const result = await getKnowledge().removeDocuments(docIds)
-    return { ok: true, successCount: result.success, failedCount: result.failed }
+    return { success: true, deleted: result.success, failed: result.failed }
   } catch (error) {
     return { 
-      ok: false, 
+      success: false, 
       error: error instanceof Error ? error.message : '批量删除文档失败' 
     }
   }
