@@ -377,12 +377,19 @@ function createWindow() {
     title: `旗鱼终端 v${APP_VERSION}`,
     icon: iconPath,
     frame: true,
+    show: false, // 先不显示，等待 ready-to-show
+    backgroundColor: '#1e1e1e', // 设置背景色，避免白屏闪烁
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false
     }
+  })
+
+  // 窗口准备好后立即显示（比 did-finish-load 更早）
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show()
   })
 
   // 开发环境加载本地服务器

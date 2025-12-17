@@ -104,19 +104,29 @@ onMounted(async () => {
 const initializeApp = async () => {
   // 不再自动创建本地终端，显示欢迎页让用户选择
 
-  // 自动连接启用的 MCP 服务器
-  try {
-    const results = await window.electronAPI.mcp.connectEnabledServers()
-    const connected = results.filter(r => r.success).length
-    const failed = results.filter(r => !r.success)
-    if (connected > 0) {
-      console.log(`[MCP] 自动连接了 ${connected} 个服务器`)
+  // 延迟连接 MCP 服务器，不阻塞首屏渲染
+  // 使用 requestIdleCallback 或 setTimeout 在浏览器空闲时执行
+  const connectMcpServers = async () => {
+    try {
+      const results = await window.electronAPI.mcp.connectEnabledServers()
+      const connected = results.filter(r => r.success).length
+      const failed = results.filter(r => !r.success)
+      if (connected > 0) {
+        console.log(`[MCP] 自动连接了 ${connected} 个服务器`)
+      }
+      if (failed.length > 0) {
+        console.warn('[MCP] 部分服务器连接失败:', failed)
+      }
+    } catch (error) {
+      console.error('[MCP] 自动连接服务器失败:', error)
     }
-    if (failed.length > 0) {
-      console.warn('[MCP] 部分服务器连接失败:', failed)
-    }
-  } catch (error) {
-    console.error('[MCP] 自动连接服务器失败:', error)
+  }
+
+  // 延迟执行，让 UI 先渲染完成
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(() => connectMcpServers(), { timeout: 3000 })
+  } else {
+    setTimeout(connectMcpServers, 500)
   }
 }
 
