@@ -268,16 +268,24 @@ const isComposing = ref(false)
 // 自由模式确认输入框状态
 const showFreeModeConfirm = ref(false)
 const freeModeConfirmInput = ref('')
+const freeModeConfirmInputRef = ref<HTMLInputElement | null>(null)
+
+// 获取当前语言的确认词
+const freeModeConfirmWord = computed(() => t('ai.freeModeConfirmWord'))
 
 // 请求启用自由模式（显示确认输入框）
 const requestFreeMode = () => {
   showFreeModeConfirm.value = true
   freeModeConfirmInput.value = ''
+  // 自动聚焦输入框
+  nextTick(() => {
+    freeModeConfirmInputRef.value?.focus()
+  })
 }
 
 // 确认启用自由模式
 const confirmEnableFreeMode = () => {
-  if (freeModeConfirmInput.value === '确认') {
+  if (freeModeConfirmInput.value === freeModeConfirmWord.value) {
     executionMode.value = 'free'
     showFreeModeConfirm.value = false
     freeModeConfirmInput.value = ''
@@ -586,12 +594,13 @@ onMounted(() => {
               <li>{{ t('ai.freeModeWarning2') }}</li>
               <li>{{ t('ai.freeModeWarning3') }}</li>
             </ul>
-            <p class="confirm-dialog-instruction">{{ t('ai.freeModeConfirmInstruction') }}</p>
+            <p class="confirm-dialog-instruction">{{ t('ai.freeModeConfirmInstruction', { word: freeModeConfirmWord }) }}</p>
             <input 
+              ref="freeModeConfirmInputRef"
               type="text" 
               v-model="freeModeConfirmInput"
               class="confirm-dialog-input"
-              :placeholder="t('ai.freeModeConfirmPlaceholder')"
+              :placeholder="t('ai.freeModeConfirmPlaceholder', { word: freeModeConfirmWord })"
               @keydown.enter="confirmEnableFreeMode"
             />
           </div>
@@ -601,7 +610,7 @@ onMounted(() => {
             </button>
             <button 
               class="btn btn-sm btn-danger" 
-              :disabled="freeModeConfirmInput !== '确认'"
+              :disabled="freeModeConfirmInput !== freeModeConfirmWord"
               @click="confirmEnableFreeMode"
             >
               {{ t('ai.enableFreeMode') }}
