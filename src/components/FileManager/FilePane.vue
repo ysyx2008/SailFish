@@ -335,31 +335,6 @@ defineExpose({
     :class="{ active, local: type === 'local', remote: type === 'remote' }"
     @click="$emit('focus')"
   >
-    <!-- 面板头部 -->
-    <div class="pane-header">
-      <div class="pane-title">
-        <svg v-if="type === 'local'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-          <line x1="8" y1="21" x2="16" y2="21"/>
-          <line x1="12" y1="17" x2="12" y2="21"/>
-        </svg>
-        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
-          <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
-          <line x1="6" y1="6" x2="6" y2="6"/>
-          <line x1="6" y1="18" x2="6" y2="18"/>
-        </svg>
-        <span>{{ type === 'local' ? '本地' : 'SFTP 远程' }}</span>
-      </div>
-      <div class="pane-actions">
-        <button class="btn-icon" @click="showTree = !showTree" :title="showTree ? '隐藏目录树' : '显示目录树'">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-
     <!-- 连接中状态（仅远程） -->
     <div v-if="type === 'remote' && isConnecting" class="connecting-state">
       <div class="spinner"></div>
@@ -411,13 +386,34 @@ defineExpose({
             </svg>
           </button>
         </div>
-        <button class="btn-icon" @click="openNewFolderDialog" title="新建文件夹">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-            <line x1="12" y1="11" x2="12" y2="17"/>
-            <line x1="9" y1="14" x2="15" y2="14"/>
+        <div class="toolbar-title">
+          <svg v-if="type === 'local'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
           </svg>
-        </button>
+          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+            <line x1="6" y1="6" x2="6" y2="6"/>
+            <line x1="6" y1="18" x2="6" y2="18"/>
+          </svg>
+          <span>{{ type === 'local' ? '本地' : 'SFTP 远程' }}</span>
+        </div>
+        <div class="toolbar-actions">
+          <button class="btn-icon" @click="showTree = !showTree" :title="showTree ? '隐藏目录树' : '显示目录树'">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+          </button>
+          <button class="btn-icon" @click="openNewFolderDialog" title="新建文件夹">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              <line x1="12" y1="11" x2="12" y2="17"/>
+              <line x1="9" y1="14" x2="15" y2="14"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <!-- 路径导航 -->
@@ -547,60 +543,9 @@ defineExpose({
   border-radius: 0;
 }
 
-.file-pane.active .pane-header {
-  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
-  border-bottom-color: var(--accent-primary);
-}
-
-.file-pane.active .pane-header .pane-title {
-  color: white;
-}
-
-.file-pane.active .pane-header .pane-title svg {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.file-pane.active .pane-header .btn-icon {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.file-pane.active .pane-header .btn-icon:hover {
-  color: white;
-  background: rgba(255, 255, 255, 0.15);
-}
-
-/* 面板头部 */
-.pane-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
-  transition: all 0.2s ease;
-}
-
-.pane-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  letter-spacing: 0.3px;
-}
-
-.pane-title svg {
-  color: var(--text-muted);
-}
-
-.pane-actions {
-  display: flex;
-  gap: 4px;
-}
-
 /* 工具栏 */
 .pane-toolbar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -610,6 +555,28 @@ defineExpose({
 }
 
 .toolbar-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.toolbar-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.toolbar-title svg {
+  opacity: 0.7;
+}
+
+.toolbar-actions {
   display: flex;
   gap: 4px;
 }
