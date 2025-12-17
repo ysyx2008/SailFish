@@ -41,6 +41,8 @@ win:
     - target: nsis
       arch:
         - x64
+  # 自定义文件名格式，避免空格导致 GitHub Release 上传问题
+  artifactName: ${productName}-Setup-${version}.${ext}
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
