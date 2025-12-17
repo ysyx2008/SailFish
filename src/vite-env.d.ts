@@ -1164,6 +1164,10 @@ interface Window {
         error?: string
       }>
       clear: () => Promise<{ success: boolean; error?: string }>
+      // 检查知识库初始化是否完成
+      isInitialized: () => Promise<boolean>
+      // 等待知识库初始化完成
+      waitInitialized: () => Promise<boolean>
       isReady: () => Promise<boolean>
       isEnabled: () => Promise<boolean>
       getModels: () => Promise<Array<{

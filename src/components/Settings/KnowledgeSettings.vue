@@ -53,6 +53,9 @@ const loading = ref(true)
 const saving = ref(false)
 const showDocManager = ref(false)
 
+// 知识库初始化状态
+const isKnowledgeInitialized = ref(false)
+
 // 密码相关状态
 const passwordInfo = ref<{ hasPassword: boolean; isUnlocked: boolean; createdAt?: number }>({
   hasPassword: false,
@@ -72,6 +75,9 @@ const loadSettings = async () => {
   try {
     loading.value = true
     
+    // 检查知识库初始化状态
+    isKnowledgeInitialized.value = await api.knowledge.isInitialized()
+    
     // 获取知识库设置
     settings.value = await api.knowledge.getSettings()
     settings.value.localModel = 'lite'
@@ -90,6 +96,9 @@ const loadSettings = async () => {
     loading.value = false
   }
 }
+
+// 监听知识库就绪事件
+let unsubscribeKnowledgeReady: (() => void) | null = null
 
 // 加载文档列表
 const loadDocuments = async () => {
@@ -337,10 +346,19 @@ onMounted(() => {
   loadPasswordInfo()
   // 使用捕获阶段，确保在父组件之前处理事件
   document.addEventListener('keydown', handleKeydown, true)
+  
+  // 监听知识库就绪事件
+  unsubscribeKnowledgeReady = api.knowledge.onReady(() => {
+    isKnowledgeInitialized.value = true
+    // 重新加载设置以获取最新状态
+    loadSettings()
+  })
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown, true)
+  // 清理知识库就绪事件监听
+  unsubscribeKnowledgeReady?.()
 })
 </script>
 
@@ -351,6 +369,14 @@ onUnmounted(() => {
     </div>
     
     <template v-else>
+      <!-- 初始化状态提示 -->
+      <div v-if="settings.enabled && !isKnowledgeInitialized" class="init-status">
+        <svg class="spinner" width="16" height="16" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="60" stroke-linecap="round"/>
+        </svg>
+        <span>{{ t('knowledgeSettings.initializing') }}</span>
+      </div>
+
       <!-- 启用开关 -->
       <div class="setting-group">
         <div class="setting-row">
@@ -639,6 +665,27 @@ onUnmounted(() => {
   text-align: center;
   padding: 40px;
   color: var(--text-muted);
+}
+
+.init-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.init-status .spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .setting-group {

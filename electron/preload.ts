@@ -1733,7 +1733,15 @@ const electronAPI = {
     importData: () =>
       ipcRenderer.invoke('knowledge:importData') as Promise<{ success?: boolean; canceled?: boolean; error?: string; imported?: number }>,
 
-    // 检查服务状态
+    // 检查知识库初始化是否完成
+    isInitialized: () =>
+      ipcRenderer.invoke('knowledge:isInitialized') as Promise<boolean>,
+
+    // 等待知识库初始化完成
+    waitInitialized: () =>
+      ipcRenderer.invoke('knowledge:waitInitialized') as Promise<boolean>,
+
+    // 检查服务状态（embedding 模型是否加载）
     isReady: () =>
       ipcRenderer.invoke('knowledge:isReady') as Promise<boolean>,
 

@@ -21,6 +21,8 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
   const isDraggingOver = ref(false)
   // 保存到知识库中
   const isSavingToKnowledge = ref(false)
+  // 等待知识库初始化中
+  const isWaitingKnowledge = ref(false)
 
   // 当前终端的已上传文档列表（computed，自动响应终端切换）
   const uploadedDocs = computed(() => {
@@ -172,6 +174,15 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
       isSavingToKnowledge.value = true
       const knowledgeAPI = window.electronAPI.knowledge
       
+      // 等待知识库初始化完成
+      const isInitialized = await knowledgeAPI.isInitialized()
+      if (!isInitialized) {
+        isWaitingKnowledge.value = true
+        console.log('[Knowledge] 等待知识库初始化...')
+        await knowledgeAPI.waitInitialized()
+        isWaitingKnowledge.value = false
+      }
+      
       // 将 Vue Proxy 对象转换为普通对象
       const plainDoc = JSON.parse(JSON.stringify(doc))
       
@@ -186,6 +197,7 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
       return { success: false }
     } finally {
       isSavingToKnowledge.value = false
+      isWaitingKnowledge.value = false
     }
   }
 
@@ -251,6 +263,7 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     isUploadingDocs,
     isDraggingOver,
     isSavingToKnowledge,
+    isWaitingKnowledge,
     selectAndUploadDocs,
     handleDroppedFiles,
     removeUploadedDoc,

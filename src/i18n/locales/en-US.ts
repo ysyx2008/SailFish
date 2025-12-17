@@ -333,6 +333,7 @@ export default {
     description: 'Local knowledge base allows AI to understand your documents and host memories',
     enable: 'Enable Knowledge Base',
     enableHint: 'When enabled, documents and host memories can be stored to make Agent smarter',
+    initializing: 'Knowledge base initializing...',
     stats: 'Knowledge Base Statistics',
     documentCount: 'Documents',
     chunkCount: 'Chunks',

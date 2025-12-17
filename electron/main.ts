@@ -249,6 +249,14 @@ terminalStateService.onCommandExecution((event: CommandExecutionEvent) => {
 
 // 知识库服务（延迟初始化，需要其他服务已就绪）
 let knowledgeService: KnowledgeService | null = null
+
+// 知识库加载状态
+let knowledgeReady = false
+let knowledgeReadyResolve: (() => void) | null = null
+const knowledgeReadyPromise = new Promise<void>(resolve => {
+  knowledgeReadyResolve = resolve
+})
+
 function getKnowledge(): KnowledgeService {
   if (!knowledgeService) {
     knowledgeService = getKnowledgeService(configService, aiService, mcpService)
@@ -257,6 +265,21 @@ function getKnowledge(): KnowledgeService {
     }
   }
   return knowledgeService
+}
+
+/**
+ * 等待知识库就绪
+ */
+async function waitForKnowledge(): Promise<void> {
+  if (knowledgeReady) return
+  await knowledgeReadyPromise
+}
+
+/**
+ * 检查知识库是否就绪
+ */
+function isKnowledgeReady(): boolean {
+  return knowledgeReady
 }
 
 // 在应用启动时初始化知识库服务（确保 Agent 可以访问）
@@ -273,6 +296,13 @@ async function initKnowledgeService(): Promise<void> {
     }
   } catch (e) {
     console.error('[Main] Failed to initialize KnowledgeService:', e)
+  } finally {
+    // 无论成功与否，都标记为就绪（避免无限等待）
+    knowledgeReady = true
+    knowledgeReadyResolve?.()
+    // 通知前端知识库已就绪
+    mainWindow?.webContents.send('knowledge:ready')
+    console.log('[Main] 知识库服务初始化完成')
   }
 }
 
@@ -422,15 +452,11 @@ app.whenReady().then(async () => {
 
   // 窗口内容加载完成后，异步初始化重量级服务
   mainWindow?.webContents.on('did-finish-load', () => {
-    // 延迟初始化知识库服务（非阻塞）
-    initKnowledgeService().then(() => {
-      console.log('[Main] 知识库服务初始化完成')
-      // 初始化完成后通知前端
-      mainWindow?.webContents.send('knowledge:ready')
-    }).catch(e => {
+    // 延迟初始化知识库服务（非阻塞，完成后会自动发送 knowledge:ready 事件）
+    initKnowledgeService().catch(e => {
       console.error('[Main] 知识库服务初始化失败:', e)
     })
-    
+
     // 自动解锁知识库
     try {
       autoUnlock()
@@ -2405,6 +2431,17 @@ ipcMain.handle('knowledge:importData', async () => {
 })
 
 // 检查服务状态
+// 检查知识库初始化是否完成
+ipcMain.handle('knowledge:isInitialized', async () => {
+  return isKnowledgeReady()
+})
+
+// 等待知识库初始化完成
+ipcMain.handle('knowledge:waitInitialized', async () => {
+  await waitForKnowledge()
+  return true
+})
+
 ipcMain.handle('knowledge:isReady', async () => {
   try {
     return getKnowledge().isReady()

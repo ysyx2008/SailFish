@@ -333,6 +333,7 @@ export default {
     description: '本地知识库让 AI 能够理解您的文档和主机记忆',
     enable: '启用知识库',
     enableHint: '开启后可存储文档和主机记忆，让 Agent 更智能地协助您',
+    initializing: '知识库正在初始化...',
     stats: '知识库统计',
     documentCount: '文档数量',
     chunkCount: '分块数量',
