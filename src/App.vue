@@ -50,8 +50,8 @@ watch(currentUiTheme, (theme) => {
 
 // 全局快捷键处理
 const handleGlobalKeydown = (event: KeyboardEvent) => {
-  // Ctrl+Shift+T / Cmd+Shift+T 新建终端标签页
-  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 't') {
+  // Ctrl+T / Cmd+T 新建终端标签页
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 't') {
     event.preventDefault()
     terminalStore.createTab('local')
   }

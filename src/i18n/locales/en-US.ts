@@ -19,7 +19,7 @@ export default {
     comingSoon: 'Coming Soon',
     recentConnections: 'Recent Connections',
     viewAllSessions: 'View All Sessions',
-    tip1: 'Press Ctrl+Shift+T to quickly create a new terminal tab',
+    tip1: 'Press Ctrl+T / Cmd+T to quickly create a new terminal tab',
     tip2: 'Right-click terminal to send selected content to AI for analysis',
     tip3: 'Enable Agent mode to let AI automatically execute complex tasks',
     tip4: 'Import Xshell session configs with one click for easy migration',

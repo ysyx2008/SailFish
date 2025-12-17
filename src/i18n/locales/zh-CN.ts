@@ -19,7 +19,7 @@ export default {
     comingSoon: '即将推出',
     recentConnections: '最近连接',
     viewAllSessions: '查看全部会话',
-    tip1: '按 Ctrl+Shift+T 可快速新建终端标签页',
+    tip1: '按 Ctrl+T / Cmd+T 可快速新建终端标签页',
     tip2: '右键终端可将选中内容发送给 AI 分析',
     tip3: '开启 Agent 模式，让 AI 自动执行复杂任务',
     tip4: '支持导入 Xshell 会话配置，一键迁移',
