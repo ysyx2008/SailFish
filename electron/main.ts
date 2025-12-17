@@ -167,6 +167,20 @@ import { SftpService, SftpConfig } from './services/sftp.service'
 import { McpService } from './services/mcp.service'
 import { getKnowledgeService, KnowledgeService } from './services/knowledge'
 import type { KnowledgeSettings, SearchOptions, AddDocumentOptions, ModelTier } from './services/knowledge/types'
+import {
+  autoUnlock,
+  decrypt,
+  getPasswordInfo,
+  setPassword,
+  savePasswordToKeychain,
+  verifyPassword,
+  changePassword,
+  lock,
+  checkEncryptedData,
+  clearPassword,
+  decryptAllData,
+  clearSavedPassword
+} from './services/knowledge/crypto'
 import { initTerminalStateService, getTerminalStateService, type TerminalState, type CwdChangeEvent, type CommandExecution, type CommandExecutionEvent } from './services/terminal-state.service'
 import { initTerminalAwarenessService, getTerminalAwarenessService, type TerminalAwareness } from './services/terminal-awareness'
 import { initScreenContentService } from './services/screen-content.service'
@@ -417,12 +431,12 @@ app.whenReady().then(async () => {
       console.error('[Main] 知识库服务初始化失败:', e)
     })
     
-    // 自动解锁知识库（异步，不阻塞）
-    import('./services/knowledge/crypto').then(({ autoUnlock }) => {
+    // 自动解锁知识库
+    try {
       autoUnlock()
-    }).catch(e => {
+    } catch (e) {
       console.error('[Main] 知识库自动解锁失败:', e)
-    })
+    }
   })
 
   app.on('activate', () => {
@@ -2193,7 +2207,6 @@ ipcMain.handle('knowledge:buildContext', async (_event, query: string, options?:
 
 // 获取所有文档
 ipcMain.handle('knowledge:getDocuments', async () => {
-  const { decrypt } = await import('./services/knowledge/crypto')
   const docs = getKnowledge().getDocuments()
   // 解密主机记忆内容（用于前端显示）
   return docs.map(doc => {
@@ -2242,14 +2255,12 @@ ipcMain.handle('knowledge:clear', async () => {
 
 // 获取密码状态
 ipcMain.handle('knowledge:getPasswordInfo', async () => {
-  const { getPasswordInfo } = await import('./services/knowledge/crypto')
   return getPasswordInfo()
 })
 
 // 设置密码
 ipcMain.handle('knowledge:setPassword', async (_event, password: string) => {
   try {
-    const { setPassword, savePasswordToKeychain } = await import('./services/knowledge/crypto')
     setPassword(password)
     // 设置密码成功后，自动保存到系统钥匙串
     savePasswordToKeychain(password)
@@ -2265,7 +2276,6 @@ ipcMain.handle('knowledge:setPassword', async (_event, password: string) => {
 // 验证密码（解锁知识库）
 ipcMain.handle('knowledge:verifyPassword', async (_event, password: string) => {
   try {
-    const { verifyPassword, savePasswordToKeychain } = await import('./services/knowledge/crypto')
     const valid = verifyPassword(password)
     if (valid) {
       // 验证成功后，自动保存到系统钥匙串（下次启动自动解锁）
@@ -2283,7 +2293,6 @@ ipcMain.handle('knowledge:verifyPassword', async (_event, password: string) => {
 // 修改密码
 ipcMain.handle('knowledge:changePassword', async (_event, oldPassword: string, newPassword: string) => {
   try {
-    const { changePassword, savePasswordToKeychain } = await import('./services/knowledge/crypto')
     changePassword(oldPassword, newPassword)
     // 修改密码成功后，保存新密码到系统钥匙串
     savePasswordToKeychain(newPassword)
@@ -2298,14 +2307,12 @@ ipcMain.handle('knowledge:changePassword', async (_event, oldPassword: string, n
 
 // 锁定知识库
 ipcMain.handle('knowledge:lock', async () => {
-  const { lock } = await import('./services/knowledge/crypto')
   lock()
   return { success: true }
 })
 
 // 检查是否存在加密数据
 ipcMain.handle('knowledge:checkEncryptedData', async () => {
-  const { checkEncryptedData } = await import('./services/knowledge/crypto')
   return checkEncryptedData()
 })
 
@@ -2313,8 +2320,6 @@ ipcMain.handle('knowledge:checkEncryptedData', async () => {
 // 会自动解密所有加密数据后再清除密码，确保数据不会丢失
 ipcMain.handle('knowledge:clearPassword', async (_event, password: string) => {
   try {
-    const { verifyPassword, clearPassword, decryptAllData, checkEncryptedData, clearSavedPassword } = await import('./services/knowledge/crypto')
-    
     // 先验证密码
     if (!verifyPassword(password)) {
       return { success: false, error: '密码错误' }
