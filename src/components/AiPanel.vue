@@ -2579,14 +2579,15 @@ onMounted(() => {
 
 .timeout-select {
   font-size: 11px;
-  height: 18px;
-  padding: 0 4px;
+  height: 26px;
+  padding: 0 2px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--text-primary);
   cursor: pointer;
   outline: none;
+  text-align: right;
 }
 
 .timeout-select:hover {
