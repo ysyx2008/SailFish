@@ -421,7 +421,9 @@ defineExpose({
       </div>
 
       <!-- 路径导航 -->
-      <PathBreadcrumb :path="currentPath" @navigate="navigateTo" />
+      <div class="pane-path">
+        <PathBreadcrumb :path="currentPath" @navigate="navigateTo" />
+      </div>
 
       <!-- 内容区域 -->
       <div class="pane-content">
@@ -612,6 +614,16 @@ defineExpose({
   gap: 4px;
 }
 
+/* 路径导航区域 */
+.pane-path {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 10px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
 .toolbar-nav .btn-icon:disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -744,3 +756,4 @@ defineExpose({
   border-top: 1px solid var(--border-color);
 }
 </style>
+

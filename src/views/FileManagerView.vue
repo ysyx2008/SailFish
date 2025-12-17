@@ -496,3 +496,4 @@ const setActivePane = (pane: 'local' | 'remote') => {
   opacity: 0;
 }
 </style>
+

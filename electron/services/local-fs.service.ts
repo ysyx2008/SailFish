@@ -306,3 +306,4 @@ export class LocalFsService extends EventEmitter {
     }
   }
 }
+
