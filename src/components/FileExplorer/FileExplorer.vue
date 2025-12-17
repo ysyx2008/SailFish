@@ -177,12 +177,17 @@ const handleDelete = async (file: SftpFileInfo) => {
   })
   
   if (confirmed) {
+    let success: boolean
     if (file.isDirectory) {
-      await deleteDirectory(file.path)
-      toast.success('文件夹已删除')
+      success = await deleteDirectory(file.path)
     } else {
-      await deleteFile(file.path)
-      toast.success('文件已删除')
+      success = await deleteFile(file.path)
+    }
+    
+    if (success) {
+      toast.success(`${type}已删除`)
+    } else {
+      toast.error(`删除${type}失败`)
     }
   }
 }
@@ -196,10 +201,15 @@ const handleRename = (file: SftpFileInfo) => {
 
 const confirmRename = async () => {
   if (renameFile.value && renameName.value.trim()) {
-    await rename(renameFile.value.path, renameName.value.trim())
-    showRenameDialog.value = false
-    renameFile.value = null
-    renameName.value = ''
+    const success = await rename(renameFile.value.path, renameName.value.trim())
+    if (success) {
+      showRenameDialog.value = false
+      renameFile.value = null
+      renameName.value = ''
+      toast.success('重命名成功')
+    } else {
+      toast.error('重命名失败')
+    }
   }
 }
 
@@ -211,9 +221,14 @@ const openNewFolderDialog = () => {
 
 const confirmNewFolder = async () => {
   if (newFolderName.value.trim()) {
-    await createDirectory(newFolderName.value.trim())
-    showNewFolderDialog.value = false
-    newFolderName.value = ''
+    const success = await createDirectory(newFolderName.value.trim())
+    if (success) {
+      showNewFolderDialog.value = false
+      newFolderName.value = ''
+      toast.success('文件夹已创建')
+    } else {
+      toast.error('创建文件夹失败')
+    }
   }
 }
 

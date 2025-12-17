@@ -13,7 +13,7 @@ interface TreeNode {
 const props = defineProps<{
   type: 'local' | 'remote'
   currentPath: string
-  sessionId?: string
+  sessionId: string
 }>()
 
 const emit = defineEmits<{
@@ -207,6 +207,7 @@ const getIcon = (node: TreeNode & { icon?: string }): string => {
           :type="type"
           :expanded-paths="expandedPaths"
           :current-path="currentPath"
+          :session-id="sessionId"
           @toggle="toggleExpand"
           @select="selectNode"
           @load-children="loadChildren"
@@ -230,7 +231,8 @@ const TreeNodeItem = defineComponent({
     isAncestor: { type: Boolean, default: false },
     type: { type: String, required: true },
     expandedPaths: { type: Object, required: true },
-    currentPath: { type: String, required: true }
+    currentPath: { type: String, required: true },
+    sessionId: { type: String, default: '' }
   },
   emits: ['toggle', 'select', 'loadChildren'],
   setup(props, { emit }) {
@@ -248,6 +250,17 @@ const TreeNodeItem = defineComponent({
         try {
           if (props.type === 'local') {
             const result = await window.electronAPI.localFs.list(node.path)
+            if (result.success && result.data) {
+              node.children = result.data
+                .filter((f: { isDirectory: boolean }) => f.isDirectory)
+                .map((f: { name: string; path: string }) => ({
+                  name: f.name,
+                  path: f.path,
+                  isDirectory: true
+                }))
+            }
+          } else if (props.type === 'remote' && props.sessionId) {
+            const result = await window.electronAPI.sftp.list(props.sessionId, node.path)
             if (result.success && result.data) {
               node.children = result.data
                 .filter((f: { isDirectory: boolean }) => f.isDirectory)
@@ -327,8 +340,8 @@ const TreeNodeItem = defineComponent({
         ]),
         // 子节点
         expanded && node.children && node.children.length > 0
-          ? h('div', { class: 'tree-children' }, 
-              node.children.map((child: TreeNode) => 
+          ? h('div', { class: 'tree-children' },
+              node.children.map((child: TreeNode) =>
                 h(TreeNodeItem, {
                   key: child.path,
                   node: child,
@@ -339,6 +352,7 @@ const TreeNodeItem = defineComponent({
                   type: props.type,
                   expandedPaths: props.expandedPaths,
                   currentPath: props.currentPath,
+                  sessionId: props.sessionId,
                   onToggle: (n: TreeNode, e: Event) => emit('toggle', n, e),
                   onSelect: (n: TreeNode) => emit('select', n),
                   onLoadChildren: (n: TreeNode) => emit('loadChildren', n)

@@ -270,8 +270,13 @@ const openNewFolderDialog = () => {
 
 const confirmNewFolder = async () => {
   if (newFolderName.value.trim()) {
-    await createDirectory(newFolderName.value.trim())
-    showNewFolderDialog.value = false
+    const success = await createDirectory(newFolderName.value.trim())
+    if (success) {
+      showNewFolderDialog.value = false
+      toast.success('文件夹已创建')
+    } else {
+      toast.error('创建文件夹失败')
+    }
   }
 }
 
@@ -288,9 +293,14 @@ const openRenameDialog = (file: FileInfo) => {
 
 const confirmRename = async () => {
   if (renameFile.value && renameName.value.trim()) {
-    await renameItem(renameFile.value.path, renameName.value.trim())
-    showRenameDialog.value = false
-    renameFile.value = null
+    const success = await renameItem(renameFile.value.path, renameName.value.trim())
+    if (success) {
+      showRenameDialog.value = false
+      renameFile.value = null
+      toast.success('重命名成功')
+    } else {
+      toast.error('重命名失败')
+    }
   }
 }
 
@@ -311,8 +321,12 @@ const handleDelete = async (file: FileInfo) => {
   })
   
   if (confirmed) {
-    await deleteItem(file)
-    toast.success(`${type}已删除`)
+    const success = await deleteItem(file)
+    if (success) {
+      toast.success(`${type}已删除`)
+    } else {
+      toast.error(`删除${type}失败`)
+    }
   }
 }
 
@@ -328,8 +342,12 @@ const triggerRename = () => {
   }
 }
 
-const triggerDelete = () => {
-  selectedFiles.value.forEach(file => handleDelete(file))
+const triggerDelete = async () => {
+  // 复制一份选中的文件列表，避免在删除过程中列表发生变化
+  const filesToDelete = [...selectedFiles.value]
+  for (const file of filesToDelete) {
+    await handleDelete(file)
+  }
 }
 
 const getCurrentPath = () => currentPath.value
