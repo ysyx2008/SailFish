@@ -103,8 +103,44 @@ const renameFile = ref<FileInfo | null>(null)
 const renameName = ref('')
 const renameInputRef = ref<HTMLInputElement | null>(null)
 
+// 键盘事件处理
+const handleKeyDown = (e: KeyboardEvent) => {
+  // 只在面板激活时响应键盘事件
+  if (!props.active) return
+  
+  // 如果焦点在输入框中，不处理
+  const target = e.target as HTMLElement
+  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
+  
+  // 如果有弹窗打开，不处理
+  if (showNewFolderDialog.value || showRenameDialog.value) return
+  
+  switch (e.key) {
+    case 'Delete':
+    case 'Backspace':
+      if (selectedFiles.value.length > 0) {
+        e.preventDefault()
+        triggerDelete()
+      }
+      break
+    case 'F2':
+      if (selectedFiles.value.length === 1) {
+        e.preventDefault()
+        triggerRename()
+      }
+      break
+    case 'F5':
+      e.preventDefault()
+      refresh()
+      break
+  }
+}
+
 // 初始化
 onMounted(async () => {
+  // 添加键盘事件监听
+  window.addEventListener('keydown', handleKeyDown)
+  
   if (props.type === 'local') {
     await localFs?.initialize()
     if (props.initialPath) {
@@ -125,6 +161,9 @@ watch(() => props.sftpConfig, async (newConfig) => {
 
 // 清理
 onUnmounted(() => {
+  // 移除键盘事件监听
+  window.removeEventListener('keydown', handleKeyDown)
+  
   if (props.type === 'remote') {
     sftp?.disconnect()
   }
@@ -259,6 +298,41 @@ const handleContextMenu = (event: MouseEvent, file: FileInfo) => {
 
 const closeContextMenu = () => {
   contextMenu.value.show = false
+}
+
+// 右键菜单操作（确保先保存文件引用再关闭菜单）
+const onMenuOpen = () => {
+  const file = contextMenu.value.file
+  closeContextMenu()
+  if (file) {
+    handleDoubleClick(file)
+  }
+}
+
+const onMenuRename = () => {
+  const file = contextMenu.value.file
+  closeContextMenu()
+  if (file) {
+    openRenameDialog(file)
+  }
+}
+
+const onMenuDelete = () => {
+  const file = contextMenu.value.file
+  closeContextMenu()
+  if (file) {
+    handleDelete(file)
+  }
+}
+
+const onMenuRefresh = () => {
+  closeContextMenu()
+  refresh()
+}
+
+const onMenuNewFolder = () => {
+  closeContextMenu()
+  openNewFolderDialog()
 }
 
 // 新建文件夹
@@ -488,31 +562,32 @@ defineExpose({
 
     <!-- 右键菜单 -->
     <Teleport to="body">
+      <!-- overlay 必须在菜单前面渲染，这样菜单才能在上层接收点击 -->
+      <div v-if="contextMenu.show" class="context-menu-overlay" @click="closeContextMenu"></div>
       <div
         v-if="contextMenu.show"
         class="context-menu"
         :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
         @click.stop
       >
-        <div class="context-menu-item" @click="() => { handleDoubleClick(contextMenu.file!); closeContextMenu() }">
+        <div class="context-menu-item" @click="onMenuOpen">
           <span>{{ contextMenu.file?.isDirectory ? '打开' : '打开文件' }}</span>
         </div>
         <div class="context-menu-separator"></div>
-        <div class="context-menu-item" @click="() => { openRenameDialog(contextMenu.file!); closeContextMenu() }">
+        <div class="context-menu-item" @click="onMenuRename">
           <span>重命名 (F2)</span>
         </div>
-        <div class="context-menu-item danger" @click="() => { handleDelete(contextMenu.file!); closeContextMenu() }">
+        <div class="context-menu-item danger" @click="onMenuDelete">
           <span>删除 (Del)</span>
         </div>
         <div class="context-menu-separator"></div>
-        <div class="context-menu-item" @click="() => { refresh(); closeContextMenu() }">
+        <div class="context-menu-item" @click="onMenuRefresh">
           <span>刷新 (F5)</span>
         </div>
-        <div class="context-menu-item" @click="() => { openNewFolderDialog(); closeContextMenu() }">
+        <div class="context-menu-item" @click="onMenuNewFolder">
           <span>新建文件夹</span>
         </div>
       </div>
-      <div v-if="contextMenu.show" class="context-menu-overlay" @click="closeContextMenu"></div>
     </Teleport>
 
     <!-- 新建文件夹弹窗 -->
