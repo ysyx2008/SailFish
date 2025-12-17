@@ -95,10 +95,14 @@ dmg:
       y: 170
       type: link
       path: /Applications
-    - x: 330
+    - x: 230
       y: 370
       type: file
-      path: resources/dmg/Installation Guide - 安装说明.txt
+      path: resources/dmg/Installation Guide.txt
+    - x: 430
+      y: 370
+      type: file
+      path: resources/dmg/安装说明.txt
 linux:
   icon: resources
   target:

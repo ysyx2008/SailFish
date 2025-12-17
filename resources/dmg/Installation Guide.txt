@@ -1,0 +1,31 @@
+===================================================================
+              SFTerm - Installation Guide
+===================================================================
+
+[Installation]
+
+  Drag SFTerm.app to the Applications folder.
+
+
+[Fix "App is damaged" Error]
+
+  Since this app is not signed by Apple, macOS may block it 
+  and show: "xxx is damaged and can't be opened"
+
+  Solution:
+
+  1. Open Terminal app (Applications -- Utilities -- Terminal)
+
+  2. Copy and paste the following command, then press Enter:
+
+     xattr -cr /Applications/SFTerm.app
+
+  3. Reopen SFTerm and it should work normally.
+
+
+[Notes]
+
+  - If installed elsewhere, replace the path in the command
+  - This only needs to be done once
+
+===================================================================
