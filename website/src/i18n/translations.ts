@@ -24,7 +24,7 @@ export const translations = {
       versionLabel: '最新版本',
       titleHighlight: 'AI 驱动',
       titleSuffix: '的跨平台终端',
-      subtitle: '助力运维提效，让命令行操作更加高效、智能。',
+      subtitle: '让命令行操作更加高效、智能。',
       subtitleLine2: '遇到问题？让 AI 帮你分析。不知道命令？用自然语言描述即可。',
       downloadBtn: '立即下载',
       viewSourceBtn: '查看源码',
@@ -43,7 +43,7 @@ export const translations = {
       },
     },
     features: {
-      title: '强大功能，为运维而生',
+      title: '强大功能，智能高效',
       subtitle: '将传统终端的强大与 AI 智能深度融合，重新定义命令行操作体验',
       items: [
         {
@@ -161,7 +161,7 @@ export const translations = {
       versionLabel: 'Latest Version',
       titleHighlight: 'AI-Powered',
       titleSuffix: ' Cross-Platform Terminal',
-      subtitle: 'Boost DevOps efficiency with intelligent command-line operations.',
+      subtitle: 'Make command-line operations more efficient and intelligent.',
       subtitleLine2: 'Stuck on a problem? Let AI analyze it. Don\'t know the command? Just describe it in natural language.',
       downloadBtn: 'Download Now',
       viewSourceBtn: 'View Source',
@@ -180,7 +180,7 @@ export const translations = {
       },
     },
     features: {
-      title: 'Powerful Features for DevOps',
+      title: 'Powerful Features, Smart & Efficient',
       subtitle: 'Seamlessly blend traditional terminal power with AI intelligence to redefine command-line experience',
       items: [
         {
