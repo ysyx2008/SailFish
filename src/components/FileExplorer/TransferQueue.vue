@@ -6,12 +6,24 @@ const props = defineProps<{
   transfers: TransferProgress[]
 }>()
 
+const emit = defineEmits<{
+  cancel: [transferId: string]
+  retry: [transfer: TransferProgress]
+  clear: []
+  clearAll: []
+}>()
+
 // 是否有传输任务
 const hasTransfers = computed(() => props.transfers.length > 0)
 
 // 活跃传输数量
 const activeCount = computed(() => 
   props.transfers.filter(t => t.status === 'transferring' || t.status === 'pending').length
+)
+
+// 已完成数量
+const completedCount = computed(() =>
+  props.transfers.filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled').length
 )
 
 // 格式化大小
@@ -29,6 +41,27 @@ const formatSpeed = (progress: TransferProgress): string => {
   if (elapsed < 0.1) return ''
   const speed = progress.transferredBytes / elapsed
   return `${formatSize(speed)}/s`
+}
+
+// 计算剩余时间
+const getRemainingTime = (progress: TransferProgress): string => {
+  if (progress.status !== 'transferring') return ''
+  const elapsed = (Date.now() - progress.startTime) / 1000
+  if (elapsed < 1 || progress.transferredBytes === 0) return ''
+  
+  const speed = progress.transferredBytes / elapsed
+  const remainingBytes = progress.totalBytes - progress.transferredBytes
+  const remainingSeconds = remainingBytes / speed
+  
+  if (remainingSeconds < 60) {
+    return `${Math.ceil(remainingSeconds)}秒`
+  } else if (remainingSeconds < 3600) {
+    return `${Math.ceil(remainingSeconds / 60)}分钟`
+  } else {
+    const hours = Math.floor(remainingSeconds / 3600)
+    const mins = Math.ceil((remainingSeconds % 3600) / 60)
+    return `${hours}小时${mins}分钟`
+  }
 }
 
 // 获取状态文本
@@ -52,6 +85,26 @@ const getStatusClass = (status: TransferProgress['status']): string => {
     default: return ''
   }
 }
+
+// 取消传输
+const handleCancel = (transferId: string) => {
+  emit('cancel', transferId)
+}
+
+// 重试传输
+const handleRetry = (transfer: TransferProgress) => {
+  emit('retry', transfer)
+}
+
+// 清除已完成
+const handleClear = () => {
+  emit('clear')
+}
+
+// 清除全部
+const handleClearAll = () => {
+  emit('clearAll')
+}
 </script>
 
 <template>
@@ -61,6 +114,24 @@ const getStatusClass = (status: TransferProgress['status']): string => {
         传输队列
         <span v-if="activeCount > 0" class="active-badge">{{ activeCount }}</span>
       </span>
+      <div class="queue-actions">
+        <button 
+          v-if="completedCount > 0" 
+          class="btn-text" 
+          @click="handleClear"
+          title="清除已完成"
+        >
+          清除已完成
+        </button>
+        <button 
+          v-if="transfers.length > 0"
+          class="btn-text danger"
+          @click="handleClearAll"
+          title="清除全部"
+        >
+          清除全部
+        </button>
+      </div>
     </div>
 
     <div class="queue-list">
@@ -90,6 +161,9 @@ const getStatusClass = (status: TransferProgress['status']): string => {
           <div class="transfer-progress-bar" v-if="transfer.status === 'transferring' || transfer.status === 'pending'">
             <div class="progress-fill" :style="{ width: transfer.percent + '%' }"></div>
           </div>
+          <div class="transfer-error" v-if="transfer.status === 'failed' && transfer.error">
+            {{ transfer.error }}
+          </div>
         </div>
 
         <!-- 进度信息 -->
@@ -97,6 +171,9 @@ const getStatusClass = (status: TransferProgress['status']): string => {
           <template v-if="transfer.status === 'transferring'">
             <span class="percent">{{ transfer.percent }}%</span>
             <span class="speed">{{ formatSpeed(transfer) }}</span>
+            <span class="remaining" v-if="getRemainingTime(transfer)">
+              剩余 {{ getRemainingTime(transfer) }}
+            </span>
           </template>
           <template v-else-if="transfer.status === 'pending'">
             <span class="status-text">{{ getStatusText(transfer.status) }}</span>
@@ -108,24 +185,41 @@ const getStatusClass = (status: TransferProgress['status']): string => {
           </template>
         </div>
 
-        <!-- 状态图标 -->
-        <span class="status-icon" :class="getStatusClass(transfer.status)">
-          <!-- 完成 -->
-          <svg v-if="transfer.status === 'completed'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="20 6 9 17 4 12"/>
-          </svg>
-          <!-- 失败 -->
-          <svg v-else-if="transfer.status === 'failed'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="15" y1="9" x2="9" y2="15"/>
-            <line x1="9" y1="9" x2="15" y2="15"/>
-          </svg>
-          <!-- 取消 -->
-          <svg v-else-if="transfer.status === 'cancelled'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </span>
+        <!-- 操作按钮 -->
+        <div class="transfer-actions">
+          <!-- 取消按钮 - 传输中或等待中 -->
+          <button 
+            v-if="transfer.status === 'transferring' || transfer.status === 'pending'"
+            class="btn-action cancel"
+            @click="handleCancel(transfer.transferId)"
+            title="取消传输"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+
+          <!-- 重试按钮 - 失败或取消 -->
+          <button 
+            v-if="transfer.status === 'failed' || transfer.status === 'cancelled'"
+            class="btn-action retry"
+            @click="handleRetry(transfer)"
+            title="重试"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+          </button>
+
+          <!-- 完成图标 -->
+          <span v-if="transfer.status === 'completed'" class="status-icon success">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          </span>
+        </div>
       </div>
     </div>
   </div>
@@ -135,7 +229,7 @@ const getStatusClass = (status: TransferProgress['status']): string => {
 .transfer-queue {
   border-top: 1px solid var(--border-color);
   background: var(--bg-secondary);
-  max-height: 150px;
+  max-height: 180px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -166,6 +260,31 @@ const getStatusClass = (status: TransferProgress['status']): string => {
   border-radius: 10px;
 }
 
+.queue-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-text {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.btn-text:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.btn-text.danger:hover {
+  color: var(--accent-error);
+}
+
 .queue-list {
   flex: 1;
   overflow-y: auto;
@@ -176,7 +295,7 @@ const getStatusClass = (status: TransferProgress['status']): string => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 12px;
+  padding: 8px 12px;
   transition: background 0.15s;
 }
 
@@ -236,12 +355,20 @@ const getStatusClass = (status: TransferProgress['status']): string => {
   transition: width 0.3s ease;
 }
 
+.transfer-error {
+  font-size: 11px;
+  color: var(--accent-error);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .transfer-stats {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 2px;
-  min-width: 60px;
+  min-width: 70px;
 }
 
 .percent {
@@ -254,6 +381,11 @@ const getStatusClass = (status: TransferProgress['status']): string => {
   font-size: 10px;
   color: var(--text-muted);
   font-family: var(--font-mono);
+}
+
+.remaining {
+  font-size: 10px;
+  color: var(--text-muted);
 }
 
 .status-text {
@@ -269,24 +401,48 @@ const getStatusClass = (status: TransferProgress['status']): string => {
   color: var(--accent-error);
 }
 
+.transfer-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.btn-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.btn-action:hover {
+  background: var(--bg-hover);
+}
+
+.btn-action.cancel:hover {
+  color: var(--accent-error);
+}
+
+.btn-action.retry:hover {
+  color: var(--accent-primary);
+}
+
 .status-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
 }
 
 .status-icon.success {
   color: var(--accent-success);
-}
-
-.status-icon.error {
-  color: var(--accent-error);
-}
-
-.status-icon.muted {
-  color: var(--text-muted);
 }
 </style>

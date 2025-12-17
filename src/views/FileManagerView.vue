@@ -6,6 +6,8 @@ import TransferQueue from '../components/FileExplorer/TransferQueue.vue'
 import type { SftpConnectionConfig, TransferProgress } from '../composables/useSftp'
 import type { LocalFileInfo } from '../composables/useLocalFs'
 import type { SftpFileInfo } from '../composables/useSftp'
+import { toast } from '../composables/useToast'
+import { showConfirm } from '../composables/useConfirm'
 
 const { t } = useI18n()
 
@@ -78,10 +80,6 @@ onMounted(async () => {
     const index = transfers.value.findIndex(t => t.transferId === progress.transferId)
     if (index !== -1) {
       transfers.value[index] = progress
-      // 3秒后移除已完成的传输
-      setTimeout(() => {
-        transfers.value = transfers.value.filter(t => t.transferId !== progress.transferId)
-      }, 3000)
     }
     // 刷新对应面板
     if (progress.direction === 'upload') {
@@ -98,12 +96,20 @@ onMounted(async () => {
     }
   })
 
+  const unsubCancelled = window.electronAPI.sftp.onTransferCancelled((progress) => {
+    const index = transfers.value.findIndex(t => t.transferId === progress.transferId)
+    if (index !== -1) {
+      transfers.value[index] = progress
+    }
+  })
+
   // 清理函数
   onUnmounted(() => {
     unsubStart()
     unsubProgress()
     unsubComplete()
     unsubError()
+    unsubCancelled()
   })
 
   // 键盘事件
@@ -198,7 +204,7 @@ const handleTransferSelected = async () => {
 const handleUpload = async (files: LocalFileInfo[]) => {
   const remotePath = remotePaneRef.value?.getCurrentPath()
   if (!remotePath || !remotePaneRef.value?.isConnected) {
-    alert('请先连接远程服务器')
+    toast.warning('请先连接远程服务器')
     return
   }
 
@@ -276,6 +282,47 @@ const updateRemoteSelection = (files: SftpFileInfo[]) => {
 // 设置活动面板
 const setActivePane = (pane: 'local' | 'remote') => {
   activePane.value = pane
+}
+
+// 取消传输
+const handleCancelTransfer = async (transferId: string) => {
+  const result = await window.electronAPI.sftp.cancelTransfer(transferId)
+  if (result.success) {
+    toast.info('传输已取消')
+  }
+}
+
+// 重试传输
+const handleRetryTransfer = async (transfer: TransferProgress) => {
+  const transferId = `${transfer.direction}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  
+  if (transfer.direction === 'upload') {
+    await window.electronAPI.sftp.upload(
+      remotePaneRef.value!.getSessionId(),
+      transfer.localPath,
+      transfer.remotePath,
+      transferId
+    )
+  } else {
+    await window.electronAPI.sftp.download(
+      remotePaneRef.value!.getSessionId(),
+      transfer.remotePath,
+      transfer.localPath,
+      transferId
+    )
+  }
+}
+
+// 清除已完成的传输
+const handleClearTransfers = () => {
+  transfers.value = transfers.value.filter(
+    t => t.status === 'transferring' || t.status === 'pending'
+  )
+}
+
+// 清除所有传输
+const handleClearAllTransfers = () => {
+  transfers.value = []
 }
 </script>
 
@@ -358,7 +405,14 @@ const setActivePane = (pane: 'local' | 'remote') => {
     </div>
 
     <!-- 传输队列 -->
-    <TransferQueue v-if="transfers.length > 0" :transfers="transfers" />
+    <TransferQueue 
+      v-if="transfers.length > 0" 
+      :transfers="transfers"
+      @cancel="handleCancelTransfer"
+      @retry="handleRetryTransfer"
+      @clear="handleClearTransfers"
+      @clear-all="handleClearAllTransfers"
+    />
   </div>
 </template>
 

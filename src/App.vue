@@ -13,11 +13,15 @@ import McpStatusPopover from './components/McpStatusPopover.vue'
 import SetupWizard from './components/SetupWizard.vue'
 import WelcomePage from './components/WelcomePage.vue'
 import SmartPatrolPage from './components/SmartPatrolPage.vue'
+import Toast from './components/common/Toast.vue'
+import ConfirmDialog from './components/common/ConfirmDialog.vue'
+import { useConfirm } from './composables/useConfirm'
 import type { SftpConnectionConfig } from './composables/useSftp'
 
 const { t } = useI18n()
 const terminalStore = useTerminalStore()
 const configStore = useConfigStore()
+const { show: showConfirmDialog, options: confirmOptions, handleConfirm, handleCancel, handleClose } = useConfirm()
 
 const showSidebar = ref(false)
 const showAiPanel = ref(true)
@@ -381,6 +385,18 @@ onUnmounted(() => {
     <SetupWizard
       v-if="showSetupWizard"
       @complete="onSetupComplete"
+    />
+
+    <!-- 全局 Toast 提示 -->
+    <Toast />
+
+    <!-- 全局确认对话框 -->
+    <ConfirmDialog
+      :show="showConfirmDialog"
+      :options="confirmOptions"
+      @confirm="handleConfirm"
+      @cancel="handleCancel"
+      @close="handleClose"
     />
   </div>
 </template>

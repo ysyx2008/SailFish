@@ -6,6 +6,8 @@ import { useSftp, type SftpFileInfo, type SftpConnectionConfig } from '../../com
 import DirectoryTree from './DirectoryTree.vue'
 import DualPaneFileList from './DualPaneFileList.vue'
 import PathBreadcrumb from '../FileExplorer/PathBreadcrumb.vue'
+import { showConfirm } from '../../composables/useConfirm'
+import { toast } from '../../composables/useToast'
 
 const { t } = useI18n()
 
@@ -295,8 +297,22 @@ const confirmRename = async () => {
 // 删除
 const handleDelete = async (file: FileInfo) => {
   const type = file.isDirectory ? '文件夹' : '文件'
-  if (confirm(`确定要删除${type} "${file.name}" 吗？`)) {
+  const confirmed = await showConfirm({
+    title: `删除${type}`,
+    message: `确定要删除此${type}吗？此操作无法撤销。`,
+    type: 'danger',
+    confirmText: '删除',
+    cancelText: '取消',
+    fileInfo: {
+      name: file.name,
+      type,
+      size: file.isDirectory ? undefined : formatSize(file.size)
+    }
+  })
+  
+  if (confirmed) {
     await deleteItem(file)
+    toast.success(`${type}已删除`)
   }
 }
 
@@ -318,6 +334,9 @@ const triggerDelete = () => {
 
 const getCurrentPath = () => currentPath.value
 const getSessionId = () => sftp?.sessionId.value ?? ''
+
+// 计算属性获取sessionId（供DirectoryTree使用）
+const sftpSessionId = computed(() => sftp?.sessionId.value ?? '')
 
 defineExpose({
   refresh,
@@ -428,6 +447,7 @@ defineExpose({
           v-if="showTree"
           :type="type"
           :current-path="currentPath"
+          :session-id="sftpSessionId"
           @navigate="navigateTo"
         />
 

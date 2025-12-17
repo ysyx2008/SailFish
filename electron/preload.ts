@@ -1421,6 +1421,22 @@ const electronAPI = {
       return () => {
         ipcRenderer.removeListener('sftp:transfer-error', handler)
       }
+    },
+
+    // 取消传输
+    cancelTransfer: (transferId: string) =>
+      ipcRenderer.invoke('sftp:cancelTransfer', transferId) as Promise<{
+        success: boolean
+        error?: string
+      }>,
+
+    // 监听传输取消
+    onTransferCancelled: (callback: (progress: TransferProgress) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, progress: TransferProgress) => callback(progress)
+      ipcRenderer.on('sftp:transfer-cancelled', handler)
+      return () => {
+        ipcRenderer.removeListener('sftp:transfer-cancelled', handler)
+      }
     }
   },
 

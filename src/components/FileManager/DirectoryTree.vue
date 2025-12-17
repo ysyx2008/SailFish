@@ -13,6 +13,7 @@ interface TreeNode {
 const props = defineProps<{
   type: 'local' | 'remote'
   currentPath: string
+  sessionId?: string
 }>()
 
 const emit = defineEmits<{
@@ -106,9 +107,12 @@ const loadChildren = async (node: TreeNode): Promise<TreeNode[]> => {
           }))
       }
     } else {
+      if (!props.sessionId) {
+        console.warn('DirectoryTree: sessionId is required for remote type')
+        return []
+      }
       const result = await window.electronAPI.sftp.list(
-        // 需要从父组件获取 sessionId，暂时用空
-        '',
+        props.sessionId,
         node.path
       )
       if (result.success && result.data) {

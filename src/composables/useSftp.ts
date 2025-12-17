@@ -94,10 +94,6 @@ export function useSftp() {
       const index = transfers.value.findIndex(t => t.transferId === progress.transferId)
       if (index !== -1) {
         transfers.value[index] = progress
-        // 3秒后移除已完成的传输
-        setTimeout(() => {
-          transfers.value = transfers.value.filter(t => t.transferId !== progress.transferId)
-        }, 3000)
       }
       // 刷新当前目录
       if (progress.direction === 'upload') {
@@ -113,6 +109,32 @@ export function useSftp() {
       }
     })
     cleanupFns.push(onError)
+
+    const onCancelled = window.electronAPI.sftp.onTransferCancelled((progress) => {
+      const index = transfers.value.findIndex(t => t.transferId === progress.transferId)
+      if (index !== -1) {
+        transfers.value[index] = progress
+      }
+    })
+    cleanupFns.push(onCancelled)
+  }
+
+  // 取消传输
+  const cancelTransfer = async (transferId: string): Promise<boolean> => {
+    const result = await window.electronAPI.sftp.cancelTransfer(transferId)
+    return result.success
+  }
+
+  // 清除已完成的传输
+  const clearCompletedTransfers = () => {
+    transfers.value = transfers.value.filter(
+      t => t.status === 'transferring' || t.status === 'pending'
+    )
+  }
+
+  // 清除所有传输
+  const clearAllTransfers = () => {
+    transfers.value = []
   }
 
   // 连接 SFTP
@@ -435,6 +457,9 @@ export function useSftp() {
     readTextFile,
     selectAndUpload,
     selectAndDownload,
+    cancelTransfer,
+    clearCompletedTransfers,
+    clearAllTransfers,
 
     // 工具函数
     formatSize,

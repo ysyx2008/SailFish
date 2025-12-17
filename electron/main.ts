@@ -1988,6 +1988,10 @@ sftpService.on('transfer-error', (progress) => {
   mainWindow?.webContents.send('sftp:transfer-error', progress)
   fileManagerWindow?.webContents.send('sftp:transfer-error', progress)
 })
+sftpService.on('transfer-cancelled', (progress) => {
+  mainWindow?.webContents.send('sftp:transfer-cancelled', progress)
+  fileManagerWindow?.webContents.send('sftp:transfer-cancelled', progress)
+})
 
 // 连接 SFTP
 ipcMain.handle('sftp:connect', async (_event, sessionId: string, config: SftpConfig) => {
@@ -2210,6 +2214,19 @@ ipcMain.handle('sftp:writeFile', async (_event, sessionId: string, remotePath: s
 // 获取当前传输列表
 ipcMain.handle('sftp:getTransfers', async () => {
   return sftpService.getTransfers()
+})
+
+// 取消传输
+ipcMain.handle('sftp:cancelTransfer', async (_event, transferId: string) => {
+  try {
+    const cancelled = sftpService.cancelTransfer(transferId)
+    return { success: cancelled }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '取消失败'
+    }
+  }
 })
 
 // 选择本地文件（用于上传）

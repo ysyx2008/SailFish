@@ -6,6 +6,9 @@ import FileList from './FileList.vue'
 import PathBreadcrumb from './PathBreadcrumb.vue'
 import FileContextMenu from './FileContextMenu.vue'
 import TransferQueue from './TransferQueue.vue'
+import FilePropertiesDialog from './FilePropertiesDialog.vue'
+import { toast } from '../../composables/useToast'
+import { showConfirm } from '../../composables/useConfirm'
 
 const { t } = useI18n()
 
@@ -19,6 +22,7 @@ const emit = defineEmits<{
 
 // SFTP 状态
 const {
+  sessionId,
   isConnected,
   isConnecting,
   isLoading,
@@ -37,7 +41,9 @@ const {
   goForward,
   goUp,
   goHome,
+  uploadFile,
   uploadFiles,
+  downloadFile,
   createDirectory,
   deleteFile,
   deleteDirectory,
@@ -45,6 +51,9 @@ const {
   readTextFile,
   selectAndUpload,
   selectAndDownload,
+  cancelTransfer,
+  clearCompletedTransfers,
+  clearAllTransfers,
   formatSize,
   formatTime,
   formatPermissions
@@ -75,6 +84,11 @@ const previewFile = ref<SftpFileInfo | null>(null)
 const previewContent = ref('')
 const previewLoading = ref(false)
 
+// 属性/权限弹窗
+const showPropertiesDialog = ref(false)
+const propertiesFile = ref<SftpFileInfo | null>(null)
+const propertiesMode = ref<'properties' | 'chmod'>('properties')
+
 // 连接
 onMounted(async () => {
   await connect(props.config)
@@ -96,6 +110,8 @@ const handleKeydown = (e: KeyboardEvent) => {
       showRenameDialog.value = false
     } else if (showPreviewDialog.value) {
       showPreviewDialog.value = false
+    } else if (showPropertiesDialog.value) {
+      showPropertiesDialog.value = false
     } else {
       emit('close')
     }
@@ -147,11 +163,26 @@ const handleDownload = (file: SftpFileInfo) => {
 // 删除
 const handleDelete = async (file: SftpFileInfo) => {
   const type = file.isDirectory ? '文件夹' : '文件'
-  if (confirm(`确定要删除${type} "${file.name}" 吗？`)) {
+  const confirmed = await showConfirm({
+    title: `删除${type}`,
+    message: `确定要删除此${type}吗？此操作无法撤销。`,
+    type: 'danger',
+    confirmText: '删除',
+    cancelText: '取消',
+    fileInfo: {
+      name: file.name,
+      type,
+      size: file.isDirectory ? undefined : formatSize(file.size)
+    }
+  })
+  
+  if (confirmed) {
     if (file.isDirectory) {
       await deleteDirectory(file.path)
+      toast.success('文件夹已删除')
     } else {
       await deleteFile(file.path)
+      toast.success('文件已删除')
     }
   }
 }
@@ -211,6 +242,72 @@ const handleDrop = async (fileList: FileList) => {
   if (paths.length > 0) {
     await uploadFiles(paths)
   }
+}
+
+// 查看属性
+const handleProperties = (file: SftpFileInfo) => {
+  propertiesFile.value = file
+  propertiesMode.value = 'properties'
+  showPropertiesDialog.value = true
+}
+
+// 修改权限
+const handleChmod = (file: SftpFileInfo) => {
+  propertiesFile.value = file
+  propertiesMode.value = 'chmod'
+  showPropertiesDialog.value = true
+}
+
+// 关闭属性弹窗
+const closePropertiesDialog = () => {
+  showPropertiesDialog.value = false
+  propertiesFile.value = null
+}
+
+// 应用权限更改
+const applyChmod = async (path: string, mode: string) => {
+  if (!sessionId.value) return
+  
+  try {
+    const result = await window.electronAPI.sftp.chmod(sessionId.value, path, mode)
+    if (result.success) {
+      toast.success('权限已修改')
+      await refresh()
+    } else {
+      toast.error(result.error || '修改权限失败')
+    }
+  } catch (e) {
+    toast.error('修改权限失败')
+  }
+}
+
+// 取消传输
+const handleCancelTransfer = async (transferId: string) => {
+  const success = await cancelTransfer(transferId)
+  if (success) {
+    toast.info('传输已取消')
+  }
+}
+
+// 重试传输
+const handleRetryTransfer = async (transfer: { direction: string; localPath: string; remotePath: string }) => {
+  if (transfer.direction === 'upload') {
+    const transferId = `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    await uploadFile(transfer.localPath, transfer.remotePath)
+  } else {
+    const transferId = `download-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    await downloadFile(transfer.remotePath, transfer.localPath)
+  }
+}
+
+// 清除已完成的传输
+const handleClearTransfers = () => {
+  clearCompletedTransfers()
+}
+
+// 清除所有传输
+const handleClearAllTransfers = () => {
+  clearAllTransfers()
 }
 </script>
 
@@ -338,7 +435,13 @@ const handleDrop = async (fileList: FileList) => {
         />
 
         <!-- 传输队列 -->
-        <TransferQueue :transfers="transfers" />
+        <TransferQueue 
+          :transfers="transfers"
+          @cancel="handleCancelTransfer"
+          @retry="handleRetryTransfer"
+          @clear="handleClearTransfers"
+          @clear-all="handleClearAllTransfers"
+        />
       </template>
 
       <!-- 右键菜单 -->
@@ -354,6 +457,17 @@ const handleDrop = async (fileList: FileList) => {
         @refresh="refresh"
         @new-folder="openNewFolderDialog"
         @preview="handlePreview"
+        @properties="handleProperties"
+        @chmod="handleChmod"
+      />
+
+      <!-- 属性/权限弹窗 -->
+      <FilePropertiesDialog
+        :show="showPropertiesDialog"
+        :file="propertiesFile"
+        :mode="propertiesMode"
+        @close="closePropertiesDialog"
+        @chmod="applyChmod"
       />
 
       <!-- 新建文件夹弹窗 -->

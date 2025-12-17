@@ -57,6 +57,7 @@ export interface TransferTask {
 export class SftpService extends EventEmitter {
   private sessions: Map<string, SftpClient> = new Map()
   private transfers: Map<string, TransferProgress> = new Map()
+  private cancelledTransfers: Set<string> = new Set()
 
   /**
    * 创建 SFTP 连接
@@ -250,11 +251,21 @@ export class SftpService extends EventEmitter {
     try {
       await sftp.put(localPath, remotePath, {
         step: (transferred: number, _chunk: number, total: number) => {
+          // 检查是否已取消
+          if (this.isTransferCancelled(transferId)) {
+            return
+          }
           progress.transferredBytes = transferred
           progress.percent = total > 0 ? Math.round((transferred / total) * 100) : 0
           this.emit('transfer-progress', { ...progress })
         }
       })
+
+      // 检查是否在传输过程中被取消
+      if (this.isTransferCancelled(transferId)) {
+        this.clearCancelledTransfer(transferId)
+        return
+      }
 
       progress.status = 'completed'
       progress.percent = 100
@@ -327,11 +338,29 @@ export class SftpService extends EventEmitter {
 
       await sftp.get(remotePath, localPath, {
         step: (transferred: number, _chunk: number, total: number) => {
+          // 检查是否已取消
+          if (this.isTransferCancelled(transferId)) {
+            return
+          }
           progress.transferredBytes = transferred
           progress.percent = total > 0 ? Math.round((transferred / total) * 100) : 0
           this.emit('transfer-progress', { ...progress })
         }
       })
+
+      // 检查是否在传输过程中被取消
+      if (this.isTransferCancelled(transferId)) {
+        this.clearCancelledTransfer(transferId)
+        // 尝试删除未完成的本地文件
+        try {
+          if (fs.existsSync(localPath)) {
+            fs.unlinkSync(localPath)
+          }
+        } catch {
+          // 忽略删除失败
+        }
+        return
+      }
 
       progress.status = 'completed'
       progress.percent = 100
@@ -488,6 +517,41 @@ export class SftpService extends EventEmitter {
    */
   getTransfers(): TransferProgress[] {
     return Array.from(this.transfers.values())
+  }
+
+  /**
+   * 取消传输
+   * 注意：由于 ssh2-sftp-client 不支持真正取消传输，
+   * 这里只是标记传输为已取消，并发送取消事件
+   */
+  cancelTransfer(transferId: string): boolean {
+    const transfer = this.transfers.get(transferId)
+    if (!transfer) return false
+    
+    // 如果传输还在进行中，标记为取消
+    if (transfer.status === 'transferring' || transfer.status === 'pending') {
+      this.cancelledTransfers.add(transferId)
+      transfer.status = 'cancelled'
+      this.emit('transfer-cancelled', { ...transfer })
+      this.transfers.delete(transferId)
+      return true
+    }
+    
+    return false
+  }
+
+  /**
+   * 检查传输是否已被取消
+   */
+  isTransferCancelled(transferId: string): boolean {
+    return this.cancelledTransfers.has(transferId)
+  }
+
+  /**
+   * 清理已取消的传输记录
+   */
+  clearCancelledTransfer(transferId: string): void {
+    this.cancelledTransfers.delete(transferId)
   }
 
   /**

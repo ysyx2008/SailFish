@@ -261,43 +261,57 @@ export function useAgentMode(
     })
   }
 
-  // 检测前一个任务是否失败，并构建失败上下文
+  // 检测任务组是否失败或被中止（都需要作为上下文带入）
+  const isTaskGroupFailedOrAborted = (group: AgentTaskGroup): boolean => {
+    // 用户主动中止也算，因为用户可能是发现 agent 做错了才中止的
+    return group.finalResult?.startsWith('❌') ||
+      group.steps.some(s => s.type === 'error')
+  }
+
+  // 检测前面连续失败的任务，并构建失败上下文（支持多个连续失败）
   const buildPreviousFailedContext = () => {
     const groups = agentTaskGroups.value
     if (groups.length === 0) return undefined
 
-    // 获取最后一个任务组
-    const lastGroup = groups[groups.length - 1]
-    
-    // 检测是否失败：
-    // 1. finalResult 以错误标记开头
-    // 2. 或者最后一个步骤是 error 类型
-    const isFailed = lastGroup.finalResult?.startsWith('❌') ||
-      lastGroup.steps.some(s => s.type === 'error')
-    
-    if (!isFailed) return undefined
+    // 从最后一个任务组开始，向前收集连续失败的任务（最多 3 个）
+    const MAX_FAILED_TASKS = 3
+    const failedTasks: Array<{
+      userTask: string
+      steps: { type: string; content: string; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: string; riskLevel?: string }[]
+      finalResult: string
+      timestamp: number
+    }> = []
 
-    // 构建失败上下文
-    const previousFailedContext = {
-      userTask: lastGroup.userTask,
-      steps: lastGroup.steps.map(s => ({
-        type: s.type,
-        content: s.content,
-        toolName: s.toolName,
-        toolArgs: s.toolArgs ? JSON.parse(JSON.stringify(s.toolArgs)) : undefined,
-        toolResult: s.toolResult,
-        riskLevel: s.riskLevel
-      })),
-      finalResult: lastGroup.finalResult || '执行失败',
-      timestamp: Date.now()
+    for (let i = groups.length - 1; i >= 0 && failedTasks.length < MAX_FAILED_TASKS; i--) {
+      const group = groups[i]
+      
+      // 如果遇到成功的任务，停止收集
+      if (!isTaskGroupFailedOrAborted(group)) {
+        break
+      }
+      
+      // 收集失败任务信息
+      failedTasks.unshift({
+        userTask: group.userTask,
+        steps: group.steps.map(s => ({
+          type: s.type,
+          content: s.content,
+          toolName: s.toolName,
+          toolArgs: s.toolArgs ? JSON.parse(JSON.stringify(s.toolArgs)) : undefined,
+          toolResult: s.toolResult,
+          riskLevel: s.riskLevel
+        })),
+        finalResult: group.finalResult || '执行失败',
+        timestamp: Date.now() - (groups.length - 1 - i) * 1000  // 用索引模拟时间顺序
+      })
     }
 
-    console.log('[Agent] 检测到前一个任务失败，构建失败上下文:', {
-      userTask: previousFailedContext.userTask,
-      stepsCount: previousFailedContext.steps.length
-    })
+    if (failedTasks.length === 0) return undefined
 
-    return previousFailedContext
+    console.log(`[Agent] 检测到 ${failedTasks.length} 个连续失败的任务，构建失败上下文`)
+
+    // 返回所有连续失败的任务
+    return failedTasks
   }
 
   // 运行 Agent 或发送补充消息
@@ -341,8 +355,8 @@ export function useAgentMode(
     // 获取主机 ID（基于 tabId 而非 activeTab，防止用户在 Agent 执行期间切换标签导致 hostId 错误）
     const hostId = await getHostIdByTabId(tabId)
 
-    // 检测前一个任务是否失败，如果失败则构建失败上下文
-    const previousFailedAgent = buildPreviousFailedContext()
+    // 检测前面连续失败的任务，构建失败上下文
+    const previousFailedAgents = buildPreviousFailedContext()
 
     // 首次运行时自动探测主机信息（后台执行，不阻塞）
     autoProbeHostProfile().catch(e => {
@@ -388,8 +402,8 @@ export function useAgentMode(
           hostId,  // 主机档案 ID
           historyMessages,  // 添加历史对话
           documentContext,  // 添加文档上下文
-          previousFailedAgent  // 前一个失败 Agent 的上下文（如果有）
-        } as { ptyId: string; terminalOutput: string[]; systemInfo: { os: string; shell: string }; terminalType: 'local' | 'ssh'; hostId?: string; historyMessages?: { role: string; content: string }[]; documentContext?: string; previousFailedAgent?: { userTask: string; steps: { type: string; content: string; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: string; riskLevel?: string }[]; finalResult: string; timestamp: number } },
+          previousFailedAgents  // 前面连续失败的 Agent 上下文列表（如果有）
+        } as { ptyId: string; terminalOutput: string[]; systemInfo: { os: string; shell: string }; terminalType: 'local' | 'ssh'; hostId?: string; historyMessages?: { role: string; content: string }[]; documentContext?: string; previousFailedAgents?: { userTask: string; steps: { type: string; content: string; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: string; riskLevel?: string }[]; finalResult: string; timestamp: number }[] },
         { executionMode: executionMode.value, commandTimeout: commandTimeout.value * 1000 }  // 传递配置（超时时间转为毫秒）
       )
 

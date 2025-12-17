@@ -105,7 +105,7 @@ export interface AgentContext {
   hostId?: string  // 主机档案 ID
   historyMessages?: { role: string; content: string }[]  // 历史对话记录
   documentContext?: string  // 用户上传的文档内容
-  previousFailedAgent?: PreviousFailedAgentContext  // 前一个失败 Agent 的上下文（用于重试）
+  previousFailedAgents?: PreviousFailedAgentContext[]  // 前面连续失败的 Agent 上下文列表（用于重试，最多 3 个）
 }
 
 // 工具执行结果
