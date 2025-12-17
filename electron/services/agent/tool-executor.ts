@@ -408,12 +408,13 @@ async function executeCommand(
     }
   }
 
-  // 自由模式：不需要任何确认（危险！）
-  // 严格模式：所有命令都需要确认（包括自动修正和限时执行的命令）
-  // 宽松模式：只有危险命令需要确认，安全和中危命令自动执行
-  const needConfirm = !config.freeMode && (config.strictMode || (
-    handling.strategy === 'allow' && riskLevel === 'dangerous'
-  ))
+  // 根据执行模式决定是否需要确认
+  // strict: 所有命令都需要确认
+  // relaxed: 只有危险命令需要确认
+  // free: 不需要任何确认（危险！）
+  const needConfirm = config.executionMode === 'strict' || (
+    config.executionMode === 'relaxed' && handling.strategy === 'allow' && riskLevel === 'dangerous'
+  )
 
   // 添加工具调用步骤（统一显示最终要执行的命令）
   executor.addStep({
@@ -1787,8 +1788,8 @@ async function writeFile(
     riskLevel: 'moderate'
   })
 
-  // 自由模式跳过确认，否则等待确认
-  if (!config.freeMode) {
+  // 严格模式下需要确认文件写入操作
+  if (config.executionMode === 'strict') {
     const approved = await executor.waitForConfirmation(
       toolCallId, 
       'write_file', 

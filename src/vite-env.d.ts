@@ -590,8 +590,7 @@ interface Window {
           commandTimeout?: number
           autoExecuteSafe?: boolean
           autoExecuteModerate?: boolean
-          strictMode?: boolean
-          freeMode?: boolean
+          executionMode?: 'strict' | 'relaxed' | 'free'
         },
         profileId?: string
       ) => Promise<{ success: boolean; result?: string; error?: string }>
@@ -604,7 +603,7 @@ interface Window {
       ) => Promise<boolean>
       getStatus: (agentId: string) => Promise<unknown>
       cleanup: (agentId: string) => Promise<void>
-      updateConfig: (agentId: string, config: { strictMode?: boolean; commandTimeout?: number; freeMode?: boolean }) => Promise<boolean>
+      updateConfig: (agentId: string, config: { executionMode?: 'strict' | 'relaxed' | 'free'; commandTimeout?: number }) => Promise<boolean>
       addMessage: (agentId: string, message: string) => Promise<boolean>
       getExecutionPhase: (agentId: string) => Promise<{
         phase: 'thinking' | 'executing_command' | 'writing_file' | 'waiting' | 'confirming' | 'idle'

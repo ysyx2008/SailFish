@@ -120,8 +120,7 @@ const {
 // Agent 模式
 const {
   agentMode,
-  strictMode,
-  freeMode,
+  executionMode,
   commandTimeout,
   pendingSupplements,
   agentState,
@@ -279,8 +278,7 @@ const requestFreeMode = () => {
 // 确认启用自由模式
 const confirmEnableFreeMode = () => {
   if (freeModeConfirmInput.value === '确认') {
-    freeMode.value = true
-    strictMode.value = false
+    executionMode.value = 'free'
     showFreeModeConfirm.value = false
     freeModeConfirmInput.value = ''
   }
@@ -294,14 +292,12 @@ const cancelFreeMode = () => {
 
 // 切换到严格模式
 const switchToStrictMode = () => {
-  strictMode.value = true
-  freeMode.value = false
+  executionMode.value = 'strict'
 }
 
 // 切换到宽松模式
 const switchToRelaxedMode = () => {
-  strictMode.value = false
-  freeMode.value = false
+  executionMode.value = 'relaxed'
 }
 
 // 点击中的选项（用于即时视觉反馈，单选时使用）
@@ -489,9 +485,9 @@ onMounted(() => {
   <div 
     class="ai-panel"
     :class="{
-      'mode-strict': agentMode && strictMode && !freeMode,
-      'mode-relaxed': agentMode && !strictMode && !freeMode,
-      'mode-free': agentMode && freeMode
+      'mode-strict': agentMode && executionMode === 'strict',
+      'mode-relaxed': agentMode && executionMode === 'relaxed',
+      'mode-free': agentMode && executionMode === 'free'
     }"
     @dragenter="handleDragEnter"
     @dragover="handleDragOver"
@@ -666,7 +662,7 @@ onMounted(() => {
           <div class="execution-mode-selector">
             <button 
               class="mode-option" 
-              :class="{ active: strictMode && !freeMode }"
+              :class="{ active: executionMode === 'strict' }"
               @click="switchToStrictMode"
               :title="t('ai.strictModeTitle')"
             >
@@ -674,7 +670,7 @@ onMounted(() => {
             </button>
             <button 
               class="mode-option" 
-              :class="{ active: !strictMode && !freeMode }"
+              :class="{ active: executionMode === 'relaxed' }"
               @click="switchToRelaxedMode"
               :title="t('ai.relaxedModeTitle')"
             >
@@ -682,8 +678,8 @@ onMounted(() => {
             </button>
             <button 
               class="mode-option mode-option-free" 
-              :class="{ active: freeMode }"
-              @click="freeMode ? (freeMode = false, strictMode = true) : requestFreeMode()"
+              :class="{ active: executionMode === 'free' }"
+              @click="executionMode === 'free' ? switchToStrictMode() : requestFreeMode()"
               :title="t('ai.freeModeTitle')"
             >
               {{ t('ai.free') }}
@@ -829,17 +825,17 @@ onMounted(() => {
           </ul>
 
           <p class="welcome-section-title">
-            <template v-if="freeMode">🔥 {{ t('ai.agentWelcome.freeMode') }} <span class="strict-badge free">{{ t('ai.agentWelcome.freeModeOn') }}</span></template>
-            <template v-else-if="strictMode">🔒 {{ t('ai.agentWelcome.strictMode') }} <span class="strict-badge">{{ t('ai.agentWelcome.strictModeOn') }}</span></template>
+            <template v-if="executionMode === 'free'">🔥 {{ t('ai.agentWelcome.freeMode') }} <span class="strict-badge free">{{ t('ai.agentWelcome.freeModeOn') }}</span></template>
+            <template v-else-if="executionMode === 'strict'">🔒 {{ t('ai.agentWelcome.strictMode') }} <span class="strict-badge">{{ t('ai.agentWelcome.strictModeOn') }}</span></template>
             <template v-else>🔓 {{ t('ai.agentWelcome.relaxedMode') }} <span class="strict-badge relaxed">{{ t('ai.agentWelcome.relaxedModeOn') }}</span></template>
           </p>
           <ul>
-            <li v-if="freeMode"><strong class="warning-text">{{ t('ai.agentWelcome.freeModeDesc1') }}</strong></li>
-            <li v-if="freeMode">{{ t('ai.agentWelcome.freeModeDesc2') }}</li>
-            <li v-if="strictMode && !freeMode"><strong>{{ t('ai.agentWelcome.strictModeDesc1') }}</strong></li>
-            <li v-if="strictMode && !freeMode">{{ t('ai.agentWelcome.strictModeDesc2') }}</li>
-            <li v-if="!strictMode && !freeMode"><strong>{{ t('ai.agentWelcome.relaxedModeDesc1') }}</strong></li>
-            <li v-if="!strictMode && !freeMode">{{ t('ai.agentWelcome.relaxedModeDesc2') }}</li>
+            <li v-if="executionMode === 'free'"><strong class="warning-text">{{ t('ai.agentWelcome.freeModeDesc1') }}</strong></li>
+            <li v-if="executionMode === 'free'">{{ t('ai.agentWelcome.freeModeDesc2') }}</li>
+            <li v-if="executionMode === 'strict'"><strong>{{ t('ai.agentWelcome.strictModeDesc1') }}</strong></li>
+            <li v-if="executionMode === 'strict'">{{ t('ai.agentWelcome.strictModeDesc2') }}</li>
+            <li v-if="executionMode === 'relaxed'"><strong>{{ t('ai.agentWelcome.relaxedModeDesc1') }}</strong></li>
+            <li v-if="executionMode === 'relaxed'">{{ t('ai.agentWelcome.relaxedModeDesc2') }}</li>
             <li>{{ t('ai.agentWelcome.allCommandsVisible') }}</li>
           </ul>
 

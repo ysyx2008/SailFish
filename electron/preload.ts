@@ -218,8 +218,7 @@ export interface AgentConfig {
   commandTimeout?: number
   autoExecuteSafe?: boolean
   autoExecuteModerate?: boolean
-  strictMode?: boolean           // 严格模式：所有命令都需确认，在终端执行
-  freeMode?: boolean             // 自由模式：所有命令自动执行，不做任何提示
+  executionMode?: 'strict' | 'relaxed' | 'free'  // 执行模式：strict=严格，relaxed=宽松，free=自由
 }
 
 export interface PendingConfirmation {
@@ -747,8 +746,8 @@ const electronAPI = {
     // 清理 Agent 运行记录
     cleanup: (agentId: string) => ipcRenderer.invoke('agent:cleanup', agentId),
 
-    // 更新 Agent 配置（如严格模式）
-    updateConfig: (agentId: string, config: { strictMode?: boolean; commandTimeout?: number }) =>
+    // 更新 Agent 配置（如执行模式、超时时间）
+    updateConfig: (agentId: string, config: { executionMode?: 'strict' | 'relaxed' | 'free'; commandTimeout?: number }) =>
       ipcRenderer.invoke('agent:updateConfig', agentId, config) as Promise<boolean>,
 
     // 添加用户补充消息（Agent 执行过程中）

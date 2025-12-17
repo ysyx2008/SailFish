@@ -1121,8 +1121,8 @@ ipcMain.handle('agent:cleanup', async (_event, agentId: string) => {
   agentService.cleanup(agentId)
 })
 
-// 更新 Agent 配置（如严格模式）
-ipcMain.handle('agent:updateConfig', async (_event, agentId: string, config: { strictMode?: boolean; commandTimeout?: number }) => {
+// 更新 Agent 配置（如执行模式、超时时间）
+ipcMain.handle('agent:updateConfig', async (_event, agentId: string, config: { executionMode?: 'strict' | 'relaxed' | 'free'; commandTimeout?: number }) => {
   return agentService.updateConfig(agentId, config)
 })
 
@@ -1196,8 +1196,8 @@ function initOrchestratorService() {
         },
         terminalType: type
       }
-      // 运行 Worker Agent
-      return agentService.run(ptyId, task, context, { freeMode: false }, undefined, workerOptions)
+      // 运行 Worker Agent（使用严格模式）
+      return agentService.run(ptyId, task, context, { executionMode: 'strict' }, undefined, workerOptions)
     }
   })
 }
