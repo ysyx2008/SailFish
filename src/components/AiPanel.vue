@@ -1547,31 +1547,31 @@ onMounted(() => {
   transition: box-shadow 0.3s ease;
 }
 
-/* Agent 执行模式 - 宽松模式绿色内阴影 */
+/* Agent 执行模式 - 宽松模式绿色内阴影（仅左右两边） */
 .ai-panel.mode-relaxed .ai-messages {
   box-shadow: 
-    inset 0 0 30px rgba(16, 185, 129, 0.25),
-    inset 0 0 60px rgba(16, 185, 129, 0.1);
+    inset 30px 0 30px -20px rgba(16, 185, 129, 0.35),
+    inset -30px 0 30px -20px rgba(16, 185, 129, 0.35);
 }
 
-/* Agent 执行模式 - 自由模式红色内阴影 + 脉冲警示 */
+/* Agent 执行模式 - 自由模式红色内阴影 + 脉冲警示（仅左右两边） */
 .ai-panel.mode-free .ai-messages {
   box-shadow: 
-    inset 0 0 40px rgba(239, 68, 68, 0.3),
-    inset 0 0 80px rgba(239, 68, 68, 0.15);
+    inset 40px 0 40px -25px rgba(239, 68, 68, 0.4),
+    inset -40px 0 40px -25px rgba(239, 68, 68, 0.4);
   animation: free-mode-pulse 2s ease-in-out infinite;
 }
 
 @keyframes free-mode-pulse {
   0%, 100% {
     box-shadow: 
-      inset 0 0 40px rgba(239, 68, 68, 0.3),
-      inset 0 0 80px rgba(239, 68, 68, 0.15);
+      inset 40px 0 40px -25px rgba(239, 68, 68, 0.4),
+      inset -40px 0 40px -25px rgba(239, 68, 68, 0.4);
   }
   50% {
     box-shadow: 
-      inset 0 0 50px rgba(239, 68, 68, 0.4),
-      inset 0 0 100px rgba(239, 68, 68, 0.25);
+      inset 50px 0 50px -30px rgba(239, 68, 68, 0.5),
+      inset -50px 0 50px -30px rgba(239, 68, 68, 0.5);
   }
 }
 
