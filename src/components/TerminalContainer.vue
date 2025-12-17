@@ -26,7 +26,7 @@ const terminalStore = useTerminalStore()
         />
         <div v-else-if="tab.isLoading" class="terminal-loading">
           <div class="loading-spinner"></div>
-          <span>{{ t('terminal.connecting') }}</span>
+          <span>{{ tab.loadingMessage || t('terminal.connecting') }}</span>
         </div>
         <div v-else class="terminal-error">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

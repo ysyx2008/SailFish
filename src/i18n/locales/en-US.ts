@@ -959,6 +959,7 @@ export default {
       hint: 'Click + to create a new terminal session'
     },
     newLocalTerminal: 'New Local Terminal',
+    loadingEnv: 'Loading environment variables...',
     connecting: 'Connecting...',
     connectionFailed: 'Connection failed',
     connectionClosed: 'Connection closed',

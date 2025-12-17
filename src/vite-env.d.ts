@@ -140,6 +140,12 @@ interface Window {
     app: {
       getVersion: () => Promise<string>
     }
+    // PATH 环境变量状态
+    path: {
+      isReady: () => Promise<boolean>
+      waitReady: () => Promise<boolean>
+      onReady: (callback: () => void) => () => void
+    }
     // 窗口操作
     window: {
       close: () => Promise<void>

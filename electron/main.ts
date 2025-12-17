@@ -18,84 +18,140 @@ const APP_VERSION = packageJson.version
  * 修复 macOS/Linux GUI 应用的 PATH 环境变量问题
  * 当应用作为 GUI 应用启动时（双击 .app 或从 Dock/Spotlight 启动），
  * 不会加载用户的 shell 配置文件，导致 PATH 缺少开发工具路径
+ * 
+ * 优化策略：
+ * 1. 立即添加常见路径（不阻塞启动）
+ * 2. 异步获取完整 PATH（后台执行）
+ * 3. 创建终端时等待 PATH 就绪
  */
-function fixPath(): void {
-  // Windows 不需要修复
-  if (process.platform === 'win32') return
+
+// PATH 加载状态
+let pathReady = false
+let pathReadyResolve: (() => void) | null = null
+const pathReadyPromise = new Promise<void>(resolve => {
+  pathReadyResolve = resolve
+})
+
+/**
+ * 立即添加常见的开发工具路径（同步，不阻塞）
+ */
+function addCommonPaths(): void {
+  if (process.platform === 'win32') {
+    pathReady = true
+    pathReadyResolve?.()
+    return
+  }
+
+  const homeDir = process.env.HOME || ''
+  const commonPaths = [
+    '/opt/homebrew/bin',                       // Homebrew (Apple Silicon)
+    '/opt/homebrew/sbin',
+    '/usr/local/bin',                          // Homebrew (Intel)
+    '/usr/local/sbin',
+    `${homeDir}/.local/bin`,                   // pipx, poetry 等
+    `${homeDir}/.volta/bin`,                   // Volta
+    `${homeDir}/.cargo/bin`,                   // Rust/Cargo
+    '/usr/local/go/bin',                       // Go
+    `${homeDir}/go/bin`,                       // Go workspace
+  ]
   
-  // 开发模式下通常从终端启动，已有正确的 PATH
-  // 但为了一致性，仍然执行修复
+  // 快速添加存在的路径（同步检查，但很快）
+  const existingPaths = commonPaths.filter(p => {
+    try {
+      return fs.existsSync(p)
+    } catch {
+      return false
+    }
+  })
   
-  try {
-    const userShell = process.env.SHELL || '/bin/zsh'
-    
-    // 从用户的 login shell 获取完整的 PATH
-    // -l: login shell，会加载 .zshrc/.bashrc/.profile 等配置
-    // -i: interactive shell（某些配置只在交互模式下加载）
-    // -c: 执行命令
-    const shellPath = execSync(`${userShell} -l -i -c 'echo -n $PATH'`, {
-      encoding: 'utf8',
-      timeout: 5000,
-      // 避免触发 TTY 相关问题
-      stdio: ['pipe', 'pipe', 'pipe']
-    }).trim()
-    
-    if (shellPath && shellPath !== process.env.PATH) {
-      // 合并路径：用户 shell 的 PATH + 当前 PATH（去重）
-      const currentPaths = (process.env.PATH || '').split(':')
-      const shellPaths = shellPath.split(':')
-      const allPaths = [...new Set([...shellPaths, ...currentPaths])]
-      process.env.PATH = allPaths.join(':')
-    }
-  } catch (error) {
-    // 如果获取失败，手动添加常见的开发工具路径
-    
-    const homeDir = process.env.HOME || ''
-    const commonPaths = [
-      '/usr/local/bin',                          // Homebrew (Intel)
-      '/opt/homebrew/bin',                       // Homebrew (Apple Silicon)
-      '/opt/homebrew/sbin',
-      `${homeDir}/.nvm/versions/node/*/bin`,     // nvm (通配符，需要展开)
-      `${homeDir}/.volta/bin`,                   // Volta
-      `${homeDir}/.cargo/bin`,                   // Rust/Cargo
-      `${homeDir}/.local/bin`,                   // pipx, poetry 等
-      '/usr/local/go/bin',                       // Go
-      `${homeDir}/go/bin`,                       // Go workspace
-    ]
-    
-    // 展开 nvm 路径中的通配符
-    const expandedPaths: string[] = []
-    for (const p of commonPaths) {
-      if (p.includes('*')) {
-        try {
-          const basePath = p.substring(0, p.indexOf('*'))
-          if (fs.existsSync(basePath)) {
-            const dirs = fs.readdirSync(basePath)
-            for (const dir of dirs) {
-              const fullPath = p.replace('*', dir)
-              if (fs.existsSync(fullPath)) {
-                expandedPaths.push(fullPath)
-              }
-            }
-          }
-        } catch {
-          // 忽略展开错误
-        }
-      } else if (fs.existsSync(p)) {
-        expandedPaths.push(p)
-      }
-    }
-    
-    if (expandedPaths.length > 0) {
-      const currentPaths = (process.env.PATH || '').split(':')
-      const allPaths = [...new Set([...expandedPaths, ...currentPaths])]
-      process.env.PATH = allPaths.join(':')
-    }
+  if (existingPaths.length > 0) {
+    const currentPaths = (process.env.PATH || '').split(':')
+    const allPaths = Array.from(new Set([...existingPaths, ...currentPaths]))
+    process.env.PATH = allPaths.join(':')
   }
 }
 
-// 在 app 模块加载后立即修复 PATH（越早越好）
-fixPath()
+/**
+ * 异步获取用户 shell 的完整 PATH
+ */
+async function fixPathAsync(): Promise<void> {
+  if (process.platform === 'win32') {
+    pathReady = true
+    pathReadyResolve?.()
+    return
+  }
+
+  try {
+    const { exec } = await import('child_process')
+    const { promisify } = await import('util')
+    const execAsync = promisify(exec)
+    
+    const userShell = process.env.SHELL || '/bin/zsh'
+    
+    // 异步获取完整 PATH（使用 -l 而非 -l -i，更快）
+    const { stdout } = await execAsync(`${userShell} -l -c 'echo -n $PATH'`, {
+      timeout: 3000,  // 减少超时时间
+      env: { ...process.env, HOME: process.env.HOME }
+    })
+    
+    const shellPath = stdout.trim()
+    if (shellPath && shellPath !== process.env.PATH) {
+      const currentPaths = (process.env.PATH || '').split(':')
+      const shellPaths = shellPath.split(':')
+      const allPaths = Array.from(new Set([...shellPaths, ...currentPaths]))
+      process.env.PATH = allPaths.join(':')
+    }
+  } catch (error) {
+    // 异步获取失败不影响，因为已经有常见路径了
+    console.warn('[fixPath] 异步获取 PATH 失败，使用预设路径:', error)
+    
+    // 尝试展开 nvm 路径（可能之前没添加）
+    try {
+      const homeDir = process.env.HOME || ''
+      const nvmBase = `${homeDir}/.nvm/versions/node`
+      if (fs.existsSync(nvmBase)) {
+        const versions = fs.readdirSync(nvmBase)
+        const nvmPaths = versions
+          .map(v => `${nvmBase}/${v}/bin`)
+          .filter(p => fs.existsSync(p))
+        
+        if (nvmPaths.length > 0) {
+          const currentPaths = (process.env.PATH || '').split(':')
+          const allPaths = Array.from(new Set([...nvmPaths, ...currentPaths]))
+          process.env.PATH = allPaths.join(':')
+        }
+      }
+    } catch {
+      // 忽略
+    }
+  } finally {
+    pathReady = true
+    pathReadyResolve?.()
+    // 通知前端 PATH 已就绪
+    mainWindow?.webContents.send('path:ready')
+  }
+}
+
+/**
+ * 等待 PATH 就绪
+ */
+async function waitForPath(): Promise<void> {
+  if (pathReady) return
+  await pathReadyPromise
+}
+
+/**
+ * 检查 PATH 是否就绪
+ */
+function isPathReady(): boolean {
+  return pathReady
+}
+
+// 立即添加常见路径（不阻塞）
+addCommonPaths()
+
+// 异步获取完整 PATH（后台执行）
+fixPathAsync()
 import { PtyService } from './services/pty.service'
 import { SshService } from './services/ssh.service'
 import { AiService } from './services/ai.service'
@@ -418,6 +474,8 @@ app.on('window-all-closed', () => {
 
 // PTY 相关
 ipcMain.handle('pty:create', async (_event, options) => {
+  // 等待 PATH 就绪后再创建终端
+  await waitForPath()
   return ptyService.create(options)
 })
 
@@ -696,6 +754,16 @@ ipcMain.handle('ai:abort', async (_event, requestId?: string) => {
 // 应用信息
 ipcMain.handle('app:getVersion', async () => {
   return APP_VERSION
+})
+
+// PATH 环境变量状态
+ipcMain.handle('path:isReady', async () => {
+  return isPathReady()
+})
+
+ipcMain.handle('path:waitReady', async () => {
+  await waitForPath()
+  return true
 })
 
 // 关闭当前窗口

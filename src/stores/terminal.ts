@@ -124,6 +124,8 @@ export interface TerminalTab {
   systemInfo?: SystemInfo
   isConnected: boolean
   isLoading: boolean
+  // 加载提示信息（用于显示具体的加载原因）
+  loadingMessage?: string
   // 终端输出缓冲（最近的输出）
   outputBuffer?: string[]
   // 最近检测到的错误
@@ -433,12 +435,19 @@ export const useTerminalStore = defineStore('terminal', () => {
         const configStore = useConfigStore()
         const localEncoding = configStore.terminalSettings.localEncoding || 'auto'
         
+        // 检查 PATH 是否就绪，如果还没就绪，显示加载提示
+        const pathReady = await window.electronAPI.path.isReady()
+        if (!pathReady) {
+          reactiveTab.loadingMessage = t('terminal.loadingEnv') || '正在加载环境变量...'
+        }
+        
         const ptyId = await window.electronAPI.pty.create({
           cols: 80,
           rows: 24,
           shell: shell,
           encoding: localEncoding
         })
+        reactiveTab.loadingMessage = undefined  // 清除加载提示
         reactiveTab.ptyId = ptyId
         reactiveTab.isConnected = true
         // 检测本地系统信息

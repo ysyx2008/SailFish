@@ -236,6 +236,22 @@ const electronAPI = {
     getVersion: () => ipcRenderer.invoke('app:getVersion') as Promise<string>
   },
 
+  // PATH 环境变量状态
+  path: {
+    // 检查 PATH 是否已就绪
+    isReady: () => ipcRenderer.invoke('path:isReady') as Promise<boolean>,
+    // 等待 PATH 就绪
+    waitReady: () => ipcRenderer.invoke('path:waitReady') as Promise<boolean>,
+    // 监听 PATH 就绪事件
+    onReady: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on('path:ready', handler)
+      return () => {
+        ipcRenderer.removeListener('path:ready', handler)
+      }
+    }
+  },
+
   // 窗口操作
   window: {
     close: () => ipcRenderer.invoke('window:close'),
