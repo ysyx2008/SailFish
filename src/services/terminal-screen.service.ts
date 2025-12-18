@@ -1016,7 +1016,21 @@ export class TerminalScreenService {
     const visibleLines = this.getVisibleContent()
     
     // 解析提示符获取用户和主机信息
-    const promptInfo = this.parsePrompt(currentLine)
+    // 首先尝试解析当前行
+    let promptInfo = this.parsePrompt(currentLine)
+    
+    // 如果当前行没有获取到完整的 cwd，可能是提示符被换行截断了
+    // 尝试合并前一行来解析完整的提示符
+    if (!promptInfo.cwd && this.isLikelyWrappedPrompt(currentLine)) {
+      const mergedLine = this.getMergedPromptLine()
+      if (mergedLine && mergedLine !== currentLine) {
+        const mergedPromptInfo = this.parsePrompt(mergedLine)
+        // 如果合并后能获取到更多信息，使用合并后的结果
+        if (mergedPromptInfo.cwd) {
+          promptInfo = mergedPromptInfo
+        }
+      }
+    }
     
     // 检测虚拟环境
     const activeEnvs = this.detectVirtualEnvs(currentLine, visibleLines)
@@ -1036,6 +1050,51 @@ export class TerminalScreenService {
       sshDepth,
       promptType
     }
+  }
+  
+  /**
+   * 检查当前行是否看起来像被换行截断的提示符后半部分
+   */
+  private isLikelyWrappedPrompt(line: string): boolean {
+    // 如果行以提示符结束符结尾，但没有完整的 user@host 格式
+    // 可能是被换行截断了
+    const hasPromptEnding = /[$#%>❯]\s*$/.test(line)
+    const hasFullPromptPrefix = /^\s*(?:\([^)]+\)\s*)?[\w-]+@[\w.-]+[:\s]/.test(line)
+    
+    // 如果有提示符结尾但没有完整的开头，可能是被截断的
+    return hasPromptEnding && !hasFullPromptPrefix
+  }
+  
+  /**
+   * 获取合并后的提示符行（处理换行截断的情况）
+   */
+  private getMergedPromptLine(): string | null {
+    const buffer = this.terminal.buffer.active
+    const cursorY = buffer.baseY + buffer.cursorY
+    
+    // 获取当前行
+    const currentLineObj = buffer.getLine(cursorY)
+    if (!currentLineObj) {
+      return null
+    }
+    
+    const currentLine = currentLineObj.translateToString(true)
+    
+    // 检查当前行是否是换行的（isWrapped 表示这行是上一行的延续）
+    // 或者尝试获取前一行来合并
+    if (cursorY > 0) {
+      const prevLineObj = buffer.getLine(cursorY - 1)
+      if (prevLineObj) {
+        const prevLine = prevLineObj.translateToString(true)
+        // 检查前一行是否包含 user@host 模式的开头
+        if (/[\w-]+@[\w.-]+[:\s]/.test(prevLine)) {
+          // 合并前一行和当前行
+          return (prevLine + currentLine).trim()
+        }
+      }
+    }
+    
+    return currentLine
   }
 
   /**
