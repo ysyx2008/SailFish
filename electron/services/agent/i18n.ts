@@ -165,9 +165,9 @@ const translations = {
     // 计划功能
     'plan.create': '创建计划',
     'plan.update': '更新计划',
-    'plan.cleared': '计划已清除',
-    'plan.auto_cleared': '旧计划已自动清除',
-    'plan.no_active_plan_to_clear': '当前没有活动的计划需要清除',
+    'plan.cleared': '计划已归档',
+    'plan.auto_cleared': '旧计划已自动归档',
+    'plan.no_active_plan_to_clear': '当前没有活动的计划需要归档',
 
     // 定时执行
     'timed.command_executed': '命令执行了 {seconds} 秒 ({chars} 字符)',
@@ -433,9 +433,9 @@ const translations = {
     // Plan
     'plan.create': 'Create plan',
     'plan.update': 'Update plan',
-    'plan.cleared': 'Plan cleared',
-    'plan.auto_cleared': 'Old plan auto-cleared',
-    'plan.no_active_plan_to_clear': 'No active plan to clear',
+    'plan.cleared': 'Plan archived',
+    'plan.auto_cleared': 'Old plan auto-archived',
+    'plan.no_active_plan_to_clear': 'No active plan to archive',
 
     // Timed execution
     'timed.command_executed': 'Command executed for {seconds} seconds ({chars} characters)',

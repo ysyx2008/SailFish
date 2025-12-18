@@ -2456,15 +2456,24 @@ function createPlan(
   // 检查是否已有计划
   const existingPlan = executor.getCurrentPlan()
   if (existingPlan) {
-    // 如果现有计划已完成或全部失败，自动清除并允许创建新计划
+    // 如果现有计划已完成或全部失败，自动归档并允许创建新计划
     if (isPlanFinished(existingPlan)) {
-      executor.setCurrentPlan(undefined)
+      // 计算旧计划进度
+      const completedCount = existingPlan.steps.filter(s => s.status === 'completed').length
+      const failedCount = existingPlan.steps.filter(s => s.status === 'failed').length
+      const totalCount = existingPlan.steps.length
+      const statusSummary = `${completedCount}/${totalCount} 完成${failedCount > 0 ? `, ${failedCount} 失败` : ''}`
+      
+      // 归档旧计划到步骤中
       executor.addStep({
-        type: 'plan_cleared',
-        content: `📋 ${t('plan.auto_cleared')}: ${existingPlan.title}`,
+        type: 'plan_archived',
+        content: `📦 ${existingPlan.title} (${statusSummary})`,
         toolName: 'create_plan',
+        plan: { ...existingPlan },  // 保存完整计划数据
         riskLevel: 'safe'
       })
+      
+      executor.setCurrentPlan(undefined)
     } else {
       // 计划还在进行中，不允许创建新计划
       return { 
@@ -2617,7 +2626,7 @@ function updatePlan(
 }
 
 /**
- * 清除当前计划
+ * 归档当前计划（保存到步骤中供查看）
  */
 function clearPlan(
   args: Record<string, unknown>,
@@ -2636,25 +2645,27 @@ function clearPlan(
   const failedCount = plan.steps.filter(s => s.status === 'failed').length
   const skippedCount = plan.steps.filter(s => s.status === 'skipped').length
   const totalCount = plan.steps.length
-  
-  // 清除计划
-  executor.setCurrentPlan(undefined)
+  const progressPercent = Math.round((completedCount / totalCount) * 100)
   
   // 构建状态摘要
-  const statusSummary = `已完成: ${completedCount}, 失败: ${failedCount}, 跳过: ${skippedCount}, 总计: ${totalCount}`
-  const reasonText = reason ? `\n原因: ${reason}` : ''
+  const statusSummary = `${completedCount}/${totalCount} 完成${failedCount > 0 ? `, ${failedCount} 失败` : ''}${skippedCount > 0 ? `, ${skippedCount} 跳过` : ''}`
+  const reasonText = reason ? ` - ${reason}` : ''
   
-  // 添加清除步骤
+  // 归档计划到步骤中（保存完整的计划数据供查看）
   executor.addStep({
-    type: 'plan_cleared',
-    content: `🗑️ ${t('plan.cleared')}: ${plan.title}${reasonText}`,
+    type: 'plan_archived',
+    content: `📦 ${plan.title} (${statusSummary})${reasonText}`,
     toolName: 'clear_plan',
     toolArgs: { reason },
+    plan: { ...plan },  // 保存完整计划数据
     riskLevel: 'safe'
   })
   
+  // 清除当前计划
+  executor.setCurrentPlan(undefined)
+  
   return { 
     success: true, 
-    output: `计划已清除: ${plan.title}\n状态摘要: ${statusSummary}${reasonText}\n\n现在可以创建新计划。`
+    output: `计划已归档: ${plan.title}\n进度: ${progressPercent}% (${statusSummary})${reasonText ? `\n原因: ${reason}` : ''}\n\n计划已保存到执行历史中，可随时查看。现在可以创建新计划。`
   }
 }

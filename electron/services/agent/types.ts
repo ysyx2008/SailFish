@@ -21,7 +21,7 @@ export type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
 // Agent 执行步骤
 export interface AgentStep {
   id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'plan_created' | 'plan_updated' | 'plan_cleared'
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'plan_created' | 'plan_updated' | 'plan_archived'
   content: string
   toolName?: string
   toolArgs?: Record<string, unknown>

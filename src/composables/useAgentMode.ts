@@ -119,8 +119,8 @@ export function useAgentMode(
     // 倒序查找最新的 plan 相关步骤
     for (let i = steps.length - 1; i >= 0; i--) {
       const step = steps[i]
-      // 如果遇到 plan_cleared，说明计划已被清除
-      if (step.type === 'plan_cleared') {
+      // 如果遇到 plan_archived，说明计划已被归档，当前无活跃计划
+      if (step.type === 'plan_archived') {
         return undefined
       }
       // 如果遇到 plan_created 或 plan_updated 且有 plan 数据
@@ -530,6 +530,9 @@ export function useAgentMode(
       case 'waiting': return '⏳'
       case 'asking': return '❓'
       case 'waiting_password': return '🔐'
+      case 'plan_created': return '📋'
+      case 'plan_updated': return '📋'
+      case 'plan_archived': return '📦'
       default: return '•'
     }
   }

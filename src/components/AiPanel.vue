@@ -44,6 +44,16 @@ const messagesRef = ref<HTMLDivElement | null>(null)
 // Plan 展开状态
 const planExpanded = ref(false)
 
+// 步骤中的计划展开状态（用于查看归档的计划）
+const expandedPlanSteps = ref<Set<string>>(new Set())
+const togglePlanExpand = (stepId: string) => {
+  if (expandedPlanSteps.value.has(stepId)) {
+    expandedPlanSteps.value.delete(stepId)
+  } else {
+    expandedPlanSteps.value.add(stepId)
+  }
+}
+
 // 保存每个模式的滚动位置（用于模式切换时恢复）
 const scrollPositions = ref<{ agent: number; chat: number }>({ agent: 0, chat: 0 })
 
@@ -973,6 +983,17 @@ onMounted(() => {
                             'status-cancelled': step.toolResult.includes('🛑')
                           }">
                             {{ step.toolResult }}
+                          </div>
+                        </div>
+                        <!-- 计划类型特殊渲染：可展开查看计划详情 -->
+                        <div v-else-if="step.type === 'plan_created' || step.type === 'plan_updated' || step.type === 'plan_archived'" class="step-text plan-step-content">
+                          <div class="plan-step-header" @click="togglePlanExpand(step.id)">
+                            <span class="plan-step-text">{{ step.content }}</span>
+                            <span class="plan-expand-icon" :class="{ expanded: expandedPlanSteps.has(step.id) }">▶</span>
+                          </div>
+                          <!-- 展开的计划详情 -->
+                          <div v-if="expandedPlanSteps.has(step.id) && step.plan" class="plan-step-details">
+                            <AgentPlanView :plan="step.plan" :compact="false" />
                           </div>
                         </div>
                         <div v-else class="step-text">
@@ -3374,6 +3395,60 @@ onMounted(() => {
 
 .asking-status.status-cancelled {
   color: #ef4444;
+}
+
+/* 计划步骤样式 */
+.plan-step-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plan-step-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 8px;
+  margin: -4px -8px;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+}
+
+.plan-step-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.plan-step-text {
+  flex: 1;
+  color: var(--text-primary);
+}
+
+.plan-expand-icon {
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.plan-expand-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.plan-step-details {
+  margin-top: 8px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* 归档计划的特殊样式 */
+.agent-step-inline.plan_archived .plan-step-text {
+  color: var(--text-muted);
+}
+
+.agent-step-inline.plan_archived .plan-step-header:hover .plan-step-text {
+  color: var(--text-primary);
 }
 
 /* 等待处理的补充消息 */

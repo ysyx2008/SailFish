@@ -467,19 +467,21 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'clear_plan',
-        description: `清除当前计划。用于以下场景：
+        description: `归档当前计划。将计划及其执行情况保存到历史记录中，用户可随时查看。
+
+**使用场景**：
 - 计划执行完毕后需要开始新任务
 - 计划执行失败后需要重新规划
 - 用户要求放弃当前计划
 - 任务目标发生变化需要制定新计划
 
-调用此工具后可以立即创建新计划。`,
+归档后计划会保存在执行步骤中，用户可以点击查看详情。调用此工具后可以立即创建新计划。`,
         parameters: {
           type: 'object',
           properties: {
             reason: {
               type: 'string',
-              description: '清除计划的原因（可选，用于记录）'
+              description: '归档计划的原因（可选，会显示在归档记录中）'
             }
           }
         }
