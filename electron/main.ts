@@ -164,6 +164,7 @@ import { HistoryService, ChatRecord, AgentRecord } from './services/history.serv
 import { HostProfileService, HostProfile } from './services/host-profile.service'
 import { getDocumentParserService, UploadedFile, ParseOptions, ParsedDocument } from './services/document-parser.service'
 import { SftpService, SftpConfig } from './services/sftp.service'
+import { LocalFsService } from './services/local-fs.service'
 import { McpService } from './services/mcp.service'
 import { getKnowledgeService, KnowledgeService } from './services/knowledge'
 import type { KnowledgeSettings, SearchOptions, AddDocumentOptions, ModelTier } from './services/knowledge/types'
@@ -212,6 +213,13 @@ process.on('unhandledRejection', (reason) => {
 })
 
 let mainWindow: BrowserWindow | null = null
+let fileManagerWindow: BrowserWindow | null = null  // 文件管理器独立窗口
+let fileManagerParams: {  // 文件管理器窗口初始化参数
+  sessionId?: string
+  sftpConfig?: SftpConfig
+  initialLocalPath?: string
+  initialRemotePath?: string
+} | null = null
 let forceQuit = false  // 是否强制退出（跳过确认）
 let isQuitting = false  // 是否正在退出应用（Cmd+Q 触发，区分于 Cmd+W 关闭窗口）
 
@@ -227,6 +235,7 @@ const agentService = new AgentService(aiService, ptyService, hostProfileService,
 const historyService = new HistoryService()
 const documentParserService = getDocumentParserService()
 const sftpService = new SftpService()
+const localFsService = new LocalFsService()
 
 // 设置 SFTP 服务到 Agent（用于 SSH 终端的文件写入）
 agentService.setSftpService(sftpService)
@@ -443,6 +452,79 @@ function createWindow() {
       forceQuit = true
       mainWindow?.close()
     }
+  })
+}
+
+/**
+ * 创建文件管理器独立窗口
+ */
+function createFileManagerWindow(params?: {
+  sessionId?: string
+  sftpConfig?: SftpConfig
+  initialLocalPath?: string
+  initialRemotePath?: string
+}): void {
+  // 如果窗口已存在，聚焦并更新参数
+  if (fileManagerWindow && !fileManagerWindow.isDestroyed()) {
+    fileManagerWindow.focus()
+    if (params) {
+      fileManagerParams = params
+      fileManagerWindow.webContents.send('fileManager:paramsUpdate', params)
+    }
+    return
+  }
+
+  // 保存初始化参数
+  fileManagerParams = params || null
+
+  // 根据平台选择图标
+  const iconPath = process.platform === 'darwin'
+    ? join(__dirname, '../resources/icon.icns')
+    : process.platform === 'win32'
+      ? join(__dirname, '../resources/icon.ico')
+      : join(__dirname, '../resources/icon.png')
+
+  fileManagerWindow = new BrowserWindow({
+    width: 1200,
+    height: 750,
+    minWidth: 900,
+    minHeight: 500,
+    title: '文件管理器',
+    icon: iconPath,
+    frame: true,
+    show: false,
+    backgroundColor: '#1e1e1e',
+    webPreferences: {
+      preload: join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  })
+
+  // 窗口准备好后显示
+  fileManagerWindow.once('ready-to-show', () => {
+    fileManagerWindow?.show()
+  })
+
+  // 加载文件管理器页面
+  if (process.env.VITE_DEV_SERVER_URL) {
+    fileManagerWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}file-manager.html`)
+    // 开发环境可以打开开发者工具
+    // fileManagerWindow.webContents.openDevTools()
+  } else {
+    fileManagerWindow.loadFile(join(__dirname, '../dist/file-manager.html'))
+  }
+
+  // 在浏览器中打开外部链接
+  fileManagerWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url)
+    return { action: 'deny' }
+  })
+
+  fileManagerWindow.on('closed', () => {
+    fileManagerWindow = null
+    fileManagerParams = null
   })
 }
 
@@ -668,9 +750,10 @@ ipcMain.handle('terminalState:getCwd', async (_event, id: string): Promise<strin
   return terminalStateService.getCwd(id)
 })
 
-// 刷新 CWD（执行 pwd 命令验证）
+// 刷新 CWD（强制刷新，用于打开文件管理器等场景）
 ipcMain.handle('terminalState:refreshCwd', async (_event, id: string): Promise<string> => {
-  return terminalStateService.refreshCwd(id, 'pwd_check')
+  // 使用 'command' trigger 绕过时间间隔检查，强制获取最新 CWD
+  return terminalStateService.refreshCwd(id, 'command')
 })
 
 // 手动更新 CWD
@@ -1151,6 +1234,10 @@ ipcMain.handle('xshell:importFiles', async (_event, filePaths: string[]) => {
 
 ipcMain.handle('xshell:importDirectory', async (_event, dirPath: string) => {
   return xshellImportService.importFromDirectory(dirPath)
+})
+
+ipcMain.handle('xshell:importDirectories', async (_event, dirPaths: string[]) => {
+  return xshellImportService.importFromDirectories(dirPaths)
 })
 
 ipcMain.handle('xshell:scanDefaultPaths', async () => {
@@ -1677,20 +1764,238 @@ ipcMain.handle('document:getSupportedTypes', async () => {
   return documentParserService.getSupportedTypes()
 })
 
+// ==================== 本地文件系统相关 ====================
+
+// 获取主目录
+ipcMain.handle('localFs:getHomeDir', async () => {
+  return localFsService.getHomeDir()
+})
+
+// 获取驱动器列表
+ipcMain.handle('localFs:getDrives', async () => {
+  return localFsService.getDrives()
+})
+
+// 列出目录内容
+ipcMain.handle('localFs:list', async (_event, dirPath: string) => {
+  try {
+    const files = await localFsService.list(dirPath)
+    return { success: true, data: files }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '列出目录失败' 
+    }
+  }
+})
+
+// 获取文件信息
+ipcMain.handle('localFs:stat', async (_event, filePath: string) => {
+  try {
+    const stat = await localFsService.stat(filePath)
+    return { success: true, data: stat }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '获取文件信息失败' 
+    }
+  }
+})
+
+// 检查路径是否存在
+ipcMain.handle('localFs:exists', async (_event, filePath: string) => {
+  try {
+    const exists = await localFsService.exists(filePath)
+    return { success: true, data: exists }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '检查路径失败' 
+    }
+  }
+})
+
+// 创建目录
+ipcMain.handle('localFs:mkdir', async (_event, dirPath: string) => {
+  try {
+    await localFsService.mkdir(dirPath)
+    return { success: true }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '创建目录失败' 
+    }
+  }
+})
+
+// 删除文件
+ipcMain.handle('localFs:delete', async (_event, filePath: string) => {
+  try {
+    await localFsService.delete(filePath)
+    return { success: true }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '删除文件失败' 
+    }
+  }
+})
+
+// 删除目录
+ipcMain.handle('localFs:rmdir', async (_event, dirPath: string) => {
+  try {
+    await localFsService.rmdir(dirPath)
+    return { success: true }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '删除目录失败' 
+    }
+  }
+})
+
+// 重命名/移动
+ipcMain.handle('localFs:rename', async (_event, oldPath: string, newPath: string) => {
+  try {
+    await localFsService.rename(oldPath, newPath)
+    return { success: true }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '重命名失败' 
+    }
+  }
+})
+
+// 复制文件
+ipcMain.handle('localFs:copyFile', async (_event, src: string, dest: string) => {
+  try {
+    await localFsService.copyFile(src, dest)
+    return { success: true }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '复制文件失败' 
+    }
+  }
+})
+
+// 复制目录
+ipcMain.handle('localFs:copyDir', async (_event, src: string, dest: string) => {
+  try {
+    await localFsService.copyDir(src, dest)
+    return { success: true }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '复制目录失败' 
+    }
+  }
+})
+
+// 读取文本文件
+ipcMain.handle('localFs:readFile', async (_event, filePath: string) => {
+  try {
+    const content = await localFsService.readFile(filePath)
+    return { success: true, data: content }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '读取文件失败' 
+    }
+  }
+})
+
+// 写入文本文件
+ipcMain.handle('localFs:writeFile', async (_event, filePath: string, content: string) => {
+  try {
+    await localFsService.writeFile(filePath, content)
+    return { success: true }
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '写入文件失败' 
+    }
+  }
+})
+
+// 获取上级目录
+ipcMain.handle('localFs:getParentDir', async (_event, filePath: string) => {
+  return localFsService.getParentDir(filePath)
+})
+
+// 拼接路径
+ipcMain.handle('localFs:joinPath', async (_event, ...parts: string[]) => {
+  return localFsService.joinPath(...parts)
+})
+
+// 获取路径分隔符
+ipcMain.handle('localFs:getSeparator', async () => {
+  return localFsService.getSeparator()
+})
+
+// 获取常用目录
+ipcMain.handle('localFs:getSpecialFolders', async () => {
+  return localFsService.getSpecialFolders()
+})
+
+// 在系统文件管理器中显示
+ipcMain.handle('localFs:showInExplorer', async (_event, filePath: string) => {
+  return localFsService.showInExplorer(filePath)
+})
+
+// 用系统默认程序打开
+ipcMain.handle('localFs:openFile', async (_event, filePath: string) => {
+  return localFsService.openFile(filePath)
+})
+
+// ==================== 文件管理器窗口相关 ====================
+
+// 打开文件管理器窗口
+ipcMain.handle('fileManager:open', async (_event, config: {
+  sessionId?: string
+  sftpConfig?: SftpConfig
+  initialLocalPath?: string
+  initialRemotePath?: string
+}) => {
+  createFileManagerWindow(config)
+  return { success: true }
+})
+
+// 关闭文件管理器窗口
+ipcMain.handle('fileManager:close', async () => {
+  if (fileManagerWindow && !fileManagerWindow.isDestroyed()) {
+    fileManagerWindow.close()
+  }
+})
+
+// 获取窗口初始化参数
+ipcMain.handle('fileManager:getInitParams', async () => {
+  return fileManagerParams
+})
+
 // ==================== SFTP 相关 ====================
 
-// SFTP 传输进度事件转发
+// SFTP 传输进度事件转发（发送到主窗口和文件管理器窗口）
 sftpService.on('transfer-start', (progress) => {
   mainWindow?.webContents.send('sftp:transfer-start', progress)
+  fileManagerWindow?.webContents.send('sftp:transfer-start', progress)
 })
 sftpService.on('transfer-progress', (progress) => {
   mainWindow?.webContents.send('sftp:transfer-progress', progress)
+  fileManagerWindow?.webContents.send('sftp:transfer-progress', progress)
 })
 sftpService.on('transfer-complete', (progress) => {
   mainWindow?.webContents.send('sftp:transfer-complete', progress)
+  fileManagerWindow?.webContents.send('sftp:transfer-complete', progress)
 })
 sftpService.on('transfer-error', (progress) => {
   mainWindow?.webContents.send('sftp:transfer-error', progress)
+  fileManagerWindow?.webContents.send('sftp:transfer-error', progress)
+})
+sftpService.on('transfer-cancelled', (progress) => {
+  mainWindow?.webContents.send('sftp:transfer-cancelled', progress)
+  fileManagerWindow?.webContents.send('sftp:transfer-cancelled', progress)
 })
 
 // 连接 SFTP
@@ -1718,13 +2023,16 @@ ipcMain.handle('sftp:hasSession', async (_event, sessionId: string) => {
 
 // 列出目录内容
 ipcMain.handle('sftp:list', async (_event, sessionId: string, remotePath: string) => {
+  console.log(`[SFTP] list 请求: sessionId=${sessionId}, remotePath=${remotePath}`)
   try {
-    const list = await sftpService.list(sessionId, remotePath)
-    return { success: true, data: list }
+    const { files, resolvedPath } = await sftpService.list(sessionId, remotePath)
+    console.log(`[SFTP] list 结果: resolvedPath=${resolvedPath}, 文件数=${files.length}`)
+    return { success: true, data: files, resolvedPath }
   } catch (error) {
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : '列出目录失败' 
+    console.error(`[SFTP] list 失败:`, error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '列出目录失败'
     }
   }
 })
@@ -1914,6 +2222,19 @@ ipcMain.handle('sftp:writeFile', async (_event, sessionId: string, remotePath: s
 // 获取当前传输列表
 ipcMain.handle('sftp:getTransfers', async () => {
   return sftpService.getTransfers()
+})
+
+// 取消传输
+ipcMain.handle('sftp:cancelTransfer', async (_event, transferId: string) => {
+  try {
+    const cancelled = sftpService.cancelTransfer(transferId)
+    return { success: cancelled }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '取消失败'
+    }
+  }
 })
 
 // 选择本地文件（用于上传）

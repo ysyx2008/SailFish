@@ -13,11 +13,15 @@ import McpStatusPopover from './components/McpStatusPopover.vue'
 import SetupWizard from './components/SetupWizard.vue'
 import WelcomePage from './components/WelcomePage.vue'
 import SmartPatrolPage from './components/SmartPatrolPage.vue'
+import Toast from './components/common/Toast.vue'
+import ConfirmDialog from './components/common/ConfirmDialog.vue'
+import { useConfirm } from './composables/useConfirm'
 import type { SftpConnectionConfig } from './composables/useSftp'
 
 const { t } = useI18n()
 const terminalStore = useTerminalStore()
 const configStore = useConfigStore()
+const { show: showConfirmDialog, options: confirmOptions, handleConfirm, handleCancel, handleClose } = useConfirm()
 
 const showSidebar = ref(false)
 const showAiPanel = ref(true)
@@ -151,7 +155,8 @@ const openSshFromWelcome = async (session: SshSession) => {
     port: session.port,
     username: session.username,
     password: session.password,
-    privateKey: session.privateKeyPath,
+    privateKeyPath: session.privateKeyPath,  // 私钥文件路径
+    passphrase: session.passphrase,  // 私钥密码
     jumpHost,
     encoding: session.encoding || 'utf-8',
     sessionId: session.id  // 传递会话 ID（用于重连）
@@ -190,7 +195,7 @@ const toggleAiPanel = () => {
   showAiPanel.value = !showAiPanel.value
 }
 
-// 打开 SFTP 文件管理器
+// 打开 SFTP 文件管理器（模态框模式）
 const openSftp = (session: SshSession) => {
   sftpConfig.value = {
     host: session.host,
@@ -380,6 +385,18 @@ onUnmounted(() => {
     <SetupWizard
       v-if="showSetupWizard"
       @complete="onSetupComplete"
+    />
+
+    <!-- 全局 Toast 提示 -->
+    <Toast />
+
+    <!-- 全局确认对话框 -->
+    <ConfirmDialog
+      :show="showConfirmDialog"
+      :options="confirmOptions"
+      @confirm="handleConfirm"
+      @cancel="handleCancel"
+      @close="handleClose"
     />
   </div>
 </template>

@@ -4,6 +4,7 @@ import * as fs from 'fs'
 import stripAnsi from 'strip-ansi'
 import * as iconv from 'iconv-lite'
 import { getUnixProbeCommands } from './host-profile.service'
+import { getSshErrorMessage } from './ssh-error'
 
 // 支持的字符编码（与前端保持一致）
 export type SshEncoding = 
@@ -201,7 +202,11 @@ export class SshService {
         // 触发断开连接事件
         this.emitDisconnect({ id, reason: 'error', error: err })
         this.instances.delete(id)
-        reject(err)
+        // 使用错误解析工具提供更友好的错误信息
+        const friendlyMessage = getSshErrorMessage(err)
+        const enhancedError = new Error(friendlyMessage)
+        ;(enhancedError as Error & { originalError?: Error }).originalError = err
+        reject(enhancedError)
       })
 
       client.on('close', () => {
@@ -300,7 +305,9 @@ export class SshService {
 
       jumpClient.on('error', err => {
         console.error(`[SSH] Jump host error:`, err)
-        reject(new Error(`连接跳板机失败: ${err.message}`))
+        // 使用错误解析工具提供更友好的错误信息
+        const friendlyMessage = getSshErrorMessage(err)
+        reject(new Error(`连接跳板机失败: ${friendlyMessage}`))
       })
 
       jumpClient.on('close', () => {
@@ -756,6 +763,28 @@ export class SshService {
         })
       })
     })
+  }
+
+  /**
+   * 获取远程终端的当前工作目录
+   * 通过独立的 exec channel 执行 pwd 命令，不会在终端界面显示
+   */
+  async getRemoteCwd(id: string): Promise<string | null> {
+    console.log(`[SshService] getRemoteCwd: 开始获取 SSH ${id} 的 CWD`)
+    try {
+      const output = await this.execCommand(id, 'pwd', 3000)
+      const cwd = output.trim()
+      console.log(`[SshService] getRemoteCwd: SSH ${id} pwd 输出: "${cwd}"`)
+      // 验证输出是否为有效路径
+      if (cwd && cwd.startsWith('/')) {
+        return cwd
+      }
+      console.log(`[SshService] getRemoteCwd: SSH ${id} 输出不是有效路径`)
+      return null
+    } catch (err) {
+      console.error(`[SshService] getRemoteCwd: SSH ${id} 执行 pwd 失败:`, err)
+      return null
+    }
   }
 
   /**

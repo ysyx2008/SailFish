@@ -4,6 +4,7 @@
  */
 import type { PtyService } from './pty.service'
 import type { SshService } from './ssh.service'
+import { getScreenAnalysisFromFrontend } from './screen-content.service'
 
 export interface TerminalState {
   /** 终端 ID (ptyId 或 sshId) */
@@ -267,9 +268,26 @@ export class TerminalStateService {
           const result = await this.ptyService.executeInTerminal(id, 'pwd', 3000)
           newCwd = this.parsePwdOutput(result.output)
         }
+      } else if (state.type === 'ssh') {
+        // SSH 终端：从终端屏幕提示符解析 CWD
+        // exec channel 会创建新会话，无法获取当前 shell 的 CWD
+        console.log(`[TerminalStateService] refreshCwd: SSH 终端 ${id}, 从屏幕分析获取 CWD`)
+        const analysis = await getScreenAnalysisFromFrontend(id, 2000)
+        console.log(`[TerminalStateService] refreshCwd: SSH 终端 ${id}, 屏幕分析结果:`, JSON.stringify(analysis?.context, null, 2))
+        if (analysis?.context?.cwdFromPrompt) {
+          // 从提示符解析到的路径可能是 ~ 开头，需要展开
+          const cwdFromPrompt = analysis.context.cwdFromPrompt
+          console.log(`[TerminalStateService] refreshCwd: SSH 终端 ${id}, 提示符 CWD: ${cwdFromPrompt}`)
+          if (cwdFromPrompt.startsWith('~')) {
+            // 对于 ~ 路径，保持原样，SFTP 服务会处理
+            newCwd = cwdFromPrompt
+          } else {
+            newCwd = cwdFromPrompt
+          }
+        } else {
+          console.log(`[TerminalStateService] refreshCwd: SSH 终端 ${id}, 无法从提示符获取 CWD, 可视内容:`, analysis?.visibleContent?.slice(-3))
+        }
       }
-      // SSH 终端：不通过执行命令获取 CWD，依赖 handleInput 的命令预测
-      // 因为在远程终端执行 pwd 会显示在用户界面上
 
       if (!newCwd) {
         state.cwdUpdatedAt = now
@@ -601,11 +619,15 @@ export class TerminalStateService {
     const baseParts = splitPath(currentCwd)
     const targetParts = splitPath(targetPath)
     
-    // 保留 Windows 盘符
+    // 检查当前路径是否以 ~ 开头（home 目录简写）
+    const startsWithTilde = currentCwd.startsWith('~')
+    
+    // 保留 Windows 盘符或 Unix 路径前缀
     let prefix = ''
     if (isWindows && baseParts.length > 0 && /^[A-Z]:$/i.test(baseParts[0])) {
       prefix = baseParts.shift() + sep
-    } else if (!isWindows) {
+    } else if (!isWindows && !startsWithTilde) {
+      // 只有当路径不是以 ~ 开头时才添加 / 前缀
       prefix = '/'
     }
 

@@ -126,6 +126,8 @@ export interface TerminalTab {
   isLoading: boolean
   // 加载提示信息（用于显示具体的加载原因）
   loadingMessage?: string
+  // 连接错误信息（用于显示连接失败的具体原因）
+  connectionError?: string
   // 终端输出缓冲（最近的输出）
   outputBuffer?: string[]
   // 最近检测到的错误
@@ -375,7 +377,8 @@ export const useTerminalStore = defineStore('terminal', () => {
       port: number
       username: string
       password?: string
-      privateKey?: string
+      privateKeyPath?: string  // 私钥文件路径
+      passphrase?: string  // 私钥密码（可选）
       jumpHost?: JumpHostConfig  // 跳板机配置
       encoding?: string  // 字符编码，默认 utf-8
       sessionId?: string  // SSH 会话 ID（用于重连）
@@ -458,7 +461,8 @@ export const useTerminalStore = defineStore('terminal', () => {
           port: sshConfig.port,
           username: sshConfig.username,
           password: sshConfig.password,
-          privateKey: sshConfig.privateKey,
+          privateKeyPath: sshConfig.privateKeyPath,  // 私钥文件路径
+          passphrase: sshConfig.passphrase,  // 私钥密码
           jumpHost: sshConfig.jumpHost,  // 传递跳板机配置
           encoding: sshConfig.encoding,  // 传递编码配置
           cols: 80,
@@ -477,6 +481,8 @@ export const useTerminalStore = defineStore('terminal', () => {
     } catch (error) {
       console.error('Failed to create terminal:', error)
       reactiveTab.isConnected = false
+      // 保存连接错误信息，便于显示给用户
+      reactiveTab.connectionError = error instanceof Error ? error.message : '连接失败'
     } finally {
       reactiveTab.isLoading = false
     }
@@ -581,7 +587,8 @@ export const useTerminalStore = defineStore('terminal', () => {
         port: session.port,
         username: session.username,
         password: session.password,
-        privateKey: session.privateKeyPath,
+        privateKeyPath: session.privateKeyPath,  // 私钥文件路径
+        passphrase: session.passphrase,  // 私钥密码
         jumpHost,
         encoding: session.encoding || 'utf-8',
         cols: 80,

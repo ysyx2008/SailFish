@@ -34,7 +34,8 @@ const terminalStore = useTerminalStore()
             <line x1="12" y1="8" x2="12" y2="12"/>
             <line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
-          <span>{{ t('terminal.connectionFailed') }}</span>
+          <span class="error-title">{{ t('terminal.connectionFailed') }}</span>
+          <span v-if="tab.connectionError" class="error-detail">{{ tab.connectionError }}</span>
           <button class="btn btn-sm" @click="terminalStore.closeTab(tab.id)">{{ t('common.close') }}</button>
         </div>
       </div>
@@ -103,6 +104,24 @@ const terminalStore = useTerminalStore()
 .terminal-error svg {
   color: var(--accent-error);
   opacity: 0.8;
+}
+
+.terminal-error .error-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.terminal-error .error-detail {
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-width: 400px;
+  text-align: center;
+  line-height: 1.5;
+  padding: 8px 16px;
+  background: var(--bg-surface);
+  border-radius: 6px;
+  border: 1px solid var(--border-primary);
 }
 
 .terminal-empty {

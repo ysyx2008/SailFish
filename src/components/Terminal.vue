@@ -338,17 +338,20 @@ onMounted(async () => {
   // 注册屏幕分析请求监听器
   // 当主进程（Agent）需要实时获取终端状态分析时调用
   unsubscribeAnalysisRequest = window.electronAPI.screen.onRequestScreenAnalysis((data) => {
+    console.log(`[Terminal] 收到屏幕分析请求: requestPtyId=${data.ptyId}, myPtyId=${props.ptyId}, match=${data.ptyId === props.ptyId}`)
     if (data.ptyId === props.ptyId && screenService && !isDisposed) {
       try {
         // 获取完整的终端感知状态（包含输入等待检测、输出模式识别、环境分析）
         const awarenessState = screenService.getAwarenessState()
         // 同时获取可视区域内容
         const visibleContent = screenService.getVisibleContent()
+        console.log(`[Terminal] 屏幕分析响应: visibleLines=${visibleContent.length}, context=`, awarenessState.context)
         window.electronAPI.screen.responseScreenAnalysis(data.requestId, {
           ...awarenessState,
           visibleContent
         })
       } catch (e) {
+        console.error(`[Terminal] 屏幕分析异常:`, e)
         window.electronAPI.screen.responseScreenAnalysis(data.requestId, null)
       }
     }
@@ -511,6 +514,64 @@ const menuSendToAi = () => {
 const menuClear = () => {
   terminal?.clear()
   hideContextMenu()
+}
+
+// 打开文件管理器
+const menuOpenFileManager = async () => {
+  hideContextMenu()
+  
+  try {
+    // 获取当前工作目录
+    // 对于 SSH 终端，需要调用 refreshCwd 来通过 exec channel 获取真实 CWD
+    const cwd = props.type === 'ssh' 
+      ? await window.electronAPI.terminalState.refreshCwd(props.ptyId)
+      : await window.electronAPI.terminalState.getCwd(props.ptyId)
+    
+    console.log(`[Terminal] menuOpenFileManager: type=${props.type}, ptyId=${props.ptyId}, cwd=${cwd}`)
+    
+    if (props.type === 'local') {
+      // 本地终端：只传入本地路径
+      await window.electronAPI.fileManager.open({
+        initialLocalPath: cwd || undefined
+      })
+    } else {
+      // SSH 终端：需要 SFTP 配置和远程路径
+      const tab = terminalStore.tabs.find(t => t.id === props.tabId)
+      if (!tab?.sshSessionId) {
+        // 没有保存的会话 ID，尝试使用基本的 SSH 配置
+        if (tab?.sshConfig) {
+          await window.electronAPI.fileManager.open({
+            sftpConfig: {
+              host: tab.sshConfig.host,
+              port: tab.sshConfig.port,
+              username: tab.sshConfig.username
+            },
+            initialRemotePath: cwd || undefined
+          })
+        }
+        return
+      }
+      
+      // 从 configStore 获取完整的会话配置
+      const session = configStore.sshSessions.find(s => s.id === tab.sshSessionId)
+      if (session) {
+        await window.electronAPI.fileManager.open({
+          sessionId: session.id,
+          sftpConfig: {
+            host: session.host,
+            port: session.port,
+            username: session.username,
+            password: session.password,
+            privateKeyPath: session.privateKeyPath,
+            passphrase: session.passphrase
+          },
+          initialRemotePath: cwd || undefined
+        })
+      }
+    }
+  } catch (error) {
+    console.error('Failed to open file manager:', error)
+  }
 }
 
 // SSH 重新连接
@@ -683,6 +744,10 @@ defineExpose({
       <div class="menu-item" @click="menuClear()">
         <span class="menu-icon">🗑️</span>
         <span>{{ t('terminal.contextMenu.clear') }}</span>
+      </div>
+      <div class="menu-item" @click="menuOpenFileManager()">
+        <span class="menu-icon">📁</span>
+        <span>{{ t('terminal.contextMenu.openFileManager') }}</span>
       </div>
     </div>
     <div 

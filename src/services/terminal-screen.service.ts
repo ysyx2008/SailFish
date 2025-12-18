@@ -1016,7 +1016,21 @@ export class TerminalScreenService {
     const visibleLines = this.getVisibleContent()
     
     // 解析提示符获取用户和主机信息
-    const promptInfo = this.parsePrompt(currentLine)
+    // 首先尝试解析当前行
+    let promptInfo = this.parsePrompt(currentLine)
+    
+    // 如果当前行没有获取到完整的 cwd，可能是提示符被换行截断了
+    // 尝试合并前一行来解析完整的提示符
+    if (!promptInfo.cwd && this.isLikelyWrappedPrompt(currentLine)) {
+      const mergedLine = this.getMergedPromptLine()
+      if (mergedLine && mergedLine !== currentLine) {
+        const mergedPromptInfo = this.parsePrompt(mergedLine)
+        // 如果合并后能获取到更多信息，使用合并后的结果
+        if (mergedPromptInfo.cwd) {
+          promptInfo = mergedPromptInfo
+        }
+      }
+    }
     
     // 检测虚拟环境
     const activeEnvs = this.detectVirtualEnvs(currentLine, visibleLines)
@@ -1036,6 +1050,64 @@ export class TerminalScreenService {
       sshDepth,
       promptType
     }
+  }
+  
+  /**
+   * 检查当前行是否看起来像被换行截断的提示符后半部分
+   */
+  private isLikelyWrappedPrompt(line: string): boolean {
+    // 如果行以提示符结束符结尾，但没有完整的 user@host 格式
+    // 可能是被换行截断了
+    const hasPromptEnding = /[$#%>❯]\s*$/.test(line)
+    const hasFullPromptPrefix = /^\s*(?:\([^)]+\)\s*)?[\w-]+@[\w.-]+[:\s]/.test(line)
+    
+    // 如果有提示符结尾但没有完整的开头，可能是被截断的
+    return hasPromptEnding && !hasFullPromptPrefix
+  }
+  
+  /**
+   * 获取合并后的提示符行（处理换行截断的情况，支持多行）
+   */
+  private getMergedPromptLine(): string | null {
+    const buffer = this.terminal.buffer.active
+    const cursorY = buffer.baseY + buffer.cursorY
+    
+    // 获取当前行
+    const currentLineObj = buffer.getLine(cursorY)
+    if (!currentLineObj) {
+      return null
+    }
+    
+    const currentLine = currentLineObj.translateToString(true)
+    
+    // 向前查找最多 5 行，寻找包含 user@host 模式的行
+    // 然后合并从该行到当前行的所有内容
+    const maxLookback = 5
+    const lines: string[] = [currentLine]
+    
+    for (let i = 1; i <= maxLookback && cursorY - i >= 0; i++) {
+      const prevLineObj = buffer.getLine(cursorY - i)
+      if (!prevLineObj) {
+        break
+      }
+      
+      const prevLine = prevLineObj.translateToString(true)
+      lines.unshift(prevLine)
+      
+      // 检查这一行是否包含 user@host 模式的开头
+      if (/[\w-]+@[\w.-]+[:\s]/.test(prevLine)) {
+        // 找到了提示符的开头，合并所有行
+        return lines.join('').trim()
+      }
+      
+      // 如果遇到空行或明显的命令输出行，停止查找
+      if (prevLine.trim() === '' || /^\s*[\w\/.-]+\s*$/.test(prevLine)) {
+        // 可能是文件名等输出，但继续查找
+        // 因为终端可能有多行输出混在一起
+      }
+    }
+    
+    return currentLine
   }
 
   /**

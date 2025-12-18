@@ -795,6 +795,12 @@ export default {
         'koi8-r': 'KOI8-R (Russian)',
         'windows-1251': 'Windows-1251 (Russian)'
       }
+    },
+    validation: {
+      nameRequired: 'Please enter session name',
+      hostRequired: 'Please enter host address',
+      usernameRequired: 'Please enter username',
+      saveFailed: 'Save failed, please try again'
     }
   },
 
@@ -847,6 +853,76 @@ export default {
     goForward: 'Forward',
     goUp: 'Parent directory',
     goHome: 'Home directory'
+  },
+
+  // File Manager (Dual Pane)
+  fileManager: {
+    // Window title
+    windowTitle: 'File Manager',
+    // Pane titles
+    local: 'Local',
+    remote: 'SFTP Remote',
+    // Connection states
+    connecting: 'Connecting...',
+    notConnected: 'Not connected to remote server',
+    // Toolbar tooltips
+    goBack: 'Back',
+    goForward: 'Forward',
+    goUp: 'Parent directory',
+    goHome: 'Home directory',
+    refresh: 'Refresh (F5)',
+    toggleTree: 'Toggle directory tree',
+    newFolder: 'New Folder',
+    // Toolbar buttons
+    upload: 'Upload',
+    download: 'Download',
+    uploadTooltip: 'Upload selected files to remote (Ctrl+Enter)',
+    downloadTooltip: 'Download selected files to local (Ctrl+Enter)',
+    // Shortcut hints
+    shortcutHint: 'F5 Refresh | F2 Rename | Del Delete | Tab Switch Pane | Ctrl+Enter Transfer',
+    // Context menu
+    open: 'Open',
+    previewFile: 'Preview File',
+    renameF2: 'Rename (F2)',
+    deleteDel: 'Delete (Del)',
+    refreshF5: 'Refresh (F5)',
+    // Dialogs
+    newFolderTitle: 'New Folder',
+    folderNamePlaceholder: 'Folder name',
+    renameTitle: 'Rename',
+    newNamePlaceholder: 'New name',
+    cancel: 'Cancel',
+    create: 'Create',
+    confirm: 'OK',
+    // Delete confirmation
+    deleteFolder: 'Delete Folder',
+    deleteFile: 'Delete File',
+    confirmDeleteMessage: 'Are you sure you want to delete this {type}? This action cannot be undone.',
+    folder: 'folder',
+    file: 'file',
+    // Toast messages
+    folderCreated: 'Folder created',
+    folderCreateFailed: 'Failed to create folder',
+    renameSuccess: 'Renamed successfully',
+    renameFailed: 'Failed to rename',
+    deleted: '{type} deleted',
+    deleteFailed: 'Failed to delete {type}',
+    connectRemoteFirst: 'Please connect to remote server first',
+    transferCancelled: 'Transfer cancelled',
+    // Preview
+    loading: 'Loading...',
+    cannotReadFile: 'Cannot read file content',
+    // File list
+    name: 'Name',
+    size: 'Size',
+    modifyTime: 'Modified',
+    permissions: 'Permissions',
+    emptyDirectory: 'Directory is empty',
+    dropFilesHere: 'Drop files here',
+    dropToUpload: 'to upload',
+    dropToCopy: 'Release to copy files',
+    dropToTransfer: 'Release to transfer files',
+    selectedItems: '{count} item(s) selected'
   },
 
   // Setup Wizard
@@ -955,7 +1031,8 @@ export default {
       selectAll: 'Select All',
       clear: 'Clear',
       sendToAi: 'Send to AI Analysis',
-      search: 'Search'
+      search: 'Search',
+      openFileManager: 'Open File Manager'
     },
     welcome: {
       title: 'Welcome to SFTerm',
@@ -974,6 +1051,17 @@ export default {
       error: 'Connection error',
       stream_closed: 'Data stream closed',
       jump_host_closed: 'Jump host connection closed'
+    },
+    // SSH connection error types
+    sshErrors: {
+      auth_failed: 'Authentication failed: Incorrect username or password, please check your credentials',
+      timeout: 'Connection timeout: Unable to connect to server, please check network or host address',
+      connection_refused: 'Connection refused: Server refused the connection, please check if the port is correct or SSH service is running',
+      host_not_found: 'Host not found: Unable to resolve host address, please check the hostname',
+      host_unreachable: 'Host unreachable: Unable to connect to target host, please check network connection',
+      network_error: 'Network error: Network connection exception, please check network settings',
+      key_error: 'Key error: Invalid private key format or incorrect passphrase',
+      unknown: 'Connection failed'
     },
     reconnectHint: 'Click the button at bottom right or press Ctrl+Shift+R to reconnect',
     noSessionSavedHint: 'This connection is not saved as a session, please reconnect from Session Manager'

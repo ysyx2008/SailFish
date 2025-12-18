@@ -114,8 +114,10 @@ const importXshell = async () => {
 
   importing.value = true
   try {
-    // 导入第一个找到的路径
-    const result = await window.electronAPI.xshell.importDirectory(scanResult.value.paths[0])
+    // 导入所有找到的路径
+    const result = await window.electronAPI.xshell.importDirectories(scanResult.value.paths)
+    
+    console.log('[SetupWizard] Xshell导入结果:', result)
     
     if (result.success && result.sessions.length > 0) {
       // 转换为 SSH 会话并保存
@@ -141,10 +143,18 @@ const importXshell = async () => {
         errors: result.errors || []
       }
     } else {
+      // 提供更详细的错误信息
+      const debugInfo = result.debug 
+        ? `(扫描 ${result.debug.totalFiles} 个文件, 成功 ${result.debug.parsedFiles}, 失败 ${result.debug.failedFiles})`
+        : ''
+      const errorMessages = result.errors?.length > 0 
+        ? result.errors.slice(0, 5) // 只显示前5个错误
+        : [t('setup.import.importFailed')]
+      
       importResult.value = {
         success: false,
         sessions: 0,
-        errors: result.errors || [t('setup.import.importFailed')]
+        errors: [...errorMessages, debugInfo].filter(Boolean)
       }
     }
   } catch (error) {

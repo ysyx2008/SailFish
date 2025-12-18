@@ -36,6 +36,7 @@ const groupFormData = ref<Partial<SessionGroup & { jumpHost?: Partial<JumpHostCo
 
 const emit = defineEmits<{
   openSftp: [session: SshSession]
+  openFileManagerWindow: [session: SshSession]
 }>()
 
 const showNewSession = ref(false)
@@ -464,7 +465,7 @@ const formData = ref<Partial<SshSession>>({
   name: '',
   host: '',
   port: 22,
-  username: '',
+  username: 'root',
   authType: 'password',
   password: '',
   privateKeyPath: '',
@@ -606,7 +607,7 @@ const resetForm = () => {
     name: '',
     host: '',
     port: 22,
-    username: '',
+    username: 'root',
     authType: 'password',
     password: '',
     privateKeyPath: '',
@@ -636,26 +637,41 @@ const openEditSession = async (session: SshSession) => {
 
 // 保存会话
 const saveSession = async () => {
-  if (!formData.value.name || !formData.value.host || !formData.value.username) {
+  // 验证必填字段，给出具体提示
+  if (!formData.value.name?.trim()) {
+    alert(t('session.validation.nameRequired'))
+    return
+  }
+  if (!formData.value.host?.trim()) {
+    alert(t('session.validation.hostRequired'))
+    return
+  }
+  if (!formData.value.username?.trim()) {
+    alert(t('session.validation.usernameRequired'))
     return
   }
 
-  if (editingSession.value) {
-    // 更新
-    await configStore.updateSshSession({
-      ...editingSession.value,
-      ...formData.value
-    } as SshSession)
-  } else {
-    // 新建
-    await configStore.addSshSession({
-      id: uuidv4(),
-      ...formData.value
-    } as SshSession)
-  }
+  try {
+    if (editingSession.value) {
+      // 更新
+      await configStore.updateSshSession({
+        ...editingSession.value,
+        ...formData.value
+      } as SshSession)
+    } else {
+      // 新建
+      await configStore.addSshSession({
+        id: uuidv4(),
+        ...formData.value
+      } as SshSession)
+    }
 
-  showNewSession.value = false
-  resetForm()
+    showNewSession.value = false
+    resetForm()
+  } catch (error) {
+    console.error('保存会话失败:', error)
+    alert(t('session.validation.saveFailed'))
+  }
 }
 
 // 删除会话
@@ -678,16 +694,33 @@ const connectSession = async (session: SshSession) => {
     port: session.port,
     username: session.username,
     password: session.password,
-    privateKey: session.privateKeyPath,
+    privateKeyPath: session.privateKeyPath,  // 私钥文件路径
+    passphrase: session.passphrase,  // 私钥密码
     jumpHost,  // 传递跳板机配置
     encoding: session.encoding || 'utf-8',  // 传递编码配置
     sessionId: session.id  // 传递会话 ID（用于重连）
   })
 }
 
-// 打开 SFTP 文件管理
-const openSftp = (session: SshSession) => {
+// 打开 SFTP 文件管理（模态框）- 保留以供未来使用
+const _openSftp = (session: SshSession) => {
   emit('openSftp', session)
+}
+void _openSftp // 避免未使用警告
+
+// 打开独立文件管理器窗口（XFTP 风格双栏）
+const openFileManagerWindow = async (session: SshSession) => {
+  await window.electronAPI.fileManager.open({
+    sessionId: session.id,
+    sftpConfig: {
+      host: session.host,
+      port: session.port,
+      username: session.username,
+      password: session.password,
+      privateKeyPath: session.privateKeyPath,
+      passphrase: session.passphrase
+    }
+  })
 }
 
 // 创建本地终端
@@ -1093,7 +1126,7 @@ const deleteGroup = async (groupName: string) => {
                     <polygon points="5 3 19 12 5 21 5 3"/>
                   </svg>
                 </button>
-                <button class="btn-icon btn-sm" @click.stop="openSftp(session)" :title="t('session.fileManager')">
+                <button class="btn-icon btn-sm" @click.stop="openFileManagerWindow(session)" :title="t('session.fileManager')">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
                   </svg>

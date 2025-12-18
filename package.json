@@ -1,6 +1,6 @@
 {
   "name": "SFTerm",
-  "version": "7.7.2-legacy",
+  "version": "8.0.0-legacy",
   "description": "旗鱼终端 - AI 驱动的跨平台终端 (Win7/Server 2008 R2 兼容版)",
   "main": "dist-electron/main.js",
   "scripts": {
