@@ -92,7 +92,7 @@ export const translations = {
         },
         Windows: {
           name: 'Windows',
-          description: '支持 Windows 10/11',
+          description: '支持 Win 10/11, Server 2016+',
           variants: {
             installer64: '64 位安装包',
           },
@@ -229,7 +229,7 @@ export const translations = {
         },
         Windows: {
           name: 'Windows',
-          description: 'Supports Windows 10/11',
+          description: 'Supports Win 10/11, Server 2016+',
           variants: {
             installer64: '64-bit Installer',
           },
