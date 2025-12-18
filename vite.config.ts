@@ -73,7 +73,13 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    emptyOutDir: true
+    emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        'file-manager': resolve(__dirname, 'file-manager.html')
+      }
+    }
   }
 })
 

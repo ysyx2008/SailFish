@@ -16,6 +16,11 @@ export interface ImportResult {
   success: boolean
   sessions: XshellSession[]
   errors: string[]
+  debug?: {
+    totalFiles: number
+    parsedFiles: number
+    failedFiles: number
+  }
 }
 
 /**
@@ -25,15 +30,26 @@ export interface ImportResult {
 export class XshellImportService {
   /**
    * 解析单个 .xsh 文件
+   * @returns XshellSession 或者 { error: string } 表示解析失败
    */
-  parseXshFile(filePath: string): XshellSession | null {
+  parseXshFile(filePath: string): XshellSession | { error: string } {
     try {
       // 读取文件，尝试不同编码
-      let content = this.readFileWithEncoding(filePath)
+      let content: string
+      try {
+        content = this.readFileWithEncoding(filePath)
+      } catch (readError) {
+        return { error: `读取文件失败: ${readError}` }
+      }
+      
       const fileName = path.basename(filePath, '.xsh')
       
       // 解析 INI 格式
       const sections = this.parseIni(content)
+      
+      // 调试：记录找到的节名称
+      const sectionNames = Object.keys(sections)
+      console.log(`[Xshell] 文件 ${fileName} 的节: ${sectionNames.join(', ')}`)
       
       // 连接信息在 [CONNECTION] 节
       const connectionSection = sections['CONNECTION'] || sections['Connection'] || {}
@@ -53,8 +69,13 @@ export class XshellImportService {
                    sshSection['Host'] || sshSection['host'] || ''
       
       if (!host) {
-        console.warn(`无法从文件 ${filePath} 中提取主机信息`)
-        return null
+        // 提供更详细的调试信息
+        const connKeys = Object.keys(connectionSection)
+        const sshKeys = Object.keys(sshSection)
+        console.warn(`[Xshell] 文件 ${fileName} 无主机信息`)
+        console.warn(`[Xshell] CONNECTION 键: ${connKeys.join(', ') || '(空)'}`)
+        console.warn(`[Xshell] CONNECTION:SSH 键: ${sshKeys.join(', ') || '(空)'}`)
+        return { error: `无主机信息 (节: ${sectionNames.slice(0, 5).join(', ')}${sectionNames.length > 5 ? '...' : ''})` }
       }
       
       // 获取端口
@@ -86,8 +107,8 @@ export class XshellImportService {
         group: undefined
       }
     } catch (error) {
-      console.error(`解析文件 ${filePath} 失败:`, error)
-      return null
+      console.error(`[Xshell] 解析文件 ${filePath} 失败:`, error)
+      return { error: `解析异常: ${error}` }
     }
   }
 
@@ -178,21 +199,60 @@ export class XshellImportService {
   importFromDirectory(dirPath: string): ImportResult {
     const sessions: XshellSession[] = []
     const errors: string[] = []
+    const stats = { totalFiles: 0, parsedFiles: 0, failedFiles: 0 }
+    
+    console.log(`[Xshell] 开始导入目录: ${dirPath}`)
     
     try {
-      this.scanDirectory(dirPath, sessions, errors, '')
+      this.scanDirectory(dirPath, sessions, errors, '', stats)
+      
+      console.log(`[Xshell] 导入完成: 总文件 ${stats.totalFiles}, 成功 ${stats.parsedFiles}, 失败 ${stats.failedFiles}`)
       
       return {
         success: sessions.length > 0,
         sessions,
-        errors
+        errors,
+        debug: stats
       }
     } catch (error) {
+      console.error(`[Xshell] 导入目录失败:`, error)
       return {
         success: false,
         sessions: [],
-        errors: [`无法读取目录: ${error}`]
+        errors: [`无法读取目录: ${error}`],
+        debug: stats
       }
+    }
+  }
+
+  /**
+   * 导入多个目录中的所有 .xsh 文件
+   */
+  importFromDirectories(dirPaths: string[]): ImportResult {
+    const sessions: XshellSession[] = []
+    const errors: string[] = []
+    const totalStats = { totalFiles: 0, parsedFiles: 0, failedFiles: 0 }
+    
+    console.log(`[Xshell] 开始导入 ${dirPaths.length} 个目录`)
+    
+    for (const dirPath of dirPaths) {
+      const result = this.importFromDirectory(dirPath)
+      sessions.push(...result.sessions)
+      errors.push(...result.errors)
+      if (result.debug) {
+        totalStats.totalFiles += result.debug.totalFiles
+        totalStats.parsedFiles += result.debug.parsedFiles
+        totalStats.failedFiles += result.debug.failedFiles
+      }
+    }
+    
+    console.log(`[Xshell] 多目录导入完成: 总文件 ${totalStats.totalFiles}, 成功 ${totalStats.parsedFiles}, 失败 ${totalStats.failedFiles}`)
+    
+    return {
+      success: sessions.length > 0,
+      sessions,
+      errors,
+      debug: totalStats
     }
   }
 
@@ -203,9 +263,16 @@ export class XshellImportService {
     dirPath: string, 
     sessions: XshellSession[], 
     errors: string[],
-    currentGroup: string
+    currentGroup: string,
+    stats: { totalFiles: number; parsedFiles: number; failedFiles: number }
   ): void {
-    const items = fs.readdirSync(dirPath, { withFileTypes: true })
+    let items: fs.Dirent[]
+    try {
+      items = fs.readdirSync(dirPath, { withFileTypes: true })
+    } catch (error) {
+      errors.push(`无法读取目录 ${dirPath}: ${error}`)
+      return
+    }
     
     for (const item of items) {
       const fullPath = path.join(dirPath, item.name)
@@ -213,14 +280,20 @@ export class XshellImportService {
       if (item.isDirectory()) {
         // 子目录作为分组
         const groupName = currentGroup ? `${currentGroup}/${item.name}` : item.name
-        this.scanDirectory(fullPath, sessions, errors, groupName)
+        this.scanDirectory(fullPath, sessions, errors, groupName, stats)
       } else if (item.isFile() && item.name.toLowerCase().endsWith('.xsh')) {
-        const session = this.parseXshFile(fullPath)
-        if (session) {
-          session.group = currentGroup || undefined
-          sessions.push(session)
+        stats.totalFiles++
+        const result = this.parseXshFile(fullPath)
+        
+        if ('error' in result) {
+          // 解析失败
+          stats.failedFiles++
+          errors.push(`${item.name}: ${result.error}`)
         } else {
-          errors.push(`无法解析文件: ${item.name}`)
+          // 解析成功
+          stats.parsedFiles++
+          result.group = currentGroup || undefined
+          sessions.push(result)
         }
       }
     }
@@ -232,14 +305,18 @@ export class XshellImportService {
   importFiles(filePaths: string[]): ImportResult {
     const sessions: XshellSession[] = []
     const errors: string[] = []
+    const stats = { totalFiles: 0, parsedFiles: 0, failedFiles: 0 }
     
     for (const filePath of filePaths) {
       if (filePath.toLowerCase().endsWith('.xsh')) {
-        const session = this.parseXshFile(filePath)
-        if (session) {
-          sessions.push(session)
+        stats.totalFiles++
+        const result = this.parseXshFile(filePath)
+        if ('error' in result) {
+          stats.failedFiles++
+          errors.push(`${path.basename(filePath)}: ${result.error}`)
         } else {
-          errors.push(`无法解析文件: ${path.basename(filePath)}`)
+          stats.parsedFiles++
+          sessions.push(result)
         }
       } else {
         errors.push(`不支持的文件格式: ${path.basename(filePath)}`)
@@ -249,8 +326,30 @@ export class XshellImportService {
     return {
       success: sessions.length > 0,
       sessions,
-      errors
+      errors,
+      debug: stats
     }
+  }
+
+  /**
+   * 递归统计目录中的 .xsh 文件数量
+   */
+  private countXshFiles(dirPath: string): number {
+    let count = 0
+    try {
+      const items = fs.readdirSync(dirPath, { withFileTypes: true })
+      for (const item of items) {
+        const fullPath = path.join(dirPath, item.name)
+        if (item.isDirectory()) {
+          count += this.countXshFiles(fullPath)
+        } else if (item.isFile() && item.name.toLowerCase().endsWith('.xsh')) {
+          count++
+        }
+      }
+    } catch (e) {
+      // 忽略读取错误
+    }
+    return count
   }
 
   /**
@@ -276,9 +375,8 @@ export class XshellImportService {
                 const sessionsPath = path.join(netsarangBase, version.name, 'Xshell', 'Sessions')
                 if (fs.existsSync(sessionsPath)) {
                   paths.push(sessionsPath)
-                  // 统计会话数量
-                  const files = fs.readdirSync(sessionsPath)
-                  sessionCount += files.filter(f => f.toLowerCase().endsWith('.xsh')).length
+                  // 递归统计会话数量
+                  sessionCount += this.countXshFiles(sessionsPath)
                 }
               }
             }
@@ -291,12 +389,7 @@ export class XshellImportService {
         const altPath = path.join(userProfile, 'Documents', 'NetSarang', 'Xshell', 'Sessions')
         if (fs.existsSync(altPath)) {
           paths.push(altPath)
-          try {
-            const files = fs.readdirSync(altPath)
-            sessionCount += files.filter(f => f.toLowerCase().endsWith('.xsh')).length
-          } catch (e) {
-            // 忽略读取错误
-          }
+          sessionCount += this.countXshFiles(altPath)
         }
       }
 
@@ -305,12 +398,7 @@ export class XshellImportService {
         const appDataPath = path.join(appData, 'NetSarang', 'Xshell', 'Sessions')
         if (fs.existsSync(appDataPath)) {
           paths.push(appDataPath)
-          try {
-            const files = fs.readdirSync(appDataPath)
-            sessionCount += files.filter(f => f.toLowerCase().endsWith('.xsh')).length
-          } catch (e) {
-            // 忽略读取错误
-          }
+          sessionCount += this.countXshFiles(appDataPath)
         }
       }
     }
@@ -344,12 +432,7 @@ export class XshellImportService {
                             const sessionsPath = path.join(netsarangBase, version.name, 'Xshell', 'Sessions')
                             if (fs.existsSync(sessionsPath)) {
                               paths.push(sessionsPath)
-                              try {
-                                const files = fs.readdirSync(sessionsPath)
-                                sessionCount += files.filter(f => f.toLowerCase().endsWith('.xsh')).length
-                              } catch (e) {
-                                // 忽略读取错误
-                              }
+                              sessionCount += this.countXshFiles(sessionsPath)
                             }
                           }
                         }
@@ -362,12 +445,7 @@ export class XshellImportService {
                     const altPath = path.join(usersDir, user.name, 'Documents', 'NetSarang', 'Xshell', 'Sessions')
                     if (fs.existsSync(altPath)) {
                       paths.push(altPath)
-                      try {
-                        const files = fs.readdirSync(altPath)
-                        sessionCount += files.filter(f => f.toLowerCase().endsWith('.xsh')).length
-                      } catch (e) {
-                        // 忽略读取错误
-                      }
+                      sessionCount += this.countXshFiles(altPath)
                     }
                   }
                 }

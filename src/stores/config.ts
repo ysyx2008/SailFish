@@ -118,7 +118,7 @@ export const useConfigStore = defineStore('config', () => {
   const currentTheme = ref<string>('one-dark')
 
   // UI 主题
-  const uiTheme = ref<'dark' | 'light' | 'blue' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-forest'>('dark')
+  const uiTheme = ref<'dark' | 'light' | 'blue' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-forest'>('blue')
 
   // 终端设置
   const terminalSettings = ref<TerminalSettings>({

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import type { SftpFileInfo } from '../../composables/useSftp'
+import { toast } from '../../composables/useToast'
 
 const props = defineProps<{
   show: boolean
@@ -17,6 +18,8 @@ const emit = defineEmits<{
   refresh: []
   newFolder: []
   preview: [file: SftpFileInfo]
+  properties: [file: SftpFileInfo]
+  chmod: [file: SftpFileInfo]
 }>()
 
 const menuRef = ref<HTMLElement | null>(null)
@@ -115,6 +118,48 @@ const handlePreview = () => {
   }
 }
 
+// 复制路径到剪贴板
+const handleCopyPath = async () => {
+  if (props.file) {
+    try {
+      await navigator.clipboard.writeText(props.file.path)
+      toast.success('路径已复制')
+    } catch (e) {
+      toast.error('复制失败')
+    }
+    emit('close')
+  }
+}
+
+// 复制文件名到剪贴板
+const handleCopyName = async () => {
+  if (props.file) {
+    try {
+      await navigator.clipboard.writeText(props.file.name)
+      toast.success('文件名已复制')
+    } catch (e) {
+      toast.error('复制失败')
+    }
+    emit('close')
+  }
+}
+
+// 查看属性
+const handleProperties = () => {
+  if (props.file) {
+    emit('properties', props.file)
+    emit('close')
+  }
+}
+
+// 修改权限
+const handleChmod = () => {
+  if (props.file) {
+    emit('chmod', props.file)
+    emit('close')
+  }
+}
+
 // 判断是否可预览（文本文件且小于 1MB）
 const canPreview = (file: SftpFileInfo | null): boolean => {
   if (!file || file.isDirectory) return false
@@ -167,12 +212,32 @@ const canPreview = (file: SftpFileInfo | null): boolean => {
 
         <div class="menu-divider"></div>
 
+        <!-- 复制操作 -->
+        <button class="menu-item" @click="handleCopyPath">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+          </svg>
+          <span>复制路径</span>
+        </button>
+
+        <button class="menu-item" @click="handleCopyName">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          <span>复制文件名</span>
+        </button>
+
+        <div class="menu-divider"></div>
+
         <button class="menu-item" @click="handleRename">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
           </svg>
           <span>重命名</span>
+          <span class="shortcut">F2</span>
         </button>
 
         <button class="menu-item danger" @click="handleDelete">
@@ -181,6 +246,27 @@ const canPreview = (file: SftpFileInfo | null): boolean => {
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
           </svg>
           <span>删除</span>
+          <span class="shortcut">Del</span>
+        </button>
+
+        <div class="menu-divider"></div>
+
+        <!-- 属性和权限 -->
+        <button class="menu-item" @click="handleChmod">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          <span>修改权限</span>
+        </button>
+
+        <button class="menu-item" @click="handleProperties">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="16" x2="12" y2="12"/>
+            <line x1="12" y1="8" x2="12.01" y2="8"/>
+          </svg>
+          <span>属性</span>
         </button>
 
         <div class="menu-divider"></div>
@@ -202,6 +288,7 @@ const canPreview = (file: SftpFileInfo | null): boolean => {
           <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
         </svg>
         <span>刷新</span>
+        <span class="shortcut">F5</span>
       </button>
     </div>
   </Teleport>
@@ -210,7 +297,7 @@ const canPreview = (file: SftpFileInfo | null): boolean => {
 <style scoped>
 .context-menu {
   position: fixed;
-  min-width: 160px;
+  min-width: 180px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 8px;
@@ -258,6 +345,16 @@ const canPreview = (file: SftpFileInfo | null): boolean => {
 
 .menu-item:hover svg {
   color: var(--text-secondary);
+}
+
+.menu-item span:first-of-type {
+  flex: 1;
+}
+
+.menu-item .shortcut {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
 }
 
 .menu-item.danger {

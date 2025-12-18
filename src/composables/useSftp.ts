@@ -94,10 +94,6 @@ export function useSftp() {
       const index = transfers.value.findIndex(t => t.transferId === progress.transferId)
       if (index !== -1) {
         transfers.value[index] = progress
-        // 3秒后移除已完成的传输
-        setTimeout(() => {
-          transfers.value = transfers.value.filter(t => t.transferId !== progress.transferId)
-        }, 3000)
       }
       // 刷新当前目录
       if (progress.direction === 'upload') {
@@ -113,6 +109,32 @@ export function useSftp() {
       }
     })
     cleanupFns.push(onError)
+
+    const onCancelled = window.electronAPI.sftp.onTransferCancelled((progress: TransferProgress) => {
+      const index = transfers.value.findIndex(t => t.transferId === progress.transferId)
+      if (index !== -1) {
+        transfers.value[index] = progress
+      }
+    })
+    cleanupFns.push(onCancelled)
+  }
+
+  // 取消传输
+  const cancelTransfer = async (transferId: string): Promise<boolean> => {
+    const result = await window.electronAPI.sftp.cancelTransfer(transferId)
+    return result.success
+  }
+
+  // 清除已完成的传输
+  const clearCompletedTransfers = () => {
+    transfers.value = transfers.value.filter(
+      t => t.status === 'transferring' || t.status === 'pending'
+    )
+  }
+
+  // 清除所有传输
+  const clearAllTransfers = () => {
+    transfers.value = []
   }
 
   // 连接 SFTP
@@ -151,10 +173,12 @@ export function useSftp() {
 
         return true
       } else {
+        // 显示后端返回的具体错误信息
         error.value = result.error || '连接失败'
         return false
       }
     } catch (e) {
+      // 显示具体错误信息
       error.value = e instanceof Error ? e.message : '连接失败'
       return false
     } finally {
@@ -192,14 +216,16 @@ export function useSftp() {
       const result = await window.electronAPI.sftp.list(sessionId.value, path)
       if (result.success && result.data) {
         files.value = result.data
-        currentPath.value = path
+        // 使用解析后的实际路径（处理 ~ 等特殊路径）
+        const actualPath = result.resolvedPath || path
+        currentPath.value = actualPath
 
         if (addToHistory) {
           // 截断前进历史
           if (historyIndex.value < history.value.length - 1) {
             history.value = history.value.slice(0, historyIndex.value + 1)
           }
-          history.value.push({ path, timestamp: Date.now() })
+          history.value.push({ path: actualPath, timestamp: Date.now() })
           historyIndex.value = history.value.length - 1
         }
       } else {
@@ -435,6 +461,9 @@ export function useSftp() {
     readTextFile,
     selectAndUpload,
     selectAndDownload,
+    cancelTransfer,
+    clearCompletedTransfers,
+    clearAllTransfers,
 
     // 工具函数
     formatSize,

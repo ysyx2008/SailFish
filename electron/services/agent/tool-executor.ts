@@ -632,7 +632,6 @@ async function executeSudoCommand(
   const sudoTimeout = 5 * 60 * 1000
   const startTime = Date.now()
   const pollInterval = 500  // 每 500ms 检查一次
-  
   // 记录检测到密码提示时的输出长度，用于判断用户是否已输入
   let outputLengthAtPasswordPrompt = 0
   
@@ -658,16 +657,32 @@ async function executeSudoCommand(
           outputLengthAtPasswordPrompt = output.length
         }
         
-        // 判断用户是否已输入密码：有新的输出产生（不只是密码提示）
-        const hasNewOutputAfterPrompt = output.length > outputLengthAtPasswordPrompt + 10
+        const cleanOutput = stripAnsi(output)
         
-        // 只有在用户输入密码后（有新输出），且终端空闲时才认为完成
+        // 主要依赖前端屏幕分析来判断状态（让前端的智能检测来决定）
+        // 避免后端使用正则硬编码，因为 shell 提示符格式千变万化
+        const screenAnalysis = await getScreenAnalysisFromFrontend(ptyId, 1000)
+        if (screenAnalysis) {
+          // 如果前端检测到当前是 prompt 状态（shell 提示符），命令已完成
+          if (screenAnalysis.input.type === 'prompt' && screenAnalysis.input.confidence > 0.7) {
+            break
+          }
+          // 如果前端不再检测到密码等待状态，且终端空闲，认为命令已完成
+          // 即使判断有误，Agent 后续可以通过 check_terminal_status 自行确认
+          if (screenAnalysis.input.type !== 'password' && status.isIdle && timeSinceLastOutput > 500) {
+            break
+          }
+        }
+        
+        // 备用判断：如果前端分析不可用，使用简单的启发式规则
+        // 有新输出 + 终端空闲 + 输出稳定一段时间 = 可能完成
+        const hasNewOutputAfterPrompt = output.length > outputLengthAtPasswordPrompt
         if (hasNewOutputAfterPrompt && status.isIdle && timeSinceLastOutput > 1000) {
+          // 宁可早返回，让 Agent 自己通过 check_terminal_status 确认
           break
         }
         
-        // 检查是否用户取消了（Ctrl+C 会产生特定输出或终端回到空闲但无新输出）
-        const cleanOutput = stripAnsi(output)
+        // 检查是否用户取消了或密码错误
         if (cleanOutput.includes('Sorry, try again') || 
             cleanOutput.includes('sudo: ') && cleanOutput.includes('incorrect password') ||
             cleanOutput.includes('Authentication failure') ||
