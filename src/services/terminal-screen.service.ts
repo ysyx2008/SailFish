@@ -1066,7 +1066,7 @@ export class TerminalScreenService {
   }
   
   /**
-   * 获取合并后的提示符行（处理换行截断的情况）
+   * 获取合并后的提示符行（处理换行截断的情况，支持多行）
    */
   private getMergedPromptLine(): string | null {
     const buffer = this.terminal.buffer.active
@@ -1080,17 +1080,30 @@ export class TerminalScreenService {
     
     const currentLine = currentLineObj.translateToString(true)
     
-    // 检查当前行是否是换行的（isWrapped 表示这行是上一行的延续）
-    // 或者尝试获取前一行来合并
-    if (cursorY > 0) {
-      const prevLineObj = buffer.getLine(cursorY - 1)
-      if (prevLineObj) {
-        const prevLine = prevLineObj.translateToString(true)
-        // 检查前一行是否包含 user@host 模式的开头
-        if (/[\w-]+@[\w.-]+[:\s]/.test(prevLine)) {
-          // 合并前一行和当前行
-          return (prevLine + currentLine).trim()
-        }
+    // 向前查找最多 5 行，寻找包含 user@host 模式的行
+    // 然后合并从该行到当前行的所有内容
+    const maxLookback = 5
+    const lines: string[] = [currentLine]
+    
+    for (let i = 1; i <= maxLookback && cursorY - i >= 0; i++) {
+      const prevLineObj = buffer.getLine(cursorY - i)
+      if (!prevLineObj) {
+        break
+      }
+      
+      const prevLine = prevLineObj.translateToString(true)
+      lines.unshift(prevLine)
+      
+      // 检查这一行是否包含 user@host 模式的开头
+      if (/[\w-]+@[\w.-]+[:\s]/.test(prevLine)) {
+        // 找到了提示符的开头，合并所有行
+        return lines.join('').trim()
+      }
+      
+      // 如果遇到空行或明显的命令输出行，停止查找
+      if (prevLine.trim() === '' || /^\s*[\w\/.-]+\s*$/.test(prevLine)) {
+        // 可能是文件名等输出，但继续查找
+        // 因为终端可能有多行输出混在一起
       }
     }
     
