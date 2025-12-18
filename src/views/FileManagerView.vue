@@ -333,44 +333,6 @@ const handleClearAllTransfers = () => {
 
 <template>
   <div class="file-manager-view" :class="{ dragging: isDraggingDivider }">
-    <!-- 工具栏 -->
-    <div class="toolbar">
-      <div class="toolbar-left">
-        <button 
-          class="btn btn-primary" 
-          @click="handleUpload(localSelectedFiles)"
-          :disabled="localSelectedFiles.length === 0 || !remotePaneRef?.isConnected"
-          :title="t('fileManager.uploadTooltip')"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-          {{ t('fileManager.upload') }}
-        </button>
-        <button 
-          class="btn btn-primary" 
-          @click="handleDownload(remoteSelectedFiles)"
-          :disabled="remoteSelectedFiles.length === 0 || !remotePaneRef?.isConnected"
-          :title="t('fileManager.downloadTooltip')"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          {{ t('fileManager.download') }}
-        </button>
-      </div>
-      <div class="toolbar-center">
-        <span class="shortcut-hint">{{ t('fileManager.shortcutHint') }}</span>
-      </div>
-      <div class="toolbar-right">
-        <!-- 可以添加更多工具按钮 -->
-      </div>
-    </div>
-
     <!-- 双栏容器 -->
     <div class="dual-pane-container">
       <!-- 左栏 - 本地文件 -->
@@ -407,6 +369,39 @@ const handleClearAllTransfers = () => {
           @drop-files="(files, targetPath) => handleCrossPaneDrop('local', files, targetPath)"
         />
       </div>
+    </div>
+
+    <!-- 底部工具栏 -->
+    <div class="bottom-toolbar">
+      <button 
+        class="toolbar-btn" 
+        @click="handleUpload(localSelectedFiles)"
+        :disabled="localSelectedFiles.length === 0 || !remotePaneRef?.isConnected"
+        :title="t('fileManager.uploadTooltip')"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <span>{{ t('fileManager.upload') }}</span>
+        <span v-if="localSelectedFiles.length > 0" class="badge">{{ localSelectedFiles.length }}</span>
+      </button>
+      
+      <button 
+        class="toolbar-btn" 
+        @click="handleDownload(remoteSelectedFiles)"
+        :disabled="remoteSelectedFiles.length === 0 || !remotePaneRef?.isConnected"
+        :title="t('fileManager.downloadTooltip')"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <span>{{ t('fileManager.download') }}</span>
+        <span v-if="remoteSelectedFiles.length > 0" class="badge">{{ remoteSelectedFiles.length }}</span>
+      </button>
     </div>
 
     <!-- 传输队列 -->
@@ -449,77 +444,61 @@ const handleClearAllTransfers = () => {
   user-select: none;
 }
 
-/* 工具栏 */
-.toolbar {
+/* 底部工具栏 */
+.bottom-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
+  justify-content: center;
+  gap: 16px;
+  padding: 10px 20px;
   background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
+  border-top: 1px solid var(--border-color);
   flex-shrink: 0;
-  -webkit-app-region: drag;
 }
 
-.toolbar-left,
-.toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  -webkit-app-region: no-drag;
-}
-
-.toolbar-center {
-  flex: 1;
-  text-align: center;
-}
-
-.shortcut-hint {
-  font-size: 11px;
-  color: var(--text-muted);
-  letter-spacing: 0.3px;
-}
-
-/* 按钮样式 */
-.btn {
+.toolbar-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  font-size: 12px;
+  gap: 8px;
+  padding: 8px 20px;
+  font-size: 13px;
   font-weight: 500;
-  color: var(--text-secondary);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
+  color: white;
+  background: var(--accent-primary);
+  border: none;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.btn:hover:not(:disabled) {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  color: white;
-  background: var(--accent-primary);
-  border-color: var(--accent-primary);
-}
-
-.btn-primary:hover:not(:disabled) {
+.toolbar-btn:hover:not(:disabled) {
   background: var(--accent-secondary);
-  border-color: var(--accent-secondary);
-  color: white;
+  transform: translateY(-1px);
 }
 
-.btn-primary svg {
+.toolbar-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.toolbar-btn svg {
   stroke: white;
+  flex-shrink: 0;
+}
+
+.toolbar-btn .badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-primary);
+  background: white;
+  border-radius: 9px;
 }
 
 /* 双栏容器 */
