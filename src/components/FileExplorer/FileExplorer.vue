@@ -307,10 +307,8 @@ const handleCancelTransfer = async (transferId: string) => {
 // 重试传输
 const handleRetryTransfer = async (transfer: { direction: string; localPath: string; remotePath: string }) => {
   if (transfer.direction === 'upload') {
-    const transferId = `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`
     await uploadFile(transfer.localPath, transfer.remotePath)
   } else {
-    const transferId = `download-${Date.now()}-${Math.random().toString(36).slice(2)}`
     await downloadFile(transfer.remotePath, transfer.localPath)
   }
 }

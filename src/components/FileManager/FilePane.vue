@@ -9,7 +9,8 @@ import PathBreadcrumb from '../FileExplorer/PathBreadcrumb.vue'
 import { showConfirm } from '../../composables/useConfirm'
 import { toast } from '../../composables/useToast'
 
-const { t } = useI18n()
+const { t: _t } = useI18n()
+void _t // 避免未使用警告
 
 type FileInfo = LocalFileInfo | SftpFileInfo
 

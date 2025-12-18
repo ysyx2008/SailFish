@@ -687,10 +687,11 @@ const connectSession = async (session: SshSession) => {
   })
 }
 
-// 打开 SFTP 文件管理（模态框）
-const openSftp = (session: SshSession) => {
+// 打开 SFTP 文件管理（模态框）- 保留以供未来使用
+const _openSftp = (session: SshSession) => {
   emit('openSftp', session)
 }
+void _openSftp // 避免未使用警告
 
 // 打开独立文件管理器窗口（XFTP 风格双栏）
 const openFileManagerWindow = async (session: SshSession) => {

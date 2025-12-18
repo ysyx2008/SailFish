@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 
 interface TreeNode {
   name: string
@@ -172,17 +172,6 @@ const isExpanded = (nodePath: string): boolean => {
   return expandedPaths.value.has(nodePath)
 }
 
-// 获取图标
-const getIcon = (node: TreeNode & { icon?: string }): string => {
-  if (node.icon === 'home') return '🏠'
-  if (node.icon === 'desktop') return '🖥️'
-  if (node.icon === 'documents') return '📄'
-  if (node.icon === 'downloads') return '⬇️'
-  if (node.icon === 'applications') return '📦'
-  if (node.icon === 'drive') return '💿'
-  if (node.icon === 'root') return '📁'
-  return '📁'
-}
 </script>
 
 <template>
@@ -219,9 +208,20 @@ const getIcon = (node: TreeNode & { icon?: string }): string => {
 
 <script lang="ts">
 // 递归组件
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, type VNode } from 'vue'
 
-const TreeNodeItem = defineComponent({
+// TreeNode 接口（与 setup 脚本中的定义保持一致）
+interface TreeNode {
+  name: string
+  path: string
+  isDirectory: boolean
+  children?: TreeNode[]
+  isLoading?: boolean
+  isExpanded?: boolean
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const TreeNodeItem: any = defineComponent({
   name: 'TreeNodeItem',
   props: {
     node: { type: Object, required: true },
@@ -235,7 +235,7 @@ const TreeNodeItem = defineComponent({
     sessionId: { type: String, default: '' }
   },
   emits: ['toggle', 'select', 'loadChildren'],
-  setup(props, { emit }) {
+  setup(props, { emit }): () => VNode {
     const handleToggle = async (e: Event) => {
       e.stopPropagation()
       

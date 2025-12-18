@@ -1,4 +1,4 @@
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed } from 'vue'
 
 // 本地文件信息类型
 export interface LocalFileInfo {

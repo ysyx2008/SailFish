@@ -110,7 +110,7 @@ export function useSftp() {
     })
     cleanupFns.push(onError)
 
-    const onCancelled = window.electronAPI.sftp.onTransferCancelled((progress) => {
+    const onCancelled = window.electronAPI.sftp.onTransferCancelled((progress: TransferProgress) => {
       const index = transfers.value.findIndex(t => t.transferId === progress.transferId)
       if (index !== -1) {
         transfers.value[index] = progress

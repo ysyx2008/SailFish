@@ -14,7 +14,8 @@ import { useConfirm } from '../composables/useConfirm'
 // 确认对话框
 const { show: showConfirmDialog, options: confirmOptions, handleConfirm, handleCancel } = useConfirm()
 
-const { t } = useI18n()
+const { t: _t } = useI18n()
+void _t // 避免未使用警告
 
 // 窗口初始化参数
 const initParams = ref<{
@@ -62,7 +63,7 @@ onMounted(async () => {
   initParams.value = params
 
   // 监听参数更新
-  window.electronAPI.fileManager.onParamsUpdate((newParams) => {
+  window.electronAPI.fileManager.onParamsUpdate((newParams: typeof initParams.value) => {
     initParams.value = newParams
   })
 
@@ -101,7 +102,7 @@ onMounted(async () => {
     }
   })
 
-  const unsubCancelled = window.electronAPI.sftp.onTransferCancelled((progress) => {
+  const unsubCancelled = window.electronAPI.sftp.onTransferCancelled((progress: TransferProgress) => {
     const index = transfers.value.findIndex(t => t.transferId === progress.transferId)
     if (index !== -1) {
       transfers.value[index] = progress
@@ -167,7 +168,7 @@ const handleKeydown = (e: KeyboardEvent) => {
 }
 
 // 开始拖拽分隔条
-const startDividerDrag = (e: MouseEvent) => {
+const startDividerDrag = (_e: MouseEvent) => {
   isDraggingDivider.value = true
   document.addEventListener('mousemove', handleDividerDrag)
   document.addEventListener('mouseup', stopDividerDrag)
@@ -264,7 +265,7 @@ const handleDownload = async (files: SftpFileInfo[]) => {
 const handleCrossPaneDrop = async (
   sourcePane: 'local' | 'remote',
   files: (LocalFileInfo | SftpFileInfo)[],
-  targetPath: string
+  _targetPath: string
 ) => {
   if (sourcePane === 'local') {
     // 本地文件拖到远程
@@ -403,7 +404,7 @@ const handleClearAllTransfers = () => {
           :initial-path="initParams?.initialRemotePath"
           :active="activePane === 'remote'"
           @focus="setActivePane('remote')"
-          @selection-change="updateRemoteSelection"
+          @selection-change="(files: (LocalFileInfo | SftpFileInfo)[]) => updateRemoteSelection(files as SftpFileInfo[])"
           @drop-files="(files, targetPath) => handleCrossPaneDrop('local', files, targetPath)"
         />
       </div>

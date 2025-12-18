@@ -24,7 +24,7 @@ const initTheme = async () => {
   document.body.setAttribute('data-ui-theme', configStore.uiTheme)
   
   // 监听主题变化
-  configStore.$subscribe((mutation, state) => {
+  configStore.$subscribe((_mutation, state) => {
     document.body.setAttribute('data-ui-theme', state.uiTheme)
   })
 }

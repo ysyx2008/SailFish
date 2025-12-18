@@ -767,6 +767,7 @@ interface Window {
           owner: number
           group: number
         }>
+        resolvedPath?: string
         error?: string
       }>
       pwd: (sessionId: string) => Promise<{
@@ -911,6 +912,20 @@ interface Window {
         error?: string
         startTime: number
       }) => void) => () => void
+      onTransferCancelled: (callback: (progress: {
+        transferId: string
+        filename: string
+        localPath: string
+        remotePath: string
+        direction: 'upload' | 'download'
+        totalBytes: number
+        transferredBytes: number
+        percent: number
+        status: 'pending' | 'transferring' | 'completed' | 'failed' | 'cancelled'
+        error?: string
+        startTime: number
+      }) => void) => () => void
+      cancelTransfer: (transferId: string) => Promise<{ success: boolean; error?: string }>
     }
     // 文档解析操作
     document: {
@@ -1312,6 +1327,93 @@ interface Window {
       onError: (callback: (data: {
         orchestratorId: string
         error: string
+      }) => void) => () => void
+    }
+    // 本地文件系统操作
+    localFs: {
+      getSeparator: () => Promise<string>
+      getHomeDir: () => Promise<string>
+      getParentDir: (path: string) => Promise<string>
+      joinPath: (...paths: string[]) => Promise<string>
+      list: (path: string) => Promise<{
+        success: boolean
+        data?: Array<{
+          name: string
+          path: string
+          size: number
+          modifyTime: number
+          accessTime: number
+          isDirectory: boolean
+          isSymlink: boolean
+          permissions: {
+            user: string
+            group: string
+            other: string
+          }
+        }>
+        error?: string
+      }>
+      mkdir: (path: string) => Promise<{ success: boolean; error?: string }>
+      delete: (path: string) => Promise<{ success: boolean; error?: string }>
+      rmdir: (path: string) => Promise<{ success: boolean; error?: string }>
+      rename: (oldPath: string, newPath: string) => Promise<{ success: boolean; error?: string }>
+      copyFile: (src: string, dest: string) => Promise<{ success: boolean; error?: string }>
+      copyDir: (src: string, dest: string) => Promise<{ success: boolean; error?: string }>
+      readFile: (path: string) => Promise<{ success: boolean; data?: string; error?: string }>
+      getDrives: () => Promise<Array<{
+        name: string
+        path: string
+        label?: string
+        type: 'fixed' | 'removable' | 'network' | 'cdrom' | 'unknown'
+      }>>
+      getSpecialFolders: () => Promise<Array<{
+        name: string
+        path: string
+        icon: string
+      }>>
+      showInExplorer: (path: string) => Promise<void>
+      openFile: (path: string) => Promise<void>
+    }
+    // 文件管理器窗口操作
+    fileManager: {
+      open: (params: {
+        sessionId?: string
+        sftpConfig?: {
+          host: string
+          port: number
+          username: string
+          password?: string
+          privateKeyPath?: string
+          passphrase?: string
+        }
+        initialLocalPath?: string
+        initialRemotePath?: string
+      }) => Promise<void>
+      getInitParams: () => Promise<{
+        sessionId?: string
+        sftpConfig?: {
+          host: string
+          port: number
+          username: string
+          password?: string
+          privateKeyPath?: string
+          passphrase?: string
+        }
+        initialLocalPath?: string
+        initialRemotePath?: string
+      } | null>
+      onParamsUpdate: (callback: (params: {
+        sessionId?: string
+        sftpConfig?: {
+          host: string
+          port: number
+          username: string
+          password?: string
+          privateKeyPath?: string
+          passphrase?: string
+        }
+        initialLocalPath?: string
+        initialRemotePath?: string
       }) => void) => () => void
     }
     // 终端屏幕内容服务（主进程请求渲染进程数据）
