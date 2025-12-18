@@ -2614,6 +2614,7 @@ function updatePlan(
     } else {
       output += `\n\n✅ 计划执行完成！`
     }
+    output += `\n\n💡 提示：如需开始新任务，可使用 clear_plan 归档当前计划。`
   } else {
     // 提示下一步
     const nextPendingIndex = plan.steps.findIndex(s => s.status === 'pending')

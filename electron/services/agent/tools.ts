@@ -400,6 +400,9 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
 - 单个简单查询或 1-2 步操作
 - 用户说"直接做"/"快速帮我"
 
+**注意**：
+- 计划完成后如需开始新任务，使用 clear_plan 归档
+
 创建计划后，在执行每个步骤时使用 update_plan 更新状态。`,
         parameters: {
           type: 'object',
