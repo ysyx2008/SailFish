@@ -15,6 +15,7 @@ const props = defineProps<{
   formatTime: (timestamp: number) => string
   formatPermissions: (perms: { user: string; group: string; other: string }) => string
   paneType: 'local' | 'remote'
+  active: boolean
 }>()
 
 const emit = defineEmits<{
@@ -165,6 +166,9 @@ const clearSelection = () => {
 
 // 键盘事件处理
 const handleKeyDown = (e: KeyboardEvent) => {
+  // 只在当前面板激活时响应
+  if (!props.active) return
+  
   // ESC 取消选择
   if (e.key === 'Escape') {
     if (selectedPaths.value.size > 0) {

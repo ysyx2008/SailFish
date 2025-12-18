@@ -603,6 +603,7 @@ defineExpose({
           :format-time="formatTime"
           :format-permissions="formatPermissions"
           :pane-type="type"
+          :active="active"
           @navigate="navigateTo"
           @double-click="handleDoubleClick"
           @selection-change="handleSelectionChange"
