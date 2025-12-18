@@ -637,26 +637,41 @@ const openEditSession = async (session: SshSession) => {
 
 // 保存会话
 const saveSession = async () => {
-  if (!formData.value.name || !formData.value.host || !formData.value.username) {
+  // 验证必填字段，给出具体提示
+  if (!formData.value.name?.trim()) {
+    alert(t('session.validation.nameRequired'))
+    return
+  }
+  if (!formData.value.host?.trim()) {
+    alert(t('session.validation.hostRequired'))
+    return
+  }
+  if (!formData.value.username?.trim()) {
+    alert(t('session.validation.usernameRequired'))
     return
   }
 
-  if (editingSession.value) {
-    // 更新
-    await configStore.updateSshSession({
-      ...editingSession.value,
-      ...formData.value
-    } as SshSession)
-  } else {
-    // 新建
-    await configStore.addSshSession({
-      id: uuidv4(),
-      ...formData.value
-    } as SshSession)
-  }
+  try {
+    if (editingSession.value) {
+      // 更新
+      await configStore.updateSshSession({
+        ...editingSession.value,
+        ...formData.value
+      } as SshSession)
+    } else {
+      // 新建
+      await configStore.addSshSession({
+        id: uuidv4(),
+        ...formData.value
+      } as SshSession)
+    }
 
-  showNewSession.value = false
-  resetForm()
+    showNewSession.value = false
+    resetForm()
+  } catch (error) {
+    console.error('保存会话失败:', error)
+    alert(t('session.validation.saveFailed'))
+  }
 }
 
 // 删除会话

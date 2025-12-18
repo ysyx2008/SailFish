@@ -795,6 +795,12 @@ export default {
         'koi8-r': 'KOI8-R (Russian)',
         'windows-1251': 'Windows-1251 (Russian)'
       }
+    },
+    validation: {
+      nameRequired: 'Please enter session name',
+      hostRequired: 'Please enter host address',
+      usernameRequired: 'Please enter username',
+      saveFailed: 'Save failed, please try again'
     }
   },
 

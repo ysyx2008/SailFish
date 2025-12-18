@@ -795,6 +795,12 @@ export default {
         'koi8-r': 'KOI8-R（俄语）',
         'windows-1251': 'Windows-1251（俄语）'
       }
+    },
+    validation: {
+      nameRequired: '请输入会话名称',
+      hostRequired: '请输入主机地址',
+      usernameRequired: '请输入用户名',
+      saveFailed: '保存失败，请重试'
     }
   },
 
