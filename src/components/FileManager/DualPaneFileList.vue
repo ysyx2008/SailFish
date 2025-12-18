@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { LocalFileInfo } from '../../composables/useLocalFs'
 import type { SftpFileInfo } from '../../composables/useSftp'
@@ -159,8 +159,48 @@ const selectAll = () => {
 // 取消全选
 const clearSelection = () => {
   selectedPaths.value.clear()
+  lastClickedPath.value = null
   emit('selectionChange', [])
 }
+
+// 键盘事件处理
+const handleKeyDown = (e: KeyboardEvent) => {
+  // ESC 取消选择
+  if (e.key === 'Escape') {
+    if (selectedPaths.value.size > 0) {
+      e.preventDefault()
+      clearSelection()
+    }
+  }
+  // Ctrl/Cmd + A 全选
+  if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+    e.preventDefault()
+    selectAll()
+  }
+}
+
+// 点击空白区域取消选择
+const handleListClick = (e: MouseEvent) => {
+  const target = e.target as HTMLElement
+  // 检查是否点击在文件项上（包括子元素）
+  const fileItem = target.closest('.file-item')
+  const header = target.closest('.file-list-header')
+  
+  // 如果不是点击在文件项或表头上，取消选择
+  if (!fileItem && !header) {
+    clearSelection()
+  }
+}
+
+// 生命周期
+onMounted(() => {
+  // 监听键盘事件
+  window.addEventListener('keydown', handleKeyDown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown)
+})
 
 // 拖拽开始
 const handleDragStart = (event: DragEvent, file: FileInfo) => {
@@ -288,9 +328,11 @@ defineExpose({
   <div
     class="file-list"
     :class="{ 'drag-over': isDragOver, dragging: isDragging }"
+    tabindex="0"
     @dragover="handleDragOver"
     @dragleave="handleDragLeave"
     @drop="handleDrop"
+    @click="handleListClick"
   >
     <!-- 表头 -->
     <div class="file-list-header">
