@@ -79,8 +79,8 @@ const canGoUp = computed(() => {
   return currentPath.value !== '/'
 })
 
-// 树视图展开状态
-const showTree = ref(true)
+// 树视图展开状态（远程面板默认不显示）
+const showTree = ref(props.type === 'local')
 
 // 选中的文件
 const selectedFiles = ref<FileInfo[]>([])
