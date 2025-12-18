@@ -338,17 +338,20 @@ onMounted(async () => {
   // 注册屏幕分析请求监听器
   // 当主进程（Agent）需要实时获取终端状态分析时调用
   unsubscribeAnalysisRequest = window.electronAPI.screen.onRequestScreenAnalysis((data) => {
+    console.log(`[Terminal] 收到屏幕分析请求: requestPtyId=${data.ptyId}, myPtyId=${props.ptyId}, match=${data.ptyId === props.ptyId}`)
     if (data.ptyId === props.ptyId && screenService && !isDisposed) {
       try {
         // 获取完整的终端感知状态（包含输入等待检测、输出模式识别、环境分析）
         const awarenessState = screenService.getAwarenessState()
         // 同时获取可视区域内容
         const visibleContent = screenService.getVisibleContent()
+        console.log(`[Terminal] 屏幕分析响应: visibleLines=${visibleContent.length}, context=`, awarenessState.context)
         window.electronAPI.screen.responseScreenAnalysis(data.requestId, {
           ...awarenessState,
           visibleContent
         })
       } catch (e) {
+        console.error(`[Terminal] 屏幕分析异常:`, e)
         window.electronAPI.screen.responseScreenAnalysis(data.requestId, null)
       }
     }
@@ -519,7 +522,12 @@ const menuOpenFileManager = async () => {
   
   try {
     // 获取当前工作目录
-    const cwd = await window.electronAPI.terminalState.getCwd(props.ptyId)
+    // 对于 SSH 终端，需要调用 refreshCwd 来通过 exec channel 获取真实 CWD
+    const cwd = props.type === 'ssh' 
+      ? await window.electronAPI.terminalState.refreshCwd(props.ptyId)
+      : await window.electronAPI.terminalState.getCwd(props.ptyId)
+    
+    console.log(`[Terminal] menuOpenFileManager: type=${props.type}, ptyId=${props.ptyId}, cwd=${cwd}`)
     
     if (props.type === 'local') {
       // 本地终端：只传入本地路径

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useLocalFs, type LocalFileInfo } from '../../composables/useLocalFs'
 import { useSftp, type SftpFileInfo, type SftpConnectionConfig } from '../../composables/useSftp'
@@ -169,12 +169,23 @@ watch(() => props.sftpConfig, async (newConfig) => {
 
 // 监听初始路径变化（当文件管理器窗口已打开时，通过终端再次打开会更新路径）
 watch(() => props.initialPath, async (newPath) => {
+  console.log(`[FilePane] initialPath 变化: ${newPath}, isConnected=${isConnected.value}`)
   if (newPath && isConnected.value) {
     if (props.type === 'local') {
       await localFs?.navigateTo(newPath)
     } else {
       await sftp?.navigateTo(newPath)
     }
+  }
+})
+
+// 监听连接状态变化，连接成功后如果有初始路径则导航
+watch(() => isConnected.value, async (connected) => {
+  console.log(`[FilePane] isConnected 变化: ${connected}, initialPath=${props.initialPath}`)
+  if (connected && props.initialPath && props.type === 'remote') {
+    // 延迟一下确保 connect 内部的 navigateTo 先完成
+    await nextTick()
+    await sftp?.navigateTo(props.initialPath)
   }
 })
 

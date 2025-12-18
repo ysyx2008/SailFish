@@ -140,27 +140,44 @@ export class SftpService extends EventEmitter {
     const sftp = this.sessions.get(sessionId)
     if (!sftp) throw new Error('SFTP 会话不存在')
 
-    // 解析 ~ 路径
+    // 修复错误的路径格式（如 /~ 或 /~/xxx 应该是 ~ 或 ~/xxx）
+    if (remotePath === '/~' || remotePath.startsWith('/~/')) {
+      remotePath = remotePath.slice(1) // 移除开头的 /
+      console.log(`[SFTP] 修复路径格式: ${remotePath.slice(0, 1) === '~' ? '/~ -> ~' : '/~/ -> ~/'}`)
+    }
+
+    // 解析 ~ 路径 - SFTP 协议不支持 ~，必须展开为绝对路径
     let resolvedPath = remotePath
     if (remotePath === '~' || remotePath.startsWith('~/')) {
+      console.log(`[SFTP] 开始解析 ~ 路径: ${remotePath}`)
       try {
-        const homePath = await sftp.realPath('~')
+        // sftp.cwd() 返回 SFTP 会话的当前工作目录（通常是 home 目录）
+        const homePath = await sftp.cwd()
+        console.log(`[SFTP] sftp.cwd() 返回: ${homePath}`)
+        
         if (remotePath === '~') {
           resolvedPath = homePath
         } else {
-          resolvedPath = homePath + remotePath.slice(1) // 替换 ~ 为实际路径
+          // ~/xxx -> /home/user/xxx
+          resolvedPath = homePath + remotePath.slice(1)
         }
-      } catch {
-        // 如果 realPath 失败，尝试用 cwd 获取
+        console.log(`[SFTP] ~ 路径解析: ${remotePath} -> ${resolvedPath}`)
+      } catch (e) {
+        console.error(`[SFTP] sftp.cwd() 失败:`, e)
+        // 回退：尝试使用 realpath
         try {
-          const cwdPath = await sftp.cwd()
+          const realHome = await sftp.realPath('~')
+          console.log(`[SFTP] sftp.realPath('~') 返回: ${realHome}`)
           if (remotePath === '~') {
-            resolvedPath = cwdPath
+            resolvedPath = realHome
           } else {
-            resolvedPath = cwdPath + remotePath.slice(1)
+            resolvedPath = realHome + remotePath.slice(1)
           }
-        } catch {
-          // 保持原路径
+        } catch (e2) {
+          console.error(`[SFTP] sftp.realPath('~') 也失败:`, e2)
+          // 最后的回退：直接用 . 作为 home
+          resolvedPath = remotePath === '~' ? '.' : '.' + remotePath.slice(1)
+          console.log(`[SFTP] 使用回退路径: ${resolvedPath}`)
         }
       }
     }

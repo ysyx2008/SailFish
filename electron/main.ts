@@ -750,9 +750,10 @@ ipcMain.handle('terminalState:getCwd', async (_event, id: string): Promise<strin
   return terminalStateService.getCwd(id)
 })
 
-// 刷新 CWD（执行 pwd 命令验证）
+// 刷新 CWD（强制刷新，用于打开文件管理器等场景）
 ipcMain.handle('terminalState:refreshCwd', async (_event, id: string): Promise<string> => {
-  return terminalStateService.refreshCwd(id, 'pwd_check')
+  // 使用 'command' trigger 绕过时间间隔检查，强制获取最新 CWD
+  return terminalStateService.refreshCwd(id, 'command')
 })
 
 // 手动更新 CWD
@@ -2018,13 +2019,16 @@ ipcMain.handle('sftp:hasSession', async (_event, sessionId: string) => {
 
 // 列出目录内容
 ipcMain.handle('sftp:list', async (_event, sessionId: string, remotePath: string) => {
+  console.log(`[SFTP] list 请求: sessionId=${sessionId}, remotePath=${remotePath}`)
   try {
     const { files, resolvedPath } = await sftpService.list(sessionId, remotePath)
+    console.log(`[SFTP] list 结果: resolvedPath=${resolvedPath}, 文件数=${files.length}`)
     return { success: true, data: files, resolvedPath }
   } catch (error) {
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : '列出目录失败' 
+    console.error(`[SFTP] list 失败:`, error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '列出目录失败'
     }
   }
 })

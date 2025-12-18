@@ -759,6 +759,28 @@ export class SshService {
   }
 
   /**
+   * 获取远程终端的当前工作目录
+   * 通过独立的 exec channel 执行 pwd 命令，不会在终端界面显示
+   */
+  async getRemoteCwd(id: string): Promise<string | null> {
+    console.log(`[SshService] getRemoteCwd: 开始获取 SSH ${id} 的 CWD`)
+    try {
+      const output = await this.execCommand(id, 'pwd', 3000)
+      const cwd = output.trim()
+      console.log(`[SshService] getRemoteCwd: SSH ${id} pwd 输出: "${cwd}"`)
+      // 验证输出是否为有效路径
+      if (cwd && cwd.startsWith('/')) {
+        return cwd
+      }
+      console.log(`[SshService] getRemoteCwd: SSH ${id} 输出不是有效路径`)
+      return null
+    } catch (err) {
+      console.error(`[SshService] getRemoteCwd: SSH ${id} 执行 pwd 失败:`, err)
+      return null
+    }
+  }
+
+  /**
    * 获取远程 shell 的子进程信息
    * 用于更精确地判断是否有命令正在执行
    */
