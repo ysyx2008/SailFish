@@ -85,6 +85,18 @@ export type AgentMbtiType =
 // 语言类型
 export type LocaleType = 'zh-CN' | 'en-US'
 
+// 文件管理器书签
+export interface FileBookmark {
+  id: string
+  name: string
+  path: string
+  type: 'local' | 'remote'
+  // 远程书签需要关联主机信息
+  hostId?: string      // SSH 会话 ID
+  hostName?: string    // 主机名称（显示用）
+  createdAt: number
+}
+
 // UI 主题类型
 export type UiThemeType = 'dark' | 'light' | 'blue' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-forest'
 
@@ -108,6 +120,7 @@ interface StoreSchema {
   sponsorStatus: boolean
   sessionSortBy: SessionSortBy
   defaultGroupSortOrder: number
+  fileBookmarks: FileBookmark[]
 }
 
 const defaultConfig: StoreSchema = {
@@ -135,7 +148,8 @@ const defaultConfig: StoreSchema = {
   language: 'zh-CN',
   sponsorStatus: false,
   sessionSortBy: 'custom',
-  defaultGroupSortOrder: -1
+  defaultGroupSortOrder: -1,
+  fileBookmarks: []
 }
 
 export class ConfigService {
@@ -564,6 +578,70 @@ export class ConfigService {
    */
   setDefaultGroupSortOrder(order: number): void {
     this.store.set('defaultGroupSortOrder', order)
+  }
+
+  // ==================== 文件书签配置 ====================
+
+  /**
+   * 获取所有文件书签
+   */
+  getFileBookmarks(): FileBookmark[] {
+    return this.store.get('fileBookmarks') || []
+  }
+
+  /**
+   * 设置文件书签
+   */
+  setFileBookmarks(bookmarks: FileBookmark[]): void {
+    this.store.set('fileBookmarks', bookmarks)
+  }
+
+  /**
+   * 添加文件书签
+   */
+  addFileBookmark(bookmark: FileBookmark): void {
+    const bookmarks = this.getFileBookmarks()
+    bookmarks.push(bookmark)
+    this.setFileBookmarks(bookmarks)
+  }
+
+  /**
+   * 更新文件书签
+   */
+  updateFileBookmark(bookmark: FileBookmark): void {
+    const bookmarks = this.getFileBookmarks()
+    const index = bookmarks.findIndex(b => b.id === bookmark.id)
+    if (index !== -1) {
+      bookmarks[index] = bookmark
+      this.setFileBookmarks(bookmarks)
+    }
+  }
+
+  /**
+   * 删除文件书签
+   */
+  deleteFileBookmark(id: string): void {
+    const bookmarks = this.getFileBookmarks()
+    const filtered = bookmarks.filter(b => b.id !== id)
+    this.setFileBookmarks(filtered)
+  }
+
+  /**
+   * 获取本地书签
+   */
+  getLocalBookmarks(): FileBookmark[] {
+    return this.getFileBookmarks().filter(b => b.type === 'local')
+  }
+
+  /**
+   * 获取指定主机的远程书签
+   */
+  getRemoteBookmarks(hostId?: string): FileBookmark[] {
+    const remoteBookmarks = this.getFileBookmarks().filter(b => b.type === 'remote')
+    if (hostId) {
+      return remoteBookmarks.filter(b => b.hostId === hostId)
+    }
+    return remoteBookmarks
   }
 }
 

@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useLocalFs, type LocalFileInfo } from '../../composables/useLocalFs'
 import { useSftp, type SftpFileInfo, type SftpConnectionConfig } from '../../composables/useSftp'
+import { useBookmarks, type FileBookmark } from '../../composables/useBookmarks'
 import DirectoryTree from './DirectoryTree.vue'
 import DualPaneFileList from './DualPaneFileList.vue'
 import PathBreadcrumb from '../FileExplorer/PathBreadcrumb.vue'
@@ -109,6 +110,24 @@ const previewFile = ref<FileInfo | null>(null)
 const previewContent = ref('')
 const previewLoading = ref(false)
 
+// 书签相关
+const {
+  bookmarks,
+  localBookmarks,
+  remoteBookmarks,
+  loadBookmarks,
+  addBookmark,
+  deleteBookmark,
+  isBookmarked,
+  getBookmarkByPath,
+  getRemoteBookmarksByHost
+} = useBookmarks()
+
+const showBookmarkDropdown = ref(false)
+const showAddBookmarkDialog = ref(false)
+const bookmarkName = ref('')
+const bookmarkInputRef = ref<HTMLInputElement | null>(null)
+
 // 键盘事件处理
 const handleKeyDown = (e: KeyboardEvent) => {
   // 只在面板激活时响应键盘事件
@@ -146,6 +165,9 @@ const handleKeyDown = (e: KeyboardEvent) => {
 onMounted(async () => {
   // 添加键盘事件监听
   window.addEventListener('keydown', handleKeyDown)
+  
+  // 加载书签
+  await loadBookmarks()
   
   if (props.type === 'local') {
     await localFs?.initialize()
@@ -461,6 +483,98 @@ const handleDrop = (files: FileInfo[], targetPath: string) => {
   emit('dropFiles', files, targetPath)
 }
 
+// 书签相关方法
+const currentBookmarks = computed(() => {
+  if (props.type === 'local') {
+    return localBookmarks.value
+  }
+  // 远程书签：显示当前连接主机的书签
+  const hostId = props.sftpConfig?.host ? `${props.sftpConfig.host}:${props.sftpConfig.port}` : undefined
+  if (hostId) {
+    return getRemoteBookmarksByHost(hostId)
+  }
+  return remoteBookmarks.value
+})
+
+const isCurrentPathBookmarked = computed(() => {
+  if (!currentPath.value) return false
+  const hostId = props.type === 'remote' && props.sftpConfig 
+    ? `${props.sftpConfig.host}:${props.sftpConfig.port}` 
+    : undefined
+  return isBookmarked(currentPath.value, props.type, hostId)
+})
+
+const toggleBookmarkDropdown = () => {
+  showBookmarkDropdown.value = !showBookmarkDropdown.value
+}
+
+const closeBookmarkDropdown = () => {
+  showBookmarkDropdown.value = false
+}
+
+const openAddBookmarkDialog = () => {
+  // 从路径中提取默认名称
+  const pathParts = currentPath.value.split('/').filter(Boolean)
+  bookmarkName.value = pathParts[pathParts.length - 1] || currentPath.value
+  showAddBookmarkDialog.value = true
+  closeBookmarkDropdown()
+  setTimeout(() => {
+    bookmarkInputRef.value?.focus()
+    bookmarkInputRef.value?.select()
+  }, 50)
+}
+
+const confirmAddBookmark = async () => {
+  if (!bookmarkName.value.trim() || !currentPath.value) return
+  
+  const hostId = props.type === 'remote' && props.sftpConfig 
+    ? `${props.sftpConfig.host}:${props.sftpConfig.port}` 
+    : undefined
+  const hostName = props.type === 'remote' && props.sftpConfig
+    ? `${props.sftpConfig.username}@${props.sftpConfig.host}`
+    : undefined
+  
+  const success = await addBookmark({
+    name: bookmarkName.value.trim(),
+    path: currentPath.value,
+    type: props.type,
+    hostId,
+    hostName
+  })
+  
+  if (success) {
+    toast.success(t('fileManager.bookmarkAdded'))
+    showAddBookmarkDialog.value = false
+  } else {
+    toast.error(t('fileManager.bookmarkAddFailed'))
+  }
+}
+
+const handleDeleteBookmark = async (bookmark: FileBookmark) => {
+  const success = await deleteBookmark(bookmark.id)
+  if (success) {
+    toast.success(t('fileManager.bookmarkDeleted'))
+  } else {
+    toast.error(t('fileManager.bookmarkDeleteFailed'))
+  }
+}
+
+const handleRemoveCurrentBookmark = async () => {
+  const hostId = props.type === 'remote' && props.sftpConfig 
+    ? `${props.sftpConfig.host}:${props.sftpConfig.port}` 
+    : undefined
+  const bookmark = getBookmarkByPath(currentPath.value, props.type, hostId)
+  if (bookmark) {
+    await handleDeleteBookmark(bookmark)
+  }
+  closeBookmarkDropdown()
+}
+
+const navigateToBookmark = (bookmark: FileBookmark) => {
+  navigateTo(bookmark.path)
+  closeBookmarkDropdown()
+}
+
 // 暴露方法给父组件
 const triggerRename = () => {
   if (selectedFiles.value.length === 1) {
@@ -564,6 +678,68 @@ defineExpose({
           <span>{{ type === 'local' ? t('fileManager.local') : t('fileManager.remote') }}</span>
         </div>
         <div class="toolbar-actions">
+          <!-- 书签按钮 -->
+          <div class="bookmark-dropdown-container">
+            <button 
+              class="btn-icon" 
+              :class="{ 'bookmarked': isCurrentPathBookmarked }"
+              @click="toggleBookmarkDropdown" 
+              :title="t('fileManager.bookmarks')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" :fill="isCurrentPathBookmarked ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+              </svg>
+            </button>
+            <!-- 书签下拉菜单 -->
+            <div v-if="showBookmarkDropdown" class="bookmark-dropdown" @click.stop>
+              <div class="bookmark-dropdown-header">
+                <span>{{ t('fileManager.bookmarks') }}</span>
+                <button 
+                  v-if="isCurrentPathBookmarked"
+                  class="btn-text danger"
+                  @click="handleRemoveCurrentBookmark"
+                >
+                  {{ t('fileManager.removeBookmark') }}
+                </button>
+                <button 
+                  v-else
+                  class="btn-text primary"
+                  @click="openAddBookmarkDialog"
+                >
+                  {{ t('fileManager.addBookmark') }}
+                </button>
+              </div>
+              <div class="bookmark-dropdown-divider"></div>
+              <div class="bookmark-list" v-if="currentBookmarks.length > 0">
+                <div 
+                  v-for="bookmark in currentBookmarks" 
+                  :key="bookmark.id"
+                  class="bookmark-item"
+                  @click="navigateToBookmark(bookmark)"
+                >
+                  <div class="bookmark-info">
+                    <span class="bookmark-name">{{ bookmark.name }}</span>
+                    <span class="bookmark-path">{{ bookmark.path }}</span>
+                  </div>
+                  <button 
+                    class="btn-icon-small" 
+                    @click.stop="handleDeleteBookmark(bookmark)"
+                    :title="t('common.delete')"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div v-else class="bookmark-empty">
+                {{ t('fileManager.noBookmarks') }}
+              </div>
+            </div>
+            <!-- 点击其他区域关闭下拉菜单 -->
+            <div v-if="showBookmarkDropdown" class="bookmark-dropdown-overlay" @click="closeBookmarkDropdown"></div>
+          </div>
           <button class="btn-icon" @click="showTree = !showTree" :title="t('fileManager.toggleTree')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -715,6 +891,40 @@ defineExpose({
               <span>{{ t('fileManager.loading') }}</span>
             </div>
             <pre v-else class="preview-content">{{ previewContent }}</pre>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 添加书签弹窗 -->
+    <Teleport to="body">
+      <div v-if="showAddBookmarkDialog" class="dialog-overlay" @click.self="showAddBookmarkDialog = false">
+        <div class="dialog">
+          <div class="dialog-header">
+            <h3>{{ t('fileManager.addBookmarkTitle') }}</h3>
+          </div>
+          <div class="dialog-body">
+            <div class="form-group">
+              <label>{{ t('fileManager.bookmarkPath') }}</label>
+              <div class="bookmark-path-display">{{ currentPath }}</div>
+            </div>
+            <div class="form-group">
+              <label>{{ t('fileManager.bookmarkName') }}</label>
+              <input
+                ref="bookmarkInputRef"
+                v-model="bookmarkName"
+                type="text"
+                class="input"
+                :placeholder="t('fileManager.bookmarkNamePlaceholder')"
+                @keyup.enter="confirmAddBookmark"
+              />
+            </div>
+          </div>
+          <div class="dialog-footer">
+            <button class="btn" @click="showAddBookmarkDialog = false">{{ t('fileManager.cancel') }}</button>
+            <button class="btn btn-primary" @click="confirmAddBookmark" :disabled="!bookmarkName.trim()">
+              {{ t('fileManager.addBookmark') }}
+            </button>
           </div>
         </div>
       </div>
@@ -982,6 +1192,178 @@ defineExpose({
   background: var(--bg-primary);
   user-select: text;
   cursor: text;
+}
+
+/* 书签相关样式 */
+.bookmark-dropdown-container {
+  position: relative;
+}
+
+.btn-icon.bookmarked {
+  color: var(--accent-warning);
+}
+
+.bookmark-dropdown-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+}
+
+.bookmark-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  min-width: 280px;
+  max-width: 360px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.bookmark-dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.bookmark-dropdown-divider {
+  height: 1px;
+  background: var(--border-color);
+}
+
+.btn-text {
+  padding: 4px 8px;
+  font-size: 12px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-text.primary {
+  color: var(--accent-primary);
+}
+
+.btn-text.primary:hover {
+  background: rgba(var(--accent-primary-rgb), 0.1);
+}
+
+.btn-text.danger {
+  color: var(--accent-error);
+}
+
+.btn-text.danger:hover {
+  background: rgba(244, 63, 94, 0.1);
+}
+
+.bookmark-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.bookmark-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.bookmark-item:hover {
+  background: var(--bg-hover);
+}
+
+.bookmark-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bookmark-name {
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bookmark-path {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-icon-small {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.15s;
+}
+
+.bookmark-item:hover .btn-icon-small {
+  opacity: 1;
+}
+
+.btn-icon-small:hover {
+  background: var(--bg-hover);
+  color: var(--accent-error);
+}
+
+.bookmark-empty {
+  padding: 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* 表单组 */
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group:last-child {
+  margin-bottom: 0;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.bookmark-path-display {
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Monaco', monospace;
+  color: var(--text-muted);
+  background: var(--bg-primary);
+  border-radius: 6px;
+  word-break: break-all;
 }
 </style>
 

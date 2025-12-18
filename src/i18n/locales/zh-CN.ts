@@ -922,7 +922,20 @@ export default {
     dropToUpload: '上传',
     dropToCopy: '释放以复制文件',
     dropToTransfer: '释放以传输文件',
-    selectedItems: '已选择 {count} 个项目'
+    selectedItems: '已选择 {count} 个项目',
+    // 书签
+    bookmarks: '书签',
+    addBookmark: '添加书签',
+    removeBookmark: '移除书签',
+    addBookmarkTitle: '添加书签',
+    bookmarkName: '书签名称',
+    bookmarkPath: '路径',
+    bookmarkNamePlaceholder: '输入书签名称',
+    noBookmarks: '暂无书签',
+    bookmarkAdded: '书签已添加',
+    bookmarkAddFailed: '添加书签失败',
+    bookmarkDeleted: '书签已删除',
+    bookmarkDeleteFailed: '删除书签失败'
   },
 
   // 首次设置向导

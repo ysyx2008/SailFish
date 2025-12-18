@@ -1197,6 +1197,35 @@ ipcMain.handle('config:setDefaultGroupSortOrder', async (_event, order: number) 
   configService.setDefaultGroupSortOrder(order)
 })
 
+// 文件书签相关
+ipcMain.handle('config:getFileBookmarks', async () => {
+  return configService.getFileBookmarks()
+})
+
+ipcMain.handle('config:setFileBookmarks', async (_event, bookmarks) => {
+  configService.setFileBookmarks(bookmarks)
+})
+
+ipcMain.handle('config:addFileBookmark', async (_event, bookmark) => {
+  configService.addFileBookmark(bookmark)
+})
+
+ipcMain.handle('config:updateFileBookmark', async (_event, bookmark) => {
+  configService.updateFileBookmark(bookmark)
+})
+
+ipcMain.handle('config:deleteFileBookmark', async (_event, id: string) => {
+  configService.deleteFileBookmark(id)
+})
+
+ipcMain.handle('config:getLocalBookmarks', async () => {
+  return configService.getLocalBookmarks()
+})
+
+ipcMain.handle('config:getRemoteBookmarks', async (_event, hostId?: string) => {
+  return configService.getRemoteBookmarks(hostId)
+})
+
 // Xshell 导入相关
 ipcMain.handle('xshell:selectFiles', async () => {
   const result = await dialog.showOpenDialog({

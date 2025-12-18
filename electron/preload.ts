@@ -98,6 +98,17 @@ export interface SftpConfig {
   passphrase?: string
 }
 
+// 文件书签类型
+export interface FileBookmark {
+  id: string
+  name: string
+  path: string
+  type: 'local' | 'remote'
+  hostId?: string      // SSH 会话 ID（远程书签）
+  hostName?: string    // 主机名称（显示用）
+  createdAt: number
+}
+
 export interface SftpFileInfo {
   name: string
   path: string
@@ -723,7 +734,16 @@ const electronAPI = {
     getSessionSortBy: () => ipcRenderer.invoke('config:getSessionSortBy') as Promise<string>,
     setSessionSortBy: (sortBy: string) => ipcRenderer.invoke('config:setSessionSortBy', sortBy),
     getDefaultGroupSortOrder: () => ipcRenderer.invoke('config:getDefaultGroupSortOrder') as Promise<number>,
-    setDefaultGroupSortOrder: (order: number) => ipcRenderer.invoke('config:setDefaultGroupSortOrder', order)
+    setDefaultGroupSortOrder: (order: number) => ipcRenderer.invoke('config:setDefaultGroupSortOrder', order),
+
+    // 文件书签
+    getFileBookmarks: () => ipcRenderer.invoke('config:getFileBookmarks') as Promise<FileBookmark[]>,
+    setFileBookmarks: (bookmarks: FileBookmark[]) => ipcRenderer.invoke('config:setFileBookmarks', bookmarks),
+    addFileBookmark: (bookmark: FileBookmark) => ipcRenderer.invoke('config:addFileBookmark', bookmark),
+    updateFileBookmark: (bookmark: FileBookmark) => ipcRenderer.invoke('config:updateFileBookmark', bookmark),
+    deleteFileBookmark: (id: string) => ipcRenderer.invoke('config:deleteFileBookmark', id),
+    getLocalBookmarks: () => ipcRenderer.invoke('config:getLocalBookmarks') as Promise<FileBookmark[]>,
+    getRemoteBookmarks: (hostId?: string) => ipcRenderer.invoke('config:getRemoteBookmarks', hostId) as Promise<FileBookmark[]>
   },
 
   // Xshell 导入操作

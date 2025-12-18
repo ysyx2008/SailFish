@@ -922,7 +922,20 @@ export default {
     dropToUpload: 'to upload',
     dropToCopy: 'Release to copy files',
     dropToTransfer: 'Release to transfer files',
-    selectedItems: '{count} item(s) selected'
+    selectedItems: '{count} item(s) selected',
+    // Bookmarks
+    bookmarks: 'Bookmarks',
+    addBookmark: 'Add Bookmark',
+    removeBookmark: 'Remove Bookmark',
+    addBookmarkTitle: 'Add Bookmark',
+    bookmarkName: 'Bookmark Name',
+    bookmarkPath: 'Path',
+    bookmarkNamePlaceholder: 'Enter bookmark name',
+    noBookmarks: 'No bookmarks',
+    bookmarkAdded: 'Bookmark added',
+    bookmarkAddFailed: 'Failed to add bookmark',
+    bookmarkDeleted: 'Bookmark deleted',
+    bookmarkDeleteFailed: 'Failed to delete bookmark'
   },
 
   // Setup Wizard
