@@ -1340,7 +1340,7 @@ ${fullContext}
       console.log('[Agent] Knowledge service error:', e)
     }
     
-    const systemPrompt = buildSystemPrompt(context, this.hostProfileService, mbtiType, knowledgeContext, knowledgeEnabled, hostMemories)
+    const systemPrompt = buildSystemPrompt(context, this.hostProfileService, mbtiType, knowledgeContext, knowledgeEnabled, hostMemories, fullConfig.executionMode)
     run.messages.push({ role: 'system', content: systemPrompt })
 
     // 智能添加历史对话（根据上下文长度动态计算可保留的轮数）

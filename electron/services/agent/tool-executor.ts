@@ -2297,18 +2297,19 @@ async function askUser(
     options = options.slice(0, 10)
   }
 
+  // 读取超时参数，限制在 30-600 秒范围内，默认 120 秒
+  const timeout = args.timeout as number | undefined
+  const maxWaitSeconds = Math.min(600, Math.max(30, timeout ?? 120))
+
   // 添加提问步骤（content 只保存问题，状态信息通过 toolResult 显示）
   const step = executor.addStep({
     type: 'asking',
     content: question,
     toolName: 'ask_user',
-    toolArgs: { question, options, allow_multiple: allowMultiple, default_value: defaultValue },
+    toolArgs: { question, options, allow_multiple: allowMultiple, default_value: defaultValue, timeout },
     toolResult: t('ask.waiting_reply'),
     riskLevel: 'safe'
   })
-
-  // 等待用户回复（最长 5 分钟）
-  const maxWaitSeconds = 300  // 5 分钟
   const pollInterval = 2  // 每 2 秒检查一次
   let elapsedSeconds = 0
   let userResponse: string | undefined

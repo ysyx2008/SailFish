@@ -338,18 +338,22 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
         name: 'ask_user',
         description: `向用户提问并等待回复。当你需要更多信息才能继续执行任务时使用此工具。
 
+**核心原则：只在制定计划时提问**
+- 开始执行前，先问清楚所有疑问
+- 计划确定后顺畅执行，不再打断用户
+- 执行中遇到意外，优先用合理默认值，实在无法继续才提问
+
 使用场景：
 - 需要用户提供特定信息（如配置参数、路径、选项等）
 - 任务有多种执行方式，需要用户选择
 - 执行前需要用户确认关键决策
 - 遇到歧义或不确定性，需要澄清用户意图
-- 需要用户输入敏感信息（如密码、密钥），但不要在问题中提示用户输入密码
 
 注意：
 - 问题要清晰、具体，让用户知道如何回答
 - 如果有可选项，可以列出供用户选择（最多 10 个选项）
 - 调用此工具后会暂停执行，直到用户回复
-- 等待时间最长 5 分钟，超时后会提示用户未回复`,
+- 可以通过 timeout 参数设置等待时长（默认 120 秒）`,
         parameters: {
           type: 'object',
           properties: {
@@ -369,6 +373,10 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
             default_value: {
               type: 'string',
               description: '默认值（如果用户直接按回车或不回复时使用）'
+            },
+            timeout: {
+              type: 'number',
+              description: '等待用户回复的超时时间（秒）。默认 120 秒，最短 30 秒，最长 600 秒。简单选择题可设短些（如 60 秒），需要用户查资料的问题可设长些（如 300 秒）。'
             }
           },
           required: ['question']

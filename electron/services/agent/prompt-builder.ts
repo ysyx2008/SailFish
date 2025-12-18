@@ -1,7 +1,7 @@
 /**
  * Agent 系统提示构建器
  */
-import type { AgentContext, HostProfileServiceInterface } from './types'
+import type { AgentContext, HostProfileServiceInterface, ExecutionMode } from './types'
 import type { AgentMbtiType } from '../config.service'
 import type { KnowledgeService } from '../knowledge'
 
@@ -209,6 +209,48 @@ function buildPlanningGuidance(): string {
 }
 
 /**
+ * 构建主动提问指导（根据执行模式）
+ */
+function buildAskUserGuidance(executionMode?: ExecutionMode): string {
+  const baseGuidance = `## 主动提问能力（ask_user）
+
+当你需要更多信息时，可以使用 \`ask_user\` 工具向用户提问。
+
+**核心原则：只在制定计划时提问**
+- 开始执行前，先问清楚所有疑问
+- 计划确定后顺畅执行，不再打断用户
+- 执行中遇到意外，优先用合理默认值，实在无法继续才提问
+
+**参数说明**：
+- \`question\`：问题内容（必填）
+- \`options\`：选项列表（可选，最多 10 个）
+- \`timeout\`：等待秒数（默认 120，范围 30-600）。简单选择 60s，需要查资料 300s+
+- \`default_value\`：超时时的默认值（可选）
+
+`
+
+  if (executionMode === 'strict') {
+    return baseGuidance + `**当前策略：主动提问**（严格模式）
+- 任务理解有歧义时，主动确认
+- 有多种方案可选时，询问用户偏好
+- 宁可多问，不要假设
+`
+  } else if (executionMode === 'relaxed') {
+    return baseGuidance + `**当前策略：适度提问**（宽松模式）
+- 只在任务描述严重不清晰时才提问
+- 有明显最佳方案时直接执行
+`
+  } else {
+    // free 模式或未指定
+    return baseGuidance + `**当前策略：保守提问**（自由模式）
+- 尽量不打断用户
+- 只在真正无法继续时才提问
+- 优先尝试合理的默认选择
+`
+  }
+}
+
+/**
  * 构建复杂任务示例
  */
 function buildComplexTaskExamples(isWindows: boolean): string {
@@ -302,7 +344,8 @@ export function buildSystemPrompt(
   mbtiType?: AgentMbtiType,
   knowledgeContext?: string,
   knowledgeEnabled?: boolean,
-  hostMemories?: string[]
+  hostMemories?: string[],
+  executionMode?: ExecutionMode
 ): string {
   // MBTI 风格提示
   const mbtiStyle = getMbtiStylePrompt(mbtiType ?? null)
@@ -453,6 +496,7 @@ ${buildPlanningGuidance()}
 | read_file | 读取**本地**文件内容 |${isSshTerminal ? ' ❌ 不可用 |' : ''}
 | write_file | 写入**本地**文件 |${isSshTerminal ? ' ❌ 不可用 |' : ''}
 | remember_info | 记住重要的静态信息 |${isSshTerminal ? ' ✅ |' : ''}
+| ask_user | 向用户提问并等待回复 |${isSshTerminal ? ' ✅ |' : ''}
 | create_plan | 创建任务执行计划（多步骤任务时使用） |${isSshTerminal ? ' ✅ |' : ''}
 | update_plan | 更新计划步骤状态 |${isSshTerminal ? ' ✅ |' : ''}${isSshTerminal ? `
 
@@ -465,6 +509,8 @@ ${buildPlanningGuidance()}
 - 读取远程文件：使用 \`execute_command\` 执行 \`cat\`、\`head\`、\`tail\`、\`sed -n 'Np'\` 等命令
 - 写入远程文件：使用 \`execute_command\` 执行 \`echo "内容" > 文件\`、\`cat << 'EOF' > 文件\` 等命令
 - 编辑远程文件：使用 \`execute_command\` 执行 \`sed -i\` 等命令` : ''}
+
+${buildAskUserGuidance(executionMode)}
 
 ## 时间控制能力（重要！）
 
