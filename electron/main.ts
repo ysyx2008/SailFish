@@ -2019,8 +2019,8 @@ ipcMain.handle('sftp:hasSession', async (_event, sessionId: string) => {
 // 列出目录内容
 ipcMain.handle('sftp:list', async (_event, sessionId: string, remotePath: string) => {
   try {
-    const list = await sftpService.list(sessionId, remotePath)
-    return { success: true, data: list }
+    const { files, resolvedPath } = await sftpService.list(sessionId, remotePath)
+    return { success: true, data: files, resolvedPath }
   } catch (error) {
     return { 
       success: false, 

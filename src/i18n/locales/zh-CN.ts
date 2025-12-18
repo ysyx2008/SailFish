@@ -955,7 +955,8 @@ export default {
       selectAll: '全选',
       clear: '清屏',
       sendToAi: '发送到 AI 分析',
-      search: '搜索'
+      search: '搜索',
+      openFileManager: '打开文件管理器'
     },
     welcome: {
       title: '欢迎使用旗鱼终端',

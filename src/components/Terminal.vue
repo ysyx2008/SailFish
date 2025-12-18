@@ -513,6 +513,59 @@ const menuClear = () => {
   hideContextMenu()
 }
 
+// 打开文件管理器
+const menuOpenFileManager = async () => {
+  hideContextMenu()
+  
+  try {
+    // 获取当前工作目录
+    const cwd = await window.electronAPI.terminalState.getCwd(props.ptyId)
+    
+    if (props.type === 'local') {
+      // 本地终端：只传入本地路径
+      await window.electronAPI.fileManager.open({
+        initialLocalPath: cwd || undefined
+      })
+    } else {
+      // SSH 终端：需要 SFTP 配置和远程路径
+      const tab = terminalStore.tabs.find(t => t.id === props.tabId)
+      if (!tab?.sshSessionId) {
+        // 没有保存的会话 ID，尝试使用基本的 SSH 配置
+        if (tab?.sshConfig) {
+          await window.electronAPI.fileManager.open({
+            sftpConfig: {
+              host: tab.sshConfig.host,
+              port: tab.sshConfig.port,
+              username: tab.sshConfig.username
+            },
+            initialRemotePath: cwd || undefined
+          })
+        }
+        return
+      }
+      
+      // 从 configStore 获取完整的会话配置
+      const session = configStore.sshSessions.find(s => s.id === tab.sshSessionId)
+      if (session) {
+        await window.electronAPI.fileManager.open({
+          sessionId: session.id,
+          sftpConfig: {
+            host: session.host,
+            port: session.port,
+            username: session.username,
+            password: session.password,
+            privateKeyPath: session.privateKeyPath,
+            passphrase: session.passphrase
+          },
+          initialRemotePath: cwd || undefined
+        })
+      }
+    }
+  } catch (error) {
+    console.error('Failed to open file manager:', error)
+  }
+}
+
 // SSH 重新连接
 const handleReconnect = async () => {
   if (props.type !== 'ssh' || isReconnecting.value) return
@@ -683,6 +736,10 @@ defineExpose({
       <div class="menu-item" @click="menuClear()">
         <span class="menu-icon">🗑️</span>
         <span>{{ t('terminal.contextMenu.clear') }}</span>
+      </div>
+      <div class="menu-item" @click="menuOpenFileManager()">
+        <span class="menu-icon">📁</span>
+        <span>{{ t('terminal.contextMenu.openFileManager') }}</span>
       </div>
     </div>
     <div 

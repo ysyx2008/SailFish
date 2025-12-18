@@ -147,7 +147,11 @@ onMounted(async () => {
       await localFs?.navigateTo(props.initialPath)
     }
   } else if (props.type === 'remote' && props.sftpConfig) {
-    await sftp?.connect(props.sftpConfig)
+    const connected = await sftp?.connect(props.sftpConfig)
+    // 连接成功后，如果有初始路径，导航到该路径
+    if (connected && props.initialPath) {
+      await sftp?.navigateTo(props.initialPath)
+    }
   }
 })
 
@@ -155,9 +159,24 @@ onMounted(async () => {
 watch(() => props.sftpConfig, async (newConfig) => {
   if (props.type === 'remote' && newConfig) {
     await sftp?.disconnect()
-    await sftp?.connect(newConfig)
+    const connected = await sftp?.connect(newConfig)
+    // 连接成功后，如果有初始路径，导航到该路径
+    if (connected && props.initialPath) {
+      await sftp?.navigateTo(props.initialPath)
+    }
   }
 }, { deep: true })
+
+// 监听初始路径变化（当文件管理器窗口已打开时，通过终端再次打开会更新路径）
+watch(() => props.initialPath, async (newPath) => {
+  if (newPath && isConnected.value) {
+    if (props.type === 'local') {
+      await localFs?.navigateTo(newPath)
+    } else {
+      await sftp?.navigateTo(newPath)
+    }
+  }
+})
 
 // 清理
 onUnmounted(() => {

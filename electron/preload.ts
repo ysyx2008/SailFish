@@ -1252,6 +1252,7 @@ const electronAPI = {
       ipcRenderer.invoke('sftp:list', sessionId, remotePath) as Promise<{
         success: boolean
         data?: SftpFileInfo[]
+        resolvedPath?: string  // 解析后的实际路径（处理 ~ 等）
         error?: string
       }>,
 

@@ -214,14 +214,16 @@ export function useSftp() {
       const result = await window.electronAPI.sftp.list(sessionId.value, path)
       if (result.success && result.data) {
         files.value = result.data
-        currentPath.value = path
+        // 使用解析后的实际路径（处理 ~ 等特殊路径）
+        const actualPath = result.resolvedPath || path
+        currentPath.value = actualPath
 
         if (addToHistory) {
           // 截断前进历史
           if (historyIndex.value < history.value.length - 1) {
             history.value = history.value.slice(0, historyIndex.value + 1)
           }
-          history.value.push({ path, timestamp: Date.now() })
+          history.value.push({ path: actualPath, timestamp: Date.now() })
           historyIndex.value = history.value.length - 1
         }
       } else {

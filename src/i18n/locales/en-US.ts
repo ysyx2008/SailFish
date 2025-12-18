@@ -955,7 +955,8 @@ export default {
       selectAll: 'Select All',
       clear: 'Clear',
       sendToAi: 'Send to AI Analysis',
-      search: 'Search'
+      search: 'Search',
+      openFileManager: 'Open File Manager'
     },
     welcome: {
       title: 'Welcome to SFTerm',

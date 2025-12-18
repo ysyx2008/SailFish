@@ -136,15 +136,40 @@ export class SftpService extends EventEmitter {
   /**
    * 列出目录内容
    */
-  async list(sessionId: string, remotePath: string): Promise<SftpFileInfo[]> {
+  async list(sessionId: string, remotePath: string): Promise<{ files: SftpFileInfo[]; resolvedPath: string }> {
     const sftp = this.sessions.get(sessionId)
     if (!sftp) throw new Error('SFTP 会话不存在')
 
-    const list = await sftp.list(remotePath)
+    // 解析 ~ 路径
+    let resolvedPath = remotePath
+    if (remotePath === '~' || remotePath.startsWith('~/')) {
+      try {
+        const homePath = await sftp.realPath('~')
+        if (remotePath === '~') {
+          resolvedPath = homePath
+        } else {
+          resolvedPath = homePath + remotePath.slice(1) // 替换 ~ 为实际路径
+        }
+      } catch {
+        // 如果 realPath 失败，尝试用 cwd 获取
+        try {
+          const cwdPath = await sftp.cwd()
+          if (remotePath === '~') {
+            resolvedPath = cwdPath
+          } else {
+            resolvedPath = cwdPath + remotePath.slice(1)
+          }
+        } catch {
+          // 保持原路径
+        }
+      }
+    }
 
-    return list.map(item => ({
+    const list = await sftp.list(resolvedPath)
+
+    const files = list.map(item => ({
       name: item.name,
-      path: path.posix.join(remotePath, item.name),
+      path: path.posix.join(resolvedPath, item.name),
       size: item.size,
       modifyTime: item.modifyTime,
       accessTime: item.accessTime,
@@ -163,6 +188,8 @@ export class SftpService extends EventEmitter {
       if (!a.isDirectory && b.isDirectory) return 1
       return a.name.localeCompare(b.name)
     })
+
+    return { files, resolvedPath }
   }
 
   /**
