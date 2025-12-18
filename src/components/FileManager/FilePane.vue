@@ -104,6 +104,12 @@ const renameFile = ref<FileInfo | null>(null)
 const renameName = ref('')
 const renameInputRef = ref<HTMLInputElement | null>(null)
 
+// 预览弹窗（远程文件）
+const showPreviewDialog = ref(false)
+const previewFile = ref<FileInfo | null>(null)
+const previewContent = ref('')
+const previewLoading = ref(false)
+
 // 键盘事件处理
 const handleKeyDown = (e: KeyboardEvent) => {
   // 只在面板激活时响应键盘事件
@@ -303,12 +309,27 @@ const formatPermissions = (perms: { user: string; group: string; other: string }
 }
 
 // 双击处理
-const handleDoubleClick = (file: FileInfo) => {
+const handleDoubleClick = async (file: FileInfo) => {
   if (file.isDirectory) {
     navigateTo(file.path)
   } else if (props.type === 'local') {
     localFs?.openFile(file.path)
+  } else if (props.type === 'remote') {
+    // 远程文件：预览文本文件内容
+    await handlePreview(file)
   }
+}
+
+// 预览远程文件
+const handlePreview = async (file: FileInfo) => {
+  previewFile.value = file
+  previewContent.value = ''
+  previewLoading.value = true
+  showPreviewDialog.value = true
+
+  const content = await sftp?.readTextFile(file.path)
+  previewContent.value = content || '无法读取文件内容'
+  previewLoading.value = false
 }
 
 // 选择变化
@@ -602,7 +623,7 @@ defineExpose({
         @click.stop
       >
         <div class="context-menu-item" @click="onMenuOpen">
-          <span>{{ contextMenu.file?.isDirectory ? '打开' : '打开文件' }}</span>
+          <span>{{ contextMenu.file?.isDirectory ? '打开' : '预览文件' }}</span>
         </div>
         <div class="context-menu-separator"></div>
         <div class="context-menu-item" @click="onMenuRename">
@@ -670,6 +691,29 @@ defineExpose({
             <button class="btn btn-primary" @click="confirmRename" :disabled="!renameName.trim()">
               确定
             </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 预览弹窗（远程文件） -->
+    <Teleport to="body">
+      <div v-if="showPreviewDialog" class="dialog-overlay" @click.self="showPreviewDialog = false">
+        <div class="dialog preview-dialog">
+          <div class="dialog-header">
+            <h3>{{ previewFile?.name }}</h3>
+            <button class="btn-close" @click="showPreviewDialog = false">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div class="dialog-body preview-body">
+            <div v-if="previewLoading" class="preview-loading">
+              <span>加载中...</span>
+            </div>
+            <pre v-else class="preview-content">{{ previewContent }}</pre>
           </div>
         </div>
       </div>
@@ -865,6 +909,78 @@ defineExpose({
   gap: 8px;
   padding: 16px 20px;
   border-top: 1px solid var(--border-color);
+}
+
+/* 预览弹窗 */
+.preview-dialog {
+  width: 80%;
+  max-width: 800px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.preview-dialog .dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.preview-dialog .dialog-header h3 {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.preview-body {
+  flex: 1;
+  min-height: 200px;
+  max-height: 60vh;
+  overflow: auto;
+  padding: 0 !important;
+}
+
+.preview-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-secondary);
+}
+
+.preview-content {
+  margin: 0;
+  padding: 16px;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--bg-primary);
+  user-select: text;
+  cursor: text;
 }
 </style>
 
