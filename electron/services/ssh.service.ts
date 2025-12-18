@@ -4,6 +4,7 @@ import * as fs from 'fs'
 import stripAnsi from 'strip-ansi'
 import * as iconv from 'iconv-lite'
 import { getUnixProbeCommands } from './host-profile.service'
+import { getSshErrorMessage } from './ssh-error'
 
 // 支持的字符编码（与前端保持一致）
 export type SshEncoding = 
@@ -201,7 +202,11 @@ export class SshService {
         // 触发断开连接事件
         this.emitDisconnect({ id, reason: 'error', error: err })
         this.instances.delete(id)
-        reject(err)
+        // 使用错误解析工具提供更友好的错误信息
+        const friendlyMessage = getSshErrorMessage(err)
+        const enhancedError = new Error(friendlyMessage)
+        ;(enhancedError as Error & { originalError?: Error }).originalError = err
+        reject(enhancedError)
       })
 
       client.on('close', () => {
@@ -300,7 +305,9 @@ export class SshService {
 
       jumpClient.on('error', err => {
         console.error(`[SSH] Jump host error:`, err)
-        reject(new Error(`连接跳板机失败: ${err.message}`))
+        // 使用错误解析工具提供更友好的错误信息
+        const friendlyMessage = getSshErrorMessage(err)
+        reject(new Error(`连接跳板机失败: ${friendlyMessage}`))
       })
 
       jumpClient.on('close', () => {

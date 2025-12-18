@@ -851,6 +851,8 @@ export default {
 
   // 文件管理器（双窗格）
   fileManager: {
+    // 窗口标题
+    windowTitle: '文件管理器',
     // 面板标题
     local: '本地',
     remote: 'SFTP 远程',
@@ -865,6 +867,13 @@ export default {
     refresh: '刷新 (F5)',
     toggleTree: '显示/隐藏目录树',
     newFolder: '新建文件夹',
+    // 工具栏按钮
+    upload: '上传',
+    download: '下载',
+    uploadTooltip: '上传选中文件到远程 (Ctrl+Enter)',
+    downloadTooltip: '下载选中文件到本地 (Ctrl+Enter)',
+    // 快捷键提示
+    shortcutHint: 'F5 刷新 | F2 重命名 | Del 删除 | Tab 切换面板 | Ctrl+Enter 传输',
     // 右键菜单
     open: '打开',
     previewFile: '预览文件',
@@ -892,6 +901,8 @@ export default {
     renameFailed: '重命名失败',
     deleted: '{type}已删除',
     deleteFailed: '删除{type}失败',
+    connectRemoteFirst: '请先连接远程服务器',
+    transferCancelled: '传输已取消',
     // 预览
     loading: '加载中...',
     cannotReadFile: '无法读取文件内容',
@@ -1034,6 +1045,17 @@ export default {
       error: '连接错误',
       stream_closed: '数据流已关闭',
       jump_host_closed: '跳板机连接已断开'
+    },
+    // SSH 连接错误类型
+    sshErrors: {
+      auth_failed: '认证失败：用户名或密码错误，请检查登录凭据',
+      timeout: '连接超时：无法连接到服务器，请检查网络或主机地址',
+      connection_refused: '连接被拒绝：服务器拒绝连接，请检查端口是否正确或SSH服务是否运行',
+      host_not_found: '主机不存在：无法解析主机地址，请检查主机名是否正确',
+      host_unreachable: '主机不可达：无法连接到目标主机，请检查网络连接',
+      network_error: '网络错误：网络连接异常，请检查网络设置',
+      key_error: '密钥错误：私钥格式不正确或密钥密码错误',
+      unknown: '连接失败'
     },
     reconnectHint: '点击右下角按钮或按 Ctrl+Shift+R 重新连接',
     noSessionSavedHint: '该连接未保存为会话，请从会话管理器重新连接'

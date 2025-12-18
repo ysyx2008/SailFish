@@ -851,6 +851,8 @@ export default {
 
   // File Manager (Dual Pane)
   fileManager: {
+    // Window title
+    windowTitle: 'File Manager',
     // Pane titles
     local: 'Local',
     remote: 'SFTP Remote',
@@ -865,6 +867,13 @@ export default {
     refresh: 'Refresh (F5)',
     toggleTree: 'Toggle directory tree',
     newFolder: 'New Folder',
+    // Toolbar buttons
+    upload: 'Upload',
+    download: 'Download',
+    uploadTooltip: 'Upload selected files to remote (Ctrl+Enter)',
+    downloadTooltip: 'Download selected files to local (Ctrl+Enter)',
+    // Shortcut hints
+    shortcutHint: 'F5 Refresh | F2 Rename | Del Delete | Tab Switch Pane | Ctrl+Enter Transfer',
     // Context menu
     open: 'Open',
     previewFile: 'Preview File',
@@ -892,6 +901,8 @@ export default {
     renameFailed: 'Failed to rename',
     deleted: '{type} deleted',
     deleteFailed: 'Failed to delete {type}',
+    connectRemoteFirst: 'Please connect to remote server first',
+    transferCancelled: 'Transfer cancelled',
     // Preview
     loading: 'Loading...',
     cannotReadFile: 'Cannot read file content',
@@ -906,64 +917,6 @@ export default {
     dropToCopy: 'Release to copy files',
     dropToTransfer: 'Release to transfer files',
     selectedItems: '{count} item(s) selected'
-  },
-
-  // File Manager (Dual Pane)
-  fileManager: {
-    // Pane titles
-    local: 'Local',
-    sftpRemote: 'SFTP Remote',
-    // Status
-    connecting: 'Connecting...',
-    notConnected: 'Not connected to remote server',
-    loading: 'Loading...',
-    // Context menu
-    open: 'Open',
-    previewFile: 'Preview File',
-    renameShortcut: 'Rename (F2)',
-    deleteShortcut: 'Delete (Del)',
-    refreshShortcut: 'Refresh (F5)',
-    // Dialog titles
-    newFolderTitle: 'New Folder',
-    renameTitle: 'Rename',
-    // Form fields
-    folderName: 'Folder name',
-    newName: 'New name',
-    // Buttons
-    create: 'Create',
-    confirm: 'OK',
-    cancel: 'Cancel',
-    // Toast messages
-    folderCreated: 'Folder created',
-    createFolderFailed: 'Failed to create folder',
-    renameSuccess: 'Renamed successfully',
-    renameFailed: 'Failed to rename',
-    deleted: '{type} deleted',
-    deleteFailed: 'Failed to delete {type}',
-    cannotReadFile: 'Unable to read file content',
-    // Delete dialog
-    deleteTitle: 'Delete {type}',
-    deleteConfirm: 'Are you sure you want to delete this {type}? This action cannot be undone.',
-    // File types
-    folder: 'folder',
-    file: 'file',
-    // Table headers
-    name: 'Name',
-    size: 'Size',
-    modifyTime: 'Modified',
-    permissions: 'Permissions',
-    // Empty state
-    emptyFolder: 'Empty folder',
-    dropHere: 'Drop files here',
-    dropToUpload: 'Drop files here to upload',
-    // Drag & drop
-    dropToCopy: 'Drop to copy files',
-    dropToTransfer: 'Drop to transfer files',
-    // Selection
-    selectedItems: '{count} item(s) selected',
-    // Tooltips
-    hideTree: 'Hide directory tree',
-    showTree: 'Show directory tree'
   },
 
   // Setup Wizard
@@ -1092,6 +1045,17 @@ export default {
       error: 'Connection error',
       stream_closed: 'Data stream closed',
       jump_host_closed: 'Jump host connection closed'
+    },
+    // SSH connection error types
+    sshErrors: {
+      auth_failed: 'Authentication failed: Incorrect username or password, please check your credentials',
+      timeout: 'Connection timeout: Unable to connect to server, please check network or host address',
+      connection_refused: 'Connection refused: Server refused the connection, please check if the port is correct or SSH service is running',
+      host_not_found: 'Host not found: Unable to resolve host address, please check the hostname',
+      host_unreachable: 'Host unreachable: Unable to connect to target host, please check network connection',
+      network_error: 'Network error: Network connection exception, please check network settings',
+      key_error: 'Key error: Invalid private key format or incorrect passphrase',
+      unknown: 'Connection failed'
     },
     reconnectHint: 'Click the button at bottom right or press Ctrl+Shift+R to reconnect',
     noSessionSavedHint: 'This connection is not saved as a session, please reconnect from Session Manager'

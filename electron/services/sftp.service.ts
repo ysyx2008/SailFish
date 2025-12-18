@@ -2,6 +2,7 @@ import SftpClient from 'ssh2-sftp-client'
 import * as fs from 'fs'
 import * as path from 'path'
 import { EventEmitter } from 'events'
+import { getSshErrorMessage } from './ssh-error'
 
 export interface SftpConfig {
   host: string
@@ -99,8 +100,14 @@ export class SftpService extends EventEmitter {
       connectConfig.password = config.password
     }
 
-    await sftp.connect(connectConfig)
-    this.sessions.set(sessionId, sftp)
+    try {
+      await sftp.connect(connectConfig)
+      this.sessions.set(sessionId, sftp)
+    } catch (err) {
+      // 使用错误解析工具提供更友好的错误信息
+      const friendlyMessage = getSshErrorMessage(err instanceof Error ? err : new Error(String(err)))
+      throw new Error(friendlyMessage)
+    }
   }
 
   /**

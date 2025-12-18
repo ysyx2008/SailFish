@@ -126,6 +126,8 @@ export interface TerminalTab {
   isLoading: boolean
   // 加载提示信息（用于显示具体的加载原因）
   loadingMessage?: string
+  // 连接错误信息（用于显示连接失败的具体原因）
+  connectionError?: string
   // 终端输出缓冲（最近的输出）
   outputBuffer?: string[]
   // 最近检测到的错误
@@ -479,6 +481,8 @@ export const useTerminalStore = defineStore('terminal', () => {
     } catch (error) {
       console.error('Failed to create terminal:', error)
       reactiveTab.isConnected = false
+      // 保存连接错误信息，便于显示给用户
+      reactiveTab.connectionError = error instanceof Error ? error.message : '连接失败'
     } finally {
       reactiveTab.isLoading = false
     }

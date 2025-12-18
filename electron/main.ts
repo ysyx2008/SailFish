@@ -1236,6 +1236,10 @@ ipcMain.handle('xshell:importDirectory', async (_event, dirPath: string) => {
   return xshellImportService.importFromDirectory(dirPath)
 })
 
+ipcMain.handle('xshell:importDirectories', async (_event, dirPaths: string[]) => {
+  return xshellImportService.importFromDirectories(dirPaths)
+})
+
 ipcMain.handle('xshell:scanDefaultPaths', async () => {
   return xshellImportService.scanDefaultPaths()
 })

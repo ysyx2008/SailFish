@@ -574,6 +574,21 @@ interface Window {
           group?: string
         }>
         errors: string[]
+        debug?: { totalFiles: number; parsedFiles: number; failedFiles: number }
+      }>
+      importDirectories: (dirPaths: string[]) => Promise<{
+        success: boolean
+        sessions: Array<{
+          name: string
+          host: string
+          port: number
+          username: string
+          password?: string
+          privateKeyPath?: string
+          group?: string
+        }>
+        errors: string[]
+        debug?: { totalFiles: number; parsedFiles: number; failedFiles: number }
       }>
       scanDefaultPaths: () => Promise<{ found: boolean; paths: string[]; sessionCount: number }>
     }

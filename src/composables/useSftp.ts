@@ -173,10 +173,12 @@ export function useSftp() {
 
         return true
       } else {
+        // 显示后端返回的具体错误信息
         error.value = result.error || '连接失败'
         return false
       }
     } catch (e) {
+      // 显示具体错误信息
       error.value = e instanceof Error ? e.message : '连接失败'
       return false
     } finally {

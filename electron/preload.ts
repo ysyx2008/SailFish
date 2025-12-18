@@ -732,6 +732,7 @@ const electronAPI = {
     selectDirectory: () => ipcRenderer.invoke('xshell:selectDirectory') as Promise<{ canceled: boolean; dirPath: string }>,
     importFiles: (filePaths: string[]) => ipcRenderer.invoke('xshell:importFiles', filePaths) as Promise<ImportResult>,
     importDirectory: (dirPath: string) => ipcRenderer.invoke('xshell:importDirectory', dirPath) as Promise<ImportResult>,
+    importDirectories: (dirPaths: string[]) => ipcRenderer.invoke('xshell:importDirectories', dirPaths) as Promise<ImportResult>,
     scanDefaultPaths: () => ipcRenderer.invoke('xshell:scanDefaultPaths') as Promise<{ found: boolean; paths: string[]; sessionCount: number }>
   },
 

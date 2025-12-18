@@ -14,8 +14,7 @@ import { useConfirm } from '../composables/useConfirm'
 // 确认对话框
 const { show: showConfirmDialog, options: confirmOptions, handleConfirm, handleCancel } = useConfirm()
 
-const { t: _t } = useI18n()
-void _t // 避免未使用警告
+const { t } = useI18n()
 
 // 窗口初始化参数
 const initParams = ref<{
@@ -210,7 +209,7 @@ const handleTransferSelected = async () => {
 const handleUpload = async (files: LocalFileInfo[]) => {
   const remotePath = remotePaneRef.value?.getCurrentPath()
   if (!remotePath || !remotePaneRef.value?.isConnected) {
-    toast.warning('请先连接远程服务器')
+    toast.warning(t('fileManager.connectRemoteFirst'))
     return
   }
 
@@ -294,7 +293,7 @@ const setActivePane = (pane: 'local' | 'remote') => {
 const handleCancelTransfer = async (transferId: string) => {
   const result = await window.electronAPI.sftp.cancelTransfer(transferId)
   if (result.success) {
-    toast.info('传输已取消')
+    toast.info(t('fileManager.transferCancelled'))
   }
 }
 
@@ -341,31 +340,31 @@ const handleClearAllTransfers = () => {
           class="btn btn-primary" 
           @click="handleUpload(localSelectedFiles)"
           :disabled="localSelectedFiles.length === 0 || !remotePaneRef?.isConnected"
-          title="上传选中文件到远程 (Ctrl+Enter)"
+          :title="t('fileManager.uploadTooltip')"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
             <polyline points="17 8 12 3 7 8"/>
             <line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
-          上传
+          {{ t('fileManager.upload') }}
         </button>
         <button 
           class="btn btn-primary" 
           @click="handleDownload(remoteSelectedFiles)"
           :disabled="remoteSelectedFiles.length === 0 || !remotePaneRef?.isConnected"
-          title="下载选中文件到本地 (Ctrl+Enter)"
+          :title="t('fileManager.downloadTooltip')"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
             <polyline points="7 10 12 15 17 10"/>
             <line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
-          下载
+          {{ t('fileManager.download') }}
         </button>
       </div>
       <div class="toolbar-center">
-        <span class="shortcut-hint">F5 刷新 | F2 重命名 | Del 删除 | Tab 切换面板 | Ctrl+Enter 传输</span>
+        <span class="shortcut-hint">{{ t('fileManager.shortcutHint') }}</span>
       </div>
       <div class="toolbar-right">
         <!-- 可以添加更多工具按钮 -->
