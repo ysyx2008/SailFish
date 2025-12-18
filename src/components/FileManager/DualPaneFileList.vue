@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { LocalFileInfo } from '../../composables/useLocalFs'
 import type { SftpFileInfo } from '../../composables/useSftp'
+
+const { t } = useI18n()
 
 type FileInfo = LocalFileInfo | SftpFileInfo
 
@@ -292,16 +295,16 @@ defineExpose({
     <!-- 表头 -->
     <div class="file-list-header">
       <div class="col col-name" @click="toggleSort('name')">
-        名称 {{ getSortIcon('name') }}
+        {{ t('fileManager.name') }} {{ getSortIcon('name') }}
       </div>
       <div class="col col-size" @click="toggleSort('size')">
-        大小 {{ getSortIcon('size') }}
+        {{ t('fileManager.size') }} {{ getSortIcon('size') }}
       </div>
       <div class="col col-time" @click="toggleSort('modifyTime')">
-        修改时间 {{ getSortIcon('modifyTime') }}
+        {{ t('fileManager.modifyTime') }} {{ getSortIcon('modifyTime') }}
       </div>
       <div class="col col-perms" @click="toggleSort('permissions')">
-        权限 {{ getSortIcon('permissions') }}
+        {{ t('fileManager.permissions') }} {{ getSortIcon('permissions') }}
       </div>
     </div>
 
@@ -310,7 +313,7 @@ defineExpose({
       <!-- 加载中 -->
       <div v-if="loading" class="loading-state">
         <div class="spinner"></div>
-        <span>加载中...</span>
+        <span>{{ t('fileManager.loading') }}</span>
       </div>
 
       <!-- 空目录 -->
@@ -318,8 +321,8 @@ defineExpose({
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
         </svg>
-        <p>目录为空</p>
-        <p class="tip">拖拽文件到此处{{ paneType === 'local' ? '' : '上传' }}</p>
+        <p>{{ t('fileManager.emptyDirectory') }}</p>
+        <p class="tip">{{ t('fileManager.dropFilesHere') }}{{ paneType === 'local' ? '' : t('fileManager.dropToUpload') }}</p>
       </div>
 
       <!-- 文件项 -->
@@ -369,13 +372,13 @@ defineExpose({
           <polyline points="17 8 12 3 7 8"/>
           <line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
-        <p>释放以{{ paneType === 'local' ? '复制' : '传输' }}文件</p>
+        <p>{{ paneType === 'local' ? t('fileManager.dropToCopy') : t('fileManager.dropToTransfer') }}</p>
       </div>
     </div>
 
     <!-- 选择信息 -->
     <div v-if="selectedPaths.size > 0" class="selection-info">
-      已选择 {{ selectedPaths.size }} 个项目
+      {{ t('fileManager.selectedItems', { count: selectedPaths.size }) }}
     </div>
   </div>
 </template>

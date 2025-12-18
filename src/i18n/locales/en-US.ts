@@ -849,6 +849,123 @@ export default {
     goHome: 'Home directory'
   },
 
+  // File Manager (Dual Pane)
+  fileManager: {
+    // Pane titles
+    local: 'Local',
+    remote: 'SFTP Remote',
+    // Connection states
+    connecting: 'Connecting...',
+    notConnected: 'Not connected to remote server',
+    // Toolbar tooltips
+    goBack: 'Back',
+    goForward: 'Forward',
+    goUp: 'Parent directory',
+    goHome: 'Home directory',
+    refresh: 'Refresh (F5)',
+    toggleTree: 'Toggle directory tree',
+    newFolder: 'New Folder',
+    // Context menu
+    open: 'Open',
+    previewFile: 'Preview File',
+    renameF2: 'Rename (F2)',
+    deleteDel: 'Delete (Del)',
+    refreshF5: 'Refresh (F5)',
+    // Dialogs
+    newFolderTitle: 'New Folder',
+    folderNamePlaceholder: 'Folder name',
+    renameTitle: 'Rename',
+    newNamePlaceholder: 'New name',
+    cancel: 'Cancel',
+    create: 'Create',
+    confirm: 'OK',
+    // Delete confirmation
+    deleteFolder: 'Delete Folder',
+    deleteFile: 'Delete File',
+    confirmDeleteMessage: 'Are you sure you want to delete this {type}? This action cannot be undone.',
+    folder: 'folder',
+    file: 'file',
+    // Toast messages
+    folderCreated: 'Folder created',
+    folderCreateFailed: 'Failed to create folder',
+    renameSuccess: 'Renamed successfully',
+    renameFailed: 'Failed to rename',
+    deleted: '{type} deleted',
+    deleteFailed: 'Failed to delete {type}',
+    // Preview
+    loading: 'Loading...',
+    cannotReadFile: 'Cannot read file content',
+    // File list
+    name: 'Name',
+    size: 'Size',
+    modifyTime: 'Modified',
+    permissions: 'Permissions',
+    emptyDirectory: 'Directory is empty',
+    dropFilesHere: 'Drop files here',
+    dropToUpload: 'to upload',
+    dropToCopy: 'Release to copy files',
+    dropToTransfer: 'Release to transfer files',
+    selectedItems: '{count} item(s) selected'
+  },
+
+  // File Manager (Dual Pane)
+  fileManager: {
+    // Pane titles
+    local: 'Local',
+    sftpRemote: 'SFTP Remote',
+    // Status
+    connecting: 'Connecting...',
+    notConnected: 'Not connected to remote server',
+    loading: 'Loading...',
+    // Context menu
+    open: 'Open',
+    previewFile: 'Preview File',
+    renameShortcut: 'Rename (F2)',
+    deleteShortcut: 'Delete (Del)',
+    refreshShortcut: 'Refresh (F5)',
+    // Dialog titles
+    newFolderTitle: 'New Folder',
+    renameTitle: 'Rename',
+    // Form fields
+    folderName: 'Folder name',
+    newName: 'New name',
+    // Buttons
+    create: 'Create',
+    confirm: 'OK',
+    cancel: 'Cancel',
+    // Toast messages
+    folderCreated: 'Folder created',
+    createFolderFailed: 'Failed to create folder',
+    renameSuccess: 'Renamed successfully',
+    renameFailed: 'Failed to rename',
+    deleted: '{type} deleted',
+    deleteFailed: 'Failed to delete {type}',
+    cannotReadFile: 'Unable to read file content',
+    // Delete dialog
+    deleteTitle: 'Delete {type}',
+    deleteConfirm: 'Are you sure you want to delete this {type}? This action cannot be undone.',
+    // File types
+    folder: 'folder',
+    file: 'file',
+    // Table headers
+    name: 'Name',
+    size: 'Size',
+    modifyTime: 'Modified',
+    permissions: 'Permissions',
+    // Empty state
+    emptyFolder: 'Empty folder',
+    dropHere: 'Drop files here',
+    dropToUpload: 'Drop files here to upload',
+    // Drag & drop
+    dropToCopy: 'Drop to copy files',
+    dropToTransfer: 'Drop to transfer files',
+    // Selection
+    selectedItems: '{count} item(s) selected',
+    // Tooltips
+    hideTree: 'Hide directory tree',
+    showTree: 'Show directory tree'
+  },
+
   // Setup Wizard
   setup: {
     welcome: {

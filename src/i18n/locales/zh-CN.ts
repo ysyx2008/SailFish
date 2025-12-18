@@ -849,6 +849,65 @@ export default {
     goHome: '主目录'
   },
 
+  // 文件管理器（双窗格）
+  fileManager: {
+    // 面板标题
+    local: '本地',
+    remote: 'SFTP 远程',
+    // 连接状态
+    connecting: '正在连接...',
+    notConnected: '未连接到远程服务器',
+    // 工具栏提示
+    goBack: '后退',
+    goForward: '前进',
+    goUp: '上级目录',
+    goHome: '主目录',
+    refresh: '刷新 (F5)',
+    toggleTree: '显示/隐藏目录树',
+    newFolder: '新建文件夹',
+    // 右键菜单
+    open: '打开',
+    previewFile: '预览文件',
+    renameF2: '重命名 (F2)',
+    deleteDel: '删除 (Del)',
+    refreshF5: '刷新 (F5)',
+    // 弹窗
+    newFolderTitle: '新建文件夹',
+    folderNamePlaceholder: '文件夹名称',
+    renameTitle: '重命名',
+    newNamePlaceholder: '新名称',
+    cancel: '取消',
+    create: '创建',
+    confirm: '确定',
+    // 删除确认
+    deleteFolder: '删除文件夹',
+    deleteFile: '删除文件',
+    confirmDeleteMessage: '确定要删除此{type}吗？此操作无法撤销。',
+    folder: '文件夹',
+    file: '文件',
+    // Toast 消息
+    folderCreated: '文件夹已创建',
+    folderCreateFailed: '创建文件夹失败',
+    renameSuccess: '重命名成功',
+    renameFailed: '重命名失败',
+    deleted: '{type}已删除',
+    deleteFailed: '删除{type}失败',
+    // 预览
+    loading: '加载中...',
+    cannotReadFile: '无法读取文件内容',
+    // 文件列表
+    name: '名称',
+    size: '大小',
+    modifyTime: '修改时间',
+    permissions: '权限',
+    emptyDirectory: '目录为空',
+    dropFilesHere: '拖拽文件到此处',
+    dropToUpload: '上传',
+    dropToCopy: '释放以复制文件',
+    dropToTransfer: '释放以传输文件',
+    selectedItems: '已选择 {count} 个项目'
+  },
+
   // 首次设置向导
   setup: {
     welcome: {

@@ -9,8 +9,7 @@ import PathBreadcrumb from '../FileExplorer/PathBreadcrumb.vue'
 import { showConfirm } from '../../composables/useConfirm'
 import { toast } from '../../composables/useToast'
 
-const { t: _t } = useI18n()
-void _t // 避免未使用警告
+const { t } = useI18n()
 
 type FileInfo = LocalFileInfo | SftpFileInfo
 
@@ -328,7 +327,7 @@ const handlePreview = async (file: FileInfo) => {
   showPreviewDialog.value = true
 
   const content = await sftp?.readTextFile(file.path)
-  previewContent.value = content || '无法读取文件内容'
+  previewContent.value = content || t('fileManager.cannotReadFile')
   previewLoading.value = false
 }
 
@@ -399,9 +398,9 @@ const confirmNewFolder = async () => {
     const success = await createDirectory(newFolderName.value.trim())
     if (success) {
       showNewFolderDialog.value = false
-      toast.success('文件夹已创建')
+      toast.success(t('fileManager.folderCreated'))
     } else {
-      toast.error('创建文件夹失败')
+      toast.error(t('fileManager.folderCreateFailed'))
     }
   }
 }
@@ -423,25 +422,26 @@ const confirmRename = async () => {
     if (success) {
       showRenameDialog.value = false
       renameFile.value = null
-      toast.success('重命名成功')
+      toast.success(t('fileManager.renameSuccess'))
     } else {
-      toast.error('重命名失败')
+      toast.error(t('fileManager.renameFailed'))
     }
   }
 }
 
 // 删除
 const handleDelete = async (file: FileInfo) => {
-  const type = file.isDirectory ? '文件夹' : '文件'
+  const typeKey = file.isDirectory ? 'folder' : 'file'
+  const typeText = t(`fileManager.${typeKey}`)
   const confirmed = await showConfirm({
-    title: `删除${type}`,
-    message: `确定要删除此${type}吗？此操作无法撤销。`,
+    title: file.isDirectory ? t('fileManager.deleteFolder') : t('fileManager.deleteFile'),
+    message: t('fileManager.confirmDeleteMessage', { type: typeText }),
     type: 'danger',
-    confirmText: '删除',
-    cancelText: '取消',
+    confirmText: t('common.delete'),
+    cancelText: t('fileManager.cancel'),
     fileInfo: {
       name: file.name,
-      type,
+      type: typeText,
       size: file.isDirectory ? undefined : formatSize(file.size)
     }
   })
@@ -449,9 +449,9 @@ const handleDelete = async (file: FileInfo) => {
   if (confirmed) {
     const success = await deleteItem(file)
     if (success) {
-      toast.success(`${type}已删除`)
+      toast.success(t('fileManager.deleted', { type: typeText }))
     } else {
-      toast.error(`删除${type}失败`)
+      toast.error(t('fileManager.deleteFailed', { type: typeText }))
     }
   }
 }
@@ -501,7 +501,7 @@ defineExpose({
     <!-- 连接中状态（仅远程） -->
     <div v-if="type === 'remote' && isConnecting" class="connecting-state">
       <div class="spinner"></div>
-      <span>正在连接...</span>
+      <span>{{ t('fileManager.connecting') }}</span>
     </div>
 
     <!-- 未连接状态（仅远程） -->
@@ -512,7 +512,7 @@ defineExpose({
         <line x1="6" y1="6" x2="6" y2="6"/>
         <line x1="6" y1="18" x2="6" y2="18"/>
       </svg>
-      <p>未连接到远程服务器</p>
+      <p>{{ t('fileManager.notConnected') }}</p>
       <p class="error-message" v-if="error">{{ error }}</p>
     </div>
 
@@ -521,28 +521,28 @@ defineExpose({
       <!-- 工具栏 -->
       <div class="pane-toolbar">
         <div class="toolbar-nav">
-          <button class="btn-icon" :disabled="!canGoBack" @click="goBack" title="后退">
+          <button class="btn-icon" :disabled="!canGoBack" @click="goBack" :title="t('fileManager.goBack')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="15 18 9 12 15 6"/>
             </svg>
           </button>
-          <button class="btn-icon" :disabled="!canGoForward" @click="goForward" title="前进">
+          <button class="btn-icon" :disabled="!canGoForward" @click="goForward" :title="t('fileManager.goForward')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="9 18 15 12 9 6"/>
             </svg>
           </button>
-          <button class="btn-icon" :disabled="!canGoUp" @click="goUp" title="上级目录">
+          <button class="btn-icon" :disabled="!canGoUp" @click="goUp" :title="t('fileManager.goUp')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="18 15 12 9 6 15"/>
             </svg>
           </button>
-          <button class="btn-icon" @click="goHome" title="主目录">
+          <button class="btn-icon" @click="goHome" :title="t('fileManager.goHome')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
               <polyline points="9 22 9 12 15 12 15 22"/>
             </svg>
           </button>
-          <button class="btn-icon" @click="refresh" title="刷新 (F5)">
+          <button class="btn-icon" @click="refresh" :title="t('fileManager.refresh')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="23 4 23 10 17 10"/>
               <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
@@ -561,15 +561,15 @@ defineExpose({
             <line x1="6" y1="6" x2="6" y2="6"/>
             <line x1="6" y1="18" x2="6" y2="18"/>
           </svg>
-          <span>{{ type === 'local' ? '本地' : 'SFTP 远程' }}</span>
+          <span>{{ type === 'local' ? t('fileManager.local') : t('fileManager.remote') }}</span>
         </div>
         <div class="toolbar-actions">
-          <button class="btn-icon" @click="showTree = !showTree" :title="showTree ? '隐藏目录树' : '显示目录树'">
+          <button class="btn-icon" @click="showTree = !showTree" :title="t('fileManager.toggleTree')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
             </svg>
           </button>
-          <button class="btn-icon" @click="openNewFolderDialog" title="新建文件夹">
+          <button class="btn-icon" @click="openNewFolderDialog" :title="t('fileManager.newFolder')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
               <line x1="12" y1="11" x2="12" y2="17"/>
@@ -623,21 +623,21 @@ defineExpose({
         @click.stop
       >
         <div class="context-menu-item" @click="onMenuOpen">
-          <span>{{ contextMenu.file?.isDirectory ? '打开' : '预览文件' }}</span>
+          <span>{{ contextMenu.file?.isDirectory ? t('fileManager.open') : t('fileManager.previewFile') }}</span>
         </div>
         <div class="context-menu-separator"></div>
         <div class="context-menu-item" @click="onMenuRename">
-          <span>重命名 (F2)</span>
+          <span>{{ t('fileManager.renameF2') }}</span>
         </div>
         <div class="context-menu-item danger" @click="onMenuDelete">
-          <span>删除 (Del)</span>
+          <span>{{ t('fileManager.deleteDel') }}</span>
         </div>
         <div class="context-menu-separator"></div>
         <div class="context-menu-item" @click="onMenuRefresh">
-          <span>刷新 (F5)</span>
+          <span>{{ t('fileManager.refreshF5') }}</span>
         </div>
         <div class="context-menu-item" @click="onMenuNewFolder">
-          <span>新建文件夹</span>
+          <span>{{ t('fileManager.newFolder') }}</span>
         </div>
       </div>
     </Teleport>
@@ -647,7 +647,7 @@ defineExpose({
       <div v-if="showNewFolderDialog" class="dialog-overlay" @click.self="showNewFolderDialog = false">
         <div class="dialog">
           <div class="dialog-header">
-            <h3>新建文件夹</h3>
+            <h3>{{ t('fileManager.newFolderTitle') }}</h3>
           </div>
           <div class="dialog-body">
             <input
@@ -655,14 +655,14 @@ defineExpose({
               v-model="newFolderName"
               type="text"
               class="input"
-              placeholder="文件夹名称"
+              :placeholder="t('fileManager.folderNamePlaceholder')"
               @keyup.enter="confirmNewFolder"
             />
           </div>
           <div class="dialog-footer">
-            <button class="btn" @click="showNewFolderDialog = false">取消</button>
+            <button class="btn" @click="showNewFolderDialog = false">{{ t('fileManager.cancel') }}</button>
             <button class="btn btn-primary" @click="confirmNewFolder" :disabled="!newFolderName.trim()">
-              创建
+              {{ t('fileManager.create') }}
             </button>
           </div>
         </div>
@@ -674,7 +674,7 @@ defineExpose({
       <div v-if="showRenameDialog" class="dialog-overlay" @click.self="showRenameDialog = false">
         <div class="dialog">
           <div class="dialog-header">
-            <h3>重命名</h3>
+            <h3>{{ t('fileManager.renameTitle') }}</h3>
           </div>
           <div class="dialog-body">
             <input
@@ -682,14 +682,14 @@ defineExpose({
               v-model="renameName"
               type="text"
               class="input"
-              placeholder="新名称"
+              :placeholder="t('fileManager.newNamePlaceholder')"
               @keyup.enter="confirmRename"
             />
           </div>
           <div class="dialog-footer">
-            <button class="btn" @click="showRenameDialog = false">取消</button>
+            <button class="btn" @click="showRenameDialog = false">{{ t('fileManager.cancel') }}</button>
             <button class="btn btn-primary" @click="confirmRename" :disabled="!renameName.trim()">
-              确定
+              {{ t('fileManager.confirm') }}
             </button>
           </div>
         </div>
@@ -711,7 +711,7 @@ defineExpose({
           </div>
           <div class="dialog-body preview-body">
             <div v-if="previewLoading" class="preview-loading">
-              <span>加载中...</span>
+              <span>{{ t('fileManager.loading') }}</span>
             </div>
             <pre v-else class="preview-content">{{ previewContent }}</pre>
           </div>
