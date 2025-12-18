@@ -221,6 +221,9 @@ export async function executeTool(
     case 'update_plan':
       return updatePlan(args, executor)
 
+    case 'clear_plan':
+      return clearPlan(args, executor)
+
     default:
       // 检查是否是 MCP 工具调用
       if (name.startsWith('mcp_') && executor.mcpService) {
@@ -2419,6 +2422,15 @@ function generatePlanId(): string {
 }
 
 /**
+ * 检查计划是否已完成（所有步骤都已完成、失败或跳过）
+ */
+function isPlanFinished(plan: AgentPlan): boolean {
+  return plan.steps.every(s => 
+    s.status === 'completed' || s.status === 'failed' || s.status === 'skipped'
+  )
+}
+
+/**
  * 创建任务执行计划
  */
 function createPlan(
@@ -2444,10 +2456,22 @@ function createPlan(
   // 检查是否已有计划
   const existingPlan = executor.getCurrentPlan()
   if (existingPlan) {
-    return { 
-      success: false, 
-      output: '', 
-      error: t('error.plan_exists', { title: existingPlan.title }) 
+    // 如果现有计划已完成或全部失败，自动清除并允许创建新计划
+    if (isPlanFinished(existingPlan)) {
+      executor.setCurrentPlan(undefined)
+      executor.addStep({
+        type: 'plan_cleared',
+        content: `📋 ${t('plan.auto_cleared')}: ${existingPlan.title}`,
+        toolName: 'create_plan',
+        riskLevel: 'safe'
+      })
+    } else {
+      // 计划还在进行中，不允许创建新计划
+      return { 
+        success: false, 
+        output: '', 
+        error: t('error.plan_exists_use_clear', { title: existingPlan.title }) 
+      }
     }
   }
   
@@ -2581,8 +2605,6 @@ function updatePlan(
     } else {
       output += `\n\n✅ 计划执行完成！`
     }
-    // 清除计划（可选，也可以保留供查看）
-    // executor.setCurrentPlan(undefined)
   } else {
     // 提示下一步
     const nextPendingIndex = plan.steps.findIndex(s => s.status === 'pending')
@@ -2592,4 +2614,47 @@ function updatePlan(
   }
   
   return { success: true, output }
+}
+
+/**
+ * 清除当前计划
+ */
+function clearPlan(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): ToolResult {
+  const reason = args.reason as string | undefined
+  
+  // 获取当前计划
+  const plan = executor.getCurrentPlan()
+  if (!plan) {
+    return { success: true, output: t('plan.no_active_plan_to_clear') }
+  }
+  
+  // 计算进度统计
+  const completedCount = plan.steps.filter(s => s.status === 'completed').length
+  const failedCount = plan.steps.filter(s => s.status === 'failed').length
+  const skippedCount = plan.steps.filter(s => s.status === 'skipped').length
+  const totalCount = plan.steps.length
+  
+  // 清除计划
+  executor.setCurrentPlan(undefined)
+  
+  // 构建状态摘要
+  const statusSummary = `已完成: ${completedCount}, 失败: ${failedCount}, 跳过: ${skippedCount}, 总计: ${totalCount}`
+  const reasonText = reason ? `\n原因: ${reason}` : ''
+  
+  // 添加清除步骤
+  executor.addStep({
+    type: 'plan_cleared',
+    content: `🗑️ ${t('plan.cleared')}: ${plan.title}${reasonText}`,
+    toolName: 'clear_plan',
+    toolArgs: { reason },
+    riskLevel: 'safe'
+  })
+  
+  return { 
+    success: true, 
+    output: `计划已清除: ${plan.title}\n状态摘要: ${statusSummary}${reasonText}\n\n现在可以创建新计划。`
+  }
 }

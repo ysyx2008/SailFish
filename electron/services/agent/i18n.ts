@@ -24,6 +24,7 @@ const translations = {
     'tool.ask_user': '询问用户',
     'tool.create_plan': '创建计划',
     'tool.update_plan': '更新计划',
+    'tool.clear_plan': '清除计划',
     'tool.wait': '等待',
 
     // 执行状态
@@ -164,6 +165,9 @@ const translations = {
     // 计划功能
     'plan.create': '创建计划',
     'plan.update': '更新计划',
+    'plan.cleared': '计划已清除',
+    'plan.auto_cleared': '旧计划已自动清除',
+    'plan.no_active_plan_to_clear': '当前没有活动的计划需要清除',
 
     // 定时执行
     'timed.command_executed': '命令执行了 {seconds} 秒 ({chars} 字符)',
@@ -231,6 +235,7 @@ const translations = {
     'error.plan_steps_required': '计划步骤不能为空',
     'error.plan_steps_max': '计划步骤最多 10 个',
     'error.plan_exists': '已存在计划"{title}"，请先完成当前计划或使用 update_plan 更新步骤状态',
+    'error.plan_exists_use_clear': '已存在进行中的计划"{title}"。如需重新规划，请先使用 clear_plan 清除当前计划',
     'error.step_index_positive': '步骤索引必须是非负整数',
     'error.invalid_plan_status': '无效的状态，可选值: {statuses}',
     'error.no_active_plan': '当前没有执行中的计划，请先使用 create_plan 创建计划',
@@ -287,6 +292,7 @@ const translations = {
     'tool.ask_user': 'Ask User',
     'tool.create_plan': 'Create Plan',
     'tool.update_plan': 'Update Plan',
+    'tool.clear_plan': 'Clear Plan',
     'tool.wait': 'Wait',
 
     // Execution status
@@ -427,6 +433,9 @@ const translations = {
     // Plan
     'plan.create': 'Create plan',
     'plan.update': 'Update plan',
+    'plan.cleared': 'Plan cleared',
+    'plan.auto_cleared': 'Old plan auto-cleared',
+    'plan.no_active_plan_to_clear': 'No active plan to clear',
 
     // Timed execution
     'timed.command_executed': 'Command executed for {seconds} seconds ({chars} characters)',
@@ -494,6 +503,7 @@ const translations = {
     'error.plan_steps_required': 'Plan steps cannot be empty',
     'error.plan_steps_max': 'Plan steps maximum is 10',
     'error.plan_exists': 'Plan "{title}" already exists, please complete current plan or use update_plan to update status',
+    'error.plan_exists_use_clear': 'Active plan "{title}" exists. To re-plan, use clear_plan to clear current plan first',
     'error.step_index_positive': 'Step index must be non-negative integer',
     'error.invalid_plan_status': 'Invalid status, options: {statuses}',
     'error.no_active_plan': 'No active plan, please use create_plan to create one first',

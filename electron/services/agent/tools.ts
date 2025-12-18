@@ -462,6 +462,28 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
           required: ['step_index', 'status']
         }
       }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'clear_plan',
+        description: `清除当前计划。用于以下场景：
+- 计划执行完毕后需要开始新任务
+- 计划执行失败后需要重新规划
+- 用户要求放弃当前计划
+- 任务目标发生变化需要制定新计划
+
+调用此工具后可以立即创建新计划。`,
+        parameters: {
+          type: 'object',
+          properties: {
+            reason: {
+              type: 'string',
+              description: '清除计划的原因（可选，用于记录）'
+            }
+          }
+        }
+      }
     }
   ]
 
