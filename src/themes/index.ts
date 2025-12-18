@@ -5,8 +5,10 @@ export type ThemeName =
   | 'dracula'
   | 'monokai'
   | 'solarized-dark'
+  | 'solarized-light'
   | 'nord'
   | 'github-dark'
+  | 'github-light'
   | 'catppuccin'
   | 'sponsor-gold'
 
@@ -110,6 +112,31 @@ const solarizedDark: ITheme = {
   brightWhite: '#fdf6e3'
 }
 
+// Solarized Light 主题（浅色）
+const solarizedLight: ITheme = {
+  background: '#fdf6e3',
+  foreground: '#657b83',
+  cursor: '#657b83',
+  cursorAccent: '#fdf6e3',
+  selectionBackground: '#eee8d5',
+  black: '#073642',
+  red: '#dc322f',
+  green: '#859900',
+  yellow: '#b58900',
+  blue: '#268bd2',
+  magenta: '#d33682',
+  cyan: '#2aa198',
+  white: '#eee8d5',
+  brightBlack: '#002b36',
+  brightRed: '#cb4b16',
+  brightGreen: '#586e75',
+  brightYellow: '#657b83',
+  brightBlue: '#839496',
+  brightMagenta: '#6c71c4',
+  brightCyan: '#93a1a1',
+  brightWhite: '#fdf6e3'
+}
+
 // Nord 主题
 const nord: ITheme = {
   background: '#2e3440',
@@ -158,6 +185,31 @@ const githubDark: ITheme = {
   brightMagenta: '#d2a8ff',
   brightCyan: '#56d4dd',
   brightWhite: '#f0f6fc'
+}
+
+// GitHub Light 主题（浅色）
+const githubLight: ITheme = {
+  background: '#ffffff',
+  foreground: '#24292f',
+  cursor: '#24292f',
+  cursorAccent: '#ffffff',
+  selectionBackground: '#bde0fc',
+  black: '#24292f',
+  red: '#cf222e',
+  green: '#116329',
+  yellow: '#9a6700',
+  blue: '#0969da',
+  magenta: '#8250df',
+  cyan: '#1b7c83',
+  white: '#6e7781',
+  brightBlack: '#57606a',
+  brightRed: '#a40e26',
+  brightGreen: '#1a7f37',
+  brightYellow: '#633c01',
+  brightBlue: '#218bff',
+  brightMagenta: '#a475f9',
+  brightCyan: '#3192aa',
+  brightWhite: '#8c959f'
 }
 
 // Catppuccin Mocha 主题
@@ -216,8 +268,10 @@ export const themes: Record<ThemeName, ITheme> = {
   dracula,
   monokai,
   'solarized-dark': solarizedDark,
+  'solarized-light': solarizedLight,
   nord,
   'github-dark': githubDark,
+  'github-light': githubLight,
   catppuccin,
   'sponsor-gold': sponsorGold
 }
