@@ -78,6 +78,78 @@ export const translations = {
         },
       ],
     },
+    useCases: {
+      title: '适用场景',
+      subtitle: '无论你是 AI 从业者、运维工程师还是学习者，旗鱼终端都能助你事半功倍',
+      items: [
+        {
+          role: 'AI 从业者',
+          icon: 'ai',
+          description: 'GPU 服务器管理与模型训练的最佳搭档',
+          scenarios: [
+            'GPU 状态监控与资源管理',
+            '模型训练任务部署与调试',
+            'CUDA / PyTorch 环境配置',
+            '训练日志分析与错误排查',
+          ],
+        },
+        {
+          role: '运维工程师',
+          icon: 'server',
+          description: '高效管理多台服务器，AI 协助故障排查',
+          scenarios: [
+            '批量服务器巡检与状态监控',
+            '日志分析与异常定位',
+            '自动化运维脚本生成',
+            '磁盘、内存、CPU 问题诊断',
+          ],
+        },
+        {
+          role: '开发人员',
+          icon: 'code',
+          description: '提升开发效率，让 AI 成为你的编程助手',
+          scenarios: [
+            'Git 操作与代码部署',
+            '开发环境配置与调试',
+            'Docker 容器管理',
+            'API 调试与测试',
+          ],
+        },
+        {
+          role: '数据库管理员',
+          icon: 'database',
+          description: '数据库运维更轻松，AI 助力性能优化',
+          scenarios: [
+            '数据库备份与恢复',
+            'SQL 性能分析与优化',
+            '主从同步状态检查',
+            '慢查询定位与处理',
+          ],
+        },
+        {
+          role: '安全工程师',
+          icon: 'shield',
+          description: '安全审计与漏洞排查的得力助手',
+          scenarios: [
+            '系统安全基线检查',
+            '入侵痕迹分析',
+            '权限与访问审计',
+            '安全日志分析',
+          ],
+        },
+        {
+          role: 'Linux 学习者',
+          icon: 'book',
+          description: '边学边练，AI 实时解答命令疑问',
+          scenarios: [
+            '命令语法学习与解释',
+            '系统管理基础练习',
+            'Shell 脚本编写指导',
+            '配置文件理解与修改',
+          ],
+        },
+      ],
+    },
     download: {
       title: '立即下载',
       subtitle: '免费使用，开源共建。选择适合你系统的版本开始体验',
@@ -212,6 +284,78 @@ export const translations = {
           title: 'Enterprise Friendly',
           description: 'Supports intranet AI API and proxy configuration. All data stored locally, meeting enterprise security and compliance requirements.',
           highlights: ['Intranet Deployment', 'Data Localization', 'Xshell Import'],
+        },
+      ],
+    },
+    useCases: {
+      title: 'Use Cases',
+      subtitle: 'Whether you\'re an AI practitioner, ops engineer, or learner, SFTerm helps you work smarter',
+      items: [
+        {
+          role: 'AI Practitioner',
+          icon: 'ai',
+          description: 'Your best companion for GPU server management and model training',
+          scenarios: [
+            'GPU status monitoring & resource management',
+            'Model training deployment & debugging',
+            'CUDA / PyTorch environment setup',
+            'Training log analysis & troubleshooting',
+          ],
+        },
+        {
+          role: 'Ops Engineer',
+          icon: 'server',
+          description: 'Efficiently manage multiple servers with AI-assisted troubleshooting',
+          scenarios: [
+            'Batch server inspection & monitoring',
+            'Log analysis & anomaly detection',
+            'Automated ops script generation',
+            'Disk, memory, CPU diagnostics',
+          ],
+        },
+        {
+          role: 'Developer',
+          icon: 'code',
+          description: 'Boost development efficiency with AI as your coding assistant',
+          scenarios: [
+            'Git operations & code deployment',
+            'Dev environment setup & debugging',
+            'Docker container management',
+            'API debugging & testing',
+          ],
+        },
+        {
+          role: 'DBA',
+          icon: 'database',
+          description: 'Database maintenance made easier with AI-powered optimization',
+          scenarios: [
+            'Database backup & recovery',
+            'SQL performance analysis',
+            'Replication status checks',
+            'Slow query identification',
+          ],
+        },
+        {
+          role: 'Security Engineer',
+          icon: 'shield',
+          description: 'Your reliable assistant for security audits and vulnerability scanning',
+          scenarios: [
+            'System security baseline checks',
+            'Intrusion trace analysis',
+            'Permission & access auditing',
+            'Security log analysis',
+          ],
+        },
+        {
+          role: 'Linux Learner',
+          icon: 'book',
+          description: 'Learn by doing with real-time AI explanations',
+          scenarios: [
+            'Command syntax learning',
+            'System administration basics',
+            'Shell script writing guidance',
+            'Config file understanding',
+          ],
         },
       ],
     },
