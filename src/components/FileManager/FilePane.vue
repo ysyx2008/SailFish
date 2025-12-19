@@ -112,7 +112,6 @@ const previewLoading = ref(false)
 
 // 书签相关
 const {
-  bookmarks,
   localBookmarks,
   remoteBookmarks,
   loadBookmarks,

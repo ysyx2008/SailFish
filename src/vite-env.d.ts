@@ -41,7 +41,7 @@ interface AgentPlan {
 
 interface AgentStep {
   id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'plan_created' | 'plan_updated'
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'plan_created' | 'plan_updated' | 'plan_archived'
   content: string
   toolName?: string
   toolArgs?: Record<string, unknown>
@@ -545,6 +545,35 @@ interface Window {
       setSessionSortBy: (sortBy: string) => Promise<void>
       getDefaultGroupSortOrder: () => Promise<number>
       setDefaultGroupSortOrder: (order: number) => Promise<void>
+      // 文件书签
+      getFileBookmarks: () => Promise<Array<{
+        id: string
+        name: string
+        path: string
+        type: 'local' | 'remote'
+        hostId?: string
+        hostName?: string
+        createdAt: number
+      }>>
+      addFileBookmark: (bookmark: {
+        id: string
+        name: string
+        path: string
+        type: 'local' | 'remote'
+        hostId?: string
+        hostName?: string
+        createdAt: number
+      }) => Promise<void>
+      deleteFileBookmark: (id: string) => Promise<void>
+      updateFileBookmark: (bookmark: {
+        id: string
+        name: string
+        path: string
+        type: 'local' | 'remote'
+        hostId?: string
+        hostName?: string
+        createdAt: number
+      }) => Promise<void>
     }
     xshell: {
       selectFiles: () => Promise<{ canceled: boolean; filePaths: string[] }>
