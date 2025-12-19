@@ -80,8 +80,19 @@ export const translations = {
     },
     useCases: {
       title: '适用场景',
-      subtitle: '无论你是运维工程师、开发者还是学习者，旗鱼终端都能助你事半功倍',
+      subtitle: '无论你是 AI 从业者、运维工程师还是学习者，旗鱼终端都能助你事半功倍',
       items: [
+        {
+          role: 'AI 从业者',
+          icon: 'ai',
+          description: 'GPU 服务器管理与模型训练的最佳搭档',
+          scenarios: [
+            'GPU 状态监控与资源管理',
+            '模型训练任务部署与调试',
+            'CUDA / PyTorch 环境配置',
+            '训练日志分析与错误排查',
+          ],
+        },
         {
           role: '运维工程师',
           icon: 'server',
@@ -135,17 +146,6 @@ export const translations = {
             '系统管理基础练习',
             'Shell 脚本编写指导',
             '配置文件理解与修改',
-          ],
-        },
-        {
-          role: '团队 Leader',
-          icon: 'users',
-          description: '统一团队工具，提升整体效率',
-          scenarios: [
-            '统一团队 SSH 连接管理',
-            '导入已有 Xshell 会话',
-            '知识库沉淀与共享',
-            '操作记录追溯',
           ],
         },
       ],
@@ -289,8 +289,19 @@ export const translations = {
     },
     useCases: {
       title: 'Use Cases',
-      subtitle: 'Whether you\'re an ops engineer, developer, or learner, SFTerm helps you work smarter',
+      subtitle: 'Whether you\'re an AI practitioner, ops engineer, or learner, SFTerm helps you work smarter',
       items: [
+        {
+          role: 'AI Practitioner',
+          icon: 'ai',
+          description: 'Your best companion for GPU server management and model training',
+          scenarios: [
+            'GPU status monitoring & resource management',
+            'Model training deployment & debugging',
+            'CUDA / PyTorch environment setup',
+            'Training log analysis & troubleshooting',
+          ],
+        },
         {
           role: 'Ops Engineer',
           icon: 'server',
@@ -344,17 +355,6 @@ export const translations = {
             'System administration basics',
             'Shell script writing guidance',
             'Config file understanding',
-          ],
-        },
-        {
-          role: 'Team Leader',
-          icon: 'users',
-          description: 'Unify team tools and boost overall efficiency',
-          scenarios: [
-            'Unified SSH connection management',
-            'Import existing Xshell sessions',
-            'Knowledge base & sharing',
-            'Operation history tracking',
           ],
         },
       ],
