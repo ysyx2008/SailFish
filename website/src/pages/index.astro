@@ -3,6 +3,7 @@ import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Hero from '../components/Hero.astro';
 import Features from '../components/Features.astro';
+import UseCases from '../components/UseCases.astro';
 import Download from '../components/Download.astro';
 import Footer from '../components/Footer.astro';
 import { useTranslations, getLangFromUrl } from '../i18n/utils';
@@ -16,6 +17,7 @@ const t = useTranslations(lang);
   <main>
     <Hero lang={lang} />
     <Features lang={lang} />
+    <UseCases lang={lang} />
     <Download lang={lang} />
   </main>
   <Footer lang={lang} />
