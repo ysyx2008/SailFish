@@ -11,6 +11,7 @@ import DataSettings from './DataSettings.vue'
 import McpSettings from './McpSettings.vue'
 import KnowledgeSettings from './KnowledgeSettings.vue'
 import LanguageSettings from './LanguageSettings.vue'
+import sailfishLogo from '../../../resources/logo.png'
 
 const { t } = useI18n()
 
@@ -456,7 +457,9 @@ const onQrImageError = (event: Event) => {
           <DataSettings v-else-if="activeTab === 'data'" />
           <LanguageSettings v-else-if="activeTab === 'language'" />
           <div v-else-if="activeTab === 'about'" ref="aboutContentRef" class="about-content">
-            <div class="about-logo">{{ brandLogo }}</div>
+            <div class="about-logo">
+              <img :src="sailfishLogo" alt="Sailfish" class="about-sailfish-logo" />
+            </div>
             <h3>{{ brandName }}</h3>
             <p class="version">{{ t('common.version') }} {{ oemConfig.brand.version || appVersion }}</p>
             
@@ -729,8 +732,15 @@ const onQrImageError = (event: Event) => {
 }
 
 .about-logo {
-  font-size: 64px;
+  display: flex;
+  justify-content: center;
   margin-bottom: 16px;
+}
+
+.about-sailfish-logo {
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
 }
 
 .about-content h3 {

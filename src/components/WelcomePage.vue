@@ -7,6 +7,7 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore, type SshSession } from '../stores/config'
 import MatrixRain from './EasterEgg/MatrixRain.vue'
+import sailfishLogo from '../../resources/logo.png'
 
 const { t } = useI18n()
 const configStore = useConfigStore()
@@ -97,7 +98,9 @@ const formatHost = (session: SshSession) => {
       <!-- Logo 和标题 -->
       <div class="welcome-header">
         <div class="logo-container" @click="handleLogoClick">
-          <div class="logo">🐟</div>
+          <div class="logo">
+            <img :src="sailfishLogo" alt="Sailfish" class="sailfish-logo" />
+          </div>
         </div>
         <h1 class="welcome-title">{{ t('welcome.title') }}</h1>
         <p class="welcome-subtitle">{{ t('welcome.subtitle') }}</p>
@@ -228,10 +231,17 @@ const formatHost = (session: SshSession) => {
 }
 
 .logo {
-  font-size: 64px;
-  line-height: 1;
-  filter: drop-shadow(0 4px 12px rgba(59, 130, 246, 0.3));
+  display: flex;
+  justify-content: center;
+  align-items: center;
   animation: float 3s ease-in-out infinite;
+}
+
+.sailfish-logo {
+  width: 160px;
+  height: 160px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 12px rgba(59, 130, 246, 0.3));
 }
 
 @keyframes float {
