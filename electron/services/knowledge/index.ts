@@ -1281,16 +1281,32 @@ export class KnowledgeService extends EventEmitter {
   async resolveMemoryConflict(
     newMemory: string,
     existingMemory: string,
-    similarity: number
+    similarity: number,
+    existingCreatedAt?: number
   ): Promise<MemoryMergeDecision> {
     try {
+      // 格式化时间
+      const formatTime = (timestamp: number) => {
+        const date = new Date(timestamp)
+        return date.toLocaleString('zh-CN', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      }
+      
+      const existingTimeStr = existingCreatedAt ? formatTime(existingCreatedAt) : '未知时间'
+      const newTimeStr = formatTime(Date.now())
+
       const prompt = `你是一个记忆管理助手。用户正在保存一条新记忆，但检测到与已有记忆相似（相似度 ${(similarity * 100).toFixed(1)}%）。
 请分析并决定如何处理。
 
-【已有记忆】
+【已有记忆】(保存于 ${existingTimeStr})
 ${existingMemory}
 
-【新记忆】
+【新记忆】(当前时间 ${newTimeStr})
 ${newMemory}
 
 请分析这两条记忆的关系，返回 JSON 格式的决策：
@@ -1369,7 +1385,8 @@ ${newMemory}
       const decision = await this.resolveMemoryConflict(
         memory,
         existingMemory.content,
-        existingMemory.similarity
+        existingMemory.similarity,
+        existingMemory.createdAt  // 传入旧记忆的创建时间
       )
 
       // 3. 执行 AI 决策
