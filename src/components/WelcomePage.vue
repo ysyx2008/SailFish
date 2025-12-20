@@ -6,9 +6,38 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore, type SshSession } from '../stores/config'
+import MatrixRain from './EasterEgg/MatrixRain.vue'
 
 const { t } = useI18n()
 const configStore = useConfigStore()
+
+// 彩蛋：连续点击 Logo 20 次触发 Matrix 数字雨
+const showMatrixEasterEgg = ref(false)
+const logoClickCount = ref(0)
+const lastLogoClickTime = ref(0)
+const EASTER_EGG_CLICK_COUNT = 20
+const EASTER_EGG_CLICK_INTERVAL = 1000 // 毫秒
+
+const handleLogoClick = () => {
+  const now = Date.now()
+  // 如果距离上次点击超过 1000ms，重置计数
+  if (now - lastLogoClickTime.value > EASTER_EGG_CLICK_INTERVAL) {
+    logoClickCount.value = 1
+  } else {
+    logoClickCount.value++
+  }
+  lastLogoClickTime.value = now
+
+  // 达到 20 次触发彩蛋
+  if (logoClickCount.value >= EASTER_EGG_CLICK_COUNT) {
+    showMatrixEasterEgg.value = true
+    logoClickCount.value = 0
+  }
+}
+
+const closeMatrixEasterEgg = () => {
+  showMatrixEasterEgg.value = false
+}
 
 // 随机选择一条 tip 显示，支持点击切换
 const tipKeys = [
@@ -67,7 +96,7 @@ const formatHost = (session: SshSession) => {
     <div class="welcome-content">
       <!-- Logo 和标题 -->
       <div class="welcome-header">
-        <div class="logo-container">
+        <div class="logo-container" @click="handleLogoClick">
           <div class="logo">🐟</div>
         </div>
         <h1 class="welcome-title">{{ t('welcome.title') }}</h1>
@@ -166,6 +195,9 @@ const formatHost = (session: SshSession) => {
         </div>
       </div>
     </div>
+
+    <!-- Matrix 数字雨彩蛋 -->
+    <MatrixRain v-if="showMatrixEasterEgg" @close="closeMatrixEasterEgg" />
   </div>
 </template>
 
