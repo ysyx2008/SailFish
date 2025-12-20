@@ -66,8 +66,6 @@ const brandCopyright = computed(() => {
   return locale === 'zh-CN' ? oemConfig.brand.copyright.zh : oemConfig.brand.copyright.en
 })
 
-const brandLogo = computed(() => oemConfig.brand.logo)
-
 // 赞助状态
 const isSponsor = computed(() => configStore.isSponsor)
 const showSponsor = computed(() => oemConfig.features.showSponsor)
