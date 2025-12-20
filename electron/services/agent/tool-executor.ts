@@ -2050,22 +2050,16 @@ async function rememberInfo(
     }
   }
 
-  // 如果知识库不可用，回退到主机档案
-  if (!savedToKnowledge && hostId && executor.hostProfileService) {
-    executor.hostProfileService.addNote(hostId, info)
+  // 知识库不可用时，提示用户
+  if (!savedToKnowledge) {
     executor.addStep({
       type: 'tool_result',
-      content: `${t('memory.remembered')}: ${info} (${t('memory.remembered_profile')})`,
+      content: t('memory.cannot_save'),
       toolName: 'remember_info'
     })
-    return { success: true, output: t('success.info_saved_to_profile') }
+    return { success: false, output: '', error: t('error.knowledge_not_available') }
   }
 
-  executor.addStep({
-    type: 'tool_result',
-    content: t('memory.cannot_save'),
-    toolName: 'remember_info'
-  })
   return { success: false, output: '', error: t('error.cannot_save_unknown_host') }
 }
 

@@ -104,17 +104,6 @@ const {
   quickActions
 } = useAiChat(getDocumentContext, messagesRef, currentTabId)
 
-// 获取当前 tab（基于固定的 tabId）
-const currentTab = computed(() => {
-  return terminalStore.tabs.find(t => t.id === currentTabId.value)
-})
-
-// Agent 模式（需要 inputText 和 scrollToBottom）
-// 先创建一个临时的 agentState computed 用于 useHostProfile
-const tempAgentState = computed(() => {
-  return currentTab.value?.agentState
-})
-
 // 主机档案
 const {
   currentHostProfile,
@@ -123,9 +112,8 @@ const {
   getHostIdByTabId,
   loadHostProfile,
   refreshHostProfile,
-  summarizeAgentFindings,
   autoProbeHostProfile
-} = useHostProfile(tempAgentState)
+} = useHostProfile()
 
 // Agent 模式
 const {
@@ -154,7 +142,6 @@ const {
   getDocumentContext,
   getHostIdByTabId,
   autoProbeHostProfile,
-  summarizeAgentFindings,
   currentTabId
 )
 
@@ -816,12 +803,6 @@ onMounted(() => {
               <div v-if="currentHostProfile.installedTools?.length" class="profile-row">
                 <span class="profile-label">{{ t('ai.agentWelcome.tools') }}:</span>
                 <span class="profile-value tools-list">{{ currentHostProfile.installedTools.join(', ') }}</span>
-              </div>
-              <div v-if="currentHostProfile.notes?.length" class="profile-notes">
-                <span class="profile-label">📝 {{ t('ai.agentWelcome.knownInfo') }}:</span>
-                <ul>
-                  <li v-for="(note, idx) in currentHostProfile.notes.slice(-5)" :key="idx">{{ note }}</li>
-                </ul>
               </div>
             </div>
             <div v-else-if="isLoadingProfile" class="host-profile-loading">

@@ -639,7 +639,6 @@ export default {
       system: 'System',
       shell: 'Shell',
       tools: 'Tools',
-      knownInfo: 'Known Info',
       notProbed: 'Not probed yet, click refresh to probe host information',
       whatIsAgent: 'What is Agent Mode?',
       agentDesc: 'Agent can autonomously execute commands to complete your tasks, and you can see the complete execution process.',

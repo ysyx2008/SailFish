@@ -639,7 +639,6 @@ export default {
       system: '系统',
       shell: 'Shell',
       tools: '工具',
-      knownInfo: '已知信息',
       notProbed: '尚未探测，点击刷新按钮探测主机信息',
       whatIsAgent: '什么是 Agent 模式？',
       agentDesc: 'Agent 可以自主执行命令来完成你的任务，你可以看到完整的执行过程。',
