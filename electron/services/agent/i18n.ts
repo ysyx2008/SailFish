@@ -146,6 +146,9 @@ const translations = {
     'memory.remembered_profile': '已记住 (主机档案)',
     'memory.cannot_save': '无法保存: 主机ID未知',
     'memory.skip_dynamic': '跳过 (纯动态数据)',
+    'memory.skip_duplicate': '跳过 (与已有记忆重复)',
+    'memory.merged': '记忆已合并更新',
+    'memory.replaced': '记忆已更新替换',
 
     // 知识库搜索
     'knowledge.search': '搜索知识库',
@@ -414,6 +417,9 @@ const translations = {
     'memory.remembered_profile': 'Remembered (Host profile)',
     'memory.cannot_save': 'Cannot save: Unknown host ID',
     'memory.skip_dynamic': 'Skipped (dynamic data only)',
+    'memory.skip_duplicate': 'Skipped (duplicate memory)',
+    'memory.merged': 'Memory merged and updated',
+    'memory.replaced': 'Memory replaced',
 
     // Knowledge search
     'knowledge.search': 'Search knowledge',

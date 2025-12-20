@@ -196,6 +196,30 @@ export class VectorStorage extends EventEmitter {
   }
 
   /**
+   * 获取文档的所有记录
+   */
+  async getRecordsByDocId(docId: string): Promise<VectorRecord[]> {
+    if (!this.table) return []
+
+    try {
+      // LanceDB 查询：使用 where 子句过滤
+      const allRows = await this.table.toArray()
+      const filtered = (allRows as VectorRecord[]).filter(r => r.docId === docId)
+      return filtered
+    } catch (error) {
+      console.error('[VectorStorage] Failed to get records by docId:', error)
+      return []
+    }
+  }
+
+  /**
+   * 删除文档的所有记录（别名，与 removeDocumentChunks 相同）
+   */
+  async removeRecordsByDocId(docId: string): Promise<number> {
+    return this.removeDocumentChunks(docId)
+  }
+
+  /**
    * 向量搜索
    */
   async searchByVector(
