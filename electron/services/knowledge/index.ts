@@ -485,6 +485,23 @@ export class KnowledgeService extends EventEmitter {
       results = await this.reranker.rerank(query, results, searchOptions.limit!)
     }
 
+    // 解密加密的内容（主机记忆等）
+    results = results.map(result => {
+      if (isEncrypted(result.content)) {
+        try {
+          return {
+            ...result,
+            content: decrypt(result.content)
+          }
+        } catch (e) {
+          // 解密失败，保持原样（可能是密码未设置或错误）
+          console.warn('[KnowledgeService] 解密失败:', e)
+          return result
+        }
+      }
+      return result
+    })
+
     return results.slice(0, searchOptions.limit)
   }
 
