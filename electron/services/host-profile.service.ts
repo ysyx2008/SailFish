@@ -20,7 +20,6 @@ export interface HostProfile {
   installedTools: string[]    // 已安装的常用工具
   homeDir?: string            // 用户主目录
   currentDir?: string         // 当前工作目录
-  notes: string[]             // Agent 学习到的重要信息
   lastProbed: number          // 上次探测时间
   lastUpdated: number         // 上次更新时间
 }
@@ -184,33 +183,12 @@ export class HostProfileService {
       installedTools: updates.installedTools || existing?.installedTools || [],
       homeDir: updates.homeDir || existing?.homeDir,
       currentDir: updates.currentDir || existing?.currentDir,
-      // notes 使用 undefined 检查，允许设置空数组
-      notes: updates.notes !== undefined ? updates.notes : (existing?.notes || []),
       lastProbed: updates.lastProbed || existing?.lastProbed || now,
       lastUpdated: now
     }
 
     this.saveProfile(profile)
     return profile
-  }
-
-  /**
-   * 添加笔记（Agent 学习到的信息）
-   */
-  addNote(hostId: string, note: string): void {
-    const profile = this.profiles.get(hostId)
-    if (!profile) return
-
-    // 避免重复
-    if (!profile.notes.includes(note)) {
-      profile.notes.push(note)
-      // 只保留最近 20 条
-      if (profile.notes.length > 20) {
-        profile.notes = profile.notes.slice(-20)
-      }
-      profile.lastUpdated = Date.now()
-      this.saveProfile(profile)
-    }
   }
 
   /**
@@ -480,15 +458,6 @@ export class HostProfileService {
     }
     if (profile.currentDir) {
       lines.push(`- 当前目录: ${profile.currentDir}`)
-    }
-
-    // 添加已知信息
-    if (profile.notes.length > 0) {
-      lines.push('')
-      lines.push('## 已知信息（来自历史交互）')
-      for (const note of profile.notes.slice(-10)) {  // 只显示最近 10 条
-        lines.push(`- ${note}`)
-      }
     }
 
     return lines.join('\n')

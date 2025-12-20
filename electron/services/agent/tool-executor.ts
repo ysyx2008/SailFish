@@ -1962,7 +1962,7 @@ async function writeFile(
 
 /**
  * 记住信息
- * 使用知识库存储主机记忆，支持语义搜索
+ * 使用知识库存储主机记忆，支持语义搜索和智能去重
  */
 async function rememberInfo(
   args: Record<string, unknown>,
@@ -2000,7 +2000,7 @@ async function rememberInfo(
     riskLevel: 'safe'
   })
 
-  // 优先保存到知识库
+  // 优先保存到知识库（使用智能去重）
   const hostId = executor.getHostId()
   let savedToKnowledge = false
   
@@ -2008,16 +2008,41 @@ async function rememberInfo(
     try {
       const knowledgeService = getKnowledgeService()
       if (knowledgeService && knowledgeService.isEnabled()) {
-        const docId = await knowledgeService.addHostMemory(hostId, info)
-        if (docId) {
+        // 使用智能添加（带语义去重和 AI 冲突解决）
+        const result = await knowledgeService.addHostMemorySmart(hostId, info)
+        
+        if (result.success) {
           savedToKnowledge = true
           const memoryCount = knowledgeService.getHostMemoryCount(hostId)
+          
+          // 根据不同的操作类型显示不同的消息
+          let resultMessage = ''
+          switch (result.action) {
+            case 'skip':
+              resultMessage = `${t('memory.skip_duplicate')}: ${result.message}`
+              break
+            case 'update':
+              resultMessage = `${t('memory.merged')}: ${result.message}`
+              break
+            case 'replace':
+              resultMessage = `${t('memory.replaced')}: ${result.message}`
+              break
+            case 'keep_both':
+              resultMessage = `${t('memory.remembered')}: ${info} ${t('memory.remembered_knowledge', { count: memoryCount })}`
+              break
+            case 'save':
+            default:
+              resultMessage = `${t('memory.remembered')}: ${info} ${t('memory.remembered_knowledge', { count: memoryCount })}`
+              break
+          }
+          
           executor.addStep({
             type: 'tool_result',
-            content: `${t('memory.remembered')}: ${info} ${t('memory.remembered_knowledge', { count: memoryCount })}`,
+            content: resultMessage,
             toolName: 'remember_info'
           })
-          return { success: true, output: t('success.info_saved_to_knowledge', { count: memoryCount }) }
+          
+          return { success: true, output: result.message }
         }
       }
     } catch (error) {
@@ -2025,22 +2050,16 @@ async function rememberInfo(
     }
   }
 
-  // 如果知识库不可用，回退到主机档案
-  if (!savedToKnowledge && hostId && executor.hostProfileService) {
-    executor.hostProfileService.addNote(hostId, info)
+  // 知识库不可用时，提示用户
+  if (!savedToKnowledge) {
     executor.addStep({
       type: 'tool_result',
-      content: `${t('memory.remembered')}: ${info} (${t('memory.remembered_profile')})`,
+      content: t('memory.cannot_save'),
       toolName: 'remember_info'
     })
-    return { success: true, output: t('success.info_saved_to_profile') }
+    return { success: false, output: '', error: t('error.knowledge_not_available') }
   }
 
-  executor.addStep({
-    type: 'tool_result',
-    content: t('memory.cannot_save'),
-    toolName: 'remember_info'
-  })
   return { success: false, output: '', error: t('error.cannot_save_unknown_host') }
 }
 

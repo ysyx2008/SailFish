@@ -138,14 +138,17 @@ const translations = {
     'error.permission': '权限不足。建议：1) 检查文件/目录权限；2) 尝试使用 sudo（如果合适）；3) 确认用户是否有相应权限。',
     'error.not_found': '资源不存在。建议：1) 检查路径是否正确；2) 使用 ls 或 find 确认文件位置；3) 检查命令是否已安装。',
     'error.timeout': '命令执行超时，但可能仍在运行中。建议：1) 先用 check_terminal_status 确认是否还在执行；2)  再用 get_terminal_context 查看终端最新输出，了解执行进度；3) 如果确实卡住了再用 send_control_key 发送 Ctrl+C。',
+    'error.knowledge_not_available': '知识库未启用，无法保存记忆',
 
     // 记忆功能
     'memory.remember': '记住信息',
     'memory.remembered': '已记住',
     'memory.remembered_knowledge': '已记住 (知识库, 共 {count} 条记忆)',
-    'memory.remembered_profile': '已记住 (主机档案)',
-    'memory.cannot_save': '无法保存: 主机ID未知',
+    'memory.cannot_save': '无法保存: 知识库未启用',
     'memory.skip_dynamic': '跳过 (纯动态数据)',
+    'memory.skip_duplicate': '跳过 (与已有记忆重复)',
+    'memory.merged': '记忆已合并更新',
+    'memory.replaced': '记忆已更新替换',
 
     // 知识库搜索
     'knowledge.search': '搜索知识库',
@@ -244,7 +247,6 @@ const translations = {
     // 成功消息
     'success.dynamic_data_skip': '此信息为纯动态数据，不适合长期记忆',
     'success.info_saved_to_knowledge': '信息已保存到知识库 (当前主机共 {count} 条记忆)',
-    'success.info_saved_to_profile': '信息已保存到主机档案',
     'success.no_knowledge_found': '知识库中未找到与查询相关的内容',
 
     // 等待相关
@@ -406,14 +408,17 @@ const translations = {
     'error.permission': 'Permission denied. Suggestions: 1) Check file/directory permissions; 2) Try using sudo (if appropriate); 3) Confirm user has required permissions.',
     'error.not_found': 'Resource not found. Suggestions: 1) Check if the path is correct; 2) Use ls or find to confirm file location; 3) Check if the command is installed.',
     'error.timeout': 'Command execution timeout, but may still be running. Suggestions: 1) Use check_terminal_status to confirm if still executing; 2) Use get_terminal_context to check latest terminal output; 3) Use send_control_key to send Ctrl+C if really stuck.',
+    'error.knowledge_not_available': 'Knowledge base not enabled, cannot save memory',
 
     // Memory
     'memory.remember': 'Remember info',
     'memory.remembered': 'Remembered',
     'memory.remembered_knowledge': 'Remembered (Knowledge base, {count} memories)',
-    'memory.remembered_profile': 'Remembered (Host profile)',
-    'memory.cannot_save': 'Cannot save: Unknown host ID',
+    'memory.cannot_save': 'Cannot save: Knowledge base not enabled',
     'memory.skip_dynamic': 'Skipped (dynamic data only)',
+    'memory.skip_duplicate': 'Skipped (duplicate memory)',
+    'memory.merged': 'Memory merged and updated',
+    'memory.replaced': 'Memory replaced',
 
     // Knowledge search
     'knowledge.search': 'Search knowledge',
@@ -512,7 +517,6 @@ const translations = {
     // Success messages
     'success.dynamic_data_skip': 'This info is purely dynamic data, not suitable for long-term memory',
     'success.info_saved_to_knowledge': 'Info saved to knowledge base (current host has {count} memories)',
-    'success.info_saved_to_profile': 'Info saved to host profile',
     'success.no_knowledge_found': 'No relevant content found in knowledge base',
 
     // Wait related

@@ -70,7 +70,6 @@ export function useAgentMode(
   getDocumentContext: () => Promise<string>,
   getHostIdByTabId: (tabId: string) => Promise<string>,  // 根据 tabId 获取 hostId（不依赖 activeTab）
   autoProbeHostProfile: () => Promise<void>,
-  summarizeAgentFindings: (hostId: string) => Promise<void>,
   tabId: Ref<string>  // 每个 AiPanel 实例固定绑定的 tab ID
 ) {
   const terminalStore = useTerminalStore()
@@ -431,11 +430,6 @@ export function useAgentMode(
       
       // 保存 Agent 记录
       saveAgentRecord(tabId, message, startTime, result.success ? 'completed' : 'failed', finalContent)
-      
-      // Agent 完成后自动总结关键信息并更新记忆（后台执行）
-      summarizeAgentFindings(hostId).catch(e => {
-        console.warn('[Agent] 总结记忆失败:', e)
-      })
     } catch (error) {
       console.error('Agent 运行失败:', error)
       const errorMessage = error instanceof Error ? error.message : '未知错误'

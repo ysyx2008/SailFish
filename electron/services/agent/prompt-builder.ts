@@ -331,7 +331,7 @@ export interface BuildSystemPromptOptions {
   mbtiType?: AgentMbtiType
   knowledgeContext?: string
   knowledgeEnabled?: boolean
-  /** 从知识库获取的主机记忆（优先于 notes） */
+  /** 从知识库获取的主机记忆 */
   hostMemories?: string[]
 }
 
@@ -380,16 +380,10 @@ export function buildSystemPrompt(
     }
   }
 
-  // 添加主机记忆：优先使用知识库记忆，否则使用旧的 notes
-  const memories = hostMemories && hostMemories.length > 0 
-    ? hostMemories 
-    : (context.hostId && hostProfileService 
-        ? hostProfileService.getProfile(context.hostId)?.notes?.slice(-10) 
-        : undefined)
-  
-  if (memories && memories.length > 0) {
+  // 添加主机记忆（来自知识库）
+  if (hostMemories && hostMemories.length > 0) {
     hostContext += '\n\n## 已知信息（来自历史交互）'
-    for (const memory of memories.slice(0, 15)) {  // 最多显示 15 条
+    for (const memory of hostMemories.slice(0, 15)) {  // 最多显示 15 条
       hostContext += `\n- ${memory}`
     }
   }
