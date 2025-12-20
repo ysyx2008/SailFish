@@ -28,7 +28,7 @@ For enterprise users, SFTerminal is designed with intranet environments in mind:
 - 📂 **Session Groups**: Flexible group management with group-level jump host configuration
   - Create, edit, and delete groups
   - Each group can configure an independent jump host; sessions in the group automatically connect through the jump host
-- 📁 **SFTP File Management**: Visual file browser supporting upload/download/preview/edit
+  - Drag-and-drop session sorting
 - 📥 **Xshell Import**: One-click import of Xshell session configurations for quick migration
 - 🎨 **Rich Themes**: Built-in multiple beautiful color schemes
 - ⚡ **High Performance**: Based on xterm.js for smooth terminal experience
@@ -88,6 +88,15 @@ For enterprise users, SFTerminal is designed with intranet environments in mind:
 - 📊 **Reranking Optimization**: Optional Rerank model to optimize search result ordering
 - 💾 **Vector Storage**: Efficient local vector database based on LanceDB
 - 🔗 **Agent Integration**: Deep integration with Agent, automatically retrieves relevant documents to assist answers
+
+### File Management
+- 📁 **Dual-Pane File Manager**: Standalone window with dual-panel file manager
+  - Left-right dual-pane layout, supports local and remote file operations
+  - Directory tree navigation for quick positioning
+  - File preview for online text file viewing
+  - File bookmarks for quick access to frequently used directories
+  - Full keyboard shortcuts and context menu support
+- 📂 **SFTP Sidebar**: Terminal sidebar integrated file browser, supports upload/download/preview/edit
 
 ## Tech Stack
 
@@ -335,7 +344,36 @@ Supports importing existing session configurations from Xshell:
 
 ## Version History
 
-### v7.5.0 (Current Version)
+### v8.1.0 (Current Version)
+- 🧠 **Smart Memory Management**: Enhanced memory conflict handling with intelligent deduplication
+- 🧹 **Knowledge Base Optimization**: Added orphan data cleanup for vector storage enhancement
+
+### v8.0.0
+- 📂 **Dual-Pane File Manager**: Full-featured dual-pane file manager
+  - Left-right dual-panel layout, supports local and remote file operations
+  - Directory tree navigation for quick positioning
+  - File preview for online text file viewing
+  - Path editing and breadcrumb navigation
+  - Full keyboard shortcuts support (Ctrl/Cmd+A select all, ESC cancel, etc.)
+  - Context menu operations
+- 🔖 **File Bookmarks**: Quick bookmark frequently used directories for one-click access
+- 📋 **Plan Management Enhancement**: Support for plan archiving and clearing
+- 🎨 **New Themes**: Solarized Light and GitHub Light themes
+- 🖥️ **Terminal Enhancement**:
+  - Right-click to open file manager
+  - Enhanced terminal prompt parsing with smart current directory recognition
+  - Terminal close confirmation prompt
+
+### v7.7.0
+- ⚡ **Startup Speed Optimization**: Async knowledge base loading for significantly faster startup
+- 🌍 **Multi-language Enhancement**: AI response language follows interface language setting
+- 📖 **English Documentation**: Added English version of README
+
+### v7.6.0
+- 🔀 **Session Sorting**: Drag-and-drop session sorting, can drag to end of group
+- 💡 **Tips Enhancement**: Random tips on welcome page, click to switch to more tips
+
+### v7.5.0
 - 🔧 **Unified Terminal Service**: Abstracted common interface for PTY and SSH terminals
 - 📊 **Progress Detector**: Intelligent command execution progress recognition
 - 🛠️ **Agent Tool Enhancement**: Optimized tool executor and risk assessment
