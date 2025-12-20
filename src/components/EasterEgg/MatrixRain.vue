@@ -41,14 +41,24 @@ const handleClick = () => {
 // Matrix 字符集
 const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%^&*()_+-=[]{}|;:,.<>?'
 
-// ASCII 艺术字（空心风格）- SFTerm
+// ASCII 艺术字（大型风格）- SFTerm
 const ASCII_ART_EN = [
-  ' _____ _____ _____                     ',
-  '/  ___|  ___|_   _|                    ',
-  '\\ `--.| |_    | | ___ _ __ _ __ ___   ',
-  ' `--. \\  _|   | |/ _ \\ \'__| \'_ ` _ \\  ',
-  '/\\__/ / |     | |  __/ |  | | | | | | ',
-  '\\____/\\_|     \\_/\\___|_|  |_| |_| |_| ',
+  '   SSSSSSSSSSSSSSS FFFFFFFFFFFFFFFFFFFFFFTTTTTTTTTTTTTTTTTTTTTTT                                                            ',
+  ' SS:::::::::::::::SF::::::::::::::::::::FT:::::::::::::::::::::T                                                            ',
+  'S:::::SSSSSS::::::SF::::::::::::::::::::FT:::::::::::::::::::::T                                                            ',
+  'S:::::S     SSSSSSSFF::::::FFFFFFFFF::::FT:::::TT:::::::TT:::::T                                                            ',
+  'S:::::S              F:::::F       FFFFFFTTTTTT  T:::::T  TTTTTTeeeeeeeeeeee    rrrrr   rrrrrrrrr      mmmmmmm    mmmmmmm   ',
+  'S:::::S              F:::::F                     T:::::T      ee::::::::::::ee  r::::rrr:::::::::r   mm:::::::m  m:::::::mm ',
+  ' S::::SSSS           F::::::FFFFFFFFFF           T:::::T     e::::::eeeee:::::eer:::::::::::::::::r m::::::::::mm::::::::::m',
+  '  SS::::::SSSSS      F:::::::::::::::F           T:::::T    e::::::e     e:::::err::::::rrrrr::::::rm::::::::::::::::::::::m',
+  '    SSS::::::::SS    F:::::::::::::::F           T:::::T    e:::::::eeeee::::::e r:::::r     r:::::rm:::::mmm::::::mmm:::::m',
+  '       SSSSSS::::S   F::::::FFFFFFFFFF           T:::::T    e:::::::::::::::::e  r:::::r     rrrrrrrm::::m   m::::m   m::::m',
+  '            S:::::S  F:::::F                     T:::::T    e::::::eeeeeeeeeee   r:::::r            m::::m   m::::m   m::::m',
+  '            S:::::S  F:::::F                     T:::::T    e:::::::e            r:::::r            m::::m   m::::m   m::::m',
+  'SSSSSSS     S:::::SFF:::::::FF                 TT:::::::TT  e::::::::e           r:::::r            m::::m   m::::m   m::::m',
+  'S::::::SSSSSS:::::SF::::::::FF                 T:::::::::T   e::::::::eeeeeeee   r:::::r            m::::m   m::::m   m::::m',
+  'S:::::::::::::::SS F::::::::FF                 T:::::::::T    ee:::::::::::::e   r:::::r            m::::m   m::::m   m::::m',
+  ' SSSSSSSSSSSSSSS   FFFFFFFFFFF                 TTTTTTTTTTT      eeeeeeeeeeeeee   rrrrrrr            mmmmmm   mmmmmm   mmmmmm',
 ]
 
 // 中文标题（单独绘制，更大字体）
@@ -80,12 +90,12 @@ const initMatrix = () => {
   textCanvas.height = canvas.height
   const textCtx = textCanvas.getContext('2d')!
   
-  // ASCII 艺术字的字体大小（根据屏幕宽度自适应）
-  const artFontSize = Math.max(18, Math.min(28, Math.floor(canvas.width / 42)))
-  const lineHeight = artFontSize * 1.2
+  // ASCII 艺术字的字体大小（根据屏幕宽度自适应）- 大型字体需要更小的字号
+  const artFontSize = Math.max(8, Math.min(14, Math.floor(canvas.width / 100)))
+  const lineHeight = artFontSize * 1.1
   
   // 中文字体大小（比英文大）
-  const cnFontSize = Math.max(40, Math.min(72, Math.floor(canvas.width / 18)))
+  const cnFontSize = Math.max(32, Math.min(56, Math.floor(canvas.width / 24)))
   
   textCtx.fillStyle = '#fff'
   textCtx.textAlign = 'center'
