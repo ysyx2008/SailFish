@@ -246,12 +246,21 @@ export class KnowledgeService extends EventEmitter {
       const validDocIds = new Set(this.documentsIndex.keys())
       let cleanedCount = 0
 
+      // 统计当前状态
+      const memoryCount = Array.from(this.documentsIndex.values())
+        .filter(doc => doc.fileType === 'host-memory').length
+      console.log(`[KnowledgeService] 当前 documentsIndex 中有 ${this.documentsIndex.size} 个文档，其中 ${memoryCount} 个是主机记忆`)
+
       // 获取向量存储中的所有 docIds
       const stats = await this.vectorStorage.getStats()
+      console.log(`[KnowledgeService] 向量存储中有 ${stats.chunkCount} 个分块`)
+      
       if (stats.chunkCount > 0) {
         // 遍历向量存储，找出孤儿 docIds
         const allDocIds = await this.vectorStorage.getAllDocIds()
         const docIdArray = Array.from(allDocIds)
+        console.log(`[KnowledgeService] 向量存储中有 ${docIdArray.length} 个唯一文档`)
+        
         for (const docId of docIdArray) {
           if (!validDocIds.has(docId)) {
             await this.vectorStorage.removeDocumentChunks(docId)
@@ -264,6 +273,8 @@ export class KnowledgeService extends EventEmitter {
 
       if (cleanedCount > 0) {
         console.log(`[KnowledgeService] 清理了 ${cleanedCount} 个孤儿文档`)
+      } else {
+        console.log('[KnowledgeService] 没有发现孤儿数据')
       }
     } catch (error) {
       console.error('[KnowledgeService] 清理孤儿数据失败:', error)

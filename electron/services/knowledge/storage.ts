@@ -186,12 +186,60 @@ export class VectorStorage extends EventEmitter {
       
       if (removed > 0) {
         this.emit('documentRemoved', { docId, chunksRemoved: removed })
+        
+        // 执行 compact 操作清理已删除的数据（异步，不阻塞）
+        this.compactIfNeeded().catch(e => {
+          console.warn('[VectorStorage] Compact failed:', e)
+        })
       }
       
       return removed
     } catch (error) {
       console.error('[VectorStorage] Failed to remove chunks:', error)
       return 0
+    }
+  }
+
+  // 记录删除操作计数，用于决定何时 compact
+  private deleteCount = 0
+  private lastCompactTime = 0
+
+  /**
+   * 按需执行 compact 操作
+   * 每删除 10 个文档或距离上次 compact 超过 5 分钟时执行
+   */
+  private async compactIfNeeded(): Promise<void> {
+    this.deleteCount++
+    const now = Date.now()
+    const timeSinceLastCompact = now - this.lastCompactTime
+
+    // 每删除 10 个文档或超过 5 分钟执行一次 compact
+    if (this.deleteCount >= 10 || timeSinceLastCompact > 5 * 60 * 1000) {
+      await this.compact()
+      this.deleteCount = 0
+      this.lastCompactTime = now
+    }
+  }
+
+  /**
+   * 执行 compact 操作，清理已删除的数据释放磁盘空间
+   */
+  async compact(): Promise<void> {
+    if (!this.table) return
+
+    try {
+      // LanceDB 的 optimize 方法会合并小文件并清理已删除的数据
+      await this.table.optimize?.()
+      console.log('[VectorStorage] Compact completed')
+    } catch (error) {
+      // optimize 可能不存在于某些版本，尝试其他方法
+      console.warn('[VectorStorage] Optimize not available, trying cleanup:', error)
+      try {
+        // 如果 optimize 不可用，尝试 cleanup
+        await this.table.cleanup?.()
+      } catch {
+        // 忽略，某些版本可能没有这些方法
+      }
     }
   }
 
@@ -440,11 +488,25 @@ export class VectorStorage extends EventEmitter {
    * 清空所有数据
    */
   async clear(): Promise<void> {
-    if (this.table) {
-      await this.db.dropTable(this.tableName)
-      this.table = null
+    try {
+      if (this.table) {
+        await this.db.dropTable(this.tableName)
+        this.table = null
+      }
+      
+      // 彻底删除 LanceDB 数据目录中的表文件
+      const tablePath = path.join(this.storagePath, `${this.tableName}.lance`)
+      if (fs.existsSync(tablePath)) {
+        fs.rmSync(tablePath, { recursive: true, force: true })
+        console.log('[VectorStorage] 已删除 LanceDB 数据目录:', tablePath)
+      }
+      
+      this.deleteCount = 0
+      this.emit('cleared')
+    } catch (error) {
+      console.error('[VectorStorage] Clear failed:', error)
+      throw error
     }
-    this.emit('cleared')
   }
 
   /**
