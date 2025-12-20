@@ -168,6 +168,9 @@ export class KnowledgeService extends EventEmitter {
       
       // 检查是否需要重建索引（有文档但向量库是空的）
       await this.checkAndRebuildIndex()
+      
+      // 清理孤儿数据（向量库和 BM25 中存在但 documentsIndex 中不存在的数据）
+      await this.cleanupOrphanData()
     } catch (error) {
       console.error('[KnowledgeService] Initialization failed:', error)
       this.emit('error', error)
@@ -232,6 +235,38 @@ export class KnowledgeService extends EventEmitter {
       } catch (error) {
         console.error(`[KnowledgeService] Failed to rebuild index for ${doc.filename}:`, error)
       }
+    }
+  }
+
+  /**
+   * 清理孤儿数据（向量库和 BM25 中存在但 documentsIndex 中不存在的数据）
+   */
+  private async cleanupOrphanData(): Promise<void> {
+    try {
+      const validDocIds = new Set(this.documentsIndex.keys())
+      let cleanedCount = 0
+
+      // 获取向量存储中的所有 docIds
+      const stats = await this.vectorStorage.getStats()
+      if (stats.chunkCount > 0) {
+        // 遍历向量存储，找出孤儿 docIds
+        const allDocIds = await this.vectorStorage.getAllDocIds()
+        const docIdArray = Array.from(allDocIds)
+        for (const docId of docIdArray) {
+          if (!validDocIds.has(docId)) {
+            await this.vectorStorage.removeDocumentChunks(docId)
+            await this.bm25Index.removeDocumentChunks(docId)
+            cleanedCount++
+            console.log('[KnowledgeService] 清理孤儿数据:', docId)
+          }
+        }
+      }
+
+      if (cleanedCount > 0) {
+        console.log(`[KnowledgeService] 清理了 ${cleanedCount} 个孤儿文档`)
+      }
+    } catch (error) {
+      console.error('[KnowledgeService] 清理孤儿数据失败:', error)
     }
   }
 
@@ -484,6 +519,15 @@ export class KnowledgeService extends EventEmitter {
     if (searchOptions.enableRerank && this.reranker && results.length > 0) {
       results = await this.reranker.rerank(query, results, searchOptions.limit!)
     }
+
+    // 过滤掉已删除但残留在索引中的孤儿数据
+    results = results.filter(result => {
+      if (result.docId && !this.documentsIndex.has(result.docId)) {
+        console.log('[KnowledgeService] 过滤孤儿数据:', result.docId)
+        return false
+      }
+      return true
+    })
 
     // 解密加密的内容（主机记忆等）
     results = results.map(result => {

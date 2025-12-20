@@ -460,6 +460,27 @@ export class VectorStorage extends EventEmitter {
   getStoragePath(): string {
     return this.storagePath
   }
+
+  /**
+   * 获取所有文档 ID（去重）
+   */
+  async getAllDocIds(): Promise<Set<string>> {
+    if (!this.table) return new Set()
+
+    try {
+      const allRows = await this.table.toArray()
+      const docIds = new Set<string>()
+      for (const row of allRows) {
+        if ((row as VectorRecord).docId) {
+          docIds.add((row as VectorRecord).docId)
+        }
+      }
+      return docIds
+    } catch (error) {
+      console.error('[VectorStorage] Failed to get all docIds:', error)
+      return new Set()
+    }
+  }
 }
 
 // 导出单例
