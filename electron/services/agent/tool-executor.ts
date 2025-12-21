@@ -415,9 +415,15 @@ async function executeCommand(
   // strict: 所有命令都需要确认
   // relaxed: 只有危险命令需要确认
   // free: 不需要任何确认（危险！）
-  const needConfirm = config.executionMode === 'strict' || (
-    config.executionMode === 'relaxed' && handling.strategy === 'allow' && riskLevel === 'dangerous'
-  )
+  let needConfirm = false
+  if (config.executionMode === 'strict') {
+    // 严格模式：所有命令需要确认
+    needConfirm = true
+  } else if (config.executionMode === 'relaxed') {
+    // 宽松模式：只有危险命令需要确认
+    needConfirm = riskLevel === 'dangerous'
+  }
+  // free 模式：不需要任何确认（needConfirm 保持 false）
 
   // 添加工具调用步骤（统一显示最终要执行的命令）
   executor.addStep({
