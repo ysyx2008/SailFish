@@ -832,11 +832,17 @@ export class PtyService {
           )
           const childLines = childOutput.trim().split('\n').filter((l: string) => l.trim())
           
-          // 检查是否所有子进程都处于暂停状态 (T = stopped by job control signal)
-          let allStopped = true
-          let activeChildPid: number | undefined
-          let activeChildComm: string | undefined
-          let activeChildStat: string | undefined
+          // 检查子进程状态
+          // macOS/BSD 的 ps 输出状态码：
+          // T = stopped by job control signal (Ctrl+Z)
+          // S = sleeping, R = running, Z = zombie, etc.
+          // + = 前台进程组（关键！只有前台进程才会阻塞终端）
+          // 没有 + = 后台进程（如 nohup ... & 启动的进程）
+          let foregroundChildPid: number | undefined
+          let foregroundChildComm: string | undefined
+          let foregroundChildStat: string | undefined
+          let backgroundCount = 0
+          let stoppedCount = 0
           
           for (const childLine of childLines) {
             const childParts = childLine.trim().split(/\s+/)
@@ -844,49 +850,65 @@ export class PtyService {
             const childStat = childParts[1] || ''
             const childComm = childParts[2] || 'unknown'
             
-            // 检查进程状态：T 表示被暂停（Ctrl+Z）
-            // macOS/BSD 的 ps 输出状态码：
-            // T = stopped by job control signal (Ctrl+Z)
-            // S = sleeping, R = running, Z = zombie, etc.
-            const isStopped = childStat.startsWith('T')
+            // 检查进程状态
+            const isStopped = childStat.startsWith('T')  // T = 被暂停（Ctrl+Z）
+            const isForeground = childStat.includes('+') // + = 前台进程组
             
-            if (!isStopped) {
-              allStopped = false
-              activeChildPid = childPid
-              activeChildComm = childComm
-              activeChildStat = childStat
-              break
+            if (isStopped) {
+              stoppedCount++
+            } else if (isForeground) {
+              // 只有前台运行的进程才会阻塞终端
+              foregroundChildPid = childPid
+              foregroundChildComm = childComm
+              foregroundChildStat = childStat
+              break  // 找到前台进程，终端确实忙碌
+            } else {
+              // 后台进程（没有 + 标志），不影响终端空闲状态
+              backgroundCount++
             }
           }
           
-          // 如果所有子进程都被暂停了，终端实际上是空闲的
-          if (allStopped) {
+          // 有前台运行的子进程，终端忙碌
+          if (foregroundChildPid !== undefined) {
+            return {
+              isIdle: false,
+              foregroundProcess: foregroundChildComm,
+              foregroundPid: foregroundChildPid,
+              shellPid,
+              stateDescription: `正在执行: ${foregroundChildComm} (PID: ${foregroundChildPid}, 状态: ${foregroundChildStat})`
+            }
+          }
+          
+          // 只有后台/暂停的进程，终端空闲
+          const jobInfo = []
+          if (backgroundCount > 0) jobInfo.push(`${backgroundCount} 个后台运行`)
+          if (stoppedCount > 0) jobInfo.push(`${stoppedCount} 个暂停`)
+          return {
+            isIdle: true,
+            shellPid,
+            stateDescription: jobInfo.length > 0 
+              ? `终端空闲（有 ${jobInfo.join('，')} 的作业）`
+              : '终端空闲'
+          }
+        } catch {
+          // 无法获取子进程详情时，检查 shell 状态来判断
+          // 如果 shell 处于 S+ 状态（睡眠+前台），说明在等待输入，终端空闲
+          // 子进程可能是后台进程
+          if (shellStat.includes('S') && shellStat.includes('+')) {
             return {
               isIdle: true,
               shellPid,
-              stateDescription: `终端空闲（有 ${childPids.length} 个后台暂停的作业）`
+              stateDescription: `终端空闲（有 ${childPids.length} 个子进程，可能是后台作业）`
             }
           }
-          
-          // 有活动的子进程
-          if (activeChildPid !== undefined) {
-            return {
-              isIdle: false,
-              foregroundProcess: activeChildComm,
-              foregroundPid: activeChildPid,
-              shellPid,
-              stateDescription: `正在执行: ${activeChildComm} (PID: ${activeChildPid}, 状态: ${activeChildStat})`
-            }
-          }
-        } catch {
-          // 忽略获取子进程详情的错误
         }
         
+        // 无法确定时，假设终端忙碌（保守策略）
         return {
           isIdle: false,
           foregroundPid: childPids[0],
           shellPid,
-          stateDescription: `正在执行子进程 (PID: ${childPids[0]})`
+          stateDescription: `可能正在执行子进程 (PID: ${childPids[0]})`
         }
       }
 
