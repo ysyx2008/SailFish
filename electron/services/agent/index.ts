@@ -1142,9 +1142,27 @@ ${fullContext}
 
     // 触发回调（使用 run 级别回调）
     const callbacks = this.getCallbacks(agentId)
-    if (callbacks.onStep) {
+    if (callbacks?.onStep) {
       callbacks.onStep(agentId, step)
     }
+  }
+
+  /**
+   * 移除执行步骤（用于非调试模式隐藏过渡步骤）
+   */
+  private removeStep(agentId: string, stepId: string): void {
+    const run = this.runs.get(agentId)
+    if (!run) return
+
+    // 从步骤列表中移除
+    const index = run.steps.findIndex(s => s.id === stepId)
+    if (index !== -1) {
+      run.steps.splice(index, 1)
+    }
+
+    // 注意：不需要通知前端删除，因为前端会根据步骤列表重新渲染
+    // 如果需要前端也删除，需要添加一个 onStepRemoved 回调
+    // 但更简单的方式是在 updateStep 时发送一个空内容的步骤让前端隐藏
   }
 
   /**
@@ -1562,13 +1580,17 @@ ${fullContext}
                     toolResult: undefined  // 清除进度提示
                   })
                 }
-                // 清除工具调用进度步骤
+                // 清除工具调用进度步骤（调试模式更新为"准备执行"，非调试模式直接删除）
                 if (toolCallProgressStepId) {
-                  this.updateStep(agentId, toolCallProgressStepId, {
-                    type: 'thinking',
-                    content: '⚙️ 准备执行工具...',
-                    isStreaming: false
-                  })
+                  if (run.config.debugMode) {
+                    this.updateStep(agentId, toolCallProgressStepId, {
+                      type: 'thinking',
+                      content: '⚙️ 准备执行工具...',
+                      isStreaming: false
+                    })
+                  } else {
+                    this.removeStep(agentId, toolCallProgressStepId)
+                  }
                 }
                 resolve(result)
               },
@@ -1577,8 +1599,11 @@ ${fullContext}
                 reject(new Error(error))
               },
               profileId,
-              // onToolCallProgress: 工具调用参数生成进度
+              // onToolCallProgress: 工具调用参数生成进度（仅调试模式显示）
               (toolName, argsLength) => {
+                // 非调试模式跳过进度显示
+                if (!run.config.debugMode) return
+                
                 const now = Date.now()
                 // 超过 50 字符且距离上次更新超过 200ms 才显示
                 if (argsLength > 50 && now - lastToolCallProgressUpdate > 200) {

@@ -1154,6 +1154,15 @@ ipcMain.handle('config:setAgentMbti', async (_event, mbti: string | null) => {
   configService.setAgentMbti(mbti as import('./services/config.service').AgentMbtiType)
 })
 
+// Agent 调试模式
+ipcMain.handle('config:getAgentDebugMode', async () => {
+  return configService.getAgentDebugMode()
+})
+
+ipcMain.handle('config:setAgentDebugMode', async (_event, enabled: boolean) => {
+  configService.setAgentDebugMode(enabled)
+})
+
 // 首次设置向导
 ipcMain.handle('config:getSetupCompleted', async () => {
   return configService.getSetupCompleted()
@@ -1283,6 +1292,10 @@ ipcMain.handle('agent:run', async (event, { ptyId, message, context, config, pro
   config?: object
   profileId?: string
 }) => {
+  // 从持久化配置读取 debugMode，合并到运行时配置
+  const debugMode = configService.getAgentDebugMode()
+  const fullConfig = { ...config, debugMode }
+  
   // 创建回调函数，将 Agent 事件转发到渲染进程
   // 使用 JSON.parse(JSON.stringify()) 确保对象可序列化
   // 在事件中携带 ptyId，前端可以用它可靠地匹配 tab
@@ -1322,7 +1335,7 @@ ipcMain.handle('agent:run', async (event, { ptyId, message, context, config, pro
 
   try {
     // 传入回调参数，确保每个 run 有独立的回调（解决多终端同时运行时步骤串台问题）
-    const result = await agentService.run(ptyId, message, context, config, profileId, undefined, callbacks)
+    const result = await agentService.run(ptyId, message, context, fullConfig, profileId, undefined, callbacks)
     return { success: true, result }
   } catch (error) {
     return { 

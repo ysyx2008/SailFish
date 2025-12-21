@@ -718,6 +718,10 @@ const electronAPI = {
     getAgentMbti: () => ipcRenderer.invoke('config:getAgentMbti') as Promise<string | null>,
     setAgentMbti: (mbti: string | null) => ipcRenderer.invoke('config:setAgentMbti', mbti),
 
+    // Agent 调试模式
+    getAgentDebugMode: () => ipcRenderer.invoke('config:getAgentDebugMode') as Promise<boolean>,
+    setAgentDebugMode: (enabled: boolean) => ipcRenderer.invoke('config:setAgentDebugMode', enabled),
+
     // 首次设置向导
     getSetupCompleted: () => ipcRenderer.invoke('config:getSetupCompleted') as Promise<boolean>,
     setSetupCompleted: (completed: boolean) => ipcRenderer.invoke('config:setSetupCompleted', completed),

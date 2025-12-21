@@ -9,6 +9,7 @@ const { t } = useI18n()
 const configStore = useConfigStore()
 
 const showForm = ref(false)
+const debugMode = computed(() => configStore.agentDebugMode)
 const editingProfile = ref<AiProfile | null>(null)
 
 const formData = ref<Partial<AiProfile>>({
@@ -264,6 +265,24 @@ const applyTemplate = (template: typeof templates.value[0]) => {
         <button class="btn" @click="showForm = false">{{ t('common.cancel') }}</button>
         <button class="btn btn-primary" @click="saveProfile">{{ t('common.save') }}</button>
       </div>
+    </div>
+
+    <!-- Agent 调试模式 -->
+    <div class="settings-section">
+      <div class="section-header">
+        <h4>{{ t('aiSettings.agentDebugMode') }}</h4>
+        <label class="toggle-switch">
+          <input 
+            type="checkbox" 
+            :checked="debugMode" 
+            @change="configStore.setAgentDebugMode(($event.target as HTMLInputElement).checked)"
+          />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <p class="section-desc">
+        {{ t('aiSettings.agentDebugModeDesc') }}
+      </p>
     </div>
 
     <!-- Agent 风格设置 -->
@@ -537,6 +556,55 @@ const applyTemplate = (template: typeof templates.value[0]) => {
   padding-top: 6px;
   border-top: 1px solid var(--border-color);
   opacity: 0.7;
+}
+
+/* Toggle Switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 24px;
+  transition: 0.3s;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  bottom: 2px;
+  background-color: var(--text-muted);
+  border-radius: 50%;
+  transition: 0.3s;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(20px);
+  background-color: white;
 }
 </style>
 

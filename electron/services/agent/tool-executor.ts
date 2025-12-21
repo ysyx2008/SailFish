@@ -189,22 +189,22 @@ export async function executeTool(
       return await getTerminalContext(ptyId, args, executor)
 
     case 'check_terminal_status':
-      return checkTerminalStatus(ptyId, executor)
+      return checkTerminalStatus(ptyId, config, executor)
 
     case 'send_control_key':
-      return sendControlKey(ptyId, args, executor)
+      return sendControlKey(ptyId, args, config, executor)
 
     case 'send_input':
-      return sendInput(ptyId, args, executor)
+      return sendInput(ptyId, args, config, executor)
 
     case 'read_file':
-      return readFile(ptyId, args, executor)
+      return readFile(ptyId, args, config, executor)
 
     case 'write_file':
       return writeFile(ptyId, args, toolCall.id, config, executor)
 
     case 'remember_info':
-      return await rememberInfo(args, executor)
+      return await rememberInfo(args, config, executor)
 
     case 'search_knowledge':
       return searchKnowledge(args, executor)
@@ -553,12 +553,15 @@ async function executeCommand(
     unsubscribe()
     terminalStateService.completeCommandExecution(ptyId, 0, 'completed')
     
-    executor.addStep({
-      type: 'tool_result',
-      content: `${t('status.command_complete')} (${t('misc.duration')}: ${result.duration}ms)`,
-      toolName: 'execute_command',
-      toolResult: result.output
-    })
+    // 只在调试模式显示完成步骤（非调试模式下终端输出已可见）
+    if (config.debugMode) {
+      executor.addStep({
+        type: 'tool_result',
+        content: `${t('status.command_complete')} (${t('misc.duration')}: ${result.duration}ms)`,
+        toolName: 'execute_command',
+        toolResult: result.output
+      })
+    }
 
     return { success: true, output: result.output }
   } catch (error) {
@@ -750,12 +753,15 @@ async function executeSudoCommand(
       })
     }
     
-    executor.addStep({
-      type: 'tool_result',
-      content: t('status.command_complete'),
-      toolName: 'execute_command',
-      toolResult: cleanOutput
-    })
+    // 只在调试模式显示完成步骤
+    if (config.debugMode) {
+      executor.addStep({
+        type: 'tool_result',
+        content: t('status.command_complete'),
+        toolName: 'execute_command',
+        toolResult: cleanOutput
+      })
+    }
     
     return { success: true, output: cleanOutput }
     
@@ -995,15 +1001,19 @@ async function getTerminalContext(
  */
 async function checkTerminalStatus(
   ptyId: string,
+  config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
-  executor.addStep({
-    type: 'tool_call',
-    content: t('terminal.checking_status'),
-    toolName: 'check_terminal_status',
-    toolArgs: {},
-    riskLevel: 'safe'
-  })
+  // 只在调试模式显示"正在检查"步骤
+  if (config.debugMode) {
+    executor.addStep({
+      type: 'tool_call',
+      content: t('terminal.checking_status'),
+      toolName: 'check_terminal_status',
+      toolArgs: {},
+      riskLevel: 'safe'
+    })
+  }
 
   try {
     const awarenessService = getTerminalAwarenessService()
@@ -1258,6 +1268,7 @@ async function waitForStableOutput(
 async function sendControlKey(
   ptyId: string,
   args: Record<string, unknown>,
+  config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   const key = args.key as string
@@ -1294,12 +1305,15 @@ async function sendControlKey(
     // 等待终端输出稳定（适应网络延迟）
     const terminalOutput = await waitForStableOutput(ptyId)
 
-    executor.addStep({
-      type: 'tool_result',
-      content: `${t('control.key_sent')} ${key}`,
-      toolName: 'send_control_key',
-      toolResult: terminalOutput ? truncateFromEnd(terminalOutput, 300) : t('control.key_sent_result')
-    })
+    // 只在调试模式显示完成步骤
+    if (config.debugMode) {
+      executor.addStep({
+        type: 'tool_result',
+        content: `${t('control.key_sent')} ${key}`,
+        toolName: 'send_control_key',
+        toolResult: terminalOutput ? truncateFromEnd(terminalOutput, 300) : t('control.key_sent_result')
+      })
+    }
 
     return { 
       success: true, 
@@ -1319,6 +1333,7 @@ async function sendControlKey(
 async function sendInput(
   ptyId: string,
   args: Record<string, unknown>,
+  config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   const text = args.text as string
@@ -1355,12 +1370,15 @@ async function sendInput(
 
     const inputDesc = `"${text}"${pressEnter ? ' + Enter' : ''}`
     
-    executor.addStep({
-      type: 'tool_result',
-      content: `${t('input.sent')}: ${inputDesc}`,
-      toolName: 'send_input',
-      toolResult: terminalOutput ? truncateFromEnd(terminalOutput, 300) : t('input.sent')
-    })
+    // 只在调试模式显示完成步骤
+    if (config.debugMode) {
+      executor.addStep({
+        type: 'tool_result',
+        content: `${t('input.sent')}: ${inputDesc}`,
+        toolName: 'send_input',
+        toolResult: terminalOutput ? truncateFromEnd(terminalOutput, 300) : t('input.sent')
+      })
+    }
 
     return { 
       success: true, 
@@ -1381,6 +1399,7 @@ async function sendInput(
 function readFile(
   ptyId: string,
   args: Record<string, unknown>,
+  config: AgentConfig,
   executor: ToolExecutorConfig
 ): ToolResult {
   let filePath = args.path as string
@@ -1401,13 +1420,16 @@ function readFile(
   const maxLines = args.max_lines as number | undefined
   const tailLines = args.tail_lines as number | undefined
 
-  executor.addStep({
-    type: 'tool_call',
-    content: infoOnly ? `${t('file.reading_info_only')}: ${filePath}` : `${t('file.reading')}: ${filePath}`,
-    toolName: 'read_file',
-    toolArgs: args,
-    riskLevel: 'safe'
-  })
+  // 只在调试模式显示"正在读取"步骤
+  if (config.debugMode) {
+    executor.addStep({
+      type: 'tool_call',
+      content: infoOnly ? `${t('file.reading_info_only')}: ${filePath}` : `${t('file.reading')}: ${filePath}`,
+      toolName: 'read_file',
+      toolArgs: args,
+      riskLevel: 'safe'
+    })
+  }
 
   try {
     const stats = fs.statSync(filePath)
@@ -1966,6 +1988,7 @@ async function writeFile(
  */
 async function rememberInfo(
   args: Record<string, unknown>,
+  config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   const info = args.info as string
@@ -2036,11 +2059,14 @@ async function rememberInfo(
               break
           }
           
-          executor.addStep({
-            type: 'tool_result',
-            content: resultMessage,
-            toolName: 'remember_info'
-          })
+          // 只在调试模式显示成功的 tool_result
+          if (config.debugMode) {
+            executor.addStep({
+              type: 'tool_result',
+              content: resultMessage,
+              toolName: 'remember_info'
+            })
+          }
           
           return { success: true, output: result.message }
         }

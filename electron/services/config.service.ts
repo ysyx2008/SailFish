@@ -114,6 +114,7 @@ interface StoreSchema {
   }
   mcpServers: McpServerConfig[]
   agentMbti: AgentMbtiType
+  agentDebugMode: boolean
   knowledgeSettings: KnowledgeSettings
   setupCompleted: boolean
   language: LocaleType
@@ -143,6 +144,7 @@ const defaultConfig: StoreSchema = {
   },
   mcpServers: [],
   agentMbti: null,
+  agentDebugMode: false,
   knowledgeSettings: DEFAULT_KNOWLEDGE_SETTINGS,
   setupCompleted: false,
   language: 'zh-CN',
@@ -478,6 +480,22 @@ export class ConfigService {
    */
   setAgentMbti(mbti: AgentMbtiType): void {
     this.store.set('agentMbti', mbti)
+  }
+
+  // ==================== Agent 调试模式 ====================
+
+  /**
+   * 获取 Agent 调试模式
+   */
+  getAgentDebugMode(): boolean {
+    return this.store.get('agentDebugMode') || false
+  }
+
+  /**
+   * 设置 Agent 调试模式
+   */
+  setAgentDebugMode(enabled: boolean): void {
+    this.store.set('agentDebugMode', enabled)
   }
 
   // ==================== 知识库设置 ====================

@@ -133,6 +133,9 @@ export const useConfigStore = defineStore('config', () => {
   // Agent MBTI 设置
   const agentMbti = ref<AgentMbtiType>(null)
 
+  // Agent 调试模式
+  const agentDebugMode = ref<boolean>(false)
+
   // 首次设置向导
   const setupCompleted = ref<boolean>(false)
 
@@ -189,6 +192,10 @@ export const useConfigStore = defineStore('config', () => {
       // 加载 Agent MBTI
       const mbti = await window.electronAPI.config.getAgentMbti()
       agentMbti.value = mbti as AgentMbtiType
+
+      // 加载 Agent 调试模式
+      const debugMode = await window.electronAPI.config.getAgentDebugMode()
+      agentDebugMode.value = debugMode || false
 
       // 加载首次设置状态
       const completed = await window.electronAPI.config.getSetupCompleted()
@@ -372,6 +379,13 @@ export const useConfigStore = defineStore('config', () => {
     await window.electronAPI.config.setAgentMbti(mbti)
   }
 
+  // ==================== Agent 调试模式 ====================
+
+  async function setAgentDebugMode(enabled: boolean): Promise<void> {
+    agentDebugMode.value = enabled
+    await window.electronAPI.config.setAgentDebugMode(enabled)
+  }
+
   // ==================== 首次设置向导 ====================
 
   async function setSetupCompleted(completed: boolean): Promise<void> {
@@ -511,6 +525,7 @@ export const useConfigStore = defineStore('config', () => {
     uiTheme,
     terminalSettings,
     agentMbti,
+    agentDebugMode,
     setupCompleted,
     language,
     isSponsor,
@@ -535,6 +550,7 @@ export const useConfigStore = defineStore('config', () => {
     setTheme,
     setUiTheme,
     setAgentMbti,
+    setAgentDebugMode,
     setSetupCompleted,
     setLanguage,
     setSponsorStatus,

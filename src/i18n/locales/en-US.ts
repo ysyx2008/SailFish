@@ -260,7 +260,10 @@ export default {
       qwen: 'Alibaba Qwen, fast access in China',
       deepseek: 'DeepSeek LLM, cost-effective',
       ollama: 'Local Ollama deployment, data stays local'
-    }
+    },
+    // Agent debug mode
+    agentDebugMode: 'Agent Debug Mode',
+    agentDebugModeDesc: 'Show detailed tool call steps when enabled, simpler interaction when disabled'
   },
 
   // MCP Settings

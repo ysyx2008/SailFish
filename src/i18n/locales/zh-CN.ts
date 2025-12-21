@@ -260,7 +260,10 @@ export default {
       qwen: '阿里云通义千问，国内访问速度快',
       deepseek: 'DeepSeek 大模型，性价比高',
       ollama: '本地部署的 Ollama，数据不出本地'
-    }
+    },
+    // Agent 调试模式
+    agentDebugMode: 'Agent 调试模式',
+    agentDebugModeDesc: '开启后显示详细的工具调用步骤，关闭后交互更简洁自然'
   },
 
   // MCP 设置
