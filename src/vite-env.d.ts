@@ -531,6 +531,9 @@ interface Window {
       // Agent MBTI
       getAgentMbti: () => Promise<string | null>
       setAgentMbti: (mbti: string | null) => Promise<void>
+      // Agent 调试模式
+      getAgentDebugMode: () => Promise<boolean>
+      setAgentDebugMode: (enabled: boolean) => Promise<void>
       // 首次设置向导
       getSetupCompleted: () => Promise<boolean>
       setSetupCompleted: (completed: boolean) => Promise<void>
