@@ -223,11 +223,15 @@ export class AgentService {
    */
   private generateToolSignature(toolName: string, toolArgs: Record<string, unknown>): string {
     // 对于某些工具，需要考虑关键参数来区分不同调用
+    // 这样相同工具但不同参数的调用会生成不同签名，避免误判为循环
     const keyParams: Record<string, string[]> = {
       'read_file': ['path', 'start_line', 'end_line', 'tail_lines', 'info_only'],
       'write_file': ['path'],
       'execute_command': ['command'],
       'send_control_key': ['key'],
+      // 计划相关工具：不同步骤/状态的更新应该被区分
+      'update_plan': ['step_index', 'status'],
+      'create_plan': ['title'],
     }
     
     const paramsToHash = keyParams[toolName]
