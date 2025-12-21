@@ -677,7 +677,7 @@ export class AgentService {
     }
     
     // 去重并限制数量
-    return [...new Set(keyPoints)].slice(-10)
+    return Array.from(new Set(keyPoints)).slice(-10)
   }
 
   /**
