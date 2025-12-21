@@ -7,6 +7,9 @@ dist-electron/
 release/
 electron-cache/
 
+# Server (private, not open source)
+server/
+
 # Editor
 .vscode/*
 !.vscode/extensions.json
