@@ -29,6 +29,8 @@ files:
   - node_modules/jieba-wasm/**/*
 asarUnpack:
   - node_modules/@homebridge/node-pty-prebuilt-multiarch/**/*
+# 启用最大压缩率以减小安装包大小（会增加打包时间）
+compression: maximum
 extraResources:
   # 轻量 Embedding 模型（随软件打包）
   - from: "resources/models/embedding/all-MiniLM-L6-v2"
