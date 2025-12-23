@@ -238,8 +238,8 @@ const formatHost = (session: SshSession) => {
 }
 
 .sailfish-logo {
-  width: 160px;
-  height: 160px;
+  width: 100px;
+  height: 100px;
   object-fit: contain;
   filter: drop-shadow(0 4px 12px rgba(59, 130, 246, 0.3));
 }
