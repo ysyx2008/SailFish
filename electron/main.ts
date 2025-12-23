@@ -300,7 +300,7 @@ async function initKnowledgeService(): Promise<void> {
     if (knowledgeService && knowledgeService.isEnabled()) {
       // 监听模型升级事件（维度变化导致索引重建）
       knowledgeService.once('indexCleared', ({ reason, oldDimensions, newDimensions }) => {
-        console.log(`[Main] 知识库索引已清空: ${reason} (${oldDimensions} -> ${newDimensions})`)
+        console.log(`[Main] 知识库模型升级: ${reason} (${oldDimensions} -> ${newDimensions})`)
         // 通知前端正在升级
         mainWindow?.webContents.send('knowledge:upgrading', { 
           reason: 'model_upgrade',
@@ -308,7 +308,7 @@ async function initKnowledgeService(): Promise<void> {
         })
       })
       
-      // 监听重建进度
+      // 监听重建进度（仅在升级时通知前端）
       knowledgeService.on('rebuildProgress', (progress: { current: number; total: number; filename: string }) => {
         mainWindow?.webContents.send('knowledge:rebuildProgress', progress)
       })
@@ -556,10 +556,12 @@ app.whenReady().then(async () => {
 
   // 窗口内容加载完成后，异步初始化重量级服务
   mainWindow?.webContents.on('did-finish-load', () => {
-    // 延迟初始化知识库服务（非阻塞，完成后会自动发送 knowledge:ready 事件）
-    initKnowledgeService().catch(e => {
-      console.error('[Main] 知识库服务初始化失败:', e)
-    })
+    // 稍微延迟初始化，确保前端 Vue 组件已挂载并注册好事件监听器
+    setTimeout(() => {
+      initKnowledgeService().catch(e => {
+        console.error('[Main] 知识库服务初始化失败:', e)
+      })
+    }, 500)
 
     // 自动解锁知识库
     try {

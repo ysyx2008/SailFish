@@ -195,7 +195,7 @@ export class VectorStorage extends EventEmitter {
     if (records.length === 0) return []
 
     await this.ensureTable(records[0])
-    await this.table.add(records)
+    await this.table!.add(records)
     
     const ids = records.map(r => r.id)
     this.emit('recordsAdded', ids)
@@ -511,7 +511,7 @@ export class VectorStorage extends EventEmitter {
       const chunkCount = await this.table.countRows()
       
       // 获取唯一文档数
-      const allRows = await this.table.toArray()
+      const allRows = await this.table.query().select(['docId']).toArray()
       const uniqueDocIds = new Set(allRows.map((r: any) => r.docId))
 
       return {
@@ -575,11 +575,11 @@ export class VectorStorage extends EventEmitter {
     if (!this.table) return new Set()
 
     try {
-      const allRows = await this.table.toArray()
+      const allRows = await this.table.query().select(['docId']).toArray()
       const docIds = new Set<string>()
       for (const row of allRows) {
-        if ((row as VectorRecord).docId) {
-          docIds.add((row as VectorRecord).docId)
+        if ((row as any).docId) {
+          docIds.add((row as any).docId)
         }
       }
       return docIds
