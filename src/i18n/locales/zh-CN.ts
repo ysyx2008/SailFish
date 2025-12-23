@@ -699,6 +699,11 @@ export default {
     errorPrefix: '错误：'
   },
 
+  // 知识库
+  knowledge: {
+    upgrading: '正在升级知识库模型...'
+  },
+
   // 会话管理器
   session: {
     title: '会话管理',

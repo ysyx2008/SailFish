@@ -145,6 +145,14 @@ export class KnowledgeService extends EventEmitter {
 
       // 初始化向量存储
       const dimensions = this.embeddingService.getDimensions()
+      
+      // 监听维度变化事件（模型升级时自动清空旧索引）
+      this.vectorStorage.once('dimensionMismatch', async ({ old: oldDim, new: newDim }) => {
+        console.log(`[KnowledgeService] 模型维度变化 ${oldDim} -> ${newDim}，同步清空 BM25 索引...`)
+        await this.bm25Index.clear()
+        this.emit('indexCleared', { reason: 'dimension_mismatch', oldDimensions: oldDim, newDimensions: newDim })
+      })
+      
       await this.vectorStorage.initialize(dimensions)
 
       // 初始化 BM25 索引
@@ -191,8 +199,18 @@ export class KnowledgeService extends EventEmitter {
     // 如果向量库和 BM25 索引都有数据，跳过重建
     if (stats.chunkCount > 0 && bm25Stats.documentCount > 0) return
     
-    for (const doc of docs) {
+    console.log(`[KnowledgeService] 开始重建索引，共 ${docs.length} 个文档...`)
+    
+    for (let i = 0; i < docs.length; i++) {
+      const doc = docs[i]
       if (!doc.content) continue
+      
+      // 发送重建进度
+      this.emit('rebuildProgress', { 
+        current: i + 1, 
+        total: docs.length, 
+        filename: doc.filename 
+      })
       
       try {
         // 重新分块
@@ -232,10 +250,14 @@ export class KnowledgeService extends EventEmitter {
           }))
           await this.bm25Index.addDocuments(bm25Docs)
         }
+        
+        console.log(`[KnowledgeService] 已重建 ${i + 1}/${docs.length}: ${doc.filename}`)
       } catch (error) {
         console.error(`[KnowledgeService] Failed to rebuild index for ${doc.filename}:`, error)
       }
     }
+    
+    console.log('[KnowledgeService] 索引重建完成')
   }
 
   /**

@@ -17,9 +17,9 @@ const MODELS: Record<ModelTier, ModelInfo> = {
   lite: {
     id: 'lite',
     name: '轻量模型',
-    huggingfaceId: 'Xenova/all-MiniLM-L6-v2',
-    size: 22_000_000,  // ~22MB
-    dimensions: 384,
+    huggingfaceId: 'Xenova/bge-small-zh-v1.5',
+    size: 24_000_000,  // ~24MB (量化版)
+    dimensions: 512,
     maxTokens: 512,    // max_position_embeddings
     bundled: true,
     sha256: undefined  // 打包模型不需要校验
@@ -27,23 +27,23 @@ const MODELS: Record<ModelTier, ModelInfo> = {
   standard: {
     id: 'standard',
     name: '标准模型',
-    huggingfaceId: 'Xenova/bge-small-zh-v1.5',
-    size: 24_000_000,  // ~24MB (量化版)
-    dimensions: 512,
+    huggingfaceId: 'Xenova/bge-base-zh-v1.5',
+    size: 98_000_000,  // ~98MB (量化版)
+    dimensions: 768,
     maxTokens: 512,    // max_position_embeddings
     bundled: false,
-    downloadUrl: 'https://huggingface.co/Xenova/bge-small-zh-v1.5/resolve/main',
+    downloadUrl: 'https://huggingface.co/Xenova/bge-base-zh-v1.5/resolve/main',
     sha256: undefined
   },
   large: {
     id: 'large',
     name: '高精模型',
-    huggingfaceId: 'Xenova/bge-base-zh-v1.5',
-    size: 400_000_000,  // ~400MB
-    dimensions: 768,
+    huggingfaceId: 'Xenova/bge-large-zh-v1.5',
+    size: 650_000_000,  // ~650MB (量化版估算)
+    dimensions: 1024,
     maxTokens: 512,    // max_position_embeddings
     bundled: false,
-    downloadUrl: 'https://huggingface.co/Xenova/bge-base-zh-v1.5/resolve/main',
+    downloadUrl: 'https://huggingface.co/Xenova/bge-large-zh-v1.5/resolve/main',
     sha256: undefined
   }
 }

@@ -83,6 +83,15 @@ export class VectorStorage extends EventEmitter {
       
       if (tableNames.includes(this.tableName)) {
         this.table = await this.db.openTable(this.tableName)
+        
+        // 检查现有数据的向量维度是否匹配
+        const dimensionMismatch = await this.checkDimensionMismatch(dimensions)
+        if (dimensionMismatch) {
+          console.log(`[VectorStorage] 检测到向量维度变化 (${dimensionMismatch} -> ${dimensions})，自动清空旧索引...`)
+          await this.db.dropTable(this.tableName)
+          this.table = null
+          this.emit('dimensionMismatch', { old: dimensionMismatch, new: dimensions })
+        }
       } else {
         // 创建空表（LanceDB 需要至少一条数据来推断 schema）
         // 我们在第一次添加记录时创建表
@@ -94,6 +103,42 @@ export class VectorStorage extends EventEmitter {
     } catch (error) {
       console.error('[VectorStorage] Initialization failed:', error)
       throw error
+    }
+  }
+
+  /**
+   * 检查现有数据的向量维度是否与期望维度不匹配
+   * @returns 如果不匹配返回旧维度，匹配返回 null
+   */
+  private async checkDimensionMismatch(expectedDimensions: number): Promise<number | null> {
+    if (!this.table) return null
+    
+    try {
+      // 查询一条记录检查向量维度
+      const results = await this.table.search(new Array(expectedDimensions).fill(0)).limit(1).toArray()
+      if (results.length === 0) return null
+      
+      const vectorLength = results[0].vector?.length
+      if (vectorLength && vectorLength !== expectedDimensions) {
+        return vectorLength
+      }
+      return null
+    } catch (error) {
+      // 如果查询失败（可能是维度不匹配导致的），尝试直接读取记录
+      try {
+        const sample = await this.table.query().limit(1).toArray()
+        if (sample.length > 0 && sample[0].vector) {
+          const vectorLength = sample[0].vector.length
+          if (vectorLength !== expectedDimensions) {
+            return vectorLength
+          }
+        }
+      } catch {
+        // 无法读取，可能数据损坏，清空重建
+        console.warn('[VectorStorage] 无法读取现有数据，将清空重建')
+        return -1  // 返回特殊值表示需要重建
+      }
+      return null
     }
   }
 

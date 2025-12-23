@@ -699,6 +699,11 @@ export default {
     errorPrefix: 'Error:'
   },
 
+  // Knowledge Base
+  knowledge: {
+    upgrading: 'Upgrading knowledge base model...'
+  },
+
   // Session Manager
   session: {
     title: 'Session Manager',

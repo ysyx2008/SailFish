@@ -1892,6 +1892,24 @@ const electronAPI = {
       return () => {
         ipcRenderer.removeListener('knowledge:ready', handler)
       }
+    },
+
+    // 监听知识库升级事件（模型变化导致索引重建）
+    onUpgrading: (callback: (data: { reason: string; message: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { reason: string; message: string }) => callback(data)
+      ipcRenderer.on('knowledge:upgrading', handler)
+      return () => {
+        ipcRenderer.removeListener('knowledge:upgrading', handler)
+      }
+    },
+
+    // 监听索引重建进度
+    onRebuildProgress: (callback: (data: { current: number; total: number; filename: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { current: number; total: number; filename: string }) => callback(data)
+      ipcRenderer.on('knowledge:rebuildProgress', handler)
+      return () => {
+        ipcRenderer.removeListener('knowledge:rebuildProgress', handler)
+      }
     }
   },
 

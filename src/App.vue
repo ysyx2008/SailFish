@@ -19,6 +19,10 @@ import { useConfirm } from './composables/useConfirm'
 import type { SftpConnectionConfig } from './composables/useSftp'
 
 const { t } = useI18n()
+
+// 知识库升级进度
+const knowledgeUpgrading = ref(false)
+const knowledgeUpgradeProgress = ref({ current: 0, total: 0, filename: '' })
 const terminalStore = useTerminalStore()
 const configStore = useConfigStore()
 const { show: showConfirmDialog, options: confirmOptions, handleConfirm, handleCancel, handleClose } = useConfirm()
@@ -80,6 +84,9 @@ const handleCloseShortcut = async () => {
 
 // 清理函数存储
 let cleanupTerminalCountListener: (() => void) | null = null
+let cleanupKnowledgeUpgrading: (() => void) | null = null
+let cleanupKnowledgeProgress: (() => void) | null = null
+let cleanupKnowledgeReady: (() => void) | null = null
 
 onMounted(async () => {
   // 注册全局快捷键
@@ -88,6 +95,17 @@ onMounted(async () => {
   // 注册终端数量查询响应（用于退出确认）
   cleanupTerminalCountListener = window.electronAPI.window.onRequestTerminalCount(() => {
     window.electronAPI.window.responseTerminalCount(terminalStore.tabs.length)
+  })
+
+  // 监听知识库升级事件
+  cleanupKnowledgeUpgrading = window.electronAPI.knowledge.onUpgrading(() => {
+    knowledgeUpgrading.value = true
+  })
+  cleanupKnowledgeProgress = window.electronAPI.knowledge.onRebuildProgress((data) => {
+    knowledgeUpgradeProgress.value = data
+  })
+  cleanupKnowledgeReady = window.electronAPI.knowledge.onReady(() => {
+    knowledgeUpgrading.value = false
   })
 
   // 加载配置
@@ -272,8 +290,11 @@ onUnmounted(() => {
   document.removeEventListener('keydown', handleGlobalKeydown)
   document.removeEventListener('mousemove', handleResize)
   document.removeEventListener('mouseup', stopResize)
-  // 清理终端数量查询监听器
+  // 清理监听器
   cleanupTerminalCountListener?.()
+  cleanupKnowledgeUpgrading?.()
+  cleanupKnowledgeProgress?.()
+  cleanupKnowledgeReady?.()
 })
 </script>
 
@@ -386,6 +407,32 @@ onUnmounted(() => {
       v-if="showSetupWizard"
       @complete="onSetupComplete"
     />
+
+    <!-- 知识库升级进度提示 -->
+    <Transition name="slide-down">
+      <div v-if="knowledgeUpgrading" class="knowledge-upgrade-bar">
+        <div class="upgrade-content">
+          <svg class="upgrade-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+          </svg>
+          <span class="upgrade-text">
+            {{ t('knowledge.upgrading') }}
+            <template v-if="knowledgeUpgradeProgress.total > 0">
+              ({{ knowledgeUpgradeProgress.current }}/{{ knowledgeUpgradeProgress.total }})
+            </template>
+          </span>
+          <span v-if="knowledgeUpgradeProgress.filename" class="upgrade-filename">
+            {{ knowledgeUpgradeProgress.filename }}
+          </span>
+        </div>
+        <div class="upgrade-progress">
+          <div 
+            class="upgrade-progress-bar" 
+            :style="{ width: knowledgeUpgradeProgress.total > 0 ? (knowledgeUpgradeProgress.current / knowledgeUpgradeProgress.total * 100) + '%' : '0%' }"
+          ></div>
+        </div>
+      </div>
+    </Transition>
 
     <!-- 全局 Toast 提示 -->
     <Toast />
@@ -507,6 +554,72 @@ onUnmounted(() => {
 .resize-handle:hover,
 .resize-handle.resizing {
   background: var(--accent-primary);
+}
+
+/* 知识库升级进度条 */
+.knowledge-upgrade-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+  z-index: 1000;
+}
+
+.upgrade-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.upgrade-icon {
+  animation: spin 1s linear infinite;
+  color: var(--accent-primary);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.upgrade-text {
+  color: var(--text-primary);
+}
+
+.upgrade-filename {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upgrade-progress {
+  height: 2px;
+  background: var(--bg-tertiary);
+}
+
+.upgrade-progress-bar {
+  height: 100%;
+  background: var(--accent-primary);
+  transition: width 0.3s ease;
+}
+
+/* 进度条动画 */
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.slide-down-enter-from,
+.slide-down-leave-to {
+  transform: translateY(100%);
+  opacity: 0;
 }
 
 </style>

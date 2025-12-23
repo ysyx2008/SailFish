@@ -1282,6 +1282,10 @@ interface Window {
       }>
       // 监听知识库服务就绪事件
       onReady: (callback: () => void) => () => void
+      // 监听知识库升级事件（模型变化导致索引重建）
+      onUpgrading: (callback: (data: { reason: string; message: string }) => void) => () => void
+      // 监听索引重建进度
+      onRebuildProgress: (callback: (data: { current: number; total: number; filename: string }) => void) => () => void
     }
     // 协调器（智能巡检）
     orchestrator: {

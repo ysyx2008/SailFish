@@ -298,6 +298,21 @@ async function initKnowledgeService(): Promise<void> {
     
     // 如果知识库已启用，初始化服务（加载向量数据）
     if (knowledgeService && knowledgeService.isEnabled()) {
+      // 监听模型升级事件（维度变化导致索引重建）
+      knowledgeService.once('indexCleared', ({ reason, oldDimensions, newDimensions }) => {
+        console.log(`[Main] 知识库索引已清空: ${reason} (${oldDimensions} -> ${newDimensions})`)
+        // 通知前端正在升级
+        mainWindow?.webContents.send('knowledge:upgrading', { 
+          reason: 'model_upgrade',
+          message: '正在升级知识库模型，请稍候...'
+        })
+      })
+      
+      // 监听重建进度
+      knowledgeService.on('rebuildProgress', (progress: { current: number; total: number; filename: string }) => {
+        mainWindow?.webContents.send('knowledge:rebuildProgress', progress)
+      })
+      
       await knowledgeService.initialize()
       
       // 迁移旧的主机 notes 到知识库
