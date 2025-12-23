@@ -28,7 +28,7 @@ const MODELS: Record<ModelTier, ModelInfo> = {
     id: 'standard',
     name: '标准模型',
     huggingfaceId: 'Xenova/bge-small-zh-v1.5',
-    size: 95_000_000,  // ~95MB
+    size: 24_000_000,  // ~24MB (量化版)
     dimensions: 512,
     maxTokens: 512,    // max_position_embeddings
     bundled: false,
