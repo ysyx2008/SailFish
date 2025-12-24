@@ -1166,23 +1166,6 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 上下文使用情况 -->
-      <div v-if="messages.length > 0 || (agentMode && agentUserTask)" class="context-stats">
-        <div class="context-info">
-          <span class="context-label">{{ t('ai.context') }}</span>
-          <span class="context-value">~{{ contextStats.tokenEstimate.toLocaleString() }} / {{ (contextStats.maxTokens / 1000).toFixed(0) }}K</span>
-        </div>
-        <div class="context-bar" :title="`${contextStats.percentage}% ${t('ai.contextUsed')}`">
-          <div 
-            class="context-bar-fill" 
-            :style="{ width: contextStats.percentage + '%' }"
-            :class="{ 
-              'warning': contextStats.percentage > 60, 
-              'danger': contextStats.percentage > 85 
-            }"
-          ></div>
-        </div>
-      </div>
 
       <!-- 已上传文档列表 -->
       <div v-if="uploadedDocs.length > 0" class="uploaded-docs">
@@ -1220,6 +1203,23 @@ onMounted(() => {
 
       <!-- 输入区域 -->
       <div class="ai-input">
+        <!-- 上下文使用量迷你指示器 -->
+        <div 
+          v-if="messages.length > 0 || (agentMode && agentUserTask)" 
+          class="context-mini"
+        >
+          <div 
+            class="context-mini-bar"
+            :class="{ 
+              'warning': contextStats.percentage > 60, 
+              'danger': contextStats.percentage > 85 
+            }"
+            :style="{ width: contextStats.percentage + '%' }"
+          ></div>
+          <span class="context-mini-tip">
+            {{ t('ai.context') }}: ~{{ contextStats.tokenEstimate.toLocaleString() }} / {{ (contextStats.maxTokens / 1000).toFixed(0) }}K ({{ contextStats.percentage }}%)
+          </span>
+        </div>
         <div class="input-container">
           <!-- 上传按钮 -->
           <button 
@@ -1430,7 +1430,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -1483,10 +1483,10 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 5px 12px;
   background: var(--bg-tertiary);
   border-bottom: 1px solid var(--border-color);
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-muted);
 }
 
@@ -1767,7 +1767,70 @@ onMounted(() => {
   }
 }
 
-/* 上下文使用情况 */
+/* 上下文使用量迷你指示器 */
+.context-mini {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 8px; /* 扩大悬停区域 */
+  cursor: help;
+}
+
+.context-mini::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--bg-tertiary);
+  border-radius: 1px;
+}
+
+.context-mini-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  background: var(--accent-primary);
+  border-radius: 1px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+.context-mini-bar.warning {
+  background: var(--accent-warning, #f59e0b);
+}
+
+.context-mini-bar.danger {
+  background: var(--accent-error, #ef4444);
+}
+
+.context-mini-tip {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  font-size: 10px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.context-mini:hover .context-mini-tip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* 旧的上下文样式（保留兼容） */
 .context-stats {
   display: flex;
   align-items: center;
@@ -1818,20 +1881,20 @@ onMounted(() => {
 }
 
 .ai-welcome {
-  padding: 16px;
+  padding: 12px;
   color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .ai-welcome .welcome-section-title {
   font-weight: 600;
   color: var(--text-primary);
-  margin-top: 14px;
-  margin-bottom: 6px;
+  margin-top: 10px;
+  margin-bottom: 4px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .ai-welcome .welcome-desc {
@@ -1945,14 +2008,14 @@ onMounted(() => {
 }
 
 .ai-welcome ul {
-  margin: 6px 0 8px;
-  padding-left: 18px;
+  margin: 4px 0 6px;
+  padding-left: 16px;
 }
 
 .ai-welcome li {
-  margin: 4px 0;
+  margin: 2px 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .ai-welcome li strong {
@@ -2438,6 +2501,7 @@ onMounted(() => {
 }
 
 .ai-input {
+  position: relative;
   display: flex;
   align-items: flex-end;
   gap: 10px;
@@ -2515,7 +2579,7 @@ onMounted(() => {
   outline: none;
   line-height: 1.5;
   min-height: 24px;
-  max-height: 120px;
+  max-height: 180px;
 }
 
 .ai-input textarea::placeholder {
@@ -2629,8 +2693,8 @@ onMounted(() => {
 /* 模式切换 */
 .mode-switcher {
   display: flex;
-  padding: 8px 12px;
-  gap: 8px;
+  padding: 6px 12px;
+  gap: 6px;
   border-bottom: 1px solid var(--border-color);
 }
 
