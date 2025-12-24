@@ -715,6 +715,7 @@ export default {
     navigate: '导航',
     select: '选择',
     close: '关闭',
+    back: '后退',
     moreItems: '还有 {count} 个项目，请输入关键词筛选'
   },
 

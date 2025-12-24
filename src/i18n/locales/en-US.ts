@@ -715,6 +715,7 @@ export default {
     navigate: 'Navigate',
     select: 'Select',
     close: 'Close',
+    back: 'Back',
     moreItems: '{count} more items, type to filter'
   },
 

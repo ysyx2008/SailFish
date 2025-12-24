@@ -150,6 +150,31 @@ const selectSuggestion = (suggestion: typeof mentionSuggestions.value[0]) => {
 // @ 命令补全列表引用（用于滚动）
 const mentionListRef = ref<HTMLDivElement | null>(null)
 
+// 格式化路径显示：当路径太长时只显示最后的部分
+const formattedMentionDir = computed(() => {
+  const dir = mentionCurrentDir.value
+  if (!dir) return ''
+  
+  const maxLen = 50
+  if (dir.length <= maxLen) return dir
+  
+  // 只保留最后几个目录层级
+  const parts = dir.split('/').filter(p => p)
+  if (parts.length <= 2) return dir
+  
+  // 从后往前取，直到长度合适
+  let result = ''
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const newResult = i === parts.length - 1 ? parts[i] : parts[i] + '/' + result
+    if (newResult.length > maxLen - 4) { // 留 4 个字符给 ".../
+      break
+    }
+    result = newResult
+  }
+  
+  return '.../' + result
+})
+
 // 监听选中项变化，自动滚动到可见区域
 watch(mentionSelectedIndex, (newIndex) => {
   nextTick(() => {
@@ -1250,10 +1275,9 @@ onMounted(() => {
               {{ t('mentions.selectCommand') }}
             </div>
             <div v-else class="mention-menu-header">
-              <span class="mention-back" @mousedown.prevent="mentionGoBack(); mentionInputRef?.focus()">←</span>
               <span v-if="mentionMenuType === 'file'">📄 {{ t('mentions.file') }}</span>
               <span v-else-if="mentionMenuType === 'docs'">📚 {{ t('mentions.docs') }}</span>
-              <span v-if="mentionCurrentDir" class="mention-path" :title="mentionCurrentDir">{{ mentionCurrentDir }}</span>
+              <span v-if="mentionCurrentDir" class="mention-path" :title="mentionCurrentDir">{{ formattedMentionDir }}</span>
             </div>
             <div v-if="isMentionLoading" class="mention-loading">
               <span class="mention-spinner"></span>
@@ -1283,9 +1307,12 @@ onMounted(() => {
               </div>
             </div>
             <div class="mention-hint">
-              <span>↑↓</span> {{ t('mentions.navigate') }}
-              <span>Tab/Enter</span> {{ t('mentions.select') }}
-              <span>Esc</span> {{ t('mentions.close') }}
+              <span v-if="mentionMenuType !== null" class="mention-back-btn" @mousedown.prevent="mentionGoBack(); mentionInputRef?.focus()">← {{ t('mentions.back') }}</span>
+              <span class="mention-hint-keys">
+                <span>↑↓</span> {{ t('mentions.navigate') }}
+                <span>Tab/Enter</span> {{ t('mentions.select') }}
+                <span>Esc</span> {{ t('mentions.close') }}
+              </span>
             </div>
           </div>
           <!-- 停止按钮 (普通对话模式) -->
@@ -3834,17 +3861,6 @@ onMounted(() => {
   border-bottom: 1px solid var(--border-color);
 }
 
-.mention-back {
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: background 0.15s;
-}
-
-.mention-back:hover {
-  background: var(--bg-surface);
-}
-
 .mention-path {
   margin-left: auto;
   font-size: 11px;
@@ -3853,6 +3869,7 @@ onMounted(() => {
   font-family: var(--font-mono);
   flex-shrink: 1;
   min-width: 0;
+  max-width: 70%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3951,6 +3968,7 @@ onMounted(() => {
 .mention-hint {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
   padding: 8px 14px;
   font-size: 11px;
@@ -3959,7 +3977,29 @@ onMounted(() => {
   border-top: 1px solid var(--border-color);
 }
 
-.mention-hint span {
+.mention-back-btn {
+  cursor: pointer;
+  padding: 4px 10px;
+  background: var(--bg-surface);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.mention-back-btn:hover {
+  background: var(--accent-primary);
+  color: #fff;
+}
+
+.mention-hint-keys {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mention-hint-keys span {
   padding: 2px 6px;
   background: var(--bg-surface);
   border-radius: 4px;
