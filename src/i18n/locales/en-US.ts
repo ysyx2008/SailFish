@@ -703,10 +703,10 @@ export default {
   mentions: {
     selectCommand: 'Select reference type',
     file: 'File',
-    fileShortcut: '@file',
+    fileShortcut: "{'@'}file",
     fileDesc: 'Reference files in current directory',
     docs: 'Knowledge',
-    docsShortcut: '@docs',
+    docsShortcut: "{'@'}docs",
     docsDesc: 'Reference knowledge base documents',
     directory: 'Directory',
     uploaded: 'Uploaded',

@@ -703,10 +703,10 @@ export default {
   mentions: {
     selectCommand: '选择引用类型',
     file: '文件',
-    fileShortcut: '@file',
+    fileShortcut: "{'@'}file",
     fileDesc: '引用当前目录下的文件',
     docs: '知识库',
-    docsShortcut: '@docs',
+    docsShortcut: "{'@'}docs",
     docsDesc: '引用知识库中的文档',
     directory: '目录',
     uploaded: '已上传',
