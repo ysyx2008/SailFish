@@ -269,6 +269,7 @@ export function useAgentMode(
   const isTaskGroupFailedOrAborted = (group: AgentTaskGroup): boolean => {
     // 用户主动中止也算，因为用户可能是发现 agent 做错了才中止的
     return group.finalResult?.startsWith('❌') ||
+      group.finalResult?.startsWith('⚠️') ||  // 用户中止的情况
       group.steps.some(s => s.type === 'error')
   }
 
@@ -438,9 +439,11 @@ export function useAgentMode(
       const isAborted = errorMessage.includes('用户中止') || errorMessage.includes('aborted')
       
       if (isAborted) {
-        // 用户主动中止，不添加 final_result 步骤（后端已经添加了 error 步骤）
-        // 只保存记录
-        saveAgentRecord(tabId, message, startTime, 'aborted', '用户中止了 Agent 执行')
+        // 用户主动中止，设置 finalResult 以便保存到 history 中（用于下次带入上下文）
+        finalContent = '⚠️ 用户中止了执行'
+        terminalStore.setAgentFinalResult(tabId, finalContent)
+        // 保存记录
+        saveAgentRecord(tabId, message, startTime, 'aborted', finalContent)
       } else {
         // 其他错误，添加 final_result 步骤
         finalContent = `❌ Agent 运行出错: ${errorMessage}`
