@@ -534,7 +534,6 @@ onUnmounted(() => {
 /* AI 侧边栏 */
 .ai-sidebar {
   min-width: 280px;
-  max-width: 600px;
   background: var(--bg-secondary);
   border-left: 1px solid var(--border-color);
   display: flex;
