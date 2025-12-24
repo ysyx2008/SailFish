@@ -228,17 +228,22 @@ export class TerminalStateService {
       
       // 延迟检查 CWD（等待命令执行完成）
       setTimeout(() => {
-        this.refreshCwd(id, 'command').then(newCwd => {
-          // 如果系统调用获取 CWD 失败（返回原值），尝试通过路径解析预测新目录
-          // 这对于 Windows 系统特别有用，因为 Windows 上无法通过系统调用获取进程 CWD
-          if (newCwd === state.cwd && analysis.targetPath !== undefined) {
-            const predictedCwd = this.resolveCwdPath(state.cwd, analysis.targetPath)
-            if (predictedCwd && predictedCwd !== state.cwd) {
-              // 使用预测的路径更新 CWD
-              this.updateCwd(id, predictedCwd, 'command')
+        // macOS/Linux: 直接使用系统调用获取 CWD，结果可靠，无需预测
+        // Windows: 系统调用不可靠，可能需要根据命令预测 CWD
+        if (process.platform === 'win32' && state.type === 'local') {
+          this.refreshCwd(id, 'command').then(newCwd => {
+            // Windows: 如果系统调用失败，尝试根据 cd 命令参数预测
+            if (newCwd === state.cwd && analysis.targetPath !== undefined) {
+              const predictedCwd = this.resolveCwdPath(state.cwd, analysis.targetPath)
+              if (predictedCwd && predictedCwd !== state.cwd) {
+                this.updateCwd(id, predictedCwd, 'command')
+              }
             }
-          }
-        })
+          })
+        } else {
+          // macOS/Linux/SSH: 直接刷新，信任系统调用结果
+          this.refreshCwd(id, 'command')
+        }
       }, 500)
     }
   }

@@ -699,6 +699,23 @@ export default {
     errorPrefix: '错误：'
   },
 
+  // @ 命令（提及）
+  mentions: {
+    selectCommand: '选择引用类型',
+    file: '文件',
+    fileDesc: '引用当前目录下的文件内容',
+    docs: '文档',
+    docsDesc: '引用已上传或知识库中的文档',
+    directory: '目录',
+    uploaded: '已上传',
+    knowledge: '知识库',
+    noResults: '无匹配结果',
+    navigate: '导航',
+    select: '选择',
+    close: '关闭',
+    moreItems: '还有 {count} 个项目，请输入关键词筛选'
+  },
+
   // 知识库
   knowledge: {
     upgrading: '正在升级知识库模型...'

@@ -209,6 +209,9 @@ export async function executeTool(
     case 'search_knowledge':
       return searchKnowledge(args, executor)
 
+    case 'get_knowledge_doc':
+      return getKnowledgeDoc(args, executor)
+
     case 'wait':
       return wait(args, executor)
 
@@ -2183,6 +2186,77 @@ async function searchKnowledge(
       type: 'tool_result',
       content: `${t('knowledge.search_failed')}: ${errorMsg}`,
       toolName: 'search_knowledge'
+    })
+    return { success: false, output: '', error: errorMsg }
+  }
+}
+
+/**
+ * 按 ID 获取知识库文档
+ */
+async function getKnowledgeDoc(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const docId = args.doc_id as string
+  
+  if (!docId) {
+    return { success: false, output: '', error: '缺少 doc_id 参数' }
+  }
+
+  executor.addStep({
+    type: 'tool_call',
+    content: t('knowledge.getting_doc', { id: docId }),
+    toolName: 'get_knowledge_doc',
+    toolArgs: args,
+    riskLevel: 'safe'
+  })
+
+  try {
+    const knowledgeService = getKnowledgeService()
+    
+    if (!knowledgeService) {
+      executor.addStep({
+        type: 'tool_result',
+        content: t('knowledge.not_initialized'),
+        toolName: 'get_knowledge_doc'
+      })
+      return { success: false, output: '', error: t('error.knowledge_not_initialized') }
+    }
+
+    const doc = knowledgeService.getDocument(docId)
+    
+    if (!doc) {
+      executor.addStep({
+        type: 'tool_result',
+        content: t('knowledge.doc_not_found', { id: docId }),
+        toolName: 'get_knowledge_doc'
+      })
+      return { success: false, output: '', error: `文档不存在: ${docId}` }
+    }
+
+    const output = `## ${doc.filename}\n\n${doc.content}`
+    
+    // 截断显示内容
+    const maxDisplayLength = 500
+    const displayContent = doc.content.length > maxDisplayLength 
+      ? doc.content.substring(0, maxDisplayLength) + `\n\n... [内容已截断，完整内容共 ${doc.content.length} 字符]`
+      : doc.content
+
+    executor.addStep({
+      type: 'tool_result',
+      content: t('knowledge.doc_retrieved', { filename: doc.filename, chars: doc.content.length }),
+      toolName: 'get_knowledge_doc',
+      toolResult: `## ${doc.filename}\n\n${displayContent}`
+    })
+
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : '获取文档失败'
+    executor.addStep({
+      type: 'tool_result',
+      content: `${t('knowledge.get_doc_failed')}: ${errorMsg}`,
+      toolName: 'get_knowledge_doc'
     })
     return { success: false, output: '', error: errorMsg }
   }

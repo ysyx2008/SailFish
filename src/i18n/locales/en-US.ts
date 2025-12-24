@@ -699,6 +699,23 @@ export default {
     errorPrefix: 'Error:'
   },
 
+  // @ Commands (Mentions)
+  mentions: {
+    selectCommand: 'Select reference type',
+    file: 'File',
+    fileDesc: 'Reference files in current directory',
+    docs: 'Document',
+    docsDesc: 'Reference uploaded or knowledge base documents',
+    directory: 'Directory',
+    uploaded: 'Uploaded',
+    knowledge: 'Knowledge Base',
+    noResults: 'No results found',
+    navigate: 'Navigate',
+    select: 'Select',
+    close: 'Close',
+    moreItems: '{count} more items, type to filter'
+  },
+
   // Knowledge Base
   knowledge: {
     upgrading: 'Upgrading knowledge base model...'

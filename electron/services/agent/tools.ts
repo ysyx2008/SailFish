@@ -307,6 +307,23 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
     {
       type: 'function',
       function: {
+        name: 'get_knowledge_doc',
+        description: '按文档 ID 精确获取知识库中的完整文档内容。当用户通过 @docs 引用了特定文档时（消息中会显示 doc_id:xxx），使用此工具获取完整内容。',
+        parameters: {
+          type: 'object',
+          properties: {
+            doc_id: {
+              type: 'string',
+              description: '文档 ID，从用户消息中的 doc_id:xxx 获取'
+            }
+          },
+          required: ['doc_id']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
         name: 'wait',
         description: `等待指定时间后继续执行。用于长耗时命令执行期间，避免频繁查询状态消耗步骤。
 

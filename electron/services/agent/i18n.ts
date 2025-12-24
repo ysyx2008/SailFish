@@ -21,6 +21,7 @@ const translations = {
     'tool.write_file': '写入文件',
     'tool.remember_info': '记住信息',
     'tool.search_knowledge': '搜索知识库',
+    'tool.get_knowledge_doc': '获取知识库文档',
     'tool.ask_user': '询问用户',
     'tool.create_plan': '创建计划',
     'tool.update_plan': '更新计划',
@@ -157,6 +158,10 @@ const translations = {
     'knowledge.no_results': '未找到相关内容',
     'knowledge.found_results': '找到 {count} 条相关内容 ({chars} 字符)',
     'knowledge.search_failed': '搜索失败',
+    'knowledge.getting_doc': '获取文档: {id}',
+    'knowledge.doc_not_found': '文档不存在: {id}',
+    'knowledge.doc_retrieved': '已获取文档 {filename} ({chars} 字符)',
+    'knowledge.get_doc_failed': '获取文档失败',
 
     // 等待功能
     'wait.planned': '⏱️ 计划等待 {total}，剩余 {remaining}',
@@ -291,6 +296,7 @@ const translations = {
     'tool.write_file': 'Write File',
     'tool.remember_info': 'Remember Info',
     'tool.search_knowledge': 'Search Knowledge',
+    'tool.get_knowledge_doc': 'Get Knowledge Doc',
     'tool.ask_user': 'Ask User',
     'tool.create_plan': 'Create Plan',
     'tool.update_plan': 'Update Plan',
@@ -427,6 +433,10 @@ const translations = {
     'knowledge.no_results': 'No relevant content found',
     'knowledge.found_results': 'Found {count} relevant items ({chars} characters)',
     'knowledge.search_failed': 'Search failed',
+    'knowledge.getting_doc': 'Getting document: {id}',
+    'knowledge.doc_not_found': 'Document not found: {id}',
+    'knowledge.doc_retrieved': 'Retrieved document {filename} ({chars} characters)',
+    'knowledge.get_doc_failed': 'Failed to get document',
 
     // Wait
     'wait.planned': '⏱️ Planned wait {total}, remaining {remaining}',

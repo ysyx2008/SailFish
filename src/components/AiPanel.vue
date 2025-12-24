@@ -17,7 +17,8 @@ import {
   useContextStats,
   useHostProfile,
   useAiChat,
-  useAgentMode
+  useAgentMode,
+  useMentions
 } from '../composables'
 
 // Props - 每个 AiPanel 实例绑定到特定的 tab
@@ -114,6 +115,52 @@ const {
   refreshHostProfile,
   autoProbeHostProfile
 } = useHostProfile()
+
+// @ 命令（提及）
+const {
+  showMenu: showMentionMenu,
+  menuType: mentionMenuType,
+  suggestions: mentionSuggestions,
+  selectedIndex: mentionSelectedIndex,
+  isLoading: isMentionLoading,
+  hasMore: mentionHasMore,
+  totalCount: mentionTotalCount,
+  currentDir: mentionCurrentDir,
+  detectTrigger,
+  selectSuggestion: doSelectSuggestion,
+  clearMentions,
+  closeMenu: closeMentionMenu,
+  handleKeyDown: handleMentionKeyDown,
+  expandMentions
+} = useMentions(inputText, currentTabId, uploadedDocs)
+
+// 输入框引用（用于选择后重新聚焦）
+const mentionInputRef = ref<HTMLTextAreaElement | null>(null)
+
+// 选择建议并重新聚焦输入框
+const selectSuggestion = (suggestion: typeof mentionSuggestions.value[0]) => {
+  doSelectSuggestion(suggestion)
+  // 延迟聚焦，确保 DOM 更新完成
+  nextTick(() => {
+    mentionInputRef.value?.focus()
+  })
+}
+
+// @ 命令补全列表引用（用于滚动）
+const mentionListRef = ref<HTMLDivElement | null>(null)
+
+// 监听选中项变化，自动滚动到可见区域
+watch(mentionSelectedIndex, (newIndex) => {
+  nextTick(() => {
+    if (!mentionListRef.value) return
+    const items = mentionListRef.value.querySelectorAll('.mention-item')
+    const selectedItem = items[newIndex] as HTMLElement
+    if (selectedItem) {
+      selectedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  })
+})
+
 
 // Agent 模式
 const {
@@ -371,16 +418,60 @@ const canSendEmpty = computed(() => {
   return !!step.toolArgs?.default_value
 })
 
+// 处理输入事件（检测 @ 触发）
+const handleInputChange = (event: Event) => {
+  const textarea = event.target as HTMLTextAreaElement
+  const cursorPos = textarea.selectionStart || 0
+  detectTrigger(inputText.value, cursorPos)
+}
+
+// 处理失焦事件（延迟关闭菜单，以便点击菜单项时不会被 blur 打断）
+const handleInputBlur = () => {
+  setTimeout(() => closeMentionMenu(), 150)
+}
+
+// 处理键盘事件（@ 补全菜单导航）
+const handleInputKeyDown = (event: KeyboardEvent) => {
+  // 如果 @ 补全菜单打开，优先处理菜单导航
+  if (showMentionMenu.value) {
+    const handled = handleMentionKeyDown(event)
+    if (handled) return
+  }
+  
+  // 回车发送（非 IME 组合输入状态）
+  if (event.key === 'Enter' && !event.shiftKey && !isComposing.value) {
+    event.preventDefault()
+    handleSend()
+  }
+}
+
 // 发送消息（根据模式选择普通对话或 Agent）
-const handleSend = () => {
+const handleSend = async () => {
   // 如果正在 IME 组合输入（如中文输入法选词），不发送
   if (isComposing.value) return
+  
+  // 关闭 @ 补全菜单
+  closeMentionMenu()
   
   // 如果输入为空且有等待的提问有默认值，发送空消息让后端使用默认值
   if (!inputText.value.trim() && canSendEmpty.value && isAgentRunning.value && agentState.value?.agentId) {
     window.electronAPI.agent.addMessage(agentState.value.agentId, '')
     return
   }
+  
+  // 展开 @ 引用，获取引用内容
+  const { contextParts } = await expandMentions(inputText.value)
+  
+  // 如果有 @ 引用的内容，将展开的内容追加到消息末尾
+  // 这样 AI 可以看到完整的引用内容
+  if (contextParts.length > 0) {
+    const mentionContext = contextParts.join('\n\n')
+    // 在原始消息后追加引用内容
+    inputText.value = inputText.value + '\n\n' + mentionContext
+  }
+  
+  // 清空已选择的 @ 引用
+  clearMentions()
   
   if (agentMode.value) {
     runAgent()
@@ -1123,6 +1214,8 @@ onMounted(() => {
         </div>
       </div>
 
+      <!-- @ 引用已在输入框中显示，不需要额外的标签列表 -->
+
       <!-- 输入区域 -->
       <div class="ai-input">
         <div class="input-container">
@@ -1139,13 +1232,61 @@ onMounted(() => {
             <span v-else class="upload-spinner"></span>
           </button>
           <textarea
+            ref="mentionInputRef"
             v-model="inputText"
             :placeholder="isAgentRunning ? t('ai.inputPlaceholderSupplement') : (agentMode ? t('ai.inputPlaceholderAgent') : t('ai.inputPlaceholder'))"
             rows="1"
-            @keydown.enter.exact.prevent="handleSend"
+            @input="handleInputChange"
+            @keydown="handleInputKeyDown"
             @compositionstart="isComposing = true"
             @compositionend="isComposing = false"
+            @blur="handleInputBlur"
           ></textarea>
+          
+          <!-- @ 命令补全菜单 -->
+          <div v-if="showMentionMenu" class="mention-menu">
+            <div v-if="mentionMenuType === null" class="mention-menu-header">
+              {{ t('mentions.selectCommand') }}
+            </div>
+            <div v-else class="mention-menu-header">
+              <span class="mention-back" @click="mentionMenuType = null">←</span>
+              <span v-if="mentionMenuType === 'file'">📄 {{ t('mentions.file') }}</span>
+              <span v-else-if="mentionMenuType === 'docs'">📚 {{ t('mentions.docs') }}</span>
+              <span v-if="mentionCurrentDir" class="mention-path" :title="mentionCurrentDir">{{ mentionCurrentDir }}</span>
+            </div>
+            <div v-if="isMentionLoading" class="mention-loading">
+              <span class="mention-spinner"></span>
+              {{ t('common.loading') }}
+            </div>
+            <div v-else-if="mentionSuggestions.length === 0" class="mention-empty">
+              {{ t('mentions.noResults') }}
+            </div>
+            <div v-else ref="mentionListRef" class="mention-list">
+              <div 
+                v-for="(suggestion, index) in mentionSuggestions"
+                :key="suggestion.id"
+                class="mention-item"
+                :class="{ active: index === mentionSelectedIndex }"
+                @click="selectSuggestion(suggestion)"
+                @mouseenter="mentionSelectedIndex = index"
+              >
+                <span class="mention-icon">{{ suggestion.icon }}</span>
+                <div class="mention-content">
+                  <span class="mention-label">{{ suggestion.label }}</span>
+                  <span v-if="suggestion.description" class="mention-desc">{{ suggestion.description }}</span>
+                </div>
+              </div>
+              <!-- 更多提示 -->
+              <div v-if="mentionHasMore" class="mention-more">
+                {{ t('mentions.moreItems', { count: mentionTotalCount - 50 }) }}
+              </div>
+            </div>
+            <div class="mention-hint">
+              <span>↑↓</span> {{ t('mentions.navigate') }}
+              <span>Tab/Enter</span> {{ t('mentions.select') }}
+              <span>Esc</span> {{ t('mentions.close') }}
+            </div>
+          </div>
           <!-- 停止按钮 (普通对话模式) -->
           <button
             v-if="isLoading && !agentMode"
@@ -2303,6 +2444,7 @@ onMounted(() => {
 
 /* 输入框容器 - 包含输入框和按钮的统一容器 */
 .input-container {
+  position: relative; /* 用于定位 @ 补全菜单 */
   flex: 1;
   display: flex;
   align-items: flex-end;
@@ -3647,4 +3789,183 @@ onMounted(() => {
   background: #059669;
   border-color: #059669;
 }
+
+/* ==================== @ 命令补全菜单样式 ==================== */
+
+.mention-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.4);
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 100;
+  animation: mentionMenuSlideUp 0.15s ease-out;
+}
+
+@keyframes mentionMenuSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mention-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.mention-back {
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.mention-back:hover {
+  background: var(--bg-surface);
+}
+
+.mention-path {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mention-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.mention-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(100, 150, 255, 0.2);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.mention-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.mention-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.mention-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.mention-item:hover,
+.mention-item.active {
+  background: var(--bg-surface);
+}
+
+.mention-item.active {
+  background: rgba(100, 150, 255, 0.15);
+}
+
+.mention-more {
+  padding: 8px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+}
+
+.mention-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.mention-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mention-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mention-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mention-hint {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border-top: 1px solid var(--border-color);
+}
+
+.mention-hint span {
+  padding: 2px 6px;
+  background: var(--bg-surface);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+/* 已选择的 @ 引用标签 */
 </style>

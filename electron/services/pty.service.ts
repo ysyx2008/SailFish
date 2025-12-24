@@ -678,26 +678,14 @@ export class PtyService {
     try {
       if (process.platform === 'darwin') {
         // macOS: 使用 lsof 获取 cwd
+        // 使用 -d cwd 直接筛选 cwd 文件描述符，head -1 确保只取第一行
         const { stdout } = await execAsync(
-          `lsof -p ${shellPid} -Fn | grep '^n' | grep 'cwd' -A1 | tail -1 | sed 's/^n//'`,
+          `lsof -a -d cwd -p ${shellPid} -Fn 2>/dev/null | grep '^n' | head -1 | cut -c2-`,
           { timeout: 2000 }
         )
         const cwd = stdout.trim()
         if (cwd && cwd.startsWith('/')) {
           return cwd
-        }
-        // 备用方案：使用 pwdx（如果安装了 proctools）
-        try {
-          const { stdout: pwdxOut } = await execAsync(
-            `pwdx ${shellPid} 2>/dev/null | awk '{print $2}'`,
-            { timeout: 1000 }
-          )
-          const pwdxCwd = pwdxOut.trim()
-          if (pwdxCwd && pwdxCwd.startsWith('/')) {
-            return pwdxCwd
-          }
-        } catch {
-          // pwdx 不可用，忽略
         }
       } else if (process.platform === 'linux') {
         // Linux: 读取 /proc/pid/cwd 符号链接
