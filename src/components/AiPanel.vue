@@ -150,30 +150,6 @@ const selectSuggestion = (suggestion: typeof mentionSuggestions.value[0]) => {
 // @ 命令补全列表引用（用于滚动）
 const mentionListRef = ref<HTMLDivElement | null>(null)
 
-// 格式化路径显示：当路径太长时只显示最后的部分
-const formattedMentionDir = computed(() => {
-  const dir = mentionCurrentDir.value
-  if (!dir) return ''
-  
-  const maxLen = 50
-  if (dir.length <= maxLen) return dir
-  
-  // 只保留最后几个目录层级
-  const parts = dir.split('/').filter(p => p)
-  if (parts.length <= 2) return dir
-  
-  // 从后往前取，直到长度合适
-  let result = ''
-  for (let i = parts.length - 1; i >= 0; i--) {
-    const newResult = i === parts.length - 1 ? parts[i] : parts[i] + '/' + result
-    if (newResult.length > maxLen - 4) { // 留 4 个字符给 ".../
-      break
-    }
-    result = newResult
-  }
-  
-  return '.../' + result
-})
 
 // 监听选中项变化，自动滚动到可见区域
 watch(mentionSelectedIndex, (newIndex) => {
@@ -1277,7 +1253,7 @@ onMounted(() => {
             <div v-else class="mention-menu-header">
               <span v-if="mentionMenuType === 'file'">📄 {{ t('mentions.file') }}</span>
               <span v-else-if="mentionMenuType === 'docs'">📚 {{ t('mentions.docs') }}</span>
-              <span v-if="mentionCurrentDir" class="mention-path" :title="mentionCurrentDir">{{ formattedMentionDir }}</span>
+              <span v-if="mentionCurrentDir" class="mention-path" :title="mentionCurrentDir">{{ mentionCurrentDir }}</span>
             </div>
             <div v-if="isMentionLoading" class="mention-loading">
               <span class="mention-spinner"></span>
@@ -3869,10 +3845,13 @@ onMounted(() => {
   font-family: var(--font-mono);
   flex-shrink: 1;
   min-width: 0;
-  max-width: 70%;
+  max-width: 85%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* 从右到左显示，让省略号在左边，优先显示路径最后部分 */
+  direction: rtl;
+  text-align: right;
 }
 
 .mention-loading {
