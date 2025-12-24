@@ -12,6 +12,7 @@
     "build:win:fast": "vite build && electron-builder --win",
     "build:mac:fast": "vite build && electron-builder --mac && node scripts/fix-mac-yml.js",
     "build:linux:fast": "vite build && electron-builder --linux",
+    "build:dir": "vite build && electron-builder --dir",
     "typecheck": "vue-tsc --noEmit",
     "typecheck:electron": "tsc --project tsconfig.node.json --noEmit",
     "typecheck:src": "vue-tsc --noEmit --skipLibCheck",
