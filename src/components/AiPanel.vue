@@ -130,6 +130,7 @@ const {
   selectSuggestion: doSelectSuggestion,
   clearMentions,
   closeMenu: closeMentionMenu,
+  goBack: mentionGoBack,
   handleKeyDown: handleMentionKeyDown,
   expandMentions
 } = useMentions(inputText, currentTabId, uploadedDocs)
@@ -1249,7 +1250,7 @@ onMounted(() => {
               {{ t('mentions.selectCommand') }}
             </div>
             <div v-else class="mention-menu-header">
-              <span class="mention-back" @click="mentionMenuType = null">←</span>
+              <span class="mention-back" @mousedown.prevent="mentionGoBack(); mentionInputRef?.focus()">←</span>
               <span v-if="mentionMenuType === 'file'">📄 {{ t('mentions.file') }}</span>
               <span v-else-if="mentionMenuType === 'docs'">📚 {{ t('mentions.docs') }}</span>
               <span v-if="mentionCurrentDir" class="mention-path" :title="mentionCurrentDir">{{ mentionCurrentDir }}</span>
@@ -1267,7 +1268,7 @@ onMounted(() => {
                 :key="suggestion.id"
                 class="mention-item"
                 :class="{ active: index === mentionSelectedIndex }"
-                @click="selectSuggestion(suggestion)"
+                @mousedown.prevent="selectSuggestion(suggestion)"
                 @mouseenter="mentionSelectedIndex = index"
               >
                 <span class="mention-icon">{{ suggestion.icon }}</span>

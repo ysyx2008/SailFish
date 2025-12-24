@@ -358,9 +358,12 @@ export function useMentions(
         description: f.isDirectory ? t('mentions.directory') : formatFileSize(f.size),
         data: f
       }))
+      // 列表变化时重置选中状态
+      selectedIndex.value = 0
     } catch (err) {
       console.error('加载文件建议失败:', err)
       suggestions.value = []
+      selectedIndex.value = 0
     } finally {
       isLoading.value = false
     }
@@ -424,9 +427,12 @@ export function useMentions(
       allDocs.push(...knowledge)
 
       suggestions.value = allDocs.slice(0, 20)
+      // 列表变化时重置选中状态
+      selectedIndex.value = 0
     } catch (err) {
       console.error('加载文档建议失败:', err)
       suggestions.value = []
+      selectedIndex.value = 0
     } finally {
       isLoading.value = false
     }
@@ -553,12 +559,15 @@ export function useMentions(
         // 如果是目录，继续补全
         inputText.value = beforeTrigger + suggestion.value + afterTrigger
         const query = suggestion.value.replace(/^@file:/, '')
+        // 更新 searchQuery 以保持与输入框同步（goBack 依赖此值）
+        searchQuery.value = query
         loadFileSuggestions(query)
       } else {
         // 选择完成，替换文本
         inputText.value = beforeTrigger + suggestion.value + ' ' + afterTrigger.trimStart()
         showMenu.value = false
         menuType.value = null
+        searchQuery.value = ''
       }
     }
   }
@@ -591,6 +600,86 @@ export function useMentions(
     showMenu.value = false
     menuType.value = null
     suggestions.value = []
+    selectedIndex.value = 0
+  }
+
+  /**
+   * 返回上一级（目录或命令选择）
+   */
+  const goBack = () => {
+    if (menuType.value === 'file' && searchQuery.value) {
+      // 如果有搜索查询（包含路径），尝试返回上一级目录
+      let query = searchQuery.value
+      
+      // 如果路径以 / 结尾，先去掉结尾的 /
+      // 例如: "/Users/yushen/高经论文/" -> "/Users/yushen/高经论文"
+      if (query.endsWith('/') || query.endsWith('\\')) {
+        query = query.slice(0, -1)
+      }
+      
+      // 找到最后一个路径分隔符
+      const lastSlash = Math.max(query.lastIndexOf('/'), query.lastIndexOf('\\'))
+      
+      if (lastSlash > 0) {
+        // 有父目录，返回上一级
+        // 例如: "/Users/yushen/高经论文" -> "/Users/yushen/"
+        const newQuery = query.substring(0, lastSlash + 1)
+        
+        // 更新输入框
+        const text = inputText.value
+        const beforeTrigger = text.substring(0, triggerPosition.value)
+        let endPos = triggerPosition.value
+        while (endPos < text.length && text[endPos] !== ' ' && text[endPos] !== '\n') {
+          endPos++
+        }
+        const afterTrigger = text.substring(endPos)
+        
+        inputText.value = beforeTrigger + '@file:' + newQuery + afterTrigger
+        searchQuery.value = newQuery
+        loadFileSuggestions(newQuery)
+        return
+      } else if (lastSlash === 0) {
+        // 只剩根目录（如 "/Users"），返回工作目录（空查询）
+        const text = inputText.value
+        const beforeTrigger = text.substring(0, triggerPosition.value)
+        let endPos = triggerPosition.value
+        while (endPos < text.length && text[endPos] !== ' ' && text[endPos] !== '\n') {
+          endPos++
+        }
+        const afterTrigger = text.substring(endPos)
+        
+        inputText.value = beforeTrigger + '@file:' + afterTrigger
+        searchQuery.value = ''
+        loadFileSuggestions('')
+        return
+      }
+    }
+    
+    // 没有子目录可返回，返回命令选择界面
+    menuType.value = null
+    searchQuery.value = ''
+    currentDir.value = ''
+    
+    // 更新输入框为 @
+    const text = inputText.value
+    const beforeTrigger = text.substring(0, triggerPosition.value)
+    let endPos = triggerPosition.value
+    while (endPos < text.length && text[endPos] !== ' ' && text[endPos] !== '\n') {
+      endPos++
+    }
+    const afterTrigger = text.substring(endPos)
+    
+    inputText.value = beforeTrigger + '@' + afterTrigger
+    
+    // 显示命令列表
+    suggestions.value = commands.value.map(cmd => ({
+      type: cmd.type,
+      id: cmd.type,
+      label: cmd.name,
+      value: cmd.aliases[0],
+      icon: cmd.icon,
+      description: cmd.description
+    }))
     selectedIndex.value = 0
   }
 
@@ -739,6 +828,7 @@ export function useMentions(
     removeMention,
     clearMentions,
     closeMenu,
+    goBack,
     handleKeyDown,
     expandMentions,
     parseMentions,
