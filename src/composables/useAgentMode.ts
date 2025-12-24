@@ -383,7 +383,7 @@ export function useAgentMode(
     // 设置 Agent 状态：正在运行 + 用户任务
     terminalStore.setAgentRunning(tabId, true, undefined, message)
 
-    let result: { success: boolean; result?: string; error?: string } | null = null
+    let result: { success: boolean; result?: string; error?: string; aborted?: boolean } | null = null
     let finalContent = ''
     
     try {
@@ -403,10 +403,8 @@ export function useAgentMode(
 
       // 添加最终结果到步骤中
       if (!result.success) {
-        // 检查是否是用户主动中止
-        const errorMsg = result.error || ''
-        const isAborted = errorMsg.includes('用户中止') || errorMsg.includes('aborted')
-        if (isAborted) {
+        // 使用明确的 aborted 字段判断是否是用户主动中止
+        if (result.aborted) {
           finalContent = t('ai.taskAbortedMessage')
         } else {
           finalContent = t('ai.agentExecutionFailed', { error: result.error })
@@ -426,43 +424,24 @@ export function useAgentMode(
       }
       
       // 保存 Agent 记录
-      const errorMsg = result.error || ''
-      const isAborted = errorMsg.includes('用户中止') || errorMsg.includes('aborted')
-      const status = result.success ? 'completed' : (isAborted ? 'aborted' : 'failed')
+      const status = result.success ? 'completed' : (result.aborted ? 'aborted' : 'failed')
       saveAgentRecord(tabId, message, startTime, status, finalContent)
     } catch (error) {
+      // catch 块处理网络错误等异常情况（后端正常返回不会进入这里）
       console.error('Agent 运行失败:', error)
       const errorMessage = error instanceof Error ? error.message : t('ai.unknownError')
       
-      // 检查是否是用户主动中止
-      const isAborted = errorMessage.includes('用户中止') || errorMessage.includes('aborted')
+      finalContent = t('ai.agentRunError', { error: errorMessage })
+      terminalStore.addAgentStep(tabId, {
+        id: `final_result_${Date.now()}`,
+        type: 'final_result',
+        content: finalContent,
+        timestamp: Date.now()
+      })
+      terminalStore.setAgentFinalResult(tabId, finalContent)
       
-      if (isAborted) {
-        // 用户主动中止，添加 final_result 步骤以便显示（后端的 error 步骤是提示信息）
-        finalContent = t('ai.taskAbortedMessage')
-        terminalStore.addAgentStep(tabId, {
-          id: `final_result_${Date.now()}`,
-          type: 'final_result',
-          content: finalContent,
-          timestamp: Date.now()
-        })
-        terminalStore.setAgentFinalResult(tabId, finalContent)
-        // 保存记录
-        saveAgentRecord(tabId, message, startTime, 'aborted', finalContent)
-      } else {
-        // 其他错误，添加 final_result 步骤
-        finalContent = t('ai.agentRunError', { error: errorMessage })
-        terminalStore.addAgentStep(tabId, {
-          id: `final_result_${Date.now()}`,
-          type: 'final_result',
-          content: finalContent,
-          timestamp: Date.now()
-        })
-        terminalStore.setAgentFinalResult(tabId, finalContent)
-        
-        // 保存失败的 Agent 记录
-        saveAgentRecord(tabId, message, startTime, 'failed', finalContent)
-      }
+      // 保存失败的 Agent 记录
+      saveAgentRecord(tabId, message, startTime, 'failed', finalContent)
     } finally {
       // 无论成功还是失败，都确保重置 Agent 运行状态
       console.log('[Agent] finally block executing, resetting isRunning for tabId:', tabId)

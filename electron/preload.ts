@@ -769,7 +769,7 @@ const electronAPI = {
       context: AgentContext,
       config?: AgentConfig,
       profileId?: string
-    ) => ipcRenderer.invoke('agent:run', { ptyId, message, context, config, profileId }) as Promise<{ success: boolean; result?: string; error?: string }>,
+    ) => ipcRenderer.invoke('agent:run', { ptyId, message, context, config, profileId }) as Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>,
 
     // 中止 Agent
     abort: (agentId: string) => ipcRenderer.invoke('agent:abort', agentId) as Promise<boolean>,

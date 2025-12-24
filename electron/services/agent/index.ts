@@ -1798,7 +1798,7 @@ ${fullContext}
       if (run.aborted) {
         console.log('[Agent] run was aborted by user')
         // 用户中止时抛出错误，让前端知道是中止而非正常完成
-        throw new Error('用户中止了 Agent 执行')
+        throw new Error('User aborted Agent execution')
       }
 
       const finalMessage = lastResponse?.content || '任务完成'
@@ -1820,7 +1820,7 @@ ${fullContext}
       console.log('[Agent] caught error:', errorMsg)
       
       // 检查是否是用户主动中止
-      const isUserAborted = errorMsg === '用户中止了 Agent 执行' || run.aborted
+      const isUserAborted = errorMsg === 'User aborted Agent execution' || run.aborted
       
       if (isUserAborted) {
         // 用户主动中止，直接抛出错误，不视为成功
@@ -1900,7 +1900,7 @@ ${fullContext}
 
     this.addStep(agentId, {
       type: 'error',
-      content: '用户中止了 Agent 执行'
+      content: 'User aborted Agent execution'
     })
 
     return true

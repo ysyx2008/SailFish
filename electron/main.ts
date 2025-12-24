@@ -1355,9 +1355,12 @@ ipcMain.handle('agent:run', async (event, { ptyId, message, context, config, pro
     const result = await agentService.run(ptyId, message, context, fullConfig, profileId, undefined, callbacks)
     return { success: true, result }
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+    const isAborted = errorMsg === 'User aborted Agent execution'
     return { 
       success: false, 
-      error: error instanceof Error ? error.message : '未知错误' 
+      error: errorMsg,
+      aborted: isAborted
     }
   }
 })

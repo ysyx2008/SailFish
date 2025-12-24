@@ -647,7 +647,7 @@ interface Window {
           executionMode?: 'strict' | 'relaxed' | 'free'
         },
         profileId?: string
-      ) => Promise<{ success: boolean; result?: string; error?: string }>
+      ) => Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>
       abort: (agentId: string) => Promise<boolean>
       confirm: (
         agentId: string,
