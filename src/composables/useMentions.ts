@@ -87,14 +87,14 @@ export function useMentions(
   const commands = computed<MentionCommand[]>(() => [
     {
       type: 'file',
-      name: t('mentions.file'),
+      name: `${t('mentions.file')}（${t('mentions.fileShortcut')}）`,
       aliases: ['@file', '@文件', '@f'],
       icon: '📄',
       description: t('mentions.fileDesc')
     },
     {
       type: 'docs',
-      name: t('mentions.docs'),
+      name: `${t('mentions.docs')}（${t('mentions.docsShortcut')}）`,
       aliases: ['@docs', '@文档', '@doc', '@d'],
       icon: '📚',
       description: t('mentions.docsDesc')
