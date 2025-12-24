@@ -1467,7 +1467,10 @@ ${fullContext}
         }
         
         // 使用带重试的流式 API 调用 AI
-        const response = await withAiRetry(
+        // 包在 try-catch 中，处理用户消息中断的情况
+        let response: ChatWithToolsResult
+        try {
+          response = await withAiRetry(
           () => new Promise<ChatWithToolsResult>((resolve, reject) => {
             // 重试时重置 streamContent
             streamContent = ''
@@ -1591,6 +1594,20 @@ ${fullContext}
             }
           }
         )
+        } catch (aiError) {
+          // 检查是否是因为用户发送消息导致的中断
+          const aiErrorMsg = aiError instanceof Error ? aiError.message : String(aiError)
+          const isAborted = aiErrorMsg.toLowerCase().includes('aborted')
+          
+          if (isAborted && run.pendingUserMessages.length > 0) {
+            // 用户发送了补充消息导致 AI 输出被中断，继续循环处理用户消息
+            console.log('[Agent] AI 输出被用户消息中断，继续循环处理')
+            continue
+          }
+          
+          // 其他错误继续抛出
+          throw aiError
+        }
         
         lastResponse = response
 
@@ -1829,21 +1846,32 @@ ${fullContext}
         throw error
       }
       
-      // 如果是 AI 请求被中止但已经有有效的响应内容，视为正常完成
+      // 如果是 AI 请求被中止
       const isAiAbortedError = errorMsg.toLowerCase().includes('aborted')
-      const hasValidResponse = lastResponse && lastResponse.content && lastResponse.content.length > 10
       
-      if (isAiAbortedError && hasValidResponse) {
-        // 已经有有效响应，视为正常完成
-        console.log('[Agent] AI request aborted but has valid response, treating as success')
-        const finalMessage = lastResponse!.content || '任务完成'
-        
-        const successCallbacks = this.getCallbacks(agentId)
-        if (successCallbacks.onComplete) {
-          successCallbacks.onComplete(agentId, finalMessage)
+      if (isAiAbortedError) {
+        // 检查是否有待处理的用户消息（用户在 AI 输出时发送了补充消息）
+        if (run.pendingUserMessages.length > 0) {
+          // 有待处理的用户消息，不是错误，应该继续循环
+          // 但我们已经在 catch 块了，无法继续循环，所以这种情况不应该发生
+          // 实际上 Agent 循环会在下一轮处理用户消息
+          console.log('[Agent] AI aborted but has pending user messages, this should not happen in catch block')
         }
         
-        return finalMessage
+        // 检查是否有有效响应
+        const hasValidResponse = lastResponse && lastResponse.content && lastResponse.content.length > 10
+        if (hasValidResponse) {
+          // 已经有有效响应，视为正常完成
+          console.log('[Agent] AI request aborted but has valid response, treating as success')
+          const finalMessage = lastResponse!.content || '任务完成'
+          
+          const successCallbacks = this.getCallbacks(agentId)
+          if (successCallbacks.onComplete) {
+            successCallbacks.onComplete(agentId, finalMessage)
+          }
+          
+          return finalMessage
+        }
       }
       
       console.log('[Agent] error is not recoverable, adding error step')
