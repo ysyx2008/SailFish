@@ -3896,11 +3896,6 @@ onMounted(() => {
   transition: background 0.12s;
 }
 
-.mention-item:hover,
-.mention-item.active {
-  background: var(--bg-surface);
-}
-
 .mention-item.active {
   background: rgba(100, 150, 255, 0.15);
 }
