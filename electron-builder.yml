@@ -33,8 +33,8 @@ asarUnpack:
 compression: maximum
 extraResources:
   # 轻量 Embedding 模型（随软件打包）
-  - from: "resources/models/embedding/all-MiniLM-L6-v2"
-    to: "models/embedding/all-MiniLM-L6-v2"
+  - from: "resources/models/embedding/bge-small-zh-v1.5"
+    to: "models/embedding/bge-small-zh-v1.5"
     filter:
       - "**/*"
 win:

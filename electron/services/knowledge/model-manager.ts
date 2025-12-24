@@ -64,10 +64,22 @@ export class ModelManager extends EventEmitter {
   constructor() {
     super()
     // 打包的模型路径（随软件安装）
-    const resourcesPath = app.isPackaged 
-      ? path.join(process.resourcesPath, 'models', 'embedding')
-      : path.join(app.getAppPath(), 'resources', 'models', 'embedding')
+    let resourcesPath: string
+    if (app.isPackaged) {
+      resourcesPath = path.join(process.resourcesPath, 'models', 'embedding')
+    } else {
+      // 开发环境：app.getAppPath() 可能不是项目根目录，需要特殊处理
+      const appPath = app.getAppPath()
+      // 检查是否在 asar 包内或 node_modules 下
+      if (appPath.includes('.asar') || appPath.includes('node_modules')) {
+        // 使用 process.cwd() 作为项目根目录
+        resourcesPath = path.join(process.cwd(), 'resources', 'models', 'embedding')
+      } else {
+        resourcesPath = path.join(appPath, 'resources', 'models', 'embedding')
+      }
+    }
     this.bundledModelsPath = resourcesPath
+    console.log('[ModelManager] bundledModelsPath:', this.bundledModelsPath)
 
     // 用户下载的模型路径
     this.downloadedModelsPath = path.join(app.getPath('userData'), 'models', 'embedding')
@@ -127,6 +139,7 @@ export class ModelManager extends EventEmitter {
     
     // 检查模型目录是否存在
     if (!fs.existsSync(modelPath)) {
+      console.warn(`[ModelManager] Model ${id} not available: directory not found at ${modelPath}`)
       return false
     }
 
@@ -134,6 +147,7 @@ export class ModelManager extends EventEmitter {
     const requiredFiles = ['config.json', 'tokenizer.json']
     for (const file of requiredFiles) {
       if (!fs.existsSync(path.join(modelPath, file))) {
+        console.warn(`[ModelManager] Model ${id} not available: missing ${file}`)
         return false
       }
     }
@@ -142,6 +156,7 @@ export class ModelManager extends EventEmitter {
     const onnxPath = path.join(modelPath, 'onnx', 'model_quantized.onnx')
     const onnxAltPath = path.join(modelPath, 'onnx', 'model.onnx')
     if (!fs.existsSync(onnxPath) && !fs.existsSync(onnxAltPath)) {
+      console.warn(`[ModelManager] Model ${id} not available: missing ONNX model`)
       return false
     }
 
