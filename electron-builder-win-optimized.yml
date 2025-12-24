@@ -48,8 +48,8 @@ asarUnpack:
 # 额外资源 - 考虑模型优化
 extraResources:
   # 轻量 Embedding 模型
-  - from: "resources/models/embedding/all-MiniLM-L6-v2"
-    to: "models/embedding/all-MiniLM-L6-v2"
+  - from: "resources/models/embedding/bge-small-zh-v1.5"
+    to: "models/embedding/bge-small-zh-v1.5"
     filter:
       - "*.onnx"  # 只包含必要的模型文件
       - "*.json"

@@ -4,12 +4,12 @@
 
 ## 轻量模型（随软件打包）
 
-`all-MiniLM-L6-v2` 模型需要从 HuggingFace 下载并放置在此目录。
+`bge-small-zh-v1.5` 模型需要从 HuggingFace 下载并放置在此目录。
 
 ### 下载方式
 
-1. 访问 https://huggingface.co/Xenova/all-MiniLM-L6-v2
-2. 下载以下文件到 `all-MiniLM-L6-v2` 目录：
+1. 访问 https://huggingface.co/Xenova/bge-small-zh-v1.5
+2. 下载以下文件到 `bge-small-zh-v1.5` 目录：
    - `config.json`
    - `tokenizer.json`
    - `tokenizer_config.json`
@@ -18,7 +18,7 @@
 ### 目录结构
 
 ```
-all-MiniLM-L6-v2/
+bge-small-zh-v1.5/
 ├── config.json
 ├── tokenizer.json
 ├── tokenizer_config.json

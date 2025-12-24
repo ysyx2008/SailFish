@@ -92,7 +92,7 @@ export class EmbeddingService extends EventEmitter {
       // 获取模型父目录和文件夹名
       const path = await import('path')
       const modelDir = path.dirname(modelPath)  // 父目录：resources/models/embedding
-      const modelName = path.basename(modelPath) // 文件夹名：all-MiniLM-L6-v2
+      const modelName = path.basename(modelPath) // 文件夹名：bge-small-zh-v1.5
       
       // 禁止远程下载，设置本地模型路径为父目录
       env.allowRemoteModels = false

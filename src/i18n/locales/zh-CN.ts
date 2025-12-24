@@ -344,11 +344,11 @@ export default {
     clearKnowledge: '清空知识库',
     clearConfirm: '确定要清空所有知识库数据吗？此操作不可撤销。',
     modelInfo: '向量模型',
-    modelDescription: '使用轻量级向量模型（all-MiniLM-L6-v2），已随软件打包，无需额外下载',
+    modelDescription: '使用轻量级向量模型（bge-small-zh-v1.5），已随软件打包，无需额外下载',
     // 详细设置
     vectorEmbedding: '向量嵌入',
     builtinModel: '使用内置轻量模型',
-    builtinModelDesc: '采用 all-MiniLM-L6-v2 模型（21MB），已随软件打包，无需额外下载',
+    builtinModelDesc: '采用 bge-small-zh-v1.5 模型（24MB），已随软件打包，无需额外下载',
     externalKnowledge: '外部知识库',
     mcpKnowledgeService: 'MCP 知识库服务',
     mcpKnowledgeDesc: '可选接入外部知识库 MCP 服务，与本地知识库协同搜索',

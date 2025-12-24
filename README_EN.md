@@ -422,7 +422,7 @@ Supports importing existing session configurations from Xshell:
 
 ### v4.0.0
 - 📚 **Local Knowledge Base (RAG)**: Brand new offline knowledge base feature
-  - Built-in local Embedding model (all-MiniLM-L6-v2), runs completely offline
+  - Built-in local Embedding model (bge-small-zh-v1.5), runs completely offline
   - Efficient vector storage and retrieval based on LanceDB
   - Supports PDF, Word, TXT, Markdown, and other document formats
   - Smart chunking strategies: fixed length, paragraph, semantic chunking

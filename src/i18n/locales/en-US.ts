@@ -344,11 +344,11 @@ export default {
     clearKnowledge: 'Clear Knowledge Base',
     clearConfirm: 'Are you sure you want to clear all knowledge base data? This action cannot be undone.',
     modelInfo: 'Vector Model',
-    modelDescription: 'Uses lightweight vector model (all-MiniLM-L6-v2), bundled with the app, no additional download required',
+    modelDescription: 'Uses lightweight vector model (bge-small-zh-v1.5), bundled with the app, no additional download required',
     // Detailed settings
     vectorEmbedding: 'Vector Embedding',
     builtinModel: 'Use Built-in Lightweight Model',
-    builtinModelDesc: 'Uses all-MiniLM-L6-v2 model (21MB), bundled with app, no additional download required',
+    builtinModelDesc: 'Uses bge-small-zh-v1.5 model (24MB), bundled with app, no additional download required',
     externalKnowledge: 'External Knowledge Base',
     mcpKnowledgeService: 'MCP Knowledge Service',
     mcpKnowledgeDesc: 'Optionally connect to external MCP knowledge service for collaborative search',

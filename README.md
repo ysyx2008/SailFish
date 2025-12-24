@@ -422,7 +422,7 @@ MCP (Model Context Protocol) 允许扩展 Agent 的能力，接入外部工具�
 
 ### v4.0.0
 - 📚 **本地知识库 (RAG)**：全新离线知识库功能
-  - 内置本地 Embedding 模型（all-MiniLM-L6-v2），完全离线运行
+  - 内置本地 Embedding 模型（bge-small-zh-v1.5），完全离线运行
   - 基于 LanceDB 的高效向量存储和检索
   - 支持 PDF、Word、TXT、Markdown 等多种文档格式
   - 智能分块策略：固定长度、段落、语义分块
