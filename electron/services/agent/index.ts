@@ -964,18 +964,18 @@ export class AgentService {
   }
 
   /**
-   * 构建多个连续失败 Agent 的上下文信息
+   * 构建之前已完成任务的上下文信息（包含完整执行步骤）
    * 如果内容过长会让 AI 提炼摘要
    */
-  private async buildPreviousFailedAgentsContext(
-    failedAgents: import('./types').PreviousFailedAgentContext[],
+  private async buildPreviousTasksContext(
+    previousTasks: import('./types').PreviousTaskContext[],
     profileId?: string
   ): Promise<string | null> {
-    if (failedAgents.length === 0) return null
+    if (previousTasks.length === 0) return null
 
     const contextLength = this.getContextLength(profileId)
-    // 为失败上下文分配的 token 预算（上下文长度的 25%，最多 10000，多个失败任务需要更多空间）
-    const maxTokens = Math.min(Math.floor(contextLength * 0.25), 10000)
+    // 为历史上下文分配的 token 预算（上下文长度的 50%，最多 15000）
+    const maxTokens = Math.min(Math.floor(contextLength * 0.50), 15000)
 
     // 构建步骤描述
     const formatStep = (step: import('./types').PreviousAgentStep, index: number): string => {
@@ -999,28 +999,27 @@ export class AgentService {
       return stepDesc
     }
 
-    // 构建单个失败任务的上下文
-    const formatFailedTask = (failedAgent: import('./types').PreviousFailedAgentContext, attemptNum: number): string => {
-      const stepDescriptions = failedAgent.steps.map((step, index) => formatStep(step, index))
+    // 构建单个任务的上下文
+    const formatTask = (task: import('./types').PreviousTaskContext, taskNum: number): string => {
+      const stepDescriptions = task.steps.map((step, index) => formatStep(step, index))
       return [
-        `### 第 ${attemptNum} 次尝试`,
-        `**任务**: ${failedAgent.userTask}`,
+        `### 任务 ${taskNum}`,
+        `**用户请求**: ${task.userTask}`,
         '**执行步骤**:',
         ...stepDescriptions,
-        `**结果**: ${failedAgent.finalResult}`,
+        `**结果**: ${task.finalResult}`,
         ''
       ].join('\n')
     }
 
     // 构建完整上下文
-    const taskDescriptions = failedAgents.map((agent, index) => formatFailedTask(agent, index + 1))
+    const taskDescriptions = previousTasks.map((task, index) => formatTask(task, index + 1))
     const fullContext = [
-      `⚠️ **之前连续 ${failedAgents.length} 次尝试都失败了，以下是详细信息：**`,
+      `📋 **之前的对话历史（共 ${previousTasks.length} 个任务）：**`,
       '',
       ...taskDescriptions,
       '---',
-      '请仔细分析以上所有失败尝试，找出共同的问题或不同的失败原因，在本次执行中采用不同的策略避免重复失败。',
-      '如果任务本身不可行，请直接告知用户。'
+      '以上是之前的执行记录，请结合这些上下文来处理当前任务。'
     ].join('\n')
 
     // 检查 token 数量
@@ -1031,35 +1030,32 @@ export class AgentService {
     }
 
     // 内容过长，需要让 AI 提炼摘要
-    console.log(`[Agent] 失败上下文过长 (${estimatedTokens} tokens)，使用 AI 提炼摘要 (目标: ${maxTokens} tokens)`)
+    console.log(`[Agent] 历史上下文过长 (${estimatedTokens} tokens)，使用 AI 提炼摘要 (目标: ${maxTokens} tokens)`)
 
     try {
-      const summaryPrompt = `你是一个技术分析助手。以下是连续 ${failedAgents.length} 次失败的任务执行记录，请综合分析并提炼出关键信息摘要，帮助下一次执行成功。
+      const summaryPrompt = `你是一个技术分析助手。以下是用户之前的 ${previousTasks.length} 个任务执行记录，请提炼出关键信息摘要，帮助理解对话上下文。
 
 **要求**：
-1. 识别这些尝试的共同目标
-2. 分析每次失败的原因（是相同原因还是不同原因）
-3. 提炼关键的执行步骤和错误信息
-4. 总结失败的根本原因模式
-5. 给出综合性的避坑建议和新的尝试方向
-6. 输出控制在 ${Math.floor(maxTokens * 0.8)} 个 token 以内
+1. 总结每个任务做了什么
+2. 提炼关键的执行结果和发现
+3. 标注哪些任务成功、哪些失败或被中止
+4. 保留对后续任务可能有用的信息（如发现的路径、配置、问题等）
+5. 输出控制在 ${Math.floor(maxTokens * 0.8)} 个 token 以内
 
 ---
 ${fullContext}
 ---
 
-请用以下格式输出综合分析：
+请用以下格式输出摘要：
 
-**任务目标**: [共同的任务目标]
+**对话摘要**:
+[简要总结之前做了什么]
 
-**失败尝试总结**:
-[简要总结每次尝试做了什么、为什么失败]
+**关键发现**:
+[执行过程中发现的重要信息]
 
-**失败原因分析**:
-[分析根本原因，是否有共同模式]
-
-**综合建议**:
-[给下一次执行的具体建议，应该尝试什么不同的方法]`
+**当前状态**:
+[系统/任务的当前状态]`
 
       const summary = await this.aiService.chat([
         { role: 'user', content: summaryPrompt }
@@ -1067,27 +1063,23 @@ ${fullContext}
 
       if (summary && summary.trim()) {
         console.log(`[Agent] AI 摘要生成成功，长度: ${summary.length} 字符`)
-        return `⚠️ **之前连续 ${failedAgents.length} 次尝试都失败了（AI 综合分析）：**\n\n${summary}\n\n请基于以上分析，在本次执行中采用不同的策略。`
+        return `📋 **之前的对话历史（AI 摘要）：**\n\n${summary}\n\n请结合以上上下文处理当前任务。`
       }
     } catch (error) {
       console.warn('[Agent] AI 摘要生成失败，使用简化版本:', error)
     }
 
-    // AI 摘要失败时的兜底：只保留任务和错误信息
-    const simpleSummary = failedAgents.map((agent, index) => {
-      const errorSteps = agent.steps.filter(s => s.type === 'error')
-      const errorInfo = errorSteps.length > 0 
-        ? errorSteps.map(s => s.content).join('; ')
-        : agent.finalResult
-      return `第 ${index + 1} 次: ${agent.userTask}\n   错误: ${errorInfo}`
+    // AI 摘要失败时的兜底：只保留任务和结果
+    const simpleSummary = previousTasks.map((task, index) => {
+      return `${index + 1}. ${task.userTask}\n   结果: ${task.finalResult}`
     }).join('\n\n')
 
     return [
-      `⚠️ **之前连续 ${failedAgents.length} 次尝试都失败了：**`,
+      `📋 **之前的对话历史（共 ${previousTasks.length} 个任务）：**`,
       '',
       simpleSummary,
       '',
-      '请分析这些失败原因，采用不同的策略。如果任务不可行，请告知用户。'
+      '请结合以上上下文处理当前任务。'
     ].join('\n')
   }
 
@@ -1365,70 +1357,20 @@ ${fullContext}
     const systemPrompt = buildSystemPrompt(context, this.hostProfileService, mbtiType, knowledgeContext, knowledgeEnabled, hostMemories, fullConfig.executionMode)
     run.messages.push({ role: 'system', content: systemPrompt })
 
-    // 智能添加历史对话（根据上下文长度动态计算可保留的轮数）
-    if (context.historyMessages && context.historyMessages.length > 0) {
-      const contextLength = this.getContextLength(profileId)
-      // 预留 50% 的上下文给当前任务执行（工具调用、输出等）
-      const historyBudget = Math.floor(contextLength * 0.3)
-      // 已使用的 token（system prompt）
-      const systemTokens = this.estimateTokens(systemPrompt)
-      // 当前用户消息的 token
-      const userMessageTokens = this.estimateTokens(userMessage)
-      // 可用于历史的 token 预算
-      const availableForHistory = historyBudget - systemTokens - userMessageTokens
-      
-      // 从最近的历史开始，逐对添加，直到达到预算
-      const historyToAdd: AiMessage[] = []
-      let historyTokens = 0
-      
-      // 倒序遍历历史消息（从最近的开始）
-      for (let i = context.historyMessages.length - 1; i >= 0; i--) {
-        const msg = context.historyMessages[i]
-        if (msg.role === 'user' || msg.role === 'assistant') {
-          const msgTokens = this.estimateTokens(msg.content)
-          
-          // 检查是否超出预算
-          if (historyTokens + msgTokens > availableForHistory) {
-            break
-          }
-          
-          // 添加到历史列表（头部，因为是倒序遍历）
-          historyToAdd.unshift({ 
-            role: msg.role as 'user' | 'assistant', 
-            content: msg.content 
-          })
-          historyTokens += msgTokens
-        }
-      }
-      
-      // 确保历史对话是成对的（user + assistant）
-      // 如果开头是 assistant，移除它
-      if (historyToAdd.length > 0 && historyToAdd[0].role === 'assistant') {
-        historyToAdd.shift()
-      }
-      
-      // 添加到消息列表
-      run.messages.push(...historyToAdd)
-      
-      const totalHistory = context.historyMessages.length
-      const keptHistory = historyToAdd.length
-      const keptRounds = Math.floor(keptHistory / 2)
-      console.log(`[Agent] 历史对话: 保留 ${keptHistory}/${totalHistory} 条消息 (${keptRounds} 轮), 使用 ${historyTokens} tokens (预算: ${availableForHistory}, 上下文: ${contextLength})`)
-    }
-
-    // 处理前面连续失败的 Agent 上下文（如果有）
-    if (context.previousFailedAgents && context.previousFailedAgents.length > 0) {
-      const failedContext = await this.buildPreviousFailedAgentsContext(context.previousFailedAgents, profileId)
-      if (failedContext) {
-        run.messages.push({ role: 'user', content: failedContext })
-        const failedCount = context.previousFailedAgents.length
+    // 处理之前已完成任务的上下文（包含完整步骤，优先使用）
+    // 注意：如果有 previousTasks，就不再使用 historyMessages（避免重复，previousTasks 信息更完整）
+    if (context.previousTasks && context.previousTasks.length > 0) {
+      const tasksContext = await this.buildPreviousTasksContext(context.previousTasks, profileId)
+      if (tasksContext) {
+        run.messages.push({ role: 'user', content: tasksContext })
+        const taskCount = context.previousTasks.length
         run.messages.push({ 
           role: 'assistant', 
-          content: failedCount === 1 
-            ? '我了解了，前一次任务失败了。我会分析失败原因，并在这次尝试中避免同样的问题。'
-            : `我了解了，之前连续 ${failedCount} 次尝试都失败了。我会仔细分析这些失败的原因，找出问题所在，并在这次尝试中采用不同的策略。`
+          content: taskCount === 1 
+            ? '好的，我已了解之前的任务执行情况，会结合这个上下文来处理当前任务。'
+            : `好的，我已了解之前 ${taskCount} 个任务的执行情况，会结合这些上下文来处理当前任务。`
         })
-        console.log(`[Agent] 已注入 ${failedCount} 个连续失败任务的上下文`)
+        console.log(`[Agent] 已注入 ${taskCount} 个任务的历史上下文`)
       }
     }
 

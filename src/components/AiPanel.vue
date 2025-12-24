@@ -1094,12 +1094,12 @@ onMounted(() => {
             <!-- 最终结果 -->
             <div v-if="group.finalResult" class="message assistant">
               <div class="message-wrapper agent-final-wrapper">
-                <div class="message-content agent-final-content" :class="{ 'is-error': group.finalResult.startsWith('❌') }">
+                <div class="message-content agent-final-content" :class="{ 'is-error': group.finalResult.startsWith('❌'), 'is-aborted': group.finalResult.startsWith('⚠️') }">
                   <div class="agent-final-header">
-                    <span class="final-icon">{{ group.finalResult.startsWith('❌') ? '❌' : '✅' }}</span>
-                    <span class="final-title">{{ group.finalResult.startsWith('❌') ? t('ai.taskFailed') : t('ai.taskComplete') }}</span>
+                    <span class="final-icon">{{ group.finalResult.startsWith('❌') ? '❌' : group.finalResult.startsWith('⚠️') ? '⚠️' : '✅' }}</span>
+                    <span class="final-title">{{ group.finalResult.startsWith('❌') ? t('ai.taskFailed') : group.finalResult.startsWith('⚠️') ? t('ai.taskAborted') : t('ai.taskComplete') }}</span>
                   </div>
-                  <div class="agent-final-body markdown-content" v-html="renderMarkdown(group.finalResult.replace(/^[❌✅]\s*(Agent\s*(执行失败|运行出错)[:\s]*)?/, ''))"></div>
+                  <div class="agent-final-body markdown-content" v-html="renderMarkdown(group.finalResult.replace(/^[❌✅⚠️]\s*(Agent\s*(执行失败|运行出错)[:\s]*)?/, ''))"></div>
                 </div>
               </div>
             </div>
@@ -3117,6 +3117,14 @@ onMounted(() => {
 
 .agent-final-content.is-error {
   border-color: rgba(244, 67, 54, 0.2);
+}
+
+.agent-final-content.is-aborted .agent-final-header {
+  background: rgba(255, 152, 0, 0.1);
+}
+
+.agent-final-content.is-aborted {
+  border-color: rgba(255, 152, 0, 0.2);
 }
 
 .final-icon {

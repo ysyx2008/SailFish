@@ -3,6 +3,7 @@
  * 处理 Agent 任务的运行、确认、事件监听等
  */
 import { ref, computed, watch, onMounted, onUnmounted, Ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useTerminalStore } from '../stores/terminal'
 import type { AgentStep } from '../stores/terminal'
 
@@ -72,6 +73,7 @@ export function useAgentMode(
   autoProbeHostProfile: () => Promise<void>,
   tabId: Ref<string>  // 每个 AiPanel 实例固定绑定的 tab ID
 ) {
+  const { t } = useI18n()
   const terminalStore = useTerminalStore()
 
   // 当前终端 ID（使用传入的 tabId，不再依赖 activeTabId）
@@ -265,58 +267,45 @@ export function useAgentMode(
     })
   }
 
-  // 检测任务组是否失败或被中止（都需要作为上下文带入）
-  const isTaskGroupFailedOrAborted = (group: AgentTaskGroup): boolean => {
-    // 用户主动中止也算，因为用户可能是发现 agent 做错了才中止的
-    return group.finalResult?.startsWith('❌') ||
-      group.finalResult?.startsWith('⚠️') ||  // 用户中止的情况
-      group.steps.some(s => s.type === 'error')
-  }
-
-  // 检测前面连续失败的任务，并构建失败上下文（支持多个连续失败）
-  const buildPreviousFailedContext = () => {
+  // 构建之前所有已完成任务的上下文（包含完整执行步骤，让 AI 了解完整对话历史）
+  const buildPreviousTasksContext = () => {
     const groups = agentTaskGroups.value
     if (groups.length === 0) return undefined
 
-    // 从最后一个任务组开始，向前收集连续失败的任务（最多 3 个）
-    const MAX_FAILED_TASKS = 3
-    const failedTasks: Array<{
+    // 收集所有已完成的任务（有 finalResult 的，排除当前正在执行的任务）
+    const completedTasks: Array<{
       userTask: string
       steps: { type: string; content: string; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: string; riskLevel?: string }[]
       finalResult: string
       timestamp: number
     }> = []
 
-    for (let i = groups.length - 1; i >= 0 && failedTasks.length < MAX_FAILED_TASKS; i--) {
+    for (let i = 0; i < groups.length; i++) {
       const group = groups[i]
       
-      // 如果遇到成功的任务，停止收集
-      if (!isTaskGroupFailedOrAborted(group)) {
-        break
+      // 收集已结束的任务（有 finalResult 的，包括成功/失败/中止，排除当前正在执行的任务）
+      if (group.finalResult && !group.isCurrentTask) {
+        completedTasks.push({
+          userTask: group.userTask,
+          steps: group.steps.map(s => ({
+            type: s.type,
+            content: s.content,
+            toolName: s.toolName,
+            toolArgs: s.toolArgs ? JSON.parse(JSON.stringify(s.toolArgs)) : undefined,
+            toolResult: s.toolResult,
+            riskLevel: s.riskLevel
+          })),
+          finalResult: group.finalResult,
+          timestamp: Date.now() - (groups.length - 1 - i) * 1000  // 用索引模拟时间顺序
+        })
       }
-      
-      // 收集失败任务信息
-      failedTasks.unshift({
-        userTask: group.userTask,
-        steps: group.steps.map(s => ({
-          type: s.type,
-          content: s.content,
-          toolName: s.toolName,
-          toolArgs: s.toolArgs ? JSON.parse(JSON.stringify(s.toolArgs)) : undefined,
-          toolResult: s.toolResult,
-          riskLevel: s.riskLevel
-        })),
-        finalResult: group.finalResult || '执行失败',
-        timestamp: Date.now() - (groups.length - 1 - i) * 1000  // 用索引模拟时间顺序
-      })
     }
 
-    if (failedTasks.length === 0) return undefined
+    if (completedTasks.length === 0) return undefined
 
-    console.log(`[Agent] 检测到 ${failedTasks.length} 个连续失败的任务，构建失败上下文`)
+    console.log(`[Agent] 收集 ${completedTasks.length} 个已完成任务作为上下文`)
 
-    // 返回所有连续失败的任务
-    return failedTasks
+    return completedTasks
   }
 
   // 运行 Agent 或发送补充消息
@@ -360,8 +349,8 @@ export function useAgentMode(
     // 获取主机 ID（基于 tabId 而非 activeTab，防止用户在 Agent 执行期间切换标签导致 hostId 错误）
     const hostId = await getHostIdByTabId(tabId)
 
-    // 检测前面连续失败的任务，构建失败上下文
-    const previousFailedAgents = buildPreviousFailedContext()
+    // 构建之前任务的上下文（包含完整执行步骤）
+    const previousTasks = buildPreviousTasksContext()
 
     // 首次运行时自动探测主机信息（后台执行，不阻塞）
     autoProbeHostProfile().catch(e => {
@@ -407,14 +396,21 @@ export function useAgentMode(
           hostId,  // 主机档案 ID
           historyMessages,  // 添加历史对话
           documentContext,  // 添加文档上下文
-          previousFailedAgents  // 前面连续失败的 Agent 上下文列表（如果有）
-        } as { ptyId: string; terminalOutput: string[]; systemInfo: { os: string; shell: string }; terminalType: 'local' | 'ssh'; hostId?: string; historyMessages?: { role: string; content: string }[]; documentContext?: string; previousFailedAgents?: { userTask: string; steps: { type: string; content: string; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: string; riskLevel?: string }[]; finalResult: string; timestamp: number }[] },
+          previousTasks  // 之前已完成任务的上下文列表（包含完整执行步骤）
+        } as { ptyId: string; terminalOutput: string[]; systemInfo: { os: string; shell: string }; terminalType: 'local' | 'ssh'; hostId?: string; historyMessages?: { role: string; content: string }[]; documentContext?: string; previousTasks?: { userTask: string; steps: { type: string; content: string; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: string; riskLevel?: string }[]; finalResult: string; timestamp: number }[] },
         { executionMode: executionMode.value, commandTimeout: commandTimeout.value * 1000 }  // 传递配置（超时时间转为毫秒）
       )
 
       // 添加最终结果到步骤中
       if (!result.success) {
-        finalContent = `❌ Agent 执行失败: ${result.error}`
+        // 检查是否是用户主动中止
+        const errorMsg = result.error || ''
+        const isAborted = errorMsg.includes('用户中止') || errorMsg.includes('aborted')
+        if (isAborted) {
+          finalContent = t('ai.taskAbortedMessage')
+        } else {
+          finalContent = t('ai.agentExecutionFailed', { error: result.error })
+        }
       } else if (result.result) {
         finalContent = result.result
       }
@@ -430,23 +426,32 @@ export function useAgentMode(
       }
       
       // 保存 Agent 记录
-      saveAgentRecord(tabId, message, startTime, result.success ? 'completed' : 'failed', finalContent)
+      const errorMsg = result.error || ''
+      const isAborted = errorMsg.includes('用户中止') || errorMsg.includes('aborted')
+      const status = result.success ? 'completed' : (isAborted ? 'aborted' : 'failed')
+      saveAgentRecord(tabId, message, startTime, status, finalContent)
     } catch (error) {
       console.error('Agent 运行失败:', error)
-      const errorMessage = error instanceof Error ? error.message : '未知错误'
+      const errorMessage = error instanceof Error ? error.message : t('ai.unknownError')
       
       // 检查是否是用户主动中止
       const isAborted = errorMessage.includes('用户中止') || errorMessage.includes('aborted')
       
       if (isAborted) {
-        // 用户主动中止，设置 finalResult 以便保存到 history 中（用于下次带入上下文）
-        finalContent = '⚠️ 用户中止了执行'
+        // 用户主动中止，添加 final_result 步骤以便显示（后端的 error 步骤是提示信息）
+        finalContent = t('ai.taskAbortedMessage')
+        terminalStore.addAgentStep(tabId, {
+          id: `final_result_${Date.now()}`,
+          type: 'final_result',
+          content: finalContent,
+          timestamp: Date.now()
+        })
         terminalStore.setAgentFinalResult(tabId, finalContent)
         // 保存记录
         saveAgentRecord(tabId, message, startTime, 'aborted', finalContent)
       } else {
         // 其他错误，添加 final_result 步骤
-        finalContent = `❌ Agent 运行出错: ${errorMessage}`
+        finalContent = t('ai.agentRunError', { error: errorMessage })
         terminalStore.addAgentStep(tabId, {
           id: `final_result_${Date.now()}`,
           type: 'final_result',

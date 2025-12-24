@@ -76,7 +76,7 @@ export interface AgentPlan {
   updatedAt: number
 }
 
-// 前一个失败 Agent 的执行步骤（用于重试上下文）
+// 之前任务的执行步骤（用于上下文）
 export interface PreviousAgentStep {
   type: string
   content: string
@@ -86,12 +86,12 @@ export interface PreviousAgentStep {
   riskLevel?: string
 }
 
-// 前一个失败 Agent 的上下文信息
-export interface PreviousFailedAgentContext {
+// 之前已完成任务的上下文信息（包含完整执行步骤）
+export interface PreviousTaskContext {
   userTask: string  // 用户的原始任务
   steps: PreviousAgentStep[]  // 执行步骤
-  finalResult: string  // 最终结果（错误信息）
-  timestamp: number  // 失败时间
+  finalResult: string  // 最终结果
+  timestamp: number  // 完成时间
 }
 
 // Agent 上下文
@@ -106,7 +106,7 @@ export interface AgentContext {
   hostId?: string  // 主机档案 ID
   historyMessages?: { role: string; content: string }[]  // 历史对话记录
   documentContext?: string  // 用户上传的文档内容
-  previousFailedAgents?: PreviousFailedAgentContext[]  // 前面连续失败的 Agent 上下文列表（用于重试，最多 3 个）
+  previousTasks?: PreviousTaskContext[]  // 之前已完成任务的上下文列表（包含完整执行步骤）
 }
 
 // 工具执行结果
