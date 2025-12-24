@@ -1632,7 +1632,8 @@ ${fullContext}
                     })
                   }
                 }
-              }
+              },
+              agentId  // 使用 agentId 作为 requestId，支持中止 AI 请求
             )
           }),
           {
@@ -1774,6 +1775,13 @@ ${fullContext}
               return response.content
             }
             
+            // 检查是否是因为用户发送了补充消息导致输出被中断
+            // 如果有待处理的用户消息，继续循环让 Agent 处理
+            if (run.pendingUserMessages.length > 0) {
+              console.log('[Agent] AI 输出被用户消息中断，继续处理用户消息')
+              continue
+            }
+            
             // AI 既没调用工具也没返回内容，可能是模型问题
             noToolCallRetryCount++
             if (noToolCallRetryCount >= MAX_NO_TOOL_RETRIES) {
@@ -1797,6 +1805,13 @@ ${fullContext}
             continue
           }
           
+          // 检查是否是因为用户发送了补充消息导致输出被中断
+          // 如果有待处理的用户消息，继续循环让 Agent 处理（优先级最高）
+          if (run.pendingUserMessages.length > 0) {
+            console.log('[Agent] AI 输出被用户消息中断，继续处理用户消息')
+            continue
+          }
+
           // 情况2：已执行过工具，检查是否有未完成的计划步骤
           if (run.currentPlan) {
             const pendingSteps = run.currentPlan.steps.filter(s => 
@@ -1928,6 +1943,9 @@ ${fullContext}
       run.pendingConfirmation.resolve(false)
     }
 
+    // 中止正在进行的 AI 请求（使用 agentId 作为 requestId）
+    this.aiService.abort(agentId)
+
     // 中止所有正在执行的命令
     this.commandExecutor.abortAll()
     
@@ -2038,6 +2056,7 @@ ${fullContext}
   /**
    * 添加用户补充消息（在 Agent 执行过程中）
    * 消息会在下一轮 AI 请求时被包含并显示
+   * 如果 AI 正在输出中，会立即中断输出，让 Agent 尽快处理用户消息
    */
   addUserMessage(agentId: string, message: string): boolean {
     const run = this.runs.get(agentId)
@@ -2045,6 +2064,12 @@ ${fullContext}
 
     // 添加到待处理队列（步骤会在处理时添加，确保顺序正确）
     run.pendingUserMessages.push(message)
+
+    // 中断当前的 AI 输出，让 Agent 尽快处理用户消息
+    // 注意：这只会中断 AI 的流式输出，不会中断文件写入等危险操作
+    // 因为工具执行是同步的，AI 输出只在工具执行之间发生
+    this.aiService.abort(agentId)
+    console.log(`[Agent] 用户发送补充消息，中断当前 AI 输出: "${message.slice(0, 50)}..."`)
 
     return true
   }

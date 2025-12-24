@@ -520,13 +520,19 @@ export class AiService {
     onDone: (result: ChatWithToolsResult) => void,
     onError: (error: string) => void,
     profileId?: string,
-    onToolCallProgress?: (toolName: string, argsLength: number) => void  // 工具调用参数生成进度
+    onToolCallProgress?: (toolName: string, argsLength: number) => void,  // 工具调用参数生成进度
+    requestId?: string  // 用于支持中止请求
   ): Promise<void> {
     const profile = await this.getCurrentProfile(profileId)
     if (!profile) {
       onError('未配置 AI 模型，请先在设置中添加 AI 配置')
       return
     }
+
+    // 创建 AbortController，使用 requestId 或生成一个唯一 ID
+    const reqId = requestId || `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const abortController = new AbortController()
+    this.abortControllers.set(reqId, abortController)
 
     // 转换消息格式，支持 think 模型的 reasoning_content
     const formattedMessages = messages.map(msg => {
@@ -611,11 +617,20 @@ export class AiService {
         let buffer = ''
 
         res.on('data', (chunk: Buffer) => {
+          // 检查是否已被 abort，立即停止处理
+          if (abortController.signal.aborted) {
+            return
+          }
+
           buffer += chunk.toString()
           const lines = buffer.split('\n')
           buffer = lines.pop() || ''
 
           for (const line of lines) {
+            // 再次检查，防止在循环中被 abort
+            if (abortController.signal.aborted) {
+              return
+            }
             if (line.startsWith('data: ')) {
               const data = line.slice(6).trim()
               if (data === '[DONE]') {
@@ -710,6 +725,8 @@ export class AiService {
         })
 
         res.on('end', () => {
+          // 清理 AbortController
+          this.abortControllers.delete(reqId)
           // 如果有工具调用，通知一次
           if (toolCalls.length > 0) {
             onToolCall(toolCalls)
@@ -725,17 +742,38 @@ export class AiService {
         })
 
         res.on('error', (err) => {
+          // 清理 AbortController
+          this.abortControllers.delete(reqId)
           onError(`请求错误: ${err.message}`)
         })
       })
 
       req.on('error', (err) => {
+        // 清理 AbortController
+        this.abortControllers.delete(reqId)
+        // 如果是中止导致的错误，不报错
+        if (err.message === 'aborted' || err.message.includes('socket hang up')) {
+          onDone({
+            content: undefined,
+            tool_calls: undefined,
+            finish_reason: 'stop'
+          })
+          return
+        }
         onError(`请求失败: ${err.message}`)
+      })
+
+      // 支持中止请求
+      abortController.signal.addEventListener('abort', () => {
+        req.destroy()
+        this.abortControllers.delete(reqId)
       })
 
       req.write(JSON.stringify(requestBody))
       req.end()
     } catch (error) {
+      // 清理 AbortController
+      this.abortControllers.delete(reqId)
       if (error instanceof Error) {
         onError(`AI 请求失败: ${error.message}`)
       } else {
