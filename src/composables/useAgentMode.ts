@@ -5,7 +5,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTerminalStore } from '../stores/terminal'
-import type { AgentStep } from '../stores/terminal'
+import type { AgentStep, AgentState } from '../stores/terminal'
 
 // Agent 任务分组类型
 export interface AgentTaskGroup {
@@ -47,22 +47,7 @@ interface AgentPlan {
   updatedAt: number
 }
 
-interface AgentState {
-  isRunning: boolean
-  agentId?: string
-  steps: AgentStep[]
-  pendingConfirm?: {
-    agentId: string
-    toolCallId: string
-    toolName: string
-    toolArgs: Record<string, unknown>
-    riskLevel: string
-  }
-  userTask?: string
-  finalResult?: string
-  history: Array<{ userTask: string; finalResult: string }>
-  currentPlan?: AgentPlan
-}
+// AgentState 类型从 terminal store 导入
 
 export function useAgentMode(
   inputText: Ref<string>,
@@ -224,47 +209,71 @@ export function useAgentMode(
     }
   }
 
-  // 保存 Agent 记录到历史
-  const saveAgentRecord = (
-    _tabId: string,
-    userTask: string,
-    startTime: number,
-    status: 'completed' | 'failed' | 'aborted',
-    finalResult?: string
-  ) => {
+  // 保存整个会话到历史（会话级保存）
+  const saveSessionRecord = () => {
     const terminalInfo = getTerminalInfo()
     if (!terminalInfo) return
     
-    const steps = agentState.value?.steps || []
-    // 过滤掉 user_task 和 final_result 类型，只保留执行步骤
-    const executionSteps = steps
-      .filter(s => s.type !== 'user_task' && s.type !== 'final_result')
-      .map(s => ({
-        id: s.id,
-        type: s.type,
-        content: s.content,
-        toolName: s.toolName,
-        toolArgs: s.toolArgs ? JSON.parse(JSON.stringify(s.toolArgs)) : undefined,
-        toolResult: s.toolResult,
-        riskLevel: s.riskLevel,
-        timestamp: s.timestamp
-      }))
+    const state = agentState.value
+    if (!state) return
+    
+    const steps = state.steps || []
+    // 如果没有步骤，不保存
+    if (steps.length === 0) return
+    
+    // 获取第一个用户任务作为会话标题
+    const firstUserTask = steps.find(s => s.type === 'user_task')
+    if (!firstUserTask) return
+    
+    // 获取最后一个 final_result 的状态
+    const lastFinalResult = [...steps].reverse().find(s => s.type === 'final_result')
+    
+    // 判断会话状态（基于最后一个任务）
+    let status: 'completed' | 'failed' | 'aborted' = 'completed'
+    if (lastFinalResult) {
+      const content = lastFinalResult.content || ''
+      if (content.includes('中止') || content.includes('aborted') || content.includes('Aborted')) {
+        status = 'aborted'
+      } else if (content.includes('失败') || content.includes('failed') || content.includes('Failed') || content.includes('错误') || content.includes('error')) {
+        status = 'failed'
+      }
+    }
+    
+    // 转换步骤为可序列化格式
+    const serializableSteps = steps.map(s => ({
+      id: s.id,
+      type: s.type,
+      content: s.content,
+      toolName: s.toolName,
+      toolArgs: s.toolArgs ? JSON.parse(JSON.stringify(s.toolArgs)) : undefined,
+      toolResult: s.toolResult,
+      riskLevel: s.riskLevel,
+      timestamp: s.timestamp
+    }))
+    
+    // 会话开始时间（使用 sessionStartTime 或第一个步骤的时间）
+    const sessionStartTime = state.sessionStartTime || firstUserTask.timestamp
     
     // 使用 JSON.parse(JSON.stringify()) 确保移除所有 Vue Proxy，避免 IPC 序列化错误
     const record = JSON.parse(JSON.stringify({
-      id: `agent_${startTime}`,
-      timestamp: startTime,
+      id: state.sessionId || `session_${sessionStartTime}`,
+      timestamp: sessionStartTime,
       ...terminalInfo,
-      userTask,
-      steps: executionSteps,
-      finalResult,
-      duration: Date.now() - startTime,
+      userTask: firstUserTask.content,  // 第一个任务作为会话标题
+      steps: serializableSteps,  // 保存所有步骤（包括多轮对话）
+      finalResult: lastFinalResult?.content,
+      duration: Date.now() - sessionStartTime,
       status
     }))
     
     window.electronAPI.history.saveAgentRecord(record).catch(err => {
-      console.error('保存 Agent 历史记录失败:', err)
+      console.error('保存会话历史记录失败:', err)
     })
+  }
+  
+  // 保存当前会话（供外部调用，如清空对话时）
+  const saveCurrentSession = () => {
+    saveSessionRecord()
   }
 
   // 构建之前所有已完成任务的上下文（包含完整执行步骤，让 AI 了解完整对话历史）
@@ -360,6 +369,11 @@ export function useAgentMode(
     // 准备新任务（保留之前的步骤）
     terminalStore.clearAgentState(tabId, true)
     
+    // 如果是新会话（没有 sessionId），设置会话 ID 和开始时间
+    if (!agentState.value?.sessionId) {
+      terminalStore.setAgentSession(tabId, `session_${startTime}`, startTime)
+    }
+    
     // 从 Agent 历史中构建上下文消息
     const currentHistory = agentState.value?.history || []
     const historyMessages: { role: 'user' | 'assistant'; content: string }[] = []
@@ -422,10 +436,8 @@ export function useAgentMode(
         })
         terminalStore.setAgentFinalResult(tabId, finalContent)
       }
-      
-      // 保存 Agent 记录
-      const status = result.success ? 'completed' : (result.aborted ? 'aborted' : 'failed')
-      saveAgentRecord(tabId, message, startTime, status, finalContent)
+      // 保存/更新会话记录（使用相同 sessionId，会更新已有记录）
+      saveSessionRecord()
     } catch (error) {
       // catch 块处理网络错误等异常情况（后端正常返回不会进入这里）
       console.error('Agent 运行失败:', error)
@@ -439,9 +451,8 @@ export function useAgentMode(
         timestamp: Date.now()
       })
       terminalStore.setAgentFinalResult(tabId, finalContent)
-      
-      // 保存失败的 Agent 记录
-      saveAgentRecord(tabId, message, startTime, 'failed', finalContent)
+      // 保存/更新会话记录
+      saveSessionRecord()
     } finally {
       // 无论成功还是失败，都确保重置 Agent 运行状态
       console.log('[Agent] finally block executing, resetting isRunning for tabId:', tabId)
@@ -812,6 +823,7 @@ export function useAgentMode(
     closeHistoryModal,
     loadHistoryRecord,
     hasExistingConversation,
-    formatHistoryTime
+    formatHistoryTime,
+    saveCurrentSession  // 保存当前会话（清空对话时调用）
   }
 }

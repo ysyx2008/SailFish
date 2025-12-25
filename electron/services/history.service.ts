@@ -189,13 +189,23 @@ export class HistoryService {
   // ==================== Agent 记录 ====================
 
   /**
-   * 保存 Agent 记录
+   * 保存 Agent 记录（支持更新：如果 id 相同则更新，否则追加）
    */
   saveAgentRecord(record: AgentRecord): void {
     const dateStr = this.getDateString(record.timestamp)
     const filePath = this.getAgentFilePath(dateStr)
     const records = this.readJsonFile<AgentRecord>(filePath)
-    records.push(record)
+    
+    // 查找是否存在相同 id 的记录
+    const existingIndex = records.findIndex(r => r.id === record.id)
+    if (existingIndex !== -1) {
+      // 更新已有记录
+      records[existingIndex] = record
+    } else {
+      // 追加新记录
+      records.push(record)
+    }
+    
     this.writeJsonFile(filePath, records)
   }
 

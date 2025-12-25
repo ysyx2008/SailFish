@@ -90,6 +90,8 @@ export interface AgentHistoryItem {
 export interface AgentState {
   isRunning: boolean
   agentId?: string
+  sessionId?: string     // 会话 ID（用于会话级保存）
+  sessionStartTime?: number  // 会话开始时间
   userTask?: string      // 用户任务描述
   steps: AgentStep[]
   pendingConfirm?: PendingConfirmation
@@ -861,6 +863,28 @@ export const useTerminalStore = defineStore('terminal', () => {
   }
 
   /**
+   * 设置 Agent 会话 ID 和开始时间（用于会话级保存）
+   */
+  function setAgentSession(tabId: string, sessionId: string, sessionStartTime: number): void {
+    const tab = tabs.value.find(t => t.id === tabId)
+    if (!tab) return
+
+    if (!tab.agentState) {
+      tab.agentState = {
+        isRunning: false,
+        steps: [],
+        history: []
+      }
+    }
+
+    tab.agentState = {
+      ...tab.agentState,
+      sessionId,
+      sessionStartTime
+    }
+  }
+
+  /**
    * 只设置 Agent ID，不改变运行状态
    * 用于在接收步骤事件时关联 agentId 和 tabId
    */
@@ -1332,6 +1356,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     findTabIdByPtyId,
     getAgentState,
     setAgentRunning,
+    setAgentSession,
     setAgentId,
     addAgentStep,
     setAgentPendingConfirm,

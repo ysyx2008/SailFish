@@ -194,7 +194,8 @@ const {
   closeHistoryModal,
   loadHistoryRecord,
   hasExistingConversation,
-  formatHistoryTime
+  formatHistoryTime,
+  saveCurrentSession
 } = useAgentMode(
   inputText,
   scrollToBottom,
@@ -286,6 +287,10 @@ const cancelClearMessages = () => {
 // 执行清空对话（包括 Agent 状态和历史）
 const doClearMessages = () => {
   if (currentTabId.value) {
+    // 在清空之前，保存当前会话到历史记录（会话级保存）
+    if (agentMode.value) {
+      saveCurrentSession()
+    }
     terminalStore.clearAiMessages(currentTabId.value)
     terminalStore.clearAgentState(currentTabId.value, false)  // 不保留历史
   }
