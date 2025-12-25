@@ -46,9 +46,12 @@ const leftPaneWidth = ref(50) // 百分比
 provide('activePane', activePane)
 provide('transfers', transfers)
 
+// 是否显示远程面板（只有在有 sftpConfig 时才显示）
+const showRemotePane = computed(() => !!initParams.value?.sftpConfig)
+
 // 计算样式
 const leftPaneStyle = computed(() => ({
-  width: `${leftPaneWidth.value}%`
+  width: showRemotePane.value ? `${leftPaneWidth.value}%` : '100%'
 }))
 
 const rightPaneStyle = computed(() => ({
@@ -154,13 +157,13 @@ const handleKeydown = (e: KeyboardEvent) => {
       remotePaneRef.value?.triggerDelete()
     }
   }
-  // Tab 切换面板
-  if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+  // Tab 切换面板（只在远程模式下生效）
+  if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.shiftKey && showRemotePane.value) {
     e.preventDefault()
     activePane.value = activePane.value === 'local' ? 'remote' : 'local'
   }
-  // Ctrl+Enter 传输选中文件
-  if (e.key === 'Enter' && e.ctrlKey) {
+  // Ctrl+Enter 传输选中文件（只在远程模式下生效）
+  if (e.key === 'Enter' && e.ctrlKey && showRemotePane.value) {
     e.preventDefault()
     handleTransferSelected()
   }
@@ -348,16 +351,17 @@ const handleClearAllTransfers = () => {
         />
       </div>
 
-      <!-- 分隔条 -->
+      <!-- 分隔条（只有远程模式才显示） -->
       <div 
+        v-if="showRemotePane"
         class="pane-divider"
         @mousedown="startDividerDrag"
       >
         <div class="divider-handle"></div>
       </div>
 
-      <!-- 右栏 - SFTP 远程文件 -->
-      <div class="pane right-pane" :style="rightPaneStyle">
+      <!-- 右栏 - SFTP 远程文件（只有远程模式才显示） -->
+      <div v-if="showRemotePane" class="pane right-pane" :style="rightPaneStyle">
         <FilePane
           ref="remotePaneRef"
           type="remote"
@@ -371,8 +375,8 @@ const handleClearAllTransfers = () => {
       </div>
     </div>
 
-    <!-- 底部工具栏 -->
-    <div class="bottom-toolbar">
+    <!-- 底部工具栏（只有远程模式才显示） -->
+    <div v-if="showRemotePane" class="bottom-toolbar">
       <button 
         class="toolbar-btn" 
         @click="handleUpload(localSelectedFiles)"
