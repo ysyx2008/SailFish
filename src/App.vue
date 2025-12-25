@@ -17,6 +17,7 @@ import Toast from './components/common/Toast.vue'
 import ConfirmDialog from './components/common/ConfirmDialog.vue'
 import { useConfirm } from './composables/useConfirm'
 import type { SftpConnectionConfig } from './composables/useSftp'
+import { uiThemes } from './themes/ui-themes'
 
 const { t } = useI18n()
 
@@ -34,6 +35,11 @@ const showSmartPatrol = ref(false)
 
 // UI 主题
 const currentUiTheme = computed(() => configStore.uiTheme)
+// 当前主题的颜色模式（dark/light）
+const currentColorScheme = computed(() => {
+  const theme = uiThemes[currentUiTheme.value as keyof typeof uiThemes]
+  return theme?.colorScheme || 'dark'
+})
 const settingsInitialTab = ref<string | undefined>(undefined)
 const showFileExplorer = ref(false)
 const sftpConfig = ref<SftpConnectionConfig | null>(null)
@@ -52,8 +58,9 @@ provide('showSettings', () => {
 })
 
 // 同步主题到 body，让 Teleport 到 body 的弹窗也能使用正确的主题
-watch(currentUiTheme, (theme) => {
+watch([currentUiTheme, currentColorScheme], ([theme, colorScheme]) => {
   document.body.setAttribute('data-ui-theme', theme)
+  document.body.setAttribute('data-color-scheme', colorScheme)
 }, { immediate: true })
 
 // 全局快捷键处理
@@ -299,7 +306,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-container" :class="{ 'sidebar-open': showSidebar, 'ai-open': showAiPanel }" :data-ui-theme="currentUiTheme">
+  <div class="app-container" :class="{ 'sidebar-open': showSidebar, 'ai-open': showAiPanel }" :data-ui-theme="currentUiTheme" :data-color-scheme="currentColorScheme">
     <!-- 顶部工具栏 -->
     <header class="app-header">
       <div class="header-left">
@@ -466,13 +473,38 @@ onUnmounted(() => {
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
   -webkit-app-region: drag;
+  position: relative;
+  z-index: 10;
+}
+
+/* 深色主题：顶部渐变效果 */
+[data-color-scheme="dark"] .app-header {
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, rgba(var(--bg-secondary-rgb, 24, 24, 37), 0.95) 100%);
+}
+
+/* 浅色主题：简洁干净的顶部栏 */
+[data-color-scheme="light"] .app-header {
+  background: var(--bg-secondary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* 深色主题：顶部微光效果 */
+[data-color-scheme="dark"] .app-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(var(--accent-rgb, 137, 180, 250), 0.2), transparent);
+  pointer-events: none;
 }
 
 .header-left,
 .header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   -webkit-app-region: no-drag;
 }
 
@@ -486,9 +518,21 @@ onUnmounted(() => {
 
 .app-title {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-primary);
   margin-left: 8px;
+  letter-spacing: 0.3px;
+  background: linear-gradient(135deg, var(--text-primary), var(--accent-primary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 浅色主题：使用更柔和的标题样式 */
+[data-color-scheme="light"] .app-title {
+  background: linear-gradient(135deg, var(--text-primary) 30%, var(--accent-primary) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
 }
 
 /* 主体 */
@@ -501,21 +545,48 @@ onUnmounted(() => {
 /* 侧边栏 */
 .sidebar {
   width: var(--sidebar-width);
-  background: var(--bg-secondary);
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
+  position: relative;
+  animation: slideInLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 侧边栏右边缘光效 */
+.sidebar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgba(var(--accent-rgb, 137, 180, 250), 0.15), transparent);
+  pointer-events: none;
 }
 
 .sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  font-size: 14px;
-  font-weight: 600;
+  padding: 14px 16px;
+  font-size: 13px;
+  font-weight: 700;
   color: var(--text-primary);
   border-bottom: 1px solid var(--border-color);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .sidebar-content {
@@ -534,25 +605,75 @@ onUnmounted(() => {
 /* AI 侧边栏 */
 .ai-sidebar {
   min-width: 280px;
-  background: var(--bg-secondary);
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
   border-left: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  position: relative;
+  animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* AI 侧边栏左边缘光效 */
+.ai-sidebar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgba(var(--accent-secondary-rgb, 116, 199, 236), 0.15), transparent);
+  pointer-events: none;
 }
 
 /* 拖拽调整宽度手柄 */
 .resize-handle {
-  width: 4px;
+  width: 5px;
   cursor: col-resize;
   background: transparent;
-  transition: background 0.2s ease;
+  transition: all 0.25s ease;
   flex-shrink: 0;
+  position: relative;
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 40px;
+  background: var(--border-color);
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.resize-handle:hover::after,
+.resize-handle.resizing::after {
+  opacity: 1;
 }
 
 .resize-handle:hover,
 .resize-handle.resizing {
+  background: linear-gradient(180deg, transparent, rgba(var(--accent-rgb, 137, 180, 250), 0.3), transparent);
+}
+
+.resize-handle.resizing::after {
   background: var(--accent-primary);
+  box-shadow: 0 0 10px var(--accent-primary);
 }
 
 /* 知识库升级进度条 */

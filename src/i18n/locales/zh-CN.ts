@@ -478,6 +478,8 @@ export default {
       'gruvbox': '日暮',
       'forest': '森林绿',
       'ayu-mirage': '彩虹幻境',
+      'cyberpunk': '🌃 赛博朋克',
+      'aurora': '🌌 极光',
       'sponsor-gold': '尊贵金',
       'sponsor-sakura': '樱花粉',
       'sponsor-rose-pine': '玫瑰松'
@@ -672,6 +674,7 @@ export default {
     agentWelcome: {
       enabled: '助手模式已启用',
       hostInfo: '主机信息',
+      hostHint: '悬停上方系统信息可查看主机详情',
       refreshHost: '刷新主机信息',
       probing: '探测中...',
       hostname: '主机',

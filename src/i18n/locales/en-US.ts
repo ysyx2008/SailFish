@@ -478,6 +478,8 @@ export default {
       'gruvbox': 'Sunset',
       'forest': 'Forest',
       'ayu-mirage': 'Ayu Mirage',
+      'cyberpunk': '🌃 Cyberpunk',
+      'aurora': '🌌 Aurora',
       'sponsor-gold': 'Royal Gold',
       'sponsor-sakura': 'Sakura Pink',
       'sponsor-rose-pine': 'Rosé Pine'
@@ -672,6 +674,7 @@ export default {
     agentWelcome: {
       enabled: 'Agent Mode Enabled',
       hostInfo: 'Host Information',
+      hostHint: 'Hover over the system info above to view host details',
       refreshHost: 'Refresh Host Info',
       probing: 'Probing...',
       hostname: 'Host',

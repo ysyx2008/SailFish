@@ -793,12 +793,54 @@ onUnmounted(() => {
 
       <!-- 系统环境信息 + Agent 设置 -->
       <div class="system-info-bar">
-        <div v-if="currentSystemInfo" class="system-info-left">
-        <span class="system-icon">💻</span>
-        <span class="system-text">
-          {{ currentSystemInfo.os === 'windows' ? 'Windows' : currentSystemInfo.os === 'macos' ? 'macOS' : 'Linux' }}
-          · {{ currentSystemInfo.shell === 'powershell' ? 'PowerShell' : currentSystemInfo.shell === 'cmd' ? 'CMD' : currentSystemInfo.shell === 'bash' ? 'Bash' : currentSystemInfo.shell === 'zsh' ? 'Zsh' : currentSystemInfo.shell }}
-        </span>
+        <div v-if="currentSystemInfo" class="system-info-left host-info-trigger">
+          <span class="system-icon">💻</span>
+          <span class="system-text">
+            {{ currentSystemInfo.os === 'windows' ? 'Windows' : currentSystemInfo.os === 'macos' ? 'macOS' : 'Linux' }}
+            · {{ currentSystemInfo.shell === 'powershell' ? 'PowerShell' : currentSystemInfo.shell === 'cmd' ? 'CMD' : currentSystemInfo.shell === 'bash' ? 'Bash' : currentSystemInfo.shell === 'zsh' ? 'Zsh' : currentSystemInfo.shell }}
+          </span>
+          <span class="hover-hint">▾</span>
+          
+          <!-- 悬浮主机信息面板 -->
+          <div class="host-info-popover">
+            <div class="popover-header">
+              <span>🖥️ {{ t('ai.agentWelcome.hostInfo') }}</span>
+              <button 
+                class="refresh-btn" 
+                @click.stop="refreshHostProfile" 
+                :disabled="isProbing"
+                :title="isProbing ? t('ai.agentWelcome.probing') : t('ai.agentWelcome.refreshHost')"
+              >
+                <span :class="{ spinning: isProbing }">🔄</span>
+              </button>
+            </div>
+            <div v-if="currentHostProfile" class="popover-content">
+              <div class="info-row">
+                <span class="info-label">{{ t('ai.agentWelcome.hostname') }}:</span>
+                <span class="info-value">{{ currentHostProfile.hostname || t('common.unknown') }}</span>
+                <span v-if="currentHostProfile.username" class="info-secondary">@ {{ currentHostProfile.username }}</span>
+              </div>
+              <div v-if="currentHostProfile.osVersion || currentHostProfile.os" class="info-row">
+                <span class="info-label">{{ t('ai.agentWelcome.system') }}:</span>
+                <span class="info-value">{{ currentHostProfile.osVersion || currentHostProfile.os }}</span>
+              </div>
+              <div v-if="currentHostProfile.shell" class="info-row">
+                <span class="info-label">{{ t('ai.agentWelcome.shell') }}:</span>
+                <span class="info-value">{{ currentHostProfile.shell }}</span>
+                <span v-if="currentHostProfile.packageManager" class="info-secondary">| {{ currentHostProfile.packageManager }}</span>
+              </div>
+              <div v-if="currentHostProfile.installedTools?.length" class="info-row tools-row">
+                <span class="info-label">{{ t('ai.agentWelcome.tools') }}:</span>
+                <span class="info-value tools-list">{{ currentHostProfile.installedTools.join(', ') }}</span>
+              </div>
+            </div>
+            <div v-else-if="isLoadingProfile" class="popover-loading">
+              {{ t('common.loading') }}
+            </div>
+            <div v-else class="popover-empty">
+              {{ t('ai.agentWelcome.notProbed') }}
+            </div>
+          </div>
         </div>
         <!-- Agent 模式设置 -->
         <div v-if="agentMode" class="agent-settings">
@@ -922,46 +964,11 @@ onUnmounted(() => {
         <div v-if="agentMode && !agentUserTask" class="ai-welcome">
           <p>🤖 {{ t('ai.agentWelcome.enabled') }}</p>
           
-          <!-- 主机档案信息 -->
-          <div class="host-profile-section">
-            <p class="welcome-section-title">
-              🖥️ {{ t('ai.agentWelcome.hostInfo') }}
-              <button 
-                class="refresh-profile-btn" 
-                @click="refreshHostProfile" 
-                :disabled="isProbing"
-                :title="isProbing ? t('ai.agentWelcome.probing') : t('ai.agentWelcome.refreshHost')"
-              >
-                <span :class="{ spinning: isProbing }">🔄</span>
-              </button>
-            </p>
-            <div v-if="currentHostProfile" class="host-profile-info">
-              <div class="profile-row">
-                <span class="profile-label">{{ t('ai.agentWelcome.hostname') }}:</span>
-                <span class="profile-value">{{ currentHostProfile.hostname || t('common.unknown') }}</span>
-                <span v-if="currentHostProfile.username" class="profile-value-secondary">@ {{ currentHostProfile.username }}</span>
-              </div>
-              <div v-if="currentHostProfile.osVersion || currentHostProfile.os" class="profile-row">
-                <span class="profile-label">{{ t('ai.agentWelcome.system') }}:</span>
-                <span class="profile-value">{{ currentHostProfile.osVersion || currentHostProfile.os }}</span>
-              </div>
-              <div v-if="currentHostProfile.shell" class="profile-row">
-                <span class="profile-label">{{ t('ai.agentWelcome.shell') }}:</span>
-                <span class="profile-value">{{ currentHostProfile.shell }}</span>
-                <span v-if="currentHostProfile.packageManager" class="profile-value-secondary">| {{ currentHostProfile.packageManager }}</span>
-              </div>
-              <div v-if="currentHostProfile.installedTools?.length" class="profile-row">
-                <span class="profile-label">{{ t('ai.agentWelcome.tools') }}:</span>
-                <span class="profile-value tools-list">{{ currentHostProfile.installedTools.join(', ') }}</span>
-              </div>
-            </div>
-            <div v-else-if="isLoadingProfile" class="host-profile-loading">
-              {{ t('common.loading') }}
-            </div>
-            <div v-else class="host-profile-empty">
-              <span>{{ t('ai.agentWelcome.notProbed') }}</span>
-            </div>
-          </div>
+          <!-- 主机信息提示（详情见顶部悬浮面板） -->
+          <p class="host-hint">
+            <span class="hint-icon">💡</span>
+            {{ t('ai.agentWelcome.hostHint') || '悬停上方系统信息可查看主机详情' }}
+          </p>
 
           <p class="welcome-section-title">💡 {{ t('ai.agentWelcome.whatIsAgent') }}</p>
           <p class="welcome-desc">{{ t('ai.agentWelcome.agentDesc') }}</p>
@@ -1491,6 +1498,19 @@ onUnmounted(() => {
   flex-direction: column;
   height: 100%;
   position: relative;
+  /* 入场动画 */
+  animation: panelEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes panelEnter {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 /* 拖放覆盖层 */
@@ -1561,14 +1581,41 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border-color);
+  position: relative;
+  animation: headerEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
+}
+
+@keyframes headerEnter {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 深色主题：头部底部微光 */
+[data-color-scheme="dark"] .ai-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(var(--accent-secondary-rgb, 116, 199, 236), 0.15), transparent);
 }
 
 .ai-header h3 {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .ai-header-actions {
@@ -1614,10 +1661,10 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 5px 12px;
+  padding: 6px 12px;
   background: var(--bg-tertiary);
   border-bottom: 1px solid var(--border-color);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-muted);
 }
 
@@ -1633,6 +1680,174 @@ onUnmounted(() => {
 
 .system-text {
   font-family: var(--font-mono);
+}
+
+/* 主机信息悬浮触发器 */
+.host-info-trigger {
+  position: relative;
+  cursor: pointer;
+  padding: 2px 6px;
+  margin: -2px -6px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.host-info-trigger:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.hover-hint {
+  font-size: 8px;
+  opacity: 0.5;
+  margin-left: 2px;
+  transition: all 0.2s ease;
+}
+
+.host-info-trigger:hover .hover-hint {
+  opacity: 1;
+  transform: translateY(1px);
+}
+
+/* 悬浮面板 */
+.host-info-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 8px;
+  min-width: 380px;
+  max-width: 380px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  z-index: 100;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-5px);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 添加透明连接区域，让鼠标能顺利移动到面板 */
+.host-info-popover::after {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: 0;
+  right: 0;
+  height: 10px;
+}
+
+.host-info-trigger:hover .host-info-popover,
+.host-info-popover:hover {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+/* 面板箭头 */
+.host-info-popover::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 28px;
+  width: 12px;
+  height: 12px;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-color);
+  border-top: 1px solid var(--border-color);
+  transform: rotate(45deg);
+}
+
+.popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.refresh-btn {
+  padding: 4px 6px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.refresh-btn .spinning {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.popover-content {
+  padding: 14px 16px;
+}
+
+.info-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.info-row:last-child {
+  margin-bottom: 0;
+}
+
+.info-row.tools-row {
+  flex-wrap: wrap;
+}
+
+.info-label {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  min-width: 55px;
+}
+
+.info-value {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.info-secondary {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.info-value.tools-list {
+  color: var(--accent-primary);
+  word-break: break-word;
+}
+
+.popover-loading,
+.popover-empty {
+  padding: 16px 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 /* 错误诊断提示 */
@@ -2035,107 +2250,22 @@ onUnmounted(() => {
 }
 
 /* 主机档案区域 */
-.host-profile-section {
-  background: var(--bg-tertiary);
-  border-radius: 8px;
-  padding: 12px;
-  margin: 8px 0 16px 0;
-  border: 1px solid var(--border-color);
-}
-
-.host-profile-section .welcome-section-title {
-  margin-top: 0;
-  margin-bottom: 10px;
-}
-
-.refresh-profile-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 14px;
-  transition: all 0.2s ease;
-}
-
-.refresh-profile-btn:hover:not(:disabled) {
-  background: var(--bg-surface);
-}
-
-.refresh-profile-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.refresh-profile-btn .spinning {
-  display: inline-block;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.host-profile-info {
-  font-size: 12px;
-}
-
-.profile-row {
+/* 主机信息提示 */
+.host-hint {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 0;
-}
-
-.profile-label {
-  color: var(--text-secondary);
-  min-width: 40px;
-}
-
-.profile-value {
-  color: var(--text-primary);
-}
-
-.profile-value-secondary {
-  color: var(--text-muted);
-  font-size: 11px;
-}
-
-.profile-value.tools-list {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--accent-primary);
-}
-
-.profile-notes {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border-color);
-}
-
-.profile-notes .profile-label {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 11px;
-}
-
-.profile-notes ul {
-  margin: 0;
-  padding-left: 16px;
-}
-
-.profile-notes li {
-  color: var(--text-muted);
-  font-size: 11px;
-  padding: 2px 0;
-}
-
-.host-profile-loading,
-.host-profile-empty {
-  color: var(--text-muted);
+  padding: 10px 12px;
+  margin: 8px 0 16px 0;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
   font-size: 12px;
-  font-style: italic;
+  color: var(--text-secondary);
+}
+
+.host-hint .hint-icon {
+  font-size: 14px;
 }
 
 .ai-welcome ul {
@@ -2369,6 +2499,18 @@ onUnmounted(() => {
 
 .message {
   margin-bottom: 12px;
+  animation: messageEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes messageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .message.user {
@@ -2387,6 +2529,11 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  transition: transform 0.2s ease;
+}
+
+.message-wrapper:hover {
+  transform: scale(1.01);
 }
 
 .message.user .message-content {
@@ -3018,33 +3165,71 @@ onUnmounted(() => {
 /* 模式切换 */
 .mode-switcher {
   display: flex;
-  padding: 6px 12px;
-  gap: 6px;
+  padding: 8px 12px;
+  gap: 8px;
   border-bottom: 1px solid var(--border-color);
+  animation: switcherEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+}
+
+@keyframes switcherEnter {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .mode-btn {
   flex: 1;
-  padding: 6px 12px;
+  padding: 8px 14px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-secondary);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.mode-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.mode-btn:hover::before {
+  opacity: 1;
 }
 
 .mode-btn:hover {
   background: var(--bg-surface);
   color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.mode-btn:active {
+  transform: translateY(0) scale(0.98);
 }
 
 .mode-btn.active {
-  background: var(--accent-primary);
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
   color: #fff;
-  border-color: var(--accent-primary);
+  border-color: transparent;
+  box-shadow: 0 2px 10px rgba(var(--accent-rgb, 137, 180, 250), 0.3);
+}
+
+.mode-btn.active:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(var(--accent-rgb, 137, 180, 250), 0.4);
 }
 
 /* 需要注意的状态（有待确认操作） */

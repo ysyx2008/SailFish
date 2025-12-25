@@ -208,6 +208,95 @@
   --border-color: #403d52;
 }
 
+/* 🆕 赛博朋克霓虹主题 - 极致科技感 */
+[data-ui-theme="cyberpunk"] {
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #0f0f18;
+  --bg-tertiary: #060609;
+  --bg-surface: #141420;
+  --bg-hover: #1a1a2e;
+  
+  --text-primary: #e0e0ff;
+  --text-secondary: #a0a0cc;
+  --text-muted: #606088;
+  
+  --accent-primary: #00ffff;
+  --accent-secondary: #ff00ff;
+  --accent-success: #00ff88;
+  --accent-warning: #ffff00;
+  --accent-error: #ff0055;
+  
+  --border-color: #2a2a44;
+  
+  /* 赛博朋克特有变量 */
+  --neon-glow: 0 0 10px var(--accent-primary), 0 0 20px var(--accent-primary), 0 0 40px var(--accent-primary);
+  --neon-glow-pink: 0 0 10px var(--accent-secondary), 0 0 20px var(--accent-secondary), 0 0 40px var(--accent-secondary);
+}
+
+/* 赛博朋克主题特殊效果 */
+[data-ui-theme="cyberpunk"] .app-header {
+  background: linear-gradient(180deg, rgba(15, 15, 24, 0.95), rgba(10, 10, 15, 0.98));
+  border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.1);
+}
+
+[data-ui-theme="cyberpunk"] .sidebar {
+  background: linear-gradient(180deg, rgba(15, 15, 24, 0.98), rgba(10, 10, 15, 0.95));
+  border-right: 1px solid rgba(0, 255, 255, 0.15);
+}
+
+[data-ui-theme="cyberpunk"] .ai-sidebar {
+  background: linear-gradient(180deg, rgba(15, 15, 24, 0.98), rgba(10, 10, 15, 0.95));
+  border-left: 1px solid rgba(255, 0, 255, 0.15);
+}
+
+[data-ui-theme="cyberpunk"] .btn-primary {
+  background: linear-gradient(135deg, #00ffff, #00ccff);
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+  text-shadow: 0 0 5px rgba(0, 255, 255, 0.5);
+}
+
+[data-ui-theme="cyberpunk"] .btn-primary:hover {
+  background: linear-gradient(135deg, #00ffff, #ff00ff);
+  box-shadow: 0 0 25px rgba(0, 255, 255, 0.6), 0 0 25px rgba(255, 0, 255, 0.3);
+}
+
+/* 🆕 极光主题 - 神秘渐变 */
+[data-ui-theme="aurora"] {
+  --bg-primary: #0f1419;
+  --bg-secondary: #131a21;
+  --bg-tertiary: #0a0f13;
+  --bg-surface: #1a232d;
+  --bg-hover: #232f3e;
+  
+  --text-primary: #e6f1ff;
+  --text-secondary: #a8c7fa;
+  --text-muted: #5a7a9a;
+  
+  --accent-primary: #7dd3fc;
+  --accent-secondary: #c084fc;
+  --accent-success: #4ade80;
+  --accent-warning: #fbbf24;
+  --accent-error: #fb7185;
+  
+  --border-color: #2a3f54;
+}
+
+/* 极光主题背景渐变 */
+[data-ui-theme="aurora"] .welcome-page {
+  background: 
+    radial-gradient(ellipse at 20% 80%, rgba(125, 211, 252, 0.15) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(192, 132, 252, 0.15) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(74, 222, 128, 0.08) 0%, transparent 60%),
+    var(--bg-primary);
+  animation: aurora-shift 20s ease-in-out infinite;
+}
+
+@keyframes aurora-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -250,45 +339,100 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 16px;
+  padding: 8px 18px;
   font-size: 14px;
+  font-weight: 500;
   font-family: inherit;
   color: var(--text-primary);
   background: var(--bg-surface);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 按钮悬停光效 */
+.btn::before {
+  content: '';
+  position: absolute;
+  top: -100%;
+  left: -100%;
+  width: 300%;
+  height: 300%;
+  background: linear-gradient(
+    45deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.08) 50%,
+    transparent 70%
+  );
+  transform: rotate(45deg);
+  transition: all 0.5s ease;
+  pointer-events: none;
+}
+
+.btn:hover::before {
+  top: 100%;
+  left: 100%;
 }
 
 .btn:hover {
   background: var(--bg-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.btn:active {
+  transform: translateY(0);
+  box-shadow: none;
 }
 
 .btn-primary {
-  background: var(--accent-primary);
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
   color: var(--bg-primary);
-  border-color: var(--accent-primary);
+  border: none;
+  font-weight: 600;
 }
 
 .btn-primary:hover {
-  background: var(--accent-secondary);
-  border-color: var(--accent-secondary);
+  background: linear-gradient(135deg, var(--accent-secondary), var(--accent-primary));
+  box-shadow: 0 4px 20px rgba(var(--accent-rgb, 137, 180, 250), 0.4);
+  transform: translateY(-2px);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
 }
 
 .btn-sm {
-  padding: 4px 10px;
+  padding: 5px 12px;
   font-size: 12px;
 }
 
 .btn-icon {
-  padding: 6px;
+  padding: 8px;
   background: transparent;
   border: none;
+  border-radius: 8px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .btn-icon:hover {
   background: var(--bg-hover);
+  transform: scale(1.1);
+}
+
+.btn-icon:active {
+  transform: scale(0.95);
+}
+
+.btn-icon svg {
+  transition: all 0.2s ease;
+}
+
+.btn-icon:hover svg {
+  filter: drop-shadow(0 0 3px var(--accent-primary));
 }
 
 /* 输入框样式 */
@@ -371,14 +515,14 @@ html, body {
   visibility: visible;
 }
 
-/* 动画 */
+/* ============================= */
+/* 🎬 动画效果库                   */
+/* ============================= */
+
+/* 基础动画 */
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes slideIn {
@@ -392,6 +536,73 @@ html, body {
   }
 }
 
+/* 🆕 炫酷入场动画 */
+@keyframes slideUp {
+  from {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes popIn {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px var(--accent-primary);
+  }
+  50% {
+    box-shadow: 0 0 20px var(--accent-primary), 0 0 30px var(--accent-primary);
+  }
+}
+
+@keyframes gradient-flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes typing-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Vue 过渡类 */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.2s ease;
@@ -411,4 +622,115 @@ html, body {
 .slide-leave-to {
   transform: translateX(20px);
   opacity: 0;
+}
+
+/* 🆕 酷炫过渡效果 */
+.scale-enter-active {
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.scale-leave-active {
+  transition: all 0.2s ease-in;
+}
+
+.scale-enter-from,
+.scale-leave-to {
+  transform: scale(0.9);
+  opacity: 0;
+}
+
+.pop-enter-active {
+  animation: popIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.pop-leave-active {
+  transition: all 0.15s ease-in;
+}
+
+.pop-leave-to {
+  transform: scale(0.9);
+  opacity: 0;
+}
+
+/* ============================= */
+/* 🌟 全局视觉效果                 */
+/* ============================= */
+
+/* 毛玻璃效果工具类 */
+.glass {
+  background: rgba(var(--bg-secondary-rgb, 30, 30, 46), 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* 悬浮发光效果 */
+.glow-on-hover {
+  transition: box-shadow 0.3s ease, transform 0.2s ease;
+}
+
+.glow-on-hover:hover {
+  box-shadow: 0 0 20px rgba(var(--accent-rgb, 137, 180, 250), 0.3);
+  transform: translateY(-2px);
+}
+
+/* 渐变文字效果 */
+.gradient-text {
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 闪光按钮效果 */
+.btn-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-shine::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    45deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.1) 50%,
+    transparent 70%
+  );
+  transform: rotate(45deg) translateX(-100%);
+  transition: transform 0.6s ease;
+}
+
+.btn-shine:hover::after {
+  transform: rotate(45deg) translateX(100%);
+}
+
+/* 动态边框效果（用于卡片） */
+.border-glow {
+  position: relative;
+}
+
+.border-glow::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    var(--accent-primary),
+    var(--accent-secondary),
+    var(--accent-primary)
+  );
+  background-size: 200% 200%;
+  animation: gradient-flow 3s ease infinite;
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.border-glow:hover::before {
+  opacity: 1;
 }

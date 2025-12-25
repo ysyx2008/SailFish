@@ -214,20 +214,72 @@ const formatHost = (session: SshSession) => {
   padding: 40px 20px;
 }
 
+/* 深色主题：微妙的渐变背景 */
+[data-color-scheme="dark"] .welcome-page {
+  background: 
+    radial-gradient(ellipse at 30% 20%, rgba(var(--accent-rgb, 137, 180, 250), 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 80%, rgba(var(--accent-secondary-rgb, 116, 199, 236), 0.05) 0%, transparent 50%),
+    var(--bg-primary);
+}
+
+/* 浅色主题：更柔和的渐变 */
+[data-color-scheme="light"] .welcome-page {
+  background: 
+    radial-gradient(ellipse at 30% 20%, rgba(var(--accent-rgb, 0, 120, 212), 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 80%, rgba(var(--accent-secondary-rgb, 16, 110, 190), 0.03) 0%, transparent 50%),
+    var(--bg-primary);
+}
+
 .welcome-content {
   max-width: 720px;
   width: 100%;
   margin: auto;
+  /* 入场动画 */
+  animation: pageEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Header */
 .welcome-header {
   text-align: center;
   margin-bottom: 48px;
+  animation: headerEnter 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards;
+  opacity: 0;
+}
+
+@keyframes headerEnter {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .logo-container {
   margin-bottom: 16px;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+}
+
+.logo-container:hover {
+  transform: scale(1.05);
+}
+
+.logo-container:active {
+  transform: scale(0.98);
 }
 
 .logo {
@@ -241,47 +293,81 @@ const formatHost = (session: SshSession) => {
   width: 100px;
   height: 100px;
   object-fit: contain;
-  filter: drop-shadow(0 4px 12px rgba(59, 130, 246, 0.3));
+  filter: drop-shadow(0 4px 20px rgba(var(--accent-rgb, 59, 130, 246), 0.4));
+  transition: filter 0.3s ease;
+}
+
+.logo-container:hover .sailfish-logo {
+  filter: drop-shadow(0 6px 30px rgba(var(--accent-rgb, 59, 130, 246), 0.6));
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-8px); }
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-6px) rotate(1deg); }
+  50% { transform: translateY(-10px) rotate(0deg); }
+  75% { transform: translateY(-6px) rotate(-1deg); }
 }
 
 .welcome-title {
-  font-size: 28px;
-  font-weight: 700;
+  font-size: 32px;
+  font-weight: 800;
   color: var(--text-primary);
-  margin: 0 0 8px 0;
+  margin: 0 0 10px 0;
   letter-spacing: -0.5px;
+  /* 渐变文字效果 */
+  background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-primary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 浅色主题：调整标题渐变 */
+[data-color-scheme="light"] .welcome-title {
+  background: linear-gradient(135deg, var(--text-primary) 20%, var(--accent-primary) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
 }
 
 .welcome-subtitle {
   font-size: 15px;
   color: var(--text-muted);
   margin: 0;
+  opacity: 0.9;
 }
 
 /* Section Title */
 .section-title {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 700;
   color: var(--text-secondary);
   margin: 0 0 16px 0;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
+  opacity: 0.8;
 }
 
 /* Quick Start Cards */
 .quick-start {
   margin-bottom: 40px;
+  animation: sectionEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+  opacity: 0;
+}
+
+@keyframes sectionEnter {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .action-cards {
   display: flex;
   justify-content: center;
-  gap: 16px;
+  gap: 20px;
 }
 
 @media (max-width: 640px) {
@@ -295,25 +381,85 @@ const formatHost = (session: SshSession) => {
   position: relative;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 16px;
-  padding: 24px;
+  border-radius: 20px;
+  padding: 28px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: 12px;
+  gap: 14px;
   width: 180px;
-  height: 180px;
+  height: 190px;
   flex-shrink: 0;
+  overflow: hidden;
+  /* 初始状态 */
+  opacity: 0;
+  transform: translateY(20px);
+  animation: cardEnter 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.action-card:nth-child(1) { animation-delay: 0.3s; }
+.action-card:nth-child(2) { animation-delay: 0.4s; }
+.action-card:nth-child(3) { animation-delay: 0.5s; }
+
+@keyframes cardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(30px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 卡片悬停发光效果 */
+.action-card::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  opacity: 0;
+  z-index: -1;
+  transition: opacity 0.3s ease;
+}
+
+.action-card:hover:not(.disabled)::before {
+  opacity: 0.5;
+}
+
+/* 卡片内部光晕 */
+.action-card::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at center, rgba(255,255,255,0.05) 0%, transparent 60%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.action-card:hover:not(.disabled)::after {
+  opacity: 1;
 }
 
 .action-card:hover:not(.disabled) {
   border-color: var(--accent-primary);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  transform: translateY(-6px) scale(1.02);
+  box-shadow: 
+    0 20px 40px rgba(0, 0, 0, 0.2),
+    0 0 40px rgba(var(--accent-rgb, 137, 180, 250), 0.15);
+}
+
+.action-card:active:not(.disabled) {
+  transform: translateY(-2px) scale(0.98);
 }
 
 .action-card.disabled {
@@ -322,38 +468,52 @@ const formatHost = (session: SshSession) => {
 }
 
 .card-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 14px;
+  width: 60px;
+  height: 60px;
+  border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.action-card:hover:not(.disabled) .card-icon {
+  transform: scale(1.1);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
 }
 
 .card-icon.local {
   background: linear-gradient(135deg, #10b981, #059669);
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
 }
 
 .card-icon.ssh {
   background: linear-gradient(135deg, #3b82f6, #2563eb);
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
 }
 
 .card-icon.patrol {
   background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
 }
 
 .card-title {
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-primary);
   margin-bottom: 4px;
+  transition: color 0.2s ease;
+}
+
+.action-card:hover:not(.disabled) .card-title {
+  color: var(--accent-primary);
 }
 
 .card-desc {
   font-size: 12px;
   color: var(--text-muted);
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
 .coming-soon-badge {
@@ -371,6 +531,8 @@ const formatHost = (session: SshSession) => {
 /* Recent Sessions */
 .recent-sessions {
   margin-bottom: 32px;
+  animation: sectionEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
+  opacity: 0;
 }
 
 .section-header {
@@ -387,36 +549,63 @@ const formatHost = (session: SshSession) => {
 .session-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
 .session-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 12px;
+  padding: 12px 14px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 12px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 会话卡片光效 */
+.session-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+  transition: left 0.5s ease;
+}
+
+.session-item:hover::before {
+  left: 100%;
 }
 
 .session-item:hover {
   border-color: var(--accent-primary);
   background: var(--bg-tertiary);
+  transform: translateX(4px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
 }
 
 .session-icon {
-  width: 32px;
-  height: 32px;
-  background: rgba(59, 130, 246, 0.1);
-  border-radius: 6px;
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1));
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #3b82f6;
+  color: var(--accent-primary);
   flex-shrink: 0;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.session-item:hover .session-icon {
+  transform: scale(1.1);
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  color: white;
 }
 
 .session-info {
@@ -426,17 +615,22 @@ const formatHost = (session: SshSession) => {
 
 .session-name {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: color 0.2s ease;
+}
+
+.session-item:hover .session-name {
+  color: var(--accent-primary);
 }
 
 .session-host {
   font-size: 11px;
   color: var(--text-muted);
-  font-family: 'SF Mono', Monaco, monospace;
+  font-family: var(--font-mono);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -444,30 +638,57 @@ const formatHost = (session: SshSession) => {
 
 .view-all {
   font-size: 13px;
+  font-weight: 500;
   color: var(--accent-primary);
   cursor: pointer;
-  transition: opacity 0.15s ease;
+  transition: all 0.2s ease;
   white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 6px;
 }
 
 .view-all:hover {
-  opacity: 0.8;
+  background: rgba(var(--accent-rgb, 137, 180, 250), 0.1);
+  transform: translateX(4px);
 }
 
 /* Tips */
 .tips {
-  padding: 16px;
-  background: rgba(59, 130, 246, 0.05);
-  border: 1px solid rgba(59, 130, 246, 0.1);
-  border-radius: 10px;
+  padding: 18px 20px;
+  background: linear-gradient(135deg, rgba(var(--accent-rgb, 59, 130, 246), 0.08), rgba(var(--accent-secondary-rgb, 116, 199, 236), 0.05));
+  border: 1px solid rgba(var(--accent-rgb, 59, 130, 246), 0.15);
+  border-radius: 14px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
   user-select: none;
+  animation: sectionEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.6s forwards;
+  opacity: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 提示框闪光效果 */
+.tips::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.1) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.tips:hover::after {
+  opacity: 1;
 }
 
 .tips:hover {
-  background: rgba(59, 130, 246, 0.08);
-  border-color: rgba(59, 130, 246, 0.2);
+  background: linear-gradient(135deg, rgba(var(--accent-rgb, 59, 130, 246), 0.12), rgba(var(--accent-secondary-rgb, 116, 199, 236), 0.08));
+  border-color: rgba(var(--accent-rgb, 59, 130, 246), 0.25);
+  transform: scale(1.01);
+  box-shadow: 0 4px 20px rgba(var(--accent-rgb, 59, 130, 246), 0.1);
 }
 
 .tips:active {
@@ -477,31 +698,40 @@ const formatHost = (session: SshSession) => {
 .tip-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 13px;
   color: var(--text-secondary);
+  position: relative;
+  z-index: 1;
 }
 
 .tip-icon {
-  font-size: 16px;
+  font-size: 18px;
   flex-shrink: 0;
+  animation: tipPulse 2s ease-in-out infinite;
+}
+
+@keyframes tipPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
 }
 
 .tip-text {
   flex: 1;
-  transition: opacity 0.15s ease;
+  line-height: 1.5;
 }
 
 .tip-next {
-  font-size: 14px;
-  color: var(--text-muted);
+  font-size: 16px;
+  color: var(--accent-primary);
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: all 0.3s ease;
   flex-shrink: 0;
 }
 
 .tips:hover .tip-next {
-  opacity: 0.6;
+  opacity: 0.8;
+  transform: rotate(180deg);
 }
 </style>
 
