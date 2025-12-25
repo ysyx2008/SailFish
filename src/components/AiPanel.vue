@@ -4,7 +4,7 @@
  * 重构版本：使用 composables 模块化管理逻辑
  * 每个 tab 独立实例，通过 tabId prop 绑定
  */
-import { ref, computed, watch, inject, onMounted, toRef, nextTick } from 'vue'
+import { ref, computed, watch, inject, onMounted, onUnmounted, toRef, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
@@ -609,11 +609,30 @@ const handleDrop = async (e: DragEvent) => {
   }
 }
 
+// ==================== 键盘事件处理 ====================
+
+const handleKeyDown = (e: KeyboardEvent) => {
+  // ESC 键关闭弹窗
+  if (e.key === 'Escape') {
+    if (showHistoryModal.value) {
+      e.preventDefault()
+      closeHistoryModal()
+    }
+  }
+}
+
 // ==================== 生命周期 ====================
 
 onMounted(() => {
   // 加载主机档案
   loadHostProfile()
+  // 注册键盘事件
+  document.addEventListener('keydown', handleKeyDown)
+})
+
+onUnmounted(() => {
+  // 清理键盘事件
+  document.removeEventListener('keydown', handleKeyDown)
 })
 </script>
 
