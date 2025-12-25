@@ -1413,6 +1413,8 @@ ${fullContext}
       getSshConfig: (terminalId) => this.sshService?.getConfig(terminalId) || null
     }
 
+    // 外层循环：用于支持从 catch 块恢复执行（当用户在 AI 输出时发送消息）
+    executionLoop: while (run.isRunning && !run.aborted) {
     try {
       // Agent 执行循环
       // maxSteps = 0 表示无限制，由 Agent 自行决定何时结束
@@ -1850,23 +1852,24 @@ ${fullContext}
       const isAiAbortedError = errorMsg.toLowerCase().includes('aborted')
       
       if (isAiAbortedError) {
-        // 检查是否有有效响应
+        // 优先检查是否有待处理的用户消息
+        // 如果有，恢复运行状态并继续执行（而不是启动新任务）
+        if (run.pendingUserMessages.length > 0) {
+          console.log(`[Agent] AI 被中断但有 ${run.pendingUserMessages.length} 条待处理的用户消息，继续执行`)
+          run.isRunning = true
+          continue executionLoop
+        }
+        
+        // 没有待处理的用户消息，检查是否有有效响应
         const hasValidResponse = lastResponse && lastResponse.content && lastResponse.content.length > 10
         if (hasValidResponse) {
           // 已经有有效响应，视为正常完成
           console.log('[Agent] AI request aborted but has valid response, treating as success')
           const finalMessage = lastResponse!.content || '任务完成'
           
-          // 如果有待处理的用户消息，附带在完成回调中
-          // 前端可以据此决定是否自动启动新对话
-          const pendingMessages = [...run.pendingUserMessages]
-          if (pendingMessages.length > 0) {
-            console.log(`[Agent] 完成时有 ${pendingMessages.length} 条待处理的用户消息`)
-          }
-          
           const successCallbacks = this.getCallbacks(agentId)
           if (successCallbacks.onComplete) {
-            successCallbacks.onComplete(agentId, finalMessage, pendingMessages)
+            successCallbacks.onComplete(agentId, finalMessage, [])
           }
           
           return finalMessage
@@ -1886,15 +1889,20 @@ ${fullContext}
 
       throw error
     } finally {
-      // 清理终端输出监听器
-      if (run.outputUnsubscribe) {
-        run.outputUnsubscribe()
-        run.outputUnsubscribe = undefined
-        console.log('[Agent] 已清理终端输出监听器')
+      // 只在真正结束时清理（循环即将退出时）
+      // 如果 run.isRunning 为 true，说明是 continue executionLoop，不需要清理
+      if (!run.isRunning || run.aborted) {
+        // 清理终端输出监听器
+        if (run.outputUnsubscribe) {
+          run.outputUnsubscribe()
+          run.outputUnsubscribe = undefined
+          console.log('[Agent] 已清理终端输出监听器')
+        }
+        // 清理 run 级别的回调
+        this.clearRunCallbacks(agentId)
       }
-      // 清理 run 级别的回调
-      this.clearRunCallbacks(agentId)
     }
+    } // 结束 executionLoop
   }
 
   /**
