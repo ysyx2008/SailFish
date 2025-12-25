@@ -1720,6 +1720,13 @@ ${fullContext}
           
           // 情况1：从未执行过任何工具
           if (!hasExecutedAnyTool) {
+            // 先检查是否有待处理的用户消息（优先级最高）
+            // 如果有待处理的用户消息，继续循环让 Agent 处理，不要直接结束
+            if (run.pendingUserMessages.length > 0) {
+              console.log('[Agent] AI 输出被用户消息中断，继续处理用户消息')
+              continue
+            }
+            
             // 如果 AI 返回了有内容的回复，直接接受（信任 AI 的判断）
             // AI 会自己决定是否需要使用工具，简单问候/闲聊不需要工具
             if (response.content && response.content.trim()) {
@@ -1732,13 +1739,6 @@ ${fullContext}
               }
               
               return response.content
-            }
-            
-            // 检查是否是因为用户发送了补充消息导致输出被中断
-            // 如果有待处理的用户消息，继续循环让 Agent 处理
-            if (run.pendingUserMessages.length > 0) {
-              console.log('[Agent] AI 输出被用户消息中断，继续处理用户消息')
-              continue
             }
             
             // AI 既没调用工具也没返回内容，可能是模型问题
@@ -1850,14 +1850,6 @@ ${fullContext}
       const isAiAbortedError = errorMsg.toLowerCase().includes('aborted')
       
       if (isAiAbortedError) {
-        // 检查是否有待处理的用户消息（用户在 AI 输出时发送了补充消息）
-        if (run.pendingUserMessages.length > 0) {
-          // 有待处理的用户消息，不是错误，应该继续循环
-          // 但我们已经在 catch 块了，无法继续循环，所以这种情况不应该发生
-          // 实际上 Agent 循环会在下一轮处理用户消息
-          console.log('[Agent] AI aborted but has pending user messages, this should not happen in catch block')
-        }
-        
         // 检查是否有有效响应
         const hasValidResponse = lastResponse && lastResponse.content && lastResponse.content.length > 10
         if (hasValidResponse) {
@@ -1865,9 +1857,16 @@ ${fullContext}
           console.log('[Agent] AI request aborted but has valid response, treating as success')
           const finalMessage = lastResponse!.content || '任务完成'
           
+          // 如果有待处理的用户消息，附带在完成回调中
+          // 前端可以据此决定是否自动启动新对话
+          const pendingMessages = [...run.pendingUserMessages]
+          if (pendingMessages.length > 0) {
+            console.log(`[Agent] 完成时有 ${pendingMessages.length} 条待处理的用户消息`)
+          }
+          
           const successCallbacks = this.getCallbacks(agentId)
           if (successCallbacks.onComplete) {
-            successCallbacks.onComplete(agentId, finalMessage)
+            successCallbacks.onComplete(agentId, finalMessage, pendingMessages)
           }
           
           return finalMessage
