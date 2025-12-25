@@ -211,7 +211,7 @@ const formatHost = (session: SshSession) => {
   flex-direction: column;
   background: var(--bg-primary);
   overflow-y: auto;
-  padding: 40px 20px;
+  padding: 24px 20px;
 }
 
 /* 深色主题：微妙的渐变背景 */
@@ -252,7 +252,7 @@ const formatHost = (session: SshSession) => {
 /* Header */
 .welcome-header {
   text-align: center;
-  margin-bottom: 48px;
+  margin-bottom: 32px;
   animation: headerEnter 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards;
   opacity: 0;
 }
@@ -290,10 +290,10 @@ const formatHost = (session: SshSession) => {
 }
 
 .sailfish-logo {
-  width: 100px;
-  height: 100px;
+  width: 80px;
+  height: 80px;
   object-fit: contain;
-  filter: drop-shadow(0 4px 20px rgba(var(--accent-rgb, 59, 130, 246), 0.4));
+  filter: drop-shadow(0 4px 16px rgba(var(--accent-rgb, 59, 130, 246), 0.4));
   transition: filter 0.3s ease;
 }
 
@@ -309,10 +309,10 @@ const formatHost = (session: SshSession) => {
 }
 
 .welcome-title {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 800;
   color: var(--text-primary);
-  margin: 0 0 10px 0;
+  margin: 0 0 8px 0;
   letter-spacing: -0.5px;
   /* 渐变文字效果 */
   background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-primary) 100%);
@@ -348,7 +348,7 @@ const formatHost = (session: SshSession) => {
 
 /* Quick Start Cards */
 .quick-start {
-  margin-bottom: 40px;
+  margin-bottom: 28px;
   animation: sectionEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
   opacity: 0;
 }
@@ -390,9 +390,9 @@ const formatHost = (session: SshSession) => {
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: 14px;
-  width: 180px;
-  height: 190px;
+  gap: 12px;
+  width: 170px;
+  height: 165px;
   flex-shrink: 0;
   overflow: hidden;
   /* 初始状态 */
@@ -530,7 +530,7 @@ const formatHost = (session: SshSession) => {
 
 /* Recent Sessions */
 .recent-sessions {
-  margin-bottom: 32px;
+  margin-bottom: 20px;
   animation: sectionEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
   opacity: 0;
 }
@@ -654,10 +654,11 @@ const formatHost = (session: SshSession) => {
 
 /* Tips */
 .tips {
-  padding: 18px 20px;
+  padding: 12px 16px;
+  margin-top: 38px;
   background: linear-gradient(135deg, rgba(var(--accent-rgb, 59, 130, 246), 0.08), rgba(var(--accent-secondary-rgb, 116, 199, 236), 0.05));
   border: 1px solid rgba(var(--accent-rgb, 59, 130, 246), 0.15);
-  border-radius: 14px;
+  border-radius: 10px;
   cursor: pointer;
   transition: all 0.3s ease;
   user-select: none;
@@ -698,8 +699,8 @@ const formatHost = (session: SshSession) => {
 .tip-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 13px;
+  gap: 8px;
+  font-size: 12px;
   color: var(--text-secondary);
   position: relative;
   z-index: 1;
