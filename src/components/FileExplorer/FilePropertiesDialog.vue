@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import type { SftpFileInfo } from '../../composables/useSftp'
 import { toast } from '../../composables/useToast'
 
@@ -104,6 +104,24 @@ const savePermissions = () => {
 const handleClose = () => {
   emit('close')
 }
+
+// 键盘事件
+const handleKeydown = (e: KeyboardEvent) => {
+  if (!props.show) return
+  
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    handleClose()
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown)
+})
 
 // 获取文件类型描述
 const getFileType = (file: SftpFileInfo | null): string => {

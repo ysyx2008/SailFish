@@ -129,7 +129,42 @@ const bookmarkInputRef = ref<HTMLInputElement | null>(null)
 
 // 键盘事件处理
 const handleKeyDown = (e: KeyboardEvent) => {
-  // 只在面板激活时响应键盘事件
+  // ESC 键处理 - 关闭弹窗/菜单（无论焦点在哪里都生效）
+  if (e.key === 'Escape') {
+    // 按优先级关闭弹窗/菜单
+    if (contextMenu.value.show) {
+      e.preventDefault()
+      closeContextMenu()
+      return
+    }
+    if (showBookmarkDropdown.value) {
+      e.preventDefault()
+      closeBookmarkDropdown()
+      return
+    }
+    if (showNewFolderDialog.value) {
+      e.preventDefault()
+      showNewFolderDialog.value = false
+      return
+    }
+    if (showRenameDialog.value) {
+      e.preventDefault()
+      showRenameDialog.value = false
+      return
+    }
+    if (showPreviewDialog.value) {
+      e.preventDefault()
+      showPreviewDialog.value = false
+      return
+    }
+    if (showAddBookmarkDialog.value) {
+      e.preventDefault()
+      showAddBookmarkDialog.value = false
+      return
+    }
+  }
+  
+  // 只在面板激活时响应其他键盘事件
   if (!props.active) return
   
   // 如果焦点在输入框中，不处理
