@@ -963,12 +963,6 @@ onUnmounted(() => {
         </div>
         <div v-if="agentMode && !agentUserTask" class="ai-welcome">
           <p>🤖 {{ t('ai.agentWelcome.enabled') }}</p>
-          
-          <!-- 主机信息提示（详情见顶部悬浮面板） -->
-          <p class="host-hint">
-            <span class="hint-icon">💡</span>
-            {{ t('ai.agentWelcome.hostHint') || '悬停上方系统信息可查看主机详情' }}
-          </p>
 
           <p class="welcome-section-title">💡 {{ t('ai.agentWelcome.whatIsAgent') }}</p>
           <p class="welcome-desc">{{ t('ai.agentWelcome.agentDesc') }}</p>
@@ -2254,25 +2248,6 @@ onUnmounted(() => {
   color: var(--text-muted);
   font-size: 12px;
   margin-bottom: 4px;
-}
-
-/* 主机档案区域 */
-/* 主机信息提示 */
-.host-hint {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 12px;
-  margin: 8px 0 16px 0;
-  background: var(--bg-tertiary);
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.host-hint .hint-icon {
-  font-size: 14px;
 }
 
 .ai-welcome ul {

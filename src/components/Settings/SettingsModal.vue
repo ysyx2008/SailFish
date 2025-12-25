@@ -679,9 +679,12 @@ const onQrImageError = (event: Event) => {
 
 .settings-nav {
   width: 180px;
-  padding: 12px;
+  padding: 16px 12px;
   background: var(--bg-tertiary);
   border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .nav-item {
@@ -694,7 +697,7 @@ const onQrImageError = (event: Event) => {
   color: var(--text-secondary);
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
   text-align: left;

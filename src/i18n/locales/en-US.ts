@@ -674,7 +674,6 @@ export default {
     agentWelcome: {
       enabled: 'Agent Mode Enabled',
       hostInfo: 'Host Information',
-      hostHint: 'Hover over the system info above to view host details',
       refreshHost: 'Refresh Host Info',
       probing: 'Probing...',
       hostname: 'Host',
