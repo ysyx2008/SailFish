@@ -478,6 +478,8 @@ export default {
       'gruvbox': 'Sunset',
       'forest': 'Forest',
       'ayu-mirage': 'Ayu Mirage',
+      'cyberpunk': '🌃 Cyberpunk',
+      'aurora': '🌌 Aurora',
       'sponsor-gold': 'Royal Gold',
       'sponsor-sakura': 'Sakura Pink',
       'sponsor-rose-pine': 'Rosé Pine'

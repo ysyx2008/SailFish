@@ -478,6 +478,8 @@ export default {
       'gruvbox': '日暮',
       'forest': '森林绿',
       'ayu-mirage': '彩虹幻境',
+      'cyberpunk': '🌃 赛博朋克',
+      'aurora': '🌌 极光',
       'sponsor-gold': '尊贵金',
       'sponsor-sakura': '樱花粉',
       'sponsor-rose-pine': '玫瑰松'

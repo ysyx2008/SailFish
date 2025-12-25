@@ -7,10 +7,16 @@
  */
 
 // UI 主题类型
-export type UiThemeName = 'dark' | 'light' | 'blue' | 'gruvbox' | 'forest' | 'ayu-mirage' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-rose-pine'
+export type UiThemeName = 'dark' | 'light' | 'blue' | 'gruvbox' | 'forest' | 'ayu-mirage' | 'cyberpunk' | 'aurora' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-rose-pine'
+
+// 颜色模式类型
+export type ColorScheme = 'dark' | 'light'
 
 // UI 主题 CSS 变量定义
 export interface UiThemeVars {
+  // 颜色模式（用于区分深色/浅色主题）
+  colorScheme: ColorScheme
+  
   // 背景色
   bgPrimary: string
   bgSecondary: string
@@ -36,6 +42,7 @@ export interface UiThemeVars {
 
 // 深色主题（当前默认主题 - Catppuccin Mocha 风格）
 const darkTheme: UiThemeVars = {
+  colorScheme: 'dark',
   bgPrimary: '#1e1e2e',
   bgSecondary: '#181825',
   bgTertiary: '#11111b',
@@ -57,6 +64,7 @@ const darkTheme: UiThemeVars = {
 
 // 浅色主题
 const lightTheme: UiThemeVars = {
+  colorScheme: 'light',
   bgPrimary: '#ffffff',
   bgSecondary: '#f5f5f5',
   bgTertiary: '#e8e8e8',
@@ -78,6 +86,7 @@ const lightTheme: UiThemeVars = {
 
 // 蓝色主题（VS 经典风格）
 const blueTheme: UiThemeVars = {
+  colorScheme: 'dark',
   bgPrimary: '#1e3a5f',
   bgSecondary: '#152d4a',
   bgTertiary: '#0d1f33',
@@ -99,6 +108,7 @@ const blueTheme: UiThemeVars = {
 
 // 暖橙主题（温暖的棕橙色调，中深色）
 const gruvboxTheme: UiThemeVars = {
+  colorScheme: 'dark',
   bgPrimary: '#2d251f',
   bgSecondary: '#251f1a',
   bgTertiary: '#1f1a15',
@@ -120,6 +130,7 @@ const gruvboxTheme: UiThemeVars = {
 
 // Forest 主题（浅色清新的森林绿色调）
 const forestTheme: UiThemeVars = {
+  colorScheme: 'light',
   bgPrimary: '#f6fbf8',
   bgSecondary: '#eef6f0',
   bgTertiary: '#e5f0e8',
@@ -141,6 +152,7 @@ const forestTheme: UiThemeVars = {
 
 // Ayu Mirage 主题（现代化的橙色调）
 const ayuMirageTheme: UiThemeVars = {
+  colorScheme: 'dark',
   bgPrimary: '#1f2430',
   bgSecondary: '#1a1f29',
   bgTertiary: '#151920',
@@ -162,6 +174,7 @@ const ayuMirageTheme: UiThemeVars = {
 
 // 赞助者专属暗金色主题（尊贵内敛风格）
 const sponsorGoldTheme: UiThemeVars = {
+  colorScheme: 'dark',
   bgPrimary: '#1a1612',
   bgSecondary: '#231f1a',
   bgTertiary: '#141210',
@@ -183,6 +196,7 @@ const sponsorGoldTheme: UiThemeVars = {
 
 // 赞助者专属樱花粉主题（浅色温柔风格）
 const sponsorSakuraTheme: UiThemeVars = {
+  colorScheme: 'light',
   bgPrimary: '#fdf8fa',
   bgSecondary: '#f8f0f4',
   bgTertiary: '#f2e8ed',
@@ -204,6 +218,7 @@ const sponsorSakuraTheme: UiThemeVars = {
 
 // 赞助者专属玫瑰松主题（温暖的玫瑰色调）
 const sponsorRosePineTheme: UiThemeVars = {
+  colorScheme: 'dark',
   bgPrimary: '#191724',
   bgSecondary: '#1f1d2e',
   bgTertiary: '#13111e',
@@ -223,6 +238,50 @@ const sponsorRosePineTheme: UiThemeVars = {
   borderColor: '#403d52'
 }
 
+// 🆕 赛博朋克霓虹主题（极致科技感）
+const cyberpunkTheme: UiThemeVars = {
+  colorScheme: 'dark',
+  bgPrimary: '#0a0a0f',
+  bgSecondary: '#0f0f18',
+  bgTertiary: '#060609',
+  bgSurface: '#141420',
+  bgHover: '#1a1a2e',
+  
+  textPrimary: '#e0e0ff',
+  textSecondary: '#a0a0cc',
+  textMuted: '#606088',
+  
+  accentPrimary: '#00ffff',
+  accentSecondary: '#ff00ff',
+  accentSuccess: '#00ff88',
+  accentWarning: '#ffff00',
+  accentError: '#ff0055',
+  
+  borderColor: '#2a2a44'
+}
+
+// 🆕 极光主题（神秘渐变）
+const auroraTheme: UiThemeVars = {
+  colorScheme: 'dark',
+  bgPrimary: '#0f1419',
+  bgSecondary: '#131a21',
+  bgTertiary: '#0a0f13',
+  bgSurface: '#1a232d',
+  bgHover: '#232f3e',
+  
+  textPrimary: '#e6f1ff',
+  textSecondary: '#a8c7fa',
+  textMuted: '#5a7a9a',
+  
+  accentPrimary: '#7dd3fc',
+  accentSecondary: '#c084fc',
+  accentSuccess: '#4ade80',
+  accentWarning: '#fbbf24',
+  accentError: '#fb7185',
+  
+  borderColor: '#2a3f54'
+}
+
 // 主题集合
 export const uiThemes: Record<UiThemeName, UiThemeVars> = {
   dark: darkTheme,
@@ -231,6 +290,8 @@ export const uiThemes: Record<UiThemeName, UiThemeVars> = {
   'gruvbox': gruvboxTheme,
   'forest': forestTheme,
   'ayu-mirage': ayuMirageTheme,
+  'cyberpunk': cyberpunkTheme,
+  'aurora': auroraTheme,
   'sponsor-gold': sponsorGoldTheme,
   'sponsor-sakura': sponsorSakuraTheme,
   'sponsor-rose-pine': sponsorRosePineTheme

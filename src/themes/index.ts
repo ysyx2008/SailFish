@@ -13,6 +13,8 @@ export type ThemeName =
   | 'gruvbox'
   | 'forest'
   | 'ayu-mirage'
+  | 'cyberpunk'
+  | 'aurora'
   | 'sponsor-gold'
 
 // One Dark 主题
@@ -340,6 +342,56 @@ const sponsorGold: ITheme = {
   brightWhite: '#f5e6d3'
 }
 
+// 🆕 赛博朋克主题 - 霓虹科技感
+const cyberpunk: ITheme = {
+  background: '#0a0a0f',
+  foreground: '#e0e0ff',
+  cursor: '#00ffff',
+  cursorAccent: '#0a0a0f',
+  selectionBackground: '#1a1a2e',
+  black: '#0a0a0f',
+  red: '#ff0055',
+  green: '#00ff88',
+  yellow: '#ffff00',
+  blue: '#00ffff',
+  magenta: '#ff00ff',
+  cyan: '#00ccff',
+  white: '#e0e0ff',
+  brightBlack: '#2a2a44',
+  brightRed: '#ff3377',
+  brightGreen: '#33ff99',
+  brightYellow: '#ffff55',
+  brightBlue: '#33ffff',
+  brightMagenta: '#ff55ff',
+  brightCyan: '#55ddff',
+  brightWhite: '#ffffff'
+}
+
+// 🆕 极光主题 - 神秘渐变色调
+const aurora: ITheme = {
+  background: '#0f1419',
+  foreground: '#e6f1ff',
+  cursor: '#7dd3fc',
+  cursorAccent: '#0f1419',
+  selectionBackground: '#232f3e',
+  black: '#0f1419',
+  red: '#fb7185',
+  green: '#4ade80',
+  yellow: '#fbbf24',
+  blue: '#7dd3fc',
+  magenta: '#c084fc',
+  cyan: '#22d3ee',
+  white: '#e6f1ff',
+  brightBlack: '#2a3f54',
+  brightRed: '#fda4af',
+  brightGreen: '#86efac',
+  brightYellow: '#fcd34d',
+  brightBlue: '#a5f3fc',
+  brightMagenta: '#d8b4fe',
+  brightCyan: '#67e8f9',
+  brightWhite: '#f0f9ff'
+}
+
 // 主题集合
 export const themes: Record<ThemeName, ITheme> = {
   'one-dark': oneDark,
@@ -354,6 +406,8 @@ export const themes: Record<ThemeName, ITheme> = {
   'gruvbox': gruvbox,
   'forest': forest,
   'ayu-mirage': ayuMirage,
+  'cyberpunk': cyberpunk,
+  'aurora': aurora,
   'sponsor-gold': sponsorGold
 }
 

@@ -343,26 +343,54 @@ const handleDragEnd = () => {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px;
+  padding: 6px 10px;
   min-width: 120px;
   max-width: 180px;
   background: var(--bg-tertiary);
-  border-radius: 6px 6px 0 0;
+  border-radius: 8px 8px 0 0;
   cursor: grab;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
   flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Tab 底部渐变指示线 */
+.tab::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+  transition: all 0.25s ease;
+  transform: translateX(-50%);
+  border-radius: 1px;
 }
 
 .tab:hover {
   background: var(--bg-surface);
 }
 
+.tab:hover::after {
+  width: 50%;
+}
+
 .tab.active {
   background: var(--bg-primary);
-  border-bottom: 2px solid var(--accent-primary);
-  box-shadow: 0 -2px 8px rgba(0, 150, 255, 0.15);
+  box-shadow: 
+    0 -4px 15px rgba(var(--accent-rgb, 137, 180, 250), 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
   position: relative;
+}
+
+.tab.active::after {
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+  box-shadow: 0 0 10px var(--accent-primary);
 }
 
 .tab.active::before {
@@ -371,9 +399,8 @@ const handleDragEnd = () => {
   top: 0;
   left: 0;
   right: 0;
-  height: 2px;
-  background: var(--accent-primary);
-  border-radius: 2px 2px 0 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(var(--accent-rgb, 137, 180, 250), 0.3), transparent);
 }
 
 .tab.dragging {
@@ -414,10 +441,16 @@ const handleDragEnd = () => {
   display: flex;
   align-items: center;
   color: var(--text-muted);
+  transition: all 0.25s ease;
+}
+
+.tab:hover .tab-icon {
+  color: var(--text-secondary);
 }
 
 .tab.active .tab-icon {
   color: var(--accent-primary);
+  filter: drop-shadow(0 0 4px var(--accent-primary));
 }
 
 .tab-title {
@@ -427,6 +460,11 @@ const handleDragEnd = () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: all 0.2s ease;
+}
+
+.tab:hover .tab-title {
+  color: var(--text-primary);
 }
 
 .tab.active .tab-title {
@@ -443,20 +481,27 @@ const handleDragEnd = () => {
   padding: 0;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--text-muted);
   cursor: pointer;
   opacity: 0;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: scale(0.8);
 }
 
 .tab:hover .tab-close {
   opacity: 1;
+  transform: scale(1);
 }
 
 .tab-close:hover {
-  background: var(--bg-hover);
+  background: rgba(var(--accent-error-rgb, 243, 139, 168), 0.2);
   color: var(--accent-error);
+  transform: scale(1.1);
+}
+
+.tab-close:active {
+  transform: scale(0.9);
 }
 
 .tab-loading {
@@ -482,47 +527,77 @@ const handleDragEnd = () => {
   position: relative;
   display: flex;
   flex-shrink: 0;
+  margin-left: 4px;
 }
 
 .btn-new-tab {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
+  width: 28px;
   height: 28px;
   padding: 0;
   background: transparent;
   border: none;
-  border-radius: 6px 0 0 6px;
+  border-radius: 8px 0 0 8px;
   color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 新建按钮悬停光效 */
+.btn-new-tab::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.btn-new-tab:hover::before {
+  opacity: 0.15;
 }
 
 .btn-new-tab:hover {
   background: var(--bg-surface);
-  color: var(--text-primary);
+  color: var(--accent-primary);
+  transform: scale(1.05);
+}
+
+.btn-new-tab:hover svg {
+  filter: drop-shadow(0 0 4px var(--accent-primary));
+}
+
+.btn-new-tab:active {
+  transform: scale(0.95);
 }
 
 .btn-new-tab-dropdown {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  width: 18px;
   height: 28px;
   padding: 0;
   background: transparent;
   border: none;
   border-left: 1px solid var(--border-color);
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 8px 8px 0;
   color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .btn-new-tab-dropdown:hover {
   background: var(--bg-surface);
-  color: var(--text-primary);
+  color: var(--accent-primary);
+}
+
+.btn-new-tab-dropdown:active {
+  transform: scale(0.95);
 }
 
 .shell-menu-overlay {
