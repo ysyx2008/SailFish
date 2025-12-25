@@ -317,6 +317,14 @@ async function initKnowledgeService(): Promise<void> {
       
       // 迁移旧的主机 notes 到知识库
       await migrateHostNotesToKnowledge()
+      
+      // 预热 embedding 推理（后台执行，不阻塞）
+      // ONNX 模型第一次推理需要 JIT 编译，会比较慢
+      // 提前预热可以加速首次 Agent 对话响应
+      knowledgeService.search('预热', { limit: 1 }).catch(() => {
+        // 忽略预热错误（可能知识库为空）
+      })
+      console.log('[Main] Embedding 预热推理已启动')
     }
   } catch (e) {
     console.error('[Main] Failed to initialize KnowledgeService:', e)
