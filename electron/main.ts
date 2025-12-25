@@ -1190,7 +1190,7 @@ ipcMain.handle('config:getUiTheme', async () => {
 })
 
 ipcMain.handle('config:setUiTheme', async (_event, theme: string) => {
-  configService.setUiTheme(theme as 'dark' | 'light' | 'blue' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-forest')
+  configService.setUiTheme(theme as 'dark' | 'light' | 'blue' | 'gruvbox' | 'forest' | 'ayu-mirage' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-rose-pine')
 })
 
 // Agent MBTI 配置
