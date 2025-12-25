@@ -81,6 +81,7 @@ export default {
   // Common buttons and actions
   common: {
     save: 'Save',
+    saving: 'Saving...',
     cancel: 'Cancel',
     confirm: 'Confirm',
     delete: 'Delete',
@@ -151,6 +152,7 @@ export default {
     closeSettings: 'Close Settings',
     tabs: {
       ai: 'AI Config',
+      aiRules: 'AI Rules',
       mcp: 'MCP Servers',
       knowledge: 'Knowledge Base',
       theme: 'Theme',
@@ -264,6 +266,32 @@ export default {
     // Agent debug mode
     agentDebugMode: 'Agent Debug Mode',
     agentDebugModeDesc: 'Show detailed tool call steps when enabled, simpler interaction when disabled'
+  },
+
+  // AI Rules Settings
+  aiRulesSettings: {
+    title: 'Custom AI Rules',
+    description: 'Set rules and instructions that the AI assistant must follow. These rules are automatically applied to every conversation, similar to Cursor Rules.',
+    placeholder: 'Enter rules for the AI to follow...\n\nExamples:\n- Use micromamba instead of conda for virtual environments\n- Reply in English\n- Confirm before executing dangerous commands',
+    characters: 'characters',
+    saved: 'Rules saved',
+    unsaved: 'Unsaved changes',
+    examplesTitle: 'Example Rules',
+    examplesDesc: 'Click an example below to add it to your rules',
+    insertExample: 'Add this rule',
+    examples: {
+      virtualEnv: 'Use micromamba instead of conda for Python virtual environments',
+      language: 'Always reply in English, including code comments',
+      safety: 'Create a backup before executing any delete or system config commands',
+      style: 'Keep responses concise and avoid excessive explanations'
+    },
+    tipsTitle: 'Tips',
+    tips: {
+      tip1: 'Rules are automatically applied to all terminal AI conversations',
+      tip2: 'You can set language preferences, tool choices, operation styles, etc.',
+      tip3: 'More specific rules lead to better AI compliance',
+      tip4: 'Remember to save after modifying rules for changes to take effect'
+    }
   },
 
   // MCP Settings

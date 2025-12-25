@@ -123,6 +123,7 @@ interface StoreSchema {
   sessionSortBy: SessionSortBy
   defaultGroupSortOrder: number
   fileBookmarks: FileBookmark[]
+  aiRules: string  // 用户自定义的 AI 规则/指令
 }
 
 const defaultConfig: StoreSchema = {
@@ -152,7 +153,8 @@ const defaultConfig: StoreSchema = {
   sponsorStatus: false,
   sessionSortBy: 'custom',
   defaultGroupSortOrder: -1,
-  fileBookmarks: []
+  fileBookmarks: [],
+  aiRules: ''
 }
 
 export class ConfigService {
@@ -661,6 +663,22 @@ export class ConfigService {
       return remoteBookmarks.filter(b => b.hostId === hostId)
     }
     return remoteBookmarks
+  }
+
+  // ==================== AI Rules 设置 ====================
+
+  /**
+   * 获取 AI Rules
+   */
+  getAiRules(): string {
+    return this.store.get('aiRules') || ''
+  }
+
+  /**
+   * 设置 AI Rules
+   */
+  setAiRules(rules: string): void {
+    this.store.set('aiRules', rules)
   }
 }
 

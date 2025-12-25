@@ -747,7 +747,11 @@ const electronAPI = {
     updateFileBookmark: (bookmark: FileBookmark) => ipcRenderer.invoke('config:updateFileBookmark', bookmark),
     deleteFileBookmark: (id: string) => ipcRenderer.invoke('config:deleteFileBookmark', id),
     getLocalBookmarks: () => ipcRenderer.invoke('config:getLocalBookmarks') as Promise<FileBookmark[]>,
-    getRemoteBookmarks: (hostId?: string) => ipcRenderer.invoke('config:getRemoteBookmarks', hostId) as Promise<FileBookmark[]>
+    getRemoteBookmarks: (hostId?: string) => ipcRenderer.invoke('config:getRemoteBookmarks', hostId) as Promise<FileBookmark[]>,
+
+    // AI Rules
+    getAiRules: () => ipcRenderer.invoke('config:getAiRules') as Promise<string>,
+    setAiRules: (rules: string) => ipcRenderer.invoke('config:setAiRules', rules)
   },
 
   // Xshell 导入操作

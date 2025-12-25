@@ -1318,8 +1318,9 @@ ${fullContext}
       }
     })
 
-    // 构建系统提示（包含 MBTI 风格）
+    // 构建系统提示（包含 MBTI 风格和用户自定义规则）
     const mbtiType = this.configService?.getAgentMbti() ?? null
+    const aiRules = this.configService?.getAiRules() ?? ''
     
     // 获取知识库上下文（如果启用）
     let knowledgeContext = ''
@@ -1354,7 +1355,7 @@ ${fullContext}
       console.log('[Agent] Knowledge service error:', e)
     }
     
-    const systemPrompt = buildSystemPrompt(context, this.hostProfileService, mbtiType, knowledgeContext, knowledgeEnabled, hostMemories, fullConfig.executionMode)
+    const systemPrompt = buildSystemPrompt(context, this.hostProfileService, mbtiType, knowledgeContext, knowledgeEnabled, hostMemories, fullConfig.executionMode, aiRules)
     run.messages.push({ role: 'system', content: systemPrompt })
 
     // 处理之前已完成任务的上下文（包含完整步骤，优先使用）

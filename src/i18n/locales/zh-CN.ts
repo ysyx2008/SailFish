@@ -81,6 +81,7 @@ export default {
   // 通用按钮和操作
   common: {
     save: '保存',
+    saving: '保存中...',
     cancel: '取消',
     confirm: '确定',
     delete: '删除',
@@ -151,6 +152,7 @@ export default {
     closeSettings: '关闭设置',
     tabs: {
       ai: 'AI 配置',
+      aiRules: 'AI 规则',
       mcp: 'MCP 服务器',
       knowledge: '知识库',
       theme: '主题配色',
@@ -264,6 +266,32 @@ export default {
     // 助手调试模式
     agentDebugMode: '助手调试模式',
     agentDebugModeDesc: '开启后显示详细的工具调用步骤，关闭后交互更简洁自然'
+  },
+
+  // AI 规则设置
+  aiRulesSettings: {
+    title: '自定义 AI 规则',
+    description: '设置 AI 助手必须遵守的规则和指令。这些规则会在每次对话时自动应用，类似 Cursor Rules。',
+    placeholder: '输入你希望 AI 遵守的规则...\n\n例如：\n- 使用 micromamba 而不是 conda 管理虚拟环境\n- 回复时使用中文\n- 执行危险命令前先确认',
+    characters: '字符',
+    saved: '规则已保存',
+    unsaved: '有未保存的更改',
+    examplesTitle: '示例规则',
+    examplesDesc: '点击下方示例可快速添加到规则中',
+    insertExample: '添加此规则',
+    examples: {
+      virtualEnv: '使用 micromamba 而不是 conda 管理 Python 虚拟环境',
+      language: '请始终使用中文回复，包括代码注释',
+      safety: '执行任何删除或修改系统配置的命令前，先创建备份',
+      style: '回复要简洁明了，避免过多解释'
+    },
+    tipsTitle: '使用提示',
+    tips: {
+      tip1: '规则会自动应用到所有终端的 AI 对话中',
+      tip2: '可以设置语言偏好、工具选择、操作风格等',
+      tip3: '规则越具体，AI 遵守得越好',
+      tip4: '修改规则后需要点击保存才会生效'
+    }
   },
 
   // MCP 设置

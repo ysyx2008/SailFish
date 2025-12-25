@@ -5,6 +5,7 @@ import { useConfigStore } from '../../stores/config'
 import { oemConfig } from '../../config/oem.config'
 import { getLocale } from '../../i18n'
 import AiSettings from './AiSettings.vue'
+import AiRulesSettings from './AiRulesSettings.vue'
 import ThemeSettings from './ThemeSettings.vue'
 import TerminalSettings from './TerminalSettings.vue'
 import DataSettings from './DataSettings.vue'
@@ -27,7 +28,7 @@ const emit = defineEmits<{
 
 const configStore = useConfigStore()
 
-type SettingsTab = 'ai' | 'mcp' | 'knowledge' | 'theme' | 'terminal' | 'data' | 'language' | 'about'
+type SettingsTab = 'ai' | 'aiRules' | 'mcp' | 'knowledge' | 'theme' | 'terminal' | 'data' | 'language' | 'about'
 const activeTab = ref<SettingsTab>('ai')
 const appVersion = ref<string>('')
 const showConfirmDialog = ref(false)
@@ -294,7 +295,7 @@ let unsubscribeUpdater: (() => void) | null = null
 
 // 初始化时设置初始 tab 和获取版本号
 onMounted(async () => {
-  if (props.initialTab && ['ai', 'mcp', 'knowledge', 'theme', 'terminal', 'data', 'language', 'about'].includes(props.initialTab)) {
+  if (props.initialTab && ['ai', 'aiRules', 'mcp', 'knowledge', 'theme', 'terminal', 'data', 'language', 'about'].includes(props.initialTab)) {
     activeTab.value = props.initialTab as SettingsTab
   }
   // 获取应用版本号
@@ -327,6 +328,7 @@ onUnmounted(() => {
 
 const tabs = computed(() => [
   { id: 'ai' as const, label: t('settings.tabs.ai'), icon: '🤖' },
+  { id: 'aiRules' as const, label: t('settings.tabs.aiRules'), icon: '📋' },
   { id: 'mcp' as const, label: t('settings.tabs.mcp'), icon: '🔌' },
   { id: 'knowledge' as const, label: t('settings.tabs.knowledge'), icon: '📚' },
   { id: 'theme' as const, label: t('settings.tabs.theme'), icon: '🎨' },
@@ -448,6 +450,7 @@ const onQrImageError = (event: Event) => {
         </nav>
         <div class="settings-content">
           <AiSettings v-if="activeTab === 'ai'" />
+          <AiRulesSettings v-else-if="activeTab === 'aiRules'" />
           <McpSettings v-else-if="activeTab === 'mcp'" />
           <KnowledgeSettings v-else-if="activeTab === 'knowledge'" />
           <ThemeSettings v-else-if="activeTab === 'theme'" />

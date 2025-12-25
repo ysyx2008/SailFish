@@ -1283,6 +1283,15 @@ ipcMain.handle('config:getRemoteBookmarks', async (_event, hostId?: string) => {
   return configService.getRemoteBookmarks(hostId)
 })
 
+// AI Rules 相关
+ipcMain.handle('config:getAiRules', async () => {
+  return configService.getAiRules()
+})
+
+ipcMain.handle('config:setAiRules', async (_event, rules: string) => {
+  configService.setAiRules(rules)
+})
+
 // Xshell 导入相关
 ipcMain.handle('xshell:selectFiles', async () => {
   const result = await dialog.showOpenDialog({

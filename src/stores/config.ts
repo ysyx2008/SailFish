@@ -151,6 +151,9 @@ export const useConfigStore = defineStore('config', () => {
   // 默认分组的排序位置（-1 表示在最后）
   const defaultGroupSortOrder = ref<number>(-1)
 
+  // AI Rules（用户自定义的 AI 指令）
+  const aiRules = ref<string>('')
+
   // 计算属性
   const activeAiProfile = computed(() =>
     aiProfiles.value.find(p => p.id === activeAiProfileId.value)
@@ -219,6 +222,10 @@ export const useConfigStore = defineStore('config', () => {
       // 加载默认分组排序位置
       const defaultOrder = await window.electronAPI.config.getDefaultGroupSortOrder()
       defaultGroupSortOrder.value = defaultOrder ?? -1
+
+      // 加载 AI Rules
+      const rules = await window.electronAPI.config.getAiRules()
+      aiRules.value = rules || ''
     } catch (error) {
       console.error('Failed to load config:', error)
     }
@@ -420,6 +427,13 @@ export const useConfigStore = defineStore('config', () => {
     await window.electronAPI.config.setDefaultGroupSortOrder(order)
   }
 
+  // ==================== AI Rules ====================
+
+  async function setAiRules(rules: string): Promise<void> {
+    aiRules.value = rules
+    await window.electronAPI.config.setAiRules(rules)
+  }
+
   /**
    * 更新主机排序顺序
    */
@@ -531,6 +545,7 @@ export const useConfigStore = defineStore('config', () => {
     isSponsor,
     sessionSortBy,
     defaultGroupSortOrder,
+    aiRules,
 
     // 方法
     loadConfig,
@@ -559,7 +574,8 @@ export const useConfigStore = defineStore('config', () => {
     updateSessionSortOrder,
     updateSessionsSortOrder,
     updateGroupSortOrder,
-    updateGroupsSortOrder
+    updateGroupsSortOrder,
+    setAiRules
   }
 })
 

@@ -577,6 +577,9 @@ interface Window {
         hostName?: string
         createdAt: number
       }) => Promise<void>
+      // AI Rules
+      getAiRules: () => Promise<string>
+      setAiRules: (rules: string) => Promise<void>
     }
     xshell: {
       selectFiles: () => Promise<{ canceled: boolean; filePaths: string[] }>

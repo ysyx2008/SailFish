@@ -995,25 +995,14 @@ onMounted(() => {
                 class="history-card"
                 @click="handleLoadHistory(record)"
               >
-                <div class="history-card-header">
-                  <span class="history-task">{{ truncateText(record.userTask, 40) }}</span>
+                <span class="history-status-icon" :class="record.status">
+                  {{ record.status === 'completed' ? '✓' : record.status === 'failed' ? '✗' : '!' }}
+                </span>
+                <span class="history-task">{{ truncateText(record.userTask, 50) }}</span>
+                <span class="history-meta">
+                  <span v-if="record.terminalType === 'ssh'" class="history-ssh">{{ record.sshHost }}</span>
                   <span class="history-time">{{ formatHistoryTime(record.timestamp) }}</span>
-                </div>
-                <div class="history-card-footer">
-                  <span 
-                    class="history-status"
-                    :class="record.status"
-                  >
-                    {{ record.status === 'completed' ? '✅' : record.status === 'failed' ? '❌' : '⚠️' }}
-                    {{ t(`ai.agentWelcome.historyStatus.${record.status}`) }}
-                  </span>
-                  <span v-if="record.terminalType === 'ssh'" class="history-type">
-                    🌐 {{ record.sshHost }}
-                  </span>
-                  <span v-else class="history-type">
-                    💻 {{ t('dataSettings.local') }}
-                  </span>
-                </div>
+                </span>
               </div>
             </div>
             
@@ -1048,25 +1037,14 @@ onMounted(() => {
                   class="history-card"
                   @click="handleLoadHistory(record)"
                 >
-                  <div class="history-card-header">
-                    <span class="history-task">{{ truncateText(record.userTask, 60) }}</span>
+                  <span class="history-status-icon" :class="record.status">
+                    {{ record.status === 'completed' ? '✓' : record.status === 'failed' ? '✗' : '!' }}
+                  </span>
+                  <span class="history-task">{{ truncateText(record.userTask, 80) }}</span>
+                  <span class="history-meta">
+                    <span v-if="record.terminalType === 'ssh'" class="history-ssh">{{ record.sshHost }}</span>
                     <span class="history-time">{{ formatHistoryTime(record.timestamp) }}</span>
-                  </div>
-                  <div class="history-card-footer">
-                    <span 
-                      class="history-status"
-                      :class="record.status"
-                    >
-                      {{ record.status === 'completed' ? '✅' : record.status === 'failed' ? '❌' : '⚠️' }}
-                      {{ t(`ai.agentWelcome.historyStatus.${record.status}`) }}
-                    </span>
-                    <span v-if="record.terminalType === 'ssh'" class="history-type">
-                      🌐 {{ record.sshHost }}
-                    </span>
-                    <span v-else class="history-type">
-                      💻 {{ t('dataSettings.local') }}
-                    </span>
-                  </div>
+                  </span>
                 </div>
               </div>
             </div>
@@ -2203,67 +2181,72 @@ onMounted(() => {
 }
 
 .history-card {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  border-radius: 6px;
+  transition: background 0.15s ease;
 }
 
 .history-card:hover {
-  border-color: var(--accent-primary);
-  background: var(--bg-surface);
+  background: var(--bg-tertiary);
 }
 
-.history-card-header {
+.history-status-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 6px;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.history-status-icon.completed {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.history-status-icon.failed {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.history-status-icon.aborted {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
 }
 
 .history-task {
-  font-size: 13px;
-  color: var(--text-primary);
   flex: 1;
+  font-size: 12px;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.history-time {
-  font-size: 11px;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.history-card-footer {
+.history-meta {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
-.history-status {
-  font-size: 11px;
+.history-ssh {
+  font-size: 10px;
+  color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.1);
+  padding: 1px 5px;
+  border-radius: 3px;
 }
 
-.history-status.completed {
-  color: var(--accent-secondary, #10b981);
-}
-
-.history-status.failed {
-  color: #ef4444;
-}
-
-.history-status.aborted {
-  color: #f59e0b;
-}
-
-.history-type {
-  font-size: 11px;
+.history-time {
+  font-size: 10px;
   color: var(--text-muted);
 }
 
@@ -2356,13 +2339,13 @@ onMounted(() => {
 }
 
 .history-modal-list .history-card {
-  padding: 12px 14px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  border-radius: 0;
 }
 
-.history-modal-list .history-task {
-  white-space: normal;
-  overflow: visible;
-  text-overflow: unset;
+.history-modal-list .history-card:last-child {
+  border-bottom: none;
 }
 
 .message {

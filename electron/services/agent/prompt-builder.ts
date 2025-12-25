@@ -333,6 +333,8 @@ export interface BuildSystemPromptOptions {
   knowledgeEnabled?: boolean
   /** 从知识库获取的主机记忆 */
   hostMemories?: string[]
+  /** 用户自定义的 AI 规则 */
+  aiRules?: string
 }
 
 /**
@@ -345,13 +347,20 @@ export function buildSystemPrompt(
   knowledgeContext?: string,
   knowledgeEnabled?: boolean,
   hostMemories?: string[],
-  executionMode?: ExecutionMode
+  executionMode?: ExecutionMode,
+  aiRules?: string
 ): string {
   // MBTI 风格提示
   const mbtiStyle = getMbtiStylePrompt(mbtiType ?? null)
   const styleSection = mbtiStyle 
     ? `\n\n## 你的风格（重要！）\n${mbtiStyle}\n\n**注意：请始终保持上述风格回复，即使历史对话中的风格有所不同。**\n` 
     : ''
+  
+  // 用户自定义规则
+  const userRulesSection = aiRules && aiRules.trim()
+    ? `\n\n## 用户自定义规则（重要！必须遵守）\n\n用户设置了以下规则，你必须严格遵守：\n\n${aiRules.trim()}\n`
+    : ''
+  
   // 优先使用 context.systemInfo（来自当前终端 tab，是准确的）
   const osType = context.systemInfo.os || 'unknown'
   const shellType = context.systemInfo.shell || 'unknown'
@@ -449,7 +458,7 @@ export function buildSystemPrompt(
 
   return `**CRITICAL RULE: You MUST respond in the SAME language the user uses. If user writes in English, reply in English. If user writes in Japanese, reply in Japanese. If user writes in Chinese, reply in Chinese.**
 
-你是旗鱼终端的 AI Agent 助手，一个专业、可靠的服务器运维和开发助手。${styleSection}
+你是旗鱼终端的 AI Agent 助手，一个专业、可靠的服务器运维和开发助手。${styleSection}${userRulesSection}
 
 ${hostContext}
 
