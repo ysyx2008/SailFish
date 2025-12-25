@@ -670,7 +670,20 @@ export default {
       allCommandsVisible: '所有命令都在终端执行，你可以看到完整输入输出',
       cautions: '注意事项',
       caution1: '危险命令（如删除、修改系统文件）始终需要确认',
-      caution2: '你可以随时点击「停止」中止助手执行'
+      caution2: '你可以随时点击「停止」中止助手执行',
+      // 历史对话
+      recentHistory: '最近对话',
+      viewMoreHistory: '查看更多历史...',
+      noRecentHistory: '暂无历史对话',
+      continueConversation: '继续对话',
+      historyLoading: '加载中...',
+      historyStatus: {
+        completed: '已完成',
+        failed: '失败',
+        aborted: '已中止'
+      },
+      confirmLoadHistory: '当前会话已有对话记录，加载历史将覆盖现有内容。确定要继续吗？',
+      historyLoaded: '已加载历史对话，可以继续提问'
     },
     quickActions: {
       explainCommand: '解释命令',

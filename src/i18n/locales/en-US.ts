@@ -670,7 +670,20 @@ export default {
       allCommandsVisible: 'All commands execute in terminal, you can see complete input and output',
       cautions: 'Cautions',
       caution1: 'Dangerous commands (like delete, modify system files) always require confirmation',
-      caution2: 'You can click "Stop" at any time to abort Agent execution'
+      caution2: 'You can click "Stop" at any time to abort Agent execution',
+      // History conversations
+      recentHistory: 'Recent Conversations',
+      viewMoreHistory: 'View more history...',
+      noRecentHistory: 'No history yet',
+      continueConversation: 'Continue',
+      historyLoading: 'Loading...',
+      historyStatus: {
+        completed: 'Completed',
+        failed: 'Failed',
+        aborted: 'Aborted'
+      },
+      confirmLoadHistory: 'Current session has existing conversations. Loading history will overwrite them. Continue?',
+      historyLoaded: 'History loaded, you can continue the conversation'
     },
     quickActions: {
       explainCommand: 'Explain Command',

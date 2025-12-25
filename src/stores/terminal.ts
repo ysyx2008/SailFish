@@ -965,6 +965,74 @@ export const useTerminalStore = defineStore('terminal', () => {
   }
 
   /**
+   * 恢复历史 Agent 对话（从历史记录加载）
+   */
+  function restoreAgentHistory(tabId: string, record: {
+    id: string
+    timestamp: number
+    userTask: string
+    steps: Array<{
+      id: string
+      type: string
+      content: string
+      toolName?: string
+      toolArgs?: Record<string, unknown>
+      toolResult?: string
+      riskLevel?: string
+      timestamp: number
+    }>
+    finalResult?: string
+    duration: number
+    status: 'completed' | 'failed' | 'aborted'
+  }): void {
+    const tab = tabs.value.find(t => t.id === tabId)
+    if (!tab) return
+
+    // 转换历史记录的 steps 为完整的 AgentStep 数组
+    const steps: AgentStep[] = [
+      // 添加 user_task 步骤
+      {
+        id: `user_task_${record.timestamp}`,
+        type: 'user_task',
+        content: record.userTask,
+        timestamp: record.timestamp
+      },
+      // 转换记录中的步骤
+      ...record.steps.map(s => ({
+        id: s.id,
+        type: s.type as AgentStep['type'],
+        content: s.content,
+        toolName: s.toolName,
+        toolArgs: s.toolArgs,
+        toolResult: s.toolResult,
+        riskLevel: s.riskLevel as RiskLevel | undefined,
+        timestamp: s.timestamp
+      })),
+      // 添加 final_result 步骤（如果有）
+      ...(record.finalResult ? [{
+        id: `final_result_${record.timestamp}`,
+        type: 'final_result' as const,
+        content: record.finalResult,
+        timestamp: record.timestamp + record.duration
+      }] : [])
+    ]
+
+    // 设置 agentState，将历史记录作为当前会话的上下文
+    tab.agentState = {
+      isRunning: false,
+      steps: steps,
+      history: [{
+        userTask: record.userTask,
+        steps: steps,
+        finalResult: record.finalResult || '',
+        timestamp: record.timestamp
+      }],
+      userTask: undefined,
+      finalResult: undefined
+    }
+  }
+
+  /**
    * 获取 Agent 上下文（用于发送给后端）
    * 返回纯 JavaScript 对象，确保可以通过 IPC 序列化
    */
@@ -1269,6 +1337,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     setAgentPendingConfirm,
     clearAgentState,
     setAgentFinalResult,
+    restoreAgentHistory,
     getAgentContext,
     // 文档管理
     getUploadedDocs,

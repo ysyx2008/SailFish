@@ -666,9 +666,114 @@ export function useAgentMode(
     }
   }
 
+  // ==================== 历史对话功能 ====================
+  
+  // 历史记录类型定义
+  interface AgentRecord {
+    id: string
+    timestamp: number
+    terminalId: string
+    terminalType: 'local' | 'ssh'
+    sshHost?: string
+    userTask: string
+    steps: Array<{
+      id: string
+      type: string
+      content: string
+      toolName?: string
+      toolArgs?: Record<string, unknown>
+      toolResult?: string
+      riskLevel?: string
+      timestamp: number
+    }>
+    finalResult?: string
+    duration: number
+    status: 'completed' | 'failed' | 'aborted'
+  }
+
+  // 近期历史记录（用于欢迎页展示）
+  const recentHistory = ref<AgentRecord[]>([])
+  const isLoadingHistory = ref(false)
+  
+  // 查看更多弹窗状态
+  const showHistoryModal = ref(false)
+  const allHistory = ref<AgentRecord[]>([])
+  const isLoadingAllHistory = ref(false)
+
+  // 加载近期历史（最近 5 条，用于欢迎页）
+  const loadRecentHistory = async () => {
+    if (isLoadingHistory.value) return
+    isLoadingHistory.value = true
+    try {
+      const records = await window.electronAPI.history.getAgentRecords() as AgentRecord[]
+      // 按时间倒序，取最近 5 条
+      recentHistory.value = records
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, 5)
+    } catch (e) {
+      console.error('加载历史记录失败:', e)
+    } finally {
+      isLoadingHistory.value = false
+    }
+  }
+
+  // 加载全部历史（用于弹窗）
+  const loadAllHistory = async () => {
+    if (isLoadingAllHistory.value) return
+    isLoadingAllHistory.value = true
+    try {
+      const records = await window.electronAPI.history.getAgentRecords() as AgentRecord[]
+      // 按时间倒序排列
+      allHistory.value = records.sort((a, b) => b.timestamp - a.timestamp)
+    } catch (e) {
+      console.error('加载全部历史记录失败:', e)
+    } finally {
+      isLoadingAllHistory.value = false
+    }
+  }
+
+  // 打开历史弹窗
+  const openHistoryModal = async () => {
+    showHistoryModal.value = true
+    await loadAllHistory()
+  }
+
+  // 关闭历史弹窗
+  const closeHistoryModal = () => {
+    showHistoryModal.value = false
+  }
+
+  // 加载历史记录到当前会话
+  const loadHistoryRecord = (record: AgentRecord) => {
+    terminalStore.restoreAgentHistory(currentTabId.value, record)
+    // 关闭弹窗（如果是从弹窗中选择的）
+    closeHistoryModal()
+  }
+
+  // 检查是否有现有对话（用于确认是否覆盖）
+  const hasExistingConversation = computed(() => {
+    const steps = agentState.value?.steps || []
+    return steps.length > 0
+  })
+
+  // 格式化历史时间
+  const formatHistoryTime = (timestamp: number): string => {
+    const date = new Date(timestamp)
+    const now = new Date()
+    const isToday = date.toDateString() === now.toDateString()
+    
+    if (isToday) {
+      return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    } else {
+      return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+    }
+  }
+
   // 生命周期
   onMounted(() => {
     setupAgentListeners()
+    // 加载近期历史（用于欢迎页展示）
+    loadRecentHistory()
   })
 
   onUnmounted(() => {
@@ -694,6 +799,19 @@ export function useAgentMode(
     confirmToolCall,
     sendAgentReply,
     getStepIcon,
-    getRiskClass
+    getRiskClass,
+    // 历史对话功能
+    recentHistory,
+    isLoadingHistory,
+    showHistoryModal,
+    allHistory,
+    isLoadingAllHistory,
+    loadRecentHistory,
+    loadAllHistory,
+    openHistoryModal,
+    closeHistoryModal,
+    loadHistoryRecord,
+    hasExistingConversation,
+    formatHistoryTime
   }
 }

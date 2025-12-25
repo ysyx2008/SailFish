@@ -183,7 +183,18 @@ const {
   confirmToolCall,
   sendAgentReply,
   getStepIcon,
-  getRiskClass
+  getRiskClass,
+  // 历史对话功能
+  recentHistory,
+  isLoadingHistory,
+  showHistoryModal,
+  allHistory,
+  isLoadingAllHistory,
+  openHistoryModal,
+  closeHistoryModal,
+  loadHistoryRecord,
+  hasExistingConversation,
+  formatHistoryTime
 } = useAgentMode(
   inputText,
   scrollToBottom,
@@ -214,6 +225,28 @@ const activeAiProfile = computed(() => configStore.activeAiProfile)
 // 切换 AI 配置
 const changeAiProfile = async (profileId: string) => {
   await configStore.setActiveAiProfile(profileId)
+}
+
+// ==================== 历史对话相关 ====================
+
+// 截断文本
+const truncateText = (text: string, maxLength: number): string => {
+  if (text.length <= maxLength) return text
+  return text.slice(0, maxLength) + '...'
+}
+
+// 加载历史记录（带确认）
+const handleLoadHistory = (record: { id: string; timestamp: number; terminalId: string; terminalType: 'local' | 'ssh'; sshHost?: string; userTask: string; steps: Array<{ id: string; type: string; content: string; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: string; riskLevel?: string; timestamp: number }>; finalResult?: string; duration: number; status: 'completed' | 'failed' | 'aborted' }) => {
+  // 如果当前有活跃的任务（用户任务不为空），需要确认
+  // 注意：如果欢迎页显示（agentUserTask 为空），说明没有活跃任务，不需要确认
+  if (agentUserTask.value && hasExistingConversation.value) {
+    if (!window.confirm(t('ai.agentWelcome.confirmLoadHistory'))) {
+      return
+    }
+  }
+  loadHistoryRecord(record)
+  // 滚动到底部查看加载的历史
+  scrollToBottom()
 }
 
 // ==================== 消息清空 ====================
@@ -937,6 +970,102 @@ onMounted(() => {
             <li>{{ t('ai.agentWelcome.caution1') }}</li>
             <li>{{ t('ai.agentWelcome.caution2') }}</li>
           </ul>
+
+          <!-- 最近对话历史 -->
+          <div class="recent-history-section">
+            <p class="welcome-section-title">📜 {{ t('ai.agentWelcome.recentHistory') }}</p>
+            
+            <div v-if="isLoadingHistory" class="history-loading">
+              {{ t('ai.agentWelcome.historyLoading') }}
+            </div>
+            
+            <div v-else-if="recentHistory.length === 0" class="history-empty">
+              {{ t('ai.agentWelcome.noRecentHistory') }}
+            </div>
+            
+            <div v-else class="history-list">
+              <div 
+                v-for="record in recentHistory" 
+                :key="record.id" 
+                class="history-card"
+                @click="handleLoadHistory(record)"
+              >
+                <div class="history-card-header">
+                  <span class="history-task">{{ truncateText(record.userTask, 40) }}</span>
+                  <span class="history-time">{{ formatHistoryTime(record.timestamp) }}</span>
+                </div>
+                <div class="history-card-footer">
+                  <span 
+                    class="history-status"
+                    :class="record.status"
+                  >
+                    {{ record.status === 'completed' ? '✅' : record.status === 'failed' ? '❌' : '⚠️' }}
+                    {{ t(`ai.agentWelcome.historyStatus.${record.status}`) }}
+                  </span>
+                  <span v-if="record.terminalType === 'ssh'" class="history-type">
+                    🌐 {{ record.sshHost }}
+                  </span>
+                  <span v-else class="history-type">
+                    💻 {{ t('dataSettings.local') }}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            <button 
+              v-if="recentHistory.length > 0" 
+              class="view-more-btn"
+              @click="openHistoryModal"
+            >
+              {{ t('ai.agentWelcome.viewMoreHistory') }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 历史对话弹窗 -->
+        <div v-if="showHistoryModal" class="history-modal-overlay" @click.self="closeHistoryModal">
+          <div class="history-modal">
+            <div class="history-modal-header">
+              <h3>📜 {{ t('ai.agentWelcome.recentHistory') }}</h3>
+              <button class="history-modal-close" @click="closeHistoryModal">×</button>
+            </div>
+            <div class="history-modal-body">
+              <div v-if="isLoadingAllHistory" class="history-loading">
+                {{ t('ai.agentWelcome.historyLoading') }}
+              </div>
+              <div v-else-if="allHistory.length === 0" class="history-empty">
+                {{ t('ai.agentWelcome.noRecentHistory') }}
+              </div>
+              <div v-else class="history-modal-list">
+                <div 
+                  v-for="record in allHistory" 
+                  :key="record.id" 
+                  class="history-card"
+                  @click="handleLoadHistory(record)"
+                >
+                  <div class="history-card-header">
+                    <span class="history-task">{{ truncateText(record.userTask, 60) }}</span>
+                    <span class="history-time">{{ formatHistoryTime(record.timestamp) }}</span>
+                  </div>
+                  <div class="history-card-footer">
+                    <span 
+                      class="history-status"
+                      :class="record.status"
+                    >
+                      {{ record.status === 'completed' ? '✅' : record.status === 'failed' ? '❌' : '⚠️' }}
+                      {{ t(`ai.agentWelcome.historyStatus.${record.status}`) }}
+                    </span>
+                    <span v-if="record.terminalType === 'ssh'" class="history-type">
+                      🌐 {{ record.sshHost }}
+                    </span>
+                    <span v-else class="history-type">
+                      💻 {{ t('dataSettings.local') }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         <!-- 普通对话模式的消息 -->
         <template v-if="!agentMode">
@@ -2040,6 +2169,195 @@ onMounted(() => {
 
 .strict-badge.free {
   background: #ef4444;
+}
+
+/* ==================== 历史对话列表样式 ==================== */
+
+.recent-history-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.recent-history-section .welcome-section-title {
+  margin-bottom: 12px;
+}
+
+.history-loading,
+.history-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: italic;
+  padding: 8px 0;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.history-card:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-surface);
+}
+
+.history-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.history-task {
+  font-size: 13px;
+  color: var(--text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.history-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-status {
+  font-size: 11px;
+}
+
+.history-status.completed {
+  color: var(--accent-secondary, #10b981);
+}
+
+.history-status.failed {
+  color: #ef4444;
+}
+
+.history-status.aborted {
+  color: #f59e0b;
+}
+
+.history-type {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.view-more-btn {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px;
+  background: transparent;
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.view-more-btn:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--bg-tertiary);
+}
+
+/* 历史弹窗 */
+.history-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.history-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.history-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.history-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.history-modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color 0.2s ease;
+}
+
+.history-modal-close:hover {
+  color: var(--text-primary);
+}
+
+.history-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+.history-modal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.history-modal-list .history-card {
+  padding: 12px 14px;
+}
+
+.history-modal-list .history-task {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
 }
 
 .message {
