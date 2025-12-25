@@ -59,7 +59,7 @@ const pageDescription = description || (currentLang === 'zh' ? 'AI 驱动的跨�
         });
       });
 
-      // 浏览器语言自动检测
+      // 浏览器语言自动检测与跳转
       (function() {
         // 检查是否已经记住用户选择
         const savedLang = localStorage.getItem('preferred-lang');
@@ -69,13 +69,19 @@ const pageDescription = description || (currentLang === 'zh' ? 'AI 驱动的跨�
         const currentPath = window.location.pathname;
         const isEnglishPath = currentPath.startsWith('/en');
 
-        // 检测浏览器语言
+        // 检测浏览器语言偏好
         const browserLang = navigator.language || navigator.languages?.[0] || 'en';
-        const prefersEnglish = browserLang.startsWith('en') && !browserLang.startsWith('zh');
+        const prefersEnglish = browserLang.startsWith('en');
+        const prefersChinese = browserLang.startsWith('zh');
 
-        // 如果浏览器是英文且当前在中文页，跳转到英文页
-        if (prefersEnglish && !isEnglishPath) {
+        // 根据浏览器语言跳转到对应站点
+        if (prefersEnglish && !prefersChinese && !isEnglishPath) {
+          // 英文浏览器在中文页 → 跳转到英文页
           window.location.href = '/en' + currentPath;
+        } else if (prefersChinese && isEnglishPath) {
+          // 中文浏览器在英文页 → 跳转到中文页
+          const newPath = currentPath.replace(/^\/en\/?/, '/') || '/';
+          window.location.href = newPath;
         }
       })();
     </script>

@@ -152,3 +152,18 @@ const isHomePage = currentPath === '/' || currentPath === '/en/' || currentPath 
   }
 </style>
 
+<script>
+  // 语言切换时保存用户偏好
+  document.addEventListener('DOMContentLoaded', () => {
+    const langSwitcher = document.querySelector('.lang-switcher');
+    if (langSwitcher) {
+      langSwitcher.addEventListener('click', () => {
+        const targetLang = langSwitcher.getAttribute('data-lang');
+        if (targetLang) {
+          localStorage.setItem('preferred-lang', targetLang);
+        }
+      });
+    }
+  });
+</script>
+
