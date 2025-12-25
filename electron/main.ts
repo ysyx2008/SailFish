@@ -653,9 +653,19 @@ ipcMain.handle('pty:getAvailableShells', async () => {
   return ptyService.getAvailableShells()
 })
 
+// PTY 数据订阅的取消函数存储（防止重复订阅导致数据多次发送）
+const ptyDataUnsubscribes = new Map<string, () => void>()
+
 // PTY 数据输出 - 转发到渲染进程
 ipcMain.on('pty:subscribe', (event, id: string) => {
-  ptyService.onData(id, (data: string) => {
+  // 先取消旧的订阅，防止重复订阅导致数据多次发送
+  const oldUnsubscribe = ptyDataUnsubscribes.get(id)
+  if (oldUnsubscribe) {
+    oldUnsubscribe()
+    ptyDataUnsubscribes.delete(id)
+  }
+
+  const unsubscribe = ptyService.onData(id, (data: string) => {
     try {
       if (!event.sender.isDestroyed()) {
         event.sender.send(`pty:data:${id}`, data)
@@ -668,6 +678,7 @@ ipcMain.on('pty:subscribe', (event, id: string) => {
       // 忽略发送错误（窗口可能已关闭）
     }
   })
+  ptyDataUnsubscribes.set(id, unsubscribe)
 })
 
 // SSH 相关
@@ -704,6 +715,18 @@ const sshDataUnsubscribes = new Map<string, () => void>()
 const sshDisconnectUnsubscribes = new Map<string, () => void>()
 
 ipcMain.on('ssh:subscribe', (event, id: string) => {
+  // 先取消旧的订阅，防止重复订阅导致数据多次发送
+  const oldDataUnsubscribe = sshDataUnsubscribes.get(id)
+  if (oldDataUnsubscribe) {
+    oldDataUnsubscribe()
+    sshDataUnsubscribes.delete(id)
+  }
+  const oldDisconnectUnsubscribe = sshDisconnectUnsubscribes.get(id)
+  if (oldDisconnectUnsubscribe) {
+    oldDisconnectUnsubscribe()
+    sshDisconnectUnsubscribes.delete(id)
+  }
+
   // 注册数据回调
   const dataUnsubscribe = sshService.onData(id, (data: string) => {
     try {
