@@ -344,9 +344,13 @@ Supports importing existing session configurations from Xshell:
 
 ## Version History
 
-### v8.1.0 (Current Version)
-- 🧠 **Smart Memory Management**: Enhanced memory conflict handling with intelligent deduplication
-- 🧹 **Knowledge Base Optimization**: Added orphan data cleanup for vector storage enhancement
+### v8.4.0 (Current Version)
+- 📋 **AI Rules**: Custom AI instructions and preferences
+- 🌐 **Character Encoding**: SSH and local terminal support GBK, Big5, Shift_JIS, etc.
+- 🔄 **Auto Update**: In-app update check, download and install
+- 📊 **Session Sorting**: Sort by recently used time
+- 🧠 **Smart Memory**: Enhanced memory conflict handling and knowledge base cleanup
+- 🎨 **Theme Enhancement**: New Ayu Mirage and sponsor-exclusive themes (Gold, Sakura, Rosé Pine)
 
 ### v8.0.0
 - 📂 **Dual-Pane File Manager**: Full-featured dual-pane file manager
