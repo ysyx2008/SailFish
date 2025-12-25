@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
 import { setLocale, type LocaleType } from '../i18n'
+import { type UiThemeName } from '../themes/ui-themes'
 
 export interface AiProfile {
   id: string
@@ -118,7 +119,7 @@ export const useConfigStore = defineStore('config', () => {
   const currentTheme = ref<string>('one-dark')
 
   // UI 主题
-  const uiTheme = ref<'dark' | 'light' | 'blue' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-forest'>('blue')
+  const uiTheme = ref<UiThemeName>('blue')
 
   // 终端设置
   const terminalSettings = ref<TerminalSettings>({
@@ -374,7 +375,7 @@ export const useConfigStore = defineStore('config', () => {
     await window.electronAPI.config.setTheme(theme)
   }
 
-  async function setUiTheme(theme: 'dark' | 'light' | 'blue' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-forest'): Promise<void> {
+  async function setUiTheme(theme: UiThemeName): Promise<void> {
     uiTheme.value = theme
     await window.electronAPI.config.setUiTheme(theme)
   }
