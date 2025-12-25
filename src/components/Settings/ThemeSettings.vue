@@ -46,7 +46,7 @@ const setTheme = async (themeName: string) => {
 // UI 主题（赞助者专属主题隐藏，赞助后才显示作为惊喜）
 const currentUiTheme = computed(() => configStore.uiTheme)
 const uiThemeList = computed<UiThemeName[]>(() => {
-  const baseThemes: UiThemeName[] = ['dark', 'light', 'blue']
+  const baseThemes: UiThemeName[] = ['dark', 'light', 'blue', 'gruvbox', 'forest', 'ayu-mirage']
   // OEM 版本或赞助者：显示所有主题（包括专属主题）
   if (!showSponsor.value || isSponsor.value) {
     return [...baseThemes, ...sponsorUiThemes]

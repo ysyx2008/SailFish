@@ -475,9 +475,12 @@ export default {
       dark: '深色',
       light: '浅色',
       blue: '蓝色',
+      'gruvbox': '日暮',
+      'forest': '森林绿',
+      'ayu-mirage': '彩虹幻境',
       'sponsor-gold': '尊贵金',
       'sponsor-sakura': '樱花粉',
-      'sponsor-forest': '森林绿'
+      'sponsor-rose-pine': '玫瑰松'
     }
   },
 

@@ -475,9 +475,12 @@ export default {
       dark: 'Dark',
       light: 'Light',
       blue: 'Blue',
+      'gruvbox': 'Sunset',
+      'forest': 'Forest',
+      'ayu-mirage': 'Ayu Mirage',
       'sponsor-gold': 'Royal Gold',
       'sponsor-sakura': 'Sakura Pink',
-      'sponsor-forest': 'Forest Green'
+      'sponsor-rose-pine': 'Rosé Pine'
     }
   },
 

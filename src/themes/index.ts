@@ -10,6 +10,9 @@ export type ThemeName =
   | 'github-dark'
   | 'github-light'
   | 'catppuccin'
+  | 'gruvbox'
+  | 'forest'
+  | 'ayu-mirage'
   | 'sponsor-gold'
 
 // One Dark 主题
@@ -237,6 +240,81 @@ const catppuccin: ITheme = {
   brightWhite: '#a6adc8'
 }
 
+// 暖橙主题 - 温暖的棕橙色调（中深色）
+const gruvbox: ITheme = {
+  background: '#2d251f',
+  foreground: '#e8d5c4',
+  cursor: '#e8a855',
+  cursorAccent: '#2d251f',
+  selectionBackground: '#4a3d32',
+  black: '#2d251f',
+  red: '#e07055',
+  green: '#a8c070',
+  yellow: '#e8a855',
+  blue: '#70a8c0',
+  magenta: '#c08090',
+  cyan: '#70c0a8',
+  white: '#e8d5c4',
+  brightBlack: '#6a5a4a',
+  brightRed: '#f08060',
+  brightGreen: '#b8d080',
+  brightYellow: '#f0b860',
+  brightBlue: '#80b8d0',
+  brightMagenta: '#d090a0',
+  brightCyan: '#80d0b8',
+  brightWhite: '#f5ebe0'
+}
+
+// Forest 主题 - 浅色清新的森林绿色调
+const forest: ITheme = {
+  background: '#f6fbf8',
+  foreground: '#2a403a',
+  cursor: '#4a9a70',
+  cursorAccent: '#f6fbf8',
+  selectionBackground: '#c8dcd0',
+  black: '#2a403a',
+  red: '#b85555',
+  green: '#4a9a70',
+  yellow: '#aa8540',
+  blue: '#4a7a9a',
+  magenta: '#8a5a8a',
+  cyan: '#3a8a7a',
+  white: '#e5f0e8',
+  brightBlack: '#4a665a',
+  brightRed: '#c86060',
+  brightGreen: '#5aaa75',
+  brightYellow: '#bb9550',
+  brightBlue: '#5a8aaa',
+  brightMagenta: '#9a6a9a',
+  brightCyan: '#4a9a8a',
+  brightWhite: '#f6fbf8'
+}
+
+// Ayu Mirage 主题 - 现代化的橙色调
+const ayuMirage: ITheme = {
+  background: '#1f2430',
+  foreground: '#cbccc6',
+  cursor: '#ffcc66',
+  cursorAccent: '#1f2430',
+  selectionBackground: '#34455a',
+  black: '#1f2430',
+  red: '#ff3333',
+  green: '#bae67e',
+  yellow: '#ffd580',
+  blue: '#73d0ff',
+  magenta: '#d4bfff',
+  cyan: '#95e6cb',
+  white: '#cbccc6',
+  brightBlack: '#707a8c',
+  brightRed: '#ff6666',
+  brightGreen: '#bae67e',
+  brightYellow: '#ffd580',
+  brightBlue: '#73d0ff',
+  brightMagenta: '#d4bfff',
+  brightCyan: '#95e6cb',
+  brightWhite: '#f3f4f5'
+}
+
 // 赞助者专属主题 - 金色暖色调
 const sponsorGold: ITheme = {
   background: '#1a1a1a',
@@ -273,6 +351,9 @@ export const themes: Record<ThemeName, ITheme> = {
   'github-dark': githubDark,
   'github-light': githubLight,
   catppuccin,
+  'gruvbox': gruvbox,
+  'forest': forest,
+  'ayu-mirage': ayuMirage,
   'sponsor-gold': sponsorGold
 }
 

@@ -82,6 +82,69 @@
   --border-color: #3a6a9a;
 }
 
+/* 暖橙主题（温暖的棕橙色调，中深色） */
+[data-ui-theme="gruvbox"] {
+  --bg-primary: #2d251f;
+  --bg-secondary: #251f1a;
+  --bg-tertiary: #1f1a15;
+  --bg-surface: #3a3028;
+  --bg-hover: #4a3d32;
+  
+  --text-primary: #e8d5c4;
+  --text-secondary: #c8b8a5;
+  --text-muted: #8a7a6a;
+  
+  --accent-primary: #e8a855;
+  --accent-secondary: #d09545;
+  --accent-success: #a8c070;
+  --accent-warning: #e0a050;
+  --accent-error: #e07055;
+  
+  --border-color: #4a3d32;
+}
+
+/* Forest 主题（浅色清新的森林绿色调） */
+[data-ui-theme="forest"] {
+  --bg-primary: #f6fbf8;
+  --bg-secondary: #eef6f0;
+  --bg-tertiary: #e5f0e8;
+  --bg-surface: #ffffff;
+  --bg-hover: #e0ede4;
+  
+  --text-primary: #2a403a;
+  --text-secondary: #4a665a;
+  --text-muted: #7a9a8a;
+  
+  --accent-primary: #4a9a70;
+  --accent-secondary: #3a8560;
+  --accent-success: #5aaa75;
+  --accent-warning: #aa8540;
+  --accent-error: #b85555;
+  
+  --border-color: #c8dcd0;
+}
+
+/* Ayu Mirage 主题（现代化的橙色调） */
+[data-ui-theme="ayu-mirage"] {
+  --bg-primary: #1f2430;
+  --bg-secondary: #1a1f29;
+  --bg-tertiary: #151920;
+  --bg-surface: #232834;
+  --bg-hover: #34455a;
+  
+  --text-primary: #cbccc6;
+  --text-secondary: #b8b4a8;
+  --text-muted: #707a8c;
+  
+  --accent-primary: #ffcc66;
+  --accent-secondary: #ffd580;
+  --accent-success: #bae67e;
+  --accent-warning: #ffa759;
+  --accent-error: #ff3333;
+  
+  --border-color: #3d4455;
+}
+
 /* 赞助者专属暗金色主题（尊贵内敛风格） */
 [data-ui-theme="sponsor-gold"] {
   --bg-primary: #1a1612;
@@ -124,25 +187,25 @@
   --border-color: #e8d0dc;
 }
 
-/* 赞助者专属森林绿主题（浅色清新风格） */
-[data-ui-theme="sponsor-forest"] {
-  --bg-primary: #f6fbf8;
-  --bg-secondary: #eef6f0;
-  --bg-tertiary: #e5f0e8;
-  --bg-surface: #ffffff;
-  --bg-hover: #e0ede4;
+/* 赞助者专属玫瑰松主题（温暖的玫瑰色调） */
+[data-ui-theme="sponsor-rose-pine"] {
+  --bg-primary: #191724;
+  --bg-secondary: #1f1d2e;
+  --bg-tertiary: #13111e;
+  --bg-surface: #26233a;
+  --bg-hover: #403d52;
   
-  --text-primary: #2a403a;
-  --text-secondary: #4a665a;
-  --text-muted: #7a9a8a;
+  --text-primary: #e0def4;
+  --text-secondary: #908caa;
+  --text-muted: #6e6a86;
   
-  --accent-primary: #4a9a70;
-  --accent-secondary: #3a8560;
-  --accent-success: #5aaa75;
-  --accent-warning: #aa8540;
-  --accent-error: #b85555;
+  --accent-primary: #ebbcba;
+  --accent-secondary: #c4a7e7;
+  --accent-success: #31748f;
+  --accent-warning: #f6c177;
+  --accent-error: #eb6f92;
   
-  --border-color: #c8dcd0;
+  --border-color: #403d52;
 }
 
 * {
