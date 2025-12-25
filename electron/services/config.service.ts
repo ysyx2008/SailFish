@@ -99,7 +99,7 @@ export interface FileBookmark {
 }
 
 // UI 主题类型
-export type UiThemeType = 'dark' | 'light' | 'blue' | 'gruvbox' | 'forest' | 'ayu-mirage' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-rose-pine'
+export type UiThemeType = 'dark' | 'light' | 'blue' | 'gruvbox' | 'forest' | 'ayu-mirage' | 'cyberpunk' | 'aurora' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-rose-pine'
 
 interface StoreSchema {
   aiProfiles: AiProfile[]

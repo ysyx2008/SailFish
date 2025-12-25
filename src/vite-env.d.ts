@@ -499,8 +499,8 @@ interface Window {
       ) => Promise<void>
       getTheme: () => Promise<string>
       setTheme: (theme: string) => Promise<void>
-      getUiTheme: () => Promise<'dark' | 'light' | 'blue' | 'gruvbox' | 'forest' | 'ayu-mirage' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-rose-pine'>
-      setUiTheme: (theme: 'dark' | 'light' | 'blue' | 'gruvbox' | 'forest' | 'ayu-mirage' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-rose-pine') => Promise<void>
+      getUiTheme: () => Promise<'dark' | 'light' | 'blue' | 'gruvbox' | 'forest' | 'ayu-mirage' | 'cyberpunk' | 'aurora' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-rose-pine'>
+      setUiTheme: (theme: 'dark' | 'light' | 'blue' | 'gruvbox' | 'forest' | 'ayu-mirage' | 'cyberpunk' | 'aurora' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-rose-pine') => Promise<void>
       // 会话分组
       getSessionGroups: () => Promise<Array<{
         id: string
