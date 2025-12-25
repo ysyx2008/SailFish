@@ -711,8 +711,8 @@ const electronAPI = {
     setTheme: (theme: string) => ipcRenderer.invoke('config:setTheme', theme),
 
     // UI 主题
-    getUiTheme: () => ipcRenderer.invoke('config:getUiTheme') as Promise<'dark' | 'light' | 'blue' | 'gruvbox' | 'forest' | 'ayu-mirage' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-rose-pine'>,
-    setUiTheme: (theme: 'dark' | 'light' | 'blue' | 'gruvbox' | 'forest' | 'ayu-mirage' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-rose-pine') => ipcRenderer.invoke('config:setUiTheme', theme),
+    getUiTheme: () => ipcRenderer.invoke('config:getUiTheme') as Promise<'dark' | 'light' | 'blue' | 'gruvbox' | 'forest' | 'ayu-mirage' | 'cyberpunk' | 'aurora' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-rose-pine'>,
+    setUiTheme: (theme: 'dark' | 'light' | 'blue' | 'gruvbox' | 'forest' | 'ayu-mirage' | 'cyberpunk' | 'aurora' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-rose-pine') => ipcRenderer.invoke('config:setUiTheme', theme),
 
     // Agent MBTI
     getAgentMbti: () => ipcRenderer.invoke('config:getAgentMbti') as Promise<string | null>,
