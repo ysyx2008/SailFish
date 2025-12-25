@@ -1,6 +1,11 @@
-# 旗鱼终端
+<div align="right">
 
-[English](./README_EN.md) | 中文
+[![en](https://img.shields.io/badge/lang-English-blue.svg)](./README_EN.md)
+[![cn](https://img.shields.io/badge/lang-中文-red.svg)](./README.md)
+
+</div>
+
+# 旗鱼终端
 
 > AI 驱动的跨平台终端，助力运维提效
 

@@ -143,3 +143,152 @@ A: 商业许可授权期为3年或更多，同时支持永久授权，授权期�
 ---
 
 **GNU AGPL v3.0 全文**：https://www.gnu.org/licenses/agpl-3.0.html
+
+---
+---
+
+# SFTerminal Dual License Agreement (English Version)
+
+Copyright (c) 2024 SFTerminal
+
+---
+
+## Dual Licensing Model
+
+This project adopts a **Dual Licensing Model**. You may choose the applicable license based on your use case:
+
+| Use Case | Applicable License | Cost |
+|----------|-------------------|------|
+| Personal learning, research, testing | AGPL v3.0 | Free |
+| Non-profit organizations / Educational institutions | AGPL v3.0 | Free |
+| Medical institutions / Medical research organizations | AGPL v3.0 | Free |
+| Enterprise internal use ≤1000 installations (AGPL compliant) | AGPL v3.0 | Free |
+| Enterprise internal use >1000 installations | Commercial License | Paid |
+| Enterprise closed-source use / No intention to open-source modifications | Commercial License | Paid |
+| Providing SaaS services based on this project | Commercial License | Paid |
+| Embedding this project in commercial products for distribution | Commercial License | Paid |
+| Modifying software Logo or name | Commercial License | Paid |
+| Removing or modifying "Support the Author" feature | Commercial License | Paid |
+
+---
+
+## 1. Open Source License: GNU AGPL v3.0
+
+The open-source version of this project is licensed under **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+
+### AGPL v3.0 Core Requirements (Mandatory)
+
+1. **Open-source modifications**: If you modify the source code of this software, you must open-source your modifications under the same AGPL v3.0 license.
+
+2. **Network use source disclosure**: If you provide services based on this software over a network (e.g., SaaS, cloud services), you must provide complete source code to users, including your modifications.
+
+3. **Preserve copyright notices**: All copies and modified versions must retain the original copyright notices and license text.
+
+4. **Copyleft license**: Derivative works based on this software must also be licensed under AGPL v3.0.
+
+5. **Preserve branding and support features**: Without commercial authorization, you may not modify the software's Logo or name, nor remove or modify the "Support the Author" feature.
+
+### Free Use Scenarios
+
+The following scenarios are free, but must comply with all AGPL v3.0 terms:
+
+- ✅ Personal learning, research, daily use
+- ✅ Enterprise internal use (**≤1000 installations**, AGPL compliant, modifications must be open-sourced)
+- ✅ Non-profit organization use
+- ✅ Educational institution teaching and research
+- ✅ Medical institutions and medical research organizations
+- ✅ Open-source project integration (must be AGPL-compatible license)
+
+⚠️ **Enterprise quantity note**: Enterprise internal installation/deployment exceeding 1000 copies requires a commercial license, regardless of AGPL compliance.
+
+Full AGPL v3.0 license text: https://www.gnu.org/licenses/agpl-3.0.html
+
+---
+
+## 2. Commercial License
+
+If you **cannot or do not wish to comply with AGPL v3.0 requirements**, you need to obtain a commercial license.
+
+### Scenarios Requiring Commercial License
+
+1. **Large-scale enterprise use**
+   - Enterprise internal installation/deployment exceeding **1000 copies**
+
+2. **Closed-source use**
+   - Enterprise wishes to modify source code without disclosing modifications
+   - Enterprise wishes to develop internal tools based on this project without open-sourcing
+
+3. **SaaS / Cloud Services**
+   - Providing hosted services to customers based on this project
+   - Offering this project's features as an online service
+
+4. **Commercial product distribution**
+   - Embedding this project in your commercial software for sale
+   - Repackaging for sale in OEM / white-label form
+   - Pre-installing on hardware devices for sale
+
+5. **Avoiding open-source obligations**
+   - Not wishing to be affected by AGPL's "copyleft" provisions
+   - Need to mix with closed-source code
+
+6. **Modifying branding or support features**
+   - Modifying the software's Logo or name
+   - Removing or modifying the "Support the Author" feature
+
+### Commercial License Benefits
+
+With a commercial license, you will enjoy:
+
+- 🔓 **Closed-source usage rights**: Modify code without disclosure
+- 📦 **Commercial distribution rights**: Embed software in commercial products
+- ☁️ **SaaS service rights**: Provide online services based on this software without disclosing source code
+- 🛡️ **AGPL obligation exemption**: Not bound by AGPL copyleft provisions
+- 📜 **Commercial authorization certificate**: Formal commercial authorization documentation
+- 💬 **Technical support**: Priority technical support services (optional)
+
+### Obtaining Commercial License
+
+📧 **Contact Email**: nuoyan_cfan#163.com (please replace # with @)
+
+Please include in your email:
+- Company name and size
+- Use case description
+- Expected deployment/distribution scale
+- Desired license term
+
+We will respond with a licensing proposal within 3 business days.
+
+---
+
+## 3. FAQ
+
+**Q: I'm an individual developer. Can I use it for free?**
+A: Yes, personal use is completely free. Just comply with AGPL v3.0 (if you modify and distribute the code, you need to open-source your modifications).
+
+**Q: Our company uses it internally. Do we need to pay?**
+A: Up to 1000 installations with AGPL v3.0 compliance (modifications must be open-sourced) is free. Exceeding 1000 installations or closed-source use requires a commercial license.
+
+**Q: I built a SaaS service based on this project. Do I need to pay?**
+A: Yes. AGPL requires network services to also be open-sourced. If you don't want to disclose your source code, you need a commercial license.
+
+**Q: Is the commercial license permanent?**
+A: Commercial license terms are 3 years or more, with perpetual licensing also available. You may use the licensed version during the term. After expiration, you may renew or continue using the already-licensed version.
+
+---
+
+## 4. Disclaimer
+
+This software is provided "as is" without warranty of any kind, express or implied. To the maximum extent permitted by applicable law, the author shall not be liable for any direct, indirect, incidental, special, punitive, or consequential damages.
+
+---
+
+## 5. License Version
+
+- License Agreement Version: v1.0
+- Release Date: December 2, 2025
+- This agreement applies to SFTerminal v1.0.0 and subsequent versions
+- The author reserves the right to modify this agreement; modified agreements apply to new versions
+
+---
+
+**GNU AGPL v3.0 Full Text**: https://www.gnu.org/licenses/agpl-3.0.html

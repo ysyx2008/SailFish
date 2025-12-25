@@ -1,6 +1,11 @@
-# SFTerminal
+<div align="right">
 
-English | [中文](./README.md)
+[![en](https://img.shields.io/badge/lang-English-blue.svg)](./README_EN.md)
+[![cn](https://img.shields.io/badge/lang-中文-red.svg)](./README.md)
+
+</div>
+
+# SFTerminal
 
 > AI-Powered Cross-Platform Terminal for DevOps Efficiency
 
