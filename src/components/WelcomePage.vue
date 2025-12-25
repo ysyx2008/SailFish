@@ -384,7 +384,10 @@ const formatHost = (session: SshSession) => {
   border-radius: 20px;
   padding: 28px;
   cursor: pointer;
-  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), 
+              border-color 0.3s ease, 
+              border-width 0.3s ease,
+              box-shadow 0.3s ease;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -395,25 +398,17 @@ const formatHost = (session: SshSession) => {
   height: 165px;
   flex-shrink: 0;
   overflow: hidden;
-  /* 初始状态 */
-  opacity: 0;
-  transform: translateY(20px);
-  animation: cardEnter 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  /* 入场动画只用 opacity，让 hover transform 正常工作 */
+  animation: cardFadeIn 0.6s ease-out both;
 }
 
 .action-card:nth-child(1) { animation-delay: 0.3s; }
 .action-card:nth-child(2) { animation-delay: 0.4s; }
 .action-card:nth-child(3) { animation-delay: 0.5s; }
 
-@keyframes cardEnter {
-  from {
-    opacity: 0;
-    transform: translateY(30px) scale(0.9);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+@keyframes cardFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* 卡片悬停发光效果 */
@@ -452,14 +447,16 @@ const formatHost = (session: SshSession) => {
 
 .action-card:hover:not(.disabled) {
   border-color: var(--accent-primary);
-  transform: translateY(-6px) scale(1.02);
+  border-width: 3px;
+  transform: translateY(-8px) scale(1.06);
   box-shadow: 
     0 20px 40px rgba(0, 0, 0, 0.2),
-    0 0 40px rgba(var(--accent-rgb, 137, 180, 250), 0.15);
+    0 0 30px rgba(var(--accent-rgb, 137, 180, 250), 0.2);
 }
 
 .action-card:active:not(.disabled) {
-  transform: translateY(-2px) scale(0.98);
+  transform: translateY(-2px) scale(0.97);
+  transition: transform 0.15s ease;
 }
 
 .action-card.disabled {
@@ -470,6 +467,9 @@ const formatHost = (session: SshSession) => {
 .card-icon {
   width: 60px;
   height: 60px;
+  min-width: 60px;
+  min-height: 60px;
+  flex-shrink: 0;
   border-radius: 16px;
   display: flex;
   align-items: center;
@@ -479,8 +479,8 @@ const formatHost = (session: SshSession) => {
 }
 
 .action-card:hover:not(.disabled) .card-icon {
-  transform: scale(1.1);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+  transform: scale(1.06) translateY(-3px);
+  box-shadow: 0 12px 25px rgba(0, 0, 0, 0.35);
 }
 
 .card-icon.local {

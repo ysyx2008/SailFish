@@ -1621,7 +1621,14 @@ onUnmounted(() => {
 .ai-header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+}
+
+.ai-header-actions .btn-icon {
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  border-radius: 6px;
 }
 
 .model-select {

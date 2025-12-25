@@ -504,8 +504,16 @@ onUnmounted(() => {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   -webkit-app-region: no-drag;
+}
+
+.header-left .btn-icon,
+.header-right .btn-icon {
+  width: 30px;
+  height: 30px;
+  padding: 6px;
+  border-radius: 6px;
 }
 
 .header-center {
@@ -522,17 +530,6 @@ onUnmounted(() => {
   color: var(--text-primary);
   margin-left: 8px;
   letter-spacing: 0.3px;
-  background: linear-gradient(135deg, var(--text-primary), var(--accent-primary));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* 浅色主题：使用更柔和的标题样式 */
-[data-color-scheme="light"] .app-title {
-  background: linear-gradient(135deg, var(--text-primary) 30%, var(--accent-primary) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
 }
 
 /* 主体 */
