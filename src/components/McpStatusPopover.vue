@@ -328,6 +328,9 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 4px;
+  height: 30px;
+  padding: 4px 8px;
+  border-radius: 6px;
 }
 
 /* 状态徽章 */
