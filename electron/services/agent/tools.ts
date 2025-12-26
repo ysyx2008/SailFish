@@ -408,19 +408,15 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
         description: `创建任务执行计划，向用户展示清晰的执行步骤和进度。
 
 **何时使用**：
-- 任务涉及 3 个以上步骤
-- 多系统/多服务操作（如部署、迁移）
-- 诊断排查类任务
+- 任务涉及 4 个以上步骤，且步骤间有依赖关系
+- 多系统/多服务联动操作（如部署、迁移）
 - 用户要求"帮我规划"或需要了解整体进度
 
 **何时不需要**：
-- 单个简单查询或 1-2 步操作
+- 单个查询或 1-3 步的简单操作
 - 用户说"直接做"/"快速帮我"
 
-**注意**：
-- 计划完成后如需开始新任务，使用 clear_plan 归档
-
-创建计划后，在执行每个步骤时使用 update_plan 更新状态。`,
+创建计划后，使用 update_plan 更新每个步骤的状态。`,
         parameters: {
           type: 'object',
           properties: {
@@ -444,7 +440,7 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
                 },
                 required: ['title']
               },
-              description: '计划步骤列表，建议 3-8 步，不超过 10 步'
+              description: '计划步骤列表，建议 4-8 步，不超过 10 步'
             }
           },
           required: ['title', 'steps']
