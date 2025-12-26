@@ -1319,7 +1319,7 @@ onUnmounted(() => {
             <span class="doc-icon">{{ doc.fileType === 'pdf' ? '📕' : doc.fileType === 'docx' || doc.fileType === 'doc' ? '📘' : '📄' }}</span>
             <span class="doc-name" :title="doc.filename">{{ doc.filename }}</span>
             <span class="doc-size">{{ formatFileSize(doc.fileSize) }}</span>
-            <span v-if="doc.error" class="doc-error" :title="doc.error">⚠️</span>
+            <span v-if="doc.error" class="doc-error" :data-tooltip="doc.error">⚠️</span>
             <button class="btn-remove-doc" @click="removeUploadedDoc(index)" :title="t('ai.removeDoc')">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="18" y1="6" x2="6" y2="18"/>
@@ -2933,6 +2933,52 @@ onUnmounted(() => {
 .doc-error {
   flex-shrink: 0;
   cursor: help;
+  position: relative;
+}
+
+.doc-error::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(30, 30, 30, 0.95);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  max-width: 280px;
+  min-width: 120px;
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.doc-error::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: rgba(30, 30, 30, 0.95);
+  z-index: 1001;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  pointer-events: none;
+}
+
+.doc-error:hover::after,
+.doc-error:hover::before {
+  opacity: 1;
+  visibility: visible;
 }
 
 .btn-remove-doc {
