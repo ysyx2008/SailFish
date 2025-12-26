@@ -450,7 +450,9 @@ export function buildSystemPrompt(
   if (context.documentContext) {
     documentSection = `\n\n${context.documentContext}`
     documentRule = `
-10. **关于用户上传的文档**：如果用户上传了文档，文档内容已经包含在本对话的上下文末尾（标记为"用户上传的参考文档"），请直接阅读和引用这些内容，**不要使用 read_file 工具去读取上传的文档**`
+12. **【重要】关于用户上传的文档**：用户已上传文档，文档**完整内容**已经包含在本对话的上下文末尾（标记为"用户上传的参考文档"）。
+   - **直接使用上下文中的文档内容**，不需要也不应该使用 read_file 工具读取
+   - 文档内容就在下方，你可以直接引用和分析`
   }
 
   // 知识库上下文
@@ -460,7 +462,7 @@ export function buildSystemPrompt(
     if (knowledgeContext) {
       knowledgeSection = `\n\n${knowledgeContext}`
       knowledgeRule = `
-11. **【重要】你有知识库**：你可以访问用户保存的知识库文档。
+13. **【重要】你有知识库**：你可以访问用户保存的知识库文档。
    - 上面的"相关知识库内容"部分包含了与当前问题相关的预加载内容
    - 如果预加载内容不够详细，使用 \`search_knowledge\` 工具搜索更多信息
    - **知识库搜索结果已经包含文档内容，直接使用即可，不要用 read_file 去读取知识库文档**
@@ -468,7 +470,7 @@ export function buildSystemPrompt(
     } else {
       // 知识库启用但没有预加载内容时，提醒 Agent 可以使用工具查询
       knowledgeRule = `
-11. **知识库工具**：用户有知识库，你可以使用 \`search_knowledge\` 工具搜索用户保存的文档和笔记。
+13. **知识库工具**：用户有知识库，你可以使用 \`search_knowledge\` 工具搜索用户保存的文档和笔记。
    - **搜索结果已包含文档内容片段，直接使用即可，不要用 read_file 读取**`
     }
   }
@@ -614,7 +616,7 @@ ${buildAskUserGuidance(executionMode)}
    - 命令超时时，先用 \`check_terminal_status\` 了解终端状态
    - 如果检测到"等待输入"，根据类型做出响应（提示用户或自动响应）
    - 如果检测到"可能卡死"，最好获取终端输出检查下，确认后再使用 Ctrl+C
-   - 如果检测到"进度/编译"，耐心等待，不要中断${documentRule}${knowledgeRule}
+   - 如果检测到"进度/编译"，耐心等待，不要中断
 10. **【重要】严格聚焦，禁止发散**：
    - 只做用户明确要求的事情，禁止自作主张扩展任务
    - **做不到就说做不到**：如果尝试 2-3 次仍无法完成，直接告诉用户"无法完成"及原因，不要自己想替代方案
@@ -625,6 +627,8 @@ ${buildAskUserGuidance(executionMode)}
    - 如果发现自己在重复相同的操作（相同命令或相同文件操作），停下来思考：为什么？是否有效？
    - 连续 2-3 次相同操作无效时，应该主动改变策略或向用户说明情况
    - **有目的的重复**是可以的（如用不同参数测试），但**无效的重复**需要立即停止
+${documentRule}
+${knowledgeRule}
 
 ## 命令处理规则
 
