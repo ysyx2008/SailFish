@@ -1181,10 +1181,9 @@ onUnmounted(() => {
                               {{ t('ai.confirmMultiSelect') }} ({{ getSelectedOptions(step.id).length }})
                             </button>
                           </div>
-                          <!-- 状态显示 -->
-                          <div v-if="step.toolResult" class="asking-status" :class="{ 
+                          <!-- 状态显示：等待、超时、取消时显示完整状态；已完成时不重复显示选中的选项 -->
+                          <div v-if="step.toolResult && !step.toolResult.includes('✅')" class="asking-status" :class="{ 
                             'status-waiting': step.toolResult.includes('⏳'),
-                            'status-done': step.toolResult.includes('✅'),
                             'status-timeout': step.toolResult.includes('⏰'),
                             'status-cancelled': step.toolResult.includes('🛑')
                           }">
