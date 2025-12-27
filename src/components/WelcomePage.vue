@@ -235,13 +235,13 @@ const formatHost = (session: SshSession) => {
   width: 100%;
   margin: auto;
   /* 入场动画 */
-  animation: pageEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: pageEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes pageEnter {
   from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
@@ -253,14 +253,14 @@ const formatHost = (session: SshSession) => {
 .welcome-header {
   text-align: center;
   margin-bottom: 32px;
-  animation: headerEnter 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards;
+  animation: headerEnter 0.35s cubic-bezier(0.16, 1, 0.3, 1) 0.05s forwards;
   opacity: 0;
 }
 
 @keyframes headerEnter {
   from {
     opacity: 0;
-    transform: translateY(-20px) scale(0.95);
+    transform: translateY(-10px) scale(0.97);
   }
   to {
     opacity: 1;
@@ -349,14 +349,14 @@ const formatHost = (session: SshSession) => {
 /* Quick Start Cards */
 .quick-start {
   margin-bottom: 28px;
-  animation: sectionEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+  animation: sectionEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1) 0.08s forwards;
   opacity: 0;
 }
 
 @keyframes sectionEnter {
   from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
@@ -399,12 +399,12 @@ const formatHost = (session: SshSession) => {
   flex-shrink: 0;
   overflow: hidden;
   /* 入场动画只用 opacity，让 hover transform 正常工作 */
-  animation: cardFadeIn 0.6s ease-out both;
+  animation: cardFadeIn 0.25s ease-out both;
 }
 
-.action-card:nth-child(1) { animation-delay: 0.3s; }
-.action-card:nth-child(2) { animation-delay: 0.4s; }
-.action-card:nth-child(3) { animation-delay: 0.5s; }
+.action-card:nth-child(1) { animation-delay: 0.12s; }
+.action-card:nth-child(2) { animation-delay: 0.18s; }
+.action-card:nth-child(3) { animation-delay: 0.24s; }
 
 @keyframes cardFadeIn {
   from { opacity: 0; }
@@ -531,7 +531,7 @@ const formatHost = (session: SshSession) => {
 /* Recent Sessions */
 .recent-sessions {
   margin-bottom: 20px;
-  animation: sectionEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
+  animation: sectionEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
   opacity: 0;
 }
 
@@ -662,7 +662,7 @@ const formatHost = (session: SshSession) => {
   cursor: pointer;
   transition: all 0.3s ease;
   user-select: none;
-  animation: sectionEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.6s forwards;
+  animation: sectionEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1) 0.25s forwards;
   opacity: 0;
   position: relative;
   overflow: hidden;
