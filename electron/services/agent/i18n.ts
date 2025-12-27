@@ -284,6 +284,7 @@ const translations = {
     // AI 思考
     'ai.thinking': '思考中...',
     'ai.thinking_with_emoji': '🤔 **思考中...**\n\n> ',
+    'ai.preparing': '正在准备...',
   },
   'en-US': {
     // Tool names
@@ -559,6 +560,7 @@ const translations = {
     // AI thinking
     'ai.thinking': 'Thinking...',
     'ai.thinking_with_emoji': '🤔 **Thinking...**\n\n> ',
+    'ai.preparing': 'Preparing...',
   }
 } as const
 

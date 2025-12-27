@@ -299,7 +299,7 @@ const exportKnowledge = async () => {
 
 // 导入知识库
 const importKnowledge = async () => {
-  if (!confirm(t('knowledgeManager.confirmImport') + '\n\n💡 如果导入的知识库设置了密码，您需要使用原来的密码才能访问加密数据。')) {
+  if (!confirm(t('knowledgeManager.confirmImport') + '\n\n💡 ' + t('knowledgeManager.importPasswordHint'))) {
     return
   }
   
@@ -310,12 +310,12 @@ const importKnowledge = async () => {
     if (result.success) {
       let msg = t('knowledgeManager.importSuccess', { count: result.imported || 0 })
       if (result.needsPassword) {
-        msg += '\n\n🔐 导入的知识库包含加密数据，请前往设置页面使用原密码解锁。'
+        msg += '\n\n🔐 ' + t('knowledgeManager.importEncryptedHint')
       }
       alert(msg)
       await loadData()
     } else {
-      alert(t('knowledgeManager.importFailed') + ': ' + (result.error || '未知错误'))
+      alert(t('knowledgeManager.importFailed') + ': ' + (result.error || t('knowledgeManager.unknownError')))
     }
   } catch (error) {
     console.error('Import failed:', error)
@@ -369,8 +369,8 @@ onUnmounted(() => {
         <div class="doc-list-panel">
           <!-- 统计信息 -->
           <div v-if="stats" class="stats-bar">
-            <span>{{ normalDocuments.length }} 文档</span>
-            <span>{{ memoryDocuments.length }} 记忆</span>
+            <span>{{ normalDocuments.length }} {{ t('knowledgeManager.tabDocuments') }}</span>
+            <span>{{ memoryDocuments.length }} {{ t('knowledgeManager.tabMemories') }}</span>
             <span>{{ formatSize(stats.totalSize) }}</span>
           </div>
 
@@ -381,14 +381,14 @@ onUnmounted(() => {
               :class="{ active: activeTab === 'documents' }"
               @click="activeTab = 'documents'"
             >
-              📄 文档 ({{ normalDocuments.length }})
+              📄 {{ t('knowledgeManager.tabDocuments') }} ({{ normalDocuments.length }})
             </button>
             <button 
               class="tab-btn" 
               :class="{ active: activeTab === 'memories' }"
               @click="activeTab = 'memories'"
             >
-              🧠 主机记忆 ({{ memoryDocuments.length }})
+              🧠 {{ t('knowledgeManager.tabMemories') }} ({{ memoryDocuments.length }})
             </button>
           </div>
 
@@ -398,7 +398,7 @@ onUnmounted(() => {
               ref="searchInputRef"
               type="text"
               v-model="searchQuery"
-              :placeholder="activeTab === 'documents' ? t('knowledgeManager.searchPlaceholder') : '搜索记忆内容...'"
+              :placeholder="activeTab === 'documents' ? t('knowledgeManager.searchPlaceholder') : t('knowledgeManager.searchMemoriesPlaceholder')"
               class="search-input"
             />
           </div>

@@ -36,7 +36,7 @@ import { executeTool, ToolExecutorConfig } from './tool-executor'
 import { buildSystemPrompt } from './prompt-builder'
 import { analyzeTaskComplexity, generatePlanningPrompt } from './planner'
 import { getKnowledgeService } from '../knowledge'
-import { setConfigService as setI18nConfigService } from './i18n'
+import { setConfigService as setI18nConfigService, t } from './i18n'
 
 // 重新导出类型，供外部使用
 export type {
@@ -1302,7 +1302,7 @@ ${fullContext}
     // 这解决了用户在 AI 开始处理前切换执行模式时，前端无法更新配置的问题
     this.addStep(agentId, {
       type: 'thinking',
-      content: '正在准备...',
+      content: t('ai.preparing'),
       isStreaming: true
     })
     

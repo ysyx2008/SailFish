@@ -582,21 +582,21 @@ const handleReconnect = async () => {
   
   try {
     // 在终端显示正在重连的消息
-    terminal?.write(`\r\n\x1b[36m[正在重新连接...]\x1b[0m\r\n`)
+    terminal?.write(`\r\n\x1b[36m[${t('terminal.reconnecting')}]\x1b[0m\r\n`)
     
     // 调用 store 的重连方法
     const result = await terminalStore.reconnectSsh(props.tabId)
     
     // 如果会话未保存，无法重连
     if (result.needsSession) {
-      terminal?.write(`\r\n\x1b[33m[无法重连] 该连接未保存为会话，请从会话管理器重新连接\x1b[0m\r\n`)
+      terminal?.write(`\r\n\x1b[33m[${t('terminal.cannotReconnect')}] ${t('terminal.cannotReconnectHint')}\x1b[0m\r\n`)
       // 隐藏重连按钮（无法重连）
       sshDisconnected.value = false
       return
     }
     
     if (!result.success) {
-      terminal?.write(`\r\n\x1b[31m[重连失败] 未知错误\x1b[0m\r\n`)
+      terminal?.write(`\r\n\x1b[31m[${t('terminal.reconnectFailed')}]\x1b[0m\r\n`)
       return
     }
     

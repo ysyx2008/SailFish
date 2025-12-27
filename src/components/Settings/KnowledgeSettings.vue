@@ -398,37 +398,37 @@ onUnmounted(() => {
       <template v-if="settings.enabled">
         <!-- 安全设置 -->
         <div class="setting-group">
-          <h4 class="group-title">🔐 安全设置</h4>
+          <h4 class="group-title">🔐 {{ t('knowledgeSettings.securitySettings') }}</h4>
           
           <div class="setting-row">
             <div class="setting-info">
-              <label class="setting-label">知识库密码</label>
+              <label class="setting-label">{{ t('knowledgeSettings.knowledgePassword') }}</label>
               <p class="setting-desc">
                 {{ passwordInfo.hasPassword 
-                  ? (passwordInfo.isUnlocked ? '已解锁，知识库数据已加密保护' : '已锁定，需要密码才能访问')
-                  : '未设置密码（旧版本遗留），建议设置密码以保护数据安全' }}
+                  ? (passwordInfo.isUnlocked ? t('knowledgeSettings.passwordUnlocked') : t('knowledgeSettings.passwordLocked'))
+                  : t('knowledgeSettings.noPasswordSet') }}
               </p>
             </div>
             <div class="password-actions">
               <template v-if="!passwordInfo.hasPassword">
                 <button class="btn btn-sm" @click="openPasswordDialog('set')">
-                  🔑 设置密码
+                  🔑 {{ t('knowledgeSettings.setPassword') }}
                 </button>
               </template>
               <template v-else-if="!passwordInfo.isUnlocked">
                 <button class="btn btn-sm btn-primary" @click="openPasswordDialog('verify')">
-                  🔓 解锁
+                  🔓 {{ t('knowledgeSettings.unlock') }}
                 </button>
               </template>
               <template v-else>
                 <button class="btn btn-sm" @click="openPasswordDialog('change')">
-                  ✏️ 修改密码
+                  ✏️ {{ t('knowledgeSettings.changePassword') }}
                 </button>
                 <button class="btn btn-sm" @click="lockKnowledge">
-                  🔒 锁定
+                  🔒 {{ t('knowledgeSettings.lock') }}
                 </button>
                 <button class="btn btn-sm btn-danger" @click="openPasswordDialog('clear')">
-                  🗑️ 清除密码
+                  🗑️ {{ t('knowledgeSettings.clearPasswordBtn') }}
                 </button>
               </template>
             </div>
@@ -436,7 +436,7 @@ onUnmounted(() => {
           
           <div v-if="passwordInfo.hasPassword && !passwordInfo.isUnlocked" class="warning-box">
             <span class="warning-icon">⚠️</span>
-            <span>知识库已锁定，主机记忆功能暂不可用。请先解锁。</span>
+            <span>{{ t('knowledgeSettings.lockedWarning') }}</span>
           </div>
         </div>
 
@@ -574,57 +574,55 @@ onUnmounted(() => {
           <div class="password-modal-header">
             <h3>
               {{ pendingEnable 
-                 ? (passwordDialogMode === 'verify' ? '🔐 启用知识库 - 验证密码' : '🔐 启用知识库 - 设置密码')
-                 : passwordDialogMode === 'set' ? '🔑 设置知识库密码' 
-                 : passwordDialogMode === 'verify' ? '🔓 解锁知识库' 
-                 : passwordDialogMode === 'clear' ? '🗑️ 清除密码' 
-                 : '✏️ 修改密码' }}
+                 ? (passwordDialogMode === 'verify' ? '🔐 ' + t('knowledgeSettings.passwordDialogVerifyTitle') : '🔐 ' + t('knowledgeSettings.passwordDialogSetTitle'))
+                 : passwordDialogMode === 'set' ? '🔑 ' + t('knowledgeSettings.passwordDialogSetTitle')
+                 : passwordDialogMode === 'verify' ? '🔓 ' + t('knowledgeSettings.passwordDialogVerifyTitle')
+                 : passwordDialogMode === 'clear' ? '🗑️ ' + t('knowledgeSettings.passwordDialogClearTitle')
+                 : '✏️ ' + t('knowledgeSettings.passwordDialogChangeTitle') }}
             </h3>
             <button class="password-close-btn" @click="closePasswordDialog">&times;</button>
           </div>
           
           <div class="password-modal-content">
             <p v-if="passwordDialogMode === 'set'" class="password-hint">
-              {{ pendingEnable 
-                ? '知识库可存储文档和主机记忆等敏感信息，请设置密码以加密保护这些数据。导出的知识库在其他设备导入后，需要使用相同密码解锁。' 
-                : '设置密码后，数据将被加密存储。导出的知识库可以在其他设备上使用相同密码解密。' }}
+              {{ t('knowledgeSettings.setPasswordHint') }}
             </p>
             <p v-if="passwordDialogMode === 'verify'" class="password-hint">
-              请输入知识库密码以解锁加密数据。如果是从其他设备导入的知识库，请使用原来设置的密码。
+              {{ t('knowledgeSettings.verifyPasswordHint') }}
             </p>
             <p v-if="passwordDialogMode === 'clear'" class="password-hint password-hint-warning">
-              ⚠️ 清除密码后，已加密的数据将被自动解密，知识库数据将不再加密保护。请确认您要执行此操作。
+              ⚠️ {{ t('knowledgeSettings.clearPasswordWarning') }}
             </p>
             
             <div class="password-field">
-              <label>{{ passwordDialogMode === 'change' || passwordDialogMode === 'clear' ? '当前密码' : '密码' }}</label>
+              <label>{{ passwordDialogMode === 'change' || passwordDialogMode === 'clear' ? t('knowledgeSettings.currentPassword') : t('knowledgeSettings.password') }}</label>
               <input 
                 ref="passwordInputRef"
                 type="password" 
                 v-model="passwordInput" 
-                :placeholder="passwordDialogMode === 'verify' || passwordDialogMode === 'clear' ? '请输入密码' : '请输入密码（至少 4 位）'"
+                :placeholder="passwordDialogMode === 'verify' || passwordDialogMode === 'clear' ? t('knowledgeSettings.enterPassword') : t('knowledgeSettings.enterPasswordMinLength')"
                 @keyup.enter="handlePasswordSubmit"
               />
             </div>
             
             <template v-if="passwordDialogMode === 'change'">
               <div class="password-field">
-                <label>新密码</label>
+                <label>{{ t('knowledgeSettings.newPassword') }}</label>
                 <input 
                   type="password" 
                   v-model="newPasswordInput" 
-                  placeholder="请输入新密码（至少 4 位）"
+                  :placeholder="t('knowledgeSettings.enterNewPasswordMinLength')"
                 />
               </div>
             </template>
             
             <template v-if="passwordDialogMode === 'set' || passwordDialogMode === 'change'">
               <div class="password-field">
-                <label>确认{{ passwordDialogMode === 'change' ? '新' : '' }}密码</label>
+                <label>{{ passwordDialogMode === 'change' ? t('knowledgeSettings.confirmNewPassword') : t('knowledgeSettings.confirmPassword') }}</label>
                 <input 
                   type="password" 
                   v-model="confirmPasswordInput" 
-                  placeholder="请再次输入密码"
+                  :placeholder="t('knowledgeSettings.reenterPassword')"
                   @keyup.enter="handlePasswordSubmit"
                 />
               </div>
@@ -634,17 +632,17 @@ onUnmounted(() => {
           </div>
           
           <div class="password-modal-footer">
-            <button class="btn btn-sm" @click="closePasswordDialog">{{ pendingEnable ? '暂不启用' : '取消' }}</button>
+            <button class="btn btn-sm" @click="closePasswordDialog">{{ pendingEnable ? t('knowledgeSettings.cancelEnable') : t('knowledgeSettings.cancel') }}</button>
             <button 
               class="btn btn-sm" 
               :class="passwordDialogMode === 'clear' ? 'btn-danger' : 'btn-primary'"
               @click="handlePasswordSubmit"
               :disabled="passwordLoading"
             >
-              {{ passwordLoading ? '处理中...' : 
-                 passwordDialogMode === 'set' ? '设置密码' : 
-                 passwordDialogMode === 'verify' ? '解锁' : 
-                 passwordDialogMode === 'clear' ? '确认清除' : '修改密码' }}
+              {{ passwordLoading ? t('knowledgeSettings.processing') : 
+                 passwordDialogMode === 'set' ? t('knowledgeSettings.setPassword') : 
+                 passwordDialogMode === 'verify' ? t('knowledgeSettings.unlock') : 
+                 passwordDialogMode === 'clear' ? t('knowledgeSettings.confirmClear') : t('knowledgeSettings.changePassword') }}
             </button>
           </div>
         </div>

@@ -5,6 +5,9 @@
  * 支持紧凑模式（顶部固定）和展开模式
  */
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 // 步骤进度信息
 interface StepProgress {
@@ -92,7 +95,7 @@ const getStepIcon = (status: PlanStepStatus): string => {
 // 格式化进度显示
 const formatProgress = (progress: StepProgress): string => {
   if (progress.isIndeterminate) {
-    return progress.statusText || '执行中...'
+    return progress.statusText || t('ai.executing')
   }
   
   let text = ''
