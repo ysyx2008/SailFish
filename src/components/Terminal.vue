@@ -5,6 +5,7 @@ import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import { WebLinksAddon } from '@xterm/addon-web-links'
+import { WebglAddon } from '@xterm/addon-webgl'
 import { useConfigStore } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
 import { getTheme } from '../themes'
@@ -28,6 +29,7 @@ const terminalRef = ref<HTMLDivElement | null>(null)
 let terminal: XTerm | null = null
 let fitAddon: FitAddon | null = null
 let searchAddon: SearchAddon | null = null
+let webglAddon: WebglAddon | null = null
 let screenService: TerminalScreenService | null = null
 let snapshotManager: TerminalSnapshotManager | null = null
 let unsubscribe: (() => void) | null = null
@@ -89,6 +91,25 @@ onMounted(async () => {
 
   // 挂载到 DOM
   terminal.open(terminalRef.value)
+
+  // 尝试加载 WebGL 渲染器（GPU 加速）
+  // 如果失败则自动降级到默认的 DOM 渲染
+  try {
+    webglAddon = new WebglAddon()
+    
+    // 监听 WebGL 上下文丢失事件（GPU 资源不足等情况）
+    webglAddon.onContextLoss(() => {
+      console.warn('[Terminal] WebGL context lost, falling back to DOM renderer')
+      webglAddon?.dispose()
+      webglAddon = null
+    })
+    
+    terminal.loadAddon(webglAddon)
+    console.log('[Terminal] WebGL renderer enabled ✓')
+  } catch (e) {
+    console.warn('[Terminal] WebGL not available, using DOM renderer:', e)
+    webglAddon = null
+  }
 
   // 创建屏幕服务实例
   screenService = new TerminalScreenService(terminal)
@@ -409,6 +430,12 @@ onUnmounted(() => {
   // 移除终端状态
   window.electronAPI.terminalState.remove(props.ptyId)
   inputBuffer = ''
+  
+  // 清理 WebGL 渲染器
+  if (webglAddon) {
+    webglAddon.dispose()
+    webglAddon = null
+  }
   
   if (terminal) {
     terminal.dispose()
