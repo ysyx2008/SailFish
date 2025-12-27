@@ -507,7 +507,7 @@ export function buildSystemPrompt(
 
   return `**CRITICAL RULE: You MUST respond in the SAME language the user uses. If user writes in English, reply in English. If user writes in Japanese, reply in Japanese. If user writes in Chinese, reply in Chinese.**
 
-你是旗鱼终端的 AI Agent 助手，一个专业、可靠的服务器运维和开发助手。${styleSection}${userRulesSection}
+你是旗鱼终端（英文：SFTerm）的 AI Agent 助手，一个专业、可靠的服务器运维和开发助手。${styleSection}${userRulesSection}
 
 ${hostContext}
 
