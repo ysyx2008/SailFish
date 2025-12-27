@@ -274,8 +274,6 @@ onMounted(async () => {
           terminal.write(data)
           // 捕获输出用于 AI 分析
           terminalStore.appendOutput(props.tabId, data)
-          // 🆕 记录输出时间（用于命令完成检测）
-          lastOutputTime = Date.now()
         } catch (e) {
           // 忽略写入错误
         }
@@ -288,8 +286,6 @@ onMounted(async () => {
           terminal.write(data)
           // 捕获输出用于 AI 分析
           terminalStore.appendOutput(props.tabId, data)
-          // 🆕 记录输出时间（用于命令完成检测）
-          lastOutputTime = Date.now()
         } catch (e) {
           // 忽略写入错误
         }
@@ -913,10 +909,6 @@ const createOverlayCard = (title: string, command?: string, reserveLines = 4): s
   const cardId = generateCardId()
   const status: CardStatus = { state: 'pending', title, command }
   
-  // 获取当前行位置
-  const buffer = terminal.buffer.active
-  const currentLine = buffer.cursorY
-  
   // 输出空行作为占位
   terminal.write('\r\n'.repeat(reserveLines))
   
@@ -941,7 +933,6 @@ const createOverlayCard = (title: string, command?: string, reserveLines = 4): s
   // 使用 xterm Decoration API（自动处理滚动同步）
   const decoration = terminal.registerDecoration({
     marker,
-    element,
     x: 0,
     width: terminal.cols,
     height: reserveLines
@@ -1048,9 +1039,6 @@ const executeWithCard = async (
   
   const startTime = Date.now()
   
-  // 记录执行前的输出位置（用于捕获新输出）
-  const beforeLines = screenService.getLastNLines(5)
-  
   // 更新状态为运行中
   updateCardStatus(cardId, { state: 'running' })
   
@@ -1091,8 +1079,8 @@ const executeWithCard = async (
         updateCardStatus(cardId, {
           state: hasError ? 'error' : 'success',
           duration,
-          output: hasError ? errors[0] : (output || '完成'),
-          error: hasError ? errors[0] : undefined
+          output: hasError ? errors[0].content : (output || '完成'),
+          error: hasError ? errors[0].content : undefined
         })
         
         resolve({ success: !hasError, output, duration })
