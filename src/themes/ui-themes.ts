@@ -7,7 +7,7 @@
  */
 
 // UI 主题类型
-export type UiThemeName = 'dark' | 'light' | 'blue' | 'gruvbox' | 'forest' | 'ayu-mirage' | 'cyberpunk' | 'aurora' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-rose-pine'
+export type UiThemeName = 'dark' | 'light' | 'blue' | 'gruvbox' | 'forest' | 'ayu-mirage' | 'cyberpunk' | 'lavender' | 'aurora' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-rose-pine'
 
 // 颜色模式类型
 export type ColorScheme = 'dark' | 'light'
@@ -260,6 +260,28 @@ const cyberpunkTheme: UiThemeVars = {
   borderColor: '#2a2a44'
 }
 
+// 🆕 薰衣草浅色主题（优雅柔和的紫色调）
+const lavenderTheme: UiThemeVars = {
+  colorScheme: 'light',
+  bgPrimary: '#f8f6fc',
+  bgSecondary: '#f0ecf8',
+  bgTertiary: '#e8e2f4',
+  bgSurface: '#ffffff',
+  bgHover: '#ebe5f5',
+  
+  textPrimary: '#3d3550',
+  textSecondary: '#5a5070',
+  textMuted: '#8a80a0',
+  
+  accentPrimary: '#8b5cf6',
+  accentSecondary: '#a78bfa',
+  accentSuccess: '#22c55e',
+  accentWarning: '#f59e0b',
+  accentError: '#ef4444',
+  
+  borderColor: '#d8d0e8'
+}
+
 // 🆕 极光主题（神秘渐变）
 const auroraTheme: UiThemeVars = {
   colorScheme: 'dark',
@@ -291,6 +313,7 @@ export const uiThemes: Record<UiThemeName, UiThemeVars> = {
   'forest': forestTheme,
   'ayu-mirage': ayuMirageTheme,
   'cyberpunk': cyberpunkTheme,
+  'lavender': lavenderTheme,
   'aurora': auroraTheme,
   'sponsor-gold': sponsorGoldTheme,
   'sponsor-sakura': sponsorSakuraTheme,

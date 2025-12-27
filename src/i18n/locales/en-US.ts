@@ -513,6 +513,7 @@ export default {
       'forest': 'Forest',
       'ayu-mirage': 'Ayu Mirage',
       'cyberpunk': '🌃 Cyberpunk',
+      'lavender': '💜 Lavender',
       'aurora': '🌌 Aurora',
       'sponsor-gold': 'Royal Gold',
       'sponsor-sakura': 'Sakura Pink',

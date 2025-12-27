@@ -609,6 +609,31 @@ const integratedTerminalThemes: Record<UiThemeName, ITheme> = {
     brightWhite: '#ffffff'
   },
 
+  // Lavender (薰衣草浅色主题)
+  'lavender': {
+    background: '#f8f6fc',  // 与 UI 的 bgPrimary 完全一致
+    foreground: '#3d3550',
+    cursor: '#8b5cf6',
+    cursorAccent: '#f8f6fc',
+    selectionBackground: '#ebe5f5',
+    black: '#3d3550',
+    red: '#ef4444',
+    green: '#22c55e',
+    yellow: '#f59e0b',
+    blue: '#8b5cf6',
+    magenta: '#a78bfa',
+    cyan: '#06b6d4',
+    white: '#e8e2f4',
+    brightBlack: '#5a5070',
+    brightRed: '#f87171',
+    brightGreen: '#4ade80',
+    brightYellow: '#fbbf24',
+    brightBlue: '#a78bfa',
+    brightMagenta: '#c4b5fd',
+    brightCyan: '#22d3ee',
+    brightWhite: '#f8f6fc'
+  },
+
   // Aurora (极光主题)
   'aurora': {
     background: '#0f1419',  // 与 UI 的 bgPrimary 完全一致

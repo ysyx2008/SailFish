@@ -261,6 +261,27 @@
   box-shadow: 0 0 25px rgba(0, 255, 255, 0.6), 0 0 25px rgba(255, 0, 255, 0.3);
 }
 
+/* 🆕 薰衣草浅色主题 - 优雅柔和 */
+[data-ui-theme="lavender"] {
+  --bg-primary: #f8f6fc;
+  --bg-secondary: #f0ecf8;
+  --bg-tertiary: #e8e2f4;
+  --bg-surface: #ffffff;
+  --bg-hover: #ebe5f5;
+  
+  --text-primary: #3d3550;
+  --text-secondary: #5a5070;
+  --text-muted: #8a80a0;
+  
+  --accent-primary: #8b5cf6;
+  --accent-secondary: #a78bfa;
+  --accent-success: #22c55e;
+  --accent-warning: #f59e0b;
+  --accent-error: #ef4444;
+  
+  --border-color: #d8d0e8;
+}
+
 /* 🆕 极光主题 - 神秘渐变 */
 [data-ui-theme="aurora"] {
   --bg-primary: #0f1419;

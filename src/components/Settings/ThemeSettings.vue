@@ -21,8 +21,8 @@ const isSponsorUiTheme = (themeName: UiThemeName): boolean => {
 // 终端主题自动与 UI 主题同步，无需单独设置
 const currentUiTheme = computed(() => configStore.uiTheme)
 const uiThemeList = computed<UiThemeName[]>(() => {
-  // 新增两个主题：cyberpunk 和 aurora
-  const baseThemes: UiThemeName[] = ['dark', 'light', 'blue', 'gruvbox', 'forest', 'ayu-mirage', 'cyberpunk', 'aurora']
+  // 基础主题列表
+  const baseThemes: UiThemeName[] = ['dark', 'light', 'blue', 'gruvbox', 'forest', 'ayu-mirage', 'cyberpunk', 'lavender', 'aurora']
   // OEM 版本或赞助者：显示所有主题（包括专属主题）
   if (!showSponsor.value || isSponsor.value) {
     return [...baseThemes, ...sponsorUiThemes]
