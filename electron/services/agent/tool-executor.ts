@@ -482,8 +482,13 @@ async function executeCommand(
   // 使用 terminal-state.service 追踪命令执行，以便 get_terminal_context 可以获取实时输出
   const terminalStateService = getTerminalStateService()
   
-  // 开始追踪命令执行
-  terminalStateService.startCommandExecution(ptyId, command)
+  // 开始追踪命令执行（标记为 Agent 来源，前端可据此显示卡片）
+  terminalStateService.startCommandExecution(ptyId, command, {
+    source: 'agent',
+    agentStepTitle: handling.strategy === 'timed_execution'
+      ? `⏱️ ${command}`
+      : command
+  })
   
   // 注册输出监听器，将输出实时同步到 terminal-state.service
   const outputHandler = (data: string) => {

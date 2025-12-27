@@ -453,8 +453,12 @@ const electronAPI = {
     // ==================== 命令执行追踪 ====================
     
     // 开始追踪命令执行
-    startExecution: (id: string, command: string) =>
-      ipcRenderer.invoke('terminalState:startExecution', id, command) as Promise<{
+    startExecution: (
+      id: string, 
+      command: string,
+      options?: { source?: 'user' | 'agent'; agentStepTitle?: string }
+    ) =>
+      ipcRenderer.invoke('terminalState:startExecution', id, command, options) as Promise<{
         id: string
         terminalId: string
         command: string
@@ -462,6 +466,8 @@ const electronAPI = {
         cwdBefore: string
         status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled'
         output?: string
+        source?: 'user' | 'agent'
+        agentStepTitle?: string
       } | null>,
     
     // 追加命令输出
@@ -547,6 +553,10 @@ const electronAPI = {
         cwdBefore: string
         cwdAfter?: string
         status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+        /** 命令来源：user=用户输入，agent=AI Agent */
+        source?: 'user' | 'agent'
+        /** Agent 执行时的步骤标题 */
+        agentStepTitle?: string
       }
     }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data as Parameters<typeof callback>[0])

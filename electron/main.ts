@@ -823,8 +823,13 @@ ipcMain.handle('terminalState:getIdleState', async (_event, id: string): Promise
 // ==================== 命令执行追踪 ====================
 
 // 开始追踪命令执行
-ipcMain.handle('terminalState:startExecution', async (_event, id: string, command: string): Promise<CommandExecution | null> => {
-  return terminalStateService.startCommandExecution(id, command)
+ipcMain.handle('terminalState:startExecution', async (
+  _event, 
+  id: string, 
+  command: string,
+  options?: { source?: 'user' | 'agent'; agentStepTitle?: string }
+): Promise<CommandExecution | null> => {
+  return terminalStateService.startCommandExecution(id, command, options)
 })
 
 // 追加命令输出

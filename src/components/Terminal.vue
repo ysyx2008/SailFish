@@ -90,7 +90,11 @@ interface OverlayCard {
   marker: any                    // xterm Marker
   decoration: any                // xterm Decoration
   status: CardStatus
+  executionId?: string           // 关联的命令执行 ID（用于 Agent 命令）
 }
+
+// Agent 命令执行 ID -> 卡片 ID 的映射
+const agentExecutionToCard = new Map<string, string>()
 
 const overlayCards = ref<OverlayCard[]>([])
 
@@ -162,11 +166,18 @@ onMounted(async () => {
   // 初始化终端状态服务（CWD 追踪等）
   window.electronAPI.terminalState.init(props.ptyId, props.type)
   
-  // 监听命令执行事件，统一触发高亮（用户输入和 Agent 执行都会触发此事件）
+  // 监听命令执行事件
   unsubscribeCommandExecution = window.electronAPI.terminalState.onCommandExecution((event) => {
-    if (event.type === 'start' && event.execution.terminalId === props.ptyId) {
+    if (event.execution.terminalId !== props.ptyId) return
+    
+    const { type, execution } = event
+    
+    if (type === 'start') {
+      // 所有命令统一高亮（用户和 Agent 都一样）
+      // Agent 卡片功能暂时关闭，保留底层 API 以后备用
       highlightCommandLine()
     }
+    // complete 事件暂不处理（卡片功能关闭）
   })
 
   // 适配大小 - 使用 setTimeout 确保 DOM 完全渲染和布局完成
@@ -199,8 +210,8 @@ onMounted(async () => {
       if (inputBuffer.trim()) {
         window.electronAPI.terminalState.handleInput(props.ptyId, inputBuffer)
         
-        // 通过 startExecution 触发命令执行事件，统一高亮逻辑
-        window.electronAPI.terminalState.startExecution(props.ptyId, inputBuffer)
+        // 通过 startExecution 触发命令执行事件（用户输入）
+        window.electronAPI.terminalState.startExecution(props.ptyId, inputBuffer, { source: 'user' })
       }
       inputBuffer = ''
     } else if (data === '\x7f' || data === '\b') {
@@ -844,19 +855,22 @@ const clearCommandHighlights = () => {
 const createCardElement = (status: CardStatus): HTMLElement => {
   const el = document.createElement('div')
   el.className = 'xterm-overlay-card'
-  // 设置基础内联样式确保可见（CSS 类样式可能被覆盖）
+  // 紧凑样式 - 浮动在命令行右侧
   el.style.cssText = `
-    display: block !important;
+    display: inline-flex !important;
+    align-items: center;
+    gap: 8px;
     visibility: visible !important;
-    background: rgba(30, 30, 30, 0.98);
-    border-radius: 6px;
-    font-size: 12px;
+    background: rgba(30, 30, 30, 0.95);
+    border-radius: 4px;
+    font-size: 11px;
     color: #e0e0e0;
-    padding: 0;
+    padding: 4px 10px;
     margin: 0;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-    width: calc(100% - 16px);
-    margin-left: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    white-space: nowrap;
+    backdrop-filter: blur(4px);
+    border-left: 3px solid #3794ff;
   `
   updateCardElement(el, status)
   return el
@@ -873,49 +887,57 @@ const updateCardElement = (el: HTMLElement, status: CardStatus) => {
     error: '✗'
   }
   
+  const stateColors: Record<string, string> = {
+    pending: '#888',
+    running: '#3794ff',
+    success: '#4ec9b0',
+    error: '#f14c4c'
+  }
+  
   const duration = status.duration 
     ? (status.duration < 1000 ? `${status.duration}ms` : `${(status.duration / 1000).toFixed(1)}s`)
     : ''
   
-  el.className = `xterm-overlay-card status-${status.state}`
+  // 更新边框颜色
+  el.style.borderLeftColor = stateColors[status.state]
+  
+  // 紧凑布局：图标 + 命令片段 + 时间 + 关闭按钮
+  const shortCommand = status.command 
+    ? (status.command.length > 30 ? status.command.slice(0, 30) + '...' : status.command)
+    : ''
+  
   el.innerHTML = `
-    <div class="card-header">
-      <span class="status-icon">${stateIcons[status.state]}</span>
-      <span class="card-title">${status.title}</span>
-      ${duration ? `<span class="duration">${duration}</span>` : ''}
-      <button class="close-btn" data-action="close">×</button>
-    </div>
-    ${status.command ? `
-    <div class="command-line">
-      <span class="prompt">$</span>
-      <code>${status.command}</code>
-    </div>
-    ` : ''}
-    ${status.output || status.error ? `
-    <div class="card-body">
-      ${status.error ? `<div class="error-text">${status.error}</div>` : ''}
-      ${status.output && !status.error ? `<div class="output-text">${status.output}</div>` : ''}
-    </div>
-    ` : ''}
+    <span class="status-icon" style="font-size: 12px;">${stateIcons[status.state]}</span>
+    <span class="cmd-text" style="color: #aaa; font-family: monospace;">${shortCommand}</span>
+    ${duration ? `<span class="duration" style="color: #888; margin-left: 4px;">${duration}</span>` : ''}
+    <button class="close-btn" data-action="close" style="
+      background: none;
+      border: none;
+      color: #666;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 0 2px;
+      margin-left: 4px;
+    ">×</button>
   `
 }
 
 /**
  * 在终端当前位置创建一个覆盖卡片（使用 xterm Decoration API）
+ * 
+ * @param title 卡片标题
+ * @param command 命令内容
+ * @param lineOffset 相对于当前行的偏移（负数=向上，0=当前行）
  */
-const createOverlayCard = (title: string, command?: string, reserveLines = 4): string | null => {
+const createOverlayCard = (title: string, command?: string, lineOffset = 0): string | null => {
   if (!terminal) return null
 
   const cardId = generateCardId()
   const status: CardStatus = { state: 'pending', title, command }
   
-  // 输出空行作为占位
-  terminal.write('\r\n'.repeat(reserveLines))
-  
-  // 创建 Marker（标记在 buffer 中的位置）
-  const marker = terminal.registerMarker(-(reserveLines - 1))
+  // 创建 Marker（标记在当前光标位置，可以偏移）
+  const marker = terminal.registerMarker(lineOffset)
   if (!marker) {
-    console.error('[Terminal] 创建 Marker 失败')
     return null
   }
   
@@ -933,9 +955,7 @@ const createOverlayCard = (title: string, command?: string, reserveLines = 4): s
   // 使用 xterm Decoration API（自动处理滚动同步）
   const decoration = terminal.registerDecoration({
     marker,
-    x: 0,
-    width: terminal.cols,
-    height: reserveLines
+    anchor: 'left'  // 锚定在左侧
   })
   
   if (!decoration) {
@@ -945,18 +965,21 @@ const createOverlayCard = (title: string, command?: string, reserveLines = 4): s
   
   // 当 decoration 渲染时，手动添加我们的元素到容器
   decoration.onRender((container: HTMLElement) => {
-    // 手动添加卡片元素（xterm 可能不会自动添加）
+    // 手动添加卡片元素
     if (!container.contains(element)) {
       container.appendChild(element)
     }
     
-    // 设置容器样式
-    container.style.height = 'auto'
-    container.style.minHeight = `${reserveLines * 16}px`
+    // 设置容器样式 - 紧凑模式，不占用空间
+    container.style.position = 'absolute'
     container.style.zIndex = '100'
     container.style.overflow = 'visible'
     container.style.pointerEvents = 'auto'
     container.style.background = 'transparent'
+    container.style.width = 'auto'
+    container.style.maxWidth = '400px'
+    container.style.right = '8px'  // 靠右显示
+    container.style.left = 'auto'
   })
   
   const card: OverlayCard = {

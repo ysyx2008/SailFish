@@ -63,6 +63,10 @@ export interface CommandExecution {
   cwdAfter?: string
   /** 执行状态 */
   status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+  /** 命令来源：user=用户输入，agent=AI Agent */
+  source?: 'user' | 'agent'
+  /** Agent 执行时的步骤标题 */
+  agentStepTitle?: string
 }
 
 /**
@@ -428,8 +432,18 @@ export class TerminalStateService {
 
   /**
    * 开始追踪一个命令执行
+   * @param id 终端 ID
+   * @param command 命令内容
+   * @param options 可选配置
    */
-  startCommandExecution(id: string, command: string): CommandExecution | null {
+  startCommandExecution(
+    id: string, 
+    command: string,
+    options?: {
+      source?: 'user' | 'agent'
+      agentStepTitle?: string
+    }
+  ): CommandExecution | null {
     const state = this.states.get(id)
     if (!state) return null
 
@@ -440,7 +454,9 @@ export class TerminalStateService {
       startTime: Date.now(),
       cwdBefore: state.cwd,
       status: 'running',
-      output: ''
+      output: '',
+      source: options?.source,
+      agentStepTitle: options?.agentStepTitle
     }
 
     state.currentExecution = execution
