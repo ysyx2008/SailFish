@@ -6,7 +6,7 @@
  */
 import { ref, computed, watch, inject, onMounted, onUnmounted, toRef, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Upload, Trash2, X, HelpCircle, ChevronDown, Copy, Paperclip, Square, Send, Check } from 'lucide-vue-next'
+import { Upload, Trash2, X, HelpCircle, ChevronDown, Copy, Paperclip, Square, ArrowUp, Check } from 'lucide-vue-next'
 import { useConfigStore } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
 import AgentPlanView from './AgentPlanView.vue'
@@ -1414,7 +1414,7 @@ onUnmounted(() => {
             :title="t('ai.sendSupplement')"
             @click="handleSend"
           >
-            <Send :size="18" />
+            <ArrowUp :size="18" />
           </button>
           <button
             v-else-if="isAgentRunning && canSendEmpty"
@@ -1441,7 +1441,7 @@ onUnmounted(() => {
             :title="agentMode ? t('ai.executeTask') : t('ai.sendMessage')"
             @click="handleSend"
           >
-            <Send :size="18" />
+            <ArrowUp :size="18" />
           </button>
         </div>
       </div>
@@ -3090,15 +3090,14 @@ onUnmounted(() => {
   gap: 10px;
   padding: 8px 10px 8px 12px;
   background: var(--bg-surface);
-  border: 1px solid var(--border-color);
+  border: none;
   border-radius: 16px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .input-container:focus-within {
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(100, 150, 255, 0.15), 0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: 0 0 0 2px var(--accent-primary), 0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 /* 上传按钮 */
@@ -3151,6 +3150,12 @@ onUnmounted(() => {
   line-height: 1.5;
   min-height: 24px;
   max-height: 180px;
+}
+
+.ai-input textarea:focus {
+  border: none;
+  box-shadow: none;
+  outline: none;
 }
 
 .ai-input textarea::placeholder {
