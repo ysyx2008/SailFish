@@ -175,6 +175,9 @@ onMounted(async () => {
     if (data === '\r' || data === '\n') {
       if (inputBuffer.trim()) {
         window.electronAPI.terminalState.handleInput(props.ptyId, inputBuffer)
+        
+        // 🆕 开始追踪命令执行
+        startCommandTracking(inputBuffer.trim())
       }
       inputBuffer = ''
     } else if (data === '\x7f' || data === '\b') {
@@ -521,10 +524,33 @@ const handleContextMenu = (event: MouseEvent) => {
   event.preventDefault()
   
   const selection = terminal?.getSelection() || ''
+  
+  // 菜单尺寸估算（5个菜单项 + 2个分隔线 + padding）
+  const menuHeight = 220
+  const menuWidth = 200
+  
+  // 计算位置，确保菜单不会超出屏幕边界
+  let x = event.clientX
+  let y = event.clientY
+  
+  // 检查右边界
+  if (x + menuWidth > window.innerWidth) {
+    x = window.innerWidth - menuWidth - 8
+  }
+  
+  // 检查下边界：如果菜单会超出底部，则向上显示
+  if (y + menuHeight > window.innerHeight) {
+    y = window.innerHeight - menuHeight - 8
+  }
+  
+  // 确保不会超出顶部或左侧
+  x = Math.max(8, x)
+  y = Math.max(8, y)
+  
   contextMenu.value = {
     visible: true,
-    x: event.clientX,
-    y: event.clientY,
+    x,
+    y,
     hasSelection: selection.length > 0,
     selectedText: selection
   }
