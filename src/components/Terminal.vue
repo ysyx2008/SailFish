@@ -44,6 +44,7 @@ let screenService: TerminalScreenService | null = null
 let snapshotManager: TerminalSnapshotManager | null = null
 let unsubscribe: (() => void) | null = null
 let unsubscribeDisconnect: (() => void) | null = null  // SSH 断开连接事件取消订阅
+let unsubscribeCommandExecution: (() => void) | null = null  // Agent 命令执行事件取消订阅
 let unsubscribeScreenRequest: (() => void) | null = null  // 主进程屏幕内容请求监听
 let unsubscribeVisibleRequest: (() => void) | null = null  // 主进程可视内容请求监听
 let unsubscribeAnalysisRequest: (() => void) | null = null  // 主进程屏幕分析请求监听
@@ -160,6 +161,13 @@ onMounted(async () => {
 
   // 初始化终端状态服务（CWD 追踪等）
   window.electronAPI.terminalState.init(props.ptyId, props.type)
+  
+  // 监听命令执行事件，统一触发高亮（用户输入和 Agent 执行都会触发此事件）
+  unsubscribeCommandExecution = window.electronAPI.terminalState.onCommandExecution((event) => {
+    if (event.type === 'start' && event.execution.terminalId === props.ptyId) {
+      highlightCommandLine()
+    }
+  })
 
   // 适配大小 - 使用 setTimeout 确保 DOM 完全渲染和布局完成
   await nextTick()
@@ -191,8 +199,8 @@ onMounted(async () => {
       if (inputBuffer.trim()) {
         window.electronAPI.terminalState.handleInput(props.ptyId, inputBuffer)
         
-        // 🆕 高亮命令行
-        highlightCommandLine()
+        // 通过 startExecution 触发命令执行事件，统一高亮逻辑
+        window.electronAPI.terminalState.startExecution(props.ptyId, inputBuffer)
       }
       inputBuffer = ''
     } else if (data === '\x7f' || data === '\b') {
@@ -431,6 +439,11 @@ onMounted(async () => {
 onUnmounted(() => {
   // 先标记为已销毁，防止后续回调执行
   isDisposed = true
+  
+  // 清理命令执行事件监听
+  if (unsubscribeCommandExecution) {
+    unsubscribeCommandExecution()
+  }
   
   // 清理命令行高亮
   clearCommandHighlights()
