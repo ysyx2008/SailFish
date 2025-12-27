@@ -8,7 +8,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { useConfigStore } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
-import { getTheme } from '../themes'
+import { getIntegratedTheme } from '../themes'
 import { TerminalScreenService, type ScreenContent } from '../services/terminal-screen.service'
 import { TerminalSnapshotManager, type TerminalSnapshot, type TerminalDiff } from '../services/terminal-snapshot.service'
 import '@xterm/xterm/css/xterm.css'
@@ -64,8 +64,8 @@ const isReconnecting = ref(false)
 onMounted(async () => {
   if (!terminalRef.value) return
 
-  // 获取主题
-  const theme = getTheme(configStore.currentTheme)
+  // 获取与 UI 主题融合的终端主题
+  const theme = getIntegratedTheme(configStore.uiTheme)
   const settings = configStore.terminalSettings
 
   // 创建终端实例
@@ -466,12 +466,12 @@ watch(
   { immediate: true }
 )
 
-// 监听主题变化
+// 监听 UI 主题变化，同步更新终端配色
 watch(
-  () => configStore.currentTheme,
-  themeName => {
+  () => configStore.uiTheme,
+  uiThemeName => {
     if (terminal) {
-      const theme = getTheme(themeName)
+      const theme = getIntegratedTheme(uiThemeName)
       terminal.options.theme = theme
     }
   }

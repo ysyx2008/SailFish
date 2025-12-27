@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore } from '../../stores/config'
-import { themes, type ThemeName, sponsorThemes } from '../../themes'
 import { uiThemes, type UiThemeName, sponsorUiThemes } from '../../themes/ui-themes'
 import { oemConfig } from '../../config/oem.config'
 
@@ -13,40 +12,17 @@ const configStore = useConfigStore()
 const isSponsor = computed(() => configStore.isSponsor)
 const showSponsor = computed(() => oemConfig.features.showSponsor)
 
-// 检查终端主题是否为赞助者专属
-const isSponsorTheme = (themeName: ThemeName): boolean => {
-  return sponsorThemes.includes(themeName)
-}
-
-// 检查终端主题是否被锁定
-const isThemeLocked = (themeName: ThemeName): boolean => {
-  if (!showSponsor.value) return false  // OEM 版本隐藏赞助功能，不锁定
-  return isSponsorTheme(themeName) && !isSponsor.value
-}
-
 // 检查 UI 主题是否为赞助者专属
 const isSponsorUiTheme = (themeName: UiThemeName): boolean => {
   return sponsorUiThemes.includes(themeName)
 }
 
-// 终端主题
-const currentTheme = computed(() => configStore.currentTheme)
-const themeList = Object.keys(themes) as ThemeName[]
-
-const setTheme = async (themeName: string) => {
-  const theme = themeName as ThemeName
-  if (isThemeLocked(theme)) {
-    // 提示用户去支持
-    alert(t('sponsor.unlockHint'))
-    return
-  }
-  await configStore.setTheme(themeName)
-}
-
 // UI 主题（赞助者专属主题隐藏，赞助后才显示作为惊喜）
+// 终端主题自动与 UI 主题同步，无需单独设置
 const currentUiTheme = computed(() => configStore.uiTheme)
 const uiThemeList = computed<UiThemeName[]>(() => {
-  const baseThemes: UiThemeName[] = ['dark', 'light', 'blue', 'gruvbox', 'forest', 'ayu-mirage']
+  // 新增两个主题：cyberpunk 和 aurora
+  const baseThemes: UiThemeName[] = ['dark', 'light', 'blue', 'gruvbox', 'forest', 'ayu-mirage', 'cyberpunk', 'aurora']
   // OEM 版本或赞助者：显示所有主题（包括专属主题）
   if (!showSponsor.value || isSponsor.value) {
     return [...baseThemes, ...sponsorUiThemes]
@@ -57,6 +33,7 @@ const uiThemeList = computed<UiThemeName[]>(() => {
 
 const setUiTheme = async (themeName: UiThemeName) => {
   await configStore.setUiTheme(themeName)
+  // 终端主题自动与 UI 主题同步，无需额外操作
 }
 
 // UI 主题预览样式
@@ -151,63 +128,6 @@ const getUiThemeAccentStyle = (themeName: UiThemeName) => {
               </span>
             </span>
             <span v-if="currentUiTheme === themeName" class="theme-active">✓</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 终端主题选择 -->
-    <div class="settings-section">
-      <h4>{{ t('themeSettings.title') }}</h4>
-      <p class="section-desc">{{ t('themeSettings.selectTheme') }}</p>
-
-      <div class="theme-grid">
-        <div
-          v-for="themeName in themeList"
-          :key="themeName"
-          class="theme-card"
-          :class="{ 
-            active: currentTheme === themeName,
-            locked: isThemeLocked(themeName as ThemeName)
-          }"
-          @click="setTheme(themeName)"
-        >
-          <div class="theme-preview" :style="{
-            background: themes[themeName].background,
-            color: themes[themeName].foreground,
-            opacity: isThemeLocked(themeName as ThemeName) ? 0.5 : 1
-          }">
-            <div class="preview-line">
-              <span :style="{ color: themes[themeName].green }">user@host</span>
-              <span :style="{ color: themes[themeName].foreground }">:</span>
-              <span :style="{ color: themes[themeName].blue }">~</span>
-              <span :style="{ color: themes[themeName].foreground }">$</span>
-            </div>
-            <div class="preview-line">
-              <span :style="{ color: themes[themeName].yellow }">ls -la</span>
-            </div>
-            <div class="preview-line">
-              <span :style="{ color: themes[themeName].cyan }">drwxr-xr-x</span>
-              <span :style="{ color: themes[themeName].foreground }"> Documents</span>
-            </div>
-            <div class="preview-line">
-              <span :style="{ color: themes[themeName].red }">-rw-r--r--</span>
-              <span :style="{ color: themes[themeName].foreground }"> file.txt</span>
-            </div>
-            <!-- 锁定遮罩 -->
-            <div v-if="isThemeLocked(themeName as ThemeName)" class="theme-lock-overlay">
-              <div class="lock-icon">🔒</div>
-              <div class="lock-hint">{{ t('sponsor.exclusive') }}</div>
-            </div>
-          </div>
-          <div class="theme-info">
-            <span class="theme-name">
-              {{ themeName }}
-              <span v-if="isSponsorTheme(themeName as ThemeName) && !isThemeLocked(themeName as ThemeName)" class="exclusive-badge">
-                {{ t('sponsor.exclusive') }}
-              </span>
-            </span>
-            <span v-if="currentTheme === themeName" class="theme-active">✓</span>
           </div>
         </div>
       </div>
