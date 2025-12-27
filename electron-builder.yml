@@ -27,6 +27,9 @@ files:
   - node_modules/ssh2/**/*
   - node_modules/electron-store/**/*
   - node_modules/jieba-wasm/**/*
+  # 排除不需要的大体积依赖（sharp 只用于图片处理，我们只用文本 embedding）
+  - "!node_modules/sharp/**/*"
+  - "!node_modules/@img/**/*"
 asarUnpack:
   - node_modules/@homebridge/node-pty-prebuilt-multiarch/**/*
 # 启用最大压缩率以减小安装包大小（会增加打包时间）
@@ -39,6 +42,12 @@ extraResources:
       - "**/*"
 win:
   icon: resources/icon.ico
+  # Windows 排除其他平台的原生模块
+  files:
+    - "!node_modules/onnxruntime-node/bin/napi-v3/linux"
+    - "!node_modules/onnxruntime-node/bin/napi-v3/darwin"
+    - "!node_modules/@lancedb/*-linux-*"
+    - "!node_modules/@lancedb/*-darwin-*"
   target:
     - target: nsis
       arch:
@@ -58,6 +67,12 @@ nsis:
   language: 2052
 mac:
   icon: resources/icon.icns
+  # macOS 排除其他平台的原生模块
+  files:
+    - "!node_modules/onnxruntime-node/bin/napi-v3/linux"
+    - "!node_modules/onnxruntime-node/bin/napi-v3/win32"
+    - "!node_modules/@lancedb/*-linux-*"
+    - "!node_modules/@lancedb/*-win32-*"
   target:
     - target: dmg
       arch:
@@ -107,6 +122,12 @@ dmg:
       path: resources/dmg/安装说明.txt
 linux:
   icon: resources
+  # Linux 排除其他平台的原生模块
+  files:
+    - "!node_modules/onnxruntime-node/bin/napi-v3/darwin"
+    - "!node_modules/onnxruntime-node/bin/napi-v3/win32"
+    - "!node_modules/@lancedb/*-darwin-*"
+    - "!node_modules/@lancedb/*-win32-*"
   target:
     - target: AppImage
       arch:
