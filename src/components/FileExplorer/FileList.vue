@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { Folder, FileText, Upload } from 'lucide-vue-next'
 import type { SftpFileInfo } from '../../composables/useSftp'
 
 const props = defineProps<{
@@ -175,9 +176,7 @@ const getFileIcon = (file: SftpFileInfo) => {
 
       <!-- 空目录 -->
       <div v-else-if="files.length === 0" class="empty-state">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-        </svg>
+        <Folder :size="48" :stroke-width="1.5" />
         <p>目录为空</p>
         <p class="tip">拖拽文件到此处上传</p>
       </div>
@@ -195,15 +194,8 @@ const getFileIcon = (file: SftpFileInfo) => {
       >
         <div class="col col-name">
           <span class="file-icon" :class="getFileIcon(file)">
-            <!-- 目录图标 -->
-            <svg v-if="file.isDirectory" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
-            </svg>
-            <!-- 文件图标 -->
-            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-            </svg>
+            <Folder v-if="file.isDirectory" :size="16" fill="currentColor" />
+            <FileText v-else :size="16" />
           </span>
           <span class="file-name" :title="file.name">{{ file.name }}</span>
           <span v-if="file.isSymlink" class="symlink-badge">→</span>
@@ -217,11 +209,7 @@ const getFileIcon = (file: SftpFileInfo) => {
     <!-- 拖拽提示 -->
     <div v-if="isDragOver" class="drop-overlay">
       <div class="drop-hint">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="17 8 12 3 7 8"/>
-          <line x1="12" y1="3" x2="12" y2="15"/>
-        </svg>
+        <Upload :size="48" />
         <p>释放以上传文件</p>
       </div>
     </div>

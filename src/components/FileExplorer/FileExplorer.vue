@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Folder, X, XCircle, ChevronLeft, ChevronRight, ChevronUp, Home, RefreshCw, FolderPlus, Upload } from 'lucide-vue-next'
 import { useSftp, type SftpFileInfo, type SftpConnectionConfig } from '../../composables/useSftp'
 import FileList from './FileList.vue'
 import PathBreadcrumb from './PathBreadcrumb.vue'
@@ -330,19 +331,14 @@ const handleClearAllTransfers = () => {
       <!-- 标题栏 -->
       <div class="explorer-header">
         <div class="header-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
+          <Folder :size="18" />
           <span v-if="connectionInfo">
             SFTP - {{ connectionInfo.username }}@{{ connectionInfo.host }}
           </span>
           <span v-else>{{ t('fileExplorer.sftpFileManager') }}</span>
         </div>
         <button class="btn-icon" @click="$emit('close')" :title="t('fileExplorer.close')">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
+          <X :size="16" />
         </button>
       </div>
 
@@ -354,11 +350,7 @@ const handleClearAllTransfers = () => {
 
       <!-- 连接错误 -->
       <div v-else-if="error && !isConnected" class="error-state">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="15" y1="9" x2="9" y2="15"/>
-          <line x1="9" y1="9" x2="15" y2="15"/>
-        </svg>
+        <XCircle :size="48" :stroke-width="1.5" />
         <p>{{ t('fileExplorer.connectionFailed') }}</p>
         <p class="error-message">{{ error }}</p>
         <button class="btn btn-primary" @click="connect(props.config)">{{ t('fileExplorer.retry') }}</button>
@@ -375,9 +367,7 @@ const handleClearAllTransfers = () => {
               @click="goBack"
               :title="t('fileExplorer.goBack')"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="15 18 9 12 15 6"/>
-              </svg>
+              <ChevronLeft :size="16" />
             </button>
             <button
               class="btn-icon"
@@ -385,9 +375,7 @@ const handleClearAllTransfers = () => {
               @click="goForward"
               :title="t('fileExplorer.goForward')"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="9 18 15 12 9 6"/>
-              </svg>
+              <ChevronRight :size="16" />
             </button>
             <button
               class="btn-icon"
@@ -395,15 +383,10 @@ const handleClearAllTransfers = () => {
               @click="goUp"
               :title="t('fileExplorer.goUp')"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="18 15 12 9 6 15"/>
-              </svg>
+              <ChevronUp :size="16" />
             </button>
             <button class="btn-icon" @click="goHome" :title="t('fileExplorer.goHome')">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-                <polyline points="9 22 9 12 15 12 15 22"/>
-              </svg>
+              <Home :size="16" />
             </button>
           </div>
 
@@ -411,24 +394,13 @@ const handleClearAllTransfers = () => {
 
           <div class="toolbar-actions">
             <button class="btn-icon" @click="refresh" :title="t('fileExplorer.refresh')">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="23 4 23 10 17 10"/>
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-              </svg>
+              <RefreshCw :size="16" />
             </button>
             <button class="btn-icon" @click="openNewFolderDialog" :title="t('fileExplorer.newFolder')">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                <line x1="12" y1="11" x2="12" y2="17"/>
-                <line x1="9" y1="14" x2="15" y2="14"/>
-              </svg>
+              <FolderPlus :size="16" />
             </button>
             <button class="btn btn-sm btn-primary" @click="selectAndUpload">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="17 8 12 3 7 8"/>
-                <line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
+              <Upload :size="14" />
               上传
             </button>
           </div>
@@ -539,10 +511,7 @@ const handleClearAllTransfers = () => {
           <div class="dialog-header">
             <h3>{{ previewFile?.name }}</h3>
             <button class="btn-icon" @click="showPreviewDialog = false">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"/>
-                <line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
+              <X :size="16" />
             </button>
           </div>
           <div class="dialog-body preview-body">

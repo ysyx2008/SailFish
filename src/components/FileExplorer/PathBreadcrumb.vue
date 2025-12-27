@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, nextTick, watch } from 'vue'
+import { Pencil } from 'lucide-vue-next'
 
 const props = defineProps<{
   path: string
@@ -115,10 +116,7 @@ watch(() => props.path, (newPath) => {
       </div>
       <!-- 空白区域用于点击进入编辑模式 -->
       <div class="edit-hint" :title="'点击编辑路径'">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-        </svg>
+        <Pencil :size="12" />
       </div>
     </template>
   </div>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Server, ChevronLeft, ChevronRight, ChevronUp, Home, RefreshCw, Monitor, Bookmark, X, Folder, FolderPlus } from 'lucide-vue-next'
 import { useLocalFs, type LocalFileInfo } from '../../composables/useLocalFs'
 import { useSftp, type SftpFileInfo, type SftpConnectionConfig } from '../../composables/useSftp'
 import { useBookmarks, type FileBookmark } from '../../composables/useBookmarks'
@@ -654,12 +655,7 @@ defineExpose({
 
     <!-- 未连接状态（仅远程） -->
     <div v-else-if="type === 'remote' && !isConnected && !isConnecting" class="disconnected-state">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
-        <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
-        <line x1="6" y1="6" x2="6" y2="6"/>
-        <line x1="6" y1="18" x2="6" y2="18"/>
-      </svg>
+      <Server :size="48" :stroke-width="1.5" />
       <p>{{ t('fileManager.notConnected') }}</p>
       <p class="error-message" v-if="error">{{ error }}</p>
     </div>
@@ -670,45 +666,24 @@ defineExpose({
       <div class="pane-toolbar">
         <div class="toolbar-nav">
           <button class="btn-icon" :disabled="!canGoBack" @click="goBack" :title="t('fileManager.goBack')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="15 18 9 12 15 6"/>
-            </svg>
+            <ChevronLeft :size="14" />
           </button>
           <button class="btn-icon" :disabled="!canGoForward" @click="goForward" :title="t('fileManager.goForward')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="9 18 15 12 9 6"/>
-            </svg>
+            <ChevronRight :size="14" />
           </button>
           <button class="btn-icon" :disabled="!canGoUp" @click="goUp" :title="t('fileManager.goUp')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="18 15 12 9 6 15"/>
-            </svg>
+            <ChevronUp :size="14" />
           </button>
           <button class="btn-icon" @click="goHome" :title="t('fileManager.goHome')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-              <polyline points="9 22 9 12 15 12 15 22"/>
-            </svg>
+            <Home :size="14" />
           </button>
           <button class="btn-icon" @click="refresh" :title="t('fileManager.refresh')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="23 4 23 10 17 10"/>
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-            </svg>
+            <RefreshCw :size="14" />
           </button>
         </div>
         <div class="toolbar-title">
-          <svg v-if="type === 'local'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-            <line x1="8" y1="21" x2="16" y2="21"/>
-            <line x1="12" y1="17" x2="12" y2="21"/>
-          </svg>
-          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
-            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
-            <line x1="6" y1="6" x2="6" y2="6"/>
-            <line x1="6" y1="18" x2="6" y2="18"/>
-          </svg>
+          <Monitor v-if="type === 'local'" :size="14" />
+          <Server v-else :size="14" />
           <span>{{ type === 'local' ? t('fileManager.local') : t('fileManager.remote') }}</span>
         </div>
         <div class="toolbar-actions">
@@ -720,9 +695,7 @@ defineExpose({
               @click="toggleBookmarkDropdown" 
               :title="t('fileManager.bookmarks')"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" :fill="isCurrentPathBookmarked ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2">
-                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
-              </svg>
+              <Bookmark :size="14" :fill="isCurrentPathBookmarked ? 'currentColor' : 'none'" />
             </button>
             <!-- 书签下拉菜单 -->
             <div v-if="showBookmarkDropdown" class="bookmark-dropdown" @click.stop>
@@ -760,10 +733,7 @@ defineExpose({
                     @click.stop="handleDeleteBookmark(bookmark)"
                     :title="t('common.delete')"
                   >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <line x1="18" y1="6" x2="6" y2="18"/>
-                      <line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
+                    <X :size="12" />
                   </button>
                 </div>
               </div>
@@ -775,16 +745,10 @@ defineExpose({
             <div v-if="showBookmarkDropdown" class="bookmark-dropdown-overlay" @click="closeBookmarkDropdown"></div>
           </div>
           <button class="btn-icon" @click="showTree = !showTree" :title="t('fileManager.toggleTree')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-            </svg>
+            <Folder :size="14" />
           </button>
           <button class="btn-icon" @click="openNewFolderDialog" :title="t('fileManager.newFolder')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-              <line x1="12" y1="11" x2="12" y2="17"/>
-              <line x1="9" y1="14" x2="15" y2="14"/>
-            </svg>
+            <FolderPlus :size="14" />
           </button>
         </div>
       </div>
@@ -914,10 +878,7 @@ defineExpose({
           <div class="dialog-header">
             <h3>{{ previewFile?.name }}</h3>
             <button class="btn-close" @click="showPreviewDialog = false">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"/>
-                <line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
+              <X :size="14" />
             </button>
           </div>
           <div class="dialog-body preview-body">

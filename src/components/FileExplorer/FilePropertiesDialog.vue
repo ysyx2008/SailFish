@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { X, Folder, FileText, Copy, Lock } from 'lucide-vue-next'
 import type { SftpFileInfo } from '../../composables/useSftp'
 import { toast } from '../../composables/useToast'
 
@@ -164,10 +165,7 @@ const getFileType = (file: SftpFileInfo | null): string => {
             <div class="dialog-header">
               <h3>{{ mode === 'chmod' ? '修改权限' : '属性' }}</h3>
               <button class="btn-close" @click="handleClose">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
+                <X :size="16" />
               </button>
             </div>
 
@@ -178,13 +176,8 @@ const getFileType = (file: SftpFileInfo | null): string => {
                 <!-- 文件图标和名称 -->
                 <div class="file-header">
                   <div class="file-icon" :class="{ directory: file.isDirectory }">
-                    <svg v-if="file.isDirectory" width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
-                    </svg>
-                    <svg v-else width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                      <polyline points="14 2 14 8 20 8"/>
-                    </svg>
+                    <Folder v-if="file.isDirectory" :size="32" fill="currentColor" />
+                    <FileText v-else :size="32" :stroke-width="1.5" />
                   </div>
                   <div class="file-name-info">
                     <span class="name" :title="file.name">{{ file.name }}</span>
@@ -199,10 +192,7 @@ const getFileType = (file: SftpFileInfo | null): string => {
                     <div class="value path-value">
                       <span :title="file.path">{{ file.path }}</span>
                       <button class="btn-copy" @click="copyPath" title="复制路径">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                        </svg>
+                        <Copy :size="14" />
                       </button>
                     </div>
                   </div>
@@ -234,10 +224,7 @@ const getFileType = (file: SftpFileInfo | null): string => {
               <!-- 权限编辑 -->
               <div class="permissions-section">
                 <div class="section-title">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                  </svg>
+                  <Lock :size="16" />
                   <span>权限设置</span>
                 </div>
 

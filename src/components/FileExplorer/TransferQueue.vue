@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { ArrowUp, ArrowDown, X, RefreshCw, Check } from 'lucide-vue-next'
 import type { TransferProgress } from '../../composables/useSftp'
 
 const props = defineProps<{
@@ -143,16 +144,8 @@ const handleClearAll = () => {
       >
         <!-- 方向图标 -->
         <span class="direction-icon">
-          <!-- 上传 -->
-          <svg v-if="transfer.direction === 'upload'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="17 11 12 6 7 11"/>
-            <line x1="12" y1="6" x2="12" y2="18"/>
-          </svg>
-          <!-- 下载 -->
-          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="7 13 12 18 17 13"/>
-            <line x1="12" y1="18" x2="12" y2="6"/>
-          </svg>
+          <ArrowUp v-if="transfer.direction === 'upload'" :size="14" />
+          <ArrowDown v-else :size="14" />
         </span>
 
         <!-- 文件信息 -->
@@ -194,10 +187,7 @@ const handleClearAll = () => {
             @click="handleCancel(transfer.transferId)"
             title="取消传输"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
+            <X :size="14" />
           </button>
 
           <!-- 重试按钮 - 失败或取消 -->
@@ -207,17 +197,12 @@ const handleClearAll = () => {
             @click="handleRetry(transfer)"
             title="重试"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="23 4 23 10 17 10"/>
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-            </svg>
+            <RefreshCw :size="14" />
           </button>
 
           <!-- 完成图标 -->
           <span v-if="transfer.status === 'completed'" class="status-icon success">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
+            <Check :size="14" />
           </span>
         </div>
       </div>
