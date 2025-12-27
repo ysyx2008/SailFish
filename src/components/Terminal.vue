@@ -57,6 +57,18 @@ let dprChangeHandler: (() => void) | null = null
 // 用户输入缓冲区（用于 CWD 追踪）
 let inputBuffer = ''
 
+// ============== 命令行高亮功能 ==============
+interface CommandHighlight {
+  marker: any
+  decoration: any
+}
+
+// 命令行高亮列表
+const commandHighlights: CommandHighlight[] = []
+
+// 是否启用命令行高亮
+const enableCommandHighlights = true
+
 // 右键菜单状态
 const contextMenu = ref({
   visible: false,
@@ -170,14 +182,17 @@ onMounted(async () => {
   terminal.onData(data => {
     terminalStore.writeToTerminal(props.tabId, data)
     
+    // 用户有输入操作时，清除错误提示
+    terminalStore.clearError(props.tabId)
+    
     // 追踪用户输入（用于 CWD 变化检测）
     // 当用户按下回车时，发送完整命令给终端状态服务
     if (data === '\r' || data === '\n') {
       if (inputBuffer.trim()) {
         window.electronAPI.terminalState.handleInput(props.ptyId, inputBuffer)
         
-        // 🆕 开始追踪命令执行
-        startCommandTracking(inputBuffer.trim())
+        // 🆕 高亮命令行
+        highlightCommandLine()
       }
       inputBuffer = ''
     } else if (data === '\x7f' || data === '\b') {
@@ -251,6 +266,8 @@ onMounted(async () => {
           terminal.write(data)
           // 捕获输出用于 AI 分析
           terminalStore.appendOutput(props.tabId, data)
+          // 🆕 记录输出时间（用于命令完成检测）
+          lastOutputTime = Date.now()
         } catch (e) {
           // 忽略写入错误
         }
@@ -263,6 +280,8 @@ onMounted(async () => {
           terminal.write(data)
           // 捕获输出用于 AI 分析
           terminalStore.appendOutput(props.tabId, data)
+          // 🆕 记录输出时间（用于命令完成检测）
+          lastOutputTime = Date.now()
         } catch (e) {
           // 忽略写入错误
         }
@@ -412,6 +431,9 @@ onMounted(async () => {
 onUnmounted(() => {
   // 先标记为已销毁，防止后续回调执行
   isDisposed = true
+  
+  // 清理命令行高亮
+  clearCommandHighlights()
   
   if (resizeTimeout) {
     clearTimeout(resizeTimeout)
@@ -737,6 +759,72 @@ const handleReconnect = async () => {
   } finally {
     isReconnecting.value = false
   }
+}
+
+// ============== 命令行高亮功能实现 ==============
+
+/**
+ * 高亮当前命令行
+ * 使用 xterm Decoration API 给命令行添加背景色，方便区分命令和输出
+ */
+const highlightCommandLine = () => {
+  if (!terminal || !enableCommandHighlights) return
+  
+  // 在当前行创建 marker
+  const marker = terminal.registerMarker(0)
+  if (!marker) return
+  
+    // 注册装饰器
+  const decoration = terminal.registerDecoration({
+    marker,
+    anchor: 'left'
+  })
+  
+  if (!decoration) {
+    marker.dispose()
+    return
+  }
+  
+  let rendered = false
+  
+  // 设置渲染回调 - 添加命令行高亮背景
+  decoration.onRender((container: HTMLElement) => {
+    if (rendered) return
+    rendered = true
+    
+    // 设置容器样式
+    container.style.overflow = 'visible'
+    container.style.pointerEvents = 'none'
+    container.style.zIndex = '5'
+    container.style.width = '100%'
+    container.style.position = 'absolute'
+    container.style.left = '0'
+    
+    // 创建高亮背景元素
+    const highlight = document.createElement('div')
+    highlight.className = 'cmd-highlight'
+    container.appendChild(highlight)
+  })
+  
+  commandHighlights.push({ marker, decoration })
+  
+  // 限制数量（保留最近 100 个）
+  while (commandHighlights.length > 100) {
+    const old = commandHighlights.shift()
+    old?.decoration?.dispose()
+    old?.marker?.dispose()
+  }
+}
+
+/**
+ * 清除所有命令行高亮
+ */
+const clearCommandHighlights = () => {
+  for (const hl of commandHighlights) {
+    hl.decoration?.dispose()
+    hl.marker?.dispose()
+  }
+  commandHighlights.length = 0
 }
 
 // ============== 实验性功能：卡片管理方法 (v2 - xterm Decoration API) ==============
@@ -1365,6 +1453,55 @@ defineExpose({
 .terminal-inner :deep(.xterm-overlay-card .error-text) {
   color: #f14c4c;
   font-size: 11px;
+}
+
+/* ============== 命令行高亮样式 ============== */
+.terminal-inner :deep(.cmd-highlight) {
+  position: absolute;
+  top: 2px;
+  left: 0;
+  right: 0;
+  width: 100vw;
+  max-width: 100%;
+  height: calc(1em + 2px);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent-primary, #4299e1) 8%, transparent) 0%,
+    color-mix(in srgb, var(--accent-primary, #4299e1) 22%, transparent) 100%
+  );
+  border-right: 3px solid color-mix(in srgb, var(--accent-primary, #4299e1) 70%, transparent);
+  border-radius: 2px;
+  pointer-events: none;
+  animation: highlightFadeIn 0.3s ease-out;
+}
+
+@keyframes highlightFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 深色主题 - 稍微调亮 */
+[data-color-scheme="dark"] .terminal-inner :deep(.cmd-highlight) {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent-primary, #4299e1) 6%, transparent) 0%,
+    color-mix(in srgb, var(--accent-primary, #4299e1) 20%, transparent) 100%
+  );
+}
+
+/* 浅色主题 - 稍微调深 */
+[data-color-scheme="light"] .terminal-inner :deep(.cmd-highlight) {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent-primary, #4299e1) 10%, transparent) 0%,
+    color-mix(in srgb, var(--accent-primary, #4299e1) 25%, transparent) 100%
+  );
 }
 </style>
 

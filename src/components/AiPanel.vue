@@ -491,6 +491,11 @@ const handleSend = async () => {
   // 如果正在 IME 组合输入（如中文输入法选词），不发送
   if (isComposing.value) return
   
+  // 用户有操作时，清除错误提示
+  if (currentTabId.value) {
+    terminalStore.clearError(currentTabId.value)
+  }
+  
   // 关闭 @ 补全菜单
   closeMentionMenu()
   
