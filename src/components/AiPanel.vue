@@ -6,6 +6,7 @@
  */
 import { ref, computed, watch, inject, onMounted, onUnmounted, toRef, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Upload, Trash2, X, HelpCircle, ChevronDown, Copy, Paperclip, Square, Send, Check } from 'lucide-vue-next'
 import { useConfigStore } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
 import AgentPlanView from './AgentPlanView.vue'
@@ -652,11 +653,7 @@ onUnmounted(() => {
     <!-- 拖放提示覆盖层 -->
     <div v-if="isDraggingOver" class="drop-overlay">
       <div class="drop-content">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="17 8 12 3 7 8"/>
-          <line x1="12" y1="3" x2="12" y2="15"/>
-        </svg>
+        <Upload :size="48" :stroke-width="1.5" />
         <p>{{ t('ai.dropToUpload') }}</p>
         <span class="drop-hint">{{ t('ai.dropHint') }}</span>
       </div>
@@ -678,27 +675,17 @@ onUnmounted(() => {
           </option>
         </select>
         <button class="btn-icon" @click="clearMessages" :title="t('ai.clearChat')">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="3 6 5 6 21 6"/>
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-          </svg>
+          <Trash2 :size="16" />
         </button>
         <button class="btn-icon" @click="emit('close')" :title="t('ai.closePanel')">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
+          <X :size="16" />
         </button>
       </div>
     </div>
 
     <!-- 未配置 AI 提示 -->
     <div v-if="!hasAiConfig" class="ai-no-config">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <circle cx="12" cy="12" r="10"/>
-        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-        <line x1="12" y1="17" x2="12.01" y2="17"/>
-      </svg>
+      <HelpCircle :size="48" :stroke-width="1.5" />
       <p>{{ t('ai.noConfig') }}</p>
       <button class="btn btn-primary btn-sm" @click="showSettings?.()">
         {{ t('ai.goToSettings') }}
@@ -897,10 +884,7 @@ onUnmounted(() => {
           {{ t('ai.aiDiagnose') }}
         </button>
         <button class="error-alert-close" @click="terminalStore.clearError(currentTabId)" :title="t('ai.closeError')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
+          <X :size="14" />
         </button>
       </div>
 
@@ -1089,10 +1073,7 @@ onUnmounted(() => {
               @click="copyMessage(msg.content)"
               :title="t('common.copy')"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-              </svg>
+              <Copy :size="14" />
             </button>
             </div>
           </div>
@@ -1290,9 +1271,7 @@ onUnmounted(() => {
 
         <!-- 新消息指示器 -->
         <div v-if="hasNewMessage" class="new-message-indicator" @click="scrollToBottom" :title="t('ai.newMessage')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
+          <ChevronDown :size="14" />
           <span>{{ t('ai.newMessage') }}</span>
         </div>
       </div>
@@ -1303,10 +1282,7 @@ onUnmounted(() => {
         <div class="uploaded-docs-header">
           <span class="uploaded-docs-title">📎 {{ t('ai.uploadedDocs') }} ({{ uploadedDocs.length }})</span>
           <button class="btn-clear-docs" @click="clearUploadedDocs" :title="t('ai.clearDocs')">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
+            <X :size="12" />
           </button>
         </div>
         <div class="uploaded-docs-list">
@@ -1321,10 +1297,7 @@ onUnmounted(() => {
             <span class="doc-size">{{ formatFileSize(doc.fileSize) }}</span>
             <span v-if="doc.error" class="doc-error" :data-tooltip="doc.error">⚠️</span>
             <button class="btn-remove-doc" @click="removeUploadedDoc(index)" :title="t('ai.removeDoc')">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"/>
-                <line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
+              <X :size="10" />
             </button>
           </div>
         </div>
@@ -1359,9 +1332,7 @@ onUnmounted(() => {
             :disabled="isUploadingDocs"
             :title="t('ai.uploadDocument')"
           >
-            <svg v-if="!isUploadingDocs" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-            </svg>
+            <Paperclip v-if="!isUploadingDocs" :size="18" />
             <span v-else class="upload-spinner"></span>
           </button>
           <textarea
@@ -1429,9 +1400,7 @@ onUnmounted(() => {
             @click="stopGeneration"
             :title="t('ai.stopGeneration')"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="6" y="6" width="12" height="12" rx="2"/>
-            </svg>
+            <Square :size="16" fill="currentColor" />
           </button>
           <!-- Agent 运行中：有输入显示补充按钮，有默认值提问时显示使用默认值按钮，否则显示停止按钮 -->
           <button
@@ -1440,10 +1409,7 @@ onUnmounted(() => {
             :title="t('ai.sendSupplement')"
             @click="handleSend"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="22" y1="2" x2="11" y2="13"/>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
+            <Send :size="18" />
           </button>
           <button
             v-else-if="isAgentRunning && canSendEmpty"
@@ -1451,9 +1417,7 @@ onUnmounted(() => {
             :title="t('ai.useDefault')"
             @click="handleSend"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
+            <Check :size="18" />
           </button>
           <button
             v-else-if="isAgentRunning"
@@ -1461,9 +1425,7 @@ onUnmounted(() => {
             @click="abortAgent"
             :title="t('ai.stopAgent')"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="6" y="6" width="12" height="12" rx="2"/>
-            </svg>
+            <Square :size="16" fill="currentColor" />
           </button>
           <!-- 发送按钮 -->
           <button
@@ -1474,10 +1436,7 @@ onUnmounted(() => {
             :title="agentMode ? t('ai.executeTask') : t('ai.sendMessage')"
             @click="handleSend"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="22" y1="2" x2="11" y2="13"/>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
+            <Send :size="18" />
           </button>
         </div>
       </div>
@@ -1796,6 +1755,12 @@ onUnmounted(() => {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+@keyframes gradient-flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 .popover-content {
@@ -3611,10 +3576,23 @@ onUnmounted(() => {
   border-top-color: #34d399;
   border-radius: 50%;
   animation: spin 1s linear infinite;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.3);
 }
 
 .thinking-text {
   font-size: 13px;
+  /* 渐变文字动画 */
+  background: linear-gradient(
+    90deg,
+    rgba(110, 231, 183, 0.75) 0%,
+    rgba(52, 211, 153, 1) 50%,
+    rgba(110, 231, 183, 0.75) 100%
+  );
+  background-size: 200% 100%;
+  animation: gradient-flow 2s linear infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   color: rgba(110, 231, 183, 0.75);
   animation: pulse-text 2s ease-in-out infinite;
 }

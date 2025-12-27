@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Plus, Monitor, FolderPlus, Download, FileText, Folder, ListFilter, FileEdit, AlignLeft, AlignRight, Clock, Terminal, GripVertical, ChevronDown, ExternalLink, Settings, Play, Pencil, Trash2, X } from 'lucide-vue-next'
 import { useConfigStore, type SshSession, type SessionGroup, type JumpHostConfig, type SshEncoding, type SessionSortBy } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
 import { v4 as uuidv4 } from 'uuid'
@@ -904,63 +905,39 @@ const deleteGroup = async (groupName: string) => {
       />
       <div class="new-dropdown">
         <button class="btn btn-primary btn-sm" @click="showNewMenu = !showNewMenu">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
+          <Plus :size="14" />
           {{ t('common.new') }}
         </button>
         <div v-if="showNewMenu" class="new-menu" @click.stop>
           <button class="new-menu-item" @click="openNewSession(); showNewMenu = false">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-              <line x1="8" y1="21" x2="16" y2="21"/>
-              <line x1="12" y1="17" x2="12" y2="21"/>
-            </svg>
+            <Monitor :size="14" />
             {{ t('session.newHost') }}
           </button>
           <button class="new-menu-item" @click="openNewGroup(); showNewMenu = false">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-              <line x1="12" y1="11" x2="12" y2="17"/>
-              <line x1="9" y1="14" x2="15" y2="14"/>
-            </svg>
+            <FolderPlus :size="14" />
             {{ t('session.newGroup') }}
           </button>
         </div>
       </div>
       <div class="import-dropdown">
         <button class="btn btn-sm" @click="showImportMenu = !showImportMenu">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
+          <Download :size="14" />
           {{ t('common.import') }}
         </button>
         <div v-if="showImportMenu" class="import-menu" @click.stop>
           <button class="import-menu-item" @click="importXshellFiles">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-            </svg>
+            <FileText :size="14" />
             {{ t('session.importXshellFiles') }}
           </button>
           <button class="import-menu-item" @click="importXshellDirectory">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-            </svg>
+            <Folder :size="14" />
             {{ t('session.importXshellDir') }}
           </button>
         </div>
       </div>
       <div class="sort-dropdown">
         <button class="btn btn-sm btn-icon-only" @click="showSortMenu = !showSortMenu" :title="t('session.sort.title')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="4" y1="6" x2="20" y2="6"/>
-            <line x1="4" y1="12" x2="14" y2="12"/>
-            <line x1="4" y1="18" x2="8" y2="18"/>
-          </svg>
+          <ListFilter :size="14" />
         </button>
         <div v-if="showSortMenu" class="sort-menu" @click.stop>
           <button 
@@ -968,12 +945,7 @@ const deleteGroup = async (groupName: string) => {
             :class="{ active: configStore.sessionSortBy === 'custom' }"
             @click="handleSortChange('custom')"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="8" y1="13" x2="16" y2="13"/>
-              <line x1="8" y1="17" x2="16" y2="17"/>
-            </svg>
+            <FileEdit :size="14" />
             {{ t('session.sort.custom') }}
           </button>
           <button 
@@ -981,11 +953,7 @@ const deleteGroup = async (groupName: string) => {
             :class="{ active: configStore.sessionSortBy === 'name' }"
             @click="handleSortChange('name')"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 6h18"/>
-              <path d="M3 12h12"/>
-              <path d="M3 18h6"/>
-            </svg>
+            <AlignLeft :size="14" />
             {{ t('session.sort.nameAsc') }}
           </button>
           <button 
@@ -993,11 +961,7 @@ const deleteGroup = async (groupName: string) => {
             :class="{ active: configStore.sessionSortBy === 'name-desc' }"
             @click="handleSortChange('name-desc')"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 6h6"/>
-              <path d="M3 12h12"/>
-              <path d="M3 18h18"/>
-            </svg>
+            <AlignRight :size="14" />
             {{ t('session.sort.nameDesc') }}
           </button>
           <button 
@@ -1005,10 +969,7 @@ const deleteGroup = async (groupName: string) => {
             :class="{ active: configStore.sessionSortBy === 'lastUsed' }"
             @click="handleSortChange('lastUsed')"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <polyline points="12 6 12 12 16 14"/>
-            </svg>
+            <Clock :size="14" />
             {{ t('session.sort.lastUsed') }}
           </button>
         </div>
@@ -1018,10 +979,7 @@ const deleteGroup = async (groupName: string) => {
     <!-- 快速操作 -->
     <div class="quick-connect">
       <button class="quick-btn" @click="createLocalTerminal">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="4 17 10 11 4 5"/>
-          <line x1="12" y1="19" x2="20" y2="19"/>
-        </svg>
+        <Terminal :size="18" />
         <span>{{ t('terminal.localTerminal') }}</span>
       </button>
     </div>
@@ -1054,42 +1012,22 @@ const deleteGroup = async (groupName: string) => {
             @drop="handleDropToGroupHeader(groupName as string, $event)"
           >
             <div class="group-header-left" @click.stop="toggleGroupCollapse(groupName as string)">
-              <svg class="drag-handle" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="9" cy="5" r="1"/>
-                <circle cx="9" cy="12" r="1"/>
-                <circle cx="9" cy="19" r="1"/>
-                <circle cx="15" cy="5" r="1"/>
-                <circle cx="15" cy="12" r="1"/>
-                <circle cx="15" cy="19" r="1"/>
-              </svg>
-              <svg 
+              <GripVertical class="drag-handle" :size="10" />
+              <ChevronDown 
                 class="collapse-icon" 
                 :class="{ collapsed: collapsedGroups.has(groupName as string) }"
-                width="12" height="12" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                stroke-width="2"
-              >
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
+                :size="12"
+              />
               <span class="group-name">{{ groupName }}</span>
               <span class="group-count">{{ groupData.sessions.length }}</span>
               <span v-if="groupData.group?.jumpHost" class="jump-host-badge" :title="t('session.form.jumpHost')">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                  <polyline points="15 3 21 3 21 9"/>
-                  <line x1="10" y1="14" x2="21" y2="3"/>
-                </svg>
+                <ExternalLink :size="10" />
                 {{ groupData.group.jumpHost.host }}
               </span>
             </div>
             <div class="group-header-right">
               <button class="btn-icon btn-xs" @click.stop="openGroupEditor(groupName)" :title="t('session.editGroup')">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="3"/>
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                </svg>
+                <Settings :size="12" />
               </button>
             </div>
           </div>
@@ -1110,11 +1048,7 @@ const deleteGroup = async (groupName: string) => {
               @dblclick="connectSession(session)"
             >
               <div class="session-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-                  <line x1="8" y1="21" x2="16" y2="21"/>
-                  <line x1="12" y1="17" x2="12" y2="21"/>
-                </svg>
+                <Monitor :size="16" />
               </div>
               <div class="session-info">
                 <div class="session-name">{{ session.name }}</div>
@@ -1122,26 +1056,16 @@ const deleteGroup = async (groupName: string) => {
               </div>
               <div class="session-actions">
                 <button class="btn-icon btn-sm" @click.stop="connectSession(session)" :title="t('session.connect')">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polygon points="5 3 19 12 5 21 5 3"/>
-                  </svg>
+                  <Play :size="14" />
                 </button>
                 <button class="btn-icon btn-sm" @click.stop="openFileManagerWindow(session)" :title="t('session.fileManager')">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                  </svg>
+                  <Folder :size="14" />
                 </button>
                 <button class="btn-icon btn-sm" @click.stop="openEditSession(session)" :title="t('common.edit')">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
+                  <Pencil :size="14" />
                 </button>
                 <button class="btn-icon btn-sm" @click.stop="deleteSession(session)" :title="t('common.delete')">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="3 6 5 6 21 6"/>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                  </svg>
+                  <Trash2 :size="14" />
                 </button>
               </div>
             </div>
@@ -1166,10 +1090,7 @@ const deleteGroup = async (groupName: string) => {
         <div class="modal-header">
           <h3>{{ editingSession ? t('session.editHost') : t('session.newHost') }}</h3>
           <button class="btn-icon" @click="showNewSession = false" :title="t('common.close')">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
+            <X :size="16" />
           </button>
         </div>
         <div class="modal-body">
@@ -1245,10 +1166,7 @@ const deleteGroup = async (groupName: string) => {
         <div class="modal-header">
           <h3>{{ editingGroup ? t('session.editGroup') : (groupFormData.name ? t('session.configGroup') : t('session.newGroup')) }}</h3>
           <button class="btn-icon" @click="showGroupEditor = false" :title="t('common.close')">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
+            <X :size="16" />
           </button>
         </div>
         <div class="modal-body">

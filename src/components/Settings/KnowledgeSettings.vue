@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Loader2 } from 'lucide-vue-next'
 import KnowledgeManager from '../KnowledgeManager.vue'
 
 const { t } = useI18n()
@@ -371,9 +372,7 @@ onUnmounted(() => {
     <template v-else>
       <!-- 初始化状态提示 -->
       <div v-if="settings.enabled && !isKnowledgeInitialized" class="init-status">
-        <svg class="spinner" width="16" height="16" viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="60" stroke-linecap="round"/>
-        </svg>
+        <Loader2 class="spinner" :size="16" />
         <span>{{ t('knowledgeSettings.initializing') }}</span>
       </div>
 

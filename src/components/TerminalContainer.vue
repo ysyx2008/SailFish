@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import { AlertCircle, Terminal as TerminalIcon } from 'lucide-vue-next'
 import { useTerminalStore } from '../stores/terminal'
 import Terminal from './Terminal.vue'
 
@@ -29,11 +30,7 @@ const terminalStore = useTerminalStore()
           <span>{{ tab.loadingMessage || t('terminal.connecting') }}</span>
         </div>
         <div v-else class="terminal-error">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
+          <AlertCircle :size="48" />
           <span class="error-title">{{ t('terminal.connectionFailed') }}</span>
           <span v-if="tab.connectionError" class="error-detail">{{ tab.connectionError }}</span>
           <button class="btn btn-sm" @click="terminalStore.closeTab(tab.id)">{{ t('common.close') }}</button>
@@ -42,10 +39,7 @@ const terminalStore = useTerminalStore()
     </template>
     <div v-else class="terminal-empty">
       <div class="empty-content">
-        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5">
-          <polyline points="4 17 10 11 4 5"/>
-          <line x1="12" y1="19" x2="20" y2="19"/>
-        </svg>
+        <TerminalIcon :size="64" :stroke-width="1.5" style="opacity: 0.5" />
         <h3>{{ t('terminal.welcome.title') }}</h3>
         <p>{{ t('terminal.welcome.hint') }}</p>
         <button class="btn btn-primary" @click="terminalStore.createTab('local')">

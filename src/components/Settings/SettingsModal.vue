@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { X } from 'lucide-vue-next'
 import { useConfigStore } from '../../stores/config'
 import { oemConfig } from '../../config/oem.config'
 import { getLocale } from '../../i18n'
@@ -429,10 +430,7 @@ const onQrImageError = (event: Event) => {
       <div class="settings-header">
         <h2>{{ t('settings.title') }}</h2>
         <button class="btn-icon" @click="emit('close')" :title="t('settings.closeSettings')">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
+          <X :size="18" />
         </button>
       </div>
       <div class="settings-body">

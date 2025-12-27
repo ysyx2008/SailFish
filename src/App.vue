@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, provide, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Server, Bot, Settings, X, Loader2 } from 'lucide-vue-next'
 import { useTerminalStore } from './stores/terminal'
 import { useConfigStore, type SshSession } from './stores/config'
 import TabBar from './components/TabBar.vue'
@@ -311,12 +312,7 @@ onUnmounted(() => {
     <header class="app-header">
       <div class="header-left">
         <button class="btn-icon" @click="toggleSidebar" :title="t('header.sessionManager')">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
-            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
-            <line x1="6" y1="6" x2="6.01" y2="6"/>
-            <line x1="6" y1="18" x2="6.01" y2="18"/>
-          </svg>
+          <Server :size="18" />
         </button>
         <span class="app-title">{{ t('app.title') }}</span>
       </div>
@@ -325,18 +321,11 @@ onUnmounted(() => {
       </div>
       <div class="header-right">
         <button class="btn-icon" @click="toggleAiPanel" :title="t('header.aiAssistant')">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/>
-            <circle cx="7.5" cy="14.5" r="1.5"/>
-            <circle cx="16.5" cy="14.5" r="1.5"/>
-          </svg>
+          <Bot :size="18" />
         </button>
         <McpStatusPopover @open-settings="openMcpSettings" />
         <button class="btn-icon" @click="showSettings = true" :title="t('header.settings')">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
-            <circle cx="12" cy="12" r="3"/>
-          </svg>
+          <Settings :size="18" />
         </button>
       </div>
     </header>
@@ -348,10 +337,7 @@ onUnmounted(() => {
         <div class="sidebar-header">
           <span>{{ t('header.hostManager') }}</span>
           <button class="btn-icon btn-sm" @click="showSidebar = false" :title="t('header.closeSidebar')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
+            <X :size="14" />
           </button>
         </div>
         <div class="sidebar-content">
@@ -419,9 +405,7 @@ onUnmounted(() => {
     <Transition name="slide-down">
       <div v-if="knowledgeUpgrading" class="knowledge-upgrade-bar">
         <div class="upgrade-content">
-          <svg class="upgrade-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-          </svg>
+          <Loader2 class="upgrade-icon" :size="16" />
           <span class="upgrade-text">
             {{ t('knowledge.upgrading') }}
             <template v-if="knowledgeUpgradeProgress.total > 0">

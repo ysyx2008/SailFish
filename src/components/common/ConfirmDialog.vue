@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { AlertTriangle, AlertCircle, HelpCircle } from 'lucide-vue-next'
 
 export interface ConfirmDialogOptions {
   title: string
@@ -95,24 +96,9 @@ const getIcon = () => {
           <div v-if="show" ref="dialogRef" class="confirm-dialog" :class="options.type || 'default'">
             <!-- 图标 -->
             <div class="dialog-icon" :class="getIcon()">
-              <!-- 危险图标 -->
-              <svg v-if="options.type === 'danger'" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                <line x1="12" y1="9" x2="12" y2="13"/>
-                <line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
-              <!-- 警告图标 -->
-              <svg v-else-if="options.type === 'warning'" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="12" y1="8" x2="12" y2="12"/>
-                <line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-              <!-- 默认图标 -->
-              <svg v-else width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                <line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
+              <AlertTriangle v-if="options.type === 'danger'" :size="24" />
+              <AlertCircle v-else-if="options.type === 'warning'" :size="24" />
+              <HelpCircle v-else :size="24" />
             </div>
 
             <!-- 标题 -->

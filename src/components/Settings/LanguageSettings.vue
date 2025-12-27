@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Check } from 'lucide-vue-next'
 import { useConfigStore } from '../../stores/config'
 import { SUPPORTED_LOCALES, type LocaleType } from '../../i18n'
 
@@ -31,9 +32,7 @@ const changeLanguage = async (lang: LocaleType) => {
             <span class="language-code">{{ locale.value }}</span>
           </div>
           <div v-if="currentLanguage === locale.value" class="check-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
+            <Check :size="16" />
           </div>
         </div>
       </div>

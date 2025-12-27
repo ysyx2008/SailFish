@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, toRaw } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Plus, Play, Pause, Pencil, Trash2, X } from 'lucide-vue-next'
 import { v4 as uuidv4 } from 'uuid'
 
 const { t } = useI18n()
@@ -416,10 +417,7 @@ onUnmounted(() => {
             {{ t('common.connect') }}
           </button>
           <button class="btn btn-primary btn-sm" @click="openNewServer">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
+            <Plus :size="14" />
             {{ t('mcpSettings.addServer') }}
           </button>
         </div>
@@ -470,9 +468,7 @@ onUnmounted(() => {
                 :disabled="connecting === server.id"
                 :title="t('common.connect')"
               >
-                <svg v-if="connecting !== server.id" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polygon points="5 3 19 12 5 21 5 3"/>
-                </svg>
+                <Play v-if="connecting !== server.id" :size="14" />
                 <span v-else class="spinner"></span>
               </button>
               <button 
@@ -481,23 +477,14 @@ onUnmounted(() => {
                 @click="disconnectServer(server)"
                 :title="t('common.disconnect')"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="6" y="4" width="4" height="16"/>
-                  <rect x="14" y="4" width="4" height="16"/>
-                </svg>
+                <Pause :size="14" />
               </button>
             </template>
             <button class="btn-icon btn-sm" @click="openEditServer(server)" :title="t('common.edit')">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-              </svg>
+              <Pencil :size="14" />
             </button>
             <button class="btn-icon btn-sm" @click="deleteServer(server)" :title="t('common.delete')">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="3 6 5 6 21 6"/>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-              </svg>
+              <Trash2 :size="14" />
             </button>
           </div>
         </div>
@@ -513,10 +500,7 @@ onUnmounted(() => {
       <div class="form-header">
         <h4>{{ editingServer ? t('mcpSettings.editServer') : t('mcpSettings.addServer') }}</h4>
         <button class="btn-icon" @click="showForm = false" :title="t('common.close')">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
+          <X :size="16" />
         </button>
       </div>
 
@@ -603,10 +587,7 @@ onUnmounted(() => {
         <div class="details-header">
           <h4>{{ selectedServer.name }}</h4>
           <button class="btn-icon" @click="showDetails = false">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
+            <X :size="16" />
           </button>
         </div>
         <div class="details-body">

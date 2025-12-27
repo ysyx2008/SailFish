@@ -42,6 +42,7 @@
     "https-proxy-agent": "^7.0.4",
     "iconv-lite": "^0.7.0",
     "jieba-wasm": "^2.4.0",
+    "lucide-vue-next": "^0.562.0",
     "mammoth": "^1.11.0",
     "marked": "^12.0.0",
     "node-pty": "^1.0.0",

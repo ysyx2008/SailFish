@@ -5,6 +5,7 @@
  */
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { SquareTerminal, Monitor } from 'lucide-vue-next'
 import { useConfigStore, type SshSession } from '../stores/config'
 import MatrixRain from './EasterEgg/MatrixRain.vue'
 import sailfishLogo from '../../resources/logo.png'
@@ -113,11 +114,7 @@ const formatHost = (session: SshSession) => {
           <!-- 本地终端 -->
           <div class="action-card" @click="openLocalTerminal">
             <div class="card-icon local">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <rect x="2" y="4" width="20" height="16" rx="2"/>
-                <path d="M6 9l3 3-3 3"/>
-                <path d="M11 15h5"/>
-              </svg>
+              <SquareTerminal :size="32" :stroke-width="1.5" />
             </div>
             <div class="card-content">
               <div class="card-title">{{ t('welcome.localTerminal') }}</div>
@@ -128,12 +125,7 @@ const formatHost = (session: SshSession) => {
           <!-- SSH 连接 -->
           <div class="action-card" @click="openSessionManager">
             <div class="card-icon ssh">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <rect x="2" y="3" width="20" height="14" rx="2"/>
-                <path d="M8 21h8"/>
-                <path d="M12 17v4"/>
-                <circle cx="12" cy="10" r="3"/>
-              </svg>
+              <Monitor :size="32" :stroke-width="1.5" />
             </div>
             <div class="card-content">
               <div class="card-title">{{ t('welcome.sshConnect') }}</div>
@@ -144,11 +136,7 @@ const formatHost = (session: SshSession) => {
           <!-- 智能巡检（暂时隐藏）
           <div class="action-card" @click="openSmartPatrol">
             <div class="card-icon patrol">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/>
-                <circle cx="7.5" cy="14.5" r="1.5"/>
-                <circle cx="16.5" cy="14.5" r="1.5"/>
-              </svg>
+              <Bot :size="32" :stroke-width="1.5" />
             </div>
             <div class="card-content">
               <div class="card-title">{{ t('welcome.smartPatrol') }}</div>
@@ -175,11 +163,7 @@ const formatHost = (session: SshSession) => {
             @click="connectToSession(session)"
           >
             <div class="session-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="2" y="3" width="20" height="14" rx="2"/>
-                <path d="M8 21h8"/>
-                <path d="M12 17v4"/>
-              </svg>
+              <Monitor :size="16" />
             </div>
             <div class="session-info">
               <div class="session-name">{{ session.name }}</div>

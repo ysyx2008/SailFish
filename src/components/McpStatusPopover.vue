@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Sun, Settings } from 'lucide-vue-next'
 
 const { t } = useI18n()
 
@@ -213,10 +214,7 @@ onUnmounted(() => {
       :title="statusTooltip"
       @click="togglePopover"
     >
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-        <circle cx="12" cy="12" r="4"/>
-      </svg>
+      <Sun :size="18" />
       <!-- 状态徽章 -->
       <span class="status-badge" :class="statusClass">
         <span class="status-dot">{{ statusIcon }}</span>
@@ -306,10 +304,7 @@ onUnmounted(() => {
 
         <div class="popover-footer">
           <button class="btn-settings" @click="openSettings">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-            </svg>
+            <Settings :size="14" />
             {{ t('ai.goToSettings') }}
           </button>
         </div>

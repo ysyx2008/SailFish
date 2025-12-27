@@ -734,3 +734,578 @@ html, body {
 .border-glow:hover::before {
   opacity: 1;
 }
+
+/* ============================= */
+/* 🎯 UI 现代感增强 v8.5          */
+/* ============================= */
+
+/* ----- 1. 微交互动画增强 ----- */
+
+/* 按钮点击涟漪效果 */
+.btn-ripple {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-ripple::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  background: radial-gradient(circle at center, rgba(255,255,255,0.3) 0%, transparent 70%);
+  transform: scale(0);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.btn-ripple:active::after {
+  transform: scale(2.5);
+  opacity: 1;
+  transition: 0s;
+}
+
+.btn-ripple:not(:active)::after {
+  transition: transform 0.5s ease-out, opacity 0.3s ease-out;
+}
+
+/* 列表项交错入场动画 */
+@keyframes staggerFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stagger-item {
+  animation: staggerFadeIn 0.3s ease-out backwards;
+}
+
+.stagger-item:nth-child(1) { animation-delay: 0.02s; }
+.stagger-item:nth-child(2) { animation-delay: 0.04s; }
+.stagger-item:nth-child(3) { animation-delay: 0.06s; }
+.stagger-item:nth-child(4) { animation-delay: 0.08s; }
+.stagger-item:nth-child(5) { animation-delay: 0.10s; }
+.stagger-item:nth-child(6) { animation-delay: 0.12s; }
+.stagger-item:nth-child(7) { animation-delay: 0.14s; }
+.stagger-item:nth-child(8) { animation-delay: 0.16s; }
+.stagger-item:nth-child(9) { animation-delay: 0.18s; }
+.stagger-item:nth-child(10) { animation-delay: 0.20s; }
+
+/* 骨架屏加载效果 */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-surface) 25%,
+    var(--bg-hover) 50%,
+    var(--bg-surface) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
+  border-radius: var(--border-radius);
+}
+
+.skeleton-text {
+  height: 14px;
+  margin: 8px 0;
+}
+
+.skeleton-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+
+.skeleton-card {
+  height: 60px;
+  margin: 8px 0;
+}
+
+/* ----- 2. 渐变和光效提升 ----- */
+
+/* 增强的投影层次系统 */
+:root {
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.1);
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.12);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.2);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.25);
+  --shadow-glow: 0 0 20px rgba(137, 180, 250, 0.15);
+  --shadow-glow-strong: 0 0 30px rgba(137, 180, 250, 0.25);
+}
+
+/* 输入框焦点光晕增强 */
+.input:focus,
+.select:focus,
+textarea:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 
+    0 0 0 3px rgba(137, 180, 250, 0.15),
+    0 0 20px rgba(137, 180, 250, 0.1);
+  outline: none;
+}
+
+/* 卡片悬浮效果 */
+.card-hover {
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
+}
+
+/* ----- 3. 状态可视化增强 ----- */
+
+/* 连接状态指示器 */
+.connection-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  position: relative;
+}
+
+.connection-dot.connected {
+  background: var(--accent-success);
+  box-shadow: 0 0 8px var(--accent-success);
+}
+
+.connection-dot.connected::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid var(--accent-success);
+  animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.connection-dot.connecting {
+  background: var(--accent-warning);
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
+
+.connection-dot.disconnected {
+  background: var(--accent-error);
+}
+
+@keyframes ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+/* Agent 思考状态动画 */
+.agent-thinking-text {
+  background: linear-gradient(
+    90deg,
+    var(--accent-primary) 0%,
+    var(--accent-secondary) 50%,
+    var(--accent-primary) 100%
+  );
+  background-size: 200% 100%;
+  animation: gradient-flow 2s linear infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 思考中的点动画 */
+.thinking-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.thinking-dots span {
+  width: 6px;
+  height: 6px;
+  background: var(--accent-primary);
+  border-radius: 50%;
+  animation: thinking-bounce 1.4s ease-in-out infinite;
+}
+
+.thinking-dots span:nth-child(1) { animation-delay: 0s; }
+.thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes thinking-bounce {
+  0%, 80%, 100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  40% {
+    transform: translateY(-8px);
+    opacity: 1;
+  }
+}
+
+/* 进度条动画 */
+.progress-bar {
+  height: 4px;
+  background: var(--bg-surface);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.progress-bar-indeterminate .progress-bar-fill {
+  width: 30%;
+  animation: indeterminate 1.5s ease-in-out infinite;
+}
+
+@keyframes indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+/* ----- 4. 图标微动画 ----- */
+
+/* 图标悬停效果增强 */
+.icon-animated {
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.icon-animated:hover {
+  transform: scale(1.15);
+  filter: drop-shadow(0 0 6px var(--accent-primary));
+}
+
+/* 旋转加载图标 */
+.icon-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 心跳图标动画 */
+.icon-pulse {
+  animation: icon-pulse 2s ease-in-out infinite;
+}
+
+@keyframes icon-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+/* 摇晃图标动画（用于提醒） */
+.icon-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-3px); }
+  40%, 80% { transform: translateX(3px); }
+}
+
+/* ----- 5. 响应式布局增强 ----- */
+
+/* 拖拽手柄增强 */
+.resize-handle-enhanced {
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  transition: background 0.2s ease;
+}
+
+.resize-handle-enhanced::before {
+  content: '⋮';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--text-muted);
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.resize-handle-enhanced:hover {
+  background: linear-gradient(
+    180deg,
+    transparent 10%,
+    rgba(137, 180, 250, 0.3) 50%,
+    transparent 90%
+  );
+}
+
+.resize-handle-enhanced:hover::before {
+  opacity: 1;
+}
+
+.resize-handle-enhanced:active {
+  background: linear-gradient(
+    180deg,
+    transparent 10%,
+    rgba(137, 180, 250, 0.5) 50%,
+    transparent 90%
+  );
+}
+
+/* ----- 6. 欢迎页视觉增强 ----- */
+
+/* 欢迎页背景 */
+.welcome-bg-enhanced {
+  background: 
+    radial-gradient(ellipse at 20% 30%, rgba(137, 180, 250, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 70%, rgba(116, 199, 236, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 100%, rgba(166, 227, 161, 0.04) 0%, transparent 40%),
+    var(--bg-primary);
+}
+
+/* Logo 浮动动画 */
+.logo-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+
+/* 欢迎文字渐入效果 */
+.welcome-text-animate {
+  animation: welcomeTextIn 0.8s ease-out backwards;
+}
+
+@keyframes welcomeTextIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+    filter: blur(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* 快捷操作卡片 */
+.action-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.action-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, transparent 40%, rgba(137, 180, 250, 0.1) 100%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.action-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--accent-primary);
+  box-shadow: 
+    0 8px 24px rgba(0, 0, 0, 0.15),
+    0 0 0 1px rgba(137, 180, 250, 0.2);
+}
+
+.action-card:hover::before {
+  opacity: 1;
+}
+
+.action-card:active {
+  transform: translateY(-2px);
+}
+
+/* ----- 7. 标签页增强 ----- */
+
+/* 活跃标签页底部光条 */
+.tab-active-glow {
+  position: relative;
+}
+
+.tab-active-glow::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 10%;
+  right: 10%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
+  border-radius: 2px;
+  box-shadow: 0 0 8px var(--accent-primary);
+}
+
+/* 标签页悬停效果 */
+.tab-hover-effect {
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.tab-hover-effect:hover:not(.active) {
+  background: var(--bg-hover);
+}
+
+.tab-hover-effect:active {
+  transform: scale(0.98);
+}
+
+/* ----- 8. 侧边栏深度效果 ----- */
+
+/* 深色主题侧边栏内阴影 */
+[data-color-scheme="dark"] .sidebar-depth {
+  box-shadow: inset -30px 0 30px -30px rgba(0, 0, 0, 0.4);
+}
+
+/* 浅色主题侧边栏阴影 */
+[data-color-scheme="light"] .sidebar-depth {
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
+}
+
+/* AI 侧边栏深度效果 */
+[data-color-scheme="dark"] .ai-sidebar-depth {
+  box-shadow: inset 30px 0 30px -30px rgba(0, 0, 0, 0.4);
+}
+
+/* ----- 9. 消息气泡增强 ----- */
+
+/* AI 消息气泡 */
+.message-bubble {
+  border-radius: 12px;
+  padding: 12px 16px;
+  position: relative;
+  animation: messageIn 0.3s ease-out;
+}
+
+@keyframes messageIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.message-bubble.user {
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  color: var(--bg-primary);
+  margin-left: auto;
+  border-bottom-right-radius: 4px;
+}
+
+.message-bubble.assistant {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-bottom-left-radius: 4px;
+}
+
+/* ----- 10. 弹窗/模态框增强 ----- */
+
+/* 模态框背景 */
+.modal-backdrop {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* 模态框容器 */
+.modal-enhanced {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow: var(--shadow-xl), var(--shadow-glow);
+  animation: modalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* ----- 11. 工具提示增强 ----- */
+
+.tooltip-enhanced {
+  position: relative;
+}
+
+.tooltip-enhanced::before {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.9);
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: var(--shadow-md);
+  z-index: 1000;
+}
+
+.tooltip-enhanced:hover::before {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) scale(1);
+}
+
+/* ----- 12. 成功/错误状态动画 ----- */
+
+/* 成功状态 */
+.status-success {
+  color: var(--accent-success);
+  animation: successPop 0.4s ease-out;
+}
+
+@keyframes successPop {
+  0% { transform: scale(0); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+/* 错误状态抖动 */
+.status-error {
+  color: var(--accent-error);
+  animation: errorShake 0.4s ease-out;
+}
+
+@keyframes errorShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
