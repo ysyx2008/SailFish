@@ -1298,6 +1298,14 @@ ${fullContext}
     }
     this.runs.set(agentId, run)
     
+    // 立即发送初始步骤，让前端可以立刻获得 agentId
+    // 这解决了用户在 AI 开始处理前切换执行模式时，前端无法更新配置的问题
+    this.addStep(agentId, {
+      type: 'thinking',
+      content: '正在准备...',
+      isStreaming: true
+    })
+    
     // Worker 模式日志
     if (workerOptions?.isWorker) {
       console.log(`[Agent] Running as Worker for orchestrator ${workerOptions.orchestratorId}, terminal: ${workerOptions.terminalName}`)
