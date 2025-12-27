@@ -1458,7 +1458,7 @@ defineExpose({
 /* ============== 命令行高亮样式 ============== */
 .terminal-inner :deep(.cmd-highlight) {
   position: absolute;
-  top: 2px;
+  top: -1px;
   left: 0;
   right: 0;
   width: 100vw;
