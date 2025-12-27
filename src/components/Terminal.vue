@@ -13,6 +13,16 @@ import { TerminalScreenService, type ScreenContent } from '../services/terminal-
 import { TerminalSnapshotManager, type TerminalSnapshot, type TerminalDiff } from '../services/terminal-snapshot.service'
 import '@xterm/xterm/css/xterm.css'
 
+// 卡片状态类型定义
+export interface CardStatus {
+  state: 'pending' | 'running' | 'success' | 'error'
+  title: string
+  command?: string
+  output?: string
+  duration?: number
+  error?: string
+}
+
 const { t } = useI18n()
 
 const props = defineProps<{
@@ -59,6 +69,21 @@ const contextMenu = ref({
 // SSH 断开连接状态（用于显示重连按钮）
 const sshDisconnected = ref(false)
 const isReconnecting = ref(false)
+
+// ============== 实验性功能：终端内嵌卡片 (v2 - 使用 xterm Decoration API) ==============
+interface OverlayCard {
+  id: string
+  element: HTMLElement           // DOM 元素
+  marker: any                    // xterm Marker
+  decoration: any                // xterm Decoration
+  status: CardStatus
+}
+
+const overlayCards = ref<OverlayCard[]>([])
+
+// 生成唯一卡片ID
+let cardIdCounter = 0
+const generateCardId = () => `card-${Date.now()}-${cardIdCounter++}`
 
 // 初始化终端
 onMounted(async () => {
@@ -377,6 +402,7 @@ onMounted(async () => {
       }
     }
   })
+
 })
 
 // 清理
@@ -687,6 +713,285 @@ const handleReconnect = async () => {
   }
 }
 
+// ============== 实验性功能：卡片管理方法 (v2 - xterm Decoration API) ==============
+
+/**
+ * 创建卡片 DOM 元素
+ */
+const createCardElement = (status: CardStatus): HTMLElement => {
+  const el = document.createElement('div')
+  el.className = 'xterm-overlay-card'
+  // 设置基础内联样式确保可见（CSS 类样式可能被覆盖）
+  el.style.cssText = `
+    display: block !important;
+    visibility: visible !important;
+    background: rgba(30, 30, 30, 0.98);
+    border-radius: 6px;
+    font-size: 12px;
+    color: #e0e0e0;
+    padding: 0;
+    margin: 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    width: calc(100% - 16px);
+    margin-left: 8px;
+  `
+  updateCardElement(el, status)
+  return el
+}
+
+/**
+ * 更新卡片 DOM 元素内容
+ */
+const updateCardElement = (el: HTMLElement, status: CardStatus) => {
+  const stateIcons: Record<string, string> = {
+    pending: '⏳',
+    running: '⚡',
+    success: '✓',
+    error: '✗'
+  }
+  
+  const duration = status.duration 
+    ? (status.duration < 1000 ? `${status.duration}ms` : `${(status.duration / 1000).toFixed(1)}s`)
+    : ''
+  
+  el.className = `xterm-overlay-card status-${status.state}`
+  el.innerHTML = `
+    <div class="card-header">
+      <span class="status-icon">${stateIcons[status.state]}</span>
+      <span class="card-title">${status.title}</span>
+      ${duration ? `<span class="duration">${duration}</span>` : ''}
+      <button class="close-btn" data-action="close">×</button>
+    </div>
+    ${status.command ? `
+    <div class="command-line">
+      <span class="prompt">$</span>
+      <code>${status.command}</code>
+    </div>
+    ` : ''}
+    ${status.output || status.error ? `
+    <div class="card-body">
+      ${status.error ? `<div class="error-text">${status.error}</div>` : ''}
+      ${status.output && !status.error ? `<div class="output-text">${status.output}</div>` : ''}
+    </div>
+    ` : ''}
+  `
+}
+
+/**
+ * 在终端当前位置创建一个覆盖卡片（使用 xterm Decoration API）
+ */
+const createOverlayCard = (title: string, command?: string, reserveLines = 4): string | null => {
+  if (!terminal) return null
+
+  const cardId = generateCardId()
+  const status: CardStatus = { state: 'pending', title, command }
+  
+  // 获取当前行位置
+  const buffer = terminal.buffer.active
+  const currentLine = buffer.cursorY
+  
+  // 输出空行作为占位
+  terminal.write('\r\n'.repeat(reserveLines))
+  
+  // 创建 Marker（标记在 buffer 中的位置）
+  const marker = terminal.registerMarker(-(reserveLines - 1))
+  if (!marker) {
+    console.error('[Terminal] 创建 Marker 失败')
+    return null
+  }
+  
+  // 创建卡片 DOM 元素
+  const element = createCardElement(status)
+  
+  // 绑定关闭事件
+  element.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement
+    if (target.dataset.action === 'close') {
+      removeCard(cardId)
+    }
+  })
+  
+  // 使用 xterm Decoration API（自动处理滚动同步）
+  const decoration = terminal.registerDecoration({
+    marker,
+    element,
+    x: 0,
+    width: terminal.cols,
+    height: reserveLines
+  })
+  
+  if (!decoration) {
+    marker.dispose()
+    return null
+  }
+  
+  // 当 decoration 渲染时，手动添加我们的元素到容器
+  decoration.onRender((container: HTMLElement) => {
+    // 手动添加卡片元素（xterm 可能不会自动添加）
+    if (!container.contains(element)) {
+      container.appendChild(element)
+    }
+    
+    // 设置容器样式
+    container.style.height = 'auto'
+    container.style.minHeight = `${reserveLines * 16}px`
+    container.style.zIndex = '100'
+    container.style.overflow = 'visible'
+    container.style.pointerEvents = 'auto'
+    container.style.background = 'transparent'
+  })
+  
+  const card: OverlayCard = {
+    id: cardId,
+    element,
+    marker,
+    decoration,
+    status
+  }
+  
+  overlayCards.value.push(card)
+  
+  return cardId
+}
+
+/**
+ * 更新卡片状态
+ */
+const updateCardStatus = (cardId: string, updates: Partial<CardStatus>) => {
+  const card = overlayCards.value.find(c => c.id === cardId)
+  if (card) {
+    card.status = { ...card.status, ...updates }
+    // 更新 DOM
+    updateCardElement(card.element, card.status)
+  }
+}
+
+/**
+ * 移除卡片
+ */
+const removeCard = (cardId: string) => {
+  const index = overlayCards.value.findIndex(c => c.id === cardId)
+  if (index !== -1) {
+    const card = overlayCards.value[index]
+    // 清理 xterm 资源
+    card.decoration?.dispose()
+    card.marker?.dispose()
+    overlayCards.value.splice(index, 1)
+  }
+}
+
+/**
+ * 清除所有卡片
+ */
+const clearAllCards = () => {
+  for (const card of overlayCards.value) {
+    card.decoration?.dispose()
+    card.marker?.dispose()
+  }
+  overlayCards.value = []
+}
+
+/**
+ * 执行带卡片UI的命令
+ * 
+ * @param command 要执行的命令
+ * @param title 卡片标题
+ * @param options 可选配置
+ */
+const executeWithCard = async (
+  command: string, 
+  title: string,
+  options?: {
+    timeout?: number      // 超时时间（ms），默认 30000
+    captureOutput?: boolean  // 是否捕获输出
+  }
+): Promise<{ success: boolean; output?: string; duration: number }> => {
+  if (!terminal || !screenService) {
+    return { success: false, duration: 0 }
+  }
+  
+  const timeout = options?.timeout ?? 30000
+  const captureOutput = options?.captureOutput ?? true
+  
+  // 创建卡片
+  const cardId = createOverlayCard(title, command, 4)
+  if (!cardId) {
+    return { success: false, duration: 0 }
+  }
+  
+  const startTime = Date.now()
+  
+  // 记录执行前的输出位置（用于捕获新输出）
+  const beforeLines = screenService.getLastNLines(5)
+  
+  // 更新状态为运行中
+  updateCardStatus(cardId, { state: 'running' })
+  
+  // 发送命令到终端
+  terminalStore.writeToTerminal(props.tabId, command + '\r')
+  
+  // 等待命令完成（通过检测是否回到 prompt）
+  return new Promise((resolve) => {
+    let checkCount = 0
+    const maxChecks = Math.ceil(timeout / 200)  // 每 200ms 检查一次
+    
+    const checkCompletion = () => {
+      checkCount++
+      const duration = Date.now() - startTime
+      
+      // 检查是否回到 prompt（命令完成）
+      const awarenessState = screenService!.getAwarenessState()
+      const isComplete = awarenessState.input.type === 'prompt' && 
+                         awarenessState.input.isWaiting &&
+                         duration > 300  // 至少等 300ms，避免检测到执行前的 prompt
+      
+      if (isComplete) {
+        // 命令完成，获取输出
+        let output = ''
+        if (captureOutput) {
+          const afterLines = screenService!.getLastNLines(20)
+          // 简单提取新增的输出（跳过命令行本身）
+          output = afterLines
+            .filter(line => !line.includes(command) && line.trim())
+            .slice(0, 5)
+            .join('\n')
+        }
+        
+        // 检查是否有错误
+        const errors = screenService!.detectErrors(10)
+        const hasError = errors.length > 0
+        
+        updateCardStatus(cardId, {
+          state: hasError ? 'error' : 'success',
+          duration,
+          output: hasError ? errors[0] : (output || '完成'),
+          error: hasError ? errors[0] : undefined
+        })
+        
+        resolve({ success: !hasError, output, duration })
+        return
+      }
+      
+      // 超时检查
+      if (checkCount >= maxChecks) {
+        updateCardStatus(cardId, {
+          state: 'error',
+          duration,
+          error: `命令执行超时 (${timeout / 1000}s)`
+        })
+        resolve({ success: false, duration })
+        return
+      }
+      
+      // 继续检查
+      setTimeout(checkCompletion, 200)
+    }
+    
+    // 延迟开始检查，给命令一点执行时间
+    setTimeout(checkCompletion, 300)
+  })
+}
+
 
 // 暴露方法供外部调用
 defineExpose({
@@ -707,7 +1012,13 @@ defineExpose({
   snapshotAndCompare: (): { snapshot: TerminalSnapshot; diff: TerminalDiff | null } | null => 
     snapshotManager?.snapshotAndCompare() ?? null,
   hasContentChanged: (): boolean => snapshotManager?.hasContentChanged() ?? true,
-  getNewOutputSinceLastSnapshot: (): string[] => snapshotManager?.getNewOutputSinceLastSnapshot() ?? []
+  getNewOutputSinceLastSnapshot: (): string[] => snapshotManager?.getNewOutputSinceLastSnapshot() ?? [],
+  // 实验性功能：覆盖卡片 API
+  createOverlayCard,
+  updateCardStatus,
+  removeCard,
+  clearAllCards,
+  executeWithCard
 })
 </script>
 
@@ -718,6 +1029,8 @@ defineExpose({
     @click="hideContextMenu"
   >
     <div ref="terminalRef" class="terminal-inner"></div>
+    
+    <!-- 卡片现在由 xterm Decoration API 直接渲染到终端内部 -->
     
     <!-- SSH 重连按钮 -->
     <div 
@@ -914,6 +1227,118 @@ defineExpose({
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* ============== xterm Decoration 容器样式 ============== */
+.terminal-inner :deep(.xterm-decoration) {
+  overflow: visible !important;
+  z-index: 100 !important;
+  pointer-events: auto !important;
+}
+
+/* ============== xterm Decoration 卡片样式 (使用 :deep 穿透) ============== */
+.terminal-inner :deep(.xterm-overlay-card) {
+  background: rgba(30, 30, 30, 0.95);
+  border: 1px solid #404040;
+  border-radius: 6px;
+  font-family: var(--font-mono, 'SF Mono', Monaco, 'Cascadia Code', monospace);
+  font-size: 12px;
+  overflow: hidden;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  margin: 2px 8px;
+}
+
+.terminal-inner :deep(.xterm-overlay-card.status-pending) {
+  border-left: 3px solid #888;
+}
+
+.terminal-inner :deep(.xterm-overlay-card.status-running) {
+  border-left: 3px solid #3794ff;
+}
+
+.terminal-inner :deep(.xterm-overlay-card.status-success) {
+  border-left: 3px solid #4ec9b0;
+}
+
+.terminal-inner :deep(.xterm-overlay-card.status-error) {
+  border-left: 3px solid #f14c4c;
+}
+
+.terminal-inner :deep(.xterm-overlay-card .card-header) {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid #333;
+  gap: 8px;
+}
+
+.terminal-inner :deep(.xterm-overlay-card .status-icon) {
+  font-size: 14px;
+}
+
+.terminal-inner :deep(.xterm-overlay-card.status-running .status-icon) {
+  animation: spin 1s linear infinite;
+}
+
+.terminal-inner :deep(.xterm-overlay-card .card-title) {
+  flex: 1;
+  color: #e0e0e0;
+  font-weight: 500;
+}
+
+.terminal-inner :deep(.xterm-overlay-card .duration) {
+  color: #888;
+  font-size: 11px;
+}
+
+.terminal-inner :deep(.xterm-overlay-card .close-btn) {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.terminal-inner :deep(.xterm-overlay-card .close-btn:hover) {
+  color: #fff;
+}
+
+.terminal-inner :deep(.xterm-overlay-card .command-line) {
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.terminal-inner :deep(.xterm-overlay-card .prompt) {
+  color: #4ec9b0;
+  font-weight: bold;
+}
+
+.terminal-inner :deep(.xterm-overlay-card .command-line code) {
+  color: #dcdcaa;
+}
+
+.terminal-inner :deep(.xterm-overlay-card .card-body) {
+  padding: 6px 10px;
+  max-height: 40px;
+  overflow: auto;
+}
+
+.terminal-inner :deep(.xterm-overlay-card .output-text) {
+  color: #888;
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+
+.terminal-inner :deep(.xterm-overlay-card .error-text) {
+  color: #f14c4c;
+  font-size: 11px;
 }
 </style>
 
