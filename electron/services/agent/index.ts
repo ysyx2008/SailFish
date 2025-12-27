@@ -1300,11 +1300,13 @@ ${fullContext}
     
     // 立即发送初始步骤，让前端可以立刻获得 agentId
     // 这解决了用户在 AI 开始处理前切换执行模式时，前端无法更新配置的问题
-    this.addStep(agentId, {
+    const initialStep = this.addStep(agentId, {
       type: 'thinking',
       content: t('ai.preparing'),
       isStreaming: true
     })
+    // 保存初始步骤 ID，在有实际内容输出时移除
+    run.initialStepId = initialStep.id
     
     // Worker 模式日志
     if (workerOptions?.isWorker) {
@@ -1499,6 +1501,12 @@ ${fullContext}
                 streamContent += chunk
                 const now = Date.now()
                 
+                // 第一次收到内容时，移除初始的"正在准备..."步骤
+                if (lastContentUpdate === 0 && run.initialStepId) {
+                  this.removeStep(agentId, run.initialStepId)
+                  run.initialStepId = undefined
+                }
+                
                 // 生成进度提示（内容超过 50 字符且距离上次更新超过 300ms）
                 let progressHint: string | undefined
                 const charCount = streamContent.length
@@ -1632,6 +1640,12 @@ ${fullContext}
 
         // 检查是否有工具调用
         if (response.tool_calls && response.tool_calls.length > 0) {
+          // 有工具调用时也移除初始的"正在准备..."步骤
+          if (run.initialStepId) {
+            this.removeStep(agentId, run.initialStepId)
+            run.initialStepId = undefined
+          }
+          
           // 将 assistant 消息（包含 tool_calls 和 reasoning_content）添加到历史
           // DeepSeek think 模型要求后续消息必须包含 reasoning_content
           const assistantMsg: AiMessage = {

@@ -211,6 +211,8 @@ export interface AgentRun {
   executionPhase: AgentExecutionPhase
   // 当前正在执行的工具名（用于显示）
   currentToolName?: string
+  // 初始"正在准备..."步骤的 ID（在有实际输出时移除）
+  initialStepId?: string
 }
 
 // 主机档案服务接口
