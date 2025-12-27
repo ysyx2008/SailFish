@@ -2592,7 +2592,7 @@ function createPlan(
       // 归档旧计划到步骤中
       executor.addStep({
         type: 'plan_archived',
-        content: `📦 ${existingPlan.title} (${statusSummary})`,
+        content: `${existingPlan.title} (${statusSummary})`,
         toolName: 'create_plan',
         plan: { ...existingPlan },  // 保存完整计划数据
         riskLevel: 'safe'
@@ -2630,7 +2630,7 @@ function createPlan(
   // 添加步骤（包含计划数据）
   executor.addStep({
     type: 'plan_created',
-    content: `📋 ${t('plan.create')}: ${title}`,
+    content: `${t('plan.create')}: ${title}`,
     toolName: 'create_plan',
     toolArgs: { title, steps: stepsInput.length },
     plan: plan,
@@ -2711,7 +2711,7 @@ function updatePlan(
   
   executor.addStep({
     type: 'plan_updated',
-    content: `📋 ${stepInfo} → ${statusText}${resultText}`,
+    content: `${stepInfo} → ${statusText}${resultText}`,
     toolName: 'update_plan',
     toolArgs: { step_index: stepIndex, status, result },
     plan: plan,
@@ -2780,7 +2780,7 @@ function clearPlan(
   // 归档计划到步骤中（保存完整的计划数据供查看）
   executor.addStep({
     type: 'plan_archived',
-    content: `📦 ${plan.title} (${statusSummary})${reasonText}`,
+    content: `${plan.title} (${statusSummary})${reasonText}`,
     toolName: 'clear_plan',
     toolArgs: { reason },
     plan: { ...plan },  // 保存完整计划数据
