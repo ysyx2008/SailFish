@@ -25,6 +25,7 @@ import {
 // Props - 每个 AiPanel 实例绑定到特定的 tab
 const props = defineProps<{
   tabId: string
+  visible?: boolean  // 面板是否可见
 }>()
 
 // Emits
@@ -138,6 +139,15 @@ const {
 
 // 输入框引用（用于选择后重新聚焦）
 const mentionInputRef = ref<HTMLTextAreaElement | null>(null)
+
+// 监听面板可见性变化，当面板显示时聚焦输入框
+watch(() => props.visible, (isVisible) => {
+  if (isVisible) {
+    nextTick(() => {
+      mentionInputRef.value?.focus()
+    })
+  }
+}, { immediate: true })
 
 // 选择建议并重新聚焦输入框
 const selectSuggestion = (suggestion: typeof mentionSuggestions.value[0]) => {
