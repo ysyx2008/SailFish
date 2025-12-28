@@ -20,6 +20,7 @@ export interface HostProfile {
   installedTools: string[]    // 已安装的常用工具
   homeDir?: string            // 用户主目录
   currentDir?: string         // 当前工作目录
+  notes?: string[]            // 用户笔记（已迁移到知识库，保留兼容）
   lastProbed: number          // 上次探测时间
   lastUpdated: number         // 上次更新时间
 }
@@ -183,12 +184,31 @@ export class HostProfileService {
       installedTools: updates.installedTools || existing?.installedTools || [],
       homeDir: updates.homeDir || existing?.homeDir,
       currentDir: updates.currentDir || existing?.currentDir,
+      notes: updates.notes !== undefined ? updates.notes : existing?.notes,
       lastProbed: updates.lastProbed || existing?.lastProbed || now,
       lastUpdated: now
     }
 
     this.saveProfile(profile)
     return profile
+  }
+
+  /**
+   * 添加笔记
+   */
+  addNote(hostId: string, note: string): void {
+    const profile = this.profiles.get(hostId)
+    if (!profile) {
+      // 如果档案不存在，创建一个新档案并添加笔记
+      this.updateProfile(hostId, { notes: [note] })
+      return
+    }
+
+    const notes = profile.notes || []
+    notes.push(note)
+    profile.notes = notes
+    profile.lastUpdated = Date.now()
+    this.saveProfile(profile)
   }
 
   /**

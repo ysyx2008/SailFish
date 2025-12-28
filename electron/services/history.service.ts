@@ -49,7 +49,7 @@ export interface HostProfileData {
   installedTools: string[]
   homeDir?: string
   currentDir?: string
-  notes: string[]
+  notes?: string[]
   lastProbed?: number
   lastUpdated?: number
 }
