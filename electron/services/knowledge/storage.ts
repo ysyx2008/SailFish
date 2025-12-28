@@ -295,8 +295,8 @@ export class VectorStorage extends EventEmitter {
     if (!this.table) return []
 
     try {
-      // LanceDB 查询：使用 where 子句过滤
-      const allRows = await this.table.toArray()
+      // LanceDB 查询：使用 query() 方法获取所有行，然后过滤
+      const allRows = await this.table.query().toArray()
       const filtered = (allRows as VectorRecord[]).filter(r => r.docId === docId)
       return filtered
     } catch (error) {
