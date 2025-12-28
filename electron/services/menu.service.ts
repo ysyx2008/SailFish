@@ -241,9 +241,9 @@ export class MenuService {
       },
       { type: 'separator' },
       {
-        label: this.t('closeTab'),
+        label: this.t('closeWindow'),
         accelerator: 'CmdOrCtrl+W',
-        click: () => this.sendCommand('closeTab')
+        role: 'close'
       }
     ]
 
