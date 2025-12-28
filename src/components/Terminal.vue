@@ -93,9 +93,6 @@ interface OverlayCard {
   executionId?: string           // 关联的命令执行 ID（用于 Agent 命令）
 }
 
-// Agent 命令执行 ID -> 卡片 ID 的映射
-const agentExecutionToCard = new Map<string, string>()
-
 const overlayCards = ref<OverlayCard[]>([])
 
 // 生成唯一卡片ID
@@ -170,7 +167,7 @@ onMounted(async () => {
   unsubscribeCommandExecution = window.electronAPI.terminalState.onCommandExecution((event) => {
     if (event.execution.terminalId !== props.ptyId) return
     
-    const { type, execution } = event
+    const { type } = event
     
     if (type === 'start') {
       // 所有命令统一高亮（用户和 Agent 都一样）
