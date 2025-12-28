@@ -40,7 +40,7 @@ const aiTemplates = computed(() => [
   {
     name: t('aiSettings.templates.qwen').includes('Qwen') ? 'Qwen' : '通义千问',
     apiUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
-    model: 'qwen-turbo',
+    model: 'qwen-plus',
     desc: t('aiSettings.templates.qwen'),
     keyUrl: 'https://bailian.console.aliyun.com/?tab=model#/api-key'
   },
