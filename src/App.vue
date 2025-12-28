@@ -286,14 +286,17 @@ const handleMenuCommand = (command: string) => {
     case 'openFileManager':
       // 如果有活跃的 SSH 连接，打开对应的 SFTP
       if (terminalStore.activeTab?.type === 'ssh' && terminalStore.activeTab.sshConfig) {
-        const sshConfig = terminalStore.activeTab.sshConfig
+        const basicConfig = terminalStore.activeTab.sshConfig
+        // 通过 sshSessionId 从 configStore 获取完整配置（包含密码/私钥）
+        const sessionId = terminalStore.activeTab.sshSessionId
+        const fullSession = sessionId ? configStore.sshSessions.find(s => s.id === sessionId) : null
         sftpConfig.value = {
-          host: sshConfig.host,
-          port: sshConfig.port,
-          username: sshConfig.username,
-          password: sshConfig.password,
-          privateKeyPath: sshConfig.privateKeyPath,
-          passphrase: sshConfig.passphrase
+          host: basicConfig.host,
+          port: basicConfig.port,
+          username: basicConfig.username,
+          password: fullSession?.password,
+          privateKeyPath: fullSession?.privateKeyPath,
+          passphrase: fullSession?.passphrase
         }
         showFileExplorer.value = true
       }
@@ -448,6 +451,7 @@ onUnmounted(() => {
             <AiPanel 
               v-show="tab.id === terminalStore.activeTabId"
               :tab-id="tab.id"
+              :visible="tab.id === terminalStore.activeTabId"
               @close="showAiPanel = false" 
             />
           </template>

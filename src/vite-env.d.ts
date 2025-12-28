@@ -1482,6 +1482,10 @@ interface Window {
         initialRemotePath?: string
       }) => void) => () => void
     }
+    // 菜单命令监听
+    menu: {
+      onCommand: (callback: (data: { command: string; args: unknown[] }) => void) => () => void
+    }
     // 终端屏幕内容服务（主进程请求渲染进程数据）
     screen: {
       // 注册获取最近 N 行的请求处理器
