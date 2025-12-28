@@ -1458,7 +1458,6 @@ ${fullContext}
         // 创建流式消息步骤
         const streamStepId = this.generateId()
         let streamContent = ''
-        let lastProgressUpdate = 0  // 上次更新进度的时间
         let lastContentUpdate = 0   // 上次发送内容更新的时间
         let pendingUpdate = false   // 是否有待发送的更新
         let toolCallProgressStepId: string | undefined  // 工具调用进度步骤 ID
@@ -1468,12 +1467,11 @@ ${fullContext}
         const STREAM_THROTTLE_MS = 100
         
         // 发送内容更新的函数
-        const sendContentUpdate = (progressHint?: string) => {
+        const sendContentUpdate = () => {
           this.updateStep(agentId, streamStepId, {
             type: 'message',
             content: streamContent,
-            isStreaming: true,
-            toolResult: progressHint
+            isStreaming: true
           })
           lastContentUpdate = Date.now()
           pendingUpdate = false
@@ -1487,7 +1485,6 @@ ${fullContext}
           () => new Promise<ChatWithToolsResult>((resolve, reject) => {
             // 重试时重置 streamContent
             streamContent = ''
-            lastProgressUpdate = 0
             lastContentUpdate = 0
             pendingUpdate = false
             toolCallProgressStepId = undefined
@@ -1507,19 +1504,11 @@ ${fullContext}
                   run.initialStepId = undefined
                 }
                 
-                // 生成进度提示（内容超过 50 字符且距离上次更新超过 300ms）
-                let progressHint: string | undefined
-                const charCount = streamContent.length
-                if (charCount > 50 && now - lastProgressUpdate > 300) {
-                  lastProgressUpdate = now
-                  progressHint = `⏳ 生成中... ${charCount} 字符`
-                }
-                
                 // 节流：只在以下情况发送更新
                 // 1. 距离上次更新超过 STREAM_THROTTLE_MS
                 // 2. 这是第一次更新（让用户尽快看到内容）
                 if (now - lastContentUpdate >= STREAM_THROTTLE_MS || lastContentUpdate === 0) {
-                  sendContentUpdate(progressHint)
+                  sendContentUpdate()
                 } else if (!pendingUpdate) {
                   // 设置延迟更新，确保最后的内容也能发送
                   pendingUpdate = true
@@ -1539,13 +1528,12 @@ ${fullContext}
                 // 清除待发送标志，防止延迟更新在完成后发送
                 pendingUpdate = false
                 
-                // 标记流式结束，清除进度提示
+                // 标记流式结束
                 if (streamContent) {
                   this.updateStep(agentId, streamStepId, {
                     type: 'message',
                     content: streamContent,
-                    isStreaming: false,
-                    toolResult: undefined  // 清除进度提示
+                    isStreaming: false
                   })
                 }
                 // 清除工具调用进度步骤（调试模式更新为"准备执行"，非调试模式直接删除）
@@ -1567,17 +1555,16 @@ ${fullContext}
                 reject(new Error(error))
               },
               profileId,
-              // onToolCallProgress: 工具调用参数生成进度（仅调试模式显示）
+              // onToolCallProgress: 工具调用参数生成进度
               (toolName, argsLength) => {
-                // 非调试模式跳过进度显示
-                if (!run.config.debugMode) return
-                
                 const now = Date.now()
                 // 超过 50 字符且距离上次更新超过 200ms 才显示
                 if (argsLength > 50 && now - lastToolCallProgressUpdate > 200) {
                   lastToolCallProgressUpdate = now
-                  const sizeDisplay = `${argsLength}`
-                  const progressContent = `⏳ 正在生成 ${toolName} 参数... ${sizeDisplay} 字符`
+                  // 调试模式显示详细信息，非调试模式显示简洁提示
+                  const progressContent = run.config.debugMode
+                    ? `⏳ 正在生成 ${toolName} 参数... ${argsLength} 字符`
+                    : `⏳ 生成中... ${argsLength} 字符`
                   
                   if (!toolCallProgressStepId) {
                     // 创建新的进度步骤
