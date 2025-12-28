@@ -204,11 +204,13 @@ onMounted(async () => {
     // 追踪用户输入（用于 CWD 变化检测）
     // 当用户按下回车时，发送完整命令给终端状态服务
     if (data === '\r' || data === '\n') {
+      // 用户按回车 - 无条件高亮当前命令行
+      // （上翻历史、粘贴等方式输入的命令不会在 inputBuffer 中）
+      highlightCommandLine()
+      
+      // CWD 追踪（仅当有手动输入时）
       if (inputBuffer.trim()) {
         window.electronAPI.terminalState.handleInput(props.ptyId, inputBuffer)
-        
-        // 通过 startExecution 触发命令执行事件（用户输入）
-        window.electronAPI.terminalState.startExecution(props.ptyId, inputBuffer, { source: 'user' })
       }
       inputBuffer = ''
     } else if (data === '\x7f' || data === '\b') {
@@ -219,7 +221,21 @@ onMounted(async () => {
       inputBuffer += data
     } else if (data.length > 1 && !data.includes('\x1b')) {
       // 粘贴的文本（不包含转义序列）
-      inputBuffer += data
+      // 检查是否包含换行符（用户粘贴了完整命令）
+      if (data.includes('\r') || data.includes('\n')) {
+        // 提取换行前的内容作为命令
+        const lines = data.split(/[\r\n]+/)
+        const command = (inputBuffer + lines[0]).trim()
+        if (command) {
+          window.electronAPI.terminalState.handleInput(props.ptyId, command)
+          // 粘贴时需要等待终端渲染完成后再高亮
+          setTimeout(() => highlightCommandLine(), 20)
+        }
+        // 剩余内容作为新的 buffer（处理多行粘贴的情况）
+        inputBuffer = lines.slice(1).join('')
+      } else {
+        inputBuffer += data
+      }
     }
   })
 
