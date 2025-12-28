@@ -11,13 +11,13 @@ const t = useTranslations(lang);
 const alternateLang = getAlternateLang(lang);
 const alternateUrl = getAlternateUrl(Astro.url, alternateLang);
 
-// 获取首页和统计页的路径
-const homeUrl = lang === 'zh' ? '/' : '/en/';
-const statsUrl = lang === 'zh' ? '/stats' : '/en/stats';
+// 获取首页和统计页的路径（英文为默认语言，中文在 /zh/ 下）
+const homeUrl = lang === 'zh' ? '/zh/' : '/';
+const statsUrl = lang === 'zh' ? '/zh/stats' : '/stats';
 
 // 检查是否在首页（用于决定锚点链接的行为）
 const currentPath = Astro.url.pathname;
-const isHomePage = currentPath === '/' || currentPath === '/en/' || currentPath === '/en';
+const isHomePage = currentPath === '/' || currentPath === '/zh/' || currentPath === '/zh';
 ---
 
 <header class="header">

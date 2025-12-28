@@ -6,13 +6,13 @@ import Features from '../components/Features.astro';
 import UseCases from '../components/UseCases.astro';
 import Download from '../components/Download.astro';
 import Footer from '../components/Footer.astro';
-import { useTranslations, getLangFromUrl } from '../i18n/utils';
+import { getLangFromUrl, useTranslations } from '../i18n/utils';
 
-const lang = getLangFromUrl(Astro.url);
+const lang = 'en';
 const t = useTranslations(lang);
 ---
 
-<Layout title={lang === 'zh' ? '旗鱼终端 - AI 驱动的跨平台终端' : 'SFTerm - AI-Powered Cross-Platform Terminal'} lang={lang}>
+<Layout title="SFTerm - AI-Powered Cross-Platform Terminal" lang={lang}>
   <Header lang={lang} />
   <main>
     <Hero lang={lang} />
@@ -22,4 +22,3 @@ const t = useTranslations(lang);
   </main>
   <Footer lang={lang} />
 </Layout>
-

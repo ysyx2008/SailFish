@@ -3,7 +3,7 @@ export const supportedLanguages = ['zh', 'en'] as const;
 export type SupportedLanguage = typeof supportedLanguages[number];
 
 // 默认语言
-export const defaultLanguage: SupportedLanguage = 'zh';
+export const defaultLanguage: SupportedLanguage = 'en';
 
 // 语言显示名称
 export const languageNames: Record<SupportedLanguage, string> = {
