@@ -1093,6 +1093,11 @@ export class KnowledgeService extends EventEmitter {
     query?: string, 
     limit: number = 10
   ): Promise<SearchResult[]> {
+    // 检查主机记忆功能是否启用
+    if (this.settings.enableHostMemory === false) {
+      return []
+    }
+
     if (!this.isInitialized) {
       await this.initialize()
     }
@@ -1160,6 +1165,11 @@ export class KnowledgeService extends EventEmitter {
     contextHint?: string,
     maxMemories: number = 15
   ): Promise<string[]> {
+    // 主机记忆功能关闭时直接返回
+    if (this.settings.enableHostMemory === false) {
+      return []
+    }
+
     try {
       let memories: SearchResult[] = []
 
