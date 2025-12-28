@@ -14,6 +14,18 @@ if (!app.isPackaged) {
 const packageJson = JSON.parse(fs.readFileSync(join(__dirname, '../package.json'), 'utf-8'))
 const APP_VERSION = packageJson.version
 
+// 应用名称（多语言支持）
+const APP_NAME = { zh: '旗鱼终端', en: 'SFTerm' }
+
+/**
+ * 根据语言获取应用标题
+ */
+function getAppTitle(language?: string): string {
+  const lang = language || configService?.getLanguage() || 'zh-CN'
+  const name = lang.startsWith('zh') ? APP_NAME.zh : APP_NAME.en
+  return `${name} v${APP_VERSION}`
+}
+
 /**
  * 修复 macOS/Linux GUI 应用的 PATH 环境变量问题
  * 当应用作为 GUI 应用启动时（双击 .app 或从 Dock/Spotlight 启动），
@@ -406,7 +418,7 @@ function createWindow() {
     height: 800,
     minWidth: 800,
     minHeight: 600,
-    title: `旗鱼终端 v${APP_VERSION}`,
+    title: getAppTitle(),
     icon: iconPath,
     frame: true,
     show: false, // 先不显示，等待 ready-to-show
@@ -1232,6 +1244,10 @@ ipcMain.handle('config:getLanguage', async () => {
 
 ipcMain.handle('config:setLanguage', async (_event, language: string) => {
   configService.setLanguage(language as import('./services/config.service').LocaleType)
+  // 更新窗口标题以反映语言变化
+  if (mainWindow) {
+    mainWindow.setTitle(getAppTitle(language))
+  }
 })
 
 ipcMain.handle('config:getSponsorStatus', async () => {
