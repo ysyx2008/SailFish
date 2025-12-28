@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -68,7 +68,8 @@ interface CommandHighlight {
 const commandHighlights: CommandHighlight[] = []
 
 // 是否启用命令行高亮
-const enableCommandHighlights = true
+// 命令高亮开关（从配置读取）
+const enableCommandHighlights = computed(() => configStore.terminalSettings.commandHighlight !== false)
 
 // 右键菜单状态
 const contextMenu = ref({
@@ -561,6 +562,25 @@ watch(
   }
 )
 
+// 监听终端设置变化，动态更新
+watch(
+  () => configStore.terminalSettings,
+  settings => {
+    if (terminal) {
+      terminal.options.fontSize = settings.fontSize
+      terminal.options.fontFamily = settings.fontFamily
+      terminal.options.cursorBlink = settings.cursorBlink
+      terminal.options.cursorStyle = settings.cursorStyle
+      // 重新适配大小并刷新显示（字体变化后需要重新计算）
+      nextTick(() => {
+        if (fitAddon) fitAddon.fit()
+        terminal?.refresh(0, terminal.rows - 1)
+      })
+    }
+  },
+  { deep: true }
+)
+
 // 监听焦点请求（从 AI 助手发送代码到终端后自动聚焦）
 watch(
   () => terminalStore.pendingFocusTabId,
@@ -801,7 +821,7 @@ const handleReconnect = async () => {
  * 使用 xterm Decoration API 给命令行添加背景色，方便区分命令和输出
  */
 const highlightCommandLine = () => {
-  if (!terminal || !enableCommandHighlights) return
+  if (!terminal || !enableCommandHighlights.value) return
   
   // 在当前行创建 marker
   const marker = terminal.registerMarker(0)
@@ -836,6 +856,14 @@ const highlightCommandLine = () => {
     // 创建高亮背景元素
     const highlight = document.createElement('div')
     highlight.className = 'cmd-highlight'
+    
+    // 获取 xterm 实际行高（通过内部 API 或计算）
+    const cellHeight = (terminal as any)?._core?._renderService?.dimensions?.css?.cell?.height
+    const fontSize = terminal?.options.fontSize || 14
+    // 优先使用 xterm 内部行高，否则用字体大小估算（lineHeight 约 1.0）
+    const lineHeight = cellHeight || fontSize
+    highlight.style.height = `${lineHeight}px`
+    
     container.appendChild(highlight)
   })
   
@@ -1500,7 +1528,7 @@ defineExpose({
   right: 0;
   width: 100vw;
   max-width: 100%;
-  height: calc(1em + 2px);
+  /* height 由 JavaScript 动态设置 */
   background: linear-gradient(
     90deg,
     color-mix(in srgb, var(--accent-primary, #4299e1) 8%, transparent) 0%,

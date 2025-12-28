@@ -477,6 +477,8 @@ export default {
     },
     scrollback: 'Scrollback Lines',
     scrollbackHint: 'Number of lines to keep in terminal history',
+    commandHighlight: 'Command Highlight',
+    commandHighlightHint: 'Highlight command lines when executing to distinguish commands from output',
     encoding: 'Character Encoding',
     localEncoding: 'Local Terminal Encoding',
     localEncodingHint: 'Character encoding for local terminal. "Auto" detects based on system language. Changes apply to new terminals.',

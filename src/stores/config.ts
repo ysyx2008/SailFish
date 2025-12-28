@@ -94,6 +94,7 @@ export interface TerminalSettings {
   cursorStyle: 'block' | 'underline' | 'bar'
   scrollback: number
   localEncoding: LocalEncoding  // 本地终端编码
+  commandHighlight: boolean     // 命令行高亮
 }
 
 // Agent MBTI 类型
@@ -128,7 +129,8 @@ export const useConfigStore = defineStore('config', () => {
     cursorBlink: true,
     cursorStyle: 'block',
     scrollback: 10000,
-    localEncoding: 'auto'  // 默认自动检测
+    localEncoding: 'auto',  // 默认自动检测
+    commandHighlight: true  // 默认开启命令高亮
   })
 
   // Agent MBTI 设置
@@ -227,6 +229,13 @@ export const useConfigStore = defineStore('config', () => {
       // 加载 AI Rules
       const rules = await window.electronAPI.config.getAiRules()
       aiRules.value = rules || ''
+
+      // 加载终端设置
+      const savedTerminalSettings = await window.electronAPI.config.get('terminalSettings')
+      if (savedTerminalSettings) {
+        // 合并保存的设置（保留默认值作为fallback）
+        terminalSettings.value = { ...terminalSettings.value, ...savedTerminalSettings }
+      }
     } catch (error) {
       console.error('Failed to load config:', error)
     }

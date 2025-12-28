@@ -477,6 +477,8 @@ export default {
     },
     scrollback: '回滚行数',
     scrollbackHint: '终端历史记录保留的行数',
+    commandHighlight: '命令高亮',
+    commandHighlightHint: '在执行命令时高亮显示命令行，便于区分命令和输出',
     encoding: '字符编码',
     localEncoding: '本地终端编码',
     localEncodingHint: '本地终端使用的字符编码，"自动"会根据系统语言检测。修改后新建终端生效。',

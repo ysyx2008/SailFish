@@ -16,6 +16,7 @@ const saveSettings = async () => {
   configStore.terminalSettings.cursorStyle = settings.value.cursorStyle
   configStore.terminalSettings.scrollback = settings.value.scrollback
   configStore.terminalSettings.localEncoding = settings.value.localEncoding
+  configStore.terminalSettings.commandHighlight = settings.value.commandHighlight
   
   await window.electronAPI.config.set('terminalSettings', settings.value)
 }
@@ -106,6 +107,14 @@ const encodingOptions: LocalEncoding[] = [
           <input v-model="settings.cursorBlink" type="checkbox" />
           <span>{{ t('terminalSettings.cursorBlink') }}</span>
         </label>
+      </div>
+
+      <div class="form-group">
+        <label class="checkbox-item">
+          <input v-model="settings.commandHighlight" type="checkbox" />
+          <span>{{ t('terminalSettings.commandHighlight') }}</span>
+        </label>
+        <p class="form-hint">{{ t('terminalSettings.commandHighlightHint') }}</p>
       </div>
     </div>
 
