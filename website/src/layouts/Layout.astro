@@ -67,20 +67,19 @@ const pageDescription = description || (currentLang === 'zh' ? 'AI 驱动的跨�
 
         // 检查当前路径
         const currentPath = window.location.pathname;
-        const isEnglishPath = currentPath.startsWith('/en');
+        const isChinesePath = currentPath.startsWith('/zh');
 
         // 检测浏览器语言偏好
         const browserLang = navigator.language || navigator.languages?.[0] || 'en';
-        const prefersEnglish = browserLang.startsWith('en');
         const prefersChinese = browserLang.startsWith('zh');
 
         // 根据浏览器语言跳转到对应站点
-        if (prefersEnglish && !prefersChinese && !isEnglishPath) {
-          // 英文浏览器在中文页 → 跳转到英文页
-          window.location.href = '/en' + currentPath;
-        } else if (prefersChinese && isEnglishPath) {
+        if (prefersChinese && !isChinesePath) {
           // 中文浏览器在英文页 → 跳转到中文页
-          const newPath = currentPath.replace(/^\/en\/?/, '/') || '/';
+          window.location.href = '/zh' + currentPath;
+        } else if (!prefersChinese && isChinesePath) {
+          // 非中文浏览器在中文页 → 跳转到英文页
+          const newPath = currentPath.replace(/^\/zh\/?/, '/') || '/';
           window.location.href = newPath;
         }
       })();
