@@ -2590,7 +2590,9 @@ function createPlan(
       const completedCount = existingPlan.steps.filter(s => s.status === 'completed').length
       const failedCount = existingPlan.steps.filter(s => s.status === 'failed').length
       const totalCount = existingPlan.steps.length
-      const statusSummary = `${completedCount}/${totalCount} 完成${failedCount > 0 ? `, ${failedCount} 失败` : ''}`
+      const statusParts = [`${completedCount}/${totalCount} ${t('plan.status_completed')}`]
+      if (failedCount > 0) statusParts.push(`${failedCount} ${t('plan.status_failed')}`)
+      const statusSummary = statusParts.join(', ')
       
       // 归档旧计划到步骤中
       executor.addStep({
@@ -2642,7 +2644,7 @@ function createPlan(
   
   // 构建返回信息
   const stepsList = plan.steps.map((s, i) => `${i + 1}. ${s.title}`).join('\n')
-  const output = `计划已创建: ${title}\n\n步骤:\n${stepsList}\n\n开始执行第一步时，请先调用 update_plan(0, "in_progress") 标记步骤为进行中。`
+  const output = `${t('plan.created', { title })}\n\n${t('plan.created_steps')}:\n${stepsList}\n\n${t('plan.created_hint')}`
   
   return { success: true, output }
 }
@@ -2731,23 +2733,23 @@ function updatePlan(
     s.status === 'completed' || s.status === 'failed' || s.status === 'skipped'
   )
   
-  let output = `已更新: ${stepInfo} → ${status}`
-  if (result) output += `\n结果: ${result}`
-  output += `\n\n进度: ${completedCount}/${totalCount} (${progressPercent}%)`
+  let output = t('plan.updated', { step: stepInfo, status })
+  if (result) output += `\n${t('plan.result', { result })}`
+  output += `\n\n${t('plan.progress', { completed: completedCount, total: totalCount, percent: progressPercent })}`
   
   if (allDone) {
     const failedCount = plan.steps.filter(s => s.status === 'failed').length
     if (failedCount > 0) {
-      output += `\n\n⚠️ 计划执行完成，但有 ${failedCount} 个步骤失败`
+      output += `\n\n⚠️ ${t('plan.complete_with_failures', { count: failedCount })}`
     } else {
-      output += `\n\n✅ 计划执行完成！`
+      output += `\n\n✅ ${t('plan.complete_success')}`
     }
-    output += `\n\n💡 提示：如需开始新任务，可使用 clear_plan 归档当前计划。`
+    output += `\n\n💡 ${t('plan.complete_hint')}`
   } else {
     // 提示下一步
     const nextPendingIndex = plan.steps.findIndex(s => s.status === 'pending')
     if (nextPendingIndex !== -1) {
-      output += `\n\n下一步: ${nextPendingIndex + 1}. ${plan.steps[nextPendingIndex].title}`
+      output += `\n\n${t('plan.next_step', { index: nextPendingIndex + 1, title: plan.steps[nextPendingIndex].title })}`
     }
   }
   
@@ -2777,7 +2779,10 @@ function clearPlan(
   const progressPercent = Math.round((completedCount / totalCount) * 100)
   
   // 构建状态摘要
-  const statusSummary = `${completedCount}/${totalCount} 完成${failedCount > 0 ? `, ${failedCount} 失败` : ''}${skippedCount > 0 ? `, ${skippedCount} 跳过` : ''}`
+  const statusParts = [`${completedCount}/${totalCount} ${t('plan.status_completed')}`]
+  if (failedCount > 0) statusParts.push(`${failedCount} ${t('plan.status_failed')}`)
+  if (skippedCount > 0) statusParts.push(`${skippedCount} ${t('plan.status_skipped')}`)
+  const statusSummary = statusParts.join(', ')
   const reasonText = reason ? ` - ${reason}` : ''
   
   // 归档计划到步骤中（保存完整的计划数据供查看）
@@ -2793,8 +2798,12 @@ function clearPlan(
   // 清除当前计划
   executor.setCurrentPlan(undefined)
   
+  let output = `${t('plan.archived', { title: plan.title })}\n${t('plan.archived_progress', { percent: progressPercent, summary: statusSummary })}`
+  if (reason) output += `\n${t('plan.archived_reason', { reason })}`
+  output += `\n\n${t('plan.archived_hint')}`
+  
   return { 
     success: true, 
-    output: `计划已归档: ${plan.title}\n进度: ${progressPercent}% (${statusSummary})${reasonText ? `\n原因: ${reason}` : ''}\n\n计划已保存到执行历史中，可随时查看。现在可以创建新计划。`
+    output
   }
 }

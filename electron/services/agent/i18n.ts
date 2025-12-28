@@ -41,6 +41,22 @@ const translations = {
     'status.command_failed': '命令执行失败',
     'status.command_started': '命令已启动',
     
+    // 命令风险评估
+    'risk.blocked_interactive': '{cmd} 是全屏交互式程序',
+    'risk.blocked_hint_editor': '请使用 write_file 工具或 sed 命令编辑文件',
+    'risk.blocked_hint_fm': '请使用 ls、cd、cp、mv 等命令',
+    'risk.blocked_hint_tmux': '不支持在 Agent 中使用终端复用器',
+    'risk.pkg_needs_confirm': '{pkg} install 需要确认',
+    'risk.auto_added_y': '已自动添加 -y 参数',
+    'risk.tail_continuous': 'tail -f 会持续输出',
+    'risk.ping_continuous': 'ping 会持续运行',
+    'risk.watch_continuous': 'watch 会持续刷新',
+    'risk.monitor_tool': '{cmd} 是实时监控工具',
+    'risk.journalctl_continuous': 'journalctl -f 会持续输出',
+    'risk.dmesg_continuous': 'dmesg -w 会持续输出',
+    'risk.fire_and_forget_hint': '命令已启动。用 get_terminal_context 查看输出，用 send_control_key("{key}") 停止',
+    'risk.monitor_exit_hint': '命令已启动。用 get_terminal_context 查看输出，用 send_control_key("q") 或 send_control_key("ctrl+c") 退出',
+
     // 终端状态
     'terminal.checking_status': '检查终端状态',
     'terminal.status': '终端状态',
@@ -208,6 +224,23 @@ const translations = {
 
     // 计划步骤
     'plan.step_prefix': '步骤 {index}',
+    'plan.created': '计划已创建: {title}',
+    'plan.created_steps': '步骤',
+    'plan.created_hint': '开始执行第一步时，请先调用 update_plan(0, "in_progress") 标记步骤为进行中。',
+    'plan.updated': '已更新: {step} → {status}',
+    'plan.result': '结果: {result}',
+    'plan.progress': '进度: {completed}/{total} ({percent}%)',
+    'plan.complete_with_failures': '计划执行完成，但有 {count} 个步骤失败',
+    'plan.complete_success': '计划执行完成！',
+    'plan.complete_hint': '提示：如需开始新任务，可使用 clear_plan 归档当前计划。',
+    'plan.next_step': '下一步: {index}. {title}',
+    'plan.archived': '计划已归档: {title}',
+    'plan.archived_progress': '进度: {percent}% ({summary})',
+    'plan.archived_reason': '原因: {reason}',
+    'plan.archived_hint': '计划已保存到执行历史中，可随时查看。现在可以创建新计划。',
+    'plan.status_completed': '已完成',
+    'plan.status_failed': '失败',
+    'plan.status_skipped': '跳过',
 
     // 控制键
     'control.send_key': '发送控制键',
@@ -438,6 +471,22 @@ const translations = {
     'status.command_failed': 'Command execution failed',
     'status.command_started': 'Command started',
 
+    // Command risk assessment
+    'risk.blocked_interactive': '{cmd} is a fullscreen interactive program',
+    'risk.blocked_hint_editor': 'Please use write_file tool or sed command to edit files',
+    'risk.blocked_hint_fm': 'Please use ls, cd, cp, mv commands instead',
+    'risk.blocked_hint_tmux': 'Terminal multiplexers are not supported in Agent',
+    'risk.pkg_needs_confirm': '{pkg} install requires confirmation',
+    'risk.auto_added_y': 'Automatically added -y parameter',
+    'risk.tail_continuous': 'tail -f outputs continuously',
+    'risk.ping_continuous': 'ping runs continuously',
+    'risk.watch_continuous': 'watch refreshes continuously',
+    'risk.monitor_tool': '{cmd} is a real-time monitoring tool',
+    'risk.journalctl_continuous': 'journalctl -f outputs continuously',
+    'risk.dmesg_continuous': 'dmesg -w outputs continuously',
+    'risk.fire_and_forget_hint': 'Command started. Use get_terminal_context to view output, use send_control_key("{key}") to stop',
+    'risk.monitor_exit_hint': 'Command started. Use get_terminal_context to view output, use send_control_key("q") or send_control_key("ctrl+c") to exit',
+
     // Terminal status
     'terminal.checking_status': 'Checking terminal status',
     'terminal.status': 'Terminal status',
@@ -605,6 +654,23 @@ Please output the summary in the following format:
 
     // Plan step
     'plan.step_prefix': 'Step {index}',
+    'plan.created': 'Plan created: {title}',
+    'plan.created_steps': 'Steps',
+    'plan.created_hint': 'When starting the first step, please call update_plan(0, "in_progress") to mark step as in progress.',
+    'plan.updated': 'Updated: {step} → {status}',
+    'plan.result': 'Result: {result}',
+    'plan.progress': 'Progress: {completed}/{total} ({percent}%)',
+    'plan.complete_with_failures': 'Plan completed, but {count} steps failed',
+    'plan.complete_success': 'Plan completed!',
+    'plan.complete_hint': 'Hint: To start a new task, use clear_plan to archive the current plan.',
+    'plan.next_step': 'Next step: {index}. {title}',
+    'plan.archived': 'Plan archived: {title}',
+    'plan.archived_progress': 'Progress: {percent}% ({summary})',
+    'plan.archived_reason': 'Reason: {reason}',
+    'plan.archived_hint': 'Plan saved to execution history. You can create a new plan now.',
+    'plan.status_completed': 'Completed',
+    'plan.status_failed': 'Failed',
+    'plan.status_skipped': 'Skipped',
 
     // Control key
     'control.send_key': 'Send control key',

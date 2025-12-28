@@ -2,6 +2,7 @@
  * 命令风险评估
  */
 import type { RiskLevel } from './types'
+import { t } from './i18n'
 
 /**
  * 命令处理信息
@@ -31,21 +32,21 @@ export function analyzeCommand(command: string): CommandHandlingInfo {
 
   // ==================== 完全禁止的命令（有更好的工具替代）====================
   const blockedCommands: Record<string, string> = {
-    'vim': '请使用 write_file 工具或 sed 命令编辑文件',
-    'vi': '请使用 write_file 工具或 sed 命令编辑文件',
-    'nvim': '请使用 write_file 工具或 sed 命令编辑文件',
-    'nano': '请使用 write_file 工具或 sed 命令编辑文件',
-    'emacs': '请使用 write_file 工具或 sed 命令编辑文件',
-    'mc': '请使用 ls、cd、cp、mv 等命令',
-    'ranger': '请使用 ls、cd、cp、mv 等命令',
-    'tmux': '不支持在 Agent 中使用终端复用器',
-    'screen': '不支持在 Agent 中使用终端复用器',
+    'vim': t('risk.blocked_hint_editor'),
+    'vi': t('risk.blocked_hint_editor'),
+    'nvim': t('risk.blocked_hint_editor'),
+    'nano': t('risk.blocked_hint_editor'),
+    'emacs': t('risk.blocked_hint_editor'),
+    'mc': t('risk.blocked_hint_fm'),
+    'ranger': t('risk.blocked_hint_fm'),
+    'tmux': t('risk.blocked_hint_tmux'),
+    'screen': t('risk.blocked_hint_tmux'),
   }
   
   if (blockedCommands[cmdName]) {
     return {
       strategy: 'block',
-      reason: `${cmdName} 是全屏交互式程序`,
+      reason: t('risk.blocked_interactive', { cmd: cmdName }),
       hint: blockedCommands[cmdName]
     }
   }
@@ -62,9 +63,9 @@ export function analyzeCommand(command: string): CommandHandlingInfo {
     )
     return {
       strategy: 'auto_fix',
-      reason: `${pkgManager} install 需要确认`,
+      reason: t('risk.pkg_needs_confirm', { pkg: pkgManager }),
       fixedCommand,
-      hint: '已自动添加 -y 参数'
+      hint: t('risk.auto_added_y')
     }
   }
 
@@ -76,8 +77,8 @@ export function analyzeCommand(command: string): CommandHandlingInfo {
   if (/\btail\s+.*(-f|--follow)\b/.test(cmd) || /\btail\s+-[a-zA-Z]*f/.test(cmd)) {
     return {
       strategy: 'fire_and_forget',
-      reason: 'tail -f 会持续输出',
-      hint: '命令已启动。用 get_terminal_context 查看输出，用 send_control_key("ctrl+c") 停止'
+      reason: t('risk.tail_continuous'),
+      hint: t('risk.fire_and_forget_hint', { key: 'ctrl+c' })
     }
   }
   
@@ -85,8 +86,8 @@ export function analyzeCommand(command: string): CommandHandlingInfo {
   if (/\bping\s+/.test(cmdLower) && !/\s-c\s*\d+/.test(cmd)) {
     return {
       strategy: 'fire_and_forget',
-      reason: 'ping 会持续运行',
-      hint: '命令已启动。用 get_terminal_context 查看输出，用 send_control_key("ctrl+c") 停止'
+      reason: t('risk.ping_continuous'),
+      hint: t('risk.fire_and_forget_hint', { key: 'ctrl+c' })
     }
   }
   
@@ -94,8 +95,8 @@ export function analyzeCommand(command: string): CommandHandlingInfo {
   if (/\bwatch\s+/.test(cmdLower)) {
     return {
       strategy: 'fire_and_forget',
-      reason: 'watch 会持续刷新',
-      hint: '命令已启动。用 get_terminal_context 查看输出，用 send_control_key("ctrl+c") 停止'
+      reason: t('risk.watch_continuous'),
+      hint: t('risk.fire_and_forget_hint', { key: 'ctrl+c' })
     }
   }
   
@@ -103,8 +104,8 @@ export function analyzeCommand(command: string): CommandHandlingInfo {
   if (/\b(top|htop|btop|atop|iotop|iftop|nload|bmon)\b/.test(cmdLower)) {
     return {
       strategy: 'fire_and_forget',
-      reason: `${cmdName} 是实时监控工具`,
-      hint: '命令已启动。用 get_terminal_context 查看输出，用 send_control_key("q") 或 send_control_key("ctrl+c") 退出'
+      reason: t('risk.monitor_tool', { cmd: cmdName }),
+      hint: t('risk.monitor_exit_hint')
     }
   }
   
@@ -112,8 +113,8 @@ export function analyzeCommand(command: string): CommandHandlingInfo {
   if (/\bjournalctl\s+.*-f\b/.test(cmd) || /\bjournalctl\s+-[a-zA-Z]*f/.test(cmd)) {
     return {
       strategy: 'fire_and_forget',
-      reason: 'journalctl -f 会持续输出',
-      hint: '命令已启动。用 get_terminal_context 查看输出，用 send_control_key("ctrl+c") 停止'
+      reason: t('risk.journalctl_continuous'),
+      hint: t('risk.fire_and_forget_hint', { key: 'ctrl+c' })
     }
   }
   
@@ -121,8 +122,8 @@ export function analyzeCommand(command: string): CommandHandlingInfo {
   if (/\bdmesg\s+.*-w\b/.test(cmd) || /\bdmesg\s+-[a-zA-Z]*w/.test(cmd)) {
     return {
       strategy: 'fire_and_forget',
-      reason: 'dmesg -w 会持续输出',
-      hint: '命令已启动。用 get_terminal_context 查看输出，用 send_control_key("ctrl+c") 停止'
+      reason: t('risk.dmesg_continuous'),
+      hint: t('risk.fire_and_forget_hint', { key: 'ctrl+c' })
     }
   }
 
