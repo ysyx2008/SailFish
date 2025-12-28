@@ -626,13 +626,13 @@ export class AgentService {
       const omitted = lines.length - 20
       return [
         ...headLines,
-        `\n... [省略 ${omitted} 行] ...\n`,
+        `\n${t('compress.lines_omitted', { count: omitted })}\n`,
         ...tailLines
       ].join('\n')
     }
 
     // 普通文本，直接截断
-    return output.substring(0, maxLength) + `\n... [截断，原长度: ${output.length} 字符]`
+    return output.substring(0, maxLength) + `\n${t('compress.truncated', { length: output.length })}`
   }
 
   /**
@@ -645,20 +645,20 @@ export class AgentService {
     for (const msg of messages) {
       // 从 assistant 消息中提取关键决策和发现
       if (msg.role === 'assistant' && msg.content) {
-        // 提取诊断结果
-        const diagMatch = msg.content.match(/(?:诊断结果|分析结果|发现|结论)[：:]\s*([^\n]+)/g)
+        // 提取诊断结果（中英文）
+        const diagMatch = msg.content.match(/(?:诊断结果|分析结果|发现|结论|diagnosis|analysis|found|conclusion)[：:]\s*([^\n]+)/gi)
         if (diagMatch) {
           keyPoints.push(...diagMatch.map(m => m.trim()))
         }
         
-        // 提取执行的关键操作
-        const actionMatch = msg.content.match(/(?:已执行|已完成|成功)[：:]\s*([^\n]+)/g)
+        // 提取执行的关键操作（中英文）
+        const actionMatch = msg.content.match(/(?:已执行|已完成|成功|executed|completed|success)[：:]\s*([^\n]+)/gi)
         if (actionMatch) {
           keyPoints.push(...actionMatch.map(m => m.trim()))
         }
         
-        // 提取错误信息
-        const errorMatch = msg.content.match(/(?:错误|失败|问题)[：:]\s*([^\n]+)/g)
+        // 提取错误信息（中英文）
+        const errorMatch = msg.content.match(/(?:错误|失败|问题|error|failed|problem)[：:]\s*([^\n]+)/gi)
         if (errorMatch) {
           keyPoints.push(...errorMatch.map(m => m.trim()))
         }
@@ -666,11 +666,11 @@ export class AgentService {
       
       // 从 tool 消息中提取关键结果
       if (msg.role === 'tool' && msg.content) {
-        // 提取错误信息
-        if (msg.content.includes('错误') || msg.content.includes('Error') || msg.content.includes('failed')) {
+        // 提取错误信息（中英文）
+        if (/错误|error|failed/i.test(msg.content)) {
           const firstLine = msg.content.split('\n')[0]
           if (firstLine.length < 200) {
-            keyPoints.push(`[工具结果] ${firstLine}`)
+            keyPoints.push(t('compress.tool_result', { content: firstLine }))
           }
         }
       }
@@ -696,10 +696,10 @@ export class AgentService {
     
     // 内容因素
     if (msg.content) {
-      // 包含关键信息的消息更重要
-      if (msg.content.includes('结果') || msg.content.includes('发现')) score += 10
-      if (msg.content.includes('错误') || msg.content.includes('失败')) score += 15
-      if (msg.content.includes('成功') || msg.content.includes('完成')) score += 10
+      // 包含关键信息的消息更重要（中英文）
+      if (/结果|发现|result|found/i.test(msg.content)) score += 10
+      if (/错误|失败|error|failed/i.test(msg.content)) score += 15
+      if (/成功|完成|success|completed/i.test(msg.content)) score += 10
       
       // 太长的消息降低优先级（可能是原始输出）
       if (msg.content.length > 2000) score -= 10
@@ -860,7 +860,7 @@ export class AgentService {
         if (msg.role === 'assistant' && msg.content.length > 3000) {
           return {
             ...msg,
-            content: msg.content.substring(0, 3000) + '\n... [回复已截断]'
+            content: msg.content.substring(0, 3000) + `\n${t('compress.reply_truncated')}`
           }
         }
         return msg
@@ -905,17 +905,17 @@ export class AgentService {
       .map(item => item.group)
     
     // 8. 构建摘要消息
-    let summaryContent = '[系统提示：对话历史已被智能压缩，以下是关键信息摘要]\n\n'
+    let summaryContent = `${t('compress.memory_folding_header')}\n\n`
     
     if (keyPoints.length > 0) {
-      summaryContent += '**关键记录**：\n'
+      summaryContent += `${t('compress.key_records')}\n`
       keyPoints.forEach(point => {
         summaryContent += `- ${point}\n`
       })
       summaryContent += '\n'
     }
     
-    summaryContent += '如需了解更多历史细节，请询问用户。'
+    summaryContent += t('compress.ask_for_details')
     
     const summaryMsg: AiMessage = {
       role: 'user',
@@ -982,18 +982,18 @@ export class AgentService {
       let stepDesc = `  ${index + 1}. [${step.type}]`
       
       if (step.toolName) {
-        stepDesc += ` 工具: ${step.toolName}`
+        stepDesc += ` ${t('context.tool')}: ${step.toolName}`
         if (step.toolArgs) {
-          stepDesc += `\n     参数: ${JSON.stringify(step.toolArgs)}`
+          stepDesc += `\n     ${t('context.args')}: ${JSON.stringify(step.toolArgs)}`
         }
       }
       
       if (step.content) {
-        stepDesc += `\n     内容: ${step.content}`
+        stepDesc += `\n     ${t('context.content')}: ${step.content}`
       }
       
       if (step.toolResult) {
-        stepDesc += `\n     结果: ${step.toolResult}`
+        stepDesc += `\n     ${t('context.result')}: ${step.toolResult}`
       }
       
       return stepDesc
@@ -1003,11 +1003,11 @@ export class AgentService {
     const formatTask = (task: import('./types').PreviousTaskContext, taskNum: number): string => {
       const stepDescriptions = task.steps.map((step, index) => formatStep(step, index))
       return [
-        `### 任务 ${taskNum}`,
-        `**用户请求**: ${task.userTask}`,
-        '**执行步骤**:',
+        `### ${t('context.task_num', { num: taskNum })}`,
+        `**${t('context.user_request')}**: ${task.userTask}`,
+        `**${t('context.execution_steps')}**:`,
         ...stepDescriptions,
-        `**结果**: ${task.finalResult}`,
+        `**${t('context.result')}**: ${task.finalResult}`,
         ''
       ].join('\n')
     }
@@ -1015,11 +1015,11 @@ export class AgentService {
     // 构建完整上下文
     const taskDescriptions = previousTasks.map((task, index) => formatTask(task, index + 1))
     const fullContext = [
-      `📋 **之前的对话历史（共 ${previousTasks.length} 个任务）：**`,
+      t('context.history_header', { count: previousTasks.length }),
       '',
       ...taskDescriptions,
       '---',
-      '以上是之前的执行记录，请结合这些上下文来处理当前任务。'
+      t('context.history_footer')
     ].join('\n')
 
     // 检查 token 数量
@@ -1033,29 +1033,11 @@ export class AgentService {
     console.log(`[Agent] 历史上下文过长 (${estimatedTokens} tokens)，使用 AI 提炼摘要 (目标: ${maxTokens} tokens)`)
 
     try {
-      const summaryPrompt = `你是一个技术分析助手。以下是用户之前的 ${previousTasks.length} 个任务执行记录，请提炼出关键信息摘要，帮助理解对话上下文。
-
-**要求**：
-1. 总结每个任务做了什么
-2. 提炼关键的执行结果和发现
-3. 标注哪些任务成功、哪些失败或被中止
-4. 保留对后续任务可能有用的信息（如发现的路径、配置、问题等）
-5. 输出控制在 ${Math.floor(maxTokens * 0.8)} 个 token 以内
-
----
-${fullContext}
----
-
-请用以下格式输出摘要：
-
-**对话摘要**:
-[简要总结之前做了什么]
-
-**关键发现**:
-[执行过程中发现的重要信息]
-
-**当前状态**:
-[系统/任务的当前状态]`
+      const summaryPrompt = t('context.summary_prompt', {
+        count: previousTasks.length,
+        tokenLimit: Math.floor(maxTokens * 0.8),
+        context: fullContext
+      })
 
       const summary = await this.aiService.chat([
         { role: 'user', content: summaryPrompt }
@@ -1063,7 +1045,7 @@ ${fullContext}
 
       if (summary && summary.trim()) {
         console.log(`[Agent] AI 摘要生成成功，长度: ${summary.length} 字符`)
-        return `📋 **之前的对话历史（AI 摘要）：**\n\n${summary}\n\n请结合以上上下文处理当前任务。`
+        return `${t('context.history_summary_header')}\n\n${summary}\n\n${t('context.history_summary_footer')}`
       }
     } catch (error) {
       console.warn('[Agent] AI 摘要生成失败，使用简化版本:', error)
@@ -1071,15 +1053,15 @@ ${fullContext}
 
     // AI 摘要失败时的兜底：只保留任务和结果
     const simpleSummary = previousTasks.map((task, index) => {
-      return `${index + 1}. ${task.userTask}\n   结果: ${task.finalResult}`
+      return `${index + 1}. ${task.userTask}\n   ${t('context.result')}: ${task.finalResult}`
     }).join('\n\n')
 
     return [
-      `📋 **之前的对话历史（共 ${previousTasks.length} 个任务）：**`,
+      t('context.history_header', { count: previousTasks.length }),
       '',
       simpleSummary,
       '',
-      '请结合以上上下文处理当前任务。'
+      t('context.history_summary_footer')
     ].join('\n')
   }
 
@@ -1184,7 +1166,7 @@ ${fullContext}
       // 添加确认步骤
       this.addStep(agentId, {
         type: 'confirm',
-        content: `等待用户确认: ${toolName}`,
+        content: t('agent.waiting_confirm', { toolName }),
         toolName,
         toolArgs,
         riskLevel
@@ -1378,8 +1360,8 @@ ${fullContext}
         run.messages.push({ 
           role: 'assistant', 
           content: taskCount === 1 
-            ? '好的，我已了解之前的任务执行情况，会结合这个上下文来处理当前任务。'
-            : `好的，我已了解之前 ${taskCount} 个任务的执行情况，会结合这些上下文来处理当前任务。`
+            ? t('agent.context_ack_single')
+            : t('agent.context_ack_multi', { count: taskCount })
         })
         console.log(`[Agent] 已注入 ${taskCount} 个任务的历史上下文`)
       }
@@ -1541,7 +1523,7 @@ ${fullContext}
                   if (run.config.debugMode) {
                     this.updateStep(agentId, toolCallProgressStepId, {
                       type: 'thinking',
-                      content: '⚙️ 准备执行工具...',
+                      content: t('agent.preparing_tool'),
                       isStreaming: false
                     })
                   } else {
@@ -1562,9 +1544,10 @@ ${fullContext}
                 if (argsLength > 50 && now - lastToolCallProgressUpdate > 200) {
                   lastToolCallProgressUpdate = now
                   // 调试模式显示详细信息，非调试模式显示简洁提示
+                  const charsText = t('progress.chars', { count: argsLength })
                   const progressContent = run.config.debugMode
-                    ? `⏳ 正在生成 ${toolName} 参数... ${argsLength} 字符`
-                    : `⏳ 生成中... ${argsLength} 字符`
+                    ? `${t('progress.generating_args', { toolName })} ${charsText}`
+                    : `${t('progress.generating')} ${charsText}`
                   
                   if (!toolCallProgressStepId) {
                     // 创建新的进度步骤
@@ -1594,7 +1577,7 @@ ${fullContext}
               // 通知用户正在重试
               this.updateStep(agentId, streamStepId, {
                 type: 'message',
-                content: `⚠️ 网络请求失败 (${error.message})，正在重试 (${attempt}/2)...`,
+                content: `⚠️ ${t('agent.retry_network', { error: error.message, attempt })}`,
                 isStreaming: true
               })
             }
@@ -1696,7 +1679,7 @@ ${fullContext}
               role: 'tool',
               content: result.success 
                 ? result.output 
-                : `错误: ${result.error}`,
+                : t('agent.tool_error', { error: result.error || t('agent.unknown_error') }),
               tool_call_id: toolCall.id
             })
           }
@@ -1710,7 +1693,7 @@ ${fullContext}
               console.log('[Agent] 反思次数超限，强制停止')
               this.addStep(agentId, {
                 type: 'error',
-                content: '检测到执行循环，已自动停止。请尝试用不同方式描述任务。'
+                content: t('agent.loop_detected')
               })
               break  // 跳出循环，结束执行
             }
@@ -1758,18 +1741,15 @@ ${fullContext}
             if (noToolCallRetryCount >= MAX_NO_TOOL_RETRIES) {
               this.addStep(agentId, {
                 type: 'error',
-                content: '⚠️ AI 没有返回任何内容。\n\n' +
-                  '可能的原因：\n' +
-                  '• 当前模型可能不支持工具调用（Function Calling）\n' +
-                  '• 请尝试使用支持 Function Calling 的模型，如 GPT-4、Claude 或 DeepSeek-Chat'
+                content: `⚠️ ${t('agent.no_content')}\n\n${t('agent.no_content_reasons')}`
               })
               
               run.isRunning = false
               const emptyCallbacks = this.getCallbacks(agentId)
               if (emptyCallbacks.onComplete) {
-                emptyCallbacks.onComplete(agentId, 'AI 未返回任何内容', [])
+                emptyCallbacks.onComplete(agentId, t('agent.no_response'), [])
               }
-              return 'AI 未返回任何内容'
+              return t('agent.no_response')
             }
             
             // 重试一次（针对空回复的情况）
@@ -1800,7 +1780,7 @@ ${fullContext}
               
               run.messages.push({
                 role: 'user',
-                content: `⚠️ 计划中还有 ${pendingSteps.length} 个步骤未完成：\n${pendingStepTitles}\n\n请继续执行这些步骤，并使用 update_plan 更新状态。所有步骤完成后才能给出总结。`
+                content: `⚠️ ${t('agent.plan_incomplete', { count: pendingSteps.length, steps: pendingStepTitles })}`
               })
               
               // 增加提醒计数
@@ -1830,7 +1810,7 @@ ${fullContext}
         throw new Error('User aborted Agent execution')
       }
 
-      const finalMessage = lastResponse?.content || '任务完成'
+      const finalMessage = lastResponse?.content || t('agent.task_complete')
 
       console.log('[Agent] run completed normally, calling onCompleteCallback')
       const callbacks = this.getCallbacks(agentId)
@@ -1845,7 +1825,7 @@ ${fullContext}
 
     } catch (error) {
       run.isRunning = false
-      const errorMsg = error instanceof Error ? error.message : '未知错误'
+      const errorMsg = error instanceof Error ? error.message : t('agent.unknown_error')
       console.log('[Agent] caught error:', errorMsg)
       
       // 检查是否是用户主动中止
@@ -1875,7 +1855,7 @@ ${fullContext}
         if (hasValidResponse) {
           // 已经有有效响应，视为正常完成
           console.log('[Agent] AI request aborted but has valid response, treating as success')
-          const finalMessage = lastResponse!.content || '任务完成'
+          const finalMessage = lastResponse!.content || t('agent.task_complete')
           
           const successCallbacks = this.getCallbacks(agentId)
           if (successCallbacks.onComplete) {
@@ -1889,7 +1869,7 @@ ${fullContext}
       console.log('[Agent] error is not recoverable, adding error step')
       this.addStep(agentId, {
         type: 'error',
-        content: `执行出错: ${errorMsg}`
+        content: t('agent.execution_error', { error: errorMsg })
       })
 
       const errorCallbacks = this.getCallbacks(agentId)
@@ -1991,12 +1971,12 @@ ${fullContext}
     switch (phase) {
       case 'writing_file':
         canInterrupt = false
-        interruptWarning = '正在写入文件，打断可能导致文件损坏'
+        interruptWarning = t('agent.interrupt_writing')
         break
       case 'executing_command':
         // 命令执行中可以打断，但给予警告
         canInterrupt = true
-        interruptWarning = '正在执行命令，打断可能导致操作不完整'
+        interruptWarning = t('agent.interrupt_command')
         break
       case 'thinking':
       case 'waiting':

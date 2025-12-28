@@ -82,6 +82,74 @@ const translations = {
     'output.tests_passed': '通过',
     'output.tests_failed': '失败',
 
+    // 生成进度
+    'progress.generating': '生成中...',
+    'progress.generating_args': '正在生成 {toolName} 参数...',
+    'progress.chars': '{count} 字符',
+
+    // Agent 执行状态
+    'agent.waiting_confirm': '等待用户确认: {toolName}',
+    'agent.preparing_tool': '准备执行工具...',
+    'agent.retry_network': '网络请求失败 ({error})，正在重试 ({attempt}/2)...',
+    'agent.loop_detected': '检测到执行循环，已自动停止。请尝试用不同方式描述任务。',
+    'agent.no_content': 'AI 没有返回任何内容。',
+    'agent.no_content_reasons': '可能的原因：\n• 当前模型可能不支持工具调用（Function Calling）\n• 请尝试使用支持 Function Calling 的模型，如 GPT-4、Claude 或 DeepSeek-Chat',
+    'agent.plan_incomplete': '计划中还有 {count} 个步骤未完成：\n{steps}\n\n请继续执行这些步骤，并使用 update_plan 更新状态。所有步骤完成后才能给出总结。',
+    'agent.execution_error': '执行出错: {error}',
+    'agent.tool_error': '错误: {error}',
+    'agent.task_complete': '任务完成',
+    'agent.unknown_error': '未知错误',
+    'agent.interrupt_writing': '正在写入文件，打断可能导致文件损坏',
+    'agent.interrupt_command': '正在执行命令，打断可能导致操作不完整',
+    'agent.context_ack_single': '好的，我已了解之前的任务执行情况，会结合这个上下文来处理当前任务。',
+    'agent.context_ack_multi': '好的，我已了解之前 {count} 个任务的执行情况，会结合这些上下文来处理当前任务。',
+    'agent.no_response': 'AI 未返回任何内容',
+    
+    // 内容压缩
+    'compress.lines_omitted': '... [省略 {count} 行] ...',
+    'compress.truncated': '... [截断，原长度: {length} 字符]',
+    'compress.reply_truncated': '... [回复已截断]',
+    'compress.tool_result': '[工具结果] {content}',
+    'compress.memory_folding_header': '[系统提示：对话历史已被智能压缩，以下是关键信息摘要]',
+    'compress.key_records': '**关键记录**：',
+    'compress.ask_for_details': '如需了解更多历史细节，请询问用户。',
+
+    // 历史任务上下文
+    'context.tool': '工具',
+    'context.args': '参数',
+    'context.content': '内容',
+    'context.result': '结果',
+    'context.task_num': '任务 {num}',
+    'context.user_request': '用户请求',
+    'context.execution_steps': '执行步骤',
+    'context.history_header': '📋 **之前的对话历史（共 {count} 个任务）：**',
+    'context.history_footer': '以上是之前的执行记录，请结合这些上下文来处理当前任务。',
+    'context.history_summary_header': '📋 **之前的对话历史（AI 摘要）：**',
+    'context.history_summary_footer': '请结合以上上下文处理当前任务。',
+    'context.summary_prompt': `你是一个技术分析助手。以下是用户之前的 {count} 个任务执行记录，请提炼出关键信息摘要，帮助理解对话上下文。
+
+**要求**：
+1. 总结每个任务做了什么
+2. 提炼关键的执行结果和发现
+3. 标注哪些任务成功、哪些失败或被中止
+4. 保留对后续任务可能有用的信息（如发现的路径、配置、问题等）
+5. 输出控制在 {tokenLimit} 个 token 以内
+
+---
+{context}
+---
+
+请用以下格式输出摘要：
+
+**对话摘要**:
+[简要总结之前做了什么]
+
+**关键发现**:
+[执行过程中发现的重要信息]
+
+**当前状态**:
+[系统/任务的当前状态]`,
+
     // 文件操作
     'file.reading': '读取文件',
     'file.reading_info_only': '读取文件 (仅查询信息)',
@@ -357,6 +425,74 @@ const translations = {
     'output.error_count': 'Error count',
     'output.tests_passed': 'Passed',
     'output.tests_failed': 'Failed',
+
+    // Generation progress
+    'progress.generating': 'Generating...',
+    'progress.generating_args': 'Generating {toolName} args...',
+    'progress.chars': '{count} chars',
+
+    // Agent execution status
+    'agent.waiting_confirm': 'Waiting for confirmation: {toolName}',
+    'agent.preparing_tool': 'Preparing to execute tool...',
+    'agent.retry_network': 'Network request failed ({error}), retrying ({attempt}/2)...',
+    'agent.loop_detected': 'Execution loop detected, stopped automatically. Please try describing the task differently.',
+    'agent.no_content': 'AI returned no content.',
+    'agent.no_content_reasons': 'Possible reasons:\n• The current model may not support tool calling (Function Calling)\n• Please try using a model that supports Function Calling, such as GPT-4, Claude, or DeepSeek-Chat',
+    'agent.plan_incomplete': '{count} steps in the plan are incomplete:\n{steps}\n\nPlease continue executing these steps and use update_plan to update status. Provide summary only after all steps are completed.',
+    'agent.execution_error': 'Execution error: {error}',
+    'agent.tool_error': 'Error: {error}',
+    'agent.task_complete': 'Task completed',
+    'agent.unknown_error': 'Unknown error',
+    'agent.interrupt_writing': 'Writing file, interruption may corrupt the file',
+    'agent.interrupt_command': 'Executing command, interruption may leave operation incomplete',
+    'agent.context_ack_single': 'Got it, I understand the previous task context and will use it to handle the current task.',
+    'agent.context_ack_multi': 'Got it, I understand the context of the previous {count} tasks and will use it to handle the current task.',
+    'agent.no_response': 'AI returned no response',
+    
+    // Content compression
+    'compress.lines_omitted': '... [{count} lines omitted] ...',
+    'compress.truncated': '... [truncated, original length: {length} chars]',
+    'compress.reply_truncated': '... [reply truncated]',
+    'compress.tool_result': '[Tool result] {content}',
+    'compress.memory_folding_header': '[System: Conversation history has been intelligently compressed, here is the key information summary]',
+    'compress.key_records': '**Key Records**:',
+    'compress.ask_for_details': 'Ask the user for more historical details if needed.',
+
+    // History task context
+    'context.tool': 'Tool',
+    'context.args': 'Args',
+    'context.content': 'Content',
+    'context.result': 'Result',
+    'context.task_num': 'Task {num}',
+    'context.user_request': 'User Request',
+    'context.execution_steps': 'Execution Steps',
+    'context.history_header': '📋 **Previous Conversation History ({count} tasks):**',
+    'context.history_footer': 'The above is the previous execution record. Please use this context to handle the current task.',
+    'context.history_summary_header': '📋 **Previous Conversation History (AI Summary):**',
+    'context.history_summary_footer': 'Please use the above context to handle the current task.',
+    'context.summary_prompt': `You are a technical analysis assistant. Below are {count} previous task execution records from the user. Please extract key information summary to help understand the conversation context.
+
+**Requirements**:
+1. Summarize what each task did
+2. Extract key execution results and findings
+3. Mark which tasks succeeded, failed, or were aborted
+4. Keep information that may be useful for subsequent tasks (e.g., discovered paths, configurations, issues)
+5. Keep output within {tokenLimit} tokens
+
+---
+{context}
+---
+
+Please output the summary in the following format:
+
+**Conversation Summary**:
+[Brief summary of what was done before]
+
+**Key Findings**:
+[Important information discovered during execution]
+
+**Current Status**:
+[Current state of system/tasks]`,
 
     // File operations
     'file.reading': 'Reading file',
