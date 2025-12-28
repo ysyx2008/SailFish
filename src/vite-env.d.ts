@@ -1133,6 +1133,7 @@ interface Window {
         chunkStrategy: 'fixed' | 'semantic' | 'paragraph'
         searchTopK: number
         enableRerank: boolean
+        enableHostMemory: boolean
         mcpKnowledgeServerId?: string
       }>
       updateSettings: (settings: Partial<{
@@ -1144,6 +1145,7 @@ interface Window {
         chunkStrategy: 'fixed' | 'semantic' | 'paragraph'
         searchTopK: number
         enableRerank: boolean
+        enableHostMemory: boolean
         mcpKnowledgeServerId?: string
       }>) => Promise<{ success: boolean; error?: string }>
       addDocument: (doc: {

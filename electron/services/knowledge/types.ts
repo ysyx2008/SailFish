@@ -129,6 +129,8 @@ export interface KnowledgeSettings {
   chunkStrategy: ChunkStrategy
   searchTopK: number
   enableRerank: boolean
+  // 主机记忆
+  enableHostMemory: boolean
   // MCP 知识库
   mcpKnowledgeServerId?: string
 }
@@ -141,7 +143,8 @@ export const DEFAULT_KNOWLEDGE_SETTINGS: KnowledgeSettings = {
   autoSaveUploads: true,
   chunkStrategy: 'paragraph',
   searchTopK: 10,
-  enableRerank: true
+  enableRerank: true,
+  enableHostMemory: true
 }
 
 // ==================== 知识库统计 ====================

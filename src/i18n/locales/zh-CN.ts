@@ -421,6 +421,8 @@ export default {
     docProcessing: '文档处理',
     autoSaveUploads: '自动保存上传文档',
     autoSaveUploadsDesc: '上传的文档自动保存到知识库',
+    enableHostMemory: '主机记忆',
+    enableHostMemoryDesc: '让 AI 自动记住主机的关键信息和配置',
     chunkStrategy: '分块策略',
     chunkStrategyDesc: '长文档的切分方式',
     chunkParagraph: '按段落',

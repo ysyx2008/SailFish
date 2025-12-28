@@ -1641,6 +1641,7 @@ const electronAPI = {
         chunkStrategy: 'fixed' | 'semantic' | 'paragraph'
         searchTopK: number
         enableRerank: boolean
+        enableHostMemory: boolean
         mcpKnowledgeServerId?: string
       }>,
 
@@ -1654,6 +1655,7 @@ const electronAPI = {
       chunkStrategy: 'fixed' | 'semantic' | 'paragraph'
       searchTopK: number
       enableRerank: boolean
+      enableHostMemory: boolean
       mcpKnowledgeServerId?: string
     }>) =>
       ipcRenderer.invoke('knowledge:updateSettings', settings) as Promise<{ success: boolean; error?: string }>,

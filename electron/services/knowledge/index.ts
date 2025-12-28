@@ -1457,6 +1457,11 @@ ${newMemory}
       return { success: false, action: 'error', message: '参数无效' }
     }
 
+    // 检查主机记忆功能是否启用
+    if (this.settings.enableHostMemory === false) {
+      return { success: false, action: 'disabled', message: '主机记忆功能已禁用' }
+    }
+
     try {
       // 1. 检查相似度
       const checkResult = await this.checkMemorySimilarity(hostId, memory)

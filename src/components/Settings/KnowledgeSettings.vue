@@ -18,6 +18,7 @@ interface KnowledgeSettings {
   chunkStrategy: 'fixed' | 'semantic' | 'paragraph'
   searchTopK: number
   enableRerank: boolean
+  enableHostMemory: boolean
   mcpKnowledgeServerId?: string
 }
 
@@ -45,7 +46,8 @@ const settings = ref<KnowledgeSettings>({
   autoSaveUploads: true,
   chunkStrategy: 'paragraph',
   searchTopK: 10,
-  enableRerank: true
+  enableRerank: true,
+  enableHostMemory: true
 })
 
 const mcpServers = ref<McpServerStatus[]>([])
@@ -395,6 +397,18 @@ onUnmounted(() => {
       </div>
 
       <template v-if="settings.enabled">
+        <!-- 文档管理 -->
+        <div class="setting-group">
+          <div class="doc-summary">
+            <span class="doc-stat">
+              📄 {{ t('knowledgeSettings.docCount', { count: documents.length }) }}
+            </span>
+            <button class="btn btn-sm" @click="showDocManager = true; loadDocuments()">
+              {{ t('knowledgeSettings.manageDoc') }}
+            </button>
+          </div>
+        </div>
+
         <!-- 安全设置 -->
         <div class="setting-group">
           <h4 class="group-title">🔐 {{ t('knowledgeSettings.securitySettings') }}</h4>
@@ -439,23 +453,41 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 向量嵌入说明 -->
+        <!-- 自动入库设置 -->
         <div class="setting-group">
-          <h4 class="group-title">{{ t('knowledgeSettings.vectorEmbedding') }}</h4>
-          
-          <div class="info-box">
-            <span class="info-icon">📦</span>
-            <div class="info-content">
-              <p class="info-title">{{ t('knowledgeSettings.builtinModel') }}</p>
-              <p class="info-desc">{{ t('knowledgeSettings.builtinModelDesc') }}</p>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label class="setting-label">{{ t('knowledgeSettings.autoSaveUploads') }}</label>
+              <p class="setting-desc">{{ t('knowledgeSettings.autoSaveUploadsDesc') }}</p>
             </div>
+            <label class="switch">
+              <input 
+                type="checkbox" 
+                v-model="settings.autoSaveUploads"
+                @change="saveSettings"
+              />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <label class="setting-label">{{ t('knowledgeSettings.enableHostMemory') }}</label>
+              <p class="setting-desc">{{ t('knowledgeSettings.enableHostMemoryDesc') }}</p>
+            </div>
+            <label class="switch">
+              <input 
+                type="checkbox" 
+                v-model="settings.enableHostMemory"
+                @change="saveSettings"
+              />
+              <span class="slider"></span>
+            </label>
           </div>
         </div>
 
         <!-- MCP 知识库 -->
         <div class="setting-group">
-          <h4 class="group-title">{{ t('knowledgeSettings.externalKnowledge') }}</h4>
-          
           <div class="setting-row">
             <div class="setting-info">
               <label class="setting-label">{{ t('knowledgeSettings.mcpKnowledgeService') }}</label>
@@ -475,92 +507,6 @@ onUnmounted(() => {
                 {{ server.name }}
               </option>
             </select>
-          </div>
-        </div>
-
-        <!-- 搜索设置 -->
-        <div class="setting-group">
-          <h4 class="group-title">{{ t('knowledgeSettings.searchSettings') }}</h4>
-          
-          <div class="setting-row">
-            <div class="setting-info">
-              <label class="setting-label">{{ t('knowledgeSettings.searchTopK') }}</label>
-              <p class="setting-desc">{{ t('knowledgeSettings.searchTopKDesc') }}</p>
-            </div>
-            <input 
-              type="number" 
-              v-model.number="settings.searchTopK" 
-              class="input input-sm"
-              min="1"
-              max="50"
-              @change="saveSettings"
-            />
-          </div>
-
-          <div class="setting-row">
-            <div class="setting-info">
-              <label class="setting-label">{{ t('knowledgeSettings.enableRerank') }}</label>
-              <p class="setting-desc">{{ t('knowledgeSettings.enableRerankDesc') }}</p>
-            </div>
-            <label class="switch">
-              <input 
-                type="checkbox" 
-                v-model="settings.enableRerank"
-                @change="saveSettings"
-              />
-              <span class="slider"></span>
-            </label>
-          </div>
-        </div>
-
-        <!-- 文档处理 -->
-        <div class="setting-group">
-          <h4 class="group-title">{{ t('knowledgeSettings.docProcessing') }}</h4>
-          
-          <div class="setting-row">
-            <div class="setting-info">
-              <label class="setting-label">{{ t('knowledgeSettings.autoSaveUploads') }}</label>
-              <p class="setting-desc">{{ t('knowledgeSettings.autoSaveUploadsDesc') }}</p>
-            </div>
-            <label class="switch">
-              <input 
-                type="checkbox" 
-                v-model="settings.autoSaveUploads"
-                @change="saveSettings"
-              />
-              <span class="slider"></span>
-            </label>
-          </div>
-
-          <div class="setting-row">
-            <div class="setting-info">
-              <label class="setting-label">{{ t('knowledgeSettings.chunkStrategy') }}</label>
-              <p class="setting-desc">{{ t('knowledgeSettings.chunkStrategyDesc') }}</p>
-            </div>
-            <select 
-              v-model="settings.chunkStrategy" 
-              class="select"
-              @change="saveSettings"
-            >
-              <option value="paragraph">{{ t('knowledgeSettings.chunkParagraph') }}</option>
-              <option value="semantic">{{ t('knowledgeSettings.chunkSemantic') }}</option>
-              <option value="fixed">{{ t('knowledgeSettings.chunkFixed') }}</option>
-            </select>
-          </div>
-
-        </div>
-
-        <!-- 文档管理 -->
-        <div class="setting-group">
-          <h4 class="group-title">{{ t('knowledgeSettings.docManagement') }}</h4>
-          
-          <div class="doc-summary">
-            <span class="doc-stat">
-              📄 {{ t('knowledgeSettings.docCount', { count: documents.length }) }}
-            </span>
-            <button class="btn btn-sm" @click="showDocManager = true; loadDocuments()">
-              {{ t('knowledgeSettings.manageDoc') }}
-            </button>
           </div>
         </div>
       </template>
@@ -724,38 +670,6 @@ onUnmounted(() => {
   line-height: 1.5;
 }
 
-/* 信息框 */
-.info-box {
-  display: flex;
-  gap: 12px;
-  padding: 14px;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(59, 130, 246, 0.1));
-  border: 1px solid rgba(16, 185, 129, 0.2);
-  border-radius: 8px;
-}
-
-.info-icon {
-  font-size: 24px;
-}
-
-.info-content {
-  flex: 1;
-}
-
-.info-title {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
-  margin: 0 0 4px;
-}
-
-.info-desc {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin: 0;
-  line-height: 1.5;
-}
-
 .switch {
   position: relative;
   display: inline-block;
@@ -806,20 +720,6 @@ input:checked + .slider:before {
   background: var(--bg-tertiary);
   color: var(--text-primary);
   min-width: 140px;
-}
-
-.input {
-  padding: 8px 12px;
-  font-size: 13px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  width: 80px;
-}
-
-.input-sm {
-  width: 80px;
 }
 
 /* 文档摘要 */

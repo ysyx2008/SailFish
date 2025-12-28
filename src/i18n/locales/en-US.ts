@@ -421,6 +421,8 @@ export default {
     docProcessing: 'Document Processing',
     autoSaveUploads: 'Auto-save Uploaded Documents',
     autoSaveUploadsDesc: 'Automatically save uploaded documents to knowledge base',
+    enableHostMemory: 'Host Memory',
+    enableHostMemoryDesc: 'Let AI remember key host information and configurations',
     chunkStrategy: 'Chunking Strategy',
     chunkStrategyDesc: 'How to split long documents',
     chunkParagraph: 'By Paragraph',
