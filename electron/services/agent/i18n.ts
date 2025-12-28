@@ -166,6 +166,20 @@ const translations = {
     'file.user_rejected_write': '用户拒绝写入文件',
     'file.establishing_sftp': '正在建立 SFTP 连接...',
     'file.remote_write_failed': '远程文件写入失败',
+    'file.full_read': '完整读取',
+    'file.actual_read': '实际读取: {lines} 行, {chars} 字符',
+    'file.read_line_range': '读取行范围: {start}-{end}',
+    'file.read_first_n': '读取前 {count} 行',
+    'file.read_last_n': '读取最后 {count} 行',
+    'file.end_of_file': '末尾',
+
+    // 时间格式
+    'time.minutes_seconds': '{minutes}分{seconds}秒',
+    'time.seconds': '{seconds}秒',
+    'time.minutes': '{minutes}分钟',
+
+    // 计划步骤
+    'plan.step_prefix': '步骤 {index}',
 
     // 控制键
     'control.send_key': '发送控制键',
@@ -175,6 +189,7 @@ const translations = {
     // 发送输入
     'input.send': '发送输入',
     'input.sent': '已发送',
+    'input.waiting_for': '等待{type}',
 
     // 获取上下文
     'context.get_output': '获取终端输出',
@@ -510,6 +525,20 @@ Please output the summary in the following format:
     'file.user_rejected_write': 'User rejected file write',
     'file.establishing_sftp': 'Establishing SFTP connection...',
     'file.remote_write_failed': 'Remote file write failed',
+    'file.full_read': 'Full read',
+    'file.actual_read': 'Actually read: {lines} lines, {chars} chars',
+    'file.read_line_range': 'Read line range: {start}-{end}',
+    'file.read_first_n': 'Read first {count} lines',
+    'file.read_last_n': 'Read last {count} lines',
+    'file.end_of_file': 'end',
+
+    // Time format
+    'time.minutes_seconds': '{minutes}m{seconds}s',
+    'time.seconds': '{seconds}s',
+    'time.minutes': '{minutes}m',
+
+    // Plan step
+    'plan.step_prefix': 'Step {index}',
 
     // Control key
     'control.send_key': 'Send control key',
@@ -518,6 +547,7 @@ Please output the summary in the following format:
 
     // Send input
     'input.send': 'Send input',
+    'input.waiting_for': 'Waiting for {type}',
     'input.sent': 'Sent',
 
     // Get context

@@ -482,7 +482,7 @@ export class AgentService {
     
     // 检测到命令循环或工具循环
     if (issues.includes('detected_command_loop') || issues.includes('detected_tool_loop')) {
-      prompts.push('你在重复操作。直接告诉用户遇到了什么问题，然后停止。')
+      prompts.push('你可能在重复操作。直接告诉用户遇到了什么问题，询问是否继续。')
     }
     
     // 连续失败
@@ -1893,6 +1893,9 @@ export class AgentService {
       }
     }
     } // 结束 executionLoop
+
+    // 理论上不会执行到这里，但 TypeScript 需要返回值
+    return t('agent.task_complete')
   }
 
   /**

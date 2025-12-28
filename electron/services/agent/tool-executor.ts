@@ -375,9 +375,11 @@ async function executeCommand(
 
   // 分析命令，获取处理策略
   const handling = analyzeCommand(command)
+  // 保存 strategy 避免 TypeScript 类型收窄问题
+  const strategy: 'allow' | 'auto_fix' | 'timed_execution' | 'fire_and_forget' | 'block' = handling.strategy
 
   // 策略1: 禁止执行（如 vim/nano 等全屏编辑器）
-  if (handling.strategy === 'block') {
+  if (strategy === 'block') {
     executor.addStep({
       type: 'tool_call',
       content: `🚫 ${command}`,
@@ -398,7 +400,7 @@ async function executeCommand(
   }
 
   // 策略2: 自动修正命令（如添加 -y、-c 参数）
-  if (handling.strategy === 'auto_fix' && handling.fixedCommand) {
+  if (strategy === 'auto_fix' && handling.fixedCommand) {
     command = handling.fixedCommand
   }
 
@@ -431,7 +433,7 @@ async function executeCommand(
   // 添加工具调用步骤（统一显示最终要执行的命令）
   executor.addStep({
     type: 'tool_call',
-    content: handling.strategy === 'timed_execution'
+    content: strategy === 'timed_execution'
       ? `⏱️ ${command} (${handling.hint})`
       : `${t('status.executing')}: ${command}`,
     toolName: 'execute_command',
@@ -458,7 +460,7 @@ async function executeCommand(
   }
 
   // 策略3: 限时执行（保留用于特殊场景）
-  if (handling.strategy === 'timed_execution') {
+  if (strategy === 'timed_execution') {
     return executeTimedCommand(
       ptyId, 
       command, 
@@ -469,7 +471,7 @@ async function executeCommand(
   }
 
   // 策略4: 发送即返回（如 tail -f、ping、top 等持续运行的命令）
-  if (handling.strategy === 'fire_and_forget') {
+  if (strategy === 'fire_and_forget') {
     return executeFireAndForget(ptyId, command, handling, executor)
   }
 
@@ -485,7 +487,7 @@ async function executeCommand(
   // 开始追踪命令执行（标记为 Agent 来源，前端可据此显示卡片）
   terminalStateService.startCommandExecution(ptyId, command, {
     source: 'agent',
-    agentStepTitle: handling.strategy === 'timed_execution'
+    agentStepTitle: (strategy as string) === 'timed_execution'
       ? `⏱️ ${command}`
       : command
   })
@@ -1197,9 +1199,9 @@ async function checkTerminalStatus(
     // UI 显示简化版本
     let displayStatus: string = awareness.status
     if (screenAnalysis?.input.isWaiting && screenAnalysis.input.confidence > 0.5) {
-      displayStatus = `等待${screenAnalysis.input.type}`
+      displayStatus = t('input.waiting_for', { type: screenAnalysis.input.type })
     } else if (isSsh) {
-      displayStatus = '查看输出判断'
+      displayStatus = t('terminal.check_output')
     }
     executor.addStep({
       type: 'tool_result',
@@ -1555,15 +1557,15 @@ ${sampleContent ? `### 文件预览（前10行）\n\`\`\`\n${sampleContent}\n\`\
     // 构建返回信息
     const readInfo: string[] = []
     if (startLine !== undefined || endLine !== undefined) {
-      readInfo.push(`读取行范围: ${startLine || 1}-${endLine || '末尾'}`)
+      readInfo.push(t('file.read_line_range', { start: startLine || 1, end: endLine || t('file.end_of_file') }))
     } else if (maxLines !== undefined) {
-      readInfo.push(`读取前 ${maxLines} 行`)
+      readInfo.push(t('file.read_first_n', { count: maxLines }))
     } else if (tailLines !== undefined) {
-      readInfo.push(`读取最后 ${tailLines} 行`)
+      readInfo.push(t('file.read_last_n', { count: tailLines }))
     } else {
-      readInfo.push('完整读取')
+      readInfo.push(t('file.full_read'))
     }
-    readInfo.push(`实际读取: ${actualLines.length} 行, ${content.length.toLocaleString()} 字符`)
+    readInfo.push(t('file.actual_read', { lines: actualLines.length, chars: content.length.toLocaleString() }))
 
     executor.addStep({
       type: 'tool_result',
@@ -2276,9 +2278,9 @@ function formatRemainingTime(totalSeconds: number, elapsedSeconds: number): stri
   const seconds = remaining % 60
   
   if (minutes > 0) {
-    return `${minutes}分${seconds}秒`
+    return t('time.minutes_seconds', { minutes, seconds })
   }
-  return `${seconds}秒`
+  return t('time.seconds', { seconds })
 }
 
 /**
@@ -2289,9 +2291,9 @@ function formatTotalTime(seconds: number): string {
   const secs = seconds % 60
   
   if (minutes > 0) {
-    return secs > 0 ? `${minutes}分${secs}秒` : `${minutes}分钟`
+    return secs > 0 ? t('time.minutes_seconds', { minutes, seconds: secs }) : t('time.minutes', { minutes })
   }
-  return `${seconds}秒`
+  return t('time.seconds', { seconds })
 }
 
 
@@ -2471,8 +2473,8 @@ async function askUser(
     const remainingMinutes = Math.floor(remainingSeconds / 60)
     const remainingSecs = remainingSeconds % 60
     const remainingDisplay = remainingMinutes > 0 
-      ? `${remainingMinutes}分${remainingSecs}秒` 
-      : `${remainingSecs}秒`
+      ? t('time.minutes_seconds', { minutes: remainingMinutes, seconds: remainingSecs })
+      : t('time.seconds', { seconds: remainingSecs })
     
     executor.updateStep(step.id, {
       toolResult: t('ask.waiting_remaining', { remaining: remainingDisplay })
@@ -2710,7 +2712,7 @@ function updatePlan(
   }
   
   // 添加更新步骤
-  const stepInfo = `步骤 ${stepIndex + 1}: ${step.title}`
+  const stepInfo = `${t('plan.step_prefix', { index: stepIndex + 1 })}: ${step.title}`
   const statusText = `${statusIcons[status]} ${status}`
   const resultText = result ? ` - ${result}` : ''
   
