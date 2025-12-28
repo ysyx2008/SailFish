@@ -263,6 +263,7 @@ export default {
       deepseek: 'DeepSeek LLM, cost-effective',
       ollama: 'Local Ollama deployment, data stays local'
     },
+    getApiKey: 'Get Key',
     // Agent debug mode
     agentDebugMode: 'Agent Debug Mode',
     agentDebugModeDesc: 'Show detailed tool call steps when enabled, simpler interaction when disabled'

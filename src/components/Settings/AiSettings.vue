@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Plus, Pencil, Trash2, X } from 'lucide-vue-next'
+import { Plus, Pencil, Trash2, X, ExternalLink } from 'lucide-vue-next'
 import { useConfigStore, type AiProfile, type AgentMbtiType } from '../../stores/config'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -122,22 +122,26 @@ const templates = computed(() => [
   {
     name: 'OpenAI',
     apiUrl: 'https://api.openai.com/v1/chat/completions',
-    model: 'gpt-3.5-turbo'
+    model: 'gpt-3.5-turbo',
+    keyUrl: 'https://platform.openai.com/api-keys'
   },
   {
     name: 'Qwen',
     apiUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
-    model: 'qwen-turbo'
+    model: 'qwen-turbo',
+    keyUrl: 'https://dashscope.console.aliyun.com/apiKey'
   },
   {
     name: 'DeepSeek',
     apiUrl: 'https://api.deepseek.com/v1/chat/completions',
-    model: 'deepseek-chat'
+    model: 'deepseek-chat',
+    keyUrl: 'https://platform.deepseek.com/api_keys'
   },
   {
     name: 'Ollama',
     apiUrl: 'http://localhost:11434/v1/chat/completions',
-    model: 'llama2'
+    model: 'llama2',
+    keyUrl: 'https://ollama.com/'
   }
 ])
 
@@ -145,6 +149,16 @@ const applyTemplate = (template: typeof templates.value[0]) => {
   formData.value.name = template.name
   formData.value.apiUrl = template.apiUrl
   formData.value.model = template.model
+}
+
+// 当前选中的模板对应的 keyUrl
+const currentKeyUrl = computed(() => {
+  const template = templates.value.find(t => t.apiUrl === formData.value.apiUrl)
+  return template?.keyUrl || null
+})
+
+const openKeyUrl = (url: string) => {
+  window.open(url, '_blank')
 }
 </script>
 
@@ -231,7 +245,18 @@ const applyTemplate = (template: typeof templates.value[0]) => {
           <input v-model="formData.apiUrl" type="text" class="input" :placeholder="t('aiSettings.apiUrlPlaceholder')" />
         </div>
         <div class="form-group">
-          <label class="form-label">{{ t('aiSettings.apiKey') }}</label>
+          <div class="form-label-row">
+            <label class="form-label">{{ t('aiSettings.apiKey') }}</label>
+            <button
+              v-if="currentKeyUrl"
+              class="get-key-btn"
+              @click="openKeyUrl(currentKeyUrl)"
+              :title="t('aiSettings.getApiKey')"
+            >
+              <ExternalLink :size="12" />
+              <span>{{ t('aiSettings.getApiKey') }}</span>
+            </button>
+          </div>
           <input v-model="formData.apiKey" type="password" class="input" :placeholder="t('aiSettings.apiKeyPlaceholder')" />
         </div>
         <div class="form-group">
@@ -457,6 +482,31 @@ const applyTemplate = (template: typeof templates.value[0]) => {
 .template-btn:hover {
   background: var(--accent-primary);
   color: var(--bg-primary);
+}
+
+.form-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.get-key-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--accent-primary);
+  background: transparent;
+  border: 1px solid var(--accent-primary);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.get-key-btn:hover {
+  background: var(--accent-primary);
+  color: white;
 }
 
 .form-body {
