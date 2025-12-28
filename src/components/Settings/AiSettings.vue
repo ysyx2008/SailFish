@@ -129,7 +129,7 @@ const templates = computed(() => [
     name: 'Qwen',
     apiUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
     model: 'qwen-turbo',
-    keyUrl: 'https://dashscope.console.aliyun.com/apiKey'
+    keyUrl: 'https://bailian.console.aliyun.com/?tab=model#/api-key'
   },
   {
     name: 'DeepSeek',
