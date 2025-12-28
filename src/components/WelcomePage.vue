@@ -254,7 +254,6 @@ const formatHost = (session: SshSession) => {
 
 .logo-container {
   margin-bottom: 16px;
-  cursor: pointer;
   transition: transform 0.3s ease;
 }
 
