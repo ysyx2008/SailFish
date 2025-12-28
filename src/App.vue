@@ -16,6 +16,7 @@ import WelcomePage from './components/WelcomePage.vue'
 import SmartPatrolPage from './components/SmartPatrolPage.vue'
 import Toast from './components/common/Toast.vue'
 import ConfirmDialog from './components/common/ConfirmDialog.vue'
+import KnowledgeManager from './components/KnowledgeManager.vue'
 import { useConfirm } from './composables/useConfirm'
 import type { SftpConnectionConfig } from './composables/useSftp'
 import { uiThemes } from './themes/ui-themes'
@@ -95,6 +96,10 @@ let cleanupTerminalCountListener: (() => void) | null = null
 let cleanupKnowledgeUpgrading: (() => void) | null = null
 let cleanupKnowledgeProgress: (() => void) | null = null
 let cleanupKnowledgeReady: (() => void) | null = null
+let cleanupMenuCommand: (() => void) | null = null
+
+// 知识库管理器显示状态
+const showKnowledgeManager = ref(false)
 
 onMounted(async () => {
   // 注册全局快捷键
@@ -114,6 +119,11 @@ onMounted(async () => {
   })
   cleanupKnowledgeReady = window.electronAPI.knowledge.onReady(() => {
     knowledgeUpgrading.value = false
+  })
+
+  // 监听菜单命令
+  cleanupMenuCommand = window.electronAPI.menu.onCommand(({ command }) => {
+    handleMenuCommand(command)
   })
 
   // 加载配置
@@ -264,6 +274,70 @@ const restartSetup = async () => {
   showSetupWizard.value = true
 }
 
+// 处理菜单命令
+const handleMenuCommand = (command: string) => {
+  switch (command) {
+    case 'newLocalTerminal':
+      terminalStore.createTab('local')
+      break
+    case 'newSshConnection':
+      showSidebar.value = true
+      break
+    case 'openFileManager':
+      // 如果有活跃的 SSH 连接，打开对应的 SFTP
+      if (terminalStore.activeTab?.type === 'ssh' && terminalStore.activeTab.sshConfig) {
+        const sshConfig = terminalStore.activeTab.sshConfig
+        sftpConfig.value = {
+          host: sshConfig.host,
+          port: sshConfig.port,
+          username: sshConfig.username,
+          password: sshConfig.password,
+          privateKeyPath: sshConfig.privateKeyPath,
+          passphrase: sshConfig.passphrase
+        }
+        showFileExplorer.value = true
+      }
+      break
+    case 'importXshell':
+      // 打开设置中的会话管理
+      showSidebar.value = true
+      break
+    case 'closeTab':
+      handleCloseShortcut()
+      break
+    case 'toggleSidebar':
+      toggleSidebar()
+      break
+    case 'toggleAiPanel':
+      toggleAiPanel()
+      break
+    case 'toggleKnowledge':
+      showKnowledgeManager.value = true
+      break
+    case 'openSettings':
+      showSettings.value = true
+      break
+    case 'showAbout':
+      settingsInitialTab.value = 'about'
+      showSettings.value = true
+      break
+    case 'checkUpdate':
+      settingsInitialTab.value = 'about'
+      showSettings.value = true
+      // 延迟触发更新检查
+      setTimeout(() => {
+        window.electronAPI.updater.checkForUpdates()
+      }, 500)
+      break
+    case 'clearTerminal':
+      // 清屏命令由终端组件处理
+      break
+    case 'find':
+      // 查找功能（待实现）
+      break
+  }
+}
+
 // AI 面板拖拽调整宽度
 const startResize = (_e: MouseEvent) => {
   isResizing.value = true
@@ -303,6 +377,7 @@ onUnmounted(() => {
   cleanupKnowledgeUpgrading?.()
   cleanupKnowledgeProgress?.()
   cleanupKnowledgeReady?.()
+  cleanupMenuCommand?.()
 })
 </script>
 
@@ -399,6 +474,12 @@ onUnmounted(() => {
     <SetupWizard
       v-if="showSetupWizard"
       @complete="onSetupComplete"
+    />
+
+    <!-- 知识库管理器 -->
+    <KnowledgeManager
+      v-if="showKnowledgeManager"
+      @close="showKnowledgeManager = false"
     />
 
     <!-- 知识库升级进度提示 -->

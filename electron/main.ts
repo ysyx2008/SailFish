@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, Menu, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import path, { join } from 'path'
 import * as fs from 'fs'
@@ -197,6 +197,7 @@ import {
 import { initTerminalStateService, getTerminalStateService, type TerminalState, type CwdChangeEvent, type CommandExecution, type CommandExecutionEvent } from './services/terminal-state.service'
 import { initTerminalAwarenessService, getTerminalAwarenessService, type TerminalAwareness } from './services/terminal-awareness'
 import { initScreenContentService } from './services/screen-content.service'
+import { menuService } from './services/menu.service'
 
 // 禁用 GPU 加速可能导致的问题（可选）
 // app.disableHardwareAcceleration()
@@ -565,14 +566,17 @@ function createFileManagerWindow(params?: {
 
 // 应用准备就绪
 app.whenReady().then(async () => {
-  // 移除默认菜单栏
-  Menu.setApplicationMenu(null)
-
   // 初始化屏幕内容服务（轻量，可以同步初始化）
   initScreenContentService()
 
   // 先创建窗口，让用户尽快看到界面
   createWindow()
+
+  // 初始化菜单栏
+  const lang = configService?.getLanguage() || 'zh-CN'
+  menuService.setLanguage(lang)
+  menuService.setMainWindow(mainWindow)
+  menuService.applyMenu()
 
   // 窗口内容加载完成后，异步初始化重量级服务
   mainWindow?.webContents.on('did-finish-load', () => {
@@ -1248,6 +1252,8 @@ ipcMain.handle('config:setLanguage', async (_event, language: string) => {
   if (mainWindow) {
     mainWindow.setTitle(getAppTitle(language))
   }
+  // 更新菜单栏语言
+  menuService.updateMenu(language)
 })
 
 ipcMain.handle('config:getSponsorStatus', async () => {

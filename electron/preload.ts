@@ -2153,6 +2153,18 @@ const electronAPI = {
       ipcRenderer.invoke('localFs:openFile', filePath)
   },
 
+  // 菜单命令监听
+  menu: {
+    // 监听菜单命令
+    onCommand: (callback: (data: { command: string; args: unknown[] }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { command: string; args: unknown[] }) => callback(data)
+      ipcRenderer.on('menu:command', handler)
+      return () => {
+        ipcRenderer.removeListener('menu:command', handler)
+      }
+    }
+  },
+
   // 文件管理器窗口操作
   fileManager: {
     // 打开文件管理器窗口
