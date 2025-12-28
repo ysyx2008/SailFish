@@ -208,20 +208,20 @@ export class AiService {
               reject(new Error(`响应解析失败: ${data}`))
             }
           } else {
-            reject(new Error(`AI API 请求失败: ${res.statusCode} - ${data}`))
+            reject(new Error(t('error.api_request_failed', { status: res.statusCode, data })))
           }
         })
       })
 
       req.on('error', (err) => {
-        reject(new Error(`请求错误: ${err.message}`))
+        reject(new Error(t('error.request_error', { message: err.message })))
       })
 
       // 支持中止请求
       if (signal) {
         signal.addEventListener('abort', () => {
           req.destroy()
-          reject(new Error('请求已中止'))
+          reject(new Error(t('error.request_aborted')))
         })
       }
 
@@ -370,11 +370,12 @@ export class AiService {
       })
 
       req.on('error', (err) => {
-        if (err.message === '请求已中止') {
+        // 检查是否是中止错误（可能是原始消息或国际化后的消息）
+        if (err.message === t('error.request_aborted') || err.message.includes('aborted')) {
           onDone()
           return
         }
-        onError(`请求错误: ${err.message}`)
+        onError(t('error.request_error', { message: err.message }))
       })
 
       // 支持中止请求
@@ -744,7 +745,7 @@ export class AiService {
         res.on('error', (err) => {
           // 清理 AbortController
           this.abortControllers.delete(reqId)
-          onError(`请求错误: ${err.message}`)
+          onError(t('error.request_error', { message: err.message }))
         })
       })
 

@@ -991,7 +991,7 @@ async function getTerminalContext(
   try {
     bufferLines = await getLastNLinesFromBuffer(ptyId, lines, 3000)
   } catch (e) {
-    const errorMsg = e instanceof Error ? e.message : '未知错误'
+    const errorMsg = e instanceof Error ? e.message : t('error.unknown')
     return { success: false, output: '', error: t('error.get_terminal_output_failed', { error: errorMsg }) }
   }
   
@@ -1334,11 +1334,11 @@ async function sendControlKey(
     return { 
       success: true, 
       output: terminalOutput 
-        ? `已发送 ${key}。\n\n终端最新输出:\n${terminalOutput}`
-        : `已发送 ${key}。`
+        ? t('control.key_sent_with_output', { key, output: terminalOutput })
+        : t('control.key_sent_output', { key })
     }
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : '发送失败'
+    const errorMsg = error instanceof Error ? error.message : t('control.send_failed')
     return { success: false, output: '', error: errorMsg }
   }
 }
@@ -1399,11 +1399,11 @@ async function sendInput(
     return { 
       success: true, 
       output: terminalOutput 
-        ? `已发送输入 ${inputDesc}。\n\n终端最新输出:\n${terminalOutput}`
-        : `已发送输入 ${inputDesc}。`
+        ? t('input.sent_with_output', { input: inputDesc, output: terminalOutput })
+        : t('input.sent_output', { input: inputDesc })
     }
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : '发送失败'
+    const errorMsg = error instanceof Error ? error.message : t('input.send_failed')
     return { success: false, output: '', error: errorMsg }
   }
 }
@@ -1489,13 +1489,13 @@ function readFile(
         estimated = true
       }
 
-      const info = `## 文件信息
-- **路径**: ${filePath}
-- **大小**: ${sizeMB} MB (${fileSize.toLocaleString()} 字节)
-- **总行数**: ${totalLines.toLocaleString()} 行${estimated ? ' (估算值)' : ''}
-- **建议**: ${fileSize > 500 * 1024 ? '文件较大，建议使用以下方式读取特定部分：\n  - `start_line` 和 `end_line`: 读取指定行范围\n  - `max_lines`: 读取前N行（如 `max_lines: 100`）\n  - `tail_lines`: 读取最后N行（如 `tail_lines: 50`）' : '文件大小在限制内，可以完整读取'}
+      const info = `## ${t('file.info_header')}
+- **${t('file.info_path')}**: ${filePath}
+- **${t('file.info_size')}**: ${t('file.info_size_value', { sizeMB, sizeBytes: fileSize.toLocaleString() })}
+- **${t('file.info_lines')}**: ${t('file.info_lines_value', { count: totalLines.toLocaleString() })}${estimated ? ` ${t('file.info_estimated')}` : ''}
+- **${t('file.info_suggestion')}**: ${fileSize > 500 * 1024 ? t('file.info_suggestion_large') : t('file.info_suggestion_small')}
 
-${sampleContent ? `### 文件预览（前10行）\n\`\`\`\n${sampleContent}\n\`\`\`` : ''}`
+${sampleContent ? `### ${t('file.info_preview')}\n\`\`\`\n${sampleContent}\n\`\`\`` : ''}`
 
       executor.addStep({
         type: 'tool_result',
@@ -1537,11 +1537,7 @@ ${sampleContent ? `### 文件预览（前10行）\n\`\`\`\n${sampleContent}\n\`\
     else {
       const maxFileSize = 500 * 1024 // 500KB
       if (fileSize > maxFileSize) {
-        const errorMsg = `文件过大 (${sizeMB} MB)，超过完整读取限制 (500KB)。请使用以下方式之一：
-1. 设置 info_only=true 查看文件信息
-2. 使用 start_line 和 end_line 读取指定行范围
-3. 使用 max_lines 读取前N行
-4. 使用 tail_lines 读取最后N行`
+        const errorMsg = t('file.too_large_error', { size: sizeMB })
         executor.addStep({
           type: 'tool_result',
           content: `${t('file.read_failed')}: ${t('file.file_too_large')}`,
@@ -1629,7 +1625,7 @@ async function writeFileViaSftp(
   const contentSizeKB = (contentLength / 1024).toFixed(1)
 
   // 在终端显示写入提示
-  executor.terminalService.write(ptyId, `echo "📝 正在写入文件: ${filePath} (${contentSizeKB} KB)..."\r`)
+  executor.terminalService.write(ptyId, `echo "📝 ${t('file.writing_remote', { path: filePath, size: contentSizeKB })}"\r`)
   
   // 等待 echo 命令执行
   await new Promise(resolve => setTimeout(resolve, 300))
@@ -1673,7 +1669,7 @@ async function writeFileViaSftp(
         return { success: false, output: '', error: t('error.file_exists_cannot_create', { path: filePath }) }
       }
       await sftpService.writeFile(ptyId, filePath, content)
-      resultMsg = `远程文件已创建: ${filePath}`
+      resultMsg = `${t('file.result_remote_created')}: ${filePath}`
     } else if (mode === 'append') {
       // 追加模式：先读取现有内容，再写入
       let existingContent = ''
@@ -1683,15 +1679,15 @@ async function writeFileViaSftp(
         // 文件不存在，忽略错误
       }
       await sftpService.writeFile(ptyId, filePath, existingContent + content)
-      resultMsg = `内容已追加到远程文件: ${filePath}`
+      resultMsg = `${t('file.result_remote_appended')}: ${filePath}`
     } else {
       // 覆盖模式
       await sftpService.writeFile(ptyId, filePath, content)
-      resultMsg = `远程文件已写入: ${filePath}`
+      resultMsg = `${t('file.result_remote_written')}: ${filePath}`
     }
 
     // 在终端显示完成提示
-    executor.terminalService.write(ptyId, `echo "✅ 文件写入完成: ${filePath}"\r`)
+    executor.terminalService.write(ptyId, `echo "✅ ${t('file.write_success')}: ${filePath}"\r`)
     
     // 等待 echo 命令执行
     await new Promise(resolve => setTimeout(resolve, 300))
@@ -1810,19 +1806,19 @@ async function writeFile(
       operationDesc = `${t('file.overwrite')}: ${filePath}`
       break
     case 'create':
-      operationDesc = `新建文件: ${filePath}`
+      operationDesc = `${t('file.create')}: ${filePath}`
       break
     case 'append':
       operationDesc = `${t('file.append')}: ${filePath}`
       break
     case 'insert':
-      operationDesc = `在第 ${insertAtLine} 行插入内容: ${filePath}`
+      operationDesc = `${t('file.insert_at_line', { line: insertAtLine! })}: ${filePath}`
       break
     case 'replace_lines':
-      operationDesc = `替换第 ${startLine}-${endLine} 行: ${filePath}`
+      operationDesc = `${t('file.replace_lines', { start: startLine!, end: endLine! })}: ${filePath}`
       break
     case 'regex_replace':
-      operationDesc = `正则替换 (${replaceAll ? '全部' : '首个'}): ${filePath}`
+      operationDesc = `${t('file.regex_replace', { scope: replaceAll ? t('file.regex_scope_all') : t('file.regex_scope_first') })}: ${filePath}`
       break
   }
 
@@ -1889,7 +1885,7 @@ async function writeFile(
     switch (mode) {
       case 'overwrite': {
         fs.writeFileSync(filePath, content!, 'utf-8')
-        resultMsg = `文件已${fileExists ? '覆盖' : '创建'}: ${filePath}`
+        resultMsg = `${fileExists ? t('file.result_overwritten') : t('file.result_created')}: ${filePath}`
         break
       }
       case 'create': {
@@ -1897,12 +1893,12 @@ async function writeFile(
           return { success: false, output: '', error: t('error.file_exists_cannot_create', { path: filePath }) }
         }
         fs.writeFileSync(filePath, content!, 'utf-8')
-        resultMsg = `文件已创建: ${filePath}`
+        resultMsg = `${t('file.result_created')}: ${filePath}`
         break
       }
       case 'append': {
         fs.appendFileSync(filePath, content!, 'utf-8')
-        resultMsg = `内容已追加到: ${filePath}`
+        resultMsg = `${t('file.result_appended')}: ${filePath}`
         break
       }
       case 'insert': {
@@ -1914,7 +1910,7 @@ async function writeFile(
         const contentLines = content!.split('\n')
         lines.splice(insertIndex, 0, ...contentLines)
         fs.writeFileSync(filePath, lines.join('\n'), 'utf-8')
-        resultMsg = `已在第 ${insertAtLine} 行插入 ${contentLines.length} 行内容: ${filePath}`
+        resultMsg = `${t('file.result_inserted', { line: insertAtLine!, count: contentLines.length })}: ${filePath}`
         break
       }
       case 'replace_lines': {
@@ -1931,7 +1927,7 @@ async function writeFile(
         const contentLines = content!.split('\n')
         lines.splice(startLine! - 1, deleteCount, ...contentLines)
         fs.writeFileSync(filePath, lines.join('\n'), 'utf-8')
-        resultMsg = `已替换第 ${startLine}-${actualEndLine} 行（共 ${deleteCount} 行）为 ${contentLines.length} 行新内容: ${filePath}`
+        resultMsg = `${t('file.result_replaced_lines', { start: startLine!, end: actualEndLine, deleteCount, newCount: contentLines.length })}: ${filePath}`
         break
       }
       case 'regex_replace': {
@@ -1951,7 +1947,7 @@ async function writeFile(
         }
         const newContent = fileContent.replace(regex, replacement!)
         fs.writeFileSync(filePath, newContent, 'utf-8')
-        resultMsg = `已替换 ${matches.length} 处匹配内容: ${filePath}`
+        resultMsg = `${t('file.result_regex_replaced', { count: matches.length })}: ${filePath}`
         break
       }
     }
@@ -1973,7 +1969,7 @@ async function writeFile(
     }
     return { success: true, output: resultMsg }
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : '写入失败'
+    const errorMsg = error instanceof Error ? error.message : t('file.write_failed')
     const errorCategory = categorizeError(errorMsg)
     const suggestion = getErrorRecoverySuggestion(errorMsg, errorCategory)
     
