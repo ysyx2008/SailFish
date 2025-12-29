@@ -25,7 +25,7 @@ export const translations = {
       titleHighlight: 'AI 驱动',
       titleSuffix: '的新世代终端',
       subtitle: '让命令行操作更加高效、智能。',
-      subtitleLine2: '说出你的要求，AI助手自主规划执行。遇到问题？即时分析解决。',
+      subtitleLine2: '说出你的要求，AI自主规划执行。遇到问题？即时分析解决。',
       downloadBtn: '立即下载',
       viewSourceBtn: '查看源码',
       apiNotice: '本软件不内置大模型，需自行配置 API',
