@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Plus, Monitor, FolderPlus, Download, FileText, Folder, ListFilter, FileEdit, AlignLeft, AlignRight, Clock, Terminal, GripVertical, ChevronDown, ExternalLink, Settings, Play, Pencil, Trash2, X } from 'lucide-vue-next'
 import { useConfigStore, type SshSession, type SessionGroup, type JumpHostConfig, type SshEncoding, type SessionSortBy } from '../stores/config'
@@ -134,9 +134,19 @@ watch(showGroupEditor, async (isOpen) => {
   }
 })
 
+// 监听菜单导入 Xshell 事件
+const handleMenuImportXshell = () => {
+  showImportMenu.value = true
+}
+
+onMounted(() => {
+  window.addEventListener('menu:import-xshell', handleMenuImportXshell)
+})
+
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown)
   document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('menu:import-xshell', handleMenuImportXshell)
 })
 const editingSession = ref<SshSession | null>(null)
 const searchText = ref('')

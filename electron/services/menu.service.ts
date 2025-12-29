@@ -239,7 +239,7 @@ export class MenuService {
       { type: 'separator' },
       {
         label: this.t('openFileManager'),
-        accelerator: 'CmdOrCtrl+Shift+F',
+        accelerator: 'CmdOrCtrl+F',
         click: () => this.sendCommand('openFileManager')
       },
       { type: 'separator' },
@@ -308,13 +308,7 @@ export class MenuService {
         {
           label: this.t('selectAll'),
           accelerator: 'CmdOrCtrl+A',
-          role: 'selectAll'
-        },
-        { type: 'separator' },
-        {
-          label: this.t('find'),
-          accelerator: 'CmdOrCtrl+F',
-          click: () => this.sendCommand('find')
+          click: () => this.sendCommand('selectAll')
         },
         { type: 'separator' },
         {
@@ -366,26 +360,13 @@ export class MenuService {
       {
         label: this.t('toggleFullscreen'),
         accelerator: process.platform === 'darwin' ? 'Ctrl+Cmd+F' : 'F11',
-        role: 'togglefullscreen'
+        click: () => {
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.setFullScreen(!this.mainWindow.isFullScreen())
+          }
+        }
       }
     ]
-
-    // 开发模式添加开发者工具
-    if (!app.isPackaged) {
-      submenu.push(
-        { type: 'separator' },
-        {
-          label: this.t('reload'),
-          accelerator: 'CmdOrCtrl+R',
-          role: 'reload'
-        },
-        {
-          label: this.t('toggleDevTools'),
-          accelerator: process.platform === 'darwin' ? 'Alt+Cmd+I' : 'Ctrl+Shift+I',
-          role: 'toggleDevTools'
-        }
-      )
-    }
 
     return {
       label: this.t('view'),
@@ -426,7 +407,6 @@ export class MenuService {
 
     return {
       label: this.t('window'),
-      role: 'window',
       submenu
     }
   }

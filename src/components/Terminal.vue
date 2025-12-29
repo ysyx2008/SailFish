@@ -454,12 +454,49 @@ onMounted(async () => {
     }
   })
 
+  // 监听菜单命令事件
+  const handleMenuClear = () => {
+    if (!props.isActive) return
+    terminal?.clear()
+  }
+  
+  const handleMenuSelectAll = () => {
+    if (!props.isActive) return
+    terminal?.selectAll()
+  }
+  
+  const handleMenuOpenFileManager = () => {
+    if (!props.isActive) return
+    menuOpenFileManager()
+  }
+  
+  window.addEventListener('menu:clear-terminal', handleMenuClear)
+  window.addEventListener('menu:select-all', handleMenuSelectAll)
+  window.addEventListener('menu:open-file-manager', handleMenuOpenFileManager)
+  
+  // 保存事件处理函数以便清理
+  ;(window as any).__terminalMenuHandlers = (window as any).__terminalMenuHandlers || {}
+  ;(window as any).__terminalMenuHandlers[props.tabId] = {
+    clear: handleMenuClear,
+    selectAll: handleMenuSelectAll,
+    openFileManager: handleMenuOpenFileManager
+  }
+
 })
 
 // 清理
 onUnmounted(() => {
   // 先标记为已销毁，防止后续回调执行
   isDisposed = true
+  
+  // 清理菜单事件监听
+  const handlers = (window as any).__terminalMenuHandlers?.[props.tabId]
+  if (handlers) {
+    window.removeEventListener('menu:clear-terminal', handlers.clear)
+    window.removeEventListener('menu:select-all', handlers.selectAll)
+    window.removeEventListener('menu:open-file-manager', handlers.openFileManager)
+    delete (window as any).__terminalMenuHandlers[props.tabId]
+  }
   
   // 清理命令执行事件监听
   if (unsubscribeCommandExecution) {

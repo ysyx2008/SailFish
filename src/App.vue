@@ -279,7 +279,7 @@ const restartSetup = async () => {
 }
 
 // 处理菜单命令
-const handleMenuCommand = (command: string) => {
+const handleMenuCommand = async (command: string) => {
   switch (command) {
     case 'newLocalTerminal':
       terminalStore.createTab('local')
@@ -288,26 +288,16 @@ const handleMenuCommand = (command: string) => {
       showSidebar.value = true
       break
     case 'openFileManager':
-      // 如果有活跃的 SSH 连接，打开对应的 SFTP
-      if (terminalStore.activeTab?.type === 'ssh' && terminalStore.activeTab.sshConfig) {
-        const basicConfig = terminalStore.activeTab.sshConfig
-        // 通过 sshSessionId 从 configStore 获取完整配置（包含密码/私钥）
-        const sessionId = terminalStore.activeTab.sshSessionId
-        const fullSession = sessionId ? configStore.sshSessions.find(s => s.id === sessionId) : null
-        sftpConfig.value = {
-          host: basicConfig.host,
-          port: basicConfig.port,
-          username: basicConfig.username,
-          password: fullSession?.password,
-          privateKeyPath: fullSession?.privateKeyPath,
-          passphrase: fullSession?.passphrase
-        }
-        showFileExplorer.value = true
-      }
+      // 通过自定义事件通知终端组件打开文件管理器（复用右键菜单逻辑）
+      window.dispatchEvent(new CustomEvent('menu:open-file-manager'))
       break
     case 'importXshell':
-      // 打开设置中的会话管理
+      // 打开侧边栏并触发导入对话框
       showSidebar.value = true
+      // 延迟触发导入事件，确保侧边栏已打开
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('menu:import-xshell'))
+      }, 100)
       break
     case 'closeTab':
       handleCloseShortcut()
@@ -337,10 +327,16 @@ const handleMenuCommand = (command: string) => {
       }, 500)
       break
     case 'clearTerminal':
-      // 清屏命令由终端组件处理
+      // 通过自定义事件通知终端组件清屏
+      window.dispatchEvent(new CustomEvent('menu:clear-terminal'))
       break
     case 'find':
-      // 查找功能（待实现）
+      // 通过自定义事件通知终端组件打开查找
+      window.dispatchEvent(new CustomEvent('menu:find'))
+      break
+    case 'selectAll':
+      // 通过自定义事件通知终端组件全选
+      window.dispatchEvent(new CustomEvent('menu:select-all'))
       break
     case 'batchCommand':
       // 触发批量命令面板（通过自定义事件）
