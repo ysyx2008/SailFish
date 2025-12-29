@@ -974,8 +974,8 @@ export class AgentService {
     if (previousTasks.length === 0) return null
 
     const contextLength = this.getContextLength(profileId)
-    // 为历史上下文分配的 token 预算（上下文长度的 50%，最多 15000）
-    const maxTokens = Math.min(Math.floor(contextLength * 0.50), 15000)
+    // 为历史上下文分配的 token 预算（上下文长度的 60%）
+    const maxTokens = Math.floor(contextLength * 0.60)
 
     // 构建步骤描述
     const formatStep = (step: import('./types').PreviousAgentStep, index: number): string => {
