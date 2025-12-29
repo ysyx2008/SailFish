@@ -342,6 +342,10 @@ const handleMenuCommand = (command: string) => {
     case 'find':
       // 查找功能（待实现）
       break
+    case 'batchCommand':
+      // 触发批量命令面板（通过自定义事件）
+      window.dispatchEvent(new CustomEvent('toggle-batch-panel'))
+      break
   }
 }
 

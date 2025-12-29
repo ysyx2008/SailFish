@@ -1224,6 +1224,19 @@ export default {
     noServersConfigured: '尚未配置 MCP 服务器'
   },
 
+  // 批量操作
+  batch: {
+    title: '批量操作',
+    selectTerminals: '选择要操作的终端',
+    noActiveTerminals: '没有可用的终端',
+    commandInput: '输入命令',
+    commandPlaceholder: '输入要发送到所有选中终端的命令...',
+    send: '发送',
+    sendEnter: '发送后按回车执行',
+    selectedCount: '已选择 {count} 个终端',
+    shortcutHint: '快捷键：Ctrl+Shift+B 打开/关闭批量操作面板，Enter 发送命令'
+  },
+
   // 知识库管理器
   knowledgeManager: {
     title: '知识库管理',

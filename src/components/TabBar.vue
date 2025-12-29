@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, nextTick } from 'vue'
+import { ref, watch, onMounted, nextTick, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronLeft, ChevronRight, ChevronDown, Terminal, Monitor, Loader2, X, Plus } from 'lucide-vue-next'
+import { ChevronLeft, ChevronRight, ChevronDown, Terminal, Monitor, Loader2, X, Plus, Layers } from 'lucide-vue-next'
 import { useTerminalStore } from '../stores/terminal'
+import BatchCommandPanel from './BatchCommandPanel.vue'
 
 const { t } = useI18n()
 const terminalStore = useTerminalStore()
@@ -178,6 +179,19 @@ const handleDragEnd = () => {
   dragIndex.value = null
   dragOverIndex.value = null
 }
+
+// 批量命令面板引用
+const batchPanelRef = ref<InstanceType<typeof BatchCommandPanel> | null>(null)
+
+// 是否有多个活跃终端
+const hasMultipleTerminals = computed(() => {
+  return terminalStore.tabs.filter(tab => tab.isConnected && tab.ptyId).length > 1
+})
+
+// 打开批量命令面板
+const openBatchPanel = () => {
+  batchPanelRef.value?.open()
+}
 </script>
 
 <template>
@@ -240,6 +254,16 @@ const handleDragEnd = () => {
       <ChevronRight :size="12" />
     </button>
     
+    <!-- 批量操作按钮 -->
+    <button 
+      v-if="hasMultipleTerminals"
+      class="btn-batch" 
+      @click="openBatchPanel" 
+      :title="t('batch.title')"
+    >
+      <Layers :size="14" />
+    </button>
+    
     <!-- 新建终端按钮（带下拉菜单） -->
     <div class="new-tab-wrapper">
       <button class="btn-new-tab" @click="handleNewTab()" :title="t('tabs.newTab')">
@@ -266,6 +290,9 @@ const handleDragEnd = () => {
         </div>
       </div>
     </Teleport>
+    
+    <!-- 批量命令面板 -->
+    <BatchCommandPanel ref="batchPanelRef" />
   </div>
 </template>
 
@@ -501,6 +528,52 @@ const handleDragEnd = () => {
   to {
     transform: rotate(360deg);
   }
+}
+
+.btn-batch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin-left: 4px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.btn-batch::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.btn-batch:hover::before {
+  opacity: 0.15;
+}
+
+.btn-batch:hover {
+  background: var(--bg-surface);
+  color: var(--accent-primary);
+  transform: scale(1.05);
+}
+
+.btn-batch:hover svg {
+  filter: drop-shadow(0 0 4px var(--accent-primary));
+}
+
+.btn-batch:active {
+  transform: scale(0.95);
 }
 
 .new-tab-wrapper {

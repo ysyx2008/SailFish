@@ -15,8 +15,8 @@ const menuI18n = {
   'zh-CN': {
     // 应用菜单 (macOS)
     about: '关于旗鱼终端',
-    checkUpdate: '检查更新...',
-    preferences: '偏好设置...',
+    checkUpdate: '检查更新',
+    preferences: '偏好设置',
     services: '服务',
     hide: '隐藏旗鱼终端',
     hideOthers: '隐藏其他',
@@ -24,11 +24,12 @@ const menuI18n = {
     quit: '退出旗鱼终端',
     
     // 文件菜单
-    file: '文件',
+    file: '终端',
     newLocalTerminal: '新建本地终端',
-    newSshConnection: '新建 SSH 连接...',
+    newSshConnection: '新建 SSH 连接',
+    batchCommand: '批量操作',
     openFileManager: '打开文件管理器',
-    importXshell: '导入 Xshell 会话...',
+    importXshell: '导入 Xshell 会话',
     closeTab: '关闭标签',
     closeWindow: '关闭窗口',
     exit: '退出',
@@ -41,7 +42,7 @@ const menuI18n = {
     copy: '复制',
     paste: '粘贴',
     selectAll: '全选',
-    find: '查找...',
+    find: '查找',
     clearTerminal: '清屏',
     
     // 视图菜单
@@ -81,11 +82,12 @@ const menuI18n = {
     quit: 'Quit SFTerm',
     
     // File menu
-    file: 'File',
+    file: 'Terminal',
     newLocalTerminal: 'New Local Terminal',
-    newSshConnection: 'New SSH Connection...',
+    newSshConnection: 'New SSH Connection',
+    batchCommand: 'Batch Command',
     openFileManager: 'Open File Manager',
-    importXshell: 'Import Xshell Sessions...',
+    importXshell: 'Import Xshell Sessions',
     closeTab: 'Close Tab',
     closeWindow: 'Close Window',
     exit: 'Exit',
@@ -98,7 +100,7 @@ const menuI18n = {
     copy: 'Copy',
     paste: 'Paste',
     selectAll: 'Select All',
-    find: 'Find...',
+    find: 'Find',
     clearTerminal: 'Clear Terminal',
     
     // View menu
@@ -227,6 +229,12 @@ export class MenuService {
         label: this.t('newSshConnection'),
         accelerator: 'CmdOrCtrl+N',
         click: () => this.sendCommand('newSshConnection')
+      },
+      { type: 'separator' },
+      {
+        label: this.t('batchCommand'),
+        accelerator: 'CmdOrCtrl+Shift+B',
+        click: () => this.sendCommand('batchCommand')
       },
       { type: 'separator' },
       {

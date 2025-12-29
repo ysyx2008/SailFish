@@ -1224,6 +1224,19 @@ export default {
     noServersConfigured: 'No MCP servers configured'
   },
 
+  // Batch Operations
+  batch: {
+    title: 'Batch Command',
+    selectTerminals: 'Select terminals to operate',
+    noActiveTerminals: 'No active terminals available',
+    commandInput: 'Enter command',
+    commandPlaceholder: 'Enter command to send to all selected terminals...',
+    send: 'Send',
+    sendEnter: 'Press Enter after sending',
+    selectedCount: '{count} terminal(s) selected',
+    shortcutHint: 'Shortcut: Ctrl+Shift+B to toggle batch panel, Enter to send command'
+  },
+
   // Knowledge Manager
   knowledgeManager: {
     title: 'Knowledge Base Manager',
