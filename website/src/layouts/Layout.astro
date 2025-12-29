@@ -11,7 +11,7 @@ interface Props {
 const { title, description, lang } = Astro.props;
 const currentLang = lang || getLangFromUrl(Astro.url);
 const t = useTranslations(currentLang);
-const pageDescription = description || (currentLang === 'zh' ? 'AI 驱动的跨平台终端，助力运维提效' : 'AI-powered cross-platform terminal for DevOps efficiency');
+const pageDescription = description || (currentLang === 'zh' ? 'AI 驱动的新世代终端，助力运维提效' : 'AI-powered next-gen terminal for DevOps efficiency');
 ---
 
 <!doctype html>

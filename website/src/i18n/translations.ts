@@ -23,7 +23,7 @@ export const translations = {
     hero: {
       versionLabel: '最新版本',
       titleHighlight: 'AI 驱动',
-      titleSuffix: '的跨平台终端',
+      titleSuffix: '的新世代终端',
       subtitle: '让命令行操作更加高效、智能。',
       subtitleLine2: '遇到问题？让 AI 帮你分析。不知道命令？用自然语言描述即可。',
       downloadBtn: '立即下载',
@@ -232,7 +232,7 @@ export const translations = {
     hero: {
       versionLabel: 'Latest Version',
       titleHighlight: 'AI-Powered',
-      titleSuffix: ' Cross-Platform Terminal',
+      titleSuffix: ' Next-Gen Terminal',
       subtitle: 'Make command-line operations more efficient and intelligent.',
       subtitleLine2: 'Stuck on a problem? Let AI analyze it. Don\'t know the command? Just describe it in natural language.',
       downloadBtn: 'Download Now',
