@@ -229,6 +229,10 @@ const toggleSidebar = () => {
 // 切换 AI 面板
 const toggleAiPanel = () => {
   showAiPanel.value = !showAiPanel.value
+  // 隐藏 AI 面板时让终端获得焦点
+  if (!showAiPanel.value && terminalStore.activeTabId) {
+    terminalStore.focusTerminal()
+  }
 }
 
 // 打开 SFTP 文件管理器（模态框模式）
