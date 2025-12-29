@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { X, Terminal, Monitor, Check, Send, Layers } from 'lucide-vue-next'
 import { useTerminalStore } from '../stores/terminal'
@@ -27,12 +27,6 @@ const availableTabs = computed(() => {
 const isAllSelected = computed(() => {
   return availableTabs.value.length > 0 && 
     selectedTabIds.value.length === availableTabs.value.length
-})
-
-// 是否有部分选中
-const isPartialSelected = computed(() => {
-  return selectedTabIds.value.length > 0 && 
-    selectedTabIds.value.length < availableTabs.value.length
 })
 
 // 切换终端选中状态
