@@ -359,7 +359,7 @@ export class MenuService {
       { type: 'separator' },
       {
         label: this.t('toggleFullscreen'),
-        accelerator: process.platform === 'darwin' ? 'Ctrl+Cmd+F' : 'F11',
+        accelerator: process.platform === 'darwin' ? 'Command+Enter' : 'F11',
         click: () => {
           if (this.mainWindow && !this.mainWindow.isDestroyed()) {
             this.mainWindow.setFullScreen(!this.mainWindow.isFullScreen())
