@@ -1042,8 +1042,11 @@ export const useTerminalStore = defineStore('terminal', () => {
     ]
 
     // 设置 agentState，将历史记录作为当前会话的上下文
+    // 重要：保留原始记录的 sessionId 和 sessionStartTime，避免重复创建历史记录
     tab.agentState = {
       isRunning: false,
+      sessionId: record.id,  // 保留原始会话 ID
+      sessionStartTime: record.timestamp,  // 保留原始会话开始时间
       steps: steps,
       history: [{
         userTask: record.userTask,
