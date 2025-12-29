@@ -712,11 +712,8 @@ const menuOpenFileManager = async () => {
   hideContextMenu()
   
   try {
-    // 获取当前工作目录
-    // 对于 SSH 终端，需要调用 refreshCwd 来通过 exec channel 获取真实 CWD
-    const cwd = props.type === 'ssh' 
-      ? await window.electronAPI.terminalState.refreshCwd(props.ptyId)
-      : await window.electronAPI.terminalState.getCwd(props.ptyId)
+    // 获取当前工作目录（使用 refreshCwd 强制刷新，确保获取最新的 CWD）
+    const cwd = await window.electronAPI.terminalState.refreshCwd(props.ptyId)
     
     console.log(`[Terminal] menuOpenFileManager: type=${props.type}, ptyId=${props.ptyId}, cwd=${cwd}`)
     
