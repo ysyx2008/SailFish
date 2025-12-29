@@ -120,6 +120,13 @@ const setActive = async (profileId: string) => {
 // 预设模板
 const templates = computed(() => [
   {
+    name: 'DeepSeek',
+    apiUrl: 'https://api.deepseek.com/v1/chat/completions',
+    model: 'deepseek-chat',
+    keyUrl: 'https://platform.deepseek.com/api_keys',
+    recommended: true
+  },
+  {
     name: 'OpenAI',
     apiUrl: 'https://api.openai.com/v1/chat/completions',
     model: 'gpt-3.5-turbo',
@@ -130,12 +137,6 @@ const templates = computed(() => [
     apiUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
     model: 'qwen-plus',
     keyUrl: 'https://bailian.console.aliyun.com/?tab=model#/api-key'
-  },
-  {
-    name: 'DeepSeek',
-    apiUrl: 'https://api.deepseek.com/v1/chat/completions',
-    model: 'deepseek-chat',
-    keyUrl: 'https://platform.deepseek.com/api_keys'
   },
   {
     name: 'Ollama',
@@ -229,9 +230,11 @@ const openKeyUrl = (url: string) => {
           v-for="template in templates"
           :key="template.name"
           class="template-btn"
+          :class="{ recommended: template.recommended }"
           @click="applyTemplate(template)"
         >
           {{ template.name }}
+          <span v-if="template.recommended" class="recommended-badge">{{ t('aiSettings.recommended') }}</span>
         </button>
       </div>
 
@@ -482,6 +485,31 @@ const openKeyUrl = (url: string) => {
 .template-btn:hover {
   background: var(--accent-primary);
   color: var(--bg-primary);
+}
+
+.template-btn.recommended {
+  border-color: #10b981;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.template-btn.recommended:hover {
+  background: #10b981;
+  color: white;
+  border-color: #10b981;
+}
+
+.template-btn .recommended-badge {
+  font-size: 10px;
+  font-weight: 500;
+  margin-left: 4px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(16, 185, 129, 0.15);
+}
+
+.template-btn.recommended:hover .recommended-badge {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .form-label-row {

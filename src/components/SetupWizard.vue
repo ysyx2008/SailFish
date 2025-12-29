@@ -31,6 +31,14 @@ const aiFormData = ref<Partial<AiProfile>>({
 
 const aiTemplates = computed(() => [
   {
+    name: 'DeepSeek',
+    apiUrl: 'https://api.deepseek.com/v1/chat/completions',
+    model: 'deepseek-chat',
+    desc: t('aiSettings.templates.deepseek'),
+    keyUrl: 'https://platform.deepseek.com/api_keys',
+    recommended: true
+  },
+  {
     name: 'OpenAI',
     apiUrl: 'https://api.openai.com/v1/chat/completions',
     model: 'gpt-3.5-turbo',
@@ -43,13 +51,6 @@ const aiTemplates = computed(() => [
     model: 'qwen-plus',
     desc: t('aiSettings.templates.qwen'),
     keyUrl: 'https://bailian.console.aliyun.com/?tab=model#/api-key'
-  },
-  {
-    name: 'DeepSeek',
-    apiUrl: 'https://api.deepseek.com/v1/chat/completions',
-    model: 'deepseek-chat',
-    desc: t('aiSettings.templates.deepseek'),
-    keyUrl: 'https://platform.deepseek.com/api_keys'
   },
   {
     name: 'Ollama',
@@ -464,9 +465,13 @@ onMounted(async () => {
                     v-for="template in aiTemplates"
                     :key="template.name"
                     class="template-card"
+                    :class="{ recommended: template.recommended }"
                     @click="applyAiTemplate(template)"
                   >
-                    <div class="template-name">{{ template.name }}</div>
+                    <div class="template-header">
+                      <div class="template-name">{{ template.name }}</div>
+                      <span v-if="template.recommended" class="recommended-badge">{{ t('aiSettings.recommended') }}</span>
+                    </div>
                     <div class="template-desc">{{ template.desc }}</div>
                   </button>
                 </div>
@@ -1046,11 +1051,38 @@ onMounted(async () => {
   background: var(--bg-hover);
 }
 
+.template-card.recommended {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.template-card.recommended:hover {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+}
+
+.template-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
 .template-name {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
-  margin-bottom: 4px;
+}
+
+.recommended-badge {
+  font-size: 10px;
+  font-weight: 500;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
 }
 
 .template-desc {

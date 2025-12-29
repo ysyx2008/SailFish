@@ -264,6 +264,7 @@ export default {
       ollama: '本地部署的 Ollama，数据不出本地'
     },
     getApiKey: '获取 Key',
+    recommended: '推荐',
     // 助手调试模式
     agentDebugMode: '助手调试模式',
     agentDebugModeDesc: '开启后显示详细的工具调用步骤，关闭后交互更简洁自然'
