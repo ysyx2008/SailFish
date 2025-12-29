@@ -73,8 +73,8 @@ const menuI18n = {
   'en-US': {
     // App menu (macOS)
     about: 'About SFTerm',
-    checkUpdate: 'Check for Updates...',
-    preferences: 'Preferences...',
+    checkUpdate: 'Check for Updates',
+    preferences: 'Preferences',
     services: 'Services',
     hide: 'Hide SFTerm',
     hideOthers: 'Hide Others',
