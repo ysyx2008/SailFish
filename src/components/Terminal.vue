@@ -489,6 +489,12 @@ onUnmounted(() => {
   // 先标记为已销毁，防止后续回调执行
   isDisposed = true
   
+  // 清理选择状态检查的 timeout
+  if (selectionCheckTimeout) {
+    clearTimeout(selectionCheckTimeout)
+    selectionCheckTimeout = null
+  }
+  
   // 清理菜单事件监听
   const handlers = (window as any).__terminalMenuHandlers?.[props.tabId]
   if (handlers) {
@@ -674,6 +680,26 @@ const hideContextMenu = () => {
   nextTick(() => {
     terminal?.focus()
   })
+}
+
+// 处理终端点击 - 修复 cmd+a 全选后点击不清除选中状态的问题
+// xterm.js 的 onSelectionChange 在 selectAll() 后点击取消选择时可能不触发
+let selectionCheckTimeout: ReturnType<typeof setTimeout> | null = null
+const handleTerminalClick = () => {
+  hideContextMenu()
+  // 防抖：清除之前的检查，避免快速连续点击时累积
+  if (selectionCheckTimeout) {
+    clearTimeout(selectionCheckTimeout)
+  }
+  // 延迟检查选择状态，确保 xterm.js 内部状态已更新
+  selectionCheckTimeout = setTimeout(() => {
+    selectionCheckTimeout = null
+    // 检查组件是否已销毁
+    if (!isDisposed && terminal) {
+      const selection = terminal.getSelection()
+      terminalStore.updateSelectedText(props.tabId, selection || '')
+    }
+  }, 10)
 }
 
 const menuCopy = async () => {
@@ -1239,7 +1265,7 @@ defineExpose({
   <div 
     class="terminal-wrapper" 
     @contextmenu="handleContextMenu"
-    @click="hideContextMenu"
+    @click="handleTerminalClick"
   >
     <div ref="terminalRef" class="terminal-inner"></div>
     
