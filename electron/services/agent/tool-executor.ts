@@ -20,6 +20,7 @@ import type {
 import { assessCommandRisk, analyzeCommand, isSudoCommand, detectPasswordPrompt } from './risk-assessor'
 import { t } from './i18n'
 import { getKnowledgeService } from '../knowledge'
+import { getDocumentParserService } from '../document-parser.service'
 import { getTerminalStateService } from '../terminal-state.service'
 import { getTerminalAwarenessService, getProcessMonitor } from '../terminal-awareness'
 import { getLastNLinesFromBuffer, getScreenAnalysisFromFrontend } from '../screen-content.service'
@@ -198,7 +199,7 @@ export async function executeTool(
       return sendInput(ptyId, args, config, executor)
 
     case 'read_file':
-      return readFile(ptyId, args, config, executor)
+      return await readFile(ptyId, args, config, executor)
 
     case 'write_file':
       return writeFile(ptyId, args, toolCall.id, config, executor)
@@ -1409,15 +1410,24 @@ async function sendInput(
 }
 
 /**
+ * 检测是否为文档类型（PDF、Word 等需要特殊解析的文件）
+ */
+function isDocumentType(filePath: string): boolean {
+  const ext = path.extname(filePath).toLowerCase()
+  return ['.pdf', '.docx', '.doc'].includes(ext)
+}
+
+/**
  * 读取文件
  * 支持多种读取方式：完整读取、按行范围读取、从开头/末尾读取、仅查询文件信息
+ * 对于 PDF、Word 等文档格式，会自动使用文档解析器提取文本内容
  */
-function readFile(
+async function readFile(
   ptyId: string,
   args: Record<string, unknown>,
   config: AgentConfig,
   executor: ToolExecutorConfig
-): ToolResult {
+): Promise<ToolResult> {
   let filePath = args.path as string
   if (!filePath) {
     return { success: false, output: '', error: t('error.file_path_required') }
@@ -1451,6 +1461,11 @@ function readFile(
     const stats = fs.statSync(filePath)
     const fileSize = stats.size
     const sizeMB = (fileSize / (1024 * 1024)).toFixed(2)
+
+    // 检测是否为文档类型（PDF、Word 等）
+    if (isDocumentType(filePath) && !infoOnly) {
+      return await readDocumentFile(filePath, fileSize, executor)
+    }
     const sizeKB = (fileSize / 1024).toFixed(2)
 
     // 如果只查询文件信息
@@ -1584,6 +1599,69 @@ ${sampleContent ? `### ${t('file.info_preview')}\n\`\`\`\n${sampleContent}\n\`\`
       toolResult: `${errorMsg}\n\n💡 ${suggestion}`
     })
     return { success: false, output: '', error: t('error.recovery_hint', { error: errorMsg, suggestion }) }
+  }
+}
+
+/**
+ * 读取文档文件（PDF、Word 等）
+ * 使用 DocumentParserService 提取文本内容
+ */
+async function readDocumentFile(
+  filePath: string,
+  fileSize: number,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const ext = path.extname(filePath).toLowerCase()
+  const fileName = path.basename(filePath)
+  
+  try {
+    const documentParser = getDocumentParserService()
+    
+    // 解析文档
+    const result = await documentParser.parseDocument({
+      name: fileName,
+      path: filePath,
+      size: fileSize
+    }, {
+      maxFileSize: 10 * 1024 * 1024, // 10MB
+      maxTextLength: 100000 // 100K 字符
+    })
+    
+    if (result.error) {
+      executor.addStep({
+        type: 'tool_result',
+        content: `${t('file.read_failed')}: ${result.error}`,
+        toolName: 'read_file',
+        toolResult: result.error
+      })
+      return { success: false, output: '', error: result.error }
+    }
+    
+    // 构建返回信息
+    const docInfo: string[] = []
+    docInfo.push(`📄 ${ext.toUpperCase().slice(1)} ${t('file.document_parsed')}`)
+    if (result.pageCount) {
+      docInfo.push(`${t('file.page_count')}: ${result.pageCount}`)
+    }
+    docInfo.push(`${t('file.content_length')}: ${result.content.length.toLocaleString()} ${t('file.chars')}`)
+    
+    executor.addStep({
+      type: 'tool_result',
+      content: `${t('file.read_success')}: ${docInfo.join(', ')}`,
+      toolName: 'read_file',
+      toolResult: truncateFromEnd(result.content, 500)
+    })
+    
+    return { success: true, output: result.content }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : t('file.parse_failed')
+    executor.addStep({
+      type: 'tool_result',
+      content: `${t('file.read_failed')}: ${errorMsg}`,
+      toolName: 'read_file',
+      toolResult: errorMsg
+    })
+    return { success: false, output: '', error: errorMsg }
   }
 }
 

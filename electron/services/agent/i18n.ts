@@ -216,6 +216,11 @@ const translations = {
     'file.read_first_n': '读取前 {count} 行',
     'file.read_last_n': '读取最后 {count} 行',
     'file.end_of_file': '末尾',
+    'file.document_parsed': '文档解析成功',
+    'file.page_count': '页数',
+    'file.content_length': '内容长度',
+    'file.chars': '字符',
+    'file.parse_failed': '文档解析失败',
 
     // 时间格式
     'time.minutes_seconds': '{minutes}分{seconds}秒',
@@ -646,6 +651,11 @@ Please output the summary in the following format:
     'file.read_first_n': 'Read first {count} lines',
     'file.read_last_n': 'Read last {count} lines',
     'file.end_of_file': 'end',
+    'file.document_parsed': 'Document parsed successfully',
+    'file.page_count': 'Pages',
+    'file.content_length': 'Content length',
+    'file.chars': 'chars',
+    'file.parse_failed': 'Document parse failed',
 
     // Time format
     'time.minutes_seconds': '{minutes}m{seconds}s',
