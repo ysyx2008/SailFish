@@ -2511,6 +2511,15 @@ async function askUser(
       finalResponse = defaultValue
     }
 
+    // 添加用户回复步骤到对话中（让用户看到自己的回复）
+    if (finalResponse) {
+      executor.addStep({
+        type: 'user_supplement',
+        content: finalResponse,
+        riskLevel: 'safe'
+      })
+    }
+
     executor.updateStep(step.id, {
       toolResult: t('ask.received', { response: finalResponse || t('ask.empty') })
     })
