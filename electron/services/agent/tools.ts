@@ -137,7 +137,14 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'read_file',
-        description: `读取本地文件内容。支持多种读取方式：
+        description: `读取本地文件内容。支持多种读取方式和文件格式：
+
+**支持的文件格式**：
+- 📄 **PDF 文件**：自动提取文本内容（不支持扫描件 OCR）
+- 📝 **Word 文档**：支持 .docx（Office 2007+）和 .doc（97-2003）格式
+- 📃 **文本文件**：txt、md、json、xml、html、csv 等
+
+**读取方式**（仅适用于文本文件）：
 1. **完整读取**：不指定任何范围参数，读取整个文件（文件需小于 500KB）
 2. **按行范围读取**：使用 start_line 和 end_line 指定行号范围（从1开始）
 3. **按行数读取**：使用 max_lines 指定从文件开头读取的行数
@@ -147,7 +154,9 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
 ⚠️ **仅支持本地文件**：此工具只能读取运行终端程序的本地机器上的文件。
 对于 SSH 远程主机，请使用 execute_command 执行 cat/head/tail/sed 等命令读取远程文件。
 
-对于大文件，建议先使用 info_only=true 查看文件信息，然后根据需要读取特定部分。`,
+对于大文件，建议先使用 info_only=true 查看文件信息，然后根据需要读取特定部分。
+对于 PDF/Word 文档，会自动解析提取文本，最大支持 10MB 文件。
+⚠️ **文件名注意事项**：文件名中可能包含特殊字符（比如中文引号“”等），请严格使用原始文件名。`,
         parameters: {
           type: 'object',
           properties: {
