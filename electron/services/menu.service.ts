@@ -308,7 +308,7 @@ export class MenuService {
         {
           label: this.t('selectAll'),
           accelerator: 'CmdOrCtrl+A',
-          click: () => this.sendCommand('selectAll')
+          role: 'selectAll'
         },
         { type: 'separator' },
         {
