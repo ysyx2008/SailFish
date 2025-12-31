@@ -793,8 +793,9 @@ const electronAPI = {
       agentId: string,
       toolCallId: string,
       approved: boolean,
-      modifiedArgs?: Record<string, unknown>
-    ) => ipcRenderer.invoke('agent:confirm', { agentId, toolCallId, approved, modifiedArgs }) as Promise<boolean>,
+      modifiedArgs?: Record<string, unknown>,
+      alwaysAllow?: boolean
+    ) => ipcRenderer.invoke('agent:confirm', { agentId, toolCallId, approved, modifiedArgs, alwaysAllow }) as Promise<boolean>,
 
     // 获取 Agent 状态
     getStatus: (agentId: string) => ipcRenderer.invoke('agent:getStatus', agentId),

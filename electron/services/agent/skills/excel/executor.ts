@@ -398,9 +398,10 @@ async function excelSave(
   }
 
   try {
-    // 创建备份（带时间戳）
+    // 创建备份（带本地时间戳）
     if (fs.existsSync(filePath)) {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+      const now = new Date()
+      const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`
       const ext = path.extname(filePath)
       const baseName = filePath.slice(0, -ext.length)
       const backupPath = `${baseName}_${timestamp}${ext}.bak`

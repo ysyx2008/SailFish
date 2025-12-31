@@ -1161,6 +1161,21 @@ export class AgentService {
         return
       }
 
+      // 检查工具是否在会话白名单中（"始终允许"功能）
+      if (this.isToolAllowed(agentId, toolName, toolArgs)) {
+        console.log(`[Agent] Tool auto-approved by whitelist: ${toolName}`)
+        // 添加自动批准的步骤（让用户知道发生了什么）
+        this.addStep(agentId, {
+          type: 'tool_call',
+          content: t('agent.auto_approved', { toolName }),
+          toolName,
+          toolArgs,
+          riskLevel
+        })
+        resolve(true)
+        return
+      }
+
       // 设置执行阶段为等待确认（安全打断）
       this.setExecutionPhase(agentId, 'confirming', toolName)
 
@@ -1201,18 +1216,68 @@ export class AgentService {
   }
 
   /**
+   * 生成工具白名单键
+   * 根据工具名和关键参数生成唯一标识，用于"始终允许"功能
+   */
+  private generateAllowedToolKey(toolName: string, toolArgs: Record<string, unknown>): string {
+    // 提取关键参数（根据工具类型决定）
+    let keyArgs: string
+    switch (toolName) {
+      case 'excel_save':
+      case 'excel_modify':
+      case 'excel_open':
+      case 'excel_close':
+        // Excel 工具：以文件路径为键
+        keyArgs = String(toolArgs.path || '')
+        break
+      case 'write_file':
+      case 'read_file':
+        // 文件操作：以文件路径为键
+        keyArgs = String(toolArgs.path || toolArgs.file_path || '')
+        break
+      case 'execute_command':
+        // 命令执行：以命令为键
+        keyArgs = String(toolArgs.command || '')
+        break
+      default:
+        // 其他工具：使用完整参数的 JSON 字符串
+        keyArgs = JSON.stringify(toolArgs)
+    }
+    return `${toolName}:${keyArgs}`
+  }
+
+  /**
+   * 检查工具是否在会话白名单中
+   */
+  isToolAllowed(agentId: string, toolName: string, toolArgs: Record<string, unknown>): boolean {
+    const run = this.runs.get(agentId)
+    if (!run) return false
+    const key = this.generateAllowedToolKey(toolName, toolArgs)
+    return run.allowedTools.has(key)
+  }
+
+  /**
    * 处理用户确认
+   * @param alwaysAllow 如果为 true，将该工具+参数加入会话白名单
    */
   confirmToolCall(
     agentId: string,
     toolCallId: string,
     approved: boolean,
-    modifiedArgs?: Record<string, unknown>
+    modifiedArgs?: Record<string, unknown>,
+    alwaysAllow?: boolean
   ): boolean {
     const run = this.runs.get(agentId)
     if (!run || !run.pendingConfirmation) return false
 
     if (run.pendingConfirmation.toolCallId === toolCallId) {
+      // 如果用户选择"始终允许"，将工具+参数加入白名单
+      if (approved && alwaysAllow) {
+        const { toolName, toolArgs } = run.pendingConfirmation
+        const key = this.generateAllowedToolKey(toolName, modifiedArgs || toolArgs)
+        run.allowedTools.add(key)
+        console.log(`[Agent] Added to allowed tools: ${key}`)
+      }
       run.pendingConfirmation.resolve(approved, modifiedArgs)
       return true
     }
@@ -1279,7 +1344,9 @@ export class AgentService {
       // 初始化执行阶段
       executionPhase: 'thinking',
       // 创建技能会话（传入核心工具定义）
-      skillSession: createSkillSession(getAgentTools(this.mcpService))
+      skillSession: createSkillSession(getAgentTools(this.mcpService)),
+      // 初始化会话级别的工具白名单
+      allowedTools: new Set<string>()
     }
     this.runs.set(agentId, run)
     

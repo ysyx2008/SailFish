@@ -185,6 +185,12 @@ export type AgentExecutionPhase =
   | 'confirming'         // 等待用户确认中（安全打断）
   | 'idle'               // 空闲
 
+// 工具白名单键（用于"始终允许"功能）
+export interface AllowedToolKey {
+  toolName: string
+  argsHash: string  // 关键参数的哈希值（如文件路径）
+}
+
 // Agent 运行状态
 export interface AgentRun {
   id: string
@@ -215,6 +221,8 @@ export interface AgentRun {
   initialStepId?: string
   // 技能会话
   skillSession?: import('./skills').SkillSession
+  // 会话级别的工具白名单（"始终允许"功能）
+  allowedTools: Set<string>
 }
 
 // 主机档案服务接口
