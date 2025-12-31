@@ -24,6 +24,7 @@ import { getDocumentParserService } from '../document-parser.service'
 import { getTerminalStateService } from '../terminal-state.service'
 import { getTerminalAwarenessService, getProcessMonitor } from '../terminal-awareness'
 import { getLastNLinesFromBuffer, getScreenAnalysisFromFrontend } from '../screen-content.service'
+import { getFileSearchService } from '../file-search.service'
 import type { UnifiedTerminalInterface } from '../unified-terminal.service'
 import type { SftpService } from '../sftp.service'
 import type { SshConfig } from '../ssh.service'
@@ -206,6 +207,9 @@ export async function executeTool(
 
     case 'read_file':
       return await readFile(ptyId, args, config, executor)
+
+    case 'file_search':
+      return await fileSearch(args, config, executor)
 
     case 'write_file':
       return writeFile(ptyId, args, toolCall.id, config, executor)
@@ -1433,6 +1437,92 @@ async function sendInput(
     const errorMsg = error instanceof Error ? error.message : t('input.send_failed')
     return { success: false, output: '', error: errorMsg }
   }
+}
+
+/**
+ * 文件搜索
+ * 使用 FileSearchService 快速搜索本地文件
+ */
+async function fileSearch(
+  args: Record<string, unknown>,
+  config: AgentConfig,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const query = args.query as string
+  const searchPath = args.path as string | undefined
+  const type = args.type as 'file' | 'dir' | 'all' | undefined
+  const limit = args.limit as number | undefined
+
+  if (!query) {
+    return { success: false, output: '', error: t('error.query_required') }
+  }
+
+  executor.addStep({
+    type: 'tool_call',
+    content: `🔍 ${t('file.searching')}: "${query}"${searchPath ? ` in ${searchPath}` : ''}`,
+    toolName: 'file_search',
+    toolArgs: { query, path: searchPath, type, limit },
+    riskLevel: 'safe'
+  })
+
+  try {
+    const fileSearchService = getFileSearchService()
+    const results = await fileSearchService.search({
+      query,
+      searchPath,
+      type,
+      limit: limit || 50
+    })
+
+    if (results.length === 0) {
+      executor.addStep({
+        type: 'tool_result',
+        content: t('file.search_no_results'),
+        toolName: 'file_search',
+        toolResult: t('file.search_no_results_detail', { query })
+      })
+      return { success: true, output: t('file.search_no_results_detail', { query }) }
+    }
+
+    // 格式化结果
+    const formattedResults = results.map((r, i) => {
+      const icon = r.isDirectory ? '📁' : '📄'
+      const sizeStr = r.size !== undefined ? ` (${formatFileSize(r.size)})` : ''
+      return `${i + 1}. ${icon} ${r.path}${sizeStr}`
+    }).join('\n')
+
+    const output = `${t('file.search_found', { count: results.length })}:\n\n${formattedResults}`
+
+    executor.addStep({
+      type: 'tool_result',
+      content: t('file.search_found', { count: results.length }),
+      toolName: 'file_search',
+      toolResult: results.length > 10 
+        ? formattedResults.split('\n').slice(0, 10).join('\n') + `\n... ${t('file.search_more', { count: results.length - 10 })}`
+        : formattedResults
+    })
+
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : t('file.search_failed')
+    executor.addStep({
+      type: 'tool_result',
+      content: `${t('file.search_failed')}: ${errorMsg}`,
+      toolName: 'file_search',
+      toolResult: errorMsg
+    })
+    return { success: false, output: '', error: errorMsg }
+  }
+}
+
+/**
+ * 格式化文件大小
+ */
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
 }
 
 /**

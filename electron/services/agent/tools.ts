@@ -303,6 +303,54 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
     {
       type: 'function',
       function: {
+        name: 'file_search',
+        description: `快速搜索本地文件（毫秒级响应）。
+
+**搜索能力**：
+- macOS: 使用 Spotlight 索引，全盘瞬时搜索
+- Windows: 使用内置 Everything，全盘瞬时搜索
+- Linux: 使用 locate/fd，快速搜索
+
+**搜索语法**：
+- 支持通配符: \`*\` 匹配任意字符，\`?\` 匹配单个字符
+- 示例: \`*.ts\` 搜索所有 TypeScript 文件
+- 示例: \`config*.json\` 搜索 config 开头的 JSON 文件
+- 示例: \`project\` 搜索包含 project 的文件名
+
+**使用场景**：
+- 快速定位配置文件、日志文件
+- 查找特定类型的文件
+- 在项目中搜索文件
+
+⚠️ 仅支持本地文件系统搜索，不支持 SSH 远程主机。`,
+        parameters: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: '搜索关键词，支持通配符 * 和 ?'
+            },
+            path: {
+              type: 'string',
+              description: '限制搜索目录（可选，不指定则全盘搜索）'
+            },
+            type: {
+              type: 'string',
+              enum: ['file', 'dir', 'all'],
+              description: '搜索类型：file（仅文件）、dir（仅目录）、all（全部，默认）'
+            },
+            limit: {
+              type: 'number',
+              description: '最大结果数量，默认 50'
+            }
+          },
+          required: ['query']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
         name: 'remember_info',
         description: `保存发现到知识库，下次交互时会基于语义相关性自动提供这些信息。知识库容量充足，鼓励多记录有价值的信息。
 

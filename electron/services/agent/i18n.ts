@@ -223,6 +223,12 @@ const translations = {
     'file.content_length': '内容长度',
     'file.chars': '字符',
     'file.parse_failed': '文档解析失败',
+    'file.searching': '搜索文件',
+    'file.search_no_results': '未找到匹配的文件',
+    'file.search_no_results_detail': '未找到匹配 "{query}" 的文件',
+    'file.search_found': '找到 {count} 个文件',
+    'file.search_more': '还有 {count} 个结果',
+    'file.search_failed': '文件搜索失败',
 
     // Excel 操作
     'excel.action_required': '需要指定操作类型（read/write/modify）',
@@ -767,6 +773,12 @@ Please output the summary in the following format:
     'file.content_length': 'Content length',
     'file.chars': 'chars',
     'file.parse_failed': 'Document parse failed',
+    'file.searching': 'Searching files',
+    'file.search_no_results': 'No matching files found',
+    'file.search_no_results_detail': 'No files matching "{query}" found',
+    'file.search_found': 'Found {count} files',
+    'file.search_more': '{count} more results',
+    'file.search_failed': 'File search failed',
 
     // Excel operations
     'excel.action_required': 'Action type required (read/write/modify)',
