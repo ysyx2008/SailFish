@@ -398,13 +398,20 @@ async function excelSave(
   }
 
   try {
-    // 创建备份（带本地时间戳）
+    // 创建备份（带本地时间戳，重名时自动加序号）
     if (fs.existsSync(filePath)) {
       const now = new Date()
       const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`
       const ext = path.extname(filePath)
       const baseName = filePath.slice(0, -ext.length)
-      const backupPath = `${baseName}_${timestamp}${ext}.bak`
+      
+      // 查找不重名的备份路径
+      let backupPath = `${baseName}_${timestamp}${ext}.bak`
+      let counter = 2
+      while (fs.existsSync(backupPath)) {
+        backupPath = `${baseName}_${timestamp}_${counter}${ext}.bak`
+        counter++
+      }
       fs.copyFileSync(filePath, backupPath)
     }
 
