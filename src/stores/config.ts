@@ -305,7 +305,7 @@ export const useConfigStore = defineStore('config', () => {
       }
 
       // 加载邮箱账户
-      const accounts = await window.electronAPI.config.get('emailAccounts')
+      const accounts = await window.electronAPI.config.get('emailAccounts') as EmailAccount[] | undefined
       emailAccounts.value = accounts || []
       // 同步到后端 email skill（转换为普通对象避免序列化错误）
       if (emailAccounts.value.length > 0) {
