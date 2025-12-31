@@ -203,8 +203,10 @@ export class DocumentParserService {
         case 'json':
         case 'xml':
         case 'html':
-        case 'csv':
           await this.parseTextFile(file.path, result, opts)
+          break
+        case 'csv':
+          await this.parseCsv(file.path, result, opts)
           break
         default:
           // 尝试作为文本解析
@@ -375,6 +377,73 @@ export class DocumentParserService {
     // 尝试检测编码并读取
     const content = fs.readFileSync(filePath, 'utf-8')
     result.content = content
+  }
+
+  /**
+   * 解析 CSV 文件，转换为 Markdown 表格格式
+   */
+  private async parseCsv(filePath: string, result: ParsedDocument, opts: Required<ParseOptions>): Promise<void> {
+    const content = fs.readFileSync(filePath, 'utf-8')
+    const lines = content.split('\n').filter(line => line.trim())
+    
+    if (lines.length === 0) {
+      result.content = ''
+      return
+    }
+
+    // 解析 CSV（简单实现，处理基本逗号分隔）
+    const parseRow = (line: string): string[] => {
+      const cells: string[] = []
+      let current = ''
+      let inQuotes = false
+      
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i]
+        if (char === '"') {
+          inQuotes = !inQuotes
+        } else if (char === ',' && !inQuotes) {
+          cells.push(current.trim())
+          current = ''
+        } else {
+          current += char
+        }
+      }
+      cells.push(current.trim())
+      return cells
+    }
+
+    const rows = lines.map(parseRow)
+    
+    // 限制行列数
+    const maxRows = 500
+    const maxCols = 20
+    const truncatedRows = rows.length > maxRows
+    const truncatedCols = rows[0] && rows[0].length > maxCols
+    
+    const displayRows = rows.slice(0, maxRows).map(row => row.slice(0, maxCols))
+    
+    // 生成 Markdown 表格
+    let markdown = ''
+    
+    if (truncatedRows || truncatedCols) {
+      markdown += `⚠️ 表格已截断（共 ${rows.length} 行 x ${rows[0]?.length || 0} 列，显示 ${displayRows.length} 行 x ${displayRows[0]?.length || 0} 列）\n\n`
+    }
+
+    if (displayRows.length > 0) {
+      // 转义特殊字符
+      const escapeCell = (cell: string) => cell.replace(/\|/g, '\\|').replace(/\n/g, ' ')
+      
+      // 表头
+      markdown += '| ' + displayRows[0].map(escapeCell).join(' | ') + ' |\n'
+      markdown += '| ' + displayRows[0].map(() => '---').join(' | ') + ' |\n'
+      
+      // 数据行
+      for (let i = 1; i < displayRows.length; i++) {
+        markdown += '| ' + displayRows[i].map(escapeCell).join(' | ') + ' |\n'
+      }
+    }
+
+    result.content = markdown
   }
 
   /**

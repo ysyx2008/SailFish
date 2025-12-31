@@ -27,6 +27,7 @@ import { getLastNLinesFromBuffer, getScreenAnalysisFromFrontend } from '../scree
 import type { UnifiedTerminalInterface } from '../unified-terminal.service'
 import type { SftpService } from '../sftp.service'
 import type { SshConfig } from '../ssh.service'
+import type { SkillSession } from './skills'
 
 // 错误分类
 type ErrorCategory = 'transient' | 'permission' | 'not_found' | 'timeout' | 'fatal'
@@ -156,6 +157,8 @@ export interface ToolExecutorConfig {
   // SFTP 功能（用于 SSH 终端的文件写入）
   getSftpService?: () => SftpService | undefined  // 获取 SFTP 服务
   getSshConfig?: (terminalId: string) => SshConfig | null  // 获取 SSH 连接配置
+  // 技能系统
+  skillSession?: SkillSession  // 技能会话管理器
 }
 
 /**
@@ -228,7 +231,19 @@ export async function executeTool(
     case 'clear_plan':
       return clearPlan(args, executor)
 
+    case 'load_skill':
+      return await loadSkillTool(args, executor)
+
     default:
+      // 检查是否是技能工具调用
+      if (executor.skillSession) {
+        const skillTools = executor.skillSession.getAvailableTools()
+        const skillTool = skillTools.find(t => t.function.name === name)
+        if (skillTool) {
+          return await executeSkillTool(name, ptyId, args, toolCall.id, config, executor)
+        }
+      }
+      
       // 检查是否是 MCP 工具调用
       if (name.startsWith('mcp_') && executor.mcpService) {
         return executeMcpTool(name, args, toolCall.id, executor)
@@ -1663,6 +1678,82 @@ async function readDocumentFile(
     })
     return { success: false, output: '', error: errorMsg }
   }
+}
+
+/**
+ * 加载技能工具
+ */
+async function loadSkillTool(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const skillId = args.skill_id as string
+  
+  if (!skillId) {
+    return { success: false, output: '', error: t('skill.id_required') }
+  }
+
+  if (!executor.skillSession) {
+    return { success: false, output: '', error: t('skill.session_not_initialized') }
+  }
+
+  executor.addStep({
+    type: 'tool_call',
+    content: t('skill.loading', { id: skillId }),
+    toolName: 'load_skill',
+    toolArgs: args,
+    riskLevel: 'safe'
+  })
+
+  const result = await executor.skillSession.loadSkill(skillId)
+  
+  if (result.success) {
+    const toolsList = result.toolsAdded?.join(', ') || ''
+    const output = t('skill.loaded', { 
+      name: result.skillName || skillId, 
+      tools: toolsList 
+    })
+    
+    executor.addStep({
+      type: 'tool_result',
+      content: output,
+      toolName: 'load_skill',
+      toolResult: output
+    })
+    
+    return { success: true, output }
+  } else {
+    executor.addStep({
+      type: 'tool_result',
+      content: `${t('skill.load_failed')}: ${result.error}`,
+      toolName: 'load_skill',
+      toolResult: result.error || ''
+    })
+    
+    return { success: false, output: '', error: result.error }
+  }
+}
+
+/**
+ * 执行技能工具
+ * 路由到具体的技能执行器
+ */
+async function executeSkillTool(
+  toolName: string,
+  ptyId: string,
+  args: Record<string, unknown>,
+  toolCallId: string,
+  config: AgentConfig,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  // Excel 技能工具
+  if (toolName.startsWith('excel_')) {
+    const { executeExcelTool } = await import('./skills/excel/executor')
+    return executeExcelTool(toolName, ptyId, args, toolCallId, config, executor)
+  }
+  
+  // 未知技能工具
+  return { success: false, output: '', error: t('error.unknown_tool', { name: toolName }) }
 }
 
 /**
