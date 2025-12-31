@@ -39,6 +39,7 @@
     "apache-arrow": "^18.1.0",
     "electron-store": "^8.2.0",
     "electron-updater": "^6.1.7",
+    "exceljs": "^4.4.0",
     "https-proxy-agent": "^7.0.4",
     "iconv-lite": "^0.7.0",
     "jieba-wasm": "^2.4.0",
