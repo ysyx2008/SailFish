@@ -105,6 +105,70 @@ export type AgentMbtiType =
   | 'ISTP' | 'ISFP' | 'ESTP' | 'ESFP'
   | null
 
+// ==================== 邮箱账户配置 ====================
+
+// 邮箱服务商类型
+export type EmailProvider = 'gmail' | 'outlook' | 'qq' | '163' | 'custom'
+
+// 邮箱认证类型
+export type EmailAuthType = 'password' | 'oauth2'
+
+// 预置邮箱服务器配置
+export const EMAIL_PROVIDER_CONFIGS: Record<Exclude<EmailProvider, 'custom'>, {
+  imapHost: string
+  imapPort: number
+  smtpHost: string
+  smtpPort: number
+  smtpSecure: boolean
+}> = {
+  gmail: {
+    imapHost: 'imap.gmail.com',
+    imapPort: 993,
+    smtpHost: 'smtp.gmail.com',
+    smtpPort: 465,
+    smtpSecure: true
+  },
+  outlook: {
+    imapHost: 'outlook.office365.com',
+    imapPort: 993,
+    smtpHost: 'smtp.office365.com',
+    smtpPort: 587,
+    smtpSecure: false  // STARTTLS
+  },
+  qq: {
+    imapHost: 'imap.qq.com',
+    imapPort: 993,
+    smtpHost: 'smtp.qq.com',
+    smtpPort: 465,
+    smtpSecure: true
+  },
+  '163': {
+    imapHost: 'imap.163.com',
+    imapPort: 993,
+    smtpHost: 'smtp.163.com',
+    smtpPort: 465,
+    smtpSecure: true
+  }
+}
+
+// 邮箱账户配置
+export interface EmailAccount {
+  id: string
+  name: string              // 显示名称
+  email: string             // 邮箱地址
+  provider: EmailProvider   // 服务商
+  authType: EmailAuthType   // 认证类型
+  // 自定义服务器配置（provider 为 custom 时使用）
+  imapHost?: string
+  imapPort?: number
+  smtpHost?: string
+  smtpPort?: number
+  smtpSecure?: boolean
+  // 元数据
+  createdAt?: number
+  lastUsedAt?: number
+}
+
 export const useConfigStore = defineStore('config', () => {
   // AI 配置
   const aiProfiles = ref<AiProfile[]>([])
@@ -156,6 +220,9 @@ export const useConfigStore = defineStore('config', () => {
 
   // AI Rules（用户自定义的 AI 指令）
   const aiRules = ref<string>('')
+
+  // 邮箱账户
+  const emailAccounts = ref<EmailAccount[]>([])
 
   // 计算属性
   const activeAiProfile = computed(() =>
@@ -235,6 +302,15 @@ export const useConfigStore = defineStore('config', () => {
       if (savedTerminalSettings) {
         // 合并保存的设置（保留默认值作为fallback）
         terminalSettings.value = { ...terminalSettings.value, ...savedTerminalSettings }
+      }
+
+      // 加载邮箱账户
+      const accounts = await window.electronAPI.config.get('emailAccounts')
+      emailAccounts.value = accounts || []
+      // 同步到后端 email skill（转换为普通对象避免序列化错误）
+      if (emailAccounts.value.length > 0) {
+        const plainAccounts = JSON.parse(JSON.stringify(emailAccounts.value))
+        await window.electronAPI.email.syncAccounts(plainAccounts)
       }
     } catch (error) {
       console.error('Failed to load config:', error)
@@ -492,6 +568,66 @@ export const useConfigStore = defineStore('config', () => {
     await saveSessionGroups()
   }
 
+  // ==================== 邮箱账户 ====================
+
+  async function saveEmailAccounts(): Promise<void> {
+    const plainAccounts = JSON.parse(JSON.stringify(emailAccounts.value))
+    await window.electronAPI.config.set('emailAccounts', plainAccounts)
+    // 同步到后端 email skill
+    await window.electronAPI.email.syncAccounts(plainAccounts)
+  }
+
+  async function addEmailAccount(account: EmailAccount): Promise<void> {
+    account.createdAt = Date.now()
+    emailAccounts.value.push(account)
+    await saveEmailAccounts()
+  }
+
+  async function updateEmailAccount(account: EmailAccount): Promise<void> {
+    const index = emailAccounts.value.findIndex(a => a.id === account.id)
+    if (index !== -1) {
+      emailAccounts.value[index] = account
+      await saveEmailAccounts()
+    }
+  }
+
+  async function deleteEmailAccount(id: string): Promise<void> {
+    emailAccounts.value = emailAccounts.value.filter(a => a.id !== id)
+    await saveEmailAccounts()
+    // 同时删除密钥链中的凭据（通过 IPC 调用）
+    await window.electronAPI.email?.deleteCredential(id)
+  }
+
+  async function updateEmailAccountLastUsed(id: string): Promise<void> {
+    const account = emailAccounts.value.find(a => a.id === id)
+    if (account) {
+      account.lastUsedAt = Date.now()
+      await saveEmailAccounts()
+    }
+  }
+
+  /**
+   * 获取邮箱账户的服务器配置
+   */
+  function getEmailServerConfig(account: EmailAccount): {
+    imapHost: string
+    imapPort: number
+    smtpHost: string
+    smtpPort: number
+    smtpSecure: boolean
+  } {
+    if (account.provider === 'custom') {
+      return {
+        imapHost: account.imapHost || '',
+        imapPort: account.imapPort || 993,
+        smtpHost: account.smtpHost || '',
+        smtpPort: account.smtpPort || 465,
+        smtpSecure: account.smtpSecure ?? true
+      }
+    }
+    return EMAIL_PROVIDER_CONFIGS[account.provider]
+  }
+
   // ==================== 数据迁移 ====================
 
   /**
@@ -556,6 +692,7 @@ export const useConfigStore = defineStore('config', () => {
     sessionSortBy,
     defaultGroupSortOrder,
     aiRules,
+    emailAccounts,
 
     // 方法
     loadConfig,
@@ -585,7 +722,12 @@ export const useConfigStore = defineStore('config', () => {
     updateSessionsSortOrder,
     updateGroupSortOrder,
     updateGroupsSortOrder,
-    setAiRules
+    setAiRules,
+    addEmailAccount,
+    updateEmailAccount,
+    deleteEmailAccount,
+    updateEmailAccountLastUsed,
+    getEmailServerConfig
   }
 })
 

@@ -3,9 +3,49 @@
  */
 import type { ToolDefinition } from '../ai.service'
 import type { McpService } from '../mcp.service'
+import { getSkillsSummary } from './skills/registry'
 
 // 重新导出 ToolDefinition 类型供技能模块使用
 export type { ToolDefinition }
+
+/**
+ * 动态构建 load_skill 工具定义
+ * 从技能注册表获取可用技能列表
+ */
+function buildLoadSkillTool(): ToolDefinition {
+  const skills = getSkillsSummary()
+  const skillsList = skills.length > 0
+    ? skills.map(s => `- **${s.id}**: ${s.name} - ${s.description}`).join('\n')
+    : '- 暂无可用技能'
+
+  return {
+    type: 'function',
+    function: {
+      name: 'load_skill',
+      description: `加载技能模块以获得额外能力。技能是一组相关工具的集合，按需加载可以避免工具过多。
+
+**可用技能**：
+${skillsList}
+
+**使用方式**：
+1. 需要特定能力时，先加载对应技能
+2. 加载成功后，该技能的工具变为可用
+3. 完成后技能会自动清理资源
+
+**注意**：技能在当前会话中持续有效，无需重复加载。`,
+      parameters: {
+        type: 'object',
+        properties: {
+          skill_id: {
+            type: 'string',
+            description: `技能 ID，可选值: ${skills.map(s => `"${s.id}"`).join(', ') || '暂无'}`
+          }
+        },
+        required: ['skill_id']
+      }
+    }
+  }
+}
 
 /**
  * 获取可用工具定义
@@ -515,33 +555,7 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
         }
       }
     },
-    {
-      type: 'function',
-      function: {
-        name: 'load_skill',
-        description: `加载技能模块以获得额外能力。技能是一组相关工具的集合，按需加载可以避免工具过多。
-
-**可用技能**：
-- **excel**: Excel 处理技能 - 提供会话式 Excel 文件读写能力（excel_open/read/modify/save/close）
-
-**使用方式**：
-1. 需要处理 Excel 时，先加载 excel 技能
-2. 加载成功后，该技能的工具变为可用
-3. 完成后技能会自动清理资源
-
-**注意**：技能在当前会话中持续有效，无需重复加载。`,
-        parameters: {
-          type: 'object',
-          properties: {
-            skill_id: {
-              type: 'string',
-              description: '技能 ID，如 "excel"'
-            }
-          },
-          required: ['skill_id']
-        }
-      }
-    }
+    buildLoadSkillTool()
   ]
 
   // 如果有 MCP 服务，添加 MCP 工具

@@ -28,6 +28,8 @@ import type { UnifiedTerminalInterface } from '../unified-terminal.service'
 import type { SftpService } from '../sftp.service'
 import type { SshConfig } from '../ssh.service'
 import type { SkillSession } from './skills'
+import { executeExcelTool } from './skills/excel/executor'
+import { executeEmailTool } from './skills/email/executor'
 
 // 错误分类
 type ErrorCategory = 'transient' | 'permission' | 'not_found' | 'timeout' | 'fatal'
@@ -1756,8 +1758,12 @@ async function executeSkillTool(
 ): Promise<ToolResult> {
   // Excel 技能工具
   if (toolName.startsWith('excel_')) {
-    const { executeExcelTool } = await import('./skills/excel/executor')
     return executeExcelTool(toolName, ptyId, args, toolCallId, config, executor)
+  }
+
+  // 邮箱技能工具
+  if (toolName.startsWith('email_')) {
+    return executeEmailTool(toolName, ptyId, args, toolCallId, config, executor)
   }
   
   // 未知技能工具

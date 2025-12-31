@@ -13,4 +13,5 @@ export { SkillSession, createSkillSession } from './skill-loader'
 
 // 注册所有技能（在这里导入各个技能模块）
 import './excel'
+import './email'
 
