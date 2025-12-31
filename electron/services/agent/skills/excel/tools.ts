@@ -70,9 +70,15 @@ export const excelTools: ToolDefinition[] = [
       description: `修改已打开的 Excel 文件。修改后需要调用 excel_save 保存。
 
 **支持的操作**：
-1. 修改单元格：使用 cells 参数，如 {"A1": "值1", "B2": 123}
+1. 修改单元格：使用 cells 参数
 2. 添加新 Sheet：使用 add_sheet 参数
 3. 删除 Sheet：使用 delete_sheet 参数
+
+**cells 值格式**：
+- 普通值：\`{"A1": "文本", "B1": 123}\`
+- 公式（推荐）：\`{"A1": {"formula": "SUM(B1:B10)"}}\`
+- 强制文本：\`{"A1": {"text": "=这不是公式"}}\`
+- 公式简写：\`{"A1": "=SUM(B1:B10)"}\`（以=开头自动识别为公式）
 
 **注意**：修改只在内存中生效，需要 excel_save 才能写入文件。`,
       parameters: {
