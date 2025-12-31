@@ -58,6 +58,7 @@ For enterprise users, SFTerminal is designed with intranet environments in mind:
   - `remember_info` - Remember key information with cross-session memory
   - `search_knowledge` - Search local knowledge base documents
 - 🔌 **MCP Extension**: Supports Model Context Protocol for external tools and resources
+- 🧩 **Skills System**: Load extended capabilities on demand (e.g., Excel processing) to avoid tool overload
 - ⚠️ **Strict Mode**: Requires user confirmation before executing dangerous commands (enabled by default)
 - ⏱️ **Command Timeout Control**: Configurable command execution timeout to avoid long waits
 - 📜 **Task History**: Records the execution process and results of each Agent task
@@ -105,13 +106,14 @@ For enterprise users, SFTerminal is designed with intranet environments in mind:
 
 ## Tech Stack
 
-- **Framework**: Electron 28 + Vue 3 + TypeScript
+- **Framework**: Electron 37 + Vue 3 + TypeScript
 - **Terminal**: xterm.js 5.x
 - **Build**: Vite 5 + electron-builder
 - **State Management**: Pinia
 - **Internationalization**: vue-i18n
 - **AI**: OpenAI Compatible API (supports Function Calling) + MCP Protocol
 - **Knowledge Base**: LanceDB + Transformers.js (Local Embedding) + BM25
+- **Document Processing**: ExcelJS (Excel), Mammoth (Word), pdf-parse (PDF)
 
 ## Quick Start
 
@@ -279,7 +281,17 @@ Supports importing existing session configurations from Xshell:
 │       │   ├── tool-executor.ts   # Tool executor
 │       │   ├── tools.ts      # Tool definitions
 │       │   ├── i18n.ts       # Agent internationalization
-│       │   └── types.ts      # Type definitions
+│       │   ├── types.ts      # Type definitions
+│       │   └── skills/       # Skills module
+│       │       ├── index.ts      # Skill registration entry
+│       │       ├── registry.ts   # Skill registry
+│       │       ├── skill-loader.ts # Skill loader
+│       │       ├── types.ts      # Type definitions
+│       │       └── excel/        # Excel processing skill
+│       │           ├── index.ts  # Skill definition
+│       │           ├── tools.ts  # Tool definitions
+│       │           ├── executor.ts # Executor
+│       │           └── session.ts  # Session management
 │       ├── terminal-awareness/   # Terminal awareness module
 │       │   ├── index.ts      # Awareness service entry
 │       │   └── process-monitor.ts # Process state monitor
@@ -349,7 +361,21 @@ Supports importing existing session configurations from Xshell:
 
 ## Version History
 
-### v8.4.0 (Current Version)
+### v8.7.0 (Current Version)
+- 🧩 **Skills System**: Brand new extensible skill architecture
+  - Skills are collections of related tools, dynamically loaded on demand
+  - Prevents AI from being overwhelmed by too many tools
+  - Use `load_skill` tool to load required skills
+- 📊 **Excel Processing Skill**: First built-in skill providing session-based Excel read/write capability
+  - `excel_open` - Open Excel file (supports creating new files)
+  - `excel_read` - Read data (supports specific Sheet and cell ranges)
+  - `excel_modify` - Modify cells, add/delete Sheets, support formulas
+  - `excel_save` - Save changes (auto-backup)
+  - `excel_close` - Close file
+  - Ideal for data analysis, report processing, batch data modification, etc.
+- ⚙️ **Electron 37**: Upgraded to latest Electron version for better performance and compatibility
+
+### v8.4.0
 - 📎 **@ Mentions**: Input supports `@file` for file references and `@docs` for knowledge base documents
 - 📋 **AI Rules**: Custom AI instructions and preferences
 - 💬 **Chat History**: View recent sessions and continue previous conversations
