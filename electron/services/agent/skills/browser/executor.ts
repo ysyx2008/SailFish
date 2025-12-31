@@ -632,7 +632,24 @@ async function browserEvaluate(
     const session = ensureSession(ptyId)
     const page = getCurrentPage(session)
     
-    const result = await page.evaluate(script)
+    // 处理可能的 return 语句，并包装成可执行的表达式
+    let cleanScript = script.trim()
+    if (cleanScript.startsWith('return ')) {
+      cleanScript = cleanScript.slice(7)
+    }
+    
+    // 使用 Function 构造器包装，支持更复杂的语法
+    const result = await page.evaluate((code) => {
+      try {
+        // 先尝试作为表达式求值
+        return eval(code)
+      } catch {
+        // 如果失败，尝试作为语句块执行
+        const fn = new Function(code)
+        return fn()
+      }
+    }, cleanScript)
+    
     const output = result !== undefined ? JSON.stringify(result, null, 2) : '(无返回值)'
 
     executor.addStep({
