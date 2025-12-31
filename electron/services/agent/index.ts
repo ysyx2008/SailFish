@@ -1164,14 +1164,8 @@ export class AgentService {
       // 检查工具是否在会话白名单中（"始终允许"功能）
       if (this.isToolAllowed(agentId, toolName, toolArgs)) {
         console.log(`[Agent] Tool auto-approved by whitelist: ${toolName}`)
-        // 添加自动批准的步骤（让用户知道发生了什么）
-        this.addStep(agentId, {
-          type: 'tool_call',
-          content: t('agent.auto_approved', { toolName }),
-          toolName,
-          toolArgs,
-          riskLevel
-        })
+        // 不添加额外步骤，因为调用方已经添加了 tool_call 步骤
+        // 用户在第一次选择"始终允许"时已经知道后续会自动批准
         resolve(true)
         return
       }

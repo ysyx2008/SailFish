@@ -692,6 +692,8 @@ export default {
     mediumRisk: 'Medium Risk',
     lowRisk: 'Low Risk',
     reject: 'Reject',
+    alwaysAllow: 'Always Allow',
+    alwaysAllowHint: 'Skip confirmation for same operation in this session',
     allowExecute: 'Allow Execute',
     supplementInfo: 'Supplement Info',
     pendingProcess: 'Pending',
