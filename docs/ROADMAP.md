@@ -1,6 +1,6 @@
 # 旗鱼终端 - 产品路线图
 
-> 最后更新：2025-01-01
+> 最后更新：2026-01-01
 
 ---
 
@@ -37,24 +37,45 @@
 ### 现有技能
 - ✅ **Email**：邮件发送（支持 OAuth）
 - ✅ **Excel**：Excel 文件读取、创建、编辑
+- ✅ **Browser**：浏览器自动化（基于 Playwright）
+
+### Browser 浏览器自动化 ✅ 已完成
+
+基于 Playwright 实现的完整浏览器自动化能力：
+
+- ✅ **browser_launch**：启动浏览器，支持有头/无头模式
+- ✅ **browser_goto**：导航到指定 URL
+- ✅ **browser_screenshot**：截图（可视区域/整页/指定元素）
+- ✅ **browser_get_content**：获取页面内容（text/html/markdown）
+- ✅ **browser_click**：点击元素（支持 CSS/文本/角色选择器）
+- ✅ **browser_type**：输入文本
+- ✅ **browser_scroll**：滚动页面
+- ✅ **browser_wait**：等待元素或延时
+- ✅ **browser_evaluate**：执行 JavaScript
+- ✅ **browser_list_tabs / browser_switch_tab**：标签页管理
+- ✅ **browser_save_login / browser_list_profiles**：登录状态持久化
 
 ### 计划技能
 
-#### Browser 浏览器自动化（优先级：高）🚧 开发中
-- [ ] 基于 Playwright（使用系统浏览器，不打包 Chromium）
-- [ ] 支持 Chrome、Edge、Firefox
-- [ ] 网页截图、内容抓取
-- [ ] 表单填写、自动化操作
-- [ ] 页面交互：点击、输入、滚动、等待
-- [ ] 智能选择器：文本、角色、CSS、XPath
+#### File Search 文件搜索（优先级：高）🚧 开发中
+
+跨平台的瞬时文件搜索能力，零配置开箱即用：
+
+- [ ] **file_search 工具**：支持文件名、扩展名、路径模糊匹配
+- [ ] **macOS**：使用系统 Spotlight (`mdfind`)，毫秒级响应
+- [ ] **Windows**：使用 Everything 索引
+  - 自动检测 Everything 安装状态
+  - 未安装时提示用户一键安装（静默安装）
+  - Fallback：用户拒绝安装时使用实时遍历
+- [ ] 支持限制搜索目录、文件类型过滤
 
 #### Word 文档（优先级：中）
-- [ ] 读取 .docx 文档内容
+- ✅ 读取 .docx/.doc 文档内容（已有解析能力）
 - [ ] 生成 Word 文档（支持模板）
 - [ ] 编辑现有文档
 
 #### PDF 处理（优先级：中）
-- [ ] 读取 PDF 内容（已有解析基础）
+- ✅ 读取 PDF 内容（已有解析能力）
 - [ ] 生成 PDF 报告
 - [ ] PDF 合并、拆分
 
