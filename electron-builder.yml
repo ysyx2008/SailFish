@@ -41,6 +41,13 @@ win:
         - x64
   # 自定义文件名格式，避免空格导致 GitHub Release 上传问题
   artifactName: ${productName}-Setup-${version}.${ext}
+  # Everything 便携版（仅 Windows）- 用于快速文件搜索
+  extraResources:
+    - from: "resources/everything"
+      to: "everything"
+      filter:
+        - "**/*.exe"
+        - "**/*.dll"
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
