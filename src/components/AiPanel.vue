@@ -2603,10 +2603,6 @@ onUnmounted(() => {
   transition: transform 0.2s ease;
 }
 
-.message-wrapper:hover {
-  transform: scale(1.01);
-}
-
 .message.user .message-content {
   background: var(--accent-primary);
   color: var(--bg-primary);
