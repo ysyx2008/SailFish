@@ -457,6 +457,9 @@ async function executeCommand(
     riskLevel
   })
 
+  // 用户确认状态标记
+  let userApproved = false
+  
   if (needConfirm) {
     const approved = await executor.waitForConfirmation(
       toolCallId, 
@@ -473,6 +476,7 @@ async function executeCommand(
       })
       return { success: false, output: '', error: t('error.user_rejected_command') }
     }
+    userApproved = true
   }
 
   // 策略3: 限时执行（保留用于特殊场景）
@@ -595,7 +599,11 @@ async function executeCommand(
       })
     }
 
-    return { success: true, output: result.output }
+    // 如果经过用户确认，在输出前加上标记
+    const output = userApproved 
+      ? `[${t('status.user_approved')}]\n${result.output}`
+      : result.output
+    return { success: true, output }
   } catch (error) {
     // 命令执行出错，移除监听器并完成追踪
     unsubscribe()

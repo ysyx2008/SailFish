@@ -250,6 +250,27 @@ function buildAskUserGuidance(executionMode?: ExecutionMode): string {
 }
 
 /**
+ * 构建用户确认机制说明（根据执行模式）
+ */
+function buildUserConfirmationGuidance(executionMode?: ExecutionMode): string {
+  let modeNote: string
+  if (executionMode === 'strict') {
+    modeNote = '严格模式：所有命令需用户确认'
+  } else if (executionMode === 'relaxed') {
+    modeNote = '宽松模式：危险命令需用户确认'
+  } else {
+    modeNote = '自由模式：自动执行'
+  }
+
+  return `## 用户确认（${modeNote}）
+
+当用户**拒绝**命令时：一般不要重试相同命令，询问用户顾虑或提供替代方案
+当用户**允许**命令时：正常执行，用户可选"始终允许"后续自动执行
+
+`
+}
+
+/**
  * 构建复杂任务示例
  */
 function buildComplexTaskExamples(isWindows: boolean): string {
@@ -630,6 +651,7 @@ ${buildAskUserGuidance(executionMode)}
 ${documentRule}
 ${knowledgeRule}
 
+${buildUserConfirmationGuidance(executionMode)}
 ## 命令处理规则
 
 **禁止使用的命令**（会被系统拒绝）：
