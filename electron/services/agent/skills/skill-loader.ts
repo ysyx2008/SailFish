@@ -102,7 +102,8 @@ export class SkillSession implements SkillSessionManager {
   getAvailableTools(): ToolDefinition[] {
     const tools = [...this.coreTools]
     
-    for (const skillId of this.loadedSkills.keys()) {
+    const loadedIds = Array.from(this.loadedSkills.keys())
+    for (const skillId of loadedIds) {
       const skill = getSkill(skillId)
       if (skill) {
         tools.push(...skill.tools)
@@ -133,7 +134,8 @@ export class SkillSession implements SkillSessionManager {
    * 清理所有技能状态
    */
   async cleanup(): Promise<void> {
-    for (const skillId of this.loadedSkills.keys()) {
+    const skillIds = Array.from(this.loadedSkills.keys())
+    for (const skillId of skillIds) {
       await this.unloadSkill(skillId)
     }
     this.loadedSkills.clear()

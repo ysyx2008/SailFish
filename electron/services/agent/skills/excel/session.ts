@@ -35,7 +35,8 @@ function startTimeoutChecker(): void {
   
   timeoutChecker = setInterval(() => {
     const now = Date.now()
-    for (const [filePath, session] of openSessions.entries()) {
+    const entries = Array.from(openSessions.entries())
+    for (const [filePath, session] of entries) {
       if (now - session.lastAccess > SESSION_TIMEOUT) {
         console.log(`[ExcelSession] Auto-closing timed out session: ${filePath}`)
         closeSession(filePath, false) // 不保存，因为超时可能意味着问题
@@ -129,7 +130,8 @@ export function getAllSessions(): ExcelSession[] {
  * 关闭所有会话
  */
 export async function closeAllSessions(): Promise<void> {
-  for (const filePath of openSessions.keys()) {
+  const keys = Array.from(openSessions.keys())
+  for (const filePath of keys) {
     closeSession(filePath, false)
   }
   stopTimeoutChecker()

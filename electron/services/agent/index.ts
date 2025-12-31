@@ -1476,9 +1476,14 @@ export class AgentService {
             toolCallProgressStepId = undefined
             lastToolCallProgressUpdate = 0
             
+            // 使用 skillSession 获取工具列表（包含核心工具 + 已加载的技能工具）
+            const availableTools = run.skillSession 
+              ? run.skillSession.getAvailableTools()
+              : getAgentTools(this.mcpService)
+            
             this.aiService.chatWithToolsStream(
               run.messages,
-              getAgentTools(this.mcpService),
+              availableTools,
               // onChunk: 流式文本更新（带节流）
               (chunk) => {
                 streamContent += chunk

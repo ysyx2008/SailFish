@@ -64,12 +64,12 @@ async function excelOpen(
   args: Record<string, unknown>,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
-  const filePath = resolvePath(ptyId, args.path as string)
-  const createIfNotExists = args.create_if_not_exists === true
-
-  if (!filePath) {
+  if (!args.path) {
     return { success: false, output: '', error: t('error.file_path_required') }
   }
+  
+  const filePath = resolvePath(ptyId, args.path as string)
+  const createIfNotExists = args.create_if_not_exists === true
 
   // 检查是否已打开
   if (isSessionOpen(filePath)) {
@@ -88,6 +88,11 @@ async function excelOpen(
 
     if (fileExists) {
       await workbook.xlsx.readFile(filePath)
+    }
+    
+    // 设置公式计算属性，确保 Excel 打开时自动重新计算所有公式
+    workbook.calcProperties = {
+      fullCalcOnLoad: true
     }
 
     createSession(filePath, workbook)
@@ -124,6 +129,10 @@ async function excelRead(
   args: Record<string, unknown>,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
+  if (!args.path) {
+    return { success: false, output: '', error: t('error.file_path_required') }
+  }
+  
   const filePath = resolvePath(ptyId, args.path as string)
   const sheetName = args.sheet as string | undefined
   const range = args.range as string | undefined
@@ -234,6 +243,10 @@ async function excelModify(
   config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
+  if (!args.path) {
+    return { success: false, output: '', error: t('error.file_path_required') }
+  }
+  
   const filePath = resolvePath(ptyId, args.path as string)
   const sheetName = args.sheet as string | undefined
   const cells = args.cells as Record<string, unknown> | undefined
@@ -281,8 +294,35 @@ async function excelModify(
     let modCount = 0
     for (const [cellRef, value] of Object.entries(cells)) {
       const cell = worksheet.getCell(cellRef)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      cell.value = value as any
+      
+      // 支持多种格式：
+      // 1. 对象格式 { formula: "SUM(A1:A10)" } - 明确指定公式
+      // 2. 对象格式 { text: "=这是文本" } - 明确指定文本
+      // 3. 字符串 "=SUM(...)" - 自动识别公式
+      // 4. 其他值 - 直接写入
+      
+      if (typeof value === 'object' && value !== null) {
+        const obj = value as Record<string, unknown>
+        if ('formula' in obj) {
+          // 明确的公式格式，直接使用 exceljs 原生格式
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          cell.value = { formula: String(obj.formula), result: obj.result as any }
+        } else if ('text' in obj) {
+          // 明确的文本格式
+          cell.value = String(obj.text)
+        } else {
+          // 其他对象格式，直接写入
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          cell.value = value as any
+        }
+      } else if (typeof value === 'string' && value.startsWith('=')) {
+        // 字符串公式语法糖：=SUM(...) 自动转为公式
+        cell.value = { formula: value.slice(1) }
+      } else {
+        // 其他值直接写入
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        cell.value = value as any
+      }
       modCount++
     }
     results.push(t('excel.cells_modified', { count: modCount, sheet: sheetName }))
@@ -315,6 +355,10 @@ async function excelSave(
   config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
+  if (!args.path) {
+    return { success: false, output: '', error: t('error.file_path_required') }
+  }
+  
   const filePath = resolvePath(ptyId, args.path as string)
 
   const session = getSession(filePath)
@@ -390,6 +434,10 @@ async function excelClose(
   args: Record<string, unknown>,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
+  if (!args.path) {
+    return { success: false, output: '', error: t('error.file_path_required') }
+  }
+  
   const filePath = resolvePath(ptyId, args.path as string)
   const discardChanges = args.discard_changes === true
 
@@ -433,17 +481,36 @@ function formatCellValue(value: unknown): string {
     return ''
   }
   if (typeof value === 'object') {
-    if ('result' in (value as object)) {
-      return String((value as { result: unknown }).result)
+    const obj = value as Record<string, unknown>
+    
+    // 公式单元格：优先显示计算结果，如果没有结果则显示公式
+    if ('formula' in obj) {
+      if ('result' in obj && obj.result !== undefined && obj.result !== null) {
+        // 有计算结果，显示结果
+        return formatCellValue(obj.result)
+      }
+      // 没有计算结果，显示公式（带 = 前缀提示这是公式）
+      return `=${obj.formula}`
     }
-    if ('text' in (value as object)) {
-      return String((value as { text: unknown }).text)
+    
+    // 普通对象的 result 属性（如错误值）
+    if ('result' in obj) {
+      return String(obj.result)
     }
-    if ('richText' in (value as object)) {
-      return ((value as { richText: { text: string }[] }).richText || [])
+    
+    // 共享字符串（text 属性）
+    if ('text' in obj) {
+      return String(obj.text)
+    }
+    
+    // 富文本
+    if ('richText' in obj) {
+      return ((obj.richText as { text: string }[]) || [])
         .map(rt => rt.text)
         .join('')
     }
+    
+    // 其他对象类型
     return JSON.stringify(value)
   }
   return String(value).replace(/\|/g, '\\|').replace(/\n/g, ' ')
