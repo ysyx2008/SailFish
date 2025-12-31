@@ -219,126 +219,17 @@ export class AgentService {
   }
 
   /**
-   * 生成工具调用签名
-   * 用于区分相同工具的不同调用（考虑关键参数）
-   */
-  private generateToolSignature(toolName: string, toolArgs: Record<string, unknown>): string {
-    // 对于某些工具，需要考虑关键参数来区分不同调用
-    // 这样相同工具但不同参数的调用会生成不同签名，避免误判为循环
-    const keyParams: Record<string, string[]> = {
-      'read_file': ['path', 'start_line', 'end_line', 'tail_lines', 'info_only'],
-      'write_file': ['path'],
-      'execute_command': ['command'],
-      'send_control_key': ['key'],
-      // 计划相关工具：不同步骤/状态的更新应该被区分
-      'update_plan': ['step_index', 'status'],
-      'create_plan': ['title'],
-    }
-    
-    const paramsToHash = keyParams[toolName]
-    if (!paramsToHash) {
-      return toolName  // 没有定义关键参数的工具，只用工具名
-    }
-    
-    // 提取关键参数值生成签名
-    const paramValues = paramsToHash
-      .map(p => toolArgs[p] !== undefined ? `${p}=${JSON.stringify(toolArgs[p])}` : '')
-      .filter(Boolean)
-      .join('|')
-    
-    return paramValues ? `${toolName}:${paramValues}` : toolName
-  }
-
-  /**
-   * 检测是否存在命令循环（重复执行相同命令）
-   */
-  private detectCommandLoop(commands: string[]): boolean {
-    if (commands.length < 3) return false
-    
-    // 检查最后 3 个命令是否相同
-    const last3 = commands.slice(-3)
-    if (last3[0] === last3[1] && last3[1] === last3[2]) {
-      return true
-    }
-    
-    // 检查是否有 AB-AB 模式的循环
-    if (commands.length >= 4) {
-      const last4 = commands.slice(-4)
-      if (last4[0] === last4[2] && last4[1] === last4[3]) {
-        return true
-      }
-    }
-    
-    return false
-  }
-
-  /**
-   * 检测是否存在工具调用循环（重复调用相同工具+相同参数）
-   * 简化版：只检测最明显的死循环，避免误判
-   * 依赖 Agent 自我监控来判断是否在做无效重复
-   */
-  private detectToolCallLoop(toolCalls: string[]): boolean {
-    // 需要至少 5 次完全相同的调用才判定为循环
-    // 这是非常明显的死循环，正常测试不太可能触发
-    if (toolCalls.length < 5) return false
-    
-    // 检查最后 5 次是否是完全相同的工具签名（包含参数）
-    const last5 = toolCalls.slice(-5)
-    if (last5.every(t => t === last5[0])) {
-      return true
-    }
-    
-    // AB-AB-AB 模式（完全相同的两个调用交替出现 3 次）
-    if (toolCalls.length >= 6) {
-      const last6 = toolCalls.slice(-6)
-      if (last6[0] === last6[2] && last6[2] === last6[4] &&
-          last6[1] === last6[3] && last6[3] === last6[5]) {
-        return true
-      }
-    }
-    
-    return false
-  }
-
-  /**
-   * 检测执行中的问题（增强版）
+   * 检测执行中的问题（极简版）
+   * 只保留连续失败检测，用于触发反思提示
+   * 不再强制停止，信任大模型 + 用户手动中止
    */
   private detectExecutionIssues(run: AgentRun): string[] {
     const issues: string[] = []
     const { reflection } = run
     
-    // 检测命令循环
-    if (this.detectCommandLoop(reflection.lastCommands)) {
-      issues.push('detected_command_loop')
-    }
-    
-    // 检测工具调用循环
-    if (this.detectToolCallLoop(reflection.lastToolCalls)) {
-      issues.push('detected_tool_loop')
-    }
-    
-    // 检测连续失败
-    if (reflection.failureCount >= 3) {
+    // 检测连续失败（用于触发反思提示，但不强制停止）
+    if (reflection.failureCount >= 5) {
       issues.push('consecutive_failures')
-    }
-    
-    // 检测高失败率
-    const totalAttempts = reflection.successCount + reflection.totalFailures
-    if (totalAttempts >= 5 && reflection.totalFailures / totalAttempts > 0.6) {
-      issues.push('high_failure_rate')
-    }
-    
-    // 检测策略切换过于频繁
-    const recentSwitches = reflection.strategySwitches.filter(
-      s => Date.now() - s.timestamp < 60000  // 1 分钟内
-    )
-    if (recentSwitches.length >= 3) {
-      issues.push('frequent_strategy_changes')
-    }
-    
-    // 检测反思次数过多（超过 2 次应该强制停止）
-    if (reflection.reflectionCount >= 2) {
-      issues.push('too_many_reflections')
     }
     
     return issues
@@ -405,25 +296,6 @@ export class AgentService {
       }
     }
     
-    // 检测到命令循环或工具循环 -> 切换到保守策略（不再使用诊断策略，避免过度分析）
-    if ((issues.includes('detected_command_loop') || issues.includes('detected_tool_loop')) && 
-        reflection.currentStrategy !== 'conservative') {
-      return {
-        should: true,
-        newStrategy: 'conservative',
-        reason: '检测到执行循环，切换到保守策略'
-      }
-    }
-    
-    // 高失败率 -> 切换到保守策略
-    if (issues.includes('high_failure_rate') && reflection.currentStrategy === 'aggressive') {
-      return {
-        should: true,
-        newStrategy: 'conservative',
-        reason: '失败率较高，从激进策略切换到保守策略'
-      }
-    }
-    
     // 如果一切顺利且当前是保守策略，可以考虑切换回默认
     if (issues.length === 0 && 
         reflection.currentStrategy === 'conservative' && 
@@ -473,34 +345,12 @@ export class AgentService {
       }
     }
     
-    // 反思次数过多，返回 null 表示应该强制停止
-    if (issues.includes('too_many_reflections')) {
-      return null  // 信号：应该强制停止
-    }
-    
-    // 根据问题生成简短提示（不要求分析，直接要求行动）
-    const prompts: string[] = []
-    
-    // 检测到命令循环或工具循环
-    if (issues.includes('detected_command_loop') || issues.includes('detected_tool_loop')) {
-      prompts.push('你可能在重复操作。直接告诉用户遇到了什么问题，询问是否继续。')
-    }
-    
-    // 连续失败
+    // 连续失败时，生成简短提示（不强制停止，让大模型自行决定）
     if (issues.includes('consecutive_failures')) {
-      prompts.push('多次失败，告诉用户具体问题，停止尝试。')
+      return '（多次尝试未成功，请告诉用户具体问题，询问是否继续尝试。）'
     }
     
-    // 高失败率
-    if (issues.includes('high_failure_rate')) {
-      prompts.push('失败率高，向用户说明情况。')
-    }
-    
-    if (prompts.length === 0) {
-      return ''
-    }
-    
-    return `（${prompts.join(' ')}不要分析原因，简短说明后结束。）`
+    return ''
   }
 
   /**
@@ -524,40 +374,20 @@ export class AgentService {
   }
 
   /**
-   * 更新反思追踪状态（增强版）
+   * 更新反思追踪状态（简化版）
    */
   private updateReflectionTracking(
     run: AgentRun,
-    toolName: string,
-    toolArgs: Record<string, unknown>,
+    _toolName: string,
+    _toolArgs: Record<string, unknown>,
     result: ToolResult
   ): void {
     const { reflection } = run
 
     reflection.toolCallCount++
 
-    // 追踪工具调用（用于检测工具循环）
-    // 生成工具签名：工具名 + 关键参数的哈希，用于区分相同工具的不同调用
-    const toolSignature = this.generateToolSignature(toolName, toolArgs)
-    reflection.lastToolCalls.push(toolSignature)
-    // 只保留最近 8 个工具调用
-    if (reflection.lastToolCalls.length > 8) {
-      reflection.lastToolCalls.shift()
-    }
-
-    // 追踪命令执行
-    if (toolName === 'execute_command' && toolArgs.command) {
-      reflection.lastCommands.push(toolArgs.command as string)
-      // 只保留最近 5 个命令
-      if (reflection.lastCommands.length > 5) {
-        reflection.lastCommands.shift()
-      }
-    }
-
     // 如果命令仍在运行（长耗时命令超时），不计入失败
     if (result.isRunning) {
-      // 命令仍在执行，不更新成功/失败计数
-      // 这种情况通常是构建、编译等长耗时命令的正常超时
       return
     }
 
@@ -1754,26 +1584,16 @@ export class AgentService {
             })
           }
 
-          // 检查是否需要触发反思
+          // 检查是否需要触发反思（连续失败时给模型提示）
           if (this.shouldTriggerReflection(run)) {
             const reflectionPrompt = this.generateReflectionPrompt(run)
-            
-            // 如果返回 null，表示反思次数过多，强制停止
-            if (reflectionPrompt === null) {
-              console.log('[Agent] 反思次数超限，强制停止')
-              this.addStep(agentId, {
-                type: 'error',
-                content: t('agent.loop_detected')
-              })
-              break  // 跳出循环，结束执行
-            }
             
             if (reflectionPrompt) {
               run.messages.push({
                 role: 'user',
                 content: reflectionPrompt
               })
-              run.reflection.reflectionCount++  // 增加反思计数
+              run.reflection.reflectionCount++
             }
             
             run.reflection.lastReflectionAt = run.reflection.toolCallCount
