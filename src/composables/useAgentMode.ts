@@ -477,7 +477,8 @@ export function useAgentMode(
   }
 
   // 确认工具调用
-  const confirmToolCall = async (approved: boolean) => {
+  // alwaysAllow: 如果为 true，将该工具+参数加入会话白名单，后续自动跳过确认
+  const confirmToolCall = async (approved: boolean, alwaysAllow?: boolean) => {
     const confirm = pendingConfirm.value
     if (!confirm) return
 
@@ -485,7 +486,9 @@ export function useAgentMode(
       await window.electronAPI.agent.confirm(
         confirm.agentId,
         confirm.toolCallId,
-        approved
+        approved,
+        undefined,  // modifiedArgs
+        alwaysAllow
       )
       // 清除待确认状态
       if (currentTabId.value) {

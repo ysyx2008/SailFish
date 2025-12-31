@@ -1274,6 +1274,14 @@ onUnmounted(() => {
                 </button>
                 <button 
                   class="btn btn-sm" 
+                  :class="pendingConfirm.riskLevel === 'dangerous' ? 'btn-outline-danger' : (pendingConfirm.riskLevel === 'moderate' ? 'btn-outline-warning' : 'btn-outline-success')"
+                  @click="confirmToolCall(true, true)"
+                  :title="t('ai.alwaysAllowHint')"
+                >
+                  {{ t('ai.alwaysAllow') }}
+                </button>
+                <button 
+                  class="btn btn-sm" 
                   :class="pendingConfirm.riskLevel === 'dangerous' ? 'btn-danger' : (pendingConfirm.riskLevel === 'moderate' ? 'btn-warning' : 'btn-success')"
                   @click="confirmToolCall(true)"
                 >

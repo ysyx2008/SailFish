@@ -692,6 +692,8 @@ export default {
     mediumRisk: '中风险',
     lowRisk: '低风险',
     reject: '拒绝',
+    alwaysAllow: '始终允许',
+    alwaysAllowHint: '本次会话内不再询问相同操作',
     allowExecute: '允许执行',
     supplementInfo: '补充信息',
     pendingProcess: '等待处理',

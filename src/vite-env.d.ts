@@ -666,7 +666,8 @@ interface Window {
         agentId: string,
         toolCallId: string,
         approved: boolean,
-        modifiedArgs?: Record<string, unknown>
+        modifiedArgs?: Record<string, unknown>,
+        alwaysAllow?: boolean
       ) => Promise<boolean>
       getStatus: (agentId: string) => Promise<unknown>
       cleanup: (agentId: string) => Promise<void>
