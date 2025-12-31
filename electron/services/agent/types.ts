@@ -213,6 +213,8 @@ export interface AgentRun {
   currentToolName?: string
   // 初始"正在准备..."步骤的 ID（在有实际输出时移除）
   initialStepId?: string
+  // 技能会话
+  skillSession?: import('./skills').SkillSession
 }
 
 // 主机档案服务接口
