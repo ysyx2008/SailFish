@@ -37,6 +37,7 @@ import { buildSystemPrompt } from './prompt-builder'
 import { analyzeTaskComplexity, generatePlanningPrompt } from './planner'
 import { getKnowledgeService } from '../knowledge'
 import { setConfigService as setI18nConfigService, t } from './i18n'
+import { createSkillSession } from './skills'
 
 // 重新导出类型，供外部使用
 export type {
@@ -1276,7 +1277,9 @@ export class AgentService {
       // Worker 模式选项
       workerOptions,
       // 初始化执行阶段
-      executionPhase: 'thinking'
+      executionPhase: 'thinking',
+      // 创建技能会话（传入核心工具定义）
+      skillSession: createSkillSession(getAgentTools(this.mcpService))
     }
     this.runs.set(agentId, run)
     
@@ -1384,6 +1387,7 @@ export class AgentService {
       terminalService: terminalServiceForExecutor as any,  // 类型兼容：PtyService 也实现了必要的方法
       hostProfileService: this.hostProfileService,
       mcpService: this.mcpService,
+      skillSession: run.skillSession,
       addStep: (step) => this.addStep(agentId, step),
       updateStep: (stepId, updates) => this.updateStep(agentId, stepId, updates),
       waitForConfirmation: (toolCallId, toolName, toolArgs, riskLevel) =>
@@ -2047,7 +2051,12 @@ export class AgentService {
   /**
    * 清理已完成的运行记录
    */
-  cleanup(agentId: string): void {
+  async cleanup(agentId: string): Promise<void> {
+    const run = this.runs.get(agentId)
+    if (run?.skillSession) {
+      // 清理技能会话（关闭未保存的文件等）
+      await run.skillSession.cleanup()
+    }
     this.runs.delete(agentId)
   }
 }
