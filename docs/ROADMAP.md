@@ -38,6 +38,7 @@
 - ✅ **Email**：邮件发送（支持 OAuth）
 - ✅ **Excel**：Excel 文件读取、创建、编辑
 - ✅ **Browser**：浏览器自动化（基于 Playwright）
+- ✅ **File Search**：跨平台文件搜索
 
 ### Browser 浏览器自动化 ✅ 已完成
 
@@ -55,19 +56,18 @@
 - ✅ **browser_list_tabs / browser_switch_tab**：标签页管理
 - ✅ **browser_save_login / browser_list_profiles**：登录状态持久化
 
-### 计划技能
-
-#### File Search 文件搜索（优先级：高）🚧 开发中
+### File Search 文件搜索 ✅ 已完成
 
 跨平台的瞬时文件搜索能力，零配置开箱即用：
 
-- [ ] **file_search 工具**：支持文件名、扩展名、路径模糊匹配
-- [ ] **macOS**：使用系统 Spotlight (`mdfind`)，毫秒级响应
-- [ ] **Windows**：使用 Everything 索引
-  - 自动检测 Everything 安装状态
-  - 未安装时提示用户一键安装（静默安装）
-  - Fallback：用户拒绝安装时使用实时遍历
-- [ ] 支持限制搜索目录、文件类型过滤
+- ✅ **file_search 工具**：支持文件名、扩展名、通配符匹配
+- ✅ **macOS**：使用 Spotlight (`mdfind`)，毫秒级响应
+- ✅ **Windows**：内置 Everything 便携版，自动启动索引
+- ✅ **Linux**：支持 locate/plocate、fd，自动检测可用工具
+- ✅ **Fallback**：原生 Node.js 递归遍历（深度限制）
+- ✅ 支持限制搜索目录、文件/目录类型过滤、结果数量限制
+
+### 计划技能
 
 #### Word 文档（优先级：中）
 - ✅ 读取 .docx/.doc 文档内容（已有解析能力）
