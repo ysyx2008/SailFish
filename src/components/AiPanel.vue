@@ -4511,6 +4511,40 @@ onUnmounted(() => {
   border-color: #059669;
 }
 
+/* Outline 按钮样式（用于"始终允许"） */
+.btn-outline-warning {
+  background: transparent;
+  border: 1px solid #f59e0b;
+  color: #f59e0b;
+}
+
+.btn-outline-warning:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.btn-outline-danger {
+  background: transparent;
+  border: 1px solid #ef4444;
+  color: #ef4444;
+}
+
+.btn-outline-danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.btn-outline-success {
+  background: transparent;
+  border: 1px solid #10b981;
+  color: #10b981;
+}
+
+.btn-outline-success:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
 /* ==================== @ 命令补全菜单样式 ==================== */
 
 .mention-menu {
