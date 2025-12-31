@@ -105,6 +105,7 @@ const translations = {
 
     // Agent 执行状态
     'agent.waiting_confirm': '等待用户确认: {toolName}',
+    'agent.auto_approved': '✅ 已自动批准（始终允许）: {toolName}',
     'agent.preparing_tool': '准备执行工具...',
     'agent.retry_network': '网络请求失败 ({error})，正在重试 ({attempt}/2)...',
     'agent.loop_detected': '检测到执行循环，已自动停止。请尝试用不同方式描述任务。',
@@ -590,6 +591,7 @@ const translations = {
 
     // Agent execution status
     'agent.waiting_confirm': 'Waiting for confirmation: {toolName}',
+    'agent.auto_approved': '✅ Auto-approved (Always Allow): {toolName}',
     'agent.preparing_tool': 'Preparing to execute tool...',
     'agent.retry_network': 'Network request failed ({error}), retrying ({attempt}/2)...',
     'agent.loop_detected': 'Execution loop detected, stopped automatically. Please try describing the task differently.',

@@ -1438,13 +1438,14 @@ ipcMain.handle('agent:abort', async (_event, agentId: string) => {
 })
 
 // 确认工具调用
-ipcMain.handle('agent:confirm', async (_event, { agentId, toolCallId, approved, modifiedArgs }: {
+ipcMain.handle('agent:confirm', async (_event, { agentId, toolCallId, approved, modifiedArgs, alwaysAllow }: {
   agentId: string
   toolCallId: string
   approved: boolean
   modifiedArgs?: Record<string, unknown>
+  alwaysAllow?: boolean
 }) => {
-  return agentService.confirmToolCall(agentId, toolCallId, approved, modifiedArgs)
+  return agentService.confirmToolCall(agentId, toolCallId, approved, modifiedArgs, alwaysAllow)
 })
 
 // 获取 Agent 状态
