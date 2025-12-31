@@ -2200,6 +2200,40 @@ const electronAPI = {
         ipcRenderer.removeListener('fileManager:paramsUpdate', handler)
       }
     }
+  },
+
+  // 邮箱相关
+  email: {
+    // 设置邮箱凭据
+    setCredential: (accountId: string, credential: string) => 
+      ipcRenderer.invoke('email:setCredential', accountId, credential) as Promise<void>,
+    
+    // 删除邮箱凭据
+    deleteCredential: (accountId: string) => 
+      ipcRenderer.invoke('email:deleteCredential', accountId) as Promise<boolean>,
+    
+    // 测试邮箱连接
+    testConnection: (config: {
+      email: string
+      password: string
+      provider?: string
+      imapHost?: string
+      imapPort?: number
+    }) => ipcRenderer.invoke('email:testConnection', config) as Promise<{ success: boolean; message: string }>,
+    
+    // 同步邮箱账户配置到后端
+    syncAccounts: (accounts: Array<{
+      id: string
+      name: string
+      email: string
+      provider: string
+      authType: 'password' | 'oauth2'
+      imapHost?: string
+      imapPort?: number
+      smtpHost?: string
+      smtpPort?: number
+      smtpSecure?: boolean
+    }>) => ipcRenderer.invoke('email:syncAccounts', accounts) as Promise<void>
   }
 }
 

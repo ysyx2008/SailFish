@@ -42,7 +42,11 @@ export default defineConfig({
                 'electron-store',
                 '@xenova/transformers',
                 '@lancedb/lancedb',
-                'apache-arrow'
+                'apache-arrow',
+                'keytar',
+                'imapflow',
+                'nodemailer',
+                'mailparser'
               ]
             }
           },

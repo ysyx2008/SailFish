@@ -25,6 +25,7 @@ export interface ToolDefinition {
         type: string
         description: string
         enum?: string[]
+        items?: { type: string }  // 数组类型的元素类型
       }>
       required?: string[]
     }

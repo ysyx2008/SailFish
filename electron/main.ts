@@ -2959,3 +2959,74 @@ ipcMain.handle('knowledge:switchModel', async (_event, modelId: ModelTier) => {
   }
 })
 
+// ==================== 邮箱相关 ====================
+
+// 设置邮箱凭据
+ipcMain.handle('email:setCredential', async (_event, accountId: string, credential: string) => {
+  const { setEmailCredential } = await import('./services/credential.service')
+  await setEmailCredential(accountId, credential)
+})
+
+// 删除邮箱凭据
+ipcMain.handle('email:deleteCredential', async (_event, accountId: string) => {
+  const { deleteEmailCredential } = await import('./services/credential.service')
+  return await deleteEmailCredential(accountId)
+})
+
+// 同步邮箱账户配置到 email skill
+ipcMain.handle('email:syncAccounts', async (_event, accounts: Array<{
+  id: string
+  name: string
+  email: string
+  provider: string
+  authType: 'password' | 'oauth2'
+  imapHost?: string
+  imapPort?: number
+  smtpHost?: string
+  smtpPort?: number
+  smtpSecure?: boolean
+}>) => {
+  const { setEmailAccounts } = await import('./services/agent/skills/email/executor')
+  setEmailAccounts(accounts)
+  console.log(`[Email] Synced ${accounts.length} email accounts`)
+})
+
+// 测试邮箱连接
+ipcMain.handle('email:testConnection', async (_event, config: {
+  email: string
+  password: string
+  provider?: string
+  imapHost?: string
+  imapPort?: number
+}) => {
+  try {
+    const { getServerConfig } = await import('./services/agent/skills/email/session')
+    const serverConfig = getServerConfig(config.provider || 'gmail', {
+      imapHost: config.imapHost,
+      imapPort: config.imapPort
+    })
+
+    const { ImapFlow } = await import('imapflow')
+    const client = new ImapFlow({
+      host: serverConfig.imapHost,
+      port: serverConfig.imapPort,
+      secure: true,
+      auth: {
+        user: config.email,
+        pass: config.password
+      },
+      logger: false
+    })
+
+    await client.connect()
+    await client.logout()
+
+    return { success: true, message: '连接成功' }
+  } catch (error) {
+    return { 
+      success: false, 
+      message: error instanceof Error ? error.message : '连接失败'
+    }
+  }
+})
+

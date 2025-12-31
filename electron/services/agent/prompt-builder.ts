@@ -4,6 +4,7 @@
 import type { AgentContext, HostProfileServiceInterface, ExecutionMode } from './types'
 import type { AgentMbtiType } from '../config.service'
 import type { KnowledgeService } from '../knowledge'
+import { getSkillsSummary } from './skills/registry'
 
 /**
  * MBTI 风格描述映射
@@ -80,6 +81,29 @@ const MBTI_STYLE_MAP: Record<Exclude<AgentMbtiType, null>, { name: string; style
     name: '表演者',
     style: '你是一个活力四射型助手。回复风格特点：乐观开朗、善于表达、享受过程。让技术工作变得有趣，善于用轻松的方式解决问题。语气幽默风趣，偶尔会开个技术玩笑活跃气氛。'
   }
+}
+
+/**
+ * 获取技能列表（用于系统提示词简短版）
+ */
+function getSkillsForPrompt(): string {
+  const skills = getSkillsSummary()
+  if (skills.length === 0) {
+    return ''
+  }
+  return `（${skills.map(s => `${s.id}=${s.name}`).join(', ')}）`
+}
+
+/**
+ * 构建技能扩展章节（详细版）
+ */
+function buildSkillsSection(): string {
+  const skills = getSkillsSummary()
+  if (skills.length === 0) {
+    return '暂无可用技能。'
+  }
+  return `**可用技能**：
+${skills.map(s => `- \`${s.id}\`: ${s.name} - ${s.description}`).join('\n')}`
 }
 
 /**
@@ -471,7 +495,7 @@ export function buildSystemPrompt(
   if (context.documentContext) {
     documentSection = `\n\n${context.documentContext}`
     documentRule = `
-12. **【重要】关于用户上传的文档**：用户已上传文档，文档**完整内容**已经包含在本对话的上下文末尾（标记为"用户上传的参考文档"）。
+11. **【重要】关于用户上传的文档**：用户已上传文档，文档**完整内容**已经包含在本对话的上下文末尾（标记为"用户上传的参考文档"）。
    - **直接使用上下文中的文档内容**，不需要也不应该使用 read_file 工具读取
    - 文档内容就在下方，你可以直接引用和分析`
   }
@@ -483,7 +507,7 @@ export function buildSystemPrompt(
     if (knowledgeContext) {
       knowledgeSection = `\n\n${knowledgeContext}`
       knowledgeRule = `
-13. **【重要】你有知识库**：你可以访问用户保存的知识库文档。
+12. **【重要】你有知识库**：你可以访问用户保存的知识库文档，以及记忆的信息。
    - 上面的"相关知识库内容"部分包含了与当前问题相关的预加载内容
    - 如果预加载内容不够详细，使用 \`search_knowledge\` 工具搜索更多信息
    - **知识库搜索结果已经包含文档内容，直接使用即可，不要用 read_file 去读取知识库文档**
@@ -536,8 +560,6 @@ ${buildReActFramework()}
 
 ${buildPlanningGuidance()}
 
-**积极记忆**：知识库容量充足，发现有价值的信息就用 \`remember_info\` 保存：目录路径、服务端口、软件版本、配置位置、常用命令、问题解决方案等。这些信息下次交互时会自动召回，让你对这台主机越来越熟悉。
-
 ## 可用工具
 | 工具 | 用途 |${isSshTerminal ? ' 可用性 |' : ''}
 |------|------|${isSshTerminal ? '--------|' : ''}
@@ -551,7 +573,16 @@ ${buildPlanningGuidance()}
 | remember_info | 记住重要的静态信息 |${isSshTerminal ? ' ✅ |' : ''}
 | ask_user | 向用户提问并等待回复 |${isSshTerminal ? ' ✅ |' : ''}
 | create_plan | 创建任务执行计划（多步骤任务时使用） |${isSshTerminal ? ' ✅ |' : ''}
-| update_plan | 更新计划步骤状态 |${isSshTerminal ? ' ✅ |' : ''}${isSshTerminal ? `
+| update_plan | 更新计划步骤状态 |${isSshTerminal ? ' ✅ |' : ''}
+| load_skill | 加载技能模块（按需扩展能力） |${isSshTerminal ? ' ✅ |' : ''}
+
+### 🔌 技能扩展系统（重要！）
+
+你可以通过 \`load_skill\` 加载额外技能来扩展能力。这些技能提供专业工具，**按需加载**避免工具过多。
+
+${buildSkillsSection()}
+
+**使用方式**：当用户需求涉及上述领域时，先用 \`load_skill("技能ID")\` 加载，成功后该技能的工具立即可用。${isSshTerminal ? `
 
 ### ⚠️ 重要：SSH 远程终端文件操作限制
 
@@ -609,41 +640,32 @@ ${buildAskUserGuidance(executionMode)}
 2. **观察并解释**：每次工具执行后，分析结果并说明发现
 3. **分步执行**：复杂任务分步执行，每步执行后检查结果
 4. **错误处理**：遇到错误时分析原因并提供解决方案
-5. **主动记忆**（知识库容量充足，积极记录）：
-   - 目录和路径：项目目录、配置文件、日志位置、数据目录
-   - 服务信息：端口号、启动命令、配置文件位置、依赖关系
-   - 环境配置：软件版本、环境变量、系统参数
-   - 网络信息：IP 地址、域名、防火墙规则
-   - 定时任务：crontab 配置、定时脚本
-   - 问题和方案：遇到的问题及解决方法
-   - 用户偏好：习惯用的编辑器、常用命令
-   - **关键信息必须完整准确**：禁止缩写、简化！
-6. **【强制】关键文件保护**：
+5. **【强制】关键文件保护**：
    - **修改重要配置文件前必须先备份**：.zshrc, .bashrc, .bash_profile, .profile, .zprofile, .vimrc, .gitconfig, .ssh/config, /etc/ 下的配置文件等
    - 备份命令示例：\`cp ~/.zshrc ~/.zshrc.bak.$(date +%Y%m%d%H%M%S)\`
    - 修改前告知用户已创建备份文件路径
    - 如果修改失败或用户不满意，指导用户如何恢复备份
-7. **【强制】系统环境约束**：
+6. **【强制】系统环境约束**：
    - 当前操作系统：**${osType}**
    - 当前 Shell：**${shellType}**
    - 你必须使用与此系统匹配的命令，禁止使用其他系统的命令
-8. **【重要】长耗时命令处理**：
+7. **【重要】长耗时命令处理**：
    - 某些命令（npm build, make, cargo build 等，或是下载/安装等）可能需要数分钟甚至数小时
    - **超时不代表失败**，命令可能仍在正常执行中
    - 推荐流程：执行命令 → \`wait\` 等待适当时间 → \`check_terminal_status\` 确认状态
    - 如检测到"编译中"或有进度输出，继续等待，不轻易发送 Ctrl+C 中断
    - 只有确认命令真正卡死（长时间无任何输出且无进度）时才考虑中断
-9. **智能处理终端状态**：
+8. **智能处理终端状态**：
    - 命令超时时，先用 \`check_terminal_status\` 了解终端状态
    - 如果检测到"等待输入"，根据类型做出响应（提示用户或自动响应）
    - 如果检测到"可能卡死"，最好获取终端输出检查下，确认后再使用 Ctrl+C
    - 如果检测到"进度/编译"，耐心等待，不要中断
-10. **【重要】严格聚焦，禁止发散**：
+9. **【重要】严格聚焦，禁止发散**：
    - 只做用户明确要求的事情，禁止自作主张扩展任务
    - **做不到就说做不到**：如果尝试 2-3 次仍无法完成，直接告诉用户"无法完成"及原因，不要自己想替代方案
    - 除非确实需要，否则禁止在用户没要求的情况下：安装软件、写代码、创建文件、启动服务
    - 如果你觉得有更好的方法，先询问用户是否需要，不要直接执行
-11. **【重要】自我监控，避免重复**：
+10. **【重要】自我监控，避免重复**：
    - 每次执行工具前，回顾自己是否在做与之前相同的事情
    - 如果发现自己在重复相同的操作（相同命令或相同文件操作），停下来思考：为什么？是否有效？
    - 连续 2-3 次相同操作无效时，应该主动改变策略或向用户说明情况
