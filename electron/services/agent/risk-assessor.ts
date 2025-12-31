@@ -275,7 +275,7 @@ export function assessCommandRisk(command: string): RiskLevel {
     /\bnpm\s+install/,                  // npm install
     /\bpip\s+install/,                  // pip install
     /\bgit\s+(pull|push|commit)/,       // git 修改操作
-    /[^>]>\s*[^>]/,                     // 重定向覆盖文件（> file，但排除 >> 追加）
+    /[^>]>\s*(?!\/dev\/null|&)[^>]/,    // 重定向覆盖文件（排除 >>、>/dev/null、>&）
   ]
   if (moderate.some(p => p.test(cmd))) return 'moderate'
 
