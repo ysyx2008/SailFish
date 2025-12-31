@@ -76,9 +76,8 @@ export const excelTools: ToolDefinition[] = [
 
 **cells 值格式**：
 - 普通值：\`{"A1": "文本", "B1": 123}\`
-- 公式（推荐）：\`{"A1": {"formula": "SUM(B1:B10)"}}\`
+- 公式：\`{"A1": {"formula": "SUM(B1:B10)"}}\`（注意：formula 值不要加等号）
 - 强制文本：\`{"A1": {"text": "=这不是公式"}}\`
-- 公式简写：\`{"A1": "=SUM(B1:B10)"}\`（以=开头自动识别为公式）
 
 **注意**：修改只在内存中生效，需要 excel_save 才能写入文件。`,
       parameters: {
