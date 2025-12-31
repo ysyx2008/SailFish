@@ -1487,6 +1487,34 @@ interface Window {
     menu: {
       onCommand: (callback: (data: { command: string; args: unknown[] }) => void) => () => void
     }
+    // 邮箱相关
+    email: {
+      // 设置邮箱凭据
+      setCredential: (accountId: string, credential: string) => Promise<void>
+      // 删除邮箱凭据
+      deleteCredential: (accountId: string) => Promise<boolean>
+      // 测试邮箱连接
+      testConnection: (config: {
+        email: string
+        password: string
+        provider?: string
+        imapHost?: string
+        imapPort?: number
+      }) => Promise<{ success: boolean; message: string }>
+      // 同步邮箱账户配置到后端
+      syncAccounts: (accounts: Array<{
+        id: string
+        name: string
+        email: string
+        provider: string
+        authType: 'password' | 'oauth2'
+        imapHost?: string
+        imapPort?: number
+        smtpHost?: string
+        smtpPort?: number
+        smtpSecure?: boolean
+      }>) => Promise<void>
+    }
     // 终端屏幕内容服务（主进程请求渲染进程数据）
     screen: {
       // 注册获取最近 N 行的请求处理器
