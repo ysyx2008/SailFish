@@ -30,6 +30,7 @@ import type { SshConfig } from '../ssh.service'
 import type { SkillSession } from './skills'
 import { executeExcelTool } from './skills/excel/executor'
 import { executeEmailTool } from './skills/email/executor'
+import { executeBrowserTool } from './skills/browser/executor'
 
 // 错误分类
 type ErrorCategory = 'transient' | 'permission' | 'not_found' | 'timeout' | 'fatal'
@@ -1764,6 +1765,11 @@ async function executeSkillTool(
   // 邮箱技能工具
   if (toolName.startsWith('email_')) {
     return executeEmailTool(toolName, ptyId, args, toolCallId, config, executor)
+  }
+
+  // 浏览器技能工具
+  if (toolName.startsWith('browser_')) {
+    return executeBrowserTool(toolName, ptyId, args, toolCallId, config, executor)
   }
   
   // 未知技能工具

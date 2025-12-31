@@ -46,7 +46,8 @@ export default defineConfig({
                 'keytar',
                 'imapflow',
                 'nodemailer',
-                'mailparser'
+                'mailparser',
+                'playwright-core'
               ]
             }
           },
