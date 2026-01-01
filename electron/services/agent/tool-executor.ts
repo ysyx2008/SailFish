@@ -209,7 +209,7 @@ export async function executeTool(
       return await readFile(ptyId, args, config, executor)
 
     case 'file_search':
-      return await fileSearch(args, config, executor)
+      return await fileSearch(ptyId, args, config, executor)
 
     case 'write_file':
       return writeFile(ptyId, args, toolCall.id, config, executor)
@@ -1442,12 +1442,34 @@ async function sendInput(
 /**
  * 文件搜索
  * 使用 FileSearchService 快速搜索本地文件
+ * 注意：仅支持本地终端，SSH 终端请使用 find 命令
  */
 async function fileSearch(
+  ptyId: string,
   args: Record<string, unknown>,
   config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
+  // 检查是否为 SSH 终端 - file_search 仅支持本地文件系统
+  const terminalType = executor.terminalService.getTerminalType(ptyId)
+  if (terminalType === 'ssh') {
+    const errorMsg = t('error.file_search_ssh_not_supported')
+    executor.addStep({
+      type: 'tool_call',
+      content: `🔍 ${t('file.searching')}...`,
+      toolName: 'file_search',
+      toolArgs: args,
+      riskLevel: 'safe'
+    })
+    executor.addStep({
+      type: 'tool_result',
+      content: `❌ ${errorMsg}`,
+      toolName: 'file_search',
+      toolResult: errorMsg
+    })
+    return { success: false, output: '', error: errorMsg }
+  }
+
   const query = args.query as string
   const searchPath = args.path as string | undefined
   const type = args.type as 'file' | 'dir' | 'all' | undefined
