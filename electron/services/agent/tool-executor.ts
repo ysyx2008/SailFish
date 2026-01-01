@@ -351,6 +351,26 @@ async function executeCommand(
     return { success: false, output: '', error: t('hint.command_empty') }
   }
 
+  // 检查命令长度（macOS TTY MAX_INPUT = 1024 字节，留余量设为 800）
+  const MAX_COMMAND_LENGTH = 800
+  if (command.length > MAX_COMMAND_LENGTH) {
+    const errorMsg = t('hint.command_too_long', { length: command.length, max: MAX_COMMAND_LENGTH })
+    executor.addStep({
+      type: 'tool_call',
+      content: `🚫 ${command.slice(0, 100)}...`,
+      toolName: 'execute_command',
+      toolArgs: { command: command.slice(0, 100) + '...' },
+      riskLevel: 'blocked'
+    })
+    executor.addStep({
+      type: 'tool_result',
+      content: errorMsg,
+      toolName: 'execute_command',
+      toolResult: errorMsg
+    })
+    return { success: false, output: '', error: errorMsg }
+  }
+
   // 先检查终端状态，确认是否可以执行命令
   const awarenessService = getTerminalAwarenessService()
   const preAdvice = await awarenessService.getPreExecutionAdvice(ptyId, command)
