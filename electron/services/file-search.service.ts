@@ -260,7 +260,8 @@ export class FileSearchService {
         results = await this.searchNative(query, searchPath || os.homedir(), type, limit)
       }
     } else {
-      // Linux: 优先使用 locate，其次 fd，最后原生
+      // Linux: 优先使用 locate，其次 fd
+      // 如果都不可用，抛出错误提示用户安装或使用 find 命令
       const locateAvailable = await this.checkLocateAvailable()
       if (locateAvailable) {
         backend = 'locate'
@@ -271,8 +272,17 @@ export class FileSearchService {
           backend = 'fd'
           results = await this.searchWithFd(query, searchPath || os.homedir(), type, limit)
         } else {
-          backend = 'native'
-          results = await this.searchNative(query, searchPath || os.homedir(), type, limit)
+          // Linux 上没有 locate 或 fd，抛出错误
+          // 不使用 native 搜索（深度限制且性能差，用户体验不佳）
+          throw new Error(
+            'Linux 系统未安装 locate 或 fd 工具。\n' +
+            '请使用 find 命令搜索，例如: find /path -name "*.txt"\n' +
+            '或安装搜索工具:\n' +
+            '  - Ubuntu/Debian: sudo apt install plocate\n' +
+            '  - Fedora: sudo dnf install plocate\n' +
+            '  - Arch: sudo pacman -S plocate\n' +
+            '  - 或安装 fd: sudo apt install fd-find'
+          )
         }
       }
     }

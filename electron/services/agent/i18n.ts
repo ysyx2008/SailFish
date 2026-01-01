@@ -504,6 +504,8 @@ const translations = {
     'error.info_required': '信息不能为空',
     'error.cannot_save_unknown_host': '无法保存：主机ID未知',
     'error.query_required': '查询内容不能为空',
+    'error.file_search_ssh_not_supported': 'file_search 仅支持本地终端。SSH 远程主机请使用 find 命令，例如: find /path -name "*.txt"',
+    'error.file_search_linux_no_tools': 'Linux 系统未安装 locate 或 fd 工具。请使用 find 命令，例如: find /path -name "*.txt"。或安装: sudo apt install plocate 或 sudo apt install fd-find',
     'error.knowledge_not_initialized': '知识库服务未初始化',
     'error.knowledge_not_enabled': '知识库未启用，请在设置中开启',
 
@@ -1054,6 +1056,8 @@ Please output the summary in the following format:
     'error.info_required': 'Info cannot be empty',
     'error.cannot_save_unknown_host': 'Cannot save: Unknown host ID',
     'error.query_required': 'Query cannot be empty',
+    'error.file_search_ssh_not_supported': 'file_search only works on local terminal. For SSH remote hosts, use find command, e.g.: find /path -name "*.txt"',
+    'error.file_search_linux_no_tools': 'Linux system has no locate or fd installed. Use find command, e.g.: find /path -name "*.txt". Or install: sudo apt install plocate or sudo apt install fd-find',
     'error.knowledge_not_initialized': 'Knowledge service not initialized',
     'error.knowledge_not_enabled': 'Knowledge base not enabled, please enable in settings',
 
