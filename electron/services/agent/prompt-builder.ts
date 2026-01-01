@@ -677,9 +677,13 @@ ${buildUserConfirmationGuidance(executionMode)}
 ## 命令处理规则
 
 **禁止使用的命令**（会被系统拒绝）：
-- \`vim\`、\`vi\`、\`nano\`、\`emacs\` 等编辑器 → 请使用 \`write_file\` 工具
+- \`vim\`、\`vi\`、\`nano\`、\`emacs\` 等编辑器 → 请使用 \`${isSshTerminal ? 'write_remote_file' : 'write_file'}\` 工具
 - \`tmux\`、\`screen\` 等终端复用器 → 不支持
 - \`mc\`、\`ranger\` 等全屏文件管理器 → 请使用 \`ls\`、\`cd\` 等命令
+
+**【强制】长命令/多行脚本**：
+- 超过 500 字符或多行代码 → 先用 \`${isSshTerminal ? 'write_remote_file' : 'write_file'}\` 写入 \`/tmp/xxx.sh\` 或 \`/tmp/xxx.py\`，再执行
+- 尽量不要用 \`python3 -c "多行代码..."\` 这种写法执行较长的程序，终端可能会截断。如果使用的话，只能不太长的，而且执行后要检查是否成功执行。
 
 **系统自动处理**：
 - \`apt/yum/dnf install xxx\` → 自动添加 \`-y\` 参数
