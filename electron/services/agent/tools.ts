@@ -9,6 +9,30 @@ import { getSkillsSummary } from './skills/registry'
 export type { ToolDefinition }
 
 /**
+ * Agent 运行模式
+ * - local: 本地终端
+ * - ssh: SSH 远程终端
+ * - assistant: 纯助手模式（无终端，仅对话/知识问答）
+ * 未来可扩展: docker, k8s, wsl 等
+ */
+export type AgentMode = 'local' | 'ssh' | 'assistant'
+
+/**
+ * 工具元数据
+ */
+interface ToolMeta {
+  /** 支持的运行模式（不指定则支持所有模式） */
+  supportedModes?: AgentMode[]
+}
+
+/**
+ * 带元数据的工具定义
+ */
+interface ToolDefinitionWithMeta extends ToolDefinition {
+  _meta?: ToolMeta
+}
+
+/**
  * 动态构建 load_skill 工具定义
  * 从技能注册表获取可用技能列表
  */
@@ -48,10 +72,19 @@ ${skillsList}
 }
 
 /**
+ * 工具获取选项
+ */
+export interface GetAgentToolsOptions {
+  /** Agent 运行模式，用于过滤不适用的工具 */
+  mode?: AgentMode
+}
+
+/**
  * 获取可用工具定义
  * @param mcpService 可选的 MCP 服务，用于动态加载 MCP 工具
+ * @param options 可选配置，如终端类型
  */
-export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
+export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOptions): ToolDefinition[] {
   // 内置工具
   const builtinTools: ToolDefinition[] = [
     {
@@ -230,27 +263,21 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
           },
           required: ['path']
         }
-      }
-    },
+      },
+      _meta: { supportedModes: ['local'] }
+    } as ToolDefinitionWithMeta,
     {
       type: 'function',
       function: {
-        name: 'write_file',
-        description: `写入或创建文件。支持本地文件和 SSH 远程文件。
+        name: 'write_local_file',
+        description: `写入或创建本地文件。支持多种写入模式：
 
-**本地终端**：支持多种写入模式：
 1. **新建模式（默认）**：mode='create'，仅创建新文件，如果文件已存在则报错
 2. **覆盖模式**：mode='overwrite'，用 content 替换整个文件（文件存在会覆盖）
 3. **追加模式**：mode='append'，在文件末尾追加 content
 4. **插入模式**：mode='insert'，在 insert_at_line 行之前插入 content
 5. **行替换模式**：mode='replace_lines'，用 content 替换 start_line 到 end_line 的内容
 6. **正则替换模式**：mode='regex_replace'，用正则表达式查找替换
-
-**SSH 远程终端** - 仅支持 overwrite、create 和 append 模式：
-- 通过 SFTP 写入，不用担心特殊字符转义问题
-- 适合：创建新文件、完全替换文件、追加日志/配置
-- **不支持** insert、replace_lines、regex_replace 模式
-- 需要局部修改时，请用 execute_command 执行命令，如sed、awk等
 
 ⚠️ **重要文件请先备份**：修改配置文件、脚本等重要文件前，必须先执行备份命令：
 \`cp file.txt file.txt.$(date +%Y%m%d_%H%M%S).bak\`
@@ -260,7 +287,7 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
           properties: {
             path: {
               type: 'string',
-              description: '文件路径（本地或远程，根据当前终端类型自动识别）'
+              description: '本地文件路径（绝对路径或相对于当前目录）'
             },
             content: {
               type: 'string',
@@ -298,8 +325,49 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
           },
           required: ['path']
         }
-      }
-    },
+      },
+      _meta: { supportedModes: ['local'] }
+    } as ToolDefinitionWithMeta,
+    {
+      type: 'function',
+      function: {
+        name: 'write_remote_file',
+        description: `通过 SFTP 写入远程文件。
+
+**支持的模式**：
+1. **新建模式（默认）**：mode='create'，仅创建新文件，如果文件已存在则报错
+2. **覆盖模式**：mode='overwrite'，用 content 替换整个文件
+3. **追加模式**：mode='append'，在文件末尾追加 content
+
+**优点**：
+- 通过 SFTP 传输，不用担心特殊字符转义问题
+- 适合：创建新文件、完全替换文件、追加日志/配置
+
+**局部修改**：如需 insert、replace_lines 等高级功能，请用 execute_command 执行 sed、awk 等命令
+
+⚠️ **重要文件请先备份**：修改前执行 \`cp file.txt file.txt.bak\``,
+        parameters: {
+          type: 'object',
+          properties: {
+            path: {
+              type: 'string',
+              description: '远程文件路径'
+            },
+            content: {
+              type: 'string',
+              description: '文件内容'
+            },
+            mode: {
+              type: 'string',
+              enum: ['create', 'overwrite', 'append'],
+              description: '写入模式：create（新建，默认）、overwrite（覆盖）、append（追加）'
+            }
+          },
+          required: ['path', 'content']
+        }
+      },
+      _meta: { supportedModes: ['ssh'] }
+    } as ToolDefinitionWithMeta,
     {
       type: 'function',
       function: {
@@ -346,8 +414,9 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
           },
           required: ['query']
         }
-      }
-    },
+      },
+      _meta: { supportedModes: ['local'] }
+    } as ToolDefinitionWithMeta,
     {
       type: 'function',
       function: {
@@ -606,11 +675,23 @@ export function getAgentTools(mcpService?: McpService): ToolDefinition[] {
     buildLoadSkillTool()
   ]
 
+  // 根据运行模式过滤工具
+  let filteredTools: ToolDefinition[] = builtinTools
+  if (options?.mode) {
+    filteredTools = builtinTools.filter(tool => {
+      const meta = (tool as ToolDefinitionWithMeta)._meta
+      // 没有 _meta 或没有 supportedModes 的工具支持所有模式
+      if (!meta?.supportedModes) return true
+      // 检查当前模式是否在支持列表中
+      return meta.supportedModes.includes(options.mode!)
+    })
+  }
+
   // 如果有 MCP 服务，添加 MCP 工具
   if (mcpService) {
     const mcpTools = mcpService.getToolDefinitions()
-    return [...builtinTools, ...mcpTools]
+    return [...filteredTools, ...mcpTools]
   }
 
-  return builtinTools
+  return filteredTools
 }
