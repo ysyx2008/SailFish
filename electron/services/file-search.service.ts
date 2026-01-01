@@ -25,6 +25,8 @@ export interface FileSearchResult {
   size?: number
   /** 修改时间（毫秒时间戳），可能为 undefined */
   modifiedTime?: number
+  /** 创建时间（毫秒时间戳），可能为 undefined */
+  createdTime?: number
 }
 
 /**
@@ -331,7 +333,8 @@ export class FileSearchService {
             name: path.basename(filePath),
             isDirectory: isDir,
             size: stats.size,
-            modifiedTime: stats.mtimeMs
+            modifiedTime: stats.mtimeMs,
+            createdTime: stats.birthtimeMs
           })
         } catch {
           // 文件可能已被删除或无权限访问
@@ -394,7 +397,8 @@ export class FileSearchService {
             name: path.basename(filePath),
             isDirectory: stats.isDirectory(),
             size: stats.size,
-            modifiedTime: stats.mtimeMs
+            modifiedTime: stats.mtimeMs,
+            createdTime: stats.birthtimeMs
           })
         } catch {
           // 文件可能已被删除
@@ -460,7 +464,8 @@ export class FileSearchService {
             name: path.basename(filePath),
             isDirectory: isDir,
             size: stats.size,
-            modifiedTime: stats.mtimeMs
+            modifiedTime: stats.mtimeMs,
+            createdTime: stats.birthtimeMs
           })
         } catch {
           continue
@@ -538,7 +543,8 @@ export class FileSearchService {
             name: path.basename(filePath),
             isDirectory: stats.isDirectory(),
             size: stats.size,
-            modifiedTime: stats.mtimeMs
+            modifiedTime: stats.mtimeMs,
+            createdTime: stats.birthtimeMs
           })
         } catch {
           continue
@@ -614,7 +620,8 @@ export class FileSearchService {
                 name: entry.name,
                 isDirectory: isDir,
                 size: stats.size,
-                modifiedTime: stats.mtimeMs
+                modifiedTime: stats.mtimeMs,
+                createdTime: stats.birthtimeMs
               })
             } catch {
               results.push({

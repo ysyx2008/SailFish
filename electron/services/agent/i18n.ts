@@ -229,6 +229,8 @@ const translations = {
     'file.search_found': '找到 {count} 个文件',
     'file.search_more': '还有 {count} 个结果',
     'file.search_failed': '文件搜索失败',
+    'file.modified': '修改',
+    'file.created': '创建',
 
     // Excel 操作
     'excel.action_required': '需要指定操作类型（read/write/modify）',
@@ -781,6 +783,8 @@ Please output the summary in the following format:
     'file.search_found': 'Found {count} files',
     'file.search_more': '{count} more results',
     'file.search_failed': 'File search failed',
+    'file.modified': 'Modified',
+    'file.created': 'Created',
 
     // Excel operations
     'excel.action_required': 'Action type required (read/write/modify)',
