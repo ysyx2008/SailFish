@@ -1510,7 +1510,13 @@ async function fileSearch(
     const formattedResults = results.map((r, i) => {
       const icon = r.isDirectory ? '📁' : '📄'
       const sizeStr = r.size !== undefined ? ` (${formatFileSize(r.size)})` : ''
-      return `${i + 1}. ${icon} ${r.path}${sizeStr}`
+      const modTime = r.modifiedTime 
+        ? ` [${t('file.modified')}: ${new Date(r.modifiedTime).toLocaleString()}]` 
+        : ''
+      const createTime = r.createdTime 
+        ? ` [${t('file.created')}: ${new Date(r.createdTime).toLocaleString()}]` 
+        : ''
+      return `${i + 1}. ${icon} ${r.path}${sizeStr}${modTime}${createTime}`
     }).join('\n')
 
     const output = `${t('file.search_found', { count: results.length })}:\n\n${formattedResults}`
