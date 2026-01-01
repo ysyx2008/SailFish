@@ -339,13 +339,9 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
 2. **覆盖模式**：mode='overwrite'，用 content 替换整个文件
 3. **追加模式**：mode='append'，在文件末尾追加 content
 
-**优点**：
-- 通过 SFTP 传输，不用担心特殊字符转义问题
-- 适合：创建新文件、完全替换文件、追加日志/配置
+**注意**：路径不支持 \`~\`，请用相对路径或绝对路径
 
-**局部修改**：如需 insert、replace_lines 等高级功能，请用 execute_command 执行 sed、awk 等命令
-
-⚠️ **重要文件请先备份**：修改前执行 \`cp file.txt file.txt.bak\``,
+**局部修改**：如需 insert、replace_lines 等高级功能，请用 execute_command 执行 sed、awk 等命令`,
         parameters: {
           type: 'object',
           properties: {
