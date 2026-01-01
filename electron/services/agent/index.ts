@@ -1167,8 +1167,10 @@ export class AgentService {
       workerOptions,
       // 初始化执行阶段
       executionPhase: 'thinking',
-      // 创建技能会话（传入核心工具定义）
-      skillSession: createSkillSession(getAgentTools(this.mcpService)),
+      // 创建技能会话（传入核心工具定义，根据运行模式过滤）
+      skillSession: createSkillSession(getAgentTools(this.mcpService, {
+        mode: this.unifiedTerminalService?.getTerminalType(ptyId) || 'local'
+      })),
       // 初始化会话级别的工具白名单
       allowedTools: new Set<string>()
     }
@@ -1370,7 +1372,9 @@ export class AgentService {
             // 使用 skillSession 获取工具列表（包含核心工具 + 已加载的技能工具）
             const availableTools = run.skillSession 
               ? run.skillSession.getAvailableTools()
-              : getAgentTools(this.mcpService)
+              : getAgentTools(this.mcpService, {
+                  mode: this.unifiedTerminalService?.getTerminalType(run.ptyId) || 'local'
+                })
             
             this.aiService.chatWithToolsStream(
               run.messages,

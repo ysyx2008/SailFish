@@ -211,8 +211,11 @@ export async function executeTool(
     case 'file_search':
       return await fileSearch(ptyId, args, config, executor)
 
-    case 'write_file':
-      return writeFile(ptyId, args, toolCall.id, config, executor)
+    case 'write_local_file':
+      return writeLocalFile(ptyId, args, toolCall.id, config, executor)
+
+    case 'write_remote_file':
+      return writeRemoteFile(ptyId, args, toolCall.id, config, executor)
 
     case 'remember_info':
       return await rememberInfo(args, config, executor)
@@ -1943,7 +1946,7 @@ async function writeFileViaSftp(
       executor.addStep({
         type: 'tool_result',
         content: t('file.establishing_sftp'),
-        toolName: 'write_file',
+        toolName: 'write_remote_file',
         isStreaming: true
       })
 
@@ -2002,7 +2005,7 @@ async function writeFileViaSftp(
     executor.addStep({
       type: 'tool_result',
       content: resultMsg,
-      toolName: 'write_file'
+      toolName: 'write_remote_file'
     })
 
     return { success: true, output: resultMsg }
@@ -2015,7 +2018,7 @@ async function writeFileViaSftp(
     executor.addStep({
       type: 'tool_result',
       content: `${t('file.remote_write_failed')}: ${errorMsg}`,
-      toolName: 'write_file',
+      toolName: 'write_remote_file',
       toolResult: errorMsg
     })
 
@@ -2024,10 +2027,42 @@ async function writeFileViaSftp(
 }
 
 /**
- * 写入文件
- * 支持多种模式：overwrite（覆盖）、append（追加）、insert（插入）、replace_lines（行替换）、regex_replace（正则替换）
+ * 写入远程文件（通过 SFTP）
+ * 仅支持 SSH 终端，支持 create、overwrite、append 三种模式
  */
-async function writeFile(
+async function writeRemoteFile(
+  ptyId: string,
+  args: Record<string, unknown>,
+  toolCallId: string,
+  config: AgentConfig,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const filePath = args.path as string
+  const content = args.content as string
+  const mode = (args.mode as string) || 'create'
+
+  if (!filePath) {
+    return { success: false, output: '', error: t('error.file_path_required') }
+  }
+
+  if (content === undefined) {
+    return { success: false, output: '', error: t('error.content_required_for_mode', { mode }) }
+  }
+
+  // 验证模式
+  const validModes = ['create', 'overwrite', 'append']
+  if (!validModes.includes(mode)) {
+    return { success: false, output: '', error: t('error.invalid_write_mode', { mode, modes: validModes.join(', ') }) }
+  }
+
+  return writeFileViaSftp(ptyId, filePath, content, mode as 'create' | 'overwrite' | 'append', toolCallId, config, executor)
+}
+
+/**
+ * 写入本地文件
+ * 支持多种模式：create、overwrite、append、insert、replace_lines、regex_replace
+ */
+async function writeLocalFile(
   ptyId: string,
   args: Record<string, unknown>,
   toolCallId: string,
@@ -2085,19 +2120,6 @@ async function writeFile(
     }
   }
 
-  // 检测终端类型，SSH 终端使用 SFTP 写入
-  const terminalType = executor.terminalService.getTerminalType(ptyId)
-  if (terminalType === 'ssh') {
-    // SSH 终端只支持 overwrite、create 和 append 模式
-    if (mode !== 'overwrite' && mode !== 'create' && mode !== 'append') {
-      return { success: false, output: '', error: t('error.ssh_mode_not_supported', { mode }) }
-    }
-    if (content === undefined) {
-      return { success: false, output: '', error: t('error.ssh_content_required') }
-    }
-    return writeFileViaSftp(ptyId, filePath, content, mode, toolCallId, config, executor)
-  }
-
   // 本地终端：使用本地文件系统
   // 如果是相对路径，基于终端当前工作目录解析
   if (!path.isAbsolute(filePath)) {
@@ -2133,7 +2155,7 @@ async function writeFile(
   executor.addStep({
     type: 'tool_call',
     content: operationDesc,
-    toolName: 'write_file',
+    toolName: 'write_local_file',
     toolArgs: { 
       path: filePath, 
       mode,
@@ -2151,7 +2173,7 @@ async function writeFile(
   if (config.executionMode === 'strict') {
     const approved = await executor.waitForConfirmation(
       toolCallId, 
-      'write_file', 
+      'write_local_file', 
       args, 
       'moderate'
     )
@@ -2171,7 +2193,7 @@ async function writeFile(
     const progressStep =       executor.addStep({
         type: 'tool_result',
         content: `⏳ ${t('file.writing_progress')}（${contentSizeKB} KB）`,
-        toolName: 'write_file',
+        toolName: 'write_local_file',
       isStreaming: true
     })
     progressStepId = progressStep.id
@@ -2264,14 +2286,14 @@ async function writeFile(
       executor.updateStep(progressStepId, {
         type: 'tool_result',
         content: `✅ ${resultMsg}`,
-        toolName: 'write_file',
+        toolName: 'write_local_file',
         isStreaming: false
       })
     } else {
       executor.addStep({
         type: 'tool_result',
         content: resultMsg,
-        toolName: 'write_file'
+        toolName: 'write_local_file'
       })
     }
     return { success: true, output: resultMsg }
@@ -2285,7 +2307,7 @@ async function writeFile(
       executor.updateStep(progressStepId, {
         type: 'tool_result',
         content: `❌ ${t('file.write_failed')}: ${errorMsg}`,
-        toolName: 'write_file',
+        toolName: 'write_local_file',
         toolResult: `${errorMsg}\n\n💡 ${suggestion}`,
         isStreaming: false
       })
@@ -2293,7 +2315,7 @@ async function writeFile(
         executor.addStep({
           type: 'tool_result',
           content: `${t('file.write_failed')}: ${errorMsg}`,
-          toolName: 'write_file',
+          toolName: 'write_local_file',
         toolResult: `${errorMsg}\n\n💡 ${suggestion}`
       })
     }
