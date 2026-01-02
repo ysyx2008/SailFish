@@ -460,14 +460,16 @@ export class KnowledgeService extends EventEmitter {
 
   /**
    * 删除文档
+   * @param docId 文档 ID
+   * @param forceCompact 是否强制执行 LanceDB compact（清理已删除数据）
    */
-  async removeDocument(docId: string): Promise<boolean> {
+  async removeDocument(docId: string, forceCompact: boolean = false): Promise<boolean> {
     if (!this.documentsIndex.has(docId)) {
       return false
     }
 
-    // 删除向量记录
-    await this.vectorStorage.removeDocumentChunks(docId)
+    // 删除向量记录（传递 forceCompact 参数）
+    await this.vectorStorage.removeDocumentChunks(docId, forceCompact)
 
     // 删除 BM25 索引记录
     await this.bm25Index.removeDocumentChunks(docId)
@@ -482,14 +484,19 @@ export class KnowledgeService extends EventEmitter {
 
   /**
    * 批量删除文档
+   * 最后一个文档删除后会强制执行 compact 以确保数据完全清理
    */
   async removeDocuments(docIds: string[]): Promise<{ success: number; failed: number }> {
     let success = 0
     let failed = 0
+    const total = docIds.length
 
-    for (const docId of docIds) {
+    for (let i = 0; i < docIds.length; i++) {
+      const docId = docIds[i]
+      const isLast = i === total - 1
       try {
-        const result = await this.removeDocument(docId)
+        // 最后一个文档删除时强制 compact
+        const result = await this.removeDocument(docId, isLast)
         if (result) {
           success++
         } else {
@@ -499,6 +506,11 @@ export class KnowledgeService extends EventEmitter {
         console.error(`[KnowledgeService] Failed to remove document ${docId}:`, error)
         failed++
       }
+    }
+
+    // 如果有删除成功，确保 compact 执行
+    if (success > 0) {
+      console.log(`[KnowledgeService] 批量删除完成: ${success} 成功, ${failed} 失败，已执行 compact`)
     }
 
     return { success, failed }
@@ -1214,8 +1226,12 @@ export class KnowledgeService extends EventEmitter {
       .filter(doc => doc.fileType === 'host-memory')
     
     let deleted = 0
-    for (const doc of memoryDocs) {
-      const success = await this.removeDocument(doc.id)
+    const total = memoryDocs.length
+    for (let i = 0; i < memoryDocs.length; i++) {
+      const doc = memoryDocs[i]
+      const isLast = i === total - 1
+      // 最后一个删除时强制 compact
+      const success = await this.removeDocument(doc.id, isLast)
       if (success) deleted++
     }
 
