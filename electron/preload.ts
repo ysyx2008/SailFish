@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 // 类型定义
 export interface PtyOptions {
@@ -2234,6 +2234,14 @@ const electronAPI = {
       smtpPort?: number
       smtpSecure?: boolean
     }>) => ipcRenderer.invoke('email:syncAccounts', accounts) as Promise<void>
+  },
+
+  // 文件工具
+  fileUtils: {
+    // 获取拖放文件的路径（Electron 24+ 推荐方式）
+    getPathForFile: (file: File): string => {
+      return webUtils.getPathForFile(file)
+    }
   }
 }
 

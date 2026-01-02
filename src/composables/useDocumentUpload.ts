@@ -87,17 +87,24 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     // 过滤支持的文件并构造文件信息对象
     const fileInfos: Array<{ name: string; path: string; size: number; mimeType?: string }> = []
     for (const file of files) {
-      if (isSupportedFile(file.name)) {
-        // Electron 中的 File 对象有 path 属性
-        const filePath = (file as File & { path?: string }).path
-        if (filePath) {
-          fileInfos.push({
-            name: file.name,
-            path: filePath,
-            size: file.size,
-            mimeType: file.type || undefined
-          })
-        }
+      // 使用 Electron webUtils API 获取文件路径（Electron 24+ 推荐方式）
+      let filePath: string | undefined
+      try {
+        filePath = window.electronAPI?.fileUtils?.getPathForFile(file)
+      } catch (e) {
+        // 降级：尝试使用旧的 path 属性
+        filePath = (file as File & { path?: string }).path
+      }
+      
+      const isSupported = isSupportedFile(file.name)
+      
+      if (isSupported && filePath) {
+        fileInfos.push({
+          name: file.name,
+          path: filePath,
+          size: file.size,
+          mimeType: file.type || undefined
+        })
       }
     }
     
