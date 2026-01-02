@@ -9,16 +9,18 @@
 ╚══════╝╚═╝        ╚═╝   ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝
 </pre>
 
-**SFTerminal**
+**SFTerm**
 
 > AI-Powered Cross-Platform Terminal for DevOps Efficiency
 
-🌐 **Official Website**: [www.sfterm.com](http://www.sfterm.com/en/)
+🌐 **Website**: [www.sfterm.com](http://www.sfterm.com/en/)
 
 </div>
 
 <div align="center">
 
+[![Build](https://github.com/ysyx2008/SFTerminal/actions/workflows/build-release.yml/badge.svg)](https://github.com/ysyx2008/SFTerminal/actions)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 [![en](https://img.shields.io/badge/lang-English-blue.svg)](./README_EN.md)
 [![cn](https://img.shields.io/badge/lang-中文-red.svg)](./README.md)
 
@@ -26,17 +28,17 @@
 
 ## Introduction
 
-SFTerminal is a modern terminal tool designed for DevOps engineers and developers. It deeply integrates traditional terminal capabilities with an AI intelligent assistant, making command-line operations more efficient and intelligent.
+SFTerm is a modern terminal tool designed for DevOps engineers and developers. It deeply integrates traditional terminal capabilities with an AI intelligent assistant, making command-line operations more efficient and intelligent.
 
+Tell AI what you need, and it will plan and execute autonomously.
 Unfamiliar with a command? Let AI explain it for you.
 Confused by error messages? AI analyzes the cause and provides solutions.
-Want to perform an operation but don't know the command? Describe it in natural language, and AI generates it for you.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome_en.png" width="900" alt="SFTerminal Welcome Page">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome_en.png" width="900" alt="SFTerm Welcome Page">
 </p>
 
-For enterprise users, SFTerminal is designed with intranet environments in mind: it supports privately deployed AI models and allows one-click import of Xshell session configurations for quick team onboarding and smooth migration.
+For enterprise users, SFTerm is designed with intranet environments in mind: it supports privately deployed AI models and allows one-click import of Xshell session configurations for quick team onboarding and smooth migration.
 
 ## Features
 
@@ -177,7 +179,7 @@ npm run build:linux:fast
 
 ## AI Configuration
 
-SFTerminal supports OpenAI Compatible API and can connect to:
+SFTerm supports OpenAI Compatible API and can connect to:
 
 - Public Cloud Services: OpenAI, Qwen, DeepSeek, etc.
 - Private Deployment: vLLM, FastChat, Ollama, etc.

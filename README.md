@@ -13,12 +13,14 @@
 
 > AI 驱动的跨平台终端，助力运维提效
 
-🌐 **官方网站**：[www.sfterm.com](http://www.sfterm.com/)
+🌐 **网站**：[www.sfterm.com](http://www.sfterm.com/)
 
 </div>
 
 <div align="center">
 
+[![Build](https://github.com/ysyx2008/SFTerminal/actions/workflows/build-release.yml/badge.svg)](https://github.com/ysyx2008/SFTerminal/actions)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 [![en](https://img.shields.io/badge/lang-English-blue.svg)](./README_EN.md)
 [![cn](https://img.shields.io/badge/lang-中文-red.svg)](./README.md)
 
@@ -28,9 +30,9 @@
 
 旗鱼终端是一款面向运维工程师和开发者的现代化终端工具。它将传统终端的强大功能与AI智能助手深度融合，让命令行操作变得更加高效、智能。
 
+说出你的要求，AI自主规划执行。
 遇到不熟悉的命令？让AI帮你解释。
 看到报错信息一头雾水？AI帮你分析原因并给出解决方案。
-想要执行某个操作但不知道命令？用自然语言描述，AI为你生成。
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome.png" width="900" alt="旗鱼终端欢迎页面">
