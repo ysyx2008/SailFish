@@ -32,6 +32,7 @@ export interface AgentStep {
   isStreaming?: boolean  // 是否正在流式输出
   plan?: AgentPlan       // 任务计划（仅 plan_created/plan_updated 类型使用）
   progress?: StepProgress  // 命令执行进度（仅 tool_result 类型使用）
+  contextTokens?: number  // 当前上下文的 token 数（后端计算）
 }
 
 // 步骤进度信息
@@ -257,4 +258,64 @@ export const DEFAULT_AGENT_CONFIG: AgentConfig = {
   autoExecuteModerate: true,
   executionMode: 'strict',    // 默认严格模式：所有命令都需确认
   debugMode: false            // 默认关闭调试模式，使用简洁交互
+}
+
+// ==================== 任务记忆相关类型（多层次上下文管理）====================
+
+/**
+ * 任务摘要（L2 层）
+ * 包含执行过程中的关键信息，用于语义预加载和 recall_task
+ */
+export interface TaskDigest {
+  commands: string[]              // 执行的关键命令
+  paths: string[]                 // 涉及的文件路径
+  services: string[]              // 涉及的服务名
+  errors: string[]                // 遇到的错误
+  keyFindings: string[]           // 关键发现
+}
+
+/**
+ * 任务记忆（完整结构）
+ * L1: summary（一句话总结）
+ * L2: digest（关键信息摘要）
+ * L3: fullSteps（完整执行步骤）
+ */
+export interface TaskMemory {
+  id: string                      // 任务 ID
+  userRequest: string             // 用户原始请求
+  timestamp: number               // 执行时间
+  status: 'success' | 'failed' | 'aborted'
+  
+  // L1: 一句话总结（~50 字符）
+  summary: string
+  
+  // L2: 关键步骤摘要（~500 字符）
+  digest: TaskDigest
+  
+  // L3: 完整执行步骤（原始数据）
+  fullSteps: AgentStep[]
+  
+  // 语义索引
+  keywords: string[]              // 关键词（用于快速匹配）
+  embedding?: number[]            // 向量嵌入（用于语义搜索，可选）
+}
+
+/**
+ * L1 总结（精简版，用于上下文列表）
+ */
+export interface TaskSummary {
+  id: string
+  summary: string
+  status: 'success' | 'failed' | 'aborted'
+  timestamp: number
+}
+
+/**
+ * 相关任务摘要（语义预加载结果）
+ */
+export interface RelatedTaskDigest {
+  taskId: string
+  userRequest: string
+  digest: TaskDigest
+  relevanceScore: number
 }

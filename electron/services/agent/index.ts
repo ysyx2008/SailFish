@@ -35,6 +35,7 @@ import type { CommandHandlingInfo } from './risk-assessor'
 import { executeTool, ToolExecutorConfig } from './tool-executor'
 import { buildSystemPrompt } from './prompt-builder'
 import { analyzeTaskComplexity, generatePlanningPrompt } from './planner'
+import { getTaskMemoryStore } from './task-memory'
 import { getKnowledgeService } from '../knowledge'
 import { setConfigService as setI18nConfigService, t } from './i18n'
 import { createSkillSession } from './skills'
@@ -903,10 +904,14 @@ export class AgentService {
     const run = this.runs.get(agentId)
     if (!run) return step as AgentStep
 
+    // 计算当前上下文的 token 数
+    const contextTokens = this.estimateTotalTokens(run.messages)
+
     const fullStep: AgentStep = {
       ...step,
       id: `step_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      contextTokens  // 附带上下文 token 数
     }
     run.steps.push(fullStep)
 
@@ -1243,25 +1248,76 @@ export class AgentService {
       console.log('[Agent] Knowledge service error:', e)
     }
     
-    const systemPrompt = buildSystemPrompt(context, this.hostProfileService, mbtiType, knowledgeContext, knowledgeEnabled, hostMemories, fullConfig.executionMode, aiRules)
+    // 获取任务记忆（多层次上下文）
+    let taskSummaries = ''
+    let relatedTaskDigests = ''
+    const taskMemoryStore = getTaskMemoryStore()
+    
+    // 如果前端传入了 previousTasks，但 TaskMemoryStore 为空，将数据导入到 TaskMemoryStore
+    // 这实现了从旧模式到新模式的平滑过渡，避免数据重复
+    if (context.previousTasks && context.previousTasks.length > 0 && taskMemoryStore.getTaskCount() === 0) {
+      console.log(`[Agent] 将 ${context.previousTasks.length} 个前端历史任务导入到 TaskMemoryStore`)
+      context.previousTasks.forEach((task, index) => {
+        const taskId = `task_legacy_${index}`
+        // 转换前端步骤格式为 AgentStep 格式
+        const steps: AgentStep[] = task.steps.map((s, stepIdx) => ({
+          id: `${taskId}_step_${stepIdx}`,
+          type: s.type as AgentStep['type'],
+          content: s.content,
+          toolName: s.toolName,
+          toolArgs: s.toolArgs,
+          toolResult: s.toolResult,
+          riskLevel: s.riskLevel as RiskLevel,
+          timestamp: task.timestamp - (task.steps.length - stepIdx) * 1000  // 模拟步骤时间
+        }))
+        // 从 finalResult 和 steps 推断任务状态
+        const hasErrorStep = steps.some(s => s.type === 'error')
+        const resultLower = task.finalResult.toLowerCase()
+        const isAborted = resultLower.includes('中止') || resultLower.includes('abort') || resultLower.includes('cancel')
+        const isFailed = hasErrorStep || resultLower.includes('失败') || resultLower.includes('错误') || resultLower.includes('fail') || resultLower.includes('error')
+        const status: 'success' | 'failed' | 'aborted' = isAborted ? 'aborted' : isFailed ? 'failed' : 'success'
+        
+        taskMemoryStore.saveTask(
+          taskId,
+          task.userTask,
+          steps,
+          status,
+          task.finalResult
+        )
+      })
+    }
+    
+    if (taskMemoryStore.getTaskCount() > 0) {
+      // L1: 获取任务总结列表
+      taskSummaries = taskMemoryStore.formatSummariesForContext(15)
+      
+      // L2: 语义预加载相关任务摘要
+      const relatedDigests = taskMemoryStore.getRelatedDigests(userMessage, 3)
+      if (relatedDigests.length > 0) {
+        relatedTaskDigests = taskMemoryStore.formatRelatedDigestsForContext(relatedDigests)
+        console.log(`[Agent] 语义预加载 ${relatedDigests.length} 个相关任务摘要`)
+      }
+      
+      console.log(`[Agent] 已加载 ${taskMemoryStore.getTaskCount()} 个任务的 L1 总结`)
+    }
+    
+    const systemPrompt = buildSystemPrompt(
+      context, 
+      this.hostProfileService, 
+      mbtiType, 
+      knowledgeContext, 
+      knowledgeEnabled, 
+      hostMemories, 
+      fullConfig.executionMode, 
+      aiRules,
+      taskSummaries,
+      relatedTaskDigests
+    )
     run.messages.push({ role: 'system', content: systemPrompt })
 
-    // 处理之前已完成任务的上下文（包含完整步骤，优先使用）
-    // 注意：如果有 previousTasks，就不再使用 historyMessages（避免重复，previousTasks 信息更完整）
-    if (context.previousTasks && context.previousTasks.length > 0) {
-      const tasksContext = await this.buildPreviousTasksContext(context.previousTasks, profileId)
-      if (tasksContext) {
-        run.messages.push({ role: 'user', content: tasksContext })
-        const taskCount = context.previousTasks.length
-        run.messages.push({ 
-          role: 'assistant', 
-          content: taskCount === 1 
-            ? t('agent.context_ack_single')
-            : t('agent.context_ack_multi', { count: taskCount })
-        })
-        console.log(`[Agent] 已注入 ${taskCount} 个任务的历史上下文`)
-      }
-    }
+    // 旧的 previousTasks 处理已被任务记忆系统取代
+    // previousTasks 数据已在上面导入到 TaskMemoryStore，不再需要单独处理
+    // 这样避免了数据重复存储和上下文膨胀
 
     // 添加当前用户消息（包含任务复杂度分析和规划提示）
     const enhancedMessage = this.enhanceUserMessage(userMessage)
@@ -1717,6 +1773,22 @@ export class AgentService {
 
       const finalMessage = lastResponse?.content || t('agent.task_complete')
 
+      // 保存任务到 TaskMemoryStore（L1/L2/L3 多层次记忆）
+      try {
+        const taskId = `task_${agentId.substring(0, 8)}`
+        const taskMemoryStore = getTaskMemoryStore()
+        taskMemoryStore.saveTask(
+          taskId,
+          userMessage,
+          run.steps,
+          'success',
+          finalMessage
+        )
+        console.log(`[Agent] 任务已保存到记忆: ${taskId}`)
+      } catch (e) {
+        console.log('[Agent] 保存任务记忆失败:', e)
+      }
+
       console.log('[Agent] run completed normally, calling onCompleteCallback')
       const callbacks = this.getCallbacks(agentId)
       if (callbacks.onComplete) {
@@ -1737,6 +1809,22 @@ export class AgentService {
       const isUserAborted = errorMsg === 'User aborted Agent execution' || run.aborted
       
       if (isUserAborted) {
+        // 用户主动中止，保存任务记忆（标记为 aborted）
+        try {
+          const taskId = `task_${agentId.substring(0, 8)}`
+          const taskMemoryStore = getTaskMemoryStore()
+          taskMemoryStore.saveTask(
+            taskId,
+            userMessage,
+            run.steps,
+            'aborted',
+            '用户中止'
+          )
+          console.log(`[Agent] 中止的任务已保存到记忆: ${taskId}`)
+        } catch (e) {
+          console.log('[Agent] 保存任务记忆失败:', e)
+        }
+        
         // 用户主动中止，直接抛出错误，不视为成功
         // 注意：不调用 onErrorCallback，因为 abort() 方法已经添加了错误步骤
         console.log('[Agent] user aborted, throwing error without callback')
@@ -1762,6 +1850,22 @@ export class AgentService {
           console.log('[Agent] AI request aborted but has valid response, treating as success')
           const finalMessage = lastResponse!.content || t('agent.task_complete')
           
+          // 保存任务到记忆
+          try {
+            const taskId = `task_${agentId.substring(0, 8)}`
+            const taskMemoryStore = getTaskMemoryStore()
+            taskMemoryStore.saveTask(
+              taskId,
+              userMessage,
+              run.steps,
+              'success',
+              finalMessage
+            )
+            console.log(`[Agent] 任务已保存到记忆: ${taskId}`)
+          } catch (e) {
+            console.log('[Agent] 保存任务记忆失败:', e)
+          }
+          
           const successCallbacks = this.getCallbacks(agentId)
           if (successCallbacks.onComplete) {
             successCallbacks.onComplete(agentId, finalMessage, [])
@@ -1776,6 +1880,22 @@ export class AgentService {
         type: 'error',
         content: t('agent.execution_error', { error: errorMsg })
       })
+
+      // 保存失败的任务到记忆
+      try {
+        const taskId = `task_${agentId.substring(0, 8)}`
+        const taskMemoryStore = getTaskMemoryStore()
+        taskMemoryStore.saveTask(
+          taskId,
+          userMessage,
+          run.steps,
+          'failed',
+          errorMsg
+        )
+        console.log(`[Agent] 失败的任务已保存到记忆: ${taskId}`)
+      } catch (e) {
+        console.log('[Agent] 保存任务记忆失败:', e)
+      }
 
       const errorCallbacks = this.getCallbacks(agentId)
       if (errorCallbacks.onError) {

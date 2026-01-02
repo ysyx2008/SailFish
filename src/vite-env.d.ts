@@ -50,6 +50,7 @@ interface AgentStep {
   timestamp: number
   isStreaming?: boolean
   plan?: AgentPlan  // 计划数据
+  contextTokens?: number  // 当前上下文的 token 数（后端计算）
 }
 
 interface PendingConfirmation {
