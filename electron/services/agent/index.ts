@@ -1288,7 +1288,7 @@ export class AgentService {
     }
     
     if (taskMemoryStore.getTaskCount() > 0) {
-      // L1: 获取任务总结列表
+      // L1: 获取任务总结列表（用于系统提示中的快速索引）
       taskSummaries = taskMemoryStore.formatSummariesForContext(15)
       
       // L2: 语义预加载相关任务摘要
@@ -1315,9 +1315,17 @@ export class AgentService {
     )
     run.messages.push({ role: 'system', content: systemPrompt })
 
-    // 旧的 previousTasks 处理已被任务记忆系统取代
-    // previousTasks 数据已在上面导入到 TaskMemoryStore，不再需要单独处理
-    // 这样避免了数据重复存储和上下文膨胀
+    // 注入简化版对话历史（用户请求 + 最终结果），让 AI 理解对话上下文
+    // 这比 L1 总结更完整，但比完整执行步骤更精简
+    if (context.previousTasks && context.previousTasks.length > 0) {
+      for (const task of context.previousTasks) {
+        // 用户请求
+        run.messages.push({ role: 'user', content: task.userTask })
+        // AI 最终回复（精简版，不包含完整执行步骤）
+        run.messages.push({ role: 'assistant', content: task.finalResult })
+      }
+      console.log(`[Agent] 已注入 ${context.previousTasks.length} 轮简化对话历史`)
+    }
 
     // 添加当前用户消息（包含任务复杂度分析和规划提示）
     const enhancedMessage = this.enhanceUserMessage(userMessage)
