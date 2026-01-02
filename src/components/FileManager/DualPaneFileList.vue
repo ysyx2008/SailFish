@@ -277,10 +277,12 @@ const handleDrop = (event: DragEvent) => {
       const files: FileInfo[] = []
       for (let i = 0; i < event.dataTransfer.files.length; i++) {
         const file = event.dataTransfer.files[i]
-        if ((file as any).path) {
+        // 使用 Electron webUtils API 获取文件路径
+        const filePath = window.electronAPI?.fileUtils?.getPathForFile(file)
+        if (filePath) {
           files.push({
             name: file.name,
-            path: (file as any).path,
+            path: filePath,
             size: file.size,
             modifyTime: file.lastModified,
             accessTime: file.lastModified,
