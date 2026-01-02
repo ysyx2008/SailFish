@@ -52,13 +52,22 @@ For enterprise users, SFTerminal is designed with intranet environments in mind:
   - ISTP, ISFP, ESTP, ESFP (Artisans)
 - 🔧 **Rich Toolset**:
   - `execute_command` - Execute shell commands, supports real-time commands like top/htop/watch/tail -f
+  - `check_terminal_status` - Check terminal status (idle/busy/waiting for input, etc.)
   - `get_terminal_context` - Get terminal output, view command execution results
   - `send_control_key` - Send control keys (Ctrl+C/D/Z, etc.) to handle stuck commands
+  - `send_input` - Send text input, respond to interactive prompts
   - `read_file` / `write_file` - File read/write operations
+  - `edit_file` - Precise file editing (search & replace, no need to rewrite entire file)
+  - `file_search` - Fast file search (macOS Spotlight / Windows Everything)
   - `remember_info` - Remember key information with cross-session memory
   - `search_knowledge` - Search local knowledge base documents
+  - `ask_user` - Ask user questions to get more information
+  - `wait` - Wait for specified time, handle long-running tasks
 - 🔌 **MCP Extension**: Supports Model Context Protocol for external tools and resources
-- 🧩 **Skills System**: Load extended capabilities on demand (e.g., Excel processing) to avoid tool overload
+- 🧩 **Skills System**: Load extended capabilities on demand to avoid tool overload
+  - `excel` - Excel processing skill
+  - `browser` - Browser automation skill (Playwright-based)
+  - `email` - Email management skill (IMAP/SMTP)
 - ⚠️ **Strict Mode**: Requires user confirmation before executing dangerous commands (enabled by default)
 - ⏱️ **Command Timeout Control**: Configurable command execution timeout to avoid long waits
 - 📜 **Task History**: Records the execution process and results of each Agent task
@@ -361,18 +370,14 @@ Supports importing existing session configurations from Xshell:
 
 ## Version History
 
-### v8.7.0 (Current Version)
-- 🧩 **Skills System**: Brand new extensible skill architecture
-  - Skills are collections of related tools, dynamically loaded on demand
-  - Prevents AI from being overwhelmed by too many tools
-  - Use `load_skill` tool to load required skills
-- 📊 **Excel Processing Skill**: First built-in skill providing session-based Excel read/write capability
-  - `excel_open` - Open Excel file (supports creating new files)
-  - `excel_read` - Read data (supports specific Sheet and cell ranges)
-  - `excel_modify` - Modify cells, add/delete Sheets, support formulas
-  - `excel_save` - Save changes (auto-backup)
-  - `excel_close` - Close file
-  - Ideal for data analysis, report processing, batch data modification, etc.
+### v8.9.3 (Current Version)
+- 🌐 **Browser Automation Skill**: New `browser` skill powered by Playwright for web automation, supports navigation, screenshot, click, type, scroll, and login state management
+- 📧 **Email Management Skill**: New `email` skill with IMAP/SMTP support for reading, searching, sending, and deleting emails
+- 🔧 **Agent Tool Enhancements**: Added `edit_file` (precise editing), `file_search` (fast search), `ask_user` (ask questions), `send_input` (send input), `wait` (waiting), `check_terminal_status` (terminal status check)
+
+### v8.7.0
+- 🧩 **Skills System**: Brand new extensible skill architecture with on-demand loading to avoid tool overload
+- 📊 **Excel Processing Skill**: First built-in skill for session-based Excel read/write operations
 - ⚙️ **Electron 37**: Upgraded to latest Electron version for better performance and compatibility
 
 ### v8.4.0
@@ -538,3 +543,11 @@ For detailed and commercial terms, please see the [LICENSE](./LICENSE) file, or 
 - [ssh2](https://github.com/mscdex/ssh2)
 - [LanceDB](https://lancedb.com/)
 - [Transformers.js](https://huggingface.co/docs/transformers.js)
+- [Playwright](https://playwright.dev/)
+- [ExcelJS](https://github.com/exceljs/exceljs)
+- [IMAPFlow](https://github.com/postalsys/imapflow)
+- [Nodemailer](https://nodemailer.com/)
+- [MCP SDK](https://github.com/modelcontextprotocol/typescript-sdk)
+- [Mammoth](https://github.com/mwilliamson/mammoth.js)
+- [pdf-parse](https://github.com/pdfjs/pdf-parse)
+- [jieba-wasm](https://github.com/aspect-build/aspect-rules-jieba)
