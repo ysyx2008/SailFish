@@ -27,17 +27,6 @@ For enterprise users, SFTerminal is designed with intranet environments in mind:
 
 ## Features
 
-### Terminal Features
-- 🖥️ **Cross-Platform Support**: Full coverage for Windows, macOS, and Linux
-- 🔐 **SSH Management**: Supports password and private key authentication
-- 📂 **Session Groups**: Flexible group management with group-level jump host configuration
-  - Create, edit, and delete groups
-  - Each group can configure an independent jump host; sessions in the group automatically connect through the jump host
-  - Drag-and-drop session sorting
-- 📥 **Xshell Import**: One-click import of Xshell session configurations for quick migration
-- 🎨 **Rich Themes**: Built-in multiple beautiful color schemes
-- ⚡ **High Performance**: Based on xterm.js for smooth terminal experience
-
 ### AI Agent Mode
 
 <p align="center">
@@ -71,6 +60,15 @@ For enterprise users, SFTerminal is designed with intranet environments in mind:
 - ⚠️ **Strict Mode**: Requires user confirmation before executing dangerous commands (enabled by default)
 - ⏱️ **Command Timeout Control**: Configurable command execution timeout to avoid long waits
 - 📜 **Task History**: Records the execution process and results of each Agent task
+
+### Terminal Features
+- 🖥️ **Cross-Platform Support**: Full coverage for Windows, macOS, and Linux
+- 🔐 **SSH Management**: Supports password and private key authentication
+- 📂 **Session Groups**: Flexible group management with group-level jump host configuration, Each group can configure an independent jump host; sessions in the group automatically connect through the jump host
+- 🚀 **Batch Operations**: Execute commands across multiple terminals simultaneously for batch server management
+- 📥 **Xshell Import**: One-click import of Xshell session configurations for quick migration
+- 🎨 **Rich Themes**: Built-in multiple beautiful color schemes
+- ⚡ **High Performance**: Based on xterm.js for smooth terminal experience
 
 ### MCP Extension Capabilities
 - 🔗 **Protocol Support**: Full support for Model Context Protocol (MCP) standard
