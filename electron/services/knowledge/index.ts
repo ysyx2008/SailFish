@@ -321,8 +321,9 @@ export class KnowledgeService extends EventEmitter {
 
   /**
    * 保存文档索引
+   * @returns 是否保存成功
    */
-  private saveDocumentsIndex(): void {
+  private saveDocumentsIndex(): boolean {
     try {
       const dir = path.dirname(this.documentsMetaPath)
       if (!fs.existsSync(dir)) {
@@ -335,9 +336,14 @@ export class KnowledgeService extends EventEmitter {
         documents: Array.from(this.documentsIndex.values())
       }
       
-      fs.writeFileSync(this.documentsMetaPath, JSON.stringify(data, null, 2), 'utf-8')
+      // 先写入临时文件，再重命名，确保原子性
+      const tempPath = this.documentsMetaPath + '.tmp'
+      fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf-8')
+      fs.renameSync(tempPath, this.documentsMetaPath)
+      return true
     } catch (error) {
       console.error('[KnowledgeService] Failed to save documents index:', error)
+      return false
     }
   }
 
@@ -462,8 +468,9 @@ export class KnowledgeService extends EventEmitter {
    * 删除文档
    * @param docId 文档 ID
    * @param forceCompact 是否强制执行 LanceDB compact（清理已删除数据）
+   * @param skipSave 是否跳过保存（批量删除时使用，最后统一保存）
    */
-  async removeDocument(docId: string, forceCompact: boolean = false): Promise<boolean> {
+  async removeDocument(docId: string, forceCompact: boolean = false, skipSave: boolean = false): Promise<boolean> {
     if (!this.documentsIndex.has(docId)) {
       return false
     }
@@ -476,7 +483,11 @@ export class KnowledgeService extends EventEmitter {
 
     // 删除文档索引
     this.documentsIndex.delete(docId)
-    this.saveDocumentsIndex()
+    
+    // 如果不是批量删除，立即保存
+    if (!skipSave) {
+      this.saveDocumentsIndex()
+    }
 
     this.emit('documentRemoved', docId)
     return true
@@ -495,8 +506,8 @@ export class KnowledgeService extends EventEmitter {
       const docId = docIds[i]
       const isLast = i === total - 1
       try {
-        // 最后一个文档删除时强制 compact
-        const result = await this.removeDocument(docId, isLast)
+        // 最后一个文档删除时强制 compact，批量删除时跳过中间保存
+        const result = await this.removeDocument(docId, isLast, true)
         if (result) {
           success++
         } else {
@@ -508,9 +519,17 @@ export class KnowledgeService extends EventEmitter {
       }
     }
 
-    // 如果有删除成功，确保 compact 执行
+    // 批量删除完成后统一保存一次
     if (success > 0) {
-      console.log(`[KnowledgeService] 批量删除完成: ${success} 成功, ${failed} 失败，已执行 compact`)
+      const saved = this.saveDocumentsIndex()
+      if (!saved) {
+        console.error('[KnowledgeService] 批量删除后保存索引失败！')
+        // 保存失败时，将所有已删除的标记为失败
+        failed += success
+        success = 0
+      } else {
+        console.log(`[KnowledgeService] 批量删除完成: ${success} 成功, ${failed} 失败，已执行 compact 并保存索引`)
+      }
     }
 
     return { success, failed }
@@ -836,7 +855,10 @@ export class KnowledgeService extends EventEmitter {
     await this.vectorStorage.clear()
     await this.bm25Index.clear()
     this.documentsIndex.clear()
-    this.saveDocumentsIndex()
+    const saved = this.saveDocumentsIndex()
+    if (!saved) {
+      throw new Error('清空知识库后保存索引失败')
+    }
     this.emit('cleared')
   }
 

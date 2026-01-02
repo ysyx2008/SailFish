@@ -2636,7 +2636,13 @@ ipcMain.handle('knowledge:removeDocument', async (_event, docId: string) => {
 ipcMain.handle('knowledge:removeDocuments', async (_event, docIds: string[]) => {
   try {
     const result = await getKnowledge().removeDocuments(docIds)
-    return { success: true, deleted: result.success, failed: result.failed }
+    // 只有全部删除成功才返回 success: true
+    return { 
+      success: result.failed === 0, 
+      deleted: result.success, 
+      failed: result.failed,
+      error: result.failed > 0 ? `${result.failed} 个文档删除失败` : undefined
+    }
   } catch (error) {
     return { 
       success: false, 
