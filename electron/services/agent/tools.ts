@@ -269,9 +269,57 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
     {
       type: 'function',
       function: {
+        name: 'edit_file',
+        description: `精确编辑本地文件。通过查找并替换指定文本来修改文件，无需重写整个文件。
+
+**这是修改现有文件的首选工具**，比重写整个文件更高效、更安全。
+
+**使用方法**：
+1. 提供 old_text：要替换的原始文本（必须与文件内容完全匹配）
+2. 提供 new_text：替换后的新文本
+3. 工具会在文件中查找 old_text 并替换为 new_text
+
+**重要规则**：
+- old_text 必须在文件中**唯一匹配**，否则会报错
+- 如果匹配多处，请提供更多上下文（包含前后几行）使其唯一
+- 保持原有缩进格式，不要改变空白字符
+
+**示例场景**：
+- 修改函数实现：提供函数的完整代码块作为 old_text
+- 修改配置项：提供包含该配置的几行作为 old_text
+- 添加代码：old_text 为插入点附近的代码，new_text 包含原代码+新增内容
+
+⚠️ 如果需要创建新文件或完全重写，请使用 write_local_file 工具。`,
+        parameters: {
+          type: 'object',
+          properties: {
+            path: {
+              type: 'string',
+              description: '本地文件路径（绝对路径或相对于当前目录）'
+            },
+            old_text: {
+              type: 'string',
+              description: '要替换的原始文本，必须与文件内容完全匹配（包括空白和换行）'
+            },
+            new_text: {
+              type: 'string',
+              description: '替换后的新文本'
+            }
+          },
+          required: ['path', 'old_text', 'new_text']
+        }
+      },
+      _meta: { supportedModes: ['local'] }
+    } as ToolDefinitionWithMeta,
+    {
+      type: 'function',
+      function: {
         name: 'write_local_file',
         description: `写入或创建本地文件。支持多种写入模式：
 
+**注意**：如果只需要修改文件的一部分，请优先使用 edit_file 工具。
+
+**支持的模式**：
 1. **新建模式（默认）**：mode='create'，仅创建新文件，如果文件已存在则报错
 2. **覆盖模式**：mode='overwrite'，用 content 替换整个文件（文件存在会覆盖）
 3. **追加模式**：mode='append'，在文件末尾追加 content
