@@ -211,6 +211,9 @@ export async function executeTool(
     case 'file_search':
       return await fileSearch(ptyId, args, config, executor)
 
+    case 'edit_file':
+      return editFile(ptyId, args, toolCall.id, config, executor)
+
     case 'write_local_file':
       return writeLocalFile(ptyId, args, toolCall.id, config, executor)
 
@@ -2079,6 +2082,130 @@ async function writeRemoteFile(
 }
 
 /**
+ * 精确编辑本地文件
+ * 通过查找并替换指定文本来修改文件，无需重写整个文件
+ */
+async function editFile(
+  ptyId: string,
+  args: Record<string, unknown>,
+  toolCallId: string,
+  config: AgentConfig,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  let filePath = args.path as string
+  const oldText = args.old_text as string
+  const newText = args.new_text as string
+
+  if (!filePath) {
+    return { success: false, output: '', error: t('error.file_path_required') }
+  }
+
+  if (oldText === undefined || oldText === null) {
+    return { success: false, output: '', error: t('error.old_text_required') }
+  }
+
+  if (newText === undefined || newText === null) {
+    return { success: false, output: '', error: t('error.new_text_required') }
+  }
+
+  // 如果是相对路径，基于终端当前工作目录解析
+  if (!path.isAbsolute(filePath)) {
+    const terminalStateService = getTerminalStateService()
+    const cwd = terminalStateService.getCwd(ptyId)
+    filePath = path.resolve(cwd, filePath)
+  }
+
+  // 检查文件是否存在
+  if (!fs.existsSync(filePath)) {
+    return { success: false, output: '', error: t('error.file_not_exists', { path: filePath }) }
+  }
+
+  // 添加工具调用步骤
+  const oldTextPreview = oldText.length > 50 ? oldText.substring(0, 50) + '...' : oldText
+  const newTextPreview = newText.length > 50 ? newText.substring(0, 50) + '...' : newText
+  
+  executor.addStep({
+    type: 'tool_call',
+    content: `${t('file.edit')}: ${filePath}`,
+    toolName: 'edit_file',
+    toolArgs: { 
+      path: filePath, 
+      old_text: oldTextPreview,
+      new_text: newTextPreview
+    },
+    riskLevel: 'moderate'
+  })
+
+  // 严格模式下需要确认文件编辑操作
+  if (config.executionMode === 'strict') {
+    const approved = await executor.waitForConfirmation(
+      toolCallId, 
+      'edit_file', 
+      args, 
+      'moderate'
+    )
+    if (!approved) {
+      return { success: false, output: '', error: t('file.user_rejected_write') }
+    }
+  }
+
+  try {
+    // 读取文件内容
+    const fileContent = fs.readFileSync(filePath, 'utf-8')
+
+    // 检查 old_text 在文件中出现的次数
+    const occurrences = fileContent.split(oldText).length - 1
+
+    if (occurrences === 0) {
+      const errorMsg = t('error.old_text_not_found')
+      executor.addStep({
+        type: 'tool_result',
+        content: `${t('file.edit_failed')}: ${errorMsg}`,
+        toolName: 'edit_file',
+        toolResult: `${errorMsg}\n\n${t('hint.old_text_not_found')}`
+      })
+      return { success: false, output: '', error: errorMsg }
+    }
+
+    if (occurrences > 1) {
+      const errorMsg = t('error.old_text_multiple_matches', { count: occurrences })
+      executor.addStep({
+        type: 'tool_result',
+        content: `${t('file.edit_failed')}: ${errorMsg}`,
+        toolName: 'edit_file',
+        toolResult: `${errorMsg}\n\n${t('hint.old_text_multiple_matches')}`
+      })
+      return { success: false, output: '', error: errorMsg }
+    }
+
+    // 执行替换
+    const newContent = fileContent.replace(oldText, newText)
+    fs.writeFileSync(filePath, newContent, 'utf-8')
+
+    const resultMsg = t('file.edit_success', { path: filePath })
+    executor.addStep({
+      type: 'tool_result',
+      content: resultMsg,
+      toolName: 'edit_file'
+    })
+
+    return { success: true, output: resultMsg }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : t('file.edit_failed')
+    const errorCategory = categorizeError(errorMsg)
+    const suggestion = getErrorRecoverySuggestion(errorMsg, errorCategory)
+    
+    executor.addStep({
+      type: 'tool_result',
+      content: `${t('file.edit_failed')}: ${errorMsg}`,
+      toolName: 'edit_file',
+      toolResult: `${errorMsg}\n\n💡 ${suggestion}`
+    })
+    return { success: false, output: '', error: t('error.recovery_hint', { error: errorMsg, suggestion }) }
+  }
+}
+
+/**
  * 写入本地文件
  * 支持多种模式：create、overwrite、append、insert、replace_lines、regex_replace
  */
@@ -2210,10 +2337,10 @@ async function writeLocalFile(
   // 对于大文件，添加写入进度提示
   let progressStepId: string | undefined
   if (isLargeContent) {
-    const progressStep =       executor.addStep({
-        type: 'tool_result',
-        content: `⏳ ${t('file.writing_progress')}（${contentSizeKB} KB）`,
-        toolName: 'write_local_file',
+    const progressStep = executor.addStep({
+      type: 'tool_result',
+      content: `⏳ ${t('file.writing_progress')}（${contentSizeKB} KB）`,
+      toolName: 'write_local_file',
       isStreaming: true
     })
     progressStepId = progressStep.id
@@ -2332,10 +2459,10 @@ async function writeLocalFile(
         isStreaming: false
       })
     } else {
-        executor.addStep({
-          type: 'tool_result',
-          content: `${t('file.write_failed')}: ${errorMsg}`,
-          toolName: 'write_local_file',
+      executor.addStep({
+        type: 'tool_result',
+        content: `${t('file.write_failed')}: ${errorMsg}`,
+        toolName: 'write_local_file',
         toolResult: `${errorMsg}\n\n💡 ${suggestion}`
       })
     }

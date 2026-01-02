@@ -231,6 +231,9 @@ const translations = {
     'file.search_failed': '文件搜索失败',
     'file.modified': '修改',
     'file.created': '创建',
+    'file.edit': '编辑文件',
+    'file.edit_success': '文件编辑成功: {path}',
+    'file.edit_failed': '文件编辑失败',
 
     // Excel 操作
     'excel.action_required': '需要指定操作类型（read/write/modify）',
@@ -502,6 +505,13 @@ const translations = {
     'error.file_not_exists_for_regex': '文件不存在，无法执行正则替换操作',
     'error.invalid_regex_pattern': '无效的正则表达式: {pattern}',
     'error.regex_no_match': '未找到匹配的内容: {pattern}',
+    'error.old_text_required': 'old_text 参数不能为空',
+    'error.new_text_required': 'new_text 参数不能为空',
+    'error.file_not_exists': '文件不存在: {path}',
+    'error.old_text_not_found': '在文件中未找到要替换的文本',
+    'error.old_text_multiple_matches': '找到 {count} 处匹配，old_text 必须在文件中唯一匹配',
+    'hint.old_text_not_found': '请检查 old_text 是否与文件内容完全匹配（包括空白字符和换行）。建议先用 read_file 查看文件内容。',
+    'hint.old_text_multiple_matches': '请提供更多上下文（如包含前后几行）使 old_text 在文件中唯一匹配。',
 
     // 记忆错误
     'error.info_required': '信息不能为空',
@@ -786,6 +796,9 @@ Please output the summary in the following format:
     'file.search_failed': 'File search failed',
     'file.modified': 'Modified',
     'file.created': 'Created',
+    'file.edit': 'Edit file',
+    'file.edit_success': 'File edited successfully: {path}',
+    'file.edit_failed': 'File edit failed',
 
     // Excel operations
     'excel.action_required': 'Action type required (read/write/modify)',
@@ -1057,6 +1070,13 @@ Please output the summary in the following format:
     'error.file_not_exists_for_regex': 'File does not exist, cannot perform regex replacement',
     'error.invalid_regex_pattern': 'Invalid regex pattern: {pattern}',
     'error.regex_no_match': 'No matching content found: {pattern}',
+    'error.old_text_required': 'old_text parameter cannot be empty',
+    'error.new_text_required': 'new_text parameter cannot be empty',
+    'error.file_not_exists': 'File not found: {path}',
+    'error.old_text_not_found': 'Text to replace not found in file',
+    'error.old_text_multiple_matches': 'Found {count} matches, old_text must match exactly once in file',
+    'hint.old_text_not_found': 'Please check if old_text exactly matches file content (including whitespace and newlines). Consider using read_file to view file content first.',
+    'hint.old_text_multiple_matches': 'Please provide more context (e.g. include surrounding lines) to make old_text unique in the file.',
 
     // Memory errors
     'error.info_required': 'Info cannot be empty',
