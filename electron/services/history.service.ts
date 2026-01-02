@@ -422,32 +422,51 @@ export class HistoryService {
 
   /**
    * 清理指定天数之前的历史记录
+   * @param daysToKeep 保留最近几天的记录，0 表示清空全部
    */
   cleanupOldRecords(daysToKeep: number = 90): { chatDeleted: number; agentDeleted: number } {
-    const cutoffDate = new Date()
-    cutoffDate.setDate(cutoffDate.getDate() - daysToKeep)
-    const cutoffStr = this.getDateString(cutoffDate.getTime())
-
     let chatDeleted = 0
     let agentDeleted = 0
 
-    // 清理聊天记录
-    const chatFiles = fs.readdirSync(this.chatDir).filter(f => f.endsWith('.json'))
-    for (const file of chatFiles) {
-      const dateStr = file.replace('.json', '')
-      if (dateStr < cutoffStr) {
+    // daysToKeep = 0 表示清空全部
+    if (daysToKeep === 0) {
+      // 清空所有聊天记录
+      const chatFiles = fs.readdirSync(this.chatDir).filter(f => f.endsWith('.json'))
+      for (const file of chatFiles) {
         fs.unlinkSync(path.join(this.chatDir, file))
         chatDeleted++
       }
-    }
 
-    // 清理 Agent 记录
-    const agentFiles = fs.readdirSync(this.agentDir).filter(f => f.endsWith('.json'))
-    for (const file of agentFiles) {
-      const dateStr = file.replace('.json', '')
-      if (dateStr < cutoffStr) {
+      // 清空所有 Agent 记录
+      const agentFiles = fs.readdirSync(this.agentDir).filter(f => f.endsWith('.json'))
+      for (const file of agentFiles) {
         fs.unlinkSync(path.join(this.agentDir, file))
         agentDeleted++
+      }
+    } else {
+      // 按日期保留
+      const cutoffDate = new Date()
+      cutoffDate.setDate(cutoffDate.getDate() - daysToKeep)
+      const cutoffStr = this.getDateString(cutoffDate.getTime())
+
+      // 清理聊天记录
+      const chatFiles = fs.readdirSync(this.chatDir).filter(f => f.endsWith('.json'))
+      for (const file of chatFiles) {
+        const dateStr = file.replace('.json', '')
+        if (dateStr < cutoffStr) {
+          fs.unlinkSync(path.join(this.chatDir, file))
+          chatDeleted++
+        }
+      }
+
+      // 清理 Agent 记录
+      const agentFiles = fs.readdirSync(this.agentDir).filter(f => f.endsWith('.json'))
+      for (const file of agentFiles) {
+        const dateStr = file.replace('.json', '')
+        if (dateStr < cutoffStr) {
+          fs.unlinkSync(path.join(this.agentDir, file))
+          agentDeleted++
+        }
       }
     }
 
