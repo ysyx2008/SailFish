@@ -2046,7 +2046,13 @@ async function writeFileViaSftp(
         // 文件不存在，可以创建
       }
       if (fileExists) {
-        return { success: false, output: '', error: t('error.file_exists_cannot_create', { path: filePath }) }
+        const errorMsg = t('error.file_exists_cannot_create', { path: filePath })
+        executor.addStep({
+          type: 'tool_result',
+          content: `❌ ${errorMsg}`,
+          toolName: 'write_remote_file'
+        })
+        return { success: false, output: '', error: errorMsg }
       }
       await sftpService.writeFile(ptyId, filePath, content)
       resultMsg = `${t('file.result_remote_created')}: ${filePath}`
@@ -2418,7 +2424,13 @@ async function writeLocalFile(
       }
       case 'create': {
         if (fileExists) {
-          return { success: false, output: '', error: t('error.file_exists_cannot_create', { path: filePath }) }
+          const errorMsg = t('error.file_exists_cannot_create', { path: filePath })
+          executor.addStep({
+            type: 'tool_result',
+            content: `❌ ${errorMsg}`,
+            toolName: 'write_local_file'
+          })
+          return { success: false, output: '', error: errorMsg }
         }
         fs.writeFileSync(filePath, content!, 'utf-8')
         resultMsg = `${t('file.result_created')}: ${filePath}`
@@ -2431,7 +2443,13 @@ async function writeLocalFile(
       }
       case 'insert': {
         if (!fileExists) {
-          return { success: false, output: '', error: t('error.file_not_exists_for_insert') }
+          const errorMsg = t('error.file_not_exists_for_insert')
+          executor.addStep({
+            type: 'tool_result',
+            content: `❌ ${errorMsg}`,
+            toolName: 'write_local_file'
+          })
+          return { success: false, output: '', error: errorMsg }
         }
         const lines = fs.readFileSync(filePath, 'utf-8').split('\n')
         const insertIndex = Math.min(insertAtLine! - 1, lines.length)
@@ -2443,12 +2461,24 @@ async function writeLocalFile(
       }
       case 'replace_lines': {
         if (!fileExists) {
-          return { success: false, output: '', error: t('error.file_not_exists_for_replace') }
+          const errorMsg = t('error.file_not_exists_for_replace')
+          executor.addStep({
+            type: 'tool_result',
+            content: `❌ ${errorMsg}`,
+            toolName: 'write_local_file'
+          })
+          return { success: false, output: '', error: errorMsg }
         }
         const lines = fs.readFileSync(filePath, 'utf-8').split('\n')
         const totalLines = lines.length
         if (startLine! > totalLines) {
-          return { success: false, output: '', error: t('error.start_line_exceeds_total', { start: startLine!, total: totalLines }) }
+          const errorMsg = t('error.start_line_exceeds_total', { start: startLine!, total: totalLines })
+          executor.addStep({
+            type: 'tool_result',
+            content: `❌ ${errorMsg}`,
+            toolName: 'write_local_file'
+          })
+          return { success: false, output: '', error: errorMsg }
         }
         const actualEndLine = Math.min(endLine!, totalLines)
         const deleteCount = actualEndLine - startLine! + 1
@@ -2460,7 +2490,13 @@ async function writeLocalFile(
       }
       case 'regex_replace': {
         if (!fileExists) {
-          return { success: false, output: '', error: t('error.file_not_exists_for_regex') }
+          const errorMsg = t('error.file_not_exists_for_regex')
+          executor.addStep({
+            type: 'tool_result',
+            content: `❌ ${errorMsg}`,
+            toolName: 'write_local_file'
+          })
+          return { success: false, output: '', error: errorMsg }
         }
         const fileContent = fs.readFileSync(filePath, 'utf-8')
         let regex: RegExp
