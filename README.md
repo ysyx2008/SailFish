@@ -1,15 +1,28 @@
-<div align="right">
+<div align="center">
+
+```
+███████╗███████╗████████╗███████╗██████╗ ███╗   ███╗
+██╔════╝██╔════╝╚══██╔══╝██╔════╝██╔══██╗████╗ ████║
+███████╗█████╗     ██║   █████╗  ██████╔╝██╔████╔██║
+╚════██║██╔══╝     ██║   ██╔══╝  ██╔══██╗██║╚██╔╝██║
+███████║██║        ██║   ███████╗██║  ██║██║ ╚═╝ ██║
+╚══════╝╚═╝        ╚═╝   ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝
+```
+
+**旗鱼终端**
+
+> AI 驱动的跨平台终端，助力运维提效
+
+🌐 **官方网站**：[www.sfterm.com](http://www.sfterm.com/)
+
+</div>
+
+<div align="center">
 
 [![en](https://img.shields.io/badge/lang-English-blue.svg)](./README_EN.md)
 [![cn](https://img.shields.io/badge/lang-中文-red.svg)](./README.md)
 
 </div>
-
-# 旗鱼终端
-
-> AI 驱动的跨平台终端，助力运维提效
-
-🌐 **官方网站**：[www.sfterm.com](http://www.sfterm.com/)
 
 ## 产品介绍
 
