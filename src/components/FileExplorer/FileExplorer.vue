@@ -250,9 +250,10 @@ const handleDrop = async (fileList: FileList) => {
   const paths: string[] = []
   for (let i = 0; i < fileList.length; i++) {
     const file = fileList[i]
-    // Electron 环境下可以获取文件路径
-    if ((file as any).path) {
-      paths.push((file as any).path)
+    // 使用 Electron webUtils API 获取文件路径
+    const filePath = window.electronAPI?.fileUtils?.getPathForFile(file)
+    if (filePath) {
+      paths.push(filePath)
     }
   }
   if (paths.length > 0) {
