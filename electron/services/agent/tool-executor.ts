@@ -1701,29 +1701,44 @@ ${sampleContent ? `### ${t('file.info_preview')}\n\`\`\`\n${sampleContent}\n\`\`
     // 读取文件内容
     let content = ''
     let actualLines: string[] = []
+    let totalLines: number | undefined // 文件总行数（部分读取时使用）
+    let isPartialRead = false // 是否为部分读取
+
+    // 格式化字节数为人类可读格式
+    const formatBytes = (bytes: number): string => {
+      if (bytes < 1024) return `${bytes} B`
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+      return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+    }
 
     // 如果指定了行范围
     if (startLine !== undefined || endLine !== undefined) {
       const fullContent = fs.readFileSync(filePath, 'utf-8')
       const allLines = fullContent.split('\n')
+      totalLines = allLines.length
       const start = startLine !== undefined ? Math.max(1, startLine) - 1 : 0 // 转换为0-based索引
       const end = endLine !== undefined ? Math.min(allLines.length, endLine) : allLines.length
       actualLines = allLines.slice(start, end)
       content = actualLines.join('\n')
+      isPartialRead = actualLines.length < allLines.length
     }
     // 如果指定了最大行数（从开头读取）
     else if (maxLines !== undefined) {
       const fullContent = fs.readFileSync(filePath, 'utf-8')
       const allLines = fullContent.split('\n')
+      totalLines = allLines.length
       actualLines = allLines.slice(0, maxLines)
       content = actualLines.join('\n')
+      isPartialRead = actualLines.length < allLines.length
     }
     // 如果指定了从末尾读取的行数
     else if (tailLines !== undefined) {
       const fullContent = fs.readFileSync(filePath, 'utf-8')
       const allLines = fullContent.split('\n')
+      totalLines = allLines.length
       actualLines = allLines.slice(-tailLines)
       content = actualLines.join('\n')
+      isPartialRead = actualLines.length < allLines.length
     }
     // 完整读取（仅当文件小于 500KB 时）
     else {
@@ -1753,7 +1768,18 @@ ${sampleContent ? `### ${t('file.info_preview')}\n\`\`\`\n${sampleContent}\n\`\`
     } else {
       readInfo.push(t('file.full_read'))
     }
-    readInfo.push(t('file.actual_read', { lines: actualLines.length, chars: content.length.toLocaleString() }))
+    
+    // 如果是部分读取，显示文件总览和已读取的对比信息
+    if (isPartialRead && totalLines !== undefined) {
+      readInfo.push(t('file.partial_read_stats', {
+        totalLines,
+        totalBytes: formatBytes(fileSize),
+        lines: actualLines.length,
+        chars: formatBytes(content.length)
+      }))
+    } else {
+      readInfo.push(t('file.actual_read', { lines: actualLines.length, chars: content.length.toLocaleString() }))
+    }
 
     executor.addStep({
       type: 'tool_result',
