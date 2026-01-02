@@ -1,15 +1,28 @@
-<div align="right">
+<div align="center">
+
+```
+███████╗███████╗████████╗███████╗██████╗ ███╗   ███╗
+██╔════╝██╔════╝╚══██╔══╝██╔════╝██╔══██╗████╗ ████║
+███████╗█████╗     ██║   █████╗  ██████╔╝██╔████╔██║
+╚════██║██╔══╝     ██║   ██╔══╝  ██╔══██╗██║╚██╔╝██║
+███████║██║        ██║   ███████╗██║  ██║██║ ╚═╝ ██║
+╚══════╝╚═╝        ╚═╝   ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝
+```
+
+**SFTerminal**
+
+> AI-Powered Cross-Platform Terminal for DevOps Efficiency
+
+🌐 **Official Website**: [www.sfterm.com](http://www.sfterm.com/en/)
+
+</div>
+
+<div align="center">
 
 [![en](https://img.shields.io/badge/lang-English-blue.svg)](./README_EN.md)
 [![cn](https://img.shields.io/badge/lang-中文-red.svg)](./README.md)
 
 </div>
-
-# SFTerminal
-
-> AI-Powered Cross-Platform Terminal for DevOps Efficiency
-
-🌐 **Official Website**: [www.sfterm.com](http://www.sfterm.com/en/)
 
 ## Introduction
 
