@@ -229,15 +229,20 @@ const clearKnowledge = async () => {
     // 只删除普通文档，保留主机记忆
     const docIds = normalDocuments.value.map(d => d.id)
     const result = await window.electronAPI.knowledge.removeDocuments(docIds)
-    if (result.success) {
-      await loadData()
-      selectedDoc.value = null
-      clearSelection()
-    } else {
-      alert(`${t('knowledgeManager.clearFailed')}: ${result.error}`)
+    
+    // 无论成功与否都刷新数据，显示实际状态
+    await loadData()
+    selectedDoc.value = null
+    clearSelection()
+    
+    // 如果有删除失败的情况，提示用户
+    if (result.failed && result.failed > 0) {
+      alert(`${t('knowledgeManager.clearFailed')}: ${result.deleted} 个成功, ${result.failed} 个失败`)
     }
   } catch (error) {
     console.error('Clear knowledge base failed:', error)
+    // 出错也刷新数据
+    await loadData()
   } finally {
     clearing.value = false
   }
@@ -255,16 +260,21 @@ const clearAllMemories = async () => {
     clearing.value = true
     const docIds = memoryDocuments.value.map(d => d.id)
     const result = await window.electronAPI.knowledge.removeDocuments(docIds)
-    if (result.success) {
-      await loadData()
-      if (selectedDoc.value && selectedDoc.value.fileType === 'host-memory') {
-        selectedDoc.value = null
-      }
-    } else {
-      alert(`清空记忆失败: ${result.error}`)
+    
+    // 无论成功与否都刷新数据，显示实际状态
+    await loadData()
+    if (selectedDoc.value && selectedDoc.value.fileType === 'host-memory') {
+      selectedDoc.value = null
+    }
+    
+    // 如果有删除失败的情况，提示用户
+    if (result.failed && result.failed > 0) {
+      alert(`清空记忆部分失败: ${result.deleted} 条成功, ${result.failed} 条失败`)
     }
   } catch (error) {
     console.error('Clear memories failed:', error)
+    // 出错也刷新数据
+    await loadData()
   } finally {
     clearing.value = false
   }
