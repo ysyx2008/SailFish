@@ -1320,12 +1320,23 @@ export class AgentService {
               content: msg
             })
           }
-          // 以自然对话的方式注入用户消息，不使用系统标记
+          // 以自然对话的方式注入用户消息
           const supplementMsg = run.pendingUserMessages.join('\n')
           run.messages.push({ 
             role: 'user', 
-            content: supplementMsg  // 直接使用用户原始消息，让对话更自然
+            content: supplementMsg
           })
+          
+          // 如果存在当前计划，轻轻提示 AI 可以根据需要调整计划
+          if (run.currentPlan && run.currentPlan.steps.some(s => s.status === 'pending')) {
+            run.messages.push({
+              role: 'user',
+              content: t('agent.user_supplement_with_plan')
+            })
+            // 重置计划提醒计数，因为情况可能已经改变
+            ;(run as any)._planReminderCount = 0
+          }
+          
           run.pendingUserMessages = []
         }
 
