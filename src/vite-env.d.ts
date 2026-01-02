@@ -1516,6 +1516,11 @@ interface Window {
         smtpSecure?: boolean
       }>) => Promise<void>
     }
+    // 文件工具
+    fileUtils: {
+      // 获取拖放文件的路径（Electron 24+ 推荐方式）
+      getPathForFile: (file: File) => string
+    }
     // 终端屏幕内容服务（主进程请求渲染进程数据）
     screen: {
       // 注册获取最近 N 行的请求处理器
