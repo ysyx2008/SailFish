@@ -782,6 +782,9 @@ export default {
       execute_command: '执行命令',
       read_file: '读取文件',
       write_file: '写入文件',
+      write_local_file: '写入本地文件',
+      write_remote_file: '写入远程文件',
+      edit_file: '编辑文件',
       get_terminal_context: '获取终端上下文'
     },
     askingDefault: '默认：',
