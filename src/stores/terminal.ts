@@ -69,6 +69,7 @@ export interface AgentStep {
   timestamp: number
   isStreaming?: boolean
   plan?: AgentPlan  // 计划数据（仅 plan_created/plan_updated 类型使用）
+  contextTokens?: number  // 当前上下文的 token 数（后端计算）
 }
 
 export interface PendingConfirmation {

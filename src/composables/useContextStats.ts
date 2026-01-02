@@ -57,45 +57,43 @@ export function useContextStats(
   }
 
   // 计算上下文使用情况
-  // 这个估算反映的是发送给 AI 的实际上下文大小
+  // 优先使用后端返回的实际 token 数，比前端估算更准确
   const contextStats = computed((): ContextStatsResult => {
     let totalTokens = 0
     let messageCount = 0
     
     if (agentMode.value) {
-      // Agent 模式：计算发送给 AI 的实际上下文
-      // 1. System prompt (~200 tokens) + 工具定义 (~400 tokens)
-      totalTokens += 600
-      
-      // 2. 历史任务（作为 user/assistant 消息对发送）
-      const history = agentState.value?.history || []
-      for (const item of history) {
-        totalTokens += estimateTokens(item.userTask) + 3  // user 消息 + 格式开销
-        totalTokens += estimateTokens(item.finalResult) + 3  // assistant 消息 + 格式开销
-        messageCount += 2
-      }
-      
-      // 3. 当前用户任务
-      if (agentUserTask.value) {
-        totalTokens += estimateTokens(agentUserTask.value) + 3
-        messageCount++
-      }
-      
-      // 4. Agent 执行过程中的消息累积
-      // 每个步骤 = AI 回复 + 工具调用 + 工具结果
+      // Agent 模式：优先使用后端返回的 contextTokens
       const allSteps = agentState.value?.steps || []
-      for (const step of allSteps) {
-        if (step.type === 'message' || step.type === 'thinking') {
-          // AI 的文字回复
-          totalTokens += estimateTokens(step.content) + 3
-        } else if (step.type === 'tool_call' || step.type === 'tool_result') {
-          // 工具调用参数 + 工具结果
-          totalTokens += estimateTokens(step.content) + 10  // 工具调用有更多格式开销
+      
+      // 从最新的步骤中获取后端计算的 contextTokens
+      for (let i = allSteps.length - 1; i >= 0; i--) {
+        if (allSteps[i].contextTokens !== undefined) {
+          totalTokens = allSteps[i].contextTokens!
+          break
+        }
+      }
+      
+      // 如果后端没有返回（兼容旧版本），使用简单估算
+      if (totalTokens === 0) {
+        // System prompt + 工具定义
+        totalTokens = 600
+        
+        // 当前用户任务
+        if (agentUserTask.value) {
+          totalTokens += estimateTokens(agentUserTask.value) + 3
+        }
+        
+        // 当前步骤的简单估算
+        for (const step of allSteps) {
+          totalTokens += estimateTokens(step.content || '') + 5
           if (step.toolResult) {
             totalTokens += estimateTokens(step.toolResult) + 5
           }
         }
       }
+      
+      messageCount = allSteps.length
     } else {
       // 普通对话模式
       // System prompt (~100 tokens)

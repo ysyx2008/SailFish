@@ -716,7 +716,67 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
         }
       }
     },
-    buildLoadSkillTool()
+    buildLoadSkillTool(),
+    // ==================== 任务记忆工具 ====================
+    {
+      type: 'function',
+      function: {
+        name: 'recall_task',
+        description: `回忆之前任务的关键信息摘要。返回执行的命令、涉及的路径、服务、错误和关键发现等。
+
+**使用场景**：
+- 需要了解之前某个任务做了什么
+- 需要查看之前执行过的命令
+- 需要知道之前发现的问题或配置
+
+上下文中的"任务历史"列表显示了所有可回忆的任务 ID。
+
+**返回信息**：
+- commands: 执行的关键命令
+- paths: 涉及的文件路径
+- services: 涉及的服务名
+- errors: 遇到的错误
+- keyFindings: 关键发现`,
+        parameters: {
+          type: 'object',
+          properties: {
+            task_id: {
+              type: 'string',
+              description: '任务 ID（从上下文中的任务历史列表获取，如 task_001）'
+            }
+          },
+          required: ['task_id']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'deep_recall',
+        description: `深度回忆：获取某个任务的完整原始执行步骤。当需要查看命令的完整输出、配置文件的完整内容、详细的执行过程时使用。
+
+**使用场景**：
+- 需要查看某个命令的完整输出（不只是摘要）
+- 需要详细分析之前的执行过程
+- recall_task 返回的摘要信息不够详细
+
+**注意**：返回内容可能较长，请根据需要指定具体步骤索引。`,
+        parameters: {
+          type: 'object',
+          properties: {
+            task_id: {
+              type: 'string',
+              description: '任务 ID（从上下文中的任务历史列表获取）'
+            },
+            step_index: {
+              type: 'number',
+              description: '可选，指定步骤索引（从 0 开始）。不指定则返回所有步骤的简要信息'
+            }
+          },
+          required: ['task_id']
+        }
+      }
+    }
   ]
 
   // 根据运行模式过滤工具

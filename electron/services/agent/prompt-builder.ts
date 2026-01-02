@@ -427,6 +427,10 @@ export interface BuildSystemPromptOptions {
   hostMemories?: string[]
   /** 用户自定义的 AI 规则 */
   aiRules?: string
+  /** 任务历史总结列表（L1 层） */
+  taskSummaries?: string
+  /** 语义预加载的相关任务摘要（L2 层） */
+  relatedTaskDigests?: string
 }
 
 /**
@@ -440,7 +444,9 @@ export function buildSystemPrompt(
   knowledgeEnabled?: boolean,
   hostMemories?: string[],
   executionMode?: ExecutionMode,
-  aiRules?: string
+  aiRules?: string,
+  taskSummaries?: string,
+  relatedTaskDigests?: string
 ): string {
   // MBTI 风格提示
   const mbtiStyle = getMbtiStylePrompt(mbtiType ?? null)
@@ -575,6 +581,8 @@ ${buildPlanningGuidance()}
 | create_plan | 创建任务执行计划（多步骤任务时使用） |${isSshTerminal ? ' ✅ |' : ''}
 | update_plan | 更新计划步骤状态 |${isSshTerminal ? ' ✅ |' : ''}
 | load_skill | 加载技能模块（按需扩展能力） |${isSshTerminal ? ' ✅ |' : ''}
+|| recall_task | 回忆之前任务的关键信息（命令、路径、发现） |${isSshTerminal ? ' ✅ |' : ''}
+|| deep_recall | 深度回忆：获取任务的完整原始输出 |${isSshTerminal ? ' ✅ |' : ''}
 
 ### 🔌 技能扩展系统（重要！）
 
@@ -699,6 +707,23 @@ ${simpleTaskExample}
 ${buildComplexTaskExamples(isWindows)}
 ${documentSection}
 ${knowledgeSection}
+${taskSummaries ? `
+
+## 历史任务记忆
+
+上下文已包含：
+1. **任务总结列表**（L1）：之前所有任务的一句话概要
+2. **相关任务详情**（L2）：与当前任务相关的历史信息（已自动预加载）
+
+如需更多信息：
+- \`recall_task(task_id)\` - 获取指定任务的关键信息摘要
+- \`deep_recall(task_id, step_index?)\` - 获取完整原始输出（命令结果、文件内容等）
+
+**任务历史：**
+${taskSummaries}
+${relatedTaskDigests ? `
+**相关历史详情（自动加载）：**
+${relatedTaskDigests}` : ''}` : ''}
 
 开始工作时，请遵循 ReAct 框架，展示你的思考过程！`
 }
