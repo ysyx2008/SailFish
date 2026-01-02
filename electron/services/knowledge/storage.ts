@@ -219,8 +219,9 @@ export class VectorStorage extends EventEmitter {
 
   /**
    * 删除文档的所有分块
+   * @param forceCompact 是否强制执行 compact（批量删除最后一个时应该传 true）
    */
-  async removeDocumentChunks(docId: string): Promise<number> {
+  async removeDocumentChunks(docId: string, forceCompact: boolean = false): Promise<number> {
     if (!this.table) return 0
 
     try {
@@ -231,11 +232,19 @@ export class VectorStorage extends EventEmitter {
       
       if (removed > 0) {
         this.emit('documentRemoved', { docId, chunksRemoved: removed })
+        this.deleteCount++
         
-        // 执行 compact 操作清理已删除的数据（异步，不阻塞）
-        this.compactIfNeeded().catch(e => {
-          console.warn('[VectorStorage] Compact failed:', e)
-        })
+        // 强制 compact 或按需 compact
+        if (forceCompact) {
+          await this.compact()
+          this.deleteCount = 0
+          this.lastCompactTime = Date.now()
+        } else {
+          // 执行 compact 操作清理已删除的数据（异步，不阻塞）
+          this.compactIfNeeded().catch(e => {
+            console.warn('[VectorStorage] Compact failed:', e)
+          })
+        }
       }
       
       return removed
@@ -254,7 +263,6 @@ export class VectorStorage extends EventEmitter {
    * 每删除 10 个文档或距离上次 compact 超过 5 分钟时执行
    */
   private async compactIfNeeded(): Promise<void> {
-    this.deleteCount++
     const now = Date.now()
     const timeSinceLastCompact = now - this.lastCompactTime
 
