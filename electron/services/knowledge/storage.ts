@@ -278,21 +278,33 @@ export class VectorStorage extends EventEmitter {
    * 执行 compact 操作，清理已删除的数据释放磁盘空间
    */
   async compact(): Promise<void> {
-    if (!this.table) return
+    if (!this.table || !this.db) return
 
     try {
       // LanceDB 的 optimize 方法会合并小文件并清理已删除的数据
-      await this.table.optimize?.()
-      console.log('[VectorStorage] Compact completed')
-    } catch (error) {
-      // optimize 可能不存在于某些版本，尝试其他方法
-      console.warn('[VectorStorage] Optimize not available, trying cleanup:', error)
-      try {
-        // 如果 optimize 不可用，尝试 cleanup
-        await this.table.cleanup?.()
-      } catch {
-        // 忽略，某些版本可能没有这些方法
+      if (typeof this.table.optimize === 'function') {
+        await this.table.optimize()
+        console.log('[VectorStorage] Compact (optimize) completed')
+      } else if (typeof this.table.cleanup === 'function') {
+        await this.table.cleanup()
+        console.log('[VectorStorage] Compact (cleanup) completed')
+      } else if (typeof this.table.compaction === 'function') {
+        // 某些版本使用 compaction
+        await this.table.compaction()
+        console.log('[VectorStorage] Compact (compaction) completed')
+      } else {
+        // 如果没有可用的 compact 方法，尝试重建表
+        console.warn('[VectorStorage] No compact method available, will rely on delete')
       }
+      
+      // 重新打开表以刷新缓存（确保删除的数据不会被缓存返回）
+      const tableNames = await this.db.tableNames()
+      if (tableNames.includes(this.tableName)) {
+        this.table = await this.db.openTable(this.tableName)
+        console.log('[VectorStorage] Table reopened to refresh cache')
+      }
+    } catch (error) {
+      console.error('[VectorStorage] Compact failed:', error)
     }
   }
 
