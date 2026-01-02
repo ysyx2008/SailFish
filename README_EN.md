@@ -11,7 +11,7 @@
 
 **SFTerm**
 
-> AI-Powered Cross-Platform Terminal for DevOps Efficiency
+> AI-Powered Next-Gen Terminal
 
 🌐 **Website**: [www.sfterm.com](http://www.sfterm.com/en/)
 
