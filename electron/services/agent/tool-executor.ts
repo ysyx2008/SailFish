@@ -1960,9 +1960,49 @@ async function writeFileViaSftp(
     }
   }
 
-
   const contentLength = content.length
   const contentSizeKB = (contentLength / 1024).toFixed(1)
+
+  // 生成操作描述
+  let operationDesc = ''
+  switch (mode) {
+    case 'overwrite':
+      operationDesc = `${t('file.overwrite')}: ${filePath}`
+      break
+    case 'create':
+      operationDesc = `${t('file.create')}: ${filePath}`
+      break
+    case 'append':
+      operationDesc = `${t('file.append')}: ${filePath}`
+      break
+  }
+
+  // 添加步骤显示
+  executor.addStep({
+    type: 'tool_call',
+    content: operationDesc,
+    toolName: 'write_remote_file',
+    toolArgs: { 
+      path: filePath, 
+      mode,
+      content: content.length > 100 ? content.substring(0, 100) + '...' : content
+    },
+    riskLevel: mode === 'overwrite' ? 'dangerous' : 'moderate'
+  })
+
+  // 覆盖模式是危险操作，任何模式都需要用户确认
+  // 严格模式下所有写入操作都需要确认
+  if (mode === 'overwrite' || config.executionMode === 'strict') {
+    const approved = await executor.waitForConfirmation(
+      toolCallId, 
+      'write_remote_file', 
+      { path: filePath, mode, content }, 
+      mode === 'overwrite' ? 'dangerous' : 'moderate'
+    )
+    if (!approved) {
+      return { success: false, output: '', error: t('file.user_rejected_write') }
+    }
+  }
 
   // 在终端显示写入提示
   executor.terminalService.write(ptyId, `echo "📝 ${t('file.writing_remote', { path: filePath, size: contentSizeKB })}"\r`)
@@ -2305,6 +2345,10 @@ async function writeLocalFile(
       break
   }
 
+  // 判断是否为危险操作（覆盖现有文件）
+  const fileExists = fs.existsSync(filePath)
+  const isDangerousOverwrite = mode === 'overwrite' && fileExists
+
   // 文件写入需要确认
   executor.addStep({
     type: 'tool_call',
@@ -2320,16 +2364,17 @@ async function writeLocalFile(
       ...(pattern !== undefined && { pattern }),
       ...(replacement !== undefined && { replacement })
     },
-    riskLevel: 'moderate'
+    riskLevel: isDangerousOverwrite ? 'dangerous' : 'moderate'
   })
 
-  // 严格模式下需要确认文件写入操作
-  if (config.executionMode === 'strict') {
+  // 覆盖现有文件是危险操作，任何模式都需要用户确认
+  // 严格模式下所有写入操作都需要确认
+  if (isDangerousOverwrite || config.executionMode === 'strict') {
     const approved = await executor.waitForConfirmation(
       toolCallId, 
       'write_local_file', 
       args, 
-      'moderate'
+      isDangerousOverwrite ? 'dangerous' : 'moderate'
     )
     if (!approved) {
       return { success: false, output: '', error: t('file.user_rejected_write') }
