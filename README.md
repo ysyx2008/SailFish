@@ -11,7 +11,7 @@
 
 **旗鱼终端**
 
-> AI 驱动的跨平台终端，助力运维提效
+> AI 驱动的新世代终端
 
 🌐 **网站**：[www.sfterm.com](http://www.sfterm.com/)
 
