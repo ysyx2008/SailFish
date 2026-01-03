@@ -24,7 +24,8 @@
     "lint:check": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx",
     "format": "prettier --write src/",
     "preversion": "node scripts/preversion.js",
-    "postversion": "node scripts/postversion.js"
+    "postversion": "node scripts/postversion.js",
+    "generate-icons": "node scripts/generate-icons.js"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.22.3",
