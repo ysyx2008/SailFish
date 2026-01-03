@@ -270,6 +270,8 @@ const formatHost = (session: SshSession) => {
   justify-content: center;
   align-items: center;
   animation: float 3s ease-in-out infinite;
+  will-change: transform;
+  transform: translateZ(0); /* 强制 GPU 加速 */
 }
 
 .sailfish-logo {
@@ -285,10 +287,8 @@ const formatHost = (session: SshSession) => {
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  25% { transform: translateY(-6px) rotate(1deg); }
-  50% { transform: translateY(-10px) rotate(0deg); }
-  75% { transform: translateY(-6px) rotate(-1deg); }
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -10px, 0); }
 }
 
 .welcome-title {
