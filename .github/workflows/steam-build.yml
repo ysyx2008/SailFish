@@ -51,11 +51,16 @@ jobs:
       - name: Build for Steam (macOS)
         run: npm run build:steam:mac
       
+      - name: List macOS build output
+        run: ls -la release/
+      
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: steam-macos
-          path: release/mac/
+          path: |
+            release/mac/
+            release/mac-*/
           retention-days: 7
 
   build-linux:
@@ -96,9 +101,35 @@ jobs:
       
       - name: Reorganize artifacts
         run: |
-          mv release/steam-windows release/win-unpacked
-          mv release/steam-macos release/mac
-          mv release/steam-linux release/linux-unpacked
+          echo "=== Downloaded artifacts ==="
+          ls -laR release/
+          
+          # Windows
+          if [ -d "release/steam-windows" ]; then
+            mv release/steam-windows release/win-unpacked
+          else
+            echo "ERROR: steam-windows not found!"
+          fi
+          
+          # macOS - 可能是 mac/, mac-arm64/, mac-x64/ 等
+          if [ -d "release/steam-macos" ]; then
+            # 如果里面有子目录，找到 .app 所在的目录
+            MACOS_CONTENT=$(ls release/steam-macos/)
+            echo "macOS artifact contains: $MACOS_CONTENT"
+            mv release/steam-macos release/mac
+          else
+            echo "ERROR: steam-macos not found!"
+          fi
+          
+          # Linux
+          if [ -d "release/steam-linux" ]; then
+            mv release/steam-linux release/linux-unpacked
+          else
+            echo "ERROR: steam-linux not found!"
+          fi
+          
+          echo "=== Final structure ==="
+          ls -la release/
       
       # 使用 game-ci/steam-deploy 支持双因素认证
       # 需要在 GitHub Secrets 中配置：
