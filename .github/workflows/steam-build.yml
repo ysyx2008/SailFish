@@ -58,9 +58,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: steam-macos
-          path: |
-            release/mac/
-            release/mac-*/
+          path: release/mac-arm64/
           retention-days: 7
 
   build-linux:
@@ -111,11 +109,8 @@ jobs:
             echo "ERROR: steam-windows not found!"
           fi
           
-          # macOS - 可能是 mac/, mac-arm64/, mac-x64/ 等
+          # macOS
           if [ -d "release/steam-macos" ]; then
-            # 如果里面有子目录，找到 .app 所在的目录
-            MACOS_CONTENT=$(ls release/steam-macos/)
-            echo "macOS artifact contains: $MACOS_CONTENT"
             mv release/steam-macos release/mac
           else
             echo "ERROR: steam-macos not found!"
