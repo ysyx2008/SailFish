@@ -6,6 +6,7 @@ dist/
 dist-electron/
 release/
 electron-cache/
+steam/
 
 # Server (private, not open source)
 server/

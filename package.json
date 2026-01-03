@@ -25,7 +25,11 @@
     "format": "prettier --write src/",
     "preversion": "node scripts/preversion.js",
     "postversion": "node scripts/postversion.js",
-    "generate-icons": "node scripts/generate-icons.js"
+    "generate-icons": "node scripts/generate-icons.js",
+    "build:steam:win": "vite build && electron-builder --win --dir --publish never",
+    "build:steam:mac": "vite build && electron-builder --mac --dir --publish never",
+    "build:steam:linux": "vite build && electron-builder --linux --dir --publish never",
+    "build:steam:current": "vite build && electron-builder --dir --publish never"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.22.3",
