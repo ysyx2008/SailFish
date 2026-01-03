@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { ExternalLink } from 'lucide-vue-next'
 import { useConfigStore, type AiProfile } from '../stores/config'
 import { v4 as uuidv4 } from 'uuid'
+import SetupAiGuide from './SetupAiGuide.vue'
 
 const { t } = useI18n()
 
@@ -312,7 +313,9 @@ const canGoPrev = computed(() => {
 })
 
 const canSkip = computed(() => {
-  return currentStep.value >= 2 && currentStep.value <= 5
+  // 第2步（配置AI）不允许跳过，必须配置后才能继续
+  if (currentStep.value === 2) return false
+  return currentStep.value >= 3 && currentStep.value <= 5
 })
 
 const skipWizard = async () => {
@@ -322,6 +325,12 @@ const skipWizard = async () => {
 }
 
 const nextStep = async () => {
+  // 第2步验证：必须至少配置一个 AI 模型才能继续
+  if (currentStep.value === 2 && configStore.aiProfiles.length === 0) {
+    alert(t('setup.aiConfig.required'))
+    return
+  }
+
   // 保存当前步骤的数据
   if (currentStep.value === 4) {
     const success = await saveKnowledgeSettings()
@@ -363,22 +372,24 @@ onMounted(async () => {
 
 <template>
   <div class="setup-wizard">
-    <div class="wizard-container">
-      <!-- 步骤进度条 -->
-      <div class="steps-progress">
-        <div
-          v-for="step in totalSteps"
-          :key="step"
-          class="step-indicator"
-          :class="{ active: step === currentStep, completed: step < currentStep }"
-        >
-          <div class="step-number">{{ step }}</div>
-          <div class="step-line" v-if="step < totalSteps"></div>
+    <div class="wizard-container" :class="{ 'with-ai-guide': currentStep >= 3 && currentStep <= 6 && configStore.aiProfiles.length > 0 }">
+      <!-- 左侧主内容 -->
+      <div class="wizard-main">
+        <!-- 步骤进度条 -->
+        <div class="steps-progress">
+          <div
+            v-for="step in totalSteps"
+            :key="step"
+            class="step-indicator"
+            :class="{ active: step === currentStep, completed: step < currentStep }"
+          >
+            <div class="step-number">{{ step }}</div>
+            <div class="step-line" v-if="step < totalSteps"></div>
+          </div>
         </div>
-      </div>
 
-      <!-- 步骤内容 -->
-      <div class="step-content">
+        <!-- 步骤内容 -->
+        <div class="step-content">
         <!-- 步骤1: 欢迎 -->
         <div v-if="currentStep === 1" class="step-panel">
           <div class="step-header">
@@ -709,10 +720,10 @@ onMounted(async () => {
             </div>
           </div>
         </div>
-      </div>
+        </div>
 
-      <!-- 导航按钮 -->
-      <div class="wizard-footer">
+        <!-- 导航按钮 -->
+        <div class="wizard-footer">
         <button
           class="btn"
           @click="prevStep"
@@ -743,7 +754,14 @@ onMounted(async () => {
             {{ currentStep === totalSteps ? t('common.finish') : t('common.next') }}
           </button>
         </div>
+        </div>
       </div>
+
+      <!-- 右侧 AI 对话侧边栏（步骤 3-6 且 AI 已配置时显示） -->
+      <SetupAiGuide 
+        v-if="currentStep >= 3 && currentStep <= 6 && configStore.aiProfiles.length > 0"
+        :step="currentStep"
+      />
     </div>
   </div>
 </template>
@@ -768,9 +786,23 @@ onMounted(async () => {
   border-radius: 16px;
   box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   overflow: hidden;
   border: 1px solid var(--border-color);
+}
+
+/* 当有 AI 对话侧边栏时，扩大容器宽度 */
+.wizard-container.with-ai-guide {
+  max-width: 1020px;
+}
+
+/* 左侧主内容区 */
+.wizard-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
 }
 
 /* 步骤进度条 */

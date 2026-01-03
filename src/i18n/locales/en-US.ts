@@ -1100,7 +1100,8 @@ export default {
       addNewModel: 'Add New Model',
       quickTemplates: 'Quick Templates:',
       fillRequired: 'Please fill in all required fields',
-      saveFailed: 'Save failed'
+      saveFailed: 'Save failed',
+      required: 'Please configure at least one AI model to continue'
     },
     import: {
       title: 'Import SSH Hosts',
@@ -1160,6 +1161,11 @@ export default {
         mcpNotConfigured: 'MCP services not configured'
       },
       tip: 'You can modify these settings anytime in Settings'
+    },
+    aiGuide: {
+      title: 'AI Assistant',
+      placeholder: 'Ask me anything...',
+      thinking: 'Thinking...'
     }
   },
 

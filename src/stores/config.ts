@@ -198,7 +198,7 @@ export const useConfigStore = defineStore('config', () => {
   })
 
   // Agent MBTI 设置
-  const agentMbti = ref<AgentMbtiType>(null)
+  const agentMbti = ref<AgentMbtiType>('ENFJ')
 
   // Agent 调试模式
   const agentDebugMode = ref<boolean>(false)

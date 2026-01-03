@@ -1100,7 +1100,8 @@ export default {
       addNewModel: '添加新模型',
       quickTemplates: '快速模板：',
       fillRequired: '请填写完整的配置信息',
-      saveFailed: '保存失败'
+      saveFailed: '保存失败',
+      required: '请先配置至少一个 AI 模型才能继续'
     },
     import: {
       title: '导入 SSH 主机',
@@ -1160,6 +1161,11 @@ export default {
         mcpNotConfigured: 'MCP 服务未配置'
       },
       tip: '您可以在设置中随时修改这些配置'
+    },
+    aiGuide: {
+      title: 'AI 助手',
+      placeholder: '有问题可以问我...',
+      thinking: '思考中...'
     }
   },
 
