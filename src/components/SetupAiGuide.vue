@@ -4,10 +4,9 @@
  * 在步骤 3-5 时显示，AI 主动发送针对当前步骤的指导消息
  * 用户可以继续追问对话
  */
-import { ref, watch, onMounted, nextTick, computed } from 'vue'
+import { ref, watch, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ArrowUp, Loader2, Bot } from 'lucide-vue-next'
-import { useConfigStore } from '../stores/config'
 import { useMarkdown } from '../composables/useMarkdown'
 
 const props = defineProps<{
@@ -15,7 +14,6 @@ const props = defineProps<{
 }>()
 
 const { t, locale } = useI18n()
-const configStore = useConfigStore()
 const { renderMarkdown } = useMarkdown()
 
 // 消息列表
