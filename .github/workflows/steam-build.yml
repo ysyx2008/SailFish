@@ -1,0 +1,123 @@
+name: Steam Build
+
+on:
+  workflow_dispatch:  # 手动触发
+    inputs:
+      upload_to_steam:
+        description: '上传到 Steam'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build for Steam (Windows)
+        run: npm run build:steam:win
+      
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: steam-windows
+          path: release/win-unpacked/
+          retention-days: 7  # 保留7天，方便调试
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build for Steam (macOS)
+        run: npm run build:steam:mac
+      
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: steam-macos
+          path: release/mac/
+          retention-days: 7
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build for Steam (Linux)
+        run: npm run build:steam:linux
+      
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: steam-linux
+          path: release/linux-unpacked/
+          retention-days: 7
+
+  upload-to-steam:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.upload_to_steam == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release/
+      
+      - name: Reorganize artifacts
+        run: |
+          mv release/steam-windows release/win-unpacked
+          mv release/steam-macos release/mac
+          mv release/steam-linux release/linux-unpacked
+      
+      # 使用 game-ci/steam-deploy 支持双因素认证
+      # 需要在 GitHub Secrets 中配置：
+      # - STEAM_USERNAME: Steam 账号（必需）
+      # - STEAM_CONFIG_VDF: Base64 编码的 config.vdf（包含登录 token，无需密码）
+      # 
+      # 获取 config.vdf 的方法：
+      # 1. 本地运行: steamcmd +login 你的账号 +quit（完成双因素验证）
+      # 2. 找到文件: ~/Library/Application Support/Steam/config/config.vdf (macOS)
+      # 3. Base64 编码: base64 -i config.vdf
+      - name: Upload to Steam
+        uses: game-ci/steam-deploy@v3
+        with:
+          username: ${{ secrets.STEAM_USERNAME }}
+          configVdf: ${{ secrets.STEAM_CONFIG_VDF }}
+          appId: 4275260
+          buildDescription: "旗鱼终端"
+          rootPath: release
+          depot1Path: win-unpacked
+          depot2Path: mac
+          depot3Path: linux-unpacked
+
