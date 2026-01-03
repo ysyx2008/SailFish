@@ -445,6 +445,7 @@ onMounted(async () => {
             <div class="config-intro">
               <p>{{ t('setup.aiConfig.intro') }}</p>
               <p class="hint">{{ t('setup.aiConfig.hint') }}</p>
+              <p class="model-recommendation">{{ t('setup.aiConfig.modelRecommendation') }}</p>
             </div>
 
             <!-- 已配置的模型列表 -->
@@ -984,6 +985,16 @@ onMounted(async () => {
 .hint {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.model-recommendation {
+  font-size: 12px;
+  color: var(--accent-primary);
+  background: rgba(137, 180, 250, 0.1);
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-top: 8px;
+  border-left: 3px solid var(--accent-primary);
 }
 
 .section-title {

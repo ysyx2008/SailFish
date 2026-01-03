@@ -176,6 +176,9 @@ const openKeyUrl = (url: string) => {
       <p class="section-desc">
         {{ t('aiSettings.apiKeyNotRequired') }}
       </p>
+      <p class="model-recommendation">
+        {{ t('aiSettings.modelRecommendation') }}
+      </p>
 
       <!-- 配置列表 -->
       <div class="profile-list">
@@ -364,7 +367,17 @@ const openKeyUrl = (url: string) => {
 .section-desc {
   font-size: 12px;
   color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.model-recommendation {
+  font-size: 12px;
+  color: var(--accent-primary);
+  background: rgba(137, 180, 250, 0.1);
+  padding: 8px 12px;
+  border-radius: 6px;
   margin-bottom: 16px;
+  border-left: 3px solid var(--accent-primary);
 }
 
 .profile-list {
