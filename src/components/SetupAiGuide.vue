@@ -8,6 +8,7 @@ import { ref, watch, onMounted, nextTick, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ArrowUp, Loader2, Bot } from 'lucide-vue-next'
 import { useConfigStore } from '../stores/config'
+import { useMarkdown } from '../composables/useMarkdown'
 
 const props = defineProps<{
   step: number  // 当前步骤 (3-5)
@@ -15,6 +16,7 @@ const props = defineProps<{
 
 const { t, locale } = useI18n()
 const configStore = useConfigStore()
+const { renderMarkdown } = useMarkdown()
 
 // 消息列表
 interface Message {
@@ -36,6 +38,79 @@ const isLoading = ref(false)
 
 // 当前正在生成的消息 ID
 const streamingMessageId = ref<string | null>(null)
+
+// 解析消息内容，分离思考过程和正式回复
+interface ParsedContent {
+  thinking: string | null  // 思考过程
+  reply: string           // 正式回复
+}
+
+const parseMessageContent = (content: string): ParsedContent => {
+  if (!content) return { thinking: null, reply: content }
+  
+  let thinking: string | null = null
+  let reply = content
+  
+  // 提取 <think>...</think> 中的内容
+  const thinkMatch = content.match(/<think>([\s\S]*?)<\/think>/i)
+  if (thinkMatch) {
+    thinking = thinkMatch[1].trim()
+    reply = content.replace(/<think>[\s\S]*?<\/think>/gi, '')
+  }
+  
+  // 提取 <details>...</details> 中的内容（思考过程常用这个格式）
+  const detailsMatch = content.match(/<details[\s\S]*?>([\s\S]*?)<\/details>/i)
+  if (detailsMatch && !thinking) {
+    // 移除 <summary> 标签
+    let thinkContent = detailsMatch[1]
+    thinkContent = thinkContent.replace(/<summary>[\s\S]*?<\/summary>/gi, '')
+    thinkContent = thinkContent.replace(/<\/?blockquote>/gi, '')
+    thinkContent = thinkContent.replace(/<\/?strong>/gi, '')
+    thinking = thinkContent.trim()
+    reply = content.replace(/<details[\s\S]*?<\/details>/gi, '')
+  }
+  
+  // 处理未闭合的标签（流式输出时）
+  if (!thinking) {
+    const unclosedThink = content.match(/<think>([\s\S]*)$/i)
+    if (unclosedThink) {
+      thinking = unclosedThink[1].trim()
+      reply = ''
+    }
+    
+    const unclosedDetails = content.match(/<details[^>]*>([\s\S]*)$/i)
+    if (unclosedDetails && !thinking) {
+      let thinkContent = unclosedDetails[1]
+      thinkContent = thinkContent.replace(/<summary>[\s\S]*?<\/summary>/gi, '')
+      thinkContent = thinkContent.replace(/<\/?summary>/gi, '')
+      thinkContent = thinkContent.replace(/<\/?blockquote>/gi, '')
+      thinkContent = thinkContent.replace(/<\/?strong>/gi, '')
+      thinking = thinkContent.trim()
+      reply = ''
+    }
+  }
+  
+  // 清理多余空行
+  reply = reply.replace(/\n{3,}/g, '\n\n').trim()
+  
+  return { thinking, reply }
+}
+
+// 记录每条消息的思考过程折叠状态（默认展开，所以记录的是已折叠的）
+const collapsedThinking = ref<Set<string>>(new Set())
+
+const toggleThinking = (messageId: string) => {
+  if (collapsedThinking.value.has(messageId)) {
+    collapsedThinking.value.delete(messageId)
+  } else {
+    collapsedThinking.value.add(messageId)
+  }
+}
+
+// 检查思考过程是否展开（默认展开）
+const isThinkingExpanded = (messageId: string) => {
+  return !collapsedThinking.value.has(messageId)
+}
 
 // 步骤对应的初始指导 prompt
 const getStepPrompt = (step: number): string => {
@@ -348,7 +423,32 @@ onMounted(() => {
         :class="message.role"
       >
         <div class="message-content">
-          {{ message.content }}
+          <!-- 思考过程（可折叠，默认展开） -->
+          <div 
+            v-if="parseMessageContent(message.content).thinking"
+            class="thinking-section"
+          >
+            <div 
+              class="thinking-toggle"
+              @click="toggleThinking(message.id)"
+            >
+              <span class="thinking-icon">💭</span>
+              <span class="thinking-label">{{ isThinkingExpanded(message.id) ? '收起思考过程' : '查看思考过程' }}</span>
+              <span class="thinking-arrow">{{ isThinkingExpanded(message.id) ? '▲' : '▼' }}</span>
+            </div>
+            <div 
+              v-if="isThinkingExpanded(message.id)"
+              class="thinking-content"
+            >
+              {{ parseMessageContent(message.content).thinking }}
+            </div>
+          </div>
+          <!-- 正式回复（markdown 渲染） -->
+          <div 
+            v-if="parseMessageContent(message.content).reply"
+            class="reply-content"
+            v-html="renderMarkdown(parseMessageContent(message.content).reply)"
+          ></div>
           <span 
             v-if="message.id === streamingMessageId && isLoading" 
             class="cursor-blink"
@@ -453,6 +553,108 @@ onMounted(() => {
   background: var(--bg-tertiary);
   color: var(--text-primary);
   border-bottom-left-radius: 4px;
+}
+
+/* 思考过程样式 */
+.thinking-section {
+  margin-bottom: 8px;
+  border-bottom: 1px dashed var(--border-color);
+  padding-bottom: 8px;
+}
+
+.thinking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+  user-select: none;
+  padding: 4px 0;
+}
+
+.thinking-toggle:hover {
+  color: var(--text-primary);
+}
+
+.thinking-icon {
+  font-size: 14px;
+}
+
+.thinking-label {
+  flex: 1;
+}
+
+.thinking-arrow {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.thinking-content {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin-top: 6px;
+  line-height: 1.5;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* Markdown 渲染的回复内容样式 */
+.reply-content {
+  line-height: 1.5;
+}
+
+.reply-content :deep(p) {
+  margin: 0 0 6px 0;
+}
+
+.reply-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+/* 去掉 "💬 回复" 等标题的多余间距 */
+.reply-content :deep(h1),
+.reply-content :deep(h2),
+.reply-content :deep(h3),
+.reply-content :deep(h4) {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.reply-content :deep(ul),
+.reply-content :deep(ol) {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+
+.reply-content :deep(li) {
+  margin: 2px 0;
+}
+
+.reply-content :deep(li p) {
+  margin: 0;
+}
+
+.reply-content :deep(code) {
+  background: var(--bg-secondary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+.reply-content :deep(hr) {
+  border: none;
+  border-top: 1px dashed var(--border-color);
+  margin: 12px 0;
+}
+
+.reply-content :deep(strong) {
+  font-weight: 600;
 }
 
 .cursor-blink {
