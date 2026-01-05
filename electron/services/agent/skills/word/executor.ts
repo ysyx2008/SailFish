@@ -14,7 +14,15 @@ import {
   TableRow,
   TableCell,
   WidthType,
-  BorderStyle
+  BorderStyle,
+  AlignmentType,
+  convertInchesToTwip,
+  ImageRun,
+  PageBreak,
+  TableOfContents,
+  Header,
+  Footer,
+  PageNumber
 } from 'docx'
 import type { ToolResult, AgentConfig } from '../../types'
 import type { ToolExecutorConfig } from '../../tool-executor'
@@ -28,7 +36,10 @@ import {
   getSessionContent,
   markSaved,
   closeSession,
-  type SectionContent
+  setPageSettings,
+  getPageSettings,
+  type SectionContent,
+  type PageSettings
 } from './session'
 import {
   markdownToDocx,
@@ -207,6 +218,8 @@ export async function executeWordTool(
       return await wordSave(ptyId, args, toolCallId, config, executor)
     case 'word_close':
       return await wordClose(ptyId, args, executor)
+    case 'word_set_page':
+      return await wordSetPage(ptyId, args, executor)
     // 快速模式工具
     case 'word_from_markdown':
       return await wordFromMarkdown(ptyId, args, toolCallId, config, executor)
@@ -413,10 +426,20 @@ async function wordAdd(
   const rows = args.rows as string[][] | undefined
   // 样式参数（扁平化）
   const style = {
+    font: args.font as string | undefined,
+    size: args.size as number | undefined,
     bold: args.bold as boolean | undefined,
     italic: args.italic as boolean | undefined,
-    size: args.size as number | undefined
+    underline: args.underline as boolean | undefined,
+    color: args.color as string | undefined,
+    highlight: args.highlight as string | undefined,
+    center: args.center as boolean | undefined,
+    indent: args.indent as number | undefined
   }
+  // 图片参数
+  const imagePath = args.image_path as string | undefined
+  const imageWidth = args.image_width as number | undefined
+  const imageHeight = args.image_height as number | undefined
 
   const session = getSession(filePath)
   if (!session) {
@@ -462,6 +485,32 @@ async function wordAdd(
         return { success: false, output: '', error: t('word.rows_required') }
       }
       sectionContent = { type: 'table', content: '', rows }
+      break
+      
+    case 'image':
+      if (!imagePath) {
+        return { success: false, output: '', error: '图片路径必填' }
+      }
+      const resolvedImagePath = resolvePath(ptyId, imagePath)
+      if (!fs.existsSync(resolvedImagePath)) {
+        return { success: false, output: '', error: t('error.file_not_found', { path: resolvedImagePath }) }
+      }
+      sectionContent = { 
+        type: 'image', 
+        content: '', 
+        imagePath: resolvedImagePath,
+        imageWidth,
+        imageHeight,
+        style 
+      }
+      break
+      
+    case 'page_break':
+      sectionContent = { type: 'page_break', content: '' }
+      break
+      
+    case 'toc':
+      sectionContent = { type: 'toc', content: '' }
       break
       
     default:
@@ -551,8 +600,8 @@ async function wordSave(
       fs.copyFileSync(filePath, backupPath)
     }
 
-    // 构建文档
-    const doc = buildDocument(session.sections)
+    // 构建文档（包含页眉页脚）
+    const doc = buildDocument(session.sections, session.pageSettings)
     
     // 写入文件
     const buffer = await Packer.toBuffer(doc)
@@ -616,6 +665,62 @@ async function wordClose(
   return { success: true, output }
 }
 
+/**
+ * 设置页面属性（页眉、页脚、页码）
+ */
+async function wordSetPage(
+  ptyId: string,
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  if (!args.path) {
+    return { success: false, output: '', error: t('error.file_path_required') }
+  }
+  
+  const filePath = resolvePath(ptyId, args.path as string)
+  
+  const session = getSession(filePath)
+  if (!session) {
+    return { success: false, output: '', error: t('word.not_open', { path: filePath }) }
+  }
+  
+  const settings: PageSettings = {}
+  
+  if (args.header !== undefined) {
+    settings.header = args.header as string
+  }
+  if (args.footer !== undefined) {
+    settings.footer = args.footer as string
+  }
+  if (args.page_number !== undefined) {
+    settings.pageNumber = args.page_number as boolean
+  }
+  if (args.page_number_format !== undefined) {
+    settings.pageNumberFormat = args.page_number_format as 'numeric' | 'roman' | 'letter'
+  }
+  if (args.page_number_position !== undefined) {
+    settings.pageNumberPosition = args.page_number_position as 'header' | 'footer'
+  }
+  
+  setPageSettings(filePath, settings)
+  
+  const parts: string[] = []
+  if (settings.header !== undefined) parts.push(`页眉: "${settings.header}"`)
+  if (settings.footer !== undefined) parts.push(`页脚: "${settings.footer}"`)
+  if (settings.pageNumber) parts.push(`页码: 已启用`)
+  
+  const output = `页面设置已更新：\n${parts.join('\n')}\n\n💡 ${t('word.save_reminder')}`
+
+  executor.addStep({
+    type: 'tool_result',
+    content: output,
+    toolName: 'word_set_page',
+    toolResult: output
+  })
+
+  return { success: true, output }
+}
+
 // ============ 辅助函数 ============
 
 /**
@@ -666,8 +771,8 @@ function sectionsToMarkdown(sections: SectionContent[]): string {
 /**
  * 构建 Document 对象
  */
-function buildDocument(sections: SectionContent[]): Document {
-  const children: Paragraph[] = []
+function buildDocument(sections: SectionContent[], pageSettings?: PageSettings): Document {
+  const children: (Paragraph | Table | TableOfContents)[] = []
   
   for (const section of sections) {
     switch (section.type) {
@@ -689,31 +794,131 @@ function buildDocument(sections: SectionContent[]): Document {
         
       case 'table':
         if (section.rows && section.rows.length > 0) {
-          // 表格需要特殊处理，暂时转为段落
-          const table = createTable(section.rows)
-          // Document 的 children 只接受 Paragraph，表格需要在 sections 级别添加
-          // 这里简化处理：将表格内容转为段落
-          for (const row of section.rows) {
-            children.push(new Paragraph({
-              children: [new TextRun({ text: row.join(' | ') })]
-            }))
-          }
+          children.push(createTable(section.rows))
         }
+        break
+        
+      case 'image':
+        if (section.imagePath) {
+          children.push(createImageParagraph(section.imagePath, section.imageWidth, section.imageHeight, section.style))
+        }
+        break
+        
+      case 'page_break':
+        children.push(new Paragraph({
+          children: [new PageBreak()]
+        }))
+        break
+        
+      case 'toc':
+        children.push(new TableOfContents('目录', {
+          hyperlink: true,
+          headingStyleRange: '1-3'
+        }))
         break
     }
   }
   
+  // 构建页眉
+  const headers = pageSettings?.header ? {
+    default: new Header({
+      children: [new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: pageSettings.header })]
+      })]
+    })
+  } : undefined
+  
+  // 构建页脚
+  const footerChildren: TextRun[] = []
+  if (pageSettings?.footer) {
+    footerChildren.push(new TextRun({ text: pageSettings.footer }))
+  }
+  if (pageSettings?.pageNumber) {
+    if (footerChildren.length > 0) {
+      footerChildren.push(new TextRun({ text: '    ' }))  // 间隔
+    }
+    // 使用 children 数组形式添加页码字段
+    footerChildren.push(new TextRun({ 
+      children: ['第 ', PageNumber.CURRENT, ' 页']
+    }))
+  }
+  
+  const footers = footerChildren.length > 0 ? {
+    default: new Footer({
+      children: [new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: footerChildren
+      })]
+    })
+  } : undefined
+  
   return new Document({
     sections: [{
+      headers,
+      footers,
       children: children.length > 0 ? children : [new Paragraph({ children: [] })]
     }]
   })
 }
 
 /**
+ * 创建图片段落
+ */
+function createImageParagraph(
+  imagePath: string, 
+  width?: number, 
+  height?: number,
+  style?: ParagraphStyle
+): Paragraph {
+  const imageData = fs.readFileSync(imagePath)
+  
+  // 默认宽度 400 像素，保持比例
+  const imgWidth = width || 400
+  const imgHeight = height || imgWidth * 0.75  // 默认 4:3 比例
+  
+  return new Paragraph({
+    alignment: style?.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+    children: [
+      new ImageRun({
+        data: imageData,
+        transformation: {
+          width: imgWidth,
+          height: imgHeight
+        },
+        type: 'png'  // 自动检测实际格式
+      })
+    ]
+  })
+}
+
+/** 段落样式类型 */
+type ParagraphStyle = {
+  font?: string
+  size?: number
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  color?: string      // 十六进制颜色，如 "FF0000"
+  highlight?: string  // 高亮色，如 "yellow"
+  center?: boolean
+  indent?: number
+}
+
+/**
+ * 计算首行缩进（字符数转 twip）
+ */
+function calcIndent(chars?: number): number | undefined {
+  if (chars === undefined || chars === null) return undefined
+  if (chars === 0) return 0
+  // 一个中文字符约等于 0.35 英寸
+  return convertInchesToTwip(chars * 0.35)
+}
+
+/**
  * 创建标题段落
  */
-function createHeading(text: string, level: number, style?: { bold?: boolean; italic?: boolean; size?: number }): Paragraph {
+function createHeading(text: string, level: number, style?: ParagraphStyle): Paragraph {
   const headingMap: Record<number, (typeof HeadingLevel)[keyof typeof HeadingLevel]> = {
     1: HeadingLevel.HEADING_1,
     2: HeadingLevel.HEADING_2,
@@ -723,13 +928,21 @@ function createHeading(text: string, level: number, style?: { bold?: boolean; it
     6: HeadingLevel.HEADING_6
   }
   
+  const indent = calcIndent(style?.indent)
+  
   return new Paragraph({
     heading: headingMap[level] || HeadingLevel.HEADING_1,
+    alignment: style?.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+    indent: indent !== undefined ? { firstLine: indent } : undefined,
     children: [
       new TextRun({
         text,
+        font: style?.font,
         bold: style?.bold ?? true,
         italics: style?.italic,
+        underline: style?.underline ? {} : undefined,
+        color: style?.color,
+        highlight: style?.highlight as any,
         size: style?.size ? style.size * 2 : undefined // docx 使用半点为单位
       })
     ]
@@ -739,13 +952,21 @@ function createHeading(text: string, level: number, style?: { bold?: boolean; it
 /**
  * 创建普通段落
  */
-function createParagraph(text: string, style?: { bold?: boolean; italic?: boolean; size?: number }): Paragraph {
+function createParagraph(text: string, style?: ParagraphStyle): Paragraph {
+  const indent = calcIndent(style?.indent)
+  
   return new Paragraph({
+    alignment: style?.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+    indent: indent !== undefined ? { firstLine: indent } : undefined,
     children: [
       new TextRun({
         text,
+        font: style?.font,
         bold: style?.bold,
         italics: style?.italic,
+        underline: style?.underline ? {} : undefined,
+        color: style?.color,
+        highlight: style?.highlight as any,
         size: style?.size ? style.size * 2 : undefined
       })
     ]
@@ -755,14 +976,18 @@ function createParagraph(text: string, style?: { bold?: boolean; italic?: boolea
 /**
  * 创建列表项
  */
-function createBulletPoint(text: string, style?: { bold?: boolean; italic?: boolean; size?: number }): Paragraph {
+function createBulletPoint(text: string, style?: ParagraphStyle): Paragraph {
   return new Paragraph({
     bullet: { level: 0 },
     children: [
       new TextRun({
         text,
+        font: style?.font,
         bold: style?.bold,
         italics: style?.italic,
+        underline: style?.underline ? {} : undefined,
+        color: style?.color,
+        highlight: style?.highlight as any,
         size: style?.size ? style.size * 2 : undefined
       })
     ]

@@ -5,6 +5,20 @@
 
 import type { Document } from 'docx'
 
+/** 页面设置 */
+export interface PageSettings {
+  /** 页眉文字 */
+  header?: string
+  /** 页脚文字 */
+  footer?: string
+  /** 是否显示页码 */
+  pageNumber?: boolean
+  /** 页码格式 */
+  pageNumberFormat?: 'numeric' | 'roman' | 'letter'
+  /** 页码位置 */
+  pageNumberPosition?: 'header' | 'footer'
+}
+
 interface WordSession {
   /** 文件路径 */
   filePath: string
@@ -12,6 +26,8 @@ interface WordSession {
   document: Document
   /** 文档内容（段落列表） */
   sections: SectionContent[]
+  /** 页面设置 */
+  pageSettings?: PageSettings
   /** 打开时间 */
   openedAt: number
   /** 最后访问时间 */
@@ -24,18 +40,30 @@ interface WordSession {
 
 /** 段落内容 */
 export interface SectionContent {
-  type: 'paragraph' | 'heading' | 'list' | 'table'
+  type: 'paragraph' | 'heading' | 'list' | 'table' | 'image' | 'page_break' | 'toc'
   content: string
   level?: number  // 标题级别 1-6
   style?: {
-    bold?: boolean
-    italic?: boolean
-    size?: number  // 字号（磅）
+    font?: string       // 字体名称
+    size?: number       // 字号（磅）
+    bold?: boolean      // 粗体
+    italic?: boolean    // 斜体
+    underline?: boolean // 下划线
+    color?: string      // 文字颜色（十六进制，如 "FF0000"）
+    highlight?: string  // 高亮背景色
+    center?: boolean    // 居中对齐
+    indent?: number     // 首行缩进（字符数）
   }
   /** 列表项（仅 type=list 时使用） */
   items?: string[]
   /** 表格数据（仅 type=table 时使用） */
   rows?: string[][]
+  /** 图片路径（仅 type=image 时使用） */
+  imagePath?: string
+  /** 图片宽度（像素，仅 type=image 时使用） */
+  imageWidth?: number
+  /** 图片高度（像素，仅 type=image 时使用） */
+  imageHeight?: number
 }
 
 // 打开的文档 Map<filePath, WordSession>
@@ -154,6 +182,25 @@ export function markSaved(filePath: string): void {
     session.isNew = false
     session.lastAccess = Date.now()
   }
+}
+
+/**
+ * 设置页面属性
+ */
+export function setPageSettings(filePath: string, settings: PageSettings): void {
+  const session = openSessions.get(filePath)
+  if (session) {
+    session.pageSettings = { ...session.pageSettings, ...settings }
+    session.dirty = true
+    session.lastAccess = Date.now()
+  }
+}
+
+/**
+ * 获取页面属性
+ */
+export function getPageSettings(filePath: string): PageSettings | undefined {
+  return openSessions.get(filePath)?.pageSettings
 }
 
 /**

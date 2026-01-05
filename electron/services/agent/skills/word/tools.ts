@@ -81,11 +81,26 @@ export const wordTools: ToolDefinition[] = [
 2. heading - 标题（level 1-6）
 3. list - 列表（使用 items 参数）
 4. table - 表格（使用 rows 参数，二维数组）
+5. image - 图片（使用 image_path 参数）
+6. page_break - 分页符
+7. toc - 目录（自动根据标题生成）
 
 **样式选项**（可选）：
+- font: 字体名称（如"黑体"、"仿宋"、"Arial"）
+- size: 字号（磅）
 - bold: 粗体
 - italic: 斜体
-- size: 字号（磅）`,
+- underline: 下划线
+- color: 文字颜色（十六进制，如"FF0000"红色、"0000FF"蓝色）
+- highlight: 高亮背景色（如"yellow"、"cyan"）
+- center: 居中对齐
+- indent: 首行缩进（字符数，0=顶格，2=缩进两字）
+
+**公文格式示例**：
+- 一级标题"一、总体要求"：font="黑体", size=16, indent=0
+- 二级标题"（一）提高认识"：font="楷体", size=16, bold=true, indent=0
+- 正文段落：font="仿宋", size=16, indent=2
+- 重点文字：color="FF0000", bold=true`,
       parameters: {
         type: 'object',
         properties: {
@@ -95,7 +110,7 @@ export const wordTools: ToolDefinition[] = [
           },
           type: {
             type: 'string',
-            enum: ['paragraph', 'heading', 'list', 'table'],
+            enum: ['paragraph', 'heading', 'list', 'table', 'image', 'page_break', 'toc'],
             description: '内容类型'
           },
           content: {
@@ -116,6 +131,14 @@ export const wordTools: ToolDefinition[] = [
             items: { type: 'array' },
             description: '表格数据，二维字符串数组（仅 table 类型时使用），第一行为表头，如 [["列1","列2"],["数据1","数据2"]]'
           },
+          font: {
+            type: 'string',
+            description: '字体名称，如"黑体"、"仿宋"、"楷体"、"宋体"、"Arial"（可选）'
+          },
+          size: {
+            type: 'number',
+            description: '字号（磅，可选）。常用：三号=16，四号=14，小四=12，五号=10.5'
+          },
           bold: {
             type: 'boolean',
             description: '是否粗体（可选）'
@@ -124,9 +147,37 @@ export const wordTools: ToolDefinition[] = [
             type: 'boolean',
             description: '是否斜体（可选）'
           },
-          size: {
+          underline: {
+            type: 'boolean',
+            description: '是否下划线（可选）'
+          },
+          color: {
+            type: 'string',
+            description: '文字颜色，十六进制（可选，如"FF0000"红色、"0000FF"蓝色、"000000"黑色）'
+          },
+          highlight: {
+            type: 'string',
+            description: '高亮背景色（可选，如"yellow"、"cyan"、"green"、"magenta"）'
+          },
+          center: {
+            type: 'boolean',
+            description: '是否居中对齐（可选，默认左对齐）'
+          },
+          indent: {
             type: 'number',
-            description: '字号（磅，可选）'
+            description: '首行缩进字符数（可选，0=顶格，2=缩进两字符）'
+          },
+          image_path: {
+            type: 'string',
+            description: '图片文件路径（仅 type=image 时必填）'
+          },
+          image_width: {
+            type: 'number',
+            description: '图片宽度（像素，可选，默认保持原始尺寸）'
+          },
+          image_height: {
+            type: 'number',
+            description: '图片高度（像素，可选，默认保持原始尺寸）'
           }
         },
         required: ['path', 'type']
@@ -179,6 +230,52 @@ export const wordTools: ToolDefinition[] = [
       }
     }
   },
+  {
+    type: 'function',
+    function: {
+      name: 'word_set_page',
+      description: `设置 Word 文档的页面属性（页眉、页脚、页码）。
+
+**功能**：
+- 设置页眉文字
+- 设置页脚文字
+- 添加页码（支持多种格式）
+
+**注意**：需要先用 word_open 打开文档，设置后需要 word_save 保存。`,
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: '已打开的文件路径'
+          },
+          header: {
+            type: 'string',
+            description: '页眉文字（可选）'
+          },
+          footer: {
+            type: 'string',
+            description: '页脚文字（可选）'
+          },
+          page_number: {
+            type: 'boolean',
+            description: '是否添加页码（可选，默认 false）'
+          },
+          page_number_format: {
+            type: 'string',
+            enum: ['numeric', 'roman', 'letter'],
+            description: '页码格式：numeric=阿拉伯数字(1,2,3)，roman=罗马数字(I,II,III)，letter=字母(A,B,C)，默认 numeric'
+          },
+          page_number_position: {
+            type: 'string',
+            enum: ['header', 'footer'],
+            description: '页码位置：header=页眉，footer=页脚，默认 footer'
+          }
+        },
+        required: ['path']
+      }
+    }
+  },
   // ========== 快速模式工具 ==========
   {
     type: 'function',
@@ -201,12 +298,22 @@ export const wordTools: ToolDefinition[] = [
 - formal：正式报告（宋体，首行缩进）
 - tech：技术文档（微软雅黑）
 - academic：学术论文（Times New Roman，双倍行距）
+- official：公文格式（GB/T 9704-2012 党政机关公文格式）
+- securities：证券公文（证券公司公文格式）
+
+**公文格式特别说明**：
+使用 official 或 securities 样式时，会自动识别中文编号并应用对应格式：
+- "一、二、三、..." → 黑体
+- "（一）（二）..." → 楷体加粗
+- "1. 2. 3. ..." → 仿宋加粗
+- "（1）（2）..." → 仿宋
+- 普通段落 → 仿宋三号，首行缩进两字
 
 **示例**：
 word_from_markdown({
-  path: "报告.docx",
-  markdown: "# 标题\\n\\n正文内容",
-  style: "formal"
+  path: "通知.docx",
+  markdown: "# 关于加强信息安全的通知\\n\\n一、总体要求\\n\\n（一）提高思想认识。各部门要...",
+  style: "official"
 })`,
       parameters: {
         type: 'object',
@@ -221,7 +328,7 @@ word_from_markdown({
           },
           style: {
             type: 'string',
-            description: '样式模板名称：simple（默认）、formal、tech、academic，或自定义样式名'
+            description: '样式模板名称：simple（默认）、formal、tech、academic、official（公文）、securities（证券公文），或自定义样式名'
           }
         },
         required: ['path', 'markdown']

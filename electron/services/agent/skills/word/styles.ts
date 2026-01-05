@@ -57,6 +57,24 @@ function decodeHtmlEntities(text: string): string {
 }
 
 /**
+ * 编号模式规则
+ */
+export interface NumberingRule {
+  /** 匹配模式（正则表达式字符串） */
+  pattern: string
+  /** 样式 */
+  style: {
+    font?: string
+    size?: number
+    bold?: boolean
+    italic?: boolean
+    center?: boolean
+    /** 首行缩进（字符数，0 表示顶格） */
+    indent?: number
+  }
+}
+
+/**
  * 样式配置接口
  */
 export interface WordStyleConfig {
@@ -78,7 +96,9 @@ export interface WordStyleConfig {
     lineSpacing?: number
     /** 首行缩进 */
     firstLineIndent?: boolean
-    /** 标题样式 */
+    /** 首行缩进字符数（默认 2） */
+    firstLineIndentChars?: number
+    /** 标题样式（用于 Markdown # 标题） */
     headings?: {
       [level: number]: {
         font?: string
@@ -87,6 +107,8 @@ export interface WordStyleConfig {
         center?: boolean
       }
     }
+    /** 编号层级规则（按优先级排序，先匹配的优先） */
+    numberingRules?: NumberingRule[]
   }
 }
 
@@ -164,6 +186,82 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
         5: { font: 'Times New Roman', size: 12, bold: true },
         6: { font: 'Times New Roman', size: 12, bold: true }
       }
+    }
+  },
+  // 中国党政机关公文格式 (GB/T 9704-2012)
+  official: {
+    name: '公文格式',
+    sourceType: 'preset',
+    config: {
+      font: '仿宋',
+      fontSize: 16,  // 三号字
+      lineSpacing: 1.5,
+      firstLineIndent: true,
+      firstLineIndentChars: 2,
+      headings: {
+        // 公文标题：二号小标宋体，居中
+        1: { font: '小标宋体', size: 22, bold: false, center: true }
+      },
+      numberingRules: [
+        // 一级标题：一、二、三、... 黑体
+        {
+          pattern: '^[一二三四五六七八九十]+、',
+          style: { font: '黑体', size: 16, bold: false, indent: 0 }
+        },
+        // 二级标题：（一）（二）... 楷体加粗
+        {
+          pattern: '^（[一二三四五六七八九十]+）',
+          style: { font: '楷体', size: 16, bold: true, indent: 0 }
+        },
+        // 三级标题：1. 2. 3. ... 仿宋加粗
+        {
+          pattern: '^\\d+\\.',
+          style: { font: '仿宋', size: 16, bold: true, indent: 0 }
+        },
+        // 四级标题：（1）（2）... 仿宋
+        {
+          pattern: '^（\\d+）',
+          style: { font: '仿宋', size: 16, bold: false, indent: 0 }
+        }
+      ]
+    }
+  },
+  // 证券公司公文格式
+  securities: {
+    name: '证券公文',
+    sourceType: 'preset',
+    config: {
+      font: '仿宋_GB2312',
+      fontSize: 16,  // 三号字
+      lineSpacing: 1.5,
+      firstLineIndent: true,
+      firstLineIndentChars: 2,
+      headings: {
+        // 公文标题：二号小标宋体，居中
+        1: { font: '方正小标宋简体', size: 22, bold: false, center: true }
+      },
+      numberingRules: [
+        // 一级标题：一、二、三、... 黑体
+        {
+          pattern: '^[一二三四五六七八九十]+、',
+          style: { font: '黑体', size: 16, bold: false, indent: 0 }
+        },
+        // 二级标题：（一）（二）... 楷体_GB2312 加粗
+        {
+          pattern: '^（[一二三四五六七八九十]+）',
+          style: { font: '楷体_GB2312', size: 16, bold: true, indent: 0 }
+        },
+        // 三级标题：1. 2. 3. ... 仿宋_GB2312 加粗
+        {
+          pattern: '^\\d+\\.',
+          style: { font: '仿宋_GB2312', size: 16, bold: true, indent: 0 }
+        },
+        // 四级标题：（1）（2）... 仿宋_GB2312
+        {
+          pattern: '^（\\d+）',
+          style: { font: '仿宋_GB2312', size: 16, bold: false, indent: 0 }
+        }
+      ]
     }
   }
 }
@@ -290,17 +388,65 @@ function createHeading(token: Tokens.Heading, style: WordStyleConfig): Paragraph
 }
 
 /**
+ * 检测文本是否匹配编号规则
+ */
+function matchNumberingRule(text: string, style: WordStyleConfig): NumberingRule | null {
+  if (!style.config.numberingRules) return null
+  
+  const trimmedText = text.trim()
+  for (const rule of style.config.numberingRules) {
+    const regex = new RegExp(rule.pattern)
+    if (regex.test(trimmedText)) {
+      return rule
+    }
+  }
+  return null
+}
+
+/**
  * 创建段落
  */
 function createParagraph(text: string, style: WordStyleConfig): Paragraph {
-  // 解析内联 Markdown（加粗、斜体等）
+  const decodedText = decodeHtmlEntities(text)
+  
+  // 检查是否匹配编号规则
+  const matchedRule = matchNumberingRule(decodedText, style)
+  
+  if (matchedRule) {
+    // 应用编号规则的样式
+    const ruleStyle = matchedRule.style
+    const indentChars = ruleStyle.indent ?? 0
+    // 一个中文字符约等于 0.35 英寸
+    const indentTwip = indentChars > 0 ? convertInchesToTwip(indentChars * 0.35) : undefined
+    
+    return new Paragraph({
+      alignment: ruleStyle.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+      indent: indentTwip ? { firstLine: indentTwip } : undefined,
+      spacing: {
+        line: (style.config.lineSpacing || 1.15) * 240
+      },
+      children: [new TextRun({
+        text: decodedText,
+        font: ruleStyle.font || style.config.font,
+        size: (ruleStyle.size || style.config.fontSize || 12) * 2,
+        bold: ruleStyle.bold,
+        italics: ruleStyle.italic
+      })]
+    })
+  }
+  
+  // 普通段落：解析内联 Markdown（加粗、斜体等）
   const inlineTokens = marked.lexer(text)[0]
   const tokens = inlineTokens && 'tokens' in inlineTokens ? inlineTokens.tokens : undefined
   
+  // 计算首行缩进
+  const indentChars = style.config.firstLineIndentChars ?? 2
+  const firstLineIndent = style.config.firstLineIndent 
+    ? convertInchesToTwip(indentChars * 0.35)  // 中文字符宽度
+    : undefined
+  
   return new Paragraph({
-    indent: style.config.firstLineIndent ? {
-      firstLine: convertInchesToTwip(0.5)
-    } : undefined,
+    indent: firstLineIndent ? { firstLine: firstLineIndent } : undefined,
     spacing: {
       line: (style.config.lineSpacing || 1.15) * 240
     },
@@ -310,7 +456,7 @@ function createParagraph(text: string, style: WordStyleConfig): Paragraph {
           size: style.config.fontSize
         })
       : [new TextRun({
-          text: decodeHtmlEntities(text),
+          text: decodedText,
           font: style.config.font,
           size: style.config.fontSize ? style.config.fontSize * 2 : undefined
         })]
