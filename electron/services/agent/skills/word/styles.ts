@@ -68,7 +68,7 @@ export interface NumberingRule {
     size?: number
     bold?: boolean
     italic?: boolean
-    center?: boolean
+    align?: 'left' | 'center' | 'right' | 'justify'
     /** 首行缩进（字符数，0 表示顶格） */
     indent?: number
   }
@@ -104,7 +104,7 @@ export interface WordStyleConfig {
         font?: string
         size?: number
         bold?: boolean
-        center?: boolean
+        align?: 'left' | 'center' | 'right' | 'justify'
       }
     }
     /** 编号层级规则（按优先级排序，先匹配的优先） */
@@ -143,7 +143,7 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
       lineSpacing: 1.5,
       firstLineIndent: true,
       headings: {
-        1: { font: '黑体', size: 22, bold: true, center: true },
+        1: { font: '黑体', size: 22, bold: true, align: 'center' },
         2: { font: '黑体', size: 16, bold: true },
         3: { font: '黑体', size: 14, bold: true },
         4: { font: '宋体', size: 12, bold: true },
@@ -179,7 +179,7 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
       lineSpacing: 2.0,
       firstLineIndent: true,
       headings: {
-        1: { font: 'Times New Roman', size: 16, bold: true, center: true },
+        1: { font: 'Times New Roman', size: 16, bold: true, align: 'center' },
         2: { font: 'Times New Roman', size: 14, bold: true },
         3: { font: 'Times New Roman', size: 12, bold: true },
         4: { font: 'Times New Roman', size: 12, bold: true },
@@ -200,7 +200,7 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
       firstLineIndentChars: 2,
       headings: {
         // 公文标题：二号小标宋体，居中
-        1: { font: '小标宋体', size: 22, bold: false, center: true }
+        1: { font: '小标宋体', size: 22, bold: false, align: 'center' }
       },
       numberingRules: [
         // 一级标题：一、二、三、... 黑体
@@ -238,7 +238,7 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
       firstLineIndentChars: 2,
       headings: {
         // 公文标题：二号小标宋体，居中
-        1: { font: '方正小标宋简体', size: 22, bold: false, center: true }
+        1: { font: '方正小标宋简体', size: 22, bold: false, align: 'center' }
       },
       numberingRules: [
         // 一级标题：一、二、三、... 黑体
@@ -274,6 +274,18 @@ export function getStyleConfig(styleName?: string): WordStyleConfig {
     return PRESET_STYLES.simple
   }
   return PRESET_STYLES[styleName] || PRESET_STYLES.simple
+}
+
+/**
+ * 将对齐字符串转换为 AlignmentType
+ */
+function getAlignment(align?: string): (typeof AlignmentType)[keyof typeof AlignmentType] {
+  switch (align) {
+    case 'center': return AlignmentType.CENTER
+    case 'right': return AlignmentType.RIGHT
+    case 'justify': return AlignmentType.JUSTIFIED
+    default: return AlignmentType.LEFT
+  }
 }
 
 /**
@@ -351,6 +363,14 @@ function tokensToDocxElements(
         elements.push(createHorizontalRule())
         break
         
+      case 'html':
+        // 支持 HTML 对齐标签：<p align="right">, <div style="text-align: center"> 等
+        const htmlResult = createAlignedParagraphFromHtml(token as Tokens.HTML, style)
+        if (htmlResult) {
+          elements.push(...htmlResult)
+        }
+        break
+        
       case 'space':
         // 空行，跳过
         break
@@ -384,7 +404,7 @@ function createHeading(token: Tokens.Heading, style: WordStyleConfig): Paragraph
   
   return new Paragraph({
     heading: headingMap[level] || HeadingLevel.HEADING_1,
-    alignment: headingStyle.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+    alignment: getAlignment(headingStyle.align),
     children: parseInlineTokens(token.tokens || [], {
       font: headingStyle.font || style.config.font,
       size: headingStyle.size,
@@ -412,7 +432,7 @@ function createParagraphFromTokens(tokens: Token[], style: WordStyleConfig): Par
     const indentTwip = indentChars > 0 ? convertInchesToTwip(indentChars * 0.35) : undefined
     
     return new Paragraph({
-      alignment: ruleStyle.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+      alignment: getAlignment(ruleStyle.align),
       indent: indentTwip ? { firstLine: indentTwip } : undefined,
       spacing: {
         line: (style.config.lineSpacing || 1.15) * 240
@@ -477,7 +497,7 @@ function createParagraph(text: string, style: WordStyleConfig): Paragraph {
     const indentTwip = indentChars > 0 ? convertInchesToTwip(indentChars * 0.35) : undefined
     
     return new Paragraph({
-      alignment: ruleStyle.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+      alignment: getAlignment(ruleStyle.align),
       indent: indentTwip ? { firstLine: indentTwip } : undefined,
       spacing: {
         line: (style.config.lineSpacing || 1.15) * 240
@@ -771,6 +791,93 @@ function createHorizontalRule(): Paragraph {
     },
     spacing: { before: 200, after: 200 },
     children: []
+  })
+}
+
+/**
+ * 从 HTML 标签创建对齐段落
+ * 支持：
+ * - <p align="left|center|right|justify">内容</p>
+ * - <div style="text-align: left|center|right|justify">内容</div>
+ * - <center>内容</center>
+ */
+function createAlignedParagraphFromHtml(
+  token: Tokens.HTML,
+  style: WordStyleConfig
+): Paragraph[] | null {
+  const html = token.text || token.raw || ''
+  
+  // 提取对齐方式
+  let align: string | undefined
+  
+  // 匹配 align="..." 属性
+  const alignMatch = html.match(/align\s*=\s*["']?(left|center|right|justify)["']?/i)
+  if (alignMatch) {
+    align = alignMatch[1].toLowerCase()
+  }
+  
+  // 匹配 style="text-align: ..." 
+  const styleMatch = html.match(/text-align\s*:\s*(left|center|right|justify)/i)
+  if (styleMatch) {
+    align = styleMatch[1].toLowerCase()
+  }
+  
+  // 匹配 <center> 标签
+  if (/<center>/i.test(html)) {
+    align = 'center'
+  }
+  
+  // 如果没有识别到对齐方式，返回 null（让 default 处理）
+  if (!align) {
+    return null
+  }
+  
+  // 提取内容（去除 HTML 标签）
+  const content = html
+    .replace(/<[^>]+>/g, '')  // 移除所有 HTML 标签
+    .trim()
+  
+  if (!content) {
+    return null
+  }
+  
+  // 按换行分割内容，每行创建一个段落
+  const lines = content.split(/\n/).filter(line => line.trim())
+  
+  return lines.map(line => {
+    const trimmedLine = line.trim()
+    
+    // 使用 marked 解析内联 Markdown 格式（粗体、斜体等）
+    const tokens = marked.lexer(trimmedLine)
+    let children: TextRun[]
+    
+    if (tokens.length > 0 && tokens[0].type === 'paragraph' && 'tokens' in tokens[0] && tokens[0].tokens) {
+      // 解析内联格式
+      children = parseInlineTokens(tokens[0].tokens, {
+        font: style.config.font,
+        size: style.config.fontSize
+      })
+    } else if (tokens.length > 0 && tokens[0].type === 'text' && 'tokens' in tokens[0] && tokens[0].tokens) {
+      children = parseInlineTokens(tokens[0].tokens, {
+        font: style.config.font,
+        size: style.config.fontSize
+      })
+    } else {
+      // 无内联格式，直接创建文本
+      children = [new TextRun({
+        text: decodeHtmlEntities(trimmedLine),
+        font: style.config.font,
+        size: style.config.fontSize ? style.config.fontSize * 2 : undefined
+      })]
+    }
+    
+    return new Paragraph({
+      alignment: getAlignment(align),
+      spacing: {
+        line: (style.config.lineSpacing || 1.15) * 240
+      },
+      children
+    })
   })
 }
 

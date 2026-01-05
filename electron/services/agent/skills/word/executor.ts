@@ -443,7 +443,7 @@ async function wordAdd(
     underline: args.underline as boolean | undefined,
     color: args.color as string | undefined,
     highlight: args.highlight as string | undefined,
-    center: args.center as boolean | undefined,
+    align: args.align as 'left' | 'center' | 'right' | 'justify' | undefined,
     indent: args.indent as number | undefined
   }
   // 图片参数
@@ -1014,7 +1014,7 @@ function createImageParagraph(
   const imgHeight = height || imgWidth * 0.75  // 默认 4:3 比例
   
   return new Paragraph({
-    alignment: style?.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+    alignment: getAlignment(style?.align),
     children: [
       new ImageRun({
         data: imageData,
@@ -1033,7 +1033,7 @@ function createImageParagraph(
  */
 function createHyperlinkParagraph(text: string, url: string, style?: ParagraphStyle): Paragraph {
   return new Paragraph({
-    alignment: style?.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+    alignment: getAlignment(style?.align),
     children: [
       new ExternalHyperlink({
         children: [
@@ -1060,7 +1060,7 @@ function createBookmarkParagraph(text: string, bookmarkName: string, style?: Par
   const indent = calcIndent(style?.indent)
   
   return new Paragraph({
-    alignment: style?.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+    alignment: getAlignment(style?.align),
     indent: indent !== undefined ? { firstLine: indent } : undefined,
     children: [
       new Bookmark({
@@ -1095,7 +1095,7 @@ function createCommentParagraph(
   const indent = calcIndent(style?.indent)
   
   return new Paragraph({
-    alignment: style?.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+    alignment: getAlignment(style?.align),
     indent: indent !== undefined ? { firstLine: indent } : undefined,
     children: [
       new CommentRangeStart(commentId),
@@ -1124,8 +1124,20 @@ type ParagraphStyle = {
   underline?: boolean
   color?: string      // 十六进制颜色，如 "FF0000"
   highlight?: string  // 高亮色，如 "yellow"
-  center?: boolean
+  align?: 'left' | 'center' | 'right' | 'justify'  // 对齐方式
   indent?: number
+}
+
+/**
+ * 将对齐字符串转换为 AlignmentType
+ */
+function getAlignment(align?: string): (typeof AlignmentType)[keyof typeof AlignmentType] {
+  switch (align) {
+    case 'center': return AlignmentType.CENTER
+    case 'right': return AlignmentType.RIGHT
+    case 'justify': return AlignmentType.JUSTIFIED
+    default: return AlignmentType.LEFT
+  }
 }
 
 /**
@@ -1155,7 +1167,7 @@ function createHeading(text: string, level: number, style?: ParagraphStyle): Par
   
   return new Paragraph({
     heading: headingMap[level] || HeadingLevel.HEADING_1,
-    alignment: style?.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+    alignment: getAlignment(style?.align),
     indent: indent !== undefined ? { firstLine: indent } : undefined,
     children: [
       new TextRun({
@@ -1179,7 +1191,7 @@ function createParagraph(text: string, style?: ParagraphStyle): Paragraph {
   const indent = calcIndent(style?.indent)
   
   return new Paragraph({
-    alignment: style?.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+    alignment: getAlignment(style?.align),
     indent: indent !== undefined ? { firstLine: indent } : undefined,
     children: [
       new TextRun({

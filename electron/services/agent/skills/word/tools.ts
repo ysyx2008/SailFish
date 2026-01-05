@@ -96,7 +96,7 @@ export const wordTools: ToolDefinition[] = [
 - underline: 下划线
 - color: 文字颜色（十六进制，如"FF0000"红色、"0000FF"蓝色）
 - highlight: 高亮背景色（如"yellow"、"cyan"）
-- center: 居中对齐
+- align: 对齐方式（left=左对齐, center=居中, right=右对齐, justify=两端对齐）
 - indent: 首行缩进（字符数，0=顶格，2=缩进两字）
 
 **公文格式示例**：
@@ -162,9 +162,10 @@ export const wordTools: ToolDefinition[] = [
             type: 'string',
             description: '高亮背景色（可选，如"yellow"、"cyan"、"green"、"magenta"）'
           },
-          center: {
-            type: 'boolean',
-            description: '是否居中对齐（可选，默认左对齐）'
+          align: {
+            type: 'string',
+            enum: ['left', 'center', 'right', 'justify'],
+            description: '对齐方式（可选，默认 left 左对齐）'
           },
           indent: {
             type: 'number',
@@ -343,6 +344,7 @@ export const wordTools: ToolDefinition[] = [
 - 斜体：*文本*
 - 代码块：\`\`\`代码\`\`\`
 - 引用：> 引用文本
+- 对齐：<p align="right">右对齐</p>、<center>居中</center>
 
 **预设样式**：
 - simple：简洁风格（默认）
@@ -365,7 +367,17 @@ word_from_markdown({
   path: "通知.docx",
   markdown: "# 关于加强信息安全的通知\\n\\n一、总体要求\\n\\n（一）提高思想认识。各部门要...",
   style: "official"
-})`,
+})
+
+**对齐示例**（用于落款等右对齐内容）：
+markdown 内容：
+# 通知
+正文内容...
+
+<p align="right">
+XX公司
+2024年1月1日
+</p>`,
       parameters: {
         type: 'object',
         properties: {

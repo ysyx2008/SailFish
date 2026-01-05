@@ -61,7 +61,7 @@ export interface SectionContent {
     underline?: boolean // 下划线
     color?: string      // 文字颜色（十六进制，如 "FF0000"）
     highlight?: string  // 高亮背景色
-    center?: boolean    // 居中对齐
+    align?: 'left' | 'center' | 'right' | 'justify'  // 对齐方式
     indent?: number     // 首行缩进（字符数）
   }
   /** 列表项（仅 type=list 时使用） */
