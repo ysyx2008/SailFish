@@ -322,7 +322,13 @@ function tokensToDocxElements(
         break
         
       case 'paragraph':
-        elements.push(createParagraph((token as Tokens.Paragraph).text, style))
+        // 使用 token.tokens（已解析的内联格式），而不是 token.text（原始文本）
+        const paragraphToken = token as Tokens.Paragraph
+        if (paragraphToken.tokens && paragraphToken.tokens.length > 0) {
+          elements.push(createParagraphFromTokens(paragraphToken.tokens, style))
+        } else {
+          elements.push(createParagraph(paragraphToken.text, style))
+        }
         break
         
       case 'list':
@@ -383,6 +389,56 @@ function createHeading(token: Tokens.Heading, style: WordStyleConfig): Paragraph
       font: headingStyle.font || style.config.font,
       size: headingStyle.size,
       bold: headingStyle.bold ?? true
+    })
+  })
+}
+
+/**
+ * 从已解析的 tokens 创建段落（用于正确处理粗体、斜体等内联格式）
+ */
+function createParagraphFromTokens(tokens: Token[], style: WordStyleConfig): Paragraph {
+  // 获取原始文本用于检测编号规则
+  const rawText = tokens.map(t => 'text' in t ? t.text : '').join('')
+  const decodedText = decodeHtmlEntities(rawText)
+  
+  // 检查是否匹配编号规则
+  const matchedRule = matchNumberingRule(decodedText, style)
+  
+  if (matchedRule) {
+    // 编号规则优先，使用规则样式
+    const ruleStyle = matchedRule.style
+    const indentChars = ruleStyle.indent ?? 0
+    const indentTwip = indentChars > 0 ? convertInchesToTwip(indentChars * 0.35) : undefined
+    
+    return new Paragraph({
+      alignment: ruleStyle.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+      indent: indentTwip ? { firstLine: indentTwip } : undefined,
+      spacing: {
+        line: (style.config.lineSpacing || 1.15) * 240
+      },
+      children: parseInlineTokens(tokens, {
+        font: ruleStyle.font || style.config.font,
+        size: ruleStyle.size || style.config.fontSize,
+        bold: ruleStyle.bold,
+        italic: ruleStyle.italic
+      })
+    })
+  }
+  
+  // 普通段落
+  const indentChars = style.config.firstLineIndentChars ?? 2
+  const firstLineIndent = style.config.firstLineIndent 
+    ? convertInchesToTwip(indentChars * 0.35)
+    : undefined
+  
+  return new Paragraph({
+    indent: firstLineIndent ? { firstLine: firstLineIndent } : undefined,
+    spacing: {
+      line: (style.config.lineSpacing || 1.15) * 240
+    },
+    children: parseInlineTokens(tokens, {
+      font: style.config.font,
+      size: style.config.fontSize
     })
   })
 }
@@ -545,14 +601,21 @@ function createList(token: Tokens.List, style: WordStyleConfig): Paragraph[] {
   const paragraphs: Paragraph[] = []
   
   for (const item of token.items) {
-    const text = decodeHtmlEntities(item.text || '')
+    // 使用 item.tokens（已解析的内联格式）而不是 item.text
+    const children = item.tokens && item.tokens.length > 0
+      ? parseInlineTokens(item.tokens, {
+          font: style.config.font,
+          size: style.config.fontSize
+        })
+      : [new TextRun({
+          text: decodeHtmlEntities(item.text || ''),
+          font: style.config.font,
+          size: style.config.fontSize ? style.config.fontSize * 2 : undefined
+        })]
+    
     paragraphs.push(new Paragraph({
       bullet: { level: 0 },
-      children: [new TextRun({
-        text,
-        font: style.config.font,
-        size: style.config.fontSize ? style.config.fontSize * 2 : undefined
-      })]
+      children
     }))
   }
   
@@ -565,40 +628,45 @@ function createList(token: Tokens.List, style: WordStyleConfig): Paragraph[] {
 function createTable(token: Tokens.Table): Table {
   const rows: TableRow[] = []
   
-  // 表头
+  // 表头 - 使用 cell.tokens 支持内联格式
   if (token.header && token.header.length > 0) {
     rows.push(new TableRow({
-      children: token.header.map(cell => new TableCell({
-        children: [new Paragraph({
-          children: [new TextRun({
-            text: decodeHtmlEntities(cell.text),
-            bold: true
-          })]
-        })],
-        borders: {
-          top: { style: BorderStyle.SINGLE, size: 1 },
-          bottom: { style: BorderStyle.SINGLE, size: 1 },
-          left: { style: BorderStyle.SINGLE, size: 1 },
-          right: { style: BorderStyle.SINGLE, size: 1 }
-        }
-      }))
+      children: token.header.map(cell => {
+        const children = cell.tokens && cell.tokens.length > 0
+          ? parseInlineTokens(cell.tokens, { bold: true })
+          : [new TextRun({ text: decodeHtmlEntities(cell.text), bold: true })]
+        
+        return new TableCell({
+          children: [new Paragraph({ children })],
+          borders: {
+            top: { style: BorderStyle.SINGLE, size: 1 },
+            bottom: { style: BorderStyle.SINGLE, size: 1 },
+            left: { style: BorderStyle.SINGLE, size: 1 },
+            right: { style: BorderStyle.SINGLE, size: 1 }
+          }
+        })
+      })
     }))
   }
   
-  // 数据行
+  // 数据行 - 使用 cell.tokens 支持内联格式
   for (const row of token.rows) {
     rows.push(new TableRow({
-      children: row.map(cell => new TableCell({
-        children: [new Paragraph({
-          children: [new TextRun({ text: decodeHtmlEntities(cell.text) })]
-        })],
-        borders: {
-          top: { style: BorderStyle.SINGLE, size: 1 },
-          bottom: { style: BorderStyle.SINGLE, size: 1 },
-          left: { style: BorderStyle.SINGLE, size: 1 },
-          right: { style: BorderStyle.SINGLE, size: 1 }
-        }
-      }))
+      children: row.map(cell => {
+        const children = cell.tokens && cell.tokens.length > 0
+          ? parseInlineTokens(cell.tokens, {})
+          : [new TextRun({ text: decodeHtmlEntities(cell.text) })]
+        
+        return new TableCell({
+          children: [new Paragraph({ children })],
+          borders: {
+            top: { style: BorderStyle.SINGLE, size: 1 },
+            bottom: { style: BorderStyle.SINGLE, size: 1 },
+            left: { style: BorderStyle.SINGLE, size: 1 },
+            right: { style: BorderStyle.SINGLE, size: 1 }
+          }
+        })
+      })
     }))
   }
   
@@ -627,19 +695,27 @@ function createCodeBlock(token: Tokens.Code): Paragraph {
  * 创建引用块
  */
 function createBlockquote(token: Tokens.Blockquote, style: WordStyleConfig): Paragraph {
-  const text = decodeHtmlEntities(token.text || '')
+  // 使用 token.tokens 支持内联格式
+  const children = token.tokens && token.tokens.length > 0
+    ? parseInlineTokens(token.tokens, {
+        font: style.config.font,
+        size: style.config.fontSize,
+        italic: true
+      })
+    : [new TextRun({
+        text: decodeHtmlEntities(token.text || ''),
+        font: style.config.font,
+        size: style.config.fontSize ? style.config.fontSize * 2 : undefined,
+        italics: true,
+        color: '666666'
+      })]
+  
   return new Paragraph({
     indent: { left: convertInchesToTwip(0.5) },
     border: {
       left: { style: BorderStyle.SINGLE, size: 12, color: 'CCCCCC' }
     },
-    children: [new TextRun({
-      text,
-      font: style.config.font,
-      size: style.config.fontSize ? style.config.fontSize * 2 : undefined,
-      italics: true,
-      color: '666666'
-    })]
+    children
   })
 }
 
