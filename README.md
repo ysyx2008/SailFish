@@ -77,7 +77,16 @@ For enterprise users, SFTerm is designed with intranet environments in mind: it 
 - ⏱️ **Command Timeout Control**: Configurable command execution timeout to avoid long waits
 - 📜 **Task History**: Records the execution process and results of each Agent task
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-agent-confirm_en.jpg" width="900" alt="Command Confirmation">
+</p>
+
 ### Terminal Features
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-host-manager_en.jpg" width="900" alt="Host Manager">
+</p>
+
 - 🖥️ **Cross-Platform Support**: Full coverage for Windows, macOS, and Linux
 - 🔐 **SSH Management**: Supports password and private key authentication
 - 📂 **Session Groups**: Flexible group management with group-level jump host configuration, Each group can configure an independent jump host; sessions in the group automatically connect through the jump host
@@ -85,6 +94,10 @@ For enterprise users, SFTerm is designed with intranet environments in mind: it 
 - 📥 **Xshell Import**: One-click import of Xshell session configurations for quick migration
 - 🎨 **Rich Themes**: Built-in multiple beautiful color schemes
 - ⚡ **High Performance**: Based on xterm.js for smooth terminal experience
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-batch_en.jpg" width="900" alt="Batch Operations">
+</p>
 
 ### Database Management
 - 🗄️ **Intelligent SQL Execution**: Describe your needs in natural language, Agent automatically generates and executes SQL (supports MySQL, PostgreSQL, Oracle, SQL Server CLI clients)
@@ -132,6 +145,11 @@ For enterprise users, SFTerm is designed with intranet environments in mind: it 
 - 🔗 **Agent Integration**: Deep integration with Agent, automatically retrieves relevant documents to assist answers
 
 ### File Management
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-file-manager_en.jpg" width="900" alt="Dual-Pane File Manager">
+</p>
+
 - 📁 **Dual-Pane File Manager**: Standalone window with dual-panel file manager
   - Left-right dual-pane layout, supports local and remote file operations
   - Directory tree navigation for quick positioning
