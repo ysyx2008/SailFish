@@ -107,20 +107,28 @@ try {
       <div class="screenshot-frame">
         <div class="screenshot-carousel" id="carousel">
           <div class="slide active" data-title={lang === 'zh' ? '欢迎页面' : 'Welcome Page'}>
-            <img src={lang === 'zh' ? '/screenshot-welcome.png' : '/screenshot-welcome_en.png'} alt={lang === 'zh' ? '旗鱼终端欢迎页面' : 'SFTerm Welcome Page'} loading="eager" />
+            <img src={lang === 'zh' ? '/screenshot-welcome.jpg' : '/screenshot-welcome_en.jpg'} alt={lang === 'zh' ? '旗鱼终端欢迎页面' : 'SFTerm Welcome Page'} loading="eager" />
           </div>
           <div class="slide" data-title={lang === 'zh' ? 'AI Agent 介绍' : 'AI Agent Introduction'}>
-            <img src={lang === 'zh' ? '/screenshot-agent-intro.png' : '/screenshot-agent-intro_en.png'} alt={lang === 'zh' ? 'AI Agent 介绍' : 'AI Agent Introduction'} loading="lazy" />
+            <img src={lang === 'zh' ? '/screenshot-agent-intro.png' : '/screenshot-agent-intro_en.jpg'} alt={lang === 'zh' ? 'AI Agent 介绍' : 'AI Agent Introduction'} loading="lazy" />
           </div>
-          <div class="slide" data-title={lang === 'zh' ? 'AI Agent 执行' : 'AI Agent Execution'}>
-            <img src={lang === 'zh' ? '/screenshot-agent-exec.png' : '/screenshot-agent-exec_en.png'} alt={lang === 'zh' ? 'AI Agent 执行' : 'AI Agent Execution'} loading="lazy" />
+          <div class="slide" data-title={lang === 'zh' ? '命令确认' : 'Command Confirmation'}>
+            <img src={lang === 'zh' ? '/screenshot-agent-risk.png' : '/screenshot-agent-confirm_en.jpg'} alt={lang === 'zh' ? '命令确认' : 'Command Confirmation'} loading="lazy" />
           </div>
-          <div class="slide" data-title={lang === 'zh' ? 'AI 对话' : 'AI Chat'}>
-            <img src={lang === 'zh' ? '/screenshot-chat.png' : '/screenshot-chat_en.png'} alt={lang === 'zh' ? 'AI 对话' : 'AI Chat'} loading="lazy" />
+          <div class="slide" data-title={lang === 'zh' ? '主机管理' : 'Host Manager'}>
+            <img src={lang === 'zh' ? '/screenshot-host-manager.jpg' : '/screenshot-host-manager_en.jpg'} alt={lang === 'zh' ? '主机管理' : 'Host Manager'} loading="lazy" />
           </div>
-          <div class="slide" data-title={lang === 'zh' ? '智能分析' : 'Smart Analysis'}>
-            <img src={lang === 'zh' ? '/screenshot-analyse.png' : '/screenshot-analyse_en.png'} alt={lang === 'zh' ? '智能分析' : 'Smart Analysis'} loading="lazy" />
+          <div class="slide" data-title={lang === 'zh' ? '批量操作' : 'Batch Operations'}>
+            <img src={lang === 'zh' ? '/screenshot-batch.jpg' : '/screenshot-batch_en.jpg'} alt={lang === 'zh' ? '批量操作' : 'Batch Operations'} loading="lazy" />
           </div>
+          <div class="slide" data-title={lang === 'zh' ? '文件管理器' : 'File Manager'}>
+            <img src={lang === 'zh' ? '/screenshot-file-manager.jpg' : '/screenshot-file-manager_en.jpg'} alt={lang === 'zh' ? '文件管理器' : 'File Manager'} loading="lazy" />
+          </div>
+          {lang === 'zh' && (
+            <div class="slide" data-title="Agent 自动化训练">
+              <img src="/screenshot-agent-training.png" alt="Agent 自动化训练" loading="lazy" />
+            </div>
+          )}
         </div>
         
         <!-- 标题显示 -->
@@ -149,6 +157,8 @@ try {
         <button class="indicator" data-index="2" aria-label="Slide 3"></button>
         <button class="indicator" data-index="3" aria-label="Slide 4"></button>
         <button class="indicator" data-index="4" aria-label="Slide 5"></button>
+        <button class="indicator" data-index="5" aria-label="Slide 6"></button>
+        {lang === 'zh' && <button class="indicator" data-index="6" aria-label="Slide 7"></button>}
       </div>
     </div>
     
