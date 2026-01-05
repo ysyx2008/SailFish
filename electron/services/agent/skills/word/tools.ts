@@ -461,6 +461,39 @@ XX公司
         required: ['name']
       }
     }
+  },
+  // ========== 导出工具 ==========
+  {
+    type: 'function',
+    function: {
+      name: 'word_export_pdf',
+      description: `将 Word 文档导出为 PDF。
+
+**系统要求**：
+- Windows：需要安装 Microsoft Word
+- macOS：需要安装 Microsoft Word 或 LibreOffice
+- Linux：需要安装 LibreOffice
+
+**使用方式**：
+1. 可以直接导出任意 .docx 文件（无需先打开）
+2. 如果文档已打开且有修改，会自动保存后再导出
+
+**注意**：如果系统未安装支持的软件，会返回错误提示和安装建议。`,
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Word 文档路径（.docx）'
+          },
+          output_path: {
+            type: 'string',
+            description: 'PDF 输出路径（可选，默认与源文件同目录同名）'
+          }
+        },
+        required: ['path']
+      }
+    }
   }
 ]
 

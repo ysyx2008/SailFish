@@ -59,6 +59,10 @@ import {
 } from './styles'
 import { app } from 'electron'
 import { getKnowledgeService } from '../../../knowledge'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+
+const execAsync = promisify(exec)
 
 // 备用存储路径（知识库未启用时使用）
 const STYLES_FILE_PATH = path.join(app.getPath('userData'), 'word-styles.json')
@@ -202,6 +206,140 @@ function saveCustomStylesToFile(): void {
   }
 }
 
+// ==================== PDF 导出相关 ====================
+
+/**
+ * 检测到的 Office 类型
+ */
+type DetectedOffice = 'msword' | 'libreoffice' | null
+
+/**
+ * Office 检测缓存
+ */
+let detectedOfficeCache: DetectedOffice | undefined = undefined
+
+/**
+ * 检测系统安装的 Office 软件
+ * 优先级：MS Word > LibreOffice
+ */
+async function detectOffice(): Promise<DetectedOffice> {
+  // 使用缓存
+  if (detectedOfficeCache !== undefined) {
+    return detectedOfficeCache
+  }
+
+  const platform = process.platform
+
+  if (platform === 'win32') {
+    // Windows: 检测 MS Word
+    try {
+      // 尝试通过 PowerShell 检测 Word COM 对象是否可用
+      await execAsync('powershell -Command "New-Object -ComObject Word.Application | Out-Null"', { timeout: 5000 })
+      detectedOfficeCache = 'msword'
+      console.log('[WordSkill] Detected MS Word on Windows')
+      return detectedOfficeCache
+    } catch {
+      // Word 不可用
+    }
+  } else if (platform === 'darwin') {
+    // macOS: 检测 MS Word 或 LibreOffice
+    try {
+      // 检测 MS Word for Mac
+      await execAsync('test -d "/Applications/Microsoft Word.app"')
+      detectedOfficeCache = 'msword'
+      console.log('[WordSkill] Detected MS Word on macOS')
+      return detectedOfficeCache
+    } catch {
+      // Word 不存在，检测 LibreOffice
+    }
+
+    try {
+      await execAsync('test -d "/Applications/LibreOffice.app"')
+      detectedOfficeCache = 'libreoffice'
+      console.log('[WordSkill] Detected LibreOffice on macOS')
+      return detectedOfficeCache
+    } catch {
+      // LibreOffice 也不存在
+    }
+  } else if (platform === 'linux') {
+    // Linux: 检测 LibreOffice
+    try {
+      await execAsync('which libreoffice')
+      detectedOfficeCache = 'libreoffice'
+      console.log('[WordSkill] Detected LibreOffice on Linux')
+      return detectedOfficeCache
+    } catch {
+      // LibreOffice 不存在
+    }
+  }
+
+  detectedOfficeCache = null
+  console.log('[WordSkill] No Office software detected')
+  return detectedOfficeCache
+}
+
+/**
+ * 获取 Office 安装建议
+ */
+function getOfficeInstallHint(): string {
+  const platform = process.platform
+  if (platform === 'win32') {
+    return t('word.install_hint_windows')
+  } else if (platform === 'darwin') {
+    return t('word.install_hint_macos')
+  } else {
+    return t('word.install_hint_linux')
+  }
+}
+
+/**
+ * 使用 MS Word 导出 PDF (Windows)
+ */
+async function exportPdfWithMsWordWindows(docxPath: string, pdfPath: string): Promise<void> {
+  // PowerShell 脚本使用 Word COM 对象导出 PDF
+  const script = `
+$word = New-Object -ComObject Word.Application
+$word.Visible = $false
+try {
+  $doc = $word.Documents.Open("${docxPath.replace(/\\/g, '\\\\')}")
+  $doc.SaveAs("${pdfPath.replace(/\\/g, '\\\\')}", 17)
+  $doc.Close()
+} finally {
+  $word.Quit()
+}
+`
+  await execAsync(`powershell -Command "${script.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { timeout: 60000 })
+}
+
+/**
+ * 使用 MS Word 导出 PDF (macOS)
+ */
+async function exportPdfWithMsWordMac(docxPath: string, pdfPath: string): Promise<void> {
+  // AppleScript 调用 Word for Mac
+  const script = `
+tell application "Microsoft Word"
+  activate
+  open POSIX file "${docxPath}"
+  set theDoc to active document
+  save as theDoc file name POSIX file "${pdfPath}" file format format PDF
+  close theDoc saving no
+end tell
+`
+  await execAsync(`osascript -e '${script.replace(/'/g, "'\\''")}'`, { timeout: 60000 })
+}
+
+/**
+ * 使用 LibreOffice 导出 PDF
+ */
+async function exportPdfWithLibreOffice(docxPath: string, outDir: string): Promise<void> {
+  const platform = process.platform
+  const cmd = platform === 'darwin'
+    ? `/Applications/LibreOffice.app/Contents/MacOS/soffice`
+    : 'libreoffice'
+  
+  await execAsync(`"${cmd}" --headless --convert-to pdf --outdir "${outDir}" "${docxPath}"`, { timeout: 60000 })
+}
+
 /**
  * 执行 Word 技能工具
  */
@@ -240,6 +378,9 @@ export async function executeWordTool(
       return await wordListStyles(executor)
     case 'word_set_default_style':
       return await wordSetDefaultStyle(args, executor)
+    // 导出工具
+    case 'word_export_pdf':
+      return await wordExportPdf(ptyId, args, executor)
     default:
       return { success: false, output: '', error: t('error.unknown_tool', { name: toolName }) }
   }
@@ -1574,5 +1715,106 @@ async function wordSetDefaultStyle(
   })
 
   return { success: true, output }
+}
+
+/**
+ * 导出 Word 文档为 PDF
+ */
+async function wordExportPdf(
+  ptyId: string,
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const docxPath = args.path as string
+  const outputPath = args.output_path as string | undefined
+
+  if (!docxPath) {
+    return { success: false, output: '', error: t('error.file_path_required') }
+  }
+
+  // 解析路径
+  const resolvedDocxPath = resolvePath(ptyId, docxPath)
+  
+  // 检查源文件是否存在
+  if (!fs.existsSync(resolvedDocxPath)) {
+    return { success: false, output: '', error: t('error.file_not_found', { path: resolvedDocxPath }) }
+  }
+
+  // 确保是 docx 文件
+  if (!resolvedDocxPath.toLowerCase().endsWith('.docx')) {
+    return { success: false, output: '', error: t('word.export_pdf_docx_only') }
+  }
+
+  // 如果文档已打开且有修改，先保存
+  if (isSessionOpen(resolvedDocxPath)) {
+    const session = getSession(resolvedDocxPath)
+    if (session && session.dirty) {
+      // 自动保存
+      const doc = session.document
+      const buffer = await Packer.toBuffer(doc)
+      fs.writeFileSync(resolvedDocxPath, buffer)
+      markSaved(resolvedDocxPath)
+    }
+  }
+
+  // 检测 Office 软件
+  const office = await detectOffice()
+  if (!office) {
+    const hint = getOfficeInstallHint()
+    return { 
+      success: false, 
+      output: '', 
+      error: t('word.no_office_detected') + '\n\n' + hint
+    }
+  }
+
+  // 确定输出路径
+  const pdfPath = outputPath 
+    ? resolvePath(ptyId, outputPath)
+    : resolvedDocxPath.replace(/\.docx$/i, '.pdf')
+  
+  // 确保输出目录存在
+  const pdfDir = path.dirname(pdfPath)
+  if (!fs.existsSync(pdfDir)) {
+    fs.mkdirSync(pdfDir, { recursive: true })
+  }
+
+  try {
+    const platform = process.platform
+
+    if (office === 'msword') {
+      if (platform === 'win32') {
+        await exportPdfWithMsWordWindows(resolvedDocxPath, pdfPath)
+      } else if (platform === 'darwin') {
+        await exportPdfWithMsWordMac(resolvedDocxPath, pdfPath)
+      }
+    } else if (office === 'libreoffice') {
+      await exportPdfWithLibreOffice(resolvedDocxPath, pdfDir)
+      // LibreOffice 输出文件名固定为源文件同名，如需不同名则重命名
+      const libreOutputPath = path.join(pdfDir, path.basename(resolvedDocxPath).replace(/\.docx$/i, '.pdf'))
+      if (libreOutputPath !== pdfPath && fs.existsSync(libreOutputPath)) {
+        fs.renameSync(libreOutputPath, pdfPath)
+      }
+    }
+
+    // 检查输出文件是否生成
+    if (!fs.existsSync(pdfPath)) {
+      return { success: false, output: '', error: t('word.export_pdf_failed') }
+    }
+
+    const output = t('word.export_pdf_success', { path: pdfPath })
+
+    executor.addStep({
+      type: 'tool_result',
+      content: output,
+      toolName: 'word_export_pdf',
+      toolResult: output
+    })
+
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    return { success: false, output: '', error: t('word.export_pdf_error', { error: errorMsg }) }
+  }
 }
 

@@ -315,6 +315,15 @@ const translations = {
     'word.style_extraction_prompt': '请根据以下提示解析格式规范 "{name}"：\n\n{prompt}',
     'word.style_extraction_hint': '请解析上述格式说明并返回 JSON 配置，然后使用配置创建样式。',
     'word.pdf_style_hint': '请先使用 read_file 工具读取 PDF 内容，然后告诉我格式要求。',
+    // PDF 导出
+    'word.export_pdf_docx_only': '仅支持 .docx 格式文件',
+    'word.no_office_detected': '未检测到可用的 Office 软件，无法导出 PDF。',
+    'word.install_hint_windows': '请安装 Microsoft Word 后重试。',
+    'word.install_hint_macos': '请安装 Microsoft Word 或 LibreOffice 后重试：\n- Microsoft Word: 从 App Store 或 Office 官网下载\n- LibreOffice: brew install --cask libreoffice',
+    'word.install_hint_linux': '请安装 LibreOffice 后重试：\n- Ubuntu/Debian: sudo apt install libreoffice\n- CentOS/RHEL: sudo yum install libreoffice',
+    'word.export_pdf_success': '已导出 PDF: {path}',
+    'word.export_pdf_failed': 'PDF 导出失败，输出文件未生成',
+    'word.export_pdf_error': 'PDF 导出失败: {error}',
 
     // 邮箱操作
     'email.no_accounts_configured': '未配置邮箱账户，请先在设置中添加邮箱账户',
@@ -943,6 +952,15 @@ Please output the summary in the following format:
     'word.style_extraction_prompt': 'Please parse the format specification "{name}" based on:\n\n{prompt}',
     'word.style_extraction_hint': 'Please parse the format description above and return JSON config, then use it to create the style.',
     'word.pdf_style_hint': 'Please use read_file tool to read PDF content first, then tell me the format requirements.',
+    // PDF export
+    'word.export_pdf_docx_only': 'Only .docx format is supported',
+    'word.no_office_detected': 'No Office software detected. Cannot export to PDF.',
+    'word.install_hint_windows': 'Please install Microsoft Word and try again.',
+    'word.install_hint_macos': 'Please install Microsoft Word or LibreOffice:\n- Microsoft Word: Download from App Store or Office website\n- LibreOffice: brew install --cask libreoffice',
+    'word.install_hint_linux': 'Please install LibreOffice:\n- Ubuntu/Debian: sudo apt install libreoffice\n- CentOS/RHEL: sudo yum install libreoffice',
+    'word.export_pdf_success': 'Exported PDF: {path}',
+    'word.export_pdf_failed': 'PDF export failed, output file was not generated',
+    'word.export_pdf_error': 'PDF export failed: {error}',
 
     // Email operations
     'email.no_accounts_configured': 'No email accounts configured. Please add an email account in settings first.',
