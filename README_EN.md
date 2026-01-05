@@ -70,6 +70,7 @@ For enterprise users, SFTerm is designed with intranet environments in mind: it 
 - 🔌 **MCP Extension**: Supports Model Context Protocol for external tools and resources
 - 🧩 **Skills System**: Load extended capabilities on demand to avoid tool overload
   - `excel` - Excel processing skill
+  - `word` - Word document processing skill (docx-based)
   - `browser` - Browser automation skill (Playwright-based)
   - `email` - Email management skill (IMAP/SMTP)
 - ⚠️ **Strict Mode**: Requires user confirmation before executing dangerous commands (enabled by default)
@@ -84,6 +85,19 @@ For enterprise users, SFTerm is designed with intranet environments in mind: it 
 - 📥 **Xshell Import**: One-click import of Xshell session configurations for quick migration
 - 🎨 **Rich Themes**: Built-in multiple beautiful color schemes
 - ⚡ **High Performance**: Based on xterm.js for smooth terminal experience
+
+### Database Management
+- 🗄️ **Intelligent SQL Execution**: Describe your needs in natural language, Agent automatically generates and executes SQL (supports MySQL, PostgreSQL, Oracle, SQL Server CLI clients)
+- 📊 **Query Result Analysis**: AI automatically analyzes query results, identifies data anomalies and performance bottlenecks
+- 🔍 **Slow Query Diagnosis**: Analyzes slow query logs and provides index optimization suggestions
+- 🛠️ **Automated Operations**:
+  - Database backup and recovery
+  - Schema changes (DDL)
+  - User permission management
+  - Master-slave status check
+- 📈 **Performance Monitoring**: Real-time database status monitoring (connections, QPS, lock waits, etc.)
+- 🔗 **MCP Database Templates**: Built-in PostgreSQL, SQLite MCP server configuration templates for quick database integration
+- 🏢 **Batch Operations**: Manage multiple database servers simultaneously via multi-terminal batch execution
 
 ### MCP Extension Capabilities
 - 🔗 **Protocol Support**: Full support for Model Context Protocol (MCP) standard
@@ -309,10 +323,16 @@ Supports importing existing session configurations from Xshell:
 │       │       ├── registry.ts   # Skill registry
 │       │       ├── skill-loader.ts # Skill loader
 │       │       ├── types.ts      # Type definitions
-│       │       └── excel/        # Excel processing skill
+│       │       ├── excel/        # Excel processing skill
+│       │       │   ├── index.ts  # Skill definition
+│       │       │   ├── tools.ts  # Tool definitions
+│       │       │   ├── executor.ts # Executor
+│       │       │   └── session.ts  # Session management
+│       │       └── word/         # Word document processing skill
 │       │           ├── index.ts  # Skill definition
 │       │           ├── tools.ts  # Tool definitions
 │       │           ├── executor.ts # Executor
+│       │           ├── styles.ts   # Style handling
 │       │           └── session.ts  # Session management
 │       ├── terminal-awareness/   # Terminal awareness module
 │       │   ├── index.ts      # Awareness service entry
@@ -383,7 +403,18 @@ Supports importing existing session configurations from Xshell:
 
 ## Version History
 
-### v8.9.3 (Current Version)
+### v8.12.0 (Current Version)
+- 📝 **Word Document Processing Skill**: New `word` skill for session-based Word document creation and editing
+  - Create new documents and open existing ones
+  - Add paragraphs, headings (level 1-6), lists, tables, images, page breaks
+  - Insert table of contents (TOC), hyperlinks, bookmarks, comments
+  - Rich styling options: font, size, bold/italic/underline, color, highlight, alignment, first-line indent
+  - Built-in official document format support (Chinese government document styles)
+  - Read document content (converted to Markdown format)
+  - Export to PDF (requires Microsoft Word or LibreOffice)
+  - Automatic backup mechanism
+
+### v8.9.3
 - 🌐 **Browser Automation Skill**: New `browser` skill powered by Playwright for web automation, supports navigation, screenshot, click, type, scroll, and login state management
 - 📧 **Email Management Skill**: New `email` skill with IMAP/SMTP support for reading, searching, sending, and deleting emails
 - 🔧 **Agent Tool Enhancements**: Added `edit_file` (precise editing), `file_search` (fast search), `ask_user` (ask questions), `send_input` (send input), `wait` (waiting), `check_terminal_status` (terminal status check)
@@ -558,6 +589,7 @@ For detailed and commercial terms, please see the [LICENSE](./LICENSE) file, or 
 - [Transformers.js](https://huggingface.co/docs/transformers.js)
 - [Playwright](https://playwright.dev/)
 - [ExcelJS](https://github.com/exceljs/exceljs)
+- [docx](https://github.com/dolanmiu/docx)
 - [IMAPFlow](https://github.com/postalsys/imapflow)
 - [Nodemailer](https://nodemailer.com/)
 - [MCP SDK](https://github.com/modelcontextprotocol/typescript-sdk)
