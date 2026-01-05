@@ -22,7 +22,12 @@ import {
   TableOfContents,
   Header,
   Footer,
-  PageNumber
+  PageNumber,
+  ExternalHyperlink,
+  Bookmark,
+  CommentRangeStart,
+  CommentRangeEnd,
+  CommentReference
 } from 'docx'
 import type { ToolResult, AgentConfig } from '../../types'
 import type { ToolExecutorConfig } from '../../tool-executor'
@@ -38,8 +43,11 @@ import {
   closeSession,
   setPageSettings,
   getPageSettings,
+  setDocumentSettings,
+  getDocumentSettings,
   type SectionContent,
-  type PageSettings
+  type PageSettings,
+  type DocumentSettings
 } from './session'
 import {
   markdownToDocx,
@@ -220,6 +228,8 @@ export async function executeWordTool(
       return await wordClose(ptyId, args, executor)
     case 'word_set_page':
       return await wordSetPage(ptyId, args, executor)
+    case 'word_track_changes':
+      return await wordTrackChanges(ptyId, args, executor)
     // 快速模式工具
     case 'word_from_markdown':
       return await wordFromMarkdown(ptyId, args, toolCallId, config, executor)
@@ -440,6 +450,11 @@ async function wordAdd(
   const imagePath = args.image_path as string | undefined
   const imageWidth = args.image_width as number | undefined
   const imageHeight = args.image_height as number | undefined
+  // 超链接/书签/批注参数
+  const url = args.url as string | undefined
+  const bookmarkName = args.bookmark_name as string | undefined
+  const commentText = args.comment_text as string | undefined
+  const commentAuthor = args.comment_author as string | undefined
 
   const session = getSession(filePath)
   if (!session) {
@@ -511,6 +526,52 @@ async function wordAdd(
       
     case 'toc':
       sectionContent = { type: 'toc', content: '' }
+      break
+      
+    case 'hyperlink':
+      if (!content) {
+        return { success: false, output: '', error: '链接文字必填' }
+      }
+      if (!url) {
+        return { success: false, output: '', error: '链接URL必填' }
+      }
+      sectionContent = { 
+        type: 'hyperlink', 
+        content,
+        url,
+        style 
+      }
+      break
+      
+    case 'bookmark':
+      if (!content) {
+        return { success: false, output: '', error: '书签位置文字必填' }
+      }
+      if (!bookmarkName) {
+        return { success: false, output: '', error: '书签名称必填' }
+      }
+      sectionContent = { 
+        type: 'bookmark', 
+        content,
+        bookmarkName,
+        style 
+      }
+      break
+      
+    case 'comment':
+      if (!content) {
+        return { success: false, output: '', error: '段落内容必填' }
+      }
+      if (!commentText) {
+        return { success: false, output: '', error: '批注内容必填' }
+      }
+      sectionContent = { 
+        type: 'comment', 
+        content,
+        commentText,
+        commentAuthor: commentAuthor || '批注者',
+        style 
+      }
       break
       
     default:
@@ -600,8 +661,8 @@ async function wordSave(
       fs.copyFileSync(filePath, backupPath)
     }
 
-    // 构建文档（包含页眉页脚）
-    const doc = buildDocument(session.sections, session.pageSettings)
+    // 构建文档（包含页眉页脚和文档设置）
+    const doc = buildDocument(session.sections, session.pageSettings, session.documentSettings)
     
     // 写入文件
     const buffer = await Packer.toBuffer(doc)
@@ -721,6 +782,46 @@ async function wordSetPage(
   return { success: true, output }
 }
 
+/**
+ * 设置修订追踪
+ */
+async function wordTrackChanges(
+  ptyId: string,
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  if (!args.path) {
+    return { success: false, output: '', error: t('error.file_path_required') }
+  }
+  
+  const filePath = resolvePath(ptyId, args.path as string)
+  const enabled = args.enabled as boolean
+  const author = (args.author as string) || '审阅者'
+  
+  const session = getSession(filePath)
+  if (!session) {
+    return { success: false, output: '', error: t('word.not_open', { path: filePath }) }
+  }
+  
+  setDocumentSettings(filePath, {
+    trackRevisions: enabled,
+    revisionAuthor: author
+  })
+  
+  const output = enabled 
+    ? `修订追踪已启用，作者: ${author}\n\n💡 ${t('word.save_reminder')}`
+    : `修订追踪已禁用\n\n💡 ${t('word.save_reminder')}`
+
+  executor.addStep({
+    type: 'tool_result',
+    content: output,
+    toolName: 'word_track_changes',
+    toolResult: output
+  })
+
+  return { success: true, output }
+}
+
 // ============ 辅助函数 ============
 
 /**
@@ -771,8 +872,9 @@ function sectionsToMarkdown(sections: SectionContent[]): string {
 /**
  * 构建 Document 对象
  */
-function buildDocument(sections: SectionContent[], pageSettings?: PageSettings): Document {
+function buildDocument(sections: SectionContent[], pageSettings?: PageSettings, documentSettings?: DocumentSettings): Document {
   const children: (Paragraph | Table | TableOfContents)[] = []
+  let commentId = 1  // 批注ID计数器
   
   for (const section of sections) {
     switch (section.type) {
@@ -816,6 +918,30 @@ function buildDocument(sections: SectionContent[], pageSettings?: PageSettings):
           headingStyleRange: '1-3'
         }))
         break
+        
+      case 'hyperlink':
+        if (section.url) {
+          children.push(createHyperlinkParagraph(section.content, section.url, section.style))
+        }
+        break
+        
+      case 'bookmark':
+        if (section.bookmarkName) {
+          children.push(createBookmarkParagraph(section.content, section.bookmarkName, section.style))
+        }
+        break
+        
+      case 'comment':
+        if (section.commentText) {
+          children.push(createCommentParagraph(
+            section.content, 
+            section.commentText, 
+            section.commentAuthor || '批注者',
+            section.style,
+            commentId++
+          ))
+        }
+        break
     }
   }
   
@@ -853,13 +979,23 @@ function buildDocument(sections: SectionContent[], pageSettings?: PageSettings):
     })
   } : undefined
   
-  return new Document({
+  // 文档配置
+  const docConfig: any = {
     sections: [{
       headers,
       footers,
       children: children.length > 0 ? children : [new Paragraph({ children: [] })]
     }]
-  })
+  }
+  
+  // 启用修订追踪
+  if (documentSettings?.trackRevisions) {
+    docConfig.features = {
+      trackRevisions: true
+    }
+  }
+  
+  return new Document(docConfig)
 }
 
 /**
@@ -888,6 +1024,93 @@ function createImageParagraph(
         },
         type: 'png'  // 自动检测实际格式
       })
+    ]
+  })
+}
+
+/**
+ * 创建超链接段落
+ */
+function createHyperlinkParagraph(text: string, url: string, style?: ParagraphStyle): Paragraph {
+  return new Paragraph({
+    alignment: style?.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+    children: [
+      new ExternalHyperlink({
+        children: [
+          new TextRun({
+            text,
+            font: style?.font,
+            size: style?.size ? style.size * 2 : undefined,
+            bold: style?.bold,
+            italics: style?.italic,
+            color: '0563C1',  // 标准链接蓝色
+            underline: {}
+          })
+        ],
+        link: url
+      })
+    ]
+  })
+}
+
+/**
+ * 创建书签段落
+ */
+function createBookmarkParagraph(text: string, bookmarkName: string, style?: ParagraphStyle): Paragraph {
+  const indent = calcIndent(style?.indent)
+  
+  return new Paragraph({
+    alignment: style?.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+    indent: indent !== undefined ? { firstLine: indent } : undefined,
+    children: [
+      new Bookmark({
+        id: bookmarkName,
+        children: [
+          new TextRun({
+            text,
+            font: style?.font,
+            size: style?.size ? style.size * 2 : undefined,
+            bold: style?.bold,
+            italics: style?.italic,
+            underline: style?.underline ? {} : undefined,
+            color: style?.color,
+            highlight: style?.highlight as any
+          })
+        ]
+      })
+    ]
+  })
+}
+
+/**
+ * 创建带批注的段落
+ */
+function createCommentParagraph(
+  text: string, 
+  commentText: string, 
+  author: string,
+  style?: ParagraphStyle,
+  commentId: number = 1
+): Paragraph {
+  const indent = calcIndent(style?.indent)
+  
+  return new Paragraph({
+    alignment: style?.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+    indent: indent !== undefined ? { firstLine: indent } : undefined,
+    children: [
+      new CommentRangeStart(commentId),
+      new TextRun({
+        text,
+        font: style?.font,
+        size: style?.size ? style.size * 2 : undefined,
+        bold: style?.bold,
+        italics: style?.italic,
+        underline: style?.underline ? {} : undefined,
+        color: style?.color,
+        highlight: style?.highlight as any
+      }),
+      new CommentRangeEnd(commentId),
+      new CommentReference(commentId)
     ]
   })
 }

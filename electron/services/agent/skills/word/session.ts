@@ -19,6 +19,14 @@ export interface PageSettings {
   pageNumberPosition?: 'header' | 'footer'
 }
 
+/** 文档设置 */
+export interface DocumentSettings {
+  /** 是否启用修订追踪 */
+  trackRevisions?: boolean
+  /** 修订作者 */
+  revisionAuthor?: string
+}
+
 interface WordSession {
   /** 文件路径 */
   filePath: string
@@ -28,6 +36,8 @@ interface WordSession {
   sections: SectionContent[]
   /** 页面设置 */
   pageSettings?: PageSettings
+  /** 文档设置 */
+  documentSettings?: DocumentSettings
   /** 打开时间 */
   openedAt: number
   /** 最后访问时间 */
@@ -40,7 +50,7 @@ interface WordSession {
 
 /** 段落内容 */
 export interface SectionContent {
-  type: 'paragraph' | 'heading' | 'list' | 'table' | 'image' | 'page_break' | 'toc'
+  type: 'paragraph' | 'heading' | 'list' | 'table' | 'image' | 'page_break' | 'toc' | 'hyperlink' | 'bookmark' | 'comment'
   content: string
   level?: number  // 标题级别 1-6
   style?: {
@@ -64,6 +74,14 @@ export interface SectionContent {
   imageWidth?: number
   /** 图片高度（像素，仅 type=image 时使用） */
   imageHeight?: number
+  /** 超链接URL（仅 type=hyperlink 时使用） */
+  url?: string
+  /** 书签名称（仅 type=bookmark 时使用） */
+  bookmarkName?: string
+  /** 评论内容（仅 type=comment 时使用） */
+  commentText?: string
+  /** 评论作者（仅 type=comment 时使用） */
+  commentAuthor?: string
 }
 
 // 打开的文档 Map<filePath, WordSession>
@@ -201,6 +219,25 @@ export function setPageSettings(filePath: string, settings: PageSettings): void 
  */
 export function getPageSettings(filePath: string): PageSettings | undefined {
   return openSessions.get(filePath)?.pageSettings
+}
+
+/**
+ * 设置文档属性
+ */
+export function setDocumentSettings(filePath: string, settings: DocumentSettings): void {
+  const session = openSessions.get(filePath)
+  if (session) {
+    session.documentSettings = { ...session.documentSettings, ...settings }
+    session.dirty = true
+    session.lastAccess = Date.now()
+  }
+}
+
+/**
+ * 获取文档属性
+ */
+export function getDocumentSettings(filePath: string): DocumentSettings | undefined {
+  return openSessions.get(filePath)?.documentSettings
 }
 
 /**

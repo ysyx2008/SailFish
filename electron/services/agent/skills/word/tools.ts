@@ -84,6 +84,9 @@ export const wordTools: ToolDefinition[] = [
 5. image - 图片（使用 image_path 参数）
 6. page_break - 分页符
 7. toc - 目录（自动根据标题生成）
+8. hyperlink - 超链接（使用 url 参数）
+9. bookmark - 书签锚点（使用 bookmark_name 参数）
+10. comment - 带批注的段落（使用 comment_text/comment_author 参数）
 
 **样式选项**（可选）：
 - font: 字体名称（如"黑体"、"仿宋"、"Arial"）
@@ -110,7 +113,7 @@ export const wordTools: ToolDefinition[] = [
           },
           type: {
             type: 'string',
-            enum: ['paragraph', 'heading', 'list', 'table', 'image', 'page_break', 'toc'],
+            enum: ['paragraph', 'heading', 'list', 'table', 'image', 'page_break', 'toc', 'hyperlink', 'bookmark', 'comment'],
             description: '内容类型'
           },
           content: {
@@ -178,6 +181,22 @@ export const wordTools: ToolDefinition[] = [
           image_height: {
             type: 'number',
             description: '图片高度（像素，可选，默认保持原始尺寸）'
+          },
+          url: {
+            type: 'string',
+            description: '超链接URL（仅 type=hyperlink 时必填，如 "https://example.com"）'
+          },
+          bookmark_name: {
+            type: 'string',
+            description: '书签名称（仅 type=bookmark 时必填，用于创建文档内跳转锚点）'
+          },
+          comment_text: {
+            type: 'string',
+            description: '批注内容（仅 type=comment 时必填）'
+          },
+          comment_author: {
+            type: 'string',
+            description: '批注作者（仅 type=comment 时使用，可选）'
           }
         },
         required: ['path', 'type']
@@ -273,6 +292,38 @@ export const wordTools: ToolDefinition[] = [
           }
         },
         required: ['path']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'word_track_changes',
+      description: `启用或禁用 Word 文档的修订追踪功能。
+
+**功能**：
+- 启用后，所有后续修改都会被标记为修订
+- 可以指定修订作者名称
+- 适用于需要审阅和批注的协作文档
+
+**注意**：需要先用 word_open 打开文档，设置后需要 word_save 保存。`,
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: '已打开的文件路径'
+          },
+          enabled: {
+            type: 'boolean',
+            description: '是否启用修订追踪（true=启用，false=禁用）'
+          },
+          author: {
+            type: 'string',
+            description: '修订作者名称（可选，默认为"审阅者"）'
+          }
+        },
+        required: ['path', 'enabled']
       }
     }
   },
