@@ -77,7 +77,20 @@
 - ⏱️ **命令超时控制**：可配置命令执行超时时间，避免长时间等待
 - 📜 **任务历史**：记录每次 Agent 任务的执行过程和结果
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-agent-risk.png" width="900" alt="高风险命令确认">
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-agent-training.png" width="900" alt="Agent 执行训练任务">
+</p>
+
 ### 终端功能
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-host-manager.jpg" width="900" alt="主机管理">
+</p>
+
 - 🖥️ **跨平台支持**：Windows、macOS、Linux 全平台覆盖
 - 🔐 **SSH 管理**：支持密码和私钥认证
 - 📂 **会话分组**：灵活的分组管理，支持分组级跳板机配置，每个分组可配置独立跳板机，组内会话自动通过跳板机连接
@@ -85,6 +98,10 @@
 - 📥 **Xshell 导入**：一键导入 Xshell 会话配置，快速迁移
 - 🎨 **丰富主题**：内置多款精美配色方案
 - ⚡ **高性能**：基于 xterm.js，流畅的终端体验
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-batch.jpg" width="900" alt="批量操作">
+</p>
 
 ### 数据库管理
 - 🗄️ **智能 SQL 执行**：通过自然语言描述需求，Agent 自动生成并执行 SQL（支持 MySQL、PostgreSQL、Oracle、SQL Server 等命令行客户端）
@@ -132,6 +149,11 @@
 - 🔗 **Agent 集成**：知识库与 Agent 深度集成，自动检索相关文档辅助回答
 
 ### 文件管理
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-file-manager.jpg" width="900" alt="双栏文件管理器">
+</p>
+
 - 📁 **双栏文件管理器**：独立窗口的双面板文件管理器
   - 左右双栏布局，支持本地与远程文件操作
   - 目录树导航，快速定位
