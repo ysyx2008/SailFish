@@ -1,0 +1,32 @@
+name: Protect Main Branch
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check-source-branch:
+    name: Check PR Source Branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify source branch is develop
+        run: |
+          SOURCE_BRANCH="${{ github.head_ref }}"
+          echo "Source branch: $SOURCE_BRANCH"
+          
+          if [ "$SOURCE_BRANCH" != "develop" ]; then
+            echo "❌ Error: Pull requests to 'main' branch must come from 'develop' branch only."
+            echo ""
+            echo "Current source branch: $SOURCE_BRANCH"
+            echo "Expected source branch: develop"
+            echo ""
+            echo "Please follow the Git Flow workflow:"
+            echo "  1. Merge your changes into 'develop' first"
+            echo "  2. Then create a PR from 'develop' to 'main'"
+            exit 1
+          fi
+          
+          echo "✅ Source branch is 'develop'. PR is allowed."
+
