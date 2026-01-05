@@ -218,6 +218,126 @@ export function detectInteractiveCommand(command: string): InteractiveCommandInf
 }
 
 /**
+ * 数据库命令行工具列表
+ */
+const DB_TOOLS_PATTERN = /\b(mysql|mysqladmin|mysqldump|psql|pg_dump|pg_restore|dropdb|createdb|mongo|mongosh|mongodump|mongorestore|redis-cli|sqlite3)\b/
+
+/**
+ * 检测是否是数据库命令
+ * 只在以下情况下认为是数据库命令：
+ * 1. 命令以数据库工具开头
+ * 2. 通过管道将内容传给数据库工具
+ */
+export function isDatabaseCommand(command: string): boolean {
+  const cmd = command.toLowerCase().trim()
+  
+  // 场景1: 命令以数据库工具开头（可能带 sudo）
+  // 例如: mysql -e "...", sudo psql -c "..."
+  if (/^(sudo\s+)?/.test(cmd) && DB_TOOLS_PATTERN.test(cmd.split(/\s+/).slice(0, 3).join(' '))) {
+    return true
+  }
+  
+  // 场景2: 管道到数据库工具
+  // 例如: echo "SELECT * FROM users" | mysql, cat script.sql | psql
+  if (/\|\s*(sudo\s+)?/.test(cmd) && DB_TOOLS_PATTERN.test(cmd.split('|').pop() || '')) {
+    return true
+  }
+  
+  return false
+}
+
+/**
+ * 评估数据库命令的风险等级
+ */
+export function assessDatabaseRisk(command: string): RiskLevel {
+  const cmd = command.toLowerCase().trim()
+  
+  // 黑名单 - 直接拒绝（极其危险的数据库操作）
+  const blockedDb = [
+    /drop\s+database\s+(?!if\s+exists)/i,  // DROP DATABASE（不带 IF EXISTS 更危险）
+    /drop\s+all\s+tables/i,                 // DROP ALL TABLES
+  ]
+  if (blockedDb.some(p => p.test(cmd))) return 'blocked'
+  
+  // 高危 - 需要确认
+  const dangerousDb = [
+    // 删除数据库/表/索引等
+    /\bdrop\s+(database|table|index|view|procedure|function|trigger|schema)\b/i,
+    /\bdropdb\b/,                            // PostgreSQL dropdb 命令
+    
+    // 清空表
+    /\btruncate\s+(table\s+)?\w+/i,
+    
+    // 无条件的 DELETE（没有 WHERE 子句的 DELETE 非常危险）
+    /\bdelete\s+from\s+\w+\s*(?:;|$|--)/i,
+    /\bdelete\s+from\s+\w+\s+where\s+1\s*=\s*1/i,  // DELETE ... WHERE 1=1
+    /\bdelete\s+from\s+\w+\s+where\s+true/i,       // DELETE ... WHERE TRUE
+    
+    // 无条件的 UPDATE（没有 WHERE 子句的 UPDATE 非常危险）
+    /\bupdate\s+\w+\s+set\s+.*(?:;|$|--)/i,
+    /\bupdate\s+\w+\s+set\s+.*\s+where\s+1\s*=\s*1/i,  // UPDATE ... WHERE 1=1
+    /\bupdate\s+\w+\s+set\s+.*\s+where\s+true/i,       // UPDATE ... WHERE TRUE
+    
+    // 删除列
+    /\balter\s+table\s+\w+\s+drop\s+(column\s+)?\w+/i,
+    
+    // 权限操作
+    /\bgrant\s+all/i,
+    /\brevoke\s+/i,
+    
+    // MongoDB 危险操作
+    /\.drop\(\)/,                             // collection.drop()
+    /\.dropDatabase\(\)/,                     // db.dropDatabase()
+    /db\.dropDatabase\(\)/,
+    /\.remove\(\{\}\)/,                       // collection.remove({}) - 删除所有文档
+    /\.deleteMany\(\{\}\)/,                   // collection.deleteMany({})
+    
+    // Redis 危险操作
+    /\bflushdb\b/i,                           // Redis FLUSHDB
+    /\bflushall\b/i,                          // Redis FLUSHALL
+    
+    // 带 --drop 的恢复操作（会先删除再恢复）
+    /mongorestore\s+.*--drop/,
+  ]
+  if (dangerousDb.some(p => p.test(cmd))) return 'dangerous'
+  
+  // 中危 - 显示但可自动执行
+  const moderateDb = [
+    // 有条件的 DELETE
+    /\bdelete\s+from\s+\w+\s+where\s+(?!1\s*=\s*1|true)/i,
+    
+    // 有条件的 UPDATE  
+    /\bupdate\s+\w+\s+set\s+.*\s+where\s+(?!1\s*=\s*1|true)/i,
+    
+    // ALTER TABLE（非 DROP 操作）
+    /\balter\s+table\s+\w+\s+(?!drop)/i,
+    
+    // CREATE 操作
+    /\bcreate\s+(database|table|index|view|procedure|function|trigger|schema)\b/i,
+    /\bcreatedb\b/,
+    
+    // INSERT 操作
+    /\binsert\s+into\b/i,
+    
+    // GRANT（非 ALL）
+    /\bgrant\s+(?!all)/i,
+    
+    // 数据库导出/备份
+    /\bmysqldump\b/,
+    /\bpg_dump\b/,
+    /\bmongodump\b/,
+    
+    // 数据库恢复（不带 --drop）
+    /\bmongorestore\b(?!.*--drop)/,
+    /\bpg_restore\b/,
+  ]
+  if (moderateDb.some(p => p.test(cmd))) return 'moderate'
+  
+  // 对于其他数据库命令，返回 safe（如 SELECT 查询）
+  return 'safe'
+}
+
+/**
  * 评估命令风险等级
  */
 export function assessCommandRisk(command: string): RiskLevel {
@@ -236,6 +356,12 @@ export function assessCommandRisk(command: string): RiskLevel {
     />\s*\/etc\/(passwd|shadow|sudoers)/, // 清空系统关键文件
   ]
   if (blocked.some(p => p.test(cmd))) return 'blocked'
+
+  // 检测数据库命令
+  if (isDatabaseCommand(command)) {
+    const dbRisk = assessDatabaseRisk(command)
+    if (dbRisk !== 'safe') return dbRisk
+  }
 
   // 高危 - 需要确认
   const dangerous = [

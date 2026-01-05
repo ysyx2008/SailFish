@@ -57,6 +57,14 @@ const translations = {
     'risk.dmesg_continuous': 'dmesg -w 会持续输出',
     'risk.fire_and_forget_hint': '命令已启动。用 get_terminal_context 查看输出，用 send_control_key("{key}") 停止',
     'risk.monitor_exit_hint': '命令已启动。用 get_terminal_context 查看输出，用 send_control_key("q") 或 send_control_key("ctrl+c") 退出',
+    
+    // 数据库命令风险
+    'risk.db_drop_database': '⚠️ 危险：DROP DATABASE 将删除整个数据库',
+    'risk.db_drop_table': '⚠️ 危险：DROP TABLE 将删除表及所有数据',
+    'risk.db_truncate': '⚠️ 危险：TRUNCATE 将清空表中所有数据',
+    'risk.db_delete_no_where': '⚠️ 危险：DELETE 没有 WHERE 条件将删除所有数据',
+    'risk.db_update_no_where': '⚠️ 危险：UPDATE 没有 WHERE 条件将更新所有数据',
+    'risk.db_dangerous_hint': '此数据库操作可能导致数据丢失，请确认后执行',
 
     // 终端状态
     'terminal.checking_status': '检查终端状态',
@@ -694,6 +702,14 @@ const translations = {
     'risk.dmesg_continuous': 'dmesg -w outputs continuously',
     'risk.fire_and_forget_hint': 'Command started. Use get_terminal_context to view output, use send_control_key("{key}") to stop',
     'risk.monitor_exit_hint': 'Command started. Use get_terminal_context to view output, use send_control_key("q") or send_control_key("ctrl+c") to exit',
+    
+    // Database command risk
+    'risk.db_drop_database': '⚠️ Dangerous: DROP DATABASE will delete the entire database',
+    'risk.db_drop_table': '⚠️ Dangerous: DROP TABLE will delete the table and all data',
+    'risk.db_truncate': '⚠️ Dangerous: TRUNCATE will delete all data in the table',
+    'risk.db_delete_no_where': '⚠️ Dangerous: DELETE without WHERE clause will delete all data',
+    'risk.db_update_no_where': '⚠️ Dangerous: UPDATE without WHERE clause will update all data',
+    'risk.db_dangerous_hint': 'This database operation may cause data loss. Please confirm before executing.',
 
     // Terminal status
     'terminal.checking_status': 'Checking terminal status',
