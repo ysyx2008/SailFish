@@ -15,4 +15,5 @@ export { SkillSession, createSkillSession } from './skill-loader'
 import './excel'
 import './email'
 import './browser'
+import './word'
 
