@@ -32,6 +32,7 @@ import type { SkillSession } from './skills'
 import { executeExcelTool } from './skills/excel/executor'
 import { executeEmailTool } from './skills/email/executor'
 import { executeBrowserTool } from './skills/browser/executor'
+import { executeWordTool } from './skills/word/executor'
 import { getTaskMemoryStore } from './task-memory'
 
 // 错误分类
@@ -1947,6 +1948,11 @@ async function executeSkillTool(
   // 浏览器技能工具
   if (toolName.startsWith('browser_')) {
     return executeBrowserTool(toolName, ptyId, args, toolCallId, config, executor)
+  }
+
+  // Word 技能工具
+  if (toolName.startsWith('word_')) {
+    return executeWordTool(toolName, ptyId, args, toolCallId, config, executor)
   }
   
   // 未知技能工具
