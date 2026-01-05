@@ -957,6 +957,9 @@ export const useTerminalStore = defineStore('terminal', () => {
     if (tab) {
       const existingHistory = preserveHistory ? (tab.agentState?.history || []) : []
       const existingSteps = preserveHistory ? (tab.agentState?.steps || []) : []
+      // 保留 sessionId 和 sessionStartTime，避免每次新消息都创建新的历史记录
+      const existingSessionId = preserveHistory ? tab.agentState?.sessionId : undefined
+      const existingSessionStartTime = preserveHistory ? tab.agentState?.sessionStartTime : undefined
       
       // 如果有已完成的任务，保存摘要到历史（用于 AI 上下文）
       if (preserveHistory && tab.agentState?.userTask && tab.agentState?.finalResult) {
@@ -974,6 +977,8 @@ export const useTerminalStore = defineStore('terminal', () => {
       
       tab.agentState = {
         isRunning: false,
+        sessionId: existingSessionId,  // 保留会话 ID
+        sessionStartTime: existingSessionStartTime,  // 保留会话开始时间
         steps: existingSteps,  // 保留之前的步骤，不清空
         history: existingHistory
       }
