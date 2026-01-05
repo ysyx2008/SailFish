@@ -521,7 +521,7 @@ export function buildSystemPrompt(
     } else {
       // 知识库启用但没有预加载内容时，提醒 Agent 可以使用工具查询
       knowledgeRule = `
-13. **知识库工具**：用户有知识库，你可以使用 \`search_knowledge\` 工具搜索用户保存的文档和笔记。
+12. **知识库工具**：用户有知识库，你可以使用 \`search_knowledge\` 工具搜索用户保存的文档和笔记。
    - **搜索结果已包含文档内容片段，直接使用即可，不要用 read_file 读取**`
     }
   }
@@ -581,8 +581,8 @@ ${buildPlanningGuidance()}
 | create_plan | 创建任务执行计划（多步骤任务时使用） |${isSshTerminal ? ' ✅ |' : ''}
 | update_plan | 更新计划步骤状态 |${isSshTerminal ? ' ✅ |' : ''}
 | load_skill | 加载技能模块（按需扩展能力） |${isSshTerminal ? ' ✅ |' : ''}
-|| recall_task | 回忆之前任务的关键信息（命令、路径、发现） |${isSshTerminal ? ' ✅ |' : ''}
-|| deep_recall | 深度回忆：获取任务的完整原始输出 |${isSshTerminal ? ' ✅ |' : ''}
+| recall_task | 回忆之前任务的关键信息（命令、路径、发现） |${isSshTerminal ? ' ✅ |' : ''}
+| deep_recall | 深度回忆：获取任务的完整原始输出 |${isSshTerminal ? ' ✅ |' : ''}
 
 ### 🔌 技能扩展系统（重要！）
 
@@ -682,6 +682,10 @@ ${buildAskUserGuidance(executionMode)}
    - **有目的的重复**是可以的（如用不同参数测试），但**无效的重复**需要立即停止
 ${documentRule}
 ${knowledgeRule}
+13. **区分"讨论"与"执行"**：
+   - 用户在讨论、咨询、询问时一般回答问题即可，不一定要执行工具
+   - 通常只有用户要求你做某事时，或者确有必要时，才应当开始执行
+   - 拿不准时可以先问一句"需要我帮你操作吗？"
 
 ${buildUserConfirmationGuidance(executionMode)}
 ## 命令处理规则
