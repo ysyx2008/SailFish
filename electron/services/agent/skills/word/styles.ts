@@ -388,7 +388,8 @@ function createHeading(token: Tokens.Heading, style: WordStyleConfig): Paragraph
     children: parseInlineTokens(token.tokens || [], {
       font: headingStyle.font || style.config.font,
       size: headingStyle.size,
-      bold: headingStyle.bold ?? true
+      bold: headingStyle.bold ?? true,
+      color: '000000'  // 明确设置黑色，覆盖 Word 默认的蓝色标题
     })
   })
 }
@@ -524,7 +525,7 @@ function createParagraph(text: string, style: WordStyleConfig): Paragraph {
  */
 function parseInlineTokens(
   tokens: Token[],
-  baseStyle: { font?: string; size?: number; bold?: boolean; italic?: boolean }
+  baseStyle: { font?: string; size?: number; bold?: boolean; italic?: boolean; color?: string }
 ): TextRun[] {
   const runs: TextRun[] = []
   
@@ -536,7 +537,8 @@ function parseInlineTokens(
           font: baseStyle.font,
           size: baseStyle.size ? baseStyle.size * 2 : undefined,
           bold: baseStyle.bold,
-          italics: baseStyle.italic
+          italics: baseStyle.italic,
+          color: baseStyle.color
         }))
         break
         
@@ -585,7 +587,8 @@ function parseInlineTokens(
             font: baseStyle.font,
             size: baseStyle.size ? baseStyle.size * 2 : undefined,
             bold: baseStyle.bold,
-            italics: baseStyle.italic
+            italics: baseStyle.italic,
+            color: baseStyle.color
           }))
         }
     }
@@ -601,17 +604,36 @@ function createList(token: Tokens.List, style: WordStyleConfig): Paragraph[] {
   const paragraphs: Paragraph[] = []
   
   for (const item of token.items) {
-    // 使用 item.tokens（已解析的内联格式）而不是 item.text
-    const children = item.tokens && item.tokens.length > 0
-      ? parseInlineTokens(item.tokens, {
+    let children: TextRun[] = []
+    
+    if (item.tokens && item.tokens.length > 0) {
+      // 列表项的 tokens 结构：item.tokens[0] 是 'text' 类型，其 tokens 属性才是真正的内联格式
+      // 例如：item.tokens = [{ type: 'text', text: '**粗体**', tokens: [{ type: 'strong', ... }] }]
+      const firstToken = item.tokens[0]
+      
+      if (firstToken.type === 'text' && 'tokens' in firstToken && firstToken.tokens) {
+        // 使用内部的 tokens 数组（包含 strong、em 等内联格式）
+        children = parseInlineTokens(firstToken.tokens, {
           font: style.config.font,
           size: style.config.fontSize
         })
-      : [new TextRun({
-          text: decodeHtmlEntities(item.text || ''),
+      } else {
+        // 其他情况：直接使用 item.tokens
+        children = parseInlineTokens(item.tokens, {
           font: style.config.font,
-          size: style.config.fontSize ? style.config.fontSize * 2 : undefined
-        })]
+          size: style.config.fontSize
+        })
+      }
+    }
+    
+    // 如果没有解析到任何内容，使用原始文本
+    if (children.length === 0) {
+      children = [new TextRun({
+        text: decodeHtmlEntities(item.text || ''),
+        font: style.config.font,
+        size: style.config.fontSize ? style.config.fontSize * 2 : undefined
+      })]
+    }
     
     paragraphs.push(new Paragraph({
       bullet: { level: 0 },
@@ -695,20 +717,40 @@ function createCodeBlock(token: Tokens.Code): Paragraph {
  * 创建引用块
  */
 function createBlockquote(token: Tokens.Blockquote, style: WordStyleConfig): Paragraph {
-  // 使用 token.tokens 支持内联格式
-  const children = token.tokens && token.tokens.length > 0
-    ? parseInlineTokens(token.tokens, {
+  let children: TextRun[] = []
+  
+  if (token.tokens && token.tokens.length > 0) {
+    // blockquote.tokens 结构：[{ type: 'paragraph', tokens: [...内联格式...] }]
+    const firstToken = token.tokens[0]
+    
+    if ((firstToken.type === 'paragraph' || firstToken.type === 'text') && 
+        'tokens' in firstToken && firstToken.tokens) {
+      // 使用 paragraph/text 内部的 tokens 数组
+      children = parseInlineTokens(firstToken.tokens, {
         font: style.config.font,
         size: style.config.fontSize,
         italic: true
       })
-    : [new TextRun({
-        text: decodeHtmlEntities(token.text || ''),
+    } else {
+      // 其他情况：直接使用 token.tokens
+      children = parseInlineTokens(token.tokens, {
         font: style.config.font,
-        size: style.config.fontSize ? style.config.fontSize * 2 : undefined,
-        italics: true,
-        color: '666666'
-      })]
+        size: style.config.fontSize,
+        italic: true
+      })
+    }
+  }
+  
+  // 如果没有解析到任何内容，使用原始文本
+  if (children.length === 0) {
+    children = [new TextRun({
+      text: decodeHtmlEntities(token.text || ''),
+      font: style.config.font,
+      size: style.config.fontSize ? style.config.fontSize * 2 : undefined,
+      italics: true,
+      color: '666666'
+    })]
+  }
   
   return new Paragraph({
     indent: { left: convertInchesToTwip(0.5) },
