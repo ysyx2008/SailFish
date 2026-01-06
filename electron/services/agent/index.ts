@@ -36,6 +36,7 @@ import { executeTool, ToolExecutorConfig } from './tool-executor'
 import { buildSystemPrompt } from './prompt-builder'
 import { analyzeTaskComplexity, generatePlanningPrompt } from './planner'
 import { getTaskMemoryStore } from './task-memory'
+import { buildTaskHistoryContext, detectContextReference } from './context-builder'
 import { getKnowledgeService } from '../knowledge'
 import { setConfigService as setI18nConfigService, t } from './i18n'
 import { createSkillSession } from './skills'
@@ -1248,9 +1249,7 @@ export class AgentService {
       console.log('[Agent] Knowledge service error:', e)
     }
     
-    // 获取任务记忆（多层次上下文）
-    let taskSummaries = ''
-    let relatedTaskDigests = ''
+    // 获取任务记忆（智能分层上下文）
     const taskMemoryStore = getTaskMemoryStore()
     
     // 如果前端传入了 previousTasks，但 TaskMemoryStore 为空，将数据导入到 TaskMemoryStore
@@ -1287,18 +1286,36 @@ export class AgentService {
       })
     }
     
+    // 使用智能分层上下文构建器：按预算填充 + 渐进式降级
+    let taskSummaries = ''
+    let relatedTaskDigests = ''
+    let recentTaskMessages: AiMessage[] = []
+    
     if (taskMemoryStore.getTaskCount() > 0) {
-      // L1: 获取任务总结列表（用于系统提示中的快速索引）
-      taskSummaries = taskMemoryStore.formatSummariesForContext(15)
+      const contextLength = this.getContextLength(profileId)
+      const contextResult = buildTaskHistoryContext(taskMemoryStore, contextLength, userMessage)
       
-      // L2: 语义预加载相关任务摘要
+      // 最近任务的消息（Level 0-2）
+      recentTaskMessages = contextResult.recentTaskMessages
+      
+      // 摘要/总结部分（Level 3-4）写入系统提示
+      if (contextResult.taskSummarySection) {
+        taskSummaries = contextResult.taskSummarySection
+      }
+      
+      // 打印统计信息
+      const { stats } = contextResult
+      console.log(`[Agent] 智能分层上下文: ${stats.totalTasks} 个任务`)
+      console.log(`  Level 0 (完整): ${stats.level0Count}, Level 1 (压缩): ${stats.level1Count}, Level 2 (精简): ${stats.level2Count}`)
+      console.log(`  Level 3 (摘要): ${stats.level3Count}, Level 4 (总结): ${stats.level4Count}`)
+      console.log(`  Token 使用: ${stats.usedTokens}/${stats.budget}`)
+      
+      // 语义预加载相关任务摘要（补充到系统提示）
       const relatedDigests = taskMemoryStore.getRelatedDigests(userMessage, 3)
       if (relatedDigests.length > 0) {
         relatedTaskDigests = taskMemoryStore.formatRelatedDigestsForContext(relatedDigests)
         console.log(`[Agent] 语义预加载 ${relatedDigests.length} 个相关任务摘要`)
       }
-      
-      console.log(`[Agent] 已加载 ${taskMemoryStore.getTaskCount()} 个任务的 L1 总结`)
     }
     
     const systemPrompt = buildSystemPrompt(
@@ -1315,11 +1332,14 @@ export class AgentService {
     )
     run.messages.push({ role: 'system', content: systemPrompt })
 
-    // 历史任务上下文已通过 TaskMemoryStore 统一管理：
-    // - L1 总结（taskSummaries）已在系统提示中
-    // - L2 相关摘要（relatedTaskDigests）已预加载
-    // - L3 完整步骤可通过 recall_task/deep_recall 工具按需获取
-    // 不再重复注入消息历史，避免上下文冗余
+    // 注入最近任务的完整/压缩/精简对话（Level 0-2）
+    // 这些是按预算填充、渐进式降级后保留的最近任务上下文
+    if (recentTaskMessages.length > 0) {
+      for (const msg of recentTaskMessages) {
+        run.messages.push(msg)
+      }
+      console.log(`[Agent] 已注入 ${recentTaskMessages.length} 条最近任务消息`)
+    }
 
     // 添加当前用户消息（包含任务复杂度分析和规划提示）
     const enhancedMessage = this.enhanceUserMessage(userMessage)
