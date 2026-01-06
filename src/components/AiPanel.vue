@@ -268,8 +268,15 @@ const showClearConfirm = ref(false)
 
 // ==================== 引用功能 ====================
 
+// 引用来源类型
+interface QuoteSource {
+  type: 'user' | 'assistant' | 'agent-step' | 'agent-result' | 'unknown'
+  context?: string  // 上下文描述（如任务描述、步骤类型等）
+}
+
 // 引用相关状态
 const quotedText = ref('')           // 引用的文本
+const quoteSource = ref<QuoteSource>({ type: 'unknown' })  // 引用来源
 const showQuoteButton = ref(false)   // 是否显示引用按钮
 const quoteButtonPos = ref({ x: 0, y: 0 })  // 按钮位置
 
@@ -282,6 +289,58 @@ const isInChatArea = (node: Node | null): boolean => {
     current = current.parentNode
   }
   return false
+}
+
+// 从 DOM 节点识别引用来源
+const identifyQuoteSource = (node: Node | null): QuoteSource => {
+  if (!node) return { type: 'unknown' }
+  
+  let current: Node | null = node
+  while (current && current !== messagesRef.value) {
+    if (current instanceof HTMLElement) {
+      // 检查是否是消息元素
+      if (current.classList.contains('message')) {
+        // Agent 最终结果
+        if (current.querySelector('.agent-final-content')) {
+          // 尝试获取任务描述
+          const taskGroup = current.closest('.ai-messages')
+          const userTask = taskGroup?.querySelector('.message.user .message-content span')?.textContent?.trim()
+          return { 
+            type: 'agent-result', 
+            context: userTask ? `任务「${truncateText(userTask, 50)}」的执行结果` : 'Agent 执行结果'
+          }
+        }
+        // Agent 执行步骤
+        if (current.querySelector('.agent-steps-content')) {
+          const userTask = current.previousElementSibling?.querySelector('.message-content span')?.textContent?.trim()
+          return { 
+            type: 'agent-step', 
+            context: userTask ? `任务「${truncateText(userTask, 50)}」的执行过程` : 'Agent 执行步骤'
+          }
+        }
+        // 普通消息
+        if (current.classList.contains('user')) {
+          return { type: 'user', context: '用户消息' }
+        }
+        if (current.classList.contains('assistant')) {
+          return { type: 'assistant', context: 'AI 回复' }
+        }
+      }
+      // 检查是否在步骤内容中
+      if (current.classList.contains('step-item')) {
+        const stepType = current.querySelector('.step-icon')?.textContent?.trim()
+        const stepContent = current.querySelector('.step-text')?.textContent?.trim()
+        if (stepType === '🔧') {
+          return { type: 'agent-step', context: '命令执行结果' }
+        } else if (stepType === '💭') {
+          return { type: 'agent-step', context: 'AI 分析' }
+        }
+        return { type: 'agent-step', context: 'Agent 执行步骤' }
+      }
+    }
+    current = current.parentNode
+  }
+  return { type: 'unknown' }
 }
 
 // 监听选中事件
@@ -316,6 +375,9 @@ const addQuote = () => {
   const selection = window.getSelection()
   const text = selection?.toString().trim()
   if (text) {
+    // 识别引用来源
+    const range = selection?.getRangeAt(0)
+    quoteSource.value = identifyQuoteSource(range?.commonAncestorContainer || null)
     quotedText.value = text
     showQuoteButton.value = false
     selection?.removeAllRanges()
@@ -329,6 +391,7 @@ const addQuote = () => {
 // 移除引用
 const removeQuote = () => {
   quotedText.value = ''
+  quoteSource.value = { type: 'unknown' }
 }
 
 // 请求清空对话（如果 Agent 正在执行，需要用户确认）
@@ -591,10 +654,12 @@ const handleSend = async () => {
     inputText.value = inputText.value + '\n\n' + mentionContext
   }
   
-  // 如果有选中引用的内容，添加到消息前面
+  // 如果有选中引用的内容，添加到消息前面（包含来源信息）
   if (quotedText.value) {
-    inputText.value = `[${t('ai.quote.referencing')}]\n\`\`\`\n${quotedText.value}\n\`\`\`\n\n${inputText.value}`
+    const sourceDesc = quoteSource.value.context || t('ai.quote.historyContent')
+    inputText.value = `[${t('ai.quote.referencing')}：${sourceDesc}]\n\`\`\`\n${quotedText.value}\n\`\`\`\n\n${inputText.value}`
     quotedText.value = ''  // 发送后清空引用
+    quoteSource.value = { type: 'unknown' }  // 清空来源
   }
   
   // 清空已选择的 @ 引用
@@ -1426,6 +1491,7 @@ onUnmounted(() => {
         <div v-if="quotedText" class="quote-preview">
           <div class="quote-header">
             <span>📎 {{ t('ai.quote.quoting') }}</span>
+            <span v-if="quoteSource.context" class="quote-source">{{ quoteSource.context }}</span>
             <button class="quote-remove" @click="removeQuote" :title="t('ai.quote.remove')">×</button>
           </div>
           <div class="quote-content">{{ truncateText(quotedText, 200) }}</div>
@@ -4851,10 +4917,19 @@ onUnmounted(() => {
 .quote-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   font-size: 12px;
   color: var(--accent-color);
   margin-bottom: 4px;
+}
+
+.quote-source {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .quote-remove {

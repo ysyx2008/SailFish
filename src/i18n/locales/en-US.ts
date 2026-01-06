@@ -801,8 +801,9 @@ export default {
     // Quote feature
     quote: {
       quote: 'Quote',
-      quoting: 'Quoting',
-      referencing: 'Referenced Content',
+      quoting: 'Quote',
+      referencing: 'Referenced from history',
+      historyContent: 'History content',
       remove: 'Remove quote'
     }
   },
