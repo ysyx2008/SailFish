@@ -704,6 +704,11 @@ ${knowledgeRule}
 ${buildUserConfirmationGuidance(executionMode)}
 ## 命令处理规则
 
+**【重要】中文路径处理**：
+- 文件路径中的中文字符必须**保持原样**，例如：\`/Users/xxx/文档/报告.pdf\`
+- **禁止**将中文转换为 \`\\xXX\` 格式的转义序列，例如：❌ \`\\xe6\\x96\\x87\\xe6\\xa1\\xa3\`
+- 工具参数中的路径必须直接使用中文字符，不要做任何编码转换
+
 **禁止使用的命令**（会被系统拒绝）：
 - \`vim\`、\`vi\`、\`nano\`、\`emacs\` 等编辑器 → 请使用 \`${isSshTerminal ? 'write_remote_file' : 'write_file'}\` 工具
 - \`tmux\`、\`screen\` 等终端复用器 → 不支持

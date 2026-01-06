@@ -168,6 +168,94 @@ export interface ToolExecutorConfig {
 }
 
 /**
+ * 解码 Python 风格的 \xXX 转义序列（仅用于路径参数）
+ * AI 模型有时会错误地将中文路径转换为这种格式
+ * 例如: \xe4\xb8\xaa\xe4\xba\xba -> 个人
+ * 
+ * 安全检查：
+ * 1. 只对路径参数进行解码
+ * 2. 验证解码后是有效的 UTF-8
+ * 3. 解码后应包含非 ASCII 字符（说明确实是被错误编码的中文等）
+ */
+function tryDecodePythonEscapesForPath(str: string): string {
+  // 检测是否包含 \xXX 格式的转义序列
+  if (!str.includes('\\x')) {
+    return str
+  }
+  
+  // 检查是否看起来像文件路径（以 / 或盘符开头）
+  const looksLikePath = str.startsWith('/') || str.startsWith('~') || /^[A-Z]:[/\\]/i.test(str)
+  if (!looksLikePath) {
+    return str
+  }
+  
+  try {
+    // 将 \xXX 格式转换为实际字节，然后用 UTF-8 解码
+    const bytes: number[] = []
+    let i = 0
+    let hasEscapes = false
+    
+    while (i < str.length) {
+      if (str[i] === '\\' && str[i + 1] === 'x' && i + 3 < str.length) {
+        // 解析 \xXX
+        const hex = str.substring(i + 2, i + 4)
+        if (/^[0-9a-fA-F]{2}$/.test(hex)) {
+          const byte = parseInt(hex, 16)
+          bytes.push(byte)
+          hasEscapes = true
+          i += 4
+          continue
+        }
+      }
+      // 普通 ASCII 字符
+      bytes.push(str.charCodeAt(i))
+      i++
+    }
+    
+    if (!hasEscapes) {
+      return str
+    }
+    
+    // 使用 TextDecoder 将字节数组解码为 UTF-8 字符串
+    const decoded = new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(bytes))
+    
+    // 验证解码后确实包含非 ASCII 字符（说明是被错误编码的中文等）
+    const hasNonAscii = /[^\x00-\x7F]/.test(decoded)
+    if (!hasNonAscii) {
+      // 解码后全是 ASCII，可能不是中文编码问题，保持原样
+      return str
+    }
+    
+    console.log(`[ToolExecutor] Decoded Python escapes in path: "${str.substring(0, 50)}..." -> "${decoded.substring(0, 50)}..."`)
+    return decoded
+  } catch (e) {
+    // 解码失败（无效的 UTF-8），保持原样
+    return str
+  }
+}
+
+// 需要进行路径解码的参数名
+const PATH_PARAM_NAMES = new Set(['path', 'file_path', 'target_path', 'source_path', 'dest_path', 'directory', 'dir', 'folder'])
+
+/**
+ * 处理工具参数，只对路径相关参数解码 Python 转义序列
+ */
+function normalizeToolArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(args)) {
+    if (typeof value === 'string' && PATH_PARAM_NAMES.has(key.toLowerCase())) {
+      // 只对路径参数进行解码
+      result[key] = tryDecodePythonEscapesForPath(value)
+    } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+      result[key] = normalizeToolArgs(value as Record<string, unknown>)
+    } else {
+      result[key] = value
+    }
+  }
+  return result
+}
+
+/**
  * 执行工具调用
  */
 export async function executeTool(
@@ -186,6 +274,8 @@ export async function executeTool(
   
   try {
     args = JSON.parse(argsStr)
+    // 自动解码 AI 可能生成的 Python 风格转义序列（如 \xe4\xb8\xaa -> 个）
+    args = normalizeToolArgs(args)
   } catch {
     return { success: false, output: '', error: t('error.tool_param_parse_failed') }
   }
