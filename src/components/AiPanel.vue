@@ -890,6 +890,7 @@ onUnmounted(() => {
               class="confirm-dialog-input"
               :placeholder="t('ai.freeModeConfirmPlaceholder', { word: freeModeConfirmWord })"
               @keydown.enter="confirmEnableFreeMode"
+              @keydown.esc="cancelFreeMode"
             />
           </div>
           <div class="confirm-dialog-actions">
