@@ -575,7 +575,10 @@ ${buildPlanningGuidance()}
 | send_control_key | 发送 Ctrl+C/D/Z 等控制键 |${isSshTerminal ? ' ✅ |' : ''}
 | wait | 等待指定时间 |${isSshTerminal ? ' ✅ |' : ''}
 | read_file | 读取**本地**文件内容 |${isSshTerminal ? ' ❌ 不可用 |' : ''}
-| write_file | 写入**本地**文件 |${isSshTerminal ? ' ❌ 不可用 |' : ''}
+| edit_file | 精确编辑**本地**文件（查找替换） |${isSshTerminal ? ' ❌ 不可用 |' : ''}
+| write_local_file | 写入/创建**本地**文件 |${isSshTerminal ? ' ❌ 不可用 |' : ''}
+| write_remote_file | 通过 SFTP 写入**远程**文件 |${isSshTerminal ? ' ✅ |' : ' ❌ 不可用 |'}
+| file_search | 快速搜索本地文件（基于系统索引） |${isSshTerminal ? ' ❌ 不可用 |' : ''}
 | remember_info | 记住重要的静态信息 |${isSshTerminal ? ' ✅ |' : ''}
 | ask_user | 向用户提问并等待回复 |${isSshTerminal ? ' ✅ |' : ''}
 | create_plan | 创建任务执行计划（多步骤任务时使用） |${isSshTerminal ? ' ✅ |' : ''}
@@ -583,7 +586,18 @@ ${buildPlanningGuidance()}
 | load_skill | 加载技能模块（按需扩展能力） |${isSshTerminal ? ' ✅ |' : ''}
 | recall_task | 回忆之前任务的关键信息（命令、路径、发现） |${isSshTerminal ? ' ✅ |' : ''}
 | deep_recall | 深度回忆：获取任务的完整原始输出 |${isSshTerminal ? ' ✅ |' : ''}
+${isSshTerminal ? '' : `
+### 🔍 文件搜索工具
 
+\`file_search\` 基于系统索引快速搜索文件名，支持通配符 \`*\` 和 \`?\`。
+
+**适合场景**：用户要找某个文件但不知道具体路径（"找一下 xxx"、"xxx 在哪"）
+
+**局限性**：
+- 只能搜索文件名，不能搜索文件内容
+- 依赖系统索引（macOS Spotlight / Windows Everything），新建文件可能需要等索引更新
+- 已知目录下查找文件时，直接用 \`ls\` 或 \`find\` 更准确
+`}
 ### 🔌 技能扩展系统（重要！）
 
 你可以通过 \`load_skill\` 加载额外技能来扩展能力。这些技能提供专业工具，**按需加载**避免工具过多。
