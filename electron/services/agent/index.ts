@@ -1315,17 +1315,11 @@ export class AgentService {
     )
     run.messages.push({ role: 'system', content: systemPrompt })
 
-    // 注入简化版对话历史（用户请求 + 最终结果），让 AI 理解对话上下文
-    // 这比 L1 总结更完整，但比完整执行步骤更精简
-    if (context.previousTasks && context.previousTasks.length > 0) {
-      for (const task of context.previousTasks) {
-        // 用户请求
-        run.messages.push({ role: 'user', content: task.userTask })
-        // AI 最终回复（精简版，不包含完整执行步骤）
-        run.messages.push({ role: 'assistant', content: task.finalResult })
-      }
-      console.log(`[Agent] 已注入 ${context.previousTasks.length} 轮简化对话历史`)
-    }
+    // 历史任务上下文已通过 TaskMemoryStore 统一管理：
+    // - L1 总结（taskSummaries）已在系统提示中
+    // - L2 相关摘要（relatedTaskDigests）已预加载
+    // - L3 完整步骤可通过 recall_task/deep_recall 工具按需获取
+    // 不再重复注入消息历史，避免上下文冗余
 
     // 添加当前用户消息（包含任务复杂度分析和规划提示）
     const enhancedMessage = this.enhanceUserMessage(userMessage)

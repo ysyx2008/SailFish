@@ -374,14 +374,6 @@ export function useAgentMode(
       terminalStore.setAgentSession(tabId, `session_${startTime}`, startTime)
     }
     
-    // 从 Agent 历史中构建上下文消息
-    const currentHistory = agentState.value?.history || []
-    const historyMessages: { role: 'user' | 'assistant'; content: string }[] = []
-    for (const item of currentHistory) {
-      historyMessages.push({ role: 'user', content: item.userTask })
-      historyMessages.push({ role: 'assistant', content: item.finalResult })
-    }
-    
     // 获取文档上下文
     const documentContext = await getDocumentContext()
 
@@ -402,16 +394,16 @@ export function useAgentMode(
     
     try {
       // 调用 Agent API，传递配置
+      // 历史任务通过 previousTasks 传递，由后端 TaskMemoryStore 统一管理
       result = await window.electronAPI.agent.run(
         context.ptyId,
         message,
         {
           ...context,
           hostId,  // 主机档案 ID
-          historyMessages,  // 添加历史对话
           documentContext,  // 添加文档上下文
-          previousTasks  // 之前已完成任务的上下文列表（包含完整执行步骤）
-        } as { ptyId: string; terminalOutput: string[]; systemInfo: { os: string; shell: string }; terminalType: 'local' | 'ssh'; hostId?: string; historyMessages?: { role: string; content: string }[]; documentContext?: string; previousTasks?: { userTask: string; steps: { type: string; content: string; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: string; riskLevel?: string }[]; finalResult: string; timestamp: number }[] },
+          previousTasks  // 之前已完成任务的上下文（用于初始化 TaskMemoryStore）
+        } as { ptyId: string; terminalOutput: string[]; systemInfo: { os: string; shell: string }; terminalType: 'local' | 'ssh'; hostId?: string; documentContext?: string; previousTasks?: { userTask: string; steps: { type: string; content: string; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: string; riskLevel?: string }[]; finalResult: string; timestamp: number }[] },
         { executionMode: executionMode.value, commandTimeout: commandTimeout.value * 1000 }  // 传递配置（超时时间转为毫秒）
       )
 
