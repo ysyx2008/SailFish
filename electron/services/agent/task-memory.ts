@@ -410,6 +410,25 @@ export class TaskMemoryStore {
   }
   
   /**
+   * 获取按时间顺序的任务列表（最近的在前）
+   * 用于上下文构建器的渐进式降级
+   */
+  getTasksInOrder(): TaskMemory[] {
+    // 从最新到最旧
+    const orderedIds = [...this.taskOrder].reverse()
+    const tasks: TaskMemory[] = []
+    
+    for (const id of orderedIds) {
+      const task = this.memories.get(id)
+      if (task) {
+        tasks.push(task)
+      }
+    }
+    
+    return tasks
+  }
+  
+  /**
    * 格式化 L1 总结列表为上下文字符串
    */
   formatSummariesForContext(limit?: number): string {
