@@ -35,6 +35,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             emptyOutDir: true,  // 构建前清空输出目录，防止旧文件堆积
+            minify: 'esbuild',
             rollupOptions: {
               external: [
                 'node-pty', 
@@ -49,7 +50,14 @@ export default defineConfig({
                 'mailparser',
                 'playwright-core'
               ]
-            }
+            },
+            // 传递给 esbuild minifier 的选项
+            target: 'node18'
+          },
+          // esbuild 转换选项（包括压缩时的 charset）
+          esbuild: {
+            charset: 'utf8',
+            target: 'node18'
           },
           plugins: [copyJiebaWasm()]
         }
@@ -85,6 +93,10 @@ export default defineConfig({
         'file-manager': resolve(__dirname, 'file-manager.html')
       }
     }
+  },
+  // 保留 UTF-8 字符，不转换成 \xXX 格式
+  esbuild: {
+    charset: 'utf8'
   }
 })
 
