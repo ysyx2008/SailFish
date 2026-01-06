@@ -105,9 +105,8 @@ export interface AgentContext {
   }
   terminalType: 'local' | 'ssh'  // 终端类型：本地终端或 SSH 远程终端
   hostId?: string  // 主机档案 ID
-  historyMessages?: { role: string; content: string }[]  // 历史对话记录
   documentContext?: string  // 用户上传的文档内容
-  previousTasks?: PreviousTaskContext[]  // 之前已完成任务的上下文列表（包含完整执行步骤）
+  previousTasks?: PreviousTaskContext[]  // 之前已完成任务的上下文列表（用于初始化 TaskMemoryStore）
 }
 
 // 工具执行结果

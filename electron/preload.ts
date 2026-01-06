@@ -220,7 +220,6 @@ export interface AgentContext {
     shell: string
   }
   hostId?: string  // 主机档案 ID
-  historyMessages?: { role: string; content: string }[]
   documentContext?: string  // 用户上传的文档内容
 }
 
