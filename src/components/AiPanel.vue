@@ -329,7 +329,6 @@ const identifyQuoteSource = (node: Node | null): QuoteSource => {
       // 检查是否在步骤内容中
       if (current.classList.contains('step-item')) {
         const stepType = current.querySelector('.step-icon')?.textContent?.trim()
-        const stepContent = current.querySelector('.step-text')?.textContent?.trim()
         if (stepType === '🔧') {
           return { type: 'agent-step', context: '命令执行结果' }
         } else if (stepType === '💭') {
@@ -351,7 +350,7 @@ const handleSelectionChange = () => {
   if (text && text.length > 0 && text.length < 2000) {
     // 检查选中内容是否在对话区域内
     const range = selection?.getRangeAt(0)
-    const container = range?.commonAncestorContainer
+    const container = range?.commonAncestorContainer ?? null
     if (isInChatArea(container)) {
       // 计算按钮位置（选中区域右下角）
       const rect = range?.getBoundingClientRect()
