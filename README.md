@@ -614,3 +614,4 @@ For detailed and commercial terms, please see the [LICENSE](./LICENSE) file, or 
 - [Mammoth](https://github.com/mwilliamson/mammoth.js)
 - [pdf-parse](https://github.com/pdfjs/pdf-parse)
 - [jieba-wasm](https://github.com/aspect-build/aspect-rules-jieba)
+- [Everything](https://www.voidtools.com/)
