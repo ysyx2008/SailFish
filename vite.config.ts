@@ -50,14 +50,11 @@ export default defineConfig({
                 'mailparser',
                 'playwright-core'
               ]
-            },
-            // 传递给 esbuild minifier 的选项
-            target: 'node18'
+            }
           },
-          // esbuild 转换选项（包括压缩时的 charset）
+          // esbuild 选项：charset: 'utf8' 保留中文等 UTF-8 字符，不转成 \xXX
           esbuild: {
-            charset: 'utf8',
-            target: 'node18'
+            charset: 'utf8'
           },
           plugins: [copyJiebaWasm()]
         }
