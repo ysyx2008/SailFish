@@ -801,8 +801,9 @@ export default {
     // 引用功能
     quote: {
       quote: '引用',
-      quoting: '引用内容',
-      referencing: '引用内容',
+      quoting: '引用',
+      referencing: '引用自历史对话',
+      historyContent: '历史对话内容',
       remove: '移除引用'
     }
   },
