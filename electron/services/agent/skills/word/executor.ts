@@ -39,6 +39,7 @@ import {
   createSession,
   addContent,
   getSessionContent,
+  markDirty,
   markSaved,
   closeSession,
   setPageSettings,
@@ -360,6 +361,12 @@ export async function executeWordTool(
       return await wordRead(ptyId, args, executor)
     case 'word_add':
       return await wordAdd(ptyId, args, executor)
+    case 'word_replace':
+      return await wordReplace(ptyId, args, executor)
+    case 'word_modify_paragraph':
+      return await wordModifyParagraph(ptyId, args, executor)
+    case 'word_delete_paragraph':
+      return await wordDeleteParagraph(ptyId, args, executor)
     case 'word_save':
       return await wordSave(ptyId, args, toolCallId, config, executor)
     case 'word_close':
@@ -730,6 +737,220 @@ async function wordAdd(
     toolResult: output
   })
 
+  return { success: true, output }
+}
+
+/**
+ * 查找替换文本
+ */
+async function wordReplace(
+  ptyId: string,
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  if (!args.path) {
+    return { success: false, output: '', error: t('error.file_path_required') }
+  }
+  if (!args.find) {
+    return { success: false, output: '', error: t('word.find_text_required') }
+  }
+  if (args.replace === undefined) {
+    return { success: false, output: '', error: t('word.replace_text_required') }
+  }
+  
+  const filePath = resolvePath(ptyId, args.path as string)
+  const findText = args.find as string
+  const replaceText = args.replace as string
+  const caseSensitive = args.case_sensitive as boolean || false
+  
+  const session = getSession(filePath)
+  if (!session) {
+    return { success: false, output: '', error: t('word.not_open', { path: filePath }) }
+  }
+  
+  let replaceCount = 0
+  
+  // 遍历所有段落进行替换
+  for (const section of session.sections) {
+    if (section.content) {
+      const regex = new RegExp(
+        findText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), // 转义特殊字符
+        caseSensitive ? 'g' : 'gi'
+      )
+      const matches = section.content.match(regex)
+      if (matches) {
+        replaceCount += matches.length
+        section.content = section.content.replace(regex, replaceText)
+      }
+    }
+    // 处理列表项
+    if (section.items) {
+      section.items = section.items.map(item => {
+        const regex = new RegExp(
+          findText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+          caseSensitive ? 'g' : 'gi'
+        )
+        const matches = item.match(regex)
+        if (matches) {
+          replaceCount += matches.length
+          return item.replace(regex, replaceText)
+        }
+        return item
+      })
+    }
+  }
+  
+  if (replaceCount > 0) {
+    markDirty(filePath)
+  }
+  
+  const output = replaceCount > 0
+    ? t('word.replace_success', { count: replaceCount, find: findText, replace: replaceText })
+    : t('word.replace_not_found', { find: findText })
+  
+  return { success: true, output }
+}
+
+/**
+ * 修改指定段落
+ */
+async function wordModifyParagraph(
+  ptyId: string,
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  if (!args.path) {
+    return { success: false, output: '', error: t('error.file_path_required') }
+  }
+  if (args.index === undefined) {
+    return { success: false, output: '', error: t('word.index_required') }
+  }
+  
+  const filePath = resolvePath(ptyId, args.path as string)
+  const index = args.index as number
+  
+  const session = getSession(filePath)
+  if (!session) {
+    return { success: false, output: '', error: t('word.not_open', { path: filePath }) }
+  }
+  
+  // 检查索引是否有效
+  if (index < 0 || index >= session.sections.length) {
+    return { 
+      success: false, 
+      output: '', 
+      error: t('word.index_out_of_range', { index, max: session.sections.length - 1 }) 
+    }
+  }
+  
+  const section = session.sections[index]
+  const changes: string[] = []
+  
+  // 修改内容
+  if (args.content !== undefined) {
+    section.content = args.content as string
+    changes.push(t('word.modified_content'))
+  }
+  
+  // 初始化样式对象
+  if (!section.style) {
+    section.style = {}
+  }
+  
+  // 修改样式
+  if (args.font !== undefined) {
+    section.style.font = args.font as string
+    changes.push(t('word.modified_font', { font: args.font }))
+  }
+  if (args.size !== undefined) {
+    section.style.size = args.size as number
+    changes.push(t('word.modified_size', { size: args.size }))
+  }
+  if (args.bold !== undefined) {
+    section.style.bold = args.bold as boolean
+    changes.push(args.bold ? t('word.set_bold') : t('word.unset_bold'))
+  }
+  if (args.italic !== undefined) {
+    section.style.italic = args.italic as boolean
+    changes.push(args.italic ? t('word.set_italic') : t('word.unset_italic'))
+  }
+  if (args.underline !== undefined) {
+    section.style.underline = args.underline as boolean
+    changes.push(args.underline ? t('word.set_underline') : t('word.unset_underline'))
+  }
+  if (args.color !== undefined) {
+    section.style.color = args.color as string
+    changes.push(t('word.modified_color', { color: args.color }))
+  }
+  if (args.align !== undefined) {
+    section.style.align = args.align as 'left' | 'center' | 'right' | 'justify'
+    changes.push(t('word.modified_align', { align: args.align }))
+  }
+  
+  if (changes.length === 0) {
+    return { success: false, output: '', error: t('word.no_changes_specified') }
+  }
+  
+  markDirty(filePath)
+  
+  const output = t('word.modify_paragraph_success', { 
+    index, 
+    changes: changes.join('、') 
+  })
+  
+  return { success: true, output }
+}
+
+/**
+ * 删除指定段落
+ */
+async function wordDeleteParagraph(
+  ptyId: string,
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  if (!args.path) {
+    return { success: false, output: '', error: t('error.file_path_required') }
+  }
+  if (args.index === undefined) {
+    return { success: false, output: '', error: t('word.index_required') }
+  }
+  
+  const filePath = resolvePath(ptyId, args.path as string)
+  const index = args.index as number
+  
+  const session = getSession(filePath)
+  if (!session) {
+    return { success: false, output: '', error: t('word.not_open', { path: filePath }) }
+  }
+  
+  // 检查索引是否有效
+  if (index < 0 || index >= session.sections.length) {
+    return { 
+      success: false, 
+      output: '', 
+      error: t('word.index_out_of_range', { index, max: session.sections.length - 1 }) 
+    }
+  }
+  
+  // 获取被删除段落的预览
+  const deletedSection = session.sections[index]
+  const preview = deletedSection.content 
+    ? (deletedSection.content.length > 30 
+        ? deletedSection.content.substring(0, 30) + '...' 
+        : deletedSection.content)
+    : `[${deletedSection.type}]`
+  
+  // 删除段落
+  session.sections.splice(index, 1)
+  markDirty(filePath)
+  
+  const output = t('word.delete_paragraph_success', { 
+    index, 
+    preview,
+    remaining: session.sections.length 
+  })
+  
   return { success: true, output }
 }
 

@@ -163,7 +163,8 @@ export class VectorStorage extends EventEmitter {
       }
       
       this.table = await this.db.createTable(this.tableName, [sampleRecord])
-      await this.table.delete('id = "__init__"')
+      // 使用双引号包裹列名，防止 DataFusion SQL 解析器将其转为小写
+      await this.table.delete('"id" = \'__init__\'')
     } else {
       this.table = await this.db.createTable(this.tableName, [sampleRecord])
     }
@@ -209,7 +210,8 @@ export class VectorStorage extends EventEmitter {
     if (!this.table) return false
 
     try {
-      await this.table.delete(`id = "${id}"`)
+      // 使用双引号包裹列名，防止 DataFusion SQL 解析器将其转为小写
+      await this.table.delete(`"id" = '${id}'`)
       this.emit('recordRemoved', id)
       return true
     } catch {
@@ -226,7 +228,8 @@ export class VectorStorage extends EventEmitter {
 
     try {
       const beforeCount = await this.table.countRows()
-      await this.table.delete(`docId = "${docId}"`)
+      // 使用双引号包裹列名，防止 DataFusion SQL 解析器将其转为小写
+      await this.table.delete(`"docId" = '${docId}'`)
       const afterCount = await this.table.countRows()
       const removed = beforeCount - afterCount
       

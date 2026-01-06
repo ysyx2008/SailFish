@@ -204,6 +204,150 @@ export const wordTools: ToolDefinition[] = [
       }
     }
   },
+  // ========== 修改工具 ==========
+  {
+    type: 'function',
+    function: {
+      name: 'word_replace',
+      description: `在 Word 文档中查找并替换文本。
+
+**功能**：
+- 支持全文查找替换
+- 可选区分大小写
+- 返回替换的数量
+
+**示例**：
+word_replace({
+  path: "/path/to/doc.docx",
+  find: "旧文本",
+  replace: "新文本"
+})`,
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: '已打开的文件路径'
+          },
+          find: {
+            type: 'string',
+            description: '要查找的文本'
+          },
+          replace: {
+            type: 'string',
+            description: '替换为的文本'
+          },
+          case_sensitive: {
+            type: 'boolean',
+            description: '是否区分大小写（可选，默认 false）'
+          }
+        },
+        required: ['path', 'find', 'replace']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'word_modify_paragraph',
+      description: `修改 Word 文档中指定段落的内容或样式。
+
+**功能**：
+- 通过索引定位段落（从 0 开始）
+- 可修改文本内容
+- 可修改样式（字体、字号、粗体等）
+- 使用 word_read 先查看段落索引
+
+**示例**：
+word_modify_paragraph({
+  path: "/path/to/doc.docx",
+  index: 2,
+  content: "新的段落内容",
+  bold: true,
+  font: "黑体",
+  color: "FF0000"  // 红色
+})`,
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: '已打开的文件路径'
+          },
+          index: {
+            type: 'number',
+            description: '段落索引（从 0 开始，使用 word_read 查看）'
+          },
+          content: {
+            type: 'string',
+            description: '新的段落内容（可选，不提供则只修改样式）'
+          },
+          font: {
+            type: 'string',
+            description: '字体名称（可选）'
+          },
+          size: {
+            type: 'number',
+            description: '字号（磅，可选）'
+          },
+          bold: {
+            type: 'boolean',
+            description: '是否粗体（可选）'
+          },
+          italic: {
+            type: 'boolean',
+            description: '是否斜体（可选）'
+          },
+          underline: {
+            type: 'boolean',
+            description: '是否下划线（可选）'
+          },
+          color: {
+            type: 'string',
+            description: '文字颜色，十六进制（可选，如"FF0000"红色、"00FF00"绿色、"0000FF"蓝色）'
+          },
+          align: {
+            type: 'string',
+            enum: ['left', 'center', 'right', 'justify'],
+            description: '对齐方式（可选）'
+          }
+        },
+        required: ['path', 'index']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'word_delete_paragraph',
+      description: `删除 Word 文档中指定的段落。
+
+**功能**：
+- 通过索引定位段落（从 0 开始）
+- 使用 word_read 先查看段落索引
+- 删除后其他段落索引会变化
+
+**示例**：
+word_delete_paragraph({
+  path: "/path/to/doc.docx",
+  index: 3
+})`,
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: '已打开的文件路径'
+          },
+          index: {
+            type: 'number',
+            description: '要删除的段落索引（从 0 开始）'
+          }
+        },
+        required: ['path', 'index']
+      }
+    }
+  },
   {
     type: 'function',
     function: {
