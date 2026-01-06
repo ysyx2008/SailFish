@@ -797,7 +797,14 @@ export default {
     analyzeContentPrompt: 'Please help me analyze this terminal content:',
     diagnosing: 'Diagnosing...',
     analyzing: 'Analyzing...',
-    errorPrefix: 'Error:'
+    errorPrefix: 'Error:',
+    // Quote feature
+    quote: {
+      quote: 'Quote',
+      quoting: 'Quoting',
+      referencing: 'Referenced Content',
+      remove: 'Remove quote'
+    }
   },
 
   // @ Commands (Mentions)

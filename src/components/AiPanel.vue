@@ -266,6 +266,71 @@ const handleLoadHistory = (record: { id: string; timestamp: number; terminalId: 
 // 清空对话确认框状态
 const showClearConfirm = ref(false)
 
+// ==================== 引用功能 ====================
+
+// 引用相关状态
+const quotedText = ref('')           // 引用的文本
+const showQuoteButton = ref(false)   // 是否显示引用按钮
+const quoteButtonPos = ref({ x: 0, y: 0 })  // 按钮位置
+
+// 检查节点是否在对话区域内
+const isInChatArea = (node: Node | null): boolean => {
+  if (!node || !messagesRef.value) return false
+  let current: Node | null = node
+  while (current) {
+    if (current === messagesRef.value) return true
+    current = current.parentNode
+  }
+  return false
+}
+
+// 监听选中事件
+const handleSelectionChange = () => {
+  const selection = window.getSelection()
+  const text = selection?.toString().trim()
+  
+  if (text && text.length > 0 && text.length < 2000) {
+    // 检查选中内容是否在对话区域内
+    const range = selection?.getRangeAt(0)
+    const container = range?.commonAncestorContainer
+    if (isInChatArea(container)) {
+      // 计算按钮位置（选中区域右下角）
+      const rect = range?.getBoundingClientRect()
+      if (rect) {
+        quoteButtonPos.value = { 
+          x: Math.min(rect.right, window.innerWidth - 80), // 防止按钮超出屏幕
+          y: rect.bottom + 4
+        }
+        showQuoteButton.value = true
+      }
+    } else {
+      showQuoteButton.value = false
+    }
+  } else {
+    showQuoteButton.value = false
+  }
+}
+
+// 添加引用
+const addQuote = () => {
+  const selection = window.getSelection()
+  const text = selection?.toString().trim()
+  if (text) {
+    quotedText.value = text
+    showQuoteButton.value = false
+    selection?.removeAllRanges()
+    // 聚焦输入框
+    nextTick(() => {
+      mentionInputRef.value?.focus()
+    })
+  }
+}
+
+// 移除引用
+const removeQuote = () => {
+  quotedText.value = ''
+}
+
 // 请求清空对话（如果 Agent 正在执行，需要用户确认）
 const requestClearMessages = () => {
   if (isAgentRunning.value) {
@@ -526,6 +591,12 @@ const handleSend = async () => {
     inputText.value = inputText.value + '\n\n' + mentionContext
   }
   
+  // 如果有选中引用的内容，添加到消息前面
+  if (quotedText.value) {
+    inputText.value = `[${t('ai.quote.referencing')}]\n\`\`\`\n${quotedText.value}\n\`\`\`\n\n${inputText.value}`
+    quotedText.value = ''  // 发送后清空引用
+  }
+  
   // 清空已选择的 @ 引用
   clearMentions()
   
@@ -644,11 +715,15 @@ onMounted(() => {
   loadHostProfile()
   // 注册键盘事件
   document.addEventListener('keydown', handleKeyDown)
+  // 注册选中事件监听（用于引用功能）
+  document.addEventListener('selectionchange', handleSelectionChange)
 })
 
 onUnmounted(() => {
   // 清理键盘事件
   document.removeEventListener('keydown', handleKeyDown)
+  // 清理选中事件监听
+  document.removeEventListener('selectionchange', handleSelectionChange)
 })
 </script>
 
@@ -1347,6 +1422,14 @@ onUnmounted(() => {
             {{ t('ai.context') }}: ~{{ contextStats.tokenEstimate.toLocaleString() }} / {{ (contextStats.maxTokens / 1000).toFixed(0) }}K ({{ contextStats.percentage }}%)
           </span>
         </div>
+        <!-- 引用预览 -->
+        <div v-if="quotedText" class="quote-preview">
+          <div class="quote-header">
+            <span>📎 {{ t('ai.quote.quoting') }}</span>
+            <button class="quote-remove" @click="removeQuote" :title="t('ai.quote.remove')">×</button>
+          </div>
+          <div class="quote-content">{{ truncateText(quotedText, 200) }}</div>
+        </div>
         <div class="input-container">
           <!-- 上传按钮 -->
           <button 
@@ -1465,6 +1548,18 @@ onUnmounted(() => {
       </div>
     </template>
   </div>
+
+  <!-- 浮动引用按钮 -->
+  <Teleport to="body">
+    <button 
+      v-if="showQuoteButton"
+      class="quote-float-btn"
+      :style="{ left: quoteButtonPos.x + 'px', top: quoteButtonPos.y + 'px' }"
+      @mousedown.prevent="addQuote"
+    >
+      📎 {{ t('ai.quote.quote') }}
+    </button>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -3088,8 +3183,8 @@ onUnmounted(() => {
 .ai-input {
   position: relative;
   display: flex;
-  align-items: flex-end;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
   padding: 12px 14px 14px;
   border-top: 1px solid var(--border-color);
   background: linear-gradient(180deg, var(--bg-tertiary) 0%, var(--bg-primary) 100%);
@@ -4730,4 +4825,102 @@ onUnmounted(() => {
 }
 
 /* 已选择的 @ 引用标签 */
+
+/* ==================== 选中文本引用功能 ==================== */
+
+/* 引用预览区域 */
+.quote-preview {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--bg-surface);
+  border-left: 3px solid var(--accent-color);
+  animation: quoteSlideIn 0.2s ease-out;
+}
+
+@keyframes quoteSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.quote-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--accent-color);
+  margin-bottom: 4px;
+}
+
+.quote-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.quote-remove:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.quote-content {
+  font-size: 12px;
+  color: var(--text-secondary);
+  max-height: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.5;
+}
+</style>
+
+<!-- 浮动引用按钮需要非 scoped 样式 -->
+<style>
+.quote-float-btn {
+  position: fixed;
+  z-index: 9999;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--accent-color, #0066cc);
+  color: white;
+  font-size: 12px;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+  transform: translateX(-50%);
+  transition: all 0.15s;
+  animation: quoteButtonPop 0.15s ease-out;
+}
+
+@keyframes quoteButtonPop {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+}
+
+.quote-float-btn:hover {
+  background: var(--accent-color-hover, #0055aa);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.quote-float-btn:active {
+  transform: translateX(-50%) scale(0.95);
+}
 </style>
