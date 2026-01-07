@@ -93,6 +93,10 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
         name: 'execute_command',
         description: `在当前终端执行 shell 命令。
 
+**⚠️ 命令长度限制（重要）**：
+- 命令最长 500 字符，超过会被拒绝执行
+- 超长命令或多行脚本一般应该先写入临时文件，再执行脚本文件
+
 **禁止使用的命令**（会被系统拒绝）：
 - vim、vi、nano、emacs 等编辑器 → 请使用 write_file 工具
 - tmux、screen 等终端复用器 → 不支持
@@ -119,7 +123,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
           properties: {
             command: {
               type: 'string',
-              description: '要执行的 shell 命令'
+              description: '要执行的 shell 命令（最长 500 字符，超过请先写入脚本文件再执行）'
             }
           },
           required: ['command']
