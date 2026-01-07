@@ -38,7 +38,7 @@
 | 🏢 内网环境？ | 支持私有化 AI 模型和代理 |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome.png" width="800" alt="旗鱼终端">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome.jpg" width="800" alt="旗鱼终端">
 </p>
 
 ## ✨ 核心功能
