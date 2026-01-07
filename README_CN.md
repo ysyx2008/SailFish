@@ -9,6 +9,8 @@
 ╚══════╝╚═╝        ╚═╝   ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝
 </pre>
 
+<img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/resources/logo.png" alt="旗鱼终端 Logo" width="80">
+
 **旗鱼终端**
 
 **AI 驱动的新世代终端**
@@ -49,8 +51,6 @@
 | 📚 **知识库** | 本地 RAG，完全离线运行 |
 | 🔌 **MCP 扩展** | 通过 MCP 协议接入外部工具 |
 | 🗄️ **数据库** | 自然语言执行 SQL 和分析 |
-| 📊 **Excel/Word** | 文档处理技能 |
-| 🌐 **浏览器自动化** | 基于 Playwright 的网页操作 |
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-agent-exec.png" width="800" alt="AI Agent">
