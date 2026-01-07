@@ -8,6 +8,28 @@ import * as iconv from 'iconv-lite'
 
 const execAsync = promisify(exec)
 
+/**
+ * 解码 lsof 输出中的 \xXX 转义序列
+ * lsof 在路径包含非 ASCII 字符时会输出 \xXX 格式的 UTF-8 编码
+ * 例如: \xe4\xb8\xaa\xe4\xba\xba -> 个人
+ */
+function decodeLsofPath(path: string): string {
+  if (!path.includes('\\x')) {
+    return path
+  }
+  
+  try {
+    // 将连续的 \xXX 序列替换为对应的 UTF-8 字符
+    return path.replace(/(?:\\x[0-9a-fA-F]{2})+/g, (match) => {
+      const hexPairs = match.split('\\x').filter(s => s.length > 0)
+      const bytes = hexPairs.map(hex => parseInt(hex, 16))
+      return Buffer.from(bytes).toString('utf-8')
+    })
+  } catch {
+    return path
+  }
+}
+
 export interface PtyOptions {
   cols?: number
   rows?: number
@@ -683,7 +705,8 @@ export class PtyService {
           `lsof -a -d cwd -p ${shellPid} -Fn 2>/dev/null | grep '^n' | head -1 | cut -c2-`,
           { timeout: 2000 }
         )
-        const cwd = stdout.trim()
+        // lsof 对非 ASCII 字符输出 \xXX 格式，需要解码
+        const cwd = decodeLsofPath(stdout.trim())
         if (cwd && cwd.startsWith('/')) {
           return cwd
         }
