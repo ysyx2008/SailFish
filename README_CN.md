@@ -11,611 +11,114 @@
 
 **旗鱼终端**
 
-> AI 驱动的新世代终端
+**AI 驱动的新世代终端**
 
-🌐 **网站**：[www.sfterm.com](http://www.sfterm.com/)
-
-</div>
-
-<div align="center">
+*说出你的需求，AI 自主规划执行*
 
 [![Build](https://github.com/ysyx2008/SFTerminal/actions/workflows/build-release.yml/badge.svg)](https://github.com/ysyx2008/SFTerminal/actions)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 [![en](https://img.shields.io/badge/lang-English-blue.svg)](./README.md)
 [![cn](https://img.shields.io/badge/lang-中文-red.svg)](./README_CN.md)
 
+[官方网站](http://www.sfterm.com/) · [下载](https://github.com/ysyx2008/SFTerminal/releases) · [文档](./docs/)
+
 </div>
 
-## 产品介绍
+---
 
-旗鱼终端是一款面向运维工程师和开发者的现代化终端工具。它将传统终端的强大功能与AI智能助手深度融合，让命令行操作变得更加高效、智能。
+## 为什么选择旗鱼终端？
 
-说出你的要求，AI自主规划执行。
-遇到不熟悉的命令？让AI帮你解释。
-看到报错信息一头雾水？AI帮你分析原因并给出解决方案。
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome.png" width="900" alt="旗鱼终端欢迎页面">
-</p>
-
-对于企业用户，旗鱼终端充分考虑了内网环境的需求：支持配置私有化部署的 AI 模型，可以一键导入 Xshell 会话配置，让团队快速上手、平滑迁移。
-
-## 功能特性
-
-### AI Agent 模式
+| 痛点 | 旗鱼终端方案 |
+|------|-------------|
+| 🤯 不会写命令？ | 用自然语言描述，AI 帮你执行 |
+| 😵 看不懂报错？ | AI 分析原因并给出解决方案 |
+| 🔁 重复性操作？ | Agent 自动化执行多步任务 |
+| 🏢 内网环境？ | 支持私有化 AI 模型和代理 |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-agent-exec.png" width="900" alt="AI Agent 执行">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome.png" width="800" alt="旗鱼终端">
 </p>
 
-- 🤖 **自动化任务执行**：描述任务，Agent 自动规划并执行多步命令
-- 🎭 **Agent 性格系统**：支持 16 种 MBTI 性格类型，自定义 Agent 回复风格
-  - INTJ、INTP、ENTJ、ENTP（理性主义者）
-  - INFJ、INFP、ENFJ、ENFP（理想主义者）
-  - ISTJ、ISFJ、ESTJ、ESFJ（护卫者）
-  - ISTP、ISFP、ESTP、ESFP（技艺者）
-- 🔧 **丰富的工具集**：
-  - `execute_command` - 执行 shell 命令，支持 top/htop/watch/tail -f 等实时命令
-  - `check_terminal_status` - 检查终端状态（空闲/忙碌/等待输入等）
-  - `get_terminal_context` - 获取终端输出，查看命令执行结果
-  - `send_control_key` - 发送控制键（Ctrl+C/D/Z 等），处理卡住的命令
-  - `send_input` - 发送文本输入，响应交互式提示
-  - `read_file` / `write_file` - 文件读写操作
-  - `edit_file` - 精确编辑文件（查找替换，无需重写整个文件）
-  - `file_search` - 快速文件搜索（macOS Spotlight / Windows Everything）
-  - `remember_info` - 记住关键信息，跨会话记忆
-  - `search_knowledge` - 搜索本地知识库文档
-  - `ask_user` - 向用户提问，获取更多信息
-  - `wait` - 等待指定时间，处理长耗时任务
-- 🔌 **MCP 扩展**：支持 Model Context Protocol，可接入外部工具和资源
-- 🧩 **技能系统**：按需加载扩展能力，避免工具过载
-  - `excel` - Excel 处理技能
-  - `word` - Word 文档处理技能（基于 docx）
-  - `browser` - 浏览器自动化技能（基于 Playwright）
-  - `email` - 邮箱管理技能（IMAP/SMTP）
-- ⚠️ **严格模式**：危险命令执行前需要用户确认，默认开启
-- ⏱️ **命令超时控制**：可配置命令执行超时时间，避免长时间等待
-- 📜 **任务历史**：记录每次 Agent 任务的执行过程和结果
+## ✨ 核心功能
+
+| 功能 | 说明 |
+|------|------|
+| 🤖 **AI Agent** | 描述任务，Agent 自动规划执行 |
+| 🖥️ **SSH/SFTP** | 完整的远程连接和文件管理 |
+| 📁 **文件管理器** | 双栏文件管理器，支持本地与远程 |
+| 📚 **知识库** | 本地 RAG，完全离线运行 |
+| 🔌 **MCP 扩展** | 通过 MCP 协议接入外部工具 |
+| 🗄️ **数据库** | 自然语言执行 SQL 和分析 |
+| 📊 **Excel/Word** | 文档处理技能 |
+| 🌐 **浏览器自动化** | 基于 Playwright 的网页操作 |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-agent-risk.png" width="900" alt="高风险命令确认">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-agent-exec.png" width="800" alt="AI Agent">
 </p>
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-agent-training.png" width="900" alt="Agent 执行训练任务">
-</p>
+## 🚀 快速开始
 
-### 终端功能
+### 下载安装
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-host-manager.jpg" width="900" alt="主机管理">
-</p>
+从 [GitHub Releases](https://github.com/ysyx2008/SFTerminal/releases) 或 [官方网站](http://www.sfterm.com/) 下载最新版本。
 
-- 🖥️ **跨平台支持**：Windows、macOS、Linux 全平台覆盖
-- 🔐 **SSH 管理**：支持密码和私钥认证
-- 📂 **会话分组**：灵活的分组管理，支持分组级跳板机配置，每个分组可配置独立跳板机，组内会话自动通过跳板机连接
-- 🚀 **批量操作**：支持多终端同时执行命令，批量管理服务器
-- 📥 **Xshell 导入**：一键导入 Xshell 会话配置，快速迁移
-- 🎨 **丰富主题**：内置多款精美配色方案
-- ⚡ **高性能**：基于 xterm.js，流畅的终端体验
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-batch.jpg" width="900" alt="批量操作">
-</p>
-
-### 数据库管理
-- 🗄️ **智能 SQL 执行**：通过自然语言描述需求，Agent 自动生成并执行 SQL（支持 MySQL、PostgreSQL、Oracle、SQL Server 等命令行客户端）
-- 📊 **查询结果分析**：AI 自动分析查询结果，发现数据异常、性能瓶颈
-- 🔍 **慢查询诊断**：分析慢查询日志，给出索引优化建议
-- 🛠️ **自动化运维**：
-  - 数据库备份与恢复
-  - 表结构变更（DDL）
-  - 用户权限管理
-  - 主从状态检查
-- 📈 **性能监控**：实时监控数据库状态（连接数、QPS、锁等待等）
-- 🔗 **MCP 数据库模板**：内置 PostgreSQL、SQLite 等 MCP 服务器配置模板，快速接入数据库操作能力
-- 🏢 **批量运维**：通过多终端批量执行，同时管理多台数据库服务器
-
-### MCP 扩展能力
-- 🔗 **协议支持**：完整支持 Model Context Protocol (MCP) 标准
-- 🚀 **多种传输**：支持 stdio 和 SSE 两种传输模式
-- 🧩 **能力聚合**：自动聚合多个 MCP 服务器的工具、资源和提示模板
-- 📦 **预设模板**：内置 Filesystem、GitHub、PostgreSQL 等常用 MCP 服务器配置模板
-- 🎛️ **可视化管理**：图形化界面配置和管理 MCP 服务器连接
-
-### AI 对话能力
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-analyse.png" width="900" alt="AI 对话">
-</p>
-
-- 💬 **智能对话**：命令解释、错误诊断、自然语言生成命令，流式响应实时输出
-- 📊 **终端内容分析**：选中终端输出，右键一键分析，快速定位问题
-- 📄 **文档上传**：上传 PDF、Word、文本等文档作为 AI 上下文，让 AI 结合文档内容回答问题
-- 🧠 **主机记忆**：自动探测主机信息，跨会话记忆关键路径和配置，让 AI 更了解你的环境
-- 📈 **上下文统计**：实时显示 Token 使用量和上下文占比，避免超出限制
-
-### 企业特性
-- 🏢 **内网友好**：支持配置内网 AI API 和 HTTP/SOCKS 代理
-- 🔒 **数据安全**：所有数据本地存储，支持私有化部署的 AI 模型
-
-### 本地知识库 (RAG)
-- 📚 **文档导入**：支持 PDF、Word、TXT、Markdown 等格式文档
-- 🧠 **本地 Embedding**：内置轻量级向量模型，完全离线运行，无需外部 API
-- 🔍 **语义搜索**：基于向量相似度的智能检索，理解文档语义
-- 📖 **智能分块**：支持多种分块策略（固定长度/段落/语义）
-- 📊 **重排序优化**：可选 Rerank 模型优化搜索结果排序
-- 💾 **向量存储**：基于 LanceDB 的高效本地向量数据库
-- 🔗 **Agent 集成**：知识库与 Agent 深度集成，自动检索相关文档辅助回答
-
-### 文件管理
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-file-manager.jpg" width="900" alt="双栏文件管理器">
-</p>
-
-- 📁 **双栏文件管理器**：独立窗口的双面板文件管理器
-  - 左右双栏布局，支持本地与远程文件操作
-  - 目录树导航，快速定位
-  - 文件预览，文本文件在线查看
-  - 文件书签，常用目录一键跳转
-  - 完善的键盘快捷键和右键菜单
-- 📂 **SFTP 侧边栏**：终端侧边栏集成文件浏览器，支持上传/下载/预览/编辑
-
-## 技术栈
-
-- **框架**：Electron 37 + Vue 3 + TypeScript
-- **终端**：xterm.js 5.x
-- **构建**：Vite 5 + electron-builder
-- **状态管理**：Pinia
-- **国际化**：vue-i18n
-- **AI**：OpenAI 兼容 API（支持 Function Calling）+ MCP 协议
-- **知识库**：LanceDB + Transformers.js（本地 Embedding）+ BM25
-- **文档处理**：ExcelJS（Excel）、Mammoth（Word）、pdf-parse（PDF）
-
-## 快速开始
-
-### 环境要求
-
-- Node.js 18+
-- npm 或 pnpm
-
-### 安装依赖
+### 开发调试
 
 ```bash
+# 安装依赖
 npm install
-```
 
-### 开发模式
-
-```bash
+# 启动开发模式
 npm run dev
+
+# 构建应用
+npm run build:mac    # macOS
+npm run build:win    # Windows
+npm run build:linux  # Linux
 ```
 
-### 构建应用
+### AI 配置
 
-```bash
-# Windows
-npm run build:win
-
-# macOS
-npm run build:mac
-
-# Linux
-npm run build:linux
-```
-
-### 快速构建（跳过类型检查）
-
-```bash
-npm run build:win:fast
-npm run build:mac:fast
-npm run build:linux:fast
-```
-
-## AI 配置
-
-旗鱼终端支持 OpenAI 兼容 API，可以连接：
-
-- 公有云服务：OpenAI、通义千问、DeepSeek 等
-- 私有化部署：vLLM、FastChat、Ollama 等
-
-### 配置示例
-
-在设置中添加 AI 配置：
+旗鱼终端支持 OpenAI 兼容 API。在设置中配置：
 
 ```json
 {
-  "name": "公司内网模型",
-  "apiUrl": "http://10.0.1.100:8080/v1/chat/completions",
+  "name": "你的 AI",
+  "apiUrl": "https://api.openai.com/v1/chat/completions",
   "apiKey": "sk-xxx",
-  "model": "qwen-72b",
-  "proxy": null
+  "model": "gpt-4o"
 }
 ```
 
-### Agent 模式要求
-
-Agent 模式需要 AI 模型支持 **Function Calling**（工具调用）能力。推荐使用：
-- OpenAI GPT-4 / GPT-4o / GPT-4o-mini
-- Claude 3.5 Sonnet / Claude 3 Opus
-- 通义千问 qwen-plus / qwen-max
+**Agent 模式推荐模型**（需支持 Function Calling）：
 - DeepSeek V3
-- Gemini 1.5 Pro
+- 通义千问 qwen-plus / qwen-max
+- OpenAI GPT-4o / GPT-4o-mini
+- Claude 4.5 Sonnet
 
-## MCP 配置
+## 📖 文档
 
-MCP (Model Context Protocol) 允许扩展 Agent 的能力，接入外部工具和资源。
+- [Agent 架构](./docs/agent-architecture.md)
+- [开发路线图](./docs/ROADMAP.md)
+- [更新日志](./CHANGELOG.md)
+- [贡献指南](./CONTRIBUTING.md)
 
-### 添加 MCP 服务器
+## 📄 许可证
 
-在设置中的「MCP 服务」页面添加配置：
+**双许可模式**：开源使用遵循 AGPL v3.0，商业使用需授权。
 
-**stdio 模式**（本地进程）：
-```json
-{
-  "name": "文件系统",
-  "transport": "stdio",
-  "command": "npx",
-  "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"],
-  "env": {}
-}
-```
+- ✅ 个人使用、学习研究、教育机构
+- ✅ 企业内部使用（≤1000 套，修改需开源）
+- 💼 需商业授权：>1000 套、SaaS/产品集成、闭源修改
 
-**SSE 模式**（远程服务）：
-```json
-{
-  "name": "远程服务",
-  "transport": "sse",
-  "url": "http://localhost:8080/sse"
-}
-```
+详见 [LICENSE](./LICENSE) 文件。
 
-### 常用 MCP 服务器
+## 🔗 相关链接
 
-- **Filesystem**：本地文件读写操作
-- **GitHub**：GitHub 仓库操作（需要 Token）
-- **PostgreSQL**：数据库查询操作
-- **Brave Search**：网页搜索能力
+- 🌐 [官方网站](http://www.sfterm.com/)
+- 📦 [GitHub](https://github.com/ysyx2008/SFTerminal)
+- 🐛 [问题反馈](https://github.com/ysyx2008/SFTerminal/issues)
 
-更多 MCP 服务器请参考：[MCP Servers](https://github.com/modelcontextprotocol/servers)
+## 🙏 致谢
 
-## 知识库配置
-
-本地知识库功能允许导入文档，让 AI Agent 在执行任务时自动检索相关信息。
-
-### 启用知识库
-
-1. 打开设置 → 知识库
-2. 开启「启用知识库」选项
-3. 等待本地 Embedding 模型加载完成
-
-### 导入文档
-
-支持的文档格式：
-- **PDF**：自动提取文本内容
-- **Word**：支持 .doc 和 .docx 格式
-- **文本**：TXT、Markdown、代码文件等
-
-### 分块策略
-
-- **固定长度**：按字符数均匀分块
-- **段落分块**：保持段落完整性
-- **语义分块**：基于内容语义智能分割（推荐）
-
-### 使用场景
-
-- 导入项目文档，让 Agent 了解项目架构和规范
-- 导入运维手册，Agent 自动参考处理故障
-- 导入 API 文档，辅助开发和调试
-
-## Xshell 会话导入
-
-支持从 Xshell 导入已有的会话配置：
-
-1. 点击主机管理面板的「导入」按钮
-2. 选择「导入 Xshell 文件」或「导入 Xshell 目录」
-3. 选择 `.xsh` 文件或 Xshell Sessions 目录
-
-**说明**：
-- 支持导入单个或多个 `.xsh` 文件
-- 支持递归导入整个目录，子目录自动作为分组
-- Xshell Sessions 目录通常位于：`C:\Users\<用户名>\Documents\NetSarang Computer\Xshell\Sessions`
-- 由于 Xshell 密码是加密存储的，导入后需要手动设置密码
-
-## 项目结构
-
-```
-├── electron/                  # Electron 主进程
-│   ├── main.ts               # 入口
-│   ├── preload.ts            # 预加载脚本
-│   └── services/             # 服务层
-│       ├── agent/            # AI Agent 模块
-│       │   ├── index.ts      # Agent 服务入口
-│       │   ├── planner.ts    # 动态任务规划器
-│       │   ├── progress-detector.ts   # 进度检测器
-│       │   ├── prompt-builder.ts  # 提示词构建
-│       │   ├── risk-assessor.ts   # 命令风险评估
-│       │   ├── tool-executor.ts   # 工具执行器
-│       │   ├── tools.ts      # 工具定义
-│       │   ├── i18n.ts       # Agent 国际化
-│       │   ├── types.ts      # 类型定义
-│       │   └── skills/       # 技能模块
-│       │       ├── index.ts      # 技能注册入口
-│       │       ├── registry.ts   # 技能注册表
-│       │       ├── skill-loader.ts # 技能加载器
-│       │       ├── types.ts      # 类型定义
-│       │       ├── excel/        # Excel 处理技能
-│       │       │   ├── index.ts  # 技能定义
-│       │       │   ├── tools.ts  # 工具定义
-│       │       │   ├── executor.ts # 执行器
-│       │       │   └── session.ts  # 会话管理
-│       │       └── word/         # Word 文档处理技能
-│       │           ├── index.ts  # 技能定义
-│       │           ├── tools.ts  # 工具定义
-│       │           ├── executor.ts # 执行器
-│       │           ├── styles.ts   # 样式处理
-│       │           └── session.ts  # 会话管理
-│       ├── terminal-awareness/   # 终端感知模块
-│       │   ├── index.ts      # 感知服务入口
-│       │   └── process-monitor.ts # 进程状态监控
-│       ├── knowledge/        # 知识库模块
-│       │   ├── index.ts      # 知识库服务入口
-│       │   ├── embedding.ts  # Embedding 服务
-│       │   ├── storage.ts    # 向量存储（LanceDB）
-│       │   ├── bm25.ts       # BM25 关键词搜索
-│       │   ├── chunker.ts    # 文档分块
-│       │   ├── reranker.ts   # 重排序
-│       │   ├── crypto.ts     # 数据加密
-│       │   ├── model-manager.ts   # 模型管理
-│       │   ├── mcp-adapter.ts     # MCP 适配器
-│       │   └── types.ts      # 类型定义
-│       ├── ai.service.ts     # AI API 对话
-│       ├── pty.service.ts    # 本地终端
-│       ├── ssh.service.ts    # SSH 连接
-│       ├── sftp.service.ts   # SFTP 文件传输
-│       ├── unified-terminal.service.ts  # 统一终端服务
-│       ├── terminal-state.service.ts    # 终端状态管理
-│       ├── screen-content.service.ts    # 屏幕内容服务
-│       ├── command-executor.service.ts  # 命令执行服务
-│       ├── host-profile.service.ts      # 主机档案
-│       ├── document-parser.service.ts   # 文档解析
-│       ├── mcp.service.ts        # MCP 客户端服务
-│       ├── history.service.ts    # 历史记录
-│       ├── config.service.ts     # 配置管理
-│       └── xshell-import.service.ts  # Xshell 导入
-├── src/                       # Vue 渲染进程
-│   ├── components/           # 组件
-│   │   ├── AiPanel.vue       # AI 面板
-│   │   ├── Terminal.vue      # 终端组件
-│   │   ├── SessionManager.vue    # 会话管理
-│   │   ├── AgentPlanView.vue     # Agent 计划视图
-│   │   ├── FileExplorer/     # SFTP 文件浏览器
-│   │   │   ├── FileExplorer.vue  # 主组件
-│   │   │   ├── FileList.vue      # 文件列表
-│   │   │   ├── PathBreadcrumb.vue # 路径导航
-│   │   │   ├── FileContextMenu.vue # 右键菜单
-│   │   │   └── TransferQueue.vue  # 传输队列
-│   │   ├── KnowledgeManager.vue   # 知识库管理
-│   │   └── Settings/         # 设置组件
-│   │       └── KnowledgeSettings.vue # 知识库设置
-│   ├── composables/          # 组合式函数
-│   │   ├── useAgentMode.ts   # Agent 模式逻辑
-│   │   ├── useAiChat.ts      # AI 对话逻辑
-│   │   ├── useSftp.ts        # SFTP 操作逻辑
-│   │   ├── useHostProfile.ts # 主机档案管理
-│   │   ├── useDocumentUpload.ts  # 文档上传
-│   │   ├── useContextStats.ts    # 上下文统计
-│   │   └── useMarkdown.ts    # Markdown 渲染
-│   ├── services/             # 前端服务
-│   │   ├── terminal-screen.service.ts   # 终端屏幕分析
-│   │   └── terminal-snapshot.service.ts # 终端快照
-│   ├── stores/               # Pinia 状态
-│   │   ├── terminal.ts       # 终端状态
-│   │   └── config.ts         # 配置状态
-│   ├── i18n/                 # 国际化
-│   │   ├── index.ts          # i18n 配置
-│   │   └── locales/          # 语言包
-│   └── themes/               # 主题配色
-├── resources/                # 应用图标与模型
-│   └── models/               # 本地 AI 模型
-│       └── embedding/        # Embedding 模型
-└── electron-builder.yml      # 打包配置
-```
-
-## 版本历史
-
-### v8.12.0 (当前版本)
-- 📝 **Word 文档处理技能**：全新 `word` 技能，提供会话式 Word 文档创建和编辑能力
-  - 支持创建新文档、打开已有文档
-  - 添加段落、标题（1-6级）、列表、表格、图片、分页符
-  - 支持插入目录（TOC）、超链接、书签锚点、批注
-  - 丰富的样式选项：字体、字号、粗体/斜体/下划线、颜色、高亮、对齐方式、首行缩进
-  - 内置公文格式支持（黑体标题、仿宋正文等）
-  - 读取文档内容（转换为 Markdown 格式）
-  - 导出为 PDF（需安装 Microsoft Word 或 LibreOffice）
-  - 自动备份机制
-
-### v8.9.3
-- 🌐 **浏览器自动化技能**：全新 `browser` 技能，基于 Playwright 提供网页自动化能力，支持导航、截图、点击、输入、滚动等操作，可保存/恢复登录状态
-- 📧 **邮箱管理技能**：全新 `email` 技能，支持 IMAP/SMTP 协议，可读取、搜索、发送、删除邮件
-- 🔧 **Agent 工具增强**：新增 `edit_file`（精确编辑）、`file_search`（快速搜索）、`ask_user`（向用户提问）、`send_input`（发送输入）、`wait`（等待）、`check_terminal_status`（终端状态检查）等工具
-
-### v8.7.0
-- 🧩 **技能系统（Skills）**：全新的可扩展技能架构，技能按需动态加载，避免工具过载
-- 📊 **Excel 处理技能**：首个内置技能，提供会话式 Excel 文件读写能力，支持读取、修改、保存等操作，支持公式
-- ⚙️ **Electron 37**：升级到最新 Electron 版本，性能和兼容性提升
-
-### v8.4.0
-- 📎 **@ 引用功能**：输入框支持 `@file` 引用文件、`@docs` 引用知识库文档
-- 📋 **AI Rules**：支持自定义 AI 指令和偏好设置
-- 💬 **历史对话**：支持查看最近会话，继续历史对话
-- 🌐 **字符编码**：SSH 和本地终端支持 GBK、Big5、Shift_JIS 等多种编码
-- 🔄 **自动更新**：应用内检查更新、下载并安装
-- 📊 **会话排序**：支持按最近使用时间排序
-- 🤖 **Embedding 模型升级**：更新为 bge-small-zh-v1.5，提升语义检索效果
-- 🧠 **智能记忆**：增强记忆冲突处理，知识库孤儿数据清理
-- 🎨 **主题增强**：新增 Ayu Mirage 主题及赞助者专属主题（暗金、樱花、玫瑰松）
-
-### v8.0.0
-- 📂 **双栏文件管理器**：全功能的双栏文件管理器
-  - 左右双面板布局，支持本地与远程文件操作
-  - 目录树导航，快速定位目录
-  - 文件预览功能，支持文本文件在线查看
-  - 路径编辑和面包屑导航
-  - 完善的键盘快捷键支持（Ctrl/Cmd+A 全选、ESC 取消等）
-  - 右键菜单操作
-- 🔖 **文件书签**：快速收藏常用目录，一键跳转
-- 📋 **计划管理增强**：支持计划归档和清除功能
-- 🎨 **新增主题**：Solarized Light、GitHub Light 浅色主题
-- 🖥️ **终端增强**：
-  - 右键打开文件管理器
-  - 增强终端提示符解析，智能识别当前目录
-  - 终端关闭确认提示
-
-### v7.7.0
-- ⚡ **启动速度优化**：知识库异步加载，极大提升启动速度
-- 🌍 **多语言增强**：根据界面语言设置 AI 回复语言
-- 📖 **英文文档**：新增 README 英文版
-
-### v7.6.0
-- 🔀 **会话排序**：支持会话拖拽排序，可拖动到分组最后
-- 💡 **Tips 增强**：欢迎页随机提示功能，点击切换更多技巧
-
-### v7.5.0
-- 🔧 **统一终端服务**：抽象 PTY 和 SSH 终端的公共接口
-- 📊 **进度检测器**：智能识别命令执行进度
-- 🛠️ **Agent 工具增强**：优化工具执行器和风险评估
-
-### v7.0.0
-- 🏗️ **架构重构**：Agent 服务模块化重构
-  - 工具执行器增强
-  - 风险评估优化
-- 🔍 **BM25 搜索**：知识库新增关键词搜索支持
-- 🔐 **数据加密**：敏感配置加密存储
-
-### v6.0.0
-- 🖥️ **屏幕内容服务**：终端屏幕内容智能分析
-- 📝 **命令执行服务**：独立的命令执行管理
-- 🌐 **国际化增强**：完善中英文支持
-
-### v5.0.0
-- 🤖 **Agent 增强**：
-  - 任务规划器优化
-  - 提示词构建改进
-  - 工具集扩展
-- 📊 **上下文统计**：实时 Token 使用量监控
-- 🧠 **主机画像增强**：更智能的环境记忆
-
-### v4.5.0
-- 🔍 **终端感知系统**：增强终端状态感知能力
-  - 综合状态检测：空闲、忙碌、等待输入、卡死
-  - 智能输入识别：密码、确认、选择、分页器、编辑器
-  - 输出模式分析：进度条、编译、测试、日志流
-  - 卡死检测与自动建议
-- 🛡️ **智能命令处理**：
-  - 四级风险评估（safe/moderate/dangerous/blocked）
-  - 自动修正问题命令（ping、apt install 等）
-  - 交互式命令自动转换（top → top -bn1）
-  - 持续命令定时执行（tail -f 等）
-- 📋 **动态任务规划**：
-  - 任务复杂度分析
-  - 多种执行策略（default/conservative/aggressive/diagnostic）
-  - 动态计划调整、步骤重试、备选方案
-
-### v4.1.0
-- 🧠 **本地知识库增强**：
-  - 优化向量检索性能
-  - 改进文档分块算法
-  - Agent 工具集新增 `search_knowledge` 知识库搜索
-
-### v4.0.0
-- 📚 **本地知识库 (RAG)**：全新离线知识库功能
-  - 内置本地 Embedding 模型（bge-small-zh-v1.5），完全离线运行
-  - 基于 LanceDB 的高效向量存储和检索
-  - 支持 PDF、Word、TXT、Markdown 等多种文档格式
-  - 智能分块策略：固定长度、段落、语义分块
-  - 可选 Rerank 模型优化搜索结果
-  - 知识库与 Agent 深度集成，自动检索相关文档
-
-### v3.0.0
-- 🔌 **MCP 协议支持**：全新 Model Context Protocol 扩展能力
-  - 支持连接外部 MCP 服务器，扩展 Agent 工具集
-  - 支持 stdio 和 SSE 两种传输模式
-  - 自动聚合多服务器的工具、资源和提示模板
-  - 内置 Filesystem、GitHub、PostgreSQL 等预设模板
-  - 可视化 MCP 服务器配置和管理界面
-
-### v2.2.0
-- 📁 **SFTP 文件管理**：全新可视化文件浏览器
-  - 支持文件/目录的上传、下载、删除、重命名
-  - 实时传输进度显示
-  - 文本文件在线预览
-  - 路径导航和历史记录
-  - 右键菜单快捷操作
-
-### v2.1.0
-- 🔍 **终端状态检测**：智能判断命令是否执行完成
-- 💡 **Tips 提示**：新增操作提示信息
-- 🛡️ **严格模式优化**：修复自动修正命令的确认逻辑
-- 🧹 **输出清理**：使用 strip-ansi 库统一处理 ANSI 转义序列
-- ⏹️ **Agent 中止优化**：增强中止处理逻辑
-
-### v2.0.0
-- 🚀 全新 AI Agent 模式，支持自动化任务执行
-- 🔧 丰富的工具集：命令执行、终端控制、文件操作、信息记忆
-- ⚠️ 严格模式：危险命令确认机制
-- ⏱️ 可配置的命令超时时间
-- 📜 Agent 任务历史记录
-
-### v1.0.0
-- 🖥️ 跨平台终端基础功能
-- 🔐 SSH 连接支持
-- 💬 AI 对话助手
-- 📥 Xshell 会话导入
-
-## 许可证
-
-本项目采用 **双许可模式（Dual Licensing）**：
-
-### 开源许可：AGPL v3.0
-以下场景可免费使用，需遵守 [AGPL v3.0](https://www.gnu.org/licenses/agpl-3.0.html) 全部条款：
-- ✅ 个人学习、研究、日常使用
-- ✅ 企业内部使用（**≤1000 套**，且修改需开源）
-- ✅ 非盈利组织 / 教育机构
-- ✅ 医疗及医疗研究机构
-
-### 商业许可
-以下场景需要商业授权：
-- 企业内部使用超过 1000 套
-- 作为产品/服务的一部分提供
-- 不希望开源修改的代码
-- 修改本软件的 Logo 或名称
-
-详细及商用条款请查看 [LICENSE](./LICENSE) 文件，或访问[官网](http://www.sfterm.com/)联系获取商业授权。
-
-## 相关链接
-
-- 🌐 **官方网站**：[www.sfterm.com](http://www.sfterm.com/)
-- 📦 **GitHub**：[https://github.com/ysyx2008/SFTerminal](https://github.com/ysyx2008/SFTerminal)
-- 🐛 **问题反馈**：[GitHub Issues](https://github.com/ysyx2008/SFTerminal/issues)
-
-## 致谢
-
-- [Electron](https://www.electronjs.org/)
-- [xterm.js](https://xtermjs.org/)
-- [Vue.js](https://vuejs.org/)
-- [node-pty](https://github.com/microsoft/node-pty)
-- [ssh2](https://github.com/mscdex/ssh2)
-- [LanceDB](https://lancedb.com/)
-- [Transformers.js](https://huggingface.co/docs/transformers.js)
-- [Playwright](https://playwright.dev/)
-- [ExcelJS](https://github.com/exceljs/exceljs)
-- [docx](https://github.com/dolanmiu/docx)
-- [IMAPFlow](https://github.com/postalsys/imapflow)
-- [Nodemailer](https://nodemailer.com/)
-- [MCP SDK](https://github.com/modelcontextprotocol/typescript-sdk)
-- [Mammoth](https://github.com/mwilliamson/mammoth.js)
-- [pdf-parse](https://github.com/pdfjs/pdf-parse)
-- [jieba-wasm](https://github.com/aspect-build/aspect-rules-jieba)
-- [Everything](https://www.voidtools.com/)
+基于 [Electron](https://www.electronjs.org/)、[Vue.js](https://vuejs.org/)、[xterm.js](https://xtermjs.org/)、[LanceDB](https://lancedb.com/) 等优秀开源项目构建。
