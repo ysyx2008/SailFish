@@ -11,607 +11,114 @@
 
 **SFTerm**
 
-> AI-Powered Next-Gen Terminal
+**AI-Powered Next-Gen Terminal**
 
-🌐 **Website**: [www.sfterm.com](http://www.sfterm.com/en/)
-
-</div>
-
-<div align="center">
+*Tell AI what you need. It plans and executes autonomously.*
 
 [![Build](https://github.com/ysyx2008/SFTerminal/actions/workflows/build-release.yml/badge.svg)](https://github.com/ysyx2008/SFTerminal/actions)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 [![en](https://img.shields.io/badge/lang-English-blue.svg)](./README.md)
 [![cn](https://img.shields.io/badge/lang-中文-red.svg)](./README_CN.md)
 
+[Website](http://www.sfterm.com/en/) · [Download](https://github.com/ysyx2008/SFTerminal/releases) · [Documentation](./docs/)
+
 </div>
 
-## Introduction
+---
 
-SFTerm is a modern terminal tool designed for DevOps engineers and developers. It deeply integrates traditional terminal capabilities with an AI intelligent assistant, making command-line operations more efficient and intelligent.
+## Why SFTerm?
 
-Tell AI what you need, and it will plan and execute autonomously.
-Unfamiliar with a command? Let AI explain it for you.
-Confused by error messages? AI analyzes the cause and provides solutions.
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome_en.png" width="900" alt="SFTerm Welcome Page">
-</p>
-
-For enterprise users, SFTerm is designed with intranet environments in mind: it supports privately deployed AI models and allows one-click import of Xshell session configurations for quick team onboarding and smooth migration.
-
-## Features
-
-### AI Agent Mode
+| Pain Point | SFTerm Solution |
+|------------|-----------------|
+| 🤯 Don't know the command? | Describe in natural language, AI executes for you |
+| 😵 Confused by errors? | AI analyzes and provides solutions |
+| 🔁 Repetitive tasks? | Agent automates multi-step operations |
+| 🏢 Intranet restrictions? | Supports private AI models and proxies |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-agent-exec_en.png" width="900" alt="AI Agent Execution">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome_en.png" width="800" alt="SFTerm">
 </p>
 
-- 🤖 **Automated Task Execution**: Describe tasks, and the Agent automatically plans and executes multi-step commands
-- 🎭 **Agent Personality System**: Supports 16 MBTI personality types to customize Agent response style
-  - INTJ, INTP, ENTJ, ENTP (Rationalists)
-  - INFJ, INFP, ENFJ, ENFP (Idealists)
-  - ISTJ, ISFJ, ESTJ, ESFJ (Guardians)
-  - ISTP, ISFP, ESTP, ESFP (Artisans)
-- 🔧 **Rich Toolset**:
-  - `execute_command` - Execute shell commands, supports real-time commands like top/htop/watch/tail -f
-  - `check_terminal_status` - Check terminal status (idle/busy/waiting for input, etc.)
-  - `get_terminal_context` - Get terminal output, view command execution results
-  - `send_control_key` - Send control keys (Ctrl+C/D/Z, etc.) to handle stuck commands
-  - `send_input` - Send text input, respond to interactive prompts
-  - `read_file` / `write_file` - File read/write operations
-  - `edit_file` - Precise file editing (search & replace, no need to rewrite entire file)
-  - `file_search` - Fast file search (macOS Spotlight / Windows Everything)
-  - `remember_info` - Remember key information with cross-session memory
-  - `search_knowledge` - Search local knowledge base documents
-  - `ask_user` - Ask user questions to get more information
-  - `wait` - Wait for specified time, handle long-running tasks
-- 🔌 **MCP Extension**: Supports Model Context Protocol for external tools and resources
-- 🧩 **Skills System**: Load extended capabilities on demand to avoid tool overload
-  - `excel` - Excel processing skill
-  - `word` - Word document processing skill (docx-based)
-  - `browser` - Browser automation skill (Playwright-based)
-  - `email` - Email management skill (IMAP/SMTP)
-- ⚠️ **Strict Mode**: Requires user confirmation before executing dangerous commands (enabled by default)
-- ⏱️ **Command Timeout Control**: Configurable command execution timeout to avoid long waits
-- 📜 **Task History**: Records the execution process and results of each Agent task
+## ✨ Features
+
+| Feature | Description |
+|---------|-------------|
+| 🤖 **AI Agent** | Describe tasks, Agent plans and executes automatically |
+| 🖥️ **SSH/SFTP** | Full remote connection and file management |
+| 📁 **File Manager** | Dual-pane file manager for local & remote |
+| 📚 **Knowledge Base** | Local RAG, completely offline |
+| 🔌 **MCP Extension** | Connect external tools via Model Context Protocol |
+| 🗄️ **Database** | Natural language SQL execution and analysis |
+| 📊 **Excel/Word** | Document processing skills |
+| 🌐 **Browser** | Web automation with Playwright |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-agent-confirm_en.jpg" width="900" alt="Command Confirmation">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-agent-exec_en.png" width="800" alt="AI Agent">
 </p>
 
-### Terminal Features
+## 🚀 Quick Start
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-host-manager_en.jpg" width="900" alt="Host Manager">
-</p>
+### Download
 
-- 🖥️ **Cross-Platform Support**: Full coverage for Windows, macOS, and Linux
-- 🔐 **SSH Management**: Supports password and private key authentication
-- 📂 **Session Groups**: Flexible group management with group-level jump host configuration, Each group can configure an independent jump host; sessions in the group automatically connect through the jump host
-- 🚀 **Batch Operations**: Execute commands across multiple terminals simultaneously for batch server management
-- 📥 **Xshell Import**: One-click import of Xshell session configurations for quick migration
-- 🎨 **Rich Themes**: Built-in multiple beautiful color schemes
-- ⚡ **High Performance**: Based on xterm.js for smooth terminal experience
+Get the latest release from [GitHub Releases](https://github.com/ysyx2008/SFTerminal/releases) or [Official Website](http://www.sfterm.com/en/).
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-batch_en.jpg" width="900" alt="Batch Operations">
-</p>
-
-### Database Management
-- 🗄️ **Intelligent SQL Execution**: Describe your needs in natural language, Agent automatically generates and executes SQL (supports MySQL, PostgreSQL, Oracle, SQL Server CLI clients)
-- 📊 **Query Result Analysis**: AI automatically analyzes query results, identifies data anomalies and performance bottlenecks
-- 🔍 **Slow Query Diagnosis**: Analyzes slow query logs and provides index optimization suggestions
-- 🛠️ **Automated Operations**:
-  - Database backup and recovery
-  - Schema changes (DDL)
-  - User permission management
-  - Master-slave status check
-- 📈 **Performance Monitoring**: Real-time database status monitoring (connections, QPS, lock waits, etc.)
-- 🔗 **MCP Database Templates**: Built-in PostgreSQL, SQLite MCP server configuration templates for quick database integration
-- 🏢 **Batch Operations**: Manage multiple database servers simultaneously via multi-terminal batch execution
-
-### MCP Extension Capabilities
-- 🔗 **Protocol Support**: Full support for Model Context Protocol (MCP) standard
-- 🚀 **Multiple Transports**: Supports both stdio and SSE transport modes
-- 🧩 **Capability Aggregation**: Automatically aggregates tools, resources, and prompt templates from multiple MCP servers
-- 📦 **Preset Templates**: Built-in configuration templates for Filesystem, GitHub, PostgreSQL, and other common MCP servers
-- 🎛️ **Visual Management**: GUI for configuring and managing MCP server connections
-
-### AI Chat Capabilities
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-analyse_en.png" width="900" alt="AI Chat">
-</p>
-
-- 💬 **Intelligent Chat**: Command explanation, error diagnosis, natural language command generation with real-time streaming response
-- 📊 **Terminal Content Analysis**: Select terminal output, right-click for one-click analysis to quickly identify issues
-- 📄 **Document Upload**: Upload PDF, Word, text, and other documents as AI context for document-aware answers
-- 🧠 **Host Memory**: Automatically detects host information, remembers key paths and configurations across sessions for better environment understanding
-- 📈 **Context Statistics**: Real-time display of token usage and context ratio to avoid exceeding limits
-
-### Enterprise Features
-- 🏢 **Intranet Friendly**: Supports configuring intranet AI API and HTTP/SOCKS proxy
-- 🔒 **Data Security**: All data stored locally, supports privately deployed AI models
-
-### Local Knowledge Base (RAG)
-- 📚 **Document Import**: Supports PDF, Word, TXT, Markdown, and other formats
-- 🧠 **Local Embedding**: Built-in lightweight vector model, runs completely offline without external API
-- 🔍 **Semantic Search**: Intelligent retrieval based on vector similarity, understands document semantics
-- 📖 **Smart Chunking**: Supports multiple chunking strategies (fixed length/paragraph/semantic)
-- 📊 **Reranking Optimization**: Optional Rerank model to optimize search result ordering
-- 💾 **Vector Storage**: Efficient local vector database based on LanceDB
-- 🔗 **Agent Integration**: Deep integration with Agent, automatically retrieves relevant documents to assist answers
-
-### File Management
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-file-manager_en.jpg" width="900" alt="Dual-Pane File Manager">
-</p>
-
-- 📁 **Dual-Pane File Manager**: Standalone window with dual-panel file manager
-  - Left-right dual-pane layout, supports local and remote file operations
-  - Directory tree navigation for quick positioning
-  - File preview for online text file viewing
-  - File bookmarks for quick access to frequently used directories
-  - Full keyboard shortcuts and context menu support
-- 📂 **SFTP Sidebar**: Terminal sidebar integrated file browser, supports upload/download/preview/edit
-
-## Tech Stack
-
-- **Framework**: Electron 37 + Vue 3 + TypeScript
-- **Terminal**: xterm.js 5.x
-- **Build**: Vite 5 + electron-builder
-- **State Management**: Pinia
-- **Internationalization**: vue-i18n
-- **AI**: OpenAI Compatible API (supports Function Calling) + MCP Protocol
-- **Knowledge Base**: LanceDB + Transformers.js (Local Embedding) + BM25
-- **Document Processing**: ExcelJS (Excel), Mammoth (Word), pdf-parse (PDF)
-
-## Quick Start
-
-### Requirements
-
-- Node.js 18+
-- npm or pnpm
-
-### Install Dependencies
+### Development
 
 ```bash
+# Install dependencies
 npm install
-```
 
-### Development Mode
-
-```bash
+# Start development
 npm run dev
+
+# Build
+npm run build:mac    # macOS
+npm run build:win    # Windows
+npm run build:linux  # Linux
 ```
 
-### Build Application
+### AI Configuration
 
-```bash
-# Windows
-npm run build:win
-
-# macOS
-npm run build:mac
-
-# Linux
-npm run build:linux
-```
-
-### Quick Build (Skip Type Check)
-
-```bash
-npm run build:win:fast
-npm run build:mac:fast
-npm run build:linux:fast
-```
-
-## AI Configuration
-
-SFTerm supports OpenAI Compatible API and can connect to:
-
-- Public Cloud Services: OpenAI, Qwen, DeepSeek, etc.
-- Private Deployment: vLLM, FastChat, Ollama, etc.
-
-### Configuration Example
-
-Add AI configuration in settings:
+SFTerm supports OpenAI-compatible APIs. Configure in Settings:
 
 ```json
 {
-  "name": "Company Intranet Model",
-  "apiUrl": "http://10.0.1.100:8080/v1/chat/completions",
+  "name": "Your AI",
+  "apiUrl": "https://api.openai.com/v1/chat/completions",
   "apiKey": "sk-xxx",
-  "model": "qwen-72b",
-  "proxy": null
+  "model": "gpt-4o"
 }
 ```
 
-### Agent Mode Requirements
-
-Agent mode requires AI models that support **Function Calling** capability. Recommended models:
-- OpenAI GPT-4 / GPT-4o / GPT-4o-mini
-- Claude 3.5 Sonnet / Claude 3 Opus
-- Qwen qwen-plus / qwen-max
+**Recommended models for Agent mode** (requires Function Calling):
+- OpenAI GPT-4o / GPT-4o-mini
+- Claude 4.5 Sonnet
 - DeepSeek V3
-- Gemini 1.5 Pro
+- Qwen qwen-plus / qwen-max
 
-## MCP Configuration
+## 📖 Documentation
 
-MCP (Model Context Protocol) allows extending Agent capabilities by connecting to external tools and resources.
+- [Agent Architecture](./docs/agent-architecture.md)
+- [Roadmap](./docs/ROADMAP.md)
+- [Changelog](./CHANGELOG.md)
+- [Contributing](./CONTRIBUTING.md)
 
-### Adding MCP Servers
+## 📄 License
 
-Add configuration in the "MCP Services" page in settings:
+**Dual Licensing**: AGPL v3.0 for open source use, commercial license available.
 
-**stdio mode** (local process):
-```json
-{
-  "name": "Filesystem",
-  "transport": "stdio",
-  "command": "npx",
-  "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"],
-  "env": {}
-}
-```
+- ✅ Personal use, research, education
+- ✅ Enterprise internal use (≤1000 installations, modifications must be open-sourced)
+- 💼 Commercial license required for: >1000 installations, SaaS/product integration, closed-source modifications
 
-**SSE mode** (remote service):
-```json
-{
-  "name": "Remote Service",
-  "transport": "sse",
-  "url": "http://localhost:8080/sse"
-}
-```
+See [LICENSE](./LICENSE) for details.
 
-### Common MCP Servers
+## 🔗 Links
 
-- **Filesystem**: Local file read/write operations
-- **GitHub**: GitHub repository operations (requires Token)
-- **PostgreSQL**: Database query operations
-- **Brave Search**: Web search capability
+- 🌐 [Website](http://www.sfterm.com/en/)
+- 📦 [GitHub](https://github.com/ysyx2008/SFTerminal)
+- 🐛 [Issues](https://github.com/ysyx2008/SFTerminal/issues)
 
-For more MCP servers, refer to: [MCP Servers](https://github.com/modelcontextprotocol/servers)
+## 🙏 Acknowledgements
 
-## Knowledge Base Configuration
-
-The local knowledge base feature allows importing documents so the AI Agent can automatically retrieve relevant information during task execution.
-
-### Enabling Knowledge Base
-
-1. Open Settings → Knowledge Base
-2. Enable the "Enable Knowledge Base" option
-3. Wait for the local Embedding model to load
-
-### Importing Documents
-
-Supported document formats:
-- **PDF**: Automatically extracts text content
-- **Word**: Supports .doc and .docx formats
-- **Text**: TXT, Markdown, code files, etc.
-
-### Chunking Strategies
-
-- **Fixed Length**: Evenly chunks by character count
-- **Paragraph**: Maintains paragraph integrity
-- **Semantic**: Intelligent splitting based on content semantics (recommended)
-
-### Use Cases
-
-- Import project documentation for Agent to understand project architecture and specifications
-- Import operations manuals for Agent to automatically reference when handling failures
-- Import API documentation to assist development and debugging
-
-## Xshell Session Import
-
-Supports importing existing session configurations from Xshell:
-
-1. Click the "Import" button in the host management panel
-2. Select "Import Xshell File" or "Import Xshell Directory"
-3. Select `.xsh` file or Xshell Sessions directory
-
-**Notes**:
-- Supports importing single or multiple `.xsh` files
-- Supports recursive import of entire directories, subdirectories automatically become groups
-- Xshell Sessions directory is typically located at: `C:\Users\<Username>\Documents\NetSarang Computer\Xshell\Sessions`
-- Since Xshell passwords are encrypted, you need to manually set passwords after import
-
-## Project Structure
-
-```
-├── electron/                  # Electron Main Process
-│   ├── main.ts               # Entry point
-│   ├── preload.ts            # Preload script
-│   └── services/             # Service layer
-│       ├── agent/            # AI Agent module
-│       │   ├── index.ts      # Agent service entry
-│       │   ├── planner.ts    # Dynamic task planner
-│       │   ├── progress-detector.ts   # Progress detector
-│       │   ├── prompt-builder.ts  # Prompt builder
-│       │   ├── risk-assessor.ts   # Command risk assessment
-│       │   ├── tool-executor.ts   # Tool executor
-│       │   ├── tools.ts      # Tool definitions
-│       │   ├── i18n.ts       # Agent internationalization
-│       │   ├── types.ts      # Type definitions
-│       │   └── skills/       # Skills module
-│       │       ├── index.ts      # Skill registration entry
-│       │       ├── registry.ts   # Skill registry
-│       │       ├── skill-loader.ts # Skill loader
-│       │       ├── types.ts      # Type definitions
-│       │       ├── excel/        # Excel processing skill
-│       │       │   ├── index.ts  # Skill definition
-│       │       │   ├── tools.ts  # Tool definitions
-│       │       │   ├── executor.ts # Executor
-│       │       │   └── session.ts  # Session management
-│       │       └── word/         # Word document processing skill
-│       │           ├── index.ts  # Skill definition
-│       │           ├── tools.ts  # Tool definitions
-│       │           ├── executor.ts # Executor
-│       │           ├── styles.ts   # Style handling
-│       │           └── session.ts  # Session management
-│       ├── terminal-awareness/   # Terminal awareness module
-│       │   ├── index.ts      # Awareness service entry
-│       │   └── process-monitor.ts # Process state monitor
-│       ├── knowledge/        # Knowledge base module
-│       │   ├── index.ts      # Knowledge base service entry
-│       │   ├── embedding.ts  # Embedding service
-│       │   ├── storage.ts    # Vector storage (LanceDB)
-│       │   ├── bm25.ts       # BM25 keyword search
-│       │   ├── chunker.ts    # Document chunking
-│       │   ├── reranker.ts   # Reranking
-│       │   ├── crypto.ts     # Data encryption
-│       │   ├── model-manager.ts   # Model management
-│       │   ├── mcp-adapter.ts     # MCP adapter
-│       │   └── types.ts      # Type definitions
-│       ├── ai.service.ts     # AI API chat
-│       ├── pty.service.ts    # Local terminal
-│       ├── ssh.service.ts    # SSH connection
-│       ├── sftp.service.ts   # SFTP file transfer
-│       ├── unified-terminal.service.ts  # Unified terminal service
-│       ├── terminal-state.service.ts    # Terminal state management
-│       ├── screen-content.service.ts    # Screen content service
-│       ├── command-executor.service.ts  # Command execution service
-│       ├── host-profile.service.ts      # Host profile
-│       ├── document-parser.service.ts   # Document parser
-│       ├── mcp.service.ts        # MCP client service
-│       ├── history.service.ts    # History records
-│       ├── config.service.ts     # Configuration management
-│       └── xshell-import.service.ts  # Xshell import
-├── src/                       # Vue Renderer Process
-│   ├── components/           # Components
-│   │   ├── AiPanel.vue       # AI panel
-│   │   ├── Terminal.vue      # Terminal component
-│   │   ├── SessionManager.vue    # Session management
-│   │   ├── AgentPlanView.vue     # Agent plan view
-│   │   ├── FileExplorer/     # SFTP file browser
-│   │   │   ├── FileExplorer.vue  # Main component
-│   │   │   ├── FileList.vue      # File list
-│   │   │   ├── PathBreadcrumb.vue # Path navigation
-│   │   │   ├── FileContextMenu.vue # Context menu
-│   │   │   └── TransferQueue.vue  # Transfer queue
-│   │   ├── KnowledgeManager.vue   # Knowledge base management
-│   │   └── Settings/         # Settings components
-│   │       └── KnowledgeSettings.vue # Knowledge base settings
-│   ├── composables/          # Composables
-│   │   ├── useAgentMode.ts   # Agent mode logic
-│   │   ├── useAiChat.ts      # AI chat logic
-│   │   ├── useSftp.ts        # SFTP operation logic
-│   │   ├── useHostProfile.ts # Host profile management
-│   │   ├── useDocumentUpload.ts  # Document upload
-│   │   ├── useContextStats.ts    # Context statistics
-│   │   └── useMarkdown.ts    # Markdown rendering
-│   ├── services/             # Frontend services
-│   │   ├── terminal-screen.service.ts   # Terminal screen analysis
-│   │   └── terminal-snapshot.service.ts # Terminal snapshot
-│   ├── stores/               # Pinia stores
-│   │   ├── terminal.ts       # Terminal state
-│   │   └── config.ts         # Configuration state
-│   ├── i18n/                 # Internationalization
-│   │   ├── index.ts          # i18n configuration
-│   │   └── locales/          # Language files
-│   └── themes/               # Theme colors
-├── resources/                # App icons and models
-│   └── models/               # Local AI models
-│       └── embedding/        # Embedding model
-└── electron-builder.yml      # Build configuration
-```
-
-## Version History
-
-### v8.12.0 (Current Version)
-- 📝 **Word Document Processing Skill**: New `word` skill for session-based Word document creation and editing
-  - Create new documents and open existing ones
-  - Add paragraphs, headings (level 1-6), lists, tables, images, page breaks
-  - Insert table of contents (TOC), hyperlinks, bookmarks, comments
-  - Rich styling options: font, size, bold/italic/underline, color, highlight, alignment, first-line indent
-  - Built-in official document format support (Chinese government document styles)
-  - Read document content (converted to Markdown format)
-  - Export to PDF (requires Microsoft Word or LibreOffice)
-  - Automatic backup mechanism
-
-### v8.9.3
-- 🌐 **Browser Automation Skill**: New `browser` skill powered by Playwright for web automation, supports navigation, screenshot, click, type, scroll, and login state management
-- 📧 **Email Management Skill**: New `email` skill with IMAP/SMTP support for reading, searching, sending, and deleting emails
-- 🔧 **Agent Tool Enhancements**: Added `edit_file` (precise editing), `file_search` (fast search), `ask_user` (ask questions), `send_input` (send input), `wait` (waiting), `check_terminal_status` (terminal status check)
-
-### v8.7.0
-- 🧩 **Skills System**: Brand new extensible skill architecture with on-demand loading to avoid tool overload
-- 📊 **Excel Processing Skill**: First built-in skill for session-based Excel read/write operations
-- ⚙️ **Electron 37**: Upgraded to latest Electron version for better performance and compatibility
-
-### v8.4.0
-- 📎 **@ Mentions**: Input supports `@file` for file references and `@docs` for knowledge base documents
-- 📋 **AI Rules**: Custom AI instructions and preferences
-- 💬 **Chat History**: View recent sessions and continue previous conversations
-- 🌐 **Character Encoding**: SSH and local terminal support GBK, Big5, Shift_JIS, etc.
-- 🔄 **Auto Update**: In-app update check, download and install
-- 📊 **Session Sorting**: Sort by recently used time
-- 🤖 **Embedding Model Upgrade**: Updated to bge-small-zh-v1.5 for better semantic search
-- 🧠 **Smart Memory**: Enhanced memory conflict handling and knowledge base cleanup
-- 🎨 **Theme Enhancement**: New Ayu Mirage and sponsor-exclusive themes (Gold, Sakura, Rosé Pine)
-
-### v8.0.0
-- 📂 **Dual-Pane File Manager**: Full-featured dual-pane file manager
-  - Left-right dual-panel layout, supports local and remote file operations
-  - Directory tree navigation for quick positioning
-  - File preview for online text file viewing
-  - Path editing and breadcrumb navigation
-  - Full keyboard shortcuts support (Ctrl/Cmd+A select all, ESC cancel, etc.)
-  - Context menu operations
-- 🔖 **File Bookmarks**: Quick bookmark frequently used directories for one-click access
-- 📋 **Plan Management Enhancement**: Support for plan archiving and clearing
-- 🎨 **New Themes**: Solarized Light and GitHub Light themes
-- 🖥️ **Terminal Enhancement**:
-  - Right-click to open file manager
-  - Enhanced terminal prompt parsing with smart current directory recognition
-  - Terminal close confirmation prompt
-
-### v7.7.0
-- ⚡ **Startup Speed Optimization**: Async knowledge base loading for significantly faster startup
-- 🌍 **Multi-language Enhancement**: AI response language follows interface language setting
-- 📖 **English Documentation**: Added English version of README
-
-### v7.6.0
-- 🔀 **Session Sorting**: Drag-and-drop session sorting, can drag to end of group
-- 💡 **Tips Enhancement**: Random tips on welcome page, click to switch to more tips
-
-### v7.5.0
-- 🔧 **Unified Terminal Service**: Abstracted common interface for PTY and SSH terminals
-- 📊 **Progress Detector**: Intelligent command execution progress recognition
-- 🛠️ **Agent Tool Enhancement**: Optimized tool executor and risk assessment
-
-### v7.0.0
-- 🏗️ **Architecture Refactoring**: Modular refactoring of Agent service
-  - Enhanced tool executor
-  - Optimized risk assessment
-- 🔍 **BM25 Search**: Added keyword search support for knowledge base
-- 🔐 **Data Encryption**: Encrypted storage for sensitive configurations
-
-### v6.0.0
-- 🖥️ **Screen Content Service**: Intelligent terminal screen content analysis
-- 📝 **Command Execution Service**: Independent command execution management
-- 🌐 **Internationalization Enhancement**: Improved Chinese and English support
-
-### v5.0.0
-- 🤖 **Agent Enhancement**:
-  - Optimized task planner
-  - Improved prompt builder
-  - Extended toolset
-- 📊 **Context Statistics**: Real-time token usage monitoring
-- 🧠 **Host Profile Enhancement**: Smarter environment memory
-
-### v4.5.0
-- 🔍 **Terminal Awareness System**: Enhanced terminal state awareness
-  - Comprehensive state detection: idle, busy, waiting for input, stuck
-  - Smart input recognition: password, confirmation, selection, pager, editor
-  - Output pattern analysis: progress bar, compilation, test, log stream
-  - Stuck detection with automatic suggestions
-- 🛡️ **Smart Command Handling**:
-  - Four-level risk assessment (safe/moderate/dangerous/blocked)
-  - Auto-correction for problematic commands (ping, apt install, etc.)
-  - Auto-conversion for interactive commands (top → top -bn1)
-  - Timed execution for continuous commands (tail -f, etc.)
-- 📋 **Dynamic Task Planning**:
-  - Task complexity analysis
-  - Multiple execution strategies (default/conservative/aggressive/diagnostic)
-  - Dynamic plan adjustment, step retry, alternative solutions
-
-### v4.1.0
-- 🧠 **Local Knowledge Base Enhancement**:
-  - Optimized vector retrieval performance
-  - Improved document chunking algorithm
-  - Added `search_knowledge` tool for knowledge base search in Agent toolset
-
-### v4.0.0
-- 📚 **Local Knowledge Base (RAG)**: Brand new offline knowledge base feature
-  - Built-in local Embedding model (bge-small-zh-v1.5), runs completely offline
-  - Efficient vector storage and retrieval based on LanceDB
-  - Supports PDF, Word, TXT, Markdown, and other document formats
-  - Smart chunking strategies: fixed length, paragraph, semantic chunking
-  - Optional Rerank model for optimized search results
-  - Deep integration between knowledge base and Agent for automatic document retrieval
-
-### v3.0.0
-- 🔌 **MCP Protocol Support**: New Model Context Protocol extension capability
-  - Support for connecting to external MCP servers to extend Agent toolset
-  - Support for both stdio and SSE transport modes
-  - Auto-aggregation of tools, resources, and prompt templates from multiple servers
-  - Built-in preset templates for Filesystem, GitHub, PostgreSQL, etc.
-  - Visual MCP server configuration and management interface
-
-### v2.2.0
-- 📁 **SFTP File Management**: Brand new visual file browser
-  - Support for file/directory upload, download, delete, rename
-  - Real-time transfer progress display
-  - Online preview for text files
-  - Path navigation and history
-  - Right-click menu shortcuts
-
-### v2.1.0
-- 🔍 **Terminal State Detection**: Smart detection of command completion
-- 💡 **Tips**: Added operation tip information
-- 🛡️ **Strict Mode Optimization**: Fixed confirmation logic for auto-corrected commands
-- 🧹 **Output Cleaning**: Unified ANSI escape sequence handling with strip-ansi library
-- ⏹️ **Agent Abort Optimization**: Enhanced abort handling logic
-
-### v2.0.0
-- 🚀 New AI Agent mode supporting automated task execution
-- 🔧 Rich toolset: command execution, terminal control, file operations, information memory
-- ⚠️ Strict mode: dangerous command confirmation mechanism
-- ⏱️ Configurable command timeout
-- 📜 Agent task history records
-
-### v1.0.0
-- 🖥️ Cross-platform terminal basic features
-- 🔐 SSH connection support
-- 💬 AI chat assistant
-- 📥 Xshell session import
-
-## License
-
-This project uses **Dual Licensing**:
-
-### Open Source License: AGPL v3.0
-Free use under the following scenarios, subject to all terms of [AGPL v3.0](https://www.gnu.org/licenses/agpl-3.0.html):
-- ✅ Personal learning, research, daily use
-- ✅ Enterprise internal use (**≤1000 installations**, modifications must be open-sourced)
-- ✅ Non-profit organizations / Educational institutions
-- ✅ Medical and medical research institutions
-
-### Commercial License
-Commercial authorization required for the following scenarios:
-- Enterprise internal use exceeding 1000 installations
-- Provided as part of a product/service
-- Unwilling to open-source modified code
-- Modifying the software's logo or name
-
-For detailed and commercial terms, please see the [LICENSE](./LICENSE) file, or visit the [official website](http://www.sfterm.com/) to contact us for commercial licensing.
-
-## Links
-
-- 🌐 **Official Website**: [www.sfterm.com](http://www.sfterm.com/)
-- 📦 **GitHub**: [https://github.com/ysyx2008/SFTerminal](https://github.com/ysyx2008/SFTerminal)
-- 🐛 **Issue Tracker**: [GitHub Issues](https://github.com/ysyx2008/SFTerminal/issues)
-
-## Acknowledgements
-
-- [Electron](https://www.electronjs.org/)
-- [xterm.js](https://xtermjs.org/)
-- [Vue.js](https://vuejs.org/)
-- [node-pty](https://github.com/microsoft/node-pty)
-- [ssh2](https://github.com/mscdex/ssh2)
-- [LanceDB](https://lancedb.com/)
-- [Transformers.js](https://huggingface.co/docs/transformers.js)
-- [Playwright](https://playwright.dev/)
-- [ExcelJS](https://github.com/exceljs/exceljs)
-- [docx](https://github.com/dolanmiu/docx)
-- [IMAPFlow](https://github.com/postalsys/imapflow)
-- [Nodemailer](https://nodemailer.com/)
-- [MCP SDK](https://github.com/modelcontextprotocol/typescript-sdk)
-- [Mammoth](https://github.com/mwilliamson/mammoth.js)
-- [pdf-parse](https://github.com/pdfjs/pdf-parse)
-- [jieba-wasm](https://github.com/aspect-build/aspect-rules-jieba)
-- [Everything](https://www.voidtools.com/)
+Built with [Electron](https://www.electronjs.org/), [Vue.js](https://vuejs.org/), [xterm.js](https://xtermjs.org/), [LanceDB](https://lancedb.com/), and many other amazing open source projects.
