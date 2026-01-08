@@ -420,6 +420,14 @@ const translations = {
     'skill.load_failed': '加载技能失败',
     'skill.not_found': '技能不存在: {id}',
 
+    // 用户技能系统（渐进式加载）
+    'user_skill.id_required': '用户技能 ID 不能为空',
+    'user_skill.loading': '正在加载用户技能: {id}',
+    'user_skill.loaded': '已加载用户技能: {name}',
+    'user_skill.not_found': '用户技能不存在: {id}',
+    'user_skill.disabled': '用户技能已禁用: {id}',
+    'user_skill.content_empty': '用户技能内容为空: {id}',
+
     // 时间格式
     'time.minutes_seconds': '{minutes}分{seconds}秒',
     'time.seconds': '{seconds}秒',
@@ -1086,6 +1094,14 @@ Please output the summary in the following format:
     'skill.loaded': 'Skill loaded: {name}, available tools: {tools}',
     'skill.load_failed': 'Failed to load skill',
     'skill.not_found': 'Skill not found: {id}',
+
+    // User skill system (progressive loading)
+    'user_skill.id_required': 'User skill ID required',
+    'user_skill.loading': 'Loading user skill: {id}',
+    'user_skill.loaded': 'User skill loaded: {name}',
+    'user_skill.not_found': 'User skill not found: {id}',
+    'user_skill.disabled': 'User skill is disabled: {id}',
+    'user_skill.content_empty': 'User skill content is empty: {id}',
 
     // Time format
     'time.minutes_seconds': '{minutes}m{seconds}s',

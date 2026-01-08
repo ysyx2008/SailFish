@@ -34,6 +34,7 @@ import { executeEmailTool } from './skills/email/executor'
 import { executeBrowserTool } from './skills/browser/executor'
 import { executeWordTool } from './skills/word/executor'
 import { getTaskMemoryStore } from './task-memory'
+import { getUserSkillService } from '../user-skill.service'
 
 // 错误分类
 type ErrorCategory = 'transient' | 'permission' | 'not_found' | 'timeout' | 'fatal'
@@ -338,6 +339,9 @@ export async function executeTool(
 
     case 'load_skill':
       return await loadSkillTool(args, executor)
+
+    case 'load_user_skill':
+      return await loadUserSkillTool(args, executor)
 
     case 'recall_task':
       return recallTask(args, executor)
@@ -2011,6 +2015,78 @@ async function loadSkillTool(
     
     return { success: false, output: '', error: result.error }
   }
+}
+
+/**
+ * 加载用户技能工具（渐进式加载用户自定义 SKILL.md 内容）
+ */
+async function loadUserSkillTool(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const skillId = args.skill_id as string
+  
+  if (!skillId) {
+    return { success: false, output: '', error: t('user_skill.id_required') }
+  }
+
+  executor.addStep({
+    type: 'tool_call',
+    content: t('user_skill.loading', { id: skillId }),
+    toolName: 'load_user_skill',
+    toolArgs: args,
+    riskLevel: 'safe'
+  })
+
+  const userSkillService = getUserSkillService()
+  const skill = userSkillService.getSkill(skillId)
+  
+  if (!skill) {
+    const errorMsg = t('user_skill.not_found', { id: skillId })
+    executor.addStep({
+      type: 'tool_result',
+      content: errorMsg,
+      toolName: 'load_user_skill',
+      toolResult: errorMsg
+    })
+    return { success: false, output: '', error: errorMsg }
+  }
+  
+  if (!skill.enabled) {
+    const errorMsg = t('user_skill.disabled', { id: skillId })
+    executor.addStep({
+      type: 'tool_result',
+      content: errorMsg,
+      toolName: 'load_user_skill',
+      toolResult: errorMsg
+    })
+    return { success: false, output: '', error: errorMsg }
+  }
+
+  // 获取完整技能内容
+  const content = userSkillService.getSkillContent(skillId)
+  if (!content) {
+    const errorMsg = t('user_skill.content_empty', { id: skillId })
+    executor.addStep({
+      type: 'tool_result',
+      content: errorMsg,
+      toolName: 'load_user_skill',
+      toolResult: errorMsg
+    })
+    return { success: false, output: '', error: errorMsg }
+  }
+
+  // 构建输出
+  const output = `## ${skill.name}\n\n${skill.description ? `> ${skill.description}\n\n` : ''}${content}`
+  
+  executor.addStep({
+    type: 'tool_result',
+    content: t('user_skill.loaded', { name: skill.name }),
+    toolName: 'load_user_skill',
+    toolResult: output
+  })
+  
+  return { success: true, output }
 }
 
 /**

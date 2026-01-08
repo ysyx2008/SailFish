@@ -731,7 +731,7 @@ ${simpleTaskExample}
 ${buildComplexTaskExamples(isWindows)}
 ${documentSection}
 ${knowledgeSection}
-${getUserSkillService().buildPromptInjection()}
+${getUserSkillService().buildSkillsSummary()}
 ${taskSummaries ? `
 
 ## 历史任务记忆
