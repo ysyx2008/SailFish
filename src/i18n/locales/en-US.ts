@@ -154,6 +154,7 @@ export default {
       ai: 'AI Config',
       aiRules: 'AI Rules',
       mcp: 'MCP Servers',
+      skills: 'User Skills',
       knowledge: 'Knowledge Base',
       email: 'Email',
       theme: 'Theme',
@@ -360,6 +361,29 @@ export default {
     placeholders: {
       githubToken: '<Enter your GitHub Token here>'
     }
+  },
+
+  // User Skill Settings
+  skillSettings: {
+    title: 'User Skills',
+    description: 'User skills can teach AI how to complete specific tasks. Add SKILL.md files to the skills directory to add new skills.',
+    openFolder: 'Open Folder',
+    refresh: 'Refresh',
+    view: 'View',
+    enabled: 'enabled',
+    toggleEnable: 'Enable/Disable this skill',
+    noSkills: 'No user skills',
+    noSkillsTip: 'Click "Open Folder" to add SKILL.md files',
+    loading: 'Loading...',
+    lastModified: 'Last modified',
+    howToAdd: 'How to add skills?',
+    step1: 'Click "Open Folder" to open the skills folder',
+    step2: 'Create a subdirectory (e.g., my-skill/) with a SKILL.md file inside',
+    step3: 'Refresh the list to see your new skill',
+    formatTitle: 'SKILL.md format example',
+    exampleName: 'My Deploy Skill',
+    exampleDesc: 'Automated server deployment workflow',
+    exampleContent: '## When deployment is needed\n1. First check server connection\n2. Pull latest code\n3. Run build script\n...'
   },
 
   // Knowledge Settings

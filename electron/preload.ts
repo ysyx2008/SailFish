@@ -197,6 +197,18 @@ export interface McpServerStatus {
   promptCount: number
 }
 
+// 用户技能类型
+export interface UserSkill {
+  id: string
+  name: string
+  description: string
+  version?: string
+  enabled: boolean
+  content: string
+  filePath: string
+  lastModified: number
+}
+
 // Agent 相关类型
 export type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
 
@@ -1622,6 +1634,33 @@ const electronAPI = {
         ipcRenderer.removeListener('mcp:refreshed', handler)
       }
     }
+  },
+
+  // 用户技能操作
+  userSkill: {
+    // 获取所有技能列表
+    list: () =>
+      ipcRenderer.invoke('userSkill:list') as Promise<UserSkill[]>,
+
+    // 刷新技能列表
+    refresh: () =>
+      ipcRenderer.invoke('userSkill:refresh') as Promise<UserSkill[]>,
+
+    // 启用/禁用技能
+    toggle: (skillId: string, enabled: boolean) =>
+      ipcRenderer.invoke('userSkill:toggle', skillId, enabled) as Promise<boolean>,
+
+    // 打开技能目录
+    openFolder: () =>
+      ipcRenderer.invoke('userSkill:openFolder') as Promise<void>,
+
+    // 获取技能完整内容
+    getContent: (skillId: string) =>
+      ipcRenderer.invoke('userSkill:getContent', skillId) as Promise<string | null>,
+
+    // 获取技能目录路径
+    getSkillsDir: () =>
+      ipcRenderer.invoke('userSkill:getSkillsDir') as Promise<string>
   },
 
   // 知识库操作

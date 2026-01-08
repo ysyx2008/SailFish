@@ -178,6 +178,7 @@ import { getDocumentParserService, UploadedFile, ParseOptions, ParsedDocument } 
 import { SftpService, SftpConfig } from './services/sftp.service'
 import { LocalFsService } from './services/local-fs.service'
 import { McpService } from './services/mcp.service'
+import { getUserSkillService, UserSkill } from './services/user-skill.service'
 import { getKnowledgeService, KnowledgeService } from './services/knowledge'
 import type { KnowledgeSettings, SearchOptions, AddDocumentOptions, ModelTier } from './services/knowledge/types'
 import {
@@ -2556,6 +2557,38 @@ ipcMain.handle('mcp:connectEnabledServers', async () => {
 // 断开所有 MCP 连接
 ipcMain.handle('mcp:disconnectAll', async () => {
   await mcpService.disconnectAll()
+})
+
+// ==================== 用户技能相关 ====================
+
+// 获取所有用户技能列表
+ipcMain.handle('userSkill:list', async (): Promise<UserSkill[]> => {
+  return getUserSkillService().getAllSkills()
+})
+
+// 刷新技能列表
+ipcMain.handle('userSkill:refresh', async (): Promise<UserSkill[]> => {
+  return getUserSkillService().refresh()
+})
+
+// 启用/禁用技能
+ipcMain.handle('userSkill:toggle', async (_event, skillId: string, enabled: boolean): Promise<boolean> => {
+  return getUserSkillService().toggleSkill(skillId, enabled)
+})
+
+// 打开技能目录
+ipcMain.handle('userSkill:openFolder', async (): Promise<void> => {
+  await getUserSkillService().openSkillsFolder()
+})
+
+// 获取技能完整内容
+ipcMain.handle('userSkill:getContent', async (_event, skillId: string): Promise<string | null> => {
+  return getUserSkillService().getSkillContent(skillId)
+})
+
+// 获取技能目录路径
+ipcMain.handle('userSkill:getSkillsDir', async (): Promise<string> => {
+  return getUserSkillService().getSkillsDir()
 })
 
 // ==================== 知识库相关 ====================
