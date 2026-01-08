@@ -377,6 +377,55 @@ export class AgentService {
   }
 
   /**
+   * 修复不完整的 tool_calls 消息序列
+   * 当 abort 发生在工具执行过程中时，消息历史中可能有 assistant 消息（含 tool_calls）
+   * 但缺少对应的 tool result 消息，这会导致 API 返回 400 错误
+   */
+  private fixIncompleteToolCalls(run: AgentRun): void {
+    const { messages } = run
+    if (messages.length === 0) return
+
+    // 从后往前查找最后一个带有 tool_calls 的 assistant 消息
+    let lastAssistantWithToolCallsIndex = -1
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i]
+      if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+        lastAssistantWithToolCallsIndex = i
+        break
+      }
+      // 如果遇到 user 消息，说明之前的对话是完整的
+      if (msg.role === 'user') break
+    }
+
+    if (lastAssistantWithToolCallsIndex === -1) return
+
+    const assistantMsg = messages[lastAssistantWithToolCallsIndex]
+    const toolCalls = assistantMsg.tool_calls!
+
+    // 收集该 assistant 消息之后已有的 tool result
+    const existingToolCallIds = new Set<string>()
+    for (let i = lastAssistantWithToolCallsIndex + 1; i < messages.length; i++) {
+      const msg = messages[i]
+      if (msg.role === 'tool' && msg.tool_call_id) {
+        existingToolCallIds.add(msg.tool_call_id)
+      }
+    }
+
+    // 为缺失的 tool_call_id 添加占位的 tool result
+    const missingToolCalls = toolCalls.filter(tc => !existingToolCallIds.has(tc.id))
+    if (missingToolCalls.length > 0) {
+      console.log(`[Agent] 修复 ${missingToolCalls.length} 个缺失的 tool result 消息`)
+      for (const tc of missingToolCalls) {
+        messages.push({
+          role: 'tool',
+          content: '[操作被用户中断]',
+          tool_call_id: tc.id
+        })
+      }
+    }
+  }
+
+  /**
    * 更新反思追踪状态（简化版）
    */
   private updateReflectionTracking(
@@ -1595,6 +1644,11 @@ export class AgentService {
         // 如果有，恢复运行状态并继续执行（而不是启动新任务）
         if (run.pendingUserMessages.length > 0) {
           console.log(`[Agent] AI 被中断但有 ${run.pendingUserMessages.length} 条待处理的用户消息，继续执行`)
+          
+          // 修复不完整的 tool_calls 消息序列
+          // 当 abort 发生在工具执行过程中时，可能存在 assistant 消息（含 tool_calls）但缺少对应的 tool result
+          this.fixIncompleteToolCalls(run)
+          
           run.isRunning = true
           continue executionLoop
         }
