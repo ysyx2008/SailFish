@@ -604,12 +604,30 @@ const canSendEmpty = computed(() => {
   return !!step.toolArgs?.default_value
 })
 
+// 自动调整 textarea 高度
+const adjustTextareaHeight = () => {
+  const textarea = mentionInputRef.value
+  if (!textarea) return
+  
+  // 重置高度以获取正确的 scrollHeight
+  textarea.style.height = 'auto'
+  // 设置为内容高度，但不超过最大高度 (CSS 中限制了 max-height)
+  textarea.style.height = `${textarea.scrollHeight}px`
+}
+
 // 处理输入事件（检测 @ 触发）
 const handleInputChange = (event: Event) => {
   const textarea = event.target as HTMLTextAreaElement
   const cursorPos = textarea.selectionStart || 0
   detectTrigger(inputText.value, cursorPos)
+  // 调整高度
+  adjustTextareaHeight()
 }
+
+// 监听 inputText 变化（包括程序性修改）
+watch(inputText, () => {
+  nextTick(adjustTextareaHeight)
+})
 
 // 处理失焦事件（延迟关闭菜单，以便点击菜单项时不会被 blur 打断）
 const handleInputBlur = () => {
@@ -3333,7 +3351,9 @@ onUnmounted(() => {
   outline: none;
   line-height: 1.5;
   min-height: 24px;
-  max-height: 180px;
+  max-height: 360px;
+  overflow-y: auto;
+  transition: height 0.1s ease-out;
 }
 
 .ai-input textarea:focus {
