@@ -4,7 +4,15 @@
  * 重构版本：使用 composables 模块化管理逻辑
  * 每个 tab 独立实例，通过 tabId prop 绑定
  */
-import { ref, computed, watch, inject, onMounted, onUnmounted, toRef, nextTick } from 'vue'
+import { ref, computed, watch, inject, onMounted, onUnmounted, toRef, nextTick, useAttrs } from 'vue'
+
+// 禁用属性自动继承（因为有多个根节点：div + Teleport）
+defineOptions({
+  inheritAttrs: false
+})
+
+// 获取外部传入的属性（如 class）
+const attrs = useAttrs()
 import { useI18n } from 'vue-i18n'
 import { Upload, Trash2, X, HelpCircle, ChevronDown, Copy, Paperclip, Square, ArrowUp, Check } from 'lucide-vue-next'
 import { useConfigStore } from '../stores/config'
@@ -799,6 +807,7 @@ onUnmounted(() => {
       'mode-relaxed': agentMode && executionMode === 'relaxed',
       'mode-free': agentMode && executionMode === 'free'
     }"
+    v-bind="attrs"
     @dragenter="handleDragEnter"
     @dragover="handleDragOver"
     @dragleave="handleDragLeave"
