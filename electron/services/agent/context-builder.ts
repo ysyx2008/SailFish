@@ -42,7 +42,7 @@ export interface TaskWithLevel {
   tokens: number             // 实际占用的 tokens
   content: AiMessage[] | string  // Level 0-2 返回消息数组，Level 3-4 返回字符串
   userRequest: string        // 用户原始请求（用于显示）
-  status: 'success' | 'failed' | 'aborted'
+  status: 'success' | 'failed' | 'aborted' | 'pending_confirmation'
 }
 
 /**
@@ -116,8 +116,16 @@ function compressToolOutput(output: string, maxLength: number = 1500): string {
 
 /**
  * 获取任务的最低压缩级别（特殊任务保护）
+ * @param task 任务记忆
+ * @param taskIndex 任务在时间顺序中的索引（0 = 最近一个任务）
  */
-function getMinCompressionLevel(task: TaskMemory): CompressionLevel {
+function getMinCompressionLevel(task: TaskMemory, taskIndex: number): CompressionLevel {
+  // 最近 1 个任务：强制 Level 0（完整对话），确保 AI 能理解上下文连续性
+  if (taskIndex === 0) return 0
+  
+  // 等待确认的任务：至少保留 Level 2（用户请求 + AI 确认问题）
+  if (task.status === 'pending_confirmation') return 2
+  
   // 被中止的任务：至少保留 Level 2（用户请求 + 中止原因）
   if (task.status === 'aborted') return 2
   
@@ -336,7 +344,10 @@ function formatDigest(task: TaskMemory): string {
     lines.push(`• 发现: ${digest.keyFindings.slice(0, 2).join('; ')}`)
   }
   
-  const statusIcon = task.status === 'success' ? '✓' : task.status === 'failed' ? '✗' : '⊘'
+  const statusIcon = task.status === 'success' ? '✓' 
+    : task.status === 'failed' ? '✗' 
+    : task.status === 'pending_confirmation' ? '⏳'
+    : '⊘'
   lines.push(`• 状态: ${statusIcon} ${task.status}`)
   
   return lines.join('\n')
@@ -433,8 +444,9 @@ export function buildRecentTasksContext(
   const tasks = taskMemoryStore.getTasksInOrder()
   result.stats.totalTasks = tasks.length
   
-  for (const task of tasks) {
-    const minLevel = getMinCompressionLevel(task)
+  for (let taskIndex = 0; taskIndex < tasks.length; taskIndex++) {
+    const task = tasks[taskIndex]
+    const minLevel = getMinCompressionLevel(task, taskIndex)
     let placed = false
     
     // 尝试各个压缩级别（从完整到精简）
