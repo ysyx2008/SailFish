@@ -475,6 +475,8 @@ const translations = {
     'memory.deep_recall_hint': '使用 deep_recall(task_id, step_index) 可查看特定步骤的完整信息',
     'memory.task_history_header': '📋 **任务历史**（可使用 recall_task 查看详情）:',
     'memory.related_history_header': '🔗 **相关历史详情**（自动加载）:',
+    'memory.no_task_history': '当前没有可回忆的任务历史。',
+    'memory.available_task_ids': '可用的任务 ID：',
 
     // 控制键
     'control.send_key': '发送控制键',
@@ -1150,6 +1152,8 @@ Please output the summary in the following format:
     'memory.deep_recall_hint': 'Use deep_recall(task_id, step_index) to view specific step details',
     'memory.task_history_header': '📋 **Task History** (use recall_task for details):',
     'memory.related_history_header': '🔗 **Related History** (auto-loaded):',
+    'memory.no_task_history': 'No task history available.',
+    'memory.available_task_ids': 'Available task IDs:',
 
     // Control key
     'control.send_key': 'Send control key',
