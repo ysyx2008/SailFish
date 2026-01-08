@@ -104,7 +104,12 @@ function buildSkillsSection(): string {
     return '暂无可用技能。'
   }
   return `**可用技能**：
-${skills.map(s => `- \`${s.id}\`: ${s.name} - ${s.description}`).join('\n')}`
+${skills.map(s => `- \`${s.id}\`: ${s.name} - ${s.description}`).join('\n')}
+
+**工作流程**：
+1. 收到任务后，先审视上述技能列表，判断任务是否涉及相关领域
+2. 如有相关技能，**必须先**调用 \`load_skill("技能ID")\` 加载
+3. 加载成功后，该技能的工具立即可用，按需使用`
 }
 
 /**
@@ -240,10 +245,15 @@ function buildAskUserGuidance(executionMode?: ExecutionMode): string {
 
 当你需要更多信息时，可以使用 \`ask_user\` 工具向用户提问。
 
-**核心原则：只在制定计划时提问**
+**核心原则：一般只在制定计划时提问，执行中尽量不打断用户**
 - 开始执行前，先问清楚所有疑问
 - 计划确定后顺畅执行，不再打断用户
 - 执行中遇到意外，优先用合理默认值，实在无法继续才提问
+
+**需要用户确认时，必须使用ask_user工具**
+- 当你需要用户确认才能继续执行时（如删除文件、危险操作、重要决策），**必须**调用 \`ask_user\` 工具
+- **禁止**只在消息中问"你确定吗？"然后等待回复，这样系统无法正确追踪任务状态
+- 正确做法：\`ask_user(question="确定要删除 /tmp/xxx 目录吗？", options=["确定删除", "取消"])\`
 
 **参数说明**：
 - \`question\`：问题内容（必填）
@@ -605,7 +615,7 @@ ${isSshTerminal ? '' : `
 
 ${buildSkillsSection()}
 
-**使用方式**：当用户需求涉及上述领域时，先用 \`load_skill("技能ID")\` 加载，成功后该技能的工具立即可用。${isSshTerminal ? `
+**注意**：技能在当前会话中持续有效，无需重复加载。${isSshTerminal ? `
 
 ### ⚠️ 重要：SSH 远程终端文件操作限制
 

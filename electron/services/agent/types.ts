@@ -272,6 +272,7 @@ export interface TaskDigest {
   services: string[]              // 涉及的服务名
   errors: string[]                // 遇到的错误
   keyFindings: string[]           // 关键发现
+  pendingAction?: string          // 待确认的操作（如果任务在等待用户确认）
 }
 
 /**
@@ -284,7 +285,7 @@ export interface TaskMemory {
   id: string                      // 任务 ID
   userRequest: string             // 用户原始请求
   timestamp: number               // 执行时间
-  status: 'success' | 'failed' | 'aborted'
+  status: 'success' | 'failed' | 'aborted' | 'pending_confirmation'
   
   // L1: 一句话总结（~50 字符）
   summary: string
@@ -306,7 +307,7 @@ export interface TaskMemory {
 export interface TaskSummary {
   id: string
   summary: string
-  status: 'success' | 'failed' | 'aborted'
+  status: 'success' | 'failed' | 'aborted' | 'pending_confirmation'
   timestamp: number
 }
 

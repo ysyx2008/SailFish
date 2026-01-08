@@ -35,7 +35,7 @@ import type { CommandHandlingInfo } from './risk-assessor'
 import { executeTool, ToolExecutorConfig } from './tool-executor'
 import { buildSystemPrompt } from './prompt-builder'
 import { analyzeTaskComplexity, generatePlanningPrompt } from './planner'
-import { getTaskMemoryStore } from './task-memory'
+import { getTaskMemoryStore, detectPendingConfirmation } from './task-memory'
 import { buildTaskHistoryContext, detectContextReference } from './context-builder'
 import { getKnowledgeService } from '../knowledge'
 import { setConfigService as setI18nConfigService, t } from './i18n'
@@ -1528,14 +1528,19 @@ export class AgentService {
       try {
         const taskId = `task_${agentId.substring(0, 8)}`
         const taskMemoryStore = getTaskMemoryStore()
+        
+        // 检测是否在等待用户确认（基于 ask_user 工具调用）
+        const { isPending } = detectPendingConfirmation(run.steps)
+        const status = isPending ? 'pending_confirmation' : 'success'
+        
         taskMemoryStore.saveTask(
           taskId,
           userMessage,
           run.steps,
-          'success',
+          status,
           finalMessage
         )
-        console.log(`[Agent] 任务已保存到记忆: ${taskId}`)
+        console.log(`[Agent] 任务已保存到记忆: ${taskId}, 状态: ${status}`)
       } catch (e) {
         console.log('[Agent] 保存任务记忆失败:', e)
       }

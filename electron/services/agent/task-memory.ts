@@ -85,6 +85,46 @@ function calculateKeywordOverlap(queryKeywords: string[], memoryKeywords: string
 }
 
 /**
+ * 检测任务是否在等待用户确认
+ * 通过检测 ask_user 工具调用来判断（结构化判断，而非模式匹配）
+ * @param steps 执行步骤
+ * @returns 检测结果，包含是否等待确认和待确认的操作
+ */
+export function detectPendingConfirmation(steps: AgentStep[]): { 
+  isPending: boolean
+  pendingAction?: string 
+} {
+  // 从后往前找最后一个 ask_user 工具调用
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const step = steps[i]
+    
+    // 检测 ask_user 工具调用
+    if (step.toolName === 'ask_user' && step.type === 'tool_call') {
+      // 检查这个 ask_user 调用是否有对应的结果
+      // 如果后面没有 tool_result，说明还在等待用户回复
+      let hasResponse = false
+      for (let j = i + 1; j < steps.length; j++) {
+        if (steps[j].type === 'tool_result' && steps[j].toolName === 'ask_user') {
+          hasResponse = true
+          break
+        }
+      }
+      
+      if (!hasResponse) {
+        // ask_user 没有收到响应，任务在等待确认
+        const question = step.toolArgs?.question as string
+        return { 
+          isPending: true, 
+          pendingAction: question ? (question.length > 50 ? question.substring(0, 50) + '...' : question) : undefined
+        }
+      }
+    }
+  }
+  
+  return { isPending: false }
+}
+
+/**
  * 从执行步骤中提取摘要信息
  */
 function extractDigest(steps: AgentStep[], userRequest: string): TaskDigest {
@@ -168,12 +208,16 @@ function extractDigest(steps: AgentStep[], userRequest: string): TaskDigest {
     services.push(...requestServices.map(s => s.toLowerCase()))
   }
   
+  // 检测是否等待确认，提取待确认操作
+  const { pendingAction } = detectPendingConfirmation(steps)
+  
   return {
     commands: Array.from(new Set(commands)).slice(0, 10),
     paths: Array.from(new Set(paths)).slice(0, 15),
     services: Array.from(new Set(services)).slice(0, 10),
     errors: Array.from(new Set(errors)).slice(0, 5),
-    keyFindings: Array.from(new Set(keyFindings)).slice(0, 10)
+    keyFindings: Array.from(new Set(keyFindings)).slice(0, 10),
+    pendingAction
   }
 }
 
@@ -182,10 +226,15 @@ function extractDigest(steps: AgentStep[], userRequest: string): TaskDigest {
  */
 function generateSummary(
   userRequest: string, 
-  status: 'success' | 'failed' | 'aborted',
-  finalResult?: string
+  status: 'success' | 'failed' | 'aborted' | 'pending_confirmation',
+  finalResult?: string,
+  pendingAction?: string
 ): string {
-  const statusIcon = status === 'success' ? '✓' : status === 'failed' ? '✗' : '⊘'
+  // 状态图标
+  const statusIcon = status === 'success' ? '✓' 
+    : status === 'failed' ? '✗' 
+    : status === 'pending_confirmation' ? '⏳'
+    : '⊘'
   
   // 截断用户请求
   const shortRequest = userRequest.length > 30 
@@ -205,6 +254,11 @@ function generateSummary(
   
   if (status === 'aborted') {
     return `${statusIcon} ${shortRequest} → 已中止`
+  }
+  
+  if (status === 'pending_confirmation') {
+    const action = pendingAction ? `: ${pendingAction}` : ''
+    return `${statusIcon} ${shortRequest} → 等待确认${action}`
   }
   
   if (resultSummary) {
@@ -235,14 +289,14 @@ export class TaskMemoryStore {
     taskId: string,
     userRequest: string,
     steps: AgentStep[],
-    status: 'success' | 'failed' | 'aborted',
+    status: 'success' | 'failed' | 'aborted' | 'pending_confirmation',
     finalResult?: string
   ): TaskMemory {
-    // 生成 L1 总结
-    const summary = generateSummary(userRequest, status, finalResult)
-    
-    // 生成 L2 摘要
+    // 生成 L2 摘要（先提取，因为 pendingAction 会用到）
     const digest = extractDigest(steps, userRequest)
+    
+    // 生成 L1 总结
+    const summary = generateSummary(userRequest, status, finalResult, digest.pendingAction)
     
     // 提取关键词（从用户请求 + 摘要内容）
     const keywordSource = [
