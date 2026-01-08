@@ -1,0 +1,1097 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Debug Console</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      :root {
+        --bg-primary: #0d1117;
+        --bg-secondary: #161b22;
+        --bg-tertiary: #21262d;
+        --border-color: #30363d;
+        --text-primary: #c9d1d9;
+        --text-secondary: #8b949e;
+        --text-muted: #6e7681;
+        --accent-blue: #58a6ff;
+        --accent-green: #3fb950;
+        --accent-yellow: #d29922;
+        --accent-red: #f85149;
+        --accent-purple: #bc8cff;
+        --accent-cyan: #39c5cf;
+      }
+
+      body {
+        font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+        font-size: 13px;
+        line-height: 1.5;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* Header */
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border-color);
+        -webkit-app-region: drag;
+      }
+
+      .header h1 {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .header h1::before {
+        content: '🔬';
+      }
+
+      .header-actions {
+        display: flex;
+        gap: 8px;
+        -webkit-app-region: no-drag;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 500;
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+
+      .btn:hover {
+        background: var(--border-color);
+        border-color: var(--text-muted);
+      }
+
+      .btn.btn-danger {
+        background: rgba(248, 81, 73, 0.15);
+        border-color: var(--accent-red);
+        color: var(--accent-red);
+      }
+
+      .btn.btn-danger:hover {
+        background: rgba(248, 81, 73, 0.25);
+      }
+
+      /* Stats bar */
+      .stats-bar {
+        display: flex;
+        gap: 16px;
+        padding: 8px 16px;
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border-color);
+        font-size: 12px;
+      }
+
+      .stat-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-secondary);
+      }
+
+      .stat-value {
+        color: var(--accent-cyan);
+        font-weight: 600;
+      }
+
+      /* Filter bar */
+      .filter-bar {
+        display: flex;
+        gap: 8px;
+        padding: 8px 16px;
+        background: var(--bg-tertiary);
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .filter-chip {
+        padding: 4px 10px;
+        font-size: 11px;
+        border-radius: 12px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+
+      .filter-chip:hover {
+        border-color: var(--text-muted);
+      }
+
+      .filter-chip.active {
+        background: var(--accent-blue);
+        border-color: var(--accent-blue);
+        color: white;
+      }
+
+      /* Main content */
+      .main {
+        flex: 1;
+        display: flex;
+        overflow: hidden;
+      }
+
+      /* Log list */
+      .log-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: 8px;
+      }
+
+      .log-entry {
+        margin-bottom: 4px;
+        border-radius: 6px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        overflow: hidden;
+        transition: all 0.15s;
+      }
+
+      .log-entry:hover {
+        border-color: var(--text-muted);
+      }
+
+      .log-entry.expanded {
+        border-color: var(--accent-blue);
+      }
+
+      .log-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .log-type {
+        padding: 2px 8px;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        border-radius: 4px;
+        letter-spacing: 0.5px;
+      }
+
+      .log-type.request_start { background: var(--accent-blue); color: white; }
+      .log-type.response_chunk { background: var(--accent-green); color: white; }
+      .log-type.response_streaming { 
+        background: var(--accent-green); 
+        color: white; 
+        animation: streaming-pulse 1.5s ease-in-out infinite;
+      }
+      .log-type.response_done { background: var(--accent-cyan); color: var(--bg-primary); }
+      .log-type.response_error { background: var(--accent-red); color: white; }
+      .log-type.tool_call { background: var(--accent-purple); color: white; }
+      .log-type.tool_result { background: var(--accent-yellow); color: var(--bg-primary); }
+      
+      @keyframes streaming-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+      }
+
+      .log-time {
+        font-size: 11px;
+        color: var(--text-muted);
+        font-family: monospace;
+      }
+
+      .log-summary {
+        flex: 1;
+        font-size: 12px;
+        color: var(--text-secondary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .log-expand {
+        color: var(--text-muted);
+        font-size: 10px;
+        transition: transform 0.2s;
+      }
+
+      .log-entry.expanded .log-expand {
+        transform: rotate(90deg);
+      }
+
+      .log-content {
+        display: none;
+        padding: 12px;
+        border-top: 1px solid var(--border-color);
+        background: var(--bg-primary);
+      }
+
+      .log-entry.expanded .log-content {
+        display: block;
+      }
+
+      /* JSON viewer */
+      .json-viewer {
+        font-size: 12px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+
+      .json-key { color: var(--accent-purple); }
+      .json-string { color: var(--accent-green); }
+      .json-number { color: var(--accent-yellow); }
+      .json-boolean { color: var(--accent-blue); }
+      .json-null { color: var(--text-muted); }
+
+      /* Messages preview */
+      .messages-preview {
+        margin-top: 8px;
+        padding: 8px;
+        background: var(--bg-tertiary);
+        border-radius: 4px;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+
+      .message-item {
+        margin-bottom: 8px;
+        padding: 8px;
+        border-radius: 4px;
+        background: var(--bg-secondary);
+        border-left: 3px solid var(--border-color);
+      }
+
+      .message-item.system { border-left-color: var(--accent-purple); }
+      .message-item.user { border-left-color: var(--accent-blue); }
+      .message-item.assistant { border-left-color: var(--accent-green); }
+      .message-item.tool { border-left-color: var(--accent-yellow); }
+
+      .message-role {
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        margin-bottom: 4px;
+      }
+
+      .message-content {
+        font-size: 12px;
+        color: var(--text-secondary);
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+
+      /* Empty state */
+      .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--text-muted);
+        text-align: center;
+        padding: 40px;
+      }
+
+      .empty-state-icon {
+        font-size: 48px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+      }
+
+      .empty-state-title {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: var(--text-secondary);
+      }
+
+      .empty-state-desc {
+        font-size: 13px;
+        max-width: 300px;
+      }
+
+      /* Streaming indicator */
+      .streaming-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px;
+        background: rgba(63, 185, 80, 0.15);
+        border-radius: 4px;
+        font-size: 11px;
+        color: var(--accent-green);
+      }
+
+      .streaming-dot {
+        width: 6px;
+        height: 6px;
+        background: var(--accent-green);
+        border-radius: 50%;
+        animation: pulse 1s infinite;
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+      }
+
+      /* Scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: var(--bg-primary);
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: var(--border-color);
+        border-radius: 4px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--text-muted);
+      }
+
+      /* Request ID badge */
+      .request-id {
+        font-family: monospace;
+        font-size: 10px;
+        padding: 2px 6px;
+        background: var(--bg-tertiary);
+        border-radius: 3px;
+        color: var(--text-muted);
+      }
+
+      /* Auto scroll toggle */
+      .auto-scroll-toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+
+      .auto-scroll-toggle input {
+        accent-color: var(--accent-blue);
+      }
+
+      /* Copy button */
+      .btn-copy {
+        padding: 4px 8px;
+        font-size: 11px;
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-muted);
+        cursor: pointer;
+        border-radius: 4px;
+        opacity: 0;
+        transition: all 0.15s;
+      }
+
+      .log-header:hover .btn-copy {
+        opacity: 1;
+      }
+
+      .btn-copy:hover {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        border-color: var(--text-muted);
+      }
+
+      .btn-copy.copied {
+        color: var(--accent-green);
+        border-color: var(--accent-green);
+      }
+
+      /* Log file info bar */
+      .log-file-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 6px 16px;
+        background: var(--bg-tertiary);
+        border-bottom: 1px solid var(--border-color);
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      .log-file-path {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-family: monospace;
+      }
+
+      .log-file-bar .btn {
+        padding: 3px 8px;
+        font-size: 11px;
+      }
+
+      /* Toast notification */
+      .toast {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 10px 20px;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        color: var(--text-primary);
+        font-size: 13px;
+        z-index: 1000;
+        opacity: 0;
+        transition: opacity 0.3s;
+        pointer-events: none;
+      }
+
+      .toast.show {
+        opacity: 1;
+      }
+
+      .toast.success {
+        border-color: var(--accent-green);
+        color: var(--accent-green);
+      }
+
+      /* Allow text selection */
+      .log-content, .json-viewer, .message-content, .log-summary {
+        user-select: text;
+        -webkit-user-select: text;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <h1>AI Debug Console</h1>
+      <div class="header-actions">
+        <label class="auto-scroll-toggle">
+          <input type="checkbox" id="autoScroll" checked />
+          自动滚动
+        </label>
+        <button class="btn" onclick="copyAllLogs()">
+          📋 复制全部
+        </button>
+        <button class="btn" onclick="openLogDir()">
+          📁 打开日志目录
+        </button>
+        <button class="btn btn-danger" onclick="clearLogs()">
+          🗑️ 清除
+        </button>
+      </div>
+    </div>
+
+    <div class="log-file-bar">
+      <span>📄 日志文件:</span>
+      <span class="log-file-path" id="logFilePath">正在创建...</span>
+      <button class="btn" onclick="copyLogFilePath()">复制路径</button>
+    </div>
+
+    <div class="stats-bar">
+      <div class="stat-item">
+        请求: <span class="stat-value" id="requestCount">0</span>
+      </div>
+      <div class="stat-item">
+        工具调用: <span class="stat-value" id="toolCallCount">0</span>
+      </div>
+      <div class="stat-item">
+        错误: <span class="stat-value" id="errorCount">0</span>
+      </div>
+      <div class="stat-item" id="streamingStatus" style="display: none;">
+        <span class="streaming-indicator">
+          <span class="streaming-dot"></span>
+          流式传输中
+        </span>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <span class="filter-chip active" data-filter="all">全部</span>
+      <span class="filter-chip" data-filter="request_start">请求</span>
+      <span class="filter-chip" data-filter="response_chunk">响应流</span>
+      <span class="filter-chip" data-filter="response_done">完成</span>
+      <span class="filter-chip" data-filter="response_error">错误</span>
+      <span class="filter-chip" data-filter="tool_call">工具调用</span>
+      <span class="filter-chip" data-filter="tool_result">工具结果</span>
+    </div>
+
+    <div class="main">
+      <div class="log-list" id="logList">
+        <div class="empty-state" id="emptyState">
+          <div class="empty-state-icon">📡</div>
+          <div class="empty-state-title">等待 AI 请求...</div>
+          <div class="empty-state-desc">
+            当应用发送 AI 请求时，这里会显示实时的请求和响应流水。
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // 日志数据
+      let logs = []
+      let currentFilter = 'all'
+      let autoScroll = true
+      let stats = {
+        requests: 0,
+        toolCalls: 0,
+        errors: 0
+      }
+      let activeRequests = new Set()
+      
+      // 聚合响应流：requestId -> { id, chunks: string[], startTime, lastTime }
+      let streamingResponses = new Map()
+
+      // DOM 元素
+      const logList = document.getElementById('logList')
+      const emptyState = document.getElementById('emptyState')
+      const requestCountEl = document.getElementById('requestCount')
+      const toolCallCountEl = document.getElementById('toolCallCount')
+      const errorCountEl = document.getElementById('errorCount')
+      const streamingStatus = document.getElementById('streamingStatus')
+      const autoScrollCheckbox = document.getElementById('autoScroll')
+
+      // 初始化
+      autoScrollCheckbox.addEventListener('change', (e) => {
+        autoScroll = e.target.checked
+      })
+
+      // 过滤器点击
+      document.querySelectorAll('.filter-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          document.querySelector('.filter-chip.active').classList.remove('active')
+          chip.classList.add('active')
+          currentFilter = chip.dataset.filter
+          renderLogs()
+        })
+      })
+
+      // 格式化时间
+      function formatTime(timestamp) {
+        const date = new Date(timestamp)
+        return date.toLocaleTimeString('zh-CN', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          fractionalSecondDigits: 3
+        })
+      }
+
+      // 获取日志摘要
+      function getLogSummary(entry) {
+        switch (entry.type) {
+          case 'request_start':
+            const msgCount = entry.data.messages?.length || 0
+            const toolCount = entry.data.tools?.length || 0
+            return `${entry.model || 'Unknown'} | ${msgCount} 条消息 | ${toolCount} 个工具`
+          case 'response_chunk':
+            return entry.data.chunk?.substring(0, 100) || ''
+          case 'response_streaming':
+            // 聚合的流式响应
+            const content = entry.data.content || ''
+            const chunkCount = entry.data.chunkCount || 0
+            const preview = content.length > 80 ? content.substring(0, 80) + '...' : content
+            return `${preview} (${chunkCount} chunks)`
+          case 'response_done':
+            return `完成 (${entry.data.finishReason || 'unknown'})`
+          case 'response_error':
+            return entry.data.error || '未知错误'
+          case 'tool_call':
+            return `${entry.data.toolCall?.name || 'unknown'}()`
+          case 'tool_result':
+            const status = entry.data.toolResult?.success ? '✓' : '✗'
+            return `${status} ${entry.data.toolResult?.result?.substring(0, 80) || ''}`
+          default:
+            return ''
+        }
+      }
+
+      // 格式化 JSON
+      function formatJson(obj, indent = 0) {
+        if (obj === null) return '<span class="json-null">null</span>'
+        if (obj === undefined) return '<span class="json-null">undefined</span>'
+        
+        const type = typeof obj
+        
+        if (type === 'string') {
+          // 转义 HTML
+          const escaped = obj.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          return `<span class="json-string">"${escaped}"</span>`
+        }
+        if (type === 'number') return `<span class="json-number">${obj}</span>`
+        if (type === 'boolean') return `<span class="json-boolean">${obj}</span>`
+        
+        if (Array.isArray(obj)) {
+          if (obj.length === 0) return '[]'
+          const items = obj.map(item => '  '.repeat(indent + 1) + formatJson(item, indent + 1))
+          return `[\n${items.join(',\n')}\n${'  '.repeat(indent)}]`
+        }
+        
+        if (type === 'object') {
+          const keys = Object.keys(obj)
+          if (keys.length === 0) return '{}'
+          const items = keys.map(key => {
+            const escapedKey = key.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            return `${'  '.repeat(indent + 1)}<span class="json-key">"${escapedKey}"</span>: ${formatJson(obj[key], indent + 1)}`
+          })
+          return `{\n${items.join(',\n')}\n${'  '.repeat(indent)}}`
+        }
+        
+        return String(obj)
+      }
+
+      // 渲染消息列表
+      function renderMessages(messages) {
+        if (!messages || messages.length === 0) return ''
+        
+        return `<div class="messages-preview">
+          ${messages.map(msg => `
+            <div class="message-item ${msg.role}">
+              <div class="message-role">${msg.role}</div>
+              <div class="message-content">${(msg.content || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+            </div>
+          `).join('')}
+        </div>`
+      }
+
+      // 渲染日志内容
+      function renderLogContent(entry) {
+        let content = ''
+        
+        if (entry.type === 'request_start') {
+          if (entry.data.messages) {
+            content += '<strong>Messages:</strong>' + renderMessages(entry.data.messages)
+          }
+          if (entry.data.tools && entry.data.tools.length > 0) {
+            content += '<br><strong>Tools:</strong><div class="json-viewer">' + formatJson(entry.data.tools.map(t => t.function?.name || t)) + '</div>'
+          }
+        } else if (entry.type === 'response_streaming') {
+          // 流式响应：显示累积的内容
+          const escaped = (entry.data.content || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+          content = `
+            <div style="margin-bottom: 8px; font-size: 11px; color: var(--text-muted);">
+              已接收 ${entry.data.chunkCount} 个 chunks
+            </div>
+            <div class="json-viewer" style="white-space: pre-wrap;">${escaped}</div>
+          `
+        } else if (entry.type === 'response_done') {
+          // 完成的响应：显示完整内容和统计
+          const escaped = (entry.data.response || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+          const duration = entry.data.streamDuration ? ` (${entry.data.streamDuration}ms)` : ''
+          const chunks = entry.data.chunkCount ? ` | ${entry.data.chunkCount} chunks` : ''
+          content = `
+            <div style="margin-bottom: 8px; font-size: 11px; color: var(--text-muted);">
+              完成原因: ${entry.data.finishReason || 'unknown'}${chunks}${duration}
+            </div>
+            ${escaped ? `<div class="json-viewer" style="white-space: pre-wrap;">${escaped}</div>` : ''}
+            ${entry.data.usage ? `<div style="margin-top: 8px; font-size: 11px; color: var(--text-muted);">Token 用量: ${JSON.stringify(entry.data.usage)}</div>` : ''}
+          `
+        } else {
+          content = '<div class="json-viewer">' + formatJson(entry.data) + '</div>'
+        }
+        
+        return content
+      }
+
+      // 创建日志条目元素
+      function createLogElement(entry) {
+        const div = document.createElement('div')
+        div.className = 'log-entry'
+        div.dataset.id = entry.id
+        div.dataset.type = entry.type
+        
+        // 安全地截取 requestId
+        const requestIdDisplay = entry.requestId 
+          ? (entry.requestId.length > 12 ? entry.requestId.substring(0, 12) + '...' : entry.requestId)
+          : 'unknown'
+        
+        // 转义 log-summary 中的 HTML 特殊字符，防止 XSS
+        const summary = getLogSummary(entry)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+        
+        // 友好的类型名称
+        const typeLabel = {
+          'request_start': 'REQUEST',
+          'response_streaming': 'STREAMING',
+          'response_chunk': 'CHUNK',
+          'response_done': 'DONE',
+          'response_error': 'ERROR',
+          'tool_call': 'TOOL CALL',
+          'tool_result': 'TOOL RESULT'
+        }[entry.type] || entry.type.replace('_', ' ')
+        
+        div.innerHTML = `
+          <div class="log-header">
+            <span class="log-type ${entry.type}">${typeLabel}</span>
+            <span class="log-time">${formatTime(entry.timestamp)}</span>
+            <span class="request-id">${requestIdDisplay}</span>
+            <span class="log-summary">${summary}</span>
+            <button class="btn-copy" onclick="event.stopPropagation(); copyEntry('${entry.id}')">📋 复制</button>
+            <span class="log-expand">▶</span>
+          </div>
+          <div class="log-content">
+            ${renderLogContent(entry)}
+          </div>
+        `
+        
+        // 点击展开/折叠（排除复制按钮）
+        div.querySelector('.log-header').addEventListener('click', (e) => {
+          if (!e.target.classList.contains('btn-copy')) {
+            div.classList.toggle('expanded')
+          }
+        })
+        
+        return div
+      }
+
+      // 渲染日志列表
+      function renderLogs() {
+        let filtered
+        if (currentFilter === 'all') {
+          filtered = logs
+        } else if (currentFilter === 'response_chunk') {
+          // 响应流过滤器同时匹配 response_chunk 和 response_streaming
+          filtered = logs.filter(l => l.type === 'response_chunk' || l.type === 'response_streaming')
+        } else {
+          filtered = logs.filter(l => l.type === currentFilter)
+        }
+        
+        // 清空并重新渲染
+        logList.innerHTML = ''
+        
+        if (filtered.length === 0) {
+          logList.appendChild(emptyState.cloneNode(true))
+          return
+        }
+        
+        filtered.forEach(entry => {
+          logList.appendChild(createLogElement(entry))
+        })
+        
+        if (autoScroll) {
+          logList.scrollTop = logList.scrollHeight
+        }
+      }
+
+      // 添加日志
+      function addLog(entry) {
+        // 特殊处理 response_chunk：聚合成 response_streaming
+        if (entry.type === 'response_chunk') {
+          handleResponseChunk(entry)
+          return
+        }
+        
+        // 如果是 response_done，完成对应的 streaming
+        if (entry.type === 'response_done' || entry.type === 'response_error') {
+          finalizeStreaming(entry.requestId, entry)
+        }
+        
+        logs.push(entry)
+        
+        // 更新统计
+        if (entry.type === 'request_start') {
+          stats.requests++
+          activeRequests.add(entry.requestId)
+        } else if (entry.type === 'tool_call') {
+          stats.toolCalls++
+        } else if (entry.type === 'response_error') {
+          stats.errors++
+        } else if (entry.type === 'response_done' || entry.type === 'response_error') {
+          activeRequests.delete(entry.requestId)
+        }
+        
+        updateStats()
+        
+        // 如果当前过滤器匹配，添加到列表
+        if (currentFilter === 'all' || currentFilter === entry.type) {
+          // 移除空状态
+          const empty = logList.querySelector('.empty-state')
+          if (empty) empty.remove()
+          
+          logList.appendChild(createLogElement(entry))
+          
+          if (autoScroll) {
+            logList.scrollTop = logList.scrollHeight
+          }
+        }
+      }
+      
+      // 处理流式响应 chunk
+      function handleResponseChunk(entry) {
+        const requestId = entry.requestId
+        const chunk = entry.data.chunk || ''
+        
+        if (!streamingResponses.has(requestId)) {
+          // 创建新的聚合条目
+          const streamingEntry = {
+            id: `streaming_${requestId}`,
+            type: 'response_streaming',
+            timestamp: entry.timestamp,
+            requestId: requestId,
+            data: {
+              content: chunk,
+              chunkCount: 1,
+              startTime: entry.timestamp,
+              lastTime: entry.timestamp
+            }
+          }
+          
+          streamingResponses.set(requestId, streamingEntry)
+          logs.push(streamingEntry)
+          
+          // 添加到 UI
+          if (currentFilter === 'all' || currentFilter === 'response_chunk' || currentFilter === 'response_streaming') {
+            const empty = logList.querySelector('.empty-state')
+            if (empty) empty.remove()
+            
+            logList.appendChild(createLogElement(streamingEntry))
+          }
+        } else {
+          // 更新现有聚合条目
+          const streamingEntry = streamingResponses.get(requestId)
+          streamingEntry.data.content += chunk
+          streamingEntry.data.chunkCount++
+          streamingEntry.data.lastTime = entry.timestamp
+          
+          // 更新 UI 中的显示
+          updateStreamingElement(streamingEntry)
+        }
+        
+        if (autoScroll) {
+          logList.scrollTop = logList.scrollHeight
+        }
+      }
+      
+      // 更新流式响应元素
+      function updateStreamingElement(entry) {
+        const element = logList.querySelector(`[data-id="${entry.id}"]`)
+        if (element) {
+          const summary = getLogSummary(entry)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+          
+          element.querySelector('.log-summary').textContent = summary
+          
+          // 如果已展开，更新内容
+          if (element.classList.contains('expanded')) {
+            element.querySelector('.log-content').innerHTML = renderLogContent(entry)
+          }
+        }
+      }
+      
+      // 完成流式响应
+      function finalizeStreaming(requestId, doneEntry) {
+        const streamingEntry = streamingResponses.get(requestId)
+        if (streamingEntry) {
+          // 更新 response_done 的数据，包含完整的响应内容
+          if (doneEntry.type === 'response_done' && !doneEntry.data.response) {
+            doneEntry.data.response = streamingEntry.data.content
+          }
+          doneEntry.data.chunkCount = streamingEntry.data.chunkCount
+          doneEntry.data.streamDuration = streamingEntry.data.lastTime - streamingEntry.data.startTime
+          
+          // 从 logs 中移除 streaming 条目
+          const idx = logs.findIndex(l => l.id === streamingEntry.id)
+          if (idx >= 0) {
+            logs.splice(idx, 1)
+          }
+          
+          // 从 UI 中移除 streaming 元素
+          const element = logList.querySelector(`[data-id="${streamingEntry.id}"]`)
+          if (element) {
+            element.remove()
+          }
+          
+          // 清理 map
+          streamingResponses.delete(requestId)
+        }
+      }
+
+      // 更新统计
+      function updateStats() {
+        requestCountEl.textContent = stats.requests
+        toolCallCountEl.textContent = stats.toolCalls
+        errorCountEl.textContent = stats.errors
+        streamingStatus.style.display = activeRequests.size > 0 ? 'block' : 'none'
+      }
+
+      // 清除日志
+      async function clearLogs() {
+        logs = []
+        stats = { requests: 0, toolCalls: 0, errors: 0 }
+        activeRequests.clear()
+        streamingResponses.clear()
+        updateStats()
+        renderLogs()
+        
+        // 通知主进程
+        if (window.electronAPI) {
+          await window.electronAPI.aiDebugClearLogs()
+        }
+      }
+
+      // Toast 提示
+      function showToast(message, type = 'info') {
+        // 移除旧的 toast
+        const oldToast = document.querySelector('.toast')
+        if (oldToast) oldToast.remove()
+        
+        const toast = document.createElement('div')
+        toast.className = `toast ${type}`
+        toast.textContent = message
+        document.body.appendChild(toast)
+        
+        // 显示
+        requestAnimationFrame(() => {
+          toast.classList.add('show')
+        })
+        
+        // 自动隐藏
+        setTimeout(() => {
+          toast.classList.remove('show')
+          setTimeout(() => toast.remove(), 300)
+        }, 2000)
+      }
+
+      // 复制文本到剪贴板
+      async function copyToClipboard(text) {
+        try {
+          await navigator.clipboard.writeText(text)
+          return true
+        } catch (err) {
+          console.error('Failed to copy:', err)
+          return false
+        }
+      }
+
+      // 复制单个日志条目
+      async function copyEntry(entryId) {
+        const entry = logs.find(e => e.id === entryId)
+        if (entry) {
+          const text = JSON.stringify(entry, null, 2)
+          if (await copyToClipboard(text)) {
+            showToast('已复制到剪贴板', 'success')
+          }
+        }
+      }
+
+      // 复制所有日志
+      async function copyAllLogs() {
+        if (logs.length === 0) {
+          showToast('没有日志可复制')
+          return
+        }
+        
+        const text = logs.map(entry => {
+          const time = new Date(entry.timestamp).toISOString()
+          return `[${time}] [${entry.type}] ${JSON.stringify(entry.data)}`
+        }).join('\n')
+        
+        if (await copyToClipboard(text)) {
+          showToast(`已复制 ${logs.length} 条日志`, 'success')
+        }
+      }
+
+      // 复制日志文件路径
+      async function copyLogFilePath() {
+        const pathEl = document.getElementById('logFilePath')
+        const path = pathEl.textContent
+        if (path && path !== '正在创建...' && path !== '无') {
+          if (await copyToClipboard(path)) {
+            showToast('路径已复制', 'success')
+          }
+        }
+      }
+
+      // 打开日志目录
+      async function openLogDir() {
+        if (window.electronAPI) {
+          const logDir = await window.electronAPI.aiDebugGetLogDir()
+          if (logDir) {
+            // 使用 shell.openPath 打开目录
+            window.electronAPI.shell.openPath(logDir)
+          }
+        }
+      }
+
+      // 更新日志文件路径显示
+      async function updateLogFilePath() {
+        if (window.electronAPI) {
+          const path = await window.electronAPI.aiDebugGetLogFilePath()
+          const pathEl = document.getElementById('logFilePath')
+          pathEl.textContent = path || '无'
+          pathEl.title = path || ''
+        }
+      }
+
+      // 监听来自主进程的消息
+      if (window.electronAPI) {
+        window.electronAPI.onAiDebugMessage((message) => {
+          if (message.type === 'log') {
+            addLog(message.entry)
+          } else if (message.type === 'clear') {
+            logs = []
+            stats = { requests: 0, toolCalls: 0, errors: 0 }
+            activeRequests.clear()
+            streamingResponses.clear()
+            updateStats()
+            renderLogs()
+          }
+        })
+        
+        // 获取历史日志
+        window.electronAPI.aiDebugGetLogs().then(existingLogs => {
+          if (existingLogs && existingLogs.length > 0) {
+            existingLogs.forEach(addLog)
+          }
+        })
+
+        // 更新日志文件路径
+        updateLogFilePath()
+        // 定期更新（以防文件创建有延迟）
+        setTimeout(updateLogFilePath, 1000)
+      }
+    </script>
+  </body>
+</html>

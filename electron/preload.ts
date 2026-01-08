@@ -2280,6 +2280,27 @@ const electronAPI = {
     getPathForFile: (file: File): string => {
       return webUtils.getPathForFile(file)
     }
+  },
+
+  // Shell 操作
+  shell: {
+    openPath: (path: string) => ipcRenderer.invoke('shell:openPath', path) as Promise<string>
+  },
+
+  // AI Debug 调试窗口
+  aiDebugOpenWindow: () => ipcRenderer.invoke('aiDebug:openWindow'),
+  aiDebugCloseWindow: () => ipcRenderer.invoke('aiDebug:closeWindow'),
+  aiDebugIsWindowOpen: () => ipcRenderer.invoke('aiDebug:isWindowOpen') as Promise<boolean>,
+  aiDebugGetLogs: () => ipcRenderer.invoke('aiDebug:getLogs'),
+  aiDebugClearLogs: () => ipcRenderer.invoke('aiDebug:clearLogs'),
+  aiDebugGetLogFilePath: () => ipcRenderer.invoke('aiDebug:getLogFilePath') as Promise<string | null>,
+  aiDebugGetLogDir: () => ipcRenderer.invoke('aiDebug:getLogDir') as Promise<string>,
+  aiDebugExportLogs: (filePath: string) => ipcRenderer.invoke('aiDebug:exportLogs', filePath) as Promise<{ success: boolean; error?: string }>,
+  aiDebugCopyEntry: (entryId: string) => ipcRenderer.invoke('aiDebug:copyEntry', entryId) as Promise<string | null>,
+  onAiDebugMessage: (callback: (message: { type: string; entry?: unknown }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, message: { type: string; entry?: unknown }) => callback(message)
+    ipcRenderer.on('aiDebug:message', handler)
+    return () => ipcRenderer.removeListener('aiDebug:message', handler)
   }
 }
 

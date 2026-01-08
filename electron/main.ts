@@ -199,6 +199,7 @@ import { initTerminalStateService, getTerminalStateService, type TerminalState, 
 import { initTerminalAwarenessService, getTerminalAwarenessService, type TerminalAwareness } from './services/terminal-awareness'
 import { initScreenContentService } from './services/screen-content.service'
 import { menuService } from './services/menu.service'
+import { aiDebugService } from './services/ai-debug.service'
 
 // 禁用 GPU 加速可能导致的问题（可选）
 // app.disableHardwareAcceleration()
@@ -562,6 +563,74 @@ function createFileManagerWindow(params?: {
   fileManagerWindow.on('closed', () => {
     fileManagerWindow = null
     fileManagerParams = null
+  })
+}
+
+// AI Debug 窗口
+let aiDebugWindow: BrowserWindow | null = null
+
+/**
+ * 创建 AI Debug 窗口
+ * 用于显示 AI 请求和响应的实时流水
+ */
+function createAiDebugWindow(): void {
+  // 如果窗口已存在，聚焦
+  if (aiDebugWindow && !aiDebugWindow.isDestroyed()) {
+    aiDebugWindow.focus()
+    return
+  }
+
+  // 根据平台选择图标
+  const iconPath = process.platform === 'darwin'
+    ? join(__dirname, '../resources/icon.icns')
+    : process.platform === 'win32'
+      ? join(__dirname, '../resources/icon.ico')
+      : join(__dirname, '../resources/icon.png')
+
+  aiDebugWindow = new BrowserWindow({
+    width: 1000,
+    height: 700,
+    minWidth: 600,
+    minHeight: 400,
+    title: 'AI Debug Console',
+    icon: iconPath,
+    frame: true,
+    show: false,
+    backgroundColor: '#0d1117',
+    webPreferences: {
+      preload: join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  })
+
+  // 窗口准备好后显示
+  aiDebugWindow.once('ready-to-show', () => {
+    aiDebugWindow?.show()
+  })
+
+  // 加载 AI Debug 页面
+  if (process.env.VITE_DEV_SERVER_URL) {
+    aiDebugWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}ai-debug.html`)
+    // 开发环境可以打开开发者工具
+    // aiDebugWindow.webContents.openDevTools()
+  } else {
+    aiDebugWindow.loadFile(join(__dirname, '../dist/ai-debug.html'))
+  }
+
+  // 设置到 aiDebugService
+  aiDebugService.setDebugWindow(aiDebugWindow)
+
+  // 在浏览器中打开外部链接
+  aiDebugWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url)
+    return { action: 'deny' }
+  })
+
+  aiDebugWindow.on('closed', () => {
+    aiDebugWindow = null
+    aiDebugService.setDebugWindow(null)
   })
 }
 
@@ -956,6 +1025,11 @@ ipcMain.handle('app:getVersion', async () => {
   return APP_VERSION
 })
 
+// 打开路径（文件或目录）
+ipcMain.handle('shell:openPath', async (_event, path: string) => {
+  return shell.openPath(path)
+})
+
 // PATH 环境变量状态
 ipcMain.handle('path:isReady', async () => {
   return isPathReady()
@@ -1232,6 +1306,23 @@ ipcMain.handle('config:getAgentDebugMode', async () => {
 ipcMain.handle('config:setAgentDebugMode', async (_event, enabled: boolean) => {
   configService.setAgentDebugMode(enabled)
 })
+
+// AI Debug 窗口
+// 先移除可能已存在的 handlers（ai-debug.service.ts 中已注册了一些）
+try { ipcMain.removeHandler('aiDebug:openWindow') } catch { /* ignore */ }
+try { ipcMain.removeHandler('aiDebug:closeWindow') } catch { /* ignore */ }
+
+ipcMain.handle('aiDebug:openWindow', async () => {
+  createAiDebugWindow()
+})
+
+ipcMain.handle('aiDebug:closeWindow', async () => {
+  if (aiDebugWindow && !aiDebugWindow.isDestroyed()) {
+    aiDebugWindow.close()
+  }
+})
+
+// 注意: aiDebug:isWindowOpen 已在 ai-debug.service.ts 中注册，这里不重复注册
 
 // 首次设置向导
 ipcMain.handle('config:getSetupCompleted', async () => {

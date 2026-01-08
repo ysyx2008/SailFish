@@ -342,6 +342,10 @@ const handleMenuCommand = async (command: string) => {
       // 触发批量命令面板（通过自定义事件）
       window.dispatchEvent(new CustomEvent('toggle-batch-panel'))
       break
+    case 'openAiDebugConsole':
+      // 打开 AI 调试控制台
+      window.electronAPI.aiDebugOpenWindow()
+      break
   }
 }
 
