@@ -50,6 +50,7 @@ const menuI18n = {
     toggleSidebar: '切换侧边栏',
     toggleAiPanel: '切换 AI 面板',
     toggleKnowledge: '打开知识库管理',
+    aiDebugConsole: 'AI 调试控制台',
     zoomIn: '放大',
     zoomOut: '缩小',
     resetZoom: '实际大小',
@@ -108,6 +109,7 @@ const menuI18n = {
     toggleSidebar: 'Toggle Sidebar',
     toggleAiPanel: 'Toggle AI Panel',
     toggleKnowledge: 'Open Knowledge Manager',
+    aiDebugConsole: 'AI Debug Console',
     zoomIn: 'Zoom In',
     zoomOut: 'Zoom Out',
     resetZoom: 'Actual Size',
@@ -339,6 +341,11 @@ export class MenuService {
         label: this.t('toggleKnowledge'),
         accelerator: 'CmdOrCtrl+Shift+K',
         click: () => this.sendCommand('toggleKnowledge')
+      },
+      {
+        label: this.t('aiDebugConsole'),
+        accelerator: 'CmdOrCtrl+Shift+D',
+        click: () => this.sendCommand('openAiDebugConsole')
       },
       { type: 'separator' },
       {

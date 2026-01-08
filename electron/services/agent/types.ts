@@ -195,6 +195,7 @@ export interface AllowedToolKey {
 export interface AgentRun {
   id: string
   ptyId: string
+  requestId?: string  // AI Debug: 当前请求 ID（用于调试日志）
   messages: import('../ai.service').AiMessage[]
   steps: AgentStep[]
   isRunning: boolean

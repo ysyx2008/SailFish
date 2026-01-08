@@ -40,6 +40,7 @@ import { buildTaskHistoryContext, detectContextReference } from './context-build
 import { getKnowledgeService } from '../knowledge'
 import { setConfigService as setI18nConfigService, t } from './i18n'
 import { createSkillSession } from './skills'
+import { aiDebugService } from '../ai-debug.service'
 
 // 重新导出类型，供外部使用
 export type {
@@ -1181,6 +1182,9 @@ export class AgentService {
                   mode: this.unifiedTerminalService?.getTerminalType(run.ptyId) || 'local'
                 })
             
+            // 存储当前请求 ID（用于 AI Debug 日志）
+            run.requestId = agentId
+            
             this.aiService.chatWithToolsStream(
               run.messages,
               availableTools,
@@ -1382,6 +1386,15 @@ export class AgentService {
 
             // 更新反思追踪状态
             this.updateReflectionTracking(run, toolCall.function.name, toolArgs, result)
+
+            // AI Debug: 记录工具结果
+            if (run.requestId) {
+              aiDebugService.logToolResult(run.requestId, {
+                toolCallId: toolCall.id,
+                success: result.success,
+                result: result.success ? result.output : (result.error || 'Unknown error')
+              })
+            }
 
             // 将工具结果添加到消息历史
             run.messages.push({

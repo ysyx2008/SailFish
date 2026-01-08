@@ -4,6 +4,7 @@ import { SocksProxyAgent } from 'socks-proxy-agent'
 import * as https from 'https'
 import * as http from 'http'
 import { t } from './agent/i18n'
+import { aiDebugService } from './ai-debug.service'
 
 // AI 请求超时配置（毫秒）
 const AI_TIMEOUT = {
@@ -631,6 +632,19 @@ export class AiService {
     const abortController = new AbortController()
     this.abortControllers.set(reqId, abortController)
 
+    // AI Debug: 记录请求开始
+    aiDebugService.logRequestStart(reqId, {
+      profileId: profile.id,
+      model: profile.model,
+      messages: messages.map(m => ({
+        role: m.role,
+        content: m.content,
+        tool_call_id: m.tool_call_id,
+        tool_calls: m.tool_calls
+      })),
+      tools
+    })
+
     // 完成状态标记，防止重复回调
     let isCompleted = false
     // 总超时计时器
@@ -812,6 +826,8 @@ export class AiService {
                   reasoningContent += delta.reasoning_content
                   // 输出思考内容，使用引用格式
                   onChunk(delta.reasoning_content.replace(/\n/g, '\n> '))
+                  // AI Debug: 记录思考过程
+                  aiDebugService.logResponseChunk(reqId, `[THINKING] ${delta.reasoning_content}`)
                 }
 
                 // 处理正常的 content（最终回复）
@@ -823,6 +839,8 @@ export class AiService {
                   }
                   content += delta.content
                   onChunk(delta.content)
+                  // AI Debug: 记录响应流式片段
+                  aiDebugService.logResponseChunk(reqId, delta.content)
                 }
 
                 // 处理 tool_calls 流式更新
@@ -871,12 +889,25 @@ export class AiService {
         })
 
         res.on('end', () => {
-          // 如果有工具调用，通知一次
+          // 如果有工具调用，通知一次，并记录到调试日志
           if (toolCalls.length > 0) {
             onToolCall(toolCalls)
+            // AI Debug: 记录工具调用
+            toolCalls.forEach(tc => {
+              aiDebugService.logToolCall(reqId, {
+                id: tc.id,
+                name: tc.function.name,
+                arguments: tc.function.arguments
+              })
+            })
           }
           // 如果有思考内容但没有最终内容，把思考内容作为最终内容
           const finalContent = content || (reasoningContent ? `🤔 **思考过程**\n\n> ${reasoningContent.replace(/\n/g, '\n> ')}` : undefined)
+          // AI Debug: 记录响应完成
+          aiDebugService.logResponseDone(reqId, {
+            response: finalContent,
+            finishReason
+          })
           complete(() => onDone({
             content: finalContent,
             tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
@@ -886,6 +917,8 @@ export class AiService {
         })
 
         res.on('error', (err) => {
+          // AI Debug: 记录错误
+          aiDebugService.logResponseError(reqId, err.message)
           complete(() => onError(t('error.request_error', { message: err.message })))
         })
       })
@@ -893,12 +926,16 @@ export class AiService {
       // 连接超时处理
       req.on('timeout', () => {
         req?.destroy()
+        // AI Debug: 记录超时错误
+        aiDebugService.logResponseError(reqId, '连接 AI 服务超时，请检查网络连接。[ETIMEDOUT]')
         complete(() => onError('连接 AI 服务超时，请检查网络连接。[ETIMEDOUT]'))
       })
 
       req.on('error', (err) => {
         // 如果是中止导致的错误，不报错
         if (err.message === 'aborted' || err.message.includes('socket hang up')) {
+          // AI Debug: 记录中止
+          aiDebugService.logResponseDone(reqId, { finishReason: 'aborted' })
           complete(() => onDone({
             content: undefined,
             tool_calls: undefined,
@@ -906,6 +943,8 @@ export class AiService {
           }))
           return
         }
+        // AI Debug: 记录请求错误
+        aiDebugService.logResponseError(reqId, err.message)
         complete(() => onError(`请求失败: ${err.message}`))
       })
 
@@ -922,6 +961,9 @@ export class AiService {
       req.write(JSON.stringify(requestBody))
       req.end()
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      // AI Debug: 记录请求异常
+      aiDebugService.logResponseError(reqId, `Exception: ${errorMsg}`)
       if (error instanceof Error) {
         complete(() => onError(`AI 请求失败: ${error.message}`))
       } else {

@@ -1592,5 +1592,30 @@ interface Window {
         visibleContent?: string[]
       } | null) => void
     }
+
+    // Shell 操作
+    shell: {
+      openPath: (path: string) => Promise<string>
+    }
+
+    // AI Debug 调试窗口
+    aiDebugOpenWindow: () => Promise<void>
+    aiDebugCloseWindow: () => Promise<void>
+    aiDebugIsWindowOpen: () => Promise<boolean>
+    aiDebugGetLogs: () => Promise<Array<{
+      id: string
+      type: string
+      timestamp: number
+      requestId: string
+      profileId?: string
+      model?: string
+      data: unknown
+    }>>
+    aiDebugClearLogs: () => Promise<boolean>
+    aiDebugGetLogFilePath: () => Promise<string | null>
+    aiDebugGetLogDir: () => Promise<string>
+    aiDebugExportLogs: (filePath: string) => Promise<{ success: boolean; error?: string }>
+    aiDebugCopyEntry: (entryId: string) => Promise<string | null>
+    onAiDebugMessage: (callback: (message: { type: string; entry?: unknown }) => void) => () => void
   }
 }

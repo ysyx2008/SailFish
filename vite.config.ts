@@ -88,7 +88,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        'file-manager': resolve(__dirname, 'file-manager.html')
+        'file-manager': resolve(__dirname, 'file-manager.html'),
+        'ai-debug': resolve(__dirname, 'ai-debug.html')
       }
     }
   },
