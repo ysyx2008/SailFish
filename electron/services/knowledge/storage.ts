@@ -487,6 +487,9 @@ export class VectorStorage extends EventEmitter {
     hits: any[], 
     options: Partial<SearchOptions>
   ): SearchResult[] {
+    // 相似度阈值（默认 0.5，LanceDB 距离转换后的分数）
+    const similarityThreshold = options.similarity || 0.5
+
     let results: SearchResult[] = hits.map(hit => ({
       id: hit.id,
       docId: hit.docId,
@@ -501,6 +504,9 @@ export class VectorStorage extends EventEmitter {
       },
       source: 'local' as const
     }))
+
+    // 按相似度阈值过滤（核心修复：过滤低相关性结果）
+    results = results.filter(r => r.score >= similarityThreshold)
 
     // 按主机过滤（空 hostId 的记录对所有主机可见）
     if (options.hostId && options.hostId.trim()) {

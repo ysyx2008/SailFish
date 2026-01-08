@@ -656,23 +656,37 @@ export class KnowledgeService extends EventEmitter {
 
   /**
    * 构建 AI 上下文
+   * 只返回高相关性的知识库内容，避免召回不相关内容
    */
   async buildContext(
     query: string, 
     options?: { hostId?: string; maxTokens?: number }
   ): Promise<string> {
+    // 使用较高的相似度阈值，确保召回的内容确实相关
     const results = await this.search(query, {
       hostId: options?.hostId,
-      limit: 5
+      limit: 5,
+      similarity: 0.6  // 提高阈值，过滤低相关性内容
     })
 
     if (results.length === 0) {
       return ''
     }
 
+    // 二次过滤：只保留分数超过阈值的结果
+    // RRF 融合后的分数通常在 0.01-0.03 之间，单通道在 0.016 左右
+    // 设置 0.02 作为阈值，表示至少在一个通道排名较高或在两个通道都有匹配
+    const MIN_RRF_SCORE = 0.02
+    const relevantResults = results.filter(r => r.score >= MIN_RRF_SCORE)
+
+    if (relevantResults.length === 0) {
+      console.log('[KnowledgeService] 知识库搜索结果相关性不足，跳过召回')
+      return ''
+    }
+
     const parts: string[] = ['## 相关知识库内容\n']
     
-    for (const result of results) {
+    for (const result of relevantResults) {
       parts.push(`### ${result.metadata.filename}`)
       // 清理内容中的特殊字符
       parts.push(this.sanitizeText(result.content))
