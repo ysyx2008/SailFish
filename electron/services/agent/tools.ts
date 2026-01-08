@@ -4,6 +4,7 @@
 import type { ToolDefinition } from '../ai.service'
 import type { McpService } from '../mcp.service'
 import { getSkillsSummary } from './skills/registry'
+import { getUserSkillService } from '../user-skill.service'
 
 // 重新导出 ToolDefinition 类型供技能模块使用
 export type { ToolDefinition }
@@ -63,6 +64,56 @@ ${skillsList}
           skill_id: {
             type: 'string',
             description: `技能 ID，可选值: ${skills.map(s => `"${s.id}"`).join(', ') || '暂无'}`
+          }
+        },
+        required: ['skill_id']
+      }
+    }
+  }
+}
+
+/**
+ * 动态构建 load_user_skill 工具定义
+ * 用于加载用户自定义的技能（SKILL.md 文件）
+ */
+function buildLoadUserSkillTool(): ToolDefinition {
+  const userSkillService = getUserSkillService()
+  const skills = userSkillService.getEnabledSkills()
+  const skillsList = skills.length > 0
+    ? skills.map(s => {
+        const desc = s.description ? ` - ${s.description}` : ''
+        return `- **${s.id}**: ${s.name}${desc}`
+      }).join('\n')
+    : '- 暂无用户技能'
+
+  return {
+    type: 'function',
+    function: {
+      name: 'load_user_skill',
+      description: `加载用户自定义技能的完整内容。用户技能是 SKILL.md 文件，包含特定领域的操作指南和最佳实践。
+
+**可用用户技能**：
+${skillsList}
+
+**使用场景**：
+- 当任务涉及用户技能描述的领域时
+- 需要遵循用户定义的特定操作流程时
+- 用户明确要求使用某个技能时
+
+**使用方式**：
+1. 根据任务需求选择合适的用户技能
+2. 调用此工具获取技能的完整指导内容
+3. 按照技能中的指导执行任务
+
+**与 load_skill 的区别**：
+- load_skill: 加载系统内置技能模块，提供额外的工具函数
+- load_user_skill: 加载用户自定义的操作指南，是知识/流程类内容`,
+      parameters: {
+        type: 'object',
+        properties: {
+          skill_id: {
+            type: 'string',
+            description: `用户技能 ID，可选值: ${skills.map(s => `"${s.id}"`).join(', ') || '暂无'}`
           }
         },
         required: ['skill_id']
@@ -721,6 +772,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       }
     },
     buildLoadSkillTool(),
+    buildLoadUserSkillTool(),
     // ==================== 任务记忆工具 ====================
     {
       type: 'function',

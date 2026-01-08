@@ -299,8 +299,37 @@ export class UserSkillService {
   }
 
   /**
-   * 构建 prompt 注入内容
+   * 构建技能摘要列表（用于渐进式加载）
+   * 只返回技能的 ID、名称和描述，不包含完整内容
+   */
+  buildSkillsSummary(): string {
+    const enabledSkills = this.getEnabledSkills()
+    
+    if (enabledSkills.length === 0) {
+      return ''
+    }
+
+    const sections: string[] = []
+    sections.push('## 用户技能')
+    sections.push('')
+    sections.push('以下是用户定义的技能。当任务涉及相关领域时，使用 `load_user_skill` 工具加载完整内容：')
+    sections.push('')
+
+    for (const skill of enabledSkills) {
+      const desc = skill.description ? ` - ${skill.description}` : ''
+      sections.push(`- \`${skill.id}\`: **${skill.name}**${desc}`)
+    }
+    
+    sections.push('')
+    sections.push('**使用方式**：`load_user_skill("技能ID")` 获取完整技能内容后，按照其中的指导执行任务。')
+
+    return sections.join('\n')
+  }
+
+  /**
+   * 构建 prompt 注入内容（完整版，保留用于向后兼容）
    * 将已启用的技能格式化为 system prompt 片段
+   * @deprecated 请使用 buildSkillsSummary() 实现渐进式加载
    */
   buildPromptInjection(): string {
     const enabledSkills = this.getEnabledSkills()
