@@ -712,7 +712,8 @@ onUnmounted(() => {
 }
 
 /* 隐藏非当前 tab 的 AI 面板 */
-.ai-panel-hidden {
+/* 使用 :deep() 穿透 scoped CSS，确保样式能应用到子组件 */
+:deep(.ai-panel-hidden) {
   display: none !important;
 }
 
