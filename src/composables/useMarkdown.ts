@@ -85,25 +85,16 @@ export function useMarkdown() {
   const handleCodeBlockClick = async (event: MouseEvent) => {
     const target = event.target as HTMLElement
     
-    // 调试：显示点击的元素
-    console.log('点击元素:', target.tagName, target.className)
-    
     // 查找带有 data-action 属性的按钮（可能点击的是 SVG 或其子元素）
     const button = target.closest('.code-copy-btn, .code-send-btn') as HTMLElement
     if (!button) {
-      console.log('未找到按钮元素')
       return
     }
-    
-    console.log('找到按钮:', button.className, 'data-action:', button.dataset.action)
     
     const action = button.dataset.action
     const code = getCodeFromBlock(button)
     
-    console.log('Code block action:', action, 'Code length:', code.length)
-    
     if (!code) {
-      console.warn('未能获取代码内容')
       return
     }
     
