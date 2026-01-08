@@ -5,6 +5,13 @@ import * as https from 'https'
 import * as http from 'http'
 import { t } from './agent/i18n'
 
+// AI 请求超时配置（毫秒）
+const AI_TIMEOUT = {
+  CONNECT: 30 * 1000,        // 连接超时：30 秒
+  SOCKET_IDLE: 120 * 1000,   // 空闲超时：120 秒（流式请求中数据流中断检测）
+  TOTAL: 10 * 60 * 1000      // 总超时：10 分钟（长文本生成可能需要较长时间）
+}
+
 export interface AiMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
@@ -172,7 +179,7 @@ export class AiService {
   }
 
   /**
-   * 发送 HTTP 请求（支持代理）
+   * 发送 HTTP 请求（支持代理，带超时处理）
    */
   private makeRequest<T>(profile: AiProfile, body: object, signal?: AbortSignal): Promise<T> {
     return new Promise((resolve, reject) => {
@@ -188,7 +195,8 @@ export class AiService {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${profile.apiKey}`
-        }
+        },
+        timeout: AI_TIMEOUT.CONNECT  // 连接超时
       }
 
       // 应用代理
@@ -196,33 +204,66 @@ export class AiService {
         options.agent = this.getProxyAgent(profile.proxy)
       }
 
+      let isCompleted = false
+      const complete = (fn: () => void) => {
+        if (!isCompleted) {
+          isCompleted = true
+          clearTimeout(totalTimeoutId)
+          fn()
+        }
+      }
+
+      // 总超时计时器
+      const totalTimeoutId = setTimeout(() => {
+        if (!isCompleted) {
+          req.destroy()
+          complete(() => reject(new Error('AI 请求超时（已等待 10 分钟），请检查网络连接后重试。[ETIMEDOUT]')))
+        }
+      }, AI_TIMEOUT.TOTAL)
+
       const req = httpModule.request(options, (res) => {
         let data = ''
+        
+        // 设置 socket 空闲超时
+        res.socket?.setTimeout(AI_TIMEOUT.SOCKET_IDLE)
+        res.socket?.on('timeout', () => {
+          req.destroy()
+          complete(() => reject(new Error('AI 服务响应中断（连接空闲超时），请稍后重试。[ETIMEDOUT]')))
+        })
+
         res.on('data', (chunk) => {
           data += chunk
         })
         res.on('end', () => {
           if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-            try {
-              resolve(JSON.parse(data))
-            } catch {
-              reject(new Error(`响应解析失败: ${data}`))
-            }
+            complete(() => {
+              try {
+                resolve(JSON.parse(data))
+              } catch {
+                reject(new Error(`响应解析失败: ${data}`))
+              }
+            })
           } else {
-            reject(new Error(t('error.api_request_failed', { status: res.statusCode, data })))
+            complete(() => reject(new Error(t('error.api_request_failed', { status: res.statusCode || 0, data }))))
           }
         })
       })
 
+      // 连接超时处理
+      req.on('timeout', () => {
+        req.destroy()
+        complete(() => reject(new Error('连接 AI 服务超时，请检查网络连接。[ETIMEDOUT]')))
+      })
+
       req.on('error', (err) => {
-        reject(new Error(t('error.request_error', { message: err.message })))
+        complete(() => reject(new Error(t('error.request_error', { message: err.message }))))
       })
 
       // 支持中止请求
       if (signal) {
         signal.addEventListener('abort', () => {
           req.destroy()
-          reject(new Error(t('error.request_aborted')))
+          complete(() => reject(new Error(t('error.request_aborted'))))
         })
       }
 
@@ -263,6 +304,35 @@ export class AiService {
     const abortController = new AbortController()
     this.abortControllers.set(reqId, abortController)
 
+    // 完成状态标记，防止重复回调
+    let isCompleted = false
+    const complete = (fn: () => void) => {
+      if (!isCompleted) {
+        isCompleted = true
+        clearTimeout(totalTimeoutId)
+        clearTimeout(idleTimeoutId)
+        this.abortControllers.delete(reqId)
+        fn()
+      }
+    }
+
+    // 总超时计时器
+    let totalTimeoutId: NodeJS.Timeout
+    // 空闲超时计时器（收到数据后重置）
+    let idleTimeoutId: NodeJS.Timeout
+
+    const resetIdleTimeout = () => {
+      clearTimeout(idleTimeoutId)
+      idleTimeoutId = setTimeout(() => {
+        if (!isCompleted) {
+          req?.destroy()
+          complete(() => onError('AI 服务响应中断（长时间未收到数据），请稍后重试。'))
+        }
+      }, AI_TIMEOUT.SOCKET_IDLE)
+    }
+
+    let req: http.ClientRequest | undefined
+
     try {
       const url = new URL(profile.apiUrl)
       const isHttps = url.protocol === 'https:'
@@ -276,7 +346,8 @@ export class AiService {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${profile.apiKey}`
-        }
+        },
+        timeout: AI_TIMEOUT.CONNECT  // 连接超时
       }
 
       // 应用代理
@@ -284,13 +355,27 @@ export class AiService {
         options.agent = this.getProxyAgent(profile.proxy)
       }
 
+      // 启动总超时计时器
+      totalTimeoutId = setTimeout(() => {
+        if (!isCompleted) {
+          req?.destroy()
+          complete(() => onError('AI 请求超时（已等待 10 分钟），请检查网络连接后重试。'))
+        }
+      }, AI_TIMEOUT.TOTAL)
+
       let hasReasoningOutput = false  // 标记是否已输出思考内容
       let hasContentOutput = false    // 标记是否已输出正常内容
 
-      const req = httpModule.request(options, (res) => {
+      req = httpModule.request(options, (res) => {
+        // 开始接收响应，启动空闲超时
+        resetIdleTimeout()
+
         if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
           let errorData = ''
-          res.on('data', (chunk) => { errorData += chunk })
+          res.on('data', (chunk) => { 
+            errorData += chunk
+            resetIdleTimeout()
+          })
           res.on('end', () => {
             // 检测上下文超限错误
             const errorLower = errorData.toLowerCase()
@@ -298,9 +383,9 @@ export class AiService {
                 errorLower.includes('maximum context') ||
                 (errorLower.includes('token') && errorLower.includes('limit')) ||
                 errorLower.includes('too many tokens')) {
-              onError(`上下文超出模型限制。请清除部分对话历史后重试。`)
+              complete(() => onError(`上下文超出模型限制。请清除部分对话历史后重试。`))
             } else {
-              onError(`AI API 请求失败: ${res.statusCode} - ${errorData}`)
+              complete(() => onError(`AI API 请求失败: ${res.statusCode} - ${errorData}`))
             }
           })
           return
@@ -309,6 +394,9 @@ export class AiService {
         let buffer = ''
 
         res.on('data', (chunk: Buffer) => {
+          // 收到数据，重置空闲超时
+          resetIdleTimeout()
+
           buffer += chunk.toString()
           const lines = buffer.split('\n')
           // 保留最后一个可能不完整的行
@@ -325,7 +413,7 @@ export class AiService {
                 if (hasReasoningOutput && !hasContentOutput) {
                   onChunk('\n\n</details>\n')
                 }
-                onDone()
+                complete(() => onDone())
                 return
               }
 
@@ -362,35 +450,42 @@ export class AiService {
         })
 
         res.on('end', () => {
-          onDone()
+          complete(() => onDone())
         })
 
         res.on('error', (err) => {
-          onError(`响应错误: ${err.message}`)
+          complete(() => onError(`响应错误: ${err.message}`))
         })
+      })
+
+      // 连接超时处理
+      req.on('timeout', () => {
+        req?.destroy()
+        complete(() => onError('连接 AI 服务超时，请检查网络连接。'))
       })
 
       req.on('error', (err) => {
         // 检查是否是中止错误（可能是原始消息或国际化后的消息）
         if (err.message === t('error.request_aborted') || err.message.includes('aborted')) {
-          onDone()
+          complete(() => onDone())
           return
         }
-        onError(t('error.request_error', { message: err.message }))
+        complete(() => onError(t('error.request_error', { message: err.message })))
       })
 
       // 支持中止请求
       abortController.signal.addEventListener('abort', () => {
-        req.destroy()
+        req?.destroy()
+        complete(() => onDone())
       })
 
       req.write(JSON.stringify(requestBody))
       req.end()
     } catch (error) {
       if (error instanceof Error) {
-        onError(`AI 请求失败: ${error.message}`)
+        complete(() => onError(`AI 请求失败: ${error.message}`))
       } else {
-        onError('AI 请求失败: 未知错误')
+        complete(() => onError('AI 请求失败: 未知错误'))
       }
     }
   }
@@ -536,6 +631,41 @@ export class AiService {
     const abortController = new AbortController()
     this.abortControllers.set(reqId, abortController)
 
+    // 完成状态标记，防止重复回调
+    let isCompleted = false
+    // 总超时计时器
+    let totalTimeoutId: NodeJS.Timeout
+    // 空闲超时计时器（收到数据后重置）
+    let idleTimeoutId: NodeJS.Timeout
+    // 请求对象引用
+    let req: http.ClientRequest | undefined
+
+    // 收集的数据
+    let content = ''
+    let reasoningContent = ''  // 用于收集 think 模型的思考内容
+    let toolCalls: ToolCall[] = []
+    let finishReason: string | undefined
+
+    const complete = (fn: () => void) => {
+      if (!isCompleted) {
+        isCompleted = true
+        clearTimeout(totalTimeoutId)
+        clearTimeout(idleTimeoutId)
+        this.abortControllers.delete(reqId)
+        fn()
+      }
+    }
+
+    const resetIdleTimeout = () => {
+      clearTimeout(idleTimeoutId)
+      idleTimeoutId = setTimeout(() => {
+        if (!isCompleted) {
+          req?.destroy()
+          complete(() => onError('AI 服务响应中断（长时间未收到数据），请稍后重试。[ETIMEDOUT]'))
+        }
+      }, AI_TIMEOUT.SOCKET_IDLE)
+    }
+
     // 转换消息格式，支持 think 模型的 reasoning_content
     const formattedMessages = messages.map(msg => {
       if (msg.role === 'tool') {
@@ -591,27 +721,38 @@ export class AiService {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${profile.apiKey}`
-        }
+        },
+        timeout: AI_TIMEOUT.CONNECT  // 连接超时
       }
 
       if (profile.proxy) {
         options.agent = this.getProxyAgent(profile.proxy)
       }
 
-      let content = ''
-      let reasoningContent = ''  // 用于收集 think 模型的思考内容
-      let toolCalls: ToolCall[] = []
-      let finishReason: string | undefined
+      // 启动总超时计时器
+      totalTimeoutId = setTimeout(() => {
+        if (!isCompleted) {
+          req?.destroy()
+          complete(() => onError('AI 请求超时（已等待 10 分钟），请检查网络连接后重试。[ETIMEDOUT]'))
+        }
+      }, AI_TIMEOUT.TOTAL)
+
       let hasReasoningOutput = false  // 标记是否已输出思考内容的开始标记
       let hasContentOutput = false    // 标记是否已开始输出正常内容
 
-      const req = httpModule.request(options, (res) => {
+      req = httpModule.request(options, (res) => {
+        // 开始接收响应，启动空闲超时
+        resetIdleTimeout()
+
         // 处理 HTTP 错误
         if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
           let errorData = ''
-          res.on('data', (chunk) => { errorData += chunk })
+          res.on('data', (chunk) => { 
+            errorData += chunk
+            resetIdleTimeout()
+          })
           res.on('end', () => {
-            onError(`AI API 请求失败: ${res.statusCode} - ${errorData}`)
+            complete(() => onError(`AI API 请求失败: ${res.statusCode} - ${errorData}`))
           })
           return
         }
@@ -619,8 +760,11 @@ export class AiService {
         let buffer = ''
 
         res.on('data', (chunk: Buffer) => {
+          // 收到数据，重置空闲超时
+          resetIdleTimeout()
+
           // 检查是否已被 abort，立即停止处理
-          if (abortController.signal.aborted) {
+          if (abortController.signal.aborted || isCompleted) {
             return
           }
 
@@ -630,7 +774,7 @@ export class AiService {
 
           for (const line of lines) {
             // 再次检查，防止在循环中被 abort
-            if (abortController.signal.aborted) {
+            if (abortController.signal.aborted || isCompleted) {
               return
             }
             if (line.startsWith('data: ')) {
@@ -638,12 +782,12 @@ export class AiService {
               if (data === '[DONE]') {
                 // 如果有思考内容但没有最终内容
                 const finalContent = content || (reasoningContent ? `🤔 **思考过程**\n\n> ${reasoningContent.replace(/\n/g, '\n> ')}` : undefined)
-                onDone({
+                complete(() => onDone({
                   content: finalContent,
                   tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
                   finish_reason: finishReason as ChatWithToolsResult['finish_reason'],
                   reasoning_content: reasoningContent || undefined  // 返回原始思考内容，用于消息历史
-                })
+                }))
                 return
               }
 
@@ -727,59 +871,61 @@ export class AiService {
         })
 
         res.on('end', () => {
-          // 清理 AbortController
-          this.abortControllers.delete(reqId)
           // 如果有工具调用，通知一次
           if (toolCalls.length > 0) {
             onToolCall(toolCalls)
           }
           // 如果有思考内容但没有最终内容，把思考内容作为最终内容
           const finalContent = content || (reasoningContent ? `🤔 **思考过程**\n\n> ${reasoningContent.replace(/\n/g, '\n> ')}` : undefined)
-          onDone({
+          complete(() => onDone({
             content: finalContent,
             tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
             finish_reason: finishReason as ChatWithToolsResult['finish_reason'],
             reasoning_content: reasoningContent || undefined  // 返回原始思考内容，用于消息历史
-          })
+          }))
         })
 
         res.on('error', (err) => {
-          // 清理 AbortController
-          this.abortControllers.delete(reqId)
-          onError(t('error.request_error', { message: err.message }))
+          complete(() => onError(t('error.request_error', { message: err.message })))
         })
       })
 
+      // 连接超时处理
+      req.on('timeout', () => {
+        req?.destroy()
+        complete(() => onError('连接 AI 服务超时，请检查网络连接。[ETIMEDOUT]'))
+      })
+
       req.on('error', (err) => {
-        // 清理 AbortController
-        this.abortControllers.delete(reqId)
         // 如果是中止导致的错误，不报错
         if (err.message === 'aborted' || err.message.includes('socket hang up')) {
-          onDone({
+          complete(() => onDone({
             content: undefined,
             tool_calls: undefined,
             finish_reason: 'stop'
-          })
+          }))
           return
         }
-        onError(`请求失败: ${err.message}`)
+        complete(() => onError(`请求失败: ${err.message}`))
       })
 
       // 支持中止请求
       abortController.signal.addEventListener('abort', () => {
-        req.destroy()
-        this.abortControllers.delete(reqId)
+        req?.destroy()
+        complete(() => onDone({
+          content: content || undefined,
+          tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+          finish_reason: 'stop'
+        }))
       })
 
       req.write(JSON.stringify(requestBody))
       req.end()
     } catch (error) {
-      // 清理 AbortController
-      this.abortControllers.delete(reqId)
       if (error instanceof Error) {
-        onError(`AI 请求失败: ${error.message}`)
+        complete(() => onError(`AI 请求失败: ${error.message}`))
       } else {
-        onError('AI 请求失败')
+        complete(() => onError('AI 请求失败'))
       }
     }
   }
