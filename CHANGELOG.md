@@ -2,7 +2,25 @@
 
 All notable changes to SFTerm will be documented in this file.
 
-## v8.12.0 (Latest)
+## v8.13.0 (Latest)
+
+### User Skills System
+- 🧩 **User-defined Skills**: Support for custom SKILL.md files in the skills directory
+  - Compatible with Claude Skill L1+L2 standard
+  - Progressive loading mechanism for better performance
+  - YAML frontmatter support for skill metadata (name, description, version, enabled)
+  - In-app skill management with enable/disable toggle
+- 🔧 **ask_user Tool**: New tool for Agent to ask user questions when more information is needed
+
+### AI Enhancements
+- 🔍 **AI Debug Console**: New debugging interface for AI interactions
+- 📏 **Context Length Check**: Automatic conversation context length monitoring
+- ⏱️ **Request Timeout Handling**: Added timeout mechanism for AI requests with friendly error messages
+
+### UI Improvements
+- 📝 **Auto-resize Input**: Text input area now supports adaptive height
+
+## v8.12.0
 
 ### Word Document Processing Skill
 - 📝 New `word` skill for session-based Word document creation and editing
