@@ -326,7 +326,7 @@ export class AiService {
       idleTimeoutId = setTimeout(() => {
         if (!isCompleted) {
           req?.destroy()
-          complete(() => onError('AI 服务响应中断（长时间未收到数据），请稍后重试。'))
+          complete(() => onError('AI 服务响应中断（长时间未收到数据），请稍后重试。[ETIMEDOUT]'))
         }
       }, AI_TIMEOUT.SOCKET_IDLE)
     }
@@ -359,7 +359,7 @@ export class AiService {
       totalTimeoutId = setTimeout(() => {
         if (!isCompleted) {
           req?.destroy()
-          complete(() => onError('AI 请求超时（已等待 10 分钟），请检查网络连接后重试。'))
+          complete(() => onError('AI 请求超时（已等待 10 分钟），请检查网络连接后重试。[ETIMEDOUT]'))
         }
       }, AI_TIMEOUT.TOTAL)
 
@@ -461,7 +461,7 @@ export class AiService {
       // 连接超时处理
       req.on('timeout', () => {
         req?.destroy()
-        complete(() => onError('连接 AI 服务超时，请检查网络连接。'))
+        complete(() => onError('连接 AI 服务超时，请检查网络连接。[ETIMEDOUT]'))
       })
 
       req.on('error', (err) => {
