@@ -3589,19 +3589,35 @@ function recallTask(
   executor: ToolExecutorConfig
 ): ToolResult {
   const taskId = args.task_id as string
+  const memoryStore = getTaskMemoryStore()
   
   if (!taskId) {
-    return { success: false, output: '', error: t('memory.task_id_required') }
+    // 列出所有可用的任务 ID
+    const summaries = memoryStore.getSummaries(20)
+    if (summaries.length === 0) {
+      return { success: false, output: '', error: t('memory.task_id_required') + '\n\n' + t('memory.no_task_history') }
+    }
+    const availableIds = summaries.map(s => `- [${s.id}] ${s.summary}`).join('\n')
+    return { success: false, output: '', error: t('memory.task_id_required') + '\n\n' + t('memory.available_task_ids') + '\n' + availableIds }
   }
   
-  const memoryStore = getTaskMemoryStore()
   const result = memoryStore.getDigest(taskId)
   
   if (!result) {
+    // 列出所有可用的任务 ID，帮助 AI 找到正确的任务
+    const summaries = memoryStore.getSummaries(20)
+    if (summaries.length === 0) {
+      return { 
+        success: false, 
+        output: '', 
+        error: t('memory.task_not_found', { taskId }) + '\n\n' + t('memory.no_task_history') 
+      }
+    }
+    const availableIds = summaries.map(s => `- [${s.id}] ${s.summary}`).join('\n')
     return { 
       success: false, 
       output: '', 
-      error: t('memory.task_not_found', { taskId }) 
+      error: t('memory.task_not_found', { taskId }) + '\n\n' + t('memory.available_task_ids') + '\n' + availableIds 
     }
   }
   
@@ -3654,12 +3670,17 @@ function deepRecall(
 ): ToolResult {
   const taskId = args.task_id as string
   const stepIndex = args.step_index as number | undefined
+  const memoryStore = getTaskMemoryStore()
   
   if (!taskId) {
-    return { success: false, output: '', error: t('memory.task_id_required') }
+    // 列出所有可用的任务 ID
+    const summaries = memoryStore.getSummaries(20)
+    if (summaries.length === 0) {
+      return { success: false, output: '', error: t('memory.task_id_required') + '\n\n' + t('memory.no_task_history') }
+    }
+    const availableIds = summaries.map(s => `- [${s.id}] ${s.summary}`).join('\n')
+    return { success: false, output: '', error: t('memory.task_id_required') + '\n\n' + t('memory.available_task_ids') + '\n' + availableIds }
   }
-  
-  const memoryStore = getTaskMemoryStore()
   
   // 获取指定步骤或所有步骤
   const result = memoryStore.getFullSteps(taskId, stepIndex)
@@ -3672,10 +3693,20 @@ function deepRecall(
         error: t('memory.step_not_found', { taskId, stepIndex }) 
       }
     }
+    // 列出所有可用的任务 ID
+    const summaries = memoryStore.getSummaries(20)
+    if (summaries.length === 0) {
+      return { 
+        success: false, 
+        output: '', 
+        error: t('memory.task_not_found', { taskId }) + '\n\n' + t('memory.no_task_history') 
+      }
+    }
+    const availableIds = summaries.map(s => `- [${s.id}] ${s.summary}`).join('\n')
     return { 
       success: false, 
       output: '', 
-      error: t('memory.task_not_found', { taskId }) 
+      error: t('memory.task_not_found', { taskId }) + '\n\n' + t('memory.available_task_ids') + '\n' + availableIds 
     }
   }
   
