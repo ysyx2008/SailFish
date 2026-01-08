@@ -1520,6 +1520,33 @@ interface Window {
       // 获取拖放文件的路径（Electron 24+ 推荐方式）
       getPathForFile: (file: File) => string
     }
+    // 用户技能操作
+    userSkill: {
+      list: () => Promise<Array<{
+        id: string
+        name: string
+        description: string
+        version?: string
+        enabled: boolean
+        content: string
+        filePath: string
+        lastModified: number
+      }>>
+      refresh: () => Promise<Array<{
+        id: string
+        name: string
+        description: string
+        version?: string
+        enabled: boolean
+        content: string
+        filePath: string
+        lastModified: number
+      }>>
+      toggle: (skillId: string, enabled: boolean) => Promise<boolean>
+      openFolder: () => Promise<void>
+      getContent: (skillId: string) => Promise<string | null>
+      getSkillsDir: () => Promise<string>
+    }
     // 终端屏幕内容服务（主进程请求渲染进程数据）
     screen: {
       // 注册获取最近 N 行的请求处理器
