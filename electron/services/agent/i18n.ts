@@ -131,6 +131,7 @@ const translations = {
     'agent.context_ack_single': '好的，我已了解之前的任务执行情况，会结合这个上下文来处理当前任务。',
     'agent.context_ack_multi': '好的，我已了解之前 {count} 个任务的执行情况，会结合这些上下文来处理当前任务。',
     'agent.no_response': 'AI 未返回任何内容',
+    'agent.context_limit_exceeded': '⚠️ 对话上下文超出模型限制（当前 {current} tokens，模型限制 {limit} tokens，占用 {percentage}%）。\n\n建议：\n1. 开始新对话\n2. 或切换到上下文更长的模型',
     
     // 内容压缩
     'compress.lines_omitted': '... [省略 {count} 行] ...',
@@ -797,6 +798,7 @@ const translations = {
     'agent.context_ack_single': 'Got it, I understand the previous task context and will use it to handle the current task.',
     'agent.context_ack_multi': 'Got it, I understand the context of the previous {count} tasks and will use it to handle the current task.',
     'agent.no_response': 'AI returned no response',
+    'agent.context_limit_exceeded': '⚠️ Conversation context exceeds model limit (current {current} tokens, model limit {limit} tokens, {percentage}% used).\n\nSuggestions:\n1. Start a new conversation\n2. Or switch to a model with larger context',
     
     // Content compression
     'compress.lines_omitted': '... [{count} lines omitted] ...',
