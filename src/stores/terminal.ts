@@ -1019,27 +1019,33 @@ export const useTerminalStore = defineStore('terminal', () => {
     if (!tab) return
 
     // 转换历史记录的 steps 为完整的 AgentStep 数组
+    // 注意：record.steps 中已经包含了 user_task 步骤，不需要重复添加
+    const convertedSteps = record.steps.map(s => ({
+      id: s.id,
+      type: s.type as AgentStep['type'],
+      content: s.content,
+      toolName: s.toolName,
+      toolArgs: s.toolArgs,
+      toolResult: s.toolResult,
+      riskLevel: s.riskLevel as RiskLevel | undefined,
+      timestamp: s.timestamp
+    }))
+    
+    // 检查是否已有 user_task 步骤，如果没有则添加（兼容旧数据）
+    const hasUserTask = convertedSteps.some(s => s.type === 'user_task')
+    
     const steps: AgentStep[] = [
-      // 添加 user_task 步骤
-      {
+      // 只有在 record.steps 中没有 user_task 时才添加（兼容旧数据格式）
+      ...(!hasUserTask ? [{
         id: `user_task_${record.timestamp}`,
-        type: 'user_task',
+        type: 'user_task' as const,
         content: record.userTask,
         timestamp: record.timestamp
-      },
+      }] : []),
       // 转换记录中的步骤
-      ...record.steps.map(s => ({
-        id: s.id,
-        type: s.type as AgentStep['type'],
-        content: s.content,
-        toolName: s.toolName,
-        toolArgs: s.toolArgs,
-        toolResult: s.toolResult,
-        riskLevel: s.riskLevel as RiskLevel | undefined,
-        timestamp: s.timestamp
-      })),
-      // 添加 final_result 步骤（如果有）
-      ...(record.finalResult ? [{
+      ...convertedSteps,
+      // 添加 final_result 步骤（如果有且 record.steps 中没有）
+      ...(record.finalResult && !convertedSteps.some(s => s.type === 'final_result') ? [{
         id: `final_result_${record.timestamp}`,
         type: 'final_result' as const,
         content: record.finalResult,
