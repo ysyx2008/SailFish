@@ -457,7 +457,7 @@ onUnmounted(() => {
         <aside class="ai-sidebar" :style="{ width: aiPanelWidth + 'px' }">
           <template v-for="tab in terminalStore.tabs" :key="tab.id">
             <AiPanel 
-              :class="{ 'ai-panel-hidden': tab.id !== terminalStore.activeTabId }"
+              v-show="tab.id === terminalStore.activeTabId"
               :tab-id="tab.id"
               :visible="tab.id === terminalStore.activeTabId"
               @close="showAiPanel = false" 
@@ -709,12 +709,6 @@ onUnmounted(() => {
   width: 1px;
   background: linear-gradient(180deg, transparent, rgba(var(--accent-secondary-rgb, 116, 199, 236), 0.15), transparent);
   pointer-events: none;
-}
-
-/* 隐藏非当前 tab 的 AI 面板 */
-/* 使用 :deep() 穿透 scoped CSS，确保样式能应用到子组件 */
-:deep(.ai-panel-hidden) {
-  display: none !important;
 }
 
 /* 拖拽调整宽度手柄 */

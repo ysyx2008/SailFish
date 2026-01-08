@@ -249,6 +249,18 @@ function getFullMessages(task: TaskMemory): AiMessage[] {
       }))
     }
     messages.push(msg)
+    
+    // 如果有未处理的 tool_calls，必须添加对应的 tool result 消息
+    // 否则 API 会报错：'tool_calls' must be followed by tool messages responding to each 'tool_call_id'
+    if (pendingToolCalls.length > 0) {
+      for (const tc of pendingToolCalls) {
+        messages.push({
+          role: 'tool',
+          content: '[任务中断，工具执行结果未记录]',
+          tool_call_id: tc.id
+        })
+      }
+    }
   }
   
   return messages
