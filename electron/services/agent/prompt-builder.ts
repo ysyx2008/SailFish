@@ -5,6 +5,7 @@ import type { AgentContext, HostProfileServiceInterface, ExecutionMode } from '.
 import type { AgentMbtiType } from '../config.service'
 import type { KnowledgeService } from '../knowledge'
 import { getSkillsSummary } from './skills/registry'
+import { getUserSkillService } from '../user-skill.service'
 
 /**
  * MBTI 风格描述映射
@@ -730,6 +731,7 @@ ${simpleTaskExample}
 ${buildComplexTaskExamples(isWindows)}
 ${documentSection}
 ${knowledgeSection}
+${getUserSkillService().buildPromptInjection()}
 ${taskSummaries ? `
 
 ## 历史任务记忆

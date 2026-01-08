@@ -154,6 +154,7 @@ export default {
       ai: 'AI 配置',
       aiRules: 'AI 规则',
       mcp: 'MCP 服务器',
+      skills: '用户技能',
       knowledge: '知识库',
       email: '邮箱账户',
       theme: '主题配色',
@@ -360,6 +361,29 @@ export default {
     placeholders: {
       githubToken: '<在此填入你的GitHub Token>'
     }
+  },
+
+  // 用户技能设置
+  skillSettings: {
+    title: '用户技能',
+    description: '用户技能可以教 AI 如何完成特定任务。将 SKILL.md 文件放入技能目录即可添加新技能。',
+    openFolder: '打开目录',
+    refresh: '刷新',
+    view: '查看',
+    enabled: '已启用',
+    toggleEnable: '启用/禁用此技能',
+    noSkills: '暂无用户技能',
+    noSkillsTip: '点击"打开目录"添加 SKILL.md 文件',
+    loading: '加载中...',
+    lastModified: '最后修改',
+    howToAdd: '如何添加技能？',
+    step1: '点击"打开目录"打开技能文件夹',
+    step2: '创建一个子目录（如 my-skill/），在其中创建 SKILL.md 文件',
+    step3: '刷新列表即可看到新技能',
+    formatTitle: 'SKILL.md 格式示例',
+    exampleName: '我的部署技能',
+    exampleDesc: '自动化服务器部署流程',
+    exampleContent: '## 当需要部署时\n1. 首先检查服务器连接\n2. 拉取最新代码\n3. 运行构建脚本\n...'
   },
 
   // 知识库设置

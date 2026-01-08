@@ -85,6 +85,45 @@ export class HistoryService {
   }
 
   /**
+   * 递归复制目录
+   */
+  private copyDirectory(src: string, dest: string): void {
+    if (!fs.existsSync(dest)) {
+      fs.mkdirSync(dest, { recursive: true })
+    }
+    const entries = fs.readdirSync(src, { withFileTypes: true })
+    for (const entry of entries) {
+      const srcPath = path.join(src, entry.name)
+      const destPath = path.join(dest, entry.name)
+      if (entry.isDirectory()) {
+        this.copyDirectory(srcPath, destPath)
+      } else {
+        fs.copyFileSync(srcPath, destPath)
+      }
+    }
+  }
+
+  /**
+   * 合并目录（不覆盖已存在的文件）
+   */
+  private mergeDirectory(src: string, dest: string): void {
+    if (!fs.existsSync(dest)) {
+      fs.mkdirSync(dest, { recursive: true })
+    }
+    const entries = fs.readdirSync(src, { withFileTypes: true })
+    for (const entry of entries) {
+      const srcPath = path.join(src, entry.name)
+      const destPath = path.join(dest, entry.name)
+      if (entry.isDirectory()) {
+        this.mergeDirectory(srcPath, destPath)
+      } else if (!fs.existsSync(destPath)) {
+        // 只有目标文件不存在时才复制
+        fs.copyFileSync(srcPath, destPath)
+      }
+    }
+  }
+
+  /**
    * 获取当前日期字符串（用于文件名）
    */
   private getDateString(timestamp?: number): string {
@@ -325,7 +364,15 @@ export class HistoryService {
         files.push('agent-history.json')
       }
 
-      // 7. 写入说明文件
+      // 7. 导出用户技能目录
+      const skillsDir = path.join(app.getPath('userData'), 'skills')
+      if (fs.existsSync(skillsDir)) {
+        const skillsExportDir = path.join(exportPath, 'skills')
+        this.copyDirectory(skillsDir, skillsExportDir)
+        files.push('skills/')
+      }
+
+      // 8. 写入说明文件
       const readme = `# 旗鱼终端备份
 导出时间: ${new Date().toLocaleString()}
 
@@ -336,6 +383,7 @@ export class HistoryService {
 - host-profiles.json - 主机档案（含记忆）
 - chat-history.json  - 聊天记录
 - agent-history.json - Agent 任务记录
+- skills/            - 用户技能文件
 
 ## 导入方式
 1. 在设置 > 数据管理中导入整个文件夹
@@ -412,6 +460,14 @@ export class HistoryService {
           this.saveAgentRecord(record)
         }
         imported.push('Agent 记录')
+      }
+
+      // 导入用户技能
+      const skillsImportDir = path.join(importPath, 'skills')
+      if (fs.existsSync(skillsImportDir)) {
+        const skillsDir = path.join(app.getPath('userData'), 'skills')
+        this.mergeDirectory(skillsImportDir, skillsDir)
+        imported.push('用户技能')
       }
 
       return { success: true, imported, config, hostProfiles }

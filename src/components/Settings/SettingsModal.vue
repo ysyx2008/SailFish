@@ -14,6 +14,7 @@ import McpSettings from './McpSettings.vue'
 import KnowledgeSettings from './KnowledgeSettings.vue'
 import LanguageSettings from './LanguageSettings.vue'
 import EmailSettings from './EmailSettings.vue'
+import SkillSettings from './SkillSettings.vue'
 import sailfishLogo from '../../../resources/logo.png'
 
 const { t } = useI18n()
@@ -30,7 +31,7 @@ const emit = defineEmits<{
 
 const configStore = useConfigStore()
 
-type SettingsTab = 'ai' | 'aiRules' | 'mcp' | 'knowledge' | 'email' | 'theme' | 'terminal' | 'data' | 'language' | 'about'
+type SettingsTab = 'ai' | 'aiRules' | 'mcp' | 'skills' | 'knowledge' | 'email' | 'theme' | 'terminal' | 'data' | 'language' | 'about'
 const activeTab = ref<SettingsTab>('ai')
 const appVersion = ref<string>('')
 const showConfirmDialog = ref(false)
@@ -297,7 +298,7 @@ let unsubscribeUpdater: (() => void) | null = null
 
 // 初始化时设置初始 tab 和获取版本号
 onMounted(async () => {
-  if (props.initialTab && ['ai', 'aiRules', 'mcp', 'knowledge', 'email', 'theme', 'terminal', 'data', 'language', 'about'].includes(props.initialTab)) {
+  if (props.initialTab && ['ai', 'aiRules', 'mcp', 'skills', 'knowledge', 'email', 'theme', 'terminal', 'data', 'language', 'about'].includes(props.initialTab)) {
     activeTab.value = props.initialTab as SettingsTab
   }
   // 获取应用版本号
@@ -332,6 +333,7 @@ const tabs = computed(() => [
   { id: 'ai' as const, label: t('settings.tabs.ai'), icon: '🤖' },
   { id: 'aiRules' as const, label: t('settings.tabs.aiRules'), icon: '📋' },
   { id: 'mcp' as const, label: t('settings.tabs.mcp'), icon: '🔌' },
+  { id: 'skills' as const, label: t('settings.tabs.skills'), icon: '🧩' },
   { id: 'knowledge' as const, label: t('settings.tabs.knowledge'), icon: '📚' },
   { id: 'email' as const, label: t('settings.tabs.email'), icon: '📧' },
   { id: 'theme' as const, label: t('settings.tabs.theme'), icon: '🎨' },
@@ -452,6 +454,7 @@ const onQrImageError = (event: Event) => {
           <AiSettings v-if="activeTab === 'ai'" />
           <AiRulesSettings v-else-if="activeTab === 'aiRules'" />
           <McpSettings v-else-if="activeTab === 'mcp'" />
+          <SkillSettings v-else-if="activeTab === 'skills'" />
           <KnowledgeSettings v-else-if="activeTab === 'knowledge'" />
           <EmailSettings v-else-if="activeTab === 'email'" />
           <ThemeSettings v-else-if="activeTab === 'theme'" />
