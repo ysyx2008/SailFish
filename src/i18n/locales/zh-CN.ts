@@ -821,15 +821,7 @@ export default {
     analyzeContentPrompt: '请帮我分析这段终端内容：',
     diagnosing: '诊断中...',
     analyzing: '分析中...',
-    errorPrefix: '错误：',
-    // 引用功能
-    quote: {
-      quote: '引用',
-      quoting: '引用',
-      referencing: '引用自历史对话',
-      historyContent: '历史对话内容',
-      remove: '移除引用'
-    }
+    errorPrefix: '错误：'
   },
 
   // @ 命令（提及）
