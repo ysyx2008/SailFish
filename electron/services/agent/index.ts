@@ -1017,8 +1017,8 @@ export class AgentService {
       console.log('[Agent] Knowledge service error:', e)
     }
     
-    // 获取任务记忆（智能分层上下文）
-    const taskMemoryStore = getTaskMemoryStore()
+    // 获取任务记忆（智能分层上下文）- 按终端 ID 隔离
+    const taskMemoryStore = getTaskMemoryStore(ptyId)
     
     // 如果前端传入了 previousTasks，但 TaskMemoryStore 为空，将数据导入到 TaskMemoryStore
     // 这实现了从旧模式到新模式的平滑过渡，避免数据重复
@@ -1576,7 +1576,7 @@ export class AgentService {
       // 保存任务到 TaskMemoryStore（L1/L2/L3 多层次记忆）
       try {
         const taskId = `task_${agentId.substring(0, 8)}`
-        const taskMemoryStore = getTaskMemoryStore()
+        const taskMemoryStore = getTaskMemoryStore(ptyId)
         
         // 检测是否在等待用户确认（基于 ask_user 工具调用）
         const { isPending } = detectPendingConfirmation(run.steps)
@@ -1617,7 +1617,7 @@ export class AgentService {
         // 用户主动中止，保存任务记忆（标记为 aborted）
         try {
           const taskId = `task_${agentId.substring(0, 8)}`
-          const taskMemoryStore = getTaskMemoryStore()
+          const taskMemoryStore = getTaskMemoryStore(ptyId)
           taskMemoryStore.saveTask(
             taskId,
             userMessage,
@@ -1663,7 +1663,7 @@ export class AgentService {
           // 保存任务到记忆
           try {
             const taskId = `task_${agentId.substring(0, 8)}`
-            const taskMemoryStore = getTaskMemoryStore()
+            const taskMemoryStore = getTaskMemoryStore(ptyId)
             taskMemoryStore.saveTask(
               taskId,
               userMessage,
@@ -1694,7 +1694,7 @@ export class AgentService {
       // 保存失败的任务到记忆
       try {
         const taskId = `task_${agentId.substring(0, 8)}`
-        const taskMemoryStore = getTaskMemoryStore()
+        const taskMemoryStore = getTaskMemoryStore(ptyId)
         taskMemoryStore.saveTask(
           taskId,
           userMessage,

@@ -344,10 +344,10 @@ export async function executeTool(
       return await loadUserSkillTool(args, executor)
 
     case 'recall_task':
-      return recallTask(args, executor)
+      return recallTask(args, executor, ptyId)
 
     case 'deep_recall':
-      return deepRecall(args, executor)
+      return deepRecall(args, executor, ptyId)
 
     default:
       // 检查是否是技能工具调用
@@ -3586,10 +3586,11 @@ function clearPlan(
  */
 function recallTask(
   args: Record<string, unknown>,
-  executor: ToolExecutorConfig
+  executor: ToolExecutorConfig,
+  ptyId: string
 ): ToolResult {
   const taskId = args.task_id as string
-  const memoryStore = getTaskMemoryStore()
+  const memoryStore = getTaskMemoryStore(ptyId)
   
   if (!taskId) {
     // 列出所有可用的任务 ID
@@ -3666,11 +3667,12 @@ function recallTask(
  */
 function deepRecall(
   args: Record<string, unknown>,
-  executor: ToolExecutorConfig
+  executor: ToolExecutorConfig,
+  ptyId: string
 ): ToolResult {
   const taskId = args.task_id as string
   const stepIndex = args.step_index as number | undefined
-  const memoryStore = getTaskMemoryStore()
+  const memoryStore = getTaskMemoryStore(ptyId)
   
   if (!taskId) {
     // 列出所有可用的任务 ID

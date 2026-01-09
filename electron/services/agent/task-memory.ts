@@ -531,14 +531,42 @@ export class TaskMemoryStore {
   }
 }
 
-// 单例导出
-let taskMemoryStoreInstance: TaskMemoryStore | null = null
+// 按终端 ID 隔离的多实例存储
+const taskMemoryStores: Map<string, TaskMemoryStore> = new Map()
 
-export function getTaskMemoryStore(): TaskMemoryStore {
-  if (!taskMemoryStoreInstance) {
-    taskMemoryStoreInstance = new TaskMemoryStore()
+/**
+ * 获取指定终端的 TaskMemoryStore 实例
+ * @param ptyId 终端 ID（必须提供以确保隔离）
+ */
+export function getTaskMemoryStore(ptyId: string): TaskMemoryStore {
+  if (!ptyId) {
+    console.warn('[TaskMemory] getTaskMemoryStore called without ptyId, using fallback')
+    ptyId = '__fallback__'
   }
-  return taskMemoryStoreInstance
+  
+  let store = taskMemoryStores.get(ptyId)
+  if (!store) {
+    store = new TaskMemoryStore()
+    taskMemoryStores.set(ptyId, store)
+  }
+  return store
+}
+
+/**
+ * 清理指定终端的 TaskMemoryStore（当终端关闭时调用）
+ * @param ptyId 终端 ID
+ */
+export function clearTaskMemoryStore(ptyId: string): void {
+  if (ptyId) {
+    taskMemoryStores.delete(ptyId)
+  }
+}
+
+/**
+ * 获取所有终端的 TaskMemoryStore（用于调试）
+ */
+export function getAllTaskMemoryStores(): Map<string, TaskMemoryStore> {
+  return taskMemoryStores
 }
 
 // 也导出类，方便测试或创建独立实例

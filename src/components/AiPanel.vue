@@ -267,13 +267,13 @@ const handleLoadHistory = (record: { id: string; timestamp: number; terminalId: 
 const showClearConfirm = ref(false)
 
 // 请求清空对话（如果 Agent 正在执行，需要用户确认）
-const requestClearMessages = () => {
+const requestClearMessages = async () => {
   if (isAgentRunning.value) {
     // Agent 正在执行，需要确认
     showClearConfirm.value = true
   } else {
     // Agent 未运行，直接清空
-    doClearMessages()
+    await doClearMessages()
   }
 }
 
@@ -287,7 +287,7 @@ const confirmClearMessages = async () => {
   }
   
   // 然后清空对话
-  doClearMessages()
+  await doClearMessages()
 }
 
 // 取消清空对话
@@ -296,7 +296,7 @@ const cancelClearMessages = () => {
 }
 
 // 执行清空对话（包括 Agent 状态和历史）
-const doClearMessages = () => {
+const doClearMessages = async () => {
   if (currentTabId.value) {
     // 在清空之前，保存当前会话到历史记录（会话级保存）
     if (agentMode.value) {
@@ -304,6 +304,16 @@ const doClearMessages = () => {
     }
     terminalStore.clearAiMessages(currentTabId.value)
     terminalStore.clearAgentState(currentTabId.value, false)  // 不保留历史
+    
+    // 清空后端的任务历史记忆（按终端隔离）
+    const context = terminalStore.getAgentContext(currentTabId.value)
+    if (context?.ptyId) {
+      try {
+        await window.electronAPI.agent.clearHistory(context.ptyId)
+      } catch (e) {
+        console.warn('[AiPanel] Failed to clear agent history:', e)
+      }
+    }
   }
   // 清空上传的文档
   clearUploadedDocs()

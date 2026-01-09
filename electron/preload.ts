@@ -814,6 +814,9 @@ const electronAPI = {
     // 清理 Agent 运行记录
     cleanup: (agentId: string) => ipcRenderer.invoke('agent:cleanup', agentId),
 
+    // 清空指定终端的任务历史记忆（用于"清空对话"功能）
+    clearHistory: (ptyId: string) => ipcRenderer.invoke('agent:clearHistory', ptyId) as Promise<void>,
+
     // 更新 Agent 配置（如执行模式、超时时间）
     updateConfig: (agentId: string, config: { executionMode?: 'strict' | 'relaxed' | 'free'; commandTimeout?: number }) =>
       ipcRenderer.invoke('agent:updateConfig', agentId, config) as Promise<boolean>,
