@@ -679,6 +679,7 @@ interface Window {
         canInterrupt: boolean
         interruptWarning?: string
       } | null>
+      clearHistory: (ptyId: string) => Promise<void>
       onStep: (callback: (data: { agentId: string; step: AgentStep }) => void) => () => void
       onNeedConfirm: (callback: (data: PendingConfirmation) => void) => () => void
       onComplete: (callback: (data: { agentId: string; result: string; pendingUserMessages?: string[] }) => void) => () => void
