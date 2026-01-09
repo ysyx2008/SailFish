@@ -171,6 +171,7 @@ import { ConfigService, McpServerConfig } from './services/config.service'
 import { XshellImportService } from './services/xshell-import.service'
 import { AgentService, AgentStep, PendingConfirmation, AgentContext } from './services/agent'
 import { orchestratorService } from './services/agent/orchestrator'
+import { clearTaskMemoryStore } from './services/agent/task-memory'
 import type { OrchestratorConfig } from './services/agent/orchestrator-types'
 import { HistoryService, ChatRecord, AgentRecord } from './services/history.service'
 import { HostProfileService, HostProfile } from './services/host-profile.service'
@@ -733,6 +734,8 @@ ipcMain.handle('pty:executeInTerminal', async (_event, id: string, command: stri
 
 ipcMain.handle('pty:dispose', async (_event, id: string) => {
   ptyService.dispose(id)
+  // 清理该终端的任务历史记忆
+  clearTaskMemoryStore(id)
 })
 
 ipcMain.handle('pty:getAvailableShells', async () => {
@@ -793,6 +796,8 @@ ipcMain.handle('ssh:disconnect', async (_event, id: string) => {
     sshDisconnectUnsubscribes.delete(id)
   }
   sshService.disconnect(id)
+  // 清理该终端的任务历史记忆
+  clearTaskMemoryStore(id)
 })
 
 // SSH 数据订阅的取消函数存储
@@ -844,6 +849,8 @@ ipcMain.on('ssh:subscribe', (event, id: string) => {
     // 清理订阅
     sshDataUnsubscribes.delete(id)
     sshDisconnectUnsubscribes.delete(id)
+    // 清理该终端的任务历史记忆（SSH 被动断开时也需要清理）
+    clearTaskMemoryStore(id)
   })
   sshDisconnectUnsubscribes.set(id, disconnectUnsubscribe)
 })
@@ -1529,6 +1536,11 @@ ipcMain.handle('agent:abort', async (_event, agentId: string) => {
   return agentService.abort(agentId)
 })
 
+// 清空指定终端的任务历史记忆（用于"清空对话"功能）
+ipcMain.handle('agent:clearHistory', async (_event, ptyId: string) => {
+  clearTaskMemoryStore(ptyId)
+})
+
 // 确认工具调用
 ipcMain.handle('agent:confirm', async (_event, { agentId, toolCallId, approved, modifiedArgs, alwaysAllow }: {
   agentId: string
@@ -1611,6 +1623,8 @@ function initOrchestratorService() {
       }
       terminalTypes.delete(terminalId)
       terminalStateService.removeTerminal(terminalId)
+      // 清理该终端的任务历史记忆
+      clearTaskMemoryStore(terminalId)
     },
     getTerminalType: (terminalId) => {
       return terminalTypes.get(terminalId) || 'ssh'
