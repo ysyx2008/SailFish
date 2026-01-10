@@ -650,6 +650,7 @@ export abstract class Agent {
     let streamContent = ''
     let lastContentUpdate = 0
     let pendingUpdate = false
+    let streamStepCreated = false
     const STREAM_THROTTLE_MS = 100
     
     const sendContentUpdate = () => {
@@ -666,6 +667,7 @@ export abstract class Agent {
       streamContent = ''
       lastContentUpdate = 0
       pendingUpdate = false
+      streamStepCreated = false
       
       const availableTools = this.getAvailableTools()
       run.requestId = run.id
@@ -678,12 +680,25 @@ export abstract class Agent {
           streamContent += chunk
           const now = Date.now()
           
-          if (lastContentUpdate === 0 && run.initialStepId) {
-            this.removeStep(run.initialStepId)
-            run.initialStepId = undefined
+          // 第一次收到内容时，移除初始步骤并立即创建流式步骤
+          if (!streamStepCreated) {
+            streamStepCreated = true
+            if (run.initialStepId) {
+              this.removeStep(run.initialStepId)
+              run.initialStepId = undefined
+            }
+            // 立即创建步骤，确保 timestamp 在工具结果之前
+            this.addStep({
+              id: streamStepId,
+              type: 'message',
+              content: streamContent,
+              isStreaming: true
+            })
+            lastContentUpdate = Date.now()
+            return
           }
           
-          if (now - lastContentUpdate >= STREAM_THROTTLE_MS || lastContentUpdate === 0) {
+          if (now - lastContentUpdate >= STREAM_THROTTLE_MS) {
             sendContentUpdate()
           } else if (!pendingUpdate) {
             pendingUpdate = true
@@ -701,8 +716,16 @@ export abstract class Agent {
         // onDone
         (result) => {
           pendingUpdate = false
-          if (streamContent) {
+          if (streamContent && streamStepCreated) {
             this.updateStep(streamStepId, {
+              type: 'message',
+              content: streamContent,
+              isStreaming: false
+            })
+          } else if (!streamStepCreated && streamContent) {
+            // 如果没有创建过步骤但有内容，创建一个
+            this.addStep({
+              id: streamStepId,
               type: 'message',
               content: streamContent,
               isStreaming: false
