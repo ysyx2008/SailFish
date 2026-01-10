@@ -931,6 +931,13 @@ export class AiService {
         })
 
         res.on('end', () => {
+          // 如果有思考内容但没有最终内容，把思考内容作为最终内容
+          const finalContent = content || (reasoningContent ? `🤔 **思考过程**\n\n> ${reasoningContent.replace(/\n/g, '\n> ')}` : undefined)
+          // AI Debug: 记录响应完成（先记录响应，再记录工具调用）
+          aiDebugService.logResponseDone(reqId, {
+            response: finalContent,
+            finishReason
+          })
           // 如果有工具调用，通知一次，并记录到调试日志
           if (toolCalls.length > 0) {
             onToolCall(toolCalls)
@@ -943,13 +950,6 @@ export class AiService {
               })
             })
           }
-          // 如果有思考内容但没有最终内容，把思考内容作为最终内容
-          const finalContent = content || (reasoningContent ? `🤔 **思考过程**\n\n> ${reasoningContent.replace(/\n/g, '\n> ')}` : undefined)
-          // AI Debug: 记录响应完成
-          aiDebugService.logResponseDone(reqId, {
-            response: finalContent,
-            finishReason
-          })
           complete(() => onDone({
             content: finalContent,
             tool_calls: toolCalls.length > 0 ? toolCalls : undefined,

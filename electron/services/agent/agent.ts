@@ -37,6 +37,7 @@ import { buildTaskHistoryContext } from './context-builder'
 import { getKnowledgeService } from '../knowledge'
 import { t } from './i18n'
 import { createSkillSession, SkillSession } from './skills'
+import { aiDebugService } from '../ai-debug.service'
 
 /**
  * Agent 抽象基类
@@ -760,6 +761,18 @@ export abstract class Agent {
       
       // 更新反思追踪
       this.updateReflectionTracking(run, toolName, toolArgs, result)
+      
+      // AI Debug: 记录工具执行结果
+      if (run.requestId) {
+        const resultContent = result.success 
+          ? result.output 
+          : t('agent.tool_error', { error: result.error || t('agent.unknown_error') })
+        aiDebugService.logToolResult(run.requestId, {
+          toolCallId: toolCall.id,
+          success: result.success,
+          result: resultContent
+        })
+      }
       
       // 添加工具结果到消息历史
       run.messages.push({
