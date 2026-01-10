@@ -1058,6 +1058,7 @@ export class AgentService {
     let taskSummaries = ''
     let relatedTaskDigests = ''
     let recentTaskMessages: AiMessage[] = []
+    let availableTaskIds: Array<{ id: string; summary: string }> = []
     
     if (taskMemoryStore.getTaskCount() > 0) {
       const contextLength = this.getContextLength(profileId)
@@ -1070,6 +1071,9 @@ export class AgentService {
       if (contextResult.taskSummarySection) {
         taskSummaries = contextResult.taskSummarySection
       }
+      
+      // 所有可用任务的ID列表
+      availableTaskIds = contextResult.availableTaskIds
       
       // 打印统计信息
       const { stats } = contextResult
@@ -1096,7 +1100,8 @@ export class AgentService {
       fullConfig.executionMode, 
       aiRules,
       taskSummaries,
-      relatedTaskDigests
+      relatedTaskDigests,
+      availableTaskIds
     )
     run.messages.push({ role: 'system', content: systemPrompt })
 

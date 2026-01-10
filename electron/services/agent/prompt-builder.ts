@@ -442,6 +442,8 @@ export interface BuildSystemPromptOptions {
   taskSummaries?: string
   /** 语义预加载的相关任务摘要（L2 层） */
   relatedTaskDigests?: string
+  /** 所有可用任务的ID列表（用于 recall_task 工具） */
+  availableTaskIds?: Array<{ id: string; summary: string }>
 }
 
 /**
@@ -457,7 +459,8 @@ export function buildSystemPrompt(
   executionMode?: ExecutionMode,
   aiRules?: string,
   taskSummaries?: string,
-  relatedTaskDigests?: string
+  relatedTaskDigests?: string,
+  availableTaskIds?: Array<{ id: string; summary: string }>
 ): string {
   // MBTI 风格提示
   const mbtiStyle = getMbtiStylePrompt(mbtiType ?? null)
@@ -726,11 +729,9 @@ ${buildUserConfirmationGuidance(executionMode)}
 - \`tmux\`、\`screen\` 等终端复用器 → 不支持
 - \`mc\`、\`ranger\` 等全屏文件管理器 → 请使用 \`ls\`、\`cd\` 等命令
 
-**【强制】长命令/多行脚本**：
+**【禁止】echo/printf 输出长内容**：
 - 超过 500 字符或多行代码 → 先用 \`${isSshTerminal ? 'write_remote_file' : 'write_file'}\` 写入 \`/tmp/xxx.sh\` 或 \`/tmp/xxx.py\`，再执行
 - 尽量不要用 \`python3 -c "多行代码..."\` 这种写法执行较长的程序，终端可能会截断。如果使用的话，只能不太长的，而且执行后要检查是否成功执行。
-
-**【禁止】echo/printf 输出长内容**：
 - **禁止**使用 \`echo "长文本..."\` 或 \`printf "长文本..."\` 输出超过200字符的内容，容易导致终端显示混乱
 - 如需输出分析报告、总结等长文本可以直接在对话中回复，不要发送到终端
 
@@ -747,21 +748,26 @@ ${buildComplexTaskExamples(isWindows)}
 ${documentSection}
 ${knowledgeSection}
 ${getUserSkillService().buildSkillsSummary()}
-${taskSummaries ? `
+${availableTaskIds && availableTaskIds.length > 0 ? `
 
 ## 历史任务记忆
 
-上下文已包含：
+${taskSummaries ? `上下文已包含：
 1. **任务总结列表**（L1）：之前所有任务的一句话概要
 2. **相关任务详情**（L2）：与当前任务相关的历史信息（已自动预加载）
 
-如需更多信息：
+` : `最近的任务已作为对话历史注入上下文。
+
+`}如需更多信息：
 - \`recall_task(task_id)\` - 获取指定任务的关键信息摘要
 - \`deep_recall(task_id, step_index?)\` - 获取完整原始输出（命令结果、文件内容等）
 
-**任务历史：**
-${taskSummaries}
-${relatedTaskDigests ? `
+**可用任务ID列表**（用于 recall_task/deep_recall）：
+${availableTaskIds.map(t => `- \`${t.id}\`: ${t.summary}`).join('\n')}
+${taskSummaries ? `
+**任务详情摘要：**
+${taskSummaries}` : ''}${relatedTaskDigests ? `
+
 **相关历史详情（自动加载）：**
 ${relatedTaskDigests}` : ''}` : ''}
 

@@ -53,6 +53,8 @@ export interface ContextBuildResult {
   recentTaskMessages: AiMessage[]
   // Level 3-4 的任务，作为摘要/总结写入系统提示
   taskSummarySection: string
+  // 所有可用任务的ID列表（用于 recall_task 工具）
+  availableTaskIds: Array<{ id: string; summary: string }>
   // 统计信息
   stats: {
     totalTasks: number
@@ -430,6 +432,7 @@ export function buildRecentTasksContext(
   const result: ContextBuildResult = {
     recentTaskMessages: [],
     taskSummarySection: '',
+    availableTaskIds: [],
     stats: {
       totalTasks: 0,
       level0Count: 0,
@@ -516,6 +519,10 @@ export function buildRecentTasksContext(
   if (summaryLines.length > 0) {
     result.taskSummarySection = summaryLines.join('\n\n')
   }
+  
+  // 填充所有可用任务的ID列表（无论任务以什么形式存在）
+  const summaries = taskMemoryStore.getSummaries(50)
+  result.availableTaskIds = summaries.map(s => ({ id: s.id, summary: s.summary }))
   
   return result
 }
