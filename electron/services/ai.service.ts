@@ -666,6 +666,8 @@ export class AiService {
     let idleTimeoutId: NodeJS.Timeout
     // 请求对象引用
     let req: http.ClientRequest | undefined
+    // 重试计数器
+    let retryCount = 0
 
     // 收集的数据
     let content = ''
@@ -681,6 +683,18 @@ export class AiService {
         this.abortControllers.delete(reqId)
         fn()
       }
+    }
+
+    // 重置状态以便重试
+    const resetForRetry = () => {
+      isCompleted = false
+      clearTimeout(totalTimeoutId)
+      clearTimeout(idleTimeoutId)
+      content = ''
+      reasoningContent = ''
+      toolCalls = []
+      finishReason = undefined
+      req = undefined
     }
 
     const resetIdleTimeout = () => {
@@ -735,6 +749,21 @@ export class AiService {
       stream: true
     }
 
+    // 尝试重试的辅助函数
+    const tryRetry = (errorMsg: string, doRequest: () => void): boolean => {
+      if (retryCount < AI_RETRY.MAX_RETRIES && isRetryableError(errorMsg)) {
+        retryCount++
+        const retryMsg = `⚠️ 网络错误，${AI_RETRY.RETRY_DELAY / 1000}秒后重试 (${retryCount}/${AI_RETRY.MAX_RETRIES})...`
+        onChunk(retryMsg + '\n')
+        aiDebugService.logResponseError(reqId, `${errorMsg} - 准备重试 ${retryCount}/${AI_RETRY.MAX_RETRIES}`)
+        resetForRetry()
+        setTimeout(doRequest, AI_RETRY.RETRY_DELAY)
+        return true
+      }
+      return false
+    }
+
+    const doRequest = () => {
     try {
       const url = new URL(profile.apiUrl)
       const isHttps = url.protocol === 'https:'
@@ -939,9 +968,13 @@ export class AiService {
       // 连接超时处理
       req.on('timeout', () => {
         req?.destroy()
-        // AI Debug: 记录超时错误
-        aiDebugService.logResponseError(reqId, '连接 AI 服务超时，请检查网络连接。[ETIMEDOUT]')
-        complete(() => onError('连接 AI 服务超时，请检查网络连接。[ETIMEDOUT]'))
+        const errorMsg = '连接 AI 服务超时，请检查网络连接。[ETIMEDOUT]'
+        // 尝试重试
+        if (!tryRetry(errorMsg, doRequest)) {
+          // AI Debug: 记录超时错误
+          aiDebugService.logResponseError(reqId, errorMsg)
+          complete(() => onError(errorMsg))
+        }
       })
 
       req.on('error', (err) => {
@@ -956,9 +989,12 @@ export class AiService {
           }))
           return
         }
-        // AI Debug: 记录请求错误
-        aiDebugService.logResponseError(reqId, err.message)
-        complete(() => onError(`请求失败: ${err.message}`))
+        // 尝试重试网络错误
+        if (!tryRetry(err.message, doRequest)) {
+          // AI Debug: 记录请求错误
+          aiDebugService.logResponseError(reqId, err.message)
+          complete(() => onError(`请求失败: ${err.message}`))
+        }
       })
 
       // 支持中止请求
@@ -975,14 +1011,21 @@ export class AiService {
       req.end()
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error'
-      // AI Debug: 记录请求异常
-      aiDebugService.logResponseError(reqId, `Exception: ${errorMsg}`)
-      if (error instanceof Error) {
-        complete(() => onError(`AI 请求失败: ${error.message}`))
-      } else {
-        complete(() => onError('AI 请求失败'))
+      // 尝试重试
+      if (!tryRetry(errorMsg, doRequest)) {
+        // AI Debug: 记录请求异常
+        aiDebugService.logResponseError(reqId, `Exception: ${errorMsg}`)
+        if (error instanceof Error) {
+          complete(() => onError(`AI 请求失败: ${error.message}`))
+        } else {
+          complete(() => onError('AI 请求失败'))
+        }
       }
     }
+    }  // end of doRequest
+
+    // 开始执行请求
+    doRequest()
   }
 
   /**
