@@ -210,6 +210,7 @@
         animation: streaming-pulse 1.5s ease-in-out infinite;
       }
       .log-type.response_done { background: var(--accent-cyan); color: var(--bg-primary); }
+      .log-type.response_done_tools { background: var(--accent-purple); color: white; }
       .log-type.response_error { background: var(--accent-red); color: white; }
       .log-type.tool_call { background: var(--accent-purple); color: white; }
       .log-type.tool_result { background: var(--accent-yellow); color: var(--bg-primary); }
@@ -277,7 +278,7 @@
         padding: 8px;
         background: var(--bg-tertiary);
         border-radius: 4px;
-        max-height: 300px;
+        max-height: 600px;
         overflow-y: auto;
       }
 
@@ -618,6 +619,604 @@
         color: var(--accent-red);
         margin-bottom: 8px;
       }
+
+      /* 可折叠区块样式 */
+      .collapsible-section {
+        margin-top: 8px;
+        cursor: pointer;
+      }
+
+      .collapsible-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        background: var(--bg-tertiary);
+        border-radius: 4px;
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+
+      .collapsible-header:hover {
+        background: var(--border-color);
+      }
+
+      .collapse-icon {
+        font-size: 10px;
+        transition: transform 0.2s;
+        color: var(--text-muted);
+      }
+
+      .collapsible-section:not(.collapsed) .collapse-icon,
+      .collapsible-message:not(.collapsed) .collapse-icon {
+        transform: rotate(90deg);
+      }
+
+      .collapsible-section.collapsed .collapsible-content {
+        display: none;
+      }
+
+      .tool-summary {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+      }
+
+      /* 可折叠消息样式 */
+      .collapsible-message {
+        cursor: pointer;
+      }
+
+      .collapsible-message .message-role {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .message-preview {
+        font-size: 11px;
+        color: var(--text-muted);
+        padding: 4px 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .collapsible-message.collapsed .message-full-content {
+        display: none;
+      }
+
+      .collapsible-message:not(.collapsed) .message-preview {
+        display: none;
+      }
+
+      /* 减小 tools 的 json-viewer 高度 */
+      .collapsible-content .json-viewer {
+        max-height: 250px;
+      }
+
+      /* 工具调用显示样式 */
+      .tool-calls-container {
+        margin-top: 4px;
+      }
+
+      .tool-call-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 8px 10px;
+        background: rgba(188, 140, 255, 0.08);
+        border-radius: 6px;
+        margin-bottom: 6px;
+        border-left: 3px solid var(--accent-purple);
+      }
+
+      .tool-call-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .tool-call-icon {
+        font-size: 12px;
+      }
+
+      .tool-call-name {
+        font-weight: 600;
+        color: var(--accent-purple);
+        font-size: 12px;
+      }
+
+      .tool-call-body {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-left: 4px;
+      }
+
+      .tool-call-section {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .tool-section-label {
+        font-size: 10px;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+      }
+
+      .tool-call-args {
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin: 0;
+        padding: 6px 8px;
+        background: var(--bg-primary);
+        border-radius: 4px;
+        overflow-x: auto;
+        max-height: 80px;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+
+      .tool-result-section {
+        border-top: 1px dashed var(--border-color);
+        padding-top: 6px;
+        margin-top: 2px;
+      }
+
+      .tool-call-result {
+        font-size: 11px;
+        color: var(--accent-green);
+        margin: 0;
+        padding: 6px 8px;
+        background: rgba(63, 185, 80, 0.1);
+        border-radius: 4px;
+        overflow-x: auto;
+        max-height: 120px;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+
+      .tool-pending {
+        font-size: 11px;
+        color: var(--text-muted);
+        font-style: italic;
+      }
+
+      /* 历史消息摘要样式 */
+      .history-summary {
+        margin-bottom: 8px;
+        border-radius: 6px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+      }
+
+      .history-summary .collapsible-header {
+        padding: 8px 10px;
+        gap: 8px;
+      }
+
+      .history-label {
+        font-size: 12px;
+        color: var(--text-secondary);
+        font-weight: 500;
+      }
+
+      .history-stats {
+        display: flex;
+        gap: 6px;
+        margin-left: auto;
+      }
+
+      .hist-badge {
+        font-size: 10px;
+        padding: 2px 6px;
+        border-radius: 10px;
+        background: var(--bg-tertiary);
+        color: var(--text-muted);
+      }
+
+      .hist-badge.system { color: var(--accent-purple); }
+      .hist-badge.user { color: var(--accent-blue); }
+      .hist-badge.assistant { color: var(--accent-green); }
+      .hist-badge.tool { color: var(--accent-yellow); }
+
+      .history-content {
+        max-height: 300px;
+        overflow-y: auto;
+        padding: 8px;
+        border-top: 1px solid var(--border-color);
+      }
+
+      .hist-message {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 4px 6px;
+        font-size: 11px;
+        border-radius: 3px;
+        margin-bottom: 2px;
+      }
+
+      .hist-message:hover {
+        background: var(--bg-tertiary);
+      }
+
+      .hist-role {
+        font-size: 9px;
+        font-weight: 600;
+        text-transform: uppercase;
+        padding: 2px 5px;
+        border-radius: 3px;
+        background: var(--bg-tertiary);
+        color: var(--text-muted);
+        flex-shrink: 0;
+        min-width: 55px;
+        text-align: center;
+      }
+
+      .hist-message.system .hist-role { color: var(--accent-purple); }
+      .hist-message.user .hist-role { color: var(--accent-blue); }
+      .hist-message.assistant .hist-role { color: var(--accent-green); }
+      .hist-message.tool .hist-role { color: var(--accent-yellow); }
+
+      .hist-tools {
+        font-size: 10px;
+        color: var(--accent-purple);
+        flex-shrink: 0;
+      }
+
+      .hist-content {
+        color: var(--text-muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+      }
+
+      /* 历史消息可折叠样式 */
+      .hist-collapsible {
+        flex-direction: column;
+        align-items: stretch;
+        cursor: pointer;
+        padding: 6px 8px;
+        background: var(--bg-secondary);
+        border-radius: 4px;
+      }
+
+      .hist-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .hist-header .collapse-icon {
+        margin-left: auto;
+      }
+
+      .hist-preview {
+        font-size: 11px;
+        color: var(--text-muted);
+        margin-top: 4px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .hist-collapsible.collapsed .hist-full {
+        display: none;
+      }
+
+      .hist-collapsible:not(.collapsed) .hist-preview {
+        display: none;
+      }
+
+      .hist-collapsible:not(.collapsed) .collapse-icon {
+        transform: rotate(90deg);
+      }
+
+      .hist-full {
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--border-color);
+      }
+
+      .hist-full-content {
+        margin: 0;
+        font-size: 11px;
+        color: var(--text-secondary);
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 200px;
+        overflow-y: auto;
+        line-height: 1.5;
+      }
+
+      /* 当前用户输入高亮 */
+      .current-user {
+        border-left-width: 4px;
+        background: rgba(88, 166, 255, 0.1);
+      }
+
+      .current-badge {
+        font-size: 11px;
+        color: var(--accent-blue);
+        font-weight: 600;
+      }
+
+      /* 等待工具执行样式 */
+      .tools-pending-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        background: rgba(188, 140, 255, 0.1);
+        border-radius: 6px;
+        border: 1px dashed var(--accent-purple);
+      }
+
+      .tools-pending-icon {
+        font-size: 24px;
+      }
+
+      .tools-pending-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .tools-pending-title {
+        font-size: 13px;
+        color: var(--accent-purple);
+        font-weight: 500;
+      }
+
+      .tools-pending-meta {
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      /* AI 思考内容样式 */
+      .ai-thinking-section {
+        margin-bottom: 12px;
+        padding: 10px 12px;
+        background: rgba(57, 197, 207, 0.1);
+        border-radius: 6px;
+        border-left: 3px solid var(--accent-cyan);
+      }
+
+      .ai-thinking-header {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--accent-cyan);
+        margin-bottom: 6px;
+      }
+
+      .ai-thinking-content {
+        font-size: 12px;
+        color: var(--text-secondary);
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .ai-thinking-meta {
+        font-size: 10px;
+        color: var(--text-muted);
+        margin-top: 6px;
+      }
+
+      /* 工具结果返回样式 */
+      .current-tool-result {
+        border-left-color: var(--accent-yellow);
+        background: rgba(210, 153, 34, 0.1);
+      }
+
+      .tool-badge {
+        color: var(--accent-yellow);
+      }
+
+      .tool-results-preview {
+        margin-top: 6px;
+      }
+
+      .tool-result-item {
+        font-size: 11px;
+        color: var(--text-secondary);
+        padding: 8px 10px;
+        background: var(--bg-tertiary);
+        border-radius: 4px;
+        margin-bottom: 4px;
+      }
+
+      .tool-result-item.collapsible-result {
+        cursor: pointer;
+      }
+
+      .tool-result-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .tool-result-preview {
+        color: var(--text-muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .collapsible-result.collapsed .tool-result-full {
+        display: none;
+      }
+
+      .collapsible-result:not(.collapsed) .tool-result-header {
+        margin-bottom: 8px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .collapsible-result:not(.collapsed) .tool-result-preview {
+        display: none;
+      }
+
+      .collapsible-result:not(.collapsed) .collapse-icon {
+        transform: rotate(90deg);
+      }
+
+      .tool-result-content {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        font-size: 11px;
+        line-height: 1.5;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+
+      /* 详情标签页样式 */
+      .detail-tabs {
+        display: flex;
+        gap: 0;
+        border-bottom: 1px solid var(--border-color);
+        margin-bottom: 12px;
+      }
+
+      .detail-tab {
+        padding: 8px 16px;
+        font-size: 12px;
+        color: var(--text-muted);
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        transition: all 0.15s;
+        user-select: none;
+      }
+
+      .detail-tab:hover {
+        color: var(--text-secondary);
+        background: var(--bg-tertiary);
+      }
+
+      .detail-tab.active {
+        color: var(--accent-blue);
+        border-bottom-color: var(--accent-blue);
+      }
+
+      .detail-panel {
+        display: none;
+      }
+
+      .detail-panel.active {
+        display: block;
+      }
+
+      .raw-json {
+        background: var(--bg-tertiary);
+        border-radius: 6px;
+        padding: 12px;
+        max-height: 500px;
+        overflow: auto;
+      }
+
+      .raw-json pre {
+        margin: 0;
+        font-size: 11px;
+        line-height: 1.5;
+      }
+
+      /* 复制按钮样式 */
+      .copy-raw-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        font-size: 11px;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        color: var(--text-muted);
+        cursor: pointer;
+        margin-bottom: 8px;
+        transition: all 0.15s;
+      }
+
+      .copy-raw-btn:hover {
+        background: var(--border-color);
+        color: var(--text-primary);
+      }
+
+      .copy-raw-btn.copied {
+        color: var(--accent-green);
+        border-color: var(--accent-green);
+      }
+
+      /* 搜索框样式 */
+      .filter-spacer {
+        flex: 1;
+      }
+
+      .search-box {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 4px 10px;
+        min-width: 200px;
+      }
+
+      .search-box:focus-within {
+        border-color: var(--accent-blue);
+      }
+
+      .search-icon {
+        font-size: 12px;
+        opacity: 0.6;
+      }
+
+      .search-box input {
+        flex: 1;
+        background: none;
+        border: none;
+        outline: none;
+        color: var(--text-primary);
+        font-size: 12px;
+        font-family: inherit;
+      }
+
+      .search-box input::placeholder {
+        color: var(--text-muted);
+      }
+
+      .search-clear {
+        cursor: pointer;
+        color: var(--text-muted);
+        font-size: 12px;
+        padding: 2px;
+      }
+
+      .search-clear:hover {
+        color: var(--text-primary);
+      }
+
+      /* 搜索高亮 */
+      .search-highlight {
+        background: rgba(210, 153, 34, 0.4);
+        border-radius: 2px;
+        padding: 0 2px;
+      }
+
+      /* 搜索结果计数 */
+      .search-count {
+        font-size: 11px;
+        color: var(--text-muted);
+        margin-right: 8px;
+      }
     </style>
   </head>
   <body>
@@ -675,6 +1274,12 @@
       <span class="filter-chip" data-filter="response_error">错误</span>
       <span class="filter-chip" data-filter="tool_call">工具调用</span>
       <span class="filter-chip" data-filter="tool_result">工具结果</span>
+      <div class="filter-spacer"></div>
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="搜索日志内容..." oninput="handleSearch(this.value)">
+        <span class="search-clear" id="searchClear" onclick="clearSearch()" style="display: none;">✕</span>
+      </div>
     </div>
 
     <div class="main">
@@ -695,11 +1300,15 @@
       let currentFilter = 'all'
       let autoScroll = true
       let markdownEnabled = true  // Markdown 渲染开关
+      let searchQuery = ''  // 搜索关键词
       let stats = {
         requests: 0,
         toolCalls: 0,
         errors: 0
       }
+      
+      // AI 思考内容缓存：requestId -> { content, chunks, duration }
+      let aiThinkingCache = new Map()
 
       // 切换 Markdown 渲染
       function toggleMarkdown() {
@@ -876,71 +1485,368 @@
         return String(obj)
       }
 
-      // 渲染消息列表
+      // 渲染消息列表 - 只显示最新的 user 消息，历史用摘要代替
       function renderMessages(messages) {
         if (!messages || messages.length === 0) return ''
         
-        return `<div class="messages-preview">
-          ${messages.map(msg => {
-            // system 消息使用 Markdown 渲染
-            const isMarkdownRole = msg.role === 'system' || msg.role === 'assistant'
-            const contentHtml = isMarkdownRole && markdownEnabled
-              ? `<div class="markdown-content">${renderMarkdown(msg.content || '')}</div>`
-              : `<div class="message-content">${escapeHtml(msg.content || '')}</div>`
+        // 找到最后一个 user 消息的索引
+        let lastUserIndex = -1
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].role === 'user') {
+            lastUserIndex = i
+            break
+          }
+        }
+        
+        // 检测是否是工具循环请求：user 消息之后有 tool 消息
+        const messagesAfterUser = lastUserIndex >= 0 ? messages.slice(lastUserIndex + 1) : []
+        const hasToolResults = messagesAfterUser.some(m => m.role === 'tool')
+        
+        // 获取最新的 tool 结果（如果有）
+        const latestToolResults = messagesAfterUser.filter(m => m.role === 'tool')
+        
+        // 统计历史消息（user 消息之前的所有消息）
+        const historyMessages = lastUserIndex > 0 ? messages.slice(0, lastUserIndex) : []
+        const systemCount = historyMessages.filter(m => m.role === 'system').length
+        const userCount = historyMessages.filter(m => m.role === 'user').length
+        const assistantCount = historyMessages.filter(m => m.role === 'assistant').length
+        const toolCount = historyMessages.filter(m => m.role === 'tool').length
+        const hasHistory = historyMessages.length > 0
+        
+        // 最新的 user 消息
+        const latestUserMsg = lastUserIndex >= 0 ? messages[lastUserIndex] : null
+        
+        let html = '<div class="messages-preview">'
+        
+        // 显示历史摘要（可展开）
+        if (hasHistory) {
+          html += `
+            <div class="history-summary collapsible-section collapsed" onclick="event.stopPropagation(); this.classList.toggle('collapsed')">
+              <div class="collapsible-header">
+                <span class="collapse-icon">▶</span>
+                <span class="history-label">📜 历史上下文</span>
+                <span class="history-stats">
+                  ${systemCount > 0 ? `<span class="hist-badge system">${systemCount} system</span>` : ''}
+                  ${userCount > 0 ? `<span class="hist-badge user">${userCount} user</span>` : ''}
+                  ${assistantCount > 0 ? `<span class="hist-badge assistant">${assistantCount} assistant</span>` : ''}
+                  ${toolCount > 0 ? `<span class="hist-badge tool">${toolCount} tool</span>` : ''}
+                </span>
+              </div>
+              <div class="collapsible-content history-content">
+                ${renderHistoryMessages(historyMessages)}
+              </div>
+            </div>
+          `
+        }
+        
+        // 根据是否是工具循环请求显示不同内容
+        if (hasToolResults) {
+          // 工具循环请求：显示完整工具结果（长内容可折叠）
+          const toolResultsHtml = latestToolResults.map((t, idx) => {
+            const content = t.content || ''
+            const isLong = content.length > 200
+            const preview = content.substring(0, 150).replace(/\n/g, ' ')
             
+            if (isLong) {
+              return `
+                <div class="tool-result-item collapsible-result collapsed" onclick="event.stopPropagation(); this.classList.toggle('collapsed')">
+                  <div class="tool-result-header">
+                    <span class="collapse-icon">▶</span>
+                    <span class="tool-result-preview">${escapeHtml(preview)}...</span>
+                  </div>
+                  <div class="tool-result-full">
+                    <pre class="tool-result-content">${escapeHtml(content)}</pre>
+                  </div>
+                </div>
+              `
+            } else {
+              return `<div class="tool-result-item"><pre class="tool-result-content">${escapeHtml(content)}</pre></div>`
+            }
+          }).join('')
+          
+          html += `
+            <div class="message-item tool current-tool-result">
+              <div class="message-role">
+                <span class="current-badge tool-badge">🔄 工具结果返回 (${latestToolResults.length})</span>
+              </div>
+              <div class="tool-results-preview">${toolResultsHtml}</div>
+            </div>
+          `
+        } else if (latestUserMsg) {
+          // 普通请求：显示用户输入
+          const content = latestUserMsg.content || ''
+          html += `
+            <div class="message-item user current-user">
+              <div class="message-role">
+                <span class="current-badge">✨ 本次输入</span>
+              </div>
+              <div class="message-content">${escapeHtml(content)}</div>
+            </div>
+          `
+        }
+        
+        html += '</div>'
+        return html
+      }
+      
+      // 渲染历史消息（简化版）
+      function renderHistoryMessages(messages) {
+        return messages.map(msg => {
+          let content = msg.content || ''
+          let extraInfo = ''
+          
+          // Assistant 工具调用显示工具名称
+          if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+            const toolNames = msg.tool_calls.map(tc => tc.function?.name || 'unknown').join(', ')
+            extraInfo = `<span class="hist-tools">🔧 ${toolNames}</span>`
+            if (!content) content = '[工具调用]'
+          }
+          
+          const isLong = content.length > 150
+          const preview = content.substring(0, 120).replace(/\n/g, ' ')
+          
+          if (isLong) {
             return `
-              <div class="message-item ${msg.role}">
-                <div class="message-role">${msg.role}${isMarkdownRole && markdownEnabled ? ' <span style="opacity:0.5">(MD)</span>' : ''}</div>
-                ${contentHtml}
+              <div class="hist-message ${msg.role} hist-collapsible collapsed" onclick="event.stopPropagation(); this.classList.toggle('collapsed')">
+                <div class="hist-header">
+                  <span class="hist-role">${msg.role}</span>
+                  ${extraInfo}
+                  <span class="collapse-icon">▶</span>
+                </div>
+                <div class="hist-preview">${escapeHtml(preview)}...</div>
+                <div class="hist-full">
+                  <pre class="hist-full-content">${escapeHtml(content)}</pre>
+                </div>
               </div>
             `
-          }).join('')}
-        </div>`
+          } else {
+            return `
+              <div class="hist-message ${msg.role}">
+                <span class="hist-role">${msg.role}</span>
+                ${extraInfo}
+                <span class="hist-content">${escapeHtml(content.replace(/\n/g, ' '))}</span>
+              </div>
+            `
+          }
+        }).join('')
       }
 
-      // 渲染日志内容
+      // 生成唯一 ID
+      function generateTabId() {
+        return 'tab_' + Math.random().toString(36).substr(2, 9)
+      }
+
+      // 切换标签页
+      function switchTab(tabsId, tabName) {
+        const container = document.querySelector(`[data-tabs-id="${tabsId}"]`)
+        if (!container) return
+        
+        // 切换标签按钮
+        container.querySelectorAll('.detail-tab').forEach(tab => {
+          tab.classList.toggle('active', tab.dataset.tab === tabName)
+        })
+        
+        // 切换面板
+        container.querySelectorAll('.detail-panel').forEach(panel => {
+          panel.classList.toggle('active', panel.dataset.panel === tabName)
+        })
+      }
+
+      // 复制原始数据
+      async function copyRawData(entryId) {
+        const entry = logs.find(e => e.id === entryId)
+        if (entry) {
+          const text = JSON.stringify(entry, null, 2)
+          if (await copyToClipboard(text)) {
+            const btn = document.querySelector(`[data-copy-id="${entryId}"]`)
+            if (btn) {
+              btn.classList.add('copied')
+              btn.textContent = '✓ 已复制'
+              setTimeout(() => {
+                btn.classList.remove('copied')
+                btn.textContent = '📋 复制 JSON'
+              }, 2000)
+            }
+          }
+        }
+      }
+
+      // 渲染日志内容（带标签页）
       function renderLogContent(entry) {
-        let content = ''
+        const tabsId = generateTabId()
+        let summaryContent = ''
+        let rawJson = JSON.stringify(entry, null, 2)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
         
         if (entry.type === 'request_start') {
+          // 摘要内容
           if (entry.data.messages) {
-            content += '<strong>Messages:</strong>' + renderMessages(entry.data.messages)
+            summaryContent += '<strong>Messages:</strong>' + renderMessages(entry.data.messages)
           }
           if (entry.data.tools && entry.data.tools.length > 0) {
-            content += '<br><strong>Tools:</strong><div class="json-viewer">' + formatJson(entry.data.tools.map(t => t.function?.name || t)) + '</div>'
+            const toolNames = entry.data.tools.map(t => t.function?.name || t).join(', ')
+            summaryContent += `
+              <br><strong>Tools:</strong>
+              <div class="collapsible-section collapsed" onclick="event.stopPropagation(); this.classList.toggle('collapsed')">
+                <div class="collapsible-header">
+                  <span class="collapse-icon">▶</span>
+                  <span class="tool-summary">${entry.data.tools.length} 个工具: ${toolNames}</span>
+                </div>
+                <div class="collapsible-content">
+                  <div class="json-viewer">${formatJson(entry.data.tools)}</div>
+                </div>
+              </div>
+            `
           }
+          
+          return `
+            <div data-tabs-id="${tabsId}">
+              <div class="detail-tabs">
+                <div class="detail-tab active" data-tab="summary" onclick="switchTab('${tabsId}', 'summary')">📋 摘要</div>
+                <div class="detail-tab" data-tab="raw" onclick="switchTab('${tabsId}', 'raw')">{ } 原始数据</div>
+              </div>
+              <div class="detail-panel active" data-panel="summary">${summaryContent}</div>
+              <div class="detail-panel" data-panel="raw">
+                <button class="copy-raw-btn" data-copy-id="${entry.id}" onclick="event.stopPropagation(); copyRawData('${entry.id}')">📋 复制 JSON</button>
+                <div class="raw-json"><pre>${rawJson}</pre></div>
+              </div>
+            </div>
+          `
         } else if (entry.type === 'response_streaming') {
-          // 流式响应：显示累积的内容
+          // 流式响应
           const escaped = (entry.data.content || '')
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
-          content = `
+          summaryContent = `
             <div style="margin-bottom: 8px; font-size: 11px; color: var(--text-muted);">
               已接收 ${entry.data.chunkCount} 个 chunks
             </div>
             <div class="json-viewer" style="white-space: pre-wrap;">${escaped}</div>
           `
+          
+          return `
+            <div data-tabs-id="${tabsId}">
+              <div class="detail-tabs">
+                <div class="detail-tab active" data-tab="summary" onclick="switchTab('${tabsId}', 'summary')">📋 内容</div>
+                <div class="detail-tab" data-tab="raw" onclick="switchTab('${tabsId}', 'raw')">{ } 原始数据</div>
+              </div>
+              <div class="detail-panel active" data-panel="summary">${summaryContent}</div>
+              <div class="detail-panel" data-panel="raw">
+                <button class="copy-raw-btn" data-copy-id="${entry.id}" onclick="event.stopPropagation(); copyRawData('${entry.id}')">📋 复制 JSON</button>
+                <div class="raw-json"><pre>${rawJson}</pre></div>
+              </div>
+            </div>
+          `
         } else if (entry.type === 'response_done') {
-          // 完成的响应：显示完整内容和统计
-          const escaped = (entry.data.response || '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
           const duration = entry.data.streamDuration ? ` (${entry.data.streamDuration}ms)` : ''
           const chunks = entry.data.chunkCount ? ` | ${entry.data.chunkCount} chunks` : ''
-          content = `
-            <div style="margin-bottom: 8px; font-size: 11px; color: var(--text-muted);">
-              完成原因: ${entry.data.finishReason || 'unknown'}${chunks}${duration}
+          
+          // 区分工具调用和真正完成
+          if (entry.data.finishReason === 'tool_calls') {
+            // 这种情况现在不会显示（已被合并到 tool_call）
+            return ''
+          } else {
+            // 真正完成 - 显示完整内容
+            const escaped = (entry.data.response || '')
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+            summaryContent = `
+              <div style="margin-bottom: 8px; font-size: 11px; color: var(--text-muted);">
+                完成原因: ${entry.data.finishReason || 'unknown'}${chunks}${duration}
+              </div>
+              ${escaped ? `<div class="json-viewer" style="white-space: pre-wrap;">${escaped}</div>` : ''}
+              ${entry.data.usage ? `<div style="margin-top: 8px; font-size: 11px; color: var(--text-muted);">Token 用量: ${JSON.stringify(entry.data.usage)}</div>` : ''}
+            `
+          }
+          
+          return `
+            <div data-tabs-id="${tabsId}">
+              <div class="detail-tabs">
+                <div class="detail-tab active" data-tab="summary" onclick="switchTab('${tabsId}', 'summary')">📋 响应</div>
+                <div class="detail-tab" data-tab="raw" onclick="switchTab('${tabsId}', 'raw')">{ } 原始数据</div>
+              </div>
+              <div class="detail-panel active" data-panel="summary">${summaryContent}</div>
+              <div class="detail-panel" data-panel="raw">
+                <button class="copy-raw-btn" data-copy-id="${entry.id}" onclick="event.stopPropagation(); copyRawData('${entry.id}')">📋 复制 JSON</button>
+                <div class="raw-json"><pre>${rawJson}</pre></div>
+              </div>
             </div>
-            ${escaped ? `<div class="json-viewer" style="white-space: pre-wrap;">${escaped}</div>` : ''}
-            ${entry.data.usage ? `<div style="margin-top: 8px; font-size: 11px; color: var(--text-muted);">Token 用量: ${JSON.stringify(entry.data.usage)}</div>` : ''}
+          `
+        } else if (entry.type === 'tool_call') {
+          // 工具调用 - 检查是否有 AI 思考内容
+          const thinking = aiThinkingCache.get(entry.requestId)
+          let thinkingHtml = ''
+          if (thinking && thinking.content) {
+            thinkingHtml = `
+              <div class="ai-thinking-section">
+                <div class="ai-thinking-header">💭 AI 思考</div>
+                <div class="ai-thinking-content">${escapeHtml(thinking.content)}</div>
+                <div class="ai-thinking-meta">${thinking.chunks} chunks | ${thinking.duration}ms</div>
+              </div>
+            `
+          }
+          summaryContent = thinkingHtml + '<div class="json-viewer">' + formatJson(entry.data) + '</div>'
+          
+          return `
+            <div data-tabs-id="${tabsId}">
+              <div class="detail-tabs">
+                <div class="detail-tab active" data-tab="summary" onclick="switchTab('${tabsId}', 'summary')">📋 摘要</div>
+                <div class="detail-tab" data-tab="raw" onclick="switchTab('${tabsId}', 'raw')">{ } 原始数据</div>
+              </div>
+              <div class="detail-panel active" data-panel="summary">${summaryContent}</div>
+              <div class="detail-panel" data-panel="raw">
+                <button class="copy-raw-btn" data-copy-id="${entry.id}" onclick="event.stopPropagation(); copyRawData('${entry.id}')">📋 复制 JSON</button>
+                <div class="raw-json"><pre>${rawJson}</pre></div>
+              </div>
+            </div>
+          `
+        } else if (entry.type === 'tool_result') {
+          // 工具结果
+          const success = entry.data.toolResult?.success
+          const result = entry.data.toolResult?.result || ''
+          const error = entry.data.toolResult?.error || ''
+          
+          summaryContent = `
+            <div style="margin-bottom: 8px;">
+              <span style="color: ${success ? 'var(--accent-green)' : 'var(--accent-red)'}">
+                ${success ? '✓ 执行成功' : '✗ 执行失败'}
+              </span>
+            </div>
+            ${result ? `<div class="json-viewer" style="white-space: pre-wrap;">${escapeHtml(result)}</div>` : ''}
+            ${error ? `<div style="color: var(--accent-red); margin-top: 8px;">${escapeHtml(error)}</div>` : ''}
+          `
+          
+          return `
+            <div data-tabs-id="${tabsId}">
+              <div class="detail-tabs">
+                <div class="detail-tab active" data-tab="summary" onclick="switchTab('${tabsId}', 'summary')">📋 结果</div>
+                <div class="detail-tab" data-tab="raw" onclick="switchTab('${tabsId}', 'raw')">{ } 原始数据</div>
+              </div>
+              <div class="detail-panel active" data-panel="summary">${summaryContent}</div>
+              <div class="detail-panel" data-panel="raw">
+                <button class="copy-raw-btn" data-copy-id="${entry.id}" onclick="event.stopPropagation(); copyRawData('${entry.id}')">📋 复制 JSON</button>
+                <div class="raw-json"><pre>${rawJson}</pre></div>
+              </div>
+            </div>
           `
         } else {
-          content = '<div class="json-viewer">' + formatJson(entry.data) + '</div>'
+          // 其他类型
+          return `
+            <div data-tabs-id="${tabsId}">
+              <div class="detail-tabs">
+                <div class="detail-tab active" data-tab="raw" onclick="switchTab('${tabsId}', 'raw')">{ } 原始数据</div>
+              </div>
+              <div class="detail-panel active" data-panel="raw">
+                <button class="copy-raw-btn" data-copy-id="${entry.id}" onclick="event.stopPropagation(); copyRawData('${entry.id}')">📋 复制 JSON</button>
+                <div class="raw-json"><pre>${rawJson}</pre></div>
+              </div>
+            </div>
+          `
         }
-        
-        return content
       }
 
       // 创建日志条目元素
@@ -949,6 +1855,9 @@
         div.className = 'log-entry'
         div.dataset.id = entry.id
         div.dataset.type = entry.type
+        if (entry.requestId) {
+          div.dataset.requestId = entry.requestId
+        }
         
         // 安全地截取 requestId
         const requestIdDisplay = entry.requestId 
@@ -963,19 +1872,30 @@
           .replace(/"/g, '&quot;')
         
         // 友好的类型名称
-        const typeLabel = {
-          'request_start': 'REQUEST',
-          'response_streaming': 'STREAMING',
-          'response_chunk': 'CHUNK',
-          'response_done': 'DONE',
-          'response_error': 'ERROR',
-          'tool_call': 'TOOL CALL',
-          'tool_result': 'TOOL RESULT'
-        }[entry.type] || entry.type.replace('_', ' ')
-        
-        div.innerHTML = `
-          <div class="log-header">
-            <span class="log-type ${entry.type}">${typeLabel}</span>
+          let typeLabel = {
+            'request_start': 'REQUEST',
+            'response_streaming': 'STREAMING',
+            'response_chunk': 'CHUNK',
+            'response_done': 'DONE',
+            'response_error': 'ERROR',
+            'tool_call': 'TOOL CALL',
+            'tool_result': 'TOOL RESULT'
+          }[entry.type] || entry.type.replace('_', ' ')
+          
+          // 区分真正完成和等待工具调用
+          let typeClass = entry.type
+          if (entry.type === 'response_done') {
+            if (entry.data?.finishReason === 'tool_calls') {
+              typeLabel = '→ TOOLS'
+              typeClass = 'response_done_tools'
+            } else {
+              typeLabel = '✓ DONE'
+            }
+          }
+          
+          div.innerHTML = `
+            <div class="log-header">
+              <span class="log-type ${typeClass}">${typeLabel}</span>
             <span class="log-time">${formatTime(entry.timestamp)}</span>
             <span class="request-id">${requestIdDisplay}</span>
             <span class="log-summary">${summary}</span>
@@ -997,6 +1917,31 @@
         return div
       }
 
+      // 搜索处理
+      function handleSearch(query) {
+        searchQuery = query.trim().toLowerCase()
+        const clearBtn = document.getElementById('searchClear')
+        clearBtn.style.display = searchQuery ? 'block' : 'none'
+        renderLogs()
+      }
+
+      // 清除搜索
+      function clearSearch() {
+        searchQuery = ''
+        document.getElementById('searchInput').value = ''
+        document.getElementById('searchClear').style.display = 'none'
+        renderLogs()
+      }
+
+      // 检查日志条目是否匹配搜索
+      function matchesSearch(entry, query) {
+        if (!query) return true
+        
+        // 搜索 JSON 字符串
+        const jsonStr = JSON.stringify(entry).toLowerCase()
+        return jsonStr.includes(query)
+      }
+
       // 渲染日志列表
       function renderLogs() {
         let filtered
@@ -1009,11 +1954,26 @@
           filtered = logs.filter(l => l.type === currentFilter)
         }
         
+        // 应用搜索过滤
+        if (searchQuery) {
+          filtered = filtered.filter(entry => matchesSearch(entry, searchQuery))
+        }
+        
         // 清空并重新渲染
         logList.innerHTML = ''
         
         if (filtered.length === 0) {
-          logList.appendChild(emptyState.cloneNode(true))
+          if (searchQuery) {
+            logList.innerHTML = `
+              <div class="empty-state">
+                <div class="empty-state-icon">🔍</div>
+                <div class="empty-state-title">未找到匹配结果</div>
+                <div class="empty-state-desc">没有找到包含 "${escapeHtml(searchQuery)}" 的日志</div>
+              </div>
+            `
+          } else {
+            logList.appendChild(emptyState.cloneNode(true))
+          }
           return
         }
         
@@ -1037,6 +1997,24 @@
         // 如果是 response_done，完成对应的 streaming
         if (entry.type === 'response_done' || entry.type === 'response_error') {
           finalizeStreaming(entry.requestId, entry)
+        }
+        
+        // 特殊处理 response_done (tool_calls)：存入缓存，更新 TOOL CALL，不单独显示
+        if (entry.type === 'response_done' && entry.data?.finishReason === 'tool_calls') {
+          // 存储 AI 思考内容到缓存
+          aiThinkingCache.set(entry.requestId, {
+            content: entry.data.response || '',
+            chunks: entry.data.chunkCount || 0,
+            duration: entry.data.streamDuration || 0
+          })
+          
+          // 更新已存在的 TOOL CALL 条目的显示
+          updateToolCallsWithThinking(entry.requestId)
+          
+          // 更新统计但不添加到日志列表
+          activeRequests.delete(entry.requestId)
+          updateStats()
+          return
         }
         
         logs.push(entry)
@@ -1067,6 +2045,31 @@
             logList.scrollTop = logList.scrollHeight
           }
         }
+      }
+      
+      // 更新 TOOL CALL 条目，添加 AI 思考内容
+      function updateToolCallsWithThinking(requestId) {
+        const thinking = aiThinkingCache.get(requestId)
+        if (!thinking) return
+        
+        // 找到所有属于这个 requestId 的 tool_call 元素
+        const toolCallElements = logList.querySelectorAll(`[data-type="tool_call"][data-request-id="${requestId}"]`)
+        toolCallElements.forEach(el => {
+          // 如果还没添加思考内容，添加到 log-content 的开头
+          if (!el.querySelector('.ai-thinking-section')) {
+            const logContent = el.querySelector('.log-content')
+            if (logContent && thinking.content) {
+              const thinkingHtml = `
+                <div class="ai-thinking-section">
+                  <div class="ai-thinking-header">💭 AI 思考</div>
+                  <div class="ai-thinking-content">${escapeHtml(thinking.content)}</div>
+                  <div class="ai-thinking-meta">${thinking.chunks} chunks | ${thinking.duration}ms</div>
+                </div>
+              `
+              logContent.insertAdjacentHTML('afterbegin', thinkingHtml)
+            }
+          }
+        })
       }
       
       // 处理流式响应 chunk
@@ -1176,6 +2179,7 @@
         stats = { requests: 0, toolCalls: 0, errors: 0 }
         activeRequests.clear()
         streamingResponses.clear()
+        aiThinkingCache.clear()
         updateStats()
         renderLogs()
         
@@ -1289,6 +2293,7 @@
             stats = { requests: 0, toolCalls: 0, errors: 0 }
             activeRequests.clear()
             streamingResponses.clear()
+            aiThinkingCache.clear()
             updateStats()
             renderLogs()
           }
