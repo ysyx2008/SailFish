@@ -837,16 +837,29 @@ export abstract class Agent {
   }
   
   /**
-   * 更新执行步骤
+   * 更新执行步骤（如果不存在则创建）
    */
   protected updateStep(stepId: string, updates: Partial<AgentStep>): void {
     if (!this.currentRun) return
     
-    const step = this.currentRun.steps.find(s => s.id === stepId)
-    if (step) {
+    let step = this.currentRun.steps.find(s => s.id === stepId)
+    
+    if (!step) {
+      // 如果步骤不存在，创建一个新的
+      step = {
+        id: stepId,
+        type: updates.type || 'message',
+        content: updates.content || '',
+        timestamp: Date.now(),
+        isStreaming: updates.isStreaming
+      }
+      this.currentRun.steps.push(step)
+    } else {
+      // 更新现有步骤
       Object.assign(step, updates)
-      this.callbacks?.onStep?.(this.currentRun.id, step)
     }
+    
+    this.callbacks?.onStep?.(this.currentRun.id, step)
   }
   
   /**
