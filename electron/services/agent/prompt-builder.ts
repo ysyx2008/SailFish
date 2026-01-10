@@ -1,5 +1,8 @@
 /**
  * Agent 系统提示构建器
+ * 
+ * OOP 重构版本：将纯函数封装为 PromptBuilder 类
+ * 注意：重构不改变任何提示词内容，只是代码组织形式的改变
  */
 import type { AgentContext, HostProfileServiceInterface, ExecutionMode } from './types'
 import type { AgentMbtiType } from '../config.service'
@@ -85,272 +88,6 @@ const MBTI_STYLE_MAP: Record<Exclude<AgentMbtiType, null>, { name: string; style
 }
 
 /**
- * 获取技能列表（用于系统提示词简短版）
- */
-function getSkillsForPrompt(): string {
-  const skills = getSkillsSummary()
-  if (skills.length === 0) {
-    return ''
-  }
-  return `（${skills.map(s => `${s.id}=${s.name}`).join(', ')}）`
-}
-
-/**
- * 构建技能扩展章节（详细版）
- */
-function buildSkillsSection(): string {
-  const skills = getSkillsSummary()
-  if (skills.length === 0) {
-    return '暂无可用技能。'
-  }
-  return `**可用技能**：
-${skills.map(s => `- \`${s.id}\`: ${s.name} - ${s.description}`).join('\n')}
-
-**工作流程**：
-1. 收到任务后，先审视上述技能列表，判断任务是否涉及相关领域
-2. 如有相关技能，**必须先**调用 \`load_skill("技能ID")\` 加载
-3. 加载成功后，该技能的工具立即可用，按需使用`
-}
-
-/**
- * 获取 MBTI 风格提示
- */
-export function getMbtiStylePrompt(mbti: AgentMbtiType): string {
-  if (!mbti || !MBTI_STYLE_MAP[mbti]) {
-    return ''
-  }
-  return MBTI_STYLE_MAP[mbti].style
-}
-
-/**
- * 获取所有 MBTI 类型信息（供前端使用）
- */
-export function getAllMbtiTypes(): Array<{ type: string; name: string; style: string }> {
-  return Object.entries(MBTI_STYLE_MAP).map(([type, info]) => ({
-    type,
-    name: info.name,
-    style: info.style
-  }))
-}
-
-/**
- * 构建增强版 ReAct 推理框架提示（借鉴 DeepAgent 端到端推理）
- */
-function buildReActFramework(): string {
-  return `## 推理框架（内心思考，不要说出来）
-你是一个具备深度推理能力的智能体。以下是你的内心思考框架，**用于指导你的行为，但不要在回复中提及这些阶段名称**：
-### 内心推理流程
-**分析**：理解任务本质
-- 明确任务目标和约束条件
-- 识别需要的信息和可能的障碍
-- 判断任务复杂度（简单/中等/复杂）
-**规划**：制定执行策略
-- 简单任务：直接执行
-- 中等任务：列出 2-3 个关键步骤
-- 复杂任务：制定完整计划，标注关键检查点
-**执行**：每次工具调用
-1. 用自然语言说明你要做什么（1 句话）
-2. 执行操作
-3. 用通俗语言解释结果
-**验证**：任务结束前
-- 回顾是否达成目标
-- 给出清晰结论
-### 输出风格要求（重要！）
-**禁止使用**：「分析阶段」「执行阶段」「验证阶段」「步骤1」「步骤2」等机械化标签
-**应该使用**：自然的对话语言，像真人一样交流
-### 执行原则
-- **连贯推理**：保持思路连贯，每个动作都有因果关系
-- **动态调整**：发现问题时及时调整策略，而非机械执行
-- **主动验证**：关键操作后主动验证结果，不假设成功
-- **知错即止**：2-3 次失败后停止尝试，报告问题`
-}
-
-/**
- * 构建自我反思提示（简化版，主要逻辑在代码中实现）
- */
-function buildSelfReflectionPrompt(): string {
-  return ``  // 反思检查现在由代码自动触发，不需要在提示词中强调
-}
-
-/**
- * 构建增强版任务规划指导（借鉴 DeepAgent 的动态规划能力）
- */
-function buildPlanningGuidance(): string {
-  return `## 动态任务规划
-### 任务分类与处理策略
-| 任务类型 | 识别特征 | 处理策略 |
-|---------|---------|---------|
-| **简单任务** | 单一目标，1-3 步完成 | 直接执行，无需 create_plan |
-| **中等任务** | 4-5 步骤，有明确流程和前后依赖关系 | 可选创建计划，视情况而定 |
-| **复杂任务** | 6+ 步骤、多系统联动、前后高度依赖、需分阶段验证 | 建议使用 create_plan |
-### 📋 Plan/Todo 功能使用指南
-**何时使用 create_plan**：
-- 任务涉及 4 个以上步骤，且步骤间有依赖关系
-- 多服务/多系统联动操作（部署、迁移、集群配置等）
-- 用户明确要求"帮我规划"或想了解整体进度
-**何时不需要**：
-- 单个查询或命令（查看磁盘、进程、日志等）
-- 1-3 步能完成的简单操作
-- 用户说"直接做"/"快速帮我"
-**使用流程**：
-1. 分析任务，确定需要创建计划
-2. 调用 \`create_plan\` 创建计划（标题 + 步骤列表）
-3. 执行每个步骤前：\`update_plan(index, "in_progress")\`
-4. 步骤完成后：\`update_plan(index, "completed", "结果说明")\`
-5. 步骤失败时：\`update_plan(index, "failed", "失败原因")\`
-**示例**：
-用户：帮我部署 Node.js 应用
-→ create_plan: "部署 Node.js 应用"
-  步骤: 检查环境 → 安装依赖 → 构建项目 → 启动服务 → 验证运行
-### 动态调整机制
-执行过程中可能需要调整计划：
-1. **发现新信息**：根据执行结果更新对问题的理解
-2. **遇到障碍**：某步骤无法执行时，使用 \`update_plan(index, "skipped", "原因")\`
-3. **目标变化**：用户补充信息时，重新评估任务范围
-4. **及时止损**：连续失败时，暂停并向用户说明情况
-### 计划完成检查
-创建计划后，在给出总结前请确保：
-- 每个步骤都有明确状态（completed/failed/skipped）
-- 如果某步骤不再需要，用 \`update_plan(index, "skipped", "原因")\` 标记
-- 不要遗漏 pending 状态的步骤`
-}
-
-/**
- * 构建主动提问指导（根据执行模式）
- */
-function buildAskUserGuidance(executionMode?: ExecutionMode): string {
-  const baseGuidance = `## 主动提问能力（ask_user）
-当你需要更多信息时，可以使用 \`ask_user\` 工具向用户提问。
-**核心原则：一般只在制定计划时提问，执行中尽量不打断用户**
-- 开始执行前，先问清楚所有疑问
-- 计划确定后顺畅执行，不再打断用户
-- 执行中遇到意外，优先用合理默认值，实在无法继续才提问
-**需要用户确认时，必须使用ask_user工具**
-- 当你需要用户确认才能继续执行时（如删除文件、危险操作、重要决策），**必须**调用 \`ask_user\` 工具
-- **禁止**只在消息中问"你确定吗？"然后等待回复，这样系统无法正确追踪任务状态
-- 正确做法：\`ask_user(question="确定要删除 /tmp/xxx 目录吗？", options=["确定删除", "取消"])\`
-**参数说明**：
-- \`question\`：问题内容（必填）
-- \`options\`：选项列表（可选，最多 10 个）
-- \`timeout\`：等待秒数（默认 120，范围 30-600）。简单选择 60s，需要查资料 300s+
-- \`default_value\`：超时时的默认值（可选）
-`
-
-  if (executionMode === 'strict') {
-    return baseGuidance + `**当前策略：主动提问**（严格模式）
-- 任务理解有歧义时，主动确认
-- 有多种方案可选时，询问用户偏好
-- 宁可多问，不要假设
-`
-  } else if (executionMode === 'relaxed') {
-    return baseGuidance + `**当前策略：适度提问**（宽松模式）
-- 只在任务描述严重不清晰时才提问
-- 有明显最佳方案时直接执行
-`
-  } else {
-    // free 模式或未指定
-    return baseGuidance + `**当前策略：保守提问**（自由模式）
-- 尽量不打断用户
-- 只在真正无法继续时才提问
-- 优先尝试合理的默认选择
-`
-  }
-}
-
-/**
- * 构建用户确认机制说明（根据执行模式）
- */
-function buildUserConfirmationGuidance(executionMode?: ExecutionMode): string {
-  let modeNote: string
-  if (executionMode === 'strict') {
-    modeNote = '严格模式：所有命令需用户确认'
-  } else if (executionMode === 'relaxed') {
-    modeNote = '宽松模式：危险命令需用户确认'
-  } else {
-    modeNote = '自由模式：自动执行'
-  }
-
-  return `## 用户确认（${modeNote}）
-当用户**拒绝**命令时：一般不要重试相同命令，询问用户顾虑或提供替代方案
-当用户**允许**命令时：正常执行，用户可选"始终允许"后续自动执行
-`
-}
-
-/**
- * 构建复杂任务示例
- */
-function buildComplexTaskExamples(isWindows: boolean): string {
-  if (isWindows) {
-    return `## 复杂任务示例
-### 示例1：诊断服务器响应慢
-用户：服务器响应很慢，帮我诊断一下
----
-服务器响应慢可能有多种原因：CPU过载、内存不足、磁盘IO、网络问题。我先从系统整体状态开始排查。
-[调用 execute_command: systeminfo | findstr /C:"Physical Memory" /C:"Virtual Memory"]
-内存使用率 85%，可用内存较低，这可能是问题点。我来看看是哪些进程占用内存。
-[调用 execute_command: tasklist /FO CSV | sort /R]
-发现 java.exe 占用 4GB 内存，chrome.exe 多个进程共占用 2GB。接下来检查 CPU 使用情况。
-[调用 execute_command: wmic cpu get loadpercentage]
-...
-**诊断结果**：
-1. **内存瓶颈**：java.exe 占用 4GB，建议增加 JVM 内存限制
-2. **CPU 正常**：使用率 45%，在可接受范围
-需要我帮你调整 Java 应用的内存配置吗？
-
-### 示例2：部署应用（使用 ask_user 主动提问）
-用户：帮我部署这个项目
----
-好的，我需要先了解一些部署信息。
-[调用 ask_user: question="请问要部署到哪个环境？", options=["开发环境 (dev)", "测试环境 (test)", "生产环境 (prod)"], timeout=120]
-用户选择了"生产环境 (prod)"。生产环境需要特别谨慎，我再确认一下项目信息。
-[调用 execute_command: dir /B]
-看到是一个 Node.js 项目（有 package.json）。还有几个问题需要确认：
-[调用 ask_user: question="请确认以下部署配置：\\n1. 部署端口（默认 3000）\\n2. 是否需要 PM2 守护进程？\\n3. 是否需要配置 nginx 反向代理？\\n\\n请告诉我需要修改的配置，或回复"确认"使用默认配置", default_value="确认", timeout=180]
-用户确认使用默认配置。开始执行部署...
-[调用 create_plan: title="生产环境部署", steps=["安装依赖 npm install --production", "构建项目 npm run build", "使用 PM2 启动服务", "验证服务状态"]]
-[调用 execute_command: npm install --production]
-...`
-  }
-
-  return `## 复杂任务示例
-### 示例1：诊断服务器响应慢
-用户：服务器响应很慢，帮我诊断一下
----
-服务器响应慢可能有多种原因：CPU过载、内存不足、磁盘IO、网络问题。我先从系统负载开始排查。
-[调用 execute_command: uptime]
-负载 15.23，非常高（4 核 CPU 正常应在 4 以下）。需要找出是哪个进程导致的。
-[调用 execute_command: ps aux --sort=-%cpu | head -10]
-java 进程占用 280% CPU，这是主要问题。我来确认是哪个 Java 应用。
-[调用 execute_command: ps aux | grep java | grep -v grep]
-是 /opt/myapp/app.jar，订单服务。检查一下日志有没有异常。
-[调用 execute_command: tail -100 /opt/myapp/logs/app.log | grep -i error]
-发现大量 "Connection pool exhausted" 错误，数据库连接池耗尽了。
----
-**诊断结果**：
-1. **根本原因**：订单服务的数据库连接池耗尽
-2. **表现症状**：Java 进程 CPU 280%，系统负载 15+
-3. **错误日志**：大量 "Connection pool exhausted"
-**建议**：
-- 短期：重启订单服务释放资源
-- 长期：增大连接池配置，检查是否有连接泄漏
-需要我帮你重启服务或查看连接池配置吗？
-
-### 示例2：部署应用（使用 ask_user 主动提问）
-用户：帮我部署这个项目
----
-好的，我需要先了解一些部署信息。
-[调用 ask_user: question="请问要部署到哪个环境？", options=["开发环境 (dev)", "测试环境 (test)", "生产环境 (prod)"], timeout=120]
-用户选择了"生产环境 (prod)"。生产环境需要特别谨慎，我再确认一下项目信息。
-[调用 execute_command: ls -la]
-看到是一个 Node.js 项目（有 package.json）。还有几个问题需要确认：
-[调用 ask_user: question="请确认以下部署配置：\\n1. 部署端口（默认 3000）\\n2. 是否需要 PM2 守护进程？\\n3. 是否需要配置 nginx 反向代理？\\n\\n请告诉我需要修改的配置，或回复"确认"使用默认配置", default_value="确认", timeout=180]
-用户确认使用默认配置。开始执行部署...
-[调用 create_plan: title="生产环境部署", steps=["安装依赖 npm install --production", "构建项目 npm run build", "使用 PM2 启动服务", "验证服务状态"]]
-[调用 execute_command: npm install --production]
-...`
-}
-
-/**
  * 构建系统提示的选项
  */
 export interface BuildSystemPromptOptions {
@@ -369,133 +106,116 @@ export interface BuildSystemPromptOptions {
   relatedTaskDigests?: string
   /** 所有可用任务的ID列表（用于 recall_task 工具） */
   availableTaskIds?: Array<{ id: string; summary: string }>
+  /** 执行模式 */
+  executionMode?: ExecutionMode
 }
 
 /**
- * 构建系统提示
+ * 系统提示构建器
+ * 
+ * 将系统提示的构建逻辑封装为类，提高可维护性和可测试性
+ * 注意：输出内容与原始 buildSystemPrompt 函数完全一致
  */
-export function buildSystemPrompt(
-  context: AgentContext,
-  hostProfileService?: HostProfileServiceInterface,
-  mbtiType?: AgentMbtiType,
-  knowledgeContext?: string,
-  knowledgeEnabled?: boolean,
-  hostMemories?: string[],
-  executionMode?: ExecutionMode,
-  aiRules?: string,
-  taskSummaries?: string,
-  relatedTaskDigests?: string,
-  availableTaskIds?: Array<{ id: string; summary: string }>
-): string {
-  // MBTI 风格提示
-  const mbtiStyle = getMbtiStylePrompt(mbtiType ?? null)
-  const styleSection = mbtiStyle 
-    ? `\n\n## 你的风格（重要！）\n${mbtiStyle}\n\n**注意：请始终保持上述风格回复，即使历史对话中的风格有所不同。**\n` 
-    : ''
-  
-  // 用户自定义规则
-  const userRulesSection = aiRules && aiRules.trim()
-    ? `\n\n## 用户自定义规则（重要！必须遵守）\n\n用户设置了以下规则，你必须严格遵守：\n\n${aiRules.trim()}\n`
-    : ''
-  
-  // 优先使用 context.systemInfo（来自当前终端 tab，是准确的）
-  const osType = context.systemInfo.os || 'unknown'
-  const shellType = context.systemInfo.shell || 'unknown'
-  const terminalType = context.terminalType || 'local'
-  const isSshTerminal = terminalType === 'ssh'
-  
-  // 构建主机信息：始终使用当前终端的系统信息
-  let hostContext = `## 主机环境
-- **终端类型**: ${isSshTerminal ? '🌐 SSH 远程终端' : '💻 本地终端'}
-- 操作系统: ${osType}
-- Shell: ${shellType}`
-  
-  // 如果有主机档案，补充额外信息（但不覆盖系统类型）
-  if (context.hostId && hostProfileService) {
-    const profile = hostProfileService.getProfile(context.hostId)
-    if (profile) {
-      if (profile.hostname) {
-        hostContext = `## 主机环境
-- 主机名: ${profile.hostname}
-- 操作系统: ${osType}
-- Shell: ${shellType}`
-      }
-      if (profile.installedTools && profile.installedTools.length > 0) {
-        hostContext += `\n- 已安装工具: ${profile.installedTools.join(', ')}`
-      }
-    }
+export class PromptBuilder {
+  private readonly context: AgentContext
+  private readonly hostProfileService?: HostProfileServiceInterface
+  private readonly mbtiType?: AgentMbtiType
+  private readonly knowledgeContext?: string
+  private readonly knowledgeEnabled?: boolean
+  private readonly hostMemories?: string[]
+  private readonly aiRules?: string
+  private readonly taskSummaries?: string
+  private readonly relatedTaskDigests?: string
+  private readonly availableTaskIds?: Array<{ id: string; summary: string }>
+  private readonly executionMode?: ExecutionMode
+
+  constructor(options: BuildSystemPromptOptions) {
+    this.context = options.context
+    this.hostProfileService = options.hostProfileService
+    this.mbtiType = options.mbtiType
+    this.knowledgeContext = options.knowledgeContext
+    this.knowledgeEnabled = options.knowledgeEnabled
+    this.hostMemories = options.hostMemories
+    this.aiRules = options.aiRules
+    this.taskSummaries = options.taskSummaries
+    this.relatedTaskDigests = options.relatedTaskDigests
+    this.availableTaskIds = options.availableTaskIds
+    this.executionMode = options.executionMode
   }
 
-  // 添加主机记忆（来自知识库）
-  if (hostMemories && hostMemories.length > 0) {
-    hostContext += '\n\n## 已知信息（来自历史交互）'
-    for (const memory of hostMemories.slice(0, 15)) {  // 最多显示 15 条
-      hostContext += `\n- ${memory}`
-    }
-  }
+  // ==================== 公开方法 ====================
 
-  // 文档上下文
-  let documentSection = ''
-  let documentRule = ''
-  if (context.documentContext) {
-    documentSection = `\n\n${context.documentContext}`
-    documentRule = `
+  /**
+   * 构建完整的系统提示
+   * 注意：输出与原始 buildSystemPrompt 函数完全一致
+   */
+  build(): string {
+    // MBTI 风格提示
+    const mbtiStyle = PromptBuilder.getMbtiStylePrompt(this.mbtiType ?? null)
+    const styleSection = mbtiStyle 
+      ? `\n\n## 你的风格（重要！）\n${mbtiStyle}\n\n**注意：请始终保持上述风格回复，即使历史对话中的风格有所不同。**\n` 
+      : ''
+    
+    // 用户自定义规则
+    const userRulesSection = this.aiRules && this.aiRules.trim()
+      ? `\n\n## 用户自定义规则（重要！必须遵守）\n\n用户设置了以下规则，你必须严格遵守：\n\n${this.aiRules.trim()}\n`
+      : ''
+    
+    // 优先使用 context.systemInfo（来自当前终端 tab，是准确的）
+    const osType = this.context.systemInfo.os || 'unknown'
+    const shellType = this.context.systemInfo.shell || 'unknown'
+    const terminalType = this.context.terminalType || 'local'
+    const isSshTerminal = terminalType === 'ssh'
+    
+    // 构建主机信息
+    const hostContext = this.buildHostContext(osType, shellType, isSshTerminal)
+
+    // 文档上下文
+    let documentSection = ''
+    let documentRule = ''
+    if (this.context.documentContext) {
+      documentSection = `\n\n${this.context.documentContext}`
+      documentRule = `
 - **【重要】关于用户上传的文档**：用户已上传文档，文档**完整内容**已经包含在本对话的上下文末尾（标记为"用户上传的参考文档"）。
   - **直接使用上下文中的文档内容**，不需要也不应该使用 read_file 工具读取
   - 文档内容就在下方，你可以直接引用和分析`
-  }
+    }
 
-  // 知识库上下文
-  let knowledgeSection = ''
-  let knowledgeRule = ''
-  if (knowledgeEnabled) {
-    if (knowledgeContext) {
-      knowledgeSection = `\n\n${knowledgeContext}`
-      knowledgeRule = `
+    // 知识库上下文
+    let knowledgeSection = ''
+    let knowledgeRule = ''
+    if (this.knowledgeEnabled) {
+      if (this.knowledgeContext) {
+        knowledgeSection = `\n\n${this.knowledgeContext}`
+        knowledgeRule = `
 - **【重要】你有知识库**：你可以访问用户保存的知识库文档，以及记忆的信息。
   - 上面的"相关知识库内容"部分包含了与当前问题相关的预加载内容
   - 如果预加载内容不够详细，使用 \`search_knowledge\` 工具搜索更多信息
   - **知识库搜索结果已经包含文档内容，直接使用即可，不要用 read_file 去读取知识库文档**
   - 主动引用知识库中的相关内容，告诉用户答案来源于知识库`
-    } else {
-      // 知识库启用但没有预加载内容时，提醒 Agent 可以使用工具查询
-      knowledgeRule = `
+      } else {
+        // 知识库启用但没有预加载内容时，提醒 Agent 可以使用工具查询
+        knowledgeRule = `
 - **知识库工具**：用户有知识库，你可以使用 \`search_knowledge\` 工具搜索用户保存的文档和笔记。
   - **搜索结果已包含文档内容片段，直接使用即可，不要用 read_file 读取**`
+      }
     }
-  }
 
-  // 根据操作系统类型选择示例
-  const isWindows = osType.toLowerCase().includes('windows')
-  
-  // 简单任务输出格式示例
-  const simpleTaskExample = isWindows 
-    ? `## 简单任务示例
-用户：查看磁盘空间
-我来检查磁盘空间使用情况。
-[调用 execute_command: wmic logicaldisk get size,freespace,caption]
-各分区使用情况如下：
-- C: 盘总容量 500GB，可用 50GB
-- D: 盘总容量 1TB，可用 800GB
-如需分析具体哪个目录占用空间较多，请告诉我。`
-    : `## 简单任务示例
-用户：查看磁盘空间
-我来检查磁盘空间使用情况。
-[调用 execute_command: df -h]
-各分区使用情况如下：
-- /dev/sda1：已用 85%，剩余 15GB
-- /home：已用 45%，剩余 200GB
-如需分析具体哪个目录占用空间较多，请告诉我。`
+    // 根据操作系统类型选择示例
+    const isWindows = osType.toLowerCase().includes('windows')
+    
+    // 简单任务输出格式示例
+    const simpleTaskExample = this.buildSimpleTaskExample(isWindows)
 
-  return `**CRITICAL RULE: You MUST respond in the SAME language the user uses. If user writes in English, reply in English. If user writes in Japanese, reply in Japanese. If user writes in Chinese, reply in Chinese.**
+    return `**CRITICAL RULE: You MUST respond in the SAME language the user uses. If user writes in English, reply in English. If user writes in Japanese, reply in Japanese. If user writes in Chinese, reply in Chinese.**
 
 你是旗鱼终端（英文：SFTerm）的 AI Agent 助手，一个专业、可靠的服务器运维和开发助手。${styleSection}${userRulesSection}
 
 ${hostContext}
 
-${buildReActFramework()}
+${this.buildReActFramework()}
 
-${buildPlanningGuidance()}
+${this.buildPlanningGuidance()}
 
 ## 可用工具
 
@@ -529,7 +249,7 @@ ${isSshTerminal ? '' : `
 `}
 ### 🔌 技能扩展系统（重要！）
 你可以通过 \`load_skill\` 加载额外技能来扩展能力。这些技能提供专业工具，**按需加载**避免工具过多。
-${buildSkillsSection()}
+${this.buildSkillsSection()}
 **注意**：技能在当前会话中持续有效，无需重复加载。${isSshTerminal ? `
 ### ⚠️ 重要：SSH 远程终端文件操作限制
 当前是 **SSH 远程终端**，\`read_file\` 和 \`write_file\` 工具**不可用**！
@@ -539,7 +259,7 @@ ${buildSkillsSection()}
 - 写入远程文件：使用 \`execute_command\` 执行 \`echo "内容" > 文件\`、\`cat << 'EOF' > 文件\` 等命令
 - 编辑远程文件：使用 \`execute_command\` 执行 \`sed -i\` 等命令` : ''}
 
-${buildAskUserGuidance(executionMode)}
+${this.buildAskUserGuidance()}
 ## 时间控制能力（重要！）
 你有控制时间的能力！使用 \`wait\` 工具可以等待指定时间：
 - **执行长耗时命令后**：构建、编译、测试等命令可能需要几分钟，使用 wait 等待后再检查结果
@@ -614,7 +334,7 @@ ${knowledgeRule}
   - 用户在讨论、咨询、询问时一般回答问题即可，不一定要执行工具
   - 通常只有用户要求你做某事时，或者确有必要时，才应当开始执行
   - 拿不准时可以先问一句"需要我帮你操作吗？"
-${buildUserConfirmationGuidance(executionMode)}
+${this.buildUserConfirmationGuidance()}
 ## 命令处理规则
 **【重要】中文路径处理**：
 - 文件路径中的中文字符必须**保持原样**，例如：\`/Users/xxx/文档/报告.pdf\`
@@ -635,13 +355,13 @@ ${buildUserConfirmationGuidance(executionMode)}
 - \`top\`、\`htop\`、\`less\`、\`more\` 等全屏/分页程序 → 用 \`check_terminal_status\` 观察输出，适时发送 \`q\` 或 \`ctrl+c\` 退出
 - \`ping\`、\`tail -f\`、\`watch\` 等持续运行命令 → 根据任务需要决定运行时长，用 \`ctrl+c\` 终止
 ${simpleTaskExample}
-${buildComplexTaskExamples(isWindows)}
+${this.buildComplexTaskExamples(isWindows)}
 ${documentSection}
 ${knowledgeSection}
 ${getUserSkillService().buildSkillsSummary()}
-${availableTaskIds && availableTaskIds.length > 0 ? `
+${this.availableTaskIds && this.availableTaskIds.length > 0 ? `
 ## 历史任务记忆
-${taskSummaries ? `上下文已包含：
+${this.taskSummaries ? `上下文已包含：
 1. **任务总结列表**（L1）：之前所有任务的一句话概要
 2. **相关任务详情**（L2）：与当前任务相关的历史信息（已自动预加载）
 ` : `最近的任务已作为对话历史注入上下文。
@@ -649,11 +369,373 @@ ${taskSummaries ? `上下文已包含：
 - \`recall_task(task_id)\` - 获取指定任务的关键信息摘要
 - \`deep_recall(task_id, step_index?)\` - 获取完整原始输出（命令结果、文件内容等）
 **可用任务ID列表**（用于 recall_task/deep_recall）：
-${availableTaskIds.map(t => `- \`${t.id}\`: ${t.summary}`).join('\n')}
-${taskSummaries ? `
+${this.availableTaskIds.map(t => `- \`${t.id}\`: ${t.summary}`).join('\n')}
+${this.taskSummaries ? `
 **任务详情摘要：**
-${taskSummaries}` : ''}${relatedTaskDigests ? `
+${this.taskSummaries}` : ''}${this.relatedTaskDigests ? `
 **相关历史详情（自动加载）：**
-${relatedTaskDigests}` : ''}` : ''}
+${this.relatedTaskDigests}` : ''}` : ''}
 开始工作时，请遵循 ReAct 框架，展示你的思考过程！`
+  }
+
+  // ==================== 静态方法（便捷访问） ====================
+
+  /**
+   * 获取 MBTI 风格提示
+   */
+  static getMbtiStylePrompt(mbti: AgentMbtiType): string {
+    if (!mbti || !MBTI_STYLE_MAP[mbti]) {
+      return ''
+    }
+    return MBTI_STYLE_MAP[mbti].style
+  }
+
+  /**
+   * 获取所有 MBTI 类型信息（供前端使用）
+   */
+  static getAllMbtiTypes(): Array<{ type: string; name: string; style: string }> {
+    return Object.entries(MBTI_STYLE_MAP).map(([type, info]) => ({
+      type,
+      name: info.name,
+      style: info.style
+    }))
+  }
+
+  // ==================== 私有方法：各章节构建 ====================
+
+  /**
+   * 构建主机环境信息
+   */
+  private buildHostContext(osType: string, shellType: string, isSshTerminal: boolean): string {
+    let hostContext = `## 主机环境
+- **终端类型**: ${isSshTerminal ? '🌐 SSH 远程终端' : '💻 本地终端'}
+- 操作系统: ${osType}
+- Shell: ${shellType}`
+    
+    // 如果有主机档案，补充额外信息（但不覆盖系统类型）
+    if (this.context.hostId && this.hostProfileService) {
+      const profile = this.hostProfileService.getProfile(this.context.hostId)
+      if (profile) {
+        if (profile.hostname) {
+          hostContext = `## 主机环境
+- 主机名: ${profile.hostname}
+- 操作系统: ${osType}
+- Shell: ${shellType}`
+        }
+        if (profile.installedTools && profile.installedTools.length > 0) {
+          hostContext += `\n- 已安装工具: ${profile.installedTools.join(', ')}`
+        }
+      }
+    }
+
+    // 添加主机记忆（来自知识库）
+    if (this.hostMemories && this.hostMemories.length > 0) {
+      hostContext += '\n\n## 已知信息（来自历史交互）'
+      for (const memory of this.hostMemories.slice(0, 15)) {  // 最多显示 15 条
+        hostContext += `\n- ${memory}`
+      }
+    }
+
+    return hostContext
+  }
+
+  /**
+   * 构建 ReAct 推理框架
+   */
+  private buildReActFramework(): string {
+    return `## 推理框架（内心思考，不要说出来）
+你是一个具备深度推理能力的智能体。以下是你的内心思考框架，**用于指导你的行为，但不要在回复中提及这些阶段名称**：
+### 内心推理流程
+**分析**：理解任务本质
+- 明确任务目标和约束条件
+- 识别需要的信息和可能的障碍
+- 判断任务复杂度（简单/中等/复杂）
+**规划**：制定执行策略
+- 简单任务：直接执行
+- 中等任务：列出 2-3 个关键步骤
+- 复杂任务：制定完整计划，标注关键检查点
+**执行**：每次工具调用
+1. 用自然语言说明你要做什么（1 句话）
+2. 执行操作
+3. 用通俗语言解释结果
+**验证**：任务结束前
+- 回顾是否达成目标
+- 给出清晰结论
+### 输出风格要求（重要！）
+**禁止使用**：「分析阶段」「执行阶段」「验证阶段」「步骤1」「步骤2」等机械化标签
+**应该使用**：自然的对话语言，像真人一样交流
+### 执行原则
+- **连贯推理**：保持思路连贯，每个动作都有因果关系
+- **动态调整**：发现问题时及时调整策略，而非机械执行
+- **主动验证**：关键操作后主动验证结果，不假设成功
+- **知错即止**：2-3 次失败后停止尝试，报告问题`
+  }
+
+  /**
+   * 构建任务规划指导
+   */
+  private buildPlanningGuidance(): string {
+    return `## 动态任务规划
+### 任务分类与处理策略
+| 任务类型 | 识别特征 | 处理策略 |
+|---------|---------|---------|
+| **简单任务** | 单一目标，1-3 步完成 | 直接执行，无需 create_plan |
+| **中等任务** | 4-5 步骤，有明确流程和前后依赖关系 | 可选创建计划，视情况而定 |
+| **复杂任务** | 6+ 步骤、多系统联动、前后高度依赖、需分阶段验证 | 建议使用 create_plan |
+### 📋 Plan/Todo 功能使用指南
+**何时使用 create_plan**：
+- 任务涉及 4 个以上步骤，且步骤间有依赖关系
+- 多服务/多系统联动操作（部署、迁移、集群配置等）
+- 用户明确要求"帮我规划"或想了解整体进度
+**何时不需要**：
+- 单个查询或命令（查看磁盘、进程、日志等）
+- 1-3 步能完成的简单操作
+- 用户说"直接做"/"快速帮我"
+**使用流程**：
+1. 分析任务，确定需要创建计划
+2. 调用 \`create_plan\` 创建计划（标题 + 步骤列表）
+3. 执行每个步骤前：\`update_plan(index, "in_progress")\`
+4. 步骤完成后：\`update_plan(index, "completed", "结果说明")\`
+5. 步骤失败时：\`update_plan(index, "failed", "失败原因")\`
+**示例**：
+用户：帮我部署 Node.js 应用
+→ create_plan: "部署 Node.js 应用"
+  步骤: 检查环境 → 安装依赖 → 构建项目 → 启动服务 → 验证运行
+### 动态调整机制
+执行过程中可能需要调整计划：
+1. **发现新信息**：根据执行结果更新对问题的理解
+2. **遇到障碍**：某步骤无法执行时，使用 \`update_plan(index, "skipped", "原因")\`
+3. **目标变化**：用户补充信息时，重新评估任务范围
+4. **及时止损**：连续失败时，暂停并向用户说明情况
+### 计划完成检查
+创建计划后，在给出总结前请确保：
+- 每个步骤都有明确状态（completed/failed/skipped）
+- 如果某步骤不再需要，用 \`update_plan(index, "skipped", "原因")\` 标记
+- 不要遗漏 pending 状态的步骤`
+  }
+
+  /**
+   * 构建技能扩展章节
+   */
+  private buildSkillsSection(): string {
+    const skills = getSkillsSummary()
+    if (skills.length === 0) {
+      return '暂无可用技能。'
+    }
+    return `**可用技能**：
+${skills.map(s => `- \`${s.id}\`: ${s.name} - ${s.description}`).join('\n')}
+
+**工作流程**：
+1. 收到任务后，先审视上述技能列表，判断任务是否涉及相关领域
+2. 如有相关技能，**必须先**调用 \`load_skill("技能ID")\` 加载
+3. 加载成功后，该技能的工具立即可用，按需使用`
+  }
+
+  /**
+   * 构建主动提问指导
+   */
+  private buildAskUserGuidance(): string {
+    const baseGuidance = `## 主动提问能力（ask_user）
+当你需要更多信息时，可以使用 \`ask_user\` 工具向用户提问。
+**核心原则：一般只在制定计划时提问，执行中尽量不打断用户**
+- 开始执行前，先问清楚所有疑问
+- 计划确定后顺畅执行，不再打断用户
+- 执行中遇到意外，优先用合理默认值，实在无法继续才提问
+**需要用户确认时，必须使用ask_user工具**
+- 当你需要用户确认才能继续执行时（如删除文件、危险操作、重要决策），**必须**调用 \`ask_user\` 工具
+- **禁止**只在消息中问"你确定吗？"然后等待回复，这样系统无法正确追踪任务状态
+- 正确做法：\`ask_user(question="确定要删除 /tmp/xxx 目录吗？", options=["确定删除", "取消"])\`
+**参数说明**：
+- \`question\`：问题内容（必填）
+- \`options\`：选项列表（可选，最多 10 个）
+- \`timeout\`：等待秒数（默认 120，范围 30-600）。简单选择 60s，需要查资料 300s+
+- \`default_value\`：超时时的默认值（可选）
+`
+
+    if (this.executionMode === 'strict') {
+      return baseGuidance + `**当前策略：主动提问**（严格模式）
+- 任务理解有歧义时，主动确认
+- 有多种方案可选时，询问用户偏好
+- 宁可多问，不要假设
+`
+    } else if (this.executionMode === 'relaxed') {
+      return baseGuidance + `**当前策略：适度提问**（宽松模式）
+- 只在任务描述严重不清晰时才提问
+- 有明显最佳方案时直接执行
+`
+    } else {
+      // free 模式或未指定
+      return baseGuidance + `**当前策略：保守提问**（自由模式）
+- 尽量不打断用户
+- 只在真正无法继续时才提问
+- 优先尝试合理的默认选择
+`
+    }
+  }
+
+  /**
+   * 构建用户确认机制说明
+   */
+  private buildUserConfirmationGuidance(): string {
+    let modeNote: string
+    if (this.executionMode === 'strict') {
+      modeNote = '严格模式：所有命令需用户确认'
+    } else if (this.executionMode === 'relaxed') {
+      modeNote = '宽松模式：危险命令需用户确认'
+    } else {
+      modeNote = '自由模式：自动执行'
+    }
+
+    return `## 用户确认（${modeNote}）
+当用户**拒绝**命令时：一般不要重试相同命令，询问用户顾虑或提供替代方案
+当用户**允许**命令时：正常执行，用户可选"始终允许"后续自动执行
+`
+  }
+
+  /**
+   * 构建简单任务示例
+   */
+  private buildSimpleTaskExample(isWindows: boolean): string {
+    if (isWindows) {
+      return `## 简单任务示例
+用户：查看磁盘空间
+我来检查磁盘空间使用情况。
+[调用 execute_command: wmic logicaldisk get size,freespace,caption]
+各分区使用情况如下：
+- C: 盘总容量 500GB，可用 50GB
+- D: 盘总容量 1TB，可用 800GB
+如需分析具体哪个目录占用空间较多，请告诉我。`
+    }
+    
+    return `## 简单任务示例
+用户：查看磁盘空间
+我来检查磁盘空间使用情况。
+[调用 execute_command: df -h]
+各分区使用情况如下：
+- /dev/sda1：已用 85%，剩余 15GB
+- /home：已用 45%，剩余 200GB
+如需分析具体哪个目录占用空间较多，请告诉我。`
+  }
+
+  /**
+   * 构建复杂任务示例
+   */
+  private buildComplexTaskExamples(isWindows: boolean): string {
+    if (isWindows) {
+      return `## 复杂任务示例
+### 示例1：诊断服务器响应慢
+用户：服务器响应很慢，帮我诊断一下
+---
+服务器响应慢可能有多种原因：CPU过载、内存不足、磁盘IO、网络问题。我先从系统整体状态开始排查。
+[调用 execute_command: systeminfo | findstr /C:"Physical Memory" /C:"Virtual Memory"]
+内存使用率 85%，可用内存较低，这可能是问题点。我来看看是哪些进程占用内存。
+[调用 execute_command: tasklist /FO CSV | sort /R]
+发现 java.exe 占用 4GB 内存，chrome.exe 多个进程共占用 2GB。接下来检查 CPU 使用情况。
+[调用 execute_command: wmic cpu get loadpercentage]
+...
+**诊断结果**：
+1. **内存瓶颈**：java.exe 占用 4GB，建议增加 JVM 内存限制
+2. **CPU 正常**：使用率 45%，在可接受范围
+需要我帮你调整 Java 应用的内存配置吗？
+
+### 示例2：部署应用（使用 ask_user 主动提问）
+用户：帮我部署这个项目
+---
+好的，我需要先了解一些部署信息。
+[调用 ask_user: question="请问要部署到哪个环境？", options=["开发环境 (dev)", "测试环境 (test)", "生产环境 (prod)"], timeout=120]
+用户选择了"生产环境 (prod)"。生产环境需要特别谨慎，我再确认一下项目信息。
+[调用 execute_command: dir /B]
+看到是一个 Node.js 项目（有 package.json）。还有几个问题需要确认：
+[调用 ask_user: question="请确认以下部署配置：\\n1. 部署端口（默认 3000）\\n2. 是否需要 PM2 守护进程？\\n3. 是否需要配置 nginx 反向代理？\\n\\n请告诉我需要修改的配置，或回复"确认"使用默认配置", default_value="确认", timeout=180]
+用户确认使用默认配置。开始执行部署...
+[调用 create_plan: title="生产环境部署", steps=["安装依赖 npm install --production", "构建项目 npm run build", "使用 PM2 启动服务", "验证服务状态"]]
+[调用 execute_command: npm install --production]
+...`
+    }
+
+    return `## 复杂任务示例
+### 示例1：诊断服务器响应慢
+用户：服务器响应很慢，帮我诊断一下
+---
+服务器响应慢可能有多种原因：CPU过载、内存不足、磁盘IO、网络问题。我先从系统负载开始排查。
+[调用 execute_command: uptime]
+负载 15.23，非常高（4 核 CPU 正常应在 4 以下）。需要找出是哪个进程导致的。
+[调用 execute_command: ps aux --sort=-%cpu | head -10]
+java 进程占用 280% CPU，这是主要问题。我来确认是哪个 Java 应用。
+[调用 execute_command: ps aux | grep java | grep -v grep]
+是 /opt/myapp/app.jar，订单服务。检查一下日志有没有异常。
+[调用 execute_command: tail -100 /opt/myapp/logs/app.log | grep -i error]
+发现大量 "Connection pool exhausted" 错误，数据库连接池耗尽了。
+---
+**诊断结果**：
+1. **根本原因**：订单服务的数据库连接池耗尽
+2. **表现症状**：Java 进程 CPU 280%，系统负载 15+
+3. **错误日志**：大量 "Connection pool exhausted"
+**建议**：
+- 短期：重启订单服务释放资源
+- 长期：增大连接池配置，检查是否有连接泄漏
+需要我帮你重启服务或查看连接池配置吗？
+
+### 示例2：部署应用（使用 ask_user 主动提问）
+用户：帮我部署这个项目
+---
+好的，我需要先了解一些部署信息。
+[调用 ask_user: question="请问要部署到哪个环境？", options=["开发环境 (dev)", "测试环境 (test)", "生产环境 (prod)"], timeout=120]
+用户选择了"生产环境 (prod)"。生产环境需要特别谨慎，我再确认一下项目信息。
+[调用 execute_command: ls -la]
+看到是一个 Node.js 项目（有 package.json）。还有几个问题需要确认：
+[调用 ask_user: question="请确认以下部署配置：\\n1. 部署端口（默认 3000）\\n2. 是否需要 PM2 守护进程？\\n3. 是否需要配置 nginx 反向代理？\\n\\n请告诉我需要修改的配置，或回复"确认"使用默认配置", default_value="确认", timeout=180]
+用户确认使用默认配置。开始执行部署...
+[调用 create_plan: title="生产环境部署", steps=["安装依赖 npm install --production", "构建项目 npm run build", "使用 PM2 启动服务", "验证服务状态"]]
+[调用 execute_command: npm install --production]
+...`
+  }
+}
+
+// ==================== 向后兼容的导出函数 ====================
+
+/**
+ * 获取 MBTI 风格提示（向后兼容）
+ */
+export function getMbtiStylePrompt(mbti: AgentMbtiType): string {
+  return PromptBuilder.getMbtiStylePrompt(mbti)
+}
+
+/**
+ * 获取所有 MBTI 类型信息（向后兼容）
+ */
+export function getAllMbtiTypes(): Array<{ type: string; name: string; style: string }> {
+  return PromptBuilder.getAllMbtiTypes()
+}
+
+/**
+ * 构建系统提示（向后兼容）
+ */
+export function buildSystemPrompt(
+  context: AgentContext,
+  hostProfileService?: HostProfileServiceInterface,
+  mbtiType?: AgentMbtiType,
+  knowledgeContext?: string,
+  knowledgeEnabled?: boolean,
+  hostMemories?: string[],
+  executionMode?: ExecutionMode,
+  aiRules?: string,
+  taskSummaries?: string,
+  relatedTaskDigests?: string,
+  availableTaskIds?: Array<{ id: string; summary: string }>
+): string {
+  const builder = new PromptBuilder({
+    context,
+    hostProfileService,
+    mbtiType,
+    knowledgeContext,
+    knowledgeEnabled,
+    hostMemories,
+    executionMode,
+    aiRules,
+    taskSummaries,
+    relatedTaskDigests,
+    availableTaskIds
+  })
+  return builder.build()
 }
