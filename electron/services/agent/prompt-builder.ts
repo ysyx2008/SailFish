@@ -730,6 +730,10 @@ ${buildUserConfirmationGuidance(executionMode)}
 - 超过 500 字符或多行代码 → 先用 \`${isSshTerminal ? 'write_remote_file' : 'write_file'}\` 写入 \`/tmp/xxx.sh\` 或 \`/tmp/xxx.py\`，再执行
 - 尽量不要用 \`python3 -c "多行代码..."\` 这种写法执行较长的程序，终端可能会截断。如果使用的话，只能不太长的，而且执行后要检查是否成功执行。
 
+**【禁止】echo/printf 输出长内容**：
+- **禁止**使用 \`echo "长文本..."\` 或 \`printf "长文本..."\` 输出超过200字符的内容，容易导致终端显示混乱
+- 如需输出分析报告、总结等长文本可以直接在对话中回复，不要发送到终端
+
 **系统自动处理**：
 - \`apt/yum/dnf install xxx\` → 自动添加 \`-y\` 参数
 
