@@ -477,6 +477,13 @@ const translations = {
     'memory.related_history_header': '🔗 **相关历史详情**（自动加载）:',
     'memory.no_task_history': '当前没有可回忆的任务历史。',
     'memory.available_task_ids': '可用的任务 ID：',
+    'memory.recalling_task': '回忆任务 {taskId}',
+    'memory.listing_tasks': '列出可用任务',
+    'memory.task_recalled': '已回忆任务 {taskId}',
+    'memory.deep_recalling_step': '深度回忆任务 {taskId} 的步骤 {stepIndex}',
+    'memory.deep_recalling_task': '深度回忆任务 {taskId}',
+    'memory.step_recalled': '已回忆任务 {taskId} 的步骤 {stepIndex}',
+    'memory.task_steps_recalled': '已回忆任务 {taskId}（共 {count} 个步骤）',
 
     // 控制键
     'control.send_key': '发送控制键',
@@ -1154,6 +1161,13 @@ Please output the summary in the following format:
     'memory.related_history_header': '🔗 **Related History** (auto-loaded):',
     'memory.no_task_history': 'No task history available.',
     'memory.available_task_ids': 'Available task IDs:',
+    'memory.recalling_task': 'Recalling task {taskId}',
+    'memory.listing_tasks': 'Listing available tasks',
+    'memory.task_recalled': 'Recalled task {taskId}',
+    'memory.deep_recalling_step': 'Deep recalling step {stepIndex} of task {taskId}',
+    'memory.deep_recalling_task': 'Deep recalling task {taskId}',
+    'memory.step_recalled': 'Recalled step {stepIndex} of task {taskId}',
+    'memory.task_steps_recalled': 'Recalled task {taskId} ({count} steps)',
 
     // Control key
     'control.send_key': 'Send control key',
