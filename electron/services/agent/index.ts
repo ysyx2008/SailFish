@@ -1,9 +1,10 @@
 /**
  * Agent 服务
- * 模块化重构版本
+ * 
+ * OOP 重构版本：AgentService 作为工厂和生命周期管理器
+ * 实际执行逻辑在 Agent 基类和 TerminalAgent 子类中
  */
-import type { AiService, AiMessage, ToolCall, ChatWithToolsResult } from '../ai.service'
-import { CommandExecutorService } from '../command-executor.service'
+import type { AiService } from '../ai.service'
 import type { PtyService } from '../pty.service'
 import type { SshService } from '../ssh.service'
 import type { SftpService } from '../sftp.service'
@@ -11,131 +12,55 @@ import type { McpService } from '../mcp.service'
 import type { ConfigService } from '../config.service'
 import { UnifiedTerminalService } from '../unified-terminal.service'
 
-// 导入子模块
 import type {
   AgentConfig,
   AgentStep,
   AgentContext,
-  AgentPlan,
-  ToolResult,
-  PendingConfirmation,
-  AgentRun,
   AgentCallbacks,
   HostProfileServiceInterface,
   RiskLevel,
-  ExecutionStrategy,
-  ReflectionState,
-  ExecutionQualityScore,
-  WorkerAgentOptions,
+  AgentServices,
+  RunStatus,
   AgentExecutionPhase
 } from './types'
-import { DEFAULT_AGENT_CONFIG } from './types'
-import { getAgentTools } from './tools'
+import { TerminalAgent } from './terminal-agent'
 import { assessCommandRisk, analyzeCommand } from './risk-assessor'
 import type { CommandHandlingInfo } from './risk-assessor'
-import { executeTool, ToolExecutorConfig } from './tool-executor'
-import { buildSystemPrompt } from './prompt-builder'
-import { analyzeTaskComplexity, generatePlanningPrompt } from './planner'
-import { getTaskMemoryStore, detectPendingConfirmation } from './task-memory'
-import { buildTaskHistoryContext, detectContextReference } from './context-builder'
-import { getKnowledgeService } from '../knowledge'
-import { setConfigService as setI18nConfigService, t } from './i18n'
-import { createSkillSession } from './skills'
-import { aiDebugService } from '../ai-debug.service'
+import { setConfigService as setI18nConfigService } from './i18n'
 
 // 重新导出类型，供外部使用
 export type {
   AgentConfig,
   AgentStep,
   AgentContext,
-  ToolResult,
-  PendingConfirmation,
   RiskLevel,
-  CommandHandlingInfo
+  CommandHandlingInfo,
+  AgentServices,
+  RunStatus
 }
 export { assessCommandRisk, analyzeCommand }
 
-/**
- * 检查是否是可重试的网络错误
- */
-function isRetryableNetworkError(errorMessage: string): boolean {
-  const retryablePatterns = [
-    'ECONNRESET',
-    'ECONNREFUSED',
-    'ETIMEDOUT',
-    'ENOTFOUND',
-    'ENETUNREACH',
-    'EHOSTUNREACH',
-    'EPIPE',
-    'socket hang up',
-    'network',
-    'connection reset',
-    'connection refused',
-    'timeout'
-  ]
-  const lowerMsg = errorMessage.toLowerCase()
-  return retryablePatterns.some(pattern => lowerMsg.includes(pattern.toLowerCase()))
-}
+// 导出 Agent 类
+export { Agent } from './agent'
+export { TerminalAgent } from './terminal-agent'
 
 /**
- * 带重试的 AI 请求包装器
+ * Agent 服务 - 工厂和生命周期管理器
+ * 
+ * 职责：
+ * - 创建和管理 TerminalAgent 实例
+ * - 提供向后兼容的 API
+ * - 管理全局回调
  */
-async function withAiRetry<T>(
-  fn: () => Promise<T>,
-  options: {
-    maxRetries?: number
-    retryDelay?: number
-    onRetry?: (attempt: number, error: Error) => void
-  } = {}
-): Promise<T> {
-  const { maxRetries = 2, retryDelay = 1000, onRetry } = options
-  let lastError: Error | null = null
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn()
-    } catch (error) {
-      lastError = error as Error
-      const errorMessage = lastError.message || ''
-
-      // 检查是否是可重试的网络错误
-      if (attempt < maxRetries && isRetryableNetworkError(errorMessage)) {
-        // 指数退避
-        const delay = retryDelay * Math.pow(2, attempt)
-        console.log(`[Agent] AI 请求失败 (${errorMessage})，${delay}ms 后重试 (${attempt + 1}/${maxRetries})`)
-        onRetry?.(attempt + 1, lastError)
-        await new Promise(resolve => setTimeout(resolve, delay))
-        continue
-      }
-
-      // 不可重试或已达到最大重试次数
-      throw lastError
-    }
-  }
-
-  throw lastError
-}
-
 export class AgentService {
-  private aiService: AiService
-  private commandExecutor: CommandExecutorService
-  private ptyService: PtyService
-  private sshService?: SshService
-  private sftpService?: SftpService
-  private unifiedTerminalService?: UnifiedTerminalService
-  private hostProfileService?: HostProfileServiceInterface
-  private mcpService?: McpService
-  private configService?: ConfigService
-  private runs: Map<string, AgentRun> = new Map()
+  /** Agent 实例映射（按 ptyId） */
+  private agents: Map<string, TerminalAgent> = new Map()
   
-  // 按终端（ptyId）维护的执行计划（跨对话持久化）
-  private terminalPlans: Map<string, AgentPlan> = new Map()
-
-  // 事件回调 - 每个 run 独立的回调存储在 runCallbacks 中
-  // 类级别回调作为默认/全局回调（向后兼容）
+  /** 依赖服务集合 */
+  private services: AgentServices
+  
+  /** 默认回调 */
   private defaultCallbacks: AgentCallbacks = {}
-  // 每个 agentId 对应的回调
-  private runCallbacks: Map<string, AgentCallbacks> = new Map()
 
   constructor(
     aiService: AiService, 
@@ -146,755 +71,133 @@ export class AgentService {
     sshService?: SshService,
     sftpService?: SftpService
   ) {
-    this.aiService = aiService
-    this.ptyService = ptyService
-    this.sshService = sshService
-    this.sftpService = sftpService
-    this.hostProfileService = hostProfileService
-    this.mcpService = mcpService
-    this.configService = configService
-    this.commandExecutor = new CommandExecutorService()
+    // 创建统一终端服务
+    let unifiedTerminalService: UnifiedTerminalService | undefined
+    if (sshService) {
+      unifiedTerminalService = new UnifiedTerminalService(ptyService, sshService)
+    }
     
-    // 初始化 i18n 模块（使用 configService 获取当前语言）
+    // 组装服务集合
+    this.services = {
+      aiService,
+      ptyService,
+      sshService,
+      sftpService,
+      unifiedTerminalService,
+      hostProfileService,
+      mcpService,
+      configService
+    }
+    
+    // 初始化 i18n
     if (configService) {
       setI18nConfigService(configService)
     }
-    
-    // 如果提供了 sshService，创建统一终端服务
-    if (sshService) {
-      this.unifiedTerminalService = new UnifiedTerminalService(ptyService, sshService)
-    }
   }
+  
+  // ==================== 服务设置（延迟初始化） ====================
 
   /**
-   * 设置 SSH 服务（延迟初始化）
+   * 设置 SSH 服务
    */
   setSshService(sshService: SshService): void {
-    this.sshService = sshService
-    if (this.ptyService) {
-      this.unifiedTerminalService = new UnifiedTerminalService(this.ptyService, sshService)
+    this.services.sshService = sshService
+    if (this.services.ptyService) {
+      this.services.unifiedTerminalService = new UnifiedTerminalService(
+        this.services.ptyService, 
+        sshService
+      )
     }
   }
 
   /**
-   * 设置 SFTP 服务（延迟初始化，用于 SSH 终端的文件写入）
+   * 设置 SFTP 服务
    */
   setSftpService(sftpService: SftpService): void {
-    this.sftpService = sftpService
+    this.services.sftpService = sftpService
   }
 
   /**
    * 设置 MCP 服务
    */
   setMcpService(mcpService: McpService): void {
-    this.mcpService = mcpService
+    this.services.mcpService = mcpService
+  }
+
+  // ==================== 工厂方法 ====================
+
+  /**
+   * 获取或创建 Agent 实例
+   */
+  getOrCreateAgent(ptyId: string): TerminalAgent {
+    let agent = this.agents.get(ptyId)
+    if (!agent) {
+      agent = new TerminalAgent(ptyId, this.services)
+      agent.setCallbacks(this.defaultCallbacks)
+      this.agents.set(ptyId, agent)
+      console.log(`[AgentService] Created agent for terminal: ${ptyId}`)
+    }
+    return agent
   }
 
   /**
-   * 设置默认事件回调（向后兼容）
+   * 获取 Agent 实例（不创建）
+   */
+  getAgent(ptyId: string): TerminalAgent | undefined {
+    return this.agents.get(ptyId)
+  }
+
+  /**
+   * 检查是否存在 Agent 实例
+   */
+  hasAgent(ptyId: string): boolean {
+    return this.agents.has(ptyId)
+  }
+  
+  // ==================== 生命周期管理 ====================
+
+  /**
+   * 清理 Agent 实例
+   */
+  cleanupAgent(ptyId: string): void {
+    const agent = this.agents.get(ptyId)
+    if (agent) {
+      agent.cleanup()
+      this.agents.delete(ptyId)
+      console.log(`[AgentService] Cleaned up agent for terminal: ${ptyId}`)
+    }
+    }
+
+  /**
+   * 清理所有 Agent 实例
+   */
+  cleanupAllAgents(): void {
+    Array.from(this.agents.entries()).forEach(([ptyId, agent]) => {
+      agent.cleanup()
+      console.log(`[AgentService] Cleaned up agent for terminal: ${ptyId}`)
+    })
+    this.agents.clear()
+  }
+
+  // ==================== 全局设置 ====================
+  
+  /**
+   * 设置默认回调
    */
   setCallbacks(callbacks: AgentCallbacks): void {
     this.defaultCallbacks = callbacks
-  }
-
-  /**
-   * 为特定 run 设置回调（解决多终端同时运行时回调覆盖问题）
-   */
-  setRunCallbacks(agentId: string, callbacks: AgentCallbacks): void {
-    this.runCallbacks.set(agentId, callbacks)
-  }
-
-  /**
-   * 获取特定 run 的回调（优先使用 run 级别回调，否则使用默认回调）
-   */
-  private getCallbacks(agentId: string): AgentCallbacks {
-    return this.runCallbacks.get(agentId) || this.defaultCallbacks
-  }
-
-  /**
-   * 清理 run 的回调
-   */
-  private clearRunCallbacks(agentId: string): void {
-    this.runCallbacks.delete(agentId)
-  }
-
-  /**
-   * 生成唯一 ID
-   */
-  private generateId(): string {
-    return `agent_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
-  }
-
-  /**
-   * 检测执行中的问题（极简版）
-   * 只保留连续失败检测，用于触发反思提示
-   * 不再强制停止，信任大模型 + 用户手动中止
-   */
-  private detectExecutionIssues(run: AgentRun): string[] {
-    const issues: string[] = []
-    const { reflection } = run
-    
-    // 检测连续失败（用于触发反思提示，但不强制停止）
-    if (reflection.failureCount >= 5) {
-      issues.push('consecutive_failures')
-    }
-    
-    return issues
-  }
-
-  /**
-   * 计算执行质量评分
-   */
-  private calculateQualityScore(reflection: ReflectionState): ExecutionQualityScore {
-    const totalAttempts = reflection.successCount + reflection.totalFailures
-    
-    // 成功率
-    const successRate = totalAttempts > 0 
-      ? reflection.successCount / totalAttempts 
-      : 1
-    
-    // 效率（基于工具调用次数和失败次数）
-    const efficiency = totalAttempts > 0
-      ? Math.max(0, 1 - (reflection.totalFailures / totalAttempts) * 0.5)
-      : 1
-    
-    // 适应性（基于策略切换的效果）
-    let adaptability = 0.7  // 默认值
-    if (reflection.strategySwitches.length > 0) {
-      // 如果有策略切换，检查切换后是否有改善
-      const lastSwitch = reflection.strategySwitches[reflection.strategySwitches.length - 1]
-      const timeSinceSwitch = Date.now() - lastSwitch.timestamp
-      if (timeSinceSwitch > 10000 && reflection.failureCount === 0) {
-        adaptability = 0.9  // 切换后成功
-      } else if (reflection.failureCount > 0) {
-        adaptability = 0.5  // 切换后仍有失败
-      }
-    }
-    
-    // 综合评分
-    const overallScore = successRate * 0.5 + efficiency * 0.3 + adaptability * 0.2
-    
-    return { successRate, efficiency, adaptability, overallScore }
-  }
-
-  /**
-   * 决定是否需要切换策略
-   */
-  private shouldSwitchStrategy(run: AgentRun): { 
-    should: boolean
-    newStrategy?: ExecutionStrategy
-    reason?: string 
-  } {
-    const { reflection } = run
-    const issues = this.detectExecutionIssues(run)
-    
-    // 如果刚切换过策略，先观察一下
-    const lastSwitch = reflection.strategySwitches[reflection.strategySwitches.length - 1]
-    if (lastSwitch && Date.now() - lastSwitch.timestamp < 30000) {
-      return { should: false }
-    }
-    
-    // 连续失败 -> 切换到保守策略
-    if (issues.includes('consecutive_failures') && reflection.currentStrategy !== 'conservative') {
-      return {
-        should: true,
-        newStrategy: 'conservative',
-        reason: `连续失败 ${reflection.failureCount} 次，切换到保守策略`
-      }
-    }
-    
-    // 如果一切顺利且当前是保守策略，可以考虑切换回默认
-    if (issues.length === 0 && 
-        reflection.currentStrategy === 'conservative' && 
-        reflection.successCount >= 3 &&
-        reflection.failureCount === 0) {
-      return {
-        should: true,
-        newStrategy: 'default',
-        reason: '执行顺利，切换回默认策略'
-      }
-    }
-    
-    return { should: false }
-  }
-
-  /**
-   * 执行策略切换
-   */
-  private switchStrategy(run: AgentRun, newStrategy: ExecutionStrategy, reason: string): void {
-    const oldStrategy = run.reflection.currentStrategy
-    
-    run.reflection.strategySwitches.push({
-      timestamp: Date.now(),
-      fromStrategy: oldStrategy,
-      toStrategy: newStrategy,
-      reason,
-      triggerCondition: this.detectExecutionIssues(run).join(', ') || 'manual'
-    })
-    
-    run.reflection.currentStrategy = newStrategy
-    
-    console.log(`[Agent] 策略切换: ${oldStrategy} -> ${newStrategy}, 原因: ${reason}`)
-  }
-
-  /**
-   * 生成反思提示消息（简化版）
-   * 不要求深度分析，直接要求停止或换方法
-   */
-  private generateReflectionPrompt(run: AgentRun): string | null {
-    const { reflection } = run
-    const issues = this.detectExecutionIssues(run)
-    
-    // 更新检测到的问题列表
-    for (const issue of issues) {
-      if (!reflection.detectedIssues.includes(issue)) {
-        reflection.detectedIssues.push(issue)
-      }
-    }
-    
-    // 连续失败时，生成简短提示（不强制停止，让大模型自行决定）
-    if (issues.includes('consecutive_failures')) {
-      return '（多次尝试未成功，请告诉用户具体问题，询问是否继续尝试。）'
-    }
-    
-    return ''
-  }
-
-  /**
-   * 检查是否需要触发反思（增强版）
-   */
-  private shouldTriggerReflection(run: AgentRun): boolean {
-    const { reflection } = run
-    const issues = this.detectExecutionIssues(run)
-    
-    // 有问题就触发
-    if (issues.length > 0) {
-      return true
-    }
-    
-    // 定期检查（每 10 次工具调用）
-    if (reflection.toolCallCount - reflection.lastReflectionAt >= 10) {
-      return true
-    }
-    
-    return false
-  }
-
-  /**
-   * 修复不完整的 tool_calls 消息序列
-   * 当 abort 发生在工具执行过程中时，消息历史中可能有 assistant 消息（含 tool_calls）
-   * 但缺少对应的 tool result 消息，这会导致 API 返回 400 错误
-   */
-  private fixIncompleteToolCalls(run: AgentRun): void {
-    const { messages } = run
-    if (messages.length === 0) return
-
-    // 从后往前查找最后一个带有 tool_calls 的 assistant 消息
-    let lastAssistantWithToolCallsIndex = -1
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i]
-      if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
-        lastAssistantWithToolCallsIndex = i
-        break
-      }
-      // 如果遇到 user 消息，说明之前的对话是完整的
-      if (msg.role === 'user') break
-    }
-
-    if (lastAssistantWithToolCallsIndex === -1) return
-
-    const assistantMsg = messages[lastAssistantWithToolCallsIndex]
-    const toolCalls = assistantMsg.tool_calls!
-
-    // 收集该 assistant 消息之后已有的 tool result
-    const existingToolCallIds = new Set<string>()
-    for (let i = lastAssistantWithToolCallsIndex + 1; i < messages.length; i++) {
-      const msg = messages[i]
-      if (msg.role === 'tool' && msg.tool_call_id) {
-        existingToolCallIds.add(msg.tool_call_id)
-      }
-    }
-
-    // 为缺失的 tool_call_id 添加占位的 tool result
-    const missingToolCalls = toolCalls.filter(tc => !existingToolCallIds.has(tc.id))
-    if (missingToolCalls.length > 0) {
-      console.log(`[Agent] 修复 ${missingToolCalls.length} 个缺失的 tool result 消息`)
-      for (const tc of missingToolCalls) {
-        messages.push({
-          role: 'tool',
-          content: '[操作被用户中断]',
-          tool_call_id: tc.id
-        })
-      }
-    }
-  }
-
-  /**
-   * 更新反思追踪状态（简化版）
-   */
-  private updateReflectionTracking(
-    run: AgentRun,
-    _toolName: string,
-    _toolArgs: Record<string, unknown>,
-    result: ToolResult
-  ): void {
-    const { reflection } = run
-
-    reflection.toolCallCount++
-
-    // 如果命令仍在运行（长耗时命令超时），不计入失败
-    if (result.isRunning) {
-      return
-    }
-
-    // 更新成功/失败计数
-    if (result.success) {
-      reflection.successCount++
-      reflection.failureCount = 0
-    } else {
-      reflection.failureCount++
-      reflection.totalFailures++
-    }
-    
-    // 更新质量评分
-    reflection.qualityScore = this.calculateQualityScore(reflection)
-    
-    // 检查是否需要切换策略
-    const switchDecision = this.shouldSwitchStrategy(run)
-    if (switchDecision.should && switchDecision.newStrategy && switchDecision.reason) {
-      this.switchStrategy(run, switchDecision.newStrategy, switchDecision.reason)
-    }
-  }
-
-  /**
-   * 估算消息的 token 数量（粗略估计）
-   * 中文约 1.5 token/字符，英文约 0.25 token/字符
-   */
-  private estimateTokens(text: string): number {
-    const chineseChars = (text.match(/[\u4e00-\u9fa5]/g) || []).length
-    const otherChars = text.length - chineseChars
-    return Math.ceil(chineseChars * 1.5 + otherChars * 0.25)
-  }
-
-  /**
-   * 估算消息数组的总 token 数
-   */
-  private estimateTotalTokens(messages: AiMessage[]): number {
-    return messages.reduce((sum, msg) => {
-      let tokens = this.estimateTokens(msg.content)
-      // 工具调用也占用 token
-      if (msg.tool_calls) {
-        tokens += msg.tool_calls.reduce((t, tc) => 
-          t + this.estimateTokens(tc.function.name) + this.estimateTokens(tc.function.arguments), 0)
-      }
-      if (msg.reasoning_content) {
-        tokens += this.estimateTokens(msg.reasoning_content)
-      }
-      return sum + tokens
-    }, 0)
-  }
-
-  /**
-   * 获取当前 AI Profile 的上下文长度
-   */
-  private getContextLength(profileId?: string): number {
-    if (!this.configService) {
-      return 32000  // 默认 32K
-    }
-    
-    const profiles = this.configService.getAiProfiles()
-    if (profiles.length === 0) {
-      return 32000
-    }
-    
-    let profile
-    if (profileId) {
-      profile = profiles.find(p => p.id === profileId)
-    } else {
-      const activeId = this.configService.getActiveAiProfile()
-      profile = profiles.find(p => p.id === activeId) || profiles[0]
-    }
-    
-    // 返回配置的上下文长度，默认 32000
-    return profile?.contextLength || 32000
-  }
-
-  /**
-   * 检查上下文是否超限
-   * 如果超限，抛出错误让用户知道，而不是悄悄截断导致 AI 丢失上下文
-   */
-  private checkContextLimit(messages: AiMessage[]): void {
-    const contextLength = this.getContextLength()
-    const maxTokens = Math.floor(contextLength * 0.95)  // 预留 5% 给响应
-    const totalTokens = this.estimateTotalTokens(messages)
-    
-    if (totalTokens > maxTokens) {
-      const percentage = Math.round((totalTokens / contextLength) * 100)
-      throw new Error(
-        t('agent.context_limit_exceeded', { 
-          current: totalTokens, 
-          limit: contextLength,
-          percentage 
-        })
-      )
-    }
-  }
-
-  /**
-   * 根据程序设置的语言生成语言提示
-   */
-  private getLanguageHint(): string {
-    const locale = this.configService?.getLanguage() || 'zh-CN'
-    if (locale === 'en-US') {
-      return '[Respond in English]\n'
-    }
-    return ''  // 中文不需要特别提示
-  }
-
-  /**
-   * 分析任务并添加规划提示
-   */
-  private enhanceUserMessage(userMessage: string): string {
-    const complexity = analyzeTaskComplexity(userMessage)
-    const planningPrompt = generatePlanningPrompt(userMessage, complexity)
-    
-    // 使用程序设置的语言
-    const languageHint = this.getLanguageHint()
-    
-    let result = languageHint + userMessage
-    if (planningPrompt) {
-      result += '\n' + planningPrompt
-    }
-    return result
-  }
-
-  /**
-   * 构建之前已完成任务的上下文信息（包含完整执行步骤）
-   * 如果内容过长会让 AI 提炼摘要
-   */
-  private async buildPreviousTasksContext(
-    previousTasks: import('./types').PreviousTaskContext[],
-    profileId?: string
-  ): Promise<string | null> {
-    if (previousTasks.length === 0) return null
-
-    const contextLength = this.getContextLength(profileId)
-    // 为历史上下文分配的 token 预算（上下文长度的 60%）
-    const maxTokens = Math.floor(contextLength * 0.60)
-
-    // 构建步骤描述
-    const formatStep = (step: import('./types').PreviousAgentStep, index: number): string => {
-      let stepDesc = `  ${index + 1}. [${step.type}]`
-      
-      if (step.toolName) {
-        stepDesc += ` ${t('context.tool')}: ${step.toolName}`
-        if (step.toolArgs) {
-          stepDesc += `\n     ${t('context.args')}: ${JSON.stringify(step.toolArgs)}`
-        }
-      }
-      
-      if (step.content) {
-        stepDesc += `\n     ${t('context.content')}: ${step.content}`
-      }
-      
-      if (step.toolResult) {
-        stepDesc += `\n     ${t('context.result')}: ${step.toolResult}`
-      }
-      
-      return stepDesc
-    }
-
-    // 构建单个任务的上下文
-    const formatTask = (task: import('./types').PreviousTaskContext, taskNum: number): string => {
-      const stepDescriptions = task.steps.map((step, index) => formatStep(step, index))
-      return [
-        `### ${t('context.task_num', { num: taskNum })}`,
-        `**${t('context.user_request')}**: ${task.userTask}`,
-        `**${t('context.execution_steps')}**:`,
-        ...stepDescriptions,
-        `**${t('context.result')}**: ${task.finalResult}`,
-        ''
-      ].join('\n')
-    }
-
-    // 构建完整上下文
-    const taskDescriptions = previousTasks.map((task, index) => formatTask(task, index + 1))
-    const fullContext = [
-      t('context.history_header', { count: previousTasks.length }),
-      '',
-      ...taskDescriptions,
-      '---',
-      t('context.history_footer')
-    ].join('\n')
-
-    // 检查 token 数量
-    const estimatedTokens = this.estimateTokens(fullContext)
-    
-    if (estimatedTokens <= maxTokens) {
-      return fullContext
-    }
-
-    // 内容过长，需要让 AI 提炼摘要
-    console.log(`[Agent] 历史上下文过长 (${estimatedTokens} tokens)，使用 AI 提炼摘要 (目标: ${maxTokens} tokens)`)
-
-    try {
-      const summaryPrompt = t('context.summary_prompt', {
-        count: previousTasks.length,
-        tokenLimit: Math.floor(maxTokens * 0.8),
-        context: fullContext
-      })
-
-      const summary = await this.aiService.chat([
-        { role: 'user', content: summaryPrompt }
-      ], profileId)
-
-      if (summary && summary.trim()) {
-        console.log(`[Agent] AI 摘要生成成功，长度: ${summary.length} 字符`)
-        return `${t('context.history_summary_header')}\n\n${summary}\n\n${t('context.history_summary_footer')}`
-      }
-    } catch (error) {
-      console.warn('[Agent] AI 摘要生成失败，使用简化版本:', error)
-    }
-
-    // AI 摘要失败时的兜底：只保留任务和结果
-    const simpleSummary = previousTasks.map((task, index) => {
-      return `${index + 1}. ${task.userTask}\n   ${t('context.result')}: ${task.finalResult}`
-    }).join('\n\n')
-
-    return [
-      t('context.history_header', { count: previousTasks.length }),
-      '',
-      simpleSummary,
-      '',
-      t('context.history_summary_footer')
-    ].join('\n')
-  }
-
-  /**
-   * 添加执行步骤
-   */
-  private addStep(agentId: string, step: Omit<AgentStep, 'id' | 'timestamp'>): AgentStep {
-    const run = this.runs.get(agentId)
-    if (!run) return step as AgentStep
-
-    // 计算当前上下文的 token 数
-    const contextTokens = this.estimateTotalTokens(run.messages)
-
-    const fullStep: AgentStep = {
-      ...step,
-      id: `step_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      timestamp: Date.now(),
-      contextTokens  // 附带上下文 token 数
-    }
-    run.steps.push(fullStep)
-
-    // 触发回调（使用 run 级别回调）
-    const callbacks = this.getCallbacks(agentId)
-    if (callbacks.onStep) {
-      callbacks.onStep(agentId, fullStep)
-    }
-    
-    // Worker 模式：报告进度给协调器
-    if (run.workerOptions?.reportProgress) {
-      run.workerOptions.reportProgress(fullStep)
-    }
-
-    return fullStep
-  }
-
-  /**
-   * 更新执行步骤（用于流式输出）
-   */
-  private updateStep(agentId: string, stepId: string, updates: Partial<Omit<AgentStep, 'id' | 'timestamp'>>): void {
-    const run = this.runs.get(agentId)
-    if (!run) return
-
-    // 查找现有步骤
-    let step = run.steps.find(s => s.id === stepId)
-    
-    if (!step) {
-      // 如果步骤不存在，创建一个新的
-      step = {
-        id: stepId,
-        type: updates.type || 'message',
-        content: updates.content || '',
-        timestamp: Date.now(),
-        isStreaming: updates.isStreaming
-      }
-      run.steps.push(step)
-    } else {
-      // 更新现有步骤
-      Object.assign(step, updates)
-    }
-
-    // 触发回调（使用 run 级别回调）
-    const callbacks = this.getCallbacks(agentId)
-    if (callbacks?.onStep) {
-      callbacks.onStep(agentId, step)
-    }
-  }
-
-  /**
-   * 移除执行步骤（用于非调试模式隐藏过渡步骤）
-   */
-  private removeStep(agentId: string, stepId: string): void {
-    const run = this.runs.get(agentId)
-    if (!run) return
-
-    // 从步骤列表中移除
-    const index = run.steps.findIndex(s => s.id === stepId)
-    if (index !== -1) {
-      run.steps.splice(index, 1)
-    }
-
-    // 注意：不需要通知前端删除，因为前端会根据步骤列表重新渲染
-    // 如果需要前端也删除，需要添加一个 onStepRemoved 回调
-    // 但更简单的方式是在 updateStep 时发送一个空内容的步骤让前端隐藏
-  }
-
-  /**
-   * 等待用户确认
-   */
-  private waitForConfirmation(
-    agentId: string,
-    toolCallId: string,
-    toolName: string,
-    toolArgs: Record<string, unknown>,
-    riskLevel: RiskLevel
-  ): Promise<boolean> {
-    return new Promise((resolve) => {
-      const run = this.runs.get(agentId)
-      if (!run) {
-        resolve(false)
-        return
-      }
-
-      // 检查工具是否在会话白名单中（"始终允许"功能）
-      if (this.isToolAllowed(agentId, toolName, toolArgs)) {
-        console.log(`[Agent] Tool auto-approved by whitelist: ${toolName}`)
-        // 不添加额外步骤，因为调用方已经添加了 tool_call 步骤
-        // 用户在第一次选择"始终允许"时已经知道后续会自动批准
-        resolve(true)
-        return
-      }
-
-      // 设置执行阶段为等待确认（安全打断）
-      this.setExecutionPhase(agentId, 'confirming', toolName)
-
-      // 添加确认步骤
-      this.addStep(agentId, {
-        type: 'confirm',
-        content: t('agent.waiting_confirm', { toolName }),
-        toolName,
-        toolArgs,
-        riskLevel
-      })
-
-      const confirmation: PendingConfirmation = {
-        agentId,
-        toolCallId,
-        toolName,
-        toolArgs,
-        riskLevel,
-        resolve: (approved, modifiedArgs) => {
-          run.pendingConfirmation = undefined
-          // 确认后恢复 thinking 阶段
-          this.setExecutionPhase(agentId, 'thinking')
-          if (modifiedArgs) {
-            Object.assign(toolArgs, modifiedArgs)
-          }
-          resolve(approved)
-        }
-      }
-
-      run.pendingConfirmation = confirmation
-
-      // 通知前端需要确认（使用 run 级别回调）
-      const callbacks = this.getCallbacks(agentId)
-      if (callbacks.onNeedConfirm) {
-        callbacks.onNeedConfirm(confirmation)
-      }
+    // 更新已存在的 agents
+    Array.from(this.agents.values()).forEach(agent => {
+      agent.setCallbacks(callbacks)
     })
   }
 
-  /**
-   * 生成工具白名单键
-   * 根据工具名和关键参数生成唯一标识，用于"始终允许"功能
-   */
-  private generateAllowedToolKey(toolName: string, toolArgs: Record<string, unknown>): string {
-    // 提取关键参数（根据工具类型决定）
-    let keyArgs: string
-    switch (toolName) {
-      case 'excel_save':
-      case 'excel_modify':
-      case 'excel_open':
-      case 'excel_close':
-        // Excel 工具：以文件路径为键
-        keyArgs = String(toolArgs.path || '')
-        break
-      case 'write_file':
-      case 'read_file':
-        // 文件操作：以文件路径为键
-        keyArgs = String(toolArgs.path || toolArgs.file_path || '')
-        break
-      case 'execute_command':
-        // 命令执行：以命令为键
-        keyArgs = String(toolArgs.command || '')
-        break
-      default:
-        // 其他工具：使用完整参数的 JSON 字符串
-        keyArgs = JSON.stringify(toolArgs)
-    }
-    return `${toolName}:${keyArgs}`
-  }
-
-  /**
-   * 检查工具是否在会话白名单中
-   */
-  isToolAllowed(agentId: string, toolName: string, toolArgs: Record<string, unknown>): boolean {
-    const run = this.runs.get(agentId)
-    if (!run) return false
-    const key = this.generateAllowedToolKey(toolName, toolArgs)
-    return run.allowedTools.has(key)
-  }
-
-  /**
-   * 处理用户确认
-   * @param alwaysAllow 如果为 true，将该工具+参数加入会话白名单
-   */
-  confirmToolCall(
-    agentId: string,
-    toolCallId: string,
-    approved: boolean,
-    modifiedArgs?: Record<string, unknown>,
-    alwaysAllow?: boolean
-  ): boolean {
-    const run = this.runs.get(agentId)
-    if (!run || !run.pendingConfirmation) return false
-
-    if (run.pendingConfirmation.toolCallId === toolCallId) {
-      // 如果用户选择"始终允许"，将工具+参数加入白名单
-      if (approved && alwaysAllow) {
-        const { toolName, toolArgs } = run.pendingConfirmation
-        const key = this.generateAllowedToolKey(toolName, modifiedArgs || toolArgs)
-        run.allowedTools.add(key)
-        console.log(`[Agent] Added to allowed tools: ${key}`)
-      }
-      run.pendingConfirmation.resolve(approved, modifiedArgs)
-      return true
-    }
-    return false
-  }
+  // ==================== 便捷方法（向后兼容） ====================
 
   /**
    * 运行 Agent
-   * @param ptyId 终端 ID
-   * @param userMessage 用户消息/任务描述
-   * @param context 终端上下文
-   * @param config Agent 配置
-   * @param profileId AI 配置档案 ID
-   * @param workerOptions Worker 模式选项（智能巡检时使用）
-   * @param callbacks 可选的回调函数（每个 run 独立，解决多终端并发问题）
+   * 
+   * 向后兼容的便捷方法，内部委托给 TerminalAgent
    */
   async run(
     ptyId: string,
@@ -902,1005 +205,83 @@ export class AgentService {
     context: AgentContext,
     config?: Partial<AgentConfig>,
     profileId?: string,
-    workerOptions?: WorkerAgentOptions,
+    workerOptions?: import('./types').WorkerAgentOptions,
     callbacks?: AgentCallbacks
   ): Promise<string> {
-    const agentId = this.generateId()
-    const fullConfig = { ...DEFAULT_AGENT_CONFIG, ...config }
-
-    // 如果提供了回调，注册为 run 级别回调（解决多终端同时运行时回调覆盖问题）
-    if (callbacks) {
-      this.setRunCallbacks(agentId, callbacks)
+    const agent = this.getOrCreateAgent(ptyId)
+    
+    // 更新配置
+    if (config) {
+      agent.updateConfig(config)
     }
-
-    // 初始化运行状态
-    const run: AgentRun = {
-      id: agentId,
-      ptyId,
-      messages: [],
-      steps: [],
-      isRunning: true,
-      aborted: false,
-      pendingUserMessages: [],  // 用户补充消息队列
-      config: fullConfig,
-      context,  // 保存上下文供工具使用
-      // 初始化反思追踪（增强版）
-      reflection: {
-        toolCallCount: 0,
-        failureCount: 0,
-        totalFailures: 0,
-        successCount: 0,
-        lastCommands: [],
-        lastToolCalls: [],  // 追踪工具调用
-        lastReflectionAt: 0,
-        reflectionCount: 0,  // 反思次数计数
-        currentStrategy: 'default',
-        strategySwitches: [],
-        detectedIssues: [],
-        appliedFixes: []
-      },
-      // 初始化实时输出缓冲区（从传入的快照开始，然后实时更新）
-      realtimeOutputBuffer: [...context.terminalOutput],
-      // Worker 模式选项
+    
+    // 运行
+    return agent.run(userMessage, context, {
+      profileId,
       workerOptions,
-      // 初始化执行阶段
-      executionPhase: 'thinking',
-      // 创建技能会话（传入核心工具定义，根据运行模式过滤）
-      skillSession: createSkillSession(getAgentTools(this.mcpService, {
-        mode: this.unifiedTerminalService?.getTerminalType(ptyId) || 'local'
-      })),
-      // 初始化会话级别的工具白名单
-      allowedTools: new Set<string>()
-    }
-    this.runs.set(agentId, run)
-    
-    // 立即发送初始步骤，让前端可以立刻获得 agentId
-    // 这解决了用户在 AI 开始处理前切换执行模式时，前端无法更新配置的问题
-    const initialStep = this.addStep(agentId, {
-      type: 'thinking',
-      content: t('ai.preparing'),
-      isStreaming: true
+      callbacks
     })
-    // 保存初始步骤 ID，在有实际内容输出时移除
-    run.initialStepId = initialStep.id
-    
-    // Worker 模式日志
-    if (workerOptions?.isWorker) {
-      console.log(`[Agent] Running as Worker for orchestrator ${workerOptions.orchestratorId}, terminal: ${workerOptions.terminalName}`)
+  }
+  
+  /**
+   * 中止运行
+   */
+  abort(ptyId: string): boolean {
+    const agent = this.getAgent(ptyId)
+    return agent?.abort() ?? false
     }
     
-    // 注册终端输出监听器，实时收集输出
-    const MAX_BUFFER_LINES = 200  // 缓冲区最大行数
-    // 使用统一终端服务（支持 PTY 和 SSH），如果没有则回退到 ptyService
-    const terminalService = this.unifiedTerminalService || this.ptyService
-    run.outputUnsubscribe = terminalService.onData(ptyId, (data: string) => {
-      // 将新输出按行分割并追加到缓冲区
-      const newLines = data.split('\n')
-      run.realtimeOutputBuffer.push(...newLines)
-      
-      // 保持缓冲区在限制内（保留最新的行）
-      if (run.realtimeOutputBuffer.length > MAX_BUFFER_LINES) {
-        run.realtimeOutputBuffer = run.realtimeOutputBuffer.slice(-MAX_BUFFER_LINES)
-      }
-    })
-
-    // 构建系统提示（包含 MBTI 风格和用户自定义规则）
-    const mbtiType = this.configService?.getAgentMbti() ?? null
-    const aiRules = this.configService?.getAiRules() ?? ''
-    
-    // 获取知识库上下文（如果启用）
-    let knowledgeContext = ''
-    let knowledgeEnabled = false
-    let hostMemories: string[] = []
-    try {
-      const knowledgeService = getKnowledgeService()
-      if (knowledgeService && knowledgeService.isEnabled()) {
-        knowledgeEnabled = true
-        // buildContext 内部会自动初始化服务
-        knowledgeContext = await knowledgeService.buildContext(userMessage, {
-          hostId: context.hostId
-        })
-        if (knowledgeContext) {
-          console.log('[Agent] 知识库上下文已加载，长度:', knowledgeContext.length)
-        }
-        
-        // 获取主机记忆（优先从知识库获取）
-        if (context.hostId) {
-          hostMemories = await knowledgeService.getHostMemoriesForPrompt(
-            context.hostId, 
-            userMessage,  // 使用用户消息作为上下文提示，获取相关记忆
-            30  // 增加到30条，知识库容量充足
-          )
-          if (hostMemories.length > 0) {
-            console.log(`[Agent] 已加载 ${hostMemories.length} 条主机记忆`)
-          }
-        }
-      }
-    } catch (e) {
-      // 知识库服务出错，忽略
-      console.log('[Agent] Knowledge service error:', e)
-    }
-    
-    // 获取任务记忆（智能分层上下文）- 按终端 ID 隔离
-    const taskMemoryStore = getTaskMemoryStore(ptyId)
-    
-    // 如果前端传入了 previousTasks，但 TaskMemoryStore 为空，将数据导入到 TaskMemoryStore
-    // 这实现了从旧模式到新模式的平滑过渡，避免数据重复
-    if (context.previousTasks && context.previousTasks.length > 0 && taskMemoryStore.getTaskCount() === 0) {
-      console.log(`[Agent] 将 ${context.previousTasks.length} 个前端历史任务导入到 TaskMemoryStore`)
-      context.previousTasks.forEach((task, index) => {
-        const taskId = `task_legacy_${index}`
-        // 转换前端步骤格式为 AgentStep 格式
-        const steps: AgentStep[] = task.steps.map((s, stepIdx) => ({
-          id: `${taskId}_step_${stepIdx}`,
-          type: s.type as AgentStep['type'],
-          content: s.content,
-          toolName: s.toolName,
-          toolArgs: s.toolArgs,
-          toolResult: s.toolResult,
-          riskLevel: s.riskLevel as RiskLevel,
-          timestamp: task.timestamp - (task.steps.length - stepIdx) * 1000  // 模拟步骤时间
-        }))
-        // 从 finalResult 和 steps 推断任务状态
-        const hasErrorStep = steps.some(s => s.type === 'error')
-        const resultLower = task.finalResult.toLowerCase()
-        const isAborted = resultLower.includes('中止') || resultLower.includes('abort') || resultLower.includes('cancel')
-        const isFailed = hasErrorStep || resultLower.includes('失败') || resultLower.includes('错误') || resultLower.includes('fail') || resultLower.includes('error')
-        const status: 'success' | 'failed' | 'aborted' = isAborted ? 'aborted' : isFailed ? 'failed' : 'success'
-        
-        taskMemoryStore.saveTask(
-          taskId,
-          task.userTask,
-          steps,
-          status,
-          task.finalResult
-        )
-      })
-    }
-    
-    // 使用智能分层上下文构建器：按预算填充 + 渐进式降级
-    let taskSummaries = ''
-    let relatedTaskDigests = ''
-    let recentTaskMessages: AiMessage[] = []
-    let availableTaskIds: Array<{ id: string; summary: string }> = []
-    
-    if (taskMemoryStore.getTaskCount() > 0) {
-      const contextLength = this.getContextLength(profileId)
-      const contextResult = buildTaskHistoryContext(taskMemoryStore, contextLength, userMessage)
-      
-      // 最近任务的消息（Level 0-2）
-      recentTaskMessages = contextResult.recentTaskMessages
-      
-      // 摘要/总结部分（Level 3-4）写入系统提示
-      if (contextResult.taskSummarySection) {
-        taskSummaries = contextResult.taskSummarySection
-      }
-      
-      // 所有可用任务的ID列表
-      availableTaskIds = contextResult.availableTaskIds
-      
-      // 打印统计信息
-      const { stats } = contextResult
-      console.log(`[Agent] 智能分层上下文: ${stats.totalTasks} 个任务`)
-      console.log(`  Level 0 (完整): ${stats.level0Count}, Level 1 (压缩): ${stats.level1Count}, Level 2 (精简): ${stats.level2Count}`)
-      console.log(`  Level 3 (摘要): ${stats.level3Count}, Level 4 (总结): ${stats.level4Count}`)
-      console.log(`  Token 使用: ${stats.usedTokens}/${stats.budget}`)
-      
-      // 语义预加载相关任务摘要（补充到系统提示）
-      const relatedDigests = taskMemoryStore.getRelatedDigests(userMessage, 3)
-      if (relatedDigests.length > 0) {
-        relatedTaskDigests = taskMemoryStore.formatRelatedDigestsForContext(relatedDigests)
-        console.log(`[Agent] 语义预加载 ${relatedDigests.length} 个相关任务摘要`)
-      }
-    }
-    
-    const systemPrompt = buildSystemPrompt(
-      context, 
-      this.hostProfileService, 
-      mbtiType, 
-      knowledgeContext, 
-      knowledgeEnabled, 
-      hostMemories, 
-      fullConfig.executionMode, 
-      aiRules,
-      taskSummaries,
-      relatedTaskDigests,
-      availableTaskIds
-    )
-    run.messages.push({ role: 'system', content: systemPrompt })
-
-    // 注入最近任务的完整/压缩/精简对话（Level 0-2）
-    // 这些是按预算填充、渐进式降级后保留的最近任务上下文
-    if (recentTaskMessages.length > 0) {
-      for (const msg of recentTaskMessages) {
-        run.messages.push(msg)
-      }
-      console.log(`[Agent] 已注入 ${recentTaskMessages.length} 条最近任务消息`)
-    }
-
-    // 添加当前用户消息（包含任务复杂度分析和规划提示）
-    const enhancedMessage = this.enhanceUserMessage(userMessage)
-    run.messages.push({ role: 'user', content: enhancedMessage })
-
-    let stepCount = 0
-    let lastResponse: ChatWithToolsResult | null = null
-    let hasExecutedAnyTool = false  // 追踪是否执行过任何工具
-    let noToolCallRetryCount = 0  // 无工具调用时的重试次数
-    const MAX_NO_TOOL_RETRIES = 2  // 最大重试次数
-
-    // 创建工具执行器配置
-    // 使用统一终端服务（支持 PTY 和 SSH），如果没有则回退到 ptyService
-    const terminalServiceForExecutor = this.unifiedTerminalService || this.ptyService
-    const toolExecutorConfig: ToolExecutorConfig = {
-      terminalService: terminalServiceForExecutor as any,  // 类型兼容：PtyService 也实现了必要的方法
-      hostProfileService: this.hostProfileService,
-      mcpService: this.mcpService,
-      skillSession: run.skillSession,
-      addStep: (step) => this.addStep(agentId, step),
-      updateStep: (stepId, updates) => this.updateStep(agentId, stepId, updates),
-      waitForConfirmation: (toolCallId, toolName, toolArgs, riskLevel) =>
-        this.waitForConfirmation(agentId, toolCallId, toolName, toolArgs, riskLevel),
-      isAborted: () => run.aborted,
-      getHostId: () => run.context.hostId,
-      hasPendingUserMessage: () => run.pendingUserMessages.length > 0,
-      peekPendingUserMessage: () => run.pendingUserMessages[0],
-      consumePendingUserMessage: () => run.pendingUserMessages.shift(),
-      // 获取实时终端输出（Agent 运行期间收集的最新数据）
-      getRealtimeTerminalOutput: () => [...run.realtimeOutputBuffer],
-      // Plan/Todo 功能（按终端 ptyId 持久化，跨对话共享）
-      getCurrentPlan: () => this.terminalPlans.get(ptyId),
-      setCurrentPlan: (plan) => {
-        if (plan) {
-          this.terminalPlans.set(ptyId, plan)
-        } else {
-          this.terminalPlans.delete(ptyId)
-        }
-        // 计划更新会通过 addStep (plan_created/plan_updated) 触发 onStepCallback
-      },
-      // SFTP 功能（用于 SSH 终端的文件写入）
-      getSftpService: () => this.sftpService,
-      getSshConfig: (terminalId) => this.sshService?.getConfig(terminalId) || null
-    }
-
-    // 外层循环：用于支持从 catch 块恢复执行（当用户在 AI 输出时发送消息）
-    executionLoop: while (run.isRunning && !run.aborted) {
-    try {
-      // Agent 执行循环
-      // maxSteps = 0 表示无限制，由 Agent 自行决定何时结束
-      while ((fullConfig.maxSteps === 0 || stepCount < fullConfig.maxSteps) && run.isRunning && !run.aborted) {
-        stepCount++
-
-        // 处理用户补充消息（如果有）
-        if (run.pendingUserMessages.length > 0) {
-          // 为每条补充消息添加步骤（在正确的时机显示）
-          for (const msg of run.pendingUserMessages) {
-            this.addStep(agentId, {
-              type: 'user_supplement',
-              content: msg
-            })
-          }
-          // 以自然对话的方式注入用户消息
-          const supplementMsg = run.pendingUserMessages.join('\n')
-          run.messages.push({ 
-            role: 'user', 
-            content: supplementMsg
-          })
-          
-          // 如果存在当前计划，轻轻提示 AI 可以根据需要调整计划
-          if (run.currentPlan && run.currentPlan.steps.some(s => s.status === 'pending')) {
-            run.messages.push({
-              role: 'user',
-              content: t('agent.user_supplement_with_plan')
-            })
-            // 重置计划提醒计数，因为情况可能已经改变
-            ;(run as any)._planReminderCount = 0
-          }
-          
-          run.pendingUserMessages = []
-        }
-
-        // 上下文长度检查：如果超限直接报错，不悄悄截断
-        this.checkContextLimit(run.messages)
-
-        // 创建流式消息步骤
-        const streamStepId = this.generateId()
-        let streamContent = ''
-        let lastContentUpdate = 0   // 上次发送内容更新的时间
-        let pendingUpdate = false   // 是否有待发送的更新
-        let toolCallProgressStepId: string | undefined  // 工具调用进度步骤 ID
-        let lastToolCallProgressUpdate = 0  // 上次更新工具调用进度的时间
-        
-        // 流式内容更新节流间隔（毫秒）
-        const STREAM_THROTTLE_MS = 100
-        
-        // 发送内容更新的函数
-        const sendContentUpdate = () => {
-          this.updateStep(agentId, streamStepId, {
-            type: 'message',
-            content: streamContent,
-            isStreaming: true
-          })
-          lastContentUpdate = Date.now()
-          pendingUpdate = false
-        }
-        
-        // 使用带重试的流式 API 调用 AI
-        // 包在 try-catch 中，处理用户消息中断的情况
-        let response: ChatWithToolsResult
-        try {
-          response = await withAiRetry(
-          () => new Promise<ChatWithToolsResult>((resolve, reject) => {
-            // 重试时重置 streamContent
-            streamContent = ''
-            lastContentUpdate = 0
-            pendingUpdate = false
-            toolCallProgressStepId = undefined
-            lastToolCallProgressUpdate = 0
-            
-            // 使用 skillSession 获取工具列表（包含核心工具 + 已加载的技能工具）
-            const availableTools = run.skillSession 
-              ? run.skillSession.getAvailableTools()
-              : getAgentTools(this.mcpService, {
-                  mode: this.unifiedTerminalService?.getTerminalType(run.ptyId) || 'local'
-                })
-            
-            // 存储当前请求 ID（用于 AI Debug 日志）
-            run.requestId = agentId
-            
-            this.aiService.chatWithToolsStream(
-              run.messages,
-              availableTools,
-              // onChunk: 流式文本更新（带节流）
-              (chunk) => {
-                streamContent += chunk
-                const now = Date.now()
-                
-                // 第一次收到内容时，移除初始的"正在准备..."步骤
-                if (lastContentUpdate === 0 && run.initialStepId) {
-                  this.removeStep(agentId, run.initialStepId)
-                  run.initialStepId = undefined
-                }
-                
-                // 节流：只在以下情况发送更新
-                // 1. 距离上次更新超过 STREAM_THROTTLE_MS
-                // 2. 这是第一次更新（让用户尽快看到内容）
-                if (now - lastContentUpdate >= STREAM_THROTTLE_MS || lastContentUpdate === 0) {
-                  sendContentUpdate()
-                } else if (!pendingUpdate) {
-                  // 设置延迟更新，确保最后的内容也能发送
-                  pendingUpdate = true
-                  setTimeout(() => {
-                    if (pendingUpdate) {
-                      sendContentUpdate()
-                    }
-                  }, STREAM_THROTTLE_MS)
-                }
-              },
-              // onToolCall: 工具调用（流式结束时）
-              (_toolCalls) => {
-                // 工具调用会在 onDone 中处理
-              },
-              // onDone: 完成
-              (result) => {
-                // 清除待发送标志，防止延迟更新在完成后发送
-                pendingUpdate = false
-                
-                // 标记流式结束
-                if (streamContent) {
-                  this.updateStep(agentId, streamStepId, {
-                    type: 'message',
-                    content: streamContent,
-                    isStreaming: false
-                  })
-                }
-                // 清除工具调用进度步骤（调试模式更新为"准备执行"，非调试模式直接删除）
-                if (toolCallProgressStepId) {
-                  if (run.config.debugMode) {
-                    this.updateStep(agentId, toolCallProgressStepId, {
-                      type: 'thinking',
-                      content: t('agent.preparing_tool'),
-                      isStreaming: false
-                    })
-                  } else {
-                    this.removeStep(agentId, toolCallProgressStepId)
-                  }
-                }
-                resolve(result)
-              },
-              // onError: 错误
-              (error) => {
-                reject(new Error(error))
-              },
-              profileId,
-              // onToolCallProgress: 工具调用参数生成进度
-              (toolName, argsLength) => {
-                const now = Date.now()
-                // 超过 50 字符且距离上次更新超过 200ms 才显示
-                if (argsLength > 50 && now - lastToolCallProgressUpdate > 200) {
-                  lastToolCallProgressUpdate = now
-                  // 调试模式显示详细信息，非调试模式显示简洁提示
-                  const charsText = t('progress.chars', { count: argsLength })
-                  const progressContent = run.config.debugMode
-                    ? `${t('progress.generating_args', { toolName })} ${charsText}`
-                    : `${t('progress.generating')} ${charsText}`
-                  
-                  if (!toolCallProgressStepId) {
-                    // 创建新的进度步骤
-                    const step = this.addStep(agentId, {
-                      type: 'thinking',
-                      content: progressContent,
-                      isStreaming: true
-                    })
-                    toolCallProgressStepId = step.id
-                  } else {
-                    // 更新现有步骤
-                    this.updateStep(agentId, toolCallProgressStepId, {
-                      type: 'thinking',
-                      content: progressContent,
-                      isStreaming: true
-                    })
-                  }
-                }
-              },
-              agentId  // 使用 agentId 作为 requestId，支持中止 AI 请求
-            )
-          }),
-          {
-            maxRetries: 2,
-            retryDelay: 1000,
-            onRetry: (attempt, error) => {
-              // 通知用户正在重试
-              this.updateStep(agentId, streamStepId, {
-                type: 'message',
-                content: `⚠️ ${t('agent.retry_network', { error: error.message, attempt })}`,
-                isStreaming: true
-              })
-            }
-          }
-        )
-        } catch (aiError) {
-          // 检查是否是因为用户发送消息导致的中断
-          const aiErrorMsg = aiError instanceof Error ? aiError.message : String(aiError)
-          const isAborted = aiErrorMsg.toLowerCase().includes('aborted')
-          
-          if (isAborted && run.pendingUserMessages.length > 0) {
-            // 用户发送了补充消息导致 AI 输出被中断，继续循环处理用户消息
-            console.log('[Agent] AI 输出被用户消息中断，继续循环处理')
-            continue
-          }
-          
-          // 其他错误继续抛出
-          throw aiError
-        }
-        
-        lastResponse = response
-
-        // 如果没有流式内容但有最终内容，添加消息步骤
-        if (!streamContent && response.content) {
-          this.addStep(agentId, {
-            type: 'message',
-            content: response.content
-          })
-        }
-
-        // 检查是否有工具调用
-        if (response.tool_calls && response.tool_calls.length > 0) {
-          // 有工具调用时也移除初始的"正在准备..."步骤
-          if (run.initialStepId) {
-            this.removeStep(agentId, run.initialStepId)
-            run.initialStepId = undefined
-          }
-          
-          // 将 assistant 消息（包含 tool_calls 和 reasoning_content）添加到历史
-          // DeepSeek think 模型要求后续消息必须包含 reasoning_content
-          const assistantMsg: AiMessage = {
-            role: 'assistant',
-            content: response.content || '',  // 不使用 streamContent，因为它包含 HTML 标签
-            tool_calls: response.tool_calls
-          }
-          // 如果有思考内容，添加到消息中（DeepSeek think 模型要求）
-          if (response.reasoning_content) {
-            assistantMsg.reasoning_content = response.reasoning_content
-          }
-          run.messages.push(assistantMsg)
-
-          // 执行每个工具调用
-          for (const toolCall of response.tool_calls) {
-            if (run.aborted) break
-
-            // 解析工具参数
-            let toolArgs: Record<string, unknown> = {}
-            try {
-              toolArgs = JSON.parse(toolCall.function.arguments)
-            } catch {
-              // 忽略解析错误
-            }
-
-            // 根据工具类型设置执行阶段
-            const toolName = toolCall.function.name
-            if (toolName === 'write_file' || toolName === 'edit_file') {
-              this.setExecutionPhase(agentId, 'writing_file', toolName)
-            } else if (toolName === 'execute_command' || toolName === 'run_command') {
-              this.setExecutionPhase(agentId, 'executing_command', toolName)
-            } else if (toolName === 'wait') {
-              this.setExecutionPhase(agentId, 'waiting', toolName)
-            } else {
-              this.setExecutionPhase(agentId, 'executing_command', toolName)
-            }
-
-            const result = await executeTool(
-              ptyId,
-              toolCall,
-              run.config,  // 使用运行时配置，支持动态更新
-              context.terminalOutput,
-              toolExecutorConfig
-            )
-            
-            // 标记已执行工具
-            hasExecutedAnyTool = true
-            noToolCallRetryCount = 0  // 重置重试计数
-
-            // 工具执行完成，恢复到 thinking 阶段
-            this.setExecutionPhase(agentId, 'thinking')
-
-            // 标记已执行过工具
-            hasExecutedAnyTool = true
-
-            // 更新反思追踪状态
-            this.updateReflectionTracking(run, toolCall.function.name, toolArgs, result)
-
-            // AI Debug: 记录工具结果
-            if (run.requestId) {
-              aiDebugService.logToolResult(run.requestId, {
-                toolCallId: toolCall.id,
-                success: result.success,
-                result: result.success ? result.output : (result.error || 'Unknown error')
-              })
-            }
-
-            // 将工具结果添加到消息历史
-            run.messages.push({
-              role: 'tool',
-              content: result.success 
-                ? result.output 
-                : t('agent.tool_error', { error: result.error || t('agent.unknown_error') }),
-              tool_call_id: toolCall.id
-            })
-          }
-
-          // 检查是否需要触发反思（连续失败时给模型提示）
-          if (this.shouldTriggerReflection(run)) {
-            const reflectionPrompt = this.generateReflectionPrompt(run)
-            
-            if (reflectionPrompt) {
-              run.messages.push({
-                role: 'user',
-                content: reflectionPrompt
-              })
-              run.reflection.reflectionCount++
-            }
-            
-            run.reflection.lastReflectionAt = run.reflection.toolCallCount
-            // 重置失败计数，给 Agent 新的机会
-            run.reflection.failureCount = 0
-          }
-        } else {
-          // 没有工具调用
-          
-          // 情况1：从未执行过任何工具
-          if (!hasExecutedAnyTool) {
-            // 先检查是否有待处理的用户消息（优先级最高）
-            // 如果有待处理的用户消息，继续循环让 Agent 处理，不要直接结束
-            if (run.pendingUserMessages.length > 0) {
-              console.log('[Agent] AI 输出被用户消息中断，继续处理用户消息')
-              continue
-            }
-            
-            // 如果 AI 返回了有内容的回复，直接接受（信任 AI 的判断）
-            // AI 会自己决定是否需要使用工具，简单问候/闲聊不需要工具
-            if (response.content && response.content.trim()) {
-              console.log('[Agent] AI 返回纯文字回复（无工具调用），正常结束')
-              run.isRunning = false
-              
-              const textCallbacks = this.getCallbacks(agentId)
-              if (textCallbacks.onComplete) {
-                textCallbacks.onComplete(agentId, response.content, [])
-              }
-              
-              return response.content
-            }
-            
-            // AI 既没调用工具也没返回内容，可能是模型问题
-            noToolCallRetryCount++
-            if (noToolCallRetryCount >= MAX_NO_TOOL_RETRIES) {
-              this.addStep(agentId, {
-                type: 'error',
-                content: `⚠️ ${t('agent.no_content')}\n\n${t('agent.no_content_reasons')}`
-              })
-              
-              run.isRunning = false
-              const emptyCallbacks = this.getCallbacks(agentId)
-              if (emptyCallbacks.onComplete) {
-                emptyCallbacks.onComplete(agentId, t('agent.no_response'), [])
-              }
-              return t('agent.no_response')
-            }
-            
-            // 重试一次（针对空回复的情况）
-            continue
-          }
-          
-          // 检查是否是因为用户发送了补充消息导致输出被中断
-          // 如果有待处理的用户消息，继续循环让 Agent 处理（优先级最高）
-          if (run.pendingUserMessages.length > 0) {
-            console.log('[Agent] AI 输出被用户消息中断，继续处理用户消息')
-            continue
-          }
-
-          // 情况2：已执行过工具，检查是否有未完成的计划步骤
-          if (run.currentPlan) {
-            const pendingSteps = run.currentPlan.steps.filter(s => 
-              s.status === 'pending' || s.status === 'in_progress'
-            )
-            // 限制提醒次数，最多提醒 2 次，避免无限循环
-            const planReminderCount = (run as any)._planReminderCount || 0
-            if (pendingSteps.length > 0 && planReminderCount < 2) {
-              // 有未完成的步骤，提示 AI 继续执行
-              const pendingStepTitles = pendingSteps.map((s, _i) => 
-                `${run.currentPlan!.steps.indexOf(s) + 1}. ${s.title}`
-              ).join('\n')
-              
-              console.log(`[Agent] 检测到 ${pendingSteps.length} 个未完成的计划步骤，提示 AI 继续执行 (提醒次数: ${planReminderCount + 1}/2)`)
-              
-              run.messages.push({
-                role: 'user',
-                content: `⚠️ ${t('agent.plan_incomplete', { count: pendingSteps.length, steps: pendingStepTitles })}`
-              })
-              
-              // 增加提醒计数
-              ;(run as any)._planReminderCount = planReminderCount + 1
-              
-              // 继续循环，不 break
-              continue
-            }
-          }
-          
-          // 情况3：已执行过工具且没有未完成的计划，Agent 完成
-          break
-        }
-      }
-
-      // 完成前检查是否有待处理的用户消息
-      // 这种情况发生在：用户在 Agent 生成最终总结时发送了消息
-      const pendingMessages = [...run.pendingUserMessages]
-      
-      // 完成
-      run.isRunning = false
-
-      // 检查是否是用户主动中止
-      if (run.aborted) {
-        console.log('[Agent] run was aborted by user')
-        // 用户中止时抛出错误，让前端知道是中止而非正常完成
-        throw new Error('User aborted Agent execution')
-      }
-
-      const finalMessage = lastResponse?.content || t('agent.task_complete')
-
-      // 保存任务到 TaskMemoryStore（L1/L2/L3 多层次记忆）
-      try {
-        const taskId = `task_${agentId.substring(0, 8)}`
-        const taskMemoryStore = getTaskMemoryStore(ptyId)
-        
-        // 检测是否在等待用户确认（基于 ask_user 工具调用）
-        const { isPending } = detectPendingConfirmation(run.steps)
-        const status = isPending ? 'pending_confirmation' : 'success'
-        
-        taskMemoryStore.saveTask(
-          taskId,
-          userMessage,
-          run.steps,
-          status,
-          finalMessage
-        )
-        console.log(`[Agent] 任务已保存到记忆: ${taskId}, 状态: ${status}`)
-      } catch (e) {
-        console.log('[Agent] 保存任务记忆失败:', e)
-      }
-
-      console.log('[Agent] run completed normally, calling onCompleteCallback')
-      const callbacks = this.getCallbacks(agentId)
-      if (callbacks.onComplete) {
-        // 如果有待处理的用户消息，附带在完成回调中
-        // 前端可以据此决定是否自动启动新对话
-        callbacks.onComplete(agentId, finalMessage, pendingMessages)
-      }
-
-      console.log('[Agent] returning finalMessage')
-      return finalMessage
-
-    } catch (error) {
-      run.isRunning = false
-      const errorMsg = error instanceof Error ? error.message : t('agent.unknown_error')
-      console.log('[Agent] caught error:', errorMsg)
-      
-      // 检查是否是用户主动中止
-      const isUserAborted = errorMsg === 'User aborted Agent execution' || run.aborted
-      
-      if (isUserAborted) {
-        // 用户主动中止，保存任务记忆（标记为 aborted）
-        try {
-          const taskId = `task_${agentId.substring(0, 8)}`
-          const taskMemoryStore = getTaskMemoryStore(ptyId)
-          taskMemoryStore.saveTask(
-            taskId,
-            userMessage,
-            run.steps,
-            'aborted',
-            '用户中止'
-          )
-          console.log(`[Agent] 中止的任务已保存到记忆: ${taskId}`)
-        } catch (e) {
-          console.log('[Agent] 保存任务记忆失败:', e)
-        }
-        
-        // 用户主动中止，直接抛出错误，不视为成功
-        // 注意：不调用 onErrorCallback，因为 abort() 方法已经添加了错误步骤
-        console.log('[Agent] user aborted, throwing error without callback')
-        throw error
-      }
-      
-      // 如果是 AI 请求被中止
-      const isAiAbortedError = errorMsg.toLowerCase().includes('aborted')
-      
-      if (isAiAbortedError) {
-        // 优先检查是否有待处理的用户消息
-        // 如果有，恢复运行状态并继续执行（而不是启动新任务）
-        if (run.pendingUserMessages.length > 0) {
-          console.log(`[Agent] AI 被中断但有 ${run.pendingUserMessages.length} 条待处理的用户消息，继续执行`)
-          
-          // 修复不完整的 tool_calls 消息序列
-          // 当 abort 发生在工具执行过程中时，可能存在 assistant 消息（含 tool_calls）但缺少对应的 tool result
-          this.fixIncompleteToolCalls(run)
-          
-          run.isRunning = true
-          continue executionLoop
-        }
-        
-        // 没有待处理的用户消息，检查是否有有效响应
-        const hasValidResponse = lastResponse && lastResponse.content && lastResponse.content.length > 10
-        if (hasValidResponse) {
-          // 已经有有效响应，视为正常完成
-          console.log('[Agent] AI request aborted but has valid response, treating as success')
-          const finalMessage = lastResponse!.content || t('agent.task_complete')
-          
-          // 保存任务到记忆
-          try {
-            const taskId = `task_${agentId.substring(0, 8)}`
-            const taskMemoryStore = getTaskMemoryStore(ptyId)
-            taskMemoryStore.saveTask(
-              taskId,
-              userMessage,
-              run.steps,
-              'success',
-              finalMessage
-            )
-            console.log(`[Agent] 任务已保存到记忆: ${taskId}`)
-          } catch (e) {
-            console.log('[Agent] 保存任务记忆失败:', e)
-          }
-          
-          const successCallbacks = this.getCallbacks(agentId)
-          if (successCallbacks.onComplete) {
-            successCallbacks.onComplete(agentId, finalMessage, [])
-          }
-          
-          return finalMessage
-        }
-      }
-      
-      console.log('[Agent] error is not recoverable, adding error step')
-      this.addStep(agentId, {
-        type: 'error',
-        content: t('agent.execution_error', { error: errorMsg })
-      })
-
-      // 保存失败的任务到记忆
-      try {
-        const taskId = `task_${agentId.substring(0, 8)}`
-        const taskMemoryStore = getTaskMemoryStore(ptyId)
-        taskMemoryStore.saveTask(
-          taskId,
-          userMessage,
-          run.steps,
-          'failed',
-          errorMsg
-        )
-        console.log(`[Agent] 失败的任务已保存到记忆: ${taskId}`)
-      } catch (e) {
-        console.log('[Agent] 保存任务记忆失败:', e)
-      }
-
-      const errorCallbacks = this.getCallbacks(agentId)
-      if (errorCallbacks.onError) {
-        errorCallbacks.onError(agentId, errorMsg)
-      }
-
-      throw error
-    } finally {
-      // 只在真正结束时清理（循环即将退出时）
-      // 如果 run.isRunning 为 true，说明是 continue executionLoop，不需要清理
-      if (!run.isRunning || run.aborted) {
-        // 清理终端输出监听器
-        if (run.outputUnsubscribe) {
-          run.outputUnsubscribe()
-          run.outputUnsubscribe = undefined
-          console.log('[Agent] 已清理终端输出监听器')
-        }
-        // 清理 run 级别的回调
-        this.clearRunCallbacks(agentId)
-      }
-    }
-    } // 结束 executionLoop
-
-    // 理论上不会执行到这里，但 TypeScript 需要返回值
-    return t('agent.task_complete')
+  /**
+   * 确认工具调用
+   */
+  confirmToolCall(
+    ptyId: string,
+    toolCallId: string,
+    approved: boolean,
+    modifiedArgs?: Record<string, unknown>,
+    alwaysAllow?: boolean
+  ): boolean {
+    const agent = this.getAgent(ptyId)
+    return agent?.confirmToolCall(toolCallId, approved, modifiedArgs, alwaysAllow) ?? false
+  }
+  
+  /**
+   * 添加用户消息
+   */
+  addUserMessage(ptyId: string, message: string): boolean {
+    const agent = this.getAgent(ptyId)
+    return agent?.addUserMessage(message) ?? false
+  }
+  
+  /**
+   * 更新配置
+   */
+  updateConfig(ptyId: string, config: Partial<AgentConfig>): void {
+    const agent = this.getAgent(ptyId)
+    agent?.updateConfig(config)
+  }
+  
+  /**
+   * 获取运行状态
+   */
+  getRunStatus(ptyId: string): RunStatus | undefined {
+    const agent = this.getAgent(ptyId)
+    return agent?.getRunStatus()
   }
 
   /**
-   * 中止 Agent 执行
+   * 获取执行阶段
    */
-  abort(agentId: string): boolean {
-    const run = this.runs.get(agentId)
-    if (!run) return false
-
-    run.aborted = true
-    run.isRunning = false
-
-    // 如果有待确认的操作，拒绝它
-    if (run.pendingConfirmation) {
-      run.pendingConfirmation.resolve(false)
-    }
-
-    // 中止正在进行的 AI 请求（使用 agentId 作为 requestId）
-    this.aiService.abort(agentId)
-
-    // 中止所有正在执行的命令
-    this.commandExecutor.abortAll()
-    
-    // 清理终端输出监听器
-    if (run.outputUnsubscribe) {
-      run.outputUnsubscribe()
-      run.outputUnsubscribe = undefined
-      console.log('[Agent] abort: 已清理终端输出监听器')
-    }
-
-    this.addStep(agentId, {
-      type: 'error',
-      content: 'User aborted Agent execution'
-    })
-
-    return true
+  getExecutionPhase(ptyId: string): AgentExecutionPhase {
+    const agent = this.getAgent(ptyId)
+    return agent?.getExecutionPhase() ?? 'idle'
   }
 
   /**
-   * 获取 Agent 运行状态
+   * 检查是否正在运行
    */
-  getRunStatus(agentId: string): {
-    isRunning: boolean
-    steps: AgentStep[]
-    pendingConfirmation?: PendingConfirmation
-  } | null {
-    const run = this.runs.get(agentId)
-    if (!run) return null
-
-    return {
-      isRunning: run.isRunning,
-      steps: run.steps,
-      pendingConfirmation: run.pendingConfirmation
-    }
-  }
-
-  /**
-   * 获取 Agent 执行阶段状态（用于智能打断判断）
-   */
-  getExecutionPhase(agentId: string): {
-    phase: AgentExecutionPhase
-    currentToolName?: string
-    canInterrupt: boolean
-    interruptWarning?: string
-  } | null {
-    const run = this.runs.get(agentId)
-    if (!run) return null
-
-    const phase = run.executionPhase
-    const currentToolName = run.currentToolName
-
-    // 判断是否可以安全打断
-    let canInterrupt = true
-    let interruptWarning: string | undefined
-
-    switch (phase) {
-      case 'writing_file':
-        canInterrupt = false
-        interruptWarning = t('agent.interrupt_writing')
-        break
-      case 'executing_command':
-        // 命令执行中可以打断，但给予警告
-        canInterrupt = true
-        interruptWarning = t('agent.interrupt_command')
-        break
-      case 'thinking':
-      case 'waiting':
-      case 'confirming':
-      case 'idle':
-        canInterrupt = true
-        break
-    }
-
-    return {
-      phase,
-      currentToolName,
-      canInterrupt,
-      interruptWarning
-    }
-  }
-
-  /**
-   * 更新执行阶段（内部使用）
-   */
-  private setExecutionPhase(agentId: string, phase: AgentExecutionPhase, toolName?: string): void {
-    const run = this.runs.get(agentId)
-    if (!run) return
-
-    run.executionPhase = phase
-    run.currentToolName = toolName
-
-    // 发送阶段更新事件到前端（可选，取决于是否需要实时更新 UI）
-    // 如需要，可通过 this.getCallbacks(agentId).onStep 发送
-  }
-
-  /**
-   * 更新运行中的 Agent 配置（如严格模式）
-   */
-  updateConfig(agentId: string, config: Partial<AgentConfig>): boolean {
-    const run = this.runs.get(agentId)
-    if (!run) return false
-
-    // 合并配置
-    run.config = { ...run.config, ...config }
-    return true
-  }
-
-  /**
-   * 添加用户补充消息（在 Agent 执行过程中）
-   * 消息会在下一轮 AI 请求时被包含并显示
-   * 如果 AI 正在输出中，会立即中断输出，让 Agent 尽快处理用户消息
-   */
-  addUserMessage(agentId: string, message: string): boolean {
-    const run = this.runs.get(agentId)
-    if (!run || !run.isRunning) return false
-
-    // 添加到待处理队列（步骤会在处理时添加，确保顺序正确）
-    run.pendingUserMessages.push(message)
-
-    // 中断当前的 AI 输出，让 Agent 尽快处理用户消息
-    // 注意：这只会中断 AI 的流式输出，不会中断文件写入等危险操作
-    // 因为工具执行是同步的，AI 输出只在工具执行之间发生
-    this.aiService.abort(agentId)
-    console.log(`[Agent] 用户发送补充消息，中断当前 AI 输出: "${message.slice(0, 50)}..."`)
-
-    return true
-  }
-
-  /**
-   * 清理已完成的运行记录
-   */
-  async cleanup(agentId: string): Promise<void> {
-    const run = this.runs.get(agentId)
-    if (run?.skillSession) {
-      // 清理技能会话（关闭未保存的文件等）
-      await run.skillSession.cleanup()
-    }
-    this.runs.delete(agentId)
+  isRunning(ptyId: string): boolean {
+    const agent = this.getAgent(ptyId)
+    return agent?.isRunning() ?? false
   }
 }

@@ -169,9 +169,9 @@ import { SshService } from './services/ssh.service'
 import { AiService } from './services/ai.service'
 import { ConfigService, McpServerConfig } from './services/config.service'
 import { XshellImportService } from './services/xshell-import.service'
-import { AgentService, AgentStep, PendingConfirmation, AgentContext } from './services/agent'
+import { AgentService, AgentStep, AgentContext } from './services/agent'
+import type { PendingConfirmation } from './services/agent/types'
 import { orchestratorService } from './services/agent/orchestrator'
-import { clearTaskMemoryStore } from './services/agent/task-memory'
 import type { OrchestratorConfig } from './services/agent/orchestrator-types'
 import { HistoryService, ChatRecord, AgentRecord } from './services/history.service'
 import { HostProfileService, HostProfile } from './services/host-profile.service'
@@ -734,8 +734,8 @@ ipcMain.handle('pty:executeInTerminal', async (_event, id: string, command: stri
 
 ipcMain.handle('pty:dispose', async (_event, id: string) => {
   ptyService.dispose(id)
-  // 清理该终端的任务历史记忆
-  clearTaskMemoryStore(id)
+  // 清理该终端的 Agent 实例和任务历史记忆
+  agentService.cleanupAgent(id)
 })
 
 ipcMain.handle('pty:getAvailableShells', async () => {
@@ -796,8 +796,8 @@ ipcMain.handle('ssh:disconnect', async (_event, id: string) => {
     sshDisconnectUnsubscribes.delete(id)
   }
   sshService.disconnect(id)
-  // 清理该终端的任务历史记忆
-  clearTaskMemoryStore(id)
+  // 清理该终端的 Agent 实例和任务历史记忆
+  agentService.cleanupAgent(id)
 })
 
 // SSH 数据订阅的取消函数存储
@@ -849,8 +849,8 @@ ipcMain.on('ssh:subscribe', (event, id: string) => {
     // 清理订阅
     sshDataUnsubscribes.delete(id)
     sshDisconnectUnsubscribes.delete(id)
-    // 清理该终端的任务历史记忆（SSH 被动断开时也需要清理）
-    clearTaskMemoryStore(id)
+    // 清理该终端的 Agent 实例和任务历史记忆（SSH 被动断开时也需要清理）
+    agentService.cleanupAgent(id)
   })
   sshDisconnectUnsubscribes.set(id, disconnectUnsubscribe)
 })
@@ -1531,50 +1531,51 @@ ipcMain.handle('agent:run', async (event, { ptyId, message, context, config, pro
   }
 })
 
-// 中止 Agent
-ipcMain.handle('agent:abort', async (_event, agentId: string) => {
-  return agentService.abort(agentId)
+// 中止 Agent（改用 ptyId）
+ipcMain.handle('agent:abort', async (_event, ptyId: string) => {
+  return agentService.abort(ptyId)
 })
 
 // 清空指定终端的任务历史记忆（用于"清空对话"功能）
 ipcMain.handle('agent:clearHistory', async (_event, ptyId: string) => {
-  clearTaskMemoryStore(ptyId)
+  // 清理 Agent 实例（内部会清理 TaskMemoryStore）
+  agentService.cleanupAgent(ptyId)
 })
 
-// 确认工具调用
-ipcMain.handle('agent:confirm', async (_event, { agentId, toolCallId, approved, modifiedArgs, alwaysAllow }: {
-  agentId: string
+// 确认工具调用（改用 ptyId）
+ipcMain.handle('agent:confirm', async (_event, { ptyId, toolCallId, approved, modifiedArgs, alwaysAllow }: {
+  ptyId: string
   toolCallId: string
   approved: boolean
   modifiedArgs?: Record<string, unknown>
   alwaysAllow?: boolean
 }) => {
-  return agentService.confirmToolCall(agentId, toolCallId, approved, modifiedArgs, alwaysAllow)
+  return agentService.confirmToolCall(ptyId, toolCallId, approved, modifiedArgs, alwaysAllow)
 })
 
-// 获取 Agent 状态
-ipcMain.handle('agent:getStatus', async (_event, agentId: string) => {
-  return agentService.getRunStatus(agentId)
+// 获取 Agent 状态（改用 ptyId）
+ipcMain.handle('agent:getStatus', async (_event, ptyId: string) => {
+  return agentService.getRunStatus(ptyId)
 })
 
-// 获取 Agent 执行阶段状态（用于智能打断判断）
-ipcMain.handle('agent:getExecutionPhase', async (_event, agentId: string) => {
-  return agentService.getExecutionPhase(agentId)
+// 获取 Agent 执行阶段状态（用于智能打断判断，改用 ptyId）
+ipcMain.handle('agent:getExecutionPhase', async (_event, ptyId: string) => {
+  return agentService.getExecutionPhase(ptyId)
 })
 
-// 清理 Agent 运行记录
-ipcMain.handle('agent:cleanup', async (_event, agentId: string) => {
-  agentService.cleanup(agentId)
+// 清理 Agent 运行记录（改用 ptyId）
+ipcMain.handle('agent:cleanup', async (_event, ptyId: string) => {
+  agentService.cleanupAgent(ptyId)
 })
 
-// 更新 Agent 配置（如执行模式、超时时间）
-ipcMain.handle('agent:updateConfig', async (_event, agentId: string, config: { executionMode?: 'strict' | 'relaxed' | 'free'; commandTimeout?: number }) => {
-  return agentService.updateConfig(agentId, config)
+// 更新 Agent 配置（如执行模式、超时时间，改用 ptyId）
+ipcMain.handle('agent:updateConfig', async (_event, ptyId: string, config: { executionMode?: 'strict' | 'relaxed' | 'free'; commandTimeout?: number }) => {
+  return agentService.updateConfig(ptyId, config)
 })
 
-// 添加用户补充消息（Agent 执行过程中）
-ipcMain.handle('agent:addMessage', async (_event, agentId: string, message: string) => {
-  return agentService.addUserMessage(agentId, message)
+// 添加用户补充消息（Agent 执行过程中，改用 ptyId）
+ipcMain.handle('agent:addMessage', async (_event, ptyId: string, message: string) => {
+  return agentService.addUserMessage(ptyId, message)
 })
 
 // ==================== 智能巡检协调器相关 ====================
@@ -1623,8 +1624,8 @@ function initOrchestratorService() {
       }
       terminalTypes.delete(terminalId)
       terminalStateService.removeTerminal(terminalId)
-      // 清理该终端的任务历史记忆
-      clearTaskMemoryStore(terminalId)
+      // 清理该终端的 Agent 实例和任务历史记忆
+      agentService.cleanupAgent(terminalId)
     },
     getTerminalType: (terminalId) => {
       return terminalTypes.get(terminalId) || 'ssh'
