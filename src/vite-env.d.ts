@@ -638,7 +638,7 @@ interface Window {
       }>
       scanDefaultPaths: () => Promise<{ found: boolean; paths: string[]; sessionCount: number }>
     }
-    // Agent 操作
+    // Agent 操作（OOP 重构后统一使用 ptyId）
     agent: {
       run: (
         ptyId: string,
@@ -661,29 +661,29 @@ interface Window {
         },
         profileId?: string
       ) => Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>
-      abort: (agentId: string) => Promise<boolean>
-      confirm: (
-        agentId: string,
-        toolCallId: string,
-        approved: boolean,
-        modifiedArgs?: Record<string, unknown>,
+      abort: (ptyId: string) => Promise<boolean>
+      confirm: (params: {
+        ptyId: string
+        toolCallId: string
+        approved: boolean
+        modifiedArgs?: Record<string, unknown>
         alwaysAllow?: boolean
-      ) => Promise<boolean>
-      getStatus: (agentId: string) => Promise<unknown>
-      cleanup: (agentId: string) => Promise<void>
-      updateConfig: (agentId: string, config: { executionMode?: 'strict' | 'relaxed' | 'free'; commandTimeout?: number }) => Promise<boolean>
-      addMessage: (agentId: string, message: string) => Promise<boolean>
-      getExecutionPhase: (agentId: string) => Promise<{
+      }) => Promise<boolean>
+      getStatus: (ptyId: string) => Promise<unknown>
+      cleanup: (ptyId: string) => Promise<void>
+      updateConfig: (ptyId: string, config: { executionMode?: 'strict' | 'relaxed' | 'free'; commandTimeout?: number }) => Promise<boolean>
+      addMessage: (ptyId: string, message: string) => Promise<boolean>
+      getExecutionPhase: (ptyId: string) => Promise<{
         phase: 'thinking' | 'executing_command' | 'writing_file' | 'waiting' | 'confirming' | 'idle'
         currentToolName?: string
         canInterrupt: boolean
         interruptWarning?: string
       } | null>
       clearHistory: (ptyId: string) => Promise<void>
-      onStep: (callback: (data: { agentId: string; step: AgentStep }) => void) => () => void
-      onNeedConfirm: (callback: (data: PendingConfirmation) => void) => () => void
-      onComplete: (callback: (data: { agentId: string; result: string; pendingUserMessages?: string[] }) => void) => () => void
-      onError: (callback: (data: { agentId: string; error: string }) => void) => () => void
+      onStep: (callback: (data: { agentId: string; ptyId?: string; step: AgentStep }) => void) => () => void
+      onNeedConfirm: (callback: (data: PendingConfirmation & { ptyId?: string }) => void) => () => void
+      onComplete: (callback: (data: { agentId: string; ptyId?: string; result: string; pendingUserMessages?: string[] }) => void) => () => void
+      onError: (callback: (data: { agentId: string; ptyId?: string; error: string }) => void) => () => void
     }
     // 历史记录操作
     history: {

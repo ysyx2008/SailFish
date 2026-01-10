@@ -796,38 +796,38 @@ const electronAPI = {
       profileId?: string
     ) => ipcRenderer.invoke('agent:run', { ptyId, message, context, config, profileId }) as Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>,
 
-    // 中止 Agent
-    abort: (agentId: string) => ipcRenderer.invoke('agent:abort', agentId) as Promise<boolean>,
+    // 中止 Agent（使用 ptyId）
+    abort: (ptyId: string) => ipcRenderer.invoke('agent:abort', ptyId) as Promise<boolean>,
 
-    // 确认工具调用
-    confirm: (
-      agentId: string,
-      toolCallId: string,
-      approved: boolean,
-      modifiedArgs?: Record<string, unknown>,
+    // 确认工具调用（使用 ptyId）
+    confirm: (params: {
+      ptyId: string
+      toolCallId: string
+      approved: boolean
+      modifiedArgs?: Record<string, unknown>
       alwaysAllow?: boolean
-    ) => ipcRenderer.invoke('agent:confirm', { agentId, toolCallId, approved, modifiedArgs, alwaysAllow }) as Promise<boolean>,
+    }) => ipcRenderer.invoke('agent:confirm', params) as Promise<boolean>,
 
-    // 获取 Agent 状态
-    getStatus: (agentId: string) => ipcRenderer.invoke('agent:getStatus', agentId),
+    // 获取 Agent 状态（使用 ptyId）
+    getStatus: (ptyId: string) => ipcRenderer.invoke('agent:getStatus', ptyId),
 
-    // 清理 Agent 运行记录
-    cleanup: (agentId: string) => ipcRenderer.invoke('agent:cleanup', agentId),
+    // 清理 Agent 运行记录（使用 ptyId）
+    cleanup: (ptyId: string) => ipcRenderer.invoke('agent:cleanup', ptyId),
 
     // 清空指定终端的任务历史记忆（用于"清空对话"功能）
     clearHistory: (ptyId: string) => ipcRenderer.invoke('agent:clearHistory', ptyId) as Promise<void>,
 
-    // 更新 Agent 配置（如执行模式、超时时间）
-    updateConfig: (agentId: string, config: { executionMode?: 'strict' | 'relaxed' | 'free'; commandTimeout?: number }) =>
-      ipcRenderer.invoke('agent:updateConfig', agentId, config) as Promise<boolean>,
+    // 更新 Agent 配置（如执行模式、超时时间，使用 ptyId）
+    updateConfig: (ptyId: string, config: { executionMode?: 'strict' | 'relaxed' | 'free'; commandTimeout?: number }) =>
+      ipcRenderer.invoke('agent:updateConfig', ptyId, config) as Promise<boolean>,
 
-    // 添加用户补充消息（Agent 执行过程中）
-    addMessage: (agentId: string, message: string) =>
-      ipcRenderer.invoke('agent:addMessage', agentId, message) as Promise<boolean>,
+    // 添加用户补充消息（Agent 执行过程中，使用 ptyId）
+    addMessage: (ptyId: string, message: string) =>
+      ipcRenderer.invoke('agent:addMessage', ptyId, message) as Promise<boolean>,
 
-    // 获取执行阶段状态（用于智能打断判断）
-    getExecutionPhase: (agentId: string) =>
-      ipcRenderer.invoke('agent:getExecutionPhase', agentId) as Promise<{
+    // 获取执行阶段状态（用于智能打断判断，使用 ptyId）
+    getExecutionPhase: (ptyId: string) =>
+      ipcRenderer.invoke('agent:getExecutionPhase', ptyId) as Promise<{
         phase: 'thinking' | 'executing_command' | 'writing_file' | 'waiting' | 'confirming' | 'idle'
         currentToolName?: string
         canInterrupt: boolean

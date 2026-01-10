@@ -133,17 +133,17 @@ export function useAgentMode(
 
   // 监听执行模式变化，实时更新运行中的 Agent
   watch(executionMode, async (newValue) => {
-    const agentId = agentState.value?.agentId
-    if (agentId && isAgentRunning.value) {
-      await window.electronAPI.agent.updateConfig(agentId, { executionMode: newValue })
+    const context = terminalStore.getAgentContext(currentTabId.value)
+    if (context?.ptyId && isAgentRunning.value) {
+      await window.electronAPI.agent.updateConfig(context.ptyId, { executionMode: newValue })
     }
   })
 
   // 监听超时设置变化
   watch(commandTimeout, async (newValue) => {
-    const agentId = agentState.value?.agentId
-    if (agentId && isAgentRunning.value) {
-      await window.electronAPI.agent.updateConfig(agentId, { commandTimeout: newValue * 1000 })
+    const context = terminalStore.getAgentContext(currentTabId.value)
+    if (context?.ptyId && isAgentRunning.value) {
+      await window.electronAPI.agent.updateConfig(context.ptyId, { commandTimeout: newValue * 1000 })
     }
   })
 
@@ -325,7 +325,8 @@ export function useAgentMode(
     const message = inputText.value
 
     // 如果 Agent 正在运行，发送补充消息而不是启动新任务
-    if (isAgentRunning.value && agentState.value?.agentId) {
+    const runningContext = terminalStore.getAgentContext(tabId)
+    if (isAgentRunning.value && runningContext?.ptyId) {
       inputText.value = ''
       
       // 检查是否有 asking 步骤在等待回复
@@ -340,8 +341,8 @@ export function useAgentMode(
         pendingSupplements.value.push(message)
       }
       
-      // 发送到后端
-      await window.electronAPI.agent.addMessage(agentState.value.agentId, message)
+      // 发送到后端（使用 ptyId）
+      await window.electronAPI.agent.addMessage(runningContext.ptyId, message)
       return
     }
 
@@ -456,32 +457,35 @@ export function useAgentMode(
     await scrollToBottomIfNeeded()
   }
 
-  // 中止 Agent
+  // 中止 Agent（使用 ptyId）
   const abortAgent = async () => {
-    const agentId = agentState.value?.agentId
-    if (!agentId) return
+    const context = terminalStore.getAgentContext(currentTabId.value)
+    if (!context?.ptyId) return
 
     try {
-      await window.electronAPI.agent.abort(agentId)
+      await window.electronAPI.agent.abort(context.ptyId)
     } catch (error) {
       console.error('中止 Agent 失败:', error)
     }
   }
 
-  // 确认工具调用
+  // 确认工具调用（使用 ptyId）
   // alwaysAllow: 如果为 true，将该工具+参数加入会话白名单，后续自动跳过确认
   const confirmToolCall = async (approved: boolean, alwaysAllow?: boolean) => {
     const confirm = pendingConfirm.value
     if (!confirm) return
 
+    const context = terminalStore.getAgentContext(currentTabId.value)
+    if (!context?.ptyId) return
+
     try {
-      await window.electronAPI.agent.confirm(
-        confirm.agentId,
-        confirm.toolCallId,
+      await window.electronAPI.agent.confirm({
+        ptyId: context.ptyId,
+        toolCallId: confirm.toolCallId,
         approved,
-        undefined,  // modifiedArgs
+        modifiedArgs: undefined,
         alwaysAllow
-      )
+      })
       // 清除待确认状态
       if (currentTabId.value) {
         terminalStore.setAgentPendingConfirm(currentTabId.value, undefined)
@@ -491,15 +495,16 @@ export function useAgentMode(
     }
   }
 
-  // 发送 Agent 回复（用于用户点击选项快速回复）
+  // 发送 Agent 回复（用于用户点击选项快速回复，使用 ptyId）
   const sendAgentReply = async (message: string) => {
     if (!message.trim() || !currentTabId.value) return
 
     // 只有在 Agent 运行中才能发送回复
-    if (!isAgentRunning.value || !agentState.value?.agentId) return
+    const context = terminalStore.getAgentContext(currentTabId.value)
+    if (!isAgentRunning.value || !context?.ptyId) return
 
     // 直接发送到后端，不添加到 pendingSupplements（选项点击不需要显示等待状态）
-    await window.electronAPI.agent.addMessage(agentState.value.agentId, message)
+    await window.electronAPI.agent.addMessage(context.ptyId, message)
   }
 
   // 获取步骤类型的图标

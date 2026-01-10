@@ -378,4 +378,89 @@ export interface ContextBuildResult {
     usedTokens: number
     budget: number
   }
+  // 可用任务 ID 列表（用于 recall_task）
+  availableTaskIds: Array<{ id: string; summary: string }>
+}
+
+// ==================== Agent OOP 架构相关类型 ====================
+
+/**
+ * Agent 依赖的服务集合
+ * 通过依赖注入提供给 Agent
+ */
+export interface AgentServices {
+  aiService: import('../ai.service').AiService
+  ptyService: import('../pty.service').PtyService
+  sshService?: import('../ssh.service').SshService
+  sftpService?: import('../sftp.service').SftpService
+  unifiedTerminalService?: import('../unified-terminal.service').UnifiedTerminalService
+  hostProfileService?: HostProfileServiceInterface
+  mcpService?: import('../mcp.service').McpService
+  configService?: import('../config.service').ConfigService
+}
+
+/**
+ * Agent 运行选项
+ */
+export interface RunOptions {
+  /** AI 配置档案 ID */
+  profileId?: string
+  /** Worker 模式选项（智能巡检时使用） */
+  workerOptions?: WorkerAgentOptions
+  /** 运行级别回调（覆盖默认回调） */
+  callbacks?: AgentCallbacks
+}
+
+/**
+ * 系统提示构建选项
+ */
+export interface PromptOptions {
+  /** MBTI 风格类型 */
+  mbtiType?: import('../config.service').AgentMbtiType
+  /** 知识库上下文 */
+  knowledgeContext?: string
+  /** 知识库是否启用 */
+  knowledgeEnabled?: boolean
+  /** 主机记忆列表 */
+  hostMemories?: string[]
+  /** 用户自定义 AI 规则 */
+  aiRules?: string
+  /** 任务历史摘要 */
+  taskSummaries?: string
+  /** 相关任务摘要 */
+  relatedTaskDigests?: string
+  /** 可用任务 ID 列表 */
+  availableTaskIds?: Array<{ id: string; summary: string }>
+}
+
+/**
+ * 知识库上下文加载结果
+ */
+export interface KnowledgeContextResult {
+  context: string
+  enabled: boolean
+  hostMemories: string[]
+}
+
+/**
+ * 运行状态查询结果
+ */
+export interface RunStatus {
+  isRunning: boolean
+  phase: AgentExecutionPhase
+  currentToolName?: string
+  stepCount: number
+  hasPendingConfirmation: boolean
+}
+
+/**
+ * 单步执行结果
+ */
+export interface StepResult {
+  /** 是否继续执行 */
+  continue: boolean
+  /** 如果不继续，返回的结果 */
+  result?: string
+  /** 是否需要中断（用户消息等） */
+  interrupted?: boolean
 }
