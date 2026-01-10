@@ -34,6 +34,7 @@ export interface AiLogEntry {
     }>
     tools?: unknown[]
     response?: string
+    reasoningContent?: string  // 思考内容（DeepSeek-R1 等模型）
     chunk?: string
     error?: string
     toolCall?: {
@@ -325,6 +326,7 @@ class AiDebugService extends EventEmitter {
    */
   logResponseDone(requestId: string, options: {
     response?: string
+    reasoningContent?: string  // 思考内容
     finishReason?: string
     usage?: AiLogEntry['data']['usage']
   }): void {

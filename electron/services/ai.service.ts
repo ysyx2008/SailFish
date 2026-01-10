@@ -936,6 +936,7 @@ export class AiService {
           // AI Debug: 记录响应完成（先记录响应，再记录工具调用）
           aiDebugService.logResponseDone(reqId, {
             response: finalContent,
+            reasoningContent: reasoningContent || undefined,  // 传递原始思考内容
             finishReason
           })
           // 如果有工具调用，通知一次，并记录到调试日志
