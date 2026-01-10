@@ -204,8 +204,8 @@ export class PromptBuilder {
     // 根据操作系统类型选择示例
     const isWindows = osType.toLowerCase().includes('windows')
     
-    // 简单任务输出格式示例
-    const simpleTaskExample = this.buildSimpleTaskExample(isWindows)
+    // 任务示例暂时禁用以节约 token，方法代码保留以备后用
+    // const simpleTaskExample = this.buildSimpleTaskExample(isWindows)
 
     return `**CRITICAL RULE: You MUST respond in the SAME language the user uses. If user writes in English, reply in English. If user writes in Japanese, reply in Japanese. If user writes in Chinese, reply in Chinese.**
 
@@ -354,8 +354,6 @@ ${this.buildUserConfirmationGuidance()}
 **需要你自行控制的命令**：
 - \`top\`、\`htop\`、\`less\`、\`more\` 等全屏/分页程序 → 用 \`check_terminal_status\` 观察输出，适时发送 \`q\` 或 \`ctrl+c\` 退出
 - \`ping\`、\`tail -f\`、\`watch\` 等持续运行命令 → 根据任务需要决定运行时长，用 \`ctrl+c\` 终止
-${simpleTaskExample}
-${this.buildComplexTaskExamples(isWindows)}
 ${documentSection}
 ${knowledgeSection}
 ${getUserSkillService().buildSkillsSummary()}
