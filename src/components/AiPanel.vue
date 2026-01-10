@@ -3955,8 +3955,8 @@ onUnmounted(() => {
 
 /* 流式输出时的样式优化 */
 .step-text.step-analysis.markdown-content.is-streaming {
-  /* 设置最小高度，减少内容从少到多时的高度跳动 */
-  min-height: 120px;
+  /* 不设置固定最小高度，让内容自然撑开，从单行开始按需增长 */
+  min-height: auto;
   /* 提示浏览器内容会变化 */
   will-change: contents;
 }
