@@ -17,13 +17,36 @@ export function recallTask(
   const taskId = args.task_id as string
   const memoryStore = getTaskMemoryStore(ptyId)
   
+  // 记录工具调用
+  executor.addStep({
+    type: 'tool_call',
+    content: taskId ? t('memory.recalling_task', { taskId }) : t('memory.listing_tasks'),
+    toolName: 'recall_task',
+    toolArgs: args,
+    riskLevel: 'safe'
+  })
+  
   if (!taskId) {
     const summaries = memoryStore.getSummaries(20)
     if (summaries.length === 0) {
-      return { success: false, output: '', error: t('memory.task_id_required') + '\n\n' + t('memory.no_task_history') }
+      const error = t('memory.task_id_required') + '\n\n' + t('memory.no_task_history')
+      executor.addStep({
+        type: 'tool_result',
+        content: error,
+        toolName: 'recall_task',
+        toolResult: error
+      })
+      return { success: false, output: '', error }
     }
     const availableIds = summaries.map(s => `- [${s.id}] ${s.summary}`).join('\n')
-    return { success: false, output: '', error: t('memory.task_id_required') + '\n\n' + t('memory.available_task_ids') + '\n' + availableIds }
+    const error = t('memory.task_id_required') + '\n\n' + t('memory.available_task_ids') + '\n' + availableIds
+    executor.addStep({
+      type: 'tool_result',
+      content: t('memory.available_task_ids'),
+      toolName: 'recall_task',
+      toolResult: availableIds
+    })
+    return { success: false, output: '', error }
   }
   
   const result = memoryStore.getDigest(taskId)
@@ -31,17 +54,31 @@ export function recallTask(
   if (!result) {
     const summaries = memoryStore.getSummaries(20)
     if (summaries.length === 0) {
+      const error = t('memory.task_not_found', { taskId }) + '\n\n' + t('memory.no_task_history')
+      executor.addStep({
+        type: 'tool_result',
+        content: error,
+        toolName: 'recall_task',
+        toolResult: error
+      })
       return { 
         success: false, 
         output: '', 
-        error: t('memory.task_not_found', { taskId }) + '\n\n' + t('memory.no_task_history') 
+        error
       }
     }
     const availableIds = summaries.map(s => `- [${s.id}] ${s.summary}`).join('\n')
+    const error = t('memory.task_not_found', { taskId }) + '\n\n' + t('memory.available_task_ids') + '\n' + availableIds
+    executor.addStep({
+      type: 'tool_result',
+      content: t('memory.task_not_found', { taskId }),
+      toolName: 'recall_task',
+      toolResult: availableIds
+    })
     return { 
       success: false, 
       output: '', 
-      error: t('memory.task_not_found', { taskId }) + '\n\n' + t('memory.available_task_ids') + '\n' + availableIds 
+      error
     }
   }
   
@@ -81,7 +118,17 @@ export function recallTask(
     digest.keyFindings.forEach(f => lines.push(`  • ${f}`))
   }
   
-  return { success: true, output: lines.join('\n') }
+  const output = lines.join('\n')
+  
+  // 记录工具结果
+  executor.addStep({
+    type: 'tool_result',
+    content: t('memory.task_recalled', { taskId }),
+    toolName: 'recall_task',
+    toolResult: output
+  })
+  
+  return { success: true, output }
 }
 
 /**
@@ -96,38 +143,88 @@ export function deepRecall(
   const stepIndex = args.step_index as number | undefined
   const memoryStore = getTaskMemoryStore(ptyId)
   
+  // 记录工具调用
+  const callContent = stepIndex !== undefined 
+    ? t('memory.deep_recalling_step', { taskId, stepIndex })
+    : taskId 
+      ? t('memory.deep_recalling_task', { taskId })
+      : t('memory.listing_tasks')
+  
+  executor.addStep({
+    type: 'tool_call',
+    content: callContent,
+    toolName: 'deep_recall',
+    toolArgs: args,
+    riskLevel: 'safe'
+  })
+  
   if (!taskId) {
     const summaries = memoryStore.getSummaries(20)
     if (summaries.length === 0) {
-      return { success: false, output: '', error: t('memory.task_id_required') + '\n\n' + t('memory.no_task_history') }
+      const error = t('memory.task_id_required') + '\n\n' + t('memory.no_task_history')
+      executor.addStep({
+        type: 'tool_result',
+        content: error,
+        toolName: 'deep_recall',
+        toolResult: error
+      })
+      return { success: false, output: '', error }
     }
     const availableIds = summaries.map(s => `- [${s.id}] ${s.summary}`).join('\n')
-    return { success: false, output: '', error: t('memory.task_id_required') + '\n\n' + t('memory.available_task_ids') + '\n' + availableIds }
+    const error = t('memory.task_id_required') + '\n\n' + t('memory.available_task_ids') + '\n' + availableIds
+    executor.addStep({
+      type: 'tool_result',
+      content: t('memory.available_task_ids'),
+      toolName: 'deep_recall',
+      toolResult: availableIds
+    })
+    return { success: false, output: '', error }
   }
   
   const result = memoryStore.getFullSteps(taskId, stepIndex)
   
   if (!result) {
     if (stepIndex !== undefined) {
+      const error = t('memory.step_not_found', { taskId, stepIndex })
+      executor.addStep({
+        type: 'tool_result',
+        content: error,
+        toolName: 'deep_recall',
+        toolResult: error
+      })
       return { 
         success: false, 
         output: '', 
-        error: t('memory.step_not_found', { taskId, stepIndex }) 
+        error
       }
     }
     const summaries = memoryStore.getSummaries(20)
     if (summaries.length === 0) {
+      const error = t('memory.task_not_found', { taskId }) + '\n\n' + t('memory.no_task_history')
+      executor.addStep({
+        type: 'tool_result',
+        content: error,
+        toolName: 'deep_recall',
+        toolResult: error
+      })
       return { 
         success: false, 
         output: '', 
-        error: t('memory.task_not_found', { taskId }) + '\n\n' + t('memory.no_task_history') 
+        error
       }
     }
     const availableIds = summaries.map(s => `- [${s.id}] ${s.summary}`).join('\n')
+    const error = t('memory.task_not_found', { taskId }) + '\n\n' + t('memory.available_task_ids') + '\n' + availableIds
+    executor.addStep({
+      type: 'tool_result',
+      content: t('memory.task_not_found', { taskId }),
+      toolName: 'deep_recall',
+      toolResult: availableIds
+    })
     return { 
       success: false, 
       output: '', 
-      error: t('memory.task_not_found', { taskId }) + '\n\n' + t('memory.available_task_ids') + '\n' + availableIds 
+      error
     }
   }
   
@@ -163,7 +260,17 @@ export function deepRecall(
       lines.push('```')
     }
     
-    return { success: true, output: lines.join('\n') }
+    const output = lines.join('\n')
+    
+    // 记录工具结果
+    executor.addStep({
+      type: 'tool_result',
+      content: t('memory.step_recalled', { taskId, stepIndex }),
+      toolName: 'deep_recall',
+      toolResult: output
+    })
+    
+    return { success: true, output }
   }
   
   // 返回所有步骤的概览
@@ -191,5 +298,15 @@ export function deepRecall(
   lines.push('')
   lines.push(t('memory.deep_recall_hint'))
   
-  return { success: true, output: lines.join('\n') }
+  const output = lines.join('\n')
+  
+  // 记录工具结果
+  executor.addStep({
+    type: 'tool_result',
+    content: t('memory.task_steps_recalled', { taskId, count: steps.length }),
+    toolName: 'deep_recall',
+    toolResult: output
+  })
+  
+  return { success: true, output }
 }
