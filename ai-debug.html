@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Debug Console</title>
+    <!-- 使用 marked 库渲染 Markdown -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -489,6 +491,133 @@
         user-select: text;
         -webkit-user-select: text;
       }
+
+      /* Markdown 渲染样式 */
+      .markdown-content {
+        font-size: 12px;
+        line-height: 1.6;
+        color: var(--text-secondary);
+      }
+
+      .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+        color: var(--text-primary);
+        margin: 0.8em 0 0.4em 0;
+        font-weight: 600;
+      }
+
+      .markdown-content h1 { font-size: 1.3em; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3em; }
+      .markdown-content h2 { font-size: 1.15em; }
+      .markdown-content h3 { font-size: 1em; }
+
+      .markdown-content p {
+        margin: 0.5em 0;
+      }
+
+      .markdown-content ul, .markdown-content ol {
+        margin: 0.5em 0;
+        padding-left: 1.5em;
+      }
+
+      .markdown-content li {
+        margin: 0.2em 0;
+      }
+
+      .markdown-content code {
+        background: var(--bg-tertiary);
+        padding: 0.15em 0.4em;
+        border-radius: 3px;
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        font-size: 0.9em;
+        color: var(--accent-cyan);
+      }
+
+      .markdown-content pre {
+        background: var(--bg-tertiary);
+        padding: 0.8em;
+        border-radius: 4px;
+        overflow-x: auto;
+        margin: 0.5em 0;
+      }
+
+      .markdown-content pre code {
+        background: none;
+        padding: 0;
+        color: var(--text-primary);
+      }
+
+      .markdown-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 0.5em 0;
+        font-size: 11px;
+      }
+
+      .markdown-content th, .markdown-content td {
+        border: 1px solid var(--border-color);
+        padding: 0.4em 0.6em;
+        text-align: left;
+      }
+
+      .markdown-content th {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+
+      .markdown-content strong {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+
+      .markdown-content em {
+        font-style: italic;
+      }
+
+      .markdown-content blockquote {
+        border-left: 3px solid var(--accent-blue);
+        padding-left: 1em;
+        margin: 0.5em 0;
+        color: var(--text-muted);
+      }
+
+      .markdown-content hr {
+        border: none;
+        border-top: 1px solid var(--border-color);
+        margin: 1em 0;
+      }
+
+      /* 渲染模式切换 */
+      .render-toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: var(--text-muted);
+        padding: 4px 8px;
+        background: var(--bg-tertiary);
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+
+      .render-toggle:hover {
+        color: var(--text-secondary);
+      }
+
+      .render-toggle.active {
+        color: var(--accent-blue);
+        background: rgba(88, 166, 255, 0.1);
+      }
+
+      /* 渲染失败提示 */
+      .render-fallback {
+        padding: 8px;
+        background: rgba(248, 81, 73, 0.1);
+        border-left: 3px solid var(--accent-red);
+        font-size: 11px;
+        color: var(--accent-red);
+        margin-bottom: 8px;
+      }
     </style>
   </head>
   <body>
@@ -499,6 +628,9 @@
           <input type="checkbox" id="autoScroll" checked />
           自动滚动
         </label>
+        <span class="render-toggle" id="markdownToggle" onclick="toggleMarkdown()" title="切换 Markdown 渲染">
+          📝 Markdown
+        </span>
         <button class="btn" onclick="copyAllLogs()">
           📋 复制全部
         </button>
@@ -562,10 +694,81 @@
       let logs = []
       let currentFilter = 'all'
       let autoScroll = true
+      let markdownEnabled = true  // Markdown 渲染开关
       let stats = {
         requests: 0,
         toolCalls: 0,
         errors: 0
+      }
+
+      // 切换 Markdown 渲染
+      function toggleMarkdown() {
+        markdownEnabled = !markdownEnabled
+        const toggle = document.getElementById('markdownToggle')
+        toggle.classList.toggle('active', markdownEnabled)
+        renderLogs()  // 重新渲染
+      }
+
+      // HTML 转义函数
+      function escapeHtml(text) {
+        if (!text) return ''
+        return text
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+      }
+
+      // 简单的 Markdown 渲染器（fallback）
+      function simpleMarkdown(text) {
+        let html = escapeHtml(text)
+        
+        // 代码块
+        html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+        // 行内代码
+        html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>')
+        // 标题
+        html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>')
+        // 粗体
+        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        // 列表
+        html = html.replace(/^- (.+)$/gm, '<li>$1</li>')
+        html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+        // 分隔线
+        html = html.replace(/^---+$/gm, '<hr>')
+        // 换行
+        html = html.replace(/\n/g, '<br>')
+        
+        return html
+      }
+
+      // 使用 marked 库渲染 Markdown（带 fallback）
+      function renderMarkdown(text) {
+        if (!text || !markdownEnabled) {
+          return escapeHtml(text || '')
+        }
+
+        try {
+          // 检查 marked 是否已加载
+          if (typeof marked === 'undefined') {
+            console.warn('marked 库未加载，使用简单渲染器')
+            return simpleMarkdown(text)
+          }
+
+          // 配置 marked（与项目中 useMarkdown.ts 保持一致）
+          marked.setOptions({
+            breaks: true,  // 支持换行
+            gfm: true      // 支持 GitHub 风格 Markdown
+          })
+
+          return marked.parse(text)
+        } catch (e) {
+          console.error('Markdown render error:', e)
+          // 渲染失败时使用简单渲染器
+          return simpleMarkdown(text)
+        }
       }
       let activeRequests = new Set()
       
@@ -585,6 +788,9 @@
       autoScrollCheckbox.addEventListener('change', (e) => {
         autoScroll = e.target.checked
       })
+
+      // 初始化 Markdown 切换按钮状态
+      document.getElementById('markdownToggle').classList.toggle('active', markdownEnabled)
 
       // 过滤器点击
       document.querySelectorAll('.filter-chip').forEach(chip => {
@@ -675,12 +881,20 @@
         if (!messages || messages.length === 0) return ''
         
         return `<div class="messages-preview">
-          ${messages.map(msg => `
-            <div class="message-item ${msg.role}">
-              <div class="message-role">${msg.role}</div>
-              <div class="message-content">${(msg.content || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-            </div>
-          `).join('')}
+          ${messages.map(msg => {
+            // system 消息使用 Markdown 渲染
+            const isMarkdownRole = msg.role === 'system' || msg.role === 'assistant'
+            const contentHtml = isMarkdownRole && markdownEnabled
+              ? `<div class="markdown-content">${renderMarkdown(msg.content || '')}</div>`
+              : `<div class="message-content">${escapeHtml(msg.content || '')}</div>`
+            
+            return `
+              <div class="message-item ${msg.role}">
+                <div class="message-role">${msg.role}${isMarkdownRole && markdownEnabled ? ' <span style="opacity:0.5">(MD)</span>' : ''}</div>
+                ${contentHtml}
+              </div>
+            `
+          }).join('')}
         </div>`
       }
 
