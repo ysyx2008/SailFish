@@ -14,6 +14,7 @@ import type {
   AgentPlan
 } from '../types'
 import type { SkillSession } from '../skills'
+import type { TaskMemoryStore } from '../task-memory'
 
 // 错误分类
 export type ErrorCategory = 'transient' | 'permission' | 'not_found' | 'timeout' | 'fatal'
@@ -49,6 +50,8 @@ export interface ToolExecutorConfig {
   // Plan/Todo 功能
   getCurrentPlan: () => AgentPlan | undefined
   setCurrentPlan: (plan: AgentPlan | undefined) => void
+  // Task Memory（任务记忆）
+  getTaskMemory: () => TaskMemoryStore
   // SFTP 功能（用于 SSH 终端的文件写入）
   getSftpService?: () => SftpService | undefined
   getSshConfig?: (terminalId: string) => SshConfig | null
