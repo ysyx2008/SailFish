@@ -8,7 +8,7 @@ import { aiDebugService } from './ai-debug.service'
 
 // AI 请求超时配置（毫秒）
 const AI_TIMEOUT = {
-  CONNECT: 30 * 1000,        // 连接超时：30 秒
+  CONNECT: 60 * 1000,        // 连接超时：60 秒
   SOCKET_IDLE: 120 * 1000,   // 空闲超时：120 秒（流式请求中数据流中断检测）
   TOTAL: 10 * 60 * 1000      // 总超时：10 分钟（长文本生成可能需要较长时间）
 }
