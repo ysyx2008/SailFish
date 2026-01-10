@@ -344,7 +344,7 @@ export class MenuService {
       },
       {
         label: this.t('aiDebugConsole'),
-        accelerator: 'CmdOrCtrl+Shift+D',
+        accelerator: 'F12',
         click: () => this.sendCommand('openAiDebugConsole')
       },
       { type: 'separator' },
