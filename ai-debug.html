@@ -4,358 +4,185 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Debug Console</title>
-    <!-- 使用 marked 库渲染 Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="./ai-debug.css" />
     <style>
+      /* ============================================
+         CSS Variables - Design Tokens
+         ============================================ */
+      :root {
+        /* Colors - Dark Theme */
+        --color-bg-primary: #0d1117;
+        --color-bg-secondary: #161b22;
+        --color-bg-tertiary: #21262d;
+        --color-bg-hover: #30363d;
+        
+        --color-border: #30363d;
+        --color-border-hover: #484f58;
+        
+        --color-text-primary: #c9d1d9;
+        --color-text-secondary: #8b949e;
+        --color-text-muted: #6e7681;
+        
+        /* Accent Colors */
+        --color-accent-blue: #58a6ff;
+        --color-accent-green: #3fb950;
+        --color-accent-yellow: #d29922;
+        --color-accent-red: #f85149;
+        --color-accent-purple: #bc8cff;
+        --color-accent-cyan: #39c5cf;
+        --color-accent-orange: #f0883e;
+        
+        /* Semantic Colors */
+        --color-request: var(--color-accent-blue);
+        --color-response: var(--color-accent-green);
+        --color-error: var(--color-accent-red);
+        --color-tool: var(--color-accent-purple);
+        --color-tool-result: var(--color-accent-yellow);
+        --color-done: var(--color-accent-cyan);
+        
+        /* Spacing */
+        --spacing-xs: 4px;
+        --spacing-sm: 8px;
+        --spacing-md: 12px;
+        --spacing-lg: 16px;
+        --spacing-xl: 24px;
+        
+        /* Typography */
+        --font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+        --font-size-xs: 10px;
+        --font-size-sm: 11px;
+        --font-size-base: 12px;
+        --font-size-md: 13px;
+        --font-size-lg: 14px;
+        
+        /* Border Radius */
+        --radius-sm: 4px;
+        --radius-md: 6px;
+        --radius-lg: 8px;
+        --radius-pill: 12px;
+        
+        /* Transitions */
+        --transition-fast: 0.15s ease;
+        --transition-normal: 0.2s ease;
+      }
+
+      /* ============================================
+         Base Styles
+         ============================================ */
       * {
         margin: 0;
         padding: 0;
         box-sizing: border-box;
       }
 
-      :root {
-        --bg-primary: #0d1117;
-        --bg-secondary: #161b22;
-        --bg-tertiary: #21262d;
-        --border-color: #30363d;
-        --text-primary: #c9d1d9;
-        --text-secondary: #8b949e;
-        --text-muted: #6e7681;
-        --accent-blue: #58a6ff;
-        --accent-green: #3fb950;
-        --accent-yellow: #d29922;
-        --accent-red: #f85149;
-        --accent-purple: #bc8cff;
-        --accent-cyan: #39c5cf;
-      }
-
       body {
-        font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', Consolas, monospace;
-        font-size: 13px;
+        font-family: var(--font-mono);
+        font-size: var(--font-md);
         line-height: 1.5;
-        background: var(--bg-primary);
-        color: var(--text-primary);
+        background: var(--color-bg-primary);
+        color: var(--color-text-primary);
         height: 100vh;
         display: flex;
         flex-direction: column;
         overflow: hidden;
       }
 
+      /* ============================================
+         Layout Components
+         ============================================ */
+
       /* Header */
       .header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 10px 16px;
-        background: var(--bg-secondary);
-        border-bottom: 1px solid var(--border-color);
+        padding: var(--spacing-sm) var(--spacing-lg);
+        background: var(--color-bg-secondary);
+        border-bottom: 1px solid var(--color-border);
         -webkit-app-region: drag;
       }
 
-      .header h1 {
-        font-size: 14px;
+      .header__title {
+        font-size: var(--font-size-lg);
         font-weight: 600;
-        color: var(--text-primary);
+        color: var(--color-text-primary);
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--spacing-sm);
       }
 
-      .header h1::before {
+      .header__title::before {
         content: '🔬';
       }
 
-      .header-actions {
+      .header__actions {
         display: flex;
-        gap: 8px;
+        gap: var(--spacing-sm);
         -webkit-app-region: no-drag;
       }
 
-      .btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 12px;
-        font-size: 12px;
-        font-weight: 500;
-        border-radius: 6px;
-        border: 1px solid var(--border-color);
-        background: var(--bg-tertiary);
-        color: var(--text-primary);
-        cursor: pointer;
-        transition: all 0.15s;
-      }
-
-      .btn:hover {
-        background: var(--border-color);
-        border-color: var(--text-muted);
-      }
-
-      .btn.btn-danger {
-        background: rgba(248, 81, 73, 0.15);
-        border-color: var(--accent-red);
-        color: var(--accent-red);
-      }
-
-      .btn.btn-danger:hover {
-        background: rgba(248, 81, 73, 0.25);
-      }
-
-      /* Stats bar */
-      .stats-bar {
-        display: flex;
-        gap: 16px;
-        padding: 8px 16px;
-        background: var(--bg-secondary);
-        border-bottom: 1px solid var(--border-color);
-        font-size: 12px;
-      }
-
-      .stat-item {
+      /* Log File Bar */
+      .log-file-bar {
         display: flex;
         align-items: center;
-        gap: 6px;
-        color: var(--text-secondary);
+        gap: var(--spacing-md);
+        padding: var(--spacing-xs) var(--spacing-lg);
+        background: var(--color-bg-tertiary);
+        border-bottom: 1px solid var(--color-border);
+        font-size: var(--font-size-sm);
+        color: var(--color-text-muted);
       }
 
-      .stat-value {
-        color: var(--accent-cyan);
-        font-weight: 600;
-      }
-
-      /* Filter bar */
-      .filter-bar {
-        display: flex;
-        gap: 8px;
-        padding: 8px 16px;
-        background: var(--bg-tertiary);
-        border-bottom: 1px solid var(--border-color);
-      }
-
-      .filter-chip {
-        padding: 4px 10px;
-        font-size: 11px;
-        border-radius: 12px;
-        background: var(--bg-secondary);
-        border: 1px solid var(--border-color);
-        color: var(--text-secondary);
-        cursor: pointer;
-        transition: all 0.15s;
-      }
-
-      .filter-chip:hover {
-        border-color: var(--text-muted);
-      }
-
-      .filter-chip.active {
-        background: var(--accent-blue);
-        border-color: var(--accent-blue);
-        color: white;
-      }
-
-      /* Main content */
-      .main {
+      .log-file-bar__path {
         flex: 1;
-        display: flex;
-        overflow: hidden;
-      }
-
-      /* Log list */
-      .log-list {
-        flex: 1;
-        overflow-y: auto;
-        padding: 8px;
-      }
-
-      .log-entry {
-        margin-bottom: 4px;
-        border-radius: 6px;
-        background: var(--bg-secondary);
-        border: 1px solid var(--border-color);
-        overflow: hidden;
-        transition: all 0.15s;
-      }
-
-      .log-entry:hover {
-        border-color: var(--text-muted);
-      }
-
-      .log-entry.expanded {
-        border-color: var(--accent-blue);
-      }
-
-      .log-header {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 8px 12px;
-        cursor: pointer;
-        user-select: none;
-      }
-
-      .log-type {
-        padding: 2px 8px;
-        font-size: 10px;
-        font-weight: 600;
-        text-transform: uppercase;
-        border-radius: 4px;
-        letter-spacing: 0.5px;
-      }
-
-      .log-type.request_start { background: var(--accent-blue); color: white; }
-      .log-type.response_chunk { background: var(--accent-green); color: white; }
-      .log-type.response_streaming { 
-        background: var(--accent-green); 
-        color: white; 
-        animation: streaming-pulse 1.5s ease-in-out infinite;
-      }
-      .log-type.response_done { background: var(--accent-cyan); color: var(--bg-primary); }
-      .log-type.response_done_tools { background: var(--accent-purple); color: white; }
-      .log-type.response_error { background: var(--accent-red); color: white; }
-      .log-type.tool_call { background: var(--accent-purple); color: white; }
-      .log-type.tool_result { background: var(--accent-yellow); color: var(--bg-primary); }
-      
-      @keyframes streaming-pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.6; }
-      }
-
-      .log-time {
-        font-size: 11px;
-        color: var(--text-muted);
-        font-family: monospace;
-      }
-
-      .log-summary {
-        flex: 1;
-        font-size: 12px;
-        color: var(--text-secondary);
-        white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        white-space: nowrap;
+        font-family: var(--font-mono);
       }
 
-      .log-expand {
-        color: var(--text-muted);
-        font-size: 10px;
-        transition: transform 0.2s;
-      }
-
-      .log-entry.expanded .log-expand {
-        transform: rotate(90deg);
-      }
-
-      .log-content {
-        display: none;
-        padding: 12px;
-        border-top: 1px solid var(--border-color);
-        background: var(--bg-primary);
-      }
-
-      .log-entry.expanded .log-content {
-        display: block;
-      }
-
-      /* JSON viewer */
-      .json-viewer {
-        font-size: 12px;
-        line-height: 1.6;
-        white-space: pre-wrap;
-        word-break: break-all;
-        max-height: 400px;
-        overflow-y: auto;
-      }
-
-      .json-key { color: var(--accent-purple); }
-      .json-string { color: var(--accent-green); }
-      .json-number { color: var(--accent-yellow); }
-      .json-boolean { color: var(--accent-blue); }
-      .json-null { color: var(--text-muted); }
-
-      /* Messages preview */
-      .messages-preview {
-        margin-top: 8px;
-        padding: 8px;
-        background: var(--bg-tertiary);
-        border-radius: 4px;
-        max-height: 600px;
-        overflow-y: auto;
-      }
-
-      .message-item {
-        margin-bottom: 8px;
-        padding: 8px;
-        border-radius: 4px;
-        background: var(--bg-secondary);
-        border-left: 3px solid var(--border-color);
-      }
-
-      .message-item.system { border-left-color: var(--accent-purple); }
-      .message-item.user { border-left-color: var(--accent-blue); }
-      .message-item.assistant { border-left-color: var(--accent-green); }
-      .message-item.tool { border-left-color: var(--accent-yellow); }
-
-      .message-role {
-        font-size: 10px;
-        font-weight: 600;
-        text-transform: uppercase;
-        color: var(--text-muted);
-        margin-bottom: 4px;
-      }
-
-      .message-content {
-        font-size: 12px;
-        color: var(--text-secondary);
-        white-space: pre-wrap;
-        word-break: break-all;
-      }
-
-      /* Empty state */
-      .empty-state {
+      /* Stats Bar */
+      .stats-bar {
         display: flex;
-        flex-direction: column;
+        gap: var(--spacing-lg);
+        padding: var(--spacing-sm) var(--spacing-lg);
+        background: var(--color-bg-secondary);
+        border-bottom: 1px solid var(--color-border);
+        font-size: var(--font-size-base);
+      }
+
+      .stats-bar__item {
+        display: flex;
         align-items: center;
-        justify-content: center;
-        height: 100%;
-        color: var(--text-muted);
-        text-align: center;
-        padding: 40px;
+        gap: var(--spacing-xs);
+        color: var(--color-text-secondary);
       }
 
-      .empty-state-icon {
-        font-size: 48px;
-        margin-bottom: 16px;
-        opacity: 0.5;
-      }
-
-      .empty-state-title {
-        font-size: 16px;
+      .stats-bar__value {
+        color: var(--color-accent-cyan);
         font-weight: 600;
-        margin-bottom: 8px;
-        color: var(--text-secondary);
       }
 
-      .empty-state-desc {
-        font-size: 13px;
-        max-width: 300px;
+      .stats-bar__streaming {
+        display: none;
       }
 
-      /* Streaming indicator */
-      .streaming-indicator {
+      .stats-bar__streaming.is-active {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
-        padding: 4px 8px;
+        gap: var(--spacing-xs);
+        padding: var(--spacing-xs) var(--spacing-sm);
         background: rgba(63, 185, 80, 0.15);
-        border-radius: 4px;
-        font-size: 11px;
-        color: var(--accent-green);
+        border-radius: var(--radius-sm);
+        font-size: var(--font-size-sm);
+        color: var(--color-accent-green);
       }
 
-      .streaming-dot {
+      .stats-bar__streaming-dot {
         width: 6px;
         height: 6px;
-        background: var(--accent-green);
+        background: var(--color-accent-green);
         border-radius: 50%;
         animation: pulse 1s infinite;
       }
@@ -365,569 +192,661 @@
         50% { opacity: 0.3; }
       }
 
-      /* Scrollbar */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-
-      ::-webkit-scrollbar-track {
-        background: var(--bg-primary);
-      }
-
-      ::-webkit-scrollbar-thumb {
-        background: var(--border-color);
-        border-radius: 4px;
-      }
-
-      ::-webkit-scrollbar-thumb:hover {
-        background: var(--text-muted);
-      }
-
-      /* Request ID badge */
-      .request-id {
-        font-family: monospace;
-        font-size: 10px;
-        padding: 2px 6px;
-        background: var(--bg-tertiary);
-        border-radius: 3px;
-        color: var(--text-muted);
-      }
-
-      /* Auto scroll toggle */
-      .auto-scroll-toggle {
+      /* Filter Bar */
+      .filter-bar {
         display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 12px;
-        color: var(--text-secondary);
+        gap: var(--spacing-sm);
+        padding: var(--spacing-sm) var(--spacing-lg);
+        background: var(--color-bg-tertiary);
+        border-bottom: 1px solid var(--color-border);
       }
 
-      .auto-scroll-toggle input {
-        accent-color: var(--accent-blue);
-      }
-
-      /* Copy button */
-      .btn-copy {
-        padding: 4px 8px;
-        font-size: 11px;
-        background: transparent;
-        border: 1px solid var(--border-color);
-        color: var(--text-muted);
-        cursor: pointer;
-        border-radius: 4px;
-        opacity: 0;
-        transition: all 0.15s;
-      }
-
-      .log-header:hover .btn-copy {
-        opacity: 1;
-      }
-
-      .btn-copy:hover {
-        background: var(--bg-tertiary);
-        color: var(--text-primary);
-        border-color: var(--text-muted);
-      }
-
-      .btn-copy.copied {
-        color: var(--accent-green);
-        border-color: var(--accent-green);
-      }
-
-      /* Log file info bar */
-      .log-file-bar {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 6px 16px;
-        background: var(--bg-tertiary);
-        border-bottom: 1px solid var(--border-color);
-        font-size: 11px;
-        color: var(--text-muted);
-      }
-
-      .log-file-path {
+      .filter-bar__spacer {
         flex: 1;
+      }
+
+      /* Filter Chips */
+      .filter-chip {
+        padding: var(--spacing-xs) var(--spacing-sm);
+        font-size: var(--font-size-sm);
+        border-radius: var(--radius-pill);
+        background: var(--color-bg-secondary);
+        border: 1px solid var(--color-border);
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+        user-select: none;
+      }
+
+      .filter-chip:hover {
+        border-color: var(--color-border-hover);
+      }
+
+      .filter-chip.is-active {
+        background: var(--color-accent-blue);
+        border-color: var(--color-accent-blue);
+        color: white;
+      }
+
+      /* Search Box */
+      .search-box {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        background: var(--color-bg-secondary);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        padding: var(--spacing-xs) var(--spacing-sm);
+        min-width: 200px;
+        transition: border-color var(--transition-fast);
+      }
+
+      .search-box:focus-within {
+        border-color: var(--color-accent-blue);
+      }
+
+      .search-box__icon {
+        font-size: var(--font-size-base);
+        opacity: 0.6;
+      }
+
+      .search-box__input {
+        flex: 1;
+        background: none;
+        border: none;
+        outline: none;
+        color: var(--color-text-primary);
+        font-size: var(--font-size-base);
+        font-family: inherit;
+      }
+
+      .search-box__input::placeholder {
+        color: var(--color-text-muted);
+      }
+
+      .search-box__clear {
+        cursor: pointer;
+        color: var(--color-text-muted);
+        font-size: var(--font-size-base);
+        padding: 2px;
+        display: none;
+      }
+
+      .search-box__clear.is-visible {
+        display: block;
+      }
+
+      .search-box__clear:hover {
+        color: var(--color-text-primary);
+      }
+
+      /* Main Content */
+      .main {
+        flex: 1;
+        display: flex;
         overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font-family: monospace;
       }
 
-      .log-file-bar .btn {
-        padding: 3px 8px;
-        font-size: 11px;
+      /* ============================================
+         Button Component
+         ============================================ */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        padding: var(--spacing-xs) var(--spacing-md);
+        font-size: var(--font-size-base);
+        font-weight: 500;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--color-border);
+        background: var(--color-bg-tertiary);
+        color: var(--color-text-primary);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+        font-family: inherit;
       }
 
-      /* Toast notification */
-      .toast {
-        position: fixed;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 10px 20px;
-        background: var(--bg-tertiary);
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
-        color: var(--text-primary);
-        font-size: 13px;
-        z-index: 1000;
+      .btn:hover {
+        background: var(--color-bg-hover);
+        border-color: var(--color-border-hover);
+      }
+
+      .btn--sm {
+        padding: 3px var(--spacing-sm);
+        font-size: var(--font-size-sm);
+      }
+
+      .btn--danger {
+        background: rgba(248, 81, 73, 0.15);
+        border-color: var(--color-accent-red);
+        color: var(--color-accent-red);
+      }
+
+      .btn--danger:hover {
+        background: rgba(248, 81, 73, 0.25);
+      }
+
+      .btn--copy {
+        padding: var(--spacing-xs) var(--spacing-sm);
+        font-size: var(--font-size-sm);
+        background: transparent;
+        border: 1px solid var(--color-border);
+        color: var(--color-text-muted);
         opacity: 0;
-        transition: opacity 0.3s;
-        pointer-events: none;
+        transition: all var(--transition-fast);
       }
 
-      .toast.show {
+      .btn--copy.is-visible {
         opacity: 1;
       }
 
-      .toast.success {
-        border-color: var(--accent-green);
-        color: var(--accent-green);
+      .btn--copy:hover {
+        background: var(--color-bg-tertiary);
+        color: var(--color-text-primary);
+        border-color: var(--color-border-hover);
       }
 
-      /* Allow text selection */
-      .log-content, .json-viewer, .message-content, .log-summary {
-        user-select: text;
-        -webkit-user-select: text;
+      .btn--copy.is-copied {
+        color: var(--color-accent-green);
+        border-color: var(--color-accent-green);
       }
 
-      /* Markdown 渲染样式 */
-      .markdown-content {
-        font-size: 12px;
-        line-height: 1.6;
-        color: var(--text-secondary);
-      }
-
-      .markdown-content h1, .markdown-content h2, .markdown-content h3 {
-        color: var(--text-primary);
-        margin: 0.8em 0 0.4em 0;
-        font-weight: 600;
-      }
-
-      .markdown-content h1 { font-size: 1.3em; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3em; }
-      .markdown-content h2 { font-size: 1.15em; }
-      .markdown-content h3 { font-size: 1em; }
-
-      .markdown-content p {
-        margin: 0.5em 0;
-      }
-
-      .markdown-content ul, .markdown-content ol {
-        margin: 0.5em 0;
-        padding-left: 1.5em;
-      }
-
-      .markdown-content li {
-        margin: 0.2em 0;
-      }
-
-      .markdown-content code {
-        background: var(--bg-tertiary);
-        padding: 0.15em 0.4em;
-        border-radius: 3px;
-        font-family: 'SF Mono', 'Fira Code', monospace;
-        font-size: 0.9em;
-        color: var(--accent-cyan);
-      }
-
-      .markdown-content pre {
-        background: var(--bg-tertiary);
-        padding: 0.8em;
-        border-radius: 4px;
-        overflow-x: auto;
-        margin: 0.5em 0;
-      }
-
-      .markdown-content pre code {
-        background: none;
-        padding: 0;
-        color: var(--text-primary);
-      }
-
-      .markdown-content table {
-        border-collapse: collapse;
-        width: 100%;
-        margin: 0.5em 0;
-        font-size: 11px;
-      }
-
-      .markdown-content th, .markdown-content td {
-        border: 1px solid var(--border-color);
-        padding: 0.4em 0.6em;
-        text-align: left;
-      }
-
-      .markdown-content th {
-        background: var(--bg-tertiary);
-        color: var(--text-primary);
-        font-weight: 600;
-      }
-
-      .markdown-content strong {
-        color: var(--text-primary);
-        font-weight: 600;
-      }
-
-      .markdown-content em {
-        font-style: italic;
-      }
-
-      .markdown-content blockquote {
-        border-left: 3px solid var(--accent-blue);
-        padding-left: 1em;
-        margin: 0.5em 0;
-        color: var(--text-muted);
-      }
-
-      .markdown-content hr {
-        border: none;
-        border-top: 1px solid var(--border-color);
-        margin: 1em 0;
-      }
-
-      /* 渲染模式切换 */
-      .render-toggle {
+      /* ============================================
+         Toggle Component
+         ============================================ */
+      .toggle {
         display: flex;
         align-items: center;
-        gap: 6px;
-        font-size: 11px;
-        color: var(--text-muted);
-        padding: 4px 8px;
-        background: var(--bg-tertiary);
-        border-radius: 4px;
+        gap: var(--spacing-xs);
+        font-size: var(--font-size-base);
+        color: var(--color-text-secondary);
         cursor: pointer;
-        transition: all 0.15s;
       }
 
-      .render-toggle:hover {
-        color: var(--text-secondary);
+      .toggle__checkbox {
+        accent-color: var(--color-accent-blue);
       }
 
-      .render-toggle.active {
-        color: var(--accent-blue);
+      .toggle--render {
+        padding: var(--spacing-xs) var(--spacing-sm);
+        background: var(--color-bg-tertiary);
+        border-radius: var(--radius-sm);
+        transition: all var(--transition-fast);
+      }
+
+      .toggle--render:hover {
+        color: var(--color-text-primary);
+      }
+
+      .toggle--render.is-active {
+        color: var(--color-accent-blue);
         background: rgba(88, 166, 255, 0.1);
       }
 
-      /* 渲染失败提示 */
-      .render-fallback {
-        padding: 8px;
-        background: rgba(248, 81, 73, 0.1);
-        border-left: 3px solid var(--accent-red);
-        font-size: 11px;
-        color: var(--accent-red);
-        margin-bottom: 8px;
+      /* ============================================
+         Log List Component
+         ============================================ */
+      .log-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: var(--spacing-sm);
       }
 
-      /* 可折叠区块样式 */
-      .collapsible-section {
-        margin-top: 8px;
-        cursor: pointer;
+      /* Empty State */
+      .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--color-text-muted);
+        text-align: center;
+        padding: 40px;
       }
 
-      .collapsible-header {
+      .empty-state__icon {
+        font-size: 48px;
+        margin-bottom: var(--spacing-lg);
+        opacity: 0.5;
+      }
+
+      .empty-state__title {
+        font-size: var(--font-size-lg);
+        font-weight: 600;
+        margin-bottom: var(--spacing-sm);
+        color: var(--color-text-secondary);
+      }
+
+      .empty-state__desc {
+        font-size: var(--font-size-md);
+        max-width: 300px;
+      }
+
+      /* ============================================
+         Log Entry Component
+         ============================================ */
+      .log-entry {
+        margin-bottom: var(--spacing-xs);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-secondary);
+        border: 1px solid var(--color-border);
+        overflow: hidden;
+        transition: all var(--transition-fast);
+      }
+
+      .log-entry:hover {
+        border-color: var(--color-border-hover);
+      }
+
+      .log-entry:hover .btn--copy {
+        opacity: 1;
+      }
+
+      .log-entry.is-expanded {
+        border-color: var(--color-accent-blue);
+      }
+
+      /* Log Header */
+      .log-entry__header {
         display: flex;
         align-items: center;
-        gap: 6px;
-        padding: 6px 8px;
-        background: var(--bg-tertiary);
-        border-radius: 4px;
-        font-size: 12px;
-        color: var(--text-secondary);
+        gap: var(--spacing-sm);
+        padding: var(--spacing-sm) var(--spacing-md);
+        cursor: pointer;
+        user-select: none;
       }
 
-      .collapsible-header:hover {
-        background: var(--border-color);
+      /* Log Type Badge */
+      .log-entry__type {
+        padding: 2px var(--spacing-sm);
+        font-size: var(--font-size-xs);
+        font-weight: 600;
+        text-transform: uppercase;
+        border-radius: var(--radius-sm);
+        letter-spacing: 0.5px;
+        flex-shrink: 0;
       }
 
-      .collapse-icon {
-        font-size: 10px;
-        transition: transform 0.2s;
-        color: var(--text-muted);
+      .log-entry__type--request { background: var(--color-request); color: white; }
+      .log-entry__type--streaming { 
+        background: var(--color-response); 
+        color: white; 
+        animation: streaming-pulse 1.5s ease-in-out infinite;
+      }
+      .log-entry__type--done { background: var(--color-done); color: var(--color-bg-primary); }
+      .log-entry__type--done-tools { background: var(--color-tool); color: white; }
+      .log-entry__type--error { background: var(--color-error); color: white; }
+      .log-entry__type--tool-call { background: var(--color-tool); color: white; }
+      .log-entry__type--tool-result { background: var(--color-tool-result); color: var(--color-bg-primary); }
+
+      @keyframes streaming-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
       }
 
-      .collapsible-section:not(.collapsed) .collapse-icon,
-      .collapsible-message:not(.collapsed) .collapse-icon {
+      .log-entry__time {
+        font-size: var(--font-size-sm);
+        color: var(--color-text-muted);
+        font-family: var(--font-mono);
+        flex-shrink: 0;
+      }
+
+      .log-entry__request-id {
+        font-family: var(--font-mono);
+        font-size: var(--font-size-xs);
+        padding: 2px var(--spacing-xs);
+        background: var(--color-bg-tertiary);
+        border-radius: 3px;
+        color: var(--color-text-muted);
+        flex-shrink: 0;
+      }
+
+      .log-entry__summary {
+        flex: 1;
+        font-size: var(--font-size-base);
+        color: var(--color-text-secondary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        user-select: text;
+      }
+
+      .log-entry__expand {
+        color: var(--color-text-muted);
+        font-size: var(--font-size-xs);
+        transition: transform var(--transition-normal);
+        flex-shrink: 0;
+      }
+
+      .log-entry.is-expanded .log-entry__expand {
         transform: rotate(90deg);
       }
 
-      .collapsible-section.collapsed .collapsible-content {
+      /* Log Content */
+      .log-entry__content {
+        display: none;
+        padding: var(--spacing-md);
+        border-top: 1px solid var(--color-border);
+        background: var(--color-bg-primary);
+        user-select: text;
+      }
+
+      .log-entry.is-expanded .log-entry__content {
+        display: block;
+      }
+
+      /* ============================================
+         Detail Tabs Component
+         ============================================ */
+      .detail-tabs {
+        display: flex;
+        gap: 0;
+        border-bottom: 1px solid var(--color-border);
+        margin-bottom: var(--spacing-md);
+      }
+
+      .detail-tabs__tab {
+        padding: var(--spacing-sm) var(--spacing-lg);
+        font-size: var(--font-size-base);
+        color: var(--color-text-muted);
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        transition: all var(--transition-fast);
+        user-select: none;
+      }
+
+      .detail-tabs__tab:hover {
+        color: var(--color-text-secondary);
+        background: var(--color-bg-tertiary);
+      }
+
+      .detail-tabs__tab.is-active {
+        color: var(--color-accent-blue);
+        border-bottom-color: var(--color-accent-blue);
+      }
+
+      .detail-panel {
         display: none;
       }
 
-      .tool-summary {
+      .detail-panel.is-active {
+        display: block;
+      }
+
+      /* ============================================
+         JSON Viewer Component
+         ============================================ */
+      .json-viewer {
+        font-size: var(--font-size-base);
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+
+      .json-viewer__key { color: var(--color-accent-purple); }
+      .json-viewer__string { color: var(--color-accent-green); }
+      .json-viewer__number { color: var(--color-accent-yellow); }
+      .json-viewer__boolean { color: var(--color-accent-blue); }
+      .json-viewer__null { color: var(--color-text-muted); }
+
+      /* Raw JSON Panel */
+      .raw-json {
+        background: var(--color-bg-tertiary);
+        border-radius: var(--radius-md);
+        padding: var(--spacing-md);
+        max-height: 500px;
+        overflow: auto;
+      }
+
+      .raw-json pre {
+        margin: 0;
+        font-size: var(--font-size-sm);
+        line-height: 1.5;
+      }
+
+      /* ============================================
+         Messages Preview Component
+         ============================================ */
+      .messages-preview {
+        margin-top: var(--spacing-sm);
+        padding: var(--spacing-sm);
+        background: var(--color-bg-tertiary);
+        border-radius: var(--radius-sm);
+        max-height: 600px;
+        overflow-y: auto;
+      }
+
+      .message-item {
+        margin-bottom: var(--spacing-sm);
+        padding: var(--spacing-sm);
+        border-radius: var(--radius-sm);
+        background: var(--color-bg-secondary);
+        border-left: 3px solid var(--color-border);
+      }
+
+      .message-item--system { border-left-color: var(--color-accent-purple); }
+      .message-item--user { border-left-color: var(--color-accent-blue); }
+      .message-item--assistant { border-left-color: var(--color-accent-green); }
+      .message-item--tool { border-left-color: var(--color-accent-yellow); }
+
+      .message-item--current {
+        border-left-width: 4px;
+        background: rgba(88, 166, 255, 0.1);
+      }
+
+      .message-item__role {
+        font-size: var(--font-size-xs);
+        font-weight: 600;
+        text-transform: uppercase;
+        color: var(--color-text-muted);
+        margin-bottom: var(--spacing-xs);
+      }
+
+      .message-item__content {
+        font-size: var(--font-size-base);
+        color: var(--color-text-secondary);
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+
+      /* ============================================
+         Collapsible Section Component
+         ============================================ */
+      .collapsible {
+        margin-top: var(--spacing-sm);
+        cursor: pointer;
+      }
+
+      .collapsible__header {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        padding: var(--spacing-xs) var(--spacing-sm);
+        background: var(--color-bg-tertiary);
+        border-radius: var(--radius-sm);
+        font-size: var(--font-size-base);
+        color: var(--color-text-secondary);
+      }
+
+      .collapsible__header:hover {
+        background: var(--color-bg-hover);
+      }
+
+      .collapsible__icon {
+        font-size: var(--font-size-xs);
+        transition: transform var(--transition-normal);
+        color: var(--color-text-muted);
+      }
+
+      .collapsible:not(.is-collapsed) .collapsible__icon {
+        transform: rotate(90deg);
+      }
+
+      .collapsible__summary {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
         flex: 1;
       }
 
-      /* 可折叠消息样式 */
-      .collapsible-message {
-        cursor: pointer;
+      .collapsible__content {
+        display: block;
       }
 
-      .collapsible-message .message-role {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-
-      .message-preview {
-        font-size: 11px;
-        color: var(--text-muted);
-        padding: 4px 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .collapsible-message.collapsed .message-full-content {
+      .collapsible.is-collapsed .collapsible__content {
         display: none;
       }
 
-      .collapsible-message:not(.collapsed) .message-preview {
-        display: none;
-      }
-
-      /* 减小 tools 的 json-viewer 高度 */
-      .collapsible-content .json-viewer {
-        max-height: 250px;
-      }
-
-      /* 工具调用显示样式 */
-      .tool-calls-container {
-        margin-top: 4px;
-      }
-
-      .tool-call-item {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        padding: 8px 10px;
-        background: rgba(188, 140, 255, 0.08);
-        border-radius: 6px;
-        margin-bottom: 6px;
-        border-left: 3px solid var(--accent-purple);
-      }
-
-      .tool-call-header {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-
-      .tool-call-icon {
-        font-size: 12px;
-      }
-
-      .tool-call-name {
-        font-weight: 600;
-        color: var(--accent-purple);
-        font-size: 12px;
-      }
-
-      .tool-call-body {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        margin-left: 4px;
-      }
-
-      .tool-call-section {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-      }
-
-      .tool-section-label {
-        font-size: 10px;
-        color: var(--text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.3px;
-      }
-
-      .tool-call-args {
-        font-size: 11px;
-        color: var(--text-secondary);
-        margin: 0;
-        padding: 6px 8px;
-        background: var(--bg-primary);
-        border-radius: 4px;
-        overflow-x: auto;
-        max-height: 80px;
-        white-space: pre-wrap;
-        word-break: break-all;
-      }
-
-      .tool-result-section {
-        border-top: 1px dashed var(--border-color);
-        padding-top: 6px;
-        margin-top: 2px;
-      }
-
-      .tool-call-result {
-        font-size: 11px;
-        color: var(--accent-green);
-        margin: 0;
-        padding: 6px 8px;
-        background: rgba(63, 185, 80, 0.1);
-        border-radius: 4px;
-        overflow-x: auto;
-        max-height: 120px;
-        white-space: pre-wrap;
-        word-break: break-all;
-      }
-
-      .tool-pending {
-        font-size: 11px;
-        color: var(--text-muted);
-        font-style: italic;
-      }
-
-      /* 历史消息摘要样式 */
+      /* ============================================
+         History Summary Component
+         ============================================ */
       .history-summary {
-        margin-bottom: 8px;
-        border-radius: 6px;
-        background: var(--bg-secondary);
-        border: 1px solid var(--border-color);
+        margin-bottom: var(--spacing-sm);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-secondary);
+        border: 1px solid var(--color-border);
       }
 
-      .history-summary .collapsible-header {
-        padding: 8px 10px;
-        gap: 8px;
+      .history-summary__header {
+        padding: var(--spacing-sm) var(--spacing-sm);
+        gap: var(--spacing-sm);
       }
 
-      .history-label {
-        font-size: 12px;
-        color: var(--text-secondary);
+      .history-summary__label {
+        font-size: var(--font-size-base);
+        color: var(--color-text-secondary);
         font-weight: 500;
       }
 
-      .history-stats {
+      .history-summary__stats {
         display: flex;
-        gap: 6px;
+        gap: var(--spacing-xs);
         margin-left: auto;
       }
 
-      .hist-badge {
-        font-size: 10px;
-        padding: 2px 6px;
-        border-radius: 10px;
-        background: var(--bg-tertiary);
-        color: var(--text-muted);
+      .history-badge {
+        font-size: var(--font-size-xs);
+        padding: 2px var(--spacing-xs);
+        border-radius: var(--radius-sm);
+        background: var(--color-bg-tertiary);
+        color: var(--color-text-muted);
       }
 
-      .hist-badge.system { color: var(--accent-purple); }
-      .hist-badge.user { color: var(--accent-blue); }
-      .hist-badge.assistant { color: var(--accent-green); }
-      .hist-badge.tool { color: var(--accent-yellow); }
+      .history-badge--system { color: var(--color-accent-purple); }
+      .history-badge--user { color: var(--color-accent-blue); }
+      .history-badge--assistant { color: var(--color-accent-green); }
+      .history-badge--tool { color: var(--color-accent-yellow); }
 
-      .history-content {
+      .history-summary__content {
         max-height: 300px;
         overflow-y: auto;
-        padding: 8px;
-        border-top: 1px solid var(--border-color);
+        padding: var(--spacing-sm);
+        border-top: 1px solid var(--color-border);
       }
 
-      .hist-message {
+      /* History Message */
+      .history-message {
         display: flex;
         align-items: flex-start;
-        gap: 8px;
-        padding: 4px 6px;
-        font-size: 11px;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-xs) var(--spacing-xs);
+        font-size: var(--font-size-sm);
         border-radius: 3px;
         margin-bottom: 2px;
       }
 
-      .hist-message:hover {
-        background: var(--bg-tertiary);
+      .history-message:hover {
+        background: var(--color-bg-tertiary);
       }
 
-      .hist-role {
+      .history-message__role {
         font-size: 9px;
         font-weight: 600;
         text-transform: uppercase;
         padding: 2px 5px;
         border-radius: 3px;
-        background: var(--bg-tertiary);
-        color: var(--text-muted);
+        background: var(--color-bg-tertiary);
+        color: var(--color-text-muted);
         flex-shrink: 0;
         min-width: 55px;
         text-align: center;
       }
 
-      .hist-message.system .hist-role { color: var(--accent-purple); }
-      .hist-message.user .hist-role { color: var(--accent-blue); }
-      .hist-message.assistant .hist-role { color: var(--accent-green); }
-      .hist-message.tool .hist-role { color: var(--accent-yellow); }
+      .history-message--system .history-message__role { color: var(--color-accent-purple); }
+      .history-message--user .history-message__role { color: var(--color-accent-blue); }
+      .history-message--assistant .history-message__role { color: var(--color-accent-green); }
+      .history-message--tool .history-message__role { color: var(--color-accent-yellow); }
 
-      .hist-tools {
-        font-size: 10px;
-        color: var(--accent-purple);
+      .history-message__tools {
+        font-size: var(--font-size-xs);
+        color: var(--color-accent-purple);
         flex-shrink: 0;
       }
 
-      .hist-content {
-        color: var(--text-muted);
+      .history-message__content {
+        color: var(--color-text-muted);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
         flex: 1;
       }
 
-      /* 历史消息可折叠样式 */
-      .hist-collapsible {
+      /* History Message - Collapsible */
+      .history-message.is-collapsible {
         flex-direction: column;
-        align-items: stretch;
-        cursor: pointer;
-        padding: 6px 8px;
-        background: var(--bg-secondary);
-        border-radius: 4px;
+        padding: var(--spacing-xs) var(--spacing-sm);
+        background: var(--color-bg-secondary);
+        border-radius: var(--radius-sm);
+        margin-bottom: var(--spacing-xs);
       }
 
-      .hist-header {
+      .history-message__header {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--spacing-sm);
+        width: 100%;
+        cursor: pointer;
+        user-select: none;
       }
 
-      .hist-header .collapse-icon {
-        margin-left: auto;
+      .history-message__header:hover {
+        color: var(--color-text-primary);
       }
 
-      .hist-preview {
-        font-size: 11px;
-        color: var(--text-muted);
-        margin-top: 4px;
+      .history-message__preview {
+        font-size: var(--font-size-sm);
+        color: var(--color-text-muted);
+        margin-top: var(--spacing-xs);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
 
-      .hist-collapsible.collapsed .hist-full {
+      .history-message__full {
+        display: none;
+        margin-top: var(--spacing-sm);
+        padding-top: var(--spacing-sm);
+        border-top: 1px solid var(--color-border);
+      }
+
+      .history-message.is-collapsible.is-expanded .history-message__preview {
         display: none;
       }
 
-      .hist-collapsible:not(.collapsed) .hist-preview {
-        display: none;
+      .history-message.is-collapsible.is-expanded .history-message__full {
+        display: block;
       }
 
-      .hist-collapsible:not(.collapsed) .collapse-icon {
+      .history-message.is-collapsible.is-expanded .collapsible__icon {
         transform: rotate(90deg);
       }
 
-      .hist-full {
-        margin-top: 8px;
-        padding-top: 8px;
-        border-top: 1px solid var(--border-color);
-      }
-
-      .hist-full-content {
+      .history-message__content-full {
         margin: 0;
-        font-size: 11px;
-        color: var(--text-secondary);
+        font-size: var(--font-size-sm);
+        color: var(--color-text-secondary);
         white-space: pre-wrap;
         word-break: break-word;
         max-height: 200px;
@@ -935,485 +854,643 @@
         line-height: 1.5;
       }
 
-      /* 当前用户输入高亮 */
-      .current-user {
-        border-left-width: 4px;
-        background: rgba(88, 166, 255, 0.1);
+      /* ============================================
+         System Prompt Section
+         ============================================ */
+      .system-prompt-section {
+        margin-bottom: var(--spacing-sm);
+        border-radius: var(--radius-md);
+        background: rgba(188, 140, 255, 0.08);
+        border: 1px solid rgba(188, 140, 255, 0.2);
+        overflow: hidden;
       }
 
-      .current-badge {
-        font-size: 11px;
-        color: var(--accent-blue);
-        font-weight: 600;
-      }
-
-      /* 等待工具执行样式 */
-      .tools-pending-info {
+      .system-prompt__header {
         display: flex;
         align-items: center;
-        gap: 12px;
-        padding: 12px 16px;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-sm) var(--spacing-md);
         background: rgba(188, 140, 255, 0.1);
-        border-radius: 6px;
-        border: 1px dashed var(--accent-purple);
+        border-bottom: 1px solid rgba(188, 140, 255, 0.15);
+        cursor: pointer;
+        user-select: none;
       }
 
-      .tools-pending-icon {
-        font-size: 24px;
+      .system-prompt__header:hover {
+        background: rgba(188, 140, 255, 0.15);
       }
 
-      .tools-pending-text {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
+      .system-prompt-section.is-collapsed .system-prompt__header {
+        border-bottom: none;
       }
 
-      .tools-pending-title {
-        font-size: 13px;
-        color: var(--accent-purple);
-        font-weight: 500;
+      .system-prompt-section.is-collapsed .collapsible__content {
+        display: none;
       }
 
-      .tools-pending-meta {
-        font-size: 11px;
-        color: var(--text-muted);
+      .system-prompt-section:not(.is-collapsed) .collapsible__icon {
+        transform: rotate(90deg);
       }
 
-      /* AI 思考内容样式 */
-      .ai-thinking-section {
-        margin-bottom: 12px;
-        padding: 10px 12px;
-        background: rgba(57, 197, 207, 0.1);
-        border-radius: 6px;
-        border-left: 3px solid var(--accent-cyan);
+      .system-prompt__icon {
+        font-size: var(--font-size-base);
       }
 
-      .ai-thinking-header {
-        font-size: 11px;
+      .system-prompt__label {
+        font-size: var(--font-size-sm);
         font-weight: 600;
-        color: var(--accent-cyan);
-        margin-bottom: 6px;
+        color: var(--color-accent-purple);
       }
 
-      .ai-thinking-content {
-        font-size: 12px;
-        color: var(--text-secondary);
-        line-height: 1.5;
-        white-space: pre-wrap;
-        word-break: break-word;
+      .system-prompt__length {
+        margin-left: auto;
+        font-size: var(--font-size-xs);
+        color: var(--color-text-muted);
       }
 
-      .ai-thinking-meta {
-        font-size: 10px;
-        color: var(--text-muted);
-        margin-top: 6px;
+      .system-prompt__copy {
+        margin-left: var(--spacing-sm);
+        opacity: 0.7;
+        transition: opacity var(--transition-fast);
       }
 
-      /* 工具结果返回样式 */
-      .current-tool-result {
-        border-left-color: var(--accent-yellow);
-        background: rgba(210, 153, 34, 0.1);
+      .system-prompt__copy:hover {
+        opacity: 1;
       }
 
-      .tool-badge {
-        color: var(--accent-yellow);
+      .system-prompt__content {
+        padding: var(--spacing-sm) var(--spacing-md);
       }
 
-      .tool-results-preview {
-        margin-top: 6px;
-      }
-
-      .tool-result-item {
-        font-size: 11px;
-        color: var(--text-secondary);
-        padding: 8px 10px;
-        background: var(--bg-tertiary);
-        border-radius: 4px;
-        margin-bottom: 4px;
-      }
-
-      .tool-result-item.collapsible-result {
+      .system-prompt__content.collapsible {
         cursor: pointer;
       }
 
-      .tool-result-header {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-
-      .tool-result-preview {
-        color: var(--text-muted);
+      .system-prompt__preview {
+        font-size: var(--font-size-sm);
+        color: var(--color-text-muted);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
 
-      .collapsible-result.collapsed .tool-result-full {
+      .system-prompt__full {
+        margin: 0;
+        font-size: var(--font-size-sm);
+        color: var(--color-text-secondary);
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 300px;
+        overflow-y: auto;
+        line-height: 1.5;
+        font-family: var(--font-mono);
+      }
+
+      .system-prompt__content.collapsible.is-collapsed .collapsible__content {
         display: none;
       }
 
-      .collapsible-result:not(.collapsed) .tool-result-header {
-        margin-bottom: 8px;
-        padding-bottom: 8px;
-        border-bottom: 1px solid var(--border-color);
-      }
-
-      .collapsible-result:not(.collapsed) .tool-result-preview {
+      .system-prompt__content.collapsible:not(.is-collapsed) .collapsible__header {
         display: none;
       }
 
-      .collapsible-result:not(.collapsed) .collapse-icon {
+      .system-prompt__content.collapsible:not(.is-collapsed) .collapsible__icon {
         transform: rotate(90deg);
       }
 
-      .tool-result-content {
+      /* ============================================
+         AI Thinking Section
+         ============================================ */
+      .ai-thinking {
+        margin-bottom: var(--spacing-md);
+        padding: var(--spacing-sm) var(--spacing-md);
+        background: rgba(57, 197, 207, 0.1);
+        border-radius: var(--radius-md);
+        border-left: 3px solid var(--color-accent-cyan);
+      }
+
+      .ai-thinking__header {
+        font-size: var(--font-size-sm);
+        font-weight: 600;
+        color: var(--color-accent-cyan);
+        margin-bottom: var(--spacing-xs);
+      }
+
+      .ai-thinking__content {
+        font-size: var(--font-size-base);
+        color: var(--color-text-secondary);
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .ai-thinking__meta {
+        font-size: var(--font-size-xs);
+        color: var(--color-text-muted);
+        margin-top: var(--spacing-xs);
+      }
+
+      /* ============================================
+         Tool Call Component
+         ============================================ */
+      .tool-call {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+        padding: var(--spacing-sm) var(--spacing-sm);
+        background: rgba(188, 140, 255, 0.08);
+        border-radius: var(--radius-md);
+        margin-bottom: var(--spacing-xs);
+        border-left: 3px solid var(--color-accent-purple);
+      }
+
+      .tool-call__header {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+      }
+
+      .tool-call__icon {
+        font-size: var(--font-size-base);
+      }
+
+      .tool-call__name {
+        font-weight: 600;
+        color: var(--color-accent-purple);
+        font-size: var(--font-size-base);
+      }
+
+      .tool-call__body {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+        margin-left: var(--spacing-xs);
+      }
+
+      .tool-call__section-label {
+        font-size: var(--font-size-xs);
+        color: var(--color-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+      }
+
+      .tool-call__args {
+        font-size: var(--font-size-sm);
+        color: var(--color-text-secondary);
+        margin: 0;
+        padding: var(--spacing-xs) var(--spacing-sm);
+        background: var(--color-bg-primary);
+        border-radius: var(--radius-sm);
+        overflow-x: auto;
+        max-height: 80px;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+
+      .tool-call__result {
+        font-size: var(--font-size-sm);
+        color: var(--color-accent-green);
+        margin: 0;
+        padding: var(--spacing-xs) var(--spacing-sm);
+        background: rgba(63, 185, 80, 0.1);
+        border-radius: var(--radius-sm);
+        overflow-x: auto;
+        max-height: 120px;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+
+      /* ============================================
+         Tool Result Component
+         ============================================ */
+      .tool-result-item {
+        font-size: var(--font-size-sm);
+        color: var(--color-text-secondary);
+        padding: var(--spacing-sm) var(--spacing-sm);
+        background: var(--color-bg-tertiary);
+        border-radius: var(--radius-sm);
+        margin-bottom: var(--spacing-xs);
+      }
+
+      .tool-result-item__header {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .tool-result-item__header:hover {
+        color: var(--color-text-primary);
+      }
+
+      .tool-result-item__preview {
+        color: var(--color-text-muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .tool-result-item.is-collapsed .tool-result-item__full {
+        display: none;
+      }
+
+      .tool-result-item:not(.is-collapsed) .tool-result-item__header {
+        margin-bottom: var(--spacing-sm);
+        padding-bottom: var(--spacing-sm);
+        border-bottom: 1px solid var(--color-border);
+      }
+
+      .tool-result-item:not(.is-collapsed) .tool-result-item__preview {
+        display: none;
+      }
+
+      .tool-result-item:not(.is-collapsed) .collapsible__icon {
+        transform: rotate(90deg);
+      }
+
+      .tool-result-item__content {
         margin: 0;
         white-space: pre-wrap;
         word-break: break-word;
-        font-family: 'SF Mono', 'Fira Code', monospace;
-        font-size: 11px;
+        font-family: var(--font-mono);
+        font-size: var(--font-size-sm);
         line-height: 1.5;
         max-height: 300px;
         overflow-y: auto;
       }
 
-      /* 详情标签页样式 */
-      .detail-tabs {
-        display: flex;
-        gap: 0;
-        border-bottom: 1px solid var(--border-color);
-        margin-bottom: 12px;
+      /* ============================================
+         Markdown Content
+         ============================================ */
+      .markdown-content {
+        font-size: var(--font-size-base);
+        line-height: 1.6;
+        color: var(--color-text-secondary);
       }
 
-      .detail-tab {
-        padding: 8px 16px;
-        font-size: 12px;
-        color: var(--text-muted);
-        cursor: pointer;
-        border-bottom: 2px solid transparent;
-        transition: all 0.15s;
-        user-select: none;
+      .markdown-content h1, 
+      .markdown-content h2, 
+      .markdown-content h3 {
+        color: var(--color-text-primary);
+        margin: 0.8em 0 0.4em 0;
+        font-weight: 600;
       }
 
-      .detail-tab:hover {
-        color: var(--text-secondary);
-        background: var(--bg-tertiary);
+      .markdown-content h1 { 
+        font-size: 1.3em; 
+        border-bottom: 1px solid var(--color-border); 
+        padding-bottom: 0.3em; 
+      }
+      .markdown-content h2 { font-size: 1.15em; }
+      .markdown-content h3 { font-size: 1em; }
+
+      .markdown-content p { margin: 0.5em 0; }
+
+      .markdown-content ul, 
+      .markdown-content ol {
+        margin: 0.5em 0;
+        padding-left: 1.5em;
       }
 
-      .detail-tab.active {
-        color: var(--accent-blue);
-        border-bottom-color: var(--accent-blue);
+      .markdown-content li { margin: 0.2em 0; }
+
+      .markdown-content code {
+        background: var(--color-bg-tertiary);
+        padding: 0.15em 0.4em;
+        border-radius: 3px;
+        font-family: var(--font-mono);
+        font-size: 0.9em;
+        color: var(--color-accent-cyan);
       }
 
-      .detail-panel {
-        display: none;
+      .markdown-content pre {
+        background: var(--color-bg-tertiary);
+        padding: 0.8em;
+        border-radius: var(--radius-sm);
+        overflow-x: auto;
+        margin: 0.5em 0;
       }
 
-      .detail-panel.active {
-        display: block;
-      }
-
-      .raw-json {
-        background: var(--bg-tertiary);
-        border-radius: 6px;
-        padding: 12px;
-        max-height: 500px;
-        overflow: auto;
-      }
-
-      .raw-json pre {
-        margin: 0;
-        font-size: 11px;
-        line-height: 1.5;
-      }
-
-      /* 复制按钮样式 */
-      .copy-raw-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        padding: 4px 10px;
-        font-size: 11px;
-        background: var(--bg-tertiary);
-        border: 1px solid var(--border-color);
-        border-radius: 4px;
-        color: var(--text-muted);
-        cursor: pointer;
-        margin-bottom: 8px;
-        transition: all 0.15s;
-      }
-
-      .copy-raw-btn:hover {
-        background: var(--border-color);
-        color: var(--text-primary);
-      }
-
-      .copy-raw-btn.copied {
-        color: var(--accent-green);
-        border-color: var(--accent-green);
-      }
-
-      /* 搜索框样式 */
-      .filter-spacer {
-        flex: 1;
-      }
-
-      .search-box {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        background: var(--bg-secondary);
-        border: 1px solid var(--border-color);
-        border-radius: 6px;
-        padding: 4px 10px;
-        min-width: 200px;
-      }
-
-      .search-box:focus-within {
-        border-color: var(--accent-blue);
-      }
-
-      .search-icon {
-        font-size: 12px;
-        opacity: 0.6;
-      }
-
-      .search-box input {
-        flex: 1;
+      .markdown-content pre code {
         background: none;
+        padding: 0;
+        color: var(--color-text-primary);
+      }
+
+      .markdown-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 0.5em 0;
+        font-size: var(--font-size-sm);
+      }
+
+      .markdown-content th, 
+      .markdown-content td {
+        border: 1px solid var(--color-border);
+        padding: 0.4em 0.6em;
+        text-align: left;
+      }
+
+      .markdown-content th {
+        background: var(--color-bg-tertiary);
+        color: var(--color-text-primary);
+        font-weight: 600;
+      }
+
+      .markdown-content strong { 
+        color: var(--color-text-primary); 
+        font-weight: 600; 
+      }
+
+      .markdown-content em { font-style: italic; }
+
+      .markdown-content blockquote {
+        border-left: 3px solid var(--color-accent-blue);
+        padding-left: 1em;
+        margin: 0.5em 0;
+        color: var(--color-text-muted);
+      }
+
+      .markdown-content hr {
         border: none;
-        outline: none;
-        color: var(--text-primary);
-        font-size: 12px;
-        font-family: inherit;
+        border-top: 1px solid var(--color-border);
+        margin: 1em 0;
       }
 
-      .search-box input::placeholder {
-        color: var(--text-muted);
+      /* ============================================
+         Toast Notification
+         ============================================ */
+      .toast {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: var(--spacing-sm) var(--spacing-xl);
+        background: var(--color-bg-tertiary);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        color: var(--color-text-primary);
+        font-size: var(--font-size-md);
+        z-index: 1000;
+        opacity: 0;
+        transition: opacity 0.3s;
+        pointer-events: none;
       }
 
-      .search-clear {
-        cursor: pointer;
-        color: var(--text-muted);
-        font-size: 12px;
-        padding: 2px;
+      .toast.is-visible {
+        opacity: 1;
       }
 
-      .search-clear:hover {
-        color: var(--text-primary);
+      .toast--success {
+        border-color: var(--color-accent-green);
+        color: var(--color-accent-green);
       }
 
-      /* 搜索高亮 */
+      /* ============================================
+         Search Highlight
+         ============================================ */
       .search-highlight {
         background: rgba(210, 153, 34, 0.4);
         border-radius: 2px;
         padding: 0 2px;
       }
 
-      /* 搜索结果计数 */
-      .search-count {
-        font-size: 11px;
-        color: var(--text-muted);
-        margin-right: 8px;
+      /* ============================================
+         Scrollbar
+         ============================================ */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: var(--color-bg-primary);
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: var(--color-border);
+        border-radius: var(--radius-sm);
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--color-text-muted);
       }
     </style>
   </head>
   <body>
-    <div class="header">
-      <h1>AI Debug Console</h1>
-      <div class="header-actions">
-        <label class="auto-scroll-toggle">
-          <input type="checkbox" id="autoScroll" checked />
+    <!-- Header -->
+    <header class="header">
+      <h1 class="header__title">AI Debug Console</h1>
+      <div class="header__actions">
+        <label class="toggle">
+          <input type="checkbox" class="toggle__checkbox" id="autoScrollToggle" checked />
           自动滚动
         </label>
-        <span class="render-toggle" id="markdownToggle" onclick="toggleMarkdown()" title="切换 Markdown 渲染">
+        <span class="toggle toggle--render" id="markdownToggle" title="切换 Markdown 渲染">
           📝 Markdown
         </span>
-        <button class="btn" onclick="copyAllLogs()">
-          📋 复制全部
-        </button>
-        <button class="btn" onclick="openLogDir()">
-          📁 打开日志目录
-        </button>
-        <button class="btn btn-danger" onclick="clearLogs()">
-          🗑️ 清除
-        </button>
+        <button class="btn" id="copyAllBtn">📋 复制全部</button>
+        <button class="btn" id="openLogDirBtn">📁 打开日志目录</button>
+        <button class="btn btn--danger" id="clearLogsBtn">🗑️ 清除</button>
       </div>
-    </div>
+    </header>
 
+    <!-- Log File Bar -->
     <div class="log-file-bar">
       <span>📄 日志文件:</span>
-      <span class="log-file-path" id="logFilePath">正在创建...</span>
-      <button class="btn" onclick="copyLogFilePath()">复制路径</button>
+      <span class="log-file-bar__path" id="logFilePath">正在创建...</span>
+      <button class="btn btn--sm" id="copyPathBtn">复制路径</button>
     </div>
 
+    <!-- Stats Bar -->
     <div class="stats-bar">
-      <div class="stat-item">
-        请求: <span class="stat-value" id="requestCount">0</span>
+      <div class="stats-bar__item">
+        请求: <span class="stats-bar__value" id="requestCount">0</span>
       </div>
-      <div class="stat-item">
-        工具调用: <span class="stat-value" id="toolCallCount">0</span>
+      <div class="stats-bar__item">
+        工具调用: <span class="stats-bar__value" id="toolCallCount">0</span>
       </div>
-      <div class="stat-item">
-        错误: <span class="stat-value" id="errorCount">0</span>
+      <div class="stats-bar__item">
+        错误: <span class="stats-bar__value" id="errorCount">0</span>
       </div>
-      <div class="stat-item" id="streamingStatus" style="display: none;">
-        <span class="streaming-indicator">
-          <span class="streaming-dot"></span>
+      <div class="stats-bar__streaming" id="streamingStatus">
+        <span class="stats-bar__streaming-dot"></span>
           流式传输中
-        </span>
       </div>
     </div>
 
-    <div class="filter-bar">
-      <span class="filter-chip active" data-filter="all">全部</span>
+    <!-- Filter Bar -->
+    <div class="filter-bar" id="filterBar">
+      <span class="filter-chip is-active" data-filter="all">全部</span>
       <span class="filter-chip" data-filter="request_start">请求</span>
       <span class="filter-chip" data-filter="response_chunk">响应流</span>
       <span class="filter-chip" data-filter="response_done">完成</span>
       <span class="filter-chip" data-filter="response_error">错误</span>
       <span class="filter-chip" data-filter="tool_call">工具调用</span>
       <span class="filter-chip" data-filter="tool_result">工具结果</span>
-      <div class="filter-spacer"></div>
+      <div class="filter-bar__spacer"></div>
       <div class="search-box">
-        <span class="search-icon">🔍</span>
-        <input type="text" id="searchInput" placeholder="搜索日志内容..." oninput="handleSearch(this.value)">
-        <span class="search-clear" id="searchClear" onclick="clearSearch()" style="display: none;">✕</span>
+        <span class="search-box__icon">🔍</span>
+        <input type="text" class="search-box__input" id="searchInput" placeholder="搜索日志内容...">
+        <span class="search-box__clear" id="searchClear">✕</span>
       </div>
     </div>
 
-    <div class="main">
+    <!-- Main Content -->
+    <main class="main">
       <div class="log-list" id="logList">
         <div class="empty-state" id="emptyState">
-          <div class="empty-state-icon">📡</div>
-          <div class="empty-state-title">等待 AI 请求...</div>
-          <div class="empty-state-desc">
+          <div class="empty-state__icon">📡</div>
+          <div class="empty-state__title">等待 AI 请求...</div>
+          <div class="empty-state__desc">
             当应用发送 AI 请求时，这里会显示实时的请求和响应流水。
           </div>
         </div>
       </div>
-    </div>
+    </main>
+
+    <!-- Toast Container -->
+    <div class="toast" id="toast"></div>
 
     <script>
-      // 日志数据
-      let logs = []
-      let currentFilter = 'all'
-      let autoScroll = true
-      let markdownEnabled = true  // Markdown 渲染开关
-      let searchQuery = ''  // 搜索关键词
-      let stats = {
-        requests: 0,
-        toolCalls: 0,
-        errors: 0
-      }
-      
-      // AI 思考内容缓存：requestId -> { content, chunks, duration }
-      let aiThinkingCache = new Map()
+      /**
+       * ============================================
+       * AI Debug Console - Refactored Version
+       * ============================================
+       * 
+       * Architecture:
+       * - EventBus: 事件总线，模块间通信
+       * - LogEntry: 日志条目模型
+       * - LogStore: 状态管理
+       * - LogRenderer: 渲染引擎
+       * - FilterManager: 过滤器管理
+       * - SearchManager: 搜索功能
+       * - IPCBridge: Electron IPC 通信
+       * - AIDebugApp: 主应用类
+       */
 
-      // 切换 Markdown 渲染
-      function toggleMarkdown() {
-        markdownEnabled = !markdownEnabled
-        const toggle = document.getElementById('markdownToggle')
-        toggle.classList.toggle('active', markdownEnabled)
-        renderLogs()  // 重新渲染
-      }
-
-      // HTML 转义函数
-      function escapeHtml(text) {
-        if (!text) return ''
-        return text
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-      }
-
-      // 简单的 Markdown 渲染器（fallback）
-      function simpleMarkdown(text) {
-        let html = escapeHtml(text)
-        
-        // 代码块
-        html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
-        // 行内代码
-        html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>')
-        // 标题
-        html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>')
-        html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>')
-        html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>')
-        // 粗体
-        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        // 列表
-        html = html.replace(/^- (.+)$/gm, '<li>$1</li>')
-        html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
-        // 分隔线
-        html = html.replace(/^---+$/gm, '<hr>')
-        // 换行
-        html = html.replace(/\n/g, '<br>')
-        
-        return html
-      }
-
-      // 使用 marked 库渲染 Markdown（带 fallback）
-      function renderMarkdown(text) {
-        if (!text || !markdownEnabled) {
-          return escapeHtml(text || '')
+      // ============================================
+      // EventBus - 事件总线
+      // ============================================
+      class EventBus {
+        constructor() {
+          this.listeners = new Map()
         }
 
-        try {
-          // 检查 marked 是否已加载
-          if (typeof marked === 'undefined') {
-            console.warn('marked 库未加载，使用简单渲染器')
-            return simpleMarkdown(text)
+        on(event, callback) {
+          if (!this.listeners.has(event)) {
+            this.listeners.set(event, new Set())
           }
+          this.listeners.get(event).add(callback)
+          return () => this.off(event, callback)
+        }
 
-          // 配置 marked（与项目中 useMarkdown.ts 保持一致）
-          marked.setOptions({
-            breaks: true,  // 支持换行
-            gfm: true      // 支持 GitHub 风格 Markdown
-          })
+        off(event, callback) {
+          if (this.listeners.has(event)) {
+            this.listeners.get(event).delete(callback)
+          }
+        }
 
-          return marked.parse(text)
-        } catch (e) {
-          console.error('Markdown render error:', e)
-          // 渲染失败时使用简单渲染器
-          return simpleMarkdown(text)
+        emit(event, data) {
+          if (this.listeners.has(event)) {
+            this.listeners.get(event).forEach(callback => callback(data))
+          }
         }
       }
-      let activeRequests = new Set()
-      
-      // 聚合响应流：requestId -> { id, chunks: string[], startTime, lastTime }
-      let streamingResponses = new Map()
 
-      // DOM 元素
-      const logList = document.getElementById('logList')
-      const emptyState = document.getElementById('emptyState')
-      const requestCountEl = document.getElementById('requestCount')
-      const toolCallCountEl = document.getElementById('toolCallCount')
-      const errorCountEl = document.getElementById('errorCount')
-      const streamingStatus = document.getElementById('streamingStatus')
-      const autoScrollCheckbox = document.getElementById('autoScroll')
+      // ============================================
+      // LogEntry - 日志条目模型
+      // ============================================
+      class LogEntry {
+        static TYPE = {
+          REQUEST_START: 'request_start',
+          RESPONSE_CHUNK: 'response_chunk',
+          RESPONSE_STREAMING: 'response_streaming',
+          RESPONSE_DONE: 'response_done',
+          RESPONSE_ERROR: 'response_error',
+          TOOL_CALL: 'tool_call',
+          TOOL_RESULT: 'tool_result'
+        }
 
-      // 初始化
-      autoScrollCheckbox.addEventListener('change', (e) => {
-        autoScroll = e.target.checked
-      })
+        static TYPE_LABELS = {
+          [LogEntry.TYPE.REQUEST_START]: 'REQUEST',
+          [LogEntry.TYPE.RESPONSE_STREAMING]: 'STREAMING',
+          [LogEntry.TYPE.RESPONSE_CHUNK]: 'CHUNK',
+          [LogEntry.TYPE.RESPONSE_DONE]: '✓ DONE',
+          [LogEntry.TYPE.RESPONSE_ERROR]: 'ERROR',
+          [LogEntry.TYPE.TOOL_CALL]: 'TOOL CALL',
+          [LogEntry.TYPE.TOOL_RESULT]: 'TOOL RESULT'
+        }
 
-      // 初始化 Markdown 切换按钮状态
-      document.getElementById('markdownToggle').classList.toggle('active', markdownEnabled)
+        constructor(data) {
+          this.id = data.id
+          this.type = data.type
+          this.timestamp = data.timestamp
+          this.requestId = data.requestId
+          this.data = data.data
+          this.model = data.model
+        }
 
-      // 过滤器点击
-      document.querySelectorAll('.filter-chip').forEach(chip => {
-        chip.addEventListener('click', () => {
-          document.querySelector('.filter-chip.active').classList.remove('active')
-          chip.classList.add('active')
-          currentFilter = chip.dataset.filter
-          renderLogs()
-        })
-      })
+        get typeLabel() {
+          if (this.type === LogEntry.TYPE.RESPONSE_DONE && this.data?.finishReason === 'tool_calls') {
+            return '→ TOOLS'
+          }
+          return LogEntry.TYPE_LABELS[this.type] || this.type.replace('_', ' ')
+        }
 
-      // 格式化时间
-      function formatTime(timestamp) {
-        const date = new Date(timestamp)
+        get typeClass() {
+          if (this.type === LogEntry.TYPE.RESPONSE_DONE && this.data?.finishReason === 'tool_calls') {
+            return 'done-tools'
+          }
+          const classMap = {
+            [LogEntry.TYPE.REQUEST_START]: 'request',
+            [LogEntry.TYPE.RESPONSE_STREAMING]: 'streaming',
+            [LogEntry.TYPE.RESPONSE_CHUNK]: 'streaming',
+            [LogEntry.TYPE.RESPONSE_DONE]: 'done',
+            [LogEntry.TYPE.RESPONSE_ERROR]: 'error',
+            [LogEntry.TYPE.TOOL_CALL]: 'tool-call',
+            [LogEntry.TYPE.TOOL_RESULT]: 'tool-result'
+          }
+          return classMap[this.type] || ''
+        }
+
+        get summary() {
+          switch (this.type) {
+            case LogEntry.TYPE.REQUEST_START:
+              const msgCount = this.data.messages?.length || 0
+              const toolCount = this.data.tools?.length || 0
+              return `${this.model || 'Unknown'} | ${msgCount} 条消息 | ${toolCount} 个工具`
+            
+            case LogEntry.TYPE.RESPONSE_CHUNK:
+              return this.data.chunk?.substring(0, 100) || ''
+            
+            case LogEntry.TYPE.RESPONSE_STREAMING:
+              const content = this.data.content || ''
+              const chunkCount = this.data.chunkCount || 0
+              const preview = content.length > 80 ? content.substring(0, 80) + '...' : content
+              return `${preview} (${chunkCount} chunks)`
+            
+            case LogEntry.TYPE.RESPONSE_DONE:
+              return `完成 (${this.data.finishReason || 'unknown'})`
+            
+            case LogEntry.TYPE.RESPONSE_ERROR:
+              return this.data.error || '未知错误'
+            
+            case LogEntry.TYPE.TOOL_CALL:
+              return `${this.data.toolCall?.name || 'unknown'}()`
+            
+            case LogEntry.TYPE.TOOL_RESULT:
+              const status = this.data.toolResult?.success ? '✓' : '✗'
+              return `${status} ${this.data.toolResult?.result?.substring(0, 80) || ''}`
+            
+            default:
+              return ''
+          }
+        }
+
+        get formattedTime() {
+          const date = new Date(this.timestamp)
         return date.toLocaleTimeString('zh-CN', {
           hour: '2-digit',
           minute: '2-digit',
@@ -1422,800 +1499,1010 @@
         })
       }
 
-      // 获取日志摘要
-      function getLogSummary(entry) {
-        switch (entry.type) {
-          case 'request_start':
-            const msgCount = entry.data.messages?.length || 0
-            const toolCount = entry.data.tools?.length || 0
-            return `${entry.model || 'Unknown'} | ${msgCount} 条消息 | ${toolCount} 个工具`
-          case 'response_chunk':
-            return entry.data.chunk?.substring(0, 100) || ''
-          case 'response_streaming':
-            // 聚合的流式响应
-            const content = entry.data.content || ''
-            const chunkCount = entry.data.chunkCount || 0
-            const preview = content.length > 80 ? content.substring(0, 80) + '...' : content
-            return `${preview} (${chunkCount} chunks)`
-          case 'response_done':
-            return `完成 (${entry.data.finishReason || 'unknown'})`
-          case 'response_error':
-            return entry.data.error || '未知错误'
-          case 'tool_call':
-            return `${entry.data.toolCall?.name || 'unknown'}()`
-          case 'tool_result':
-            const status = entry.data.toolResult?.success ? '✓' : '✗'
-            return `${status} ${entry.data.toolResult?.result?.substring(0, 80) || ''}`
-          default:
-            return ''
+        get shortRequestId() {
+          if (!this.requestId) return 'unknown'
+          return this.requestId.length > 12 
+            ? this.requestId.substring(0, 12) + '...' 
+            : this.requestId
+        }
+
+        toJSON() {
+          return {
+            id: this.id,
+            type: this.type,
+            timestamp: this.timestamp,
+            requestId: this.requestId,
+            data: this.data,
+            model: this.model
+          }
         }
       }
 
-      // 格式化 JSON
-      function formatJson(obj, indent = 0) {
-        if (obj === null) return '<span class="json-null">null</span>'
-        if (obj === undefined) return '<span class="json-null">undefined</span>'
-        
-        const type = typeof obj
-        
-        if (type === 'string') {
-          // 转义 HTML
-          const escaped = obj.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-          return `<span class="json-string">"${escaped}"</span>`
+      // ============================================
+      // LogStore - 状态管理
+      // ============================================
+      class LogStore {
+        constructor(eventBus) {
+          this.eventBus = eventBus
+          this.logs = []
+          this.streamingResponses = new Map()
+          this.activeRequests = new Set()
+          this.stats = {
+            requests: 0,
+            toolCalls: 0,
+            errors: 0
+          }
         }
-        if (type === 'number') return `<span class="json-number">${obj}</span>`
-        if (type === 'boolean') return `<span class="json-boolean">${obj}</span>`
-        
-        if (Array.isArray(obj)) {
-          if (obj.length === 0) return '[]'
-          const items = obj.map(item => '  '.repeat(indent + 1) + formatJson(item, indent + 1))
-          return `[\n${items.join(',\n')}\n${'  '.repeat(indent)}]`
-        }
-        
-        if (type === 'object') {
-          const keys = Object.keys(obj)
-          if (keys.length === 0) return '{}'
-          const items = keys.map(key => {
-            const escapedKey = key.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-            return `${'  '.repeat(indent + 1)}<span class="json-key">"${escapedKey}"</span>: ${formatJson(obj[key], indent + 1)}`
-          })
-          return `{\n${items.join(',\n')}\n${'  '.repeat(indent)}}`
-        }
-        
-        return String(obj)
-      }
 
-      // 渲染消息列表 - 只显示最新的 user 消息，历史用摘要代替
-      function renderMessages(messages) {
-        if (!messages || messages.length === 0) return ''
-        
-        // 找到最后一个 user 消息的索引
-        let lastUserIndex = -1
-        for (let i = messages.length - 1; i >= 0; i--) {
-          if (messages[i].role === 'user') {
-            lastUserIndex = i
-            break
+        addLog(rawEntry) {
+          const entry = new LogEntry(rawEntry)
+          
+          // 特殊处理 response_chunk：聚合成 response_streaming
+          if (entry.type === LogEntry.TYPE.RESPONSE_CHUNK) {
+            this._handleResponseChunk(entry)
+            return
+          }
+          
+          // 如果是 response_done，完成对应的 streaming
+          if (entry.type === LogEntry.TYPE.RESPONSE_DONE || entry.type === LogEntry.TYPE.RESPONSE_ERROR) {
+            this._finalizeStreaming(entry.requestId, entry)
+          }
+          
+          this.logs.push(entry)
+          
+          // 更新统计
+          if (entry.type === LogEntry.TYPE.REQUEST_START) {
+            this.stats.requests++
+            this.activeRequests.add(entry.requestId)
+          } else if (entry.type === LogEntry.TYPE.TOOL_CALL) {
+            this.stats.toolCalls++
+          } else if (entry.type === LogEntry.TYPE.RESPONSE_ERROR) {
+            this.stats.errors++
+          } else if (entry.type === LogEntry.TYPE.RESPONSE_DONE) {
+            this.activeRequests.delete(entry.requestId)
+          }
+          
+          this.eventBus.emit('log:added', entry)
+          this.eventBus.emit('stats:changed', this.stats)
+        }
+
+        _handleResponseChunk(entry) {
+          const requestId = entry.requestId
+          const chunk = entry.data.chunk || ''
+          
+          if (!this.streamingResponses.has(requestId)) {
+            const streamingEntry = new LogEntry({
+              id: `streaming_${requestId}`,
+              type: LogEntry.TYPE.RESPONSE_STREAMING,
+              timestamp: entry.timestamp,
+              requestId: requestId,
+              data: {
+                content: chunk,
+                chunkCount: 1,
+                startTime: entry.timestamp,
+                lastTime: entry.timestamp
+              }
+            })
+            
+            this.streamingResponses.set(requestId, streamingEntry)
+            this.logs.push(streamingEntry)
+            this.eventBus.emit('log:added', streamingEntry)
+          } else {
+            const streamingEntry = this.streamingResponses.get(requestId)
+            streamingEntry.data.content += chunk
+            streamingEntry.data.chunkCount++
+            streamingEntry.data.lastTime = entry.timestamp
+            this.eventBus.emit('log:updated', streamingEntry)
           }
         }
         
-        // 检测是否是工具循环请求：user 消息之后有 tool 消息
-        const messagesAfterUser = lastUserIndex >= 0 ? messages.slice(lastUserIndex + 1) : []
-        const hasToolResults = messagesAfterUser.some(m => m.role === 'tool')
-        
-        // 获取最新的 tool 结果（如果有）
-        const latestToolResults = messagesAfterUser.filter(m => m.role === 'tool')
-        
-        // 统计历史消息（user 消息之前的所有消息）
-        const historyMessages = lastUserIndex > 0 ? messages.slice(0, lastUserIndex) : []
-        const systemCount = historyMessages.filter(m => m.role === 'system').length
-        const userCount = historyMessages.filter(m => m.role === 'user').length
-        const assistantCount = historyMessages.filter(m => m.role === 'assistant').length
-        const toolCount = historyMessages.filter(m => m.role === 'tool').length
-        const hasHistory = historyMessages.length > 0
-        
-        // 最新的 user 消息
-        const latestUserMsg = lastUserIndex >= 0 ? messages[lastUserIndex] : null
-        
-        let html = '<div class="messages-preview">'
-        
-        // 显示历史摘要（可展开）
-        if (hasHistory) {
-          html += `
-            <div class="history-summary collapsible-section collapsed" onclick="event.stopPropagation(); this.classList.toggle('collapsed')">
-              <div class="collapsible-header">
-                <span class="collapse-icon">▶</span>
-                <span class="history-label">📜 历史上下文</span>
-                <span class="history-stats">
-                  ${systemCount > 0 ? `<span class="hist-badge system">${systemCount} system</span>` : ''}
-                  ${userCount > 0 ? `<span class="hist-badge user">${userCount} user</span>` : ''}
-                  ${assistantCount > 0 ? `<span class="hist-badge assistant">${assistantCount} assistant</span>` : ''}
-                  ${toolCount > 0 ? `<span class="hist-badge tool">${toolCount} tool</span>` : ''}
-                </span>
-              </div>
-              <div class="collapsible-content history-content">
-                ${renderHistoryMessages(historyMessages)}
-              </div>
-            </div>
-          `
-        }
-        
-        // 根据是否是工具循环请求显示不同内容
-        if (hasToolResults) {
-          // 工具循环请求：显示完整工具结果（长内容可折叠）
-          const toolResultsHtml = latestToolResults.map((t, idx) => {
-            const content = t.content || ''
-            const isLong = content.length > 200
-            const preview = content.substring(0, 150).replace(/\n/g, ' ')
-            
-            if (isLong) {
-              return `
-                <div class="tool-result-item collapsible-result collapsed" onclick="event.stopPropagation(); this.classList.toggle('collapsed')">
-                  <div class="tool-result-header">
-                    <span class="collapse-icon">▶</span>
-                    <span class="tool-result-preview">${escapeHtml(preview)}...</span>
-                  </div>
-                  <div class="tool-result-full">
-                    <pre class="tool-result-content">${escapeHtml(content)}</pre>
-                  </div>
-                </div>
-              `
-            } else {
-              return `<div class="tool-result-item"><pre class="tool-result-content">${escapeHtml(content)}</pre></div>`
+        _finalizeStreaming(requestId, doneEntry) {
+          const streamingEntry = this.streamingResponses.get(requestId)
+          if (streamingEntry) {
+            if (doneEntry.type === LogEntry.TYPE.RESPONSE_DONE && !doneEntry.data.response) {
+              doneEntry.data.response = streamingEntry.data.content
             }
-          }).join('')
-          
-          html += `
-            <div class="message-item tool current-tool-result">
-              <div class="message-role">
-                <span class="current-badge tool-badge">🔄 工具结果返回 (${latestToolResults.length})</span>
-              </div>
-              <div class="tool-results-preview">${toolResultsHtml}</div>
-            </div>
-          `
-        } else if (latestUserMsg) {
-          // 普通请求：显示用户输入
-          const content = latestUserMsg.content || ''
-          html += `
-            <div class="message-item user current-user">
-              <div class="message-role">
-                <span class="current-badge">✨ 本次输入</span>
-              </div>
-              <div class="message-content">${escapeHtml(content)}</div>
-            </div>
-          `
+            doneEntry.data.chunkCount = streamingEntry.data.chunkCount
+            doneEntry.data.streamDuration = streamingEntry.data.lastTime - streamingEntry.data.startTime
+            
+            const idx = this.logs.findIndex(l => l.id === streamingEntry.id)
+            if (idx >= 0) {
+              this.logs.splice(idx, 1)
+            }
+            
+            this.eventBus.emit('log:removed', streamingEntry)
+            this.streamingResponses.delete(requestId)
+          }
+        }
+
+        findById(id) {
+          return this.logs.find(l => l.id === id)
+        }
+
+        clear() {
+          this.logs = []
+          this.streamingResponses.clear()
+          this.activeRequests.clear()
+          this.stats = { requests: 0, toolCalls: 0, errors: 0 }
+          this.eventBus.emit('logs:cleared')
+          this.eventBus.emit('stats:changed', this.stats)
+        }
+
+        get isStreaming() {
+          return this.activeRequests.size > 0
+        }
+
+        get allLogs() {
+          return [...this.logs]
+        }
+      }
+
+      // ============================================
+      // Utility Functions - 辅助函数
+      // ============================================
+      
+      /**
+       * 安全切换折叠状态 - 检查是否有选中文本或双击/三击，避免影响复制操作
+       */
+      function toggleCollapse(el, className = 'is-collapsed', event) {
+        // 如果是双击或三击（用于选中文本），不执行折叠
+        if (event && event.detail > 1) {
+          return
+        }
+        // 如果有选中文本，不执行折叠
+        const selection = window.getSelection()
+        if (selection && selection.toString().trim().length > 0) {
+          return
+        }
+        el.classList.toggle(className)
+      }
+      
+      /**
+       * 安全切换展开状态
+       */
+      function toggleExpand(el, event) {
+        toggleCollapse(el, 'is-expanded', event)
         }
         
-        html += '</div>'
+      /**
+       * 复制指定元素的文本内容
+       */
+      async function copyTextContent(elementId) {
+        const el = document.getElementById(elementId)
+        if (!el) return
+        
+        try {
+          // textarea 用 value，其他元素用 textContent
+          const text = el.tagName === 'TEXTAREA' ? el.value : el.textContent
+          await navigator.clipboard.writeText(text || '')
+          // 显示复制成功提示
+          if (window.app && window.app.toast) {
+            window.app.toast.show('已复制到剪贴板', 'success')
+          }
+        } catch (err) {
+          console.error('Failed to copy:', err)
+        }
+      }
+
+      // ============================================
+      // FilterManager - 过滤器管理
+      // ============================================
+      class FilterManager {
+        constructor(eventBus, container) {
+          this.eventBus = eventBus
+          this.container = container
+          this.currentFilter = 'all'
+          this._bindEvents()
+        }
+
+        _bindEvents() {
+          this.container.querySelectorAll('.filter-chip').forEach(chip => {
+            chip.addEventListener('click', () => this._onChipClick(chip))
+          })
+        }
+
+        _onChipClick(chip) {
+          this.container.querySelector('.filter-chip.is-active')?.classList.remove('is-active')
+          chip.classList.add('is-active')
+          this.currentFilter = chip.dataset.filter
+          this.eventBus.emit('filter:changed', this.currentFilter)
+        }
+
+        matchesFilter(entry) {
+          if (this.currentFilter === 'all') return true
+          if (this.currentFilter === 'response_chunk') {
+            return entry.type === LogEntry.TYPE.RESPONSE_CHUNK || 
+                   entry.type === LogEntry.TYPE.RESPONSE_STREAMING
+          }
+          return entry.type === this.currentFilter
+        }
+        }
+        
+      // ============================================
+      // SearchManager - 搜索管理
+      // ============================================
+      class SearchManager {
+        constructor(eventBus, input, clearBtn) {
+          this.eventBus = eventBus
+          this.input = input
+          this.clearBtn = clearBtn
+          this.query = ''
+          this._bindEvents()
+        }
+
+        _bindEvents() {
+          this.input.addEventListener('input', (e) => this._onInput(e.target.value))
+          this.clearBtn.addEventListener('click', () => this.clear())
+        }
+
+        _onInput(value) {
+          this.query = value.trim().toLowerCase()
+          this.clearBtn.classList.toggle('is-visible', this.query.length > 0)
+          this.eventBus.emit('search:changed', this.query)
+        }
+
+        clear() {
+          this.query = ''
+          this.input.value = ''
+          this.clearBtn.classList.remove('is-visible')
+          this.eventBus.emit('search:changed', this.query)
+        }
+
+        matchesSearch(entry) {
+          if (!this.query) return true
+          const jsonStr = JSON.stringify(entry.toJSON()).toLowerCase()
+          return jsonStr.includes(this.query)
+        }
+        }
+        
+      // ============================================
+      // MarkdownRenderer - Markdown 渲染器
+      // ============================================
+      class MarkdownRenderer {
+        constructor() {
+          this.enabled = true
+          this._configureMarked()
+        }
+
+        _configureMarked() {
+          if (typeof marked !== 'undefined') {
+            marked.setOptions({
+              breaks: false,  // 不把单个换行转为 <br>，只有空行才分段
+              gfm: true
+            })
+          }
+        }
+
+        toggle() {
+          this.enabled = !this.enabled
+          return this.enabled
+        }
+
+        render(text) {
+          if (!text) return ''
+          if (!this.enabled) return this.escapeHtml(text)
+          
+          // 清理连续空行（多个换行符合并为两个，即一个空行）
+          let cleanedText = text.replace(/\n{3,}/g, '\n\n')
+          // 清理行首/行尾的空白行
+          cleanedText = cleanedText.replace(/^\s*\n/, '').replace(/\n\s*$/, '')
+          
+          try {
+            if (typeof marked !== 'undefined') {
+              let html = marked.parse(cleanedText)
+              // 移除空的 <p></p> 标签
+              html = html.replace(/<p>\s*<\/p>/g, '')
+              return html
+            }
+            return this._simpleRender(cleanedText)
+          } catch (e) {
+            console.error('Markdown render error:', e)
+            return this._simpleRender(cleanedText)
+          }
+        }
+
+        _simpleRender(text) {
+          let html = this.escapeHtml(text)
+          html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+          html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>')
+          html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>')
+          html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>')
+          html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>')
+          html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+          html = html.replace(/^- (.+)$/gm, '<li>$1</li>')
+          html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+          html = html.replace(/^---+$/gm, '<hr>')
+          // 空行转为段落分隔，单个换行保留为空格
+          html = html.replace(/\n\n+/g, '</p><p>')
+          html = html.replace(/\n/g, ' ')
+          html = '<p>' + html + '</p>'
         return html
       }
       
-      // 渲染历史消息（简化版）
-      function renderHistoryMessages(messages) {
-        return messages.map(msg => {
-          let content = msg.content || ''
-          let extraInfo = ''
-          
-          // Assistant 工具调用显示工具名称
-          if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
-            const toolNames = msg.tool_calls.map(tc => tc.function?.name || 'unknown').join(', ')
-            extraInfo = `<span class="hist-tools">🔧 ${toolNames}</span>`
-            if (!content) content = '[工具调用]'
-          }
-          
-          const isLong = content.length > 150
-          const preview = content.substring(0, 120).replace(/\n/g, ' ')
-          
-          if (isLong) {
-            return `
-              <div class="hist-message ${msg.role} hist-collapsible collapsed" onclick="event.stopPropagation(); this.classList.toggle('collapsed')">
-                <div class="hist-header">
-                  <span class="hist-role">${msg.role}</span>
-                  ${extraInfo}
-                  <span class="collapse-icon">▶</span>
-                </div>
-                <div class="hist-preview">${escapeHtml(preview)}...</div>
-                <div class="hist-full">
-                  <pre class="hist-full-content">${escapeHtml(content)}</pre>
-                </div>
-              </div>
-            `
-          } else {
-            return `
-              <div class="hist-message ${msg.role}">
-                <span class="hist-role">${msg.role}</span>
-                ${extraInfo}
-                <span class="hist-content">${escapeHtml(content.replace(/\n/g, ' '))}</span>
-              </div>
-            `
-          }
-        }).join('')
-      }
-
-      // 生成唯一 ID
-      function generateTabId() {
-        return 'tab_' + Math.random().toString(36).substr(2, 9)
-      }
-
-      // 切换标签页
-      function switchTab(tabsId, tabName) {
-        const container = document.querySelector(`[data-tabs-id="${tabsId}"]`)
-        if (!container) return
-        
-        // 切换标签按钮
-        container.querySelectorAll('.detail-tab').forEach(tab => {
-          tab.classList.toggle('active', tab.dataset.tab === tabName)
-        })
-        
-        // 切换面板
-        container.querySelectorAll('.detail-panel').forEach(panel => {
-          panel.classList.toggle('active', panel.dataset.panel === tabName)
-        })
-      }
-
-      // 复制原始数据
-      async function copyRawData(entryId) {
-        const entry = logs.find(e => e.id === entryId)
-        if (entry) {
-          const text = JSON.stringify(entry, null, 2)
-          if (await copyToClipboard(text)) {
-            const btn = document.querySelector(`[data-copy-id="${entryId}"]`)
-            if (btn) {
-              btn.classList.add('copied')
-              btn.textContent = '✓ 已复制'
-              setTimeout(() => {
-                btn.classList.remove('copied')
-                btn.textContent = '📋 复制 JSON'
-              }, 2000)
-            }
-          }
-        }
-      }
-
-      // 渲染日志内容（带标签页）
-      function renderLogContent(entry) {
-        const tabsId = generateTabId()
-        let summaryContent = ''
-        let rawJson = JSON.stringify(entry, null, 2)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-        
-        if (entry.type === 'request_start') {
-          // 摘要内容
-          if (entry.data.messages) {
-            summaryContent += '<strong>Messages:</strong>' + renderMessages(entry.data.messages)
-          }
-          if (entry.data.tools && entry.data.tools.length > 0) {
-            const toolNames = entry.data.tools.map(t => t.function?.name || t).join(', ')
-            summaryContent += `
-              <br><strong>Tools:</strong>
-              <div class="collapsible-section collapsed" onclick="event.stopPropagation(); this.classList.toggle('collapsed')">
-                <div class="collapsible-header">
-                  <span class="collapse-icon">▶</span>
-                  <span class="tool-summary">${entry.data.tools.length} 个工具: ${toolNames}</span>
-                </div>
-                <div class="collapsible-content">
-                  <div class="json-viewer">${formatJson(entry.data.tools)}</div>
-                </div>
-              </div>
-            `
-          }
-          
-          return `
-            <div data-tabs-id="${tabsId}">
-              <div class="detail-tabs">
-                <div class="detail-tab active" data-tab="summary" onclick="switchTab('${tabsId}', 'summary')">📋 摘要</div>
-                <div class="detail-tab" data-tab="raw" onclick="switchTab('${tabsId}', 'raw')">{ } 原始数据</div>
-              </div>
-              <div class="detail-panel active" data-panel="summary">${summaryContent}</div>
-              <div class="detail-panel" data-panel="raw">
-                <button class="copy-raw-btn" data-copy-id="${entry.id}" onclick="event.stopPropagation(); copyRawData('${entry.id}')">📋 复制 JSON</button>
-                <div class="raw-json"><pre>${rawJson}</pre></div>
-              </div>
-            </div>
-          `
-        } else if (entry.type === 'response_streaming') {
-          // 流式响应
-          const escaped = (entry.data.content || '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-          summaryContent = `
-            <div style="margin-bottom: 8px; font-size: 11px; color: var(--text-muted);">
-              已接收 ${entry.data.chunkCount} 个 chunks
-            </div>
-            <div class="json-viewer" style="white-space: pre-wrap;">${escaped}</div>
-          `
-          
-          return `
-            <div data-tabs-id="${tabsId}">
-              <div class="detail-tabs">
-                <div class="detail-tab active" data-tab="summary" onclick="switchTab('${tabsId}', 'summary')">📋 内容</div>
-                <div class="detail-tab" data-tab="raw" onclick="switchTab('${tabsId}', 'raw')">{ } 原始数据</div>
-              </div>
-              <div class="detail-panel active" data-panel="summary">${summaryContent}</div>
-              <div class="detail-panel" data-panel="raw">
-                <button class="copy-raw-btn" data-copy-id="${entry.id}" onclick="event.stopPropagation(); copyRawData('${entry.id}')">📋 复制 JSON</button>
-                <div class="raw-json"><pre>${rawJson}</pre></div>
-              </div>
-            </div>
-          `
-        } else if (entry.type === 'response_done') {
-          const duration = entry.data.streamDuration ? ` (${entry.data.streamDuration}ms)` : ''
-          const chunks = entry.data.chunkCount ? ` | ${entry.data.chunkCount} chunks` : ''
-          
-          // 区分工具调用和真正完成
-          if (entry.data.finishReason === 'tool_calls') {
-            // 这种情况现在不会显示（已被合并到 tool_call）
-            return ''
-          } else {
-            // 真正完成 - 显示完整内容
-            const escaped = (entry.data.response || '')
-              .replace(/&/g, '&amp;')
-              .replace(/</g, '&lt;')
-              .replace(/>/g, '&gt;')
-            summaryContent = `
-              <div style="margin-bottom: 8px; font-size: 11px; color: var(--text-muted);">
-                完成原因: ${entry.data.finishReason || 'unknown'}${chunks}${duration}
-              </div>
-              ${escaped ? `<div class="json-viewer" style="white-space: pre-wrap;">${escaped}</div>` : ''}
-              ${entry.data.usage ? `<div style="margin-top: 8px; font-size: 11px; color: var(--text-muted);">Token 用量: ${JSON.stringify(entry.data.usage)}</div>` : ''}
-            `
-          }
-          
-          return `
-            <div data-tabs-id="${tabsId}">
-              <div class="detail-tabs">
-                <div class="detail-tab active" data-tab="summary" onclick="switchTab('${tabsId}', 'summary')">📋 响应</div>
-                <div class="detail-tab" data-tab="raw" onclick="switchTab('${tabsId}', 'raw')">{ } 原始数据</div>
-              </div>
-              <div class="detail-panel active" data-panel="summary">${summaryContent}</div>
-              <div class="detail-panel" data-panel="raw">
-                <button class="copy-raw-btn" data-copy-id="${entry.id}" onclick="event.stopPropagation(); copyRawData('${entry.id}')">📋 复制 JSON</button>
-                <div class="raw-json"><pre>${rawJson}</pre></div>
-              </div>
-            </div>
-          `
-        } else if (entry.type === 'tool_call') {
-          // 工具调用 - 检查是否有 AI 思考内容
-          const thinking = aiThinkingCache.get(entry.requestId)
-          let thinkingHtml = ''
-          if (thinking && thinking.content) {
-            thinkingHtml = `
-              <div class="ai-thinking-section">
-                <div class="ai-thinking-header">💭 AI 思考</div>
-                <div class="ai-thinking-content">${escapeHtml(thinking.content)}</div>
-                <div class="ai-thinking-meta">${thinking.chunks} chunks | ${thinking.duration}ms</div>
-              </div>
-            `
-          }
-          summaryContent = thinkingHtml + '<div class="json-viewer">' + formatJson(entry.data) + '</div>'
-          
-          return `
-            <div data-tabs-id="${tabsId}">
-              <div class="detail-tabs">
-                <div class="detail-tab active" data-tab="summary" onclick="switchTab('${tabsId}', 'summary')">📋 摘要</div>
-                <div class="detail-tab" data-tab="raw" onclick="switchTab('${tabsId}', 'raw')">{ } 原始数据</div>
-              </div>
-              <div class="detail-panel active" data-panel="summary">${summaryContent}</div>
-              <div class="detail-panel" data-panel="raw">
-                <button class="copy-raw-btn" data-copy-id="${entry.id}" onclick="event.stopPropagation(); copyRawData('${entry.id}')">📋 复制 JSON</button>
-                <div class="raw-json"><pre>${rawJson}</pre></div>
-              </div>
-            </div>
-          `
-        } else if (entry.type === 'tool_result') {
-          // 工具结果
-          const success = entry.data.toolResult?.success
-          const result = entry.data.toolResult?.result || ''
-          const error = entry.data.toolResult?.error || ''
-          
-          summaryContent = `
-            <div style="margin-bottom: 8px;">
-              <span style="color: ${success ? 'var(--accent-green)' : 'var(--accent-red)'}">
-                ${success ? '✓ 执行成功' : '✗ 执行失败'}
-              </span>
-            </div>
-            ${result ? `<div class="json-viewer" style="white-space: pre-wrap;">${escapeHtml(result)}</div>` : ''}
-            ${error ? `<div style="color: var(--accent-red); margin-top: 8px;">${escapeHtml(error)}</div>` : ''}
-          `
-          
-          return `
-            <div data-tabs-id="${tabsId}">
-              <div class="detail-tabs">
-                <div class="detail-tab active" data-tab="summary" onclick="switchTab('${tabsId}', 'summary')">📋 结果</div>
-                <div class="detail-tab" data-tab="raw" onclick="switchTab('${tabsId}', 'raw')">{ } 原始数据</div>
-              </div>
-              <div class="detail-panel active" data-panel="summary">${summaryContent}</div>
-              <div class="detail-panel" data-panel="raw">
-                <button class="copy-raw-btn" data-copy-id="${entry.id}" onclick="event.stopPropagation(); copyRawData('${entry.id}')">📋 复制 JSON</button>
-                <div class="raw-json"><pre>${rawJson}</pre></div>
-              </div>
-            </div>
-          `
-        } else {
-          // 其他类型
-          return `
-            <div data-tabs-id="${tabsId}">
-              <div class="detail-tabs">
-                <div class="detail-tab active" data-tab="raw" onclick="switchTab('${tabsId}', 'raw')">{ } 原始数据</div>
-              </div>
-              <div class="detail-panel active" data-panel="raw">
-                <button class="copy-raw-btn" data-copy-id="${entry.id}" onclick="event.stopPropagation(); copyRawData('${entry.id}')">📋 复制 JSON</button>
-                <div class="raw-json"><pre>${rawJson}</pre></div>
-              </div>
-            </div>
-          `
-        }
-      }
-
-      // 创建日志条目元素
-      function createLogElement(entry) {
-        const div = document.createElement('div')
-        div.className = 'log-entry'
-        div.dataset.id = entry.id
-        div.dataset.type = entry.type
-        if (entry.requestId) {
-          div.dataset.requestId = entry.requestId
-        }
-        
-        // 安全地截取 requestId
-        const requestIdDisplay = entry.requestId 
-          ? (entry.requestId.length > 12 ? entry.requestId.substring(0, 12) + '...' : entry.requestId)
-          : 'unknown'
-        
-        // 转义 log-summary 中的 HTML 特殊字符，防止 XSS
-        const summary = getLogSummary(entry)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-        
-        // 友好的类型名称
-          let typeLabel = {
-            'request_start': 'REQUEST',
-            'response_streaming': 'STREAMING',
-            'response_chunk': 'CHUNK',
-            'response_done': 'DONE',
-            'response_error': 'ERROR',
-            'tool_call': 'TOOL CALL',
-            'tool_result': 'TOOL RESULT'
-          }[entry.type] || entry.type.replace('_', ' ')
-          
-          // 区分真正完成和等待工具调用
-          let typeClass = entry.type
-          if (entry.type === 'response_done') {
-            if (entry.data?.finishReason === 'tool_calls') {
-              typeLabel = '→ TOOLS'
-              typeClass = 'response_done_tools'
-            } else {
-              typeLabel = '✓ DONE'
-            }
-          }
-          
-          div.innerHTML = `
-            <div class="log-header">
-              <span class="log-type ${typeClass}">${typeLabel}</span>
-            <span class="log-time">${formatTime(entry.timestamp)}</span>
-            <span class="request-id">${requestIdDisplay}</span>
-            <span class="log-summary">${summary}</span>
-            <button class="btn-copy" onclick="event.stopPropagation(); copyEntry('${entry.id}')">📋 复制</button>
-            <span class="log-expand">▶</span>
-          </div>
-          <div class="log-content">
-            ${renderLogContent(entry)}
-          </div>
-        `
-        
-        // 点击展开/折叠（排除复制按钮）
-        div.querySelector('.log-header').addEventListener('click', (e) => {
-          if (!e.target.classList.contains('btn-copy')) {
-            div.classList.toggle('expanded')
-          }
-        })
-        
-        return div
-      }
-
-      // 搜索处理
-      function handleSearch(query) {
-        searchQuery = query.trim().toLowerCase()
-        const clearBtn = document.getElementById('searchClear')
-        clearBtn.style.display = searchQuery ? 'block' : 'none'
-        renderLogs()
-      }
-
-      // 清除搜索
-      function clearSearch() {
-        searchQuery = ''
-        document.getElementById('searchInput').value = ''
-        document.getElementById('searchClear').style.display = 'none'
-        renderLogs()
-      }
-
-      // 检查日志条目是否匹配搜索
-      function matchesSearch(entry, query) {
-        if (!query) return true
-        
-        // 搜索 JSON 字符串
-        const jsonStr = JSON.stringify(entry).toLowerCase()
-        return jsonStr.includes(query)
-      }
-
-      // 渲染日志列表
-      function renderLogs() {
-        let filtered
-        if (currentFilter === 'all') {
-          filtered = logs
-        } else if (currentFilter === 'response_chunk') {
-          // 响应流过滤器同时匹配 response_chunk 和 response_streaming
-          filtered = logs.filter(l => l.type === 'response_chunk' || l.type === 'response_streaming')
-        } else {
-          filtered = logs.filter(l => l.type === currentFilter)
-        }
-        
-        // 应用搜索过滤
-        if (searchQuery) {
-          filtered = filtered.filter(entry => matchesSearch(entry, searchQuery))
-        }
-        
-        // 清空并重新渲染
-        logList.innerHTML = ''
-        
-        if (filtered.length === 0) {
-          if (searchQuery) {
-            logList.innerHTML = `
-              <div class="empty-state">
-                <div class="empty-state-icon">🔍</div>
-                <div class="empty-state-title">未找到匹配结果</div>
-                <div class="empty-state-desc">没有找到包含 "${escapeHtml(searchQuery)}" 的日志</div>
-              </div>
-            `
-          } else {
-            logList.appendChild(emptyState.cloneNode(true))
-          }
-          return
-        }
-        
-        filtered.forEach(entry => {
-          logList.appendChild(createLogElement(entry))
-        })
-        
-        if (autoScroll) {
-          logList.scrollTop = logList.scrollHeight
-        }
-      }
-
-      // 添加日志
-      function addLog(entry) {
-        // 特殊处理 response_chunk：聚合成 response_streaming
-        if (entry.type === 'response_chunk') {
-          handleResponseChunk(entry)
-          return
-        }
-        
-        // 如果是 response_done，完成对应的 streaming
-        if (entry.type === 'response_done' || entry.type === 'response_error') {
-          finalizeStreaming(entry.requestId, entry)
-        }
-        
-        // 特殊处理 response_done (tool_calls)：存入缓存，更新 TOOL CALL，不单独显示
-        if (entry.type === 'response_done' && entry.data?.finishReason === 'tool_calls') {
-          // 存储 AI 思考内容到缓存
-          aiThinkingCache.set(entry.requestId, {
-            content: entry.data.response || '',
-            chunks: entry.data.chunkCount || 0,
-            duration: entry.data.streamDuration || 0
-          })
-          
-          // 更新已存在的 TOOL CALL 条目的显示
-          updateToolCallsWithThinking(entry.requestId)
-          
-          // 更新统计但不添加到日志列表
-          activeRequests.delete(entry.requestId)
-          updateStats()
-          return
-        }
-        
-        logs.push(entry)
-        
-        // 更新统计
-        if (entry.type === 'request_start') {
-          stats.requests++
-          activeRequests.add(entry.requestId)
-        } else if (entry.type === 'tool_call') {
-          stats.toolCalls++
-        } else if (entry.type === 'response_error') {
-          stats.errors++
-        } else if (entry.type === 'response_done' || entry.type === 'response_error') {
-          activeRequests.delete(entry.requestId)
-        }
-        
-        updateStats()
-        
-        // 如果当前过滤器匹配，添加到列表
-        if (currentFilter === 'all' || currentFilter === entry.type) {
-          // 移除空状态
-          const empty = logList.querySelector('.empty-state')
-          if (empty) empty.remove()
-          
-          logList.appendChild(createLogElement(entry))
-          
-          if (autoScroll) {
-            logList.scrollTop = logList.scrollHeight
-          }
-        }
-      }
-      
-      // 更新 TOOL CALL 条目，添加 AI 思考内容
-      function updateToolCallsWithThinking(requestId) {
-        const thinking = aiThinkingCache.get(requestId)
-        if (!thinking) return
-        
-        // 找到所有属于这个 requestId 的 tool_call 元素
-        const toolCallElements = logList.querySelectorAll(`[data-type="tool_call"][data-request-id="${requestId}"]`)
-        toolCallElements.forEach(el => {
-          // 如果还没添加思考内容，添加到 log-content 的开头
-          if (!el.querySelector('.ai-thinking-section')) {
-            const logContent = el.querySelector('.log-content')
-            if (logContent && thinking.content) {
-              const thinkingHtml = `
-                <div class="ai-thinking-section">
-                  <div class="ai-thinking-header">💭 AI 思考</div>
-                  <div class="ai-thinking-content">${escapeHtml(thinking.content)}</div>
-                  <div class="ai-thinking-meta">${thinking.chunks} chunks | ${thinking.duration}ms</div>
-                </div>
-              `
-              logContent.insertAdjacentHTML('afterbegin', thinkingHtml)
-            }
-          }
-        })
-      }
-      
-      // 处理流式响应 chunk
-      function handleResponseChunk(entry) {
-        const requestId = entry.requestId
-        const chunk = entry.data.chunk || ''
-        
-        if (!streamingResponses.has(requestId)) {
-          // 创建新的聚合条目
-          const streamingEntry = {
-            id: `streaming_${requestId}`,
-            type: 'response_streaming',
-            timestamp: entry.timestamp,
-            requestId: requestId,
-            data: {
-              content: chunk,
-              chunkCount: 1,
-              startTime: entry.timestamp,
-              lastTime: entry.timestamp
-            }
-          }
-          
-          streamingResponses.set(requestId, streamingEntry)
-          logs.push(streamingEntry)
-          
-          // 添加到 UI
-          if (currentFilter === 'all' || currentFilter === 'response_chunk' || currentFilter === 'response_streaming') {
-            const empty = logList.querySelector('.empty-state')
-            if (empty) empty.remove()
-            
-            logList.appendChild(createLogElement(streamingEntry))
-          }
-        } else {
-          // 更新现有聚合条目
-          const streamingEntry = streamingResponses.get(requestId)
-          streamingEntry.data.content += chunk
-          streamingEntry.data.chunkCount++
-          streamingEntry.data.lastTime = entry.timestamp
-          
-          // 更新 UI 中的显示
-          updateStreamingElement(streamingEntry)
-        }
-        
-        if (autoScroll) {
-          logList.scrollTop = logList.scrollHeight
-        }
-      }
-      
-      // 更新流式响应元素
-      function updateStreamingElement(entry) {
-        const element = logList.querySelector(`[data-id="${entry.id}"]`)
-        if (element) {
-          const summary = getLogSummary(entry)
+        escapeHtml(text) {
+          if (!text) return ''
+          return text
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
-          
-          element.querySelector('.log-summary').textContent = summary
-          
-          // 如果已展开，更新内容
-          if (element.classList.contains('expanded')) {
-            element.querySelector('.log-content').innerHTML = renderLogContent(entry)
-          }
-        }
-      }
-      
-      // 完成流式响应
-      function finalizeStreaming(requestId, doneEntry) {
-        const streamingEntry = streamingResponses.get(requestId)
-        if (streamingEntry) {
-          // 更新 response_done 的数据，包含完整的响应内容
-          if (doneEntry.type === 'response_done' && !doneEntry.data.response) {
-            doneEntry.data.response = streamingEntry.data.content
-          }
-          doneEntry.data.chunkCount = streamingEntry.data.chunkCount
-          doneEntry.data.streamDuration = streamingEntry.data.lastTime - streamingEntry.data.startTime
-          
-          // 从 logs 中移除 streaming 条目
-          const idx = logs.findIndex(l => l.id === streamingEntry.id)
-          if (idx >= 0) {
-            logs.splice(idx, 1)
-          }
-          
-          // 从 UI 中移除 streaming 元素
-          const element = logList.querySelector(`[data-id="${streamingEntry.id}"]`)
-          if (element) {
-            element.remove()
-          }
-          
-          // 清理 map
-          streamingResponses.delete(requestId)
         }
       }
 
-      // 更新统计
-      function updateStats() {
-        requestCountEl.textContent = stats.requests
-        toolCallCountEl.textContent = stats.toolCalls
-        errorCountEl.textContent = stats.errors
-        streamingStatus.style.display = activeRequests.size > 0 ? 'block' : 'none'
+      // ============================================
+      // LogRenderer - 渲染引擎
+      // ============================================
+      class LogRenderer {
+        constructor(eventBus, store, container, markdownRenderer) {
+          this.eventBus = eventBus
+          this.store = store
+          this.container = container
+          this.markdown = markdownRenderer
+          this.emptyState = document.getElementById('emptyState').cloneNode(true)
+          this._tabIdCounter = 0
+        }
+
+        render(logs) {
+          this.container.innerHTML = ''
+          
+          if (logs.length === 0) {
+            this.container.appendChild(this.emptyState.cloneNode(true))
+            return
+          }
+          
+          logs.forEach(entry => {
+            this.container.appendChild(this._createLogElement(entry))
+          })
+        }
+
+        renderEmpty(message) {
+          this.container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state__icon">🔍</div>
+              <div class="empty-state__title">未找到匹配结果</div>
+              <div class="empty-state__desc">没有找到包含 "${this.markdown.escapeHtml(message)}" 的日志</div>
+              </div>
+            `
+          }
+
+        appendLog(entry) {
+          const empty = this.container.querySelector('.empty-state')
+          if (empty) empty.remove()
+          this.container.appendChild(this._createLogElement(entry))
       }
 
-      // 清除日志
-      async function clearLogs() {
-        logs = []
-        stats = { requests: 0, toolCalls: 0, errors: 0 }
-        activeRequests.clear()
-        streamingResponses.clear()
-        aiThinkingCache.clear()
-        updateStats()
-        renderLogs()
+        removeLog(entry) {
+          const el = this.container.querySelector(`[data-id="${entry.id}"]`)
+          if (el) el.remove()
+        }
+
+        updateLog(entry) {
+          const el = this.container.querySelector(`[data-id="${entry.id}"]`)
+          if (el) {
+            el.querySelector('.log-entry__summary').textContent = entry.summary
+            if (el.classList.contains('is-expanded')) {
+              el.querySelector('.log-entry__content').innerHTML = this._renderLogContent(entry)
+            }
+          }
+        }
+
+        scrollToBottom() {
+          this.container.scrollTop = this.container.scrollHeight
+        }
+
+        _createLogElement(entry) {
+          const div = document.createElement('div')
+          div.className = 'log-entry'
+          div.dataset.id = entry.id
+          div.dataset.type = entry.type
+          if (entry.requestId) {
+            div.dataset.requestId = entry.requestId
+          }
+          
+          div.innerHTML = `
+            <div class="log-entry__header">
+              <span class="log-entry__request-id">${entry.requestId || 'unknown'}</span>
+              <span class="log-entry__time">${entry.formattedTime}</span>
+              <span class="log-entry__type log-entry__type--${entry.typeClass}">${entry.typeLabel}</span>
+              <span class="log-entry__summary">${this.markdown.escapeHtml(entry.summary)}</span>
+              <button class="btn btn--copy" data-action="copy">📋 复制</button>
+              <span class="log-entry__expand">▶</span>
+            </div>
+            <div class="log-entry__content">
+              ${this._renderLogContent(entry)}
+            </div>
+          `
+          
+          div.querySelector('.log-entry__header').addEventListener('click', (e) => {
+            if (e.target.dataset.action === 'copy') {
+              this.eventBus.emit('entry:copy', entry)
+              return
+            }
+            div.classList.toggle('is-expanded')
+          })
+          
+          return div
+        }
+
+        _renderLogContent(entry) {
+          const tabsId = `tabs_${++this._tabIdCounter}`
+          const rawJson = JSON.stringify(entry.toJSON(), null, 2)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
         
-        // 通知主进程
-        if (window.electronAPI) {
-          await window.electronAPI.aiDebugClearLogs()
+          let summaryContent = ''
+          
+          switch (entry.type) {
+            case LogEntry.TYPE.REQUEST_START:
+          if (entry.data.messages) {
+                summaryContent += '<strong>Messages:</strong>' + this._renderMessages(entry.data.messages)
+          }
+              if (entry.data.tools?.length > 0) {
+            const toolNames = entry.data.tools.map(t => t.function?.name || t).join(', ')
+            summaryContent += `
+              <br><strong>Tools:</strong>
+                  <div class="collapsible is-collapsed" onclick="event.stopPropagation(); toggleCollapse(this, 'is-collapsed', event)">
+                    <div class="collapsible__header">
+                      <span class="collapsible__icon">▶</span>
+                      <span class="collapsible__summary">${entry.data.tools.length} 个工具: ${toolNames}</span>
+                </div>
+                    <div class="collapsible__content">
+                      <div class="json-viewer">${this._formatJson(entry.data.tools)}</div>
+                </div>
+              </div>
+            `
+          }
+              break
+              
+            case LogEntry.TYPE.RESPONSE_STREAMING:
+              const streamingContent = this.markdown.render(entry.data.content || '')
+          summaryContent = `
+                <div style="margin-bottom: 8px; font-size: 11px; color: var(--color-text-muted);">
+              已接收 ${entry.data.chunkCount} 个 chunks
+            </div>
+                <div class="markdown-content">${streamingContent}</div>
+              `
+              break
+              
+            case LogEntry.TYPE.RESPONSE_DONE:
+          const duration = entry.data.streamDuration ? ` (${entry.data.streamDuration}ms)` : ''
+          const chunks = entry.data.chunkCount ? ` | ${entry.data.chunkCount} chunks` : ''
+              const respContent = this.markdown.render(entry.data.response || '')
+            summaryContent = `
+                <div style="margin-bottom: 8px; font-size: 11px; color: var(--color-text-muted);">
+                完成原因: ${entry.data.finishReason || 'unknown'}${chunks}${duration}
+              </div>
+                ${respContent ? `<div class="markdown-content">${respContent}</div>` : ''}
+                ${entry.data.usage ? `<div style="margin-top: 8px; font-size: 11px; color: var(--color-text-muted);">Token 用量: ${JSON.stringify(entry.data.usage)}</div>` : ''}
+            `
+              break
+              
+            case LogEntry.TYPE.TOOL_CALL:
+              summaryContent += '<div class="json-viewer">' + this._formatJson(entry.data) + '</div>'
+              break
+              
+            case LogEntry.TYPE.TOOL_RESULT:
+          const success = entry.data.toolResult?.success
+          const result = entry.data.toolResult?.result || ''
+          const error = entry.data.toolResult?.error || ''
+          summaryContent = `
+            <div style="margin-bottom: 8px;">
+                  <span style="color: ${success ? 'var(--color-accent-green)' : 'var(--color-accent-red)'}">
+                ${success ? '✓ 执行成功' : '✗ 执行失败'}
+              </span>
+            </div>
+                ${result ? `<div class="json-viewer" style="white-space: pre-wrap;">${this.markdown.escapeHtml(result)}</div>` : ''}
+                ${error ? `<div style="color: var(--color-accent-red); margin-top: 8px;">${this.markdown.escapeHtml(error)}</div>` : ''}
+          `
+              break
+              
+            default:
+              summaryContent = '<div class="json-viewer">' + this._formatJson(entry.data) + '</div>'
+          }
+          
+          return `
+            <div data-tabs-id="${tabsId}">
+              <div class="detail-tabs">
+                <div class="detail-tabs__tab is-active" data-tab="summary" onclick="window.app.switchTab('${tabsId}', 'summary')">📋 摘要</div>
+                <div class="detail-tabs__tab" data-tab="raw" onclick="window.app.switchTab('${tabsId}', 'raw')">{ } 原始数据</div>
+              </div>
+              <div class="detail-panel is-active" data-panel="summary">${summaryContent}</div>
+              <div class="detail-panel" data-panel="raw">
+                <button class="btn btn--sm" style="margin-bottom: 8px;" onclick="event.stopPropagation(); window.app.copyRaw('${entry.id}')">📋 复制 JSON</button>
+                <div class="raw-json"><pre>${rawJson}</pre></div>
+              </div>
+              </div>
+            `
+          }
+
+        _renderMessages(messages) {
+          if (!messages?.length) return ''
+          
+          // 1. 提取 System Prompt（通常是第一条 system 消息）
+          const systemPrompt = messages.find(m => m.role === 'system')
+          
+          // 2. 找关键位置
+          const lastMsg = messages[messages.length - 1]
+          
+          // 找最后一个 assistant 消息的位置
+          let lastAssistantIndex = -1
+          for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].role === 'assistant') {
+              lastAssistantIndex = i
+              break
+            }
+          }
+          
+          // 找最后一个 user 消息的位置
+          let lastUserIndex = -1
+          for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].role === 'user') {
+              lastUserIndex = i
+              break
+            }
+          }
+          
+          // 3. 判断本次请求的类型
+          const isToolResultRequest = lastMsg.role === 'tool'
+          
+          // 4. 获取本轮新增的 tool 结果（最后一个 assistant 之后的 tool 消息）
+          const newToolResults = isToolResultRequest && lastAssistantIndex >= 0
+            ? messages.slice(lastAssistantIndex + 1).filter(m => m.role === 'tool')
+            : []
+          
+          // 5. 计算历史消息（排除 system 和本轮新增内容）
+          let historyEndIndex
+          if (isToolResultRequest) {
+            historyEndIndex = lastAssistantIndex + 1 // 包含最后一个 assistant
+          } else if (lastUserIndex >= 0) {
+            historyEndIndex = lastUserIndex
+            } else {
+            historyEndIndex = messages.length
+          }
+          
+          // 历史消息排除 system prompt
+          const historyMessages = messages
+            .slice(0, historyEndIndex)
+            .filter(m => m.role !== 'system')
+          
+          const userCount = historyMessages.filter(m => m.role === 'user').length
+          const assistantCount = historyMessages.filter(m => m.role === 'assistant').length
+          const toolCount = historyMessages.filter(m => m.role === 'tool').length
+          const hasHistory = historyMessages.length > 0
+          
+          // 最新的 user 消息
+          const latestUserMsg = !isToolResultRequest && lastUserIndex >= 0 
+            ? messages[lastUserIndex] 
+            : null
+          
+          let html = '<div class="messages-preview">'
+          
+          // === 1. System Prompt 单独显示 ===
+          if (systemPrompt) {
+            const sysContent = systemPrompt.content || ''
+            const isLong = sysContent.length > 300
+            const sysContentId = `sys_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+            // System Prompt 使用纯文本显示，不用 Markdown 渲染
+            const sysEscaped = this.markdown.escapeHtml(sysContent)
+            html += `
+              <div class="system-prompt-section collapsible${isLong ? ' is-collapsed' : ''}">
+                <div class="system-prompt__header collapsible__header" onclick="event.stopPropagation(); this.parentElement.classList.toggle('is-collapsed')">
+                  <span class="collapsible__icon">▶</span>
+                  <span class="system-prompt__icon">📋</span>
+                  <span class="system-prompt__label">System Prompt</span>
+                  <span class="system-prompt__length">${sysContent.length} 字符</span>
+                  <button class="btn btn--sm system-prompt__copy" onclick="event.stopPropagation(); copyTextContent('${sysContentId}')">📋 复制</button>
+              </div>
+                <textarea id="${sysContentId}" style="display:none;">${sysEscaped}</textarea>
+                <div class="collapsible__content system-prompt__content">
+                  <div class="system-prompt__full">${sysEscaped}</div>
+              </div>
+            </div>
+          `
+          }
+          
+          // === 2. 对话历史（折叠） ===
+          if (hasHistory) {
+            html += `
+              <div class="history-summary collapsible is-collapsed" onclick="event.stopPropagation(); toggleCollapse(this, 'is-collapsed', event)">
+                <div class="collapsible__header history-summary__header">
+                  <span class="collapsible__icon">▶</span>
+                  <span class="history-summary__label">💬 对话历史</span>
+                  <span class="history-summary__stats">
+                    ${userCount > 0 ? `<span class="history-badge history-badge--user">${userCount} user</span>` : ''}
+                    ${assistantCount > 0 ? `<span class="history-badge history-badge--assistant">${assistantCount} assistant</span>` : ''}
+                    ${toolCount > 0 ? `<span class="history-badge history-badge--tool">${toolCount} tool</span>` : ''}
+              </span>
+            </div>
+                <div class="collapsible__content history-summary__content">
+                  ${this._renderHistoryMessages(historyMessages)}
+                </div>
+              </div>
+            `
+      }
+
+          // === 3. 本次输入/工具结果 ===
+          if (newToolResults.length > 0) {
+            const toolResultsHtml = newToolResults.map(t => {
+              const content = t.content || ''
+              const isLong = content.length > 200
+              const preview = content.substring(0, 150).replace(/\n/g, ' ')
+              
+              if (isLong) {
+          return `
+                  <div class="tool-result-item is-collapsible is-collapsed">
+                    <div class="tool-result-item__header" onclick="event.stopPropagation(); this.parentElement.classList.toggle('is-collapsed')">
+                      <span class="collapsible__icon">▶</span>
+                      <span class="tool-result-item__preview">${this.markdown.escapeHtml(preview)}...</span>
+              </div>
+                    <div class="tool-result-item__full">
+                      <pre class="tool-result-item__content">${this.markdown.escapeHtml(content)}</pre>
+              </div>
+            </div>
+          `
+              }
+              return `<div class="tool-result-item"><pre class="tool-result-item__content">${this.markdown.escapeHtml(content)}</pre></div>`
+            }).join('')
+            
+            html += `
+              <div class="message-item message-item--tool message-item--current">
+                <div class="message-item__role">
+                  <span style="color: var(--color-accent-yellow);">🔄 本轮工具结果 (${newToolResults.length})</span>
+              </div>
+                <div>${toolResultsHtml}</div>
+              </div>
+            `
+          } else if (latestUserMsg) {
+            const content = latestUserMsg.content || ''
+            html += `
+              <div class="message-item message-item--user message-item--current">
+                <div class="message-item__role">
+                  <span style="color: var(--color-accent-blue);">✨ 本次输入</span>
+                </div>
+                <div class="message-item__content">${this.markdown.escapeHtml(content)}</div>
+            </div>
+          `
+          }
+          
+          html += '</div>'
+          return html
+        }
+
+        _renderHistoryMessages(messages) {
+          return messages.map(msg => {
+            let content = msg.content || ''
+            let extraInfo = ''
+            
+            if (msg.role === 'assistant' && msg.tool_calls?.length > 0) {
+              const toolNames = msg.tool_calls.map(tc => tc.function?.name || 'unknown').join(', ')
+              extraInfo = `<span class="history-message__tools">🔧 ${toolNames}</span>`
+              if (!content) content = '[工具调用]'
+            }
+            
+            const isLong = content.length > 150
+            const preview = content.substring(0, 120).replace(/\n/g, ' ')
+            
+            if (isLong) {
+              return `
+                <div class="history-message history-message--${msg.role} is-collapsible">
+                  <div class="history-message__header" onclick="event.stopPropagation(); this.parentElement.classList.toggle('is-expanded')">
+                    <span class="history-message__role">${msg.role}</span>
+                    ${extraInfo}
+                    <span class="collapsible__icon" style="margin-left: auto;">▶</span>
+          </div>
+                  <div class="history-message__preview">${this.markdown.escapeHtml(preview)}...</div>
+                  <div class="history-message__full">
+                    <pre class="history-message__content-full">${this.markdown.escapeHtml(content)}</pre>
+                  </div>
+          </div>
+        `
+            }
+            
+            return `
+              <div class="history-message history-message--${msg.role}">
+                <span class="history-message__role">${msg.role}</span>
+                ${extraInfo}
+                <span class="history-message__content">${this.markdown.escapeHtml(preview)}</span>
+              </div>
+            `
+          }).join('')
+        }
+
+        _formatJson(obj, indent = 0) {
+          if (obj === null) return '<span class="json-viewer__null">null</span>'
+          if (obj === undefined) return '<span class="json-viewer__null">undefined</span>'
+          
+          const type = typeof obj
+          
+          if (type === 'string') {
+            const escaped = obj.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            return `<span class="json-viewer__string">"${escaped}"</span>`
+          }
+          if (type === 'number') return `<span class="json-viewer__number">${obj}</span>`
+          if (type === 'boolean') return `<span class="json-viewer__boolean">${obj}</span>`
+          
+          if (Array.isArray(obj)) {
+            if (obj.length === 0) return '[]'
+            const items = obj.map(item => '  '.repeat(indent + 1) + this._formatJson(item, indent + 1))
+            return `[\n${items.join(',\n')}\n${'  '.repeat(indent)}]`
+          }
+          
+          if (type === 'object') {
+            const keys = Object.keys(obj)
+            if (keys.length === 0) return '{}'
+            const items = keys.map(key => {
+              const escapedKey = key.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+              return `${'  '.repeat(indent + 1)}<span class="json-viewer__key">"${escapedKey}"</span>: ${this._formatJson(obj[key], indent + 1)}`
+            })
+            return `{\n${items.join(',\n')}\n${'  '.repeat(indent)}}`
+          }
+          
+          return String(obj)
         }
       }
 
-      // Toast 提示
-      function showToast(message, type = 'info') {
-        // 移除旧的 toast
-        const oldToast = document.querySelector('.toast')
-        if (oldToast) oldToast.remove()
-        
-        const toast = document.createElement('div')
-        toast.className = `toast ${type}`
-        toast.textContent = message
-        document.body.appendChild(toast)
-        
-        // 显示
-        requestAnimationFrame(() => {
-          toast.classList.add('show')
-        })
-        
-        // 自动隐藏
-        setTimeout(() => {
-          toast.classList.remove('show')
-          setTimeout(() => toast.remove(), 300)
-        }, 2000)
+      // ============================================
+      // ToastManager - Toast 提示管理
+      // ============================================
+      class ToastManager {
+        constructor(element) {
+          this.element = element
+          this.timer = null
+        }
+
+        show(message, type = 'info') {
+          if (this.timer) {
+            clearTimeout(this.timer)
+          }
+          
+          this.element.textContent = message
+          this.element.className = `toast${type === 'success' ? ' toast--success' : ''}`
+          
+          requestAnimationFrame(() => {
+            this.element.classList.add('is-visible')
+          })
+          
+          this.timer = setTimeout(() => {
+            this.element.classList.remove('is-visible')
+          }, 2000)
+        }
       }
 
-      // 复制文本到剪贴板
-      async function copyToClipboard(text) {
+      // ============================================
+      // IPCBridge - Electron IPC 通信
+      // ============================================
+      class IPCBridge {
+        constructor(eventBus) {
+          this.eventBus = eventBus
+          this.api = window.electronAPI
+          this._setupListeners()
+        }
+        
+        get isAvailable() {
+          return !!this.api
+        }
+
+        _setupListeners() {
+          if (!this.api) return
+          
+          this.api.onAiDebugMessage((message) => {
+            if (message.type === 'log') {
+              this.eventBus.emit('ipc:log', message.entry)
+            } else if (message.type === 'clear') {
+              this.eventBus.emit('ipc:clear')
+            }
+          })
+        }
+
+        async getLogs() {
+          if (!this.api) return []
+          return await this.api.aiDebugGetLogs() || []
+        }
+
+        async getLogFilePath() {
+          if (!this.api) return null
+          return await this.api.aiDebugGetLogFilePath()
+        }
+
+        async getLogDir() {
+          if (!this.api) return null
+          return await this.api.aiDebugGetLogDir()
+        }
+
+        async clearLogs() {
+          if (!this.api) return
+          await this.api.aiDebugClearLogs()
+        }
+
+        openPath(path) {
+          if (!this.api) return
+          this.api.shell.openPath(path)
+        }
+      }
+
+      // ============================================
+      // AIDebugApp - 主应用类
+      // ============================================
+      class AIDebugApp {
+        constructor() {
+          this.eventBus = new EventBus()
+          this.store = new LogStore(this.eventBus)
+          this.markdown = new MarkdownRenderer()
+          this.toast = new ToastManager(document.getElementById('toast'))
+          this.ipc = new IPCBridge(this.eventBus)
+          
+          this.filterManager = new FilterManager(
+            this.eventBus,
+            document.getElementById('filterBar')
+          )
+          
+          this.searchManager = new SearchManager(
+            this.eventBus,
+            document.getElementById('searchInput'),
+            document.getElementById('searchClear')
+          )
+          
+          this.renderer = new LogRenderer(
+            this.eventBus,
+            this.store,
+            document.getElementById('logList'),
+            this.markdown
+          )
+          
+          this.autoScroll = true
+          
+          this._setupEventListeners()
+          this._setupUIBindings()
+          this._loadInitialData()
+            }
+
+        _setupEventListeners() {
+          // Store events
+          this.eventBus.on('log:added', (entry) => {
+            if (this._shouldShowEntry(entry)) {
+              this.renderer.appendLog(entry)
+              if (this.autoScroll) {
+                this.renderer.scrollToBottom()
+              }
+            }
+          })
+          
+          this.eventBus.on('log:updated', (entry) => {
+            if (this._shouldShowEntry(entry)) {
+              this.renderer.updateLog(entry)
+              if (this.autoScroll) {
+                this.renderer.scrollToBottom()
+              }
+            }
+          })
+          
+          this.eventBus.on('log:removed', (entry) => {
+            this.renderer.removeLog(entry)
+          })
+          
+          this.eventBus.on('logs:cleared', () => {
+            this._renderFilteredLogs()
+          })
+          
+          this.eventBus.on('stats:changed', (stats) => {
+            this._updateStats(stats)
+          })
+          
+          // Filter & Search events
+          this.eventBus.on('filter:changed', () => {
+            this._renderFilteredLogs()
+          })
+          
+          this.eventBus.on('search:changed', () => {
+            this._renderFilteredLogs()
+          })
+          
+          // IPC events
+          this.eventBus.on('ipc:log', (entry) => {
+            this.store.addLog(entry)
+          })
+          
+          this.eventBus.on('ipc:clear', () => {
+            this.store.clear()
+          })
+          
+          // Entry events
+          this.eventBus.on('entry:copy', (entry) => {
+            this._copyToClipboard(JSON.stringify(entry.toJSON(), null, 2))
+          })
+        }
+
+        _setupUIBindings() {
+          // Auto scroll toggle
+          document.getElementById('autoScrollToggle').addEventListener('change', (e) => {
+            this.autoScroll = e.target.checked
+          })
+          
+          // Markdown toggle
+          const mdToggle = document.getElementById('markdownToggle')
+          mdToggle.addEventListener('click', () => {
+            const enabled = this.markdown.toggle()
+            mdToggle.classList.toggle('is-active', enabled)
+            this._renderFilteredLogs()
+          })
+          mdToggle.classList.toggle('is-active', this.markdown.enabled)
+          
+          // Copy all
+          document.getElementById('copyAllBtn').addEventListener('click', () => {
+            this._copyAllLogs()
+          })
+          
+          // Open log directory
+          document.getElementById('openLogDirBtn').addEventListener('click', async () => {
+            const logDir = await this.ipc.getLogDir()
+            if (logDir) {
+              this.ipc.openPath(logDir)
+            }
+          })
+          
+          // Clear logs
+          document.getElementById('clearLogsBtn').addEventListener('click', async () => {
+            this.store.clear()
+            await this.ipc.clearLogs()
+          })
+          
+          // Copy path
+          document.getElementById('copyPathBtn').addEventListener('click', async () => {
+            const path = document.getElementById('logFilePath').textContent
+            if (path && path !== '正在创建...' && path !== '无') {
+              this._copyToClipboard(path)
+            }
+          })
+        }
+
+        async _loadInitialData() {
+          // Load existing logs
+          const existingLogs = await this.ipc.getLogs()
+          existingLogs.forEach(entry => this.store.addLog(entry))
+          
+          // Update log file path
+          this._updateLogFilePath()
+          setTimeout(() => this._updateLogFilePath(), 1000)
+        }
+
+        async _updateLogFilePath() {
+          const path = await this.ipc.getLogFilePath()
+          document.getElementById('logFilePath').textContent = path || '无'
+        }
+
+        _shouldShowEntry(entry) {
+          return this.filterManager.matchesFilter(entry) && 
+                 this.searchManager.matchesSearch(entry)
+        }
+
+        _renderFilteredLogs() {
+          const filteredLogs = this.store.allLogs.filter(entry => this._shouldShowEntry(entry))
+          
+          if (filteredLogs.length === 0 && this.searchManager.query) {
+            this.renderer.renderEmpty(this.searchManager.query)
+          } else {
+            this.renderer.render(filteredLogs)
+          }
+          
+          if (this.autoScroll) {
+            this.renderer.scrollToBottom()
+        }
+      }
+
+        _updateStats(stats) {
+          document.getElementById('requestCount').textContent = stats.requests
+          document.getElementById('toolCallCount').textContent = stats.toolCalls
+          document.getElementById('errorCount').textContent = stats.errors
+          
+          const streamingEl = document.getElementById('streamingStatus')
+          streamingEl.classList.toggle('is-active', this.store.isStreaming)
+        }
+
+        async _copyToClipboard(text) {
         try {
           await navigator.clipboard.writeText(text)
+            this.toast.show('已复制到剪贴板', 'success')
           return true
         } catch (err) {
           console.error('Failed to copy:', err)
@@ -2223,21 +2510,10 @@
         }
       }
 
-      // 复制单个日志条目
-      async function copyEntry(entryId) {
-        const entry = logs.find(e => e.id === entryId)
-        if (entry) {
-          const text = JSON.stringify(entry, null, 2)
-          if (await copyToClipboard(text)) {
-            showToast('已复制到剪贴板', 'success')
-          }
-        }
-      }
-
-      // 复制所有日志
-      async function copyAllLogs() {
+        async _copyAllLogs() {
+          const logs = this.store.allLogs
         if (logs.length === 0) {
-          showToast('没有日志可复制')
+            this.toast.show('没有日志可复制')
           return
         }
         
@@ -2246,71 +2522,37 @@
           return `[${time}] [${entry.type}] ${JSON.stringify(entry.data)}`
         }).join('\n')
         
-        if (await copyToClipboard(text)) {
-          showToast(`已复制 ${logs.length} 条日志`, 'success')
+          if (await this._copyToClipboard(text)) {
+            this.toast.show(`已复制 ${logs.length} 条日志`, 'success')
         }
       }
 
-      // 复制日志文件路径
-      async function copyLogFilePath() {
-        const pathEl = document.getElementById('logFilePath')
-        const path = pathEl.textContent
-        if (path && path !== '正在创建...' && path !== '无') {
-          if (await copyToClipboard(path)) {
-            showToast('路径已复制', 'success')
+        // Public API for inline handlers
+        switchTab(tabsId, tabName) {
+          const container = document.querySelector(`[data-tabs-id="${tabsId}"]`)
+          if (!container) return
+          
+          container.querySelectorAll('.detail-tabs__tab').forEach(tab => {
+            tab.classList.toggle('is-active', tab.dataset.tab === tabName)
+          })
+          
+          container.querySelectorAll('.detail-panel').forEach(panel => {
+            panel.classList.toggle('is-active', panel.dataset.panel === tabName)
+          })
+        }
+
+        copyRaw(entryId) {
+          const entry = this.store.findById(entryId)
+          if (entry) {
+            this._copyToClipboard(JSON.stringify(entry.toJSON(), null, 2))
           }
         }
       }
 
-      // 打开日志目录
-      async function openLogDir() {
-        if (window.electronAPI) {
-          const logDir = await window.electronAPI.aiDebugGetLogDir()
-          if (logDir) {
-            // 使用 shell.openPath 打开目录
-            window.electronAPI.shell.openPath(logDir)
-          }
-        }
-      }
-
-      // 更新日志文件路径显示
-      async function updateLogFilePath() {
-        if (window.electronAPI) {
-          const path = await window.electronAPI.aiDebugGetLogFilePath()
-          const pathEl = document.getElementById('logFilePath')
-          pathEl.textContent = path || '无'
-          pathEl.title = path || ''
-        }
-      }
-
-      // 监听来自主进程的消息
-      if (window.electronAPI) {
-        window.electronAPI.onAiDebugMessage((message) => {
-          if (message.type === 'log') {
-            addLog(message.entry)
-          } else if (message.type === 'clear') {
-            logs = []
-            stats = { requests: 0, toolCalls: 0, errors: 0 }
-            activeRequests.clear()
-            streamingResponses.clear()
-            aiThinkingCache.clear()
-            updateStats()
-            renderLogs()
-          }
-        })
-        
-        // 获取历史日志
-        window.electronAPI.aiDebugGetLogs().then(existingLogs => {
-          if (existingLogs && existingLogs.length > 0) {
-            existingLogs.forEach(addLog)
-          }
-        })
-
-        // 更新日志文件路径
-        updateLogFilePath()
-        // 定期更新（以防文件创建有延迟）
-        setTimeout(updateLogFilePath, 1000)
-      }
+      // ============================================
+      // Initialize Application
+      // ============================================
+      window.app = new AIDebugApp()
     </script>
   </body>
 </html>
