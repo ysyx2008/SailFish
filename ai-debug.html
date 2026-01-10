@@ -1969,10 +1969,22 @@
           const duration = entry.data.streamDuration ? ` (${entry.data.streamDuration}ms)` : ''
           const chunks = entry.data.chunkCount ? ` | ${entry.data.chunkCount} chunks` : ''
               const respContent = this.markdown.render(entry.data.response || '')
+              const reasoningContent = entry.data.reasoningContent
+              const reasoningHtml = reasoningContent ? this.markdown.render(reasoningContent) : ''
             summaryContent = `
                 <div style="margin-bottom: 8px; font-size: 11px; color: var(--color-text-muted);">
                 完成原因: ${entry.data.finishReason || 'unknown'}${chunks}${duration}
               </div>
+                ${reasoningHtml ? `
+                  <details style="margin-bottom: 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden;">
+                    <summary style="padding: 8px 12px; background: var(--color-bg-tertiary); cursor: pointer; font-size: 12px; color: var(--color-accent-purple);">
+                      🤔 思考过程（点击展开/折叠）
+                    </summary>
+                    <div style="padding: 12px; background: var(--color-bg-secondary); max-height: 400px; overflow-y: auto;">
+                      <div class="markdown-content" style="font-size: 12px; line-height: 1.6; color: var(--color-text-secondary);">${reasoningHtml}</div>
+                    </div>
+                  </details>
+                ` : ''}
                 ${respContent ? `<div class="markdown-content">${respContent}</div>` : ''}
                 ${entry.data.usage ? `<div style="margin-top: 8px; font-size: 11px; color: var(--color-text-muted);">Token 用量: ${JSON.stringify(entry.data.usage)}</div>` : ''}
             `
