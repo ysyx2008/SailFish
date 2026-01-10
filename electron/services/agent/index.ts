@@ -16,6 +16,7 @@ import type {
   AgentConfig,
   AgentStep,
   AgentContext,
+  AgentPlan,
   ToolResult,
   PendingConfirmation,
   AgentRun,
@@ -126,6 +127,9 @@ export class AgentService {
   private mcpService?: McpService
   private configService?: ConfigService
   private runs: Map<string, AgentRun> = new Map()
+  
+  // 按终端（ptyId）维护的执行计划（跨对话持久化）
+  private terminalPlans: Map<string, AgentPlan> = new Map()
 
   // 事件回调 - 每个 run 独立的回调存储在 runCallbacks 中
   // 类级别回调作为默认/全局回调（向后兼容）
@@ -1143,10 +1147,14 @@ export class AgentService {
       consumePendingUserMessage: () => run.pendingUserMessages.shift(),
       // 获取实时终端输出（Agent 运行期间收集的最新数据）
       getRealtimeTerminalOutput: () => [...run.realtimeOutputBuffer],
-      // Plan/Todo 功能
-      getCurrentPlan: () => run.currentPlan,
+      // Plan/Todo 功能（按终端 ptyId 持久化，跨对话共享）
+      getCurrentPlan: () => this.terminalPlans.get(ptyId),
       setCurrentPlan: (plan) => {
-        run.currentPlan = plan
+        if (plan) {
+          this.terminalPlans.set(ptyId, plan)
+        } else {
+          this.terminalPlans.delete(ptyId)
+        }
         // 计划更新会通过 addStep (plan_created/plan_updated) 触发 onStepCallback
       },
       // SFTP 功能（用于 SSH 终端的文件写入）
