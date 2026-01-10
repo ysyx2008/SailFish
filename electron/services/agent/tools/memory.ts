@@ -3,7 +3,6 @@
  * 包括：回忆任务摘要、深度回忆任务详情
  */
 import { t } from '../i18n'
-import { getTaskMemoryStore } from '../task-memory'
 import type { ToolExecutorConfig, ToolResult } from './types'
 
 /**
@@ -12,10 +11,10 @@ import type { ToolExecutorConfig, ToolResult } from './types'
 export function recallTask(
   args: Record<string, unknown>,
   executor: ToolExecutorConfig,
-  ptyId: string
+  _ptyId: string
 ): ToolResult {
   const taskId = args.task_id as string
-  const memoryStore = getTaskMemoryStore(ptyId)
+  const memoryStore = executor.getTaskMemory()
   
   // 记录工具调用
   executor.addStep({
@@ -137,11 +136,11 @@ export function recallTask(
 export function deepRecall(
   args: Record<string, unknown>,
   executor: ToolExecutorConfig,
-  ptyId: string
+  _ptyId: string
 ): ToolResult {
   const taskId = args.task_id as string
   const stepIndex = args.step_index as number | undefined
-  const memoryStore = getTaskMemoryStore(ptyId)
+  const memoryStore = executor.getTaskMemory()
   
   // 记录工具调用
   const callContent = stepIndex !== undefined 

@@ -797,6 +797,7 @@ export abstract class Agent {
       setCurrentPlan: (plan) => {
         this.currentPlan = plan
       },
+      getTaskMemory: () => this.taskMemory,
       getSftpService: () => this.services.sftpService,
       getSshConfig: (terminalId) => this.services.sshService?.getConfig(terminalId) || null
     }
