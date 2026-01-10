@@ -798,7 +798,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
           properties: {
             task_id: {
               type: 'string',
-              description: '任务 ID（从上下文中的任务历史列表获取，如 task_001）'
+              description: '任务 ID（从上下文中的任务历史列表获取）'
             }
           },
           required: ['task_id']
