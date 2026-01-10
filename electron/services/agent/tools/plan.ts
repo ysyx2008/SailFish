@@ -30,19 +30,35 @@ export function createPlan(
   executor: ToolExecutorConfig
 ): ToolResult {
   const title = args.title as string
-  const stepsInput = args.steps as Array<{ title: string; description?: string }>
+  const stepsRaw = args.steps as Array<{ title: string; description?: string } | string>
   
   if (!title || typeof title !== 'string') {
     return { success: false, output: '', error: t('error.plan_title_required') }
   }
   
-  if (!Array.isArray(stepsInput) || stepsInput.length === 0) {
+  if (!Array.isArray(stepsRaw) || stepsRaw.length === 0) {
     return { success: false, output: '', error: t('error.plan_steps_required') }
   }
   
-  if (stepsInput.length > 10) {
+  if (stepsRaw.length > 10) {
     return { success: false, output: '', error: t('error.plan_steps_max') }
   }
+  
+  // 标准化步骤格式：支持字符串数组或对象数组
+  const stepsInput = stepsRaw.map((step, index) => {
+    // 如果是字符串，转换为对象格式
+    if (typeof step === 'string') {
+      return { title: step, description: undefined }
+    }
+    // 如果是对象但没有 title，尝试用其他字段
+    if (!step.title) {
+      return { 
+        title: step.description || `步骤 ${index + 1}`, 
+        description: step.description 
+      }
+    }
+    return step
+  })
   
   const existingPlan = executor.getCurrentPlan()
   if (existingPlan) {
