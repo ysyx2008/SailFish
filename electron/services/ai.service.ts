@@ -13,6 +13,19 @@ const AI_TIMEOUT = {
   TOTAL: 10 * 60 * 1000      // 总超时：10 分钟（长文本生成可能需要较长时间）
 }
 
+// 网络错误自动重试配置
+const AI_RETRY = {
+  MAX_RETRIES: 3,            // 最大重试次数
+  RETRY_DELAY: 2000,         // 重试间隔：2 秒
+  // 可重试的错误码
+  RETRYABLE_ERRORS: ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED', 'EPIPE', 'EAI_AGAIN']
+}
+
+// 判断错误是否可重试
+function isRetryableError(errorMessage: string): boolean {
+  return AI_RETRY.RETRYABLE_ERRORS.some(code => errorMessage.includes(code))
+}
+
 export interface AiMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
