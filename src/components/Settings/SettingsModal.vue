@@ -649,10 +649,10 @@ const onQrImageError = (event: Event) => {
 }
 
 .settings-modal {
-  width: 750px;
-  max-width: 90vw;
-  height: 560px;
-  max-height: 85vh;
+  width: 95vw;
+  max-width: 1200px;
+  height: 90vh;
+  max-height: 800px;
   background: var(--bg-secondary);
   border-radius: 12px;
   box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
