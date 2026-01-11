@@ -311,32 +311,6 @@ export async function executeTool(
 - 明确步骤之间的依赖关系
 - 实时展示执行进度
 
-### 任务复杂度分析
-
-在 `planner.ts` 中实现了任务复杂度分析：
-
-```typescript
-export function analyzeTaskComplexity(task: string): TaskComplexity {
-  const taskLower = task.toLowerCase()
-  
-  // 复杂任务关键词
-  const complexPatterns = [
-    /排查|诊断|分析.*原因|故障|问题|为什么/,
-    /部署|安装.*配置|搭建.*环境/,
-    /迁移|备份.*恢复|升级/,
-    /监控|告警|性能.*优化/,
-    /自动化|脚本.*批量/,
-  ]
-  
-  for (const pattern of complexPatterns) {
-    if (pattern.test(taskLower)) return 'complex'
-  }
-  
-  // 中等/简单判断...
-  return 'simple'
-}
-```
-
 ### 任务规划示例
 
 ```
@@ -954,7 +928,6 @@ electron/services/agent/
 ├── tools.ts          # 工具定义（Function Calling）
 ├── tool-executor.ts  # 工具执行器
 ├── prompt-builder.ts # 系统提示构建器
-├── planner.ts        # 任务规划器
 ├── risk-assessor.ts  # 风险评估
 ├── orchestrator.ts   # 多 Agent 协调器
 ├── orchestrator-tools.ts  # 协调器工具

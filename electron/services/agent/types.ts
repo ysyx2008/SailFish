@@ -128,7 +128,7 @@ export interface PendingConfirmation {
   resolve: (approved: boolean, modifiedArgs?: Record<string, unknown>) => void
 }
 
-// 执行策略（与 planner 中的定义保持一致）
+// 执行策略
 export type ExecutionStrategy = 'default' | 'conservative' | 'aggressive' | 'diagnostic'
 
 // 策略切换记录
