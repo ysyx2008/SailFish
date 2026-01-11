@@ -155,16 +155,17 @@ async function main() {
   log('\n即将执行以下操作:', 'cyan');
   log('  1. 拉取最新代码');
   log('  2. 运行编译检查');
+  log('  3. 运行单元测试');
   if (currentBranch === 'develop') {
-    log('  3. 切换到 main 分支');
-    log('  4. 合并 develop 到 main');
-    log('  5. 更新版本号并创建 tag');
-    log('  6. 推送 main 和 tag');
-    log('  7. 切回 develop 并 rebase');
-    log('  8. 推送 develop');
+    log('  4. 切换到 main 分支');
+    log('  5. 合并 develop 到 main');
+    log('  6. 更新版本号并创建 tag');
+    log('  7. 推送 main 和 tag');
+    log('  8. 切回 develop 并 rebase');
+    log('  9. 推送 develop');
   } else {
-    log('  3. 更新版本号并创建 tag');
-    log('  4. 推送 main 和 tag');
+    log('  4. 更新版本号并创建 tag');
+    log('  5. 推送 main 和 tag');
   }
 
   const shouldContinue = await confirm('\n确认继续?');
@@ -184,6 +185,11 @@ async function main() {
     log('\n运行编译检查...', 'cyan');
     exec('npm run build:check');
     success('编译检查通过');
+
+    // 运行单元测试
+    log('\n运行单元测试...', 'cyan');
+    exec('npm run test:run');
+    success('单元测试通过');
 
     // 如果在 develop 分支，需要切换到 main 并合并
     if (currentBranch === 'develop') {
