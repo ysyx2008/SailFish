@@ -10,7 +10,6 @@ import {
   isSudoCommand,
   detectPasswordPrompt,
   isDatabaseCommand,
-  detectInteractiveCommand,
   PASSWORD_PROMPT_PATTERNS
 } from '../risk-assessor'
 
@@ -421,26 +420,6 @@ describe('assessDatabaseRisk', () => {
     ])('should allow: %s (%s)', (cmd) => {
       expect(assessDatabaseRisk(cmd)).toBe('safe')
     })
-  })
-})
-
-// ==================== detectInteractiveCommand ====================
-
-describe('detectInteractiveCommand', () => {
-  it('should detect vim as interactive', () => {
-    const result = detectInteractiveCommand('vim file.txt')
-    expect(result.isInteractive).toBe(true)
-    expect(result.type).toBe('fullscreen')
-  })
-
-  it('should detect nano as interactive', () => {
-    const result = detectInteractiveCommand('nano file.txt')
-    expect(result.isInteractive).toBe(true)
-  })
-
-  it('should not flag ls as interactive', () => {
-    const result = detectInteractiveCommand('ls -la')
-    expect(result.isInteractive).toBe(false)
   })
 })
 

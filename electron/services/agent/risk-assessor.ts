@@ -196,27 +196,6 @@ export function detectPasswordPrompt(output: string): { detected: boolean; promp
   return { detected: false }
 }
 
-// 兼容旧接口
-export interface InteractiveCommandInfo {
-  isInteractive: boolean
-  type?: 'fullscreen' | 'continuous' | 'input_required' | 'pager'
-  reason?: string
-  alternative?: string
-}
-
-export function detectInteractiveCommand(command: string): InteractiveCommandInfo {
-  const info = analyzeCommand(command)
-  if (info.strategy === 'block') {
-    return {
-      isInteractive: true,
-      type: 'fullscreen',
-      reason: info.reason,
-      alternative: info.hint
-    }
-  }
-  return { isInteractive: false }
-}
-
 /**
  * 数据库命令行工具列表
  */
