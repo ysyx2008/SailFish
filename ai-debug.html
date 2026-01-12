@@ -1472,7 +1472,9 @@
               return `${preview} (${chunkCount} chunks)`
             
             case LogEntry.TYPE.RESPONSE_DONE:
-              return `完成 (${this.data.finishReason || 'unknown'})`
+              const doneToolCount = this.data.toolCalls?.length || 0
+              const doneToolInfo = doneToolCount > 0 ? ` | ${doneToolCount} 个工具调用` : ''
+              return `完成 (${this.data.finishReason || 'unknown'})${doneToolInfo}`
             
             case LogEntry.TYPE.RESPONSE_ERROR:
               return this.data.error || '未知错误'
@@ -1556,10 +1558,13 @@
             this.activeRequests.add(entry.requestId)
           } else if (entry.type === LogEntry.TYPE.TOOL_CALL) {
             this.stats.toolCalls++
+          } else if (entry.type === LogEntry.TYPE.RESPONSE_DONE) {
+            // 统计工具调用数量
+            const toolCallCount = entry.data?.toolCalls?.length || 0
+            this.stats.toolCalls += toolCallCount
+            this.activeRequests.delete(entry.requestId)
           } else if (entry.type === LogEntry.TYPE.RESPONSE_ERROR) {
             this.stats.errors++
-          } else if (entry.type === LogEntry.TYPE.RESPONSE_DONE) {
-            this.activeRequests.delete(entry.requestId)
           }
           
           this.eventBus.emit('log:added', entry)
@@ -1971,6 +1976,7 @@
               const respContent = this.markdown.render(entry.data.response || '')
               const reasoningContent = entry.data.reasoningContent
               const reasoningHtml = reasoningContent ? this.markdown.render(reasoningContent) : ''
+              const toolCallsHtml = this._renderToolCalls(entry.data.toolCalls)
             summaryContent = `
                 <div style="margin-bottom: 8px; font-size: 11px; color: var(--color-text-muted);">
                 完成原因: ${entry.data.finishReason || 'unknown'}${chunks}${duration}
@@ -1986,6 +1992,7 @@
                   </details>
                 ` : ''}
                 ${respContent ? `<div class="markdown-content">${respContent}</div>` : ''}
+                ${toolCallsHtml}
                 ${entry.data.usage ? `<div style="margin-top: 8px; font-size: 11px; color: var(--color-text-muted);">Token 用量: ${JSON.stringify(entry.data.usage)}</div>` : ''}
             `
               break
@@ -2219,6 +2226,44 @@
               </div>
             `
           }).join('')
+        }
+
+        _renderToolCalls(toolCalls) {
+          if (!toolCalls || toolCalls.length === 0) return ''
+          
+          const toolsHtml = toolCalls.map(tc => {
+            const name = tc?.name || 'unknown'
+            let args = ''
+            try {
+              const argsObj = typeof tc?.arguments === 'string' ? JSON.parse(tc.arguments) : tc?.arguments
+              args = JSON.stringify(argsObj, null, 2)
+            } catch (e) {
+              args = tc?.arguments || ''
+            }
+            const argsEscaped = this.markdown.escapeHtml(args)
+            
+            return `
+              <div class="tool-call">
+                <div class="tool-call__header">
+                  <span class="tool-call__icon">🔧</span>
+                  <span class="tool-call__name">${this.markdown.escapeHtml(name)}()</span>
+                </div>
+                <div class="tool-call__body">
+                  <div class="tool-call__section-label">参数</div>
+                  <pre class="tool-call__args">${argsEscaped}</pre>
+                </div>
+              </div>
+            `
+          }).join('')
+          
+          return `
+            <div style="margin-top: 12px;">
+              <div style="font-size: 12px; font-weight: 600; color: var(--color-accent-purple); margin-bottom: 8px;">
+                🔧 工具调用 (${toolCalls.length})
+              </div>
+              ${toolsHtml}
+            </div>
+          `
         }
 
         _formatJson(obj, indent = 0) {

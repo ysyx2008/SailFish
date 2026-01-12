@@ -933,23 +933,20 @@ export class AiService {
         res.on('end', () => {
           // 如果有思考内容但没有最终内容，把思考内容作为最终内容
           const finalContent = content || (reasoningContent ? `🤔 **思考过程**\n\n> ${reasoningContent.replace(/\n/g, '\n> ')}` : undefined)
-          // AI Debug: 记录响应完成（先记录响应，再记录工具调用）
+          // AI Debug: 记录响应完成（包含工具调用）
           aiDebugService.logResponseDone(reqId, {
             response: finalContent,
             reasoningContent: reasoningContent || undefined,  // 传递原始思考内容
-            finishReason
+            finishReason,
+            toolCalls: toolCalls.length > 0 ? toolCalls.map(tc => ({
+              id: tc.id,
+              name: tc.function.name,
+              arguments: tc.function.arguments
+            })) : undefined
           })
-          // 如果有工具调用，通知一次，并记录到调试日志
+          // 如果有工具调用，通知回调
           if (toolCalls.length > 0) {
             onToolCall(toolCalls)
-            // AI Debug: 记录工具调用
-            toolCalls.forEach(tc => {
-              aiDebugService.logToolCall(reqId, {
-                id: tc.id,
-                name: tc.function.name,
-                arguments: tc.function.arguments
-              })
-            })
           }
           complete(() => onDone({
             content: finalContent,
