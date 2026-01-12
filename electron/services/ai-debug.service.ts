@@ -329,6 +329,11 @@ class AiDebugService extends EventEmitter {
     reasoningContent?: string  // 思考内容
     finishReason?: string
     usage?: AiLogEntry['data']['usage']
+    toolCalls?: Array<{  // 工具调用列表
+      id: string
+      name: string
+      arguments: string
+    }>
   }): void {
     this.addLog({
       type: 'response_done',
