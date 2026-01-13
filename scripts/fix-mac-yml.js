@@ -21,7 +21,7 @@ if (content.includes('    arch:')) {
 }
 
 // 匹配 dmg 和 zip 文件条目
-const fileEntryRegex = /(  - url: (.+\.(dmg|zip))\n    sha512: [^\n]+\n    size: \d+)(\n(?!    arch:))/g
+const fileEntryRegex = /( {2}- url: (.+\.(dmg|zip))\n {4}sha512: [^\n]+\n {4}size: \d+)(\n(?! {4}arch:))/g
 
 const fixed = content.replace(fileEntryRegex, (match, entry, url, ext, trailing) => {
   const arch = (url.includes('-arm64.') || url.includes('_arm64.')) ? 'arm64' : 'x64'

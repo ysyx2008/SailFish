@@ -651,7 +651,7 @@ export class FileSearchService {
    */
   private wildcardToRegex(pattern: string): RegExp {
     // 转义特殊字符
-    let regex = pattern
+    const regex = pattern
       .replace(/[.+^${}()|[\]\\]/g, '\\$&')
       // 将 * 转换为 .*
       .replace(/\*/g, '.*')

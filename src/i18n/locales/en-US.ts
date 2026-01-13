@@ -655,11 +655,6 @@ export default {
     noConfig: 'No AI model configured',
     goToSettings: 'Go to Settings',
     switchModel: 'Switch AI Model',
-    modeAgent: 'Agent',
-    modeChat: 'Chat',
-    agentModeTitle: 'Agent Mode: AI autonomously executes commands to complete tasks',
-    chatModeTitle: 'Chat Mode: Have conversations with AI',
-    pendingConfirmHint: 'Action pending confirmation, click to switch to Agent mode',
     timeout: 'Timeout',
     strict: 'Strict',
     relaxed: 'Relaxed',
@@ -704,7 +699,6 @@ export default {
     closeError: 'Close Error',
     selectedContent: 'Terminal Content Selected',
     aiAnalyze: 'AI Analyze',
-    thinking: 'Let me thinking...',
     preparing: 'Preparing...',
     executing: 'Executing...',
     agentStarting: 'Agent starting...',
@@ -794,19 +788,17 @@ export default {
       confirmLoadHistory: 'Current session has existing conversations. Loading history will overwrite them. Continue?',
       historyLoaded: 'History loaded, you can continue the conversation'
     },
-    quickActions: {
-      explainCommand: 'Explain Command',
-      generateCommand: 'Generate Command',
-      analyzeError: 'Analyze Error',
-      systemStatus: 'System Status',
-      findFiles: 'Find Files',
-      viewProcesses: 'View Processes',
-      diskSpace: 'Disk Space'
-    },
-    quickActionPrompts: {
-      findFiles: 'Find all log files in the current directory',
-      viewProcesses: 'View the top 10 processes by memory usage',
-      diskSpace: 'View disk space usage'
+    // Quick hints
+    quickHints: {
+      title: 'Quick Tasks (click to fill)',
+      checkDisk: 'Check disk space',
+      checkDiskText: 'Check disk usage and list largest files if over 80%',
+      viewProcess: 'View processes',
+      viewProcessText: 'Show top 10 processes by memory usage',
+      findLargeFiles: 'Find large files',
+      findLargeFilesText: 'Find files larger than 100MB in current directory',
+      checkService: 'Check services',
+      checkServiceText: 'Check status of nginx/docker and other common services'
     },
     toolNames: {
       execute_command: 'Execute Command',
@@ -820,13 +812,10 @@ export default {
     askingDefault: 'Default:',
     askingDefaultHint: '(Press Enter to use default value)',
     confirmMultiSelect: 'Confirm Selection',
-    // Analysis related
+    // Analysis related (executed via Agent)
     analyzeErrorPrompt: 'Please help me analyze this error:',
     analyzeOutputPrompt: 'Please help me analyze this terminal output:',
-    analyzeContentPrompt: 'Please help me analyze this terminal content:',
-    diagnosing: 'Diagnosing...',
-    analyzing: 'Analyzing...',
-    errorPrefix: 'Error:'
+    analyzeContentPrompt: 'Please help me analyze this terminal content:'
   },
 
   // @ Commands (Mentions)
