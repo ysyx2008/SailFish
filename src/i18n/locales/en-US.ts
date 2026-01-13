@@ -48,7 +48,8 @@ export default {
     tip27: 'Organize multiple servers with session grouping',
     tip28: 'AI chat supports context, understands previous conversations',
     tip29: 'Ask AI directly how to use any command',
-    tip30: 'Auto error detection in terminal, click for AI diagnosis'
+    tip30: 'Auto error detection in terminal, click for AI diagnosis',
+    clickToSwitchTip: 'Click to switch tip'
   },
 
   // Smart Patrol
@@ -134,7 +135,11 @@ export default {
     noData: 'No data',
     confirmDelete: 'Are you sure you want to delete?',
     operationSuccess: 'Operation successful',
-    operationFailed: 'Operation failed'
+    operationFailed: 'Operation failed',
+    // Confirm dialog related
+    size: 'Size',
+    count: 'Count',
+    items: 'item(s)'
   },
 
   // Header toolbar
@@ -1004,7 +1009,128 @@ export default {
     goBack: 'Back',
     goForward: 'Forward',
     goUp: 'Parent directory',
-    goHome: 'Home directory'
+    goHome: 'Home directory',
+    // Context menu
+    preview: 'Preview',
+    copyPath: 'Copy Path',
+    copyFileName: 'Copy File Name',
+    chmod: 'Change Permissions',
+    properties: 'Properties',
+    // Toast messages
+    pathCopied: 'Path copied',
+    nameCopied: 'File name copied',
+    copyFailed: 'Copy failed',
+    renameSuccess: 'Renamed successfully',
+    renameFailed: 'Failed to rename',
+    folderCreated: 'Folder created',
+    folderCreateFailed: 'Failed to create folder',
+    permissionChanged: 'Permissions changed',
+    permissionChangeFailed: 'Failed to change permissions',
+    transferCancelled: 'Transfer cancelled',
+    cannotReadFile: 'Cannot read file content',
+    loading: 'Loading...',
+    // Delete
+    folder: 'folder',
+    file: 'file',
+    deleteTitle: 'Delete {type}',
+    deleteMessage: 'Are you sure you want to delete this {type}? This action cannot be undone.',
+    deleted: '{type} deleted',
+    deleteFailed: 'Failed to delete {type}',
+    // Dialogs
+    newFolderTitle: 'New Folder',
+    folderNamePlaceholder: 'Folder name',
+    renameTitle: 'Rename',
+    newNamePlaceholder: 'New name',
+    cancel: 'Cancel',
+    create: 'Create',
+    confirm: 'OK',
+    // File list
+    name: 'Name',
+    size: 'Size',
+    modifyTime: 'Modified',
+    loadingText: 'Loading...',
+    directoryEmpty: 'Directory is empty',
+    dragHint: 'Drag files here to upload',
+    dropHint: 'Release to upload files',
+    // Path navigation
+    editPathHint: 'Click to edit path',
+    // Properties dialog
+    propertiesTitle: 'Properties',
+    chmodTitle: 'Change Permissions',
+    symlink: 'Symbolic Link',
+    directory: 'Directory',
+    fileType: 'File',
+    path: 'Path',
+    bytes: 'bytes',
+    accessTime: 'Access Time',
+    owner: 'Owner',
+    permissionSettings: 'Permission Settings',
+    read: 'Read (r)',
+    write: 'Write (w)',
+    execute: 'Execute (x)',
+    ownerPerm: 'Owner',
+    groupPerm: 'Group',
+    otherPerm: 'Others',
+    octal: 'Octal',
+    symbolic: 'Symbolic',
+    applyPermission: 'Apply Permissions',
+    close: 'Close',
+    copyPathTitle: 'Copy Path',
+    // File types
+    fileTypes: {
+      image: 'Image',
+      textFile: 'Text File',
+      markdown: 'Markdown Document',
+      pdf: 'PDF Document',
+      word: 'Word Document',
+      javascript: 'JavaScript',
+      typescript: 'TypeScript',
+      vue: 'Vue Component',
+      reactJsx: 'React JSX',
+      reactTsx: 'React TSX',
+      python: 'Python',
+      go: 'Go',
+      rust: 'Rust',
+      java: 'Java',
+      cpp: 'C++',
+      c: 'C',
+      header: 'C/C++ Header',
+      json: 'JSON',
+      xml: 'XML',
+      yaml: 'YAML',
+      toml: 'TOML',
+      config: 'Config File',
+      zip: 'ZIP Archive',
+      tar: 'TAR Archive',
+      gz: 'GZ Archive',
+      sevenZ: '7z Archive',
+      rar: 'RAR Archive',
+      shell: 'Shell Script',
+      bash: 'Bash Script',
+      zsh: 'Zsh Script',
+      log: 'Log File',
+      css: 'CSS Stylesheet',
+      html: 'HTML Document',
+      unknown: '{ext} File'
+    },
+    // Transfer queue
+    transfer: {
+      queue: 'Transfer Queue',
+      clearCompleted: 'Clear Completed',
+      clearAll: 'Clear All',
+      remaining: 'remaining',
+      cancelTransfer: 'Cancel Transfer',
+      retryTransfer: 'Retry',
+      pending: 'Pending',
+      transferring: 'Transferring',
+      completed: 'Completed',
+      failed: 'Failed',
+      cancelled: 'Cancelled',
+      seconds: 's',
+      minutes: 'min',
+      hours: 'h',
+      hoursMinutes: '{hours}h {mins}min'
+    }
   },
 
   // File Manager (Dual Pane)
@@ -1220,6 +1346,8 @@ export default {
     cannotReconnect: 'Cannot reconnect',
     cannotReconnectHint: 'This connection is not saved as a session, please reconnect from Session Manager',
     reconnectFailed: 'Reconnect failed',
+    commandDone: 'Done',
+    commandTimeout: 'Command timed out ({seconds}s)',
     localTerminal: 'Local Terminal',
     sshDisconnected: '[SSH Disconnected]',
     disconnectReasons: {
@@ -1286,9 +1414,10 @@ export default {
     // Tabs
     tabDocuments: 'Documents',
     tabMemories: 'Host Memories',
-    // Import with encrypted data hint
+    // Import/export with encrypted data hint
     importEncryptedHint: 'The imported knowledge base contains encrypted data. Please go to settings page to unlock with the original password.',
     importPasswordHint: 'If the imported knowledge base has a password set, you need to use the original password to access encrypted data.',
+    exportEncryptedHint: 'The exported data contains encrypted content. You will need to use the same password to unlock it when importing on another device.',
     unknownError: 'Unknown error',
     selectAll: 'Select All',
     selected: '{count} selected',

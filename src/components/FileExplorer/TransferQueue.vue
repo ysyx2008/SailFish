@@ -2,6 +2,9 @@
 import { computed } from 'vue'
 import { ArrowUp, ArrowDown, X, RefreshCw, Check } from 'lucide-vue-next'
 import type { TransferProgress } from '../../composables/useSftp'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   transfers: TransferProgress[]
@@ -55,24 +58,24 @@ const getRemainingTime = (progress: TransferProgress): string => {
   const remainingSeconds = remainingBytes / speed
   
   if (remainingSeconds < 60) {
-    return `${Math.ceil(remainingSeconds)}秒`
+    return `${Math.ceil(remainingSeconds)}${t('fileExplorer.transfer.seconds')}`
   } else if (remainingSeconds < 3600) {
-    return `${Math.ceil(remainingSeconds / 60)}分钟`
+    return `${Math.ceil(remainingSeconds / 60)}${t('fileExplorer.transfer.minutes')}`
   } else {
     const hours = Math.floor(remainingSeconds / 3600)
     const mins = Math.ceil((remainingSeconds % 3600) / 60)
-    return `${hours}小时${mins}分钟`
+    return t('fileExplorer.transfer.hoursMinutes', { hours, mins })
   }
 }
 
 // 获取状态文本
 const getStatusText = (status: TransferProgress['status']): string => {
   switch (status) {
-    case 'pending': return '等待中'
-    case 'transferring': return '传输中'
-    case 'completed': return '已完成'
-    case 'failed': return '失败'
-    case 'cancelled': return '已取消'
+    case 'pending': return t('fileExplorer.transfer.pending')
+    case 'transferring': return t('fileExplorer.transfer.transferring')
+    case 'completed': return t('fileExplorer.transfer.completed')
+    case 'failed': return t('fileExplorer.transfer.failed')
+    case 'cancelled': return t('fileExplorer.transfer.cancelled')
     default: return ''
   }
 }
@@ -112,7 +115,7 @@ const handleClearAll = () => {
   <div v-if="hasTransfers" class="transfer-queue">
     <div class="queue-header">
       <span class="queue-title">
-        传输队列
+        {{ t('fileExplorer.transfer.queue') }}
         <span v-if="activeCount > 0" class="active-badge">{{ activeCount }}</span>
       </span>
       <div class="queue-actions">
@@ -120,17 +123,17 @@ const handleClearAll = () => {
           v-if="completedCount > 0" 
           class="btn-text" 
           @click="handleClear"
-          title="清除已完成"
+          :title="t('fileExplorer.transfer.clearCompleted')"
         >
-          清除已完成
+          {{ t('fileExplorer.transfer.clearCompleted') }}
         </button>
         <button 
           v-if="transfers.length > 0"
           class="btn-text danger"
           @click="handleClearAll"
-          title="清除全部"
+          :title="t('fileExplorer.transfer.clearAll')"
         >
-          清除全部
+          {{ t('fileExplorer.transfer.clearAll') }}
         </button>
       </div>
     </div>
@@ -165,7 +168,7 @@ const handleClearAll = () => {
             <span class="percent">{{ transfer.percent }}%</span>
             <span class="speed">{{ formatSpeed(transfer) }}</span>
             <span class="remaining" v-if="getRemainingTime(transfer)">
-              剩余 {{ getRemainingTime(transfer) }}
+              {{ t('fileExplorer.transfer.remaining') }} {{ getRemainingTime(transfer) }}
             </span>
           </template>
           <template v-else-if="transfer.status === 'pending'">
@@ -185,7 +188,7 @@ const handleClearAll = () => {
             v-if="transfer.status === 'transferring' || transfer.status === 'pending'"
             class="btn-action cancel"
             @click="handleCancel(transfer.transferId)"
-            title="取消传输"
+            :title="t('fileExplorer.transfer.cancelTransfer')"
           >
             <X :size="14" />
           </button>
@@ -195,7 +198,7 @@ const handleClearAll = () => {
             v-if="transfer.status === 'failed' || transfer.status === 'cancelled'"
             class="btn-action retry"
             @click="handleRetry(transfer)"
-            title="重试"
+            :title="t('fileExplorer.transfer.retryTransfer')"
           >
             <RefreshCw :size="14" />
           </button>

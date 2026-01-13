@@ -174,7 +174,7 @@ const formatHost = (session: SshSession) => {
       </div>
 
       <!-- 提示信息 -->
-      <div class="tips" @click="nextTip" title="点击切换提示">
+      <div class="tips" @click="nextTip" :title="t('welcome.clickToSwitchTip')">
         <div class="tip-item">
           <span class="tip-icon">💡</span>
           <span class="tip-text">{{ currentTip }}</span>

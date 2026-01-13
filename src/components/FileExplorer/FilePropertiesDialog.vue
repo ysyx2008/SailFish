@@ -3,6 +3,9 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { X, Folder, FileText, Copy, Lock } from 'lucide-vue-next'
 import type { SftpFileInfo } from '../../composables/useSftp'
 import { toast } from '../../composables/useToast'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   show: boolean
@@ -86,9 +89,9 @@ const copyPath = async () => {
   if (props.file) {
     try {
       await navigator.clipboard.writeText(props.file.path)
-      toast.success('路径已复制')
+      toast.success(t('fileExplorer.pathCopied'))
     } catch (e) {
-      toast.error('复制失败')
+      toast.error(t('fileExplorer.copyFailed'))
     }
   }
 }
@@ -128,31 +131,35 @@ onUnmounted(() => {
 // 获取文件类型描述
 const getFileType = (file: SftpFileInfo | null): string => {
   if (!file) return ''
-  if (file.isSymlink) return '符号链接'
-  if (file.isDirectory) return '目录'
+  if (file.isSymlink) return t('fileExplorer.symlink')
+  if (file.isDirectory) return t('fileExplorer.directory')
   
   const ext = file.name.split('.').pop()?.toLowerCase()
-  if (!ext) return '文件'
+  if (!ext) return t('fileExplorer.fileType')
   
-  const types: Record<string, string> = {
+  const typeKeys: Record<string, string> = {
     // 图片
-    'jpg': '图片', 'jpeg': '图片', 'png': '图片', 'gif': '图片', 'webp': '图片', 'svg': '图片',
+    'jpg': 'image', 'jpeg': 'image', 'png': 'image', 'gif': 'image', 'webp': 'image', 'svg': 'image',
     // 文档
-    'txt': '文本文件', 'md': 'Markdown 文档', 'pdf': 'PDF 文档', 'doc': 'Word 文档', 'docx': 'Word 文档',
+    'txt': 'textFile', 'md': 'markdown', 'pdf': 'pdf', 'doc': 'word', 'docx': 'word',
     // 代码
-    'js': 'JavaScript', 'ts': 'TypeScript', 'vue': 'Vue 组件', 'jsx': 'React JSX', 'tsx': 'React TSX',
-    'py': 'Python', 'go': 'Go', 'rs': 'Rust', 'java': 'Java', 'cpp': 'C++', 'c': 'C', 'h': 'C/C++ 头文件',
+    'js': 'javascript', 'ts': 'typescript', 'vue': 'vue', 'jsx': 'reactJsx', 'tsx': 'reactTsx',
+    'py': 'python', 'go': 'go', 'rs': 'rust', 'java': 'java', 'cpp': 'cpp', 'c': 'c', 'h': 'header',
     // 配置
-    'json': 'JSON', 'xml': 'XML', 'yml': 'YAML', 'yaml': 'YAML', 'toml': 'TOML', 'ini': '配置文件',
+    'json': 'json', 'xml': 'xml', 'yml': 'yaml', 'yaml': 'yaml', 'toml': 'toml', 'ini': 'config',
     // 压缩
-    'zip': 'ZIP 压缩包', 'tar': 'TAR 归档', 'gz': 'GZ 压缩包', '7z': '7z 压缩包', 'rar': 'RAR 压缩包',
+    'zip': 'zip', 'tar': 'tar', 'gz': 'gz', '7z': 'sevenZ', 'rar': 'rar',
     // 脚本
-    'sh': 'Shell 脚本', 'bash': 'Bash 脚本', 'zsh': 'Zsh 脚本',
+    'sh': 'shell', 'bash': 'bash', 'zsh': 'zsh',
     // 其他
-    'log': '日志文件', 'conf': '配置文件', 'css': 'CSS 样式表', 'html': 'HTML 文档'
+    'log': 'log', 'conf': 'config', 'css': 'css', 'html': 'html'
   }
   
-  return types[ext] || `${ext.toUpperCase()} 文件`
+  const typeKey = typeKeys[ext]
+  if (typeKey) {
+    return t(`fileExplorer.fileTypes.${typeKey}`)
+  }
+  return t('fileExplorer.fileTypes.unknown', { ext: ext.toUpperCase() })
 }
 </script>
 
@@ -164,7 +171,7 @@ const getFileType = (file: SftpFileInfo | null): string => {
           <div v-if="show" class="properties-dialog">
             <!-- 标题栏 -->
             <div class="dialog-header">
-              <h3>{{ mode === 'chmod' ? '修改权限' : '属性' }}</h3>
+              <h3>{{ mode === 'chmod' ? t('fileExplorer.chmodTitle') : t('fileExplorer.propertiesTitle') }}</h3>
               <button class="btn-close" @click="handleClose">
                 <X :size="16" />
               </button>
@@ -189,32 +196,32 @@ const getFileType = (file: SftpFileInfo | null): string => {
                 <!-- 详细信息 -->
                 <div class="info-section">
                   <div class="info-row">
-                    <span class="label">路径</span>
+                    <span class="label">{{ t('fileExplorer.path') }}</span>
                     <div class="value path-value">
                       <span :title="file.path">{{ file.path }}</span>
-                      <button class="btn-copy" @click="copyPath" title="复制路径">
+                      <button class="btn-copy" @click="copyPath" :title="t('fileExplorer.copyPathTitle')">
                         <Copy :size="14" />
                       </button>
                     </div>
                   </div>
 
                   <div class="info-row" v-if="!file.isDirectory">
-                    <span class="label">大小</span>
-                    <span class="value">{{ formatSize(file.size) }} ({{ file.size.toLocaleString() }} 字节)</span>
+                    <span class="label">{{ t('fileExplorer.fileSize') }}</span>
+                    <span class="value">{{ formatSize(file.size) }} ({{ file.size.toLocaleString() }} {{ t('fileExplorer.bytes') }})</span>
                   </div>
 
                   <div class="info-row">
-                    <span class="label">修改时间</span>
+                    <span class="label">{{ t('fileExplorer.modifyTime') }}</span>
                     <span class="value">{{ formatTime(file.modifyTime) }}</span>
                   </div>
 
                   <div class="info-row">
-                    <span class="label">访问时间</span>
+                    <span class="label">{{ t('fileExplorer.accessTime') }}</span>
                     <span class="value">{{ formatTime(file.accessTime) }}</span>
                   </div>
 
                   <div class="info-row">
-                    <span class="label">所有者</span>
+                    <span class="label">{{ t('fileExplorer.owner') }}</span>
                     <span class="value">{{ file.owner }} / {{ file.group }}</span>
                   </div>
                 </div>
@@ -226,20 +233,20 @@ const getFileType = (file: SftpFileInfo | null): string => {
               <div class="permissions-section">
                 <div class="section-title">
                   <Lock :size="16" />
-                  <span>权限设置</span>
+                  <span>{{ t('fileExplorer.permissionSettings') }}</span>
                 </div>
 
                 <!-- 权限表格 -->
                 <div class="permissions-table">
                   <div class="perm-header">
                     <span></span>
-                    <span>读取 (r)</span>
-                    <span>写入 (w)</span>
-                    <span>执行 (x)</span>
+                    <span>{{ t('fileExplorer.read') }}</span>
+                    <span>{{ t('fileExplorer.write') }}</span>
+                    <span>{{ t('fileExplorer.execute') }}</span>
                   </div>
 
                   <div class="perm-row">
-                    <span class="perm-label">所有者</span>
+                    <span class="perm-label">{{ t('fileExplorer.ownerPerm') }}</span>
                     <label class="checkbox">
                       <input type="checkbox" v-model="permissions.user.read">
                       <span class="checkmark"></span>
@@ -255,7 +262,7 @@ const getFileType = (file: SftpFileInfo | null): string => {
                   </div>
 
                   <div class="perm-row">
-                    <span class="perm-label">用户组</span>
+                    <span class="perm-label">{{ t('fileExplorer.groupPerm') }}</span>
                     <label class="checkbox">
                       <input type="checkbox" v-model="permissions.group.read">
                       <span class="checkmark"></span>
@@ -271,7 +278,7 @@ const getFileType = (file: SftpFileInfo | null): string => {
                   </div>
 
                   <div class="perm-row">
-                    <span class="perm-label">其他用户</span>
+                    <span class="perm-label">{{ t('fileExplorer.otherPerm') }}</span>
                     <label class="checkbox">
                       <input type="checkbox" v-model="permissions.other.read">
                       <span class="checkmark"></span>
@@ -290,11 +297,11 @@ const getFileType = (file: SftpFileInfo | null): string => {
                 <!-- 权限预览 -->
                 <div class="perm-preview">
                   <div class="preview-item">
-                    <span class="preview-label">八进制</span>
+                    <span class="preview-label">{{ t('fileExplorer.octal') }}</span>
                     <code>{{ octalPermission }}</code>
                   </div>
                   <div class="preview-item">
-                    <span class="preview-label">符号表示</span>
+                    <span class="preview-label">{{ t('fileExplorer.symbolic') }}</span>
                     <code>{{ permissionString }}</code>
                   </div>
                 </div>
@@ -304,10 +311,10 @@ const getFileType = (file: SftpFileInfo | null): string => {
             <!-- 底部按钮 -->
             <div class="dialog-footer">
               <button class="btn btn-cancel" @click="handleClose">
-                {{ mode === 'properties' ? '关闭' : '取消' }}
+                {{ mode === 'properties' ? t('fileExplorer.close') : t('common.cancel') }}
               </button>
               <button v-if="mode === 'chmod' || mode === 'properties'" class="btn btn-primary" @click="savePermissions">
-                应用权限
+                {{ t('fileExplorer.applyPermission') }}
               </button>
             </div>
           </div>

@@ -294,11 +294,11 @@ const exportKnowledge = async () => {
     if (result.success) {
       let msg = t('knowledgeManager.exportSuccess', { path: result.path })
       if (result.hasPassword) {
-        msg += '\n\n⚠️ 导出的数据包含加密内容，在其他设备导入时需要使用相同的密码解锁。'
+        msg += '\n\n⚠️ ' + t('knowledgeManager.exportEncryptedHint')
       }
       alert(msg)
     } else {
-      alert(t('knowledgeManager.exportFailed') + ': ' + (result.error || '未知错误'))
+      alert(t('knowledgeManager.exportFailed') + ': ' + (result.error || t('knowledgeManager.unknownError')))
     }
   } catch (error) {
     console.error('Export failed:', error)
