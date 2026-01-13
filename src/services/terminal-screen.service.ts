@@ -180,7 +180,7 @@ export class TerminalScreenService {
       return null
     }
 
-    let content = line.translateToString(trimRight)
+    const content = line.translateToString(trimRight)
     
     return {
       content,

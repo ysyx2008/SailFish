@@ -601,7 +601,7 @@ export class PtyService {
         cleanup()
         
         // 清理输出
-        let cleanOutput = output
+        const cleanOutput = output
         const lines = cleanOutput.split(/\r?\n/)
         
         // 移除命令回显（第一行通常包含命令）

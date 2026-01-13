@@ -1,11 +1,17 @@
 /**
  * Agent 模式 composable
  * 处理 Agent 任务的运行、确认、事件监听等
+ * 同时管理 AI 面板的滚动和终端状态
  */
-import { ref, computed, watch, onMounted, onUnmounted, Ref } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted, Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTerminalStore } from '../stores/terminal'
 import type { AgentStep, AgentState } from '../stores/terminal'
+
+// 判断用户是否在底部附近的阈值（像素）
+const SCROLL_THRESHOLD = 100
+// 滚动节流间隔（毫秒）
+const SCROLL_THROTTLE_MS = 1000
 
 // Agent 任务分组类型
 export interface AgentTaskGroup {
@@ -50,9 +56,7 @@ interface AgentPlan {
 // AgentState 类型从 terminal store 导入
 
 export function useAgentMode(
-  inputText: Ref<string>,
-  scrollToBottom: () => Promise<void>,           // 强制滚动（用户发送时）
-  scrollToBottomIfNeeded: () => Promise<void>,   // 智能滚动（收到新内容时）
+  messagesRef: Ref<HTMLDivElement | null>,
   getDocumentContext: () => Promise<string>,
   getHostIdByTabId: (tabId: string) => Promise<string>,  // 根据 tabId 获取 hostId（不依赖 activeTab）
   autoProbeHostProfile: () => Promise<void>,
@@ -64,8 +68,22 @@ export function useAgentMode(
   // 当前终端 ID（使用传入的 tabId，不再依赖 activeTabId）
   const currentTabId = tabId
 
-  // Agent 模式状态（每个 AiPanel 实例独立，无需保存到 store）
-  const agentMode = ref(true)
+  // ==================== 输入和滚动状态 ====================
+  
+  // 输入文本
+  const inputText = ref('')
+  
+  // 是否有新消息（用户不在底部时显示提示）
+  const hasNewMessage = ref(false)
+  
+  // 标志：是否跳过 scroll 事件的状态更新（用于避免强制滚动时被 scroll 事件覆盖）
+  let skipScrollUpdate = false
+  
+  // 智能滚动节流状态
+  let scrollPending = false
+  let lastScrollTime = 0
+
+  // Agent 执行模式设置
   const executionMode = ref<'strict' | 'relaxed' | 'free'>('strict')  // 执行模式：strict=严格，relaxed=宽松，free=自由
   const commandTimeout = ref(10)     // 命令超时时间（秒），默认 10 秒
   const collapsedTaskIds = ref<Set<string>>(new Set())  // 已折叠的任务 ID
@@ -81,6 +99,144 @@ export function useAgentMode(
   const currentTab = computed(() => {
     return terminalStore.tabs.find(t => t.id === currentTabId.value)
   })
+
+  // ==================== 终端状态 ====================
+  
+  // 当前终端的 AI 加载状态（每个终端独立）
+  const isLoading = computed(() => {
+    return currentTab.value?.aiLoading || false
+  })
+
+  // 获取当前终端的系统信息
+  const currentSystemInfo = computed(() => {
+    const tab = currentTab.value
+    if (tab?.systemInfo) {
+      return tab.systemInfo
+    }
+    return null
+  })
+
+  // 获取当前终端选中的文本
+  const terminalSelectedText = computed(() => {
+    return currentTab.value?.selectedText || ''
+  })
+
+  // 获取最近的错误
+  const lastError = computed(() => {
+    return currentTab.value?.lastError
+  })
+
+  // ==================== 滚动相关 ====================
+  
+  // 用户是否在底部附近（从 store 获取，每个终端独立）
+  const isUserNearBottom = computed(() => {
+    const id = currentTabId.value
+    if (!id) return true
+    return terminalStore.getAiScrollNearBottom(id)
+  })
+
+  // 设置当前 tab 的 isUserNearBottom 状态
+  const setIsUserNearBottom = (value: boolean) => {
+    const id = currentTabId.value
+    if (id) {
+      terminalStore.setAiScrollNearBottom(id, value)
+    }
+  }
+
+  // 检查用户是否在底部附近
+  const checkIsNearBottom = () => {
+    if (!messagesRef.value) return true
+    const { scrollTop, scrollHeight, clientHeight } = messagesRef.value
+    return scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD
+  }
+
+  // 更新用户滚动位置状态（由组件的 scroll 事件调用）
+  const updateScrollPosition = () => {
+    // 跳过强制滚动期间的状态更新，避免被 scroll 事件覆盖
+    if (skipScrollUpdate) return
+    const nearBottom = checkIsNearBottom()
+    setIsUserNearBottom(nearBottom)
+    // 如果用户滚动到底部，清除新消息提示
+    if (nearBottom) {
+      hasNewMessage.value = false
+    }
+  }
+
+  // 强制滚动到底部（用户主动发送消息或点击时调用）
+  const scrollToBottom = async () => {
+    // 先设置状态，防止被 scroll 事件覆盖
+    skipScrollUpdate = true
+    setIsUserNearBottom(true)
+    hasNewMessage.value = false
+    
+    await nextTick()
+    if (messagesRef.value) {
+      messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+    }
+    
+    // 延迟恢复 scroll 事件更新，确保滚动完成后才开始监听用户滚动
+    requestAnimationFrame(() => {
+      skipScrollUpdate = false
+    })
+  }
+
+  // 实际执行滚动
+  const doScrollIfNeeded = async () => {
+    lastScrollTime = Date.now()
+    await nextTick()
+    
+    // 在执行滚动前再次检测是否在底部附近
+    // 这样可以避免内容突然增加导致的误判
+    const nearBottomNow = checkIsNearBottom()
+    
+    if (isUserNearBottom.value || nearBottomNow) {
+      if (messagesRef.value) {
+        // 滚动期间跳过状态更新，避免 scroll 事件错误地更新状态
+        skipScrollUpdate = true
+        setIsUserNearBottom(true)
+        hasNewMessage.value = false
+        
+        messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+        
+        // 延迟恢复 scroll 事件监听，等待滚动完成
+        // 使用 50ms 延迟，确保滚动动画完成，同时不影响用户后续手动滚动
+        setTimeout(() => {
+          skipScrollUpdate = false
+        }, 50)
+      }
+    } else {
+      // 用户在上方查看历史，显示新消息提示
+      hasNewMessage.value = true
+    }
+  }
+
+  // 智能滚动：只有用户在底部附近时才自动滚动（带节流）
+  const scrollToBottomIfNeeded = async () => {
+    const now = Date.now()
+    
+    // 节流：如果距离上次滚动时间过短，标记为待处理
+    if (now - lastScrollTime < SCROLL_THROTTLE_MS) {
+      if (!scrollPending) {
+        scrollPending = true
+        requestAnimationFrame(() => {
+          scrollPending = false
+          doScrollIfNeeded()
+        })
+      }
+      return
+    }
+    
+    await doScrollIfNeeded()
+  }
+
+  // 停止生成
+  const stopGeneration = async () => {
+    if (currentTabId.value) {
+      // 传入 tabId 只中止当前终端的请求，不影响其他终端
+      await window.electronAPI.ai.abort(currentTabId.value)
+      terminalStore.setAiLoading(currentTabId.value, false)
+    }
+  }
 
   // Agent 状态
   const agentState = computed((): AgentState | undefined => {
@@ -792,7 +948,20 @@ export function useAgentMode(
   })
 
   return {
-    agentMode,
+    // 输入和终端状态
+    inputText,
+    isLoading,
+    currentSystemInfo,
+    terminalSelectedText,
+    lastError,
+    // 滚动相关
+    hasNewMessage,
+    isUserNearBottom,
+    updateScrollPosition,
+    scrollToBottom,
+    scrollToBottomIfNeeded,
+    stopGeneration,
+    // Agent 执行
     executionMode,
     commandTimeout,
     collapsedTaskIds,

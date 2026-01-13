@@ -6,7 +6,7 @@
  */
 import { ref, computed, watch, inject, onMounted, onUnmounted, toRef, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Upload, Trash2, X, HelpCircle, ChevronDown, Copy, Paperclip, Square, ArrowUp, Check } from 'lucide-vue-next'
+import { Upload, Trash2, X, HelpCircle, ChevronDown, Paperclip, Square, ArrowUp, Check } from 'lucide-vue-next'
 import { useConfigStore } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
 import AgentPlanView from './AgentPlanView.vue'
@@ -17,7 +17,6 @@ import {
   useDocumentUpload,
   useContextStats,
   useHostProfile,
-  useAiChat,
   useAgentMode,
   useMentions
 } from '../composables'
@@ -57,8 +56,6 @@ const togglePlanExpand = (stepId: string) => {
   }
 }
 
-// 保存每个模式的滚动位置（用于模式切换时恢复）
-const scrollPositions = ref<{ agent: number; chat: number }>({ agent: 0, chat: 0 })
 
 // ==================== 初始化 Composables ====================
 
@@ -81,31 +78,8 @@ const {
 // Markdown 渲染
 const {
   renderMarkdown,
-  handleCodeBlockClick,
-  copyMessage
+  handleCodeBlockClick
 } = useMarkdown()
-
-// AI 对话（注意：这里的 currentTabId 来自上面定义的 computed）
-const {
-  inputText,
-  messages,
-  isLoading,
-  currentSystemInfo,
-  terminalSelectedText,
-  lastError,
-  // 滚动相关
-  hasNewMessage,
-  updateScrollPosition,
-  scrollToBottom,
-  scrollToBottomIfNeeded,
-  // 其他方法
-  sendMessage,
-  stopGeneration,
-  diagnoseError,
-  analyzeSelection,
-  analyzeTerminalContent,
-  quickActions
-} = useAiChat(getDocumentContext, messagesRef, currentTabId)
 
 // 主机档案
 const {
@@ -117,6 +91,57 @@ const {
   refreshHostProfile,
   autoProbeHostProfile
 } = useHostProfile()
+
+// Agent 模式（包含输入、滚动、终端状态等所有功能）
+const {
+  // 输入和终端状态
+  inputText,
+  isLoading,
+  currentSystemInfo,
+  terminalSelectedText,
+  lastError,
+  // 滚动相关
+  hasNewMessage,
+  updateScrollPosition,
+  scrollToBottom,
+  stopGeneration,
+  // Agent 执行
+  executionMode,
+  commandTimeout,
+  pendingSupplements,
+  agentState,
+  isAgentRunning,
+  pendingConfirm,
+  agentUserTask,
+  currentPlan,
+  agentTaskGroups,
+  toggleStepsCollapse,
+  isStepsCollapsed,
+  runAgent,
+  abortAgent,
+  confirmToolCall,
+  sendAgentReply,
+  getStepIcon,
+  getRiskClass,
+  // 历史对话功能
+  recentHistory,
+  isLoadingHistory,
+  showHistoryModal,
+  allHistory,
+  isLoadingAllHistory,
+  openHistoryModal,
+  closeHistoryModal,
+  loadHistoryRecord,
+  hasExistingConversation,
+  formatHistoryTime,
+  saveCurrentSession
+} = useAgentMode(
+  messagesRef,
+  getDocumentContext,
+  getHostIdByTabId,
+  autoProbeHostProfile,
+  currentTabId
+)
 
 // @ 命令（提及）
 const {
@@ -174,55 +199,10 @@ watch(mentionSelectedIndex, (newIndex) => {
   })
 })
 
-
-// Agent 模式
-const {
-  agentMode,
-  executionMode,
-  commandTimeout,
-  pendingSupplements,
-  agentState,
-  isAgentRunning,
-  pendingConfirm,
-  agentUserTask,
-  currentPlan,
-  agentTaskGroups,
-  toggleStepsCollapse,
-  isStepsCollapsed,
-  runAgent,
-  abortAgent,
-  confirmToolCall,
-  sendAgentReply,
-  getStepIcon,
-  getRiskClass,
-  // 历史对话功能
-  recentHistory,
-  isLoadingHistory,
-  showHistoryModal,
-  allHistory,
-  isLoadingAllHistory,
-  openHistoryModal,
-  closeHistoryModal,
-  loadHistoryRecord,
-  hasExistingConversation,
-  formatHistoryTime,
-  saveCurrentSession
-} = useAgentMode(
-  inputText,
-  scrollToBottom,
-  scrollToBottomIfNeeded,
-  getDocumentContext,
-  getHostIdByTabId,
-  autoProbeHostProfile,
-  currentTabId
-)
-
 // 上下文统计
 const {
   contextStats
 } = useContextStats(
-  agentMode,
-  messages,
   agentState,
   agentUserTask,
   computed(() => configStore.activeAiProfile)
@@ -238,6 +218,16 @@ const activeAiProfile = computed(() => configStore.activeAiProfile)
 const changeAiProfile = async (profileId: string) => {
   await configStore.setActiveAiProfile(profileId)
 }
+
+// ==================== 快捷提示 ====================
+
+// 快捷提示列表（点击后填入输入框）
+const quickHints = computed(() => [
+  { icon: '🔍', label: t('ai.quickHints.checkDisk'), text: t('ai.quickHints.checkDiskText') },
+  { icon: '📊', label: t('ai.quickHints.viewProcess'), text: t('ai.quickHints.viewProcessText') },
+  { icon: '📁', label: t('ai.quickHints.findLargeFiles'), text: t('ai.quickHints.findLargeFilesText') },
+  { icon: '🔧', label: t('ai.quickHints.checkService'), text: t('ai.quickHints.checkServiceText') }
+])
 
 // ==================== 历史对话相关 ====================
 
@@ -299,9 +289,7 @@ const cancelClearMessages = () => {
 const doClearMessages = async () => {
   if (currentTabId.value) {
     // 在清空之前，保存当前会话到历史记录（会话级保存）
-    if (agentMode.value) {
-      saveCurrentSession()
-    }
+    saveCurrentSession()
     terminalStore.clearAiMessages(currentTabId.value)
     terminalStore.clearAgentState(currentTabId.value, false)  // 不保留历史
     
@@ -557,54 +545,50 @@ const handleSend = async () => {
   // 清空已选择的 @ 引用
   clearMentions()
   
-  if (agentMode.value) {
-    runAgent()
-  } else {
-    sendMessage()
-  }
+  // 统一使用 Agent 模式执行任务
+  runAgent()
 }
 
 // ==================== 右键菜单监听 ====================
 
-// 监听右键菜单发送到 AI 的文本
+// 监听右键菜单发送到 AI 的文本（通过 Agent 执行分析）
 watch(() => terminalStore.pendingAiText, (text) => {
   if (text) {
-    agentMode.value = false  // 切换到对话界面
-    analyzeTerminalContent(text)
+    // 设置输入文本为分析提示
+    inputText.value = `${t('ai.analyzeContentPrompt')}\n\`\`\`\n${text}\n\`\`\``
+    // 通过 Agent 执行分析
+    runAgent()
     terminalStore.clearPendingAiText()
   }
 }, { immediate: true })
 
-// 监听模式切换，保存和恢复滚动位置
-watch(agentMode, async (newMode, oldMode) => {
-  if (!messagesRef.value || oldMode === undefined) return
-  
-  // 保存当前模式的滚动位置
-  const currentScrollTop = messagesRef.value.scrollTop
-  if (oldMode) {
-    scrollPositions.value.agent = currentScrollTop
-  } else {
-    scrollPositions.value.chat = currentScrollTop
-  }
-  
-  // 等待 DOM 更新后恢复目标模式的滚动位置
-  await nextTick()
-  if (messagesRef.value) {
-    const targetScrollTop = newMode ? scrollPositions.value.agent : scrollPositions.value.chat
-    messagesRef.value.scrollTop = targetScrollTop
-  }
-})
+// ==================== 诊断和分析（通过 Agent 执行） ====================
 
-// ==================== 诊断和分析（包装函数） ====================
-
-// 包装诊断错误函数
+// 诊断错误（通过 Agent 执行）
 const handleDiagnoseError = () => {
-  diagnoseError(agentMode)
+  const error = lastError.value
+  if (!error || isLoading.value) return
+  
+  // 清除错误提示
+  if (terminalStore.activeTab) {
+    terminalStore.clearError(terminalStore.activeTab.id)
+  }
+  
+  // 设置输入文本为诊断提示
+  inputText.value = `${t('ai.analyzeErrorPrompt')}\n\`\`\`\n${error.content}\n\`\`\``
+  // 通过 Agent 执行分析
+  runAgent()
 }
 
-// 包装分析选中内容函数
+// 分析选中内容（通过 Agent 执行）
 const handleAnalyzeSelection = () => {
-  analyzeSelection(agentMode)
+  const selection = terminalSelectedText.value
+  if (!selection || isLoading.value) return
+  
+  // 设置输入文本为分析提示
+  inputText.value = `${t('ai.analyzeOutputPrompt')}\n\`\`\`\n${selection}\n\`\`\``
+  // 通过 Agent 执行分析
+  runAgent()
 }
 
 // ==================== 拖放处理 ====================
@@ -685,9 +669,9 @@ onUnmounted(() => {
   <div 
     class="ai-panel"
     :class="{
-      'mode-strict': agentMode && executionMode === 'strict',
-      'mode-relaxed': agentMode && executionMode === 'relaxed',
-      'mode-free': agentMode && executionMode === 'free'
+      'mode-strict': executionMode === 'strict',
+      'mode-relaxed': executionMode === 'relaxed',
+      'mode-free': executionMode === 'free'
     }"
     @dragenter="handleDragEnter"
     @dragover="handleDragOver"
@@ -737,27 +721,6 @@ onUnmounted(() => {
     </div>
 
     <template v-else>
-      <!-- 模式切换 -->
-      <div class="mode-switcher">
-        <button 
-          class="mode-btn" 
-          :class="{ active: agentMode, 'needs-attention': !agentMode && pendingConfirm }"
-          :title="!agentMode && pendingConfirm ? t('ai.pendingConfirmHint') : t('ai.agentModeTitle')"
-          @click="agentMode = true"
-        >
-          🤖 {{ t('ai.modeAgent') }}
-          <span v-if="!agentMode && pendingConfirm" class="attention-badge">!</span>
-        </button>
-        <button 
-          class="mode-btn" 
-          :class="{ active: !agentMode }"
-          :title="t('ai.chatModeTitle')"
-          @click="agentMode = false"
-        >
-          💬 {{ t('ai.modeChat') }}
-        </button>
-      </div>
-
       <!-- 自由模式确认对话框 -->
       <div v-if="showFreeModeConfirm" class="free-mode-confirm-overlay">
         <div class="free-mode-confirm-dialog">
@@ -875,7 +838,7 @@ onUnmounted(() => {
           </div>
         </div>
         <!-- Agent 模式设置 -->
-        <div v-if="agentMode" class="agent-settings">
+        <div class="agent-settings">
           <!-- 超时设置 -->
           <div class="timeout-setting" :title="t('ai.timeout')">
             <span class="timeout-label">{{ t('ai.timeout') }}</span>
@@ -945,21 +908,8 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <!-- 快捷操作（仅对话模式且无对话内容时显示） -->
-      <div v-if="!agentMode && messages.length === 0" class="quick-actions">
-        <button
-          v-for="action in quickActions"
-          :key="action.label"
-          class="quick-action-btn"
-          @click="action.action"
-        >
-          <span class="action-icon">{{ action.icon }}</span>
-          <span>{{ action.label }}</span>
-        </button>
-      </div>
-
       <!-- Plan 固定顶部区域 -->
-      <div v-if="currentPlan && agentMode" class="plan-sticky-header">
+      <div v-if="currentPlan" class="plan-sticky-header">
         <AgentPlanView 
           :plan="currentPlan" 
           :compact="!planExpanded" 
@@ -969,28 +919,8 @@ onUnmounted(() => {
 
       <!-- 消息列表 -->
       <div ref="messagesRef" class="ai-messages" @click="handleCodeBlockClick" @scroll="updateScrollPosition">
-        <div v-if="messages.length === 0 && !agentMode" class="ai-welcome">
-          <p>👋 {{ t('ai.welcome.greeting') }}</p>
-          <p class="welcome-section-title">💬 {{ t('ai.welcome.directChat') }}</p>
-          <p class="welcome-desc">{{ t('ai.welcome.directChatDesc') }}</p>
-          
-          <p class="welcome-section-title">🚀 {{ t('ai.welcome.quickFeatures') }}</p>
-          <ul>
-            <li><strong>{{ t('ai.welcome.explainCommand') }}</strong> - {{ t('ai.welcome.explainCommandDesc') }}</li>
-            <li><strong>{{ t('ai.welcome.errorDiagnose') }}</strong> - {{ t('ai.welcome.errorDiagnoseDesc') }}</li>
-            <li><strong>{{ t('ai.welcome.generateCommand') }}</strong> - {{ t('ai.welcome.generateCommandDesc') }}</li>
-            <li><strong>{{ t('ai.welcome.analyzeOutput') }}</strong> - {{ t('ai.welcome.analyzeOutputDesc') }}</li>
-          </ul>
-
-          <p class="welcome-section-title">✨ {{ t('ai.welcome.usageTips') }}</p>
-          <ul>
-            <li>{{ t('ai.welcome.tip1') }}</li>
-            <li>{{ t('ai.welcome.tip2') }}</li>
-            <li>{{ t('ai.welcome.tip3') }}</li>
-            <li>{{ t('ai.welcome.tip4') }}</li>
-          </ul>
-        </div>
-        <div v-if="agentMode && !agentUserTask" class="ai-welcome">
+        <!-- 欢迎页（无任务且无历史对话时显示） -->
+        <div v-if="!agentUserTask && agentTaskGroups.length === 0" class="ai-welcome">
           <p>🤖 {{ t('ai.agentWelcome.enabled') }}</p>
 
           <p class="welcome-section-title">💡 {{ t('ai.agentWelcome.whatIsAgent') }}</p>
@@ -1024,6 +954,20 @@ onUnmounted(() => {
             <li>{{ t('ai.agentWelcome.caution1') }}</li>
             <li>{{ t('ai.agentWelcome.caution2') }}</li>
           </ul>
+
+          <!-- 快捷提示 -->
+          <p class="welcome-section-title">💡 {{ t('ai.quickHints.title') }}</p>
+          <div class="quick-hints">
+            <button 
+              v-for="hint in quickHints" 
+              :key="hint.text"
+              class="quick-hint-btn"
+              @click="inputText = hint.text"
+            >
+              <span class="hint-icon">{{ hint.icon }}</span>
+              <span class="hint-text">{{ hint.label }}</span>
+            </button>
+          </div>
 
           <!-- 最近对话历史 -->
           <div class="recent-history-section">
@@ -1099,33 +1043,8 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-        <!-- 普通对话模式的消息 -->
-        <template v-if="!agentMode">
-        <div
-          v-for="msg in messages"
-          :key="msg.id"
-          class="message"
-          :class="msg.role"
-        >
-          <div class="message-wrapper">
-            <div class="message-content">
-              <div v-if="msg.role === 'assistant'" v-html="renderMarkdown(msg.content)" class="markdown-content"></div>
-              <span v-else>{{ msg.content }}</span>
-            </div>
-            <button
-              v-if="msg.role === 'assistant' && msg.content && !msg.content.includes('中...')"
-              class="copy-btn"
-              @click="copyMessage(msg.content)"
-              :title="t('common.copy')"
-            >
-              <Copy :size="14" />
-            </button>
-            </div>
-          </div>
-        </template>
-
         <!-- Agent 任务列表（每个任务：用户任务 + 步骤块 + 最终结果） -->
-        <template v-if="agentMode && agentTaskGroups.length > 0">
+        <template v-if="agentTaskGroups.length > 0">
           <template v-for="group in agentTaskGroups" :key="group.id">
             <!-- 用户任务 -->
             <div class="message user">
@@ -1241,7 +1160,7 @@ onUnmounted(() => {
                       class="agent-thinking-indicator"
                     >
                       <span class="thinking-spinner"></span>
-                      <span class="thinking-text">{{ t('ai.thinking') }}</span>
+                      <span class="thinking-text">{{ t('ai.preparing') }}</span>
                     </div>
                   </div>
                 </div>
@@ -1283,8 +1202,8 @@ onUnmounted(() => {
           </div>
         </template>
 
-        <!-- Agent 确认对话框（融入对话流，只在 Agent 模式下显示） -->
-        <div v-if="agentMode && pendingConfirm" class="message assistant">
+        <!-- Agent 确认对话框（融入对话流） -->
+        <div v-if="pendingConfirm" class="message assistant">
           <div class="message-wrapper">
             <div class="message-content agent-confirm-inline" :class="getRiskClass(pendingConfirm.riskLevel)">
               <div class="confirm-header-inline">
@@ -1362,7 +1281,7 @@ onUnmounted(() => {
       <div class="ai-input">
         <!-- 上下文使用量迷你指示器 -->
         <div 
-          v-if="messages.length > 0 || (agentMode && agentUserTask)" 
+          v-if="agentTaskGroups.length > 0 || agentUserTask" 
           class="context-mini"
         >
           <div 
@@ -1391,7 +1310,7 @@ onUnmounted(() => {
           <textarea
             ref="mentionInputRef"
             v-model="inputText"
-            :placeholder="isAgentRunning ? t('ai.inputPlaceholderSupplement') : (agentMode ? t('ai.inputPlaceholderAgent') : t('ai.inputPlaceholder'))"
+            :placeholder="isAgentRunning ? t('ai.inputPlaceholderSupplement') : t('ai.inputPlaceholderAgent')"
             rows="1"
             @input="handleInputChange"
             @keydown="handleInputKeyDown"
@@ -1446,9 +1365,9 @@ onUnmounted(() => {
               </span>
             </div>
           </div>
-          <!-- 停止按钮 (普通对话模式) -->
+          <!-- 停止按钮 (AI 响应中，非 Agent 运行时) -->
           <button
-            v-if="isLoading && !agentMode"
+            v-if="isLoading && !isAgentRunning"
             class="btn btn-danger stop-btn"
             @click="stopGeneration"
             :title="t('ai.stopGeneration')"
@@ -1483,10 +1402,9 @@ onUnmounted(() => {
           <!-- 发送按钮 -->
           <button
             v-else
-            class="send-btn"
-            :class="{ 'send-btn-agent': agentMode }"
+            class="send-btn send-btn-agent"
             :disabled="!inputText.trim()"
-            :title="agentMode ? t('ai.executeTask') : t('ai.sendMessage')"
+            :title="t('ai.executeTask')"
             @click="handleSend"
           >
             <ArrowUp :size="18" />
@@ -2005,38 +1923,6 @@ onUnmounted(() => {
   cursor: not-allowed;
 }
 
-.quick-actions {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  padding: 12px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.quick-action-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.quick-action-btn:hover {
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  border-color: var(--accent-primary);
-}
-
-.action-icon {
-  font-size: 14px;
-}
-
 /* Plan 固定顶部区域 */
 .plan-sticky-header {
   flex-shrink: 0;
@@ -2300,6 +2186,48 @@ onUnmounted(() => {
 
 .strict-badge.free {
   background: #ef4444;
+}
+
+/* ==================== 快捷提示样式 ==================== */
+
+.quick-hints {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin: 8px 0 16px;
+}
+
+.quick-hint-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.quick-hint-btn:hover {
+  background: var(--bg-secondary);
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.quick-hint-btn .hint-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.quick-hint-btn .hint-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ==================== 历史对话列表样式 ==================== */
@@ -3311,124 +3239,6 @@ onUnmounted(() => {
 }
 
 /* ==================== Agent 模式样式 ==================== */
-
-/* 模式切换 */
-.mode-switcher {
-  display: flex;
-  padding: 8px 12px;
-  gap: 8px;
-  border-bottom: 1px solid var(--border-color);
-  animation: switcherEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
-}
-
-@keyframes switcherEnter {
-  from {
-    opacity: 0;
-    transform: translateY(-5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.mode-btn {
-  flex: 1;
-  padding: 8px 14px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  position: relative;
-  overflow: hidden;
-}
-
-.mode-btn::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.mode-btn:hover::before {
-  opacity: 1;
-}
-
-.mode-btn:hover {
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  transform: translateY(-1px);
-}
-
-.mode-btn:active {
-  transform: translateY(0) scale(0.98);
-}
-
-.mode-btn.active {
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-  color: #fff;
-  border-color: transparent;
-  box-shadow: 0 2px 10px rgba(var(--accent-rgb, 137, 180, 250), 0.3);
-}
-
-.mode-btn.active:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 15px rgba(var(--accent-rgb, 137, 180, 250), 0.4);
-}
-
-/* 需要注意的状态（有待确认操作） */
-.mode-btn.needs-attention {
-  position: relative;
-  animation: attention-pulse 1.5s ease-in-out infinite;
-  border-color: var(--warning-color, #f59e0b);
-  background: rgba(245, 158, 11, 0.15);
-  color: var(--warning-color, #f59e0b);
-}
-
-.mode-btn.needs-attention:hover {
-  background: rgba(245, 158, 11, 0.25);
-}
-
-@keyframes attention-pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
-  }
-  50% {
-    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
-  }
-}
-
-.attention-badge {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  width: 16px;
-  height: 16px;
-  background: var(--warning-color, #f59e0b);
-  color: #fff;
-  font-size: 10px;
-  font-weight: bold;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: badge-bounce 1s ease-in-out infinite;
-}
-
-@keyframes badge-bounce {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.2);
-  }
-}
 
 /* Agent 设置区域 */
 .agent-settings {

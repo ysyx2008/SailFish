@@ -655,11 +655,6 @@ export default {
     noConfig: '尚未配置 AI 模型',
     goToSettings: '前往设置',
     switchModel: '切换 AI 模型',
-    modeAgent: '助手',
-    modeChat: '对话',
-    agentModeTitle: '助手模式：AI 自主执行命令完成任务',
-    chatModeTitle: '对话模式：与 AI 进行问答交流',
-    pendingConfirmHint: '有操作需要确认，点击切换到助手模式',
     timeout: '超时',
     strict: '严格',
     relaxed: '宽松',
@@ -704,7 +699,6 @@ export default {
     closeError: '关闭错误提示',
     selectedContent: '已选中终端内容',
     aiAnalyze: 'AI 分析',
-    thinking: '让我想想...',
     preparing: '正在准备...',
     executing: '执行中...',
     agentStarting: '助手启动中...',
@@ -794,19 +788,17 @@ export default {
       confirmLoadHistory: '当前会话已有对话记录，加载历史将覆盖现有内容。确定要继续吗？',
       historyLoaded: '已加载历史对话，可以继续提问'
     },
-    quickActions: {
-      explainCommand: '解释命令',
-      generateCommand: '生成命令',
-      analyzeError: '分析错误',
-      systemStatus: '系统状态',
-      findFiles: '查找文件',
-      viewProcesses: '查看进程',
-      diskSpace: '磁盘空间'
-    },
-    quickActionPrompts: {
-      findFiles: '查找当前目录下所有的日志文件',
-      viewProcesses: '查看占用内存最多的前10个进程',
-      diskSpace: '查看磁盘空间使用情况'
+    // 快捷提示
+    quickHints: {
+      title: '快捷任务（点击填入）',
+      checkDisk: '检查磁盘空间',
+      checkDiskText: '检查磁盘使用情况，如果超过 80% 就列出最大的文件',
+      viewProcess: '查看进程状态',
+      viewProcessText: '显示占用内存最多的前 10 个进程',
+      findLargeFiles: '查找大文件',
+      findLargeFilesText: '在当前目录找出大于 100MB 的文件',
+      checkService: '检查服务状态',
+      checkServiceText: '检查 nginx/docker 等常用服务的运行状态'
     },
     toolNames: {
       execute_command: '执行命令',
@@ -820,13 +812,10 @@ export default {
     askingDefault: '默认：',
     askingDefaultHint: '（直接按回车使用默认值）',
     confirmMultiSelect: '确认选择',
-    // 分析功能相关
+    // 分析功能相关（通过 Agent 执行）
     analyzeErrorPrompt: '请帮我分析这个错误：',
     analyzeOutputPrompt: '请帮我分析这段终端输出：',
-    analyzeContentPrompt: '请帮我分析这段终端内容：',
-    diagnosing: '诊断中...',
-    analyzing: '分析中...',
-    errorPrefix: '错误：'
+    analyzeContentPrompt: '请帮我分析这段终端内容：'
   },
 
   // @ 命令（提及）
