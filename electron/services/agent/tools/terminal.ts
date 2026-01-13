@@ -19,15 +19,36 @@ export async function getTerminalContext(
 ): Promise<ToolResult> {
   const lines = Math.min(Math.max((args.lines as number) || 50, 1), 500)
   
+  // 添加工具调用步骤
+  executor.addStep({
+    type: 'tool_call',
+    content: t('context.getting_output', { lines }),
+    toolName: 'get_terminal_context',
+    toolArgs: { lines },
+    riskLevel: 'safe'
+  })
+  
   let bufferLines: string[] | null = null
   try {
     bufferLines = await getLastNLinesFromBuffer(ptyId, lines, 3000)
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : t('error.unknown')
+    executor.addStep({
+      type: 'tool_result',
+      content: t('error.get_terminal_output_failed', { error: errorMsg }),
+      toolName: 'get_terminal_context',
+      toolResult: errorMsg
+    })
     return { success: false, output: '', error: t('error.get_terminal_output_failed', { error: errorMsg }) }
   }
   
   if (!bufferLines || bufferLines.length === 0) {
+    executor.addStep({
+      type: 'tool_result',
+      content: t('error.terminal_output_empty'),
+      toolName: 'get_terminal_context',
+      toolResult: t('error.terminal_output_empty')
+    })
     return { success: true, output: t('error.terminal_output_empty') }
   }
   

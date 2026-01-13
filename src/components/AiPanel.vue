@@ -660,6 +660,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
     if (showHistoryModal.value) {
       e.preventDefault()
+      e.stopImmediatePropagation() // 阻止事件传播，防止同时关闭其他弹窗
       closeHistoryModal()
     }
   }

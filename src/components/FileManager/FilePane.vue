@@ -135,31 +135,37 @@ const handleKeyDown = (e: KeyboardEvent) => {
     // 按优先级关闭弹窗/菜单
     if (contextMenu.value.show) {
       e.preventDefault()
+      e.stopImmediatePropagation() // 阻止事件传播，防止同时关闭其他弹窗
       closeContextMenu()
       return
     }
     if (showBookmarkDropdown.value) {
       e.preventDefault()
+      e.stopImmediatePropagation()
       closeBookmarkDropdown()
       return
     }
     if (showNewFolderDialog.value) {
       e.preventDefault()
+      e.stopImmediatePropagation()
       showNewFolderDialog.value = false
       return
     }
     if (showRenameDialog.value) {
       e.preventDefault()
+      e.stopImmediatePropagation()
       showRenameDialog.value = false
       return
     }
     if (showPreviewDialog.value) {
       e.preventDefault()
+      e.stopImmediatePropagation()
       showPreviewDialog.value = false
       return
     }
     if (showAddBookmarkDialog.value) {
       e.preventDefault()
+      e.stopImmediatePropagation()
       showAddBookmarkDialog.value = false
       return
     }

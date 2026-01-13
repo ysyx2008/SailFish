@@ -342,6 +342,7 @@ const searchInputRef = ref<HTMLInputElement | null>(null)
 // ESC 关闭处理
 const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
+    e.stopImmediatePropagation() // 阻止事件传播到父组件，防止同时关闭设置界面
     emit('close')
   }
 }

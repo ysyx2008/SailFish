@@ -112,6 +112,7 @@ const handleKeydown = (e: KeyboardEvent) => {
   
   if (e.key === 'Escape') {
     e.preventDefault()
+    e.stopImmediatePropagation() // 阻止事件传播到父组件，防止同时关闭其他弹窗
     handleClose()
   }
 }

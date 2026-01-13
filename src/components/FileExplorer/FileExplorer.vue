@@ -103,17 +103,24 @@ onUnmounted(() => {
 // ESC 关闭
 const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
+    // 按优先级关闭弹窗，并阻止事件传播
     if (contextMenu.value.show) {
+      e.stopImmediatePropagation()
       contextMenu.value.show = false
     } else if (showNewFolderDialog.value) {
+      e.stopImmediatePropagation()
       showNewFolderDialog.value = false
     } else if (showRenameDialog.value) {
+      e.stopImmediatePropagation()
       showRenameDialog.value = false
     } else if (showPreviewDialog.value) {
+      e.stopImmediatePropagation()
       showPreviewDialog.value = false
     } else if (showPropertiesDialog.value) {
+      e.stopImmediatePropagation()
       showPropertiesDialog.value = false
     } else {
+      e.stopImmediatePropagation()
       emit('close')
     }
   }
