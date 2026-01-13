@@ -2,6 +2,9 @@
 import { ref, computed } from 'vue'
 import { Folder, FileText, Upload } from 'lucide-vue-next'
 import type { SftpFileInfo } from '../../composables/useSftp'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   files: SftpFileInfo[]
@@ -153,16 +156,16 @@ const getFileIcon = (file: SftpFileInfo) => {
     <!-- 表头 -->
     <div class="file-list-header">
       <div class="col col-name" @click="toggleSort('name')">
-        名称 {{ getSortIcon('name') }}
+        {{ t('fileExplorer.name') }} {{ getSortIcon('name') }}
       </div>
       <div class="col col-size" @click="toggleSort('size')">
-        大小 {{ getSortIcon('size') }}
+        {{ t('fileExplorer.size') }} {{ getSortIcon('size') }}
       </div>
       <div class="col col-time" @click="toggleSort('modifyTime')">
-        修改时间 {{ getSortIcon('modifyTime') }}
+        {{ t('fileExplorer.modifyTime') }} {{ getSortIcon('modifyTime') }}
       </div>
       <div class="col col-perms" @click="toggleSort('permissions')">
-        权限 {{ getSortIcon('permissions') }}
+        {{ t('fileExplorer.permissions') }} {{ getSortIcon('permissions') }}
       </div>
     </div>
 
@@ -171,14 +174,14 @@ const getFileIcon = (file: SftpFileInfo) => {
       <!-- 加载中 -->
       <div v-if="loading" class="loading-state">
         <div class="spinner"></div>
-        <span>加载中...</span>
+        <span>{{ t('fileExplorer.loadingText') }}</span>
       </div>
 
       <!-- 空目录 -->
       <div v-else-if="files.length === 0" class="empty-state">
         <Folder :size="48" :stroke-width="1.5" />
-        <p>目录为空</p>
-        <p class="tip">拖拽文件到此处上传</p>
+        <p>{{ t('fileExplorer.directoryEmpty') }}</p>
+        <p class="tip">{{ t('fileExplorer.dragHint') }}</p>
       </div>
 
       <!-- 文件项 -->
@@ -210,7 +213,7 @@ const getFileIcon = (file: SftpFileInfo) => {
     <div v-if="isDragOver" class="drop-overlay">
       <div class="drop-hint">
         <Upload :size="48" />
-        <p>释放以上传文件</p>
+        <p>{{ t('fileExplorer.dropHint') }}</p>
       </div>
     </div>
   </div>

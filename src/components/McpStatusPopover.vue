@@ -83,15 +83,15 @@ const statusIcon = computed(() => {
 // 计算属性：状态提示文字
 const statusTooltip = computed(() => {
   if (enabledCount.value === 0) {
-    return '未配置 MCP 服务器'
+    return t('mcp.noServersConfigured')
   }
   if (connectedCount.value === enabledCount.value) {
-    return `MCP: 全部 ${connectedCount.value} 个服务器已连接`
+    return `MCP: ${connectedCount.value} ${t('mcp.servers')} ${t('mcp.connected')}`
   }
   if (connectedCount.value === 0) {
-    return `MCP: ${enabledCount.value} 个服务器未连接`
+    return `MCP: ${enabledCount.value} ${t('mcp.servers')} ${t('mcp.disconnected')}`
   }
-  return `MCP: ${connectedCount.value}/${enabledCount.value} 个服务器已连接`
+  return `MCP: ${connectedCount.value}/${enabledCount.value} ${t('mcp.connected')}`
 })
 
 // 获取服务器状态

@@ -170,13 +170,13 @@ const handleDownload = (file: SftpFileInfo) => {
 
 // 删除
 const handleDelete = async (file: SftpFileInfo) => {
-  const type = file.isDirectory ? '文件夹' : '文件'
+  const type = file.isDirectory ? t('fileExplorer.folder') : t('fileExplorer.file')
   const confirmed = await showConfirm({
-    title: `删除${type}`,
-    message: `确定要删除此${type}吗？此操作无法撤销。`,
+    title: t('fileExplorer.deleteTitle', { type }),
+    message: t('fileExplorer.deleteMessage', { type }),
     type: 'danger',
-    confirmText: '删除',
-    cancelText: '取消',
+    confirmText: t('fileExplorer.delete'),
+    cancelText: t('fileExplorer.cancel'),
     fileInfo: {
       name: file.name,
       type,
@@ -193,9 +193,9 @@ const handleDelete = async (file: SftpFileInfo) => {
     }
     
     if (success) {
-      toast.success(`${type}已删除`)
+      toast.success(t('fileExplorer.deleted', { type }))
     } else {
-      toast.error(`删除${type}失败`)
+      toast.error(t('fileExplorer.deleteFailed', { type }))
     }
   }
 }
@@ -214,9 +214,9 @@ const confirmRename = async () => {
       showRenameDialog.value = false
       renameFile.value = null
       renameName.value = ''
-      toast.success('重命名成功')
+      toast.success(t('fileExplorer.renameSuccess'))
     } else {
-      toast.error('重命名失败')
+      toast.error(t('fileExplorer.renameFailed'))
     }
   }
 }
@@ -233,9 +233,9 @@ const confirmNewFolder = async () => {
     if (success) {
       showNewFolderDialog.value = false
       newFolderName.value = ''
-      toast.success('文件夹已创建')
+      toast.success(t('fileExplorer.folderCreated'))
     } else {
-      toast.error('创建文件夹失败')
+      toast.error(t('fileExplorer.folderCreateFailed'))
     }
   }
 }
@@ -248,7 +248,7 @@ const handlePreview = async (file: SftpFileInfo) => {
   showPreviewDialog.value = true
 
   const content = await readTextFile(file.path)
-  previewContent.value = content || '无法读取文件内容'
+  previewContent.value = content || t('fileExplorer.cannotReadFile')
   previewLoading.value = false
 }
 
@@ -295,13 +295,13 @@ const applyChmod = async (path: string, mode: string) => {
   try {
     const result = await window.electronAPI.sftp.chmod(sessionId.value, path, mode)
     if (result.success) {
-      toast.success('权限已修改')
+      toast.success(t('fileExplorer.permissionChanged'))
       await refresh()
     } else {
-      toast.error(result.error || '修改权限失败')
+      toast.error(result.error || t('fileExplorer.permissionChangeFailed'))
     }
   } catch (e) {
-    toast.error('修改权限失败')
+    toast.error(t('fileExplorer.permissionChangeFailed'))
   }
 }
 
@@ -309,7 +309,7 @@ const applyChmod = async (path: string, mode: string) => {
 const handleCancelTransfer = async (transferId: string) => {
   const success = await cancelTransfer(transferId)
   if (success) {
-    toast.info('传输已取消')
+    toast.info(t('fileExplorer.transferCancelled'))
   }
 }
 
@@ -409,7 +409,7 @@ const handleClearAllTransfers = () => {
             </button>
             <button class="btn btn-sm btn-primary" @click="selectAndUpload">
               <Upload :size="14" />
-              上传
+              {{ t('fileExplorer.upload') }}
             </button>
           </div>
         </div>
@@ -467,7 +467,7 @@ const handleClearAllTransfers = () => {
       <div v-if="showNewFolderDialog" class="dialog-overlay" @click.self="showNewFolderDialog = false">
         <div class="dialog">
           <div class="dialog-header">
-            <h3>新建文件夹</h3>
+            <h3>{{ t('fileExplorer.newFolderTitle') }}</h3>
           </div>
           <div class="dialog-body">
             <input
@@ -475,14 +475,14 @@ const handleClearAllTransfers = () => {
               v-model="newFolderName"
               type="text"
               class="input"
-              placeholder="文件夹名称"
+              :placeholder="t('fileExplorer.folderNamePlaceholder')"
               @keyup.enter="confirmNewFolder"
             />
           </div>
           <div class="dialog-footer">
-            <button class="btn" @click="showNewFolderDialog = false">取消</button>
+            <button class="btn" @click="showNewFolderDialog = false">{{ t('fileExplorer.cancel') }}</button>
             <button class="btn btn-primary" @click="confirmNewFolder" :disabled="!newFolderName.trim()">
-              创建
+              {{ t('fileExplorer.create') }}
             </button>
           </div>
         </div>
@@ -492,7 +492,7 @@ const handleClearAllTransfers = () => {
       <div v-if="showRenameDialog" class="dialog-overlay" @click.self="showRenameDialog = false">
         <div class="dialog">
           <div class="dialog-header">
-            <h3>重命名</h3>
+            <h3>{{ t('fileExplorer.renameTitle') }}</h3>
           </div>
           <div class="dialog-body">
             <input
@@ -500,14 +500,14 @@ const handleClearAllTransfers = () => {
               v-model="renameName"
               type="text"
               class="input"
-              placeholder="新名称"
+              :placeholder="t('fileExplorer.newNamePlaceholder')"
               @keyup.enter="confirmRename"
             />
           </div>
           <div class="dialog-footer">
-            <button class="btn" @click="showRenameDialog = false">取消</button>
+            <button class="btn" @click="showRenameDialog = false">{{ t('fileExplorer.cancel') }}</button>
             <button class="btn btn-primary" @click="confirmRename" :disabled="!renameName.trim()">
-              确定
+              {{ t('fileExplorer.confirm') }}
             </button>
           </div>
         </div>
@@ -525,7 +525,7 @@ const handleClearAllTransfers = () => {
           <div class="dialog-body preview-body">
             <div v-if="previewLoading" class="preview-loading">
               <div class="spinner"></div>
-              <span>加载中...</span>
+              <span>{{ t('fileExplorer.loading') }}</span>
             </div>
             <pre v-else class="preview-content">{{ previewContent }}</pre>
           </div>

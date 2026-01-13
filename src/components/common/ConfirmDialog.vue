@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { AlertTriangle, AlertCircle, HelpCircle } from 'lucide-vue-next'
+
+const { t } = useI18n()
 
 export interface ConfirmDialogOptions {
   title: string
@@ -111,20 +114,20 @@ const getIcon = () => {
             <!-- 文件信息 -->
             <div v-if="options.fileInfo" class="file-info">
               <div v-if="options.fileInfo.name" class="file-info-item">
-                <span class="label">名称</span>
+                <span class="label">{{ t('common.name') }}</span>
                 <span class="value" :title="options.fileInfo.name">{{ options.fileInfo.name }}</span>
               </div>
               <div v-if="options.fileInfo.type" class="file-info-item">
-                <span class="label">类型</span>
+                <span class="label">{{ t('common.type') }}</span>
                 <span class="value">{{ options.fileInfo.type }}</span>
               </div>
               <div v-if="options.fileInfo.size" class="file-info-item">
-                <span class="label">大小</span>
+                <span class="label">{{ t('common.size') }}</span>
                 <span class="value">{{ options.fileInfo.size }}</span>
               </div>
               <div v-if="options.fileInfo.count" class="file-info-item">
-                <span class="label">数量</span>
-                <span class="value">{{ options.fileInfo.count }} 个项目</span>
+                <span class="label">{{ t('common.count') }}</span>
+                <span class="value">{{ options.fileInfo.count }} {{ t('common.items') }}</span>
               </div>
             </div>
 
@@ -138,7 +141,7 @@ const getIcon = () => {
                 class="btn btn-cancel" 
                 @click="handleCancel"
               >
-                {{ options.cancelText || '取消' }}
+                {{ options.cancelText || t('common.cancel') }}
               </button>
               <button 
                 ref="confirmBtnRef"
@@ -146,7 +149,7 @@ const getIcon = () => {
                 :class="options.type || 'default'"
                 @click="handleConfirm"
               >
-                {{ options.confirmText || '确定' }}
+                {{ options.confirmText || t('common.confirm') }}
               </button>
             </div>
           </div>

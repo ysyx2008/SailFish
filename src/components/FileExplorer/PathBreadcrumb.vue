@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, nextTick, watch } from 'vue'
 import { Pencil } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   path: string
@@ -115,7 +118,7 @@ watch(() => props.path, (newPath) => {
         </template>
       </div>
       <!-- 空白区域用于点击进入编辑模式 -->
-      <div class="edit-hint" :title="'点击编辑路径'">
+      <div class="edit-hint" :title="t('fileExplorer.editPathHint')">
         <Pencil :size="12" />
       </div>
     </template>

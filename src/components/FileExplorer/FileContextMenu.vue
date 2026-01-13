@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Download, Eye, Clipboard, Copy, Pencil, Trash2, Lock, Info, FolderPlus, RefreshCw } from 'lucide-vue-next'
 import type { SftpFileInfo } from '../../composables/useSftp'
 import { toast } from '../../composables/useToast'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   show: boolean
@@ -125,9 +128,9 @@ const handleCopyPath = async () => {
   if (props.file) {
     try {
       await navigator.clipboard.writeText(props.file.path)
-      toast.success('路径已复制')
+      toast.success(t('fileExplorer.pathCopied'))
     } catch (e) {
-      toast.error('复制失败')
+      toast.error(t('fileExplorer.copyFailed'))
     }
     emit('close')
   }
@@ -138,9 +141,9 @@ const handleCopyName = async () => {
   if (props.file) {
     try {
       await navigator.clipboard.writeText(props.file.name)
-      toast.success('文件名已复制')
+      toast.success(t('fileExplorer.nameCopied'))
     } catch (e) {
-      toast.error('复制失败')
+      toast.error(t('fileExplorer.copyFailed'))
     }
     emit('close')
   }
@@ -193,7 +196,7 @@ const canPreview = (file: SftpFileInfo | null): boolean => {
           @click="handleDownload"
         >
           <Download :size="14" />
-          <span>下载</span>
+          <span>{{ t('fileExplorer.download') }}</span>
         </button>
 
         <button
@@ -202,7 +205,7 @@ const canPreview = (file: SftpFileInfo | null): boolean => {
           @click="handlePreview"
         >
           <Eye :size="14" />
-          <span>预览</span>
+          <span>{{ t('fileExplorer.preview') }}</span>
         </button>
 
         <div class="menu-divider"></div>
@@ -210,25 +213,25 @@ const canPreview = (file: SftpFileInfo | null): boolean => {
         <!-- 复制操作 -->
         <button class="menu-item" @click="handleCopyPath">
           <Clipboard :size="14" />
-          <span>复制路径</span>
+          <span>{{ t('fileExplorer.copyPath') }}</span>
         </button>
 
         <button class="menu-item" @click="handleCopyName">
           <Copy :size="14" />
-          <span>复制文件名</span>
+          <span>{{ t('fileExplorer.copyFileName') }}</span>
         </button>
 
         <div class="menu-divider"></div>
 
         <button class="menu-item" @click="handleRename">
           <Pencil :size="14" />
-          <span>重命名</span>
+          <span>{{ t('fileExplorer.rename') }}</span>
           <span class="shortcut">F2</span>
         </button>
 
         <button class="menu-item danger" @click="handleDelete">
           <Trash2 :size="14" />
-          <span>删除</span>
+          <span>{{ t('fileExplorer.delete') }}</span>
           <span class="shortcut">Del</span>
         </button>
 
@@ -237,12 +240,12 @@ const canPreview = (file: SftpFileInfo | null): boolean => {
         <!-- 属性和权限 -->
         <button class="menu-item" @click="handleChmod">
           <Lock :size="14" />
-          <span>修改权限</span>
+          <span>{{ t('fileExplorer.chmod') }}</span>
         </button>
 
         <button class="menu-item" @click="handleProperties">
           <Info :size="14" />
-          <span>属性</span>
+          <span>{{ t('fileExplorer.properties') }}</span>
         </button>
 
         <div class="menu-divider"></div>
@@ -251,12 +254,12 @@ const canPreview = (file: SftpFileInfo | null): boolean => {
       <!-- 通用操作 -->
       <button class="menu-item" @click="handleNewFolder">
         <FolderPlus :size="14" />
-        <span>新建文件夹</span>
+        <span>{{ t('fileExplorer.newFolder') }}</span>
       </button>
 
       <button class="menu-item" @click="handleRefresh">
         <RefreshCw :size="14" />
-        <span>刷新</span>
+        <span>{{ t('fileExplorer.refresh') }}</span>
         <span class="shortcut">F5</span>
       </button>
     </div>

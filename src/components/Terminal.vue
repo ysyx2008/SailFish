@@ -848,16 +848,11 @@ const handleReconnect = async () => {
         if (!isDisposed && terminal) {
           terminalStore.updateConnectionStatus(props.tabId, false)
           sshDisconnected.value = true
-          const reasonMap: Record<string, string> = {
-            'closed': '连接已关闭',
-            'error': '连接错误',
-            'stream_closed': '数据流已关闭',
-            'jump_host_closed': '跳板机连接已断开'
-          }
-          const reasonText = reasonMap[event.reason] || event.reason
+          const reasonKey = `terminal.disconnectReasons.${event.reason}`
+          const reasonText = t(reasonKey) || event.reason
           const errorText = event.error ? `: ${event.error}` : ''
-          terminal.write(`\r\n\x1b[31m[SSH 连接断开] ${reasonText}${errorText}\x1b[0m\r\n`)
-          terminal.write(`\x1b[33m点击右下角按钮或按 Ctrl+Shift+R 重新连接\x1b[0m\r\n`)
+          terminal.write(`\r\n\x1b[31m${t('terminal.sshDisconnected')} ${reasonText}${errorText}\x1b[0m\r\n`)
+          terminal.write(`\x1b[33m${t('terminal.reconnectHint')}\x1b[0m\r\n`)
         }
       })
       
@@ -869,9 +864,9 @@ const handleReconnect = async () => {
     }
   } catch (error) {
     // 在终端显示错误消息
-    const errorMsg = error instanceof Error ? error.message : '未知错误'
-    terminal?.write(`\r\n\x1b[31m[重连失败] ${errorMsg}\x1b[0m\r\n`)
-    terminal?.write(`\x1b[33m点击右下角按钮或按 Ctrl+Shift+R 重试\x1b[0m\r\n`)
+    const errorMsg = error instanceof Error ? error.message : t('ai.unknownError')
+    terminal?.write(`\r\n\x1b[31m[${t('terminal.reconnectFailed')}] ${errorMsg}\x1b[0m\r\n`)
+    terminal?.write(`\x1b[33m${t('terminal.reconnectHint')}\x1b[0m\r\n`)
   } finally {
     isReconnecting.value = false
   }
@@ -1206,7 +1201,7 @@ const executeWithCard = async (
         updateCardStatus(cardId, {
           state: hasError ? 'error' : 'success',
           duration,
-          output: hasError ? errors[0].content : (output || '完成'),
+          output: hasError ? errors[0].content : (output || t('terminal.commandDone')),
           error: hasError ? errors[0].content : undefined
         })
         
@@ -1219,7 +1214,7 @@ const executeWithCard = async (
         updateCardStatus(cardId, {
           state: 'error',
           duration,
-          error: `命令执行超时 (${timeout / 1000}s)`
+          error: t('terminal.commandTimeout', { seconds: timeout / 1000 })
         })
         resolve({ success: false, duration })
         return
@@ -1286,7 +1281,7 @@ defineExpose({
       >
         <span v-if="isReconnecting" class="reconnect-spinner">⟳</span>
         <span v-else>🔌</span>
-        {{ isReconnecting ? '连接中...' : '重新连接' }}
+        {{ isReconnecting ? t('terminal.reconnecting') : t('terminal.reconnect') }}
       </button>
     </div>
   </div>

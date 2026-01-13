@@ -48,7 +48,8 @@ export default {
     tip27: '会话支持分组管理，方便组织多台服务器',
     tip28: 'AI 对话支持上下文，能理解之前的对话内容',
     tip29: '可以直接询问 AI 如何使用某个命令',
-    tip30: '终端出错时会自动提示，点击即可让 AI 诊断'
+    tip30: '终端出错时会自动提示，点击即可让 AI 诊断',
+    clickToSwitchTip: '点击切换提示'
   },
 
   // 智能巡检
@@ -134,7 +135,11 @@ export default {
     noData: '暂无数据',
     confirmDelete: '确定要删除吗？',
     operationSuccess: '操作成功',
-    operationFailed: '操作失败'
+    operationFailed: '操作失败',
+    // 确认框相关
+    size: '大小',
+    count: '数量',
+    items: '个项目'
   },
 
   // 头部工具栏
@@ -1004,7 +1009,128 @@ export default {
     goBack: '后退',
     goForward: '前进',
     goUp: '上级目录',
-    goHome: '主目录'
+    goHome: '主目录',
+    // 右键菜单
+    preview: '预览',
+    copyPath: '复制路径',
+    copyFileName: '复制文件名',
+    chmod: '修改权限',
+    properties: '属性',
+    // 操作提示
+    pathCopied: '路径已复制',
+    nameCopied: '文件名已复制',
+    copyFailed: '复制失败',
+    renameSuccess: '重命名成功',
+    renameFailed: '重命名失败',
+    folderCreated: '文件夹已创建',
+    folderCreateFailed: '创建文件夹失败',
+    permissionChanged: '权限已修改',
+    permissionChangeFailed: '修改权限失败',
+    transferCancelled: '传输已取消',
+    cannotReadFile: '无法读取文件内容',
+    loading: '加载中...',
+    // 删除
+    folder: '文件夹',
+    file: '文件',
+    deleteTitle: '删除{type}',
+    deleteMessage: '确定要删除此{type}吗？此操作无法撤销。',
+    deleted: '{type}已删除',
+    deleteFailed: '删除{type}失败',
+    // 弹窗
+    newFolderTitle: '新建文件夹',
+    folderNamePlaceholder: '文件夹名称',
+    renameTitle: '重命名',
+    newNamePlaceholder: '新名称',
+    cancel: '取消',
+    create: '创建',
+    confirm: '确定',
+    // 文件列表
+    name: '名称',
+    size: '大小',
+    modifyTime: '修改时间',
+    loadingText: '加载中...',
+    directoryEmpty: '目录为空',
+    dragHint: '拖拽文件到此处上传',
+    dropHint: '释放以上传文件',
+    // 路径导航
+    editPathHint: '点击编辑路径',
+    // 属性对话框
+    propertiesTitle: '属性',
+    chmodTitle: '修改权限',
+    symlink: '符号链接',
+    directory: '目录',
+    fileType: '文件',
+    path: '路径',
+    bytes: '字节',
+    accessTime: '访问时间',
+    owner: '所有者',
+    permissionSettings: '权限设置',
+    read: '读取 (r)',
+    write: '写入 (w)',
+    execute: '执行 (x)',
+    ownerPerm: '所有者',
+    groupPerm: '用户组',
+    otherPerm: '其他用户',
+    octal: '八进制',
+    symbolic: '符号表示',
+    applyPermission: '应用权限',
+    close: '关闭',
+    copyPathTitle: '复制路径',
+    // 文件类型
+    fileTypes: {
+      image: '图片',
+      textFile: '文本文件',
+      markdown: 'Markdown 文档',
+      pdf: 'PDF 文档',
+      word: 'Word 文档',
+      javascript: 'JavaScript',
+      typescript: 'TypeScript',
+      vue: 'Vue 组件',
+      reactJsx: 'React JSX',
+      reactTsx: 'React TSX',
+      python: 'Python',
+      go: 'Go',
+      rust: 'Rust',
+      java: 'Java',
+      cpp: 'C++',
+      c: 'C',
+      header: 'C/C++ 头文件',
+      json: 'JSON',
+      xml: 'XML',
+      yaml: 'YAML',
+      toml: 'TOML',
+      config: '配置文件',
+      zip: 'ZIP 压缩包',
+      tar: 'TAR 归档',
+      gz: 'GZ 压缩包',
+      sevenZ: '7z 压缩包',
+      rar: 'RAR 压缩包',
+      shell: 'Shell 脚本',
+      bash: 'Bash 脚本',
+      zsh: 'Zsh 脚本',
+      log: '日志文件',
+      css: 'CSS 样式表',
+      html: 'HTML 文档',
+      unknown: '{ext} 文件'
+    },
+    // 传输队列
+    transfer: {
+      queue: '传输队列',
+      clearCompleted: '清除已完成',
+      clearAll: '清除全部',
+      remaining: '剩余',
+      cancelTransfer: '取消传输',
+      retryTransfer: '重试',
+      pending: '等待中',
+      transferring: '传输中',
+      completed: '已完成',
+      failed: '失败',
+      cancelled: '已取消',
+      seconds: '秒',
+      minutes: '分钟',
+      hours: '小时',
+      hoursMinutes: '{hours}小时{mins}分钟'
+    }
   },
 
   // 文件管理器（双窗格）
@@ -1220,6 +1346,8 @@ export default {
     cannotReconnect: '无法重连',
     cannotReconnectHint: '该连接未保存为会话，请从会话管理器重新连接',
     reconnectFailed: '重连失败',
+    commandDone: '完成',
+    commandTimeout: '命令执行超时 ({seconds}s)',
     localTerminal: '本地终端',
     sshDisconnected: '[SSH 连接断开]',
     disconnectReasons: {
@@ -1286,9 +1414,10 @@ export default {
     // 标签页
     tabDocuments: '文档',
     tabMemories: '主机记忆',
-    // 导入加密数据提示
+    // 导入/导出加密数据提示
     importEncryptedHint: '导入的知识库包含加密数据，请前往设置页面使用原密码解锁。',
     importPasswordHint: '如果导入的知识库设置了密码，您需要使用原来的密码才能访问加密数据。',
+    exportEncryptedHint: '导出的数据包含加密内容，在其他设备导入时需要使用相同的密码解锁。',
     unknownError: '未知错误',
     selectAll: '全选',
     selected: '已选 {count} 个',
