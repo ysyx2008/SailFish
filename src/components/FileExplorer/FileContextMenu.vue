@@ -66,6 +66,7 @@ const handleClickOutside = (e: MouseEvent) => {
 // ESC 关闭
 const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
+    e.stopImmediatePropagation() // 阻止事件传播到父组件，防止同时关闭其他弹窗
     emit('close')
   }
 }

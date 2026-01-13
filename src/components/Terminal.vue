@@ -410,12 +410,15 @@ onMounted(async () => {
   
   unsubscribeScreenRequest = window.electronAPI.screen.onRequestLastNLines((data) => {
     // 检查是否是发给当前终端的请求
+    console.log(`[Terminal] 收到获取终端输出请求: requestPtyId=${data.ptyId}, myPtyId=${props.ptyId}, match=${data.ptyId === props.ptyId}, screenService=${!!screenService}, isDisposed=${isDisposed}`)
     if (data.ptyId === props.ptyId && screenService && !isDisposed) {
       try {
         const lines = screenService.getLastNLines(data.lines)
+        console.log(`[Terminal] 终端输出响应: lines=${lines.length}`)
         window.electronAPI.screen.responseLastNLines(data.requestId, lines)
       } catch (e) {
         // 出错时返回 null，让主进程回退到其他方式
+        console.error(`[Terminal] 获取终端输出异常:`, e)
         window.electronAPI.screen.responseLastNLines(data.requestId, null)
       }
     }

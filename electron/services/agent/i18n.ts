@@ -503,6 +503,7 @@ const translations = {
 
     // 获取上下文
     'context.get_output': '获取终端输出',
+    'context.getting_output': '正在获取终端输出（最近 {lines} 行）',
 
     // 密码相关
     'password.enter_in_terminal': '请在终端中输入密码',
@@ -1187,6 +1188,7 @@ Please output the summary in the following format:
 
     // Get context
     'context.get_output': 'Get terminal output',
+    'context.getting_output': 'Getting terminal output (last {lines} lines)',
 
     // Password related
     'password.enter_in_terminal': 'Please enter password in terminal',
