@@ -361,7 +361,7 @@ ${this.buildExecutionModeNote()}`
       .join('\n')
 
     let section = `\n## 历史任务
-可用 \`recall_task(id)\` 获取摘要，\`deep_recall(id)\` 获取完整输出。
+对话历史中包含：最近 1 个任务的完整对话，之后 2 个任务的精简对话（仅请求和回复）。更早任务仅在下方列出摘要，需要详情用 \`recall_task(id)\` 或 \`deep_recall(id)\`。
 **可用任务**：
 ${taskIdList}`
 
