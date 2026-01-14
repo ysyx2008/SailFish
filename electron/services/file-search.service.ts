@@ -317,9 +317,12 @@ export class FileSearchService {
       const output = await this.execCommand('mdfind', args)
       const paths = output.trim().split('\n').filter(p => p.length > 0)
       
-      // 限制结果数量并获取文件信息
+      // 获取文件信息并过滤，直到达到 limit 数量
       const results: FileSearchResult[] = []
-      for (const filePath of paths.slice(0, limit || 50)) {
+      const maxResults = limit || 50
+      for (const filePath of paths) {
+        if (results.length >= maxResults) break
+        
         try {
           const stats = fs.statSync(filePath)
           const isDir = stats.isDirectory()
@@ -448,9 +451,12 @@ export class FileSearchService {
         paths = paths.filter(p => p.startsWith(searchPath))
       }
 
-      // 获取文件信息并过滤
+      // 获取文件信息并过滤，直到达到 limit 数量
       const results: FileSearchResult[] = []
-      for (const filePath of paths.slice(0, limit || 50)) {
+      const maxResults = limit || 50
+      for (const filePath of paths) {
+        if (results.length >= maxResults) break
+        
         try {
           const stats = fs.statSync(filePath)
           const isDir = stats.isDirectory()
