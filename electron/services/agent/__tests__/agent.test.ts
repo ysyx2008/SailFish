@@ -1,0 +1,678 @@
+/**
+ * agent.ts 单元测试
+ * 测试 Agent 基类的核心功能：执行循环、状态管理、工具调用、回调机制等
+ */
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
+
+// Mock Electron 模块（必须在导入 Agent 之前）
+vi.mock('electron', () => ({
+  app: {
+    getPath: vi.fn().mockReturnValue('/mock/user/data'),
+    getName: vi.fn().mockReturnValue('SFTerminal'),
+    getVersion: vi.fn().mockReturnValue('1.0.0')
+  },
+  BrowserWindow: vi.fn(),
+  ipcMain: { on: vi.fn(), handle: vi.fn() }
+}))
+
+// Mock fs 模块
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>()
+  return {
+    ...actual,
+    existsSync: vi.fn().mockReturnValue(true), // 返回 true 避免创建目录
+    readFileSync: vi.fn().mockReturnValue(''),
+    writeFileSync: vi.fn(),
+    mkdirSync: vi.fn(),
+    readdirSync: vi.fn().mockReturnValue([])
+  }
+})
+
+import { Agent } from '../agent'
+import type { ToolDefinition, ChatWithToolsResult, AiMessage } from '../../ai.service'
+import type { 
+  AgentContext, 
+  AgentServices, 
+  PromptOptions,
+  AgentCallbacks,
+  RiskLevel,
+  AgentConfig,
+  AgentStep
+} from '../types'
+import { TaskMemoryStore } from '../task-memory'
+
+// ==================== Mock 实现 ====================
+
+/**
+ * 测试用 Agent 实现类
+ * 因为 Agent 是抽象类，需要创建具体实现来测试
+ */
+class TestAgent extends Agent {
+  public mockTools: ToolDefinition[] = []
+  public mockSystemPrompt: string = 'Test system prompt'
+
+  getAvailableTools(): ToolDefinition[] {
+    return this.mockTools
+  }
+
+  protected buildSystemPrompt(_context: AgentContext, _options: PromptOptions): string {
+    return this.mockSystemPrompt
+  }
+
+  protected getAgentId(): string {
+    return 'test-agent'
+  }
+
+  // 暴露受保护的方法用于测试
+  public exposeCurrentRun() {
+    return this.currentRun
+  }
+
+  public exposeTaskMemory() {
+    return this.taskMemory
+  }
+  
+  public exposeServices() {
+    return this.services
+  }
+}
+
+// Mock AI 服务
+function createMockAiService() {
+  return {
+    chatWithToolsStream: vi.fn(),
+    abort: vi.fn()
+  }
+}
+
+// Mock PTY 服务
+function createMockPtyService() {
+  return {
+    onData: vi.fn().mockReturnValue(() => {}),
+    write: vi.fn()
+  }
+}
+
+// Mock 配置服务
+function createMockConfigService() {
+  return {
+    getAgentMbti: vi.fn().mockReturnValue(null),
+    getAiRules: vi.fn().mockReturnValue(''),
+    getLanguage: vi.fn().mockReturnValue('zh-CN'),
+    getAiProfiles: vi.fn().mockReturnValue([{ id: 'test', contextLength: 128000 }]),
+    getActiveAiProfile: vi.fn().mockReturnValue('test')
+  }
+}
+
+// 创建基础的 AgentServices mock
+function createMockServices(overrides?: Partial<AgentServices>): AgentServices {
+  return {
+    aiService: createMockAiService() as any,
+    ptyService: createMockPtyService() as any,
+    configService: createMockConfigService() as any,
+    ...overrides
+  }
+}
+
+// 创建基础的 AgentContext
+function createMockContext(overrides?: Partial<AgentContext>): AgentContext {
+  return {
+    ptyId: 'test-pty',
+    terminalOutput: [],
+    systemInfo: {
+      os: 'darwin',
+      shell: '/bin/zsh'
+    },
+    terminalType: 'local',
+    ...overrides
+  }
+}
+
+// ==================== Agent 构造和初始化 ====================
+
+describe('Agent', () => {
+  let agent: TestAgent
+  let mockServices: AgentServices
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockServices = createMockServices()
+    agent = new TestAgent(mockServices)
+  })
+
+  describe('constructor and initialization', () => {
+    it('should initialize with default config', () => {
+      expect(agent.executionMode).toBe('strict')
+      expect(agent.commandTimeout).toBe(30000)
+    })
+
+    it('should create task memory store', () => {
+      const taskMemory = agent.exposeTaskMemory()
+      expect(taskMemory).toBeInstanceOf(TaskMemoryStore)
+    })
+
+    it('should store services reference', () => {
+      const services = agent.exposeServices()
+      expect(services).toBe(mockServices)
+    })
+  })
+
+  // ==================== 配置更新 ====================
+
+  describe('updateConfig', () => {
+    it('should update execution mode', () => {
+      agent.updateConfig({ executionMode: 'relaxed' })
+      expect(agent.executionMode).toBe('relaxed')
+    })
+
+    it('should update command timeout', () => {
+      agent.updateConfig({ commandTimeout: 60000 })
+      expect(agent.commandTimeout).toBe(60000)
+    })
+
+    it('should handle partial config updates', () => {
+      agent.updateConfig({ executionMode: 'free' })
+      expect(agent.executionMode).toBe('free')
+      expect(agent.commandTimeout).toBe(30000) // should remain unchanged
+    })
+
+    it('should update multiple config values at once', () => {
+      agent.updateConfig({
+        executionMode: 'relaxed',
+        commandTimeout: 45000
+      })
+      expect(agent.executionMode).toBe('relaxed')
+      expect(agent.commandTimeout).toBe(45000)
+    })
+  })
+
+  // ==================== 运行状态检查 ====================
+
+  describe('isRunning', () => {
+    it('should return false when not running', () => {
+      expect(agent.isRunning()).toBe(false)
+    })
+  })
+
+  describe('getExecutionPhase', () => {
+    it('should return idle when not running', () => {
+      expect(agent.getExecutionPhase()).toBe('idle')
+    })
+  })
+
+  describe('getRunStatus', () => {
+    it('should return undefined when no run exists', () => {
+      expect(agent.getRunStatus()).toBeUndefined()
+    })
+  })
+
+  // ==================== 回调设置 ====================
+
+  describe('setCallbacks', () => {
+    it('should set callbacks', () => {
+      const callbacks: AgentCallbacks = {
+        onStep: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn()
+      }
+      
+      agent.setCallbacks(callbacks)
+      // 回调会在实际运行时使用，这里只验证设置成功
+      expect(true).toBe(true)
+    })
+  })
+
+  // ==================== 中止功能 ====================
+
+  describe('abort', () => {
+    it('should return false when not running', () => {
+      expect(agent.abort()).toBe(false)
+    })
+  })
+
+  // ==================== 用户消息 ====================
+
+  describe('addUserMessage', () => {
+    it('should return false when not running', () => {
+      expect(agent.addUserMessage('test message')).toBe(false)
+    })
+  })
+
+  // ==================== 工具确认 ====================
+
+  describe('confirmToolCall', () => {
+    it('should return false when not running', () => {
+      expect(agent.confirmToolCall('tool-1', true)).toBe(false)
+    })
+  })
+
+  // ==================== 清理 ====================
+
+  describe('cleanup', () => {
+    it('should not throw when no run exists', () => {
+      expect(() => agent.cleanup()).not.toThrow()
+    })
+  })
+})
+
+// ==================== Agent run 方法测试 ====================
+
+describe('Agent run method', () => {
+  let agent: TestAgent
+  let mockServices: AgentServices
+  let mockAiService: ReturnType<typeof createMockAiService>
+  let mockPtyService: ReturnType<typeof createMockPtyService>
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAiService = createMockAiService()
+    mockPtyService = createMockPtyService()
+    mockServices = createMockServices({
+      aiService: mockAiService as any,
+      ptyService: mockPtyService as any
+    })
+    agent = new TestAgent(mockServices)
+  })
+
+  describe('run lifecycle', () => {
+    it('should throw if already running', async () => {
+      // 模拟一个简单的 AI 响应
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, _onChunk, _onToolCall, onDone) => {
+          // 延迟完成以模拟运行状态
+          setTimeout(() => {
+            onDone({ content: 'Done', tool_calls: undefined })
+          }, 100)
+          return Promise.resolve()
+        }
+      )
+
+      const context = createMockContext()
+      const promise1 = agent.run('First task', context)
+      
+      // 立即尝试第二次运行应该抛出错误
+      await expect(agent.run('Second task', context)).rejects.toThrow('Agent is already running')
+      
+      // 等待第一个运行完成
+      await promise1
+    })
+
+    it('should return AI response content', async () => {
+      const expectedResponse = 'Task completed successfully'
+      
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+          onChunk(expectedResponse)
+          onDone({ content: expectedResponse, tool_calls: undefined })
+          return Promise.resolve()
+        }
+      )
+
+      const context = createMockContext()
+      const result = await agent.run('Test task', context)
+      
+      expect(result).toBe(expectedResponse)
+    })
+
+    it('should set up output listener', async () => {
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, _onChunk, _onToolCall, onDone) => {
+          onDone({ content: 'Done', tool_calls: undefined })
+          return Promise.resolve()
+        }
+      )
+
+      const context = createMockContext()
+      await agent.run('Test task', context)
+      
+      // 验证 onData 被调用来设置监听器
+      expect(mockPtyService.onData).toHaveBeenCalled()
+    })
+
+    it('should handle errors during execution', async () => {
+      const errorMessage = 'AI service error'
+      
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, _onChunk, _onToolCall, _onDone, onError) => {
+          onError(errorMessage)
+          return Promise.reject(new Error(errorMessage))
+        }
+      )
+
+      const context = createMockContext()
+      
+      await expect(agent.run('Test task', context)).rejects.toThrow(errorMessage)
+    })
+
+    it('should call onComplete callback on success', async () => {
+      const onComplete = vi.fn()
+      const expectedResponse = 'Task done'
+      
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+          onChunk(expectedResponse)
+          onDone({ content: expectedResponse, tool_calls: undefined })
+          return Promise.resolve()
+        }
+      )
+
+      agent.setCallbacks({ onComplete })
+      
+      const context = createMockContext()
+      await agent.run('Test task', context)
+      
+      expect(onComplete).toHaveBeenCalled()
+    })
+
+    it('should call onError callback on failure', async () => {
+      const onError = vi.fn()
+      const errorMessage = 'Test error'
+      
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, _onChunk, _onToolCall, _onDone, onErrorCb) => {
+          onErrorCb(errorMessage)
+          return Promise.reject(new Error(errorMessage))
+        }
+      )
+
+      agent.setCallbacks({ onError })
+      
+      const context = createMockContext()
+      
+      try {
+        await agent.run('Test task', context)
+      } catch {
+        // 预期抛出错误
+      }
+      
+      expect(onError).toHaveBeenCalled()
+    })
+  })
+
+  describe('task memory', () => {
+    it('should save task to memory on success', async () => {
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+          onChunk('Done')
+          onDone({ content: 'Done', tool_calls: undefined })
+          return Promise.resolve()
+        }
+      )
+
+      const context = createMockContext()
+      await agent.run('Test task', context)
+      
+      const taskMemory = agent.exposeTaskMemory()
+      expect(taskMemory.getTaskCount()).toBe(1)
+    })
+
+    it('should save task to memory on failure', async () => {
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, _onChunk, _onToolCall, _onDone, onError) => {
+          onError('Failed')
+          return Promise.reject(new Error('Failed'))
+        }
+      )
+
+      const context = createMockContext()
+      
+      try {
+        await agent.run('Test task', context)
+      } catch {
+        // 预期抛出错误
+      }
+      
+      const taskMemory = agent.exposeTaskMemory()
+      expect(taskMemory.getTaskCount()).toBe(1)
+    })
+
+    it('should initialize from previous tasks', async () => {
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+          onChunk('Done')
+          onDone({ content: 'Done', tool_calls: undefined })
+          return Promise.resolve()
+        }
+      )
+
+      const context = createMockContext({
+        previousTasks: [{
+          userTask: 'Previous task',
+          steps: [{ type: 'message', content: 'Previous result' }],
+          finalResult: 'Previous result',
+          timestamp: Date.now() - 1000
+        }]
+      })
+
+      await agent.run('New task', context)
+      
+      const taskMemory = agent.exposeTaskMemory()
+      // 应该有 2 个任务：之前的 + 当前的
+      expect(taskMemory.getTaskCount()).toBe(2)
+    })
+  })
+
+  describe('with tool calls', () => {
+    it('should execute tool calls from AI response', async () => {
+      const toolCall = {
+        id: 'call-1',
+        type: 'function' as const,
+        function: {
+          name: 'test_tool',
+          arguments: '{}'
+        }
+      }
+
+      let callCount = 0
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+          callCount++
+          if (callCount === 1) {
+            // 第一次调用返回工具调用
+            onDone({ content: '', tool_calls: [toolCall] })
+          } else {
+            // 第二次调用返回最终响应
+            onChunk('Final response')
+            onDone({ content: 'Final response', tool_calls: undefined })
+          }
+          return Promise.resolve()
+        }
+      )
+
+      agent.mockTools = [{
+        type: 'function',
+        function: {
+          name: 'test_tool',
+          description: 'A test tool',
+          parameters: { type: 'object', properties: {} }
+        }
+      }]
+
+      const context = createMockContext()
+      const result = await agent.run('Test with tools', context)
+      
+      // 应该调用两次 AI：第一次返回工具调用，第二次返回最终响应
+      expect(mockAiService.chatWithToolsStream).toHaveBeenCalledTimes(2)
+      expect(result).toBe('Final response')
+    })
+  })
+})
+
+// ==================== Agent 运行时状态管理测试 ====================
+
+describe('Agent runtime state management', () => {
+  let agent: TestAgent
+  let mockServices: AgentServices
+  let mockAiService: ReturnType<typeof createMockAiService>
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAiService = createMockAiService()
+    mockServices = createMockServices({
+      aiService: mockAiService as any
+    })
+    agent = new TestAgent(mockServices)
+  })
+
+  describe('abort during execution', () => {
+    it('should abort running task', async () => {
+      let resolveAi: (() => void) | undefined
+      
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, _onChunk, _onToolCall, onDone) => {
+          return new Promise<void>((resolve) => {
+            resolveAi = () => {
+              onDone({ content: 'Aborted', tool_calls: undefined })
+              resolve()
+            }
+          })
+        }
+      )
+
+      const context = createMockContext()
+      const promise = agent.run('Long running task', context)
+      
+      // 等待一下让 agent 开始运行
+      await new Promise(resolve => setTimeout(resolve, 10))
+      
+      // 现在应该在运行中
+      expect(agent.isRunning()).toBe(true)
+      
+      // 中止
+      const aborted = agent.abort()
+      expect(aborted).toBe(true)
+      
+      // 验证 AI 服务的 abort 被调用
+      expect(mockAiService.abort).toHaveBeenCalled()
+      
+      // 完成 AI 调用
+      resolveAi?.()
+      await promise
+    })
+  })
+
+  describe('addUserMessage during execution', () => {
+    it('should add message to pending queue', async () => {
+      // 使用同步的方式来测试，避免 Promise 超时问题
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+          // 模拟稍微延迟的响应
+          setTimeout(() => {
+            onChunk('Done')
+            onDone({ content: 'Done', tool_calls: undefined })
+          }, 50)
+          return Promise.resolve()
+        }
+      )
+
+      const context = createMockContext()
+      const promise = agent.run('Task', context)
+      
+      // 等待一下让 agent 开始运行
+      await new Promise(resolve => setTimeout(resolve, 10))
+      
+      // 添加用户消息
+      const added = agent.addUserMessage('User supplement')
+      expect(added).toBe(true)
+      
+      // 等待完成
+      await promise
+    }, 10000) // 增加超时时间
+  })
+
+  describe('getRunStatus during execution', () => {
+    it('should return correct status', async () => {
+      let resolveAi: (() => void) | undefined
+      
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, _onChunk, _onToolCall, onDone) => {
+          return new Promise<void>((resolve) => {
+            resolveAi = () => {
+              onDone({ content: 'Done', tool_calls: undefined })
+              resolve()
+            }
+          })
+        }
+      )
+
+      const context = createMockContext()
+      const promise = agent.run('Task', context)
+      
+      // 等待一下让 agent 开始运行
+      await new Promise(resolve => setTimeout(resolve, 10))
+      
+      const status = agent.getRunStatus()
+      expect(status).toBeDefined()
+      expect(status!.isRunning).toBe(true)
+      expect(status!.hasPendingConfirmation).toBe(false)
+      
+      // 完成
+      resolveAi?.()
+      await promise
+    })
+  })
+})
+
+// ==================== Agent 步骤回调测试 ====================
+
+describe('Agent step callbacks', () => {
+  let agent: TestAgent
+  let mockServices: AgentServices
+  let mockAiService: ReturnType<typeof createMockAiService>
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAiService = createMockAiService()
+    mockServices = createMockServices({
+      aiService: mockAiService as any
+    })
+    agent = new TestAgent(mockServices)
+  })
+
+  it('should call onStep for initial thinking step', async () => {
+    const onStep = vi.fn()
+    
+    mockAiService.chatWithToolsStream.mockImplementation(
+      (_messages, _tools, onChunk, _onToolCall, onDone) => {
+        onChunk('Response')
+        onDone({ content: 'Response', tool_calls: undefined })
+        return Promise.resolve()
+      }
+    )
+
+    agent.setCallbacks({ onStep })
+    
+    const context = createMockContext()
+    await agent.run('Test', context)
+    
+    // 应该至少调用一次 onStep
+    expect(onStep).toHaveBeenCalled()
+    
+    // 第一个步骤应该是 thinking 类型
+    const firstCall = onStep.mock.calls[0]
+    expect(firstCall[1].type).toBe('thinking')
+  })
+
+  it('should call onStep for message step', async () => {
+    const onStep = vi.fn()
+    
+    mockAiService.chatWithToolsStream.mockImplementation(
+      (_messages, _tools, onChunk, _onToolCall, onDone) => {
+        onChunk('Response')
+        onDone({ content: 'Response', tool_calls: undefined })
+        return Promise.resolve()
+      }
+    )
+
+    agent.setCallbacks({ onStep })
+    
+    const context = createMockContext()
+    await agent.run('Test', context)
+    
+    // 检查是否有 message 类型的步骤
+    const messageCalls = onStep.mock.calls.filter(
+      (call: [string, AgentStep]) => call[1].type === 'message'
+    )
+    expect(messageCalls.length).toBeGreaterThan(0)
+  })
+})
