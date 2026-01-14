@@ -125,9 +125,9 @@ function getMinCompressionLevel(task: TaskMemory, taskIndex: number): Compressio
   // 最近 1 个任务：强制 Level 0（完整对话），确保 AI 能理解上下文连续性
   if (taskIndex === 0) return 0
   
-  // 最近 2-3 个任务：至少保留 Level 2（用户请求 + AI 最终回复）
-  // 这样 AI 能看到近期对话的完整 user/assistant 交互，而不只是摘要
-  if (taskIndex <= 2) return 2
+  // 最近 2-6 个任务：至少保留 Level 2（用户请求 + AI 最终回复）
+  // Level 2 很轻量（只有 user + assistant），可以多保留几个
+  if (taskIndex <= 5) return 2
   
   // 等待确认的任务：至少保留 Level 2（用户请求 + AI 确认问题）
   if (task.status === 'pending_confirmation') return 2
