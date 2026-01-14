@@ -355,9 +355,15 @@ ${this.buildExecutionModeNote()}`
       return ''
     }
 
+    // 每个任务ID单独一行，更易阅读
+    const taskIdList = this.availableTaskIds
+      .map(t => `- \`${t.id}\`: ${t.summary}`)
+      .join('\n')
+
     let section = `\n## 历史任务
 可用 \`recall_task(id)\` 获取摘要，\`deep_recall(id)\` 获取完整输出。
-**可用ID**：${this.availableTaskIds.map(t => `\`${t.id}\`(${t.summary})`).join('、')}`
+**可用任务**：
+${taskIdList}`
 
     if (this.taskSummaries) {
       section += `\n**任务摘要**：\n${this.taskSummaries}`

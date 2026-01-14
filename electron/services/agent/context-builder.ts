@@ -509,13 +509,16 @@ export function buildRecentTasksContext(
   result.stats.usedTokens = usedTokens
   
   // 分类处理：Level 0-2 作为消息，Level 3-4 作为摘要
-  for (const task of processedTasks) {
+  // processedTasks 是从新到旧的顺序，需要反转为自然时间顺序（从旧到新）
+  const reversedTasks = [...processedTasks].reverse()
+  
+  for (const task of reversedTasks) {
     if (task.level <= 2) {
-      // 作为消息注入
+      // 作为消息注入（从旧到新，符合对话顺序）
       const messages = task.content as AiMessage[]
       result.recentTaskMessages.push(...messages)
     } else {
-      // 作为摘要
+      // 作为摘要（从旧到新，符合自然阅读顺序）
       summaryLines.push(task.content as string)
     }
   }
@@ -524,9 +527,9 @@ export function buildRecentTasksContext(
     result.taskSummarySection = summaryLines.join('\n\n')
   }
   
-  // 填充所有可用任务的ID列表（无论任务以什么形式存在）
+  // 填充所有可用任务的ID列表（从旧到新，自然时间顺序）
   const summaries = taskMemoryStore.getSummaries(50)
-  result.availableTaskIds = summaries.map(s => ({ id: s.id, summary: s.summary }))
+  result.availableTaskIds = summaries.map(s => ({ id: s.id, summary: s.summary })).reverse()
   
   return result
 }
