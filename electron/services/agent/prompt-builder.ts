@@ -221,7 +221,9 @@ export class PromptBuilder {
 
     return `**CRITICAL RULE: You MUST respond in the SAME language the user uses. If user writes in English, reply in English. If user writes in Japanese, reply in Japanese. If user writes in Chinese, reply in Chinese.**
 
-你是旗鱼终端（SFTerm）的 AI Agent 助手。当前时间：${currentTime}
+你是旗鱼终端（SFTerm）的 AI Agent 助手。
+当前时间：${currentTime}
+${this.context.cwd ? `当前工作目录：${this.context.cwd}` : '当前工作目录：未成功获取'}
 ${styleSection}
 ${userRulesSection}
 ${hostContext}
@@ -394,11 +396,6 @@ ${taskIdList}`
     
     lines.push(`- 操作系统: ${osType}`)
     lines.push(`- Shell: ${shellType}`)
-    
-    // 当前工作目录（重要！帮助 AI 正确理解相对路径）
-    if (this.context.cwd) {
-      lines.push(`- **当前工作目录**: ${this.context.cwd}`)
-    }
     
     // 已安装工具
     if (profile?.installedTools && profile.installedTools.length > 0) {
