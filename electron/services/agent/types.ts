@@ -197,6 +197,7 @@ export interface AgentRun {
   id: string
   ptyId: string
   requestId?: string  // AI Debug: 当前请求 ID（用于调试日志）
+  originalUserRequest: string  // 当前任务的原始用户请求（用于保存任务记忆）
   messages: import('../ai.service').AiMessage[]
   steps: AgentStep[]
   isRunning: boolean
