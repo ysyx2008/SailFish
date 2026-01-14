@@ -161,6 +161,18 @@ export class PromptBuilder {
       ? `\n\n## 用户自定义规则（重要！必须遵守）\n\n用户设置了以下规则，你必须严格遵守：\n\n${this.aiRules.trim()}\n`
       : ''
     
+    // 当前本地时间（用于角色认知）
+    const now = new Date()
+    const currentTime = now.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      weekday: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    })
+    
     // 优先使用 context.systemInfo（来自当前终端 tab，是准确的）
     const osType = this.context.systemInfo.os || 'unknown'
     const shellType = this.context.systemInfo.shell || 'unknown'
@@ -209,16 +221,14 @@ export class PromptBuilder {
 
     return `**CRITICAL RULE: You MUST respond in the SAME language the user uses. If user writes in English, reply in English. If user writes in Japanese, reply in Japanese. If user writes in Chinese, reply in Chinese.**
 
-你是旗鱼终端（英文：SFTerm）的 AI Agent 助手，一个专业、可靠的服务器运维和开发助手。${styleSection}${userRulesSection}
-
+你是旗鱼终端（英文：SFTerm）的 AI Agent 助手，一个专业、可靠的服务器运维和开发助手。
+当前时间是：${currentTime}
+${styleSection}
+${userRulesSection}
 ${hostContext}
-
 ${this.buildReActFramework()}
-
 ${this.buildPlanningGuidance()}
-
 ## 可用工具
-
 | 工具 | 用途 | 可用性 |
 |------|------|--------|
 | execute_command | 在终端执行 Shell 命令 |${isSshTerminal ? ' ✅ |' : ' |'}
