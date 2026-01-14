@@ -275,6 +275,7 @@ export abstract class Agent {
     const run: AgentRun = {
       id: runId,
       ptyId: context.ptyId,
+      originalUserRequest: message,  // 保存原始用户请求，避免被历史消息覆盖
       messages: [],
       steps: [],
       isRunning: true,
@@ -356,11 +357,10 @@ export abstract class Agent {
     
     // 保存任务到记忆
     const status = run.aborted ? 'aborted' : 'success'
-    const userRequest = run.messages.find(m => m.role === 'user')?.content || ''
     
     this.taskMemory.saveTask(
       run.id,
-      userRequest,
+      run.originalUserRequest,  // 使用原始用户请求，而不是 find() 查找（历史消息会干扰）
       run.steps,
       status,
       result
@@ -400,10 +400,9 @@ export abstract class Agent {
     })
     
     // 保存失败的任务
-    const userRequest = run.messages.find(m => m.role === 'user')?.content || ''
     this.taskMemory.saveTask(
       run.id,
-      userRequest,
+      run.originalUserRequest,  // 使用原始用户请求
       run.steps,
       'failed',
       errorMessage
