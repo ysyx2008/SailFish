@@ -647,11 +647,15 @@ export abstract class Agent {
    */
   protected async callAiWithStreaming(run: AgentRun): Promise<ChatWithToolsResult> {
     const streamStepId = this.generateId()
+    const toolProgressStepId = this.generateId()
     let streamContent = ''
     let lastContentUpdate = 0
     let pendingUpdate = false
     let streamStepCreated = false
+    let toolProgressStepCreated = false
+    let lastToolProgressUpdate = 0
     const STREAM_THROTTLE_MS = 100
+    const TOOL_PROGRESS_THROTTLE_MS = 200
     
     const sendContentUpdate = () => {
       this.updateStep(streamStepId, {
@@ -668,6 +672,8 @@ export abstract class Agent {
       lastContentUpdate = 0
       pendingUpdate = false
       streamStepCreated = false
+      toolProgressStepCreated = false
+      lastToolProgressUpdate = 0
       
       const availableTools = this.getAvailableTools()
       run.requestId = run.id
@@ -716,6 +722,11 @@ export abstract class Agent {
         // onDone
         (result) => {
           pendingUpdate = false
+          // 移除工具进度步骤（如果存在）
+          if (toolProgressStepCreated) {
+            this.removeStep(toolProgressStepId)
+            toolProgressStepCreated = false
+          }
           if (streamContent && streamStepCreated) {
             this.updateStep(streamStepId, {
               type: 'message',
@@ -735,10 +746,44 @@ export abstract class Agent {
         },
         // onError
         (error) => {
+          // 移除工具进度步骤（如果存在）
+          if (toolProgressStepCreated) {
+            this.removeStep(toolProgressStepId)
+            toolProgressStepCreated = false
+          }
           reject(new Error(error))
         },
         undefined, // profileId - 从 run 获取
-        undefined, // onToolCallProgress
+        // onToolCallProgress - 显示工具调用参数生成进度
+        (toolName: string, argsLength: number) => {
+          const now = Date.now()
+          // 超过 50 字符且距离上次更新超过 200ms 才显示
+          if (argsLength <= 50 || now - lastToolProgressUpdate < TOOL_PROGRESS_THROTTLE_MS) return
+          lastToolProgressUpdate = now
+          
+          const progressContent = `⏳ ${t('progress.generating_args', { toolName })} ${argsLength} ${t('misc.characters')}`
+          
+          if (!toolProgressStepCreated) {
+            // 如果还没有创建进度步骤，先移除初始步骤
+            if (run.initialStepId) {
+              this.removeStep(run.initialStepId)
+              run.initialStepId = undefined
+            }
+            toolProgressStepCreated = true
+            this.addStep({
+              id: toolProgressStepId,
+              type: 'thinking',
+              content: progressContent,
+              isStreaming: true
+            })
+          } else {
+            this.updateStep(toolProgressStepId, {
+              type: 'thinking',
+              content: progressContent,
+              isStreaming: true
+            })
+          }
+        },
         run.id // requestId
       )
     })
