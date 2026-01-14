@@ -584,6 +584,9 @@ export abstract class Agent {
         
         if (isAborted && run.pendingUserMessages.length > 0) {
           console.log('[Agent] AI 输出被用户消息中断，继续循环处理')
+          // 修复不完整的 tool_calls 消息序列
+          // 当 abort 发生在工具执行过程中时，可能存在 assistant 消息（含 tool_calls）但缺少对应的 tool result
+          this.fixIncompleteToolCalls(run)
           continue executionLoop
         }
         
@@ -606,6 +609,9 @@ export abstract class Agent {
     run: AgentRun, 
     toolExecutorConfig: ToolExecutorConfig
   ): Promise<{ response: ChatWithToolsResult | null; hasToolCalls: boolean }> {
+    // 上下文长度检查：如果超限直接报错，不悄悄截断
+    this.checkContextLimit(run.messages)
+    
     // 调用 AI
     const response = await this.callAiWithStreaming(run)
     
@@ -1136,15 +1142,141 @@ export abstract class Agent {
    * 获取上下文长度
    */
   private getContextLength(profileId?: string): number {
-    // TODO: 从配置服务获取
-    return 128000
+    const configService = this.services.configService
+    if (!configService) {
+      return 128000  // 默认 128K
+    }
+    
+    const profiles = configService.getAiProfiles()
+    if (profiles.length === 0) {
+      return 128000
+    }
+    
+    let profile
+    if (profileId) {
+      profile = profiles.find(p => p.id === profileId)
+    } else {
+      const activeId = configService.getActiveAiProfile()
+      profile = profiles.find(p => p.id === activeId) || profiles[0]
+    }
+    
+    // 返回配置的上下文长度，默认 128000
+    return profile?.contextLength || 128000
+  }
+  
+  /**
+   * 估算文本的 token 数量
+   */
+  private estimateTokens(text: string): number {
+    // 中文字符约 1.5 tokens，英文约 0.25 tokens/字符
+    const chineseChars = (text.match(/[\u4e00-\u9fa5]/g) || []).length
+    const otherChars = text.length - chineseChars
+    return Math.ceil(chineseChars * 1.5 + otherChars * 0.25)
+  }
+  
+  /**
+   * 估算消息列表的总 token 数量
+   */
+  private estimateTotalTokens(messages: AiMessage[]): number {
+    return messages.reduce((sum, msg) => {
+      let tokens = this.estimateTokens(msg.content)
+      // 工具调用也占用 token
+      if (msg.tool_calls) {
+        tokens += msg.tool_calls.reduce((t, tc) => 
+          t + this.estimateTokens(tc.function.name) + this.estimateTokens(tc.function.arguments), 0)
+      }
+      if (msg.reasoning_content) {
+        tokens += this.estimateTokens(msg.reasoning_content)
+      }
+      return sum + tokens
+    }, 0)
+  }
+  
+  /**
+   * 检查上下文是否超出限制
+   */
+  private checkContextLimit(messages: AiMessage[]): void {
+    const contextLength = this.getContextLength()
+    const maxTokens = Math.floor(contextLength * 0.95)  // 预留 5% 给响应
+    const totalTokens = this.estimateTotalTokens(messages)
+    
+    if (totalTokens > maxTokens) {
+      const percentage = Math.round((totalTokens / contextLength) * 100)
+      throw new Error(
+        t('agent.context_limit_exceeded', { 
+          current: totalTokens, 
+          limit: contextLength,
+          percentage 
+        })
+      )
+    }
+  }
+  
+  /**
+   * 修复不完整的工具调用序列
+   * 当用户中断时，可能存在 assistant 消息（含 tool_calls）但缺少对应的 tool result
+   */
+  private fixIncompleteToolCalls(run: AgentRun): void {
+    const { messages } = run
+    if (messages.length === 0) return
+
+    // 从后往前查找最后一个带有 tool_calls 的 assistant 消息
+    let lastAssistantWithToolCallsIndex = -1
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i]
+      if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+        lastAssistantWithToolCallsIndex = i
+        break
+      }
+      // 如果遇到 user 消息，说明之前的对话是完整的
+      if (msg.role === 'user') break
+    }
+
+    if (lastAssistantWithToolCallsIndex === -1) return
+
+    const assistantMsg = messages[lastAssistantWithToolCallsIndex]
+    const toolCalls = assistantMsg.tool_calls!
+
+    // 收集该 assistant 消息之后已有的 tool result
+    const existingToolCallIds = new Set<string>()
+    for (let i = lastAssistantWithToolCallsIndex + 1; i < messages.length; i++) {
+      const msg = messages[i]
+      if (msg.role === 'tool' && msg.tool_call_id) {
+        existingToolCallIds.add(msg.tool_call_id)
+      }
+    }
+
+    // 为缺失的 tool_call_id 添加占位的 tool result
+    const missingToolCalls = toolCalls.filter(tc => !existingToolCallIds.has(tc.id))
+    if (missingToolCalls.length > 0) {
+      console.log(`[Agent] 修复 ${missingToolCalls.length} 个缺失的 tool result 消息`)
+      for (const tc of missingToolCalls) {
+        messages.push({
+          role: 'tool',
+          content: '[操作被用户中断]',
+          tool_call_id: tc.id
+        })
+      }
+    }
+  }
+  
+  /**
+   * 根据程序设置的语言生成语言提示
+   */
+  private getLanguageHint(): string {
+    const locale = this.services.configService?.getLanguage() || 'zh-CN'
+    if (locale === 'en-US') {
+      return '[Respond in English]\n'
+    }
+    return ''  // 中文不需要特别提示
   }
   
   /**
    * 增强用户消息
    */
   private enhanceUserMessage(message: string): string {
-    // TODO: 添加任务复杂度分析等
-    return message
+    // 添加语言提示
+    const languageHint = this.getLanguageHint()
+    return languageHint + message
   }
 }
