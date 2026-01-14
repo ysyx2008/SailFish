@@ -2,7 +2,41 @@
 
 All notable changes to SFTerm will be documented in this file.
 
-## v8.13.0 (Latest)
+## v8.14.0 (Latest)
+
+### Architecture Refactoring
+- 🏗️ **Agent Service Refactoring**: Complete rewrite of Agent service using object-oriented approach for better maintainability
+- 🔧 **Prompt Builder Class**: Refactored prompt building logic into PromptBuilder class, streamlined prompts and tool constraints
+- 🗑️ **Code Cleanup**: Removed deprecated progress detector and task planner code
+
+### AI Enhancements
+- 🕐 **Time Awareness**: Added current time to AI prompts to enhance AI's temporal reasoning
+- 🔄 **Network Retry Mechanism**: Added automatic retry for AI network request errors
+- ⏱️ **Connection Timeout Optimization**: Increased AI request connection timeout to 60 seconds for better stability
+- 🧠 **Thinking Content Display**: Enhanced AI debug features with thinking content visualization
+
+### UI Improvements
+- 🔀 **Feature Consolidation**: Merged AI Assistant and AI Chat into a unified interface
+- 📊 **Debug UI Optimization**: Optimized debug interface by consolidating tool call steps for better clarity
+- 🖥️ **Settings Window**: Enlarged settings window for improved visual experience
+- ✨ **Streaming Output**: Optimized streaming output styles and step creation logic
+
+### Task Management
+- 💾 **Execution Plan Persistence**: Added persistence support for terminal execution plans
+- 🧹 **History Memory Cleanup**: Added task history memory cleanup feature
+- 📝 **Markdown Rendering**: Added Markdown rendering support in Debug Console
+
+### Testing & Quality
+- 🧪 **Unit Testing**: Added unit tests and code coverage reporting
+
+### Bug Fixes
+- Fixed tool call progress display
+- Fixed task memory retrieval
+- Fixed streaming conversation content not displaying
+- Fixed ESC key event propagation issue
+- Resolved blank plan generation issue
+
+## v8.13.0
 
 ### User Skills System
 - 🧩 **User-defined Skills**: Support for custom SKILL.md files in the skills directory
