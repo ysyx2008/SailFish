@@ -27,6 +27,7 @@ import { TerminalAgent } from './terminal-agent'
 import { assessCommandRisk, analyzeCommand } from './risk-assessor'
 import type { CommandHandlingInfo } from './risk-assessor'
 import { setConfigService as setI18nConfigService } from './i18n'
+import { getTerminalStateService } from '../terminal-state.service'
 
 // 重新导出类型，供外部使用
 export type {
@@ -215,8 +216,16 @@ export class AgentService {
       agent.updateConfig(config)
     }
     
+    // 在启动前刷新并设置当前工作目录（重要！避免 AI 使用错误的相对路径）
+    const terminalStateService = getTerminalStateService()
+    const cwd = await terminalStateService.refreshCwd(ptyId, 'initial')
+    const enrichedContext: AgentContext = {
+      ...context,
+      cwd: cwd !== '~' ? cwd : undefined  // 只有获取到有效路径时才设置
+    }
+    
     // 运行
-    return agent.run(userMessage, context, {
+    return agent.run(userMessage, enrichedContext, {
       profileId,
       workerOptions,
       callbacks

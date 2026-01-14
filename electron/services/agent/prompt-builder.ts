@@ -379,31 +379,38 @@ ${taskIdList}`
    * 构建主机环境信息
    */
   private buildHostContext(osType: string, shellType: string, isSshTerminal: boolean): string {
-    let hostContext = `## 主机环境
-- **终端类型**: ${isSshTerminal ? '🌐 SSH 远程终端' : '💻 本地终端'}
-- 操作系统: ${osType}
-- Shell: ${shellType}`
+    // 收集基础信息
+    const lines: string[] = [
+      `- **终端类型**: ${isSshTerminal ? '🌐 SSH 远程终端' : '💻 本地终端'}`
+    ]
     
-    // 如果有主机档案，补充额外信息（但不覆盖系统类型）
-    if (this.context.hostId && this.hostProfileService) {
-      const profile = this.hostProfileService.getProfile(this.context.hostId)
-      if (profile) {
-        if (profile.hostname) {
-          hostContext = `## 主机环境
-- 主机名: ${profile.hostname}
-- 操作系统: ${osType}
-- Shell: ${shellType}`
-        }
-        if (profile.installedTools && profile.installedTools.length > 0) {
-          hostContext += `\n- 已安装工具: ${profile.installedTools.join(', ')}`
-        }
-      }
+    // 主机名（如果有档案）
+    const profile = this.context.hostId && this.hostProfileService
+      ? this.hostProfileService.getProfile(this.context.hostId)
+      : null
+    if (profile?.hostname) {
+      lines.push(`- 主机名: ${profile.hostname}`)
     }
+    
+    lines.push(`- 操作系统: ${osType}`)
+    lines.push(`- Shell: ${shellType}`)
+    
+    // 当前工作目录（重要！帮助 AI 正确理解相对路径）
+    if (this.context.cwd) {
+      lines.push(`- **当前工作目录**: ${this.context.cwd}`)
+    }
+    
+    // 已安装工具
+    if (profile?.installedTools && profile.installedTools.length > 0) {
+      lines.push(`- 已安装工具: ${profile.installedTools.join(', ')}`)
+    }
+
+    let hostContext = `## 主机环境\n${lines.join('\n')}`
 
     // 添加主机记忆（来自知识库）
     if (this.hostMemories && this.hostMemories.length > 0) {
       hostContext += '\n\n## 已知信息（来自历史交互）'
-      for (const memory of this.hostMemories.slice(0, 15)) {  // 最多显示 15 条
+      for (const memory of this.hostMemories.slice(0, 15)) {
         hostContext += `\n- ${memory}`
       }
     }

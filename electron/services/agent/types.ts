@@ -104,6 +104,7 @@ export interface AgentContext {
     shell: string
   }
   terminalType: 'local' | 'ssh'  // 终端类型：本地终端或 SSH 远程终端
+  cwd?: string  // 当前工作目录（用于告知 AI 当前位置，帮助正确处理相对路径）
   hostId?: string  // 主机档案 ID
   documentContext?: string  // 用户上传的文档内容
   previousTasks?: PreviousTaskContext[]  // 之前已完成任务的上下文列表（用于初始化 TaskMemoryStore）
