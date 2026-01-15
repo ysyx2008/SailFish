@@ -2,12 +2,6 @@ name: Steam Build
 
 on:
   workflow_dispatch:  # 手动触发
-    inputs:
-      upload_to_steam:
-        description: '上传到 Steam'
-        required: false
-        default: 'false'
-        type: boolean
 
 jobs:
   build-windows:
@@ -84,66 +78,3 @@ jobs:
           name: steam-linux
           path: release/linux-unpacked/
           retention-days: 7
-
-  upload-to-steam:
-    needs: [build-windows, build-macos, build-linux]
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.upload_to_steam == 'true' }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release/
-      
-      - name: Reorganize artifacts
-        run: |
-          echo "=== Downloaded artifacts ==="
-          ls -laR release/
-          
-          # Windows
-          if [ -d "release/steam-windows" ]; then
-            mv release/steam-windows release/win-unpacked
-          else
-            echo "ERROR: steam-windows not found!"
-          fi
-          
-          # macOS
-          if [ -d "release/steam-macos" ]; then
-            mv release/steam-macos release/mac
-          else
-            echo "ERROR: steam-macos not found!"
-          fi
-          
-          # Linux
-          if [ -d "release/steam-linux" ]; then
-            mv release/steam-linux release/linux-unpacked
-          else
-            echo "ERROR: steam-linux not found!"
-          fi
-          
-          echo "=== Final structure ==="
-          ls -la release/
-      
-      # 使用 game-ci/steam-deploy 支持双因素认证
-      # 需要在 GitHub Secrets 中配置：
-      # - STEAM_USERNAME: Steam 账号（必需）
-      # - STEAM_CONFIG_VDF: Base64 编码的 config.vdf（包含登录 token，无需密码）
-      # 
-      # 获取 config.vdf 的方法：
-      # 1. 本地运行: steamcmd +login 你的账号 +quit（完成双因素验证）
-      # 2. 找到文件: ~/Library/Application Support/Steam/config/config.vdf (macOS)
-      # 3. Base64 编码: base64 -i config.vdf
-      - name: Upload to Steam
-        uses: game-ci/steam-deploy@v3
-        with:
-          username: ${{ secrets.STEAM_USERNAME }}
-          configVdf: ${{ secrets.STEAM_CONFIG_VDF }}
-          appId: 4275260
-          buildDescription: "旗鱼终端"
-          rootPath: release
-          depot1Path: win-unpacked
-          depot2Path: mac
-          depot3Path: linux-unpacked
-
