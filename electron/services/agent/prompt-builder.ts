@@ -365,7 +365,7 @@ ${this.buildExecutionModeNote()}`
       .join('\n')
 
     let section = `\n## 历史任务
-对话历史中包含：最近 1 个任务的完整对话，之后 5 个任务的精简对话（仅请求和回复）。更早任务仅在下方列出摘要，需要详情用 \`recall_task(id)\` 或 \`deep_recall(id)\`。
+对话历史中包含：最近 1 个任务的完整对话，之后 2 个任务的压缩对话（含工具摘要），再之后 3 个任务的精简对话（仅请求和回复）。更早任务仅在下方列出摘要，需要详情用 \`recall_task(id)\` 或 \`deep_recall(id)\`。
 **可用任务**：
 ${taskIdList}`
 

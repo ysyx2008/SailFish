@@ -122,11 +122,13 @@ function compressToolOutput(output: string, maxLength: number = 1500): string {
  * @param taskIndex 任务在时间顺序中的索引（0 = 最近一个任务）
  */
 function getMinCompressionLevel(task: TaskMemory, taskIndex: number): CompressionLevel {
-  // 最近 1 个任务：强制 Level 0（完整对话），确保 AI 能理解上下文连续性
+  // 最近 1 个任务：Level 0（完整对话），确保 AI 能理解上下文连续性
   if (taskIndex === 0) return 0
   
-  // 最近 2-6 个任务：至少保留 Level 2（用户请求 + AI 最终回复）
-  // Level 2 很轻量（只有 user + assistant），可以多保留几个
+  // 之后 2 个任务：Level 1（压缩对话），保留工具调用摘要
+  if (taskIndex <= 2) return 1
+  
+  // 之后 3 个任务：Level 2（精简对话），仅保留请求和回复
   if (taskIndex <= 5) return 2
   
   // 等待确认的任务：至少保留 Level 2（用户请求 + AI 确认问题）
