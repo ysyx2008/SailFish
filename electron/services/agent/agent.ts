@@ -31,7 +31,7 @@ import type {
 } from './types'
 import { DEFAULT_AGENT_CONFIG } from './types'
 import { TaskMemoryStore } from './task-memory'
-import type { ToolExecutorConfig } from './tools/types'
+import type { ToolExecutorConfig, ToolResult } from './tools/types'
 import { executeTool } from './tools/index'
 import { buildTaskHistoryContext } from './context-builder'
 import { getKnowledgeService } from '../knowledge'
@@ -796,18 +796,103 @@ export abstract class Agent {
   
   // ==================== 受保护方法：工具执行 ====================
   
+  /** 可以并行执行的工具（只读、无副作用） */
+  private static readonly PARALLELIZABLE_TOOLS = new Set([
+    'read_file',
+    'file_search',
+    'get_terminal_context',
+    'check_terminal_status',
+    'search_knowledge',
+    'get_knowledge_doc',
+    'recall_task',
+    'deep_recall',
+    'load_skill',
+    'load_user_skill'
+  ])
+  
   /**
-   * 执行工具调用列表
+   * 判断工具是否可以并行执行
+   */
+  private isParallelizableTool(toolName: string): boolean {
+    return Agent.PARALLELIZABLE_TOOLS.has(toolName)
+  }
+  
+  /**
+   * 执行工具调用列表（支持并行执行相邻的只读工具）
+   * 
+   * 执行策略：保持原始顺序，只对相邻的可并行工具进行并行优化
+   * 例如：[read_file, read_file, execute_command, read_file, read_file]
+   * 会分成3批执行：
+   *   1. read_file || read_file （并行）
+   *   2. execute_command        （顺序）
+   *   3. read_file || read_file （并行）
    */
   protected async executeToolCalls(
     run: AgentRun, 
     toolCalls: ToolCall[],
     toolExecutorConfig: ToolExecutorConfig
   ): Promise<void> {
+    if (toolCalls.length === 0) return
+    
+    // 将工具调用分成多个批次，相邻的可并行工具放在同一批次
+    const batches: { parallel: boolean; tools: ToolCall[] }[] = []
+    
     for (const toolCall of toolCalls) {
+      const isParallel = this.isParallelizableTool(toolCall.function.name)
+      const lastBatch = batches[batches.length - 1]
+      
+      if (lastBatch && lastBatch.parallel === isParallel) {
+        // 与上一批次类型相同，加入同一批次
+        lastBatch.tools.push(toolCall)
+      } else {
+        // 开始新批次
+        batches.push({ parallel: isParallel, tools: [toolCall] })
+      }
+    }
+    
+    // 按批次执行
+    for (const batch of batches) {
       if (run.aborted) break
       
-      // 解析参数
+      if (batch.parallel && batch.tools.length > 1) {
+        // 并行执行多个可并行工具
+        await this.executeToolBatchParallel(run, batch.tools, toolExecutorConfig)
+      } else {
+        // 顺序执行（单个可并行工具或不可并行工具）
+        for (const toolCall of batch.tools) {
+          if (run.aborted) break
+          await this.executeToolSingle(run, toolCall, toolExecutorConfig)
+        }
+      }
+    }
+    
+    // 恢复执行阶段
+    run.executionPhase = 'thinking'
+    run.currentToolName = undefined
+  }
+  
+  /**
+   * 并行执行一批工具
+   */
+  private async executeToolBatchParallel(
+    run: AgentRun,
+    toolCalls: ToolCall[],
+    toolExecutorConfig: ToolExecutorConfig
+  ): Promise<void> {
+    // 设置执行阶段（并行读取属于安全打断）
+    run.executionPhase = 'reading'
+    run.currentToolName = `${toolCalls.length} tools`
+    
+    const parallelPromises = toolCalls.map(async (toolCall) => {
+      // 检查 abort 状态
+      if (run.aborted) {
+        return { 
+          toolCall, 
+          result: { success: false, output: '', error: t('error.operation_aborted') } as ToolResult, 
+          toolArgs: {} as Record<string, unknown>
+        }
+      }
+      
       let toolArgs: Record<string, unknown> = {}
       try {
         toolArgs = JSON.parse(toolCall.function.arguments)
@@ -815,47 +900,110 @@ export abstract class Agent {
         // 忽略解析错误
       }
       
-      // 设置执行阶段
-      const toolName = toolCall.function.name
-      this.setExecutionPhase(run, toolName)
-      
-      // 执行工具
-      const result = await executeTool(
+      try {
+        const result = await executeTool(
+          run.ptyId,
+          toolCall,
+          run.config,
+          run.context.terminalOutput,
+          toolExecutorConfig
+        )
+        return { toolCall, result, toolArgs }
+      } catch (error) {
+        // 捕获异常，确保单个工具失败不影响其他并行工具
+        return { 
+          toolCall, 
+          result: { 
+            success: false, 
+            output: '', 
+            error: error instanceof Error ? error.message : String(error) 
+          } as ToolResult, 
+          toolArgs 
+        }
+      }
+    })
+    
+    const results = await Promise.all(parallelPromises)
+    
+    // 按原始顺序处理结果
+    for (const { toolCall, result, toolArgs } of results) {
+      this.processToolResult(run, toolCall, result, toolArgs)
+    }
+  }
+  
+  /**
+   * 顺序执行单个工具
+   */
+  private async executeToolSingle(
+    run: AgentRun,
+    toolCall: ToolCall,
+    toolExecutorConfig: ToolExecutorConfig
+  ): Promise<void> {
+    let toolArgs: Record<string, unknown> = {}
+    try {
+      toolArgs = JSON.parse(toolCall.function.arguments)
+    } catch {
+      // 忽略解析错误
+    }
+    
+    const toolName = toolCall.function.name
+    this.setExecutionPhase(run, toolName)
+    
+    let result: ToolResult
+    try {
+      result = await executeTool(
         run.ptyId,
         toolCall,
         run.config,
         run.context.terminalOutput,
         toolExecutorConfig
       )
-      
-      // 恢复执行阶段
-      run.executionPhase = 'thinking'
-      run.currentToolName = undefined
-      
-      // 更新反思追踪
-      this.updateReflectionTracking(run, toolName, toolArgs, result)
-      
-      // AI Debug: 记录工具执行结果
-      if (run.requestId) {
-        const resultContent = result.success 
-          ? result.output 
-          : t('agent.tool_error', { error: result.error || t('agent.unknown_error') })
-        aiDebugService.logToolResult(run.requestId, {
-          toolCallId: toolCall.id,
-          success: result.success,
-          result: resultContent
-        })
+    } catch (error) {
+      // 捕获异常，与并行执行行为保持一致
+      result = { 
+        success: false, 
+        output: '', 
+        error: error instanceof Error ? error.message : String(error) 
       }
-      
-      // 添加工具结果到消息历史
-      run.messages.push({
-        role: 'tool',
-        content: result.success 
-          ? result.output 
-          : t('agent.tool_error', { error: result.error || t('agent.unknown_error') }),
-        tool_call_id: toolCall.id
+    }
+    
+    this.processToolResult(run, toolCall, result, toolArgs)
+  }
+  
+  /**
+   * 处理工具执行结果
+   */
+  private processToolResult(
+    run: AgentRun,
+    toolCall: ToolCall,
+    result: ToolResult,
+    toolArgs: Record<string, unknown>
+  ): void {
+    const toolName = toolCall.function.name
+    
+    // 更新反思追踪
+    this.updateReflectionTracking(run, toolName, toolArgs, result)
+    
+    // AI Debug: 记录工具执行结果
+    if (run.requestId) {
+      const resultContent = result.success 
+        ? result.output 
+        : t('agent.tool_error', { error: result.error || t('agent.unknown_error') })
+      aiDebugService.logToolResult(run.requestId, {
+        toolCallId: toolCall.id,
+        success: result.success,
+        result: resultContent
       })
     }
+    
+    // 添加工具结果到消息历史
+    run.messages.push({
+      role: 'tool',
+      content: result.success 
+        ? result.output 
+        : t('agent.tool_error', { error: result.error || t('agent.unknown_error') }),
+      tool_call_id: toolCall.id
+    })
   }
   
   /**
