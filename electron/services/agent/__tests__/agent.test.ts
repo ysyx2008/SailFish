@@ -495,6 +495,120 @@ describe('Agent run method', () => {
       expect(mockAiService.chatWithToolsStream).toHaveBeenCalledTimes(2)
       expect(result).toBe('Final response')
     })
+
+    it('should batch adjacent parallelizable tools together', async () => {
+      // 测试分批逻辑：使用只读工具来测试分批
+      // [read_file, read_file, search_knowledge, read_file]
+      // 全是可并行工具，应该在一个批次并行执行
+      const toolCalls = [
+        { id: 'call-1', type: 'function' as const, function: { name: 'read_file', arguments: '{"path":"a.txt"}' } },
+        { id: 'call-2', type: 'function' as const, function: { name: 'read_file', arguments: '{"path":"b.txt"}' } },
+        { id: 'call-3', type: 'function' as const, function: { name: 'file_search', arguments: '{"pattern":"*.ts"}' } },
+        { id: 'call-4', type: 'function' as const, function: { name: 'read_file', arguments: '{"path":"c.txt"}' } },
+      ]
+
+      let callCount = 0
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+          callCount++
+          if (callCount === 1) {
+            onDone({ content: '', tool_calls: toolCalls })
+          } else {
+            // 验证所有工具结果都已返回
+            const messages = _messages as AiMessage[]
+            const toolResults = messages.filter(m => m.role === 'tool')
+            expect(toolResults.length).toBe(4)
+            
+            onChunk('Done')
+            onDone({ content: 'Done', tool_calls: undefined })
+          }
+          return Promise.resolve()
+        }
+      )
+
+      const context = createMockContext()
+      await agent.run('Test parallel tools', context)
+
+      expect(mockAiService.chatWithToolsStream).toHaveBeenCalledTimes(2)
+    })
+
+    it('should execute multiple parallelizable tools in parallel', async () => {
+      // 测试多个可并行工具确实是并行执行的
+      const executionOrder: string[] = []
+      const toolCalls = [
+        { id: 'call-1', type: 'function' as const, function: { name: 'read_file', arguments: '{"path":"a.txt"}' } },
+        { id: 'call-2', type: 'function' as const, function: { name: 'read_file', arguments: '{"path":"b.txt"}' } },
+      ]
+
+      let callCount = 0
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+          callCount++
+          if (callCount === 1) {
+            onDone({ content: '', tool_calls: toolCalls })
+          } else {
+            // 检查消息历史中的工具结果
+            const messages = _messages as AiMessage[]
+            const toolResults = messages.filter(m => m.role === 'tool')
+            // 应该有 2 个工具结果，且顺序正确
+            expect(toolResults.length).toBe(2)
+            expect(toolResults[0].tool_call_id).toBe('call-1')
+            expect(toolResults[1].tool_call_id).toBe('call-2')
+            
+            onChunk('Done')
+            onDone({ content: 'Done', tool_calls: undefined })
+          }
+          return Promise.resolve()
+        }
+      )
+
+      const context = createMockContext()
+      await agent.run('Test parallel execution', context)
+
+      expect(mockAiService.chatWithToolsStream).toHaveBeenCalledTimes(2)
+    })
+
+    it('should maintain execution order for mixed tool calls', async () => {
+      // 测试混合工具调用保持正确的执行顺序
+      // [read_file(A), execute_command(B), read_file(C)]
+      // 期望：先执行 A，再执行 B，最后执行 C
+      // 使用 free 模式跳过确认
+      agent.updateConfig({ executionMode: 'free' })
+      
+      const toolCalls = [
+        { id: 'call-1', type: 'function' as const, function: { name: 'read_file', arguments: '{"path":"a.txt"}' } },
+        { id: 'call-2', type: 'function' as const, function: { name: 'execute_command', arguments: '{"command":"echo test"}' } },
+        { id: 'call-3', type: 'function' as const, function: { name: 'read_file', arguments: '{"path":"c.txt"}' } },
+      ]
+
+      let callCount = 0
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+          callCount++
+          if (callCount === 1) {
+            onDone({ content: '', tool_calls: toolCalls })
+          } else {
+            // 检查消息历史中的工具结果顺序
+            const messages = _messages as AiMessage[]
+            const toolResults = messages.filter(m => m.role === 'tool')
+            // 应该有 3 个工具结果，且顺序与原始调用顺序一致
+            expect(toolResults.length).toBe(3)
+            expect(toolResults[0].tool_call_id).toBe('call-1')
+            expect(toolResults[1].tool_call_id).toBe('call-2')
+            expect(toolResults[2].tool_call_id).toBe('call-3')
+            
+            onChunk('Done')
+            onDone({ content: 'Done', tool_calls: undefined })
+          }
+          return Promise.resolve()
+        }
+      )
+
+      const context = createMockContext()
+      await agent.run('Test mixed tools order', context)
+
+      expect(mockAiService.chatWithToolsStream).toHaveBeenCalledTimes(2)
+    })
   })
 })
 

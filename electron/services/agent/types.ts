@@ -183,6 +183,7 @@ export type AgentExecutionPhase =
   | 'thinking'           // AI 思考/生成响应中（安全打断）
   | 'executing_command'  // 执行终端命令中（可能可打断）
   | 'writing_file'       // 写入文件中（危险，不建议打断）
+  | 'reading'            // 读取文件/搜索等只读操作中（安全打断）
   | 'waiting'            // wait 工具等待中（安全打断）
   | 'confirming'         // 等待用户确认中（安全打断）
   | 'idle'               // 空闲
