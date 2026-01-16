@@ -20,6 +20,8 @@ jobs:
       
       - name: Build for Steam (Windows)
         run: npm run build:steam:win
+        env:
+          VITE_STEAM_BUILD: 'true'
       
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
@@ -44,6 +46,8 @@ jobs:
       
       - name: Build for Steam (macOS)
         run: npm run build:steam:mac
+        env:
+          VITE_STEAM_BUILD: 'true'
       
       - name: List macOS build output
         run: ls -la release/
@@ -71,6 +75,8 @@ jobs:
       
       - name: Build for Steam (Linux)
         run: npm run build:steam:linux
+        env:
+          VITE_STEAM_BUILD: 'true'
       
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
