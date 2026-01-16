@@ -14,6 +14,9 @@ const emit = defineEmits<{
 
 const configStore = useConfigStore()
 
+// Steam 版本检测
+const isSteamBuild = import.meta.env.VITE_STEAM_BUILD === 'true'
+
 // 步骤管理
 const currentStep = ref(1)
 const totalSteps = 6
@@ -30,37 +33,59 @@ const aiFormData = ref<Partial<AiProfile>>({
   contextLength: 8000
 })
 
-const aiTemplates = computed(() => [
+// 所有可用的 AI 模板
+const allAiTemplates = [
   {
     name: 'DeepSeek',
     apiUrl: 'https://api.deepseek.com/v1/chat/completions',
     model: 'deepseek-chat',
-    desc: t('aiSettings.templates.deepseek'),
+    descKey: 'aiSettings.templates.deepseek',
     keyUrl: 'https://platform.deepseek.com/api_keys',
-    recommended: true
+    recommended: true,
+    isLocal: false
   },
   {
     name: 'OpenAI',
     apiUrl: 'https://api.openai.com/v1/chat/completions',
     model: 'gpt-3.5-turbo',
-    desc: t('aiSettings.templates.openai'),
-    keyUrl: 'https://platform.openai.com/api-keys'
+    descKey: 'aiSettings.templates.openai',
+    keyUrl: 'https://platform.openai.com/api-keys',
+    isLocal: false
   },
   {
-    name: t('aiSettings.templates.qwen').includes('Qwen') ? 'Qwen' : '通义千问',
+    name: 'Qwen',
     apiUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
     model: 'qwen-plus',
-    desc: t('aiSettings.templates.qwen'),
-    keyUrl: 'https://bailian.console.aliyun.com/?tab=model#/api-key'
+    descKey: 'aiSettings.templates.qwen',
+    keyUrl: 'https://bailian.console.aliyun.com/?tab=model#/api-key',
+    isLocal: false
   },
   {
     name: 'Ollama',
     apiUrl: 'http://localhost:11434/v1/chat/completions',
     model: 'llama2',
-    desc: t('aiSettings.templates.ollama'),
-    keyUrl: 'https://ollama.com/'
+    descKey: 'aiSettings.templates.ollama',
+    keyUrl: 'https://ollama.com/',
+    isLocal: true,  // 本地服务，Steam版可用
+    recommended: true  // Steam版中推荐
   }
-])
+]
+
+// Steam 版本只显示本地服务（Ollama）
+const aiTemplates = computed(() => {
+  const templates = isSteamBuild 
+    ? allAiTemplates.filter(tpl => tpl.isLocal)
+    : allAiTemplates
+  
+  return templates.map(tpl => ({
+    name: tpl.descKey === 'aiSettings.templates.qwen' && !t('aiSettings.templates.qwen').includes('Qwen') ? '通义千问' : tpl.name,
+    apiUrl: tpl.apiUrl,
+    model: tpl.model,
+    desc: t(tpl.descKey),
+    keyUrl: tpl.keyUrl,
+    recommended: tpl.recommended
+  }))
+})
 
 // 当前选中的模板对应的 keyUrl
 const currentKeyUrl = computed(() => {

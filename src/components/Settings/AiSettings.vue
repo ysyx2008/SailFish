@@ -117,34 +117,49 @@ const setActive = async (profileId: string) => {
   await configStore.setActiveAiProfile(profileId)
 }
 
-// 预设模板
-const templates = computed(() => [
+// Steam 版本检测
+const isSteamBuild = import.meta.env.VITE_STEAM_BUILD === 'true'
+
+// 所有可用的预设模板
+const allTemplates = [
   {
     name: 'DeepSeek',
     apiUrl: 'https://api.deepseek.com/v1/chat/completions',
     model: 'deepseek-chat',
     keyUrl: 'https://platform.deepseek.com/api_keys',
-    recommended: true
+    recommended: true,
+    isLocal: false
   },
   {
     name: 'OpenAI',
     apiUrl: 'https://api.openai.com/v1/chat/completions',
     model: 'gpt-3.5-turbo',
-    keyUrl: 'https://platform.openai.com/api-keys'
+    keyUrl: 'https://platform.openai.com/api-keys',
+    isLocal: false
   },
   {
     name: 'Qwen',
     apiUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
     model: 'qwen-plus',
-    keyUrl: 'https://bailian.console.aliyun.com/?tab=model#/api-key'
+    keyUrl: 'https://bailian.console.aliyun.com/?tab=model#/api-key',
+    isLocal: false
   },
   {
     name: 'Ollama',
     apiUrl: 'http://localhost:11434/v1/chat/completions',
     model: 'llama2',
-    keyUrl: 'https://ollama.com/'
+    keyUrl: 'https://ollama.com/',
+    isLocal: true,  // 本地服务，Steam版可用
+    recommended: true  // Steam版中推荐
   }
-])
+]
+
+// Steam 版本只显示本地服务（Ollama）
+const templates = computed(() => {
+  return isSteamBuild 
+    ? allTemplates.filter(t => t.isLocal)
+    : allTemplates
+})
 
 const applyTemplate = (template: typeof templates.value[0]) => {
   formData.value.name = template.name
