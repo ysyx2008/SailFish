@@ -85,12 +85,14 @@ export async function checkTerminalStatus(
   try {
     const awarenessService = getTerminalAwarenessService()
     const awareness = await awarenessService.getAwareness(ptyId)
-    const terminalType = awareness.terminalState?.type || 'local'
-    const isSsh = terminalType === 'ssh'
-    
+    // 判断是否是 SSH 终端：优先使用 terminalState.type，其次检查 screenAnalysis.context.sshDepth
+    // 这样即使 terminalState 未初始化，也能通过屏幕分析检测到 SSH 连接
+    const terminalType = awareness.terminalState?.type || 'local'    
     const screenAnalysis = await getScreenAnalysisFromFrontend(ptyId, 2000)
+    const isSsh = terminalType === 'ssh' || (screenAnalysis?.context?.sshDepth ?? 0) > 0
     
     let terminalOutput: string[] = []
+    let bufferError: string | null = null
     try {
       const bufferLines = await getLastNLinesFromBuffer(ptyId, 50, 3000)
       if (bufferLines && bufferLines.length > 0) {
@@ -98,9 +100,11 @@ export async function checkTerminalStatus(
         while (terminalOutput.length > 0 && terminalOutput[terminalOutput.length - 1].trim() === '') {
           terminalOutput.pop()
         }
+      } else if (bufferLines === null) {
+        bufferError = '获取终端输出超时'
       }
-    } catch {
-      // 获取失败，继续
+    } catch (e) {
+      bufferError = e instanceof Error ? e.message : '获取终端输出失败'
     }
     
     const output: string[] = []
@@ -229,13 +233,23 @@ export async function checkTerminalStatus(
     
     // 3. 最近终端输出
     output.push('')
-    output.push(`## 最近终端输出（最后 ${terminalOutput.length} 行）`)
+    output.push(`## 最近终端输出`)
     if (terminalOutput.length > 0) {
+      output.push(`（最后 ${terminalOutput.length} 行）`)
       output.push('```')
       output.push(terminalOutput.join('\n'))
       output.push('```')
+    } else if (screenAnalysis?.visibleContent && screenAnalysis.visibleContent.length > 0) {
+      // 降级：使用屏幕分析中的可视区域内容
+      const visibleLines = screenAnalysis.visibleContent.map(line => stripAnsi(line))
+      output.push(`（可视区域 ${visibleLines.length} 行）`)
+      output.push('```')
+      output.push(visibleLines.join('\n'))
+      output.push('```')
+      // 更新 terminalOutput 用于后续显示
+      terminalOutput = visibleLines
     } else {
-      output.push('(无法获取终端输出)')
+      output.push(`(无法获取终端输出${bufferError ? `: ${bufferError}` : ''})`)
     }
     
     const outputText = output.join('\n')
@@ -246,11 +260,22 @@ export async function checkTerminalStatus(
     } else if (isSsh) {
       displayStatus = t('terminal.check_output')
     }
+    
+    // 构建更详细的结果信息
+    let resultInfo: string
+    if (terminalOutput.length > 0) {
+      resultInfo = t('terminal.output_lines', { count: terminalOutput.length })
+    } else if (bufferError) {
+      resultInfo = bufferError
+    } else {
+      resultInfo = t('terminal.no_output')
+    }
+    
     executor.addStep({
       type: 'tool_result',
       content: `${t('terminal.status')}: ${displayStatus}`,
       toolName: 'check_terminal_status',
-      toolResult: terminalOutput.length > 0 ? t('terminal.output_lines', { count: terminalOutput.length }) : t('terminal.no_output')
+      toolResult: resultInfo
     })
 
     return { success: true, output: outputText }
