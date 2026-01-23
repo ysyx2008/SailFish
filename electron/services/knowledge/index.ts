@@ -67,6 +67,15 @@ export interface SmartMemoryResult {
   docId?: string
 }
 
+/**
+ * RRF 融合分数阈值
+ * RRF 分数 = 1/(k+rank+1)，k=60 时：
+ * - 单通道第1名 ≈ 0.0164，第2名 ≈ 0.0161
+ * - 双通道命中时分数叠加 ≈ 0.032
+ * 0.02 表示至少在一个通道排名靠前，或在两个通道都有匹配
+ */
+const MIN_RRF_SCORE = 0.02
+
 export class KnowledgeService extends EventEmitter {
   private modelManager: ModelManager
   private embeddingService: EmbeddingService
@@ -610,6 +619,9 @@ export class KnowledgeService extends EventEmitter {
       return result
     })
 
+    // 过滤低相关性结果（RRF 融合分数阈值）
+    results = results.filter(r => r.score >= MIN_RRF_SCORE)
+
     return results.slice(0, searchOptions.limit)
   }
 
@@ -673,10 +685,7 @@ export class KnowledgeService extends EventEmitter {
       return ''
     }
 
-    // 二次过滤：只保留分数超过阈值的结果
-    // RRF 融合后的分数通常在 0.01-0.03 之间，单通道在 0.016 左右
-    // 设置 0.02 作为阈值，表示至少在一个通道排名较高或在两个通道都有匹配
-    const MIN_RRF_SCORE = 0.02
+    // 二次过滤：确保只保留高相关性结果（search 已做过滤，这里是双重保障）
     const relevantResults = results.filter(r => r.score >= MIN_RRF_SCORE)
 
     if (relevantResults.length === 0) {
