@@ -30,6 +30,35 @@ try {
   console.warn('Failed to fetch latest release, using default version:', version);
 }
 
+// 下载源配置
+const DOWNLOAD_SOURCES = {
+  github: {
+    baseUrl: `https://github.com/ysyx2008/SFTerminal/releases/download/v${version}`,
+    // GitHub 文件名带版本号
+    files: {
+      'mac-arm64': `SFTerm-${version}-arm64.dmg`,
+      'mac-x64': `SFTerm-${version}.dmg`,
+      'win-x64': `SFTerm-Setup-${version}.exe`,
+      'linux-appimage': `SFTerm-${version}.AppImage`,
+      'linux-deb': `SFTerm_${version}_amd64.deb`,
+    }
+  },
+  aliyun: {
+    baseUrl: 'https://sfterm-download.oss-cn-wuhan-lr.aliyuncs.com',
+    // OSS 文件名固定不带版本号
+    files: {
+      'mac-arm64': 'SFTerm-arm64.dmg',
+      'mac-x64': 'SFTerm-x64.dmg',
+      'win-x64': 'SFTerm-Setup.exe',
+      'linux-appimage': 'SFTerm.AppImage',
+      'linux-deb': 'SFTerm.deb',
+    }
+  }
+};
+
+// 默认下载源：中文用阿里云，英文用 GitHub
+const defaultSource = lang === 'zh' ? 'aliyun' : 'github';
+
 // 构建下载数据，使用翻译
 const downloads = [
   {
@@ -39,8 +68,8 @@ const downloads = [
     </svg>`,
     description: t.download.platforms.macOS.description,
     variants: [
-      { name: t.download.platforms.macOS.variants.appleSilicon, arch: "arm64", file: `SFTerm-${version}-arm64.dmg` },
-      { name: t.download.platforms.macOS.variants.intel, arch: "x64", file: `SFTerm-${version}.dmg` }
+      { name: t.download.platforms.macOS.variants.appleSilicon, fileKey: 'mac-arm64' },
+      { name: t.download.platforms.macOS.variants.intel, fileKey: 'mac-x64' }
     ]
   },
   {
@@ -50,7 +79,7 @@ const downloads = [
     </svg>`,
     description: t.download.platforms.Windows.description,
     variants: [
-      { name: t.download.platforms.Windows.variants.installer64, arch: "x64", file: `SFTerm-Setup-${version}.exe` }
+      { name: t.download.platforms.Windows.variants.installer64, fileKey: 'win-x64' }
     ]
   },
   {
@@ -60,19 +89,38 @@ const downloads = [
     </svg>`,
     description: t.download.platforms.Linux.description,
     variants: [
-      { name: t.download.platforms.Linux.variants.appImage, arch: "x64", file: `SFTerm-${version}.AppImage` },
-      { name: t.download.platforms.Linux.variants.deb, arch: "x64", file: `SFTerm_${version}_amd64.deb` }
+      { name: t.download.platforms.Linux.variants.appImage, fileKey: 'linux-appimage' },
+      { name: t.download.platforms.Linux.variants.deb, fileKey: 'linux-deb' }
     ]
   }
 ];
+
+// 传递给客户端的数据
+const sourceConfig = JSON.stringify(DOWNLOAD_SOURCES);
 ---
 
-<section id="download" class="download">
+<section id="download" class="download" data-source-config={sourceConfig} data-default-source={defaultSource}>
   <div class="container">
     <h2 class="section-title fade-in">{t.download.title}</h2>
     <p class="section-subtitle fade-in fade-in-delay-1">
       {t.download.subtitle}
     </p>
+    
+    <!-- 下载源 Tab 切换 -->
+    <div class="source-tabs fade-in fade-in-delay-1">
+      <button class="source-tab" data-source="aliyun">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+        </svg>
+        {t.download.source.aliyun}
+      </button>
+      <button class="source-tab" data-source="github">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        {t.download.source.github}
+      </button>
+    </div>
     
     <div class="download-grid">
       {downloads.map((item, index) => (
@@ -86,7 +134,7 @@ const downloads = [
           </div>
           <div class="download-variants">
             {item.variants.map(variant => (
-              <a href={`https://github.com/ysyx2008/SFTerminal/releases/download/v${version}/${variant.file}`} class="download-btn" target="_blank" rel="noopener">
+              <a href="#" class="download-btn" data-file-key={variant.fileKey} target="_blank" rel="noopener">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
                 </svg>
@@ -109,6 +157,51 @@ const downloads = [
   </div>
 </section>
 
+<script>
+  // 下载源切换逻辑
+  const section = document.getElementById('download');
+  const sourceConfig = JSON.parse(section?.dataset.sourceConfig || '{}');
+  const defaultSource = section?.dataset.defaultSource || 'github';
+  
+  let currentSource = defaultSource;
+  
+  function updateDownloadLinks() {
+    const source = sourceConfig[currentSource];
+    if (!source) return;
+    
+    document.querySelectorAll('.download-btn[data-file-key]').forEach(btn => {
+      const fileKey = btn.getAttribute('data-file-key');
+      if (fileKey && source.files[fileKey]) {
+        btn.setAttribute('href', `${source.baseUrl}/${source.files[fileKey]}`);
+      }
+    });
+  }
+  
+  function updateSourceTabs() {
+    document.querySelectorAll('.source-tab').forEach(tab => {
+      const source = tab.getAttribute('data-source');
+      if (source === currentSource) {
+        tab.classList.add('active');
+      } else {
+        tab.classList.remove('active');
+      }
+    });
+  }
+  
+  // 初始化
+  updateDownloadLinks();
+  updateSourceTabs();
+  
+  // 绑定切换事件
+  document.querySelectorAll('.source-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      currentSource = tab.getAttribute('data-source') || defaultSource;
+      updateDownloadLinks();
+      updateSourceTabs();
+    });
+  });
+</script>
+
 <style>
   .download {
     position: relative;
@@ -124,6 +217,53 @@ const downloads = [
     right: 0;
     height: 1px;
     background: linear-gradient(90deg, transparent, var(--color-border), transparent);
+  }
+  
+  /* 下载源 Tab 切换 */
+  .source-tabs {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 32px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 4px;
+    width: fit-content;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  
+  .source-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 24px;
+    border: none;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .source-tab:hover {
+    color: var(--color-text-primary);
+  }
+  
+  .source-tab.active {
+    background: var(--gradient-primary);
+    color: white;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+  }
+  
+  .source-tab svg {
+    opacity: 0.7;
+  }
+  
+  .source-tab.active svg {
+    opacity: 1;
   }
   
   .download-grid {
