@@ -181,6 +181,12 @@ export const translations = {
       systemRequirements: '系统要求：',
       moreVersions: '更多版本请访问',
       githubReleases: 'GitHub Releases',
+      source: {
+        label: '下载源',
+        aliyun: '阿里云（国内推荐）',
+        github: 'GitHub',
+        switchTo: '切换到',
+      },
     },
     footer: {
       licenseTitle: '开源授权',
@@ -390,6 +396,12 @@ export const translations = {
       systemRequirements: 'System Requirements:',
       moreVersions: 'For more versions, visit',
       githubReleases: 'GitHub Releases',
+      source: {
+        label: 'Download Source',
+        aliyun: 'Aliyun China',
+        github: 'GitHub',
+        switchTo: 'Switch to',
+      },
     },
     footer: {
       licenseTitle: 'Open Source License',
