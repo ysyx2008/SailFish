@@ -183,3 +183,50 @@ jobs:
             artifacts/linux-release/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 上传到阿里云 OSS（国内加速下载）
+  upload-oss:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Setup aliyun ossutil
+        run: |
+          curl -o ossutil64 https://gosspublic.alicdn.com/ossutil/1.7.18/ossutil-v1.7.18-linux-amd64.zip
+          unzip -j ossutil64 -d /tmp/ossutil
+          chmod +x /tmp/ossutil/ossutil64
+          /tmp/ossutil/ossutil64 config -e oss-cn-wuhan-lr.aliyuncs.com -i ${{ secrets.OSS_ACCESS_KEY_ID }} -k ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+
+      - name: Upload to OSS
+        run: |
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+          OSSUTIL=/tmp/ossutil/ossutil64
+          BUCKET=oss://sfterm-download
+          
+          # Windows
+          $OSSUTIL cp artifacts/windows-release/SFTerm-Setup-${VERSION}.exe ${BUCKET}/SFTerm-Setup.exe -f
+          
+          # macOS
+          $OSSUTIL cp artifacts/macos-release/SFTerm-${VERSION}-arm64.dmg ${BUCKET}/SFTerm-arm64.dmg -f
+          $OSSUTIL cp artifacts/macos-release/SFTerm-${VERSION}.dmg ${BUCKET}/SFTerm-x64.dmg -f
+          
+          # Linux
+          $OSSUTIL cp artifacts/linux-release/SFTerm-${VERSION}.AppImage ${BUCKET}/SFTerm.AppImage -f
+          $OSSUTIL cp artifacts/linux-release/SFTerm_${VERSION}_amd64.deb ${BUCKET}/SFTerm.deb -f
+          
+          echo "✅ All files uploaded to OSS successfully!"
