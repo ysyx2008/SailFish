@@ -359,6 +359,70 @@ export async function loadSkillTool(
 }
 
 /**
+ * 卸载技能工具
+ * 卸载已加载的技能，释放工具槽位
+ */
+export async function unloadSkillTool(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const skillId = args.skill_id as string
+  
+  if (!skillId) {
+    return { success: false, output: '', error: t('skill.id_required') }
+  }
+
+  if (!executor.skillSession) {
+    return { success: false, output: '', error: t('skill.session_not_initialized') }
+  }
+
+  // 检查技能是否已加载
+  const loadedSkills = executor.skillSession.getLoadedSkills()
+  if (!loadedSkills.includes(skillId)) {
+    const output = t('skill.not_loaded', { id: skillId })
+    executor.addStep({
+      type: 'tool_result',
+      content: output,
+      toolName: 'unload_skill',
+      toolResult: output
+    })
+    return { success: true, output }
+  }
+
+  executor.addStep({
+    type: 'tool_call',
+    content: t('skill.unloading', { id: skillId }),
+    toolName: 'unload_skill',
+    toolArgs: args,
+    riskLevel: 'safe'
+  })
+
+  try {
+    await executor.skillSession.unloadSkill(skillId)
+    
+    const output = t('skill.unloaded', { id: skillId })
+    executor.addStep({
+      type: 'tool_result',
+      content: output,
+      toolName: 'unload_skill',
+      toolResult: output
+    })
+    
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    executor.addStep({
+      type: 'tool_result',
+      content: `${t('skill.unload_failed')}: ${errorMsg}`,
+      toolName: 'unload_skill',
+      toolResult: errorMsg
+    })
+    
+    return { success: false, output: '', error: errorMsg }
+  }
+}
+
+/**
  * 加载用户技能工具
  */
 export async function loadUserSkillTool(

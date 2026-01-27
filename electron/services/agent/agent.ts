@@ -73,6 +73,9 @@ export abstract class Agent {
   /** ID 计数器 */
   private idCounter = 0
   
+  /** 技能会话（Agent 实例级别，跨 Run 持久化） */
+  private _skillSession?: SkillSession
+  
   // ==================== 构造函数 ====================
   
   constructor(services: AgentServices) {
@@ -85,6 +88,17 @@ export abstract class Agent {
    */
   protected createTaskMemory(): TaskMemoryStore {
     return new TaskMemoryStore()
+  }
+  
+  /**
+   * 获取技能会话（延迟初始化，Agent 实例级别持久化）
+   * 技能加载状态会在多轮对话间保持
+   */
+  protected getSkillSession(): SkillSession {
+    if (!this._skillSession) {
+      this._skillSession = createSkillSession(this.getAvailableTools())
+    }
+    return this._skillSession
   }
   
   // ==================== 抽象方法（子类必须实现） ====================
@@ -257,6 +271,12 @@ export abstract class Agent {
       this.cleanupRun(this.currentRun)
       this.currentRun = undefined
     }
+    
+    // 清理技能会话
+    if (this._skillSession) {
+      this._skillSession.cleanup()
+      this._skillSession = undefined
+    }
   }
   
   // ==================== 受保护方法：生命周期 ====================
@@ -287,7 +307,7 @@ export abstract class Agent {
       realtimeOutputBuffer: [...context.terminalOutput],
       workerOptions: options?.workerOptions,
       executionPhase: 'thinking',
-      skillSession: createSkillSession(this.getAvailableTools()),
+      skillSession: this.getSkillSession(),  // 使用 Agent 级别的技能会话，跨 Run 持久化
       allowedTools: new Set<string>()
     }
     
@@ -372,6 +392,7 @@ export abstract class Agent {
   
   /**
    * 清理运行资源
+   * 注意：技能会话在 Agent 实例级别维护，不在单次 Run 结束时清理
    */
   protected cleanupRun(run: AgentRun): void {
     // 取消输出监听
@@ -380,10 +401,8 @@ export abstract class Agent {
       run.outputUnsubscribe = undefined
     }
     
-    // 清理技能会话
-    if (run.skillSession) {
-      run.skillSession.cleanup()
-    }
+    // 技能会话已提升到 Agent 实例级别，这里不再清理
+    // 技能会话会在 Agent.cleanup() 中统一清理
     
     run.isRunning = false
   }

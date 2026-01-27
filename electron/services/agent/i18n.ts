@@ -467,6 +467,10 @@ const translations = {
     'skill.loaded': '已加载技能: {name}，可用工具: {tools}',
     'skill.load_failed': '加载技能失败',
     'skill.not_found': '技能不存在: {id}',
+    'skill.not_loaded': '技能未加载: {id}',
+    'skill.unloading': '正在卸载技能: {id}',
+    'skill.unloaded': '已卸载技能: {id}',
+    'skill.unload_failed': '卸载技能失败',
 
     // 用户技能系统（渐进式加载）
     'user_skill.id_required': '用户技能 ID 不能为空',
@@ -1200,6 +1204,10 @@ Please output the summary in the following format:
     'skill.loaded': 'Skill loaded: {name}, available tools: {tools}',
     'skill.load_failed': 'Failed to load skill',
     'skill.not_found': 'Skill not found: {id}',
+    'skill.not_loaded': 'Skill not loaded: {id}',
+    'skill.unloading': 'Unloading skill: {id}',
+    'skill.unloaded': 'Skill unloaded: {id}',
+    'skill.unload_failed': 'Failed to unload skill',
 
     // User skill system (progressive loading)
     'user_skill.id_required': 'User skill ID required',

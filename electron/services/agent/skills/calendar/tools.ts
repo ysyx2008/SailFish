@@ -193,7 +193,7 @@ export const calendarTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'calendar_delete',
-      description: `删除日程事件。
+      description: `删除日程事件。只需传 calendar_id 和 event_ids，不要传其他信息。
 
 **注意**：
 - 删除操作不可恢复

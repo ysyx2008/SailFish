@@ -21,7 +21,7 @@ import { fileSearch, readFile, editFile, writeLocalFile, writeRemoteFile } from 
 import { rememberInfo, searchKnowledge, getKnowledgeDoc } from './knowledge'
 import { createPlan, updatePlan, clearPlan } from './plan'
 import { recallTask, deepRecall } from './memory'
-import { wait, askUser, executeMcpTool, loadSkillTool, loadUserSkillTool, executeSkillTool } from './misc'
+import { wait, askUser, executeMcpTool, loadSkillTool, unloadSkillTool, loadUserSkillTool, executeSkillTool } from './misc'
 
 // 重新导出类型
 export type { ToolExecutorConfig, AgentConfig, ToolResult, ErrorCategory } from './types'
@@ -33,7 +33,7 @@ export { fileSearch, readFile, editFile, writeLocalFile, writeRemoteFile } from 
 export { rememberInfo, searchKnowledge, getKnowledgeDoc } from './knowledge'
 export { createPlan, updatePlan, clearPlan } from './plan'
 export { recallTask, deepRecall } from './memory'
-export { wait, askUser, executeMcpTool, loadSkillTool, loadUserSkillTool, executeSkillTool } from './misc'
+export { wait, askUser, executeMcpTool, loadSkillTool, unloadSkillTool, loadUserSkillTool, executeSkillTool } from './misc'
 
 // 导出工具函数
 export {
@@ -129,6 +129,9 @@ export async function executeTool(
 
     case 'load_skill':
       return await loadSkillTool(args, executor)
+
+    case 'unload_skill':
+      return await unloadSkillTool(args, executor)
 
     case 'load_user_skill':
       return await loadUserSkillTool(args, executor)
