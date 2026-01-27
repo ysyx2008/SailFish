@@ -2305,6 +2305,65 @@ const electronAPI = {
     }>) => ipcRenderer.invoke('calendar:syncAccounts', accounts) as Promise<void>
   },
 
+  // 语音识别
+  speech: {
+    // 获取服务状态
+    getStatus: () =>
+      ipcRenderer.invoke('speech:getStatus') as Promise<{
+        initialized: boolean
+        modelLoaded: boolean
+        modelId: string | null
+        error?: string
+      }>,
+
+    // 获取模型信息
+    getModelInfo: () =>
+      ipcRenderer.invoke('speech:getModelInfo') as Promise<{
+        available: boolean
+        path: string
+        config: {
+          id: string
+          name: string
+          language: string
+        }
+      }>,
+
+    // 初始化服务
+    initialize: () =>
+      ipcRenderer.invoke('speech:initialize') as Promise<{
+        success: boolean
+        error?: string
+      }>,
+
+    // 转录音频数据（Float32Array 格式，16kHz）
+    transcribe: (audioData: number[], sampleRate?: number) =>
+      ipcRenderer.invoke('speech:transcribe', audioData, sampleRate) as Promise<{
+        success: boolean
+        result?: {
+          text: string
+          language?: string
+          duration?: number
+        }
+        error?: string
+      }>,
+
+    // 转录音频文件
+    transcribeFile: (filePath: string) =>
+      ipcRenderer.invoke('speech:transcribeFile', filePath) as Promise<{
+        success: boolean
+        result?: {
+          text: string
+          language?: string
+          duration?: number
+        }
+        error?: string
+      }>,
+
+    // 检查服务是否就绪
+    isReady: () =>
+      ipcRenderer.invoke('speech:isReady') as Promise<boolean>
+  },
+
   // 文件工具
   fileUtils: {
     // 获取拖放文件的路径（Electron 24+ 推荐方式）

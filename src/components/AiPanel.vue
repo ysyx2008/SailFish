@@ -6,7 +6,7 @@
  */
 import { ref, computed, watch, inject, onMounted, onUnmounted, toRef, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Upload, Trash2, X, HelpCircle, ChevronDown, Paperclip, Square, ArrowUp, Check } from 'lucide-vue-next'
+import { Upload, Trash2, X, HelpCircle, ChevronDown, Paperclip, Square, ArrowUp, Check, Mic, MicOff, Loader2 } from 'lucide-vue-next'
 import { useConfigStore } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
 import AgentPlanView from './AgentPlanView.vue'
@@ -18,7 +18,8 @@ import {
   useContextStats,
   useHostProfile,
   useAgentMode,
-  useMentions
+  useMentions,
+  useSpeechRecognition
 } from '../composables'
 
 // Props - 每个 AiPanel 实例绑定到特定的 tab
@@ -161,6 +162,39 @@ const {
   handleKeyDown: handleMentionKeyDown,
   expandMentions
 } = useMentions(inputText, currentTabId, uploadedDocs)
+
+// 语音识别
+const {
+  isRecording,
+  isTranscribing,
+  isInitializing: isSpeechInitializing,
+  isModelReady: isSpeechReady,
+  canRecord,
+  error: speechError,
+  checkAndInitialize: initSpeech,
+  startRecording,
+  stopRecording,
+  cancelRecording
+} = useSpeechRecognition()
+
+// 处理录音按钮点击
+const handleRecordClick = async () => {
+  if (isRecording.value) {
+    // 停止录音并转录
+    const result = await stopRecording()
+    if (result?.text) {
+      // 将转录结果添加到输入框
+      inputText.value = (inputText.value + ' ' + result.text).trim()
+      // 聚焦输入框
+      nextTick(() => {
+        mentionInputRef.value?.focus()
+      })
+    }
+  } else {
+    // 开始录音
+    await startRecording()
+  }
+}
 
 // 输入框引用（用于选择后重新聚焦）
 const mentionInputRef = ref<HTMLTextAreaElement | null>(null)
@@ -1365,6 +1399,19 @@ onUnmounted(() => {
               </span>
             </div>
           </div>
+          <!-- 语音输入按钮 -->
+          <button
+            v-if="!isLoading && !isAgentRunning"
+            class="voice-btn"
+            :class="{ 'recording': isRecording, 'transcribing': isTranscribing }"
+            :disabled="isTranscribing || isSpeechInitializing"
+            :title="isRecording ? t('ai.stopRecording') : (isTranscribing ? t('ai.transcribing') : t('ai.startRecording'))"
+            @click="handleRecordClick"
+          >
+            <Loader2 v-if="isTranscribing || isSpeechInitializing" :size="18" class="spin" />
+            <MicOff v-else-if="isRecording" :size="18" />
+            <Mic v-else :size="18" />
+          </button>
           <!-- 停止按钮 (AI 响应中，非 Agent 运行时) -->
           <button
             v-if="isLoading && !isAgentRunning"
@@ -3107,6 +3154,56 @@ onUnmounted(() => {
   border-top-color: var(--accent-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
+}
+
+/* 语音输入按钮 */
+.voice-btn {
+  flex-shrink: 0;
+  padding: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.voice-btn:hover:not(:disabled) {
+  background: rgba(100, 150, 255, 0.12);
+  color: var(--accent-primary);
+  transform: scale(1.08);
+}
+
+.voice-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.voice-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.voice-btn.recording {
+  color: var(--color-error);
+  background: rgba(255, 100, 100, 0.15);
+  animation: pulse-recording 1.5s ease-in-out infinite;
+}
+
+.voice-btn.transcribing {
+  color: var(--accent-primary);
+}
+
+.voice-btn .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes pulse-recording {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(255, 100, 100, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(255, 100, 100, 0);
+  }
 }
 
 .ai-input textarea {

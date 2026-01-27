@@ -3238,3 +3238,31 @@ ipcMain.handle('calendar:testConnection', async (_event, config: {
   }
 })
 
+// ==================== 语音识别相关 ====================
+// 注意：实际语音识别在渲染进程中使用 vosk-browser 运行
+// 主进程只提供模型路径等信息
+
+// 获取语音识别状态
+ipcMain.handle('speech:getStatus', async () => {
+  const { getStatus } = await import('./services/speech')
+  return getStatus()
+})
+
+// 获取模型信息
+ipcMain.handle('speech:getModelInfo', async () => {
+  const { getModelInfo } = await import('./services/speech')
+  return getModelInfo()
+})
+
+// 初始化语音识别服务（空实现，实际在渲染进程）
+ipcMain.handle('speech:initialize', async () => {
+  const { initialize } = await import('./services/speech')
+  return initialize()
+})
+
+// 检查服务是否就绪
+ipcMain.handle('speech:isReady', async () => {
+  const { isReady } = await import('./services/speech')
+  return isReady()
+})
+

@@ -25,12 +25,18 @@ files:
   - dist-electron
 asarUnpack:
   - node_modules/@homebridge/node-pty-prebuilt-multiarch/**/*
+  - node_modules/onnxruntime-node/**/*
 # 启用最大压缩率以减小安装包大小（会增加打包时间）
 # compression: maximum
 extraResources:
   # 轻量 Embedding 模型（随软件打包）
   - from: "resources/models/embedding/bge-small-zh-v1.5"
     to: "models/embedding/bge-small-zh-v1.5"
+    filter:
+      - "**/*"
+  # Vosk 语音识别模型（随软件打包）
+  - from: "resources/models/speech/vosk"
+    to: "models/speech/vosk"
     filter:
       - "**/*"
 win:
