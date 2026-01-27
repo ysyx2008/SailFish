@@ -6,7 +6,7 @@ import * as path from 'path'
 import * as fs from 'fs'
 import { app, utilityProcess, UtilityProcess } from 'electron'
 
-const MODEL_NAME = 'sherpa-onnx-paraformer-zh-small-2024-03-09'
+const MODEL_NAME = 'sherpa-onnx-paraformer-zh-2024-03-09'
 
 // Worker 进程
 let worker: UtilityProcess | null = null
@@ -221,9 +221,9 @@ export async function transcribe(
  */
 export function getModelInfo() {
   return {
-    id: 'paraformer-zh-small',
-    name: 'Paraformer 中文小模型',
-    description: 'FunASR Paraformer 中文语音识别模型，支持普通话和方言',
+    id: 'paraformer-zh-2024',
+    name: 'Paraformer 中文模型',
+    description: 'FunASR Paraformer 中文语音识别模型 (2024版)，支持普通话、英文和方言',
     languages: ['中文', '英文', '四川话', '河南话', '天津话'],
     sampleRate: 16000,
     available: isModelAvailable()
