@@ -169,6 +169,52 @@ export interface EmailAccount {
   lastUsedAt?: number
 }
 
+// ==================== 日历账户配置 ====================
+
+// 日历服务商类型
+export type CalendarProvider = 'google' | 'icloud' | 'outlook' | 'wecom' | 'caldav'
+
+// 预置 CalDAV 服务器配置
+export const CALENDAR_PROVIDER_CONFIGS: Record<Exclude<CalendarProvider, 'caldav'>, {
+  serverUrl: string
+  displayName: string
+  icon: string
+}> = {
+  google: {
+    serverUrl: 'https://www.googleapis.com/caldav/v2',
+    displayName: 'Google Calendar',
+    icon: '📅'
+  },
+  icloud: {
+    serverUrl: 'https://caldav.icloud.com',
+    displayName: 'Apple iCloud',
+    icon: '🍎'
+  },
+  outlook: {
+    serverUrl: 'https://outlook.office365.com/caldav',
+    displayName: 'Microsoft Outlook',
+    icon: '📧'
+  },
+  wecom: {
+    serverUrl: 'https://caldav.wecom.work',
+    displayName: '企业微信',
+    icon: '💼'
+  }
+}
+
+// 日历账户配置
+export interface CalendarAccount {
+  id: string
+  name: string                  // 显示名称
+  provider: CalendarProvider    // 服务商
+  username: string              // 用户名/邮箱
+  // 自定义服务器配置（provider 为 caldav 时使用）
+  serverUrl?: string
+  // 元数据
+  createdAt?: number
+  lastUsedAt?: number
+}
+
 export const useConfigStore = defineStore('config', () => {
   // AI 配置
   const aiProfiles = ref<AiProfile[]>([])
@@ -223,6 +269,9 @@ export const useConfigStore = defineStore('config', () => {
 
   // 邮箱账户
   const emailAccounts = ref<EmailAccount[]>([])
+
+  // 日历账户
+  const calendarAccounts = ref<CalendarAccount[]>([])
 
   // 计算属性
   const activeAiProfile = computed(() =>
@@ -311,6 +360,15 @@ export const useConfigStore = defineStore('config', () => {
       if (emailAccounts.value.length > 0) {
         const plainAccounts = JSON.parse(JSON.stringify(emailAccounts.value))
         await window.electronAPI.email.syncAccounts(plainAccounts)
+      }
+
+      // 加载日历账户
+      const calAccounts = await window.electronAPI.config.get('calendarAccounts') as CalendarAccount[] | undefined
+      calendarAccounts.value = calAccounts || []
+      // 同步到后端 calendar skill
+      if (calendarAccounts.value.length > 0 && window.electronAPI.calendar) {
+        const plainCalAccounts = JSON.parse(JSON.stringify(calendarAccounts.value))
+        await window.electronAPI.calendar.syncAccounts(plainCalAccounts)
       }
     } catch (error) {
       console.error('Failed to load config:', error)
@@ -628,6 +686,48 @@ export const useConfigStore = defineStore('config', () => {
     return EMAIL_PROVIDER_CONFIGS[account.provider]
   }
 
+  // ==================== 日历账户 ====================
+
+  async function saveCalendarAccounts(): Promise<void> {
+    const plainAccounts = JSON.parse(JSON.stringify(calendarAccounts.value))
+    await window.electronAPI.config.set('calendarAccounts', plainAccounts)
+    // 同步到后端 calendar skill
+    if (window.electronAPI.calendar) {
+      await window.electronAPI.calendar.syncAccounts(plainAccounts)
+    }
+  }
+
+  async function addCalendarAccount(account: CalendarAccount): Promise<void> {
+    account.createdAt = Date.now()
+    calendarAccounts.value.push(account)
+    await saveCalendarAccounts()
+  }
+
+  async function updateCalendarAccount(account: CalendarAccount): Promise<void> {
+    const index = calendarAccounts.value.findIndex(a => a.id === account.id)
+    if (index !== -1) {
+      calendarAccounts.value[index] = account
+      await saveCalendarAccounts()
+    }
+  }
+
+  async function deleteCalendarAccount(id: string): Promise<void> {
+    calendarAccounts.value = calendarAccounts.value.filter(a => a.id !== id)
+    await saveCalendarAccounts()
+    // 同时删除密钥链中的凭据
+    await window.electronAPI.calendar?.deleteCredential(id)
+  }
+
+  /**
+   * 获取日历账户的服务器配置
+   */
+  function getCalendarServerUrl(account: CalendarAccount): string {
+    if (account.provider === 'caldav') {
+      return account.serverUrl || ''
+    }
+    return CALENDAR_PROVIDER_CONFIGS[account.provider].serverUrl
+  }
+
   // ==================== 数据迁移 ====================
 
   /**
@@ -727,7 +827,12 @@ export const useConfigStore = defineStore('config', () => {
     updateEmailAccount,
     deleteEmailAccount,
     updateEmailAccountLastUsed,
-    getEmailServerConfig
+    getEmailServerConfig,
+    calendarAccounts,
+    addCalendarAccount,
+    updateCalendarAccount,
+    deleteCalendarAccount,
+    getCalendarServerUrl
   }
 })
 

@@ -3175,3 +3175,66 @@ ipcMain.handle('email:testConnection', async (_event, config: {
   }
 })
 
+// ==================== 日历相关 ====================
+
+// 设置日历凭据
+ipcMain.handle('calendar:setCredential', async (_event, accountId: string, credential: string) => {
+  const { setCalendarCredential } = await import('./services/credential.service')
+  await setCalendarCredential(accountId, credential)
+})
+
+// 删除日历凭据
+ipcMain.handle('calendar:deleteCredential', async (_event, accountId: string) => {
+  const { deleteCalendarCredential } = await import('./services/credential.service')
+  return await deleteCalendarCredential(accountId)
+})
+
+// 同步日历账户配置到 calendar skill
+ipcMain.handle('calendar:syncAccounts', async (_event, accounts: Array<{
+  id: string
+  name: string
+  provider: string
+  username: string
+  serverUrl?: string
+}>) => {
+  const { setCalendarAccounts } = await import('./services/agent/skills/calendar/executor')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setCalendarAccounts(accounts as any)
+  console.log(`[Calendar] Synced ${accounts.length} calendar accounts`)
+})
+
+// 测试日历连接
+ipcMain.handle('calendar:testConnection', async (_event, config: {
+  username: string
+  password: string
+  provider?: string
+  serverUrl?: string
+}) => {
+  try {
+    const tsdav = await import('tsdav')
+    
+    const client = new tsdav.DAVClient({
+      serverUrl: config.serverUrl || 'https://caldav.wecom.work',
+      credentials: {
+        username: config.username,
+        password: config.password
+      },
+      authMethod: 'Basic',
+      defaultAccountType: 'caldav'
+    })
+
+    await client.login()
+    const calendars = await client.fetchCalendars()
+    
+    return { 
+      success: true, 
+      message: `连接成功，找到 ${calendars.length} 个日历` 
+    }
+  } catch (error) {
+    return { 
+      success: false, 
+      message: error instanceof Error ? error.message : '连接失败'
+    }
+  }
+})
+

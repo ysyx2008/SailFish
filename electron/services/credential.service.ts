@@ -124,6 +124,36 @@ export async function deleteEmailCredential(accountId: string): Promise<boolean>
   return await deleteCredential(`${EMAIL_PREFIX}${accountId}`)
 }
 
+// ============ 日历专用方法 ============
+
+const CALENDAR_PREFIX = 'calendar:'
+
+/**
+ * 存储日历账户凭据
+ * @param accountId 日历账户 ID
+ * @param credential 凭据（密码）
+ */
+export async function setCalendarCredential(accountId: string, credential: string): Promise<void> {
+  await setCredential(`${CALENDAR_PREFIX}${accountId}`, credential)
+}
+
+/**
+ * 获取日历账户凭据
+ * @param accountId 日历账户 ID
+ * @returns 凭据，如果不存在返回 null
+ */
+export async function getCalendarCredential(accountId: string): Promise<string | null> {
+  return await getCredential(`${CALENDAR_PREFIX}${accountId}`)
+}
+
+/**
+ * 删除日历账户凭据
+ * @param accountId 日历账户 ID
+ */
+export async function deleteCalendarCredential(accountId: string): Promise<boolean> {
+  return await deleteCredential(`${CALENDAR_PREFIX}${accountId}`)
+}
+
 /**
  * OAuth2 Token 结构
  */

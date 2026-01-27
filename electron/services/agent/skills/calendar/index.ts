@@ -1,0 +1,37 @@
+/**
+ * 日历技能模块
+ * 提供日程管理能力，支持 CalDAV 协议
+ */
+
+import { registerSkill } from '../registry'
+import type { Skill } from '../types'
+import { calendarTools } from './tools'
+import { closeAllSessions } from './session'
+
+const calendarSkill: Skill = {
+  id: 'calendar',
+  name: '日程管理',
+  description: '提供日程/日历管理能力，支持查看、创建、修改、删除日程事件。适用于时间管理、会议安排、提醒设置等场景。支持 CalDAV 协议的日历服务（Google Calendar、iCloud、Outlook、企业微信等）。**注意**需要管理日程时，除非用户明确要求，否则一般应当优先使用此技能工具。',
+  tools: calendarTools,
+  
+  async init() {
+    // 依赖模块会在执行时动态导入
+    console.log('[CalendarSkill] Initialized')
+  },
+  
+  async cleanup() {
+    // 关闭所有日历连接
+    await closeAllSessions()
+    console.log('[CalendarSkill] Cleaned up')
+  }
+}
+
+// 注册技能
+try {
+  registerSkill(calendarSkill)
+} catch (error) {
+  console.error('[CalendarSkill] Failed to register:', error)
+}
+
+export { calendarSkill }
+export { executeCalendarTool, setCalendarAccounts } from './executor'
