@@ -224,21 +224,27 @@ async function calendarList(
         session.davCalendars = davCalendars
       }
 
-      const calendarList = session.calendars.map(cal => {
+      const calendarList = session.calendars.map((cal, index) => {
         const readonly = cal.readonly ? ' (只读)' : ''
-        const color = cal.color ? ` 🎨${cal.color}` : ''
-        return `- **${cal.name}**${readonly}${color}\n  ID: \`${cal.id}\``
+        const color = cal.color ? ` ${cal.color}` : ''
+        return `${index + 1}. **${cal.name}**${readonly}${color}`
       })
 
-      const output = `## ${t('calendar.calendar_list')}\n\n${calendarList.join('\n\n')}`
+      // 简洁输出给用户看，完整 ID 映射在 toolResult 中给 AI 用
+      const output = `## ${t('calendar.calendar_list')}\n\n${calendarList.join('\n')}`
+      
+      // 给 AI 的完整信息（包含 ID 映射）
+      const aiOutput = session.calendars.map((cal, index) => 
+        `${index + 1}. ${cal.name} → ID: ${cal.id}`
+      ).join('\n')
       executor.addStep({
         type: 'tool_result',
         content: output,
         toolName: 'calendar_list',
-        toolResult: truncateOutput(output, 500)
+        toolResult: aiOutput  // AI 需要完整 ID 来后续调用
       })
 
-      return { success: true, output }
+      return { success: true, output: aiOutput }
     }
 
     // 列出指定日历的日程
@@ -373,31 +379,49 @@ async function calendarList(
         // PROPFIND 失败
       }
       
-      // 获取事件数据（限制数量，从最新开始）
+      // 获取事件数据（限制数量，从最新开始，并行获取提升性能）
       if (eventUrls.length > 0) {
         const fetchLimit = Math.min(eventUrls.length, 200)
+        const urlsToFetch = eventUrls.slice(0, fetchLimit)
         
-        for (const eventUrl of eventUrls.slice(0, fetchLimit)) {
-          try {
-            const response = await fetch(eventUrl, {
-              method: 'GET',
-              headers: { 'Authorization': authHeader }
-            })
-            
-            if (response.ok) {
-              const data = await response.text()
-              if (data.includes('VEVENT')) {
-                calendarObjects.push({
-                  url: eventUrl,
-                  etag: response.headers.get('etag') || undefined,
-                  data: data
-                })
+        // 并行获取所有事件，使用 Promise.allSettled 避免单个失败影响整体
+        const BATCH_SIZE = 20 // 每批并发请求数，避免过多并发
+        const results: { url: string; data: string; etag?: string }[] = []
+        
+        for (let i = 0; i < urlsToFetch.length; i += BATCH_SIZE) {
+          const batch = urlsToFetch.slice(i, i + BATCH_SIZE)
+          const batchPromises = batch.map(async (eventUrl) => {
+            try {
+              const response = await fetch(eventUrl, {
+                method: 'GET',
+                headers: { 'Authorization': authHeader }
+              })
+              
+              if (response.ok) {
+                const data = await response.text()
+                if (data.includes('VEVENT')) {
+                  return {
+                    url: eventUrl,
+                    etag: response.headers.get('etag') || undefined,
+                    data: data
+                  }
+                }
               }
+              return null
+            } catch {
+              return null
             }
-          } catch (fetchError: any) {
-            // 忽略单个失败
+          })
+          
+          const batchResults = await Promise.all(batchPromises)
+          for (const result of batchResults) {
+            if (result) {
+              results.push(result)
+            }
           }
         }
+        
+        calendarObjects.push(...results)
       }
     }
     
@@ -614,16 +638,9 @@ async function calendarUpdate(
   }
 
   try {
-    // 获取原事件
-    const calendarObjects = await session.client.fetchCalendarObjects({
-      calendar: { url: calendarId }
-    })
+    // 通过 UID 直接获取事件（比获取所有事件要高效）
+    const eventObj = await fetchEventByUid(calendarId, eventId, session)
     
-    const eventObj = calendarObjects.find(obj => {
-      const event = parseICalEvent(obj.data, obj.url, obj.etag)
-      return event && event.uid === eventId
-    })
-
     if (!eventObj) {
       return { success: false, output: '', error: t('calendar.event_not_found', { id: eventId }) }
     }
@@ -734,20 +751,20 @@ async function calendarDelete(
   }
 
   try {
-    // 获取要删除的事件
-    const calendarObjects = await session.client.fetchCalendarObjects({
-      calendar: { url: calendarId }
-    })
-
+    // 通过 UID 直接获取要删除的事件（比获取所有事件要高效）
     const eventsToDelete: Array<{ url: string; etag?: string; title: string }> = []
-    for (const obj of calendarObjects) {
-      const event = parseICalEvent(obj.data, obj.url, obj.etag)
-      if (event && eventIds.includes(event.uid)) {
-        eventsToDelete.push({
-          url: obj.url,
-          etag: obj.etag,
-          title: event.title
-        })
+    
+    for (const eventId of eventIds) {
+      const eventObj = await fetchEventByUid(calendarId, eventId, session)
+      if (eventObj) {
+        const event = parseICalEvent(eventObj.data, eventObj.url, eventObj.etag)
+        if (event) {
+          eventsToDelete.push({
+            url: eventObj.url,
+            etag: eventObj.etag,
+            title: event.title
+          })
+        }
       }
     }
 
@@ -814,6 +831,114 @@ async function calendarDelete(
 // ============ 辅助函数 ============
 
 /**
+ * 通过事件 UID 直接获取单个事件
+ * 比 fetchCalendarObjects 获取所有事件要高效得多
+ */
+async function fetchEventByUid(
+  calendarId: string,
+  eventUid: string,
+  session: import('./session').CalendarSession
+): Promise<{ url: string; etag?: string; data: string } | null> {
+  // 获取认证凭据
+  const credential = await getCalendarCredential(session.accountId)
+  if (!credential) return null
+  
+  const authHeader = `Basic ${Buffer.from(`${session.username}:${credential}`).toString('base64')}`
+  
+  // 尝试多种 URL 格式
+  const possibleUrls = [
+    `${calendarId}${eventUid}.ics`,
+    `${calendarId}${encodeURIComponent(eventUid)}.ics`,
+    `${calendarId.replace(/\/$/, '')}/${eventUid}.ics`,
+    `${calendarId.replace(/\/$/, '')}/${encodeURIComponent(eventUid)}.ics`
+  ]
+  
+  for (const eventUrl of possibleUrls) {
+    try {
+      const response = await fetch(eventUrl, {
+        method: 'GET',
+        headers: { 'Authorization': authHeader }
+      })
+      
+      if (response.ok) {
+        const data = await response.text()
+        if (data.includes('VEVENT')) {
+          return {
+            url: eventUrl,
+            etag: response.headers.get('etag') || undefined,
+            data
+          }
+        }
+      }
+    } catch {
+      // 继续尝试下一个 URL
+    }
+  }
+  
+  // 如果直接 URL 不行，使用 REPORT 查询
+  try {
+    const reportBody = `<?xml version="1.0" encoding="utf-8" ?>
+<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:prop>
+    <D:getetag/>
+    <C:calendar-data/>
+  </D:prop>
+  <C:filter>
+    <C:comp-filter name="VCALENDAR">
+      <C:comp-filter name="VEVENT">
+        <C:prop-filter name="UID">
+          <C:text-match collation="i;octet">${eventUid}</C:text-match>
+        </C:prop-filter>
+      </C:comp-filter>
+    </C:comp-filter>
+  </C:filter>
+</C:calendar-query>`
+
+    const response = await fetch(calendarId, {
+      method: 'REPORT',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/xml; charset=utf-8',
+        'Depth': '1'
+      },
+      body: reportBody
+    })
+    
+    if (response.status === 207) {
+      const responseText = await response.text()
+      
+      // 提取 href
+      const hrefMatch = responseText.match(/<[^>]*href[^>]*>([^<]+)<\/[^>]*href>/i)
+      const eventUrl = hrefMatch ? 
+        (hrefMatch[1].startsWith('http') ? hrefMatch[1] : new URL(hrefMatch[1], calendarId).href) : 
+        calendarId
+      
+      // 提取 etag
+      const etagMatch = responseText.match(/<[^>]*getetag[^>]*>([^<]+)<\/[^>]*getetag>/i)
+      const etag = etagMatch ? etagMatch[1].replace(/"/g, '') : undefined
+      
+      // 提取 calendar-data
+      const dataMatch = responseText.match(/<[^>]*calendar-data[^>]*>([\s\S]*?)<\/[^>]*calendar-data>/i)
+      if (dataMatch) {
+        let data = dataMatch[1].trim()
+        if (data.startsWith('<![CDATA[')) {
+          data = data.replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '')
+        }
+        data = data.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+        
+        if (data.includes('VEVENT')) {
+          return { url: eventUrl, etag, data }
+        }
+      }
+    }
+  } catch {
+    // REPORT 失败
+  }
+  
+  return null
+}
+
+/**
  * 从日历 URL 中提取名称
  */
 function extractCalendarName(url: string): string {
@@ -825,7 +950,11 @@ function extractCalendarName(url: string): string {
 /**
  * 解析 iCalendar 事件数据
  */
-function parseICalEvent(icalData: string, url?: string, etag?: string): CalendarEvent | null {
+function parseICalEvent(icalData: string | undefined, url?: string, etag?: string): CalendarEvent | null {
+  if (!icalData) {
+    return null
+  }
+  
   try {
     // 处理折叠行（以空格或制表符开头的行是上一行的续行）
     const unfoldedData = icalData.replace(/\r?\n[ \t]/g, '')
@@ -943,7 +1072,7 @@ function parseICalEvent(icalData: string, url?: string, etag?: string): Calendar
       etag
     }
   } catch (error) {
-    console.error('[CalendarSkill] Failed to parse iCal event:', error, 'Data:', icalData.substring(0, 500))
+    console.error('[CalendarSkill] Failed to parse iCal event:', error, 'Data:', icalData?.substring(0, 500))
     return null
   }
 }

@@ -285,7 +285,8 @@ ${this.buildTaskMemorySection()}`
 
     // 技能系统
     sections.push(`## 技能扩展
-通过 \`load_skill\` 按需加载额外能力，加载后当前会话持续有效。
+通过 \`load_skill\` 按需加载额外能力，加载后在整个会话（多轮对话）中持续有效，无需重复加载。
+如果不再需要某技能，可用 \`unload_skill\` 卸载以释放工具槽位。
 ${this.buildSkillsSection()}`)
 
     return sections.join('\n\n')

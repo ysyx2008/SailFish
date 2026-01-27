@@ -55,15 +55,51 @@ ${skillsList}
 **使用方式**：
 1. 需要特定能力时，先加载对应技能
 2. 加载成功后，该技能的工具变为可用
-3. 完成后技能会自动清理资源
+3. 技能在当前会话中持续有效（跨多轮对话），无需重复加载
 
-**注意**：技能在当前会话中持续有效，无需重复加载。`,
+**注意**：如果上下文较长且不再需要某技能，可用 unload_skill 卸载以释放工具槽位。`,
       parameters: {
         type: 'object',
         properties: {
           skill_id: {
             type: 'string',
             description: `技能 ID，可选值: ${skills.map(s => `"${s.id}"`).join(', ') || '暂无'}`
+          }
+        },
+        required: ['skill_id']
+      }
+    }
+  }
+}
+
+/**
+ * 动态构建 unload_skill 工具定义
+ * 卸载已加载的技能，释放工具槽位
+ */
+function buildUnloadSkillTool(): ToolDefinition {
+  const skills = getSkillsSummary()
+  
+  return {
+    type: 'function',
+    function: {
+      name: 'unload_skill',
+      description: `卸载已加载的技能模块，释放工具槽位。
+
+**使用场景**：
+- 当前任务不再需要某技能的功能
+- 上下文较长，需要减少可用工具数量以优化响应
+- 切换到不同类型的任务前清理不相关的技能
+
+**注意**：
+- 卸载后，该技能的工具将不再可用
+- 如果后续需要，可以重新加载（load_skill）
+- 技能的连接状态（如日历账户连接）会在卸载时清理`,
+      parameters: {
+        type: 'object',
+        properties: {
+          skill_id: {
+            type: 'string',
+            description: `要卸载的技能 ID，可选值: ${skills.map(s => `"${s.id}"`).join(', ') || '暂无'}`
           }
         },
         required: ['skill_id']
@@ -772,6 +808,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       }
     },
     buildLoadSkillTool(),
+    buildUnloadSkillTool(),
     buildLoadUserSkillTool(),
     // ==================== 任务记忆工具 ====================
     {
