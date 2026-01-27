@@ -1525,6 +1525,28 @@ interface Window {
         smtpSecure?: boolean
       }>) => Promise<void>
     }
+    // 日历相关
+    calendar: {
+      // 设置日历凭据
+      setCredential: (accountId: string, credential: string) => Promise<void>
+      // 删除日历凭据
+      deleteCredential: (accountId: string) => Promise<boolean>
+      // 测试日历连接
+      testConnection: (config: {
+        username: string
+        password: string
+        provider?: string
+        serverUrl?: string
+      }) => Promise<{ success: boolean; message: string }>
+      // 同步日历账户配置到后端
+      syncAccounts: (accounts: Array<{
+        id: string
+        name: string
+        provider: string
+        username: string
+        serverUrl?: string
+      }>) => Promise<void>
+    }
     // 文件工具
     fileUtils: {
       // 获取拖放文件的路径（Electron 24+ 推荐方式）

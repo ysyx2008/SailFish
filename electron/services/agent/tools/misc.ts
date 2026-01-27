@@ -7,6 +7,7 @@ import { executeExcelTool } from '../skills/excel/executor'
 import { executeEmailTool } from '../skills/email/executor'
 import { executeBrowserTool } from '../skills/browser/executor'
 import { executeWordTool } from '../skills/word/executor'
+import { executeCalendarTool } from '../skills/calendar/executor'
 import { getUserSkillService } from '../../user-skill.service'
 import { formatRemainingTime, formatTotalTime, truncateFromEnd } from './utils'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
@@ -452,6 +453,10 @@ export async function executeSkillTool(
 
   if (toolName.startsWith('word_')) {
     return executeWordTool(toolName, ptyId, args, toolCallId, config, executor)
+  }
+
+  if (toolName.startsWith('calendar_')) {
+    return executeCalendarTool(toolName, ptyId, args, toolCallId, config, executor)
   }
   
   return { success: false, output: '', error: t('error.unknown_tool', { name: toolName }) }

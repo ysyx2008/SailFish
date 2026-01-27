@@ -16,4 +16,5 @@ import './excel'
 import './email'
 import './browser'
 import './word'
+import './calendar'
 
