@@ -3239,8 +3239,7 @@ ipcMain.handle('calendar:testConnection', async (_event, config: {
 })
 
 // ==================== 语音识别相关 ====================
-// 注意：实际语音识别在渲染进程中使用 vosk-browser 运行
-// 主进程只提供模型路径等信息
+// 使用 sherpa-onnx-node + Paraformer 模型
 
 // 获取语音识别状态
 ipcMain.handle('speech:getStatus', async () => {
@@ -3254,10 +3253,24 @@ ipcMain.handle('speech:getModelInfo', async () => {
   return getModelInfo()
 })
 
-// 初始化语音识别服务（空实现，实际在渲染进程）
+// 初始化语音识别服务
 ipcMain.handle('speech:initialize', async () => {
   const { initialize } = await import('./services/speech')
   return initialize()
+})
+
+// 转录音频数据
+ipcMain.handle('speech:transcribe', async (_event, audioData: number[], sampleRate: number = 16000) => {
+  try {
+    const { transcribe } = await import('./services/speech')
+    const float32Data = new Float32Array(audioData)
+    return await transcribe(float32Data, sampleRate)
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : '转录失败' 
+    }
+  }
 })
 
 // 检查服务是否就绪

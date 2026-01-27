@@ -26,6 +26,26 @@ function copyJiebaWasm() {
   }
 }
 
+// 复制 speech-worker.js 到 dist-electron
+function copySpeechWorker() {
+  return {
+    name: 'copy-speech-worker',
+    closeBundle() {
+      const srcPath = resolve(__dirname, 'electron/services/speech/speech-worker.js')
+      const destDir = resolve(__dirname, 'dist-electron/services/speech')
+      const destPath = resolve(destDir, 'speech-worker.js')
+      
+      if (existsSync(srcPath)) {
+        if (!existsSync(destDir)) {
+          mkdirSync(destDir, { recursive: true })
+        }
+        copyFileSync(srcPath, destPath)
+        console.log('[copy-speech-worker] Copied speech-worker.js to dist-electron')
+      }
+    }
+  }
+}
+
 export default defineConfig({
   plugins: [
     vue(),
@@ -50,7 +70,8 @@ export default defineConfig({
                 'nodemailer',
                 'mailparser',
                 'playwright-core',
-                'onnxruntime-node'
+                'onnxruntime-node',
+                'sherpa-onnx-node'
               ]
             }
           },
@@ -58,7 +79,7 @@ export default defineConfig({
           esbuild: {
             charset: 'utf8'
           },
-          plugins: [copyJiebaWasm()]
+          plugins: [copyJiebaWasm(), copySpeechWorker()]
         }
       },
       {

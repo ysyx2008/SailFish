@@ -1,62 +1,232 @@
 /**
  * 语音识别服务
- * 提供模型 HTTP 服务器和信息给渲染进程
- * 实际语音识别在渲染进程中使用 vosk-browser 运行
+ * 使用 utilityProcess 运行 sherpa-onnx-node + Paraformer 模型
  */
 import * as path from 'path'
 import * as fs from 'fs'
-import { app } from 'electron'
-import { startModelServer, getModelUrl, getServerPort } from './model-server'
+import { app, utilityProcess, UtilityProcess } from 'electron'
 
-const MODEL_NAME = 'vosk-model-small-cn-0.22'
+const MODEL_NAME = 'sherpa-onnx-paraformer-zh-small-2024-03-09'
+
+// Worker 进程
+let worker: UtilityProcess | null = null
+let isInitialized = false
+let pendingCallbacks: Map<string, { resolve: Function; reject: Function }> = new Map()
+let messageId = 0
 
 /**
  * 获取模型目录
  */
 function getModelDirectory(): string {
   if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'models', 'speech', 'vosk')
+    return path.join(process.resourcesPath, 'models', 'speech', 'paraformer', MODEL_NAME)
   } else {
-    return path.join(process.cwd(), 'resources', 'models', 'speech', 'vosk')
+    return path.join(process.cwd(), 'resources', 'models', 'speech', 'paraformer', MODEL_NAME)
   }
 }
 
 /**
- * 检查模型是否可用（检查 zip 文件）
+ * 获取 sherpa-onnx 库目录（用于设置 DYLD_LIBRARY_PATH）
+ */
+function getSherpaLibPath(): string {
+  const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', `sherpa-onnx-darwin-${arch}`)
+  } else {
+    return path.join(process.cwd(), 'node_modules', `sherpa-onnx-darwin-${arch}`)
+  }
+}
+
+/**
+ * 检查模型是否可用
  */
 export function isModelAvailable(): boolean {
-  const zipPath = path.join(getModelDirectory(), `${MODEL_NAME}.zip`)
-  return fs.existsSync(zipPath)
+  const modelDir = getModelDirectory()
+  const modelPath = path.join(modelDir, 'model.int8.onnx')
+  const tokensPath = path.join(modelDir, 'tokens.txt')
+  return fs.existsSync(modelPath) && fs.existsSync(tokensPath)
+}
+
+/**
+ * 获取 Worker 脚本路径
+ */
+function getWorkerPath(): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'app.asar.unpacked', 'dist-electron', 'services', 'speech', 'speech-worker.js')
+  } else {
+    // 开发模式下，__dirname 是 dist-electron，源文件在 electron/services/speech/
+    return path.join(process.cwd(), 'electron', 'services', 'speech', 'speech-worker.js')
+  }
+}
+
+/**
+ * 发送消息到 Worker 并等待响应
+ */
+function sendToWorker(type: string, data?: any): Promise<any> {
+  return new Promise((resolve, reject) => {
+    if (!worker) {
+      reject(new Error('Worker not started'))
+      return
+    }
+
+    const id = `msg_${++messageId}`
+    pendingCallbacks.set(id, { resolve, reject })
+
+    worker.postMessage({ type, data, id })
+
+    // 超时处理
+    setTimeout(() => {
+      if (pendingCallbacks.has(id)) {
+        pendingCallbacks.delete(id)
+        reject(new Error('Worker response timeout'))
+      }
+    }, 60000) // 60秒超时
+  })
+}
+
+/**
+ * 启动 Worker
+ */
+function startWorker(): void {
+  if (worker) return
+
+  const workerPath = getWorkerPath()
+  console.log('[Speech] Starting worker from:', workerPath)
+
+  if (!fs.existsSync(workerPath)) {
+    console.error('[Speech] Worker file not found:', workerPath)
+    return
+  }
+
+  // 设置环境变量
+  const env = { ...process.env }
+  if (process.platform === 'darwin') {
+    const sherpaLib = getSherpaLibPath()
+    env.DYLD_LIBRARY_PATH = env.DYLD_LIBRARY_PATH
+      ? `${sherpaLib}:${env.DYLD_LIBRARY_PATH}`
+      : sherpaLib
+    console.log('[Speech] DYLD_LIBRARY_PATH:', env.DYLD_LIBRARY_PATH)
+  }
+
+  worker = utilityProcess.fork(workerPath, [], {
+    env,
+    stdio: 'pipe'
+  })
+
+  // 处理 Worker 消息
+  worker.on('message', (message: any) => {
+    const { id, success, result, error } = message
+    const callback = pendingCallbacks.get(id)
+    if (callback) {
+      pendingCallbacks.delete(id)
+      if (success) {
+        callback.resolve(result)
+      } else {
+        callback.reject(new Error(error))
+      }
+    }
+  })
+
+  // 处理 Worker 输出
+  worker.stdout?.on('data', (data) => {
+    console.log('[SpeechWorker]', data.toString().trim())
+  })
+
+  worker.stderr?.on('data', (data) => {
+    console.error('[SpeechWorker Error]', data.toString().trim())
+  })
+
+  // 处理 Worker 退出
+  worker.on('exit', (code) => {
+    console.log('[Speech] Worker exited with code:', code)
+    worker = null
+    isInitialized = false
+
+    // 拒绝所有等待中的回调
+    for (const [id, callback] of pendingCallbacks) {
+      callback.reject(new Error(`Worker exited with code ${code}`))
+    }
+    pendingCallbacks.clear()
+  })
+}
+
+/**
+ * 初始化识别器
+ */
+export async function initialize(): Promise<{ success: boolean; error?: string }> {
+  if (isInitialized) {
+    return { success: true }
+  }
+
+  if (!isModelAvailable()) {
+    return { success: false, error: '语音模型未安装' }
+  }
+
+  try {
+    startWorker()
+
+    const modelDir = getModelDirectory()
+    const modelPath = path.join(modelDir, 'model.int8.onnx')
+    const tokensPath = path.join(modelDir, 'tokens.txt')
+
+    await sendToWorker('initialize', { modelPath, tokensPath })
+
+    isInitialized = true
+    return { success: true }
+  } catch (error) {
+    console.error('[Speech] Initialize error:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+
+/**
+ * 转录音频数据
+ */
+export async function transcribe(
+  audioData: Float32Array,
+  sampleRate: number = 16000
+): Promise<{ success: boolean; result?: { text: string }; error?: string }> {
+  if (!isInitialized) {
+    const initResult = await initialize()
+    if (!initResult.success) {
+      return { success: false, error: initResult.error }
+    }
+  }
+
+  try {
+    // 将 Float32Array 转为普通数组传递
+    const result = await sendToWorker('transcribe', {
+      audioData: Array.from(audioData),
+      sampleRate
+    })
+
+    return {
+      success: true,
+      result: { text: result.text }
+    }
+  } catch (error) {
+    console.error('[Speech] Transcribe error:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
 }
 
 /**
  * 获取模型信息
  */
-export async function getModelInfo() {
-  const modelDir = getModelDirectory()
-  const zipPath = path.join(modelDir, `${MODEL_NAME}.zip`)
-  const available = fs.existsSync(zipPath)
-
-  // 确保服务器已启动
-  let modelUrl: string | null = null
-  if (available) {
-    try {
-      await startModelServer()
-      modelUrl = getModelUrl(MODEL_NAME)
-    } catch (e) {
-      console.error('[Speech] Failed to start model server:', e)
-    }
-  }
-
+export function getModelInfo() {
   return {
-    id: 'vosk-small-cn',
-    name: 'Vosk 中文小模型',
-    description: '离线语音识别模型，支持普通话',
-    languages: ['中文'],
+    id: 'paraformer-zh-small',
+    name: 'Paraformer 中文小模型',
+    description: 'FunASR Paraformer 中文语音识别模型，支持普通话和方言',
+    languages: ['中文', '英文', '四川话', '河南话', '天津话'],
     sampleRate: 16000,
-    available,
-    modelPath: available ? zipPath : null,
-    modelUrl  // HTTP URL 供 vosk-browser 使用
+    available: isModelAvailable()
   }
 }
 
@@ -65,25 +235,9 @@ export async function getModelInfo() {
  */
 export function getStatus() {
   return {
-    initialized: isModelAvailable() && getServerPort() > 0,
-    modelLoaded: isModelAvailable(),
-    modelId: isModelAvailable() ? 'vosk-small-cn' : null
-  }
-}
-
-/**
- * 初始化服务
- */
-export async function initialize() {
-  if (!isModelAvailable()) {
-    return { success: false, error: '模型文件不存在' }
-  }
-  
-  try {
-    await startModelServer()
-    return { success: true }
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : '启动服务器失败' }
+    initialized: isInitialized,
+    modelLoaded: isInitialized && worker !== null,
+    modelId: isInitialized ? 'paraformer-zh-small' : null
   }
 }
 
@@ -91,5 +245,18 @@ export async function initialize() {
  * 检查是否就绪
  */
 export function isReady(): boolean {
-  return isModelAvailable() && getServerPort() > 0
+  return isInitialized && worker !== null
+}
+
+/**
+ * 释放资源
+ */
+export function dispose(): void {
+  if (worker) {
+    worker.kill()
+    worker = null
+  }
+  isInitialized = false
+  pendingCallbacks.clear()
+  console.log('[Speech] Disposed')
 }

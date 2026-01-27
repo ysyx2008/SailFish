@@ -5,6 +5,7 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
+    "postinstall": "node scripts/fix-sherpa-onnx.js",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
@@ -67,13 +68,13 @@
     "pdf2json": "^4.0.0",
     "pinia": "^2.1.7",
     "playwright-core": "^1.57.0",
+    "sherpa-onnx-node": "^1.12.23",
     "socks-proxy-agent": "^8.0.2",
     "ssh2": "^1.15.0",
     "ssh2-sftp-client": "^12.0.1",
     "strip-ansi": "^7.1.2",
     "tsdav": "^2.1.6",
     "uuid": "^9.0.1",
-    "vosk-browser": "^0.0.8",
     "vue": "^3.4.21",
     "vue-i18n": "^9.14.5",
     "word-extractor": "^1.0.4"
