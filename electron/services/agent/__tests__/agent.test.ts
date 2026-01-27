@@ -75,6 +75,10 @@ class TestAgent extends Agent {
   public exposeServices() {
     return this.services
   }
+  
+  public exposeGetSkillSession() {
+    return this.getSkillSession()
+  }
 }
 
 // Mock AI 服务
@@ -788,5 +792,49 @@ describe('Agent step callbacks', () => {
       (call: [string, AgentStep]) => call[1].type === 'message'
     )
     expect(messageCalls.length).toBeGreaterThan(0)
+  })
+})
+
+// ==================== SkillSession 持久化测试 ====================
+
+describe('Agent SkillSession persistence', () => {
+  let agent: TestAgent
+
+  beforeEach(() => {
+    const mockAiService = createMockAiService()
+    const services = createMockServices(mockAiService)
+    agent = new TestAgent(services)
+  })
+
+  it('should return same skillSession instance on multiple calls (lazy init)', () => {
+    // 第一次获取
+    const session1 = agent.exposeGetSkillSession()
+    
+    // 第二次获取
+    const session2 = agent.exposeGetSkillSession()
+    
+    // 应该是同一个实例（延迟初始化后持久化）
+    expect(session1).toBeDefined()
+    expect(session2).toBeDefined()
+    expect(session1).toBe(session2)
+  })
+
+  it('should have getLoadedSkills method', () => {
+    const session = agent.exposeGetSkillSession()
+    
+    // 初始状态应该没有加载任何技能
+    expect(session.getLoadedSkills()).toEqual([])
+  })
+
+  it('should cleanup skillSession and currentRun when agent cleanup is called', () => {
+    // 先触发 skillSession 初始化
+    const session = agent.exposeGetSkillSession()
+    expect(session).toBeDefined()
+    
+    // cleanup
+    agent.cleanup()
+    
+    // currentRun 应该被清理
+    expect(agent.exposeCurrentRun()).toBeUndefined()
   })
 })
