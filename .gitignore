@@ -40,3 +40,7 @@ Thumbs.db
 
 /electron-cache
 /assets/
+
+# Large model files (download via scripts)
+resources/models/speech/**/*.onnx
+resources/models/speech/**/tokens.json
