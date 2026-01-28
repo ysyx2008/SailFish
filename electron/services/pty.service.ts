@@ -1,12 +1,24 @@
 import * as pty from 'node-pty'
 import { v4 as uuidv4 } from 'uuid'
 import * as os from 'os'
-import { exec } from 'child_process'
+import { exec, execSync } from 'child_process'
 import { promisify } from 'util'
 import stripAnsi from 'strip-ansi'
 import * as iconv from 'iconv-lite'
 
 const execAsync = promisify(exec)
+
+// Windows 代码页到编码的映射
+const CODE_PAGE_TO_ENCODING: Record<number, string> = {
+  65001: 'utf-8',    // UTF-8
+  936: 'gbk',        // 简体中文 GBK
+  950: 'big5',       // 繁体中文 Big5
+  932: 'shift_jis',  // 日语 Shift-JIS
+  949: 'euc-kr',     // 韩语
+  1252: 'windows-1252', // 西欧
+  1251: 'windows-1251', // 俄语
+  28591: 'iso-8859-1',  // Latin-1
+}
 
 /**
  * 解码 lsof 输出中的 \xXX 转义序列
@@ -87,7 +99,45 @@ export class PtyService {
   }
 
   /**
+   * 检测 Windows 控制台的实际代码页
+   * 通过执行 chcp 命令获取当前活动代码页
+   */
+  private detectWindowsCodePage(): number | null {
+    if (process.platform !== 'win32') {
+      return null
+    }
+    
+    try {
+      // 执行 chcp 命令获取当前代码页
+      // 输出格式: "Active code page: 936" 或 "活动代码页: 936"
+      const output = execSync('chcp', { 
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 3000
+      })
+      
+      // 提取数字（代码页）
+      const match = output.match(/(\d+)/)
+      if (match) {
+        const codePage = parseInt(match[1], 10)
+        console.log(`[PtyService] Windows 控制台代码页: ${codePage}`)
+        return codePage
+      }
+    } catch (error) {
+      console.warn('[PtyService] 无法检测 Windows 代码页:', error)
+    }
+    
+    return null
+  }
+
+  /**
    * 根据系统语言自动检测编码
+   * 
+   * Windows 编码历史：
+   * - 简体中文 Windows：GBK（代码页 936）
+   * - 繁体中文 Windows：Big5（代码页 950）
+   * - 日文 Windows：Shift-JIS（代码页 932）
+   * - Windows Terminal（Win10 1903+）：默认 UTF-8（代码页 65001）
    */
   private detectSystemEncoding(): string {
     const isWindows = process.platform === 'win32'
@@ -97,46 +147,35 @@ export class PtyService {
       return 'utf-8'
     }
     
-    // Windows: 根据系统语言检测编码
-    // 检查环境变量中的语言设置
-    const lang = process.env.LANG || process.env.LC_ALL || ''
+    // Windows: 首先尝试通过 chcp 检测实际代码页（最可靠）
+    const codePage = this.detectWindowsCodePage()
+    if (codePage !== null) {
+      const encoding = CODE_PAGE_TO_ENCODING[codePage]
+      if (encoding) {
+        console.log(`[PtyService] 根据代码页 ${codePage} 使用编码: ${encoding}`)
+        return encoding
+      }
+      // 未知代码页，如果是 65001 则使用 UTF-8
+      if (codePage === 65001) {
+        return 'utf-8'
+      }
+    }
     
-    // 如果明确设置了 UTF-8，使用 UTF-8
-    if (lang.includes('UTF-8') || lang.includes('utf-8') || process.env.CHCP === '65001') {
+    // 回退：检测 Windows Terminal 环境
+    if (process.env.WT_SESSION) {
+      console.log('[PtyService] 检测到 Windows Terminal 环境，使用 UTF-8')
       return 'utf-8'
     }
     
-    // 尝试通过 Windows 区域设置检测
-    // 可以通过 LCID 或系统语言检测
-    const winLang = process.env.LANG || process.env.SystemRoot || ''
-    
-    // 简体中文
-    if (winLang.includes('zh_CN') || winLang.includes('Chinese_Simplified') || winLang.includes('CHS')) {
-      return 'gbk'
-    }
-    // 繁体中文
-    if (winLang.includes('zh_TW') || winLang.includes('zh_HK') || winLang.includes('Chinese_Traditional') || winLang.includes('CHT')) {
-      return 'big5'
-    }
-    // 日语
-    if (winLang.includes('ja_JP') || winLang.includes('Japanese')) {
-      return 'shift_jis'
-    }
-    // 韩语
-    if (winLang.includes('ko_KR') || winLang.includes('Korean')) {
-      return 'euc-kr'
-    }
-    // 俄语
-    if (winLang.includes('ru_RU') || winLang.includes('Russian')) {
-      return 'windows-1251'
-    }
-    // 西欧语言
-    if (winLang.includes('en_') || winLang.includes('de_') || winLang.includes('fr_') || winLang.includes('es_') || winLang.includes('it_')) {
-      return 'windows-1252'
+    // 回退：检查环境变量
+    const lang = process.env.LANG || process.env.LC_ALL || ''
+    if (lang.includes('UTF-8') || lang.includes('utf-8')) {
+      console.log('[PtyService] 检测到 UTF-8 环境变量设置')
+      return 'utf-8'
     }
     
-    // 默认使用 GBK（假设简体中文 Windows 最常见）
-    // 用户可以在设置中手动更改
+    // 最终回退：简体中文 Windows 最常见，默认 GBK
+    console.log('[PtyService] 无法检测代码页，默认使用 GBK')
     return 'gbk'
   }
 

@@ -515,7 +515,7 @@ export default {
     commandHighlightHint: 'Highlight command lines when executing to distinguish commands from output',
     encoding: 'Character Encoding',
     localEncoding: 'Local Terminal Encoding',
-    localEncodingHint: 'Character encoding for local terminal. "Auto" detects based on system language. Changes apply to new terminals.',
+    localEncodingHint: 'Character encoding for local terminal. Traditional Chinese Windows uses GBK, Windows Terminal uses UTF-8. Switch if you see garbled text. Changes apply to new terminals.',
     encodings: {
       'auto': 'Auto Detect',
       'utf-8': 'UTF-8 (Recommended)',

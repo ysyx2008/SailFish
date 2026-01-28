@@ -515,7 +515,7 @@ export default {
     commandHighlightHint: '在执行命令时高亮显示命令行，便于区分命令和输出',
     encoding: '字符编码',
     localEncoding: '本地终端编码',
-    localEncodingHint: '本地终端使用的字符编码，"自动"会根据系统语言检测。修改后新建终端生效。',
+    localEncodingHint: '本地终端使用的字符编码。传统中文 Windows 使用 GBK，Windows Terminal 使用 UTF-8。如遇乱码请尝试切换。修改后新建终端生效。',
     encodings: {
       'auto': '自动检测',
       'utf-8': 'UTF-8（推荐）',
