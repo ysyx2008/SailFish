@@ -168,13 +168,8 @@ const {
   isRecording,
   isTranscribing,
   isInitializing: isSpeechInitializing,
-  isModelReady: isSpeechReady,
-  canRecord,
-  error: speechError,
-  checkAndInitialize: initSpeech,
   startRecording,
-  stopRecording,
-  cancelRecording
+  stopRecording
 } = useSpeechRecognition()
 
 // 处理录音按钮点击

@@ -1630,6 +1630,43 @@ interface Window {
       openPath: (path: string) => Promise<string>
     }
 
+    // 语音识别服务
+    speech: {
+      getModelInfo: () => Promise<{
+        id: string
+        name: string
+        description: string
+        languages: string[]
+        sampleRate: number
+        available: boolean
+        punctuation: {
+          id: string
+          name: string
+          description: string
+          available: boolean
+        }
+      }>
+      isReady: () => Promise<boolean>
+      initialize: () => Promise<{
+        success: boolean
+        error?: string
+        hasPunctuation?: boolean
+      }>
+      transcribe: (audioData: number[], sampleRate: number) => Promise<{
+        success: boolean
+        result?: {
+          text: string
+          hasPunctuation?: boolean
+        }
+        error?: string
+      }>
+      getStatus: () => Promise<{
+        initialized: boolean
+        modelLoaded: boolean
+        modelId: string | null
+      }>
+    }
+
     // AI Debug 调试窗口
     aiDebugOpenWindow: () => Promise<void>
     aiDebugCloseWindow: () => Promise<void>
