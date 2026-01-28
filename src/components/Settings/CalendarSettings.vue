@@ -493,7 +493,7 @@ const getProviderIcon = (provider: CalendarProvider): string => {
   align-items: center;
   justify-content: center;
   z-index: 2000;
-  animation: fadeIn 0.2s ease;
+  animation: calendarFadeIn 0.2s ease;
 }
 
 .form-modal {
@@ -505,7 +505,7 @@ const getProviderIcon = (provider: CalendarProvider): string => {
   box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
   display: flex;
   flex-direction: column;
-  animation: slideIn 0.2s ease;
+  animation: calendarSlideIn 0.2s ease;
 }
 
 .form-header {
@@ -666,12 +666,12 @@ const getProviderIcon = (provider: CalendarProvider): string => {
   cursor: not-allowed;
 }
 
-@keyframes fadeIn {
+@keyframes calendarFadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
-@keyframes slideIn {
+@keyframes calendarSlideIn {
   from {
     transform: translateY(-20px);
     opacity: 0;
