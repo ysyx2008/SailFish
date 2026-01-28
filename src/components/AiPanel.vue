@@ -19,7 +19,8 @@ import {
   useHostProfile,
   useAgentMode,
   useMentions,
-  useSpeechRecognition
+  useSpeechRecognition,
+  toast
 } from '../composables'
 
 // Props - 每个 AiPanel 实例绑定到特定的 tab
@@ -168,9 +169,17 @@ const {
   isRecording,
   isTranscribing,
   isInitializing: isSpeechInitializing,
+  error: speechError,
   startRecording,
   stopRecording
 } = useSpeechRecognition()
+
+// 监听语音识别错误并显示提示
+watch(speechError, (error) => {
+  if (error) {
+    toast.error(t('ai.speechError', { error }))
+  }
+})
 
 // 处理录音按钮点击
 const handleRecordClick = async () => {
