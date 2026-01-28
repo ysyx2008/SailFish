@@ -108,6 +108,44 @@ function extractTarBz2(archivePath, destDir) {
   }
 }
 
+/**
+ * 清理不需要的文件，只保留运行时必需的文件
+ */
+function cleanupModelFiles(modelPath) {
+  console.log('Cleaning up unnecessary files...')
+  
+  // 需要删除的文件和目录
+  const toDelete = [
+    'model.onnx',           // fp32 模型（785MB），只需要 int8 版本
+    'test_wavs',            // 测试音频目录
+    'add-model-metadata.py',
+    'generate-tokens.py',
+    'quantize-model.py',
+    'README.md',
+    'config.yaml'
+  ]
+  
+  let deletedSize = 0
+  
+  for (const item of toDelete) {
+    const itemPath = path.join(modelPath, item)
+    if (fs.existsSync(itemPath)) {
+      const stat = fs.statSync(itemPath)
+      if (stat.isDirectory()) {
+        // 递归删除目录
+        fs.rmSync(itemPath, { recursive: true })
+        console.log(`  Deleted directory: ${item}`)
+      } else {
+        deletedSize += stat.size
+        fs.unlinkSync(itemPath)
+        console.log(`  Deleted: ${item} (${(stat.size / 1024 / 1024).toFixed(1)}MB)`)
+      }
+    }
+  }
+  
+  console.log(`  ✓ Cleanup complete (saved ${(deletedSize / 1024 / 1024).toFixed(1)}MB)`)
+}
+
 async function main() {
   console.log('==================================================')
   console.log('Paraformer Speech Recognition Model Downloader')
@@ -144,6 +182,9 @@ async function main() {
     // 删除压缩包
     fs.unlinkSync(archivePath)
     console.log('  ✓ Cleaned up archive')
+    
+    // 清理不需要的文件（如 fp32 模型、测试文件等）
+    cleanupModelFiles(modelPath)
     
     console.log()
     console.log('==================================================')
