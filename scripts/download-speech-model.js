@@ -1,18 +1,17 @@
 #!/usr/bin/env node
 /**
- * Vosk 语音识别模型下载脚本
- * 下载 vosk-model-small-cn 模型文件（约 42MB）
+ * Paraformer 语音识别模型下载脚本
+ * 下载 sherpa-onnx-paraformer-zh-2024-03-09 模型（约 217MB）
  */
 const https = require('https')
 const fs = require('fs')
 const path = require('path')
 const { URL } = require('url')
+const { execSync } = require('child_process')
 
-const MODEL_DIR = path.join(__dirname, '..', 'resources', 'models', 'speech', 'vosk')
-
-// Vosk 模型下载地址
-const MODEL_URL = 'https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip'
-const MODEL_NAME = 'vosk-model-small-cn-0.22'
+const MODEL_DIR = path.join(__dirname, '..', 'resources', 'models', 'speech', 'paraformer')
+const MODEL_NAME = 'sherpa-onnx-paraformer-zh-2024-03-09'
+const MODEL_URL = `https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/${MODEL_NAME}.tar.bz2`
 
 function download(url, destPath, maxRedirects = 10) {
   return new Promise((resolve, reject) => {
@@ -32,7 +31,7 @@ function download(url, destPath, maxRedirects = 10) {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
         'Accept': '*/*'
       },
-      timeout: 300000
+      timeout: 600000  // 10分钟超时
     }
 
     const req = https.request(options, (res) => {
@@ -98,9 +97,20 @@ function download(url, destPath, maxRedirects = 10) {
   })
 }
 
+function extractTarBz2(archivePath, destDir) {
+  console.log('Extracting model...')
+  try {
+    // 使用 tar 命令解压 .tar.bz2
+    execSync(`tar -xjf "${archivePath}" -C "${destDir}"`, { stdio: 'inherit' })
+    console.log('  ✓ Extraction complete')
+  } catch (err) {
+    throw new Error(`Failed to extract: ${err.message}`)
+  }
+}
+
 async function main() {
   console.log('==================================================')
-  console.log('Vosk Chinese Model Downloader')
+  console.log('Paraformer Speech Recognition Model Downloader')
   console.log('==================================================')
   console.log()
 
@@ -110,12 +120,13 @@ async function main() {
     console.log(`Created directory: ${MODEL_DIR}`)
   }
 
-  const zipPath = path.join(MODEL_DIR, `${MODEL_NAME}.zip`)
+  const modelPath = path.join(MODEL_DIR, MODEL_NAME)
+  const archivePath = path.join(MODEL_DIR, `${MODEL_NAME}.tar.bz2`)
   
-  // 检查 zip 文件是否已存在
-  if (fs.existsSync(zipPath)) {
-    console.log('Model zip already exists, skipping download')
-    console.log(`Model path: ${zipPath}`)
+  // 检查模型是否已存在
+  if (fs.existsSync(path.join(modelPath, 'model.int8.onnx'))) {
+    console.log('Model already exists, skipping download')
+    console.log(`Model path: ${modelPath}`)
     return
   }
 
@@ -123,16 +134,28 @@ async function main() {
   console.log()
 
   try {
-    await download(MODEL_URL, zipPath)
+    // 下载
+    await download(MODEL_URL, archivePath)
     console.log('  ✓ Download complete')
+    
+    // 解压
+    extractTarBz2(archivePath, MODEL_DIR)
+    
+    // 删除压缩包
+    fs.unlinkSync(archivePath)
+    console.log('  ✓ Cleaned up archive')
     
     console.log()
     console.log('==================================================')
     console.log('✓ Model downloaded successfully!')
-    console.log(`  Path: ${zipPath}`)
+    console.log(`  Path: ${modelPath}`)
     console.log('==================================================')
   } catch (err) {
     console.error(`Download failed: ${err.message}`)
+    // 清理失败的文件
+    if (fs.existsSync(archivePath)) {
+      fs.unlinkSync(archivePath)
+    }
     process.exit(1)
   }
 }
