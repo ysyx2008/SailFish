@@ -2,7 +2,30 @@
 
 All notable changes to SFTerm will be documented in this file.
 
-## v8.14.0 (Latest)
+## v8.17.0 (Latest)
+
+### Speech Recognition
+- 🎤 **Voice Input**: Brand new speech recognition feature for voice-to-text input
+- 🗣️ **High-Quality Model**: Integrated Alibaba Fun-ASR sherpa-onnx model with Chinese/English support
+- ✍️ **Punctuation Restoration**: Automatic punctuation, no manual input needed
+
+## v8.16.0
+
+### New Features
+- 📅 **Calendar Management**: New calendar feature for viewing and managing schedules
+- 🔧 **Skill Uninstall**: Skill management now supports uninstalling installed skills
+
+## v8.15.0
+
+### New Features
+- 🎮 **Steam Support**: Added Steam version support
+- 🔀 **Download Source Switch**: Support for switching software download sources
+
+### AI Enhancements
+- 🔄 **Parallel Tool Execution**: Support for parallel tool execution, improving task processing efficiency
+- 📝 **Context Optimization**: Optimized conversation history context retention strategy
+
+## v8.14.0
 
 ### Architecture Refactoring
 - 🏗️ **Agent Service Refactoring**: Complete rewrite of Agent service using object-oriented approach for better maintainability
