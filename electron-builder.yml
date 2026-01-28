@@ -43,6 +43,11 @@ extraResources:
     to: "models/speech/paraformer"
     filter:
       - "**/*"
+  # CT-Transformer 标点恢复模型（随软件打包）
+  - from: "resources/models/speech/punctuation"
+    to: "models/speech/punctuation"
+    filter:
+      - "**/*"
 win:
   icon: resources/icon.ico
   target:

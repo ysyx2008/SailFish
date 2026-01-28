@@ -32,6 +32,7 @@
     "postversion": "node scripts/postversion.js",
     "generate-icons": "node scripts/generate-icons.js",
     "download:speech-model": "node scripts/download-speech-model.js",
+    "download:punct-model": "node scripts/download-punct-model.js",
     "build:steam:win": "cross-env VITE_STEAM_BUILD=true vite build && electron-builder --win --dir --publish never",
     "build:steam:mac": "cross-env VITE_STEAM_BUILD=true vite build && electron-builder --mac --dir --publish never",
     "build:steam:linux": "cross-env VITE_STEAM_BUILD=true vite build && electron-builder --linux --dir --publish never",

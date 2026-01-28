@@ -7,6 +7,7 @@ import * as fs from 'fs'
 import { app, utilityProcess, UtilityProcess } from 'electron'
 
 const MODEL_NAME = 'sherpa-onnx-paraformer-zh-2024-03-09'
+const PUNCT_MODEL_NAME = 'sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8'
 
 // Worker 进程
 let worker: UtilityProcess | null = null
@@ -23,6 +24,26 @@ function getModelDirectory(): string {
   } else {
     return path.join(process.cwd(), 'resources', 'models', 'speech', 'paraformer', MODEL_NAME)
   }
+}
+
+/**
+ * 获取标点模型目录
+ */
+function getPunctModelDirectory(): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'models', 'speech', 'punctuation', PUNCT_MODEL_NAME)
+  } else {
+    return path.join(process.cwd(), 'resources', 'models', 'speech', 'punctuation', PUNCT_MODEL_NAME)
+  }
+}
+
+/**
+ * 检查标点模型是否可用
+ */
+export function isPunctModelAvailable(): boolean {
+  const punctDir = getPunctModelDirectory()
+  const punctPath = path.join(punctDir, 'model.int8.onnx')
+  return fs.existsSync(punctPath)
 }
 
 /**
@@ -153,7 +174,7 @@ function startWorker(): void {
 /**
  * 初始化识别器
  */
-export async function initialize(): Promise<{ success: boolean; error?: string }> {
+export async function initialize(): Promise<{ success: boolean; error?: string; hasPunctuation?: boolean }> {
   if (isInitialized) {
     return { success: true }
   }
@@ -169,10 +190,21 @@ export async function initialize(): Promise<{ success: boolean; error?: string }
     const modelPath = path.join(modelDir, 'model.int8.onnx')
     const tokensPath = path.join(modelDir, 'tokens.txt')
 
-    await sendToWorker('initialize', { modelPath, tokensPath })
+    // 标点模型路径（可选）
+    const punctDir = getPunctModelDirectory()
+    const punctModelPath = path.join(punctDir, 'model.int8.onnx')
+    const hasPunctModel = fs.existsSync(punctModelPath)
+
+    console.log('[Speech] Punctuation model available:', hasPunctModel)
+
+    const result = await sendToWorker('initialize', { 
+      modelPath, 
+      tokensPath,
+      punctModelPath: hasPunctModel ? punctModelPath : undefined
+    })
 
     isInitialized = true
-    return { success: true }
+    return { success: true, hasPunctuation: result?.hasPunctuation }
   } catch (error) {
     console.error('[Speech] Initialize error:', error)
     return {
@@ -184,11 +216,15 @@ export async function initialize(): Promise<{ success: boolean; error?: string }
 
 /**
  * 转录音频数据
+ * @param audioData 音频数据
+ * @param sampleRate 采样率，默认 16000
+ * @param addPunctuation 是否添加标点，默认 true
  */
 export async function transcribe(
   audioData: Float32Array,
-  sampleRate: number = 16000
-): Promise<{ success: boolean; result?: { text: string }; error?: string }> {
+  sampleRate: number = 16000,
+  addPunctuation: boolean = true
+): Promise<{ success: boolean; result?: { text: string; hasPunctuation?: boolean }; error?: string }> {
   if (!isInitialized) {
     const initResult = await initialize()
     if (!initResult.success) {
@@ -200,12 +236,13 @@ export async function transcribe(
     // 将 Float32Array 转为普通数组传递
     const result = await sendToWorker('transcribe', {
       audioData: Array.from(audioData),
-      sampleRate
+      sampleRate,
+      addPunctuation
     })
 
     return {
       success: true,
-      result: { text: result.text }
+      result: { text: result.text, hasPunctuation: result.hasPunctuation }
     }
   } catch (error) {
     console.error('[Speech] Transcribe error:', error)
@@ -226,7 +263,13 @@ export function getModelInfo() {
     description: 'FunASR Paraformer 中文语音识别模型 (2024版)，支持普通话、英文和方言',
     languages: ['中文', '英文', '四川话', '河南话', '天津话'],
     sampleRate: 16000,
-    available: isModelAvailable()
+    available: isModelAvailable(),
+    punctuation: {
+      id: 'ct-transformer-zh-en',
+      name: 'CT-Transformer 标点模型',
+      description: '中英文标点恢复模型，自动为识别结果添加标点符号',
+      available: isPunctModelAvailable()
+    }
   }
 }
 

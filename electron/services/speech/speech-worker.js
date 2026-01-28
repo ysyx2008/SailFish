@@ -31,8 +31,10 @@ process.parentPort.on('message', async (e) => {
 
 // 识别器实例
 let recognizer = null
+let punctuator = null  // 标点恢复器
 let isInitialized = false
 let modelPath = null
+let punctModelPath = null
 
 /**
  * 初始化识别器
@@ -46,6 +48,7 @@ async function handleInitialize(data, id) {
   try {
     modelPath = data.modelPath
     const tokensPath = data.tokensPath
+    punctModelPath = data.punctModelPath  // 标点模型路径（可选）
 
     console.log('[SpeechWorker] Initializing with model:', modelPath)
 
@@ -78,9 +81,31 @@ async function handleInitialize(data, id) {
     // 创建离线识别器
     recognizer = new sherpa.OfflineRecognizer(config)
 
+    // 初始化标点恢复器（如果模型存在）
+    if (punctModelPath && fs.existsSync(punctModelPath)) {
+      console.log('[SpeechWorker] Initializing punctuation model:', punctModelPath)
+      try {
+        const punctConfig = {
+          model: {
+            ctTransformer: punctModelPath,
+            numThreads: 1,
+            debug: false,
+            provider: 'cpu',
+          },
+        }
+        punctuator = new sherpa.OfflinePunctuation(punctConfig)
+        console.log('[SpeechWorker] Punctuation model initialized')
+      } catch (punctError) {
+        console.warn('[SpeechWorker] Failed to initialize punctuation model:', punctError.message)
+        punctuator = null
+      }
+    } else {
+      console.log('[SpeechWorker] Punctuation model not found, skipping')
+    }
+
     isInitialized = true
     console.log('[SpeechWorker] Initialized successfully')
-    sendSuccess(id, { success: true })
+    sendSuccess(id, { success: true, hasPunctuation: punctuator !== null })
   } catch (error) {
     console.error('[SpeechWorker] Initialize error:', error)
     sendError(id, error.message || String(error))
@@ -97,7 +122,7 @@ async function handleTranscribe(data, id) {
   }
 
   try {
-    const { audioData, sampleRate } = data
+    const { audioData, sampleRate, addPunctuation = true } = data
     const samples = new Float32Array(audioData)
 
     console.log(`[SpeechWorker] Transcribing ${samples.length} samples at ${sampleRate}Hz`)
@@ -113,11 +138,23 @@ async function handleTranscribe(data, id) {
 
     // 获取结果
     const result = recognizer.getResult(stream)
-    const text = result.text?.trim() || ''
+    let text = result.text?.trim() || ''
 
-    console.log(`[SpeechWorker] Result: "${text}"`)
+    console.log(`[SpeechWorker] Raw result: "${text}"`)
 
-    sendSuccess(id, { text })
+    // 添加标点（如果启用且有标点恢复器）
+    if (addPunctuation && punctuator && text) {
+      try {
+        const punctuatedText = punctuator.addPunct(text)  // API 是 addPunct 不是 addPunctuation
+        console.log(`[SpeechWorker] With punctuation: "${punctuatedText}"`)
+        text = punctuatedText
+      } catch (punctError) {
+        console.warn('[SpeechWorker] Punctuation failed:', punctError.message)
+        // 标点失败时使用原始文本
+      }
+    }
+
+    sendSuccess(id, { text, hasPunctuation: punctuator !== null })
   } catch (error) {
     console.error('[SpeechWorker] Transcribe error:', error)
     sendError(id, error.message || String(error))
