@@ -1399,9 +1399,9 @@ onUnmounted(() => {
               </span>
             </div>
           </div>
-          <!-- 语音输入按钮 -->
+          <!-- 语音输入按钮（普通模式和 Agent 运行时都显示） -->
           <button
-            v-if="!isLoading && !isAgentRunning"
+            v-if="!isLoading || isAgentRunning"
             class="voice-btn"
             :class="{ 'recording': isRecording, 'transcribing': isTranscribing }"
             :disabled="isTranscribing || isSpeechInitializing"
@@ -3105,9 +3105,9 @@ onUnmounted(() => {
   position: relative; /* 用于定位 @ 补全菜单 */
   flex: 1;
   display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  padding: 8px 10px 8px 12px;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 8px 8px 10px;
   background: var(--bg-surface);
   border: none;
   border-radius: 16px;
@@ -3122,11 +3122,11 @@ onUnmounted(() => {
 /* 上传按钮 */
 .upload-btn {
   flex-shrink: 0;
-  padding: 8px;
+  padding: 6px;
   background: transparent;
   border: none;
   color: var(--text-muted);
-  border-radius: 10px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -3159,11 +3159,11 @@ onUnmounted(() => {
 /* 语音输入按钮 */
 .voice-btn {
   flex-shrink: 0;
-  padding: 8px;
+  padding: 6px;
   background: transparent;
   border: none;
   color: var(--text-muted);
-  border-radius: 10px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -3241,8 +3241,8 @@ onUnmounted(() => {
 
 .send-btn {
   flex-shrink: 0;
-  padding: 10px 14px;
-  border-radius: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
   background: linear-gradient(135deg, #6b8cff 0%, #5a7bff 50%, #4f6ef7 100%);
   border: none;
   box-shadow: 0 2px 8px rgba(90, 123, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
@@ -3298,8 +3298,8 @@ onUnmounted(() => {
 
 .stop-btn {
   flex-shrink: 0;
-  padding: 10px 14px;
-  border-radius: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
   background: linear-gradient(135deg, #f87171 0%, #ef4444 50%, #dc2626 100%);
   border: none;
   box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
