@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Plus, Pencil, Trash2, X, Calendar, CheckCircle, AlertCircle } from 'lucide-vue-next'
 import { useConfigStore, type CalendarAccount, type CalendarProvider, CALENDAR_PROVIDER_CONFIGS } from '../../stores/config'
@@ -7,6 +7,22 @@ import { v4 as uuidv4 } from 'uuid'
 
 const { t } = useI18n()
 const configStore = useConfigStore()
+
+// ESC 关闭处理
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && showForm.value) {
+    e.stopImmediatePropagation()
+    showForm.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown, true)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown, true)
+})
 
 // 状态
 const showForm = ref(false)
