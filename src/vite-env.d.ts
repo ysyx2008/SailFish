@@ -1864,7 +1864,26 @@ interface Window {
         nextRun?: number
       } | null>
       deleteTask: (id: string) => Promise<boolean>
-      toggleTask: (id: string, enabled: boolean) => Promise<boolean>
+      toggleTask: (id: string) => Promise<{
+        id: string
+        name: string
+        prompt: string
+        schedule: string
+        enabled: boolean
+        targetType: 'local' | 'ssh' | 'assistant'
+        sshSessionId?: string
+        sshSessionName?: string
+        createdAt: number
+        updatedAt: number
+        lastRun?: {
+          at: number
+          status: 'success' | 'failed' | 'timeout' | 'cancelled' | 'running'
+          duration: number
+          output?: string
+          error?: string
+        }
+        nextRun?: number
+      } | null>
       runTask: (id: string) => Promise<{
         success: boolean
         output: string
@@ -1892,8 +1911,16 @@ interface Window {
       }>>
       isTaskRunning: (id: string) => Promise<boolean>
       getRunningTasks: () => Promise<string[]>
-      onTaskStarted: (callback: (data: { taskId: string; taskName: string }) => void) => () => void
-      onTaskCompleted: (callback: (data: { taskId: string; taskName: string; success: boolean; duration: number }) => void) => () => void
+      onTaskStarted: (callback: (data: { 
+        taskId: string
+        ptyId: string | null
+        taskName: string
+        prompt: string
+        targetType: 'local' | 'ssh' | 'assistant'
+        sshSessionId?: string
+        sshSessionName?: string
+      }) => void) => () => void
+      onTaskCompleted: (callback: (data: { taskId: string; result: { success: boolean; output: string; error?: string; duration: number; steps?: unknown[] } }) => void) => () => void
     }
   }
 }
