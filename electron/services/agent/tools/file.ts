@@ -547,6 +547,18 @@ export async function writeLocalFile(
     filePath = path.resolve(cwd, filePath)
   }
 
+  // Office 扩展名自动转为 .md（无法生成真正的 Office 文档）
+  const officeExt = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt']
+  if (officeExt.includes(path.extname(filePath).toLowerCase())) {
+    const original = path.basename(filePath)
+    filePath = filePath.replace(/\.(docx?|xlsx?|pptx?)$/i, '.md')
+    executor.addStep({
+      type: 'tool_result',
+      content: `⚠️ ${t('file.office_extension_converted', { original, converted: path.basename(filePath) })}`,
+      toolName: 'write_local_file'
+    })
+  }
+
   let operationDesc = ''
   switch (mode) {
     case 'overwrite':

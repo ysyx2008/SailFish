@@ -410,6 +410,8 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
 
 **注意**：如果只需要修改文件的一部分，请优先使用 edit_file 工具。
 
+**⚠️ 仅支持纯文本**：无法创建 Office 文档，.docx/.xlsx/.pptx 会自动转为 .md
+
 **支持的模式**：
 1. **新建模式（默认）**：mode='create'，仅创建新文件，如果文件已存在则报错
 2. **覆盖模式**：mode='overwrite'，用 content 替换整个文件（文件存在会覆盖）
