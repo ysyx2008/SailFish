@@ -71,6 +71,76 @@ export interface SshSession {
   jumpHostOverride?: JumpHostConfig | null  // 覆盖分组跳板机
 }
 
+// 定时任务相关类型
+export type TaskRunStatus = 'success' | 'failed' | 'timeout' | 'cancelled' | 'running'
+export type ScheduleType = 'cron' | 'interval' | 'once'
+export type TargetType = 'local' | 'ssh' | 'assistant'
+
+export interface ScheduleConfig {
+  type: ScheduleType
+  expression: string
+}
+
+export interface TargetConfig {
+  type: TargetType
+  sshSessionId?: string
+  sshSessionName?: string
+  workingDirectory?: string
+}
+
+export interface TaskOptions {
+  timeout: number
+  requireConfirm: boolean
+  notifyOnComplete: boolean
+  notifyOnError: boolean
+}
+
+export interface TaskRunRecord {
+  at: number
+  status: TaskRunStatus
+  duration: number
+  output?: string
+  error?: string
+}
+
+export interface ScheduledTask {
+  id: string
+  name: string
+  description?: string
+  enabled: boolean
+  schedule: ScheduleConfig
+  prompt: string
+  target: TargetConfig
+  options: TaskOptions
+  createdAt: number
+  updatedAt: number
+  lastRun?: TaskRunRecord
+  nextRun?: number
+}
+
+export interface TaskHistoryRecord extends TaskRunRecord {
+  id: string
+  taskId: string
+  taskName: string
+}
+
+export interface CreateTaskParams {
+  name: string
+  description?: string
+  schedule: ScheduleConfig
+  prompt: string
+  target: TargetConfig
+  options?: Partial<TaskOptions>
+  enabled?: boolean
+}
+
+export interface TaskExecutionResult {
+  success: boolean
+  output: string
+  error?: string
+  duration: number
+}
+
 export interface XshellSession {
   name: string
   host: string
@@ -2362,6 +2432,91 @@ const electronAPI = {
     // 检查服务是否就绪
     isReady: () =>
       ipcRenderer.invoke('speech:isReady') as Promise<boolean>
+  },
+
+  // 定时任务调度
+  scheduler: {
+    // 获取所有任务
+    getTasks: () =>
+      ipcRenderer.invoke('scheduler:getTasks') as Promise<ScheduledTask[]>,
+
+    // 获取单个任务
+    getTask: (id: string) =>
+      ipcRenderer.invoke('scheduler:getTask', id) as Promise<ScheduledTask | undefined>,
+
+    // 创建任务
+    createTask: (params: CreateTaskParams) =>
+      ipcRenderer.invoke('scheduler:createTask', params) as Promise<ScheduledTask>,
+
+    // 更新任务
+    updateTask: (id: string, updates: Partial<CreateTaskParams>) =>
+      ipcRenderer.invoke('scheduler:updateTask', id, updates) as Promise<ScheduledTask | null>,
+
+    // 删除任务
+    deleteTask: (id: string) =>
+      ipcRenderer.invoke('scheduler:deleteTask', id) as Promise<boolean>,
+
+    // 切换任务启用状态
+    toggleTask: (id: string) =>
+      ipcRenderer.invoke('scheduler:toggleTask', id) as Promise<ScheduledTask | null>,
+
+    // 立即执行任务
+    runTask: (id: string) =>
+      ipcRenderer.invoke('scheduler:runTask', id) as Promise<TaskExecutionResult>,
+
+    // 获取执行历史
+    getHistory: (taskId?: string, limit?: number) =>
+      ipcRenderer.invoke('scheduler:getHistory', taskId, limit) as Promise<TaskHistoryRecord[]>,
+
+    // 清除历史记录
+    clearHistory: (taskId?: string) =>
+      ipcRenderer.invoke('scheduler:clearHistory', taskId) as Promise<void>,
+
+    // 获取 SSH 会话列表
+    getSshSessions: () =>
+      ipcRenderer.invoke('scheduler:getSshSessions') as Promise<SshSession[]>,
+
+    // 检查任务是否正在运行
+    isTaskRunning: (taskId: string) =>
+      ipcRenderer.invoke('scheduler:isTaskRunning', taskId) as Promise<boolean>,
+
+    // 获取正在运行的任务列表
+    getRunningTasks: () =>
+      ipcRenderer.invoke('scheduler:getRunningTasks') as Promise<string[]>,
+
+    // 监听任务开始事件
+    onTaskStarted: (callback: (data: { 
+      taskId: string
+      ptyId: string | null
+      taskName: string
+      prompt: string  // 任务 prompt，用于启动 Agent
+      targetType: 'local' | 'ssh' | 'assistant'
+      sshSessionId?: string
+      sshSessionName?: string
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { 
+        taskId: string
+        ptyId: string | null
+        taskName: string
+        prompt: string
+        targetType: 'local' | 'ssh' | 'assistant'
+        sshSessionId?: string
+        sshSessionName?: string
+      }) => callback(data)
+      ipcRenderer.on('scheduler:task-started', handler)
+      return () => {
+        ipcRenderer.removeListener('scheduler:task-started', handler)
+      }
+    },
+
+    // 监听任务完成事件
+    onTaskCompleted: (callback: (data: { taskId: string; result: TaskExecutionResult }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { taskId: string; result: TaskExecutionResult }) => callback(data)
+      ipcRenderer.on('scheduler:task-completed', handler)
+      return () => {
+        ipcRenderer.removeListener('scheduler:task-completed', handler)
+      }
+    }
   },
 
   // 文件工具

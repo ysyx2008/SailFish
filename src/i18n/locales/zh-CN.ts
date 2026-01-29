@@ -1534,5 +1534,111 @@ export default {
     list_failed: '获取邮件列表失败',
     read_failed: '读取邮件失败',
     output_truncated: '输出已截断'
+  },
+
+  // 定时任务
+  scheduler: {
+    title: '定时任务',
+    tasks: '任务',
+    history: '历史',
+    newTask: '新建任务',
+    createTask: '创建任务',
+    editTask: '编辑任务',
+    noTasks: '暂无定时任务',
+    noTasksConfigured: '未配置定时任务',
+    tasksEnabled: '个任务已启用',
+    createFirst: '创建第一个任务',
+    loading: '加载中...',
+    
+    // 任务状态
+    enabled: '已启用',
+    disabled: '已禁用',
+    enable: '启用',
+    disable: '禁用',
+    running: '运行中',
+    
+    // 操作
+    edit: '编辑',
+    delete: '删除',
+    runNow: '立即执行',
+    save: '保存',
+    create: '创建',
+    cancel: '取消',
+    
+    // Popover
+    upcoming: '即将执行',
+    recentRuns: '最近执行',
+    manageAll: '管理全部任务',
+    
+    // 任务详情
+    nextRun: '下次执行',
+    lastRun: '上次执行',
+    status: '状态',
+    time: '时间',
+    duration: '耗时',
+    error: '错误',
+    
+    // 调度配置
+    scheduleConfig: '调度配置',
+    scheduleType: '调度类型',
+    expression: '表达式',
+    interval: '间隔',
+    once: '一次性',
+    presets: '常用预设',
+    intervalConfig: '间隔配置',
+    every: '每',
+    minutes: '分钟',
+    hours: '小时',
+    days: '天',
+    seconds: '秒',
+    dateTime: '日期时间',
+    
+    // 目标配置
+    targetConfig: '执行目标',
+    targetType: '目标类型',
+    localTerminal: '本地终端',
+    remoteHost: '远程主机',
+    noTerminal: '无需终端',
+    session: '会话',
+    selectSshSession: '请选择 SSH 会话',
+    workingDirectory: '工作目录',
+    workingDirectoryPlaceholder: '可选，留空使用默认目录',
+    
+    // 任务内容
+    taskPrompt: '任务指令',
+    agentInstruction: 'Agent 指令',
+    promptPlaceholder: '输入要执行的任务描述，例如：检查磁盘空间使用率，如果超过80%发送告警',
+    
+    // 高级选项
+    advancedOptions: '高级选项',
+    timeout: '超时时间',
+    notifyComplete: '任务完成时通知',
+    notifyError: '任务失败时通知',
+    notifyOnComplete: '完成通知',
+    notifyOnError: '错误通知',
+    options: '选项',
+    
+    // 基本信息
+    basicInfo: '基本信息',
+    taskName: '任务名称',
+    taskNamePlaceholder: '例如：每日磁盘检查',
+    taskDescription: '任务描述',
+    taskDescriptionPlaceholder: '可选，简要描述任务用途',
+    enableTask: '启用此任务',
+    
+    // 历史
+    historyCount: '{count} 条记录',
+    clearHistory: '清除历史',
+    noHistory: '暂无执行记录',
+    
+    // 验证
+    validation: {
+      nameRequired: '请输入任务名称',
+      promptRequired: '请输入任务指令',
+      cronRequired: '请输入 Cron 表达式',
+      intervalRequired: '请输入有效的间隔时间',
+      dateTimeRequired: '请选择执行时间',
+      sshSessionRequired: '请选择 SSH 会话'
+    }
   }
 }

@@ -201,6 +201,8 @@ import { initTerminalAwarenessService, getTerminalAwarenessService, type Termina
 import { initScreenContentService } from './services/screen-content.service'
 import { menuService } from './services/menu.service'
 import { aiDebugService } from './services/ai-debug.service'
+import { getSchedulerService, type SchedulerService, type CreateTaskParams, type TaskExecutionResult } from './services/scheduler.service'
+import type { ScheduledTask, TaskHistoryRecord, ScheduleConfig, TargetConfig, TaskOptions } from './services/scheduler.store'
 
 // 禁用 GPU 加速可能导致的问题（可选）
 // app.disableHardwareAcceleration()
@@ -255,6 +257,9 @@ const localFsService = new LocalFsService()
 
 // 设置 SFTP 服务到 Agent（用于 SSH 终端的文件写入）
 agentService.setSftpService(sftpService)
+
+// 定时任务调度服务
+const schedulerService = getSchedulerService()
 
 // 终端状态服务（CWD 追踪、命令状态等）
 const terminalStateService = initTerminalStateService(ptyService, sshService)
@@ -664,6 +669,22 @@ app.whenReady().then(async () => {
     } catch (e) {
       console.error('[Main] 知识库自动解锁失败:', e)
     }
+
+    // 初始化定时任务调度服务
+    try {
+      schedulerService.init({
+        ptyService,
+        sshService,
+        configService,
+        agentService,
+        mainWindow
+      })
+      schedulerService.start().catch(e => {
+        console.error('[Main] 定时任务调度服务启动失败:', e)
+      })
+    } catch (e) {
+      console.error('[Main] 定时任务调度服务初始化失败:', e)
+    }
   })
 
   app.on('activate', () => {
@@ -692,6 +713,9 @@ app.on('before-quit', (event) => {
 
 // 所有窗口关闭时退出应用
 app.on('window-all-closed', () => {
+  // 停止定时任务调度服务
+  schedulerService.stop()
+  
   // 清理所有 PTY、SSH、SFTP 和 MCP 连接
   ptyService.disposeAll()
   sshService.disposeAll()
@@ -1416,6 +1440,56 @@ ipcMain.handle('config:getAiRules', async () => {
 
 ipcMain.handle('config:setAiRules', async (_event, rules: string) => {
   configService.setAiRules(rules)
+})
+
+// ==================== 定时任务调度相关 ====================
+
+ipcMain.handle('scheduler:getTasks', async () => {
+  return schedulerService.getTasks()
+})
+
+ipcMain.handle('scheduler:getTask', async (_event, id: string) => {
+  return schedulerService.getTask(id)
+})
+
+ipcMain.handle('scheduler:createTask', async (_event, params: CreateTaskParams) => {
+  return schedulerService.createTask(params)
+})
+
+ipcMain.handle('scheduler:updateTask', async (_event, id: string, updates: Partial<CreateTaskParams>) => {
+  return schedulerService.updateTask(id, updates)
+})
+
+ipcMain.handle('scheduler:deleteTask', async (_event, id: string) => {
+  return schedulerService.deleteTask(id)
+})
+
+ipcMain.handle('scheduler:toggleTask', async (_event, id: string) => {
+  return schedulerService.toggleTask(id)
+})
+
+ipcMain.handle('scheduler:runTask', async (_event, id: string) => {
+  return schedulerService.runTask(id)
+})
+
+ipcMain.handle('scheduler:getHistory', async (_event, taskId?: string, limit?: number) => {
+  return schedulerService.getHistory(taskId, limit)
+})
+
+ipcMain.handle('scheduler:clearHistory', async (_event, taskId?: string) => {
+  return schedulerService.clearHistory(taskId)
+})
+
+ipcMain.handle('scheduler:getSshSessions', async () => {
+  return schedulerService.getSshSessions()
+})
+
+ipcMain.handle('scheduler:isTaskRunning', async (_event, taskId: string) => {
+  return schedulerService.isTaskRunning(taskId)
+})
+
+ipcMain.handle('scheduler:getRunningTasks', async () => {
+  return schedulerService.getRunningTasks()
 })
 
 // Xshell 导入相关

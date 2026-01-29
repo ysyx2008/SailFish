@@ -1686,5 +1686,214 @@ interface Window {
     aiDebugExportLogs: (filePath: string) => Promise<{ success: boolean; error?: string }>
     aiDebugCopyEntry: (entryId: string) => Promise<string | null>
     onAiDebugMessage: (callback: (message: { type: string; entry?: unknown }) => void) => () => void
+
+    // 定时任务调度
+    scheduler: {
+      getTasks: () => Promise<Array<{
+        id: string
+        name: string
+        description?: string
+        enabled: boolean
+        schedule: {
+          type: 'cron' | 'interval' | 'once'
+          expression: string
+        }
+        prompt: string
+        target: {
+          type: 'local' | 'ssh' | 'assistant'
+          sshSessionId?: string
+          sshSessionName?: string
+          workingDirectory?: string
+        }
+        options: {
+          timeout: number
+          requireConfirm: boolean
+          notifyOnComplete: boolean
+          notifyOnError: boolean
+        }
+        createdAt: number
+        updatedAt: number
+        lastRun?: {
+          at: number
+          status: 'success' | 'failed' | 'timeout' | 'cancelled' | 'running'
+          duration: number
+          output?: string
+          error?: string
+        }
+        nextRun?: number
+      }>>
+      getTask: (id: string) => Promise<{
+        id: string
+        name: string
+        description?: string
+        enabled: boolean
+        schedule: {
+          type: 'cron' | 'interval' | 'once'
+          expression: string
+        }
+        prompt: string
+        target: {
+          type: 'local' | 'ssh' | 'assistant'
+          sshSessionId?: string
+          sshSessionName?: string
+          workingDirectory?: string
+        }
+        options: {
+          timeout: number
+          requireConfirm: boolean
+          notifyOnComplete: boolean
+          notifyOnError: boolean
+        }
+        createdAt: number
+        updatedAt: number
+        lastRun?: {
+          at: number
+          status: 'success' | 'failed' | 'timeout' | 'cancelled' | 'running'
+          duration: number
+          output?: string
+          error?: string
+        }
+        nextRun?: number
+      } | null>
+      createTask: (params: {
+        name: string
+        description?: string
+        schedule: {
+          type: 'cron' | 'interval' | 'once'
+          expression: string
+        }
+        prompt: string
+        target: {
+          type: 'local' | 'ssh' | 'assistant'
+          sshSessionId?: string
+          sshSessionName?: string
+          workingDirectory?: string
+        }
+        options?: Partial<{
+          timeout: number
+          requireConfirm: boolean
+          notifyOnComplete: boolean
+          notifyOnError: boolean
+        }>
+        enabled?: boolean
+      }) => Promise<{
+        id: string
+        name: string
+        description?: string
+        enabled: boolean
+        schedule: {
+          type: 'cron' | 'interval' | 'once'
+          expression: string
+        }
+        prompt: string
+        target: {
+          type: 'local' | 'ssh' | 'assistant'
+          sshSessionId?: string
+          sshSessionName?: string
+          workingDirectory?: string
+        }
+        options: {
+          timeout: number
+          requireConfirm: boolean
+          notifyOnComplete: boolean
+          notifyOnError: boolean
+        }
+        createdAt: number
+        updatedAt: number
+        lastRun?: {
+          at: number
+          status: 'success' | 'failed' | 'timeout' | 'cancelled' | 'running'
+          duration: number
+          output?: string
+          error?: string
+        }
+        nextRun?: number
+      }>
+      updateTask: (id: string, params: {
+        name?: string
+        description?: string
+        schedule?: {
+          type: 'cron' | 'interval' | 'once'
+          expression: string
+        }
+        prompt?: string
+        target?: {
+          type: 'local' | 'ssh' | 'assistant'
+          sshSessionId?: string
+          sshSessionName?: string
+          workingDirectory?: string
+        }
+        options?: Partial<{
+          timeout: number
+          requireConfirm: boolean
+          notifyOnComplete: boolean
+          notifyOnError: boolean
+        }>
+        enabled?: boolean
+      }) => Promise<{
+        id: string
+        name: string
+        description?: string
+        enabled: boolean
+        schedule: {
+          type: 'cron' | 'interval' | 'once'
+          expression: string
+        }
+        prompt: string
+        target: {
+          type: 'local' | 'ssh' | 'assistant'
+          sshSessionId?: string
+          sshSessionName?: string
+          workingDirectory?: string
+        }
+        options: {
+          timeout: number
+          requireConfirm: boolean
+          notifyOnComplete: boolean
+          notifyOnError: boolean
+        }
+        createdAt: number
+        updatedAt: number
+        lastRun?: {
+          at: number
+          status: 'success' | 'failed' | 'timeout' | 'cancelled' | 'running'
+          duration: number
+          output?: string
+          error?: string
+        }
+        nextRun?: number
+      } | null>
+      deleteTask: (id: string) => Promise<boolean>
+      toggleTask: (id: string, enabled: boolean) => Promise<boolean>
+      runTask: (id: string) => Promise<{
+        success: boolean
+        output: string
+        error?: string
+        duration: number
+        steps?: unknown[]
+      }>
+      getHistory: (taskId?: string, limit?: number) => Promise<Array<{
+        id: string
+        taskId: string
+        taskName: string
+        at: number
+        status: 'success' | 'failed' | 'timeout' | 'cancelled' | 'running'
+        duration: number
+        output?: string
+        error?: string
+      }>>
+      clearHistory: (taskId?: string) => Promise<number>
+      getSshSessions: () => Promise<Array<{
+        id: string
+        name: string
+        host: string
+        port: number
+        username: string
+      }>>
+      isTaskRunning: (id: string) => Promise<boolean>
+      getRunningTasks: () => Promise<string[]>
+      onTaskStarted: (callback: (data: { taskId: string; taskName: string }) => void) => () => void
+      onTaskCompleted: (callback: (data: { taskId: string; taskName: string; success: boolean; duration: number }) => void) => () => void
+    }
   }
 }

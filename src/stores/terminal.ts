@@ -175,6 +175,8 @@ export const useTerminalStore = defineStore('terminal', () => {
   const sshTerminalCounters = ref<Record<string, number>>({})
   // 需要获得焦点的终端 ID（用于从 AI 助手发送代码后自动聚焦）
   const pendingFocusTabId = ref<string>('')
+  // 定时任务待执行的 prompt（tabId -> prompt）
+  const pendingSchedulerTasks = ref<Record<string, string>>({})
   
   // 屏幕服务实例存储（tabId -> TerminalScreenService）
   // 使用普通对象而非 ref，因为 TerminalScreenService 实例不需要响应式
@@ -540,6 +542,62 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
 
     return true
+  }
+
+  /**
+   * 创建关联到现有 ptyId 的标签页
+   * 用于定时任务执行时，后端已创建终端，前端需要显示
+   */
+  function createTabWithExistingPty(options: {
+    ptyId: string
+    title: string
+    type: 'local' | 'ssh'
+    sshConfig?: {
+      host: string
+      port: number
+      username: string
+    }
+    sshSessionId?: string
+    pendingTask?: string  // 创建后自动执行的任务 prompt
+  }): string {
+    const id = uuidv4()
+    
+    const tab: TerminalTab = {
+      id,
+      title: options.title,
+      type: options.type,
+      ptyId: options.ptyId,
+      isConnected: true,
+      isLoading: false
+    }
+
+    if (options.type === 'ssh' && options.sshConfig) {
+      tab.sshConfig = options.sshConfig
+      if (options.sshSessionId) {
+        tab.sshSessionId = options.sshSessionId
+      }
+    }
+
+    tabs.value.push(tab)
+    activeTabId.value = id
+
+    // 如果有待执行任务，记录下来让 AiPanel 自动执行
+    if (options.pendingTask) {
+      pendingSchedulerTasks.value[id] = options.pendingTask
+    }
+
+    return id
+  }
+
+  /**
+   * 获取并清除 tab 的待执行定时任务
+   */
+  function consumePendingSchedulerTask(tabId: string): string | undefined {
+    const task = pendingSchedulerTasks.value[tabId]
+    if (task) {
+      delete pendingSchedulerTasks.value[tabId]
+    }
+    return task
   }
 
   /**
@@ -1339,6 +1397,8 @@ export const useTerminalStore = defineStore('terminal', () => {
     pendingAiText,
     pendingFocusTabId,
     createTab,
+    createTabWithExistingPty,
+    consumePendingSchedulerTask,
     closeTab,
     reconnectSsh,
     setActiveTab,

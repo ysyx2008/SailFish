@@ -600,6 +600,22 @@ watch(() => terminalStore.pendingAiText, (text) => {
   }
 }, { immediate: true })
 
+// 监听定时任务：当切换到有 pendingSchedulerTask 的 tab 时自动执行
+watch(() => terminalStore.activeTabId, (tabId) => {
+  if (tabId) {
+    const pendingTask = terminalStore.consumePendingSchedulerTask(tabId)
+    if (pendingTask) {
+      console.log(`[AiPanel] 检测到定时任务，自动执行: ${pendingTask.substring(0, 50)}...`)
+      // 设置输入文本并执行
+      inputText.value = pendingTask
+      // 稍微延迟确保 tab 完全切换
+      setTimeout(() => {
+        runAgent()
+      }, 100)
+    }
+  }
+}, { immediate: true })
+
 // ==================== 诊断和分析（通过 Agent 执行） ====================
 
 // 诊断错误（通过 Agent 执行）

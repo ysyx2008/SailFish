@@ -11,6 +11,8 @@ import SessionManager from './components/SessionManager.vue'
 import SettingsModal from './components/Settings/SettingsModal.vue'
 import FileExplorer from './components/FileExplorer/FileExplorer.vue'
 import McpStatusPopover from './components/McpStatusPopover.vue'
+import SchedulerPopover from './components/SchedulerPopover.vue'
+import SchedulerManager from './components/SchedulerManager.vue'
 import SetupWizard from './components/SetupWizard.vue'
 import WelcomePage from './components/WelcomePage.vue'
 import SmartPatrolPage from './components/SmartPatrolPage.vue'
@@ -34,6 +36,7 @@ const showSidebar = ref(false)
 const showAiPanel = ref(true)
 const showSettings = ref(false)
 const showSmartPatrol = ref(false)
+const showSchedulerManager = ref(false)
 
 // UI 主题
 const currentUiTheme = computed(() => configStore.uiTheme)
@@ -97,6 +100,7 @@ let cleanupKnowledgeUpgrading: (() => void) | null = null
 let cleanupKnowledgeProgress: (() => void) | null = null
 let cleanupKnowledgeReady: (() => void) | null = null
 let cleanupMenuCommand: (() => void) | null = null
+let cleanupSchedulerTaskStarted: (() => void) | null = null
 
 // 知识库管理器显示状态
 const showKnowledgeManager = ref(false)
@@ -124,6 +128,46 @@ onMounted(async () => {
   // 监听菜单命令
   cleanupMenuCommand = window.electronAPI.menu.onCommand(({ command }) => {
     handleMenuCommand(command)
+  })
+
+  // 监听定时任务开始事件，创建可见的终端 tab 并自动执行 Agent
+  cleanupSchedulerTaskStarted = window.electronAPI.scheduler.onTaskStarted((data) => {
+    if (data.ptyId) {
+      // 根据任务类型构建 tab 配置，包含 pendingTask 以便 AiPanel 自动执行
+      const tabTitle = `⏰ ${data.taskName}`
+      const pendingTask = data.prompt  // 任务 prompt 作为待执行任务
+      
+      if (data.targetType === 'local') {
+        terminalStore.createTabWithExistingPty({
+          ptyId: data.ptyId,
+          title: tabTitle,
+          type: 'local',
+          pendingTask
+        })
+      } else if (data.targetType === 'ssh' && data.sshSessionId) {
+        // 获取 SSH 会话配置
+        const sshSession = configStore.sshSessions.find(s => s.id === data.sshSessionId)
+        if (sshSession) {
+          terminalStore.createTabWithExistingPty({
+            ptyId: data.ptyId,
+            title: tabTitle,
+            type: 'ssh',
+            sshConfig: {
+              host: sshSession.host,
+              port: sshSession.port,
+              username: sshSession.username
+            },
+            sshSessionId: data.sshSessionId,
+            pendingTask
+          })
+        }
+      }
+      
+      // 打开 AI 面板确保可见
+      showAiPanel.value = true
+      
+      console.log(`[Scheduler] 定时任务开始: ${data.taskName}, 已创建终端 tab，等待 AiPanel 执行`)
+    }
   })
 
   // 加载配置
@@ -389,6 +433,7 @@ onUnmounted(() => {
   cleanupKnowledgeProgress?.()
   cleanupKnowledgeReady?.()
   cleanupMenuCommand?.()
+  cleanupSchedulerTaskStarted?.()
 })
 </script>
 
@@ -409,6 +454,7 @@ onUnmounted(() => {
         <button class="btn-icon" @click="toggleAiPanel" :title="t('header.aiAssistant')">
           <Bot :size="18" />
         </button>
+        <SchedulerPopover @open-manager="showSchedulerManager = true" />
         <McpStatusPopover @open-settings="openMcpSettings" />
         <button class="btn-icon" @click="showSettings = true" :title="t('header.settings')">
           <Settings :size="18" />
@@ -492,6 +538,12 @@ onUnmounted(() => {
     <KnowledgeManager
       v-if="showKnowledgeManager"
       @close="showKnowledgeManager = false"
+    />
+
+    <!-- 定时任务管理器 -->
+    <SchedulerManager
+      v-if="showSchedulerManager"
+      @close="showSchedulerManager = false"
     />
 
     <!-- 知识库升级进度提示 -->

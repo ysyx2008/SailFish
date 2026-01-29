@@ -1534,5 +1534,111 @@ export default {
     list_failed: 'Failed to get email list',
     read_failed: 'Failed to read email',
     output_truncated: 'output truncated'
+  },
+
+  // Scheduled Tasks
+  scheduler: {
+    title: 'Scheduled Tasks',
+    tasks: 'Tasks',
+    history: 'History',
+    newTask: 'New Task',
+    createTask: 'Create Task',
+    editTask: 'Edit Task',
+    noTasks: 'No scheduled tasks',
+    noTasksConfigured: 'No tasks configured',
+    tasksEnabled: 'tasks enabled',
+    createFirst: 'Create your first task',
+    loading: 'Loading...',
+    
+    // Task status
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    enable: 'Enable',
+    disable: 'Disable',
+    running: 'Running',
+    
+    // Actions
+    edit: 'Edit',
+    delete: 'Delete',
+    runNow: 'Run Now',
+    save: 'Save',
+    create: 'Create',
+    cancel: 'Cancel',
+    
+    // Popover
+    upcoming: 'Upcoming',
+    recentRuns: 'Recent Runs',
+    manageAll: 'Manage All Tasks',
+    
+    // Task details
+    nextRun: 'Next Run',
+    lastRun: 'Last Run',
+    status: 'Status',
+    time: 'Time',
+    duration: 'Duration',
+    error: 'Error',
+    
+    // Schedule config
+    scheduleConfig: 'Schedule Config',
+    scheduleType: 'Schedule Type',
+    expression: 'Expression',
+    interval: 'Interval',
+    once: 'One-time',
+    presets: 'Presets',
+    intervalConfig: 'Interval Config',
+    every: 'Every',
+    minutes: 'minutes',
+    hours: 'hours',
+    days: 'days',
+    seconds: 'seconds',
+    dateTime: 'Date & Time',
+    
+    // Target config
+    targetConfig: 'Target Config',
+    targetType: 'Target Type',
+    localTerminal: 'Local Terminal',
+    remoteHost: 'Remote Host',
+    noTerminal: 'No Terminal',
+    session: 'Session',
+    selectSshSession: 'Select SSH Session',
+    workingDirectory: 'Working Directory',
+    workingDirectoryPlaceholder: 'Optional, leave empty for default',
+    
+    // Task content
+    taskPrompt: 'Task Prompt',
+    agentInstruction: 'Agent Instruction',
+    promptPlaceholder: 'Enter task description, e.g., Check disk usage and alert if above 80%',
+    
+    // Advanced options
+    advancedOptions: 'Advanced Options',
+    timeout: 'Timeout',
+    notifyComplete: 'Notify on completion',
+    notifyError: 'Notify on error',
+    notifyOnComplete: 'Completion Notification',
+    notifyOnError: 'Error Notification',
+    options: 'Options',
+    
+    // Basic info
+    basicInfo: 'Basic Info',
+    taskName: 'Task Name',
+    taskNamePlaceholder: 'e.g., Daily Disk Check',
+    taskDescription: 'Description',
+    taskDescriptionPlaceholder: 'Optional, describe the task purpose',
+    enableTask: 'Enable this task',
+    
+    // History
+    historyCount: '{count} records',
+    clearHistory: 'Clear History',
+    noHistory: 'No execution history',
+    
+    // Validation
+    validation: {
+      nameRequired: 'Task name is required',
+      promptRequired: 'Task prompt is required',
+      cronRequired: 'Cron expression is required',
+      intervalRequired: 'Please enter a valid interval',
+      dateTimeRequired: 'Please select execution time',
+      sshSessionRequired: 'Please select an SSH session'
+    }
   }
 }
