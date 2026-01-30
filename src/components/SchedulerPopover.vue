@@ -80,6 +80,13 @@ let cleanupTaskCompleted: (() => void) | null = null
 const enabledTasks = computed(() => tasks.value.filter((t: ScheduledTask) => t.enabled))
 const enabledCount = computed(() => enabledTasks.value.length)
 
+// 需要关注的任务数（最后一次运行失败或超时的启用任务）
+const attentionCount = computed(() => {
+  return enabledTasks.value.filter((t: ScheduledTask) => 
+    t.lastRun && (t.lastRun.status === 'failed' || t.lastRun.status === 'timeout')
+  ).length
+})
+
 // 即将执行的任务（按 nextRun 排序，取前 3 个）
 const upcomingTasks = computed(() => {
   return enabledTasks.value
@@ -95,6 +102,9 @@ const recentHistory = computed(() => history.value.slice(0, 5))
 const statusTooltip = computed(() => {
   if (enabledCount.value === 0) {
     return t('scheduler.noTasksConfigured')
+  }
+  if (attentionCount.value > 0) {
+    return `${t('scheduler.title')}: ${attentionCount.value} ${t('scheduler.tasksFailed')}`
   }
   return `${t('scheduler.title')}: ${enabledCount.value} ${t('scheduler.tasksEnabled')}`
 })
@@ -247,9 +257,9 @@ onUnmounted(() => {
       @click="togglePopover"
     >
       <Clock :size="18" />
-      <!-- 任务数量徽章 -->
-      <span v-if="enabledCount > 0" class="task-badge">
-        {{ enabledCount }}
+      <!-- 需要关注的任务徽章（失败/超时） -->
+      <span v-if="attentionCount > 0" class="task-badge attention">
+        {{ attentionCount }}
       </span>
     </button>
 
@@ -341,7 +351,7 @@ onUnmounted(() => {
   border-radius: 6px;
 }
 
-/* 任务数量徽章 */
+/* 需要关注的任务徽章 */
 .task-badge {
   position: absolute;
   top: 2px;
@@ -354,8 +364,11 @@ onUnmounted(() => {
   line-height: 14px;
   text-align: center;
   color: white;
-  background: var(--accent-primary);
   border-radius: 7px;
+}
+
+.task-badge.attention {
+  background: #ef4444;
 }
 
 /* 弹出面板 */

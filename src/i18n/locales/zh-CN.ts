@@ -1547,6 +1547,7 @@ export default {
     noTasks: '暂无定时任务',
     noTasksConfigured: '未配置定时任务',
     tasksEnabled: '个任务已启用',
+    tasksFailed: '个任务需要关注',
     createFirst: '创建第一个任务',
     loading: '加载中...',
     

@@ -1547,6 +1547,7 @@ export default {
     noTasks: 'No scheduled tasks',
     noTasksConfigured: 'No tasks configured',
     tasksEnabled: 'tasks enabled',
+    tasksFailed: 'tasks need attention',
     createFirst: 'Create your first task',
     loading: 'Loading...',
     
