@@ -1626,7 +1626,8 @@ export default {
     taskDescriptionPlaceholder: 'Optional, describe the task purpose',
     enableTask: 'Enable this task',
     
-    // History
+    // History & empty state
+    selectTask: 'Select a task from the list to view details',
     historyCount: '{count} records',
     clearHistory: 'Clear History',
     noHistory: 'No execution history',

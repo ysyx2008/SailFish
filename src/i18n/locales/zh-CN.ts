@@ -1626,7 +1626,8 @@ export default {
     taskDescriptionPlaceholder: '可选，简要描述任务用途',
     enableTask: '启用此任务',
     
-    // 历史
+    // 历史与空状态
+    selectTask: '请从左侧选择任务查看详情',
     historyCount: '{count} 条记录',
     clearHistory: '清除历史',
     noHistory: '暂无执行记录',

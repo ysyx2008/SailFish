@@ -33,33 +33,20 @@ export const schedulerTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'schedule_create',
-      description: `创建定时任务。任务将按指定的调度配置自动执行。
+      description: `创建定时任务。
 
-**调度类型**：
-1. **cron**: 使用 Cron 表达式，如 "0 9 * * *"（每天 9 点）、"*/30 * * * *"（每 30 分钟）
-2. **interval**: 固定间隔，如 "30m"（30 分钟）、"2h"（2 小时）、"1d"（1 天）
-3. **once**: 一次性执行，使用 ISO 日期格式，如 "2024-03-01T15:00:00"
-
-**执行目标**：
-- local: 在本地终端执行
-- ssh: 在指定的 SSH 会话中执行（需要 ssh_session_id）
-
-**Cron 表达式示例**：
-- "0 9 * * *" - 每天 9:00
-- "0 9 * * 1-5" - 工作日 9:00
-- "*/30 * * * *" - 每 30 分钟
-- "0 */2 * * *" - 每 2 小时
-- "0 9 1 * *" - 每月 1 日 9:00`,
+调度类型：cron（如 "0 9 * * *"）、interval（如 "30m"）、once（ISO 格式）。
+执行目标：local（本地）或 ssh（需指定 ssh_session_id）。`,
       parameters: {
         type: 'object',
         properties: {
           name: {
             type: 'string',
-            description: '任务名称，简洁描述任务目的'
+            description: '任务名称'
           },
           prompt: {
             type: 'string',
-            description: '任务指令，描述要执行的操作（Agent 会根据此指令自动执行）'
+            description: '执行指令（不能直接复制用户要求，只写运行时需要执行的任务即可，否则Agent会再次设置任务）'
           },
           schedule_type: {
             type: 'string',

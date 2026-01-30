@@ -716,7 +716,7 @@ export class SchedulerService {
         taskId, 
         ptyId,
         taskName: task.name,
-        prompt: task.prompt,  // 任务 prompt，前端用于启动 Agent
+        prompt: task.prompt,
         targetType: task.target.type,
         sshSessionId: task.target.sshSessionId,
         sshSessionName: task.target.sshSessionName
