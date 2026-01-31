@@ -138,6 +138,7 @@ export class PtyService {
    * - 繁体中文 Windows：Big5（代码页 950）
    * - 日文 Windows：Shift-JIS（代码页 932）
    * - Windows Terminal（Win10 1903+）：默认 UTF-8（代码页 65001）
+   * - PowerShell 7+：默认 UTF-8
    */
   private detectSystemEncoding(): string {
     const isWindows = process.platform === 'win32'
@@ -147,31 +148,40 @@ export class PtyService {
       return 'utf-8'
     }
     
-    // Windows: 首先尝试通过 chcp 检测实际代码页（最可靠）
+    // Windows: 优先检测现代终端环境（这些总是使用 UTF-8）
+    // 1. Windows Terminal 环境（通过 WT_SESSION 或 WT_PROFILE_ID 判断）
+    if (process.env.WT_SESSION || process.env.WT_PROFILE_ID) {
+      console.log('[PtyService] 检测到 Windows Terminal 环境，使用 UTF-8')
+      return 'utf-8'
+    }
+    
+    // 2. VS Code 集成终端
+    if (process.env.TERM_PROGRAM === 'vscode') {
+      console.log('[PtyService] 检测到 VS Code 终端环境，使用 UTF-8')
+      return 'utf-8'
+    }
+    
+    // 3. 检查 LANG/LC_ALL 环境变量
+    const lang = process.env.LANG || process.env.LC_ALL || ''
+    if (lang.includes('UTF-8') || lang.includes('utf-8')) {
+      console.log('[PtyService] 检测到 UTF-8 环境变量设置')
+      return 'utf-8'
+    }
+    
+    // 4. 通过 chcp 检测控制台代码页
     const codePage = this.detectWindowsCodePage()
     if (codePage !== null) {
+      // 代码页 65001 是 UTF-8
+      if (codePage === 65001) {
+        console.log('[PtyService] 检测到代码页 65001 (UTF-8)')
+        return 'utf-8'
+      }
+      
       const encoding = CODE_PAGE_TO_ENCODING[codePage]
       if (encoding) {
         console.log(`[PtyService] 根据代码页 ${codePage} 使用编码: ${encoding}`)
         return encoding
       }
-      // 未知代码页，如果是 65001 则使用 UTF-8
-      if (codePage === 65001) {
-        return 'utf-8'
-      }
-    }
-    
-    // 回退：检测 Windows Terminal 环境
-    if (process.env.WT_SESSION) {
-      console.log('[PtyService] 检测到 Windows Terminal 环境，使用 UTF-8')
-      return 'utf-8'
-    }
-    
-    // 回退：检查环境变量
-    const lang = process.env.LANG || process.env.LC_ALL || ''
-    if (lang.includes('UTF-8') || lang.includes('utf-8')) {
-      console.log('[PtyService] 检测到 UTF-8 环境变量设置')
-      return 'utf-8'
     }
     
     // 最终回退：简体中文 Windows 最常见，默认 GBK
