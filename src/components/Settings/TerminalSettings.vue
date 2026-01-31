@@ -18,7 +18,9 @@ const saveSettings = async () => {
   configStore.terminalSettings.localEncoding = settings.value.localEncoding
   configStore.terminalSettings.commandHighlight = settings.value.commandHighlight
   
-  await window.electronAPI.config.set('terminalSettings', settings.value)
+  // 转换为普通对象，避免 IPC 结构化克隆错误
+  const plainSettings = JSON.parse(JSON.stringify(settings.value))
+  await window.electronAPI.config.set('terminalSettings', plainSettings)
 }
 
 // 监听变化自动保存
