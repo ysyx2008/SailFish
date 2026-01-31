@@ -132,7 +132,7 @@ const defaultConfig: StoreSchema = {
   sshSessions: [],
   sessionGroups: [],
   theme: 'one-dark',
-  uiTheme: 'dark',
+  uiTheme: 'blue',
   terminalSettings: {
     fontSize: 14,
     fontFamily: '"Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, monospace',
@@ -374,7 +374,7 @@ export class ConfigService {
    * 获取 UI 主题
    */
   getUiTheme(): UiThemeType {
-    return this.store.get('uiTheme') || 'dark'
+    return this.store.get('uiTheme') || 'blue'
   }
 
   /**

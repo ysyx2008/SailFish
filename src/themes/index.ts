@@ -754,8 +754,8 @@ export function getIntegratedTheme(uiThemeName: string): ITheme {
     return generateTerminalThemeFromUi(uiTheme)
   }
   
-  // 默认返回 dark 主题
-  return integratedTerminalThemes['dark']
+  // 默认返回 blue 主题
+  return integratedTerminalThemes['blue']
 }
 
 /**

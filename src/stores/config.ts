@@ -309,7 +309,7 @@ export const useConfigStore = defineStore('config', () => {
 
       // 加载 UI 主题
       const uiThemeValue = await window.electronAPI.config.getUiTheme()
-      uiTheme.value = uiThemeValue || 'dark'
+      uiTheme.value = uiThemeValue || 'blue'
 
       // 加载 Agent MBTI
       const mbti = await window.electronAPI.config.getAgentMbti()

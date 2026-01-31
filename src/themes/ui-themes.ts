@@ -325,7 +325,7 @@ export const sponsorUiThemes: UiThemeName[] = ['sponsor-gold', 'sponsor-sakura',
 
 // 获取 UI 主题
 export function getUiTheme(name: string): UiThemeVars {
-  return uiThemes[name as UiThemeName] || uiThemes.dark
+  return uiThemes[name as UiThemeName] || uiThemes.blue
 }
 
 // 获取所有 UI 主题名称
