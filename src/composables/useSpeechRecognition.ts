@@ -17,6 +17,34 @@ export interface TranscriptionResult {
   duration?: number
 }
 
+/**
+ * 简单的线性插值重采样
+ * @param input 输入音频数据
+ * @param fromSampleRate 原始采样率
+ * @param toSampleRate 目标采样率
+ */
+function resampleAudio(input: Float32Array, fromSampleRate: number, toSampleRate: number): Float32Array {
+  if (fromSampleRate === toSampleRate) {
+    return new Float32Array(input)
+  }
+  
+  const ratio = fromSampleRate / toSampleRate
+  const outputLength = Math.round(input.length / ratio)
+  const output = new Float32Array(outputLength)
+  
+  for (let i = 0; i < outputLength; i++) {
+    const srcIndex = i * ratio
+    const srcIndexFloor = Math.floor(srcIndex)
+    const srcIndexCeil = Math.min(srcIndexFloor + 1, input.length - 1)
+    const fraction = srcIndex - srcIndexFloor
+    
+    // 线性插值
+    output[i] = input[srcIndexFloor] * (1 - fraction) + input[srcIndexCeil] * fraction
+  }
+  
+  return output
+}
+
 export function useSpeechRecognition() {
   // 状态
   const isRecording = ref(false)
@@ -100,27 +128,53 @@ export function useSpeechRecognition() {
       }
 
       // 请求麦克风权限并获取音频流
-      mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: 16000,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true
-        }
-      })
+      // 注意：Windows 上某些设备可能不支持指定的采样率约束
+      // 使用 ideal 而不是硬性约束，让浏览器选择最接近的设置
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            sampleRate: { ideal: 16000 },
+            channelCount: { ideal: 1 },
+            echoCancellation: true,
+            noiseSuppression: true
+          }
+        })
+      } catch (mediaErr) {
+        // 如果 ideal 约束也失败，尝试使用最基本的约束
+        console.warn('[useSpeechRecognition] 使用 ideal 约束失败，尝试基本约束:', mediaErr)
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: true
+        })
+      }
 
       // 创建 AudioContext 用于处理音频数据
-      audioContext = new AudioContext({ sampleRate: 16000 })
+      // 注意：Windows 上可能无法强制指定采样率，需要后续重采样
+      const targetSampleRate = 16000
+      try {
+        audioContext = new AudioContext({ sampleRate: targetSampleRate })
+      } catch {
+        // 如果指定采样率失败，使用默认采样率
+        audioContext = new AudioContext()
+        console.warn(`[useSpeechRecognition] 无法创建 ${targetSampleRate}Hz AudioContext，使用默认: ${audioContext.sampleRate}Hz`)
+      }
       const source = audioContext.createMediaStreamSource(mediaStream)
 
       // 使用 ScriptProcessorNode 捕获音频数据
       const processor = audioContext.createScriptProcessor(4096, 1, 1)
+      const actualSampleRate = audioContext.sampleRate
 
       processor.onaudioprocess = (e) => {
         if (isRecording.value) {
           const inputData = e.inputBuffer.getChannelData(0)
-          // 复制数据，因为 buffer 会被重用
-          audioChunks.push(new Float32Array(inputData))
+          
+          // 如果采样率不是目标采样率，需要重采样
+          if (actualSampleRate !== targetSampleRate) {
+            const resampledData = resampleAudio(inputData, actualSampleRate, targetSampleRate)
+            audioChunks.push(resampledData)
+          } else {
+            // 复制数据，因为 buffer 会被重用
+            audioChunks.push(new Float32Array(inputData))
+          }
         }
       }
 

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, dialog, session } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import path, { join } from 'path'
 import * as fs from 'fs'
@@ -642,6 +642,27 @@ function createAiDebugWindow(): void {
 
 // 应用准备就绪
 app.whenReady().then(async () => {
+  // 设置媒体设备权限处理器（用于语音识别等功能）
+  // Windows 上必须显式授权麦克风访问，否则会报 "Requested device not found"
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    // 允许麦克风和音频相关权限
+    const allowedPermissions = ['media', 'microphone', 'audioCapture']
+    if (allowedPermissions.includes(permission)) {
+      callback(true)
+    } else {
+      callback(false)
+    }
+  })
+
+  // 设置设备权限检查（用于 navigator.mediaDevices.enumerateDevices 等）
+  session.defaultSession.setDevicePermissionHandler((details) => {
+    // 允许音频输入设备访问
+    if (details.deviceType === 'hid' || details.deviceType === 'serial') {
+      return false
+    }
+    return true
+  })
+
   // 初始化屏幕内容服务（轻量，可以同步初始化）
   initScreenContentService()
 
