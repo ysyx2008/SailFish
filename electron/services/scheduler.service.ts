@@ -18,8 +18,8 @@ import type { ConfigService, SshSession } from './config.service'
 import type { AgentService } from './agent'
 import type { AgentContext, AgentCallbacks, AgentStep } from './agent/types'
 
-// cron-parser 动态导入
-let cronParser: typeof import('cron-parser') | null = null
+// cron-parser 动态导入 (v5 使用 CronExpressionParser.parse)
+let CronExpressionParser: typeof import('cron-parser').default | null = null
 
 /**
  * 任务执行结果
@@ -95,10 +95,12 @@ export class SchedulerService {
       return
     }
 
-    // 动态加载 cron-parser
-    if (!cronParser) {
+    // 动态加载 cron-parser (v5 API)
+    if (!CronExpressionParser) {
       try {
-        cronParser = await import('cron-parser')
+        const cronParserModule = await import('cron-parser')
+        // v5 使用默认导出 CronExpressionParser
+        CronExpressionParser = (cronParserModule as any).default || cronParserModule.CronExpressionParser
       } catch (e) {
         console.error('[SchedulerService] 无法加载 cron-parser:', e)
         throw new Error('cron-parser 模块加载失败')
@@ -550,7 +552,7 @@ export class SchedulerService {
    * 调度任务
    */
   private scheduleTask(task: ScheduledTask): void {
-    if (!cronParser) {
+    if (!CronExpressionParser) {
       console.error('[SchedulerService] cron-parser 未加载')
       return
     }
@@ -598,12 +600,13 @@ export class SchedulerService {
    * 计算下次执行时间
    */
   private calculateNextRun(schedule: ScheduleConfig): number | null {
-    if (!cronParser) return null
+    if (!CronExpressionParser) return null
 
     try {
       switch (schedule.type) {
         case 'cron': {
-          const interval = cronParser.parseExpression(schedule.expression)
+          // v5 API: CronExpressionParser.parse(expression)
+          const interval = CronExpressionParser.parse(schedule.expression)
           return interval.next().getTime()
         }
         
