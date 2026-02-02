@@ -601,8 +601,11 @@ watch(() => terminalStore.pendingAiText, (text) => {
 }, { immediate: true })
 
 // 监听定时任务：当切换到有 pendingSchedulerTask 的 tab 时自动执行
+// 注意：每个 AiPanel 实例都有自己的 currentTabId（props.tabId），只有目标 tab 的实例才应处理
 watch(() => terminalStore.activeTabId, (tabId) => {
-  if (tabId) {
+  // 只有当切换到的 tab 与当前 AiPanel 实例绑定的 tab 匹配时才处理
+  // 这样确保任务在正确的终端中执行，而不是在其他 tab 的旧终端中执行
+  if (tabId && tabId === currentTabId.value) {
     const pendingTask = terminalStore.consumePendingSchedulerTask(tabId)
     if (pendingTask) {
       console.log(`[AiPanel] 检测到定时任务，自动执行: ${pendingTask.substring(0, 50)}...`)
