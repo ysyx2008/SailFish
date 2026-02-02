@@ -4,7 +4,7 @@
  * 实现 Agent 的核心执行逻辑，子类（如 TerminalAgent）实现特定行为。
  * 
  * 职责划分：
- * - Agent（基类）：执行循环、AI 交互、工具执行、步骤管理、反思机制
+ * - Agent（基类）：执行循环、AI 交互、工具执行、步骤管理
  * - TerminalAgent（子类）：终端特定的工具列表、系统提示、终端交互
  */
 
@@ -25,7 +25,6 @@ import type {
   RiskLevel,
   ExecutionMode,
   AgentExecutionPhase,
-  ReflectionState,
   WorkerAgentOptions,
   PendingConfirmation
 } from './types'
@@ -303,7 +302,6 @@ export abstract class Agent {
       pendingUserMessages: [],
       config,
       context,
-      reflection: this.createInitialReflectionState(),
       realtimeOutputBuffer: [...context.terminalOutput],
       workerOptions: options?.workerOptions,
       executionPhase: 'thinking',
@@ -655,9 +653,6 @@ export abstract class Agent {
       // 执行工具调用
       await this.executeToolCalls(run, response.tool_calls, toolExecutorConfig)
       
-      // 检查反思
-      this.checkAndTriggerReflection(run)
-      
       return { response, hasToolCalls: true }
     }
     
@@ -1000,9 +995,6 @@ export abstract class Agent {
   ): void {
     const toolName = toolCall.function.name
     
-    // 更新反思追踪
-    this.updateReflectionTracking(run, toolName, toolArgs, result)
-    
     // AI Debug: 记录工具执行结果
     if (run.requestId) {
       const resultContent = result.success 
@@ -1142,19 +1134,6 @@ export abstract class Agent {
   }
   
   /**
-   * 检查并触发反思
-   */
-  protected checkAndTriggerReflection(run: AgentRun): void {
-    // 简化的反思检查逻辑
-    if (run.reflection.failureCount >= 3) {
-      const prompt = '你已经连续失败了几次。请分析失败原因，尝试不同的方法。'
-      run.messages.push({ role: 'user', content: prompt })
-      run.reflection.failureCount = 0
-      run.reflection.reflectionCount++
-    }
-  }
-  
-  /**
    * 检查计划进度
    */
   protected checkPlanProgress(run: AgentRun): 'continue' | 'complete' {
@@ -1191,33 +1170,6 @@ export abstract class Agent {
       run.executionPhase = 'executing_command'
     }
     run.currentToolName = toolName
-  }
-  
-  /**
-   * 更新反思追踪状态
-   */
-  protected updateReflectionTracking(
-    run: AgentRun, 
-    toolName: string, 
-    toolArgs: Record<string, unknown>,
-    result: { success: boolean; output: string; error?: string }
-  ): void {
-    run.reflection.toolCallCount++
-    
-    if (result.success) {
-      run.reflection.successCount++
-      run.reflection.failureCount = 0
-    } else {
-      run.reflection.failureCount++
-      run.reflection.totalFailures++
-    }
-    
-    // 记录最近的工具调用
-    const toolSignature = `${toolName}:${JSON.stringify(toolArgs).slice(0, 50)}`
-    run.reflection.lastToolCalls.push(toolSignature)
-    if (run.reflection.lastToolCalls.length > 5) {
-      run.reflection.lastToolCalls.shift()
-    }
   }
   
   /**
@@ -1265,26 +1217,6 @@ export abstract class Agent {
   private generateAllowedToolKey(toolName: string, toolArgs: Record<string, unknown>): string {
     const keyArgs = toolName === 'execute_command' ? { command: toolArgs.command } : toolArgs
     return `${toolName}:${JSON.stringify(keyArgs)}`
-  }
-  
-  /**
-   * 创建初始反思状态
-   */
-  private createInitialReflectionState(): ReflectionState {
-    return {
-      toolCallCount: 0,
-      failureCount: 0,
-      totalFailures: 0,
-      successCount: 0,
-      lastCommands: [],
-      lastToolCalls: [],
-      lastReflectionAt: 0,
-      reflectionCount: 0,
-      currentStrategy: 'default',
-      strategySwitches: [],
-      detectedIssues: [],
-      appliedFixes: []
-    }
   }
   
   /**

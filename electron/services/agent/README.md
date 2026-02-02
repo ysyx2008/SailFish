@@ -12,7 +12,6 @@ agent/
 ├── risk-assessor.ts      # 命令风险评估
 ├── system-prompt.ts      # 系统提示词生成
 ├── task-memory.ts        # 任务记忆管理
-├── reflection-tracker.ts # 反思追踪
 ├── tools/                # 工具执行器（已拆分）
 │   ├── index.ts          # 工具模块入口
 │   ├── types.ts          # 工具类型定义
@@ -60,7 +59,6 @@ Agent 可以调用的工具类型：
 - 命令风险评估 (safe/moderate/dangerous/blocked)
 - 执行模式 (strict/relaxed/free)
 - 用户确认机制
-- 反思追踪（连续失败检测）
 
 ## 模块职责
 

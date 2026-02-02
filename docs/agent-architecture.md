@@ -1,6 +1,6 @@
 # Agent 工作原理：以旗鱼终端为例
 
-本文档以旗鱼终端（SFTerminal）的 Agent 实现为例，详细介绍 AI Agent 的工作原理，包括 ReAct 机制、工具调用、任务规划、反思机制等核心概念。
+本文档以旗鱼终端（SFTerminal）的 Agent 实现为例，详细介绍 AI Agent 的工作原理，包括 ReAct 机制、工具调用、任务规划等核心概念。
 
 ---
 
@@ -10,8 +10,7 @@
 2. [ReAct 机制](#react-机制)
 3. [工具调用（Function Calling）](#工具调用function-calling)
 4. [任务规划（Planning）](#任务规划planning)
-5. [反思与自我监控（Reflection）](#反思与自我监控reflection)
-6. [风险评估与确认机制](#风险评估与确认机制)
+5. [风险评估与确认机制](#风险评估与确认机制)
 7. [知识库与记忆（Memory）](#知识库与记忆memory)
 8. [任务记忆系统（Task Memory）](#任务记忆系统task-memory)
 9. [技能系统（Skill System）](#技能系统skill-system)
@@ -27,7 +26,6 @@ Agent（智能体）是一种能够感知环境、做出决策并采取行动的
 - **工具使用**：可以调用外部工具完成任务
 - **环境感知**：能够获取和理解当前环境状态
 - **持续执行**：能够多轮迭代直到任务完成
-- **自我反思**：能够评估执行效果并调整策略
 
 在旗鱼终端中，Agent 可以帮助用户执行服务器运维任务，如执行命令、读写文件、诊断问题等。
 
@@ -44,9 +42,6 @@ Agent（智能体）是一种能够感知环境、做出决策并采取行动的
 │  │  分析    │→ │  规划    │→ │  执行    │→ │  验证    │    │
 │  │  任务    │  │  步骤    │  │  工具    │  │  结果    │    │
 │  └──────────┘  └──────────┘  └──────────┘  └──────────┘    │
-│                              ↑                              │
-│                              │                              │
-│                        反思 & 调整                           │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -427,70 +422,6 @@ export async function executeTool(
   description: '归档当前计划，保存到历史记录中'
 }
 ```
-
----
-
-## 反思与自我监控（Reflection）
-
-### 为什么需要反思
-
-在复杂任务执行中，Agent 可能会遇到：
-- 命令执行失败
-- 陷入重复循环
-- 策略不适合当前情况
-
-反思机制帮助 Agent：
-- 检测执行问题
-- 动态调整策略
-- 避免无效重复
-
-### 反思状态追踪
-
-在 `types.ts` 中定义了增强版反思状态：
-
-```typescript
-export interface ReflectionState {
-  toolCallCount: number           // 工具调用计数
-  failureCount: number            // 连续失败次数
-  totalFailures: number           // 总失败次数
-  successCount: number            // 成功次数
-  lastCommands: string[]          // 最近执行的命令
-  lastToolCalls: string[]         // 最近的工具调用签名
-  lastReflectionAt: number        // 上次反思时的步数
-  reflectionCount: number         // 反思次数
-  currentStrategy: ExecutionStrategy  // 当前执行策略
-  strategySwitches: StrategySwitchRecord[]  // 策略切换历史
-  detectedIssues: string[]        // 检测到的问题
-  appliedFixes: string[]          // 已应用的修复措施
-}
-```
-
-### 反思触发与处理
-
-在 `agent.ts` 中实现了简化的反思检查：
-
-```typescript
-protected checkAndTriggerReflection(run: AgentRun): void {
-  // 连续失败 3 次后触发反思
-  if (run.reflection.failureCount >= 3) {
-    const prompt = '你已经连续失败了几次。请分析失败原因，尝试不同的方法。'
-    run.messages.push({ role: 'user', content: prompt })
-    run.reflection.failureCount = 0
-    run.reflection.reflectionCount++
-  }
-}
-```
-
-### 执行策略类型
-
-```typescript
-type ExecutionStrategy = 'default' | 'conservative' | 'aggressive' | 'diagnostic'
-```
-
-- **default**：正常执行模式
-- **conservative**：保守策略，遇到失败时采用
-- **aggressive**：激进策略，快速尝试
-- **diagnostic**：诊断模式，详细检查
 
 ---
 
@@ -936,9 +867,6 @@ protected async executeLoop(run: AgentRun): Promise<string> {
         return stepResult.response?.content || '任务完成'
       }
     }
-    
-    // 检查反思
-    this.checkAndTriggerReflection(run)
   }
   
   return '任务完成'
@@ -1002,12 +930,11 @@ electron/services/agent/
 1. **ReAct 机制**：推理与行动交替进行，形成闭环
 2. **工具调用**：通过结构化的 Function Calling 扩展能力
 3. **任务规划**：分解复杂任务，可视化执行进度
-4. **反思机制**：自我监控，动态调整策略
-5. **风险控制**：多级风险评估，危险操作需确认
-6. **知识记忆**：积累信息，越用越智能
-7. **任务记忆**：多层次压缩，智能上下文管理
-8. **技能系统**：按需加载额外能力，保持灵活性
-9. **OOP 架构**：清晰的类层次，便于扩展和维护
+4. **风险控制**：多级风险评估，危险操作需确认
+5. **知识记忆**：积累信息，越用越智能
+6. **任务记忆**：多层次压缩，智能上下文管理
+7. **技能系统**：按需加载额外能力，保持灵活性
+8. **OOP 架构**：清晰的类层次，便于扩展和维护
 
 这些机制共同构成了一个可靠、智能、安全的 AI 运维助手。
 

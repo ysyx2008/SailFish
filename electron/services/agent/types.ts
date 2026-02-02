@@ -129,46 +129,6 @@ export interface PendingConfirmation {
   resolve: (approved: boolean, modifiedArgs?: Record<string, unknown>) => void
 }
 
-// 执行策略
-export type ExecutionStrategy = 'default' | 'conservative' | 'aggressive' | 'diagnostic'
-
-// 策略切换记录
-export interface StrategySwitchRecord {
-  timestamp: number
-  fromStrategy: ExecutionStrategy
-  toStrategy: ExecutionStrategy
-  reason: string
-  triggerCondition: string  // 触发切换的条件
-}
-
-// 执行质量评分
-export interface ExecutionQualityScore {
-  successRate: number       // 成功率 (0-1)
-  efficiency: number        // 效率评分 (0-1)
-  adaptability: number      // 适应性评分 (0-1)
-  overallScore: number      // 综合评分 (0-1)
-}
-
-// 增强版反思追踪
-export interface ReflectionState {
-  toolCallCount: number           // 工具调用计数
-  failureCount: number            // 连续失败次数
-  totalFailures: number           // 总失败次数
-  successCount: number            // 成功次数
-  lastCommands: string[]          // 最近执行的命令（用于检测循环）
-  lastToolCalls: string[]         // 最近调用的工具签名（工具名+参数哈希，用于检测工具循环）
-  lastReflectionAt: number        // 上次反思时的步数
-  reflectionCount: number         // 反思次数（用于限制反思上限）
-  // 新增：策略相关
-  currentStrategy: ExecutionStrategy  // 当前执行策略
-  strategySwitches: StrategySwitchRecord[]  // 策略切换历史
-  // 新增：质量追踪
-  qualityScore?: ExecutionQualityScore  // 执行质量评分
-  // 新增：问题分析
-  detectedIssues: string[]        // 检测到的问题列表
-  appliedFixes: string[]          // 已应用的修复措施
-}
-
 // Worker Agent 选项（智能巡检模式）
 export interface WorkerAgentOptions {
   isWorker: boolean               // 是否作为 Worker 运行
@@ -208,8 +168,6 @@ export interface AgentRun {
   pendingUserMessages: string[]  // 用户补充消息队列
   config: AgentConfig
   context: AgentContext  // 运行上下文
-  // 自我反思追踪（增强版）
-  reflection: ReflectionState
   // 实时终端输出缓冲区（Agent 运行期间收集）
   realtimeOutputBuffer: string[]
   // 终端输出监听器的取消订阅函数
