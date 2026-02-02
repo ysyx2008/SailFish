@@ -87,7 +87,9 @@ const openEditAccount = async (account: EmailAccount) => {
   editingAccount.value = account
   formData.value = {
     ...account,
-    password: '' // 密码不回显，需要重新输入才会更新
+    password: '', // 密码不回显，需要重新输入才会更新
+    // 确保旧账户有默认值
+    rejectUnauthorized: account.rejectUnauthorized !== false
   }
   testResult.value = null
   showForm.value = true
