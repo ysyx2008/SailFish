@@ -1459,6 +1459,8 @@ export default {
     server: 'Server',
     port: 'Port',
     useSSL: 'Use SSL/TLS Encryption',
+    verifyCertificate: 'Verify Server Certificate',
+    verifyCertificateHint: 'Disable this to connect to email servers with self-signed certificates',
     password: 'Password',
     passwordPlaceholder: 'Enter email password or app password',
     passwordPlaceholderEdit: 'Leave empty to keep current password',

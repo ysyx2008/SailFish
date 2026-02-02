@@ -164,6 +164,8 @@ export interface EmailAccount {
   smtpHost?: string
   smtpPort?: number
   smtpSecure?: boolean
+  // TLS 选项
+  rejectUnauthorized?: boolean  // 是否验证服务器证书，默认 true
   // 元数据
   createdAt?: number
   lastUsedAt?: number

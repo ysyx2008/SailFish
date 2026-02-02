@@ -2330,6 +2330,7 @@ const electronAPI = {
       provider?: string
       imapHost?: string
       imapPort?: number
+      rejectUnauthorized?: boolean
     }) => ipcRenderer.invoke('email:testConnection', config) as Promise<{ success: boolean; message: string }>,
     
     // 同步邮箱账户配置到后端
@@ -2344,6 +2345,7 @@ const electronAPI = {
       smtpHost?: string
       smtpPort?: number
       smtpSecure?: boolean
+      rejectUnauthorized?: boolean
     }>) => ipcRenderer.invoke('email:syncAccounts', accounts) as Promise<void>
   },
 

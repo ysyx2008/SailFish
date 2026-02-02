@@ -54,6 +54,7 @@ interface EmailAccountConfig {
   smtpHost?: string
   smtpPort?: number
   smtpSecure?: boolean
+  rejectUnauthorized?: boolean
 }
 
 // 缓存的账户配置（通过 IPC 从渲染进程获取）
@@ -175,7 +176,10 @@ async function emailConnect(
         user: account.email,
         pass: credential
       },
-      logger: false
+      logger: false,
+      tls: {
+        rejectUnauthorized: account.rejectUnauthorized !== false
+      }
     })
 
     await imapClient.connect()
@@ -188,6 +192,9 @@ async function emailConnect(
       auth: {
         user: account.email,
         pass: credential
+      },
+      tls: {
+        rejectUnauthorized: account.rejectUnauthorized !== false
       }
     })
 

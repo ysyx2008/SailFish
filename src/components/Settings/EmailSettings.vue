@@ -41,7 +41,8 @@ const formData = ref<Partial<EmailAccount> & { password?: string }>({
   imapPort: 993,
   smtpHost: '',
   smtpPort: 465,
-  smtpSecure: true
+  smtpSecure: true,
+  rejectUnauthorized: true
 })
 
 // 计算属性
@@ -68,7 +69,8 @@ const resetForm = () => {
     imapPort: 993,
     smtpHost: '',
     smtpPort: 465,
-    smtpSecure: true
+    smtpSecure: true,
+    rejectUnauthorized: true
   }
   editingAccount.value = null
   testResult.value = null
@@ -137,7 +139,8 @@ const saveAccount = async () => {
         imapPort: formData.value.imapPort,
         smtpHost: formData.value.smtpHost,
         smtpPort: formData.value.smtpPort,
-        smtpSecure: formData.value.smtpSecure
+        smtpSecure: formData.value.smtpSecure,
+        rejectUnauthorized: formData.value.rejectUnauthorized
       }
       await configStore.updateEmailAccount(updatedAccount)
 
@@ -157,7 +160,8 @@ const saveAccount = async () => {
         imapPort: formData.value.imapPort,
         smtpHost: formData.value.smtpHost,
         smtpPort: formData.value.smtpPort,
-        smtpSecure: formData.value.smtpSecure
+        smtpSecure: formData.value.smtpSecure,
+        rejectUnauthorized: formData.value.rejectUnauthorized
       }
       await configStore.addEmailAccount(newAccount)
 
@@ -207,7 +211,8 @@ const testConnection = async () => {
       password: formData.value.password,
       provider: formData.value.provider,
       imapHost: formData.value.imapHost,
-      imapPort: formData.value.imapPort
+      imapPort: formData.value.imapPort,
+      rejectUnauthorized: formData.value.rejectUnauthorized
     })
 
     testResult.value = result || { success: false, message: t('emailSettings.testFailed') }
@@ -354,6 +359,15 @@ const getProviderIcon = (provider: EmailProvider): string => {
                 <input v-model="formData.smtpSecure" type="checkbox" />
                 {{ t('emailSettings.useSSL') }}
               </label>
+            </div>
+            <div class="form-group checkbox-group">
+              <label>
+                <input v-model="formData.rejectUnauthorized" type="checkbox" />
+                {{ t('emailSettings.verifyCertificate') }}
+              </label>
+              <p class="form-hint">
+                {{ t('emailSettings.verifyCertificateHint') }}
+              </p>
             </div>
           </div>
 

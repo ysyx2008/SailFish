@@ -3225,6 +3225,7 @@ ipcMain.handle('email:syncAccounts', async (_event, accounts: Array<{
   smtpHost?: string
   smtpPort?: number
   smtpSecure?: boolean
+  rejectUnauthorized?: boolean
 }>) => {
   const { setEmailAccounts } = await import('./services/agent/skills/email/executor')
   setEmailAccounts(accounts)
@@ -3238,6 +3239,7 @@ ipcMain.handle('email:testConnection', async (_event, config: {
   provider?: string
   imapHost?: string
   imapPort?: number
+  rejectUnauthorized?: boolean
 }) => {
   try {
     const { getServerConfig } = await import('./services/agent/skills/email/session')
@@ -3255,7 +3257,10 @@ ipcMain.handle('email:testConnection', async (_event, config: {
         user: config.email,
         pass: config.password
       },
-      logger: false
+      logger: false,
+      tls: {
+        rejectUnauthorized: config.rejectUnauthorized !== false
+      }
     })
 
     await client.connect()

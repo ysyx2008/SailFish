@@ -1459,6 +1459,8 @@ export default {
     server: '服务器',
     port: '端口',
     useSSL: '使用 SSL/TLS 加密',
+    verifyCertificate: '验证服务器证书',
+    verifyCertificateHint: '关闭此选项可连接使用自签名证书的企业邮箱服务器',
     password: '密码',
     passwordPlaceholder: '输入邮箱密码或应用密码',
     passwordPlaceholderEdit: '留空保持原密码不变',
