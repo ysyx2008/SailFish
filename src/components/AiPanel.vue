@@ -1206,7 +1206,7 @@ onUnmounted(() => {
                         <div v-else class="step-text">
                           {{ step.content }}
                         </div>
-                        <div v-if="step.toolResult && step.toolResult !== '已拒绝' && step.type !== 'asking'" class="step-result">
+                        <div v-if="step.toolResult && step.toolResult !== '已拒绝' && step.toolResult !== step.content && step.type !== 'asking'" class="step-result">
                           <pre>{{ step.toolResult }}</pre>
                         </div>
                       </div>

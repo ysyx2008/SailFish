@@ -334,20 +334,20 @@ export async function loadSkillTool(
   const result = await executor.skillSession.loadSkill(skillId)
   
   if (result.success) {
+    const skillName = result.skillName || skillId
     const toolsList = result.toolsAdded?.join(', ') || ''
-    const output = t('skill.loaded', { 
-      name: result.skillName || skillId, 
-      tools: toolsList 
-    })
+    // 简化显示用于 UI，完整信息放在气泡详情里
+    const simpleOutput = t('skill.loaded_simple', { name: skillName })
+    const detailOutput = t('skill.loaded', { name: skillName, tools: toolsList })
     
     executor.addStep({
       type: 'tool_result',
-      content: output,
+      content: simpleOutput,
       toolName: 'load_skill',
-      toolResult: output
+      toolResult: detailOutput
     })
     
-    return { success: true, output }
+    return { success: true, output: detailOutput }
   } else {
     executor.addStep({
       type: 'tool_result',
