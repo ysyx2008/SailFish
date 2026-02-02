@@ -301,11 +301,14 @@ async function emailList(
         const flags = message.flags ? Array.from(message.flags) : []
         const seen = flags.includes('\\Seen') ? '' : '📬 '
         const flagged = flags.includes('\\Flagged') ? '⭐ ' : ''
-        const date = envelope.date ? new Date(envelope.date).toLocaleString() : ''
-        const from = envelope.from?.[0]?.address || t('email.unknown_sender')
+        // 简化日期格式：只显示 MM/DD HH:mm
+        const date = envelope.date ? formatShortDate(new Date(envelope.date)) : ''
+        // 发件人只显示名字或邮箱前缀
+        const fromAddr = envelope.from?.[0]
+        const from = fromAddr ? formatAddress(fromAddr) : t('email.unknown_sender')
         const subject = envelope.subject || t('email.no_subject')
 
-        messages.unshift(`- ${seen}${flagged}**UID ${message.uid}** | ${from} | ${subject} | ${date}`)
+        messages.unshift(`- ${seen}${flagged}**${message.uid}** | ${from} | ${subject} | ${date}`)
       }
 
       const output = `## ${folder} (${total} ${t('email.total_messages')})\n\n${t('email.page_info', { page, limit })}\n\n${messages.join('\n')}`
@@ -371,15 +374,19 @@ async function emailRead(
       // 解析邮件
       const parsed = await simpleParser(message.source)
 
-      // 构建输出
+      // 构建输出 - 使用简洁格式
       let output = `## ${parsed.subject || t('email.no_subject')}\n\n`
-      output += `**${t('email.from')}**: ${parsed.from?.text || t('email.unknown_sender')}\n`
-      // to 和 cc 可能是单个对象或数组
-      const toText = parsed.to ? (Array.isArray(parsed.to) ? parsed.to.map(a => a.text).join(', ') : parsed.to.text) : ''
-      output += `**${t('email.to')}**: ${toText}\n`
+      // 发件人只显示名字
+      const fromName = parsed.from?.value?.[0] 
+        ? formatAddress(parsed.from.value[0])
+        : (parsed.from?.text || t('email.unknown_sender'))
+      output += `**${t('email.from')}**: ${fromName}\n`
+      // 收件人和抄送限制显示数量
+      const toText = formatAddressList(parsed.to)
+      if (toText) output += `**${t('email.to')}**: ${toText}\n`
       if (parsed.cc) {
-        const ccText = Array.isArray(parsed.cc) ? parsed.cc.map(a => a.text).join(', ') : parsed.cc.text
-        output += `**${t('email.cc')}**: ${ccText}\n`
+        const ccText = formatAddressList(parsed.cc)
+        if (ccText) output += `**${t('email.cc')}**: ${ccText}\n`
       }
       output += `**${t('email.date')}**: ${parsed.date?.toLocaleString() || ''}\n`
       output += `**UID**: ${uid}\n\n`
@@ -492,11 +499,12 @@ async function emailSearch(
         if (!envelope) continue
         const flags = message.flags ? Array.from(message.flags) : []
         const seen = flags.includes('\\Seen') ? '' : '📬 '
-        const date = envelope.date ? new Date(envelope.date).toLocaleString() : ''
-        const from = envelope.from?.[0]?.address || t('email.unknown_sender')
+        const date = envelope.date ? formatShortDate(new Date(envelope.date)) : ''
+        const fromAddr = envelope.from?.[0]
+        const from = fromAddr ? formatAddress(fromAddr) : t('email.unknown_sender')
         const subject = envelope.subject || t('email.no_subject')
 
-        messages.push(`- ${seen}**UID ${message.uid}** | ${from} | ${subject} | ${date}`)
+        messages.push(`- ${seen}**${message.uid}** | ${from} | ${subject} | ${date}`)
       }
 
       const output = `## ${t('email.search_results')} (${uids.length} ${t('email.found')})\n\n${t('email.showing', { count: messages.length })}\n\n${messages.join('\n')}`
@@ -750,5 +758,55 @@ function isSessionValid(session: ReturnType<typeof getSession>): boolean {
 function truncateOutput(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text
   return text.slice(0, maxLength) + '\n\n... (' + t('email.output_truncated') + ')'
+}
+
+/**
+ * 格式化简短日期：MM/DD HH:mm
+ */
+function formatShortDate(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${month}/${day} ${hours}:${minutes}`
+}
+
+/**
+ * 格式化邮箱地址，只保留名字或邮箱前缀
+ */
+function formatAddress(addr: { name?: string; address?: string }): string {
+  if (addr.name) {
+    return addr.name
+  }
+  if (addr.address) {
+    // 只取邮箱 @ 前面的部分
+    return addr.address.split('@')[0]
+  }
+  return ''
+}
+
+/**
+ * 格式化地址列表，限制显示数量
+ */
+function formatAddressList(
+  addresses: { name?: string; address?: string }[] | { name?: string; address?: string; text?: string } | undefined,
+  maxCount: number = 3
+): string {
+  if (!addresses) return ''
+  
+  // 统一转为数组
+  const addrArray = Array.isArray(addresses) 
+    ? addresses 
+    : (addresses as { value?: Array<{ name?: string; address?: string }> }).value || [addresses]
+  
+  if (addrArray.length === 0) return ''
+  
+  const formatted = addrArray.slice(0, maxCount).map(formatAddress).filter(Boolean)
+  
+  if (addrArray.length > maxCount) {
+    return formatted.join(', ') + ` 等 ${addrArray.length} 人`
+  }
+  
+  return formatted.join(', ')
 }
 
