@@ -332,6 +332,7 @@ export class TerminalStateService {
    */
   private parsePwdOutput(output: string): string {
     // 去除 ANSI 转义序列
+    // eslint-disable-next-line no-control-regex
     const cleanOutput = output.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').trim()
     
     // 尝试匹配路径

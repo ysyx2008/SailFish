@@ -650,7 +650,7 @@ async function wordAdd(
       sectionContent = { type: 'table', content: '', rows }
       break
       
-    case 'image':
+    case 'image': {
       if (!imagePath) {
         return { success: false, output: '', error: '图片路径必填' }
       }
@@ -667,6 +667,7 @@ async function wordAdd(
         style 
       }
       break
+    }
       
     case 'page_break':
       sectionContent = { type: 'page_break', content: '' }
@@ -1194,17 +1195,19 @@ function sectionsToMarkdown(sections: SectionContent[]): string {
   
   for (const section of sections) {
     switch (section.type) {
-      case 'heading':
+      case 'heading': {
         const hashes = '#'.repeat(section.level || 1)
         parts.push(`${hashes} ${section.content}`)
         break
+      }
         
-      case 'paragraph':
+      case 'paragraph': {
         let text = section.content
         if (section.style?.bold) text = `**${text}**`
         if (section.style?.italic) text = `*${text}*`
         parts.push(text)
         break
+      }
         
       case 'list':
         if (section.items) {

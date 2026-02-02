@@ -661,6 +661,7 @@ export class KnowledgeService extends EventEmitter {
       .replace(/\\x[^0-9a-fA-F]/g, ' ')
       .replace(/\\x[0-9a-fA-F](?![0-9a-fA-F])/g, ' ')
       // 移除其他可能导致 JSON 解析问题的控制字符
+      // eslint-disable-next-line no-control-regex
       .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
       // 确保反斜杠被正确处理
       .replace(/\\/g, '\\\\')
@@ -1568,7 +1569,7 @@ ${newMemory}
             message: `跳过：${decision.reason || '与已有记忆重复'}`
           }
 
-        case 'update':
+        case 'update': {
           // 更新旧记忆为合并后的内容
           const updated = await this.updateHostMemory(existingMemory.id, decision.mergedContent!)
           if (updated) {
@@ -1587,8 +1588,9 @@ ${newMemory}
             message: '更新失败，已保存为新记忆',
             docId: docId1 || undefined
           }
+        }
 
-        case 'replace':
+        case 'replace': {
           // 删除旧记忆，保存新记忆
           await this.removeDocument(existingMemory.id)
           const docId2 = await this.addHostMemory(hostId, memory)
@@ -1598,9 +1600,10 @@ ${newMemory}
             message: `记忆已更新（替换旧版本）：${decision.reason || ''}`,
             docId: docId2 || undefined
           }
+        }
 
         case 'keep_both':
-        default:
+        default: {
           // 两条都保留
           const docId3 = await this.addHostMemory(hostId, memory)
           return {
@@ -1609,6 +1612,7 @@ ${newMemory}
             message: `新记忆已保存（与旧记忆并存）：${decision.reason || ''}`,
             docId: docId3 || undefined
           }
+        }
       }
     } catch (error) {
       console.error('[KnowledgeService] 智能添加记忆失败:', error)

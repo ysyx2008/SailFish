@@ -54,11 +54,12 @@ const sortedFiles = computed(() => {
       case 'modifyTime':
         compare = a.modifyTime - b.modifyTime
         break
-      case 'permissions':
+      case 'permissions': {
         const pa = `${a.permissions.user}${a.permissions.group}${a.permissions.other}`
         const pb = `${b.permissions.user}${b.permissions.group}${b.permissions.other}`
         compare = pa.localeCompare(pb)
         break
+      }
     }
 
     return sortOrder.value === 'asc' ? compare : -compare

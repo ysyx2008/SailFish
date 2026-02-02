@@ -2,8 +2,8 @@
  * 语音识别 Worker
  * 在 utilityProcess 中运行 sherpa-onnx-node
  */
+/* eslint-env node */
 
-const path = require('path')
 const fs = require('fs')
 
 // 从 parentPort 接收消息

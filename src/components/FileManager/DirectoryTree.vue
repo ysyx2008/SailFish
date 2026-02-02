@@ -210,12 +210,12 @@ const isExpanded = (nodePath: string): boolean => {
 // 递归组件
 import { defineComponent, h, type VNode } from 'vue'
 
-// TreeNode 接口（与 setup 脚本中的定义保持一致）
-interface TreeNode {
+// TreeNode 类型复用顶部 setup 脚本中的定义
+type TreeNodeType = {
   name: string
   path: string
   isDirectory: boolean
-  children?: TreeNode[]
+  children?: TreeNodeType[]
   isLoading?: boolean
   isExpanded?: boolean
 }

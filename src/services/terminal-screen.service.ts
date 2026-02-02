@@ -359,7 +359,7 @@ export class TerminalScreenService {
       /\w+@[\w.-]+[^$#%]*[$#%]\s*$/,        // user@host 格式
       /\[\w+@[\w.-]+[^\]]*\]\s*[$#%]\s*$/,  // [user@host path]$ 格式
       /\w+\s*[$#%>❯➜»⟩›]\s*$/,             // 简单的 user$ 格式
-      /[~\/][\w\/.-]*\s*[$#%>❯]\s*$/,       // 路径 + 提示符
+      /[~/][\w/.-]*\s*[$#%>❯]\s*$/,         // 路径 + 提示符
     ]
 
     return promptPatterns.some(p => p.test(currentLine))
@@ -798,7 +798,7 @@ export class TerminalScreenService {
    */
   private detectProgressPattern(lines: string[]): OutputPattern {
     const progressPatterns = [
-      /\[([=>#\-]+)\s*\]\s*(\d+)%/,           // [=====>    ] 50%
+      /\[([=>#-]+)\s*\]\s*(\d+)%/,            // [=====>    ] 50%
       /(\d+)%\s*\|([█▓▒░#=\-\s]+)\|/,         // 50% |████░░░░|
       /progress[:\s]*(\d+)%/i,                 // Progress: 50%
       /(\d+)\/(\d+)/,                          // 50/100
@@ -949,9 +949,9 @@ export class TerminalScreenService {
       /^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}/,    // 2024-01-01 12:00:00 或 ISO
       /^\[\d{2}:\d{2}:\d{2}\]/,                       // [12:00:00]
       /^\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}/,        // Jan 01 12:00:00
-      /^\d{2}\/\w{3}\/\d{4}:\d{2}:\d{2}:\d{2}/,      // 01/Jan/2024:12:00:00
+      /^\d{2}\/\w{3}\/\d{4}:\d{2}:\d{2}:\d{2}/,       // 01/Jan/2024:12:00:00
       /\[(INFO|DEBUG|WARN|ERROR|FATAL)\]/i,          // [INFO]
-      /^\s*(INFO|DEBUG|WARN|ERROR|FATAL)\s*[:|\-]/i, // INFO: or INFO -
+      /^\s*(INFO|DEBUG|WARN|ERROR|FATAL)\s*[:|:-]/i, // INFO: or INFO -
     ]
 
     let matchCount = 0
@@ -981,9 +981,9 @@ export class TerminalScreenService {
   private detectTablePattern(lines: string[]): OutputPattern {
     // 检测固定列格式
     const tableIndicators = [
-      /^\s*[\|\+][\-\+]+[\|\+]\s*$/,    // +----+----+
+      /^\s*[|+][-+]+[|+]\s*$/,           // +----+----+
       /^\s*\|.+\|.+\|\s*$/,              // | col | col |
-      /^[\w\-]+\s{2,}[\w\-]+\s{2,}/,     // 多个空格分隔的列
+      /^[\w-]+\s{2,}[\w-]+\s{2,}/,       // 多个空格分隔的列
     ]
 
     let tableLineCount = 0
@@ -1101,7 +1101,7 @@ export class TerminalScreenService {
       }
       
       // 如果遇到空行或明显的命令输出行，停止查找
-      if (prevLine.trim() === '' || /^\s*[\w\/.-]+\s*$/.test(prevLine)) {
+      if (prevLine.trim() === '' || /^\s*[\w/.-]+\s*$/.test(prevLine)) {
         // 可能是文件名等输出，但继续查找
         // 因为终端可能有多行输出混在一起
       }
@@ -1122,13 +1122,13 @@ export class TerminalScreenService {
     
     const patterns = [
       // user@hostname:path$ 或 user@hostname:path#
-      /^(?:\([^)]+\)\s*)?(\w+)@([\w.-]+)[:\s]([~\/][\w\/.-]*)\s*[$#%>❯]\s*$/,
+      /^(?:\([^)]+\)\s*)?(\w+)@([\w.-]+)[:\s]([~/][\w/.-]*)\s*[$#%>❯]\s*$/,
       // [user@hostname path]$
-      /^\[(\w+)@([\w.-]+)\s+([~\/][\w\/.-]*)\]\s*[$#%]\s*$/,
+      /^\[(\w+)@([\w.-]+)\s+([~/][\w/.-]*)\]\s*[$#%]\s*$/,
       // user@hostname path $
-      /^(\w+)@([\w.-]+)\s+([~\/][\w\/.-]*)\s*[$#%>❯]\s*$/,
+      /^(\w+)@([\w.-]+)\s+([~/][\w/.-]*)\s*[$#%>❯]\s*$/,
       // hostname:path$
-      /^([\w.-]+):([~\/][\w\/.-]*)\s*[$#%]\s*$/,
+      /^([\w.-]+):([~/][\w/.-]*)\s*[$#%]\s*$/,
       // 简单的 user$ 或 #
       /^(\w+)\s*[$#%>❯]\s*$/,
     ]
@@ -1224,7 +1224,7 @@ export class TerminalScreenService {
     }
     
     // Fish 特征
-    if (/^[\w@.-]+\s+[~\/][\w\/.-]*>/.test(line)) {
+    if (/^[\w@.-]+\s+[~/][\w/.-]*>/.test(line)) {
       return 'fish'
     }
 

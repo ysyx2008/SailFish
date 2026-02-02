@@ -105,7 +105,7 @@ export class BM25Index extends EventEmitter {
       const trimmed = token.trim()
       // 过滤空白、单字符标点、纯数字
       if (!trimmed || trimmed.length === 0) return false
-      if (/^[，。！？、；：""''（）【】《》\s\.,!?;:'"()\[\]{}<>]+$/.test(trimmed)) return false
+      if (/^[，。！？、；：""''（）【】《》\s.,!?;:'"()[\]{}<>]+$/.test(trimmed)) return false
       if (/^\d+$/.test(trimmed) && trimmed.length < 2) return false
       return true
     }).map(t => t.toLowerCase())

@@ -167,7 +167,7 @@ class AiDebugService extends EventEmitter {
             line += `  Arguments: ${args}\n`
           }
           break
-        case 'tool_result':
+        case 'tool_result': {
           const success = entry.data.toolResult?.success ? '✓' : '✗'
           line += `Tool Result (${entry.data.toolResult?.toolCallId}): ${success}\n`
           if (entry.data.toolResult?.result) {
@@ -177,6 +177,7 @@ class AiDebugService extends EventEmitter {
             line += `  Result: ${result.replace(/\n/g, '\n  ')}\n`
           }
           break
+        }
         default:
           line += JSON.stringify(entry.data) + '\n'
       }

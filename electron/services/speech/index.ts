@@ -12,7 +12,7 @@ const PUNCT_MODEL_NAME = 'sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-202
 // Worker 进程
 let worker: UtilityProcess | null = null
 let isInitialized = false
-let pendingCallbacks: Map<string, { resolve: Function; reject: Function }> = new Map()
+const pendingCallbacks: Map<string, { resolve: Function; reject: Function }> = new Map()
 let messageId = 0
 
 /**

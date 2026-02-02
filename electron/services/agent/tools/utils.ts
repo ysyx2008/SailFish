@@ -223,6 +223,7 @@ export function tryDecodePythonEscapesForPath(str: string): string {
     
     const decoded = new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(bytes))
     
+    // eslint-disable-next-line no-control-regex
     const hasNonAscii = /[^\x00-\x7F]/.test(decoded)
     if (!hasNonAscii) {
       return str

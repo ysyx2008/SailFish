@@ -260,7 +260,7 @@ async function calendarList(
     endDate.setHours(23, 59, 59, 999)
 
     // 尝试使用时间范围查询，如果失败则获取所有事件
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, prefer-const
     let calendarObjects: any[] = []
     
     // 获取完整的 DAVCalendar 对象
@@ -333,6 +333,7 @@ async function calendarList(
     
     // 方法2：如果 REPORT 没有返回数据，使用 PROPFIND + GET（但限制数量并从最新开始）
     if (calendarObjects.length === 0) {
+      // eslint-disable-next-line prefer-const
       let eventUrls: string[] = []
       try {
         const propfindBody = `<?xml version="1.0" encoding="utf-8" ?>

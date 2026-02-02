@@ -522,6 +522,7 @@ export class PtyService {
   private cleanOutput(output: string): string {
     return output
       // 移除 ANSI 转义序列
+      // eslint-disable-next-line no-control-regex
       .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
       // 移除回车符
       .replace(/\r/g, '')
@@ -601,17 +602,18 @@ export class PtyService {
       const stripAnsiAndControlChars = (str: string): string => {
         return stripAnsi(str)
           // 控制字符（保留换行和回车）
+          // eslint-disable-next-line no-control-regex
           .replace(/[\x00-\x09\x0b\x0c\x0e-\x1f]/g, '')
       }
       
       // 常见的 shell 提示符模式（更宽松）
       const promptPatterns = [
         /[$#%>❯➜»⟩›]\s*$/,                    // 常见结束符
-        /\w+@[\w.-]+\s+[~\/][\w\/.-]*\s*%\s*$/,  // macOS zsh: user@host ~ %
+        /\w+@[\w.-]+\s+[~/][\w/.-]*\s*%\s*$/,    // macOS zsh: user@host ~ %
         /\w+@[\w.-]+[^$#%]*[$#%]\s*$/,        // user@host 格式
         /\[\w+@[\w.-]+[^\]]*\]\s*[$#%]\s*$/,  // [user@host path]$ 格式
         /\w+\s*[$#%>❯➜»⟩›]\s*$/,             // 简单的 user$ 格式
-        /[~\/][\w\/.-]*\s*[$#%>❯]\s*$/,       // 路径 + 提示符
+        /[~/][\w/.-]*\s*[$#%>❯]\s*$/,         // 路径 + 提示符
         />\s*$/,                               // 简单的 > 提示符 (fish/powershell)
       ]
       

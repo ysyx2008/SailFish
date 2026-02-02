@@ -20,7 +20,7 @@ function extractKeywords(text: string): string[] {
   }
   
   // 文件路径
-  const pathPatterns = /(?:\/[\w\.\-]+)+/g
+  const pathPatterns = /(?:\/[\w.-]+)+/g
   const pathMatches = text.match(pathPatterns)
   if (pathMatches) {
     keywords.push(...pathMatches)
@@ -138,7 +138,7 @@ function extractDigest(steps: AgentStep[], userRequest: string): TaskDigest {
   const servicePattern = /\b(nginx|apache|mysql|mariadb|postgresql|postgres|redis|mongodb|docker|pm2|systemd|cron)\b/gi
   
   // 路径模式
-  const pathPattern = /(?:\/[\w\.\-]+)+/g
+  const pathPattern = /(?:\/[\w.-]+)+/g
   
   for (const step of steps) {
     // 提取命令

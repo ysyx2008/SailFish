@@ -333,7 +333,7 @@ function tokensToDocxElements(
         elements.push(createHeading(token as Tokens.Heading, style))
         break
         
-      case 'paragraph':
+      case 'paragraph': {
         // 使用 token.tokens（已解析的内联格式），而不是 token.text（原始文本）
         const paragraphToken = token as Tokens.Paragraph
         if (paragraphToken.tokens && paragraphToken.tokens.length > 0) {
@@ -342,6 +342,7 @@ function tokensToDocxElements(
           elements.push(createParagraph(paragraphToken.text, style))
         }
         break
+      }
         
       case 'list':
         elements.push(...createList(token as Tokens.List, style))
@@ -363,13 +364,14 @@ function tokensToDocxElements(
         elements.push(createHorizontalRule())
         break
         
-      case 'html':
+      case 'html': {
         // 支持 HTML 对齐标签：<p align="right">, <div style="text-align: center"> 等
         const htmlResult = createAlignedParagraphFromHtml(token as Tokens.HTML, style)
         if (htmlResult) {
           elements.push(...htmlResult)
         }
         break
+      }
         
       case 'space':
         // 空行，跳过

@@ -12,6 +12,17 @@ module.exports = {
   parserOptions: {
     ecmaVersion: 'latest'
   },
+  ignorePatterns: [
+    'server/',
+    'coverage/',
+    'dist/',
+    'dist-electron/',
+    'release/',
+    'node_modules/',
+    'steam/',
+    'scripts/',
+    'website/'
+  ],
   rules: {
     'vue/multi-word-component-names': 'off',
     '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }]
