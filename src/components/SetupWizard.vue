@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ExternalLink } from 'lucide-vue-next'
+import { ExternalLink, FolderInput, Database, Plug, Check, ChevronDown, ChevronUp } from 'lucide-vue-next'
 import { useConfigStore, type AiProfile } from '../stores/config'
 import { v4 as uuidv4 } from 'uuid'
-import SetupAiGuide from './SetupAiGuide.vue'
 
 const { t } = useI18n()
 
@@ -17,21 +16,25 @@ const configStore = useConfigStore()
 // Steam 版本检测
 const isSteamBuild = import.meta.env.VITE_STEAM_BUILD === 'true'
 
-// 步骤管理
+// 步骤管理（精简为3步）
 const currentStep = ref(1)
-const totalSteps = 6
+const totalSteps = 3
+
+// 完成页的可选配置展开状态
+const expandedSection = ref<'import' | 'knowledge' | 'mcp' | null>(null)
+
+const toggleSection = (section: 'import' | 'knowledge' | 'mcp') => {
+  expandedSection.value = expandedSection.value === section ? null : section
+}
 
 // 步骤1: 欢迎
 // 无需数据
 
 // 步骤2: 配置大模型
-const aiFormData = ref<Partial<AiProfile>>({
-  name: '',
-  apiUrl: '',
-  apiKey: '',
-  model: '',
-  contextLength: 8000
-})
+// 当前选中的模板索引（用于展开输入API Key）
+const selectedTemplateIndex = ref<number | null>(null)
+// 每个模板的API Key输入
+const templateApiKeys = ref<Record<number, string>>({})
 
 // 所有可用的 AI 模板
 const allAiTemplates = [
@@ -41,16 +44,23 @@ const allAiTemplates = [
     model: 'deepseek-chat',
     descKey: 'aiSettings.templates.deepseek',
     keyUrl: 'https://platform.deepseek.com/api_keys',
+    contextLength: 128000,
     recommended: true,
-    isLocal: false
+    isLocal: false,
+    needsApiKey: true,
+    isCustom: false
   },
   {
     name: 'OpenAI',
     apiUrl: 'https://api.openai.com/v1/chat/completions',
-    model: 'gpt-3.5-turbo',
+    model: 'gpt-4o-mini',
     descKey: 'aiSettings.templates.openai',
     keyUrl: 'https://platform.openai.com/api-keys',
-    isLocal: false
+    contextLength: 128000,
+    recommended: false,
+    isLocal: false,
+    needsApiKey: true,
+    isCustom: false
   },
   {
     name: 'Qwen',
@@ -58,70 +68,130 @@ const allAiTemplates = [
     model: 'qwen-plus',
     descKey: 'aiSettings.templates.qwen',
     keyUrl: 'https://bailian.console.aliyun.com/?tab=model#/api-key',
-    isLocal: false
+    contextLength: 128000,
+    recommended: false,
+    isLocal: false,
+    needsApiKey: true,
+    isCustom: false
   },
   {
     name: 'Ollama',
     apiUrl: 'http://localhost:11434/v1/chat/completions',
-    model: 'llama2',
+    model: 'qwen2.5:7b',
     descKey: 'aiSettings.templates.ollama',
     keyUrl: 'https://ollama.com/',
-    isLocal: true,  // 本地服务，Steam版可用
-    recommended: true  // Steam版中推荐
+    contextLength: 32000,
+    isLocal: true,
+    recommended: false,
+    needsApiKey: false,
+    isCustom: false
+  },
+  {
+    name: 'Custom',
+    apiUrl: '',
+    model: '',
+    descKey: 'aiSettings.templates.custom',
+    keyUrl: '',
+    contextLength: 128000,
+    isLocal: false,
+    recommended: false,
+    needsApiKey: true,
+    isCustom: true
   }
 ]
 
-// Steam 版本只显示本地服务（Ollama）
+// 自定义模板的表单数据
+const customFormData = ref({
+  name: '',
+  apiUrl: '',
+  apiKey: '',
+  model: ''
+})
+
+// Steam 版本只显示本地服务（Ollama）和自定义
 const aiTemplates = computed(() => {
   const templates = isSteamBuild 
-    ? allAiTemplates.filter(tpl => tpl.isLocal)
+    ? allAiTemplates.filter(tpl => tpl.isLocal || tpl.isCustom)
     : allAiTemplates
   
-  return templates.map(tpl => ({
-    name: tpl.descKey === 'aiSettings.templates.qwen' && !t('aiSettings.templates.qwen').includes('Qwen') ? '通义千问' : tpl.name,
+  return templates.map((tpl, index) => ({
+    index,
+    name: tpl.descKey === 'aiSettings.templates.qwen' && !t('aiSettings.templates.qwen').includes('Qwen') ? '通义千问' : 
+          tpl.isCustom ? t('aiSettings.templates.customName') : tpl.name,
     apiUrl: tpl.apiUrl,
     model: tpl.model,
     desc: t(tpl.descKey),
     keyUrl: tpl.keyUrl,
-    recommended: tpl.recommended
+    contextLength: tpl.contextLength,
+    recommended: tpl.recommended,
+    needsApiKey: tpl.needsApiKey,
+    isCustom: tpl.isCustom
   }))
 })
 
-// 当前选中的模板对应的 keyUrl
-const currentKeyUrl = computed(() => {
-  const template = aiTemplates.value.find(t => t.apiUrl === aiFormData.value.apiUrl)
-  return template?.keyUrl || null
-})
+// 检查模板是否已配置
+const isTemplateConfigured = (templateName: string) => {
+  return configStore.aiProfiles.some(p => p.name === templateName)
+}
 
-const openKeyUrl = (url: string) => {
+const selectTemplate = (index: number) => {
+  selectedTemplateIndex.value = selectedTemplateIndex.value === index ? null : index
+}
+
+const openKeyUrl = (url: string, event: Event) => {
+  event.stopPropagation()
   window.open(url, '_blank')
 }
 
-const applyAiTemplate = (template: typeof aiTemplates.value[0]) => {
-  aiFormData.value.name = template.name
-  aiFormData.value.apiUrl = template.apiUrl
-  aiFormData.value.model = template.model
-}
-
-const saveAiConfig = async () => {
-  if (!aiFormData.value.name || !aiFormData.value.apiUrl || !aiFormData.value.model) {
-    alert(t('setup.aiConfig.fillRequired'))
+const saveTemplateConfig = async (template: typeof aiTemplates.value[0]) => {
+  // 自定义模板使用自定义表单数据
+  if (template.isCustom) {
+    if (!customFormData.value.name || !customFormData.value.apiUrl || !customFormData.value.model) {
+      alert(t('setup.aiConfig.fillRequired'))
+      return false
+    }
+    
+    try {
+      await configStore.addAiProfile({
+        id: uuidv4(),
+        name: customFormData.value.name,
+        apiUrl: customFormData.value.apiUrl,
+        apiKey: customFormData.value.apiKey,
+        model: customFormData.value.model,
+        contextLength: template.contextLength
+      } as AiProfile)
+      // 清空表单并收起
+      customFormData.value = { name: '', apiUrl: '', apiKey: '', model: '' }
+      selectedTemplateIndex.value = null
+      return true
+    } catch (error) {
+      console.error('保存配置失败:', error)
+      alert(t('setup.aiConfig.saveFailed'))
+      return false
+    }
+  }
+  
+  // 预设模板
+  const apiKey = templateApiKeys.value[template.index] || ''
+  
+  // 本地服务不需要API Key，云服务需要
+  if (template.needsApiKey && !apiKey) {
+    alert(t('setup.aiConfig.apiKeyRequired'))
     return false
   }
 
   try {
     await configStore.addAiProfile({
       id: uuidv4(),
-      ...aiFormData.value
+      name: template.name,
+      apiUrl: template.apiUrl,
+      apiKey: apiKey,
+      model: template.model,
+      contextLength: template.contextLength
     } as AiProfile)
-    // 清空表单
-    aiFormData.value = {
-      name: '',
-      apiUrl: '',
-      apiKey: '',
-      model: '',
-      contextLength: 8000
-    }
+    // 清空输入并收起
+    templateApiKeys.value[template.index] = ''
+    selectedTemplateIndex.value = null
     return true
   } catch (error) {
     console.error('保存配置失败:', error)
@@ -351,9 +421,8 @@ const canGoPrev = computed(() => {
 })
 
 const canSkip = computed(() => {
-  // 第2步（配置AI）不允许跳过，必须配置后才能继续
-  if (currentStep.value === 2) return false
-  return currentStep.value >= 3 && currentStep.value <= 5
+  // 简化后的向导没有可跳过的步骤
+  return false
 })
 
 const skipWizard = async () => {
@@ -369,22 +438,13 @@ const nextStep = async () => {
     return
   }
 
-  // 保存当前步骤的数据
-  if (currentStep.value === 4) {
-    const success = await saveKnowledgeSettings()
-    if (!success) {
-      // 保存失败，不前进
-      return
-    }
-  }
-
   if (currentStep.value < totalSteps) {
     currentStep.value++
-    // 如果进入 MCP 步骤，加载服务器列表
-    if (currentStep.value === 5) {
-      await loadMcpServers()
-    }
   } else {
+    // 保存知识库设置（如果启用了的话）
+    if (knowledgeEnabled.value) {
+      await saveKnowledgeSettings()
+    }
     // 完成向导
     await configStore.setSetupCompleted(true)
     emit('complete')
@@ -403,15 +463,14 @@ const skipStep = async () => {
 
 // 初始化
 onMounted(async () => {
-  // 自动扫描 Xshell
-  await scanXshell()
+  // 不再自动扫描，用户展开导入区域时再扫描
 })
 </script>
 
 <template>
   <div class="setup-wizard">
-    <div class="wizard-container" :class="{ 'with-ai-guide': currentStep >= 3 && currentStep <= 6 && configStore.aiProfiles.length > 0 }">
-      <!-- 左侧主内容 -->
+    <div class="wizard-container">
+      <!-- 主内容 -->
       <div class="wizard-main">
         <!-- 步骤进度条 -->
         <div class="steps-progress">
@@ -440,34 +499,22 @@ onMounted(async () => {
                 {{ t('setup.welcome.intro') }}
               </p>
             </div>
-            <div class="feature-list">
-              <div class="feature-item">
+            <div class="feature-grid">
+              <div class="feature-card">
                 <span class="feature-icon">💬</span>
-                <div class="feature-text">
-                  <h3>{{ t('setup.welcome.features.aiChat.title') }}</h3>
-                  <p>{{ t('setup.welcome.features.aiChat.desc') }}</p>
-                </div>
+                <h3>{{ t('setup.welcome.features.aiChat.title') }}</h3>
               </div>
-              <div class="feature-item">
+              <div class="feature-card">
                 <span class="feature-icon">⚡</span>
-                <div class="feature-text">
-                  <h3>{{ t('setup.welcome.features.agent.title') }}</h3>
-                  <p>{{ t('setup.welcome.features.agent.desc') }}</p>
-                </div>
+                <h3>{{ t('setup.welcome.features.agent.title') }}</h3>
               </div>
-              <div class="feature-item">
+              <div class="feature-card">
                 <span class="feature-icon">🖥️</span>
-                <div class="feature-text">
-                  <h3>{{ t('setup.welcome.features.ssh.title') }}</h3>
-                  <p>{{ t('setup.welcome.features.ssh.desc') }}</p>
-                </div>
+                <h3>{{ t('setup.welcome.features.ssh.title') }}</h3>
               </div>
-              <div class="feature-item">
+              <div class="feature-card">
                 <span class="feature-icon">📚</span>
-                <div class="feature-text">
-                  <h3>{{ t('setup.welcome.features.knowledge.title') }}</h3>
-                  <p>{{ t('setup.welcome.features.knowledge.desc') }}</p>
-                </div>
+                <h3>{{ t('setup.welcome.features.knowledge.title') }}</h3>
               </div>
             </div>
           </div>
@@ -477,286 +524,249 @@ onMounted(async () => {
         <div v-if="currentStep === 2" class="step-panel">
           <div class="step-header">
             <h2>{{ t('setup.aiConfig.title') }}</h2>
-            <p class="step-intro">{{ t('setup.aiConfig.subtitle') }}</p>
+            <p class="step-intro">{{ t('setup.aiConfig.subtitleSimple') }}</p>
           </div>
           <div class="config-content">
-            <div class="config-intro">
-              <p>{{ t('setup.aiConfig.intro') }}</p>
-              <p class="hint">{{ t('setup.aiConfig.hint') }}</p>
-              <p class="model-recommendation">{{ t('setup.aiConfig.modelRecommendation') }}</p>
+            <!-- 已配置提示 -->
+            <div v-if="configStore.aiProfiles.length > 0" class="configured-hint">
+              <Check :size="18" class="configured-icon" />
+              <span>{{ t('setup.aiConfig.alreadyConfigured', { name: configStore.aiProfiles[0].name }) }}</span>
             </div>
 
-            <!-- 已配置的模型列表 -->
-            <div v-if="configStore.aiProfiles.length > 0" class="configured-models">
-              <h3 class="section-title">{{ t('setup.aiConfig.configuredModels') }}</h3>
-              <div class="model-list">
-                <div
-                  v-for="profile in configStore.aiProfiles"
-                  :key="profile.id"
-                  class="model-item"
-                  :class="{ active: profile.id === configStore.activeAiProfileId }"
-                >
-                  <div class="model-info">
-                    <div class="model-name">{{ profile.name }}</div>
-                    <div class="model-detail">{{ profile.model }} · {{ profile.apiUrl }}</div>
-                  </div>
-                  <div v-if="profile.id === configStore.activeAiProfileId" class="active-badge">{{ t('aiSettings.currentlyUsing') }}</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 添加新模型 -->
-            <div class="add-model-section">
-              <h3 class="section-title">{{ t('setup.aiConfig.addNewModel') }}</h3>
-              <div class="templates">
-                <span class="template-label">{{ t('setup.aiConfig.quickTemplates') }}</span>
-                <div class="template-grid">
-                  <button
-                    v-for="template in aiTemplates"
-                    :key="template.name"
-                    class="template-card"
-                    :class="{ recommended: template.recommended }"
-                    @click="applyAiTemplate(template)"
-                  >
-                    <div class="template-header">
-                      <div class="template-name">{{ template.name }}</div>
-                      <span v-if="template.recommended" class="recommended-badge">{{ t('aiSettings.recommended') }}</span>
+            <!-- 模板卡片列表 -->
+            <div class="ai-template-list">
+              <div
+                v-for="template in aiTemplates"
+                :key="template.name"
+                class="ai-template-card"
+                :class="{ 
+                  selected: selectedTemplateIndex === template.index,
+                  configured: isTemplateConfigured(template.name),
+                  recommended: template.recommended && !isTemplateConfigured(template.name)
+                }"
+              >
+                <div class="ai-template-header" @click="selectTemplate(template.index)">
+                  <div class="ai-template-info">
+                    <div class="ai-template-name">
+                      {{ template.name }}
+                      <span v-if="template.recommended && !isTemplateConfigured(template.name)" class="recommended-tag">{{ t('aiSettings.recommended') }}</span>
+                      <span v-if="isTemplateConfigured(template.name)" class="configured-tag">
+                        <Check :size="12" />
+                        {{ t('setup.aiConfig.configured') }}
+                      </span>
                     </div>
-                    <div class="template-desc">{{ template.desc }}</div>
+                    <div class="ai-template-desc">{{ template.desc }}</div>
+                  </div>
+                  <ChevronDown 
+                    v-if="!isTemplateConfigured(template.name)"
+                    :size="18" 
+                    class="expand-arrow" 
+                    :class="{ rotated: selectedTemplateIndex === template.index }"
+                  />
+                </div>
+                
+                <!-- 展开区域：API Key 输入 / 自定义表单 -->
+                <div v-if="selectedTemplateIndex === template.index && !isTemplateConfigured(template.name)" class="ai-template-body">
+                  <!-- 自定义模板：完整表单 -->
+                  <template v-if="template.isCustom">
+                    <div class="custom-form">
+                      <div class="form-group">
+                        <label class="form-label">{{ t('aiSettings.profileName') }} *</label>
+                        <input v-model="customFormData.name" type="text" class="input" :placeholder="t('setup.aiConfig.customNamePlaceholder')" />
+                      </div>
+                      <div class="form-group">
+                        <label class="form-label">{{ t('aiSettings.apiUrl') }} *</label>
+                        <input v-model="customFormData.apiUrl" type="text" class="input" :placeholder="t('setup.aiConfig.customUrlPlaceholder')" />
+                      </div>
+                      <div class="form-group">
+                        <label class="form-label">{{ t('aiSettings.apiKey') }}</label>
+                        <input v-model="customFormData.apiKey" type="password" class="input" :placeholder="t('setup.aiConfig.customKeyPlaceholder')" />
+                      </div>
+                      <div class="form-group">
+                        <label class="form-label">{{ t('aiSettings.model') }} *</label>
+                        <input v-model="customFormData.model" type="text" class="input" :placeholder="t('setup.aiConfig.customModelPlaceholder')" />
+                      </div>
+                    </div>
+                  </template>
+                  <!-- 预设模板：只需 API Key -->
+                  <template v-else>
+                    <div v-if="template.needsApiKey" class="api-key-input-row">
+                      <input
+                        type="password"
+                        v-model="templateApiKeys[template.index]"
+                        class="input"
+                        :placeholder="t('setup.aiConfig.enterApiKey')"
+                      />
+                      <button
+                        class="get-key-link"
+                        @click="openKeyUrl(template.keyUrl, $event)"
+                      >
+                        <ExternalLink :size="14" />
+                        {{ t('aiSettings.getApiKey') }}
+                      </button>
+                    </div>
+                    <div v-else class="local-hint">
+                      <span>{{ t('setup.aiConfig.localNoKey') }}</span>
+                    </div>
+                  </template>
+                  <button 
+                    class="btn btn-primary btn-save"
+                    @click="saveTemplateConfig(template)"
+                  >
+                    {{ t('setup.aiConfig.useThis') }}
                   </button>
                 </div>
               </div>
-              <div class="config-form">
-                <div class="form-group">
-                  <label class="form-label">{{ t('aiSettings.profileName') }} *</label>
-                  <input v-model="aiFormData.name" type="text" class="input" :placeholder="t('aiSettings.profileNamePlaceholder')" />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">{{ t('aiSettings.apiUrl') }} *</label>
-                  <input v-model="aiFormData.apiUrl" type="text" class="input" :placeholder="t('aiSettings.apiUrlPlaceholder')" />
-                </div>
-                <div class="form-group">
-                  <div class="form-label-row">
-                    <label class="form-label">{{ t('aiSettings.apiKey') }}</label>
-                    <button
-                      v-if="currentKeyUrl"
-                      class="get-key-btn"
-                      @click="openKeyUrl(currentKeyUrl)"
-                      :title="t('aiSettings.getApiKey')"
-                    >
-                      <ExternalLink :size="12" />
-                      <span>{{ t('aiSettings.getApiKey') }}</span>
-                    </button>
-                  </div>
-                  <input v-model="aiFormData.apiKey" type="password" class="input" :placeholder="t('aiSettings.apiKeyPlaceholder')" />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">{{ t('aiSettings.model') }} *</label>
-                  <input v-model="aiFormData.model" type="text" class="input" :placeholder="t('aiSettings.modelPlaceholder')" />
-                </div>
-                <button class="btn btn-primary" @click="saveAiConfig">{{ t('aiSettings.saveProfile') }}</button>
-              </div>
             </div>
+
+            <!-- 底部提示 -->
+            <p class="ai-config-hint">{{ t('setup.aiConfig.canChangeLater') }}</p>
           </div>
         </div>
 
-        <!-- 步骤3: 导入主机 -->
+        <!-- 步骤3: 完成 + 可选配置 -->
         <div v-if="currentStep === 3" class="step-panel">
           <div class="step-header">
-            <h2>{{ t('setup.import.title') }}</h2>
-            <p class="step-intro">{{ t('setup.import.subtitle') }}</p>
-          </div>
-          <div class="import-content">
-            <div class="import-intro">
-              <p>{{ t('setup.import.intro') }}</p>
-            </div>
-            <div v-if="scanning" class="scanning">
-              <div class="spinner"></div>
-              <span>{{ t('setup.import.scanning') }}</span>
-            </div>
-            <div v-else-if="scanResult">
-              <div v-if="scanResult.found" class="scan-result">
-                <div class="result-info">
-                  <span class="result-icon">✓</span>
-                  <span>{{ t('setup.import.found', { count: scanResult.sessionCount }) }}</span>
-                </div>
-                <div class="result-paths">
-                  <div v-for="(path, idx) in scanResult.paths" :key="idx" class="path-item">
-                    {{ path }}
-                  </div>
-                </div>
-                <div class="import-actions">
-                  <button
-                    class="btn btn-primary"
-                    @click="importXshell"
-                    :disabled="importing || importResult?.success"
-                  >
-                    {{ importing ? t('setup.import.importing') : importResult?.success ? t('setup.import.imported') : t('setup.import.import') }}
-                  </button>
-                  <button
-                    class="btn btn-outline"
-                    @click="manualImport"
-                    :disabled="importing"
-                  >
-                    {{ t('setup.import.manualSelect') }}
-                  </button>
-                </div>
-                <div v-if="importResult" class="import-result">
-                  <div v-if="importResult.success" class="success-message">
-                    ✓ {{ t('setup.import.importSuccess', { count: importResult.sessions }) }}
-                  </div>
-                  <div v-else class="error-message">
-                    ✗ {{ t('setup.import.importFailed') }}：{{ importResult.errors.join(', ') }}
-                  </div>
-                </div>
-              </div>
-              <div v-else class="no-sessions">
-                <span class="no-sessions-icon">📭</span>
-                <p class="no-sessions-title">{{ t('setup.import.notFound') }}</p>
-                <p class="no-sessions-hint">{{ t('setup.import.notFoundHint') }}</p>
-                <button class="btn btn-primary no-sessions-btn" @click="manualImport" :disabled="importing">
-                  {{ importing ? t('setup.import.importing') : t('setup.import.manualSelect') }}
-                </button>
-                <div v-if="importResult && !importResult.success" class="error-message">
-                  ✗ {{ t('setup.import.importFailed') }}：{{ importResult.errors.join(', ') }}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 步骤4: 知识库 -->
-        <div v-if="currentStep === 4" class="step-panel">
-          <div class="step-header">
-            <h2>{{ t('setup.knowledge.title') }}</h2>
-            <p class="step-intro">{{ t('setup.knowledge.subtitle') }}</p>
-          </div>
-          <div class="knowledge-content">
-            <div class="knowledge-info">
-              <div class="info-box">
-                <span class="info-icon">📚</span>
-                <div class="info-text">
-                  <h3>{{ t('setup.knowledge.features.title') }}</h3>
-                  <ul>
-                    <li>{{ t('setup.knowledge.features.item1') }}</li>
-                    <li>{{ t('setup.knowledge.features.item2') }}</li>
-                    <li>{{ t('setup.knowledge.features.item3') }}</li>
-                    <li>{{ t('setup.knowledge.features.item4') }}</li>
-                  </ul>
-                </div>
-              </div>
-              <div class="knowledge-switch">
-                <label class="switch-label">
-                  <span>{{ t('setup.knowledge.enableSwitch') }}</span>
-                  <label class="switch">
-                    <input type="checkbox" v-model="knowledgeEnabled" />
-                    <span class="slider"></span>
-                  </label>
-                </label>
-                <p class="switch-hint">{{ t('setup.knowledge.enableHint') }}</p>
-              </div>
-              
-              <!-- 密码设置（启用时显示） -->
-              <div v-if="knowledgeEnabled" class="password-setup">
-                <div class="password-intro">
-                  <span class="password-icon">🔐</span>
-                  <p>{{ t('setup.knowledge.passwordIntro') }}</p>
-                </div>
-                <div class="password-form">
-                  <div class="form-group">
-                    <label class="form-label">{{ t('setup.knowledge.passwordLabel') }} *</label>
-                    <input 
-                      ref="knowledgePasswordRef"
-                      type="password" 
-                      v-model="knowledgePassword" 
-                      class="input" 
-                      :placeholder="t('setup.knowledge.passwordPlaceholder')"
-                    />
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label">{{ t('setup.knowledge.confirmPasswordLabel') }} *</label>
-                    <input 
-                      type="password" 
-                      v-model="knowledgePasswordConfirm" 
-                      class="input" 
-                      :placeholder="t('setup.knowledge.confirmPasswordPlaceholder')"
-                    />
-                  </div>
-                  <p v-if="knowledgePasswordError" class="password-error">{{ knowledgePasswordError }}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 步骤5: MCP 服务 -->
-        <div v-if="currentStep === 5" class="step-panel">
-          <div class="step-header">
-            <h2>{{ t('setup.mcp.title') }}</h2>
-            <p class="step-intro">{{ t('setup.mcp.subtitle') }}</p>
-          </div>
-          <div class="mcp-content">
-            <div class="mcp-intro">
-              <p>{{ t('setup.mcp.intro') }}</p>
-              <p class="hint">{{ t('setup.mcp.hint') }}</p>
-            </div>
-            <div v-if="loadingMcp" class="loading">
-              <div class="spinner"></div>
-              <span>{{ t('common.loading') }}</span>
-            </div>
-            <div v-else-if="mcpServers.length > 0" class="mcp-servers">
-              <h3 class="section-title">{{ t('setup.mcp.configuredServers') }}</h3>
-              <div class="server-list">
-                <div
-                  v-for="server in mcpServers"
-                  :key="server.id"
-                  class="server-item"
-                >
-                  <div class="server-info">
-                    <div class="server-name">{{ server.name }}</div>
-                    <div class="server-detail">{{ server.transport === 'stdio' ? t('mcpSettings.transportStdio') : t('mcpSettings.transportSse') }}</div>
-                  </div>
-                  <div class="server-status" :class="{ enabled: server.enabled }">
-                    {{ server.enabled ? t('common.enabled') : t('common.disabled') }}
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div v-else class="no-mcp">
-              <span class="no-mcp-icon">🔌</span>
-              <p>{{ t('setup.mcp.noServers') }}</p>
-              <p class="hint">{{ t('setup.mcp.noServersHint') }}</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- 步骤6: 完成 -->
-        <div v-if="currentStep === 6" class="step-panel">
-          <div class="step-header">
             <h2>{{ t('setup.complete.title') }}</h2>
-            <p class="step-intro">{{ t('setup.complete.subtitle') }}</p>
+            <p class="step-intro">{{ t('setup.complete.readyToUse') }}</p>
           </div>
           <div class="complete-content">
-            <div class="summary">
-              <div class="summary-item" :class="{ active: summary.aiConfigured }">
-                <span class="summary-icon">{{ summary.aiConfigured ? '✓' : '○' }}</span>
-                <span>{{ summary.aiConfigured ? t('setup.complete.summary.aiConfigured') : t('setup.complete.summary.aiNotConfigured') }}</span>
-              </div>
-              <div class="summary-item" :class="{ active: summary.hostsImported > 0 }">
-                <span class="summary-icon">{{ summary.hostsImported > 0 ? '✓' : '○' }}</span>
-                <span>{{ t('setup.complete.summary.hostsImported', { count: summary.hostsImported }) }}</span>
-              </div>
-              <div class="summary-item" :class="{ active: summary.knowledgeEnabled }">
-                <span class="summary-icon">{{ summary.knowledgeEnabled ? '✓' : '○' }}</span>
-                <span>{{ summary.knowledgeEnabled ? t('setup.complete.summary.knowledgeEnabled') : t('setup.complete.summary.knowledgeNotEnabled') }}</span>
-              </div>
-              <div class="summary-item" :class="{ active: summary.mcpConfigured }">
-                <span class="summary-icon">{{ summary.mcpConfigured ? '✓' : '○' }}</span>
-                <span>{{ summary.mcpConfigured ? t('setup.complete.summary.mcpConfigured') : t('setup.complete.summary.mcpNotConfigured') }}</span>
+            <!-- 配置完成提示 -->
+            <div class="ready-banner">
+              <div class="ready-icon">🎉</div>
+              <div class="ready-text">
+                <h3>{{ t('setup.complete.aiReady') }}</h3>
+                <p>{{ t('setup.complete.aiReadyDesc') }}</p>
               </div>
             </div>
-            <div class="complete-tips">
-              <p>💡 {{ t('setup.complete.tip') }}</p>
+
+            <!-- 可选配置卡片 -->
+            <div class="optional-section">
+              <h3 class="optional-title">{{ t('setup.complete.optionalConfig') }}</h3>
+              <p class="optional-hint">{{ t('setup.complete.optionalHint') }}</p>
+
+              <!-- 导入 SSH 主机 -->
+              <div class="config-card" :class="{ expanded: expandedSection === 'import' }">
+                <div class="config-card-header" @click="toggleSection('import')">
+                  <FolderInput :size="20" class="card-icon" />
+                  <div class="card-info">
+                    <span class="card-title">{{ t('setup.import.title') }}</span>
+                    <span class="card-desc">{{ t('setup.import.shortDesc') }}</span>
+                  </div>
+                  <div class="card-status" v-if="importResult?.success">
+                    <Check :size="16" class="status-icon success" />
+                    <span>{{ t('setup.import.importSuccess', { count: importResult.sessions }) }}</span>
+                  </div>
+                  <component :is="expandedSection === 'import' ? ChevronUp : ChevronDown" :size="18" class="expand-icon" />
+                </div>
+                <div v-if="expandedSection === 'import'" class="config-card-body">
+                  <div v-if="scanning" class="scanning">
+                    <div class="spinner"></div>
+                    <span>{{ t('setup.import.scanning') }}</span>
+                  </div>
+                  <div v-else-if="!scanResult" class="scan-prompt">
+                    <button class="btn btn-outline" @click="scanXshell">{{ t('setup.import.scanNow') }}</button>
+                  </div>
+                  <div v-else-if="scanResult.found" class="scan-result-compact">
+                    <p class="result-text">{{ t('setup.import.found', { count: scanResult.sessionCount }) }}</p>
+                    <div class="import-actions">
+                      <button
+                        class="btn btn-primary btn-sm"
+                        @click="importXshell"
+                        :disabled="importing || importResult?.success"
+                      >
+                        {{ importing ? t('setup.import.importing') : importResult?.success ? t('setup.import.imported') : t('setup.import.import') }}
+                      </button>
+                      <button class="btn btn-outline btn-sm" @click="manualImport" :disabled="importing">
+                        {{ t('setup.import.manualSelect') }}
+                      </button>
+                    </div>
+                  </div>
+                  <div v-else class="no-result">
+                    <p>{{ t('setup.import.notFound') }}</p>
+                    <button class="btn btn-outline btn-sm" @click="manualImport" :disabled="importing">
+                      {{ t('setup.import.manualSelect') }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 知识库 -->
+              <div class="config-card" :class="{ expanded: expandedSection === 'knowledge' }">
+                <div class="config-card-header" @click="toggleSection('knowledge')">
+                  <Database :size="20" class="card-icon" />
+                  <div class="card-info">
+                    <span class="card-title">{{ t('setup.knowledge.title') }}</span>
+                    <span class="card-desc">{{ t('setup.knowledge.shortDesc') }}</span>
+                  </div>
+                  <div class="card-status" v-if="knowledgeEnabled">
+                    <Check :size="16" class="status-icon success" />
+                    <span>{{ t('common.enabled') }}</span>
+                  </div>
+                  <component :is="expandedSection === 'knowledge' ? ChevronUp : ChevronDown" :size="18" class="expand-icon" />
+                </div>
+                <div v-if="expandedSection === 'knowledge'" class="config-card-body">
+                  <div class="knowledge-toggle">
+                    <label class="switch-label">
+                      <span>{{ t('setup.knowledge.enableSwitch') }}</span>
+                      <label class="switch">
+                        <input type="checkbox" v-model="knowledgeEnabled" />
+                        <span class="slider"></span>
+                      </label>
+                    </label>
+                  </div>
+                  <div v-if="knowledgeEnabled" class="password-form-compact">
+                    <div class="form-row">
+                      <input 
+                        ref="knowledgePasswordRef"
+                        type="password" 
+                        v-model="knowledgePassword" 
+                        class="input input-sm" 
+                        :placeholder="t('setup.knowledge.passwordPlaceholder')"
+                      />
+                      <input 
+                        type="password" 
+                        v-model="knowledgePasswordConfirm" 
+                        class="input input-sm" 
+                        :placeholder="t('setup.knowledge.confirmPasswordPlaceholder')"
+                      />
+                    </div>
+                    <p v-if="knowledgePasswordError" class="password-error">{{ knowledgePasswordError }}</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- MCP 服务 -->
+              <div class="config-card" :class="{ expanded: expandedSection === 'mcp' }">
+                <div class="config-card-header" @click="toggleSection('mcp'); loadMcpServers()">
+                  <Plug :size="20" class="card-icon" />
+                  <div class="card-info">
+                    <span class="card-title">{{ t('setup.mcp.title') }}</span>
+                    <span class="card-desc">{{ t('setup.mcp.shortDesc') }}</span>
+                  </div>
+                  <div class="card-status" v-if="mcpServers.length > 0">
+                    <Check :size="16" class="status-icon success" />
+                    <span>{{ mcpServers.length }} {{ t('setup.mcp.servers') }}</span>
+                  </div>
+                  <component :is="expandedSection === 'mcp' ? ChevronUp : ChevronDown" :size="18" class="expand-icon" />
+                </div>
+                <div v-if="expandedSection === 'mcp'" class="config-card-body">
+                  <div v-if="loadingMcp" class="loading-compact">
+                    <div class="spinner"></div>
+                  </div>
+                  <div v-else-if="mcpServers.length > 0" class="mcp-list">
+                    <div v-for="server in mcpServers" :key="server.id" class="mcp-item">
+                      <span class="mcp-name">{{ server.name }}</span>
+                      <span class="mcp-status" :class="{ enabled: server.enabled }">
+                        {{ server.enabled ? t('common.enabled') : t('common.disabled') }}
+                      </span>
+                    </div>
+                  </div>
+                  <div v-else class="no-mcp-compact">
+                    <p>{{ t('setup.mcp.noServersHint') }}</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -764,44 +774,31 @@ onMounted(async () => {
 
         <!-- 导航按钮 -->
         <div class="wizard-footer">
-        <button
-          class="btn"
-          @click="prevStep"
-          :disabled="!canGoPrev"
-        >
-          {{ t('common.prev') }}
-        </button>
-        <div class="footer-center" v-if="currentStep === 1">
           <button
-            class="btn btn-outline"
-            @click="skipWizard"
+            class="btn"
+            @click="prevStep"
+            :disabled="!canGoPrev"
           >
-            {{ t('setup.welcome.skipWizard') }}
+            {{ t('common.prev') }}
           </button>
-        </div>
-        <div class="footer-right">
-          <button
-            v-if="canSkip && currentStep !== 1"
-            class="btn btn-outline"
-            @click="skipStep"
-          >
-            {{ t('common.skip') }}
-          </button>
-          <button
-            class="btn btn-primary"
-            @click="nextStep"
-          >
-            {{ currentStep === totalSteps ? t('common.finish') : t('common.next') }}
-          </button>
-        </div>
+          <div class="footer-center" v-if="currentStep === 1">
+            <button
+              class="btn btn-outline"
+              @click="skipWizard"
+            >
+              {{ t('setup.welcome.skipWizard') }}
+            </button>
+          </div>
+          <div class="footer-right">
+            <button
+              class="btn btn-primary"
+              @click="nextStep"
+            >
+              {{ currentStep === totalSteps ? t('common.finish') : t('common.next') }}
+            </button>
+          </div>
         </div>
       </div>
-
-      <!-- 右侧 AI 对话侧边栏（步骤 3-6 且 AI 已配置时显示） -->
-      <SetupAiGuide 
-        v-if="currentStep >= 3 && currentStep <= 6 && configStore.aiProfiles.length > 0"
-        :step="currentStep"
-      />
     </div>
   </div>
 </template>
@@ -820,7 +817,7 @@ onMounted(async () => {
 
 .wizard-container {
   width: 90%;
-  max-width: 700px;
+  max-width: 640px;
   max-height: 85vh;
   background: var(--bg-primary);
   border-radius: 16px;
@@ -829,11 +826,6 @@ onMounted(async () => {
   flex-direction: row;
   overflow: hidden;
   border: 1px solid var(--border-color);
-}
-
-/* 当有 AI 对话侧边栏时，扩大容器宽度 */
-.wizard-container.with-ai-guide {
-  max-width: 1020px;
 }
 
 /* 左侧主内容区 */
@@ -964,76 +956,237 @@ onMounted(async () => {
   margin: 0;
 }
 
-.feature-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+/* 精简的功能卡片网格 */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
 }
 
-.feature-item {
+.feature-card {
   display: flex;
-  gap: 16px;
-  padding: 20px;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 16px;
   background: var(--bg-tertiary);
   border-radius: 12px;
   border: 1px solid var(--border-color);
+  text-align: center;
 }
 
-.feature-icon {
-  font-size: 32px;
-  flex-shrink: 0;
+.feature-card .feature-icon {
+  font-size: 28px;
 }
 
-.feature-text h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 8px;
-}
-
-.feature-text p {
+.feature-card h3 {
   font-size: 13px;
-  color: var(--text-secondary);
+  font-weight: 500;
+  color: var(--text-primary);
   margin: 0;
-  line-height: 1.6;
 }
 
-/* 配置大模型 */
+/* 配置大模型 - 简化版 */
 .config-content {
   margin-top: 24px;
 }
 
-.config-intro {
-  margin-bottom: 24px;
-  padding: 16px;
-  background: var(--bg-tertiary);
+/* 已配置提示 */
+.configured-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
   border-radius: 8px;
-}
-
-.config-intro p {
+  margin-bottom: 20px;
   font-size: 13px;
-  line-height: 1.6;
+  color: #10b981;
+}
+
+.configured-icon {
+  flex-shrink: 0;
+}
+
+/* AI 模板卡片列表 */
+.ai-template-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ai-template-card {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.ai-template-card.selected {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px var(--accent-primary);
+}
+
+.ai-template-card.configured {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.ai-template-card.recommended:not(.configured) {
+  border-color: rgba(16, 185, 129, 0.5);
+}
+
+.ai-template-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  cursor: pointer;
+  background: var(--bg-secondary);
+  transition: background 0.2s ease;
+}
+
+.ai-template-card.configured .ai-template-header {
+  cursor: default;
+}
+
+.ai-template-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.ai-template-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-template-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
   color: var(--text-primary);
-  margin: 0 0 8px;
+  margin-bottom: 4px;
 }
 
-.config-intro p:last-child {
-  margin-bottom: 0;
+.recommended-tag {
+  font-size: 10px;
+  font-weight: 500;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+  padding: 2px 8px;
+  border-radius: 10px;
 }
 
-.hint {
+.configured-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.ai-template-desc {
   font-size: 12px;
   color: var(--text-muted);
+  line-height: 1.4;
 }
 
-.model-recommendation {
+.expand-arrow {
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.expand-arrow.rotated {
+  transform: rotate(180deg);
+}
+
+.ai-template-body {
+  padding: 16px;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.api-key-input-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.api-key-input-row .input {
+  flex: 1;
+}
+
+.get-key-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
   font-size: 12px;
   color: var(--accent-primary);
-  background: rgba(137, 180, 250, 0.1);
-  padding: 8px 12px;
+  background: transparent;
+  border: 1px solid var(--accent-primary);
   border-radius: 6px;
-  margin-top: 8px;
-  border-left: 3px solid var(--accent-primary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.get-key-link:hover {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.local-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+}
+
+.btn-save {
+  align-self: flex-start;
+}
+
+/* 自定义模板表单 */
+.custom-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.custom-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.custom-form .form-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.custom-form .input {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.ai-config-hint {
+  margin-top: 20px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
 }
 
 .section-title {
@@ -1041,142 +1194,6 @@ onMounted(async () => {
   font-weight: 600;
   color: var(--text-primary);
   margin: 0 0 12px;
-}
-
-.configured-models {
-  margin-bottom: 32px;
-}
-
-.model-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.model-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-}
-
-.model-item.active {
-  border-color: var(--accent-primary);
-  background: rgba(137, 180, 250, 0.1);
-}
-
-.model-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.model-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
-  margin-bottom: 4px;
-}
-
-.model-detail {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: monospace;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.active-badge {
-  padding: 4px 8px;
-  font-size: 11px;
-  background: var(--accent-primary);
-  color: white;
-  border-radius: 4px;
-}
-
-.add-model-section {
-  margin-top: 24px;
-}
-
-.templates {
-  margin-bottom: 20px;
-}
-
-.template-label {
-  display: block;
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-bottom: 12px;
-}
-
-.template-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-}
-
-.template-card {
-  padding: 12px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: left;
-}
-
-.template-card:hover {
-  border-color: var(--accent-primary);
-  background: var(--bg-hover);
-}
-
-.template-card.recommended {
-  border-color: #10b981;
-  background: rgba(16, 185, 129, 0.08);
-}
-
-.template-card.recommended:hover {
-  border-color: #10b981;
-  background: rgba(16, 185, 129, 0.15);
-}
-
-.template-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.template-name {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.recommended-badge {
-  font-size: 10px;
-  font-weight: 500;
-  color: #10b981;
-  background: rgba(16, 185, 129, 0.15);
-  padding: 2px 6px;
-  border-radius: 4px;
-  white-space: nowrap;
-}
-
-.template-desc {
-  font-size: 11px;
-  color: var(--text-muted);
-  line-height: 1.4;
-}
-
-.config-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
 }
 
 .form-group {
@@ -1614,43 +1631,234 @@ input:checked + .slider:before {
   margin-top: 24px;
 }
 
-.summary {
+/* 准备就绪横幅 */
+.ready-banner {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 24px;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05));
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 12px;
+  margin-bottom: 28px;
 }
 
-.summary-item {
+.ready-icon {
+  font-size: 36px;
+  flex-shrink: 0;
+}
+
+.ready-text h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #10b981;
+  margin: 0 0 4px;
+}
+
+.ready-text p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* 可选配置区域 */
+.optional-section {
+  margin-top: 8px;
+}
+
+.optional-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 6px;
+}
+
+.optional-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 16px;
+}
+
+/* 可折叠配置卡片 */
+.config-card {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+
+.config-card.expanded {
+  border-color: var(--accent-primary);
+}
+
+.config-card-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px;
-  background: var(--bg-tertiary);
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-  font-size: 14px;
-  color: var(--text-secondary);
+  padding: 14px 16px;
+  cursor: pointer;
+  background: var(--bg-secondary);
+  transition: background 0.2s ease;
 }
 
-.summary-item.active {
-  border-color: #10b981;
-  background: rgba(16, 185, 129, 0.1);
+.config-card-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.config-card-header .card-icon {
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.config-card-header .card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.config-card-header .card-title {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.config-card-header .card-desc {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.config-card-header .card-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
   color: #10b981;
 }
 
-.summary-icon {
-  font-size: 18px;
-  font-weight: 600;
+.config-card-header .status-icon.success {
+  color: #10b981;
 }
 
-.complete-tips {
-  text-align: center;
+.config-card-header .expand-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.config-card-body {
   padding: 16px;
-  background: var(--bg-tertiary);
-  border-radius: 8px;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-color);
+}
+
+/* 扫描和导入样式 */
+.scan-prompt {
+  text-align: center;
+  padding: 8px 0;
+}
+
+.scan-result-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.scan-result-compact .result-text {
+  font-size: 13px;
+  color: #10b981;
+  margin: 0;
+}
+
+.scan-result-compact .import-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.no-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.no-result p {
   font-size: 13px;
   color: var(--text-muted);
+  margin: 0;
+}
+
+/* 知识库切换 */
+.knowledge-toggle {
+  margin-bottom: 12px;
+}
+
+.password-form-compact .form-row {
+  display: flex;
+  gap: 8px;
+}
+
+.password-form-compact .input-sm {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.password-form-compact .password-error {
+  margin-top: 8px;
+}
+
+/* 加载状态 */
+.loading-compact {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0;
+}
+
+/* MCP 列表 */
+.mcp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mcp-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+}
+
+.mcp-name {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.mcp-status {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+}
+
+.mcp-status.enabled {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.no-mcp-compact p {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* 小按钮样式 */
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
 }
 
 /* 导航按钮 */

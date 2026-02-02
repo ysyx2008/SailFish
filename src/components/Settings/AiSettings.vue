@@ -149,8 +149,7 @@ const allTemplates = [
     apiUrl: 'http://localhost:11434/v1/chat/completions',
     model: 'llama2',
     keyUrl: 'https://ollama.com/',
-    isLocal: true,  // 本地服务，Steam版可用
-    recommended: true  // Steam版中推荐
+    isLocal: true  // 本地服务，Steam版可用
   }
 ]
 

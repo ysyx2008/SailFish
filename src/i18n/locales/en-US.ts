@@ -270,7 +270,9 @@ export default {
       openai: 'OpenAI official API, supports GPT-3.5, GPT-4, etc.',
       qwen: 'Alibaba Qwen, fast access in China',
       deepseek: 'DeepSeek LLM, cost-effective',
-      ollama: 'Local Ollama deployment, data stays local'
+      ollama: 'Local Ollama deployment, data stays local',
+      custom: 'Manually configure API URL, model, etc.',
+      customName: 'Custom'
     },
     getApiKey: 'Get Key',
     recommended: 'Recommended',
@@ -1199,6 +1201,7 @@ export default {
     aiConfig: {
       title: 'Configure AI Model',
       subtitle: 'Configure large language model to make terminal smarter',
+      subtitleSimple: 'Choose an AI service and enter your API Key',
       intro: 'AI model is the core of AI features. You need to configure at least one model to use AI chat and Agent features.',
       hint: 'Supports OpenAI-compatible APIs, including vLLM, FastChat, Ollama and other private deployment solutions.',
       modelRecommendation: '💡 We recommend using chat models (e.g., deepseek-chat) over reasoning models (e.g., deepseek-reasoner). Chat models are sufficient for daily use, with faster response and lower cost.',
@@ -1207,13 +1210,26 @@ export default {
       quickTemplates: 'Quick Templates:',
       fillRequired: 'Please fill in all required fields',
       saveFailed: 'Save failed',
-      required: 'Please configure at least one AI model to continue'
+      required: 'Please configure at least one AI model to continue',
+      alreadyConfigured: 'Configured: {name}',
+      configured: 'Configured',
+      enterApiKey: 'Enter API Key',
+      apiKeyRequired: 'Please enter API Key',
+      localNoKey: 'Local service requires no API Key, just make sure Ollama is running',
+      useThis: 'Use This Model',
+      canChangeLater: 'You can add more models or modify settings later',
+      customNamePlaceholder: 'e.g., Internal GPT',
+      customUrlPlaceholder: 'e.g., http://192.168.1.100:8000/v1/chat/completions',
+      customKeyPlaceholder: 'Leave empty if not required',
+      customModelPlaceholder: 'e.g., gpt-3.5-turbo'
     },
     import: {
       title: 'Import SSH Hosts',
       subtitle: 'Quickly import existing SSH host configurations',
+      shortDesc: 'Import host configs from Xshell',
       intro: 'If you previously used Xshell, you can import all session configurations with one click to quickly migrate to SFTerm.',
       scanning: 'Scanning Xshell session directory...',
+      scanNow: 'Scan Xshell Config',
       found: 'Found {count} sessions',
       import: 'Import',
       importing: 'Importing...',
@@ -1225,8 +1241,9 @@ export default {
       notFoundHint: 'You can manually select a directory to import, or add hosts later in settings'
     },
     knowledge: {
-      title: 'Enable Local Knowledge Base',
+      title: 'Local Knowledge Base',
       subtitle: 'Enable local knowledge base for AI to better understand your documents and habits',
+      shortDesc: 'AI learns your documents and habits',
       features: {
         title: 'Knowledge Base Features',
         item1: 'Upload documents to local knowledge base, supports PDF, Word, text and more',
@@ -1246,17 +1263,24 @@ export default {
       saveFailed: 'Save failed'
     },
     mcp: {
-      title: 'Configure MCP Services',
+      title: 'MCP Services',
       subtitle: 'Connect MCP servers to extend AI capabilities',
+      shortDesc: 'Extend AI capabilities (advanced)',
       intro: 'MCP (Model Context Protocol) is a protocol that allows AI to access external tools and resources.',
       hint: 'You can add MCP servers in settings later, feel free to skip this step.',
       configuredServers: 'Configured MCP Servers',
       noServers: 'No MCP servers configured',
-      noServersHint: 'You can add MCP servers in settings to extend AI capabilities'
+      noServersHint: 'Configure MCP servers in settings',
+      servers: 'servers'
     },
     complete: {
       title: 'All Set!',
       subtitle: 'Start using SFTerm',
+      readyToUse: 'AI model configured, ready to start',
+      aiReady: 'AI Features Ready',
+      aiReadyDesc: 'Your AI model is configured. You can now start using AI chat and Agent features.',
+      optionalConfig: 'Optional Settings',
+      optionalHint: 'These features can be configured later in settings, or set up now',
       summary: {
         aiConfigured: 'AI model configured',
         aiNotConfigured: 'AI model not configured',
