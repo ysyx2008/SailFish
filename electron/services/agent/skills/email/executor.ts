@@ -312,11 +312,12 @@ async function emailList(
       }
 
       const output = `## ${folder} (${total} ${t('email.total_messages')})\n\n${t('email.page_info', { page, limit })}\n\n${messages.join('\n')}`
+      // UI 只显示简洁摘要
       executor.addStep({
         type: 'tool_result',
         content: output,
         toolName: 'email_list',
-        toolResult: truncateOutput(output, 500)
+        toolResult: `📬 ${folder}: ${messages.length} 封邮件`
       })
 
       return { success: true, output }
@@ -414,11 +415,13 @@ async function emailRead(
         })
       }
 
+      // UI 只显示简洁摘要：邮件标题
+      const subject = parsed.subject || t('email.no_subject')
       executor.addStep({
         type: 'tool_result',
         content: output,
         toolName: 'email_read',
-        toolResult: truncateOutput(output, 800)
+        toolResult: `📧 ${subject}`
       })
 
       return { success: true, output }
@@ -508,11 +511,12 @@ async function emailSearch(
       }
 
       const output = `## ${t('email.search_results')} (${uids.length} ${t('email.found')})\n\n${t('email.showing', { count: messages.length })}\n\n${messages.join('\n')}`
+      // UI 只显示简洁摘要
       executor.addStep({
         type: 'tool_result',
         content: output,
         toolName: 'email_search',
-        toolResult: truncateOutput(output, 500)
+        toolResult: `🔍 搜索到 ${uids.length} 封邮件`
       })
 
       return { success: true, output }
@@ -788,16 +792,28 @@ function formatAddress(addr: { name?: string; address?: string }): string {
 /**
  * 格式化地址列表，限制显示数量
  */
-function formatAddressList(
-  addresses: { name?: string; address?: string }[] | { name?: string; address?: string; text?: string } | undefined,
-  maxCount: number = 3
-): string {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function formatAddressList(addresses: any, maxCount: number = 3): string {
   if (!addresses) return ''
   
-  // 统一转为数组
-  const addrArray = Array.isArray(addresses) 
-    ? addresses 
-    : (addresses as { value?: Array<{ name?: string; address?: string }> }).value || [addresses]
+  // 统一转为数组 - 处理 mailparser 的 AddressObject 类型
+  let addrArray: Array<{ name?: string; address?: string }> = []
+  
+  if (Array.isArray(addresses)) {
+    // AddressObject[] - 提取每个对象的 value
+    addresses.forEach(addr => {
+      if (addr.value && Array.isArray(addr.value)) {
+        addrArray.push(...addr.value)
+      } else if (addr.address) {
+        addrArray.push(addr)
+      }
+    })
+  } else if (addresses.value && Array.isArray(addresses.value)) {
+    // 单个 AddressObject
+    addrArray = addresses.value
+  } else if (addresses.address) {
+    addrArray = [addresses]
+  }
   
   if (addrArray.length === 0) return ''
   
