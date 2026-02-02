@@ -405,24 +405,9 @@ const loadMcpServers = async () => {
   }
 }
 
-// 步骤6: 完成
-const summary = computed(() => {
-  return {
-    aiConfigured: configStore.aiProfiles.length > 0,
-    hostsImported: importResult.value?.sessions || 0,
-    knowledgeEnabled: knowledgeEnabled.value,
-    mcpConfigured: mcpServers.value.length > 0
-  }
-})
-
 // 导航
 const canGoPrev = computed(() => {
   return currentStep.value > 1
-})
-
-const canSkip = computed(() => {
-  // 简化后的向导没有可跳过的步骤
-  return false
 })
 
 const skipWizard = async () => {
@@ -455,10 +440,6 @@ const prevStep = () => {
   if (currentStep.value > 1) {
     currentStep.value--
   }
-}
-
-const skipStep = async () => {
-  await nextStep()
 }
 
 // 初始化

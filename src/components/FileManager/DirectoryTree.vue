@@ -210,12 +210,13 @@ const isExpanded = (nodePath: string): boolean => {
 // 递归组件
 import { defineComponent, h, type VNode } from 'vue'
 
-// TreeNode 类型复用顶部 setup 脚本中的定义
-type TreeNodeType = {
+// TreeNode 类型（需要在此处重新定义，因为两个 script 块作用域独立）
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+type TreeNode = {
   name: string
   path: string
   isDirectory: boolean
-  children?: TreeNodeType[]
+  children?: TreeNode[]
   isLoading?: boolean
   isExpanded?: boolean
 }

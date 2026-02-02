@@ -1510,6 +1510,7 @@ interface Window {
         provider?: string
         imapHost?: string
         imapPort?: number
+        rejectUnauthorized?: boolean
       }) => Promise<{ success: boolean; message: string }>
       // 同步邮箱账户配置到后端
       syncAccounts: (accounts: Array<{
