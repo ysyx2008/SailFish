@@ -257,11 +257,12 @@ async function emailList(
       })
 
       const output = `## ${t('email.folder_list')}\n\n${folders.join('\n')}`
+      // content 简洁，toolResult 详细
       executor.addStep({
         type: 'tool_result',
-        content: output,
+        content: `📁 ${mailboxes.length} 个文件夹`,
         toolName: 'email_list',
-        toolResult: truncateOutput(output, 500)
+        toolResult: output
       })
 
       return { success: true, output }
@@ -312,12 +313,12 @@ async function emailList(
       }
 
       const output = `## ${folder} (${total} ${t('email.total_messages')})\n\n${t('email.page_info', { page, limit })}\n\n${messages.join('\n')}`
-      // UI 只显示简洁摘要
+      // content 简洁，toolResult 详细
       executor.addStep({
         type: 'tool_result',
-        content: output,
+        content: `📬 ${folder}: ${messages.length} 封邮件`,
         toolName: 'email_list',
-        toolResult: `📬 ${folder}: ${messages.length} 封邮件`
+        toolResult: output
       })
 
       return { success: true, output }
@@ -415,13 +416,13 @@ async function emailRead(
         })
       }
 
-      // UI 只显示简洁摘要：邮件标题
+      // content 简洁（只显示标题），toolResult 详细
       const subject = parsed.subject || t('email.no_subject')
       executor.addStep({
         type: 'tool_result',
-        content: output,
+        content: `📧 ${subject}`,
         toolName: 'email_read',
-        toolResult: `📧 ${subject}`
+        toolResult: output
       })
 
       return { success: true, output }
@@ -511,12 +512,12 @@ async function emailSearch(
       }
 
       const output = `## ${t('email.search_results')} (${uids.length} ${t('email.found')})\n\n${t('email.showing', { count: messages.length })}\n\n${messages.join('\n')}`
-      // UI 只显示简洁摘要
+      // content 简洁，toolResult 详细
       executor.addStep({
         type: 'tool_result',
-        content: output,
+        content: `🔍 搜索到 ${uids.length} 封邮件`,
         toolName: 'email_search',
-        toolResult: `🔍 搜索到 ${uids.length} 封邮件`
+        toolResult: output
       })
 
       return { success: true, output }
