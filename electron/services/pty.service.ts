@@ -133,12 +133,15 @@ export class PtyService {
   /**
    * 根据系统语言自动检测编码
    * 
-   * Windows 编码历史：
-   * - 简体中文 Windows：GBK（代码页 936）
-   * - 繁体中文 Windows：Big5（代码页 950）
-   * - 日文 Windows：Shift-JIS（代码页 932）
-   * - Windows Terminal（Win10 1903+）：默认 UTF-8（代码页 65001）
-   * - PowerShell 7+：默认 UTF-8
+   * 现代 Windows 终端编码策略：
+   * - Windows 10 1903+ 支持 UTF-8 作为默认编码
+   * - PowerShell 7+ 默认使用 UTF-8
+   * - Windows Terminal 默认使用 UTF-8
+   * - 新版 Windows 11 默认启用 "Beta: 使用 Unicode UTF-8 提供全球语言支持"
+   * 
+   * 为了最佳兼容性，我们在 Windows 上默认使用 UTF-8，
+   * 并在 shell 启动时通过 chcp 65001 确保代码页正确。
+   * 如果用户遇到问题，可以在设置中手动切换到 GBK 等编码。
    */
   private detectSystemEncoding(): string {
     const isWindows = process.platform === 'win32'
@@ -148,45 +151,10 @@ export class PtyService {
       return 'utf-8'
     }
     
-    // Windows: 优先检测现代终端环境（这些总是使用 UTF-8）
-    // 1. Windows Terminal 环境（通过 WT_SESSION 或 WT_PROFILE_ID 判断）
-    if (process.env.WT_SESSION || process.env.WT_PROFILE_ID) {
-      console.log('[PtyService] 检测到 Windows Terminal 环境，使用 UTF-8')
-      return 'utf-8'
-    }
-    
-    // 2. VS Code 集成终端
-    if (process.env.TERM_PROGRAM === 'vscode') {
-      console.log('[PtyService] 检测到 VS Code 终端环境，使用 UTF-8')
-      return 'utf-8'
-    }
-    
-    // 3. 检查 LANG/LC_ALL 环境变量
-    const lang = process.env.LANG || process.env.LC_ALL || ''
-    if (lang.includes('UTF-8') || lang.includes('utf-8')) {
-      console.log('[PtyService] 检测到 UTF-8 环境变量设置')
-      return 'utf-8'
-    }
-    
-    // 4. 通过 chcp 检测控制台代码页
-    const codePage = this.detectWindowsCodePage()
-    if (codePage !== null) {
-      // 代码页 65001 是 UTF-8
-      if (codePage === 65001) {
-        console.log('[PtyService] 检测到代码页 65001 (UTF-8)')
-        return 'utf-8'
-      }
-      
-      const encoding = CODE_PAGE_TO_ENCODING[codePage]
-      if (encoding) {
-        console.log(`[PtyService] 根据代码页 ${codePage} 使用编码: ${encoding}`)
-        return encoding
-      }
-    }
-    
-    // 最终回退：简体中文 Windows 最常见，默认 GBK
-    console.log('[PtyService] 无法检测代码页，默认使用 GBK')
-    return 'gbk'
+    // Windows: 默认使用 UTF-8，这是现代 Windows 的推荐方式
+    // 我们会在 shell 启动时通过 chcp 65001 确保代码页正确
+    console.log('[PtyService] Windows 默认使用 UTF-8 编码')
+    return 'utf-8'
   }
 
   /**
