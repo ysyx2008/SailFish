@@ -645,8 +645,8 @@ app.whenReady().then(async () => {
   // 设置媒体设备权限处理器（用于语音识别等功能）
   // Windows 上必须显式授权麦克风访问，否则会报 "Requested device not found"
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    // 允许麦克风和音频相关权限
-    const allowedPermissions = ['media', 'microphone', 'audioCapture']
+    // 允许麦克风、音频和剪贴板相关权限
+    const allowedPermissions = ['media', 'microphone', 'audioCapture', 'clipboard-read', 'clipboard-write']
     if (allowedPermissions.includes(permission)) {
       callback(true)
     } else {
