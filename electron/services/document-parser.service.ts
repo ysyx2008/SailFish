@@ -31,6 +31,8 @@ export type DocumentType =
   | 'pdf'
   | 'docx'
   | 'doc'
+  | 'xlsx'
+  | 'xls'
   | 'txt'
   | 'md'
   | 'json'
@@ -72,6 +74,7 @@ export class DocumentParserService {
   private PDFParser: typeof import('pdf2json').default | null = null
   private mammoth: typeof import('mammoth') | null = null
   private WordExtractor: typeof import('word-extractor').default | null = null
+  private ExcelJS: typeof import('exceljs') | null = null
   private isInitialized = false
 
   constructor() {
@@ -107,6 +110,13 @@ export class DocumentParserService {
       console.warn('[DocumentParser] word-extractor 未安装，.doc 解析将不可用:', e)
     }
 
+    try {
+      // 动态导入 exceljs（用于 .xlsx/.xls 格式）
+      this.ExcelJS = await import('exceljs')
+    } catch (e) {
+      console.warn('[DocumentParser] exceljs 未安装，Excel 解析将不可用:', e)
+    }
+
     this.isInitialized = true
   }
 
@@ -124,6 +134,10 @@ export class DocumentParserService {
         return 'docx'
       case '.doc':
         return 'doc'
+      case '.xlsx':
+        return 'xlsx'
+      case '.xls':
+        return 'xls'
       case '.txt':
         return 'txt'
       case '.md':
@@ -147,6 +161,8 @@ export class DocumentParserService {
       if (mimeType === 'application/pdf') return 'pdf'
       if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx'
       if (mimeType === 'application/msword') return 'doc'
+      if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return 'xlsx'
+      if (mimeType === 'application/vnd.ms-excel') return 'xls'
       if (mimeType.startsWith('text/')) return 'txt'
       if (mimeType === 'application/json') return 'json'
       if (mimeType === 'application/xml' || mimeType === 'text/xml') return 'xml'
@@ -197,6 +213,10 @@ export class DocumentParserService {
           break
         case 'doc':
           await this.parseDoc(file.path, result, opts)
+          break
+        case 'xlsx':
+        case 'xls':
+          await this.parseExcel(file.path, result, opts)
           break
         case 'txt':
         case 'md':
@@ -371,6 +391,119 @@ export class DocumentParserService {
   }
 
   /**
+   * 解析 Excel 文件 (.xlsx/.xls)
+   */
+  private async parseExcel(filePath: string, result: ParsedDocument, opts: Required<ParseOptions>): Promise<void> {
+    if (!this.ExcelJS) {
+      throw new Error('Excel 解析库未安装，请运行: npm install exceljs')
+    }
+
+    const workbook = new this.ExcelJS.Workbook()
+    await workbook.xlsx.readFile(filePath)
+
+    const parts: string[] = []
+    let sheetCount = 0
+    let totalRows = 0
+
+    // 遍历所有工作表
+    workbook.eachSheet((worksheet) => {
+      sheetCount++
+      const sheetRows = worksheet.rowCount
+      totalRows += sheetRows
+
+      parts.push(`## 工作表: ${worksheet.name}`)
+      parts.push(`(${sheetRows} 行 x ${worksheet.columnCount} 列)\n`)
+
+      // 限制每个工作表的行数
+      const maxRowsPerSheet = 200
+      const maxCols = 20
+      const truncatedRows = sheetRows > maxRowsPerSheet
+      
+      if (truncatedRows) {
+        parts.push(`⚠️ 内容已截断（显示前 ${maxRowsPerSheet} 行）\n`)
+      }
+
+      // 收集数据行
+      const rows: string[][] = []
+      let rowIndex = 0
+      
+      worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+        if (rowIndex >= maxRowsPerSheet) return
+        rowIndex++
+
+        const cells: string[] = []
+        let colIndex = 0
+        
+        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+          if (colNumber > maxCols) return
+          colIndex++
+          
+          // 获取单元格显示值
+          let cellValue = ''
+          if (cell.value === null || cell.value === undefined) {
+            cellValue = ''
+          } else if (typeof cell.value === 'object') {
+            // 处理富文本、公式结果等
+            if ('result' in cell.value) {
+              // 公式单元格，获取计算结果
+              cellValue = String(cell.value.result ?? '')
+            } else if ('richText' in cell.value) {
+              // 富文本
+              cellValue = (cell.value.richText as Array<{ text: string }>)
+                .map(rt => rt.text)
+                .join('')
+            } else if (cell.value instanceof Date) {
+              cellValue = cell.value.toLocaleDateString()
+            } else {
+              cellValue = String(cell.value)
+            }
+          } else {
+            cellValue = String(cell.value)
+          }
+          
+          cells.push(cellValue)
+        })
+        
+        // 确保有足够的列
+        while (cells.length < Math.min(maxCols, worksheet.columnCount)) {
+          cells.push('')
+        }
+        
+        rows.push(cells)
+      })
+
+      // 生成 Markdown 表格
+      if (rows.length > 0) {
+        const escapeCell = (cell: string) => 
+          cell.replace(/\|/g, '\\|').replace(/\n/g, ' ').trim()
+
+        // 如果第一行看起来像表头（通常第一行是表头）
+        const headerRow = rows[0]
+        parts.push('| ' + headerRow.map(escapeCell).join(' | ') + ' |')
+        parts.push('| ' + headerRow.map(() => '---').join(' | ') + ' |')
+        
+        // 数据行
+        for (let i = 1; i < rows.length; i++) {
+          parts.push('| ' + rows[i].map(escapeCell).join(' | ') + ' |')
+        }
+      } else {
+        parts.push('（空工作表）')
+      }
+
+      parts.push('\n')
+    })
+
+    // 添加概览信息
+    const summary = `📊 Excel 文件概览：${sheetCount} 个工作表，共 ${totalRows} 行数据\n\n`
+    result.content = summary + parts.join('\n')
+    result.pageCount = sheetCount
+    result.metadata = {
+      sheetCount: String(sheetCount),
+      totalRows: String(totalRows)
+    }
+  }
+
+  /**
    * 解析文本文件
    */
   private async parseTextFile(filePath: string, result: ParsedDocument, _opts: Required<ParseOptions>): Promise<void> {
@@ -524,6 +657,8 @@ export class DocumentParserService {
       { extension: '.pdf', description: 'PDF 文档', available: !!this.PDFParser },
       { extension: '.docx', description: 'Word 文档 (2007+)', available: !!this.mammoth },
       { extension: '.doc', description: 'Word 文档 (97-2003)', available: !!this.WordExtractor },
+      { extension: '.xlsx', description: 'Excel 表格 (2007+)', available: !!this.ExcelJS },
+      { extension: '.xls', description: 'Excel 表格 (97-2003)', available: !!this.ExcelJS },
       { extension: '.txt', description: '纯文本', available: true },
       { extension: '.md', description: 'Markdown', available: true },
       { extension: '.json', description: 'JSON', available: true },
@@ -540,6 +675,7 @@ export class DocumentParserService {
     pdf: boolean
     docx: boolean
     doc: boolean
+    xlsx: boolean
     text: boolean
   }> {
     await this.init()
@@ -548,6 +684,7 @@ export class DocumentParserService {
       pdf: !!this.PDFParser,
       docx: !!this.mammoth,
       doc: !!this.WordExtractor,
+      xlsx: !!this.ExcelJS,
       text: true
     }
   }

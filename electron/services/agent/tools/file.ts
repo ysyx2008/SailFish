@@ -116,7 +116,7 @@ export async function fileSearch(
  */
 function isDocumentType(filePath: string): boolean {
   const ext = path.extname(filePath).toLowerCase()
-  return ['.pdf', '.docx', '.doc'].includes(ext)
+  return ['.pdf', '.docx', '.doc', '.xlsx', '.xls'].includes(ext)
 }
 
 /**
