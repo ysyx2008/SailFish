@@ -314,7 +314,15 @@ async function updateSkill(
     // 应用更新
     if (newName) name = newName
     if (newDescription) description = newDescription
-    if (newContent) content = newContent
+    if (newContent) {
+      // 如果 newContent 包含 frontmatter，需要先移除它，避免 frontmatter 重复
+      const contentMatch = newContent.match(frontmatterRegex)
+      if (contentMatch) {
+        content = (contentMatch[2] || '').trim()
+      } else {
+        content = newContent
+      }
+    }
     if (newVersion) version = newVersion
 
     // 生成新内容
