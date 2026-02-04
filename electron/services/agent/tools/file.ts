@@ -153,7 +153,8 @@ async function readDocumentFile(
     }
     
     const docInfo: string[] = []
-    docInfo.push(`📄 ${ext.toUpperCase().slice(1)} ${t('file.document_parsed')}`)
+    docInfo.push(`📄 ${fileName}`)
+    docInfo.push(`${ext.toUpperCase().slice(1)} ${t('file.document_parsed')}`)
     if (result.pageCount) {
       docInfo.push(`${t('file.page_count')}: ${result.pageCount}`)
     }
