@@ -2,7 +2,84 @@
 
 All notable changes to SFTerm will be documented in this file.
 
-## v8.17.0 (Latest)
+## v8.19.2 (Latest)
+
+### Bug Fixes
+- 🔧 Fixed Chinese path paste encoding issue on Windows
+
+## v8.19.1
+
+### Bug Fixes
+- 🔧 Updated media device permission handler to support clipboard access
+
+## v8.19.0
+
+### New Features
+- 🛠️ **Skill Creator**: Added user skill creation module for easy custom skill development
+- 📧 **Email Certificate Support**: Added support for self-signed certificates
+
+### Improvements
+- 🚀 **Simplified Setup**: Greatly simplified the setup wizard, keeping only API Key configuration
+- 📧 **Email Display Optimization**: Optimized email information display format, address handling, and output summary
+- 🧹 **Code Simplification**: Removed reflection mechanism code, simplified skill loading output
+
+### Bug Fixes
+- 🔧 Ensured scheduled tasks only execute in newly created tabs
+- 🔧 Ensured rejectUnauthorized field has default value for old email accounts
+
+## v8.18.3
+
+### Bug Fixes
+- 🔧 Fixed password input box unclickable issue when enabling knowledge base during first-run setup on Windows
+
+## v8.18.2
+
+### New Features
+- 🎨 **Default Theme**: Changed default theme to blue theme
+- 📊 **Task Count Display**: Scheduler now shows pending task count
+
+### Bug Fixes
+- 🔧 Fixed speech recognition not working on Windows
+- 🔧 Fixed Chinese Windows path encoding issue
+- 🔧 Fixed IPC structured clone error
+
+## v8.18.1
+
+### Improvements
+- 📝 Improved schedule_create tool description to guide AI for correct instruction separation
+
+## v8.18.0
+
+### New Features
+- ⏰ **Scheduled Tasks**: Added scheduled task feature with cron expression support for Agent execution
+
+### Improvements
+- 📝 Improved plan execution prompts to allow archiving plans when tasks complete early
+
+## v8.17.3
+
+### Bug Fixes
+- 🔧 Prevented write_file tool from creating Word documents, only plain text allowed
+- 🔧 Prevented Esc key event bubbling
+
+### New Features
+- 🎤 Added speech recognition error handling and prompt functionality
+
+## v8.17.2
+
+### Bug Fixes
+- 🔧 Fixed Windows terminal Chinese path encoding issue
+- 🔧 Fixed blank email account creation issue
+
+### Improvements
+- 📦 Cleaned unnecessary files to optimize model package
+
+## v8.17.1
+
+### Improvements
+- 📦 Added pre-build model download script
+
+## v8.17.0
 
 ### Speech Recognition
 - 🎤 **Voice Input**: Brand new speech recognition feature for voice-to-text input
