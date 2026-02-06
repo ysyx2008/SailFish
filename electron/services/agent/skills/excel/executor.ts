@@ -183,8 +183,9 @@ async function excelRead(
     }
   }
 
-  // 应用限制
-  const maxRows = 500
+  // 应用限制（默认 50 行，上限 500 行）
+  const userMaxRows = args.max_rows as number | undefined
+  const maxRows = Math.min(Math.max(1, userMaxRows || 50), 500)
   const maxCols = 20
   const actualEndRow = Math.min(endRow, startRow + maxRows - 1)
   const actualEndCol = Math.min(endCol, startCol + maxCols - 1)

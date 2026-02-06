@@ -42,7 +42,8 @@ export const excelTools: ToolDefinition[] = [
 2. 指定 sheet：返回该 Sheet 的数据（Markdown 表格格式）
 3. 指定 sheet + range：返回指定单元格范围的数据
 
-**大表处理**：默认最多显示 500 行 x 20 列，超出部分显示摘要。`,
+**大表处理**：默认最多显示 50 行 x 20 列，超出部分显示摘要。可通过 max_rows 参数调整（上限 500）。
+**建议**：先不指定 sheet 获取概览，再根据数据量决定读取策略。对于大表，建议分批使用 range 读取。`,
       parameters: {
         type: 'object',
         properties: {
@@ -57,6 +58,10 @@ export const excelTools: ToolDefinition[] = [
           range: {
             type: 'string',
             description: '单元格范围（可选，如 "A1:D100"）'
+          },
+          max_rows: {
+            type: 'number',
+            description: '最大返回行数（默认 50，上限 500）'
           }
         },
         required: ['path']
