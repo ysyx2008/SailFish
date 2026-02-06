@@ -1265,20 +1265,29 @@ export abstract class Agent {
   /**
    * 估算文本的 token 数量
    */
-  private estimateTokens(text: string): number {
-    // 中文字符约 1.5 tokens，英文约 0.25 tokens/字符
+  private estimateTokens(text: string | null | undefined): number {
+    if (!text) return 0
+    // 中文字符约 1.5 tokens/字
+    // 非中文内容约 0.5 tokens/字符
+    //   - 纯英文单词约 0.25，但实际内容含大量 URL、路径、标点、JSON、特殊符号，
+    //     tokenizer 对这些切分很碎（每字符 0.5-1 token），取 0.5 作为均值
+    //   - 实测：Excel 混合数据（URL + 中文 + 数字）0.5 系数与 API 实际计数误差 < 10%
     const chineseChars = (text.match(/[\u4e00-\u9fa5]/g) || []).length
     const otherChars = text.length - chineseChars
-    return Math.ceil(chineseChars * 1.5 + otherChars * 0.25)
+    return Math.ceil(chineseChars * 1.5 + otherChars * 0.5)
   }
   
   /**
    * 估算消息列表的总 token 数量
    */
   private estimateTotalTokens(messages: AiMessage[]): number {
-    return messages.reduce((sum, msg) => {
-      let tokens = this.estimateTokens(msg.content)
-      // 工具调用也占用 token
+    // 每条消息有固定开销（role token、边界标记等），约 4 tokens
+    const MESSAGE_OVERHEAD = 4
+    // 工具定义（函数名、描述、参数 schema）的固定开销，约 3000-5000 tokens
+    const TOOLS_OVERHEAD = 4000
+    
+    const messageTokens = messages.reduce((sum, msg) => {
+      let tokens = this.estimateTokens(msg.content) + MESSAGE_OVERHEAD
       if (msg.tool_calls) {
         tokens += msg.tool_calls.reduce((t, tc) => 
           t + this.estimateTokens(tc.function.name) + this.estimateTokens(tc.function.arguments), 0)
@@ -1288,6 +1297,8 @@ export abstract class Agent {
       }
       return sum + tokens
     }, 0)
+    
+    return messageTokens + TOOLS_OVERHEAD
   }
   
   /**
@@ -1295,8 +1306,16 @@ export abstract class Agent {
    */
   private checkContextLimit(messages: AiMessage[]): void {
     const contextLength = this.getContextLength()
-    const maxTokens = Math.floor(contextLength * 0.95)  // 预留 5% 给响应
+    const maxTokens = Math.floor(contextLength * 0.85)  // 预留 15% 给响应和估算误差
     const totalTokens = this.estimateTotalTokens(messages)
+    
+    // 将估算的 token 数更新到最近的 step，供前端上下文统计显示
+    const steps = this.currentRun?.steps
+    if (steps && steps.length > 0) {
+      const lastStep = steps[steps.length - 1]
+      lastStep.contextTokens = totalTokens
+      this.callbacks?.onStep?.(this.currentRun?.id || '', lastStep)
+    }
     
     if (totalTokens > maxTokens) {
       const percentage = Math.round((totalTokens / contextLength) * 100)

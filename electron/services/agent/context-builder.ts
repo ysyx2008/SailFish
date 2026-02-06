@@ -378,11 +378,13 @@ function formatDigest(task: TaskMemory): string {
 /**
  * 估算文本的 token 数
  */
-function estimateTokens(text: string): number {
-  // 中文字符约 1.5 tokens，英文约 0.25 tokens/字符
+function estimateTokens(text: string | null | undefined): number {
+  if (!text) return 0
+  // 中文字符约 1.5 tokens/字
+  // 非中文内容约 0.5 tokens/字符（URL、JSON、特殊字符等 tokenizer 切分较碎）
   const chineseChars = (text.match(/[\u4e00-\u9fa5]/g) || []).length
   const otherChars = text.length - chineseChars
-  return Math.ceil(chineseChars * 1.5 + otherChars * 0.25)
+  return Math.ceil(chineseChars * 1.5 + otherChars * 0.5)
 }
 
 /**

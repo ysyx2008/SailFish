@@ -8,7 +8,7 @@ import { aiDebugService } from './ai-debug.service'
 
 // AI 请求超时配置（毫秒）
 const AI_TIMEOUT = {
-  CONNECT: 60 * 1000,        // 连接超时：60 秒
+  CONNECT: 15 * 1000,        // 连接超时：15 秒
   SOCKET_IDLE: 120 * 1000,   // 空闲超时：120 秒（流式请求中数据流中断检测）
   TOTAL: 10 * 60 * 1000      // 总超时：10 分钟（长文本生成可能需要较长时间）
 }
@@ -199,31 +199,18 @@ export class AiService {
       }>(profile, requestBody)
 
       if (data.error) {
-        // 检测上下文超限错误
-        const errorMsg = data.error.message?.toLowerCase() || ''
-        const errorCode = data.error.code?.toLowerCase() || ''
-        
-        if (errorMsg.includes('context_length') || 
-            errorMsg.includes('maximum context') ||
-            (errorMsg.includes('token') && errorMsg.includes('limit')) ||
-            errorCode.includes('context_length')) {
+        const code = data.error.code?.toLowerCase() || data.error.type?.toLowerCase() || ''
+        if (code === 'context_length_exceeded') {
           throw new Error(t('error.context_length_exceeded'))
         }
-        
-        throw new Error(t('error.api_request_failed', { status: '400', data: data.error.message || t('error.api_error_generic') }))
+        throw new Error(t('error.api_request_failed', { data: data.error.message || t('error.api_error_generic') }))
       }
 
       return data.choices?.[0]?.message?.content || ''
     } catch (error) {
       if (error instanceof Error) {
-        if (error.message.includes(t('error.context_length_exceeded'))) {
+        if (error.message === t('error.context_length_exceeded')) {
           throw error
-        }
-        const msg = error.message.toLowerCase()
-        if (msg.includes('context_length') || 
-            msg.includes('maximum context') ||
-            (msg.includes('token') && msg.includes('limit'))) {
-          throw new Error(t('error.context_length_exceeded'))
         }
         throw new Error(t('error.ai_request_failed', { message: translateNetworkError(error.message) }))
       }
@@ -297,7 +284,7 @@ export class AiService {
               }
             })
           } else {
-            complete(() => reject(new Error(t('error.api_request_failed', { status: res.statusCode || 0, data: parseApiError(data).message }))))
+            complete(() => reject(new Error(t('error.api_request_failed', { data: parseApiError(data).message }))))
           }
         })
       })
@@ -435,7 +422,7 @@ export class AiService {
             if (parsed.code === 'context_length_exceeded') {
               complete(() => onError(t('error.context_length_exceeded')))
             } else {
-              complete(() => onError(t('error.api_request_failed', { status: res.statusCode || 0, data: parsed.message })))
+              complete(() => onError(t('error.api_request_failed', { data: parsed.message })))
             }
           })
           return
@@ -608,22 +595,11 @@ export class AiService {
       }>(profile, requestBody)
 
       if (data.error) {
-        // 检测上下文超限错误
-        const errorMsg = data.error.message?.toLowerCase() || ''
-        const errorCode = data.error.code?.toLowerCase() || ''
-        const errorType = data.error.type?.toLowerCase() || ''
-        
-        if (errorMsg.includes('context_length') || 
-            errorMsg.includes('maximum context') ||
-            errorMsg.includes('token') && errorMsg.includes('limit') ||
-            errorMsg.includes('too many tokens') ||
-            errorMsg.includes('too long') ||
-            errorCode.includes('context_length') ||
-            errorType.includes('context_length')) {
+        const code = data.error.code?.toLowerCase() || data.error.type?.toLowerCase() || ''
+        if (code === 'context_length_exceeded') {
           throw new Error(t('error.context_length_exceeded'))
         }
-        
-        throw new Error(t('error.api_request_failed', { status: '400', data: data.error.message || t('error.api_error_generic') }))
+        throw new Error(t('error.api_request_failed', { data: data.error.message || t('error.api_error_generic') }))
       }
 
       const choice = data.choices?.[0]
@@ -640,12 +616,6 @@ export class AiService {
       if (error instanceof Error) {
         if (error.message === t('error.context_length_exceeded')) {
           throw error
-        }
-        const msg = error.message.toLowerCase()
-        if (msg.includes('context_length') || 
-            msg.includes('maximum context') ||
-            (msg.includes('token') && msg.includes('limit'))) {
-          throw new Error(t('error.context_length_exceeded'))
         }
         throw new Error(t('error.ai_request_failed', { message: translateNetworkError(error.message) }))
       }
@@ -789,7 +759,7 @@ export class AiService {
     const tryRetry = (errorMsg: string, doRequest: () => void): boolean => {
       if (retryCount < AI_RETRY.MAX_RETRIES && isRetryableError(errorMsg)) {
         retryCount++
-        const retryMsg = `⚠️ 网络错误，${AI_RETRY.RETRY_DELAY / 1000}秒后重试 (${retryCount}/${AI_RETRY.MAX_RETRIES})...`
+        const retryMsg = `⚠️ 网络错误，正在重试 (${retryCount}/${AI_RETRY.MAX_RETRIES})...`
         onChunk(retryMsg + '\n')
         aiDebugService.logResponseError(reqId, `${errorMsg} - 准备重试 ${retryCount}/${AI_RETRY.MAX_RETRIES}`)
         resetForRetry()
@@ -848,7 +818,7 @@ export class AiService {
             if (parsed.code === 'context_length_exceeded') {
               complete(() => onError(t('error.context_length_exceeded')))
             } else {
-              complete(() => onError(t('error.api_request_failed', { status: res.statusCode || 0, data: parsed.message })))
+              complete(() => onError(t('error.api_request_failed', { data: parsed.message })))
             }
           })
           return
