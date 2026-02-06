@@ -26,6 +26,45 @@ function isRetryableError(errorMessage: string): boolean {
   return AI_RETRY.RETRYABLE_ERRORS.some(code => errorMessage.includes(code))
 }
 
+/**
+ * 将 Node.js 网络错误消息翻译为用户可读的界面语言
+ * 错误码是 Node.js 定义的稳定常量，不是关键词匹配
+ */
+const NET_ERROR_CODES = ['ENOTFOUND', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'EAI_AGAIN'] as const
+
+function translateNetworkError(errMessage: string): string {
+  // 从 err.message（如 "getaddrinfo ENOTFOUND api.deepseek.com"）中提取错误码和主机名
+  for (const code of NET_ERROR_CODES) {
+    if (errMessage.includes(code)) {
+      // 提取主机名：错误消息中错误码后面的部分，取第一段非空字符串
+      const afterCode = errMessage.split(code)[1]?.trim() || ''
+      const host = afterCode.split(/\s/)[0] || ''
+      const key = `error.net_${code.toLowerCase()}` as Parameters<typeof t>[0]
+      return t(key, { host })
+    }
+  }
+  return errMessage
+}
+
+/**
+ * 解析 API 返回的错误响应体，提取结构化的错误信息
+ * 避免将原始 JSON（如 {"error":{"message":"...","type":"...","param":null,...}}）直接展示给用户
+ */
+function parseApiError(rawBody: string): { message: string; code?: string } {
+  try {
+    const parsed = JSON.parse(rawBody) as { error?: { message?: string; code?: string; type?: string } }
+    if (parsed?.error) {
+      return {
+        message: parsed.error.message || rawBody,
+        code: parsed.error.code || parsed.error.type
+      }
+    }
+  } catch {
+    // 非 JSON，原样返回（截断过长内容）
+  }
+  return { message: rawBody.length > 300 ? rawBody.slice(0, 300) + '...' : rawBody }
+}
+
 export interface AiMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
@@ -143,7 +182,7 @@ export class AiService {
   async chat(messages: AiMessage[], profileId?: string): Promise<string> {
     const profile = await this.getCurrentProfile(profileId)
     if (!profile) {
-      throw new Error('未配置 AI 模型，请先在设置中添加 AI 配置')
+      throw new Error(t('error.ai_no_config'))
     }
 
     const requestBody = {
@@ -168,25 +207,25 @@ export class AiService {
             errorMsg.includes('maximum context') ||
             (errorMsg.includes('token') && errorMsg.includes('limit')) ||
             errorCode.includes('context_length')) {
-          throw new Error(`上下文超出模型限制。请清除部分对话历史后重试。`)
+          throw new Error(t('error.context_length_exceeded'))
         }
         
-        throw new Error(`AI API 错误: ${data.error.message}`)
+        throw new Error(t('error.api_request_failed', { status: '400', data: data.error.message || t('error.api_error_generic') }))
       }
 
       return data.choices?.[0]?.message?.content || ''
     } catch (error) {
       if (error instanceof Error) {
-        if (error.message.includes('上下文超出')) {
+        if (error.message.includes(t('error.context_length_exceeded'))) {
           throw error
         }
         const msg = error.message.toLowerCase()
         if (msg.includes('context_length') || 
             msg.includes('maximum context') ||
             (msg.includes('token') && msg.includes('limit'))) {
-          throw new Error(`上下文超出模型限制。请清除部分对话历史后重试。`)
+          throw new Error(t('error.context_length_exceeded'))
         }
-        throw new Error(`AI 请求失败: ${error.message}`)
+        throw new Error(t('error.ai_request_failed', { message: translateNetworkError(error.message) }))
       }
       throw error
     }
@@ -231,7 +270,7 @@ export class AiService {
       const totalTimeoutId = setTimeout(() => {
         if (!isCompleted) {
           req.destroy()
-          complete(() => reject(new Error('AI 请求超时（已等待 10 分钟），请检查网络连接后重试。[ETIMEDOUT]')))
+          complete(() => reject(new Error(t('error.ai_total_timeout'))))
         }
       }, AI_TIMEOUT.TOTAL)
 
@@ -242,7 +281,7 @@ export class AiService {
         res.socket?.setTimeout(AI_TIMEOUT.SOCKET_IDLE)
         res.socket?.on('timeout', () => {
           req.destroy()
-          complete(() => reject(new Error('AI 服务响应中断（连接空闲超时），请稍后重试。[ETIMEDOUT]')))
+          complete(() => reject(new Error(t('error.ai_idle_timeout'))))
         })
 
         res.on('data', (chunk) => {
@@ -254,11 +293,11 @@ export class AiService {
               try {
                 resolve(JSON.parse(data))
               } catch {
-                reject(new Error(`响应解析失败: ${data}`))
+                reject(new Error(t('error.ai_parse_failed', { data })))
               }
             })
           } else {
-            complete(() => reject(new Error(t('error.api_request_failed', { status: res.statusCode || 0, data }))))
+            complete(() => reject(new Error(t('error.api_request_failed', { status: res.statusCode || 0, data: parseApiError(data).message }))))
           }
         })
       })
@@ -266,11 +305,11 @@ export class AiService {
       // 连接超时处理
       req.on('timeout', () => {
         req.destroy()
-        complete(() => reject(new Error('连接 AI 服务超时，请检查网络连接。[ETIMEDOUT]')))
+        complete(() => reject(new Error(t('error.ai_connection_timeout'))))
       })
 
       req.on('error', (err) => {
-        complete(() => reject(new Error(t('error.request_error', { message: err.message }))))
+        complete(() => reject(new Error(t('error.request_error', { message: translateNetworkError(err.message) }))))
       })
 
       // 支持中止请求
@@ -301,7 +340,7 @@ export class AiService {
   ): Promise<void> {
     const profile = await this.getCurrentProfile(profileId)
     if (!profile) {
-      onError('未配置 AI 模型，请先在设置中添加 AI 配置')
+      onError(t('error.ai_no_config'))
       return
     }
 
@@ -340,7 +379,7 @@ export class AiService {
       idleTimeoutId = setTimeout(() => {
         if (!isCompleted) {
           req?.destroy()
-          complete(() => onError('AI 服务响应中断（长时间未收到数据），请稍后重试。[ETIMEDOUT]'))
+          complete(() => onError(t('error.ai_idle_timeout')))
         }
       }, AI_TIMEOUT.SOCKET_IDLE)
     }
@@ -373,7 +412,7 @@ export class AiService {
       totalTimeoutId = setTimeout(() => {
         if (!isCompleted) {
           req?.destroy()
-          complete(() => onError('AI 请求超时（已等待 10 分钟），请检查网络连接后重试。[ETIMEDOUT]'))
+          complete(() => onError(t('error.ai_total_timeout')))
         }
       }, AI_TIMEOUT.TOTAL)
 
@@ -391,15 +430,12 @@ export class AiService {
             resetIdleTimeout()
           })
           res.on('end', () => {
-            // 检测上下文超限错误
-            const errorLower = errorData.toLowerCase()
-            if (errorLower.includes('context_length') || 
-                errorLower.includes('maximum context') ||
-                (errorLower.includes('token') && errorLower.includes('limit')) ||
-                errorLower.includes('too many tokens')) {
-              complete(() => onError(`上下文超出模型限制。请清除部分对话历史后重试。`))
+            // 尝试解析 JSON 提取结构化错误信息
+            const parsed = parseApiError(errorData)
+            if (parsed.code === 'context_length_exceeded') {
+              complete(() => onError(t('error.context_length_exceeded')))
             } else {
-              complete(() => onError(`AI API 请求失败: ${res.statusCode} - ${errorData}`))
+              complete(() => onError(t('error.api_request_failed', { status: res.statusCode || 0, data: parsed.message })))
             }
           })
           return
@@ -468,14 +504,14 @@ export class AiService {
         })
 
         res.on('error', (err) => {
-          complete(() => onError(`响应错误: ${err.message}`))
+          complete(() => onError(t('error.ai_response_error', { message: translateNetworkError(err.message) })))
         })
       })
 
       // 连接超时处理
       req.on('timeout', () => {
         req?.destroy()
-        complete(() => onError('连接 AI 服务超时，请检查网络连接。[ETIMEDOUT]'))
+        complete(() => onError(t('error.ai_connection_timeout')))
       })
 
       req.on('error', (err) => {
@@ -484,7 +520,7 @@ export class AiService {
           complete(() => onDone())
           return
         }
-        complete(() => onError(t('error.request_error', { message: err.message })))
+        complete(() => onError(t('error.request_error', { message: translateNetworkError(err.message) })))
       })
 
       // 支持中止请求
@@ -497,9 +533,9 @@ export class AiService {
       req.end()
     } catch (error) {
       if (error instanceof Error) {
-        complete(() => onError(`AI 请求失败: ${error.message}`))
+        complete(() => onError(t('error.ai_request_failed', { message: translateNetworkError(error.message) })))
       } else {
-        complete(() => onError('AI 请求失败: 未知错误'))
+        complete(() => onError(t('error.ai_request_failed_unknown')))
       }
     }
   }
@@ -515,7 +551,7 @@ export class AiService {
   ): Promise<ChatWithToolsResult> {
     const profile = await this.getCurrentProfile(profileId)
     if (!profile) {
-      throw new Error('未配置 AI 模型，请先在设置中添加 AI 配置')
+      throw new Error(t('error.ai_no_config'))
     }
 
     // 转换消息格式，处理 tool_calls 和 reasoning_content（支持 think 模型）
@@ -584,15 +620,15 @@ export class AiService {
             errorMsg.includes('too long') ||
             errorCode.includes('context_length') ||
             errorType.includes('context_length')) {
-          throw new Error(`上下文超出模型限制。请清除部分对话历史后重试。\n原始错误: ${data.error.message}`)
+          throw new Error(t('error.context_length_exceeded'))
         }
         
-        throw new Error(`AI API 错误: ${data.error.message}`)
+        throw new Error(t('error.api_request_failed', { status: '400', data: data.error.message || t('error.api_error_generic') }))
       }
 
       const choice = data.choices?.[0]
       if (!choice) {
-        throw new Error('AI 返回结果为空')
+        throw new Error(t('error.ai_empty_response'))
       }
 
       return {
@@ -602,18 +638,16 @@ export class AiService {
       }
     } catch (error) {
       if (error instanceof Error) {
-        // 如果已经是格式化的错误，直接抛出
-        if (error.message.includes('上下文超出')) {
+        if (error.message === t('error.context_length_exceeded')) {
           throw error
         }
-        // 再次检测错误消息中的上下文超限
         const msg = error.message.toLowerCase()
         if (msg.includes('context_length') || 
             msg.includes('maximum context') ||
             (msg.includes('token') && msg.includes('limit'))) {
-          throw new Error(`上下文超出模型限制。请清除部分对话历史后重试。`)
+          throw new Error(t('error.context_length_exceeded'))
         }
-        throw new Error(`AI 请求失败: ${error.message}`)
+        throw new Error(t('error.ai_request_failed', { message: translateNetworkError(error.message) }))
       }
       throw error
     }
@@ -637,7 +671,7 @@ export class AiService {
   ): Promise<void> {
     const profile = await this.getCurrentProfile(profileId)
     if (!profile) {
-      onError('未配置 AI 模型，请先在设置中添加 AI 配置')
+      onError(t('error.ai_no_config'))
       return
     }
 
@@ -703,7 +737,7 @@ export class AiService {
       idleTimeoutId = setTimeout(() => {
         if (!isCompleted) {
           req?.destroy()
-          complete(() => onError('AI 服务响应中断（长时间未收到数据），请稍后重试。[ETIMEDOUT]'))
+          complete(() => onError(t('error.ai_idle_timeout')))
         }
       }, AI_TIMEOUT.SOCKET_IDLE)
     }
@@ -791,7 +825,7 @@ export class AiService {
       totalTimeoutId = setTimeout(() => {
         if (!isCompleted) {
           req?.destroy()
-          complete(() => onError('AI 请求超时（已等待 10 分钟），请检查网络连接后重试。[ETIMEDOUT]'))
+          complete(() => onError(t('error.ai_total_timeout')))
         }
       }, AI_TIMEOUT.TOTAL)
 
@@ -810,7 +844,12 @@ export class AiService {
             resetIdleTimeout()
           })
           res.on('end', () => {
-            complete(() => onError(`AI API 请求失败: ${res.statusCode} - ${errorData}`))
+            const parsed = parseApiError(errorData)
+            if (parsed.code === 'context_length_exceeded') {
+              complete(() => onError(t('error.context_length_exceeded')))
+            } else {
+              complete(() => onError(t('error.api_request_failed', { status: res.statusCode || 0, data: parsed.message })))
+            }
           })
           return
         }
@@ -961,14 +1000,14 @@ export class AiService {
         res.on('error', (err) => {
           // AI Debug: 记录错误
           aiDebugService.logResponseError(reqId, err.message)
-          complete(() => onError(t('error.request_error', { message: err.message })))
+          complete(() => onError(t('error.request_error', { message: translateNetworkError(err.message) })))
         })
       })
 
       // 连接超时处理
       req.on('timeout', () => {
         req?.destroy()
-        const errorMsg = '连接 AI 服务超时，请检查网络连接。[ETIMEDOUT]'
+        const errorMsg = t('error.ai_connection_timeout')
         // 尝试重试
         if (!tryRetry(errorMsg, doRequest)) {
           // AI Debug: 记录超时错误
@@ -993,7 +1032,7 @@ export class AiService {
         if (!tryRetry(err.message, doRequest)) {
           // AI Debug: 记录请求错误
           aiDebugService.logResponseError(reqId, err.message)
-          complete(() => onError(`请求失败: ${err.message}`))
+          complete(() => onError(t('error.request_error', { message: translateNetworkError(err.message) })))
         }
       })
 
@@ -1016,9 +1055,9 @@ export class AiService {
         // AI Debug: 记录请求异常
         aiDebugService.logResponseError(reqId, `Exception: ${errorMsg}`)
         if (error instanceof Error) {
-          complete(() => onError(`AI 请求失败: ${error.message}`))
+          complete(() => onError(t('error.ai_request_failed', { message: translateNetworkError(error.message) })))
         } else {
-          complete(() => onError('AI 请求失败'))
+          complete(() => onError(t('error.ai_request_failed_unknown')))
         }
       }
     }
