@@ -64,7 +64,7 @@ win:
         - x64
   # 只包含Windows运行时
   extraFiles:
-    - from: "node_modules/onnxruntime-node/bin/napi-v3/win32/x64/onnxruntime.dll"
+    - from: "node_modules/@xenova/transformers/node_modules/onnxruntime-node/bin/napi-v3/win32/x64/onnxruntime.dll"
       to: "."
 
 # NSIS配置
