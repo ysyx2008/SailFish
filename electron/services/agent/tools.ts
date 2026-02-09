@@ -406,11 +406,9 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       type: 'function',
       function: {
         name: 'write_local_file',
-        description: `写入或创建本地文件。支持多种写入模式：
+        description: `写入或创建本地纯文本文件。支持多种写入模式：
 
 **注意**：如果只需要修改文件的一部分，请优先使用 edit_file 工具。
-
-**⚠️ 仅支持纯文本**：无法创建 Office 文档，.docx/.xlsx/.pptx 会自动转为 .md
 
 **支持的模式**：
 1. **新建模式（默认）**：mode='create'，仅创建新文件，如果文件已存在则报错
@@ -420,7 +418,9 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
 5. **行替换模式**：mode='replace_lines'，用 content 替换 start_line 到 end_line 的内容
 6. **正则替换模式**：mode='regex_replace'，用正则表达式查找替换
 
-⚠️ **重要文件请先备份**：修改配置文件、脚本等重要文件前，必须先执行备份命令：
+**⚠️ 禁止用此工具创建Office文档（.docx/.xlsx/.pptx）**，会被降级为.md纯文本。
+
+**⚠️ 重要文件请先备份**：修改配置文件、脚本等重要文件前，必须先执行备份命令：
 \`cp file.txt file.txt.$(date +%Y%m%d_%H%M%S).bak\`
 不需要备份：新建文件、临时文件、日志文件、明确不重要的文件`,
         parameters: {
