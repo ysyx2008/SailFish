@@ -36,7 +36,10 @@ export const schedulerTools: ToolDefinition[] = [
       description: `创建定时任务。
 
 调度类型：cron（如 "0 9 * * *"）、interval（如 "30m"）、once（ISO 格式）。
-执行目标：local（本地）或 ssh（需指定 ssh_session_id）。`,
+执行目标：local（本地）或 ssh（需指定 ssh_session_id）。
+
+**重要**：prompt 字段必须只包含「运行时要执行的动作」，绝不能包含调度/时间相关的描述。
+否则执行时 Agent 会把 prompt 当成新的用户请求，再次创建定时任务，导致无限循环。`,
       parameters: {
         type: 'object',
         properties: {
@@ -46,7 +49,7 @@ export const schedulerTools: ToolDefinition[] = [
           },
           prompt: {
             type: 'string',
-            description: '执行指令（不能直接复制用户要求，只写运行时需要执行的任务即可，否则Agent会再次设置任务）'
+            description: '运行时要执行的具体操作指令。必须去掉调度相关描述，只保留动作本身。例如用户说"每天9点检查磁盘空间"，prompt 应为"检查磁盘空间使用情况并报告"'
           },
           schedule_type: {
             type: 'string',
