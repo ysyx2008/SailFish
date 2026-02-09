@@ -2,7 +2,31 @@
 
 All notable changes to SFTerm will be documented in this file.
 
-## v8.19.2 (Latest)
+## v8.19.4 (Latest)
+
+### New Features
+- 📝 **Markdown File Opening**: Local file names now support direct click-to-open
+
+### Improvements
+- 📝 Updated scheduled task description to prevent infinite loops
+- 📝 Updated local file write tool description and warning messages
+
+## v8.19.3
+
+### New Features
+- 📊 **Excel File Reading**: Built-in file reader now supports reading Excel files (.xlsx, .xls)
+- 🤖 **AI Error Messages**: Enhanced error handling with user-friendly error messages
+
+### Improvements
+- 📊 Updated Excel reading row limit and documentation
+- 🔧 Optimized AI service error handling and connection timeout configuration
+- 📄 File reader tool now displays the name of the file being read
+
+### Bug Fixes
+- 🔧 Fixed skill metadata duplication after user skill updates
+- 🔧 Removed unnecessary onnxruntime-node dependency
+
+## v8.19.2
 
 ### Bug Fixes
 - 🔧 Fixed Chinese path paste encoding issue on Windows
