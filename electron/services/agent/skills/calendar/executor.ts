@@ -509,8 +509,8 @@ async function calendarList(
  */
 async function calendarCreate(
   args: Record<string, unknown>,
-  _toolCallId: string,
-  _config: AgentConfig,
+  toolCallId: string,
+  config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   const calendarId = args.calendar_id as string
@@ -559,6 +559,20 @@ async function calendarCreate(
     riskLevel: 'safe'
   })
 
+  // 严格模式下需要用户确认
+  if (config.executionMode === 'strict') {
+    const approved = await executor.waitForConfirmation(
+      toolCallId,
+      'calendar_create',
+      { title, start: startStr },
+      'safe'
+    )
+
+    if (!approved) {
+      return { success: false, output: '', error: t('calendar.user_rejected') }
+    }
+  }
+
   try {
     // 生成唯一 UID
     const uid = generateUID()
@@ -603,8 +617,8 @@ async function calendarCreate(
  */
 async function calendarUpdate(
   args: Record<string, unknown>,
-  _toolCallId: string,
-  _config: AgentConfig,
+  toolCallId: string,
+  config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   const calendarId = args.calendar_id as string
@@ -661,6 +675,20 @@ async function calendarUpdate(
       riskLevel: 'safe'
     })
 
+    // 严格模式下需要用户确认
+    if (config.executionMode === 'strict') {
+      const approved = await executor.waitForConfirmation(
+        toolCallId,
+        'calendar_update',
+        { event_id: eventId },
+        'safe'
+      )
+
+      if (!approved) {
+        return { success: false, output: '', error: t('calendar.user_rejected') }
+      }
+    }
+
     // 构建更新后的 iCalendar 数据
     const updatedEvent = {
       ...originalEvent,
@@ -710,8 +738,8 @@ async function calendarUpdate(
  */
 async function calendarDelete(
   args: Record<string, unknown>,
-  _toolCallId: string,
-  _config: AgentConfig,
+  toolCallId: string,
+  config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   const calendarId = args.calendar_id as string
@@ -761,6 +789,20 @@ async function calendarDelete(
       toolArgs: { count: eventsToDelete.length },
       riskLevel: 'safe'
     })
+
+    // 严格模式下需要用户确认
+    if (config.executionMode === 'strict') {
+      const approved = await executor.waitForConfirmation(
+        toolCallId,
+        'calendar_delete',
+        { count: eventsToDelete.length },
+        'safe'
+      )
+
+      if (!approved) {
+        return { success: false, output: '', error: t('calendar.user_rejected') }
+      }
+    }
 
     // 删除事件
     let deletedCount = 0
