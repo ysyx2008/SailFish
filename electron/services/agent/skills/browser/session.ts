@@ -6,6 +6,7 @@
 import type { Browser, BrowserContext, Page } from 'playwright-core'
 import { chromium, firefox } from 'playwright-core'
 import { detectBrowser, type BrowserInfo } from './detector'
+import type { RefMap } from './snapshot'
 import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
@@ -25,6 +26,8 @@ export interface BrowserSession {
   createdAt: number
   lastActivityAt: number
   profile?: string  // 登录配置名称，关闭时自动保存
+  /** 当前快照的 ref 映射（每次 snapshot 更新） */
+  refs: RefMap
 }
 
 /**
@@ -247,7 +250,8 @@ export async function createSession(
     browserInfo,
     createdAt: Date.now(),
     lastActivityAt: Date.now(),
-    profile: profileName  // 保存 profile，关闭时自动保存状态
+    profile: profileName,  // 保存 profile，关闭时自动保存状态
+    refs: {},  // 快照 ref 映射，每次 browser_snapshot 时更新
   }
   
   // 监听新页面打开事件（点击链接打开新标签页）

@@ -20,6 +20,8 @@ import {
   hasStorageState,
   DEFAULT_PROFILE
 } from './session'
+import { getSnapshot, resolveRef, getSnapshotStats } from './snapshot'
+import type { Page } from 'playwright-core'
 
 /**
  * 执行浏览器技能工具
@@ -35,6 +37,8 @@ export async function executeBrowserTool(
   switch (toolName) {
     case 'browser_launch':
       return await browserLaunch(ptyId, args, executor)
+    case 'browser_snapshot':
+      return await browserSnapshot(ptyId, args, executor)
     case 'browser_goto':
       return await browserGoto(ptyId, args, executor)
     case 'browser_screenshot':
@@ -90,6 +94,16 @@ function ensureSession(ptyId: string): NonNullable<ReturnType<typeof getSession>
 }
 
 /**
+ * 解析选择器：支持 @ref 和传统选择器
+ * 如果是 @ref 格式，返回 Playwright Locator；否则返回 null（调用方使用原始选择器）
+ */
+function resolveSelector(page: Page, selector: string, ptyId: string) {
+  const session = getSession(ptyId)
+  if (!session) return null
+  return resolveRef(page, selector, session.refs)
+}
+
+/**
  * 启动浏览器
  */
 async function browserLaunch(
@@ -128,7 +142,8 @@ async function browserLaunch(
     if (url) {
       result += `\n已打开 ${url}`
     }
-    result += `\n\n💡 关闭浏览器时会自动保存登录状态`
+    result += `\n\n💡 使用 browser_snapshot 获取页面元素和 ref 编号，可大幅提升操作准确性`
+    result += `\n💡 关闭浏览器时会自动保存登录状态`
 
     executor.addStep({
       type: 'tool_result',
@@ -143,6 +158,72 @@ async function browserLaunch(
       type: 'tool_result',
       content: `错误: ${errorMsg}`,
       toolName: 'browser_launch'
+    })
+    return { success: false, output: '', error: errorMsg }
+  }
+}
+
+/**
+ * 获取页面无障碍树快照
+ */
+async function browserSnapshot(
+  ptyId: string,
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const interactive = args.interactive as boolean | undefined
+  const compact = args.compact as boolean | undefined
+  const maxDepth = args.max_depth as number | undefined
+  const selector = args.selector as string | undefined
+
+  executor.addStep({
+    type: 'tool_call',
+    content: interactive ? '获取可交互元素快照' : '获取页面快照',
+    toolName: 'browser_snapshot',
+    toolArgs: args,
+    riskLevel: 'safe'
+  })
+
+  try {
+    const session = ensureSession(ptyId)
+    const page = getCurrentPage(session)
+    
+    const { tree, refs } = await getSnapshot(page, {
+      interactive,
+      compact,
+      maxDepth,
+      selector,
+    })
+    
+    // 将 ref 映射存入 session，供后续工具使用
+    session.refs = refs
+    
+    const stats = getSnapshotStats(tree, refs)
+    const title = await page.title()
+    const currentUrl = page.url()
+    
+    // 显示标签页信息
+    const tabsInfo = await getTabsInfo(session)
+    const tabsHint = tabsInfo.length > 1
+      ? `\n(当前第 ${session.currentPageIndex + 1}/${tabsInfo.length} 个标签页)`
+      : ''
+    
+    const statsLine = `[${stats.totalRefs} 个 ref, 其中 ${stats.interactiveRefs} 个可交互, ~${stats.estimatedTokens} tokens]`
+    const result = `页面: ${title}\nURL: ${currentUrl}${tabsHint}\n${statsLine}\n\n${tree}`
+
+    executor.addStep({
+      type: 'tool_result',
+      content: `快照已获取：${stats.totalRefs} 个 ref`,
+      toolName: 'browser_snapshot'
+    })
+
+    return { success: true, output: result }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : '获取快照失败'
+    executor.addStep({
+      type: 'tool_result',
+      content: `错误: ${errorMsg}`,
+      toolName: 'browser_snapshot'
     })
     return { success: false, output: '', error: errorMsg }
   }
@@ -177,7 +258,7 @@ async function browserGoto(
     await page.goto(url, { waitUntil })
     
     const title = await page.title()
-    const result = `已导航到 ${url}\n标题: ${title}`
+    const result = `已导航到 ${url}\n标题: ${title}\n\n💡 使用 browser_snapshot 获取页面元素和 ref 编号`
 
     executor.addStep({
       type: 'tool_result',
@@ -227,9 +308,9 @@ async function browserScreenshot(
       : path.join(os.tmpdir(), `screenshot_${Date.now()}.png`)
 
     if (selector) {
-      // 截取指定元素
-      const element = page.locator(selector)
-      await element.screenshot({ path: screenshotPath })
+      // 截取指定元素（支持 @ref）
+      const locator = resolveSelector(page, selector, ptyId) || page.locator(selector)
+      await locator.screenshot({ path: screenshotPath })
     } else {
       // 截取页面
       await page.screenshot({ 
@@ -284,7 +365,7 @@ async function browserGetContent(
     let content: string
 
     if (selector) {
-      const element = page.locator(selector)
+      const element = resolveSelector(page, selector, ptyId) || page.locator(selector)
       if (format === 'html' || format === 'markdown') {
         content = await element.innerHTML()
       } else {
@@ -394,13 +475,29 @@ async function browserClick(
     const page = getCurrentPage(session)
     const tabCountBefore = session.pages.length
     
-    if (waitForNavigation) {
-      await Promise.all([
-        page.waitForNavigation({ waitUntil: 'load' }),
-        page.click(selector)
-      ])
+    // 尝试 @ref 解析，否则用原始选择器
+    const locator = resolveSelector(page, selector, ptyId)
+    
+    if (locator) {
+      // 使用 ref 定位
+      if (waitForNavigation) {
+        await Promise.all([
+          page.waitForNavigation({ waitUntil: 'load' }),
+          locator.click()
+        ])
+      } else {
+        await locator.click()
+      }
     } else {
-      await page.click(selector)
+      // 回退到传统选择器
+      if (waitForNavigation) {
+        await Promise.all([
+          page.waitForNavigation({ waitUntil: 'load' }),
+          page.click(selector)
+        ])
+      } else {
+        await page.click(selector)
+      }
     }
     
     // 等待一下，看是否有新标签页打开
@@ -415,6 +512,9 @@ async function browserClick(
       const newUrl = newPage.url()
       result += `\n\n⚠️ 点击后打开了新标签页！已自动切换到新标签页。\n新标签页: ${newTitle}\nURL: ${newUrl}\n当前共 ${tabCountAfter} 个标签页`
     }
+    
+    // 点击后 ref 可能过期，提示 AI 重新 snapshot
+    result += `\n\n💡 页面可能已变化，建议重新调用 browser_snapshot 获取最新状态`
 
     executor.addStep({
       type: 'tool_result',
@@ -425,12 +525,16 @@ async function browserClick(
     return { success: true, output: result }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '点击失败'
+    // 如果是 ref 操作失败，给出更友好的提示
+    const hint = selector.startsWith('@') 
+      ? `\n💡 ref 可能已过期，请重新调用 browser_snapshot 获取最新 ref` 
+      : ''
     executor.addStep({
       type: 'tool_result',
-      content: `错误: ${errorMsg}`,
+      content: `错误: ${errorMsg}${hint}`,
       toolName: 'browser_click'
     })
-    return { success: false, output: '', error: errorMsg }
+    return { success: false, output: '', error: `${errorMsg}${hint}` }
   }
 }
 
@@ -463,14 +567,27 @@ async function browserType(
     const session = ensureSession(ptyId)
     const page = getCurrentPage(session)
     
-    if (clearFirst) {
-      await page.fill(selector, text)
+    // 尝试 @ref 解析
+    const locator = resolveSelector(page, selector, ptyId)
+    
+    if (locator) {
+      if (clearFirst) {
+        await locator.fill(text)
+      } else {
+        await locator.pressSequentially(text)
+      }
+      if (pressEnter) {
+        await locator.press('Enter')
+      }
     } else {
-      await page.type(selector, text)
-    }
-
-    if (pressEnter) {
-      await page.press(selector, 'Enter')
+      if (clearFirst) {
+        await page.fill(selector, text)
+      } else {
+        await page.type(selector, text)
+      }
+      if (pressEnter) {
+        await page.press(selector, 'Enter')
+      }
     }
 
     const result = pressEnter 
@@ -486,12 +603,15 @@ async function browserType(
     return { success: true, output: result }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '输入失败'
+    const hint = selector.startsWith('@')
+      ? `\n💡 ref 可能已过期，请重新调用 browser_snapshot 获取最新 ref`
+      : ''
     executor.addStep({
       type: 'tool_result',
-      content: `错误: ${errorMsg}`,
+      content: `错误: ${errorMsg}${hint}`,
       toolName: 'browser_type'
     })
-    return { success: false, output: '', error: errorMsg }
+    return { success: false, output: '', error: `${errorMsg}${hint}` }
   }
 }
 
@@ -581,7 +701,13 @@ async function browserWait(
     if (delay) {
       await new Promise(resolve => setTimeout(resolve, delay))
     } else if (selector) {
-      await page.waitForSelector(selector, { timeout })
+      // @ref 不支持 waitForSelector，使用 locator.waitFor 代替
+      const locator = resolveSelector(page, selector, ptyId)
+      if (locator) {
+        await locator.waitFor({ state: 'visible', timeout })
+      } else {
+        await page.waitForSelector(selector, { timeout })
+      }
     } else {
       return { success: false, output: '', error: '请指定 selector 或 delay' }
     }

@@ -43,6 +43,51 @@ export const browserTools: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'browser_snapshot',
+      description: `获取页面的无障碍树快照。这是与页面交互前的**推荐第一步**。
+
+**核心优势**：
+- 返回页面所有元素的结构化无障碍树
+- 每个可交互元素带有 ref 编号（如 @e1, @e2）
+- 后续操作可直接使用 ref，无需猜测 CSS 选择器
+- 比获取 HTML 内容**节省约 90% token**
+
+**推荐工作流**：
+1. browser_snapshot 获取页面结构和 ref
+2. 使用 ref 执行操作：browser_click { selector: "@e2" }
+3. 页面变化后重新 snapshot
+
+**模式**：
+- 默认：完整无障碍树
+- interactive: true：只显示可交互元素（按钮、链接、输入框等）- 最省 token
+- compact: true：移除无内容的结构元素`,
+      parameters: {
+        type: 'object',
+        properties: {
+          interactive: {
+            type: 'boolean',
+            description: '只返回可交互元素（默认 false）。推荐在首次了解页面时使用 true'
+          },
+          compact: {
+            type: 'boolean',
+            description: '移除空结构元素，精简输出（默认 false）'
+          },
+          max_depth: {
+            type: 'number',
+            description: '最大树深度（可选，限制层级）'
+          },
+          selector: {
+            type: 'string',
+            description: '只获取指定元素范围内的快照（CSS 选择器，可选）'
+          }
+        },
+        required: []
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'browser_goto',
       description: `导航到指定网址。
 
@@ -73,10 +118,12 @@ export const browserTools: ToolDefinition[] = [
       name: 'browser_screenshot',
       description: `对当前页面截图并保存。
 
+**💡 提示**：大多数情况下 browser_snapshot 比截图更高效。截图适用于需要视觉确认的场景。
+
 **模式**：
 - 默认：截取可视区域
 - full_page: true：截取整个页面（包括滚动区域）
-- selector：只截取指定元素`,
+- selector：只截取指定元素（支持 @ref）`,
       parameters: {
         type: 'object',
         properties: {
@@ -136,7 +183,8 @@ export const browserTools: ToolDefinition[] = [
       name: 'browser_click',
       description: `点击页面元素。
 
-**选择器支持**：
+**选择器支持（推荐使用 ref）**：
+- **ref 引用（推荐）**：\`@e1\`, \`@e2\` - 使用 browser_snapshot 返回的 ref 编号，最准确
 - CSS 选择器：\`#id\`, \`.class\`, \`button\`
 - 文本选择器：\`text=登录\`, \`text=提交\`
 - 角色选择器：\`role=button[name="确定"]\`
@@ -164,7 +212,8 @@ export const browserTools: ToolDefinition[] = [
       name: 'browser_type',
       description: `在输入框中输入文本。
 
-**选择器支持**：
+**选择器支持（推荐使用 ref）**：
+- **ref 引用（推荐）**：\`@e3\` - 使用 browser_snapshot 返回的 ref 编号
 - CSS 选择器：\`input[name="username"]\`
 - 文本选择器：\`text=用户名\`（会找到相关的输入框）
 - 占位符：\`placeholder=请输入用户名\`
