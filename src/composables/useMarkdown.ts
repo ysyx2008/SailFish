@@ -1,9 +1,89 @@
 /**
  * Markdown 渲染 composable
- * 处理 Markdown 解析和代码块交互
+ * 处理 Markdown 解析、代码块交互和文件路径点击
  */
 import { marked } from 'marked'
 import { useTerminalStore } from '../stores/terminal'
+
+/**
+ * 检测文本是否为本地文件路径
+ * 支持三种格式：
+ * - Unix/macOS/Linux 绝对路径：/path/to/file
+ * - 用户主目录路径：~/path/to/file
+ * - Windows 路径：C:\path\to\file 或 C:/path/to/file
+ */
+const isLocalFilePath = (text: string): boolean => {
+  const trimmed = text.trim()
+  if (trimmed.length < 2) return false
+  // Unix/macOS/Linux 绝对路径
+  if (/^\/[^\s<>*?"]+$/.test(trimmed) && trimmed.length > 1) return true
+  // 用户主目录路径
+  if (/^~\/[^\s<>*?"]+$/.test(trimmed)) return true
+  // Windows 路径 (C:\ 或 C:/)
+  if (/^[A-Za-z]:[\\\/][^\s<>*?"]*$/.test(trimmed)) return true
+  return false
+}
+
+/**
+ * HTML 属性值转义
+ */
+const escapeAttr = (text: string): string => {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+/**
+ * 解码 HTML 实体（用于从 marked 输出中还原原始文本）
+ */
+const decodeHtmlEntities = (text: string): string => {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+}
+
+/**
+ * 后处理 HTML：将文本节点中的裸文件路径转为可点击链接
+ * 仅处理不在 <a>、<code>、<pre> 标签内的文本
+ */
+const wrapBareFilePaths = (html: string): string => {
+  // 匹配常见文件路径模式（支持中文、日文、韩文、欧洲字符等 Unicode 路径）
+  // Unix/macOS: /path/to/file（至少两级路径或带扩展名的单级路径）
+  // Windows: C:\path\to\file 或 C:/path/to/file
+  // Home: ~/path/to/file
+  const filePathPattern = /(?:\/(?:[\w\u4e00-\u9fff\u3000-\u303f\u00C0-\u024F\.\-\+\@\#\$\(\)\[\]% ]+\/)*[\w\u4e00-\u9fff\u3000-\u303f\u00C0-\u024F\.\-\+\@\#\$\(\)\[\]% ]+\.[\w]{1,10}|~\/[\w\u4e00-\u9fff\u3000-\u303f\u00C0-\u024F\.\-\+\@\#\$\(\)\[\]%\/\\ ]+|[A-Za-z]:[\\\/][\w\u4e00-\u9fff\u3000-\u303f\u00C0-\u024F\.\-\+\@\#\$\(\)\[\]%\/\\ ]+)/g
+
+  // 拆分 HTML 为标签和文本节点
+  const parts = html.split(/(<[^>]+>)/g)
+  const depth = { a: 0, code: 0, pre: 0 }
+
+  return parts.map(part => {
+    if (part.startsWith('<')) {
+      // 跟踪标签嵌套深度
+      if (/<a[\s>]/i.test(part)) depth.a++
+      else if (/<\/a>/i.test(part)) depth.a = Math.max(0, depth.a - 1)
+      if (/<code[\s>]/i.test(part)) depth.code++
+      else if (/<\/code>/i.test(part)) depth.code = Math.max(0, depth.code - 1)
+      if (/<pre[\s>]/i.test(part)) depth.pre++
+      else if (/<\/pre>/i.test(part)) depth.pre = Math.max(0, depth.pre - 1)
+      return part
+    }
+
+    // 在 <a>、<code>、<pre> 内不做处理
+    if (depth.a > 0 || depth.code > 0 || depth.pre > 0) return part
+
+    return part.replace(filePathPattern, (match) => {
+      const trimmed = match.trim()
+      if (!isLocalFilePath(trimmed)) return match
+      return `<a class="file-path-link" data-file-path="${escapeAttr(trimmed)}" title="点击打开文件">${match}</a>`
+    })
+  }).join('')
+}
 
 export function useMarkdown() {
   const terminalStore = useTerminalStore()
@@ -43,9 +123,45 @@ export function useMarkdown() {
     return `<div class="code-block"><div class="code-header"><span>${lang}</span><div class="code-actions">${sendBtn}${copyBtn}</div></div><pre><code>${escapedCode}</code></pre></div>`
   }
 
-  // 自定义行内代码渲染
-  renderer.codespan = (code: string) => {
-    return `<code class="inline-code">${code}</code>`
+  // 自定义行内代码渲染 - 检测文件路径并添加可点击标记
+  renderer.codespan = (codeOrToken: string | { text: string }) => {
+    const text = typeof codeOrToken === 'object' ? (codeOrToken.text || '') : codeOrToken
+    // 解码 HTML 实体后检测是否为文件路径
+    const decoded = decodeHtmlEntities(text)
+
+    if (isLocalFilePath(decoded)) {
+      return `<code class="inline-code file-path-link" data-file-path="${escapeAttr(decoded)}" title="点击打开文件">${text}</code>`
+    }
+
+    return `<code class="inline-code">${text}</code>`
+  }
+
+  // 自定义链接渲染 - 检测文件路径链接
+  renderer.link = (hrefOrToken: string | { href: string; title?: string | null; text: string; tokens?: unknown[] }, title?: string | null, text?: string) => {
+    let href: string, linkTitle: string, linkText: string
+
+    if (typeof hrefOrToken === 'object' && hrefOrToken !== null) {
+      href = hrefOrToken.href || ''
+      linkTitle = hrefOrToken.title || ''
+      // 新版 marked 的 text 可能包含已渲染的 HTML
+      linkText = hrefOrToken.text || ''
+    } else {
+      href = hrefOrToken as string
+      linkTitle = title || ''
+      linkText = text || ''
+    }
+
+    const decodedHref = decodeHtmlEntities(href)
+
+    // 文件路径链接：使用 data-file-path 标记，通过事件委托处理点击
+    if (isLocalFilePath(decodedHref)) {
+      const titleAttr = linkTitle ? ` title="${escapeAttr(linkTitle)}"` : ' title="点击打开文件"'
+      return `<a class="file-path-link" data-file-path="${escapeAttr(decodedHref)}"${titleAttr}>${linkText}</a>`
+    }
+
+    // 普通链接：在新标签页打开
+    const titleAttr = linkTitle ? ` title="${escapeAttr(linkTitle)}"` : ''
+    return `<a href="${escapeAttr(href)}"${titleAttr} target="_blank" rel="noopener noreferrer">${linkText}</a>`
   }
 
   // 配置 marked
@@ -60,7 +176,10 @@ export function useMarkdown() {
     if (!text) return ''
     
     try {
-      return marked.parse(text) as string
+      let html = marked.parse(text) as string
+      // 后处理：将文本中的裸文件路径转为可点击链接
+      html = wrapBareFilePaths(html)
+      return html
     } catch (e) {
       // 如果解析失败，返回转义后的纯文本
       return text
@@ -81,9 +200,28 @@ export function useMarkdown() {
     return codeElement.textContent || ''
   }
 
-  // 事件委托处理代码块按钮点击
+  // 事件委托处理代码块按钮点击 + 文件路径链接点击
   const handleCodeBlockClick = async (event: MouseEvent) => {
     const target = event.target as HTMLElement
+
+    // 处理文件路径点击（通过 data-file-path 属性标记）
+    const filePathEl = target.closest('[data-file-path]') as HTMLElement
+    if (filePathEl) {
+      event.preventDefault()
+      event.stopPropagation()
+      const filePath = filePathEl.dataset.filePath
+      if (filePath && window.electronAPI?.shell?.openPath) {
+        try {
+          const errorMsg = await window.electronAPI.shell.openPath(filePath)
+          if (errorMsg) {
+            console.error('打开文件失败:', errorMsg)
+          }
+        } catch (error) {
+          console.error('打开文件失败:', error)
+        }
+      }
+      return
+    }
     
     // 查找带有 data-action 属性的按钮（可能点击的是 SVG 或其子元素）
     const button = target.closest('.code-copy-btn, .code-send-btn') as HTMLElement

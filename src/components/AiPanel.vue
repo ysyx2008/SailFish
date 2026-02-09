@@ -2919,6 +2919,41 @@ onUnmounted(() => {
   text-decoration: underline;
 }
 
+/* 可点击的文件路径链接 */
+.markdown-content :deep(.file-path-link) {
+  cursor: pointer;
+  color: var(--accent-primary);
+  text-decoration: none;
+  transition: opacity 0.15s, background-color 0.15s;
+}
+
+.markdown-content :deep(.file-path-link:hover) {
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
+/* 行内代码形式的文件路径（带底部虚线指示可点击） */
+.markdown-content :deep(code.file-path-link) {
+  cursor: pointer;
+  color: var(--accent-primary);
+  border-bottom: 1px dashed var(--accent-primary);
+}
+
+.markdown-content :deep(code.file-path-link:hover) {
+  background: rgba(64, 158, 255, 0.12);
+  text-decoration: none;
+}
+
+/* 普通 <a> 形式的文件路径链接（文本节点中检测到的裸路径） */
+.markdown-content :deep(a.file-path-link) {
+  cursor: pointer;
+}
+
+.markdown-content :deep(a.file-path-link::before) {
+  content: '📄 ';
+  font-size: 0.85em;
+}
+
 .markdown-content :deep(hr) {
   border: none;
   border-top: 1px solid var(--border-color);
