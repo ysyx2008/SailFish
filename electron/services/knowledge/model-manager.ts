@@ -272,7 +272,6 @@ export class ModelManager extends EventEmitter {
         
         await this.downloadFile(fileUrl, filePath, (downloaded, total) => {
           // 估算总体进度
-          const fileProgress = downloaded / Math.max(total, 1)
           const overallProgress = (totalDownloaded + downloaded) / totalSize * 100
           
           if (onProgress) {

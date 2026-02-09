@@ -38,14 +38,11 @@ import {
   getSession,
   createSession,
   addContent,
-  getSessionContent,
   markDirty,
   markSaved,
   closeSession,
   setPageSettings,
-  getPageSettings,
   setDocumentSettings,
-  getDocumentSettings,
   type SectionContent,
   type PageSettings,
   type DocumentSettings
@@ -53,7 +50,6 @@ import {
 import {
   markdownToDocx,
   PRESET_STYLES,
-  getStyleConfig,
   extractStyleFromTemplate,
   getStyleExtractionPrompt,
   type WordStyleConfig

@@ -8,7 +8,7 @@
  * - 多语言支持
  */
 
-import { Menu, MenuItem, MenuItemConstructorOptions, shell, BrowserWindow, app } from 'electron'
+import { Menu, MenuItemConstructorOptions, shell, BrowserWindow, app } from 'electron'
 
 // 菜单翻译
 const menuI18n = {

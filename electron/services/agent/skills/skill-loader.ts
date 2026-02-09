@@ -3,9 +3,9 @@
  * 管理技能的动态加载和会话状态
  */
 
-import type { Skill, SkillState, SkillLoadResult, SkillSessionManager } from './types'
+import type { SkillState, SkillLoadResult, SkillSessionManager } from './types'
 import type { ToolDefinition } from '../tools'
-import { getSkill, getAllSkills, getSkillsSummary } from './registry'
+import { getSkill, getSkillsSummary } from './registry'
 
 /**
  * 技能会话管理器实现

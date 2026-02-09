@@ -2,7 +2,7 @@
  * agent.ts 单元测试
  * 测试 Agent 基类的核心功能：执行循环、状态管理、工具调用、回调机制等
  */
-import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 // Mock Electron 模块（必须在导入 Agent 之前）
 vi.mock('electron', () => ({
@@ -29,14 +29,12 @@ vi.mock('fs', async (importOriginal) => {
 })
 
 import { Agent } from '../agent'
-import type { ToolDefinition, ChatWithToolsResult, AiMessage } from '../../ai.service'
+import type { ToolDefinition, AiMessage } from '../../ai.service'
 import type { 
   AgentContext, 
   AgentServices, 
   PromptOptions,
   AgentCallbacks,
-  RiskLevel,
-  AgentConfig,
   AgentStep
 } from '../types'
 import { TaskMemoryStore } from '../task-memory'
@@ -538,7 +536,6 @@ describe('Agent run method', () => {
 
     it('should execute multiple parallelizable tools in parallel', async () => {
       // 测试多个可并行工具确实是并行执行的
-      const executionOrder: string[] = []
       const toolCalls = [
         { id: 'call-1', type: 'function' as const, function: { name: 'read_file', arguments: '{"path":"a.txt"}' } },
         { id: 'call-2', type: 'function' as const, function: { name: 'read_file', arguments: '{"path":"b.txt"}' } },

@@ -4,7 +4,7 @@
  */
 
 import type { DAVClient, DAVCalendar } from 'tsdav'
-import type { Calendar, CalendarAccountConfig, CalDAVServerConfig } from './types'
+import type { Calendar, CalDAVServerConfig } from './types'
 
 export interface CalendarSession {
   /** 账户 ID */

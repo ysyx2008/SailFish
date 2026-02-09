@@ -19,10 +19,7 @@ import {
 import type { 
   Calendar, 
   CalendarEvent, 
-  CalendarAccountConfig,
-  CreateEventParams,
-  UpdateEventParams,
-  DeleteEventParams
+  CalendarAccountConfig
 } from './types'
 
 // 动态导入的模块

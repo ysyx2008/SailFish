@@ -3,7 +3,7 @@
  * 抽象 PTY 和 SSH 终端的公共接口，让 Agent 可以同时处理两种终端
  */
 
-import type { PtyService, CommandResult, TerminalStatus } from './pty.service'
+import type { PtyService, TerminalStatus } from './pty.service'
 import type { SshService } from './ssh.service'
 import { getTerminalStateService, type TerminalStateService } from './terminal-state.service'
 

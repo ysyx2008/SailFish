@@ -2,7 +2,7 @@
  * prompt-builder.ts 单元测试
  * 测试系统提示构建器的各种功能：MBTI 风格、主机环境、SSH/本地终端差异、知识库等
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 
 // Mock Electron 模块（必须在导入 PromptBuilder 之前）
 vi.mock('electron', () => ({
@@ -32,10 +32,9 @@ import {
   PromptBuilder, 
   getMbtiStylePrompt, 
   getAllMbtiTypes,
-  buildSystemPrompt,
-  type BuildSystemPromptOptions
+  buildSystemPrompt
 } from '../prompt-builder'
-import type { AgentContext, HostProfileServiceInterface, ExecutionMode } from '../types'
+import type { AgentContext, HostProfileServiceInterface } from '../types'
 
 // ==================== 辅助函数 ====================
 

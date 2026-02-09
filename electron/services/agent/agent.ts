@@ -8,7 +8,7 @@
  * - TerminalAgent（子类）：终端特定的工具列表、系统提示、终端交互
  */
 
-import type { AiService, AiMessage, ToolCall, ChatWithToolsResult, ToolDefinition } from '../ai.service'
+import type { AiMessage, ToolCall, ChatWithToolsResult, ToolDefinition } from '../ai.service'
 import type {
   AgentConfig,
   AgentStep,
@@ -21,11 +21,9 @@ import type {
   PromptOptions,
   KnowledgeContextResult,
   RunStatus,
-  StepResult,
   RiskLevel,
   ExecutionMode,
   AgentExecutionPhase,
-  WorkerAgentOptions,
   PendingConfirmation
 } from './types'
 import { DEFAULT_AGENT_CONFIG } from './types'
@@ -993,8 +991,6 @@ export abstract class Agent {
     result: ToolResult,
     toolArgs: Record<string, unknown>
   ): void {
-    const toolName = toolCall.function.name
-    
     // AI Debug: 记录工具执行结果
     if (run.requestId) {
       const resultContent = result.success 

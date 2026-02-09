@@ -14,8 +14,7 @@ import {
   createSession,
   closeSession,
   getServerConfig,
-  getAllSessions,
-  type EmailServerConfig
+  getAllSessions
 } from './session'
 
 // 动态导入的模块

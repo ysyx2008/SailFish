@@ -13,12 +13,11 @@ import type {
   AggregatedResult,
   OrchestratorMessage,
   OrchestratorCallbacks,
-  BatchConfirmation,
   WorkerAgentOptions
 } from './orchestrator-types'
 import { DEFAULT_ORCHESTRATOR_CONFIG } from './orchestrator-types'
-import type { AgentPlan, AgentPlanStep, AgentStep, RiskLevel } from './types'
-import { getOrchestratorTools, isOrchestratorTool } from './orchestrator-tools'
+import type { AgentPlanStep } from './types'
+import { getOrchestratorTools } from './orchestrator-tools'
 import type { AiService, AiMessage } from '../ai.service'
 import type { SshSession } from '../config.service'
 

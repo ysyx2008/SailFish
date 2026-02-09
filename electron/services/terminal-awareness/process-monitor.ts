@@ -4,7 +4,7 @@
  */
 import type { PtyService } from '../pty.service'
 import type { SshService } from '../ssh.service'
-import type { TerminalStateService, TerminalState, CommandExecution } from '../terminal-state.service'
+import type { TerminalStateService, TerminalState } from '../terminal-state.service'
 
 /** 进程运行状态 */
 export type ProcessStatus = 

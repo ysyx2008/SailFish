@@ -669,8 +669,6 @@ export class SchedulerService {
    */
   private checkMissedTasks(): void {
     const tasks = this.store.getTasks()
-    const now = Date.now()
-
     for (const task of tasks) {
       if (!task.enabled) continue
       

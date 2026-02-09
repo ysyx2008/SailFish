@@ -10,8 +10,8 @@
 import type { PtyService } from '../pty.service'
 import type { SshService } from '../ssh.service'
 import type { TerminalStateService, TerminalState, CommandExecution } from '../terminal-state.service'
-import { ProcessMonitor, getProcessMonitor, initProcessMonitor, type ProcessState, type ProcessStatus } from './process-monitor'
-import { getScreenAnalysisFromFrontend, getVisibleContentFromBuffer, type ScreenAnalysis } from '../screen-content.service'
+import { ProcessMonitor, getProcessMonitor, initProcessMonitor, type ProcessState } from './process-monitor'
+import { getScreenAnalysisFromFrontend, getVisibleContentFromBuffer } from '../screen-content.service'
 
 // ==================== 类型定义 ====================
 

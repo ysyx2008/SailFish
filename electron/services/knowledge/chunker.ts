@@ -3,7 +3,7 @@
  * 将长文档切分成适合向量化的小块
  * 支持 Markdown 标题识别，为 chunk 添加上下文前缀
  */
-import type { ChunkOptions, ChunkStrategy, DocumentChunk, ChunkMetadata } from './types'
+import type { ChunkOptions, DocumentChunk, ChunkMetadata } from './types'
 
 // 注：LangChain 的 MarkdownTextSplitter 用于按 Markdown 语法分割
 // 我们自己实现了更适合 RAG 的标题识别分块逻辑
@@ -296,8 +296,6 @@ export class Chunker {
   ): DocumentChunk[] {
     const chunks: DocumentChunk[] = []
     const paragraphs = text.split(PARAGRAPH_SEPARATOR)
-    const maxChars = estimateCharsFromTokens(this.options.maxChunkSize)
-    
     let currentChunk = ''
     let currentStart = 0
     let chunkIndex = 0

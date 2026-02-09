@@ -6,7 +6,6 @@
 import type { AiMessage } from '../ai.service'
 import type { TaskMemory, AgentStep } from './types'
 import type { TaskMemoryStore } from './task-memory'
-import { t } from './i18n'
 
 // ==================== 类型定义 ====================
 

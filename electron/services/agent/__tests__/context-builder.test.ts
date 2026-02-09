@@ -7,9 +7,7 @@ import {
   calculateBudget,
   detectContextReference,
   buildRecentTasksContext,
-  buildTaskHistoryContext,
-  type ContextBudget,
-  type CompressionLevel
+  buildTaskHistoryContext
 } from '../context-builder'
 import { TaskMemoryStore } from '../task-memory'
 import type { AgentStep } from '../types'

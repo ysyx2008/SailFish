@@ -2,7 +2,6 @@ import { app, BrowserWindow, ipcMain, shell, dialog, session } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import path, { join } from 'path'
 import * as fs from 'fs'
-import { execSync } from 'child_process'
 
 // 开发模式下禁用硬件加速，避免热重载时 GPU 进程崩溃
 // 这个调用必须在 app.whenReady() 之前
@@ -196,13 +195,12 @@ import {
   decryptAllData,
   clearSavedPassword
 } from './services/knowledge/crypto'
-import { initTerminalStateService, getTerminalStateService, type TerminalState, type CwdChangeEvent, type CommandExecution, type CommandExecutionEvent } from './services/terminal-state.service'
-import { initTerminalAwarenessService, getTerminalAwarenessService, type TerminalAwareness } from './services/terminal-awareness'
+import { initTerminalStateService, type TerminalState, type CwdChangeEvent, type CommandExecution, type CommandExecutionEvent } from './services/terminal-state.service'
+import { initTerminalAwarenessService, type TerminalAwareness } from './services/terminal-awareness'
 import { initScreenContentService } from './services/screen-content.service'
 import { menuService } from './services/menu.service'
 import { aiDebugService } from './services/ai-debug.service'
-import { getSchedulerService, type SchedulerService, type CreateTaskParams, type TaskExecutionResult } from './services/scheduler.service'
-import type { ScheduledTask, TaskHistoryRecord, ScheduleConfig, TargetConfig, TaskOptions } from './services/scheduler.store'
+import { getSchedulerService, type CreateTaskParams } from './services/scheduler.service'
 
 // 禁用 GPU 加速可能导致的问题（可选）
 // app.disableHardwareAcceleration()
@@ -376,15 +374,12 @@ async function migrateHostNotesToKnowledge(): Promise<void> {
   
   try {
     const profiles = hostProfileService.getAllProfiles()
-    let totalMigrated = 0
-    
     for (const profile of profiles) {
       if (profile.notes && profile.notes.length > 0) {
         const migrated = await knowledgeService.migrateNotesToKnowledge(
           profile.hostId, 
           profile.notes
         )
-        totalMigrated += migrated
         
         // 迁移完成后清空旧的 notes（但保留其他档案信息）
         if (migrated > 0) {

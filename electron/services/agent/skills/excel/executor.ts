@@ -4,7 +4,7 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
-import type { ToolResult, AgentConfig, RiskLevel } from '../../types'
+import type { ToolResult, AgentConfig } from '../../types'
 import type { ToolExecutorConfig } from '../../tool-executor'
 import { t } from '../../i18n'
 import { getTerminalStateService } from '../../../terminal-state.service'
@@ -13,8 +13,7 @@ import {
   getSession,
   createSession,
   markDirty,
-  closeSession,
-  getSessionsSummary
+  closeSession
 } from './session'
 
 /**

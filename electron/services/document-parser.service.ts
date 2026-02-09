@@ -432,11 +432,9 @@ export class DocumentParserService {
         rowIndex++
 
         const cells: string[] = []
-        let colIndex = 0
         
         row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
           if (colNumber > maxCols) return
-          colIndex++
           
           // 获取单元格显示值
           let cellValue = ''

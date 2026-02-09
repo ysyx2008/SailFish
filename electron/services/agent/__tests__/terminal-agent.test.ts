@@ -29,8 +29,7 @@ vi.mock('fs', async (importOriginal) => {
 })
 
 import { TerminalAgent } from '../terminal-agent'
-import type { AgentServices, AgentContext, PromptOptions } from '../types'
-import type { ToolDefinition } from '../../ai.service'
+import type { AgentServices, AgentContext } from '../types'
 
 // ==================== Mock 实现 ====================
 
