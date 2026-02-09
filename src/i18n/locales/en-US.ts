@@ -795,18 +795,6 @@ export default {
       confirmLoadHistory: 'Current session has existing conversations. Loading history will overwrite them. Continue?',
       historyLoaded: 'History loaded, you can continue the conversation'
     },
-    // Quick hints
-    quickHints: {
-      title: 'Quick Tasks (click to fill)',
-      checkDisk: 'Check disk space',
-      checkDiskText: 'Check disk usage and list largest files if over 80%',
-      viewProcess: 'View processes',
-      viewProcessText: 'Show top 10 processes by memory usage',
-      findLargeFiles: 'Find large files',
-      findLargeFilesText: 'Find files larger than 100MB in current directory',
-      checkService: 'Check services',
-      checkServiceText: 'Check status of nginx/docker and other common services'
-    },
     toolNames: {
       execute_command: 'Execute Command',
       read_file: 'Read File',

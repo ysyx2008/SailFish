@@ -795,18 +795,6 @@ export default {
       confirmLoadHistory: '当前会话已有对话记录，加载历史将覆盖现有内容。确定要继续吗？',
       historyLoaded: '已加载历史对话，可以继续提问'
     },
-    // 快捷提示
-    quickHints: {
-      title: '快捷任务（点击填入）',
-      checkDisk: '检查磁盘空间',
-      checkDiskText: '检查磁盘使用情况，如果超过 80% 就列出最大的文件',
-      viewProcess: '查看进程状态',
-      viewProcessText: '显示占用内存最多的前 10 个进程',
-      findLargeFiles: '查找大文件',
-      findLargeFilesText: '在当前目录找出大于 100MB 的文件',
-      checkService: '检查服务状态',
-      checkServiceText: '检查 nginx/docker 等常用服务的运行状态'
-    },
     toolNames: {
       execute_command: '执行命令',
       read_file: '读取文件',

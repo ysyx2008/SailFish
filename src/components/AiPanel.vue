@@ -257,16 +257,6 @@ const changeAiProfile = async (profileId: string) => {
   await configStore.setActiveAiProfile(profileId)
 }
 
-// ==================== 快捷提示 ====================
-
-// 快捷提示列表（点击后填入输入框）
-const quickHints = computed(() => [
-  { icon: '🔍', label: t('ai.quickHints.checkDisk'), text: t('ai.quickHints.checkDiskText') },
-  { icon: '📊', label: t('ai.quickHints.viewProcess'), text: t('ai.quickHints.viewProcessText') },
-  { icon: '📁', label: t('ai.quickHints.findLargeFiles'), text: t('ai.quickHints.findLargeFilesText') },
-  { icon: '🔧', label: t('ai.quickHints.checkService'), text: t('ai.quickHints.checkServiceText') }
-])
-
 // ==================== 历史对话相关 ====================
 
 // 截断文本
@@ -1011,20 +1001,6 @@ onUnmounted(() => {
             <li>{{ t('ai.agentWelcome.caution1') }}</li>
             <li>{{ t('ai.agentWelcome.caution2') }}</li>
           </ul>
-
-          <!-- 快捷提示 -->
-          <p class="welcome-section-title">💡 {{ t('ai.quickHints.title') }}</p>
-          <div class="quick-hints">
-            <button 
-              v-for="hint in quickHints" 
-              :key="hint.text"
-              class="quick-hint-btn"
-              @click="inputText = hint.text"
-            >
-              <span class="hint-icon">{{ hint.icon }}</span>
-              <span class="hint-text">{{ hint.label }}</span>
-            </button>
-          </div>
 
           <!-- 最近对话历史 -->
           <div class="recent-history-section">
@@ -2256,48 +2232,6 @@ onUnmounted(() => {
 
 .strict-badge.free {
   background: #ef4444;
-}
-
-/* ==================== 快捷提示样式 ==================== */
-
-.quick-hints {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  margin: 8px 0 16px;
-}
-
-.quick-hint-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 12px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: left;
-}
-
-.quick-hint-btn:hover {
-  background: var(--bg-secondary);
-  border-color: var(--accent-primary);
-  color: var(--text-primary);
-  transform: translateY(-1px);
-}
-
-.quick-hint-btn .hint-icon {
-  flex-shrink: 0;
-  font-size: 14px;
-}
-
-.quick-hint-btn .hint-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* ==================== 历史对话列表样式 ==================== */
