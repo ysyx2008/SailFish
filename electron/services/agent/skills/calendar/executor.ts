@@ -509,8 +509,8 @@ async function calendarList(
  */
 async function calendarCreate(
   args: Record<string, unknown>,
-  toolCallId: string,
-  config: AgentConfig,
+  _toolCallId: string,
+  _config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   const calendarId = args.calendar_id as string
@@ -550,25 +550,14 @@ async function calendarCreate(
     confirmInfo += `**${t('calendar.recurrence')}**: ${t(recurrenceKey as any)}\n`
   }
 
-  // 请求用户确认
+  // 显示创建信息
   executor.addStep({
     type: 'tool_call',
     content: confirmInfo,
     toolName: 'calendar_create',
     toolArgs: { title, start: startStr, location },
-    riskLevel: 'moderate'
+    riskLevel: 'safe'
   })
-
-  const approved = await executor.waitForConfirmation(
-    toolCallId,
-    'calendar_create',
-    { title, start: startStr },
-    'moderate'
-  )
-
-  if (!approved) {
-    return { success: false, output: '', error: t('calendar.user_rejected') }
-  }
 
   try {
     // 生成唯一 UID
@@ -614,8 +603,8 @@ async function calendarCreate(
  */
 async function calendarUpdate(
   args: Record<string, unknown>,
-  toolCallId: string,
-  config: AgentConfig,
+  _toolCallId: string,
+  _config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   const calendarId = args.calendar_id as string
@@ -663,25 +652,14 @@ async function calendarUpdate(
     confirmInfo += `**${t('calendar.event')}**: ${originalEvent.title}\n\n`
     confirmInfo += `**${t('calendar.changes')}**:\n${changes.map(c => `- ${c}`).join('\n')}`
 
-    // 请求用户确认
+    // 显示修改信息
     executor.addStep({
       type: 'tool_call',
       content: confirmInfo,
       toolName: 'calendar_update',
       toolArgs: { event_id: eventId, changes },
-      riskLevel: 'moderate'
+      riskLevel: 'safe'
     })
-
-    const approved = await executor.waitForConfirmation(
-      toolCallId,
-      'calendar_update',
-      { event_id: eventId },
-      'moderate'
-    )
-
-    if (!approved) {
-      return { success: false, output: '', error: t('calendar.user_rejected') }
-    }
 
     // 构建更新后的 iCalendar 数据
     const updatedEvent = {
@@ -732,8 +710,8 @@ async function calendarUpdate(
  */
 async function calendarDelete(
   args: Record<string, unknown>,
-  toolCallId: string,
-  config: AgentConfig,
+  _toolCallId: string,
+  _config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   const calendarId = args.calendar_id as string
@@ -775,25 +753,14 @@ async function calendarDelete(
     confirmInfo += `**${t('calendar.events_to_delete')}** (${eventsToDelete.length}):\n`
     confirmInfo += eventsToDelete.map(e => `- ${e.title}`).join('\n')
 
-    // 请求用户确认
+    // 显示删除信息
     executor.addStep({
       type: 'tool_call',
       content: confirmInfo,
       toolName: 'calendar_delete',
       toolArgs: { count: eventsToDelete.length },
-      riskLevel: 'dangerous'
+      riskLevel: 'safe'
     })
-
-    const approved = await executor.waitForConfirmation(
-      toolCallId,
-      'calendar_delete',
-      { count: eventsToDelete.length },
-      'dangerous'
-    )
-
-    if (!approved) {
-      return { success: false, output: '', error: t('calendar.user_rejected') }
-    }
 
     // 删除事件
     let deletedCount = 0
