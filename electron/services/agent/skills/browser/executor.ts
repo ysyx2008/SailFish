@@ -95,12 +95,27 @@ function ensureSession(ptyId: string): NonNullable<ReturnType<typeof getSession>
 
 /**
  * 解析选择器：支持 @ref 和传统选择器
- * 如果是 @ref 格式，返回 Playwright Locator；否则返回 null（调用方使用原始选择器）
+ * - @ref 格式且找到：返回 Playwright Locator
+ * - @ref 格式但未找到：抛出错误（而不是回退到无效的 CSS 选择器）
+ * - 非 @ref 格式：返回 null（调用方使用原始选择器）
  */
 function resolveSelector(page: Page, selector: string, ptyId: string) {
   const session = getSession(ptyId)
   if (!session) return null
-  return resolveRef(page, selector, session.refs)
+  
+  const locator = resolveRef(page, selector, session.refs)
+  
+  // 如果看起来像 ref（以 @ 开头）但没找到，抛出明确错误
+  if (!locator && selector.startsWith('@')) {
+    const refId = selector.slice(1)
+    const availableRefs = Object.keys(session.refs)
+    const hint = availableRefs.length > 0
+      ? `当前可用的 ref: ${availableRefs.slice(0, 10).map(r => '@' + r).join(', ')}${availableRefs.length > 10 ? '...' : ''}`
+      : '当前没有可用的 ref，请先调用 browser_snapshot'
+    throw new Error(`ref "${refId}" 未找到。${hint}`)
+  }
+  
+  return locator
 }
 
 /**
@@ -256,6 +271,9 @@ async function browserGoto(
     const session = ensureSession(ptyId)
     const page = getCurrentPage(session)
     await page.goto(url, { waitUntil })
+    
+    // 导航后旧 ref 失效，清空
+    session.refs = {}
     
     const title = await page.title()
     const result = `已导航到 ${url}\n标题: ${title}\n\n💡 使用 browser_snapshot 获取页面元素和 ref 编号`
@@ -876,11 +894,14 @@ async function browserSwitchTab(
     
     switchToTab(session, index)
     
+    // 切换标签页后旧 ref 失效，清空
+    session.refs = {}
+    
     const page = getCurrentPage(session)
     const title = await page.title()
     const url = page.url()
     
-    const result = `已切换到标签页 ${index}\n标题: ${title}\nURL: ${url}`
+    const result = `已切换到标签页 ${index}\n标题: ${title}\nURL: ${url}\n\n💡 使用 browser_snapshot 获取当前页面的 ref 编号`
 
     executor.addStep({
       type: 'tool_result',
