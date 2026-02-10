@@ -77,6 +77,78 @@ export interface CalDAVServerConfig {
 }
 
 /**
+ * 待办事项（VTODO）
+ */
+export interface CalendarTodo {
+  /** 待办唯一标识 */
+  uid: string
+  /** 待办标题 */
+  title: string
+  /** 截止日期 */
+  due?: Date
+  /** 开始日期 */
+  start?: Date
+  /** 完成日期 */
+  completed?: Date
+  /** 优先级（1-9，1 最高，9 最低，0 表示未设置） */
+  priority?: number
+  /** 状态 */
+  status?: 'needs-action' | 'in-process' | 'completed' | 'cancelled'
+  /** 完成百分比（0-100） */
+  percentComplete?: number
+  /** 描述 */
+  description?: string
+  /** 分类标签 */
+  categories?: string[]
+  /** 原始数据（用于更新） */
+  etag?: string
+  /** 事件 URL（CalDAV） */
+  url?: string
+}
+
+/**
+ * 创建待办事项参数
+ */
+export interface CreateTodoParams {
+  /** 日历 ID */
+  calendarId: string
+  /** 待办标题 */
+  title: string
+  /** 截止日期（ISO 8601 格式） */
+  due?: string
+  /** 优先级（1=最高, 5=中, 9=最低） */
+  priority?: number
+  /** 描述 */
+  description?: string
+  /** 分类标签 */
+  categories?: string[]
+}
+
+/**
+ * 更新待办事项参数
+ */
+export interface UpdateTodoParams {
+  /** 日历 ID */
+  calendarId: string
+  /** 待办 ID */
+  todoId: string
+  /** 新标题 */
+  title?: string
+  /** 新截止日期 */
+  due?: string
+  /** 新优先级 */
+  priority?: number
+  /** 新状态 */
+  status?: 'needs-action' | 'in-process' | 'completed' | 'cancelled'
+  /** 完成百分比 */
+  percentComplete?: number
+  /** 新描述 */
+  description?: string
+  /** 新分类标签 */
+  categories?: string[]
+}
+
+/**
  * 创建事件参数
  */
 export interface CreateEventParams {

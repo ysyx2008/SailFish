@@ -19,6 +19,7 @@ import {
 import type { 
   Calendar, 
   CalendarEvent, 
+  CalendarTodo,
   CalendarAccountConfig
 } from './types'
 
@@ -80,6 +81,14 @@ export async function executeCalendarTool(
       return await calendarUpdate(args, toolCallId, config, executor)
     case 'calendar_delete':
       return await calendarDelete(args, toolCallId, config, executor)
+    case 'todo_list':
+      return await todoList(args, executor)
+    case 'todo_create':
+      return await todoCreate(args, toolCallId, config, executor)
+    case 'todo_update':
+      return await todoUpdate(args, toolCallId, config, executor)
+    case 'todo_delete':
+      return await todoDelete(args, toolCallId, config, executor)
     default:
       return { success: false, output: '', error: t('error.unknown_tool', { name: toolName }) }
   }
@@ -835,6 +844,591 @@ async function calendarDelete(
   }
 }
 
+// ============ 待办事项功能 ============
+
+/**
+ * 列出待办事项
+ */
+async function todoList(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const calendarId = args.calendar_id as string
+  const statusFilter = args.status as string | undefined
+  const limit = Math.min(Math.max((args.limit as number) || 50, 1), 200)
+
+  if (!calendarId) {
+    return { success: false, output: '', error: t('calendar.todo_calendar_id_required') }
+  }
+
+  const session = getFirstOpenSession()
+  if (!session || !session.client) {
+    return { success: false, output: '', error: t('calendar.not_connected') }
+  }
+
+  try {
+    // 获取认证凭据
+    const credential = await getCalendarCredential(session.accountId)
+    const authHeader = `Basic ${Buffer.from(`${session.username}:${credential}`).toString('base64')}`
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, prefer-const
+    let calendarObjects: any[] = []
+
+    // 方法1：使用 REPORT calendar-query 查询 VTODO
+    try {
+      // 构建状态过滤条件
+      let compFilter = '<C:comp-filter name="VTODO"'
+      if (statusFilter && statusFilter !== 'all') {
+        const statusMap: Record<string, string> = {
+          'needs-action': 'NEEDS-ACTION',
+          'in-process': 'IN-PROCESS',
+          'completed': 'COMPLETED',
+          'cancelled': 'CANCELLED'
+        }
+        const icalStatus = statusMap[statusFilter]
+        if (icalStatus) {
+          compFilter += `>
+            <C:prop-filter name="STATUS">
+              <C:text-match collation="i;ascii-casemap">${icalStatus}</C:text-match>
+            </C:prop-filter>
+          </C:comp-filter>`
+        } else {
+          compFilter += '/>'
+        }
+      } else if (!statusFilter) {
+        // 默认不返回已完成和已取消的
+        compFilter += '/>'
+      } else {
+        compFilter += '/>'
+      }
+
+      const reportBody = `<?xml version="1.0" encoding="utf-8" ?>
+<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:prop>
+    <D:getetag/>
+    <C:calendar-data/>
+  </D:prop>
+  <C:filter>
+    <C:comp-filter name="VCALENDAR">
+      ${compFilter}
+    </C:comp-filter>
+  </C:filter>
+</C:calendar-query>`
+
+      const reportResponse = await fetch(calendarId, {
+        method: 'REPORT',
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/xml; charset=utf-8',
+          'Depth': '1'
+        },
+        body: reportBody
+      })
+
+      const reportText = await reportResponse.text()
+
+      if (reportResponse.status === 207) {
+        const calDataMatches = reportText.match(/<[^>]*calendar-data[^>]*>([\s\S]*?)<\/[^>]*calendar-data>/gi) || []
+
+        for (const match of calDataMatches) {
+          let data = match.replace(/<[^>]+>/g, '').trim()
+          if (data.startsWith('<![CDATA[')) {
+            data = data.replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '')
+          }
+          data = data.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+
+          if (data.includes('VTODO')) {
+            calendarObjects.push({
+              url: calendarId,
+              data: data
+            })
+          }
+        }
+      }
+    } catch {
+      // REPORT 失败，将尝试备选方法
+    }
+
+    // 方法2：如果 REPORT 没有返回数据，使用 PROPFIND + GET
+    if (calendarObjects.length === 0) {
+      // eslint-disable-next-line prefer-const
+      let todoUrls: string[] = []
+      try {
+        const propfindBody = `<?xml version="1.0" encoding="utf-8" ?>
+<D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:prop>
+    <D:getetag/>
+    <D:getcontenttype/>
+  </D:prop>
+</D:propfind>`
+
+        const propfindResponse = await fetch(calendarId, {
+          method: 'PROPFIND',
+          headers: {
+            'Authorization': authHeader,
+            'Content-Type': 'application/xml; charset=utf-8',
+            'Depth': '1'
+          },
+          body: propfindBody
+        })
+
+        const responseText = await propfindResponse.text()
+        const hrefMatches = responseText.match(/<[^>]*href[^>]*>([^<]+)<\/[^>]*href>/gi) || []
+
+        for (const match of hrefMatches) {
+          const hrefContent = match.replace(/<[^>]+>/g, '').trim()
+          if (hrefContent === calendarId ||
+              hrefContent === calendarId.replace(/\/$/, '') ||
+              !hrefContent) {
+            continue
+          }
+          if (hrefContent.includes('.ics') || hrefContent.match(/\/[A-Za-z0-9_-]{10,}\/?$/)) {
+            const fullUrl = hrefContent.startsWith('http') ? hrefContent : new URL(hrefContent, calendarId).href
+            todoUrls.push(fullUrl)
+          }
+        }
+      } catch {
+        // PROPFIND 失败
+      }
+
+      // 并行获取，筛选包含 VTODO 的
+      if (todoUrls.length > 0) {
+        const fetchLimit = Math.min(todoUrls.length, 200)
+        const urlsToFetch = todoUrls.slice(0, fetchLimit)
+
+        const BATCH_SIZE = 20
+        for (let i = 0; i < urlsToFetch.length; i += BATCH_SIZE) {
+          const batch = urlsToFetch.slice(i, i + BATCH_SIZE)
+          const batchPromises = batch.map(async (todoUrl) => {
+            try {
+              const response = await fetch(todoUrl, {
+                method: 'GET',
+                headers: { 'Authorization': authHeader }
+              })
+              if (response.ok) {
+                const data = await response.text()
+                if (data.includes('VTODO')) {
+                  return {
+                    url: todoUrl,
+                    etag: response.headers.get('etag') || undefined,
+                    data
+                  }
+                }
+              }
+              return null
+            } catch {
+              return null
+            }
+          })
+
+          const batchResults = await Promise.all(batchPromises)
+          for (const result of batchResults) {
+            if (result) calendarObjects.push(result)
+          }
+        }
+      }
+    }
+
+    // 解析待办事项
+    const todos: CalendarTodo[] = []
+    for (const obj of calendarObjects) {
+      if (!obj.data) continue
+      const todo = parseICalTodo(obj.data, obj.url, obj.etag)
+      if (todo) {
+        // 默认过滤：不返回已完成/已取消的（除非明确请求）
+        if (!statusFilter) {
+          if (todo.status === 'completed' || todo.status === 'cancelled') continue
+        } else if (statusFilter !== 'all') {
+          if (todo.status !== statusFilter) continue
+        }
+        todos.push(todo)
+        if (todos.length >= limit) break
+      }
+    }
+
+    // 按优先级排序（高优先级在前），优先级相同则按截止日期排序
+    todos.sort((a, b) => {
+      const pa = a.priority || 0
+      const pb = b.priority || 0
+      if (pa !== pb) {
+        // 有优先级的排在无优先级前面，优先级数值小的更高
+        if (pa === 0) return 1
+        if (pb === 0) return -1
+        return pa - pb
+      }
+      // 有截止日期的排在前面
+      if (a.due && b.due) return a.due.getTime() - b.due.getTime()
+      if (a.due) return -1
+      if (b.due) return 1
+      return 0
+    })
+
+    if (todos.length === 0) {
+      const output = t('calendar.no_todos')
+      executor.addStep({
+        type: 'tool_result',
+        content: output,
+        toolName: 'todo_list',
+        toolResult: output
+      })
+      return { success: true, output }
+    }
+
+    const todoListItems = todos.map(todo => {
+      const statusIcon = todo.status === 'completed' ? '✅' :
+        todo.status === 'in-process' ? '🔄' :
+        todo.status === 'cancelled' ? '❌' : '⬜'
+      const priorityStr = todo.priority ? ` ${formatPriority(todo.priority)}` : ''
+      const dueStr = todo.due ? `\n  📅 ${t('calendar.todo_due')}: ${formatDateTime(todo.due)}` : ''
+      const percentStr = (todo.percentComplete !== undefined && todo.percentComplete > 0) 
+        ? `\n  📊 ${todo.percentComplete}%` : ''
+      const categoriesStr = todo.categories?.length 
+        ? `\n  🏷️ ${todo.categories.join(', ')}` : ''
+      return `- ${statusIcon} **${todo.title}**${priorityStr}${dueStr}${percentStr}${categoriesStr}\n  ID: \`${todo.uid}\``
+    })
+
+    const filterLabel = statusFilter === 'all' ? t('calendar.todo_all') :
+      statusFilter === 'completed' ? t('calendar.todo_status_completed') :
+      statusFilter === 'in-process' ? t('calendar.todo_status_in_process') :
+      statusFilter === 'cancelled' ? t('calendar.todo_status_cancelled') :
+      t('calendar.todo_status_pending')
+
+    const output = `## ${t('calendar.todo_list_title')} (${filterLabel})\n\n${t('calendar.total_todos', { count: todos.length })}\n\n${todoListItems.join('\n\n')}`
+    executor.addStep({
+      type: 'tool_result',
+      content: output,
+      toolName: 'todo_list',
+      toolResult: truncateOutput(output, 800)
+    })
+
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : t('calendar.todo_list_failed')
+    return { success: false, output: '', error: errorMsg }
+  }
+}
+
+/**
+ * 创建待办事项
+ */
+async function todoCreate(
+  args: Record<string, unknown>,
+  toolCallId: string,
+  config: AgentConfig,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const calendarId = args.calendar_id as string
+  const title = args.title as string
+  const dueStr = args.due as string | undefined
+  const priority = args.priority as number | undefined
+  const description = args.description as string | undefined
+  const categories = args.categories as string[] | undefined
+
+  if (!calendarId || !title) {
+    return { success: false, output: '', error: t('calendar.todo_params_required') }
+  }
+
+  const session = getFirstOpenSession()
+  if (!session || !session.client) {
+    return { success: false, output: '', error: t('calendar.not_connected') }
+  }
+
+  // 构建确认信息
+  let confirmInfo = `${t('calendar.todo_create_confirm')}\n\n`
+  confirmInfo += `**${t('calendar.title')}**: ${title}\n`
+  if (dueStr) confirmInfo += `**${t('calendar.todo_due')}**: ${dueStr}\n`
+  if (priority) confirmInfo += `**${t('calendar.todo_priority')}**: ${formatPriority(priority)}\n`
+  if (description) confirmInfo += `**${t('calendar.todo_description')}**: ${description}\n`
+  if (categories?.length) confirmInfo += `**${t('calendar.todo_categories')}**: ${categories.join(', ')}\n`
+
+  executor.addStep({
+    type: 'tool_call',
+    content: confirmInfo,
+    toolName: 'todo_create',
+    toolArgs: { title, due: dueStr },
+    riskLevel: 'safe'
+  })
+
+  if (config.executionMode === 'strict') {
+    const approved = await executor.waitForConfirmation(
+      toolCallId,
+      'todo_create',
+      { title, due: dueStr },
+      'safe'
+    )
+
+    if (!approved) {
+      return { success: false, output: '', error: t('calendar.user_rejected') }
+    }
+  }
+
+  try {
+    const uid = generateUID()
+    const dueDate = dueStr ? new Date(dueStr) : undefined
+
+    const icalData = buildICalTodo({
+      uid,
+      title,
+      due: dueDate,
+      priority,
+      description,
+      categories,
+      status: 'needs-action'
+    })
+
+    await session.client.createCalendarObject({
+      calendar: { url: calendarId },
+      filename: `${uid}.ics`,
+      iCalString: icalData
+    })
+
+    const output = t('calendar.todo_created', { title })
+    executor.addStep({
+      type: 'tool_result',
+      content: output,
+      toolName: 'todo_create',
+      toolResult: output
+    })
+
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : t('calendar.todo_create_failed')
+    return { success: false, output: '', error: errorMsg }
+  }
+}
+
+/**
+ * 更新待办事项
+ */
+async function todoUpdate(
+  args: Record<string, unknown>,
+  toolCallId: string,
+  config: AgentConfig,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const calendarId = args.calendar_id as string
+  const todoId = args.todo_id as string
+  const title = args.title as string | undefined
+  const dueStr = args.due as string | undefined
+  const priority = args.priority as number | undefined
+  const status = args.status as string | undefined
+  const percentComplete = args.percent_complete as number | undefined
+  const description = args.description as string | undefined
+  const categories = args.categories as string[] | undefined
+
+  if (!calendarId || !todoId) {
+    return { success: false, output: '', error: t('calendar.todo_id_required') }
+  }
+
+  const session = getFirstOpenSession()
+  if (!session || !session.client) {
+    return { success: false, output: '', error: t('calendar.not_connected') }
+  }
+
+  try {
+    // 通过 UID 获取待办事项
+    const todoObj = await fetchTodoByUid(calendarId, todoId, session)
+    if (!todoObj) {
+      return { success: false, output: '', error: t('calendar.todo_not_found', { id: todoId }) }
+    }
+
+    const originalTodo = parseICalTodo(todoObj.data, todoObj.url, todoObj.etag)
+    if (!originalTodo) {
+      return { success: false, output: '', error: t('calendar.event_parse_failed') }
+    }
+
+    // 构建变更列表
+    const changes: string[] = []
+    if (title && title !== originalTodo.title) changes.push(`${t('calendar.title')}: ${originalTodo.title} → ${title}`)
+    if (dueStr) {
+      const oldDue = originalTodo.due ? formatDateTime(originalTodo.due) : t('calendar.todo_no_due')
+      changes.push(`${t('calendar.todo_due')}: ${oldDue} → ${dueStr}`)
+    }
+    if (priority !== undefined && priority !== originalTodo.priority) {
+      changes.push(`${t('calendar.todo_priority')}: ${formatPriority(originalTodo.priority || 0)} → ${formatPriority(priority)}`)
+    }
+    if (status && status !== originalTodo.status) {
+      changes.push(`${t('calendar.todo_status')}: ${formatTodoStatus(originalTodo.status)} → ${formatTodoStatus(status)}`)
+    }
+    if (percentComplete !== undefined && percentComplete !== originalTodo.percentComplete) {
+      changes.push(`${t('calendar.todo_progress')}: ${originalTodo.percentComplete || 0}% → ${percentComplete}%`)
+    }
+    if (description !== undefined && description !== originalTodo.description) {
+      changes.push(`${t('calendar.todo_description')}: ${t('calendar.todo_updated_field')}`)
+    }
+    if (categories && JSON.stringify(categories) !== JSON.stringify(originalTodo.categories)) {
+      changes.push(`${t('calendar.todo_categories')}: ${categories.join(', ')}`)
+    }
+
+    if (changes.length === 0) {
+      return { success: false, output: '', error: t('calendar.no_changes') }
+    }
+
+    let confirmInfo = `${t('calendar.todo_update_confirm')}\n\n`
+    confirmInfo += `**${t('calendar.todo_item')}**: ${originalTodo.title}\n\n`
+    confirmInfo += `**${t('calendar.changes')}**:\n${changes.map(c => `- ${c}`).join('\n')}`
+
+    executor.addStep({
+      type: 'tool_call',
+      content: confirmInfo,
+      toolName: 'todo_update',
+      toolArgs: { todo_id: todoId, changes },
+      riskLevel: 'safe'
+    })
+
+    if (config.executionMode === 'strict') {
+      const approved = await executor.waitForConfirmation(
+        toolCallId,
+        'todo_update',
+        { todo_id: todoId },
+        'safe'
+      )
+
+      if (!approved) {
+        return { success: false, output: '', error: t('calendar.user_rejected') }
+      }
+    }
+
+    // 构建更新后的 VTODO
+    const updatedTodo = {
+      uid: originalTodo.uid,
+      title: title || originalTodo.title,
+      due: dueStr ? new Date(dueStr) : originalTodo.due,
+      priority: priority !== undefined ? priority : originalTodo.priority,
+      status: (status || originalTodo.status || 'needs-action') as CalendarTodo['status'],
+      percentComplete: percentComplete !== undefined ? percentComplete : originalTodo.percentComplete,
+      description: description !== undefined ? description : originalTodo.description,
+      categories: categories || originalTodo.categories,
+      start: originalTodo.start
+    }
+
+    // 如果标记为完成，自动设置完成时间和百分比
+    if (status === 'completed') {
+      updatedTodo.percentComplete = 100
+    }
+
+    const icalData = buildICalTodo(updatedTodo)
+
+    await session.client.updateCalendarObject({
+      calendarObject: {
+        url: todoObj.url,
+        etag: todoObj.etag,
+        data: icalData
+      }
+    })
+
+    const output = t('calendar.todo_updated', { title: updatedTodo.title })
+    executor.addStep({
+      type: 'tool_result',
+      content: output,
+      toolName: 'todo_update',
+      toolResult: output
+    })
+
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : t('calendar.todo_update_failed')
+    return { success: false, output: '', error: errorMsg }
+  }
+}
+
+/**
+ * 删除待办事项
+ */
+async function todoDelete(
+  args: Record<string, unknown>,
+  toolCallId: string,
+  config: AgentConfig,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const calendarId = args.calendar_id as string
+  const todoIds = args.todo_ids as string[]
+
+  if (!calendarId || !todoIds || todoIds.length === 0) {
+    return { success: false, output: '', error: t('calendar.todo_ids_required') }
+  }
+
+  const session = getFirstOpenSession()
+  if (!session || !session.client) {
+    return { success: false, output: '', error: t('calendar.not_connected') }
+  }
+
+  try {
+    const todosToDelete: Array<{ url: string; etag?: string; title: string }> = []
+
+    for (const todoId of todoIds) {
+      const todoObj = await fetchTodoByUid(calendarId, todoId, session)
+      if (todoObj) {
+        const todo = parseICalTodo(todoObj.data, todoObj.url, todoObj.etag)
+        if (todo) {
+          todosToDelete.push({
+            url: todoObj.url,
+            etag: todoObj.etag,
+            title: todo.title
+          })
+        }
+      }
+    }
+
+    if (todosToDelete.length === 0) {
+      return { success: false, output: '', error: t('calendar.todos_not_found') }
+    }
+
+    let confirmInfo = `${t('calendar.todo_delete_confirm')}\n\n`
+    confirmInfo += `**${t('calendar.todos_to_delete')}** (${todosToDelete.length}):\n`
+    confirmInfo += todosToDelete.map(e => `- ${e.title}`).join('\n')
+
+    executor.addStep({
+      type: 'tool_call',
+      content: confirmInfo,
+      toolName: 'todo_delete',
+      toolArgs: { count: todosToDelete.length },
+      riskLevel: 'safe'
+    })
+
+    if (config.executionMode === 'strict') {
+      const approved = await executor.waitForConfirmation(
+        toolCallId,
+        'todo_delete',
+        { count: todosToDelete.length },
+        'safe'
+      )
+
+      if (!approved) {
+        return { success: false, output: '', error: t('calendar.user_rejected') }
+      }
+    }
+
+    let deletedCount = 0
+    for (const todo of todosToDelete) {
+      try {
+        await session.client.deleteCalendarObject({
+          calendarObject: {
+            url: todo.url,
+            etag: todo.etag
+          }
+        })
+        deletedCount++
+      } catch (e) {
+        console.error(`[CalendarSkill] Failed to delete todo: ${todo.title}`, e)
+      }
+    }
+
+    const output = t('calendar.todos_deleted', { count: deletedCount })
+    executor.addStep({
+      type: 'tool_result',
+      content: output,
+      toolName: 'todo_delete',
+      toolResult: output
+    })
+
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : t('calendar.todo_delete_failed')
+    return { success: false, output: '', error: errorMsg }
+  }
+}
+
 // ============ 辅助函数 ============
 
 /**
@@ -1306,4 +1900,328 @@ function formatDateTime(date: Date): string {
 function truncateOutput(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text
   return text.slice(0, maxLength) + '\n\n... (' + t('calendar.output_truncated') + ')'
+}
+
+// ============ 待办事项辅助函数 ============
+
+/**
+ * 通过待办 UID 直接获取单个待办事项
+ */
+async function fetchTodoByUid(
+  calendarId: string,
+  todoUid: string,
+  session: import('./session').CalendarSession
+): Promise<{ url: string; etag?: string; data: string } | null> {
+  const credential = await getCalendarCredential(session.accountId)
+  if (!credential) return null
+
+  const authHeader = `Basic ${Buffer.from(`${session.username}:${credential}`).toString('base64')}`
+
+  // 尝试多种 URL 格式（与事件相同的策略）
+  const possibleUrls = [
+    `${calendarId}${todoUid}.ics`,
+    `${calendarId}${encodeURIComponent(todoUid)}.ics`,
+    `${calendarId.replace(/\/$/, '')}/${todoUid}.ics`,
+    `${calendarId.replace(/\/$/, '')}/${encodeURIComponent(todoUid)}.ics`
+  ]
+
+  for (const todoUrl of possibleUrls) {
+    try {
+      const response = await fetch(todoUrl, {
+        method: 'GET',
+        headers: { 'Authorization': authHeader }
+      })
+
+      if (response.ok) {
+        const data = await response.text()
+        if (data.includes('VTODO')) {
+          return {
+            url: todoUrl,
+            etag: response.headers.get('etag') || undefined,
+            data
+          }
+        }
+      }
+    } catch {
+      // 继续尝试下一个 URL
+    }
+  }
+
+  // 如果直接 URL 不行，使用 REPORT 查询
+  try {
+    const reportBody = `<?xml version="1.0" encoding="utf-8" ?>
+<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:prop>
+    <D:getetag/>
+    <C:calendar-data/>
+  </D:prop>
+  <C:filter>
+    <C:comp-filter name="VCALENDAR">
+      <C:comp-filter name="VTODO">
+        <C:prop-filter name="UID">
+          <C:text-match collation="i;octet">${todoUid}</C:text-match>
+        </C:prop-filter>
+      </C:comp-filter>
+    </C:comp-filter>
+  </C:filter>
+</C:calendar-query>`
+
+    const response = await fetch(calendarId, {
+      method: 'REPORT',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/xml; charset=utf-8',
+        'Depth': '1'
+      },
+      body: reportBody
+    })
+
+    if (response.status === 207) {
+      const responseText = await response.text()
+
+      const hrefMatch = responseText.match(/<[^>]*href[^>]*>([^<]+)<\/[^>]*href>/i)
+      const todoUrl = hrefMatch ?
+        (hrefMatch[1].startsWith('http') ? hrefMatch[1] : new URL(hrefMatch[1], calendarId).href) :
+        calendarId
+
+      const etagMatch = responseText.match(/<[^>]*getetag[^>]*>([^<]+)<\/[^>]*getetag>/i)
+      const etag = etagMatch ? etagMatch[1].replace(/"/g, '') : undefined
+
+      const dataMatch = responseText.match(/<[^>]*calendar-data[^>]*>([\s\S]*?)<\/[^>]*calendar-data>/i)
+      if (dataMatch) {
+        let data = dataMatch[1].trim()
+        if (data.startsWith('<![CDATA[')) {
+          data = data.replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '')
+        }
+        data = data.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+
+        if (data.includes('VTODO')) {
+          return { url: todoUrl, etag, data }
+        }
+      }
+    }
+  } catch {
+    // REPORT 失败
+  }
+
+  return null
+}
+
+/**
+ * 解析 iCalendar VTODO 数据
+ */
+function parseICalTodo(icalData: string | undefined, url?: string, etag?: string): CalendarTodo | null {
+  if (!icalData) return null
+
+  try {
+    // 处理折叠行
+    const unfoldedData = icalData.replace(/\r?\n[ \t]/g, '')
+    const lines = unfoldedData.split(/\r?\n/)
+
+    let uid = ''
+    let summary = ''
+    let due = ''
+    let dueTzid = ''
+    let dtstart = ''
+    let dtstartTzid = ''
+    let completedDate = ''
+    let priority = 0
+    let status = ''
+    let percentComplete = -1
+    let description = ''
+    let categories = ''
+    let inVTodo = false
+
+    const extractTzid = (line: string): string => {
+      const tzidMatch = line.match(/TZID=([^:;]+)/)
+      return tzidMatch ? tzidMatch[1] : ''
+    }
+
+    for (const line of lines) {
+      if (line.startsWith('BEGIN:VTODO')) {
+        inVTodo = true
+        continue
+      }
+      if (line.startsWith('END:VTODO')) {
+        break
+      }
+      if (!inVTodo) continue
+
+      if (line.startsWith('UID:')) {
+        uid = line.substring(4).trim()
+      } else if (line.startsWith('SUMMARY')) {
+        const colonIdx = line.indexOf(':')
+        if (colonIdx !== -1) {
+          summary = unescapeICalText(line.substring(colonIdx + 1).trim())
+        }
+      } else if (line.startsWith('DUE')) {
+        const match = line.match(/DUE[^:]*:(.+)/)
+        if (match) {
+          due = match[1].trim()
+          dueTzid = extractTzid(line)
+        }
+      } else if (line.startsWith('DTSTART')) {
+        const match = line.match(/DTSTART[^:]*:(.+)/)
+        if (match) {
+          dtstart = match[1].trim()
+          dtstartTzid = extractTzid(line)
+        }
+      } else if (line.startsWith('COMPLETED')) {
+        const match = line.match(/COMPLETED[^:]*:(.+)/)
+        if (match) {
+          completedDate = match[1].trim()
+        }
+      } else if (line.startsWith('PRIORITY:')) {
+        priority = parseInt(line.substring(9).trim()) || 0
+      } else if (line.startsWith('STATUS:')) {
+        status = line.substring(7).trim()
+      } else if (line.startsWith('PERCENT-COMPLETE:')) {
+        percentComplete = parseInt(line.substring(17).trim()) || 0
+      } else if (line.startsWith('DESCRIPTION')) {
+        const colonIdx = line.indexOf(':')
+        if (colonIdx !== -1) {
+          description = unescapeICalText(line.substring(colonIdx + 1).trim())
+        }
+      } else if (line.startsWith('CATEGORIES')) {
+        const colonIdx = line.indexOf(':')
+        if (colonIdx !== -1) {
+          categories = line.substring(colonIdx + 1).trim()
+        }
+      }
+    }
+
+    if (!uid) return null
+
+    if (!summary) {
+      summary = '(无标题)'
+    }
+
+    // 映射 iCal STATUS 到内部状态
+    const statusMap: Record<string, CalendarTodo['status']> = {
+      'NEEDS-ACTION': 'needs-action',
+      'IN-PROCESS': 'in-process',
+      'COMPLETED': 'completed',
+      'CANCELLED': 'cancelled'
+    }
+
+    // 按未转义的逗号分割（即不是 \, 的逗号），然后反转义
+    const parsedCategories = categories
+      ? categories.split(/(?<!\\),/).map(c => unescapeICalText(c.trim())).filter(Boolean)
+      : undefined
+
+    return {
+      uid,
+      title: summary,
+      due: due ? parseICalDate(due, dueTzid) : undefined,
+      start: dtstart ? parseICalDate(dtstart, dtstartTzid) : undefined,
+      completed: completedDate ? parseICalDate(completedDate) : undefined,
+      priority: priority || undefined,
+      status: statusMap[status] || 'needs-action',
+      percentComplete: percentComplete >= 0 ? percentComplete : undefined,
+      description: description || undefined,
+      categories: parsedCategories,
+      url,
+      etag
+    }
+  } catch (error) {
+    console.error('[CalendarSkill] Failed to parse iCal todo:', error, 'Data:', icalData?.substring(0, 500))
+    return null
+  }
+}
+
+/**
+ * 构建 iCalendar VTODO 数据
+ */
+function buildICalTodo(params: {
+  uid: string
+  title: string
+  due?: Date
+  start?: Date
+  priority?: number
+  status?: CalendarTodo['status']
+  percentComplete?: number
+  description?: string
+  categories?: string[]
+}): string {
+  const { uid, title, due, start, priority, status, percentComplete, description, categories } = params
+
+  const now = new Date()
+  const dtstamp = formatICalDate(now, false)
+
+  let ical = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//SFTerminal//Calendar//EN
+BEGIN:VTODO
+UID:${uid}
+DTSTAMP:${dtstamp}
+SUMMARY:${escapeICalText(title)}`
+
+  if (start) {
+    ical += `\nDTSTART:${formatICalDate(start, false)}`
+  }
+
+  if (due) {
+    ical += `\nDUE:${formatICalDate(due, false)}`
+  }
+
+  if (priority !== undefined && priority > 0) {
+    ical += `\nPRIORITY:${priority}`
+  }
+
+  // 映射状态到 iCal 格式
+  const statusICalMap: Record<string, string> = {
+    'needs-action': 'NEEDS-ACTION',
+    'in-process': 'IN-PROCESS',
+    'completed': 'COMPLETED',
+    'cancelled': 'CANCELLED'
+  }
+  if (status) {
+    ical += `\nSTATUS:${statusICalMap[status] || 'NEEDS-ACTION'}`
+  }
+
+  if (percentComplete !== undefined && percentComplete >= 0) {
+    ical += `\nPERCENT-COMPLETE:${percentComplete}`
+  }
+
+  // 如果状态为完成，添加完成时间
+  if (status === 'completed') {
+    ical += `\nCOMPLETED:${formatICalDate(now, false)}`
+  }
+
+  if (description) {
+    ical += `\nDESCRIPTION:${escapeICalText(description)}`
+  }
+
+  if (categories?.length) {
+    ical += `\nCATEGORIES:${categories.map(c => escapeICalText(c)).join(',')}`
+  }
+
+  ical += `
+END:VTODO
+END:VCALENDAR`
+
+  return ical
+}
+
+/**
+ * 格式化优先级显示
+ */
+function formatPriority(priority: number): string {
+  if (priority >= 1 && priority <= 4) return '🔴 ' + t('calendar.todo_priority_high')
+  if (priority === 5) return '🟡 ' + t('calendar.todo_priority_medium')
+  if (priority >= 6 && priority <= 9) return '🔵 ' + t('calendar.todo_priority_low')
+  return ''
+}
+
+/**
+ * 格式化待办状态显示
+ */
+function formatTodoStatus(status?: string): string {
+  switch (status) {
+    case 'needs-action': return t('calendar.todo_status_needs_action')
+    case 'in-process': return t('calendar.todo_status_in_process')
+    case 'completed': return t('calendar.todo_status_completed')
+    case 'cancelled': return t('calendar.todo_status_cancelled')
+    default: return t('calendar.todo_status_needs_action')
+  }
 }

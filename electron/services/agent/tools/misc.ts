@@ -521,7 +521,7 @@ export async function executeSkillTool(
     return executeWordTool(toolName, ptyId, args, toolCallId, config, executor)
   }
 
-  if (toolName.startsWith('calendar_')) {
+  if (toolName.startsWith('calendar_') || toolName.startsWith('todo_')) {
     return executeCalendarTool(toolName, ptyId, args, toolCallId, config, executor)
   }
 
