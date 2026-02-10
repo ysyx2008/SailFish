@@ -223,22 +223,22 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
         6: { font: '仿宋', size: 16, bold: false }
       },
       numberingRules: [
-        // 一级标题：一、二、三、... 黑体
+        // 一级编号：一、二、三、... 与正文同字体，不加粗，顶格
         {
           pattern: '^[一二三四五六七八九十]+、',
-          style: { font: '黑体', size: 16, bold: false, indent: 0 }
+          style: { font: '仿宋', size: 16, bold: false, indent: 0 }
         },
-        // 二级标题：（一）（二）... 楷体加粗
+        // 二级编号：（一）（二）... 与正文同字体，不加粗，顶格
         {
           pattern: '^（[一二三四五六七八九十]+）',
-          style: { font: '楷体', size: 16, bold: true, indent: 0 }
+          style: { font: '仿宋', size: 16, bold: false, indent: 0 }
         },
-        // 三级标题：1. 2. 3. ... 仿宋加粗
+        // 三级编号：1. 2. 3. ... 与正文同字体，不加粗，顶格
         {
           pattern: '^\\d+[.．]',
-          style: { font: '仿宋', size: 16, bold: true, indent: 0 }
+          style: { font: '仿宋', size: 16, bold: false, indent: 0 }
         },
-        // 四级标题：（1）（2）... 仿宋
+        // 四级编号：（1）（2）... 与正文同字体，不加粗，顶格
         {
           pattern: '^（\\d+）',
           style: { font: '仿宋', size: 16, bold: false, indent: 0 }
@@ -271,22 +271,22 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
         6: { font: '仿宋_GB2312', size: 16, bold: false }
       },
       numberingRules: [
-        // 一级标题：一、二、三、... 黑体
+        // 一级编号：一、二、三、... 与正文同字体，不加粗，顶格
         {
           pattern: '^[一二三四五六七八九十]+、',
-          style: { font: '黑体', size: 16, bold: false, indent: 0 }
+          style: { font: '仿宋_GB2312', size: 16, bold: false, indent: 0 }
         },
-        // 二级标题：（一）（二）... 楷体_GB2312 加粗
+        // 二级编号：（一）（二）... 与正文同字体，不加粗，顶格
         {
           pattern: '^（[一二三四五六七八九十]+）',
-          style: { font: '楷体_GB2312', size: 16, bold: true, indent: 0 }
+          style: { font: '仿宋_GB2312', size: 16, bold: false, indent: 0 }
         },
-        // 三级标题：1. 2. 3. ... 仿宋_GB2312 加粗
+        // 三级编号：1. 2. 3. ... 与正文同字体，不加粗，顶格
         {
           pattern: '^\\d+[.．]',
-          style: { font: '仿宋_GB2312', size: 16, bold: true, indent: 0 }
+          style: { font: '仿宋_GB2312', size: 16, bold: false, indent: 0 }
         },
-        // 四级标题：（1）（2）... 仿宋_GB2312
+        // 四级编号：（1）（2）... 与正文同字体，不加粗，顶格
         {
           pattern: '^（\\d+）',
           style: { font: '仿宋_GB2312', size: 16, bold: false, indent: 0 }

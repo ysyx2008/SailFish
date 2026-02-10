@@ -547,18 +547,39 @@ XX公司
     type: 'function',
     function: {
       name: 'word_create_style',
-      description: `创建自定义格式规范。支持两种方式：
+      description: `创建自定义格式规范。支持多种方式：
 
-1. **从样板文档提取**：上传一个已格式化好的 .docx 文件，自动提取样式
-2. **从格式说明解析**：上传格式说明文档（PDF/Word/文本），AI 理解后生成样式
+1. **直接指定配置**：通过 config 参数传入样式 JSON 配置
+2. **基于已有样式修改**：通过 base 指定基础样式，再用 config 覆盖部分属性
+3. **从样板文档提取**：上传一个已格式化好的 .docx 文件，自动提取样式
+4. **从格式说明解析**：上传格式说明文档（PDF/Word/文本），AI 理解后生成样式
 
-创建的样式会保存到知识库，可在后续生成文档时使用。`,
+创建的样式会保存到知识库，可在后续生成文档时使用。
+
+config 可用属性：
+- font: 中文字体（如 "仿宋_GB2312"）
+- fontAscii: 西文字体（如 "Times New Roman"）
+- fontSize: 正文字号（磅，如 16）
+- lineSpacing: 行距倍数（如 1.5）
+- lineSpacingFixed: 固定行距（磅，如 28.5）
+- firstLineIndent: 是否首行缩进
+- firstLineIndentChars: 首行缩进字符数
+- headings: 各级标题样式，键为 1-6，值含 font/fontAscii/size/bold/align
+- numberingRules: 编号层级规则数组`,
       parameters: {
         type: 'object',
         properties: {
           name: {
             type: 'string',
             description: '样式名称，用于后续引用'
+          },
+          config: {
+            type: 'object',
+            description: '样式配置 JSON，可指定 font/fontAscii/fontSize/lineSpacing/headings 等属性'
+          },
+          base: {
+            type: 'string',
+            description: '基础样式名称（预设或自定义），新样式会在此基础上覆盖 config 中指定的属性'
           },
           from_template: {
             type: 'string',
@@ -571,6 +592,53 @@ XX公司
           set_as_default: {
             type: 'boolean',
             description: '是否设为默认样式'
+          }
+        },
+        required: ['name']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'word_edit_style',
+      description: `编辑已有样式的属性。
+
+- 对自定义样式：直接修改
+- 对预设样式：会自动复制为自定义副本后修改
+- 支持修改部分属性（增量更新），未指定的属性保持不变
+- 支持重命名样式`,
+      parameters: {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+            description: '要编辑的样式名称'
+          },
+          config: {
+            type: 'object',
+            description: '要修改的配置属性（增量合并），如 { "fontSize": 14, "headings": { "1": { "size": 22 } } }'
+          },
+          new_name: {
+            type: 'string',
+            description: '重命名样式（可选）'
+          }
+        },
+        required: ['name']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'word_delete_style',
+      description: `删除自定义样式。预设样式不能删除。如果删除的是默认样式，会自动清除默认设置。`,
+      parameters: {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+            description: '要删除的自定义样式名称'
           }
         },
         required: ['name']

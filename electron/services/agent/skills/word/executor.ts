@@ -377,6 +377,10 @@ export async function executeWordTool(
     // 样式管理工具
     case 'word_create_style':
       return await wordCreateStyle(ptyId, args, executor)
+    case 'word_edit_style':
+      return await wordEditStyle(args, executor)
+    case 'word_delete_style':
+      return await wordDeleteStyle(args, executor)
     case 'word_list_styles':
       return await wordListStyles(executor)
     case 'word_set_default_style':
@@ -1746,6 +1750,8 @@ async function wordCreateStyle(
   const name = args.name as string
   const fromTemplate = args.from_template as string | undefined
   const fromDescription = args.from_description as string | undefined
+  const configArg = args.config as Record<string, unknown> | undefined
+  const baseStyle = args.base as string | undefined
   const setAsDefault = args.set_as_default === true
 
   if (!name) {
@@ -1755,7 +1761,47 @@ async function wordCreateStyle(
   try {
     let styleConfig: WordStyleConfig
 
-    if (fromTemplate) {
+    if (configArg) {
+      // 直接从 JSON 配置创建样式
+      // 如果指定了 base，先加载基础样式再合并
+      let baseConfig: WordStyleConfig['config'] = PRESET_STYLES.simple.config
+      if (baseStyle) {
+        const basePreset = PRESET_STYLES[baseStyle]
+        if (basePreset) {
+          baseConfig = { ...basePreset.config }
+        } else if (customStyles.has(baseStyle)) {
+          baseConfig = { ...customStyles.get(baseStyle)!.config }
+        }
+      }
+
+      // 合并 headings：先取 base 的 headings，再用 configArg 的 headings 覆盖
+      const mergedHeadings = { ...baseConfig.headings }
+      if (configArg.headings && typeof configArg.headings === 'object') {
+        const headingsArg = configArg.headings as Record<string, unknown>
+        for (const [level, hStyle] of Object.entries(headingsArg)) {
+          const lvl = Number(level)
+          if (!isNaN(lvl) && hStyle && typeof hStyle === 'object') {
+            mergedHeadings[lvl] = { ...mergedHeadings[lvl], ...(hStyle as Record<string, unknown>) } as typeof mergedHeadings[number]
+          }
+        }
+      }
+
+      // 合并 numberingRules
+      const mergedNumberingRules = configArg.numberingRules !== undefined
+        ? configArg.numberingRules as WordStyleConfig['config']['numberingRules']
+        : baseConfig.numberingRules
+
+      styleConfig = {
+        name,
+        sourceType: 'description',
+        config: {
+          ...baseConfig,
+          ...configArg,
+          headings: mergedHeadings,
+          numberingRules: mergedNumberingRules
+        } as WordStyleConfig['config']
+      }
+    } else if (fromTemplate) {
       // 从样板文档提取样式
       const templatePath = resolvePath(ptyId, fromTemplate)
       if (!fs.existsSync(templatePath)) {
@@ -1809,11 +1855,16 @@ async function wordCreateStyle(
         output: output + '\n\n' + t('word.style_extraction_hint')
       }
     } else {
-      // 创建空样式（使用默认配置）
+      // 创建空样式（基于 base 或 simple）
+      const base = baseStyle && PRESET_STYLES[baseStyle]
+        ? PRESET_STYLES[baseStyle]
+        : (baseStyle && customStyles.has(baseStyle)
+          ? customStyles.get(baseStyle)!
+          : PRESET_STYLES.simple)
       styleConfig = {
         name,
         sourceType: 'description',
-        config: PRESET_STYLES.simple.config
+        config: { ...base.config }
       }
     }
 
@@ -1850,6 +1901,23 @@ async function wordCreateStyle(
 }
 
 /**
+ * 格式化样式配置摘要
+ */
+function formatStyleSummary(config: WordStyleConfig['config']): string {
+  const parts: string[] = []
+  if (config.font) parts.push(`字体: ${config.font}`)
+  if (config.fontAscii) parts.push(`西文: ${config.fontAscii}`)
+  if (config.fontSize) parts.push(`${config.fontSize}pt`)
+  if (config.lineSpacingFixed) {
+    parts.push(`固定行距 ${config.lineSpacingFixed}磅`)
+  } else if (config.lineSpacing) {
+    parts.push(`${config.lineSpacing}倍行距`)
+  }
+  if (config.firstLineIndent) parts.push(`首行缩进${config.firstLineIndentChars || 2}字符`)
+  return parts.join('，')
+}
+
+/**
  * 列出所有可用样式
  */
 async function wordListStyles(
@@ -1864,7 +1932,9 @@ async function wordListStyles(
   lines.push('## 预设样式\n')
   for (const [id, style] of Object.entries(PRESET_STYLES)) {
     const isDefault = defaultStyleName === id
+    const summary = formatStyleSummary(style.config)
     lines.push(`- **${id}**：${style.name}${isDefault ? ' ⭐ (默认)' : ''}`)
+    if (summary) lines.push(`  ${summary}`)
   }
   
   // 自定义样式
@@ -1874,13 +1944,16 @@ async function wordListStyles(
     for (const [name, style] of entries) {
       const isDefault = defaultStyleName === name
       const source = style.source ? ` (来源: ${style.source})` : ''
+      const summary = formatStyleSummary(style.config)
       lines.push(`- **${name}**${source}${isDefault ? ' ⭐ (默认)' : ''}`)
+      if (summary) lines.push(`  ${summary}`)
     }
   }
   
   if (!defaultStyleName) {
     lines.push('\n💡 提示：使用 word_set_default_style 设置默认样式')
   }
+  lines.push('\n📝 使用 word_create_style 创建新样式，word_edit_style 修改已有样式，word_delete_style 删除自定义样式')
 
   const output = lines.join('\n')
 
@@ -1935,6 +2008,198 @@ async function wordSetDefaultStyle(
   })
 
   return { success: true, output }
+}
+
+/**
+ * 编辑已有样式的属性
+ * 支持修改预设样式（会另存为自定义副本）和自定义样式
+ */
+async function wordEditStyle(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  loadCustomStyles()
+
+  const name = args.name as string
+  const configPatch = args.config as Record<string, unknown> | undefined
+  const newName = args.new_name as string | undefined
+
+  if (!name) {
+    return { success: false, output: '', error: t('word.style_name_required') }
+  }
+  if (!configPatch && !newName) {
+    return { success: false, output: '', error: '请提供要修改的 config 属性或 new_name' }
+  }
+
+  try {
+    // 获取现有样式配置
+    let existing: WordStyleConfig | undefined = customStyles.get(name)
+    let isPreset = false
+
+    if (!existing) {
+      // 检查预设样式
+      const preset = PRESET_STYLES[name]
+      if (!preset) {
+        return { success: false, output: '', error: t('word.style_not_found', { name }) }
+      }
+      // 预设样式需要复制为自定义样式
+      existing = {
+        name: newName || name,
+        sourceType: 'preset' as const,
+        source: name,
+        config: { ...preset.config }
+      }
+      isPreset = true
+    }
+
+    // 应用配置补丁
+    if (configPatch) {
+      // 合并 headings
+      if (configPatch.headings && typeof configPatch.headings === 'object') {
+        const currentHeadings = { ...existing.config.headings }
+        const patchHeadings = configPatch.headings as Record<string, unknown>
+        for (const [level, hStyle] of Object.entries(patchHeadings)) {
+          const lvl = Number(level)
+          if (!isNaN(lvl) && hStyle && typeof hStyle === 'object') {
+            currentHeadings[lvl] = { ...currentHeadings[lvl], ...(hStyle as Record<string, unknown>) } as typeof currentHeadings[number]
+          }
+        }
+        existing.config.headings = currentHeadings
+      }
+
+      // 合并 numberingRules（整体替换）
+      if (configPatch.numberingRules !== undefined) {
+        existing.config.numberingRules = configPatch.numberingRules as WordStyleConfig['config']['numberingRules']
+      }
+
+      // 合并其他顶层配置项
+      const skipKeys = new Set(['headings', 'numberingRules'])
+      for (const [key, value] of Object.entries(configPatch)) {
+        if (!skipKeys.has(key)) {
+          ;(existing.config as Record<string, unknown>)[key] = value
+        }
+      }
+    }
+
+    // 处理重命名
+    const finalName = newName || name
+    if (newName && newName !== name) {
+      // 删除旧名称
+      if (!isPreset) {
+        customStyles.delete(name)
+        const oldDocId = styleDocIds.get(name)
+        if (oldDocId) {
+          try {
+            const knowledgeService = getKnowledgeService()
+            if (knowledgeService && knowledgeService.isEnabled()) {
+              await knowledgeService.removeDocument(oldDocId)
+            }
+          } catch { /* ignore */ }
+          styleDocIds.delete(name)
+        }
+      }
+      existing.name = newName
+      if (defaultStyleName === name) {
+        defaultStyleName = newName
+      }
+    }
+
+    customStyles.set(finalName, existing)
+
+    // 持久化
+    const docId = await saveStyleToKnowledge(existing)
+    if (!docId) {
+      saveCustomStylesToFile()
+    }
+
+    const details: string[] = []
+    if (isPreset) {
+      details.push(`基于预设样式 "${name}" 创建了自定义副本`)
+    }
+    if (newName && newName !== name) {
+      details.push(`重命名: ${name} → ${newName}`)
+    }
+    if (configPatch) {
+      details.push(`已更新配置: ${Object.keys(configPatch).join(', ')}`)
+    }
+    const output = `样式 "${finalName}" 已更新。\n${details.join('\n')}`
+
+    executor.addStep({
+      type: 'tool_result',
+      content: output,
+      toolName: 'word_edit_style',
+      toolResult: output
+    })
+
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : '样式编辑失败'
+    return { success: false, output: '', error: errorMsg }
+  }
+}
+
+/**
+ * 删除自定义样式
+ */
+async function wordDeleteStyle(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  loadCustomStyles()
+
+  const name = args.name as string
+  if (!name) {
+    return { success: false, output: '', error: t('word.style_name_required') }
+  }
+
+  // 不允许删除预设样式
+  if (PRESET_STYLES[name] && !customStyles.has(name)) {
+    return { success: false, output: '', error: `"${name}" 是预设样式，不能删除` }
+  }
+
+  if (!customStyles.has(name)) {
+    return { success: false, output: '', error: t('word.style_not_found', { name }) }
+  }
+
+  try {
+    // 从内存中删除
+    customStyles.delete(name)
+
+    // 从知识库中删除
+    const docId = styleDocIds.get(name)
+    if (docId) {
+      try {
+        const knowledgeService = getKnowledgeService()
+        if (knowledgeService && knowledgeService.isEnabled()) {
+          await knowledgeService.removeDocument(docId)
+        }
+      } catch { /* ignore */ }
+      styleDocIds.delete(name)
+    }
+
+    // 如果删除的是默认样式，清除默认设置
+    if (defaultStyleName === name) {
+      defaultStyleName = null
+      await saveDefaultStyleSetting()
+    }
+
+    // 更新本地文件备份
+    saveCustomStylesToFile()
+
+    const output = `自定义样式 "${name}" 已删除。`
+
+    executor.addStep({
+      type: 'tool_result',
+      content: output,
+      toolName: 'word_delete_style',
+      toolResult: output
+    })
+
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : '样式删除失败'
+    return { success: false, output: '', error: errorMsg }
+  }
 }
 
 /**
