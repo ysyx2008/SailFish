@@ -194,14 +194,10 @@ async function calendarConnect(
     session.provider = account.provider
     session.supportsTodo = await detectTodoSupport(account.provider, calendars, credential, account.username)
 
-    const todoSupportInfo = session.supportsTodo 
-      ? '' 
-      : `\n${t('calendar.todo_not_supported', { provider: account.name })}`
-
     const output = t('calendar.connected', { 
       name: account.name, 
       count: calendars.length 
-    }) + todoSupportInfo
+    })
     executor.addStep({
       type: 'tool_result',
       content: output,
