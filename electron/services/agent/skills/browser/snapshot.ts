@@ -227,9 +227,67 @@ export async function getSnapshot(
   }
 
   // 解析并增强无障碍树
-  const enhancedTree = processAriaTree(ariaTree, refs, options)
+  let enhancedTree = processAriaTree(ariaTree, refs, options)
+
+  // 过滤不可见的元素（隐藏的菜单、折叠区域等）
+  const hiddenRefs = await filterHiddenRefs(page, refs)
+  if (hiddenRefs.size > 0) {
+    // 从 RefMap 中移除
+    for (const refId of hiddenRefs) {
+      delete refs[refId]
+    }
+    // 从树文本中移除包含隐藏 ref 的行
+    const lines = enhancedTree.split('\n')
+    const filteredLines = lines.filter(line => {
+      const refMatch = line.match(/\[ref=(e\d+)\]/)
+      if (refMatch && hiddenRefs.has(refMatch[1])) {
+        return false
+      }
+      return true
+    })
+    enhancedTree = filteredLines.join('\n')
+  }
 
   return { tree: enhancedTree, refs }
+}
+
+/**
+ * 批量检查 ref 元素的可见性，返回不可见的 ref ID 集合
+ */
+async function filterHiddenRefs(page: Page, refs: RefMap): Promise<Set<string>> {
+  const hiddenRefs = new Set<string>()
+  const refEntries = Object.entries(refs)
+  
+  if (refEntries.length === 0) return hiddenRefs
+
+  // 分批并行检查，每批 20 个，避免压垮浏览器
+  const BATCH_SIZE = 20
+  for (let i = 0; i < refEntries.length; i += BATCH_SIZE) {
+    const batch = refEntries.slice(i, i + BATCH_SIZE)
+    await Promise.all(
+      batch.map(async ([refId, data]) => {
+        try {
+          const opts: { name?: string; exact?: boolean } = {}
+          if (data.name) {
+            opts.name = data.name
+            opts.exact = true
+          }
+          let loc = page.getByRole(data.role as any, opts)
+          if (data.nth !== undefined) {
+            loc = loc.nth(data.nth)
+          }
+          const visible = await loc.isVisible()
+          if (!visible) {
+            hiddenRefs.add(refId)
+          }
+        } catch {
+          // 检查出错时保留该 ref（保守策略）
+        }
+      })
+    )
+  }
+  
+  return hiddenRefs
 }
 
 /**
