@@ -496,39 +496,67 @@ async function browserClick(
     // 尝试 @ref 解析，否则用原始选择器
     const locator = resolveSelector(page, selector, ptyId)
     
-    if (locator) {
-      // 使用 ref 定位
-      if (waitForNavigation) {
-        await Promise.all([
-          page.waitForNavigation({ waitUntil: 'load' }),
-          locator.click()
-        ])
+    // 执行点击
+    // 注意：click() 默认会等待当前页面导航完成，但如果点击打开了新标签页，
+    // 当前页面不会导航，导致超时。所以我们需要捕获超时错误并检查新标签页。
+    let clickTimedOut = false
+    try {
+      if (locator) {
+        if (waitForNavigation) {
+          await Promise.all([
+            page.waitForNavigation({ waitUntil: 'load', timeout: 10000 }),
+            locator.click({ timeout: 10000 })
+          ])
+        } else {
+          await locator.click({ timeout: 10000 })
+        }
       } else {
-        await locator.click()
+        if (waitForNavigation) {
+          await Promise.all([
+            page.waitForNavigation({ waitUntil: 'load', timeout: 10000 }),
+            page.click(selector, { timeout: 10000 })
+          ])
+        } else {
+          await page.click(selector, { timeout: 10000 })
+        }
       }
-    } else {
-      // 回退到传统选择器
-      if (waitForNavigation) {
-        await Promise.all([
-          page.waitForNavigation({ waitUntil: 'load' }),
-          page.click(selector)
-        ])
+    } catch (clickError) {
+      // 点击超时，等一下看是否有新标签页打开
+      const isTimeout = clickError instanceof Error && 
+        (clickError.message.includes('Timeout') || clickError.message.includes('timeout'))
+      
+      if (isTimeout) {
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        if (session.pages.length > tabCountBefore) {
+          // 超时原因是打开了新标签页，不是真正的失败
+          clickTimedOut = true
+        } else {
+          // 真正的超时，重新抛出
+          throw clickError
+        }
       } else {
-        await page.click(selector)
+        throw clickError
       }
     }
     
-    // 等待一下，看是否有新标签页打开
-    await new Promise(resolve => setTimeout(resolve, 500))
+    // 等待一下，看是否有新标签页打开（非超时情况也需要检查）
+    if (!clickTimedOut) {
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
     
     // 检查是否有新标签页打开
     const tabCountAfter = session.pages.length
     let result = `已点击 ${selector}`
     if (tabCountAfter > tabCountBefore) {
+      // 清空旧 ref（新标签页内容不同）
+      session.refs = {}
+      
       const newPage = getCurrentPage(session)
+      // 等待新页面加载
+      await newPage.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {})
       const newTitle = await newPage.title().catch(() => '(加载中)')
       const newUrl = newPage.url()
-      result += `\n\n⚠️ 点击后打开了新标签页！已自动切换到新标签页。\n新标签页: ${newTitle}\nURL: ${newUrl}\n当前共 ${tabCountAfter} 个标签页`
+      result += `\n\n已自动切换到新标签页。\n新标签页: ${newTitle}\nURL: ${newUrl}\n当前共 ${tabCountAfter} 个标签页`
     }
     
     // 点击后 ref 可能过期，提示 AI 重新 snapshot
