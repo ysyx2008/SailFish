@@ -70,6 +70,21 @@ export async function executeCalendarTool(
 ): Promise<ToolResult> {
   await initDependencies()
 
+  // 待办事项工具：提前检查 VTODO 支持
+  if (toolName.startsWith('todo_')) {
+    const session = getFirstOpenSession()
+    if (!session || !session.client) {
+      return { success: false, output: '', error: t('calendar.not_connected') }
+    }
+    if (session.supportsTodo === false) {
+      return { 
+        success: false, 
+        output: '', 
+        error: t('calendar.todo_not_supported_error', { provider: session.accountName }) 
+      }
+    }
+  }
+
   switch (toolName) {
     case 'calendar_connect':
       return await calendarConnect(args, executor)
@@ -173,12 +188,20 @@ async function calendarConnect(
     }))
 
     // 创建会话，同时保存原始的 DAVCalendar 对象用于后续 API 调用
-    createSession(account.id, account.name, account.username, client, calendars, davCalendars)
+    const session = createSession(account.id, account.name, account.username, client, calendars, davCalendars)
+
+    // 检测 VTODO 支持
+    session.provider = account.provider
+    session.supportsTodo = await detectTodoSupport(account.provider, calendars, credential, account.username)
+
+    const todoSupportInfo = session.supportsTodo 
+      ? '' 
+      : `\n${t('calendar.todo_not_supported', { provider: account.name })}`
 
     const output = t('calendar.connected', { 
       name: account.name, 
       count: calendars.length 
-    })
+    }) + todoSupportInfo
     executor.addStep({
       type: 'tool_result',
       content: output,
@@ -1430,6 +1453,84 @@ async function todoDelete(
 }
 
 // ============ 辅助函数 ============
+
+/**
+ * 已知不支持 VTODO 的服务商
+ * 这些服务商的 CalDAV 实现只支持 VEVENT，不支持 VTODO
+ */
+const PROVIDERS_WITHOUT_TODO: string[] = [
+  'wecom',    // 企业微信
+  'google',   // Google Calendar
+  'outlook'   // Microsoft Outlook
+]
+
+/**
+ * 检测 CalDAV 服务器是否支持 VTODO
+ * 
+ * 策略：
+ * 1. 已知不支持的服务商直接返回 false
+ * 2. 其他服务商尝试发送 VTODO REPORT 请求探测
+ */
+async function detectTodoSupport(
+  provider: string,
+  calendars: Calendar[],
+  credential: string,
+  username: string
+): Promise<boolean> {
+  // 已知不支持的服务商直接返回
+  if (PROVIDERS_WITHOUT_TODO.includes(provider)) {
+    console.log(`[CalendarSkill] Provider "${provider}" is known to not support VTODO`)
+    return false
+  }
+
+  // 对于未知服务商，尝试发送 VTODO REPORT 探测
+  if (calendars.length === 0) {
+    return false
+  }
+
+  const calendarUrl = calendars[0].id
+  if (!calendarUrl) return false
+
+  const authHeader = `Basic ${Buffer.from(`${username}:${credential}`).toString('base64')}`
+
+  try {
+    // 发送一个简单的 VTODO REPORT 查询，只要不返回错误就说明支持
+    const reportBody = `<?xml version="1.0" encoding="utf-8" ?>
+<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:prop>
+    <D:getetag/>
+  </D:prop>
+  <C:filter>
+    <C:comp-filter name="VCALENDAR">
+      <C:comp-filter name="VTODO"/>
+    </C:comp-filter>
+  </C:filter>
+</C:calendar-query>`
+
+    const response = await fetch(calendarUrl, {
+      method: 'REPORT',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/xml; charset=utf-8',
+        'Depth': '1'
+      },
+      body: reportBody
+    })
+
+    // 207 Multi-Status 说明服务器能处理 VTODO 查询（即使结果为空）
+    // 4xx/5xx 错误说明不支持
+    if (response.status === 207) {
+      console.log('[CalendarSkill] VTODO support detected via REPORT probe')
+      return true
+    }
+
+    console.log(`[CalendarSkill] VTODO REPORT probe returned status ${response.status}, assuming not supported`)
+    return false
+  } catch (error) {
+    console.log('[CalendarSkill] VTODO REPORT probe failed, assuming not supported:', error)
+    return false
+  }
+}
 
 /**
  * 通过事件 UID 直接获取单个事件

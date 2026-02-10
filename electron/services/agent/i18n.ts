@@ -500,6 +500,8 @@ const translations = {
     'calendar.todo_delete_confirm': '确认删除待办事项（不可恢复）',
     'calendar.todos_deleted': '已删除 {count} 个待办',
     'calendar.todo_delete_failed': '删除待办失败',
+    'calendar.todo_not_supported': '⚠️ {provider} 不支持待办事项（VTODO），todo 相关功能不可用',
+    'calendar.todo_not_supported_error': '{provider} 的日历服务不支持待办事项（VTODO）。支持待办事项的服务包括：iCloud、Nextcloud、Radicale、Baikal 等。',
 
     // 技能系统
     'skill.id_required': '技能 ID 不能为空',
@@ -1296,6 +1298,8 @@ Please output the summary in the following format:
     'calendar.todo_delete_confirm': 'Confirm Delete Todos (cannot be undone)',
     'calendar.todos_deleted': 'Deleted {count} todos',
     'calendar.todo_delete_failed': 'Failed to delete todos',
+    'calendar.todo_not_supported': '⚠️ {provider} does not support todos (VTODO), todo features are unavailable',
+    'calendar.todo_not_supported_error': 'The calendar service of {provider} does not support todos (VTODO). Services that support todos include: iCloud, Nextcloud, Radicale, Baikal, etc.',
 
     // Skill system
     'skill.id_required': 'Skill ID required',

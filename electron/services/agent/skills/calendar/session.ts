@@ -25,6 +25,10 @@ export interface CalendarSession {
   lastAccess: number
   /** 是否已连接 */
   connected: boolean
+  /** 服务商是否支持 VTODO（待办事项） */
+  supportsTodo?: boolean
+  /** 服务商名称（用于提示信息） */
+  provider?: string
 }
 
 // 打开的会话 Map<accountId, CalendarSession>
