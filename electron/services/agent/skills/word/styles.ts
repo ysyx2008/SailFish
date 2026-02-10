@@ -15,9 +15,11 @@ import {
   WidthType,
   BorderStyle,
   AlignmentType,
+  LineRuleType,
   convertInchesToTwip
 } from 'docx'
 import { marked, Token, Tokens } from 'marked'
+import JSZip from 'jszip'
 
 /**
  * HTML 实体解码
@@ -65,6 +67,8 @@ export interface NumberingRule {
   /** 样式 */
   style: {
     font?: string
+    /** 西文字体（阿拉伯数字和英文），不设置则继承全局 fontAscii */
+    fontAscii?: string
     size?: number
     bold?: boolean
     italic?: boolean
@@ -88,12 +92,16 @@ export interface WordStyleConfig {
   isDefault?: boolean
   /** 样式配置 */
   config: {
-    /** 正文字体 */
+    /** 正文字体（中文/东亚字体） */
     font?: string
+    /** 西文字体（阿拉伯数字和英文），如 'Times New Roman' */
+    fontAscii?: string
     /** 正文字号（磅） */
     fontSize?: number
-    /** 行距倍数 */
+    /** 行距倍数（与 lineSpacingFixed 二选一） */
     lineSpacing?: number
+    /** 固定行距（磅），如 28.5。与 lineSpacing 二选一，优先使用 */
+    lineSpacingFixed?: number
     /** 首行缩进 */
     firstLineIndent?: boolean
     /** 首行缩进字符数（默认 2） */
@@ -102,6 +110,8 @@ export interface WordStyleConfig {
     headings?: {
       [level: number]: {
         font?: string
+        /** 西文字体，不设置则继承全局 fontAscii */
+        fontAscii?: string
         size?: number
         bold?: boolean
         align?: 'left' | 'center' | 'right' | 'justify'
@@ -194,13 +204,23 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
     sourceType: 'preset',
     config: {
       font: '仿宋',
+      fontAscii: 'Times New Roman',  // 阿拉伯数字和英文
       fontSize: 16,  // 三号字
-      lineSpacing: 1.5,
+      lineSpacingFixed: 28.5,  // 固定行距 27-30 磅
       firstLineIndent: true,
       firstLineIndentChars: 2,
       headings: {
         // 公文标题：二号小标宋体，居中
-        1: { font: '小标宋体', size: 22, bold: false, align: 'center' }
+        1: { font: '小标宋体', size: 22, bold: false, align: 'center' },
+        // 一级标题：三号黑体
+        2: { font: '黑体', size: 16, bold: false },
+        // 二级标题：三号楷体，加粗
+        3: { font: '楷体', size: 16, bold: true },
+        // 三级标题：三号仿宋，加粗
+        4: { font: '仿宋', size: 16, bold: true },
+        // 四级标题：三号仿宋
+        5: { font: '仿宋', size: 16, bold: false },
+        6: { font: '仿宋', size: 16, bold: false }
       },
       numberingRules: [
         // 一级标题：一、二、三、... 黑体
@@ -215,7 +235,7 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
         },
         // 三级标题：1. 2. 3. ... 仿宋加粗
         {
-          pattern: '^\\d+\\.',
+          pattern: '^\\d+[.．]',
           style: { font: '仿宋', size: 16, bold: true, indent: 0 }
         },
         // 四级标题：（1）（2）... 仿宋
@@ -226,19 +246,29 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
       ]
     }
   },
-  // 证券公司公文格式
+  // 证券公司公文格式（参照 GB/T 9704-2012 及国元证券公文处理规范）
   securities: {
     name: '证券公文',
     sourceType: 'preset',
     config: {
       font: '仿宋_GB2312',
+      fontAscii: 'Times New Roman',  // 阿拉伯数字和英文使用 Times New Roman
       fontSize: 16,  // 三号字
-      lineSpacing: 1.5,
+      lineSpacingFixed: 28.5,  // 固定行距 27-30 磅（取中间值）
       firstLineIndent: true,
       firstLineIndentChars: 2,
       headings: {
-        // 公文标题：二号小标宋体，居中
-        1: { font: '方正小标宋简体', size: 22, bold: false, align: 'center' }
+        // 公文标题：二号方正小标宋简体，居中
+        1: { font: '方正小标宋简体', size: 22, bold: false, align: 'center' },
+        // 一级标题：三号黑体
+        2: { font: '黑体', size: 16, bold: false },
+        // 二级标题：三号楷体_GB2312，加粗
+        3: { font: '楷体_GB2312', size: 16, bold: true },
+        // 三级标题：三号仿宋_GB2312，加粗
+        4: { font: '仿宋_GB2312', size: 16, bold: true },
+        // 四级标题：三号仿宋_GB2312
+        5: { font: '仿宋_GB2312', size: 16, bold: false },
+        6: { font: '仿宋_GB2312', size: 16, bold: false }
       },
       numberingRules: [
         // 一级标题：一、二、三、... 黑体
@@ -253,7 +283,7 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
         },
         // 三级标题：1. 2. 3. ... 仿宋_GB2312 加粗
         {
-          pattern: '^\\d+\\.',
+          pattern: '^\\d+[.．]',
           style: { font: '仿宋_GB2312', size: 16, bold: true, indent: 0 }
         },
         // 四级标题：（1）（2）... 仿宋_GB2312
@@ -289,6 +319,219 @@ function getAlignment(align?: string): (typeof AlignmentType)[keyof typeof Align
 }
 
 /**
+ * 构建字体配置：支持中西文分别设置
+ * 当同时指定 eastAsia 和 ascii 字体时，返回 { ascii, eastAsia, hAnsi } 对象
+ * 否则返回单个字体字符串
+ */
+function buildFontConfig(
+  eastAsiaFont?: string,
+  asciiFont?: string
+): string | { ascii: string; eastAsia: string; hAnsi: string } | undefined {
+  if (!eastAsiaFont && !asciiFont) return undefined
+  if (!asciiFont) return eastAsiaFont
+  if (!eastAsiaFont) return asciiFont
+  return {
+    ascii: asciiFont,
+    eastAsia: eastAsiaFont,
+    hAnsi: asciiFont
+  }
+}
+
+/**
+ * 行距配置类型
+ */
+type LineSpacingConfig = {
+  line: number
+  lineRule?: (typeof LineRuleType)[keyof typeof LineRuleType]
+}
+
+/**
+ * 构建行距配置：支持倍数行距和固定行距
+ * 固定行距（lineSpacingFixed）优先于倍数行距（lineSpacing）
+ */
+function buildLineSpacing(config: WordStyleConfig['config']): LineSpacingConfig {
+  if (config.lineSpacingFixed) {
+    // 固定行距：值为磅数 * 20（twips），lineRule 为 EXACT
+    return { line: Math.round(config.lineSpacingFixed * 20), lineRule: LineRuleType.EXACT }
+  }
+  // 倍数行距：值为倍数 * 240
+  return { line: (config.lineSpacing || 1.15) * 240 }
+}
+
+/**
+ * 计算首行缩进（twips）
+ * 基于字号精确计算：缩进量 = 缩进字符数 × 字号(pt) × 20(twips/pt)
+ */
+function calcFirstLineIndent(config: WordStyleConfig['config']): number | undefined {
+  if (!config.firstLineIndent) return undefined
+  const indentChars = config.firstLineIndentChars ?? 2
+  const charWidthTwips = (config.fontSize || 12) * 20  // 1pt = 20 twips
+  return indentChars * charWidthTwips
+}
+
+/**
+ * 根据样式配置构建文档级别的样式定义
+ * 在 Word 中定义 Normal、Heading 1-6 等样式，使用户可以直接通过修改样式来批量调整格式
+ */
+function buildDocumentStyles(style: WordStyleConfig): { default: Record<string, unknown> } {
+  const config = style.config
+  const lineSpacing = buildLineSpacing(config)
+
+  // 默认（Normal）样式：正文字体、字号、行距
+  const defaultStyles: Record<string, unknown> = {
+    document: {
+      run: {
+        font: buildFontConfig(config.font, config.fontAscii),
+        size: config.fontSize ? config.fontSize * 2 : undefined,
+        color: '000000'
+      },
+      paragraph: {
+        spacing: lineSpacing
+      }
+    },
+    listParagraph: {
+      run: {
+        font: buildFontConfig(config.font, config.fontAscii),
+        size: config.fontSize ? config.fontSize * 2 : undefined
+      }
+    }
+  }
+
+  // 标题样式 Heading 1-6
+  const headingKeys = ['heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6']
+
+  for (let level = 1; level <= 6; level++) {
+    const hConfig = config.headings?.[level]
+    const key = headingKeys[level - 1]
+
+    if (hConfig) {
+      defaultStyles[key] = {
+        run: {
+          font: buildFontConfig(
+            hConfig.font || config.font,
+            hConfig.fontAscii || config.fontAscii
+          ),
+          size: (hConfig.size || config.fontSize || 12) * 2,
+          bold: hConfig.bold ?? true,
+          color: '000000'
+        },
+        paragraph: {
+          alignment: getAlignment(hConfig.align),
+          spacing: { before: 240, after: 120, ...lineSpacing }
+        }
+      }
+    } else {
+      // 未定义的标题级别：使用正文字体、加粗、黑色
+      defaultStyles[key] = {
+        run: {
+          font: buildFontConfig(config.font, config.fontAscii),
+          size: config.fontSize ? config.fontSize * 2 : undefined,
+          bold: true,
+          color: '000000'
+        },
+        paragraph: {
+          spacing: { before: 240, after: 120, ...lineSpacing }
+        }
+      }
+    }
+  }
+
+  return { default: defaultStyles }
+}
+
+/**
+ * 生成文档主题 XML
+ * 将主题颜色全部设为黑色，防止 Word 内置标题样式引用主题色（蓝色）覆盖自定义样式
+ * 同时设置主题字体，使样式面板预览正确显示
+ */
+function buildThemeXml(config: WordStyleConfig['config']): string {
+  // 标题字体（majorFont）取 H1 配置，正文字体（minorFont）取全局配置
+  const h1Font = config.headings?.[1]?.font || config.font || ''
+  const bodyFont = config.font || ''
+  const asciiFont = config.fontAscii || config.headings?.[1]?.fontAscii || ''
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office">
+  <a:themeElements>
+    <a:clrScheme name="Office">
+      <a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1>
+      <a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1>
+      <a:dk2><a:srgbClr val="000000"/></a:dk2>
+      <a:lt2><a:srgbClr val="FFFFFF"/></a:lt2>
+      <a:accent1><a:srgbClr val="000000"/></a:accent1>
+      <a:accent2><a:srgbClr val="000000"/></a:accent2>
+      <a:accent3><a:srgbClr val="000000"/></a:accent3>
+      <a:accent4><a:srgbClr val="000000"/></a:accent4>
+      <a:accent5><a:srgbClr val="000000"/></a:accent5>
+      <a:accent6><a:srgbClr val="000000"/></a:accent6>
+      <a:hlink><a:srgbClr val="0563C1"/></a:hlink>
+      <a:folHlink><a:srgbClr val="954F72"/></a:folHlink>
+    </a:clrScheme>
+    <a:fontScheme name="Office">
+      <a:majorFont>
+        <a:latin typeface="${asciiFont || h1Font}"/>
+        <a:ea typeface="${h1Font}"/>
+        <a:cs typeface=""/>
+      </a:majorFont>
+      <a:minorFont>
+        <a:latin typeface="${config.fontAscii || bodyFont}"/>
+        <a:ea typeface="${bodyFont}"/>
+        <a:cs typeface=""/>
+      </a:minorFont>
+    </a:fontScheme>
+    <a:fmtScheme name="Office">
+      <a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst>
+      <a:lnStyleLst><a:ln w="6350"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="6350"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="6350"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst>
+      <a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst>
+      <a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst>
+    </a:fmtScheme>
+  </a:themeElements>
+</a:theme>`
+}
+
+/**
+ * 向 docx buffer 注入主题文件
+ * docx 库不支持自定义主题，需要在打包后手动注入 theme1.xml 并更新关系文件
+ */
+async function injectTheme(buffer: Buffer, config: WordStyleConfig['config']): Promise<Buffer> {
+  const zip = await JSZip.loadAsync(buffer)
+
+  // 已有 theme 则跳过
+  if (zip.file('word/theme/theme1.xml')) {
+    return buffer
+  }
+
+  // 注入 theme 文件
+  zip.file('word/theme/theme1.xml', buildThemeXml(config))
+
+  // 更新 document.xml.rels，添加 theme 关系
+  const relsPath = 'word/_rels/document.xml.rels'
+  const relsFile = zip.file(relsPath)
+  if (relsFile) {
+    let relsContent = await relsFile.async('string')
+    if (!relsContent.includes('relationships/theme')) {
+      const themeRel = '<Relationship Id="rIdTheme1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>'
+      relsContent = relsContent.replace('</Relationships>', themeRel + '</Relationships>')
+      zip.file(relsPath, relsContent)
+    }
+  }
+
+  // 更新 [Content_Types].xml，添加 theme 内容类型
+  const ctPath = '[Content_Types].xml'
+  const ctFile = zip.file(ctPath)
+  if (ctFile) {
+    let ctContent = await ctFile.async('string')
+    if (!ctContent.includes('theme+xml')) {
+      const themeType = '<Override PartName="/word/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>'
+      ctContent = ctContent.replace('</Types>', themeType + '</Types>')
+      zip.file(ctPath, ctContent)
+    }
+  }
+
+  return await zip.generateAsync({ type: 'nodebuffer' }) as Buffer
+}
+
+/**
  * 将 Markdown 转换为 Word 文档
  */
 export async function markdownToDocx(
@@ -306,8 +549,9 @@ export async function markdownToDocx(
   // 转换为 docx 元素
   const children = tokensToDocxElements(tokens, styleConfig)
   
-  // 创建文档
+  // 创建文档（包含文档级别的样式定义）
   const doc = new Document({
+    styles: buildDocumentStyles(styleConfig),
     sections: [{
       properties: {},
       children: children.length > 0 ? children : [new Paragraph({ children: [] })]
@@ -315,7 +559,12 @@ export async function markdownToDocx(
   })
   
   // 导出为 Buffer
-  return await Packer.toBuffer(doc)
+  let buffer = await Packer.toBuffer(doc)
+
+  // 注入自定义主题，确保 Word 不会用默认主题颜色/字体覆盖自定义样式
+  buffer = await injectTheme(buffer, styleConfig.config)
+
+  return buffer
 }
 
 /**
@@ -390,10 +639,11 @@ function tokensToDocxElements(
 
 /**
  * 创建标题
+ * 不设置内联格式，完全依赖文档级别的 Heading 样式定义
+ * 这样用户在 Word 中修改标题样式即可批量更新所有同级标题
  */
 function createHeading(token: Tokens.Heading, style: WordStyleConfig): Paragraph {
   const level = token.depth
-  const headingStyle = style.config.headings?.[level] || {}
   
   const headingMap: Record<number, (typeof HeadingLevel)[keyof typeof HeadingLevel]> = {
     1: HeadingLevel.HEADING_1,
@@ -404,15 +654,12 @@ function createHeading(token: Tokens.Heading, style: WordStyleConfig): Paragraph
     6: HeadingLevel.HEADING_6
   }
   
+  // 标题的字体、字号、加粗、对齐等均由文档级别的 Heading 样式控制
+  // 此处不设置内联格式，仅传递空的 baseStyle，让 TextRun 继承样式
+  // Markdown 内联格式（如 **加粗**、*斜体*）仍会被正确处理
   return new Paragraph({
     heading: headingMap[level] || HeadingLevel.HEADING_1,
-    alignment: getAlignment(headingStyle.align),
-    children: parseInlineTokens(token.tokens || [], {
-      font: headingStyle.font || style.config.font,
-      size: headingStyle.size,
-      bold: headingStyle.bold ?? true,
-      color: '000000'  // 明确设置黑色，覆盖 Word 默认的蓝色标题
-    })
+    children: parseInlineTokens(token.tokens || [], {})
   })
 }
 
@@ -428,19 +675,21 @@ function createParagraphFromTokens(tokens: Token[], style: WordStyleConfig): Par
   const matchedRule = matchNumberingRule(decodedText, style)
   
   if (matchedRule) {
-    // 编号规则优先，使用规则样式
+    // 编号规则优先，使用规则样式（编号段落需要内联格式覆盖 Normal 样式）
     const ruleStyle = matchedRule.style
     const indentChars = ruleStyle.indent ?? 0
-    const indentTwip = indentChars > 0 ? convertInchesToTwip(indentChars * 0.35) : undefined
+    const charWidthTwips = (ruleStyle.size || style.config.fontSize || 12) * 20
+    const indentTwip = indentChars > 0 ? indentChars * charWidthTwips : undefined
     
     return new Paragraph({
       alignment: getAlignment(ruleStyle.align),
       indent: indentTwip ? { firstLine: indentTwip } : undefined,
-      spacing: {
-        line: (style.config.lineSpacing || 1.15) * 240
-      },
+      spacing: buildLineSpacing(style.config),
       children: parseInlineTokens(tokens, {
-        font: ruleStyle.font || style.config.font,
+        font: buildFontConfig(
+          ruleStyle.font || style.config.font,
+          ruleStyle.fontAscii || style.config.fontAscii
+        ),
         size: ruleStyle.size || style.config.fontSize,
         bold: ruleStyle.bold,
         italic: ruleStyle.italic
@@ -448,21 +697,13 @@ function createParagraphFromTokens(tokens: Token[], style: WordStyleConfig): Par
     })
   }
   
-  // 普通段落
-  const indentChars = style.config.firstLineIndentChars ?? 2
-  const firstLineIndent = style.config.firstLineIndent 
-    ? convertInchesToTwip(indentChars * 0.35)
-    : undefined
+  // 普通段落：字体和字号由文档 Normal 样式控制，行距由样式控制
+  // 仅保留首行缩进为内联设置（因为列表、代码块等不需要缩进）
+  const firstLineIndent = calcFirstLineIndent(style.config)
   
   return new Paragraph({
     indent: firstLineIndent ? { firstLine: firstLineIndent } : undefined,
-    spacing: {
-      line: (style.config.lineSpacing || 1.15) * 240
-    },
-    children: parseInlineTokens(tokens, {
-      font: style.config.font,
-      size: style.config.fontSize
-    })
+    children: parseInlineTokens(tokens, {})
   })
 }
 
@@ -492,21 +733,22 @@ function createParagraph(text: string, style: WordStyleConfig): Paragraph {
   const matchedRule = matchNumberingRule(decodedText, style)
   
   if (matchedRule) {
-    // 应用编号规则的样式
+    // 应用编号规则的样式（编号段落需要内联格式覆盖 Normal 样式）
     const ruleStyle = matchedRule.style
     const indentChars = ruleStyle.indent ?? 0
-    // 一个中文字符约等于 0.35 英寸
-    const indentTwip = indentChars > 0 ? convertInchesToTwip(indentChars * 0.35) : undefined
+    const charWidthTwips = (ruleStyle.size || style.config.fontSize || 12) * 20
+    const indentTwip = indentChars > 0 ? indentChars * charWidthTwips : undefined
     
     return new Paragraph({
       alignment: getAlignment(ruleStyle.align),
       indent: indentTwip ? { firstLine: indentTwip } : undefined,
-      spacing: {
-        line: (style.config.lineSpacing || 1.15) * 240
-      },
+      spacing: buildLineSpacing(style.config),
       children: [new TextRun({
         text: decodedText,
-        font: ruleStyle.font || style.config.font,
+        font: buildFontConfig(
+          ruleStyle.font || style.config.font,
+          ruleStyle.fontAscii || style.config.fontAscii
+        ),
         size: (ruleStyle.size || style.config.fontSize || 12) * 2,
         bold: ruleStyle.bold,
         italics: ruleStyle.italic
@@ -514,32 +756,34 @@ function createParagraph(text: string, style: WordStyleConfig): Paragraph {
     })
   }
   
-  // 普通段落：解析内联 Markdown（加粗、斜体等）
+  // 普通段落：字体和字号由文档 Normal 样式控制
+  // 解析内联 Markdown（加粗、斜体等）
   const inlineTokens = marked.lexer(text)[0]
   const tokens = inlineTokens && 'tokens' in inlineTokens ? inlineTokens.tokens : undefined
   
-  // 计算首行缩进
-  const indentChars = style.config.firstLineIndentChars ?? 2
-  const firstLineIndent = style.config.firstLineIndent 
-    ? convertInchesToTwip(indentChars * 0.35)  // 中文字符宽度
-    : undefined
+  // 仅保留首行缩进为内联设置
+  const firstLineIndent = calcFirstLineIndent(style.config)
   
   return new Paragraph({
     indent: firstLineIndent ? { firstLine: firstLineIndent } : undefined,
-    spacing: {
-      line: (style.config.lineSpacing || 1.15) * 240
-    },
     children: tokens 
-      ? parseInlineTokens(tokens, {
-          font: style.config.font,
-          size: style.config.fontSize
-        })
+      ? parseInlineTokens(tokens, {})
       : [new TextRun({
-          text: decodedText,
-          font: style.config.font,
-          size: style.config.fontSize ? style.config.fontSize * 2 : undefined
+          text: decodedText
         })]
   })
+}
+
+/**
+ * 内联样式基础类型
+ * font 可以是字符串或 { ascii, eastAsia, hAnsi } 对象（由 buildFontConfig 生成）
+ */
+type InlineBaseStyle = {
+  font?: string | { ascii: string; eastAsia: string; hAnsi: string }
+  size?: number
+  bold?: boolean
+  italic?: boolean
+  color?: string
 }
 
 /**
@@ -547,7 +791,7 @@ function createParagraph(text: string, style: WordStyleConfig): Paragraph {
  */
 function parseInlineTokens(
   tokens: Token[],
-  baseStyle: { font?: string; size?: number; bold?: boolean; italic?: boolean; color?: string }
+  baseStyle: InlineBaseStyle
 ): TextRun[] {
   const runs: TextRun[] = []
   
@@ -635,25 +879,18 @@ function createList(token: Tokens.List, style: WordStyleConfig): Paragraph[] {
       
       if (firstToken.type === 'text' && 'tokens' in firstToken && firstToken.tokens) {
         // 使用内部的 tokens 数组（包含 strong、em 等内联格式）
-        children = parseInlineTokens(firstToken.tokens, {
-          font: style.config.font,
-          size: style.config.fontSize
-        })
+        // 字体和字号由文档 listParagraph 样式控制
+        children = parseInlineTokens(firstToken.tokens, {})
       } else {
         // 其他情况：直接使用 item.tokens
-        children = parseInlineTokens(item.tokens, {
-          font: style.config.font,
-          size: style.config.fontSize
-        })
+        children = parseInlineTokens(item.tokens, {})
       }
     }
     
-    // 如果没有解析到任何内容，使用原始文本
+    // 如果没有解析到任何内容，使用原始文本（字体字号由样式控制）
     if (children.length === 0) {
       children = [new TextRun({
-        text: decodeHtmlEntities(item.text || ''),
-        font: style.config.font,
-        size: style.config.fontSize ? style.config.fontSize * 2 : undefined
+        text: decodeHtmlEntities(item.text || '')
       })]
     }
     
@@ -737,8 +974,9 @@ function createCodeBlock(token: Tokens.Code): Paragraph {
 
 /**
  * 创建引用块
+ * 字体和字号由 Normal 样式控制，仅添加斜体标记
  */
-function createBlockquote(token: Tokens.Blockquote, style: WordStyleConfig): Paragraph {
+function createBlockquote(token: Tokens.Blockquote, _style: WordStyleConfig): Paragraph {
   let children: TextRun[] = []
   
   if (token.tokens && token.tokens.length > 0) {
@@ -747,19 +985,9 @@ function createBlockquote(token: Tokens.Blockquote, style: WordStyleConfig): Par
     
     if ((firstToken.type === 'paragraph' || firstToken.type === 'text') && 
         'tokens' in firstToken && firstToken.tokens) {
-      // 使用 paragraph/text 内部的 tokens 数组
-      children = parseInlineTokens(firstToken.tokens, {
-        font: style.config.font,
-        size: style.config.fontSize,
-        italic: true
-      })
+      children = parseInlineTokens(firstToken.tokens, { italic: true })
     } else {
-      // 其他情况：直接使用 token.tokens
-      children = parseInlineTokens(token.tokens, {
-        font: style.config.font,
-        size: style.config.fontSize,
-        italic: true
-      })
+      children = parseInlineTokens(token.tokens, { italic: true })
     }
   }
   
@@ -767,8 +995,6 @@ function createBlockquote(token: Tokens.Blockquote, style: WordStyleConfig): Par
   if (children.length === 0) {
     children = [new TextRun({
       text: decodeHtmlEntities(token.text || ''),
-      font: style.config.font,
-      size: style.config.fontSize ? style.config.fontSize * 2 : undefined,
       italics: true,
       color: '666666'
     })]
@@ -805,7 +1031,7 @@ function createHorizontalRule(): Paragraph {
  */
 function createAlignedParagraphFromHtml(
   token: Tokens.HTML,
-  style: WordStyleConfig
+  _style: WordStyleConfig
 ): Paragraph[] | null {
   const html = token.text || token.raw || ''
   
@@ -850,34 +1076,22 @@ function createAlignedParagraphFromHtml(
     const trimmedLine = line.trim()
     
     // 使用 marked 解析内联 Markdown 格式（粗体、斜体等）
+    // 字体和字号由 Normal 样式控制
     const tokens = marked.lexer(trimmedLine)
     let children: TextRun[]
     
     if (tokens.length > 0 && tokens[0].type === 'paragraph' && 'tokens' in tokens[0] && tokens[0].tokens) {
-      // 解析内联格式
-      children = parseInlineTokens(tokens[0].tokens, {
-        font: style.config.font,
-        size: style.config.fontSize
-      })
+      children = parseInlineTokens(tokens[0].tokens, {})
     } else if (tokens.length > 0 && tokens[0].type === 'text' && 'tokens' in tokens[0] && tokens[0].tokens) {
-      children = parseInlineTokens(tokens[0].tokens, {
-        font: style.config.font,
-        size: style.config.fontSize
-      })
+      children = parseInlineTokens(tokens[0].tokens, {})
     } else {
-      // 无内联格式，直接创建文本
       children = [new TextRun({
-        text: decodeHtmlEntities(trimmedLine),
-        font: style.config.font,
-        size: style.config.fontSize ? style.config.fontSize * 2 : undefined
+        text: decodeHtmlEntities(trimmedLine)
       })]
     }
     
     return new Paragraph({
       alignment: getAlignment(align),
-      spacing: {
-        line: (style.config.lineSpacing || 1.15) * 240
-      },
       children
     })
   })
@@ -910,12 +1124,15 @@ ${description}
 
 请以 JSON 格式返回样式配置，包含以下字段：
 {
-  "font": "正文字体名称",
-  "fontSize": 正文字号（数字，单位磅）,
-  "lineSpacing": 行距倍数（如 1.5）,
+  "font": "正文字体名称（中文/东亚字体）",
+  "fontAscii": "西文字体名称（阿拉伯数字和英文），如 Times New Roman",
+  "fontSize": 正文字号（数字，单位磅，如三号字为 16）,
+  "lineSpacing": 行距倍数（如 1.5），与 lineSpacingFixed 二选一,
+  "lineSpacingFixed": 固定行距（磅），与 lineSpacing 二选一,
   "firstLineIndent": 是否首行缩进（true/false）,
+  "firstLineIndentChars": 首行缩进字符数（默认 2）,
   "headings": {
-    "1": { "font": "字体", "size": 字号, "bold": true/false, "center": true/false },
+    "1": { "font": "字体", "size": 字号, "bold": true/false, "align": "center/left" },
     "2": { ... },
     ...
   }
