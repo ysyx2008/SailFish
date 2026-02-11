@@ -337,6 +337,7 @@ export async function loadSkillTool(
   if (result.success) {
     const skillName = result.skillName || skillId
     const toolsList = result.toolsAdded?.join(', ') || ''
+    // 简化显示用于 UI，完整信息放在气泡详情里
     const simpleOutput = t('skill.loaded_simple', { name: skillName })
     const detailOutput = t('skill.loaded', { name: skillName, tools: toolsList })
     
