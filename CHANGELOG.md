@@ -2,7 +2,7 @@
 
 All notable changes to SFTerm will be documented in this file.
 
-## v8.20.0 (Latest)
+## v8.19.5 (Latest)
 
 ### New Features
 - 📅 **Calendar Todos**: Added todo/task management support for CalDAV calendars, with automatic detection of providers that don't support todos
