@@ -337,7 +337,6 @@ export async function loadSkillTool(
   if (result.success) {
     const skillName = result.skillName || skillId
     const toolsList = result.toolsAdded?.join(', ') || ''
-    // 简化显示用于 UI，完整信息放在气泡详情里
     const simpleOutput = t('skill.loaded_simple', { name: skillName })
     const detailOutput = t('skill.loaded', { name: skillName, tools: toolsList })
     
@@ -345,8 +344,8 @@ export async function loadSkillTool(
       type: 'tool_result',
       content: simpleOutput,
       toolName: 'load_skill',
-      // 仅调试模式下显示工具列表详情
-      toolResult: config.debugMode ? detailOutput : undefined
+      // 仅调试模式下显示工具列表（不重复技能名）
+      toolResult: config.debugMode && toolsList ? toolsList : undefined
     })
     
     return { success: true, output: detailOutput }
