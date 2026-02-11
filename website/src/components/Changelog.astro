@@ -1,0 +1,126 @@
+---
+import { useTranslations, type Lang } from '../i18n/utils';
+import { defaultLanguage } from '../i18n/translations';
+import { marked } from 'marked';
+import fs from 'node:fs';
+import path from 'node:path';
+
+interface Props {
+  lang?: Lang;
+}
+
+const { lang = defaultLanguage } = Astro.props;
+const t = useTranslations(lang);
+
+// 读取对应语言的 CHANGELOG 文件
+const changelogFile = lang === 'zh' ? 'CHANGELOG_CN.md' : 'CHANGELOG.md';
+const changelogPath = path.resolve(process.cwd(), '..', changelogFile);
+const changelogContent = fs.readFileSync(changelogPath, 'utf-8');
+
+// 移除标题行（# Changelog / # 更新日志），由页面自己渲染标题
+const contentWithoutTitle = changelogContent.replace(/^#\s+.+\n+/, '');
+// 移除副标题描述行
+const contentCleaned = contentWithoutTitle.replace(/^.+SFTerm.+\n+/, '');
+
+// 解析 Markdown 为 HTML
+const htmlContent = await marked.parse(contentCleaned);
+---
+
+<section class="changelog-section">
+  <div class="container">
+    <h1 class="section-title">{t.changelog.title}</h1>
+    <p class="section-subtitle">{t.changelog.subtitle}</p>
+    
+    <div class="changelog-content" set:html={htmlContent} />
+  </div>
+</section>
+
+<style>
+  .changelog-section {
+    padding: calc(var(--spacing-section) + 60px) 0 var(--spacing-section);
+    min-height: 100vh;
+  }
+
+  .changelog-content {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  /* 版本标题 h2 */
+  .changelog-content :global(h2) {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin-top: 48px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .changelog-content :global(h2:first-child) {
+    margin-top: 0;
+  }
+
+  /* 分类标题 h3 */
+  .changelog-content :global(h3) {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--color-accent-primary);
+    margin-top: 20px;
+    margin-bottom: 10px;
+  }
+
+  /* 条目列表 */
+  .changelog-content :global(ul) {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 16px;
+  }
+
+  .changelog-content :global(li) {
+    position: relative;
+    padding: 8px 0 8px 20px;
+    color: var(--color-text-secondary);
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  .changelog-content :global(li::before) {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 16px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-accent-primary);
+  }
+
+  .changelog-content :global(strong) {
+    color: var(--color-text-primary);
+    font-weight: 600;
+  }
+
+  .changelog-content :global(code) {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--color-bg-tertiary);
+    color: var(--color-accent-primary);
+  }
+
+  @media (max-width: 768px) {
+    .changelog-content :global(h2) {
+      font-size: 20px;
+    }
+
+    .changelog-content :global(h3) {
+      font-size: 15px;
+    }
+
+    .changelog-content :global(li) {
+      font-size: 14px;
+    }
+  }
+</style>

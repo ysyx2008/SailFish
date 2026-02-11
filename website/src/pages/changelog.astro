@@ -1,0 +1,16 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Header from '../components/Header.astro';
+import Changelog from '../components/Changelog.astro';
+import Footer from '../components/Footer.astro';
+
+const lang = 'en';
+---
+
+<Layout title="Changelog - SFTerm" lang={lang}>
+  <Header lang={lang} />
+  <main>
+    <Changelog lang={lang} />
+  </main>
+  <Footer lang={lang} />
+</Layout>

@@ -17,6 +17,7 @@ export const translations = {
       features: '功能特性',
       download: '下载',
       stats: '统计',
+      changelog: '更新日志',
       github: 'GitHub',
       cta: '立即下载',
     },
@@ -223,6 +224,10 @@ export const translations = {
       },
       copyright: '保留所有权利.',
     },
+    changelog: {
+      title: '更新日志',
+      subtitle: '记录旗鱼终端的每一次进化',
+    },
     common: {
       brandName: '旗鱼终端',
     },
@@ -232,6 +237,7 @@ export const translations = {
       features: 'Features',
       download: 'Download',
       stats: 'Stats',
+      changelog: 'Changelog',
       github: 'GitHub',
       cta: 'Download Now',
     },
@@ -437,6 +443,10 @@ export const translations = {
         license: 'License',
       },
       copyright: 'All rights reserved.',
+    },
+    changelog: {
+      title: 'Changelog',
+      subtitle: 'Track every evolution of SFTerm',
     },
     common: {
       brandName: 'SFTerm',
