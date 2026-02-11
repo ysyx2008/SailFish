@@ -128,7 +128,7 @@ export async function executeTool(
       return clearPlan(args, executor)
 
     case 'load_skill':
-      return await loadSkillTool(args, executor)
+      return await loadSkillTool(args, config, executor)
 
     case 'unload_skill':
       return await unloadSkillTool(args, executor)
