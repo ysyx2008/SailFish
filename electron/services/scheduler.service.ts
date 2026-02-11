@@ -276,7 +276,7 @@ export class SchedulerService {
   // ==================== 任务执行 ====================
 
   /**
-   * 立即执行任务
+   * 立即执行任务（手动触发，跳过去重检查）
    */
   async runTask(id: string): Promise<TaskExecutionResult> {
     const task = this.store.getTask(id)
@@ -289,13 +289,15 @@ export class SchedulerService {
       }
     }
 
-    return this.executeTask(task)
+    return this.executeTask(task, /* manual */ true)
   }
 
   /**
    * 执行任务
+   * @param task 任务
+   * @param manual 是否为手动触发（手动触发跳过去重检查）
    */
-  private async executeTask(task: ScheduledTask): Promise<TaskExecutionResult> {
+  private async executeTask(task: ScheduledTask, manual: boolean = false): Promise<TaskExecutionResult> {
     if (!this.config) {
       return {
         success: false,
@@ -312,6 +314,21 @@ export class SchedulerService {
         output: '',
         error: '任务正在执行中',
         duration: 0
+      }
+    }
+
+    // 防止自动调度的任务在短时间内重复触发
+    // runningTasks 在 finally 中立即清除（因为实际执行在前端），对本地任务无法起到防重复的作用，
+    // 因此使用持久化的 lastRun.at 时间戳作为可靠的去重依据
+    if (!manual) {
+      const freshTask = this.store.getTask(task.id)
+      if (freshTask?.lastRun?.at && (Date.now() - freshTask.lastRun.at) < 1000) {
+        console.log(`[SchedulerService] 任务在 1 秒内已触发过，跳过重复触发: ${task.name}`)
+        return {
+          success: true,
+          output: '',
+          duration: 0
+        }
       }
     }
 
