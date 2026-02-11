@@ -37,6 +37,9 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 
+# Astro
+website/.astro/
+
 
 /electron-cache
 /assets/
