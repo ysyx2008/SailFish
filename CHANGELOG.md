@@ -2,7 +2,27 @@
 
 All notable changes to SFTerm will be documented in this file.
 
-## v8.19.4 (Latest)
+## v8.20.0 (Latest)
+
+### New Features
+- 📅 **Calendar Todos**: Added todo/task management support for CalDAV calendars, with automatic detection of providers that don't support todos
+- 🌐 **Browser Snapshot**: Added `browser_snapshot` tool to capture page accessibility tree snapshots for better page understanding
+- 📝 **Word Style Management**: Enhanced Word skill with improved style management and configuration support
+
+### Improvements
+- 🔧 Updated TypeScript configuration to support ES2020
+- 🔄 Refactored calendar parameter naming and risk levels
+- 🧹 Removed AI assistant quick commands
+
+### Bug Fixes
+- 🔧 Fixed calendar connection output format
+- 🔧 Fixed calendar strict mode user confirmation logic
+- 🔧 Fixed browser snapshot filtering to exclude invisible elements
+- 🔧 Fixed browser timeout when clicking links that open new windows
+- 🔧 Fixed browser snapshot ref mechanism issues
+- 🔧 Fixed scheduler timer early-firing causing duplicate task execution
+
+## v8.19.4
 
 ### New Features
 - 📝 **Markdown File Opening**: Local file names now support direct click-to-open

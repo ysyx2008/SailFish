@@ -20,7 +20,7 @@ const isLocalFilePath = (text: string): boolean => {
   // 用户主目录路径
   if (/^~\/[^\s<>*?"]+$/.test(trimmed)) return true
   // Windows 路径 (C:\ 或 C:/)
-  if (/^[A-Za-z]:[\\\/][^\s<>*?"]*$/.test(trimmed)) return true
+  if (/^[A-Za-z]:[\\/][^\s<>*?"]*$/.test(trimmed)) return true
   return false
 }
 
@@ -56,7 +56,7 @@ const wrapBareFilePaths = (html: string): string => {
   // Unix/macOS: /path/to/file（至少两级路径或带扩展名的单级路径）
   // Windows: C:\path\to\file 或 C:/path/to/file
   // Home: ~/path/to/file
-  const filePathPattern = /(?:\/(?:[\w\u4e00-\u9fff\u3000-\u303f\u00C0-\u024F\.\-\+\@\#\$\(\)\[\]% ]+\/)*[\w\u4e00-\u9fff\u3000-\u303f\u00C0-\u024F\.\-\+\@\#\$\(\)\[\]% ]+\.[\w]{1,10}|~\/[\w\u4e00-\u9fff\u3000-\u303f\u00C0-\u024F\.\-\+\@\#\$\(\)\[\]%\/\\ ]+|[A-Za-z]:[\\\/][\w\u4e00-\u9fff\u3000-\u303f\u00C0-\u024F\.\-\+\@\#\$\(\)\[\]%\/\\ ]+)/g
+  const filePathPattern = /(?:\/(?:[\w\u4e00-\u9fff\u3000-\u303f\u00C0-\u024F.\-+@#$()[\]% ]+\/)*[\w\u4e00-\u9fff\u3000-\u303f\u00C0-\u024F.\-+@#$()[\]% ]+\.[\w]{1,10}|~\/[\w\u4e00-\u9fff\u3000-\u303f\u00C0-\u024F.\-+@#$()[\]%/\\ ]+|[A-Za-z]:[\\/][\w\u4e00-\u9fff\u3000-\u303f\u00C0-\u024F.\-+@#$()[\]%/\\ ]+)/g
 
   // 拆分 HTML 为标签和文本节点
   const parts = html.split(/(<[^>]+>)/g)

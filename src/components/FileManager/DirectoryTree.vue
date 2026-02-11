@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 
+// eslint-disable-next-line no-redeclare
 interface TreeNode {
   name: string
   path: string
