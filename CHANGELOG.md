@@ -2,7 +2,7 @@
 
 All notable changes to SFTerm will be documented in this file.
 
-## v8.20.0 (Latest)
+## v8.20.0 (2025-02-12) (Latest)
 
 ### New Features
 - 🖼️ **Image Upload**: Added image upload support for multimodal AI messages
