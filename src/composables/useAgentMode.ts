@@ -17,6 +17,7 @@ const SCROLL_THROTTLE_MS = 1000
 export interface AgentTaskGroup {
   id: string
   userTask: string
+  images?: string[]  // 用户消息附带的图片（用于聊天中显示）
   steps: AgentStep[]
   finalResult?: string
   isCurrentTask: boolean
@@ -60,7 +61,11 @@ export function useAgentMode(
   getDocumentContext: () => Promise<string>,
   getHostIdByTabId: (tabId: string) => Promise<string>,  // 根据 tabId 获取 hostId（不依赖 activeTab）
   autoProbeHostProfile: () => Promise<void>,
-  tabId: Ref<string>  // 每个 AiPanel 实例固定绑定的 tab ID
+  tabId: Ref<string>,  // 每个 AiPanel 实例固定绑定的 tab ID
+  imageCallbacks?: {
+    getImages: () => string[]      // 获取待发送的图片 data URL 列表
+    clearImages: () => void        // 清空待发送的图片
+  }
 ) {
   const { t } = useI18n()
   const terminalStore = useTerminalStore()
@@ -315,6 +320,7 @@ export function useAgentMode(
         currentGroup = {
           id: step.id,
           userTask: step.content,
+          images: step.images,  // 附带的图片
           steps: [],
           isCurrentTask: false
         }
@@ -475,7 +481,8 @@ export function useAgentMode(
 
   // 运行 Agent 或发送补充消息
   const runAgent = async () => {
-    if (!inputText.value.trim() || !currentTabId.value) return
+    const hasImageData = (imageCallbacks?.getImages()?.length ?? 0) > 0
+    if ((!inputText.value.trim() && !hasImageData) || !currentTabId.value) return
 
     const tabId = currentTabId.value
     const message = inputText.value
@@ -533,15 +540,24 @@ export function useAgentMode(
     
     // 获取文档上下文
     const documentContext = await getDocumentContext()
+    
+    // 获取待发送的图片
+    const images = imageCallbacks?.getImages() || []
 
-    // 添加用户任务到步骤中（作为对话流的一部分）
+    // 添加用户任务到步骤中（作为对话流的一部分，附带图片用于显示）
     terminalStore.addAgentStep(tabId, {
       id: `user_task_${Date.now()}`,
       type: 'user_task',
       content: message,
+      images: images.length > 0 ? images : undefined,
       timestamp: Date.now()
     })
     await scrollToBottom()
+    
+    // 清空待发送的图片
+    if (images.length > 0) {
+      imageCallbacks?.clearImages()
+    }
 
     // 设置 Agent 状态：正在运行 + 用户任务
     terminalStore.setAgentRunning(tabId, true, undefined, message)
@@ -559,8 +575,9 @@ export function useAgentMode(
           ...context,
           hostId,  // 主机档案 ID
           documentContext,  // 添加文档上下文
+          images: images.length > 0 ? images : undefined,  // 附带图片（视觉理解）
           previousTasks  // 之前已完成任务的上下文（用于初始化 TaskMemoryStore）
-        } as { ptyId: string; terminalOutput: string[]; systemInfo: { os: string; shell: string }; terminalType: 'local' | 'ssh'; hostId?: string; documentContext?: string; previousTasks?: { userTask: string; steps: { type: string; content: string; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: string; riskLevel?: string }[]; finalResult: string; timestamp: number }[] },
+        } as { ptyId: string; terminalOutput: string[]; systemInfo: { os: string; shell: string }; terminalType: 'local' | 'ssh'; hostId?: string; documentContext?: string; images?: string[]; previousTasks?: { userTask: string; steps: { type: string; content: string; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: string; riskLevel?: string }[]; finalResult: string; timestamp: number }[] },
         { executionMode: executionMode.value, commandTimeout: commandTimeout.value * 1000 }  // 传递配置（超时时间转为毫秒）
       )
 

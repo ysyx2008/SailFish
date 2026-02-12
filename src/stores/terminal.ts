@@ -62,6 +62,7 @@ export interface AgentStep {
   id: string
   type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'plan_created' | 'plan_updated' | 'plan_archived'
   content: string
+  images?: string[]  // 用户消息附带的图片（base64 data URL），用于在聊天中显示
   toolName?: string
   toolArgs?: Record<string, unknown>
   toolResult?: string

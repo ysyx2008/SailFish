@@ -65,9 +65,15 @@ function parseApiError(rawBody: string): { message: string; code?: string } {
   return { message: rawBody.length > 300 ? rawBody.slice(0, 300) + '...' : rawBody }
 }
 
+// 多模态消息内容部分（OpenAI Vision API 格式）
+export type AiContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string; detail?: 'auto' | 'low' | 'high' } }
+
 export interface AiMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
+  images?: string[]  // 图片 base64 data URL 列表（仅 user 消息），发送时会转为多模态格式
   tool_call_id?: string  // 用于 tool 角色的消息
   tool_calls?: ToolCall[]  // 用于 assistant 角色的工具调用
   reasoning_content?: string  // 用于 think 模型的思考内容（DeepSeek-R1 等）
@@ -116,6 +122,51 @@ export interface AiProfile {
   model: string
   proxy?: string
   contextLength?: number  // 模型上下文长度（tokens），默认 8000
+}
+
+/**
+ * 将 AiMessage 转换为 API 请求格式
+ * 如果消息包含图片，content 会转为多模态数组格式（OpenAI Vision API）
+ */
+function formatMessageForApi(msg: AiMessage): Record<string, unknown> {
+  if (msg.role === 'tool') {
+    return {
+      role: 'tool' as const,
+      content: msg.content,
+      tool_call_id: msg.tool_call_id
+    }
+  }
+  if (msg.role === 'assistant' && msg.tool_calls) {
+    const assistantMsg: Record<string, unknown> = {
+      role: 'assistant' as const,
+      content: msg.content || null,
+      tool_calls: msg.tool_calls
+    }
+    if (msg.reasoning_content) {
+      assistantMsg.reasoning_content = msg.reasoning_content
+    }
+    return assistantMsg
+  }
+  // user / system 消息：如果有图片，转为多模态格式
+  if (msg.images && msg.images.length > 0 && msg.role === 'user') {
+    const parts: AiContentPart[] = []
+    // 文本部分
+    if (msg.content) {
+      parts.push({ type: 'text', text: msg.content })
+    }
+    // 图片部分
+    for (const imageUrl of msg.images) {
+      parts.push({ type: 'image_url', image_url: { url: imageUrl } })
+    }
+    return {
+      role: msg.role,
+      content: parts
+    }
+  }
+  return {
+    role: msg.role,
+    content: msg.content
+  }
 }
 
 export class AiService {
@@ -541,36 +592,8 @@ export class AiService {
       throw new Error(t('error.ai_no_config'))
     }
 
-    // 转换消息格式，处理 tool_calls 和 reasoning_content（支持 think 模型）
-    const formattedMessages = messages.map(msg => {
-      if (msg.role === 'tool') {
-        return {
-          role: 'tool' as const,
-          content: msg.content,
-          tool_call_id: msg.tool_call_id
-        }
-      }
-      if (msg.role === 'assistant' && msg.tool_calls) {
-        const assistantMsg: {
-          role: 'assistant'
-          content: string | null
-          tool_calls: ToolCall[]
-          reasoning_content?: string
-        } = {
-          role: 'assistant' as const,
-          content: msg.content || null,
-          tool_calls: msg.tool_calls
-        }
-        if (msg.reasoning_content) {
-          assistantMsg.reasoning_content = msg.reasoning_content
-        }
-        return assistantMsg
-      }
-      return {
-        role: msg.role,
-        content: msg.content
-      }
-    })
+    // 转换消息格式，处理 tool_calls、reasoning_content 和多模态图片
+    const formattedMessages = messages.map(msg => formatMessageForApi(msg))
 
     const requestBody = {
       model: profile.model,
@@ -712,37 +735,8 @@ export class AiService {
       }, AI_TIMEOUT.SOCKET_IDLE)
     }
 
-    // 转换消息格式，支持 think 模型的 reasoning_content
-    const formattedMessages = messages.map(msg => {
-      if (msg.role === 'tool') {
-        return {
-          role: 'tool' as const,
-          content: msg.content,
-          tool_call_id: msg.tool_call_id
-        }
-      }
-      if (msg.role === 'assistant' && msg.tool_calls) {
-        // DeepSeek think 模型要求包含 reasoning_content
-        const assistantMsg: {
-          role: 'assistant'
-          content: string | null
-          tool_calls: ToolCall[]
-          reasoning_content?: string
-        } = {
-          role: 'assistant' as const,
-          content: msg.content || null,
-          tool_calls: msg.tool_calls
-        }
-        if (msg.reasoning_content) {
-          assistantMsg.reasoning_content = msg.reasoning_content
-        }
-        return assistantMsg
-      }
-      return {
-        role: msg.role,
-        content: msg.content
-      }
-    })
+    // 转换消息格式，支持 think 模型的 reasoning_content 和多模态图片
+    const formattedMessages = messages.map(msg => formatMessageForApi(msg))
 
     const requestBody = {
       model: profile.model,

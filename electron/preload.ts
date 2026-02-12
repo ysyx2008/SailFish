@@ -286,6 +286,7 @@ export interface AgentStep {
   id: string
   type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement' | 'waiting' | 'asking'
   content: string
+  images?: string[]  // 用户消息附带的图片（base64 data URL），用于在聊天中显示
   toolName?: string
   toolArgs?: Record<string, unknown>
   toolResult?: string
@@ -303,6 +304,7 @@ export interface AgentContext {
   }
   hostId?: string  // 主机档案 ID
   documentContext?: string  // 用户上传的文档内容
+  images?: string[]  // 用户上传的图片（base64 data URL），用于视觉理解
 }
 
 export interface AgentConfig {

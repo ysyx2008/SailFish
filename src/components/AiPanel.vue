@@ -6,7 +6,7 @@
  */
 import { ref, computed, watch, inject, onMounted, onUnmounted, toRef, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Upload, Trash2, X, HelpCircle, ChevronDown, Paperclip, Square, ArrowUp, Check, Mic, MicOff, Loader2 } from 'lucide-vue-next'
+import { Upload, Trash2, X, HelpCircle, ChevronDown, Paperclip, Square, ArrowUp, Check, Mic, MicOff, Loader2, ImagePlus } from 'lucide-vue-next'
 import { useConfigStore } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
 import AgentPlanView from './AgentPlanView.vue'
@@ -15,6 +15,7 @@ import AgentPlanView from './AgentPlanView.vue'
 import {
   useMarkdown,
   useDocumentUpload,
+  useImageUpload,
   useContextStats,
   useHostProfile,
   useAgentMode,
@@ -76,6 +77,20 @@ const {
   formatFileSize,
   getDocumentContext
 } = useDocumentUpload(currentTabId)
+
+// 图片上传（视觉理解）
+const {
+  pendingImages,
+  isProcessingImage,
+  handlePasteImages,
+  handleDroppedImages,
+  removeImage,
+  clearImages,
+  getImageDataUrls,
+  hasImages,
+  canAddMore: canAddMoreImages,
+  selectImages
+} = useImageUpload()
 
 // Markdown 渲染
 const {
@@ -142,7 +157,11 @@ const {
   getDocumentContext,
   getHostIdByTabId,
   autoProbeHostProfile,
-  currentTabId
+  currentTabId,
+  {
+    getImages: getImageDataUrls,
+    clearImages
+  }
 )
 
 // @ 命令（提及）
@@ -520,6 +539,14 @@ watch(inputText, () => {
   nextTick(adjustTextareaHeight)
 })
 
+// 处理粘贴事件（检测图片）
+const handlePaste = async (event: ClipboardEvent) => {
+  const handled = await handlePasteImages(event)
+  if (handled) {
+    event.preventDefault()  // 阻止默认粘贴行为（避免粘贴图片文件名等）
+  }
+}
+
 // 处理失焦事件（延迟关闭菜单，以便点击菜单项时不会被 blur 打断）
 const handleInputBlur = () => {
   setTimeout(() => closeMentionMenu(), 150)
@@ -553,10 +580,15 @@ const handleSend = async () => {
   // 关闭 @ 补全菜单
   closeMentionMenu()
   
-  // 如果输入为空且有等待的提问有默认值，发送空消息让后端使用默认值
-  if (!inputText.value.trim() && canSendEmpty.value && isAgentRunning.value && agentState.value?.agentId) {
+  // 如果输入为空且有等待的提问有默认值，发送空消息让后端使用默认值（没有图片时）
+  if (!inputText.value.trim() && !hasImages() && canSendEmpty.value && isAgentRunning.value && agentState.value?.agentId) {
     window.electronAPI.agent.addMessage(agentState.value.agentId, '')
     return
+  }
+  
+  // 如果只有图片没有文本，设置默认提示
+  if (!inputText.value.trim() && hasImages()) {
+    inputText.value = t('ai.describeImage')
   }
   
   // 展开 @ 引用，获取引用内容
@@ -672,7 +704,16 @@ const handleDragLeave = (e: DragEvent) => {
   }
 }
 
-// 拖放放下
+// ==================== 图片预览 ====================
+const previewImageUrl = ref<string | null>(null)
+const openImagePreview = (url: string) => {
+  previewImageUrl.value = url
+}
+const closeImagePreview = () => {
+  previewImageUrl.value = null
+}
+
+// 拖放放下（支持文档和图片）
 const handleDrop = async (e: DragEvent) => {
   e.preventDefault()
   e.stopPropagation()
@@ -680,7 +721,12 @@ const handleDrop = async (e: DragEvent) => {
   
   const files = e.dataTransfer?.files
   if (files && files.length > 0) {
-    await handleDroppedFiles(files)
+    // 先处理图片文件
+    const imageCount = await handleDroppedImages(files)
+    // 剩余的非图片文件交给文档处理
+    if (imageCount < files.length) {
+      await handleDroppedFiles(files)
+    }
   }
 }
 
@@ -1084,6 +1130,16 @@ onUnmounted(() => {
               <div class="message-wrapper">
                 <div class="message-content">
                   <span>{{ group.userTask }}</span>
+                  <!-- 用户消息附带的图片 -->
+                  <div v-if="group.images && group.images.length > 0" class="message-images">
+                    <img 
+                      v-for="(imgUrl, imgIdx) in group.images" 
+                      :key="imgIdx" 
+                      :src="imgUrl" 
+                      class="message-image" 
+                      @click="openImagePreview(imgUrl)"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -1329,6 +1385,19 @@ onUnmounted(() => {
             {{ t('ai.context') }}: ~{{ contextStats.tokenEstimate.toLocaleString() }} / {{ (contextStats.maxTokens / 1000).toFixed(0) }}K ({{ contextStats.percentage }}%)
           </span>
         </div>
+        <!-- 图片预览区域 -->
+        <div v-if="pendingImages.length > 0" class="image-preview-strip">
+          <div 
+            v-for="img in pendingImages" 
+            :key="img.id" 
+            class="image-preview-item"
+          >
+            <img :src="img.dataUrl" :alt="img.name" class="image-thumbnail" />
+            <button class="image-remove-btn" @click="removeImage(img.id)" :title="t('ai.removeImage')">
+              <X :size="12" />
+            </button>
+          </div>
+        </div>
         <div class="input-container">
           <!-- 上传按钮 -->
           <button 
@@ -1340,6 +1409,16 @@ onUnmounted(() => {
             <Paperclip v-if="!isUploadingDocs" :size="18" />
             <span v-else class="upload-spinner"></span>
           </button>
+          <!-- 图片上传按钮 -->
+          <button
+            class="upload-btn image-upload-btn"
+            @click="selectImages"
+            :disabled="isProcessingImage || !canAddMoreImages()"
+            :title="t('ai.uploadImage')"
+          >
+            <ImagePlus v-if="!isProcessingImage" :size="18" />
+            <span v-else class="upload-spinner"></span>
+          </button>
           <textarea
             ref="mentionInputRef"
             v-model="inputText"
@@ -1347,6 +1426,7 @@ onUnmounted(() => {
             rows="1"
             @input="handleInputChange"
             @keydown="handleInputKeyDown"
+            @paste="handlePaste"
             @compositionstart="isComposing = true"
             @compositionend="isComposing = false"
             @blur="handleInputBlur"
@@ -1449,7 +1529,7 @@ onUnmounted(() => {
           <button
             v-else
             class="send-btn send-btn-agent"
-            :disabled="!inputText.trim()"
+            :disabled="!inputText.trim() && !hasImages()"
             :title="t('ai.executeTask')"
             @click="handleSend"
           >
@@ -1458,6 +1538,15 @@ onUnmounted(() => {
         </div>
       </div>
     </template>
+    <!-- 图片预览弹窗 -->
+    <div v-if="previewImageUrl" class="image-preview-modal" @click="closeImagePreview">
+      <div class="image-preview-modal-content" @click.stop>
+        <button class="image-preview-close" @click="closeImagePreview">
+          <X :size="20" />
+        </button>
+        <img :src="previewImageUrl" class="image-preview-full" />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -4658,6 +4747,141 @@ onUnmounted(() => {
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-secondary);
+}
+
+/* ==================== 图片上传预览条 ==================== */
+.image-preview-strip {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px 4px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.image-preview-item {
+  position: relative;
+  flex-shrink: 0;
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+}
+
+.image-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.image-remove-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.image-preview-item:hover .image-remove-btn {
+  opacity: 1;
+}
+
+.image-upload-btn {
+  color: var(--text-tertiary);
+}
+
+.image-upload-btn:hover {
+  color: var(--accent-primary);
+}
+
+/* ==================== 聊天中的图片消息 ==================== */
+.message-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.message-image {
+  max-width: 200px;
+  max-height: 150px;
+  border-radius: 8px;
+  object-fit: cover;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.message-image:hover {
+  transform: scale(1.02);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* ==================== 图片预览弹窗 ==================== */
+.image-preview-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.image-preview-modal-content {
+  position: relative;
+  max-width: 90vw;
+  max-height: 90vh;
+}
+
+.image-preview-full {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.image-preview-close {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.image-preview-close:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 </style>
