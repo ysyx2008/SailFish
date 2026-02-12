@@ -680,7 +680,7 @@ interface Window {
       }) => Promise<boolean>
       getStatus: (ptyId: string) => Promise<unknown>
       cleanup: (ptyId: string) => Promise<void>
-      updateConfig: (ptyId: string, config: { executionMode?: 'strict' | 'relaxed' | 'free'; commandTimeout?: number }) => Promise<boolean>
+      updateConfig: (ptyId: string, config: { executionMode?: 'strict' | 'relaxed' | 'free'; commandTimeout?: number; profileId?: string }) => Promise<boolean>
       addMessage: (ptyId: string, message: string) => Promise<boolean>
       getExecutionPhase: (ptyId: string) => Promise<{
         phase: 'thinking' | 'executing_command' | 'writing_file' | 'waiting' | 'confirming' | 'idle'

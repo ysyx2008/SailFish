@@ -2,7 +2,24 @@
 
 All notable changes to SFTerm will be documented in this file.
 
-## v8.19.5 (Latest)
+## v8.20.0 (Latest)
+
+### New Features
+- 🖼️ **Image Upload**: Added image upload support for multimodal AI messages
+- 🔍 **Image Preview**: Enhanced image preview with zoom and drag support
+- 📸 **Browser Auto Snapshot**: Browser click/navigate/tab-switch actions now automatically include page snapshots, with human-readable action descriptions
+- 📄 **Website Changelog**: Added changelog page to the website, auto-syncing CHANGELOG content
+
+### Improvements
+- 📎 Merged document and image upload buttons in AI panel for a cleaner UI
+- 🔧 Simplified agent tool display, showing tool call details and skill loading information only in debug mode
+
+### Bug Fixes
+- 🔧 Fixed Word table style with cell row height being too large
+- 🔧 Fixed model selection to be per-tab independent, resolving cross-terminal model misuse and ineffective switching during execution
+- 🔧 Removed changelog navigation link icon on website for consistent styling
+
+## v8.19.5
 
 ### New Features
 - 📅 **Calendar Todos**: Added todo/task management support for CalDAV calendars, with automatic detection of providers that don't support todos
