@@ -16,6 +16,8 @@ import {
   BorderStyle,
   AlignmentType,
   LineRuleType,
+  VerticalAlignTable,
+  ShadingType,
   convertInchesToTwip
 } from 'docx'
 import { marked, Token, Tokens } from 'marked'
@@ -598,7 +600,7 @@ function tokensToDocxElements(
         break
         
       case 'table':
-        elements.push(createTable(token as Tokens.Table))
+        elements.push(createTable(token as Tokens.Table, style))
         break
         
       case 'code':
@@ -904,48 +906,112 @@ function createList(token: Tokens.List, style: WordStyleConfig): Paragraph[] {
 }
 
 /**
- * 创建表格
+ * 表格单元格边框样式
  */
-function createTable(token: Tokens.Table): Table {
+const TABLE_BORDER = {
+  style: BorderStyle.SINGLE,
+  size: 4, // 0.5pt（half-point 单位）
+  color: '000000'
+}
+
+/**
+ * 表格单元格内边距（twips，1pt = 20twips）
+ */
+const TABLE_CELL_MARGINS = {
+  top: 30,      // 1.5pt
+  bottom: 30,   // 1.5pt
+  left: 80,     // 4pt
+  right: 80     // 4pt
+}
+
+/**
+ * 创建表格
+ * 规范化表格样式：表头有底色和加粗，单元格有内边距和垂直居中，
+ * 字号略小于正文以适应表格空间，偶数行可选浅灰底色提升可读性
+ */
+function createTable(token: Tokens.Table, style: WordStyleConfig): Table {
   const rows: TableRow[] = []
-  
-  // 表头 - 使用 cell.tokens 支持内联格式
+  const config = style.config
+
+  // 表格内文字号：比正文小一号（正文 16pt → 表格 12pt; 正文 12pt → 表格 10.5pt）
+  const tableFontSize = config.fontSize
+    ? Math.max(Math.round(config.fontSize * 0.75), 9)
+    : 10.5
+  const tableFontSizeHalf = tableFontSize * 2 // docx 用半磅
+
+  // 表格内文字体
+  const tableFont = buildFontConfig(config.font, config.fontAscii)
+
+  // 单元格公共边框
+  const cellBorders = {
+    top: TABLE_BORDER,
+    bottom: TABLE_BORDER,
+    left: TABLE_BORDER,
+    right: TABLE_BORDER
+  }
+
+  // 表格单元格内段落行距：使用单倍行距，避免继承文档级固定行距（如28.5pt）导致单元格过高
+  const tableCellSpacing = { before: 0, after: 0, line: 240 }
+
+  // 表头行
   if (token.header && token.header.length > 0) {
     rows.push(new TableRow({
-      children: token.header.map(cell => {
+      tableHeader: true, // 跨页时重复表头
+      children: token.header.map((cell, colIdx) => {
         const children = cell.tokens && cell.tokens.length > 0
-          ? parseInlineTokens(cell.tokens, { bold: true })
-          : [new TextRun({ text: decodeHtmlEntities(cell.text), bold: true })]
+          ? parseInlineTokens(cell.tokens, { font: tableFont, size: tableFontSize, bold: true })
+          : [new TextRun({ text: decodeHtmlEntities(cell.text), font: tableFont, size: tableFontSizeHalf, bold: true })]
         
+        // 对齐方式：优先用 Markdown 表格的列对齐设置
+        const align = token.align?.[colIdx]
+        const alignment = align === 'center' ? AlignmentType.CENTER
+          : align === 'right' ? AlignmentType.RIGHT
+          : AlignmentType.CENTER // 表头默认居中
+
         return new TableCell({
-          children: [new Paragraph({ children })],
-          borders: {
-            top: { style: BorderStyle.SINGLE, size: 1 },
-            bottom: { style: BorderStyle.SINGLE, size: 1 },
-            left: { style: BorderStyle.SINGLE, size: 1 },
-            right: { style: BorderStyle.SINGLE, size: 1 }
+          children: [new Paragraph({
+            children,
+            alignment,
+            spacing: tableCellSpacing
+          })],
+          borders: cellBorders,
+          verticalAlign: VerticalAlignTable.CENTER,
+          margins: TABLE_CELL_MARGINS,
+          shading: {
+            type: ShadingType.CLEAR,
+            fill: 'F2F2F2', // 浅灰底色
+            color: 'auto'
           }
         })
       })
     }))
   }
   
-  // 数据行 - 使用 cell.tokens 支持内联格式
-  for (const row of token.rows) {
+  // 数据行
+  for (let rowIdx = 0; rowIdx < token.rows.length; rowIdx++) {
+    const row = token.rows[rowIdx]
+    
     rows.push(new TableRow({
-      children: row.map(cell => {
+      children: row.map((cell, colIdx) => {
         const children = cell.tokens && cell.tokens.length > 0
-          ? parseInlineTokens(cell.tokens, {})
-          : [new TextRun({ text: decodeHtmlEntities(cell.text) })]
+          ? parseInlineTokens(cell.tokens, { font: tableFont, size: tableFontSize })
+          : [new TextRun({ text: decodeHtmlEntities(cell.text), font: tableFont, size: tableFontSizeHalf })]
         
+        // 对齐方式：优先用 Markdown 表格的列对齐设置
+        const align = token.align?.[colIdx]
+        const alignment = align === 'center' ? AlignmentType.CENTER
+          : align === 'right' ? AlignmentType.RIGHT
+          : AlignmentType.LEFT
+
         return new TableCell({
-          children: [new Paragraph({ children })],
-          borders: {
-            top: { style: BorderStyle.SINGLE, size: 1 },
-            bottom: { style: BorderStyle.SINGLE, size: 1 },
-            left: { style: BorderStyle.SINGLE, size: 1 },
-            right: { style: BorderStyle.SINGLE, size: 1 }
-          }
+          children: [new Paragraph({
+            children,
+            alignment,
+            spacing: tableCellSpacing
+          })],
+          borders: cellBorders,
+          verticalAlign: VerticalAlignTable.CENTER,
+          margins: TABLE_CELL_MARGINS
         })
       })
     }))
