@@ -8,6 +8,48 @@ import { ref, type Ref } from 'vue'
 // 支持的图片 MIME 类型
 const SUPPORTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp']
 
+/**
+ * 已知支持视觉（多模态图片）的模型名称模式
+ * 使用正则匹配，不区分大小写
+ */
+const VISION_MODEL_PATTERNS: RegExp[] = [
+  // OpenAI
+  /gpt-4o/i,            // gpt-4o, gpt-4o-mini
+  /gpt-4-turbo/i,       // gpt-4-turbo（支持 vision）
+  /gpt-4-vision/i,      // gpt-4-vision-preview
+  /o1/i,                // o1, o1-mini, o1-pro
+  /o3/i,                // o3, o3-mini
+  // Qwen（通义千问）
+  /qwen-vl/i,           // qwen-vl-plus, qwen-vl-max
+  /qwen2-vl/i,          // qwen2-vl-7b 等
+  /qwen2\.5-vl/i,       // qwen2.5-vl-*
+  // 豆包（火山引擎）
+  /doubao.*vision/i,    // doubao-*-vision-*
+  /doubao.*vl/i,        // doubao-*-vl-*
+  // Google
+  /gemini/i,            // gemini-pro-vision, gemini-1.5-pro 等（Gemini 全系列支持）
+  // Anthropic
+  /claude-3/i,          // claude-3-*, claude-3.5-*（全部支持 vision）
+  // Ollama 本地视觉模型
+  /llava/i,             // llava, llava:13b 等
+  /bakllava/i,          // bakllava
+  /minicpm-v/i,         // minicpm-v
+  /cogvlm/i,            // cogvlm
+  // 通用匹配：模型名包含 vision 或 vl（visual language）
+  /vision/i,
+  /-vl[-:]/i,           // 匹配 xxx-vl-xxx 或 xxx-vl:tag
+  /-vl$/i,              // 匹配以 -vl 结尾
+]
+
+/**
+ * 检测模型是否可能支持视觉（多模态图片）
+ * 基于已知模型名称模式匹配，不保证 100% 准确
+ */
+export function isVisionModel(modelName: string): boolean {
+  if (!modelName) return false
+  return VISION_MODEL_PATTERNS.some(pattern => pattern.test(modelName))
+}
+
 // 限制配置
 const IMAGE_LIMITS = {
   MAX_COUNT: 5,           // 最多同时上传 5 张图片

@@ -6,7 +6,7 @@
  */
 import { ref, computed, watch, inject, onMounted, onUnmounted, toRef, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Upload, Trash2, X, HelpCircle, ChevronDown, Paperclip, Square, ArrowUp, Check, Mic, MicOff, Loader2, ImagePlus } from 'lucide-vue-next'
+import { Upload, Trash2, X, HelpCircle, ChevronDown, Plus, Square, ArrowUp, Check, Mic, MicOff, Loader2 } from 'lucide-vue-next'
 import { useConfigStore } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
 import AgentPlanView from './AgentPlanView.vue'
@@ -16,6 +16,7 @@ import {
   useMarkdown,
   useDocumentUpload,
   useImageUpload,
+  isVisionModel,
   useContextStats,
   useHostProfile,
   useAgentMode,
@@ -46,6 +47,37 @@ const showSettings = inject<() => void>('showSettings')
 // Refs
 const messagesRef = ref<HTMLDivElement | null>(null)
 
+// 统一附件选择（图片 + 文档，自动按类型分流）
+const isAttaching = computed(() => isUploadingDocs.value || isProcessingImage.value)
+const selectAttachment = () => {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.multiple = true
+  // 同时接受图片和文档
+  input.accept = 'image/png,image/jpeg,image/gif,image/webp,image/bmp,.pdf,.doc,.docx,.txt,.md,.json,.xml,.csv,.html,.htm,.xls,.xlsx'
+  input.onchange = async () => {
+    if (!input.files || input.files.length === 0) return
+    const imageFiles: File[] = []
+    const docFiles: File[] = []
+    for (const file of input.files) {
+      if (file.type.startsWith('image/')) {
+        imageFiles.push(file)
+      } else {
+        docFiles.push(file)
+      }
+    }
+    // 图片走 useImageUpload
+    if (imageFiles.length > 0) {
+      await handleDroppedImages(imageFiles)
+    }
+    // 文档走 useDocumentUpload
+    if (docFiles.length > 0) {
+      await handleDroppedFiles(docFiles)
+    }
+  }
+  input.click()
+}
+
 // Plan 展开状态
 const planExpanded = ref(false)
 
@@ -70,7 +102,6 @@ const {
   uploadedDocs,
   isUploadingDocs,
   isDraggingOver,
-  selectAndUploadDocs,
   handleDroppedFiles,
   removeUploadedDoc,
   clearUploadedDocs,
@@ -87,9 +118,7 @@ const {
   removeImage,
   clearImages,
   getImageDataUrls,
-  hasImages,
-  canAddMore: canAddMoreImages,
-  selectImages
+  hasImages
 } = useImageUpload()
 
 // Markdown 渲染
@@ -537,6 +566,24 @@ const handleInputChange = (event: Event) => {
 // 监听 inputText 变化（包括程序性修改）
 watch(inputText, () => {
   nextTick(adjustTextareaHeight)
+})
+
+// 检查当前模型是否支持视觉，不支持时弹出一次提示（同一会话仅提示一次）
+let visionWarningShown = false
+const checkVisionSupport = () => {
+  if (visionWarningShown) return
+  const model = activeAiProfile.value?.model
+  if (model && !isVisionModel(model)) {
+    visionWarningShown = true
+    toast.warning(t('ai.visionNotSupported', { model }), 6000)
+  }
+}
+
+// 监听图片列表变化，有新图片时检测视觉支持
+watch(() => pendingImages.value.length, (newLen, oldLen) => {
+  if (newLen > oldLen) {
+    checkVisionSupport()
+  }
 })
 
 // 处理粘贴事件（检测图片）
@@ -1456,25 +1503,15 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="input-container">
-          <!-- 上传按钮 -->
-          <button 
-            class="upload-btn" 
-            @click="() => selectAndUploadDocs()" 
-            :disabled="isUploadingDocs"
-            :title="t('ai.uploadDocument')"
-          >
-            <Paperclip v-if="!isUploadingDocs" :size="18" />
-            <span v-else class="upload-spinner"></span>
-          </button>
-          <!-- 图片上传按钮 -->
+          <!-- 附件按钮（图片 + 文档统一选择） -->
           <button
-            class="upload-btn image-upload-btn"
-            @click="selectImages"
-            :disabled="isProcessingImage || !canAddMoreImages()"
-            :title="t('ai.uploadImage')"
+            class="upload-btn"
+            :disabled="isAttaching"
+            :title="t('ai.attach')"
+            @click="selectAttachment"
           >
-            <ImagePlus v-if="!isProcessingImage" :size="18" />
-            <span v-else class="upload-spinner"></span>
+            <span v-if="isAttaching" class="upload-spinner"></span>
+            <Plus v-else :size="18" />
           </button>
           <textarea
             ref="mentionInputRef"
@@ -3301,6 +3338,7 @@ onUnmounted(() => {
   cursor: not-allowed;
 }
 
+
 .upload-spinner {
   display: inline-block;
   width: 16px;
@@ -4871,14 +4909,6 @@ onUnmounted(() => {
 
 .image-preview-item:hover .image-remove-btn {
   opacity: 1;
-}
-
-.image-upload-btn {
-  color: var(--text-tertiary);
-}
-
-.image-upload-btn:hover {
-  color: var(--accent-primary);
 }
 
 /* ==================== 聊天中的图片消息 ==================== */
