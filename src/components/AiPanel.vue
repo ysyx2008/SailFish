@@ -154,6 +154,7 @@ const {
   // Agent 执行
   executionMode,
   commandTimeout,
+  activeProfileId,
   pendingSupplements,
   agentState,
   isAgentRunning,
@@ -285,24 +286,28 @@ watch(mentionSelectedIndex, (newIndex) => {
   })
 })
 
-// 上下文统计
+// 上下文统计（使用 per-tab 的 activeAiProfile）
 const {
   contextStats
 } = useContextStats(
   agentState,
   agentUserTask,
-  computed(() => configStore.activeAiProfile)
+  computed(() => activeAiProfile.value)
 )
 
 // ==================== 配置相关 ====================
 
 const hasAiConfig = computed(() => configStore.hasAiConfig)
 const aiProfiles = computed(() => configStore.aiProfiles)
-const activeAiProfile = computed(() => configStore.activeAiProfile)
 
-// 切换 AI 配置
-const changeAiProfile = async (profileId: string) => {
-  await configStore.setActiveAiProfile(profileId)
+// 当前终端的 AI 配置档案（基于 per-tab activeProfileId）
+const activeAiProfile = computed(() =>
+  aiProfiles.value.find(p => p.id === activeProfileId.value) || null
+)
+
+// 切换 AI 配置（只影响当前终端）
+const changeAiProfile = (profileId: string) => {
+  activeProfileId.value = profileId
 }
 
 // ==================== 历史对话相关 ====================

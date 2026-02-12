@@ -6,6 +6,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTerminalStore } from '../stores/terminal'
+import { useConfigStore } from '../stores/config'
 import type { AgentStep, AgentState } from '../stores/terminal'
 
 // 判断用户是否在底部附近的阈值（像素）
@@ -69,6 +70,7 @@ export function useAgentMode(
 ) {
   const { t } = useI18n()
   const terminalStore = useTerminalStore()
+  const configStore = useConfigStore()
 
   // 当前终端 ID（使用传入的 tabId，不再依赖 activeTabId）
   const currentTabId = tabId
@@ -91,6 +93,7 @@ export function useAgentMode(
   // Agent 执行模式设置
   const executionMode = ref<'strict' | 'relaxed' | 'free'>('strict')  // 执行模式：strict=严格，relaxed=宽松，free=自由
   const commandTimeout = ref(10)     // 命令超时时间（秒），默认 10 秒
+  const activeProfileId = ref<string>(configStore.activeAiProfileId || '')  // 当前终端选择的 AI 配置档案 ID（每个终端独立，初始值继承全局设置）
   const collapsedTaskIds = ref<Set<string>>(new Set())  // 已折叠的任务 ID
   const pendingSupplements = ref<string[]>([])  // 等待处理的补充消息
 
@@ -305,6 +308,14 @@ export function useAgentMode(
     const context = terminalStore.getAgentContext(currentTabId.value)
     if (context?.ptyId && isAgentRunning.value) {
       await window.electronAPI.agent.updateConfig(context.ptyId, { commandTimeout: newValue * 1000 })
+    }
+  })
+
+  // 监听模型配置变化，实时同步到运行中的 Agent
+  watch(activeProfileId, async (newValue) => {
+    const context = terminalStore.getAgentContext(currentTabId.value)
+    if (context?.ptyId && isAgentRunning.value && newValue) {
+      await window.electronAPI.agent.updateConfig(context.ptyId, { profileId: newValue })
     }
   })
 
@@ -578,7 +589,8 @@ export function useAgentMode(
           images: images.length > 0 ? images : undefined,  // 附带图片（视觉理解）
           previousTasks  // 之前已完成任务的上下文（用于初始化 TaskMemoryStore）
         } as { ptyId: string; terminalOutput: string[]; systemInfo: { os: string; shell: string }; terminalType: 'local' | 'ssh'; hostId?: string; documentContext?: string; images?: string[]; previousTasks?: { userTask: string; steps: { type: string; content: string; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: string; riskLevel?: string }[]; finalResult: string; timestamp: number }[] },
-        { executionMode: executionMode.value, commandTimeout: commandTimeout.value * 1000 }  // 传递配置（超时时间转为毫秒）
+        { executionMode: executionMode.value, commandTimeout: commandTimeout.value * 1000 },  // 传递配置（超时时间转为毫秒）
+        activeProfileId.value || undefined  // 传递当前终端选择的 AI 配置档案 ID
       )
 
       // 添加最终结果到步骤中
@@ -981,6 +993,7 @@ export function useAgentMode(
     // Agent 执行
     executionMode,
     commandTimeout,
+    activeProfileId,
     collapsedTaskIds,
     pendingSupplements,
     agentState,

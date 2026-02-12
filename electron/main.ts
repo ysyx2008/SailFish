@@ -1659,7 +1659,7 @@ ipcMain.handle('agent:cleanup', async (_event, ptyId: string) => {
 })
 
 // 更新 Agent 配置（如执行模式、超时时间，改用 ptyId）
-ipcMain.handle('agent:updateConfig', async (_event, ptyId: string, config: { executionMode?: 'strict' | 'relaxed' | 'free'; commandTimeout?: number }) => {
+ipcMain.handle('agent:updateConfig', async (_event, ptyId: string, config: { executionMode?: 'strict' | 'relaxed' | 'free'; commandTimeout?: number; profileId?: string }) => {
   return agentService.updateConfig(ptyId, config)
 })
 

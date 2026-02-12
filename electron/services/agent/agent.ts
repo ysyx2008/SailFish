@@ -48,6 +48,9 @@ export abstract class Agent {
   /** 命令超时时间（毫秒） */
   commandTimeout: number = 30000
   
+  /** AI 配置档案 ID（每个 Agent 实例独立，未设置时 fallback 到全局） */
+  profileId?: string
+  
   // ==================== 状态（持久化） ====================
   
   /** 当前执行计划 */
@@ -126,10 +129,15 @@ export abstract class Agent {
       throw new Error('Agent is already running')
     }
     
+    // 如果传入了 profileId，更新 Agent 实例的配置
+    if (options?.profileId) {
+      this.profileId = options.profileId
+    }
+    
     const run = this.initializeRun(message, context, options)
     
     try {
-      await this.buildContext(run, message, options?.profileId)
+      await this.buildContext(run, message)
       const result = await this.executeLoop(run)
       this.finalizeRun(run, result)
       return result
@@ -170,12 +178,15 @@ export abstract class Agent {
   /**
    * 更新配置
    */
-  updateConfig(config: Partial<AgentConfig>): void {
+  updateConfig(config: Partial<AgentConfig> & { profileId?: string }): void {
     if (config.executionMode !== undefined) {
       this.executionMode = config.executionMode
     }
     if (config.commandTimeout !== undefined) {
       this.commandTimeout = config.commandTimeout
+    }
+    if (config.profileId !== undefined) {
+      this.profileId = config.profileId
     }
     // 如果正在运行，也更新运行时配置
     if (this.currentRun) {
@@ -431,7 +442,7 @@ export abstract class Agent {
   /**
    * 构建执行上下文
    */
-  protected async buildContext(run: AgentRun, message: string, profileId?: string): Promise<void> {
+  protected async buildContext(run: AgentRun, message: string): Promise<void> {
     // 加载知识库上下文
     const knowledgeResult = await this.loadKnowledgeContext(message, run.context.hostId)
     
@@ -442,7 +453,7 @@ export abstract class Agent {
     let availableTaskIds: Array<{ id: string; summary: string }> = []
     
     if (this.taskMemory.getTaskCount() > 0) {
-      const contextLength = this.getContextLength(profileId)
+      const contextLength = this.getContextLength()
       const contextResult = buildTaskHistoryContext(this.taskMemory, contextLength, message)
       
       recentTaskMessages = contextResult.recentTaskMessages
@@ -774,7 +785,7 @@ export abstract class Agent {
           }
           reject(new Error(error))
         },
-        undefined, // profileId - 从 run 获取
+        this.profileId, // 使用 Agent 实例的 profileId
         // onToolCallProgress - 显示工具调用参数生成进度
         (toolName: string, argsLength: number) => {
           const now = Date.now()
@@ -1239,7 +1250,7 @@ export abstract class Agent {
   /**
    * 获取上下文长度
    */
-  private getContextLength(profileId?: string): number {
+  private getContextLength(): number {
     const configService = this.services.configService
     if (!configService) {
       return 128000  // 默认 128K
@@ -1251,9 +1262,10 @@ export abstract class Agent {
     }
     
     let profile
-    if (profileId) {
-      profile = profiles.find(p => p.id === profileId)
-    } else {
+    if (this.profileId) {
+      profile = profiles.find(p => p.id === this.profileId)
+    }
+    if (!profile) {
       const activeId = configService.getActiveAiProfile()
       profile = profiles.find(p => p.id === activeId) || profiles[0]
     }
