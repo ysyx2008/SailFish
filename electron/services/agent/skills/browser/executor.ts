@@ -21,7 +21,45 @@ import {
   DEFAULT_PROFILE
 } from './session'
 import { getSnapshot, resolveRef, getSnapshotStats } from './snapshot'
+import type { RefMap } from './snapshot'
 import type { Page } from 'playwright-core'
+
+/** ARIA 角色到用户可读中文的映射，用于展示「点击 按钮「提交」」而非「点击 @e48」 */
+const ROLE_LABELS: Record<string, string> = {
+  button: '按钮',
+  link: '链接',
+  textbox: '输入框',
+  searchbox: '搜索框',
+  heading: '标题',
+  paragraph: '段落',
+  img: '图片',
+  checkbox: '复选框',
+  radio: '单选框',
+  combobox: '下拉框',
+  listbox: '列表',
+  menuitem: '菜单项',
+  option: '选项',
+  switch: '开关',
+  tab: '标签',
+  cell: '单元格',
+  article: '文章',
+  region: '区域',
+  navigation: '导航',
+  main: '主内容',
+}
+
+/**
+ * 将选择器转为用户可读描述。若为 @ref 且在 refs 中有对应项，返回如「按钮「提交」」；否则返回原选择器。
+ */
+function selectorToHumanLabel(selector: string, refs: RefMap | undefined): string {
+  if (!selector.startsWith('@') || !refs) return selector
+  const refId = selector.slice(1)
+  const info = refs[refId]
+  if (!info) return selector
+  const roleLabel = ROLE_LABELS[info.role] ?? info.role
+  const namePart = info.name ? `「${info.name}」` : ''
+  return `${roleLabel}${namePart}`.trim() || selector
+}
 
 /**
  * 执行浏览器技能工具
@@ -116,6 +154,31 @@ function resolveSelector(page: Page, selector: string, ptyId: string) {
   }
   
   return locator
+}
+
+/**
+ * 在操作后自动捕获当前页面快照（不单独记步），用于与点击/导航/切标签结果合并返回。
+ * 失败时返回 null，调用方仍可正常返回主操作结果。
+ */
+async function captureSnapshotInline(
+  ptyId: string,
+  options?: { interactive?: boolean; compact?: boolean }
+): Promise<string | null> {
+  try {
+    const session = ensureSession(ptyId)
+    const page = getCurrentPage(session)
+    const interactive = options?.interactive ?? true
+    const compact = options?.compact ?? false
+    const { tree, refs } = await getSnapshot(page, { interactive, compact })
+    session.refs = refs
+    const stats = getSnapshotStats(tree, refs)
+    const title = await page.title()
+    const currentUrl = page.url()
+    const statsLine = `[${stats.totalRefs} 个 ref, 其中 ${stats.interactiveRefs} 个可交互, ~${stats.estimatedTokens} tokens]`
+    return `页面: ${title}\nURL: ${currentUrl}\n${statsLine}\n\n${tree}`
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -272,11 +335,15 @@ async function browserGoto(
     const page = getCurrentPage(session)
     await page.goto(url, { waitUntil })
     
-    // 导航后旧 ref 失效，清空
+    // 导航后旧 ref 失效，清空；并自动附带当前页面快照
     session.refs = {}
     
     const title = await page.title()
-    const result = `已导航到 ${url}\n标题: ${title}\n\n💡 使用 browser_snapshot 获取页面元素和 ref 编号`
+    let result = `已导航到 ${url}\n标题: ${title}`
+    const snapshot = await captureSnapshotInline(ptyId)
+    if (snapshot) {
+      result += `\n\n--- 当前页面快照 ---\n${snapshot}`
+    }
 
     executor.addStep({
       type: 'tool_result',
@@ -480,9 +547,11 @@ async function browserClick(
     return { success: false, output: '', error: '缺少 selector 参数' }
   }
 
+  const sessionForLabel = getSession(ptyId)
+  const clickLabel = selectorToHumanLabel(selector, sessionForLabel?.refs)
   executor.addStep({
     type: 'tool_call',
-    content: `点击 ${selector}`,
+    content: `点击 ${clickLabel}`,
     toolName: 'browser_click',
     toolArgs: args,
     riskLevel: 'safe'
@@ -546,7 +615,7 @@ async function browserClick(
     
     // 检查是否有新标签页打开
     const tabCountAfter = session.pages.length
-    let result = `已点击 ${selector}`
+    let result = `已点击 ${clickLabel}`
     if (tabCountAfter > tabCountBefore) {
       // 清空旧 ref（新标签页内容不同）
       session.refs = {}
@@ -559,8 +628,11 @@ async function browserClick(
       result += `\n\n已自动切换到新标签页。\n新标签页: ${newTitle}\nURL: ${newUrl}\n当前共 ${tabCountAfter} 个标签页`
     }
     
-    // 点击后 ref 可能过期，提示 AI 重新 snapshot
-    result += `\n\n💡 页面可能已变化，建议重新调用 browser_snapshot 获取最新状态`
+    // 点击后自动附带当前页面快照，无需再单独调用 browser_snapshot
+    const snapshot = await captureSnapshotInline(ptyId)
+    if (snapshot) {
+      result += `\n\n--- 当前页面快照 ---\n${snapshot}`
+    }
 
     executor.addStep({
       type: 'tool_result',
@@ -601,9 +673,11 @@ async function browserType(
     return { success: false, output: '', error: '缺少 selector 或 text 参数' }
   }
 
+  const sessionForLabel = getSession(ptyId)
+  const typeLabel = selectorToHumanLabel(selector, sessionForLabel?.refs)
   executor.addStep({
     type: 'tool_call',
-    content: `在 ${selector} 输入文本`,
+    content: `在 ${typeLabel} 输入文本`,
     toolName: 'browser_type',
     toolArgs: { selector, text: text.length > 50 ? text.substring(0, 50) + '...' : text },
     riskLevel: 'safe'
@@ -637,8 +711,8 @@ async function browserType(
     }
 
     const result = pressEnter 
-      ? `已输入文本并按下回车` 
-      : `已输入文本`
+      ? `已在 ${typeLabel} 输入文本并按下回车` 
+      : `已在 ${typeLabel} 输入文本`
 
     executor.addStep({
       type: 'tool_result',
@@ -922,14 +996,18 @@ async function browserSwitchTab(
     
     switchToTab(session, index)
     
-    // 切换标签页后旧 ref 失效，清空
+    // 切换标签页后旧 ref 失效，清空；并自动附带当前页面快照
     session.refs = {}
     
     const page = getCurrentPage(session)
     const title = await page.title()
     const url = page.url()
     
-    const result = `已切换到标签页 ${index}\n标题: ${title}\nURL: ${url}\n\n💡 使用 browser_snapshot 获取当前页面的 ref 编号`
+    let result = `已切换到标签页 ${index}\n标题: ${title}\nURL: ${url}`
+    const snapshot = await captureSnapshotInline(ptyId)
+    if (snapshot) {
+      result += `\n\n--- 当前页面快照 ---\n${snapshot}`
+    }
 
     executor.addStep({
       type: 'tool_result',

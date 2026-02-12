@@ -53,9 +53,9 @@ export const browserTools: ToolDefinition[] = [
 - 比获取 HTML 内容**节省约 90% token**
 
 **推荐工作流**：
-1. browser_snapshot 获取页面结构和 ref
+1. 首次可用 browser_snapshot 获取页面结构和 ref（或直接 browser_goto / browser_click，其返回会自带快照）
 2. 使用 ref 执行操作：browser_click { selector: "@e2" }
-3. 页面变化后重新 snapshot
+3. browser_click、browser_goto、browser_switch_tab 执行后会自动附带当前页面快照，通常无需再单独调用本工具；仅在需要不同参数（如 compact、selector）或仅想刷新快照时再调用
 
 **模式**：
 - 默认：完整无障碍树
@@ -89,7 +89,7 @@ export const browserTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'browser_goto',
-      description: `导航到指定网址。
+      description: `导航到指定网址。成功后会自动附带当前页面快照，无需再单独调用 browser_snapshot。
 
 **等待策略**：
 - load：等待页面完全加载（默认）
@@ -181,10 +181,10 @@ export const browserTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'browser_click',
-      description: `点击页面元素。
+      description: `点击页面元素。成功后会自动附带当前页面快照，可直接基于返回内容继续操作，无需再调用 browser_snapshot。
 
 **选择器支持（推荐使用 ref）**：
-- **ref 引用（推荐）**：\`@e1\`, \`@e2\` - 使用 browser_snapshot 返回的 ref 编号，最准确
+- **ref 引用（推荐）**：\`@e1\`, \`@e2\` - 使用快照返回的 ref 编号，最准确
 - CSS 选择器：\`#id\`, \`.class\`, \`button\`
 - 文本选择器：\`text=登录\`, \`text=提交\`
 - 角色选择器：\`role=button[name="确定"]\`
@@ -341,7 +341,7 @@ export const browserTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'browser_switch_tab',
-      description: `切换到指定的标签页。
+      description: `切换到指定的标签页。切换成功后会自动附带当前页面快照，无需再单独调用 browser_snapshot。
 
 **使用场景**：当点击链接打开了新标签页后，可以用此工具切换回原标签页，或在多个标签页之间切换`,
       parameters: {
