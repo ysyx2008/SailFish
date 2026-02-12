@@ -704,14 +704,71 @@ const handleDragLeave = (e: DragEvent) => {
   }
 }
 
-// ==================== 图片预览 ====================
+// ==================== 图片预览（支持缩放和拖拽） ====================
 const previewImageUrl = ref<string | null>(null)
+const previewScale = ref(1)
+const previewTranslateX = ref(0)
+const previewTranslateY = ref(0)
+const isDraggingImage = ref(false)
+let dragStartX = 0
+let dragStartY = 0
+let dragStartTranslateX = 0
+let dragStartTranslateY = 0
+
 const openImagePreview = (url: string) => {
   previewImageUrl.value = url
+  previewScale.value = 1
+  previewTranslateX.value = 0
+  previewTranslateY.value = 0
 }
 const closeImagePreview = () => {
   previewImageUrl.value = null
+  isDraggingImage.value = false
 }
+
+// 滚轮缩放
+const handlePreviewWheel = (e: WheelEvent) => {
+  e.preventDefault()
+  const delta = e.deltaY > 0 ? -0.1 : 0.1
+  const newScale = Math.max(0.1, Math.min(10, previewScale.value + delta * previewScale.value))
+  previewScale.value = newScale
+}
+
+// 双击重置
+const handlePreviewDblClick = () => {
+  previewScale.value = 1
+  previewTranslateX.value = 0
+  previewTranslateY.value = 0
+}
+
+// 拖拽平移
+const handlePreviewMouseDown = (e: MouseEvent) => {
+  if (e.button !== 0) return // 仅左键
+  e.preventDefault()
+  isDraggingImage.value = true
+  dragStartX = e.clientX
+  dragStartY = e.clientY
+  dragStartTranslateX = previewTranslateX.value
+  dragStartTranslateY = previewTranslateY.value
+  
+  const handleMouseMove = (ev: MouseEvent) => {
+    if (!isDraggingImage.value) return
+    previewTranslateX.value = dragStartTranslateX + (ev.clientX - dragStartX)
+    previewTranslateY.value = dragStartTranslateY + (ev.clientY - dragStartY)
+  }
+  const handleMouseUp = () => {
+    isDraggingImage.value = false
+    document.removeEventListener('mousemove', handleMouseMove)
+    document.removeEventListener('mouseup', handleMouseUp)
+  }
+  document.addEventListener('mousemove', handleMouseMove)
+  document.addEventListener('mouseup', handleMouseUp)
+}
+
+// 预览图片的 transform 样式
+const previewTransform = computed(() => {
+  return `translate(${previewTranslateX.value}px, ${previewTranslateY.value}px) scale(${previewScale.value})`
+})
 
 // 拖放放下（支持文档和图片）
 const handleDrop = async (e: DragEvent) => {
@@ -1538,13 +1595,30 @@ onUnmounted(() => {
         </div>
       </div>
     </template>
-    <!-- 图片预览弹窗 -->
-    <div v-if="previewImageUrl" class="image-preview-modal" @click="closeImagePreview">
+    <!-- 图片预览弹窗（支持缩放拖拽） -->
+    <div 
+      v-if="previewImageUrl" 
+      class="image-preview-modal" 
+      @click="closeImagePreview"
+      @wheel.prevent="handlePreviewWheel"
+    >
       <div class="image-preview-modal-content" @click.stop>
         <button class="image-preview-close" @click="closeImagePreview">
           <X :size="20" />
         </button>
-        <img :src="previewImageUrl" class="image-preview-full" />
+        <img 
+          :src="previewImageUrl" 
+          class="image-preview-full" 
+          :class="{ 'dragging': isDraggingImage }"
+          :style="{ transform: previewTransform }"
+          @mousedown="handlePreviewMouseDown"
+          @dblclick="handlePreviewDblClick"
+          draggable="false"
+        />
+        <!-- 缩放比例指示 -->
+        <div v-if="previewScale !== 1" class="image-preview-zoom-badge">
+          {{ Math.round(previewScale * 100) }}%
+        </div>
       </div>
     </div>
   </div>
@@ -4830,7 +4904,7 @@ onUnmounted(() => {
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
 }
 
-/* ==================== 图片预览弹窗 ==================== */
+/* ==================== 图片预览弹窗（支持缩放拖拽） ==================== */
 .image-preview-modal {
   position: fixed;
   top: 0;
@@ -4843,6 +4917,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   animation: fadeIn 0.15s ease;
+  cursor: default;
 }
 
 @keyframes fadeIn {
@@ -4854,6 +4929,7 @@ onUnmounted(() => {
   position: relative;
   max-width: 90vw;
   max-height: 90vh;
+  overflow: visible;
 }
 
 .image-preview-full {
@@ -4861,6 +4937,15 @@ onUnmounted(() => {
   max-height: 90vh;
   object-fit: contain;
   border-radius: 8px;
+  cursor: grab;
+  transform-origin: center center;
+  transition: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.image-preview-full.dragging {
+  cursor: grabbing;
 }
 
 .image-preview-close {
@@ -4878,10 +4963,26 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   transition: background 0.15s;
+  z-index: 1;
 }
 
 .image-preview-close:hover {
   background: rgba(255, 255, 255, 0.3);
+}
+
+.image-preview-zoom-badge {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
 }
 
 </style>
