@@ -488,6 +488,7 @@ word_delete_paragraph({
 - 斜体：*文本*
 - 代码块：\`\`\`代码\`\`\`
 - 引用：> 引用文本
+- 无缩进段落：<p>顶格文本</p>（用于公文主送机关等需要顶格的行）
 - 对齐：<p align="right">右对齐</p>、<center>居中</center>
 
 **预设样式**：
@@ -506,22 +507,16 @@ word_delete_paragraph({
 - "（1）（2）..." → 仿宋
 - 普通段落 → 仿宋三号，首行缩进两字
 
+**公文格式注意事项**：
+- 主送机关（如"各部门、各分支机构："）需要顶格，请用 <p> 标签包裹
+- 落款（发文机关和日期）用 <p align="right"> 包裹，系统会自动在落款前插入空行
+
 **示例**：
 word_from_markdown({
   path: "通知.docx",
-  markdown: "# 关于加强信息安全的通知\\n\\n一、总体要求\\n\\n（一）提高思想认识。各部门要...",
+  markdown: "# 关于加强信息安全的通知\\n\\n<p>各部门、各分支机构：</p>\\n\\n正文内容...\\n\\n<p align=\\"right\\">XX公司</p>\\n<p align=\\"right\\">2024年1月1日</p>",
   style: "official"
-})
-
-**对齐示例**（用于落款等右对齐内容）：
-markdown 内容：
-# 通知
-正文内容...
-
-<p align="right">
-XX公司
-2024年1月1日
-</p>`,
+})`,
       parameters: {
         type: 'object',
         properties: {

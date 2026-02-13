@@ -577,11 +577,14 @@ function tokensToDocxElements(
   style: WordStyleConfig
 ): (Paragraph | Table)[] {
   const elements: (Paragraph | Table)[] = []
+  // 跟踪上一个元素的对齐方式，用于判断落款前是否需要空行
+  let lastAlign: string | undefined
   
   for (const token of tokens) {
     switch (token.type) {
       case 'heading':
         elements.push(createHeading(token as Tokens.Heading, style))
+        lastAlign = undefined
         break
         
       case 'paragraph': {
@@ -592,34 +595,47 @@ function tokensToDocxElements(
         } else {
           elements.push(createParagraph(paragraphToken.text, style))
         }
+        lastAlign = undefined
         break
       }
         
       case 'list':
         elements.push(...createList(token as Tokens.List, style))
+        lastAlign = undefined
         break
         
       case 'table':
         elements.push(createTable(token as Tokens.Table, style))
+        lastAlign = undefined
         break
         
       case 'code':
         elements.push(createCodeBlock(token as Tokens.Code))
+        lastAlign = undefined
         break
         
       case 'blockquote':
         elements.push(createBlockquote(token as Tokens.Blockquote, style))
+        lastAlign = undefined
         break
         
       case 'hr':
         elements.push(createHorizontalRule())
+        lastAlign = undefined
         break
         
       case 'html': {
-        // 支持 HTML 对齐标签：<p align="right">, <div style="text-align: center"> 等
-        const htmlResult = createAlignedParagraphFromHtml(token as Tokens.HTML, style)
+        // 支持 HTML 标签：
+        // - <p>文本</p> — 无缩进段落（主送机关等顶格行）
+        // - <p align="right">文本</p> — 对齐段落（落款等）
+        const htmlResult = createParagraphFromHtml(token as Tokens.HTML, style)
         if (htmlResult) {
-          elements.push(...htmlResult)
+          // 落款前空行：右对齐段落前面不是右对齐内容时，插入一个空段落
+          if (htmlResult.align === 'right' && lastAlign !== 'right') {
+            elements.push(new Paragraph({ children: [] }))
+          }
+          elements.push(...htmlResult.paragraphs)
+          lastAlign = htmlResult.align
         }
         break
       }
@@ -633,6 +649,7 @@ function tokensToDocxElements(
         if ('text' in token && token.text) {
           elements.push(createParagraph(decodeHtmlEntities(token.text), style))
         }
+        lastAlign = undefined
     }
   }
   
@@ -1089,16 +1106,26 @@ function createHorizontalRule(): Paragraph {
 }
 
 /**
- * 从 HTML 标签创建对齐段落
+ * HTML 段落解析结果
+ */
+type HtmlParagraphResult = {
+  paragraphs: Paragraph[]
+  /** 对齐方式，用于上层判断是否需要插入空行（如落款前空行） */
+  align?: string
+}
+
+/**
+ * 从 HTML 标签创建段落
  * 支持：
+ * - <p>内容</p> — 无缩进段落（用于主送机关等需要顶格的行）
  * - <p align="left|center|right|justify">内容</p>
  * - <div style="text-align: left|center|right|justify">内容</div>
  * - <center>内容</center>
  */
-function createAlignedParagraphFromHtml(
+function createParagraphFromHtml(
   token: Tokens.HTML,
   _style: WordStyleConfig
-): Paragraph[] | null {
+): HtmlParagraphResult | null {
   const html = token.text || token.raw || ''
   
   // 提取对齐方式
@@ -1121,8 +1148,11 @@ function createAlignedParagraphFromHtml(
     align = 'center'
   }
   
-  // 如果没有识别到对齐方式，返回 null（让 default 处理）
-  if (!align) {
+  // 检测是否为无 align 属性的 <p> 标签（用于主送机关等顶格段落）
+  const isPlainPTag = !align && /^<p\s*>/i.test(html.trim())
+  
+  // 既没有对齐方式，也不是 <p> 标签，返回 null
+  if (!align && !isPlainPTag) {
     return null
   }
   
@@ -1138,7 +1168,7 @@ function createAlignedParagraphFromHtml(
   // 按换行分割内容，每行创建一个段落
   const lines = content.split(/\n/).filter(line => line.trim())
   
-  return lines.map(line => {
+  const paragraphs = lines.map(line => {
     const trimmedLine = line.trim()
     
     // 使用 marked 解析内联 Markdown 格式（粗体、斜体等）
@@ -1157,10 +1187,12 @@ function createAlignedParagraphFromHtml(
     }
     
     return new Paragraph({
-      alignment: getAlignment(align),
+      alignment: align ? getAlignment(align) : undefined,
       children
     })
   })
+
+  return { paragraphs, align }
 }
 
 /**
