@@ -54,6 +54,15 @@ import {
   getStyleExtractionPrompt,
   type WordStyleConfig
 } from './styles'
+import {
+  readDocx,
+  writeDocx,
+  getParagraphs,
+  replaceTextInParagraphXml,
+  deleteParagraphFromXml,
+  modifyParagraphText,
+  modifyParagraphStyle
+} from './docx-xml'
 import { app } from 'electron'
 import { getKnowledgeService } from '../../../knowledge'
 import { exec } from 'child_process'
@@ -460,6 +469,7 @@ async function wordCreate(
 
 /**
  * 打开 Word 文档
+ * 使用 mammoth.convertToHtml() 提取更丰富的结构信息
  */
 async function wordOpen(
   ptyId: string,
@@ -483,10 +493,10 @@ async function wordOpen(
   }
 
   try {
-    // 使用 mammoth 读取现有文档内容
+    // 使用 mammoth 将文档转为 HTML，保留结构信息
     const mammoth = await import('mammoth')
-    const result = await mammoth.extractRawText({ path: filePath })
-    const textContent = result.value
+    const htmlResult = await mammoth.convertToHtml({ path: filePath })
+    const html = htmlResult.value
 
     // 创建一个新的 Document 实例（用于后续添加内容）
     const doc = new Document({
@@ -495,20 +505,12 @@ async function wordOpen(
 
     const session = createSession(filePath, doc, false)
     
-    // 将原文档内容作为初始段落保存
-    if (textContent.trim()) {
-      // 按段落分割
-      const paragraphs = textContent.split(/\n\n+/)
-      for (const para of paragraphs) {
-        if (para.trim()) {
-          session.sections.push({
-            type: 'paragraph',
-            content: para.trim()
-          })
-        }
-      }
-    }
+    // 从 HTML 解析出结构化内容
+    parseHtmlToSections(html, session.sections)
 
+    // 生成内容预览
+    const textResult = await mammoth.extractRawText({ path: filePath })
+    const textContent = textResult.value
     const contentPreview = textContent.length > 500 
       ? textContent.substring(0, 500) + '...' 
       : textContent
@@ -531,7 +533,88 @@ async function wordOpen(
 }
 
 /**
+ * 从 mammoth 输出的 HTML 解析出结构化的 SectionContent 列表
+ */
+function parseHtmlToSections(html: string, sections: SectionContent[]): void {
+  // 匹配块级元素
+  const blockRegex = /<(h[1-6]|p|ul|ol|table)(?:\s[^>]*)?>[\s\S]*?<\/\1>/gi
+  let match: RegExpExecArray | null
+
+  while ((match = blockRegex.exec(html)) !== null) {
+    const fullMatch = match[0]
+    const tag = match[1].toLowerCase()
+    const openTagEnd = fullMatch.indexOf('>') + 1
+    const closeTagStart = fullMatch.lastIndexOf('</')
+    const content = fullMatch.substring(openTagEnd, closeTagStart)
+
+    if (tag.match(/^h[1-6]$/)) {
+      const level = parseInt(tag[1])
+      const text = stripHtmlTagsSimple(content).trim()
+      if (text) {
+        sections.push({ type: 'heading', content: text, level })
+      }
+    } else if (tag === 'p') {
+      const text = stripHtmlTagsSimple(content).trim()
+      if (text) {
+        // 检测是否有内联格式
+        const hasBold = /<strong|<b[\s>]/i.test(content) && 
+          stripHtmlTagsSimple(content.replace(/<\/?(?:strong|b)(?:\s[^>]*)?>/, '')).trim() === ''
+        const hasItalic = /<em|<i[\s>]/i.test(content) &&
+          stripHtmlTagsSimple(content.replace(/<\/?(?:em|i)(?:\s[^>]*)?>/, '')).trim() === ''
+        
+        const style: SectionContent['style'] = {}
+        if (hasBold) style.bold = true
+        if (hasItalic) style.italic = true
+        
+        sections.push({ 
+          type: 'paragraph', 
+          content: text,
+          style: Object.keys(style).length > 0 ? style : undefined
+        })
+      }
+    } else if (tag === 'ul' || tag === 'ol') {
+      const items: string[] = []
+      const liRegex = /<li[^>]*>([\s\S]*?)<\/li>/gi
+      let liMatch: RegExpExecArray | null
+      while ((liMatch = liRegex.exec(content)) !== null) {
+        const text = stripHtmlTagsSimple(liMatch[1]).trim()
+        if (text) items.push(text)
+      }
+      if (items.length > 0) {
+        sections.push({ type: 'list', content: '', items })
+      }
+    } else if (tag === 'table') {
+      const rows: string[][] = []
+      const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi
+      let trMatch: RegExpExecArray | null
+      while ((trMatch = trRegex.exec(content)) !== null) {
+        const cells: string[] = []
+        const tdRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi
+        let tdMatch: RegExpExecArray | null
+        while ((tdMatch = tdRegex.exec(trMatch[1])) !== null) {
+          cells.push(stripHtmlTagsSimple(tdMatch[1]).trim())
+        }
+        if (cells.length > 0) rows.push(cells)
+      }
+      if (rows.length > 0) {
+        sections.push({ type: 'table', content: '', rows })
+      }
+    }
+  }
+}
+
+/**
+ * 简单去除 HTML 标签（用于 word_open 的 HTML 解析）
+ */
+function stripHtmlTagsSimple(html: string): string {
+  return html.replace(/<[^>]+>/g, '')
+}
+
+/**
  * 读取 Word 文档内容
+ * 支持两种模式：
+ * 1. 文件已在会话中 → 使用 sectionsToMarkdown
+ * 2. 文件未打开 → 直接从文件读取，使用 mammoth 转 HTML 再转 Markdown
  */
 async function wordRead(
   ptyId: string,
@@ -544,24 +627,57 @@ async function wordRead(
   
   const filePath = resolvePath(ptyId, args.path as string)
 
+  // 模式1：文件已在会话中
   const session = getSession(filePath)
-  if (!session) {
-    return { success: false, output: '', error: t('word.not_open', { path: filePath }) }
+  if (session) {
+    const markdown = sectionsToMarkdown(session.sections)
+    const output = `## ${path.basename(filePath)}\n\n${markdown || '(空文档)'}`
+
+    executor.addStep({
+      type: 'tool_result',
+      content: t('word.read_success'),
+      toolName: 'word_read',
+      toolResult: truncateFromEnd(output, 500)
+    })
+
+    return { success: true, output }
   }
 
-  // 将会话内容转为 Markdown
-  const markdown = sectionsToMarkdown(session.sections)
-  
-  const output = `## ${path.basename(filePath)}\n\n${markdown || '(空文档)'}`
+  // 模式2：直接从文件读取
+  if (!fs.existsSync(filePath)) {
+    return { success: false, output: '', error: t('error.file_not_found', { path: filePath }) }
+  }
 
-  executor.addStep({
-    type: 'tool_result',
-    content: t('word.read_success'),
-    toolName: 'word_read',
-    toolResult: truncateFromEnd(output, 500)
-  })
+  try {
+    // 使用 XML 段落提取，确保索引与 word_modify_paragraph/word_delete_paragraph 一致
+    const { documentXml } = await readDocx(filePath)
+    const paragraphs = getParagraphs(documentXml)
 
-  return { success: true, output }
+    const lines: string[] = []
+    for (let i = 0; i < paragraphs.length; i++) {
+      const text = paragraphs[i].text
+      if (text.trim()) {
+        lines.push(`[${i}] ${text.trim()}`)
+      } else {
+        lines.push(`[${i}] _(空段落)_`)
+      }
+    }
+
+    const markdown = lines.join('\n\n')
+    const output = `## ${path.basename(filePath)}\n\n共 ${paragraphs.length} 个段落\n\n${markdown || '(空文档)'}`
+
+    executor.addStep({
+      type: 'tool_result',
+      content: t('word.read_success'),
+      toolName: 'word_read',
+      toolResult: truncateFromEnd(output, 500)
+    })
+
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : '读取文档失败'
+    return { success: false, output: '', error: errorMsg }
+  }
 }
 
 /**
@@ -743,6 +859,7 @@ async function wordAdd(
 
 /**
  * 查找替换文本
+ * 直接操作 docx 文件的 XML，保留所有原始格式
  */
 async function wordReplace(
   ptyId: string,
@@ -763,57 +880,58 @@ async function wordReplace(
   const findText = args.find as string
   const replaceText = args.replace as string
   const caseSensitive = args.case_sensitive as boolean || false
-  
-  const session = getSession(filePath)
-  if (!session) {
-    return { success: false, output: '', error: t('word.not_open', { path: filePath }) }
+
+  // 检查文件是否存在
+  if (!fs.existsSync(filePath)) {
+    return { success: false, output: '', error: t('error.file_not_found', { path: filePath }) }
   }
-  
-  let replaceCount = 0
-  
-  // 遍历所有段落进行替换
-  for (const section of session.sections) {
-    if (section.content) {
-      const regex = new RegExp(
-        findText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), // 转义特殊字符
-        caseSensitive ? 'g' : 'gi'
+
+  try {
+    // 直接操作 docx 文件 XML
+    const { zip, documentXml } = await readDocx(filePath)
+    const paragraphs = getParagraphs(documentXml)
+    
+    let totalReplaceCount = 0
+    let newDocumentXml = documentXml
+
+    // 从后往前处理段落（避免位置偏移）
+    for (let i = paragraphs.length - 1; i >= 0; i--) {
+      const para = paragraphs[i]
+      const { xml: newParaXml, count } = replaceTextInParagraphXml(
+        para.xml, findText, replaceText, caseSensitive
       )
-      const matches = section.content.match(regex)
-      if (matches) {
-        replaceCount += matches.length
-        section.content = section.content.replace(regex, replaceText)
+      if (count > 0) {
+        totalReplaceCount += count
+        newDocumentXml = newDocumentXml.substring(0, para.start) + newParaXml + newDocumentXml.substring(para.end)
       }
     }
-    // 处理列表项
-    if (section.items) {
-      section.items = section.items.map(item => {
-        const regex = new RegExp(
-          findText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
-          caseSensitive ? 'g' : 'gi'
-        )
-        const matches = item.match(regex)
-        if (matches) {
-          replaceCount += matches.length
-          return item.replace(regex, replaceText)
-        }
-        return item
-      })
+
+    if (totalReplaceCount > 0) {
+      // 写回文件（自动创建备份）
+      await writeDocx(filePath, zip, newDocumentXml)
     }
+
+    const output = totalReplaceCount > 0
+      ? t('word.replace_success', { count: totalReplaceCount, find: findText, replace: replaceText })
+      : t('word.replace_not_found', { find: findText })
+
+    executor.addStep({
+      type: 'tool_result',
+      content: output,
+      toolName: 'word_replace',
+      toolResult: output
+    })
+
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : '替换操作失败'
+    return { success: false, output: '', error: errorMsg }
   }
-  
-  if (replaceCount > 0) {
-    markDirty(filePath)
-  }
-  
-  const output = replaceCount > 0
-    ? t('word.replace_success', { count: replaceCount, find: findText, replace: replaceText })
-    : t('word.replace_not_found', { find: findText })
-  
-  return { success: true, output }
 }
 
 /**
  * 修改指定段落
+ * 直接操作 docx 文件的 XML，保留所有原始格式
  */
 async function wordModifyParagraph(
   ptyId: string,
@@ -829,81 +947,83 @@ async function wordModifyParagraph(
   
   const filePath = resolvePath(ptyId, args.path as string)
   const index = args.index as number
-  
-  const session = getSession(filePath)
-  if (!session) {
-    return { success: false, output: '', error: t('word.not_open', { path: filePath }) }
+
+  // 检查文件是否存在
+  if (!fs.existsSync(filePath)) {
+    return { success: false, output: '', error: t('error.file_not_found', { path: filePath }) }
   }
-  
-  // 检查索引是否有效
-  if (index < 0 || index >= session.sections.length) {
-    return { 
-      success: false, 
-      output: '', 
-      error: t('word.index_out_of_range', { index, max: session.sections.length - 1 }) 
-    }
-  }
-  
-  const section = session.sections[index]
+
+  // 收集变更信息
   const changes: string[] = []
-  
-  // 修改内容
-  if (args.content !== undefined) {
-    section.content = args.content as string
-    changes.push(t('word.modified_content'))
-  }
-  
-  // 初始化样式对象
-  if (!section.style) {
-    section.style = {}
-  }
-  
-  // 修改样式
-  if (args.font !== undefined) {
-    section.style.font = args.font as string
-    changes.push(t('word.modified_font', { font: args.font }))
-  }
-  if (args.size !== undefined) {
-    section.style.size = args.size as number
-    changes.push(t('word.modified_size', { size: args.size }))
-  }
-  if (args.bold !== undefined) {
-    section.style.bold = args.bold as boolean
-    changes.push(args.bold ? t('word.set_bold') : t('word.unset_bold'))
-  }
-  if (args.italic !== undefined) {
-    section.style.italic = args.italic as boolean
-    changes.push(args.italic ? t('word.set_italic') : t('word.unset_italic'))
-  }
-  if (args.underline !== undefined) {
-    section.style.underline = args.underline as boolean
-    changes.push(args.underline ? t('word.set_underline') : t('word.unset_underline'))
-  }
-  if (args.color !== undefined) {
-    section.style.color = args.color as string
-    changes.push(t('word.modified_color', { color: args.color }))
-  }
-  if (args.align !== undefined) {
-    section.style.align = args.align as 'left' | 'center' | 'right' | 'justify'
-    changes.push(t('word.modified_align', { align: args.align }))
-  }
-  
+  const hasContent = args.content !== undefined
+  const styleArgs: Record<string, unknown> = {}
+
+  if (hasContent) changes.push(t('word.modified_content'))
+  if (args.font !== undefined) { styleArgs.font = args.font; changes.push(t('word.modified_font', { font: String(args.font) })) }
+  if (args.size !== undefined) { styleArgs.size = args.size; changes.push(t('word.modified_size', { size: Number(args.size) })) }
+  if (args.bold !== undefined) { styleArgs.bold = args.bold; changes.push(args.bold ? t('word.set_bold') : t('word.unset_bold')) }
+  if (args.italic !== undefined) { styleArgs.italic = args.italic; changes.push(args.italic ? t('word.set_italic') : t('word.unset_italic')) }
+  if (args.underline !== undefined) { styleArgs.underline = args.underline; changes.push(args.underline ? t('word.set_underline') : t('word.unset_underline')) }
+  if (args.color !== undefined) { styleArgs.color = args.color; changes.push(t('word.modified_color', { color: String(args.color) })) }
+  if (args.align !== undefined) { styleArgs.align = args.align; changes.push(t('word.modified_align', { align: String(args.align) })) }
+
   if (changes.length === 0) {
     return { success: false, output: '', error: t('word.no_changes_specified') }
   }
-  
-  markDirty(filePath)
-  
-  const output = t('word.modify_paragraph_success', { 
-    index, 
-    changes: changes.join('、') 
-  })
-  
-  return { success: true, output }
+
+  try {
+    const { zip, documentXml } = await readDocx(filePath)
+    const paragraphs = getParagraphs(documentXml)
+
+    // 检查索引是否有效
+    if (index < 0 || index >= paragraphs.length) {
+      return { 
+        success: false, 
+        output: '', 
+        error: t('word.index_out_of_range', { index, max: paragraphs.length - 1 }) 
+      }
+    }
+
+    let newDocumentXml = documentXml
+
+    // 修改文本内容
+    if (hasContent) {
+      newDocumentXml = modifyParagraphText(newDocumentXml, index, args.content as string)
+    }
+
+    // 修改样式
+    if (Object.keys(styleArgs).length > 0) {
+      newDocumentXml = modifyParagraphStyle(newDocumentXml, index, styleArgs as {
+        font?: string; size?: number; bold?: boolean; italic?: boolean;
+        underline?: boolean; color?: string; align?: 'left' | 'center' | 'right' | 'justify'
+      })
+    }
+
+    // 写回文件
+    await writeDocx(filePath, zip, newDocumentXml)
+
+    const output = t('word.modify_paragraph_success', { 
+      index, 
+      changes: changes.join('、') 
+    })
+
+    executor.addStep({
+      type: 'tool_result',
+      content: output,
+      toolName: 'word_modify_paragraph',
+      toolResult: output
+    })
+
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : '修改段落失败'
+    return { success: false, output: '', error: errorMsg }
+  }
 }
 
 /**
  * 删除指定段落
+ * 直接操作 docx 文件的 XML
  */
 async function wordDeleteParagraph(
   ptyId: string,
@@ -919,40 +1039,56 @@ async function wordDeleteParagraph(
   
   const filePath = resolvePath(ptyId, args.path as string)
   const index = args.index as number
-  
-  const session = getSession(filePath)
-  if (!session) {
-    return { success: false, output: '', error: t('word.not_open', { path: filePath }) }
+
+  // 检查文件是否存在
+  if (!fs.existsSync(filePath)) {
+    return { success: false, output: '', error: t('error.file_not_found', { path: filePath }) }
   }
-  
-  // 检查索引是否有效
-  if (index < 0 || index >= session.sections.length) {
-    return { 
-      success: false, 
-      output: '', 
-      error: t('word.index_out_of_range', { index, max: session.sections.length - 1 }) 
+
+  try {
+    const { zip, documentXml } = await readDocx(filePath)
+    const paragraphs = getParagraphs(documentXml)
+
+    // 检查索引是否有效
+    if (index < 0 || index >= paragraphs.length) {
+      return { 
+        success: false, 
+        output: '', 
+        error: t('word.index_out_of_range', { index, max: paragraphs.length - 1 }) 
+      }
     }
+
+    // 获取被删除段落的预览
+    const deletedText = paragraphs[index].text
+    const preview = deletedText
+      ? (deletedText.length > 30 ? deletedText.substring(0, 30) + '...' : deletedText)
+      : '(空段落)'
+
+    // 删除段落
+    const { xml: newDocumentXml } = deleteParagraphFromXml(documentXml, index)
+
+    // 写回文件
+    await writeDocx(filePath, zip, newDocumentXml)
+
+    const remaining = paragraphs.length - 1
+    const output = t('word.delete_paragraph_success', { 
+      index, 
+      preview,
+      remaining
+    })
+
+    executor.addStep({
+      type: 'tool_result',
+      content: output,
+      toolName: 'word_delete_paragraph',
+      toolResult: output
+    })
+
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : '删除段落失败'
+    return { success: false, output: '', error: errorMsg }
   }
-  
-  // 获取被删除段落的预览
-  const deletedSection = session.sections[index]
-  const preview = deletedSection.content 
-    ? (deletedSection.content.length > 30 
-        ? deletedSection.content.substring(0, 30) + '...' 
-        : deletedSection.content)
-    : `[${deletedSection.type}]`
-  
-  // 删除段落
-  session.sections.splice(index, 1)
-  markDirty(filePath)
-  
-  const output = t('word.delete_paragraph_success', { 
-    index, 
-    preview,
-    remaining: session.sections.length 
-  })
-  
-  return { success: true, output }
 }
 
 /**
@@ -1189,15 +1325,18 @@ async function wordTrackChanges(
 
 /**
  * 将 SectionContent 数组转为 Markdown
+ * 包含段落索引，方便 modify/delete 操作定位
  */
 function sectionsToMarkdown(sections: SectionContent[]): string {
   const parts: string[] = []
+  let index = 0
   
   for (const section of sections) {
     switch (section.type) {
       case 'heading': {
         const hashes = '#'.repeat(section.level || 1)
-        parts.push(`${hashes} ${section.content}`)
+        parts.push(`[${index}] ${hashes} ${section.content}`)
+        index++
         break
       }
         
@@ -1205,28 +1344,70 @@ function sectionsToMarkdown(sections: SectionContent[]): string {
         let text = section.content
         if (section.style?.bold) text = `**${text}**`
         if (section.style?.italic) text = `*${text}*`
-        parts.push(text)
+        parts.push(`[${index}] ${text}`)
+        index++
         break
       }
         
       case 'list':
         if (section.items) {
           for (const item of section.items) {
-            parts.push(`- ${item}`)
+            parts.push(`[${index}] - ${item}`)
+            index++
           }
         }
         break
         
       case 'table':
         if (section.rows && section.rows.length > 0) {
-          // 表头
-          parts.push('| ' + section.rows[0].join(' | ') + ' |')
-          parts.push('| ' + section.rows[0].map(() => '---').join(' | ') + ' |')
-          // 数据行
+          const tableLines: string[] = []
+          tableLines.push('| ' + section.rows[0].join(' | ') + ' |')
+          tableLines.push('| ' + section.rows[0].map(() => '---').join(' | ') + ' |')
           for (let i = 1; i < section.rows.length; i++) {
-            parts.push('| ' + section.rows[i].join(' | ') + ' |')
+            tableLines.push('| ' + section.rows[i].join(' | ') + ' |')
           }
+          parts.push(`[${index}] ${tableLines.join('\n')}`)
+          index++
         }
+        break
+
+      case 'image': {
+        const imgName = section.imagePath ? path.basename(section.imagePath) : '图片'
+        parts.push(`[${index}] [图片: ${imgName}]`)
+        index++
+        break
+      }
+
+      case 'page_break':
+        parts.push(`[${index}] ---`)
+        index++
+        break
+
+      case 'toc':
+        parts.push(`[${index}] [目录]`)
+        index++
+        break
+
+      case 'hyperlink':
+        parts.push(`[${index}] [${section.content}](${section.url || ''})`)
+        index++
+        break
+
+      case 'bookmark':
+        parts.push(`[${index}] [书签: ${section.bookmarkName}] ${section.content}`)
+        index++
+        break
+
+      case 'comment':
+        parts.push(`[${index}] ${section.content} _(批注: ${section.commentText})_`)
+        index++
+        break
+
+      default:
+        if (section.content) {
+          parts.push(`[${index}] ${section.content}`)
+        }
+        index++
         break
     }
   }

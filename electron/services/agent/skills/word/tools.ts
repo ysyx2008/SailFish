@@ -53,17 +53,23 @@ export const wordTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'word_read',
-      description: `读取已打开的 Word 文档内容，返回 Markdown 格式的文本。
+      description: `读取 Word 文档内容，返回带段落索引的 Markdown 格式文本。
 
-**返回内容**：
-- 文档中的段落、标题、列表等内容
-- 格式化为 Markdown 便于理解`,
+**功能**：
+- 无需先 word_open，可直接读取 .docx 文件
+- 返回带段落索引号 [0] [1] [2] ... 的内容，便于后续使用 word_modify_paragraph 或 word_delete_paragraph
+- 识别标题、段落、列表、表格、图片等结构
+- 保留粗体、斜体、链接等内联格式
+- 如果文件已通过 word_open 打开，则读取会话中的内容
+
+**示例**：
+word_read({ path: "/path/to/doc.docx" })`,
       parameters: {
         type: 'object',
         properties: {
           path: {
             type: 'string',
-            description: '已打开的文件路径'
+            description: '文件路径（绝对路径或相对于当前目录），无需先打开'
           }
         },
         required: ['path']
@@ -209,11 +215,14 @@ export const wordTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'word_replace',
-      description: `在 Word 文档中查找并替换文本。
+      description: `在 Word 文档中查找并替换文本，完整保留原始文档格式。
 
 **功能**：
-- 支持全文查找替换
-- 可选区分大小写
+- 直接操作 .docx 文件，无需先 word_open/word_save/word_close
+- 自动创建备份后替换
+- 完整保留所有格式（字体、颜色、加粗、样式等）
+- 支持全文查找替换，可选区分大小写
+- 支持跨格式区域（Run）的文本匹配
 - 返回替换的数量
 
 **示例**：
@@ -227,7 +236,7 @@ word_replace({
         properties: {
           path: {
             type: 'string',
-            description: '已打开的文件路径'
+            description: '文件路径（绝对路径或相对于当前目录），无需先打开'
           },
           find: {
             type: 'string',
@@ -250,13 +259,14 @@ word_replace({
     type: 'function',
     function: {
       name: 'word_modify_paragraph',
-      description: `修改 Word 文档中指定段落的内容或样式。
+      description: `修改 Word 文档中指定段落的内容或样式，保留其他格式不变。
 
 **功能**：
-- 通过索引定位段落（从 0 开始）
-- 可修改文本内容
+- 直接操作 .docx 文件，无需先 word_open/word_save/word_close
+- 通过索引定位段落（从 0 开始，使用 word_read 查看索引）
+- 可修改文本内容（保留原格式结构）
 - 可修改样式（字体、字号、粗体等）
-- 使用 word_read 先查看段落索引
+- 自动创建备份
 
 **示例**：
 word_modify_paragraph({
@@ -265,14 +275,14 @@ word_modify_paragraph({
   content: "新的段落内容",
   bold: true,
   font: "黑体",
-  color: "FF0000"  // 红色
+  color: "FF0000"
 })`,
       parameters: {
         type: 'object',
         properties: {
           path: {
             type: 'string',
-            description: '已打开的文件路径'
+            description: '文件路径（绝对路径或相对于当前目录），无需先打开'
           },
           index: {
             type: 'number',
@@ -320,12 +330,13 @@ word_modify_paragraph({
     type: 'function',
     function: {
       name: 'word_delete_paragraph',
-      description: `删除 Word 文档中指定的段落。
+      description: `删除 Word 文档中指定的段落，保留其他内容和格式不变。
 
 **功能**：
-- 通过索引定位段落（从 0 开始）
-- 使用 word_read 先查看段落索引
+- 直接操作 .docx 文件，无需先 word_open/word_save/word_close
+- 通过索引定位段落（从 0 开始，使用 word_read 查看索引）
 - 删除后其他段落索引会变化
+- 自动创建备份
 
 **示例**：
 word_delete_paragraph({
@@ -337,7 +348,7 @@ word_delete_paragraph({
         properties: {
           path: {
             type: 'string',
-            description: '已打开的文件路径'
+            description: '文件路径（绝对路径或相对于当前目录），无需先打开'
           },
           index: {
             type: 'number',
