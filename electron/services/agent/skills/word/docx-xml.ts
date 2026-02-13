@@ -5,7 +5,6 @@
  */
 
 import * as fs from 'fs'
-import * as path from 'path'
 import JSZip from 'jszip'
 
 // ============ 文件读写 ============
@@ -28,25 +27,9 @@ export async function readDocx(filePath: string): Promise<{ zip: JSZip; document
 
 /**
  * 将修改后的 document.xml 写回 docx 文件
- * 自动创建备份
+ * 注意：备份由调用方（wordSave）统一管理
  */
 export async function writeDocx(filePath: string, zip: JSZip, documentXml: string): Promise<void> {
-  // 创建备份
-  if (fs.existsSync(filePath)) {
-    const now = new Date()
-    const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`
-    const ext = path.extname(filePath)
-    const baseName = filePath.slice(0, -ext.length)
-
-    let backupPath = `${baseName}_${timestamp}${ext}.bak`
-    let counter = 2
-    while (fs.existsSync(backupPath)) {
-      backupPath = `${baseName}_${timestamp}_${counter}${ext}.bak`
-      counter++
-    }
-    fs.copyFileSync(filePath, backupPath)
-  }
-
   // 更新 document.xml
   zip.file('word/document.xml', documentXml)
 

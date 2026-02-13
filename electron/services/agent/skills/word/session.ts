@@ -4,6 +4,7 @@
  */
 
 import type { Document } from 'docx'
+import type JSZip from 'jszip'
 
 /** 页面设置 */
 export interface PageSettings {
@@ -30,9 +31,9 @@ export interface DocumentSettings {
 interface WordSession {
   /** 文件路径 */
   filePath: string
-  /** 文档对象 */
+  /** 文档对象（创建模式使用） */
   document: Document
-  /** 文档内容（段落列表） */
+  /** 文档内容（段落列表，创建模式使用） */
   sections: SectionContent[]
   /** 页面设置 */
   pageSettings?: PageSettings
@@ -46,6 +47,10 @@ interface WordSession {
   dirty: boolean
   /** 是否为新建文档 */
   isNew: boolean
+  /** XML 编辑模式：JSZip 实例 */
+  zip?: JSZip
+  /** XML 编辑模式：document.xml 内容 */
+  documentXml?: string
 }
 
 /** 段落内容 */
@@ -157,6 +162,48 @@ export function createSession(filePath: string, document: Document, isNew: boole
   startTimeoutChecker()
   
   return session
+}
+
+/**
+ * 创建 XML 编辑会话（用于编辑已有文档时保留格式）
+ */
+export function createXmlSession(filePath: string, zip: JSZip, documentXml: string): WordSession {
+  const session: WordSession = {
+    filePath,
+    document: {} as Document, // XML 模式不使用 Document 对象
+    sections: [],
+    openedAt: Date.now(),
+    lastAccess: Date.now(),
+    dirty: false,
+    isNew: false,
+    zip,
+    documentXml
+  }
+
+  openSessions.set(filePath, session)
+  startTimeoutChecker()
+
+  return session
+}
+
+/**
+ * 更新会话中的 document.xml（XML 编辑模式）
+ */
+export function updateDocumentXml(filePath: string, documentXml: string): void {
+  const session = openSessions.get(filePath)
+  if (session) {
+    session.documentXml = documentXml
+    session.dirty = true
+    session.lastAccess = Date.now()
+  }
+}
+
+/**
+ * 检查是否为 XML 编辑会话
+ */
+export function isXmlSession(filePath: string): boolean {
+  const session = openSessions.get(filePath)
+  return !!(session?.zip && session?.documentXml)
 }
 
 /**

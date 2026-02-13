@@ -37,6 +37,9 @@ import {
   isSessionOpen,
   getSession,
   createSession,
+  createXmlSession,
+  updateDocumentXml,
+  isXmlSession,
   addContent,
   markDirty,
   markSaved,
@@ -69,6 +72,22 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 
 const execAsync = promisify(exec)
+
+/**
+ * 获取或自动创建 XML 编辑会话
+ * 编辑已有文档时，首次操作自动加载文件到内存，后续操作复用会话
+ */
+async function getOrCreateXmlSession(filePath: string): Promise<{ documentXml: string; zip: import('jszip') }> {
+  const session = getSession(filePath)
+  if (session?.zip && session?.documentXml) {
+    return { documentXml: session.documentXml, zip: session.zip }
+  }
+
+  // 首次操作：读取文件，创建 XML 编辑会话
+  const { zip, documentXml } = await readDocx(filePath)
+  createXmlSession(filePath, zip, documentXml)
+  return { documentXml, zip }
+}
 
 // 备用存储路径（知识库未启用时使用）
 const STYLES_FILE_PATH = path.join(app.getPath('userData'), 'word-styles.json')
@@ -627,9 +646,9 @@ async function wordRead(
   
   const filePath = resolvePath(ptyId, args.path as string)
 
-  // 模式1：文件已在会话中
+  // 模式1：已有创建模式会话（word_open 创建的新文档）
   const session = getSession(filePath)
-  if (session) {
+  if (session && !session.zip) {
     const markdown = sectionsToMarkdown(session.sections)
     const output = `## ${path.basename(filePath)}\n\n${markdown || '(空文档)'}`
 
@@ -643,15 +662,23 @@ async function wordRead(
     return { success: true, output }
   }
 
-  // 模式2：直接从文件读取
+  // 模式2：XML 编辑会话或直接读取文件
   if (!fs.existsSync(filePath)) {
     return { success: false, output: '', error: t('error.file_not_found', { path: filePath }) }
   }
 
   try {
-    // 使用 XML 段落提取，确保索引与 word_modify_paragraph/word_delete_paragraph 一致
-    const { documentXml } = await readDocx(filePath)
+    // 优先从会话读取（如果编辑操作已创建会话），否则从文件读取
+    let documentXml: string
+    if (session?.documentXml) {
+      documentXml = session.documentXml
+    } else {
+      const result = await readDocx(filePath)
+      documentXml = result.documentXml
+    }
+
     const paragraphs = getParagraphs(documentXml)
+    const dirtyHint = session?.dirty ? ' _(有未保存的修改)_' : ''
 
     const lines: string[] = []
     for (let i = 0; i < paragraphs.length; i++) {
@@ -664,7 +691,7 @@ async function wordRead(
     }
 
     const markdown = lines.join('\n\n')
-    const output = `## ${path.basename(filePath)}\n\n共 ${paragraphs.length} 个段落\n\n${markdown || '(空文档)'}`
+    const output = `## ${path.basename(filePath)}${dirtyHint}\n\n共 ${paragraphs.length} 个段落\n\n${markdown || '(空文档)'}`
 
     executor.addStep({
       type: 'tool_result',
@@ -887,8 +914,8 @@ async function wordReplace(
   }
 
   try {
-    // 直接操作 docx 文件 XML
-    const { zip, documentXml } = await readDocx(filePath)
+    // 获取或创建 XML 编辑会话（内存操作，不落盘）
+    const { documentXml } = await getOrCreateXmlSession(filePath)
     const paragraphs = getParagraphs(documentXml)
     
     let totalReplaceCount = 0
@@ -907,8 +934,8 @@ async function wordReplace(
     }
 
     if (totalReplaceCount > 0) {
-      // 写回文件（自动创建备份）
-      await writeDocx(filePath, zip, newDocumentXml)
+      // 更新会话中的 XML（不写磁盘，等 word_save）
+      updateDocumentXml(filePath, newDocumentXml)
     }
 
     const output = totalReplaceCount > 0
@@ -972,7 +999,8 @@ async function wordModifyParagraph(
   }
 
   try {
-    const { zip, documentXml } = await readDocx(filePath)
+    // 获取或创建 XML 编辑会话（内存操作，不落盘）
+    const { documentXml } = await getOrCreateXmlSession(filePath)
     const paragraphs = getParagraphs(documentXml)
 
     // 检查索引是否有效
@@ -999,8 +1027,8 @@ async function wordModifyParagraph(
       })
     }
 
-    // 写回文件
-    await writeDocx(filePath, zip, newDocumentXml)
+    // 更新会话中的 XML（不写磁盘，等 word_save）
+    updateDocumentXml(filePath, newDocumentXml)
 
     const output = t('word.modify_paragraph_success', { 
       index, 
@@ -1046,7 +1074,8 @@ async function wordDeleteParagraph(
   }
 
   try {
-    const { zip, documentXml } = await readDocx(filePath)
+    // 获取或创建 XML 编辑会话（内存操作，不落盘）
+    const { documentXml } = await getOrCreateXmlSession(filePath)
     const paragraphs = getParagraphs(documentXml)
 
     // 检查索引是否有效
@@ -1067,8 +1096,8 @@ async function wordDeleteParagraph(
     // 删除段落
     const { xml: newDocumentXml } = deleteParagraphFromXml(documentXml, index)
 
-    // 写回文件
-    await writeDocx(filePath, zip, newDocumentXml)
+    // 更新会话中的 XML（不写磁盘，等 word_save）
+    updateDocumentXml(filePath, newDocumentXml)
 
     const remaining = paragraphs.length - 1
     const output = t('word.delete_paragraph_success', { 
@@ -1144,28 +1173,25 @@ async function wordSave(
   }
 
   try {
-    // 创建备份（如果文件已存在）
+    // 创建备份（仅当原文件存在且尚无备份时）
     if (fs.existsSync(filePath)) {
-      const now = new Date()
-      const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`
       const ext = path.extname(filePath)
       const baseName = filePath.slice(0, -ext.length)
-      
-      let backupPath = `${baseName}_${timestamp}${ext}.bak`
-      let counter = 2
-      while (fs.existsSync(backupPath)) {
-        backupPath = `${baseName}_${timestamp}_${counter}${ext}.bak`
-        counter++
+      const backupPath = `${baseName}${ext}.bak`
+      if (!fs.existsSync(backupPath)) {
+        fs.copyFileSync(filePath, backupPath)
       }
-      fs.copyFileSync(filePath, backupPath)
     }
 
-    // 构建文档（包含页眉页脚和文档设置）
-    const doc = buildDocument(session.sections, session.pageSettings, session.documentSettings)
-    
-    // 写入文件
-    const buffer = await Packer.toBuffer(doc)
-    fs.writeFileSync(filePath, buffer)
+    if (session.zip && session.documentXml) {
+      // XML 编辑模式：直接写回修改后的 XML
+      await writeDocx(filePath, session.zip, session.documentXml)
+    } else {
+      // 创建模式：使用 docx 库构建文档
+      const doc = buildDocument(session.sections, session.pageSettings, session.documentSettings)
+      const buffer = await Packer.toBuffer(doc)
+      fs.writeFileSync(filePath, buffer)
+    }
     
     markSaved(filePath)
 
