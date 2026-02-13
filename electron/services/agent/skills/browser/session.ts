@@ -93,14 +93,64 @@ function getProfileDir(profileName: string): string {
   return path.join(dir, safeName)
 }
 
+// session cookies 备份文件名（保存在 profile 目录内）
+const COOKIES_BACKUP_FILE = '_sf_cookies_backup.json'
+
 /**
- * 保存登录状态（持久化上下文会自动保存，此函数用于向后兼容和显式导出）
+ * 获取 cookies 备份文件路径
+ */
+function getCookiesBackupPath(profileDir: string): string {
+  return path.join(profileDir, COOKIES_BACKUP_FILE)
+}
+
+/**
+ * 导出并备份所有 cookies（包括 session cookies）到 profile 目录
+ * Chromium 的持久化上下文不会保存 session cookies（无 expires 的 cookie），
+ * 但很多网站的登录状态存储在 session cookies 中，需要显式备份。
+ */
+async function backupCookies(context: BrowserContext, profileDir: string): Promise<void> {
+  try {
+    const state = await context.storageState()
+    const backupPath = getCookiesBackupPath(profileDir)
+    fs.writeFileSync(backupPath, JSON.stringify(state, null, 2))
+    console.log(`[BrowserSession] Backed up ${state.cookies.length} cookies to ${backupPath}`)
+  } catch (error) {
+    console.error('[BrowserSession] Failed to backup cookies:', error)
+  }
+}
+
+/**
+ * 从备份中恢复 session cookies
+ * 只恢复 Chromium 不会自动持久化的 session cookies（expires === -1 或无 expires）
+ */
+async function restoreSessionCookies(context: BrowserContext, profileDir: string): Promise<void> {
+  const backupPath = getCookiesBackupPath(profileDir)
+  if (!fs.existsSync(backupPath)) return
+  
+  try {
+    const data = JSON.parse(fs.readFileSync(backupPath, 'utf-8'))
+    const cookies = data.cookies
+    if (!Array.isArray(cookies) || cookies.length === 0) return
+    
+    // 只恢复 session cookies（expires 为 -1 的），
+    // 持久化 cookies 已由 Chromium 的 profile 目录自动处理
+    const sessionCookies = cookies.filter((c: { expires: number }) => c.expires === -1)
+    if (sessionCookies.length > 0) {
+      await context.addCookies(sessionCookies)
+      console.log(`[BrowserSession] Restored ${sessionCookies.length} session cookies`)
+    }
+  } catch (error) {
+    console.error('[BrowserSession] Failed to restore session cookies:', error)
+  }
+}
+
+/**
+ * 保存登录状态（显式导出 cookies 备份）
  */
 export async function saveStorageState(session: BrowserSession, profileName: string): Promise<string> {
-  // 持久化上下文会自动保存所有状态到 profile 目录
-  // 此处仅返回 profile 目录路径
   const profileDir = getProfileDir(profileName)
-  console.log(`[BrowserSession] Profile state auto-saved to ${profileDir}`)
+  await backupCookies(session.context, profileDir)
+  console.log(`[BrowserSession] Profile state saved to ${profileDir}`)
   return profileDir
 }
 
@@ -333,6 +383,9 @@ export async function createSession(
     context = await chromium.launchPersistentContext(profileDir, launchOptions)
   }
   
+  // 恢复上次保存的 session cookies（Chromium 持久化上下文不会保存 session cookies）
+  await restoreSessionCookies(context, profileDir)
+  
   // 持久化上下文可能自带多个页面，收集所有已有页面
   const existingPages = context.pages()
   const initialPages = existingPages.length > 0 ? [...existingPages] : [await context.newPage()]
@@ -388,8 +441,14 @@ export async function closeSession(ptyId: string, _saveProfile: boolean = true):
   
   const savedProfile = session.profile
   
+  // 关闭前备份所有 cookies（包括 session cookies）
+  if (savedProfile) {
+    const profileDir = getProfileDir(savedProfile)
+    await backupCookies(session.context, profileDir)
+  }
+  
   try {
-    // 持久化上下文：关闭 context 会同时关闭浏览器并自动保存所有数据
+    // 持久化上下文：关闭 context 会同时关闭浏览器并自动保存持久化数据
     await session.context.close()
     if (savedProfile) {
       console.log(`[BrowserSession] Closed session for ${ptyId}, profile "${savedProfile}" auto-saved`)
