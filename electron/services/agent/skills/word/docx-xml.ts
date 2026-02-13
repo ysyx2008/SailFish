@@ -339,7 +339,7 @@ export function deleteParagraphFromXml(documentXml: string, index: number): { xm
 
   // 删除段落 XML（包含前后可能的空白）
   let removeStart = para.start
-  let removeEnd = para.end
+  const removeEnd = para.end
 
   // 尝试清理段落前后的空白换行
   while (removeStart > 0 && (documentXml[removeStart - 1] === '\n' || documentXml[removeStart - 1] === '\r')) {
