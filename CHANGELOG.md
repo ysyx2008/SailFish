@@ -2,7 +2,22 @@
 
 All notable changes to SFTerm will be documented in this file.
 
-## v8.20.0 (2025-02-12) (Latest)
+## v8.20.1 (2026-02-13) (Latest)
+
+### New Features
+- 🌐 **Website Agent Skills Showcase**: Merged AI feature cards and added built-in Agent skills display on the website
+
+### Improvements
+- 📝 **Word XML Editing**: Rewritten Word editing tools to direct XML operations, preserving original document formatting
+- 📝 **Word Session Cache**: Word editing now uses session-based in-memory cache, only persisting changes on save
+
+### Bug Fixes
+- 🔧 Fixed browser dual-window and login state loss by switching to persistent context
+- 🔧 Fixed browser startup failure caused by residual SingletonLock files
+- 🔧 Fixed browser session cookies not being preserved across restarts
+- 🔧 Fixed Word HTML paragraph parsing to support unindented paragraphs and spacing before signatures
+
+## v8.20.0 (2025-02-12)
 
 ### New Features
 - 🖼️ **Image Upload**: Added image upload support for multimodal AI messages
