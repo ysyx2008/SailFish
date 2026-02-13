@@ -48,14 +48,14 @@ export const translations = {
       subtitle: '将传统终端的强大与 AI 智能深度融合，重新定义命令行操作体验',
       items: [
         {
-          title: '大模型对话',
-          description: '自带 AI 助手面板，解释命令、分析日志、生成脚本。需自行配置 API Key',
-          highlights: ['自带 API', '多模型支持', '上下文感知'],
+          title: 'AI 智能',
+          description: '自带 AI 助手面板，支持多模型对话、命令解释、日志分析与脚本生成。进入 Agent 模式，描述你的需求，AI 自动规划并执行多步命令。',
+          highlights: ['多模型支持', '自动化任务执行', '风险评估与确认'],
         },
         {
-          title: 'AI Agent 模式',
-          description: '描述你想做的事，AI 自动规划并执行多步命令。支持 16 种 MBTI 性格，自定义回复风格。',
-          highlights: ['自动化任务执行', '风险评估与确认', '命令自动修正'],
+          title: '内置 Agent 技能',
+          description: '开箱即用的 Agent 技能扩展，支持浏览器自动化操作、邮件收发管理、日程安排与提醒、定时任务调度，让 AI 能力不止于命令行。',
+          highlights: ['浏览器自动化', '邮件管理', '日程管理', '定时任务'],
         },
         {
           title: '本地知识库',
@@ -268,14 +268,14 @@ export const translations = {
       subtitle: 'Seamlessly blend traditional terminal power with AI intelligence to redefine command-line experience',
       items: [
         {
-          title: 'LLM Chat',
-          description: 'Built-in AI assistant panel for command explanation, log analysis, and script generation. Requires your own API key.',
-          highlights: ['Built-in API', 'Multi-model Support', 'Context Aware'],
+          title: 'AI Intelligence',
+          description: 'Built-in AI assistant panel with multi-model chat, command explanation, log analysis, and script generation. In Agent mode, describe your needs and AI automatically plans and executes multi-step commands.',
+          highlights: ['Multi-model Support', 'Automated Task Execution', 'Risk Assessment & Confirmation'],
         },
         {
-          title: 'AI Agent Mode',
-          description: 'Describe what you want to do, and AI will plan and execute multi-step commands. Supports 16 MBTI personalities with customizable response styles.',
-          highlights: ['Automated Task Execution', 'Risk Assessment & Confirmation', 'Auto Command Correction'],
+          title: 'Built-in Agent Skills',
+          description: 'Out-of-the-box Agent skills for browser automation, email management, calendar scheduling, and cron job management. Extend AI agent capabilities beyond the command line.',
+          highlights: ['Browser Automation', 'Email Management', 'Calendar', 'Scheduled Tasks'],
         },
         {
           title: 'Local Knowledge Base',
