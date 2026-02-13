@@ -16,9 +16,10 @@ export const browserTools: ToolDefinition[] = [
 - 5 分钟无操作会自动关闭
 - 完成后请调用 browser_close 关闭
 
-**登录状态管理**：
-- 使用 profile 参数可恢复之前保存的登录状态
-- 使用 profile 启动时，关闭浏览器会**自动保存**登录状态
+**登录状态管理**（使用持久化浏览器 profile，完整保存所有浏览器数据）：
+- 使用 profile 参数可恢复之前保存的登录状态（包括 cookies、localStorage、IndexedDB 等所有数据）
+- 关闭浏览器时会**自动保存**当前登录状态
+- 不指定 profile 也会使用默认 profile 自动保存和恢复
 - 例如：browser_launch { profile: "taobao" } 会恢复淘宝登录，关闭时自动保存最新状态`,
       parameters: {
         type: 'object',
@@ -360,11 +361,11 @@ export const browserTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'browser_save_login',
-      description: `保存当前浏览器的登录状态（cookies、localStorage 等）。
+      description: `手动确认保存当前浏览器的登录状态。
 
-**使用场景**：登录网站后，保存登录状态，下次可以直接恢复，无需重新登录。
+**注意**：使用持久化 profile 后，登录状态会在关闭浏览器时**自动保存**，通常无需手动调用此工具。
 
-**示例**：保存为 "taobao" 配置，下次启动时使用 browser_launch { profile: "taobao" } 即可恢复登录状态`,
+**使用场景**：如果想在浏览器关闭前确认状态已保存，可以调用此工具。`,
       parameters: {
         type: 'object',
         properties: {

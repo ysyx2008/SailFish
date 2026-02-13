@@ -209,27 +209,34 @@ async function browserLaunch(
     
     const session = await createSession(ptyId, { headless, url, profile })
     
-    let result = `浏览器已启动 (${session.browserInfo.name})`
+    // 构建用户可见的简洁摘要
+    let summary = `浏览器已启动 (${session.browserInfo.name})`
+    if (hadStorageState) {
+      summary += profile ? `，已恢复配置 "${profile}"` : '，已恢复登录状态'
+    }
+
+    // 构建返回给 AI 的完整信息
+    let output = `浏览器已启动 (${session.browserInfo.name})`
     if (hadStorageState) {
       if (profile) {
-        result += `\n✅ 已恢复登录配置 "${profile}" 的登录状态`
+        output += `\n✅ 已恢复登录配置 "${profile}" 的登录状态`
       } else {
-        result += `\n✅ 已恢复上次的登录状态`
+        output += `\n✅ 已恢复上次的登录状态`
       }
     }
     if (url) {
-      result += `\n已打开 ${url}`
+      output += `\n已打开 ${url}`
     }
-    result += `\n\n💡 使用 browser_snapshot 获取页面元素和 ref 编号，可大幅提升操作准确性`
-    result += `\n💡 关闭浏览器时会自动保存登录状态`
+    output += `\n\n💡 使用 browser_snapshot 获取页面元素和 ref 编号，可大幅提升操作准确性`
+    output += `\n💡 关闭浏览器时会自动保存登录状态`
 
     executor.addStep({
       type: 'tool_result',
-      content: result,
+      content: summary,
       toolName: 'browser_launch'
     })
 
-    return { success: true, output: result }
+    return { success: true, output }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '启动浏览器失败'
     executor.addStep({
@@ -339,19 +346,20 @@ async function browserGoto(
     session.refs = {}
     
     const title = await page.title()
-    let result = `已导航到 ${url}\n标题: ${title}`
+    const summary = `已导航到 ${title || url}`
+    let output = `已导航到 ${url}\n标题: ${title}`
     const snapshot = await captureSnapshotInline(ptyId)
     if (snapshot) {
-      result += `\n\n--- 当前页面快照 ---\n${snapshot}`
+      output += `\n\n--- 当前页面快照 ---\n${snapshot}`
     }
 
     executor.addStep({
       type: 'tool_result',
-      content: result,
+      content: summary,
       toolName: 'browser_goto'
     })
 
-    return { success: true, output: result }
+    return { success: true, output }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '导航失败'
     executor.addStep({
@@ -404,15 +412,15 @@ async function browserScreenshot(
       })
     }
 
-    const result = `截图已保存到: ${screenshotPath}`
+    const output = `截图已保存到: ${screenshotPath}`
 
     executor.addStep({
       type: 'tool_result',
-      content: result,
+      content: savePath ? `截图已保存到: ${savePath}` : '截图已保存',
       toolName: 'browser_screenshot'
     })
 
-    return { success: true, output: result }
+    return { success: true, output }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '截图失败'
     executor.addStep({
@@ -615,7 +623,8 @@ async function browserClick(
     
     // 检查是否有新标签页打开
     const tabCountAfter = session.pages.length
-    let result = `已点击 ${clickLabel}`
+    let summary = `已点击 ${clickLabel}`
+    let output = summary
     if (tabCountAfter > tabCountBefore) {
       // 清空旧 ref（新标签页内容不同）
       session.refs = {}
@@ -625,22 +634,21 @@ async function browserClick(
       await newPage.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {})
       const newTitle = await newPage.title().catch(() => '(加载中)')
       const newUrl = newPage.url()
-      result += `\n\n已自动切换到新标签页。\n新标签页: ${newTitle}\nURL: ${newUrl}\n当前共 ${tabCountAfter} 个标签页`
+      summary += `，已切换到新标签页: ${newTitle}（共 ${tabCountAfter} 个）`
+      output += `\n\n已自动切换到新标签页。\n新标签页: ${newTitle}\nURL: ${newUrl}\n当前共 ${tabCountAfter} 个标签页`
     }
-    
-    // 点击后自动附带当前页面快照，无需再单独调用 browser_snapshot
     const snapshot = await captureSnapshotInline(ptyId)
     if (snapshot) {
-      result += `\n\n--- 当前页面快照 ---\n${snapshot}`
+      output += `\n\n--- 当前页面快照 ---\n${snapshot}`
     }
 
     executor.addStep({
       type: 'tool_result',
-      content: result,
+      content: summary,
       toolName: 'browser_click'
     })
 
-    return { success: true, output: result }
+    return { success: true, output }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '点击失败'
     // 如果是 ref 操作失败，给出更友好的提示
@@ -1003,19 +1011,20 @@ async function browserSwitchTab(
     const title = await page.title()
     const url = page.url()
     
-    let result = `已切换到标签页 ${index}\n标题: ${title}\nURL: ${url}`
+    const summary = `已切换到标签页 ${index}: ${title}`
+    let output = `已切换到标签页 ${index}\n标题: ${title}\nURL: ${url}`
     const snapshot = await captureSnapshotInline(ptyId)
     if (snapshot) {
-      result += `\n\n--- 当前页面快照 ---\n${snapshot}`
+      output += `\n\n--- 当前页面快照 ---\n${snapshot}`
     }
 
     executor.addStep({
       type: 'tool_result',
-      content: result,
+      content: summary,
       toolName: 'browser_switch_tab'
     })
 
-    return { success: true, output: result }
+    return { success: true, output }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '切换标签页失败'
     executor.addStep({
@@ -1051,17 +1060,17 @@ async function browserSaveLogin(
 
   try {
     const session = ensureSession(ptyId)
-    const storagePath = await saveStorageState(session, profile)
+    await saveStorageState(session, profile)
     
-    const result = `✅ 登录状态已保存为 "${profile}"\n\n下次使用时，调用 browser_launch { profile: "${profile}" } 即可恢复登录状态`
+    const output = `✅ 登录状态已保存为 "${profile}"\n\n下次使用时，调用 browser_launch { profile: "${profile}" } 即可恢复登录状态`
 
     executor.addStep({
       type: 'tool_result',
-      content: `登录状态已保存: ${storagePath}`,
+      content: `登录状态已保存为 "${profile}"`,
       toolName: 'browser_save_login'
     })
 
-    return { success: true, output: result }
+    return { success: true, output }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '保存登录状态失败'
     executor.addStep({
