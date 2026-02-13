@@ -236,6 +236,27 @@ function isProfileInUse(profileName: string, excludePtyId?: string): string | un
 }
 
 /**
+ * 清理 profile 目录中残留的 SingletonLock 文件
+ * 当浏览器未正常关闭时（崩溃、进程被杀），Chromium 会留下 SingletonLock，
+ * 导致下次 launchPersistentContext 报错 "profile is already in use"。
+ * 仅在确认当前没有会话占用该 profile 时才清理。
+ */
+function cleanStaleLock(profileDir: string): void {
+  const lockFiles = ['SingletonLock', 'SingletonSocket', 'SingletonCookie']
+  for (const lockFile of lockFiles) {
+    const lockPath = path.join(profileDir, lockFile)
+    try {
+      if (fs.existsSync(lockPath)) {
+        fs.rmSync(lockPath, { force: true })
+        console.log(`[BrowserSession] Removed stale lock file: ${lockPath}`)
+      }
+    } catch (error) {
+      console.warn(`[BrowserSession] Failed to remove lock file ${lockPath}:`, error)
+    }
+  }
+}
+
+/**
  * 为页面注册 close 事件监听，维护 session.pages 数组
  */
 function registerPageCloseHandler(session: BrowserSession, page: Page, ptyId: string) {
@@ -286,6 +307,11 @@ export async function createSession(
   }
   
   const profileDir = getProfileDir(profileName)
+  
+  // 清理可能残留的 SingletonLock 文件
+  // 当浏览器未正常关闭（崩溃、进程被杀等）时，Chromium 会留下锁文件，
+  // 导致下次启动时报 "profile is already in use" 错误
+  cleanStaleLock(profileDir)
   
   // 使用 launchPersistentContext：只打开一个窗口，且自动持久化所有浏览器数据
   const launchOptions = {
