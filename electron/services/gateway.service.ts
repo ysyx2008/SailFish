@@ -292,9 +292,6 @@ export class GatewayService {
 
     const clientIp = (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || '').split(',')[0].trim()
 
-    // 先确保 PTY 存在，这样下面通知桌面端时 ptyId 不会是 null
-    await this.chat.ensurePty()
-
     // 审计日志：任务开始
     this.addAuditLog({
       type: 'task_start',
@@ -303,11 +300,7 @@ export class GatewayService {
       details: { message: message.trim(), executionMode: this.chat.executionMode }
     })
 
-    // 通知桌面端：远程 Web 任务开始（PTY 已创建，ptyId 有效）
-    this.sendToDesktop('gateway:remoteTaskStarted', {
-      ptyId: this.chat.getPtyId(),
-      message: message.trim()
-    })
+    // 注：gateway:remoteTaskStarted 已统一在 RemoteChatService.sendMessage 中发送
 
     // ---- SSE 专用的流式渲染状态 ----
     const sentStepIds = new Set<string>()

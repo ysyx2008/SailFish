@@ -201,6 +201,12 @@ export class RemoteChatService {
 
     await this.ensurePty()
 
+    // 通知桌面端：远程任务开始（所有通道统一在此发送，确保 ptyId 有效）
+    this.sendToDesktop('gateway:remoteTaskStarted', {
+      ptyId: this.ptyId,
+      message: message.trim()
+    })
+
     // 添加用户消息到历史
     this.history.push({
       role: 'user',
