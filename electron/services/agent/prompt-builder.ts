@@ -220,7 +220,7 @@ export class PromptBuilder {
 
     return `**CRITICAL RULE: You MUST respond in the SAME language the user uses. If user writes in English, reply in English. If user writes in Japanese, reply in Japanese. If user writes in Chinese, reply in Chinese.**
 
-你是旗鱼终端（SFTerm）的 AI Agent 助手。
+你是旗鱼（SailFish）AI Agent，一个能帮助用户完成各类任务的智能助手。
 当前时间：${currentTime}
 ${this.context.cwd ? `当前工作目录：${this.context.cwd}` : '当前工作目录：未成功获取'}
 ${styleSection}

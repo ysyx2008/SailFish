@@ -138,7 +138,7 @@ describe('PromptBuilder', () => {
       const builder = new PromptBuilder({ context })
       const prompt = builder.build()
       
-      expect(prompt).toContain('旗鱼终端')
+      expect(prompt).toContain('旗鱼（SailFish）AI Agent')
       expect(prompt).toContain('darwin')
       expect(prompt).toContain('zsh')
     })
@@ -474,7 +474,7 @@ describe('buildSystemPrompt (backward compatible)', () => {
     const context = createMockContext()
     const prompt = buildSystemPrompt(context)
     
-    expect(prompt).toContain('旗鱼终端')
+    expect(prompt).toContain('旗鱼（SailFish）AI Agent')
     expect(prompt.length).toBeGreaterThan(100)
   })
 
@@ -549,7 +549,7 @@ describe('Edge cases', () => {
     const prompt = builder.build()
     
     // 应该不会崩溃，正常构建
-    expect(prompt).toContain('旗鱼终端')
+    expect(prompt).toContain('旗鱼（SailFish）AI Agent')
   })
 
   it('should handle missing cwd', () => {

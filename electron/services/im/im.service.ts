@@ -307,7 +307,7 @@ export class IMService {
         const text = textBuffer
         textBuffer = ''
         try {
-          await adapter.sendMarkdown(replyContext, '旗鱼终端', text)
+          await adapter.sendMarkdown(replyContext, '旗鱼', text)
         } catch (err) {
           console.error('[IM] Failed to send text:', err)
         }
@@ -450,7 +450,7 @@ export class IMService {
 
   private getHelpText(): string {
     return [
-      '🐟 旗鱼终端 - IM 远程助手',
+      '🐟 旗鱼 - IM 远程助手',
       '',
       '直接发送消息即可与 AI Agent 对话。Agent 可以在本机执行命令、编辑文件等操作。',
       '',
