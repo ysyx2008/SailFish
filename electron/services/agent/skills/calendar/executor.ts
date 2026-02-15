@@ -1877,7 +1877,7 @@ function buildICalEvent(params: {
   
   let ical = `BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//SFTerminal//Calendar//EN
+PRODID:-//SailFish//Calendar//EN
 BEGIN:VEVENT
 UID:${uid}
 DTSTAMP:${dtstamp}
@@ -2247,7 +2247,7 @@ function buildICalTodo(params: {
 
   let ical = `BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//SFTerminal//Calendar//EN
+PRODID:-//SailFish//Calendar//EN
 BEGIN:VTODO
 UID:${uid}
 DTSTAMP:${dtstamp}

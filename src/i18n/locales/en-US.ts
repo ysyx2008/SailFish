@@ -1,14 +1,14 @@
 export default {
   // App level
   app: {
-    title: 'SFTerm',
-    description: 'AI-powered cross-platform terminal'
+    title: 'SailFish',
+    description: 'AI-powered smart assistant'
   },
 
   // Welcome page
   welcome: {
-    title: 'Welcome to SFTerm',
-    subtitle: 'AI-powered cross-platform terminal',
+    title: 'Welcome to SailFish',
+    subtitle: 'AI-powered smart assistant',
     quickStart: 'Quick Start',
     localTerminal: 'Local Terminal',
     localTerminalDesc: 'Open local command line',
@@ -190,7 +190,7 @@ export default {
       copied: 'Copied',
       openInBrowser: 'Open in Browser',
       autoStart: 'Start with app',
-      autoStartHint: 'Automatically start the Web service when SFTerm launches',
+      autoStartHint: 'Automatically start the Web service when SailFish launches',
       securityNote: 'The API Token is an access credential. Keep it safe. Anyone with the token can remotely control the Agent to perform operations on this machine.',
       auditLog: 'Audit Log',
       noAuditLog: 'No audit records'
@@ -219,12 +219,12 @@ export default {
 
   // About page
   about: {
-    title: 'SFTerm',
-    description: 'AI-powered cross-platform smart terminal',
+    title: 'SailFish',
+    description: 'AI-powered smart assistant',
     contact: 'Contact Us',
     license: 'License',
     website: 'Website',
-    copyright: '© 2024 SFTerm',
+    copyright: '© 2024 SailFish',
     // Update check
     checkUpdate: 'Check for Updates',
     checkingUpdate: 'Checking for updates...',
@@ -241,7 +241,7 @@ export default {
     wechatPay: 'WeChat Pay',
     alipay: 'Alipay',
     thanksMessage: 'Every support fuels my motivation!',
-    thanksDetail: 'Your recognition means the world. SFTerm will keep evolving ✨'
+    thanksDetail: 'Your recognition means the world. SailFish will keep evolving ✨'
   },
 
   // Sponsor features
@@ -779,7 +779,7 @@ export default {
     supplementInfo: 'Supplement Info',
     pendingProcess: 'Pending',
     welcome: {
-      greeting: 'Hello! I\'m your AI assistant for SFTerm.',
+      greeting: 'Hello! I\'m your SailFish AI assistant.',
       directChat: 'Direct Chat',
       directChatDesc: 'Enter any question in the input box below, and I\'ll do my best to help.',
       quickFeatures: 'Quick Features',
@@ -1212,9 +1212,9 @@ export default {
   // Setup Wizard
   setup: {
     welcome: {
-      title: 'Welcome to SFTerm',
-      subtitle: 'AI-powered smart terminal for efficient operations',
-      intro: 'SFTerm is a smart terminal tool designed for operations engineers, integrating powerful AI capabilities to make your work more efficient. This wizard will help you complete the initial setup and get started quickly.',
+      title: 'Welcome to SailFish',
+      subtitle: 'AI-powered smart assistant for efficient work',
+      intro: 'SailFish is a smart assistant integrating powerful AI capabilities to make your work more efficient. This wizard will help you complete the initial setup and get started quickly.',
       features: {
         aiChat: {
           title: 'AI Chat Assistant',
@@ -1264,7 +1264,7 @@ export default {
       title: 'Import SSH Hosts',
       subtitle: 'Quickly import existing SSH host configurations',
       shortDesc: 'Import host configs from Xshell',
-      intro: 'If you previously used Xshell, you can import all session configurations with one click to quickly migrate to SFTerm.',
+      intro: 'If you previously used Xshell, you can import all session configurations with one click to quickly migrate to SailFish.',
       scanning: 'Scanning Xshell session directory...',
       scanNow: 'Scan Xshell Config',
       found: 'Found {count} sessions',
@@ -1312,7 +1312,7 @@ export default {
     },
     complete: {
       title: 'All Set!',
-      subtitle: 'Start using SFTerm',
+      subtitle: 'Start using SailFish',
       readyToUse: 'AI model configured, ready to start',
       aiReady: 'AI Features Ready',
       aiReadyDesc: 'Your AI model is configured. You can now start using AI chat and Agent features.',
@@ -1348,7 +1348,7 @@ export default {
       openFileManager: 'Open File Manager'
     },
     welcome: {
-      title: 'Welcome to SFTerm',
+      title: 'Welcome to SailFish',
       hint: 'Click + to create a new terminal session'
     },
     newLocalTerminal: 'New Local Terminal',

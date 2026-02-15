@@ -14,14 +14,14 @@ import { Menu, MenuItemConstructorOptions, shell, BrowserWindow, app } from 'ele
 const menuI18n = {
   'zh-CN': {
     // 应用菜单 (macOS)
-    about: '关于旗鱼终端',
+    about: '关于旗鱼',
     checkUpdate: '检查更新',
     preferences: '偏好设置',
     services: '服务',
-    hide: '隐藏旗鱼终端',
+    hide: '隐藏旗鱼',
     hideOthers: '隐藏其他',
     showAll: '显示全部',
-    quit: '退出旗鱼终端',
+    quit: '退出旗鱼',
     
     // 文件菜单
     file: '终端',
@@ -73,14 +73,14 @@ const menuI18n = {
   },
   'en-US': {
     // App menu (macOS)
-    about: 'About SFTerm',
+    about: 'About SailFish',
     checkUpdate: 'Check for Updates',
     preferences: 'Preferences',
     services: 'Services',
-    hide: 'Hide SFTerm',
+    hide: 'Hide SailFish',
     hideOthers: 'Hide Others',
     showAll: 'Show All',
-    quit: 'Quit SFTerm',
+    quit: 'Quit SailFish',
     
     // File menu
     file: 'Terminal',

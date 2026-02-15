@@ -1,6 +1,6 @@
 # ⚠️ [高风险配置] 应用标识符
 # 如果 macOS 打包后 SSH 连接失败，尝试改回旧值排查
-# 安全回退值：appId: com.qiyu.terminal, productName: 旗鱼终端
+# 安全回退值：appId: com.qiyu.terminal, productName: 旗鱼
 appId: com.sfterm.terminal
 productName: SFTerm
 # ⚠️ [高风险配置] macOS 本地化应用名称修复钩子
@@ -68,7 +68,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: 旗鱼终端
+  shortcutName: 旗鱼
   # 多语言安装程序
   installerLanguages:
     - en_US
@@ -137,8 +137,8 @@ linux:
   executableName: sfterm
   desktop:
     entry:
-      Name: SFTerm
-      Name[zh_CN]: 旗鱼终端
-      Comment: AI-Powered Next-Gen Terminal
-      Comment[zh_CN]: AI 驱动的新世代终端
+      Name: SailFish
+      Name[zh_CN]: 旗鱼
+      Comment: AI-Powered Smart Assistant
+      Comment[zh_CN]: AI 驱动的智能助手
 

@@ -116,7 +116,7 @@ const getStepPrompt = (step: number): string => {
   
   const prompts: Record<number, string> = {
     3: isEnglish
-      ? `You are the AI assistant for SFTerm (a smart terminal tool). The user is in the setup wizard at the "Import SSH Hosts" step.
+      ? `You are the AI assistant for SailFish. The user is in the setup wizard at the "Import SSH Hosts" step.
 
 Please proactively introduce this step in a friendly and concise manner:
 1. Explain what this step does (import SSH host configurations from Xshell or other tools)
@@ -124,7 +124,7 @@ Please proactively introduce this step in a friendly and concise manner:
 3. Encourage them to ask if they have questions
 
 Keep your response under 100 words, be warm and helpful.`
-      : `你是旗鱼终端（SFTerm）的 AI 助手。用户正在首次使用引导向导的「导入 SSH 主机」步骤。
+      : `你是旗鱼的 AI 助手。用户正在首次使用引导向导的「导入 SSH 主机」步骤。
 
 请用简洁友好的语言主动介绍这一步的作用，并给出操作建议：
 1. 解释这步是做什么的（从 Xshell 等工具导入 SSH 主机配置）
@@ -134,7 +134,7 @@ Keep your response under 100 words, be warm and helpful.`
 回复控制在 100 字以内，保持亲切友好的语气。`,
     
     4: isEnglish
-      ? `You are the AI assistant for SFTerm. The user is in the setup wizard at the "Knowledge Base Settings" step.
+      ? `You are the AI assistant for SailFish. The user is in the setup wizard at the "Knowledge Base Settings" step.
 
 Please proactively introduce this step in a friendly and concise manner:
 1. Explain what the knowledge base does (store documents and host memories for smarter AI assistance)
@@ -142,7 +142,7 @@ Please proactively introduce this step in a friendly and concise manner:
 3. Give your recommendation (enable it for better AI experience, can skip if unsure)
 
 Keep your response under 100 words, be warm and helpful.`
-      : `你是旗鱼终端的 AI 助手。用户正在首次使用引导向导的「知识库设置」步骤。
+      : `你是旗鱼的 AI 助手。用户正在首次使用引导向导的「知识库设置」步骤。
 
 请用简洁友好的语言介绍知识库功能的价值，以及是否建议开启：
 1. 解释知识库的作用（存储文档和主机记忆，让 AI 更智能）
@@ -152,7 +152,7 @@ Keep your response under 100 words, be warm and helpful.`
 回复控制在 100 字以内，保持亲切友好的语气。`,
     
     5: isEnglish
-      ? `You are the AI assistant for SFTerm. The user is in the setup wizard at the "MCP Services" step.
+      ? `You are the AI assistant for SailFish. The user is in the setup wizard at the "MCP Services" step.
 
 Please proactively introduce this step in a friendly and concise manner:
 1. Briefly explain what MCP is (Model Context Protocol, lets AI access external tools)
@@ -160,7 +160,7 @@ Please proactively introduce this step in a friendly and concise manner:
 3. Mention it can be configured later in settings
 
 Keep your response under 100 words, be warm and helpful.`
-      : `你是旗鱼终端的 AI 助手。用户正在首次使用引导向导的「MCP 服务」步骤。
+      : `你是旗鱼的 AI 助手。用户正在首次使用引导向导的「MCP 服务」步骤。
 
 请用简洁友好的语言解释 MCP 是什么，对新手来说是否需要配置：
 1. 简单解释 MCP 是什么（Model Context Protocol，让 AI 能访问外部工具）
@@ -170,7 +170,7 @@ Keep your response under 100 words, be warm and helpful.`
 回复控制在 100 字以内，保持亲切友好的语气。`,
 
     6: isEnglish
-      ? `You are the AI assistant for SFTerm. The user has completed the setup wizard and is at the final "Complete" step.
+      ? `You are the AI assistant for SailFish. The user has completed the setup wizard and is at the final "Complete" step.
 
 Please congratulate them warmly and give a brief overview:
 1. Celebrate completing the setup
@@ -182,7 +182,7 @@ Please congratulate them warmly and give a brief overview:
 3. Encourage them to explore freely, settings can be adjusted anytime
 
 Keep your response under 120 words, be warm and encouraging.`
-      : `你是旗鱼终端的 AI 助手。用户已经完成了引导向导的所有配置，现在在「完成」页面。
+      : `你是旗鱼的 AI 助手。用户已经完成了引导向导的所有配置，现在在「完成」页面。
 
 请热情地祝贺他们，并给出简要的使用指引：
 1. 祝贺用户完成配置
@@ -275,8 +275,8 @@ const getDefaultGuidance = (step: number): string => {
       ? "🔌 MCP (Model Context Protocol) lets AI access external tools like databases and file systems. For beginners, you can safely skip this - configure it later when you need extended capabilities!"
       : '🔌 MCP（Model Context Protocol）让 AI 能访问外部工具，如数据库、文件系统等。新手可以先跳过这步，有需要时再在设置中配置！',
     6: isEnglish
-      ? "🎉 Congratulations! You've completed the setup. Click 'Finish' to start using SFTerm - open a terminal, connect to servers, or chat with AI. Have fun exploring!"
-      : '🎉 恭喜你完成了所有配置！点击「完成」开始使用旗鱼终端吧——打开终端、连接服务器、和 AI 对话，尽情探索！'
+      ? "🎉 Congratulations! You've completed the setup. Click 'Finish' to start using SailFish - open a terminal, connect to servers, or chat with AI. Have fun exploring!"
+      : '🎉 恭喜你完成了所有配置！点击「完成」开始使用旗鱼吧——打开终端、连接服务器、和 AI 对话，尽情探索！'
   }
   
   return defaults[step] || ''
@@ -317,10 +317,10 @@ const sendMessage = async () => {
   
   // 添加系统上下文（包含完整的向导步骤信息）
   const systemPrompt = locale.value === 'en-US'
-    ? `You are the AI assistant for SFTerm (a smart terminal tool). The user is in the setup wizard, currently at step ${props.step}.
+    ? `You are the AI assistant for SailFish. The user is in the setup wizard, currently at step ${props.step}.
 
 The setup wizard has 6 steps in total:
-1. Welcome - Introduction to SFTerm features
+1. Welcome - Introduction to SailFish features
 2. Configure AI Model - Set up LLM API (required, cannot skip)
 3. Import SSH Hosts - Import from Xshell or other tools (current step: ${props.step === 3})
 4. Knowledge Base - Enable local knowledge base for smarter AI (current step: ${props.step === 4})
@@ -328,10 +328,10 @@ The setup wizard has 6 steps in total:
 6. Complete - Summary and finish
 
 Answer their questions in a helpful and friendly manner. Keep responses concise and accurate.`
-    : `你是旗鱼终端的 AI 助手。用户正在首次使用引导向导，当前在第 ${props.step} 步。
+    : `你是旗鱼的 AI 助手。用户正在首次使用引导向导，当前在第 ${props.step} 步。
 
 引导向导一共有 6 个步骤：
-1. 欢迎页 - 介绍旗鱼终端的功能特点
+1. 欢迎页 - 介绍旗鱼的功能特点
 2. 配置大模型 - 设置 AI 大模型 API（必须完成，不能跳过）
 3. 导入 SSH 主机 - 从 Xshell 等工具导入主机配置${props.step === 3 ? '（当前步骤）' : ''}
 4. 知识库设置 - 启用本地知识库让 AI 更智能${props.step === 4 ? '（当前步骤）' : ''}

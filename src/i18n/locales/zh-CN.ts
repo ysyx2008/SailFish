@@ -1,14 +1,14 @@
 export default {
   // 应用级别
   app: {
-    title: '旗鱼终端',
-    description: 'AI 驱动的跨平台终端'
+    title: '旗鱼',
+    description: 'AI 驱动的智能助手'
   },
 
   // 欢迎页
   welcome: {
-    title: '欢迎使用旗鱼终端',
-    subtitle: 'AI 驱动的跨平台终端工具',
+    title: '欢迎使用旗鱼',
+    subtitle: 'AI 驱动的智能助手',
     quickStart: '快速开始',
     localTerminal: '本地终端',
     localTerminalDesc: '打开本机命令行终端',
@@ -190,7 +190,7 @@ export default {
       copied: '已复制',
       openInBrowser: '在浏览器中打开',
       autoStart: '随应用启动',
-      autoStartHint: '启动旗鱼终端时自动开启 Web 服务',
+      autoStartHint: '启动旗鱼时自动开启 Web 服务',
       securityNote: 'API Token 是访问凭证，请妥善保管。任何持有 Token 的人都可以远程控制 Agent 在本机执行操作。',
       auditLog: '操作审计日志',
       noAuditLog: '暂无审计记录'
@@ -219,8 +219,8 @@ export default {
 
   // 关于页面
   about: {
-    title: '旗鱼终端',
-    description: 'AI 驱动的跨平台智慧终端',
+    title: '旗鱼',
+    description: 'AI 驱动的智能助手',
     contact: '联系我们',
     license: '开源协议',
     website: '官方网站',
@@ -779,7 +779,7 @@ export default {
     supplementInfo: '补充信息',
     pendingProcess: '等待处理',
     welcome: {
-      greeting: '你好！我是旗鱼终端的 AI 助手。',
+      greeting: '你好！我是旗鱼 AI 助手。',
       directChat: '直接对话',
       directChatDesc: '在下方输入框输入任何问题，我会尽力帮你解答。',
       quickFeatures: '快捷功能',
@@ -1212,9 +1212,9 @@ export default {
   // 首次设置向导
   setup: {
     welcome: {
-      title: '欢迎使用旗鱼终端',
-      subtitle: 'AI 驱动的智能终端工具，让运维更高效',
-      intro: '旗鱼终端是一款专为运维人员设计的智能终端工具，集成了强大的 AI 能力，让您的工作更加高效便捷。通过简单的引导，我们将帮助您完成初始配置，快速开始使用。',
+      title: '欢迎使用旗鱼',
+      subtitle: 'AI 驱动的智能助手，让工作更高效',
+      intro: '旗鱼是一款集成了强大 AI 能力的智能助手，能帮助您高效完成各类任务。通过简单的引导，我们将帮助您完成初始配置，快速开始使用。',
       features: {
         aiChat: {
           title: 'AI 对话助手',
@@ -1264,7 +1264,7 @@ export default {
       title: '导入 SSH 主机',
       subtitle: '快速导入已有的 SSH 主机配置',
       shortDesc: '从 Xshell 导入主机配置',
-      intro: '如果您之前使用 Xshell，可以一键导入所有会话配置，快速迁移到旗鱼终端。',
+      intro: '如果您之前使用 Xshell，可以一键导入所有会话配置，快速迁移到旗鱼。',
       scanning: '正在扫描 Xshell 会话目录...',
       scanNow: '扫描 Xshell 配置',
       found: '找到 {count} 个会话',
@@ -1312,7 +1312,7 @@ export default {
     },
     complete: {
       title: '一切就绪！',
-      subtitle: '开始使用旗鱼终端吧',
+      subtitle: '开始使用旗鱼吧',
       readyToUse: 'AI 模型已配置完成，可以开始使用了',
       aiReady: 'AI 功能已就绪',
       aiReadyDesc: '您已配置好大模型，现在可以开始使用 AI 对话和助手功能了。',
@@ -1348,7 +1348,7 @@ export default {
       openFileManager: '打开文件管理器'
     },
     welcome: {
-      title: '欢迎使用旗鱼终端',
+      title: '欢迎使用旗鱼',
       hint: '点击 + 按钮创建新的终端会话'
     },
     newLocalTerminal: '新建本地终端',

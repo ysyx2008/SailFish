@@ -373,7 +373,7 @@ export class HistoryService {
       }
 
       // 8. 写入说明文件
-      const readme = `# 旗鱼终端备份
+      const readme = `# 旗鱼备份
 导出时间: ${new Date().toLocaleString()}
 
 ## 文件说明

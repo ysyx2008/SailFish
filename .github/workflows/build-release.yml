@@ -151,7 +151,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: 旗鱼终端 ${{ steps.get_version.outputs.VERSION }}
+          name: 旗鱼 ${{ steps.get_version.outputs.VERSION }}
           draft: false  # 不作为草稿，直接发布
           generate_release_notes: true
           body: |

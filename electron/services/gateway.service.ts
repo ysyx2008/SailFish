@@ -635,9 +635,9 @@ export class GatewayService {
 
     // 双语文本
     const i18n = isZh ? {
-      title: '旗鱼终端 - 远程助手',
-      brand: '旗鱼终端',
-      authTitle: '旗鱼终端',
+      title: '旗鱼 - 远程助手',
+      brand: '旗鱼',
+      authTitle: '旗鱼',
       authSubtitle: '远程 Agent 访问',
       tokenPlaceholder: '请输入 API Token',
       connect: '连接',
@@ -681,9 +681,9 @@ export class GatewayService {
       askUser: '等待回复',
       waiting: '等待中'
     } : {
-      title: 'SFTerm - Remote Agent',
-      brand: 'SFTerm',
-      authTitle: 'SFTerm',
+      title: 'SailFish - Remote Agent',
+      brand: 'SailFish',
+      authTitle: 'SailFish',
       authSubtitle: 'Remote Agent Access',
       tokenPlaceholder: 'Enter API Token',
       connect: 'Connect',

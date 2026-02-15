@@ -73,7 +73,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: SFTerm
+  shortcutName: 旗鱼
   # 注意：electron-builder 24.13.3 不支持 nsis.compression 属性
   # compression: zlib  # 已移除，因为会导致构建失败
 

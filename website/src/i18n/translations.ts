@@ -81,7 +81,7 @@ export const translations = {
     },
     useCases: {
       title: '适用场景',
-      subtitle: '无论你是 AI 从业者、运维工程师还是学习者，旗鱼终端都能助你事半功倍',
+      subtitle: '无论你是 AI 从业者、运维工程师还是学习者，旗鱼都能助你事半功倍',
       items: [
         {
           role: 'AI 从业者',
@@ -226,10 +226,10 @@ export const translations = {
     },
     changelog: {
       title: '更新日志',
-      subtitle: '记录旗鱼终端的每一次进化',
+      subtitle: '记录旗鱼的每一次进化',
     },
     common: {
-      brandName: '旗鱼终端',
+      brandName: '旗鱼',
     },
   },
   en: {
@@ -301,7 +301,7 @@ export const translations = {
     },
     useCases: {
       title: 'Use Cases',
-      subtitle: 'Whether you\'re an AI practitioner, ops engineer, or learner, SFTerm helps you work smarter',
+      subtitle: 'Whether you\'re an AI practitioner, ops engineer, or learner, SailFish helps you work smarter',
       items: [
         {
           role: 'AI Practitioner',
@@ -446,10 +446,10 @@ export const translations = {
     },
     changelog: {
       title: 'Changelog',
-      subtitle: 'Track every evolution of SFTerm',
+      subtitle: 'Track every evolution of SailFish',
     },
     common: {
-      brandName: 'SFTerm',
+      brandName: 'SailFish',
     },
   },
 } as const;

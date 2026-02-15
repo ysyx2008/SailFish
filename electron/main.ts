@@ -14,7 +14,7 @@ const packageJson = JSON.parse(fs.readFileSync(join(__dirname, '../package.json'
 const APP_VERSION = packageJson.version
 
 // 应用名称（多语言支持）
-const APP_NAME = { zh: '旗鱼终端', en: 'SFTerm' }
+const APP_NAME = { zh: '旗鱼', en: 'SailFish' }
 
 /**
  * 根据语言获取应用标题

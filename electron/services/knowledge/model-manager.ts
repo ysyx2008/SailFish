@@ -324,7 +324,7 @@ export class ModelManager extends EventEmitter {
       const protocol = url.startsWith('https') ? https : http
       
       const request = protocol.get(url, { 
-        headers: { 'User-Agent': 'SFTerminal' }
+        headers: { 'User-Agent': 'SailFish' }
       }, (response) => {
         // 处理重定向
         if (response.statusCode === 301 || response.statusCode === 302) {
