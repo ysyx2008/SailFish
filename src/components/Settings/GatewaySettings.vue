@@ -293,126 +293,6 @@ async function copyToClipboard(text: string, label: string) {
 <template>
   <div class="gateway-settings">
 
-    <!-- ==================== Gateway 服务 ==================== -->
-    <div class="settings-section">
-      <div class="section-header">
-        <div class="section-title-group">
-          <h4>{{ t('settings.gateway.title') }}</h4>
-          <span class="status-badge" :class="{ active: isRunning }">
-            <span class="status-dot"></span>
-            {{ isRunning ? t('settings.gateway.running') : t('settings.gateway.stopped') }}
-          </span>
-        </div>
-        <button
-          class="btn btn-sm"
-          :class="isRunning ? 'btn-danger' : 'btn-primary'"
-          :disabled="isLoading"
-          @click="toggleGateway"
-        >
-          {{ isLoading ? t('settings.gateway.loading') : (isRunning ? t('settings.gateway.stop') : t('settings.gateway.start')) }}
-        </button>
-      </div>
-      <p class="section-desc">{{ t('settings.gateway.description') }}</p>
-
-      <!-- 错误提示 -->
-      <div v-if="error" class="error-msg">{{ error }}</div>
-
-      <!-- 端口 + 监听地址 水平布局 -->
-      <div class="form-row">
-        <div class="form-group flex-1">
-          <label class="form-label">{{ t('settings.gateway.port') }}</label>
-          <input
-            v-model.number="port"
-            type="number"
-            min="1024"
-            max="65535"
-            :disabled="isRunning"
-            class="input-field"
-          />
-        </div>
-        <div class="form-group flex-1">
-          <label class="form-label">{{ t('settings.gateway.host') }}</label>
-          <select v-model="host" :disabled="isRunning" class="input-field">
-            <option value="0.0.0.0">0.0.0.0 ({{ t('settings.gateway.allInterfaces') }})</option>
-            <option value="127.0.0.1">127.0.0.1 ({{ t('settings.gateway.localhostOnly') }})</option>
-          </select>
-        </div>
-      </div>
-
-      <!-- 自动启动 -->
-      <div class="setting-row">
-        <div>
-          <label class="form-label">{{ t('settings.gateway.autoStart') }}</label>
-          <p class="setting-desc">{{ t('settings.gateway.autoStartHint') }}</p>
-        </div>
-        <label class="toggle-switch">
-          <input type="checkbox" v-model="autoStart" @change="toggleAutoStart" />
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-
-      <!-- 运行信息 -->
-      <div v-if="isRunning" class="running-info">
-        <div class="info-row">
-          <span class="info-label">{{ t('settings.gateway.chatUrl') }}</span>
-          <div class="info-value">
-            <code>{{ chatUrl }}</code>
-            <button class="btn-icon-sm" @click="copyToClipboard(chatUrl, 'url')" :title="t('settings.gateway.copy')">
-              <Copy :size="13" />
-            </button>
-            <a :href="chatUrl" target="_blank" class="btn-icon-sm" :title="t('settings.gateway.openInBrowser')">
-              <ExternalLink :size="13" />
-            </a>
-            <span v-if="copied === 'url'" class="copied-tip">{{ t('settings.gateway.copied') }}</span>
-          </div>
-        </div>
-
-        <div class="info-row">
-          <span class="info-label">API Token</span>
-          <div class="info-value">
-            <code class="token-text">{{ apiToken }}</code>
-            <button class="btn-icon-sm" @click="copyToClipboard(apiToken, 'token')" :title="t('settings.gateway.copy')">
-              <Copy :size="13" />
-            </button>
-            <span v-if="copied === 'token'" class="copied-tip">{{ t('settings.gateway.copied') }}</span>
-          </div>
-        </div>
-
-        <div class="security-note">
-          {{ t('settings.gateway.securityNote') }}
-        </div>
-
-        <!-- 审计日志 -->
-        <div class="audit-section">
-          <button class="audit-toggle" @click="toggleAuditLog">
-            <ScrollText :size="14" />
-            {{ t('settings.gateway.auditLog') }}
-            <span class="audit-count" v-if="auditLog.length">{{ auditLog.length }}</span>
-            <span class="toggle-arrow">{{ showAuditLog ? '▲' : '▼' }}</span>
-          </button>
-
-          <div v-if="showAuditLog" class="audit-log-panel">
-            <div v-if="auditLog.length === 0" class="audit-empty">
-              {{ t('settings.gateway.noAuditLog') }}
-            </div>
-            <div v-else class="audit-list">
-              <div
-                v-for="entry in [...auditLog].reverse()"
-                :key="entry.id"
-                class="audit-entry"
-                :class="'audit-' + entry.type"
-              >
-                <span class="audit-icon">{{ auditTypeIcon(entry.type) }}</span>
-                <span class="audit-time">{{ formatTime(entry.timestamp) }}</span>
-                <span class="audit-summary">{{ entry.summary }}</span>
-                <span v-if="entry.clientIp" class="audit-ip">{{ entry.clientIp }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- ==================== IM 集成 ==================== -->
     <div class="settings-section">
       <div class="section-header">
@@ -536,6 +416,126 @@ async function copyToClipboard(text: string, label: string) {
 
       <div class="security-note">
         {{ t('settings.im.securityNote') }}
+      </div>
+    </div>
+
+    <!-- ==================== Gateway 服务 ==================== -->
+    <div class="settings-section">
+      <div class="section-header">
+        <div class="section-title-group">
+          <h4>{{ t('settings.gateway.title') }}</h4>
+          <span class="status-badge" :class="{ active: isRunning }">
+            <span class="status-dot"></span>
+            {{ isRunning ? t('settings.gateway.running') : t('settings.gateway.stopped') }}
+          </span>
+        </div>
+        <button
+          class="btn btn-sm"
+          :class="isRunning ? 'btn-danger' : 'btn-primary'"
+          :disabled="isLoading"
+          @click="toggleGateway"
+        >
+          {{ isLoading ? t('settings.gateway.loading') : (isRunning ? t('settings.gateway.stop') : t('settings.gateway.start')) }}
+        </button>
+      </div>
+      <p class="section-desc">{{ t('settings.gateway.description') }}</p>
+
+      <!-- 错误提示 -->
+      <div v-if="error" class="error-msg">{{ error }}</div>
+
+      <!-- 端口 + 监听地址 水平布局 -->
+      <div class="form-row">
+        <div class="form-group flex-1">
+          <label class="form-label">{{ t('settings.gateway.port') }}</label>
+          <input
+            v-model.number="port"
+            type="number"
+            min="1024"
+            max="65535"
+            :disabled="isRunning"
+            class="input-field"
+          />
+        </div>
+        <div class="form-group flex-1">
+          <label class="form-label">{{ t('settings.gateway.host') }}</label>
+          <select v-model="host" :disabled="isRunning" class="input-field">
+            <option value="0.0.0.0">0.0.0.0 ({{ t('settings.gateway.allInterfaces') }})</option>
+            <option value="127.0.0.1">127.0.0.1 ({{ t('settings.gateway.localhostOnly') }})</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 自动启动 -->
+      <div class="setting-row">
+        <div>
+          <label class="form-label">{{ t('settings.gateway.autoStart') }}</label>
+          <p class="setting-desc">{{ t('settings.gateway.autoStartHint') }}</p>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" v-model="autoStart" @change="toggleAutoStart" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <!-- 运行信息 -->
+      <div v-if="isRunning" class="running-info">
+        <div class="info-row">
+          <span class="info-label">{{ t('settings.gateway.chatUrl') }}</span>
+          <div class="info-value">
+            <code>{{ chatUrl }}</code>
+            <button class="btn-icon-sm" @click="copyToClipboard(chatUrl, 'url')" :title="t('settings.gateway.copy')">
+              <Copy :size="13" />
+            </button>
+            <a :href="chatUrl" target="_blank" class="btn-icon-sm" :title="t('settings.gateway.openInBrowser')">
+              <ExternalLink :size="13" />
+            </a>
+            <span v-if="copied === 'url'" class="copied-tip">{{ t('settings.gateway.copied') }}</span>
+          </div>
+        </div>
+
+        <div class="info-row">
+          <span class="info-label">API Token</span>
+          <div class="info-value">
+            <code class="token-text">{{ apiToken }}</code>
+            <button class="btn-icon-sm" @click="copyToClipboard(apiToken, 'token')" :title="t('settings.gateway.copy')">
+              <Copy :size="13" />
+            </button>
+            <span v-if="copied === 'token'" class="copied-tip">{{ t('settings.gateway.copied') }}</span>
+          </div>
+        </div>
+
+        <div class="security-note">
+          {{ t('settings.gateway.securityNote') }}
+        </div>
+
+        <!-- 审计日志 -->
+        <div class="audit-section">
+          <button class="audit-toggle" @click="toggleAuditLog">
+            <ScrollText :size="14" />
+            {{ t('settings.gateway.auditLog') }}
+            <span class="audit-count" v-if="auditLog.length">{{ auditLog.length }}</span>
+            <span class="toggle-arrow">{{ showAuditLog ? '▲' : '▼' }}</span>
+          </button>
+
+          <div v-if="showAuditLog" class="audit-log-panel">
+            <div v-if="auditLog.length === 0" class="audit-empty">
+              {{ t('settings.gateway.noAuditLog') }}
+            </div>
+            <div v-else class="audit-list">
+              <div
+                v-for="entry in [...auditLog].reverse()"
+                :key="entry.id"
+                class="audit-entry"
+                :class="'audit-' + entry.type"
+              >
+                <span class="audit-icon">{{ auditTypeIcon(entry.type) }}</span>
+                <span class="audit-time">{{ formatTime(entry.timestamp) }}</span>
+                <span class="audit-summary">{{ entry.summary }}</span>
+                <span v-if="entry.clientIp" class="audit-ip">{{ entry.clientIp }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
