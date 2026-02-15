@@ -2,7 +2,24 @@
 
 All notable changes to SFTerm will be documented in this file.
 
-## v10.0.0 (2026-02-15) (Latest)
+## v10.1.0 (2026-02-16) (Latest)
+
+### New Features
+- 📨 **IM Media Message Support**: Receive images, audio, video, and file messages from Feishu and DingTalk, with automatic download and local storage
+- 📤 **File & Image Sending**: Agent can now send files and images through IM channels, with proactive notification support
+- 🎛️ **Control Panel**: Settings redesigned as a full-screen Control Panel with improved sub-dialog ESC key handling
+
+### Improvements
+- 🎨 **Gateway Settings UI**: Reorganized IM integration and Web service display order, removed non-standard IM icons and styles
+- 🌐 **Website Repositioning**: Website content repositioned from "Terminal" to "AI Agent" branding
+- 🔍 **Remote Agent Diagnostics**: Added diagnostic logging for remote Agent message display issues
+
+### Bug Fixes
+- 🔧 Fixed Agent `read_file` tool attempting to read binary media files
+- 🔧 Fixed Feishu image/file download failures with correct SDK response handling
+- 🔧 Fixed shell continuation prompt detection (e.g. `dquote>`) that could cause terminal to hang
+
+## v10.0.0 (2026-02-15)
 
 ### New Features
 - 🚀 **Remote Agent Access**: New Gateway service enables browser-based AI Agent interaction — access your Agent from any device via Web UI, with real-time SSE streaming and `ask_user` confirmation support

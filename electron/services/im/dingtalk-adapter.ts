@@ -257,7 +257,7 @@ export class DingTalkAdapter implements IMAdapter {
 
     // 清理文件名中的特殊字符（防止 Content-Disposition header 注入）
     const safeFileName = fileName
-      .replace(/[\x00-\x1F\x7F]/g, '')   // 移除控制字符
+      .replace(/[\x00-\x1f\x7f]/g, '')   // eslint-disable-line no-control-regex -- 故意移除控制字符
       .replace(/[\r\n"'`\\]/g, '_')       // 替换引号、换行、反斜杠
       .substring(0, 200)                  // 限制长度
 
@@ -511,7 +511,7 @@ export class DingTalkAdapter implements IMAdapter {
     return name
       .replace(/[/\\]/g, '_')
       .replace(/\.\./g, '_')
-      .replace(/[\x00-\x1F\x7F]/g, '')
+      .replace(/[\x00-\x1f\x7f]/g, '')     // eslint-disable-line no-control-regex -- 故意移除控制字符
       .replace(/[<>:"|?*]/g, '_')
       .substring(0, 200)
       || 'unnamed'

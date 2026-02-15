@@ -598,7 +598,7 @@ export class FeishuAdapter implements IMAdapter {
     return name
       .replace(/[/\\]/g, '_')               // 路径分隔符
       .replace(/\.\./g, '_')                // 路径遍历
-      .replace(/[\x00-\x1F\x7F]/g, '')     // 控制字符
+      .replace(/[\x00-\x1f\x7f]/g, '')     // eslint-disable-line no-control-regex -- 故意移除控制字符
       .replace(/[<>:"|?*]/g, '_')           // Windows 特殊字符
       .substring(0, 200)                    // 限制长度
       || 'unnamed'
