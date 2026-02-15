@@ -23,7 +23,7 @@
 
 import * as http from 'http'
 import * as crypto from 'crypto'
-import * as os from 'os'
+import { RemoteChatService, VISIBLE_STEP_TYPES } from './remote-chat.service'
 
 // 类型定义 ---------------------------------------------------------------
 
@@ -35,48 +35,13 @@ export interface GatewayConfig {
 }
 
 export interface GatewayDependencies {
-  agentService: {
-    run: (ptyId: string, message: string, context: any, config?: any, profileId?: string, workerOptions?: any, callbacks?: any) => Promise<string>
-    abort: (ptyId: string) => boolean
-    confirmToolCall: (ptyId: string, toolCallId: string, approved: boolean, modifiedArgs?: Record<string, unknown>, alwaysAllow?: boolean) => boolean
-    getRunStatus: (ptyId: string) => any
-    cleanupAgent: (ptyId: string) => void
-    addUserMessage: (ptyId: string, message: string) => boolean
-  }
-  ptyService: {
-    create: (options?: any) => string | Promise<string>
-    write: (id: string, data: string) => void
-    resize: (id: string, cols: number, rows: number) => void
-    dispose: (id: string) => void
-    onData: (id: string, callback: (data: string) => void) => () => void
-    hasInstance: (id: string) => boolean
-  }
-  configService: {
-    getActiveAiProfile: () => any
-    getAgentDebugMode: () => boolean
-    get: (key: any) => any
-  }
+  remoteChatService: RemoteChatService
   mainWindow: {
     webContents: {
       send: (channel: string, ...args: any[]) => void
       isDestroyed: () => boolean
     }
   } | null
-}
-
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
-  timestamp: number
-  steps?: any[]
-}
-
-interface ChatState {
-  ptyId: string | null
-  isRunning: boolean
-  history: ChatMessage[]
-  pendingConfirm: any | null
-  executionMode: 'strict' | 'relaxed' | 'free'
 }
 
 // 审计日志
@@ -100,16 +65,13 @@ export class GatewayService {
     apiToken: '',
     host: '0.0.0.0'
   }
-  private chatState: ChatState = {
-    ptyId: null,
-    isRunning: false,
-    history: [],
-    pendingConfirm: null,
-    executionMode: 'relaxed'
-  }
-  private ptyUnsubscribe: (() => void) | null = null
   private auditLog: AuditLogEntry[] = []
   private static readonly MAX_AUDIT_LOG = 500  // 最多保留 500 条记录
+
+  /** 便捷访问共享会话服务 */
+  private get chat(): RemoteChatService {
+    return this.deps!.remoteChatService
+  }
 
   /**
    * 注入依赖（在 main.ts 中调用）
@@ -168,18 +130,9 @@ export class GatewayService {
 
   /**
    * 停止 Gateway 服务
+   * 注意：不销毁 PTY，因为 PTY 由 RemoteChatService 统一管理，IM 等通道可能仍在使用
    */
   async stop(): Promise<void> {
-    if (this.ptyUnsubscribe) {
-      this.ptyUnsubscribe()
-      this.ptyUnsubscribe = null
-    }
-    if (this.chatState.ptyId && this.deps) {
-      try {
-        this.deps.ptyService.dispose(this.chatState.ptyId)
-      } catch { /* ignore */ }
-      this.chatState.ptyId = null
-    }
     if (this.server) {
       return new Promise((resolve) => {
         this.server!.close(() => {
@@ -310,7 +263,7 @@ export class GatewayService {
       return
     }
 
-    if (this.chatState.isRunning) {
+    if (this.chat.isRunning) {
       res.writeHead(409, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: 'Agent is already running' }))
       return
@@ -318,24 +271,8 @@ export class GatewayService {
 
     // 更新执行模式
     if (executionMode && ['strict', 'relaxed', 'free'].includes(executionMode)) {
-      this.chatState.executionMode = executionMode as ChatState['executionMode']
+      this.chat.executionMode = executionMode as 'strict' | 'relaxed' | 'free'
     }
-
-    // 确保 PTY 存在
-    try {
-      await this.ensurePty()
-    } catch (err: any) {
-      res.writeHead(500, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ error: `Failed to create terminal: ${err.message}` }))
-      return
-    }
-
-    // 添加用户消息到历史
-    this.chatState.history.push({
-      role: 'user',
-      content: message.trim(),
-      timestamp: Date.now()
-    })
 
     // SSE 响应
     res.writeHead(200, {
@@ -344,45 +281,12 @@ export class GatewayService {
       'Connection': 'keep-alive'
     })
 
-    const assistantMsg: ChatMessage = {
-      role: 'assistant',
-      content: '',
-      timestamp: Date.now(),
-      steps: []
-    }
-
-    this.chatState.isRunning = true
-    this.chatState.pendingConfirm = null
-
     const sendEvent = (type: string, data: any) => {
       try {
         res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`)
       } catch { /* connection closed */ }
     }
 
-    const context = {
-      ptyId: this.chatState.ptyId!,
-      terminalOutput: [],
-      systemInfo: {
-        os: `${os.type()} ${os.release()}`,
-        shell: process.env.SHELL || 'bash'
-      },
-      terminalType: 'local' as const
-    }
-
-    const agentConfig = {
-      executionMode: this.chatState.executionMode,
-      debugMode: this.deps!.configService.getAgentDebugMode()
-    }
-
-    // 只展示有意义的操作步骤类型
-    const VISIBLE_STEP_TYPES = new Set([
-      'tool_call', 'tool_result', 'error', 'confirm',
-      'plan_created', 'plan_updated', 'plan_archived',
-      'asking', 'waiting'
-    ])
-
-    const ptyId = this.chatState.ptyId!
     const clientIp = (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || '').split(',')[0].trim()
 
     // 审计日志：任务开始
@@ -390,17 +294,18 @@ export class GatewayService {
       type: 'task_start',
       clientIp,
       summary: `远程任务开始: ${message.trim().substring(0, 80)}`,
-      details: { message: message.trim(), executionMode: this.chatState.executionMode }
+      details: { message: message.trim(), executionMode: this.chat.executionMode }
     })
 
-    // 通知桌面端：远程 Agent 开始新任务
-    this.sendToDesktop('gateway:remoteTaskStarted', { ptyId, message: message.trim() })
+    // 通知桌面端：远程 Web 任务开始
+    this.sendToDesktop('gateway:remoteTaskStarted', {
+      ptyId: this.chat.getPtyId(),
+      message: message.trim()
+    })
 
-    // 跟踪已发送的步骤 ID，用于区分新步骤和更新
+    // ---- SSE 专用的流式渲染状态 ----
     const sentStepIds = new Set<string>()
-    // 记录当前正在流式输出的 message step id，用于合并更新
     let currentMessageStepId: string | null = null
-    // 节流：message 流式更新的最后内容和定时器
     let pendingTextContent: string | null = null
     let pendingTextTimer: ReturnType<typeof setTimeout> | null = null
     const TEXT_THROTTLE_MS = 150
@@ -413,176 +318,95 @@ export class GatewayService {
       pendingTextTimer = null
     }
 
-    const callbacks = {
-      onStep: (agentId: string, step: any) => {
-        const serializedStep = JSON.parse(JSON.stringify(step))
-
-        // 推送到远程 Chat 页面（按类型过滤）
-        if (step.type === 'thinking') {
-          // thinking 步骤通过 updateStep 反复触发，只发一次 UI 指示
-          if (!sentStepIds.has(step.id)) {
-            sentStepIds.add(step.id)
-            sendEvent('thinking', { content: step.content })
-          }
-          // thinking 更新不重复发送到远程页面
-        } else if (step.type === 'message' && step.content) {
-          // message 步骤是累积式的（同一个 stepId 通过 updateStep 反复更新）
-          if (currentMessageStepId === step.id) {
-            // 同一个 message 步骤的更新：节流发送
-            pendingTextContent = step.content
-            if (!pendingTextTimer) {
-              pendingTextTimer = setTimeout(flushPendingText, TEXT_THROTTLE_MS)
+    try {
+      await this.chat.sendMessage(message.trim(), {
+        onStep: (_agentId: string, step: any) => {
+          // ---- SSE 流式输出逻辑（仅处理远程 Chat 页面渲染） ----
+          if (step.type === 'thinking') {
+            if (!sentStepIds.has(step.id)) {
+              sentStepIds.add(step.id)
+              sendEvent('thinking', { content: step.content })
             }
-          } else {
-            // 新的 message 步骤：先刷新上一个的残留，再发新块
-            if (pendingTextTimer) { clearTimeout(pendingTextTimer); flushPendingText() }
-            currentMessageStepId = step.id
-            pendingTextContent = null
-            sendEvent('text_new', { content: step.content, stepId: step.id })
-          }
-          sentStepIds.add(step.id)
-          // message 流式结束（isStreaming=false）时立即刷新
-          if (!step.isStreaming && pendingTextTimer) {
-            clearTimeout(pendingTextTimer)
-            pendingTextContent = step.content
-            flushPendingText()
-          }
-        } else if (VISIBLE_STEP_TYPES.has(step.type)) {
-          // 工具调用等可见步骤：只发送新步骤，跳过更新（如 tool_result 更新同一 step）
-          if (!sentStepIds.has(step.id)) {
+          } else if (step.type === 'message' && step.content) {
+            if (currentMessageStepId === step.id) {
+              pendingTextContent = step.content
+              if (!pendingTextTimer) {
+                pendingTextTimer = setTimeout(flushPendingText, TEXT_THROTTLE_MS)
+              }
+            } else {
+              if (pendingTextTimer) { clearTimeout(pendingTextTimer); flushPendingText() }
+              currentMessageStepId = step.id
+              pendingTextContent = null
+              sendEvent('text_new', { content: step.content, stepId: step.id })
+            }
             sentStepIds.add(step.id)
-            assistantMsg.steps!.push(serializedStep)
-            sendEvent('step', { step: serializedStep })
-          } else {
-            // 更新已有步骤（如 tool_result 回填）
-            const idx = assistantMsg.steps!.findIndex((s: any) => s.id === step.id)
-            if (idx !== -1) assistantMsg.steps![idx] = serializedStep
-            sendEvent('step_update', { step: serializedStep })
+            if (!step.isStreaming && pendingTextTimer) {
+              clearTimeout(pendingTextTimer)
+              pendingTextContent = step.content
+              flushPendingText()
+            }
+          } else if (VISIBLE_STEP_TYPES.has(step.type)) {
+            if (!sentStepIds.has(step.id)) {
+              sentStepIds.add(step.id)
+              sendEvent('step', { step: JSON.parse(JSON.stringify(step)) })
+            } else {
+              sendEvent('step_update', { step: JSON.parse(JSON.stringify(step)) })
+            }
+            if (step.type === 'tool_call') {
+              if (pendingTextTimer) { clearTimeout(pendingTextTimer); flushPendingText() }
+              currentMessageStepId = null
+            }
           }
-          // 工具调用出现后，当前 message 流结束，先刷新残留文本
-          if (step.type === 'tool_call') {
-            if (pendingTextTimer) { clearTimeout(pendingTextTimer); flushPendingText() }
-            currentMessageStepId = null
-          }
-        }
 
-        // 审计日志：工具调用
-        if (step.type === 'tool_call') {
+          // 审计日志：工具调用
+          if (step.type === 'tool_call') {
+            this.addAuditLog({
+              type: 'tool_call',
+              clientIp,
+              summary: `工具调用: ${step.toolName || 'unknown'}`,
+              details: { toolName: step.toolName, args: step.args }
+            })
+          }
+        },
+
+        onNeedConfirm: (confirmation: any) => {
+          sendEvent('need_confirm', { confirmation: this.chat.pendingConfirm })
           this.addAuditLog({
-            type: 'tool_call',
+            type: 'confirm',
             clientIp,
-            summary: `工具调用: ${step.toolName || 'unknown'}`,
-            details: { toolName: step.toolName, args: step.args }
+            summary: `需要确认: ${confirmation.toolName} (${confirmation.riskLevel})`,
+            details: { toolName: confirmation.toolName, riskLevel: confirmation.riskLevel, toolArgs: confirmation.toolArgs }
+          })
+        },
+
+        onComplete: (_agentId: string, result: string) => {
+          if (pendingTextTimer) { clearTimeout(pendingTextTimer); flushPendingText() }
+          sendEvent('complete', { content: result })
+          res.end()
+          this.addAuditLog({
+            type: 'task_complete',
+            clientIp,
+            summary: `远程任务完成: ${result.substring(0, 80)}`,
+            details: {}
+          })
+        },
+
+        onError: (_agentId: string, error: string) => {
+          if (pendingTextTimer) { clearTimeout(pendingTextTimer); flushPendingText() }
+          sendEvent('error', { error })
+          res.end()
+          this.addAuditLog({
+            type: 'task_error',
+            clientIp,
+            summary: `远程任务出错: ${error.substring(0, 80)}`,
+            details: { error }
           })
         }
-
-        // 同时推送到桌面端（所有步骤，复用本地 Agent 事件格式）
-        this.sendToDesktop('agent:step', { agentId, ptyId, step: serializedStep })
-      },
-      onNeedConfirm: (confirmation: any) => {
-        this.chatState.pendingConfirm = {
-          toolCallId: confirmation.toolCallId,
-          toolName: confirmation.toolName,
-          toolArgs: JSON.parse(JSON.stringify(confirmation.toolArgs)),
-          riskLevel: confirmation.riskLevel
-        }
-        sendEvent('need_confirm', { confirmation: this.chatState.pendingConfirm })
-
-        // 审计日志：需要确认
-        this.addAuditLog({
-          type: 'confirm',
-          clientIp,
-          summary: `需要确认: ${confirmation.toolName} (${confirmation.riskLevel})`,
-          details: { toolName: confirmation.toolName, riskLevel: confirmation.riskLevel, toolArgs: confirmation.toolArgs }
-        })
-
-        // 推送到桌面端
-        this.sendToDesktop('agent:needConfirm', {
-          agentId: confirmation.agentId,
-          ptyId,
-          toolCallId: confirmation.toolCallId,
-          toolName: confirmation.toolName,
-          toolArgs: JSON.parse(JSON.stringify(confirmation.toolArgs)),
-          riskLevel: confirmation.riskLevel
-        })
-      },
-      onComplete: (agentId: string, result: string) => {
-        // 刷新残留的流式文本
-        if (pendingTextTimer) { clearTimeout(pendingTextTimer); flushPendingText() }
-        assistantMsg.content = result
-        this.chatState.history.push(assistantMsg)
-        this.chatState.isRunning = false
-        this.chatState.pendingConfirm = null
-        sendEvent('complete', { content: result })
-        res.end()
-
-        // 审计日志：任务完成
-        this.addAuditLog({
-          type: 'task_complete',
-          clientIp,
-          summary: `远程任务完成: ${result.substring(0, 80)}`,
-          details: { stepsCount: assistantMsg.steps?.length || 0 }
-        })
-
-        // 推送到桌面端
-        this.sendToDesktop('agent:complete', { agentId, ptyId, result })
-      },
-      onError: (agentId: string, error: string) => {
-        // 刷新残留的流式文本
-        if (pendingTextTimer) { clearTimeout(pendingTextTimer); flushPendingText() }
-        assistantMsg.content = `Error: ${error}`
-        this.chatState.history.push(assistantMsg)
-        this.chatState.isRunning = false
-        this.chatState.pendingConfirm = null
-        sendEvent('error', { error })
-        res.end()
-
-        // 审计日志：任务出错
-        this.addAuditLog({
-          type: 'task_error',
-          clientIp,
-          summary: `远程任务出错: ${error.substring(0, 80)}`,
-          details: { error }
-        })
-
-        // 推送到桌面端
-        this.sendToDesktop('agent:error', { agentId, ptyId, error })
-      }
-    }
-
-    try {
-      const activeProfile = this.deps!.configService.getActiveAiProfile()
-      const profileId = activeProfile?.id
-
-      await this.deps!.agentService.run(
-        this.chatState.ptyId!,
-        message.trim(),
-        context,
-        agentConfig,
-        profileId,
-        undefined,
-        callbacks
-      )
-
-      // 如果 onComplete 没有被调用（Agent 直接返回）
-      if (this.chatState.isRunning) {
-        this.chatState.isRunning = false
-        sendEvent('complete', { content: assistantMsg.content || 'Done' })
-        if (!assistantMsg.content) {
-          assistantMsg.content = 'Done'
-        }
-        this.chatState.history.push(assistantMsg)
-        res.end()
-      }
+      })
     } catch (err: any) {
-      if (this.chatState.isRunning) {
-        this.chatState.isRunning = false
-        const errMsg = err.message || 'Unknown error'
-        sendEvent('error', { error: errMsg })
-        assistantMsg.content = `Error: ${errMsg}`
-        this.chatState.history.push(assistantMsg)
-        res.end()
-      }
+      // sendMessage 抛异常（如依赖未注入、PTY 创建失败）
+      sendEvent('error', { error: err.message || 'Unknown error' })
+      res.end()
     }
   }
 
@@ -592,9 +416,9 @@ export class GatewayService {
   private handleChatHistory(_req: http.IncomingMessage, res: http.ServerResponse) {
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({
-      history: this.chatState.history,
-      isRunning: this.chatState.isRunning,
-      executionMode: this.chatState.executionMode
+      history: this.chat.getHistory(),
+      isRunning: this.chat.isRunning,
+      executionMode: this.chat.executionMode
     }))
   }
 
@@ -616,13 +440,13 @@ export class GatewayService {
       return
     }
 
-    if (!this.chatState.ptyId || !this.chatState.isRunning) {
+    if (!this.chat.isRunning) {
       res.writeHead(400, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: 'No running task' }))
       return
     }
 
-    const result = this.deps!.agentService.addUserMessage(this.chatState.ptyId, message.trim())
+    const result = this.chat.supplement(message.trim())
 
     // 审计日志
     this.addAuditLog({
@@ -640,12 +464,12 @@ export class GatewayService {
    * POST /api/chat/abort
    */
   private async handleChatAbort(_req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!this.chatState.ptyId || !this.chatState.isRunning) {
+    if (!this.chat.isRunning) {
       res.writeHead(400, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: 'No running task' }))
       return
     }
-    const result = this.deps!.agentService.abort(this.chatState.ptyId)
+    const result = this.chat.abort()
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ success: result }))
   }
@@ -662,20 +486,18 @@ export class GatewayService {
     }
 
     const { toolCallId, approved, modifiedArgs, alwaysAllow } = body as any
-    if (!this.chatState.ptyId || !this.chatState.pendingConfirm) {
+    if (!this.chat.pendingConfirm) {
       res.writeHead(400, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: 'No pending confirmation' }))
       return
     }
 
-    const result = this.deps!.agentService.confirmToolCall(
-      this.chatState.ptyId,
-      toolCallId || this.chatState.pendingConfirm.toolCallId,
+    const result = this.chat.confirmToolCall(
+      toolCallId,
       approved !== false,
       modifiedArgs,
       alwaysAllow
     )
-    this.chatState.pendingConfirm = null
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ success: result }))
   }
@@ -684,15 +506,12 @@ export class GatewayService {
    * GET /api/chat/status
    */
   private handleChatStatus(_req: http.IncomingMessage, res: http.ServerResponse) {
-    let agentStatus = null
-    if (this.chatState.ptyId) {
-      agentStatus = this.deps!.agentService.getRunStatus(this.chatState.ptyId)
-    }
+    const agentStatus = this.chat.getAgentStatus()
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({
-      isRunning: this.chatState.isRunning,
-      pendingConfirm: this.chatState.pendingConfirm,
-      executionMode: this.chatState.executionMode,
+      isRunning: this.chat.isRunning,
+      pendingConfirm: this.chat.pendingConfirm,
+      executionMode: this.chat.executionMode,
       agentStatus
     }))
   }
@@ -701,47 +520,9 @@ export class GatewayService {
    * POST /api/chat/clear
    */
   private handleChatClear(_req: http.IncomingMessage, res: http.ServerResponse) {
-    if (this.chatState.ptyId && this.deps) {
-      this.deps.agentService.cleanupAgent(this.chatState.ptyId)
-    }
-    this.chatState.history = []
-    this.chatState.pendingConfirm = null
+    this.chat.clearHistory()
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ success: true }))
-  }
-
-  // ==================== PTY 管理 ====================
-
-  private async ensurePty(): Promise<void> {
-    // 检查现有 PTY 是否仍然存活（可能被桌面端关闭标签页时销毁）
-    if (this.chatState.ptyId) {
-      if (this.deps?.ptyService.hasInstance(this.chatState.ptyId)) {
-        return // PTY 仍然存活，直接复用
-      }
-      // PTY 已被销毁，清理旧状态
-      if (this.ptyUnsubscribe) {
-        this.ptyUnsubscribe()
-        this.ptyUnsubscribe = null
-      }
-      this.chatState.ptyId = null
-    }
-
-    if (!this.deps) throw new Error('Dependencies not set')
-
-    const ptyId = await this.deps.ptyService.create()
-    this.chatState.ptyId = ptyId
-
-    // 订阅终端输出（保留最近的输出用于 context）
-    this.ptyUnsubscribe = this.deps.ptyService.onData(ptyId, (_data: string) => {
-      // 终端输出可以用于 Agent context，目前不做额外处理
-    })
-
-    // 通知桌面端创建可见标签页
-    this.sendToDesktop('gateway:remoteTabCreated', {
-      ptyId,
-      title: '📡 Remote Agent',
-      type: 'local'
-    })
   }
 
   /**
@@ -812,7 +593,7 @@ export class GatewayService {
 
   private getChatPageHtml(): string {
     // 从 configService 读取语言设置
-    const lang = this.deps?.configService?.get('language') || 'zh-CN'
+    const lang = this.chat.getConfigValue('language') || 'zh-CN'
     const isZh = lang.startsWith('zh')
 
     // 双语文本

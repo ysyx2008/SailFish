@@ -210,7 +210,6 @@ export default {
       disconnected: '未连接',
       connecting: '连接中...',
       connectFailed: '连接失败',
-      activeSessions: '活跃会话',
       dingtalkHint: '在钉钉开发者后台创建企业内部应用，添加机器人能力并选择 Stream 模式。',
       feishuHint: '在飞书开发者后台创建企业自建应用，添加机器人能力并开启长连接模式。',
       securityNote: '凭证将保存在本地，请确保你的设备安全。连接后，IM 用户发送的消息将由本机 Agent 处理。',

@@ -30,16 +30,12 @@ const dtClientSecret = ref('')
 const dtConnected = ref(false)
 const dtConnecting = ref(false)
 const dtError = ref('')
-const dtActiveSessions = ref(0)
-
 // 飞书
 const fsAppId = ref('')
 const fsAppSecret = ref('')
 const fsConnected = ref(false)
 const fsConnecting = ref(false)
 const fsError = ref('')
-const fsActiveSessions = ref(0)
-
 // 每平台自动连接
 const dtAutoConnect = ref(false)
 const fsAutoConnect = ref(false)
@@ -97,9 +93,7 @@ async function loadIMSettings() {
   try {
     const status = await window.electronAPI.im.getStatus()
     dtConnected.value = status.dingtalk.connected
-    dtActiveSessions.value = status.dingtalk.activeSessions
     fsConnected.value = status.feishu.connected
-    fsActiveSessions.value = status.feishu.activeSessions
 
     // 加载保存的配置
     const config = await window.electronAPI.im.getConfig()
@@ -437,9 +431,6 @@ async function copyToClipboard(text: string, label: string) {
             <span class="indicator-dot"></span>
             {{ dtConnecting ? t('settings.im.connecting') : (dtConnected ? t('settings.im.connected') : t('settings.im.disconnected')) }}
           </span>
-          <span v-if="dtConnected && dtActiveSessions > 0" class="im-sessions-badge">
-            {{ dtActiveSessions }} {{ t('settings.im.activeSessions') }}
-          </span>
           <span class="toggle-arrow" :class="{ open: dingtalkExpanded }">›</span>
         </button>
 
@@ -499,9 +490,6 @@ async function copyToClipboard(text: string, label: string) {
           <span class="im-status-indicator" :class="{ connected: fsConnected, connecting: fsConnecting }">
             <span class="indicator-dot"></span>
             {{ fsConnecting ? t('settings.im.connecting') : (fsConnected ? t('settings.im.connected') : t('settings.im.disconnected')) }}
-          </span>
-          <span v-if="fsConnected && fsActiveSessions > 0" class="im-sessions-badge">
-            {{ fsActiveSessions }} {{ t('settings.im.activeSessions') }}
           </span>
           <span class="toggle-arrow" :class="{ open: feishuExpanded }">›</span>
         </button>
@@ -1073,14 +1061,6 @@ async function copyToClipboard(text: string, label: string) {
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
-}
-
-.im-sessions-badge {
-  font-size: 10px;
-  color: var(--text-muted);
-  background: var(--bg-tertiary);
-  padding: 2px 8px;
-  border-radius: 10px;
 }
 
 /* 展开/收起箭头 */

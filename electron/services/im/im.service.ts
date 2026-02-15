@@ -1,39 +1,53 @@
 /**
  * IM Service - 即时通讯平台集成服务
  *
- * 统一管理钉钉、飞书的连接和消息处理。
- * 将 IM 用户消息桥接到 Agent 服务，并将 Agent 输出聚合后发回 IM。
+ * 管理钉钉、飞书的连接，将 IM 消息桥接到共享的 RemoteChatService。
+ * 所有远程通道（Web、钉钉、飞书）共享同一个会话、PTY 和历史记录。
  *
  * 架构：
  *   IM 平台 ──→ Adapter ──→ IMService.handleMessage()
  *                                   │
- *                          SessionManager (会话)
- *                                   │
- *                          agentService.run(callbacks)
+ *                          RemoteChatService（共享会话）
  *                                   │
  *                          callbacks 聚合文本 ──→ Adapter.sendMarkdown()
  */
 
-import * as os from 'os'
 import type {
   IMServiceConfig,
-  IMServiceDependencies,
-  IMServiceStatus,
   IMAdapter,
   IMIncomingMessage,
-  IMSession,
   IMPlatform,
   DingTalkConfig,
   FeishuConfig
 } from './types'
 import { CONFIRM_KEYWORDS, REJECT_KEYWORDS } from './types'
-import { SessionManager } from './session-manager'
 import { DingTalkAdapter } from './dingtalk-adapter'
 import { FeishuAdapter } from './feishu-adapter'
+import { RemoteChatService } from '../remote-chat.service'
+
+export interface IMServiceDependencies {
+  remoteChatService: RemoteChatService
+  mainWindow: {
+    webContents: {
+      send: (channel: string, ...args: any[]) => void
+      isDestroyed: () => boolean
+    }
+  } | null
+}
+
+export interface IMServiceStatus {
+  dingtalk: {
+    enabled: boolean
+    connected: boolean
+  }
+  feishu: {
+    enabled: boolean
+    connected: boolean
+  }
+}
 
 export class IMService {
   private deps: IMServiceDependencies | null = null
-  private sessionManager = new SessionManager()
   private dingtalkAdapter: DingTalkAdapter | null = null
   private feishuAdapter: FeishuAdapter | null = null
   private config: IMServiceConfig = {
@@ -43,12 +57,16 @@ export class IMService {
     sessionTimeoutMinutes: 60,
   }
 
+  /** 便捷访问共享会话服务 */
+  private get chat(): RemoteChatService {
+    return this.deps!.remoteChatService
+  }
+
   /**
    * 注入依赖
    */
   setDependencies(deps: IMServiceDependencies) {
     this.deps = deps
-    this.sessionManager.setDependencies(deps)
   }
 
   /**
@@ -68,7 +86,6 @@ export class IMService {
     }
 
     try {
-      // 停止现有连接
       await this.stopDingTalk()
 
       this.config.dingtalk = { ...config, enabled: true }
@@ -80,8 +97,6 @@ export class IMService {
       }
 
       await this.dingtalkAdapter.start()
-      this.sessionManager.startCleanup()
-      // 注意：不在此处额外 sendToDesktop，adapter.start() 成功后会触发 onConnectionChange
       console.log('[IM] DingTalk started')
       return { success: true }
     } catch (err: any) {
@@ -124,8 +139,6 @@ export class IMService {
       }
 
       await this.feishuAdapter.start()
-      this.sessionManager.startCleanup()
-      // 注意：不在此处额外 sendToDesktop，adapter.start() 成功后会触发 onConnectionChange
       console.log('[IM] Feishu started')
       return { success: true }
     } catch (err: any) {
@@ -154,7 +167,6 @@ export class IMService {
   async stopAll(): Promise<void> {
     await this.stopDingTalk()
     await this.stopFeishu()
-    await this.sessionManager.disposeAll()
   }
 
   getStatus(): IMServiceStatus {
@@ -162,12 +174,10 @@ export class IMService {
       dingtalk: {
         enabled: this.config.dingtalk.enabled,
         connected: this.isDingTalkConnected(),
-        activeSessions: this.sessionManager.getActiveCount('dingtalk'),
       },
       feishu: {
         enabled: this.config.feishu.enabled,
         connected: this.isFeishuConnected(),
-        activeSessions: this.sessionManager.getActiveCount('feishu'),
       }
     }
   }
@@ -186,28 +196,21 @@ export class IMService {
     const adapter = this.getAdapter(msg.platform)
     if (!adapter) return
 
-    const session = this.sessionManager.getOrCreate(
-      msg.platform,
-      msg.userId,
-      msg.userName,
-      msg.chatType,
-      msg.chatId,
-      msg.replyContext
-    )
+    const replyContext = msg.replyContext
 
     // 检查是否是确认/拒绝操作
-    if (session.pendingConfirm) {
-      await this.handleConfirmResponse(session, adapter, msg.text)
+    if (this.chat.pendingConfirm) {
+      await this.handleConfirmResponse(adapter, replyContext, msg.text)
       return
     }
 
     // 如果 Agent 正在运行，尝试补充消息
-    if (session.isRunning) {
+    if (this.chat.isRunning) {
       try {
-        if (session.ptyId && this.deps.agentService.addUserMessage(session.ptyId, msg.text)) {
-          await adapter.sendText(session.replyContext, '💬 补充信息已发送给 Agent')
+        if (this.chat.supplement(msg.text)) {
+          await adapter.sendText(replyContext, '💬 补充信息已发送给 Agent')
         } else {
-          await adapter.sendText(session.replyContext, '⏳ 当前有任务正在执行中，请等待完成后再发送新消息。')
+          await adapter.sendText(replyContext, '⏳ 当前有任务正在执行中，请等待完成后再发送新消息。')
         }
       } catch (err) {
         console.error('[IM] Failed to send busy reply:', err)
@@ -219,17 +222,17 @@ export class IMService {
     const lowerText = msg.text.toLowerCase().trim()
     try {
       if (lowerText === '/clear' || lowerText === '清空' || lowerText === '清空历史') {
-        session.history = []
-        await adapter.sendText(session.replyContext, '🗑️ 对话历史已清空')
+        this.chat.clearHistory()
+        await adapter.sendText(replyContext, '🗑️ 对话历史已清空')
         return
       }
       if (lowerText === '/status' || lowerText === '状态') {
-        const status = this.getSessionStatus(session)
-        await adapter.sendText(session.replyContext, status)
+        const status = this.getSessionStatus()
+        await adapter.sendText(replyContext, status)
         return
       }
       if (lowerText === '/help' || lowerText === '帮助') {
-        await adapter.sendText(session.replyContext, this.getHelpText())
+        await adapter.sendText(replyContext, this.getHelpText())
         return
       }
     } catch (err) {
@@ -238,23 +241,22 @@ export class IMService {
     }
 
     // 开始 Agent 任务
-    await this.runAgentTask(session, adapter, msg.text)
+    await this.runAgentTask(adapter, replyContext, msg)
   }
 
   /**
    * 处理确认/拒绝回复
    */
-  private async handleConfirmResponse(session: IMSession, adapter: IMAdapter, text: string) {
-    if (!this.deps || !session.pendingConfirm || !session.ptyId) return
-
+  private async handleConfirmResponse(adapter: IMAdapter, replyContext: any, text: string) {
     const lowerText = text.toLowerCase().trim()
     const isApproved = CONFIRM_KEYWORDS.some(kw => lowerText === kw)
     const isRejected = REJECT_KEYWORDS.some(kw => lowerText === kw)
 
     if (!isApproved && !isRejected) {
       try {
-        await adapter.sendText(session.replyContext,
-          `请回复「确认」执行或「拒绝」取消。\n\n操作: ${session.pendingConfirm.toolName}`
+        const pendingConfirm = this.chat.pendingConfirm
+        await adapter.sendText(replyContext,
+          `请回复「确认」执行或「拒绝」取消。\n\n操作: ${pendingConfirm?.toolName || 'unknown'}`
         )
       } catch (err) {
         console.error('[IM] Failed to send confirm hint:', err)
@@ -262,268 +264,137 @@ export class IMService {
       return
     }
 
-    const toolCallId = session.pendingConfirm.toolCallId
+    const success = this.chat.confirmToolCall(undefined, isApproved)
 
-    const success = this.deps.agentService.confirmToolCall(
-      session.ptyId, toolCallId, isApproved
-    )
-
-    if (success) {
-      // 确认成功后才清空 pendingConfirm
-      session.pendingConfirm = null
-      try {
-        await adapter.sendText(session.replyContext,
+    try {
+      if (success) {
+        await adapter.sendText(replyContext,
           isApproved ? '✅ 已批准，继续执行...' : '❌ 已拒绝，操作已取消'
         )
-      } catch (err) {
-        console.error('[IM] Failed to send confirm result:', err)
+      } else {
+        await adapter.sendText(replyContext, '⚠️ 确认操作失败，可能任务已结束')
       }
-    } else {
-      // 确认失败也清空，因为对应的 Agent 任务可能已经结束
-      session.pendingConfirm = null
-      try {
-        await adapter.sendText(session.replyContext, '⚠️ 确认操作失败，可能任务已结束')
-      } catch (err) {
-        console.error('[IM] Failed to send confirm failure:', err)
-      }
+    } catch (err) {
+      console.error('[IM] Failed to send confirm result:', err)
     }
   }
 
   /**
    * 执行 Agent 任务
    */
-  private async runAgentTask(session: IMSession, adapter: IMAdapter, message: string) {
+  private async runAgentTask(adapter: IMAdapter, replyContext: any, msg: IMIncomingMessage) {
     if (!this.deps) return
 
-    try {
-      // 确保 PTY
-      await this.sessionManager.ensurePty(session)
-    } catch (err: any) {
-      await adapter.sendText(session.replyContext, `❌ 创建终端失败: ${err.message}`)
-      return
-    }
-
-    // 添加用户消息到历史
-    session.history.push({ role: 'user', content: message, timestamp: Date.now() })
-
-    session.isRunning = true
-    session.pendingConfirm = null
-    session.textBuffer = ''
-    session.currentStepId = null
-
     // 发送处理中提示
-    await adapter.sendText(session.replyContext, '🤔 收到，正在处理...')
+    try {
+      await adapter.sendText(replyContext, '🤔 收到，正在处理...')
+    } catch { /* ignore */ }
 
     // 通知桌面端
     this.sendToDesktop('im:taskStarted', {
-      platform: session.platform,
-      userId: session.userId,
-      userName: session.userName,
-      message
+      platform: msg.platform,
+      userId: msg.userId,
+      userName: msg.userName,
+      message: msg.text
     })
 
-    const context = {
-      ptyId: session.ptyId!,
-      terminalOutput: [],
-      systemInfo: {
-        os: `${os.type()} ${os.release()}`,
-        shell: process.env.SHELL || 'bash'
-      },
-      terminalType: 'local' as const
-    }
-
-    const agentConfig = {
-      executionMode: session.executionMode,
-      debugMode: this.deps.configService.getAgentDebugMode()
-    }
-
-    // 跟踪已通知的工具调用 ID，避免重复通知
+    // IM 专用：文本缓冲和工具调用去重
+    let textBuffer = ''
     const notifiedToolCalls = new Set<string>()
 
-    /** 发送并清空文本缓冲区 */
     const flushTextBuffer = async () => {
-      if (session.textBuffer) {
-        const text = session.textBuffer
-        session.textBuffer = ''
+      if (textBuffer) {
+        const text = textBuffer
+        textBuffer = ''
         try {
-          await adapter.sendMarkdown(session.replyContext, '旗鱼终端', text)
+          await adapter.sendMarkdown(replyContext, '旗鱼终端', text)
         } catch (err) {
-          console.error(`[IM] Failed to send text:`, err)
+          console.error('[IM] Failed to send text:', err)
         }
-      }
-    }
-
-    const callbacks = {
-      onStep: (agentId: string, step: any) => {
-        if (step.type === 'message' && step.content) {
-          if (step.isStreaming) {
-            // 流式中：只累积，不发送。等流式结束再一次性发。
-            session.textBuffer = step.content
-            session.currentStepId = step.id
-          } else {
-            // 流式结束：发送完整消息
-            session.textBuffer = step.content
-            flushTextBuffer().catch(() => {})
-          }
-        } else if (step.type === 'tool_call' && step.toolName) {
-          // 去重：同一个工具调用只通知一次
-          const toolCallKey = step.id || `${step.toolName}:${JSON.stringify(step.toolArgs || {})}`
-          if (notifiedToolCalls.has(toolCallKey)) return
-          notifiedToolCalls.add(toolCallKey)
-
-          // 工具调用前，先发送已累积的文本
-          flushTextBuffer().catch(() => {})
-
-          // 发送工具调用提示
-          const argsPreview = step.toolArgs
-            ? JSON.stringify(step.toolArgs).substring(0, 100)
-            : ''
-          adapter.sendText(session.replyContext,
-            `🔧 ${step.toolName}${argsPreview ? '\n' + argsPreview : ''}`
-          ).catch(() => {})
-        }
-
-        // 推送到桌面端
-        try {
-          const serializedStep = JSON.parse(JSON.stringify(step))
-          this.sendToDesktop('agent:step', {
-            agentId,
-            ptyId: session.ptyId,
-            step: serializedStep
-          })
-        } catch { /* ignore */ }
-      },
-
-      onNeedConfirm: (confirmation: any) => {
-        session.pendingConfirm = {
-          toolCallId: confirmation.toolCallId,
-          toolName: confirmation.toolName,
-          toolArgs: JSON.parse(JSON.stringify(confirmation.toolArgs)),
-          riskLevel: confirmation.riskLevel,
-        }
-
-        // 先发送缓冲区中的文本
-        flushTextBuffer().catch(() => {})
-
-        // 发送确认请求
-        const riskEmoji = confirmation.riskLevel === 'dangerous' ? '🔴' : '🟡'
-        const argsText = JSON.stringify(confirmation.toolArgs, null, 2)
-          .substring(0, 500)
-
-        adapter.sendMarkdown(session.replyContext, '需要确认', [
-          `${riskEmoji} **需要确认操作**`,
-          '',
-          `**工具**: ${confirmation.toolName}`,
-          `**风险**: ${confirmation.riskLevel}`,
-          `**参数**:`,
-          '```',
-          argsText,
-          '```',
-          '',
-          '回复「确认」执行，或「拒绝」取消。'
-        ].join('\n')).catch(() => {})
-
-        // 通知桌面端
-        this.sendToDesktop('agent:needConfirm', {
-          agentId: confirmation.agentId,
-          ptyId: session.ptyId,
-          toolCallId: confirmation.toolCallId,
-          toolName: confirmation.toolName,
-          toolArgs: JSON.parse(JSON.stringify(confirmation.toolArgs)),
-          riskLevel: confirmation.riskLevel,
-        })
-      },
-
-      onComplete: (agentId: string, result: string) => {
-        // 发送残留的缓冲文本
-        flushTextBuffer().catch(() => {})
-
-        session.isRunning = false
-        session.pendingConfirm = null
-        session.history.push({ role: 'assistant', content: result, timestamp: Date.now() })
-
-        // 任务完成通知
-        adapter.sendText(session.replyContext, '✅ 任务完成').catch(() => {})
-
-        this.sendToDesktop('im:taskComplete', {
-          platform: session.platform,
-          userId: session.userId,
-        })
-      },
-
-      onError: (agentId: string, error: string) => {
-        // 发送残留的缓冲文本
-        flushTextBuffer().catch(() => {})
-
-        session.isRunning = false
-        session.pendingConfirm = null
-        session.history.push({
-          role: 'assistant',
-          content: `Error: ${error}`,
-          timestamp: Date.now()
-        })
-
-        adapter.sendText(session.replyContext, `❌ 执行出错: ${error}`).catch(() => {})
-
-        this.sendToDesktop('im:taskError', {
-          platform: session.platform,
-          userId: session.userId,
-          error,
-        })
       }
     }
 
     try {
-      const activeProfile = this.deps.configService.getActiveAiProfile()
-      const profileId = activeProfile?.id
+      await this.chat.sendMessage(msg.text, {
+        onStep: (_agentId: string, step: any) => {
+          if (step.type === 'message' && step.content) {
+            if (step.isStreaming) {
+              // 流式中：只累积，不发送
+              textBuffer = step.content
+            } else {
+              // 流式结束：发送完整消息
+              textBuffer = step.content
+              flushTextBuffer().catch(() => {})
+            }
+          } else if (step.type === 'tool_call' && step.toolName) {
+            // 去重：同一个工具调用只通知一次
+            const toolCallKey = step.id || `${step.toolName}:${JSON.stringify(step.toolArgs || {})}`
+            if (notifiedToolCalls.has(toolCallKey)) return
+            notifiedToolCalls.add(toolCallKey)
 
-      await this.deps.agentService.run(
-        session.ptyId!,
-        message.trim(),
-        context,
-        agentConfig,
-        profileId,
-        undefined,
-        callbacks
-      )
+            // 工具调用前，先发送已累积的文本
+            flushTextBuffer().catch(() => {})
 
-      // Agent.run() 返回后，仅在 onComplete/onError 未清理的情况下执行后备逻辑
-      // （避免与回调中的状态更新重复）
-      if (session.isRunning) {
-        if (session.textBuffer) {
-          await flushTextBuffer()
+            // 发送工具调用提示
+            const argsPreview = step.toolArgs
+              ? JSON.stringify(step.toolArgs).substring(0, 100)
+              : ''
+            adapter.sendText(replyContext,
+              `🔧 ${step.toolName}${argsPreview ? '\n' + argsPreview : ''}`
+            ).catch(() => {})
+          }
+        },
+
+        onNeedConfirm: (confirmation: any) => {
+          // 先发送缓冲区中的文本
+          flushTextBuffer().catch(() => {})
+
+          // 发送确认请求
+          const riskEmoji = confirmation.riskLevel === 'dangerous' ? '🔴' : '🟡'
+          const argsText = JSON.stringify(confirmation.toolArgs, null, 2)
+            .substring(0, 500)
+
+          adapter.sendMarkdown(replyContext, '需要确认', [
+            `${riskEmoji} **需要确认操作**`,
+            '',
+            `**工具**: ${confirmation.toolName}`,
+            `**风险**: ${confirmation.riskLevel}`,
+            `**参数**:`,
+            '```',
+            argsText,
+            '```',
+            '',
+            '回复「确认」执行，或「拒绝」取消。'
+          ].join('\n')).catch(() => {})
+        },
+
+        onComplete: (_agentId: string, _result: string) => {
+          // 发送残留的缓冲文本
+          flushTextBuffer().catch(() => {})
+          // 任务完成通知
+          adapter.sendText(replyContext, '✅ 任务完成').catch(() => {})
+          this.sendToDesktop('im:taskComplete', {
+            platform: msg.platform,
+            userId: msg.userId,
+          })
+        },
+
+        onError: (_agentId: string, error: string) => {
+          // 发送残留的缓冲文本
+          flushTextBuffer().catch(() => {})
+          adapter.sendText(replyContext, `❌ 执行出错: ${error}`).catch(() => {})
+          this.sendToDesktop('im:taskError', {
+            platform: msg.platform,
+            userId: msg.userId,
+            error,
+          })
         }
-        session.isRunning = false
-        session.pendingConfirm = null
-        session.history.push({
-          role: 'assistant',
-          content: 'Done',
-          timestamp: Date.now()
-        })
-        try {
-          await adapter.sendText(session.replyContext, '✅ 任务完成')
-        } catch (sendErr) {
-          console.error('[IM] Failed to send completion message:', sendErr)
-        }
-      }
+      })
     } catch (err: any) {
-      if (session.isRunning) {
-        session.isRunning = false
-        session.pendingConfirm = null
-        const errMsg = err.message || 'Unknown error'
-        session.history.push({
-          role: 'assistant',
-          content: `Error: ${errMsg}`,
-          timestamp: Date.now()
-        })
-        try {
-          await adapter.sendText(session.replyContext, `❌ 执行出错: ${errMsg}`)
-        } catch (sendErr) {
-          console.error('[IM] Failed to send error message:', sendErr)
-        }
-      }
-    } finally {
-      // finally 块：无需额外清理，已无定时器
+      // sendMessage 抛异常（如 Agent 正在运行、PTY 创建失败等）
+      try {
+        await adapter.sendText(replyContext, `❌ ${err.message || 'Unknown error'}`)
+      } catch { /* ignore */ }
     }
   }
 
@@ -535,15 +406,16 @@ export class IMService {
     return null
   }
 
-  private getSessionStatus(session: IMSession): string {
+  private getSessionStatus(): string {
+    const state = this.chat.getState()
     return [
       `📊 会话状态`,
-      `平台: ${session.platform === 'dingtalk' ? '钉钉' : '飞书'}`,
-      `用户: ${session.userName || session.userId}`,
-      `状态: ${session.isRunning ? '执行中' : '空闲'}`,
-      `历史消息: ${session.history.length} 条`,
-      `终端: ${session.ptyId || '未创建'}`,
-      `执行模式: ${session.executionMode}`,
+      `状态: ${state.isRunning ? '执行中' : '空闲'}`,
+      `历史消息: ${state.history.length} 条`,
+      `终端: ${state.ptyId || '未创建'}`,
+      `执行模式: ${state.executionMode}`,
+      `钉钉: ${this.isDingTalkConnected() ? '已连接' : '未连接'}`,
+      `飞书: ${this.isFeishuConnected() ? '已连接' : '未连接'}`,
     ].join('\n')
   }
 

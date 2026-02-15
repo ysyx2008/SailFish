@@ -201,6 +201,7 @@ import { initScreenContentService } from './services/screen-content.service'
 import { menuService } from './services/menu.service'
 import { aiDebugService } from './services/ai-debug.service'
 import { getSchedulerService, type CreateTaskParams } from './services/scheduler.service'
+import { getRemoteChatService } from './services/remote-chat.service'
 import { getGatewayService, type GatewayConfig } from './services/gateway.service'
 import { getIMService } from './services/im/im.service'
 import type { DingTalkConfig, FeishuConfig } from './services/im/types'
@@ -667,7 +668,8 @@ app.whenReady().then(async () => {
   // 先创建窗口，让用户尽快看到界面
   createWindow()
 
-  // 设置 Gateway 和 IM 服务的 mainWindow 引用（用于远程操作通知桌面端）
+  // 设置远程服务的 mainWindow 引用（用于远程操作通知桌面端）
+  remoteChatService.setMainWindow(mainWindow)
   gatewayService.setMainWindow(mainWindow)
   imService.setMainWindow(mainWindow)
 
@@ -782,6 +784,10 @@ app.on('window-all-closed', () => {
   // 停止定时任务调度服务
   schedulerService.stop()
   
+  // 停止远程服务
+  imService.stopAll().catch(() => {})
+  remoteChatService.dispose().catch(() => {})
+
   // 清理所有 PTY、SSH、SFTP 和 MCP 连接
   ptyService.disposeAll()
   sshService.disposeAll()
@@ -1718,15 +1724,22 @@ ipcMain.handle('agent:addMessage', async (_event, ptyId: string, message: string
   return agentService.addUserMessage(ptyId, message)
 })
 
-// ==================== Gateway 远程访问 ====================
+// ==================== 远程会话共享服务 ====================
 
-const gatewayService = getGatewayService()
-// 依赖在 createWindow 之后通过 updateGatewayMainWindow 设置 mainWindow
-gatewayService.setDependencies({
+const remoteChatService = getRemoteChatService()
+remoteChatService.setDependencies({
   agentService,
   ptyService,
   configService,
   mainWindow: null  // 初始化时 mainWindow 还未创建
+})
+
+// ==================== Gateway 远程访问 ====================
+
+const gatewayService = getGatewayService()
+gatewayService.setDependencies({
+  remoteChatService,
+  mainWindow: null
 })
 
 ipcMain.handle('gateway:start', async (_event, config: GatewayConfig) => {
@@ -1768,9 +1781,7 @@ ipcMain.handle('gateway:getAuditLog', async (_event, limit?: number) => {
 
 const imService = getIMService()
 imService.setDependencies({
-  agentService,
-  ptyService,
-  configService,
+  remoteChatService,
   mainWindow: null
 })
 

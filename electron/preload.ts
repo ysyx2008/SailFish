@@ -2639,8 +2639,8 @@ const electronAPI = {
       ipcRenderer.invoke('im:stopFeishu') as Promise<{ success: boolean }>,
     getStatus: () =>
       ipcRenderer.invoke('im:getStatus') as Promise<{
-        dingtalk: { enabled: boolean; connected: boolean; activeSessions: number }
-        feishu: { enabled: boolean; connected: boolean; activeSessions: number }
+        dingtalk: { enabled: boolean; connected: boolean }
+        feishu: { enabled: boolean; connected: boolean }
       }>,
     getConfig: () =>
       ipcRenderer.invoke('im:getConfig') as Promise<{

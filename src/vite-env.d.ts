@@ -1966,8 +1966,8 @@ interface Window {
       startFeishu: (config: { enabled: boolean; appId: string; appSecret: string }) => Promise<{ success: boolean; error?: string }>
       stopFeishu: () => Promise<{ success: boolean }>
       getStatus: () => Promise<{
-        dingtalk: { enabled: boolean; connected: boolean; activeSessions: number }
-        feishu: { enabled: boolean; connected: boolean; activeSessions: number }
+        dingtalk: { enabled: boolean; connected: boolean }
+        feishu: { enabled: boolean; connected: boolean }
       }>
       getConfig: () => Promise<{
         dingtalk: { clientId: string; clientSecret: string; autoConnect: boolean }

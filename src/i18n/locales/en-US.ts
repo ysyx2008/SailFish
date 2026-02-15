@@ -210,7 +210,6 @@ export default {
       disconnected: 'Disconnected',
       connecting: 'Connecting...',
       connectFailed: 'Connection failed',
-      activeSessions: 'Active sessions',
       dingtalkHint: 'Create an internal app in DingTalk Developer Console, add Robot capability and select Stream mode.',
       feishuHint: 'Create a self-built app in Feishu Developer Console, add Robot capability and enable long connection mode.',
       securityNote: 'Credentials are stored locally. Ensure your device is secure. Once connected, messages from IM users will be processed by the local Agent.',
