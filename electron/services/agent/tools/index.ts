@@ -21,7 +21,7 @@ import { fileSearch, readFile, editFile, writeLocalFile, writeRemoteFile } from 
 import { rememberInfo, searchKnowledge, getKnowledgeDoc } from './knowledge'
 import { createPlan, updatePlan, clearPlan } from './plan'
 import { recallTask, deepRecall } from './memory'
-import { wait, askUser, executeMcpTool, loadSkillTool, unloadSkillTool, loadUserSkillTool, executeSkillTool } from './misc'
+import { wait, askUser, sendFileToChat, sendImageToChat, sendIMNotification, executeMcpTool, loadSkillTool, unloadSkillTool, loadUserSkillTool, executeSkillTool } from './misc'
 
 // 重新导出类型
 export type { ToolExecutorConfig, AgentConfig, ToolResult, ErrorCategory } from './types'
@@ -33,7 +33,7 @@ export { fileSearch, readFile, editFile, writeLocalFile, writeRemoteFile } from 
 export { rememberInfo, searchKnowledge, getKnowledgeDoc } from './knowledge'
 export { createPlan, updatePlan, clearPlan } from './plan'
 export { recallTask, deepRecall } from './memory'
-export { wait, askUser, executeMcpTool, loadSkillTool, unloadSkillTool, loadUserSkillTool, executeSkillTool } from './misc'
+export { wait, askUser, sendFileToChat, sendImageToChat, sendIMNotification, executeMcpTool, loadSkillTool, unloadSkillTool, loadUserSkillTool, executeSkillTool } from './misc'
 
 // 导出工具函数
 export {
@@ -118,6 +118,9 @@ export async function executeTool(
     case 'ask_user':
       return askUser(args, executor)
 
+    case 'send_im_notification':
+      return sendIMNotification(args, executor)
+
     case 'create_plan':
       return createPlan(args, executor)
 
@@ -141,6 +144,12 @@ export async function executeTool(
 
     case 'deep_recall':
       return deepRecall(args, executor, ptyId)
+
+    case 'send_file_to_chat':
+      return sendFileToChat(args, executor)
+
+    case 'send_image_to_chat':
+      return sendImageToChat(args, executor)
 
     default:
       // 检查是否是技能工具调用

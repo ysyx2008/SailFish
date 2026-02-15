@@ -22,6 +22,14 @@ export class SkillSession implements SkillSessionManager {
   }
 
   /**
+   * 更新核心工具列表
+   * 当运行上下文变化时（如 remoteChannel 不同），需要刷新核心工具
+   */
+  updateCoreTools(coreTools: ToolDefinition[]): void {
+    this.coreTools = coreTools
+  }
+
+  /**
    * 获取已加载的技能 ID 列表
    */
   getLoadedSkills(): string[] {

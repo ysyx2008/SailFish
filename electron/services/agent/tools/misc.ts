@@ -238,6 +238,144 @@ export async function askUser(
 }
 
 /**
+ * 发送文件到当前 IM 聊天
+ */
+export async function sendFileToChat(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const filePath = args.file_path as string
+  const fileName = args.file_name as string | undefined
+
+  if (!filePath || typeof filePath !== 'string') {
+    return { success: false, output: '', error: '必须提供 file_path 参数' }
+  }
+
+  // 通过 IMService 单例发送文件（动态导入避免循环依赖）
+  const { getIMService } = await import('../../im/im.service')
+  const imService = getIMService()
+
+  if (!imService.hasActiveSession()) {
+    return { success: false, output: '', error: '当前没有活跃的 IM 会话，此工具仅在通过钉钉/飞书交互时可用' }
+  }
+
+  // 获取文件大小用于显示
+  let fileSizeDisplay = ''
+  try {
+    const { statSync } = await import('fs')
+    const stat = statSync(filePath)
+    const sizeMB = stat.size / 1024 / 1024
+    fileSizeDisplay = sizeMB >= 1
+      ? ` (${sizeMB.toFixed(1)}MB)`
+      : ` (${(stat.size / 1024).toFixed(0)}KB)`
+  } catch { /* ignore */ }
+
+  const displayName = fileName || filePath.split('/').pop() || filePath
+
+  executor.addStep({
+    type: 'tool_call',
+    content: `📤 发送文件: ${displayName}${fileSizeDisplay}`,
+    toolName: 'send_file_to_chat',
+    toolArgs: { file_path: filePath, file_name: fileName },
+    riskLevel: 'safe'
+  })
+
+  const result = await imService.sendFileForCurrentSession(filePath, fileName)
+
+  if (result.success) {
+    executor.addStep({
+      type: 'tool_result',
+      content: `✅ 文件已发送: ${displayName}`,
+      toolName: 'send_file_to_chat',
+      toolResult: `文件已成功发送: ${displayName}`
+    })
+    return { success: true, output: `文件已成功发送到聊天: ${displayName}` }
+  } else {
+    executor.addStep({
+      type: 'tool_result',
+      content: `❌ 文件发送失败: ${result.error}`,
+      toolName: 'send_file_to_chat',
+      toolResult: result.error || '未知错误'
+    })
+    return { success: false, output: '', error: result.error || '文件发送失败' }
+  }
+}
+
+/**
+ * 发送图片到当前 IM 聊天（内联显示）
+ */
+/** 常见图片文件扩展名 */
+const IMAGE_EXTENSIONS = new Set([
+  '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif', '.svg', '.ico', '.heic', '.heif', '.avif'
+])
+
+export async function sendImageToChat(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const filePath = args.file_path as string
+
+  if (!filePath || typeof filePath !== 'string') {
+    return { success: false, output: '', error: '必须提供 file_path 参数' }
+  }
+
+  // 校验文件扩展名
+  const ext = filePath.substring(filePath.lastIndexOf('.')).toLowerCase()
+  if (!IMAGE_EXTENSIONS.has(ext)) {
+    return { success: false, output: '', error: `不支持的图片格式: ${ext}，请使用 send_file_to_chat 发送非图片文件` }
+  }
+
+  // 通过 IMService 单例发送图片（动态导入避免循环依赖）
+  const { getIMService } = await import('../../im/im.service')
+  const imService = getIMService()
+
+  if (!imService.hasActiveSession()) {
+    return { success: false, output: '', error: '当前没有活跃的 IM 会话，此工具仅在通过钉钉/飞书交互时可用' }
+  }
+
+  // 获取文件大小用于显示
+  let fileSizeDisplay = ''
+  try {
+    const { statSync } = await import('fs')
+    const stat = statSync(filePath)
+    const sizeMB = stat.size / 1024 / 1024
+    fileSizeDisplay = sizeMB >= 1
+      ? ` (${sizeMB.toFixed(1)}MB)`
+      : ` (${(stat.size / 1024).toFixed(0)}KB)`
+  } catch { /* ignore */ }
+
+  const displayName = filePath.split('/').pop() || filePath
+
+  executor.addStep({
+    type: 'tool_call',
+    content: `🖼️ 发送图片: ${displayName}${fileSizeDisplay}`,
+    toolName: 'send_image_to_chat',
+    toolArgs: { file_path: filePath },
+    riskLevel: 'safe'
+  })
+
+  const result = await imService.sendImageForCurrentSession(filePath)
+
+  if (result.success) {
+    executor.addStep({
+      type: 'tool_result',
+      content: `✅ 图片已发送: ${displayName}`,
+      toolName: 'send_image_to_chat',
+      toolResult: `图片已成功发送: ${displayName}`
+    })
+    return { success: true, output: `图片已成功发送到聊天: ${displayName}` }
+  } else {
+    executor.addStep({
+      type: 'tool_result',
+      content: `❌ 图片发送失败: ${result.error}`,
+      toolName: 'send_image_to_chat',
+      toolResult: result.error || '未知错误'
+    })
+    return { success: false, output: '', error: result.error || '图片发送失败' }
+  }
+}
+
+/**
  * 执行 MCP 工具
  */
 export async function executeMcpTool(
@@ -493,6 +631,62 @@ export async function loadUserSkillTool(
   })
   
   return { success: true, output }
+}
+
+/**
+ * 通过 IM 渠道发送主动通知
+ */
+export async function sendIMNotification(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const message = args.message as string
+  const title = typeof args.title === 'string' ? args.title : undefined
+
+  if (!message || typeof message !== 'string') {
+    return { success: false, output: '', error: '消息内容不能为空' }
+  }
+
+  // 动态导入 IMService 单例（避免循环依赖）
+  const { getIMService } = await import('../../im/im.service')
+  const imService = getIMService()
+
+  const lastContact = imService.getLastContact()
+  if (!lastContact) {
+    return { success: false, output: '', error: '没有最近的 IM 联系记录。需要用户先通过钉钉或飞书与 AI 对话，才能主动发送通知。' }
+  }
+
+  executor.addStep({
+    type: 'tool_call',
+    content: `📤 发送 IM 通知 → ${lastContact.platform}`,
+    toolName: 'send_im_notification',
+    toolArgs: { message: message.substring(0, 100), title },
+    riskLevel: 'safe'
+  })
+
+  const result = await imService.sendNotification(message, {
+    markdown: !!title,
+    title,
+  })
+
+  if (result.success) {
+    const output = `通知已通过 ${result.platform} 发送成功`
+    executor.addStep({
+      type: 'tool_result',
+      content: `✅ ${output}`,
+      toolName: 'send_im_notification',
+      toolResult: output
+    })
+    return { success: true, output }
+  } else {
+    executor.addStep({
+      type: 'tool_result',
+      content: `❌ 发送失败: ${result.error}`,
+      toolName: 'send_im_notification',
+      toolResult: result.error || ''
+    })
+    return { success: false, output: '', error: result.error }
+  }
 }
 
 /**

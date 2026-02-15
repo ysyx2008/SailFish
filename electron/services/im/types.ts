@@ -60,12 +60,31 @@ export interface IMAdapter {
   sendText(replyContext: any, text: string): Promise<void>
   /** 发送 Markdown 消息 */
   sendMarkdown(replyContext: any, title: string, content: string): Promise<void>
+  /** 发送图片消息（内联显示） */
+  sendImage(replyContext: any, filePath: string): Promise<void>
+  /** 发送文件消息 */
+  sendFile(replyContext: any, filePath: string, fileName?: string): Promise<void>
 
   /** 消息到达回调 */
   onMessage: ((msg: IMIncomingMessage) => void) | null
   /** 连接状态变化回调 */
   onConnectionChange: ((connected: boolean) => void) | null
 }
+
+/**
+ * 文件发送结果
+ */
+export interface SendFileResult {
+  success: boolean
+  error?: string
+}
+
+/** 文件上传大小限制（字节） */
+export const IM_FILE_MAX_SIZE_DINGTALK = 20 * 1024 * 1024  // 钉钉: 20MB
+export const IM_FILE_MAX_SIZE_FEISHU = 30 * 1024 * 1024    // 飞书: 30MB
+
+/** 图片上传大小限制（字节） */
+export const IM_IMAGE_MAX_SIZE_FEISHU = 10 * 1024 * 1024   // 飞书: 10MB
 
 // ==================== 常量 ====================
 

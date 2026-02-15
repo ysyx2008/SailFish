@@ -396,7 +396,12 @@ ${taskIdList}`
 
     const platformName = imPlatforms[channel]
     if (platformName) {
-      return `**交互通道**：用户通过${platformName}与你对话，你的回复将作为 IM 消息发送`
+      const sizeLimit = channel === 'dingtalk' ? '20MB' : '30MB'
+      const imageSizeLimit = channel === 'dingtalk' ? '20MB' : '10MB'
+      return `**交互通道**：用户通过${platformName}与你对话，你的回复将作为 IM 消息发送
+- 你可以使用 \`send_image_to_chat\` 发送图片（限${imageSizeLimit}），图片会在聊天中内联显示
+- 你可以使用 \`send_file_to_chat\` 发送其他文件（限${sizeLimit}）
+- 当用户要求查看图片时，优先用 \`send_image_to_chat\`；其他文件用 \`send_file_to_chat\``
     }
 
     if (channel === 'web') {

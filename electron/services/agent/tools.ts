@@ -164,6 +164,8 @@ ${skillsList}
 export interface GetAgentToolsOptions {
   /** Agent 运行模式，用于过滤不适用的工具 */
   mode?: AgentMode
+  /** 请求来源通道（用于条件性加载 IM 专属工具） */
+  remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu'
 }
 
 /**
@@ -871,6 +873,35 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
           required: ['task_id']
         }
       }
+    },
+    // ==================== IM 主动通知工具 ====================
+    {
+      type: 'function',
+      function: {
+        name: 'send_im_notification',
+        description: `向用户最近使用的 IM 渠道（钉钉或飞书）发送通知消息。
+
+**使用场景**：
+- 定时任务完成后通知用户结果
+- 需要主动提醒用户某些事项
+- 异步任务执行完毕后告知用户
+
+消息会发送到最后一个与 AI 对话的 IM 渠道。如果没有 IM 渠道连接或没有用户联系过，则无法发送。`,
+        parameters: {
+          type: 'object',
+          properties: {
+            message: {
+              type: 'string',
+              description: '要发送的通知内容'
+            },
+            title: {
+              type: 'string',
+              description: '通知标题（可选，指定后以 Markdown 卡片形式发送）'
+            }
+          },
+          required: ['message']
+        }
+      }
     }
   ]
 
@@ -883,6 +914,83 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       if (!meta?.supportedModes) return true
       // 检查当前模式是否在支持列表中
       return meta.supportedModes.includes(options.mode!)
+    })
+  }
+
+  // IM 通道专属工具：仅在钉钉/飞书通道时可用
+  if (options?.remoteChannel === 'dingtalk' || options?.remoteChannel === 'feishu') {
+    const platformName = options.remoteChannel === 'dingtalk' ? '钉钉' : '飞书'
+    const sizeLimit = options.remoteChannel === 'dingtalk' ? '20MB' : '30MB'
+
+    filteredTools.push({
+      type: 'function',
+      function: {
+        name: 'send_file_to_chat',
+        description: `发送本地文件到当前${platformName}聊天。将机器上的文件通过${platformName}机器人发送给用户。
+
+**使用场景**：
+- 用户要求你把某个文件发过来
+- 任务执行后需要将生成的文件（日志、报告、截图等）发给用户
+- 发送配置文件、脚本等需要用户查看的文件
+
+**限制**：
+- 文件大小不超过 ${sizeLimit}
+- 不限文件格式
+- 一次只能发送一个文件，多个文件需多次调用
+
+**注意**：
+- 先确认文件存在且路径正确
+- 超大文件建议先压缩再发送
+- **发送图片请使用 send_image_to_chat**，效果更好（内联显示）`,
+        parameters: {
+          type: 'object',
+          properties: {
+            file_path: {
+              type: 'string',
+              description: '要发送的文件的绝对路径'
+            },
+            file_name: {
+              type: 'string',
+              description: '可选，自定义文件名（默认使用原始文件名）。用于给文件一个更友好的名称'
+            }
+          },
+          required: ['file_path']
+        }
+      }
+    })
+
+    const imageSizeLimit = options.remoteChannel === 'dingtalk' ? '20MB' : '10MB'
+    filteredTools.push({
+      type: 'function',
+      function: {
+        name: 'send_image_to_chat',
+        description: `发送图片到当前${platformName}聊天，图片会在聊天中内联显示。
+
+**使用场景**：
+- 用户要求查看某张图片
+- 任务生成了截图、图表、图片等需要展示给用户
+- 需要向用户展示可视化结果
+
+**支持的图片格式**：jpg/jpeg、png、gif、bmp、webp 等常见格式
+
+**限制**：
+- 图片大小不超过 ${imageSizeLimit}
+- 一次只能发送一张图片
+
+**注意**：
+- 先确认文件存在且路径正确
+- 非图片文件请使用 send_file_to_chat`,
+        parameters: {
+          type: 'object',
+          properties: {
+            file_path: {
+              type: 'string',
+              description: '要发送的图片文件的绝对路径'
+            }
+          },
+          required: ['file_path']
+        }
+      }
     })
   }
 

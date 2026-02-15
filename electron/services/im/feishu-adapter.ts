@@ -13,8 +13,10 @@
  * 6. 发布应用版本
  */
 
+import * as fs from 'fs'
+import * as path from 'path'
 import type { IMAdapter, IMIncomingMessage, IMPlatform, FeishuConfig } from './types'
-import { IM_TEXT_MAX_LENGTH } from './types'
+import { IM_TEXT_MAX_LENGTH, IM_FILE_MAX_SIZE_FEISHU, IM_IMAGE_MAX_SIZE_FEISHU } from './types'
 
 // 飞书 SDK 懒加载
 let lark: any
@@ -159,6 +161,161 @@ export class FeishuAdapter implements IMAdapter {
     })
   }
 
+  /**
+   * 发送图片消息（内联显示）
+   * 流程：先通过 im.image.create 上传图片获取 image_key，再发送 image 类型消息
+   */
+  async sendImage(replyContext: any, filePath: string): Promise<void> {
+    if (!this.client) throw new Error('[Feishu] Client not initialized')
+
+    // 检查文件存在性和大小
+    let stat: fs.Stats
+    try {
+      stat = fs.statSync(filePath)
+    } catch {
+      throw new Error(`[Feishu] Image file not found or not accessible: ${filePath}`)
+    }
+    if (!stat.isFile()) {
+      throw new Error(`[Feishu] Not a regular file: ${filePath}`)
+    }
+    if (stat.size === 0) {
+      throw new Error(`[Feishu] Image file is empty: ${filePath}`)
+    }
+    if (stat.size > IM_IMAGE_MAX_SIZE_FEISHU) {
+      const sizeMB = (stat.size / 1024 / 1024).toFixed(1)
+      throw new Error(`[Feishu] Image too large: ${sizeMB}MB (limit: ${IM_IMAGE_MAX_SIZE_FEISHU / 1024 / 1024}MB)`)
+    }
+
+    // Step 1: 上传图片获取 image_key
+    const imageKey = await this.uploadImage(filePath)
+
+    // Step 2: 发送图片消息
+    await this.client.im.message.create({
+      params: { receive_id_type: 'chat_id' },
+      data: {
+        receive_id: replyContext.chatId,
+        content: JSON.stringify({ image_key: imageKey }),
+        msg_type: 'image',
+      }
+    })
+  }
+
+  /**
+   * 发送文件消息
+   * 流程：先通过 im.file.create 上传文件获取 file_key，再发送 file 类型消息
+   */
+  async sendFile(replyContext: any, filePath: string, fileName?: string): Promise<void> {
+    if (!this.client) throw new Error('[Feishu] Client not initialized')
+
+    // 检查文件存在性和大小（合并为一次系统调用）
+    let stat: fs.Stats
+    try {
+      stat = fs.statSync(filePath)
+    } catch {
+      throw new Error(`[Feishu] File not found or not accessible: ${filePath}`)
+    }
+    if (!stat.isFile()) {
+      throw new Error(`[Feishu] Not a regular file: ${filePath}`)
+    }
+    if (stat.size > IM_FILE_MAX_SIZE_FEISHU) {
+      const sizeMB = (stat.size / 1024 / 1024).toFixed(1)
+      throw new Error(`[Feishu] File too large: ${sizeMB}MB (limit: 30MB)`)
+    }
+    if (stat.size === 0) {
+      throw new Error(`[Feishu] File is empty: ${filePath}`)
+    }
+
+    const resolvedFileName = fileName || path.basename(filePath)
+
+    // Step 1: 上传文件获取 file_key
+    const fileKey = await this.uploadFile(filePath, resolvedFileName)
+
+    // Step 2: 发送文件消息
+    await this.client.im.message.create({
+      params: { receive_id_type: 'chat_id' },
+      data: {
+        receive_id: replyContext.chatId,
+        content: JSON.stringify({ file_key: fileKey }),
+        msg_type: 'file',
+      }
+    })
+  }
+
+  /**
+   * 上传图片到飞书，返回 image_key
+   */
+  private async uploadImage(filePath: string): Promise<string> {
+    const imageStream = fs.createReadStream(filePath)
+
+    try {
+      const response = await this.client.im.image.create({
+        data: {
+          image_type: 'message',
+          image: imageStream,
+        }
+      })
+
+      const imageKey = response?.image_key
+      if (!imageKey) {
+        throw new Error('[Feishu] Image upload returned no image_key')
+      }
+
+      return imageKey
+    } catch (err: any) {
+      throw new Error(`[Feishu] Image upload failed: ${this.extractApiError(err)}`)
+    } finally {
+      imageStream.destroy()
+    }
+  }
+
+  /**
+   * 上传文件到飞书，返回 file_key
+   */
+  private async uploadFile(filePath: string, fileName: string): Promise<string> {
+    const fileStream = fs.createReadStream(filePath)
+
+    try {
+      // 根据文件扩展名推断 file_type
+      const ext = path.extname(fileName).toLowerCase()
+      const fileType = this.resolveFeishuFileType(ext)
+
+      const response = await this.client.im.file.create({
+        data: {
+          file_type: fileType,
+          file_name: fileName,
+          file: fileStream,
+        }
+      })
+
+      const fileKey = response?.file_key
+      if (!fileKey) {
+        throw new Error('[Feishu] File upload returned no file_key')
+      }
+
+      return fileKey
+    } catch (err: any) {
+      throw new Error(`[Feishu] File upload failed: ${this.extractApiError(err)}`)
+    } finally {
+      fileStream.destroy()
+    }
+  }
+
+  /**
+   * 将文件扩展名映射为飞书 file_type
+   * 飞书支持的 file_type: opus(语音), mp4(视频), pdf, doc, xls, ppt, stream(二进制流)
+   */
+  private resolveFeishuFileType(ext: string): string {
+    const typeMap: Record<string, string> = {
+      '.opus': 'opus',
+      '.mp4': 'mp4',
+      '.pdf': 'pdf',
+      '.doc': 'doc', '.docx': 'doc',
+      '.xls': 'xls', '.xlsx': 'xls',
+      '.ppt': 'ppt', '.pptx': 'ppt',
+    }
+    return typeMap[ext] || 'stream'
+  }
+
   // ==================== 内部方法 ====================
 
   /**
@@ -222,6 +379,20 @@ export class FeishuAdapter implements IMAdapter {
     }
 
     this.onMessage?.(msg)
+  }
+
+  /**
+   * 从飞书 SDK 错误中提取详细 API 错误信息
+   */
+  private extractApiError(err: any): string {
+    // 飞书 SDK 错误可能在 response.data 中包含 code 和 msg
+    const code = err?.response?.data?.code ?? err?.code
+    const msg = err?.response?.data?.msg ?? err?.msg
+    if (code !== undefined && msg) {
+      return `code=${code}, msg=${msg}`
+    }
+    // 回退到原始错误消息
+    return err?.message || 'Unknown error'
   }
 
   /**

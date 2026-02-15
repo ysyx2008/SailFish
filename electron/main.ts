@@ -1837,6 +1837,10 @@ ipcMain.handle('im:setAutoConnect', async (_event, platform: string, enabled: bo
   }
 })
 
+ipcMain.handle('im:sendNotification', async (_event, text: string, options?: { markdown?: boolean; title?: string }) => {
+  return await imService.sendNotification(text, options)
+})
+
 // ==================== 智能巡检协调器相关 ====================
 
 // 初始化协调器服务依赖

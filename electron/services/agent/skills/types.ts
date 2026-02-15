@@ -60,6 +60,8 @@ export interface SkillSessionManager {
   unloadSkill(skillId: string): Promise<void>
   /** 获取所有可用工具（核心工具 + 已加载技能的工具） */
   getAvailableTools(): ToolDefinition[]
+  /** 更新核心工具列表（上下文变化时刷新） */
+  updateCoreTools(coreTools: ToolDefinition[]): void
   /** 清理所有技能状态 */
   cleanup(): Promise<void>
 }

@@ -78,6 +78,8 @@ export {
 export {
   wait,
   askUser,
+  sendFileToChat,
+  sendImageToChat,
   executeMcpTool,
   loadSkillTool,
   loadUserSkillTool,

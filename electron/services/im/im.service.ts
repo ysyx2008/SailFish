@@ -18,9 +18,10 @@ import type {
   IMIncomingMessage,
   IMPlatform,
   DingTalkConfig,
-  FeishuConfig
+  FeishuConfig,
+  SendFileResult
 } from './types'
-import { CONFIRM_KEYWORDS, REJECT_KEYWORDS } from './types'
+import { CONFIRM_KEYWORDS, REJECT_KEYWORDS, IM_TEXT_MAX_LENGTH } from './types'
 import { DingTalkAdapter } from './dingtalk-adapter'
 import { FeishuAdapter } from './feishu-adapter'
 import { RemoteChatService } from '../remote-chat.service'
@@ -46,6 +47,17 @@ export interface IMServiceStatus {
   }
 }
 
+/** 最近一次 IM 联系的上下文，用于主动推送 */
+export interface IMLastContact {
+  platform: IMPlatform
+  replyContext: any
+  userId: string
+  userName: string
+  chatId?: string
+  chatType: 'single' | 'group'
+  updatedAt: number
+}
+
 export class IMService {
   private deps: IMServiceDependencies | null = null
   private dingtalkAdapter: DingTalkAdapter | null = null
@@ -56,6 +68,12 @@ export class IMService {
     executionMode: 'relaxed',
     sessionTimeoutMinutes: 60,
   }
+
+  /** 当前活跃的 IM 会话上下文（Agent 运行期间有效） */
+  private activeSession: { adapter: IMAdapter; replyContext: any } | null = null
+
+  /** 最近一次联系 AI 的 IM 渠道上下文（用于主动推送） */
+  private lastContact: IMLastContact | null = null
 
   /** 便捷访问共享会话服务 */
   private get chat(): RemoteChatService {
@@ -182,6 +200,64 @@ export class IMService {
     }
   }
 
+  // ==================== 主动推送 ====================
+
+  /**
+   * 获取最近联系 AI 的 IM 渠道信息
+   */
+  getLastContact(): IMLastContact | null {
+    return this.lastContact
+  }
+
+  /**
+   * 主动向最近联系 AI 的 IM 渠道发送通知消息
+   *
+   * @param text   消息内容
+   * @param options.markdown  是否以 Markdown 格式发送（默认 false）
+   * @param options.title     Markdown 模式下的标题（默认 '通知'）
+   */
+  async sendNotification(
+    text: string,
+    options?: { markdown?: boolean; title?: string }
+  ): Promise<{ success: boolean; platform?: IMPlatform; error?: string }> {
+    if (!text || typeof text !== 'string') {
+      return { success: false, error: '消息内容不能为空' }
+    }
+
+    if (!this.lastContact) {
+      return { success: false, error: '没有最近的 IM 联系记录，无法发送通知' }
+    }
+
+    const { platform, replyContext } = this.lastContact
+    const adapter = this.getAdapter(platform)
+
+    if (!adapter) {
+      return { success: false, error: `${platform} 适配器不存在` }
+    }
+
+    if (!adapter.isConnected()) {
+      return { success: false, error: `${platform} 未连接` }
+    }
+
+    // 截断过长文本（adapter 内部也有截断，此处做防御性限制）
+    const truncated = text.length > IM_TEXT_MAX_LENGTH
+      ? text.substring(0, IM_TEXT_MAX_LENGTH - 20) + '\n\n...(内容已截断)'
+      : text
+
+    try {
+      if (options?.markdown) {
+        await adapter.sendMarkdown(replyContext, options.title || '通知', truncated)
+      } else {
+        await adapter.sendText(replyContext, truncated)
+      }
+      console.log(`[IM] Proactive notification sent via ${platform}`)
+      return { success: true, platform }
+    } catch (err: any) {
+      console.error(`[IM] Failed to send proactive notification via ${platform}:`, err)
+      return { success: false, platform, error: err.message || 'Unknown error' }
+    }
+  }
+
   // ==================== 消息处理核心 ====================
 
   /**
@@ -195,6 +271,17 @@ export class IMService {
 
     const adapter = this.getAdapter(msg.platform)
     if (!adapter) return
+
+    // 记录最近联系的渠道，用于后续主动推送
+    this.lastContact = {
+      platform: msg.platform,
+      replyContext: msg.replyContext,
+      userId: msg.userId,
+      userName: msg.userName,
+      chatId: msg.chatId,
+      chatType: msg.chatType,
+      updatedAt: Date.now(),
+    }
 
     const replyContext = msg.replyContext
 
@@ -284,6 +371,9 @@ export class IMService {
    */
   private async runAgentTask(adapter: IMAdapter, replyContext: any, msg: IMIncomingMessage) {
     if (!this.deps) return
+
+    // 设置当前活跃会话（供 send_file_to_chat 工具使用）
+    this.activeSession = { adapter, replyContext }
 
     // 发送处理中提示
     try {
@@ -424,7 +514,62 @@ export class IMService {
       try {
         await adapter.sendText(replyContext, `❌ ${err.message || 'Unknown error'}`)
       } catch { /* ignore */ }
+    } finally {
+      // 保证活跃会话被清理（无论成功、失败还是异常）
+      this.activeSession = null
     }
+  }
+
+  // ==================== 文件发送（供 Agent 工具调用） ====================
+
+  /**
+   * 为当前活跃的 IM 会话发送文件
+   * 仅在 Agent 通过 IM 通道运行时可用
+   */
+  async sendFileForCurrentSession(filePath: string, fileName?: string): Promise<SendFileResult> {
+    if (!this.activeSession) {
+      return { success: false, error: 'No active IM session' }
+    }
+
+    try {
+      await this.activeSession.adapter.sendFile(
+        this.activeSession.replyContext,
+        filePath,
+        fileName
+      )
+      return { success: true }
+    } catch (err: any) {
+      console.error('[IM] Failed to send file:', err)
+      return { success: false, error: err.message || 'Failed to send file' }
+    }
+  }
+
+  /**
+   * 为当前活跃的 IM 会话发送图片（内联显示）
+   * 仅在 Agent 通过 IM 通道运行时可用
+   */
+  async sendImageForCurrentSession(filePath: string): Promise<SendFileResult> {
+    if (!this.activeSession) {
+      return { success: false, error: 'No active IM session' }
+    }
+
+    try {
+      await this.activeSession.adapter.sendImage(
+        this.activeSession.replyContext,
+        filePath
+      )
+      return { success: true }
+    } catch (err: any) {
+      console.error('[IM] Failed to send image:', err)
+      return { success: false, error: err.message || 'Failed to send image' }
+    }
+  }
+
+  /**
+   * 当前是否有活跃的 IM 会话
+   */
+  hasActiveSession(): boolean {
+    return this.activeSession !== null
   }
 
   // ==================== 工具方法 ====================

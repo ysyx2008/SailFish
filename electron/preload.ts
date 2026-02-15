@@ -2649,6 +2649,8 @@ const electronAPI = {
       }>,
     setAutoConnect: (platform: string, enabled: boolean) =>
       ipcRenderer.invoke('im:setAutoConnect', platform, enabled) as Promise<void>,
+    sendNotification: (text: string, options?: { markdown?: boolean; title?: string }) =>
+      ipcRenderer.invoke('im:sendNotification', text, options) as Promise<{ success: boolean; platform?: string; error?: string }>,
 
     // 监听 IM 连接状态变化
     onConnectionChange: (callback: (data: { platform: string; connected: boolean }) => void) => {
