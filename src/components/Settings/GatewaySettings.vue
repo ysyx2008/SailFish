@@ -423,9 +423,6 @@ async function copyToClipboard(text: string, label: string) {
       <!-- 钉钉 -->
       <div class="im-platform-card" :class="{ expanded: dingtalkExpanded, connected: dtConnected }">
         <button class="im-platform-header" @click="dingtalkExpanded = !dingtalkExpanded">
-          <span class="im-platform-icon">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-.8 5.42s-.04.16-.12.2c-.08.04-.16 0-.16 0-.36-.12-1-.64-1.44-.96-.08-.08-.2-.16-.2-.16l-1.64 1.4s-.08.08-.2.04l.24-2.12s3.24-2.88 3.56-3.16c.12-.12.04-.2-.08-.12-.44.32-4.2 2.64-4.2 2.64l-2.04-.68s-.24-.08-.04-.28c0 0 4.28-1.76 5.56-2.24s1.72-.52 1.72-.52.32-.12.24.44z"/></svg>
-          </span>
           <span class="im-platform-name">{{ t('settings.im.dingtalk') }}</span>
           <span class="im-status-indicator" :class="{ connected: dtConnected, connecting: dtConnecting }">
             <span class="indicator-dot"></span>
@@ -483,9 +480,6 @@ async function copyToClipboard(text: string, label: string) {
       <!-- 飞书 -->
       <div class="im-platform-card" :class="{ expanded: feishuExpanded, connected: fsConnected }">
         <button class="im-platform-header" @click="feishuExpanded = !feishuExpanded">
-          <span class="im-platform-icon feishu">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm3.5 13.5l-5-2.5L7 16l1-5.5L5.5 7l5.5 1 2.5-5L15 8.5l5.5 1L17 13l-1.5 2.5z"/></svg>
-          </span>
           <span class="im-platform-name">{{ t('settings.im.feishu') }}</span>
           <span class="im-status-indicator" :class="{ connected: fsConnected, connecting: fsConnecting }">
             <span class="indicator-dot"></span>
@@ -995,24 +989,6 @@ async function copyToClipboard(text: string, label: string) {
 
 .im-platform-header:hover {
   background: var(--bg-surface, var(--bg-primary));
-}
-
-/* 平台图标 */
-.im-platform-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  background: rgba(56, 132, 244, 0.12);
-  color: #3884f4;
-  flex-shrink: 0;
-}
-
-.im-platform-icon.feishu {
-  background: rgba(51, 112, 255, 0.12);
-  color: #3370ff;
 }
 
 .im-platform-name {
