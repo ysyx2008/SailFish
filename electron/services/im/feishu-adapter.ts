@@ -459,34 +459,31 @@ export class FeishuAdapter implements IMAdapter {
     const localPath = path.join(tempDir, fileName)
 
     try {
-      // 优先使用 SDK 语义化方法
-      const resp = await this.client.im.messageResource.get({
-        path: {
-          message_id: messageId,
-          file_key: fileKey,
-        },
-        params: {
-          type: resourceType,
-        },
-      })
-
-      await this.saveResponseToFile(resp, localPath)
-    } catch (err: any) {
-      // SDK 语义化方法失败，尝试用 client.request 直接请求（更好的错误信息）
-      console.warn(`[Feishu] SDK method failed for ${messageType} (key=${fileKey}): ${this.extractApiError(err)}, trying client.request fallback...`)
-
-      try {
-        const resp = await this.client.request({
-          method: 'GET',
-          url: `/open-apis/im/v1/messages/${messageId}/resources/${fileKey}`,
-          params: { type: resourceType },
-          responseType: 'stream',
+      if (messageType === 'image') {
+        // 图片使用 im.image.get 端点（/open-apis/im/v1/images/:image_key）
+        // 比 messageResource.get 更简单直接，权限要求也更明确
+        const resp = await this.client.im.image.get({
+          path: { image_key: fileKey },
         })
         await this.saveResponseToFile(resp, localPath)
-      } catch (fallbackErr: any) {
-        console.error(`[Feishu] Fallback also failed for ${messageType} (key=${fileKey}):`, this.extractApiError(fallbackErr))
-        return null
+      } else {
+        // 音频/视频/文件使用 messageResource.get
+        const resp = await this.client.im.messageResource.get({
+          path: {
+            message_id: messageId,
+            file_key: fileKey,
+          },
+          params: {
+            type: resourceType,
+          },
+        })
+        await this.saveResponseToFile(resp, localPath)
       }
+    } catch (err: any) {
+      // 提取详细错误信息（包括尝试读取流式错误响应体）
+      const errDetail = await this.extractApiErrorDetail(err)
+      console.error(`[Feishu] Failed to download ${messageType} (key=${fileKey}): ${errDetail}`)
+      return null
     }
 
     try {
@@ -626,12 +623,10 @@ export class FeishuAdapter implements IMAdapter {
   }
 
   /**
-   * 从飞书 SDK 错误中提取详细 API 错误信息
+   * 从飞书 SDK 错误中提取详细 API 错误信息（同步版本，用于非关键日志）
    */
   private extractApiError(err: any): string {
-    // 飞书 SDK 错误可能在 response.data 中包含 code 和 msg
     let data = err?.response?.data
-    // 二进制 API 的错误响应 body 可能是 Buffer，需要解析为 JSON
     if (Buffer.isBuffer(data)) {
       try { data = JSON.parse(data.toString('utf-8')) } catch { /* ignore */ }
     }
@@ -640,8 +635,42 @@ export class FeishuAdapter implements IMAdapter {
     if (code !== undefined && msg) {
       return `code=${code}, msg=${msg}`
     }
-    // 回退到原始错误消息
     return err?.message || 'Unknown error'
+  }
+
+  /**
+   * 从飞书 SDK 错误中提取详细错误信息（异步版本，能读取流式响应体）
+   * 用于下载 API 失败时的诊断
+   */
+  private async extractApiErrorDetail(err: any): Promise<string> {
+    // 先尝试同步提取
+    const syncResult = this.extractApiError(err)
+
+    // 如果 response.data 是流（二进制 API 的错误响应），尝试读取
+    const responseData = err?.response?.data
+    if (responseData && typeof responseData.read === 'function' && typeof responseData.on === 'function') {
+      try {
+        const chunks: Buffer[] = []
+        await new Promise<void>((resolve, reject) => {
+          responseData.on('data', (chunk: any) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)))
+          responseData.on('end', resolve)
+          responseData.on('error', reject)
+          setTimeout(() => resolve(), 3000) // 超时保护
+        })
+        const body = Buffer.concat(chunks).toString('utf-8')
+        if (body) {
+          try {
+            const parsed = JSON.parse(body)
+            if (parsed.code !== undefined) {
+              return `code=${parsed.code}, msg=${parsed.msg || 'unknown'} (HTTP ${err?.response?.status || '?'})`
+            }
+          } catch { /* 非 JSON */ }
+          return `HTTP ${err?.response?.status || '?'}, body: ${body.substring(0, 500)}`
+        }
+      } catch { /* 读取流失败 */ }
+    }
+
+    return syncResult
   }
 
   /**
