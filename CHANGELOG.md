@@ -2,7 +2,31 @@
 
 All notable changes to SFTerm will be documented in this file.
 
-## v8.20.1 (2026-02-13) (Latest)
+## v10.0.0 (2026-02-15) (Latest)
+
+### New Features
+- 🚀 **Remote Agent Access**: New Gateway service enables browser-based AI Agent interaction — access your Agent from any device via Web UI, with real-time SSE streaming and `ask_user` confirmation support
+- 💬 **DingTalk Integration**: Connect DingTalk to chat with AI Agent directly in your IM app using Stream mode, supporting both private and group conversations
+- 💬 **Feishu (Lark) Integration**: Connect Feishu to chat with AI Agent via WebSocket long connection, with interactive card-based Markdown replies
+- 🔄 **Cross-Channel Real-Time Sync**: Replaced polling with SSE event streams for real-time synchronization across Web and IM channels
+- 📋 **Audit Logging**: New desktop sync and audit log for tracking all remote Agent interactions
+- 🤖 **Remote Context Awareness**: System prompts now inject remote interaction channel information for context-aware responses
+
+### Improvements
+- 🏗️ **Unified Remote Session Architecture**: Web and IM channels now share a single session, simplifying state management
+- 🎨 **Remote Access Settings UI**: Redesigned settings page with improved naming and layout
+- ⚡ **Stream Processing**: Optimized assistant end handling to retain streaming text blocks
+- 📝 **IM Integration Guide**: Added comprehensive documentation for DingTalk and Feishu setup
+- 🐟 **Rebranding**: Product renamed from "SFTerm" to "SailFish" (旗鱼)
+
+### Bug Fixes
+- 🔧 Fixed IM message duplication, SDK loading failures, and auto-connect UX issues
+- 🔧 Fixed remote tab auto-rebuild after close, with PTY lifecycle managed by Gateway
+- 🔧 Fixed chat page JS syntax errors and unified settings page styling
+- 🔧 Fixed timer-based refresh replaced with single complete message send after stream ends
+- 🔧 Fixed Gateway service cleanup on stop and variable declaration positioning
+
+## v8.20.1 (2026-02-13)
 
 ### New Features
 - 🌐 **Website Agent Skills Showcase**: Merged AI feature cards and added built-in Agent skills display on the website
