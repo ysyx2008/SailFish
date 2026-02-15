@@ -192,6 +192,28 @@ export default {
       securityNote: 'The API Token is an access credential. Keep it safe. Anyone with the token can remotely control the Agent to perform operations on this machine.',
       auditLog: 'Audit Log',
       noAuditLog: 'No audit records'
+    },
+    im: {
+      title: 'IM Integration',
+      description: 'Connect DingTalk or Feishu to chat with AI Agent directly in your IM app, just like messaging a contact.',
+      dingtalk: 'DingTalk',
+      feishu: 'Feishu (Lark)',
+      clientId: 'Client ID (AppKey)',
+      clientSecret: 'Client Secret (AppSecret)',
+      appId: 'App ID',
+      appSecret: 'App Secret',
+      connect: 'Connect',
+      disconnect: 'Disconnect',
+      connected: 'Connected',
+      disconnected: 'Disconnected',
+      connecting: 'Connecting...',
+      connectFailed: 'Connection failed',
+      activeSessions: 'Active sessions',
+      dingtalkHint: 'Create an internal app in DingTalk Developer Console, add Robot capability and select Stream mode.',
+      feishuHint: 'Create a self-built app in Feishu Developer Console, add Robot capability and enable long connection mode.',
+      securityNote: 'Credentials are stored locally. Ensure your device is secure. Once connected, messages from IM users will be processed by the local Agent.',
+      autoConnect: 'Start with app',
+      autoConnectHint: 'Automatically connect to IM platforms when SFTerm launches'
     }
   },
 

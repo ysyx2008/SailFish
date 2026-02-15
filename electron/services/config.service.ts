@@ -127,6 +127,12 @@ interface StoreSchema {
   gatewayAutoStart: boolean  // Gateway 远程访问自动启动
   gatewayPort: number        // Gateway 端口
   gatewayHost: string        // Gateway 监听地址
+  // IM 集成
+  imAutoConnect: boolean          // IM 自动连接
+  imDingTalkClientId: string      // 钉钉 AppKey
+  imDingTalkClientSecret: string  // 钉钉 AppSecret
+  imFeishuAppId: string           // 飞书 App ID
+  imFeishuAppSecret: string       // 飞书 App Secret
 }
 
 const defaultConfig: StoreSchema = {
@@ -160,7 +166,12 @@ const defaultConfig: StoreSchema = {
   aiRules: '',
   gatewayAutoStart: false,
   gatewayPort: 3721,
-  gatewayHost: '0.0.0.0'
+  gatewayHost: '0.0.0.0',
+  imAutoConnect: false,
+  imDingTalkClientId: '',
+  imDingTalkClientSecret: '',
+  imFeishuAppId: '',
+  imFeishuAppSecret: ''
 }
 
 export class ConfigService {

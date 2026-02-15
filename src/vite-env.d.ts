@@ -1958,5 +1958,24 @@ interface Window {
         details?: Record<string, unknown>
       }) => void) => () => void
     }
+
+    // IM 集成
+    im: {
+      startDingTalk: (config: { enabled: boolean; clientId: string; clientSecret: string }) => Promise<{ success: boolean; error?: string }>
+      stopDingTalk: () => Promise<{ success: boolean }>
+      startFeishu: (config: { enabled: boolean; appId: string; appSecret: string }) => Promise<{ success: boolean; error?: string }>
+      stopFeishu: () => Promise<{ success: boolean }>
+      getStatus: () => Promise<{
+        dingtalk: { enabled: boolean; connected: boolean; activeSessions: number }
+        feishu: { enabled: boolean; connected: boolean; activeSessions: number }
+      }>
+      getConfig: () => Promise<{
+        dingtalk: { clientId: string; clientSecret: string }
+        feishu: { appId: string; appSecret: string }
+        autoConnect: boolean
+      }>
+      setAutoConnect: (enabled: boolean) => Promise<void>
+      onConnectionChange: (callback: (data: { platform: string; connected: boolean }) => void) => () => void
+    }
   }
 }

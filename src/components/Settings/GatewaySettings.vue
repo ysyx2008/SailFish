@@ -5,6 +5,7 @@ import { Copy, ExternalLink, ScrollText } from 'lucide-vue-next'
 
 const { t } = useI18n()
 
+// ==================== Gateway 相关 ====================
 const isRunning = ref(false)
 const isLoading = ref(false)
 const port = ref(3721)
@@ -18,6 +19,31 @@ const chatUrl = computed(() => {
   const h = host.value === '0.0.0.0' ? 'localhost' : host.value
   return `http://${h}:${port.value}/chat`
 })
+
+// ==================== IM 集成相关 ====================
+const dingtalkExpanded = ref(false)
+const feishuExpanded = ref(false)
+
+// 钉钉
+const dtClientId = ref('')
+const dtClientSecret = ref('')
+const dtConnected = ref(false)
+const dtConnecting = ref(false)
+const dtError = ref('')
+const dtActiveSessions = ref(0)
+
+// 飞书
+const fsAppId = ref('')
+const fsAppSecret = ref('')
+const fsConnected = ref(false)
+const fsConnecting = ref(false)
+const fsError = ref('')
+const fsActiveSessions = ref(0)
+
+// IM 自动连接
+const imAutoConnect = ref(false)
+
+let cleanupImListener: (() => void) | null = null
 
 onMounted(async () => {
   try {
@@ -45,12 +71,118 @@ onMounted(async () => {
       auditLog.value = auditLog.value.slice(-100)
     }
   })
+
+  // 加载 IM 设置
+  await loadIMSettings()
+
+  // 监听 IM 连接状态变化
+  cleanupImListener = window.electronAPI.im.onConnectionChange((data) => {
+    if (data.platform === 'dingtalk') {
+      dtConnected.value = data.connected
+      if (!data.connected) dtConnecting.value = false
+    } else if (data.platform === 'feishu') {
+      fsConnected.value = data.connected
+      if (!data.connected) fsConnecting.value = false
+    }
+  })
 })
 
 onUnmounted(() => {
   cleanupAuditListener?.()
+  cleanupImListener?.()
 })
 
+async function loadIMSettings() {
+  try {
+    const status = await window.electronAPI.im.getStatus()
+    dtConnected.value = status.dingtalk.connected
+    dtActiveSessions.value = status.dingtalk.activeSessions
+    fsConnected.value = status.feishu.connected
+    fsActiveSessions.value = status.feishu.activeSessions
+
+    // 加载保存的配置
+    const config = await window.electronAPI.im.getConfig()
+    dtClientId.value = config.dingtalk?.clientId || ''
+    dtClientSecret.value = config.dingtalk?.clientSecret || ''
+    fsAppId.value = config.feishu?.appId || ''
+    fsAppSecret.value = config.feishu?.appSecret || ''
+    imAutoConnect.value = config.autoConnect || false
+  } catch {
+    // ignore
+  }
+}
+
+// ==================== 钉钉操作 ====================
+async function toggleDingTalk() {
+  dtError.value = ''
+  if (dtConnected.value) {
+    await window.electronAPI.im.stopDingTalk()
+    dtConnected.value = false
+  } else {
+    if (!dtClientId.value || !dtClientSecret.value) {
+      dtError.value = 'Client ID and Client Secret are required'
+      return
+    }
+    dtConnecting.value = true
+    try {
+      const result = await window.electronAPI.im.startDingTalk({
+        enabled: true,
+        clientId: dtClientId.value,
+        clientSecret: dtClientSecret.value
+      })
+      if (result.success) {
+        dtConnected.value = true
+      } else {
+        dtError.value = result.error || t('settings.im.connectFailed')
+      }
+    } catch (e: any) {
+      dtError.value = e.message
+    } finally {
+      dtConnecting.value = false
+    }
+  }
+}
+
+// ==================== 飞书操作 ====================
+async function toggleFeishu() {
+  fsError.value = ''
+  if (fsConnected.value) {
+    await window.electronAPI.im.stopFeishu()
+    fsConnected.value = false
+  } else {
+    if (!fsAppId.value || !fsAppSecret.value) {
+      fsError.value = 'App ID and App Secret are required'
+      return
+    }
+    fsConnecting.value = true
+    try {
+      const result = await window.electronAPI.im.startFeishu({
+        enabled: true,
+        appId: fsAppId.value,
+        appSecret: fsAppSecret.value
+      })
+      if (result.success) {
+        fsConnected.value = true
+      } else {
+        fsError.value = result.error || t('settings.im.connectFailed')
+      }
+    } catch (e: any) {
+      fsError.value = e.message
+    } finally {
+      fsConnecting.value = false
+    }
+  }
+}
+
+async function toggleImAutoConnect() {
+  try {
+    await window.electronAPI.im.setAutoConnect(imAutoConnect.value)
+  } catch {
+    imAutoConnect.value = !imAutoConnect.value
+  }
+}
+
+// ==================== Gateway 操作 ====================
 async function toggleGateway() {
   isLoading.value = true
   error.value = ''
@@ -274,6 +406,132 @@ async function copyToClipboard(text: string, label: string) {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- ==================== IM 集成 ==================== -->
+    <div class="im-section">
+      <h3>{{ t('settings.im.title') }}</h3>
+      <p class="description">{{ t('settings.im.description') }}</p>
+
+      <!-- IM 自动连接 -->
+      <div class="form-group setting-row">
+        <div>
+          <label class="setting-label">{{ t('settings.im.autoConnect') }}</label>
+          <p class="setting-desc">{{ t('settings.im.autoConnectHint') }}</p>
+        </div>
+        <label class="switch">
+          <input type="checkbox" v-model="imAutoConnect" @change="toggleImAutoConnect" />
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <!-- 钉钉 -->
+      <div class="im-platform-card">
+        <button class="im-platform-header" @click="dingtalkExpanded = !dingtalkExpanded">
+          <span class="im-platform-name">{{ t('settings.im.dingtalk') }}</span>
+          <span class="im-status-dot" :class="{ connected: dtConnected }"></span>
+          <span class="im-status-text">{{ dtConnected ? t('settings.im.connected') : t('settings.im.disconnected') }}</span>
+          <span v-if="dtConnected && dtActiveSessions > 0" class="im-sessions">{{ dtActiveSessions }} {{ t('settings.im.activeSessions') }}</span>
+          <span class="toggle-arrow">{{ dingtalkExpanded ? '▲' : '▼' }}</span>
+        </button>
+
+        <div v-if="dingtalkExpanded" class="im-platform-body">
+          <p class="im-hint">{{ t('settings.im.dingtalkHint') }}</p>
+
+          <div class="form-group">
+            <label>{{ t('settings.im.clientId') }}</label>
+            <input
+              v-model="dtClientId"
+              type="text"
+              :disabled="dtConnected"
+              class="input-field input-wide"
+              placeholder="AppKey"
+            />
+          </div>
+          <div class="form-group">
+            <label>{{ t('settings.im.clientSecret') }}</label>
+            <input
+              v-model="dtClientSecret"
+              type="password"
+              :disabled="dtConnected"
+              class="input-field input-wide"
+              placeholder="AppSecret"
+            />
+          </div>
+
+          <div v-if="dtError" class="error-msg">{{ dtError }}</div>
+
+          <div class="form-group">
+            <button
+              v-if="dtConnected"
+              class="btn btn-sm btn-danger"
+              @click="toggleDingTalk"
+            >{{ t('settings.im.disconnect') }}</button>
+            <button
+              v-else
+              class="btn btn-sm btn-primary"
+              :disabled="dtConnecting"
+              @click="toggleDingTalk"
+            >{{ dtConnecting ? t('settings.im.connecting') : t('settings.im.connect') }}</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 飞书 -->
+      <div class="im-platform-card">
+        <button class="im-platform-header" @click="feishuExpanded = !feishuExpanded">
+          <span class="im-platform-name">{{ t('settings.im.feishu') }}</span>
+          <span class="im-status-dot" :class="{ connected: fsConnected }"></span>
+          <span class="im-status-text">{{ fsConnected ? t('settings.im.connected') : t('settings.im.disconnected') }}</span>
+          <span v-if="fsConnected && fsActiveSessions > 0" class="im-sessions">{{ fsActiveSessions }} {{ t('settings.im.activeSessions') }}</span>
+          <span class="toggle-arrow">{{ feishuExpanded ? '▲' : '▼' }}</span>
+        </button>
+
+        <div v-if="feishuExpanded" class="im-platform-body">
+          <p class="im-hint">{{ t('settings.im.feishuHint') }}</p>
+
+          <div class="form-group">
+            <label>{{ t('settings.im.appId') }}</label>
+            <input
+              v-model="fsAppId"
+              type="text"
+              :disabled="fsConnected"
+              class="input-field input-wide"
+              placeholder="App ID"
+            />
+          </div>
+          <div class="form-group">
+            <label>{{ t('settings.im.appSecret') }}</label>
+            <input
+              v-model="fsAppSecret"
+              type="password"
+              :disabled="fsConnected"
+              class="input-field input-wide"
+              placeholder="App Secret"
+            />
+          </div>
+
+          <div v-if="fsError" class="error-msg">{{ fsError }}</div>
+
+          <div class="form-group">
+            <button
+              v-if="fsConnected"
+              class="btn btn-sm btn-danger"
+              @click="toggleFeishu"
+            >{{ t('settings.im.disconnect') }}</button>
+            <button
+              v-else
+              class="btn btn-sm btn-primary"
+              :disabled="fsConnecting"
+              @click="toggleFeishu"
+            >{{ fsConnecting ? t('settings.im.connecting') : t('settings.im.connect') }}</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="security-note" style="margin-top: 12px;">
+        {{ t('settings.im.securityNote') }}
       </div>
     </div>
   </div>
@@ -599,5 +857,83 @@ input:checked + .slider:before {
 
 .audit-confirm .audit-summary {
   color: var(--warning-color, #d29922);
+}
+
+/* ==================== IM 集成样式 ==================== */
+.im-section {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-color);
+}
+
+.im-platform-card {
+  margin-bottom: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.im-platform-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.im-platform-header:hover {
+  background: var(--bg-tertiary, var(--bg-primary));
+}
+
+.im-platform-name {
+  font-weight: 600;
+}
+
+.im-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted, #6e7681);
+  flex-shrink: 0;
+}
+
+.im-status-dot.connected {
+  background: var(--success-color, #3fb950);
+}
+
+.im-status-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.im-sessions {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.im-platform-body {
+  padding: 14px;
+  border-top: 1px solid var(--border-color);
+}
+
+.im-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+
+.input-wide {
+  width: 100%;
+  max-width: 400px;
 }
 </style>

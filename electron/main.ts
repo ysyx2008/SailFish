@@ -202,6 +202,8 @@ import { menuService } from './services/menu.service'
 import { aiDebugService } from './services/ai-debug.service'
 import { getSchedulerService, type CreateTaskParams } from './services/scheduler.service'
 import { getGatewayService, type GatewayConfig } from './services/gateway.service'
+import { getIMService } from './services/im/im.service'
+import type { DingTalkConfig, FeishuConfig } from './services/im/types'
 
 // 禁用 GPU 加速可能导致的问题（可选）
 // app.disableHardwareAcceleration()
@@ -665,8 +667,9 @@ app.whenReady().then(async () => {
   // 先创建窗口，让用户尽快看到界面
   createWindow()
 
-  // 设置 Gateway 的 mainWindow 引用（用于远程操作通知桌面端）
+  // 设置 Gateway 和 IM 服务的 mainWindow 引用（用于远程操作通知桌面端）
   gatewayService.setMainWindow(mainWindow)
+  imService.setMainWindow(mainWindow)
 
   // 初始化菜单栏
   const lang = configService?.getLanguage() || 'zh-CN'
@@ -719,6 +722,32 @@ app.whenReady().then(async () => {
       }).catch(e => {
         console.error('[Gateway] Auto-start error:', e)
       })
+    }
+
+    // IM 集成自动连接
+    if (configService.get('imAutoConnect')) {
+      const dtClientId = configService.get('imDingTalkClientId') as string
+      const dtClientSecret = configService.get('imDingTalkClientSecret') as string
+      if (dtClientId && dtClientSecret) {
+        imService.startDingTalk({ enabled: true, clientId: dtClientId, clientSecret: dtClientSecret }).then(result => {
+          if (result.success) {
+            console.log('[IM] DingTalk auto-connected')
+          } else {
+            console.error('[IM] DingTalk auto-connect failed:', result.error)
+          }
+        }).catch(e => console.error('[IM] DingTalk auto-connect error:', e))
+      }
+      const fsAppId = configService.get('imFeishuAppId') as string
+      const fsAppSecret = configService.get('imFeishuAppSecret') as string
+      if (fsAppId && fsAppSecret) {
+        imService.startFeishu({ enabled: true, appId: fsAppId, appSecret: fsAppSecret }).then(result => {
+          if (result.success) {
+            console.log('[IM] Feishu auto-connected')
+          } else {
+            console.error('[IM] Feishu auto-connect failed:', result.error)
+          }
+        }).catch(e => console.error('[IM] Feishu auto-connect error:', e))
+      }
     }
   })
 
@@ -1731,6 +1760,62 @@ ipcMain.handle('gateway:setAutoStart', async (_event, enabled: boolean) => {
 
 ipcMain.handle('gateway:getAuditLog', async (_event, limit?: number) => {
   return gatewayService.getAuditLog(limit)
+})
+
+// ==================== IM 集成服务 ====================
+
+const imService = getIMService()
+imService.setDependencies({
+  agentService,
+  ptyService,
+  configService,
+  mainWindow: null
+})
+
+ipcMain.handle('im:startDingTalk', async (_event, config: DingTalkConfig) => {
+  // 保存配置
+  configService.set('imDingTalkClientId', config.clientId)
+  configService.set('imDingTalkClientSecret', config.clientSecret)
+  return await imService.startDingTalk(config)
+})
+
+ipcMain.handle('im:stopDingTalk', async () => {
+  await imService.stopDingTalk()
+  return { success: true }
+})
+
+ipcMain.handle('im:startFeishu', async (_event, config: FeishuConfig) => {
+  // 保存配置
+  configService.set('imFeishuAppId', config.appId)
+  configService.set('imFeishuAppSecret', config.appSecret)
+  return await imService.startFeishu(config)
+})
+
+ipcMain.handle('im:stopFeishu', async () => {
+  await imService.stopFeishu()
+  return { success: true }
+})
+
+ipcMain.handle('im:getStatus', async () => {
+  return imService.getStatus()
+})
+
+ipcMain.handle('im:getConfig', async () => {
+  return {
+    dingtalk: {
+      clientId: (configService.get('imDingTalkClientId') as string) || '',
+      clientSecret: (configService.get('imDingTalkClientSecret') as string) || '',
+    },
+    feishu: {
+      appId: (configService.get('imFeishuAppId') as string) || '',
+      appSecret: (configService.get('imFeishuAppSecret') as string) || '',
+    },
+    autoConnect: configService.get('imAutoConnect') || false,
+  }
+})
+
+ipcMain.handle('im:setAutoConnect', async (_event, enabled: boolean) => {
+  configService.set('imAutoConnect', enabled)
 })
 
 // ==================== 智能巡检协调器相关 ====================

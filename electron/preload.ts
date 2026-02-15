@@ -2625,6 +2625,40 @@ const electronAPI = {
         ipcRenderer.removeListener('gateway:auditLog', handler)
       }
     }
+  },
+
+  // IM 集成
+  im: {
+    startDingTalk: (config: { enabled: boolean; clientId: string; clientSecret: string }) =>
+      ipcRenderer.invoke('im:startDingTalk', config) as Promise<{ success: boolean; error?: string }>,
+    stopDingTalk: () =>
+      ipcRenderer.invoke('im:stopDingTalk') as Promise<{ success: boolean }>,
+    startFeishu: (config: { enabled: boolean; appId: string; appSecret: string }) =>
+      ipcRenderer.invoke('im:startFeishu', config) as Promise<{ success: boolean; error?: string }>,
+    stopFeishu: () =>
+      ipcRenderer.invoke('im:stopFeishu') as Promise<{ success: boolean }>,
+    getStatus: () =>
+      ipcRenderer.invoke('im:getStatus') as Promise<{
+        dingtalk: { enabled: boolean; connected: boolean; activeSessions: number }
+        feishu: { enabled: boolean; connected: boolean; activeSessions: number }
+      }>,
+    getConfig: () =>
+      ipcRenderer.invoke('im:getConfig') as Promise<{
+        dingtalk: { clientId: string; clientSecret: string }
+        feishu: { appId: string; appSecret: string }
+        autoConnect: boolean
+      }>,
+    setAutoConnect: (enabled: boolean) =>
+      ipcRenderer.invoke('im:setAutoConnect', enabled) as Promise<void>,
+
+    // 监听 IM 连接状态变化
+    onConnectionChange: (callback: (data: { platform: string; connected: boolean }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+      ipcRenderer.on('im:connectionChange', handler)
+      return () => {
+        ipcRenderer.removeListener('im:connectionChange', handler)
+      }
+    }
   }
 }
 
