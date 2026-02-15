@@ -204,11 +204,11 @@ export class IMService {
       return
     }
 
-    // 如果 Agent 正在运行，尝试补充消息
+    // 如果 Agent 正在运行，尝试补充消息（包括 ask_user 的回复）
     if (this.chat.isRunning) {
       try {
         if (this.chat.supplement(msg.text)) {
-          await adapter.sendText(replyContext, '💬 补充信息已发送给 Agent')
+          await adapter.sendText(replyContext, '💬 已收到你的回复')
         } else {
           await adapter.sendText(replyContext, '⏳ 当前有任务正在执行中，请等待完成后再发送新消息。')
         }
@@ -326,7 +326,29 @@ export class IMService {
               textBuffer = step.content
               flushTextBuffer().catch(() => {})
             }
+          } else if (step.type === 'asking' && step.toolArgs) {
+            // ask_user 工具：向用户展示问题，等待回复
+            flushTextBuffer().catch(() => {})
+
+            const question = step.toolArgs.question || step.content || ''
+            const options = step.toolArgs.options as string[] | undefined
+            const lines = ['❓ **需要你的回复**', '', question]
+
+            if (options && options.length > 0) {
+              lines.push('')
+              options.forEach((opt: string, i: number) => {
+                lines.push(`${i + 1}. ${opt}`)
+              })
+              lines.push('', '回复选项编号或直接输入内容。')
+            } else {
+              lines.push('', '请直接回复你的答案。')
+            }
+
+            adapter.sendMarkdown(replyContext, '需要回复', lines.join('\n')).catch(() => {})
           } else if (step.type === 'tool_call' && step.toolName) {
+            // ask_user 的工具调用不重复提示（已在 asking 步骤中处理）
+            if (step.toolName === 'ask_user') return
+
             // 去重：同一个工具调用只通知一次
             const toolCallKey = step.id || `${step.toolName}:${JSON.stringify(step.toolArgs || {})}`
             if (notifiedToolCalls.has(toolCallKey)) return

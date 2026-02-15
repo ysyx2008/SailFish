@@ -10,15 +10,16 @@
  * - 服务端持久化 PTY 终端
  * 
  * API 端点：
- * - GET  /chat          → 聊天页面
+ * - GET  /chat               → 聊天页面
  * - POST /api/chat           → 发送消息（SSE 流式响应）
+ * - GET  /api/chat/events    → 实时事件 SSE 流（旁听所有通道的 Agent 事件）
  * - GET  /api/chat/history   → 获取历史
  * - POST /api/chat/supplement → 任务执行中补充信息
  * - POST /api/chat/abort     → 中止执行
  * - POST /api/chat/confirm   → 确认工具调用
  * - GET  /api/chat/status    → 获取状态
  * - POST /api/chat/clear     → 清空历史
- * - GET  /api/health        → 健康检查
+ * - GET  /api/health         → 健康检查
  */
 
 import * as http from 'http'
@@ -209,6 +210,8 @@ export class GatewayService {
         return req.method === 'GET' ? this.handleChatStatus(req, res) : this.methodNotAllowed(res)
       case '/api/chat/clear':
         return req.method === 'POST' ? this.handleChatClear(req, res) : this.methodNotAllowed(res)
+      case '/api/chat/events':
+        return req.method === 'GET' ? this.handleChatEvents(req, res) : this.methodNotAllowed(res)
       default:
         res.writeHead(404, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({ error: 'Not Found' }))
@@ -289,6 +292,9 @@ export class GatewayService {
 
     const clientIp = (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || '').split(',')[0].trim()
 
+    // 先确保 PTY 存在，这样下面通知桌面端时 ptyId 不会是 null
+    await this.chat.ensurePty()
+
     // 审计日志：任务开始
     this.addAuditLog({
       type: 'task_start',
@@ -297,7 +303,7 @@ export class GatewayService {
       details: { message: message.trim(), executionMode: this.chat.executionMode }
     })
 
-    // 通知桌面端：远程 Web 任务开始
+    // 通知桌面端：远程 Web 任务开始（PTY 已创建，ptyId 有效）
     this.sendToDesktop('gateway:remoteTaskStarted', {
       ptyId: this.chat.getPtyId(),
       message: message.trim()
@@ -523,6 +529,44 @@ export class GatewayService {
     this.chat.clearHistory()
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ success: true }))
+  }
+
+  /**
+   * GET /api/chat/events - 实时事件 SSE 流
+   *
+   * 客户端连接后会收到所有通道（Web / IM）触发的 Agent 事件。
+   * 事件格式与 POST /api/chat 的 SSE 响应完全一致，
+   * 客户端可复用同一套 handleSSEEvent 逻辑渲染。
+   */
+  private handleChatEvents(_req: http.IncomingMessage, res: http.ServerResponse) {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive'
+    })
+
+    // 发送当前状态，便于断线重连后同步
+    const state = this.chat.getState()
+    res.write(`data: ${JSON.stringify({ type: 'init', isRunning: state.isRunning, historyCount: state.history.length })}\n\n`)
+
+    // 订阅 RemoteChatService 的实时事件
+    const unsubscribe = this.chat.subscribe((event: any) => {
+      try {
+        res.write(`data: ${JSON.stringify(event)}\n\n`)
+      } catch { /* connection closed */ }
+    })
+
+    // 心跳保活（每 30 秒）
+    const heartbeat = setInterval(() => {
+      try { res.write(': heartbeat\n\n') } catch { /* ignore */ }
+    }, 30_000)
+
+    const cleanup = () => {
+      clearInterval(heartbeat)
+      unsubscribe()
+    }
+    _req.on('close', cleanup)
+    res.on('close', cleanup)
   }
 
   /**
@@ -904,6 +948,8 @@ const API_BASE = location.origin;
 let TOKEN = localStorage.getItem('sfterm_token') || '';
 let isRunning = false;
 let currentAssistantEl = null;
+let ownTaskActive = false; // 自己发起的任务正在进行时跳过 SSE 事件
+let evtController = null;  // AbortController for /api/chat/events
 
 function headers() {
   return { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' };
@@ -953,7 +999,7 @@ async function init() {
 
 // ==================== History ====================
 
-async function loadHistory() {
+async function loadHistory(isRefresh) {
   try {
     const r = await fetch(API_BASE + '/api/chat/history', { headers: headers() });
     if (r.status === 401) {
@@ -967,6 +1013,12 @@ async function loadHistory() {
       document.getElementById('mode-select').value = d.executionMode;
     }
     if (d.history && d.history.length > 0) {
+      if (isRefresh) {
+        // 外部触发刷新：清除旧内容重新渲染
+        var msgsEl = document.getElementById('messages');
+        msgsEl.innerHTML = '';
+        currentAssistantEl = null;
+      }
       const emptyEl = document.getElementById('empty-state');
       if (emptyEl) emptyEl.style.display = 'none';
       d.history.forEach(function(msg) {
@@ -1034,6 +1086,7 @@ async function sendMessage() {
 
   currentAssistantEl = createAssistantBubble();
   updateStatus(true);
+  ownTaskActive = true;
 
   var mode = document.getElementById('mode-select').value;
 
@@ -1048,6 +1101,7 @@ async function sendMessage() {
       var errData = await r.json().catch(function() { return { error: 'Request failed' }; });
       finishAssistant(T.error + ': ' + (errData.error || r.statusText));
       updateStatus(false);
+      ownTaskActive = false;
       return;
     }
 
@@ -1083,6 +1137,7 @@ async function sendMessage() {
     finishAssistant(T.error + ': ' + e.message);
     updateStatus(false);
   }
+  ownTaskActive = false;
 }
 
 function handleSSEEvent(event) {
@@ -1465,7 +1520,99 @@ document.getElementById('messages').addEventListener('click', function(e) {
   }
 });
 
+// ==================== SSE 实时事件流 ====================
+// 连接 /api/chat/events，实时接收所有通道（IM / 其他 Web 客户端）触发的 Agent 事件
+// 自己发起的任务通过 POST /api/chat 的 SSE 响应处理，此流仅处理外部任务
+
+async function connectEventStream() {
+  if (!TOKEN) return;
+  if (evtController) evtController.abort();
+  evtController = new AbortController();
+
+  try {
+    var r = await fetch(API_BASE + '/api/chat/events', {
+      headers: headers(),
+      signal: evtController.signal
+    });
+    if (!r.ok) { setTimeout(connectEventStream, 5000); return; }
+
+    var reader = r.body.getReader();
+    var decoder = new TextDecoder();
+    var buf = '';
+
+    while (true) {
+      var chunk = await reader.read();
+      if (chunk.done) break;
+      buf += decoder.decode(chunk.value, { stream: true });
+      var lines = buf.split('\\n');
+      buf = lines.pop() || '';
+      for (var i = 0; i < lines.length; i++) {
+        if (!lines[i].startsWith('data: ')) continue;
+        try {
+          var evt = JSON.parse(lines[i].substring(6));
+          handleExternalEvent(evt);
+        } catch {}
+      }
+    }
+    // 连接正常关闭（服务器重启等），自动重连
+    setTimeout(connectEventStream, 2000);
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      setTimeout(connectEventStream, 5000);
+    }
+  }
+}
+
+function handleExternalEvent(evt) {
+  // 自己发起的任务由 sendMessage 的 SSE 响应处理，跳过
+  if (ownTaskActive) return;
+
+  switch (evt.type) {
+    case 'init':
+      // 连接时如果有外部任务正在运行，准备接收后续事件
+      if (evt.isRunning && !currentAssistantEl) {
+        loadHistory(true).then(function() {
+          // 历史只包含已完成的消息，为正在进行的任务创建新气泡
+          if (!currentAssistantEl) {
+            currentAssistantEl = createAssistantBubble();
+          }
+        });
+      }
+      break;
+    case 'task_started':
+      // 外部通道（IM）发来新任务
+      var emptyEl = document.getElementById('empty-state');
+      if (emptyEl) emptyEl.style.display = 'none';
+      addUserBubble(evt.message);
+      currentAssistantEl = createAssistantBubble();
+      updateStatus(true);
+      scrollToBottom();
+      break;
+    case 'history_cleared':
+      // 外部清空了历史
+      document.getElementById('messages').innerHTML =
+        '<div class="empty-state" id="empty-state"><div><div class="logo">🐟</div>' +
+        '<p>' + T.emptyHint + '</p></div></div>';
+      currentAssistantEl = null;
+      updateStatus(false);
+      break;
+    case 'thinking':
+    case 'step':
+    case 'step_update':
+    case 'text_new':
+    case 'text_replace':
+    case 'text':
+    case 'need_confirm':
+    case 'complete':
+    case 'error':
+      // 直接复用已有的 SSE 事件处理逻辑
+      handleSSEEvent(evt);
+      break;
+  }
+}
+
 init();
+connectEventStream();
 </script>
 </body>
 </html>`

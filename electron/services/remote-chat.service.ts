@@ -75,6 +75,8 @@ export const VISIBLE_STEP_TYPES = new Set([
 
 // ==================== 核心服务 ====================
 
+export type RemoteChatEventListener = (event: any) => void
+
 export class RemoteChatService {
   private deps: RemoteChatDependencies | null = null
   private ptyId: string | null = null
@@ -83,6 +85,25 @@ export class RemoteChatService {
   private _pendingConfirm: any | null = null
   private _executionMode: 'strict' | 'relaxed' | 'free' = 'relaxed'
   private ptyUnsubscribe: (() => void) | null = null
+
+  // ---- 事件广播：供 SSE /api/chat/events 端点使用 ----
+  private listeners = new Set<RemoteChatEventListener>()
+  private emittedStepIds = new Set<string>()
+  private currentMessageStepId: string | null = null
+
+  /**
+   * 订阅实时事件（返回取消订阅函数）
+   */
+  subscribe(listener: RemoteChatEventListener): () => void {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
+  }
+
+  private emitEvent(event: any) {
+    for (const listener of this.listeners) {
+      try { listener(event) } catch { /* ignore */ }
+    }
+  }
 
   /**
    * 注入依赖
@@ -196,6 +217,11 @@ export class RemoteChatService {
 
     this._isRunning = true
     this._pendingConfirm = null
+    this.emittedStepIds.clear()
+    this.currentMessageStepId = null
+
+    // 广播：任务开始（供旁听的 SSE 客户端创建 UI）
+    this.emitEvent({ type: 'task_started', message: message.trim() })
 
     const context = {
       ptyId: this.ptyId!,
@@ -241,6 +267,35 @@ export class RemoteChatService {
           step: serializedStep
         })
 
+        // 广播 SSE 格式事件（与 Gateway handleChatMessage 输出格式一致）
+        if (step.type === 'thinking') {
+          if (!this.emittedStepIds.has(step.id)) {
+            this.emittedStepIds.add(step.id)
+            this.emitEvent({ type: 'thinking', content: step.content })
+          }
+        } else if (step.type === 'message' && step.content) {
+          if (this.currentMessageStepId !== step.id) {
+            this.currentMessageStepId = step.id
+            this.emitEvent({ type: 'text_new', content: step.content, stepId: step.id })
+          } else {
+            this.emitEvent({ type: 'text_replace', content: step.content, stepId: step.id })
+          }
+          if (step.type === 'message' && !step.isStreaming) {
+            // 流式结束：确保最终内容已发送
+            this.emitEvent({ type: 'text_replace', content: step.content, stepId: step.id })
+          }
+        } else if (VISIBLE_STEP_TYPES.has(step.type)) {
+          if (!this.emittedStepIds.has(step.id)) {
+            this.emittedStepIds.add(step.id)
+            this.emitEvent({ type: 'step', step: serializedStep })
+          } else {
+            this.emitEvent({ type: 'step_update', step: serializedStep })
+          }
+          if (step.type === 'tool_call') {
+            this.currentMessageStepId = null
+          }
+        }
+
         // 转发到调用方
         callbacks?.onStep?.(agentId, step)
       },
@@ -265,6 +320,9 @@ export class RemoteChatService {
 
         // 转发到调用方
         callbacks?.onNeedConfirm?.(confirmation)
+
+        // 广播
+        this.emitEvent({ type: 'need_confirm', confirmation: this._pendingConfirm })
       },
 
       onComplete: (agentId: string, result: string) => {
@@ -282,6 +340,11 @@ export class RemoteChatService {
 
         // 转发到调用方
         callbacks?.onComplete?.(agentId, result)
+
+        // 广播
+        this.emitEvent({ type: 'complete', content: result })
+        this.emittedStepIds.clear()
+        this.currentMessageStepId = null
       },
 
       onError: (agentId: string, error: string) => {
@@ -299,6 +362,11 @@ export class RemoteChatService {
 
         // 转发到调用方
         callbacks?.onError?.(agentId, error)
+
+        // 广播
+        this.emitEvent({ type: 'error', error })
+        this.emittedStepIds.clear()
+        this.currentMessageStepId = null
       }
     }
 
@@ -377,6 +445,7 @@ export class RemoteChatService {
     }
     this.history = []
     this._pendingConfirm = null
+    this.emitEvent({ type: 'history_cleared' })
   }
 
   /**
