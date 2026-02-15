@@ -459,30 +459,21 @@ export class FeishuAdapter implements IMAdapter {
     const localPath = path.join(tempDir, fileName)
 
     try {
-      if (messageType === 'image') {
-        // 图片使用 im.image.get 端点（/open-apis/im/v1/images/:image_key）
-        // 比 messageResource.get 更简单直接，权限要求也更明确
-        const resp = await this.client.im.image.get({
-          path: { image_key: fileKey },
-        })
-        await this.saveResponseToFile(resp, localPath)
-      } else {
-        // 音频/视频/文件使用 messageResource.get
-        const resp = await this.client.im.messageResource.get({
-          path: {
-            message_id: messageId,
-            file_key: fileKey,
-          },
-          params: {
-            type: resourceType,
-          },
-        })
-        await this.saveResponseToFile(resp, localPath)
-      }
+      // 所有媒体类型统一使用 messageResource.get
+      // 权限要求：im:resource + im:message 或 im:message:readonly
+      const resp = await this.client.im.messageResource.get({
+        path: {
+          message_id: messageId,
+          file_key: fileKey,
+        },
+        params: {
+          type: resourceType,
+        },
+      })
+      await this.saveResponseToFile(resp, localPath)
     } catch (err: any) {
-      // 提取详细错误信息（包括尝试读取流式错误响应体）
       const errDetail = await this.extractApiErrorDetail(err)
-      console.error(`[Feishu] Failed to download ${messageType} (key=${fileKey}): ${errDetail}`)
+      console.error(`[Feishu] Failed to download ${messageType} (key=${fileKey}, msgId=${messageId}): ${errDetail}`)
       return null
     }
 
