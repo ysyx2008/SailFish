@@ -201,6 +201,7 @@ import { initScreenContentService } from './services/screen-content.service'
 import { menuService } from './services/menu.service'
 import { aiDebugService } from './services/ai-debug.service'
 import { getSchedulerService, type CreateTaskParams } from './services/scheduler.service'
+import { getGatewayService, type GatewayConfig } from './services/gateway.service'
 
 // 禁用 GPU 加速可能导致的问题（可选）
 // app.disableHardwareAcceleration()
@@ -700,6 +701,21 @@ app.whenReady().then(async () => {
       })
     } catch (e) {
       console.error('[Main] 定时任务调度服务初始化失败:', e)
+    }
+
+    // Gateway 远程访问自动启动
+    if (configService.get('gatewayAutoStart')) {
+      const port = configService.get('gatewayPort') || 3721
+      const host = configService.get('gatewayHost') || '0.0.0.0'
+      gatewayService.start({ enabled: true, port, host, apiToken: '' }).then(result => {
+        if (result.success) {
+          console.log(`[Gateway] Auto-started on ${host}:${port}`)
+        } else {
+          console.error('[Gateway] Auto-start failed:', result.error)
+        }
+      }).catch(e => {
+        console.error('[Gateway] Auto-start error:', e)
+      })
     }
   })
 
@@ -1666,6 +1682,46 @@ ipcMain.handle('agent:updateConfig', async (_event, ptyId: string, config: { exe
 // 添加用户补充消息（Agent 执行过程中，改用 ptyId）
 ipcMain.handle('agent:addMessage', async (_event, ptyId: string, message: string) => {
   return agentService.addUserMessage(ptyId, message)
+})
+
+// ==================== Gateway 远程访问 ====================
+
+const gatewayService = getGatewayService()
+gatewayService.setDependencies({
+  agentService,
+  ptyService,
+  configService
+})
+
+ipcMain.handle('gateway:start', async (_event, config: GatewayConfig) => {
+  const result = await gatewayService.start(config)
+  if (result.success) {
+    // 保存端口和监听地址到配置
+    configService.set('gatewayPort', config.port || 3721)
+    configService.set('gatewayHost', config.host || '0.0.0.0')
+  }
+  return result
+})
+
+ipcMain.handle('gateway:stop', async () => {
+  await gatewayService.stop()
+  return { success: true }
+})
+
+ipcMain.handle('gateway:getConfig', async () => {
+  return gatewayService.getConfig()
+})
+
+ipcMain.handle('gateway:isRunning', async () => {
+  return gatewayService.isRunning()
+})
+
+ipcMain.handle('gateway:getAutoStart', async () => {
+  return configService.get('gatewayAutoStart')
+})
+
+ipcMain.handle('gateway:setAutoStart', async (_event, enabled: boolean) => {
+  configService.set('gatewayAutoStart', enabled)
 })
 
 // ==================== 智能巡检协调器相关 ====================

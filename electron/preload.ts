@@ -2550,6 +2550,22 @@ const electronAPI = {
     const handler = (_event: Electron.IpcRendererEvent, message: { type: string; entry?: unknown }) => callback(message)
     ipcRenderer.on('aiDebug:message', handler)
     return () => ipcRenderer.removeListener('aiDebug:message', handler)
+  },
+
+  // Gateway 远程访问
+  gateway: {
+    start: (config: { enabled: boolean; port: number; apiToken: string; host: string }) =>
+      ipcRenderer.invoke('gateway:start', config) as Promise<{ success: boolean; error?: string }>,
+    stop: () =>
+      ipcRenderer.invoke('gateway:stop') as Promise<{ success: boolean }>,
+    getConfig: () =>
+      ipcRenderer.invoke('gateway:getConfig') as Promise<{ enabled: boolean; port: number; apiToken: string; host: string }>,
+    isRunning: () =>
+      ipcRenderer.invoke('gateway:isRunning') as Promise<boolean>,
+    getAutoStart: () =>
+      ipcRenderer.invoke('gateway:getAutoStart') as Promise<boolean>,
+    setAutoStart: (enabled: boolean) =>
+      ipcRenderer.invoke('gateway:setAutoStart', enabled) as Promise<void>
   }
 }
 

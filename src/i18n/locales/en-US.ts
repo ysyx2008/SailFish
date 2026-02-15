@@ -163,6 +163,7 @@ export default {
       knowledge: 'Knowledge Base',
       email: 'Email',
       calendar: 'Calendar',
+      gateway: 'Remote Access',
       theme: 'Theme',
       terminal: 'Terminal',
       data: 'Data',
@@ -170,7 +171,26 @@ export default {
       about: 'About'
     },
     restartSetup: 'Restart Setup Wizard',
-    restartSetupConfirm: 'Are you sure you want to restart the setup wizard?'
+    restartSetupConfirm: 'Are you sure you want to restart the setup wizard?',
+    gateway: {
+      title: 'Remote Access',
+      description: 'Enable the Gateway service to remotely interact with the AI Agent via a web browser. The Agent will execute commands and edit files on this machine.',
+      port: 'Port',
+      host: 'Listen Address',
+      allInterfaces: 'All Interfaces',
+      localhostOnly: 'Localhost Only',
+      start: 'Start Service',
+      stop: 'Stop Service',
+      loading: 'Processing...',
+      startFailed: 'Failed to start',
+      chatUrl: 'Chat Page URL',
+      copy: 'Copy',
+      copied: 'Copied',
+      openInBrowser: 'Open in Browser',
+      autoStart: 'Start with app',
+      autoStartHint: 'Automatically start the remote access service when SFTerm launches',
+      securityNote: 'The API Token is an access credential. Keep it safe. Anyone with the token can remotely control the Agent to perform operations on this machine.'
+    }
   },
 
   // About page

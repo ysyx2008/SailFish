@@ -163,6 +163,7 @@ export default {
       knowledge: '知识库',
       email: '邮箱账户',
       calendar: '日历账户',
+      gateway: '远程访问',
       theme: '主题配色',
       terminal: '终端设置',
       data: '数据管理',
@@ -170,7 +171,26 @@ export default {
       about: '关于'
     },
     restartSetup: '重新运行引导',
-    restartSetupConfirm: '确定要重新运行首次启动引导吗？'
+    restartSetupConfirm: '确定要重新运行首次启动引导吗？',
+    gateway: {
+      title: '远程访问',
+      description: '启用 Gateway 服务后，可通过浏览器远程与 AI Agent 交互。Agent 将在本机执行命令、编辑文件等操作。',
+      port: '端口',
+      host: '监听地址',
+      allInterfaces: '所有网络接口',
+      localhostOnly: '仅本机',
+      start: '启动服务',
+      stop: '停止服务',
+      loading: '处理中...',
+      startFailed: '启动失败',
+      chatUrl: '聊天页面地址',
+      copy: '复制',
+      copied: '已复制',
+      openInBrowser: '在浏览器中打开',
+      autoStart: '随应用启动',
+      autoStartHint: '启动旗鱼终端时自动开启远程访问服务',
+      securityNote: 'API Token 是访问凭证，请妥善保管。任何持有 Token 的人都可以远程控制 Agent 在本机执行操作。'
+    }
   },
 
   // 关于页面

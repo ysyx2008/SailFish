@@ -124,6 +124,9 @@ interface StoreSchema {
   defaultGroupSortOrder: number
   fileBookmarks: FileBookmark[]
   aiRules: string  // 用户自定义的 AI 规则/指令
+  gatewayAutoStart: boolean  // Gateway 远程访问自动启动
+  gatewayPort: number        // Gateway 端口
+  gatewayHost: string        // Gateway 监听地址
 }
 
 const defaultConfig: StoreSchema = {
@@ -154,7 +157,10 @@ const defaultConfig: StoreSchema = {
   sessionSortBy: 'custom',
   defaultGroupSortOrder: -1,
   fileBookmarks: [],
-  aiRules: ''
+  aiRules: '',
+  gatewayAutoStart: false,
+  gatewayPort: 3721,
+  gatewayHost: '0.0.0.0'
 }
 
 export class ConfigService {
