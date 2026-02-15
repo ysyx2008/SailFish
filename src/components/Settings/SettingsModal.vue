@@ -331,20 +331,35 @@ onUnmounted(() => {
   }
 })
 
-const tabs = computed(() => [
-  { id: 'ai' as const, label: t('settings.tabs.ai'), icon: '🤖' },
-  { id: 'aiRules' as const, label: t('settings.tabs.aiRules'), icon: '📋' },
-  { id: 'mcp' as const, label: t('settings.tabs.mcp'), icon: '🔌' },
-  { id: 'skills' as const, label: t('settings.tabs.skills'), icon: '🧩' },
-  { id: 'knowledge' as const, label: t('settings.tabs.knowledge'), icon: '📚' },
-  { id: 'email' as const, label: t('settings.tabs.email'), icon: '📧' },
-  { id: 'calendar' as const, label: t('settings.tabs.calendar'), icon: '📅' },
-  { id: 'gateway' as const, label: t('settings.tabs.gateway'), icon: '📡' },
-  { id: 'theme' as const, label: t('settings.tabs.theme'), icon: '🎨' },
-  { id: 'terminal' as const, label: t('settings.tabs.terminal'), icon: '⚙️' },
-  { id: 'data' as const, label: t('settings.tabs.data'), icon: '💾' },
-  { id: 'language' as const, label: t('settings.tabs.language'), icon: '🌐' },
-  { id: 'about' as const, label: t('settings.tabs.about'), icon: 'ℹ️' }
+const tabGroups = computed(() => [
+  {
+    label: t('settings.groups.ai'),
+    tabs: [
+      { id: 'ai' as const, label: t('settings.tabs.ai'), icon: '🤖' },
+      { id: 'aiRules' as const, label: t('settings.tabs.aiRules'), icon: '📋' },
+      { id: 'mcp' as const, label: t('settings.tabs.mcp'), icon: '🔌' },
+      { id: 'skills' as const, label: t('settings.tabs.skills'), icon: '🧩' },
+      { id: 'knowledge' as const, label: t('settings.tabs.knowledge'), icon: '📚' }
+    ]
+  },
+  {
+    label: t('settings.groups.integration'),
+    tabs: [
+      { id: 'email' as const, label: t('settings.tabs.email'), icon: '📧' },
+      { id: 'calendar' as const, label: t('settings.tabs.calendar'), icon: '📅' },
+      { id: 'gateway' as const, label: t('settings.tabs.gateway'), icon: '📡' }
+    ]
+  },
+  {
+    label: t('settings.groups.system'),
+    tabs: [
+      { id: 'theme' as const, label: t('settings.tabs.theme'), icon: '🎨' },
+      { id: 'terminal' as const, label: t('settings.tabs.terminal'), icon: '⚙️' },
+      { id: 'data' as const, label: t('settings.tabs.data'), icon: '💾' },
+      { id: 'language' as const, label: t('settings.tabs.language'), icon: '🌐' },
+      { id: 'about' as const, label: t('settings.tabs.about'), icon: 'ℹ️' }
+    ]
+  }
 ])
 
 const restartSetup = async () => {
@@ -368,7 +383,7 @@ const onQrImageError = (event: Event) => {
 </script>
 
 <template>
-  <div class="modal-overlay" @click.self="emit('close')">
+  <div class="modal-overlay">
     <!-- 全屏烟花效果 -->
     <div v-if="showFireworks" class="fireworks-container">
       <!-- 第一波烟花 -->
@@ -443,16 +458,19 @@ const onQrImageError = (event: Event) => {
       </div>
       <div class="settings-body">
         <nav class="settings-nav">
-          <button
-            v-for="tab in tabs"
-            :key="tab.id"
-            class="nav-item"
-            :class="{ active: activeTab === tab.id }"
-            @click="activeTab = tab.id"
-          >
-            <span class="nav-icon">{{ tab.icon }}</span>
-            <span>{{ tab.label }}</span>
-          </button>
+          <div v-for="(group, gi) in tabGroups" :key="gi" class="nav-group">
+            <div class="nav-group-label">{{ group.label }}</div>
+            <button
+              v-for="tab in group.tabs"
+              :key="tab.id"
+              class="nav-item"
+              :class="{ active: activeTab === tab.id }"
+              @click="activeTab = tab.id"
+            >
+              <span class="nav-icon">{{ tab.icon }}</span>
+              <span>{{ tab.label }}</span>
+            </button>
+          </div>
         </nav>
         <div class="settings-content">
           <AiSettings v-if="activeTab === 'ai'" />
@@ -646,39 +664,43 @@ const onQrImageError = (event: Event) => {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: transparent;
   display: flex;
-  align-items: center;
-  justify-content: center;
   z-index: 1000;
-  animation: fadeIn 0.2s ease;
+  animation: fadeIn 0.15s ease;
 }
 
 .settings-modal {
-  width: 95vw;
-  max-width: 1200px;
-  height: 90vh;
-  max-height: 800px;
+  width: 100%;
+  height: 100%;
   background: var(--bg-secondary);
-  border-radius: 12px;
-  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: slideIn 0.2s ease;
+  animation: fadeIn 0.15s ease;
 }
 
 .settings-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  height: var(--header-height);
+  padding: 0 12px;
   border-bottom: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
 }
 
 .settings-header h2 {
-  font-size: 18px;
+  font-size: 13px;
   font-weight: 600;
+  padding-left: 4px;
+}
+
+.settings-header .btn-icon {
+  width: 30px;
+  height: 30px;
+  padding: 6px;
+  border-radius: 6px;
 }
 
 .settings-body {
@@ -688,13 +710,37 @@ const onQrImageError = (event: Event) => {
 }
 
 .settings-nav {
-  width: 180px;
-  padding: 16px 12px;
+  width: 200px;
+  min-width: 200px;
+  padding: 12px;
   background: var(--bg-tertiary);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
+  gap: 0;
+  overflow-y: auto;
+}
+
+.nav-group {
+  display: flex;
+  flex-direction: column;
   gap: 2px;
+}
+
+.nav-group + .nav-group {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.nav-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 12px 6px;
+  user-select: none;
 }
 
 .nav-item {
@@ -702,14 +748,14 @@ const onQrImageError = (event: Event) => {
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 10px 12px;
+  padding: 9px 12px;
   font-size: 13px;
   color: var(--text-secondary);
   background: transparent;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   text-align: left;
 }
 
@@ -729,7 +775,7 @@ const onQrImageError = (event: Event) => {
 
 .settings-content {
   flex: 1;
-  padding: 20px;
+  padding: 28px 32px;
   overflow-y: auto;
 }
 
@@ -1340,7 +1386,7 @@ const onQrImageError = (event: Event) => {
   max-width: 400px;
   width: 90%;
   box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
-  animation: slideIn 0.3s ease;
+  animation: fadeInUp 0.2s ease;
 }
 
 .confirm-dialog h3 {
@@ -1373,16 +1419,6 @@ const onQrImageError = (event: Event) => {
   to { opacity: 1; }
 }
 
-@keyframes slideIn {
-  from {
-    transform: translateY(-20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
 
 /* 全屏烟花效果 */
 .fireworks-container {

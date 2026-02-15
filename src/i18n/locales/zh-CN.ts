@@ -119,7 +119,7 @@ export default {
     type: '类型',
     status: '状态',
     actions: '操作',
-    settings: '设置',
+    settings: '控制面板',
     help: '帮助',
     about: '关于',
     import: '导入',
@@ -147,19 +147,24 @@ export default {
     sessionManager: '会话管理',
     hostManager: '主机管理',
     aiAssistant: 'AI 助手',
-    settings: '设置',
+    settings: '控制面板',
     closeSidebar: '关闭侧边栏'
   },
 
-  // 设置
+  // 控制台
   settings: {
-    title: '设置',
-    closeSettings: '关闭设置',
+    title: '控制面板',
+    closeSettings: '关闭控制面板',
+    groups: {
+      ai: 'AI',
+      integration: '集成',
+      system: '系统'
+    },
     tabs: {
       ai: 'AI 配置',
       aiRules: 'AI 规则',
       mcp: 'MCP 服务器',
-      skills: '用户技能',
+      skills: '技能',
       knowledge: '知识库',
       email: '邮箱账户',
       calendar: '日历账户',

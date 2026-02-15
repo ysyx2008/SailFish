@@ -196,6 +196,7 @@ onMounted(async () => {
 
   // 监听远程 Gateway 任务开始事件（关键时刻 Toast 通知 + 初始化 Agent 消息）
   cleanupGatewayRemoteTask = window.electronAPI.gateway.onRemoteTaskStarted((data) => {
+    console.log(`[RemoteDebug] ▶ onRemoteTaskStarted 收到事件: ptyId=${data.ptyId}, message="${data.message.substring(0, 60)}"`)
     const preview = data.message.length > 60
       ? data.message.substring(0, 60) + '...'
       : data.message
@@ -204,6 +205,7 @@ onMounted(async () => {
     // 在远程标签页中初始化 Agent 状态，让 AiPanel 能显示进度
     // 如果标签页不存在（用户手动关闭后再次收到任务），自动重新创建
     let remoteTab = terminalStore.tabs.find(tab => tab.ptyId === data.ptyId)
+    console.log(`[RemoteDebug]   查找 tab: ptyId=${data.ptyId}, found=${!!remoteTab}, isRemote=${remoteTab?.isRemote}, tabId=${remoteTab?.id}`)
     if (!remoteTab) {
       const newTabId = terminalStore.createTabWithExistingPty({
         ptyId: data.ptyId,
@@ -212,6 +214,7 @@ onMounted(async () => {
         isRemote: true
       })
       remoteTab = terminalStore.tabs.find(tab => tab.id === newTabId)
+      console.log(`[RemoteDebug]   新建远程 tab: newTabId=${newTabId}, found=${!!remoteTab}`)
 
       // 等 Terminal.vue 挂载完成后触发 resize，让 shell 重绘 prompt
       setTimeout(() => {
@@ -221,6 +224,8 @@ onMounted(async () => {
     if (remoteTab) {
       // 后台初始化 Agent 状态，不切换 tab、不干扰用户当前工作
       // 标记 Agent 正在运行
+      const hadAgentState = !!remoteTab.agentState
+      const prevStepsCount = remoteTab.agentState?.steps?.length ?? 0
       if (!remoteTab.agentState) {
         remoteTab.agentState = {
           isRunning: true,
@@ -243,6 +248,9 @@ onMounted(async () => {
         content: data.message,
         timestamp: Date.now()
       })
+      console.log(`[RemoteDebug]   ✅ user_task 已添加: tabId=${remoteTab.id}, hadAgentState=${hadAgentState}, prevSteps=${prevStepsCount}, nowSteps=${remoteTab.agentState.steps.length}`)
+    } else {
+      console.warn(`[RemoteDebug]   ❌ 无法找到或创建远程 tab: ptyId=${data.ptyId}`)
     }
   })
 
@@ -252,9 +260,17 @@ onMounted(async () => {
     if (!data.ptyId) return
     // 只处理远程标签页的事件
     const tab = terminalStore.tabs.find(tab => tab.ptyId === data.ptyId && tab.isRemote)
-    if (!tab) return
+    if (!tab) {
+      // 检查是否有匹配 ptyId 但非 remote 的 tab（诊断用）
+      const nonRemoteTab = terminalStore.tabs.find(tab => tab.ptyId === data.ptyId)
+      if (nonRemoteTab) {
+        console.warn(`[RemoteDebug] ⚠ onStep: 找到 ptyId=${data.ptyId} 的 tab 但 isRemote=${nonRemoteTab.isRemote}, tabId=${nonRemoteTab.id}`)
+      }
+      return
+    }
     // 确保 agentState 存在
     if (!tab.agentState) {
+      console.warn(`[RemoteDebug] ⚠ onStep: tab ${tab.id} 的 agentState 不存在，手动创建`)
       tab.agentState = { isRunning: true, steps: [], history: [], agentId: data.agentId }
     }
     // 关联 agentId
@@ -262,13 +278,23 @@ onMounted(async () => {
       tab.agentState.agentId = data.agentId
     }
     // 存入 store（addAgentStep 自动处理新增/更新）
+    const prevCount = tab.agentState.steps.length
     terminalStore.addAgentStep(tab.id, data.step)
+    const newCount = tab.agentState.steps.length
+    // 仅在新增步骤或特殊类型时打印，避免流式 message 更新刷屏
+    if (newCount !== prevCount || data.step.type !== 'message') {
+      console.log(`[RemoteDebug] 📥 onStep: type=${data.step.type}, id=${data.step.id}, tabId=${tab.id}, steps: ${prevCount}→${newCount}`)
+    }
   })
 
   cleanupRemoteAgentComplete = window.electronAPI.agent.onComplete((data: { agentId: string; ptyId?: string; result: string }) => {
     if (!data.ptyId) return
     const tab = terminalStore.tabs.find(tab => tab.ptyId === data.ptyId && tab.isRemote)
-    if (!tab || !tab.agentState) return
+    if (!tab || !tab.agentState) {
+      console.warn(`[RemoteDebug] ❌ onComplete: 找不到远程 tab 或 agentState, ptyId=${data.ptyId}`)
+      return
+    }
+    console.log(`[RemoteDebug] ✅ onComplete: ptyId=${data.ptyId}, tabId=${tab.id}, stepsBeforeComplete=${tab.agentState.steps.length}, result="${data.result.substring(0, 60)}"`)
     // 添加 final_result 步骤，让 agentTaskGroups 能正确渲染
     terminalStore.addAgentStep(tab.id, {
       id: `final-${Date.now()}`,
@@ -434,7 +460,7 @@ const openMcpSettings = () => {
   showSettings.value = true
 }
 
-// 关闭设置弹窗
+// 关闭控制面板
 const closeSettings = () => {
   showSettings.value = false
   settingsInitialTab.value = undefined
@@ -641,7 +667,7 @@ onUnmounted(() => {
       </template>
     </div>
 
-    <!-- 设置弹窗 -->
+    <!-- 控制面板 -->
     <SettingsModal 
       v-if="showSettings" 
       :initial-tab="settingsInitialTab"

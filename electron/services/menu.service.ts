@@ -16,7 +16,7 @@ const menuI18n = {
     // 应用菜单 (macOS)
     about: '关于旗鱼',
     checkUpdate: '检查更新',
-    preferences: '偏好设置',
+    preferences: '控制面板',
     services: '服务',
     hide: '隐藏旗鱼',
     hideOthers: '隐藏其他',
@@ -75,7 +75,7 @@ const menuI18n = {
     // App menu (macOS)
     about: 'About SailFish',
     checkUpdate: 'Check for Updates',
-    preferences: 'Preferences',
+    preferences: 'Control Panel',
     services: 'Services',
     hide: 'Hide SailFish',
     hideOthers: 'Hide Others',

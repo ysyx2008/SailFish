@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Plus, Pencil, Trash2, X, ExternalLink } from 'lucide-vue-next'
 import { useConfigStore, type AiProfile, type AgentMbtiType } from '../../stores/config'
@@ -10,6 +10,22 @@ const { t } = useI18n()
 const configStore = useConfigStore()
 
 const showForm = ref(false)
+
+// ESC 关闭编辑表单
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && showForm.value) {
+    e.stopImmediatePropagation()
+    showForm.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown, true)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown, true)
+})
 const debugMode = computed(() => configStore.agentDebugMode)
 const editingProfile = ref<AiProfile | null>(null)
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RefreshCw, FolderOpen, Eye, X } from 'lucide-vue-next'
 
@@ -21,6 +21,23 @@ interface UserSkill {
 const skills = ref<UserSkill[]>([])
 const loading = ref(false)
 const skillsDir = ref('')
+
+// ESC 关闭预览弹窗
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && showPreview.value) {
+    e.stopImmediatePropagation()
+    showPreview.value = false
+    previewSkill.value = null
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown, true)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown, true)
+})
 
 // 预览弹窗
 const showPreview = ref(false)

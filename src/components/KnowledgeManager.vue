@@ -351,7 +351,7 @@ onMounted(async () => {
   loadData()
   
   // 添加键盘事件监听
-  document.addEventListener('keydown', handleKeydown)
+  document.addEventListener('keydown', handleKeydown, true)
   
   // 聚焦到搜索框
   await nextTick()
@@ -359,7 +359,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  document.removeEventListener('keydown', handleKeydown)
+  document.removeEventListener('keydown', handleKeydown, true)
 })
 </script>
 

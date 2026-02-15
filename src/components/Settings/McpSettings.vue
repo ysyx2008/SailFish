@@ -52,17 +52,38 @@ interface McpPrompt {
   description?: string
 }
 
+// ESC 关闭子弹窗
+const showForm = ref(false)
+const showDetails = ref(false)
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') {
+    if (showDetails.value) {
+      e.stopImmediatePropagation()
+      showDetails.value = false
+    } else if (showForm.value) {
+      e.stopImmediatePropagation()
+      showForm.value = false
+    }
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown, true)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown, true)
+})
+
 // 状态
 const servers = ref<McpServerConfig[]>([])
 const serverStatuses = ref<McpServerStatus[]>([])
-const showForm = ref(false)
 const editingServer = ref<McpServerConfig | null>(null)
 const testResult = ref<{ success: boolean; message: string } | null>(null)
 const testing = ref(false)
 const connecting = ref<string | null>(null)
 
 // 详情弹窗
-const showDetails = ref(false)
 const selectedServer = ref<McpServerConfig | null>(null)
 const serverTools = ref<McpTool[]>([])
 const serverResources = ref<McpResource[]>([])

@@ -119,7 +119,7 @@ export default {
     type: 'Type',
     status: 'Status',
     actions: 'Actions',
-    settings: 'Settings',
+    settings: 'Control Panel',
     help: 'Help',
     about: 'About',
     import: 'Import',
@@ -147,19 +147,24 @@ export default {
     sessionManager: 'Session Manager',
     hostManager: 'Host Manager',
     aiAssistant: 'AI Assistant',
-    settings: 'Settings',
+    settings: 'Control Panel',
     closeSidebar: 'Close Sidebar'
   },
 
-  // Settings
+  // Console
   settings: {
-    title: 'Settings',
-    closeSettings: 'Close Settings',
+    title: 'Control Panel',
+    closeSettings: 'Close Control Panel',
+    groups: {
+      ai: 'AI',
+      integration: 'Integration',
+      system: 'System'
+    },
     tabs: {
       ai: 'AI Config',
       aiRules: 'AI Rules',
       mcp: 'MCP Servers',
-      skills: 'User Skills',
+      skills: 'Skills',
       knowledge: 'Knowledge Base',
       email: 'Email',
       calendar: 'Calendar',
