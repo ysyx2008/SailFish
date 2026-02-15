@@ -585,26 +585,42 @@ export class IMService {
 
   /**
    * 将消息文本和附件信息组装为传给 Agent 的完整消息
-   * 附件以本地文件路径的形式描述，Agent 可用 read_file 等工具处理
+   * 包含文件路径和处理指引，帮助 Agent 正确处理不同类型的文件
    */
   private buildAgentMessage(msg: IMIncomingMessage): string {
     let text = msg.text || ''
 
     if (msg.attachments && msg.attachments.length > 0) {
-      const typeLabels: Record<IMAttachment['type'], string> = {
-        image: '图片',
-        audio: '语音',
-        video: '视频',
-        file: '文件',
-      }
-      const fileList = msg.attachments
-        .map(a => `- [${typeLabels[a.type] || '文件'}] ${a.fileName} → ${a.localPath}`)
-        .join('\n')
+      const BINARY_TYPES = new Set<IMAttachment['type']>(['image', 'audio', 'video'])
+
+      const fileDescriptions = msg.attachments.map(a => {
+        const isBinary = BINARY_TYPES.has(a.type)
+        const typeLabels: Record<IMAttachment['type'], string> = {
+          image: '图片（二进制）',
+          audio: '语音（二进制）',
+          video: '视频（二进制）',
+          file: '文件',
+        }
+        let desc = `- [${typeLabels[a.type] || '文件'}] ${a.fileName} → ${a.localPath}`
+        if (isBinary) {
+          desc += '（⚠️ 二进制文件，不要用 read_file 读取）'
+        }
+        return desc
+      })
+
+      const hasBinary = msg.attachments.some(a => BINARY_TYPES.has(a.type))
+      const guidance = hasBinary
+        ? '\n\n注意：图片/语音/视频是二进制文件，不能用 read_file 读取（会产生无意义的乱码并占满上下文）。' +
+          '你可以用 run_command 执行 file 命令查看文件信息，或直接告知用户文件已收到。' +
+          '如果用户需要处理图片，可以用 run_command 调用系统工具（如 sips、ffprobe 等）获取元数据。'
+        : ''
+
+      const fileList = fileDescriptions.join('\n')
 
       if (text) {
-        text += `\n\n📎 用户同时发送了文件：\n${fileList}`
+        text += `\n\n📎 用户同时发送了文件：\n${fileList}${guidance}`
       } else {
-        text = `📎 用户发送了文件：\n${fileList}\n\n请查看文件内容并协助用户处理。`
+        text = `📎 用户发送了文件：\n${fileList}${guidance}\n\n请协助用户处理。`
       }
     }
 
