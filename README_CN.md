@@ -11,11 +11,11 @@
 
 <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/resources/logo.png" alt="旗鱼终端 Logo" width="80">
 
-**旗鱼终端**
+**旗鱼 SailFish**
 
-**AI 驱动的新世代终端**
+**你的私人 AI Agent**
 
-*说出你的需求，AI 自主规划执行*
+*说出你的需求，AI 自主规划执行——手机也能遥控*
 
 [![Build](https://github.com/ysyx2008/SFTerminal/actions/workflows/build-release.yml/badge.svg)](https://github.com/ysyx2008/SFTerminal/actions)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
@@ -28,14 +28,16 @@
 
 ---
 
-## 为什么选择旗鱼终端？
+## 为什么选择旗鱼？
 
-| 痛点 | 旗鱼终端方案 |
-|------|-------------|
+| 痛点 | 旗鱼方案 |
+|------|---------|
 | 🤯 不会写命令？ | 用自然语言描述，AI 帮你执行 |
 | 😵 看不懂报错？ | AI 分析原因并给出解决方案 |
 | 🔁 重复性操作？ | Agent 自动化执行多步任务 |
 | 🏢 内网环境？ | 支持私有化 AI 模型和代理 |
+| 🛠️ CLI 配置太复杂？ | 图形界面，开箱即用 |
+| 📱 不在电脑旁？ | 通过 Web、钉钉、飞书远程访问 Agent |
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome.jpg" width="800" alt="旗鱼终端">
@@ -46,6 +48,7 @@
 | 功能 | 说明 |
 |------|------|
 | 🤖 **AI Agent** | 描述任务，Agent 自动规划执行 |
+| 🌐 **远程 Agent** | 随时随地访问你的 Agent——Web、钉钉、飞书 |
 | 🖥️ **SSH/SFTP** | 完整的远程连接和文件管理 |
 | 📁 **文件管理器** | 双栏文件管理器，支持本地与远程 |
 | 📚 **知识库** | 本地 RAG，完全离线运行 |
@@ -79,7 +82,7 @@ npm run build:linux  # Linux
 
 ### AI 配置
 
-旗鱼终端支持 OpenAI 兼容 API。在设置中配置：
+旗鱼支持 OpenAI 兼容 API。在设置中配置：
 
 ```json
 {

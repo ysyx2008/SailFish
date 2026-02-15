@@ -11,11 +11,11 @@
 
 <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/resources/logo.png" alt="SFTerm Logo" width="80">
 
-**SFTerm**
+**SailFish**
 
-**AI-Powered Next-Gen Terminal**
+**Your Personal AI Agent**
 
-*Tell AI what you need. It plans and executes autonomously.*
+*Tell AI what you need. It plans and executes autonomously — even from your phone.*
 
 [![Build](https://github.com/ysyx2008/SFTerminal/actions/workflows/build-release.yml/badge.svg)](https://github.com/ysyx2008/SFTerminal/actions)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
@@ -28,14 +28,16 @@
 
 ---
 
-## Why SFTerm?
+## Why SailFish?
 
-| Pain Point | SFTerm Solution |
-|------------|-----------------|
+| Pain Point | SailFish Solution |
+|------------|-------------------|
 | 🤯 Don't know the command? | Describe in natural language, AI executes for you |
 | 😵 Confused by errors? | AI analyzes and provides solutions |
 | 🔁 Repetitive tasks? | Agent automates multi-step operations |
 | 🏢 Intranet restrictions? | Supports private AI models and proxies |
+| 🛠️ CLI config too complex? | GUI-based, ready out of the box |
+| 📱 Away from your desk? | Access Agent remotely via Web, DingTalk, or Feishu |
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome_en.jpg" width="800" alt="SFTerm">
@@ -46,6 +48,7 @@
 | Feature | Description |
 |---------|-------------|
 | 🤖 **AI Agent** | Describe tasks, Agent plans and executes automatically |
+| 🌐 **Remote Agent** | Access your Agent from anywhere — Web UI, DingTalk, or Feishu |
 | 🖥️ **SSH/SFTP** | Full remote connection and file management |
 | 📁 **File Manager** | Dual-pane file manager for local & remote |
 | 📚 **Knowledge Base** | Local RAG, completely offline |
@@ -79,7 +82,7 @@ npm run build:linux  # Linux
 
 ### AI Configuration
 
-SFTerm supports OpenAI-compatible APIs. Configure in Settings:
+SailFish supports OpenAI-compatible APIs. Configure in Settings:
 
 ```json
 {
