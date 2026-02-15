@@ -559,11 +559,20 @@ export class SshService {
         />\s*$/,                               // 简单的 > 提示符 (fish/powershell)
       ]
 
+      // Shell 续行提示符（zsh/bash），这些不是命令完成的标志
+      const continuationPromptPattern = /^(dquote|quote|bquote|cmdsubst|heredoc|pipe|then|do|else|elif|while|until|for|repeat|brace|subshell)(\s\w+)*>\s*$/
+
       const isPrompt = (text: string): boolean => {
         const cleanText = stripAnsiAndControlChars(text)
         const lines = cleanText.split(/[\r\n]/).filter(l => l.trim())
         const lastLine = lines[lines.length - 1] || ''
         const last80 = cleanText.slice(-80)
+
+        // 排除 shell 续行提示符（如 dquote>），这些表示命令未完成
+        if (continuationPromptPattern.test(lastLine.trim())) {
+          return false
+        }
+
         return promptPatterns.some(p => p.test(lastLine) || p.test(last80))
       }
 

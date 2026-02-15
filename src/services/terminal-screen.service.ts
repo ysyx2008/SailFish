@@ -353,6 +353,13 @@ export class TerminalScreenService {
   isAtPrompt(): boolean {
     const currentLine = this.getCurrentLine()
     
+    // Shell 续行提示符（zsh/bash），这些不是命令完成的标志
+    // zsh: dquote>, quote>, cmdsubst>, heredoc> 等
+    const continuationPromptPattern = /^(dquote|quote|bquote|cmdsubst|heredoc|pipe|then|do|else|elif|while|until|for|repeat|brace|subshell)(\s\w+)*>\s*$/
+    if (continuationPromptPattern.test(currentLine.trim())) {
+      return false
+    }
+
     // 常见的 shell 提示符模式
     const promptPatterns = [
       /[$#%>❯➜»⟩›]\s*$/,                    // 常见结束符

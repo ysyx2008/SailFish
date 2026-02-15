@@ -263,6 +263,31 @@ export async function executeCommand(
     }
 
     unsubscribe()
+
+    // 检测 shell 续行提示符（如 dquote>、quote> 等）
+    // 这些表示命令中有未闭合的引号/括号，shell 在等待更多输入
+    const continuationPromptDetected = detectContinuationPrompt(result.output)
+    if (continuationPromptDetected) {
+      // 发送 Ctrl+C 恢复终端到正常状态，等待 shell 处理中断信号
+      executor.terminalService.write(ptyId, '\x03')
+      const CTRL_C_RECOVERY_MS = 300
+      await new Promise(r => setTimeout(r, CTRL_C_RECOVERY_MS))
+
+      terminalStateService.completeCommandExecution(ptyId, 1, 'failed')
+      const errorMsg = t('error.continuation_prompt', { prompt: continuationPromptDetected })
+      executor.addStep({
+        type: 'tool_result',
+        content: `⚠️ ${errorMsg}`,
+        toolName: 'execute_command',
+        toolResult: errorMsg
+      })
+      return {
+        success: false,
+        output: result.output,
+        error: errorMsg
+      }
+    }
+
     terminalStateService.completeCommandExecution(ptyId, 0, 'completed')
     
     if (config.debugMode) {
@@ -566,4 +591,28 @@ async function executeTimedCommand(
       })
     }, timeout)
   })
+}
+
+/**
+ * 检测命令输出中是否包含 shell 续行提示符
+ * zsh 的续行提示符格式为 "xxx>"，如 dquote>、quote>、cmdsubst> 等
+ * 这些出现时表示命令有未闭合的引号/括号/语法结构
+ * 
+ * @returns 匹配到的续行提示符，如 "dquote>"；未匹配返回 null
+ */
+function detectContinuationPrompt(output: string): string | null {
+  const cleanOutput = stripAnsi(output).replace(/\r/g, '')
+  const lines = cleanOutput.split('\n').filter(l => l.trim())
+  
+  // 检查最后几行（续行提示符通常出现在输出末尾）
+  const lastLines = lines.slice(-3)
+  const pattern = /^(dquote|quote|bquote|cmdsubst|heredoc|pipe|then|do|else|elif|while|until|for|repeat|brace|subshell)(\s\w+)*>\s*$/
+
+  for (const line of lastLines) {
+    const trimmed = line.trim()
+    if (pattern.test(trimmed)) {
+      return trimmed
+    }
+  }
+  return null
 }

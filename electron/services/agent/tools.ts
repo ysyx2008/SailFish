@@ -200,6 +200,8 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
 - less、more 等分页程序 → 用 check_terminal_status 观察，发送 q 退出
 - 交互式确认（apt install 等）→ 系统会自动添加 -y 参数
 
+**引号配对**：命令中的引号（单引号、双引号）和括号必须正确配对。未闭合会导致 shell 进入续行模式（如 dquote>），终端将卡住。
+
 返回值包含：
 - **success**: 命令是否成功执行（true/false）
 - **output**: 命令的完整输出内容（超时时会返回终端最后 50 行）

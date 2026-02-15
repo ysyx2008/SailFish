@@ -585,12 +585,22 @@ export class PtyService {
         />\s*$/,                               // 简单的 > 提示符 (fish/powershell)
       ]
       
+      // Shell 续行提示符（zsh/bash），这些不是命令完成的标志
+      // zsh: dquote>, quote>, bquote>, cmdsubst>, heredoc>, pipe>, then>, do>, else> 等
+      // bash: 默认 PS2 为 "> "
+      const continuationPromptPattern = /^(dquote|quote|bquote|cmdsubst|heredoc|pipe|then|do|else|elif|while|until|for|repeat|brace|subshell)(\s\w+)*>\s*$/
+
       const isPrompt = (text: string): boolean => {
         // 去除 ANSI 后检测
         const cleanText = stripAnsiAndControlChars(text)
         const lines = cleanText.split(/[\r\n]/).filter(l => l.trim())
         const lastLine = lines[lines.length - 1] || ''
         const last80 = cleanText.slice(-80)
+
+        // 排除 shell 续行提示符（如 dquote>），这些表示命令未完成，不是真正的 shell 提示符
+        if (continuationPromptPattern.test(lastLine.trim())) {
+          return false
+        }
         
         const matched = promptPatterns.some(p => p.test(lastLine) || p.test(last80))
         // 调试日志（每 2 秒输出一次检测状态）
