@@ -22,7 +22,7 @@ const chatUrl = computed(() => {
 
 // ==================== IM 集成相关 ====================
 const dingtalkExpanded = ref(false)
-// [飞书暂未开放] const feishuExpanded = ref(false)
+const feishuExpanded = ref(false)
 
 // 钉钉
 const dtClientId = ref('')
@@ -30,12 +30,12 @@ const dtClientSecret = ref('')
 const dtConnected = ref(false)
 const dtConnecting = ref(false)
 const dtError = ref('')
-// 飞书（暂未开放，启用后取消注释）
+// 飞书
 const fsAppId = ref('')
 const fsAppSecret = ref('')
 const fsConnected = ref(false)
 const fsConnecting = ref(false)
-// const fsError = ref('')
+const fsError = ref('')
 // 每平台自动连接
 const dtAutoConnect = ref(false)
 const fsAutoConnect = ref(false)
@@ -140,36 +140,36 @@ async function toggleDingTalk() {
   }
 }
 
-// ==================== 飞书操作（暂未开放，启用后取消注释） ====================
-// async function toggleFeishu() {
-//   fsError.value = ''
-//   if (fsConnected.value) {
-//     await window.electronAPI.im.stopFeishu()
-//     fsConnected.value = false
-//   } else {
-//     if (!fsAppId.value || !fsAppSecret.value) {
-//       fsError.value = 'App ID and App Secret are required'
-//       return
-//     }
-//     fsConnecting.value = true
-//     try {
-//       const result = await window.electronAPI.im.startFeishu({
-//         enabled: true,
-//         appId: fsAppId.value,
-//         appSecret: fsAppSecret.value
-//       })
-//       if (result.success) {
-//         fsConnected.value = true
-//       } else {
-//         fsError.value = result.error || t('settings.im.connectFailed')
-//       }
-//     } catch (e: any) {
-//       fsError.value = e.message
-//     } finally {
-//       fsConnecting.value = false
-//     }
-//   }
-// }
+// ==================== 飞书操作 ====================
+async function toggleFeishu() {
+  fsError.value = ''
+  if (fsConnected.value) {
+    await window.electronAPI.im.stopFeishu()
+    fsConnected.value = false
+  } else {
+    if (!fsAppId.value || !fsAppSecret.value) {
+      fsError.value = 'App ID and App Secret are required'
+      return
+    }
+    fsConnecting.value = true
+    try {
+      const result = await window.electronAPI.im.startFeishu({
+        enabled: true,
+        appId: fsAppId.value,
+        appSecret: fsAppSecret.value
+      })
+      if (result.success) {
+        fsConnected.value = true
+      } else {
+        fsError.value = result.error || t('settings.im.connectFailed')
+      }
+    } catch (e: any) {
+      fsError.value = e.message
+    } finally {
+      fsConnecting.value = false
+    }
+  }
+}
 
 async function toggleDtAutoConnect() {
   try {
@@ -179,14 +179,13 @@ async function toggleDtAutoConnect() {
   }
 }
 
-// [飞书暂未开放]
-// async function toggleFsAutoConnect() {
-//   try {
-//     await window.electronAPI.im.setAutoConnect('feishu', fsAutoConnect.value)
-//   } catch {
-//     fsAutoConnect.value = !fsAutoConnect.value
-//   }
-// }
+async function toggleFsAutoConnect() {
+  try {
+    await window.electronAPI.im.setAutoConnect('feishu', fsAutoConnect.value)
+  } catch {
+    fsAutoConnect.value = !fsAutoConnect.value
+  }
+}
 
 // ==================== Gateway 操作 ====================
 async function toggleGateway() {
@@ -481,22 +480,20 @@ async function copyToClipboard(text: string, label: string) {
         </div>
       </div>
 
-      <!-- 飞书（暂未开放，功能代码保留，仅 UI 禁用） -->
-      <div class="im-platform-card im-platform-disabled" :class="{ /* expanded: feishuExpanded, connected: fsConnected */ }">
-        <button class="im-platform-header" disabled>
+      <!-- 飞书 -->
+      <div class="im-platform-card" :class="{ expanded: feishuExpanded, connected: fsConnected }">
+        <button class="im-platform-header" @click="feishuExpanded = !feishuExpanded">
           <span class="im-platform-icon feishu">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm3.5 13.5l-5-2.5L7 16l1-5.5L5.5 7l5.5 1 2.5-5L15 8.5l5.5 1L17 13l-1.5 2.5z"/></svg>
           </span>
           <span class="im-platform-name">{{ t('settings.im.feishu') }}</span>
-          <span class="coming-soon-badge">{{ t('settings.im.comingSoon') }}</span>
-          <!-- <span class="im-status-indicator" :class="{ connected: fsConnected, connecting: fsConnecting }">
+          <span class="im-status-indicator" :class="{ connected: fsConnected, connecting: fsConnecting }">
             <span class="indicator-dot"></span>
             {{ fsConnecting ? t('settings.im.connecting') : (fsConnected ? t('settings.im.connected') : t('settings.im.disconnected')) }}
           </span>
-          <span class="toggle-arrow" :class="{ open: feishuExpanded }">›</span> -->
+          <span class="toggle-arrow" :class="{ open: feishuExpanded }">›</span>
         </button>
 
-        <!-- 飞书配置面板 - 功能启用后取消注释
         <div v-if="feishuExpanded" class="im-platform-body">
           <p class="im-hint">{{ t('settings.im.feishuHint') }}</p>
 
@@ -541,7 +538,7 @@ async function copyToClipboard(text: string, label: string) {
             >{{ fsConnecting ? t('settings.im.connecting') : t('settings.im.connect') }}</button>
           </div>
         </div>
-        -->
+      </div>
 
       <div class="security-note">
         {{ t('settings.im.securityNote') }}
@@ -972,26 +969,6 @@ async function copyToClipboard(text: string, label: string) {
   border-radius: 8px;
   overflow: hidden;
   transition: border-color 0.2s;
-}
-
-.im-platform-card.im-platform-disabled {
-  opacity: 0.6;
-}
-
-.im-platform-card.im-platform-disabled .im-platform-header {
-  cursor: default;
-}
-
-.coming-soon-badge {
-  display: inline-flex;
-  align-items: center;
-  font-size: 10px;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: rgba(110, 118, 129, 0.12);
-  color: var(--text-muted);
-  margin-left: auto;
 }
 
 .im-platform-card.connected {
