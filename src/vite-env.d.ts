@@ -1970,11 +1970,10 @@ interface Window {
         feishu: { enabled: boolean; connected: boolean; activeSessions: number }
       }>
       getConfig: () => Promise<{
-        dingtalk: { clientId: string; clientSecret: string }
-        feishu: { appId: string; appSecret: string }
-        autoConnect: boolean
+        dingtalk: { clientId: string; clientSecret: string; autoConnect: boolean }
+        feishu: { appId: string; appSecret: string; autoConnect: boolean }
       }>
-      setAutoConnect: (enabled: boolean) => Promise<void>
+      setAutoConnect: (platform: string, enabled: boolean) => Promise<void>
       onConnectionChange: (callback: (data: { platform: string; connected: boolean }) => void) => () => void
     }
   }

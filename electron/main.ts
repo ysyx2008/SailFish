@@ -724,8 +724,8 @@ app.whenReady().then(async () => {
       })
     }
 
-    // IM 集成自动连接
-    if (configService.get('imAutoConnect')) {
+    // IM 集成自动连接（每平台独立控制）
+    if (configService.get('imDingTalkAutoConnect')) {
       const dtClientId = configService.get('imDingTalkClientId') as string
       const dtClientSecret = configService.get('imDingTalkClientSecret') as string
       if (dtClientId && dtClientSecret) {
@@ -737,6 +737,8 @@ app.whenReady().then(async () => {
           }
         }).catch(e => console.error('[IM] DingTalk auto-connect error:', e))
       }
+    }
+    if (configService.get('imFeishuAutoConnect')) {
       const fsAppId = configService.get('imFeishuAppId') as string
       const fsAppSecret = configService.get('imFeishuAppSecret') as string
       if (fsAppId && fsAppSecret) {
@@ -1805,17 +1807,22 @@ ipcMain.handle('im:getConfig', async () => {
     dingtalk: {
       clientId: (configService.get('imDingTalkClientId') as string) || '',
       clientSecret: (configService.get('imDingTalkClientSecret') as string) || '',
+      autoConnect: configService.get('imDingTalkAutoConnect') || false,
     },
     feishu: {
       appId: (configService.get('imFeishuAppId') as string) || '',
       appSecret: (configService.get('imFeishuAppSecret') as string) || '',
+      autoConnect: configService.get('imFeishuAutoConnect') || false,
     },
-    autoConnect: configService.get('imAutoConnect') || false,
   }
 })
 
-ipcMain.handle('im:setAutoConnect', async (_event, enabled: boolean) => {
-  configService.set('imAutoConnect', enabled)
+ipcMain.handle('im:setAutoConnect', async (_event, platform: string, enabled: boolean) => {
+  if (platform === 'dingtalk') {
+    configService.set('imDingTalkAutoConnect', enabled)
+  } else if (platform === 'feishu') {
+    configService.set('imFeishuAutoConnect', enabled)
+  }
 })
 
 // ==================== 智能巡检协调器相关 ====================

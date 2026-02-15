@@ -214,8 +214,7 @@ export default {
       dingtalkHint: '在钉钉开发者后台创建企业内部应用，添加机器人能力并选择 Stream 模式。',
       feishuHint: '在飞书开发者后台创建企业自建应用，添加机器人能力并开启长连接模式。',
       securityNote: '凭证将保存在本地，请确保你的设备安全。连接后，IM 用户发送的消息将由本机 Agent 处理。',
-      autoConnect: '随应用启动',
-      autoConnectHint: '启动旗鱼终端时自动连接 IM 平台'
+      autoConnect: '启动时自动连接'
     }
   },
 

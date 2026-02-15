@@ -71,7 +71,9 @@ export default defineConfig({
                 'mailparser',
                 'playwright-core',
                 'onnxruntime-node',
-                'sherpa-onnx-node'
+                'sherpa-onnx-node',
+                'dingtalk-stream',
+                '@larksuiteoapi/node-sdk'
               ]
             }
           },

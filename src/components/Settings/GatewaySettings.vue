@@ -40,8 +40,9 @@ const fsConnecting = ref(false)
 const fsError = ref('')
 const fsActiveSessions = ref(0)
 
-// IM 自动连接
-const imAutoConnect = ref(false)
+// 每平台自动连接
+const dtAutoConnect = ref(false)
+const fsAutoConnect = ref(false)
 
 let cleanupImListener: (() => void) | null = null
 
@@ -104,9 +105,10 @@ async function loadIMSettings() {
     const config = await window.electronAPI.im.getConfig()
     dtClientId.value = config.dingtalk?.clientId || ''
     dtClientSecret.value = config.dingtalk?.clientSecret || ''
+    dtAutoConnect.value = config.dingtalk?.autoConnect || false
     fsAppId.value = config.feishu?.appId || ''
     fsAppSecret.value = config.feishu?.appSecret || ''
-    imAutoConnect.value = config.autoConnect || false
+    fsAutoConnect.value = config.feishu?.autoConnect || false
   } catch {
     // ignore
   }
@@ -174,11 +176,19 @@ async function toggleFeishu() {
   }
 }
 
-async function toggleImAutoConnect() {
+async function toggleDtAutoConnect() {
   try {
-    await window.electronAPI.im.setAutoConnect(imAutoConnect.value)
+    await window.electronAPI.im.setAutoConnect('dingtalk', dtAutoConnect.value)
   } catch {
-    imAutoConnect.value = !imAutoConnect.value
+    dtAutoConnect.value = !dtAutoConnect.value
+  }
+}
+
+async function toggleFsAutoConnect() {
+  try {
+    await window.electronAPI.im.setAutoConnect('feishu', fsAutoConnect.value)
+  } catch {
+    fsAutoConnect.value = !fsAutoConnect.value
   }
 }
 
@@ -413,10 +423,6 @@ async function copyToClipboard(text: string, label: string) {
     <div class="settings-section">
       <div class="section-header">
         <h4>{{ t('settings.im.title') }}</h4>
-        <label class="toggle-switch">
-          <input type="checkbox" v-model="imAutoConnect" @change="toggleImAutoConnect" />
-          <span class="toggle-slider"></span>
-        </label>
       </div>
       <p class="section-desc">{{ t('settings.im.description') }}</p>
 
@@ -463,17 +469,23 @@ async function copyToClipboard(text: string, label: string) {
 
           <div v-if="dtError" class="error-msg">{{ dtError }}</div>
 
-          <button
-            v-if="dtConnected"
-            class="btn btn-sm btn-outline-danger btn-block"
-            @click="toggleDingTalk"
-          >{{ t('settings.im.disconnect') }}</button>
-          <button
-            v-else
-            class="btn btn-sm btn-primary btn-block"
-            :disabled="dtConnecting"
-            @click="toggleDingTalk"
-          >{{ dtConnecting ? t('settings.im.connecting') : t('settings.im.connect') }}</button>
+          <div class="im-card-actions">
+            <label class="auto-connect-label">
+              <input type="checkbox" v-model="dtAutoConnect" @change="toggleDtAutoConnect" />
+              <span>{{ t('settings.im.autoConnect') }}</span>
+            </label>
+            <button
+              v-if="dtConnected"
+              class="btn btn-sm btn-outline-danger"
+              @click="toggleDingTalk"
+            >{{ t('settings.im.disconnect') }}</button>
+            <button
+              v-else
+              class="btn btn-sm btn-primary"
+              :disabled="dtConnecting"
+              @click="toggleDingTalk"
+            >{{ dtConnecting ? t('settings.im.connecting') : t('settings.im.connect') }}</button>
+          </div>
         </div>
       </div>
 
@@ -520,17 +532,23 @@ async function copyToClipboard(text: string, label: string) {
 
           <div v-if="fsError" class="error-msg">{{ fsError }}</div>
 
-          <button
-            v-if="fsConnected"
-            class="btn btn-sm btn-outline-danger btn-block"
-            @click="toggleFeishu"
-          >{{ t('settings.im.disconnect') }}</button>
-          <button
-            v-else
-            class="btn btn-sm btn-primary btn-block"
-            :disabled="fsConnecting"
-            @click="toggleFeishu"
-          >{{ fsConnecting ? t('settings.im.connecting') : t('settings.im.connect') }}</button>
+          <div class="im-card-actions">
+            <label class="auto-connect-label">
+              <input type="checkbox" v-model="fsAutoConnect" @change="toggleFsAutoConnect" />
+              <span>{{ t('settings.im.autoConnect') }}</span>
+            </label>
+            <button
+              v-if="fsConnected"
+              class="btn btn-sm btn-outline-danger"
+              @click="toggleFeishu"
+            >{{ t('settings.im.disconnect') }}</button>
+            <button
+              v-else
+              class="btn btn-sm btn-primary"
+              :disabled="fsConnecting"
+              @click="toggleFeishu"
+            >{{ fsConnecting ? t('settings.im.connecting') : t('settings.im.connect') }}</button>
+          </div>
         </div>
       </div>
 
@@ -1094,5 +1112,35 @@ async function copyToClipboard(text: string, label: string) {
   background: rgba(137, 180, 250, 0.06);
   border-radius: 6px;
   border-left: 3px solid var(--accent-primary);
+}
+
+/* 卡片底部操作栏 */
+.im-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.auto-connect-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.auto-connect-label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--accent-primary);
+}
+
+.auto-connect-label:hover {
+  color: var(--text-primary);
 }
 </style>

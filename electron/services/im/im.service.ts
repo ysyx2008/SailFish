@@ -339,18 +339,29 @@ export class IMService {
 
     // 文本聚合定时器
     let flushTimer: ReturnType<typeof setTimeout> | null = null
+    // 跟踪已发送的文本长度，避免重复发送流式内容
+    let sentTextLength = 0
+    // 跟踪已通知的工具调用 ID，避免重复通知
+    const notifiedToolCalls = new Set<string>()
 
     const flushTextBuffer = async () => {
-      if (session.textBuffer) {
-        const text = session.textBuffer
-        session.textBuffer = ''
+      if (session.textBuffer && session.textBuffer.length > sentTextLength) {
+        // 只发送尚未发送的增量部分
+        const newContent = session.textBuffer.substring(sentTextLength)
+        sentTextLength = session.textBuffer.length
         try {
-          await adapter.sendMarkdown(session.replyContext, '旗鱼终端', text)
+          await adapter.sendMarkdown(session.replyContext, '旗鱼终端', newContent)
         } catch (err) {
           console.error(`[IM] Failed to flush text buffer:`, err)
         }
       }
       flushTimer = null
+    }
+
+    /** 重置文本跟踪状态（新消息步骤开始时调用） */
+    const resetTextTracking = () => {
+      sentTextLength = 0
+      session.textBuffer = ''
     }
 
     const scheduleFlush = () => {
@@ -361,30 +372,38 @@ export class IMService {
       }
     }
 
-    // 可见步骤类型
-    const VISIBLE_STEP_TYPES = new Set([
-      'tool_call', 'tool_result', 'error',
-      'plan_created', 'plan_updated'
-    ])
-
     const callbacks = {
       onStep: (agentId: string, step: any) => {
         if (step.type === 'message' && step.content) {
           if (step.isStreaming) {
-            // 流式文本：聚合到缓冲区
+            // 新消息步骤开始时重置跟踪
+            if (session.currentStepId !== step.id) {
+              resetTextTracking()
+              session.currentStepId = step.id
+            }
+            // 流式文本：更新缓冲区（step.content 是完整累积内容）
             session.textBuffer = step.content
-            session.currentStepId = step.id
             scheduleFlush()
           } else {
-            // 流式结束：立即刷新
+            // 流式结束：发送尚未发送的剩余部分
+            if (session.currentStepId !== step.id) {
+              resetTextTracking()
+              session.currentStepId = step.id
+            }
             session.textBuffer = step.content
             if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
             flushTextBuffer().catch(() => {})
           }
         } else if (step.type === 'tool_call' && step.toolName) {
+          // 去重：同一个工具调用只通知一次
+          const toolCallKey = step.id || `${step.toolName}:${JSON.stringify(step.toolArgs || {})}`
+          if (notifiedToolCalls.has(toolCallKey)) return
+
+          notifiedToolCalls.add(toolCallKey)
+
           // 工具调用通知 —— 先刷新缓冲区
           if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
-          if (session.textBuffer) {
+          if (session.textBuffer && session.textBuffer.length > sentTextLength) {
             flushTextBuffer().catch(() => {})
           }
           // 发送工具调用提示
@@ -415,9 +434,9 @@ export class IMService {
           riskLevel: confirmation.riskLevel,
         }
 
-        // 先刷新文本缓冲区
+        // 先刷新文本缓冲区中尚未发送的部分
         if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
-        if (session.textBuffer) {
+        if (session.textBuffer && session.textBuffer.length > sentTextLength) {
           flushTextBuffer().catch(() => {})
         }
 
@@ -451,9 +470,9 @@ export class IMService {
       },
 
       onComplete: (agentId: string, result: string) => {
-        // 刷新残留文本
+        // 刷新残留文本中尚未发送的部分
         if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
-        if (session.textBuffer) {
+        if (session.textBuffer && session.textBuffer.length > sentTextLength) {
           flushTextBuffer().catch(() => {})
         }
 
@@ -471,9 +490,9 @@ export class IMService {
       },
 
       onError: (agentId: string, error: string) => {
-        // 刷新残留文本
+        // 刷新残留文本中尚未发送的部分
         if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
-        if (session.textBuffer) {
+        if (session.textBuffer && session.textBuffer.length > sentTextLength) {
           flushTextBuffer().catch(() => {})
         }
 

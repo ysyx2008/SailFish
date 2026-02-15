@@ -2644,12 +2644,11 @@ const electronAPI = {
       }>,
     getConfig: () =>
       ipcRenderer.invoke('im:getConfig') as Promise<{
-        dingtalk: { clientId: string; clientSecret: string }
-        feishu: { appId: string; appSecret: string }
-        autoConnect: boolean
+        dingtalk: { clientId: string; clientSecret: string; autoConnect: boolean }
+        feishu: { appId: string; appSecret: string; autoConnect: boolean }
       }>,
-    setAutoConnect: (enabled: boolean) =>
-      ipcRenderer.invoke('im:setAutoConnect', enabled) as Promise<void>,
+    setAutoConnect: (platform: string, enabled: boolean) =>
+      ipcRenderer.invoke('im:setAutoConnect', platform, enabled) as Promise<void>,
 
     // 监听 IM 连接状态变化
     onConnectionChange: (callback: (data: { platform: string; connected: boolean }) => void) => {
