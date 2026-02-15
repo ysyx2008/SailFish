@@ -30,6 +30,19 @@ export interface IMServiceConfig {
 export type IMPlatform = 'dingtalk' | 'feishu'
 
 /**
+ * IM 接收消息中的附件（图片、语音、视频、文件）
+ * 由适配器下载到本地临时目录后生成
+ */
+export interface IMAttachment {
+  /** 附件类型 */
+  type: 'image' | 'audio' | 'video' | 'file'
+  /** 下载后的本地路径 */
+  localPath: string
+  /** 文件名 */
+  fileName: string
+}
+
+/**
  * IM 消息事件 —— 适配器接收到用户消息后触发
  */
 export interface IMIncomingMessage {
@@ -41,6 +54,8 @@ export interface IMIncomingMessage {
   chatId?: string
   /** 平台特定的回复上下文 */
   replyContext: any
+  /** 附件列表（图片、语音、视频、文件），已下载到本地 */
+  attachments?: IMAttachment[]
 }
 
 /**
@@ -85,6 +100,9 @@ export const IM_FILE_MAX_SIZE_FEISHU = 30 * 1024 * 1024    // 飞书: 30MB
 
 /** 图片上传大小限制（字节） */
 export const IM_IMAGE_MAX_SIZE_FEISHU = 10 * 1024 * 1024   // 飞书: 10MB
+
+/** 接收文件下载大小限制（字节） */
+export const IM_DOWNLOAD_MAX_SIZE = 100 * 1024 * 1024  // 100MB
 
 // ==================== 常量 ====================
 

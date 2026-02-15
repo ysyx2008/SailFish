@@ -14,9 +14,10 @@
  */
 
 import * as fs from 'fs'
+import * as os from 'os'
 import * as path from 'path'
-import type { IMAdapter, IMIncomingMessage, IMPlatform, FeishuConfig } from './types'
-import { IM_TEXT_MAX_LENGTH, IM_FILE_MAX_SIZE_FEISHU, IM_IMAGE_MAX_SIZE_FEISHU } from './types'
+import type { IMAdapter, IMIncomingMessage, IMPlatform, FeishuConfig, IMAttachment } from './types'
+import { IM_TEXT_MAX_LENGTH, IM_FILE_MAX_SIZE_FEISHU, IM_IMAGE_MAX_SIZE_FEISHU, IM_DOWNLOAD_MAX_SIZE } from './types'
 
 // 飞书 SDK 懒加载
 let lark: any
@@ -331,36 +332,58 @@ export class FeishuAdapter implements IMAdapter {
     const chatType = message.chat_type === 'p2p' ? 'single' as const : 'group' as const
     const userId = sender.sender_id?.open_id || ''
     const userName = sender.sender_id?.user_id || userId
+    const messageId = message.message_id
 
     // 解析消息内容
     let text = ''
-    if (message.message_type === 'text') {
+    const attachments: IMAttachment[] = []
+    const messageType = message.message_type
+
+    if (messageType === 'text') {
       try {
         const content = JSON.parse(message.content)
         text = content.text?.trim() || ''
       } catch {
         text = ''
       }
+    } else if (messageType === 'post') {
+      // 富文本消息：提取纯文本
+      try {
+        const content = JSON.parse(message.content || '{}')
+        text = this.extractPostText(content)
+      } catch {
+        text = ''
+      }
+    } else if (['image', 'audio', 'media', 'file'].includes(messageType)) {
+      // 媒体消息：下载到本地临时目录
+      try {
+        const content = JSON.parse(message.content || '{}')
+        const attachment = await this.downloadMessageResource(messageId, messageType, content)
+        if (attachment) {
+          attachments.push(attachment)
+        }
+      } catch (err) {
+        console.error(`[Feishu] Failed to process ${messageType} message:`, err)
+      }
     } else {
-      // 暂时只支持文本消息
+      console.log(`[Feishu] Unsupported message type: ${messageType}, ignoring`)
       return
     }
-
-    if (!text) return
 
     // 群聊中需要 @机器人 才响应（检查 mentions）
     if (chatType === 'group') {
       // 飞书群聊中 @机器人 的消息会包含 mentions
       // 如果没有 @机器人，可以忽略（但有些配置下所有消息都会推送）
       // 先去掉 @mention 标记
-      if (message.mentions && message.mentions.length > 0) {
+      if (text && message.mentions && message.mentions.length > 0) {
         for (const mention of message.mentions) {
           text = text.replace(mention.key || '', '').trim()
         }
       }
     }
 
-    if (!text) return
+    // 没有文本也没有附件则忽略
+    if (!text && attachments.length === 0) return
 
     const replyContext = {
       chatId,
@@ -376,9 +399,174 @@ export class FeishuAdapter implements IMAdapter {
       chatType,
       chatId,
       replyContext,
+      ...(attachments.length > 0 ? { attachments } : {}),
     }
 
     this.onMessage?.(msg)
+  }
+
+  /**
+   * 下载飞书消息中的媒体资源到本地临时目录
+   */
+  private async downloadMessageResource(
+    messageId: string,
+    messageType: string,
+    content: any
+  ): Promise<IMAttachment | null> {
+    if (!this.client || !messageId) return null
+
+    const timestamp = Date.now()
+    let fileKey = ''
+    let fileName = ''
+    let resourceType = ''      // 飞书 API 的 type 参数：'image' | 'file'
+    let attachmentType: IMAttachment['type'] = 'file'
+
+    switch (messageType) {
+      case 'image':
+        fileKey = content.image_key
+        fileName = `feishu_image_${timestamp}.png`
+        resourceType = 'image'
+        attachmentType = 'image'
+        break
+      case 'audio':
+        fileKey = content.file_key
+        fileName = `feishu_audio_${timestamp}.opus`
+        resourceType = 'file'
+        attachmentType = 'audio'
+        break
+      case 'media': // 视频
+        fileKey = content.file_key
+        fileName = content.file_name ? this.sanitizeFileName(content.file_name) : `feishu_video_${timestamp}.mp4`
+        resourceType = 'file'
+        attachmentType = 'video'
+        break
+      case 'file':
+        fileKey = content.file_key
+        fileName = content.file_name ? this.sanitizeFileName(content.file_name) : `feishu_file_${timestamp}`
+        resourceType = 'file'
+        attachmentType = 'file'
+        break
+      default:
+        return null
+    }
+
+    if (!fileKey) {
+      console.warn(`[Feishu] No file_key/image_key in ${messageType} message`)
+      return null
+    }
+
+    const tempDir = this.ensureTempDir()
+    const localPath = path.join(tempDir, fileName)
+
+    try {
+      const resp = await this.client.im.messageResource.get({
+        path: {
+          message_id: messageId,
+          file_key: fileKey,
+        },
+        params: {
+          type: resourceType,
+        },
+      })
+
+      await this.saveResponseToFile(resp, localPath)
+
+      // 下载后检查文件大小
+      const stat = fs.statSync(localPath)
+      if (stat.size > IM_DOWNLOAD_MAX_SIZE) {
+        fs.unlinkSync(localPath)
+        throw new Error(`File too large: ${(stat.size / 1024 / 1024).toFixed(1)}MB (limit: ${IM_DOWNLOAD_MAX_SIZE / 1024 / 1024}MB)`)
+      }
+
+      console.log(`[Feishu] Downloaded ${messageType}: ${localPath} (${(stat.size / 1024).toFixed(1)}KB)`)
+      return { type: attachmentType, localPath, fileName }
+    } catch (err: any) {
+      console.error(`[Feishu] Failed to download ${messageType} (key=${fileKey}):`, this.extractApiError(err))
+      return null
+    }
+  }
+
+  /**
+   * 将 SDK 响应（可能是 Buffer、Stream 或包装对象）写入文件
+   */
+  private async saveResponseToFile(resp: any, filePath: string): Promise<void> {
+    if (Buffer.isBuffer(resp)) {
+      fs.writeFileSync(filePath, resp)
+    } else if (resp && typeof resp.pipe === 'function') {
+      // Readable stream
+      const ws = fs.createWriteStream(filePath)
+      try {
+        await new Promise<void>((resolve, reject) => {
+          resp.pipe(ws)
+          ws.on('finish', resolve)
+          ws.on('error', reject)
+          resp.on('error', reject)
+        })
+      } catch (err) {
+        ws.destroy()
+        // 清理可能残留的损坏文件
+        try { fs.unlinkSync(filePath) } catch { /* ignore */ }
+        throw err
+      }
+    } else if (resp?.writeFile) {
+      // 某些 SDK 版本返回 { writeFile: Buffer }
+      fs.writeFileSync(filePath, resp.writeFile)
+    } else {
+      throw new Error(`Unexpected response format: ${typeof resp}`)
+    }
+  }
+
+  /**
+   * 从富文本（post）消息中提取纯文本
+   */
+  private extractPostText(content: any): string {
+    try {
+      // 飞书 post 格式: { zh_cn: { title, content: [[{tag, text}, ...]] } }
+      // 也可能是 { title, content: [[...]] }
+      const post = content.zh_cn || content.en_us || content.ja_jp || content
+      const lines: string[] = []
+
+      if (post.title) lines.push(post.title)
+
+      if (Array.isArray(post.content)) {
+        for (const paragraph of post.content) {
+          if (Array.isArray(paragraph)) {
+            const lineText = paragraph
+              .filter((el: any) => el.tag === 'text' || el.tag === 'a')
+              .map((el: any) => el.text || el.href || '')
+              .join('')
+            if (lineText) lines.push(lineText)
+          }
+        }
+      }
+
+      return lines.join('\n').trim()
+    } catch {
+      return ''
+    }
+  }
+
+  /**
+   * 清理文件名，防止路径遍历攻击
+   * 移除路径分隔符、特殊字符，仅保留安全字符
+   */
+  private sanitizeFileName(name: string): string {
+    return name
+      .replace(/[/\\]/g, '_')               // 路径分隔符
+      .replace(/\.\./g, '_')                // 路径遍历
+      .replace(/[\x00-\x1F\x7F]/g, '')     // 控制字符
+      .replace(/[<>:"|?*]/g, '_')           // Windows 特殊字符
+      .substring(0, 200)                    // 限制长度
+      || 'unnamed'
+  }
+
+  /**
+   * 确保临时下载目录存在
+   */
+  private ensureTempDir(): string {
+    const dir = path.join(os.tmpdir(), 'sf-terminal-im', 'feishu')
+    fs.mkdirSync(dir, { recursive: true })
+    return dir
   }
 
   /**

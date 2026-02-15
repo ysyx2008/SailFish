@@ -17,6 +17,7 @@ import type {
   IMAdapter,
   IMIncomingMessage,
   IMPlatform,
+  IMAttachment,
   DingTalkConfig,
   FeishuConfig,
   SendFileResult
@@ -285,8 +286,11 @@ export class IMService {
 
     const replyContext = msg.replyContext
 
-    // 检查是否是确认/拒绝操作
-    if (this.chat.pendingConfirm) {
+    // 构建完整消息文本（含附件信息）
+    const fullMessage = this.buildAgentMessage(msg)
+
+    // 检查是否是确认/拒绝操作（仅对纯文本消息生效）
+    if (this.chat.pendingConfirm && !msg.attachments?.length) {
       await this.handleConfirmResponse(adapter, replyContext, msg.text)
       return
     }
@@ -294,7 +298,7 @@ export class IMService {
     // 如果 Agent 正在运行，尝试补充消息（包括 ask_user 的回复）
     if (this.chat.isRunning) {
       try {
-        if (this.chat.supplement(msg.text)) {
+        if (this.chat.supplement(fullMessage)) {
           await adapter.sendText(replyContext, '💬 已收到你的回复')
         } else {
           await adapter.sendText(replyContext, '⏳ 当前有任务正在执行中，请等待完成后再发送新消息。')
@@ -305,26 +309,28 @@ export class IMService {
       return
     }
 
-    // 特殊命令处理
-    const lowerText = msg.text.toLowerCase().trim()
-    try {
-      if (lowerText === '/clear' || lowerText === '清空' || lowerText === '清空历史') {
-        this.chat.clearHistory()
-        await adapter.sendText(replyContext, '🗑️ 对话历史已清空')
+    // 特殊命令处理（仅对纯文本消息、无附件时生效）
+    if (!msg.attachments?.length) {
+      const lowerText = msg.text.toLowerCase().trim()
+      try {
+        if (lowerText === '/clear' || lowerText === '清空' || lowerText === '清空历史') {
+          this.chat.clearHistory()
+          await adapter.sendText(replyContext, '🗑️ 对话历史已清空')
+          return
+        }
+        if (lowerText === '/status' || lowerText === '状态') {
+          const status = this.getSessionStatus()
+          await adapter.sendText(replyContext, status)
+          return
+        }
+        if (lowerText === '/help' || lowerText === '帮助') {
+          await adapter.sendText(replyContext, this.getHelpText())
+          return
+        }
+      } catch (err) {
+        console.error('[IM] Failed to send command reply:', err)
         return
       }
-      if (lowerText === '/status' || lowerText === '状态') {
-        const status = this.getSessionStatus()
-        await adapter.sendText(replyContext, status)
-        return
-      }
-      if (lowerText === '/help' || lowerText === '帮助') {
-        await adapter.sendText(replyContext, this.getHelpText())
-        return
-      }
-    } catch (err) {
-      console.error('[IM] Failed to send command reply:', err)
-      return
     }
 
     // 开始 Agent 任务
@@ -375,6 +381,9 @@ export class IMService {
     // 设置当前活跃会话（供 send_file_to_chat 工具使用）
     this.activeSession = { adapter, replyContext }
 
+    // 构建完整消息文本（含附件路径信息）
+    const fullMessage = this.buildAgentMessage(msg)
+
     // 发送处理中提示
     try {
       await adapter.sendText(replyContext, '🤔 收到，正在处理...')
@@ -385,7 +394,7 @@ export class IMService {
       platform: msg.platform,
       userId: msg.userId,
       userName: msg.userName,
-      message: msg.text
+      message: fullMessage
     })
 
     // IM 专用：文本缓冲和工具调用去重
@@ -412,7 +421,7 @@ export class IMService {
     const remoteChannel = channelMap[msg.platform]
 
     try {
-      await this.chat.sendMessage(msg.text, {
+      await this.chat.sendMessage(fullMessage, {
         onStep: (_agentId: string, step: any) => {
           if (step.type === 'message' && step.content) {
             if (step.isStreaming) {
@@ -573,6 +582,34 @@ export class IMService {
   }
 
   // ==================== 工具方法 ====================
+
+  /**
+   * 将消息文本和附件信息组装为传给 Agent 的完整消息
+   * 附件以本地文件路径的形式描述，Agent 可用 read_file 等工具处理
+   */
+  private buildAgentMessage(msg: IMIncomingMessage): string {
+    let text = msg.text || ''
+
+    if (msg.attachments && msg.attachments.length > 0) {
+      const typeLabels: Record<IMAttachment['type'], string> = {
+        image: '图片',
+        audio: '语音',
+        video: '视频',
+        file: '文件',
+      }
+      const fileList = msg.attachments
+        .map(a => `- [${typeLabels[a.type] || '文件'}] ${a.fileName} → ${a.localPath}`)
+        .join('\n')
+
+      if (text) {
+        text += `\n\n📎 用户同时发送了文件：\n${fileList}`
+      } else {
+        text = `📎 用户发送了文件：\n${fileList}\n\n请查看文件内容并协助用户处理。`
+      }
+    }
+
+    return text
+  }
 
   private getAdapter(platform: IMPlatform): IMAdapter | null {
     if (platform === 'dingtalk') return this.dingtalkAdapter
