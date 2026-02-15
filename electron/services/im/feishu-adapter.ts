@@ -459,6 +459,7 @@ export class FeishuAdapter implements IMAdapter {
     const localPath = path.join(tempDir, fileName)
 
     try {
+      // 优先使用 SDK 语义化方法
       const resp = await this.client.im.messageResource.get({
         path: {
           message_id: messageId,
@@ -470,30 +471,77 @@ export class FeishuAdapter implements IMAdapter {
       })
 
       await this.saveResponseToFile(resp, localPath)
+    } catch (err: any) {
+      // SDK 语义化方法失败，尝试用 client.request 直接请求（更好的错误信息）
+      console.warn(`[Feishu] SDK method failed for ${messageType} (key=${fileKey}): ${this.extractApiError(err)}, trying client.request fallback...`)
 
+      try {
+        const resp = await this.client.request({
+          method: 'GET',
+          url: `/open-apis/im/v1/messages/${messageId}/resources/${fileKey}`,
+          params: { type: resourceType },
+          responseType: 'stream',
+        })
+        await this.saveResponseToFile(resp, localPath)
+      } catch (fallbackErr: any) {
+        console.error(`[Feishu] Fallback also failed for ${messageType} (key=${fileKey}):`, this.extractApiError(fallbackErr))
+        return null
+      }
+    }
+
+    try {
       // 下载后检查文件大小
       const stat = fs.statSync(localPath)
       if (stat.size > IM_DOWNLOAD_MAX_SIZE) {
         fs.unlinkSync(localPath)
-        throw new Error(`File too large: ${(stat.size / 1024 / 1024).toFixed(1)}MB (limit: ${IM_DOWNLOAD_MAX_SIZE / 1024 / 1024}MB)`)
+        console.error(`[Feishu] File too large: ${(stat.size / 1024 / 1024).toFixed(1)}MB`)
+        return null
       }
 
       console.log(`[Feishu] Downloaded ${messageType}: ${localPath} (${(stat.size / 1024).toFixed(1)}KB)`)
       return { type: attachmentType, localPath, fileName }
-    } catch (err: any) {
-      console.error(`[Feishu] Failed to download ${messageType} (key=${fileKey}):`, this.extractApiError(err))
+    } catch {
       return null
     }
   }
 
   /**
-   * 将 SDK 响应（可能是 Buffer、Stream 或包装对象）写入文件
+   * 将 SDK 响应写入文件
+   *
+   * 飞书 SDK 对二进制下载 API 的响应有多种可能格式：
+   * 1. 带 writeFile(path) 方法的包装对象（SDK v1.x 标准）
+   * 2. 带 getReadableStream() 方法的包装对象
+   * 3. Readable stream（client.request 返回）
+   * 4. Buffer
    */
   private async saveResponseToFile(resp: any, filePath: string): Promise<void> {
-    if (Buffer.isBuffer(resp)) {
-      fs.writeFileSync(filePath, resp)
-    } else if (resp && typeof resp.pipe === 'function') {
-      // Readable stream
+    // SDK v1.x 标准：resp.writeFile(path) 是异步方法
+    if (resp && typeof resp.writeFile === 'function') {
+      await resp.writeFile(filePath)
+      return
+    }
+
+    // SDK v1.x：resp.getReadableStream() 返回 Readable
+    if (resp && typeof resp.getReadableStream === 'function') {
+      const readable = resp.getReadableStream()
+      const ws = fs.createWriteStream(filePath)
+      try {
+        await new Promise<void>((resolve, reject) => {
+          readable.pipe(ws)
+          ws.on('finish', resolve)
+          ws.on('error', reject)
+          readable.on('error', reject)
+        })
+      } catch (err) {
+        ws.destroy()
+        try { fs.unlinkSync(filePath) } catch { /* ignore */ }
+        throw err
+      }
+      return
+    }
+
+    // Readable stream（如 client.request 的 responseType: 'stream'）
+    if (resp && typeof resp.pipe === 'function') {
       const ws = fs.createWriteStream(filePath)
       try {
         await new Promise<void>((resolve, reject) => {
@@ -504,16 +552,24 @@ export class FeishuAdapter implements IMAdapter {
         })
       } catch (err) {
         ws.destroy()
-        // 清理可能残留的损坏文件
         try { fs.unlinkSync(filePath) } catch { /* ignore */ }
         throw err
       }
-    } else if (resp?.writeFile) {
-      // 某些 SDK 版本返回 { writeFile: Buffer }
-      fs.writeFileSync(filePath, resp.writeFile)
-    } else {
-      throw new Error(`Unexpected response format: ${typeof resp}`)
+      return
     }
+
+    // Buffer
+    if (Buffer.isBuffer(resp)) {
+      fs.writeFileSync(filePath, resp)
+      return
+    }
+
+    // Axios response with data 字段（client.request 可能返回）
+    if (resp?.data) {
+      return this.saveResponseToFile(resp.data, filePath)
+    }
+
+    throw new Error(`Unexpected response format: ${typeof resp}`)
   }
 
   /**
@@ -574,8 +630,13 @@ export class FeishuAdapter implements IMAdapter {
    */
   private extractApiError(err: any): string {
     // 飞书 SDK 错误可能在 response.data 中包含 code 和 msg
-    const code = err?.response?.data?.code ?? err?.code
-    const msg = err?.response?.data?.msg ?? err?.msg
+    let data = err?.response?.data
+    // 二进制 API 的错误响应 body 可能是 Buffer，需要解析为 JSON
+    if (Buffer.isBuffer(data)) {
+      try { data = JSON.parse(data.toString('utf-8')) } catch { /* ignore */ }
+    }
+    const code = data?.code ?? err?.code
+    const msg = data?.msg ?? err?.msg
     if (code !== undefined && msg) {
       return `code=${code}, msg=${msg}`
     }
