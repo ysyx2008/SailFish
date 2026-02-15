@@ -41,6 +41,7 @@ const dtAutoConnect = ref(false)
 const fsAutoConnect = ref(false)
 
 let cleanupImListener: (() => void) | null = null
+let cleanupAuditListener: (() => void) | null = null
 
 onMounted(async () => {
   try {
@@ -238,7 +239,6 @@ interface AuditLogEntry {
 }
 const auditLog = ref<AuditLogEntry[]>([])
 const showAuditLog = ref(false)
-let cleanupAuditListener: (() => void) | null = null
 
 async function loadAuditLog() {
   try {

@@ -785,6 +785,7 @@ app.on('window-all-closed', () => {
   schedulerService.stop()
   
   // 停止远程服务
+  gatewayService.stop().catch(() => {})
   imService.stopAll().catch(() => {})
   remoteChatService.dispose().catch(() => {})
 
