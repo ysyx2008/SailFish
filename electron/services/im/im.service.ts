@@ -314,6 +314,13 @@ export class IMService {
       }
     }
 
+    // 将 IM 平台类型映射为 remoteChannel（显式匹配，避免未来新增平台时默认值错误）
+    const channelMap: Record<IMPlatform, 'dingtalk' | 'feishu'> = {
+      dingtalk: 'dingtalk',
+      feishu: 'feishu'
+    }
+    const remoteChannel = channelMap[msg.platform]
+
     try {
       await this.chat.sendMessage(msg.text, {
         onStep: (_agentId: string, step: any) => {
@@ -411,7 +418,7 @@ export class IMService {
             error,
           })
         }
-      })
+      }, remoteChannel)
     } catch (err: any) {
       // sendMessage 抛异常（如 Agent 正在运行、PTY 创建失败等）
       try {

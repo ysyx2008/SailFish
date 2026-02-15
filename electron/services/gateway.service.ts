@@ -401,7 +401,7 @@ export class GatewayService {
             details: { error }
           })
         }
-      })
+      }, 'web')
     } catch (err: any) {
       // sendMessage 抛异常（如依赖未注入、PTY 创建失败）
       sendEvent('error', { error: err.message || 'Unknown error' })

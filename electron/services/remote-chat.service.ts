@@ -195,9 +195,10 @@ export class RemoteChatService {
    *
    * @param message 用户消息
    * @param callbacks 通道特定的回调（SSE、IM 等各自处理输出）
+   * @param remoteChannel 请求来源通道（desktop/web/dingtalk/feishu）
    * @throws Error 如果 Agent 正在运行或依赖未注入
    */
-  async sendMessage(message: string, callbacks?: AgentCallbacks): Promise<void> {
+  async sendMessage(message: string, callbacks?: AgentCallbacks, remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu'): Promise<void> {
     if (!this.deps) throw new Error('Dependencies not set')
     if (this._isRunning) throw new Error('Agent is already running')
 
@@ -238,7 +239,8 @@ export class RemoteChatService {
         os: `${os.type()} ${os.release()}`,
         shell: process.env.SHELL || 'bash'
       },
-      terminalType: 'local' as const
+      terminalType: 'local' as const,
+      remoteChannel: remoteChannel || 'desktop' as const
     }
 
     const agentConfig = {
