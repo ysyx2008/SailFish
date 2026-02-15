@@ -378,7 +378,8 @@ export class GatewayService {
     // 只展示有意义的操作步骤类型
     const VISIBLE_STEP_TYPES = new Set([
       'tool_call', 'tool_result', 'error', 'confirm',
-      'plan_created', 'plan_updated', 'plan_archived'
+      'plan_created', 'plan_updated', 'plan_archived',
+      'asking', 'waiting'
     ])
 
     const ptyId = this.chatState.ptyId!
@@ -858,7 +859,9 @@ export class GatewayService {
       planUpdated: '计划已更新',
       supplementPlaceholder: '输入补充信息（将在下一步生效）...',
       supplement: '补充',
-      supplementSent: '💡 补充信息（等待处理）'
+      supplementSent: '💡 补充信息（等待处理）',
+      askUser: '等待回复',
+      waiting: '等待中'
     } : {
       title: 'SFTerm - Remote Agent',
       brand: 'SFTerm',
@@ -902,7 +905,9 @@ export class GatewayService {
       planUpdated: 'Plan Updated',
       supplementPlaceholder: 'Add info for the agent (takes effect next step)...',
       supplement: 'Add',
-      supplementSent: '💡 Supplement (pending)'
+      supplementSent: '💡 Supplement (pending)',
+      askUser: 'Waiting for reply',
+      waiting: 'Waiting'
     }
 
     // 序列化 i18n 对象注入到 JS 中
@@ -1026,6 +1031,14 @@ export class GatewayService {
   .supplement-text { font-size: 13px; color: var(--text); line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
   .supplement-bubble.processed { border-style: solid; opacity: 0.7; }
   .supplement-bubble.processed .supplement-label { color: #a3a3a3; }
+
+  /* Ask user */
+  .ask-question { font-size: 14px; color: var(--text); line-height: 1.6; white-space: pre-wrap; padding: 8px 0; }
+  .ask-options { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
+  .ask-option { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--accent);
+    background: transparent; color: var(--accent); font-size: 13px; cursor: pointer; transition: all 0.15s; }
+  .ask-option:hover { background: var(--accent); color: #fff; }
+  .ask-status { font-size: 12px; color: #d97706; padding: 4px 0; }
 
   /* Scrollbar */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -1409,13 +1422,15 @@ function addStepCard(el, step) {
   var title = getStepTitle(step);
   var id = 'step-' + Math.random().toString(36).substr(2, 9);
 
+  // asking 类型默认展开（用户需要看到问题和选项）
+  var isOpen = (step.type === 'asking');
   card.innerHTML =
     '<div class="step-header" onclick="toggleStep(\\'' + id + '\\')">' +
       '<span class="step-icon">' + icon + '</span>' +
       '<span class="step-title">' + escapeHtml(title) + '</span>' +
-      '<span class="step-arrow" id="' + id + '-arrow">▶</span>' +
+      '<span class="step-arrow' + (isOpen ? ' expanded' : '') + '" id="' + id + '-arrow">▶</span>' +
     '</div>' +
-    '<div class="step-body" id="' + id + '">' +
+    '<div class="step-body' + (isOpen ? ' show' : '') + '" id="' + id + '">' +
       buildStepBody(step) +
     '</div>';
 
@@ -1438,6 +1453,25 @@ function updateStepCard(el, step) {
 
 function buildStepBody(step) {
   var html = '';
+
+  // asking 类型特殊渲染：显示问题 + 可点击选项
+  if (step.type === 'asking' || (step.toolName === 'ask_user')) {
+    var question = (step.toolArgs && step.toolArgs.question) || step.content || '';
+    html += '<div class="ask-question">' + escapeHtml(question) + '</div>';
+    if (step.toolArgs && step.toolArgs.options && step.toolArgs.options.length > 0) {
+      html += '<div class="ask-options">';
+      for (var i = 0; i < step.toolArgs.options.length; i++) {
+        html += '<button class="ask-option" onclick="sendSupplement(\'' + escapeHtml(step.toolArgs.options[i]).replace(/'/g, "\\\\'") + '\')">' +
+          escapeHtml(step.toolArgs.options[i]) + '</button>';
+      }
+      html += '</div>';
+    }
+    if (step.toolResult) {
+      html += '<div class="ask-status">' + escapeHtml(step.toolResult) + '</div>';
+    }
+    return html;
+  }
+
   if (step.toolName) {
     html += '<div class="step-label">' + T.stepTool + '</div><pre>' + escapeHtml(step.toolName) + '</pre>';
   }
@@ -1489,10 +1523,12 @@ function getStepIcon(type, toolName) {
   if (toolName === 'write_file' || toolName === 'writeFile') return '📄';
   if (toolName === 'read_file' || toolName === 'readFile') return '📖';
   if (toolName === 'search_files' || toolName === 'searchFiles' || toolName === 'searchCode') return '🔍';
+  if (toolName === 'ask_user') return '❓';
   var icons = {
     'tool_call': '🔧', 'tool_result': '📋', 'thinking': '💭',
     'message': '💬', 'error': '❌', 'confirm': '⚠️',
-    'plan_created': '📝', 'plan_updated': '📝'
+    'plan_created': '📝', 'plan_updated': '📝',
+    'asking': '❓', 'waiting': '⏳'
   };
   return icons[type] || '▪️';
 }
@@ -1516,7 +1552,8 @@ function getStepTitle(step) {
   }
   var titles = {
     'thinking': T.thinkingTitle, 'message': T.message,
-    'error': T.error, 'plan_created': T.planCreated, 'plan_updated': T.planUpdated
+    'error': T.error, 'plan_created': T.planCreated, 'plan_updated': T.planUpdated,
+    'asking': T.askUser, 'waiting': T.waiting
   };
   return titles[step.type] || step.type;
 }
