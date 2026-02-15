@@ -154,9 +154,6 @@ export interface IMServiceStatus {
 /** IM 消息最大长度（超过则截断） */
 export const IM_TEXT_MAX_LENGTH = 4000
 
-/** 文本聚合延迟（毫秒） */
-export const IM_TEXT_FLUSH_DELAY = 2000
-
 /** 确认命令关键词 */
 export const CONFIRM_KEYWORDS = ['确认', '同意', '批准', 'y', 'yes', 'ok']
 export const REJECT_KEYWORDS = ['拒绝', '取消', '否决', 'n', 'no', 'cancel']

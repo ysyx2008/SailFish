@@ -26,7 +26,7 @@ import type {
   DingTalkConfig,
   FeishuConfig
 } from './types'
-import { IM_TEXT_FLUSH_DELAY, CONFIRM_KEYWORDS, REJECT_KEYWORDS } from './types'
+import { CONFIRM_KEYWORDS, REJECT_KEYWORDS } from './types'
 import { SessionManager } from './session-manager'
 import { DingTalkAdapter } from './dingtalk-adapter'
 import { FeishuAdapter } from './feishu-adapter'
@@ -337,38 +337,19 @@ export class IMService {
       debugMode: this.deps.configService.getAgentDebugMode()
     }
 
-    // 文本聚合定时器
-    let flushTimer: ReturnType<typeof setTimeout> | null = null
-    // 跟踪已发送的文本长度，避免重复发送流式内容
-    let sentTextLength = 0
     // 跟踪已通知的工具调用 ID，避免重复通知
     const notifiedToolCalls = new Set<string>()
 
+    /** 发送并清空文本缓冲区 */
     const flushTextBuffer = async () => {
-      if (session.textBuffer && session.textBuffer.length > sentTextLength) {
-        // 只发送尚未发送的增量部分
-        const newContent = session.textBuffer.substring(sentTextLength)
-        sentTextLength = session.textBuffer.length
+      if (session.textBuffer) {
+        const text = session.textBuffer
+        session.textBuffer = ''
         try {
-          await adapter.sendMarkdown(session.replyContext, '旗鱼终端', newContent)
+          await adapter.sendMarkdown(session.replyContext, '旗鱼终端', text)
         } catch (err) {
-          console.error(`[IM] Failed to flush text buffer:`, err)
+          console.error(`[IM] Failed to send text:`, err)
         }
-      }
-      flushTimer = null
-    }
-
-    /** 重置文本跟踪状态（新消息步骤开始时调用） */
-    const resetTextTracking = () => {
-      sentTextLength = 0
-      session.textBuffer = ''
-    }
-
-    const scheduleFlush = () => {
-      if (!flushTimer) {
-        flushTimer = setTimeout(() => {
-          flushTextBuffer().catch(() => {})
-        }, IM_TEXT_FLUSH_DELAY)
       }
     }
 
@@ -376,36 +357,23 @@ export class IMService {
       onStep: (agentId: string, step: any) => {
         if (step.type === 'message' && step.content) {
           if (step.isStreaming) {
-            // 新消息步骤开始时重置跟踪
-            if (session.currentStepId !== step.id) {
-              resetTextTracking()
-              session.currentStepId = step.id
-            }
-            // 流式文本：更新缓冲区（step.content 是完整累积内容）
+            // 流式中：只累积，不发送。等流式结束再一次性发。
             session.textBuffer = step.content
-            scheduleFlush()
+            session.currentStepId = step.id
           } else {
-            // 流式结束：发送尚未发送的剩余部分
-            if (session.currentStepId !== step.id) {
-              resetTextTracking()
-              session.currentStepId = step.id
-            }
+            // 流式结束：发送完整消息
             session.textBuffer = step.content
-            if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
             flushTextBuffer().catch(() => {})
           }
         } else if (step.type === 'tool_call' && step.toolName) {
           // 去重：同一个工具调用只通知一次
           const toolCallKey = step.id || `${step.toolName}:${JSON.stringify(step.toolArgs || {})}`
           if (notifiedToolCalls.has(toolCallKey)) return
-
           notifiedToolCalls.add(toolCallKey)
 
-          // 工具调用通知 —— 先刷新缓冲区
-          if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
-          if (session.textBuffer && session.textBuffer.length > sentTextLength) {
-            flushTextBuffer().catch(() => {})
-          }
+          // 工具调用前，先发送已累积的文本
+          flushTextBuffer().catch(() => {})
+
           // 发送工具调用提示
           const argsPreview = step.toolArgs
             ? JSON.stringify(step.toolArgs).substring(0, 100)
@@ -434,11 +402,8 @@ export class IMService {
           riskLevel: confirmation.riskLevel,
         }
 
-        // 先刷新文本缓冲区中尚未发送的部分
-        if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
-        if (session.textBuffer && session.textBuffer.length > sentTextLength) {
-          flushTextBuffer().catch(() => {})
-        }
+        // 先发送缓冲区中的文本
+        flushTextBuffer().catch(() => {})
 
         // 发送确认请求
         const riskEmoji = confirmation.riskLevel === 'dangerous' ? '🔴' : '🟡'
@@ -470,11 +435,8 @@ export class IMService {
       },
 
       onComplete: (agentId: string, result: string) => {
-        // 刷新残留文本中尚未发送的部分
-        if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
-        if (session.textBuffer && session.textBuffer.length > sentTextLength) {
-          flushTextBuffer().catch(() => {})
-        }
+        // 发送残留的缓冲文本
+        flushTextBuffer().catch(() => {})
 
         session.isRunning = false
         session.pendingConfirm = null
@@ -490,11 +452,8 @@ export class IMService {
       },
 
       onError: (agentId: string, error: string) => {
-        // 刷新残留文本中尚未发送的部分
-        if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
-        if (session.textBuffer && session.textBuffer.length > sentTextLength) {
-          flushTextBuffer().catch(() => {})
-        }
+        // 发送残留的缓冲文本
+        flushTextBuffer().catch(() => {})
 
         session.isRunning = false
         session.pendingConfirm = null
@@ -564,11 +523,7 @@ export class IMService {
         }
       }
     } finally {
-      // 确保 flushTimer 在任何退出路径下都被清理，避免泄漏
-      if (flushTimer) {
-        clearTimeout(flushTimer)
-        flushTimer = null
-      }
+      // finally 块：无需额外清理，已无定时器
     }
   }
 
