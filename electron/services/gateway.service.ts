@@ -1321,13 +1321,13 @@ function finishAssistant(content) {
   if (!currentAssistantEl) return;
   var thinkEl = currentAssistantEl.querySelector('.thinking');
   if (thinkEl) thinkEl.remove();
-  // 清除流式中间文本块（会被最终结果替代）
-  var textBlocks = currentAssistantEl.querySelectorAll('.msg-text-block');
-  for (var i = 0; i < textBlocks.length; i++) textBlocks[i].remove();
   // 标记补充气泡为已处理（去掉虚线边框）
   var supBubbles = currentAssistantEl.querySelectorAll('.supplement-bubble');
   for (var j = 0; j < supBubbles.length; j++) supBubbles[j].classList.add('processed');
-  if (content) {
+  // 保留流式文本块（它们就是执行过程中的实际对话内容）
+  // 只在没有流式文本时，才用最终结果作为兜底内容
+  var textBlocks = currentAssistantEl.querySelectorAll('.msg-text-block');
+  if (textBlocks.length === 0 && content) {
     currentAssistantEl.querySelector('.msg-content').innerHTML =
       '<div class="msg-final">' + formatContent(content) + '</div>';
   }

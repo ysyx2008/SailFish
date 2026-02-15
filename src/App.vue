@@ -188,9 +188,8 @@ onMounted(async () => {
           type: data.type || 'local',
           isRemote: true
         })
-        // 打开 AI 面板确保可见
-        showAiPanel.value = true
-        console.log(`[Gateway] 远程 Agent 终端标签页已创建: ptyId=${data.ptyId}`)
+        // 后台静默创建，不切换、不打开 AI 面板，不干扰用户当前工作
+        console.log(`[Gateway] 远程 Agent 终端标签页已创建（后台）: ptyId=${data.ptyId}`)
       }
     }
   })
@@ -212,7 +211,6 @@ onMounted(async () => {
         type: 'local',
         isRemote: true
       })
-      showAiPanel.value = true
       remoteTab = terminalStore.tabs.find(tab => tab.id === newTabId)
 
       // 等 Terminal.vue 挂载完成后触发 resize，让 shell 重绘 prompt
@@ -221,8 +219,7 @@ onMounted(async () => {
       }, 300)
     }
     if (remoteTab) {
-      // 确保切换到远程标签页
-      terminalStore.setActiveTab(remoteTab.id)
+      // 后台初始化 Agent 状态，不切换 tab、不干扰用户当前工作
       // 标记 Agent 正在运行
       if (!remoteTab.agentState) {
         remoteTab.agentState = {

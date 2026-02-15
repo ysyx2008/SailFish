@@ -67,8 +67,10 @@ export interface AgentCallbacks {
 }
 
 // 有意义的操作步骤类型（记录到历史 steps 中）
+// tool_result 不单独渲染为卡片：tool_call 步骤会被更新（同一 id），
+// 结果通过 step_update 回填到已有的 tool_call 卡片中
 export const VISIBLE_STEP_TYPES = new Set([
-  'tool_call', 'tool_result', 'error', 'confirm',
+  'tool_call', 'error', 'confirm',
   'plan_created', 'plan_updated', 'plan_archived',
   'asking', 'waiting'
 ])
