@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, nextTick, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronLeft, ChevronRight, ChevronDown, Terminal, Monitor, Loader2, X, Plus, Layers } from 'lucide-vue-next'
+import { ChevronLeft, ChevronRight, ChevronDown, Terminal, Monitor, Loader2, X, Plus, Layers, Radio } from 'lucide-vue-next'
 import { useTerminalStore } from '../stores/terminal'
 import BatchCommandPanel from './BatchCommandPanel.vue'
 
@@ -226,7 +226,8 @@ const openBatchPanel = () => {
         @dragend="handleDragEnd"
       >
         <span class="tab-icon">
-          <Terminal v-if="tab.type === 'local'" :size="14" />
+          <Radio v-if="tab.isRemote" :size="14" class="remote-icon" />
+          <Terminal v-else-if="tab.type === 'local'" :size="14" />
           <Monitor v-else :size="14" />
         </span>
         <span class="tab-title">{{ tab.title }}</span>
@@ -458,6 +459,16 @@ const openBatchPanel = () => {
 .tab.active .tab-icon {
   color: var(--accent-primary);
   filter: drop-shadow(0 0 4px var(--accent-primary));
+}
+
+/* 远程 Agent 标签页图标 */
+.remote-icon {
+  color: var(--success-color, #22c55e);
+}
+
+.tab.active .remote-icon {
+  color: var(--success-color, #22c55e);
+  filter: drop-shadow(0 0 4px var(--success-color, #22c55e));
 }
 
 .tab-title {

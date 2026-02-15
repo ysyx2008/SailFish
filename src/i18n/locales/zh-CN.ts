@@ -189,7 +189,9 @@ export default {
       openInBrowser: '在浏览器中打开',
       autoStart: '随应用启动',
       autoStartHint: '启动旗鱼终端时自动开启远程访问服务',
-      securityNote: 'API Token 是访问凭证，请妥善保管。任何持有 Token 的人都可以远程控制 Agent 在本机执行操作。'
+      securityNote: 'API Token 是访问凭证，请妥善保管。任何持有 Token 的人都可以远程控制 Agent 在本机执行操作。',
+      auditLog: '操作审计日志',
+      noAuditLog: '暂无审计记录'
     }
   },
 
@@ -1681,5 +1683,11 @@ export default {
       dateTimeRequired: '请选择执行时间',
       sshSessionRequired: '请选择 SSH 会话'
     }
+  },
+
+  // Gateway 远程访问通知
+  gateway: {
+    remoteTaskStarted: '远程任务开始',
+    remoteConnected: '远程客户端已连接'
   }
 }

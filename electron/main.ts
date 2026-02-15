@@ -665,6 +665,9 @@ app.whenReady().then(async () => {
   // 先创建窗口，让用户尽快看到界面
   createWindow()
 
+  // 设置 Gateway 的 mainWindow 引用（用于远程操作通知桌面端）
+  gatewayService.setMainWindow(mainWindow)
+
   // 初始化菜单栏
   const lang = configService?.getLanguage() || 'zh-CN'
   menuService.setLanguage(lang)
@@ -1687,10 +1690,12 @@ ipcMain.handle('agent:addMessage', async (_event, ptyId: string, message: string
 // ==================== Gateway 远程访问 ====================
 
 const gatewayService = getGatewayService()
+// 依赖在 createWindow 之后通过 updateGatewayMainWindow 设置 mainWindow
 gatewayService.setDependencies({
   agentService,
   ptyService,
-  configService
+  configService,
+  mainWindow: null  // 初始化时 mainWindow 还未创建
 })
 
 ipcMain.handle('gateway:start', async (_event, config: GatewayConfig) => {
@@ -1722,6 +1727,10 @@ ipcMain.handle('gateway:getAutoStart', async () => {
 
 ipcMain.handle('gateway:setAutoStart', async (_event, enabled: boolean) => {
   configService.set('gatewayAutoStart', enabled)
+})
+
+ipcMain.handle('gateway:getAuditLog', async (_event, limit?: number) => {
+  return gatewayService.getAuditLog(limit)
 })
 
 // ==================== 智能巡检协调器相关 ====================

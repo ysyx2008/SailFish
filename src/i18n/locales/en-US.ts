@@ -189,7 +189,9 @@ export default {
       openInBrowser: 'Open in Browser',
       autoStart: 'Start with app',
       autoStartHint: 'Automatically start the remote access service when SFTerm launches',
-      securityNote: 'The API Token is an access credential. Keep it safe. Anyone with the token can remotely control the Agent to perform operations on this machine.'
+      securityNote: 'The API Token is an access credential. Keep it safe. Anyone with the token can remotely control the Agent to perform operations on this machine.',
+      auditLog: 'Audit Log',
+      noAuditLog: 'No audit records'
     }
   },
 
@@ -1681,5 +1683,11 @@ export default {
       dateTimeRequired: 'Please select execution time',
       sshSessionRequired: 'Please select an SSH session'
     }
+  },
+
+  // Gateway remote access notifications
+  gateway: {
+    remoteTaskStarted: 'Remote task started',
+    remoteConnected: 'Remote client connected'
   }
 }

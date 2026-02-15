@@ -153,6 +153,8 @@ export interface TerminalTab {
   agentState?: AgentState
   // 上传的文档（每个终端独立）
   uploadedDocs?: ParsedDocument[]
+  // 是否为远程 Gateway Agent 标签页
+  isRemote?: boolean
 }
 
 export interface SplitPane {
@@ -560,6 +562,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
     sshSessionId?: string
     pendingTask?: string  // 创建后自动执行的任务 prompt
+    isRemote?: boolean    // 是否为远程 Gateway Agent 标签页
   }): string {
     const id = uuidv4()
     
@@ -569,7 +572,8 @@ export const useTerminalStore = defineStore('terminal', () => {
       type: options.type,
       ptyId: options.ptyId,
       isConnected: true,
-      isLoading: false
+      isLoading: false,
+      isRemote: options.isRemote
     }
 
     if (options.type === 'ssh' && options.sshConfig) {

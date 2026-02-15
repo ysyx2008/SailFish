@@ -2565,7 +2565,66 @@ const electronAPI = {
     getAutoStart: () =>
       ipcRenderer.invoke('gateway:getAutoStart') as Promise<boolean>,
     setAutoStart: (enabled: boolean) =>
-      ipcRenderer.invoke('gateway:setAutoStart', enabled) as Promise<void>
+      ipcRenderer.invoke('gateway:setAutoStart', enabled) as Promise<void>,
+
+    // 监听远程终端标签页创建事件
+    onRemoteTabCreated: (callback: (data: {
+      ptyId: string
+      title: string
+      type: 'local' | 'ssh'
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: {
+        ptyId: string
+        title: string
+        type: 'local' | 'ssh'
+      }) => callback(data)
+      ipcRenderer.on('gateway:remoteTabCreated', handler)
+      return () => {
+        ipcRenderer.removeListener('gateway:remoteTabCreated', handler)
+      }
+    },
+
+    // 监听远程任务开始事件
+    onRemoteTaskStarted: (callback: (data: {
+      ptyId: string
+      message: string
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: {
+        ptyId: string
+        message: string
+      }) => callback(data)
+      ipcRenderer.on('gateway:remoteTaskStarted', handler)
+      return () => {
+        ipcRenderer.removeListener('gateway:remoteTaskStarted', handler)
+      }
+    },
+
+    // 获取审计日志
+    getAuditLog: (limit?: number) =>
+      ipcRenderer.invoke('gateway:getAuditLog', limit) as Promise<Array<{
+        id: string
+        timestamp: number
+        type: string
+        clientIp?: string
+        summary: string
+        details?: Record<string, unknown>
+      }>>,
+
+    // 监听审计日志实时推送
+    onAuditLog: (callback: (entry: {
+      id: string
+      timestamp: number
+      type: string
+      clientIp?: string
+      summary: string
+      details?: Record<string, unknown>
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, entry: any) => callback(entry)
+      ipcRenderer.on('gateway:auditLog', handler)
+      return () => {
+        ipcRenderer.removeListener('gateway:auditLog', handler)
+      }
+    }
   }
 }
 

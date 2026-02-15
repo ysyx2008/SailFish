@@ -1923,5 +1923,40 @@ interface Window {
       }) => void) => () => void
       onTaskCompleted: (callback: (data: { taskId: string; result: { success: boolean; output: string; error?: string; duration: number; steps?: unknown[] } }) => void) => () => void
     }
+
+    // Gateway 远程访问
+    gateway: {
+      start: (config: { enabled: boolean; port: number; apiToken: string; host: string }) => Promise<{ success: boolean; error?: string }>
+      stop: () => Promise<{ success: boolean }>
+      getConfig: () => Promise<{ enabled: boolean; port: number; apiToken: string; host: string }>
+      isRunning: () => Promise<boolean>
+      getAutoStart: () => Promise<boolean>
+      setAutoStart: (enabled: boolean) => Promise<void>
+      onRemoteTabCreated: (callback: (data: {
+        ptyId: string
+        title: string
+        type: 'local' | 'ssh'
+      }) => void) => () => void
+      onRemoteTaskStarted: (callback: (data: {
+        ptyId: string
+        message: string
+      }) => void) => () => void
+      getAuditLog: (limit?: number) => Promise<Array<{
+        id: string
+        timestamp: number
+        type: string
+        clientIp?: string
+        summary: string
+        details?: Record<string, unknown>
+      }>>
+      onAuditLog: (callback: (entry: {
+        id: string
+        timestamp: number
+        type: string
+        clientIp?: string
+        summary: string
+        details?: Record<string, unknown>
+      }) => void) => () => void
+    }
   }
 }

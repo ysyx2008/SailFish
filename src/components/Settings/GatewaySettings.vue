@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Copy, ExternalLink } from 'lucide-vue-next'
+import { Copy, ExternalLink, ScrollText } from 'lucide-vue-next'
 
 const { t } = useI18n()
 
@@ -36,6 +36,19 @@ onMounted(async () => {
   } catch {
     // ignore
   }
+
+  // 实时监听审计日志
+  cleanupAuditListener = window.electronAPI.gateway.onAuditLog((entry) => {
+    auditLog.value.push(entry)
+    // 保持最近 100 条
+    if (auditLog.value.length > 100) {
+      auditLog.value = auditLog.value.slice(-100)
+    }
+  })
+})
+
+onUnmounted(() => {
+  cleanupAuditListener?.()
 })
 
 async function toggleGateway() {
@@ -75,6 +88,48 @@ async function toggleAutoStart() {
     await window.electronAPI.gateway.setAutoStart(autoStart.value)
   } catch {
     autoStart.value = !autoStart.value  // revert on error
+  }
+}
+
+// 审计日志
+interface AuditLogEntry {
+  id: string
+  timestamp: number
+  type: string
+  clientIp?: string
+  summary: string
+  details?: Record<string, unknown>
+}
+const auditLog = ref<AuditLogEntry[]>([])
+const showAuditLog = ref(false)
+let cleanupAuditListener: (() => void) | null = null
+
+async function loadAuditLog() {
+  try {
+    auditLog.value = await window.electronAPI.gateway.getAuditLog(100)
+  } catch { /* ignore */ }
+}
+
+function toggleAuditLog() {
+  showAuditLog.value = !showAuditLog.value
+  if (showAuditLog.value) {
+    loadAuditLog()
+  }
+}
+
+function formatTime(ts: number): string {
+  return new Date(ts).toLocaleString()
+}
+
+function auditTypeIcon(type: string): string {
+  switch (type) {
+    case 'connection': return '🔗'
+    case 'task_start': return '🚀'
+    case 'tool_call': return '🔧'
+    case 'task_complete': return '✅'
+    case 'task_error': return '❌'
+    case 'confirm': return '⚠️'
+    default: return '📋'
   }
 }
 
@@ -183,6 +238,35 @@ async function copyToClipboard(text: string, label: string) {
 
       <div class="security-note">
         ⚠️ {{ t('settings.gateway.securityNote') }}
+      </div>
+
+      <!-- 审计日志 -->
+      <div class="audit-section">
+        <button class="audit-toggle" @click="toggleAuditLog">
+          <ScrollText :size="14" />
+          {{ t('settings.gateway.auditLog') }}
+          <span class="audit-count" v-if="auditLog.length">{{ auditLog.length }}</span>
+          <span class="toggle-arrow">{{ showAuditLog ? '▲' : '▼' }}</span>
+        </button>
+
+        <div v-if="showAuditLog" class="audit-log-panel">
+          <div v-if="auditLog.length === 0" class="audit-empty">
+            {{ t('settings.gateway.noAuditLog') }}
+          </div>
+          <div v-else class="audit-list">
+            <div
+              v-for="entry in [...auditLog].reverse()"
+              :key="entry.id"
+              class="audit-entry"
+              :class="'audit-' + entry.type"
+            >
+              <span class="audit-icon">{{ auditTypeIcon(entry.type) }}</span>
+              <span class="audit-time">{{ formatTime(entry.timestamp) }}</span>
+              <span class="audit-summary">{{ entry.summary }}</span>
+              <span v-if="entry.clientIp" class="audit-ip">{{ entry.clientIp }}</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -414,5 +498,114 @@ h3 {
   padding: 8px 10px;
   background: rgba(210, 153, 34, 0.08);
   border-radius: 6px;
+}
+
+/* 审计日志 */
+.audit-section {
+  margin-top: 16px;
+}
+
+.audit-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-secondary, #161b22);
+  border: 1px solid var(--border-primary, #30363d);
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  width: 100%;
+  transition: all 0.2s;
+}
+
+.audit-toggle:hover {
+  background: var(--bg-tertiary, var(--bg-primary));
+  color: var(--text-primary);
+}
+
+.audit-count {
+  background: var(--accent-primary, #1f6feb);
+  color: #fff;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.toggle-arrow {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.audit-log-panel {
+  margin-top: 8px;
+  border: 1px solid var(--border-primary, #30363d);
+  border-radius: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.audit-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.audit-list {
+  padding: 4px;
+}
+
+.audit-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  transition: background 0.15s;
+}
+
+.audit-entry:hover {
+  background: var(--bg-secondary, #161b22);
+}
+
+.audit-icon {
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
+.audit-time {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-family: monospace;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.audit-summary {
+  flex: 1;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.audit-ip {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.audit-task_error .audit-summary {
+  color: var(--error-color, #f85149);
+}
+
+.audit-confirm .audit-summary {
+  color: var(--warning-color, #d29922);
 }
 </style>

@@ -42,7 +42,7 @@ export interface GatewayDependencies {
     cleanupAgent: (ptyId: string) => void
   }
   ptyService: {
-    create: (options?: any) => Promise<string>
+    create: (options?: any) => string | Promise<string>
     write: (id: string, data: string) => void
     resize: (id: string, cols: number, rows: number) => void
     dispose: (id: string) => void
@@ -51,8 +51,14 @@ export interface GatewayDependencies {
   configService: {
     getActiveAiProfile: () => any
     getAgentDebugMode: () => boolean
-    get: (key: string) => any
+    get: (key: any) => any
   }
+  mainWindow: {
+    webContents: {
+      send: (channel: string, ...args: any[]) => void
+      isDestroyed: () => boolean
+    }
+  } | null
 }
 
 interface ChatMessage {
@@ -68,6 +74,16 @@ interface ChatState {
   history: ChatMessage[]
   pendingConfirm: any | null
   executionMode: 'strict' | 'relaxed' | 'free'
+}
+
+// 审计日志
+interface AuditLogEntry {
+  id: string
+  timestamp: number
+  type: 'connection' | 'task_start' | 'tool_call' | 'task_complete' | 'task_error' | 'confirm'
+  clientIp?: string
+  summary: string
+  details?: Record<string, unknown>
 }
 
 // GatewayService 实现 ----------------------------------------------------
@@ -89,12 +105,23 @@ export class GatewayService {
     executionMode: 'relaxed'
   }
   private ptyUnsubscribe: (() => void) | null = null
+  private auditLog: AuditLogEntry[] = []
+  private static readonly MAX_AUDIT_LOG = 500  // 最多保留 500 条记录
 
   /**
    * 注入依赖（在 main.ts 中调用）
    */
   setDependencies(deps: GatewayDependencies) {
     this.deps = deps
+  }
+
+  /**
+   * 更新 mainWindow 引用（窗口创建/重建后调用）
+   */
+  setMainWindow(win: GatewayDependencies['mainWindow']) {
+    if (this.deps) {
+      this.deps.mainWindow = win
+    }
   }
 
   /**
@@ -241,6 +268,14 @@ export class GatewayService {
 
   private handleAuthValidate(req: http.IncomingMessage, res: http.ServerResponse) {
     const valid = this.authenticate(req)
+    const clientIp = (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || '').split(',')[0].trim()
+    if (valid) {
+      this.addAuditLog({
+        type: 'connection',
+        clientIp,
+        summary: `客户端认证成功: ${clientIp}`
+      })
+    }
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ valid }))
   }
@@ -341,19 +376,102 @@ export class GatewayService {
       'plan_created', 'plan_updated', 'plan_archived'
     ])
 
+    const ptyId = this.chatState.ptyId!
+    const clientIp = (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || '').split(',')[0].trim()
+
+    // 审计日志：任务开始
+    this.addAuditLog({
+      type: 'task_start',
+      clientIp,
+      summary: `远程任务开始: ${message.trim().substring(0, 80)}`,
+      details: { message: message.trim(), executionMode: this.chatState.executionMode }
+    })
+
+    // 通知桌面端：远程 Agent 开始新任务
+    this.sendToDesktop('gateway:remoteTaskStarted', { ptyId, message: message.trim() })
+
+    // 跟踪已发送的步骤 ID，用于区分新步骤和更新
+    const sentStepIds = new Set<string>()
+    // 记录当前正在流式输出的 message step id，用于合并更新
+    let currentMessageStepId: string | null = null
+    // 节流：message 流式更新的最后内容和定时器
+    let pendingTextContent: string | null = null
+    let pendingTextTimer: ReturnType<typeof setTimeout> | null = null
+    const TEXT_THROTTLE_MS = 150
+
+    const flushPendingText = () => {
+      if (pendingTextContent !== null && currentMessageStepId) {
+        sendEvent('text_replace', { content: pendingTextContent, stepId: currentMessageStepId })
+        pendingTextContent = null
+      }
+      pendingTextTimer = null
+    }
+
     const callbacks = {
-      onStep: (_agentId: string, step: any) => {
+      onStep: (agentId: string, step: any) => {
+        const serializedStep = JSON.parse(JSON.stringify(step))
+
+        // 推送到远程 Chat 页面（按类型过滤）
         if (step.type === 'thinking') {
-          sendEvent('thinking', { content: step.content })
-        } else if (VISIBLE_STEP_TYPES.has(step.type)) {
-          const serializedStep = JSON.parse(JSON.stringify(step))
-          assistantMsg.steps!.push(serializedStep)
-          sendEvent('step', { step: serializedStep })
+          // thinking 步骤通过 updateStep 反复触发，只发一次 UI 指示
+          if (!sentStepIds.has(step.id)) {
+            sentStepIds.add(step.id)
+            sendEvent('thinking', { content: step.content })
+          }
+          // thinking 更新不重复发送到远程页面
         } else if (step.type === 'message' && step.content) {
-          // 中间消息作为实时文本发送，让用户看到 Agent 的思路
-          sendEvent('text', { content: step.content })
+          // message 步骤是累积式的（同一个 stepId 通过 updateStep 反复更新）
+          if (currentMessageStepId === step.id) {
+            // 同一个 message 步骤的更新：节流发送
+            pendingTextContent = step.content
+            if (!pendingTextTimer) {
+              pendingTextTimer = setTimeout(flushPendingText, TEXT_THROTTLE_MS)
+            }
+          } else {
+            // 新的 message 步骤：先刷新上一个的残留，再发新块
+            if (pendingTextTimer) { clearTimeout(pendingTextTimer); flushPendingText() }
+            currentMessageStepId = step.id
+            pendingTextContent = null
+            sendEvent('text_new', { content: step.content, stepId: step.id })
+          }
+          sentStepIds.add(step.id)
+          // message 流式结束（isStreaming=false）时立即刷新
+          if (!step.isStreaming && pendingTextTimer) {
+            clearTimeout(pendingTextTimer)
+            pendingTextContent = step.content
+            flushPendingText()
+          }
+        } else if (VISIBLE_STEP_TYPES.has(step.type)) {
+          // 工具调用等可见步骤：只发送新步骤，跳过更新（如 tool_result 更新同一 step）
+          if (!sentStepIds.has(step.id)) {
+            sentStepIds.add(step.id)
+            assistantMsg.steps!.push(serializedStep)
+            sendEvent('step', { step: serializedStep })
+          } else {
+            // 更新已有步骤（如 tool_result 回填）
+            const idx = assistantMsg.steps!.findIndex((s: any) => s.id === step.id)
+            if (idx !== -1) assistantMsg.steps![idx] = serializedStep
+            sendEvent('step_update', { step: serializedStep })
+          }
+          // 工具调用出现后，当前 message 流结束，先刷新残留文本
+          if (step.type === 'tool_call') {
+            if (pendingTextTimer) { clearTimeout(pendingTextTimer); flushPendingText() }
+            currentMessageStepId = null
+          }
         }
-        // streaming, user_supplement, waiting 等类型不显示
+
+        // 审计日志：工具调用
+        if (step.type === 'tool_call') {
+          this.addAuditLog({
+            type: 'tool_call',
+            clientIp,
+            summary: `工具调用: ${step.toolName || 'unknown'}`,
+            details: { toolName: step.toolName, args: step.args }
+          })
+        }
+
+        // 同时推送到桌面端（所有步骤，复用本地 Agent 事件格式）
+        this.sendToDesktop('agent:step', { agentId, ptyId, step: serializedStep })
       },
       onNeedConfirm: (confirmation: any) => {
         this.chatState.pendingConfirm = {
@@ -363,22 +481,66 @@ export class GatewayService {
           riskLevel: confirmation.riskLevel
         }
         sendEvent('need_confirm', { confirmation: this.chatState.pendingConfirm })
+
+        // 审计日志：需要确认
+        this.addAuditLog({
+          type: 'confirm',
+          clientIp,
+          summary: `需要确认: ${confirmation.toolName} (${confirmation.riskLevel})`,
+          details: { toolName: confirmation.toolName, riskLevel: confirmation.riskLevel, toolArgs: confirmation.toolArgs }
+        })
+
+        // 推送到桌面端
+        this.sendToDesktop('agent:needConfirm', {
+          agentId: confirmation.agentId,
+          ptyId,
+          toolCallId: confirmation.toolCallId,
+          toolName: confirmation.toolName,
+          toolArgs: JSON.parse(JSON.stringify(confirmation.toolArgs)),
+          riskLevel: confirmation.riskLevel
+        })
       },
-      onComplete: (_agentId: string, result: string) => {
+      onComplete: (agentId: string, result: string) => {
+        // 刷新残留的流式文本
+        if (pendingTextTimer) { clearTimeout(pendingTextTimer); flushPendingText() }
         assistantMsg.content = result
         this.chatState.history.push(assistantMsg)
         this.chatState.isRunning = false
         this.chatState.pendingConfirm = null
         sendEvent('complete', { content: result })
         res.end()
+
+        // 审计日志：任务完成
+        this.addAuditLog({
+          type: 'task_complete',
+          clientIp,
+          summary: `远程任务完成: ${result.substring(0, 80)}`,
+          details: { stepsCount: assistantMsg.steps?.length || 0 }
+        })
+
+        // 推送到桌面端
+        this.sendToDesktop('agent:complete', { agentId, ptyId, result })
       },
-      onError: (_agentId: string, error: string) => {
+      onError: (agentId: string, error: string) => {
+        // 刷新残留的流式文本
+        if (pendingTextTimer) { clearTimeout(pendingTextTimer); flushPendingText() }
         assistantMsg.content = `Error: ${error}`
         this.chatState.history.push(assistantMsg)
         this.chatState.isRunning = false
         this.chatState.pendingConfirm = null
         sendEvent('error', { error })
         res.end()
+
+        // 审计日志：任务出错
+        this.addAuditLog({
+          type: 'task_error',
+          clientIp,
+          summary: `远程任务出错: ${error.substring(0, 80)}`,
+          details: { error }
+        })
+
+        // 推送到桌面端
+        this.sendToDesktop('agent:error', { agentId, ptyId, error })
       }
     }
 
@@ -517,6 +679,50 @@ export class GatewayService {
     this.ptyUnsubscribe = this.deps.ptyService.onData(ptyId, (_data: string) => {
       // 终端输出可以用于 Agent context，目前不做额外处理
     })
+
+    // 通知桌面端创建可见标签页
+    this.sendToDesktop('gateway:remoteTabCreated', {
+      ptyId,
+      title: '📡 Remote Agent',
+      type: 'local'
+    })
+  }
+
+  /**
+   * 安全地推送事件到桌面端 mainWindow
+   */
+  private sendToDesktop(channel: string, ...args: any[]) {
+    try {
+      const mw = this.deps?.mainWindow
+      if (mw && !mw.webContents.isDestroyed()) {
+        mw.webContents.send(channel, ...args)
+      }
+    } catch { /* window destroyed */ }
+  }
+
+  /**
+   * 记录审计日志
+   */
+  private addAuditLog(entry: Omit<AuditLogEntry, 'id' | 'timestamp'>) {
+    const logEntry: AuditLogEntry = {
+      id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: Date.now(),
+      ...entry
+    }
+    this.auditLog.push(logEntry)
+    // 限制日志数量
+    if (this.auditLog.length > GatewayService.MAX_AUDIT_LOG) {
+      this.auditLog = this.auditLog.slice(-GatewayService.MAX_AUDIT_LOG)
+    }
+    // 推送到桌面端
+    this.sendToDesktop('gateway:auditLog', logEntry)
+  }
+
+  /**
+   * 获取审计日志（IPC 接口）
+   */
+  getAuditLog(limit = 100): AuditLogEntry[] {
+    return this.auditLog.slice(-limit)
   }
 
   // ==================== 工具方法 ====================
@@ -989,8 +1195,17 @@ function handleSSEEvent(event) {
     case 'step':
       addStepCard(currentAssistantEl, event.step);
       break;
+    case 'step_update':
+      updateStepCard(currentAssistantEl, event.step);
+      break;
+    case 'text_new':
+      appendTextBlock(currentAssistantEl, event.content, event.stepId);
+      break;
+    case 'text_replace':
+      replaceTextBlock(currentAssistantEl, event.content, event.stepId);
+      break;
     case 'text':
-      appendText(currentAssistantEl, event.content);
+      appendTextBlock(currentAssistantEl, event.content, null);
       break;
     case 'need_confirm':
       showConfirmBar(event.confirmation);
@@ -1045,17 +1260,34 @@ function showThinking(el) {
   thinkEl.innerHTML = T.thinking + '<span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>';
 }
 
-function appendText(el, content) {
+function appendTextBlock(el, content, stepId) {
   if (!content) return;
   // 移除思考指示器
   var thinkEl = el.querySelector('.thinking');
   if (thinkEl) thinkEl.remove();
-  // 在步骤区域追加文本块（不是内容区，这样与工具调用卡片交错显示）
+  // 在步骤区域创建新文本块
   var stepsContainer = el.querySelector('.msg-steps');
   var textBlock = document.createElement('div');
   textBlock.className = 'msg-text-block';
+  if (stepId) textBlock.setAttribute('data-step-id', stepId);
   textBlock.innerHTML = formatContent(content);
   stepsContainer.appendChild(textBlock);
+}
+
+function replaceTextBlock(el, content, stepId) {
+  if (!content) return;
+  // 移除思考指示器
+  var thinkEl = el.querySelector('.thinking');
+  if (thinkEl) thinkEl.remove();
+  // 找到同 stepId 的文本块并替换内容
+  var stepsContainer = el.querySelector('.msg-steps');
+  var existing = stepId ? stepsContainer.querySelector('.msg-text-block[data-step-id="' + stepId + '"]') : null;
+  if (existing) {
+    existing.innerHTML = formatContent(content);
+  } else {
+    // 降级：找不到就追加新块
+    appendTextBlock(el, content, stepId);
+  }
 }
 
 function addStepCard(el, step) {
@@ -1065,6 +1297,7 @@ function addStepCard(el, step) {
   var stepsContainer = el.querySelector('.msg-steps');
   var card = document.createElement('div');
   card.className = 'step-card';
+  if (step.id) card.setAttribute('data-step-id', step.id);
 
   var icon = getStepIcon(step.type, step.toolName);
   var title = getStepTitle(step);
@@ -1081,6 +1314,20 @@ function addStepCard(el, step) {
     '</div>';
 
   stepsContainer.appendChild(card);
+}
+
+function updateStepCard(el, step) {
+  if (!step.id) return;
+  var stepsContainer = el.querySelector('.msg-steps');
+  var existingCard = stepsContainer.querySelector('.step-card[data-step-id="' + step.id + '"]');
+  if (existingCard) {
+    // 更新 body 内容（如 tool_result 回填）
+    var bodyEl = existingCard.querySelector('.step-body');
+    if (bodyEl) bodyEl.innerHTML = buildStepBody(step);
+    // 更新标题
+    var titleEl = existingCard.querySelector('.step-title');
+    if (titleEl) titleEl.textContent = getStepTitle(step);
+  }
 }
 
 function buildStepBody(step) {
@@ -1104,6 +1351,9 @@ function finishAssistant(content) {
   if (!currentAssistantEl) return;
   var thinkEl = currentAssistantEl.querySelector('.thinking');
   if (thinkEl) thinkEl.remove();
+  // 清除流式中间文本块（会被最终结果替代）
+  var textBlocks = currentAssistantEl.querySelectorAll('.msg-text-block');
+  for (var i = 0; i < textBlocks.length; i++) textBlocks[i].remove();
   if (content) {
     currentAssistantEl.querySelector('.msg-content').innerHTML =
       '<div class="msg-final">' + formatContent(content) + '</div>';
