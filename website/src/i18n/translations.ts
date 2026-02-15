@@ -24,9 +24,9 @@ export const translations = {
     hero: {
       versionLabel: '最新版本',
       titleHighlight: 'AI 驱动',
-      titleSuffix: '的新世代终端',
-      subtitle: '让命令行操作更加高效、智能。',
-      subtitleLine2: '说出你的要求，AI自主规划执行。遇到问题？即时分析解决。',
+      titleSuffix: '的智能助手',
+      subtitle: '说出你的需求，AI 自主规划执行。',
+      subtitleLine2: '通过桌面端、飞书、钉钉或 Web 随时与 Agent 对话，让 AI 帮你搞定一切。',
       downloadBtn: '立即下载',
       viewSourceBtn: '查看源码',
       apiNotice: '本软件不内置大模型，需自行配置 API',
@@ -45,43 +45,43 @@ export const translations = {
     },
     features: {
       title: '强大功能，智能高效',
-      subtitle: '将传统终端的强大与 AI 智能深度融合，重新定义命令行操作体验',
+      subtitle: '不只是终端，更是你的 AI Agent —— 能执行命令、管理文件、收发邮件、浏览网页，无所不能',
       items: [
         {
-          title: 'AI 智能',
-          description: '自带 AI 助手面板，支持多模型对话、命令解释、日志分析与脚本生成。进入 Agent 模式，描述你的需求，AI 自动规划并执行多步命令。',
-          highlights: ['多模型支持', '自动化任务执行', '风险评估与确认'],
+          title: 'AI Agent 自主执行',
+          description: '描述你的需求，Agent 自动拆解任务、规划步骤、调用工具并逐步执行。支持多种大模型，内置风险评估与人工确认机制，安全可控。',
+          highlights: ['自主规划与执行', '多模型支持', '风险评估与确认'],
         },
         {
-          title: '内置 Agent 技能',
-          description: '开箱即用的 Agent 技能扩展，支持浏览器自动化操作、邮件收发管理、日程安排与提醒、定时任务调度，让 AI 能力不止于命令行。',
-          highlights: ['浏览器自动化', '邮件管理', '日程管理', '定时任务'],
+          title: '多通道接入',
+          description: '不止于桌面端——通过飞书、钉钉机器人或 Web 远程页面随时与 Agent 对话，在手机上也能远程管理服务器、执行任务。',
+          highlights: ['飞书 / 钉钉机器人', 'Web 远程访问', '手机随时操控'],
+        },
+        {
+          title: '丰富的 Agent 技能',
+          description: '开箱即用的技能扩展：浏览器自动化、邮件收发、日程管理、定时任务、Excel/Word 处理，让 AI 的能力远不止命令行。',
+          highlights: ['浏览器自动化', '邮件 / 日程管理', 'Excel / Word 处理'],
         },
         {
           title: '本地知识库',
-          description: '导入文档构建离线 RAG 系统，自动记忆主机配置与历史操作，让 AI 更懂你的环境。',
+          description: '导入文档构建离线 RAG 系统，自动记忆主机配置与历史操作。所有数据本地存储，完全离线运行。',
           highlights: ['离线 Embedding', '主机画像记忆', '文档问答'],
         },
         {
-          title: 'MCP 扩展',
-          description: '支持 Model Context Protocol 标准，连接外部工具和资源，无限扩展 Agent 能力。',
+          title: 'MCP 生态扩展',
+          description: '支持 Model Context Protocol 标准，一键接入数据库、API、文件系统等外部工具，无限扩展 Agent 能力边界。',
           highlights: ['stdio / SSE 传输', '预设模板', '可视化管理'],
         },
         {
-          title: 'SFTP 文件管理',
-          description: '可视化文件浏览器，支持上传、下载、预览、编辑，文件管理如同本地操作一样简单。',
-          highlights: ['拖拽上传', '实时进度', '文本预览'],
-        },
-        {
-          title: '企业友好',
-          description: '支持内网 AI API 和代理配置，所有数据本地存储，满足企业安全合规要求。',
-          highlights: ['内网部署', '数据本地化', 'Xshell 导入'],
+          title: '终端与服务器管理',
+          description: '内置专业终端和 SSH 客户端，支持 SFTP 可视化文件管理、批量服务器操作、Xshell 会话导入，满足运维刚需。',
+          highlights: ['SSH / SFTP', '批量操作', '企业级安全'],
         },
       ],
     },
     useCases: {
       title: '适用场景',
-      subtitle: '无论你是 AI 从业者、运维工程师还是学习者，旗鱼都能助你事半功倍',
+      subtitle: '无论你是 AI 从业者、运维工程师还是普通用户，旗鱼都能成为你的得力助手',
       items: [
         {
           role: 'AI 从业者',
@@ -244,9 +244,9 @@ export const translations = {
     hero: {
       versionLabel: 'Latest Version',
       titleHighlight: 'AI-Powered',
-      titleSuffix: ' Next-Gen Terminal',
-      subtitle: 'Make command-line operations more efficient and intelligent.',
-      subtitleLine2: 'Just tell what you need, AI assistant autonomously plans and executes. Problems? Instant analysis and solutions.',
+      titleSuffix: ' Smart Assistant',
+      subtitle: 'Describe what you need, AI plans and executes autonomously.',
+      subtitleLine2: 'Chat with your Agent via desktop app, Feishu, DingTalk, or Web — let AI handle the rest.',
       downloadBtn: 'Download Now',
       viewSourceBtn: 'View Source',
       apiNotice: 'This software does not include built-in LLM. You need to configure your own API.',
@@ -265,43 +265,43 @@ export const translations = {
     },
     features: {
       title: 'Powerful Features, Smart & Efficient',
-      subtitle: 'Seamlessly blend traditional terminal power with AI intelligence to redefine command-line experience',
+      subtitle: 'More than a terminal — your AI Agent that executes commands, manages files, sends emails, browses the web, and beyond',
       items: [
         {
-          title: 'AI Intelligence',
-          description: 'Built-in AI assistant panel with multi-model chat, command explanation, log analysis, and script generation. In Agent mode, describe your needs and AI automatically plans and executes multi-step commands.',
-          highlights: ['Multi-model Support', 'Automated Task Execution', 'Risk Assessment & Confirmation'],
+          title: 'Autonomous AI Agent',
+          description: 'Describe your goal, and the Agent breaks it into steps, plans the execution, invokes tools, and completes tasks autonomously. Multi-model support with built-in risk assessment and human-in-the-loop confirmation.',
+          highlights: ['Autonomous Planning', 'Multi-model Support', 'Risk Assessment & Confirmation'],
         },
         {
-          title: 'Built-in Agent Skills',
-          description: 'Out-of-the-box Agent skills for browser automation, email management, calendar scheduling, and cron job management. Extend AI agent capabilities beyond the command line.',
-          highlights: ['Browser Automation', 'Email Management', 'Calendar', 'Scheduled Tasks'],
+          title: 'Multi-Channel Access',
+          description: 'Beyond the desktop — chat with your Agent via Feishu or DingTalk bots, or through the Web remote interface. Manage servers and run tasks from your phone, anytime.',
+          highlights: ['Feishu / DingTalk Bots', 'Web Remote Access', 'Mobile Control'],
+        },
+        {
+          title: 'Rich Agent Skills',
+          description: 'Out-of-the-box skill extensions: browser automation, email management, calendar scheduling, cron jobs, Excel/Word processing — AI capabilities far beyond the command line.',
+          highlights: ['Browser Automation', 'Email / Calendar', 'Excel / Word Processing'],
         },
         {
           title: 'Local Knowledge Base',
-          description: 'Import documents to build an offline RAG system. Automatically remembers host configurations and operation history, making AI understand your environment better.',
+          description: 'Import documents to build an offline RAG system. Automatically remembers host configurations and operation history. All data stored locally, fully offline.',
           highlights: ['Offline Embedding', 'Host Profile Memory', 'Document Q&A'],
         },
         {
-          title: 'MCP Extension',
-          description: 'Supports Model Context Protocol standard, connecting external tools and resources to infinitely extend Agent capabilities.',
+          title: 'MCP Ecosystem',
+          description: 'Supports the Model Context Protocol standard. Connect databases, APIs, file systems, and other external tools with one click to infinitely extend Agent capabilities.',
           highlights: ['stdio / SSE Transport', 'Preset Templates', 'Visual Management'],
         },
         {
-          title: 'SFTP File Management',
-          description: 'Visual file browser supporting upload, download, preview, and edit. File management as simple as local operations.',
-          highlights: ['Drag & Drop Upload', 'Real-time Progress', 'Text Preview'],
-        },
-        {
-          title: 'Enterprise Friendly',
-          description: 'Supports intranet AI API and proxy configuration. All data stored locally, meeting enterprise security and compliance requirements.',
-          highlights: ['Intranet Deployment', 'Data Localization', 'Xshell Import'],
+          title: 'Terminal & Server Management',
+          description: 'Built-in professional terminal and SSH client with visual SFTP file management, batch server operations, and Xshell session import for ops needs.',
+          highlights: ['SSH / SFTP', 'Batch Operations', 'Enterprise Security'],
         },
       ],
     },
     useCases: {
       title: 'Use Cases',
-      subtitle: 'Whether you\'re an AI practitioner, ops engineer, or learner, SailFish helps you work smarter',
+      subtitle: 'Whether you\'re an AI practitioner, ops engineer, or everyday user, SailFish is your capable assistant',
       items: [
         {
           role: 'AI Practitioner',

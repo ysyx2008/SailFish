@@ -20,7 +20,7 @@ const changelogContent = fs.readFileSync(changelogPath, 'utf-8');
 // 移除标题行（# Changelog / # 更新日志），由页面自己渲染标题
 const contentWithoutTitle = changelogContent.replace(/^#\s+.+\n+/, '');
 // 移除副标题描述行
-const contentCleaned = contentWithoutTitle.replace(/^.+SFTerm.+\n+/, '');
+const contentCleaned = contentWithoutTitle.replace(/^.+(?:SFTerm|SailFish).+\n+/, '');
 
 // 解析 Markdown 为 HTML
 const htmlContent = await marked.parse(contentCleaned);

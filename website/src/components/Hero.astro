@@ -17,7 +17,7 @@ try {
   const response = await fetch('https://api.github.com/repos/ysyx2008/SFTerminal/releases/latest', {
     headers: {
       'Accept': 'application/vnd.github.v3+json',
-      'User-Agent': 'SFTerminal-Website'
+      'User-Agent': 'SailFish-Website'
     }
   });
   
@@ -107,7 +107,7 @@ try {
       <div class="screenshot-frame">
         <div class="screenshot-carousel" id="carousel">
           <div class="slide active" data-title={lang === 'zh' ? '欢迎页面' : 'Welcome Page'}>
-            <img src={lang === 'zh' ? '/screenshot-welcome.jpg' : '/screenshot-welcome_en.jpg'} alt={lang === 'zh' ? '旗鱼终端欢迎页面' : 'SFTerm Welcome Page'} loading="eager" />
+            <img src={lang === 'zh' ? '/screenshot-welcome.jpg' : '/screenshot-welcome_en.jpg'} alt={lang === 'zh' ? '旗鱼欢迎页面' : 'SailFish Welcome Page'} loading="eager" />
           </div>
           <div class="slide" data-title={lang === 'zh' ? 'AI Agent 介绍' : 'AI Agent Introduction'}>
             <img src={lang === 'zh' ? '/screenshot-agent-intro.png' : '/screenshot-agent-intro_en.jpg'} alt={lang === 'zh' ? 'AI Agent 介绍' : 'AI Agent Introduction'} loading="lazy" />
