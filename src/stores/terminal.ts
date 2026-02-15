@@ -521,8 +521,8 @@ export const useTerminalStore = defineStore('terminal', () => {
       }
     }
 
-    // 清理终端连接
-    if (tab.ptyId) {
+    // 清理终端连接（远程标签页的 PTY 由 Gateway 管理，不在此销毁）
+    if (tab.ptyId && !tab.isRemote) {
       if (tab.type === 'local') {
         await window.electronAPI.pty.dispose(tab.ptyId)
       } else {

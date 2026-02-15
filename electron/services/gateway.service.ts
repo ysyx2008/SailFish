@@ -11,12 +11,13 @@
  * 
  * API 端点：
  * - GET  /chat          → 聊天页面
- * - POST /api/chat      → 发送消息（SSE 流式响应）
- * - GET  /api/chat/history  → 获取历史
- * - POST /api/chat/abort    → 中止执行
- * - POST /api/chat/confirm  → 确认工具调用
- * - GET  /api/chat/status   → 获取状态
- * - POST /api/chat/clear    → 清空历史
+ * - POST /api/chat           → 发送消息（SSE 流式响应）
+ * - GET  /api/chat/history   → 获取历史
+ * - POST /api/chat/supplement → 任务执行中补充信息
+ * - POST /api/chat/abort     → 中止执行
+ * - POST /api/chat/confirm   → 确认工具调用
+ * - GET  /api/chat/status    → 获取状态
+ * - POST /api/chat/clear     → 清空历史
  * - GET  /api/health        → 健康检查
  */
 
@@ -40,6 +41,7 @@ export interface GatewayDependencies {
     confirmToolCall: (ptyId: string, toolCallId: string, approved: boolean, modifiedArgs?: Record<string, unknown>, alwaysAllow?: boolean) => boolean
     getRunStatus: (ptyId: string) => any
     cleanupAgent: (ptyId: string) => void
+    addUserMessage: (ptyId: string, message: string) => boolean
   }
   ptyService: {
     create: (options?: any) => string | Promise<string>
@@ -47,6 +49,7 @@ export interface GatewayDependencies {
     resize: (id: string, cols: number, rows: number) => void
     dispose: (id: string) => void
     onData: (id: string, callback: (data: string) => void) => () => void
+    hasInstance: (id: string) => boolean
   }
   configService: {
     getActiveAiProfile: () => any
@@ -80,7 +83,7 @@ interface ChatState {
 interface AuditLogEntry {
   id: string
   timestamp: number
-  type: 'connection' | 'task_start' | 'tool_call' | 'task_complete' | 'task_error' | 'confirm'
+  type: 'connection' | 'task_start' | 'tool_call' | 'task_complete' | 'task_error' | 'confirm' | 'supplement'
   clientIp?: string
   summary: string
   details?: Record<string, unknown>
@@ -243,6 +246,8 @@ export class GatewayService {
         return req.method === 'POST' ? this.handleChatMessage(req, res) : this.methodNotAllowed(res)
       case '/api/chat/history':
         return req.method === 'GET' ? this.handleChatHistory(req, res) : this.methodNotAllowed(res)
+      case '/api/chat/supplement':
+        return req.method === 'POST' ? this.handleChatSupplement(req, res) : this.methodNotAllowed(res)
       case '/api/chat/abort':
         return req.method === 'POST' ? this.handleChatAbort(req, res) : this.methodNotAllowed(res)
       case '/api/chat/confirm':
@@ -593,6 +598,44 @@ export class GatewayService {
   }
 
   /**
+   * POST /api/chat/supplement - 任务执行中发送补充信息
+   */
+  private async handleChatSupplement(req: http.IncomingMessage, res: http.ServerResponse) {
+    const body = await this.readBody(req)
+    if (!body) {
+      res.writeHead(400, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'Invalid request body' }))
+      return
+    }
+
+    const { message } = body as any
+    if (!message || typeof message !== 'string') {
+      res.writeHead(400, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'Message is required' }))
+      return
+    }
+
+    if (!this.chatState.ptyId || !this.chatState.isRunning) {
+      res.writeHead(400, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'No running task' }))
+      return
+    }
+
+    const result = this.deps!.agentService.addUserMessage(this.chatState.ptyId, message.trim())
+
+    // 审计日志
+    this.addAuditLog({
+      type: 'supplement',
+      clientIp: (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || '').split(',')[0].trim(),
+      summary: `补充信息: ${message.trim().substring(0, 80)}`,
+      details: { message: message.trim() }
+    })
+
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ success: result }))
+  }
+
+  /**
    * POST /api/chat/abort
    */
   private async handleChatAbort(_req: http.IncomingMessage, res: http.ServerResponse) {
@@ -669,7 +712,19 @@ export class GatewayService {
   // ==================== PTY 管理 ====================
 
   private async ensurePty(): Promise<void> {
-    if (this.chatState.ptyId) return
+    // 检查现有 PTY 是否仍然存活（可能被桌面端关闭标签页时销毁）
+    if (this.chatState.ptyId) {
+      if (this.deps?.ptyService.hasInstance(this.chatState.ptyId)) {
+        return // PTY 仍然存活，直接复用
+      }
+      // PTY 已被销毁，清理旧状态
+      if (this.ptyUnsubscribe) {
+        this.ptyUnsubscribe()
+        this.ptyUnsubscribe = null
+      }
+      this.chatState.ptyId = null
+    }
+
     if (!this.deps) throw new Error('Dependencies not set')
 
     const ptyId = await this.deps.ptyService.create()
@@ -800,7 +855,10 @@ export class GatewayService {
       message: '消息',
       error: '错误',
       planCreated: '计划已创建',
-      planUpdated: '计划已更新'
+      planUpdated: '计划已更新',
+      supplementPlaceholder: '输入补充信息（将在下一步生效）...',
+      supplement: '补充',
+      supplementSent: '💡 补充信息（等待处理）'
     } : {
       title: 'SFTerm - Remote Agent',
       brand: 'SFTerm',
@@ -841,7 +899,10 @@ export class GatewayService {
       message: 'Message',
       error: 'Error',
       planCreated: 'Plan Created',
-      planUpdated: 'Plan Updated'
+      planUpdated: 'Plan Updated',
+      supplementPlaceholder: 'Add info for the agent (takes effect next step)...',
+      supplement: 'Add',
+      supplementSent: '💡 Supplement (pending)'
     }
 
     // 序列化 i18n 对象注入到 JS 中
@@ -954,6 +1015,17 @@ export class GatewayService {
     align-self: flex-end; }
   .input-area button:hover { background: var(--accent); }
   .input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .input-area button.supplement-mode { background: #d97706; }
+  .input-area button.supplement-mode:hover { background: #b45309; }
+
+  /* Supplement bubble */
+  .supplement-bubble { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px;
+    margin: 6px 0; background: rgba(217, 119, 6, 0.1); border: 1px dashed rgba(217, 119, 6, 0.4);
+    border-radius: 8px; align-self: flex-end; max-width: 80%; }
+  .supplement-label { font-size: 11px; color: #d97706; font-weight: 500; }
+  .supplement-text { font-size: 13px; color: var(--text); line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  .supplement-bubble.processed { border-style: solid; opacity: 0.7; }
+  .supplement-bubble.processed .supplement-label { color: #a3a3a3; }
 
   /* Scrollbar */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -1118,12 +1190,46 @@ async function loadHistory() {
   }
 }
 
+// ==================== Supplement ====================
+
+async function sendSupplement(message) {
+  // 在当前助手消息区域内添加补充提示
+  if (currentAssistantEl) {
+    var stepsEl = currentAssistantEl.querySelector('.msg-steps');
+    if (stepsEl) {
+      var supEl = document.createElement('div');
+      supEl.className = 'supplement-bubble';
+      supEl.innerHTML = '<span class="supplement-label">' + T.supplementSent + '</span><span class="supplement-text">' + escapeHtml(message) + '</span>';
+      stepsEl.appendChild(supEl);
+      scrollToBottom();
+    }
+  }
+
+  try {
+    await fetch(API_BASE + '/api/chat/supplement', {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ message: message })
+    });
+  } catch (e) {
+    console.error('Supplement failed:', e);
+  }
+}
+
 // ==================== Send Message ====================
 
 async function sendMessage() {
   var input = document.getElementById('msg-input');
   var message = input.value.trim();
-  if (!message || isRunning) return;
+  if (!message) return;
+
+  // 任务运行中：发送补充信息
+  if (isRunning) {
+    sendSupplement(message);
+    input.value = '';
+    autoResize(input);
+    return;
+  }
 
   input.value = '';
   autoResize(input);
@@ -1354,6 +1460,9 @@ function finishAssistant(content) {
   // 清除流式中间文本块（会被最终结果替代）
   var textBlocks = currentAssistantEl.querySelectorAll('.msg-text-block');
   for (var i = 0; i < textBlocks.length; i++) textBlocks[i].remove();
+  // 标记补充气泡为已处理（去掉虚线边框）
+  var supBubbles = currentAssistantEl.querySelectorAll('.supplement-bubble');
+  for (var j = 0; j < supBubbles.length; j++) supBubbles[j].classList.add('processed');
   if (content) {
     currentAssistantEl.querySelector('.msg-content').innerHTML =
       '<div class="msg-final">' + formatContent(content) + '</div>';
@@ -1467,9 +1576,20 @@ function updateStatus(running) {
   var dot = document.getElementById('status-dot');
   var abortBtn = document.getElementById('abort-btn');
   var sendBtn = document.getElementById('send-btn');
+  var input = document.getElementById('msg-input');
   dot.className = 'status-dot ' + (running ? 'busy' : 'online');
   abortBtn.style.display = running ? 'inline-block' : 'none';
-  sendBtn.disabled = running;
+  // 运行中：切换为补充模式（按钮可用，placeholder 和按钮文案切换）
+  sendBtn.disabled = false;
+  if (running) {
+    sendBtn.textContent = T.supplement;
+    sendBtn.classList.add('supplement-mode');
+    input.placeholder = T.supplementPlaceholder;
+  } else {
+    sendBtn.textContent = T.send;
+    sendBtn.classList.remove('supplement-mode');
+    input.placeholder = T.inputPlaceholder;
+  }
 }
 
 // ==================== Utils ====================

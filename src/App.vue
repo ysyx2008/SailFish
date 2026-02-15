@@ -203,8 +203,26 @@ onMounted(async () => {
     toast.info(`📡 ${t('gateway.remoteTaskStarted')}: ${preview}`, 5000)
 
     // 在远程标签页中初始化 Agent 状态，让 AiPanel 能显示进度
-    const remoteTab = terminalStore.tabs.find(tab => tab.ptyId === data.ptyId)
+    // 如果标签页不存在（用户手动关闭后再次收到任务），自动重新创建
+    let remoteTab = terminalStore.tabs.find(tab => tab.ptyId === data.ptyId)
+    if (!remoteTab) {
+      const newTabId = terminalStore.createTabWithExistingPty({
+        ptyId: data.ptyId,
+        title: '📡 Remote Agent',
+        type: 'local',
+        isRemote: true
+      })
+      showAiPanel.value = true
+      remoteTab = terminalStore.tabs.find(tab => tab.id === newTabId)
+
+      // 等 Terminal.vue 挂载完成后触发 resize，让 shell 重绘 prompt
+      setTimeout(() => {
+        window.electronAPI.pty.resize(data.ptyId, 80, 24)
+      }, 300)
+    }
     if (remoteTab) {
+      // 确保切换到远程标签页
+      terminalStore.setActiveTab(remoteTab.id)
       // 标记 Agent 正在运行
       if (!remoteTab.agentState) {
         remoteTab.agentState = {
