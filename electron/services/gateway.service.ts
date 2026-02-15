@@ -1080,8 +1080,10 @@ async function sendMessage() {
   currentAssistantEl = createAssistantBubble();
   updateStatus(true);
   ownTaskActive = true;
+  console.log('[RemoteDebug][Web] sendMessage: 开始发送, ownTaskActive=true, message="' + message.substring(0, 60) + '"');
 
   var mode = document.getElementById('mode-select').value;
+  var sseEventCount = 0;
 
   try {
     var r = await fetch(API_BASE + '/api/chat', {
@@ -1092,11 +1094,14 @@ async function sendMessage() {
 
     if (!r.ok) {
       var errData = await r.json().catch(function() { return { error: 'Request failed' }; });
+      console.warn('[RemoteDebug][Web] sendMessage: 请求失败', r.status, errData);
       finishAssistant(T.error + ': ' + (errData.error || r.statusText));
       updateStatus(false);
       ownTaskActive = false;
       return;
     }
+
+    console.log('[RemoteDebug][Web] sendMessage: SSE 流已建立');
 
     // Read SSE stream
     var reader = r.body.getReader();
@@ -1105,7 +1110,10 @@ async function sendMessage() {
 
     while (true) {
       var chunk = await reader.read();
-      if (chunk.done) break;
+      if (chunk.done) {
+        console.log('[RemoteDebug][Web] sendMessage: SSE 流结束 (done), 共收到 ' + sseEventCount + ' 个事件');
+        break;
+      }
 
       buffer += decoder.decode(chunk.value, { stream: true });
       var lines = buffer.split('\\n');
@@ -1116,6 +1124,7 @@ async function sendMessage() {
         if (!line.startsWith('data: ')) continue;
         try {
           var event = JSON.parse(line.substring(6));
+          sseEventCount++;
           handleSSEEvent(event);
         } catch (ex) { /* skip malformed */ }
       }
@@ -1123,18 +1132,24 @@ async function sendMessage() {
 
     // 流结束后兜底：如果 complete/error 未触发，确保 UI 不卡在 running
     if (isRunning && currentAssistantEl) {
+      console.warn('[RemoteDebug][Web] sendMessage: 流结束但未收到 complete/error，强制结束');
       finishAssistant('');
       updateStatus(false);
     }
   } catch (e) {
+    console.error('[RemoteDebug][Web] sendMessage: 异常', e.message);
     finishAssistant(T.error + ': ' + e.message);
     updateStatus(false);
   }
   ownTaskActive = false;
+  console.log('[RemoteDebug][Web] sendMessage: 结束, ownTaskActive=false, 共处理 ' + sseEventCount + ' 个 SSE 事件');
 }
 
 function handleSSEEvent(event) {
-  if (!currentAssistantEl) return;
+  if (!currentAssistantEl) {
+    console.warn('[RemoteDebug][Web] handleSSEEvent: currentAssistantEl 为 null，丢弃事件:', event.type, event);
+    return;
+  }
 
   switch (event.type) {
     case 'thinking':
@@ -1159,10 +1174,12 @@ function handleSSEEvent(event) {
       showConfirmBar(event.confirmation);
       break;
     case 'complete':
+      console.log('[RemoteDebug][Web] handleSSEEvent: complete');
       finishAssistant(event.content);
       updateStatus(false);
       break;
     case 'error':
+      console.warn('[RemoteDebug][Web] handleSSEEvent: error:', event.error);
       finishAssistant(T.error + ': ' + event.error);
       updateStatus(false);
       break;
@@ -1558,15 +1575,24 @@ async function connectEventStream() {
 
 function handleExternalEvent(evt) {
   // 自己发起的任务由 sendMessage 的 SSE 响应处理，跳过
-  if (ownTaskActive) return;
+  if (ownTaskActive) {
+    if (evt.type === 'task_started' || evt.type === 'complete' || evt.type === 'error') {
+      console.log('[RemoteDebug][Web] handleExternalEvent: ownTaskActive=true，跳过外部事件:', evt.type);
+    }
+    return;
+  }
+
+  console.log('[RemoteDebug][Web] handleExternalEvent:', evt.type, 'currentAssistantEl=' + !!currentAssistantEl, 'isRunning=' + isRunning);
 
   switch (evt.type) {
     case 'init':
       // 连接时如果有外部任务正在运行，准备接收后续事件
+      console.log('[RemoteDebug][Web] init: isRunning=' + evt.isRunning + ', hasAssistantEl=' + !!currentAssistantEl);
       if (evt.isRunning && !currentAssistantEl) {
         loadHistory(true).then(function() {
           // 历史只包含已完成的消息，为正在进行的任务创建新气泡
           if (!currentAssistantEl) {
+            console.log('[RemoteDebug][Web] init: 历史加载后创建 assistantBubble');
             currentAssistantEl = createAssistantBubble();
           }
         });
@@ -1574,6 +1600,7 @@ function handleExternalEvent(evt) {
       break;
     case 'task_started':
       // 外部通道（IM）发来新任务
+      console.log('[RemoteDebug][Web] task_started: message="' + (evt.message || '').substring(0, 60) + '"');
       var emptyEl = document.getElementById('empty-state');
       if (emptyEl) emptyEl.style.display = 'none';
       addUserBubble(evt.message);

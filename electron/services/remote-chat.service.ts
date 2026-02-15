@@ -205,6 +205,7 @@ export class RemoteChatService {
     await this.ensurePty()
 
     // 通知桌面端：远程任务开始（所有通道统一在此发送，确保 ptyId 有效）
+    console.log(`[RemoteDebug][Backend] sendMessage: 发送 gateway:remoteTaskStarted, ptyId=${this.ptyId}, message="${message.trim().substring(0, 60)}"`)
     this.sendToDesktop('gateway:remoteTaskStarted', {
       ptyId: this.ptyId,
       message: message.trim()
@@ -271,6 +272,10 @@ export class RemoteChatService {
         }
 
         // 通知桌面端
+        // 仅对非流式 message 更新的步骤打印日志，避免刷屏
+        if (step.type !== 'message' || !step.isStreaming) {
+          console.log(`[RemoteDebug][Backend] onStep → desktop: type=${step.type}, id=${step.id}, ptyId=${this.ptyId}`)
+        }
         this.sendToDesktop('agent:step', {
           agentId,
           ptyId: this.ptyId,
@@ -342,6 +347,7 @@ export class RemoteChatService {
         this._pendingConfirm = null
 
         // 通知桌面端
+        console.log(`[RemoteDebug][Backend] onComplete → desktop: ptyId=${this.ptyId}, result="${result.substring(0, 60)}"`)
         this.sendToDesktop('agent:complete', {
           agentId,
           ptyId: this.ptyId,
@@ -364,6 +370,7 @@ export class RemoteChatService {
         this._pendingConfirm = null
 
         // 通知桌面端
+        console.log(`[RemoteDebug][Backend] onError → desktop: ptyId=${this.ptyId}, error="${error.substring(0, 80)}"`)
         this.sendToDesktop('agent:error', {
           agentId,
           ptyId: this.ptyId,

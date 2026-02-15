@@ -324,6 +324,7 @@ export function useAgentMode(
     const allSteps = agentState.value?.steps || []
     const groups: AgentTaskGroup[] = []
     let currentGroup: AgentTaskGroup | null = null
+    let orphanedStepCount = 0
     
     for (const step of allSteps) {
       if (step.type === 'user_task') {
@@ -346,6 +347,8 @@ export function useAgentMode(
         // 添加到当前任务的步骤
         if (currentGroup) {
           currentGroup.steps.push(step)
+        } else {
+          orphanedStepCount++
         }
       }
     }
@@ -366,6 +369,15 @@ export function useAgentMode(
           group.steps = group.steps.slice(0, -1)
         }
       }
+    }
+    
+    // 诊断日志：仅在远程 tab 且有变化时打印
+    const tab = currentTab.value
+    if (tab?.isRemote) {
+      const stepTypes = allSteps.map(s => s.type)
+      const userTaskCount = stepTypes.filter(t => t === 'user_task').length
+      const finalResultCount = stepTypes.filter(t => t === 'final_result').length
+      console.log(`[RemoteDebug][Groups] tabId=${tab.id}, totalSteps=${allSteps.length}, groups=${groups.length}, userTasks=${userTaskCount}, finals=${finalResultCount}, orphaned=${orphanedStepCount}, stepTypes=[${stepTypes.join(',')}]`)
     }
     
     return groups

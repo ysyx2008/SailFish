@@ -980,9 +980,13 @@ export const useTerminalStore = defineStore('terminal', () => {
    */
   function addAgentStep(tabId: string, step: AgentStep): void {
     const tab = tabs.value.find(t => t.id === tabId)
-    if (!tab) return
+    if (!tab) {
+      console.warn(`[RemoteDebug][Store] addAgentStep: tab not found, tabId=${tabId}, step.type=${step.type}`)
+      return
+    }
 
     if (!tab.agentState) {
+      console.warn(`[RemoteDebug][Store] addAgentStep: 创建缺失的 agentState, tabId=${tabId}`)
       tab.agentState = {
         isRunning: false,
         steps: [],
@@ -999,6 +1003,10 @@ export const useTerminalStore = defineStore('terminal', () => {
     } else {
       // 添加新步骤
       tab.agentState.steps.push(step)
+      // 对关键步骤类型打印日志（user_task 和 final_result 是分组依据）
+      if (step.type === 'user_task' || step.type === 'final_result') {
+        console.log(`[RemoteDebug][Store] addAgentStep 新增关键步骤: tabId=${tabId}, type=${step.type}, totalSteps=${tab.agentState.steps.length}, isRemote=${tab.isRemote}`)
+      }
     }
   }
 
