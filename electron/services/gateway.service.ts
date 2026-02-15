@@ -1460,9 +1460,10 @@ function buildStepBody(step) {
     html += '<div class="ask-question">' + escapeHtml(question) + '</div>';
     if (step.toolArgs && step.toolArgs.options && step.toolArgs.options.length > 0) {
       html += '<div class="ask-options">';
-      for (var i = 0; i < step.toolArgs.options.length; i++) {
-        html += '<button class="ask-option" onclick="sendSupplement(\'' + escapeHtml(step.toolArgs.options[i]).replace(/'/g, "\\\\'") + '\')">' +
-          escapeHtml(step.toolArgs.options[i]) + '</button>';
+      for (var oi = 0; oi < step.toolArgs.options.length; oi++) {
+        var optText = step.toolArgs.options[oi];
+        html += '<button class="ask-option" data-option="' + escapeHtml(optText) + '">' +
+          escapeHtml(optText) + '</button>';
       }
       html += '</div>';
     }
@@ -1674,6 +1675,15 @@ function handleKey(e) {
 document.getElementById('token-input').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') doLogin();
 });
+
+// 事件委托：ask_user 选项按钮点击
+document.getElementById('messages').addEventListener('click', function(e) {
+  var btn = e.target.closest('.ask-option');
+  if (btn && btn.dataset.option) {
+    sendSupplement(btn.dataset.option);
+  }
+});
+
 init();
 </script>
 </body>

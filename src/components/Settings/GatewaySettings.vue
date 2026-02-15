@@ -83,7 +83,7 @@ async function toggleGateway() {
 }
 
 async function toggleAutoStart() {
-  autoStart.value = !autoStart.value
+  // v-model 已更新 autoStart，直接保存
   try {
     await window.electronAPI.gateway.setAutoStart(autoStart.value)
   } catch {
@@ -182,27 +182,34 @@ async function copyToClipboard(text: string, label: string) {
     </div>
 
     <!-- 自动启动 -->
-    <div class="form-group auto-start-row">
-      <label class="switch-label" @click="toggleAutoStart">
-        <span class="switch" :class="{ on: autoStart }">
-          <span class="switch-thumb" />
-        </span>
-        {{ t('settings.gateway.autoStart') }}
+    <div class="form-group setting-row">
+      <div>
+        <label class="setting-label">{{ t('settings.gateway.autoStart') }}</label>
+        <p class="setting-desc">{{ t('settings.gateway.autoStartHint') }}</p>
+      </div>
+      <label class="switch">
+        <input type="checkbox" v-model="autoStart" @change="toggleAutoStart" />
+        <span class="slider"></span>
       </label>
-      <span class="hint">{{ t('settings.gateway.autoStartHint') }}</span>
     </div>
 
     <!-- 启停按钮 -->
     <div class="form-group">
       <button
-        class="toggle-btn"
-        :class="{ active: isRunning }"
+        v-if="isRunning"
+        class="btn btn-sm btn-danger"
         :disabled="isLoading"
         @click="toggleGateway"
       >
-        <span v-if="isLoading">{{ t('settings.gateway.loading') }}</span>
-        <span v-else-if="isRunning">{{ t('settings.gateway.stop') }}</span>
-        <span v-else>{{ t('settings.gateway.start') }}</span>
+        {{ isLoading ? t('settings.gateway.loading') : t('settings.gateway.stop') }}
+      </button>
+      <button
+        v-else
+        class="btn btn-sm btn-primary"
+        :disabled="isLoading"
+        @click="toggleGateway"
+      >
+        {{ isLoading ? t('settings.gateway.loading') : t('settings.gateway.start') }}
       </button>
     </div>
 
@@ -215,11 +222,11 @@ async function copyToClipboard(text: string, label: string) {
         <span class="info-label">{{ t('settings.gateway.chatUrl') }}</span>
         <div class="info-value">
           <code>{{ chatUrl }}</code>
-          <button class="icon-btn" :title="t('settings.gateway.copy')" @click="copyToClipboard(chatUrl, 'url')">
-            <Copy :size="14" />
+          <button class="btn btn-sm" @click="copyToClipboard(chatUrl, 'url')">
+            <Copy :size="13" /> {{ t('settings.gateway.copy') }}
           </button>
-          <a :href="chatUrl" target="_blank" class="icon-btn" :title="t('settings.gateway.openInBrowser')">
-            <ExternalLink :size="14" />
+          <a :href="chatUrl" target="_blank" class="btn btn-sm">
+            <ExternalLink :size="13" /> {{ t('settings.gateway.openInBrowser') }}
           </a>
           <span v-if="copied === 'url'" class="copied-tip">{{ t('settings.gateway.copied') }}</span>
         </div>
@@ -229,8 +236,8 @@ async function copyToClipboard(text: string, label: string) {
         <span class="info-label">API Token</span>
         <div class="info-value">
           <code class="token-text">{{ apiToken }}</code>
-          <button class="icon-btn" :title="t('settings.gateway.copy')" @click="copyToClipboard(apiToken, 'token')">
-            <Copy :size="14" />
+          <button class="btn btn-sm" @click="copyToClipboard(apiToken, 'token')">
+            <Copy :size="13" /> {{ t('settings.gateway.copy') }}
           </button>
           <span v-if="copied === 'token'" class="copied-tip">{{ t('settings.gateway.copied') }}</span>
         </div>
@@ -321,47 +328,67 @@ h3 {
   opacity: 0.6;
 }
 
-/* Auto start toggle */
-.auto-start-row {
-  margin-bottom: 20px;
-}
-
-.switch-label {
-  display: inline-flex !important;
+/* Setting row (label + switch) */
+.setting-row {
+  display: flex;
   align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  user-select: none;
-  margin-bottom: 0 !important;
+  justify-content: space-between;
+  gap: 16px;
 }
 
+.setting-label {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.setting-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 4px 0 0;
+}
+
+/* Toggle switch - same as KnowledgeSettings */
 .switch {
-  width: 36px;
-  height: 20px;
-  border-radius: 10px;
-  background: var(--border-color);
   position: relative;
-  transition: background 0.2s;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
   flex-shrink: 0;
 }
 
-.switch.on {
-  background: var(--accent-color);
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
 }
 
-.switch-thumb {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #fff;
+.slider {
   position: absolute;
-  top: 2px;
-  left: 2px;
-  transition: transform 0.2s;
+  cursor: pointer;
+  inset: 0;
+  background-color: var(--bg-tertiary);
+  transition: 0.3s;
+  border-radius: 24px;
 }
 
-.switch.on .switch-thumb {
-  transform: translateX(16px);
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: var(--accent-primary);
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
 }
 
 .hint {
@@ -372,36 +399,17 @@ h3 {
   margin-left: 46px;
 }
 
-.toggle-btn {
-  padding: 8px 24px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid var(--accent-color);
-  background: var(--accent-color);
-  color: #fff;
-  transition: all 0.2s;
+/* btn-danger - 同 KnowledgeSettings */
+.btn-danger {
+  background: var(--bg-tertiary);
+  border-color: var(--accent-error);
+  color: var(--accent-error);
 }
 
-.toggle-btn:hover {
-  opacity: 0.9;
+.btn-danger:hover:not(:disabled) {
+  background: var(--bg-hover);
 }
 
-.toggle-btn.active {
-  background: transparent;
-  color: var(--danger-color, #f85149);
-  border-color: var(--danger-color, #f85149);
-}
-
-.toggle-btn.active:hover {
-  background: rgba(248, 81, 73, 0.1);
-}
-
-.toggle-btn:disabled {
-  opacity: 0.5;
-  cursor: wait;
-}
 
 .error-msg {
   color: var(--danger-color, #f85149);
@@ -460,24 +468,8 @@ h3 {
   white-space: nowrap;
 }
 
-.icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
+.info-value .btn {
   text-decoration: none;
-  flex-shrink: 0;
-}
-
-.icon-btn:hover {
-  background: var(--bg-tertiary, var(--bg-primary));
-  color: var(--text-primary);
 }
 
 .copied-tip {
