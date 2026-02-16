@@ -226,18 +226,30 @@ export class KnowledgeService extends EventEmitter {
       })
       
       try {
+        // 对加密内容（host-memory）先解密，确保分词和 embedding 基于原文
+        let contentForIndex = doc.content
+        if (isEncrypted(doc.content)) {
+          try {
+            contentForIndex = decrypt(doc.content)
+          } catch (e) {
+            console.warn(`[KnowledgeService] 解密失败，跳过: ${doc.filename}`)
+            continue
+          }
+        }
+
         // 重新分块
-        const chunks = this.chunker.chunk(doc.content, doc.id, { filename: doc.filename, tags: doc.tags || [] })
+        const chunks = this.chunker.chunk(contentForIndex, doc.id, { filename: doc.filename, tags: doc.tags || [] })
         
         // 生成 embedding
         const texts = chunks.map(c => c.content)
         const embeddings = await this.embeddingService.embed(texts)
         
-        // 创建向量记录
+        // 创建向量记录（host-memory 重新加密存储，普通文档保持原样）
+        const isHostMemory = doc.fileType === 'host-memory'
         const records: VectorRecord[] = chunks.map((chunk, index) => ({
           id: chunk.id,
           docId: doc.id,
-          content: chunk.content,
+          content: isHostMemory ? encrypt(chunk.content) : chunk.content,
           vector: embeddings[index],
           filename: doc.filename,
           hostId: doc.hostId || '',
@@ -251,15 +263,15 @@ export class KnowledgeService extends EventEmitter {
           await this.vectorStorage.addRecords(records)
         }
         
-        // 添加到 BM25 索引（仅当 BM25 索引为空时）
+        // 添加到 BM25 索引（仅当 BM25 索引为空时，使用原文确保关键词搜索有效）
         if (bm25Stats.documentCount === 0) {
-          const bm25Docs = records.map(record => ({
-            id: record.id,
-            docId: record.docId,
-            content: record.content,
-            filename: record.filename,
-            hostId: record.hostId,
-            tags: record.tags
+          const bm25Docs = chunks.map((chunk, index) => ({
+            id: records[index].id,
+            docId: doc.id,
+            content: chunk.content,
+            filename: doc.filename,
+            hostId: doc.hostId || '',
+            tags: (doc.tags || []).join(',')
           }))
           await this.bm25Index.addDocuments(bm25Docs)
         }
@@ -1135,11 +1147,11 @@ export class KnowledgeService extends EventEmitter {
       // 添加到向量存储
       await this.vectorStorage.addRecords([record])
 
-      // 添加到 BM25 索引
+      // 添加到 BM25 索引（使用原文，而非加密内容，确保关键词搜索正常工作）
       await this.bm25Index.addDocuments([{
         id: record.id,
         docId: record.docId,
-        content: record.content,
+        content: memory,
         filename: record.filename,
         hostId: record.hostId,
         tags: record.tags

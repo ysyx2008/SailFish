@@ -332,7 +332,7 @@ export class BM25Index extends EventEmitter {
       }
 
       const data = {
-        version: 1,
+        version: 2,
         k1: this.k1,
         b: this.b,
         avgDocLength: this.avgDocLength,
@@ -362,8 +362,8 @@ export class BM25Index extends EventEmitter {
 
       const data = JSON.parse(fs.readFileSync(this.indexPath, 'utf-8'))
       
-      if (data.version !== 1) {
-        console.warn('[BM25] Index version mismatch, starting fresh')
+      if (data.version !== 2) {
+        console.warn('[BM25] Index version mismatch (v%d → v2), rebuilding', data.version || 1)
         return
       }
 
