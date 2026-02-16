@@ -241,7 +241,8 @@ export class RemoteChatService {
         shell: process.env.SHELL || 'bash'
       },
       terminalType: 'local' as const,
-      remoteChannel: remoteChannel || 'desktop' as const
+      remoteChannel: remoteChannel || 'desktop' as const,
+      hostId: 'local'
     }
 
     const agentConfig = {
