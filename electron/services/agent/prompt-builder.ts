@@ -539,7 +539,7 @@ export function buildSystemPrompt(
   mbtiType?: AgentMbtiType,
   knowledgeContext?: string,
   knowledgeEnabled?: boolean,
-  hostMemories?: string[],
+  hostMemories?: string[] | HostMemoryEntry[],
   executionMode?: ExecutionMode,
   aiRules?: string,
   taskSummaries?: string,

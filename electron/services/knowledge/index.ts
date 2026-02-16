@@ -46,7 +46,7 @@ interface HostMemoryItem {
   content: string
   createdAt: number
   vector: number[] | null
-  volatility?: string
+  volatility?: MemoryVolatility
   source?: string
 }
 
@@ -115,6 +115,19 @@ export class KnowledgeService extends EventEmitter {
     
     // 加载文档索引
     this.loadDocumentsIndex()
+    
+    // 自检：配置存储异常恢复
+    // 当配置被重置为默认值（加密密钥变化、文件损坏等），但文档索引仍在磁盘上时，
+    // 自动恢复 enabled 和 enableHostMemory 设置，避免用户感知到"知识库突然消失"。
+    if (!this.settings.enabled && this.documentsIndex.size > 0) {
+      console.warn(
+        `[KnowledgeService] 配置异常恢复：知识库已禁用但存在 ${this.documentsIndex.size} 个文档，自动启用。` +
+        '如果你确实想禁用知识库，请在设置中手动关闭。'
+      )
+      this.settings.enabled = true
+      this.settings.enableHostMemory = true
+      this.configService.updateKnowledgeSettings({ enabled: true, enableHostMemory: true })
+    }
   }
 
   /**
@@ -770,12 +783,12 @@ export class KnowledgeService extends EventEmitter {
 
   /**
    * 获取当前设置（始终从配置服务读取最新值）
+   * 注意：此方法不会更新内部 this.settings 缓存，
+   * this.settings 仅通过 constructor 和 updateSettings() 更新，
+   * 避免配置存储异常时意外覆盖运行时状态。
    */
   getSettings(): KnowledgeSettings {
-    // 从配置服务获取最新设置
-    const currentSettings = this.configService.getKnowledgeSettings()
-    this.settings = currentSettings
-    return { ...currentSettings }
+    return this.configService.getKnowledgeSettings()
   }
 
   /**
@@ -1337,7 +1350,7 @@ export class KnowledgeService extends EventEmitter {
     hostId: string,
     contextHint?: string,
     maxMemories: number = 15
-  ): Promise<Array<{ content: string; createdAt: number; volatility?: string; source?: string }>> {
+  ): Promise<Array<{ content: string; createdAt: number; volatility?: MemoryVolatility; source?: string }>> {
     if (this.settings.enableHostMemory === false) {
       return []
     }
