@@ -8,6 +8,7 @@ const dingtalkExpanded = ref(false)
 const feishuExpanded = ref(false)
 const slackExpanded = ref(false)
 const telegramExpanded = ref(false)
+const wecomExpanded = ref(false)
 
 // 钉钉
 const dtClientId = ref('')
@@ -32,11 +33,22 @@ const tgBotToken = ref('')
 const tgConnected = ref(false)
 const tgConnecting = ref(false)
 const tgError = ref('')
+// 企业微信
+const wcCorpId = ref('')
+const wcCorpSecret = ref('')
+const wcAgentId = ref(0)
+const wcToken = ref('')
+const wcEncodingAESKey = ref('')
+const wcCallbackPort = ref(3722)
+const wcConnected = ref(false)
+const wcConnecting = ref(false)
+const wcError = ref('')
 // 每平台自动连接
 const dtAutoConnect = ref(false)
 const fsAutoConnect = ref(false)
 const slAutoConnect = ref(false)
 const tgAutoConnect = ref(false)
+const wcAutoConnect = ref(false)
 // 执行模式
 const executionMode = ref<'strict' | 'relaxed' | 'free'>('relaxed')
 // 自由模式二次确认弹窗
@@ -60,6 +72,9 @@ onMounted(async () => {
     } else if (data.platform === 'telegram') {
       tgConnected.value = data.connected
       if (!data.connected) tgConnecting.value = false
+    } else if (data.platform === 'wecom') {
+      wcConnected.value = data.connected
+      if (!data.connected) wcConnecting.value = false
     }
   })
 })
@@ -75,6 +90,7 @@ async function loadIMSettings() {
     fsConnected.value = status.feishu?.connected ?? false
     slConnected.value = status.slack?.connected ?? false
     tgConnected.value = status.telegram?.connected ?? false
+    wcConnected.value = status.wecom?.connected ?? false
 
     const config = await window.electronAPI.im.getConfig()
     dtClientId.value = config.dingtalk?.clientId || ''
@@ -88,6 +104,13 @@ async function loadIMSettings() {
     slAutoConnect.value = config.slack?.autoConnect || false
     tgBotToken.value = config.telegram?.botToken || ''
     tgAutoConnect.value = config.telegram?.autoConnect || false
+    wcCorpId.value = config.wecom?.corpId || ''
+    wcCorpSecret.value = config.wecom?.corpSecret || ''
+    wcAgentId.value = config.wecom?.agentId || 0
+    wcToken.value = config.wecom?.token || ''
+    wcEncodingAESKey.value = config.wecom?.encodingAESKey || ''
+    wcCallbackPort.value = config.wecom?.callbackPort || 3722
+    wcAutoConnect.value = config.wecom?.autoConnect || false
     executionMode.value = config.executionMode || 'relaxed'
   } catch {
     // ignore
@@ -242,6 +265,52 @@ async function toggleTgAutoConnect() {
     await window.electronAPI.im.setAutoConnect('telegram', tgAutoConnect.value)
   } catch {
     tgAutoConnect.value = !tgAutoConnect.value
+  }
+}
+
+async function toggleWeCom() {
+  wcError.value = ''
+  if (wcConnected.value) {
+    await window.electronAPI.im.stopWeCom()
+    wcConnected.value = false
+  } else {
+    if (!wcCorpId.value || !wcCorpSecret.value || !wcAgentId.value) {
+      wcError.value = 'Corp ID, Corp Secret and Agent ID are required'
+      return
+    }
+    if (!wcToken.value || !wcEncodingAESKey.value) {
+      wcError.value = 'Token and EncodingAESKey are required'
+      return
+    }
+    wcConnecting.value = true
+    try {
+      const result = await window.electronAPI.im.startWeCom({
+        enabled: true,
+        corpId: wcCorpId.value,
+        corpSecret: wcCorpSecret.value,
+        agentId: wcAgentId.value,
+        token: wcToken.value,
+        encodingAESKey: wcEncodingAESKey.value,
+        callbackPort: wcCallbackPort.value || 3722
+      })
+      if (result.success) {
+        wcConnected.value = true
+      } else {
+        wcError.value = result.error || t('settings.im.connectFailed')
+      }
+    } catch (e: any) {
+      wcError.value = e.message
+    } finally {
+      wcConnecting.value = false
+    }
+  }
+}
+
+async function toggleWcAutoConnect() {
+  try {
+    await window.electronAPI.im.setAutoConnect('wecom', wcAutoConnect.value)
+  } catch {
+    wcAutoConnect.value = !wcAutoConnect.value
   }
 }
 
@@ -478,6 +547,7 @@ function cancelFreeMode() {
       <div class="im-platform-card" :class="{ expanded: telegramExpanded, connected: tgConnected }">
         <button class="im-platform-header" @click="telegramExpanded = !telegramExpanded">
           <span class="im-platform-name">{{ t('settings.im.telegram') }}</span>
+          <span class="beta-badge" :title="t('settings.im.betaTooltip')">{{ t('settings.im.betaBadge') }}</span>
           <span class="im-status-indicator" :class="{ connected: tgConnected, connecting: tgConnecting }">
             <span class="indicator-dot"></span>
             {{ tgConnecting ? t('settings.im.connecting') : (tgConnected ? t('settings.im.connected') : t('settings.im.disconnected')) }}
@@ -528,7 +598,119 @@ function cancelFreeMode() {
         </div>
       </div>
 
-      <!-- 运行模式 -->
+      <!-- 企业微信 -->
+      <div class="im-platform-card" :class="{ expanded: wecomExpanded, connected: wcConnected }">
+        <button class="im-platform-header" @click="wecomExpanded = !wecomExpanded">
+          <span class="im-platform-name">{{ t('settings.im.wecom') }}</span>
+          <span class="beta-badge" :title="t('settings.im.betaTooltip')">{{ t('settings.im.betaBadge') }}</span>
+          <span class="im-status-indicator" :class="{ connected: wcConnected, connecting: wcConnecting }">
+            <span class="indicator-dot"></span>
+            {{ wcConnecting ? t('settings.im.connecting') : (wcConnected ? t('settings.im.connected') : t('settings.im.disconnected')) }}
+          </span>
+          <span class="toggle-arrow" :class="{ open: wecomExpanded }">›</span>
+        </button>
+
+        <div v-if="wecomExpanded" class="im-platform-body">
+          <div class="im-hint">
+            <p class="hint-summary">{{ t('settings.im.wecomHint') }}</p>
+            <ol class="setup-steps">
+              <li>{{ t('settings.im.wecomStep1') }}</li>
+              <li>{{ t('settings.im.wecomStep2') }}</li>
+              <li>{{ t('settings.im.wecomStep3') }}</li>
+              <li>{{ t('settings.im.wecomStep4') }}</li>
+            </ol>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">{{ t('settings.im.wecomCorpId') }}</label>
+            <input
+              v-model="wcCorpId"
+              type="text"
+              :disabled="wcConnected"
+              class="input-field"
+              placeholder="Corp ID"
+            />
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ t('settings.im.wecomCorpSecret') }}</label>
+            <input
+              v-model="wcCorpSecret"
+              type="password"
+              :disabled="wcConnected"
+              class="input-field"
+              placeholder="Corp Secret"
+            />
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ t('settings.im.wecomAgentId') }}</label>
+            <input
+              v-model.number="wcAgentId"
+              type="number"
+              :disabled="wcConnected"
+              class="input-field"
+              placeholder="Agent ID"
+            />
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ t('settings.im.wecomToken') }}</label>
+            <input
+              v-model="wcToken"
+              type="password"
+              :disabled="wcConnected"
+              class="input-field"
+              placeholder="Token"
+            />
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ t('settings.im.wecomEncodingAESKey') }}</label>
+            <input
+              v-model="wcEncodingAESKey"
+              type="password"
+              :disabled="wcConnected"
+              class="input-field"
+              placeholder="EncodingAESKey"
+            />
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ t('settings.im.wecomCallbackPort') }}</label>
+            <input
+              v-model.number="wcCallbackPort"
+              type="number"
+              :disabled="wcConnected"
+              class="input-field"
+              placeholder="3722"
+            />
+          </div>
+
+          <div v-if="wcError" class="error-msg">{{ wcError }}</div>
+
+          <div class="im-card-actions">
+            <label class="auto-connect-label">
+              <input type="checkbox" v-model="wcAutoConnect" @change="toggleWcAutoConnect" />
+              <span>{{ t('settings.im.autoConnect') }}</span>
+            </label>
+            <button
+              v-if="wcConnected"
+              class="btn btn-sm btn-outline-danger"
+              @click="toggleWeCom"
+            >{{ t('settings.im.disconnect') }}</button>
+            <button
+              v-else
+              class="btn btn-sm btn-primary"
+              :disabled="wcConnecting"
+              @click="toggleWeCom"
+            >{{ wcConnecting ? t('settings.im.connecting') : t('settings.im.connect') }}</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="security-note">
+        {{ t('settings.im.securityNote') }}
+      </div>
+    </div>
+
+    <!-- 运行模式（独立区块） -->
+    <div class="settings-section">
       <div class="execution-mode-section">
         <span class="execution-mode-title">{{ t('settings.im.executionMode') }}</span>
         <div class="execution-mode-selector">
@@ -552,10 +734,6 @@ function cancelFreeMode() {
           >{{ t('settings.im.modeFree') }}</button>
         </div>
         <span class="execution-mode-desc">{{ t('settings.im.executionModeDesc') }}</span>
-      </div>
-
-      <div class="security-note">
-        {{ t('settings.im.securityNote') }}
       </div>
     </div>
 
@@ -615,6 +793,18 @@ function cancelFreeMode() {
             <li>{{ t('settings.im.guideTelegramStep1') }}</li>
             <li>{{ t('settings.im.guideTelegramStep2') }}</li>
             <li>{{ t('settings.im.guideTelegramStep3') }}</li>
+          </ol>
+        </div>
+
+        <!-- 企业微信配置 -->
+        <div class="guide-card">
+          <h5 class="guide-card-title">🔧 {{ t('settings.im.guideWecomTitle') }}</h5>
+          <ol class="guide-steps">
+            <li>{{ t('settings.im.guideWecomStep1') }}</li>
+            <li>{{ t('settings.im.guideWecomStep2') }}</li>
+            <li>{{ t('settings.im.guideWecomStep3') }}</li>
+            <li>{{ t('settings.im.guideWecomStep4') }}</li>
+            <li>{{ t('settings.im.guideWecomStep5') }}</li>
           </ol>
         </div>
 
@@ -816,6 +1006,21 @@ function cancelFreeMode() {
   font-size: 13px;
 }
 
+.beta-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(210, 153, 34, 0.15);
+  color: var(--warning-color, #d29922);
+  border: 1px solid rgba(210, 153, 34, 0.3);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: help;
+}
+
 /* 状态指示器 */
 .im-status-indicator {
   display: inline-flex;
@@ -945,7 +1150,6 @@ function cancelFreeMode() {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
   padding: 10px 14px;
   border: 1px solid var(--border-color);
   border-radius: 8px;

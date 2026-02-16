@@ -248,18 +248,16 @@ export async function sendFileToChat(
   const fileName = args.file_name as string | undefined
 
   if (!filePath || typeof filePath !== 'string') {
-    return { success: false, output: '', error: '必须提供 file_path 参数' }
+    return { success: false, output: '', error: t('im.tool_file_path_required') }
   }
 
-  // 通过 IMService 单例发送文件（动态导入避免循环依赖）
   const { getIMService } = await import('../../im/im.service')
   const imService = getIMService()
 
   if (!imService.hasActiveSession()) {
-    return { success: false, output: '', error: '当前没有活跃的 IM 会话，此工具仅在通过钉钉/飞书交互时可用' }
+    return { success: false, output: '', error: t('im.tool_no_active_session') }
   }
 
-  // 获取文件大小用于显示
   let fileSizeDisplay = ''
   try {
     const { statSync } = await import('fs')
@@ -274,7 +272,7 @@ export async function sendFileToChat(
 
   executor.addStep({
     type: 'tool_call',
-    content: `📤 发送文件: ${displayName}${fileSizeDisplay}`,
+    content: t('im.tool_sending_file', { name: displayName, size: fileSizeDisplay }),
     toolName: 'send_file_to_chat',
     toolArgs: { file_path: filePath, file_name: fileName },
     riskLevel: 'safe'
@@ -285,19 +283,19 @@ export async function sendFileToChat(
   if (result.success) {
     executor.addStep({
       type: 'tool_result',
-      content: `✅ 文件已发送: ${displayName}`,
+      content: t('im.tool_file_sent', { name: displayName }),
       toolName: 'send_file_to_chat',
-      toolResult: `文件已成功发送: ${displayName}`
+      toolResult: t('im.tool_file_sent_output', { name: displayName })
     })
-    return { success: true, output: `文件已成功发送到聊天: ${displayName}` }
+    return { success: true, output: t('im.tool_file_sent_to_chat', { name: displayName }) }
   } else {
     executor.addStep({
       type: 'tool_result',
-      content: `❌ 文件发送失败: ${result.error}`,
+      content: t('im.tool_file_send_failed', { error: result.error || '' }),
       toolName: 'send_file_to_chat',
-      toolResult: result.error || '未知错误'
+      toolResult: result.error || t('error.unknown')
     })
-    return { success: false, output: '', error: result.error || '文件发送失败' }
+    return { success: false, output: '', error: result.error || t('im.tool_file_send_failed_output') }
   }
 }
 
@@ -316,24 +314,21 @@ export async function sendImageToChat(
   const filePath = args.file_path as string
 
   if (!filePath || typeof filePath !== 'string') {
-    return { success: false, output: '', error: '必须提供 file_path 参数' }
+    return { success: false, output: '', error: t('im.tool_file_path_required') }
   }
 
-  // 校验文件扩展名
   const ext = filePath.substring(filePath.lastIndexOf('.')).toLowerCase()
   if (!IMAGE_EXTENSIONS.has(ext)) {
-    return { success: false, output: '', error: `不支持的图片格式: ${ext}，请使用 send_file_to_chat 发送非图片文件` }
+    return { success: false, output: '', error: t('im.tool_unsupported_image_format', { ext }) }
   }
 
-  // 通过 IMService 单例发送图片（动态导入避免循环依赖）
   const { getIMService } = await import('../../im/im.service')
   const imService = getIMService()
 
   if (!imService.hasActiveSession()) {
-    return { success: false, output: '', error: '当前没有活跃的 IM 会话，此工具仅在通过钉钉/飞书交互时可用' }
+    return { success: false, output: '', error: t('im.tool_no_active_session') }
   }
 
-  // 获取文件大小用于显示
   let fileSizeDisplay = ''
   try {
     const { statSync } = await import('fs')
@@ -348,7 +343,7 @@ export async function sendImageToChat(
 
   executor.addStep({
     type: 'tool_call',
-    content: `🖼️ 发送图片: ${displayName}${fileSizeDisplay}`,
+    content: t('im.tool_sending_image', { name: displayName, size: fileSizeDisplay }),
     toolName: 'send_image_to_chat',
     toolArgs: { file_path: filePath },
     riskLevel: 'safe'
@@ -359,19 +354,19 @@ export async function sendImageToChat(
   if (result.success) {
     executor.addStep({
       type: 'tool_result',
-      content: `✅ 图片已发送: ${displayName}`,
+      content: t('im.tool_image_sent', { name: displayName }),
       toolName: 'send_image_to_chat',
-      toolResult: `图片已成功发送: ${displayName}`
+      toolResult: t('im.tool_image_sent_output', { name: displayName })
     })
-    return { success: true, output: `图片已成功发送到聊天: ${displayName}` }
+    return { success: true, output: t('im.tool_image_sent_to_chat', { name: displayName }) }
   } else {
     executor.addStep({
       type: 'tool_result',
-      content: `❌ 图片发送失败: ${result.error}`,
+      content: t('im.tool_image_send_failed', { error: result.error || '' }),
       toolName: 'send_image_to_chat',
-      toolResult: result.error || '未知错误'
+      toolResult: result.error || t('error.unknown')
     })
-    return { success: false, output: '', error: result.error || '图片发送失败' }
+    return { success: false, output: '', error: result.error || t('im.tool_image_send_failed_output') }
   }
 }
 
@@ -644,21 +639,20 @@ export async function sendIMNotification(
   const title = typeof args.title === 'string' ? args.title : undefined
 
   if (!message || typeof message !== 'string') {
-    return { success: false, output: '', error: '消息内容不能为空' }
+    return { success: false, output: '', error: t('im.tool_message_required') }
   }
 
-  // 动态导入 IMService 单例（避免循环依赖）
   const { getIMService } = await import('../../im/im.service')
   const imService = getIMService()
 
   const lastContact = imService.getLastContact()
   if (!lastContact) {
-    return { success: false, output: '', error: '没有最近的 IM 联系记录。需要用户先通过钉钉或飞书与 AI 对话，才能主动发送通知。' }
+    return { success: false, output: '', error: t('im.tool_no_contact') }
   }
 
   executor.addStep({
     type: 'tool_call',
-    content: `📤 发送 IM 通知 → ${lastContact.platform}`,
+    content: t('im.tool_sending_notification', { platform: lastContact.platform }),
     toolName: 'send_im_notification',
     toolArgs: { message: message.substring(0, 100), title },
     riskLevel: 'safe'
@@ -670,10 +664,10 @@ export async function sendIMNotification(
   })
 
   if (result.success) {
-    const output = `通知已通过 ${result.platform} 发送成功`
+    const output = t('im.tool_notification_sent', { platform: result.platform || '' })
     executor.addStep({
       type: 'tool_result',
-      content: `✅ ${output}`,
+      content: t('im.tool_notification_sent_step', { platform: result.platform || '' }),
       toolName: 'send_im_notification',
       toolResult: output
     })
@@ -681,7 +675,7 @@ export async function sendIMNotification(
   } else {
     executor.addStep({
       type: 'tool_result',
-      content: `❌ 发送失败: ${result.error}`,
+      content: t('im.tool_notification_failed', { error: result.error || '' }),
       toolName: 'send_im_notification',
       toolResult: result.error || ''
     })

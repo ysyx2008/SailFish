@@ -204,7 +204,7 @@ import { getSchedulerService, type CreateTaskParams } from './services/scheduler
 import { getRemoteChatService } from './services/remote-chat.service'
 import { getGatewayService, type GatewayConfig } from './services/gateway.service'
 import { getIMService } from './services/im/im.service'
-import type { DingTalkConfig, FeishuConfig, SlackConfig, TelegramConfig } from './services/im/types'
+import type { DingTalkConfig, FeishuConfig, SlackConfig, TelegramConfig, WeComConfig } from './services/im/types'
 
 // 禁用 GPU 加速可能导致的问题（可选）
 // app.disableHardwareAcceleration()
@@ -776,6 +776,23 @@ app.whenReady().then(async () => {
             console.error('[IM] Telegram auto-connect failed:', result.error)
           }
         }).catch(e => console.error('[IM] Telegram auto-connect error:', e))
+      }
+    }
+    if (configService.get('imWeComAutoConnect')) {
+      const wcCorpId = (configService.get('imWeComCorpId') as string) || ''
+      const wcCorpSecret = (configService.get('imWeComCorpSecret') as string) || ''
+      const wcAgentId = (configService.get('imWeComAgentId') as number) || 0
+      const wcToken = (configService.get('imWeComToken') as string) || ''
+      const wcEncodingAESKey = (configService.get('imWeComEncodingAESKey') as string) || ''
+      const wcCallbackPort = (configService.get('imWeComCallbackPort') as number) || 3722
+      if (wcCorpId && wcCorpSecret && wcAgentId && wcToken && wcEncodingAESKey) {
+        imService.startWeCom({ enabled: true, corpId: wcCorpId, corpSecret: wcCorpSecret, agentId: wcAgentId, token: wcToken, encodingAESKey: wcEncodingAESKey, callbackPort: wcCallbackPort }).then(result => {
+          if (result.success) {
+            console.log('[IM] WeCom auto-connected')
+          } else {
+            console.error('[IM] WeCom auto-connect failed:', result.error)
+          }
+        }).catch(e => console.error('[IM] WeCom auto-connect error:', e))
       }
     }
   })
@@ -1861,6 +1878,21 @@ ipcMain.handle('im:stopTelegram', async () => {
   return { success: true }
 })
 
+ipcMain.handle('im:startWeCom', async (_event, config: WeComConfig) => {
+  configService.set('imWeComCorpId', config.corpId)
+  configService.set('imWeComCorpSecret', config.corpSecret)
+  configService.set('imWeComAgentId', config.agentId)
+  configService.set('imWeComToken', config.token)
+  configService.set('imWeComEncodingAESKey', config.encodingAESKey)
+  configService.set('imWeComCallbackPort', config.callbackPort)
+  return await imService.startWeCom(config)
+})
+
+ipcMain.handle('im:stopWeCom', async () => {
+  await imService.stopWeCom()
+  return { success: true }
+})
+
 ipcMain.handle('im:getStatus', async () => {
   return imService.getStatus()
 })
@@ -1886,6 +1918,15 @@ ipcMain.handle('im:getConfig', async () => {
       botToken: (configService.get('imTelegramBotToken') as string) || '',
       autoConnect: configService.get('imTelegramAutoConnect') || false,
     },
+    wecom: {
+      corpId: (configService.get('imWeComCorpId') as string) || '',
+      corpSecret: (configService.get('imWeComCorpSecret') as string) || '',
+      agentId: (configService.get('imWeComAgentId') as number) || 0,
+      token: (configService.get('imWeComToken') as string) || '',
+      encodingAESKey: (configService.get('imWeComEncodingAESKey') as string) || '',
+      callbackPort: (configService.get('imWeComCallbackPort') as number) || 3722,
+      autoConnect: configService.get('imWeComAutoConnect') || false,
+    },
     executionMode: (configService.get('imExecutionMode') as string) || 'relaxed',
   }
 })
@@ -1899,6 +1940,8 @@ ipcMain.handle('im:setAutoConnect', async (_event, platform: string, enabled: bo
     configService.set('imSlackAutoConnect', enabled)
   } else if (platform === 'telegram') {
     configService.set('imTelegramAutoConnect', enabled)
+  } else if (platform === 'wecom') {
+    configService.set('imWeComAutoConnect', enabled)
   }
 })
 

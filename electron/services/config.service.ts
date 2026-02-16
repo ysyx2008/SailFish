@@ -134,6 +134,13 @@ interface StoreSchema {
   imFeishuAutoConnect: boolean    // 飞书自动连接
   imFeishuAppId: string           // 飞书 App ID
   imFeishuAppSecret: string       // 飞书 App Secret
+  imWeComAutoConnect: boolean     // 企业微信自动连接
+  imWeComCorpId: string           // 企业微信 Corp ID
+  imWeComCorpSecret: string       // 企业微信 Corp Secret
+  imWeComAgentId: number          // 企业微信 Agent ID
+  imWeComToken: string            // 企业微信回调 Token
+  imWeComEncodingAESKey: string   // 企业微信回调加密密钥
+  imWeComCallbackPort: number     // 企业微信回调端口
   imExecutionMode: 'strict' | 'relaxed' | 'free'  // IM Agent 执行模式，默认 relaxed
 }
 
@@ -175,6 +182,13 @@ const defaultConfig: StoreSchema = {
   imFeishuAutoConnect: false,
   imFeishuAppId: '',
   imFeishuAppSecret: '',
+  imWeComAutoConnect: false,
+  imWeComCorpId: '',
+  imWeComCorpSecret: '',
+  imWeComAgentId: 0,
+  imWeComToken: '',
+  imWeComEncodingAESKey: '',
+  imWeComCallbackPort: 3722,
   imExecutionMode: 'relaxed'
 }
 

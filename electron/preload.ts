@@ -2651,12 +2651,17 @@ const electronAPI = {
       ipcRenderer.invoke('im:startTelegram', config) as Promise<{ success: boolean; error?: string }>,
     stopTelegram: () =>
       ipcRenderer.invoke('im:stopTelegram') as Promise<{ success: boolean }>,
+    startWeCom: (config: { enabled: boolean; corpId: string; corpSecret: string; agentId: number; token: string; encodingAESKey: string; callbackPort: number }) =>
+      ipcRenderer.invoke('im:startWeCom', config) as Promise<{ success: boolean; error?: string }>,
+    stopWeCom: () =>
+      ipcRenderer.invoke('im:stopWeCom') as Promise<{ success: boolean }>,
     getStatus: () =>
       ipcRenderer.invoke('im:getStatus') as Promise<{
         dingtalk: { enabled: boolean; connected: boolean }
         feishu: { enabled: boolean; connected: boolean }
         slack: { enabled: boolean; connected: boolean }
         telegram: { enabled: boolean; connected: boolean }
+        wecom: { enabled: boolean; connected: boolean }
       }>,
     getConfig: () =>
       ipcRenderer.invoke('im:getConfig') as Promise<{
@@ -2664,6 +2669,7 @@ const electronAPI = {
         feishu: { appId: string; appSecret: string; autoConnect: boolean }
         slack: { botToken: string; appToken: string; autoConnect: boolean }
         telegram: { botToken: string; autoConnect: boolean }
+        wecom: { corpId: string; corpSecret: string; agentId: number; token: string; encodingAESKey: string; callbackPort: number; autoConnect: boolean }
         executionMode: 'strict' | 'relaxed' | 'free'
       }>,
     setAutoConnect: (platform: string, enabled: boolean) =>

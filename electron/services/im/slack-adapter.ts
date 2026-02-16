@@ -19,6 +19,7 @@ import * as os from 'os'
 import * as path from 'path'
 import type { IMAdapter, IMIncomingMessage, IMPlatform, SlackConfig, IMAttachment } from './types'
 import { IM_TEXT_MAX_LENGTH, IM_FILE_MAX_SIZE_SLACK, IM_DOWNLOAD_MAX_SIZE } from './types'
+import { t } from '../agent/i18n'
 
 // Slack SDK 懒加载
 let App: any
@@ -348,6 +349,7 @@ export class SlackAdapter implements IMAdapter {
    */
   private truncateText(text: string): string {
     if (text.length <= IM_TEXT_MAX_LENGTH) return text
-    return text.substring(0, IM_TEXT_MAX_LENGTH - 20) + '\n\n...(content truncated)'
+    const suffix = t('im.text_truncated')
+    return text.substring(0, IM_TEXT_MAX_LENGTH - suffix.length) + suffix
   }
 }

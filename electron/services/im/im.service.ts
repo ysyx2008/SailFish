@@ -22,6 +22,7 @@ import type {
   FeishuConfig,
   SlackConfig,
   TelegramConfig,
+  WeComConfig,
   SendFileResult
 } from './types'
 import { CONFIRM_KEYWORDS, REJECT_KEYWORDS, IM_TEXT_MAX_LENGTH } from './types'
@@ -29,6 +30,7 @@ import { DingTalkAdapter } from './dingtalk-adapter'
 import { FeishuAdapter } from './feishu-adapter'
 import { SlackAdapter } from './slack-adapter'
 import { TelegramAdapter } from './telegram-adapter'
+import { WeComAdapter } from './wecom-adapter'
 import { RemoteChatService } from '../remote-chat.service'
 import { t } from '../agent/i18n'
 
@@ -56,6 +58,10 @@ export interface IMServiceStatus {
     connected: boolean
   }
   telegram: {
+    enabled: boolean
+    connected: boolean
+  }
+  wecom: {
     enabled: boolean
     connected: boolean
   }
@@ -143,11 +149,13 @@ export class IMService {
   private feishuAdapter: FeishuAdapter | null = null
   private slackAdapter: SlackAdapter | null = null
   private telegramAdapter: TelegramAdapter | null = null
+  private wecomAdapter: WeComAdapter | null = null
   private config: IMServiceConfig = {
     dingtalk: { enabled: false, clientId: '', clientSecret: '' },
     feishu: { enabled: false, appId: '', appSecret: '' },
     slack: { enabled: false, botToken: '', appToken: '' },
     telegram: { enabled: false, botToken: '' },
+    wecom: { enabled: false, corpId: '', corpSecret: '', agentId: 0, token: '', encodingAESKey: '', callbackPort: 3722 },
     executionMode: 'relaxed',
     sessionTimeoutMinutes: 60,
   }
@@ -364,6 +372,51 @@ export class IMService {
     return this.telegramAdapter?.isConnected() ?? false
   }
 
+  // ==================== 企业微信管理 ====================
+
+  async startWeCom(config: WeComConfig): Promise<{ success: boolean; error?: string }> {
+    if (!config.corpId || !config.corpSecret || !config.agentId) {
+      return { success: false, error: 'Corp ID, Corp Secret and Agent ID are required' }
+    }
+    if (!config.token || !config.encodingAESKey) {
+      return { success: false, error: 'Token and EncodingAESKey are required for callback verification' }
+    }
+
+    try {
+      await this.stopWeCom()
+
+      this.config.wecom = { ...config, enabled: true }
+      this.wecomAdapter = new WeComAdapter(config)
+
+      this.wecomAdapter.onMessage = (msg: IMIncomingMessage) => this.handleIncomingMessage(msg)
+      this.wecomAdapter.onConnectionChange = (connected: boolean) => {
+        this.sendToDesktop('im:connectionChange', { platform: 'wecom', connected })
+      }
+
+      await this.wecomAdapter.start()
+      console.log('[IM] WeCom started')
+      return { success: true }
+    } catch (err: any) {
+      console.error('[IM] WeCom start failed:', err)
+      this.wecomAdapter = null
+      return { success: false, error: err.message || 'Failed to connect' }
+    }
+  }
+
+  async stopWeCom(): Promise<void> {
+    if (this.wecomAdapter) {
+      await this.wecomAdapter.stop()
+      this.wecomAdapter = null
+      this.config.wecom.enabled = false
+      this.sendToDesktop('im:connectionChange', { platform: 'wecom', connected: false })
+      console.log('[IM] WeCom stopped')
+    }
+  }
+
+  isWeComConnected(): boolean {
+    return this.wecomAdapter?.isConnected() ?? false
+  }
+
   // ==================== 全局操作 ====================
 
   async stopAll(): Promise<void> {
@@ -371,6 +424,7 @@ export class IMService {
     await this.stopFeishu()
     await this.stopSlack()
     await this.stopTelegram()
+    await this.stopWeCom()
   }
 
   getStatus(): IMServiceStatus {
@@ -390,6 +444,10 @@ export class IMService {
       telegram: {
         enabled: this.config.telegram.enabled,
         connected: this.isTelegramConnected(),
+      },
+      wecom: {
+        enabled: this.config.wecom.enabled,
+        connected: this.isWeComConnected(),
       }
     }
   }
@@ -617,11 +675,12 @@ export class IMService {
     }
 
     // 将 IM 平台类型映射为 remoteChannel（显式匹配，避免未来新增平台时默认值错误）
-    const channelMap: Record<IMPlatform, 'dingtalk' | 'feishu' | 'slack' | 'telegram'> = {
+    const channelMap: Record<IMPlatform, 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'> = {
       dingtalk: 'dingtalk',
       feishu: 'feishu',
       slack: 'slack',
       telegram: 'telegram',
+      wecom: 'wecom',
     }
     const remoteChannel = channelMap[msg.platform]
 
@@ -860,6 +919,7 @@ export class IMService {
     if (platform === 'feishu') return this.feishuAdapter
     if (platform === 'slack') return this.slackAdapter
     if (platform === 'telegram') return this.telegramAdapter
+    if (platform === 'wecom') return this.wecomAdapter
     return null
   }
 
@@ -878,6 +938,7 @@ export class IMService {
       connected('Feishu', this.isFeishuConnected()),
       connected('Slack', this.isSlackConnected()),
       connected('Telegram', this.isTelegramConnected()),
+      connected('WeCom', this.isWeComConnected()),
     ].join('\n')
   }
 

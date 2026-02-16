@@ -37,7 +37,7 @@
 | 🔁 重复性操作？ | Agent 自动化执行多步任务 |
 | 🏢 内网环境？ | 支持私有化 AI 模型和代理 |
 | 🛠️ CLI 配置太复杂？ | 图形界面，开箱即用 |
-| 📱 不在电脑旁？ | 通过 Web、钉钉、飞书、Slack、Telegram 远程访问 Agent |
+| 📱 不在电脑旁？ | 通过 Web、钉钉、飞书、企业微信、Slack、Telegram 远程访问 Agent |
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome.jpg" width="800" alt="旗鱼终端">
@@ -48,7 +48,7 @@
 | 功能 | 说明 |
 |------|------|
 | 🤖 **AI Agent** | 描述任务，Agent 自动规划执行 |
-| 🌐 **远程 Agent** | 随时随地访问你的 Agent——Web、钉钉、飞书、Slack、Telegram |
+| 🌐 **远程 Agent** | 随时随地访问你的 Agent——Web、钉钉、飞书、企业微信、Slack、Telegram |
 | 🖥️ **SSH/SFTP** | 完整的远程连接和文件管理 |
 | 📁 **文件管理器** | 双栏文件管理器，支持本地与远程 |
 | 📚 **知识库** | 本地 RAG，完全离线运行 |

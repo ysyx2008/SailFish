@@ -16,6 +16,7 @@ import * as os from 'os'
 import * as path from 'path'
 import type { IMAdapter, IMIncomingMessage, IMPlatform, DingTalkConfig, IMAttachment } from './types'
 import { IM_TEXT_MAX_LENGTH, IM_FILE_MAX_SIZE_DINGTALK, IM_DOWNLOAD_MAX_SIZE } from './types'
+import { t } from '../agent/i18n'
 
 // dingtalk-stream SDK 导入
 let DWClient: any
@@ -598,6 +599,7 @@ export class DingTalkAdapter implements IMAdapter {
    */
   private truncateText(text: string): string {
     if (text.length <= IM_TEXT_MAX_LENGTH) return text
-    return text.substring(0, IM_TEXT_MAX_LENGTH - 20) + '\n\n...(内容已截断)'
+    const suffix = t('im.text_truncated')
+    return text.substring(0, IM_TEXT_MAX_LENGTH - suffix.length) + suffix
   }
 }

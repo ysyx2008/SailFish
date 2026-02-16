@@ -27,11 +27,22 @@ export interface TelegramConfig {
   botToken: string      // 123456:ABC-DEF...
 }
 
+export interface WeComConfig {
+  enabled: boolean
+  corpId: string        // 企业 ID
+  corpSecret: string    // 应用 Secret
+  agentId: number       // 应用 AgentId
+  token: string         // 回调 Token
+  encodingAESKey: string // 回调加密密钥
+  callbackPort: number  // 本地回调服务端口，默认 3722
+}
+
 export interface IMServiceConfig {
   dingtalk: DingTalkConfig
   feishu: FeishuConfig
   slack: SlackConfig
   telegram: TelegramConfig
+  wecom: WeComConfig
   /** Agent 执行模式，默认 relaxed */
   executionMode: 'strict' | 'relaxed' | 'free'
   /** 空闲会话超时（分钟），默认 60 */
@@ -40,7 +51,7 @@ export interface IMServiceConfig {
 
 // ==================== 适配器接口 ====================
 
-export type IMPlatform = 'dingtalk' | 'feishu' | 'slack' | 'telegram'
+export type IMPlatform = 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'
 
 /**
  * IM 接收消息中的附件（图片、语音、视频、文件）
@@ -112,6 +123,7 @@ export const IM_FILE_MAX_SIZE_DINGTALK = 20 * 1024 * 1024  // 钉钉: 20MB
 export const IM_FILE_MAX_SIZE_FEISHU = 30 * 1024 * 1024    // 飞书: 30MB
 export const IM_FILE_MAX_SIZE_SLACK = 1 * 1024 * 1024 * 1024  // Slack: 1GB（Free 计划实际 API 限制通常更小，此处为用户侧防御性限制）
 export const IM_FILE_MAX_SIZE_TELEGRAM = 50 * 1024 * 1024  // Telegram: 50MB
+export const IM_FILE_MAX_SIZE_WECOM = 20 * 1024 * 1024    // 企业微信: 20MB
 
 /** 图片上传大小限制（字节） */
 export const IM_IMAGE_MAX_SIZE_FEISHU = 10 * 1024 * 1024   // 飞书: 10MB
