@@ -6,6 +6,8 @@ const { t } = useI18n()
 
 const dingtalkExpanded = ref(false)
 const feishuExpanded = ref(false)
+const slackExpanded = ref(false)
+const telegramExpanded = ref(false)
 
 // 钉钉
 const dtClientId = ref('')
@@ -19,9 +21,22 @@ const fsAppSecret = ref('')
 const fsConnected = ref(false)
 const fsConnecting = ref(false)
 const fsError = ref('')
+// Slack
+const slBotToken = ref('')
+const slAppToken = ref('')
+const slConnected = ref(false)
+const slConnecting = ref(false)
+const slError = ref('')
+// Telegram
+const tgBotToken = ref('')
+const tgConnected = ref(false)
+const tgConnecting = ref(false)
+const tgError = ref('')
 // 每平台自动连接
 const dtAutoConnect = ref(false)
 const fsAutoConnect = ref(false)
+const slAutoConnect = ref(false)
+const tgAutoConnect = ref(false)
 // 执行模式
 const executionMode = ref<'strict' | 'relaxed' | 'free'>('relaxed')
 // 自由模式二次确认弹窗
@@ -39,6 +54,12 @@ onMounted(async () => {
     } else if (data.platform === 'feishu') {
       fsConnected.value = data.connected
       if (!data.connected) fsConnecting.value = false
+    } else if (data.platform === 'slack') {
+      slConnected.value = data.connected
+      if (!data.connected) slConnecting.value = false
+    } else if (data.platform === 'telegram') {
+      tgConnected.value = data.connected
+      if (!data.connected) tgConnecting.value = false
     }
   })
 })
@@ -52,6 +73,8 @@ async function loadIMSettings() {
     const status = await window.electronAPI.im.getStatus()
     dtConnected.value = status.dingtalk.connected
     fsConnected.value = status.feishu.connected
+    slConnected.value = status.slack.connected
+    tgConnected.value = status.telegram.connected
 
     const config = await window.electronAPI.im.getConfig()
     dtClientId.value = config.dingtalk?.clientId || ''
@@ -60,6 +83,11 @@ async function loadIMSettings() {
     fsAppId.value = config.feishu?.appId || ''
     fsAppSecret.value = config.feishu?.appSecret || ''
     fsAutoConnect.value = config.feishu?.autoConnect || false
+    slBotToken.value = config.slack?.botToken || ''
+    slAppToken.value = config.slack?.appToken || ''
+    slAutoConnect.value = config.slack?.autoConnect || false
+    tgBotToken.value = config.telegram?.botToken || ''
+    tgAutoConnect.value = config.telegram?.autoConnect || false
     executionMode.value = config.executionMode || 'relaxed'
   } catch {
     // ignore
@@ -126,6 +154,65 @@ async function toggleFeishu() {
   }
 }
 
+async function toggleSlack() {
+  slError.value = ''
+  if (slConnected.value) {
+    await window.electronAPI.im.stopSlack()
+    slConnected.value = false
+  } else {
+    if (!slBotToken.value || !slAppToken.value) {
+      slError.value = 'Bot Token and App Token are required'
+      return
+    }
+    slConnecting.value = true
+    try {
+      const result = await window.electronAPI.im.startSlack({
+        enabled: true,
+        botToken: slBotToken.value,
+        appToken: slAppToken.value
+      })
+      if (result.success) {
+        slConnected.value = true
+      } else {
+        slError.value = result.error || t('settings.im.connectFailed')
+      }
+    } catch (e: any) {
+      slError.value = e.message
+    } finally {
+      slConnecting.value = false
+    }
+  }
+}
+
+async function toggleTelegram() {
+  tgError.value = ''
+  if (tgConnected.value) {
+    await window.electronAPI.im.stopTelegram()
+    tgConnected.value = false
+  } else {
+    if (!tgBotToken.value) {
+      tgError.value = 'Bot Token is required'
+      return
+    }
+    tgConnecting.value = true
+    try {
+      const result = await window.electronAPI.im.startTelegram({
+        enabled: true,
+        botToken: tgBotToken.value
+      })
+      if (result.success) {
+        tgConnected.value = true
+      } else {
+        tgError.value = result.error || t('settings.im.connectFailed')
+      }
+    } catch (e: any) {
+      tgError.value = e.message
+    } finally {
+      tgConnecting.value = false
+    }
+  }
+}
+
 async function toggleDtAutoConnect() {
   try {
     await window.electronAPI.im.setAutoConnect('dingtalk', dtAutoConnect.value)
@@ -139,6 +226,22 @@ async function toggleFsAutoConnect() {
     await window.electronAPI.im.setAutoConnect('feishu', fsAutoConnect.value)
   } catch {
     fsAutoConnect.value = !fsAutoConnect.value
+  }
+}
+
+async function toggleSlAutoConnect() {
+  try {
+    await window.electronAPI.im.setAutoConnect('slack', slAutoConnect.value)
+  } catch {
+    slAutoConnect.value = !slAutoConnect.value
+  }
+}
+
+async function toggleTgAutoConnect() {
+  try {
+    await window.electronAPI.im.setAutoConnect('telegram', tgAutoConnect.value)
+  } catch {
+    tgAutoConnect.value = !tgAutoConnect.value
   }
 }
 
@@ -306,6 +409,125 @@ function cancelFreeMode() {
         </div>
       </div>
 
+      <!-- Slack -->
+      <div class="im-platform-card" :class="{ expanded: slackExpanded, connected: slConnected }">
+        <button class="im-platform-header" @click="slackExpanded = !slackExpanded">
+          <span class="im-platform-name">{{ t('settings.im.slack') }}</span>
+          <span class="im-status-indicator" :class="{ connected: slConnected, connecting: slConnecting }">
+            <span class="indicator-dot"></span>
+            {{ slConnecting ? t('settings.im.connecting') : (slConnected ? t('settings.im.connected') : t('settings.im.disconnected')) }}
+          </span>
+          <span class="toggle-arrow" :class="{ open: slackExpanded }">›</span>
+        </button>
+
+        <div v-if="slackExpanded" class="im-platform-body">
+          <div class="im-hint">
+            <p class="hint-summary">{{ t('settings.im.slackHint') }}</p>
+            <ol class="setup-steps">
+              <li>{{ t('settings.im.slackStep1') }}</li>
+              <li>{{ t('settings.im.slackStep2') }}</li>
+              <li>{{ t('settings.im.slackStep3') }}</li>
+              <li>{{ t('settings.im.slackStep4') }}</li>
+            </ol>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">{{ t('settings.im.slackBotToken') }}</label>
+            <input
+              v-model="slBotToken"
+              type="password"
+              :disabled="slConnected"
+              class="input-field"
+              placeholder="xoxb-..."
+            />
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ t('settings.im.slackAppToken') }}</label>
+            <input
+              v-model="slAppToken"
+              type="password"
+              :disabled="slConnected"
+              class="input-field"
+              placeholder="xapp-..."
+            />
+          </div>
+
+          <div v-if="slError" class="error-msg">{{ slError }}</div>
+
+          <div class="im-card-actions">
+            <label class="auto-connect-label">
+              <input type="checkbox" v-model="slAutoConnect" @change="toggleSlAutoConnect" />
+              <span>{{ t('settings.im.autoConnect') }}</span>
+            </label>
+            <button
+              v-if="slConnected"
+              class="btn btn-sm btn-outline-danger"
+              @click="toggleSlack"
+            >{{ t('settings.im.disconnect') }}</button>
+            <button
+              v-else
+              class="btn btn-sm btn-primary"
+              :disabled="slConnecting"
+              @click="toggleSlack"
+            >{{ slConnecting ? t('settings.im.connecting') : t('settings.im.connect') }}</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Telegram -->
+      <div class="im-platform-card" :class="{ expanded: telegramExpanded, connected: tgConnected }">
+        <button class="im-platform-header" @click="telegramExpanded = !telegramExpanded">
+          <span class="im-platform-name">{{ t('settings.im.telegram') }}</span>
+          <span class="im-status-indicator" :class="{ connected: tgConnected, connecting: tgConnecting }">
+            <span class="indicator-dot"></span>
+            {{ tgConnecting ? t('settings.im.connecting') : (tgConnected ? t('settings.im.connected') : t('settings.im.disconnected')) }}
+          </span>
+          <span class="toggle-arrow" :class="{ open: telegramExpanded }">›</span>
+        </button>
+
+        <div v-if="telegramExpanded" class="im-platform-body">
+          <div class="im-hint">
+            <p class="hint-summary">{{ t('settings.im.telegramHint') }}</p>
+            <ol class="setup-steps">
+              <li>{{ t('settings.im.telegramStep1') }}</li>
+              <li>{{ t('settings.im.telegramStep2') }}</li>
+              <li>{{ t('settings.im.telegramStep3') }}</li>
+            </ol>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">{{ t('settings.im.telegramBotToken') }}</label>
+            <input
+              v-model="tgBotToken"
+              type="password"
+              :disabled="tgConnected"
+              class="input-field"
+              placeholder="123456:ABC-DEF..."
+            />
+          </div>
+
+          <div v-if="tgError" class="error-msg">{{ tgError }}</div>
+
+          <div class="im-card-actions">
+            <label class="auto-connect-label">
+              <input type="checkbox" v-model="tgAutoConnect" @change="toggleTgAutoConnect" />
+              <span>{{ t('settings.im.autoConnect') }}</span>
+            </label>
+            <button
+              v-if="tgConnected"
+              class="btn btn-sm btn-outline-danger"
+              @click="toggleTelegram"
+            >{{ t('settings.im.disconnect') }}</button>
+            <button
+              v-else
+              class="btn btn-sm btn-primary"
+              :disabled="tgConnecting"
+              @click="toggleTelegram"
+            >{{ tgConnecting ? t('settings.im.connecting') : t('settings.im.connect') }}</button>
+          </div>
+        </div>
+      </div>
+
       <!-- 运行模式 -->
       <div class="execution-mode-section">
         <span class="execution-mode-title">{{ t('settings.im.executionMode') }}</span>
@@ -371,6 +593,28 @@ function cancelFreeMode() {
             <li>{{ t('settings.im.guideFeishuStep5') }}</li>
             <li>{{ t('settings.im.guideFeishuStep6') }}</li>
             <li>{{ t('settings.im.guideFeishuStep7') }}</li>
+          </ol>
+        </div>
+
+        <!-- Slack 配置 -->
+        <div class="guide-card">
+          <h5 class="guide-card-title">🔧 {{ t('settings.im.guideSlackTitle') }}</h5>
+          <ol class="guide-steps">
+            <li>{{ t('settings.im.guideSlackStep1') }}</li>
+            <li>{{ t('settings.im.guideSlackStep2') }}</li>
+            <li>{{ t('settings.im.guideSlackStep3') }}</li>
+            <li>{{ t('settings.im.guideSlackStep4') }}</li>
+            <li>{{ t('settings.im.guideSlackStep5') }}</li>
+          </ol>
+        </div>
+
+        <!-- Telegram 配置 -->
+        <div class="guide-card">
+          <h5 class="guide-card-title">🔧 {{ t('settings.im.guideTelegramTitle') }}</h5>
+          <ol class="guide-steps">
+            <li>{{ t('settings.im.guideTelegramStep1') }}</li>
+            <li>{{ t('settings.im.guideTelegramStep2') }}</li>
+            <li>{{ t('settings.im.guideTelegramStep3') }}</li>
           </ol>
         </div>
 
@@ -864,7 +1108,7 @@ function cancelFreeMode() {
   background: var(--bg-secondary);
 }
 
-.guide-card:last-child {
+.guide-card:nth-last-child(1) {
   grid-column: 1 / -1;
 }
 

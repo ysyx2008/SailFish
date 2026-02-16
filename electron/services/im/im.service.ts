@@ -20,11 +20,15 @@ import type {
   IMAttachment,
   DingTalkConfig,
   FeishuConfig,
+  SlackConfig,
+  TelegramConfig,
   SendFileResult
 } from './types'
 import { CONFIRM_KEYWORDS, REJECT_KEYWORDS, IM_TEXT_MAX_LENGTH } from './types'
 import { DingTalkAdapter } from './dingtalk-adapter'
 import { FeishuAdapter } from './feishu-adapter'
+import { SlackAdapter } from './slack-adapter'
+import { TelegramAdapter } from './telegram-adapter'
 import { RemoteChatService } from '../remote-chat.service'
 import { t } from '../agent/i18n'
 
@@ -44,6 +48,14 @@ export interface IMServiceStatus {
     connected: boolean
   }
   feishu: {
+    enabled: boolean
+    connected: boolean
+  }
+  slack: {
+    enabled: boolean
+    connected: boolean
+  }
+  telegram: {
     enabled: boolean
     connected: boolean
   }
@@ -129,9 +141,13 @@ export class IMService {
   private deps: IMServiceDependencies | null = null
   private dingtalkAdapter: DingTalkAdapter | null = null
   private feishuAdapter: FeishuAdapter | null = null
+  private slackAdapter: SlackAdapter | null = null
+  private telegramAdapter: TelegramAdapter | null = null
   private config: IMServiceConfig = {
     dingtalk: { enabled: false, clientId: '', clientSecret: '' },
     feishu: { enabled: false, appId: '', appSecret: '' },
+    slack: { enabled: false, botToken: '', appToken: '' },
+    telegram: { enabled: false, botToken: '' },
     executionMode: 'relaxed',
     sessionTimeoutMinutes: 60,
   }
@@ -255,11 +271,106 @@ export class IMService {
     return this.feishuAdapter?.isConnected() ?? false
   }
 
+  // ==================== Slack 管理 ====================
+
+  async startSlack(config: SlackConfig): Promise<{ success: boolean; error?: string }> {
+    if (!config.botToken || !config.appToken) {
+      return { success: false, error: 'Bot Token and App Token are required' }
+    }
+    if (!config.botToken.startsWith('xoxb-')) {
+      return { success: false, error: 'Invalid Bot Token format (must start with xoxb-)' }
+    }
+    if (!config.appToken.startsWith('xapp-')) {
+      return { success: false, error: 'Invalid App Token format (must start with xapp-)' }
+    }
+
+    try {
+      await this.stopSlack()
+
+      this.config.slack = { ...config, enabled: true }
+      this.slackAdapter = new SlackAdapter(config)
+
+      this.slackAdapter.onMessage = (msg: IMIncomingMessage) => this.handleIncomingMessage(msg)
+      this.slackAdapter.onConnectionChange = (connected: boolean) => {
+        this.sendToDesktop('im:connectionChange', { platform: 'slack', connected })
+      }
+
+      await this.slackAdapter.start()
+      console.log('[IM] Slack started')
+      return { success: true }
+    } catch (err: any) {
+      console.error('[IM] Slack start failed:', err)
+      this.slackAdapter = null
+      return { success: false, error: err.message || 'Failed to connect' }
+    }
+  }
+
+  async stopSlack(): Promise<void> {
+    if (this.slackAdapter) {
+      await this.slackAdapter.stop()
+      this.slackAdapter = null
+      this.config.slack.enabled = false
+      this.sendToDesktop('im:connectionChange', { platform: 'slack', connected: false })
+      console.log('[IM] Slack stopped')
+    }
+  }
+
+  isSlackConnected(): boolean {
+    return this.slackAdapter?.isConnected() ?? false
+  }
+
+  // ==================== Telegram 管理 ====================
+
+  async startTelegram(config: TelegramConfig): Promise<{ success: boolean; error?: string }> {
+    if (!config.botToken) {
+      return { success: false, error: 'Bot Token is required' }
+    }
+    if (!/^\d+:.+$/.test(config.botToken)) {
+      return { success: false, error: 'Invalid Bot Token format (expected: 123456:ABC-DEF...)' }
+    }
+
+    try {
+      await this.stopTelegram()
+
+      this.config.telegram = { ...config, enabled: true }
+      this.telegramAdapter = new TelegramAdapter(config)
+
+      this.telegramAdapter.onMessage = (msg: IMIncomingMessage) => this.handleIncomingMessage(msg)
+      this.telegramAdapter.onConnectionChange = (connected: boolean) => {
+        this.sendToDesktop('im:connectionChange', { platform: 'telegram', connected })
+      }
+
+      await this.telegramAdapter.start()
+      console.log('[IM] Telegram started')
+      return { success: true }
+    } catch (err: any) {
+      console.error('[IM] Telegram start failed:', err)
+      this.telegramAdapter = null
+      return { success: false, error: err.message || 'Failed to connect' }
+    }
+  }
+
+  async stopTelegram(): Promise<void> {
+    if (this.telegramAdapter) {
+      await this.telegramAdapter.stop()
+      this.telegramAdapter = null
+      this.config.telegram.enabled = false
+      this.sendToDesktop('im:connectionChange', { platform: 'telegram', connected: false })
+      console.log('[IM] Telegram stopped')
+    }
+  }
+
+  isTelegramConnected(): boolean {
+    return this.telegramAdapter?.isConnected() ?? false
+  }
+
   // ==================== 全局操作 ====================
 
   async stopAll(): Promise<void> {
     await this.stopDingTalk()
     await this.stopFeishu()
+    await this.stopSlack()
+    await this.stopTelegram()
   }
 
   getStatus(): IMServiceStatus {
@@ -271,6 +382,14 @@ export class IMService {
       feishu: {
         enabled: this.config.feishu.enabled,
         connected: this.isFeishuConnected(),
+      },
+      slack: {
+        enabled: this.config.slack.enabled,
+        connected: this.isSlackConnected(),
+      },
+      telegram: {
+        enabled: this.config.telegram.enabled,
+        connected: this.isTelegramConnected(),
       }
     }
   }
@@ -296,32 +415,32 @@ export class IMService {
     options?: { markdown?: boolean; title?: string }
   ): Promise<{ success: boolean; platform?: IMPlatform; error?: string }> {
     if (!text || typeof text !== 'string') {
-      return { success: false, error: '消息内容不能为空' }
+      return { success: false, error: t('im.notification_empty') }
     }
 
     if (!this.lastContact) {
-      return { success: false, error: '没有最近的 IM 联系记录，无法发送通知' }
+      return { success: false, error: t('im.notification_no_contact') }
     }
 
     const { platform, replyContext } = this.lastContact
     const adapter = this.getAdapter(platform)
 
     if (!adapter) {
-      return { success: false, error: `${platform} 适配器不存在` }
+      return { success: false, error: t('im.notification_no_adapter', { platform }) }
     }
 
     if (!adapter.isConnected()) {
-      return { success: false, error: `${platform} 未连接` }
+      return { success: false, error: t('im.notification_not_connected', { platform }) }
     }
 
     // 截断过长文本（adapter 内部也有截断，此处做防御性限制）
     const truncated = text.length > IM_TEXT_MAX_LENGTH
-      ? text.substring(0, IM_TEXT_MAX_LENGTH - 20) + '\n\n...(内容已截断)'
+      ? text.substring(0, IM_TEXT_MAX_LENGTH - 20) + t('im.text_truncated')
       : text
 
     try {
       if (options?.markdown) {
-        await adapter.sendMarkdown(replyContext, options.title || '通知', truncated)
+        await adapter.sendMarkdown(replyContext, options.title || t('im.notification_title'), truncated)
       } else {
         await adapter.sendText(replyContext, truncated)
       }
@@ -373,9 +492,9 @@ export class IMService {
     if (this.chat.isRunning) {
       try {
         if (this.chat.supplement(fullMessage)) {
-          await adapter.sendText(replyContext, '💬 已收到你的回复')
+          await adapter.sendText(replyContext, t('im.reply_received'))
         } else {
-          await adapter.sendText(replyContext, '⏳ 当前有任务正在执行中，请等待完成后再发送新消息。')
+          await adapter.sendText(replyContext, t('im.reply_busy'))
         }
       } catch (err) {
         console.error('[IM] Failed to send busy reply:', err)
@@ -387,17 +506,17 @@ export class IMService {
     if (!msg.attachments?.length) {
       const lowerText = msg.text.toLowerCase().trim()
       try {
-        if (lowerText === '/clear' || lowerText === '清空' || lowerText === '清空历史') {
+        if (lowerText === '/clear' || lowerText === '清空' || lowerText === '清空历史' || lowerText === 'clear') {
           this.chat.clearHistory()
-          await adapter.sendText(replyContext, '🗑️ 对话历史已清空')
+          await adapter.sendText(replyContext, t('im.history_cleared'))
           return
         }
-        if (lowerText === '/status' || lowerText === '状态') {
+        if (lowerText === '/status' || lowerText === '状态' || lowerText === 'status') {
           const status = this.getSessionStatus()
           await adapter.sendText(replyContext, status)
           return
         }
-        if (lowerText === '/help' || lowerText === '帮助') {
+        if (lowerText === '/help' || lowerText === '帮助' || lowerText === 'help') {
           await adapter.sendText(replyContext, this.getHelpText())
           return
         }
@@ -423,7 +542,7 @@ export class IMService {
       try {
         const pendingConfirm = this.chat.pendingConfirm
         await adapter.sendText(replyContext,
-          `请回复「确认」执行或「拒绝」取消。\n\n操作: ${pendingConfirm?.toolName || 'unknown'}`
+          t('im.confirm_hint', { toolName: pendingConfirm?.toolName || 'unknown' })
         )
       } catch (err) {
         console.error('[IM] Failed to send confirm hint:', err)
@@ -436,10 +555,10 @@ export class IMService {
     try {
       if (success) {
         await adapter.sendText(replyContext,
-          isApproved ? '✅ 已批准，继续执行...' : '❌ 已拒绝，操作已取消'
+          isApproved ? t('im.confirmed') : t('im.rejected')
         )
       } else {
-        await adapter.sendText(replyContext, '⚠️ 确认操作失败，可能任务已结束')
+        await adapter.sendText(replyContext, t('im.confirm_failed'))
       }
     } catch (err) {
       console.error('[IM] Failed to send confirm result:', err)
@@ -460,7 +579,7 @@ export class IMService {
 
     // 发送处理中提示
     try {
-      await adapter.sendText(replyContext, '🤔 收到，正在处理...')
+      await adapter.sendText(replyContext, t('im.processing'))
     } catch { /* ignore */ }
 
     // 通知桌面端
@@ -498,9 +617,11 @@ export class IMService {
     }
 
     // 将 IM 平台类型映射为 remoteChannel（显式匹配，避免未来新增平台时默认值错误）
-    const channelMap: Record<IMPlatform, 'dingtalk' | 'feishu'> = {
+    const channelMap: Record<IMPlatform, 'dingtalk' | 'feishu' | 'slack' | 'telegram'> = {
       dingtalk: 'dingtalk',
-      feishu: 'feishu'
+      feishu: 'feishu',
+      slack: 'slack',
+      telegram: 'telegram',
     }
     const remoteChannel = channelMap[msg.platform]
 
@@ -528,20 +649,20 @@ export class IMService {
 
               const question = step.toolArgs.question || step.content || ''
               const options = step.toolArgs.options as string[] | undefined
-              const lines = ['❓ **需要你的回复**', '', question]
+              const lines = [t('im.need_reply'), '', question]
 
               if (options && options.length > 0) {
                 lines.push('')
                 options.forEach((opt: string, i: number) => {
                   lines.push(`${i + 1}. ${opt}`)
                 })
-                lines.push('', '回复选项编号或直接输入内容。')
+                lines.push('', t('im.need_reply_select'))
               } else {
-                lines.push('', '请直接回复你的答案。')
+                lines.push('', t('im.need_reply_input'))
               }
 
               try {
-                await adapter.sendMarkdown(replyContext, '需要回复', lines.join('\n'))
+                await adapter.sendMarkdown(replyContext, t('im.need_reply_title'), lines.join('\n'))
               } catch { /* ignore */ }
             }
             enqueueSend(sendAsk)
@@ -575,17 +696,17 @@ export class IMService {
               .substring(0, 500)
 
             try {
-              await adapter.sendMarkdown(replyContext, '需要确认', [
-                `${riskEmoji} **需要确认操作**`,
+              await adapter.sendMarkdown(replyContext, t('im.need_confirm'), [
+                t('im.need_confirm_title', { riskEmoji }),
                 '',
-                `**工具**: ${confirmation.toolName}`,
-                `**风险**: ${confirmation.riskLevel}`,
-                `**参数**:`,
+                t('im.need_confirm_tool', { toolName: confirmation.toolName }),
+                t('im.need_confirm_risk', { riskLevel: confirmation.riskLevel }),
+                t('im.need_confirm_args'),
                 '```',
                 argsText,
                 '```',
                 '',
-                '回复「确认」执行，或「拒绝」取消。'
+                t('im.need_confirm_action'),
               ].join('\n'))
             } catch { /* ignore */ }
           }
@@ -599,7 +720,7 @@ export class IMService {
             // 已发送过文本回复时，不再单独发完成通知（避免冗余）
             if (!hasSentText) {
               try {
-                await adapter.sendText(replyContext, '✅ 任务完成')
+                await adapter.sendText(replyContext, t('im.task_complete'))
               } catch { /* ignore */ }
             }
           }
@@ -615,7 +736,7 @@ export class IMService {
           const finish = async () => {
             await flushTextBuffer()
             try {
-              await adapter.sendText(replyContext, `❌ 执行出错: ${error}`)
+              await adapter.sendText(replyContext, t('im.task_error', { error }))
             } catch { /* ignore */ }
           }
           enqueueSend(finish)
@@ -702,34 +823,32 @@ export class IMService {
     if (msg.attachments && msg.attachments.length > 0) {
       const BINARY_TYPES = new Set<IMAttachment['type']>(['image', 'audio', 'video'])
 
+      const typeI18nKeys: Record<IMAttachment['type'], Parameters<typeof t>[0]> = {
+        image: 'im.attachment_image',
+        audio: 'im.attachment_audio',
+        video: 'im.attachment_video',
+        file: 'im.attachment_file',
+      }
+
       const fileDescriptions = msg.attachments.map(a => {
         const isBinary = BINARY_TYPES.has(a.type)
-        const typeLabels: Record<IMAttachment['type'], string> = {
-          image: '图片（二进制）',
-          audio: '语音（二进制）',
-          video: '视频（二进制）',
-          file: '文件',
-        }
-        let desc = `- [${typeLabels[a.type] || '文件'}] ${a.fileName} → ${a.localPath}`
+        const typeLabel = t(typeI18nKeys[a.type] || 'im.attachment_file')
+        let desc = `- [${typeLabel}] ${a.fileName} → ${a.localPath}`
         if (isBinary) {
-          desc += '（⚠️ 二进制文件，不要用 read_file 读取）'
+          desc += t('im.attachment_binary_warn')
         }
         return desc
       })
 
       const hasBinary = msg.attachments.some(a => BINARY_TYPES.has(a.type))
-      const guidance = hasBinary
-        ? '\n\n注意：图片/语音/视频是二进制文件，不能用 read_file 读取（会产生无意义的乱码并占满上下文）。' +
-          '你可以用 run_command 执行 file 命令查看文件信息，或直接告知用户文件已收到。' +
-          '如果用户需要处理图片，可以用 run_command 调用系统工具（如 sips、ffprobe 等）获取元数据。'
-        : ''
+      const guidance = hasBinary ? t('im.attachment_binary_guidance') : ''
 
       const fileList = fileDescriptions.join('\n')
 
       if (text) {
-        text += `\n\n📎 用户同时发送了文件：\n${fileList}${guidance}`
+        text += `\n\n${t('im.attachment_sent')}\n${fileList}${guidance}`
       } else {
-        text = `📎 用户发送了文件：\n${fileList}${guidance}\n\n请协助用户处理。`
+        text = `${t('im.attachment_sent_only')}\n${fileList}${guidance}${t('im.attachment_help_hint')}`
       }
     }
 
@@ -739,36 +858,43 @@ export class IMService {
   private getAdapter(platform: IMPlatform): IMAdapter | null {
     if (platform === 'dingtalk') return this.dingtalkAdapter
     if (platform === 'feishu') return this.feishuAdapter
+    if (platform === 'slack') return this.slackAdapter
+    if (platform === 'telegram') return this.telegramAdapter
     return null
   }
 
   private getSessionStatus(): string {
     const state = this.chat.getState()
+    const connected = (name: string, isConn: boolean) =>
+      `${name}: ${isConn ? '✅' : '❌'}`
+
     return [
-      `📊 会话状态`,
-      `状态: ${state.isRunning ? '执行中' : '空闲'}`,
-      `历史消息: ${state.history.length} 条`,
-      `终端: ${state.ptyId || '未创建'}`,
-      `执行模式: ${state.executionMode}`,
-      `钉钉: ${this.isDingTalkConnected() ? '已连接' : '未连接'}`,
-      `飞书: ${this.isFeishuConnected() ? '已连接' : '未连接'}`,
+      t('im.status_title'),
+      `${t('im.status_state')}: ${state.isRunning ? t('im.status_running') : t('im.status_idle')}`,
+      `${t('im.status_history')}: ${t('im.status_history_count', { count: state.history.length })}`,
+      `${t('im.status_terminal')}: ${state.ptyId || t('im.status_terminal_none')}`,
+      `${t('im.status_exec_mode')}: ${state.executionMode}`,
+      connected('DingTalk', this.isDingTalkConnected()),
+      connected('Feishu', this.isFeishuConnected()),
+      connected('Slack', this.isSlackConnected()),
+      connected('Telegram', this.isTelegramConnected()),
     ].join('\n')
   }
 
   private getHelpText(): string {
     return [
-      '🐟 旗鱼 - IM 远程助手',
+      t('im.help_title'),
       '',
-      '直接发送消息即可与 AI Agent 对话。Agent 可以在本机执行命令、编辑文件等操作。',
+      t('im.help_desc'),
       '',
-      '特殊命令:',
-      '  /help 或 帮助 - 显示此帮助',
-      '  /status 或 状态 - 查看会话状态',
-      '  /clear 或 清空 - 清空对话历史',
+      t('im.help_commands'),
+      t('im.help_cmd_help'),
+      t('im.help_cmd_status'),
+      t('im.help_cmd_clear'),
       '',
-      '当 Agent 请求确认操作时:',
-      '  回复「确认」- 批准执行',
-      '  回复「拒绝」- 取消操作',
+      t('im.help_confirm'),
+      t('im.help_confirm_approve'),
+      t('im.help_confirm_reject'),
     ].join('\n')
   }
 

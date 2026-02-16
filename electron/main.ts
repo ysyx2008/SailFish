@@ -204,7 +204,7 @@ import { getSchedulerService, type CreateTaskParams } from './services/scheduler
 import { getRemoteChatService } from './services/remote-chat.service'
 import { getGatewayService, type GatewayConfig } from './services/gateway.service'
 import { getIMService } from './services/im/im.service'
-import type { DingTalkConfig, FeishuConfig } from './services/im/types'
+import type { DingTalkConfig, FeishuConfig, SlackConfig, TelegramConfig } from './services/im/types'
 
 // 禁用 GPU 加速可能导致的问题（可选）
 // app.disableHardwareAcceleration()
@@ -751,6 +751,31 @@ app.whenReady().then(async () => {
             console.error('[IM] Feishu auto-connect failed:', result.error)
           }
         }).catch(e => console.error('[IM] Feishu auto-connect error:', e))
+      }
+    }
+    if (configService.get('imSlackAutoConnect')) {
+      const slackBotToken = (configService.get('imSlackBotToken') as string) || ''
+      const slackAppToken = (configService.get('imSlackAppToken') as string) || ''
+      if (slackBotToken && slackAppToken) {
+        imService.startSlack({ enabled: true, botToken: slackBotToken, appToken: slackAppToken }).then(result => {
+          if (result.success) {
+            console.log('[IM] Slack auto-connected')
+          } else {
+            console.error('[IM] Slack auto-connect failed:', result.error)
+          }
+        }).catch(e => console.error('[IM] Slack auto-connect error:', e))
+      }
+    }
+    if (configService.get('imTelegramAutoConnect')) {
+      const tgBotToken = (configService.get('imTelegramBotToken') as string) || ''
+      if (tgBotToken) {
+        imService.startTelegram({ enabled: true, botToken: tgBotToken }).then(result => {
+          if (result.success) {
+            console.log('[IM] Telegram auto-connected')
+          } else {
+            console.error('[IM] Telegram auto-connect failed:', result.error)
+          }
+        }).catch(e => console.error('[IM] Telegram auto-connect error:', e))
       }
     }
   })
@@ -1815,6 +1840,27 @@ ipcMain.handle('im:stopFeishu', async () => {
   return { success: true }
 })
 
+ipcMain.handle('im:startSlack', async (_event, config: SlackConfig) => {
+  configService.set('imSlackBotToken', config.botToken)
+  configService.set('imSlackAppToken', config.appToken)
+  return await imService.startSlack(config)
+})
+
+ipcMain.handle('im:stopSlack', async () => {
+  await imService.stopSlack()
+  return { success: true }
+})
+
+ipcMain.handle('im:startTelegram', async (_event, config: TelegramConfig) => {
+  configService.set('imTelegramBotToken', config.botToken)
+  return await imService.startTelegram(config)
+})
+
+ipcMain.handle('im:stopTelegram', async () => {
+  await imService.stopTelegram()
+  return { success: true }
+})
+
 ipcMain.handle('im:getStatus', async () => {
   return imService.getStatus()
 })
@@ -1831,6 +1877,15 @@ ipcMain.handle('im:getConfig', async () => {
       appSecret: (configService.get('imFeishuAppSecret') as string) || '',
       autoConnect: configService.get('imFeishuAutoConnect') || false,
     },
+    slack: {
+      botToken: (configService.get('imSlackBotToken') as string) || '',
+      appToken: (configService.get('imSlackAppToken') as string) || '',
+      autoConnect: configService.get('imSlackAutoConnect') || false,
+    },
+    telegram: {
+      botToken: (configService.get('imTelegramBotToken') as string) || '',
+      autoConnect: configService.get('imTelegramAutoConnect') || false,
+    },
     executionMode: (configService.get('imExecutionMode') as string) || 'relaxed',
   }
 })
@@ -1840,6 +1895,10 @@ ipcMain.handle('im:setAutoConnect', async (_event, platform: string, enabled: bo
     configService.set('imDingTalkAutoConnect', enabled)
   } else if (platform === 'feishu') {
     configService.set('imFeishuAutoConnect', enabled)
+  } else if (platform === 'slack') {
+    configService.set('imSlackAutoConnect', enabled)
+  } else if (platform === 'telegram') {
+    configService.set('imTelegramAutoConnect', enabled)
   }
 })
 

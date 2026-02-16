@@ -2643,15 +2643,27 @@ const electronAPI = {
       ipcRenderer.invoke('im:startFeishu', config) as Promise<{ success: boolean; error?: string }>,
     stopFeishu: () =>
       ipcRenderer.invoke('im:stopFeishu') as Promise<{ success: boolean }>,
+    startSlack: (config: { enabled: boolean; botToken: string; appToken: string }) =>
+      ipcRenderer.invoke('im:startSlack', config) as Promise<{ success: boolean; error?: string }>,
+    stopSlack: () =>
+      ipcRenderer.invoke('im:stopSlack') as Promise<{ success: boolean }>,
+    startTelegram: (config: { enabled: boolean; botToken: string }) =>
+      ipcRenderer.invoke('im:startTelegram', config) as Promise<{ success: boolean; error?: string }>,
+    stopTelegram: () =>
+      ipcRenderer.invoke('im:stopTelegram') as Promise<{ success: boolean }>,
     getStatus: () =>
       ipcRenderer.invoke('im:getStatus') as Promise<{
         dingtalk: { enabled: boolean; connected: boolean }
         feishu: { enabled: boolean; connected: boolean }
+        slack: { enabled: boolean; connected: boolean }
+        telegram: { enabled: boolean; connected: boolean }
       }>,
     getConfig: () =>
       ipcRenderer.invoke('im:getConfig') as Promise<{
         dingtalk: { clientId: string; clientSecret: string; autoConnect: boolean }
         feishu: { appId: string; appSecret: string; autoConnect: boolean }
+        slack: { botToken: string; appToken: string; autoConnect: boolean }
+        telegram: { botToken: string; autoConnect: boolean }
         executionMode: 'strict' | 'relaxed' | 'free'
       }>,
     setAutoConnect: (platform: string, enabled: boolean) =>
