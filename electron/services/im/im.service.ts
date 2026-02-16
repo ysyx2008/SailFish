@@ -26,6 +26,7 @@ import { CONFIRM_KEYWORDS, REJECT_KEYWORDS, IM_TEXT_MAX_LENGTH } from './types'
 import { DingTalkAdapter } from './dingtalk-adapter'
 import { FeishuAdapter } from './feishu-adapter'
 import { RemoteChatService } from '../remote-chat.service'
+import { t } from '../agent/i18n'
 
 export interface IMServiceDependencies {
   remoteChatService: RemoteChatService
@@ -57,6 +58,71 @@ export interface IMLastContact {
   chatId?: string
   chatType: 'single' | 'group'
   updatedAt: number
+}
+
+/** 工具 → 图标 */
+const TOOL_ICONS: Record<string, string> = {
+  execute_command: '🔧', read_file: '📄', edit_file: '✏️',
+  write_local_file: '📝', write_remote_file: '📝', file_search: '🔍',
+  search_knowledge: '📚', get_knowledge_doc: '📚',
+  recall_task: '🧠', deep_recall: '🧠', wait: '⏳',
+  create_plan: '📋', update_plan: '📋', clear_plan: '📋',
+  send_file_to_chat: '📤', send_image_to_chat: '🖼️', send_im_notification: '📢',
+  remember_info: '💾', check_terminal_status: '🖥️', get_terminal_context: '🖥️',
+  send_control_key: '⌨️', send_input: '⌨️', load_skill: '📦', load_user_skill: '📦',
+}
+
+/** 工具 → 已有 i18n key 的映射（复用已有翻译，避免重复添加） */
+const TOOL_I18N_MAP: Record<string, Parameters<typeof t>[0]> = {
+  execute_command: 'tool.execute_command',
+  check_terminal_status: 'tool.check_terminal_status',
+  get_terminal_context: 'tool.get_terminal_context',
+  send_control_key: 'tool.send_control_key',
+  send_input: 'tool.send_input',
+  read_file: 'tool.read_file',
+  edit_file: 'file.edit',
+  write_local_file: 'tool.write_file',
+  write_remote_file: 'tool.write_file',
+  file_search: 'file.searching',
+  remember_info: 'tool.remember_info',
+  search_knowledge: 'tool.search_knowledge',
+  get_knowledge_doc: 'tool.get_knowledge_doc',
+  recall_task: 'memory.task_recall',
+  deep_recall: 'memory.deep_recall',
+  wait: 'tool.wait',
+  create_plan: 'tool.create_plan',
+  update_plan: 'tool.update_plan',
+  clear_plan: 'tool.clear_plan',
+  ask_user: 'tool.ask_user',
+}
+
+/**
+ * 将工具调用格式化为用户友好的通知文本
+ * 通过映射复用 i18n 已有翻译，无匹配时 fallback 到 toolName
+ */
+function formatToolNotification(toolName: string, toolArgs?: Record<string, unknown>): string {
+  const icon = TOOL_ICONS[toolName] || '🔧'
+  const i18nKey = TOOL_I18N_MAP[toolName]
+  const label = i18nKey ? t(i18nKey) : toolName
+
+  // 根据工具类型附加关键参数
+  let detail = ''
+  if (toolName === 'execute_command') {
+    const cmd = toolArgs?.command ? String(toolArgs.command) : ''
+    detail = cmd ? `\n$ ${cmd.length > 200 ? cmd.substring(0, 200) + '...' : cmd}` : ''
+  } else if (toolArgs?.path) {
+    detail = `  ${toolArgs.path}`
+  } else if (toolName === 'file_search' && (toolArgs?.pattern || toolArgs?.query)) {
+    detail = `  ${toolArgs.pattern || toolArgs.query}`
+  } else if ((toolName === 'load_skill' || toolName === 'load_user_skill') && (toolArgs?.skill_id || toolArgs?.name)) {
+    detail = `  ${toolArgs.skill_id || toolArgs.name}`
+  } else if (toolName === 'send_control_key' && toolArgs?.key) {
+    detail = ` ${toolArgs.key}`
+  } else if (toolName === 'wait' && toolArgs?.seconds) {
+    detail = ` ${toolArgs.seconds}s`
+  }
+
+  return `${icon} ${label}${detail}`
 }
 
 export class IMService {
@@ -399,10 +465,12 @@ export class IMService {
 
     // IM 专用：文本缓冲和工具调用去重
     let textBuffer = ''
+    let hasSentText = false
     const notifiedToolCalls = new Set<string>()
 
     const flushTextBuffer = async () => {
       if (textBuffer) {
+        hasSentText = true
         const text = textBuffer
         textBuffer = ''
         try {
@@ -433,24 +501,29 @@ export class IMService {
               flushTextBuffer().catch(() => {})
             }
           } else if (step.type === 'asking' && step.toolArgs) {
-            // ask_user 工具：向用户展示问题，等待回复
-            flushTextBuffer().catch(() => {})
+            // ask_user 工具：先发送缓冲文本，再展示问题（避免乱序）
+            const sendAsk = async () => {
+              await flushTextBuffer()
 
-            const question = step.toolArgs.question || step.content || ''
-            const options = step.toolArgs.options as string[] | undefined
-            const lines = ['❓ **需要你的回复**', '', question]
+              const question = step.toolArgs.question || step.content || ''
+              const options = step.toolArgs.options as string[] | undefined
+              const lines = ['❓ **需要你的回复**', '', question]
 
-            if (options && options.length > 0) {
-              lines.push('')
-              options.forEach((opt: string, i: number) => {
-                lines.push(`${i + 1}. ${opt}`)
-              })
-              lines.push('', '回复选项编号或直接输入内容。')
-            } else {
-              lines.push('', '请直接回复你的答案。')
+              if (options && options.length > 0) {
+                lines.push('')
+                options.forEach((opt: string, i: number) => {
+                  lines.push(`${i + 1}. ${opt}`)
+                })
+                lines.push('', '回复选项编号或直接输入内容。')
+              } else {
+                lines.push('', '请直接回复你的答案。')
+              }
+
+              try {
+                await adapter.sendMarkdown(replyContext, '需要回复', lines.join('\n'))
+              } catch { /* ignore */ }
             }
-
-            adapter.sendMarkdown(replyContext, '需要回复', lines.join('\n')).catch(() => {})
+            sendAsk().catch(() => {})
           } else if (step.type === 'tool_call' && step.toolName) {
             // ask_user 的工具调用不重复提示（已在 asking 步骤中处理）
             if (step.toolName === 'ask_user') return
@@ -460,47 +533,56 @@ export class IMService {
             if (notifiedToolCalls.has(toolCallKey)) return
             notifiedToolCalls.add(toolCallKey)
 
-            // 工具调用前，先发送已累积的文本
-            flushTextBuffer().catch(() => {})
-
-            // 发送工具调用提示
-            const argsPreview = step.toolArgs
-              ? JSON.stringify(step.toolArgs).substring(0, 100)
-              : ''
-            adapter.sendText(replyContext,
-              `🔧 ${step.toolName}${argsPreview ? '\n' + argsPreview : ''}`
-            ).catch(() => {})
+            // 先发送缓冲文本，再发工具通知（避免乱序）
+            const sendToolNotify = async () => {
+              await flushTextBuffer()
+              try {
+                await adapter.sendText(replyContext,
+                  formatToolNotification(step.toolName, step.toolArgs as Record<string, unknown>))
+              } catch { /* ignore */ }
+            }
+            sendToolNotify().catch(() => {})
           }
         },
 
         onNeedConfirm: (confirmation: any) => {
-          // 先发送缓冲区中的文本
-          flushTextBuffer().catch(() => {})
+          // 先发送缓冲区中的文本，再发送确认卡片（避免乱序）
+          const sendConfirm = async () => {
+            await flushTextBuffer()
+            const riskEmoji = confirmation.riskLevel === 'dangerous' ? '🔴' : '🟡'
+            const argsText = JSON.stringify(confirmation.toolArgs, null, 2)
+              .substring(0, 500)
 
-          // 发送确认请求
-          const riskEmoji = confirmation.riskLevel === 'dangerous' ? '🔴' : '🟡'
-          const argsText = JSON.stringify(confirmation.toolArgs, null, 2)
-            .substring(0, 500)
-
-          adapter.sendMarkdown(replyContext, '需要确认', [
-            `${riskEmoji} **需要确认操作**`,
-            '',
-            `**工具**: ${confirmation.toolName}`,
-            `**风险**: ${confirmation.riskLevel}`,
-            `**参数**:`,
-            '```',
-            argsText,
-            '```',
-            '',
-            '回复「确认」执行，或「拒绝」取消。'
-          ].join('\n')).catch(() => {})
+            try {
+              await adapter.sendMarkdown(replyContext, '需要确认', [
+                `${riskEmoji} **需要确认操作**`,
+                '',
+                `**工具**: ${confirmation.toolName}`,
+                `**风险**: ${confirmation.riskLevel}`,
+                `**参数**:`,
+                '```',
+                argsText,
+                '```',
+                '',
+                '回复「确认」执行，或「拒绝」取消。'
+              ].join('\n'))
+            } catch { /* ignore */ }
+          }
+          sendConfirm().catch(() => {})
         },
 
         onComplete: (_agentId: string, _result: string) => {
-          // 发送残留的缓冲文本
-          flushTextBuffer().catch(() => {})
-          // 任务完成通知
-          adapter.sendText(replyContext, '✅ 任务完成').catch(() => {})
+          // 先发送残留文本，再决定是否发完成通知（避免乱序和冗余）
+          const finish = async () => {
+            await flushTextBuffer()
+            // 已发送过文本回复时，不再单独发完成通知（避免冗余）
+            if (!hasSentText) {
+              try {
+                await adapter.sendText(replyContext, '✅ 任务完成')
+              } catch { /* ignore */ }
+            }
+          }
+          finish().catch(() => {})
           this.sendToDesktop('im:taskComplete', {
             platform: msg.platform,
             userId: msg.userId,
@@ -508,9 +590,14 @@ export class IMService {
         },
 
         onError: (_agentId: string, error: string) => {
-          // 发送残留的缓冲文本
-          flushTextBuffer().catch(() => {})
-          adapter.sendText(replyContext, `❌ 执行出错: ${error}`).catch(() => {})
+          // 先发送残留文本，再发送错误提示（避免乱序）
+          const finish = async () => {
+            await flushTextBuffer()
+            try {
+              await adapter.sendText(replyContext, `❌ 执行出错: ${error}`)
+            } catch { /* ignore */ }
+          }
+          finish().catch(() => {})
           this.sendToDesktop('im:taskError', {
             platform: msg.platform,
             userId: msg.userId,
