@@ -468,6 +468,14 @@ export class IMService {
     let hasSentText = false
     const notifiedToolCalls = new Set<string>()
 
+    // 发送队列：序列化所有 IM 消息发送，防止并发导致消息乱序
+    let sendQueue: Promise<void> = Promise.resolve()
+    const enqueueSend = (fn: () => Promise<void>): void => {
+      sendQueue = sendQueue.then(() => fn().catch(err => {
+        console.error('[IM] Send queue error:', err)
+      }))
+    }
+
     const flushTextBuffer = async () => {
       if (textBuffer) {
         hasSentText = true
@@ -498,7 +506,7 @@ export class IMService {
             } else {
               // 流式结束：发送完整消息
               textBuffer = step.content
-              flushTextBuffer().catch(() => {})
+              enqueueSend(() => flushTextBuffer())
             }
           } else if (step.type === 'asking' && step.toolArgs) {
             // ask_user 工具：去重（updateStep 轮询更新剩余时间会反复触发 onStep）
@@ -528,7 +536,7 @@ export class IMService {
                 await adapter.sendMarkdown(replyContext, '需要回复', lines.join('\n'))
               } catch { /* ignore */ }
             }
-            sendAsk().catch(() => {})
+            enqueueSend(sendAsk)
           } else if (step.type === 'tool_call' && step.toolName) {
             // ask_user 的工具调用不重复提示（已在 asking 步骤中处理）
             if (step.toolName === 'ask_user') return
@@ -546,7 +554,7 @@ export class IMService {
                   formatToolNotification(step.toolName, step.toolArgs as Record<string, unknown>))
               } catch { /* ignore */ }
             }
-            sendToolNotify().catch(() => {})
+            enqueueSend(sendToolNotify)
           }
         },
 
@@ -573,7 +581,7 @@ export class IMService {
               ].join('\n'))
             } catch { /* ignore */ }
           }
-          sendConfirm().catch(() => {})
+          enqueueSend(sendConfirm)
         },
 
         onComplete: (_agentId: string, _result: string) => {
@@ -587,7 +595,7 @@ export class IMService {
               } catch { /* ignore */ }
             }
           }
-          finish().catch(() => {})
+          enqueueSend(finish)
           this.sendToDesktop('im:taskComplete', {
             platform: msg.platform,
             userId: msg.userId,
@@ -602,7 +610,7 @@ export class IMService {
               await adapter.sendText(replyContext, `❌ 执行出错: ${error}`)
             } catch { /* ignore */ }
           }
-          finish().catch(() => {})
+          enqueueSend(finish)
           this.sendToDesktop('im:taskError', {
             platform: msg.platform,
             userId: msg.userId,
@@ -616,7 +624,8 @@ export class IMService {
         await adapter.sendText(replyContext, `❌ ${err.message || 'Unknown error'}`)
       } catch { /* ignore */ }
     } finally {
-      // 保证活跃会话被清理（无论成功、失败还是异常）
+      // 等待发送队列中所有消息发送完毕，再清理会话
+      try { await sendQueue } catch { /* ignore */ }
       this.activeSession = null
     }
   }
