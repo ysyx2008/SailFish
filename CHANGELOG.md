@@ -2,7 +2,31 @@
 
 All notable changes to SFTerm will be documented in this file.
 
-## v10.1.0 (2026-02-16) (Latest)
+## v10.2.0 (2026-02-16) (Latest)
+
+### New Features
+- 🧠 **Observation Ledger**: Refactored memory system to an Observation Ledger model for structured knowledge retention
+- 🎛️ **IM Execution Mode**: IM settings page now supports configuring Agent execution mode per channel
+- 📖 **IM Setup Guides**: Redesigned IM settings help area with dedicated DingTalk/Feishu configuration guides
+- ⚡ **Simplified Free Mode Confirmation**: Streamlined free mode secondary confirmation with IM settings sync
+- 🔑 **Feishu Permissions**: Updated Feishu permission list and enabled text copying on the settings page
+
+### Improvements
+- 🏗️ **Split Settings Pages**: Separated remote access into independent IM and Web Service settings pages
+- 📝 **README Branding**: Updated README branding and highlighted Remote Agent & GUI advantages
+
+### Bug Fixes
+- 🔧 Fixed vector search to use cosine distance and lowered pre-filter threshold for better knowledge retrieval
+- 🔧 Fixed BM25 index using plaintext instead of encrypted content, resolving memory search failures
+- 🔧 Fixed Remote Agent default mode display error and button layout issues
+- 🔧 Fixed missing hostId in remote channel AgentContext
+- 🔧 Fixed DingTalk/Feishu message ordering race condition with send queue
+- 🔧 Fixed HostMemory types and enhanced settings recovery logic
+- 🔧 Fixed macOS Spotlight search not supporting wildcard patterns
+- 🔧 Fixed Feishu channel `ask_user` tool sending duplicate messages
+- 🔧 Fixed Feishu message display and message ordering race condition
+
+## v10.1.0 (2026-02-16)
 
 ### New Features
 - 📨 **IM Media Message Support**: Receive images, audio, video, and file messages from Feishu and DingTalk, with automatic download and local storage
