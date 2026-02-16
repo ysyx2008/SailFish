@@ -501,7 +501,12 @@ export class IMService {
               flushTextBuffer().catch(() => {})
             }
           } else if (step.type === 'asking' && step.toolArgs) {
-            // ask_user 工具：先发送缓冲文本，再展示问题（避免乱序）
+            // ask_user 工具：去重（updateStep 轮询更新剩余时间会反复触发 onStep）
+            const askKey = step.id || `asking:${step.toolArgs.question}`
+            if (notifiedToolCalls.has(askKey)) return
+            notifiedToolCalls.add(askKey)
+
+            // 先发送缓冲文本，再展示问题（避免乱序）
             const sendAsk = async () => {
               await flushTextBuffer()
 
