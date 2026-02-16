@@ -252,7 +252,7 @@ export default {
       modeFreeDesc: '完全自动执行（危险）',
       guideTitle: '配置说明',
       guideDesc: '需要先在对应 IM 平台创建机器人应用，获取凭证后在上方填入并连接。',
-      guideDocUrl: 'https://github.com/ysyx2008/SFTerminal/blob/main/docs/im-integration.md',
+      guideDocUrl: 'https://github.com/ysyx2008/SFTerminal/blob/main/docs/messaging-integration_CN.md',
       guideDocLink: '查看完整文档',
       guideDingtalkTitle: '钉钉机器人配置',
       guideDingtalkStep1: '登录钉钉开放平台（open-dev.dingtalk.com），创建企业内部应用',

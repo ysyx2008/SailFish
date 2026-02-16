@@ -252,7 +252,7 @@ export default {
       modeFreeDesc: 'Fully automatic (dangerous)',
       guideTitle: 'Setup Guide',
       guideDesc: 'Create a bot app on your preferred IM platform first, then enter the credentials above and connect.',
-      guideDocUrl: 'https://github.com/ysyx2008/SFTerminal/blob/main/docs/im-integration.md',
+      guideDocUrl: 'https://github.com/ysyx2008/SFTerminal/blob/main/docs/messaging-integration.md',
       guideDocLink: 'Full Documentation',
       guideDingtalkTitle: 'DingTalk Bot Setup',
       guideDingtalkStep1: 'Log in to DingTalk Open Platform (open-dev.dingtalk.com), create an internal app',
