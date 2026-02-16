@@ -168,7 +168,8 @@ export default {
       knowledge: '知识库',
       email: '邮箱账户',
       calendar: '日历账户',
-      gateway: '远程访问',
+      im: '即时通讯',
+      gateway: 'Web 服务',
       theme: '主题配色',
       terminal: '终端设置',
       data: '数据管理',
@@ -201,7 +202,7 @@ export default {
       noAuditLog: '暂无审计记录'
     },
     im: {
-      title: 'IM 集成',
+      title: '即时通讯',
       description: '连接钉钉或飞书后，可在 IM 中直接与 AI Agent 对话，就像跟联系人聊天一样。此功能独立于 Web 服务，无需启用即可使用。',
       dingtalk: '钉钉',
       feishu: '飞书',

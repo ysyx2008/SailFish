@@ -17,6 +17,7 @@ import EmailSettings from './EmailSettings.vue'
 import CalendarSettings from './CalendarSettings.vue'
 import SkillSettings from './SkillSettings.vue'
 import GatewaySettings from './GatewaySettings.vue'
+import IMSettings from './IMSettings.vue'
 import sailfishLogo from '../../../resources/logo.png'
 
 const { t } = useI18n()
@@ -33,7 +34,7 @@ const emit = defineEmits<{
 
 const configStore = useConfigStore()
 
-type SettingsTab = 'ai' | 'aiRules' | 'mcp' | 'skills' | 'knowledge' | 'email' | 'calendar' | 'gateway' | 'theme' | 'terminal' | 'data' | 'language' | 'about'
+type SettingsTab = 'ai' | 'aiRules' | 'mcp' | 'skills' | 'knowledge' | 'email' | 'calendar' | 'im' | 'gateway' | 'theme' | 'terminal' | 'data' | 'language' | 'about'
 const activeTab = ref<SettingsTab>('ai')
 const appVersion = ref<string>('')
 const showConfirmDialog = ref(false)
@@ -300,7 +301,7 @@ let unsubscribeUpdater: (() => void) | null = null
 
 // 初始化时设置初始 tab 和获取版本号
 onMounted(async () => {
-  if (props.initialTab && ['ai', 'aiRules', 'mcp', 'skills', 'knowledge', 'email', 'calendar', 'gateway', 'theme', 'terminal', 'data', 'language', 'about'].includes(props.initialTab)) {
+  if (props.initialTab && ['ai', 'aiRules', 'mcp', 'skills', 'knowledge', 'email', 'calendar', 'im', 'gateway', 'theme', 'terminal', 'data', 'language', 'about'].includes(props.initialTab)) {
     activeTab.value = props.initialTab as SettingsTab
   }
   // 获取应用版本号
@@ -345,9 +346,10 @@ const tabGroups = computed(() => [
   {
     label: t('settings.groups.integration'),
     tabs: [
+      { id: 'im' as const, label: t('settings.tabs.im'), icon: '💬' },
+      { id: 'gateway' as const, label: t('settings.tabs.gateway'), icon: '🌐' },
       { id: 'email' as const, label: t('settings.tabs.email'), icon: '📧' },
-      { id: 'calendar' as const, label: t('settings.tabs.calendar'), icon: '📅' },
-      { id: 'gateway' as const, label: t('settings.tabs.gateway'), icon: '📡' }
+      { id: 'calendar' as const, label: t('settings.tabs.calendar'), icon: '📅' }
     ]
   },
   {
@@ -480,6 +482,7 @@ const onQrImageError = (event: Event) => {
           <KnowledgeSettings v-else-if="activeTab === 'knowledge'" />
           <EmailSettings v-else-if="activeTab === 'email'" />
           <CalendarSettings v-else-if="activeTab === 'calendar'" />
+          <IMSettings v-else-if="activeTab === 'im'" />
           <GatewaySettings v-else-if="activeTab === 'gateway'" />
           <ThemeSettings v-else-if="activeTab === 'theme'" />
           <TerminalSettings v-else-if="activeTab === 'terminal'" />

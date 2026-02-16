@@ -168,7 +168,8 @@ export default {
       knowledge: 'Knowledge Base',
       email: 'Email',
       calendar: 'Calendar',
-      gateway: 'Remote Access',
+      im: 'Messaging',
+      gateway: 'Web Service',
       theme: 'Theme',
       terminal: 'Terminal',
       data: 'Data',
@@ -201,7 +202,7 @@ export default {
       noAuditLog: 'No audit records'
     },
     im: {
-      title: 'IM Integration',
+      title: 'Messaging',
       description: 'Connect DingTalk or Feishu to chat with AI Agent directly in your IM app, just like messaging a contact. Works independently of the Web service.',
       dingtalk: 'DingTalk',
       feishu: 'Feishu (Lark)',
