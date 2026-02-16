@@ -91,7 +91,7 @@ export function useAgentMode(
   let lastScrollTime = 0
 
   // Agent 执行模式设置
-  const executionMode = ref<'strict' | 'relaxed' | 'free'>('strict')  // 执行模式：strict=严格，relaxed=宽松，free=自由
+  const executionMode = ref<'strict' | 'relaxed' | 'free'>('relaxed')  // 执行模式：strict=严格，relaxed=宽松，free=自由
   const commandTimeout = ref(10)     // 命令超时时间（秒），默认 10 秒
   const activeProfileId = ref<string>(configStore.activeAiProfileId || '')  // 当前终端选择的 AI 配置档案 ID（每个终端独立，初始值继承全局设置）
   const collapsedTaskIds = ref<Set<string>>(new Set())  // 已折叠的任务 ID

@@ -3622,6 +3622,7 @@ onUnmounted(() => {
 /* 执行模式选择器 */
 .execution-mode-selector {
   display: flex;
+  align-items: center;
   gap: 2px;
   background: var(--bg-tertiary);
   border-radius: 6px;
@@ -3633,12 +3634,14 @@ onUnmounted(() => {
   padding: 3px 8px;
   font-size: 11px;
   font-weight: 500;
+  line-height: 1.2;
   color: var(--text-secondary);
   background: transparent;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .mode-option:hover {
