@@ -102,7 +102,6 @@ npm run build:linux  # Linux
 ## 📖 文档
 
 - [Agent 架构](./docs/agent-architecture.md)
-- [开发路线图](./docs/ROADMAP.md)
 - [更新日志](./CHANGELOG.md)
 - [贡献指南](./CONTRIBUTING.md)
 

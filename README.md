@@ -102,7 +102,6 @@ SailFish supports OpenAI-compatible APIs. Configure in Settings:
 ## 📖 Documentation
 
 - [Agent Architecture](./docs/agent-architecture.md)
-- [Roadmap](./docs/ROADMAP.md)
 - [Changelog](./CHANGELOG.md)
 - [Contributing](./CONTRIBUTING.md)
 
