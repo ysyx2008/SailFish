@@ -780,6 +780,8 @@ const onQrImageError = (event: Event) => {
   flex: 1;
   padding: 28px 32px;
   overflow-y: auto;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* 关于页面 */

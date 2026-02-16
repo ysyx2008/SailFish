@@ -249,7 +249,7 @@ export default {
       guideFeishuTitle: 'Feishu Bot Setup',
       guideFeishuStep1: 'Log in to Feishu Open Platform (open.feishu.cn), create a custom app',
       guideFeishuStep2: 'Go to the app → Add "Bot" capability',
-      guideFeishuStep3: 'In "Permissions", enable im:message:send_as_bot and im:message.receive_v1',
+      guideFeishuStep3: 'In "Permissions", enable required permissions (im:message:send_as_bot, im:message.p2p_msg:readonly, im:message:readonly, im:resource)',
       guideFeishuStep4: 'Copy App ID and App Secret from "Credentials & Basic Info"',
       guideFeishuStep5: 'Enter the credentials above and connect (Feishu requires an active connection before configuring event subscriptions)',
       guideFeishuStep6: 'Go back to Feishu platform → "Events & Callbacks" → Select "Long Connection" mode → Add im.message.receive_v1 event',
@@ -724,6 +724,10 @@ export default {
     statusCompleted: 'Completed',
     statusFailed: 'Failed',
     statusAborted: 'Aborted',
+    // Source Channel
+    sourceWeb: 'Web Remote',
+    sourceDingtalk: 'DingTalk',
+    sourceFeishu: 'Feishu',
     // Others
     local: 'Local',
     user: 'User',

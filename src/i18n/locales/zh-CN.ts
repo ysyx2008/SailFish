@@ -249,7 +249,7 @@ export default {
       guideFeishuTitle: '飞书机器人配置',
       guideFeishuStep1: '登录飞书开放平台（open.feishu.cn），创建企业自建应用',
       guideFeishuStep2: '进入应用 → 添加「机器人」能力',
-      guideFeishuStep3: '在「权限管理」中开通 im:message:send_as_bot 和 im:message.receive_v1 权限',
+      guideFeishuStep3: '在「权限管理」中开通所需权限（im:message:send_as_bot、im:message.p2p_msg:readonly、im:message:readonly、im:resource）',
       guideFeishuStep4: '在「凭证与基础信息」中复制 App ID 和 App Secret',
       guideFeishuStep5: '将凭证填入上方并连接（飞书要求先建立连接才能配置事件订阅）',
       guideFeishuStep6: '回到飞书平台 →「事件与回调」→ 选择「长连接」模式 → 添加 im.message.receive_v1 事件',
@@ -724,6 +724,10 @@ export default {
     statusCompleted: '完成',
     statusFailed: '失败',
     statusAborted: '中止',
+    // 来源通道
+    sourceWeb: 'Web 远程',
+    sourceDingtalk: '钉钉',
+    sourceFeishu: '飞书',
     // 其他
     local: '本地',
     user: '用户',
