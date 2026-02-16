@@ -573,7 +573,7 @@ export class KnowledgeService extends EventEmitter {
       limit: options?.limit || this.settings.searchTopK,
       hostId: options?.hostId,
       tags: options?.tags,
-      similarity: options?.similarity || 0.7,
+      similarity: options?.similarity || 0.3,
       enableRerank: options?.enableRerank ?? this.settings.enableRerank,
       hybridWeight: options?.hybridWeight || 0.7
     }

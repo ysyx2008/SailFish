@@ -374,6 +374,7 @@ export class VectorStorage extends EventEmitter {
     try {
       const results = await this.table
         .vectorSearch(embedding)
+        .distanceType('cosine')
         .limit(limit * 2)
         .toArray()
 
@@ -410,11 +411,12 @@ export class VectorStorage extends EventEmitter {
     const k = 60  // RRF 参数，经验最优值
 
     try {
-      // 1. 向量搜索
+      // 1. 向量搜索（使用余弦距离，_distance = 1 - cosine_sim）
       let vectorResults: SearchResult[] = []
       if (this.table) {
         const vectorHits = await this.table
           .vectorSearch(embedding)
+          .distanceType('cosine')
           .limit(limit * 2)  // 多取一些用于融合
           .toArray()
         vectorResults = this.formatResults(vectorHits, options)
@@ -510,8 +512,8 @@ export class VectorStorage extends EventEmitter {
     hits: any[], 
     options: Partial<SearchOptions>
   ): SearchResult[] {
-    // 相似度阈值（默认 0.5，LanceDB 距离转换后的分数）
-    const similarityThreshold = options.similarity || 0.5
+    // 相似度阈值（cosine 距离下 score = 1 - _distance = cosine_similarity）
+    const similarityThreshold = options.similarity || 0.3
 
     let results: SearchResult[] = hits.map(hit => ({
       id: hit.id,
