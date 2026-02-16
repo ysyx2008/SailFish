@@ -337,28 +337,47 @@ function cancelFreeMode() {
       </div>
     </div>
 
-    <!-- 使用说明 -->
+    <!-- 配置说明 -->
     <div class="settings-section guide-section">
       <div class="section-header">
-        <h4>💡 {{ t('settings.im.guideTitle') }}</h4>
+        <h4>📖 {{ t('settings.im.guideTitle') }}</h4>
+        <a class="guide-doc-link" :href="t('settings.im.guideDocUrl')" target="_blank" rel="noopener noreferrer">
+          {{ t('settings.im.guideDocLink') }} ↗
+        </a>
       </div>
       <p class="section-desc">{{ t('settings.im.guideDesc') }}</p>
 
       <div class="guide-grid">
-        <!-- 支持的能力 -->
+        <!-- 钉钉机器人配置 -->
         <div class="guide-card">
-          <h5 class="guide-card-title">{{ t('settings.im.guideFeatures') }}</h5>
-          <ul class="guide-list">
-            <li>{{ t('settings.im.guideFeature1') }}</li>
-            <li>{{ t('settings.im.guideFeature2') }}</li>
-            <li>{{ t('settings.im.guideFeature3') }}</li>
-            <li>{{ t('settings.im.guideFeature4') }}</li>
-          </ul>
+          <h5 class="guide-card-title">🔧 {{ t('settings.im.guideDingtalkTitle') }}</h5>
+          <ol class="guide-steps">
+            <li>{{ t('settings.im.guideDingtalkStep1') }}</li>
+            <li>{{ t('settings.im.guideDingtalkStep2') }}</li>
+            <li>{{ t('settings.im.guideDingtalkStep3') }}</li>
+            <li>{{ t('settings.im.guideDingtalkStep4') }}</li>
+            <li>{{ t('settings.im.guideDingtalkStep5') }}</li>
+          </ol>
         </div>
 
-        <!-- 内置命令 -->
+        <!-- 飞书机器人配置 -->
         <div class="guide-card">
-          <h5 class="guide-card-title">{{ t('settings.im.guideCommands') }}</h5>
+          <h5 class="guide-card-title">🔧 {{ t('settings.im.guideFeishuTitle') }}</h5>
+          <ol class="guide-steps">
+            <li>{{ t('settings.im.guideFeishuStep1') }}</li>
+            <li>{{ t('settings.im.guideFeishuStep2') }}</li>
+            <li>{{ t('settings.im.guideFeishuStep3') }}</li>
+            <li>{{ t('settings.im.guideFeishuStep4') }}</li>
+            <li>{{ t('settings.im.guideFeishuStep5') }}</li>
+            <li>{{ t('settings.im.guideFeishuStep6') }}</li>
+            <li>{{ t('settings.im.guideFeishuStep7') }}</li>
+          </ol>
+        </div>
+
+        <!-- 使用提示 -->
+        <div class="guide-card">
+          <h5 class="guide-card-title">💡 {{ t('settings.im.guideUsageTitle') }}</h5>
+          <p class="guide-card-desc">{{ t('settings.im.guideUsageDesc') }}</p>
           <div class="command-list">
             <div class="command-item">
               <code>/help</code>
@@ -372,20 +391,12 @@ function cancelFreeMode() {
               <code>/clear</code>
               <span>{{ t('settings.im.guideCommandClear') }}</span>
             </div>
-          </div>
-        </div>
-
-        <!-- 操作确认 -->
-        <div class="guide-card">
-          <h5 class="guide-card-title">{{ t('settings.im.guideConfirmTitle') }}</h5>
-          <p class="guide-card-desc">{{ t('settings.im.guideConfirmDesc') }}</p>
-          <div class="command-list">
             <div class="command-item">
-              <code class="confirm-approve">确认</code>
+              <code class="confirm-approve">{{ t('settings.im.guideConfirmApproveWord') }}</code>
               <span>{{ t('settings.im.guideConfirmApprove') }}</span>
             </div>
             <div class="command-item">
-              <code class="confirm-reject">拒绝</code>
+              <code class="confirm-reject">{{ t('settings.im.guideConfirmRejectWord') }}</code>
               <span>{{ t('settings.im.guideConfirmReject') }}</span>
             </div>
           </div>
@@ -822,11 +833,22 @@ function cancelFreeMode() {
   justify-content: flex-end;
 }
 
-/* 使用说明 */
+/* 配置说明 */
 .guide-section {
   background: var(--bg-tertiary);
   border-radius: 8px;
   padding: 16px;
+}
+
+.guide-doc-link {
+  font-size: 12px;
+  color: var(--accent-primary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.guide-doc-link:hover {
+  text-decoration: underline;
 }
 
 .guide-grid {
@@ -860,12 +882,16 @@ function cancelFreeMode() {
   margin-bottom: 8px;
 }
 
-.guide-list {
+.guide-steps {
   margin: 0;
-  padding-left: 16px;
+  padding-left: 20px;
   font-size: 12px;
   color: var(--text-secondary);
-  line-height: 1.7;
+  line-height: 1.8;
+}
+
+.guide-steps li {
+  margin: 2px 0;
 }
 
 .command-list {
