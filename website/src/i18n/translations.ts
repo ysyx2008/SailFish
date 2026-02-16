@@ -196,7 +196,7 @@ export const translations = {
         title: 'AGPL v3.0',
         description: '以下场景免费使用：',
         items: [
-          '个人学习、研究、日常使用',
+          '个人使用，完全免费',
           '教育机构',
           '医疗及医疗研究机构',
           '非盈利组织',
@@ -416,7 +416,7 @@ export const translations = {
         title: 'AGPL v3.0',
         description: 'Free to use in the following scenarios:',
         items: [
-          'Personal learning, research, and daily use',
+          'Personal use, completely free',
           'Non-profit organizations / Educational institutions',
           'Medical and medical research institutions',
           'Non-profit organizations',
