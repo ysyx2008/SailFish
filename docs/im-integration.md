@@ -1,196 +1,293 @@
-# IM 集成指南
+# IM Integration Guide
 
-本文档介绍如何将旗鱼终端的 AI Agent 接入钉钉和飞书，实现在 IM 中直接与 AI 对话。
+This guide explains how to connect SFTerminal's AI Agent to Slack, Telegram, DingTalk, and Feishu (Lark), enabling you to chat with the AI directly from your IM app.
 
-连接成功后，你可以在钉钉或飞书中像跟同事聊天一样与 AI Agent 交互——发一条消息，Agent 就会在你的电脑上执行任务并回复结果。
-
----
-
-## 目录
-
-1. [工作原理](#工作原理)
-2. [钉钉配置](#钉钉配置)
-3. [飞书配置](#飞书配置)
-4. [在旗鱼终端中连接](#在旗鱼终端中连接)
-5. [使用方式](#使用方式)
-6. [常见问题](#常见问题)
+Once connected, you can interact with the AI Agent just like chatting with a colleague — send a message, and the Agent will execute tasks on your machine and reply with the results.
 
 ---
 
-## 工作原理
+## Table of Contents
+
+1. [How It Works](#how-it-works)
+2. [Slack Setup](#slack-setup)
+3. [Telegram Setup](#telegram-setup)
+4. [DingTalk Setup](#dingtalk-setup)
+5. [Feishu (Lark) Setup](#feishu-lark-setup)
+6. [Connect in SFTerminal](#connect-in-sfterminal)
+7. [Usage](#usage)
+8. [FAQ](#faq)
+
+---
+
+## How It Works
 
 ```
-IM 用户发送消息
+User sends a message in IM
        │
        ▼
-  钉钉/飞书服务器
-       │ (WebSocket 长连接推送)
+  Slack/Telegram/DingTalk/Feishu server
+       │ (WebSocket / Long Polling)
        ▼
-  旗鱼终端 IM 服务
+  SFTerminal IM Service
        │
        ▼
-  本地 AI Agent 处理
+  Local AI Agent processes the request
        │
        ▼
-  通过 API 回复到 IM
+  Reply sent back to IM via API
 ```
 
-- **不需要公网服务器**：使用 WebSocket 长连接模式，由客户端主动连接平台，无需暴露端口或配置域名。
-- **消息在本地处理**：所有 AI 推理和工具调用都在你的电脑上执行。
-- **独立于 Gateway**：IM 集成不依赖远程访问（Gateway）服务，可以单独使用。
+- **No public server required**: Uses WebSocket long connections or Long Polling initiated from the client side. No need to expose ports or configure domain names.
+- **Messages processed locally**: All AI inference and tool calls run on your machine.
+- **Independent of Gateway**: IM integration does not depend on the remote access (Gateway) service and can be used standalone.
 
 ---
 
-## 钉钉配置
+## Slack Setup
 
-### 第 1 步：创建企业内部应用
+### Step 1: Create a Slack App
 
-1. 打开 [钉钉开放平台](https://open-dev.dingtalk.com/)，使用管理员账号登录
-2. 进入 **应用开发** → **企业内部开发** → **创建应用**
-3. 填写应用名称和描述，完成创建
+1. Go to [Slack API](https://api.slack.com/apps) and click **Create New App**
+2. Choose **From scratch**, enter your App name, and select the Workspace to install it to
+3. After creation, you'll be taken to the App settings page
 
-### 第 2 步：获取凭证
+### Step 2: Enable Socket Mode
 
-在应用详情页的 **凭证与基础信息** 中，复制：
+1. In the left menu, go to **Socket Mode**
+2. Toggle on **Enable Socket Mode**
+3. You'll be prompted to generate an App-Level Token — enter a token name (e.g. `socket`), select the `connections:write` scope
+4. Copy the generated **App-Level Token** (starts with `xapp-`), you'll need it later in SFTerminal
 
-- **ClientID**（即 AppKey）
-- **ClientSecret**（即 AppSecret）
+### Step 3: Add Bot Token Scopes
 
-### 第 3 步：添加机器人能力
+Go to **OAuth & Permissions** in the left menu, and add the following **Bot Token Scopes**:
 
-1. 在左侧菜单找到 **添加应用能力**
-2. 添加 **机器人** 能力
-3. 在机器人配置中选择 **Stream 模式**（非 HTTP 回调模式）
+| Scope | Description |
+|-------|-------------|
+| `chat:write` | Send messages (for replies) |
+| `files:read` | Read files |
+| `files:write` | Upload and send files |
+| `im:history` | Read DM message history |
+| `im:read` | View DM channel info |
+| `im:write` | Start DM conversations |
+| `channels:history` | Read public channel message history |
+| `channels:read` | View public channel info |
+| `groups:history` | Read private channel message history |
+| `groups:read` | View private channel info |
+| `users:read` | View user info (to get sender names) |
 
-### 第 4 步：发布应用
+### Step 4: Subscribe to Events
 
-1. 进入 **版本管理与发布**
-2. 创建一个版本并发布
-3. 企业内部应用通常无需审核，发布后即可使用
+1. Go to **Event Subscriptions** in the left menu
+2. Toggle on **Enable Events**
+3. Under **Subscribe to bot events**, add:
+   - `message.im` (receive DM messages)
+   - `message.channels` (receive public channel messages)
+   - `message.groups` (receive private channel messages)
+4. Click **Save Changes**
+
+### Step 5: Enable App Home Messaging
+
+1. Go to **App Home** in the left menu
+2. In the **Show Tabs** section, ensure **Messages Tab** is checked
+3. Check **Allow users to send Slash commands and messages from the messages tab**
+
+> ⚠️ This step is critical. Without it, users will see "Sending messages to this app has been turned off" when trying to DM the bot.
+
+### Step 6: Install the App and Get Bot Token
+
+1. Go to **Install App** in the left menu (or the top of the **OAuth & Permissions** page)
+2. Click **Install to Workspace** and authorize
+3. Copy the **Bot User OAuth Token** (starts with `xoxb-`)
+
+> If you later modify Scopes or Event Subscriptions, Slack will prompt you to **Reinstall App**. Credentials remain the same after reinstalling.
 
 ---
 
-## 飞书配置
+## Telegram Setup
 
-### 第 1 步：创建企业自建应用
+Telegram is the simplest platform to set up — you only need a single Bot Token, and the entire process is done within the Telegram chat interface. No web console required.
 
-1. 打开 [飞书开放平台](https://open.feishu.cn/app)，登录你的飞书账号
-2. 点击 **创建企业自建应用**，填写应用名称和描述
-3. 创建成功后进入应用详情页
+### Step 1: Create a Bot via BotFather
 
-### 第 2 步：获取凭证
+1. Open your Telegram client (mobile or desktop)
+2. Search for **@BotFather** and start a conversation (this is Telegram's official bot management tool)
+3. Send the `/newbot` command
+4. Follow the prompts to set:
+   - **Bot display name** (e.g. `My Agent`, can be anything)
+   - **Bot username** (must end with `bot`, e.g. `my_sf_agent_bot`, must be globally unique)
+5. Once created, BotFather will return a **Bot Token** in the format `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`
 
-在应用详情页的 **凭证与基础信息** 中，复制：
+> Copy and save this token — you'll need it in SFTerminal.
+
+### Step 2: (Optional) Allow the Bot to Join Groups
+
+If you want to use the bot in group chats:
+
+1. Send `/mybots` to @BotFather
+2. Select the bot you just created
+3. Go to **Bot Settings** → **Allow Groups?** → Select **Turn on**
+
+> Skip this step if you only plan to use the bot in private chats.
+
+---
+
+## DingTalk Setup
+
+### Step 1: Create an Internal App
+
+1. Go to [DingTalk Open Platform](https://open-dev.dingtalk.com/) and log in with an admin account
+2. Navigate to **App Development** → **Internal Development** → **Create App**
+3. Fill in the app name and description, then create
+
+### Step 2: Get Credentials
+
+In the app details page under **Credentials & Basic Info**, copy:
+
+- **ClientID** (also known as AppKey)
+- **ClientSecret** (also known as AppSecret)
+
+### Step 3: Add Bot Capability
+
+1. In the left menu, find **Add App Capabilities**
+2. Add the **Bot** capability
+3. In the bot configuration, select **Stream Mode** (not HTTP callback mode)
+
+### Step 4: Publish the App
+
+1. Go to **Version Management & Release**
+2. Create a version and publish
+3. Internal apps typically don't require review and are available immediately after publishing
+
+---
+
+## Feishu (Lark) Setup
+
+### Step 1: Create an Internal App
+
+1. Go to [Feishu Open Platform](https://open.feishu.cn/app) and log in
+2. Click **Create Custom App**, fill in the app name and description
+3. After creation, enter the app details page
+
+### Step 2: Get Credentials
+
+In the app details page under **Credentials & Basic Info**, copy:
 
 - **App ID**
 - **App Secret**
 
-### 第 3 步：添加机器人能力
+### Step 3: Add Bot Capability
 
-1. 在左侧菜单找到 **添加应用能力**
-2. 添加 **机器人** 能力
+1. In the left menu, find **Add App Capabilities**
+2. Add the **Bot** capability
 
-### 第 4 步：开通权限
+### Step 4: Enable Permissions
 
-进入左侧 **权限管理**，搜索并开通以下权限：
+Go to **Permission Management** in the left menu, search for and enable these permissions:
 
-| 权限 | 说明 |
-|------|------|
-| `im:message:send_as_bot` | 以应用的身份发消息（用于回复） |
-| `im:message.p2p_msg:readonly` | 读取用户发给机器人的单聊消息 |
-| `im:message:readonly` | 获取单聊、群组消息 |
-| `im:resource` | 获取与上传图片或文件资源（用于文件发送功能） |
+| Permission | Description |
+|------------|-------------|
+| `im:message:send_as_bot` | Send messages as the app (for replies) |
+| `im:message.p2p_msg:readonly` | Read DM messages sent to the bot |
+| `im:message:readonly` | Read DM and group messages |
+| `im:resource` | Access and upload images/files (for file sending) |
 
-### 第 5 步：先连接旗鱼终端
+### Step 5: Connect SFTerminal First
 
-飞书平台要求应用已建立长连接，才允许配置事件订阅。因此需要 **先从旗鱼终端发起连接**：
+Feishu requires an active long connection before allowing event subscription configuration. So you need to **connect from SFTerminal first**:
 
-1. 打开旗鱼终端，进入 **设置** → **远程访问**
-2. 展开 **飞书** 卡片，填入第 2 步获取的 App ID 和 App Secret
-3. 点击 **连接**，等待状态变为 ✅ **已连接**
+1. Open SFTerminal, go to **Settings** → **Remote Access**
+2. Expand the **Feishu** card, enter the App ID and App Secret from Step 2
+3. Click **Connect** and wait for the status to show ✅ **Connected**
 
-> 保持旗鱼终端的连接不要断开，然后回到飞书开放平台继续下面的步骤。
+> Keep SFTerminal connected, then return to the Feishu Open Platform for the next steps.
 
-### 第 6 步：配置事件订阅（长连接模式）
+### Step 6: Configure Event Subscription (Long Connection Mode)
 
-1. 进入左侧 **事件与回调** → **事件配置**
-2. 订阅方式选择 **使用长连接接收事件**，点击 **保存**（此时旗鱼终端已连接，平台不会再报错）
-3. 保存成功后，点击 **添加事件**，搜索并添加：
-   - **im.message.receive_v1**（接收消息）
+1. Go to **Events & Callbacks** → **Event Configuration** in the left menu
+2. Select **Use long connection to receive events** as the subscription method, then click **Save** (SFTerminal is already connected, so the platform won't report errors)
+3. After saving, click **Add Event** and add:
+   - **im.message.receive_v1** (receive messages)
 
-### 第 7 步：发布应用版本
+### Step 7: Publish the App
 
-1. 进入 **版本管理与发布**
-2. 创建一个版本并提交
-3. 企业内审核通常很快，审核通过后应用正式生效
-
----
-
-## 在旗鱼终端中连接
-
-1. 打开旗鱼终端，进入 **设置** → **远程访问**
-2. 在 **IM 集成** 区域，展开对应平台的卡片（钉钉 / 飞书）
-3. 填入上面获取的凭证：
-   - 钉钉：ClientID + ClientSecret
-   - 飞书：App ID + App Secret
-4. 点击 **连接**，等待状态变为 ✅ **已连接**
-5. 可选：勾选 **启动时自动连接**，下次打开旗鱼终端会自动连上
+1. Go to **Version Management & Release**
+2. Create a version and submit
+3. Internal review is usually fast; the app takes effect after approval
 
 ---
 
-## 使用方式
+## Connect in SFTerminal
 
-### 私聊
-
-直接在 IM 中搜索你创建的机器人名称，发起私聊，发送文字消息即可。
-
-### 群聊
-
-1. 将机器人添加到群聊中
-2. **@机器人** 后输入你的消息
-3. 机器人会在群内回复
-
-### 支持的消息类型
-
-- **输入**：目前仅支持文本消息
-- **输出**：支持纯文本、Markdown 格式回复和文件发送
-  - 钉钉以 Markdown 消息发送，飞书以交互卡片形式发送
-  - AI 可以将机器上的文件直接发送到聊天中（钉钉限 20MB，飞书限 30MB）
-
-### 文件发送
-
-AI Agent 可以将本地文件通过 IM 机器人发送给你。典型场景：
-
-- 你让 AI 查看某个日志文件，AI 可以直接把文件发过来
-- AI 生成了报告、截图、导出文件后，自动发送到聊天
-- 需要拿到服务器上的配置文件时，直接告诉 AI "把 xxx 文件发给我"
-
-> 如果按照上方步骤开通了 `im:resource` 权限，文件发送功能即可直接使用，无需额外配置。
+1. Open SFTerminal, go to **Settings** → **Remote Access**
+2. In the **IM Integration** section, expand the card for your platform (Slack / Telegram / DingTalk / Feishu)
+3. Enter the credentials obtained above:
+   - Slack: Bot Token (xoxb-...) + App-Level Token (xapp-...)
+   - Telegram: Bot Token
+   - DingTalk: ClientID + ClientSecret
+   - Feishu: App ID + App Secret
+4. Click **Connect** and wait for the status to show ✅ **Connected**
+5. Optional: Check **Auto-connect on startup** so SFTerminal reconnects automatically next time
 
 ---
 
-## 常见问题
+## Usage
 
-### 连接失败
+### Direct Messages
 
-- 检查凭证是否正确（注意不要有多余空格）
-- 确认应用已发布上线
-- 检查网络是否能访问钉钉/飞书的服务器
+Search for the bot by name in your IM app, start a direct conversation, and send a text message.
 
-### 飞书提示"应用未建立长连接"
+### Group Chats
 
-这是正常现象。需要先在旗鱼终端中填入凭证并连接（第 5 步），建立 WebSocket 长连接后，飞书平台才允许保存长连接订阅方式的配置。
+1. Add the bot to a group chat
+2. **@mention the bot** followed by your message
+3. The bot will reply in the group
 
-### 机器人不回复消息
+### Supported Message Types
 
-- 确认旗鱼终端正在运行且 IM 连接状态为"已连接"
-- 群聊中需要 **@机器人** 才会触发
-- 检查旗鱼终端的 AI 模型配置是否正常
+- **Input**: Currently supports text messages only
+- **Output**: Supports plain text, Markdown-formatted replies, and file sending
+  - Slack uses mrkdwn format, Telegram uses Markdown, DingTalk uses Markdown messages, Feishu uses interactive cards
+  - AI can send files from your machine directly to the chat (Slack limit: 1GB, Telegram: 50MB, DingTalk: 20MB, Feishu: 30MB)
 
-### 消息被截断
+### File Sending
 
-IM 平台对单条消息长度有限制。Agent 回复过长时会自动截断并提示"内容已截断"。
+The AI Agent can send local files via the IM bot. Typical use cases:
 
-### 凭证安全
+- Ask the AI to check a log file, and it can send the file directly to you
+- After generating reports, screenshots, or exports, the AI sends them to the chat automatically
+- When you need a config file from the server, just tell the AI "send me the xxx file"
 
-所有凭证仅保存在本地设备上，不会上传到任何服务器。请确保你的设备安全，避免凭证泄露。
+> For Feishu, file sending works out of the box if you've enabled the `im:resource` permission as described above.
+
+---
+
+## FAQ
+
+### Connection Failed
+
+- Verify your credentials are correct (watch out for extra spaces)
+- Make sure the app is published and active (DingTalk/Feishu require publishing a version, Slack requires Install to Workspace, Telegram works immediately after bot creation)
+- Check that your network can reach the platform's servers
+
+### Feishu Shows "App Has No Active Long Connection"
+
+This is expected. You need to connect from SFTerminal first (Step 5) to establish a WebSocket long connection before the Feishu platform allows saving the long connection subscription configuration.
+
+### Bot Doesn't Reply
+
+- Confirm SFTerminal is running and the IM connection status shows "Connected"
+- In group chats, you must **@mention the bot** to trigger a response
+- Check that the AI model configuration in SFTerminal is correct
+
+### Messages Truncated
+
+IM platforms have message length limits. When Agent replies are too long, they are automatically truncated with a note indicating the content was cut off.
+
+### Slack Shows "Sending Messages to This App Has Been Turned Off"
+
+You need to enable **Messages Tab** and check **Allow users to send Slash commands and messages from the messages tab** in the Slack App settings under **App Home** → **Show Tabs**. See [Slack Setup Step 5](#step-5-enable-app-home-messaging).
+
+### Credential Security
+
+All credentials are stored locally on your device only and are never uploaded to any server. Ensure your device is secure to prevent credential leaks.
