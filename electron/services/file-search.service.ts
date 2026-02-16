@@ -294,6 +294,53 @@ export class FileSearchService {
   }
 
   /**
+   * 转义 Spotlight 查询中的单引号，防止查询语法被破坏
+   */
+  private escapeSpotlightQuery(query: string): string {
+    return query.replace(/'/g, "\\'")
+  }
+
+  /**
+   * 构建 Spotlight 查询参数
+   * 根据查询内容选择合适的 mdfind 调用方式：
+   * - 包含通配符 (* ?) 时：使用 kMDItemFSName 查询语法（支持 glob）
+   * - 纯文本时：使用 -name 参数（子串匹配）
+   *
+   * @returns { args, hasWildcard } args 为 mdfind 参数数组，hasWildcard 标记是否使用了通配符模式
+   */
+  buildSpotlightArgs(
+    query: string,
+    searchPath?: string,
+    type?: 'file' | 'dir' | 'all'
+  ): { args: string[]; hasWildcard: boolean } {
+    const args: string[] = []
+
+    if (searchPath) {
+      args.push('-onlyin', searchPath)
+    }
+
+    const hasWildcard = query.includes('*') || query.includes('?')
+
+    if (hasWildcard) {
+      const escaped = this.escapeSpotlightQuery(query)
+      const conditions: string[] = [`kMDItemFSName == '${escaped}'c`]
+
+      if (type === 'dir') {
+        conditions.push("kMDItemContentType == 'public.folder'")
+      } else if (type === 'file') {
+        conditions.push("kMDItemContentType != 'public.folder'")
+      }
+
+      args.push(conditions.join(' && '))
+    } else {
+      // 纯文本查询使用 -name（子串匹配，简单高效）
+      args.push('-name', query)
+    }
+
+    return { args, hasWildcard }
+  }
+
+  /**
    * 使用 Spotlight (mdfind) 搜索 - macOS
    */
   private async searchWithSpotlight(
@@ -302,16 +349,7 @@ export class FileSearchService {
     type?: 'file' | 'dir' | 'all',
     limit?: number
   ): Promise<FileSearchResult[]> {
-    const args: string[] = []
-
-    // 添加搜索路径限制
-    if (searchPath) {
-      args.push('-onlyin', searchPath)
-    }
-
-    // 构建搜索查询
-    // mdfind 支持文件名搜索
-    args.push('-name', query)
+    const { args, hasWildcard } = this.buildSpotlightArgs(query, searchPath, type)
 
     try {
       const output = await this.execCommand('mdfind', args)
@@ -327,9 +365,11 @@ export class FileSearchService {
           const stats = fs.statSync(filePath)
           const isDir = stats.isDirectory()
 
-          // 类型过滤
-          if (type === 'file' && isDir) continue
-          if (type === 'dir' && !isDir) continue
+          // 使用 -name 时类型过滤需在代码中完成（kMDItemFSName 模式已在查询中过滤）
+          if (!hasWildcard) {
+            if (type === 'file' && isDir) continue
+            if (type === 'dir' && !isDir) continue
+          }
 
           results.push({
             path: filePath,
