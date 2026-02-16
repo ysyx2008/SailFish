@@ -11,6 +11,10 @@ import { HostProfileService } from '../services/host-profile.service'
 
 // ==================== Helpers ====================
 
+function getVersion(): string {
+  try { return require('../../package.json').version } catch { return 'unknown' }
+}
+
 function printJSON(data: unknown): void {
   console.log(JSON.stringify(data, null, 2))
 }
@@ -832,7 +836,11 @@ async function docTypes(): Promise<void> {
 
 // ==================== Env Override Utility ====================
 
+let _envOverridesApplied = false
 function applyEnvOverrides(): void {
+  if (_envOverridesApplied) return
+  _envOverridesApplied = true
+
   const apiUrl = process.env.SFT_API_URL
   const apiKey = process.env.SFT_API_KEY
   const model = process.env.SFT_MODEL
@@ -841,7 +849,6 @@ function applyEnvOverrides(): void {
     const config = getConfig()
     const profiles = config.getAiProfiles()
     
-    // Create or update a profile from env vars
     const envProfile = {
       id: 'env-override',
       name: 'CLI Environment',
@@ -865,9 +872,7 @@ function applyEnvOverrides(): void {
 // ==================== Help ====================
 
 function printHelp(): void {
-  const version = (() => {
-    try { return require('../../package.json').version } catch { return '?.?.?' }
-  })()
+  const version = getVersion()
 
   console.log(`
 SFTerminal CLI v${version}
@@ -966,11 +971,7 @@ async function main(): Promise<void> {
   }
 
   if (command === '--version' || command === '-v') {
-    try {
-      console.log(require('../../package.json').version)
-    } catch {
-      console.log('unknown')
-    }
+    console.log(getVersion())
     return
   }
 

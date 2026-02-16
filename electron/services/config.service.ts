@@ -210,9 +210,14 @@ export class ConfigService {
     }
 
     // CLI 模式使用独立的配置文件，避免读取 Electron 加密的配置
-    const storeName = process.env.SFT_CLI_MODE
+    const isCli = !!process.env.SFT_CLI_MODE
+    const storeName = isCli
       ? 'qiyu-terminal-config-cli'
       : 'qiyu-terminal-config'
+
+    if (isCli) {
+      console.warn('[CLI] 配置文件未加密存储，请勿在共享环境中保存敏感信息（如 API Key）')
+    }
 
     this.store = new Store<StoreSchema>({
       name: storeName,

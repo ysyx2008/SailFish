@@ -78,10 +78,18 @@ const app = {
 
 // ==================== safeStorage ====================
 
+let _safeStorageWarned = false
+function warnSafeStorage() {
+  if (!_safeStorageWarned) {
+    _safeStorageWarned = true
+    console.warn('[CLI] safeStorage 在 CLI 模式下不可用，敏感数据未加密存储')
+  }
+}
+
 const safeStorage = {
   isEncryptionAvailable() { return false },
-  encryptString() { return Buffer.alloc(0) },
-  decryptString() { return '' }
+  encryptString(data) { warnSafeStorage(); return Buffer.from(data || '') },
+  decryptString(buf) { warnSafeStorage(); return buf ? buf.toString() : '' }
 }
 
 // ==================== BrowserWindow ====================
@@ -190,6 +198,7 @@ const clipboard = {
 }
 
 const screen = {
+  // CLI 模式无 GUI，返回常见分辨率作为占位值
   getPrimaryDisplay() {
     return { workAreaSize: { width: 1920, height: 1080 } }
   }
