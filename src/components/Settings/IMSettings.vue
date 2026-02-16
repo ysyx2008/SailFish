@@ -71,10 +71,10 @@ onUnmounted(() => {
 async function loadIMSettings() {
   try {
     const status = await window.electronAPI.im.getStatus()
-    dtConnected.value = status.dingtalk.connected
-    fsConnected.value = status.feishu.connected
-    slConnected.value = status.slack.connected
-    tgConnected.value = status.telegram.connected
+    dtConnected.value = status.dingtalk?.connected ?? false
+    fsConnected.value = status.feishu?.connected ?? false
+    slConnected.value = status.slack?.connected ?? false
+    tgConnected.value = status.telegram?.connected ?? false
 
     const config = await window.electronAPI.im.getConfig()
     dtClientId.value = config.dingtalk?.clientId || ''

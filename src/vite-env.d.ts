@@ -1970,17 +1970,26 @@ interface Window {
       stopDingTalk: () => Promise<{ success: boolean }>
       startFeishu: (config: { enabled: boolean; appId: string; appSecret: string }) => Promise<{ success: boolean; error?: string }>
       stopFeishu: () => Promise<{ success: boolean }>
+      startSlack: (config: { enabled: boolean; botToken: string; appToken: string }) => Promise<{ success: boolean; error?: string }>
+      stopSlack: () => Promise<{ success: boolean }>
+      startTelegram: (config: { enabled: boolean; botToken: string }) => Promise<{ success: boolean; error?: string }>
+      stopTelegram: () => Promise<{ success: boolean }>
       getStatus: () => Promise<{
         dingtalk: { enabled: boolean; connected: boolean }
         feishu: { enabled: boolean; connected: boolean }
+        slack: { enabled: boolean; connected: boolean }
+        telegram: { enabled: boolean; connected: boolean }
       }>
       getConfig: () => Promise<{
         dingtalk: { clientId: string; clientSecret: string; autoConnect: boolean }
         feishu: { appId: string; appSecret: string; autoConnect: boolean }
+        slack: { botToken: string; appToken: string; autoConnect: boolean }
+        telegram: { botToken: string; autoConnect: boolean }
         executionMode: 'strict' | 'relaxed' | 'free'
       }>
       setAutoConnect: (platform: string, enabled: boolean) => Promise<void>
       setExecutionMode: (mode: 'strict' | 'relaxed' | 'free') => Promise<void>
+      sendNotification: (text: string, options?: { markdown?: boolean; title?: string }) => Promise<{ success: boolean; platform?: string; error?: string }>
       onConnectionChange: (callback: (data: { platform: string; connected: boolean }) => void) => () => void
     }
   }
