@@ -37,7 +37,7 @@
 | 🔁 Repetitive tasks? | Agent automates multi-step operations |
 | 🏢 Intranet restrictions? | Supports private AI models and proxies |
 | 🛠️ CLI config too complex? | GUI-based, ready out of the box |
-| 📱 Away from your desk? | Access Agent remotely via Web, DingTalk, or Feishu |
+| 📱 Away from your desk? | Access Agent remotely via Web, DingTalk, Feishu, Slack, or Telegram |
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome_en.jpg" width="800" alt="SFTerm">
@@ -48,7 +48,7 @@
 | Feature | Description |
 |---------|-------------|
 | 🤖 **AI Agent** | Describe tasks, Agent plans and executes automatically |
-| 🌐 **Remote Agent** | Access your Agent from anywhere — Web UI, DingTalk, or Feishu |
+| 🌐 **Remote Agent** | Access your Agent from anywhere — Web UI, DingTalk, Feishu, Slack, or Telegram |
 | 🖥️ **SSH/SFTP** | Full remote connection and file management |
 | 📁 **File Manager** | Dual-pane file manager for local & remote |
 | 📚 **Knowledge Base** | Local RAG, completely offline |
@@ -102,6 +102,7 @@ SailFish supports OpenAI-compatible APIs. Configure in Settings:
 ## 📖 Documentation
 
 - [Agent Architecture](./docs/agent-architecture.md)
+- [IM Integration Guide](./docs/messaging-integration.md)
 - [Changelog](./CHANGELOG.md)
 - [Contributing](./CONTRIBUTING.md)
 
