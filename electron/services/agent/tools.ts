@@ -587,6 +587,15 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
             info: {
               type: 'string',
               description: '要记住的信息。路径、端口等关键信息必须完整准确'
+            },
+            volatility: {
+              type: 'string',
+              enum: ['stable', 'moderate', 'volatile'],
+              description: '信息的易变性。stable=几乎不变(如OS类型、硬件)；moderate=偶尔变化(如服务端口、软件版本)；volatile=经常变化(如证书到期时间)。默认 moderate'
+            },
+            source: {
+              type: 'string',
+              description: '信息来源，如 "nginx -T 输出"、"用户告知"、"systemctl status 确认"'
             }
           },
           required: ['info']

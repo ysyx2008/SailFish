@@ -329,6 +329,29 @@ export class VectorStorage extends EventEmitter {
   }
 
   /**
+   * 批量获取多个文档的向量记录
+   * 一次全表查询，按 docId 过滤，避免 N+1 查询问题
+   */
+  async getRecordsByDocIds(docIds: Set<string>): Promise<Map<string, VectorRecord>> {
+    if (!this.table || docIds.size === 0) return new Map()
+
+    try {
+      const allRows = await this.table.query().toArray()
+      const result = new Map<string, VectorRecord>()
+      for (const row of allRows as VectorRecord[]) {
+        // 每个 docId 只取第一条（主机记忆通常只有一个 chunk）
+        if (docIds.has(row.docId) && !result.has(row.docId)) {
+          result.set(row.docId, row)
+        }
+      }
+      return result
+    } catch (error) {
+      console.error('[VectorStorage] Failed to get records by docIds:', error)
+      return new Map()
+    }
+  }
+
+  /**
    * 删除文档的所有记录（别名，与 removeDocumentChunks 相同）
    */
   async removeRecordsByDocId(docId: string): Promise<number> {

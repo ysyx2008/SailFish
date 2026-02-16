@@ -49,34 +49,28 @@ export async function rememberInfo(
   const hostId = executor.getHostId()
   let savedToKnowledge = false
   
+  // 提取 Agent 传入的可选元数据（观察日志模型）
+  const volatility = args.volatility as string | undefined
+  const source = args.source as string | undefined
+  
   if (hostId) {
     try {
       const knowledgeService = getKnowledgeService()
       if (knowledgeService && knowledgeService.isEnabled()) {
-        const result = await knowledgeService.addHostMemorySmart(hostId, info)
+        const result = await knowledgeService.addHostMemorySmart(hostId, info, {
+          volatility: volatility as 'stable' | 'moderate' | 'volatile' | undefined,
+          source
+        })
         
         if (result.success) {
           savedToKnowledge = true
           const memoryCount = knowledgeService.getHostMemoryCount(hostId)
           
           let resultMessage = ''
-          switch (result.action) {
-            case 'skip':
-              resultMessage = `${t('memory.skip_duplicate')}: ${result.message}`
-              break
-            case 'update':
-              resultMessage = `${t('memory.merged')}: ${result.message}`
-              break
-            case 'replace':
-              resultMessage = `${t('memory.replaced')}: ${result.message}`
-              break
-            case 'keep_both':
-              resultMessage = `${t('memory.remembered')}: ${info} ${t('memory.remembered_knowledge', { count: memoryCount })}`
-              break
-            case 'save':
-            default:
-              resultMessage = `${t('memory.remembered')}: ${info} ${t('memory.remembered_knowledge', { count: memoryCount })}`
-              break
+          if (result.action === 'skip') {
+            resultMessage = `${t('memory.skip_duplicate')}: ${result.message}`
+          } else {
+            resultMessage = `${t('memory.remembered')}: ${info} ${t('memory.remembered_knowledge', { count: memoryCount })}`
           }
           
           if (config.debugMode) {

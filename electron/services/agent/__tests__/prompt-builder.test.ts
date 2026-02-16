@@ -34,7 +34,7 @@ import {
   getAllMbtiTypes,
   buildSystemPrompt
 } from '../prompt-builder'
-import type { AgentContext, HostProfileServiceInterface } from '../types'
+import type { AgentContext, HostProfileServiceInterface, HostMemoryEntry } from '../types'
 
 // ==================== 辅助函数 ====================
 
@@ -513,6 +513,188 @@ describe('buildSystemPrompt (backward compatible)', () => {
     const fromBuilder = builder.build()
     
     expect(fromFunction).toBe(fromBuilder)
+  })
+})
+
+// ==================== 观察日志模型测试 ====================
+
+describe('Observation Ledger Model', () => {
+  describe('formatMemoryAnnotation', () => {
+    it('should show "刚刚确认" for recent memories (< 1 hour)', () => {
+      const entry: HostMemoryEntry = {
+        content: '测试内容',
+        createdAt: Date.now() - 30 * 60 * 1000 // 30 分钟前
+      }
+      const result = PromptBuilder.formatMemoryAnnotation(entry)
+      expect(result).toContain('刚刚确认')
+    })
+
+    it('should show hours for memories < 24 hours', () => {
+      const entry: HostMemoryEntry = {
+        content: '测试内容',
+        createdAt: Date.now() - 5 * 60 * 60 * 1000 // 5 小时前
+      }
+      const result = PromptBuilder.formatMemoryAnnotation(entry)
+      expect(result).toContain('5小时前确认')
+    })
+
+    it('should show days for memories < 30 days', () => {
+      const entry: HostMemoryEntry = {
+        content: '测试内容',
+        createdAt: Date.now() - 3 * 24 * 60 * 60 * 1000 // 3 天前
+      }
+      const result = PromptBuilder.formatMemoryAnnotation(entry)
+      expect(result).toContain('3天前确认')
+    })
+
+    it('should show months for memories >= 30 days', () => {
+      const entry: HostMemoryEntry = {
+        content: '测试内容',
+        createdAt: Date.now() - 65 * 24 * 60 * 60 * 1000 // ~2 个月前
+      }
+      const result = PromptBuilder.formatMemoryAnnotation(entry)
+      expect(result).toContain('2个月前确认')
+    })
+
+    it('should include source tag when source is provided', () => {
+      const entry: HostMemoryEntry = {
+        content: '测试内容',
+        createdAt: Date.now() - 2 * 60 * 60 * 1000,
+        source: 'auto-extraction'
+      }
+      const result = PromptBuilder.formatMemoryAnnotation(entry)
+      expect(result).toContain('via auto-extraction')
+    })
+
+    it('should not include source tag when source is absent', () => {
+      const entry: HostMemoryEntry = {
+        content: '测试内容',
+        createdAt: Date.now()
+      }
+      const result = PromptBuilder.formatMemoryAnnotation(entry)
+      expect(result).not.toContain('via')
+    })
+
+    it('should warn stale volatile memories (> 1 day)', () => {
+      const entry: HostMemoryEntry = {
+        content: '测试内容',
+        createdAt: Date.now() - 2 * 24 * 60 * 60 * 1000, // 2 天前
+        volatility: 'volatile'
+      }
+      const result = PromptBuilder.formatMemoryAnnotation(entry)
+      expect(result).toContain('⚠️ 建议验证')
+    })
+
+    it('should NOT warn fresh volatile memories (< 1 day)', () => {
+      const entry: HostMemoryEntry = {
+        content: '测试内容',
+        createdAt: Date.now() - 12 * 60 * 60 * 1000, // 12 小时前
+        volatility: 'volatile'
+      }
+      const result = PromptBuilder.formatMemoryAnnotation(entry)
+      expect(result).not.toContain('建议验证')
+    })
+
+    it('should warn stale moderate memories (> 7 days)', () => {
+      const entry: HostMemoryEntry = {
+        content: '测试内容',
+        createdAt: Date.now() - 10 * 24 * 60 * 60 * 1000, // 10 天前
+        volatility: 'moderate'
+      }
+      const result = PromptBuilder.formatMemoryAnnotation(entry)
+      expect(result).toContain('⚠️ 建议验证')
+    })
+
+    it('should NOT warn moderate memories within 7 days', () => {
+      const entry: HostMemoryEntry = {
+        content: '测试内容',
+        createdAt: Date.now() - 3 * 24 * 60 * 60 * 1000, // 3 天前
+        volatility: 'moderate'
+      }
+      const result = PromptBuilder.formatMemoryAnnotation(entry)
+      expect(result).not.toContain('建议验证')
+    })
+
+    it('should NEVER warn stable memories regardless of age', () => {
+      const entry: HostMemoryEntry = {
+        content: '测试内容',
+        createdAt: Date.now() - 365 * 24 * 60 * 60 * 1000, // 1 年前
+        volatility: 'stable'
+      }
+      const result = PromptBuilder.formatMemoryAnnotation(entry)
+      expect(result).not.toContain('建议验证')
+    })
+
+    it('should default to moderate volatility when not specified', () => {
+      const entry: HostMemoryEntry = {
+        content: '测试内容',
+        createdAt: Date.now() - 10 * 24 * 60 * 60 * 1000 // 10 天前
+        // volatility 未设置，默认 moderate
+      }
+      const result = PromptBuilder.formatMemoryAnnotation(entry)
+      expect(result).toContain('⚠️ 建议验证')
+    })
+  })
+
+  describe('HostMemoryEntry in prompt', () => {
+    it('should format HostMemoryEntry with annotation', () => {
+      const context = createMockContext()
+      const entries: HostMemoryEntry[] = [{
+        content: 'MySQL 运行在端口 3306',
+        createdAt: Date.now() - 2 * 60 * 60 * 1000, // 2 小时前
+        volatility: 'moderate',
+        source: 'remember_info'
+      }]
+      const builder = new PromptBuilder({ 
+        context,
+        hostMemories: entries
+      })
+      const prompt = builder.build()
+      
+      expect(prompt).toContain('MySQL 运行在端口 3306')
+      expect(prompt).toContain('2小时前确认')
+      expect(prompt).toContain('via remember_info')
+    })
+
+    it('should handle mixed string[] and HostMemoryEntry[] format', () => {
+      const context = createMockContext()
+      // 混合格式：旧 string 和新 HostMemoryEntry
+      const mixedMemories = [
+        '旧格式记忆',
+        {
+          content: '新格式记忆',
+          createdAt: Date.now(),
+          volatility: 'stable' as const
+        }
+      ] as (string | HostMemoryEntry)[]
+      
+      const builder = new PromptBuilder({ 
+        context,
+        hostMemories: mixedMemories as any
+      })
+      const prompt = builder.build()
+      
+      expect(prompt).toContain('旧格式记忆')
+      expect(prompt).toContain('新格式记忆')
+      expect(prompt).toContain('刚刚确认')
+    })
+
+    it('should include freshness header text', () => {
+      const context = createMockContext()
+      const entries: HostMemoryEntry[] = [{
+        content: '测试',
+        createdAt: Date.now()
+      }]
+      const builder = new PromptBuilder({ 
+        context,
+        hostMemories: entries
+      })
+      const prompt = builder.build()
+      
+      expect(prompt).toContain('已知信息')
+      expect(prompt).toContain('历史交互')
+      expect(prompt).toContain('较旧的信息可能已过时')
+    })
   })
 })
 

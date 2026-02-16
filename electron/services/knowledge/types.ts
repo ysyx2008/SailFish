@@ -38,6 +38,9 @@ export type DownloadProgressCallback = (
 
 // ==================== 文档和分块相关 ====================
 
+/** 记忆易变性等级 */
+export type MemoryVolatility = 'stable' | 'moderate' | 'volatile'
+
 /** 知识库文档 */
 export interface KnowledgeDocument {
   id: string
@@ -51,6 +54,9 @@ export interface KnowledgeDocument {
   createdAt: number
   updatedAt: number
   chunkCount: number     // 分块数量
+  // 观察日志模型（Observation Ledger）字段
+  volatility?: MemoryVolatility  // 易变性：stable(几乎不变) / moderate(偶尔变) / volatile(经常变)
+  source?: string                // 观察来源（如 "nginx -T 输出"、"用户告知"）
 }
 
 /** 文档分块 */

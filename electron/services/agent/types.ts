@@ -378,6 +378,14 @@ export interface RunOptions {
 /**
  * 系统提示构建选项
  */
+/** 带元数据的主机记忆条目（观察日志模型） */
+export interface HostMemoryEntry {
+  content: string
+  createdAt: number
+  volatility?: 'stable' | 'moderate' | 'volatile'
+  source?: string
+}
+
 export interface PromptOptions {
   /** MBTI 风格类型 */
   mbtiType?: import('../config.service').AgentMbtiType
@@ -385,8 +393,8 @@ export interface PromptOptions {
   knowledgeContext?: string
   /** 知识库是否启用 */
   knowledgeEnabled?: boolean
-  /** 主机记忆列表 */
-  hostMemories?: string[]
+  /** 主机记忆列表（支持旧格式 string[] 或新格式 HostMemoryEntry[]） */
+  hostMemories?: string[] | HostMemoryEntry[]
   /** 用户自定义 AI 规则 */
   aiRules?: string
   /** 任务历史摘要 */
@@ -403,7 +411,7 @@ export interface PromptOptions {
 export interface KnowledgeContextResult {
   context: string
   enabled: boolean
-  hostMemories: string[]
+  hostMemories: string[] | HostMemoryEntry[]
 }
 
 /**

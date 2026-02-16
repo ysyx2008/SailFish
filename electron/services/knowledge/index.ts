@@ -18,7 +18,8 @@ import type {
   KnowledgeStats,
   ModelTier,
   ModelInfo,
-  ModelStatus
+  ModelStatus,
+  MemoryVolatility
 } from './types'
 import { DEFAULT_KNOWLEDGE_SETTINGS } from './types'
 
@@ -27,6 +28,7 @@ import { getEmbeddingService, EmbeddingService } from './embedding'
 import { getVectorStorage, VectorStorage, VectorRecord } from './storage'
 import { getChunker, Chunker } from './chunker'
 import { McpKnowledgeAdapter } from './mcp-adapter'
+import { deduplicateByEmbeddingCluster as deduplicateMemories } from './memory-utils'
 import { createReranker, Reranker } from './reranker'
 import { getBM25Index, BM25Index } from './bm25'
 import { encrypt, decrypt, isEncrypted } from './crypto'
@@ -36,27 +38,16 @@ import type { McpService } from '../mcp.service'
 import type { ConfigService } from '../config.service'
 import type { ParsedDocument } from '../document-parser.service'
 
-// ==================== 语义去重与冲突管理类型 ====================
+// ==================== 观察日志模型类型 ====================
 
-/** 相似记忆信息 */
-export interface SimilarMemory {
-  id: string
+/** 主机记忆内部条目（去重后带元数据） */
+interface HostMemoryItem {
+  docId: string
   content: string
-  similarity: number
   createdAt: number
-}
-
-/** 记忆检查结果 */
-export interface MemoryCheckResult {
-  action: 'skip' | 'conflict' | 'save'
-  similarMemories?: SimilarMemory[]
-}
-
-/** AI 合并决策结果 */
-export interface MemoryMergeDecision {
-  action: 'skip' | 'update' | 'replace' | 'keep_both'
-  mergedContent?: string
-  reason?: string
+  vector: number[] | null
+  volatility?: string
+  source?: string
 }
 
 /** 智能添加记忆的结果 */
@@ -1064,8 +1055,15 @@ export class KnowledgeService extends EventEmitter {
   /**
    * 添加主机记忆
    * 将记忆信息保存到知识库，支持语义搜索
+   * @param hostId 主机 ID
+   * @param memory 记忆内容
+   * @param options 可选的元数据（volatility、source）
    */
-  async addHostMemory(hostId: string, memory: string): Promise<string | null> {
+  async addHostMemory(
+    hostId: string, 
+    memory: string,
+    options?: { volatility?: MemoryVolatility; source?: string }
+  ): Promise<string | null> {
     if (!hostId || !memory) {
       return null
     }
@@ -1075,7 +1073,7 @@ export class KnowledgeService extends EventEmitter {
         await this.initialize()
       }
 
-      // 检查是否已存在相同的记忆（避免重复）
+      // 检查是否已存在相同的记忆（精确哈希去重）
       const existingCheck = this.isDuplicate(memory)
       if (existingCheck.isDuplicate) {
         return existingCheck.existingDoc?.id || null
@@ -1099,7 +1097,10 @@ export class KnowledgeService extends EventEmitter {
         tags: ['host-memory', hostId],
         createdAt: now,
         updatedAt: now,
-        chunkCount: 1  // 记忆通常很短，只有一个 chunk
+        chunkCount: 1,  // 记忆通常很短，只有一个 chunk
+        // 观察日志模型新字段
+        volatility: options?.volatility,
+        source: options?.source
       }
 
       // 生成 embedding（使用原文生成，确保语义搜索正常工作）
@@ -1215,42 +1216,142 @@ export class KnowledgeService extends EventEmitter {
   }
 
   /**
+   * 内部方法：获取去重后的主机记忆（带元数据）
+   * 
+   * 核心改进：读时去重（Observation Ledger 模型）
+   * 1. 获取该主机的所有记忆文档
+   * 2. 一次性获取全部向量记录（避免 N+1 查询）
+   * 3. 用 embedding 余弦相似度聚类（同一主题的观察归为一组）
+   * 4. 每个聚类只取最新的一条（最新观察胜出）
+   * 5. 按相关度/时间排序后返回
+   */
+  private async getHostMemoriesInternal(
+    hostId: string,
+    contextHint?: string,
+    maxMemories: number = 15
+  ): Promise<HostMemoryItem[]> {
+    // 获取该主机的全部记忆文档
+    const hostDocs = this.getDocumentsByHost(hostId)
+      .filter(doc => doc.fileType === 'host-memory')
+
+    if (hostDocs.length === 0) return []
+
+    // 一次性批量获取向量记录（避免 N+1 查询）
+    const docIds = new Set(hostDocs.map(d => d.id))
+    let vectorMap = new Map<string, number[]>()
+    try {
+      const recordsMap = await this.vectorStorage.getRecordsByDocIds(docIds)
+      for (const [docId, record] of recordsMap) {
+        if (record.vector?.length > 0) {
+          vectorMap.set(docId, record.vector)
+        }
+      }
+    } catch (error) {
+      // 向量获取失败，继续但跳过聚类去重
+      console.warn('[KnowledgeService] 向量批量获取失败，跳过聚类去重:', error)
+      vectorMap = new Map()
+    }
+
+    // 解密所有记忆并组装
+    const memoryItems: HostMemoryItem[] = []
+
+    for (const doc of hostDocs) {
+      try {
+        const decryptedContent = decrypt(doc.content)
+        memoryItems.push({
+          docId: doc.id,
+          content: decryptedContent,
+          createdAt: doc.createdAt,
+          vector: vectorMap.get(doc.id) || null,
+          volatility: doc.volatility,
+          source: doc.source
+        })
+      } catch {
+        // 解密失败，跳过
+      }
+    }
+
+    if (memoryItems.length === 0) return []
+
+    // 读时去重：embedding 聚类，每个聚类只取最新
+    const deduplicated = deduplicateMemories(
+      memoryItems,
+      0.80,
+      EmbeddingService.cosineSimilarity
+    )
+    
+    // 如果有上下文提示，按相关性排序
+    if (contextHint && this.embeddingService.isReady()) {
+      try {
+        const queryEmbedding = await this.embeddingService.embedSingle(contextHint)
+        // 计算每条记忆与上下文的相关度，使用临时数组避免 as any
+        const scored = deduplicated.map(item => ({
+          item,
+          relevance: item.vector
+            ? EmbeddingService.cosineSimilarity(queryEmbedding, item.vector)
+            : 0
+        }))
+        scored.sort((a, b) => b.relevance - a.relevance)
+        return scored.slice(0, maxMemories).map(s => s.item)
+      } catch {
+        // 排序失败，按时间排序（最新在前）
+        deduplicated.sort((a, b) => b.createdAt - a.createdAt)
+      }
+    } else {
+      // 无上下文提示，按时间排序（最新在前）
+      deduplicated.sort((a, b) => b.createdAt - a.createdAt)
+    }
+
+    return deduplicated.slice(0, maxMemories)
+  }
+
+  /**
    * 获取主机的所有记忆（用于构建 prompt）
-   * 优先返回与当前上下文相关的记忆
+   * 返回去重后的记忆内容字符串数组
    */
   async getHostMemoriesForPrompt(
     hostId: string, 
     contextHint?: string,
     maxMemories: number = 15
   ): Promise<string[]> {
-    // 主机记忆功能关闭时直接返回
     if (this.settings.enableHostMemory === false) {
       return []
     }
 
     try {
-      let memories: SearchResult[] = []
-
-      if (contextHint) {
-        // 如果有上下文提示，先搜索相关记忆
-        memories = await this.searchHostMemories(hostId, contextHint, maxMemories)
-      }
-
-      // 如果搜索结果不足，补充最近的记忆
-      if (memories.length < maxMemories) {
-        const recentMemories = await this.searchHostMemories(hostId, undefined, maxMemories - memories.length)
-        // 合并并去重
-        const existingIds = new Set(memories.map(m => m.docId))
-        for (const m of recentMemories) {
-          if (!existingIds.has(m.docId)) {
-            memories.push(m)
-          }
-        }
-      }
-
-      return memories.map(m => m.content)
+      const items = await this.getHostMemoriesInternal(hostId, contextHint, maxMemories)
+      return items.map(m => m.content)
     } catch (error) {
       console.error('[KnowledgeService] 获取主机记忆失败:', error)
+      return []
+    }
+  }
+
+  /**
+   * 获取主机记忆（带元数据，用于 prompt 时效标注）
+   * 返回 HostMemoryEntry[] 格式，包含 createdAt、volatility、source
+   * 
+   * 直接复用 getHostMemoriesInternal 的去重结果，无需重复解密
+   */
+  async getHostMemoriesWithMetadata(
+    hostId: string,
+    contextHint?: string,
+    maxMemories: number = 15
+  ): Promise<Array<{ content: string; createdAt: number; volatility?: string; source?: string }>> {
+    if (this.settings.enableHostMemory === false) {
+      return []
+    }
+
+    try {
+      const items = await this.getHostMemoriesInternal(hostId, contextHint, maxMemories)
+      return items.map(item => ({
+        content: item.content,
+        createdAt: item.createdAt,
+        volatility: item.volatility,
+        source: item.source
+      }))
+    } catch (error) {
+      console.error('[KnowledgeService] getHostMemoriesWithMetadata 失败:', error)
       return []
     }
   }
@@ -1297,234 +1398,18 @@ export class KnowledgeService extends EventEmitter {
     return migrated
   }
 
-  // ==================== 语义去重与冲突管理 ====================
-
   /**
-   * 检查记忆相似度
-   * 返回应该执行的动作：skip（重复跳过）、conflict（需要 AI 决策）、save（直接保存）
-   */
-  async checkMemorySimilarity(
-    hostId: string,
-    newMemory: string
-  ): Promise<MemoryCheckResult> {
-    if (!this.isInitialized) {
-      await this.initialize()
-    }
-
-    try {
-      // 先检查精确重复
-      const existingCheck = this.isDuplicate(newMemory)
-      if (existingCheck.isDuplicate) {
-        return { action: 'skip' }
-      }
-
-      // 生成新记忆的 embedding
-      const newEmbedding = await this.embeddingService.embedSingle(newMemory)
-
-      // 获取该主机的所有记忆
-      const hostMemories = this.getDocumentsByHost(hostId)
-        .filter(doc => doc.fileType === 'host-memory')
-
-      if (hostMemories.length === 0) {
-        return { action: 'save' }
-      }
-
-      // 获取所有记忆的向量记录
-      const similarMemories: SimilarMemory[] = []
-
-      for (const doc of hostMemories) {
-        // 从向量存储中获取该记忆的 embedding
-        const records = await this.vectorStorage.getRecordsByDocId(doc.id)
-        if (records.length === 0) continue
-
-        const record = records[0]
-        if (!record.vector || record.vector.length === 0) continue
-
-        // 计算余弦相似度
-        const similarity = EmbeddingService.cosineSimilarity(newEmbedding, record.vector)
-
-        // 相似度 >= 0.95 视为重复
-        if (similarity >= 0.95) {
-          return { action: 'skip' }
-        }
-
-        // 相似度在 0.75-0.95 之间视为潜在冲突
-        if (similarity >= 0.75) {
-          // 解密内容
-          const decryptedContent = decrypt(doc.content)
-          similarMemories.push({
-            id: doc.id,
-            content: decryptedContent,
-            similarity,
-            createdAt: doc.createdAt
-          })
-        }
-      }
-
-      // 如果有潜在冲突，返回冲突信息
-      if (similarMemories.length > 0) {
-        // 按相似度排序，最相似的在前
-        similarMemories.sort((a, b) => b.similarity - a.similarity)
-        return {
-          action: 'conflict',
-          similarMemories
-        }
-      }
-
-      // 没有冲突，可以直接保存
-      return { action: 'save' }
-    } catch (error) {
-      console.error('[KnowledgeService] 检查记忆相似度失败:', error)
-      // 出错时默认允许保存
-      return { action: 'save' }
-    }
-  }
-
-  /**
-   * 更新已有记忆的内容
-   */
-  async updateHostMemory(docId: string, newContent: string): Promise<boolean> {
-    if (!this.isInitialized) {
-      await this.initialize()
-    }
-
-    try {
-      const doc = this.documentsIndex.get(docId)
-      if (!doc || doc.fileType !== 'host-memory') {
-        return false
-      }
-
-      // 加密新内容
-      const encryptedContent = encrypt(newContent)
-
-      // 更新文档索引
-      doc.content = encryptedContent
-      doc.contentHash = this.computeContentHash(newContent)
-      doc.updatedAt = Date.now()
-      this.documentsIndex.set(docId, doc)
-      this.saveDocumentsIndex()
-
-      // 生成新的 embedding
-      const newEmbedding = await this.embeddingService.embedSingle(newContent)
-
-      // 更新向量存储
-      const records = await this.vectorStorage.getRecordsByDocId(docId)
-      if (records.length > 0) {
-        const record = records[0]
-        // 删除旧记录
-        await this.vectorStorage.removeRecordsByDocId(docId)
-        // 添加新记录
-        await this.vectorStorage.addRecords([{
-          ...record,
-          content: encryptedContent,
-          vector: newEmbedding,
-          createdAt: Date.now()
-        }])
-      }
-
-      // 更新 BM25 索引（按 docId 删除所有相关分块）
-      await this.bm25Index.removeDocumentChunks(docId)
-      await this.bm25Index.addDocuments([{
-        id: uuidv4(),  // 生成新的记录 ID
-        docId: docId,
-        content: encryptedContent,
-        filename: doc.filename,
-        hostId: doc.hostId || '',
-        tags: doc.tags.join(',')
-      }])
-
-      console.log('[KnowledgeService] 记忆已更新:', docId)
-      return true
-    } catch (error) {
-      console.error('[KnowledgeService] 更新记忆失败:', error)
-      return false
-    }
-  }
-
-  /**
-   * AI 决策：如何处理冲突记忆
-   */
-  async resolveMemoryConflict(
-    newMemory: string,
-    existingMemory: string,
-    similarity: number,
-    existingCreatedAt?: number
-  ): Promise<MemoryMergeDecision> {
-    try {
-      // 格式化时间
-      const formatTime = (timestamp: number) => {
-        const date = new Date(timestamp)
-        return date.toLocaleString('zh-CN', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit'
-        })
-      }
-      
-      const existingTimeStr = existingCreatedAt ? formatTime(existingCreatedAt) : '未知时间'
-      const newTimeStr = formatTime(Date.now())
-
-      const prompt = `你是一个记忆管理助手。用户正在保存一条新记忆，但检测到与已有记忆相似（相似度 ${(similarity * 100).toFixed(1)}%）。
-请分析并决定如何处理。
-
-【已有记忆】(保存于 ${existingTimeStr})
-${existingMemory}
-
-【新记忆】(当前时间 ${newTimeStr})
-${newMemory}
-
-请分析这两条记忆的关系，返回 JSON 格式的决策：
-
-1. 如果新记忆是旧记忆的重复或子集（信息完全相同或更少），返回：
-   {"action": "skip", "reason": "原因"}
-
-2. 如果两条记忆描述同一事物但信息有更新（如版本变更、端口变更、路径变更），将信息合并成一条更完整准确的记忆，返回：
-   {"action": "update", "mergedContent": "合并后的内容", "reason": "原因"}
-   注意：mergedContent 应该简洁明了，保留最新和最完整的信息
-
-3. 如果新记忆完全取代旧记忆（旧信息已过时），返回：
-   {"action": "replace", "reason": "原因"}
-
-4. 如果两条记忆虽然相关但描述不同方面，都有保留价值，返回：
-   {"action": "keep_both", "reason": "原因"}
-
-只返回 JSON，不要其他内容。`
-
-      const response = await this.aiService.chat([
-        { role: 'user', content: prompt }
-      ])
-
-      // 解析 AI 响应（chat 返回的是字符串）
-      const content = response.trim()
-      // 尝试提取 JSON
-      const jsonMatch = content.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        const decision = JSON.parse(jsonMatch[0]) as MemoryMergeDecision
-        // 验证必要字段
-        if (['skip', 'update', 'replace', 'keep_both'].includes(decision.action)) {
-          return decision
-        }
-      }
-
-      // 解析失败，默认保留两条
-      console.warn('[KnowledgeService] AI 决策解析失败，默认保留两条:', content)
-      return { action: 'keep_both', reason: 'AI 决策解析失败' }
-    } catch (error) {
-      console.error('[KnowledgeService] AI 决策失败:', error)
-      // 出错时默认保留两条
-      return { action: 'keep_both', reason: 'AI 调用失败' }
-    }
-  }
-
-  /**
-   * 智能添加记忆（带语义去重和 AI 冲突解决）
+   * 智能添加记忆（观察日志模型：append-only + 读时去重）
+   * 
+   * 写入路径极简：只做精确哈希去重，通过就直接 append。
+   * 冲突解决推迟到读取时（getHostMemoriesForPrompt），
+   * 通过 embedding 聚类 + "最新观察胜出" 规则自动处理。
    */
   async addHostMemorySmart(
     hostId: string,
-    memory: string
-  ): Promise<{ success: boolean; action: string; message: string; docId?: string }> {
+    memory: string,
+    options?: { volatility?: MemoryVolatility; source?: string }
+  ): Promise<SmartMemoryResult> {
     if (!hostId || !memory) {
       return { success: false, action: 'error', message: '参数无效' }
     }
@@ -1535,89 +1420,22 @@ ${newMemory}
     }
 
     try {
-      // 1. 检查相似度
-      const checkResult = await this.checkMemorySimilarity(hostId, memory)
-
-      if (checkResult.action === 'skip') {
+      // 精确哈希去重（内容完全相同则跳过）
+      const existingCheck = this.isDuplicate(memory)
+      if (existingCheck.isDuplicate) {
         return { success: true, action: 'skip', message: '记忆已存在，跳过保存' }
       }
 
-      if (checkResult.action === 'save') {
-        // 直接保存
-        const docId = await this.addHostMemory(hostId, memory)
-        if (docId) {
-          return { success: true, action: 'save', message: '记忆已保存', docId }
-        }
-        return { success: false, action: 'error', message: '保存失败' }
+      // Append-only：直接写入，带上元数据
+      const docId = await this.addHostMemory(hostId, memory, options)
+      if (docId) {
+        return { success: true, action: 'save', message: '记忆已保存', docId }
       }
-
-      // 2. 检测到冲突，调用 AI 决策
-      const existingMemory = checkResult.similarMemories![0]
-      const decision = await this.resolveMemoryConflict(
-        memory,
-        existingMemory.content,
-        existingMemory.similarity,
-        existingMemory.createdAt  // 传入旧记忆的创建时间
-      )
-
-      // 3. 执行 AI 决策
-      switch (decision.action) {
-        case 'skip':
-          return {
-            success: true,
-            action: 'skip',
-            message: `跳过：${decision.reason || '与已有记忆重复'}`
-          }
-
-        case 'update': {
-          // 更新旧记忆为合并后的内容
-          const updated = await this.updateHostMemory(existingMemory.id, decision.mergedContent!)
-          if (updated) {
-            return {
-              success: true,
-              action: 'update',
-              message: `记忆已合并更新：${decision.mergedContent}`,
-              docId: existingMemory.id
-            }
-          }
-          // 更新失败，回退到保存新记忆
-          const docId1 = await this.addHostMemory(hostId, memory)
-          return {
-            success: !!docId1,
-            action: 'save',
-            message: '更新失败，已保存为新记忆',
-            docId: docId1 || undefined
-          }
-        }
-
-        case 'replace': {
-          // 删除旧记忆，保存新记忆
-          await this.removeDocument(existingMemory.id)
-          const docId2 = await this.addHostMemory(hostId, memory)
-          return {
-            success: !!docId2,
-            action: 'replace',
-            message: `记忆已更新（替换旧版本）：${decision.reason || ''}`,
-            docId: docId2 || undefined
-          }
-        }
-
-        case 'keep_both':
-        default: {
-          // 两条都保留
-          const docId3 = await this.addHostMemory(hostId, memory)
-          return {
-            success: !!docId3,
-            action: 'keep_both',
-            message: `新记忆已保存（与旧记忆并存）：${decision.reason || ''}`,
-            docId: docId3 || undefined
-          }
-        }
-      }
+      return { success: false, action: 'error', message: '保存失败' }
     } catch (error) {
       console.error('[KnowledgeService] 智能添加记忆失败:', error)
       // 出错时尝试普通保存
-      const docId = await this.addHostMemory(hostId, memory)
+      const docId = await this.addHostMemory(hostId, memory, options)
       return {
         success: !!docId,
         action: 'save',
