@@ -372,6 +372,25 @@ export class MenuService {
             this.mainWindow.setFullScreen(!this.mainWindow.isFullScreen())
           }
         }
+      },
+      { type: 'separator' },
+      {
+        label: this.t('toggleDevTools'),
+        accelerator: process.platform === 'darwin' ? 'Cmd+Option+I' : 'Ctrl+Shift+I',
+        click: () => {
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.toggleDevTools()
+          }
+        }
+      },
+      {
+        label: this.t('reload'),
+        accelerator: 'CmdOrCtrl+Shift+R',
+        click: () => {
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.reload()
+          }
+        }
       }
     ]
 
