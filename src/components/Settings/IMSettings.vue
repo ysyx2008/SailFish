@@ -24,6 +24,8 @@ const dtAutoConnect = ref(false)
 const fsAutoConnect = ref(false)
 // 执行模式
 const executionMode = ref<'strict' | 'relaxed' | 'free'>('relaxed')
+// 自由模式二次确认弹窗
+const showFreeModeConfirm = ref(false)
 
 let cleanupImListener: (() => void) | null = null
 
@@ -149,6 +151,19 @@ async function changeExecutionMode(mode: 'strict' | 'relaxed' | 'free') {
     executionMode.value = oldMode
     console.error('Failed to set IM execution mode:', err)
   }
+}
+
+function requestFreeMode() {
+  showFreeModeConfirm.value = true
+}
+
+async function confirmEnableFreeMode() {
+  showFreeModeConfirm.value = false
+  await changeExecutionMode('free')
+}
+
+function cancelFreeMode() {
+  showFreeModeConfirm.value = false
 }
 </script>
 
@@ -310,7 +325,7 @@ async function changeExecutionMode(mode: 'strict' | 'relaxed' | 'free') {
           <button
             class="mode-option mode-option-free"
             :class="{ active: executionMode === 'free' }"
-            @click="changeExecutionMode('free')"
+            @click="executionMode === 'free' ? changeExecutionMode('strict') : requestFreeMode()"
             :title="t('settings.im.modeFreeDesc')"
           >{{ t('settings.im.modeFree') }}</button>
         </div>
@@ -374,6 +389,32 @@ async function changeExecutionMode(mode: 'strict' | 'relaxed' | 'free') {
               <span>{{ t('settings.im.guideConfirmReject') }}</span>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 自由模式二次确认对话框 -->
+    <div v-if="showFreeModeConfirm" class="free-mode-confirm-overlay">
+      <div class="free-mode-confirm-dialog">
+        <div class="confirm-dialog-header">
+          <span class="confirm-dialog-icon">⚠️</span>
+          <span class="confirm-dialog-title">{{ t('ai.freeModeConfirmTitle') }}</span>
+        </div>
+        <div class="confirm-dialog-content">
+          <p>{{ t('ai.freeModeConfirmDesc') }}</p>
+          <ul class="confirm-dialog-warnings">
+            <li>{{ t('ai.freeModeWarning1') }}</li>
+            <li>{{ t('ai.freeModeWarning2') }}</li>
+            <li>{{ t('ai.freeModeWarning3') }}</li>
+          </ul>
+        </div>
+        <div class="confirm-dialog-actions">
+          <button type="button" class="btn btn-sm btn-outline" @click="cancelFreeMode">
+            {{ t('common.no') }}
+          </button>
+          <button type="button" class="btn btn-sm btn-danger" @click="confirmEnableFreeMode">
+            {{ t('common.yes') }}
+          </button>
         </div>
       </div>
     </div>
@@ -710,6 +751,75 @@ async function changeExecutionMode(mode: 'strict' | 'relaxed' | 'free') {
 .mode-option-free:hover:not(.active) {
   background: rgba(248, 81, 73, 0.15);
   color: var(--danger-color, #f85149);
+}
+
+/* 自由模式二次确认对话框 */
+.free-mode-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.free-mode-confirm-dialog {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.confirm-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.confirm-dialog-icon {
+  font-size: 24px;
+}
+
+.confirm-dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ef4444;
+}
+
+.confirm-dialog-content {
+  margin-bottom: 20px;
+}
+
+.confirm-dialog-content p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
+.confirm-dialog-warnings {
+  margin: 12px 0;
+  padding-left: 20px;
+}
+
+.confirm-dialog-warnings li {
+  font-size: 12px;
+  color: #ef4444;
+  margin: 6px 0;
+  line-height: 1.4;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 /* 使用说明 */

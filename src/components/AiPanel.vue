@@ -439,37 +439,23 @@ const isStreamingOutput = (group: typeof agentTaskGroups.value[0]) => {
 // IME 组合输入状态
 const isComposing = ref(false)
 
-// 自由模式确认输入框状态
+// 自由模式二次确认弹窗状态
 const showFreeModeConfirm = ref(false)
-const freeModeConfirmInput = ref('')
-const freeModeConfirmInputRef = ref<HTMLInputElement | null>(null)
 
-// 获取当前语言的确认词
-const freeModeConfirmWord = computed(() => t('ai.freeModeConfirmWord'))
-
-// 请求启用自由模式（显示确认输入框）
+// 请求启用自由模式（显示是否确认弹窗）
 const requestFreeMode = () => {
   showFreeModeConfirm.value = true
-  freeModeConfirmInput.value = ''
-  // 自动聚焦输入框
-  nextTick(() => {
-    freeModeConfirmInputRef.value?.focus()
-  })
 }
 
 // 确认启用自由模式
 const confirmEnableFreeMode = () => {
-  if (freeModeConfirmInput.value === freeModeConfirmWord.value) {
-    executionMode.value = 'free'
-    showFreeModeConfirm.value = false
-    freeModeConfirmInput.value = ''
-  }
+  executionMode.value = 'free'
+  showFreeModeConfirm.value = false
 }
 
 // 取消启用自由模式
 const cancelFreeMode = () => {
   showFreeModeConfirm.value = false
-  freeModeConfirmInput.value = ''
 }
 
 // 切换到严格模式
@@ -937,27 +923,13 @@ onUnmounted(() => {
               <li>{{ t('ai.freeModeWarning2') }}</li>
               <li>{{ t('ai.freeModeWarning3') }}</li>
             </ul>
-            <p class="confirm-dialog-instruction">{{ t('ai.freeModeConfirmInstruction', { word: freeModeConfirmWord }) }}</p>
-            <input 
-              ref="freeModeConfirmInputRef"
-              type="text" 
-              v-model="freeModeConfirmInput"
-              class="confirm-dialog-input"
-              :placeholder="t('ai.freeModeConfirmPlaceholder', { word: freeModeConfirmWord })"
-              @keydown.enter="confirmEnableFreeMode"
-              @keydown.esc="cancelFreeMode"
-            />
           </div>
           <div class="confirm-dialog-actions">
             <button class="btn btn-sm btn-outline" @click="cancelFreeMode">
-              {{ t('common.cancel') }}
+              {{ t('common.no') }}
             </button>
-            <button 
-              class="btn btn-sm btn-danger" 
-              :disabled="freeModeConfirmInput !== freeModeConfirmWord"
-              @click="confirmEnableFreeMode"
-            >
-              {{ t('ai.enableFreeMode') }}
+            <button class="btn btn-sm btn-danger" @click="confirmEnableFreeMode">
+              {{ t('common.yes') }}
             </button>
           </div>
         </div>
@@ -3727,31 +3699,6 @@ onUnmounted(() => {
   color: #ef4444;
   margin: 6px 0;
   line-height: 1.4;
-}
-
-.confirm-dialog-instruction {
-  font-weight: 500;
-  color: var(--text-primary) !important;
-}
-
-.confirm-dialog-input {
-  width: 100%;
-  padding: 10px 12px;
-  font-size: 14px;
-  background: var(--bg-tertiary);
-  border: 2px solid var(--border-color);
-  border-radius: 8px;
-  color: var(--text-primary);
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.confirm-dialog-input:focus {
-  border-color: #ef4444;
-}
-
-.confirm-dialog-input::placeholder {
-  color: var(--text-muted);
 }
 
 .confirm-dialog-actions {
