@@ -73,7 +73,9 @@ export default defineConfig({
                 'onnxruntime-node',
                 'sherpa-onnx-node',
                 'dingtalk-stream',
-                '@larksuiteoapi/node-sdk'
+                '@larksuiteoapi/node-sdk',
+                '@slack/bolt',
+                'telegraf'
               ]
             }
           },
