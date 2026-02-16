@@ -1,6 +1,6 @@
-# IM Integration Guide
+# Messaging Integration Guide
 
-This guide explains how to connect SFTerminal's AI Agent to Slack, Telegram, DingTalk, and Feishu (Lark), enabling you to chat with the AI directly from your IM app.
+This guide explains how to connect SFTerminal's AI Agent to Slack, Telegram, DingTalk, and Feishu (Lark), enabling you to chat with the AI directly from your messaging app.
 
 Once connected, you can interact with the AI Agent just like chatting with a colleague — send a message, and the Agent will execute tasks on your machine and reply with the results.
 
@@ -22,24 +22,24 @@ Once connected, you can interact with the AI Agent just like chatting with a col
 ## How It Works
 
 ```
-User sends a message in IM
+User sends a message in chat
        │
        ▼
   Slack/Telegram/DingTalk/Feishu server
        │ (WebSocket / Long Polling)
        ▼
-  SFTerminal IM Service
+  SFTerminal Messaging Service
        │
        ▼
   Local AI Agent processes the request
        │
        ▼
-  Reply sent back to IM via API
+  Reply sent back via API
 ```
 
 - **No public server required**: Uses WebSocket long connections or Long Polling initiated from the client side. No need to expose ports or configure domain names.
 - **Messages processed locally**: All AI inference and tool calls run on your machine.
-- **Independent of Gateway**: IM integration does not depend on the remote access (Gateway) service and can be used standalone.
+- **Independent of Gateway**: Messaging integration does not depend on the remote access (Gateway) service and can be used standalone.
 
 ---
 
@@ -220,7 +220,7 @@ Feishu requires an active long connection before allowing event subscription con
 ## Connect in SFTerminal
 
 1. Open SFTerminal, go to **Settings** → **Remote Access**
-2. In the **IM Integration** section, expand the card for your platform (Slack / Telegram / DingTalk / Feishu)
+2. In the **Messaging Integration** section, expand the card for your platform (Slack / Telegram / DingTalk / Feishu)
 3. Enter the credentials obtained above:
    - Slack: Bot Token (xoxb-...) + App-Level Token (xapp-...)
    - Telegram: Bot Token
@@ -235,7 +235,7 @@ Feishu requires an active long connection before allowing event subscription con
 
 ### Direct Messages
 
-Search for the bot by name in your IM app, start a direct conversation, and send a text message.
+Search for the bot by name in your messaging app, start a direct conversation, and send a text message.
 
 ### Group Chats
 
@@ -252,7 +252,7 @@ Search for the bot by name in your IM app, start a direct conversation, and send
 
 ### File Sending
 
-The AI Agent can send local files via the IM bot. Typical use cases:
+The AI Agent can send local files via the bot. Typical use cases:
 
 - Ask the AI to check a log file, and it can send the file directly to you
 - After generating reports, screenshots, or exports, the AI sends them to the chat automatically
@@ -276,13 +276,13 @@ This is expected. You need to connect from SFTerminal first (Step 5) to establis
 
 ### Bot Doesn't Reply
 
-- Confirm SFTerminal is running and the IM connection status shows "Connected"
+- Confirm SFTerminal is running and the connection status shows "Connected"
 - In group chats, you must **@mention the bot** to trigger a response
 - Check that the AI model configuration in SFTerminal is correct
 
 ### Messages Truncated
 
-IM platforms have message length limits. When Agent replies are too long, they are automatically truncated with a note indicating the content was cut off.
+Messaging platforms have message length limits. When Agent replies are too long, they are automatically truncated with a note indicating the content was cut off.
 
 ### Slack Shows "Sending Messages to This App Has Been Turned Off"
 
