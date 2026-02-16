@@ -298,9 +298,26 @@ export function useAgentMode(
   // 监听执行模式变化，实时更新运行中的 Agent
   watch(executionMode, async (newValue) => {
     const context = terminalStore.getAgentContext(currentTabId.value)
-    if (context?.ptyId && isAgentRunning.value) {
-      await window.electronAPI.agent.updateConfig(context.ptyId, { executionMode: newValue })
+    const promises: Promise<unknown>[] = []
+
+    // 远程 tab：同步到 RemoteChatService（运行时覆盖，不持久化）
+    // 无论 agent 是否正在运行都需要同步，确保下次 IM 消息到来时使用新模式
+    if (currentTab.value?.isRemote) {
+      promises.push(
+        window.electronAPI.remoteChat.setExecutionMode(newValue).catch(err => {
+          console.error('[Agent] Failed to sync execution mode to RemoteChatService:', err)
+        })
+      )
     }
+
+    // 同时更新当前运行中的 Agent 实例（对当前正在执行的任务立即生效）
+    if (context?.ptyId && isAgentRunning.value) {
+      promises.push(
+        window.electronAPI.agent.updateConfig(context.ptyId, { executionMode: newValue })
+      )
+    }
+
+    await Promise.all(promises)
   })
 
   // 监听超时设置变化
@@ -977,11 +994,26 @@ export function useAgentMode(
     }
   }
 
+  // 远程 tab：从 IM 持久化配置加载执行模式
+  const loadRemoteExecutionMode = async () => {
+    if (!currentTab.value?.isRemote) return
+    try {
+      const config = await window.electronAPI.im.getConfig()
+      if (config.executionMode && ['strict', 'relaxed', 'free'].includes(config.executionMode)) {
+        executionMode.value = config.executionMode
+      }
+    } catch (err) {
+      console.warn('[Agent] Failed to load remote execution mode, using default:', err)
+    }
+  }
+
   // 生命周期
   onMounted(() => {
     setupAgentListeners()
     // 加载近期历史（用于欢迎页展示）
     loadRecentHistory()
+    // 远程 tab 从 IM 配置加载执行模式
+    loadRemoteExecutionMode()
   })
 
   onUnmounted(() => {

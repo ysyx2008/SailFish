@@ -163,6 +163,14 @@ export class IMService {
     }
   }
 
+  /**
+   * 设置 Agent 执行模式（同步到 RemoteChatService）
+   */
+  setExecutionMode(mode: 'strict' | 'relaxed' | 'free') {
+    this.config.executionMode = mode
+    this.chat.executionMode = mode
+  }
+
   // ==================== 钉钉管理 ====================
 
   async startDingTalk(config: DingTalkConfig): Promise<{ success: boolean; error?: string }> {

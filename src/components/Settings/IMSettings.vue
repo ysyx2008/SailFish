@@ -22,6 +22,8 @@ const fsError = ref('')
 // 每平台自动连接
 const dtAutoConnect = ref(false)
 const fsAutoConnect = ref(false)
+// 执行模式
+const executionMode = ref<'strict' | 'relaxed' | 'free'>('relaxed')
 
 let cleanupImListener: (() => void) | null = null
 
@@ -56,6 +58,7 @@ async function loadIMSettings() {
     fsAppId.value = config.feishu?.appId || ''
     fsAppSecret.value = config.feishu?.appSecret || ''
     fsAutoConnect.value = config.feishu?.autoConnect || false
+    executionMode.value = config.executionMode || 'relaxed'
   } catch {
     // ignore
   }
@@ -136,6 +139,17 @@ async function toggleFsAutoConnect() {
     fsAutoConnect.value = !fsAutoConnect.value
   }
 }
+
+async function changeExecutionMode(mode: 'strict' | 'relaxed' | 'free') {
+  const oldMode = executionMode.value
+  executionMode.value = mode
+  try {
+    await window.electronAPI.im.setExecutionMode(mode)
+  } catch (err) {
+    executionMode.value = oldMode
+    console.error('Failed to set IM execution mode:', err)
+  }
+}
 </script>
 
 <template>
@@ -159,7 +173,15 @@ async function toggleFsAutoConnect() {
         </button>
 
         <div v-if="dingtalkExpanded" class="im-platform-body">
-          <p class="im-hint">{{ t('settings.im.dingtalkHint') }}</p>
+          <div class="im-hint">
+            <p class="hint-summary">{{ t('settings.im.dingtalkHint') }}</p>
+            <ol class="setup-steps">
+              <li>{{ t('settings.im.dingtalkStep1') }}</li>
+              <li>{{ t('settings.im.dingtalkStep2') }}</li>
+              <li>{{ t('settings.im.dingtalkStep3') }}</li>
+              <li>{{ t('settings.im.dingtalkStep4') }}</li>
+            </ol>
+          </div>
 
           <div class="form-group">
             <label class="form-label">{{ t('settings.im.clientId') }}</label>
@@ -216,7 +238,15 @@ async function toggleFsAutoConnect() {
         </button>
 
         <div v-if="feishuExpanded" class="im-platform-body">
-          <p class="im-hint">{{ t('settings.im.feishuHint') }}</p>
+          <div class="im-hint">
+            <p class="hint-summary">{{ t('settings.im.feishuHint') }}</p>
+            <ol class="setup-steps">
+              <li>{{ t('settings.im.feishuStep1') }}</li>
+              <li>{{ t('settings.im.feishuStep2') }}</li>
+              <li>{{ t('settings.im.feishuStep3') }}</li>
+              <li>{{ t('settings.im.feishuStep4') }}</li>
+            </ol>
+          </div>
 
           <div class="form-group">
             <label class="form-label">{{ t('settings.im.appId') }}</label>
@@ -261,8 +291,90 @@ async function toggleFsAutoConnect() {
         </div>
       </div>
 
+      <!-- 运行模式 -->
+      <div class="execution-mode-section">
+        <span class="execution-mode-title">{{ t('settings.im.executionMode') }}</span>
+        <div class="execution-mode-selector">
+          <button
+            class="mode-option"
+            :class="{ active: executionMode === 'strict' }"
+            @click="changeExecutionMode('strict')"
+            :title="t('settings.im.modeStrictDesc')"
+          >{{ t('settings.im.modeStrict') }}</button>
+          <button
+            class="mode-option"
+            :class="{ active: executionMode === 'relaxed' }"
+            @click="changeExecutionMode('relaxed')"
+            :title="t('settings.im.modeRelaxedDesc')"
+          >{{ t('settings.im.modeRelaxed') }}</button>
+          <button
+            class="mode-option mode-option-free"
+            :class="{ active: executionMode === 'free' }"
+            @click="changeExecutionMode('free')"
+            :title="t('settings.im.modeFreeDesc')"
+          >{{ t('settings.im.modeFree') }}</button>
+        </div>
+        <span class="execution-mode-desc">{{ t('settings.im.executionModeDesc') }}</span>
+      </div>
+
       <div class="security-note">
         {{ t('settings.im.securityNote') }}
+      </div>
+    </div>
+
+    <!-- 使用说明 -->
+    <div class="settings-section guide-section">
+      <div class="section-header">
+        <h4>💡 {{ t('settings.im.guideTitle') }}</h4>
+      </div>
+      <p class="section-desc">{{ t('settings.im.guideDesc') }}</p>
+
+      <div class="guide-grid">
+        <!-- 支持的能力 -->
+        <div class="guide-card">
+          <h5 class="guide-card-title">{{ t('settings.im.guideFeatures') }}</h5>
+          <ul class="guide-list">
+            <li>{{ t('settings.im.guideFeature1') }}</li>
+            <li>{{ t('settings.im.guideFeature2') }}</li>
+            <li>{{ t('settings.im.guideFeature3') }}</li>
+            <li>{{ t('settings.im.guideFeature4') }}</li>
+          </ul>
+        </div>
+
+        <!-- 内置命令 -->
+        <div class="guide-card">
+          <h5 class="guide-card-title">{{ t('settings.im.guideCommands') }}</h5>
+          <div class="command-list">
+            <div class="command-item">
+              <code>/help</code>
+              <span>{{ t('settings.im.guideCommandHelp') }}</span>
+            </div>
+            <div class="command-item">
+              <code>/status</code>
+              <span>{{ t('settings.im.guideCommandStatus') }}</span>
+            </div>
+            <div class="command-item">
+              <code>/clear</code>
+              <span>{{ t('settings.im.guideCommandClear') }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 操作确认 -->
+        <div class="guide-card">
+          <h5 class="guide-card-title">{{ t('settings.im.guideConfirmTitle') }}</h5>
+          <p class="guide-card-desc">{{ t('settings.im.guideConfirmDesc') }}</p>
+          <div class="command-list">
+            <div class="command-item">
+              <code class="confirm-approve">确认</code>
+              <span>{{ t('settings.im.guideConfirmApprove') }}</span>
+            </div>
+            <div class="command-item">
+              <code class="confirm-reject">拒绝</code>
+              <span>{{ t('settings.im.guideConfirmReject') }}</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -476,10 +588,30 @@ async function toggleFsAutoConnect() {
   color: var(--text-muted);
   line-height: 1.5;
   margin-bottom: 14px;
-  padding: 8px 12px;
+  padding: 10px 12px;
   background: rgba(137, 180, 250, 0.06);
   border-radius: 6px;
   border-left: 3px solid var(--accent-primary);
+}
+
+.im-hint .hint-summary {
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.setup-steps {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.setup-steps li {
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+.setup-steps li:last-child {
+  margin-bottom: 0;
 }
 
 /* 卡片底部操作栏 */
@@ -510,5 +642,154 @@ async function toggleFsAutoConnect() {
 
 .auto-connect-label:hover {
   color: var(--text-primary);
+}
+
+/* 运行模式 */
+.execution-mode-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.execution-mode-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.execution-mode-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.execution-mode-selector {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  padding: 2px;
+  border: 1px solid var(--border-color);
+}
+
+.mode-option {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.mode-option:hover {
+  background: var(--bg-surface, var(--bg-primary));
+  color: var(--text-primary);
+}
+
+.mode-option.active {
+  background: var(--accent-primary);
+  color: #fff;
+}
+
+.mode-option-free.active {
+  background: var(--danger-color, #f85149);
+}
+
+.mode-option-free:hover:not(.active) {
+  background: rgba(248, 81, 73, 0.15);
+  color: var(--danger-color, #f85149);
+}
+
+/* 使用说明 */
+.guide-section {
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.guide-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.guide-card {
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.guide-card:last-child {
+  grid-column: 1 / -1;
+}
+
+.guide-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.guide-card-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.guide-list {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.command-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.command-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.command-item code {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--accent-primary);
+  border: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+
+.command-item code.confirm-approve {
+  color: var(--success-color, #3fb950);
+  border-color: rgba(63, 185, 80, 0.3);
+}
+
+.command-item code.confirm-reject {
+  color: var(--danger-color, #f85149);
+  border-color: rgba(248, 81, 73, 0.3);
 }
 </style>

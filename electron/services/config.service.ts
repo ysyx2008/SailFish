@@ -134,6 +134,7 @@ interface StoreSchema {
   imFeishuAutoConnect: boolean    // 飞书自动连接
   imFeishuAppId: string           // 飞书 App ID
   imFeishuAppSecret: string       // 飞书 App Secret
+  imExecutionMode: 'strict' | 'relaxed' | 'free'  // IM Agent 执行模式，默认 relaxed
 }
 
 const defaultConfig: StoreSchema = {
@@ -173,7 +174,8 @@ const defaultConfig: StoreSchema = {
   imDingTalkClientSecret: '',
   imFeishuAutoConnect: false,
   imFeishuAppId: '',
-  imFeishuAppSecret: ''
+  imFeishuAppSecret: '',
+  imExecutionMode: 'relaxed'
 }
 
 export class ConfigService {

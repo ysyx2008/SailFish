@@ -2627,6 +2627,12 @@ const electronAPI = {
     }
   },
 
+  // 远程会话（运行时配置）
+  remoteChat: {
+    setExecutionMode: (mode: 'strict' | 'relaxed' | 'free') =>
+      ipcRenderer.invoke('remote-chat:setExecutionMode', mode) as Promise<void>,
+  },
+
   // IM 集成
   im: {
     startDingTalk: (config: { enabled: boolean; clientId: string; clientSecret: string }) =>
@@ -2646,9 +2652,12 @@ const electronAPI = {
       ipcRenderer.invoke('im:getConfig') as Promise<{
         dingtalk: { clientId: string; clientSecret: string; autoConnect: boolean }
         feishu: { appId: string; appSecret: string; autoConnect: boolean }
+        executionMode: 'strict' | 'relaxed' | 'free'
       }>,
     setAutoConnect: (platform: string, enabled: boolean) =>
       ipcRenderer.invoke('im:setAutoConnect', platform, enabled) as Promise<void>,
+    setExecutionMode: (mode: 'strict' | 'relaxed' | 'free') =>
+      ipcRenderer.invoke('im:setExecutionMode', mode) as Promise<void>,
     sendNotification: (text: string, options?: { markdown?: boolean; title?: string }) =>
       ipcRenderer.invoke('im:sendNotification', text, options) as Promise<{ success: boolean; platform?: string; error?: string }>,
 

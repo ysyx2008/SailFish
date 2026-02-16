@@ -1785,6 +1785,11 @@ imService.setDependencies({
   remoteChatService,
   mainWindow: null
 })
+// 从持久化配置恢复 IM 执行模式
+const savedImExecutionMode = configService.get('imExecutionMode') as string | undefined
+if (savedImExecutionMode && ['strict', 'relaxed', 'free'].includes(savedImExecutionMode)) {
+  imService.setExecutionMode(savedImExecutionMode as 'strict' | 'relaxed' | 'free')
+}
 
 ipcMain.handle('im:startDingTalk', async (_event, config: DingTalkConfig) => {
   // 保存配置
@@ -1826,6 +1831,7 @@ ipcMain.handle('im:getConfig', async () => {
       appSecret: (configService.get('imFeishuAppSecret') as string) || '',
       autoConnect: configService.get('imFeishuAutoConnect') || false,
     },
+    executionMode: (configService.get('imExecutionMode') as string) || 'relaxed',
   }
 })
 
@@ -1835,6 +1841,17 @@ ipcMain.handle('im:setAutoConnect', async (_event, platform: string, enabled: bo
   } else if (platform === 'feishu') {
     configService.set('imFeishuAutoConnect', enabled)
   }
+})
+
+ipcMain.handle('im:setExecutionMode', async (_event, mode: 'strict' | 'relaxed' | 'free') => {
+  configService.set('imExecutionMode', mode)
+  imService.setExecutionMode(mode)
+})
+
+// 更新远程 Agent 运行时执行模式（仅运行时，不持久化，用于 tab 界面手动切换）
+ipcMain.handle('remote-chat:setExecutionMode', async (_event, mode: 'strict' | 'relaxed' | 'free') => {
+  if (!['strict', 'relaxed', 'free'].includes(mode)) return
+  remoteChatService.executionMode = mode
 })
 
 ipcMain.handle('im:sendNotification', async (_event, text: string, options?: { markdown?: boolean; title?: string }) => {

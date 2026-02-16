@@ -1959,6 +1959,11 @@ interface Window {
       }) => void) => () => void
     }
 
+    // 远程会话（运行时配置）
+    remoteChat: {
+      setExecutionMode: (mode: 'strict' | 'relaxed' | 'free') => Promise<void>
+    }
+
     // IM 集成
     im: {
       startDingTalk: (config: { enabled: boolean; clientId: string; clientSecret: string }) => Promise<{ success: boolean; error?: string }>
@@ -1972,8 +1977,10 @@ interface Window {
       getConfig: () => Promise<{
         dingtalk: { clientId: string; clientSecret: string; autoConnect: boolean }
         feishu: { appId: string; appSecret: string; autoConnect: boolean }
+        executionMode: 'strict' | 'relaxed' | 'free'
       }>
       setAutoConnect: (platform: string, enabled: boolean) => Promise<void>
+      setExecutionMode: (mode: 'strict' | 'relaxed' | 'free') => Promise<void>
       onConnectionChange: (callback: (data: { platform: string; connected: boolean }) => void) => () => void
     }
   }
