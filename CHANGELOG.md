@@ -2,7 +2,22 @@
 
 All notable changes to SFTerm will be documented in this file.
 
-## v10.2.0 (2026-02-16) (Latest)
+## v10.3.0 (2026-02-17) (Latest)
+
+### New Features
+- 💬 **Slack & Telegram Integration**: Added Slack and Telegram as new IM channels, enabling Agent interaction through additional messaging platforms
+- 🌐 **IM Module i18n**: Full internationalization support for the IM settings module
+
+### Improvements
+- 📖 **Bilingual IM Guides**: Split IM integration documentation into separate English and Chinese versions with dedicated Telegram setup instructions
+
+### Bug Fixes
+- 🔧 Fixed `ws` optional native dependency marked as rollup external for build compatibility
+- 🔧 Fixed `@BotFather` `@` symbol escaping to prevent vue-i18n parsing errors
+- 🔧 Fixed help documentation links to match renamed messaging-integration files
+- 🔧 Synced vite-env.d.ts type declarations and hardened defensive access for IM adapters
+
+## v10.2.0 (2026-02-16)
 
 ### New Features
 - 🧠 **Observation Ledger**: Refactored memory system to an Observation Ledger model for structured knowledge retention
