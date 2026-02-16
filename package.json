@@ -37,7 +37,9 @@
     "build:steam:win": "cross-env VITE_STEAM_BUILD=true vite build && electron-builder --win --dir --publish never",
     "build:steam:mac": "cross-env VITE_STEAM_BUILD=true vite build && electron-builder --mac --dir --publish never",
     "build:steam:linux": "cross-env VITE_STEAM_BUILD=true vite build && electron-builder --linux --dir --publish never",
-    "build:steam:current": "cross-env VITE_STEAM_BUILD=true vite build && electron-builder --dir --publish never"
+    "build:steam:current": "cross-env VITE_STEAM_BUILD=true vite build && electron-builder --dir --publish never",
+    "cli": "node electron/cli/main.js",
+    "sft": "node electron/cli/main.js"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.22.3",
@@ -105,6 +107,7 @@
     "eslint": "^8.57.0",
     "eslint-plugin-vue": "^9.22.0",
     "prettier": "^3.2.5",
+    "tsx": "^4.21.0",
     "typescript": "^5.4.2",
     "vite": "^5.1.6",
     "vite-plugin-electron": "^0.28.4",

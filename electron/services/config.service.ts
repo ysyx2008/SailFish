@@ -209,10 +209,15 @@ export class ConfigService {
       console.warn('safeStorage not available, using unencrypted storage')
     }
 
+    // CLI 模式使用独立的配置文件，避免读取 Electron 加密的配置
+    const storeName = process.env.SFT_CLI_MODE
+      ? 'qiyu-terminal-config-cli'
+      : 'qiyu-terminal-config'
+
     this.store = new Store<StoreSchema>({
-      name: 'qiyu-terminal-config',
+      name: storeName,
       defaults: defaultConfig,
-      encryptionKey // 启用加密存储
+      encryptionKey // 启用加密存储（CLI 模式下 encryptionKey 为 undefined）
     })
   }
 
