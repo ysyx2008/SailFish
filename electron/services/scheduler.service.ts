@@ -691,7 +691,11 @@ export class SchedulerService {
       
       // 如果任务没有设置定时器，重新调度
       if (!this.timers.has(task.id) && !this.runningTasks.has(task.id)) {
-        this.scheduleTask(task)
+        // 先检查是否有有效的下次执行时间，避免对无法调度的任务反复重试并刷屏
+        const nextRun = this.calculateNextRun(task.schedule)
+        if (nextRun) {
+          this.scheduleTask(task)
+        }
       }
     }
   }
