@@ -361,7 +361,10 @@ function cancelFreeMode() {
 
         <div v-if="dingtalkExpanded" class="im-platform-body">
           <div class="im-hint">
-            <p class="hint-summary">{{ t('settings.im.dingtalkHint') }}</p>
+            <div class="im-hint-header">
+              <p class="hint-summary">{{ t('settings.im.dingtalkHint') }}</p>
+              <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlDingtalk')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+            </div>
             <ol class="setup-steps">
               <li>{{ t('settings.im.dingtalkStep1') }}</li>
               <li>{{ t('settings.im.dingtalkStep2') }}</li>
@@ -426,7 +429,10 @@ function cancelFreeMode() {
 
         <div v-if="feishuExpanded" class="im-platform-body">
           <div class="im-hint">
-            <p class="hint-summary">{{ t('settings.im.feishuHint') }}</p>
+            <div class="im-hint-header">
+              <p class="hint-summary">{{ t('settings.im.feishuHint') }}</p>
+              <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlFeishu')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+            </div>
             <ol class="setup-steps">
               <li>{{ t('settings.im.feishuStep1') }}</li>
               <li>{{ t('settings.im.feishuStep2') }}</li>
@@ -491,7 +497,10 @@ function cancelFreeMode() {
 
         <div v-if="slackExpanded" class="im-platform-body">
           <div class="im-hint">
-            <p class="hint-summary">{{ t('settings.im.slackHint') }}</p>
+            <div class="im-hint-header">
+              <p class="hint-summary">{{ t('settings.im.slackHint') }}</p>
+              <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlSlack')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+            </div>
             <ol class="setup-steps">
               <li>{{ t('settings.im.slackStep1') }}</li>
               <li>{{ t('settings.im.slackStep2') }}</li>
@@ -557,7 +566,10 @@ function cancelFreeMode() {
 
         <div v-if="telegramExpanded" class="im-platform-body">
           <div class="im-hint">
-            <p class="hint-summary">{{ t('settings.im.telegramHint') }}</p>
+            <div class="im-hint-header">
+              <p class="hint-summary">{{ t('settings.im.telegramHint') }}</p>
+              <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlTelegram')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+            </div>
             <ol class="setup-steps">
               <li>{{ t('settings.im.telegramStep1') }}</li>
               <li>{{ t('settings.im.telegramStep2') }}</li>
@@ -612,7 +624,10 @@ function cancelFreeMode() {
 
         <div v-if="wecomExpanded" class="im-platform-body">
           <div class="im-hint">
-            <p class="hint-summary">{{ t('settings.im.wecomHint') }}</p>
+            <div class="im-hint-header">
+              <p class="hint-summary">{{ t('settings.im.wecomHint') }}</p>
+              <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlWecom')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+            </div>
             <ol class="setup-steps">
               <li>{{ t('settings.im.wecomStep1') }}</li>
               <li>{{ t('settings.im.wecomStep2') }}</li>
@@ -1084,6 +1099,32 @@ function cancelFreeMode() {
   background: var(--bg-tertiary);
 }
 
+.im-hint-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.im-hint-header .hint-summary {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.im-hint-header .im-channel-help-link {
+  flex-shrink: 0;
+  margin-top: 0;
+  font-size: 12px;
+  color: var(--accent-primary);
+  text-decoration: none;
+}
+
+.im-hint-header .im-channel-help-link:hover {
+  text-decoration: underline;
+}
+
 .im-hint {
   font-size: 12px;
   color: var(--text-muted);
@@ -1296,6 +1337,18 @@ function cancelFreeMode() {
 }
 
 .guide-doc-link:hover {
+  text-decoration: underline;
+}
+
+.guide-card-doc-link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--accent-primary);
+  text-decoration: none;
+}
+
+.guide-card-doc-link:hover {
   text-decoration: underline;
 }
 
