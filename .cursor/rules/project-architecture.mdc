@@ -1,0 +1,144 @@
+---
+description: 项目架构全景，新会话必读；重大功能更新后必须同步更新本文件
+alwaysApply: true
+---
+
+# SFTerminal 项目架构
+
+> **每次新会话开始时**应先阅读本文件以快速了解项目。
+> **完成重大功能新增或架构变更后**，必须更新本文件中相关的章节，保持信息准确。
+
+## 概览
+
+SFTerminal（旗鱼终端 / SailFish）是一个 AI 驱动的终端应用，支持本地和远程 (SSH) 终端操作，内置 AI Agent 可自主规划和执行运维任务。
+
+| 层 | 技术 | 说明 |
+|---|---|---|
+| 桌面壳 | Electron 37 | 窗口管理、系统集成、IPC |
+| 前端 | Vue 3 + Pinia + xterm.js | UI、终端渲染、状态管理 |
+| 后端服务 | TypeScript (Node.js) | 26 个服务，业务逻辑核心 |
+| CLI | Node.js + tsx | 纯命令行模式，复用后端服务 |
+| AI | Transformers.js + LanceDB | 本地向量嵌入、知识库 |
+| 构建 | Vite + electron-builder | 多平台打包（macOS/Win/Linux） |
+
+## 目录结构
+
+```
+SFTerminal/
+├── electron/                    # Electron 主进程 + 后端服务
+│   ├── main.ts                  # 主进程入口（窗口、IPC、服务初始化）
+│   ├── preload.ts               # 预加载脚本（IPC 桥接）
+│   ├── cli/                     # CLI 模式入口
+│   │   ├── main.js              # CLI 启动器（JS，注册 electron-shim）
+│   │   ├── electron-shim.js     # Electron API 模拟层
+│   │   ├── index.ts             # CLI 命令实现（26 个命令）
+│   │   └── test-cli.sh          # CLI 自动化回归测试
+│   └── services/                # 后端服务（26 个）
+│       ├── ai.service.ts        # AI 对话（多 provider 支持）
+│       ├── config.service.ts    # 配置管理（electron-store）
+│       ├── pty.service.ts       # 本地终端（node-pty）
+│       ├── ssh.service.ts       # SSH 连接管理
+│       ├── sftp.service.ts      # SFTP 文件传输
+│       ├── host-profile.service.ts  # 主机画像
+│       ├── history.service.ts   # 对话/Agent 历史
+│       ├── scheduler.service.ts # 定时任务
+│       ├── mcp.service.ts       # MCP 服务器管理
+│       ├── local-fs.service.ts  # 本地文件系统
+│       ├── document-parser.service.ts # 文档解析
+│       ├── file-search.service.ts     # 文件搜索
+│       ├── user-skill.service.ts      # 用户技能
+│       ├── gateway.service.ts   # 网关服务
+│       ├── credential.service.ts # 凭证存储
+│       ├── agent/               # AI Agent 子系统
+│       │   ├── agent.ts         # Agent 抽象基类（ReAct 循环）
+│       │   ├── terminal-agent.ts # 终端 Agent 实现
+│       │   ├── tools.ts         # 工具定义（Function Calling）
+│       │   ├── tools/           # 工具执行器（command/file/knowledge/plan/memory）
+│       │   ├── skills/          # 技能系统（excel/email/browser/word）
+│       │   ├── prompt-builder.ts # 系统提示构建
+│       │   ├── context-builder.ts # 上下文管理（任务历史压缩）
+│       │   ├── task-memory.ts   # 任务记忆
+│       │   └── risk-assessor.ts # 风险评估
+│       ├── knowledge/           # 知识库（向量存储 + 嵌入）
+│       ├── im/                  # IM 集成（钉钉/飞书/企业微信/Slack/Telegram）
+│       ├── speech/              # 语音识别
+│       └── __tests__/           # 服务单元测试
+├── src/                         # 前端（Vue 3）
+│   ├── views/                   # 页面视图
+│   ├── components/              # 组件
+│   │   ├── Terminal.vue         # 终端组件
+│   │   ├── AiPanel.vue          # AI 对话面板
+│   │   ├── Settings/            # 设置页组件
+│   │   ├── FileManager/         # 文件管理器
+│   │   ├── FileExplorer/        # 文件浏览器
+│   │   └── ...
+│   ├── stores/                  # Pinia 状态管理
+│   │   ├── terminal.ts          # 终端状态、标签页、Agent 状态
+│   │   └── config.ts            # 配置、AI profiles、SSH 会话
+│   ├── composables/             # 组合式函数
+│   │   ├── useAgentMode.ts      # Agent 模式
+│   │   ├── useSftp.ts           # SFTP 操作
+│   │   ├── useSpeechRecognition.ts # 语音识别
+│   │   └── ...
+│   ├── i18n/                    # 国际化（中/英）
+│   └── themes/                  # 终端主题
+├── resources/                   # 打包资源
+│   ├── models/embedding/        # 嵌入模型（bge-small-zh-v1.5）
+│   ├── models/speech/           # 语音模型（paraformer）
+│   └── everything/              # Windows Everything 搜索工具
+├── scripts/                     # 构建/模型下载脚本
+├── docs/                        # 文档
+├── website/                     # 官网
+└── package.json                 # 依赖 & 脚本
+```
+
+## 关键架构模式
+
+### 前后端通信
+- Electron IPC：`ipcMain.handle` ↔ `ipcRenderer.invoke`
+- 前端通过 `preload.ts` 暴露的 API 调用后端服务
+- `main.ts` 中注册所有 IPC handler，大多是对服务方法的薄封装
+
+### CLI 模式（纯 Node.js 运行后端）
+- **入口**：`electron/cli/main.js`（纯 JS）
+- **原理**：通过 `Module._resolveFilename` 拦截 `require('electron')`，替换为 `electron-shim.js`
+- **特点**：所有后端服务无需修改即可在 CLI 下运行
+- **配置隔离**：CLI 使用独立配置文件 `qiyu-terminal-config-cli`，避免与 Electron 加密配置冲突
+- **用法**：`npm run sft -- <command> [options]`
+- **测试**：`bash electron/cli/test-cli.sh`（26 个命令全覆盖）
+
+### 服务实例化
+- 服务在 `main.ts` 中直接实例化，部分使用工厂函数（如 `getKnowledgeService()`）
+- CLI 中通过懒加载单例模式按需创建服务实例
+- 部分服务支持构造器注入（如 `AgentService` 注入 AI、PTY、HostProfile 等）
+
+### AI Agent 架构
+- **ReAct 循环**：思考 → 工具调用 → 观察结果 → 循环
+- **工具系统**：内置工具 + 技能系统（按需加载）+ MCP 工具
+- **风险评估**：safe / moderate / dangerous / blocked 四级
+- **执行模式**：strict（全确认）/ relaxed（危险确认）/ free（全自动）
+- **任务记忆**：5 层压缩（L0 完整 → L4 一句话摘要），跨会话保留
+
+### 知识库
+- 本地向量数据库（LanceDB）
+- 嵌入模型：bge-small-zh-v1.5（bundled）
+- 文档解析：PDF / Word / Excel / 纯文本
+- 主机记忆：Agent 自动积累的服务器信息
+
+## 构建与发布
+
+- **开发**：`npm run dev`（Vite dev server + Electron）
+- **构建**：`npm run build`（Vite build → electron-builder）
+- **平台**：macOS (universal)、Windows (NSIS)、Linux (AppImage/deb)
+- **自动更新**：GitHub Releases + electron-updater
+- **模型**：构建前需 `npm run download:models` 下载嵌入/语音模型
+
+## 常用命令
+
+```bash
+npm run dev           # 开发模式
+npm run build         # 完整构建
+npm run sft -- --help # CLI 帮助
+npm run test          # 运行测试
+bash electron/cli/test-cli.sh  # CLI 回归测试
+```
