@@ -1159,11 +1159,12 @@ ${records.join('\n')}
     result: ToolResult,
     toolArgs: Record<string, unknown>
   ): void {
+    const resultContent = result.success 
+      ? result.output 
+      : t('agent.tool_error', { error: result.error || t('agent.unknown_error') })
+    
     // AI Debug: 记录工具执行结果
     if (run.requestId) {
-      const resultContent = result.success 
-        ? result.output 
-        : t('agent.tool_error', { error: result.error || t('agent.unknown_error') })
       aiDebugService.logToolResult(run.requestId, {
         toolCallId: toolCall.id,
         success: result.success,
@@ -1174,11 +1175,42 @@ ${records.join('\n')}
     // 添加工具结果到消息历史
     run.messages.push({
       role: 'tool',
-      content: result.success 
-        ? result.output 
-        : t('agent.tool_error', { error: result.error || t('agent.unknown_error') }),
+      content: resultContent,
       tool_call_id: toolCall.id
     })
+    
+    // 确保 steps 中有对应的 tool_result（用于 TaskMemory 重建完整上下文）
+    // 工具执行器在 debug 模式或错误情况下会自行添加 tool_result 步骤，此处检查避免重复
+    const toolName = toolCall.function.name
+    // 从后往前找最近的同名 tool_call，再检查其后是否已有 tool_result
+    let lastToolCallIdx = -1
+    for (let i = run.steps.length - 1; i >= 0; i--) {
+      if (run.steps[i].type === 'tool_call' && run.steps[i].toolName === toolName) {
+        lastToolCallIdx = i
+        break
+      }
+    }
+    let hasResultStep = false
+    if (lastToolCallIdx >= 0) {
+      for (let i = lastToolCallIdx + 1; i < run.steps.length; i++) {
+        if (run.steps[i].type === 'tool_result' && run.steps[i].toolName === toolName) {
+          hasResultStep = true
+          break
+        }
+      }
+    }
+    
+    if (!hasResultStep) {
+      // 直接推入 steps 数组，不通过 addStep 发送 UI 事件（非 debug 模式不需要显示）
+      run.steps.push({
+        id: `tr-${toolCall.id}`,
+        type: 'tool_result',
+        content: '',
+        toolName,
+        toolResult: resultContent,
+        timestamp: Date.now()
+      })
+    }
   }
   
   /**
