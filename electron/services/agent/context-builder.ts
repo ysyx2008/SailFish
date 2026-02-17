@@ -468,7 +468,8 @@ export function buildRecentTasksContext(
   
   for (let taskIndex = 0; taskIndex < tasks.length; taskIndex++) {
     const task = tasks[taskIndex]
-    const minLevel = getMinCompressionLevel(task, taskIndex)
+    // AI 建议的压缩级别优先，程序规则 fallback
+    const minLevel = task.aiSuggestedLevel ?? getMinCompressionLevel(task, taskIndex)
     let placed = false
     
     // 尝试各个压缩级别（从完整到精简）

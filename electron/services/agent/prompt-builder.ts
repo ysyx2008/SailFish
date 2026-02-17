@@ -237,7 +237,8 @@ ${this.buildCoreRules(osType, shellType, isSshTerminal, documentRule, knowledgeR
 ${documentSection}
 ${knowledgeSection}
 ${getUserSkillService().buildSkillsSummary()}
-${this.buildTaskMemorySection()}`
+${this.buildTaskMemorySection()}
+${PromptBuilder.buildContextManagementSection()}`
   }
 
   // ==================== 静态方法（便捷访问） ====================
@@ -302,6 +303,39 @@ ${this.buildTaskMemorySection()}`
       name: info.name,
       style: info.style
     }))
+  }
+
+  /**
+   * 构建上下文管理章节（AI 自我认知）
+   */
+  static buildContextManagementSection(): string {
+    return `
+## 运行环境
+
+你运行在 ReAct 循环中，每次工具调用及其结果都会追加到对话上下文，而上下文有容量上限。当前用量见本提示末尾的 [上下文状态]（每轮更新）。
+
+### 记忆体系
+- **当前对话**：你在上下文中能直接看到的消息
+- **任务记忆**：历史任务的摘要（见上方"历史任务"章节）。用 \`recall_task\` 查看摘要，\`deep_recall\` 查看完整步骤
+- **压缩归档**：你通过 \`compress_context\` 压缩的内容，可通过 \`recall_compressed\` 随时找回
+
+### 上下文管理工具
+- \`compress_context\`：压缩当前对话中较早的工具调用，内容归档保留而非删除，需要时用 \`recall_compressed\` 找回
+- \`recall_compressed\`：从压缩归档中取回原始消息
+- \`manage_memory\`：任务完成后，调整历史任务的压缩级别（0-4）或丢弃不需要的任务
+
+### 压缩级别参考（用于 manage_memory）
+- **Level 0**：完整对话（所有工具调用和结果）
+- **Level 1**：压缩对话（工具调用摘要 + 最终回复）
+- **Level 2**：精简对话（用户请求 + 最终回复）
+- **Level 3**：结构化摘要（命令、路径、关键发现）
+- **Level 4**：一句话总结
+
+### 使用建议
+- 关注 [上下文状态]——使用率每轮更新
+- 使用率超过 70% 时，考虑压缩较早的对话内容
+- 完成任务后，可调用 \`manage_memory\` 优化历史任务的存储
+- 压缩是归档而非删除——你随时可以找回细节`
   }
 
   // ==================== 私有方法：各章节构建 ====================

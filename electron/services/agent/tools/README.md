@@ -15,6 +15,7 @@ tools/
 ├── knowledge.ts    # 知识库 (remember_info, search_knowledge 等)
 ├── plan.ts         # 计划/待办 (create_plan, update_plan, clear_plan)
 ├── memory.ts       # 任务记忆 (recall_task, deep_recall)
+├── context.ts      # 上下文管理 (compress_context, recall_compressed, manage_memory)
 ├── misc.ts         # 其他工具 (wait, ask_user, MCP, 技能工具)
 └── README.md       # 本文档
 ```

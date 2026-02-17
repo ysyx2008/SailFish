@@ -189,6 +189,13 @@ export interface AgentRun {
   skillSession?: import('./skills').SkillSession
   // 会话级别的工具白名单（"始终允许"功能）
   allowedTools: Set<string>
+  // 压缩归档：compress_context 工具将被压缩的原始消息归档在此，可通过 recall_compressed 找回
+  compressedArchives?: Array<{
+    id: string                                        // 归档 ID，如 "ca-1"
+    messages: import('../ai.service').AiMessage[]     // 被压缩的原始消息
+    summary: string                                   // AI 提供的摘要
+    timestamp: number
+  }>
 }
 
 // 主机档案服务接口
@@ -264,6 +271,9 @@ export interface TaskMemory {
   // 语义索引
   keywords: string[]              // 关键词（用于快速匹配）
   embedding?: number[]            // 向量嵌入（用于语义搜索，可选）
+  
+  // AI 建议的压缩级别（由 manage_memory 工具设置，用于 buildRecentTasksContext 优先取值）
+  aiSuggestedLevel?: import('./context-builder').CompressionLevel
 }
 
 /**

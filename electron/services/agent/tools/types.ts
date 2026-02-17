@@ -57,6 +57,15 @@ export interface ToolExecutorConfig {
   getSshConfig?: (terminalId: string) => SshConfig | null
   // 技能系统
   skillSession?: SkillSession
+  // 上下文管理（compress_context / recall_compressed 工具使用）
+  compressCurrentContext?: (summary: string, keepRecent: number) => {
+    beforeTokens: number
+    afterTokens: number
+    freedTokens: number
+    archiveId: string
+  } | null
+  getCompressedArchives?: () => Array<{ id: string; summary: string; messageCount: number; timestamp: number }>
+  getCompressedArchive?: (archiveId: string) => import('../../ai.service').AiMessage[] | null
 }
 
 // 重新导出常用类型

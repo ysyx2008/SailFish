@@ -132,6 +132,22 @@ const translations = {
     'agent.context_ack_multi': '好的，我已了解之前 {count} 个任务的执行情况，会结合这些上下文来处理当前任务。',
     'agent.no_response': 'AI 未返回任何内容',
     'agent.context_limit_exceeded': '⚠️ 对话上下文超出模型限制（当前 {current} tokens，模型限制 {limit} tokens，占用 {percentage}%）。\n\n建议：\n1. 开始新对话\n2. 或切换到上下文更长的模型',
+    'agent.context_pressure_warning': '[系统] 上下文用量告警（已用 {percentage}%，剩余约 {remaining} tokens）。请立即调用 compress_context 压缩较早的对话内容，否则下次请求可能因超出模型上下文限制而失败。',
+
+    // 上下文管理工具
+    'context_tool.compress_success': '上下文已压缩。压缩前: ~{before} tokens, 压缩后: ~{after} tokens, 释放: ~{freed} tokens。归档 ID: {archiveId}（可通过 recall_compressed 找回原始内容）',
+    'context_tool.compress_nothing': '没有可压缩的消息（当前任务消息数不足）',
+    'context_tool.compress_step': '压缩上下文（保留最近 {keepRecent} 组消息）',
+    'context_tool.recall_list': '可用的压缩归档：',
+    'context_tool.recall_not_found': '未找到归档 {archiveId}',
+    'context_tool.recall_empty': '当前没有压缩归档',
+    'context_tool.recall_step': '查看压缩归档 {archiveId}',
+    'context_tool.manage_updated': '记忆管理已更新：{count} 个任务的压缩级别已调整',
+    'context_tool.manage_discarded': '已丢弃 {count} 个任务',
+    'context_tool.manage_step': '管理会话记忆',
+    'context_tool.manage_task_not_found': '任务 {taskId} 未找到',
+    'context_tool.manage_level_updated': '任务 {taskId} 压缩级别已设为 L{level}',
+    'context_tool.manage_task_discarded': '任务 {taskId} 已丢弃',
     
     // 内容压缩
     'compress.lines_omitted': '... [省略 {count} 行] ...',
@@ -1009,6 +1025,22 @@ const translations = {
     'agent.context_ack_multi': 'Got it, I understand the context of the previous {count} tasks and will use it to handle the current task.',
     'agent.no_response': 'AI returned no response',
     'agent.context_limit_exceeded': '⚠️ Conversation context exceeds model limit (current {current} tokens, model limit {limit} tokens, {percentage}% used).\n\nSuggestions:\n1. Start a new conversation\n2. Or switch to a model with larger context',
+    'agent.context_pressure_warning': '[System] Context usage critical ({percentage}%, ~{remaining} tokens remaining). You MUST call compress_context immediately to compress earlier conversation, otherwise the next request may fail due to exceeding the model context limit.',
+
+    // Context management tools
+    'context_tool.compress_success': 'Context compressed. Before: ~{before} tokens, After: ~{after} tokens, Freed: ~{freed} tokens. Archive ID: {archiveId} (use recall_compressed to retrieve original content)',
+    'context_tool.compress_nothing': 'No messages to compress (insufficient task messages)',
+    'context_tool.compress_step': 'Compress context (keeping recent {keepRecent} message groups)',
+    'context_tool.recall_list': 'Available compressed archives:',
+    'context_tool.recall_not_found': 'Archive {archiveId} not found',
+    'context_tool.recall_empty': 'No compressed archives available',
+    'context_tool.recall_step': 'View compressed archive {archiveId}',
+    'context_tool.manage_updated': 'Memory management updated: {count} task compression levels adjusted',
+    'context_tool.manage_discarded': '{count} tasks discarded',
+    'context_tool.manage_step': 'Manage session memory',
+    'context_tool.manage_task_not_found': 'Task {taskId} not found',
+    'context_tool.manage_level_updated': 'Task {taskId} compression level set to L{level}',
+    'context_tool.manage_task_discarded': 'Task {taskId} discarded',
     
     // Content compression
     'compress.lines_omitted': '... [{count} lines omitted] ...',

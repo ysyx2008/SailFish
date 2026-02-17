@@ -462,6 +462,31 @@ export class TaskMemoryStore {
     this.memories.clear()
     this.taskOrder = []
   }
+
+  /**
+   * 更新任务的 AI 建议压缩级别
+   * @param taskId 任务 ID
+   * @param level 建议的压缩级别 (0-4)
+   * @returns 是否成功（任务不存在时返回 false）
+   */
+  updateSuggestedLevel(taskId: string, level: import('./context-builder').CompressionLevel): boolean {
+    const memory = this.memories.get(taskId)
+    if (!memory) return false
+    memory.aiSuggestedLevel = level
+    return true
+  }
+
+  /**
+   * 删除指定任务记忆
+   * @param taskId 任务 ID
+   * @returns 是否成功（任务不存在时返回 false）
+   */
+  removeTask(taskId: string): boolean {
+    if (!this.memories.has(taskId)) return false
+    this.memories.delete(taskId)
+    this.taskOrder = this.taskOrder.filter(id => id !== taskId)
+    return true
+  }
   
   /**
    * 获取按时间顺序的任务列表（最近的在前）

@@ -21,6 +21,7 @@ import { fileSearch, readFile, editFile, writeLocalFile, writeRemoteFile } from 
 import { rememberInfo, searchKnowledge, getKnowledgeDoc } from './knowledge'
 import { createPlan, updatePlan, clearPlan } from './plan'
 import { recallTask, deepRecall } from './memory'
+import { compressContext, recallCompressed, manageMemory } from './context'
 import { wait, askUser, sendFileToChat, sendImageToChat, sendIMNotification, executeMcpTool, loadSkillTool, unloadSkillTool, loadUserSkillTool, executeSkillTool } from './misc'
 
 // 重新导出类型
@@ -33,6 +34,7 @@ export { fileSearch, readFile, editFile, writeLocalFile, writeRemoteFile } from 
 export { rememberInfo, searchKnowledge, getKnowledgeDoc } from './knowledge'
 export { createPlan, updatePlan, clearPlan } from './plan'
 export { recallTask, deepRecall } from './memory'
+export { compressContext, recallCompressed, manageMemory } from './context'
 export { wait, askUser, sendFileToChat, sendImageToChat, sendIMNotification, executeMcpTool, loadSkillTool, unloadSkillTool, loadUserSkillTool, executeSkillTool } from './misc'
 
 // 导出工具函数
@@ -144,6 +146,15 @@ export async function executeTool(
 
     case 'deep_recall':
       return deepRecall(args, executor, ptyId)
+
+    case 'compress_context':
+      return compressContext(args, executor)
+
+    case 'recall_compressed':
+      return recallCompressed(args, executor)
+
+    case 'manage_memory':
+      return manageMemory(args, executor)
 
     case 'send_file_to_chat':
       return sendFileToChat(args, executor)

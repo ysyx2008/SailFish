@@ -30,7 +30,7 @@ import { DEFAULT_AGENT_CONFIG } from './types'
 import { TaskMemoryStore } from './task-memory'
 import type { ToolExecutorConfig, ToolResult } from './tools/types'
 import { executeTool } from './tools/index'
-import { buildTaskHistoryContext, buildRecentTasksContext, calculateBudget } from './context-builder'
+import { buildTaskHistoryContext } from './context-builder'
 import { getKnowledgeService } from '../knowledge'
 import { parseObservationsFromLLMResponse } from '../knowledge/memory-utils'
 import { t } from './i18n'
@@ -787,8 +787,8 @@ ${records.join('\n')}
     run: AgentRun, 
     toolExecutorConfig: ToolExecutorConfig
   ): Promise<{ response: ChatWithToolsResult | null; hasToolCalls: boolean }> {
-    // 上下文长度检查：超限时先尝试压缩最近任务，仍超限再报错
-    this.ensureContextWithinLimit(run)
+    // 更新上下文状态（注入 Context Status + 渐进式提醒）
+    this.updateContextPressure(run)
     
     // 调用 AI
     const response = await this.callAiWithStreaming(run)
@@ -1204,7 +1204,23 @@ ${records.join('\n')}
       },
       getTaskMemory: () => this.taskMemory,
       getSftpService: () => this.services.sftpService,
-      getSshConfig: (terminalId) => this.services.sshService?.getConfig(terminalId) || null
+      getSshConfig: (terminalId) => this.services.sshService?.getConfig(terminalId) || null,
+      // 上下文管理
+      compressCurrentContext: (summary: string, keepRecent: number) => {
+        return this.compressCurrentContext(run, summary, keepRecent)
+      },
+      getCompressedArchives: () => {
+        return (run.compressedArchives || []).map(a => ({
+          id: a.id,
+          summary: a.summary,
+          messageCount: a.messages.length,
+          timestamp: a.timestamp
+        }))
+      },
+      getCompressedArchive: (archiveId: string) => {
+        const archive = run.compressedArchives?.find(a => a.id === archiveId)
+        return archive ? archive.messages : null
+      }
     }
   }
   
@@ -1462,16 +1478,24 @@ ${records.join('\n')}
     return messageTokens + TOOLS_OVERHEAD
   }
   
-  /** 上下文用量阈值：超过此比例时先尝试压缩，仍超限再报错 */
-  private static readonly CONTEXT_LIMIT_RATIO = 0.9  // 预留 10% 给响应和估算误差
+  // Context Status 标记（用于定位 system prompt 中的替换区域）
+  private static readonly CONTEXT_STATUS_START = '<!-- CONTEXT_STATUS_START -->'
+  private static readonly CONTEXT_STATUS_END = '<!-- CONTEXT_STATUS_END -->'
 
   /**
-   * 确保上下文在限制内：超限时先尝试用更小预算重算最近任务并替换，仍超限再抛错
+   * 更新上下文压力状态：注入 Context Status + 渐进式提醒
+   * 
+   * 设计原则：程序只提供信息，所有压缩决策由 AI 做。
+   * - < 70%: 正常显示用量
+   * - 70%-85%: 追加压缩建议
+   * - 85%+: 注入警告消息到 run.messages
+   * - API 自然报错: 最终兜底
    */
-  private ensureContextWithinLimit(run: AgentRun): void {
+  private updateContextPressure(run: AgentRun): void {
     const contextLength = this.getContextLength()
-    const maxTokens = Math.floor(contextLength * Agent.CONTEXT_LIMIT_RATIO)
-    let totalTokens = this.estimateTotalTokens(run.messages)
+    const totalTokens = this.estimateTotalTokens(run.messages)
+    const usagePercent = Math.round((totalTokens / contextLength) * 100)
+    const remaining = Math.max(0, contextLength - totalTokens)
 
     // 将估算的 token 数更新到最近的 step，供前端上下文统计显示
     const steps = this.currentRun?.steps
@@ -1481,58 +1505,158 @@ ${records.join('\n')}
       this.callbacks?.onStep?.(this.currentRun?.id || '', lastStep)
     }
 
-    if (totalTokens <= maxTokens) return
-
-    // 超限：尝试用更小预算重算最近任务并替换
-    const messages = run.messages
-    const lastUserIndex = this.findLastUserMessageIndex(messages)
-    const hasRecentTasks = lastUserIndex > 1
-    if (!hasRecentTasks) {
-      this.throwContextLimitExceeded(totalTokens, contextLength)
+    // 统计当前任务的消息数（user 消息之后的消息）
+    let taskMessageCount = 0
+    for (let i = run.messages.length - 1; i >= 0; i--) {
+      if (run.messages[i].role === 'user') break
+      taskMessageCount++
     }
 
-    const userContent = typeof messages[lastUserIndex].content === 'string'
-      ? messages[lastUserIndex].content
-      : ''
-    const budget = calculateBudget(contextLength)
-    const smallerRecentTasksBudget = Math.max(1000, Math.floor(budget.recentTasks * 0.5))
-    const newResult = buildRecentTasksContext(
-      this.taskMemory,
-      smallerRecentTasksBudget,
-      userContent
-    )
-
-    run.messages = [
-      messages[0],
-      ...newResult.recentTaskMessages,
-      messages[lastUserIndex],
-      ...messages.slice(lastUserIndex + 1)
+    // 构建上下文状态内容
+    const statusLines = [
+      Agent.CONTEXT_STATUS_START,
+      '',
+      '[上下文状态]',
+      `- 上下文窗口：${contextLength.toLocaleString()} tokens`,
+      `- 当前用量：~${totalTokens.toLocaleString()} tokens（${usagePercent}%）`,
+      `- 剩余容量：~${remaining.toLocaleString()} tokens`,
+      `- 当前任务消息数：${taskMessageCount}`,
     ]
-    totalTokens = this.estimateTotalTokens(run.messages)
-    if (totalTokens > maxTokens) {
-      this.throwContextLimitExceeded(totalTokens, contextLength)
-    }
-  }
 
-  /** 找到最后一条 user 消息的下标（即当前对话的用户输入） */
-  private findLastUserMessageIndex(messages: AiMessage[]): number {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'user') return i
+    // 渐进式提醒
+    if (usagePercent >= 85) {
+      statusLines.push(`- ⚠️ 警告：上下文用量已达危险水平，请立即调用 compress_context 压缩较早的对话，否则下次请求可能因超出模型上下文限制而失败。`)
+    } else if (usagePercent >= 70) {
+      statusLines.push(`- 建议：上下文空间开始紧张，考虑调用 compress_context 压缩较早的对话以释放空间。`)
     }
-    return -1
-  }
 
-  private throwContextLimitExceeded(totalTokens: number, contextLength: number): never {
-    const percentage = Math.round((totalTokens / contextLength) * 100)
-    throw new Error(
-      t('agent.context_limit_exceeded', {
-        current: totalTokens,
-        limit: contextLength,
-        percentage
-      })
-    )
+    statusLines.push('', Agent.CONTEXT_STATUS_END)
+    const statusBlock = statusLines.join('\n')
+
+    // 更新 system prompt 中的 Context Status 区域
+    if (run.messages.length > 0 && run.messages[0].role === 'system') {
+      const systemContent = run.messages[0].content || ''
+      const startIdx = systemContent.indexOf(Agent.CONTEXT_STATUS_START)
+      const endIdx = systemContent.indexOf(Agent.CONTEXT_STATUS_END)
+
+      if (startIdx !== -1 && endIdx !== -1) {
+        // 替换已有的 Context Status
+        run.messages[0].content = 
+          systemContent.substring(0, startIdx) + 
+          statusBlock + 
+          systemContent.substring(endIdx + Agent.CONTEXT_STATUS_END.length)
+      } else {
+        // 首次注入：追加到 system prompt 末尾
+        run.messages[0].content = systemContent + '\n\n' + statusBlock
+      }
+    }
+
+    // 85%+ 额外注入警告消息（避免重复注入）
+    if (usagePercent >= 85) {
+      const lastMsg = run.messages[run.messages.length - 1]
+      const isAlreadyWarned = lastMsg?.role === 'user' && 
+        typeof lastMsg.content === 'string' && 
+        lastMsg.content.includes('[系统] 上下文用量告警')
+      
+      if (!isAlreadyWarned) {
+        run.messages.push({
+          role: 'user',
+          content: t('agent.context_pressure_warning', {
+            percentage: usagePercent,
+            remaining: remaining.toLocaleString()
+          })
+        })
+      }
+    }
   }
   
+  /**
+   * 压缩当前任务的对话上下文
+   * 将早期的 assistant + tool 消息归档，替换为 AI 提供的摘要
+   */
+  private compressCurrentContext(
+    run: AgentRun,
+    summary: string,
+    keepRecent: number
+  ): { beforeTokens: number; afterTokens: number; freedTokens: number; archiveId: string } | null {
+    // 找到当前任务的消息范围（最后一条 user 消息之后的部分）
+    let lastUserIndex = -1
+    for (let i = run.messages.length - 1; i >= 0; i--) {
+      if (run.messages[i].role === 'user') {
+        // 跳过系统注入的警告消息
+        if (typeof run.messages[i].content === 'string' &&
+            run.messages[i].content!.includes('[系统] 上下文用量告警')) {
+          continue
+        }
+        lastUserIndex = i
+        break
+      }
+    }
+
+    if (lastUserIndex === -1) return null
+
+    // 当前任务的消息（user 消息之后到末尾）
+    const taskMessages = run.messages.slice(lastUserIndex + 1)
+
+    // 计算需要保留的消息数量
+    // 一组 = assistant 消息 + 对应的 tool result 消息
+    // 从后往前数 keepRecent 组
+    let keepFromIndex = taskMessages.length
+    let groupCount = 0
+    for (let i = taskMessages.length - 1; i >= 0; i--) {
+      if (taskMessages[i].role === 'assistant') {
+        groupCount++
+        if (groupCount >= keepRecent) {
+          keepFromIndex = i
+          break
+        }
+      }
+    }
+
+    // 需要压缩的消息
+    const toCompress = taskMessages.slice(0, keepFromIndex)
+    if (toCompress.length === 0) return null
+
+    const beforeTokens = this.estimateTotalTokens(run.messages)
+
+    // 生成归档 ID
+    if (!run.compressedArchives) {
+      run.compressedArchives = []
+    }
+    const archiveId = `ca-${run.compressedArchives.length + 1}`
+
+    // 归档原始消息（深拷贝，防止后续 run.messages 修改影响归档）
+    run.compressedArchives.push({
+      id: archiveId,
+      messages: JSON.parse(JSON.stringify(toCompress)),
+      summary,
+      timestamp: Date.now()
+    })
+
+    // 替换：用一条摘要消息替换被压缩的消息
+    const summaryMessage: AiMessage = {
+      role: 'assistant',
+      content: `[早期对话已压缩，归档 ID: "${archiveId}"。如需查看原始内容，请调用 recall_compressed(archive_id: "${archiveId}")。]\n\n${summary}`
+    }
+
+    // 重建 messages: system + 历史任务消息 + user + 摘要 + 保留的最近消息
+    const preserved = taskMessages.slice(keepFromIndex)
+    run.messages = [
+      ...run.messages.slice(0, lastUserIndex + 1),
+      summaryMessage,
+      ...preserved
+    ]
+
+    const afterTokens = this.estimateTotalTokens(run.messages)
+
+    return {
+      beforeTokens,
+      afterTokens,
+      freedTokens: beforeTokens - afterTokens,
+      archiveId
+    }
+  }
+
   /**
    * 修复不完整的工具调用序列
    * 当用户中断时，可能存在 assistant 消息（含 tool_calls）但缺少对应的 tool result
