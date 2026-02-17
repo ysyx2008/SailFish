@@ -192,6 +192,13 @@ function compressTask(
 
 /**
  * Level 0: 获取完整消息历史
+ * 
+ * 从 AgentStep[] 重建 API 消息格式。需要处理两种情况：
+ * 1. debug 模式：tool_call 和 tool_result 步骤都存在
+ * 2. 非 debug 模式：可能只有 tool_call 步骤，tool_result 被省略（成功的命令执行等）
+ * 
+ * 匹配策略：收集 tool_result 步骤，按 toolName 匹配到 pending tool_call；
+ * 遇到 message 步骤时刷新所有 pending tool_call（无论是否有对应 result）。
  */
 function getFullMessages(task: TaskMemory): AiMessage[] {
   const messages: AiMessage[] = []
@@ -202,6 +209,47 @@ function getFullMessages(task: TaskMemory): AiMessage[] {
   // 遍历步骤，构建完整对话
   let currentAssistantContent = ''
   let pendingToolCalls: Array<{ id: string; name: string; arguments: string }> = []
+  let collectedResults = new Map<string, string>() // tool_call step id -> result content
+  
+  /**
+   * 将 pending tool_calls 刷新为 assistant + tool 消息
+   * @param isInterrupted 是否为任务中断（最后仍有未完成的 tool_call）
+   */
+  function flushPendingToolCalls(isInterrupted: boolean) {
+    if (pendingToolCalls.length === 0) return
+    
+    messages.push({
+      role: 'assistant',
+      content: currentAssistantContent || '',
+      tool_calls: pendingToolCalls.map(tc => ({
+        id: tc.id,
+        type: 'function' as const,
+        function: { name: tc.name, arguments: tc.arguments }
+      }))
+    })
+    currentAssistantContent = ''
+    
+    for (const tc of pendingToolCalls) {
+      let resultContent: string
+      const collected = collectedResults.get(tc.id)
+      if (collected !== undefined) {
+        resultContent = collected
+      } else if (isInterrupted) {
+        resultContent = '[任务中断，工具执行结果未记录]'
+      } else {
+        // 工具已执行完成但结果未记录在步骤中（非 debug 模式的正常情况）
+        resultContent = '[completed]'
+      }
+      messages.push({
+        role: 'tool',
+        content: resultContent,
+        tool_call_id: tc.id
+      })
+    }
+    
+    pendingToolCalls = []
+    collectedResults = new Map()
+  }
   
   for (const step of task.fullSteps) {
     if (step.type === 'tool_call' && step.toolName) {
@@ -212,62 +260,33 @@ function getFullMessages(task: TaskMemory): AiMessage[] {
         arguments: JSON.stringify(step.toolArgs || {})
       })
     } else if (step.type === 'tool_result' && step.toolName) {
-      // 如果有待处理的工具调用，先输出 assistant 消息
-      if (pendingToolCalls.length > 0) {
-        messages.push({
-          role: 'assistant',
-          content: currentAssistantContent || '',
-          tool_calls: pendingToolCalls.map(tc => ({
-            id: tc.id,
-            type: 'function' as const,
-            function: { name: tc.name, arguments: tc.arguments }
-          }))
-        })
-        currentAssistantContent = ''
-        
-        // 输出工具结果
-        for (const tc of pendingToolCalls) {
-          const result = tc.id === step.id ? (step.toolResult || '') : ''
-          messages.push({
-            role: 'tool',
-            content: result,
-            tool_call_id: tc.id
-          })
-        }
-        pendingToolCalls = []
+      // 收集工具结果，按 toolName 匹配到第一个尚未匹配的 pending tool_call
+      const matched = pendingToolCalls.find(tc => 
+        tc.name === step.toolName && !collectedResults.has(tc.id)
+      )
+      if (matched) {
+        collectedResults.set(matched.id, step.toolResult || '')
       }
     } else if (step.type === 'message') {
-      // AI 消息内容
+      // 遇到 AI 消息意味着之前的工具调用已全部完成，刷新 pending
+      flushPendingToolCalls(false)
       currentAssistantContent += (currentAssistantContent ? '\n' : '') + step.content
     }
   }
   
-  // 输出最后的 assistant 消息
-  if (currentAssistantContent || pendingToolCalls.length > 0) {
-    const msg: AiMessage = {
+  // 步骤遍历结束，处理剩余的 pending tool_calls
+  // 根据任务状态判断：成功的任务视为工具已完成，失败/中止的任务视为中断
+  if (pendingToolCalls.length > 0) {
+    const isInterrupted = task.status === 'aborted' || task.status === 'failed'
+    flushPendingToolCalls(isInterrupted)
+  }
+  
+  // 输出最后的 assistant 消息（如果还有未输出的文本内容）
+  if (currentAssistantContent) {
+    messages.push({
       role: 'assistant',
       content: currentAssistantContent
-    }
-    if (pendingToolCalls.length > 0) {
-      msg.tool_calls = pendingToolCalls.map(tc => ({
-        id: tc.id,
-        type: 'function' as const,
-        function: { name: tc.name, arguments: tc.arguments }
-      }))
-    }
-    messages.push(msg)
-    
-    // 如果有未处理的 tool_calls，必须添加对应的 tool result 消息
-    // 否则 API 会报错：'tool_calls' must be followed by tool messages responding to each 'tool_call_id'
-    if (pendingToolCalls.length > 0) {
-      for (const tc of pendingToolCalls) {
-        messages.push({
-          role: 'tool',
-          content: '[任务中断，工具执行结果未记录]',
-          tool_call_id: tc.id
-        })
-      }
-    }
+    })
   }
   
   return messages
