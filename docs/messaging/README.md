@@ -1,6 +1,8 @@
 # Messaging Integration Guide
 
-This guide explains how to connect SFTerminal's AI Agent to Slack, Telegram, DingTalk, and Feishu (Lark), enabling you to chat with the AI directly from your messaging app.
+[中文](./README_CN.md) | English
+
+This guide explains how to connect SFTerminal's AI Agent to Slack, Telegram, DingTalk, Feishu (Lark), and WeCom (WeChat Work), enabling you to chat with the AI directly from your messaging app.
 
 Once connected, you can interact with the AI Agent just like chatting with a colleague — send a message, and the Agent will execute tasks on your machine and reply with the results.
 
@@ -12,7 +14,7 @@ Once connected, you can interact with the AI Agent just like chatting with a col
 User sends a message in chat
        │
        ▼
-  Slack/Telegram/DingTalk/Feishu server
+  Slack/Telegram/DingTalk/Feishu/WeCom server
        │ (WebSocket / Long Polling)
        ▼
   SFTerminal Messaging Service
@@ -40,18 +42,20 @@ Choose your platform and follow its setup guide:
 | **Telegram** | [Telegram Setup](./telegram.md) |
 | **DingTalk** | [DingTalk Setup](./dingtalk.md) |
 | **Feishu (Lark)** | [Feishu Setup](./feishu.md) |
+| **WeCom (WeChat Work)** | [WeCom Setup](./wecom.md) |
 
 ---
 
 ## Connect in SFTerminal
 
 1. Open SFTerminal, go to **Settings** → **Remote Access**
-2. In the **Messaging Integration** section, expand the card for your platform (Slack / Telegram / DingTalk / Feishu)
+2. In the **Messaging Integration** section, expand the card for your platform (Slack / Telegram / DingTalk / Feishu / WeCom)
 3. Enter the credentials obtained from the setup guide above:
    - **Slack**: Bot Token (xoxb-...) + App-Level Token (xapp-...)
    - **Telegram**: Bot Token
    - **DingTalk**: ClientID + ClientSecret
    - **Feishu**: App ID + App Secret
+   - **WeCom**: Corp ID, Corp Secret, Agent ID, Callback Token, EncodingAESKey, Callback Port
 4. Click **Connect** and wait for the status to show ✅ **Connected**
 5. Optional: Check **Auto-connect on startup** so SFTerminal reconnects automatically next time
 
@@ -73,8 +77,8 @@ Search for the bot by name in your messaging app, start a direct conversation, a
 
 - **Input**: Currently supports text messages only
 - **Output**: Supports plain text, Markdown-formatted replies, and file sending
-  - Slack uses mrkdwn format, Telegram uses Markdown, DingTalk uses Markdown messages, Feishu uses interactive cards
-  - AI can send files from your machine directly to the chat (Slack limit: 1GB, Telegram: 50MB, DingTalk: 20MB, Feishu: 30MB)
+  - Slack uses mrkdwn format, Telegram uses Markdown, DingTalk/WeCom use Markdown messages, Feishu uses interactive cards
+  - AI can send files from your machine directly to the chat (Slack: 1GB, Telegram: 50MB, DingTalk/WeCom: 20MB, Feishu: 30MB)
 
 ### File Sending
 
@@ -108,6 +112,7 @@ Messaging platforms have message length limits. When Agent replies are too long,
 
 - **Slack**: "Sending messages to this app has been turned off" → see [Slack Setup Step 5](./slack.md#step-5-enable-app-home-messaging)
 - **Feishu**: "App has no active long connection" → see [Feishu Setup Step 5](./feishu.md#step-5-connect-sfterminal-first)
+- **WeCom**: Callback URL not receiving messages → see [WeCom Setup](./wecom.md#faq-callback-not-receiving-messages) (ensure URL is publicly accessible)
 
 ### Credential Security
 
