@@ -1,0 +1,59 @@
+---
+description: 后端代码修改后，必须通过 CLI 测试验证功能正确性
+alwaysApply: true
+---
+
+# CLI 测试规范
+
+项目提供了 CLI 模式（`npm run sft`），可在纯 Node.js 下运行所有后端服务。
+修改后端代码后，必须利用 CLI 验证功能正确性，不能只靠"能编译"就认为没问题。
+
+## 何时测试
+
+| 场景 | 操作 |
+|------|------|
+| 修改了 `electron/services/` 下的任何服务 | 必须运行相关 CLI 命令验证 |
+| 修改了多个服务或做了较大重构 | 运行完整测试套件 |
+| 提交代码前 | 至少运行 `bash electron/cli/test-cli.sh --no-ai` |
+
+## 怎么测试
+
+### 1. 完整回归测试（推荐，提交前必跑）
+
+```bash
+bash electron/cli/test-cli.sh --no-ai    # 无需 AI API Key，~10秒
+bash electron/cli/test-cli.sh            # 有 API Key 时跑全量
+```
+
+### 2. 针对性验证（改了哪个服务就测哪个）
+
+| 改动范围 | 验证命令 |
+|----------|---------|
+| config.service.ts | `sft config:get language && sft config:set theme '"test"' && sft config:get theme` |
+| ai.service.ts | `sft ai:models` / `sft ai:chat "测试"` |
+| agent/ 目录 | `sft agent:run "列出当前目录文件" --mode free` |
+| knowledge/ 目录 | `sft knowledge:list && sft knowledge:search "测试"` |
+| history.service.ts | `sft history:list && sft history:stats` |
+| host-profile.service.ts | `sft host:list && sft host:get local` |
+| ssh.service.ts | `sft ssh:list` |
+| pty.service.ts | `sft pty:exec "echo ok" && sft pty:shells` |
+| scheduler.service.ts | `sft scheduler:list && sft scheduler:history` |
+| mcp.service.ts | `sft mcp:list` |
+| local-fs.service.ts | `sft fs:list /tmp && sft fs:info` |
+| document-parser.service.ts | `sft doc:parse README.md && sft doc:types` |
+| user-skill.service.ts | `sft skill:list` |
+
+> `sft` 即 `npm run sft --`，直接用 `node electron/cli/main.js` 也行。
+
+### 3. 新增服务或命令时
+
+1. 在 `electron/cli/index.ts` 中添加对应的 CLI 命令
+2. 在 `test-cli.sh` 中添加对应的测试用例（包括正常场景和错误场景）
+3. 运行测试套件确认全部通过
+4. 更新 `.cursor/rules/project-architecture.mdc` 中的架构描述
+
+## 测试失败怎么办
+
+- 先确认是自己的改动导致的还是已有问题
+- 修复后重跑测试，确保全部通过再提交
+- 如果是测试脚本本身需要更新（如服务接口变了），同步更新 `test-cli.sh`
