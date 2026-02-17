@@ -35,6 +35,7 @@ import { getKnowledgeService } from '../knowledge'
 import { parseObservationsFromLLMResponse } from '../knowledge/memory-utils'
 import { t } from './i18n'
 import { createSkillSession, SkillSession } from './skills'
+import { PromptBuilder } from './prompt-builder'
 import { aiDebugService } from '../ai-debug.service'
 
 /**
@@ -76,6 +77,9 @@ export abstract class Agent {
   
   /** 技能会话（Agent 实例级别，跨 Run 持久化） */
   private _skillSession?: SkillSession
+
+  /** 上下文管理功能是否已激活（用量超过 50% 时启用） */
+  protected contextManagementEnabled = false
   
   // ==================== 构造函数 ====================
   
@@ -1478,15 +1482,19 @@ ${records.join('\n')}
     return messageTokens + TOOLS_OVERHEAD
   }
   
-  // Context Status 标记（用于定位 system prompt 中的替换区域）
-  private static readonly CONTEXT_STATUS_START = '<!-- CONTEXT_STATUS_START -->'
-  private static readonly CONTEXT_STATUS_END = '<!-- CONTEXT_STATUS_END -->'
+  /** 上下文管理功能激活阈值（用量百分比） */
+  private static readonly CONTEXT_MGMT_THRESHOLD = 50
+
+  /** 动态章节的标题（用于在系统提示词中按 markdown 章节定位和替换） */
+  private static readonly CONTEXT_MGMT_HEADING = '\n\n## 运行环境'
+  private static readonly CONTEXT_STATUS_HEADING = '\n\n## 上下文状态'
 
   /**
-   * 更新上下文压力状态：注入 Context Status + 渐进式提醒
+   * 更新上下文压力状态：注入上下文状态 + 渐进式提醒
    * 
    * 设计原则：程序只提供信息，所有压缩决策由 AI 做。
-   * - < 70%: 正常显示用量
+   * - < 50%: 仅显示用量（不注入管理章节和工具，节省 token）
+   * - >= 50%: 注入上下文管理章节 + 注册管理工具
    * - 70%-85%: 追加压缩建议
    * - 85%+: 注入警告消息到 run.messages
    * - API 自然报错: 最终兜底
@@ -1512,11 +1520,14 @@ ${records.join('\n')}
       taskMessageCount++
     }
 
-    // 构建上下文状态内容
+    // 超过阈值时激活上下文管理功能（一旦激活不会关闭，因为压缩后用量可能降低）
+    if (!this.contextManagementEnabled && usagePercent >= Agent.CONTEXT_MGMT_THRESHOLD) {
+      this.contextManagementEnabled = true
+    }
+
+    // 构建上下文状态章节
     const statusLines = [
-      Agent.CONTEXT_STATUS_START,
-      '',
-      '[上下文状态]',
+      '## 上下文状态',
       `- 上下文窗口：${contextLength.toLocaleString()} tokens`,
       `- 当前用量：~${totalTokens.toLocaleString()} tokens（${usagePercent}%）`,
       `- 剩余容量：~${remaining.toLocaleString()} tokens`,
@@ -1530,25 +1541,27 @@ ${records.join('\n')}
       statusLines.push(`- 建议：上下文空间开始紧张，考虑调用 compress_context 压缩较早的对话以释放空间。`)
     }
 
-    statusLines.push('', Agent.CONTEXT_STATUS_END)
-    const statusBlock = statusLines.join('\n')
-
-    // 更新 system prompt 中的 Context Status 区域
+    // 按 markdown 章节标题定位并替换动态尾部
     if (run.messages.length > 0 && run.messages[0].role === 'system') {
       const systemContent = run.messages[0].content || ''
-      const startIdx = systemContent.indexOf(Agent.CONTEXT_STATUS_START)
-      const endIdx = systemContent.indexOf(Agent.CONTEXT_STATUS_END)
 
-      if (startIdx !== -1 && endIdx !== -1) {
-        // 替换已有的 Context Status
-        run.messages[0].content = 
-          systemContent.substring(0, startIdx) + 
-          statusBlock + 
-          systemContent.substring(endIdx + Agent.CONTEXT_STATUS_END.length)
-      } else {
-        // 首次注入：追加到 system prompt 末尾
-        run.messages[0].content = systemContent + '\n\n' + statusBlock
+      // 找到最早的动态章节位置（运行环境 或 上下文状态），从该位置截断
+      const mgmtIdx = systemContent.indexOf(Agent.CONTEXT_MGMT_HEADING)
+      const statusIdx = systemContent.indexOf(Agent.CONTEXT_STATUS_HEADING)
+      const cutPoints = [mgmtIdx, statusIdx].filter(i => i !== -1)
+      const cutPoint = cutPoints.length > 0 ? Math.min(...cutPoints) : -1
+
+      let content = cutPoint !== -1 ? systemContent.substring(0, cutPoint) : systemContent
+
+      // 上下文管理章节（超过阈值时追加）
+      if (this.contextManagementEnabled) {
+        content += PromptBuilder.buildContextManagementSection()
       }
+
+      // 上下文状态（始终追加）
+      content += '\n\n' + statusLines.join('\n')
+
+      run.messages[0].content = content
     }
 
     // 85%+ 额外注入警告消息（避免重复注入）

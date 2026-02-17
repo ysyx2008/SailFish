@@ -49,7 +49,11 @@ export class TerminalAgent extends Agent {
   getAvailableTools(): ToolDefinition[] {
     const mode = this.getTerminalMode()
     const remoteChannel = this.currentRun?.context?.remoteChannel
-    const baseTools = getAgentTools(this.services.mcpService, { mode, remoteChannel })
+    const baseTools = getAgentTools(this.services.mcpService, {
+      mode,
+      remoteChannel,
+      includeContextTools: this.contextManagementEnabled
+    })
     
     // 如果有技能会话，用最新的 baseTools 刷新核心工具后返回
     // （remoteChannel 等上下文可能在不同 run 间变化，coreTools 需要同步更新）

@@ -237,8 +237,7 @@ ${this.buildCoreRules(osType, shellType, isSshTerminal, documentRule, knowledgeR
 ${documentSection}
 ${knowledgeSection}
 ${getUserSkillService().buildSkillsSummary()}
-${this.buildTaskMemorySection()}
-${PromptBuilder.buildContextManagementSection()}`
+${this.buildTaskMemorySection()}`
   }
 
   // ==================== 静态方法（便捷访问） ====================
@@ -312,7 +311,7 @@ ${PromptBuilder.buildContextManagementSection()}`
     return `
 ## 运行环境
 
-你运行在 ReAct 循环中，每次工具调用及其结果都会追加到对话上下文，而上下文有容量上限。当前用量见本提示末尾的 [上下文状态]（每轮更新）。
+你运行在 ReAct 循环中，每次工具调用及其结果都会追加到对话上下文，而上下文有容量上限。当前用量见本提示末尾的"上下文状态"章节（每轮更新）。
 
 ### 记忆体系
 - **当前对话**：你在上下文中能直接看到的消息
@@ -332,7 +331,7 @@ ${PromptBuilder.buildContextManagementSection()}`
 - **Level 4**：一句话总结
 
 ### 使用建议
-- 关注 [上下文状态]——使用率每轮更新
+- 关注"上下文状态"章节——使用率每轮更新
 - 使用率超过 70% 时，考虑压缩较早的对话内容
 - 完成任务后，可调用 \`manage_memory\` 优化历史任务的存储
 - 压缩是归档而非删除——你随时可以找回细节`

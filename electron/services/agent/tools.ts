@@ -166,6 +166,8 @@ export interface GetAgentToolsOptions {
   mode?: AgentMode
   /** 请求来源通道（用于条件性加载 IM 专属工具） */
   remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu'
+  /** 是否包含上下文管理工具（用量超过阈值时启用，节省 token） */
+  includeContextTools?: boolean
 }
 
 /**
@@ -885,109 +887,6 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
         }
       }
     },
-    // ==================== 上下文管理工具 ====================
-    {
-      type: 'function',
-      function: {
-        name: 'compress_context',
-        description: `压缩当前对话中较早的工具调用和结果，释放上下文空间。
-
-压缩内容会归档保留（不会删除），之后可通过 recall_compressed 找回。
-
-**何时使用**：
-- [上下文状态] 显示用量超过 70%
-- 预计后续还有大量工具调用
-- 某个工具返回了很长的输出，你已处理完毕
-
-**参数说明**：
-- summary：你对被压缩内容的摘要（将替换原始消息）
-- keep_recent：保留最近多少组 assistant+tool 消息不压缩（默认 4）
-
-请写清晰、有信息量的摘要，包含关键结果、路径、命令和发现。`,
-        parameters: {
-          type: 'object',
-          properties: {
-            summary: {
-              type: 'string',
-              description: '被压缩内容的摘要，应包含关键命令、结果、路径和发现'
-            },
-            keep_recent: {
-              type: 'number',
-              description: '保留最近多少组消息（assistant + tool 响应）不压缩，默认 4'
-            }
-          },
-          required: ['summary']
-        }
-      }
-    },
-    {
-      type: 'function',
-      function: {
-        name: 'recall_compressed',
-        description: `从 compress_context 创建的压缩归档中取回原始消息。
-
-**何时使用**：
-- 需要查看之前被压缩的工具调用的完整输出
-- 需要摘要中遗漏的细节信息
-
-**参数说明**：
-- archive_id：归档 ID（在压缩摘要中显示，如 "ca-1"）。省略则列出所有可用归档。`,
-        parameters: {
-          type: 'object',
-          properties: {
-            archive_id: {
-              type: 'string',
-              description: '要取回的归档 ID（如 "ca-1"），省略则列出所有可用归档'
-            }
-          }
-        }
-      }
-    },
-    {
-      type: 'function',
-      function: {
-        name: 'manage_memory',
-        description: `管理会话记忆：为历史任务建议压缩级别，或丢弃不再需要的任务。
-
-**何时使用**：
-- 完成任务后，优化历史任务的存储方式
-- 发现不相关的任务占用了上下文空间
-
-**压缩级别**：
-- 0：完整对话（所有工具调用和结果）
-- 1：压缩对话（工具调用摘要 + 最终回复）
-- 2：精简对话（用户请求 + 最终回复）
-- 3：结构化摘要（命令、路径、关键发现）
-- 4：一句话总结
-
-**参数说明**：
-- suggestions：数组，每项包含 {task_id, level, reason}，设置压缩级别
-- discard：要完全丢弃的任务 ID 数组`,
-        parameters: {
-          type: 'object',
-          properties: {
-            suggestions: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  task_id: { type: 'string', description: '任务 ID' },
-                  level: { type: 'number', description: '压缩级别（0-4）' },
-                  reason: { type: 'string', description: '设置该级别的简要原因' }
-                },
-                required: ['task_id', 'level']
-              },
-              description: '对历史任务的压缩级别建议'
-            },
-            discard: {
-              type: 'array',
-              items: { type: 'string' },
-              description: '要完全丢弃的任务 ID 列表'
-            }
-          }
-        }
-      }
-    },
     // ==================== IM 主动通知工具 ====================
     {
       type: 'function',
@@ -1108,6 +1007,11 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
     })
   }
 
+  // 上下文管理工具：仅在用量超过阈值时注入，节省 token
+  if (options?.includeContextTools) {
+    filteredTools.push(...getContextManagementTools())
+  }
+
   // 如果有 MCP 服务，添加 MCP 工具
   if (mcpService) {
     const mcpTools = mcpService.getToolDefinitions()
@@ -1115,4 +1019,114 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
   }
 
   return filteredTools
+}
+
+/**
+ * 上下文管理工具定义（按需加载，用量超过阈值时才注入）
+ */
+function getContextManagementTools(): ToolDefinition[] {
+  return [
+    {
+      type: 'function',
+      function: {
+        name: 'compress_context',
+        description: `压缩当前对话中较早的工具调用和结果，释放上下文空间。
+
+压缩内容会归档保留（不会删除），之后可通过 recall_compressed 找回。
+
+**何时使用**：
+- "上下文状态"章节显示用量超过 70%
+- 预计后续还有大量工具调用
+- 某个工具返回了很长的输出，你已处理完毕
+
+**参数说明**：
+- summary：你对被压缩内容的摘要（将替换原始消息）
+- keep_recent：保留最近多少组 assistant+tool 消息不压缩（默认 4）
+
+请写清晰、有信息量的摘要，包含关键结果、路径、命令和发现。`,
+        parameters: {
+          type: 'object',
+          properties: {
+            summary: {
+              type: 'string',
+              description: '被压缩内容的摘要，应包含关键命令、结果、路径和发现'
+            },
+            keep_recent: {
+              type: 'number',
+              description: '保留最近多少组消息（assistant + tool 响应）不压缩，默认 4'
+            }
+          },
+          required: ['summary']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'recall_compressed',
+        description: `从 compress_context 创建的压缩归档中取回原始消息。
+
+**何时使用**：
+- 需要查看之前被压缩的工具调用的完整输出
+- 需要摘要中遗漏的细节信息
+
+**参数说明**：
+- archive_id：归档 ID（在压缩摘要中显示，如 "ca-1"）。省略则列出所有可用归档。`,
+        parameters: {
+          type: 'object',
+          properties: {
+            archive_id: {
+              type: 'string',
+              description: '要取回的归档 ID（如 "ca-1"），省略则列出所有可用归档'
+            }
+          }
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'manage_memory',
+        description: `管理会话记忆：为历史任务建议压缩级别，或丢弃不再需要的任务。
+
+**何时使用**：
+- 完成任务后，优化历史任务的存储方式
+- 发现不相关的任务占用了上下文空间
+
+**压缩级别**：
+- 0：完整对话（所有工具调用和结果）
+- 1：压缩对话（工具调用摘要 + 最终回复）
+- 2：精简对话（用户请求 + 最终回复）
+- 3：结构化摘要（命令、路径、关键发现）
+- 4：一句话总结
+
+**参数说明**：
+- suggestions：数组，每项包含 {task_id, level, reason}，设置压缩级别
+- discard：要完全丢弃的任务 ID 数组`,
+        parameters: {
+          type: 'object',
+          properties: {
+            suggestions: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  task_id: { type: 'string', description: '任务 ID' },
+                  level: { type: 'number', description: '压缩级别（0-4）' },
+                  reason: { type: 'string', description: '设置该级别的简要原因' }
+                },
+                required: ['task_id', 'level']
+              },
+              description: '对历史任务的压缩级别建议'
+            },
+            discard: {
+              type: 'array',
+              items: { type: 'string' },
+              description: '要完全丢弃的任务 ID 列表'
+            }
+          }
+        }
+      }
+    }
+  ]
 }
