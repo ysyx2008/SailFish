@@ -54,6 +54,7 @@
 | 📚 **Knowledge Base** | Local RAG, completely offline |
 | 🔌 **MCP Extension** | Connect external tools via Model Context Protocol |
 | 🗄️ **Database** | Natural language SQL execution and analysis |
+| 🖥️ **CLI Mode** | Run all backend services without Electron — headless automation via `npm run sft` |
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-agent-exec_en.png" width="800" alt="AI Agent">

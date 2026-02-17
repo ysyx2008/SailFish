@@ -54,6 +54,7 @@
 | 📚 **知识库** | 本地 RAG，完全离线运行 |
 | 🔌 **MCP 扩展** | 通过 MCP 协议接入外部工具 |
 | 🗄️ **数据库** | 自然语言执行 SQL 和分析 |
+| 🖥️ **CLI 模式** | 无需 Electron 运行全部后端服务 —— 通过 `npm run sft` 实现无头自动化 |
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-agent-exec.png" width="800" alt="AI Agent">

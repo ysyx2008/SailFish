@@ -2,7 +2,22 @@
 
 All notable changes to SFTerm will be documented in this file.
 
-## v10.3.0 (2026-02-17) (Latest)
+## v10.4.0 (2026-02-17) (Latest)
+
+### New Features
+- 🖥️ **CLI Mode**: New pure Node.js CLI mode — run all backend services without Electron, ideal for headless servers and automation (`npm run sft`)
+- 💼 **WeCom Integration**: Added WeCom (企业微信) as a new IM channel with full callback-based messaging support (Beta)
+- 📖 **Per-Platform IM Docs**: Split IM setup guides into dedicated per-platform documents for DingTalk, Feishu, Slack, Telegram, and WeCom
+
+### Improvements
+- 🔒 **CLI Security Hardening**: Addressed security and code quality issues in the CLI module following code review
+- 🧪 **CLI Test Suite Upgrade**: Upgraded CLI tests from smoke tests to comprehensive functional verification covering all 26 commands
+- 📝 **Documentation Updates**: Updated README branding from SFTERM to SAILFISH, added Slack/Telegram channel links, simplified personal-use license description, removed outdated Roadmap
+
+### Bug Fixes
+- 🔧 Unified brand name to SailFish across the codebase; Agent now compresses context before reporting overflow instead of failing immediately
+
+## v10.3.0 (2026-02-17)
 
 ### New Features
 - 💬 **Slack & Telegram Integration**: Added Slack and Telegram as new IM channels, enabling Agent interaction through additional messaging platforms

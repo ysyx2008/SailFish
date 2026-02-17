@@ -26,7 +26,7 @@ export const translations = {
       titleHighlight: 'AI 驱动',
       titleSuffix: '的智能助手',
       subtitle: '说出你的需求，AI 自主规划执行。',
-      subtitleLine2: '通过桌面端、飞书、钉钉、Slack、Telegram 或 Web 随时与 Agent 对话，让 AI 帮你搞定一切。',
+      subtitleLine2: '通过桌面端、飞书、钉钉、企业微信、Slack、Telegram 或 Web 随时与 Agent 对话，让 AI 帮你搞定一切。',
       downloadBtn: '立即下载',
       viewSourceBtn: '查看源码',
       apiNotice: '本软件不内置大模型，需自行配置 API',
@@ -54,8 +54,8 @@ export const translations = {
         },
         {
           title: '多通道接入',
-          description: '不止于桌面端——通过飞书、钉钉、Slack、Telegram 机器人或 Web 远程页面随时与 Agent 对话，在手机上也能远程管理服务器、执行任务。',
-          highlights: ['飞书 / 钉钉', 'Slack / Telegram', 'Web 远程访问'],
+          description: '不止于桌面端——通过飞书、钉钉、企业微信、Slack、Telegram 机器人或 Web 远程页面随时与 Agent 对话，在手机上也能远程管理服务器、执行任务。',
+          highlights: ['飞书 / 钉钉 / 企业微信', 'Slack / Telegram', 'Web 远程访问'],
         },
         {
           title: '丰富的 Agent 技能',
@@ -246,7 +246,7 @@ export const translations = {
       titleHighlight: 'AI-Powered',
       titleSuffix: ' Smart Assistant',
       subtitle: 'Describe what you need, AI plans and executes autonomously.',
-      subtitleLine2: 'Chat with your Agent via desktop app, Feishu, DingTalk, Slack, Telegram, or Web — let AI handle the rest.',
+      subtitleLine2: 'Chat with your Agent via desktop app, Feishu, DingTalk, WeCom, Slack, Telegram, or Web — let AI handle the rest.',
       downloadBtn: 'Download Now',
       viewSourceBtn: 'View Source',
       apiNotice: 'This software does not include built-in LLM. You need to configure your own API.',
@@ -274,8 +274,8 @@ export const translations = {
         },
         {
           title: 'Multi-Channel Access',
-          description: 'Beyond the desktop — chat with your Agent via Feishu, DingTalk, Slack, and Telegram bots, or through the Web remote interface. Manage servers and run tasks from your phone, anytime.',
-          highlights: ['Feishu / DingTalk', 'Slack / Telegram', 'Web Remote Access'],
+          description: 'Beyond the desktop — chat with your Agent via Feishu, DingTalk, WeCom, Slack, and Telegram bots, or through the Web remote interface. Manage servers and run tasks from your phone, anytime.',
+          highlights: ['Feishu / DingTalk / WeCom', 'Slack / Telegram', 'Web Remote Access'],
         },
         {
           title: 'Rich Agent Skills',
