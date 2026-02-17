@@ -201,6 +201,12 @@ function compressTask(
  * 遇到 message 步骤时刷新所有 pending tool_call（无论是否有对应 result）。
  */
 function getFullMessages(task: TaskMemory): AiMessage[] {
+  // 优先使用直接记录的完整 API 对话（无需从 steps 重建）
+  if (task.messages && task.messages.length > 0) {
+    return task.messages.map(m => ({ ...m }))
+  }
+  
+  // Fallback: 从 fullSteps 重建（前端 previousTasks 恢复的历史任务没有 messages）
   const messages: AiMessage[] = []
   
   // 用户请求

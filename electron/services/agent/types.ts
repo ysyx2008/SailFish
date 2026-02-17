@@ -189,6 +189,9 @@ export interface AgentRun {
   skillSession?: import('./skills').SkillSession
   // 会话级别的工具白名单（"始终允许"功能）
   allowedTools: Set<string>
+  // 完整对话记录（append-only，不受 compress_context 影响）
+  // 与 messages（工作窗口，可被压缩）分离，确保持久化的历史完整不丢失
+  taskMessageLog: import('../ai.service').AiMessage[]
   // 压缩归档：compress_context 工具将被压缩的原始消息归档在此，可通过 recall_compressed 找回
   compressedArchives?: Array<{
     id: string                                        // 归档 ID，如 "ca-1"
@@ -265,8 +268,13 @@ export interface TaskMemory {
   // L2: 关键步骤摘要（~500 字符）
   digest: TaskDigest
   
-  // L3: 完整执行步骤（原始数据）
+  // L3: 完整执行步骤（原始数据，用于 digest 提取、deep_recall 等）
   fullSteps: AgentStep[]
+  
+  // 完整 API 对话记录（可选，用于 Level 0 上下文注入）
+  // 有此字段时 getFullMessages 直接返回，无需从 fullSteps 重建
+  // 从前端 previousTasks 恢复的历史任务没有此字段，会 fallback 到 step 重建
+  messages?: import('../ai.service').AiMessage[]
   
   // 语义索引
   keywords: string[]              // 关键词（用于快速匹配）

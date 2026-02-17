@@ -3,6 +3,7 @@
  * 实现多层次上下文管理：L1 总结 / L2 摘要 / L3 完整步骤
  */
 
+import type { AiMessage } from '../ai.service'
 import type { AgentStep, TaskMemory, TaskDigest, TaskSummary, RelatedTaskDigest } from './types'
 
 /**
@@ -290,7 +291,8 @@ export class TaskMemoryStore {
     userRequest: string,
     steps: AgentStep[],
     status: 'success' | 'failed' | 'aborted' | 'pending_confirmation',
-    finalResult?: string
+    finalResult?: string,
+    messages?: AiMessage[]
   ): TaskMemory {
     // 生成 L2 摘要（先提取，因为 pendingAction 会用到）
     const digest = extractDigest(steps, userRequest)
@@ -317,6 +319,7 @@ export class TaskMemoryStore {
       summary,
       digest,
       fullSteps: steps,
+      messages,
       keywords
     }
     
