@@ -30,7 +30,7 @@ import { DEFAULT_AGENT_CONFIG } from './types'
 import { TaskMemoryStore } from './task-memory'
 import type { ToolExecutorConfig, ToolResult } from './tools/types'
 import { executeTool } from './tools/index'
-import { buildTaskHistoryContext } from './context-builder'
+import { buildTaskHistoryContext, buildRecentTasksContext, calculateBudget } from './context-builder'
 import { getKnowledgeService } from '../knowledge'
 import { parseObservationsFromLLMResponse } from '../knowledge/memory-utils'
 import { t } from './i18n'
@@ -787,8 +787,8 @@ ${records.join('\n')}
     run: AgentRun, 
     toolExecutorConfig: ToolExecutorConfig
   ): Promise<{ response: ChatWithToolsResult | null; hasToolCalls: boolean }> {
-    // 上下文长度检查：如果超限直接报错，不悄悄截断
-    this.checkContextLimit(run.messages)
+    // 上下文长度检查：超限时先尝试压缩最近任务，仍超限再报错
+    this.ensureContextWithinLimit(run)
     
     // 调用 AI
     const response = await this.callAiWithStreaming(run)
@@ -1462,14 +1462,17 @@ ${records.join('\n')}
     return messageTokens + TOOLS_OVERHEAD
   }
   
+  /** 上下文用量阈值：超过此比例时先尝试压缩，仍超限再报错 */
+  private static readonly CONTEXT_LIMIT_RATIO = 0.9  // 预留 10% 给响应和估算误差
+
   /**
-   * 检查上下文是否超出限制
+   * 确保上下文在限制内：超限时先尝试用更小预算重算最近任务并替换，仍超限再抛错
    */
-  private checkContextLimit(messages: AiMessage[]): void {
+  private ensureContextWithinLimit(run: AgentRun): void {
     const contextLength = this.getContextLength()
-    const maxTokens = Math.floor(contextLength * 0.85)  // 预留 15% 给响应和估算误差
-    const totalTokens = this.estimateTotalTokens(messages)
-    
+    const maxTokens = Math.floor(contextLength * Agent.CONTEXT_LIMIT_RATIO)
+    let totalTokens = this.estimateTotalTokens(run.messages)
+
     // 将估算的 token 数更新到最近的 step，供前端上下文统计显示
     const steps = this.currentRun?.steps
     if (steps && steps.length > 0) {
@@ -1477,17 +1480,57 @@ ${records.join('\n')}
       lastStep.contextTokens = totalTokens
       this.callbacks?.onStep?.(this.currentRun?.id || '', lastStep)
     }
-    
-    if (totalTokens > maxTokens) {
-      const percentage = Math.round((totalTokens / contextLength) * 100)
-      throw new Error(
-        t('agent.context_limit_exceeded', { 
-          current: totalTokens, 
-          limit: contextLength,
-          percentage 
-        })
-      )
+
+    if (totalTokens <= maxTokens) return
+
+    // 超限：尝试用更小预算重算最近任务并替换
+    const messages = run.messages
+    const lastUserIndex = this.findLastUserMessageIndex(messages)
+    const hasRecentTasks = lastUserIndex > 1
+    if (!hasRecentTasks) {
+      this.throwContextLimitExceeded(totalTokens, contextLength)
     }
+
+    const userContent = typeof messages[lastUserIndex].content === 'string'
+      ? messages[lastUserIndex].content
+      : ''
+    const budget = calculateBudget(contextLength)
+    const smallerRecentTasksBudget = Math.max(1000, Math.floor(budget.recentTasks * 0.5))
+    const newResult = buildRecentTasksContext(
+      this.taskMemory,
+      smallerRecentTasksBudget,
+      userContent
+    )
+
+    run.messages = [
+      messages[0],
+      ...newResult.recentTaskMessages,
+      messages[lastUserIndex],
+      ...messages.slice(lastUserIndex + 1)
+    ]
+    totalTokens = this.estimateTotalTokens(run.messages)
+    if (totalTokens > maxTokens) {
+      this.throwContextLimitExceeded(totalTokens, contextLength)
+    }
+  }
+
+  /** 找到最后一条 user 消息的下标（即当前对话的用户输入） */
+  private findLastUserMessageIndex(messages: AiMessage[]): number {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') return i
+    }
+    return -1
+  }
+
+  private throwContextLimitExceeded(totalTokens: number, contextLength: number): never {
+    const percentage = Math.round((totalTokens / contextLength) * 100)
+    throw new Error(
+      t('agent.context_limit_exceeded', {
+        current: totalTokens,
+        limit: contextLength,
+        percentage
+      })
+    )
   }
   
   /**

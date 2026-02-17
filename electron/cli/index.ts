@@ -1,5 +1,5 @@
 /**
- * SFTerminal CLI
+ * SailFish CLI
  * 
  * Provides command-line access to all backend services for testing and automation.
  * The electron shim is already registered by main.js before this file is loaded.
@@ -146,7 +146,7 @@ async function configList(): Promise<void> {
 
 async function configInit(): Promise<void> {
   const config = getConfig()
-  console.log('SFTerminal CLI Config Initialization')
+  console.log('SailFish CLI Config Initialization')
   console.log('=====================================\n')
 
   // Check existing profiles
@@ -875,7 +875,7 @@ function printHelp(): void {
   const version = getVersion()
 
   console.log(`
-SFTerminal CLI v${version}
+SailFish CLI v${version}
 ============================
 
 Usage: sft <command> [options]

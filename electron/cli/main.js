@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * SFTerminal CLI Entry Point
+ * SailFish CLI Entry Point
  * 
  * This file MUST be plain JavaScript (.js) because it needs to register
  * the Electron API shim via Module._resolveFilename BEFORE any TypeScript
