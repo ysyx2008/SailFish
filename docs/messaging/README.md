@@ -26,7 +26,7 @@ User sends a message in chat
   Reply sent back via API
 ```
 
-- **No public server required**: Uses WebSocket long connections or Long Polling initiated from the client side. No need to expose ports or configure domain names.
+- **Most platforms need no public server**: Slack, Telegram, DingTalk, and Feishu use WebSocket or long polling initiated from the client—no need to expose ports or configure a domain. **WeCom** uses HTTP callback and requires a publicly accessible callback URL (e.g. via a tunnel).
 - **Messages processed locally**: All AI inference and tool calls run on your machine.
 - **Independent of Gateway**: Messaging integration does not depend on the remote access (Gateway) service and can be used standalone.
 
