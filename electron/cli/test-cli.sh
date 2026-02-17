@@ -210,12 +210,13 @@ assert_contains "knowledge:stats 返回 JSON"   "documentCount" \
 if [[ "$MODE" != "quick" ]]; then
   # 创建测试文档
   TEST_DOC=$(mktemp /tmp/sft-test-XXXXXX.md)
-  echo "SailFish CLI 自动化测试专用文档 — 独特标记 xK9mQ2vL" > "$TEST_DOC"
+  echo "这是一份关于 Kubernetes 容器编排部署的技术文档，用于 SailFish CLI 自动化测试。" > "$TEST_DOC"
 
   run_test "knowledge:add 添加测试文档"      $CLI knowledge:add "$TEST_DOC"
 
-  assert_contains "knowledge:search 命中测试文档"  "xK9mQ2vL" \
-    $CLI knowledge:search "xK9mQ2vL"
+  # 用语义相关的词搜索，验证向量检索能力
+  assert_contains "knowledge:search 语义搜索" "Kubernetes" \
+    $CLI knowledge:search "容器编排"
 
   rm -f "$TEST_DOC"
 else
