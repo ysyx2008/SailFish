@@ -54,6 +54,7 @@
 | 📚 **Knowledge Base** | Local RAG, completely offline |
 | 🔌 **MCP Extension** | Connect external tools via Model Context Protocol |
 | 🗄️ **Database** | Natural language SQL execution and analysis |
+| 🛒 **Skill Market** | Browse, install, and share community Agent skills with one click |
 | 🖥️ **CLI Mode** | Run all backend services without Electron — headless automation via `npm run sft` |
 
 <p align="center">

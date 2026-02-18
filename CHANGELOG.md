@@ -2,7 +2,12 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.4.1 (2026-02-19) (Latest)
+## v10.5.0 (2026-02-19) (Latest)
+
+### New Features
+- 🛒 **Skill Market**: Browse, search, install, and update community-shared skills directly from the in-app skill market, powered by a remote registry
+
+## v10.4.1 (2026-02-19)
 
 ### New Features
 - 🤖 **IM Guided Setup**: Added "AI Help Me Configure" button for each IM channel — launches an Agent that walks you through setup step-by-step

@@ -1588,6 +1588,17 @@ interface Window {
       getContent: (skillId: string) => Promise<string | null>
       getSkillsDir: () => Promise<string>
     }
+    // 技能市场
+    skillMarket: {
+      list: (force?: boolean) => Promise<any[]>
+      search: (query: string) => Promise<any[]>
+      install: (skillId: string) => Promise<{ success: boolean; error?: string }>
+      uninstall: (skillId: string) => Promise<{ success: boolean; error?: string }>
+      update: (skillId: string) => Promise<{ success: boolean; error?: string }>
+      getRegistryUrl: () => Promise<string>
+      setRegistryUrl: (url: string) => Promise<void>
+      fetchRegistry: (force?: boolean) => Promise<any>
+    }
     // 终端屏幕内容服务（主进程请求渲染进程数据）
     screen: {
       // 注册获取最近 N 行的请求处理器
