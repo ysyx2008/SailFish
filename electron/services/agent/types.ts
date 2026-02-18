@@ -112,9 +112,7 @@ export interface AgentContext {
   documentContext?: string  // 用户上传的文档内容
   images?: string[]  // 用户上传的图片（base64 data URL），发送给 AI 用于视觉理解
   sshHost?: string  // SSH 主机地址（用于历史记录元数据）
-  previousTasks?: PreviousTaskContext[]  // 之前已完成任务的上下文列表（用于初始化 TaskMemoryStore）
-  sessionMessages?: import('../ai.service').AiMessage[]  // 从 HistoryService 恢复的完整对话记录（跨会话恢复时传入）
-  sessionId?: string  // 从 HistoryService 恢复的会话 ID
+  sessionId?: string  // 从 HistoryService 恢复的会话 ID（后端自行加载历史数据）
   sessionStartTime?: number  // 从 HistoryService 恢复的会话开始时间
   currentPlan?: AgentPlan  // 当前执行计划（从前端 steps 恢复，用于跨对话持久化）
 }
@@ -278,7 +276,6 @@ export interface TaskMemory {
   
   // 完整 API 对话记录（可选，用于 Level 0 上下文注入）
   // 有此字段时 getFullMessages 直接返回，无需从 fullSteps 重建
-  // 从前端 previousTasks 恢复的历史任务没有此字段，会 fallback 到 step 重建
   messages?: import('../ai.service').AiMessage[]
   
   // 语义索引

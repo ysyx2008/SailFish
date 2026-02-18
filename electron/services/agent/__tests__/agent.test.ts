@@ -428,29 +428,49 @@ describe('Agent run method', () => {
       expect(taskMemory.getTaskCount()).toBe(1)
     })
 
-    it('should initialize from previous tasks', async () => {
+    it('should restore from HistoryService when sessionId is provided', async () => {
+      const sessionId = 'session_test_123'
+      const mockHistoryService = {
+        getAgentRecordById: vi.fn().mockReturnValue({
+          id: sessionId,
+          timestamp: Date.now() - 5000,
+          terminalId: 'test-pty',
+          terminalType: 'local',
+          userTask: 'Previous task',
+          steps: [
+            { id: 'ut1', type: 'user_task', content: 'Previous task', timestamp: Date.now() - 5000 },
+            { id: 'fr1', type: 'final_result', content: 'Previous result', timestamp: Date.now() - 4000 }
+          ],
+          messages: [
+            { role: 'user', content: 'Previous task' },
+            { role: 'assistant', content: 'Previous result' }
+          ],
+          finalResult: 'Previous result',
+          duration: 1000,
+          status: 'completed'
+        }),
+        saveAgentRecord: vi.fn()
+      }
+
+      const services = createMockServices({ historyService: mockHistoryService as any })
+      const agentWithHistory = new TestAgent(services)
+
+      mockAiService = services.aiService as any
       mockAiService.chatWithToolsStream.mockImplementation(
-        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+        (_messages: any, _tools: any, onChunk: any, _onToolCall: any, onDone: any) => {
           onChunk('Done')
           onDone({ content: 'Done', tool_calls: undefined })
           return Promise.resolve()
         }
       )
 
-      const context = createMockContext({
-        previousTasks: [{
-          userTask: 'Previous task',
-          steps: [{ type: 'message', content: 'Previous result' }],
-          finalResult: 'Previous result',
-          timestamp: Date.now() - 1000
-        }]
-      })
+      const context = createMockContext({ sessionId, sessionStartTime: Date.now() - 5000 })
+      await agentWithHistory.run('New task', context)
 
-      await agent.run('New task', context)
-      
-      const taskMemory = agent.exposeTaskMemory()
-      // 应该有 2 个任务：之前的 + 当前的
+      const taskMemory = agentWithHistory.exposeTaskMemory()
+      // 应该有 2 个任务：从 HistoryService 恢复的 + 当前的
       expect(taskMemory.getTaskCount()).toBe(2)
+      expect(mockHistoryService.getAgentRecordById).toHaveBeenCalledWith(sessionId)
     })
   })
 
@@ -763,9 +783,11 @@ describe('Agent step callbacks', () => {
     // 应该至少调用一次 onStep
     expect(onStep).toHaveBeenCalled()
     
-    // 第一个步骤应该是 thinking 类型
+    // 第一个步骤是 user_task（后端统一生成），第二个是 thinking
     const firstCall = onStep.mock.calls[0]
-    expect(firstCall[1].type).toBe('thinking')
+    expect(firstCall[1].type).toBe('user_task')
+    const secondCall = onStep.mock.calls[1]
+    expect(secondCall[1].type).toBe('thinking')
   })
 
   it('should call onStep for message step', async () => {

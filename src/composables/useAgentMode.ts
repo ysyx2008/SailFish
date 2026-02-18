@@ -407,47 +407,6 @@ export function useAgentMode(
     // 后端已在每次 run 结束时自动保存，无需前端再次保存
   }
 
-  // 构建之前所有已完成任务的上下文（包含完整执行步骤，让 AI 了解完整对话历史）
-  const buildPreviousTasksContext = () => {
-    const groups = agentTaskGroups.value
-    if (groups.length === 0) return undefined
-
-    // 收集所有已完成的任务（有 finalResult 的，排除当前正在执行的任务）
-    const completedTasks: Array<{
-      userTask: string
-      steps: { type: string; content: string; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: string; riskLevel?: string }[]
-      finalResult: string
-      timestamp: number
-    }> = []
-
-    for (let i = 0; i < groups.length; i++) {
-      const group = groups[i]
-      
-      // 收集已结束的任务（有 finalResult 的，包括成功/失败/中止，排除当前正在执行的任务）
-      if (group.finalResult && !group.isCurrentTask) {
-        completedTasks.push({
-          userTask: group.userTask,
-          steps: group.steps.map(s => ({
-            type: s.type,
-            content: s.content,
-            toolName: s.toolName,
-            toolArgs: s.toolArgs ? JSON.parse(JSON.stringify(s.toolArgs)) : undefined,
-            toolResult: s.toolResult,
-            riskLevel: s.riskLevel
-          })),
-          finalResult: group.finalResult,
-          timestamp: Date.now() - (groups.length - 1 - i) * 1000  // 用索引模拟时间顺序
-        })
-      }
-    }
-
-    if (completedTasks.length === 0) return undefined
-
-    console.log(`[Agent] 收集 ${completedTasks.length} 个已完成任务作为上下文`)
-
-    return completedTasks
-  }
-
   // 运行 Agent 或发送补充消息
   const runAgent = async () => {
     const hasImageData = (imageCallbacks?.getImages()?.length ?? 0) > 0
@@ -491,9 +450,6 @@ export function useAgentMode(
     // 获取主机 ID（基于 tabId 而非 activeTab，防止用户在 Agent 执行期间切换标签导致 hostId 错误）
     const hostId = await getHostIdByTabId(tabId)
 
-    // 构建之前任务的上下文（包含完整执行步骤）
-    const previousTasks = buildPreviousTasksContext()
-
     // 首次运行时自动探测主机信息（后台执行，不阻塞）
     autoProbeHostProfile().catch(e => {
       console.warn('[Agent] 主机探测失败:', e)
@@ -510,19 +466,9 @@ export function useAgentMode(
     // 获取文档上下文
     const documentContext = await getDocumentContext()
     
-    // 获取待发送的图片
+    // 获取待发送的图片（传给后端，后端生成 user_task 步骤时携带）
     const images = imageCallbacks?.getImages() || []
 
-    // 添加用户任务到步骤中（作为对话流的一部分，附带图片用于显示）
-    terminalStore.addAgentStep(tabId, {
-      id: `user_task_${Date.now()}`,
-      type: 'user_task',
-      content: message,
-      images: images.length > 0 ? images : undefined,
-      timestamp: Date.now()
-    })
-    await scrollToBottom()
-    
     // 清空待发送的图片
     if (images.length > 0) {
       imageCallbacks?.clearImages()
@@ -530,71 +476,55 @@ export function useAgentMode(
 
     // 设置 Agent 状态：正在运行 + 用户任务
     terminalStore.setAgentRunning(tabId, true, undefined, message)
+    await scrollToBottom()
 
-    let result: { success: boolean; result?: string; error?: string; aborted?: boolean } | null = null
-    let finalContent = ''
-    
     try {
-      // 调用 Agent API，传递配置
-      // 历史任务通过 previousTasks 传递，由后端 TaskMemoryStore 统一管理
-      result = await window.electronAPI.agent.run(
+      // 调用 Agent API
+      // user_task 和 final_result 步骤由后端统一生成并通过 onStep 回调推送
+      const result = await window.electronAPI.agent.run(
         context.ptyId,
         message,
         {
           ...context,
-          hostId,  // 主机档案 ID
-          sshHost: currentTab.value?.sshConfig?.host,  // SSH 主机地址（历史记录元数据）
-          documentContext,  // 添加文档上下文
-          images: images.length > 0 ? images : undefined,  // 附带图片（视觉理解）
-          previousTasks,  // 之前已完成任务的上下文（用于初始化 TaskMemoryStore）
-          // 从 HistoryService 恢复的会话信息（跨会话恢复时传入）
-          sessionMessages: agentState.value?.messages,
+          hostId,
+          sshHost: currentTab.value?.sshConfig?.host,
+          documentContext,
+          images: images.length > 0 ? images : undefined,
           sessionId: agentState.value?.sessionId,
           sessionStartTime: agentState.value?.sessionStartTime
         } as Record<string, unknown>,
-        { executionMode: executionMode.value, commandTimeout: commandTimeout.value * 1000 },  // 传递配置（超时时间转为毫秒）
-        activeProfileId.value || undefined  // 传递当前终端选择的 AI 配置档案 ID
+        { executionMode: executionMode.value, commandTimeout: commandTimeout.value * 1000 },
+        activeProfileId.value || undefined
       )
 
-      // 添加最终结果到步骤中
+      // 后端已通过 onStep 推送 final_result，这里只需设置 finalResult 状态
       if (!result.success) {
-        // 使用明确的 aborted 字段判断是否是用户主动中止
-        if (result.aborted) {
-          finalContent = t('ai.taskAbortedMessage')
-        } else {
-          finalContent = t('ai.agentExecutionFailed', { error: result.error })
-        }
+        const finalContent = result.aborted
+          ? t('ai.taskAbortedMessage')
+          : t('ai.agentExecutionFailed', { error: result.error })
+        terminalStore.setAgentFinalResult(tabId, finalContent)
       } else if (result.result) {
-        finalContent = result.result
+        terminalStore.setAgentFinalResult(tabId, result.result)
       }
+    } catch (error) {
+      console.error('Agent 运行失败:', error)
+      const errorMessage = error instanceof Error ? error.message : t('ai.unknownError')
+      const finalContent = t('ai.agentRunError', { error: errorMessage })
       
-      if (finalContent) {
+      // IPC 层面的错误（如连接断开），后端可能没来得及推送 final_result
+      // 检查后端是否已推送过 final_result，避免重复
+      const currentSteps = agentState.value?.steps || []
+      if (!currentSteps.some(s => s.type === 'final_result')) {
         terminalStore.addAgentStep(tabId, {
           id: `final_result_${Date.now()}`,
           type: 'final_result',
           content: finalContent,
           timestamp: Date.now()
         })
-        terminalStore.setAgentFinalResult(tabId, finalContent)
       }
-    } catch (error) {
-      // catch 块处理网络错误等异常情况（后端正常返回不会进入这里）
-      console.error('Agent 运行失败:', error)
-      const errorMessage = error instanceof Error ? error.message : t('ai.unknownError')
-      
-      finalContent = t('ai.agentRunError', { error: errorMessage })
-      terminalStore.addAgentStep(tabId, {
-        id: `final_result_${Date.now()}`,
-        type: 'final_result',
-        content: finalContent,
-        timestamp: Date.now()
-      })
       terminalStore.setAgentFinalResult(tabId, finalContent)
     } finally {
-      // 无论成功还是失败，都确保重置 Agent 运行状态
-      console.log('[Agent] finally block executing, resetting isRunning for tabId:', tabId)
       terminalStore.setAgentRunning(tabId, false)
-      console.log('[Agent] setAgentRunning called, current agentState:', terminalStore.getAgentState(tabId))
     }
 
     // 完成后使用智能滚动

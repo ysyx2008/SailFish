@@ -1727,9 +1727,9 @@ ipcMain.handle('agent:abort', async (_event, ptyId: string) => {
 })
 
 // 清空指定终端的任务历史记忆（用于"清空对话"功能）
+// 只重置会话状态和记忆，保留 Agent 实例（避免销毁后重建的开销）
 ipcMain.handle('agent:clearHistory', async (_event, ptyId: string) => {
-  // 清理 Agent 实例（内部会清理 TaskMemoryStore）
-  agentService.cleanupAgent(ptyId)
+  agentService.resetSession(ptyId)
 })
 
 // 确认工具调用（改用 ptyId）

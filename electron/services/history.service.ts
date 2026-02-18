@@ -269,6 +269,20 @@ export class HistoryService {
     return records.sort((a, b) => a.timestamp - b.timestamp)
   }
 
+  /**
+   * 按 ID 查找 Agent 记录（跨日期文件查找）
+   */
+  getAgentRecordById(id: string): AgentRecord | undefined {
+    const files = fs.readdirSync(this.agentDir).filter(f => f.endsWith('.json')).sort().reverse()
+    for (const file of files) {
+      const filePath = path.join(this.agentDir, file)
+      const records = this.readJsonFile<AgentRecord>(filePath)
+      const found = records.find(r => r.id === id)
+      if (found) return found
+    }
+    return undefined
+  }
+
   // ==================== 导出/导入 ====================
 
   /**

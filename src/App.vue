@@ -241,14 +241,8 @@ onMounted(async () => {
       }
       remoteTab.aiLoading = true
 
-      // 添加 user_task 步骤（agentTaskGroups 依赖此步骤进行分组渲染）
-      terminalStore.addAgentStep(remoteTab.id, {
-        id: `user_task_${Date.now()}`,
-        type: 'user_task',
-        content: data.message,
-        timestamp: Date.now()
-      })
-      console.log(`[RemoteDebug]   ✅ user_task 已添加: tabId=${remoteTab.id}, hadAgentState=${hadAgentState}, prevSteps=${prevStepsCount}, nowSteps=${remoteTab.agentState.steps.length}`)
+      // user_task 步骤由后端 Agent 统一生成并通过 onStep 推送，前端不再手动添加
+      console.log(`[RemoteDebug]   ✅ 远程任务已启动: tabId=${remoteTab.id}, hadAgentState=${hadAgentState}, prevSteps=${prevStepsCount}, nowSteps=${remoteTab.agentState.steps.length}`)
     } else {
       console.warn(`[RemoteDebug]   ❌ 无法找到或创建远程 tab: ptyId=${data.ptyId}`)
     }
@@ -260,14 +254,7 @@ onMounted(async () => {
     if (!data.ptyId) return
     // 只处理远程标签页的事件
     const tab = terminalStore.tabs.find(tab => tab.ptyId === data.ptyId && tab.isRemote)
-    if (!tab) {
-      // 检查是否有匹配 ptyId 但非 remote 的 tab（诊断用）
-      const nonRemoteTab = terminalStore.tabs.find(tab => tab.ptyId === data.ptyId)
-      if (nonRemoteTab) {
-        console.warn(`[RemoteDebug] ⚠ onStep: 找到 ptyId=${data.ptyId} 的 tab 但 isRemote=${nonRemoteTab.isRemote}, tabId=${nonRemoteTab.id}`)
-      }
-      return
-    }
+    if (!tab) return
     // 确保 agentState 存在
     if (!tab.agentState) {
       console.warn(`[RemoteDebug] ⚠ onStep: tab ${tab.id} 的 agentState 不存在，手动创建`)
@@ -290,18 +277,9 @@ onMounted(async () => {
   cleanupRemoteAgentComplete = window.electronAPI.agent.onComplete((data: { agentId: string; ptyId?: string; result: string }) => {
     if (!data.ptyId) return
     const tab = terminalStore.tabs.find(tab => tab.ptyId === data.ptyId && tab.isRemote)
-    if (!tab || !tab.agentState) {
-      console.warn(`[RemoteDebug] ❌ onComplete: 找不到远程 tab 或 agentState, ptyId=${data.ptyId}`)
-      return
-    }
+    if (!tab || !tab.agentState) return
     console.log(`[RemoteDebug] ✅ onComplete: ptyId=${data.ptyId}, tabId=${tab.id}, stepsBeforeComplete=${tab.agentState.steps.length}, result="${data.result.substring(0, 60)}"`)
-    // 添加 final_result 步骤，让 agentTaskGroups 能正确渲染
-    terminalStore.addAgentStep(tab.id, {
-      id: `final-${Date.now()}`,
-      type: 'final_result',
-      content: data.result,
-      timestamp: Date.now()
-    })
+    // final_result 步骤由后端 Agent 统一生成并通过 onStep 推送
     tab.agentState.isRunning = false
     tab.aiLoading = false
   })

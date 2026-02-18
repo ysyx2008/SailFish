@@ -92,14 +92,13 @@ export interface AgentHistoryItem {
 export interface AgentState {
   isRunning: boolean
   agentId?: string
-  sessionId?: string     // 会话 ID（用于会话级保存）
+  sessionId?: string     // 会话 ID（用于会话级保存，后端通过此 ID 从 HistoryService 加载历史数据）
   sessionStartTime?: number  // 会话开始时间
   userTask?: string      // 用户任务描述
   steps: AgentStep[]
   pendingConfirm?: PendingConfirmation
   finalResult?: string   // Agent 完成后的最终回复
   history: AgentHistoryItem[]  // 历史任务记录
-  messages?: Array<{ role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string }>  // 完整 API 对话记录（从 HistoryService 恢复）
 }
 
 // 上传的文档类型
@@ -1052,7 +1051,6 @@ export const useTerminalStore = defineStore('terminal', () => {
         sessionId: existingSessionId,  // 保留会话 ID
         sessionStartTime: existingSessionStartTime,  // 保留会话开始时间
         steps: existingSteps,  // 保留之前的步骤，不清空
-        messages: preserveHistory ? tab.agentState?.messages : undefined,  // 清空对话时也清掉 messages
         history: existingHistory
       }
     }
@@ -1084,7 +1082,6 @@ export const useTerminalStore = defineStore('terminal', () => {
       riskLevel?: string
       timestamp: number
     }>
-    messages?: Array<{ role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string }>
     finalResult?: string
     duration: number
     status: 'completed' | 'failed' | 'aborted'
@@ -1093,7 +1090,6 @@ export const useTerminalStore = defineStore('terminal', () => {
     if (!tab) return
 
     // 转换历史记录的 steps 为完整的 AgentStep 数组
-    // 注意：record.steps 中已经包含了 user_task 步骤，不需要重复添加
     const convertedSteps = record.steps.map(s => ({
       id: s.id,
       type: s.type as AgentStep['type'],
@@ -1105,20 +1101,16 @@ export const useTerminalStore = defineStore('terminal', () => {
       timestamp: s.timestamp
     }))
     
-    // 检查是否已有 user_task 步骤，如果没有则添加（兼容旧数据）
+    // 兼容旧数据：确保有 user_task 和 final_result 步骤
     const hasUserTask = convertedSteps.some(s => s.type === 'user_task')
-    
     const steps: AgentStep[] = [
-      // 只有在 record.steps 中没有 user_task 时才添加（兼容旧数据格式）
       ...(!hasUserTask ? [{
         id: `user_task_${record.timestamp}`,
         type: 'user_task' as const,
         content: record.userTask,
         timestamp: record.timestamp
       }] : []),
-      // 转换记录中的步骤
       ...convertedSteps,
-      // 添加 final_result 步骤（如果有且 record.steps 中没有）
       ...(record.finalResult && !convertedSteps.some(s => s.type === 'final_result') ? [{
         id: `final_result_${record.timestamp}`,
         type: 'final_result' as const,
@@ -1127,14 +1119,12 @@ export const useTerminalStore = defineStore('terminal', () => {
       }] : [])
     ]
 
-    // 设置 agentState，将历史记录作为当前会话的上下文
-    // 重要：保留原始记录的 sessionId 和 sessionStartTime，避免重复创建历史记录
+    // 设置 agentState：sessionId 传给后端后，后端从 HistoryService 自行加载 messages 和 TaskMemory
     tab.agentState = {
       isRunning: false,
-      sessionId: record.id,  // 保留原始会话 ID
-      sessionStartTime: record.timestamp,  // 保留原始会话开始时间
+      sessionId: record.id,
+      sessionStartTime: record.timestamp,
       steps: steps,
-      messages: record.messages,  // 完整 API 对话记录（跨会话恢复时传给后端）
       history: [{
         userTask: record.userTask,
         steps: steps,
@@ -1168,29 +1158,15 @@ export const useTerminalStore = defineStore('terminal', () => {
         .map(line => stripAnsi(line))
     }
 
-    // 获取快照管理器的额外信息
-    const snapshotManager = snapshotManagers.get(tabId)
-    let isAtPrompt = false
-    let cursorPosition = null
-    
-    if (screenService) {
-      isAtPrompt = screenService.isAtPrompt()
-      cursorPosition = screenService.getCursorPosition()
-    }
-
     // 使用 JSON.parse(JSON.stringify()) 确保返回纯对象，移除 Proxy
     return JSON.parse(JSON.stringify({
       ptyId: tab.ptyId || '',
-      terminalOutput, // 使用更准确的屏幕内容
+      terminalOutput,
       systemInfo: {
         os: tab.systemInfo?.os || 'unknown',
         shell: tab.systemInfo?.shell || 'unknown'
       },
-      terminalType: tab.type, // 终端类型：'local' 或 'ssh'
-      // 增强的状态信息
-      isAtPrompt,
-      cursorPosition,
-      hasContentChanged: snapshotManager?.hasContentChanged() ?? true
+      terminalType: tab.type
     }))
   }
 

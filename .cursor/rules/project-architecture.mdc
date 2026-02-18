@@ -122,12 +122,13 @@ SFTerminal/
 - **上下文管理**：`ContextBuilder` 根据 token 预算动态选择压缩级别
 
 ### Agent 会话与持久化
+- **后端为唯一数据源**：Steps（含 `user_task`/`final_result`）和 API messages 均由后端 Agent 生成、管理和持久化，前端仅负责渲染
 - **会话追踪**：Agent 实例按 `ptyId` 复用（`AgentService.agents` Map），会话状态（sessionId、累积 steps/messages）跨多次 `run` 持久化
 - **完整消息记录**：每次 `run` 通过 `taskMessageLog`（append-only）记录完整 API 对话，与可压缩的 `run.messages`（工作窗口）分离
 - **后端直接存盘**：`finalizeRun` 时 Agent 直接调 `HistoryService.saveAgentRecord` 保存 `AgentRecord`（含 `steps` + `messages`），前端不参与保存
 - **增量检查点**：每完成一轮工具调用后自动写盘，防止程序意外退出丢失记录
-- **跨会话恢复**：App 重启后，前端从 HistoryService 加载历史，通过 `context.sessionId`/`sessionMessages` 传给后端恢复 session 状态
-- **权威数据源**：`AgentRecord.messages` 是完整 API 对话的权威记录，`getFullMessages` 优先直接返回，无需从 steps 重建
+- **跨会话恢复**：App 重启后，前端从 HistoryService 加载历史步骤用于 UI 渲染，只传 `sessionId` 给后端；后端通过 `HistoryService.getAgentRecordById` 自行加载完整 messages 和 steps 恢复 TaskMemory
+- **生命周期**：终端关闭时 `cleanupAgent` 销毁 Agent 实例；"清空对话"时 `resetSession` 只重置会话状态和 TaskMemory，保留实例
 
 ### 知识库
 - 本地向量数据库（LanceDB）

@@ -206,7 +206,7 @@ function getFullMessages(task: TaskMemory): AiMessage[] {
     return task.messages.map(m => ({ ...m }))
   }
   
-  // Fallback: 从 fullSteps 重建（前端 previousTasks 恢复的历史任务没有 messages）
+  // Fallback: 从 fullSteps 重建（messages 不可用时的兼容路径）
   const messages: AiMessage[] = []
   
   // 用户请求
