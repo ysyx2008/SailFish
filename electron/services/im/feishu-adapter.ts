@@ -204,7 +204,12 @@ export class FeishuAdapter implements IMAdapter {
 
   /**
    * 发送文件消息
-   * 流程：先通过 im.file.create 上传文件获取 file_key，再发送 file 类型消息
+   * 流程：先通过 im.file.create 上传文件获取 file_key，再发送消息
+   *
+   * 飞书对不同媒体类型要求不同的 msg_type：
+   * - mp4 视频 → msg_type: 'media'
+   * - opus 音频 → msg_type: 'audio'
+   * - 其他文件 → msg_type: 'file'
    */
   async sendFile(replyContext: any, filePath: string, fileName?: string): Promise<void> {
     if (!this.client) throw new Error('[Feishu] Client not initialized')
@@ -232,13 +237,16 @@ export class FeishuAdapter implements IMAdapter {
     // Step 1: 上传文件获取 file_key
     const fileKey = await this.uploadFile(filePath, resolvedFileName)
 
-    // Step 2: 发送文件消息
+    // Step 2: 根据文件类型选择正确的 msg_type 发送消息
+    const ext = path.extname(resolvedFileName).toLowerCase()
+    const msgType = this.getFeishuMsgType(ext)
+
     await this.client.im.message.create({
       params: { receive_id_type: 'chat_id' },
       data: {
         receive_id: replyContext.chatId,
         content: JSON.stringify({ file_key: fileKey }),
-        msg_type: 'file',
+        msg_type: msgType,
       }
     })
   }
@@ -303,7 +311,7 @@ export class FeishuAdapter implements IMAdapter {
   }
 
   /**
-   * 将文件扩展名映射为飞书 file_type
+   * 将文件扩展名映射为飞书 file_type（上传接口参数）
    * 飞书支持的 file_type: opus(语音), mp4(视频), pdf, doc, xls, ppt, stream(二进制流)
    */
   private resolveFeishuFileType(ext: string): string {
@@ -316,6 +324,20 @@ export class FeishuAdapter implements IMAdapter {
       '.ppt': 'ppt', '.pptx': 'ppt',
     }
     return typeMap[ext] || 'stream'
+  }
+
+  /**
+   * 根据文件扩展名确定飞书消息发送时的 msg_type
+   *
+   * 飞书对不同媒体类型要求不同的 msg_type：
+   * - .mp4  → 'media'（视频消息）
+   * - .opus → 'audio'（语音消息）
+   * - 其他  → 'file' （文件消息）
+   */
+  private getFeishuMsgType(ext: string): 'media' | 'audio' | 'file' {
+    if (ext === '.mp4') return 'media'
+    if (ext === '.opus') return 'audio'
+    return 'file'
   }
 
   // ==================== 内部方法 ====================
