@@ -51,6 +51,9 @@ export abstract class Agent {
   /** 命令超时时间（毫秒） */
   commandTimeout: number = 30000
   
+  /** 调试模式 */
+  debugMode: boolean = false
+  
   /** AI 配置档案 ID（每个 Agent 实例独立，未设置时 fallback 到全局） */
   profileId?: string
   
@@ -210,6 +213,9 @@ export abstract class Agent {
     if (config.commandTimeout !== undefined) {
       this.commandTimeout = config.commandTimeout
     }
+    if (config.debugMode !== undefined) {
+      this.debugMode = config.debugMode
+    }
     if (config.profileId !== undefined) {
       this.profileId = config.profileId
     }
@@ -322,7 +328,8 @@ export abstract class Agent {
     const config: AgentConfig = {
       ...DEFAULT_AGENT_CONFIG,
       executionMode: this.executionMode,
-      commandTimeout: this.commandTimeout
+      commandTimeout: this.commandTimeout,
+      debugMode: this.debugMode
     }
     
     const run: AgentRun = {
