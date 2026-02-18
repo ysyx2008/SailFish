@@ -57,7 +57,15 @@ export interface SkillOperationResult {
 }
 
 function validateSkillId(id: string): boolean {
-  return SAFE_ID_RE.test(id) && !id.includes('..')
+  return SAFE_ID_RE.test(id) && !id.includes('..') && id.length <= 128
+}
+
+function assertInsideDir(parent: string, child: string): void {
+  const resolvedParent = path.resolve(parent) + path.sep
+  const resolvedChild = path.resolve(child)
+  if (!resolvedChild.startsWith(resolvedParent)) {
+    throw new Error('Path traversal detected')
+  }
 }
 
 /**
@@ -228,12 +236,18 @@ export class SkillMarketService {
         return { success: false, error: 'Downloaded file is empty' }
       }
 
-      const skillDir = path.join(this.userSkillService.getSkillsDir(), skillId)
+      const skillsDir = this.userSkillService.getSkillsDir()
+      const skillDir = path.join(skillsDir, skillId)
+      assertInsideDir(skillsDir, skillDir)
+
       if (!fs.existsSync(skillDir)) {
         fs.mkdirSync(skillDir, { recursive: true })
       }
 
       const targetPath = path.join(skillDir, 'SKILL.md')
+      if (fs.existsSync(targetPath) && fs.lstatSync(targetPath).isSymbolicLink()) {
+        fs.unlinkSync(targetPath)
+      }
       const tmpPath = targetPath + '.tmp'
       fs.writeFileSync(tmpPath, content, 'utf-8')
       fs.renameSync(tmpPath, targetPath)
@@ -255,8 +269,9 @@ export class SkillMarketService {
 
     try {
       const skillsDir = this.userSkillService.getSkillsDir()
-
       const skillDir = path.join(skillsDir, skillId)
+      assertInsideDir(skillsDir, skillDir)
+
       if (fs.existsSync(skillDir) && fs.statSync(skillDir).isDirectory()) {
         fs.rmSync(skillDir, { recursive: true })
         this.userSkillService.refresh()
@@ -265,6 +280,7 @@ export class SkillMarketService {
       }
 
       const skillFile = path.join(skillsDir, `${skillId}.md`)
+      assertInsideDir(skillsDir, skillFile)
       if (fs.existsSync(skillFile)) {
         fs.unlinkSync(skillFile)
         this.userSkillService.refresh()
