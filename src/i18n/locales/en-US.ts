@@ -421,7 +421,9 @@ export default {
     recommended: 'Recommended',
     // Agent debug mode
     agentDebugMode: 'Agent Debug Mode',
-    agentDebugModeDesc: 'Show detailed tool call steps when enabled, simpler interaction when disabled'
+    agentDebugModeDesc: 'Show detailed tool call steps when enabled, simpler interaction when disabled',
+    logLevel: 'Log Level',
+    logLevelDesc: 'Controls console log verbosity. Debug outputs the most, Silent suppresses all. Warn is recommended'
   },
 
   // AI Rules Settings

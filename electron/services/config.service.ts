@@ -2,6 +2,7 @@ import Store from 'electron-store'
 import { safeStorage } from 'electron'
 import type { KnowledgeSettings } from './knowledge/types'
 import { DEFAULT_KNOWLEDGE_SETTINGS } from './knowledge/types'
+import type { LogLevel } from '../utils/logger'
 
 export interface AiProfile {
   id: string
@@ -147,6 +148,7 @@ interface StoreSchema {
   imTelegramAutoConnect: boolean  // Telegram 自动连接
   imTelegramBotToken: string      // Telegram Bot Token
   imExecutionMode: 'strict' | 'relaxed' | 'free'  // IM Agent 执行模式，默认 relaxed
+  logLevel: LogLevel  // 日志级别
 }
 
 const defaultConfig: StoreSchema = {
@@ -199,7 +201,8 @@ const defaultConfig: StoreSchema = {
   imSlackAppToken: '',
   imTelegramAutoConnect: false,
   imTelegramBotToken: '',
-  imExecutionMode: 'relaxed'
+  imExecutionMode: 'relaxed',
+  logLevel: 'warn'
 }
 
 export class ConfigService {
@@ -734,6 +737,16 @@ export class ConfigService {
    */
   setAiRules(rules: string): void {
     this.store.set('aiRules', rules)
+  }
+
+  // ==================== 日志级别 ====================
+
+  getLogLevel(): LogLevel {
+    return this.store.get('logLevel') || 'warn'
+  }
+
+  setLogLevel(level: LogLevel): void {
+    this.store.set('logLevel', level)
   }
 }
 

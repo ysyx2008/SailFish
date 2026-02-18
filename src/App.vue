@@ -23,6 +23,9 @@ import { useConfirm } from './composables/useConfirm'
 import { toast } from './composables/useToast'
 import type { SftpConnectionConfig } from './composables/useSftp'
 import { uiThemes } from './themes/ui-themes'
+import { createLogger } from './utils/logger'
+
+const log = createLogger('App')
 
 const { t } = useI18n()
 
@@ -172,7 +175,7 @@ onMounted(async () => {
       // 打开 AI 面板确保可见
       showAiPanel.value = true
       
-      console.log(`[Scheduler] 定时任务开始: ${data.taskName}, 已创建终端 tab，等待 AiPanel 执行`)
+      log.debug(`[Scheduler] 定时任务开始: ${data.taskName}, 已创建终端 tab，等待 AiPanel 执行`)
     }
   })
 
@@ -189,14 +192,14 @@ onMounted(async () => {
           isRemote: true
         })
         // 后台静默创建，不切换、不打开 AI 面板，不干扰用户当前工作
-        console.log(`[Gateway] 远程 Agent 终端标签页已创建（后台）: ptyId=${data.ptyId}`)
+        log.debug(`[Gateway] 远程 Agent 终端标签页已创建（后台）: ptyId=${data.ptyId}`)
       }
     }
   })
 
   // 监听远程 Gateway 任务开始事件（关键时刻 Toast 通知 + 初始化 Agent 消息）
   cleanupGatewayRemoteTask = window.electronAPI.gateway.onRemoteTaskStarted((data) => {
-    console.log(`[RemoteDebug] ▶ onRemoteTaskStarted 收到事件: ptyId=${data.ptyId}, message="${data.message.substring(0, 60)}"`)
+    log.debug(`[RemoteDebug] onRemoteTaskStarted: ptyId=${data.ptyId}, message="${data.message.substring(0, 60)}"`)
     const preview = data.message.length > 60
       ? data.message.substring(0, 60) + '...'
       : data.message
@@ -205,7 +208,7 @@ onMounted(async () => {
     // 在远程标签页中初始化 Agent 状态，让 AiPanel 能显示进度
     // 如果标签页不存在（用户手动关闭后再次收到任务），自动重新创建
     let remoteTab = terminalStore.tabs.find(tab => tab.ptyId === data.ptyId)
-    console.log(`[RemoteDebug]   查找 tab: ptyId=${data.ptyId}, found=${!!remoteTab}, isRemote=${remoteTab?.isRemote}, tabId=${remoteTab?.id}`)
+    log.debug(`[RemoteDebug] 查找 tab: ptyId=${data.ptyId}, found=${!!remoteTab}, isRemote=${remoteTab?.isRemote}, tabId=${remoteTab?.id}`)
     if (!remoteTab) {
       const newTabId = terminalStore.createTabWithExistingPty({
         ptyId: data.ptyId,
@@ -214,7 +217,7 @@ onMounted(async () => {
         isRemote: true
       })
       remoteTab = terminalStore.tabs.find(tab => tab.id === newTabId)
-      console.log(`[RemoteDebug]   新建远程 tab: newTabId=${newTabId}, found=${!!remoteTab}`)
+      log.debug(`[RemoteDebug] 新建远程 tab: newTabId=${newTabId}, found=${!!remoteTab}`)
 
       // 等 Terminal.vue 挂载完成后触发 resize，让 shell 重绘 prompt
       setTimeout(() => {
@@ -242,9 +245,9 @@ onMounted(async () => {
       remoteTab.aiLoading = true
 
       // user_task 步骤由后端 Agent 统一生成并通过 onStep 推送，前端不再手动添加
-      console.log(`[RemoteDebug]   ✅ 远程任务已启动: tabId=${remoteTab.id}, hadAgentState=${hadAgentState}, prevSteps=${prevStepsCount}, nowSteps=${remoteTab.agentState.steps.length}`)
+      log.debug(`[RemoteDebug] 远程任务已启动: tabId=${remoteTab.id}, hadAgentState=${hadAgentState}, prevSteps=${prevStepsCount}, nowSteps=${remoteTab.agentState.steps.length}`)
     } else {
-      console.warn(`[RemoteDebug]   ❌ 无法找到或创建远程 tab: ptyId=${data.ptyId}`)
+      log.warn(`[RemoteDebug] 无法找到或创建远程 tab: ptyId=${data.ptyId}`)
     }
   })
 
@@ -257,7 +260,7 @@ onMounted(async () => {
     if (!tab) return
     // 确保 agentState 存在
     if (!tab.agentState) {
-      console.warn(`[RemoteDebug] ⚠ onStep: tab ${tab.id} 的 agentState 不存在，手动创建`)
+      log.warn(`[RemoteDebug] onStep: tab ${tab.id} 的 agentState 不存在，手动创建`)
       tab.agentState = { isRunning: true, steps: [], history: [], agentId: data.agentId }
     }
     // 关联 agentId
@@ -270,7 +273,7 @@ onMounted(async () => {
     const newCount = tab.agentState.steps.length
     // 仅在新增步骤或特殊类型时打印，避免流式 message 更新刷屏
     if (newCount !== prevCount || data.step.type !== 'message') {
-      console.log(`[RemoteDebug] 📥 onStep: type=${data.step.type}, id=${data.step.id}, tabId=${tab.id}, steps: ${prevCount}→${newCount}`)
+      log.debug(`[RemoteDebug] onStep: type=${data.step.type}, id=${data.step.id}, tabId=${tab.id}, steps: ${prevCount}→${newCount}`)
     }
   })
 
@@ -278,7 +281,7 @@ onMounted(async () => {
     if (!data.ptyId) return
     const tab = terminalStore.tabs.find(tab => tab.ptyId === data.ptyId && tab.isRemote)
     if (!tab || !tab.agentState) return
-    console.log(`[RemoteDebug] ✅ onComplete: ptyId=${data.ptyId}, tabId=${tab.id}, stepsBeforeComplete=${tab.agentState.steps.length}, result="${data.result.substring(0, 60)}"`)
+    log.debug(`[RemoteDebug] onComplete: ptyId=${data.ptyId}, tabId=${tab.id}, stepsBeforeComplete=${tab.agentState.steps.length}, result="${data.result.substring(0, 60)}"`)
     // final_result 步骤由后端 Agent 统一生成并通过 onStep 推送
     tab.agentState.isRunning = false
     tab.aiLoading = false
@@ -323,13 +326,13 @@ const initializeApp = async () => {
       const connected = results.filter(r => r.success).length
       const failed = results.filter(r => !r.success)
       if (connected > 0) {
-        console.log(`[MCP] 自动连接了 ${connected} 个服务器`)
+        log.info(`[MCP] 自动连接了 ${connected} 个服务器`)
       }
       if (failed.length > 0) {
-        console.warn('[MCP] 部分服务器连接失败:', failed)
+        log.warn('[MCP] 部分服务器连接失败:', failed)
       }
     } catch (error) {
-      console.error('[MCP] 自动连接服务器失败:', error)
+      log.error('[MCP] 自动连接服务器失败:', error)
     }
   }
 

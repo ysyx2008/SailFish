@@ -8,6 +8,9 @@ import { useI18n } from 'vue-i18n'
 import { useTerminalStore } from '../stores/terminal'
 import { useConfigStore } from '../stores/config'
 import type { AgentStep, AgentState } from '../stores/terminal'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('Agent')
 
 // 判断用户是否在底部附近的阈值（像素）
 const SCROLL_THRESHOLD = 100
@@ -305,7 +308,7 @@ export function useAgentMode(
     if (currentTab.value?.isRemote) {
       promises.push(
         window.electronAPI.remoteChat.setExecutionMode(newValue).catch(err => {
-          console.error('[Agent] Failed to sync execution mode to RemoteChatService:', err)
+          log.error('Failed to sync execution mode to RemoteChatService:', err)
         })
       )
     }
@@ -394,7 +397,7 @@ export function useAgentMode(
       const stepTypes = allSteps.map(s => s.type)
       const userTaskCount = stepTypes.filter(t => t === 'user_task').length
       const finalResultCount = stepTypes.filter(t => t === 'final_result').length
-      console.log(`[RemoteDebug][Groups] tabId=${tab.id}, totalSteps=${allSteps.length}, groups=${groups.length}, userTasks=${userTaskCount}, finals=${finalResultCount}, orphaned=${orphanedStepCount}, stepTypes=[${stepTypes.join(',')}]`)
+      log.debug(`[Groups] tabId=${tab.id}, totalSteps=${allSteps.length}, groups=${groups.length}, userTasks=${userTaskCount}, finals=${finalResultCount}, orphaned=${orphanedStepCount}, stepTypes=[${stepTypes.join(',')}]`)
     }
     
     return groups
@@ -443,7 +446,7 @@ export function useAgentMode(
     // 获取 Agent 上下文
     const context = terminalStore.getAgentContext(tabId)
     if (!context || !context.ptyId) {
-      console.error('无法获取终端上下文')
+      log.error('无法获取终端上下文')
       return
     }
 
@@ -452,7 +455,7 @@ export function useAgentMode(
 
     // 首次运行时自动探测主机信息（后台执行，不阻塞）
     autoProbeHostProfile().catch(e => {
-      console.warn('[Agent] 主机探测失败:', e)
+      log.warn('主机探测失败:', e)
     })
 
     // 准备新任务（保留之前的步骤）
@@ -507,7 +510,7 @@ export function useAgentMode(
         terminalStore.setAgentFinalResult(tabId, result.result)
       }
     } catch (error) {
-      console.error('Agent 运行失败:', error)
+      log.error('Agent 运行失败:', error)
       const errorMessage = error instanceof Error ? error.message : t('ai.unknownError')
       const finalContent = t('ai.agentRunError', { error: errorMessage })
       
@@ -539,7 +542,7 @@ export function useAgentMode(
     try {
       await window.electronAPI.agent.abort(context.ptyId)
     } catch (error) {
-      console.error('中止 Agent 失败:', error)
+      log.error('中止 Agent 失败:', error)
     }
   }
 
@@ -565,7 +568,7 @@ export function useAgentMode(
         terminalStore.setAgentPendingConfirm(currentTabId.value, undefined)
       }
     } catch (error) {
-      console.error('确认工具调用失败:', error)
+      log.error('确认工具调用失败:', error)
     }
   }
 
@@ -699,7 +702,7 @@ export function useAgentMode(
       // 如果有未处理的用户消息（用户在 Agent 总结时发送的），自动作为新任务启动
       if (data.pendingUserMessages && data.pendingUserMessages.length > 0) {
         const pendingMessage = data.pendingUserMessages.join('\n')
-        console.log('[Agent] 发现未处理的用户消息，将作为新任务启动:', pendingMessage)
+        log.info('发现未处理的用户消息，将作为新任务启动:', pendingMessage)
         // 延迟一点启动，让当前完成状态先更新到 UI
         setTimeout(() => {
           inputText.value = pendingMessage
@@ -796,7 +799,7 @@ export function useAgentMode(
         .sort((a, b) => b.timestamp - a.timestamp)
         .slice(0, 5)
     } catch (e) {
-      console.error('加载历史记录失败:', e)
+      log.error('加载历史记录失败:', e)
     } finally {
       isLoadingHistory.value = false
     }
@@ -811,7 +814,7 @@ export function useAgentMode(
       // 按时间倒序排列
       allHistory.value = records.sort((a, b) => b.timestamp - a.timestamp)
     } catch (e) {
-      console.error('加载全部历史记录失败:', e)
+      log.error('加载全部历史记录失败:', e)
     } finally {
       isLoadingAllHistory.value = false
     }
@@ -863,7 +866,7 @@ export function useAgentMode(
         executionMode.value = config.executionMode
       }
     } catch (err) {
-      console.warn('[Agent] Failed to load remote execution mode, using default:', err)
+      log.warn('Failed to load remote execution mode, using default:', err)
     }
   }
 

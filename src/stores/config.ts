@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
 import { setLocale, type LocaleType } from '../i18n'
 import { type UiThemeName } from '../themes/ui-themes'
+import { setLogLevel as setFrontendLogLevel, type LogLevel } from '../utils/logger'
 
 export interface AiProfile {
   id: string
@@ -269,6 +270,9 @@ export const useConfigStore = defineStore('config', () => {
   // AI Rules（用户自定义的 AI 指令）
   const aiRules = ref<string>('')
 
+  // 日志级别
+  const logLevel = ref<LogLevel>('warn')
+
   // 邮箱账户
   const emailAccounts = ref<EmailAccount[]>([])
 
@@ -347,6 +351,13 @@ export const useConfigStore = defineStore('config', () => {
       // 加载 AI Rules
       const rules = await window.electronAPI.config.getAiRules()
       aiRules.value = rules || ''
+
+      // 加载日志级别
+      const savedLogLevel = await window.electronAPI.config.get('logLevel') as string | undefined
+      if (savedLogLevel != null && savedLogLevel !== '') {
+        logLevel.value = savedLogLevel as LogLevel
+        setFrontendLogLevel(savedLogLevel as LogLevel)
+      }
 
       // 加载终端设置
       const savedTerminalSettings = await window.electronAPI.config.get('terminalSettings')
@@ -580,6 +591,14 @@ export const useConfigStore = defineStore('config', () => {
     await window.electronAPI.config.setAiRules(rules)
   }
 
+  // ==================== 日志级别 ====================
+
+  async function setLogLevel(level: LogLevel): Promise<void> {
+    logLevel.value = level
+    setFrontendLogLevel(level)
+    await window.electronAPI.config.set('logLevel', level)
+  }
+
   /**
    * 更新主机排序顺序
    */
@@ -794,6 +813,7 @@ export const useConfigStore = defineStore('config', () => {
     sessionSortBy,
     defaultGroupSortOrder,
     aiRules,
+    logLevel,
     emailAccounts,
 
     // 方法
@@ -825,6 +845,7 @@ export const useConfigStore = defineStore('config', () => {
     updateGroupSortOrder,
     updateGroupsSortOrder,
     setAiRules,
+    setLogLevel,
     addEmailAccount,
     updateEmailAccount,
     deleteEmailAccount,

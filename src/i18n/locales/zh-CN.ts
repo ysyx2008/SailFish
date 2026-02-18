@@ -421,7 +421,9 @@ export default {
     recommended: '推荐',
     // 助手调试模式
     agentDebugMode: '助手调试模式',
-    agentDebugModeDesc: '开启后显示详细的工具调用步骤，关闭后交互更简洁自然'
+    agentDebugModeDesc: '开启后显示详细的工具调用步骤，关闭后交互更简洁自然',
+    logLevel: '日志级别',
+    logLevelDesc: '控制浏览器控制台的日志输出量。Debug 输出最多，Silent 完全静默，推荐使用 Warn'
   },
 
   // AI 规则设置

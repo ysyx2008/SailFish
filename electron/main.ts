@@ -167,6 +167,7 @@ import { PtyService } from './services/pty.service'
 import { SshService } from './services/ssh.service'
 import { AiService } from './services/ai.service'
 import { ConfigService, McpServerConfig } from './services/config.service'
+import { setLogLevel as setBackendLogLevel } from './utils/logger'
 import { XshellImportService } from './services/xshell-import.service'
 import { AgentService, AgentStep, AgentContext } from './services/agent'
 import type { PendingConfirmation } from './services/agent/types'
@@ -248,6 +249,7 @@ const ptyService = new PtyService()
 const sshService = new SshService()
 const aiService = new AiService()
 const configService = new ConfigService()
+setBackendLogLevel(configService.getLogLevel())
 const xshellImportService = new XshellImportService()
 const hostProfileService = new HostProfileService()
 const mcpService = new McpService()
@@ -1556,6 +1558,17 @@ ipcMain.handle('config:getAiRules', async () => {
 
 ipcMain.handle('config:setAiRules', async (_event, rules: string) => {
   configService.setAiRules(rules)
+})
+
+// 日志级别
+ipcMain.handle('config:getLogLevel', async () => {
+  return configService.getLogLevel()
+})
+
+ipcMain.handle('config:setLogLevel', async (_event, level: string) => {
+  const logLevel = level as import('./utils/logger').LogLevel
+  configService.setLogLevel(logLevel)
+  setBackendLogLevel(logLevel)
 })
 
 // ==================== 定时任务调度相关 ====================

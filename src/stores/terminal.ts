@@ -7,6 +7,9 @@ import type { JumpHostConfig } from './config'
 import { useConfigStore } from './config'
 import type { TerminalScreenService, ScreenContent } from '../services/terminal-screen.service'
 import type { TerminalSnapshotManager, TerminalSnapshot, TerminalDiff } from '../services/terminal-snapshot.service'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('Store')
 
 export type ShellType = 'powershell' | 'cmd' | 'bash' | 'zsh' | 'sh' | 'unknown'
 export type OSType = 'windows' | 'linux' | 'macos' | 'unknown'
@@ -745,7 +748,7 @@ export const useTerminalStore = defineStore('terminal', () => {
    */
   function splitTerminal(direction: 'horizontal' | 'vertical'): void {
     // TODO: 实现分屏逻辑
-    console.log('Split terminal:', direction)
+    log.debug('Split terminal:', direction)
   }
 
   /**
@@ -895,10 +898,10 @@ export const useTerminalStore = defineStore('terminal', () => {
    * 设置 Agent 运行状态
    */
   function setAgentRunning(tabId: string, isRunning: boolean, agentId?: string, userTask?: string): void {
-    console.log('[Store] setAgentRunning called:', { tabId, isRunning, agentId })
+    log.debug('setAgentRunning called:', { tabId, isRunning, agentId })
     const tabIndex = tabs.value.findIndex(t => t.id === tabId)
     if (tabIndex === -1) {
-      console.warn('[Store] setAgentRunning: tab not found for tabId:', tabId)
+      log.warn('setAgentRunning: tab not found for tabId:', tabId)
       return
     }
 
@@ -923,7 +926,7 @@ export const useTerminalStore = defineStore('terminal', () => {
 
     // 强制触发数组更新
     tabs.value = [...tabs.value]
-    console.log('[Store] setAgentRunning completed, new isRunning:', tab.agentState.isRunning)
+    log.debug('setAgentRunning completed, new isRunning:', tab.agentState.isRunning)
   }
 
   /**
@@ -981,12 +984,12 @@ export const useTerminalStore = defineStore('terminal', () => {
   function addAgentStep(tabId: string, step: AgentStep): void {
     const tab = tabs.value.find(t => t.id === tabId)
     if (!tab) {
-      console.warn(`[RemoteDebug][Store] addAgentStep: tab not found, tabId=${tabId}, step.type=${step.type}`)
+      log.warn(`addAgentStep: tab not found, tabId=${tabId}, step.type=${step.type}`)
       return
     }
 
     if (!tab.agentState) {
-      console.warn(`[RemoteDebug][Store] addAgentStep: 创建缺失的 agentState, tabId=${tabId}`)
+      log.warn(`addAgentStep: 创建缺失的 agentState, tabId=${tabId}`)
       tab.agentState = {
         isRunning: false,
         steps: [],
@@ -1005,7 +1008,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       tab.agentState.steps.push(step)
       // 对关键步骤类型打印日志（user_task 和 final_result 是分组依据）
       if (step.type === 'user_task' || step.type === 'final_result') {
-        console.log(`[RemoteDebug][Store] addAgentStep 新增关键步骤: tabId=${tabId}, type=${step.type}, totalSteps=${tab.agentState.steps.length}, isRemote=${tab.isRemote}`)
+        log.debug(`addAgentStep 新增关键步骤: tabId=${tabId}, type=${step.type}, totalSteps=${tab.agentState.steps.length}, isRemote=${tab.isRemote}`)
       }
     }
   }

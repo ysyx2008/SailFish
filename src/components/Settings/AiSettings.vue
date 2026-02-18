@@ -335,6 +335,27 @@ const openKeyUrl = (url: string) => {
       </p>
     </div>
 
+    <!-- 日志级别 -->
+    <div class="settings-section">
+      <div class="section-header">
+        <h4>{{ t('aiSettings.logLevel') }}</h4>
+        <select 
+          class="log-level-select"
+          :value="configStore.logLevel"
+          @change="configStore.setLogLevel(($event.target as HTMLSelectElement).value as import('../../utils/logger').LogLevel)"
+        >
+          <option value="debug">Debug</option>
+          <option value="info">Info</option>
+          <option value="warn">Warn</option>
+          <option value="error">Error</option>
+          <option value="silent">Silent</option>
+        </select>
+      </div>
+      <p class="section-desc">
+        {{ t('aiSettings.logLevelDesc') }}
+      </p>
+    </div>
+
     <!-- Agent 风格设置 -->
     <div class="settings-section">
       <div class="section-header">
@@ -715,6 +736,21 @@ const openKeyUrl = (url: string) => {
 .toggle-switch input:checked + .toggle-slider:before {
   transform: translateX(20px);
   background-color: white;
+}
+
+.log-level-select {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #555);
+  background: var(--bg-secondary, #2a2a2a);
+  color: var(--text-primary, #e0e0e0);
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+}
+
+.log-level-select:focus {
+  border-color: var(--accent-primary);
 }
 </style>
 

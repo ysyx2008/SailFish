@@ -11,7 +11,10 @@ import { useTerminalStore } from '../stores/terminal'
 import { getIntegratedTheme } from '../themes'
 import { TerminalScreenService, type ScreenContent } from '../services/terminal-screen.service'
 import { TerminalSnapshotManager, type TerminalSnapshot, type TerminalDiff } from '../services/terminal-snapshot.service'
+import { createLogger } from '../utils/logger'
 import '@xterm/xterm/css/xterm.css'
+
+const log = createLogger('Terminal')
 
 // 卡片状态类型定义
 export interface CardStatus {
@@ -139,15 +142,15 @@ onMounted(async () => {
     
     // 监听 WebGL 上下文丢失事件（GPU 资源不足等情况）
     webglAddon.onContextLoss(() => {
-      console.warn('[Terminal] WebGL context lost, falling back to DOM renderer')
+      log.warn('WebGL context lost, falling back to DOM renderer')
       webglAddon?.dispose()
       webglAddon = null
     })
     
     terminal.loadAddon(webglAddon)
-    console.log('[Terminal] WebGL renderer enabled ✓')
+    log.debug('WebGL renderer enabled')
   } catch (e) {
-    console.warn('[Terminal] WebGL not available, using DOM renderer:', e)
+    log.info('WebGL not available, using DOM renderer:', e)
     webglAddon = null
   }
 
@@ -410,15 +413,15 @@ onMounted(async () => {
   
   unsubscribeScreenRequest = window.electronAPI.screen.onRequestLastNLines((data) => {
     // 检查是否是发给当前终端的请求
-    console.log(`[Terminal] 收到获取终端输出请求: requestPtyId=${data.ptyId}, myPtyId=${props.ptyId}, match=${data.ptyId === props.ptyId}, screenService=${!!screenService}, isDisposed=${isDisposed}`)
+    log.debug(`收到获取终端输出请求: requestPtyId=${data.ptyId}, myPtyId=${props.ptyId}, match=${data.ptyId === props.ptyId}`)
     if (data.ptyId === props.ptyId && screenService && !isDisposed) {
       try {
         const lines = screenService.getLastNLines(data.lines)
-        console.log(`[Terminal] 终端输出响应: lines=${lines.length}`)
+        log.debug(`终端输出响应: lines=${lines.length}`)
         window.electronAPI.screen.responseLastNLines(data.requestId, lines)
       } catch (e) {
         // 出错时返回 null，让主进程回退到其他方式
-        console.error(`[Terminal] 获取终端输出异常:`, e)
+        log.error(`获取终端输出异常:`, e)
         window.electronAPI.screen.responseLastNLines(data.requestId, null)
       }
     }
@@ -438,20 +441,20 @@ onMounted(async () => {
   // 注册屏幕分析请求监听器
   // 当主进程（Agent）需要实时获取终端状态分析时调用
   unsubscribeAnalysisRequest = window.electronAPI.screen.onRequestScreenAnalysis((data) => {
-    console.log(`[Terminal] 收到屏幕分析请求: requestPtyId=${data.ptyId}, myPtyId=${props.ptyId}, match=${data.ptyId === props.ptyId}`)
+    log.debug(`收到屏幕分析请求: requestPtyId=${data.ptyId}, myPtyId=${props.ptyId}, match=${data.ptyId === props.ptyId}`)
     if (data.ptyId === props.ptyId && screenService && !isDisposed) {
       try {
         // 获取完整的终端感知状态（包含输入等待检测、输出模式识别、环境分析）
         const awarenessState = screenService.getAwarenessState()
         // 同时获取可视区域内容
         const visibleContent = screenService.getVisibleContent()
-        console.log(`[Terminal] 屏幕分析响应: visibleLines=${visibleContent.length}, context=`, awarenessState.context)
+        log.debug(`屏幕分析响应: visibleLines=${visibleContent.length}, context=`, awarenessState.context)
         window.electronAPI.screen.responseScreenAnalysis(data.requestId, {
           ...awarenessState,
           visibleContent
         })
       } catch (e) {
-        console.error(`[Terminal] 屏幕分析异常:`, e)
+        log.error(`屏幕分析异常:`, e)
         window.electronAPI.screen.responseScreenAnalysis(data.requestId, null)
       }
     }
@@ -744,7 +747,7 @@ const menuOpenFileManager = async () => {
     // 获取当前工作目录（使用 refreshCwd 强制刷新，确保获取最新的 CWD）
     const cwd = await window.electronAPI.terminalState.refreshCwd(props.ptyId)
     
-    console.log(`[Terminal] menuOpenFileManager: type=${props.type}, ptyId=${props.ptyId}, cwd=${cwd}`)
+    log.debug(`menuOpenFileManager: type=${props.type}, ptyId=${props.ptyId}, cwd=${cwd}`)
     
     if (props.type === 'local') {
       // 本地终端：只传入本地路径
@@ -787,7 +790,7 @@ const menuOpenFileManager = async () => {
       }
     }
   } catch (error) {
-    console.error('Failed to open file manager:', error)
+    log.error('Failed to open file manager:', error)
   }
 }
 

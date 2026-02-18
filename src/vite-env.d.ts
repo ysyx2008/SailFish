@@ -600,6 +600,9 @@ interface Window {
       // AI Rules
       getAiRules: () => Promise<string>
       setAiRules: (rules: string) => Promise<void>
+      // 日志级别
+      getLogLevel: () => Promise<string>
+      setLogLevel: (level: string) => Promise<void>
     }
     xshell: {
       selectFiles: () => Promise<{ canceled: boolean; filePaths: string[] }>

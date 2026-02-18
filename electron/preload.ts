@@ -844,7 +844,11 @@ const electronAPI = {
 
     // AI Rules
     getAiRules: () => ipcRenderer.invoke('config:getAiRules') as Promise<string>,
-    setAiRules: (rules: string) => ipcRenderer.invoke('config:setAiRules', rules)
+    setAiRules: (rules: string) => ipcRenderer.invoke('config:setAiRules', rules),
+
+    // 日志级别
+    getLogLevel: () => ipcRenderer.invoke('config:getLogLevel') as Promise<string>,
+    setLogLevel: (level: string) => ipcRenderer.invoke('config:setLogLevel', level)
   },
 
   // Xshell 导入操作
