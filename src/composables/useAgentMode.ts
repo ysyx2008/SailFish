@@ -495,7 +495,7 @@ export function useAgentMode(
           images: images.length > 0 ? images : undefined,
           sessionId: agentState.value?.sessionId,
           sessionStartTime: agentState.value?.sessionStartTime
-        } as Record<string, unknown>,
+        },
         { executionMode: executionMode.value, commandTimeout: commandTimeout.value * 1000 },
         activeProfileId.value || undefined
       )

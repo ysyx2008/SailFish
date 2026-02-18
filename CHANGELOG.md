@@ -2,7 +2,26 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.4.0 (2026-02-17) (Latest)
+## v10.4.1 (2026-02-19) (Latest)
+
+### New Features
+- 🤖 **IM Guided Setup**: Added "AI Help Me Configure" button for each IM channel — launches an Agent that walks you through setup step-by-step
+
+### Improvements
+- 🧠 **AI-Managed Context**: Agent now autonomously manages conversation context instead of automatic compression, improving multi-turn dialogue quality
+- 🌳 **Browser Form Detection**: Enhanced accessibility snapshot with required-field detection and form label extraction for better auto-filling in complex pages (e.g., Feishu)
+- 📊 **Unified Logging System**: Introduced 5-level logging (debug/info/warn/error/silent) with configurable log level in AI settings
+- 🏗️ **Agent Architecture Overhaul**: Session persistence moved to backend — Steps, context, and lifecycle now fully managed server-side for reliability
+- 🧹 **Memory Quality**: Optimized memory system quality control strategy for more relevant recall
+- 🐚 **IM CLI Commands**: Added `im:status`, `im:connect`, `im:disconnect` CLI commands for headless IM management
+
+### Bug Fixes
+- 🔧 Fixed Feishu MP4 video upload returning 400 error
+- 🔧 Fixed `createTabWithTask` not auto-executing tasks due to timing issue
+- 🔧 Fixed Agent debug mode toggle not taking effect
+- 🔧 Fixed empty TaskMemory when restoring old history records
+
+## v10.4.0 (2026-02-17)
 
 ### New Features
 - 🖥️ **CLI Mode**: New pure Node.js CLI mode — run all backend services without Electron, ideal for headless servers and automation (`npm run sft`)

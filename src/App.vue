@@ -233,7 +233,6 @@ onMounted(async () => {
         remoteTab.agentState = {
           isRunning: true,
           steps: [],
-          history: [],
           pendingConfirm: undefined,
           agentId: undefined,
           userTask: data.message
@@ -245,7 +244,7 @@ onMounted(async () => {
       remoteTab.aiLoading = true
 
       // user_task 步骤由后端 Agent 统一生成并通过 onStep 推送，前端不再手动添加
-      log.debug(`[RemoteDebug] 远程任务已启动: tabId=${remoteTab.id}, hadAgentState=${hadAgentState}, prevSteps=${prevStepsCount}, nowSteps=${remoteTab.agentState.steps.length}`)
+      log.debug(`[RemoteDebug] 远程任务已启动: tabId=${remoteTab.id}, hadAgentState=${hadAgentState}, prevSteps=${prevStepsCount}, nowSteps=${remoteTab.agentState!.steps.length}`)
     } else {
       log.warn(`[RemoteDebug] 无法找到或创建远程 tab: ptyId=${data.ptyId}`)
     }
@@ -261,16 +260,16 @@ onMounted(async () => {
     // 确保 agentState 存在
     if (!tab.agentState) {
       log.warn(`[RemoteDebug] onStep: tab ${tab.id} 的 agentState 不存在，手动创建`)
-      tab.agentState = { isRunning: true, steps: [], history: [], agentId: data.agentId }
+      tab.agentState = { isRunning: true, steps: [], agentId: data.agentId }
     }
     // 关联 agentId
-    if (data.agentId && !tab.agentState.agentId) {
-      tab.agentState.agentId = data.agentId
+    if (data.agentId && !tab.agentState!.agentId) {
+      tab.agentState!.agentId = data.agentId
     }
     // 存入 store（addAgentStep 自动处理新增/更新）
-    const prevCount = tab.agentState.steps.length
+    const prevCount = tab.agentState!.steps.length
     terminalStore.addAgentStep(tab.id, data.step)
-    const newCount = tab.agentState.steps.length
+    const newCount = tab.agentState!.steps.length
     // 仅在新增步骤或特殊类型时打印，避免流式 message 更新刷屏
     if (newCount !== prevCount || data.step.type !== 'message') {
       log.debug(`[RemoteDebug] onStep: type=${data.step.type}, id=${data.step.id}, tabId=${tab.id}, steps: ${prevCount}→${newCount}`)

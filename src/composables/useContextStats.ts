@@ -13,7 +13,6 @@ interface AgentState {
   pendingConfirm?: unknown
   userTask?: string
   finalResult?: string
-  history: Array<{ userTask: string; finalResult: string }>
 }
 
 // AI Profile 类型

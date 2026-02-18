@@ -149,6 +149,7 @@ interface Window {
     // 应用信息
     app: {
       getVersion: () => Promise<string>
+      getMessagingDocsPath: () => Promise<string>
     }
     // PATH 环境变量状态
     path: {
@@ -661,7 +662,11 @@ interface Window {
           systemInfo: { os: string; shell: string }
           terminalType: 'local' | 'ssh'
           hostId?: string
+          sshHost?: string
           documentContext?: string
+          images?: string[]
+          sessionId?: string
+          sessionStartTime?: number
         },
         config?: {
           enabled?: boolean
