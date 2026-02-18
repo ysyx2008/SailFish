@@ -141,6 +141,11 @@ interface StoreSchema {
   imWeComToken: string            // 企业微信回调 Token
   imWeComEncodingAESKey: string   // 企业微信回调加密密钥
   imWeComCallbackPort: number     // 企业微信回调端口
+  imSlackAutoConnect: boolean     // Slack 自动连接
+  imSlackBotToken: string         // Slack Bot Token (xoxb-...)
+  imSlackAppToken: string         // Slack App-Level Token (xapp-...)
+  imTelegramAutoConnect: boolean  // Telegram 自动连接
+  imTelegramBotToken: string      // Telegram Bot Token
   imExecutionMode: 'strict' | 'relaxed' | 'free'  // IM Agent 执行模式，默认 relaxed
 }
 
@@ -189,6 +194,11 @@ const defaultConfig: StoreSchema = {
   imWeComToken: '',
   imWeComEncodingAESKey: '',
   imWeComCallbackPort: 3722,
+  imSlackAutoConnect: false,
+  imSlackBotToken: '',
+  imSlackAppToken: '',
+  imTelegramAutoConnect: false,
+  imTelegramBotToken: '',
   imExecutionMode: 'relaxed'
 }
 

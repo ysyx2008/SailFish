@@ -672,6 +672,183 @@ async function agentRun(args: string[]): Promise<void> {
   }
 }
 
+// ==================== IM Commands ====================
+
+const SUPPORTED_IM_PLATFORMS = ['dingtalk', 'feishu', 'slack', 'telegram', 'wecom'] as const
+type IMPlatformName = typeof SUPPORTED_IM_PLATFORMS[number]
+
+const WECOM_DEFAULT_CALLBACK_PORT = 3722
+
+type StoreKey = Parameters<ReturnType<typeof getConfig>['get']>[0]
+
+interface IMPlatformMeta {
+  label: string
+  /** field name → StoreSchema key，用于从 config 读取凭证 */
+  configKeys: Record<string, StoreKey>
+  autoKey: StoreKey
+  /** 可选字段不参与"凭证是否齐全"判断 */
+  optionalFields?: string[]
+}
+
+const IM_PLATFORMS: Record<IMPlatformName, IMPlatformMeta> = {
+  dingtalk: {
+    label: 'DingTalk (钉钉)',
+    configKeys: { clientId: 'imDingTalkClientId', clientSecret: 'imDingTalkClientSecret' },
+    autoKey: 'imDingTalkAutoConnect',
+  },
+  feishu: {
+    label: 'Feishu (飞书)',
+    configKeys: { appId: 'imFeishuAppId', appSecret: 'imFeishuAppSecret' },
+    autoKey: 'imFeishuAutoConnect',
+  },
+  slack: {
+    label: 'Slack',
+    configKeys: { botToken: 'imSlackBotToken', appToken: 'imSlackAppToken' },
+    autoKey: 'imSlackAutoConnect',
+  },
+  telegram: {
+    label: 'Telegram',
+    configKeys: { botToken: 'imTelegramBotToken' },
+    autoKey: 'imTelegramAutoConnect',
+  },
+  wecom: {
+    label: 'WeCom (企业微信)',
+    configKeys: { corpId: 'imWeComCorpId', corpSecret: 'imWeComCorpSecret', agentId: 'imWeComAgentId', token: 'imWeComToken', encodingAESKey: 'imWeComEncodingAESKey', callbackPort: 'imWeComCallbackPort' },
+    autoKey: 'imWeComAutoConnect',
+    optionalFields: ['callbackPort'],
+  },
+}
+
+function readIMCredentials(platform: IMPlatformName): Record<string, any> | null {
+  const config = getConfig()
+  const meta = IM_PLATFORMS[platform]
+  const optionals = new Set(meta.optionalFields || [])
+  const creds: Record<string, any> = {}
+  let hasAll = true
+
+  for (const [field, configKey] of Object.entries(meta.configKeys)) {
+    const val = config.get(configKey)
+    creds[field] = val
+    if (!optionals.has(field) && !val) hasAll = false
+  }
+
+  return hasAll ? creds : null
+}
+
+async function imStatus(): Promise<void> {
+  const config = getConfig()
+
+  const rows = Object.entries(IM_PLATFORMS).map(([key, meta]) => {
+    const creds = readIMCredentials(key as IMPlatformName)
+    const autoConnect = !!config.get(meta.autoKey)
+    return {
+      platform: meta.label,
+      configured: creds ? '✓' : '✗',
+      autoConnect: autoConnect ? '✓' : '',
+    }
+  })
+
+  printTable(rows)
+}
+
+async function imConnect(args: string[]): Promise<void> {
+  const platform = args[0]?.toLowerCase() as IMPlatformName | undefined
+  if (!platform || !SUPPORTED_IM_PLATFORMS.includes(platform)) {
+    console.error('Usage: sft im:connect <dingtalk|feishu|slack|telegram|wecom>')
+    process.exit(1)
+  }
+
+  const creds = readIMCredentials(platform)
+  if (!creds) {
+    const meta = IM_PLATFORMS[platform]
+    const keys = Object.values(meta.configKeys).join(', ')
+    console.error(`${meta.label} credentials not configured.`)
+    console.error(`Set the following config keys first: ${keys}`)
+    console.error(`Example: sft config:set ${Object.values(meta.configKeys)[0]} '"your-value"'`)
+    process.exit(1)
+  }
+
+  console.log(`Connecting to ${IM_PLATFORMS[platform].label}...`)
+
+  try {
+    const adapter = createIMAdapter(platform, creds)
+
+    // adapter 接口要求设置回调，这里仅做连接测试，不处理消息
+    adapter.onMessage = () => {}
+    adapter.onConnectionChange = (connected: boolean) => {
+      if (connected) console.log(`  Connection established`)
+    }
+
+    await adapter.start()
+
+    if (adapter.isConnected()) {
+      console.log(`✓ ${IM_PLATFORMS[platform].label} connected successfully`)
+    } else {
+      console.log(`✓ ${IM_PLATFORMS[platform].label} started (connection pending)`)
+    }
+
+    await adapter.stop()
+  } catch (err: any) {
+    const msg = (err.message || String(err))
+      .replace(/xoxb-\S+/g, 'xoxb-***')
+      .replace(/xapp-\S+/g, 'xapp-***')
+      .replace(/\d{5,}:[A-Za-z0-9_-]+/g, '***:***')
+    console.error(`✗ Connection failed: ${msg}`)
+    process.exit(1)
+  }
+}
+
+function createIMAdapter(platform: IMPlatformName, creds: Record<string, any>) {
+  switch (platform) {
+    case 'dingtalk': {
+      const { DingTalkAdapter } = require('../services/im/dingtalk-adapter')
+      return new DingTalkAdapter({ clientId: creds.clientId, clientSecret: creds.clientSecret })
+    }
+    case 'feishu': {
+      const { FeishuAdapter } = require('../services/im/feishu-adapter')
+      return new FeishuAdapter({ appId: creds.appId, appSecret: creds.appSecret })
+    }
+    case 'slack': {
+      const { SlackAdapter } = require('../services/im/slack-adapter')
+      return new SlackAdapter({ botToken: creds.botToken, appToken: creds.appToken })
+    }
+    case 'telegram': {
+      const { TelegramAdapter } = require('../services/im/telegram-adapter')
+      return new TelegramAdapter({ botToken: creds.botToken })
+    }
+    case 'wecom': {
+      const { WeComAdapter } = require('../services/im/wecom-adapter')
+      return new WeComAdapter({
+        corpId: creds.corpId, corpSecret: creds.corpSecret,
+        agentId: Number(creds.agentId) || 0,
+        token: creds.token, encodingAESKey: creds.encodingAESKey,
+        callbackPort: Number(creds.callbackPort) || WECOM_DEFAULT_CALLBACK_PORT,
+      })
+    }
+  }
+}
+
+async function imDisconnect(args: string[]): Promise<void> {
+  const platform = args[0]?.toLowerCase()
+  if (!platform) {
+    console.error('Usage: sft im:disconnect <dingtalk|feishu|slack|telegram|wecom>')
+    console.error('Note: In CLI mode, each invocation is a separate process.')
+    console.error('This command is mainly useful for clearing auto-connect settings.')
+    process.exit(1)
+  }
+
+  if (!SUPPORTED_IM_PLATFORMS.includes(platform as IMPlatformName)) {
+    console.error(`Unknown platform: ${platform}`)
+    console.error(`Supported: ${SUPPORTED_IM_PLATFORMS.join(', ')}`)
+    process.exit(1)
+  }
+
+  const config = getConfig()
+  const meta = IM_PLATFORMS[platform as IMPlatformName]
+  config.set(meta.autoKey, false as any)
+  console.log(`✓ ${meta.label} auto-connect disabled`)
+}
+
 // ==================== User Skills Commands ====================
 
 async function skillList(): Promise<void> {
@@ -928,6 +1105,11 @@ Scheduler:
     --task <id>              Filter by task
     --limit <n>              Number of records (default: 10)
 
+IM Integration:
+  im:status                  Show IM platform credential & connection status
+  im:connect <platform>      Test connection (dingtalk|feishu|slack|telegram|wecom)
+  im:disconnect <platform>   Disable auto-connect for a platform
+
 User Skills:
   skill:list                 List user-defined skills
 
@@ -1017,6 +1199,11 @@ async function main(): Promise<void> {
       // Scheduler
       case 'scheduler:list':    await schedulerList(); break
       case 'scheduler:history': await schedulerHistory(cmdArgs); break
+
+      // IM
+      case 'im:status':      await imStatus(); break
+      case 'im:connect':     await imConnect(cmdArgs); break
+      case 'im:disconnect':  await imDisconnect(cmdArgs); break
 
       // Skills
       case 'skill:list':     await skillList(); break

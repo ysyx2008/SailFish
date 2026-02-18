@@ -128,7 +128,7 @@ echo -e "  模式: ${BOLD}${MODE}${NC}    AI API: ${HAS_AI}"
 echo ""
 
 # ══════════════════════════════════════════════════════════════
-echo -e "${CYAN}[1/10] 基础命令${NC}"
+echo -e "${CYAN}[1/11] 基础命令${NC}"
 # ══════════════════════════════════════════════════════════════
 
 assert_contains "--help 显示帮助信息"        "Usage: sft" \
@@ -142,7 +142,7 @@ assert_fails    "未知命令应报错"             \
 
 # ══════════════════════════════════════════════════════════════
 echo ""
-echo -e "${CYAN}[2/10] 配置读写闭环${NC}"
+echo -e "${CYAN}[2/11] 配置读写闭环${NC}"
 # ══════════════════════════════════════════════════════════════
 
 # 读取当前语言
@@ -176,7 +176,7 @@ assert_fails    "config:get 缺少参数应报错"  \
 
 # ══════════════════════════════════════════════════════════════
 echo ""
-echo -e "${CYAN}[3/10] 主机画像${NC}"
+echo -e "${CYAN}[3/11] 主机画像${NC}"
 # ══════════════════════════════════════════════════════════════
 
 assert_contains "host:list 包含 local"       "local" \
@@ -190,14 +190,14 @@ assert_fails    "host:get 缺少参数应报错"    \
 
 # ══════════════════════════════════════════════════════════════
 echo ""
-echo -e "${CYAN}[4/10] SSH 会话${NC}"
+echo -e "${CYAN}[4/11] SSH 会话${NC}"
 # ══════════════════════════════════════════════════════════════
 
 run_test "ssh:list 不崩溃"                   $CLI ssh:list
 
 # ══════════════════════════════════════════════════════════════
 echo ""
-echo -e "${CYAN}[5/10] 知识库全流程${NC}"
+echo -e "${CYAN}[5/11] 知识库全流程${NC}"
 # ══════════════════════════════════════════════════════════════
 
 assert_contains "knowledge:list 返回表格"     "id" \
@@ -229,7 +229,7 @@ run_test "knowledge:search 无结果不崩溃"     $CLI knowledge:search "zzz_no
 
 # ══════════════════════════════════════════════════════════════
 echo ""
-echo -e "${CYAN}[6/10] 历史记录${NC}"
+echo -e "${CYAN}[6/11] 历史记录${NC}"
 # ══════════════════════════════════════════════════════════════
 
 run_test "history:list 不崩溃"               $CLI history:list
@@ -240,7 +240,7 @@ assert_contains "history:stats 返回 JSON"    "agentFiles" \
 
 # ══════════════════════════════════════════════════════════════
 echo ""
-echo -e "${CYAN}[7/10] 定时任务 / MCP / 技能${NC}"
+echo -e "${CYAN}[7/11] 定时任务 / MCP / 技能${NC}"
 # ══════════════════════════════════════════════════════════════
 
 run_test "scheduler:list 不崩溃"             $CLI scheduler:list
@@ -250,7 +250,7 @@ run_test "skill:list 不崩溃"                 $CLI skill:list
 
 # ══════════════════════════════════════════════════════════════
 echo ""
-echo -e "${CYAN}[8/10] PTY 命令执行${NC}"
+echo -e "${CYAN}[8/11] PTY 命令执行${NC}"
 # ══════════════════════════════════════════════════════════════
 
 assert_contains "pty:shells 列出 shell"      "shell" \
@@ -269,7 +269,7 @@ fi
 
 # ══════════════════════════════════════════════════════════════
 echo ""
-echo -e "${CYAN}[9/10] 文件系统 & 文档解析${NC}"
+echo -e "${CYAN}[9/11] 文件系统 & 文档解析${NC}"
 # ══════════════════════════════════════════════════════════════
 
 assert_contains "fs:info 包含 Home 路径"      "Home" \
@@ -292,7 +292,31 @@ assert_fails    "doc:parse 不存在文件应报错"   \
 
 # ══════════════════════════════════════════════════════════════
 echo ""
-echo -e "${CYAN}[10/10] AI 对话（需要 API Key）${NC}"
+echo -e "${CYAN}[10/11] IM 集成${NC}"
+# ══════════════════════════════════════════════════════════════
+
+assert_contains "im:status 显示平台列表"       "DingTalk" \
+  $CLI im:status
+
+assert_contains "im:status 显示 Slack"         "Slack" \
+  $CLI im:status
+
+assert_fails    "im:connect 缺少参数应报错"    \
+  $CLI im:connect
+
+assert_fails    "im:connect 未知平台应报错"    \
+  $CLI im:connect unknown_platform
+
+# 未配置凭证时连接应失败
+assert_fails    "im:connect 无凭证应报错"      \
+  $CLI im:connect dingtalk
+
+assert_fails    "im:disconnect 缺少参数应报错" \
+  $CLI im:disconnect
+
+# ══════════════════════════════════════════════════════════════
+echo ""
+echo -e "${CYAN}[11/11] AI 对话（需要 API Key）${NC}"
 # ══════════════════════════════════════════════════════════════
 
 if [[ "$MODE" == "quick" || "$MODE" == "no-ai" ]]; then
