@@ -394,6 +394,10 @@ async function historyList(args: string[]): Promise<void> {
   if (type === 'chat') {
     const records = service.getChatRecords()
     const recent = records.slice(-limit)
+    if (recent.length === 0) {
+      console.log('No chat records found.')
+      return
+    }
     for (const r of recent) {
       const time = new Date(r.timestamp).toLocaleString()
       console.log(`[${time}] ${r.role}: ${r.content.substring(0, 100)}`)
@@ -401,6 +405,10 @@ async function historyList(args: string[]): Promise<void> {
   } else {
     const records = service.getAgentRecords()
     const recent = records.slice(-limit)
+    if (recent.length === 0) {
+      console.log('No agent records found. (0 steps)')
+      return
+    }
     for (const r of recent) {
       const time = new Date(r.timestamp).toLocaleString()
       const status = r.status === 'completed' ? '✓' : '✗'
@@ -420,8 +428,15 @@ async function historyStats(): Promise<void> {
 
 async function hostList(): Promise<void> {
   const service = getHostProfile()
-  const profiles = service.getAllProfiles()
+  let profiles = service.getAllProfiles()
   
+  if (!profiles.find(p => p.hostId === 'local')) {
+    try {
+      await service.probeAndUpdateLocal()
+      profiles = service.getAllProfiles()
+    } catch { /* ignore probe errors */ }
+  }
+
   if (profiles.length === 0) {
     console.log('No host profiles found.')
     return
@@ -444,7 +459,13 @@ async function hostGet(args: string[]): Promise<void> {
     process.exit(1)
   }
   const service = getHostProfile()
-  const profile = service.getProfile(hostId)
+  let profile = service.getProfile(hostId)
+  if (!profile && hostId === 'local') {
+    try {
+      await service.probeAndUpdateLocal()
+      profile = service.getProfile(hostId)
+    } catch { /* ignore probe errors */ }
+  }
   if (!profile) {
     console.error(`Host profile not found: ${hostId}`)
     process.exit(1)
