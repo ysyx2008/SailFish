@@ -317,6 +317,38 @@ const openKeyUrl = (url: string) => {
       </div>
     </div>
 
+    <!-- Agent 风格设置 -->
+    <div class="settings-section">
+      <div class="section-header">
+        <h4>{{ t('aiSettings.agentPersonality') }}</h4>
+        <button 
+          v-if="currentMbti" 
+          class="btn btn-sm" 
+          @click="setMbti(null)"
+        >
+          {{ t('common.reset') }}
+        </button>
+      </div>
+      <p class="section-desc">
+        {{ t('aiSettings.agentPersonalityDesc') }}
+      </p>
+
+      <div class="mbti-grid">
+        <div
+          v-for="item in mbtiTypes"
+          :key="item.type"
+          class="mbti-card"
+          :class="{ active: currentMbti === item.type }"
+          @click="setMbti(item.type)"
+        >
+          <div class="mbti-type">{{ item.type }}</div>
+          <div class="mbti-name">{{ item.name }}</div>
+          <div class="mbti-desc">{{ item.desc }}</div>
+          <div class="mbti-group">{{ item.group }}</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Agent 调试模式 -->
     <div class="settings-section">
       <div class="section-header">
@@ -354,38 +386,6 @@ const openKeyUrl = (url: string) => {
       <p class="section-desc">
         {{ t('aiSettings.logLevelDesc') }}
       </p>
-    </div>
-
-    <!-- Agent 风格设置 -->
-    <div class="settings-section">
-      <div class="section-header">
-        <h4>{{ t('aiSettings.agentPersonality') }}</h4>
-        <button 
-          v-if="currentMbti" 
-          class="btn btn-sm" 
-          @click="setMbti(null)"
-        >
-          {{ t('common.reset') }}
-        </button>
-      </div>
-      <p class="section-desc">
-        {{ t('aiSettings.agentPersonalityDesc') }}
-      </p>
-
-      <div class="mbti-grid">
-        <div
-          v-for="item in mbtiTypes"
-          :key="item.type"
-          class="mbti-card"
-          :class="{ active: currentMbti === item.type }"
-          @click="setMbti(item.type)"
-        >
-          <div class="mbti-type">{{ item.type }}</div>
-          <div class="mbti-name">{{ item.name }}</div>
-          <div class="mbti-desc">{{ item.desc }}</div>
-          <div class="mbti-group">{{ item.group }}</div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
