@@ -40,7 +40,7 @@ SFTerminal/
 │       ├── ssh.service.ts       # SSH 连接管理
 │       ├── sftp.service.ts      # SFTP 文件传输
 │       ├── host-profile.service.ts  # 主机画像
-│       ├── history.service.ts   # 对话/Agent 历史
+│       ├── history.service.ts   # 对话/Agent 历史（磁盘 JSON，Agent 直接写入）
 │       ├── scheduler.service.ts # 定时任务
 │       ├── mcp.service.ts       # MCP 服务器管理
 │       ├── local-fs.service.ts  # 本地文件系统
@@ -50,14 +50,15 @@ SFTerminal/
 │       ├── gateway.service.ts   # 网关服务
 │       ├── credential.service.ts # 凭证存储
 │       ├── agent/               # AI Agent 子系统
-│       │   ├── agent.ts         # Agent 抽象基类（ReAct 循环）
+│       │   ├── agent.ts         # Agent 抽象基类（ReAct 循环、会话追踪、持久化）
+│       │   ├── index.ts         # AgentService（Agent 实例管理，按 ptyId 复用）
 │       │   ├── terminal-agent.ts # 终端 Agent 实现
 │       │   ├── tools.ts         # 工具定义（Function Calling）
 │       │   ├── tools/           # 工具执行器（command/file/knowledge/plan/memory）
 │       │   ├── skills/          # 技能系统（excel/email/browser/word）
 │       │   ├── prompt-builder.ts # 系统提示构建
-│       │   ├── context-builder.ts # 上下文管理（任务历史压缩）
-│       │   ├── task-memory.ts   # 任务记忆
+│       │   ├── context-builder.ts # 上下文管理（任务历史压缩，多级别）
+│       │   ├── task-memory.ts   # 任务记忆（多层压缩存储）
 │       │   └── risk-assessor.ts # 风险评估
 │       ├── knowledge/           # 知识库（向量存储 + 嵌入）
 │       ├── im/                  # IM 集成（钉钉/飞书/企业微信/Slack/Telegram）
@@ -117,7 +118,16 @@ SFTerminal/
 - **工具系统**：内置工具 + 技能系统（按需加载）+ MCP 工具
 - **风险评估**：safe / moderate / dangerous / blocked 四级
 - **执行模式**：strict（全确认）/ relaxed（危险确认）/ free（全自动）
-- **任务记忆**：5 层压缩（L0 完整 → L4 一句话摘要），跨会话保留
+- **任务记忆**：多层压缩（L0 完整 → L2 摘要），由 `TaskMemoryStore` 管理
+- **上下文管理**：`ContextBuilder` 根据 token 预算动态选择压缩级别
+
+### Agent 会话与持久化
+- **会话追踪**：Agent 实例按 `ptyId` 复用（`AgentService.agents` Map），会话状态（sessionId、累积 steps/messages）跨多次 `run` 持久化
+- **完整消息记录**：每次 `run` 通过 `taskMessageLog`（append-only）记录完整 API 对话，与可压缩的 `run.messages`（工作窗口）分离
+- **后端直接存盘**：`finalizeRun` 时 Agent 直接调 `HistoryService.saveAgentRecord` 保存 `AgentRecord`（含 `steps` + `messages`），前端不参与保存
+- **增量检查点**：每完成一轮工具调用后自动写盘，防止程序意外退出丢失记录
+- **跨会话恢复**：App 重启后，前端从 HistoryService 加载历史，通过 `context.sessionId`/`sessionMessages` 传给后端恢复 session 状态
+- **权威数据源**：`AgentRecord.messages` 是完整 API 对话的权威记录，`getFullMessages` 优先直接返回，无需从 steps 重建
 
 ### 知识库
 - 本地向量数据库（LanceDB）
