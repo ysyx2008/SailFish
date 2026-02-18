@@ -39,6 +39,7 @@ Thumbs.db
 
 # Astro
 website/.astro/
+website/public/skills/
 
 
 /electron-cache
