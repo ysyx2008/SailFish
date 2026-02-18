@@ -50,6 +50,7 @@ export const browserTools: ToolDefinition[] = [
 **核心优势**：
 - 返回页面所有元素的结构化无障碍树
 - 每个可交互元素带有 ref 编号（如 @e1, @e2）
+- **必填项会标注 [必填]**（根据 HTML required / aria-required），提交前请先填完所有带 [必填] 的输入框
 - 后续操作可直接使用 ref，无需猜测 CSS 选择器
 - 比获取 HTML 内容**节省约 90% token**
 

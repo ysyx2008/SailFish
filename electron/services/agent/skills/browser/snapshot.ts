@@ -11,10 +11,21 @@
  * - heading "Example Domain" [ref=e1] [level=1]
  * - paragraph: Some text content
  * - button "Submit" [ref=e2]
- * - textbox "Email" [ref=e3]
+ * - textbox "Email" [ref=e3] [必填]
  */
 
 import type { Page } from 'playwright-core'
+
+/** 可能为必填的表单控件角色 */
+const FORM_CONTROL_ROLES = new Set([
+  'textbox',
+  'combobox',
+  'searchbox',
+  'spinbutton',
+])
+
+/** 树文本中 ref 标注的正则，用于解析 [ref=e1] */
+const REF_IN_LINE_PATTERN = /\[ref=(e\d+)\]/
 
 /** ref 映射：ref ID -> 定位信息 */
 export interface RefMap {
@@ -27,6 +38,8 @@ export interface RefMap {
     name?: string
     /** 当多个元素同角色同名称时的索引 */
     nth?: number
+    /** 是否为必填（HTML required 或 aria-required） */
+    required?: boolean
   }
 }
 
@@ -239,7 +252,7 @@ export async function getSnapshot(
     // 从树文本中移除包含隐藏 ref 的行
     const lines = enhancedTree.split('\n')
     const filteredLines = lines.filter(line => {
-      const refMatch = line.match(/\[ref=(e\d+)\]/)
+      const refMatch = line.match(REF_IN_LINE_PATTERN)
       if (refMatch && hiddenRefs.has(refMatch[1])) {
         return false
       }
@@ -247,6 +260,10 @@ export async function getSnapshot(
     })
     enhancedTree = filteredLines.join('\n')
   }
+
+  // 为表单控件标注必填状态（required / aria-required），便于 Agent 识别必填项
+  await enrichRequiredState(page, refs)
+  enhancedTree = patchTreeWithRequired(enhancedTree, refs)
 
   return { tree: enhancedTree, refs }
 }
@@ -288,6 +305,63 @@ async function filterHiddenRefs(page: Page, refs: RefMap): Promise<Set<string>> 
   }
   
   return hiddenRefs
+}
+
+/**
+ * 为表单控件 ref 检测并填充 required 状态（HTML required 或 aria-required）
+ */
+async function enrichRequiredState(page: Page, refs: RefMap): Promise<void> {
+  const entries = Object.entries(refs).filter(([, data]) =>
+    FORM_CONTROL_ROLES.has(data.role)
+  )
+  if (entries.length === 0) return
+
+  const BATCH_SIZE = 20
+  for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+    const batch = entries.slice(i, i + BATCH_SIZE)
+    await Promise.all(
+      batch.map(async ([refId, data]) => {
+        try {
+          const opts: { name?: string; exact?: boolean } = {}
+          if (data.name) {
+            opts.name = data.name
+            opts.exact = true
+          }
+          let loc = page.getByRole(data.role as any, opts)
+          if (data.nth !== undefined) {
+            loc = loc.nth(data.nth)
+          }
+          const required = await loc.evaluate((el) => {
+            return Boolean(
+              ('required' in el && (el as HTMLInputElement).required) ||
+                el.getAttribute('aria-required') === 'true'
+            )
+          })
+          refs[refId].required = required
+        } catch {
+          // 检测失败时保留不标注必填
+        }
+      })
+    )
+  }
+}
+
+/**
+ * 在树文本中为必填 ref 所在行追加 [必填] 标注
+ */
+function patchTreeWithRequired(tree: string, refs: RefMap): string {
+  return tree
+    .split('\n')
+    .map((line) => {
+      const refMatch = line.match(REF_IN_LINE_PATTERN)
+      if (!refMatch) return line
+      const refId = refMatch[1]
+      if (refs[refId]?.required) {
+        return `${line} [必填]`
+      }
+      return line
+    })
+    .join('\n')
 }
 
 /**
