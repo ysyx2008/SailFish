@@ -175,7 +175,7 @@ async function captureSnapshotInline(
     const title = await page.title()
     const currentUrl = page.url()
     const statsLine = `[${stats.totalRefs} 个 ref, 其中 ${stats.interactiveRefs} 个可交互, ~${stats.estimatedTokens} tokens]`
-    return `页面: ${title}\nURL: ${currentUrl}\n${statsLine}\n\n${tree}`
+    return `（以下是无障碍树，非视觉页面；颜色、图标等纯视觉信息不会出现；必填项标注为 [必填]；如需视觉确认请用 browser_screenshot）\n页面: ${title}\nURL: ${currentUrl}\n${statsLine}\n\n${tree}`
   } catch {
     return null
   }
@@ -294,7 +294,8 @@ async function browserSnapshot(
       : ''
     
     const statsLine = `[${stats.totalRefs} 个 ref, 其中 ${stats.interactiveRefs} 个可交互, ~${stats.estimatedTokens} tokens]`
-    const result = `页面: ${title}\nURL: ${currentUrl}${tabsHint}\n${statsLine}\n\n${tree}`
+    const snapshotNote = `（以下是无障碍树，非视觉页面；颜色、图标等纯视觉信息不会出现；必填项标注为 [必填]；如需视觉确认请用 browser_screenshot）`
+    const result = `${snapshotNote}\n页面: ${title}\nURL: ${currentUrl}${tabsHint}\n${statsLine}\n\n${tree}`
 
     executor.addStep({
       type: 'tool_result',
@@ -350,7 +351,7 @@ async function browserGoto(
     let output = `已导航到 ${url}\n标题: ${title}`
     const snapshot = await captureSnapshotInline(ptyId)
     if (snapshot) {
-      output += `\n\n--- 当前页面快照 ---\n${snapshot}`
+      output += `\n\n--- 当前页面无障碍树快照 ---\n${snapshot}`
     }
 
     executor.addStep({
@@ -639,7 +640,7 @@ async function browserClick(
     }
     const snapshot = await captureSnapshotInline(ptyId)
     if (snapshot) {
-      output += `\n\n--- 当前页面快照 ---\n${snapshot}`
+      output += `\n\n--- 当前页面无障碍树快照 ---\n${snapshot}`
     }
 
     executor.addStep({
@@ -1015,7 +1016,7 @@ async function browserSwitchTab(
     let output = `已切换到标签页 ${index}\n标题: ${title}\nURL: ${url}`
     const snapshot = await captureSnapshotInline(ptyId)
     if (snapshot) {
-      output += `\n\n--- 当前页面快照 ---\n${snapshot}`
+      output += `\n\n--- 当前页面无障碍树快照 ---\n${snapshot}`
     }
 
     executor.addStep({

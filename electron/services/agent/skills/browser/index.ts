@@ -11,7 +11,7 @@ import { closeAllSessions } from './session'
 const browserSkill: Skill = {
   id: 'browser',
   name: '浏览器自动化',
-  description: '提供浏览器自动化能力。支持打开网页、截图、获取内容、点击、输入、滚动等操作。适用于网页数据采集、自动化测试、表单填写等场景。浏览器窗口会显示在屏幕上，用户可以看到操作过程。',
+  description: '提供浏览器自动化能力。你通过无障碍树（Accessibility Tree）感知页面结构，而非直接看到页面——颜色、图标、纯视觉提示不在树中。操作前请通过快照获取 ref 编号，表单中 [必填] 字段需在提交前填写完整。如需确认视觉效果可用 browser_screenshot。支持打开网页、截图、获取内容、点击、输入、滚动等操作。浏览器窗口会显示在屏幕上，用户可以看到操作过程。',
   tools: browserTools,
   
   async init() {

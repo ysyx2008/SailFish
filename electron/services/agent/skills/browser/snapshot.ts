@@ -308,7 +308,8 @@ async function filterHiddenRefs(page: Page, refs: RefMap): Promise<Set<string>> 
 }
 
 /**
- * 为表单控件 ref 检测并填充 required 状态（HTML required 或 aria-required）
+ * 为表单控件 ref 检测并填充 required 状态。
+ * 来源：1) HTML required / aria-required  2) 可访问名称以 * 结尾  3) 关联 label、placeholder、aria-label 文本含 * 或「必填」
  */
 async function enrichRequiredState(page: Page, refs: RefMap): Promise<void> {
   const entries = Object.entries(refs).filter(([, data]) =>
@@ -331,13 +332,27 @@ async function enrichRequiredState(page: Page, refs: RefMap): Promise<void> {
           if (data.nth !== undefined) {
             loc = loc.nth(data.nth)
           }
-          const required = await loc.evaluate((el) => {
-            return Boolean(
+          const requiredFromDom = await loc.evaluate((el) => {
+            const fromAttr =
               ('required' in el && (el as HTMLInputElement).required) ||
-                el.getAttribute('aria-required') === 'true'
-            )
+              el.getAttribute('aria-required') === 'true'
+            if (fromAttr) return true
+            // 未设 required 时：收集关联 label 文本（for=、包裹、前兄弟、同父下 label），以及 placeholder/aria-label
+            let text = (el.getAttribute('aria-label') || (el as HTMLInputElement).placeholder || '') as string
+            let labelEl: Element | null = null
+            if (el.id) labelEl = document.querySelector(`label[for="${el.id}"]`)
+            if (!labelEl && el.closest('label')) labelEl = el.closest('label')
+            if (!labelEl && el.previousElementSibling?.matches?.('label')) labelEl = el.previousElementSibling as Element
+            if (!labelEl && el.parentElement) {
+              const first = el.parentElement.querySelector('label')
+              if (first) labelEl = first
+            }
+            if (labelEl) text += ' ' + (labelEl.textContent || '')
+            return /\*|必填/.test(text)
           })
-          refs[refId].required = required
+          // 可访问名称以 * 结尾也视为必填（标签约定）
+          const requiredFromName = Boolean(data.name?.trimEnd().endsWith('*'))
+          refs[refId].required = requiredFromDom || requiredFromName
         } catch {
           // 检测失败时保留不标注必填
         }
