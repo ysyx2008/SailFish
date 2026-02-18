@@ -66,13 +66,13 @@ export function cosineSimilarity(a: number[], b: number[]): number {
  * 4. 无向量的记忆独立保留（无法参与聚类）
  * 
  * @param items 待去重的记忆列表
- * @param similarityThreshold 相似度阈值（默认 0.80）
+ * @param similarityThreshold 相似度阈值（默认 0.75）
  * @param similarityFn 相似度计算函数（默认余弦相似度，可注入用于测试）
  * @returns 去重后的记忆列表
  */
 export function deduplicateByEmbeddingCluster(
   items: MemoryItem[],
-  similarityThreshold: number = 0.80,
+  similarityThreshold: number = 0.75,
   similarityFn: SimilarityFn = cosineSimilarity
 ): MemoryItem[] {
   if (items.length === 0) return []

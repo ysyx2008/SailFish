@@ -1272,7 +1272,6 @@ export class KnowledgeService extends EventEmitter {
         }
       }
     } catch (error) {
-      // 向量获取失败，继续但跳过聚类去重
       console.warn('[KnowledgeService] 向量批量获取失败，跳过聚类去重:', error)
       vectorMap = new Map()
     }
@@ -1301,7 +1300,7 @@ export class KnowledgeService extends EventEmitter {
     // 读时去重：embedding 聚类，每个聚类只取最新
     const deduplicated = deduplicateMemories(
       memoryItems,
-      0.80,
+      0.75,
       EmbeddingService.cosineSimilarity
     )
     
@@ -1309,7 +1308,6 @@ export class KnowledgeService extends EventEmitter {
     if (contextHint && this.embeddingService.isReady()) {
       try {
         const queryEmbedding = await this.embeddingService.embedSingle(contextHint)
-        // 计算每条记忆与上下文的相关度，使用临时数组避免 as any
         const scored = deduplicated.map(item => ({
           item,
           relevance: item.vector
@@ -1319,11 +1317,9 @@ export class KnowledgeService extends EventEmitter {
         scored.sort((a, b) => b.relevance - a.relevance)
         return scored.slice(0, maxMemories).map(s => s.item)
       } catch {
-        // 排序失败，按时间排序（最新在前）
         deduplicated.sort((a, b) => b.createdAt - a.createdAt)
       }
     } else {
-      // 无上下文提示，按时间排序（最新在前）
       deduplicated.sort((a, b) => b.createdAt - a.createdAt)
     }
 
@@ -1356,7 +1352,6 @@ export class KnowledgeService extends EventEmitter {
    * 获取主机记忆（带元数据，用于 prompt 时效标注）
    * 返回 HostMemoryEntry[] 格式，包含 createdAt、volatility、source
    * 
-   * 直接复用 getHostMemoriesInternal 的去重结果，无需重复解密
    */
   async getHostMemoriesWithMetadata(
     hostId: string,

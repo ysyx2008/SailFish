@@ -1023,7 +1023,6 @@ ${records.join('\n')}
         context = await knowledgeService.buildContext(message, { hostId })
         
         if (hostId) {
-          // 优先使用带元数据的新格式（支持时效标注）
           hostMemories = await knowledgeService.getHostMemoriesWithMetadata(hostId, message, 30)
         }
       }

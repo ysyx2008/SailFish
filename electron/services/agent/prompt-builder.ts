@@ -512,17 +512,15 @@ ${taskIdList}`
 
     let hostContext = `## 主机环境\n${lines.join('\n')}`
 
-    // 添加主机记忆（来自知识库）- 带时效标注
+    // 添加已知信息（来自知识库，已由 KnowledgeService 完成去重和冗余过滤）
     if (this.hostMemories && this.hostMemories.length > 0) {
       hostContext += '\n\n## 已知信息（来自历史交互）'
       hostContext += '\n以下信息来自历史任务，标注了确认时间。较旧的信息可能已过时，关键操作前建议验证。\n'
       
       for (const memory of this.hostMemories.slice(0, 15)) {
         if (typeof memory === 'string') {
-          // 兼容旧格式：纯字符串
           hostContext += `\n- ${memory}`
         } else {
-          // 新格式：带元数据的 HostMemoryEntry
           const entry = memory as HostMemoryEntry
           const annotation = PromptBuilder.formatMemoryAnnotation(entry)
           hostContext += `\n- ${entry.content} ${annotation}`
