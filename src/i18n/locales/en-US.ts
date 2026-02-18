@@ -269,6 +269,8 @@ export default {
       guideDocUrl: 'https://github.com/ysyx2008/SFTerminal/blob/main/docs/messaging/README.md',
       guideDocLink: 'Full Documentation',
       guideDetailLink: 'Help',
+      aiSetupBtn: 'AI Setup',
+      aiSetupPrompt: 'Help me set up {platform} bot. Please read the setup guide at {docPath} first, then use the browser to create and configure the app on the developer platform. Once done, give me the credentials and I will fill them in the settings page myself.',
       guideDocUrlDingtalk: 'https://github.com/ysyx2008/SFTerminal/blob/main/docs/messaging/dingtalk.md',
       guideDocUrlFeishu: 'https://github.com/ysyx2008/SFTerminal/blob/main/docs/messaging/feishu.md',
       guideDocUrlSlack: 'https://github.com/ysyx2008/SFTerminal/blob/main/docs/messaging/slack.md',

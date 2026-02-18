@@ -435,6 +435,13 @@ watch(() => terminalStore.pendingAiText, (text) => {
   }
 })
 
+// 有新的 Agent 任务时确保 AI 面板可见
+watch(() => Object.keys(terminalStore.pendingSchedulerTasks).length, (count) => {
+  if (count > 0) {
+    showAiPanel.value = true
+  }
+})
+
 // 打开 MCP 设置
 const openMcpSettings = () => {
   settingsInitialTab.value = 'mcp'

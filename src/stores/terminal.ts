@@ -351,6 +351,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     pendingAiText.value = ''
   }
 
+
   /**
    * 去除 ANSI 转义序列
    */
@@ -490,6 +491,27 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
 
     return id
+  }
+
+  /**
+   * 创建终端并自动执行 Agent 任务（通用入口）
+   * @param prompt Agent 任务指令
+   * @param options.type 终端类型，默认 'local'；'headless' 为无终端纯助手（预留）
+   * @param options.sshConfig SSH 连接配置（type='ssh' 时必填）
+   * @param options.shell 本地终端 shell 路径
+   */
+  async function createTabWithTask(prompt: string, options?: {
+    type?: 'local' | 'ssh' | 'headless'
+    sshConfig?: Parameters<typeof createTab>[1]
+    shell?: string
+  }): Promise<string> {
+    const type = options?.type ?? 'local'
+
+    // TODO: headless 模式（无终端纯助手）待后续实现
+    const tabType = type === 'headless' ? 'local' : type
+    const tabId = await createTab(tabType, options?.sshConfig, options?.shell)
+    pendingSchedulerTasks.value[tabId] = prompt
+    return tabId
   }
 
   /**
@@ -1352,6 +1374,8 @@ export const useTerminalStore = defineStore('terminal', () => {
     pendingFocusTabId,
     createTab,
     createTabWithExistingPty,
+    createTabWithTask,
+    pendingSchedulerTasks,
     consumePendingSchedulerTask,
     closeTab,
     reconnectSsh,

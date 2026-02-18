@@ -1,8 +1,37 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useTerminalStore } from '../../stores/terminal'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const terminalStore = useTerminalStore()
+const emit = defineEmits<{ close: [] }>()
+
+type IMPlatformKey = 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'
+
+function getDocFileName(platform: IMPlatformKey): string {
+  const suffix = locale.value.startsWith('zh') ? '_CN' : ''
+  return `${platform}${suffix}.md`
+}
+
+async function requestAiSetup(platform: IMPlatformKey) {
+  try {
+    const docsPath = await window.electronAPI.app.getMessagingDocsPath()
+    const sep = navigator.platform.startsWith('Win') ? '\\' : '/'
+    const fullPath = `${docsPath}${sep}${getDocFileName(platform)}`
+    const label = t(`settings.im.${platform}`) || platform
+
+    const prompt = t('settings.im.aiSetupPrompt', {
+      platform: label,
+      docPath: fullPath,
+    })
+
+    await terminalStore.createTabWithTask(prompt)
+    emit('close')
+  } catch (err) {
+    console.error('[IMSettings] Failed to request AI setup:', err)
+  }
+}
 
 const dingtalkExpanded = ref(false)
 const feishuExpanded = ref(false)
@@ -363,7 +392,10 @@ function cancelFreeMode() {
           <div class="im-hint">
             <div class="im-hint-header">
               <p class="hint-summary">{{ t('settings.im.dingtalkHint') }}</p>
-              <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlDingtalk')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+              <div class="im-hint-actions">
+                <button class="btn-ai-setup" @click="requestAiSetup('dingtalk')" :disabled="dtConnected">🤖 {{ t('settings.im.aiSetupBtn') }}</button>
+                <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlDingtalk')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+              </div>
             </div>
             <ol class="setup-steps">
               <li>{{ t('settings.im.dingtalkStep1') }}</li>
@@ -431,7 +463,10 @@ function cancelFreeMode() {
           <div class="im-hint">
             <div class="im-hint-header">
               <p class="hint-summary">{{ t('settings.im.feishuHint') }}</p>
-              <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlFeishu')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+              <div class="im-hint-actions">
+                <button class="btn-ai-setup" @click="requestAiSetup('feishu')" :disabled="fsConnected">🤖 {{ t('settings.im.aiSetupBtn') }}</button>
+                <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlFeishu')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+              </div>
             </div>
             <ol class="setup-steps">
               <li>{{ t('settings.im.feishuStep1') }}</li>
@@ -499,7 +534,10 @@ function cancelFreeMode() {
           <div class="im-hint">
             <div class="im-hint-header">
               <p class="hint-summary">{{ t('settings.im.slackHint') }}</p>
-              <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlSlack')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+              <div class="im-hint-actions">
+                <button class="btn-ai-setup" @click="requestAiSetup('slack')" :disabled="slConnected">🤖 {{ t('settings.im.aiSetupBtn') }}</button>
+                <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlSlack')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+              </div>
             </div>
             <ol class="setup-steps">
               <li>{{ t('settings.im.slackStep1') }}</li>
@@ -568,7 +606,10 @@ function cancelFreeMode() {
           <div class="im-hint">
             <div class="im-hint-header">
               <p class="hint-summary">{{ t('settings.im.telegramHint') }}</p>
-              <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlTelegram')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+              <div class="im-hint-actions">
+                <button class="btn-ai-setup" @click="requestAiSetup('telegram')" :disabled="tgConnected">🤖 {{ t('settings.im.aiSetupBtn') }}</button>
+                <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlTelegram')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+              </div>
             </div>
             <ol class="setup-steps">
               <li>{{ t('settings.im.telegramStep1') }}</li>
@@ -626,7 +667,10 @@ function cancelFreeMode() {
           <div class="im-hint">
             <div class="im-hint-header">
               <p class="hint-summary">{{ t('settings.im.wecomHint') }}</p>
-              <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlWecom')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+              <div class="im-hint-actions">
+                <button class="btn-ai-setup" @click="requestAiSetup('wecom')" :disabled="wcConnected">🤖 {{ t('settings.im.aiSetupBtn') }}</button>
+                <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlWecom')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+              </div>
             </div>
             <ol class="setup-steps">
               <li>{{ t('settings.im.wecomStep1') }}</li>
@@ -1123,6 +1167,35 @@ function cancelFreeMode() {
 
 .im-hint-header .im-channel-help-link:hover {
   text-decoration: underline;
+}
+
+.im-hint-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.btn-ai-setup {
+  padding: 3px 10px;
+  font-size: 12px;
+  border: 1px solid var(--accent-primary);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent-primary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.btn-ai-setup:hover:not(:disabled) {
+  background: var(--accent-primary);
+  color: #fff;
+}
+
+.btn-ai-setup:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .im-hint {

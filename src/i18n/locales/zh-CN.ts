@@ -269,6 +269,8 @@ export default {
       guideDocUrl: 'https://github.com/ysyx2008/SFTerminal/blob/main/docs/messaging/README_CN.md',
       guideDocLink: '查看完整文档',
       guideDetailLink: '帮助',
+      aiSetupBtn: 'AI 帮我配置',
+      aiSetupPrompt: '帮我配置{platform}机器人。请先阅读配置指南 {docPath}，然后用浏览器帮我在开发者平台完成应用创建和配置。完成后把凭证告诉我，我自己填入设置页面并连接。',
       guideDocUrlDingtalk: 'https://github.com/ysyx2008/SFTerminal/blob/main/docs/messaging/dingtalk_CN.md',
       guideDocUrlFeishu: 'https://github.com/ysyx2008/SFTerminal/blob/main/docs/messaging/feishu_CN.md',
       guideDocUrlSlack: 'https://github.com/ysyx2008/SFTerminal/blob/main/docs/messaging/slack_CN.md',

@@ -1174,6 +1174,13 @@ ipcMain.handle('app:getVersion', async () => {
   return APP_VERSION
 })
 
+ipcMain.handle('app:getMessagingDocsPath', async () => {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'docs', 'messaging')
+  }
+  return path.join(__dirname, '..', 'docs', 'messaging')
+})
+
 // 打开路径（文件或目录）
 ipcMain.handle('shell:openPath', async (_event, path: string) => {
   return shell.openPath(path)

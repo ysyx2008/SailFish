@@ -482,7 +482,7 @@ const onQrImageError = (event: Event) => {
           <KnowledgeSettings v-else-if="activeTab === 'knowledge'" />
           <EmailSettings v-else-if="activeTab === 'email'" />
           <CalendarSettings v-else-if="activeTab === 'calendar'" />
-          <IMSettings v-else-if="activeTab === 'im'" />
+          <IMSettings v-else-if="activeTab === 'im'" @close="emit('close')" />
           <GatewaySettings v-else-if="activeTab === 'gateway'" />
           <ThemeSettings v-else-if="activeTab === 'theme'" />
           <TerminalSettings v-else-if="activeTab === 'terminal'" />

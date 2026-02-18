@@ -33,6 +33,11 @@ asarUnpack:
 # 启用最大压缩率以减小安装包大小（会增加打包时间）
 # compression: maximum
 extraResources:
+  # IM 平台配置指南（供 Agent 读取）
+  - from: "docs/messaging"
+    to: "docs/messaging"
+    filter:
+      - "**/*.md"
   # 轻量 Embedding 模型（随软件打包）
   - from: "resources/models/embedding/bge-small-zh-v1.5"
     to: "models/embedding/bge-small-zh-v1.5"

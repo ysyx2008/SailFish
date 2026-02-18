@@ -328,7 +328,8 @@ export interface PendingConfirmation {
 const electronAPI = {
   // 应用信息
   app: {
-    getVersion: () => ipcRenderer.invoke('app:getVersion') as Promise<string>
+    getVersion: () => ipcRenderer.invoke('app:getVersion') as Promise<string>,
+    getMessagingDocsPath: () => ipcRenderer.invoke('app:getMessagingDocsPath') as Promise<string>,
   },
 
   // PATH 环境变量状态
