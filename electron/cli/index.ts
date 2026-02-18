@@ -870,6 +870,112 @@ async function skillList(): Promise<void> {
   printTable(rows)
 }
 
+// ==================== Skill Market Commands ====================
+
+async function skillMarket(args: string[]): Promise<void> {
+  const { flags } = parseArgs(args)
+  const { getSkillMarketService } = require('../services/skill-market.service')
+  const { getUserSkillService } = require('../services/user-skill.service')
+  const service = getSkillMarketService(getConfig(), getUserSkillService())
+
+  console.log('Fetching skill market...')
+  const query = flags.search as string | undefined
+  const skills = query
+    ? await service.searchSkills(query)
+    : await service.listSkills(true)
+
+  if (skills.length === 0) {
+    console.log(query ? `No skills matching "${query}".` : 'No skills in the market.')
+    return
+  }
+
+  const rows = skills.map((s: any) => ({
+    id: s.id,
+    name: s.name,
+    version: s.version || '',
+    status: s.installed ? (s.hasUpdate ? '↑ update' : '✓ installed') : '',
+    description: (s.description || '').substring(0, 50)
+  }))
+  printTable(rows)
+  console.log(`\nTotal: ${skills.length} skill(s)`)
+}
+
+async function skillInstall(args: string[]): Promise<void> {
+  const { positional } = parseArgs(args)
+  const skillId = positional[0]
+  if (!skillId) {
+    console.error('Usage: sft skill:install <skill-id>')
+    process.exit(1)
+  }
+
+  const { getSkillMarketService } = require('../services/skill-market.service')
+  const { getUserSkillService } = require('../services/user-skill.service')
+  const service = getSkillMarketService(getConfig(), getUserSkillService())
+
+  console.log(`Installing skill "${skillId}"...`)
+  const result = await service.installSkill(skillId)
+
+  if (result.success) {
+    console.log(`✓ Skill "${skillId}" installed successfully.`)
+  } else {
+    console.error(`✗ Failed to install "${skillId}": ${result.error}`)
+    process.exit(1)
+  }
+}
+
+async function skillUninstall(args: string[]): Promise<void> {
+  const { positional } = parseArgs(args)
+  const skillId = positional[0]
+  if (!skillId) {
+    console.error('Usage: sft skill:uninstall <skill-id>')
+    process.exit(1)
+  }
+
+  const { getSkillMarketService } = require('../services/skill-market.service')
+  const { getUserSkillService } = require('../services/user-skill.service')
+  const service = getSkillMarketService(getConfig(), getUserSkillService())
+
+  const result = service.uninstallSkill(skillId)
+
+  if (result.success) {
+    console.log(`✓ Skill "${skillId}" uninstalled.`)
+  } else {
+    console.error(`✗ Failed to uninstall "${skillId}": ${result.error}`)
+    process.exit(1)
+  }
+}
+
+async function skillRegistry(args: string[]): Promise<void> {
+  const { flags } = parseArgs(args)
+  const { getSkillMarketService } = require('../services/skill-market.service')
+  const { getUserSkillService } = require('../services/user-skill.service')
+  const service = getSkillMarketService(getConfig(), getUserSkillService())
+
+  if (flags.reset) {
+    service.setRegistryUrl('')
+    console.log('Registry URL reset to default.')
+    return
+  }
+
+  if (flags.set && typeof flags.set === 'string') {
+    service.setRegistryUrl(flags.set)
+    console.log(`Registry URL set to: ${flags.set}`)
+    return
+  }
+
+  const url = service.getRegistryUrl()
+  console.log(`Registry URL: ${url}`)
+
+  try {
+    const registry = await service.fetchRegistry(true)
+    console.log(`Registry version: ${registry.version}`)
+    console.log(`Last updated: ${registry.updated}`)
+    console.log(`Skills available: ${registry.skills.length}`)
+  } catch (error: any) {
+    console.log(`(Could not fetch registry: ${error.message})`)
+  }
+}
+
 // ==================== PTY Commands ====================
 
 async function ptyExec(args: string[]): Promise<void> {
@@ -1113,6 +1219,15 @@ IM Integration:
 User Skills:
   skill:list                 List user-defined skills
 
+Skill Market:
+  skill:market               Browse skill market
+    --search <query>         Search skills by keyword
+  skill:install <id>         Install a skill from the market
+  skill:uninstall <id>       Uninstall a market skill
+  skill:registry             Show/set registry URL
+    --set <url>              Set custom registry URL
+    --reset                  Reset to default registry URL
+
 Terminal (PTY):
   pty:exec <command>         Execute a command in a PTY shell
     --timeout <ms>           Max wait time (default: 10000)
@@ -1206,7 +1321,11 @@ async function main(): Promise<void> {
       case 'im:disconnect':  await imDisconnect(cmdArgs); break
 
       // Skills
-      case 'skill:list':     await skillList(); break
+      case 'skill:list':      await skillList(); break
+      case 'skill:market':    await skillMarket(cmdArgs); break
+      case 'skill:install':   await skillInstall(cmdArgs); break
+      case 'skill:uninstall': await skillUninstall(cmdArgs); break
+      case 'skill:registry':  await skillRegistry(cmdArgs); break
 
       // PTY
       case 'pty:exec':       await ptyExec(cmdArgs); break

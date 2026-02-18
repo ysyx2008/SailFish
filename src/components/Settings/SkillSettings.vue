@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { RefreshCw, FolderOpen, Eye, X } from 'lucide-vue-next'
+import { RefreshCw, FolderOpen, Eye, X, Download, Trash2, ArrowUpCircle, Search, Star } from 'lucide-vue-next'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
-// 用户技能类型
 interface UserSkill {
   id: string
   name: string
@@ -17,17 +16,71 @@ interface UserSkill {
   lastModified: number
 }
 
-// 状态
+interface MarketSkillItem {
+  id: string
+  name: string
+  description: string
+  version: string
+  author: string
+  category?: string
+  tags?: string[]
+  featured?: boolean
+  installed: boolean
+  installedVersion?: string
+  hasUpdate: boolean
+}
+
+interface SkillCategory {
+  id: string
+  name: string
+  nameEn: string
+  icon: string
+}
+
+type SubTab = 'my' | 'market'
+const activeSubTab = ref<SubTab>('my')
+
+// 我的技能
 const skills = ref<UserSkill[]>([])
 const loading = ref(false)
 const skillsDir = ref('')
 
-// ESC 关闭预览弹窗
+// 技能市场
+const marketSkills = ref<MarketSkillItem[]>([])
+const categories = ref<SkillCategory[]>([])
+const marketLoading = ref(false)
+const marketError = ref('')
+const searchQuery = ref('')
+const activeCategory = ref('all')
+const operatingSkills = ref<Set<string>>(new Set())
+
+// Registry URL
+const registryUrl = ref('')
+const registryUrlEditing = ref(false)
+const registryUrlInput = ref('')
+
+// 预览弹窗（我的技能）
+const showPreview = ref(false)
+const previewSkill = ref<UserSkill | null>(null)
+const previewContent = ref('')
+
+// 市场技能详情弹窗
+const showDetail = ref(false)
+const detailSkill = ref<MarketSkillItem | null>(null)
+const detailContent = ref('')
+const detailLoading = ref(false)
+
 const handleKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && showPreview.value) {
-    e.stopImmediatePropagation()
-    showPreview.value = false
-    previewSkill.value = null
+  if (e.key === 'Escape') {
+    if (showDetail.value) {
+      e.stopImmediatePropagation()
+      showDetail.value = false
+      detailSkill.value = null
+    } else if (showPreview.value) {
+      e.stopImmediatePropagation()
+      showPreview.value = false
+      previewSkill.value = null
+    }
   }
 }
 
@@ -39,15 +92,38 @@ onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown, true)
 })
 
-// 预览弹窗
-const showPreview = ref(false)
-const previewSkill = ref<UserSkill | null>(null)
-const previewContent = ref('')
-
-// 计算属性
 const enabledCount = computed(() => skills.value.filter(s => s.enabled).length)
 
-// 加载技能列表
+const featuredSkills = computed(() => marketSkills.value.filter(s => s.featured))
+
+const filteredSkills = computed(() => {
+  let list = marketSkills.value
+
+  if (activeCategory.value !== 'all') {
+    list = list.filter(s => s.category === activeCategory.value)
+  }
+
+  if (searchQuery.value.trim()) {
+    const q = searchQuery.value.toLowerCase()
+    list = list.filter(s =>
+      s.name.toLowerCase().includes(q) ||
+      s.description.toLowerCase().includes(q) ||
+      s.id.toLowerCase().includes(q) ||
+      s.tags?.some(t => t.toLowerCase().includes(q))
+    )
+  }
+
+  return list
+})
+
+const categoryLabel = (cat: SkillCategory) =>
+  locale.value.startsWith('zh') ? cat.name : cat.nameEn
+
+const categoryCount = (catId: string) =>
+  marketSkills.value.filter(s => s.category === catId).length
+
+// ========== 我的技能 ==========
+
 const loadSkills = async () => {
   loading.value = true
   try {
@@ -60,7 +136,6 @@ const loadSkills = async () => {
   }
 }
 
-// 刷新技能列表
 const refreshSkills = async () => {
   loading.value = true
   try {
@@ -72,7 +147,6 @@ const refreshSkills = async () => {
   }
 }
 
-// 切换技能启用状态
 const toggleSkill = async (skill: UserSkill) => {
   const newEnabled = !skill.enabled
   const success = await window.electronAPI.userSkill.toggle(skill.id, newEnabled)
@@ -81,12 +155,10 @@ const toggleSkill = async (skill: UserSkill) => {
   }
 }
 
-// 打开技能目录
 const openFolder = async () => {
   await window.electronAPI.userSkill.openFolder()
 }
 
-// 查看技能内容
 const viewSkill = async (skill: UserSkill) => {
   previewSkill.value = skill
   try {
@@ -98,16 +170,145 @@ const viewSkill = async (skill: UserSkill) => {
   showPreview.value = true
 }
 
-// 关闭预览
 const closePreview = () => {
   showPreview.value = false
   previewSkill.value = null
   previewContent.value = ''
 }
 
-// 格式化时间
-const formatTime = (timestamp: number) => {
-  return new Date(timestamp).toLocaleString()
+const formatTime = (timestamp: number) => new Date(timestamp).toLocaleString()
+
+// ========== 技能市场 ==========
+
+const loadMarketSkills = async (force = false) => {
+  marketLoading.value = true
+  marketError.value = ''
+  try {
+    marketSkills.value = await window.electronAPI.skillMarket.list(force)
+    const registry = await window.electronAPI.skillMarket.fetchRegistry(force)
+    if (registry.categories) {
+      categories.value = registry.categories
+    }
+  } catch (error: any) {
+    marketError.value = error.message || 'Unknown error'
+    console.error('Failed to load market:', error)
+  } finally {
+    marketLoading.value = false
+  }
+}
+
+const viewMarketSkill = async (skill: MarketSkillItem) => {
+  detailSkill.value = skill
+  detailContent.value = ''
+  detailLoading.value = true
+  showDetail.value = true
+
+  // 如果已安装，从本地读取内容
+  if (skill.installed) {
+    try {
+      const content = await window.electronAPI.userSkill.getContent(skill.id)
+      if (content) {
+        detailContent.value = content
+        detailLoading.value = false
+        return
+      }
+    } catch (e) {
+      console.warn('Failed to load installed skill content:', e)
+    }
+  }
+
+  detailLoading.value = false
+}
+
+const closeDetail = () => {
+  showDetail.value = false
+  detailSkill.value = null
+  detailContent.value = ''
+}
+
+const installSkill = async (skill: MarketSkillItem) => {
+  operatingSkills.value.add(skill.id)
+  try {
+    const result = await window.electronAPI.skillMarket.install(skill.id)
+    if (result.success) {
+      skill.installed = true
+      skill.installedVersion = skill.version
+      skill.hasUpdate = false
+      await loadSkills()
+    } else {
+      alert(`${t('skillSettings.installFailed')}: ${result.error}`)
+    }
+  } catch (error: any) {
+    alert(`${t('skillSettings.installFailed')}: ${error.message}`)
+  } finally {
+    operatingSkills.value.delete(skill.id)
+  }
+}
+
+const uninstallSkill = async (skill: MarketSkillItem) => {
+  if (!confirm(`${t('skillSettings.uninstall')} "${skill.name}"?`)) return
+  operatingSkills.value.add(skill.id)
+  try {
+    const result = await window.electronAPI.skillMarket.uninstall(skill.id)
+    if (result.success) {
+      skill.installed = false
+      skill.installedVersion = undefined
+      skill.hasUpdate = false
+      await loadSkills()
+    } else {
+      alert(`${t('skillSettings.uninstallFailed')}: ${result.error}`)
+    }
+  } catch (error: any) {
+    alert(`${t('skillSettings.uninstallFailed')}: ${error.message}`)
+  } finally {
+    operatingSkills.value.delete(skill.id)
+  }
+}
+
+const updateSkill = async (skill: MarketSkillItem) => {
+  operatingSkills.value.add(skill.id)
+  try {
+    const result = await window.electronAPI.skillMarket.update(skill.id)
+    if (result.success) {
+      skill.installedVersion = skill.version
+      skill.hasUpdate = false
+      await loadSkills()
+    } else {
+      alert(`${t('skillSettings.updateFailed')}: ${result.error}`)
+    }
+  } catch (error: any) {
+    alert(`${t('skillSettings.updateFailed')}: ${error.message}`)
+  } finally {
+    operatingSkills.value.delete(skill.id)
+  }
+}
+
+const loadRegistryUrl = async () => {
+  try {
+    registryUrl.value = await window.electronAPI.skillMarket.getRegistryUrl()
+    registryUrlInput.value = registryUrl.value
+  } catch (e) {
+    console.warn('Failed to load registry URL:', e)
+  }
+}
+
+const saveRegistryUrl = async () => {
+  try {
+    await window.electronAPI.skillMarket.setRegistryUrl(registryUrlInput.value)
+    registryUrl.value = registryUrlInput.value
+    registryUrlEditing.value = false
+    loadMarketSkills(true)
+  } catch (error: any) {
+    alert('Failed to save: ' + error.message)
+  }
+}
+
+const switchTab = (tab: SubTab) => {
+  activeSubTab.value = tab
+  if (tab === 'market' && marketSkills.value.length === 0 && !marketLoading.value) {
+    loadMarketSkills()
+    loadRegistryUrl()
+  }
 }
 
 onMounted(() => {
@@ -117,7 +318,27 @@ onMounted(() => {
 
 <template>
   <div class="skill-settings">
-    <div class="settings-section">
+    <!-- 子标签切换 -->
+    <div class="sub-tabs">
+      <button
+        class="sub-tab"
+        :class="{ active: activeSubTab === 'my' }"
+        @click="switchTab('my')"
+      >
+        🧩 {{ t('skillSettings.mySkills') }}
+        <span class="tab-badge" v-if="enabledCount > 0">{{ enabledCount }}</span>
+      </button>
+      <button
+        class="sub-tab"
+        :class="{ active: activeSubTab === 'market' }"
+        @click="switchTab('market')"
+      >
+        🏪 {{ t('skillSettings.market') }}
+      </button>
+    </div>
+
+    <!-- ========== 我的技能 ========== -->
+    <div v-if="activeSubTab === 'my'" class="settings-section">
       <div class="section-header">
         <div class="header-left">
           <h4>{{ t('skillSettings.title') }}</h4>
@@ -135,11 +356,8 @@ onMounted(() => {
           </button>
         </div>
       </div>
-      <p class="section-desc">
-        {{ t('skillSettings.description') }}
-      </p>
+      <p class="section-desc">{{ t('skillSettings.description') }}</p>
 
-      <!-- 技能列表 -->
       <div class="skill-list">
         <div
           v-for="skill in skills"
@@ -160,9 +378,7 @@ onMounted(() => {
               {{ skill.name }}
               <span class="skill-version" v-if="skill.version">v{{ skill.version }}</span>
             </div>
-            <div class="skill-desc" v-if="skill.description">
-              {{ skill.description }}
-            </div>
+            <div class="skill-desc" v-if="skill.description">{{ skill.description }}</div>
           </div>
           <div class="skill-actions">
             <button class="btn-icon btn-sm" @click="viewSkill(skill)" :title="t('skillSettings.view')">
@@ -171,24 +387,19 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- 空状态 -->
-        <div v-if="skills.length === 0 && !loading" class="empty-skills">
+        <div v-if="skills.length === 0 && !loading" class="empty-state">
           <div class="empty-icon">📁</div>
           <p>{{ t('skillSettings.noSkills') }}</p>
           <p class="tip">{{ t('skillSettings.noSkillsTip') }}</p>
-          <button class="btn btn-outline btn-sm" @click="openFolder">
-            {{ t('skillSettings.openFolder') }}
-          </button>
+          <button class="btn btn-outline btn-sm" @click="openFolder">{{ t('skillSettings.openFolder') }}</button>
         </div>
 
-        <!-- 加载中 -->
-        <div v-if="loading && skills.length === 0" class="loading-skills">
+        <div v-if="loading && skills.length === 0" class="loading-state">
           <div class="spinner"></div>
           <p>{{ t('skillSettings.loading') }}</p>
         </div>
       </div>
 
-      <!-- 帮助信息 -->
       <div class="help-section">
         <h5>{{ t('skillSettings.howToAdd') }}</h5>
         <ol class="help-list">
@@ -210,24 +421,271 @@ enabled: true
       </div>
     </div>
 
-    <!-- 预览弹窗 -->
-    <div v-if="showPreview && previewSkill" class="preview-modal" @click.self="closePreview">
-      <div class="preview-content">
-        <div class="preview-header">
-          <div class="preview-title">
+    <!-- ========== 技能市场 ========== -->
+    <div v-if="activeSubTab === 'market'" class="settings-section">
+      <div class="section-header">
+        <div class="header-left">
+          <h4>{{ t('skillSettings.market') }}</h4>
+          <span class="count-badge" v-if="marketSkills.length > 0">{{ marketSkills.length }}</span>
+        </div>
+        <div class="header-actions">
+          <button class="btn btn-sm" @click="loadMarketSkills(true)" :disabled="marketLoading" :title="t('skillSettings.refresh')">
+            <RefreshCw :size="14" :class="{ spinning: marketLoading }" />
+          </button>
+        </div>
+      </div>
+      <p class="section-desc">{{ t('skillSettings.marketDesc') }}</p>
+
+      <!-- 搜索栏 -->
+      <div class="search-bar">
+        <Search :size="14" class="search-icon" />
+        <input
+          v-model="searchQuery"
+          type="text"
+          :placeholder="t('skillSettings.searchPlaceholder')"
+          class="search-input"
+        />
+      </div>
+
+      <!-- 分类筛选条 -->
+      <div class="category-bar" v-if="categories.length > 0 && !searchQuery.trim()">
+        <button
+          class="category-chip"
+          :class="{ active: activeCategory === 'all' }"
+          @click="activeCategory = 'all'"
+        >
+          {{ t('skillSettings.allCategories') }}
+          <span class="chip-count">{{ marketSkills.length }}</span>
+        </button>
+        <button
+          v-for="cat in categories"
+          :key="cat.id"
+          class="category-chip"
+          :class="{ active: activeCategory === cat.id }"
+          @click="activeCategory = cat.id"
+        >
+          <span class="chip-icon">{{ cat.icon }}</span>
+          {{ categoryLabel(cat) }}
+          <span class="chip-count">{{ categoryCount(cat.id) }}</span>
+        </button>
+      </div>
+
+      <div class="market-content">
+        <!-- 加载中 -->
+        <div v-if="marketLoading && marketSkills.length === 0" class="loading-state">
+          <div class="spinner"></div>
+          <p>{{ t('skillSettings.marketLoading') }}</p>
+        </div>
+
+        <!-- 错误 -->
+        <div v-else-if="marketError && marketSkills.length === 0" class="empty-state">
+          <div class="empty-icon">⚠️</div>
+          <p>{{ t('skillSettings.marketError') }}</p>
+          <p class="tip">{{ marketError }}</p>
+          <button class="btn btn-outline btn-sm" @click="loadMarketSkills(true)">{{ t('skillSettings.marketRetry') }}</button>
+        </div>
+
+        <!-- 空状态 -->
+        <div v-else-if="marketSkills.length === 0 && !marketLoading" class="empty-state">
+          <div class="empty-icon">🏪</div>
+          <p>{{ t('skillSettings.marketEmpty') }}</p>
+          <p class="tip">{{ t('skillSettings.marketEmptyTip') }}</p>
+        </div>
+
+        <template v-else>
+          <!-- 精选推荐 -->
+          <div v-if="featuredSkills.length > 0 && activeCategory === 'all' && !searchQuery.trim()" class="featured-section">
+            <h5 class="featured-title">
+              <Star :size="14" />
+              {{ t('skillSettings.featuredTitle') }}
+            </h5>
+            <div class="featured-grid">
+              <div
+                v-for="skill in featuredSkills"
+                :key="'f-' + skill.id"
+                class="featured-card"
+                @click="viewMarketSkill(skill)"
+              >
+                <div class="featured-card-header">
+                  <span class="skill-name">{{ skill.name }}</span>
+                  <span class="skill-version">v{{ skill.version }}</span>
+                </div>
+                <div class="featured-card-desc">{{ skill.description }}</div>
+                <div class="featured-card-footer">
+                  <span class="meta-item">{{ t('skillSettings.by') }} {{ skill.author }}</span>
+                  <template v-if="operatingSkills.has(skill.id)">
+                    <RefreshCw :size="12" class="spinning" />
+                  </template>
+                  <template v-else-if="skill.installed && !skill.hasUpdate">
+                    <span class="installed-label">✓</span>
+                  </template>
+                  <template v-else-if="skill.hasUpdate">
+                    <button class="btn btn-accent btn-xs" @click.stop="updateSkill(skill)">{{ t('skillSettings.updateBtn') }}</button>
+                  </template>
+                  <template v-else>
+                    <button class="btn btn-primary btn-xs" @click.stop="installSkill(skill)">
+                      <Download :size="12" />
+                      {{ t('skillSettings.install') }}
+                    </button>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 技能列表 -->
+          <div class="skill-list market-list">
+            <div
+              v-for="skill in filteredSkills"
+              :key="skill.id"
+              class="market-item"
+              @click="viewMarketSkill(skill)"
+            >
+              <div class="market-item-body">
+                <div class="market-item-header">
+                  <span class="skill-name">{{ skill.name }}</span>
+                  <span class="skill-version">v{{ skill.version }}</span>
+                  <span v-if="skill.hasUpdate" class="update-badge">{{ t('skillSettings.updateAvailable') }}</span>
+                </div>
+                <div class="skill-desc" v-if="skill.description">{{ skill.description }}</div>
+                <div class="market-item-meta">
+                  <span class="meta-item">{{ t('skillSettings.by') }} {{ skill.author }}</span>
+                  <span v-if="skill.category" class="meta-item tag">{{ skill.category }}</span>
+                  <span v-for="tag in (skill.tags || []).slice(0, 3)" :key="tag" class="meta-item tag">{{ tag }}</span>
+                </div>
+              </div>
+              <div class="market-item-actions" @click.stop>
+                <template v-if="operatingSkills.has(skill.id)">
+                  <button class="btn btn-sm" disabled>
+                    <RefreshCw :size="14" class="spinning" />
+                  </button>
+                </template>
+                <template v-else-if="skill.hasUpdate">
+                  <button class="btn btn-accent btn-sm" @click="updateSkill(skill)">
+                    <ArrowUpCircle :size="14" />
+                    {{ t('skillSettings.updateBtn') }}
+                  </button>
+                  <button class="btn btn-danger-ghost btn-sm" @click="uninstallSkill(skill)" :title="t('skillSettings.uninstall')">
+                    <Trash2 :size="14" />
+                  </button>
+                </template>
+                <template v-else-if="skill.installed">
+                  <span class="installed-label">{{ t('skillSettings.installed') }}</span>
+                  <button class="btn btn-danger-ghost btn-sm" @click="uninstallSkill(skill)" :title="t('skillSettings.uninstall')">
+                    <Trash2 :size="14" />
+                  </button>
+                </template>
+                <template v-else>
+                  <button class="btn btn-primary btn-sm" @click="installSkill(skill)">
+                    <Download :size="14" />
+                    {{ t('skillSettings.install') }}
+                  </button>
+                </template>
+              </div>
+            </div>
+
+            <div v-if="filteredSkills.length === 0 && !marketLoading" class="empty-state compact">
+              <p>{{ t('skillSettings.marketEmpty') }}</p>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Registry URL -->
+      <div class="registry-section">
+        <h5>{{ t('skillSettings.registryUrl') }}</h5>
+        <div class="registry-url-row">
+          <input
+            v-model="registryUrlInput"
+            type="text"
+            class="registry-input"
+            :placeholder="t('skillSettings.registryUrlPlaceholder')"
+            @focus="registryUrlEditing = true"
+          />
+          <button
+            v-if="registryUrlEditing && registryUrlInput !== registryUrl"
+            class="btn btn-primary btn-sm"
+            @click="saveRegistryUrl"
+          >
+            {{ t('skillSettings.registrySave') }}
+          </button>
+        </div>
+        <p class="tip">{{ t('skillSettings.registryUrlTip') }}</p>
+      </div>
+    </div>
+
+    <!-- 预览弹窗（我的技能） -->
+    <div v-if="showPreview && previewSkill" class="modal-overlay" @click.self="closePreview">
+      <div class="modal-box">
+        <div class="modal-header">
+          <div class="modal-title">
             <h4>{{ previewSkill.name }}</h4>
             <span class="preview-version" v-if="previewSkill.version">v{{ previewSkill.version }}</span>
           </div>
-          <button class="btn-icon" @click="closePreview">
-            <X :size="16" />
-          </button>
+          <button class="btn-icon" @click="closePreview"><X :size="16" /></button>
         </div>
-        <div class="preview-meta">
+        <div class="modal-meta">
           <span v-if="previewSkill.description">{{ previewSkill.description }}</span>
           <span class="preview-time">{{ t('skillSettings.lastModified') }}: {{ formatTime(previewSkill.lastModified) }}</span>
         </div>
-        <div class="preview-body">
+        <div class="modal-body">
           <pre>{{ previewContent }}</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- 详情弹窗（市场技能） -->
+    <div v-if="showDetail && detailSkill" class="modal-overlay" @click.self="closeDetail">
+      <div class="modal-box">
+        <div class="modal-header">
+          <div class="modal-title">
+            <h4>{{ detailSkill.name }}</h4>
+            <span class="preview-version">v{{ detailSkill.version }}</span>
+            <span v-if="detailSkill.hasUpdate" class="update-badge">{{ t('skillSettings.updateAvailable') }}</span>
+          </div>
+          <button class="btn-icon" @click="closeDetail"><X :size="16" /></button>
+        </div>
+        <div class="modal-meta">
+          <span>{{ detailSkill.description }}</span>
+          <div class="modal-meta-row">
+            <span class="meta-item">{{ t('skillSettings.by') }} {{ detailSkill.author }}</span>
+            <span v-if="detailSkill.category" class="meta-item tag">{{ detailSkill.category }}</span>
+            <span v-for="tag in detailSkill.tags" :key="tag" class="meta-item tag">{{ tag }}</span>
+          </div>
+        </div>
+        <div class="modal-body">
+          <div v-if="detailLoading" class="loading-state compact">
+            <div class="spinner"></div>
+            <p>{{ t('skillSettings.skillDetailLoading') }}</p>
+          </div>
+          <pre v-else-if="detailContent">{{ detailContent }}</pre>
+          <div v-else class="detail-placeholder">
+            <p class="tip">{{ t('skillSettings.skillDetailNotInstalled') }}</p>
+          </div>
+        </div>
+        <div class="modal-footer" @click.stop>
+          <template v-if="operatingSkills.has(detailSkill.id)">
+            <button class="btn btn-sm" disabled><RefreshCw :size="14" class="spinning" /></button>
+          </template>
+          <template v-else-if="detailSkill.hasUpdate">
+            <button class="btn btn-accent btn-sm" @click="updateSkill(detailSkill)">
+              <ArrowUpCircle :size="14" /> {{ t('skillSettings.updateBtn') }}
+            </button>
+            <button class="btn btn-danger-ghost btn-sm" @click="uninstallSkill(detailSkill)">
+              <Trash2 :size="14" /> {{ t('skillSettings.uninstall') }}
+            </button>
+          </template>
+          <template v-else-if="detailSkill.installed">
+            <span class="installed-label">✓ {{ t('skillSettings.installed') }}</span>
+            <button class="btn btn-danger-ghost btn-sm" @click="uninstallSkill(detailSkill)">
+              <Trash2 :size="14" /> {{ t('skillSettings.uninstall') }}
+            </button>
+          </template>
+          <template v-else>
+            <button class="btn btn-primary btn-sm" @click="installSkill(detailSkill)">
+              <Download :size="14" /> {{ t('skillSettings.install') }}
+            </button>
+          </template>
         </div>
       </div>
     </div>
@@ -238,9 +696,60 @@ enabled: true
 .skill-settings {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
+/* 子标签页 */
+.sub-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.sub-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sub-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.sub-tab.active {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.tab-badge, .count-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  background: var(--accent-green);
+  color: var(--bg-primary);
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.count-badge {
+  background: var(--accent-primary);
+}
+
+/* 通用 */
 .settings-section {
   background: var(--bg-tertiary);
   border-radius: 8px;
@@ -282,6 +791,159 @@ enabled: true
   font-size: 12px;
   color: var(--text-muted);
   margin-bottom: 16px;
+}
+
+/* 搜索栏 */
+.search-bar {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  padding: 8px 12px 8px 32px;
+  font-size: 13px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.2s ease;
+  box-sizing: border-box;
+}
+
+.search-input:focus {
+  border-color: var(--accent-primary);
+}
+
+.search-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* 分类筛选条 */
+.category-bar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+
+.category-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.category-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.category-chip:hover {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.category-chip.active {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--bg-primary);
+}
+
+.chip-icon {
+  font-size: 13px;
+}
+
+.chip-count {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.category-chip.active .chip-count {
+  opacity: 0.9;
+}
+
+/* 精选推荐 */
+.featured-section {
+  margin-bottom: 16px;
+}
+
+.featured-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: var(--text-primary);
+}
+
+.featured-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.featured-card {
+  padding: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.featured-card:hover {
+  border-color: var(--accent-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.featured-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.featured-card-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.featured-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
 }
 
 /* 技能列表 */
@@ -350,11 +1012,129 @@ enabled: true
   gap: 4px;
 }
 
-/* 空状态 */
-.empty-skills {
+/* 市场技能卡片 */
+.market-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.market-item:hover {
+  border-color: var(--accent-primary);
+}
+
+.market-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.market-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.update-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  background: var(--accent-orange, #f59e0b);
+  color: #fff;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.market-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.meta-item {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.meta-item.tag {
+  padding: 1px 6px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+.market-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.installed-label {
+  font-size: 12px;
+  color: var(--accent-green);
+  font-weight: 500;
+}
+
+/* Registry 区域 */
+.registry-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.registry-section h5 {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.registry-url-row {
+  display: flex;
+  gap: 8px;
+}
+
+.registry-input {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.registry-input:focus {
+  border-color: var(--accent-primary);
+}
+
+.registry-input::placeholder {
+  color: var(--text-muted);
+}
+
+.registry-section .tip {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* 状态 */
+.empty-state {
   padding: 40px 20px;
   text-align: center;
   color: var(--text-muted);
+}
+
+.empty-state.compact {
+  padding: 20px;
 }
 
 .empty-icon {
@@ -362,20 +1142,24 @@ enabled: true
   margin-bottom: 16px;
 }
 
-.empty-skills p {
+.empty-state p {
   margin: 0 0 8px 0;
 }
 
-.empty-skills .tip {
+.empty-state .tip,
+.tip {
   font-size: 12px;
-  margin-bottom: 16px;
+  color: var(--text-muted);
 }
 
-/* 加载中 */
-.loading-skills {
+.loading-state {
   padding: 40px 20px;
   text-align: center;
   color: var(--text-muted);
+}
+
+.loading-state.compact {
+  padding: 20px;
 }
 
 .spinner {
@@ -441,8 +1225,8 @@ enabled: true
   white-space: pre-wrap;
 }
 
-/* 预览弹窗 */
-.preview-modal {
+/* 弹窗 */
+.modal-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
@@ -452,7 +1236,7 @@ enabled: true
   z-index: 1100;
 }
 
-.preview-content {
+.modal-box {
   width: 600px;
   max-width: 90vw;
   max-height: 80vh;
@@ -463,7 +1247,7 @@ enabled: true
   flex-direction: column;
 }
 
-.preview-header {
+.modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -471,13 +1255,13 @@ enabled: true
   border-bottom: 1px solid var(--border-color);
 }
 
-.preview-title {
+.modal-title {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.preview-title h4 {
+.modal-title h4 {
   font-size: 16px;
   font-weight: 600;
   margin: 0;
@@ -488,27 +1272,34 @@ enabled: true
   color: var(--text-muted);
 }
 
-.preview-meta {
+.modal-meta {
   padding: 12px 16px;
   font-size: 12px;
   color: var(--text-muted);
   background: var(--bg-tertiary);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+}
+
+.modal-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .preview-time {
   font-size: 11px;
 }
 
-.preview-body {
+.modal-body {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
 }
 
-.preview-body pre {
+.modal-body pre {
   font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.6;
@@ -517,7 +1308,21 @@ enabled: true
   word-break: break-word;
 }
 
-/* 按钮样式 */
+.detail-placeholder {
+  text-align: center;
+  padding: 20px;
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+/* 按钮 */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -546,6 +1351,11 @@ enabled: true
   font-size: 12px;
 }
 
+.btn-xs {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
 .btn-primary {
   background: var(--accent-primary);
   color: var(--bg-primary);
@@ -553,6 +1363,25 @@ enabled: true
 
 .btn-primary:hover:not(:disabled) {
   filter: brightness(1.1);
+}
+
+.btn-accent {
+  background: var(--accent-orange, #f59e0b);
+  color: #fff;
+}
+
+.btn-accent:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.btn-danger-ghost {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.btn-danger-ghost:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
 }
 
 .btn-outline {

@@ -1743,6 +1743,33 @@ const electronAPI = {
       ipcRenderer.invoke('userSkill:getSkillsDir') as Promise<string>
   },
 
+  // 技能市场
+  skillMarket: {
+    list: (force?: boolean) =>
+      ipcRenderer.invoke('skillMarket:list', force) as Promise<any[]>,
+
+    search: (query: string) =>
+      ipcRenderer.invoke('skillMarket:search', query) as Promise<any[]>,
+
+    install: (skillId: string) =>
+      ipcRenderer.invoke('skillMarket:install', skillId) as Promise<{ success: boolean; error?: string }>,
+
+    uninstall: (skillId: string) =>
+      ipcRenderer.invoke('skillMarket:uninstall', skillId) as Promise<{ success: boolean; error?: string }>,
+
+    update: (skillId: string) =>
+      ipcRenderer.invoke('skillMarket:update', skillId) as Promise<{ success: boolean; error?: string }>,
+
+    getRegistryUrl: () =>
+      ipcRenderer.invoke('skillMarket:getRegistryUrl') as Promise<string>,
+
+    setRegistryUrl: (url: string) =>
+      ipcRenderer.invoke('skillMarket:setRegistryUrl', url) as Promise<void>,
+
+    fetchRegistry: (force?: boolean) =>
+      ipcRenderer.invoke('skillMarket:fetchRegistry', force) as Promise<any>
+  },
+
   // 知识库操作
   knowledge: {
     // 初始化

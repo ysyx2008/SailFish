@@ -149,6 +149,7 @@ interface StoreSchema {
   imTelegramBotToken: string      // Telegram Bot Token
   imExecutionMode: 'strict' | 'relaxed' | 'free'  // IM Agent 执行模式，默认 relaxed
   logLevel: LogLevel  // 日志级别
+  skillMarketRegistryUrl: string  // 技能市场 registry URL
 }
 
 const defaultConfig: StoreSchema = {
@@ -202,7 +203,8 @@ const defaultConfig: StoreSchema = {
   imTelegramAutoConnect: false,
   imTelegramBotToken: '',
   imExecutionMode: 'relaxed',
-  logLevel: 'warn'
+  logLevel: 'warn',
+  skillMarketRegistryUrl: ''
 }
 
 export class ConfigService {

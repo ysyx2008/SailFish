@@ -180,6 +180,7 @@ import { SftpService, SftpConfig } from './services/sftp.service'
 import { LocalFsService } from './services/local-fs.service'
 import { McpService } from './services/mcp.service'
 import { getUserSkillService, UserSkill } from './services/user-skill.service'
+import { getSkillMarketService, type MarketSkillItem, type SkillOperationResult, type SkillRegistry } from './services/skill-market.service'
 import { getKnowledgeService, KnowledgeService } from './services/knowledge'
 import type { KnowledgeSettings, SearchOptions, AddDocumentOptions, ModelTier } from './services/knowledge/types'
 import {
@@ -3098,6 +3099,44 @@ ipcMain.handle('userSkill:getContent', async (_event, skillId: string): Promise<
 // 获取技能目录路径
 ipcMain.handle('userSkill:getSkillsDir', async (): Promise<string> => {
   return getUserSkillService().getSkillsDir()
+})
+
+// ==================== 技能市场相关 ====================
+
+function getMarketService() {
+  return getSkillMarketService(configService, getUserSkillService())
+}
+
+ipcMain.handle('skillMarket:list', async (_event, force?: boolean): Promise<MarketSkillItem[]> => {
+  return getMarketService().listSkills(force)
+})
+
+ipcMain.handle('skillMarket:search', async (_event, query: string): Promise<MarketSkillItem[]> => {
+  return getMarketService().searchSkills(query)
+})
+
+ipcMain.handle('skillMarket:install', async (_event, skillId: string): Promise<SkillOperationResult> => {
+  return getMarketService().installSkill(skillId)
+})
+
+ipcMain.handle('skillMarket:uninstall', async (_event, skillId: string): Promise<SkillOperationResult> => {
+  return getMarketService().uninstallSkill(skillId)
+})
+
+ipcMain.handle('skillMarket:update', async (_event, skillId: string): Promise<SkillOperationResult> => {
+  return getMarketService().updateSkill(skillId)
+})
+
+ipcMain.handle('skillMarket:getRegistryUrl', async (): Promise<string> => {
+  return getMarketService().getRegistryUrl()
+})
+
+ipcMain.handle('skillMarket:setRegistryUrl', async (_event, url: string): Promise<void> => {
+  getMarketService().setRegistryUrl(url)
+})
+
+ipcMain.handle('skillMarket:fetchRegistry', async (_event, force?: boolean): Promise<SkillRegistry> => {
+  return getMarketService().fetchRegistry(force)
 })
 
 // ==================== 知识库相关 ====================
