@@ -38,8 +38,10 @@ export interface RefMap {
     name?: string
     /** 当多个元素同角色同名称时的索引 */
     nth?: number
-    /** 是否为必填（HTML required 或 aria-required） */
+    /** 是否为必填 */
     required?: boolean
+    /** 从 DOM 上下文推断的标签（当无障碍名称缺失时） */
+    contextLabel?: string
   }
 }
 
@@ -261,9 +263,9 @@ export async function getSnapshot(
     enhancedTree = filteredLines.join('\n')
   }
 
-  // 为表单控件标注必填状态（required / aria-required），便于 Agent 识别必填项
-  await enrichRequiredState(page, refs)
-  enhancedTree = patchTreeWithRequired(enhancedTree, refs)
+  // 为表单控件丰富上下文：必填标注 + 无名字段补 DOM 标签
+  await enrichFormControls(page, refs)
+  enhancedTree = patchTreeWithFormInfo(enhancedTree, refs)
 
   return { tree: enhancedTree, refs }
 }
@@ -308,10 +310,17 @@ async function filterHiddenRefs(page: Page, refs: RefMap): Promise<Set<string>> 
 }
 
 /**
- * 为表单控件 ref 检测并填充 required 状态。
- * 来源：1) HTML required / aria-required  2) 可访问名称以 * 结尾  3) 关联 label、placeholder、aria-label 文本含 * 或「必填」
+ * 为表单控件丰富上下文：检测必填状态 + 为无名字段查找 DOM 上下文标签。
+ *
+ * 检测策略（按优先级）：
+ * 1. HTML required / aria-required 属性
+ * 2. 向上找表单项容器（class 含 form-item/form__item 或有 data-index），从中提取：
+ *    - 不包含输入框的 label / [class*="label"] 文本作为标签
+ *    - [class*="required"] 元素判定必填
+ * 3. 向上逐层查看前兄弟节点的短文本（兜底）
+ * 4. aria-label / placeholder
  */
-async function enrichRequiredState(page: Page, refs: RefMap): Promise<void> {
+async function enrichFormControls(page: Page, refs: RefMap): Promise<void> {
   const entries = Object.entries(refs).filter(([, data]) =>
     FORM_CONTROL_ROLES.has(data.role)
   )
@@ -332,29 +341,87 @@ async function enrichRequiredState(page: Page, refs: RefMap): Promise<void> {
           if (data.nth !== undefined) {
             loc = loc.nth(data.nth)
           }
-          const requiredFromDom = await loc.evaluate((el) => {
-            const fromAttr =
-              ('required' in el && (el as HTMLInputElement).required) ||
+          const info: { required: boolean; labelText: string } = await loc.evaluate((el: Element) => {
+            const inp = el as HTMLInputElement
+            let required = Boolean(
+              ('required' in el && inp.required) ||
               el.getAttribute('aria-required') === 'true'
-            if (fromAttr) return true
-            // 未设 required 时：收集关联 label 文本（for=、包裹、前兄弟、同父下 label），以及 placeholder/aria-label
-            let text = (el.getAttribute('aria-label') || (el as HTMLInputElement).placeholder || '') as string
-            let labelEl: Element | null = null
-            if (el.id) labelEl = document.querySelector(`label[for="${el.id}"]`)
-            if (!labelEl && el.closest('label')) labelEl = el.closest('label')
-            if (!labelEl && el.previousElementSibling?.matches?.('label')) labelEl = el.previousElementSibling as Element
-            if (!labelEl && el.parentElement) {
-              const first = el.parentElement.querySelector('label')
-              if (first) labelEl = first
+            )
+            let labelText = ''
+
+            // 1) label[for=id]
+            if (inp.id) {
+              const lbl = document.querySelector(`label[for="${inp.id}"]`)
+              if (lbl) labelText = (lbl.textContent || '').trim()
             }
-            if (labelEl) text += ' ' + (labelEl.textContent || '')
-            return /\*|必填/.test(text)
+
+            // 2) 向上找表单项容器，再从容器中提取标签和必填标记
+            if (!labelText) {
+              let container: Element | null = null
+              let node: Element | null = el.parentElement
+              for (let up = 0; up < 12 && node; up++) {
+                const cls = node.className || ''
+                if (/form[-_]?item|form[-_]?group|form[-_]?field/i.test(cls) || node.hasAttribute('data-index')) {
+                  container = node
+                  break
+                }
+                node = node.parentElement
+              }
+              if (container) {
+                // 找不包含输入框的 label 或 [class*="label"] 元素
+                const candidates = container.querySelectorAll('label, [class*="label"]')
+                for (let c = 0; c < candidates.length; c++) {
+                  const lbl = candidates[c]
+                  if (!lbl.contains(el)) {
+                    const t = (lbl.textContent || '').trim()
+                    if (t && t.length < 50) { labelText = t; break }
+                  }
+                }
+                // 检查 required mark 元素
+                if (!required) {
+                  const reqEl = container.querySelector('[class*="required"]')
+                  if (reqEl && (reqEl.textContent || '').includes('*')) {
+                    required = true
+                  }
+                }
+              }
+            }
+
+            // 3) 兜底：向上逐层找前兄弟节点短文本
+            if (!labelText) {
+              let cur: Element | null = el
+              for (let depth = 0; depth < 12 && cur && cur.parentElement; depth++) {
+                const parent: Element = cur.parentElement
+                const siblings = Array.from(parent.children)
+                const idx = siblings.indexOf(cur)
+                for (let j = idx - 1; j >= 0; j--) {
+                  const t = (siblings[j].textContent || '').trim()
+                  if (t.length > 0 && t.length < 50) { labelText = t; break }
+                }
+                if (labelText) break
+                cur = parent
+              }
+            }
+
+            // 4) aria-label / placeholder
+            if (!labelText) {
+              labelText = (el.getAttribute('aria-label') || inp.placeholder || '').trim()
+            }
+
+            if (!required && /\*|必填/.test(labelText)) {
+              required = true
+            }
+            return { required, labelText }
           })
-          // 可访问名称以 * 结尾也视为必填（标签约定）
+
           const requiredFromName = Boolean(data.name?.trimEnd().endsWith('*'))
-          refs[refId].required = requiredFromDom || requiredFromName
+          refs[refId].required = info.required || requiredFromName
+
+          if (!data.name && info.labelText) {
+            refs[refId].contextLabel = info.labelText.replace(/[*:：]\s*$/, '').trim()
+          }
         } catch {
-          // 检测失败时保留不标注必填
+          // 检测失败时保留不标注
         }
       })
     )
@@ -362,19 +429,25 @@ async function enrichRequiredState(page: Page, refs: RefMap): Promise<void> {
 }
 
 /**
- * 在树文本中为必填 ref 所在行追加 [必填] 标注
+ * 在树文本中为表单控件行追加 [label=...] 和 [必填] 标注
  */
-function patchTreeWithRequired(tree: string, refs: RefMap): string {
+function patchTreeWithFormInfo(tree: string, refs: RefMap): string {
   return tree
     .split('\n')
     .map((line) => {
       const refMatch = line.match(REF_IN_LINE_PATTERN)
       if (!refMatch) return line
       const refId = refMatch[1]
-      if (refs[refId]?.required) {
-        return `${line} [必填]`
+      const data = refs[refId]
+      if (!data) return line
+      let patched = line
+      if (data.contextLabel && !data.name) {
+        patched += ` [label=${data.contextLabel}]`
       }
-      return line
+      if (data.required) {
+        patched += ` [必填]`
+      }
+      return patched
     })
     .join('\n')
 }
