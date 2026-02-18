@@ -386,7 +386,8 @@ export const useTerminalStore = defineStore('terminal', () => {
       encoding?: string  // 字符编码，默认 utf-8
       sessionId?: string  // SSH 会话 ID（用于重连）
     },
-    shell?: string  // 本地终端可指定 shell (cmd/powershell/bash 等)
+    shell?: string,
+    pendingTask?: string
   ): Promise<string> {
     const id = uuidv4()
     
@@ -430,6 +431,10 @@ export const useTerminalStore = defineStore('terminal', () => {
 
     tabs.value.push(tab)
     activeTabId.value = id
+
+    if (pendingTask) {
+      pendingSchedulerTasks.value[id] = pendingTask
+    }
 
     // 获取响应式 tab 对象的引用
     const reactiveTab = tabs.value.find(t => t.id === id)!
@@ -509,8 +514,7 @@ export const useTerminalStore = defineStore('terminal', () => {
 
     // TODO: headless 模式（无终端纯助手）待后续实现
     const tabType = type === 'headless' ? 'local' : type
-    const tabId = await createTab(tabType, options?.sshConfig, options?.shell)
-    pendingSchedulerTasks.value[tabId] = prompt
+    const tabId = await createTab(tabType, options?.sshConfig, options?.shell, prompt)
     return tabId
   }
 
