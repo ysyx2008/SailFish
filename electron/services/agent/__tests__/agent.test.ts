@@ -472,6 +472,52 @@ describe('Agent run method', () => {
       expect(taskMemory.getTaskCount()).toBe(2)
       expect(mockHistoryService.getAgentRecordById).toHaveBeenCalledWith(sessionId)
     })
+
+    it('should restore from steps when messages field is missing (old records)', async () => {
+      const sessionId = 'session_old_record'
+      const mockHistoryService = {
+        getAgentRecordById: vi.fn().mockReturnValue({
+          id: sessionId,
+          timestamp: Date.now() - 5000,
+          terminalId: 'test-pty',
+          terminalType: 'local',
+          userTask: 'Old task without messages',
+          steps: [
+            { id: 'ut1', type: 'user_task', content: 'Old task 1', timestamp: Date.now() - 5000 },
+            { id: 'tc1', type: 'tool_call', content: 'Running command', toolName: 'execute_command', timestamp: Date.now() - 4500 },
+            { id: 'tr1', type: 'tool_result', content: 'OK', toolName: 'execute_command', toolResult: 'success', timestamp: Date.now() - 4000 },
+            { id: 'fr1', type: 'final_result', content: 'Task 1 done', timestamp: Date.now() - 3500 },
+            { id: 'ut2', type: 'user_task', content: 'Old task 2', timestamp: Date.now() - 3000 },
+            { id: 'fr2', type: 'final_result', content: 'Task 2 done', timestamp: Date.now() - 2000 }
+          ],
+          // messages field is intentionally missing (old record)
+          finalResult: 'Task 2 done',
+          duration: 3000,
+          status: 'completed'
+        }),
+        saveAgentRecord: vi.fn()
+      }
+
+      const services = createMockServices({ historyService: mockHistoryService as any })
+      const agentWithHistory = new TestAgent(services)
+
+      mockAiService = services.aiService as any
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages: any, _tools: any, onChunk: any, _onToolCall: any, onDone: any) => {
+          onChunk('Done')
+          onDone({ content: 'Done', tool_calls: undefined })
+          return Promise.resolve()
+        }
+      )
+
+      const context = createMockContext({ sessionId, sessionStartTime: Date.now() - 5000 })
+      await agentWithHistory.run('New task', context)
+
+      const taskMemory = agentWithHistory.exposeTaskMemory()
+      // 应该有 3 个任务：从 steps 恢复的 2 个 + 当前的 1 个
+      expect(taskMemory.getTaskCount()).toBe(3)
+      expect(mockHistoryService.getAgentRecordById).toHaveBeenCalledWith(sessionId)
+    })
   })
 
   describe('with tool calls', () => {

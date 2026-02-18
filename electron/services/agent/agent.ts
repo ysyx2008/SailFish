@@ -429,7 +429,20 @@ export abstract class Agent {
           task.messages
         )
       }
-      console.log(`[Agent] Restored TaskMemory from HistoryService: ${tasks.length} tasks`)
+      console.log(`[Agent] Restored TaskMemory from HistoryService: ${tasks.length} tasks (from messages)`)
+    } else if (record.steps && record.steps.length > 0) {
+      // 降级：旧记录没有 messages，从 steps 重建基本 TaskMemory
+      const tasks = this.splitStepsIntoTasks(record.steps)
+      for (const task of tasks) {
+        this.taskMemory.saveTask(
+          task.id,
+          task.userTask,
+          task.steps,
+          'success',
+          task.finalResult
+        )
+      }
+      console.log(`[Agent] Restored TaskMemory from HistoryService: ${tasks.length} tasks (from steps, no messages)`)
     }
     
     // 恢复 _sessionSteps（避免后续保存时覆盖旧步骤）
@@ -494,6 +507,62 @@ export abstract class Agent {
         userTask: currentUserTask,
         finalResult: lastAssistant?.content || '',
         messages: currentTaskMessages
+      })
+    }
+    
+    return tasks
+  }
+  
+  /**
+   * 从 steps 重建基本任务列表（降级路径：旧记录没有 messages 时使用）
+   * 通过 user_task 和 final_result 步骤分割
+   */
+  private splitStepsIntoTasks(stepRecords: import('../history.service').AgentStepRecord[]): Array<{
+    id: string; userTask: string; finalResult: string; steps: AgentStep[]
+  }> {
+    if (!stepRecords || stepRecords.length === 0) return []
+    
+    const tasks: Array<{ id: string; userTask: string; finalResult: string; steps: AgentStep[] }> = []
+    let currentSteps: AgentStep[] = []
+    let currentUserTask = ''
+    const baseTs = stepRecords[0]?.timestamp || Date.now()
+    
+    for (const s of stepRecords) {
+      const step: AgentStep = {
+        id: s.id,
+        type: s.type as AgentStep['type'],
+        content: s.content,
+        toolName: s.toolName,
+        toolArgs: s.toolArgs,
+        toolResult: s.toolResult,
+        riskLevel: s.riskLevel as RiskLevel | undefined,
+        timestamp: s.timestamp
+      }
+      
+      if (s.type === 'user_task') {
+        if (currentSteps.length > 0 && currentUserTask) {
+          const lastFinal = [...currentSteps].reverse().find(st => st.type === 'final_result')
+          tasks.push({
+            id: `restored_${baseTs}_${tasks.length}`,
+            userTask: currentUserTask,
+            finalResult: lastFinal?.content || '',
+            steps: currentSteps
+          })
+        }
+        currentSteps = []
+        currentUserTask = s.content || ''
+      }
+      
+      currentSteps.push(step)
+    }
+    
+    if (currentSteps.length > 0 && currentUserTask) {
+      const lastFinal = [...currentSteps].reverse().find(st => st.type === 'final_result')
+      tasks.push({
+        id: `restored_${baseTs}_${tasks.length}`,
+        userTask: currentUserTask,
+        finalResult: lastFinal?.content || '',
+        steps: currentSteps
       })
     }
     
