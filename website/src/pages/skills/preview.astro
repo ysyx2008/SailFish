@@ -1,0 +1,355 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
+
+const lang = 'en';
+---
+
+<Layout title="Skill Preview - SailFish" lang={lang}>
+  <Header lang={lang} />
+  <main class="skill-preview-page">
+    <div class="container">
+      <div class="preview-header" id="previewHeader" style="display:none">
+        <a href="/skills" class="back-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          Back to Skill Market
+        </a>
+        <div class="skill-meta" id="skillMeta"></div>
+      </div>
+      <div class="preview-loading" id="previewLoading">
+        <div class="spinner"></div>
+        <p>Loading skill...</p>
+      </div>
+      <div class="preview-error" id="previewError" style="display:none">
+        <p>Failed to load skill content.</p>
+        <a href="/skills">← Back to Skill Market</a>
+      </div>
+      <article class="markdown-body" id="markdownBody"></article>
+      <div class="preview-footer" id="previewFooter" style="display:none">
+        <div class="install-hint">
+          <h3>Install this skill</h3>
+          <code id="installCmd"></code>
+        </div>
+      </div>
+    </div>
+  </main>
+  <Footer lang={lang} />
+</Layout>
+
+<script is:inline src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script is:inline>
+  (function() {
+    const params = new URLSearchParams(location.search);
+    const skillId = params.get('id');
+    if (!skillId || !/^[a-zA-Z0-9_-]+$/.test(skillId)) {
+      document.getElementById('previewLoading').style.display = 'none';
+      document.getElementById('previewError').style.display = 'block';
+      return;
+    }
+
+    const mdUrl = '/skills/' + skillId + '/SKILL.md';
+
+    fetch(mdUrl)
+      .then(function(res) {
+        if (!res.ok) throw new Error(res.status);
+        return res.text();
+      })
+      .then(function(text) {
+        var body = text;
+        var meta = {};
+        if (text.startsWith('---')) {
+          var end = text.indexOf('---', 3);
+          if (end !== -1) {
+            var front = text.substring(3, end).trim();
+            body = text.substring(end + 3).trim();
+            front.split('\n').forEach(function(line) {
+              var idx = line.indexOf(':');
+              if (idx > 0) {
+                var key = line.substring(0, idx).trim();
+                var val = line.substring(idx + 1).trim().replace(/^["']|["']$/g, '');
+                meta[key] = val;
+              }
+            });
+          }
+        }
+
+        document.getElementById('previewLoading').style.display = 'none';
+        document.getElementById('previewHeader').style.display = '';
+        document.getElementById('previewFooter').style.display = '';
+
+        if (meta.name || meta.version) {
+          var metaHtml = '';
+          if (meta.name) metaHtml += '<h1 class="skill-detail-name">' + meta.name + '</h1>';
+          if (meta.description) metaHtml += '<p class="skill-detail-desc">' + meta.description + '</p>';
+          if (meta.version) metaHtml += '<span class="skill-detail-version">v' + meta.version + '</span>';
+          document.getElementById('skillMeta').innerHTML = metaHtml;
+        }
+
+        document.getElementById('markdownBody').innerHTML = marked.parse(body);
+        document.getElementById('installCmd').textContent = 'npm run sft -- skill:install ' + skillId;
+        document.title = (meta.name || skillId) + ' - SailFish Skills';
+      })
+      .catch(function() {
+        document.getElementById('previewLoading').style.display = 'none';
+        document.getElementById('previewError').style.display = 'block';
+      });
+  })();
+</script>
+
+<style>
+  .skill-preview-page {
+    padding: 120px 0 80px;
+    min-height: 100vh;
+  }
+
+  .preview-header {
+    margin-bottom: 32px;
+  }
+
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-text-secondary);
+    font-size: 14px;
+    margin-bottom: 24px;
+    transition: color 0.2s;
+  }
+
+  .back-link:hover {
+    color: var(--color-accent-primary);
+  }
+
+  .skill-detail-name {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin-bottom: 8px;
+  }
+
+  .skill-detail-desc {
+    font-size: 16px;
+    color: var(--color-text-secondary);
+    margin-bottom: 12px;
+  }
+
+  .skill-detail-version {
+    display: inline-block;
+    padding: 3px 12px;
+    background: rgba(6, 182, 212, 0.1);
+    color: var(--color-accent-primary);
+    border-radius: 100px;
+    font-size: 13px;
+    font-family: var(--font-mono);
+  }
+
+  .preview-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 80px 0;
+    color: var(--color-text-muted);
+  }
+
+  .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--color-border);
+    border-top-color: var(--color-accent-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .preview-error {
+    text-align: center;
+    padding: 80px 0;
+    color: var(--color-text-muted);
+  }
+
+  .preview-error a {
+    color: var(--color-accent-primary);
+    margin-top: 12px;
+    display: inline-block;
+  }
+
+  /* Markdown rendering */
+  .markdown-body {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 40px;
+    line-height: 1.8;
+    font-size: 15px;
+    color: var(--color-text-secondary);
+  }
+
+  .markdown-body :global(h1) {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin: 32px 0 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .markdown-body :global(h1:first-child) {
+    margin-top: 0;
+  }
+
+  .markdown-body :global(h2) {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin: 28px 0 12px;
+  }
+
+  .markdown-body :global(h3) {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin: 20px 0 10px;
+  }
+
+  .markdown-body :global(p) {
+    margin: 12px 0;
+  }
+
+  .markdown-body :global(ul),
+  .markdown-body :global(ol) {
+    padding-left: 24px;
+    margin: 12px 0;
+  }
+
+  .markdown-body :global(li) {
+    margin: 6px 0;
+  }
+
+  .markdown-body :global(code) {
+    background: var(--color-bg-tertiary);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--color-accent-primary);
+  }
+
+  .markdown-body :global(pre) {
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 16px 20px;
+    margin: 16px 0;
+    overflow-x: auto;
+  }
+
+  .markdown-body :global(pre code) {
+    background: none;
+    padding: 0;
+    color: var(--color-text-secondary);
+    font-size: 14px;
+  }
+
+  .markdown-body :global(table) {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+  }
+
+  .markdown-body :global(th),
+  .markdown-body :global(td) {
+    padding: 10px 14px;
+    border: 1px solid var(--color-border);
+    text-align: left;
+  }
+
+  .markdown-body :global(th) {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+    font-weight: 600;
+    font-size: 14px;
+  }
+
+  .markdown-body :global(blockquote) {
+    border-left: 4px solid var(--color-accent-primary);
+    padding: 8px 16px;
+    margin: 16px 0;
+    background: rgba(6, 182, 212, 0.05);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  }
+
+  .markdown-body :global(hr) {
+    border: none;
+    border-top: 1px solid var(--color-border);
+    margin: 24px 0;
+  }
+
+  .markdown-body :global(a) {
+    color: var(--color-accent-primary);
+  }
+
+  .markdown-body :global(a:hover) {
+    color: var(--color-accent-secondary);
+  }
+
+  .markdown-body :global(strong) {
+    color: var(--color-text-primary);
+  }
+
+  /* Install hint footer */
+  .preview-footer {
+    margin-top: 32px;
+  }
+
+  .install-hint {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 24px 32px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .install-hint h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+  }
+
+  .install-hint code {
+    flex: 1;
+    display: block;
+    padding: 10px 20px;
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--color-accent-primary);
+  }
+
+  @media (max-width: 768px) {
+    .skill-preview-page {
+      padding: 100px 0 60px;
+    }
+
+    .markdown-body {
+      padding: 24px;
+    }
+
+    .install-hint {
+      flex-direction: column;
+      gap: 12px;
+      align-items: flex-start;
+    }
+  }
+</style>

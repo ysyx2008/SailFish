@@ -1,0 +1,735 @@
+---
+import { useTranslations, type Lang } from '../i18n/utils';
+import { defaultLanguage } from '../i18n/translations';
+import fs from 'node:fs';
+import path from 'node:path';
+
+interface Props {
+  lang?: Lang;
+}
+
+const { lang = defaultLanguage } = Astro.props;
+const t = useTranslations(lang);
+
+interface SkillCategory {
+  id: string;
+  name: string;
+  nameEn: string;
+  icon: string;
+}
+
+interface MarketSkill {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  author: string;
+  category: string;
+  tags: string[];
+  featured?: boolean;
+  url: string;
+}
+
+const registryPath = path.resolve('public/skill-registry.json');
+const registryData = JSON.parse(fs.readFileSync(registryPath, 'utf-8'));
+const categories: SkillCategory[] = registryData.categories || [];
+const skills: MarketSkill[] = registryData.skills || [];
+const featuredSkills = skills.filter(s => s.featured);
+
+function getCategoryDisplay(cat: SkillCategory) {
+  return lang === 'zh' ? cat.name : cat.nameEn;
+}
+
+function getCategoryIcon(categoryId: string) {
+  return categories.find(c => c.id === categoryId)?.icon || '📦';
+}
+
+function getCategoryName(categoryId: string) {
+  const cat = categories.find(c => c.id === categoryId);
+  if (!cat) return categoryId;
+  return lang === 'zh' ? cat.name : cat.nameEn;
+}
+
+function skillPreviewUrl(skillId: string) {
+  const base = lang === 'zh' ? '/zh/skills/preview' : '/skills/preview';
+  return `${base}?id=${skillId}`;
+}
+---
+
+<section class="skill-market">
+  <div class="container">
+    <!-- Hero -->
+    <div class="market-hero fade-in">
+      <h1 class="market-title">{t.skillMarket.title}</h1>
+      <p class="market-subtitle">{t.skillMarket.subtitle}</p>
+      <div class="market-stats">
+        <span class="stat-item">
+          <span class="stat-number">{skills.length}</span>
+          {t.skillMarket.skillCount}
+        </span>
+        <span class="stat-divider">·</span>
+        <span class="stat-item">
+          <span class="stat-number">{categories.length}</span>
+          {lang === 'zh' ? '个分类' : ' categories'}
+        </span>
+      </div>
+    </div>
+
+    <!-- Category Filter -->
+    <div class="category-bar fade-in fade-in-delay-1">
+      <button class="category-chip active" data-category="all">
+        {t.skillMarket.categories.all}
+      </button>
+      {categories.map(cat => (
+        <button class="category-chip" data-category={cat.id}>
+          <span class="category-icon">{cat.icon}</span>
+          {getCategoryDisplay(cat)}
+        </button>
+      ))}
+    </div>
+
+    <!-- Featured -->
+    {featuredSkills.length > 0 && (
+      <div class="featured-section fade-in fade-in-delay-2" data-section="featured">
+        <h2 class="section-heading">
+          <span class="heading-icon">⭐</span>
+          {t.skillMarket.featured}
+        </h2>
+        <div class="featured-grid">
+          {featuredSkills.map(skill => (
+            <div class="featured-card" data-skill-category={skill.category}>
+              <div class="featured-card-header">
+                <span class="skill-category-icon">{getCategoryIcon(skill.category)}</span>
+                <div class="featured-card-meta">
+                  <h3 class="featured-card-title">{skill.name}</h3>
+                  <span class="skill-version">v{skill.version}</span>
+                </div>
+              </div>
+              <p class="featured-card-desc">{skill.description}</p>
+              <div class="featured-card-footer">
+                <div class="skill-tags">
+                  {skill.tags.slice(0, 3).map(tag => (
+                    <span class="skill-tag">{tag}</span>
+                  ))}
+                </div>
+                <span class="skill-category-badge">{getCategoryName(skill.category)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+
+    <!-- All Skills -->
+    <div class="all-skills-section fade-in fade-in-delay-3">
+      <h2 class="section-heading">
+        <span class="heading-icon">📦</span>
+        {t.skillMarket.allSkills}
+      </h2>
+      <div class="skills-list">
+        {skills.map(skill => (
+          <div class="skill-row" data-skill-category={skill.category}>
+            <div class="skill-row-icon">{getCategoryIcon(skill.category)}</div>
+            <div class="skill-row-body">
+              <div class="skill-row-header">
+                <h3 class="skill-row-name">{skill.name}</h3>
+                {skill.featured && <span class="featured-badge">★</span>}
+                <span class="skill-version">v{skill.version}</span>
+              </div>
+              <p class="skill-row-desc">{skill.description}</p>
+              <div class="skill-row-meta">
+                <span class="skill-author">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
+                  </svg>
+                  {skill.author}
+                </span>
+                <span class="skill-category-label">
+                  {getCategoryIcon(skill.category)} {getCategoryName(skill.category)}
+                </span>
+                <div class="skill-tags-inline">
+                  {skill.tags.map(tag => (
+                    <span class="skill-tag-sm">{tag}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div class="skill-row-actions">
+              <a href={skillPreviewUrl(skill.id)} class="btn-view-skill">
+                {t.skillMarket.viewContent}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                  <path d="M7 17L17 7M17 7H7M17 7v10"/>
+                </svg>
+              </a>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <!-- Install Guide -->
+    <div class="install-section fade-in">
+      <div class="install-card">
+        <h2 class="install-title">{t.skillMarket.install}</h2>
+        <div class="install-steps">
+          <div class="install-step">
+            <span class="step-number">1</span>
+            <p>{t.skillMarket.installStep1}</p>
+          </div>
+          <div class="install-step">
+            <span class="step-number">2</span>
+            <p>{t.skillMarket.installStep2}</p>
+          </div>
+          <div class="install-step">
+            <span class="step-number">3</span>
+            <div>
+              <p>{t.skillMarket.installStep3}</p>
+              <code class="cli-command">npm run sft -- skill:install &lt;skill-id&gt;</code>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Contribute CTA -->
+    <div class="contribute-section fade-in">
+      <h2 class="contribute-title">{t.skillMarket.contribute}</h2>
+      <p class="contribute-desc">{t.skillMarket.contributeDesc}</p>
+      <a href="https://github.com/ysyx2008/SFTerminal" target="_blank" rel="noopener" class="btn btn-primary contribute-btn">
+        {t.skillMarket.contributeBtn}
+      </a>
+    </div>
+  </div>
+</section>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const chips = document.querySelectorAll<HTMLButtonElement>('.category-chip');
+    const skillRows = document.querySelectorAll<HTMLElement>('.skill-row');
+    const featuredCards = document.querySelectorAll<HTMLElement>('.featured-card');
+    const featuredSection = document.querySelector<HTMLElement>('[data-section="featured"]');
+
+    chips.forEach(chip => {
+      chip.addEventListener('click', () => {
+        chips.forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        const cat = chip.dataset.category;
+
+        skillRows.forEach(row => {
+          if (cat === 'all' || row.dataset.skillCategory === cat) {
+            row.style.display = '';
+          } else {
+            row.style.display = 'none';
+          }
+        });
+
+        if (featuredSection) {
+          if (cat === 'all') {
+            featuredSection.style.display = '';
+            featuredCards.forEach(card => card.style.display = '');
+          } else {
+            let anyVisible = false;
+            featuredCards.forEach(card => {
+              if (card.dataset.skillCategory === cat) {
+                card.style.display = '';
+                anyVisible = true;
+              } else {
+                card.style.display = 'none';
+              }
+            });
+            featuredSection.style.display = anyVisible ? '' : 'none';
+          }
+        }
+      });
+    });
+  });
+</script>
+
+<style>
+  .skill-market {
+    padding: 140px 0 80px;
+    min-height: 100vh;
+  }
+
+  .market-hero {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  .market-title {
+    font-size: 48px;
+    font-weight: 700;
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 16px;
+  }
+
+  .market-subtitle {
+    font-size: 18px;
+    color: var(--color-text-secondary);
+    max-width: 600px;
+    margin: 0 auto 24px;
+    line-height: 1.6;
+  }
+
+  .market-stats {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    font-size: 15px;
+    color: var(--color-text-secondary);
+  }
+
+  .stat-number {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--color-accent-primary);
+  }
+
+  .stat-divider {
+    color: var(--color-text-muted);
+  }
+
+  /* Category Bar */
+  .category-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 48px;
+  }
+
+  .category-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border-radius: 100px;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-secondary);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+  }
+
+  .category-chip:hover {
+    border-color: var(--color-border-hover);
+    color: var(--color-text-primary);
+    background: var(--color-bg-card);
+  }
+
+  .category-chip.active {
+    border-color: var(--color-accent-primary);
+    color: var(--color-accent-primary);
+    background: rgba(6, 182, 212, 0.1);
+  }
+
+  .category-icon {
+    font-size: 16px;
+  }
+
+  /* Section Heading */
+  .section-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 24px;
+  }
+
+  .heading-icon {
+    font-size: 24px;
+  }
+
+  /* Featured Grid */
+  .featured-section {
+    margin-bottom: 56px;
+  }
+
+  .featured-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+  }
+
+  .featured-card {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .featured-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--gradient-primary);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .featured-card:hover {
+    border-color: var(--color-border-hover);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-glow);
+  }
+
+  .featured-card:hover::before {
+    opacity: 1;
+  }
+
+  .featured-card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+
+  .skill-category-icon {
+    font-size: 28px;
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-md);
+  }
+
+  .featured-card-meta {
+    flex: 1;
+  }
+
+  .featured-card-title {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 4px;
+  }
+
+  .skill-version {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+  }
+
+  .featured-card-desc {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+    margin-bottom: 16px;
+  }
+
+  .featured-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .skill-tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .skill-tag {
+    padding: 3px 10px;
+    background: var(--color-bg-tertiary);
+    border-radius: 100px;
+    font-size: 12px;
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+  }
+
+  .skill-category-badge {
+    font-size: 12px;
+    padding: 3px 10px;
+    background: rgba(6, 182, 212, 0.1);
+    color: var(--color-accent-primary);
+    border-radius: 100px;
+    white-space: nowrap;
+  }
+
+  /* All Skills List */
+  .all-skills-section {
+    margin-bottom: 56px;
+  }
+
+  .skills-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+
+  .skill-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 20px 24px;
+    transition: background 0.2s ease;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .skill-row:last-child {
+    border-bottom: none;
+  }
+
+  .skill-row:hover {
+    background: rgba(6, 182, 212, 0.03);
+  }
+
+  .skill-row-icon {
+    font-size: 24px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+  }
+
+  .skill-row-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .skill-row-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .skill-row-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  .featured-badge {
+    color: #f59e0b;
+    font-size: 14px;
+  }
+
+  .skill-row-desc {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+    margin-bottom: 8px;
+  }
+
+  .skill-row-meta {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .skill-author {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--color-text-muted);
+  }
+
+  .skill-category-label {
+    font-size: 13px;
+    color: var(--color-text-muted);
+  }
+
+  .skill-tags-inline {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .skill-tag-sm {
+    padding: 2px 8px;
+    background: var(--color-bg-tertiary);
+    border-radius: 100px;
+    font-size: 11px;
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+  }
+
+  .skill-row-actions {
+    flex-shrink: 0;
+    align-self: center;
+  }
+
+  .btn-view-skill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-border);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 13px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+  }
+
+  .btn-view-skill:hover {
+    border-color: var(--color-accent-primary);
+    color: var(--color-accent-primary);
+    background: rgba(6, 182, 212, 0.05);
+  }
+
+  /* Install Section */
+  .install-section {
+    margin-bottom: 56px;
+  }
+
+  .install-card {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 40px;
+  }
+
+  .install-title {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 28px;
+  }
+
+  .install-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .install-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .step-number {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--gradient-primary);
+    color: white;
+    border-radius: 50%;
+    font-size: 14px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .install-step p {
+    font-size: 15px;
+    color: var(--color-text-secondary);
+    line-height: 32px;
+  }
+
+  .cli-command {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 10px 20px;
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--color-accent-primary);
+  }
+
+  /* Contribute Section */
+  .contribute-section {
+    text-align: center;
+    padding: 60px 0;
+  }
+
+  .contribute-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin-bottom: 12px;
+  }
+
+  .contribute-desc {
+    font-size: 16px;
+    color: var(--color-text-secondary);
+    margin-bottom: 24px;
+    max-width: 500px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .contribute-btn {
+    display: inline-block;
+    padding: 14px 32px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .skill-market {
+      padding: 120px 0 60px;
+    }
+
+    .market-title {
+      font-size: 32px;
+    }
+
+    .market-subtitle {
+      font-size: 16px;
+    }
+
+    .featured-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .skill-row {
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .skill-row-actions {
+      align-self: flex-start;
+    }
+
+    .install-card {
+      padding: 24px;
+    }
+
+    .category-bar {
+      gap: 8px;
+    }
+
+    .category-chip {
+      padding: 6px 14px;
+      font-size: 13px;
+    }
+  }
+</style>
