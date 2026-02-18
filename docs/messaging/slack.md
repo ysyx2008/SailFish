@@ -2,7 +2,7 @@
 
 [中文](./slack_CN.md) | English
 
-Follow these steps to create a Slack app and get the credentials needed for SFTerminal. For an overview of messaging integration, see [Messaging Integration Guide](./README.md).
+Follow these steps to create a Slack app and get the credentials needed for SailFish. For an overview of messaging integration, see [Messaging Integration Guide](./README.md).
 
 ---
 
@@ -19,7 +19,7 @@ Follow these steps to create a Slack app and get the credentials needed for SFTe
 1. In the left menu, go to **Socket Mode**
 2. Toggle on **Enable Socket Mode**
 3. You'll be prompted to generate an App-Level Token — enter a token name (e.g. `socket`), select the `connections:write` scope
-4. Copy the generated **App-Level Token** (starts with `xapp-`), you'll need it later in SFTerminal
+4. Copy the generated **App-Level Token** (starts with `xapp-`), you'll need it later in SailFish
 
 ---
 
@@ -77,9 +77,9 @@ Go to **OAuth & Permissions** in the left menu, and add the following **Bot Toke
 
 ## Next Steps
 
-In SFTerminal, go to **Settings** → **Remote Access**, expand the **Slack** card, and enter:
+In SailFish, go to **Settings** → **Remote Access**, expand the **Slack** card, and enter:
 
 - **Bot User OAuth Token** (xoxb-...)
 - **App-Level Token** (xapp-...)
 
-Then click **Connect**. See [Connect in SFTerminal](./README.md#connect-in-sfterminal) for full usage and FAQ.
+Then click **Connect**. See [Connect in SailFish](./README.md#connect-in-sailfish) for full usage and FAQ.

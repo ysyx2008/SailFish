@@ -2,7 +2,7 @@
 
 [中文](./README_CN.md) | English
 
-This guide explains how to connect SFTerminal's AI Agent to Slack, Telegram, DingTalk, Feishu (Lark), and WeCom (WeChat Work), enabling you to chat with the AI directly from your messaging app.
+This guide explains how to connect SailFish's AI Agent to Slack, Telegram, DingTalk, Feishu (Lark), and WeCom (WeChat Work), enabling you to chat with the AI directly from your messaging app.
 
 Once connected, you can interact with the AI Agent just like chatting with a colleague — send a message, and the Agent will execute tasks on your machine and reply with the results.
 
@@ -17,7 +17,7 @@ User sends a message in chat
   Slack/Telegram/DingTalk/Feishu/WeCom server
        │ (WebSocket / Long Polling)
        ▼
-  SFTerminal Messaging Service
+  SailFish Messaging Service
        │
        ▼
   Local AI Agent processes the request
@@ -46,9 +46,9 @@ Choose your platform and follow its setup guide:
 
 ---
 
-## Connect in SFTerminal
+## Connect in SailFish
 
-1. Open SFTerminal, go to **Settings** → **Remote Access**
+1. Open SailFish, go to **Settings** → **Remote Access**
 2. In the **Messaging Integration** section, expand the card for your platform (Slack / Telegram / DingTalk / Feishu / WeCom)
 3. Enter the credentials obtained from the setup guide above:
    - **Slack**: Bot Token (xoxb-...) + App-Level Token (xapp-...)
@@ -57,7 +57,7 @@ Choose your platform and follow its setup guide:
    - **Feishu**: App ID + App Secret
    - **WeCom**: Corp ID, Corp Secret, Agent ID, Callback Token, EncodingAESKey, Callback Port
 4. Click **Connect** and wait for the status to show ✅ **Connected**
-5. Optional: Check **Auto-connect on startup** so SFTerminal reconnects automatically next time
+5. Optional: Check **Auto-connect on startup** so SailFish reconnects automatically next time
 
 ---
 
@@ -100,9 +100,9 @@ The AI Agent can send local files via the bot. Typical use cases:
 
 ### Bot Doesn't Reply
 
-- Confirm SFTerminal is running and the connection status shows "Connected"
+- Confirm SailFish is running and the connection status shows "Connected"
 - In group chats, you must **@mention the bot** to trigger a response
-- Check that the AI model configuration in SFTerminal is correct
+- Check that the AI model configuration in SailFish is correct
 
 ### Messages Truncated
 
@@ -111,7 +111,7 @@ Messaging platforms have message length limits. When Agent replies are too long,
 ### Platform-Specific FAQ
 
 - **Slack**: "Sending messages to this app has been turned off" → see [Slack Setup Step 5](./slack.md#step-5-enable-app-home-messaging)
-- **Feishu**: "App has no active long connection" → see [Feishu Setup Step 5](./feishu.md#step-5-connect-sfterminal-first)
+- **Feishu**: "App has no active long connection" → see [Feishu Setup Step 5](./feishu.md#step-5-connect-sailfish-first)
 - **WeCom**: Callback URL not receiving messages → see [WeCom Setup](./wecom.md#faq-callback-not-receiving-messages) (ensure URL is publicly accessible)
 
 ### Credential Security

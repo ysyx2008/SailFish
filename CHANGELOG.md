@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to SFTerm will be documented in this file.
+All notable changes to SailFish will be documented in this file.
 
 ## v10.4.0 (2026-02-17) (Latest)
 

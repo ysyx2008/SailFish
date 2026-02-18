@@ -9,7 +9,7 @@
 ╚══════╝╚═╝  ╚═╝╚═╝╚══════╝╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝
 </pre>
 
-<img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/resources/logo.png" alt="旗鱼终端 Logo" width="80">
+<img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/resources/logo.png" alt="旗鱼 Logo" width="80">
 
 **旗鱼 SailFish**
 
@@ -40,7 +40,7 @@
 | 📱 不在电脑旁？ | 通过 Web、钉钉、飞书、企业微信、Slack、Telegram 远程访问 Agent |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome.jpg" width="800" alt="旗鱼终端">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome.jpg" width="800" alt="旗鱼">
 </p>
 
 ## ✨ 核心功能

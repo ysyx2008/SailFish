@@ -9,7 +9,7 @@
 ╚══════╝╚═╝  ╚═╝╚═╝╚══════╝╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝
 </pre>
 
-<img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/resources/logo.png" alt="SFTerm Logo" width="80">
+<img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/resources/logo.png" alt="SailFish Logo" width="80">
 
 **SailFish**
 
@@ -40,7 +40,7 @@
 | 📱 Away from your desk? | Access Agent remotely via Web, DingTalk, Feishu, WeCom, Slack, or Telegram |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome_en.jpg" width="800" alt="SFTerm">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome_en.jpg" width="800" alt="SailFish">
 </p>
 
 ## ✨ Features

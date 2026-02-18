@@ -18,7 +18,7 @@ For an overview of messaging integration, see [Messaging Integration Guide](./RE
    - **Bot username** (must end with `bot`, e.g. `my_sf_agent_bot`, must be globally unique)
 5. Once created, BotFather will return a **Bot Token** in the format `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`
 
-> Copy and save this token — you'll need it in SFTerminal.
+> Copy and save this token — you'll need it in SailFish.
 
 ---
 
@@ -36,4 +36,4 @@ If you want to use the bot in group chats:
 
 ## Next Steps
 
-In SFTerminal, go to **Settings** → **Remote Access**, expand the **Telegram** card, enter the **Bot Token**, and click **Connect**. See [Connect in SFTerminal](./README.md#connect-in-sfterminal) for full usage and FAQ.
+In SailFish, go to **Settings** → **Remote Access**, expand the **Telegram** card, enter the **Bot Token**, and click **Connect**. See [Connect in SailFish](./README.md#connect-in-sailfish) for full usage and FAQ.

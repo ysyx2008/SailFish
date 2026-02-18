@@ -1,6 +1,6 @@
 # Messaging Integration Guide
 
-This guide explains how to connect SFTerminal's AI Agent to Slack, Telegram, DingTalk, and Feishu (Lark), enabling you to chat with the AI directly from your messaging app.
+This guide explains how to connect SailFish's AI Agent to Slack, Telegram, DingTalk, and Feishu (Lark), enabling you to chat with the AI directly from your messaging app.
 
 Once connected, you can interact with the AI Agent just like chatting with a colleague — send a message, and the Agent will execute tasks on your machine and reply with the results.
 
@@ -13,7 +13,7 @@ Once connected, you can interact with the AI Agent just like chatting with a col
 3. [Telegram Setup](#telegram-setup)
 4. [DingTalk Setup](#dingtalk-setup)
 5. [Feishu (Lark) Setup](#feishu-lark-setup)
-6. [Connect in SFTerminal](#connect-in-sfterminal)
+6. [Connect in SailFish](#connect-in-sailfish)
 7. [Usage](#usage)
 8. [FAQ](#faq)
 
@@ -28,7 +28,7 @@ User sends a message in chat
   Slack/Telegram/DingTalk/Feishu server
        │ (WebSocket / Long Polling)
        ▼
-  SFTerminal Messaging Service
+  SailFish Messaging Service
        │
        ▼
   Local AI Agent processes the request
@@ -56,7 +56,7 @@ User sends a message in chat
 1. In the left menu, go to **Socket Mode**
 2. Toggle on **Enable Socket Mode**
 3. You'll be prompted to generate an App-Level Token — enter a token name (e.g. `socket`), select the `connections:write` scope
-4. Copy the generated **App-Level Token** (starts with `xapp-`), you'll need it later in SFTerminal
+4. Copy the generated **App-Level Token** (starts with `xapp-`), you'll need it later in SailFish
 
 ### Step 3: Add Bot Token Scopes
 
@@ -118,7 +118,7 @@ Telegram is the simplest platform to set up — you only need a single Bot Token
    - **Bot username** (must end with `bot`, e.g. `my_sf_agent_bot`, must be globally unique)
 5. Once created, BotFather will return a **Bot Token** in the format `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`
 
-> Copy and save this token — you'll need it in SFTerminal.
+> Copy and save this token — you'll need it in SailFish.
 
 ### Step 2: (Optional) Allow the Bot to Join Groups
 
@@ -192,20 +192,20 @@ Go to **Permission Management** in the left menu, search for and enable these pe
 | `im:message:readonly` | Read DM and group messages |
 | `im:resource` | Access and upload images/files (for file sending) |
 
-### Step 5: Connect SFTerminal First
+### Step 5: Connect SailFish First
 
-Feishu requires an active long connection before allowing event subscription configuration. So you need to **connect from SFTerminal first**:
+Feishu requires an active long connection before allowing event subscription configuration. So you need to **connect from SailFish first**:
 
-1. Open SFTerminal, go to **Settings** → **Remote Access**
+1. Open SailFish, go to **Settings** → **Remote Access**
 2. Expand the **Feishu** card, enter the App ID and App Secret from Step 2
 3. Click **Connect** and wait for the status to show ✅ **Connected**
 
-> Keep SFTerminal connected, then return to the Feishu Open Platform for the next steps.
+> Keep SailFish connected, then return to the Feishu Open Platform for the next steps.
 
 ### Step 6: Configure Event Subscription (Long Connection Mode)
 
 1. Go to **Events & Callbacks** → **Event Configuration** in the left menu
-2. Select **Use long connection to receive events** as the subscription method, then click **Save** (SFTerminal is already connected, so the platform won't report errors)
+2. Select **Use long connection to receive events** as the subscription method, then click **Save** (SailFish is already connected, so the platform won't report errors)
 3. After saving, click **Add Event** and add:
    - **im.message.receive_v1** (receive messages)
 
@@ -217,9 +217,9 @@ Feishu requires an active long connection before allowing event subscription con
 
 ---
 
-## Connect in SFTerminal
+## Connect in SailFish
 
-1. Open SFTerminal, go to **Settings** → **Remote Access**
+1. Open SailFish, go to **Settings** → **Remote Access**
 2. In the **Messaging Integration** section, expand the card for your platform (Slack / Telegram / DingTalk / Feishu)
 3. Enter the credentials obtained above:
    - Slack: Bot Token (xoxb-...) + App-Level Token (xapp-...)
@@ -227,7 +227,7 @@ Feishu requires an active long connection before allowing event subscription con
    - DingTalk: ClientID + ClientSecret
    - Feishu: App ID + App Secret
 4. Click **Connect** and wait for the status to show ✅ **Connected**
-5. Optional: Check **Auto-connect on startup** so SFTerminal reconnects automatically next time
+5. Optional: Check **Auto-connect on startup** so SailFish reconnects automatically next time
 
 ---
 
@@ -272,13 +272,13 @@ The AI Agent can send local files via the bot. Typical use cases:
 
 ### Feishu Shows "App Has No Active Long Connection"
 
-This is expected. You need to connect from SFTerminal first (Step 5) to establish a WebSocket long connection before the Feishu platform allows saving the long connection subscription configuration.
+This is expected. You need to connect from SailFish first (Step 5) to establish a WebSocket long connection before the Feishu platform allows saving the long connection subscription configuration.
 
 ### Bot Doesn't Reply
 
-- Confirm SFTerminal is running and the connection status shows "Connected"
+- Confirm SailFish is running and the connection status shows "Connected"
 - In group chats, you must **@mention the bot** to trigger a response
-- Check that the AI model configuration in SFTerminal is correct
+- Check that the AI model configuration in SailFish is correct
 
 ### Messages Truncated
 

@@ -2,7 +2,7 @@
 
 [中文](./dingtalk_CN.md) | English
 
-Follow these steps to create a DingTalk internal app and get the credentials needed for SFTerminal. For an overview of messaging integration, see [Messaging Integration Guide](./README.md).
+Follow these steps to create a DingTalk internal app and get the credentials needed for SailFish. For an overview of messaging integration, see [Messaging Integration Guide](./README.md).
 
 ---
 
@@ -41,4 +41,4 @@ In the app details page under **Credentials & Basic Info**, copy:
 
 ## Next Steps
 
-In SFTerminal, go to **Settings** → **Remote Access**, expand the **DingTalk** card, and enter **ClientID** and **ClientSecret**. Then click **Connect**. See [Connect in SFTerminal](./README.md#connect-in-sfterminal) for full usage and FAQ.
+In SailFish, go to **Settings** → **Remote Access**, expand the **DingTalk** card, and enter **ClientID** and **ClientSecret**. Then click **Connect**. See [Connect in SailFish](./README.md#connect-in-sailfish) for full usage and FAQ.

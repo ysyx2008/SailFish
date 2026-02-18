@@ -2,7 +2,7 @@
 
 中文 | [English](./slack.md)
 
-按以下步骤创建 Slack 应用并获取旗鱼终端所需凭证。集成说明总览请见 [IM 集成指南](./README_CN.md)。
+按以下步骤创建 Slack 应用并获取旗鱼所需凭证。集成说明总览请见 [IM 集成指南](./README_CN.md)。
 
 ---
 
@@ -19,7 +19,7 @@
 1. 左侧菜单进入 **Socket Mode**
 2. 开启 **Enable Socket Mode**
 3. 系统会提示生成一个 App-Level Token，输入 Token 名称（如 `socket`），Scope 选择 `connections:write`
-4. 生成后复制 **App-Level Token**（以 `xapp-` 开头），后面需要填入旗鱼终端
+4. 生成后复制 **App-Level Token**（以 `xapp-` 开头），后面需要填入旗鱼
 
 ---
 
@@ -77,9 +77,9 @@
 
 ## 后续步骤
 
-在旗鱼终端中进入 **设置** → **远程访问**，展开 **Slack** 卡片，填入：
+在旗鱼中进入 **设置** → **远程访问**，展开 **Slack** 卡片，填入：
 
 - **Bot User OAuth Token**（xoxb-...）
 - **App-Level Token**（xapp-...）
 
-然后点击 **连接**。使用方式与常见问题见 [在旗鱼终端中连接](./README_CN.md#在旗鱼终端中连接)。
+然后点击 **连接**。使用方式与常见问题见 [在旗鱼中连接](./README_CN.md#在旗鱼中连接)。

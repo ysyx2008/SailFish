@@ -20,7 +20,7 @@ const os = require('os')
 function getUserDataPath() {
   if (process.env.SFT_DATA_DIR) return process.env.SFT_DATA_DIR
 
-  const appName = 'SFTerm'
+  const appName = 'SailFish'
   switch (process.platform) {
     case 'darwin':
       return path.join(os.homedir(), 'Library', 'Application Support', appName)
@@ -58,7 +58,7 @@ const app = {
     }
   },
   isPackaged: false,
-  getName() { return 'SFTerm' },
+  getName() { return 'SailFish' },
   getAppPath() { return path.resolve(__dirname, '../..') },
   getVersion() {
     try { return require('../../package.json').version } catch { return '0.0.0' }

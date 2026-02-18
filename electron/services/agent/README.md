@@ -1,6 +1,6 @@
 # Agent 服务模块
 
-本目录包含 SFTerminal 的 AI Agent 实现，采用 ReAct (Reasoning + Acting) 架构。
+本目录包含旗鱼的 AI Agent 实现，采用 ReAct (Reasoning + Acting) 架构。
 
 ## 目录结构
 
