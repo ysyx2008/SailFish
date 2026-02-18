@@ -400,82 +400,11 @@ export function useAgentMode(
     return groups
   })
 
-  // 获取当前终端信息（用于历史记录）
-  const getTerminalInfo = () => {
-    const tab = currentTab.value
-    if (!tab) return null
-    return {
-      terminalId: tab.id,
-      terminalType: tab.type as 'local' | 'ssh',
-      sshHost: tab.sshConfig?.host
-    }
-  }
-
-  // 保存整个会话到历史（会话级保存）
-  const saveSessionRecord = () => {
-    const terminalInfo = getTerminalInfo()
-    if (!terminalInfo) return
-    
-    const state = agentState.value
-    if (!state) return
-    
-    const steps = state.steps || []
-    // 如果没有步骤，不保存
-    if (steps.length === 0) return
-    
-    // 获取第一个用户任务作为会话标题
-    const firstUserTask = steps.find(s => s.type === 'user_task')
-    if (!firstUserTask) return
-    
-    // 获取最后一个 final_result 的状态
-    const lastFinalResult = [...steps].reverse().find(s => s.type === 'final_result')
-    
-    // 判断会话状态（基于最后一个任务）
-    let status: 'completed' | 'failed' | 'aborted' = 'completed'
-    if (lastFinalResult) {
-      const content = lastFinalResult.content || ''
-      if (content.includes('中止') || content.includes('aborted') || content.includes('Aborted')) {
-        status = 'aborted'
-      } else if (content.includes('失败') || content.includes('failed') || content.includes('Failed') || content.includes('错误') || content.includes('error')) {
-        status = 'failed'
-      }
-    }
-    
-    // 转换步骤为可序列化格式
-    const serializableSteps = steps.map(s => ({
-      id: s.id,
-      type: s.type,
-      content: s.content,
-      toolName: s.toolName,
-      toolArgs: s.toolArgs ? JSON.parse(JSON.stringify(s.toolArgs)) : undefined,
-      toolResult: s.toolResult,
-      riskLevel: s.riskLevel,
-      timestamp: s.timestamp
-    }))
-    
-    // 会话开始时间（使用 sessionStartTime 或第一个步骤的时间）
-    const sessionStartTime = state.sessionStartTime || firstUserTask.timestamp
-    
-    // 使用 JSON.parse(JSON.stringify()) 确保移除所有 Vue Proxy，避免 IPC 序列化错误
-    const record = JSON.parse(JSON.stringify({
-      id: state.sessionId || `session_${sessionStartTime}`,
-      timestamp: sessionStartTime,
-      ...terminalInfo,
-      userTask: firstUserTask.content,  // 第一个任务作为会话标题
-      steps: serializableSteps,  // 保存所有步骤（包括多轮对话）
-      finalResult: lastFinalResult?.content,
-      duration: Date.now() - sessionStartTime,
-      status
-    }))
-    
-    window.electronAPI.history.saveAgentRecord(record).catch(err => {
-      console.error('保存会话历史记录失败:', err)
-    })
-  }
-  
   // 保存当前会话（供外部调用，如清空对话时）
+  // 注意：会话历史现在由后端 Agent 在 finalizeRun 时自动保存到 HistoryService
+  // 此方法保留接口但不再执行操作，避免前端重复保存
   const saveCurrentSession = () => {
-    saveSessionRecord()
+    // 后端已在每次 run 结束时自动保存，无需前端再次保存
   }
 
   // 构建之前所有已完成任务的上下文（包含完整执行步骤，让 AI 了解完整对话历史）
@@ -614,10 +543,15 @@ export function useAgentMode(
         {
           ...context,
           hostId,  // 主机档案 ID
+          sshHost: currentTab.value?.sshConfig?.host,  // SSH 主机地址（历史记录元数据）
           documentContext,  // 添加文档上下文
           images: images.length > 0 ? images : undefined,  // 附带图片（视觉理解）
-          previousTasks  // 之前已完成任务的上下文（用于初始化 TaskMemoryStore）
-        } as { ptyId: string; terminalOutput: string[]; systemInfo: { os: string; shell: string }; terminalType: 'local' | 'ssh'; hostId?: string; documentContext?: string; images?: string[]; previousTasks?: { userTask: string; steps: { type: string; content: string; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: string; riskLevel?: string }[]; finalResult: string; timestamp: number }[] },
+          previousTasks,  // 之前已完成任务的上下文（用于初始化 TaskMemoryStore）
+          // 从 HistoryService 恢复的会话信息（跨会话恢复时传入）
+          sessionMessages: agentState.value?.messages,
+          sessionId: agentState.value?.sessionId,
+          sessionStartTime: agentState.value?.sessionStartTime
+        } as Record<string, unknown>,
         { executionMode: executionMode.value, commandTimeout: commandTimeout.value * 1000 },  // 传递配置（超时时间转为毫秒）
         activeProfileId.value || undefined  // 传递当前终端选择的 AI 配置档案 ID
       )
@@ -643,8 +577,6 @@ export function useAgentMode(
         })
         terminalStore.setAgentFinalResult(tabId, finalContent)
       }
-      // 保存/更新会话记录（使用相同 sessionId，会更新已有记录）
-      saveSessionRecord()
     } catch (error) {
       // catch 块处理网络错误等异常情况（后端正常返回不会进入这里）
       console.error('Agent 运行失败:', error)
@@ -658,8 +590,6 @@ export function useAgentMode(
         timestamp: Date.now()
       })
       terminalStore.setAgentFinalResult(tabId, finalContent)
-      // 保存/更新会话记录
-      saveSessionRecord()
     } finally {
       // 无论成功还是失败，都确保重置 Agent 运行状态
       console.log('[Agent] finally block executing, resetting isRunning for tabId:', tabId)

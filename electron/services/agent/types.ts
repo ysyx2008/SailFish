@@ -22,7 +22,7 @@ export type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
 // Agent 执行步骤
 export interface AgentStep {
   id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'plan_created' | 'plan_updated' | 'plan_archived'
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'plan_created' | 'plan_updated' | 'plan_archived' | 'user_task' | 'final_result'
   content: string
   images?: string[]  // 用户消息附带的图片（base64 data URL），用于在聊天中显示
   toolName?: string
@@ -94,6 +94,7 @@ export interface PreviousTaskContext {
   steps: PreviousAgentStep[]  // 执行步骤
   finalResult: string  // 最终结果
   timestamp: number  // 完成时间
+  messages?: import('../ai.service').AiMessage[]  // 完整 API 对话记录（有则优先使用）
 }
 
 // Agent 上下文
@@ -110,7 +111,11 @@ export interface AgentContext {
   hostId?: string  // 主机档案 ID
   documentContext?: string  // 用户上传的文档内容
   images?: string[]  // 用户上传的图片（base64 data URL），发送给 AI 用于视觉理解
+  sshHost?: string  // SSH 主机地址（用于历史记录元数据）
   previousTasks?: PreviousTaskContext[]  // 之前已完成任务的上下文列表（用于初始化 TaskMemoryStore）
+  sessionMessages?: import('../ai.service').AiMessage[]  // 从 HistoryService 恢复的完整对话记录（跨会话恢复时传入）
+  sessionId?: string  // 从 HistoryService 恢复的会话 ID
+  sessionStartTime?: number  // 从 HistoryService 恢复的会话开始时间
   currentPlan?: AgentPlan  // 当前执行计划（从前端 steps 恢复，用于跨对话持久化）
 }
 
@@ -379,6 +384,7 @@ export interface AgentServices {
   hostProfileService?: HostProfileServiceInterface
   mcpService?: import('../mcp.service').McpService
   configService?: import('../config.service').ConfigService
+  historyService?: import('../history.service').HistoryService
 }
 
 /**

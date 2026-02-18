@@ -9,6 +9,7 @@
  */
 
 import type { AiMessage, ToolCall, ChatWithToolsResult, ToolDefinition } from '../ai.service'
+import type { AgentRecord, AgentStepRecord } from '../history.service'
 import type {
   AgentConfig,
   AgentStep,
@@ -80,6 +81,23 @@ export abstract class Agent {
 
   /** 上下文管理功能是否已激活（用量超过 50% 时启用） */
   protected contextManagementEnabled = false
+  
+  // ==================== 会话追踪（跨 Run 持久化） ====================
+  
+  /** 会话 ID */
+  private _sessionId?: string
+  
+  /** 会话开始时间 */
+  private _sessionStartTime?: number
+  
+  /** 会话内累积的所有 steps（跨多次 run） */
+  private _sessionSteps: AgentStep[] = []
+  
+  /** 会话内累积的所有 API 消息（跨多次 run 的 taskMessageLog 合并） */
+  private _sessionMessages: AiMessage[] = []
+  
+  /** 终端元数据（从首次 run 的 context 获取） */
+  private _terminalMeta?: { terminalType: 'local' | 'ssh'; sshHost?: string }
   
   // ==================== 构造函数 ====================
   
@@ -331,11 +349,66 @@ export abstract class Agent {
       this.callbacks = options.callbacks
     }
     
+    // 初始化会话追踪（首次 run 时创建 session 或从历史恢复）
+    if (!this._sessionId) {
+      if (context.sessionId) {
+        // 从历史记录恢复的会话
+        this._sessionId = context.sessionId
+        this._sessionStartTime = context.sessionStartTime || Date.now()
+        this._sessionMessages = context.sessionMessages ? [...context.sessionMessages] : []
+      } else {
+        this._sessionId = `session_${Date.now()}`
+        this._sessionStartTime = Date.now()
+        this._sessionMessages = []
+      }
+      this._sessionSteps = []
+    }
+    
+    // 记录终端元数据（从首次 run 的 context 获取）
+    if (!this._terminalMeta) {
+      this._terminalMeta = {
+        terminalType: context.terminalType,
+        sshHost: context.sshHost
+      }
+    }
+    
     // 初始化 TaskMemory（仅首次 run 时）
     // 场景：前端有之前会话的历史步骤，但 Agent 实例刚创建，TaskMemory 为空
     // 将前端历史同步到 TaskMemory，使 AI 能了解之前的对话上下文
     if (context.previousTasks && context.previousTasks.length > 0 && this.taskMemory.getTaskCount() === 0) {
       this.initializeTaskMemoryFromPreviousTasks(context.previousTasks)
+      
+      // 同步恢复 _sessionSteps（避免 saveSessionToHistory 覆盖时丢失旧步骤）
+      if (this._sessionSteps.length === 0) {
+        for (const task of context.previousTasks) {
+          this._sessionSteps.push({
+            id: `user_task_prev_${task.timestamp}`,
+            type: 'user_task',
+            content: task.userTask,
+            timestamp: task.timestamp
+          })
+          for (const step of task.steps) {
+            this._sessionSteps.push({
+              id: step.type + '_prev_' + task.timestamp + '_' + Math.random().toString(36).slice(2, 6),
+              type: step.type as AgentStep['type'],
+              content: step.content,
+              toolName: step.toolName,
+              toolArgs: step.toolArgs,
+              toolResult: step.toolResult,
+              riskLevel: step.riskLevel as RiskLevel | undefined,
+              timestamp: task.timestamp
+            })
+          }
+          if (task.finalResult) {
+            this._sessionSteps.push({
+              id: `final_result_prev_${task.timestamp}`,
+              type: 'final_result',
+              content: task.finalResult,
+              timestamp: task.timestamp
+            })
+          }
+        }
+      }
     }
     
     // 添加初始步骤
@@ -369,13 +442,14 @@ export abstract class Agent {
         timestamp: task.timestamp
       }))
       
-      // 保存到任务记忆
+      // 保存到任务记忆（有 messages 时直接使用，无需从 steps 重建）
       this.taskMemory.saveTask(
         `prev_${task.timestamp}`,
         task.userTask,
         steps,
         'success',
-        task.finalResult
+        task.finalResult,
+        task.messages
       )
     }
     
@@ -406,6 +480,10 @@ export abstract class Agent {
       run.taskMessageLog
     )
     
+    // 累积到会话级别并持久化
+    this.accumulateSessionData(run, status, result)
+    this.saveSessionToHistory()
+    
     // 异步提取观察记忆（观察日志模型 - Observation Ledger）
     // 不阻塞用户，后台自动从任务执行记录中提取环境事实
     if (status === 'success' && run.context.hostId) {
@@ -416,6 +494,152 @@ export abstract class Agent {
     
     // 触发完成回调
     this.callbacks?.onComplete?.(run.id, result, run.pendingUserMessages)
+  }
+  
+  // ==================== 会话持久化 ====================
+  
+  /**
+   * 将单次 run 的数据累积到会话级别
+   */
+  private accumulateSessionData(run: AgentRun, status: string, result?: string): void {
+    // 添加 user_task 步骤（前端以前在 runAgent 中添加，现在后端自己管理）
+    this._sessionSteps.push({
+      id: `user_task_${run.id}`,
+      type: 'user_task',
+      content: run.originalUserRequest,
+      timestamp: run.taskMessageLog[0]?.content ? Date.now() : Date.now()
+    })
+    
+    // 累积本次 run 的执行步骤
+    this._sessionSteps.push(...run.steps)
+    
+    // 添加 final_result 步骤
+    if (result) {
+      this._sessionSteps.push({
+        id: `final_result_${run.id}`,
+        type: 'final_result',
+        content: result,
+        timestamp: Date.now()
+      })
+    }
+    
+    // 累积 API 消息
+    this._sessionMessages.push(...run.taskMessageLog)
+  }
+  
+  /**
+   * 将会话数据保存到 HistoryService
+   */
+  private saveSessionToHistory(): void {
+    const historyService = this.services.historyService
+    if (!historyService || !this._sessionId || !this._sessionStartTime) return
+    
+    // 找到第一个 user_task 作为会话标题
+    const firstUserTask = this._sessionSteps.find(s => s.type === 'user_task')
+    if (!firstUserTask) return
+    
+    // 最后一个 final_result 的状态决定整个会话状态
+    const lastFinalResult = [...this._sessionSteps].reverse().find(s => s.type === 'final_result')
+    let status: 'completed' | 'failed' | 'aborted' = 'completed'
+    // 根据 taskMemory 中最后一个任务的状态判断（比关键词匹配更准确）
+    const lastTask = this.taskMemory.getSummaries(1)[0]
+    if (lastTask) {
+      if (lastTask.status === 'aborted') status = 'aborted'
+      else if (lastTask.status === 'failed') status = 'failed'
+    }
+    
+    // 序列化 steps
+    const serializableSteps: AgentStepRecord[] = this._sessionSteps.map(s => ({
+      id: s.id,
+      type: s.type,
+      content: s.content || '',
+      toolName: s.toolName,
+      toolArgs: s.toolArgs ? JSON.parse(JSON.stringify(s.toolArgs)) : undefined,
+      toolResult: s.toolResult,
+      riskLevel: s.riskLevel,
+      timestamp: s.timestamp
+    }))
+    
+    const record: AgentRecord = {
+      id: this._sessionId,
+      timestamp: this._sessionStartTime,
+      terminalId: this.currentRun?.context.ptyId || '',
+      terminalType: this._terminalMeta?.terminalType || 'local',
+      sshHost: this._terminalMeta?.sshHost,
+      userTask: firstUserTask.content,
+      steps: serializableSteps,
+      messages: this._sessionMessages.map(m => JSON.parse(JSON.stringify(m))),
+      finalResult: lastFinalResult?.content,
+      duration: Date.now() - this._sessionStartTime,
+      status
+    }
+    
+    try {
+      historyService.saveAgentRecord(record)
+    } catch (err) {
+      console.error('[Agent] 保存会话历史失败:', err)
+    }
+  }
+  
+  /**
+   * 保存执行检查点：将当前 session + 进行中 run 的数据写入 HistoryService
+   * 每完成一轮工具调用后自动触发，确保程序意外退出时不丢失对话记录
+   */
+  private saveCheckpoint(run: AgentRun): void {
+    const historyService = this.services.historyService
+    if (!historyService || !this._sessionId || !this._sessionStartTime) return
+    
+    // 合并：已累积的 session 步骤 + 当前 run 的 user_task + 当前 run 的执行步骤
+    const allSteps: AgentStep[] = [
+      ...this._sessionSteps,
+      { id: `user_task_${run.id}`, type: 'user_task' as const, content: run.originalUserRequest, timestamp: this._sessionStartTime },
+      ...run.steps
+    ]
+    const checkpointSteps: AgentStepRecord[] = allSteps.map(s => ({
+      id: s.id,
+      type: s.type,
+      content: s.content || '',
+      toolName: s.toolName,
+      toolArgs: s.toolArgs ? JSON.parse(JSON.stringify(s.toolArgs)) : undefined,
+      toolResult: s.toolResult,
+      riskLevel: s.riskLevel,
+      timestamp: s.timestamp
+    }))
+    
+    // 合并 API 消息
+    const checkpointMessages = [...this._sessionMessages, ...run.taskMessageLog]
+    
+    const firstUserTask = this._sessionSteps.find(s => s.type === 'user_task') || { content: run.originalUserRequest }
+    
+    const record: AgentRecord = {
+      id: this._sessionId,
+      timestamp: this._sessionStartTime,
+      terminalId: run.context.ptyId,
+      terminalType: this._terminalMeta?.terminalType || 'local',
+      sshHost: this._terminalMeta?.sshHost,
+      userTask: firstUserTask.content,
+      steps: checkpointSteps,
+      messages: checkpointMessages.map(m => JSON.parse(JSON.stringify(m))),
+      duration: Date.now() - this._sessionStartTime,
+      status: 'completed'  // 检查点视为进行中但有效的记录
+    }
+    
+    try {
+      historyService.saveAgentRecord(record)
+    } catch (err) {
+      console.error('[Agent] 保存检查点失败:', err)
+    }
+  }
+  
+  /**
+   * 重置会话状态（前端"新对话"或终端重连时调用）
+   */
+  resetSession(): void {
+    this._sessionId = undefined
+    this._sessionStartTime = undefined
+    this._sessionSteps = []
+    this._sessionMessages = []
+    this._terminalMeta = undefined
   }
   
   // ==================== 观察自动提取（Observation Ledger）====================
@@ -595,6 +819,10 @@ ${records.join('\n')}
       run.taskMessageLog
     )
     
+    // 累积到会话级别并持久化
+    this.accumulateSessionData(run, 'failed', errorMessage)
+    this.saveSessionToHistory()
+    
     this.callbacks?.onError?.(run.id, errorMessage)
   }
   
@@ -725,6 +953,8 @@ ${records.join('\n')}
           if (stepResult.hasToolCalls) {
             hasExecutedAnyTool = true
             noToolCallRetryCount = 0
+            // 每完成一轮工具调用后保存检查点，防止程序意外退出丢失对话记录
+            this.saveCheckpoint(run)
           }
           
           // 处理无工具调用的情况

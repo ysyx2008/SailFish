@@ -125,6 +125,13 @@ export class AgentService {
     this.services.mcpService = mcpService
   }
 
+  /**
+   * 设置历史记录服务
+   */
+  setHistoryService(historyService: import('../history.service').HistoryService): void {
+    this.services.historyService = historyService
+  }
+
   // ==================== 工厂方法 ====================
 
   /**
@@ -260,6 +267,14 @@ export class AgentService {
   addUserMessage(ptyId: string, message: string): boolean {
     const agent = this.getAgent(ptyId)
     return agent?.addUserMessage(message) ?? false
+  }
+  
+  /**
+   * 重置 Agent 会话状态（前端"新对话"时调用）
+   */
+  resetSession(ptyId: string): void {
+    const agent = this.getAgent(ptyId)
+    agent?.resetSession()
   }
   
   /**

@@ -33,6 +33,8 @@ export interface AgentRecord {
   sshHost?: string
   userTask: string
   steps: AgentStepRecord[]
+  // 完整 API 对话记录（权威数据源，用于上下文恢复）
+  messages?: Array<{ role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string }>
   finalResult?: string
   duration: number
   status: 'completed' | 'failed' | 'aborted'

@@ -99,6 +99,7 @@ export interface AgentState {
   pendingConfirm?: PendingConfirmation
   finalResult?: string   // Agent 完成后的最终回复
   history: AgentHistoryItem[]  // 历史任务记录
+  messages?: Array<{ role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string }>  // 完整 API 对话记录（从 HistoryService 恢复）
 }
 
 // 上传的文档类型
@@ -1051,6 +1052,7 @@ export const useTerminalStore = defineStore('terminal', () => {
         sessionId: existingSessionId,  // 保留会话 ID
         sessionStartTime: existingSessionStartTime,  // 保留会话开始时间
         steps: existingSteps,  // 保留之前的步骤，不清空
+        messages: preserveHistory ? tab.agentState?.messages : undefined,  // 清空对话时也清掉 messages
         history: existingHistory
       }
     }
@@ -1082,6 +1084,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       riskLevel?: string
       timestamp: number
     }>
+    messages?: Array<{ role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string }>
     finalResult?: string
     duration: number
     status: 'completed' | 'failed' | 'aborted'
@@ -1131,6 +1134,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       sessionId: record.id,  // 保留原始会话 ID
       sessionStartTime: record.timestamp,  // 保留原始会话开始时间
       steps: steps,
+      messages: record.messages,  // 完整 API 对话记录（跨会话恢复时传给后端）
       history: [{
         userTask: record.userTask,
         steps: steps,
