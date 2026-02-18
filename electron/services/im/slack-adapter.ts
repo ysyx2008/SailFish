@@ -66,7 +66,7 @@ export class SlackAdapter implements IMAdapter {
     })
 
     // 监听所有消息事件
-    this.app.message(async ({ message, say }: any) => {
+    this.app.message(async ({ message, say: _say }: any) => {
       try {
         await this.handleMessageEvent(message)
       } catch (err) {

@@ -270,7 +270,7 @@ export class ModelManager extends EventEmitter {
 
         console.log(`[ModelManager] Downloading ${file}...`)
         
-        await this.downloadFile(fileUrl, filePath, (downloaded, total) => {
+        await this.downloadFile(fileUrl, filePath, (downloaded, _total) => {
           // 估算总体进度
           const overallProgress = (totalDownloaded + downloaded) / totalSize * 100
           

@@ -540,7 +540,7 @@ export class OrchestratorService {
     orchestratorId: string,
     terminalId: string,
     task: string,
-    waitForResult: boolean
+    _waitForResult: boolean
   ): Promise<DispatchResult> {
     const run = this.runs.get(orchestratorId)
     const realId = this.resolveTerminalId(terminalId, run)

@@ -94,7 +94,7 @@ export class DingTalkAdapter implements IMAdapter {
     })
 
     // 注册全局事件监听（用于 ACK）
-    this.client.registerAllEventListener((message: any) => {
+    this.client.registerAllEventListener((_message: any) => {
       return { status: 'SUCCESS' }
     })
 

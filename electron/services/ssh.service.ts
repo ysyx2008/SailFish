@@ -538,7 +538,7 @@ export class SshService {
       let timeoutTimer: NodeJS.Timeout | null = null
       let resolved = false
       let commandStarted = false
-      let lastOutputTime = Date.now()
+      let _lastOutputTime = Date.now()
       let checkTimer: NodeJS.Timeout | null = null
 
       // 去除 ANSI 转义序列和控制字符（用于提示符检测）
@@ -611,7 +611,7 @@ export class SshService {
 
       const outputHandler = (data: string) => {
         output += data
-        lastOutputTime = Date.now()
+        _lastOutputTime = Date.now()
 
         // 命令开始后，检测提示符表示命令完成
         if (!commandStarted && output.includes(command.split('\n')[0])) {

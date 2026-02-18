@@ -164,7 +164,7 @@ function startWorker(): void {
     isInitialized = false
 
     // 拒绝所有等待中的回调
-    for (const [id, callback] of pendingCallbacks) {
+    for (const [_id, callback] of pendingCallbacks) {
       callback.reject(new Error(`Worker exited with code ${code}`))
     }
     pendingCallbacks.clear()

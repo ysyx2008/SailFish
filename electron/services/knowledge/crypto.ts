@@ -14,7 +14,7 @@ const IV_LENGTH = 16
 const SALT_LENGTH = 32
 const KEY_LENGTH = 32
 const PBKDF2_ITERATIONS = 100000  // 迭代次数，越高越安全但越慢
-const AUTH_TAG_LENGTH = 16
+const _AUTH_TAG_LENGTH = 16
 
 // 加密数据的版本标识
 const ENCRYPTED_PREFIX = 'ENC:v1:'
@@ -30,7 +30,7 @@ function getPasswordFilePath(): string {
 
 // 缓存派生的密钥
 let cachedKey: Buffer | null = null
-let cachedSalt: Buffer | null = null
+const _cachedSalt: Buffer | null = null
 
 // 系统钥匙串存储密码的文件路径
 let savedPasswordFilePath: string | null = null

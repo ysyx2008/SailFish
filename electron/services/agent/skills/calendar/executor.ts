@@ -1943,7 +1943,7 @@ function formatICalDate(date: Date, dateOnly: boolean): string {
 /**
  * 格式化日期为 iCalendar UTC 格式（用于 CalDAV 查询）
  */
-function formatICalDateUTC(date: Date): string {
+function _formatICalDateUTC(date: Date): string {
   const year = date.getUTCFullYear()
   const month = String(date.getUTCMonth() + 1).padStart(2, '0')
   const day = String(date.getUTCDate()).padStart(2, '0')

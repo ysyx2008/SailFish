@@ -41,7 +41,7 @@ export interface BM25SearchResult {
 }
 
 /** BM25 索引统计 */
-interface IndexStats {
+interface _IndexStats {
   totalDocuments: number
   avgDocLength: number
   vocabulary: Set<string>

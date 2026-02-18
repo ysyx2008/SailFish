@@ -390,8 +390,8 @@ export class VectorStorage extends EventEmitter {
    * LanceDB 原生支持中文，无需分词
    */
   async searchByText(
-    query: string, 
-    options: Partial<SearchOptions> = {}
+    _query: string, 
+    _options: Partial<SearchOptions> = {}
   ): Promise<SearchResult[]> {
     // LanceDB 没有内置全文搜索，使用向量搜索
     // 调用方需要先将 query 转为 embedding

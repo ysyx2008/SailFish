@@ -1,3 +1,4 @@
+/* eslint-env node */
 /**
  * Electron API Shim for CLI Mode
  * 

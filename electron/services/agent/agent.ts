@@ -1515,7 +1515,7 @@ ${records.join('\n')}
     run: AgentRun,
     toolCall: ToolCall,
     result: ToolResult,
-    toolArgs: Record<string, unknown>
+    _toolArgs: Record<string, unknown>
   ): void {
     const resultContent = result.success 
       ? result.output 

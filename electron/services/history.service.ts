@@ -326,7 +326,7 @@ export class HistoryService {
         const sshData = config.sshSessions.map(session => {
           if (opts.includeSshPasswords) return session
           // 移除敏感字段
-          const { password, passphrase, ...safe } = session
+          const { password: _pw, passphrase: _pp, ...safe } = session
           return safe
         })
         const sshPath = path.join(exportPath, 'ssh-sessions.json')

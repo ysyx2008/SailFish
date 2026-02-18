@@ -281,7 +281,7 @@ export class HostProfileService {
   /**
    * 解析探测结果
    */
-  parseProbeOutput(output: string, existingProfile?: HostProfile | null): ProbeResult {
+  parseProbeOutput(output: string, _existingProfile?: HostProfile | null): ProbeResult {
     const result: ProbeResult = {}
     const lines = output.split('\n').map(l => l.trim()).filter(l => l)
 

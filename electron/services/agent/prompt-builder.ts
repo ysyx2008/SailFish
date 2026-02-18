@@ -342,7 +342,7 @@ ${this.buildTaskMemorySection()}`
   /**
    * 构建工具约束说明（精简版，只说明约束，不重复工具描述）
    */
-  private buildToolConstraints(isSshTerminal: boolean, isWindows: boolean): string {
+  private buildToolConstraints(isSshTerminal: boolean, _isWindows: boolean): string {
     const sections: string[] = []
 
     // SSH 特殊约束

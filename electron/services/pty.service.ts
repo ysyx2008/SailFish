@@ -9,7 +9,7 @@ import * as iconv from 'iconv-lite'
 const execAsync = promisify(exec)
 
 // Windows 代码页到编码的映射
-const CODE_PAGE_TO_ENCODING: Record<number, string> = {
+const _CODE_PAGE_TO_ENCODING: Record<number, string> = {
   65001: 'utf-8',    // UTF-8
   936: 'gbk',        // 简体中文 GBK
   950: 'big5',       // 繁体中文 Big5
@@ -756,7 +756,7 @@ export class PtyService {
         try {
           // 方法1：使用 WMI 查询进程的 ExecutablePath，然后获取其目录
           // 这不是真正的 CWD，但对于某些 shell 可能有效
-          const { stdout } = await execAsync(
+          const { stdout: _stdout } = await execAsync(
             `powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter 'ProcessId=${shellPid}').ExecutablePath | Split-Path -Parent"`,
             { timeout: 3000 }
           )

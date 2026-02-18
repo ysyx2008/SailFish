@@ -752,14 +752,14 @@ function getFirstOpenSession() {
 /**
  * 检查会话是否有效
  */
-function isSessionValid(session: ReturnType<typeof getSession>): boolean {
+function _isSessionValid(session: ReturnType<typeof getSession>): boolean {
   return !!session?.imapClient?.usable
 }
 
 /**
  * 截断输出
  */
-function truncateOutput(text: string, maxLength: number): string {
+function _truncateOutput(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text
   return text.slice(0, maxLength) + '\n\n... (' + t('email.output_truncated') + ')'
 }

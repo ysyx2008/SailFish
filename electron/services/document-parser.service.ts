@@ -393,7 +393,7 @@ export class DocumentParserService {
   /**
    * 解析 Excel 文件 (.xlsx/.xls)
    */
-  private async parseExcel(filePath: string, result: ParsedDocument, opts: Required<ParseOptions>): Promise<void> {
+  private async parseExcel(filePath: string, result: ParsedDocument, _opts: Required<ParseOptions>): Promise<void> {
     if (!this.ExcelJS) {
       throw new Error('Excel 解析库未安装，请运行: npm install exceljs')
     }
@@ -427,7 +427,7 @@ export class DocumentParserService {
       const rows: string[][] = []
       let rowIndex = 0
       
-      worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      worksheet.eachRow({ includeEmpty: false }, (row, _rowNumber) => {
         if (rowIndex >= maxRowsPerSheet) return
         rowIndex++
 
@@ -513,7 +513,7 @@ export class DocumentParserService {
   /**
    * 解析 CSV 文件，转换为 Markdown 表格格式
    */
-  private async parseCsv(filePath: string, result: ParsedDocument, opts: Required<ParseOptions>): Promise<void> {
+  private async parseCsv(filePath: string, result: ParsedDocument, _opts: Required<ParseOptions>): Promise<void> {
     const content = fs.readFileSync(filePath, 'utf-8')
     const lines = content.split('\n').filter(line => line.trim())
     

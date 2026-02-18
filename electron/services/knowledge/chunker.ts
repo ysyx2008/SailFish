@@ -22,10 +22,10 @@ const SENTENCE_ENDINGS = /[。！？.!?]/
 const PARAGRAPH_SEPARATOR = /\n\s*\n/
 
 // Markdown 标题正则
-const MARKDOWN_HEADING_PATTERN = /^(#{1,6})\s+(.+)$/gm
+const _MARKDOWN_HEADING_PATTERN = /^(#{1,6})\s+(.+)$/gm
 
 // 数字编号标题正则
-const NUMBERED_HEADING_PATTERN = /^(\d+\.)+\s+(.+)$/gm
+const _NUMBERED_HEADING_PATTERN = /^(\d+\.)+\s+(.+)$/gm
 
 /**
  * 估算 token 数量（粗略估计）

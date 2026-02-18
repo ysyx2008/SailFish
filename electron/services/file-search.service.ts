@@ -215,7 +215,7 @@ export class FileSearchService {
    */
   private execCommand(command: string, args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
-      execFile(command, args, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+      execFile(command, args, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, _stderr) => {
         if (error) {
           reject(error)
         } else {

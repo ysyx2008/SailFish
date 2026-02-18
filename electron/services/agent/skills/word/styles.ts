@@ -661,7 +661,7 @@ function tokensToDocxElements(
  * 不设置内联格式，完全依赖文档级别的 Heading 样式定义
  * 这样用户在 Word 中修改标题样式即可批量更新所有同级标题
  */
-function createHeading(token: Tokens.Heading, style: WordStyleConfig): Paragraph {
+function createHeading(token: Tokens.Heading, _style: WordStyleConfig): Paragraph {
   const level = token.depth
   
   const headingMap: Record<number, (typeof HeadingLevel)[keyof typeof HeadingLevel]> = {
@@ -885,7 +885,7 @@ function parseInlineTokens(
 /**
  * 创建列表
  */
-function createList(token: Tokens.List, style: WordStyleConfig): Paragraph[] {
+function createList(token: Tokens.List, _style: WordStyleConfig): Paragraph[] {
   const paragraphs: Paragraph[] = []
   
   for (const item of token.items) {
