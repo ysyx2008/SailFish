@@ -9,6 +9,12 @@ if (!app.isPackaged) {
   app.disableHardwareAcceleration()
 }
 
+// 单实例锁：防止用户从 Spotlight/Launchpad 重复启动
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+}
+
 // 读取 package.json 获取版本号（开发模式下 app.getVersion() 返回 Electron 版本）
 const packageJson = JSON.parse(fs.readFileSync(join(__dirname, '../package.json'), 'utf-8'))
 const APP_VERSION = packageJson.version
@@ -424,9 +430,11 @@ mcpService.on('refreshed', (serverId: string) => {
 function createTray() {
   if (tray) return
 
+  // dev 模式从项目 resources/ 读取，打包后从 app Resources/ 读取
+  const resDir = app.isPackaged ? process.resourcesPath : join(__dirname, '../resources')
   const trayIconPath = process.platform === 'darwin'
-    ? join(__dirname, '../resources/icon_trayTemplate.png')
-    : join(__dirname, '../resources/icon.png')
+    ? join(resDir, 'icon_trayTemplate.png')
+    : join(resDir, 'icon.png')
 
   const icon = nativeImage.createFromPath(trayIconPath)
   if (process.platform === 'darwin') {
@@ -892,6 +900,11 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     showMainWindow()
   })
+
+  // 第二个实例尝试启动时，显示已有窗口
+  app.on('second-instance', () => {
+    showMainWindow()
+  })
 })
 
 // 处理 Cmd+Q / 托盘退出
@@ -905,10 +918,10 @@ app.on('before-quit', (event) => {
   // 窗口可能是隐藏状态，需要先显示再走确认流程
   if (mainWindow && !mainWindow.isDestroyed()) {
     event.preventDefault()
-    mainWindow.show()
     if (process.platform === 'darwin') {
       app.dock?.show()
     }
+    mainWindow.show()
     mainWindow.close()  // 触发窗口的 close 事件，走终端确认逻辑
   }
 })

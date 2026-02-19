@@ -33,6 +33,13 @@ asarUnpack:
 # 启用最大压缩率以减小安装包大小（会增加打包时间）
 # compression: maximum
 extraResources:
+  # 系统托盘图标（运行时加载）
+  - from: "resources/icon_trayTemplate.png"
+    to: "icon_trayTemplate.png"
+  - from: "resources/icon_trayTemplate@2x.png"
+    to: "icon_trayTemplate@2x.png"
+  - from: "resources/icon.png"
+    to: "icon.png"
   # IM 平台配置指南（供 Agent 读取）
   - from: "docs/messaging"
     to: "docs/messaging"
