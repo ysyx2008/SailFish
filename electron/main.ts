@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog, session } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, dialog, session, Tray, Menu, nativeImage } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import path, { join } from 'path'
 import * as fs from 'fs'
@@ -235,6 +235,7 @@ process.on('unhandledRejection', (reason) => {
 })
 
 let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
 let fileManagerWindow: BrowserWindow | null = null  // 文件管理器独立窗口
 let fileManagerParams: {  // 文件管理器窗口初始化参数
   sessionId?: string
@@ -418,6 +419,95 @@ mcpService.on('refreshed', (serverId: string) => {
   mainWindow?.webContents.send('mcp:refreshed', serverId)
 })
 
+// ==================== 系统托盘 ====================
+
+function createTray() {
+  if (tray) return
+
+  const trayIconPath = process.platform === 'darwin'
+    ? join(__dirname, '../resources/icon_trayTemplate.png')
+    : join(__dirname, '../resources/icon.png')
+
+  const icon = nativeImage.createFromPath(trayIconPath)
+  if (process.platform === 'darwin') {
+    icon.setTemplateImage(true)
+  }
+
+  tray = new Tray(icon)
+  tray.setToolTip('SailFish')
+  updateTrayMenu()
+
+  tray.on('click', () => {
+    showMainWindow()
+  })
+}
+
+function updateTrayMenu() {
+  if (!tray) return
+  const lang = configService?.getLanguage() || 'zh-CN'
+  const isZh = lang.startsWith('zh')
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: isZh ? '显示窗口' : 'Show Window',
+      click: () => showMainWindow()
+    },
+    { type: 'separator' },
+    {
+      label: isZh ? '退出' : 'Quit',
+      click: () => app.quit()
+    }
+  ])
+  tray.setContextMenu(contextMenu)
+}
+
+function showMainWindow() {
+  if (process.platform === 'darwin') {
+    app.dock?.show()
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show()
+    mainWindow.focus()
+  } else {
+    createWindow()
+    setupWindowServices()
+  }
+}
+
+/**
+ * 设置/更新各服务对 mainWindow 的引用和 did-finish-load 事件
+ * 在首次创建窗口和窗口重建时调用
+ */
+function setupWindowServices() {
+  if (!mainWindow) return
+
+  remoteChatService.setMainWindow(mainWindow)
+  gatewayService.setMainWindow(mainWindow)
+  imService.setMainWindow(mainWindow)
+  menuService.setMainWindow(mainWindow)
+
+  const lang = configService?.getLanguage() || 'zh-CN'
+  menuService.setLanguage(lang)
+  menuService.applyMenu()
+}
+
+/**
+ * 退出时清理所有后端服务和连接
+ */
+function cleanupAllServices() {
+  schedulerService.stop()
+  gatewayService.stop().catch(() => {})
+  imService.stopAll().catch(() => {})
+  remoteChatService.dispose().catch(() => {})
+  ptyService.disposeAll()
+  sshService.disposeAll()
+  sftpService.disconnectAll()
+  mcpService.disconnectAll()
+}
+
+// ==================== 主窗口 ====================
+
 function createWindow() {
   // 根据平台选择图标
   const iconPath = process.platform === 'darwin'
@@ -483,22 +573,28 @@ function createWindow() {
     mainWindow = null
   })
 
-  // 拦截窗口关闭事件，检查是否有打开的终端
   mainWindow.on('close', async (event) => {
-    // 如果是强制退出，直接关闭
     if (forceQuit) {
       return
     }
 
-    // 向渲染进程请求终端数量
+    if (isQuitting) {
+      // Cmd+Q 退出：走终端确认逻辑
+      event.preventDefault()
+      try {
+        mainWindow?.webContents.send('window:requestTerminalCount')
+      } catch (e) {
+        forceQuit = true
+        mainWindow?.close()
+      }
+      return
+    }
+
+    // Cmd+W 关闭窗口：隐藏到托盘，服务继续运行
     event.preventDefault()
-    
-    try {
-      mainWindow?.webContents.send('window:requestTerminalCount')
-    } catch (e) {
-      // 如果发送失败，直接关闭
-      forceQuit = true
-      mainWindow?.close()
+    mainWindow?.hide()
+    if (process.platform === 'darwin') {
+      app.dock?.hide()
     }
   })
 }
@@ -672,17 +768,8 @@ app.whenReady().then(async () => {
 
   // 先创建窗口，让用户尽快看到界面
   createWindow()
-
-  // 设置远程服务的 mainWindow 引用（用于远程操作通知桌面端）
-  remoteChatService.setMainWindow(mainWindow)
-  gatewayService.setMainWindow(mainWindow)
-  imService.setMainWindow(mainWindow)
-
-  // 初始化菜单栏
-  const lang = configService?.getLanguage() || 'zh-CN'
-  menuService.setLanguage(lang)
-  menuService.setMainWindow(mainWindow)
-  menuService.applyMenu()
+  setupWindowServices()
+  createTray()
 
   // 窗口内容加载完成后，异步初始化重量级服务
   mainWindow?.webContents.on('did-finish-load', () => {
@@ -803,54 +890,34 @@ app.whenReady().then(async () => {
   })
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
-    }
+    showMainWindow()
   })
 })
 
-// macOS 上处理 Cmd+Q 退出
+// 处理 Cmd+Q / 托盘退出
 app.on('before-quit', (event) => {
-  // 标记正在退出应用（区分于 Cmd+W 关闭窗口）
   isQuitting = true
   
-  // 如果已经强制退出，不拦截
   if (forceQuit) {
     return
   }
   
-  // 拦截退出，让窗口的 close 事件处理确认逻辑
+  // 窗口可能是隐藏状态，需要先显示再走确认流程
   if (mainWindow && !mainWindow.isDestroyed()) {
     event.preventDefault()
-    mainWindow.close()  // 触发窗口的 close 事件
+    mainWindow.show()
+    if (process.platform === 'darwin') {
+      app.dock?.show()
+    }
+    mainWindow.close()  // 触发窗口的 close 事件，走终端确认逻辑
   }
 })
 
-// 所有窗口关闭时退出应用
+// 所有窗口关闭时的处理
+// macOS 上 Cmd+W 只隐藏窗口不触发此事件；真正退出时由 before-quit 驱动
 app.on('window-all-closed', () => {
-  // 停止定时任务调度服务
-  schedulerService.stop()
-  
-  // 停止远程服务
-  gatewayService.stop().catch(() => {})
-  imService.stopAll().catch(() => {})
-  remoteChatService.dispose().catch(() => {})
-
-  // 清理所有 PTY、SSH、SFTP 和 MCP 连接
-  ptyService.disposeAll()
-  sshService.disposeAll()
-  sftpService.disconnectAll()
-  mcpService.disconnectAll()
-
-  // 保存退出标志，然后重置
-  const shouldQuit = isQuitting
-  forceQuit = false
-  isQuitting = false
-
-  // macOS 上只有在用户明确退出（Cmd+Q）时才退出应用
-  // Cmd+W 关闭窗口后应用保持在 Dock 中运行
-  // 其他平台总是退出
-  if (process.platform !== 'darwin' || shouldQuit) {
+  cleanupAllServices()
+  if (process.platform !== 'darwin') {
     app.quit()
   }
 })
