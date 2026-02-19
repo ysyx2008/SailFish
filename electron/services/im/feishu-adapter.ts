@@ -90,7 +90,7 @@ export class FeishuAdapter implements IMAdapter {
     } catch (err) {
       this.updateConnected(false)
       if (this.wsClient) {
-        try { this.wsClient.close({ force: true }) } catch { /* close may throw, ignore */ }
+        try { this.wsClient.close({ force: true }) } catch { /* ignore */ }
         this.wsClient = null
       }
       this.client = null
