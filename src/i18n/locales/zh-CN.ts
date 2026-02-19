@@ -1851,5 +1851,11 @@ export default {
   gateway: {
     remoteTaskStarted: '远程任务开始',
     remoteConnected: '远程客户端已连接'
+  },
+
+  // IM 渠道连接状态通知
+  im: {
+    channelConnected: '{platform} 已连接',
+    channelDisconnected: '{platform} 连接已断开',
   }
 }

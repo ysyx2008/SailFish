@@ -1851,5 +1851,11 @@ export default {
   gateway: {
     remoteTaskStarted: 'Remote task started',
     remoteConnected: 'Remote client connected'
+  },
+
+  // IM channel connection notifications
+  im: {
+    channelConnected: '{platform} connected',
+    channelDisconnected: '{platform} disconnected',
   }
 }

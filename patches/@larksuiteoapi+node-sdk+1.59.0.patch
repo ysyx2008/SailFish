@@ -1,0 +1,66 @@
+diff --git a/node_modules/@larksuiteoapi/node-sdk/es/index.js b/node_modules/@larksuiteoapi/node-sdk/es/index.js
+index eb6c589..dd1d324 100644
+--- a/node_modules/@larksuiteoapi/node-sdk/es/index.js
++++ b/node_modules/@larksuiteoapi/node-sdk/es/index.js
+@@ -85310,7 +85310,7 @@ class WSClient {
+         return __awaiter(this, void 0, void 0, function* () {
+             const { appId, appSecret } = this.wsConfig.getClient();
+             try {
+-                const { code, data: { URL, ClientConfig }, msg } = yield this.httpInstance.request({
++                const response = yield this.httpInstance.request({
+                     method: "post",
+                     url: this.wsConfig.wsConfigUrl,
+                     data: {
+@@ -85323,12 +85323,16 @@ class WSClient {
+                     },
+                     timeout: 15000,
+                 });
++                const { code, data, msg } = response;
+                 if (code !== ErrorCode.ok) {
+                     this.logger.error('[ws]', `code: ${code}, ${code === ErrorCode.system_busy ? msg : 'system busy'}`);
+-                    if (code === ErrorCode.system_busy || code === ErrorCode.internal_error) {
+-                        return false;
+-                    }
++                    return false;
++                }
++                if (!data || !data.URL || !data.ClientConfig) {
++                    this.logger.error('[ws]', 'invalid ws config response: missing URL or ClientConfig');
++                    return false;
+                 }
++                const { URL, ClientConfig } = data;
+                 const { device_id, service_id } = qs.parse(URL);
+                 this.wsConfig.updateWs({
+                     connectUrl: URL,
+diff --git a/node_modules/@larksuiteoapi/node-sdk/lib/index.js b/node_modules/@larksuiteoapi/node-sdk/lib/index.js
+index d4cd7ec..1bf1c44 100644
+--- a/node_modules/@larksuiteoapi/node-sdk/lib/index.js
++++ b/node_modules/@larksuiteoapi/node-sdk/lib/index.js
+@@ -85325,7 +85325,7 @@ class WSClient {
+         return __awaiter(this, void 0, void 0, function* () {
+             const { appId, appSecret } = this.wsConfig.getClient();
+             try {
+-                const { code, data: { URL, ClientConfig }, msg } = yield this.httpInstance.request({
++                const response = yield this.httpInstance.request({
+                     method: "post",
+                     url: this.wsConfig.wsConfigUrl,
+                     data: {
+@@ -85338,12 +85338,16 @@ class WSClient {
+                     },
+                     timeout: 15000,
+                 });
++                const { code, data, msg } = response;
+                 if (code !== ErrorCode.ok) {
+                     this.logger.error('[ws]', `code: ${code}, ${code === ErrorCode.system_busy ? msg : 'system busy'}`);
+-                    if (code === ErrorCode.system_busy || code === ErrorCode.internal_error) {
+-                        return false;
+-                    }
++                    return false;
++                }
++                if (!data || !data.URL || !data.ClientConfig) {
++                    this.logger.error('[ws]', 'invalid ws config response: missing URL or ClientConfig');
++                    return false;
+                 }
++                const { URL, ClientConfig } = data;
+                 const { device_id, service_id } = qs__default["default"].parse(URL);
+                 this.wsConfig.updateWs({
+                     connectUrl: URL,

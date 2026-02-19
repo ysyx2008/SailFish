@@ -737,7 +737,7 @@ app.whenReady().then(async () => {
       if (dtClientId && dtClientSecret) {
         imService.startDingTalk({ enabled: true, clientId: dtClientId, clientSecret: dtClientSecret }).then(result => {
           if (result.success) {
-            console.log('[IM] DingTalk auto-connected')
+            console.log('[IM] DingTalk auto-connect started')
           } else {
             console.error('[IM] DingTalk auto-connect failed:', result.error)
           }
@@ -750,7 +750,7 @@ app.whenReady().then(async () => {
       if (fsAppId && fsAppSecret) {
         imService.startFeishu({ enabled: true, appId: fsAppId, appSecret: fsAppSecret }).then(result => {
           if (result.success) {
-            console.log('[IM] Feishu auto-connected')
+            console.log('[IM] Feishu auto-connect started')
           } else {
             console.error('[IM] Feishu auto-connect failed:', result.error)
           }
@@ -763,7 +763,7 @@ app.whenReady().then(async () => {
       if (slackBotToken && slackAppToken) {
         imService.startSlack({ enabled: true, botToken: slackBotToken, appToken: slackAppToken }).then(result => {
           if (result.success) {
-            console.log('[IM] Slack auto-connected')
+            console.log('[IM] Slack auto-connect started')
           } else {
             console.error('[IM] Slack auto-connect failed:', result.error)
           }
@@ -775,7 +775,7 @@ app.whenReady().then(async () => {
       if (tgBotToken) {
         imService.startTelegram({ enabled: true, botToken: tgBotToken }).then(result => {
           if (result.success) {
-            console.log('[IM] Telegram auto-connected')
+            console.log('[IM] Telegram auto-connect started')
           } else {
             console.error('[IM] Telegram auto-connect failed:', result.error)
           }
@@ -792,7 +792,7 @@ app.whenReady().then(async () => {
       if (wcCorpId && wcCorpSecret && wcAgentId && wcToken && wcEncodingAESKey) {
         imService.startWeCom({ enabled: true, corpId: wcCorpId, corpSecret: wcCorpSecret, agentId: wcAgentId, token: wcToken, encodingAESKey: wcEncodingAESKey, callbackPort: wcCallbackPort }).then(result => {
           if (result.success) {
-            console.log('[IM] WeCom auto-connected')
+            console.log('[IM] WeCom auto-connect started')
           } else {
             console.error('[IM] WeCom auto-connect failed:', result.error)
           }

@@ -38,7 +38,9 @@ export class FeishuAdapter implements IMAdapter {
   private client: any = null
   private wsClient: any = null
   private connected = false
+  private starting = false
   private config: FeishuConfig
+  private healthCheckTimer: ReturnType<typeof setInterval> | null = null
 
   onMessage: ((msg: IMIncomingMessage) => void) | null = null
   onConnectionChange: ((connected: boolean) => void) | null = null
@@ -48,68 +50,119 @@ export class FeishuAdapter implements IMAdapter {
   }
 
   async start(): Promise<void> {
-    if (this.connected) {
-      console.log('[Feishu] Already connected')
+    if (this.connected || this.starting) {
+      console.log('[Feishu] Already connected or connecting')
       return
     }
 
-    await loadSDK()
-
-    // 创建 API 客户端（用于发送消息）
-    this.client = new lark.Client({
-      appId: this.config.appId,
-      appSecret: this.config.appSecret,
-      appType: lark.AppType.SelfBuild,
-      domain: lark.Domain.Feishu,
-    })
-
-    // 创建事件分发器
-    const eventDispatcher = new lark.EventDispatcher({}).register({
-      'im.message.receive_v1': async (data: any) => {
-        try {
-          await this.handleMessageEvent(data)
-        } catch (err) {
-          console.error('[Feishu] Error handling message event:', err)
-        }
-      }
-    })
-
-    // 创建 WebSocket 长连接客户端
-    this.wsClient = new lark.WSClient({
-      appId: this.config.appId,
-      appSecret: this.config.appSecret,
-      loggerLevel: lark.LoggerLevel.warn,
-    })
-
+    this.starting = true
     try {
+      await loadSDK()
+
+      this.client = new lark.Client({
+        appId: this.config.appId,
+        appSecret: this.config.appSecret,
+        appType: lark.AppType.SelfBuild,
+        domain: lark.Domain.Feishu,
+      })
+
+      const eventDispatcher = new lark.EventDispatcher({}).register({
+        'im.message.receive_v1': async (data: any) => {
+          try {
+            await this.handleMessageEvent(data)
+          } catch (err) {
+            console.error('[Feishu] Error handling message event:', err)
+          }
+        }
+      })
+
+      this.wsClient = new lark.WSClient({
+        appId: this.config.appId,
+        appSecret: this.config.appSecret,
+        loggerLevel: lark.LoggerLevel.warn,
+      })
+
       await this.wsClient.start({ eventDispatcher })
-      this.connected = true
-      this.onConnectionChange?.(true)
-      console.log('[Feishu] WebSocket connected')
+      // SDK 的 start() 不等待实际连接建立就返回，靠健康检查感知真实状态
+      this.startHealthCheck()
     } catch (err) {
-      this.connected = false
-      this.onConnectionChange?.(false)
+      this.updateConnected(false)
+      this.wsClient = null
+      this.client = null
       throw err
+    } finally {
+      this.starting = false
     }
   }
 
   async stop(): Promise<void> {
+    this.stopHealthCheck()
     if (this.wsClient) {
       try {
-        await this.wsClient.stop()
+        this.wsClient.close({ force: true })
       } catch {
-        // WSClient.stop() 可能在未连接状态下抛异常，安全忽略
+        // close() 可能在未连接状态下抛异常，安全忽略
       }
       this.wsClient = null
     }
     this.client = null
-    this.connected = false
-    this.onConnectionChange?.(false)
+    this.updateConnected(false)
     console.log('[Feishu] Disconnected')
   }
 
   isConnected(): boolean {
     return this.connected
+  }
+
+  /**
+   * 检查 SDK 内部 WebSocket 实例是否处于 OPEN 状态
+   */
+  private isWsOpen(): boolean {
+    try {
+      const ws = this.wsClient?.wsConfig?.getWSInstance?.()
+      return ws != null && ws.readyState === 1
+    } catch {
+      return false
+    }
+  }
+
+  private updateConnected(value: boolean): void {
+    if (this.connected !== value) {
+      this.connected = value
+      this.onConnectionChange?.(value)
+      console.log(`[Feishu] Connection state changed: ${value ? 'connected' : 'disconnected'}`)
+    }
+  }
+
+  /**
+   * 定期检查 WebSocket 实际连接状态，同步 connected 标志。
+   * SDK 后台有自动重连，此处只负责感知状态变化并通知 UI。
+   * 启动后前 60 秒每 3 秒检查一次（快速感知初始连接），之后降为每 30 秒。
+   */
+  private startHealthCheck(): void {
+    this.stopHealthCheck()
+    let checks = 0
+    const fastPhaseChecks = 20
+    const tick = () => {
+      if (!this.wsClient) return
+      this.updateConnected(this.isWsOpen())
+      checks++
+      if (checks === fastPhaseChecks) {
+        this.stopHealthCheck()
+        this.healthCheckTimer = setInterval(() => {
+          if (!this.wsClient) return
+          this.updateConnected(this.isWsOpen())
+        }, 30_000)
+      }
+    }
+    this.healthCheckTimer = setInterval(tick, 3_000)
+  }
+
+  private stopHealthCheck(): void {
+    if (this.healthCheckTimer) {
+      clearInterval(this.healthCheckTimer)
+      this.healthCheckTimer = null
+    }
   }
 
   /**
