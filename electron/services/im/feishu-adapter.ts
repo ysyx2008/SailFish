@@ -59,6 +59,9 @@ export class FeishuAdapter implements IMAdapter {
     try {
       await loadSDK()
 
+      // 先验证凭证，失败时直接返回飞书的错误信息给用户
+      await this.verifyCredentials()
+
       this.client = new lark.Client({
         appId: this.config.appId,
         appSecret: this.config.appSecret,
@@ -83,11 +86,13 @@ export class FeishuAdapter implements IMAdapter {
       })
 
       await this.wsClient.start({ eventDispatcher })
-      // SDK 的 start() 不等待实际连接建立就返回，靠健康检查感知真实状态
       this.startHealthCheck()
     } catch (err) {
       this.updateConnected(false)
-      this.wsClient = null
+      if (this.wsClient) {
+        try { this.wsClient.close({ force: true }) } catch {}
+        this.wsClient = null
+      }
       this.client = null
       throw err
     } finally {
@@ -112,6 +117,23 @@ export class FeishuAdapter implements IMAdapter {
 
   isConnected(): boolean {
     return this.connected
+  }
+
+  /**
+   * 调用飞书 WS 端点验证凭证，失败时抛出包含飞书错误信息的异常。
+   * 这与 SDK 内部 pullConnectConfig 调用的是同一个接口。
+   */
+  private async verifyCredentials(): Promise<void> {
+    const resp = await fetch('https://open.feishu.cn/callback/ws/endpoint', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ AppID: this.config.appId, AppSecret: this.config.appSecret }),
+      signal: AbortSignal.timeout(15_000),
+    })
+    const result = await resp.json()
+    if (result.code !== 0) {
+      throw new Error(result.msg || `Feishu API error (code: ${result.code})`)
+    }
   }
 
   /**
