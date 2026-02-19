@@ -166,7 +166,7 @@ fixPathAsync()
 import { PtyService } from './services/pty.service'
 import { SshService } from './services/ssh.service'
 import { AiService } from './services/ai.service'
-import { ConfigService, McpServerConfig } from './services/config.service'
+import { ConfigService, McpServerConfig, setConfigServiceInstance } from './services/config.service'
 import { setLogLevel as setBackendLogLevel } from './utils/logger'
 import { XshellImportService } from './services/xshell-import.service'
 import { AgentService, AgentStep, AgentContext } from './services/agent'
@@ -250,6 +250,7 @@ const ptyService = new PtyService()
 const sshService = new SshService()
 const aiService = new AiService()
 const configService = new ConfigService()
+setConfigServiceInstance(configService)
 setBackendLogLevel(configService.getLogLevel())
 const xshellImportService = new XshellImportService()
 const hostProfileService = new HostProfileService()

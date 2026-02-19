@@ -781,6 +781,11 @@ const electronAPI = {
     get: (key: string) => ipcRenderer.invoke('config:get', key),
     set: (key: string, value: unknown) => ipcRenderer.invoke('config:set', key, value),
     getAll: () => ipcRenderer.invoke('config:getAll'),
+    onChanged: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on('config:changed', handler)
+      return () => { ipcRenderer.removeListener('config:changed', handler) }
+    },
 
     // AI 配置
     getAiProfiles: () => ipcRenderer.invoke('config:getAiProfiles'),

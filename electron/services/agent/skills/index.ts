@@ -18,5 +18,6 @@ import './browser'
 import './word'
 import './calendar'
 import './scheduler'
+import './config'
 import './skill-creator'
 

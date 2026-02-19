@@ -388,6 +388,19 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
+  /**
+   * 监听后端配置变更（由 Agent config 技能触发），自动重新加载
+   */
+  let cleanupConfigChanged: (() => void) | null = null
+  function listenConfigChanged(): void {
+    if (cleanupConfigChanged) return
+    cleanupConfigChanged = window.electronAPI.config.onChanged(() => {
+      console.log('[ConfigStore] Backend config changed, reloading...')
+      loadConfig()
+    })
+  }
+  listenConfigChanged()
+
   // ==================== AI 配置 ====================
 
   async function saveAiProfiles(): Promise<void> {

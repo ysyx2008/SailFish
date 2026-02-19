@@ -9,6 +9,7 @@ import { executeBrowserTool } from '../skills/browser/executor'
 import { executeWordTool } from '../skills/word/executor'
 import { executeCalendarTool } from '../skills/calendar/executor'
 import { executeSchedulerTool } from '../skills/scheduler/executor'
+import { executeConfigTool } from '../skills/config/executor'
 import { executeSkillCreatorTool } from '../skills/skill-creator/executor'
 import { getUserSkillService } from '../../user-skill.service'
 import { formatRemainingTime, formatTotalTime, truncateFromEnd } from './utils'
@@ -716,6 +717,10 @@ export async function executeSkillTool(
 
   if (toolName.startsWith('schedule_')) {
     return executeSchedulerTool(toolName, ptyId, args, toolCallId, config, executor)
+  }
+
+  if (toolName.startsWith('config_') || toolName === 'im_connect') {
+    return executeConfigTool(toolName, ptyId, args, toolCallId, config, executor)
   }
 
   if (toolName.startsWith('skill_')) {

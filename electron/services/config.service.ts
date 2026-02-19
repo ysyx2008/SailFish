@@ -752,3 +752,16 @@ export class ConfigService {
   }
 }
 
+let _instance: ConfigService | null = null
+
+export function getConfigService(): ConfigService {
+  if (!_instance) {
+    _instance = new ConfigService()
+  }
+  return _instance
+}
+
+export function setConfigServiceInstance(instance: ConfigService): void {
+  _instance = instance
+}
+
