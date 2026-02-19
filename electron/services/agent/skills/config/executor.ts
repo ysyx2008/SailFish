@@ -82,7 +82,7 @@ const CONFIG_REGISTRY: ConfigMeta[] = [
   // Readonly
   { key: 'aiProfiles', label: 'AI 模型配置', category: 'agent', type: 'array', readonly: true },
   { key: 'sshSessions', label: 'SSH 会话', category: 'agent', type: 'array', readonly: true },
-  { key: 'mcpServers', label: 'MCP 服务器', category: 'mcp', type: 'array', readonly: true },
+  { key: 'mcpServers', label: 'MCP 服务器', category: 'mcp', type: 'array' },
 ]
 
 const CONFIG_MAP = new Map(CONFIG_REGISTRY.map(m => [m.key, m]))
