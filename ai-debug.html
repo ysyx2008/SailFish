@@ -1675,12 +1675,25 @@
       async function copyTextContent(elementId) {
         const el = document.getElementById(elementId)
         if (!el) return
-        
+        const text = (el.tagName === 'TEXTAREA' ? el.value : el.textContent) || ''
+        if (window.app && typeof window.app._copyToClipboard === 'function') {
+          await window.app._copyToClipboard(text)
+          return
+        }
         try {
-          // textarea 用 value，其他元素用 textContent
-          const text = el.tagName === 'TEXTAREA' ? el.value : el.textContent
-          await navigator.clipboard.writeText(text || '')
-          // 显示复制成功提示
+          if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            await navigator.clipboard.writeText(text)
+          } else {
+            const input = document.createElement('textarea')
+            input.value = text
+            input.style.position = 'fixed'
+            input.style.opacity = '0'
+            input.style.left = '-9999px'
+            document.body.appendChild(input)
+            input.select()
+            document.execCommand('copy')
+            document.body.removeChild(input)
+          }
           if (window.app && window.app.toast) {
             window.app.toast.show('已复制到剪贴板', 'success')
           }
@@ -1910,7 +1923,7 @@
               <span class="log-entry__time">${entry.formattedTime}</span>
               <span class="log-entry__type log-entry__type--${entry.typeClass}">${entry.typeLabel}</span>
               <span class="log-entry__summary">${this.markdown.escapeHtml(entry.summary)}</span>
-              <button class="btn btn--copy" data-action="copy">📋 复制</button>
+              <button type="button" class="btn btn--copy" data-action="copy">📋 复制</button>
               <span class="log-entry__expand">▶</span>
             </div>
             <div class="log-entry__content">
@@ -1919,7 +1932,10 @@
           `
           
           div.querySelector('.log-entry__header').addEventListener('click', (e) => {
-            if (e.target.dataset.action === 'copy') {
+            const copyBtn = e.target.closest('[data-action="copy"]')
+            if (copyBtn) {
+              e.preventDefault()
+              e.stopPropagation()
               this.eventBus.emit('entry:copy', entry)
               return
             }
@@ -2376,6 +2392,17 @@
           if (!this.api) return
           this.api.shell.openPath(path)
         }
+
+        async writeClipboard(text) {
+          if (!this.api || typeof this.api.aiDebugWriteClipboard !== 'function') return false
+          try {
+            await this.api.aiDebugWriteClipboard(text)
+            return true
+          } catch (e) {
+            console.error('IPC writeClipboard failed:', e)
+            return false
+          }
+        }
       }
 
       // ============================================
@@ -2558,8 +2585,28 @@
 
         async _copyToClipboard(text) {
         try {
-          await navigator.clipboard.writeText(text)
-            this.toast.show('已复制到剪贴板', 'success')
+          // 优先使用主进程剪贴板（在调试窗口内最可靠）
+          if (this.ipc.isAvailable && typeof this.ipc.writeClipboard === 'function') {
+            const ok = await this.ipc.writeClipboard(text)
+            if (ok) {
+              this.toast.show('已复制到剪贴板', 'success')
+              return true
+            }
+          }
+          if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            await navigator.clipboard.writeText(text)
+          } else {
+            const input = document.createElement('textarea')
+            input.value = text
+            input.style.position = 'fixed'
+            input.style.opacity = '0'
+            input.style.left = '-9999px'
+            document.body.appendChild(input)
+            input.select()
+            document.execCommand('copy')
+            document.body.removeChild(input)
+          }
+          this.toast.show('已复制到剪贴板', 'success')
           return true
         } catch (err) {
           console.error('Failed to copy:', err)

@@ -1705,6 +1705,7 @@ interface Window {
     aiDebugGetLogDir: () => Promise<string>
     aiDebugExportLogs: (filePath: string) => Promise<{ success: boolean; error?: string }>
     aiDebugCopyEntry: (entryId: string) => Promise<string | null>
+    aiDebugWriteClipboard: (text: string) => Promise<void>
     onAiDebugMessage: (callback: (message: { type: string; entry?: unknown }) => void) => () => void
 
     // 定时任务调度

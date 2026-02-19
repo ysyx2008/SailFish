@@ -3,7 +3,7 @@
  * 收集和广播 AI 请求与响应的实时流水
  */
 
-import { BrowserWindow, ipcMain, app } from 'electron'
+import { BrowserWindow, ipcMain, app, clipboard } from 'electron'
 import { EventEmitter } from 'events'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -254,6 +254,12 @@ class AiDebugService extends EventEmitter {
         return JSON.stringify(entry, null, 2)
       }
       return null
+    })
+
+    // 写入剪贴板（主进程 clipboard 在调试窗口内更可靠）
+    ipcMain.handle('aiDebug:writeClipboard', async (_event, text: string) => {
+      clipboard.writeText(text)
+      return true
     })
   }
 

@@ -2578,6 +2578,7 @@ const electronAPI = {
   aiDebugGetLogDir: () => ipcRenderer.invoke('aiDebug:getLogDir') as Promise<string>,
   aiDebugExportLogs: (filePath: string) => ipcRenderer.invoke('aiDebug:exportLogs', filePath) as Promise<{ success: boolean; error?: string }>,
   aiDebugCopyEntry: (entryId: string) => ipcRenderer.invoke('aiDebug:copyEntry', entryId) as Promise<string | null>,
+  aiDebugWriteClipboard: (text: string) => ipcRenderer.invoke('aiDebug:writeClipboard', text) as Promise<void>,
   onAiDebugMessage: (callback: (message: { type: string; entry?: unknown }) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, message: { type: string; entry?: unknown }) => callback(message)
     ipcRenderer.on('aiDebug:message', handler)
