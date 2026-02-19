@@ -279,24 +279,25 @@ export class VectorStorage extends EventEmitter {
 
   /**
    * 执行 compact 操作，清理已删除的数据释放磁盘空间
+   * @param aggressive 是否立即清理所有旧版本（默认保留 7 天）
    */
-  async compact(): Promise<void> {
+  async compact(aggressive: boolean = false): Promise<void> {
     if (!this.table || !this.db) return
 
     try {
-      // LanceDB 的 optimize 方法会合并小文件并清理已删除的数据
       if (typeof this.table.optimize === 'function') {
-        await this.table.optimize()
-        console.log('[VectorStorage] Compact (optimize) completed')
+        const options = aggressive
+          ? { cleanupOlderThan: new Date() }
+          : undefined
+        await this.table.optimize(options)
+        console.log(`[VectorStorage] Compact (optimize${aggressive ? ', aggressive' : ''}) completed`)
       } else if (typeof this.table.cleanup === 'function') {
         await this.table.cleanup()
         console.log('[VectorStorage] Compact (cleanup) completed')
       } else if (typeof this.table.compaction === 'function') {
-        // 某些版本使用 compaction
         await this.table.compaction()
         console.log('[VectorStorage] Compact (compaction) completed')
       } else {
-        // 如果没有可用的 compact 方法，尝试重建表
         console.warn('[VectorStorage] No compact method available, will rely on delete')
       }
       
@@ -620,6 +621,34 @@ export class VectorStorage extends EventEmitter {
    */
   getStoragePath(): string {
     return this.storagePath
+  }
+
+  /**
+   * 获取属于指定 docIds 集合的所有记录（一次全表查询）
+   */
+  async getValidRecords(validDocIds: Set<string>): Promise<VectorRecord[]> {
+    if (!this.table || validDocIds.size === 0) return []
+
+    try {
+      const allRows = await this.table.query().toArray()
+      return (allRows as any[])
+        .filter(r => validDocIds.has(r.docId))
+        .map(r => ({
+          id: r.id,
+          docId: r.docId,
+          content: r.content,
+          // LanceDB 返回 Arrow FixedSizeList，需转为普通数组
+          vector: Array.from(r.vector as Iterable<number>),
+          filename: r.filename,
+          hostId: r.hostId,
+          tags: r.tags,
+          chunkIndex: r.chunkIndex,
+          createdAt: r.createdAt
+        }))
+    } catch (error) {
+      console.error('[VectorStorage] Failed to get valid records:', error)
+      return []
+    }
   }
 
   /**

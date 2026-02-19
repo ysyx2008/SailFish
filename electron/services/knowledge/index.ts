@@ -287,44 +287,73 @@ export class KnowledgeService extends EventEmitter {
 
   /**
    * 清理孤儿数据（向量库和 BM25 中存在但 documentsIndex 中不存在的数据）
+   * 
+   * LanceDB 的 delete() 仅创建 deletion vector（软删除标记），数据文件并未立即清除。
+   * 如果 optimize/compact 未正确执行，旧数据在重启后仍可查到。
+   * 因此清理后必须强制 compact 并验证结果，必要时通过重建表彻底清除。
    */
   private async cleanupOrphanData(): Promise<void> {
     try {
       const validDocIds = new Set(this.documentsIndex.keys())
-      let cleanedCount = 0
 
-      // 统计当前状态
-      const memoryCount = Array.from(this.documentsIndex.values())
-        .filter(doc => doc.fileType === 'host-memory').length
-      console.log(`[KnowledgeService] 当前 documentsIndex 中有 ${this.documentsIndex.size} 个文档，其中 ${memoryCount} 个是主机记忆`)
-
-      // 获取向量存储中的所有 docIds
-      const stats = await this.vectorStorage.getStats()
-      console.log(`[KnowledgeService] 向量存储中有 ${stats.chunkCount} 个分块`)
-      
-      if (stats.chunkCount > 0) {
-        // 遍历向量存储，找出孤儿 docIds
-        const allDocIds = await this.vectorStorage.getAllDocIds()
-        const docIdArray = Array.from(allDocIds)
-        console.log(`[KnowledgeService] 向量存储中有 ${docIdArray.length} 个唯一文档`)
-        
-        for (const docId of docIdArray) {
-          if (!validDocIds.has(docId)) {
-            await this.vectorStorage.removeDocumentChunks(docId)
-            await this.bm25Index.removeDocumentChunks(docId)
-            cleanedCount++
-            console.log('[KnowledgeService] 清理孤儿数据:', docId)
-          }
-        }
+      const orphanDocIds = await this.findOrphanDocIds(validDocIds)
+      if (orphanDocIds.length === 0) {
+        return
       }
 
-      if (cleanedCount > 0) {
-        console.log(`[KnowledgeService] 清理了 ${cleanedCount} 个孤儿文档`)
-      } else {
-        console.log('[KnowledgeService] 没有发现孤儿数据')
+      console.log(`[KnowledgeService] 发现 ${orphanDocIds.length} 个孤儿文档，开始清理...`)
+
+      // 第一轮：逐个删除 + 强制 aggressive compact
+      for (const docId of orphanDocIds) {
+        await this.vectorStorage.removeDocumentChunks(docId)
+        await this.bm25Index.removeDocumentChunks(docId)
       }
+      await this.vectorStorage.compact(true)
+
+      // 验证：compact 后重新检查是否还有孤儿
+      const remaining = await this.findOrphanDocIds(validDocIds)
+      if (remaining.length === 0) {
+        console.log(`[KnowledgeService] 清理了 ${orphanDocIds.length} 个孤儿文档`)
+        return
+      }
+
+      // 如果软删除无效，通过重建表彻底清除
+      console.warn(
+        `[KnowledgeService] 软删除后仍有 ${remaining.length} 个孤儿残留，` +
+        '将重建向量表彻底清除...'
+      )
+      await this.rebuildVectorTable(validDocIds)
+      console.log('[KnowledgeService] 向量表重建完成，孤儿数据已彻底清除')
     } catch (error) {
       console.error('[KnowledgeService] 清理孤儿数据失败:', error)
+    }
+  }
+
+  /**
+   * 查找向量存储中存在但 documentsIndex 中不存在的孤儿 docId
+   */
+  private async findOrphanDocIds(validDocIds: Set<string>): Promise<string[]> {
+    const stats = await this.vectorStorage.getStats()
+    if (stats.chunkCount === 0) return []
+
+    const allDocIds = await this.vectorStorage.getAllDocIds()
+    return Array.from(allDocIds).filter(docId => !validDocIds.has(docId))
+  }
+
+  /**
+   * 从向量表中读取有效数据，drop 后重建，彻底清除孤儿数据
+   */
+  private async rebuildVectorTable(validDocIds: Set<string>): Promise<void> {
+    // 一次全表查询，筛选有效记录（避免 N+1）
+    const validRecords = await this.vectorStorage.getValidRecords(validDocIds)
+
+    // 先确认数据收集成功，再 clear
+    await this.vectorStorage.clear()
+
+    if (validRecords.length > 0) {
+      const dimensions = this.embeddingService.getDimensions()
+      await this.vectorStorage.initialize(dimensions)
+      await this.vectorStorage.addRecords(validRecords)
     }
   }
 
@@ -525,14 +554,11 @@ export class KnowledgeService extends EventEmitter {
   async removeDocuments(docIds: string[]): Promise<{ success: number; failed: number }> {
     let success = 0
     let failed = 0
-    const total = docIds.length
 
-    for (let i = 0; i < docIds.length; i++) {
-      const docId = docIds[i]
-      const isLast = i === total - 1
+    for (const docId of docIds) {
       try {
-        // 最后一个文档删除时强制 compact，批量删除时跳过中间保存
-        const result = await this.removeDocument(docId, isLast, true)
+        // 批量删除：跳过中间 compact 和保存
+        const result = await this.removeDocument(docId, false, true)
         if (result) {
           success++
         } else {
@@ -544,16 +570,16 @@ export class KnowledgeService extends EventEmitter {
       }
     }
 
-    // 批量删除完成后统一保存一次
     if (success > 0) {
       const saved = this.saveDocumentsIndex()
       if (!saved) {
         console.error('[KnowledgeService] 批量删除后保存索引失败！')
-        // 保存失败时，将所有已删除的标记为失败
         failed += success
         success = 0
       } else {
-        console.log(`[KnowledgeService] 批量删除完成: ${success} 成功, ${failed} 失败，已执行 compact 并保存索引`)
+        // aggressive compact 立即清理旧版本数据文件
+        await this.vectorStorage.compact(true)
+        console.log(`[KnowledgeService] 批量删除完成: ${success} 成功, ${failed} 失败`)
       }
     }
 
@@ -1392,14 +1418,19 @@ export class KnowledgeService extends EventEmitter {
     const memoryDocs = this.getDocumentsByHost(hostId)
       .filter(doc => doc.fileType === 'host-memory')
     
+    if (memoryDocs.length === 0) return 0
+
     let deleted = 0
-    const total = memoryDocs.length
-    for (let i = 0; i < memoryDocs.length; i++) {
-      const doc = memoryDocs[i]
-      const isLast = i === total - 1
-      // 最后一个删除时强制 compact
-      const success = await this.removeDocument(doc.id, isLast)
+    for (const doc of memoryDocs) {
+      // 批量删除时跳过中间 compact 和保存
+      const success = await this.removeDocument(doc.id, false, true)
       if (success) deleted++
+    }
+
+    if (deleted > 0) {
+      this.saveDocumentsIndex()
+      // aggressive compact 立即清理旧版本数据文件，避免重启后出现孤儿
+      await this.vectorStorage.compact(true)
     }
 
     return deleted
