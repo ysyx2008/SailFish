@@ -2621,10 +2621,12 @@ const electronAPI = {
     onRemoteTaskStarted: (callback: (data: {
       ptyId: string
       message: string
+      remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'
     }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: {
         ptyId: string
         message: string
+        remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'
       }) => callback(data)
       ipcRenderer.on('gateway:remoteTaskStarted', handler)
       return () => {

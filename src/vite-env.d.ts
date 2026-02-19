@@ -1960,6 +1960,7 @@ interface Window {
       onRemoteTaskStarted: (callback: (data: {
         ptyId: string
         message: string
+        remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'
       }) => void) => () => void
       getAuditLog: (limit?: number) => Promise<Array<{
         id: string

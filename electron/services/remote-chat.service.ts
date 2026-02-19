@@ -205,10 +205,12 @@ export class RemoteChatService {
     await this.ensurePty()
 
     // 通知桌面端：远程任务开始（所有通道统一在此发送，确保 ptyId 有效）
-    console.log(`[RemoteDebug][Backend] sendMessage: 发送 gateway:remoteTaskStarted, ptyId=${this.ptyId}, message="${message.trim().substring(0, 60)}"`)
+    const remoteChannelValue = remoteChannel || 'desktop'
+    console.log(`[RemoteDebug][Backend] sendMessage: 发送 gateway:remoteTaskStarted, ptyId=${this.ptyId}, remoteChannel=${remoteChannelValue}, message="${message.trim().substring(0, 60)}"`)
     this.sendToDesktop('gateway:remoteTaskStarted', {
       ptyId: this.ptyId,
-      message: message.trim()
+      message: message.trim(),
+      remoteChannel: remoteChannelValue
     })
 
     // 添加用户消息到历史

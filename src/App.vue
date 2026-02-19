@@ -110,6 +110,7 @@ let cleanupGatewayRemoteTask: (() => void) | null = null
 let cleanupRemoteAgentStep: (() => void) | null = null
 let cleanupRemoteAgentComplete: (() => void) | null = null
 let cleanupRemoteAgentConfirm: (() => void) | null = null
+let cleanupImConnectionChange: (() => void) | null = null
 
 // 知识库管理器显示状态
 const showKnowledgeManager = ref(false)
@@ -189,9 +190,9 @@ onMounted(async () => {
           ptyId: data.ptyId,
           title: data.title || '📡 Remote Agent',
           type: data.type || 'local',
-          isRemote: true
+          isRemote: true,
+          activate: false  // 不激活，避免干扰用户当前操作
         })
-        // 后台静默创建，不切换、不打开 AI 面板，不干扰用户当前工作
         log.debug(`[Gateway] 远程 Agent 终端标签页已创建（后台）: ptyId=${data.ptyId}`)
       }
     }
@@ -199,7 +200,7 @@ onMounted(async () => {
 
   // 监听远程 Gateway 任务开始事件（关键时刻 Toast 通知 + 初始化 Agent 消息）
   cleanupGatewayRemoteTask = window.electronAPI.gateway.onRemoteTaskStarted((data) => {
-    log.debug(`[RemoteDebug] onRemoteTaskStarted: ptyId=${data.ptyId}, message="${data.message.substring(0, 60)}"`)
+    log.debug(`[RemoteDebug] onRemoteTaskStarted: ptyId=${data.ptyId}, remoteChannel=${data.remoteChannel}, message="${data.message.substring(0, 60)}"`)
     const preview = data.message.length > 60
       ? data.message.substring(0, 60) + '...'
       : data.message
@@ -214,7 +215,8 @@ onMounted(async () => {
         ptyId: data.ptyId,
         title: '📡 Remote Agent',
         type: 'local',
-        isRemote: true
+        isRemote: true,
+        activate: false  // 不激活，避免干扰用户当前操作
       })
       remoteTab = terminalStore.tabs.find(tab => tab.id === newTabId)
       log.debug(`[RemoteDebug] 新建远程 tab: newTabId=${newTabId}, found=${!!remoteTab}`)
@@ -225,7 +227,7 @@ onMounted(async () => {
       }, 300)
     }
     if (remoteTab) {
-      // 后台初始化 Agent 状态，不切换 tab、不干扰用户当前工作
+      // 不切换 tab、不打开 AI 面板，避免干扰用户当前操作；tab 已在栏内可见，用户可自行点击查看
       // 标记 Agent 正在运行
       const hadAgentState = !!remoteTab.agentState
       const prevStepsCount = remoteTab.agentState?.steps?.length ?? 0
@@ -297,6 +299,28 @@ onMounted(async () => {
       toolArgs: data.toolArgs,
       riskLevel: data.riskLevel
     })
+  })
+
+  // 全局监听 IM 渠道连接状态变化，弹 toast 通知
+  const imPlatformNames: Record<string, string> = {
+    dingtalk: t('settings.im.dingtalk'),
+    feishu: t('settings.im.feishu'),
+    slack: t('settings.im.slack'),
+    telegram: t('settings.im.telegram'),
+    wecom: t('settings.im.wecom'),
+  }
+  const imConnectedState = new Map<string, boolean>()
+  cleanupImConnectionChange = window.electronAPI.im.onConnectionChange((data) => {
+    const prev = imConnectedState.get(data.platform)
+    imConnectedState.set(data.platform, data.connected)
+    // 仅在状态真正变化时提示（跳过首次上报，避免启动时刷屏）
+    if (prev === undefined) return
+    const name = imPlatformNames[data.platform] || data.platform
+    if (data.connected) {
+      toast.success(t('im.channelConnected', { platform: name }))
+    } else {
+      toast.warning(t('im.channelDisconnected', { platform: name }))
+    }
   })
 
   // 加载配置
@@ -575,6 +599,7 @@ onUnmounted(() => {
   cleanupRemoteAgentStep?.()
   cleanupRemoteAgentComplete?.()
   cleanupRemoteAgentConfirm?.()
+  cleanupImConnectionChange?.()
 })
 </script>
 

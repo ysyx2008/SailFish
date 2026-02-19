@@ -570,6 +570,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   /**
    * 创建关联到现有 ptyId 的标签页
    * 用于定时任务执行时，后端已创建终端，前端需要显示
+   * @param options.activate 是否激活新 tab（默认 true）。远程 Gateway/IM 创建时传 false，避免抢焦点
    */
   function createTabWithExistingPty(options: {
     ptyId: string
@@ -583,9 +584,11 @@ export const useTerminalStore = defineStore('terminal', () => {
     sshSessionId?: string
     pendingTask?: string  // 创建后自动执行的任务 prompt
     isRemote?: boolean    // 是否为远程 Gateway Agent 标签页
+    activate?: boolean   // 是否激活新 tab，默认 true；远程任务创建时传 false 不抢焦点
   }): string {
     const id = uuidv4()
-    
+    const shouldActivate = options.activate !== false
+
     const tab: TerminalTab = {
       id,
       title: options.title,
@@ -604,7 +607,14 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
 
     tabs.value.push(tab)
-    activeTabId.value = id
+    if (shouldActivate) {
+      activeTabId.value = id
+    } else {
+      // 不抢焦点：仅当当前没有选中 tab 时才选中新 tab（例如首个 tab）
+      if (!activeTabId.value) {
+        activeTabId.value = id
+      }
+    }
 
     // 如果有待执行任务，记录下来让 AiPanel 自动执行
     if (options.pendingTask) {
