@@ -468,6 +468,7 @@ interface Window {
       get: (key: string) => Promise<unknown>
       set: (key: string, value: unknown) => Promise<void>
       getAll: () => Promise<Record<string, unknown>>
+      onChanged: (callback: () => void) => () => void
       getAiProfiles: () => Promise<
         Array<{
           id: string

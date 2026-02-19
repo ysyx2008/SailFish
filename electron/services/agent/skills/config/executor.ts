@@ -358,7 +358,7 @@ function coerceValue(value: unknown, expectedType: string): unknown {
 }
 
 /** 格式化显示值（脱敏处理） */
-function formatValue(val: unknown, meta: ConfigMeta): string {
+function formatValue(val: unknown, _meta: ConfigMeta): string {
   if (val === undefined || val === null || val === '') return '_(未设置)_'
 
   if (typeof val === 'object') {

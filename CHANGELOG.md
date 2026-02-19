@@ -2,7 +2,26 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.5.0 (2026-02-19) (Latest)
+## v10.6.0 (2026-02-20) (Latest)
+
+### New Features
+- 🍎 **System Tray & Single Instance**: Added system tray icon and single-instance lock so the app can run in the background with one process
+- 🔒 **Tray Stay Resident**: Window hides on Cmd+W instead of quitting; services keep running in the background
+- ⚙️ **Config Skill**: New SailFish config management skill — Agent can read and update app settings via natural language
+- 🛒 **Skill Market (CN)**: Added 12 new skills targeting Chinese users in the skill market
+
+### Improvements
+- 🌐 **Website**: Skills list is now auto-synced from the source directory during website build
+
+### Bug Fixes
+- 🔧 Feishu: Validate credentials before connecting and return clear errors to the user when invalid
+- 🔧 Feishu: Fixed SDK connection error handling and adapter connection state management
+- 🔧 Remote/IM: New task creates a tab without activating it to avoid stealing focus
+- 🔧 Knowledge: Fixed repeated orphan cleanup on every startup after clearing host memory
+- 🔧 AI Debug: Fixed copy button not working in the debug panel
+- 🔧 CLI: Auto-detect local host and show an empty-history message when appropriate
+
+## v10.5.0 (2026-02-19)
 
 ### New Features
 - 🛒 **Skill Market**: Browse, search, install, and update community-shared skills directly from the in-app skill market, powered by a remote registry
