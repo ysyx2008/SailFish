@@ -1873,6 +1873,116 @@ export default {
     }
   },
 
+  // Watch (Sensor Loop)
+  watch: {
+    title: 'Watch Manager (Sensor Loop)',
+    watches: 'Watches',
+    history: 'History',
+    sensors: 'Sensors',
+    newWatch: 'New Watch',
+    createWatch: 'Create Watch',
+    editWatch: 'Edit Watch',
+    noWatches: 'No watches configured',
+    createFirst: 'Create your first Watch',
+    loading: 'Loading...',
+
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    running: 'Running',
+
+    edit: 'Edit',
+    delete: 'Delete',
+    trigger: 'Trigger',
+    save: 'Save',
+    create: 'Create',
+    cancel: 'Cancel',
+    close: 'Close',
+    refresh: 'Refresh',
+
+    triggerCron: 'Cron Schedule',
+    triggerInterval: 'Fixed Interval',
+    triggerHeartbeat: 'Heartbeat',
+    triggerWebhook: 'Webhook',
+    triggerManual: 'Manual',
+    presets: 'Presets',
+
+    executionTarget: 'Execution Target',
+    localTerminal: 'Local Terminal',
+    remoteHost: 'Remote Host',
+    assistantOnly: 'Assistant Only',
+
+    outputType: 'Output Delivery',
+    outputIM: 'IM Push',
+    outputNotification: 'System Notification',
+    outputLog: 'Log Only',
+    outputSilent: 'Silent',
+
+    preCheck: 'Smart Pre-check',
+    preCheckHint: 'Pre-check Hint',
+    preCheckDesc: 'Let AI decide whether to run based on context — enabling "Agency of Omission"',
+
+    statusCompleted: 'Completed',
+    statusFailed: 'Failed',
+    statusSkipped: 'Skipped',
+    statusTimeout: 'Timeout',
+    statusCancelled: 'Cancelled',
+    statusRunning: 'Running',
+
+    name: 'Name',
+    namePlaceholder: 'e.g., Daily Briefing, Email Check',
+    description: 'Description',
+    descriptionPlaceholder: 'Brief description of what this Watch does',
+    prompt: 'Task Prompt',
+    promptPlaceholder: 'Enter the task for Agent, e.g., Check inbox for important emails and push a summary',
+    triggers: 'Triggers',
+    priority: 'Priority',
+    priorityHigh: 'High',
+    priorityNormal: 'Normal',
+    priorityLow: 'Low',
+    skills: 'Skills',
+    skillsPlaceholder: 'Optional, comma-separated, e.g. email, browser',
+
+    sensorStatus: 'Sensor Status',
+    recentEvents: 'Recent Events',
+    noEvents: 'No events yet',
+    sensorRunning: 'Running',
+    sensorStopped: 'Stopped',
+    triggerHeartbeatBtn: 'Trigger Heartbeat',
+
+    noHistory: 'No execution records',
+    clearHistory: 'Clear History',
+    lastRun: 'Last Run',
+    nextRun: 'Next Run',
+    never: 'Never',
+    duration: 'Duration',
+
+    confirmDelete: 'Delete "{name}"?',
+    confirmClearHistory: 'Clear all execution history?',
+
+    validation: {
+      nameRequired: 'Watch name is required',
+      promptRequired: 'Task prompt is required',
+      triggerRequired: 'At least one trigger is required',
+    },
+
+    webhookUrl: 'Webhook URL',
+    webhookToken: 'Token',
+  },
+
+  heartbeat: {
+    title: 'Heartbeat Sensor',
+    description: 'Periodically wakes up Agent to check for things that need attention. Works with Watches.',
+    enable: 'Enable Heartbeat',
+    enableDesc: 'Agent will automatically wake up at the configured interval',
+    interval: 'Heartbeat Interval (minutes)',
+    intervalDesc: 'Recommended 15-60 minutes. Shorter intervals increase AI API costs',
+    manualTrigger: 'Manual Trigger',
+    manualTriggerDesc: 'Trigger a heartbeat immediately (for testing)',
+    trigger: 'Trigger',
+    running: 'Running',
+    stopped: 'Stopped',
+  },
+
   // Gateway remote access notifications
   gateway: {
     remoteTaskStarted: 'Remote task started',

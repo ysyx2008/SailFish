@@ -326,22 +326,22 @@ onMounted(loadSensorSettings)
         <div class="section-title-group">
           <h4>
             <Heart :size="14" style="margin-right: 4px;" />
-            心跳传感器（Heartbeat Sensor）
+            {{ t('heartbeat.title') }}
           </h4>
           <span class="status-badge" :class="{ active: sensorStatusList.some(s => s.id === 'heartbeat' && s.running) }">
             <span class="status-dot"></span>
-            {{ sensorStatusList.some(s => s.id === 'heartbeat' && s.running) ? '运行中' : '已停止' }}
+            {{ sensorStatusList.some(s => s.id === 'heartbeat' && s.running) ? t('heartbeat.running') : t('heartbeat.stopped') }}
           </span>
         </div>
       </div>
       <p class="section-desc">
-        心跳传感器会周期性唤醒 Agent，检查是否有需要关注的事情（如新邮件、即将到来的日程等）。搭配 Watch 使用。
+        {{ t('heartbeat.description') }}
       </p>
 
       <div class="setting-row">
         <div>
-          <label class="form-label">启用心跳</label>
-          <p class="setting-desc">开启后，Agent 会按设定间隔自动唤醒</p>
+          <label class="form-label">{{ t('heartbeat.enable') }}</label>
+          <p class="setting-desc">{{ t('heartbeat.enableDesc') }}</p>
         </div>
         <label class="toggle-switch">
           <input type="checkbox" v-model="heartbeatEnabled" @change="toggleHeartbeat" />
@@ -351,8 +351,8 @@ onMounted(loadSensorSettings)
 
       <div class="setting-row">
         <div>
-          <label class="form-label">心跳间隔（分钟）</label>
-          <p class="setting-desc">建议 15～60 分钟，过短可能增加 AI 调用开销</p>
+          <label class="form-label">{{ t('heartbeat.interval') }}</label>
+          <p class="setting-desc">{{ t('heartbeat.intervalDesc') }}</p>
         </div>
         <div class="input-group-compact">
           <input
@@ -370,12 +370,12 @@ onMounted(loadSensorSettings)
 
       <div class="setting-row" v-if="heartbeatEnabled">
         <div>
-          <label class="form-label">手动触发</label>
-          <p class="setting-desc">立即触发一次心跳（测试用）</p>
+          <label class="form-label">{{ t('heartbeat.manualTrigger') }}</label>
+          <p class="setting-desc">{{ t('heartbeat.manualTriggerDesc') }}</p>
         </div>
         <button class="btn btn-sm" @click="manualHeartbeat">
           <Heart :size="14" />
-          触发
+          {{ t('heartbeat.trigger') }}
         </button>
       </div>
     </div>

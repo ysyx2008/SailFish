@@ -1873,6 +1873,128 @@ export default {
     }
   },
 
+  // Watch 感知层
+  watch: {
+    title: 'Watch 管理（感知层）',
+    watches: 'Watches',
+    history: '历史',
+    sensors: '传感器',
+    newWatch: '新建 Watch',
+    createWatch: '创建 Watch',
+    editWatch: '编辑 Watch',
+    noWatches: '暂无 Watch',
+    createFirst: '创建第一个 Watch',
+    loading: '加载中...',
+
+    enabled: '已启用',
+    disabled: '已禁用',
+    running: '运行中',
+
+    edit: '编辑',
+    delete: '删除',
+    trigger: '手动触发',
+    save: '保存',
+    create: '创建',
+    cancel: '取消',
+    close: '关闭',
+    refresh: '刷新',
+
+    // 触发器类型
+    triggerCron: 'Cron 定时',
+    triggerInterval: '固定间隔',
+    triggerHeartbeat: '心跳',
+    triggerWebhook: 'Webhook',
+    triggerManual: '手动',
+    presets: '常用预设',
+
+    // 执行目标
+    executionTarget: '执行目标',
+    localTerminal: '本地终端',
+    remoteHost: '远程主机',
+    assistantOnly: '仅对话',
+
+    // 输出方式
+    outputType: '结果投递',
+    outputIM: 'IM 推送',
+    outputNotification: '系统通知',
+    outputLog: '仅记录',
+    outputSilent: '静默',
+
+    // Pre-check
+    preCheck: '智能预检',
+    preCheckHint: '预检提示',
+    preCheckDesc: '让 AI 在执行前判断当前是否适合运行，可自主决定"不打扰"',
+
+    // 状态
+    statusCompleted: '完成',
+    statusFailed: '失败',
+    statusSkipped: '跳过',
+    statusTimeout: '超时',
+    statusCancelled: '取消',
+    statusRunning: '运行中',
+
+    // 表单
+    name: '名称',
+    namePlaceholder: '例如：每日晨报、邮件检查',
+    description: '描述',
+    descriptionPlaceholder: '简要描述这个 Watch 的用途',
+    prompt: '任务指令',
+    promptPlaceholder: '输入 Agent 要执行的任务，例如：检查邮箱是否有重要邮件，如果有则推送摘要',
+    triggers: '触发方式',
+    priority: '优先级',
+    priorityHigh: '高',
+    priorityNormal: '普通',
+    priorityLow: '低',
+    skills: '技能',
+    skillsPlaceholder: '可选，逗号分隔，如 email, browser',
+
+    // 传感器
+    sensorStatus: '传感器状态',
+    recentEvents: '最近事件',
+    noEvents: '暂无事件',
+    sensorRunning: '运行中',
+    sensorStopped: '已停止',
+    triggerHeartbeatBtn: '触发心跳',
+
+    // 历史
+    noHistory: '暂无执行记录',
+    clearHistory: '清除历史',
+    lastRun: '上次执行',
+    nextRun: '下次执行',
+    never: '从未执行',
+    duration: '耗时',
+
+    // 确认
+    confirmDelete: '确定要删除 "{name}" 吗？',
+    confirmClearHistory: '确定要清除所有执行历史吗？',
+
+    // 验证
+    validation: {
+      nameRequired: '请输入 Watch 名称',
+      promptRequired: '请输入任务指令',
+      triggerRequired: '至少选择一种触发方式',
+    },
+
+    // Webhook
+    webhookUrl: 'Webhook URL',
+    webhookToken: 'Token',
+  },
+
+  // 心跳传感器设置
+  heartbeat: {
+    title: '心跳传感器（Heartbeat Sensor）',
+    description: '心跳传感器会周期性唤醒 Agent，检查是否有需要关注的事情。搭配 Watch 使用。',
+    enable: '启用心跳',
+    enableDesc: '开启后，Agent 会按设定间隔自动唤醒',
+    interval: '心跳间隔（分钟）',
+    intervalDesc: '建议 15～60 分钟，过短可能增加 AI 调用开销',
+    manualTrigger: '手动触发',
+    manualTriggerDesc: '立即触发一次心跳（测试用）',
+    trigger: '触发',
+    running: '运行中',
+    stopped: '已停止',
+  },
+
   // Gateway 远程访问通知
   gateway: {
     remoteTaskStarted: '远程任务开始',

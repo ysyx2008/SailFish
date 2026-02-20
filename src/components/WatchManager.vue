@@ -98,11 +98,11 @@ const getTriggerLabel = (trigger: WatchTrigger): string => {
     case 'cron': return `Cron: ${trigger.expression}`
     case 'interval': {
       const s = trigger.seconds || 0
-      return s >= 3600 ? `每 ${s / 3600}h` : `每 ${s / 60}m`
+      return s >= 3600 ? `${s / 3600}h` : `${s / 60}m`
     }
-    case 'heartbeat': return '心跳'
-    case 'webhook': return `Webhook`
-    case 'manual': return '手动'
+    case 'heartbeat': return t('watch.triggerHeartbeat')
+    case 'webhook': return 'Webhook'
+    case 'manual': return t('watch.triggerManual')
     default: return trigger.type
   }
 }
@@ -113,12 +113,24 @@ const getTriggerIcon = (type: WatchTriggerType) => {
 }
 
 const getOutputLabel = (type: WatchOutputType): string => {
-  const map: Record<WatchOutputType, string> = { im: 'IM 推送', notification: '系统通知', log: '仅记录', silent: '静默' }
+  const map: Record<WatchOutputType, string> = {
+    im: t('watch.outputIM'),
+    notification: t('watch.outputNotification'),
+    log: t('watch.outputLog'),
+    silent: t('watch.outputSilent')
+  }
   return map[type] || type
 }
 
 const getStatusText = (status: WatchRunStatus): string => {
-  const map: Record<string, string> = { completed: '完成', failed: '失败', skipped: '跳过', timeout: '超时', cancelled: '取消', running: '运行中' }
+  const map: Record<string, string> = {
+    completed: t('watch.statusCompleted'),
+    failed: t('watch.statusFailed'),
+    skipped: t('watch.statusSkipped'),
+    timeout: t('watch.statusTimeout'),
+    cancelled: t('watch.statusCancelled'),
+    running: t('watch.statusRunning')
+  }
   return map[status] || status
 }
 
@@ -181,14 +193,14 @@ const triggerWatch = async (w: WatchDefinition) => {
 }
 
 const deleteWatch = async (w: WatchDefinition) => {
-  if (!confirm(`确定要删除 "${w.name}" 吗？`)) return
+  if (!confirm(t('watch.confirmDelete', { name: w.name }))) return
   await window.electronAPI.watch.delete(w.id)
   if (selectedWatch.value?.id === w.id) selectedWatch.value = null
   await loadData()
 }
 
 const clearHistory = async () => {
-  if (!confirm('确定要清除所有执行历史吗？')) return
+  if (!confirm(t('watch.confirmClearHistory'))) return
   await window.electronAPI.watch.clearHistory()
   history.value = []
 }
@@ -247,11 +259,11 @@ const toggleTrigger = (type: WatchTriggerType) => {
 
 const saveWatch = async () => {
   if (!formName.value.trim() || !formPrompt.value.trim()) {
-    alert('名称和 Prompt 为必填项')
+    alert(t('watch.validation.nameRequired'))
     return
   }
   if (formTriggerTypes.value.size === 0) {
-    alert('至少选择一种触发方式')
+    alert(t('watch.validation.triggerRequired'))
     return
   }
 
@@ -299,13 +311,20 @@ const triggerHeartbeat = async () => {
 
 // ==================== 常用 Cron 预设 ====================
 
+const outputOptions = computed(() => [
+  { v: 'im', l: t('watch.outputIM'), i: Send },
+  { v: 'notification', l: t('watch.outputNotification'), i: Bell },
+  { v: 'log', l: t('watch.outputLog'), i: FileText },
+  { v: 'silent', l: t('watch.outputSilent'), i: EyeOff },
+])
+
 const cronPresets = [
-  { label: '每天 8:00', value: '0 8 * * *' },
-  { label: '每天 9:00', value: '0 9 * * *' },
-  { label: '每小时', value: '0 * * * *' },
-  { label: '每30分钟', value: '*/30 * * * *' },
-  { label: '工作日 9:00', value: '0 9 * * 1-5' },
-  { label: '每周一 9:00', value: '0 9 * * 1' },
+  { label: '8:00', value: '0 8 * * *' },
+  { label: '9:00', value: '0 9 * * *' },
+  { label: '1h', value: '0 * * * *' },
+  { label: '30m', value: '*/30 * * * *' },
+  { label: 'Mon-Fri 9:00', value: '0 9 * * 1-5' },
+  { label: 'Mon 9:00', value: '0 9 * * 1' },
 ]
 
 // ==================== 生命周期 ====================
@@ -346,7 +365,7 @@ onUnmounted(() => {
       <div class="manager-header">
         <h2>
           <Eye :size="20" />
-          Watch 管理（感知层）
+          {{ t('watch.title') }}
         </h2>
         <button class="btn-close" @click="emit('close')">
           <X :size="20" />
@@ -359,15 +378,15 @@ onUnmounted(() => {
           <div class="tab-bar">
             <button :class="{ active: activeTab === 'watches' }" @click="activeTab = 'watches'">
               <Eye :size="14" />
-              Watches
+              {{ t('watch.watches') }}
             </button>
             <button :class="{ active: activeTab === 'history' }" @click="activeTab = 'history'">
               <History :size="14" />
-              历史
+              {{ t('watch.history') }}
             </button>
             <button :class="{ active: activeTab === 'sensors' }" @click="activeTab = 'sensors'; loadSensorData()">
               <Heart :size="14" />
-              传感器
+              {{ t('watch.sensors') }}
             </button>
           </div>
 
@@ -376,7 +395,7 @@ onUnmounted(() => {
             <div class="list-toolbar">
               <button class="btn btn-primary btn-sm" @click="openCreate">
                 <Plus :size="14" />
-                新建 Watch
+                {{ t('watch.newWatch') }}
               </button>
               <button class="btn btn-sm" @click="loadData" :disabled="loading">
                 <RefreshCw :size="14" :class="{ spinning: loading }" />
@@ -427,9 +446,9 @@ onUnmounted(() => {
 
               <div v-if="watches.length === 0" class="empty-state">
                 <Eye :size="48" class="empty-icon" />
-                <p>还没有 Watch</p>
-                <p class="empty-hint">Watch 让 Agent 持续关注你关心的事情</p>
-                <button class="btn btn-primary" @click="openCreate">创建第一个 Watch</button>
+                <p>{{ t('watch.noWatches') }}</p>
+                <p class="empty-hint">{{ t('watch.createFirst') }}</p>
+                <button class="btn btn-primary" @click="openCreate">{{ t('watch.newWatch') }}</button>
               </div>
             </div>
           </template>
@@ -437,7 +456,7 @@ onUnmounted(() => {
           <!-- 历史记录 -->
           <template v-if="activeTab === 'history'">
             <div class="list-toolbar">
-              <span class="history-count">共 {{ history.length }} 条记录</span>
+              <span class="history-count">{{ history.length }}</span>
               <button class="btn btn-sm btn-danger" @click="clearHistory" :disabled="history.length === 0">
                 <Trash2 :size="14" />
                 清除
@@ -466,7 +485,7 @@ onUnmounted(() => {
 
               <div v-if="history.length === 0" class="empty-state">
                 <History :size="48" class="empty-icon" />
-                <p>暂无执行历史</p>
+                <p>{{ t('watch.noHistory') }}</p>
               </div>
             </div>
           </template>
@@ -474,7 +493,7 @@ onUnmounted(() => {
           <!-- 传感器面板 -->
           <template v-if="activeTab === 'sensors'">
             <div class="list-toolbar">
-              <span class="history-count">传感器状态</span>
+              <span class="history-count">{{ t('watch.sensorStatus') }}</span>
               <button class="btn btn-sm" @click="loadSensorData">
                 <RefreshCw :size="14" />
               </button>
@@ -485,7 +504,7 @@ onUnmounted(() => {
                 <div class="sensor-indicator" :class="{ active: s.running }"></div>
                 <div class="sensor-info">
                   <div class="sensor-name">{{ s.name }}</div>
-                  <div class="sensor-status-text">{{ s.running ? '运行中' : '已停止' }}</div>
+                  <div class="sensor-status-text">{{ s.running ? t('watch.sensorRunning') : t('watch.sensorStopped') }}</div>
                 </div>
                 <button
                   v-if="s.id === 'heartbeat'"
@@ -499,7 +518,7 @@ onUnmounted(() => {
               </div>
 
               <div v-if="recentEvents.length > 0" class="recent-events">
-                <h4>最近事件</h4>
+                <h4>{{ t('watch.recentEvents') }}</h4>
                 <div v-for="e in recentEvents" :key="e.id" class="event-item">
                   <span class="event-time">{{ new Date(e.timestamp).toLocaleTimeString() }}</span>
                   <span class="event-type">
@@ -518,7 +537,7 @@ onUnmounted(() => {
           <!-- 编辑器模式 -->
           <template v-if="showEditor">
             <div class="detail-header">
-              <h3>{{ editingWatch ? '编辑 Watch' : '创建 Watch' }}</h3>
+              <h3>{{ editingWatch ? t('watch.editWatch') : t('watch.createWatch') }}</h3>
               <button class="btn btn-sm" @click="showEditor = false">
                 <X :size="14" />
               </button>
@@ -526,22 +545,22 @@ onUnmounted(() => {
 
             <div class="editor-content">
               <div class="form-section">
-                <label class="form-label">名称 *</label>
+                <label class="form-label">{{ t('watch.name') }} *</label>
                 <input type="text" v-model="formName" class="form-input" placeholder="每日简报" />
               </div>
 
               <div class="form-section">
-                <label class="form-label">描述</label>
+                <label class="form-label">{{ t('watch.description') }}</label>
                 <input type="text" v-model="formDescription" class="form-input" placeholder="可选描述" />
               </div>
 
               <div class="form-section">
-                <label class="form-label">Agent Prompt *</label>
-                <textarea v-model="formPrompt" class="form-textarea" rows="4" placeholder="查看今天的日程、未读重要邮件、当地天气，整理成简报发送给我"></textarea>
+                <label class="form-label">{{ t('watch.prompt') }} *</label>
+                <textarea v-model="formPrompt" class="form-textarea" rows="4" :placeholder="t('watch.promptPlaceholder')"></textarea>
               </div>
 
               <div class="form-section">
-                <label class="form-label">触发方式（可多选）</label>
+                <label class="form-label">{{ t('watch.triggers') }}</label>
                 <div class="trigger-options">
                   <label class="trigger-option" :class="{ selected: formTriggerTypes.has('cron') }">
                     <input type="checkbox" :checked="formTriggerTypes.has('cron')" @change="toggleTrigger('cron')" />
@@ -551,12 +570,12 @@ onUnmounted(() => {
                   <label class="trigger-option" :class="{ selected: formTriggerTypes.has('interval') }">
                     <input type="checkbox" :checked="formTriggerTypes.has('interval')" @change="toggleTrigger('interval')" />
                     <RefreshCw :size="14" />
-                    <span>固定间隔</span>
+                    <span>{{ t('watch.triggerInterval') }}</span>
                   </label>
                   <label class="trigger-option" :class="{ selected: formTriggerTypes.has('heartbeat') }">
                     <input type="checkbox" :checked="formTriggerTypes.has('heartbeat')" @change="toggleTrigger('heartbeat')" />
                     <Heart :size="14" />
-                    <span>心跳</span>
+                    <span>{{ t('watch.triggerHeartbeat') }}</span>
                   </label>
                   <label class="trigger-option" :class="{ selected: formTriggerTypes.has('webhook') }">
                     <input type="checkbox" :checked="formTriggerTypes.has('webhook')" @change="toggleTrigger('webhook')" />
@@ -566,7 +585,7 @@ onUnmounted(() => {
                   <label class="trigger-option" :class="{ selected: formTriggerTypes.has('manual') }">
                     <input type="checkbox" :checked="formTriggerTypes.has('manual')" @change="toggleTrigger('manual')" />
                     <Zap :size="14" />
-                    <span>手动</span>
+                    <span>{{ t('watch.triggerManual') }}</span>
                   </label>
                 </div>
 
@@ -592,9 +611,9 @@ onUnmounted(() => {
               </div>
 
               <div class="form-section">
-                <label class="form-label">输出方式</label>
+                <label class="form-label">{{ t('watch.outputType') }}</label>
                 <div class="radio-group">
-                  <label class="radio-item" v-for="opt in [{ v: 'im', l: 'IM 推送', i: Send }, { v: 'notification', l: '系统通知', i: Bell }, { v: 'log', l: '仅记录', i: FileText }, { v: 'silent', l: '静默', i: EyeOff }]" :key="opt.v">
+                  <label class="radio-item" v-for="opt in outputOptions" :key="opt.v">
                     <input type="radio" v-model="formOutputType" :value="opt.v" />
                     <component :is="opt.i" :size="14" />
                     {{ opt.l }}
@@ -611,7 +630,7 @@ onUnmounted(() => {
               </div>
 
               <div class="form-section">
-                <label class="form-label">预加载技能（逗号分隔）</label>
+                <label class="form-label">{{ t('watch.skills') }}</label>
                 <input type="text" v-model="formSkills" class="form-input" placeholder="email, calendar" />
               </div>
 
