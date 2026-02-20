@@ -48,3 +48,4 @@ website/public/skills/
 # Large model files (download via scripts)
 resources/models/speech/**/*.onnx
 resources/models/speech/**/tokens.json
+.cursor/skills/steam-publish/SKILL.md
