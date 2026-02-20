@@ -9,10 +9,71 @@ if (!app.isPackaged) {
   app.disableHardwareAcceleration()
 }
 
+// 注册自定义协议，让系统将 sailfish:// 链接路由到本应用
+// 开发模式需要传入 Electron 可执行文件路径
+if (!app.isPackaged) {
+  app.setAsDefaultProtocolClient('sailfish', process.execPath, [path.resolve(process.argv[1])])
+} else {
+  app.setAsDefaultProtocolClient('sailfish')
+}
+
 // 单实例锁：防止用户从 Spotlight/Launchpad 重复启动
 const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
   app.quit()
+}
+
+// 深链 URL 队列：窗口未就绪时暂存，加载完成后依次发送
+const pendingDeepLinkUrls: string[] = []
+
+// macOS: open-url 可能在 app.ready 之前触发，需尽早注册
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    handleDeepLink(url)
+  } else {
+    pendingDeepLinkUrls.push(url)
+  }
+})
+
+const MAX_DEEP_LINK_TASK_LENGTH = 5000
+
+/**
+ * 解析 sailfish:// 深链 URL
+ * 格式：sailfish://run?task=xxx
+ */
+function parseDeepLinkUrl(url: string): { action: string; task?: string } | null {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'sailfish:') return null
+    const action = parsed.hostname || parsed.pathname.replace(/^\/+/, '')
+    if (action === 'run') {
+      const task = parsed.searchParams.get('task')
+      if (task && task.length <= MAX_DEEP_LINK_TASK_LENGTH) {
+        return { action: 'run', task }
+      }
+    }
+    return { action }
+  } catch (e) {
+    console.warn('[DeepLink] Failed to parse URL:', url, e)
+    return null
+  }
+}
+
+/**
+ * 处理深链 URL：解析后发送给渲染进程执行
+ */
+function handleDeepLink(url: string) {
+  console.log('[DeepLink] Handling URL:', url.substring(0, 100))
+  const parsed = parseDeepLinkUrl(url)
+  if (!parsed || parsed.action !== 'run' || !parsed.task) return
+
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isLoading()) {
+    showMainWindow()
+    mainWindow.webContents.send('app:run-task', parsed.task)
+  } else {
+    pendingDeepLinkUrls.push(url)
+  }
 }
 
 // 读取 package.json 获取版本号（开发模式下 app.getVersion() 返回 Electron 版本）
@@ -897,13 +958,33 @@ app.whenReady().then(async () => {
     }
   })
 
+  // 处理缓存的深链 URL 队列（窗口就绪前收到的）
+  mainWindow?.webContents.once('dom-ready', () => {
+    if (pendingDeepLinkUrls.length > 0) {
+      const urls = pendingDeepLinkUrls.splice(0)
+      setTimeout(() => {
+        urls.forEach(url => handleDeepLink(url))
+      }, 300)
+    }
+  })
+
   app.on('activate', () => {
     showMainWindow()
   })
 
-  // 第二个实例尝试启动时，显示已有窗口
-  app.on('second-instance', () => {
+  // Windows/Linux: 第二个实例通过 argv 传递 URL
+  app.on('second-instance', (_event, argv) => {
     showMainWindow()
+    const deepLinkUrl = argv.find(arg => {
+      try {
+        return arg.startsWith('sailfish://') || decodeURIComponent(arg).startsWith('sailfish://')
+      } catch {
+        return false
+      }
+    })
+    if (deepLinkUrl) {
+      handleDeepLink(deepLinkUrl)
+    }
   })
 })
 

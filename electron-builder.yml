@@ -3,6 +3,10 @@
 # 安全回退值：appId: com.qiyu.terminal, productName: 旗鱼
 appId: com.sfterm.terminal
 productName: SFTerm
+protocols:
+  - name: "SailFish Protocol"
+    schemes:
+      - sailfish
 # ⚠️ [高风险配置] macOS 本地化应用名称修复钩子
 # 如果 macOS 打包后 SSH 连接失败，请先删除此行排查
 # 安全回退值：删除整行 afterPack

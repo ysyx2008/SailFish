@@ -111,6 +111,7 @@ let cleanupRemoteAgentStep: (() => void) | null = null
 let cleanupRemoteAgentComplete: (() => void) | null = null
 let cleanupRemoteAgentConfirm: (() => void) | null = null
 let cleanupImConnectionChange: (() => void) | null = null
+let cleanupRunTask: (() => void) | null = null
 
 // 知识库管理器显示状态
 const showKnowledgeManager = ref(false)
@@ -178,6 +179,13 @@ onMounted(async () => {
       
       log.debug(`[Scheduler] 定时任务开始: ${data.taskName}, 已创建终端 tab，等待 AiPanel 执行`)
     }
+  })
+
+  // 监听深链调起：从官网技能示例等外部来源触发 Agent 任务
+  cleanupRunTask = window.electronAPI.app.onRunTask((task) => {
+    log.debug(`[DeepLink] 收到外部任务: ${task.substring(0, 80)}...`)
+    showAiPanel.value = true
+    terminalStore.createTabWithTask(task)
   })
 
   // 监听远程 Gateway 终端标签页创建事件
@@ -605,6 +613,7 @@ onUnmounted(() => {
   cleanupRemoteAgentComplete?.()
   cleanupRemoteAgentConfirm?.()
   cleanupImConnectionChange?.()
+  cleanupRunTask?.()
 })
 </script>
 

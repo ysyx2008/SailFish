@@ -330,6 +330,13 @@ const electronAPI = {
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion') as Promise<string>,
     getMessagingDocsPath: () => ipcRenderer.invoke('app:getMessagingDocsPath') as Promise<string>,
+    onRunTask: (callback: (task: string) => void) => {
+      const handler = (_event: unknown, task: string) => callback(task)
+      ipcRenderer.on('app:run-task', handler)
+      return () => {
+        ipcRenderer.removeListener('app:run-task', handler)
+      }
+    },
   },
 
   // PATH 环境变量状态

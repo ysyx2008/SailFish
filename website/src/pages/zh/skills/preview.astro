@@ -28,6 +28,12 @@ const lang = 'zh';
         <a href="/zh/skills">← 返回技能市场</a>
       </div>
       <article class="markdown-body" id="markdownBody"></article>
+      <div class="examples-section" id="examplesSection" style="display:none">
+        <h3 class="examples-title">试用示例</h3>
+        <p class="examples-subtitle">点击下方示例，在旗鱼中体验此技能的实际效果</p>
+        <div class="examples-grid" id="examplesGrid"></div>
+        <p class="examples-hint">需先安装<a href="/zh#download">旗鱼</a></p>
+      </div>
       <div class="preview-footer" id="previewFooter" style="display:none">
         <div class="install-hint">
           <h3>安装此技能</h3>
@@ -91,6 +97,26 @@ const lang = 'zh';
         document.getElementById('markdownBody').innerHTML = marked.parse(body);
         document.getElementById('installCmd').textContent = 'npm run sft -- skill:install ' + skillId;
         document.title = (meta.name || skillId) + ' - 旗鱼技能';
+
+        fetch('/skill-registry.json')
+          .then(function(r) { return r.json(); })
+          .then(function(registry) {
+            var skill = (registry.skills || []).find(function(s) { return s.id === skillId; });
+            if (skill && skill.examples && skill.examples.length > 0) {
+              var grid = document.getElementById('examplesGrid');
+              skill.examples.forEach(function(ex) {
+                var link = document.createElement('a');
+                link.href = 'sailfish://run?task=' + encodeURIComponent(ex.task);
+                link.className = 'example-card';
+                link.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polygon points="5 3 19 12 5 21 5 3"/></svg>' +
+                  '<span class="example-title">' + ex.title + '</span>' +
+                  '<span class="example-task">' + ex.task + '</span>';
+                grid.appendChild(link);
+              });
+              document.getElementById('examplesSection').style.display = '';
+            }
+          })
+          .catch(function() {});
       })
       .catch(function() {
         document.getElementById('previewLoading').style.display = 'none';
@@ -300,6 +326,81 @@ const lang = 'zh';
 
   .markdown-body :global(strong) {
     color: var(--color-text-primary);
+  }
+
+  .examples-section {
+    margin-top: 32px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 28px 32px;
+  }
+
+  .examples-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 6px;
+  }
+
+  .examples-subtitle {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    margin-bottom: 20px;
+  }
+
+  .examples-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .examples-grid :global(.example-card) {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 18px;
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    transition: all 0.2s ease;
+  }
+
+  .examples-grid :global(.example-card:hover) {
+    border-color: var(--color-accent-primary);
+    background: rgba(6, 182, 212, 0.05);
+    transform: translateX(4px);
+  }
+
+  .examples-grid :global(.example-card svg) {
+    flex-shrink: 0;
+    color: var(--color-accent-primary);
+    margin-top: 2px;
+  }
+
+  .examples-grid :global(.example-title) {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-right: 12px;
+    white-space: nowrap;
+  }
+
+  .examples-grid :global(.example-task) {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+  }
+
+  .examples-hint {
+    margin-top: 14px;
+    font-size: 12px;
+    color: var(--color-text-muted);
+  }
+
+  .examples-hint a {
+    color: var(--color-accent-primary);
   }
 
   .preview-footer {
