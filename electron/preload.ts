@@ -2618,6 +2618,16 @@ const electronAPI = {
       ipcRenderer.invoke('watch:getRunning'),
     getSshSessions: () =>
       ipcRenderer.invoke('watch:getSshSessions'),
+    onTaskStarted: (callback: (data: any) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+      ipcRenderer.on('watch:task-started', handler)
+      return () => { ipcRenderer.removeListener('watch:task-started', handler) }
+    },
+    onTaskCompleted: (callback: (data: any) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+      ipcRenderer.on('watch:task-completed', handler)
+      return () => { ipcRenderer.removeListener('watch:task-completed', handler) }
+    },
   },
 
   sensor: {

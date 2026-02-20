@@ -174,11 +174,9 @@ const triggerWatch = async (w: WatchDefinition) => {
   runningWatches.value.add(w.id)
   try {
     await window.electronAPI.watch.trigger(w.id)
-  } finally {
-    setTimeout(() => {
-      runningWatches.value.delete(w.id)
-      loadData()
-    }, 2000)
+  } catch (e) {
+    console.error('Failed to trigger watch:', e)
+    runningWatches.value.delete(w.id)
   }
 }
 
@@ -313,14 +311,31 @@ const cronPresets = [
 // ==================== 生命周期 ====================
 
 let refreshTimer: NodeJS.Timeout | null = null
+let cleanupStarted: (() => void) | null = null
+let cleanupCompleted: (() => void) | null = null
 
 onMounted(async () => {
   await loadData()
   refreshTimer = setInterval(loadData, 30000)
+
+  // 监听 Watch 执行事件
+  cleanupStarted = window.electronAPI.watch.onTaskStarted?.((data: any) => {
+    if (data.watchId) {
+      runningWatches.value.add(data.watchId)
+    }
+  })
+  cleanupCompleted = window.electronAPI.watch.onTaskCompleted?.((data: any) => {
+    if (data.watchId) {
+      runningWatches.value.delete(data.watchId)
+      loadData()
+    }
+  })
 })
 
 onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer)
+  cleanupStarted?.()
+  cleanupCompleted?.()
 })
 </script>
 
