@@ -18,6 +18,12 @@ interface SkillCategory {
   icon: string;
 }
 
+interface SkillExample {
+  title: string;
+  titleEn: string;
+  task: string;
+}
+
 interface MarketSkill {
   id: string;
   name: string;
@@ -28,6 +34,7 @@ interface MarketSkill {
   tags: string[];
   featured?: boolean;
   url: string;
+  examples?: SkillExample[];
 }
 
 const registryPath = path.resolve('public/skill-registry.json');
@@ -53,6 +60,14 @@ function getCategoryName(categoryId: string) {
 function skillPreviewUrl(skillId: string) {
   const base = lang === 'zh' ? '/zh/skills/preview' : '/skills/preview';
   return `${base}?id=${skillId}`;
+}
+
+function deepLinkUrl(task: string) {
+  return `sailfish://run?task=${encodeURIComponent(task)}`;
+}
+
+function exampleTitle(example: SkillExample) {
+  return lang === 'zh' ? example.title : example.titleEn;
 }
 ---
 
@@ -97,7 +112,7 @@ function skillPreviewUrl(skillId: string) {
         </h2>
         <div class="featured-grid">
           {featuredSkills.map(skill => (
-            <div class="featured-card" data-skill-category={skill.category}>
+            <a href={skillPreviewUrl(skill.id)} class="featured-card" data-skill-category={skill.category}>
               <div class="featured-card-header">
                 <span class="skill-category-icon">{getCategoryIcon(skill.category)}</span>
                 <div class="featured-card-meta">
@@ -114,7 +129,7 @@ function skillPreviewUrl(skillId: string) {
                 </div>
                 <span class="skill-category-badge">{getCategoryName(skill.category)}</span>
               </div>
-            </div>
+            </a>
           ))}
         </div>
       </div>
@@ -154,6 +169,19 @@ function skillPreviewUrl(skillId: string) {
                   ))}
                 </div>
               </div>
+              {skill.examples && skill.examples.length > 0 && (
+                <div class="skill-examples">
+                  <span class="examples-label">{t.skillMarket.tryExamples}:</span>
+                  {skill.examples.map(example => (
+                    <a href={deepLinkUrl(example.task)} class="btn-try-example" title={t.skillMarket.requiresApp}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+                        <polygon points="5 3 19 12 5 21 5 3"/>
+                      </svg>
+                      {exampleTitle(example)}
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
             <div class="skill-row-actions">
               <a href={skillPreviewUrl(skill.id)} class="btn-view-skill">
@@ -361,6 +389,9 @@ function skillPreviewUrl(skillId: string) {
   }
 
   .featured-card {
+    display: block;
+    text-decoration: none;
+    color: inherit;
     background: var(--color-bg-card);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
@@ -368,6 +399,7 @@ function skillPreviewUrl(skillId: string) {
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
+    cursor: pointer;
   }
 
   .featured-card::before {
@@ -573,6 +605,45 @@ function skillPreviewUrl(skillId: string) {
     font-size: 11px;
     color: var(--color-text-muted);
     font-family: var(--font-mono);
+  }
+
+  .skill-examples {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+
+  .examples-label {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+  }
+
+  .btn-try-example {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 12px;
+    border-radius: 100px;
+    border: 1px solid rgba(6, 182, 212, 0.3);
+    background: rgba(6, 182, 212, 0.08);
+    color: var(--color-accent-primary);
+    font-size: 12px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    text-decoration: none;
+  }
+
+  .btn-try-example:hover {
+    border-color: var(--color-accent-primary);
+    background: rgba(6, 182, 212, 0.15);
+    transform: translateY(-1px);
+  }
+
+  .btn-try-example svg {
+    flex-shrink: 0;
   }
 
   .skill-row-actions {
