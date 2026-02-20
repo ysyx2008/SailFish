@@ -2399,7 +2399,17 @@ const electronAPI = {
       smtpPort?: number
       smtpSecure?: boolean
       rejectUnauthorized?: boolean
-    }>) => ipcRenderer.invoke('email:syncAccounts', accounts) as Promise<void>
+    }>) => ipcRenderer.invoke('email:syncAccounts', accounts) as Promise<void>,
+
+    // 验证已保存的邮箱账户连接
+    verifyAccount: (account: {
+      id: string
+      email: string
+      provider?: string
+      imapHost?: string
+      imapPort?: number
+      rejectUnauthorized?: boolean
+    }) => ipcRenderer.invoke('email:verifyAccount', account) as Promise<{ success: boolean; message: string }>
   },
 
   // 日历相关
@@ -2427,7 +2437,15 @@ const electronAPI = {
       provider: string
       username: string
       serverUrl?: string
-    }>) => ipcRenderer.invoke('calendar:syncAccounts', accounts) as Promise<void>
+    }>) => ipcRenderer.invoke('calendar:syncAccounts', accounts) as Promise<void>,
+
+    // 验证已保存的日历账户连接
+    verifyAccount: (account: {
+      id: string
+      username: string
+      provider?: string
+      serverUrl?: string
+    }) => ipcRenderer.invoke('calendar:verifyAccount', account) as Promise<{ success: boolean; message: string }>
   },
 
   // 语音识别

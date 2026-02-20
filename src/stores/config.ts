@@ -152,6 +152,9 @@ export const EMAIL_PROVIDER_CONFIGS: Record<Exclude<EmailProvider, 'custom'>, {
   }
 }
 
+// 账户连接状态
+export type AccountTestStatus = 'success' | 'failed' | 'unknown'
+
 // 邮箱账户配置
 export interface EmailAccount {
   id: string
@@ -167,6 +170,10 @@ export interface EmailAccount {
   smtpSecure?: boolean
   // TLS 选项
   rejectUnauthorized?: boolean  // 是否验证服务器证书，默认 true
+  // 连接状态
+  lastTestStatus?: AccountTestStatus
+  lastTestTime?: number
+  lastTestMessage?: string
   // 元数据
   createdAt?: number
   lastUsedAt?: number
@@ -213,6 +220,10 @@ export interface CalendarAccount {
   username: string              // 用户名/邮箱
   // 自定义服务器配置（provider 为 caldav 时使用）
   serverUrl?: string
+  // 连接状态
+  lastTestStatus?: AccountTestStatus
+  lastTestTime?: number
+  lastTestMessage?: string
   // 元数据
   createdAt?: number
   lastUsedAt?: number
@@ -698,6 +709,16 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
+  async function updateEmailAccountStatus(id: string, status: AccountTestStatus, message?: string): Promise<void> {
+    const account = emailAccounts.value.find(a => a.id === id)
+    if (account) {
+      account.lastTestStatus = status
+      account.lastTestTime = Date.now()
+      account.lastTestMessage = message
+      await saveEmailAccounts()
+    }
+  }
+
   /**
    * 获取邮箱账户的服务器配置
    */
@@ -750,6 +771,16 @@ export const useConfigStore = defineStore('config', () => {
     await saveCalendarAccounts()
     // 同时删除密钥链中的凭据
     await window.electronAPI.calendar?.deleteCredential(id)
+  }
+
+  async function updateCalendarAccountStatus(id: string, status: AccountTestStatus, message?: string): Promise<void> {
+    const account = calendarAccounts.value.find(a => a.id === id)
+    if (account) {
+      account.lastTestStatus = status
+      account.lastTestTime = Date.now()
+      account.lastTestMessage = message
+      await saveCalendarAccounts()
+    }
   }
 
   /**
@@ -863,11 +894,13 @@ export const useConfigStore = defineStore('config', () => {
     updateEmailAccount,
     deleteEmailAccount,
     updateEmailAccountLastUsed,
+    updateEmailAccountStatus,
     getEmailServerConfig,
     calendarAccounts,
     addCalendarAccount,
     updateCalendarAccount,
     deleteCalendarAccount,
+    updateCalendarAccountStatus,
     getCalendarServerUrl
   }
 })

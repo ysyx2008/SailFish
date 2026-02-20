@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Plus, Pencil, Trash2, X, Calendar, CheckCircle, AlertCircle } from 'lucide-vue-next'
-import { useConfigStore, type CalendarAccount, type CalendarProvider, CALENDAR_PROVIDER_CONFIGS } from '../../stores/config'
+import { Plus, Pencil, Trash2, X, Calendar, CheckCircle, AlertCircle, ShieldCheck, Loader2 } from 'lucide-vue-next'
+import { useConfigStore, type CalendarAccount, type CalendarProvider, type AccountTestStatus, CALENDAR_PROVIDER_CONFIGS } from '../../stores/config'
 import { v4 as uuidv4 } from 'uuid'
 
 const { t } = useI18n()
@@ -212,6 +212,49 @@ const getProviderIcon = (provider: CalendarProvider): string => {
   const option = providerOptions.find(p => p.value === provider)
   return option?.icon || '📅'
 }
+
+// 验证中的账户 ID 集合
+const verifyingAccounts = ref<Set<string>>(new Set())
+
+// 验证已保存的账户连接
+const verifyAccount = async (account: CalendarAccount) => {
+  verifyingAccounts.value.add(account.id)
+  try {
+    const serverUrl = configStore.getCalendarServerUrl(account)
+    const result = await window.electronAPI.calendar?.verifyAccount({
+      id: account.id,
+      username: account.username,
+      provider: account.provider,
+      serverUrl
+    })
+    const status: AccountTestStatus = result?.success ? 'success' : 'failed'
+    await configStore.updateCalendarAccountStatus(account.id, status, result?.message)
+  } catch (error) {
+    await configStore.updateCalendarAccountStatus(account.id, 'failed', error instanceof Error ? error.message : t('calendarSettings.testFailed'))
+  } finally {
+    verifyingAccounts.value.delete(account.id)
+  }
+}
+
+// 验证所有账户（串行执行，避免并发连接过多）
+const verifyAllAccounts = async () => {
+  for (const account of accounts.value) {
+    await verifyAccount(account)
+  }
+}
+
+// 格式化相对时间
+const formatRelativeTime = (timestamp?: number): string => {
+  if (!timestamp) return ''
+  const diff = Date.now() - timestamp
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return t('calendarSettings.justNow')
+  if (minutes < 60) return t('calendarSettings.minutesAgo', { n: minutes })
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return t('calendarSettings.hoursAgo', { n: hours })
+  const days = Math.floor(hours / 24)
+  return t('calendarSettings.daysAgo', { n: days })
+}
 </script>
 
 <template>
@@ -227,6 +270,15 @@ const getProviderIcon = (provider: CalendarProvider): string => {
     <p class="settings-description">
       {{ t('calendarSettings.description') }}
     </p>
+
+    <!-- 账户概览 -->
+    <div v-if="accounts.length > 0" class="status-summary">
+      <span class="summary-count">{{ t('calendarSettings.accountCount', { n: accounts.length }) }}</span>
+      <button class="btn btn-outline btn-sm" @click="verifyAllAccounts" :disabled="verifyingAccounts.size > 0">
+        <ShieldCheck :size="14" />
+        {{ t('calendarSettings.verifyAll') }}
+      </button>
+    </div>
 
     <!-- 账户列表 -->
     <div class="account-list">
@@ -248,13 +300,42 @@ const getProviderIcon = (provider: CalendarProvider): string => {
           {{ getProviderIcon(account.provider) }}
         </div>
         <div class="account-info">
-          <div class="account-name">{{ account.name }}</div>
+          <div class="account-name">
+            {{ account.name }}
+            <span
+              v-if="account.lastTestStatus"
+              class="status-dot"
+              :class="account.lastTestStatus"
+              :title="account.lastTestMessage || ''"
+            ></span>
+          </div>
           <div class="account-username">{{ account.username }}</div>
           <div class="account-meta">
             <span class="provider-tag">{{ getProviderLabel(account.provider) }}</span>
+            <span v-if="account.lastTestStatus === 'success'" class="status-tag success">
+              {{ t('calendarSettings.statusOk') }}
+            </span>
+            <span v-else-if="account.lastTestStatus === 'failed'" class="status-tag error" :title="account.lastTestMessage">
+              {{ t('calendarSettings.statusFailed') }}
+            </span>
+            <span v-else class="status-tag unknown">
+              {{ t('calendarSettings.statusUnknown') }}
+            </span>
+            <span v-if="account.lastTestTime" class="test-time">
+              {{ formatRelativeTime(account.lastTestTime) }}
+            </span>
           </div>
         </div>
         <div class="account-actions">
+          <button
+            class="btn-icon"
+            @click="verifyAccount(account)"
+            :disabled="verifyingAccounts.has(account.id)"
+            :title="t('calendarSettings.verify')"
+          >
+            <Loader2 v-if="verifyingAccounts.has(account.id)" :size="16" class="spin" />
+            <ShieldCheck v-else :size="16" />
+          </button>
           <button class="btn-icon" @click="openEditAccount(account)" :title="t('common.edit')">
             <Pencil :size="16" />
           </button>
@@ -469,6 +550,85 @@ const getProviderIcon = (provider: CalendarProvider): string => {
   border-radius: 4px;
   background: var(--bg-primary);
   color: var(--text-muted);
+}
+
+/* 账户概览 */
+.status-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.summary-count {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* 状态圆点 */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.status-dot.success {
+  background: #22c55e;
+  box-shadow: 0 0 4px rgba(34, 197, 94, 0.4);
+}
+
+.status-dot.failed {
+  background: #ef4444;
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.4);
+}
+
+.status-dot.unknown {
+  background: var(--text-muted);
+  opacity: 0.5;
+}
+
+/* 状态标签 */
+.status-tag {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.status-tag.success {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.status-tag.error {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.status-tag.unknown {
+  background: var(--bg-primary);
+  color: var(--text-muted);
+}
+
+.test-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* 旋转动画 */
+.spin {
+  animation: spin 1s linear infinite;
 }
 
 .account-actions {

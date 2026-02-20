@@ -3805,6 +3805,61 @@ ipcMain.handle('email:testConnection', async (_event, config: {
   }
 })
 
+// 验证已保存的邮箱账户（从 keychain 读取密码）
+ipcMain.handle('email:verifyAccount', async (_event, account: {
+  id: string
+  email: string
+  provider?: string
+  imapHost?: string
+  imapPort?: number
+  rejectUnauthorized?: boolean
+}) => {
+  if (!account.id || !account.email) {
+    return { success: false, message: '无效的账户信息' }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let client: any = null
+  try {
+    const { getEmailCredential } = await import('./services/credential.service')
+    const password = await getEmailCredential(account.id)
+    if (!password) {
+      return { success: false, message: '未找到保存的凭据，请重新编辑账户并输入密码' }
+    }
+
+    const { getServerConfig } = await import('./services/agent/skills/email/session')
+    const serverConfig = getServerConfig(account.provider || 'gmail', {
+      imapHost: account.imapHost,
+      imapPort: account.imapPort
+    })
+
+    const { ImapFlow } = await import('imapflow')
+    client = new ImapFlow({
+      host: serverConfig.imapHost,
+      port: serverConfig.imapPort,
+      secure: true,
+      auth: {
+        user: account.email,
+        pass: password
+      },
+      logger: false,
+      tls: {
+        rejectUnauthorized: account.rejectUnauthorized !== false
+      }
+    })
+
+    await client.connect()
+    return { success: true, message: '连接正常' }
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : '连接失败'
+    }
+  } finally {
+    try { await client?.logout() } catch { /* ignore logout errors */ }
+  }
+})
+
 // ==================== 日历相关 ====================
 
 // 设置日历凭据
@@ -3863,6 +3918,50 @@ ipcMain.handle('calendar:testConnection', async (_event, config: {
   } catch (error) {
     return { 
       success: false, 
+      message: error instanceof Error ? error.message : '连接失败'
+    }
+  }
+})
+
+// 验证已保存的日历账户（从 keychain 读取密码）
+ipcMain.handle('calendar:verifyAccount', async (_event, account: {
+  id: string
+  username: string
+  provider?: string
+  serverUrl?: string
+}) => {
+  if (!account.id || !account.username) {
+    return { success: false, message: '无效的账户信息' }
+  }
+
+  try {
+    const { getCalendarCredential } = await import('./services/credential.service')
+    const password = await getCalendarCredential(account.id)
+    if (!password) {
+      return { success: false, message: '未找到保存的凭据，请重新编辑账户并输入密码' }
+    }
+
+    const tsdav = await import('tsdav')
+    const client = new tsdav.DAVClient({
+      serverUrl: account.serverUrl || 'https://caldav.wecom.work',
+      credentials: {
+        username: account.username,
+        password
+      },
+      authMethod: 'Basic',
+      defaultAccountType: 'caldav'
+    })
+
+    await client.login()
+    const calendars = await client.fetchCalendars()
+
+    return {
+      success: true,
+      message: `连接正常，找到 ${calendars.length} 个日历`
+    }
+  } catch (error) {
+    return {
+      success: false,
       message: error instanceof Error ? error.message : '连接失败'
     }
   }

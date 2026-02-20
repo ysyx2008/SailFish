@@ -515,7 +515,9 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       type: 'function',
       function: {
         name: 'file_search',
-        description: `快速搜索本地文件（毫秒级响应）。
+        description: `快速搜索本地文件（毫秒级响应，基于系统索引）。
+
+**优先使用**：按文件名/路径查找时请用本工具，不要用 execute_command 执行 find/locate——本工具通常更快（macOS Spotlight / Windows Everything / Linux locate 索引）；索引可能有短暂延迟。
 
 **搜索能力**：
 - macOS: 使用 Spotlight 索引，全盘瞬时搜索
@@ -533,7 +535,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
 - 查找特定类型的文件
 - 在项目中搜索文件
 
-⚠️ 仅支持本地文件系统搜索，不支持 SSH 远程主机。`,
+⚠️ 仅支持本地文件系统搜索，不支持 SSH 远程主机。仅搜文件名不搜内容；搜内容请用 grep 等。`,
         parameters: {
           type: 'object',
           properties: {

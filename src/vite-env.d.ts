@@ -1536,6 +1536,15 @@ interface Window {
         smtpPort?: number
         smtpSecure?: boolean
       }>) => Promise<void>
+      // 验证已保存的邮箱账户连接
+      verifyAccount: (account: {
+        id: string
+        email: string
+        provider?: string
+        imapHost?: string
+        imapPort?: number
+        rejectUnauthorized?: boolean
+      }) => Promise<{ success: boolean; message: string }>
     }
     // 日历相关
     calendar: {
@@ -1558,6 +1567,13 @@ interface Window {
         username: string
         serverUrl?: string
       }>) => Promise<void>
+      // 验证已保存的日历账户连接
+      verifyAccount: (account: {
+        id: string
+        username: string
+        provider?: string
+        serverUrl?: string
+      }) => Promise<{ success: boolean; message: string }>
     }
     // 文件工具
     fileUtils: {

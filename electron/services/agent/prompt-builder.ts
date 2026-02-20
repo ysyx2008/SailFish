@@ -353,7 +353,7 @@ ${this.buildTaskMemorySection()}`
 - 终端状态需根据屏幕内容自行判断（看提示符、Password:、进度等）`)
     } else {
       sections.push(`## 工具使用提示
-- \`file_search\` 只搜文件名（基于系统索引），不搜内容；已知目录用 \`ls\`/\`find\` 更准确
+- **按文件名搜索时优先用 \`file_search\`**（基于系统索引，毫秒级响应，比通过 execute_command 执行 find/locate 快得多）；\`file_search\` 只搜文件名不搜内容，需搜文件内容时请用 execute_command 执行 grep
 - \`write_remote_file\` 不可用（仅 SSH 终端可用）`)
     }
 
