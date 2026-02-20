@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Copy, ExternalLink, ScrollText } from 'lucide-vue-next'
+import { Copy, ExternalLink, ScrollText, Heart } from 'lucide-vue-next'
 
 const { t } = useI18n()
 
@@ -154,6 +154,47 @@ async function copyToClipboard(text: string, label: string) {
     setTimeout(() => { copied.value = null }, 2000)
   }
 }
+
+// ==================== 心跳传感器 ====================
+const heartbeatEnabled = ref(false)
+const heartbeatInterval = ref(30)
+const sensorStatusList = ref<Array<{ id: string; name: string; running: boolean }>>([])
+
+async function loadSensorSettings() {
+  try {
+    const config = await window.electronAPI.config.get('watchHeartbeatEnabled')
+    heartbeatEnabled.value = !!config
+    const interval = await window.electronAPI.config.get('watchHeartbeatInterval')
+    if (interval && typeof interval === 'number') heartbeatInterval.value = interval
+    sensorStatusList.value = await window.electronAPI.sensor.getStatus()
+  } catch { /* ignore */ }
+}
+
+async function toggleHeartbeat() {
+  try {
+    await window.electronAPI.sensor.setHeartbeat(heartbeatEnabled.value, heartbeatInterval.value)
+    sensorStatusList.value = await window.electronAPI.sensor.getStatus()
+  } catch (e) {
+    console.error('Failed to toggle heartbeat:', e)
+  }
+}
+
+async function updateHeartbeatInterval() {
+  if (heartbeatInterval.value < 1) heartbeatInterval.value = 1
+  if (heartbeatInterval.value > 1440) heartbeatInterval.value = 1440
+  if (heartbeatEnabled.value) {
+    await window.electronAPI.sensor.setHeartbeat(true, heartbeatInterval.value)
+  } else {
+    await window.electronAPI.config.set('watchHeartbeatInterval', heartbeatInterval.value)
+  }
+}
+
+async function manualHeartbeat() {
+  await window.electronAPI.sensor.triggerHeartbeat()
+}
+
+// 加载心跳设置
+onMounted(loadSensorSettings)
 </script>
 
 <template>
@@ -276,6 +317,66 @@ async function copyToClipboard(text: string, label: string) {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- ==================== 心跳传感器 ==================== -->
+    <div class="settings-section">
+      <div class="section-header">
+        <div class="section-title-group">
+          <h4>
+            <Heart :size="14" style="margin-right: 4px;" />
+            心跳传感器（Heartbeat Sensor）
+          </h4>
+          <span class="status-badge" :class="{ active: sensorStatusList.some(s => s.id === 'heartbeat' && s.running) }">
+            <span class="status-dot"></span>
+            {{ sensorStatusList.some(s => s.id === 'heartbeat' && s.running) ? '运行中' : '已停止' }}
+          </span>
+        </div>
+      </div>
+      <p class="section-desc">
+        心跳传感器会周期性唤醒 Agent，检查是否有需要关注的事情（如新邮件、即将到来的日程等）。搭配 Watch 使用。
+      </p>
+
+      <div class="setting-row">
+        <div>
+          <label class="form-label">启用心跳</label>
+          <p class="setting-desc">开启后，Agent 会按设定间隔自动唤醒</p>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" v-model="heartbeatEnabled" @change="toggleHeartbeat" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="setting-row">
+        <div>
+          <label class="form-label">心跳间隔（分钟）</label>
+          <p class="setting-desc">建议 15～60 分钟，过短可能增加 AI 调用开销</p>
+        </div>
+        <div class="input-group-compact">
+          <input
+            type="number"
+            v-model.number="heartbeatInterval"
+            :min="1"
+            :max="1440"
+            class="input-field"
+            style="width: 80px;"
+            @change="updateHeartbeatInterval"
+          />
+          <span class="input-suffix">min</span>
+        </div>
+      </div>
+
+      <div class="setting-row" v-if="heartbeatEnabled">
+        <div>
+          <label class="form-label">手动触发</label>
+          <p class="setting-desc">立即触发一次心跳（测试用）</p>
+        </div>
+        <button class="btn btn-sm" @click="manualHeartbeat">
+          <Heart :size="14" />
+          触发
+        </button>
       </div>
     </div>
 
@@ -679,5 +780,16 @@ async function copyToClipboard(text: string, label: string) {
 
 .audit-confirm .audit-summary {
   color: var(--warning-color, #d29922);
+}
+
+.input-group-compact {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.input-suffix {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 </style>
