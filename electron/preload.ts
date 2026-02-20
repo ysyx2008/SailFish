@@ -337,6 +337,13 @@ const electronAPI = {
         ipcRenderer.removeListener('app:run-task', handler)
       }
     },
+    onInstallSkill: (callback: (skillId: string) => void) => {
+      const handler = (_event: unknown, skillId: string) => callback(skillId)
+      ipcRenderer.on('app:install-skill', handler)
+      return () => {
+        ipcRenderer.removeListener('app:install-skill', handler)
+      }
+    },
   },
 
   // PATH 环境变量状态

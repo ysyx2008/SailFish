@@ -25,6 +25,7 @@ const { t } = useI18n()
 // Props
 const props = defineProps<{
   initialTab?: string
+  pendingInstallSkillId?: string
 }>()
 
 const emit = defineEmits<{
@@ -478,7 +479,7 @@ const onQrImageError = (event: Event) => {
           <AiSettings v-if="activeTab === 'ai'" />
           <AiRulesSettings v-else-if="activeTab === 'aiRules'" />
           <McpSettings v-else-if="activeTab === 'mcp'" />
-          <SkillSettings v-else-if="activeTab === 'skills'" />
+          <SkillSettings v-else-if="activeTab === 'skills'" :pending-install-skill-id="props.pendingInstallSkillId" />
           <KnowledgeSettings v-else-if="activeTab === 'knowledge'" />
           <EmailSettings v-else-if="activeTab === 'email'" />
           <CalendarSettings v-else-if="activeTab === 'calendar'" />

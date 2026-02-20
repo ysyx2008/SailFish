@@ -36,8 +36,18 @@ const lang = 'zh';
       </div>
       <div class="preview-footer" id="previewFooter" style="display:none">
         <div class="install-hint">
-          <h3>安装此技能</h3>
-          <code id="installCmd"></code>
+          <a id="installDeepLink" href="#" class="btn-install-deeplink" style="display:none">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            安装此技能
+          </a>
+          <div class="install-cli">
+            <h3>CLI 安装</h3>
+            <code id="installCmd"></code>
+          </div>
         </div>
       </div>
     </div>
@@ -96,6 +106,9 @@ const lang = 'zh';
 
         document.getElementById('markdownBody').innerHTML = marked.parse(body);
         document.getElementById('installCmd').textContent = 'npm run sft -- skill:install ' + skillId;
+        var deepLinkEl = document.getElementById('installDeepLink');
+        deepLinkEl.href = 'sailfish://install-skill?id=' + encodeURIComponent(skillId);
+        deepLinkEl.style.display = '';
         document.title = (meta.name || skillId) + ' - 旗鱼技能';
 
         fetch('/skill-registry.json')
@@ -417,10 +430,41 @@ const lang = 'zh';
     gap: 20px;
   }
 
-  .install-hint h3 {
+  .btn-install-deeplink {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(6, 182, 212, 0.4);
+    background: rgba(6, 182, 212, 0.1);
+    color: var(--color-accent-primary);
     font-size: 15px;
     font-weight: 600;
-    color: var(--color-text-primary);
+    text-decoration: none;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .btn-install-deeplink:hover {
+    border-color: var(--color-accent-primary);
+    background: rgba(6, 182, 212, 0.2);
+    transform: translateY(-1px);
+  }
+
+  .install-cli {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .install-cli h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-text-muted);
     white-space: nowrap;
   }
 

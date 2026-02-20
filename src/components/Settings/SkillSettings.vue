@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RefreshCw, FolderOpen, Eye, X, Download, Trash2, ArrowUpCircle, Search, Star } from 'lucide-vue-next'
+
+const props = defineProps<{
+  pendingInstallSkillId?: string
+}>()
 
 const { t, locale } = useI18n()
 
@@ -311,9 +315,26 @@ const switchTab = (tab: SubTab) => {
   }
 }
 
+const handlePendingInstall = async (skillId: string) => {
+  activeSubTab.value = 'market'
+  if (marketSkills.value.length === 0) {
+    await Promise.all([loadMarketSkills(), loadRegistryUrl()])
+  }
+  const skill = marketSkills.value.find(s => s.id === skillId)
+  if (!skill) return
+  if (skill.installed) return
+  await installSkill(skill)
+}
+
 onMounted(() => {
   loadSkills()
 })
+
+watch(() => props.pendingInstallSkillId, (newId) => {
+  if (newId) {
+    handlePendingInstall(newId)
+  }
+}, { immediate: true })
 </script>
 
 <template>

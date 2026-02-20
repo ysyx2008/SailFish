@@ -42,7 +42,7 @@ const MAX_DEEP_LINK_TASK_LENGTH = 5000
  * 解析 sailfish:// 深链 URL
  * 格式：sailfish://run?task=xxx
  */
-function parseDeepLinkUrl(url: string): { action: string; task?: string } | null {
+function parseDeepLinkUrl(url: string): { action: string; task?: string; skillId?: string } | null {
   try {
     const parsed = new URL(url)
     if (parsed.protocol !== 'sailfish:') return null
@@ -51,6 +51,12 @@ function parseDeepLinkUrl(url: string): { action: string; task?: string } | null
       const task = parsed.searchParams.get('task')
       if (task && task.length <= MAX_DEEP_LINK_TASK_LENGTH) {
         return { action: 'run', task }
+      }
+    }
+    if (action === 'install-skill') {
+      const skillId = parsed.searchParams.get('id')
+      if (skillId && skillId.length <= 128 && /^[a-zA-Z0-9_-]+$/.test(skillId)) {
+        return { action: 'install-skill', skillId }
       }
     }
     return { action }
@@ -66,13 +72,24 @@ function parseDeepLinkUrl(url: string): { action: string; task?: string } | null
 function handleDeepLink(url: string) {
   console.log('[DeepLink] Handling URL:', url.substring(0, 100))
   const parsed = parseDeepLinkUrl(url)
-  if (!parsed || parsed.action !== 'run' || !parsed.task) return
+  if (!parsed) return
 
-  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isLoading()) {
-    showMainWindow()
-    mainWindow.webContents.send('app:run-task', parsed.task)
-  } else {
-    pendingDeepLinkUrls.push(url)
+  const windowReady = mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isLoading()
+
+  if (parsed.action === 'run' && parsed.task) {
+    if (windowReady) {
+      showMainWindow()
+      mainWindow!.webContents.send('app:run-task', parsed.task)
+    } else {
+      pendingDeepLinkUrls.push(url)
+    }
+  } else if (parsed.action === 'install-skill' && parsed.skillId) {
+    if (windowReady) {
+      showMainWindow()
+      mainWindow!.webContents.send('app:install-skill', parsed.skillId)
+    } else {
+      pendingDeepLinkUrls.push(url)
+    }
   }
 }
 

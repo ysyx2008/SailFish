@@ -50,6 +50,7 @@ const currentColorScheme = computed(() => {
   return theme?.colorScheme || 'dark'
 })
 const settingsInitialTab = ref<string | undefined>(undefined)
+const pendingInstallSkillId = ref<string | undefined>(undefined)
 const showFileExplorer = ref(false)
 const sftpConfig = ref<SftpConnectionConfig | null>(null)
 const showSetupWizard = ref(false)
@@ -112,6 +113,7 @@ let cleanupRemoteAgentComplete: (() => void) | null = null
 let cleanupRemoteAgentConfirm: (() => void) | null = null
 let cleanupImConnectionChange: (() => void) | null = null
 let cleanupRunTask: (() => void) | null = null
+let cleanupInstallSkill: (() => void) | null = null
 
 // 知识库管理器显示状态
 const showKnowledgeManager = ref(false)
@@ -186,6 +188,14 @@ onMounted(async () => {
     log.debug(`[DeepLink] 收到外部任务: ${task.substring(0, 80)}...`)
     showAiPanel.value = true
     terminalStore.createTabWithTask(task)
+  })
+
+  // 监听深链调起：从官网一键安装技能
+  cleanupInstallSkill = window.electronAPI.app.onInstallSkill((skillId) => {
+    log.debug(`[DeepLink] 收到技能安装请求: ${skillId}`)
+    pendingInstallSkillId.value = skillId
+    settingsInitialTab.value = 'skills'
+    showSettings.value = true
   })
 
   // 监听远程 Gateway 终端标签页创建事件
@@ -488,6 +498,7 @@ const openConnectionSettings = (tab?: string) => {
 const closeSettings = () => {
   showSettings.value = false
   settingsInitialTab.value = undefined
+  pendingInstallSkillId.value = undefined
 }
 
 // 重新运行引导
@@ -614,6 +625,7 @@ onUnmounted(() => {
   cleanupRemoteAgentConfirm?.()
   cleanupImConnectionChange?.()
   cleanupRunTask?.()
+  cleanupInstallSkill?.()
 })
 </script>
 
@@ -697,6 +709,7 @@ onUnmounted(() => {
     <SettingsModal 
       v-if="showSettings" 
       :initial-tab="settingsInitialTab"
+      :pending-install-skill-id="pendingInstallSkillId"
       @close="closeSettings"
       @restart-setup="restartSetup"
     />
