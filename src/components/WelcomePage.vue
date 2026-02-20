@@ -12,6 +12,7 @@ import sailfishLogo from '../../resources/logo.png'
 
 const { t } = useI18n()
 const configStore = useConfigStore()
+const isSteamBuild = typeof __STEAM_BUILD__ !== 'undefined' && __STEAM_BUILD__
 
 // 彩蛋：连续点击 Logo 20 次触发 Matrix 数字雨
 const showMatrixEasterEgg = ref(false)
@@ -41,12 +42,14 @@ const closeMatrixEasterEgg = () => {
   showMatrixEasterEgg.value = false
 }
 
-// 随机选择一条 tip 显示，支持点击切换
-const tipKeys = [
+// 随机选择一条 tip 显示，支持点击切换（Steam 版过滤掉 AI 相关提示）
+const allTipKeys = [
   'tip1', 'tip2', 'tip3', 'tip4', 'tip5', 'tip6', 'tip7', 'tip8', 'tip9', 'tip10',
   'tip11', 'tip12', 'tip13', 'tip14', 'tip15', 'tip16', 'tip17', 'tip18', 'tip19', 'tip20',
   'tip21', 'tip22', 'tip23', 'tip24', 'tip25', 'tip26', 'tip27', 'tip28', 'tip29', 'tip30'
 ]
+const steamTipKeys = ['tip1', 'tip4', 'tip6', 'tip13', 'tip14', 'tip15', 'tip17', 'tip25', 'tip26', 'tip27']
+const tipKeys = isSteamBuild ? steamTipKeys : allTipKeys
 const currentTipIndex = ref(Math.floor(Math.random() * tipKeys.length))
 const currentTip = computed(() => t(`welcome.${tipKeys[currentTipIndex.value]}`))
 
@@ -103,8 +106,8 @@ const formatHost = (session: SshSession) => {
             <img :src="sailfishLogo" alt="Sailfish" class="sailfish-logo" />
           </div>
         </div>
-        <h1 class="welcome-title">{{ t('welcome.title') }}</h1>
-        <p class="welcome-subtitle">{{ t('welcome.subtitle') }}</p>
+        <h1 class="welcome-title">{{ t(isSteamBuild ? 'welcome.titleSteam' : 'welcome.title') }}</h1>
+        <p class="welcome-subtitle">{{ t(isSteamBuild ? 'welcome.subtitleSteam' : 'welcome.subtitle') }}</p>
       </div>
 
       <!-- 快速启动卡片 -->

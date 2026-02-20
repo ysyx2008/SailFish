@@ -29,15 +29,25 @@ const log = createLogger('App')
 
 const { t } = useI18n()
 
+// Steam 构建标识（由 vite define 注入），在 script 中取值供模板使用，避免模板直接访问全局
+const isSteamBuild = typeof __STEAM_BUILD__ !== 'undefined' && __STEAM_BUILD__
+
 // 知识库升级进度
 const knowledgeUpgrading = ref(false)
 const knowledgeUpgradeProgress = ref({ current: 0, total: 0, filename: '' })
 const terminalStore = useTerminalStore()
 const configStore = useConfigStore()
+
+// Steam 版使用独立品牌名
+const steamAppTitle = computed(() => {
+  const lang = configStore.language || 'zh-CN'
+  return lang.startsWith('zh') ? '旗鱼终端' : 'SFTerm'
+})
 const { show: showConfirmDialog, options: confirmOptions, handleConfirm, handleCancel, handleClose } = useConfirm()
 
 const showSidebar = ref(false)
-const showAiPanel = ref(true)
+// Steam 版默认不显示 AI 面板，且面板区域不渲染
+const showAiPanel = ref(isSteamBuild ? false : true)
 const showSettings = ref(false)
 const showSmartPatrol = ref(false)
 const showSchedulerManager = ref(false)
@@ -631,17 +641,19 @@ onUnmounted(() => {
         <button class="btn-icon" @click="toggleSidebar" :title="t('header.sessionManager')">
           <Server :size="18" />
         </button>
-        <span class="app-title">{{ t('app.title') }}</span>
+        <span class="app-title">{{ isSteamBuild ? steamAppTitle : t('app.title') }}</span>
       </div>
       <div class="header-center">
         <TabBar />
       </div>
       <div class="header-right">
-        <button class="btn-icon" @click="toggleAiPanel" :title="t('header.aiAssistant')">
-          <Bot :size="18" />
-        </button>
-        <SchedulerPopover @open-manager="showSchedulerManager = true" />
-        <ConnectionStatusPopover @open-settings="openConnectionSettings" />
+        <template v-if="!isSteamBuild">
+          <button class="btn-icon" @click="toggleAiPanel" :title="t('header.aiAssistant')">
+            <Bot :size="18" />
+          </button>
+          <SchedulerPopover @open-manager="showSchedulerManager = true" />
+          <ConnectionStatusPopover @open-settings="openConnectionSettings" />
+        </template>
         <button class="btn-icon" @click="showSettings = true" :title="t('header.settings')">
           <Settings :size="18" />
         </button>
@@ -679,8 +691,8 @@ onUnmounted(() => {
         <TerminalContainer v-else />
       </main>
 
-      <!-- AI 面板 - 每个 tab 独立实例（仅在有终端时显示） -->
-      <template v-if="showAiPanel && !showWelcomePage">
+      <!-- AI 面板 - Steam 版不渲染；非 Steam 版仅在有终端时显示 -->
+      <template v-if="!isSteamBuild && showAiPanel && !showWelcomePage">
         <div 
           class="resize-handle" 
           @mousedown="startResize"

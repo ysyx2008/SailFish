@@ -8,7 +8,9 @@ export default {
   // 欢迎页
   welcome: {
     title: '欢迎使用旗鱼',
+    titleSteam: '欢迎使用旗鱼终端',
     subtitle: 'AI 驱动的智能助手',
+    subtitleSteam: '高效的终端与连接管理工具',
     quickStart: '快速开始',
     localTerminal: '本地终端',
     localTerminalDesc: '打开本机命令行终端',

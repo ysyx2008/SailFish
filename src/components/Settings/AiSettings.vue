@@ -133,8 +133,8 @@ const setActive = async (profileId: string) => {
   await configStore.setActiveAiProfile(profileId)
 }
 
-// Steam 版本：不提供任何 AI/API 配置入口，仅展示说明
-const isSteamBuild = import.meta.env.VITE_STEAM_BUILD === 'true'
+// Steam 版本：不提供任何 AI/API 配置入口，仅展示说明（__STEAM_BUILD__ 由 vite define 注入）
+const isSteamBuild = __STEAM_BUILD__
 
 // 所有可用的预设模板
 const allTemplates = [

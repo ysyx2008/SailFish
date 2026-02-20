@@ -5,6 +5,7 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
+    "dev:steam": "cross-env VITE_STEAM_BUILD=true vite",
     "postinstall": "patch-package && node scripts/fix-sherpa-onnx.js",
     "test": "vitest",
     "test:ui": "vitest --ui",

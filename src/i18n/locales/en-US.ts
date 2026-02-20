@@ -8,7 +8,9 @@ export default {
   // Welcome page
   welcome: {
     title: 'Welcome to SailFish',
+    titleSteam: 'Welcome to SFTerm',
     subtitle: 'AI-powered smart assistant',
+    subtitleSteam: 'Efficient terminal & connection manager',
     quickStart: 'Quick Start',
     localTerminal: 'Local Terminal',
     localTerminalDesc: 'Open local command line',

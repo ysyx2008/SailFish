@@ -1,8 +1,11 @@
 /// <reference types="vite/client" />
 
+// Steam 版本标识（由 vite define 注入，dev/build 均生效）
+declare const __STEAM_BUILD__: boolean
+
 // Vite 环境变量类型声明
 interface ImportMetaEnv {
-  readonly VITE_STEAM_BUILD?: string  // Steam 版本标识
+  readonly VITE_STEAM_BUILD?: string  // Steam 版本标识（构建时可用，前端统一用 __STEAM_BUILD__）
 }
 
 interface ImportMeta {

@@ -46,13 +46,24 @@ function copySpeechWorker() {
   }
 }
 
+// Steam 构建标识：用全局常量注入，dev/build 均生效（不依赖 import.meta.env 在 dev 下的注入）
+const isSteamBuild = process.env.VITE_STEAM_BUILD === 'true'
+if (isSteamBuild) {
+  console.log('[vite] Steam build: __STEAM_BUILD__=true')
+}
 export default defineConfig({
+  define: {
+    __STEAM_BUILD__: isSteamBuild
+  },
   plugins: [
     vue(),
     electron([
       {
         entry: 'electron/main.ts',
         vite: {
+          define: {
+            __STEAM_BUILD__: isSteamBuild
+          },
           build: {
             outDir: 'dist-electron',
             emptyOutDir: true,  // 构建前清空输出目录，防止旧文件堆积

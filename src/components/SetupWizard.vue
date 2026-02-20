@@ -13,8 +13,8 @@ const emit = defineEmits<{
 
 const configStore = useConfigStore()
 
-// Steam 版本：不提供 AI 配置，向导仅欢迎 + 完成两步
-const isSteamBuild = import.meta.env.VITE_STEAM_BUILD === 'true'
+// Steam 版本：不提供 AI 配置，向导仅欢迎 + 完成两步（__STEAM_BUILD__ 由 vite define 注入）
+const isSteamBuild = __STEAM_BUILD__
 
 // 步骤管理（Steam 版 2 步，非 Steam 版 3 步）
 const currentStep = ref(1)

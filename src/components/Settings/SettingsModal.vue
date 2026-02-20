@@ -36,8 +36,8 @@ const emit = defineEmits<{
 const configStore = useConfigStore()
 
 type SettingsTab = 'ai' | 'aiRules' | 'mcp' | 'skills' | 'knowledge' | 'email' | 'calendar' | 'im' | 'gateway' | 'theme' | 'terminal' | 'data' | 'language' | 'about'
-// Steam 版不展示 AI 配置标签，默认选中「主题」；非 Steam 版默认「AI 模型配置」
-const isSteamBuild = import.meta.env.VITE_STEAM_BUILD === 'true'
+// Steam 版不展示 AI 配置标签，默认选中「主题」；非 Steam 版默认「AI 模型配置」（__STEAM_BUILD__ 由 vite define 注入）
+const isSteamBuild = __STEAM_BUILD__
 const activeTab = ref<SettingsTab>(isSteamBuild ? 'theme' : 'ai')
 const appVersion = ref<string>('')
 const showConfirmDialog = ref(false)
@@ -302,12 +302,13 @@ const modalRef = ref<HTMLElement | null>(null)
 // 更新状态变化监听器清理函数
 let unsubscribeUpdater: (() => void) | null = null
 
+// Steam 版仅保留 theme/terminal/data/language/about，其它 initialTab 均 fallback 到 theme
+const STEAM_TABS: SettingsTab[] = ['theme', 'terminal', 'data', 'language', 'about']
 // 初始化时设置初始 tab 和获取版本号
 onMounted(async () => {
   if (props.initialTab && ['ai', 'aiRules', 'mcp', 'skills', 'knowledge', 'email', 'calendar', 'im', 'gateway', 'theme', 'terminal', 'data', 'language', 'about'].includes(props.initialTab)) {
     const tab = props.initialTab as SettingsTab
-    // Steam 版不提供 AI 配置，若请求打开 ai 则 fallback 到 theme
-    activeTab.value = (isSteamBuild && tab === 'ai') ? 'theme' : tab
+    activeTab.value = isSteamBuild && !STEAM_TABS.includes(tab) ? 'theme' : tab
   }
   // 获取应用版本号
   appVersion.value = await window.electronAPI.app.getVersion()
@@ -337,37 +338,54 @@ onUnmounted(() => {
   }
 })
 
-const tabGroups = computed(() => [
-  {
-    label: t('settings.groups.ai'),
-    tabs: [
-      ...(isSteamBuild ? [] : [{ id: 'ai' as const, label: t('settings.tabs.ai'), icon: '🤖' }]),
-      { id: 'aiRules' as const, label: t('settings.tabs.aiRules'), icon: '📋' },
-      { id: 'mcp' as const, label: t('settings.tabs.mcp'), icon: '🔌' },
-      { id: 'skills' as const, label: t('settings.tabs.skills'), icon: '🧩' },
-      { id: 'knowledge' as const, label: t('settings.tabs.knowledge'), icon: '📚' }
-    ]
-  },
-  {
-    label: t('settings.groups.integration'),
-    tabs: [
-      { id: 'im' as const, label: t('settings.tabs.im'), icon: '💬' },
-      { id: 'gateway' as const, label: t('settings.tabs.gateway'), icon: '🌐' },
-      { id: 'email' as const, label: t('settings.tabs.email'), icon: '📧' },
-      { id: 'calendar' as const, label: t('settings.tabs.calendar'), icon: '📅' }
-    ]
-  },
-  {
-    label: t('settings.groups.system'),
-    tabs: [
-      { id: 'theme' as const, label: t('settings.tabs.theme'), icon: '🎨' },
-      { id: 'terminal' as const, label: t('settings.tabs.terminal'), icon: '⚙️' },
-      { id: 'data' as const, label: t('settings.tabs.data'), icon: '💾' },
-      { id: 'language' as const, label: t('settings.tabs.language'), icon: '🌐' },
-      { id: 'about' as const, label: t('settings.tabs.about'), icon: 'ℹ️' }
+// Steam 版只保留「系统」分组（主题、终端、数据、语言、关于），隐藏 AI 与集成相关
+const tabGroups = computed(() => {
+  if (isSteamBuild) {
+    return [
+      {
+        label: t('settings.groups.system'),
+        tabs: [
+          { id: 'theme' as const, label: t('settings.tabs.theme'), icon: '🎨' },
+          { id: 'terminal' as const, label: t('settings.tabs.terminal'), icon: '⚙️' },
+          { id: 'data' as const, label: t('settings.tabs.data'), icon: '💾' },
+          { id: 'language' as const, label: t('settings.tabs.language'), icon: '🌐' },
+          { id: 'about' as const, label: t('settings.tabs.about'), icon: 'ℹ️' }
+        ]
+      }
     ]
   }
-])
+  return [
+    {
+      label: t('settings.groups.ai'),
+      tabs: [
+        { id: 'ai' as const, label: t('settings.tabs.ai'), icon: '🤖' },
+        { id: 'aiRules' as const, label: t('settings.tabs.aiRules'), icon: '📋' },
+        { id: 'mcp' as const, label: t('settings.tabs.mcp'), icon: '🔌' },
+        { id: 'skills' as const, label: t('settings.tabs.skills'), icon: '🧩' },
+        { id: 'knowledge' as const, label: t('settings.tabs.knowledge'), icon: '📚' }
+      ]
+    },
+    {
+      label: t('settings.groups.integration'),
+      tabs: [
+        { id: 'im' as const, label: t('settings.tabs.im'), icon: '💬' },
+        { id: 'gateway' as const, label: t('settings.tabs.gateway'), icon: '🌐' },
+        { id: 'email' as const, label: t('settings.tabs.email'), icon: '📧' },
+        { id: 'calendar' as const, label: t('settings.tabs.calendar'), icon: '📅' }
+      ]
+    },
+    {
+      label: t('settings.groups.system'),
+      tabs: [
+        { id: 'theme' as const, label: t('settings.tabs.theme'), icon: '🎨' },
+        { id: 'terminal' as const, label: t('settings.tabs.terminal'), icon: '⚙️' },
+        { id: 'data' as const, label: t('settings.tabs.data'), icon: '💾' },
+        { id: 'language' as const, label: t('settings.tabs.language'), icon: '🌐' },
+        { id: 'about' as const, label: t('settings.tabs.about'), icon: 'ℹ️' }
+      ]
+    }
+  ]
+})
 
 const restartSetup = async () => {
   if (confirm(t('settings.restartSetupConfirm'))) {

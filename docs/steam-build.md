@@ -9,9 +9,15 @@
 
 两版通过**构建时**环境变量区分，仅 Steam 专用构建脚本会打开 Steam 模式，普通构建不受影响。
 
-## 构建方式
+## 构建与开发
 
-Steam 版本使用独立脚本，会设置 `VITE_STEAM_BUILD=true`：
+**开发时本地跑 Steam 版界面**（无 AI 配置、2 步向导等）：
+
+```bash
+npm run dev:steam
+```
+
+**打 Steam 用包**时使用以下脚本（会设置 `VITE_STEAM_BUILD=true`）：
 
 ```bash
 # 当前平台
