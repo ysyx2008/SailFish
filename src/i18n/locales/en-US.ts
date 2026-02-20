@@ -270,7 +270,7 @@ export default {
       guideDocLink: 'Full Documentation',
       guideDetailLink: 'Help',
       aiSetupBtn: 'AI Setup',
-      aiSetupPrompt: 'Help me set up {platform} bot. Please read the setup guide at {docPath} first, then use the browser to create and configure the app on the developer platform. Once done, give me the credentials and I will fill them in the settings page myself.',
+      aiSetupPrompt: 'Help me set up {platform} bot. Please read the setup guide at {docPath} first, then use the browser to create and configure the app on the developer platform. Note: your ability to understand and interact with web pages is limited. You can navigate to relevant pages, but if you encounter complex forms or operations you cannot handle, describe the current page state and what needs to be done, then wait for me to complete it manually before continuing. Once done, give me the credentials and I will fill them in the settings page myself.',
       guideDocUrlDingtalk: 'https://github.com/ysyx2008/SFTerminal/blob/main/docs/messaging/dingtalk.md',
       guideDocUrlFeishu: 'https://github.com/ysyx2008/SFTerminal/blob/main/docs/messaging/feishu.md',
       guideDocUrlSlack: 'https://github.com/ysyx2008/SFTerminal/blob/main/docs/messaging/slack.md',
@@ -1651,7 +1651,17 @@ export default {
     saveFailed: 'Save failed',
     confirmDelete: 'Are you sure you want to delete email account "{name}"?',
     serverRequired: 'Custom server requires IMAP and SMTP server addresses',
-    passwordRequired: 'Please enter password'
+    passwordRequired: 'Please enter password',
+    accountCount: '{n} account(s) configured',
+    verifyAll: 'Verify All',
+    verify: 'Verify Connection',
+    statusOk: 'OK',
+    statusFailed: 'Failed',
+    statusUnknown: 'Unverified',
+    justNow: 'just now',
+    minutesAgo: '{n} min ago',
+    hoursAgo: '{n} hr ago',
+    daysAgo: '{n} day(s) ago'
   },
 
   // Calendar Settings
@@ -1681,7 +1691,17 @@ export default {
     saveFailed: 'Save failed',
     confirmDelete: 'Are you sure you want to delete calendar account "{name}"?',
     serverRequired: 'Custom CalDAV requires server URL',
-    passwordRequired: 'Please enter password'
+    passwordRequired: 'Please enter password',
+    accountCount: '{n} account(s) configured',
+    verifyAll: 'Verify All',
+    verify: 'Verify Connection',
+    statusOk: 'OK',
+    statusFailed: 'Failed',
+    statusUnknown: 'Unverified',
+    justNow: 'just now',
+    minutesAgo: '{n} min ago',
+    hoursAgo: '{n} hr ago',
+    daysAgo: '{n} day(s) ago'
   },
 
   // Email Skill

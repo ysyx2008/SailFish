@@ -270,7 +270,7 @@ export default {
       guideDocLink: '查看完整文档',
       guideDetailLink: '帮助',
       aiSetupBtn: 'AI 帮我配置',
-      aiSetupPrompt: '帮我配置{platform}机器人。请先阅读配置指南 {docPath}，然后用浏览器帮我在开发者平台完成应用创建和配置。完成后把凭证告诉我，我自己填入设置页面并连接。',
+      aiSetupPrompt: '帮我配置{platform}机器人。请先阅读配置指南 {docPath}，然后用浏览器帮我在开发者平台完成应用创建和配置。注意：你对网页的理解和操作能力有限，可以导航到相关页面，但遇到复杂表单或操作搞不定时，请告诉我当前页面状态和需要做什么，等我手动完成后再继续。完成后把凭证告诉我，我自己填入设置页面并连接。',
       guideDocUrlDingtalk: 'https://github.com/ysyx2008/SFTerminal/blob/main/docs/messaging/dingtalk_CN.md',
       guideDocUrlFeishu: 'https://github.com/ysyx2008/SFTerminal/blob/main/docs/messaging/feishu_CN.md',
       guideDocUrlSlack: 'https://github.com/ysyx2008/SFTerminal/blob/main/docs/messaging/slack_CN.md',
@@ -1651,7 +1651,17 @@ export default {
     saveFailed: '保存失败',
     confirmDelete: '确定要删除邮箱账户 "{name}" 吗？',
     serverRequired: '自定义服务器需要填写 IMAP 和 SMTP 服务器地址',
-    passwordRequired: '请填写密码'
+    passwordRequired: '请填写密码',
+    accountCount: '已配置 {n} 个账户',
+    verifyAll: '全部验证',
+    verify: '验证连接',
+    statusOk: '正常',
+    statusFailed: '异常',
+    statusUnknown: '未验证',
+    justNow: '刚刚',
+    minutesAgo: '{n} 分钟前',
+    hoursAgo: '{n} 小时前',
+    daysAgo: '{n} 天前'
   },
 
   // 日历设置
@@ -1681,7 +1691,17 @@ export default {
     saveFailed: '保存失败',
     confirmDelete: '确定要删除日历账户 "{name}" 吗？',
     serverRequired: '自定义 CalDAV 服务需要填写服务器地址',
-    passwordRequired: '请填写密码'
+    passwordRequired: '请填写密码',
+    accountCount: '已配置 {n} 个账户',
+    verifyAll: '全部验证',
+    verify: '验证连接',
+    statusOk: '正常',
+    statusFailed: '异常',
+    statusUnknown: '未验证',
+    justNow: '刚刚',
+    minutesAgo: '{n} 分钟前',
+    hoursAgo: '{n} 小时前',
+    daysAgo: '{n} 天前'
   },
 
   // 邮箱技能
