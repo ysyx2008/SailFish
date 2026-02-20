@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
+import { MessageSquare, Bot, HardDrive, CalendarRange, FolderOpen, History, Download, Upload, Trash2, Clock, AlertTriangle, Search, X, ChevronDown, ChevronRight, ExternalLink, Monitor, Server } from 'lucide-vue-next'
 
 const { t } = useI18n()
 
@@ -402,48 +403,76 @@ onUnmounted(() => {
     <h3>{{ t('dataSettings.title') }}</h3>
     
     <!-- 消息提示 -->
-    <div v-if="message" class="message" :class="message.type">
-      {{ message.text }}
-    </div>
+    <Transition name="msg">
+      <div v-if="message" class="message" :class="message.type">
+        {{ message.text }}
+      </div>
+    </Transition>
     
     <!-- 存储统计 -->
     <div class="section">
-      <h4>{{ t('dataSettings.storageStats') }}</h4>
+      <div class="section-header">
+        <HardDrive :size="15" class="section-icon" />
+        <h4>{{ t('dataSettings.storageStats') }}</h4>
+      </div>
       <div v-if="storageStats" class="stats-grid">
-        <div class="stat-item">
-          <span class="stat-label">{{ t('dataSettings.chatRecords') }}</span>
-          <span class="stat-value">{{ storageStats.chatFiles }} {{ t('dataSettings.days') }}</span>
+        <div class="stat-card stat-chat">
+          <div class="stat-icon-wrap chat">
+            <MessageSquare :size="18" />
+          </div>
+          <div class="stat-body">
+            <span class="stat-value">{{ storageStats.chatFiles }}</span>
+            <span class="stat-label">{{ t('dataSettings.chatRecords') }} ({{ t('dataSettings.days') }})</span>
+          </div>
         </div>
-        <div class="stat-item">
-          <span class="stat-label">{{ t('dataSettings.agentRecords') }}</span>
-          <span class="stat-value">{{ storageStats.agentFiles }} {{ t('dataSettings.days') }}</span>
+        <div class="stat-card stat-agent">
+          <div class="stat-icon-wrap agent">
+            <Bot :size="18" />
+          </div>
+          <div class="stat-body">
+            <span class="stat-value">{{ storageStats.agentFiles }}</span>
+            <span class="stat-label">{{ t('dataSettings.agentRecords') }} ({{ t('dataSettings.days') }})</span>
+          </div>
         </div>
-        <div class="stat-item">
-          <span class="stat-label">{{ t('dataSettings.totalSize') }}</span>
-          <span class="stat-value">{{ formatSize(storageStats.totalSize) }}</span>
+        <div class="stat-card stat-size">
+          <div class="stat-icon-wrap size">
+            <HardDrive :size="18" />
+          </div>
+          <div class="stat-body">
+            <span class="stat-value">{{ formatSize(storageStats.totalSize) }}</span>
+            <span class="stat-label">{{ t('dataSettings.totalSize') }}</span>
+          </div>
         </div>
-        <div class="stat-item">
-          <span class="stat-label">{{ t('dataSettings.recordRange') }}</span>
-          <span class="stat-value">
-            {{ storageStats.oldestRecord || t('dataSettings.noData') }} ~ {{ storageStats.newestRecord || t('dataSettings.noData') }}
-          </span>
+        <div class="stat-card stat-range">
+          <div class="stat-icon-wrap range">
+            <CalendarRange :size="18" />
+          </div>
+          <div class="stat-body">
+            <span class="stat-value range-value">
+              {{ storageStats.oldestRecord || t('dataSettings.noData') }} ~ {{ storageStats.newestRecord || t('dataSettings.noData') }}
+            </span>
+            <span class="stat-label">{{ t('dataSettings.recordRange') }}</span>
+          </div>
         </div>
       </div>
       <div v-else class="loading">{{ t('dataSettings.loading') }}</div>
       
-      <!-- 查看历史记录按钮 -->
-      <button class="btn btn-primary view-history-btn" @click="openHistoryViewer">
-        📜 {{ t('dataSettings.viewHistory') }}
+      <button class="btn btn-ghost view-history-btn" @click="openHistoryViewer">
+        <History :size="15" />
+        {{ t('dataSettings.viewHistory') }}
       </button>
     </div>
     
     <!-- 数据目录 -->
     <div class="section">
-      <h4>{{ t('dataSettings.dataDirectory') }}</h4>
-      <div class="data-path">
-        <code>{{ dataPath }}</code>
-        <button class="btn btn-sm" @click="openDataFolder">
-          📂 {{ t('dataSettings.openFolder') }}
+      <div class="section-header">
+        <FolderOpen :size="15" class="section-icon" />
+        <h4>{{ t('dataSettings.dataDirectory') }}</h4>
+      </div>
+      <div class="data-path-card">
+        <code class="path-text">{{ dataPath }}</code>
+        <button class="btn btn-sm btn-icon" @click="openDataFolder" :title="t('dataSettings.openFolder')" :aria-label="t('dataSettings.openFolder')">
+          <ExternalLink :size="14" />
         </button>
       </div>
       <p class="hint">{{ t('dataSettings.migrationHint') }}</p>
@@ -451,42 +480,54 @@ onUnmounted(() => {
     
     <!-- 导出/导入 -->
     <div class="section">
-      <h4>{{ t('dataSettings.backupRestore') }}</h4>
-      
-      <!-- 导出选项 -->
-      <div class="export-options">
-        <label class="checkbox-label">
-          <input type="checkbox" v-model="exportOptions.includeSshPasswords">
-          <span>{{ t('dataSettings.includeSshPasswords') }}</span>
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" v-model="exportOptions.includeApiKeys">
-          <span>{{ t('dataSettings.includeApiKeys') }}</span>
-        </label>
+      <div class="section-header">
+        <Download :size="15" class="section-icon" />
+        <h4>{{ t('dataSettings.backupRestore') }}</h4>
       </div>
       
-      <div class="actions">
-        <button class="btn btn-primary" @click="exportToFolder" :disabled="isExporting">
-          {{ isExporting ? t('dataSettings.exporting') : `📂 ${t('dataSettings.exportToFolder')}` }}
-        </button>
-        <button class="btn" @click="importFromFolder" :disabled="isImporting">
-          {{ isImporting ? t('dataSettings.importing') : `📂 ${t('dataSettings.importFromFolder')}` }}
-        </button>
+      <div class="backup-card">
+        <div class="export-options">
+          <label class="checkbox-label">
+            <input type="checkbox" v-model="exportOptions.includeSshPasswords">
+            <span>{{ t('dataSettings.includeSshPasswords') }}</span>
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" v-model="exportOptions.includeApiKeys">
+            <span>{{ t('dataSettings.includeApiKeys') }}</span>
+          </label>
+        </div>
+        
+        <div class="actions">
+          <button class="btn btn-primary" @click="exportToFolder" :disabled="isExporting">
+            <Download :size="14" />
+            {{ isExporting ? t('dataSettings.exporting') : t('dataSettings.exportToFolder') }}
+          </button>
+          <button class="btn" @click="importFromFolder" :disabled="isImporting">
+            <Upload :size="14" />
+            {{ isImporting ? t('dataSettings.importing') : t('dataSettings.importFromFolder') }}
+          </button>
+        </div>
       </div>
       <p class="hint">{{ t('dataSettings.exportHint') }}</p>
     </div>
     
     <!-- 清理 -->
-    <div class="section">
-      <h4>{{ t('dataSettings.cleanupHistory') }}</h4>
-      <div class="actions">
+    <div class="section section-danger">
+      <div class="section-header">
+        <Trash2 :size="15" class="section-icon danger" />
+        <h4>{{ t('dataSettings.cleanupHistory') }}</h4>
+      </div>
+      <div class="cleanup-actions">
         <button class="btn btn-outline" @click="cleanupOldRecords(30)" :disabled="isLoading">
+          <Clock :size="14" />
           {{ t('dataSettings.cleanup30Days') }}
         </button>
         <button class="btn btn-outline" @click="cleanupOldRecords(90)" :disabled="isLoading">
+          <Clock :size="14" />
           {{ t('dataSettings.cleanup90Days') }}
         </button>
-        <button class="btn btn-outline btn-danger" @click="cleanupOldRecords(0)" :disabled="isLoading">
+        <button class="btn btn-danger-fill" @click="cleanupOldRecords(0)" :disabled="isLoading">
+          <AlertTriangle :size="14" />
           {{ t('dataSettings.clearAll') }}
         </button>
       </div>
@@ -495,200 +536,236 @@ onUnmounted(() => {
     
     <!-- 历史记录查看器弹窗 -->
     <Teleport to="body">
-      <div v-if="showHistoryViewer" class="history-modal-overlay" @click.self="closeHistoryViewer">
-        <div class="history-modal">
-          <div class="history-modal-header">
-            <h3>📜 {{ t('dataSettings.historyViewer') }}</h3>
-            <button class="close-btn" @click="closeHistoryViewer">✕</button>
-          </div>
-          
-          <!-- 工具栏 -->
-          <div class="history-toolbar">
-            <!-- 标签切换 -->
-            <div class="tab-switcher">
-              <button 
-                :class="['tab-btn', { active: historyTab === 'agent' }]"
-                @click="switchHistoryTab('agent')"
-              >
-                🤖 {{ t('dataSettings.agentTasks') }}
-              </button>
-              <button 
-                :class="['tab-btn', { active: historyTab === 'chat' }]"
-                @click="switchHistoryTab('chat')"
-              >
-                💬 {{ t('dataSettings.chatHistory') }}
-              </button>
-            </div>
-            
-            <!-- 日期范围 -->
-            <div class="date-range-switcher">
-              <button 
-                v-for="range in [
-                  { value: 'today', label: t('dataSettings.today') },
-                  { value: 'week', label: t('dataSettings.last7Days') },
-                  { value: 'month', label: t('dataSettings.last30Days') },
-                  { value: 'all', label: t('dataSettings.all') }
-                ]" 
-                :key="range.value"
-                :class="['range-btn', { active: selectedDateRange === range.value }]"
-                @click="switchDateRange(range.value as 'today' | 'week' | 'month' | 'all')"
-              >
-                {{ range.label }}
-              </button>
-            </div>
-            
-            <!-- 搜索框 -->
-            <div class="search-box">
-              <input 
-                ref="historySearchRef"
-                v-model="searchKeyword"
-                type="text" 
-                :placeholder="t('dataSettings.searchPlaceholder')"
-                class="search-input"
-              />
-              <span v-if="searchKeyword" class="clear-search" @click="searchKeyword = ''">✕</span>
-            </div>
-          </div>
-          
-          <!-- 内容区域 -->
-          <div class="history-content">
-            <!-- 加载中 -->
-            <div v-if="historyLoading" class="loading-state">
-              <span class="spinner"></span>
-              {{ t('dataSettings.loading') }}
-            </div>
-            
-            <!-- Agent 记录 -->
-            <div v-else-if="historyTab === 'agent'" class="agent-history">
-              <div v-if="filteredAgentRecords.length === 0" class="empty-state">
-                {{ t('dataSettings.noAgentRecords') }}
+      <Transition name="modal">
+        <div v-if="showHistoryViewer" class="history-modal-overlay" @click.self="closeHistoryViewer">
+          <div class="history-modal">
+            <div class="history-modal-header">
+              <div class="modal-title">
+                <History :size="18" />
+                <h3>{{ t('dataSettings.historyViewer') }}</h3>
               </div>
-              <div v-else class="agent-list">
-                <div 
-                  v-for="record in filteredAgentRecords" 
-                  :key="record.id"
-                  class="agent-item"
-                >
-                  <div class="agent-header" @click="toggleAgentExpand(record.id)">
-                    <div class="agent-info">
-                      <span :class="['status-badge', getStatusClass(record.status)]">
-                        {{ getStatusText(record.status) }}
-                      </span>
-                      <span class="agent-task">{{ record.userTask }}</span>
-                    </div>
-                    <div class="agent-meta">
-                      <span v-if="record.sshHost" class="agent-host">🖥️ {{ record.sshHost }}</span>
-                      <span v-else class="agent-host">💻 {{ t('dataSettings.local') }}</span>
-                      <span class="agent-time">{{ formatTime(record.timestamp) }}</span>
-                      <span class="agent-duration">⏱️ {{ formatDuration(record.duration) }}</span>
-                      <span class="expand-icon">{{ expandedAgentIds.has(record.id) ? '▼' : '▶' }}</span>
-                    </div>
-                  </div>
-                  
-                  <!-- 展开的详情 -->
-                  <div v-if="expandedAgentIds.has(record.id)" class="agent-details">
-                    <!-- 步骤列表 -->
-                    <div class="steps-list">
-                      <div class="steps-label">📝 {{ t('dataSettings.executionSteps') }} ({{ record.steps.length }})</div>
-                      <div 
-                        v-for="step in record.steps" 
-                        :key="step.id"
-                        :class="['step-item', step.type]"
-                      >
-                        <div class="step-header">
-                          <span class="step-icon">{{ getStepIcon(step.type) }}</span>
-                          <span class="step-type">{{ step.type }}</span>
-                          <span v-if="step.toolName" class="step-tool">{{ step.toolName }}</span>
-                          <span class="step-time">{{ formatTime(step.timestamp) }}</span>
-                        </div>
-                        <div v-if="step.content" class="step-content">{{ step.content }}</div>
-                        <div v-if="step.toolArgs" class="step-args">
-                          <code>{{ JSON.stringify(step.toolArgs, null, 2) }}</code>
-                        </div>
-                        <div v-if="step.toolResult" class="step-result">
-                          <pre>{{ step.toolResult }}</pre>
-                        </div>
+              <button class="close-btn" @click="closeHistoryViewer" aria-label="Close">
+                <X :size="16" />
+              </button>
+            </div>
+            
+            <!-- 工具栏 -->
+            <div class="history-toolbar">
+              <div class="toolbar-left">
+                <div class="tab-switcher">
+                  <button 
+                    :class="['tab-btn', { active: historyTab === 'agent' }]"
+                    @click="switchHistoryTab('agent')"
+                  >
+                    <Bot :size="14" />
+                    {{ t('dataSettings.agentTasks') }}
+                  </button>
+                  <button 
+                    :class="['tab-btn', { active: historyTab === 'chat' }]"
+                    @click="switchHistoryTab('chat')"
+                  >
+                    <MessageSquare :size="14" />
+                    {{ t('dataSettings.chatHistory') }}
+                  </button>
+                </div>
+                
+                <div class="date-range-switcher">
+                  <button 
+                    v-for="range in [
+                      { value: 'today', label: t('dataSettings.today') },
+                      { value: 'week', label: t('dataSettings.last7Days') },
+                      { value: 'month', label: t('dataSettings.last30Days') },
+                      { value: 'all', label: t('dataSettings.all') }
+                    ]" 
+                    :key="range.value"
+                    :class="['range-btn', { active: selectedDateRange === range.value }]"
+                    @click="switchDateRange(range.value as 'today' | 'week' | 'month' | 'all')"
+                  >
+                    {{ range.label }}
+                  </button>
+                </div>
+              </div>
+              
+              <div class="search-box">
+                <Search :size="14" class="search-icon" />
+                <input 
+                  ref="historySearchRef"
+                  v-model="searchKeyword"
+                  type="text" 
+                  :placeholder="t('dataSettings.searchPlaceholder')"
+                  class="search-input"
+                />
+                <button v-if="searchKeyword" class="clear-search" @click="searchKeyword = ''">
+                  <X :size="12" />
+                </button>
+              </div>
+            </div>
+            
+            <!-- 内容区域 -->
+            <div class="history-content">
+              <div v-if="historyLoading" class="loading-state">
+                <span class="spinner"></span>
+                {{ t('dataSettings.loading') }}
+              </div>
+              
+              <!-- Agent 记录 -->
+              <div v-else-if="historyTab === 'agent'" class="agent-history">
+                <div v-if="filteredAgentRecords.length === 0" class="empty-state">
+                  <Bot :size="32" class="empty-icon" />
+                  <span>{{ t('dataSettings.noAgentRecords') }}</span>
+                </div>
+                <div v-else class="agent-list">
+                  <div 
+                    v-for="record in filteredAgentRecords" 
+                    :key="record.id"
+                    class="agent-item"
+                  >
+                    <div class="agent-header" @click="toggleAgentExpand(record.id)">
+                      <div class="agent-info">
+                        <span :class="['status-badge', getStatusClass(record.status)]">
+                          {{ getStatusText(record.status) }}
+                        </span>
+                        <span class="agent-task">{{ record.userTask }}</span>
+                      </div>
+                      <div class="agent-meta">
+                        <span v-if="record.sshHost" class="agent-host">
+                          <Server :size="12" /> {{ record.sshHost }}
+                        </span>
+                        <span v-else class="agent-host">
+                          <Monitor :size="12" /> {{ t('dataSettings.local') }}
+                        </span>
+                        <span class="agent-time">{{ formatTime(record.timestamp) }}</span>
+                        <span class="agent-duration">
+                          <Clock :size="12" /> {{ formatDuration(record.duration) }}
+                        </span>
+                        <ChevronDown v-if="expandedAgentIds.has(record.id)" :size="14" class="expand-icon" />
+                        <ChevronRight v-else :size="14" class="expand-icon" />
                       </div>
                     </div>
                     
-                    <!-- 最终结果（在步骤下方） -->
-                    <div v-if="record.finalResult" class="final-result">
-                      <div class="result-label">📋 {{ t('dataSettings.finalResult') }}</div>
-                      <div class="result-content" v-html="renderMarkdown(record.finalResult)"></div>
+                    <div v-if="expandedAgentIds.has(record.id)" class="agent-details">
+                      <div class="steps-list">
+                        <div class="steps-label">{{ t('dataSettings.executionSteps') }} ({{ record.steps.length }})</div>
+                        <div 
+                          v-for="step in record.steps" 
+                          :key="step.id"
+                          :class="['step-item', step.type]"
+                        >
+                          <div class="step-header">
+                            <span class="step-icon">{{ getStepIcon(step.type) }}</span>
+                            <span class="step-type">{{ step.type }}</span>
+                            <span v-if="step.toolName" class="step-tool">{{ step.toolName }}</span>
+                            <span class="step-time">{{ formatTime(step.timestamp) }}</span>
+                          </div>
+                          <div v-if="step.content" class="step-content">{{ step.content }}</div>
+                          <div v-if="step.toolArgs" class="step-args">
+                            <code>{{ JSON.stringify(step.toolArgs, null, 2) }}</code>
+                          </div>
+                          <div v-if="step.toolResult" class="step-result">
+                            <pre>{{ step.toolResult }}</pre>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div v-if="record.finalResult" class="final-result">
+                        <div class="result-label">{{ t('dataSettings.finalResult') }}</div>
+                        <div class="result-content" v-html="renderMarkdown(record.finalResult)"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 聊天记录 -->
+              <div v-else class="chat-history">
+                <div v-if="groupedChatRecords.length === 0" class="empty-state">
+                  <MessageSquare :size="32" class="empty-icon" />
+                  <span>{{ t('dataSettings.noChatRecords') }}</span>
+                </div>
+                <div v-else>
+                  <div v-for="group in groupedChatRecords" :key="group.date" class="date-group">
+                    <div class="date-header">{{ group.date }}</div>
+                    <div class="chat-list">
+                      <div 
+                        v-for="record in group.records" 
+                        :key="record.id"
+                        :class="['chat-item', record.role]"
+                      >
+                        <div class="chat-meta">
+                          <span class="chat-role">{{ record.role === 'user' ? t('dataSettings.user') : t('dataSettings.ai') }}</span>
+                          <span class="chat-time">{{ formatTime(record.timestamp) }}</span>
+                          <span v-if="record.sshHost" class="chat-host">
+                            <Server :size="11" /> {{ record.sshHost }}
+                          </span>
+                          <span v-else class="chat-host">
+                            <Monitor :size="11" /> {{ t('dataSettings.local') }}
+                          </span>
+                        </div>
+                        <div class="chat-content" v-html="renderMarkdown(record.content)"></div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
             
-            <!-- 聊天记录 -->
-            <div v-else class="chat-history">
-              <div v-if="groupedChatRecords.length === 0" class="empty-state">
-                {{ t('dataSettings.noChatRecords') }}
-              </div>
-              <div v-else>
-                <div v-for="group in groupedChatRecords" :key="group.date" class="date-group">
-                  <div class="date-header">{{ group.date }}</div>
-                  <div class="chat-list">
-                    <div 
-                      v-for="record in group.records" 
-                      :key="record.id"
-                      :class="['chat-item', record.role]"
-                    >
-                      <div class="chat-meta">
-                        <span class="chat-role">{{ record.role === 'user' ? `👤 ${t('dataSettings.user')}` : `🤖 ${t('dataSettings.ai')}` }}</span>
-                        <span class="chat-time">{{ formatTime(record.timestamp) }}</span>
-                        <span v-if="record.sshHost" class="chat-host">🖥️ {{ record.sshHost }}</span>
-                        <span v-else class="chat-host">💻 {{ t('dataSettings.local') }}</span>
-                      </div>
-                      <div class="chat-content" v-html="renderMarkdown(record.content)"></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <div class="history-footer">
+              <span v-if="historyTab === 'agent'">
+                {{ t('dataSettings.totalTasks', { count: filteredAgentRecords.length }) }}
+              </span>
+              <span v-else>
+                {{ t('dataSettings.totalRecords', { count: filteredChatRecords.length }) }}
+              </span>
             </div>
           </div>
-          
-          <!-- 统计信息 -->
-          <div class="history-footer">
-            <span v-if="historyTab === 'agent'">
-              {{ t('dataSettings.totalTasks', { count: filteredAgentRecords.length }) }}
-            </span>
-            <span v-else>
-              {{ t('dataSettings.totalRecords', { count: filteredChatRecords.length }) }}
-            </span>
-          </div>
         </div>
-      </div>
+      </Transition>
     </Teleport>
   </div>
 </template>
 
 <style scoped>
 .data-settings {
-  max-width: 500px;
+  max-width: 520px;
 }
 
 .data-settings h3 {
   font-size: 16px;
   font-weight: 600;
-  margin-bottom: 20px;
-}
-
-.section {
   margin-bottom: 24px;
 }
 
-.section h4 {
+/* Sections */
+.section {
+  margin-bottom: 28px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.section-header h4 {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
-  margin-bottom: 12px;
+  margin: 0;
 }
 
+.section-icon {
+  color: var(--text-muted);
+}
+
+.section-icon.danger {
+  color: #ef4444;
+}
+
+/* Message toast */
 .message {
   padding: 10px 14px;
-  border-radius: 6px;
+  border-radius: 8px;
   margin-bottom: 16px;
   font-size: 13px;
 }
@@ -705,47 +782,148 @@ onUnmounted(() => {
   border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
+.msg-enter-active,
+.msg-leave-active {
+  transition: all 0.3s ease;
+}
+.msg-enter-from,
+.msg-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+/* Stats grid */
 .stats-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 10px;
 }
 
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px;
-  background: var(--bg-tertiary);
-  border-radius: 8px;
-}
-
-.stat-label {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.stat-value {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.data-path {
+.stat-card {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding: 14px;
+  background: var(--bg-tertiary);
+  border-radius: 10px;
+  border: 1px solid transparent;
+  transition: border-color 0.2s;
+}
+
+.stat-card:hover {
+  border-color: var(--border-color);
+}
+
+.stat-icon-wrap {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.stat-icon-wrap.chat {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+}
+
+.stat-icon-wrap.agent {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
+.stat-icon-wrap.size {
+  background: rgba(168, 85, 247, 0.12);
+  color: #a855f7;
+}
+
+.stat-icon-wrap.range {
+  background: rgba(251, 146, 60, 0.12);
+  color: #fb923c;
+}
+
+.stat-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stat-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.stat-value.range-value {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.view-history-btn {
+  margin-top: 14px;
+  width: 100%;
+  justify-content: center;
+}
+
+/* Data path */
+.data-path-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 10px 14px;
   background: var(--bg-tertiary);
   border-radius: 8px;
-  margin-bottom: 8px;
+  border: 1px solid var(--border-color);
 }
 
-.data-path code {
+.path-text {
   flex: 1;
   font-size: 12px;
   color: var(--text-secondary);
   word-break: break-all;
+  line-height: 1.4;
+}
+
+/* Backup card */
+.backup-card {
+  padding: 14px;
+  background: var(--bg-tertiary);
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+}
+
+.export-options {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 14px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: var(--accent-primary);
 }
 
 .actions {
@@ -754,24 +932,34 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
+/* Cleanup */
+.section-danger .cleanup-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .hint {
   font-size: 12px;
   color: var(--text-muted);
-  margin-top: 8px;
+  margin-top: 10px;
+  line-height: 1.5;
 }
 
 .loading {
   color: var(--text-muted);
   font-size: 13px;
+  padding: 20px 0;
 }
 
+/* Buttons */
 .btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
   font-size: 13px;
-  border-radius: 6px;
+  border-radius: 8px;
   border: 1px solid var(--border-color);
   background: var(--bg-tertiary);
   color: var(--text-primary);
@@ -793,6 +981,11 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
+.btn-icon {
+  padding: 6px;
+  border-radius: 6px;
+}
+
 .btn-primary {
   background: var(--accent-primary);
   border-color: var(--accent-primary);
@@ -803,46 +996,66 @@ onUnmounted(() => {
   filter: brightness(1.1);
 }
 
+.btn-ghost {
+  background: transparent;
+  border: 1px dashed var(--border-color);
+  color: var(--text-secondary);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: rgba(var(--accent-primary-rgb, 59, 130, 246), 0.06);
+}
+
 .btn-outline {
   background: transparent;
 }
 
-.btn-danger {
-  color: #ef4444;
-  border-color: #ef4444;
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.1);
-}
-
-.export-options {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-
-.checkbox-label {
-  display: flex;
+.btn-danger-fill {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
+  padding: 8px 16px;
   font-size: 13px;
-  color: var(--text-secondary);
+  border-radius: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
   cursor: pointer;
+  transition: all 0.2s;
 }
 
-.checkbox-label input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
+.btn-danger-fill:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.5);
 }
 
-.view-history-btn {
-  margin-top: 16px;
-  width: 100%;
+.btn-danger-fill:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
-/* ========== 历史记录弹窗样式 ========== */
+/* ========== History modal ========== */
+.modal-enter-active,
+.modal-leave-active {
+  transition: opacity 0.25s ease;
+}
+.modal-enter-active .history-modal,
+.modal-leave-active .history-modal {
+  transition: transform 0.25s ease;
+}
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
+}
+.modal-enter-from .history-modal {
+  transform: scale(0.95) translateY(10px);
+}
+.modal-leave-to .history-modal {
+  transform: scale(0.95) translateY(10px);
+}
+
 .history-modal-overlay {
   position: fixed;
   top: 0;
@@ -854,6 +1067,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   z-index: 10000;
+  backdrop-filter: blur(4px);
 }
 
 .history-modal {
@@ -861,10 +1075,10 @@ onUnmounted(() => {
   max-width: 900px;
   max-height: 85vh;
   background: var(--bg-primary);
-  border-radius: 12px;
+  border-radius: 14px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
   border: 1px solid var(--border-color);
 }
 
@@ -876,18 +1090,25 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--border-color);
 }
 
-.history-modal-header h3 {
+.modal-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-primary);
+}
+
+.modal-title h3 {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
 }
 
 .close-btn {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border: none;
   background: var(--bg-tertiary);
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   color: var(--text-secondary);
   display: flex;
@@ -901,33 +1122,44 @@ onUnmounted(() => {
   color: var(--text-primary);
 }
 
-/* 工具栏 */
+/* Toolbar */
 .history-toolbar {
   display: flex;
   gap: 12px;
   padding: 12px 20px;
   border-bottom: 1px solid var(--border-color);
-  flex-wrap: wrap;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.toolbar-left {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .tab-switcher {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   background: var(--bg-tertiary);
   padding: 3px;
-  border-radius: 8px;
+  border-radius: 9px;
 }
 
 .tab-btn {
-  padding: 6px 12px;
+  padding: 6px 14px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  border-radius: 6px;
+  border-radius: 7px;
   cursor: pointer;
   font-size: 13px;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .tab-btn:hover {
@@ -937,6 +1169,7 @@ onUnmounted(() => {
 .tab-btn.active {
   background: var(--accent-primary);
   color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 .date-range-switcher {
@@ -945,11 +1178,11 @@ onUnmounted(() => {
 }
 
 .range-btn {
-  padding: 4px 10px;
+  padding: 5px 10px;
   border: 1px solid var(--border-color);
   background: transparent;
   color: var(--text-secondary);
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
   transition: all 0.2s;
@@ -967,18 +1200,26 @@ onUnmounted(() => {
 }
 
 .search-box {
-  flex: 1;
-  min-width: 150px;
-  max-width: 300px;
+  min-width: 180px;
+  max-width: 280px;
   position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-muted);
+  pointer-events: none;
 }
 
 .search-input {
   width: 100%;
-  padding: 6px 28px 6px 12px;
+  padding: 7px 30px 7px 32px;
   border: 1px solid var(--border-color);
   background: var(--bg-tertiary);
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--text-primary);
   font-size: 13px;
 }
@@ -995,18 +1236,20 @@ onUnmounted(() => {
 .clear-search {
   position: absolute;
   right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
   cursor: pointer;
   color: var(--text-muted);
-  font-size: 12px;
+  border: none;
+  background: none;
+  padding: 2px;
+  display: flex;
+  align-items: center;
 }
 
 .clear-search:hover {
   color: var(--text-primary);
 }
 
-/* 内容区域 */
+/* Content */
 .history-content {
   flex: 1;
   overflow-y: auto;
@@ -1040,14 +1283,20 @@ onUnmounted(() => {
 
 .empty-state {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 12px;
   height: 200px;
   color: var(--text-muted);
   font-size: 14px;
 }
 
-/* 聊天记录样式 */
+.empty-icon {
+  opacity: 0.3;
+}
+
+/* Chat records */
 .date-group {
   margin-bottom: 20px;
 }
@@ -1064,7 +1313,7 @@ onUnmounted(() => {
 .chat-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .chat-item {
@@ -1083,6 +1332,7 @@ onUnmounted(() => {
 
 .chat-meta {
   display: flex;
+  align-items: center;
   gap: 12px;
   font-size: 11px;
   color: var(--text-muted);
@@ -1090,7 +1340,13 @@ onUnmounted(() => {
 }
 
 .chat-role {
-  font-weight: 500;
+  font-weight: 600;
+}
+
+.chat-host {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .chat-content {
@@ -1125,24 +1381,30 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-/* Agent 记录样式 */
+/* Agent records */
 .agent-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .agent-item {
   background: var(--bg-tertiary);
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
+  border: 1px solid transparent;
+  transition: border-color 0.2s;
+}
+
+.agent-item:hover {
+  border-color: var(--border-color);
 }
 
 .agent-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px;
+  padding: 12px 14px;
   cursor: pointer;
   transition: background 0.2s;
 }
@@ -1160,25 +1422,25 @@ onUnmounted(() => {
 }
 
 .status-badge {
-  padding: 2px 8px;
-  border-radius: 4px;
+  padding: 3px 8px;
+  border-radius: 5px;
   font-size: 11px;
   font-weight: 500;
   flex-shrink: 0;
 }
 
 .status-completed {
-  background: rgba(16, 185, 129, 0.15);
+  background: rgba(16, 185, 129, 0.12);
   color: #10b981;
 }
 
 .status-failed {
-  background: rgba(239, 68, 68, 0.15);
+  background: rgba(239, 68, 68, 0.12);
   color: #ef4444;
 }
 
 .status-aborted {
-  background: rgba(251, 191, 36, 0.15);
+  background: rgba(251, 191, 36, 0.12);
   color: #f59e0b;
 }
 
@@ -1201,14 +1463,21 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.expand-icon {
-  font-size: 10px;
-  color: var(--text-muted);
+.agent-host,
+.agent-duration {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
-/* Agent 详情 */
+.expand-icon {
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+/* Agent details */
 .agent-details {
-  padding: 12px;
+  padding: 14px;
   border-top: 1px solid var(--border-color);
   background: var(--bg-secondary);
 }
@@ -1217,13 +1486,13 @@ onUnmounted(() => {
   margin-top: 16px;
   padding: 12px;
   background: var(--bg-tertiary);
-  border-radius: 6px;
+  border-radius: 8px;
   border-left: 3px solid #10b981;
 }
 
 .result-label {
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-secondary);
   margin-bottom: 8px;
 }
@@ -1252,7 +1521,7 @@ onUnmounted(() => {
 
 .steps-label {
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-secondary);
   margin-bottom: 10px;
 }
@@ -1345,7 +1614,7 @@ onUnmounted(() => {
   cursor: text;
 }
 
-/* 底部统计 */
+/* Footer */
 .history-footer {
   padding: 10px 20px;
   border-top: 1px solid var(--border-color);
