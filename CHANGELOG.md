@@ -2,7 +2,24 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.6.0 (2026-02-20) (Latest)
+## v10.7.0 (2026-02-20) (Latest)
+
+### New Features
+- 🔗 **Deep Link (sailfish://)**: Support opening the app from the website skill examples to run tasks via `sailfish://run?task=...`
+- 🛒 **Skill Market One-Click Install**: Install skills from the website skill market with a single click (deep link)
+- 📋 **Skill List Uninstall**: One-click uninstall for installed skills in "My Skills" settings
+- 🎴 **Skill Market Preview**: Clicking a card in the featured section opens the skill’s preview page
+- 📊 **Unified Connection Panel**: Connection status popover shows IM channels and MCP servers side by side
+
+### Improvements
+- 🛒 Skill market: Removed "Recommended" category to avoid confusion with the featured block
+
+### Bug Fixes
+- 🔧 macOS: Cmd+Q now quits the app immediately after the first confirmation instead of requiring a second quit
+- 🔧 ConnectionStatusPopover: Fixed remote channel count not displaying
+- 🔧 Skill/Config: Agent can now manage MCP server configuration
+
+## v10.6.0 (2026-02-20)
 
 ### New Features
 - 🍎 **System Tray & Single Instance**: Added system tray icon and single-instance lock so the app can run in the background with one process

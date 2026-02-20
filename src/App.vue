@@ -184,14 +184,14 @@ onMounted(async () => {
   })
 
   // 监听深链调起：从官网技能示例等外部来源触发 Agent 任务
-  cleanupRunTask = window.electronAPI.app.onRunTask((task) => {
+  cleanupRunTask = window.electronAPI.app.onRunTask((task: string) => {
     log.debug(`[DeepLink] 收到外部任务: ${task.substring(0, 80)}...`)
     showAiPanel.value = true
     terminalStore.createTabWithTask(task)
   })
 
   // 监听深链调起：从官网一键安装技能
-  cleanupInstallSkill = window.electronAPI.app.onInstallSkill((skillId) => {
+  cleanupInstallSkill = window.electronAPI.app.onInstallSkill((skillId: string) => {
     log.debug(`[DeepLink] 收到技能安装请求: ${skillId}`)
     pendingInstallSkillId.value = skillId
     settingsInitialTab.value = 'skills'
@@ -482,12 +482,6 @@ watch(() => Object.keys(terminalStore.pendingSchedulerTasks).length, (count) => 
     showAiPanel.value = true
   }
 })
-
-// 打开 MCP 设置
-const openMcpSettings = () => {
-  settingsInitialTab.value = 'mcp'
-  showSettings.value = true
-}
 
 const openConnectionSettings = (tab?: string) => {
   settingsInitialTab.value = tab || undefined

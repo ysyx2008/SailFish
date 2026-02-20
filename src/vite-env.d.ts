@@ -150,6 +150,8 @@ interface Window {
     app: {
       getVersion: () => Promise<string>
       getMessagingDocsPath: () => Promise<string>
+      onRunTask: (callback: (task: string) => void) => () => void
+      onInstallSkill: (callback: (skillId: string) => void) => () => void
     }
     // PATH 环境变量状态
     path: {
