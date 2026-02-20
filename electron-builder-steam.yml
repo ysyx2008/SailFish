@@ -1,0 +1,139 @@
+# Steam 版专用构建配置
+# 基于 electron-builder.yml，去除 AI 相关模型和 native 模块以大幅缩减安装包体积
+# 排除项：embedding 模型(23M)、语音模型(293M)、sherpa-onnx(72M)、onnxruntime(74M)、
+#         @lancedb(80M)、@xenova/transformers(137M)，合计约 ~540M+
+appId: com.sfterm.terminal
+productName: SFTerm
+protocols:
+  - name: "SailFish Protocol"
+    schemes:
+      - sailfish
+afterPack: ./scripts/afterPack.js
+directories:
+  buildResources: resources
+  output: release
+publish:
+  provider: github
+  owner: ysyx2008
+  repo: SFTerminal
+electronDownload:
+  cache: ./electron-cache
+buildDependenciesFromSource: false
+nodeGypRebuild: false
+files:
+  - dist
+  - dist-electron
+  # 排除 AI 相关 native 模块（全部懒加载，排除后不影响启动）
+  - "!node_modules/@lancedb/**"
+  - "!node_modules/@xenova/**"
+  - "!node_modules/onnxruntime-node/**"
+  - "!node_modules/onnxruntime-common/**"
+  - "!node_modules/sherpa-onnx-node/**"
+  - "!node_modules/sherpa-onnx-darwin-*/**"
+  - "!node_modules/sherpa-onnx-linux-*/**"
+  - "!node_modules/sherpa-onnx-win-*/**"
+  - "!node_modules/sharp/**"
+  - "!node_modules/onnxruntime-web/**"
+  # 文档解析 & 知识库相关
+  - "!node_modules/pdfjs-dist/**"
+  - "!node_modules/pdf-parse/**"
+  - "!node_modules/pdf2json/**"
+  - "!node_modules/exceljs/**"
+  - "!node_modules/jieba-wasm/**"
+  - "!node_modules/js-tiktoken/**"
+  - "!node_modules/@langchain/**"
+  - "!node_modules/apache-arrow/**"
+asarUnpack:
+  - node_modules/@homebridge/node-pty-prebuilt-multiarch/**/*
+extraResources:
+  # 系统托盘图标（运行时加载）
+  - from: "resources/icon_trayTemplate.png"
+    to: "icon_trayTemplate.png"
+  - from: "resources/icon_trayTemplate@2x.png"
+    to: "icon_trayTemplate@2x.png"
+  - from: "resources/icon.png"
+    to: "icon.png"
+  # IM 平台配置指南（供 Agent 读取）— Steam 版也可能用到文档
+  - from: "docs/messaging"
+    to: "docs/messaging"
+    filter:
+      - "**/*.md"
+  # 不包含 embedding 模型、语音模型
+win:
+  icon: resources/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-Setup-${version}.${ext}
+  extraResources:
+    - from: "resources/everything"
+      to: "everything"
+      filter:
+        - "**/*.exe"
+        - "**/*.dll"
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 旗鱼终端
+  installerLanguages:
+    - en_US
+    - zh_CN
+  language: 2052
+mac:
+  icon: resources/icon.icns
+  target:
+    - target: dmg
+      arch:
+        - universal
+  extraFiles:
+    - from: "resources/zh-Hans.lproj"
+      to: "Resources/zh-Hans.lproj"
+    - from: "resources/en.lproj"
+      to: "Resources/en.lproj"
+  extendInfo:
+    CFBundleDevelopmentRegion: en
+    LSHasLocalizedDisplayName: true
+    CFBundleLocalizations:
+      - en
+      - zh_CN
+      - zh-Hans
+dmg:
+  window:
+    width: 660
+    height: 500
+  contents:
+    - x: 180
+      y: 170
+      type: file
+    - x: 480
+      y: 170
+      type: link
+      path: /Applications
+    - x: 230
+      y: 370
+      type: file
+      path: resources/dmg/Installation Guide.txt
+    - x: 430
+      y: 370
+      type: file
+      path: resources/dmg/安装说明.txt
+linux:
+  icon: resources
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+  category: Development
+  executableName: sfterm
+  desktop:
+    entry:
+      Name: SFTerm
+      Name[zh_CN]: 旗鱼终端
+      Comment: Terminal & Connection Manager
+      Comment[zh_CN]: 高效的终端与连接管理工具
