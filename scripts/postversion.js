@@ -3,11 +3,17 @@
 /**
  * npm version 的 postversion 钩子
  * 
- * 流程:
- * 1. 推送 main 分支和 tag
- * 2. 如果原来在 develop，切回 develop
- * 3. rebase develop 到 main
- * 4. 推送 develop
+ * npm 已在当前分支上完成 version bump + commit + tag。
+ * 本脚本负责分支合并与推送。
+ * 
+ * 从 develop 发版时的流程:
+ * 1. 推送 develop（含版本 commit）
+ * 2. 切换到 main，合并 develop
+ * 3. 推送 main 和 tag
+ * 4. 切回 develop
+ * 
+ * 从 main 发版时的流程:
+ * 1. 推送 main 和 tag
  */
 
 const { execSync } = require('child_process');
@@ -37,27 +43,32 @@ function error(message) {
   log(`✗ ${message}`, 'red');
 }
 
-function exec(command, options = {}) {
-  log(`  $ ${command}`, 'blue');
+function execSilent(command) {
   try {
-    execSync(command, { stdio: 'inherit' });
+    return execSync(command, { encoding: 'utf8', stdio: 'pipe' }).trim();
   } catch (e) {
-    if (!options.ignoreError) {
-      throw e;
-    }
+    return null;
   }
+}
+
+function exec(command) {
+  log(`  $ ${command}`, 'blue');
+  execSync(command, { stdio: 'inherit' });
+}
+
+function getCurrentBranch() {
+  return execSilent('git rev-parse --abbrev-ref HEAD');
 }
 
 function loadState() {
   try {
     if (fs.existsSync(STATE_FILE)) {
-      const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-      return state;
+      return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
     }
   } catch (e) {
     // ignore
   }
-  return { originalBranch: 'main', needRebase: false };
+  return { originalBranch: 'main' };
 }
 
 function cleanupState() {
@@ -82,28 +93,35 @@ function main() {
   log(`新版本: v${version}`);
 
   try {
-    // 推送 main 分支和 tag
-    log('\n推送 main 分支和 tag...', 'cyan');
-    exec('git push');
-    exec(`git push origin v${version}`);
-    success('main 分支和 tag 已推送');
+    if (state.originalBranch === 'develop') {
+      log('\n推送 develop 分支（含版本 commit）...', 'cyan');
+      exec('git push');
+      success('develop 分支已推送');
 
-    // 如果原来在 develop，切回并 rebase
-    if (state.needRebase && state.originalBranch === 'develop') {
+      log('\n切换到 main 分支...', 'cyan');
+      exec('git checkout main');
+      exec('git pull --ff-only');
+      success('已切换到 main');
+
+      log('\n合并 develop 到 main...', 'cyan');
+      exec('git merge develop --no-edit');
+      success('合并完成');
+
+      log('\n推送 main 分支和 tag...', 'cyan');
+      exec('git push');
+      exec(`git push origin v${version}`);
+      success('main 分支和 tag 已推送');
+
       log('\n切回 develop 分支...', 'cyan');
       exec('git checkout develop');
       success('已切回 develop');
-
-      log('\nRebase develop 到 main...', 'cyan');
-      exec('git rebase main');
-      success('Rebase 完成');
-
-      log('\n推送 develop 分支...', 'cyan');
-      exec('git push --force-with-lease');
-      success('develop 分支已推送');
+    } else {
+      log('\n推送 main 分支和 tag...', 'cyan');
+      exec('git push');
+      exec(`git push origin v${version}`);
+      success('main 分支和 tag 已推送');
     }
 
-    // 完成
     log('\n========================================', 'green');
     log('     🎉 发布完成!', 'green');
     log('========================================', 'green');
@@ -114,13 +132,29 @@ function main() {
 
   } catch (e) {
     error('postversion 执行出错!');
+
+    const currentBranch = getCurrentBranch();
+    if (currentBranch !== state.originalBranch) {
+      log(`\n尝试恢复到 ${state.originalBranch} 分支...`, 'yellow');
+      try {
+        execSync(`git checkout ${state.originalBranch}`, { stdio: 'pipe' });
+        log(`已恢复到 ${state.originalBranch} 分支`, 'yellow');
+      } catch (_) {
+        log(`无法自动恢复到 ${state.originalBranch}，请手动 checkout`, 'red');
+      }
+    }
+
     log('\n版本已更新但后续步骤失败，请手动执行:', 'yellow');
-    log(`  git push`);
-    log(`  git push origin v${version}`);
-    if (state.needRebase) {
+    if (state.originalBranch === 'develop') {
+      log(`  git push                          # 推送 develop`);
+      log(`  git checkout main && git pull --ff-only`);
+      log(`  git merge develop --no-edit`);
+      log(`  git push                          # 推送 main`);
+      log(`  git push origin v${version}`);
       log(`  git checkout develop`);
-      log(`  git rebase main`);
-      log(`  git push --force-with-lease`);
+    } else {
+      log(`  git push`);
+      log(`  git push origin v${version}`);
     }
     process.exit(1);
   } finally {
