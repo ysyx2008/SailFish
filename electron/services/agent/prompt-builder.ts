@@ -388,6 +388,8 @@ ${this.buildSkillsSection()}`)
 - 连续失败 2-3 次后停止，报告问题而非无限重试
 
 **禁止的命令**：vim/vi/nano/emacs（用 \`${writeFileTool}\`）、tmux/screen、mc/ranger
+${!isSshTerminal ? `
+**按文件名查找**：优先使用 \`file_search\`（基于系统索引，多数场景下更快）；仅在已知小目录内精确列举、或需搜**文件内容**时再用 execute_command 执行 find/grep。` : ''}
 
 **长内容处理**：
 - 超过 200 字符禁止用 echo/printf，用 \`${writeFileTool}\` 写入 /tmp 再执行
