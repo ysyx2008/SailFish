@@ -225,10 +225,9 @@ export class IMService {
 
   async stopDingTalk(): Promise<void> {
     if (this.dingtalkAdapter) {
-      await this.dingtalkAdapter.stop()
+      await this.dingtalkAdapter.stop() // adapter.stop() 内已触发 onConnectionChange(false)，无需再 sendToDesktop
       this.dingtalkAdapter = null
       this.config.dingtalk.enabled = false
-      this.sendToDesktop('im:connectionChange', { platform: 'dingtalk', connected: false })
       console.log('[IM] DingTalk stopped')
     }
   }
@@ -267,10 +266,9 @@ export class IMService {
 
   async stopFeishu(): Promise<void> {
     if (this.feishuAdapter) {
-      await this.feishuAdapter.stop()
+      await this.feishuAdapter.stop() // adapter 内已触发 onConnectionChange(false)
       this.feishuAdapter = null
       this.config.feishu.enabled = false
-      this.sendToDesktop('im:connectionChange', { platform: 'feishu', connected: false })
       console.log('[IM] Feishu stopped')
     }
   }
@@ -315,10 +313,9 @@ export class IMService {
 
   async stopSlack(): Promise<void> {
     if (this.slackAdapter) {
-      await this.slackAdapter.stop()
+      await this.slackAdapter.stop() // adapter 内已触发 onConnectionChange(false)
       this.slackAdapter = null
       this.config.slack.enabled = false
-      this.sendToDesktop('im:connectionChange', { platform: 'slack', connected: false })
       console.log('[IM] Slack stopped')
     }
   }
@@ -360,10 +357,9 @@ export class IMService {
 
   async stopTelegram(): Promise<void> {
     if (this.telegramAdapter) {
-      await this.telegramAdapter.stop()
+      await this.telegramAdapter.stop() // adapter 内已触发 onConnectionChange(false)
       this.telegramAdapter = null
       this.config.telegram.enabled = false
-      this.sendToDesktop('im:connectionChange', { platform: 'telegram', connected: false })
       console.log('[IM] Telegram stopped')
     }
   }
@@ -405,10 +401,9 @@ export class IMService {
 
   async stopWeCom(): Promise<void> {
     if (this.wecomAdapter) {
-      await this.wecomAdapter.stop()
+      await this.wecomAdapter.stop() // adapter 内已触发 onConnectionChange(false)
       this.wecomAdapter = null
       this.config.wecom.enabled = false
-      this.sendToDesktop('im:connectionChange', { platform: 'wecom', connected: false })
       console.log('[IM] WeCom stopped')
     }
   }
