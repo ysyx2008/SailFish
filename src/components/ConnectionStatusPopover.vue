@@ -360,7 +360,7 @@ onUnmounted(() => {
           <div class="conn-col">
             <div class="col-header">
               <span class="col-title">📡 {{ t('conn.channels') }}</span>
-              <span class="col-count" :class="imConnectedCount > 0 ? 'count-ok' : ''">{{ imConnectedCount }}/{{ imEnabledCount }}</span>
+              <span class="col-count" :class="imConnectedCount > 0 ? 'count-ok' : ''">{{ imConnectedCount }}/{{ imActiveCount }}</span>
             </div>
             <div class="col-body">
               <!-- IM 渠道列表 -->
