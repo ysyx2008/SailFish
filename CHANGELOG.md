@@ -2,7 +2,23 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.8.0 (2026-02-20) (Latest)
+## v10.9.0 (2026-02-21) (Latest)
+
+### New Features
+- ⚙️ **Config Skill: Email & Calendar**: Config management skill now supports email and calendar account management
+
+### Improvements
+- 🎨 **Data Management Redesign**: Redesigned the Data Management settings page with a cleaner layout
+- 🖌️ **Theme Order**: Moved Blue theme to the top of the theme list as the default highlight
+- 🌐 **Browser Skill Hints**: Added capability and limitation hints to the browser skill, reducing unnecessary AI retries
+- 🔍 **Agent File Search**: Agent prompt now guides AI to prefer `file_search` over `find`/`locate` for better results
+- 💬 **IM Setup Prompt**: Added browser limitation hint to IM guided setup prompt
+
+### Bug Fixes
+- 🔧 IM: Fixed "connection disconnected" notification appearing twice when disconnecting
+- 🔧 Single-instance lock now only activates in packaged builds, allowing dev and production to run simultaneously
+
+## v10.8.0 (2026-02-20)
 
 ### New Features
 - 🔗 **Deep Link (sailfish://)**: Support opening the app from the website skill examples to run tasks via `sailfish://run?task=...`
