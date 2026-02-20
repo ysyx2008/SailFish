@@ -27,6 +27,7 @@ import type { SshService, SshConfig } from '../ssh.service'
 import type { ConfigService, SshSession } from '../config.service'
 import type { AgentService } from '../agent'
 import type { AgentContext, AgentCallbacks, AgentStep } from '../agent/types'
+import type { AiService } from '../ai.service'
 
 // cron-parser 动态导入
 let CronExpressionParser: any = null
@@ -38,6 +39,7 @@ export interface WatchServiceConfig {
   sshService: SshService
   configService: ConfigService
   agentService: AgentService
+  aiService: AiService
   mainWindow: BrowserWindow | null
 }
 
@@ -141,6 +143,8 @@ export class WatchService {
   }
 
   create(params: CreateWatchParams): WatchDefinition {
+    this.validateParams(params)
+
     // 为 webhook 触发器生成 token
     const triggers = params.triggers.map(t => {
       if (t.type === 'webhook' && !t.token) {
@@ -160,6 +164,9 @@ export class WatchService {
   }
 
   update(id: string, updates: Partial<CreateWatchParams>): WatchDefinition | null {
+    if (updates.triggers) {
+      this.validateTriggers(updates.triggers)
+    }
     const watch = this.store.update(id, updates)
     if (watch) {
       this.cancelTimers(id)
@@ -423,14 +430,22 @@ export class WatchService {
       }
 
       const callbacks: AgentCallbacks = {
-        onStepAdded: (step: AgentStep) => {
-          steps.push(step)
+        onStep: (_agentId: string, step: AgentStep) => {
+          const existingIdx = steps.findIndex(s => s.id === step.id)
+          if (existingIdx >= 0) {
+            steps[existingIdx] = step
+          } else {
+            steps.push(step)
+          }
           if (step.type === 'message') finalOutput += step.content + '\n'
           if (step.type === 'error') { hasError = true; errorMessage = step.content }
         },
-        onStepUpdated: (step: AgentStep) => {
-          const idx = steps.findIndex(s => s.id === step.id)
-          if (idx >= 0) steps[idx] = step
+        onComplete: (_agentId: string, result: string) => {
+          if (result) finalOutput = result
+        },
+        onError: (_agentId: string, error: string) => {
+          hasError = true
+          errorMessage = error
         }
       }
 
@@ -485,13 +500,12 @@ export class WatchService {
   // ==================== Pre-check ====================
 
   private async runPreCheck(watch: WatchDefinition, event: SensorEvent): Promise<{ execute: boolean; reason?: string }> {
-    if (!this.config?.agentService) {
+    if (!this.config?.aiService) {
       return { execute: true }
     }
 
     try {
-      const aiService = (this.config.agentService as any).services?.aiService
-      if (!aiService) return { execute: true }
+      const aiService = this.config.aiService
 
       const now = new Date()
       const preCheckPrompt = `You are deciding whether to execute an automated task. Answer with JSON only.
@@ -506,12 +520,10 @@ ${watch.preCheck?.hint ? `User hint: ${watch.preCheck.hint}` : ''}
 Should this task run now? Respond in JSON format:
 {"execute": true/false, "reason": "brief explanation"}
 `
-      const response = await aiService.chat([
+      const text = await aiService.chat([
         { role: 'system', content: 'You are a scheduling assistant. Respond only with valid JSON.' },
         { role: 'user', content: preCheckPrompt }
-      ], { maxTokens: 150 })
-
-      const text = typeof response === 'string' ? response : response?.content || ''
+      ])
       const jsonMatch = text.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0])
@@ -763,6 +775,59 @@ Should this task run now? Respond in JSON format:
   private notifyFrontend(channel: string, data: Record<string, unknown>): void {
     if (this.config?.mainWindow && !this.config.mainWindow.isDestroyed()) {
       this.config.mainWindow.webContents.send(channel, data)
+    }
+  }
+
+  // ==================== 验证 ====================
+
+  private validateParams(params: CreateWatchParams): void {
+    if (!params.name?.trim()) {
+      throw new Error('Watch name is required')
+    }
+    if (!params.prompt?.trim()) {
+      throw new Error('Watch prompt is required')
+    }
+    if (!params.triggers || params.triggers.length === 0) {
+      throw new Error('At least one trigger is required')
+    }
+    this.validateTriggers(params.triggers)
+  }
+
+  private validateTriggers(triggers: WatchTrigger[]): void {
+    for (const trigger of triggers) {
+      switch (trigger.type) {
+        case 'cron':
+          this.validateCronExpression(trigger.expression)
+          break
+        case 'interval':
+          if (!trigger.seconds || trigger.seconds < 10) {
+            throw new Error('Interval must be at least 10 seconds')
+          }
+          if (trigger.seconds > 86400 * 7) {
+            throw new Error('Interval cannot exceed 7 days')
+          }
+          break
+        case 'heartbeat':
+        case 'webhook':
+        case 'manual':
+          break
+        default:
+          throw new Error(`Unknown trigger type: ${(trigger as any).type}`)
+      }
+    }
+  }
+
+  private validateCronExpression(expression: string): void {
+    if (!expression?.trim()) {
+      throw new Error('Cron expression is required')
+    }
+    if (!CronExpressionParser) {
+      return // skip validation if parser not loaded (startup phase)
+    }
+    try {
+      CronExpressionParser.parse(expression)
+    } catch (e) {
+      throw new Error(`Invalid cron expression "${expression}": ${(e as Error).message}`)
     }
   }
 

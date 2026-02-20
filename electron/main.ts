@@ -916,6 +916,7 @@ app.whenReady().then(async () => {
         sshService,
         configService,
         agentService,
+        aiService,
         mainWindow
       })
       watchService.start().catch(e => {
