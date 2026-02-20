@@ -2,14 +2,19 @@
  * 旗鱼配置管理技能 - 执行器
  */
 
+import { v4 as uuidv4 } from 'uuid'
 import { getConfigService } from '../../../config.service'
 import { getIMService } from '../../../im/im.service'
+import {
+  getEmailCredential, setEmailCredential, deleteEmailCredential,
+  getCalendarCredential, setCalendarCredential, deleteCalendarCredential
+} from '../../../credential.service'
 import { BrowserWindow } from 'electron'
 import type { ToolResult, ToolExecutorConfig, AgentConfig } from '../../tools/types'
 
 // ==================== 配置项元数据 ====================
 
-type ConfigCategory = 'ui' | 'terminal' | 'agent' | 'im' | 'gateway' | 'proxy' | 'mcp' | 'knowledge'
+type ConfigCategory = 'ui' | 'terminal' | 'agent' | 'im' | 'email' | 'calendar' | 'gateway' | 'proxy' | 'mcp' | 'knowledge'
 
 interface ConfigMeta {
   key: string
@@ -79,6 +84,12 @@ const CONFIG_REGISTRY: ConfigMeta[] = [
   // Knowledge
   { key: 'knowledgeSettings', label: '知识库设置', category: 'knowledge', type: 'object' },
 
+  // Email
+  { key: 'emailAccounts', label: '邮箱账户', category: 'email', type: 'array', readonly: true },
+
+  // Calendar
+  { key: 'calendarAccounts', label: '日历账户', category: 'calendar', type: 'array', readonly: true },
+
   // Readonly
   { key: 'aiProfiles', label: 'AI 模型配置', category: 'agent', type: 'array', readonly: true },
   { key: 'sshSessions', label: 'SSH 会话', category: 'agent', type: 'array', readonly: true },
@@ -106,6 +117,18 @@ export async function executeConfigTool(
       return setConfig(args)
     case 'im_connect':
       return connectIM(args)
+    case 'email_verify':
+      return verifyEmail(args)
+    case 'email_account_add':
+      return addEmailAccount(args)
+    case 'email_account_delete':
+      return deleteEmailAccount(args)
+    case 'calendar_verify':
+      return verifyCalendar(args)
+    case 'calendar_account_add':
+      return addCalendarAccount(args)
+    case 'calendar_account_delete':
+      return deleteCalendarAccount(args)
     default:
       return { success: false, output: '', error: `未知的配置工具: ${toolName}` }
   }
@@ -136,6 +159,8 @@ function listConfig(args: Record<string, unknown>): ToolResult {
     terminal: '终端',
     agent: 'AI Agent',
     im: 'IM 渠道',
+    email: '邮箱',
+    calendar: '日历',
     gateway: '网关',
     proxy: '代理',
     mcp: 'MCP 服务器',
@@ -144,7 +169,16 @@ function listConfig(args: Record<string, unknown>): ToolResult {
 
   const sections: string[] = []
   for (const [cat, metas] of grouped) {
-    const lines = metas.map(m => {
+    const lines: string[] = []
+    for (const m of metas) {
+      if (m.key === 'emailAccounts') {
+        lines.push(formatEmailAccountsSummary(config))
+        continue
+      }
+      if (m.key === 'calendarAccounts') {
+        lines.push(formatCalendarAccountsSummary(config))
+        continue
+      }
       const sensitive = isSensitiveKey(m.key)
       const display = sensitive
         ? (resolveConfigValue(config, m.key) ? '_(已配置)_' : '_(未配置)_')
@@ -154,8 +188,8 @@ function listConfig(args: Record<string, unknown>): ToolResult {
       if (sensitive) flags.push('敏感，只写')
       if (m.options) flags.push(`可选: ${m.options.join('/')}`)
       const flagStr = flags.length > 0 ? ` (${flags.join(', ')})` : ''
-      return `  - **${m.label}** \`${m.key}\` = ${display}${flagStr}`
-    })
+      lines.push(`  - **${m.label}** \`${m.key}\` = ${display}${flagStr}`)
+    }
     sections.push(`### ${categoryLabels[cat]}\n${lines.join('\n')}`)
   }
 
@@ -303,6 +337,384 @@ async function connectIM(args: Record<string, unknown>): Promise<ToolResult> {
   } catch (err) {
     return { success: false, output: '', error: `连接异常: ${err instanceof Error ? err.message : String(err)}` }
   }
+}
+
+// ==================== email_verify ====================
+
+async function verifyEmail(args: Record<string, unknown>): Promise<ToolResult> {
+  const config = getConfigService()
+  const accounts = (config.get('emailAccounts' as any) || []) as Array<{
+    id: string; name: string; email: string; provider: string;
+    imapHost?: string; imapPort?: number; rejectUnauthorized?: boolean
+  }>
+
+  if (accounts.length === 0) {
+    return { success: true, output: '未配置任何邮箱账户。用户可在「设置 → 邮箱」中添加。' }
+  }
+
+  const targetId = (args.accountId as string | undefined)?.trim() || undefined
+  const toVerify = targetId
+    ? accounts.filter(a => a.id === targetId)
+    : accounts
+
+  if (targetId && toVerify.length === 0) {
+    return { success: false, output: '', error: `未找到 ID 为 "${targetId}" 的邮箱账户` }
+  }
+
+  const results = await Promise.allSettled(toVerify.map(a => verifySingleEmail(a)))
+  const output = results.map(r => r.status === 'fulfilled' ? r.value : `❌ 验证异常: ${(r as PromiseRejectedResult).reason}`).join('\n\n')
+
+  return { success: true, output }
+}
+
+async function verifySingleEmail(account: {
+  id: string; name: string; email: string; provider: string;
+  imapHost?: string; imapPort?: number; rejectUnauthorized?: boolean
+}, providedPassword?: string): Promise<string> {
+  const password = providedPassword || await getEmailCredential(account.id)
+  if (!password) {
+    return `**${account.name}** (${account.email}) — ❌ 未找到保存的密码，需重新编辑并输入密码`
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let client: any = null
+  try {
+    const { getServerConfig } = await import('../email/session')
+    const serverConfig = getServerConfig(account.provider || 'gmail', {
+      imapHost: account.imapHost,
+      imapPort: account.imapPort
+    })
+
+    const { ImapFlow } = await import('imapflow')
+    client = new ImapFlow({
+      host: serverConfig.imapHost,
+      port: serverConfig.imapPort,
+      secure: true,
+      auth: { user: account.email, pass: password },
+      logger: false,
+      tls: { rejectUnauthorized: account.rejectUnauthorized !== false }
+    })
+
+    await client.connect()
+    return `**${account.name}** (${account.email}) — ✅ 连接正常`
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '连接失败'
+    return `**${account.name}** (${account.email}) — ❌ ${msg}`
+  } finally {
+    try { await client?.logout() } catch { /* ignore */ }
+  }
+}
+
+// ==================== calendar_verify ====================
+
+async function verifyCalendar(args: Record<string, unknown>): Promise<ToolResult> {
+  const config = getConfigService()
+  const accounts = (config.get('calendarAccounts' as any) || []) as Array<{
+    id: string; name: string; username: string; provider: string; serverUrl?: string
+  }>
+
+  if (accounts.length === 0) {
+    return { success: true, output: '未配置任何日历账户。用户可在「设置 → 日历」中添加。' }
+  }
+
+  const targetId = (args.accountId as string | undefined)?.trim() || undefined
+  const toVerify = targetId
+    ? accounts.filter(a => a.id === targetId)
+    : accounts
+
+  if (targetId && toVerify.length === 0) {
+    return { success: false, output: '', error: `未找到 ID 为 "${targetId}" 的日历账户` }
+  }
+
+  const results = await Promise.allSettled(toVerify.map(a => verifySingleCalendar(a)))
+  const output = results.map(r => r.status === 'fulfilled' ? r.value : `❌ 验证异常: ${(r as PromiseRejectedResult).reason}`).join('\n\n')
+
+  return { success: true, output }
+}
+
+async function verifySingleCalendar(account: {
+  id: string; name: string; username: string; provider: string; serverUrl?: string
+}, providedPassword?: string): Promise<string> {
+  const password = providedPassword || await getCalendarCredential(account.id)
+  if (!password) {
+    return `**${account.name}** (${account.username}) — ❌ 未找到保存的密码，需重新编辑并输入密码`
+  }
+
+  try {
+    const { getServerConfig } = await import('../calendar/session')
+    const serverConfig = getServerConfig(account.provider, account.serverUrl)
+    const serverUrl = serverConfig.serverUrl
+
+    const tsdav = await import('tsdav')
+    const client = new tsdav.DAVClient({
+      serverUrl,
+      credentials: { username: account.username, password },
+      authMethod: 'Basic',
+      defaultAccountType: 'caldav'
+    })
+
+    await client.login()
+    const calendars = await client.fetchCalendars()
+    return `**${account.name}** (${account.username}) — ✅ 连接正常，找到 ${calendars.length} 个日历`
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '连接失败'
+    return `**${account.name}** (${account.username}) — ❌ ${msg}`
+  }
+}
+
+// ==================== email_account_add ====================
+
+async function addEmailAccount(args: Record<string, unknown>): Promise<ToolResult> {
+  const name = argStr(args, 'name')
+  const email = argStr(args, 'email')
+  const provider = argStr(args, 'provider')
+  const password = argStr(args, 'password')
+
+  if (!name || !email || !provider || !password) {
+    return { success: false, output: '', error: '缺少必填参数: name, email, provider, password' }
+  }
+
+  const validProviders = ['gmail', 'outlook', 'qq', '163', 'custom']
+  if (!validProviders.includes(provider)) {
+    return { success: false, output: '', error: `不支持的服务商: "${provider}"。可选: ${validProviders.join(', ')}` }
+  }
+
+  if (provider === 'custom' && (!args.imapHost || !args.smtpHost)) {
+    return { success: false, output: '', error: '自定义服务器需要提供 imapHost 和 smtpHost' }
+  }
+
+  const config = getConfigService()
+  const accounts = (config.get('emailAccounts' as any) || []) as any[]
+
+  if (accounts.some((a: any) => a.email === email)) {
+    return { success: false, output: '', error: `邮箱 ${email} 已存在，请先删除后重新添加` }
+  }
+
+  const accountId = uuidv4()
+  const newAccount: Record<string, unknown> = {
+    id: accountId,
+    name,
+    email,
+    provider,
+    authType: 'password',
+    createdAt: Date.now()
+  }
+
+  if (provider === 'custom') {
+    newAccount.imapHost = args.imapHost
+    newAccount.imapPort = args.imapPort || 993
+    newAccount.smtpHost = args.smtpHost
+    newAccount.smtpPort = args.smtpPort || 465
+    newAccount.smtpSecure = args.smtpSecure !== false
+  }
+
+  // 先验证连接
+  const verifyResult = await verifySingleEmail({
+    id: accountId, name, email, provider,
+    imapHost: newAccount.imapHost as string,
+    imapPort: newAccount.imapPort as number,
+    rejectUnauthorized: true
+  }, password)
+
+  if (verifyResult.includes('❌')) {
+    return { success: false, output: '', error: `连接验证失败，账户未添加。\n${verifyResult}` }
+  }
+
+  // 验证通过，保存
+  newAccount.lastTestStatus = 'success'
+  newAccount.lastTestTime = Date.now()
+  accounts.push(newAccount)
+  config.set('emailAccounts' as any, accounts as any)
+  await setEmailCredential(accountId, password)
+  syncEmailAccountsToSkill(accounts)
+  notifyFrontendConfigChanged()
+
+  return { success: true, output: `✅ 邮箱账户已添加并验证通过。\n\n- **名称**: ${name}\n- **邮箱**: ${email}\n- **服务商**: ${PROVIDER_LABELS[provider] || provider}\n- **ID**: \`${accountId}\`` }
+}
+
+// ==================== email_account_delete ====================
+
+async function deleteEmailAccount(args: Record<string, unknown>): Promise<ToolResult> {
+  const accountId = argStr(args, 'accountId')
+  if (!accountId) {
+    return { success: false, output: '', error: '缺少 accountId 参数' }
+  }
+
+  const config = getConfigService()
+  const accounts = (config.get('emailAccounts' as any) || []) as any[]
+  const account = accounts.find((a: any) => a.id === accountId)
+
+  if (!account) {
+    return { success: false, output: '', error: `未找到 ID 为 "${accountId}" 的邮箱账户` }
+  }
+
+  const remaining = accounts.filter((a: any) => a.id !== accountId)
+  config.set('emailAccounts' as any, remaining as any)
+  await deleteEmailCredential(accountId)
+  syncEmailAccountsToSkill(remaining)
+  notifyFrontendConfigChanged()
+
+  return { success: true, output: `✅ 已删除邮箱账户 **${account.name}** (${account.email})` }
+}
+
+// ==================== calendar_account_add ====================
+
+async function addCalendarAccount(args: Record<string, unknown>): Promise<ToolResult> {
+  const name = argStr(args, 'name')
+  const username = argStr(args, 'username')
+  const provider = argStr(args, 'provider')
+  const password = argStr(args, 'password')
+
+  if (!name || !username || !provider || !password) {
+    return { success: false, output: '', error: '缺少必填参数: name, username, provider, password' }
+  }
+
+  const validProviders = ['google', 'icloud', 'outlook', 'wecom', 'caldav']
+  if (!validProviders.includes(provider)) {
+    return { success: false, output: '', error: `不支持的服务商: "${provider}"。可选: ${validProviders.join(', ')}` }
+  }
+
+  if (provider === 'caldav' && !args.serverUrl) {
+    return { success: false, output: '', error: '自定义 CalDAV 需要提供 serverUrl' }
+  }
+
+  const config = getConfigService()
+  const accounts = (config.get('calendarAccounts' as any) || []) as any[]
+
+  if (accounts.some((a: any) => a.username === username && a.provider === provider)) {
+    return { success: false, output: '', error: `该服务商下用户 ${username} 已存在，请先删除后重新添加` }
+  }
+
+  const accountId = uuidv4()
+  const serverUrl = argStr(args, 'serverUrl')
+
+  if (serverUrl && !serverUrl.startsWith('https://') && !serverUrl.startsWith('http://')) {
+    return { success: false, output: '', error: 'serverUrl 必须以 https:// 或 http:// 开头' }
+  }
+
+  // 先验证连接
+  const verifyResult = await verifySingleCalendar(
+    { id: accountId, name, username, provider, serverUrl },
+    password
+  )
+
+  if (verifyResult.includes('❌')) {
+    return { success: false, output: '', error: `连接验证失败，账户未添加。\n${verifyResult}` }
+  }
+
+  const newAccount: Record<string, unknown> = {
+    id: accountId,
+    name,
+    username,
+    provider,
+    serverUrl,
+    lastTestStatus: 'success',
+    lastTestTime: Date.now(),
+    createdAt: Date.now()
+  }
+
+  accounts.push(newAccount)
+  config.set('calendarAccounts' as any, accounts as any)
+  await setCalendarCredential(accountId, password)
+  syncCalendarAccountsToSkill(accounts)
+  notifyFrontendConfigChanged()
+
+  return { success: true, output: `✅ 日历账户已添加并验证通过。\n\n- **名称**: ${name}\n- **用户名**: ${username}\n- **服务商**: ${PROVIDER_LABELS[provider] || provider}\n- **ID**: \`${accountId}\`` }
+}
+
+// ==================== calendar_account_delete ====================
+
+async function deleteCalendarAccount(args: Record<string, unknown>): Promise<ToolResult> {
+  const accountId = argStr(args, 'accountId')
+  if (!accountId) {
+    return { success: false, output: '', error: '缺少 accountId 参数' }
+  }
+
+  const config = getConfigService()
+  const accounts = (config.get('calendarAccounts' as any) || []) as any[]
+  const account = accounts.find((a: any) => a.id === accountId)
+
+  if (!account) {
+    return { success: false, output: '', error: `未找到 ID 为 "${accountId}" 的日历账户` }
+  }
+
+  const remaining = accounts.filter((a: any) => a.id !== accountId)
+  config.set('calendarAccounts' as any, remaining as any)
+  await deleteCalendarCredential(accountId)
+  syncCalendarAccountsToSkill(remaining)
+  notifyFrontendConfigChanged()
+
+  return { success: true, output: `✅ 已删除日历账户 **${account.name}** (${account.username})` }
+}
+
+// ==================== 参数辅助 ====================
+
+function argStr(args: Record<string, unknown>, key: string): string {
+  const v = args[key]
+  return typeof v === 'string' ? v.trim() : ''
+}
+
+// ==================== 同步到后端技能 ====================
+
+function syncEmailAccountsToSkill(accounts: any[]): void {
+  try {
+    const { setEmailAccounts } = require('../email/executor')
+    setEmailAccounts(accounts)
+  } catch { /* skill may not be loaded */ }
+}
+
+function syncCalendarAccountsToSkill(accounts: any[]): void {
+  try {
+    const { setCalendarAccounts } = require('../calendar/executor')
+    setCalendarAccounts(accounts)
+  } catch { /* skill may not be loaded */ }
+}
+
+// ==================== 邮箱/日历摘要格式化 ====================
+
+const PROVIDER_LABELS: Record<string, string> = {
+  gmail: 'Gmail', outlook: 'Outlook', qq: 'QQ邮箱', '163': '163邮箱', custom: '自定义',
+  google: 'Google', icloud: 'iCloud', wecom: '企微', caldav: 'CalDAV'
+}
+
+function formatEmailAccountsSummary(config: ReturnType<typeof getConfigService>): string {
+  const accounts = (config.get('emailAccounts' as any) || []) as Array<{
+    id: string; name: string; email: string; provider: string; lastTestStatus?: string; lastTestTime?: number
+  }>
+
+  if (accounts.length === 0) {
+    return '  - **邮箱账户** — _(未配置)_  提示用户在「设置 → 邮箱」中添加'
+  }
+
+  const lines = accounts.map(a => {
+    const provider = PROVIDER_LABELS[a.provider] || a.provider
+    const status = a.lastTestStatus === 'success' ? '✅'
+      : a.lastTestStatus === 'failed' ? '❌'
+      : '⚪'
+    return `    - ${status} **${a.name}** \`${a.email}\` (${provider}) ID:\`${a.id}\``
+  })
+
+  return `  - **邮箱账户** — ${accounts.length} 个已配置（可用 \`email_verify\` 验证连接）\n${lines.join('\n')}`
+}
+
+function formatCalendarAccountsSummary(config: ReturnType<typeof getConfigService>): string {
+  const accounts = (config.get('calendarAccounts' as any) || []) as Array<{
+    id: string; name: string; username: string; provider: string; lastTestStatus?: string; lastTestTime?: number
+  }>
+
+  if (accounts.length === 0) {
+    return '  - **日历账户** — _(未配置)_  提示用户在「设置 → 日历」中添加'
+  }
+
+  const lines = accounts.map(a => {
+    const provider = PROVIDER_LABELS[a.provider] || a.provider
+    const status = a.lastTestStatus === 'success' ? '✅'
+      : a.lastTestStatus === 'failed' ? '❌'
+      : '⚪'
+    return `    - ${status} **${a.name}** \`${a.username}\` (${provider}) ID:\`${a.id}\``
+  })
+
+  return `  - **日历账户** — ${accounts.length} 个已配置（可用 \`calendar_verify\` 验证连接）\n${lines.join('\n')}`
 }
 
 // ==================== 辅助函数 ====================
