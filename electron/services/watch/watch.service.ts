@@ -129,6 +129,17 @@ export class WatchService {
       this.checkInterval = null
     }
 
+    // 中止正在运行的 Watch（清理 PTY 和 Agent）
+    if (this.runningWatches.size > 0 && this.config) {
+      for (const [watchId, info] of this.runningWatches) {
+        console.log(`[WatchService] Aborting running watch: ${watchId}`)
+        if (info.ptyId) {
+          try { this.config.agentService.abort(info.ptyId) } catch { /* ignore */ }
+        }
+      }
+      this.runningWatches.clear()
+    }
+
     console.log('[WatchService] Stopped')
   }
 

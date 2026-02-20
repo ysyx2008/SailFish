@@ -1881,7 +1881,11 @@ ipcMain.handle('watch:toggle', async (_event, id: string) => {
 })
 
 ipcMain.handle('watch:trigger', async (_event, id: string) => {
-  return watchService.triggerWatch(id)
+  // Fire-and-forget: 不阻塞前端等待执行完成，通过 IPC 事件推送状态
+  watchService.triggerWatch(id).catch(e => {
+    console.error('[Main] Watch trigger failed:', e)
+  })
+  return { triggered: true }
 })
 
 ipcMain.handle('watch:getHistory', async (_event, watchId?: string, limit?: number) => {
