@@ -36,7 +36,7 @@
     "download:speech-model": "node scripts/download-speech-model.js",
     "download:punct-model": "node scripts/download-punct-model.js",
     "build:steam:win": "cross-env VITE_STEAM_BUILD=true vite build && electron-builder --win --dir --config electron-builder-steam.yml --publish never",
-    "build:steam:mac": "cross-env VITE_STEAM_BUILD=true vite build && electron-builder --mac --dir --config electron-builder-steam.yml --publish never",
+    "build:steam:mac": "cross-env VITE_STEAM_BUILD=true vite build && electron-builder --mac --dir --arch universal --config electron-builder-steam.yml --publish never",
     "build:steam:linux": "cross-env VITE_STEAM_BUILD=true vite build && electron-builder --linux --dir --config electron-builder-steam.yml --publish never",
     "build:steam:current": "cross-env VITE_STEAM_BUILD=true vite build && electron-builder --dir --config electron-builder-steam.yml --publish never",
     "cli": "node electron/cli/main.js",
