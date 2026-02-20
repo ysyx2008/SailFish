@@ -209,14 +209,18 @@ Watch 执行结果可通过 IM 推送：
 ### Phase 1：核心基座（已完成）
 - [x] 架构文档
 - [x] Watch 数据模型 + Store 持久化
-- [x] Event Bus（内存队列 + 优先级排序）
+- [x] Event Bus（内存队列 + 优先级排序 + handler 超时保护）
 - [x] Heartbeat Sensor（可配置间隔）
 - [x] Watch Service（CRUD + 事件匹配 + Agent 执行 + pre-check）
-- [x] Webhook 端点集成到 Gateway（含速率限制）
-- [x] main.ts 集成 + IPC handlers + preload API
+- [x] 输入验证（cron 表达式、间隔范围、必填字段）
+- [x] Webhook 端点集成到 Gateway（含速率限制 30次/分钟/token）
+- [x] main.ts 集成 + 16 IPC handlers + preload API（强类型化）
 - [x] CLI 命令（watch:list/create/trigger/delete/history + sensor:status/heartbeat）
-- [x] 前端 Watch 管理界面（WatchManager.vue）
-- [x] 测试用例集成到 test-cli.sh
+- [x] 前端 Watch 管理界面（WatchManager.vue）+ IPC 事件驱动状态
+- [x] Settings 心跳传感器配置 UI
+- [x] i18n 国际化（中英双语完整覆盖）
+- [x] 测试用例集成到 test-cli.sh（51 总测试，48 通过，0 失败）
+- [x] Claude 代码审查 + 修复所有 Critical/High 问题
 
 ### Phase 2：更多传感器（后续迭代）
 - [ ] Email Sensor（IMAP IDLE）
