@@ -17,8 +17,10 @@ if (!app.isPackaged) {
   app.setAsDefaultProtocolClient('sailfish')
 }
 
-// 单实例锁：防止用户从 Spotlight/Launchpad 重复启动
-const gotTheLock = app.requestSingleInstanceLock()
+// 单实例锁：仅打包后启用，防止用户从 Spotlight/Launchpad 重复启动
+// 开发/构建时不启用，以便 dev 与 build 可同时运行
+const useSingleInstanceLock = app.isPackaged
+const gotTheLock = useSingleInstanceLock ? app.requestSingleInstanceLock() : true
 if (!gotTheLock) {
   app.quit()
 }
