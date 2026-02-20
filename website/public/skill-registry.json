@@ -2,7 +2,6 @@
   "version": 3,
   "updated": "2026-02-20",
   "categories": [
-    { "id": "recommended", "name": "推荐", "nameEn": "Recommended", "icon": "⭐" },
     { "id": "safety", "name": "安全", "nameEn": "Safety", "icon": "🛡️" },
     { "id": "devops", "name": "DevOps", "nameEn": "DevOps", "icon": "🔧" },
     { "id": "ops", "name": "运维", "nameEn": "Ops", "icon": "🖥️" },
