@@ -459,7 +459,7 @@ onUnmounted(() => {
                     class="btn-icon btn-sm"
                     @click.stop="triggerWatch(w)"
                     :disabled="runningWatches.has(w.id)"
-                    title="手动触发"
+                    :title="t('watch.trigger')"
                   >
                     <Play :size="14" :class="{ spinning: runningWatches.has(w.id) }" />
                   </button>
@@ -481,7 +481,7 @@ onUnmounted(() => {
               <span class="history-count">{{ history.length }}</span>
               <button class="btn btn-sm btn-danger" @click="clearHistory" :disabled="history.length === 0">
                 <Trash2 :size="14" />
-                清除
+                {{ t('watch.clearHistory') }}
               </button>
             </div>
 
@@ -500,7 +500,7 @@ onUnmounted(() => {
                     <span>{{ formatFullDate(h.at) }}</span>
                     <span>{{ formatDuration(h.duration) }}</span>
                   </div>
-                  <div class="history-detail" v-if="h.skipReason">跳过: {{ h.skipReason }}</div>
+                  <div class="history-detail" v-if="h.skipReason">{{ t('watch.statusSkipped') }}: {{ h.skipReason }}</div>
                   <div class="history-detail error-text" v-if="h.error">{{ h.error }}</div>
                 </div>
               </div>
@@ -532,7 +532,7 @@ onUnmounted(() => {
                   v-if="s.id === 'heartbeat'"
                   class="btn btn-sm"
                   @click="triggerHeartbeat"
-                  title="手动触发心跳"
+                  :title="t('watch.triggerHeartbeatBtn')"
                 >
                   <Heart :size="14" />
                   触发
@@ -568,12 +568,12 @@ onUnmounted(() => {
             <div class="editor-content">
               <div class="form-section">
                 <label class="form-label">{{ t('watch.name') }} *</label>
-                <input type="text" v-model="formName" class="form-input" placeholder="每日简报" />
+                <input type="text" v-model="formName" class="form-input" :placeholder="t('watch.namePlaceholder')" />
               </div>
 
               <div class="form-section">
                 <label class="form-label">{{ t('watch.description') }}</label>
-                <input type="text" v-model="formDescription" class="form-input" placeholder="可选描述" />
+                <input type="text" v-model="formDescription" class="form-input" :placeholder="t('watch.descriptionPlaceholder')" />
               </div>
 
               <div class="form-section">
@@ -587,7 +587,7 @@ onUnmounted(() => {
                   <label class="trigger-option" :class="{ selected: formTriggerTypes.has('cron') }">
                     <input type="checkbox" :checked="formTriggerTypes.has('cron')" @change="toggleTrigger('cron')" />
                     <Clock :size="14" />
-                    <span>Cron 定时</span>
+                    <span>{{ t('watch.triggerCron') }}</span>
                   </label>
                   <label class="trigger-option" :class="{ selected: formTriggerTypes.has('interval') }">
                     <input type="checkbox" :checked="formTriggerTypes.has('interval')" @change="toggleTrigger('interval')" />
@@ -612,7 +612,7 @@ onUnmounted(() => {
                 </div>
 
                 <div v-if="formTriggerTypes.has('cron')" class="trigger-config">
-                  <label class="form-label-sm">Cron 表达式</label>
+                  <label class="form-label-sm">Cron</label>
                   <input type="text" v-model="formCronExpression" class="form-input" placeholder="0 9 * * *" />
                   <div class="presets">
                     <button v-for="p in cronPresets" :key="p.value" class="preset-btn" :class="{ active: formCronExpression === p.value }" @click="formCronExpression = p.value">{{ p.label }}</button>
@@ -620,13 +620,12 @@ onUnmounted(() => {
                 </div>
 
                 <div v-if="formTriggerTypes.has('interval')" class="trigger-config">
-                  <label class="form-label-sm">间隔</label>
+                  <label class="form-label-sm">{{ t('watch.triggerInterval') }}</label>
                   <div class="interval-input">
-                    <span>每</span>
                     <input type="number" v-model.number="formIntervalValue" class="form-input interval-value" min="1" />
                     <select v-model="formIntervalUnit" class="form-select">
-                      <option value="m">分钟</option>
-                      <option value="h">小时</option>
+                      <option value="m">min</option>
+                      <option value="h">hr</option>
                     </select>
                   </div>
                 </div>
@@ -646,26 +645,26 @@ onUnmounted(() => {
               <div class="form-section">
                 <label class="form-label">
                   <input type="checkbox" v-model="formPreCheckEnabled" />
-                  执行前让 AI 判断是否应该运行（Agency of Omission）
+                  {{ t('watch.preCheck') }} — {{ t('watch.preCheckDesc') }}
                 </label>
-                <input v-if="formPreCheckEnabled" type="text" v-model="formPreCheckHint" class="form-input" placeholder="如：周末和节假日不要打扰" />
+                <input v-if="formPreCheckEnabled" type="text" v-model="formPreCheckHint" class="form-input" :placeholder="t('watch.preCheckHint')" />
               </div>
 
               <div class="form-section">
                 <label class="form-label">{{ t('watch.skills') }}</label>
-                <input type="text" v-model="formSkills" class="form-input" placeholder="email, calendar" />
+                <input type="text" v-model="formSkills" class="form-input" :placeholder="t('watch.skillsPlaceholder')" />
               </div>
 
               <div class="form-section">
                 <label class="form-label">
                   <input type="checkbox" v-model="formEnabled" />
-                  创建后立即启用
+                  {{ t('watch.enabled') }}
                 </label>
               </div>
 
               <div class="editor-actions">
-                <button class="btn" @click="showEditor = false">取消</button>
-                <button class="btn btn-primary" @click="saveWatch">{{ editingWatch ? '保存' : '创建' }}</button>
+                <button class="btn" @click="showEditor = false">{{ t('watch.cancel') }}</button>
+                <button class="btn btn-primary" @click="saveWatch">{{ editingWatch ? t('watch.save') : t('watch.create') }}</button>
               </div>
             </div>
           </template>
@@ -676,16 +675,16 @@ onUnmounted(() => {
               <div class="detail-title">
                 <h3>{{ selectedWatch.name }}</h3>
                 <span class="watch-badge" :class="{ enabled: selectedWatch.enabled }">
-                  {{ selectedWatch.enabled ? '启用' : '停用' }}
+                  {{ selectedWatch.enabled ? t('watch.enabled') : t('watch.disabled') }}
                 </span>
                 <span class="priority-badge" :class="selectedWatch.priority">{{ selectedWatch.priority }}</span>
               </div>
               <div class="detail-actions">
                 <button class="btn btn-sm" @click="openEdit(selectedWatch)">
-                  <Edit3 :size="14" /> 编辑
+                  <Edit3 :size="14" /> {{ t('watch.edit') }}
                 </button>
                 <button class="btn btn-primary btn-sm" @click="triggerWatch(selectedWatch)" :disabled="runningWatches.has(selectedWatch.id)">
-                  <Play :size="14" /> 触发
+                  <Play :size="14" /> {{ t('watch.trigger') }}
                 </button>
                 <button class="btn btn-danger btn-sm" @click="deleteWatch(selectedWatch)">
                   <Trash2 :size="14" />
@@ -695,12 +694,12 @@ onUnmounted(() => {
 
             <div class="detail-content">
               <div class="detail-section" v-if="selectedWatch.description">
-                <h4>描述</h4>
+                <h4>{{ t('watch.description') }}</h4>
                 <p>{{ selectedWatch.description }}</p>
               </div>
 
               <div class="detail-section">
-                <h4>触发方式</h4>
+                <h4>{{ t('watch.triggers') }}</h4>
                 <div class="trigger-list">
                   <span v-for="t in selectedWatch.triggers" :key="t.type" class="trigger-badge">
                     <component :is="getTriggerIcon(t.type)" :size="12" />
@@ -708,7 +707,7 @@ onUnmounted(() => {
                   </span>
                 </div>
                 <div class="detail-row" v-if="selectedWatch.nextRun && selectedWatch.enabled">
-                  <span class="label">下次执行:</span>
+                  <span class="label">{{ t('watch.nextRun') }}:</span>
                   <span class="value">{{ formatFullDate(selectedWatch.nextRun) }}</span>
                 </div>
               </div>
@@ -719,23 +718,23 @@ onUnmounted(() => {
               </div>
 
               <div class="detail-section" v-if="selectedWatch.skills?.length">
-                <h4>技能</h4>
+                <h4>{{ t('watch.skills') }}</h4>
                 <div class="skills-list">
                   <span v-for="s in selectedWatch.skills" :key="s" class="skill-badge">{{ s }}</span>
                 </div>
               </div>
 
               <div class="detail-section">
-                <h4>输出</h4>
+                <h4>{{ t('watch.outputType') }}</h4>
                 <div class="detail-row">
-                  <span class="label">方式:</span>
+                  <span class="label">{{ t('watch.outputType') }}:</span>
                   <span class="value">{{ getOutputLabel(selectedWatch.output.type) }}</span>
                 </div>
               </div>
 
               <div class="detail-section" v-if="selectedWatch.preCheck?.enabled">
                 <h4>Pre-check</h4>
-                <p>✓ 已启用 {{ selectedWatch.preCheck.hint ? `— ${selectedWatch.preCheck.hint}` : '' }}</p>
+                <p>✓ {{ t('watch.enabled') }} {{ selectedWatch.preCheck.hint ? `— ${selectedWatch.preCheck.hint}` : '' }}</p>
               </div>
 
               <div class="detail-section" v-if="selectedWatch.triggers.some(t => t.type === 'webhook')">
@@ -744,7 +743,7 @@ onUnmounted(() => {
               </div>
 
               <div class="detail-section" v-if="selectedWatch.lastRun">
-                <h4>上次执行</h4>
+                <h4>{{ t('watch.lastRun') }}</h4>
                 <div class="detail-row">
                   <span class="label">状态:</span>
                   <span class="value" :class="getStatusClass(selectedWatch.lastRun.status)">{{ getStatusText(selectedWatch.lastRun.status) }}</span>
@@ -758,7 +757,7 @@ onUnmounted(() => {
                   <span class="value">{{ formatDuration(selectedWatch.lastRun.duration) }}</span>
                 </div>
                 <div class="detail-row" v-if="selectedWatch.lastRun.skipReason">
-                  <span class="label">跳过原因:</span>
+                  <span class="label">{{ t('watch.statusSkipped') }}:</span>
                   <span class="value">{{ selectedWatch.lastRun.skipReason }}</span>
                 </div>
               </div>
@@ -768,8 +767,8 @@ onUnmounted(() => {
           <!-- 空状态 -->
           <div v-else class="no-selection">
             <Eye :size="64" class="empty-icon" />
-            <p>选择一个 Watch 查看详情</p>
-            <p class="empty-hint">或创建新的 Watch 开始感知世界</p>
+            <p>{{ t('watch.noWatches') }}</p>
+            <p class="empty-hint">{{ t('watch.createFirst') }}</p>
           </div>
         </div>
       </div>
