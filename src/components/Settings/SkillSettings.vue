@@ -249,6 +249,21 @@ const installSkill = async (skill: MarketSkillItem) => {
   }
 }
 
+/** 从「我的技能」中移除/卸载技能（删除本地文件） */
+const removeUserSkill = async (skill: UserSkill) => {
+  if (!confirm(`${t('skillSettings.uninstall')} "${skill.name}"?`)) return
+  try {
+    const result = await window.electronAPI.skillMarket.uninstall(skill.id)
+    if (result.success) {
+      await loadSkills()
+    } else {
+      alert(`${t('skillSettings.uninstallFailed')}: ${result.error}`)
+    }
+  } catch (error: any) {
+    alert(`${t('skillSettings.uninstallFailed')}: ${error.message}`)
+  }
+}
+
 const uninstallSkill = async (skill: MarketSkillItem) => {
   if (!confirm(`${t('skillSettings.uninstall')} "${skill.name}"?`)) return
   operatingSkills.value.add(skill.id)
@@ -404,6 +419,9 @@ watch(() => props.pendingInstallSkillId, (newId) => {
           <div class="skill-actions">
             <button class="btn-icon btn-sm" @click="viewSkill(skill)" :title="t('skillSettings.view')">
               <Eye :size="14" />
+            </button>
+            <button class="btn-icon btn-sm btn-danger-ghost" @click.stop="removeUserSkill(skill)" :title="t('skillSettings.uninstall')">
+              <Trash2 :size="14" />
             </button>
           </div>
         </div>
