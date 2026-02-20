@@ -13,12 +13,12 @@ const emit = defineEmits<{
 
 const configStore = useConfigStore()
 
-// Steam 版本检测
+// Steam 版本：不提供 AI 配置，向导仅欢迎 + 完成两步
 const isSteamBuild = import.meta.env.VITE_STEAM_BUILD === 'true'
 
-// 步骤管理（精简为3步）
+// 步骤管理（Steam 版 2 步，非 Steam 版 3 步）
 const currentStep = ref(1)
-const totalSteps = 3
+const totalSteps = isSteamBuild ? 2 : 3
 
 // 完成页的可选配置展开状态
 const expandedSection = ref<'import' | 'knowledge' | 'mcp' | null>(null)
@@ -108,11 +108,9 @@ const customFormData = ref({
   model: ''
 })
 
-// Steam 版本只显示本地服务（Ollama）和自定义
+// 非 Steam 版显示全部模板；Steam 版不展示 AI 配置步骤，此处仅用于非 Steam
 const aiTemplates = computed(() => {
-  const templates = isSteamBuild 
-    ? allAiTemplates.filter(tpl => tpl.isLocal || tpl.isCustom)
-    : allAiTemplates
+  const templates = allAiTemplates
   
   return templates.map((tpl, index) => ({
     index,
@@ -417,8 +415,8 @@ const skipWizard = async () => {
 }
 
 const nextStep = async () => {
-  // 第2步验证：必须至少配置一个 AI 模型才能继续
-  if (currentStep.value === 2 && configStore.aiProfiles.length === 0) {
+  // 非 Steam 版第 2 步：必须至少配置一个 AI 模型才能继续
+  if (!isSteamBuild && currentStep.value === 2 && configStore.aiProfiles.length === 0) {
     alert(t('setup.aiConfig.required'))
     return
   }
@@ -501,8 +499,8 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- 步骤2: 配置大模型 -->
-        <div v-if="currentStep === 2" class="step-panel">
+        <!-- 步骤2: 配置大模型（仅非 Steam 版） -->
+        <div v-if="currentStep === 2 && !isSteamBuild" class="step-panel">
           <div class="step-header">
             <h2>{{ t('setup.aiConfig.title') }}</h2>
             <p class="step-intro">{{ t('setup.aiConfig.subtitleSimple') }}</p>
@@ -605,19 +603,19 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- 步骤3: 完成 + 可选配置 -->
-        <div v-if="currentStep === 3" class="step-panel">
+        <!-- 步骤3（非 Steam）/ 步骤2（Steam）: 完成 + 可选配置 -->
+        <div v-if="currentStep === (isSteamBuild ? 2 : 3)" class="step-panel">
           <div class="step-header">
             <h2>{{ t('setup.complete.title') }}</h2>
             <p class="step-intro">{{ t('setup.complete.readyToUse') }}</p>
           </div>
           <div class="complete-content">
-            <!-- 配置完成提示 -->
+            <!-- 配置完成提示（Steam 版用精简文案） -->
             <div class="ready-banner">
               <div class="ready-icon">🎉</div>
               <div class="ready-text">
-                <h3>{{ t('setup.complete.aiReady') }}</h3>
-                <p>{{ t('setup.complete.aiReadyDesc') }}</p>
+                <h3>{{ isSteamBuild ? t('setup.complete.steamReady') : t('setup.complete.aiReady') }}</h3>
+                <p>{{ isSteamBuild ? t('setup.complete.steamReadyDesc') : t('setup.complete.aiReadyDesc') }}</p>
               </div>
             </div>
 

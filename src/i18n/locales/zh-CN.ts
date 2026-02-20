@@ -425,7 +425,9 @@ export default {
     agentDebugMode: '助手调试模式',
     agentDebugModeDesc: '开启后显示详细的工具调用步骤，关闭后交互更简洁自然',
     logLevel: '日志级别',
-    logLevelDesc: '控制浏览器控制台的日志输出量。Debug 输出最多，Silent 完全静默，推荐使用 Warn'
+    logLevelDesc: '控制浏览器控制台的日志输出量。Debug 输出最多，Silent 完全静默，推荐使用 Warn',
+    // Steam 版：不提供任何 AI/API 配置入口
+    steamNoAiConfig: 'Steam 版本不提供 AI 服务配置。您可正常使用终端、SSH 与文件管理功能。'
   },
 
   // AI 规则设置
@@ -1456,6 +1458,8 @@ export default {
       readyToUse: 'AI 模型已配置完成，可以开始使用了',
       aiReady: 'AI 功能已就绪',
       aiReadyDesc: '您已配置好大模型，现在可以开始使用 AI 对话和助手功能了。',
+      steamReady: '准备就绪',
+      steamReadyDesc: 'Steam 版本提供终端、SSH 与文件管理功能，可直接开始使用。',
       optionalConfig: '可选配置',
       optionalHint: '以下功能可稍后在设置中配置，您也可以现在快速设置',
       summary: {

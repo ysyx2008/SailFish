@@ -36,7 +36,9 @@ const emit = defineEmits<{
 const configStore = useConfigStore()
 
 type SettingsTab = 'ai' | 'aiRules' | 'mcp' | 'skills' | 'knowledge' | 'email' | 'calendar' | 'im' | 'gateway' | 'theme' | 'terminal' | 'data' | 'language' | 'about'
-const activeTab = ref<SettingsTab>('ai')
+// Steam 版不展示 AI 配置标签，默认选中「主题」；非 Steam 版默认「AI 模型配置」
+const isSteamBuild = import.meta.env.VITE_STEAM_BUILD === 'true'
+const activeTab = ref<SettingsTab>(isSteamBuild ? 'theme' : 'ai')
 const appVersion = ref<string>('')
 const showConfirmDialog = ref(false)
 
@@ -303,7 +305,9 @@ let unsubscribeUpdater: (() => void) | null = null
 // 初始化时设置初始 tab 和获取版本号
 onMounted(async () => {
   if (props.initialTab && ['ai', 'aiRules', 'mcp', 'skills', 'knowledge', 'email', 'calendar', 'im', 'gateway', 'theme', 'terminal', 'data', 'language', 'about'].includes(props.initialTab)) {
-    activeTab.value = props.initialTab as SettingsTab
+    const tab = props.initialTab as SettingsTab
+    // Steam 版不提供 AI 配置，若请求打开 ai 则 fallback 到 theme
+    activeTab.value = (isSteamBuild && tab === 'ai') ? 'theme' : tab
   }
   // 获取应用版本号
   appVersion.value = await window.electronAPI.app.getVersion()
@@ -337,7 +341,7 @@ const tabGroups = computed(() => [
   {
     label: t('settings.groups.ai'),
     tabs: [
-      { id: 'ai' as const, label: t('settings.tabs.ai'), icon: '🤖' },
+      ...(isSteamBuild ? [] : [{ id: 'ai' as const, label: t('settings.tabs.ai'), icon: '🤖' }]),
       { id: 'aiRules' as const, label: t('settings.tabs.aiRules'), icon: '📋' },
       { id: 'mcp' as const, label: t('settings.tabs.mcp'), icon: '🔌' },
       { id: 'skills' as const, label: t('settings.tabs.skills'), icon: '🧩' },

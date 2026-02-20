@@ -425,7 +425,9 @@ export default {
     agentDebugMode: 'Agent Debug Mode',
     agentDebugModeDesc: 'Show detailed tool call steps when enabled, simpler interaction when disabled',
     logLevel: 'Log Level',
-    logLevelDesc: 'Controls console log verbosity. Debug outputs the most, Silent suppresses all. Warn is recommended'
+    logLevelDesc: 'Controls console log verbosity. Debug outputs the most, Silent suppresses all. Warn is recommended',
+    // Steam build: no AI/API config entry
+    steamNoAiConfig: 'The Steam version does not offer AI service configuration. You can use terminal, SSH, and file management features as normal.'
   },
 
   // AI Rules Settings
@@ -1456,6 +1458,8 @@ export default {
       readyToUse: 'AI model configured, ready to start',
       aiReady: 'AI Features Ready',
       aiReadyDesc: 'Your AI model is configured. You can now start using AI chat and Agent features.',
+      steamReady: 'Ready to Go',
+      steamReadyDesc: 'The Steam version provides terminal, SSH, and file management. You can start using it right away.',
       optionalConfig: 'Optional Settings',
       optionalHint: 'These features can be configured later in settings, or set up now',
       summary: {

@@ -133,7 +133,7 @@ const setActive = async (profileId: string) => {
   await configStore.setActiveAiProfile(profileId)
 }
 
-// Steam 版本检测
+// Steam 版本：不提供任何 AI/API 配置入口，仅展示说明
 const isSteamBuild = import.meta.env.VITE_STEAM_BUILD === 'true'
 
 // 所有可用的预设模板
@@ -169,11 +169,9 @@ const allTemplates = [
   }
 ]
 
-// Steam 版本只显示本地服务（Ollama）
+// 非 Steam 版显示全部模板；Steam 版不展示配置 UI，此处仅用于非 Steam
 const templates = computed(() => {
-  return isSteamBuild 
-    ? allTemplates.filter(t => t.isLocal)
-    : allTemplates
+  return allTemplates
 })
 
 const applyTemplate = (template: typeof templates.value[0]) => {
@@ -195,198 +193,206 @@ const openKeyUrl = (url: string) => {
 
 <template>
   <div class="ai-settings">
-    <div class="settings-section">
-      <div class="section-header">
-        <h4>{{ t('aiSettings.title') }}</h4>
-        <button class="btn btn-primary btn-sm" @click="openNewProfile">
-          <Plus :size="14" />
-          {{ t('aiSettings.addProfile') }}
-        </button>
-      </div>
-      <p class="section-desc">
-        {{ t('aiSettings.apiKeyNotRequired') }}
-      </p>
-      <p class="model-recommendation">
-        {{ t('aiSettings.modelRecommendation') }}
-      </p>
+    <!-- Steam 版：仅显示说明，不提供任何 AI/API 配置入口 -->
+    <div v-if="isSteamBuild" class="settings-section steam-notice">
+      <p class="section-desc">{{ t('aiSettings.steamNoAiConfig') }}</p>
+    </div>
 
-      <!-- 配置列表 -->
-      <div class="profile-list">
-        <div
-          v-for="profile in profiles"
-          :key="profile.id"
-          class="profile-item"
-          :class="{ active: profile.id === activeProfileId }"
-        >
-          <div class="profile-radio">
-            <input
-              type="radio"
-              :id="profile.id"
-              :checked="profile.id === activeProfileId"
-              @change="setActive(profile.id)"
+    <!-- 非 Steam 版：完整 AI 模型配置 -->
+    <template v-if="!isSteamBuild">
+      <div class="settings-section">
+        <div class="section-header">
+          <h4>{{ t('aiSettings.title') }}</h4>
+          <button class="btn btn-primary btn-sm" @click="openNewProfile">
+            <Plus :size="14" />
+            {{ t('aiSettings.addProfile') }}
+          </button>
+        </div>
+        <p class="section-desc">
+          {{ t('aiSettings.apiKeyNotRequired') }}
+        </p>
+        <p class="model-recommendation">
+          {{ t('aiSettings.modelRecommendation') }}
+        </p>
+
+        <!-- 配置列表 -->
+        <div class="profile-list">
+          <div
+            v-for="profile in profiles"
+            :key="profile.id"
+            class="profile-item"
+            :class="{ active: profile.id === activeProfileId }"
+          >
+            <div class="profile-radio">
+              <input
+                type="radio"
+                :id="profile.id"
+                :checked="profile.id === activeProfileId"
+                @change="setActive(profile.id)"
+              />
+            </div>
+            <div class="profile-info" @click="setActive(profile.id)">
+              <div class="profile-name">{{ profile.name }}</div>
+              <div class="profile-detail">{{ profile.model }} · {{ profile.apiUrl }}</div>
+            </div>
+            <div class="profile-actions">
+              <button class="btn-icon btn-sm" @click="openEditProfile(profile)" :title="t('aiSettings.editProfile')">
+                <Pencil :size="14" />
+              </button>
+              <button class="btn-icon btn-sm" @click="deleteProfile(profile)" :title="t('aiSettings.deleteProfile')">
+                <Trash2 :size="14" />
+              </button>
+            </div>
+          </div>
+          <div v-if="profiles.length === 0" class="empty-profiles">
+            <p>{{ t('aiSettings.noProfiles') }}</p>
+            <p class="tip">{{ t('aiSettings.addProfile') }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 添加/编辑表单 -->
+      <div v-if="showForm" class="profile-form">
+
+        <div class="form-header">
+          <h4>{{ editingProfile ? t('aiSettings.editProfile') : t('aiSettings.addProfile') }}</h4>
+          <button class="btn-icon" @click="showForm = false" :title="t('common.close')">
+            <X :size="16" />
+          </button>
+        </div>
+
+        <!-- 快速模板 -->
+        <div class="templates" v-if="!editingProfile">
+          <span class="template-label">{{ t('setup.aiConfig.quickTemplates') }}</span>
+          <button
+            v-for="template in templates"
+            :key="template.name"
+            class="template-btn"
+            :class="{ recommended: template.recommended }"
+            @click="applyTemplate(template)"
+          >
+            {{ template.name }}
+            <span v-if="template.recommended" class="recommended-badge">{{ t('aiSettings.recommended') }}</span>
+          </button>
+        </div>
+
+        <div class="form-body">
+          <div class="form-group">
+            <label class="form-label">{{ t('aiSettings.profileName') }} *</label>
+            <input v-model="formData.name" type="text" class="input" :placeholder="t('aiSettings.profileNamePlaceholder')" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ t('aiSettings.apiUrl') }} *</label>
+            <input v-model="formData.apiUrl" type="text" class="input" :placeholder="t('aiSettings.apiUrlPlaceholder')" />
+          </div>
+          <div class="form-group">
+            <div class="form-label-row">
+              <label class="form-label">{{ t('aiSettings.apiKey') }}</label>
+              <button
+                v-if="currentKeyUrl"
+                class="get-key-btn"
+                @click="openKeyUrl(currentKeyUrl)"
+                :title="t('aiSettings.getApiKey')"
+              >
+                <ExternalLink :size="12" />
+                <span>{{ t('aiSettings.getApiKey') }}</span>
+              </button>
+            </div>
+            <input v-model="formData.apiKey" type="password" class="input" :placeholder="t('aiSettings.apiKeyPlaceholder')" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ t('aiSettings.model') }} *</label>
+            <input v-model="formData.model" type="text" class="input" :placeholder="t('aiSettings.modelPlaceholder')" />
+          </div>
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label class="form-label">{{ t('aiSettings.contextLength') }}（{{ t('aiSettings.contextLengthHint') }}）</label>
+              <input v-model.number="formData.contextLength" type="number" class="input" placeholder="8000" />
+              <span class="form-hint">GPT-3.5(4K/16K)、GPT-4(8K/128K)、Claude(200K)、Qwen(32K)</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ t('aiSettings.proxy') }}</label>
+            <input v-model="formData.proxy" type="text" class="input" :placeholder="t('aiSettings.proxyPlaceholder')" />
+          </div>
+        </div>
+        <div class="form-footer">
+          <button class="btn" @click="showForm = false">{{ t('common.cancel') }}</button>
+          <button class="btn btn-primary" @click="saveProfile">{{ t('common.save') }}</button>
+        </div>
+      </div>
+    </template>
+
+    <!-- Agent 风格设置、调试、日志（仅非 Steam 版） -->
+    <template v-if="!isSteamBuild">
+      <div class="settings-section">
+        <div class="section-header">
+          <h4>{{ t('aiSettings.agentPersonality') }}</h4>
+          <button 
+            v-if="currentMbti" 
+            class="btn btn-sm" 
+            @click="setMbti(null)"
+          >
+            {{ t('common.reset') }}
+          </button>
+        </div>
+        <p class="section-desc">
+          {{ t('aiSettings.agentPersonalityDesc') }}
+        </p>
+
+        <div class="mbti-grid">
+          <div
+            v-for="item in mbtiTypes"
+            :key="item.type"
+            class="mbti-card"
+            :class="{ active: currentMbti === item.type }"
+            @click="setMbti(item.type)"
+          >
+            <div class="mbti-type">{{ item.type }}</div>
+            <div class="mbti-name">{{ item.name }}</div>
+            <div class="mbti-desc">{{ item.desc }}</div>
+            <div class="mbti-group">{{ item.group }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-header">
+          <h4>{{ t('aiSettings.agentDebugMode') }}</h4>
+          <label class="toggle-switch">
+            <input 
+              type="checkbox" 
+              :checked="debugMode" 
+              @change="configStore.setAgentDebugMode(($event.target as HTMLInputElement).checked)"
             />
-          </div>
-          <div class="profile-info" @click="setActive(profile.id)">
-            <div class="profile-name">{{ profile.name }}</div>
-            <div class="profile-detail">{{ profile.model }} · {{ profile.apiUrl }}</div>
-          </div>
-          <div class="profile-actions">
-            <button class="btn-icon btn-sm" @click="openEditProfile(profile)" :title="t('aiSettings.editProfile')">
-              <Pencil :size="14" />
-            </button>
-            <button class="btn-icon btn-sm" @click="deleteProfile(profile)" :title="t('aiSettings.deleteProfile')">
-              <Trash2 :size="14" />
-            </button>
-          </div>
+            <span class="toggle-slider"></span>
+          </label>
         </div>
-        <div v-if="profiles.length === 0" class="empty-profiles">
-          <p>{{ t('aiSettings.noProfiles') }}</p>
-          <p class="tip">{{ t('aiSettings.addProfile') }}</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- 添加/编辑表单 -->
-    <div v-if="showForm" class="profile-form">
-
-      <div class="form-header">
-        <h4>{{ editingProfile ? t('aiSettings.editProfile') : t('aiSettings.addProfile') }}</h4>
-        <button class="btn-icon" @click="showForm = false" :title="t('common.close')">
-          <X :size="16" />
-        </button>
+        <p class="section-desc">
+          {{ t('aiSettings.agentDebugModeDesc') }}
+        </p>
       </div>
 
-      <!-- 快速模板 -->
-      <div class="templates" v-if="!editingProfile">
-        <span class="template-label">{{ t('setup.aiConfig.quickTemplates') }}</span>
-        <button
-          v-for="template in templates"
-          :key="template.name"
-          class="template-btn"
-          :class="{ recommended: template.recommended }"
-          @click="applyTemplate(template)"
-        >
-          {{ template.name }}
-          <span v-if="template.recommended" class="recommended-badge">{{ t('aiSettings.recommended') }}</span>
-        </button>
-      </div>
-
-      <div class="form-body">
-        <div class="form-group">
-          <label class="form-label">{{ t('aiSettings.profileName') }} *</label>
-          <input v-model="formData.name" type="text" class="input" :placeholder="t('aiSettings.profileNamePlaceholder')" />
+      <div class="settings-section">
+        <div class="section-header">
+          <h4>{{ t('aiSettings.logLevel') }}</h4>
+          <select 
+            class="log-level-select"
+            :value="configStore.logLevel"
+            @change="configStore.setLogLevel(($event.target as HTMLSelectElement).value as import('../../utils/logger').LogLevel)"
+          >
+            <option value="debug">Debug</option>
+            <option value="info">Info</option>
+            <option value="warn">Warn</option>
+            <option value="error">Error</option>
+            <option value="silent">Silent</option>
+          </select>
         </div>
-        <div class="form-group">
-          <label class="form-label">{{ t('aiSettings.apiUrl') }} *</label>
-          <input v-model="formData.apiUrl" type="text" class="input" :placeholder="t('aiSettings.apiUrlPlaceholder')" />
-        </div>
-        <div class="form-group">
-          <div class="form-label-row">
-            <label class="form-label">{{ t('aiSettings.apiKey') }}</label>
-            <button
-              v-if="currentKeyUrl"
-              class="get-key-btn"
-              @click="openKeyUrl(currentKeyUrl)"
-              :title="t('aiSettings.getApiKey')"
-            >
-              <ExternalLink :size="12" />
-              <span>{{ t('aiSettings.getApiKey') }}</span>
-            </button>
-          </div>
-          <input v-model="formData.apiKey" type="password" class="input" :placeholder="t('aiSettings.apiKeyPlaceholder')" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">{{ t('aiSettings.model') }} *</label>
-          <input v-model="formData.model" type="text" class="input" :placeholder="t('aiSettings.modelPlaceholder')" />
-        </div>
-        <div class="form-row">
-          <div class="form-group flex-1">
-            <label class="form-label">{{ t('aiSettings.contextLength') }}（{{ t('aiSettings.contextLengthHint') }}）</label>
-            <input v-model.number="formData.contextLength" type="number" class="input" placeholder="8000" />
-            <span class="form-hint">GPT-3.5(4K/16K)、GPT-4(8K/128K)、Claude(200K)、Qwen(32K)</span>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">{{ t('aiSettings.proxy') }}</label>
-          <input v-model="formData.proxy" type="text" class="input" :placeholder="t('aiSettings.proxyPlaceholder')" />
-        </div>
+        <p class="section-desc">
+          {{ t('aiSettings.logLevelDesc') }}
+        </p>
       </div>
-      <div class="form-footer">
-        <button class="btn" @click="showForm = false">{{ t('common.cancel') }}</button>
-        <button class="btn btn-primary" @click="saveProfile">{{ t('common.save') }}</button>
-      </div>
-    </div>
-
-    <!-- Agent 风格设置 -->
-    <div class="settings-section">
-      <div class="section-header">
-        <h4>{{ t('aiSettings.agentPersonality') }}</h4>
-        <button 
-          v-if="currentMbti" 
-          class="btn btn-sm" 
-          @click="setMbti(null)"
-        >
-          {{ t('common.reset') }}
-        </button>
-      </div>
-      <p class="section-desc">
-        {{ t('aiSettings.agentPersonalityDesc') }}
-      </p>
-
-      <div class="mbti-grid">
-        <div
-          v-for="item in mbtiTypes"
-          :key="item.type"
-          class="mbti-card"
-          :class="{ active: currentMbti === item.type }"
-          @click="setMbti(item.type)"
-        >
-          <div class="mbti-type">{{ item.type }}</div>
-          <div class="mbti-name">{{ item.name }}</div>
-          <div class="mbti-desc">{{ item.desc }}</div>
-          <div class="mbti-group">{{ item.group }}</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Agent 调试模式 -->
-    <div class="settings-section">
-      <div class="section-header">
-        <h4>{{ t('aiSettings.agentDebugMode') }}</h4>
-        <label class="toggle-switch">
-          <input 
-            type="checkbox" 
-            :checked="debugMode" 
-            @change="configStore.setAgentDebugMode(($event.target as HTMLInputElement).checked)"
-          />
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-      <p class="section-desc">
-        {{ t('aiSettings.agentDebugModeDesc') }}
-      </p>
-    </div>
-
-    <!-- 日志级别 -->
-    <div class="settings-section">
-      <div class="section-header">
-        <h4>{{ t('aiSettings.logLevel') }}</h4>
-        <select 
-          class="log-level-select"
-          :value="configStore.logLevel"
-          @change="configStore.setLogLevel(($event.target as HTMLSelectElement).value as import('../../utils/logger').LogLevel)"
-        >
-          <option value="debug">Debug</option>
-          <option value="info">Info</option>
-          <option value="warn">Warn</option>
-          <option value="error">Error</option>
-          <option value="silent">Silent</option>
-        </select>
-      </div>
-      <p class="section-desc">
-        {{ t('aiSettings.logLevelDesc') }}
-      </p>
-    </div>
+    </template>
   </div>
 </template>
 
