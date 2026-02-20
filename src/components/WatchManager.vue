@@ -182,14 +182,37 @@ const toggleWatch = async (w: WatchDefinition) => {
   }
 }
 
+const watchTimeouts = new Map<string, NodeJS.Timeout>()
+
 const triggerWatch = async (w: WatchDefinition) => {
-  runningWatches.value.add(w.id)
   try {
     await window.electronAPI.watch.trigger(w.id)
   } catch (e) {
     console.error('Failed to trigger watch:', e)
-    runningWatches.value.delete(w.id)
   }
+}
+
+const markWatchRunning = (watchId: string) => {
+  runningWatches.value.add(watchId)
+  if (watchTimeouts.has(watchId)) {
+    clearTimeout(watchTimeouts.get(watchId)!)
+  }
+  const timeout = setTimeout(() => {
+    runningWatches.value.delete(watchId)
+    watchTimeouts.delete(watchId)
+    loadData()
+  }, 10 * 60 * 1000)
+  watchTimeouts.set(watchId, timeout)
+}
+
+const markWatchCompleted = (watchId: string) => {
+  runningWatches.value.delete(watchId)
+  const timeout = watchTimeouts.get(watchId)
+  if (timeout) {
+    clearTimeout(timeout)
+    watchTimeouts.delete(watchId)
+  }
+  loadData()
 }
 
 const deleteWatch = async (w: WatchDefinition) => {
@@ -339,15 +362,10 @@ onMounted(async () => {
 
   // 监听 Watch 执行事件
   cleanupStarted = window.electronAPI.watch.onTaskStarted?.((data: any) => {
-    if (data.watchId) {
-      runningWatches.value.add(data.watchId)
-    }
+    if (data?.watchId) markWatchRunning(data.watchId)
   })
   cleanupCompleted = window.electronAPI.watch.onTaskCompleted?.((data: any) => {
-    if (data.watchId) {
-      runningWatches.value.delete(data.watchId)
-      loadData()
-    }
+    if (data?.watchId) markWatchCompleted(data.watchId)
   })
 })
 
@@ -355,6 +373,10 @@ onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer)
   cleanupStarted?.()
   cleanupCompleted?.()
+  for (const timeout of watchTimeouts.values()) {
+    clearTimeout(timeout)
+  }
+  watchTimeouts.clear()
 })
 </script>
 

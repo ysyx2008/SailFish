@@ -32,6 +32,14 @@ import type { AiService } from '../ai.service'
 // cron-parser 动态导入
 let CronExpressionParser: any = null
 
+// ==================== 常量 ====================
+
+const MIN_INTERVAL_SECONDS = 10
+const MAX_INTERVAL_SECONDS = 7 * 24 * 3600 // 7 days
+const MAX_PRECHECK_REASON_LENGTH = 500
+const DEFAULT_TIMEOUT_SECONDS = 300
+const MAX_OUTPUT_LENGTH = 1000
+
 // ==================== 类型 ====================
 
 export interface WatchServiceConfig {
@@ -398,7 +406,7 @@ export class WatchService {
       watchId: watch.id,
       result: {
         success: result.success,
-        output: result.output.substring(0, 1000),
+        output: result.output.substring(0, MAX_OUTPUT_LENGTH),
         error: result.error,
         duration: result.duration,
         skipped: result.skipped,
@@ -448,19 +456,24 @@ export class WatchService {
           } else {
             steps.push(step)
           }
-          if (step.type === 'message') finalOutput += step.content + '\n'
-          if (step.type === 'error') { hasError = true; errorMessage = step.content }
+          if (step.type === 'message') {
+            finalOutput += step.content + '\n'
+          } else if (step.type === 'error') {
+            hasError = true
+            if (!errorMessage) errorMessage = step.content
+          }
         },
         onComplete: (_agentId: string, result: string) => {
-          if (result) finalOutput = result
+          // onComplete 提供最终结果，仅在无错误时覆盖步骤累积的内容
+          if (result && !hasError) finalOutput = result
         },
         onError: (_agentId: string, error: string) => {
           hasError = true
-          errorMessage = error
+          errorMessage = error || errorMessage
         }
       }
 
-      const timeoutMs = (watch.execution.timeout ?? 300) * 1000
+      const timeoutMs = (watch.execution.timeout ?? DEFAULT_TIMEOUT_SECONDS) * 1000
       let timeoutHandle: NodeJS.Timeout
 
       const agentResult = await Promise.race([
@@ -537,10 +550,19 @@ Should this task run now? Respond in JSON format:
       ])
       const jsonMatch = text.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0])
-        return {
-          execute: !!parsed.execute,
-          reason: parsed.reason || undefined
+        try {
+          const parsed = JSON.parse(jsonMatch[0])
+          if (
+            typeof parsed === 'object' && parsed !== null &&
+            'execute' in parsed && typeof parsed.execute === 'boolean'
+          ) {
+            const reason = typeof parsed.reason === 'string'
+              ? parsed.reason.slice(0, MAX_PRECHECK_REASON_LENGTH)
+              : undefined
+            return { execute: parsed.execute, reason }
+          }
+        } catch (parseErr) {
+          console.error('[WatchService] Pre-check JSON parse error:', parseErr)
         }
       }
     } catch (err) {
@@ -650,7 +672,7 @@ Should this task run now? Respond in JSON format:
       status,
       duration: result.duration,
       triggerType: event.type,
-      output: result.output.substring(0, 1000),
+      output: result.output.substring(0, MAX_OUTPUT_LENGTH),
       error: result.error,
       skipReason: result.skipReason
     }
@@ -811,11 +833,11 @@ Should this task run now? Respond in JSON format:
           this.validateCronExpression(trigger.expression)
           break
         case 'interval':
-          if (!trigger.seconds || trigger.seconds < 10) {
-            throw new Error('Interval must be at least 10 seconds')
+          if (!trigger.seconds || trigger.seconds < MIN_INTERVAL_SECONDS) {
+            throw new Error(`Interval must be at least ${MIN_INTERVAL_SECONDS} seconds`)
           }
-          if (trigger.seconds > 86400 * 7) {
-            throw new Error('Interval cannot exceed 7 days')
+          if (trigger.seconds > MAX_INTERVAL_SECONDS) {
+            throw new Error(`Interval cannot exceed ${MAX_INTERVAL_SECONDS / 86400} days`)
           }
           break
         case 'heartbeat':

@@ -2618,13 +2618,21 @@ const electronAPI = {
       ipcRenderer.invoke('watch:getRunning'),
     getSshSessions: () =>
       ipcRenderer.invoke('watch:getSshSessions'),
-    onTaskStarted: (callback: (data: any) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+    onTaskStarted: (callback: (data: { watchId: string; ptyId?: string; watchName?: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
+        if (data && typeof data === 'object' && 'watchId' in data) {
+          callback(data as { watchId: string; ptyId?: string; watchName?: string })
+        }
+      }
       ipcRenderer.on('watch:task-started', handler)
       return () => { ipcRenderer.removeListener('watch:task-started', handler) }
     },
-    onTaskCompleted: (callback: (data: any) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data)
+    onTaskCompleted: (callback: (data: { watchId: string; result?: { success: boolean; error?: string } }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
+        if (data && typeof data === 'object' && 'watchId' in data) {
+          callback(data as { watchId: string; result?: { success: boolean; error?: string } })
+        }
+      }
       ipcRenderer.on('watch:task-completed', handler)
       return () => { ipcRenderer.removeListener('watch:task-completed', handler) }
     },
