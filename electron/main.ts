@@ -294,6 +294,9 @@ import { initScreenContentService } from './services/screen-content.service'
 import { menuService } from './services/menu.service'
 import { aiDebugService } from './services/ai-debug.service'
 import { getSchedulerService, type CreateTaskParams } from './services/scheduler.service'
+import { getWatchService } from './services/watch/watch.service'
+import { getSensorService } from './services/sensor'
+import type { CreateWatchParams } from './services/watch/types'
 import { getRemoteChatService } from './services/remote-chat.service'
 import { getGatewayService, type GatewayConfig } from './services/gateway.service'
 import { getIMService } from './services/im/im.service'
@@ -359,6 +362,10 @@ agentService.setSftpService(sftpService)
 
 // 定时任务调度服务
 const schedulerService = getSchedulerService()
+
+// Watch & Sensor 服务（感知层）
+const sensorService = getSensorService()
+const watchService = getWatchService()
 
 // 终端状态服务（CWD 追踪、命令状态等）
 const terminalStateService = initTerminalStateService(ptyService, sshService)
@@ -589,6 +596,8 @@ function setupWindowServices() {
  * 退出时清理所有后端服务和连接
  */
 function cleanupAllServices() {
+  watchService.stop()
+  sensorService.stop().catch(() => {})
   schedulerService.stop()
   gatewayService.stop().catch(() => {})
   imService.stopAll().catch(() => {})
@@ -898,6 +907,31 @@ app.whenReady().then(async () => {
       })
     } catch (e) {
       console.error('[Main] 定时任务调度服务初始化失败:', e)
+    }
+
+    // 初始化 Watch & Sensor 服务（感知层）
+    try {
+      watchService.init({
+        ptyService,
+        sshService,
+        configService,
+        agentService,
+        mainWindow
+      })
+      watchService.start().catch(e => {
+        console.error('[Main] Watch 服务启动失败:', e)
+      })
+
+      const heartbeatEnabled = configService.get('watchHeartbeatEnabled') as boolean ?? false
+      const heartbeatInterval = configService.get('watchHeartbeatInterval') as number ?? 30
+      sensorService.start({
+        heartbeatEnabled,
+        heartbeatIntervalMinutes: heartbeatInterval
+      }).catch(e => {
+        console.error('[Main] Sensor 服务启动失败:', e)
+      })
+    } catch (e) {
+      console.error('[Main] Watch/Sensor 服务初始化失败:', e)
     }
 
     // Gateway 远程访问自动启动
@@ -1817,6 +1851,86 @@ ipcMain.handle('scheduler:isTaskRunning', async (_event, taskId: string) => {
 
 ipcMain.handle('scheduler:getRunningTasks', async () => {
   return schedulerService.getRunningTasks()
+})
+
+// ==================== Watch & Sensor IPC ====================
+
+ipcMain.handle('watch:getAll', async () => {
+  return watchService.getAll()
+})
+
+ipcMain.handle('watch:get', async (_event, id: string) => {
+  return watchService.get(id)
+})
+
+ipcMain.handle('watch:create', async (_event, params: CreateWatchParams) => {
+  return watchService.create(params)
+})
+
+ipcMain.handle('watch:update', async (_event, id: string, updates: Partial<CreateWatchParams>) => {
+  return watchService.update(id, updates)
+})
+
+ipcMain.handle('watch:delete', async (_event, id: string) => {
+  return watchService.delete(id)
+})
+
+ipcMain.handle('watch:toggle', async (_event, id: string) => {
+  return watchService.toggle(id)
+})
+
+ipcMain.handle('watch:trigger', async (_event, id: string) => {
+  return watchService.triggerWatch(id)
+})
+
+ipcMain.handle('watch:getHistory', async (_event, watchId?: string, limit?: number) => {
+  return watchService.getHistory(watchId, limit)
+})
+
+ipcMain.handle('watch:clearHistory', async (_event, watchId?: string) => {
+  return watchService.clearHistory(watchId)
+})
+
+ipcMain.handle('watch:isRunning', async (_event, id: string) => {
+  return watchService.isWatchRunning(id)
+})
+
+ipcMain.handle('watch:getRunning', async () => {
+  return watchService.getRunningWatches()
+})
+
+ipcMain.handle('watch:getSshSessions', async () => {
+  return watchService.getSshSessions()
+})
+
+// Sensor 相关
+ipcMain.handle('sensor:getStatus', async () => {
+  return sensorService.getSensorStatus()
+})
+
+ipcMain.handle('sensor:getRecentEvents', async (_event, limit?: number) => {
+  return sensorService.getRecentEvents(limit)
+})
+
+ipcMain.handle('sensor:setHeartbeat', async (_event, enabled: boolean, intervalMinutes?: number) => {
+  if (enabled) {
+    if (intervalMinutes) {
+      sensorService.heartbeat.setInterval(intervalMinutes)
+    }
+    await sensorService.heartbeat.start()
+  } else {
+    await sensorService.heartbeat.stop()
+  }
+  configService.set('watchHeartbeatEnabled', enabled)
+  if (intervalMinutes) {
+    configService.set('watchHeartbeatInterval', intervalMinutes)
+  }
+  return { enabled, intervalMinutes: sensorService.heartbeat.getIntervalMinutes() }
+})
+
+ipcMain.handle('sensor:triggerHeartbeat', async () => {
+  sensorService.heartbeat.beat()
+  return { success: true }
 })
 
 // Xshell 导入相关

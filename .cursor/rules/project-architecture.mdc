@@ -31,7 +31,7 @@ SFTerminal/
 │   ├── cli/                     # CLI 模式入口
 │   │   ├── main.js              # CLI 启动器（JS，注册 electron-shim）
 │   │   ├── electron-shim.js     # Electron API 模拟层
-│   │   ├── index.ts             # CLI 命令实现（26 个命令）
+│   │   ├── index.ts             # CLI 命令实现（33 个命令）
 │   │   └── test-cli.sh          # CLI 自动化回归测试
 │   └── services/                # 后端服务（26 个）
 │       ├── ai.service.ts        # AI 对话（多 provider 支持）
@@ -60,6 +60,15 @@ SFTerminal/
 │       │   ├── context-builder.ts # 上下文管理（任务历史压缩，多级别）
 │       │   ├── task-memory.ts   # 任务记忆（多层压缩存储）
 │       │   └── risk-assessor.ts # 风险评估
+│       ├── watch/               # Watch 感知层
+│       │   ├── types.ts         # Watch 数据模型（WatchDefinition, WatchTrigger 等）
+│       │   ├── store.ts         # Watch 持久化（electron-store）
+│       │   └── watch.service.ts # Watch CRUD + 事件匹配 + Agent 执行引擎
+│       ├── sensor/              # 传感器系统
+│       │   ├── types.ts         # 事件类型（SensorEvent, Sensor 接口）
+│       │   ├── event-bus.ts     # 内存事件总线（优先级队列）
+│       │   ├── heartbeat-sensor.ts # 心跳传感器
+│       │   └── index.ts         # SensorService（传感器生命周期管理）
 │       ├── knowledge/           # 知识库（向量存储 + 嵌入）
 │       ├── im/                  # IM 集成（钉钉/飞书/企业微信/Slack/Telegram）
 │       ├── speech/              # 语音识别
@@ -106,7 +115,7 @@ SFTerminal/
 - **特点**：所有后端服务无需修改即可在 CLI 下运行
 - **配置隔离**：CLI 使用独立配置文件 `qiyu-terminal-config-cli`，避免与 Electron 加密配置冲突
 - **用法**：`npm run sft -- <command> [options]`
-- **测试**：`bash electron/cli/test-cli.sh`（26 个命令全覆盖）
+- **测试**：`bash electron/cli/test-cli.sh`（33 个命令全覆盖，含 Watch & Sensor）
 
 ### 服务实例化
 - 服务在 `main.ts` 中直接实例化，部分使用工厂函数（如 `getKnowledgeService()`）
@@ -129,6 +138,15 @@ SFTerminal/
 - **增量检查点**：每完成一轮工具调用后自动写盘，防止程序意外退出丢失记录
 - **跨会话恢复**：App 重启后，前端从 HistoryService 加载历史步骤用于 UI 渲染，只传 `sessionId` 给后端；后端通过 `HistoryService.getAgentRecordById` 自行加载完整 messages 和 steps 恢复 TaskMemory
 - **生命周期**：终端关闭时 `cleanupAgent` 销毁 Agent 实例；"清空对话"时 `resetSession` 只重置会话状态和 TaskMemory，保留实例
+
+### Watch 感知层（Sensor Loop）
+- **Watch**：Agent 的"关注点"配置，定义触发条件、执行 prompt、输出渠道
+- **触发器**：cron / interval / heartbeat / webhook / manual
+- **传感器**：HeartbeatSensor（周期性唤醒）；通过 EventBus 驱动
+- **Webhook**：Gateway 的 `POST /hooks/:token` 端点，外部系统可触发 Watch
+- **Pre-check**：执行前让 AI 自主判断"该不该做"（Agency of Omission）
+- **串行执行**：所有事件通过 EventBus 排队，Watch 依次处理，不并发
+- **详细设计**：见 `docs/sensor-loop-architecture.md`
 
 ### 知识库
 - 本地向量数据库（LanceDB）

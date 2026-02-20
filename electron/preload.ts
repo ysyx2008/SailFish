@@ -2592,6 +2592,45 @@ const electronAPI = {
     }
   },
 
+  // Watch & Sensor（感知层）
+  watch: {
+    getAll: () =>
+      ipcRenderer.invoke('watch:getAll'),
+    get: (id: string) =>
+      ipcRenderer.invoke('watch:get', id),
+    create: (params: any) =>
+      ipcRenderer.invoke('watch:create', params),
+    update: (id: string, updates: any) =>
+      ipcRenderer.invoke('watch:update', id, updates),
+    delete: (id: string) =>
+      ipcRenderer.invoke('watch:delete', id),
+    toggle: (id: string) =>
+      ipcRenderer.invoke('watch:toggle', id),
+    trigger: (id: string) =>
+      ipcRenderer.invoke('watch:trigger', id),
+    getHistory: (watchId?: string, limit?: number) =>
+      ipcRenderer.invoke('watch:getHistory', watchId, limit),
+    clearHistory: (watchId?: string) =>
+      ipcRenderer.invoke('watch:clearHistory', watchId),
+    isRunning: (id: string) =>
+      ipcRenderer.invoke('watch:isRunning', id),
+    getRunning: () =>
+      ipcRenderer.invoke('watch:getRunning'),
+    getSshSessions: () =>
+      ipcRenderer.invoke('watch:getSshSessions'),
+  },
+
+  sensor: {
+    getStatus: () =>
+      ipcRenderer.invoke('sensor:getStatus'),
+    getRecentEvents: (limit?: number) =>
+      ipcRenderer.invoke('sensor:getRecentEvents', limit),
+    setHeartbeat: (enabled: boolean, intervalMinutes?: number) =>
+      ipcRenderer.invoke('sensor:setHeartbeat', enabled, intervalMinutes),
+    triggerHeartbeat: () =>
+      ipcRenderer.invoke('sensor:triggerHeartbeat'),
+  },
+
   // 文件工具
   fileUtils: {
     // 获取拖放文件的路径（Electron 24+ 推荐方式）

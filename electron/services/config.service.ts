@@ -150,6 +150,8 @@ interface StoreSchema {
   imExecutionMode: 'strict' | 'relaxed' | 'free'  // IM Agent 执行模式，默认 relaxed
   logLevel: LogLevel  // 日志级别
   skillMarketRegistryUrl: string  // 技能市场 registry URL
+  watchHeartbeatEnabled: boolean  // Watch 心跳传感器是否启用
+  watchHeartbeatInterval: number  // Watch 心跳间隔（分钟）
 }
 
 const defaultConfig: StoreSchema = {
@@ -204,7 +206,9 @@ const defaultConfig: StoreSchema = {
   imTelegramBotToken: '',
   imExecutionMode: 'relaxed',
   logLevel: 'warn',
-  skillMarketRegistryUrl: ''
+  skillMarketRegistryUrl: '',
+  watchHeartbeatEnabled: false,
+  watchHeartbeatInterval: 30
 }
 
 export class ConfigService {

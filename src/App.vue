@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, provide, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Server, Bot, Settings, X, Loader2 } from 'lucide-vue-next'
+import { Server, Bot, Settings, X, Loader2, Eye } from 'lucide-vue-next'
 import { useTerminalStore } from './stores/terminal'
 import { useConfigStore, type SshSession } from './stores/config'
 import TabBar from './components/TabBar.vue'
@@ -13,6 +13,7 @@ import FileExplorer from './components/FileExplorer/FileExplorer.vue'
 import ConnectionStatusPopover from './components/ConnectionStatusPopover.vue'
 import SchedulerPopover from './components/SchedulerPopover.vue'
 import SchedulerManager from './components/SchedulerManager.vue'
+import WatchManager from './components/WatchManager.vue'
 import SetupWizard from './components/SetupWizard.vue'
 import WelcomePage from './components/WelcomePage.vue'
 import SmartPatrolPage from './components/SmartPatrolPage.vue'
@@ -51,6 +52,7 @@ const showAiPanel = ref(isSteamBuild ? false : true)
 const showSettings = ref(false)
 const showSmartPatrol = ref(false)
 const showSchedulerManager = ref(false)
+const showWatchManager = ref(false)
 
 // UI 主题
 const currentUiTheme = computed(() => configStore.uiTheme)
@@ -652,6 +654,9 @@ onUnmounted(() => {
             <Bot :size="18" />
           </button>
           <SchedulerPopover @open-manager="showSchedulerManager = true" />
+          <button class="btn-icon" @click="showWatchManager = true" title="Watch 管理（感知层）">
+            <Eye :size="18" />
+          </button>
           <ConnectionStatusPopover @open-settings="openConnectionSettings" />
         </template>
         <button class="btn-icon" @click="showSettings = true" :title="t('header.settings')">
@@ -743,6 +748,12 @@ onUnmounted(() => {
     <SchedulerManager
       v-if="showSchedulerManager"
       @close="showSchedulerManager = false"
+    />
+
+    <!-- Watch 管理器（感知层） -->
+    <WatchManager
+      v-if="showWatchManager"
+      @close="showWatchManager = false"
     />
 
     <!-- 知识库升级进度提示 -->

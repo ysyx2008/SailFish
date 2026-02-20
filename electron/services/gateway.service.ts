@@ -187,6 +187,12 @@ export class GatewayService {
       return this.handleAuthValidate(req, res)
     }
 
+    // Webhook 端点（token 嵌在 URL 中，无需 Bearer 鉴权）
+    const webhookMatch = path.match(/^\/hooks\/([^/]+)$/)
+    if (webhookMatch && req.method === 'POST') {
+      return this.handleWebhook(req, res, webhookMatch[1])
+    }
+
     // 鉴权
     if (!this.authenticate(req)) {
       res.writeHead(401, { 'Content-Type': 'application/json' })
@@ -244,6 +250,77 @@ export class GatewayService {
   private handleHealth(_req: http.IncomingMessage, res: http.ServerResponse) {
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ status: 'ok', version: '1.0.0' }))
+  }
+
+  private webhookRateLimit: Map<string, number[]> = new Map()
+  private static readonly WEBHOOK_RATE_LIMIT = 30  // max requests per minute per token
+
+  /**
+   * POST /hooks/:token - Webhook 触发器
+   * 外部系统通过此端点唤醒匹配 token 的 Watch
+   */
+  private async handleWebhook(req: http.IncomingMessage, res: http.ServerResponse, token: string) {
+    // 速率限制
+    const now = Date.now()
+    const windowMs = 60 * 1000
+    const hits = this.webhookRateLimit.get(token) || []
+    const recent = hits.filter(t => t > now - windowMs)
+    if (recent.length >= GatewayService.WEBHOOK_RATE_LIMIT) {
+      res.writeHead(429, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'Rate limit exceeded' }))
+      return
+    }
+    recent.push(now)
+    this.webhookRateLimit.set(token, recent)
+
+    const body = await this.readBody(req)
+    const clientIp = (req.socket.remoteAddress || '').split(',')[0].trim()
+
+    try {
+      const { getWatchStore } = await import('./watch/store')
+      const store = getWatchStore()
+      const watch = store.getWebhookWatch(token)
+
+      if (!watch) {
+        res.writeHead(404, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'Unknown webhook token' }))
+        return
+      }
+
+      // 产生事件投入事件总线
+      const { getEventBus } = await import('./sensor/event-bus')
+      const eventBus = getEventBus()
+
+      eventBus.emit({
+        id: `wh-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+        type: 'webhook',
+        source: `webhook:${token}`,
+        timestamp: Date.now(),
+        watchId: watch.id,
+        payload: body || {},
+        priority: watch.priority
+      })
+
+      this.addAuditLog({
+        type: 'task_start',
+        clientIp,
+        summary: `Webhook triggered: ${watch.name}`,
+        details: { watchId: watch.id, token }
+      })
+
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({
+        success: true,
+        watchId: watch.id,
+        watchName: watch.name,
+        message: 'Event queued'
+      }))
+
+    } catch (err) {
+      console.error('[Gateway] Webhook error:', err)
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'Internal error' }))
+    }
   }
 
   // ==================== Chat API ====================

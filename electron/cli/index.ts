@@ -569,6 +569,169 @@ async function schedulerHistory(args: string[]): Promise<void> {
   }
 }
 
+// ==================== Watch & Sensor Commands ====================
+
+async function watchList(): Promise<void> {
+  const { getWatchStore } = require('../services/watch/store')
+  const store = getWatchStore()
+  const watches = store.getAll()
+
+  if (watches.length === 0) {
+    console.log('No watches configured.')
+    return
+  }
+
+  const rows = watches.map((w: any) => ({
+    id: w.id.substring(0, 12),
+    name: w.name,
+    enabled: w.enabled ? '✓' : '',
+    triggers: w.triggers.map((t: any) => t.type).join(', '),
+    output: w.output.type,
+    priority: w.priority,
+    lastRun: w.lastRun ? new Date(w.lastRun.at).toLocaleString() : 'never'
+  }))
+  printTable(rows)
+}
+
+async function watchCreate(args: string[]): Promise<void> {
+  const { flags } = parseArgs(args)
+  const { getWatchStore } = require('../services/watch/store')
+  const store = getWatchStore()
+
+  const name = flags.name as string
+  const prompt = flags.prompt as string
+
+  if (!name || !prompt) {
+    console.error('Error: --name and --prompt are required.')
+    console.error('Usage: sft watch:create --name "My Watch" --prompt "Do something" [--cron "0 9 * * *"] [--heartbeat] [--output im]')
+    process.exit(1)
+  }
+
+  const triggers: any[] = []
+  if (flags.cron) {
+    triggers.push({ type: 'cron', expression: flags.cron })
+  }
+  if (flags.heartbeat !== undefined) {
+    triggers.push({ type: 'heartbeat' })
+  }
+  if (triggers.length === 0) {
+    triggers.push({ type: 'manual' })
+  }
+
+  const outputType = (flags.output as string) || 'log'
+
+  const watch = store.create({
+    name,
+    prompt,
+    triggers,
+    execution: { type: 'local' },
+    output: { type: outputType },
+    priority: 'normal'
+  })
+
+  console.log(`Watch created: ${watch.name} (${watch.id})`)
+  console.log(`  Triggers: ${watch.triggers.map((t: any) => t.type).join(', ')}`)
+  console.log(`  Output: ${watch.output.type}`)
+}
+
+async function watchTrigger(args: string[]): Promise<void> {
+  const id = args[0]
+  if (!id) {
+    console.error('Error: watch ID required. Usage: sft watch:trigger <id>')
+    return
+  }
+
+  const { getWatchStore } = require('../services/watch/store')
+  const store = getWatchStore()
+
+  // 支持部分 ID 匹配
+  const watches = store.getAll()
+  const match = watches.find((w: any) => w.id === id || w.id.startsWith(id))
+  if (!match) {
+    console.error(`Watch not found: ${id}`)
+    return
+  }
+
+  console.log(`Triggering watch: ${match.name} (${match.id})`)
+  console.log(`Prompt: ${match.prompt.substring(0, 100)}...`)
+  console.log('Note: In CLI mode, watch execution requires the Electron app running.')
+  console.log('The watch has been validated and is ready for execution.')
+}
+
+async function watchDelete(args: string[]): Promise<void> {
+  const id = args[0]
+  if (!id) {
+    console.error('Error: watch ID required. Usage: sft watch:delete <id>')
+    return
+  }
+
+  const { getWatchStore } = require('../services/watch/store')
+  const store = getWatchStore()
+
+  const watches = store.getAll()
+  const match = watches.find((w: any) => w.id === id || w.id.startsWith(id))
+  if (!match) {
+    console.error(`Watch not found: ${id}`)
+    return
+  }
+
+  store.delete(match.id)
+  console.log(`Watch deleted: ${match.name} (${match.id})`)
+}
+
+async function watchHistory(args: string[]): Promise<void> {
+  const { flags } = parseArgs(args)
+  const { getWatchStore } = require('../services/watch/store')
+  const store = getWatchStore()
+  const limit = flags.limit ? parseInt(flags.limit as string) : 10
+  const watchId = flags.watch as string | undefined
+
+  const history = store.getHistory(watchId, limit)
+
+  if (history.length === 0) {
+    console.log('No watch execution history.')
+    return
+  }
+
+  for (const h of history) {
+    const time = new Date(h.at).toLocaleString()
+    const statusIcon = h.status === 'completed' ? '✓' : h.status === 'skipped' ? '⊘' : '✗'
+    const duration = `${Math.round(h.duration / 1000)}s`
+    const trigger = h.triggerType || '?'
+    console.log(`[${time}] ${statusIcon} ${h.watchName} (${trigger}, ${duration})`)
+    if (h.skipReason) console.log(`  Skipped: ${h.skipReason}`)
+    if (h.error) console.log(`  Error: ${h.error}`)
+  }
+}
+
+async function sensorStatus(): Promise<void> {
+  const { getSensorService } = require('../services/sensor')
+  const service = getSensorService()
+
+  const sensors = service.getSensorStatus()
+  console.log('Sensor Status:')
+  for (const s of sensors) {
+    const status = s.running ? '● running' : '○ stopped'
+    console.log(`  ${s.name}: ${status}`)
+  }
+
+  const recent = service.getRecentEvents(5)
+  if (recent.length > 0) {
+    console.log('\nRecent Events:')
+    for (const e of recent) {
+      const time = new Date(e.timestamp).toLocaleTimeString()
+      console.log(`  [${time}] ${e.type} (source: ${e.source})`)
+    }
+  }
+}
+
+async function sensorHeartbeat(): Promise<void> {
+  const { getSensorService } = require('../services/sensor')
+  const service = getSensorService()
+  service.heartbeat.beat()
+  console.log('Heartbeat triggered.')
+}
+
 // ==================== SSH Session Commands ====================
 
 async function sshList(): Promise<void> {
@@ -1232,6 +1395,22 @@ Scheduler:
     --task <id>              Filter by task
     --limit <n>              Number of records (default: 10)
 
+Watch (Sensor Loop):
+  watch:list                 List all watches
+  watch:create               Create a watch (interactive)
+    --name <name>            Watch name
+    --prompt <prompt>        Agent prompt
+    --cron <expression>      Cron trigger
+    --heartbeat              Add heartbeat trigger
+    --output <type>          Output: im|notification|log|silent (default: log)
+  watch:trigger <id>         Manually trigger a watch
+  watch:delete <id>          Delete a watch
+  watch:history              Show watch execution history
+    --watch <id>             Filter by watch
+    --limit <n>              Number of records (default: 10)
+  sensor:status              Show sensor status
+  sensor:heartbeat           Trigger a heartbeat now
+
 IM Integration:
   im:status                  Show IM platform credential & connection status
   im:connect <platform>      Test connection (dingtalk|feishu|slack|telegram|wecom)
@@ -1335,6 +1514,15 @@ async function main(): Promise<void> {
       // Scheduler
       case 'scheduler:list':    await schedulerList(); break
       case 'scheduler:history': await schedulerHistory(cmdArgs); break
+
+      // Watch & Sensor
+      case 'watch:list':        await watchList(); break
+      case 'watch:create':      await watchCreate(cmdArgs); break
+      case 'watch:trigger':     await watchTrigger(cmdArgs); break
+      case 'watch:delete':      await watchDelete(cmdArgs); break
+      case 'watch:history':     await watchHistory(cmdArgs); break
+      case 'sensor:status':     await sensorStatus(); break
+      case 'sensor:heartbeat':  await sensorHeartbeat(); break
 
       // IM
       case 'im:status':      await imStatus(); break
