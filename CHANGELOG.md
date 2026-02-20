@@ -2,7 +2,7 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.7.0 (2026-02-20) (Latest)
+## v10.8.0 (2026-02-20) (Latest)
 
 ### New Features
 - 🔗 **Deep Link (sailfish://)**: Support opening the app from the website skill examples to run tasks via `sailfish://run?task=...`
