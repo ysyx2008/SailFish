@@ -656,6 +656,10 @@ function createWindow() {
   })
 
   mainWindow.on('closed', () => {
+    // macOS 上 window-all-closed 不会调用 app.quit()，需在确认退出并关闭主窗口后主动退出（先 quit 再置空，避免 quit 流程中读到窗口）
+    if (process.platform === 'darwin' && isQuitting) {
+      app.quit()
+    }
     mainWindow = null
   })
 
