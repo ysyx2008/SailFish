@@ -1857,5 +1857,19 @@ export default {
   im: {
     channelConnected: '{platform} 已连接',
     channelDisconnected: '{platform} 连接已断开',
+  },
+
+  // 连接状态面板
+  conn: {
+    connected: '已连接',
+    channels: '远程渠道',
+    mcpServers: 'MCP',
+    noChannels: '未配置渠道',
+    goSetup: '去设置',
+    connect: '连接',
+    disconnect: '断开',
+    start: '启动',
+    stop: '停止',
+    settings: '设置',
   }
 }

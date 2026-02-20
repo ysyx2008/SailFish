@@ -10,7 +10,7 @@ import AiPanel from './components/AiPanel.vue'
 import SessionManager from './components/SessionManager.vue'
 import SettingsModal from './components/Settings/SettingsModal.vue'
 import FileExplorer from './components/FileExplorer/FileExplorer.vue'
-import McpStatusPopover from './components/McpStatusPopover.vue'
+import ConnectionStatusPopover from './components/ConnectionStatusPopover.vue'
 import SchedulerPopover from './components/SchedulerPopover.vue'
 import SchedulerManager from './components/SchedulerManager.vue'
 import SetupWizard from './components/SetupWizard.vue'
@@ -471,6 +471,11 @@ const openMcpSettings = () => {
   showSettings.value = true
 }
 
+const openConnectionSettings = (tab?: string) => {
+  settingsInitialTab.value = tab || undefined
+  showSettings.value = true
+}
+
 // 关闭控制面板
 const closeSettings = () => {
   showSettings.value = false
@@ -621,7 +626,7 @@ onUnmounted(() => {
           <Bot :size="18" />
         </button>
         <SchedulerPopover @open-manager="showSchedulerManager = true" />
-        <McpStatusPopover @open-settings="openMcpSettings" />
+        <ConnectionStatusPopover @open-settings="openConnectionSettings" />
         <button class="btn-icon" @click="showSettings = true" :title="t('header.settings')">
           <Settings :size="18" />
         </button>

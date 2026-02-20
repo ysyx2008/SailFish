@@ -1857,5 +1857,19 @@ export default {
   im: {
     channelConnected: '{platform} connected',
     channelDisconnected: '{platform} disconnected',
+  },
+
+  // Connection status panel
+  conn: {
+    connected: 'connected',
+    channels: 'Channels',
+    mcpServers: 'MCP',
+    noChannels: 'No channels configured',
+    goSetup: 'Set up',
+    connect: 'Connect',
+    disconnect: 'Disconnect',
+    start: 'Start',
+    stop: 'Stop',
+    settings: 'Settings',
   }
 }
