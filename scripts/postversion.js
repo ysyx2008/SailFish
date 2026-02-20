@@ -104,7 +104,7 @@ function main() {
       success('已切换到 main');
 
       log('\n合并 develop 到 main...', 'cyan');
-      exec('git merge develop --no-edit');
+      exec('git merge develop --ff-only');
       success('合并完成');
 
       log('\n推送 main 分支和 tag...', 'cyan');
@@ -148,7 +148,7 @@ function main() {
     if (state.originalBranch === 'develop') {
       log(`  git push                          # 推送 develop`);
       log(`  git checkout main && git pull --ff-only`);
-      log(`  git merge develop --no-edit`);
+      log(`  git merge develop --ff-only`);
       log(`  git push                          # 推送 main`);
       log(`  git push origin v${version}`);
       log(`  git checkout develop`);
