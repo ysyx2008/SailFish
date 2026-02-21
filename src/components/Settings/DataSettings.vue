@@ -2,20 +2,9 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
-import { MessageSquare, Bot, HardDrive, CalendarRange, FolderOpen, History, Download, Upload, Trash2, Clock, AlertTriangle, Search, X, ChevronDown, ChevronRight, ExternalLink, Monitor, Server } from 'lucide-vue-next'
+import { Bot, HardDrive, CalendarRange, FolderOpen, History, Download, Upload, Trash2, Clock, AlertTriangle, Search, X, ChevronDown, ChevronRight, ExternalLink, Monitor, Server } from 'lucide-vue-next'
 
 const { t } = useI18n()
-
-// 历史记录类型
-interface ChatRecord {
-  id: string
-  timestamp: number
-  terminalId: string
-  terminalType: 'local' | 'ssh'
-  sshHost?: string
-  role: 'user' | 'assistant'
-  content: string
-}
 
 interface AgentStepRecord {
   id: string
@@ -63,9 +52,7 @@ const message = ref<{ type: 'success' | 'error'; text: string } | null>(null)
 
 // ========== 历史记录查看 ==========
 const showHistoryViewer = ref(false)
-const historyTab = ref<'chat' | 'agent'>('agent')
 const historyLoading = ref(false)
-const chatRecords = ref<ChatRecord[]>([])
 const agentRecords = ref<AgentRecord[]>([])
 const searchKeyword = ref('')
 const selectedDateRange = ref<'today' | 'week' | 'month' | 'all'>('week')
@@ -98,24 +85,13 @@ const loadHistory = async () => {
   historyLoading.value = true
   try {
     const { start, end } = getDateRange()
-    
-    if (historyTab.value === 'chat') {
-      chatRecords.value = await window.electronAPI.history.getChatRecords(start, end) || []
-    } else {
-      agentRecords.value = await window.electronAPI.history.getAgentRecords(start, end) || []
-    }
+    agentRecords.value = await window.electronAPI.history.getAgentRecords(start, end) || []
   } catch (e) {
     console.error('Failed to load history:', e)
     showMessage('error', t('dataSettings.loadHistoryFailed'))
   } finally {
     historyLoading.value = false
   }
-}
-
-// 切换标签时加载
-const switchHistoryTab = (tab: 'chat' | 'agent') => {
-  historyTab.value = tab
-  loadHistory()
 }
 
 // 切换日期范围时加载
@@ -133,7 +109,6 @@ const openHistoryViewer = async () => {
 // 关闭历史查看器
 const closeHistoryViewer = () => {
   showHistoryViewer.value = false
-  chatRecords.value = []
   agentRecords.value = []
   searchKeyword.value = ''
   expandedAgentIds.value.clear()
@@ -158,16 +133,6 @@ const formatDuration = (ms: number) => {
   return `${(ms / 60000).toFixed(1)}min`
 }
 
-// 过滤聊天记录
-const filteredChatRecords = computed(() => {
-  if (!searchKeyword.value.trim()) return chatRecords.value
-  const keyword = searchKeyword.value.toLowerCase()
-  return chatRecords.value.filter(r => 
-    r.content.toLowerCase().includes(keyword) ||
-    r.sshHost?.toLowerCase().includes(keyword)
-  )
-})
-
 // 过滤 Agent 记录
 const filteredAgentRecords = computed(() => {
   if (!searchKeyword.value.trim()) return agentRecords.value
@@ -177,37 +142,6 @@ const filteredAgentRecords = computed(() => {
     r.finalResult?.toLowerCase().includes(keyword) ||
     r.sshHost?.toLowerCase().includes(keyword)
   )
-})
-
-// 按对话分组聊天记录
-const groupedChatRecords = computed(() => {
-  const { locale } = useI18n()
-  const groups: Array<{
-    date: string
-    records: ChatRecord[]
-  }> = []
-  
-  let currentDate = ''
-  let currentGroup: ChatRecord[] = []
-  
-  for (const record of filteredChatRecords.value) {
-    const date = new Date(record.timestamp).toLocaleDateString(locale.value)
-    if (date !== currentDate) {
-      if (currentGroup.length > 0) {
-        groups.push({ date: currentDate, records: currentGroup })
-      }
-      currentDate = date
-      currentGroup = [record]
-    } else {
-      currentGroup.push(record)
-    }
-  }
-  
-  if (currentGroup.length > 0) {
-    groups.push({ date: currentDate, records: currentGroup })
-  }
-  
-  return groups.reverse() // 最新的在前
 })
 
 // 切换展开 Agent 详情
@@ -416,15 +350,6 @@ onUnmounted(() => {
         <h4>{{ t('dataSettings.storageStats') }}</h4>
       </div>
       <div v-if="storageStats" class="stats-grid">
-        <div class="stat-card stat-chat">
-          <div class="stat-icon-wrap chat">
-            <MessageSquare :size="18" />
-          </div>
-          <div class="stat-body">
-            <span class="stat-value">{{ storageStats.chatFiles }}</span>
-            <span class="stat-label">{{ t('dataSettings.chatRecords') }} ({{ t('dataSettings.days') }})</span>
-          </div>
-        </div>
         <div class="stat-card stat-agent">
           <div class="stat-icon-wrap agent">
             <Bot :size="18" />
@@ -552,21 +477,9 @@ onUnmounted(() => {
             <!-- 工具栏 -->
             <div class="history-toolbar">
               <div class="toolbar-left">
-                <div class="tab-switcher">
-                  <button 
-                    :class="['tab-btn', { active: historyTab === 'agent' }]"
-                    @click="switchHistoryTab('agent')"
-                  >
-                    <Bot :size="14" />
-                    {{ t('dataSettings.agentTasks') }}
-                  </button>
-                  <button 
-                    :class="['tab-btn', { active: historyTab === 'chat' }]"
-                    @click="switchHistoryTab('chat')"
-                  >
-                    <MessageSquare :size="14" />
-                    {{ t('dataSettings.chatHistory') }}
-                  </button>
+                <div class="history-type-badge">
+                  <Bot :size="14" />
+                  {{ t('dataSettings.agentTasks') }}
                 </div>
                 
                 <div class="date-range-switcher">
@@ -609,7 +522,7 @@ onUnmounted(() => {
               </div>
               
               <!-- Agent 记录 -->
-              <div v-else-if="historyTab === 'agent'" class="agent-history">
+              <div v-else class="agent-history">
                 <div v-if="filteredAgentRecords.length === 0" class="empty-state">
                   <Bot :size="32" class="empty-icon" />
                   <span>{{ t('dataSettings.noAgentRecords') }}</span>
@@ -675,46 +588,11 @@ onUnmounted(() => {
                   </div>
                 </div>
               </div>
-              
-              <!-- 聊天记录 -->
-              <div v-else class="chat-history">
-                <div v-if="groupedChatRecords.length === 0" class="empty-state">
-                  <MessageSquare :size="32" class="empty-icon" />
-                  <span>{{ t('dataSettings.noChatRecords') }}</span>
-                </div>
-                <div v-else>
-                  <div v-for="group in groupedChatRecords" :key="group.date" class="date-group">
-                    <div class="date-header">{{ group.date }}</div>
-                    <div class="chat-list">
-                      <div 
-                        v-for="record in group.records" 
-                        :key="record.id"
-                        :class="['chat-item', record.role]"
-                      >
-                        <div class="chat-meta">
-                          <span class="chat-role">{{ record.role === 'user' ? t('dataSettings.user') : t('dataSettings.ai') }}</span>
-                          <span class="chat-time">{{ formatTime(record.timestamp) }}</span>
-                          <span v-if="record.sshHost" class="chat-host">
-                            <Server :size="11" /> {{ record.sshHost }}
-                          </span>
-                          <span v-else class="chat-host">
-                            <Monitor :size="11" /> {{ t('dataSettings.local') }}
-                          </span>
-                        </div>
-                        <div class="chat-content" v-html="renderMarkdown(record.content)"></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
             </div>
             
             <div class="history-footer">
-              <span v-if="historyTab === 'agent'">
+              <span>
                 {{ t('dataSettings.totalTasks', { count: filteredAgentRecords.length }) }}
-              </span>
-              <span v-else>
-                {{ t('dataSettings.totalRecords', { count: filteredChatRecords.length }) }}
               </span>
             </div>
           </div>
@@ -796,7 +674,7 @@ onUnmounted(() => {
 /* Stats grid */
 .stats-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
 }
 
@@ -823,11 +701,6 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-}
-
-.stat-icon-wrap.chat {
-  background: rgba(59, 130, 246, 0.12);
-  color: #3b82f6;
 }
 
 .stat-icon-wrap.agent {
@@ -1167,36 +1040,17 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
-.tab-switcher {
-  display: flex;
-  gap: 2px;
-  background: var(--bg-tertiary);
-  padding: 3px;
-  border-radius: 9px;
-}
-
-.tab-btn {
-  padding: 6px 14px;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  border-radius: 7px;
-  cursor: pointer;
-  font-size: 13px;
-  transition: all 0.2s;
-  display: flex;
+.history-type-badge {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-}
-
-.tab-btn:hover {
-  color: var(--text-primary);
-}
-
-.tab-btn.active {
-  background: var(--accent-primary);
-  color: white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .date-range-switcher {
@@ -1321,91 +1175,6 @@ onUnmounted(() => {
 
 .empty-icon {
   opacity: 0.3;
-}
-
-/* Chat records */
-.date-group {
-  margin-bottom: 20px;
-}
-
-.date-header {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.chat-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.chat-item {
-  padding: 12px;
-  border-radius: 8px;
-  background: var(--bg-tertiary);
-}
-
-.chat-item.user {
-  border-left: 3px solid var(--accent-primary);
-}
-
-.chat-item.assistant {
-  border-left: 3px solid #10b981;
-}
-
-.chat-meta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-bottom: 8px;
-}
-
-.chat-role {
-  font-weight: 600;
-}
-
-.chat-host {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.chat-content {
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--text-primary);
-  user-select: text;
-  -webkit-user-select: text;
-  cursor: text;
-}
-
-.chat-content :deep(p) {
-  margin: 0 0 8px 0;
-}
-
-.chat-content :deep(p:last-child) {
-  margin-bottom: 0;
-}
-
-.chat-content :deep(pre) {
-  background: var(--bg-secondary);
-  padding: 10px;
-  border-radius: 6px;
-  overflow-x: auto;
-  font-size: 12px;
-}
-
-.chat-content :deep(code) {
-  background: var(--bg-secondary);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 12px;
 }
 
 /* Agent records */
