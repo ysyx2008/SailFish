@@ -1873,17 +1873,23 @@ export default {
     }
   },
 
-  // Watch 感知层
+  // 关切（感知层）
   watch: {
-    title: 'Watch 管理（感知层）',
-    watches: 'Watches',
+    panelTitle: '关切',
+    title: '关切',
+    watches: '关切',
     history: '历史',
     sensors: '传感器',
-    newWatch: '新建 Watch',
-    createWatch: '创建 Watch',
-    editWatch: '编辑 Watch',
-    noWatches: '暂无 Watch',
-    createFirst: '创建第一个 Watch',
+    navAutomation: '自动化',
+    navTools: '工具',
+    navRecords: '记录',
+    schedulerTab: '定时任务',
+    executionHistory: '执行历史',
+    newWatch: '新建关切',
+    createWatch: '创建关切',
+    editWatch: '编辑关切',
+    noWatches: '暂无关切',
+    createFirst: '创建第一个关切',
     loading: '加载中...',
 
     enabled: '已启用',
@@ -1937,7 +1943,7 @@ export default {
     name: '名称',
     namePlaceholder: '例如：每日晨报、邮件检查',
     description: '描述',
-    descriptionPlaceholder: '简要描述这个 Watch 的用途',
+    descriptionPlaceholder: '简要描述这个关切的用途',
     prompt: '任务指令',
     promptPlaceholder: '输入 Agent 要执行的任务，例如：检查邮箱是否有重要邮件，如果有则推送摘要',
     triggers: '触发方式',
@@ -2004,7 +2010,7 @@ export default {
 
     // 验证
     validation: {
-      nameRequired: '请输入 Watch 名称',
+      nameRequired: '请输入关切名称',
       promptRequired: '请输入任务指令',
       triggerRequired: '至少选择一种触发方式',
       filePathRequired: '文件变化触发器需要至少一个监控路径',
@@ -2018,7 +2024,7 @@ export default {
   // 心跳传感器设置
   heartbeat: {
     title: '心跳传感器（Heartbeat Sensor）',
-    description: '心跳传感器会周期性唤醒 Agent，检查是否有需要关注的事情。搭配 Watch 使用。',
+    description: '心跳传感器会周期性唤醒 Agent，检查是否有需要关注的事情。搭配关切使用。',
     enable: '启用心跳',
     enableDesc: '开启后，Agent 会按设定间隔自动唤醒',
     interval: '心跳间隔（分钟）',

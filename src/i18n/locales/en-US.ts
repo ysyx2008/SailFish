@@ -1875,10 +1875,16 @@ export default {
 
   // Watch (Sensor Loop)
   watch: {
-    title: 'Watch Manager (Sensor Loop)',
+    panelTitle: 'Watches',
+    title: 'Watches',
     watches: 'Watches',
     history: 'History',
     sensors: 'Sensors',
+    navAutomation: 'Automation',
+    navTools: 'Tools',
+    navRecords: 'Records',
+    schedulerTab: 'Scheduled Tasks',
+    executionHistory: 'Execution History',
     newWatch: 'New Watch',
     createWatch: 'Create Watch',
     editWatch: 'Edit Watch',
