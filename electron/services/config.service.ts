@@ -207,7 +207,7 @@ const defaultConfig: StoreSchema = {
   imExecutionMode: 'relaxed',
   logLevel: 'warn',
   skillMarketRegistryUrl: '',
-  watchHeartbeatEnabled: false,
+  watchHeartbeatEnabled: true,
   watchHeartbeatInterval: 30
 }
 

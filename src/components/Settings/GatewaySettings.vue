@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Copy, ExternalLink, ScrollText, Heart } from 'lucide-vue-next'
+import { Copy, ExternalLink, ScrollText } from 'lucide-vue-next'
 
 const { t } = useI18n()
 
@@ -155,46 +155,6 @@ async function copyToClipboard(text: string, label: string) {
   }
 }
 
-// ==================== 心跳传感器 ====================
-const heartbeatEnabled = ref(false)
-const heartbeatInterval = ref(30)
-const sensorStatusList = ref<Array<{ id: string; name: string; running: boolean }>>([])
-
-async function loadSensorSettings() {
-  try {
-    const config = await window.electronAPI.config.get('watchHeartbeatEnabled')
-    heartbeatEnabled.value = !!config
-    const interval = await window.electronAPI.config.get('watchHeartbeatInterval')
-    if (interval && typeof interval === 'number') heartbeatInterval.value = interval
-    sensorStatusList.value = await window.electronAPI.sensor.getStatus()
-  } catch { /* ignore */ }
-}
-
-async function toggleHeartbeat() {
-  try {
-    await window.electronAPI.sensor.setHeartbeat(heartbeatEnabled.value, heartbeatInterval.value)
-    sensorStatusList.value = await window.electronAPI.sensor.getStatus()
-  } catch (e) {
-    console.error('Failed to toggle heartbeat:', e)
-  }
-}
-
-async function updateHeartbeatInterval() {
-  if (heartbeatInterval.value < 1) heartbeatInterval.value = 1
-  if (heartbeatInterval.value > 1440) heartbeatInterval.value = 1440
-  if (heartbeatEnabled.value) {
-    await window.electronAPI.sensor.setHeartbeat(true, heartbeatInterval.value)
-  } else {
-    await window.electronAPI.config.set('watchHeartbeatInterval', heartbeatInterval.value)
-  }
-}
-
-async function manualHeartbeat() {
-  await window.electronAPI.sensor.triggerHeartbeat()
-}
-
-// 加载心跳设置
-onMounted(loadSensorSettings)
 </script>
 
 <template>
@@ -317,66 +277,6 @@ onMounted(loadSensorSettings)
             </div>
           </div>
         </div>
-      </div>
-    </div>
-
-    <!-- ==================== 心跳传感器 ==================== -->
-    <div class="settings-section">
-      <div class="section-header">
-        <div class="section-title-group">
-          <h4>
-            <Heart :size="14" style="margin-right: 4px;" />
-            {{ t('heartbeat.title') }}
-          </h4>
-          <span class="status-badge" :class="{ active: sensorStatusList.some(s => s.id === 'heartbeat' && s.running) }">
-            <span class="status-dot"></span>
-            {{ sensorStatusList.some(s => s.id === 'heartbeat' && s.running) ? t('heartbeat.running') : t('heartbeat.stopped') }}
-          </span>
-        </div>
-      </div>
-      <p class="section-desc">
-        {{ t('heartbeat.description') }}
-      </p>
-
-      <div class="setting-row">
-        <div>
-          <label class="form-label">{{ t('heartbeat.enable') }}</label>
-          <p class="setting-desc">{{ t('heartbeat.enableDesc') }}</p>
-        </div>
-        <label class="toggle-switch">
-          <input type="checkbox" v-model="heartbeatEnabled" @change="toggleHeartbeat" />
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-
-      <div class="setting-row">
-        <div>
-          <label class="form-label">{{ t('heartbeat.interval') }}</label>
-          <p class="setting-desc">{{ t('heartbeat.intervalDesc') }}</p>
-        </div>
-        <div class="input-group-compact">
-          <input
-            type="number"
-            v-model.number="heartbeatInterval"
-            :min="1"
-            :max="1440"
-            class="input-field"
-            style="width: 80px;"
-            @change="updateHeartbeatInterval"
-          />
-          <span class="input-suffix">min</span>
-        </div>
-      </div>
-
-      <div class="setting-row" v-if="heartbeatEnabled">
-        <div>
-          <label class="form-label">{{ t('heartbeat.manualTrigger') }}</label>
-          <p class="setting-desc">{{ t('heartbeat.manualTriggerDesc') }}</p>
-        </div>
-        <button class="btn btn-sm" @click="manualHeartbeat">
-          <Heart :size="14" />
-          {{ t('heartbeat.trigger') }}
-        </button>
       </div>
     </div>
 
@@ -782,14 +682,4 @@ onMounted(loadSensorSettings)
   color: var(--warning-color, #d29922);
 }
 
-.input-group-compact {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.input-suffix {
-  font-size: 12px;
-  color: var(--text-muted);
-}
 </style>

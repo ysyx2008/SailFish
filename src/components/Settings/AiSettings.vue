@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Plus, Pencil, Trash2, X, ExternalLink } from 'lucide-vue-next'
+import { Plus, Pencil, Trash2, X, ExternalLink, Heart } from 'lucide-vue-next'
 import { useConfigStore, type AiProfile, type AgentMbtiType } from '../../stores/config'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -189,6 +189,47 @@ const currentKeyUrl = computed(() => {
 const openKeyUrl = (url: string) => {
   window.open(url, '_blank')
 }
+
+// ==================== 心跳传感器 ====================
+const heartbeatEnabled = ref(false)
+const heartbeatInterval = ref(30)
+const heartbeatRunning = ref(false)
+
+async function loadSensorSettings() {
+  try {
+    const config = await window.electronAPI.config.get('watchHeartbeatEnabled')
+    heartbeatEnabled.value = !!config
+    const interval = await window.electronAPI.config.get('watchHeartbeatInterval')
+    if (interval && typeof interval === 'number') heartbeatInterval.value = interval
+    const statusList = await window.electronAPI.sensor.getStatus()
+    heartbeatRunning.value = statusList.some((s: any) => s.id === 'heartbeat' && s.running)
+  } catch { /* ignore */ }
+}
+
+async function toggleHeartbeat() {
+  try {
+    const result = await window.electronAPI.sensor.setHeartbeat(heartbeatEnabled.value, heartbeatInterval.value)
+    heartbeatRunning.value = heartbeatEnabled.value
+  } catch (e) {
+    console.error('Failed to toggle heartbeat:', e)
+  }
+}
+
+async function updateHeartbeatInterval() {
+  if (heartbeatInterval.value < 1) heartbeatInterval.value = 1
+  if (heartbeatInterval.value > 1440) heartbeatInterval.value = 1440
+  if (heartbeatEnabled.value) {
+    await window.electronAPI.sensor.setHeartbeat(true, heartbeatInterval.value)
+  } else {
+    await window.electronAPI.config.set('watchHeartbeatInterval', heartbeatInterval.value)
+  }
+}
+
+async function manualHeartbeat() {
+  await window.electronAPI.sensor.triggerHeartbeat()
+}
+
+onMounted(loadSensorSettings)
 </script>
 
 <template>
@@ -353,6 +394,63 @@ const openKeyUrl = (url: string) => {
             <div class="mbti-desc">{{ item.desc }}</div>
             <div class="mbti-group">{{ item.group }}</div>
           </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-header">
+          <div class="section-title-group">
+            <h4>
+              <Heart :size="14" style="margin-right: 4px;" />
+              {{ t('heartbeat.title') }}
+            </h4>
+            <span class="status-badge" :class="{ active: heartbeatRunning }">
+              <span class="status-dot"></span>
+              {{ heartbeatRunning ? t('heartbeat.running') : t('heartbeat.stopped') }}
+            </span>
+          </div>
+        </div>
+        <p class="section-desc">{{ t('heartbeat.description') }}</p>
+
+        <div class="setting-row">
+          <div>
+            <label class="form-label">{{ t('heartbeat.enable') }}</label>
+            <p class="setting-desc">{{ t('heartbeat.enableDesc') }}</p>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" v-model="heartbeatEnabled" @change="toggleHeartbeat" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <div>
+            <label class="form-label">{{ t('heartbeat.interval') }}</label>
+            <p class="setting-desc">{{ t('heartbeat.intervalDesc') }}</p>
+          </div>
+          <div class="input-group-compact">
+            <input
+              type="number"
+              v-model.number="heartbeatInterval"
+              :min="1"
+              :max="1440"
+              class="input"
+              style="width: 80px;"
+              @change="updateHeartbeatInterval"
+            />
+            <span class="input-suffix">min</span>
+          </div>
+        </div>
+
+        <div class="setting-row" v-if="heartbeatEnabled">
+          <div>
+            <label class="form-label">{{ t('heartbeat.manualTrigger') }}</label>
+            <p class="setting-desc">{{ t('heartbeat.manualTriggerDesc') }}</p>
+          </div>
+          <button class="btn btn-sm" @click="manualHeartbeat">
+            <Heart :size="14" />
+            {{ t('heartbeat.trigger') }}
+          </button>
         </div>
       </div>
 
@@ -757,6 +855,65 @@ const openKeyUrl = (url: string) => {
 
 .log-level-select:focus {
   border-color: var(--accent-primary);
+}
+
+.section-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 10px;
+  border-radius: 12px;
+  background: rgba(110, 118, 129, 0.12);
+  color: var(--text-muted);
+}
+
+.status-badge.active {
+  background: rgba(63, 185, 80, 0.12);
+  color: var(--success-color, #3fb950);
+}
+
+.status-badge .status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-badge.active .status-dot {
+  box-shadow: 0 0 6px var(--success-color, #3fb950);
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.setting-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 2px 0 0;
+}
+
+.input-group-compact {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.input-suffix {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 </style>
 
