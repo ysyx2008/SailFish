@@ -388,33 +388,19 @@ async function knowledgeAdd(args: string[]): Promise<void> {
 async function historyList(args: string[]): Promise<void> {
   const { flags } = parseArgs(args)
   const service = getHistory()
-  const type = flags.type as string || 'agent'
   const limit = flags.limit ? parseInt(flags.limit as string) : 10
-  
-  if (type === 'chat') {
-    const records = service.getChatRecords()
-    const recent = records.slice(-limit)
-    if (recent.length === 0) {
-      console.log('No chat records found.')
-      return
-    }
-    for (const r of recent) {
-      const time = new Date(r.timestamp).toLocaleString()
-      console.log(`[${time}] ${r.role}: ${r.content.substring(0, 100)}`)
-    }
-  } else {
-    const records = service.getAgentRecords()
-    const recent = records.slice(-limit)
-    if (recent.length === 0) {
-      console.log('No agent records found. (0 steps)')
-      return
-    }
-    for (const r of recent) {
-      const time = new Date(r.timestamp).toLocaleString()
-      const status = r.status === 'completed' ? '✓' : '✗'
-      const task = (r.userTask || r.finalResult || '(unknown)').substring(0, 80)
-      console.log(`[${time}] ${status} ${task} (${r.steps?.length || 0} steps, ${r.duration || 0}ms)`)
-    }
+
+  const records = service.getAgentRecords()
+  const recent = records.slice(-limit)
+  if (recent.length === 0) {
+    console.log('No agent records found. (0 steps)')
+    return
+  }
+  for (const r of recent) {
+    const time = new Date(r.timestamp).toLocaleString()
+    const status = r.status === 'completed' ? '✓' : '✗'
+    const task = (r.userTask || r.finalResult || '(unknown)').substring(0, 80)
+    console.log(`[${time}] ${status} ${task} (${r.steps?.length || 0} steps, ${r.duration || 0}ms)`)
   }
 }
 
@@ -1441,7 +1427,6 @@ Knowledge Base:
 
 History:
   history:list               List recent records
-    --type <chat|agent>      Record type (default: agent)
     --limit <n>              Number of records (default: 10)
   history:stats              Show storage statistics
 
