@@ -42,7 +42,7 @@ bash electron/cli/test-cli.sh            # 有 API Key 时跑全量
 | local-fs.service.ts | `sft fs:list /tmp && sft fs:info` |
 | document-parser.service.ts | `sft doc:parse README.md && sft doc:types` |
 | user-skill.service.ts | `sft skill:list` |
-| watch/ 目录 | `sft watch:list && sft watch:history` |
+| watch/ 目录 | `sft watch:list && sft watch:history && sft watch:templates && sft watch:state` |
 | sensor/ 目录 | `sft sensor:status && sft sensor:heartbeat` |
 
 > `sft` 即 `npm run sft --`，直接用 `node electron/cli/main.js` 也行。

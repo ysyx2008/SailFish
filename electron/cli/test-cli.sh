@@ -271,6 +271,20 @@ fi
 
 assert_fails "watch:create 缺少参数应报错"   $CLI watch:create
 
+# Phase 2 & 3 新功能
+run_test "watch:templates 列出模板"         $CLI watch:templates
+assert_contains "watch:from-template 创建"  "Watch created" \
+  $CLI watch:from-template morning-briefing
+# 清理模板创建的 watch
+TPL_WATCH_ID=$(echo "$_LAST_OUTPUT" | grep -oE 'ID: [a-z0-9]+-[a-z0-9]+' | sed 's/ID: //')
+if [[ -n "$TPL_WATCH_ID" ]]; then
+  run_test "清理模板 Watch"                 $CLI watch:delete "$TPL_WATCH_ID"
+fi
+assert_fails "watch:from-template 无效模板" $CLI watch:from-template nonexistent-tpl
+run_test "watch:state 查看共享状态"         $CLI watch:state
+run_test "watch:state set 设置状态"         $CLI watch:state set testKey '"value"'
+run_test "watch:state clear 清除状态"       $CLI watch:state clear
+
 # ══════════════════════════════════════════════════════════════
 echo ""
 echo -e "${CYAN}[9/12] PTY 命令执行${NC}"

@@ -732,6 +732,73 @@ async function sensorHeartbeat(): Promise<void> {
   console.log('Heartbeat triggered.')
 }
 
+async function watchTemplates(): Promise<void> {
+  const { watchTemplates: templates } = require('../services/watch/templates')
+  console.log(`\n  Watch Templates (${templates.length}):\n`)
+  for (const tpl of templates) {
+    console.log(`  ${tpl.icon}  ${tpl.id.padEnd(24)} ${tpl.name}`)
+    console.log(`      ${tpl.description}\n`)
+  }
+}
+
+async function watchFromTemplate(args: string[]): Promise<void> {
+  const templateId = args[0]
+  if (!templateId) {
+    console.error('Error: template ID is required.')
+    console.error('Usage: sft watch:from-template <template-id>')
+    console.error('Run `sft watch:templates` to see available templates.')
+    process.exit(1)
+  }
+
+  const { getWatchService } = require('../services/watch/watch.service')
+  const service = getWatchService()
+  try {
+    const watch = service.createFromTemplate(templateId)
+    console.log(`Watch created from template "${templateId}":`)
+    console.log(`  ID: ${watch.id}`)
+    console.log(`  Name: ${watch.name}`)
+    console.log(`  Triggers: ${watch.triggers.map((t: any) => t.type).join(', ')}`)
+  } catch (err: any) {
+    console.error('Error:', err.message)
+    process.exit(1)
+  }
+}
+
+async function watchSharedState(args: string[]): Promise<void> {
+  const { getWatchStore } = require('../services/watch/store')
+  const store = getWatchStore()
+  const subcommand = args[0]
+
+  if (subcommand === 'clear') {
+    store.clearSharedState()
+    console.log('Shared state cleared.')
+    return
+  }
+
+  if (subcommand === 'set' && args[1] && args[2]) {
+    try {
+      const value = JSON.parse(args[2])
+      store.setSharedState(args[1], value)
+      console.log(`Shared state "${args[1]}" set.`)
+    } catch {
+      store.setSharedState(args[1], args[2])
+      console.log(`Shared state "${args[1]}" set.`)
+    }
+    return
+  }
+
+  const state = store.getSharedState()
+  if (Object.keys(state).length === 0) {
+    console.log('No shared state.')
+    return
+  }
+  console.log('\n  Shared State:\n')
+  for (const [key, value] of Object.entries(state)) {
+    console.log(`  ${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`)
+  }
+  console.log()
+}
+
 // ==================== SSH Session Commands ====================
 
 async function sshList(): Promise<void> {
@@ -1397,7 +1464,7 @@ Scheduler:
 
 Watch (Sensor Loop):
   watch:list                 List all watches
-  watch:create               Create a watch (interactive)
+  watch:create               Create a watch
     --name <name>            Watch name
     --prompt <prompt>        Agent prompt
     --cron <expression>      Cron trigger
@@ -1408,6 +1475,9 @@ Watch (Sensor Loop):
   watch:history              Show watch execution history
     --watch <id>             Filter by watch
     --limit <n>              Number of records (default: 10)
+  watch:templates            List available watch templates
+  watch:from-template <id>   Create watch from template
+  watch:state [clear|set]    View/manage shared workflow state
   sensor:status              Show sensor status
   sensor:heartbeat           Trigger a heartbeat now
 
@@ -1521,6 +1591,9 @@ async function main(): Promise<void> {
       case 'watch:trigger':     await watchTrigger(cmdArgs); break
       case 'watch:delete':      await watchDelete(cmdArgs); break
       case 'watch:history':     await watchHistory(cmdArgs); break
+      case 'watch:templates':   await watchTemplates(); break
+      case 'watch:from-template': await watchFromTemplate(cmdArgs); break
+      case 'watch:state':       await watchSharedState(cmdArgs); break
       case 'sensor:status':     await sensorStatus(); break
       case 'sensor:heartbeat':  await sensorHeartbeat(); break
 

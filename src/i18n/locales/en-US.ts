@@ -1959,10 +1959,39 @@ export default {
     confirmDelete: 'Delete "{name}"?',
     confirmClearHistory: 'Clear all execution history?',
 
+    triggerFileChange: 'File Change',
+    triggerCalendar: 'Calendar',
+    triggerEmail: 'New Email',
+
+    filePathsLabel: 'Watch Paths',
+    filePathsPlaceholder: 'File or directory paths, comma-separated',
+    filePatternLabel: 'Glob Filter',
+
+    calendarBeforeLabel: 'Remind Before',
+    calendarIcsLabel: '.ics File Path',
+    calendarIcsPlaceholder: 'Leave empty to use system calendar',
+
+    emailFromLabel: 'From Filter',
+    emailFromPlaceholder: 'Keyword in sender address (optional)',
+    emailSubjectLabel: 'Subject Filter',
+    emailSubjectPlaceholder: 'Keyword in subject (optional)',
+
+    templates: 'Templates',
+    templateAll: 'All',
+    templateDaily: 'Daily',
+    templateEmail: 'Email',
+    templateMonitor: 'Monitor',
+    useTemplate: 'Use',
+    noTemplates: 'No templates in this category',
+
+    sharedState: 'Shared State',
+    confirmClearSharedState: 'Clear all shared state? This may affect stateful workflows.',
+
     validation: {
       nameRequired: 'Watch name is required',
       promptRequired: 'Task prompt is required',
       triggerRequired: 'At least one trigger is required',
+      filePathRequired: 'File change trigger requires at least one path',
     },
 
     webhookUrl: 'Webhook URL',

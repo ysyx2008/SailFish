@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { X, Plus, Play, Trash2, Edit3, Eye, EyeOff, RefreshCw, History, Clock, Heart, Globe, Zap, Terminal, Server, MessageSquare, Bell, Send, FileText, ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { X, Plus, Play, Trash2, Edit3, Eye, EyeOff, RefreshCw, History, Clock, Heart, Globe, Zap, Terminal, Server, MessageSquare, Bell, Send, FileText, ChevronDown, ChevronRight, FolderOpen, Calendar, Mail, BookTemplate, LayoutTemplate, Database } from 'lucide-vue-next'
 
 const { t } = useI18n()
 
 // ==================== 类型 ====================
 
-type WatchTriggerType = 'cron' | 'interval' | 'heartbeat' | 'webhook' | 'manual'
+type WatchTriggerType = 'cron' | 'interval' | 'heartbeat' | 'webhook' | 'manual' | 'file_change' | 'calendar' | 'email'
 type WatchPriority = 'high' | 'normal' | 'low'
 type WatchOutputType = 'im' | 'notification' | 'log' | 'silent'
 type WatchRunStatus = 'completed' | 'failed' | 'skipped' | 'timeout' | 'cancelled' | 'running'
@@ -17,6 +17,22 @@ interface WatchTrigger {
   expression?: string
   seconds?: number
   token?: string
+  paths?: string[]
+  pattern?: string
+  events?: Array<'add' | 'change' | 'unlink'>
+  icsPath?: string
+  beforeMinutes?: number
+  filter?: { from?: string; subject?: string; unseen?: boolean }
+}
+
+interface WatchTemplateInfo {
+  id: string
+  name: string
+  nameEn: string
+  description: string
+  descriptionEn: string
+  category: string
+  icon: string
 }
 
 interface WatchDefinition {
@@ -60,8 +76,15 @@ const watches = ref<WatchDefinition[]>([])
 const history = ref<WatchHistoryRecord[]>([])
 const loading = ref(true)
 const selectedWatch = ref<WatchDefinition | null>(null)
-const activeTab = ref<'watches' | 'history' | 'sensors'>('watches')
+const activeTab = ref<'watches' | 'history' | 'sensors' | 'templates'>('watches')
 const runningWatches = ref<Set<string>>(new Set())
+
+// 模板
+const templates = ref<WatchTemplateInfo[]>([])
+const selectedTemplateCategory = ref<string>('all')
+
+// 共享状态
+const sharedState = ref<Record<string, unknown>>({})
 
 // 编辑器状态
 const showEditor = ref(false)
@@ -83,6 +106,14 @@ const formPriority = ref<WatchPriority>('normal')
 const formEnabled = ref(true)
 const formSkills = ref('')
 
+// 新触发器表单
+const formFilePaths = ref('')
+const formFilePattern = ref('')
+const formCalendarIcsPath = ref('')
+const formCalendarBeforeMinutes = ref(15)
+const formEmailFrom = ref('')
+const formEmailSubject = ref('')
+
 // Sensor 状态
 const sensorStatus = ref<Array<{ id: string; name: string; running: boolean }>>([])
 const recentEvents = ref<Array<{ id: string; type: string; source: string; timestamp: number }>>([])
@@ -103,12 +134,19 @@ const getTriggerLabel = (trigger: WatchTrigger): string => {
     case 'heartbeat': return t('watch.triggerHeartbeat')
     case 'webhook': return 'Webhook'
     case 'manual': return t('watch.triggerManual')
+    case 'file_change': return t('watch.triggerFileChange')
+    case 'calendar': return `${t('watch.triggerCalendar')} (${trigger.beforeMinutes}min)`
+    case 'email': return t('watch.triggerEmail')
     default: return trigger.type
   }
 }
 
-const getTriggerIcon = (type: WatchTriggerType) => {
-  const map: Record<WatchTriggerType, any> = { cron: Clock, interval: RefreshCw, heartbeat: Heart, webhook: Globe, manual: Zap }
+const getTriggerIcon = (type: WatchTriggerType | string) => {
+  const map: Record<string, any> = {
+    cron: Clock, interval: RefreshCw, heartbeat: Heart,
+    webhook: Globe, manual: Zap,
+    file_change: FolderOpen, calendar: Calendar, email: Mail
+  }
   return map[type] || Zap
 }
 
@@ -158,6 +196,47 @@ const loadData = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const loadTemplates = async () => {
+  try {
+    templates.value = await window.electronAPI.watch.getTemplates()
+  } catch (e) {
+    console.error('Failed to load templates:', e)
+  }
+}
+
+const loadSharedState = async () => {
+  try {
+    sharedState.value = await window.electronAPI.watch.getSharedState()
+  } catch (e) {
+    console.error('Failed to load shared state:', e)
+  }
+}
+
+const filteredTemplates = computed(() => {
+  if (selectedTemplateCategory.value === 'all') return templates.value
+  return templates.value.filter(t => t.category === selectedTemplateCategory.value)
+})
+
+const useTemplate = async (tpl: WatchTemplateInfo) => {
+  try {
+    const watch = await window.electronAPI.watch.createFromTemplate(tpl.id)
+    if (watch) {
+      activeTab.value = 'watches'
+      await loadData()
+      selectedWatch.value = watches.value.find(w => w.id === watch.id) || null
+      openEdit(selectedWatch.value!)
+    }
+  } catch (e) {
+    console.error('Failed to create from template:', e)
+  }
+}
+
+const clearSharedState = async () => {
+  if (!confirm(t('watch.confirmClearSharedState'))) return
+  await window.electronAPI.watch.clearSharedState()
+  sharedState.value = {}
 }
 
 const loadSensorData = async () => {
@@ -246,6 +325,12 @@ const openCreate = () => {
   formPriority.value = 'normal'
   formEnabled.value = true
   formSkills.value = ''
+  formFilePaths.value = ''
+  formFilePattern.value = ''
+  formCalendarIcsPath.value = ''
+  formCalendarBeforeMinutes.value = 15
+  formEmailFrom.value = ''
+  formEmailSubject.value = ''
   showEditor.value = true
 }
 
@@ -269,6 +354,17 @@ const openEdit = (w: WatchDefinition) => {
   formPriority.value = w.priority
   formEnabled.value = w.enabled
   formSkills.value = w.skills?.join(', ') || ''
+
+  const fileChangeTrigger = w.triggers.find(t => t.type === 'file_change')
+  formFilePaths.value = fileChangeTrigger?.paths?.join(', ') || ''
+  formFilePattern.value = fileChangeTrigger?.pattern || ''
+  const calTrigger = w.triggers.find(t => t.type === 'calendar')
+  formCalendarIcsPath.value = calTrigger?.icsPath || ''
+  formCalendarBeforeMinutes.value = calTrigger?.beforeMinutes || 15
+  const emailTrigger = w.triggers.find(t => t.type === 'email')
+  formEmailFrom.value = emailTrigger?.filter?.from || ''
+  formEmailSubject.value = emailTrigger?.filter?.subject || ''
+
   showEditor.value = true
 }
 
@@ -299,6 +395,20 @@ const saveWatch = async () => {
   if (formTriggerTypes.value.has('heartbeat')) triggers.push({ type: 'heartbeat' })
   if (formTriggerTypes.value.has('webhook')) triggers.push({ type: 'webhook', token: '' })
   if (formTriggerTypes.value.has('manual')) triggers.push({ type: 'manual' })
+  if (formTriggerTypes.value.has('file_change')) {
+    const paths = formFilePaths.value.split(',').map(p => p.trim()).filter(Boolean)
+    if (paths.length === 0) { alert(t('watch.validation.filePathRequired')); return }
+    triggers.push({ type: 'file_change', paths, pattern: formFilePattern.value.trim() || undefined } as any)
+  }
+  if (formTriggerTypes.value.has('calendar')) {
+    triggers.push({ type: 'calendar', beforeMinutes: formCalendarBeforeMinutes.value, icsPath: formCalendarIcsPath.value.trim() || undefined } as any)
+  }
+  if (formTriggerTypes.value.has('email')) {
+    const filter: any = { unseen: true }
+    if (formEmailFrom.value.trim()) filter.from = formEmailFrom.value.trim()
+    if (formEmailSubject.value.trim()) filter.subject = formEmailSubject.value.trim()
+    triggers.push({ type: 'email', filter } as any)
+  }
 
   const skills = formSkills.value.trim() ? formSkills.value.split(',').map(s => s.trim()).filter(Boolean) : undefined
 
@@ -358,6 +468,8 @@ let cleanupCompleted: (() => void) | null = null
 
 onMounted(async () => {
   await loadData()
+  loadTemplates()
+  loadSharedState()
   refreshTimer = setInterval(loadData, 30000)
 
   // 监听 Watch 执行事件
@@ -406,7 +518,11 @@ onUnmounted(() => {
               <History :size="14" />
               {{ t('watch.history') }}
             </button>
-            <button :class="{ active: activeTab === 'sensors' }" @click="activeTab = 'sensors'; loadSensorData()">
+            <button :class="{ active: activeTab === 'templates' }" @click="activeTab = 'templates'; loadTemplates()">
+              <LayoutTemplate :size="14" />
+              {{ t('watch.templates') }}
+            </button>
+            <button :class="{ active: activeTab === 'sensors' }" @click="activeTab = 'sensors'; loadSensorData(); loadSharedState()">
               <Heart :size="14" />
               {{ t('watch.sensors') }}
             </button>
@@ -512,6 +628,37 @@ onUnmounted(() => {
             </div>
           </template>
 
+          <!-- 模板面板 -->
+          <template v-if="activeTab === 'templates'">
+            <div class="list-toolbar">
+              <div class="category-filter">
+                <button class="filter-btn" :class="{ active: selectedTemplateCategory === 'all' }" @click="selectedTemplateCategory = 'all'">{{ t('watch.templateAll') }}</button>
+                <button class="filter-btn" :class="{ active: selectedTemplateCategory === 'daily' }" @click="selectedTemplateCategory = 'daily'">{{ t('watch.templateDaily') }}</button>
+                <button class="filter-btn" :class="{ active: selectedTemplateCategory === 'email' }" @click="selectedTemplateCategory = 'email'">{{ t('watch.templateEmail') }}</button>
+                <button class="filter-btn" :class="{ active: selectedTemplateCategory === 'devops' }" @click="selectedTemplateCategory = 'devops'">DevOps</button>
+                <button class="filter-btn" :class="{ active: selectedTemplateCategory === 'monitor' }" @click="selectedTemplateCategory = 'monitor'">{{ t('watch.templateMonitor') }}</button>
+              </div>
+            </div>
+
+            <div class="template-list">
+              <div v-for="tpl in filteredTemplates" :key="tpl.id" class="template-item" @click="useTemplate(tpl)">
+                <div class="template-icon">{{ tpl.icon }}</div>
+                <div class="template-info">
+                  <div class="template-name">{{ tpl.name }}</div>
+                  <div class="template-desc">{{ tpl.description }}</div>
+                </div>
+                <button class="btn btn-sm btn-primary" @click.stop="useTemplate(tpl)">
+                  <Plus :size="12" /> {{ t('watch.useTemplate') }}
+                </button>
+              </div>
+
+              <div v-if="filteredTemplates.length === 0" class="empty-state">
+                <LayoutTemplate :size="48" class="empty-icon" />
+                <p>{{ t('watch.noTemplates') }}</p>
+              </div>
+            </div>
+          </template>
+
           <!-- 传感器面板 -->
           <template v-if="activeTab === 'sensors'">
             <div class="list-toolbar">
@@ -548,6 +695,21 @@ onUnmounted(() => {
                     {{ e.type }}
                   </span>
                   <span class="event-source">{{ e.source }}</span>
+                </div>
+              </div>
+
+              <div v-if="Object.keys(sharedState).length > 0" class="shared-state-section">
+                <div class="shared-state-header">
+                  <h4><Database :size="12" /> {{ t('watch.sharedState') }}</h4>
+                  <button class="btn btn-sm btn-danger" @click="clearSharedState">
+                    <Trash2 :size="12" />
+                  </button>
+                </div>
+                <div class="shared-state-content">
+                  <div v-for="(value, key) in sharedState" :key="String(key)" class="state-item">
+                    <span class="state-key">{{ String(key) }}</span>
+                    <span class="state-value">{{ typeof value === 'object' ? JSON.stringify(value) : String(value) }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -609,6 +771,21 @@ onUnmounted(() => {
                     <Zap :size="14" />
                     <span>{{ t('watch.triggerManual') }}</span>
                   </label>
+                  <label class="trigger-option" :class="{ selected: formTriggerTypes.has('file_change') }">
+                    <input type="checkbox" :checked="formTriggerTypes.has('file_change')" @change="toggleTrigger('file_change')" />
+                    <FolderOpen :size="14" />
+                    <span>{{ t('watch.triggerFileChange') }}</span>
+                  </label>
+                  <label class="trigger-option" :class="{ selected: formTriggerTypes.has('calendar') }">
+                    <input type="checkbox" :checked="formTriggerTypes.has('calendar')" @change="toggleTrigger('calendar')" />
+                    <Calendar :size="14" />
+                    <span>{{ t('watch.triggerCalendar') }}</span>
+                  </label>
+                  <label class="trigger-option" :class="{ selected: formTriggerTypes.has('email') }">
+                    <input type="checkbox" :checked="formTriggerTypes.has('email')" @change="toggleTrigger('email')" />
+                    <Mail :size="14" />
+                    <span>{{ t('watch.triggerEmail') }}</span>
+                  </label>
                 </div>
 
                 <div v-if="formTriggerTypes.has('cron')" class="trigger-config">
@@ -628,6 +805,30 @@ onUnmounted(() => {
                       <option value="h">hr</option>
                     </select>
                   </div>
+                </div>
+
+                <div v-if="formTriggerTypes.has('file_change')" class="trigger-config">
+                  <label class="form-label-sm">{{ t('watch.filePathsLabel') }}</label>
+                  <input type="text" v-model="formFilePaths" class="form-input" :placeholder="t('watch.filePathsPlaceholder')" />
+                  <label class="form-label-sm" style="margin-top: 6px">{{ t('watch.filePatternLabel') }}</label>
+                  <input type="text" v-model="formFilePattern" class="form-input" placeholder="*.log, *.txt" />
+                </div>
+
+                <div v-if="formTriggerTypes.has('calendar')" class="trigger-config">
+                  <label class="form-label-sm">{{ t('watch.calendarBeforeLabel') }}</label>
+                  <div class="interval-input">
+                    <input type="number" v-model.number="formCalendarBeforeMinutes" class="form-input interval-value" min="1" max="1440" />
+                    <span class="unit-text">min</span>
+                  </div>
+                  <label class="form-label-sm" style="margin-top: 6px">{{ t('watch.calendarIcsLabel') }}</label>
+                  <input type="text" v-model="formCalendarIcsPath" class="form-input" :placeholder="t('watch.calendarIcsPlaceholder')" />
+                </div>
+
+                <div v-if="formTriggerTypes.has('email')" class="trigger-config">
+                  <label class="form-label-sm">{{ t('watch.emailFromLabel') }}</label>
+                  <input type="text" v-model="formEmailFrom" class="form-input" :placeholder="t('watch.emailFromPlaceholder')" />
+                  <label class="form-label-sm" style="margin-top: 6px">{{ t('watch.emailSubjectLabel') }}</label>
+                  <input type="text" v-model="formEmailSubject" class="form-input" :placeholder="t('watch.emailSubjectPlaceholder')" />
                 </div>
               </div>
 
@@ -1103,4 +1304,36 @@ onUnmounted(() => {
 
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .spinning { animation: spin 1s linear infinite; }
+
+/* 模板 */
+.category-filter { display: flex; gap: 4px; flex-wrap: wrap; }
+.filter-btn { padding: 2px 8px; border: 1px solid var(--border-color); background: none; color: var(--text-secondary); cursor: pointer; border-radius: 4px; font-size: 10px; }
+.filter-btn:hover { border-color: var(--accent-color); }
+.filter-btn.active { border-color: var(--accent-color); background: rgba(var(--accent-rgb, 59, 130, 246), 0.1); color: var(--accent-color); }
+
+.template-list { flex: 1; overflow-y: auto; padding: 4px; }
+.template-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 2px;
+}
+.template-item:hover { background: var(--bg-hover); }
+.template-icon { font-size: 24px; min-width: 36px; text-align: center; }
+.template-info { flex: 1; min-width: 0; }
+.template-name { font-size: 13px; font-weight: 500; }
+.template-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 共享状态 */
+.shared-state-section { padding: 12px; border-top: 1px solid var(--border-color); margin-top: 8px; }
+.shared-state-header { display: flex; align-items: center; justify-content: space-between; }
+.shared-state-header h4 { font-size: 12px; color: var(--text-secondary); margin: 0; display: flex; align-items: center; gap: 4px; }
+.shared-state-content { margin-top: 8px; }
+.state-item { display: flex; gap: 8px; padding: 3px 0; font-size: 11px; }
+.state-key { color: var(--accent-color); min-width: 80px; font-weight: 500; }
+.state-value { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.unit-text { font-size: 12px; color: var(--text-muted); }
 </style>

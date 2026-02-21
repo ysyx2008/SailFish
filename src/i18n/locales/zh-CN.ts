@@ -1968,11 +1968,46 @@ export default {
     confirmDelete: '确定要删除 "{name}" 吗？',
     confirmClearHistory: '确定要清除所有执行历史吗？',
 
+    // 新触发器类型
+    triggerFileChange: '文件变化',
+    triggerCalendar: '日历事件',
+    triggerEmail: '新邮件',
+
+    // 文件变化触发器
+    filePathsLabel: '监控路径',
+    filePathsPlaceholder: '文件或目录路径，逗号分隔',
+    filePatternLabel: 'Glob 过滤',
+
+    // 日历触发器
+    calendarBeforeLabel: '提前提醒',
+    calendarIcsLabel: '.ics 文件路径',
+    calendarIcsPlaceholder: '留空则使用系统日历',
+
+    // 邮件触发器
+    emailFromLabel: '发件人过滤',
+    emailFromPlaceholder: '发件人包含的关键词（可选）',
+    emailSubjectLabel: '主题过滤',
+    emailSubjectPlaceholder: '主题包含的关键词（可选）',
+
+    // 模板
+    templates: '模板',
+    templateAll: '全部',
+    templateDaily: '日常',
+    templateEmail: '邮件',
+    templateMonitor: '监控',
+    useTemplate: '使用',
+    noTemplates: '该分类下暂无模板',
+
+    // 共享状态
+    sharedState: '共享状态',
+    confirmClearSharedState: '确定要清除所有共享状态吗？这可能影响有状态工作流。',
+
     // 验证
     validation: {
       nameRequired: '请输入 Watch 名称',
       promptRequired: '请输入任务指令',
       triggerRequired: '至少选择一种触发方式',
+      filePathRequired: '文件变化触发器需要至少一个监控路径',
     },
 
     // Webhook

@@ -222,15 +222,22 @@ Watch 执行结果可通过 IM 推送：
 - [x] 测试用例集成到 test-cli.sh（51 总测试，48 通过，0 失败）
 - [x] Claude 代码审查 + 修复所有 Critical/High 问题
 
-### Phase 2：更多传感器（后续迭代）
-- [ ] Email Sensor（IMAP IDLE）
-- [ ] Calendar Sensor（事件倒计时）
-- [ ] 文件变化 Sensor（fs.watch）
+### Phase 2：更多传感器（已完成）
+- [x] Email Sensor（IMAP IDLE 长连接 + 凭证回调 + 指数退避重连）
+- [x] Calendar Sensor（.ics 文件解析 + 系统日历发现 + 去重通知）
+- [x] 文件变化 Sensor（fs.watch + 路径安全检查 + 去抖 + glob 过滤）
+- [x] 传感器自动启停（Watch 创建/删除时自动注册/注销 target）
+- [x] 新触发器类型定义（FileChangeTrigger / CalendarTrigger / EmailTrigger）
+- [x] WatchService 事件上下文增强（file_change / calendar / email 事件注入 prompt）
+- [x] Claude 代码审查 + 修复 4 Critical / 6 High 问题
 
-### Phase 3：高级特性（远期）
-- [ ] 有状态工作流（Watch 间共享状态）
-- [ ] Agent Tab（专属 Watch 的可视化视图）
-- [ ] Watch 模板市场
+### Phase 3：高级特性（已完成）
+- [x] 有状态工作流（Watch 自身状态 + 跨 Watch 共享状态 + 状态自动提取 + Schema 验证）
+- [x] Watch 模板市场（8 个内置模板，5 个分类，CLI + 前端支持）
+- [x] WatchManager UI 增强（模板面板 + 新传感器触发器编辑 + 共享状态面板）
+- [x] CLI 新增 3 命令（watch:templates / watch:from-template / watch:state）
+- [x] i18n 完整覆盖（中英双语）
+- [x] 测试 58 总计，55 通过，0 失败
 
 ## 7. 设计原则
 

@@ -14,13 +14,15 @@ import type {
 interface WatchStoreSchema {
   watches: WatchDefinition[]
   history: WatchHistoryRecord[]
+  sharedState: Record<string, unknown>
 }
 
 const MAX_HISTORY_RECORDS = 500
 
 const defaults: WatchStoreSchema = {
   watches: [],
-  history: []
+  history: [],
+  sharedState: {}
 }
 
 export class WatchStore {
@@ -165,6 +167,34 @@ export class WatchStore {
     }
   }
 
+  // ==================== 共享状态 ====================
+
+  getSharedState(): Record<string, unknown> {
+    return this.store.get('sharedState') || {}
+  }
+
+  setSharedState(key: string, value: unknown): void {
+    const state = this.getSharedState()
+    state[key] = value
+    this.store.set('sharedState', state)
+  }
+
+  mergeSharedState(updates: Record<string, unknown>): void {
+    const state = this.getSharedState()
+    Object.assign(state, updates)
+    this.store.set('sharedState', state)
+  }
+
+  deleteSharedStateKey(key: string): void {
+    const state = this.getSharedState()
+    delete state[key]
+    this.store.set('sharedState', state)
+  }
+
+  clearSharedState(): void {
+    this.store.set('sharedState', {})
+  }
+
   // ==================== 辅助 ====================
 
   private generateId(): string {
@@ -176,13 +206,15 @@ export class WatchStore {
   exportData(): WatchStoreSchema {
     return {
       watches: this.getAll(),
-      history: this.store.get('history') || []
+      history: this.store.get('history') || [],
+      sharedState: this.getSharedState()
     }
   }
 
   importData(data: Partial<WatchStoreSchema>): void {
     if (data.watches) this.store.set('watches', data.watches)
     if (data.history) this.store.set('history', data.history)
+    if (data.sharedState) this.store.set('sharedState', data.sharedState)
   }
 }
 

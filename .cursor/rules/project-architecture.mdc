@@ -61,13 +61,17 @@ SFTerminal/
 │       │   ├── task-memory.ts   # 任务记忆（多层压缩存储）
 │       │   └── risk-assessor.ts # 风险评估
 │       ├── watch/               # Watch 感知层
-│       │   ├── types.ts         # Watch 数据模型（WatchDefinition, WatchTrigger 等）
-│       │   ├── store.ts         # Watch 持久化（electron-store）
-│       │   └── watch.service.ts # Watch CRUD + 事件匹配 + Agent 执行引擎
+│       │   ├── types.ts         # Watch 数据模型（WatchDefinition, 8 种 WatchTrigger）
+│       │   ├── store.ts         # Watch 持久化 + 共享状态存储
+│       │   ├── watch.service.ts # Watch CRUD + 事件匹配 + Agent 执行 + 状态管理
+│       │   └── templates.ts     # 内置 Watch 模板（8 个预设，5 个分类）
 │       ├── sensor/              # 传感器系统
 │       │   ├── types.ts         # 事件类型（SensorEvent, Sensor 接口）
 │       │   ├── event-bus.ts     # 内存事件总线（优先级队列）
 │       │   ├── heartbeat-sensor.ts # 心跳传感器
+│       │   ├── file-watch-sensor.ts # 文件变化传感器（fs.watch）
+│       │   ├── calendar-sensor.ts # 日历事件传感器（iCalendar 解析）
+│       │   ├── email-sensor.ts  # 邮件传感器（IMAP IDLE 长连接）
 │       │   └── index.ts         # SensorService（传感器生命周期管理）
 │       ├── knowledge/           # 知识库（向量存储 + 嵌入）
 │       ├── im/                  # IM 集成（钉钉/飞书/企业微信/Slack/Telegram）
@@ -141,10 +145,12 @@ SFTerminal/
 
 ### Watch 感知层（Sensor Loop）
 - **Watch**：Agent 的"关注点"配置，定义触发条件、执行 prompt、输出渠道
-- **触发器**：cron / interval / heartbeat / webhook / manual
-- **传感器**：HeartbeatSensor（周期性唤醒）；通过 EventBus 驱动
+- **触发器（8 种）**：cron / interval / heartbeat / webhook / manual / file_change / calendar / email
+- **传感器（4 种）**：HeartbeatSensor / FileWatchSensor / CalendarSensor / EmailSensor
 - **Webhook**：Gateway 的 `POST /hooks/:token` 端点，外部系统可触发 Watch
 - **Pre-check**：执行前让 AI 自主判断"该不该做"（Agency of Omission）
+- **有状态工作流**：Watch 自身状态 + 跨 Watch 共享状态，Agent 可通过 `STATE_UPDATE` / `SHARED_UPDATE` 指令自动更新
+- **模板系统**：8 个内置模板（晨间简报 / 日历提醒 / 邮件分类 / 日志监控 / 部署通知 / 服务器巡检 / 文件监控 / 工作总结）
 - **串行执行**：所有事件通过 EventBus 排队，Watch 依次处理，不并发
 - **详细设计**：见 `docs/sensor-loop-architecture.md`
 
