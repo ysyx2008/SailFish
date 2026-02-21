@@ -7,7 +7,9 @@
 
 // ==================== 事件 ====================
 
-export type SensorEventType = 'heartbeat' | 'cron' | 'interval' | 'webhook' | 'manual'
+export type SensorEventType =
+  | 'heartbeat' | 'cron' | 'interval' | 'webhook' | 'manual'
+  | 'file_change' | 'calendar' | 'email'
 
 export type SensorEventPriority = 'high' | 'normal' | 'low'
 
@@ -35,6 +37,8 @@ export interface Sensor {
   start(): Promise<void>
   /** 停止传感器 */
   stop(): Promise<void>
+  /** 是否应该启动（有 target 等前置条件） */
+  shouldAutoStart?(): boolean
 }
 
 /** 事件处理回调 */

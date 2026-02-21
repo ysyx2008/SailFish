@@ -917,6 +917,7 @@ app.whenReady().then(async () => {
         configService,
         agentService,
         aiService,
+        sensorService,
         mainWindow
       })
       watchService.start().catch(e => {
@@ -1935,6 +1936,42 @@ ipcMain.handle('sensor:setHeartbeat', async (_event, enabled: boolean, intervalM
 
 ipcMain.handle('sensor:triggerHeartbeat', async () => {
   sensorService.heartbeat.beat()
+  return { success: true }
+})
+
+// Watch 模板
+ipcMain.handle('watch:getTemplates', async () => {
+  return watchService.getTemplates().map(t => ({
+    id: t.id,
+    name: t.name,
+    nameEn: t.nameEn,
+    description: t.description,
+    descriptionEn: t.descriptionEn,
+    category: t.category,
+    icon: t.icon
+  }))
+})
+
+ipcMain.handle('watch:getTemplateCategories', async () => {
+  return watchService.getTemplateCategories()
+})
+
+ipcMain.handle('watch:createFromTemplate', async (_event, templateId: string, options?: Record<string, unknown>) => {
+  return watchService.createFromTemplate(templateId, options)
+})
+
+// Watch 共享状态
+ipcMain.handle('watch:getSharedState', async () => {
+  return watchService.getSharedState()
+})
+
+ipcMain.handle('watch:setSharedState', async (_event, key: string, value: unknown) => {
+  watchService.setSharedState(key, value)
+  return { success: true }
+})
+
+ipcMain.handle('watch:clearSharedState', async () => {
+  watchService.clearSharedState()
   return { success: true }
 })
 

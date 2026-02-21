@@ -28,6 +28,8 @@ import type { ConfigService, SshSession } from '../config.service'
 import type { AgentService } from '../agent'
 import type { AgentContext, AgentCallbacks, AgentStep } from '../agent/types'
 import type { AiService } from '../ai.service'
+import type { SensorService } from '../sensor'
+import { watchTemplates, getTemplateById, getAllTemplateCategories, type WatchTemplate } from './templates'
 
 // cron-parser 动态导入
 let CronExpressionParser: any = null
@@ -48,6 +50,7 @@ export interface WatchServiceConfig {
   configService: ConfigService
   agentService: AgentService
   aiService: AiService
+  sensorService: SensorService
   mainWindow: BrowserWindow | null
 }
 
@@ -102,11 +105,12 @@ export class WatchService {
     this.eventHandler = (event) => this.handleEvent(event)
     eventBus.on(this.eventHandler)
 
-    // 调度 cron/interval 触发器
+    // 调度触发器 + 注册传感器 target
     const watches = this.store.getAll()
     for (const watch of watches) {
       if (watch.enabled) {
         this.scheduleTimeTriggers(watch)
+        this.registerSensorTargets(watch)
       }
     }
 
@@ -135,6 +139,12 @@ export class WatchService {
     if (this.checkInterval) {
       clearInterval(this.checkInterval)
       this.checkInterval = null
+    }
+
+    // 清理所有传感器 target
+    const allWatches = this.store.getAll()
+    for (const watch of allWatches) {
+      this.unregisterSensorTargets(watch.id)
     }
 
     // 中止正在运行的 Watch（清理 PTY 和 Agent）
@@ -176,6 +186,7 @@ export class WatchService {
 
     if (watch.enabled && this.isRunning) {
       this.scheduleTimeTriggers(watch)
+      this.registerSensorTargets(watch)
     }
 
     console.log(`[WatchService] Created watch: ${watch.name} (${watch.id})`)
@@ -189,8 +200,10 @@ export class WatchService {
     const watch = this.store.update(id, updates)
     if (watch) {
       this.cancelTimers(id)
+      this.unregisterSensorTargets(id)
       if (watch.enabled && this.isRunning) {
         this.scheduleTimeTriggers(watch)
+        this.registerSensorTargets(watch)
       }
     }
     return watch
@@ -198,6 +211,7 @@ export class WatchService {
 
   delete(id: string): boolean {
     this.cancelTimers(id)
+    this.unregisterSensorTargets(id)
     return this.store.delete(id)
   }
 
@@ -206,8 +220,10 @@ export class WatchService {
     if (watch) {
       if (watch.enabled && this.isRunning) {
         this.scheduleTimeTriggers(watch)
+        this.registerSensorTargets(watch)
       } else {
         this.cancelTimers(id)
+        this.unregisterSensorTargets(id)
       }
     }
     return watch
@@ -219,6 +235,25 @@ export class WatchService {
 
   clearHistory(watchId?: string) {
     this.store.clearHistory(watchId)
+  }
+
+  // ==================== 模板 ====================
+
+  getTemplates(): WatchTemplate[] {
+    return watchTemplates
+  }
+
+  getTemplateCategories() {
+    return getAllTemplateCategories()
+  }
+
+  createFromTemplate(templateId: string, options?: Record<string, unknown>): WatchDefinition {
+    const template = getTemplateById(templateId)
+    if (!template) {
+      throw new Error(`Template not found: ${templateId}`)
+    }
+    const params = template.create(options)
+    return this.create(params)
   }
 
   /** 手动触发 Watch */
@@ -393,6 +428,11 @@ export class WatchService {
           }
         } catch { /* 忽略清理错误 */ }
       }
+    }
+
+    // 提取并保存状态更新
+    if (result.success && result.output) {
+      this.extractAndApplyStateUpdates(watch.id, result.output)
     }
 
     // 记录执行结果
@@ -587,12 +627,34 @@ Should this task run now? Respond in JSON format:
       parts.push(`[Triggered by webhook${payloadStr}]`)
     } else if (event.type === 'manual') {
       parts.push(`[Manually triggered]`)
+    } else if (event.type === 'file_change') {
+      const p = event.payload
+      parts.push(`[File ${p.changeType}: ${p.filename} in ${p.directory}]`)
+    } else if (event.type === 'calendar') {
+      const p = event.payload
+      parts.push(`[Upcoming calendar event: "${p.summary}" starts in ${p.minutesUntilStart} minutes${p.location ? `, location: ${p.location}` : ''}]`)
+    } else if (event.type === 'email') {
+      const p = event.payload
+      parts.push(`[New email from ${p.fromName || p.from}: "${p.subject}"]`)
     }
 
-    // Watch 状态（工作流延续）
+    // Watch 自身状态（工作流延续）
     if (watch.state && Object.keys(watch.state).length > 0) {
-      parts.push(`[Workflow state: ${JSON.stringify(watch.state).substring(0, 500)}]`)
+      parts.push(`[Watch state from last execution: ${JSON.stringify(watch.state).substring(0, 500)}]`)
     }
+
+    // 共享状态（跨 Watch 上下文）
+    const sharedState = this.store.getSharedState()
+    if (Object.keys(sharedState).length > 0) {
+      parts.push(`[Shared context: ${JSON.stringify(sharedState).substring(0, 800)}]`)
+    }
+
+    // 状态管理指令
+    parts.push(
+      '\n[If you need to save state for future executions, include at the end of your response:',
+      'STATE_UPDATE: {"key": "value"} for watch-specific state,',
+      'SHARED_UPDATE: {"key": "value"} for cross-watch shared context.]'
+    )
 
     // 技能提示
     if (watch.skills && watch.skills.length > 0) {
@@ -803,6 +865,122 @@ Should this task run now? Respond in JSON format:
     }
   }
 
+  // ==================== 状态管理 ====================
+
+  getSharedState(): Record<string, unknown> {
+    return this.store.getSharedState()
+  }
+
+  setSharedState(key: string, value: unknown): void {
+    this.store.setSharedState(key, value)
+  }
+
+  clearSharedState(): void {
+    this.store.clearSharedState()
+  }
+
+  private static readonly MAX_STATE_JSON_LENGTH = 2000
+  private static readonly MAX_STATE_KEYS = 20
+
+  private extractAndApplyStateUpdates(watchId: string, output: string): void {
+    try {
+      this.applyStateUpdate(output, /STATE_UPDATE:\s*(\{[^}]{1,2000}\})/i, (parsed) => {
+        const currentState = this.store.get(watchId)?.state || {}
+        this.store.updateState(watchId, { ...currentState, ...parsed })
+        console.log(`[WatchService] Updated state for watch ${watchId}`)
+      })
+
+      this.applyStateUpdate(output, /SHARED_UPDATE:\s*(\{[^}]{1,2000}\})/i, (parsed) => {
+        this.store.mergeSharedState(parsed)
+        console.log('[WatchService] Updated shared state')
+      })
+    } catch (err) {
+      console.error('[WatchService] Failed to extract state updates:', err)
+    }
+  }
+
+  private applyStateUpdate(
+    output: string,
+    pattern: RegExp,
+    apply: (data: Record<string, unknown>) => void
+  ): void {
+    const match = output.match(pattern)
+    if (!match?.[1]) return
+
+    try {
+      const parsed = JSON.parse(match[1])
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return
+
+      const keys = Object.keys(parsed)
+      if (keys.length > WatchService.MAX_STATE_KEYS) return
+
+      const sanitized: Record<string, unknown> = {}
+      for (const key of keys) {
+        if (typeof key !== 'string' || key.length > 100) continue
+        const val = parsed[key]
+        if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean' || val === null) {
+          sanitized[key] = typeof val === 'string' ? val.slice(0, 500) : val
+        }
+      }
+
+      if (Object.keys(sanitized).length > 0) {
+        apply(sanitized)
+      }
+    } catch { /* invalid JSON, skip */ }
+  }
+
+  // ==================== 传感器 target 管理 ====================
+
+  private registerSensorTargets(watch: WatchDefinition): void {
+    const sensor = this.config?.sensorService
+    if (!sensor) return
+
+    for (const trigger of watch.triggers) {
+      try {
+        if (trigger.type === 'file_change') {
+          sensor.fileWatch.addTarget(watch.id, {
+            paths: trigger.paths,
+            pattern: trigger.pattern,
+            events: trigger.events
+          })
+          if (!sensor.fileWatch.running && sensor.running) {
+            sensor.fileWatch.start().catch(err =>
+              console.error('[WatchService] Failed to start FileWatchSensor:', err)
+            )
+          }
+        } else if (trigger.type === 'calendar') {
+          sensor.calendar.addTarget(watch.id, {
+            icsPath: trigger.icsPath,
+            beforeMinutes: trigger.beforeMinutes
+          })
+          if (!sensor.calendar.running && sensor.running) {
+            sensor.calendar.start().catch(err =>
+              console.error('[WatchService] Failed to start CalendarSensor:', err)
+            )
+          }
+        } else if (trigger.type === 'email') {
+          sensor.email.addTarget(watch.id, trigger.filter)
+          if (!sensor.email.running && sensor.running) {
+            sensor.email.start().catch(err =>
+              console.error('[WatchService] Failed to start EmailSensor:', err)
+            )
+          }
+        }
+      } catch (err) {
+        console.error(`[WatchService] Failed to register sensor target for watch ${watch.id}:`, err)
+      }
+    }
+  }
+
+  private unregisterSensorTargets(watchId: string): void {
+    const sensor = this.config?.sensorService
+    if (!sensor) return
+
+    sensor.fileWatch.removeTarget(watchId)
+    sensor.calendar.removeTarget(watchId)
+    sensor.email.removeTarget(watchId)
+  }
+
   // ==================== 工具 ====================
 
   private notifyFrontend(channel: string, data: Record<string, unknown>): void {
@@ -843,6 +1021,18 @@ Should this task run now? Respond in JSON format:
         case 'heartbeat':
         case 'webhook':
         case 'manual':
+          break
+        case 'file_change':
+          if (!trigger.paths || trigger.paths.length === 0) {
+            throw new Error('File change trigger requires at least one path')
+          }
+          break
+        case 'calendar':
+          if (typeof trigger.beforeMinutes !== 'number' || trigger.beforeMinutes < 1) {
+            throw new Error('Calendar trigger requires beforeMinutes >= 1')
+          }
+          break
+        case 'email':
           break
         default:
           throw new Error(`Unknown trigger type: ${(trigger as any).type}`)

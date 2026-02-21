@@ -33,12 +33,37 @@ export interface ManualTrigger {
   type: 'manual'
 }
 
+export interface FileChangeTrigger {
+  type: 'file_change'
+  paths: string[]                              // 监控路径（文件或目录）
+  pattern?: string                             // glob 过滤，如 "*.log"
+  events?: Array<'add' | 'change' | 'unlink'>  // 默认全部
+}
+
+export interface CalendarTrigger {
+  type: 'calendar'
+  icsPath?: string         // .ics 文件路径（留空则用系统日历目录）
+  beforeMinutes: number    // 事件开始前 N 分钟触发
+}
+
+export interface EmailTrigger {
+  type: 'email'
+  filter?: {
+    from?: string          // 发件人过滤（子串匹配）
+    subject?: string       // 主题过滤（子串匹配）
+    unseen?: boolean       // 仅未读，默认 true
+  }
+}
+
 export type WatchTrigger =
   | CronTrigger
   | IntervalTrigger
   | HeartbeatTrigger
   | WebhookTrigger
   | ManualTrigger
+  | FileChangeTrigger
+  | CalendarTrigger
+  | EmailTrigger
 
 export type WatchTriggerType = WatchTrigger['type']
 

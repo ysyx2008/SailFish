@@ -6,6 +6,9 @@
 import type { Sensor, EventBus } from './types'
 import { MemoryEventBus, getEventBus } from './event-bus'
 import { HeartbeatSensor } from './heartbeat-sensor'
+import { FileWatchSensor } from './file-watch-sensor'
+import { CalendarSensor } from './calendar-sensor'
+import { EmailSensor } from './email-sensor'
 
 export interface SensorServiceConfig {
   /** 是否启用心跳（默认 false，用户显式开启） */
@@ -19,8 +22,14 @@ export class SensorService {
   private eventBus: MemoryEventBus
   private _running = false
 
-  /** 心跳传感器（可直接访问以调整参数） */
+  /** 心跳传感器 */
   readonly heartbeat: HeartbeatSensor
+  /** 文件变化传感器 */
+  readonly fileWatch: FileWatchSensor
+  /** 日历传感器 */
+  readonly calendar: CalendarSensor
+  /** 邮件传感器 */
+  readonly email: EmailSensor
 
   constructor(config?: SensorServiceConfig) {
     this.eventBus = getEventBus()
@@ -28,7 +37,14 @@ export class SensorService {
       this.eventBus,
       config?.heartbeatIntervalMinutes
     )
+    this.fileWatch = new FileWatchSensor(this.eventBus)
+    this.calendar = new CalendarSensor(this.eventBus)
+    this.email = new EmailSensor(this.eventBus)
+
     this.register(this.heartbeat)
+    this.register(this.fileWatch)
+    this.register(this.calendar)
+    this.register(this.email)
   }
 
   get running(): boolean {
@@ -61,6 +77,10 @@ export class SensorService {
     for (const [id, sensor] of this.sensors) {
       if (id === 'heartbeat' && !heartbeatEnabled) {
         console.log('[SensorService] Heartbeat disabled, skipping')
+        continue
+      }
+      if (sensor.shouldAutoStart && !sensor.shouldAutoStart()) {
+        console.log(`[SensorService] ${id} not ready, skipping`)
         continue
       }
       try {
@@ -122,4 +142,7 @@ export function getSensorService(config?: SensorServiceConfig): SensorService {
 // 重新导出
 export { MemoryEventBus, getEventBus } from './event-bus'
 export { HeartbeatSensor } from './heartbeat-sensor'
+export { FileWatchSensor } from './file-watch-sensor'
+export { CalendarSensor } from './calendar-sensor'
+export { EmailSensor } from './email-sensor'
 export type { Sensor, SensorEvent, EventBus, EventHandler } from './types'
