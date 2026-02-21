@@ -11,7 +11,6 @@ import SessionManager from './components/SessionManager.vue'
 import SettingsModal from './components/Settings/SettingsModal.vue'
 import FileExplorer from './components/FileExplorer/FileExplorer.vue'
 import ConnectionStatusPopover from './components/ConnectionStatusPopover.vue'
-import SchedulerPopover from './components/SchedulerPopover.vue'
 import WatchManager from './components/WatchManager.vue'
 import SetupWizard from './components/SetupWizard.vue'
 import WelcomePage from './components/WelcomePage.vue'
@@ -51,7 +50,6 @@ const showAiPanel = ref(isSteamBuild ? false : true)
 const showSettings = ref(false)
 const showSmartPatrol = ref(false)
 const showWatchManager = ref(false)
-const watchInitialTab = ref<string | undefined>(undefined)
 
 // UI 主题
 const currentUiTheme = computed(() => configStore.uiTheme)
@@ -652,8 +650,7 @@ onUnmounted(() => {
           <button class="btn-icon" @click="toggleAiPanel" :title="t('header.aiAssistant')">
             <Bot :size="18" />
           </button>
-          <SchedulerPopover @open-manager="watchInitialTab = 'scheduler'; showWatchManager = true" />
-          <button class="btn-icon" @click="watchInitialTab = 'watches'; showWatchManager = true" :title="t('watch.panelTitle')">
+          <button class="btn-icon" @click="showWatchManager = true" :title="t('watch.panelTitle')">
             <Eye :size="18" />
           </button>
           <ConnectionStatusPopover @open-settings="openConnectionSettings" />
@@ -743,10 +740,9 @@ onUnmounted(() => {
       @close="showKnowledgeManager = false"
     />
 
-    <!-- 关切面板（含定时任务） -->
+    <!-- 关切面板 -->
     <WatchManager
       v-if="showWatchManager"
-      :initial-tab="watchInitialTab"
       @close="showWatchManager = false"
     />
 

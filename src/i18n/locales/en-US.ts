@@ -1890,6 +1890,9 @@ export default {
     editWatch: 'Edit Watch',
     noWatches: 'No watches configured',
     createFirst: 'Create your first Watch',
+    selectOrCreate: 'Select a watch to view details',
+    createViaAgent: 'Tell AI what you want to watch, it will create one for you',
+    activeCount: 'active',
     loading: 'Loading...',
 
     enabled: 'Enabled',
@@ -1961,6 +1964,11 @@ export default {
     nextRun: 'Next Run',
     never: 'Never',
     duration: 'Duration',
+    statusLabel: 'Status',
+    timeLabel: 'Time',
+    errorLabel: 'Error',
+    createdAt: 'Created',
+    updatedAt: 'Updated',
 
     confirmDelete: 'Delete "{name}"?',
     confirmClearHistory: 'Clear all execution history?',

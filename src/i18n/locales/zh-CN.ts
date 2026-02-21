@@ -1890,6 +1890,9 @@ export default {
     editWatch: '编辑关切',
     noWatches: '暂无关切',
     createFirst: '创建第一个关切',
+    selectOrCreate: '选择一个关切查看详情',
+    createViaAgent: '在对话中告诉 AI 你想关注什么，它会自动帮你创建',
+    activeCount: '个启用中',
     loading: '加载中...',
 
     enabled: '已启用',
@@ -1969,6 +1972,11 @@ export default {
     nextRun: '下次执行',
     never: '从未执行',
     duration: '耗时',
+    statusLabel: '状态',
+    timeLabel: '时间',
+    errorLabel: '错误',
+    createdAt: '创建于',
+    updatedAt: '更新于',
 
     // 确认
     confirmDelete: '确定要删除 "{name}" 吗？',
