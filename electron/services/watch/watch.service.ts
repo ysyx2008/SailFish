@@ -1074,8 +1074,15 @@ Should this task run now? Respond in JSON format:
     const result = { migrated: 0, skipped: 0, errors: [] as string[] }
 
     try {
-      const { getSchedulerStore } = require('../scheduler.store')
-      const schedulerStore = getSchedulerStore()
+      let schedulerStore: any
+      try {
+        const schedulerModule = require('../scheduler.store')
+        schedulerStore = schedulerModule.getSchedulerStore?.()
+      } catch {
+        result.errors.push('Scheduler 模块不可用，跳过迁移')
+        return result
+      }
+      if (!schedulerStore) return result
       const tasks = schedulerStore.getTasks()
 
       if (tasks.length === 0) return result
@@ -1141,11 +1148,13 @@ Should this task run now? Respond in JSON format:
         const match = schedule.expression.match(/^(\d+)(s|m|h|d)$/)
         if (!match) return null
         const value = parseInt(match[1], 10)
+        if (!Number.isSafeInteger(value) || value <= 0) return null
         const unitMap: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 }
         return { type: 'interval', seconds: value * (unitMap[match[2]] || 60) }
       }
       case 'once':
-        return { type: 'cron', expression: schedule.expression }
+        // once 类型的 expression 是 ISO 时间戳，转为 manual 触发（不适合 cron）
+        return { type: 'manual' }
       default:
         return null
     }

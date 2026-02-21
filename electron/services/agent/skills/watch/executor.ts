@@ -245,34 +245,40 @@ async function getHistory(args: Record<string, unknown>): Promise<ToolResult> {
 function parseTrigger(raw: Record<string, unknown>): WatchTrigger {
   const type = raw.type as string
   switch (type) {
-    case 'cron':
-      return { type: 'cron', expression: raw.expression as string }
-    case 'interval':
-      return { type: 'interval', seconds: raw.seconds as number }
+    case 'cron': {
+      const expression = raw.expression as string
+      if (!expression?.trim()) throw new Error('cron 触发器需要 expression 字段')
+      return { type: 'cron', expression }
+    }
+    case 'interval': {
+      const seconds = Number(raw.seconds)
+      if (!Number.isFinite(seconds) || seconds <= 0) throw new Error('interval 触发器需要有效的正数 seconds')
+      return { type: 'interval', seconds }
+    }
     case 'heartbeat':
       return { type: 'heartbeat' }
     case 'manual':
       return { type: 'manual' }
     case 'webhook':
       return { type: 'webhook', token: '' }
-    case 'file_change':
+    case 'file_change': {
+      const paths = raw.paths as string[] | undefined
+      if (!paths?.length) throw new Error('file_change 触发器需要 paths 字段')
       return {
         type: 'file_change',
-        paths: raw.paths as string[],
+        paths,
         pattern: raw.pattern as string | undefined,
         events: raw.events as Array<'add' | 'change' | 'unlink'> | undefined
       }
+    }
     case 'calendar':
-      return { type: 'calendar', beforeMinutes: (raw.before_minutes as number) ?? 15 }
-    case 'email':
-      return {
-        type: 'email',
-        filter: {
-          from: raw.filter_from as string | undefined,
-          subject: raw.filter_subject as string | undefined,
-          unseen: true
-        }
-      }
+      return { type: 'calendar', beforeMinutes: Number(raw.before_minutes) || 15 }
+    case 'email': {
+      const filter: { from?: string; subject?: string; unseen: boolean } = { unseen: true }
+      if (typeof raw.filter_from === 'string' && raw.filter_from.trim()) filter.from = raw.filter_from.trim()
+      if (typeof raw.filter_subject === 'string' && raw.filter_subject.trim()) filter.subject = raw.filter_subject.trim()
+      return { type: 'email', filter }
+    }
     default:
       throw new Error(`不支持的触发类型: ${type}`)
   }
@@ -280,7 +286,7 @@ function parseTrigger(raw: Record<string, unknown>): WatchTrigger {
 
 function parseOutput(raw: string | undefined): WatchOutput {
   const validTypes = ['im', 'notification', 'log', 'silent'] as const
-  const type = (raw && validTypes.includes(raw as typeof validTypes[number]))
+  const type = (typeof raw === 'string' && validTypes.includes(raw as typeof validTypes[number]))
     ? raw as WatchOutput['type']
     : 'im'
   return { type }
