@@ -1118,32 +1118,6 @@ const electronAPI = {
 
   // 历史记录操作
   history: {
-    // 保存聊天记录
-    saveChatRecord: (record: {
-      id: string
-      timestamp: number
-      terminalId: string
-      terminalType: 'local' | 'ssh'
-      sshHost?: string
-      role: 'user' | 'assistant'
-      content: string
-    }) => ipcRenderer.invoke('history:saveChatRecord', record),
-
-    // 批量保存聊天记录
-    saveChatRecords: (records: Array<{
-      id: string
-      timestamp: number
-      terminalId: string
-      terminalType: 'local' | 'ssh'
-      sshHost?: string
-      role: 'user' | 'assistant'
-      content: string
-    }>) => ipcRenderer.invoke('history:saveChatRecords', records),
-
-    // 获取聊天记录
-    getChatRecords: (startDate?: string, endDate?: string) => 
-      ipcRenderer.invoke('history:getChatRecords', startDate, endDate),
-
     // 保存 Agent 记录
     saveAgentRecord: (record: {
       id: string
@@ -2026,45 +2000,6 @@ const electronAPI = {
         ipcRenderer.removeListener('knowledge:downloadProgress', handler)
       }
     },
-
-    // ==================== 密码管理 ====================
-    
-    // 获取密码状态
-    getPasswordInfo: () =>
-      ipcRenderer.invoke('knowledge:getPasswordInfo') as Promise<{
-        hasPassword: boolean
-        isUnlocked: boolean
-        createdAt?: number
-      }>,
-
-    // 设置密码
-    setPassword: (password: string) =>
-      ipcRenderer.invoke('knowledge:setPassword', password) as Promise<{ success: boolean; error?: string }>,
-
-    // 验证密码（解锁）
-    verifyPassword: (password: string) =>
-      ipcRenderer.invoke('knowledge:verifyPassword', password) as Promise<{ success: boolean; error?: string }>,
-
-    // 修改密码
-    changePassword: (oldPassword: string, newPassword: string) =>
-      ipcRenderer.invoke('knowledge:changePassword', oldPassword, newPassword) as Promise<{ success: boolean; error?: string }>,
-
-    // 锁定知识库
-    lock: () =>
-      ipcRenderer.invoke('knowledge:lock') as Promise<{ success: boolean }>,
-
-    // 检查是否存在加密数据
-    checkEncryptedData: () =>
-      ipcRenderer.invoke('knowledge:checkEncryptedData') as Promise<{ hasEncryptedData: boolean; encryptedCount: number }>,
-
-    // 清除密码（会自动解密所有加密数据后再清除）
-    clearPassword: (password: string) =>
-      ipcRenderer.invoke('knowledge:clearPassword', password) as Promise<{ 
-        success: boolean; 
-        error?: string;
-        decryptedCount?: number;
-        message?: string;
-      }>,
 
     // 监听知识库服务就绪事件
     onReady: (callback: () => void) => {

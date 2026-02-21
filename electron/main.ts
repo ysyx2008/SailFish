@@ -264,7 +264,7 @@ import { AgentService, AgentStep, AgentContext } from './services/agent'
 import type { PendingConfirmation } from './services/agent/types'
 import { orchestratorService } from './services/agent/orchestrator'
 import type { OrchestratorConfig } from './services/agent/orchestrator-types'
-import { HistoryService, ChatRecord, AgentRecord } from './services/history.service'
+import { HistoryService, AgentRecord } from './services/history.service'
 import { HostProfileService, HostProfile } from './services/host-profile.service'
 import { getDocumentParserService, UploadedFile, ParseOptions, ParsedDocument } from './services/document-parser.service'
 import { SftpService, SftpConfig } from './services/sftp.service'
@@ -275,18 +275,7 @@ import { getSkillMarketService, type MarketSkillItem, type SkillOperationResult,
 import { getKnowledgeService, KnowledgeService } from './services/knowledge'
 import type { KnowledgeSettings, SearchOptions, AddDocumentOptions, ModelTier } from './services/knowledge/types'
 import {
-  autoUnlock,
-  decrypt,
-  getPasswordInfo,
-  setPassword,
-  savePasswordToKeychain,
-  verifyPassword,
-  changePassword,
-  lock,
-  checkEncryptedData,
-  clearPassword,
-  decryptAllData,
-  clearSavedPassword
+  decrypt
 } from './services/knowledge/crypto'
 import { initTerminalStateService, type TerminalState, type CwdChangeEvent, type CommandExecution, type CommandExecutionEvent } from './services/terminal-state.service'
 import { initTerminalAwarenessService, type TerminalAwareness } from './services/terminal-awareness'
@@ -885,13 +874,6 @@ app.whenReady().then(async () => {
         console.error('[Main] 知识库服务初始化失败:', e)
       })
     }, 500)
-
-    // 自动解锁知识库
-    try {
-      autoUnlock()
-    } catch (e) {
-      console.error('[Main] 知识库自动解锁失败:', e)
-    }
 
     // 初始化定时任务调度服务
     try {
@@ -2498,21 +2480,6 @@ ipcMain.handle('orchestrator:getStatus', async (_event, orchestratorId: string) 
 
 // ==================== 历史记录相关 ====================
 
-// 保存聊天记录
-ipcMain.handle('history:saveChatRecord', async (_event, record: ChatRecord) => {
-  historyService.saveChatRecord(record)
-})
-
-// 批量保存聊天记录
-ipcMain.handle('history:saveChatRecords', async (_event, records: ChatRecord[]) => {
-  historyService.saveChatRecords(records)
-})
-
-// 获取聊天记录
-ipcMain.handle('history:getChatRecords', async (_event, startDate?: string, endDate?: string) => {
-  return historyService.getChatRecords(startDate, endDate)
-})
-
 // 保存 Agent 记录
 ipcMain.handle('history:saveAgentRecord', async (_event, record: AgentRecord) => {
   historyService.saveAgentRecord(record)
@@ -3713,113 +3680,6 @@ ipcMain.handle('knowledge:clear', async () => {
       success: false, 
       error: error instanceof Error ? error.message : '清空失败' 
     }
-  }
-})
-
-// ==================== 知识库密码管理 ====================
-
-// 获取密码状态
-ipcMain.handle('knowledge:getPasswordInfo', async () => {
-  return getPasswordInfo()
-})
-
-// 设置密码
-ipcMain.handle('knowledge:setPassword', async (_event, password: string) => {
-  try {
-    setPassword(password)
-    // 设置密码成功后，自动保存到系统钥匙串
-    savePasswordToKeychain(password)
-    return { success: true }
-  } catch (error) {
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : '设置密码失败' 
-    }
-  }
-})
-
-// 验证密码（解锁知识库）
-ipcMain.handle('knowledge:verifyPassword', async (_event, password: string) => {
-  try {
-    const valid = verifyPassword(password)
-    if (valid) {
-      // 验证成功后，自动保存到系统钥匙串（下次启动自动解锁）
-      savePasswordToKeychain(password)
-    }
-    return { success: valid, error: valid ? undefined : '密码错误' }
-  } catch (error) {
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : '验证失败' 
-    }
-  }
-})
-
-// 修改密码
-ipcMain.handle('knowledge:changePassword', async (_event, oldPassword: string, newPassword: string) => {
-  try {
-    changePassword(oldPassword, newPassword)
-    // 修改密码成功后，保存新密码到系统钥匙串
-    savePasswordToKeychain(newPassword)
-    return { success: true }
-  } catch (error) {
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : '修改密码失败' 
-    }
-  }
-})
-
-// 锁定知识库
-ipcMain.handle('knowledge:lock', async () => {
-  lock()
-  return { success: true }
-})
-
-// 检查是否存在加密数据
-ipcMain.handle('knowledge:checkEncryptedData', async () => {
-  return checkEncryptedData()
-})
-
-// 清除密码（需要先验证当前密码）
-// 会自动解密所有加密数据后再清除密码，确保数据不会丢失
-ipcMain.handle('knowledge:clearPassword', async (_event, password: string) => {
-  try {
-    // 先验证密码
-    if (!verifyPassword(password)) {
-      return { success: false, error: '密码错误' }
-    }
-    
-    // 检查并解密所有加密数据
-    const { hasEncryptedData, encryptedCount } = checkEncryptedData()
-    
-    if (hasEncryptedData) {
-      console.log(`[Crypto] 清除密码前，正在解密 ${encryptedCount} 条加密数据...`)
-      const decryptResult = decryptAllData()
-      
-      if (!decryptResult.success) {
-        return { 
-          success: false, 
-          error: `解密数据失败: ${decryptResult.error}，密码未清除` 
-        }
-      }
-      
-      console.log(`[Crypto] 成功解密 ${decryptResult.decryptedCount} 条数据`)
-    }
-    
-    // 解密成功后清除密码
-    clearPassword()
-    // 同时清除系统钥匙串中保存的密码
-    clearSavedPassword()
-    return { 
-      success: true, 
-      decryptedCount: hasEncryptedData ? encryptedCount : 0,
-      message: hasEncryptedData 
-        ? `已解密 ${encryptedCount} 条数据，密码已清除` 
-        : '密码已清除'
-    }
-  } catch (error) {
-    return { success: false, error: (error as Error).message }
   }
 })
 

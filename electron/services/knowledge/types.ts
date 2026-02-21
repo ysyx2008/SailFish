@@ -143,7 +143,7 @@ export interface KnowledgeSettings {
 
 /** 默认配置 */
 export const DEFAULT_KNOWLEDGE_SETTINGS: KnowledgeSettings = {
-  enabled: false,
+  enabled: true,
   embeddingMode: 'local',
   localModel: 'auto',
   autoSaveUploads: true,

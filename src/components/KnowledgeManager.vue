@@ -292,11 +292,7 @@ const exportKnowledge = async () => {
     const result = await window.electronAPI.knowledge.exportData()
     if (result.canceled) return
     if (result.success) {
-      let msg = t('knowledgeManager.exportSuccess', { path: result.path })
-      if (result.hasPassword) {
-        msg += '\n\n⚠️ ' + t('knowledgeManager.exportEncryptedHint')
-      }
-      alert(msg)
+      alert(t('knowledgeManager.exportSuccess', { path: result.path }))
     } else {
       alert(t('knowledgeManager.exportFailed') + ': ' + (result.error || t('knowledgeManager.unknownError')))
     }
@@ -310,7 +306,7 @@ const exportKnowledge = async () => {
 
 // 导入知识库
 const importKnowledge = async () => {
-  if (!confirm(t('knowledgeManager.confirmImport') + '\n\n💡 ' + t('knowledgeManager.importPasswordHint'))) {
+  if (!confirm(t('knowledgeManager.confirmImport'))) {
     return
   }
   
@@ -319,11 +315,7 @@ const importKnowledge = async () => {
     const result = await window.electronAPI.knowledge.importData()
     if (result.canceled) return
     if (result.success) {
-      let msg = t('knowledgeManager.importSuccess', { count: result.imported || 0 })
-      if (result.needsPassword) {
-        msg += '\n\n🔐 ' + t('knowledgeManager.importEncryptedHint')
-      }
-      alert(msg)
+      alert(t('knowledgeManager.importSuccess', { count: result.imported || 0 }))
       await loadData()
     } else {
       alert(t('knowledgeManager.importFailed') + ': ' + (result.error || t('knowledgeManager.unknownError')))

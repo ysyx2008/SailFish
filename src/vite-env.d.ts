@@ -710,33 +710,6 @@ interface Window {
     }
     // 历史记录操作
     history: {
-      saveChatRecord: (record: {
-        id: string
-        timestamp: number
-        terminalId: string
-        terminalType: 'local' | 'ssh'
-        sshHost?: string
-        role: 'user' | 'assistant'
-        content: string
-      }) => Promise<void>
-      saveChatRecords: (records: Array<{
-        id: string
-        timestamp: number
-        terminalId: string
-        terminalType: 'local' | 'ssh'
-        sshHost?: string
-        role: 'user' | 'assistant'
-        content: string
-      }>) => Promise<void>
-      getChatRecords: (startDate?: string, endDate?: string) => Promise<Array<{
-        id: string
-        timestamp: number
-        terminalId: string
-        terminalType: 'local' | 'ssh'
-        sshHost?: string
-        role: 'user' | 'assistant'
-        content: string
-      }>>
       saveAgentRecord: (record: {
         id: string
         timestamp: number
@@ -1306,18 +1279,12 @@ interface Window {
         canceled?: boolean
         success?: boolean
         path?: string
-        hasPassword?: boolean
         error?: string
       }>
       importData: () => Promise<{
         canceled?: boolean
         success?: boolean
         imported?: number
-        needsPassword?: boolean
-        error?: string
-      }>
-      setPassword: (password: string) => Promise<{
-        success: boolean
         error?: string
       }>
       // 监听知识库服务就绪事件

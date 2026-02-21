@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch, nextTick } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ExternalLink, FolderInput, Database, Plug, Check, ChevronDown, ChevronUp } from 'lucide-vue-next'
 import { useConfigStore, type AiProfile } from '../stores/config'
@@ -330,61 +330,25 @@ const manualImport = async () => {
 }
 
 // 步骤4: 知识库
-const knowledgeEnabled = ref(false)
-const knowledgePassword = ref('')
-const knowledgePasswordConfirm = ref('')
-const knowledgePasswordError = ref('')
+const knowledgeEnabled = ref(true)
 const savingKnowledge = ref(false)
-const knowledgePasswordRef = ref<HTMLInputElement | null>(null)
-
-// 当知识库启用时，延迟聚焦到密码输入框
-// 解决 Windows 下 Electron 应用在 v-if 渲染后输入框无法立即点击的问题
-watch(knowledgeEnabled, async (enabled) => {
-  if (enabled) {
-    await nextTick()
-    // 额外延迟确保 DOM 完全稳定
-    setTimeout(() => {
-      knowledgePasswordRef.value?.focus()
-    }, 100)
-  }
-})
 
 const saveKnowledgeSettings = async () => {
-  // 如果要启用知识库，需要先设置密码
   if (knowledgeEnabled.value) {
-    if (knowledgePassword.value.length < 4) {
-      knowledgePasswordError.value = t('setup.knowledge.passwordMinLength')
-      return false
-    }
-    if (knowledgePassword.value !== knowledgePasswordConfirm.value) {
-      knowledgePasswordError.value = t('setup.knowledge.passwordMismatch')
-      return false
-    }
-    
     try {
       savingKnowledge.value = true
-      // 先设置密码
-      const passwordResult = await window.electronAPI.knowledge.setPassword(knowledgePassword.value)
-      if (!passwordResult.success) {
-        knowledgePasswordError.value = passwordResult.error || t('setup.knowledge.saveFailed')
-        return false
-      }
-      
-      // 再启用知识库
       await window.electronAPI.knowledge.updateSettings({
         enabled: true
       })
       return true
     } catch (error) {
       console.error('保存知识库设置失败:', error)
-      knowledgePasswordError.value = t('setup.knowledge.saveFailed')
       return false
     } finally {
       savingKnowledge.value = false
     }
   }
   
-  // 不启用知识库，直接返回
   return true
 }
 
@@ -693,24 +657,6 @@ onMounted(async () => {
                         <span class="slider"></span>
                       </label>
                     </label>
-                  </div>
-                  <div v-if="knowledgeEnabled" class="password-form-compact">
-                    <div class="form-row">
-                      <input 
-                        ref="knowledgePasswordRef"
-                        type="password" 
-                        v-model="knowledgePassword" 
-                        class="input input-sm" 
-                        :placeholder="t('setup.knowledge.passwordPlaceholder')"
-                      />
-                      <input 
-                        type="password" 
-                        v-model="knowledgePasswordConfirm" 
-                        class="input input-sm" 
-                        :placeholder="t('setup.knowledge.confirmPasswordPlaceholder')"
-                      />
-                    </div>
-                    <p v-if="knowledgePasswordError" class="password-error">{{ knowledgePasswordError }}</p>
                   </div>
                 </div>
               </div>
