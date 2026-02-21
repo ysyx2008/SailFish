@@ -150,7 +150,8 @@ interface StoreSchema {
   imExecutionMode: 'strict' | 'relaxed' | 'free'  // IM Agent 执行模式，默认 relaxed
   logLevel: LogLevel  // 日志级别
   skillMarketRegistryUrl: string  // 技能市场 registry URL
-  watchHeartbeatEnabled: boolean  // Watch 心跳传感器是否启用
+  agentAwakened: boolean           // 觉醒模式：AI 主动感知环境、推送消息
+  watchHeartbeatEnabled: boolean  // Watch 心跳传感器是否启用（觉醒模式内部使用）
   watchHeartbeatInterval: number  // Watch 心跳间隔（分钟）
 }
 
@@ -207,6 +208,7 @@ const defaultConfig: StoreSchema = {
   imExecutionMode: 'relaxed',
   logLevel: 'warn',
   skillMarketRegistryUrl: '',
+  agentAwakened: true,
   watchHeartbeatEnabled: true,
   watchHeartbeatInterval: 30
 }

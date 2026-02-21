@@ -937,14 +937,21 @@ app.whenReady().then(async () => {
         console.error('[Main] 定时任务迁移失败:', e)
       }
 
-      const heartbeatEnabled = configService.get('watchHeartbeatEnabled') as boolean ?? false
+      const awakened = configService.get('agentAwakened') as boolean ?? false
       const heartbeatInterval = configService.get('watchHeartbeatInterval') as number ?? 30
       sensorService.start({
-        heartbeatEnabled,
+        heartbeatEnabled: awakened,
         heartbeatIntervalMinutes: heartbeatInterval
       }).catch(e => {
         console.error('[Main] Sensor 服务启动失败:', e)
       })
+
+      // 觉醒模式：确保内置「日常巡视」关切存在
+      if (awakened) {
+        try { watchService.ensureDailyPatrol() } catch (e) {
+          console.error('[Main] 日常巡视关切创建失败:', e)
+        }
+      }
     } catch (e) {
       console.error('[Main] Watch/Sensor 服务初始化失败:', e)
     }
@@ -1931,18 +1938,48 @@ ipcMain.handle('sensor:getRecentEvents', async (_event, limit?: number) => {
   return sensorService.getRecentEvents(limit)
 })
 
-ipcMain.handle('sensor:setHeartbeat', async (_event, enabled: boolean, intervalMinutes?: number) => {
-  if (enabled) {
-    if (intervalMinutes) {
-      sensorService.heartbeat.setInterval(intervalMinutes)
+ipcMain.handle('sensor:setAwakened', async (_event, awakened: boolean, intervalMinutes?: number) => {
+  const validInterval = (intervalMinutes && intervalMinutes > 0 && intervalMinutes <= 1440)
+    ? intervalMinutes
+    : undefined
+  if (awakened) {
+    if (validInterval) {
+      sensorService.heartbeat.setInterval(validInterval)
     }
     await sensorService.heartbeat.start()
+    watchService.ensureDailyPatrol()
   } else {
     await sensorService.heartbeat.stop()
+    watchService.removeDailyPatrol()
   }
+  configService.set('agentAwakened', awakened)
+  configService.set('watchHeartbeatEnabled', awakened)
+  if (validInterval) {
+    configService.set('watchHeartbeatInterval', validInterval)
+  }
+  return { awakened, intervalMinutes: sensorService.heartbeat.getIntervalMinutes() }
+})
+
+// 向后兼容：旧的 setHeartbeat IPC，内部转发到 setAwakened 逻辑
+ipcMain.handle('sensor:setHeartbeat', async (_event, enabled: boolean, intervalMinutes?: number) => {
+  console.warn('[DEPRECATED] sensor:setHeartbeat 已废弃，请使用 sensor:setAwakened')
+  const validInterval = (intervalMinutes && intervalMinutes > 0 && intervalMinutes <= 1440)
+    ? intervalMinutes
+    : undefined
+  if (enabled) {
+    if (validInterval) {
+      sensorService.heartbeat.setInterval(validInterval)
+    }
+    await sensorService.heartbeat.start()
+    watchService.ensureDailyPatrol()
+  } else {
+    await sensorService.heartbeat.stop()
+    watchService.removeDailyPatrol()
+  }
+  configService.set('agentAwakened', enabled)
   configService.set('watchHeartbeatEnabled', enabled)
-  if (intervalMinutes) {
-    configService.set('watchHeartbeatInterval', intervalMinutes)
+  if (validInterval) {
+    configService.set('watchHeartbeatInterval', validInterval)
   }
   return { enabled, intervalMinutes: sensorService.heartbeat.getIntervalMinutes() }
 })

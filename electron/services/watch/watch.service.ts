@@ -1066,6 +1066,86 @@ Should this task run now? Respond in JSON format:
     }
   }
 
+  // ==================== 觉醒模式 ====================
+
+  private static readonly DAILY_PATROL_ID = '__daily_patrol__'
+
+  /**
+   * 确保内置「日常巡视」关切存在（觉醒模式开启时调用）
+   * 幂等：已存在则跳过
+   */
+  ensureDailyPatrol(): boolean {
+    try {
+      const existing = this.store.get(WatchService.DAILY_PATROL_ID)
+      if (existing) return true
+
+      const patrol: WatchDefinition = {
+        id: WatchService.DAILY_PATROL_ID,
+        name: '日常巡视',
+        description: '觉醒模式下的主动巡视——定期检查环境变化，有值得关注的事主动告知用户',
+        enabled: true,
+        triggers: [{ type: 'heartbeat' }],
+        prompt: `你刚刚被心跳唤醒了。作为用户的个人助手，请快速巡视一下当前环境：
+
+1. **日历**：检查接下来几小时有没有日程安排，有的话提前告知
+2. **已有关切**：查看你之前创建的关切是否有异常（用 watch_list）
+3. **环境感知**：如果有任何值得用户注意的事情，主动告知
+
+**重要行为准则**：
+- 如果一切正常、没什么特别的——保持沉默，不要打扰用户
+- 只在确实有值得关注的信息时才推送消息
+- 推送时用简洁自然的语气，像朋友提醒一样
+- 如果是深夜或周末，降低打扰意愿`,
+        skills: ['calendar', 'email'],
+        execution: { type: 'local' },
+        output: { type: 'im' },
+        preCheck: {
+          enabled: true,
+          hint: '深夜（22:00-8:00）和周末降低打扰意愿，非紧急事项可跳过'
+        },
+        priority: 'low',
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      }
+
+      const created = this.store.createWithId(patrol)
+      if (!created) {
+        console.warn('[WatchService] 日常巡视关切创建失败')
+        return false
+      }
+
+      if (this.isRunning) {
+        this.registerSensorTargets(patrol)
+      }
+      console.log('[WatchService] 日常巡视关切已创建')
+      return true
+    } catch (e) {
+      console.error('[WatchService] ensureDailyPatrol 异常:', e)
+      return false
+    }
+  }
+
+  /**
+   * 移除内置「日常巡视」关切（觉醒模式关闭时调用）
+   */
+  removeDailyPatrol(): void {
+    try {
+      const existing = this.store.get(WatchService.DAILY_PATROL_ID)
+      if (!existing) return
+
+      try { this.cancelTimers(WatchService.DAILY_PATROL_ID) } catch (e) {
+        console.warn('[WatchService] cancelTimers failed:', e)
+      }
+      try { this.unregisterSensorTargets(WatchService.DAILY_PATROL_ID) } catch (e) {
+        console.warn('[WatchService] unregisterSensorTargets failed:', e)
+      }
+      this.store.delete(WatchService.DAILY_PATROL_ID)
+      console.log('[WatchService] 日常巡视关切已移除')
+    } catch (e) {
+      console.error('[WatchService] removeDailyPatrol 异常:', e)
+    }
+  }
+
   /**
    * 从旧版 Scheduler 迁移数据到 Watch 系统
    * 幂等操作：已迁移的任务（通过 name 匹配）不会重复创建

@@ -71,6 +71,20 @@ export class WatchStore {
     return watch
   }
 
+  /** 使用预设 ID 创建（用于内置关切），幂等 */
+  createWithId(watch: WatchDefinition): WatchDefinition | null {
+    if (!watch?.id) {
+      console.warn('[WatchStore] createWithId: watch.id is required')
+      return null
+    }
+    const watches = this.getAll()
+    const existing = watches.find(w => w.id === watch.id)
+    if (existing) return existing
+    watches.push(watch)
+    this.store.set('watches', watches)
+    return watch
+  }
+
   update(id: string, updates: Partial<Omit<WatchDefinition, 'id' | 'createdAt'>>): WatchDefinition | null {
     const watches = this.getAll()
     const index = watches.findIndex(w => w.id === id)

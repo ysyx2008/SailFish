@@ -190,36 +190,37 @@ const openKeyUrl = (url: string) => {
   window.open(url, '_blank')
 }
 
-// ==================== 心跳传感器 ====================
-const heartbeatEnabled = ref(false)
+// ==================== 觉醒模式 ====================
+const awakened = ref(false)
 const heartbeatInterval = ref(30)
-const heartbeatRunning = ref(false)
+const awakenedRunning = ref(false)
 
-async function loadSensorSettings() {
+async function loadAwakenSettings() {
   try {
-    const config = await window.electronAPI.config.get('watchHeartbeatEnabled')
-    heartbeatEnabled.value = !!config
+    awakened.value = !!(await window.electronAPI.config.get('agentAwakened'))
     const interval = await window.electronAPI.config.get('watchHeartbeatInterval')
     if (interval && typeof interval === 'number') heartbeatInterval.value = interval
     const statusList = await window.electronAPI.sensor.getStatus()
-    heartbeatRunning.value = statusList.some((s: any) => s.id === 'heartbeat' && s.running)
+    awakenedRunning.value = statusList.some((s: any) => s.id === 'heartbeat' && s.running)
   } catch { /* ignore */ }
 }
 
-async function toggleHeartbeat() {
+async function toggleAwakened() {
+  const prev = !awakened.value
   try {
-    const result = await window.electronAPI.sensor.setHeartbeat(heartbeatEnabled.value, heartbeatInterval.value)
-    heartbeatRunning.value = heartbeatEnabled.value
+    await window.electronAPI.sensor.setAwakened(awakened.value, heartbeatInterval.value)
+    awakenedRunning.value = awakened.value
   } catch (e) {
-    console.error('Failed to toggle heartbeat:', e)
+    console.error('Failed to toggle awakened:', e)
+    awakened.value = prev
   }
 }
 
-async function updateHeartbeatInterval() {
+async function updateAwakenInterval() {
   if (heartbeatInterval.value < 1) heartbeatInterval.value = 1
   if (heartbeatInterval.value > 1440) heartbeatInterval.value = 1440
-  if (heartbeatEnabled.value) {
-    await window.electronAPI.sensor.setHeartbeat(true, heartbeatInterval.value)
+  if (awakened.value) {
+    await window.electronAPI.sensor.setAwakened(true, heartbeatInterval.value)
   } else {
     await window.electronAPI.config.set('watchHeartbeatInterval', heartbeatInterval.value)
   }
@@ -229,7 +230,7 @@ async function manualHeartbeat() {
   await window.electronAPI.sensor.triggerHeartbeat()
 }
 
-onMounted(loadSensorSettings)
+onMounted(loadAwakenSettings)
 </script>
 
 <template>
@@ -402,31 +403,31 @@ onMounted(loadSensorSettings)
           <div class="section-title-group">
             <h4>
               <Heart :size="14" style="margin-right: 4px;" />
-              {{ t('heartbeat.title') }}
+              {{ t('awaken.title') }}
             </h4>
-            <span class="status-badge" :class="{ active: heartbeatRunning }">
+            <span class="status-badge" :class="{ active: awakenedRunning }">
               <span class="status-dot"></span>
-              {{ heartbeatRunning ? t('heartbeat.running') : t('heartbeat.stopped') }}
+              {{ awakenedRunning ? t('awaken.running') : t('awaken.stopped') }}
             </span>
           </div>
         </div>
-        <p class="section-desc">{{ t('heartbeat.description') }}</p>
+        <p class="section-desc">{{ t('awaken.description') }}</p>
 
         <div class="setting-row">
           <div>
-            <label class="form-label">{{ t('heartbeat.enable') }}</label>
-            <p class="setting-desc">{{ t('heartbeat.enableDesc') }}</p>
+            <label class="form-label">{{ t('awaken.enable') }}</label>
+            <p class="setting-desc">{{ t('awaken.enableDesc') }}</p>
           </div>
           <label class="toggle-switch">
-            <input type="checkbox" v-model="heartbeatEnabled" @change="toggleHeartbeat" />
+            <input type="checkbox" v-model="awakened" @change="toggleAwakened" />
             <span class="toggle-slider"></span>
           </label>
         </div>
 
-        <div class="setting-row">
+        <div class="setting-row" v-if="awakened">
           <div>
-            <label class="form-label">{{ t('heartbeat.interval') }}</label>
-            <p class="setting-desc">{{ t('heartbeat.intervalDesc') }}</p>
+            <label class="form-label">{{ t('awaken.interval') }}</label>
+            <p class="setting-desc">{{ t('awaken.intervalDesc') }}</p>
           </div>
           <div class="input-group-compact">
             <input
@@ -436,20 +437,20 @@ onMounted(loadSensorSettings)
               :max="1440"
               class="input"
               style="width: 80px;"
-              @change="updateHeartbeatInterval"
+              @change="updateAwakenInterval"
             />
             <span class="input-suffix">min</span>
           </div>
         </div>
 
-        <div class="setting-row" v-if="heartbeatEnabled">
+        <div class="setting-row" v-if="awakened">
           <div>
-            <label class="form-label">{{ t('heartbeat.manualTrigger') }}</label>
-            <p class="setting-desc">{{ t('heartbeat.manualTriggerDesc') }}</p>
+            <label class="form-label">{{ t('awaken.manualTrigger') }}</label>
+            <p class="setting-desc">{{ t('awaken.manualTriggerDesc') }}</p>
           </div>
           <button class="btn btn-sm" @click="manualHeartbeat">
             <Heart :size="14" />
-            {{ t('heartbeat.trigger') }}
+            {{ t('awaken.trigger') }}
           </button>
         </div>
       </div>

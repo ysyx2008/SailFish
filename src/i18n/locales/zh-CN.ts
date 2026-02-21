@@ -2029,19 +2029,34 @@ export default {
     webhookToken: 'Token',
   },
 
-  // 心跳传感器设置
+  // 觉醒模式
+  awaken: {
+    title: '觉醒',
+    description: '开启后，AI 不再只是被动等待指令——它会定期自主巡视环境，关注日历、邮件、已有关切的变化，在有值得告知的事情时主动联系你。',
+    enable: '觉醒模式',
+    enableDesc: '让 AI 从被动工具变为主动助手',
+    interval: '巡视间隔（分钟）',
+    intervalDesc: '多久巡视一次环境，建议 30～60 分钟',
+    manualTrigger: '立即巡视',
+    manualTriggerDesc: '手动触发一次环境巡视',
+    trigger: '巡视',
+    running: '已觉醒',
+    stopped: '未觉醒',
+  },
+
+  // 保留旧 key 以防其他地方引用
   heartbeat: {
-    title: '心跳传感器（Heartbeat Sensor）',
-    description: '心跳传感器会周期性唤醒 Agent，检查是否有需要关注的事情。搭配关切使用。',
-    enable: '启用心跳',
-    enableDesc: '开启后，Agent 会按设定间隔自动唤醒',
-    interval: '心跳间隔（分钟）',
-    intervalDesc: '建议 15～60 分钟，过短可能增加 AI 调用开销',
-    manualTrigger: '手动触发',
-    manualTriggerDesc: '立即触发一次心跳（测试用）',
-    trigger: '触发',
-    running: '运行中',
-    stopped: '已停止',
+    title: '觉醒',
+    description: '开启后，AI 会定期自主巡视环境。',
+    enable: '觉醒模式',
+    enableDesc: '让 AI 从被动工具变为主动助手',
+    interval: '巡视间隔（分钟）',
+    intervalDesc: '建议 30～60 分钟',
+    manualTrigger: '立即巡视',
+    manualTriggerDesc: '手动触发一次环境巡视',
+    trigger: '巡视',
+    running: '已觉醒',
+    stopped: '未觉醒',
   },
 
   // Gateway 远程访问通知

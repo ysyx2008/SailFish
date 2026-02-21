@@ -2657,6 +2657,8 @@ const electronAPI = {
       ipcRenderer.invoke('sensor:getRecentEvents', limit),
     setHeartbeat: (enabled: boolean, intervalMinutes?: number) =>
       ipcRenderer.invoke('sensor:setHeartbeat', enabled, intervalMinutes),
+    setAwakened: (awakened: boolean, intervalMinutes?: number) =>
+      ipcRenderer.invoke('sensor:setAwakened', awakened, intervalMinutes),
     triggerHeartbeat: () =>
       ipcRenderer.invoke('sensor:triggerHeartbeat'),
   },
