@@ -726,7 +726,8 @@ onUnmounted(() => {
 
 <style scoped>
 .data-settings {
-  max-width: 520px;
+  max-width: 760px;
+  width: 100%;
 }
 
 .data-settings h3 {
@@ -737,7 +738,7 @@ onUnmounted(() => {
 
 /* Sections */
 .section {
-  margin-bottom: 28px;
+  margin-bottom: 24px;
 }
 
 .section-header {
@@ -861,6 +862,8 @@ onUnmounted(() => {
 .stat-value.range-value {
   font-size: 12px;
   font-weight: 500;
+  line-height: 1.35;
+  white-space: normal;
 }
 
 .stat-label {
@@ -875,6 +878,7 @@ onUnmounted(() => {
   margin-top: 14px;
   width: 100%;
   justify-content: center;
+  min-height: 34px;
 }
 
 /* Data path */
@@ -882,7 +886,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 12px 14px;
   background: var(--bg-tertiary);
   border-radius: 8px;
   border: 1px solid var(--border-color);
@@ -932,11 +936,23 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
+.actions .btn {
+  flex: 1;
+  min-width: 160px;
+  justify-content: center;
+}
+
 /* Cleanup */
 .section-danger .cleanup-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.section-danger .cleanup-actions .btn {
+  flex: 1;
+  min-width: 150px;
+  justify-content: center;
 }
 
 .hint {
@@ -1034,6 +1050,17 @@ onUnmounted(() => {
 .btn-danger-fill:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+@media (max-width: 900px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .actions .btn,
+  .section-danger .cleanup-actions .btn {
+    min-width: 0;
+  }
 }
 
 /* ========== History modal ========== */
