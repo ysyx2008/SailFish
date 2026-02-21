@@ -28,9 +28,7 @@ export const watchTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'watch_create',
-      description: `创建一个新的关切。两种使用场景：
-1. 用户明确要求："帮我盯着/关注/监控/提醒"
-2. 你自主判断某事值得持续关注（如部署了服务需要监控、发现待跟进事项、用户提到截止日期等）
+      description: `创建一个新的关切（持续关注的事项）。
 
 **触发方式**（可组合多个）：
 - cron: Cron 表达式，如 "0 9 * * *"（每天 9 点）
