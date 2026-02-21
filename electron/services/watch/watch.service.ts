@@ -1065,6 +1065,91 @@ Should this task run now? Respond in JSON format:
       this.config.mainWindow = win
     }
   }
+
+  /**
+   * 从旧版 Scheduler 迁移数据到 Watch 系统
+   * 幂等操作：已迁移的任务（通过 name 匹配）不会重复创建
+   */
+  migrateFromScheduler(): { migrated: number; skipped: number; errors: string[] } {
+    const result = { migrated: 0, skipped: 0, errors: [] as string[] }
+
+    try {
+      const { getSchedulerStore } = require('../scheduler.store')
+      const schedulerStore = getSchedulerStore()
+      const tasks = schedulerStore.getTasks()
+
+      if (tasks.length === 0) return result
+
+      const existingWatches = this.store.getAll()
+      const existingNames = new Set(existingWatches.map((w: WatchDefinition) => w.name))
+
+      for (const task of tasks) {
+        try {
+          if (existingNames.has(task.name)) {
+            result.skipped++
+            continue
+          }
+
+          const trigger = this.convertSchedulerTrigger(task.schedule)
+          if (!trigger) {
+            result.errors.push(`跳过 "${task.name}": 不支持的调度类型 ${task.schedule.type}`)
+            continue
+          }
+
+          const execution: import('./types').WatchExecution = {
+            type: task.target.type === 'ssh' ? 'ssh' : 'local',
+            sshSessionId: task.target.sshSessionId,
+            sshSessionName: task.target.sshSessionName,
+            workingDirectory: task.target.workingDirectory,
+            timeout: task.options?.timeout ?? 300
+          }
+
+          const params: CreateWatchParams = {
+            name: task.name,
+            description: task.description || `从定时任务迁移`,
+            triggers: [trigger],
+            prompt: task.prompt,
+            execution,
+            output: { type: task.options?.notifyOnComplete ? 'notification' : 'log' },
+            priority: 'normal',
+            enabled: task.enabled
+          }
+
+          this.create(params)
+          result.migrated++
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          result.errors.push(`迁移 "${task.name}" 失败: ${msg}`)
+        }
+      }
+
+      if (result.migrated > 0) {
+        console.log(`[WatchService] 已从 Scheduler 迁移 ${result.migrated} 个任务`)
+      }
+    } catch (err) {
+      result.errors.push(`迁移失败: ${err instanceof Error ? err.message : String(err)}`)
+    }
+
+    return result
+  }
+
+  private convertSchedulerTrigger(schedule: { type: string; expression: string }): WatchTrigger | null {
+    switch (schedule.type) {
+      case 'cron':
+        return { type: 'cron', expression: schedule.expression }
+      case 'interval': {
+        const match = schedule.expression.match(/^(\d+)(s|m|h|d)$/)
+        if (!match) return null
+        const value = parseInt(match[1], 10)
+        const unitMap: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 }
+        return { type: 'interval', seconds: value * (unitMap[match[2]] || 60) }
+      }
+      case 'once':
+        return { type: 'cron', expression: schedule.expression }
+      default:
+        return null
+    }
+  }
 }
 
 // 单例

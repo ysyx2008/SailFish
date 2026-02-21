@@ -924,6 +924,19 @@ app.whenReady().then(async () => {
         console.error('[Main] Watch 服务启动失败:', e)
       })
 
+      // 从旧版定时任务迁移数据到关切系统
+      try {
+        const migration = watchService.migrateFromScheduler()
+        if (migration.migrated > 0) {
+          console.log(`[Main] 定时任务迁移完成: ${migration.migrated} 个迁移, ${migration.skipped} 个跳过`)
+        }
+        if (migration.errors.length > 0) {
+          console.warn('[Main] 迁移警告:', migration.errors)
+        }
+      } catch (e) {
+        console.error('[Main] 定时任务迁移失败:', e)
+      }
+
       const heartbeatEnabled = configService.get('watchHeartbeatEnabled') as boolean ?? false
       const heartbeatInterval = configService.get('watchHeartbeatInterval') as number ?? 30
       sensorService.start({

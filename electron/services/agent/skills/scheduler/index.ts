@@ -9,8 +9,8 @@ import { schedulerTools } from './tools'
 
 const schedulerSkill: Skill = {
   id: 'scheduler',
-  name: '定时任务',
-  description: '提供定时任务管理能力，支持创建、查看、修改、删除定时执行的自动化任务。适用于定期巡检、自动备份、定时同步、周期性维护等场景。支持 Cron 表达式、固定间隔、一次性执行三种调度方式，可在本地终端或 SSH 远程主机执行。',
+  name: '定时任务（已废弃）',
+  description: '【已废弃】旧版定时任务系统已整合到"关切"系统。请优先使用 watch_* 工具管理定时执行的任务。旧的 schedule_* 工具仍可使用但将在未来版本移除。',
   tools: schedulerTools,
   
   async init() {
