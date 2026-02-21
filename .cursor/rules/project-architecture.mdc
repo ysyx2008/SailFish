@@ -55,7 +55,7 @@ SFTerminal/
 │       │   ├── terminal-agent.ts # 终端 Agent 实现
 │       │   ├── tools.ts         # 工具定义（Function Calling）
 │       │   ├── tools/           # 工具执行器（command/file/knowledge/plan/memory）
-│       │   ├── skills/          # 技能系统（excel/email/browser/word）
+│       │   ├── skills/          # 技能系统（excel/email/browser/word/watch/scheduler）
 │       │   ├── prompt-builder.ts # 系统提示构建
 │       │   ├── context-builder.ts # 上下文管理（任务历史压缩，多级别）
 │       │   ├── task-memory.ts   # 任务记忆（多层压缩存储）
@@ -143,8 +143,9 @@ SFTerminal/
 - **跨会话恢复**：App 重启后，前端从 HistoryService 加载历史步骤用于 UI 渲染，只传 `sessionId` 给后端；后端通过 `HistoryService.getAgentRecordById` 自行加载完整 messages 和 steps 恢复 TaskMemory
 - **生命周期**：终端关闭时 `cleanupAgent` 销毁 Agent 实例；"清空对话"时 `resetSession` 只重置会话状态和 TaskMemory，保留实例
 
-### Watch 感知层（Sensor Loop）
-- **Watch**：Agent 的"关注点"配置，定义触发条件、执行 prompt、输出渠道
+### 关切系统（Watch / Sensor Loop）
+- **关切（Watch）**：Agent 的"关注点"配置，定义触发条件、执行 prompt、输出渠道
+- **Agent 驱动**：关切主要由 Agent 通过 `watch_*` 工具创建和管理，UI 面板为只读仪表盘
 - **触发器（8 种）**：cron / interval / heartbeat / webhook / manual / file_change / calendar / email
 - **传感器（4 种）**：HeartbeatSensor / FileWatchSensor / CalendarSensor / EmailSensor
 - **Webhook**：Gateway 的 `POST /hooks/:token` 端点，外部系统可触发 Watch
@@ -152,6 +153,7 @@ SFTerminal/
 - **有状态工作流**：Watch 自身状态 + 跨 Watch 共享状态，Agent 可通过 `STATE_UPDATE` / `SHARED_UPDATE` 指令自动更新
 - **模板系统**：8 个内置模板（晨间简报 / 日历提醒 / 邮件分类 / 日志监控 / 部署通知 / 服务器巡检 / 文件监控 / 工作总结）
 - **串行执行**：所有事件通过 EventBus 排队，Watch 依次处理，不并发
+- **Scheduler 废弃**：旧版定时任务已整合到关切系统，启动时自动迁移数据，`schedule_*` 工具标记为废弃
 - **详细设计**：见 `docs/sensor-loop-architecture.md`
 
 ### 知识库
