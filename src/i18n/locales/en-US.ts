@@ -2024,6 +2024,10 @@ export default {
     trigger: 'Patrol',
     running: 'Awakened',
     stopped: 'Dormant',
+    patrolRunning: 'Scanning environment...',
+    patrolDone: 'Patrol complete, all clear',
+    patrolSkipped: 'Patrol skipped (nothing noteworthy)',
+    patrolError: 'Patrol failed, check logs',
   },
 
   heartbeat: {

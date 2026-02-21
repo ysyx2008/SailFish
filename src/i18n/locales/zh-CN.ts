@@ -2042,6 +2042,10 @@ export default {
     trigger: '巡视',
     running: '已觉醒',
     stopped: '未觉醒',
+    patrolRunning: '正在巡视环境...',
+    patrolDone: '巡视完成，一切正常',
+    patrolSkipped: '本次巡视已跳过（无需关注的事项）',
+    patrolError: '巡视出错，请查看日志',
   },
 
   // 保留旧 key 以防其他地方引用

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Plus, Pencil, Trash2, X, ExternalLink, Heart } from 'lucide-vue-next'
+import { Plus, Pencil, Trash2, X, ExternalLink, Heart, RefreshCw } from 'lucide-vue-next'
 import { useConfigStore, type AiProfile, type AgentMbtiType } from '../../stores/config'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -195,6 +195,20 @@ const awakened = ref(false)
 const heartbeatInterval = ref(30)
 const awakenedRunning = ref(false)
 
+// 巡视执行状态
+const patrolling = ref(false)
+const patrolStatus = ref<'idle' | 'running' | 'done' | 'skipped' | 'error'>('idle')
+const patrolMessage = ref('')
+let patrolStatusTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearPatrolStatus() {
+  if (patrolStatusTimer) clearTimeout(patrolStatusTimer)
+  patrolStatusTimer = setTimeout(() => {
+    patrolStatus.value = 'idle'
+    patrolMessage.value = ''
+  }, 8000)
+}
+
 async function loadAwakenSettings() {
   try {
     awakened.value = !!(await window.electronAPI.config.get('agentAwakened'))
@@ -226,11 +240,75 @@ async function updateAwakenInterval() {
   }
 }
 
+let patrolTimeout: ReturnType<typeof setTimeout> | null = null
+
 async function manualHeartbeat() {
-  await window.electronAPI.sensor.triggerHeartbeat()
+  patrolling.value = true
+  patrolStatus.value = 'running'
+  patrolMessage.value = t('awaken.patrolRunning')
+  if (patrolTimeout) clearTimeout(patrolTimeout)
+  patrolTimeout = setTimeout(() => {
+    if (patrolling.value) {
+      patrolling.value = false
+      patrolStatus.value = 'done'
+      patrolMessage.value = t('awaken.patrolDone')
+      clearPatrolStatus()
+    }
+  }, 5 * 60 * 1000)
+  try {
+    await window.electronAPI.sensor.triggerHeartbeat()
+  } catch (e) {
+    patrolling.value = false
+    patrolStatus.value = 'error'
+    patrolMessage.value = t('awaken.patrolError')
+    clearPatrolStatus()
+  }
 }
 
-onMounted(loadAwakenSettings)
+// 监听关切执行事件，更新巡视状态
+let cleanupTaskStarted: (() => void) | null = null
+let cleanupTaskCompleted: (() => void) | null = null
+
+function setupPatrolListeners() {
+  cleanupTaskStarted = window.electronAPI.watch.onTaskStarted((data) => {
+    if (data.watchName === '日常巡视' || data.watchId === '__daily_patrol__') {
+      patrolling.value = true
+      patrolStatus.value = 'running'
+      patrolMessage.value = t('awaken.patrolRunning')
+    }
+  })
+  cleanupTaskCompleted = window.electronAPI.watch.onTaskCompleted((data: { watchId: string; result?: { success: boolean; error?: string; skipped?: boolean; skipReason?: string } }) => {
+    if (data.watchId === '__daily_patrol__') {
+      patrolling.value = false
+      if (patrolTimeout) { clearTimeout(patrolTimeout); patrolTimeout = null }
+      if (data.result?.success) {
+        if (data.result.skipped) {
+          patrolStatus.value = 'skipped'
+          patrolMessage.value = t('awaken.patrolSkipped')
+        } else {
+          patrolStatus.value = 'done'
+          patrolMessage.value = t('awaken.patrolDone')
+        }
+      } else {
+        patrolStatus.value = 'error'
+        patrolMessage.value = data.result?.error || t('awaken.patrolError')
+      }
+      clearPatrolStatus()
+    }
+  })
+}
+
+onMounted(() => {
+  loadAwakenSettings()
+  setupPatrolListeners()
+})
+
+onUnmounted(() => {
+  cleanupTaskStarted?.()
+  cleanupTaskCompleted?.()
+  if (patrolStatusTimer) clearTimeout(patrolStatusTimer)
+  if (patrolTimeout) clearTimeout(patrolTimeout)
+})
 </script>
 
 <template>
@@ -448,10 +526,16 @@ onMounted(loadAwakenSettings)
             <label class="form-label">{{ t('awaken.manualTrigger') }}</label>
             <p class="setting-desc">{{ t('awaken.manualTriggerDesc') }}</p>
           </div>
-          <button class="btn btn-sm" @click="manualHeartbeat">
-            <Heart :size="14" />
-            {{ t('awaken.trigger') }}
+          <button class="btn btn-sm" :disabled="patrolling" @click="manualHeartbeat">
+            <RefreshCw v-if="patrolling" :size="14" class="spin" />
+            <Heart v-else :size="14" />
+            {{ patrolling ? t('awaken.patrolRunning') : t('awaken.trigger') }}
           </button>
+        </div>
+
+        <div v-if="patrolStatus !== 'idle'" class="patrol-status" :class="patrolStatus">
+          <RefreshCw v-if="patrolStatus === 'running'" :size="13" class="spin" />
+          <span>{{ patrolMessage }}</span>
         </div>
       </div>
 
@@ -915,6 +999,46 @@ onMounted(loadAwakenSettings)
 .input-suffix {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+/* 巡视状态 */
+.patrol-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-top: 4px;
+}
+
+.patrol-status.running {
+  color: var(--accent-primary);
+  background: rgba(137, 180, 250, 0.1);
+}
+
+.patrol-status.done {
+  color: var(--success-color, #3fb950);
+  background: rgba(63, 185, 80, 0.08);
+}
+
+.patrol-status.skipped {
+  color: var(--text-muted);
+  background: rgba(110, 118, 129, 0.08);
+}
+
+.patrol-status.error {
+  color: var(--error-color, #f85149);
+  background: rgba(248, 81, 73, 0.08);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
 }
 </style>
 

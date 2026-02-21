@@ -330,25 +330,32 @@ onUnmounted(() => {
                 </div>
 
                 <div class="item-list">
-                  <div v-for="w in watches" :key="w.id" class="list-item" :class="{ active: selectedWatch?.id === w.id, disabled: !w.enabled }" @click="selectWatch(w)">
+                  <div v-for="w in watches" :key="w.id" class="list-item" :class="{ active: selectedWatch?.id === w.id, disabled: !w.enabled, running: runningWatches.has(w.id) }" @click="selectWatch(w)">
                     <button class="btn-toggle" :class="{ enabled: w.enabled }" @click.stop="toggleWatch(w)">
                       <span class="toggle-dot"></span>
                     </button>
                     <div class="item-info">
-                      <div class="item-name">{{ w.name }}</div>
+                      <div class="item-name">
+                        {{ w.name }}
+                        <span v-if="runningWatches.has(w.id)" class="running-indicator">
+                          <RefreshCw :size="11" class="spinning" />
+                          {{ t('watch.statusRunning') }}
+                        </span>
+                      </div>
                       <div class="item-meta">
                         <span v-for="trigger in w.triggers" :key="trigger.type" class="trigger-badge">
                           <component :is="getTriggerIcon(trigger.type)" :size="10" />
                           {{ getTriggerLabel(trigger) }}
                         </span>
                       </div>
-                      <div class="item-sub" v-if="w.lastRun">
+                      <div class="item-sub" v-if="w.lastRun && !runningWatches.has(w.id)">
                         <span :class="getStatusClass(w.lastRun.status)">{{ getStatusIcon(w.lastRun.status) }}</span>
                         {{ formatDate(w.lastRun.at) }}
                       </div>
                     </div>
                     <button class="btn-icon-sm" @click.stop="triggerWatch(w)" :disabled="runningWatches.has(w.id)" :title="t('watch.trigger')">
-                      <Play :size="14" :class="{ spinning: runningWatches.has(w.id) }" />
+                      <RefreshCw v-if="runningWatches.has(w.id)" :size="14" class="spinning" />
+                      <Play v-else :size="14" />
                     </button>
                   </div>
 
@@ -771,9 +778,20 @@ onUnmounted(() => {
 .list-item:hover { background: var(--bg-hover); }
 .list-item.active { background: var(--bg-active); }
 .list-item.disabled { opacity: 0.5; }
+.list-item.running { border-color: var(--accent-primary); background: rgba(137, 180, 250, 0.06); }
 
 .item-info { flex: 1; min-width: 0; }
-.item-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+
+.running-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
 .item-meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .item-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 

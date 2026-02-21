@@ -682,7 +682,10 @@ Should this task run now? Respond in JSON format:
     }
 
     if (outputType === 'im') {
-      await this.sendIMNotification(watch, result)
+      const imResult = await this.sendIMNotification(watch, result)
+      if (!imResult) {
+        this.sendNotification(watch, result)
+      }
       return
     }
 
@@ -703,7 +706,8 @@ Should this task run now? Respond in JSON format:
     }
   }
 
-  private async sendIMNotification(watch: WatchDefinition, result: WatchExecutionResult): Promise<void> {
+  /** 尝试通过 IM 发送通知，返回是否成功 */
+  private async sendIMNotification(watch: WatchDefinition, result: WatchExecutionResult): Promise<boolean> {
     try {
       const { getIMService } = await import('../im/im.service')
       const imService = getIMService()
@@ -713,12 +717,14 @@ Should this task run now? Respond in JSON format:
         ? (result.output.substring(0, 2000) || `Completed in ${Math.round(result.duration / 1000)}s`)
         : `Error: ${result.error || 'Unknown'}`
 
-      await imService.sendNotification(`**${title}**\n\n${message}`, {
+      const sendResult = await imService.sendNotification(`**${title}**\n\n${message}`, {
         markdown: true,
         title
       })
+      return sendResult.success
     } catch (err) {
       console.error('[WatchService] Failed to send IM notification:', err)
+      return false
     }
   }
 
