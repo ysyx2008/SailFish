@@ -730,7 +730,9 @@ export class AiService {
       idleTimeoutId = setTimeout(() => {
         if (!isCompleted) {
           req?.destroy()
-          complete(() => onError(t('error.ai_idle_timeout')))
+          if (!tryRetry('ETIMEDOUT', doRequest)) {
+            complete(() => onError(t('error.ai_idle_timeout')))
+          }
         }
       }, AI_TIMEOUT.SOCKET_IDLE)
     }
@@ -971,10 +973,8 @@ export class AiService {
       // 连接超时处理
       req.on('timeout', () => {
         req?.destroy()
-        const errorMsg = t('error.ai_connection_timeout')
-        // 尝试重试
-        if (!tryRetry(errorMsg, doRequest)) {
-          // AI Debug: 记录超时错误
+        if (!tryRetry('ETIMEDOUT', doRequest)) {
+          const errorMsg = t('error.ai_connection_timeout')
           aiDebugService.logResponseError(reqId, errorMsg)
           complete(() => onError(errorMsg))
         }
