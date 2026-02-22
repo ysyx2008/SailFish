@@ -325,8 +325,8 @@ export async function searchHistory(
   const startDate = typeof args.start_date === 'string' ? args.start_date.trim() : ''
   const endDate = typeof args.end_date === 'string' ? args.end_date.trim() : ''
 
-  if (!keyword) {
-    return { success: false, output: '', error: '缺少 keyword 参数' }
+  if (!keyword && !startDate && !endDate) {
+    return { success: false, output: '', error: '请至少提供 keyword、start_date、end_date 其中之一' }
   }
 
   const startDateError = validateDateInput(startDate, 'start_date')
@@ -341,7 +341,7 @@ export async function searchHistory(
 
   executor.addStep({
     type: 'tool_call',
-    content: `搜索历史对话: "${keyword}" (${detail}${startDate || endDate ? `, ${startDate || '-'} ~ ${endDate || '-'}` : ''})`,
+    content: `搜索历史对话: "${keyword || '(无关键词，仅时间过滤)'}" (${detail}${startDate || endDate ? `, ${startDate || '-'} ~ ${endDate || '-'}` : ''})`,
     toolName: 'search_history',
     toolArgs: args,
     riskLevel: 'safe'
@@ -367,12 +367,15 @@ export async function searchHistory(
     const records = searchResult.records
 
     if (records.length === 0) {
+      const noResultLabel = keyword
+        ? `未找到包含"${keyword}"的历史记录`
+        : `在指定时间范围内未找到历史记录`
       executor.addStep({
         type: 'tool_result',
-        content: `未找到包含"${keyword}"的历史记录`,
+        content: noResultLabel,
         toolName: 'search_history'
       })
-      return { success: true, output: `未找到包含"${keyword}"的历史记录` }
+      return { success: true, output: noResultLabel }
     }
 
     const formatted = records.map((r, i) => {

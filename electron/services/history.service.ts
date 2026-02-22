@@ -41,7 +41,7 @@ export interface AgentRecord {
 }
 
 export interface SearchAgentRecordsOptions {
-  keyword: string
+  keyword?: string
   limit?: number
   startDate?: string
   endDate?: string
@@ -309,12 +309,13 @@ export class HistoryService {
    * 支持关键字搜索、时间范围过滤，以及 hasMore 提示
    */
   searchAgentRecordsAdvanced(options: SearchAgentRecordsOptions): SearchAgentRecordsResult {
-    const keyword = options.keyword?.trim()
-    if (!keyword) {
+    const keyword = options.keyword?.trim() ?? ''
+    if (!keyword && !options.startDate && !options.endDate) {
       return { records: [], totalMatched: 0, hasMore: false }
     }
 
     const lowerKeyword = keyword.toLowerCase()
+    const hasKeyword = lowerKeyword.length > 0
     const limit = Math.max(1, options.limit ?? 10)
     const files = fs.readdirSync(this.agentDir).filter(f => f.endsWith('.json')).sort().reverse()
     const results: AgentRecord[] = []
@@ -332,12 +333,15 @@ export class HistoryService {
         if (startTs !== undefined && ts < startTs) continue
         if (endTs !== undefined && ts > endTs) continue
 
-        if (r.userTask?.toLowerCase().includes(lowerKeyword) ||
-            r.finalResult?.toLowerCase().includes(lowerKeyword) ||
-            r.steps?.some(s =>
-              (s.type === 'user_task' || s.type === 'user_supplement') &&
-              s.content?.toLowerCase().includes(lowerKeyword)
-            )) {
+        const matchedByKeyword = hasKeyword
+          ? (r.userTask?.toLowerCase().includes(lowerKeyword) ||
+              r.finalResult?.toLowerCase().includes(lowerKeyword) ||
+              r.steps?.some(s =>
+                (s.type === 'user_task' || s.type === 'user_supplement') &&
+                s.content?.toLowerCase().includes(lowerKeyword)
+              ))
+          : true
+        if (matchedByKeyword) {
           totalMatched++
           if (results.length < limit) {
             results.push(r)

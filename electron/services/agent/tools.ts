@@ -751,6 +751,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
 
 **结果控制**：
 - limit 控制返回 Top N（默认 10，最大 30）
+- keyword 可选；可只传时间范围进行检索
 - 支持 start_date / end_date 做时间范围过滤，支持到小时/分钟（YYYY-MM-DD、YYYY-MM-DD HH、YYYY-MM-DD HH:mm，或带时区 ISO）
 - 当结果过多时会提示“仅返回前 N 条，可能还有更多”`,
         parameters: {
@@ -758,7 +759,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
           properties: {
             keyword: {
               type: 'string',
-              description: '搜索关键字，会在用户任务和最终结果中匹配'
+              description: '可选，搜索关键字，会在用户任务和最终结果中匹配'
             },
             start_date: {
               type: 'string',
@@ -778,7 +779,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
               description: '返回结果数量，默认 10，最大 30'
             }
           },
-          required: ['keyword']
+          required: []
         }
       }
     },
