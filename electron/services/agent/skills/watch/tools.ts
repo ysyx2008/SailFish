@@ -44,9 +44,6 @@ export const watchTools: ToolDefinition[] = [
 否则执行时 Agent 会把 prompt 当成新请求，再次创建关切，导致无限循环。
 例如用户说"每天 9 点检查邮件"，prompt 应为"检查邮箱是否有重要邮件，有则推送摘要"。
 
-**智能预检（preCheck）**：启用后，每次触发时 Agent 先判断当前是否适合执行。
-例如设置 hint="周末和节假日不要打扰"，Agent 可以自主决定跳过。
-
 **输出投递**：
 - im: 通过 IM（钉钉/飞书等）推送结果
 - notification: 系统通知
@@ -91,8 +88,6 @@ export const watchTools: ToolDefinition[] = [
             enum: ['im', 'notification', 'log', 'silent'],
             description: '结果投递方式，默认 "im"'
           },
-          pre_check: { type: 'boolean', description: '是否启用智能预检，默认 false' },
-          pre_check_hint: { type: 'string', description: '预检提示，如"周末不要打扰"' },
           priority: {
             type: 'string',
             enum: ['high', 'normal', 'low'],
@@ -139,8 +134,6 @@ export const watchTools: ToolDefinition[] = [
             }
           },
           output: { type: 'string', enum: ['im', 'notification', 'log', 'silent'] },
-          pre_check: { type: 'boolean' },
-          pre_check_hint: { type: 'string' },
           priority: { type: 'string', enum: ['high', 'normal', 'low'] },
           enabled: { type: 'boolean' }
         },

@@ -1916,11 +1916,6 @@ export default {
     outputLog: '仅记录',
     outputSilent: '静默',
 
-    // Pre-check
-    preCheck: '智能预检',
-    preCheckHint: '预检提示',
-    preCheckDesc: '让 AI 在执行前判断当前是否适合运行，可自主决定"不打扰"',
-
     // 状态
     statusCompleted: '完成',
     statusFailed: '失败',

@@ -44,7 +44,6 @@ interface WatchDefinition {
   skills?: string[]
   execution: { type: 'assistant' | 'local' | 'ssh'; sshSessionId?: string; sshSessionName?: string; workingDirectory?: string; timeout?: number }
   output: { type: WatchOutputType }
-  preCheck?: { enabled: boolean; hint?: string }
   state?: Record<string, unknown>; priority: WatchPriority
   createdAt: number; updatedAt: number; expiresAt?: number
   lastRun?: { at: number; status: WatchRunStatus; duration: number; triggerType: string; output?: string; error?: string; skipReason?: string }
@@ -413,10 +412,6 @@ onUnmounted(() => {
                     <div class="detail-section">
                       <h4>{{ t('watch.outputType') }}</h4>
                       <p>{{ getOutputLabel(selectedWatch.output.type) }}</p>
-                    </div>
-                    <div class="detail-section" v-if="selectedWatch.preCheck?.enabled">
-                      <h4>{{ t('watch.preCheck') }}</h4>
-                      <p>✓ {{ t('watch.enabled') }} {{ selectedWatch.preCheck.hint ? `— ${selectedWatch.preCheck.hint}` : '' }}</p>
                     </div>
                     <div class="detail-section" v-if="selectedWatch.triggers.some(t => t.type === 'webhook')">
                       <h4>Webhook URL</h4>

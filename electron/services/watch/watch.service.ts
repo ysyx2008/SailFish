@@ -4,10 +4,9 @@
  * 核心职责：
  * 1. Watch CRUD 管理
  * 2. 监听事件总线，匹配 Watch 触发条件
- * 3. 对匹配的 Watch 执行 pre-check（可选）
- * 4. 通过 Agent 执行 Watch 的 prompt
- * 5. 将结果投递到配置的输出渠道
- * 6. 管理 cron/interval 类型触发器的定时调度
+ * 3. 通过 Agent 执行 Watch 的 prompt
+ * 4. 将结果投递到配置的输出渠道
+ * 5. 管理 cron/interval 类型触发器的定时调度
  */
 import type { BrowserWindow } from 'electron'
 import { Notification } from 'electron'
@@ -38,7 +37,6 @@ let CronExpressionParser: any = null
 
 const MIN_INTERVAL_SECONDS = 10
 const MAX_INTERVAL_SECONDS = 7 * 24 * 3600 // 7 days
-const MAX_PRECHECK_REASON_LENGTH = 500
 const DEFAULT_TIMEOUT_SECONDS = 300
 const MAX_OUTPUT_LENGTH = 1000
 
@@ -343,23 +341,6 @@ export class WatchService {
 
     const startTime = Date.now()
 
-    // Pre-check：让 AI 判断是否应该执行
-    if (watch.preCheck?.enabled) {
-      const shouldRun = await this.runPreCheck(watch, event)
-      if (!shouldRun.execute) {
-        const result: WatchExecutionResult = {
-          success: true,
-          output: '',
-          duration: Date.now() - startTime,
-          skipped: true,
-          skipReason: shouldRun.reason || 'AI decided to skip'
-        }
-        this.recordExecution(watch, event, result)
-        console.log(`[WatchService] Watch skipped (pre-check): ${watch.name} - ${shouldRun.reason}`)
-        return result
-      }
-    }
-
     // 构建增强 prompt（原始 prompt + 事件上下文 + Watch 状态）
     const enhancedPrompt = this.buildEnhancedPrompt(watch, event)
 
@@ -559,57 +540,6 @@ export class WatchService {
         steps
       }
     }
-  }
-
-  // ==================== Pre-check ====================
-
-  private async runPreCheck(watch: WatchDefinition, event: SensorEvent): Promise<{ execute: boolean; reason?: string }> {
-    if (!this.config?.aiService) {
-      return { execute: true }
-    }
-
-    try {
-      const aiService = this.config.aiService
-
-      const now = new Date()
-      const preCheckPrompt = `You are deciding whether to execute an automated task. Answer with JSON only.
-
-Task: "${watch.name}"
-Description: ${watch.description || 'N/A'}
-Trigger: ${event.type}
-Current time: ${now.toLocaleString()}
-Day of week: ${now.toLocaleDateString('en-US', { weekday: 'long' })}
-${watch.preCheck?.hint ? `User hint: ${watch.preCheck.hint}` : ''}
-
-Should this task run now? Respond in JSON format:
-{"execute": true/false, "reason": "brief explanation"}
-`
-      const text = await aiService.chat([
-        { role: 'system', content: 'You are a scheduling assistant. Respond only with valid JSON.' },
-        { role: 'user', content: preCheckPrompt }
-      ])
-      const jsonMatch = text.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        try {
-          const parsed = JSON.parse(jsonMatch[0])
-          if (
-            typeof parsed === 'object' && parsed !== null &&
-            'execute' in parsed && typeof parsed.execute === 'boolean'
-          ) {
-            const reason = typeof parsed.reason === 'string'
-              ? parsed.reason.slice(0, MAX_PRECHECK_REASON_LENGTH)
-              : undefined
-            return { execute: parsed.execute, reason }
-          }
-        } catch (parseErr) {
-          console.error('[WatchService] Pre-check JSON parse error:', parseErr)
-        }
-      }
-    } catch (err) {
-      console.error('[WatchService] Pre-check failed, defaulting to execute:', err)
-    }
-
-    return { execute: true }
   }
 
   // ==================== Prompt 构建 ====================
@@ -1105,7 +1035,6 @@ Should this task run now? Respond in JSON format:
         skills: ['calendar', 'email'],
         execution: { type: 'local' },
         output: { type: 'im' },
-        preCheck: { enabled: false },
         priority: 'low',
         createdAt: Date.now(),
         updatedAt: Date.now()

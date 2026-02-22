@@ -1913,10 +1913,6 @@ export default {
     outputLog: 'Log Only',
     outputSilent: 'Silent',
 
-    preCheck: 'Smart Pre-check',
-    preCheckHint: 'Pre-check Hint',
-    preCheckDesc: 'Let AI decide whether to run based on context — enabling "Agency of Omission"',
-
     statusCompleted: 'Completed',
     statusFailed: 'Failed',
     statusSkipped: 'Skipped',

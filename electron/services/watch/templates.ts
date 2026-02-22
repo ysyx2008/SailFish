@@ -41,10 +41,6 @@ export const watchTemplates: WatchTemplate[] = [
       skills: ['email', 'browser'],
       execution: { type: 'local' },
       output: { type: options?.output as any || 'im' },
-      preCheck: {
-        enabled: true,
-        hint: '周末和法定节假日可以晚一小时或跳过'
-      },
       priority: 'normal'
     })
   },
@@ -108,7 +104,6 @@ SHARED_UPDATE: {"lastEmailSummary": "摘要内容", "lastEmailPriority": "紧急
       skills: ['email'],
       execution: { type: 'local' },
       output: { type: 'notification' },
-      preCheck: { enabled: false },
       priority: 'normal'
     })
   },
@@ -140,10 +135,6 @@ SHARED_UPDATE: {"lastEmailSummary": "摘要内容", "lastEmailPriority": "紧急
 只在发现问题时通知我，正常变化不需要报告。`,
       execution: { type: 'local' },
       output: { type: 'notification' },
-      preCheck: {
-        enabled: true,
-        hint: '只在发现 ERROR 或异常模式时才执行完整分析'
-      },
       priority: 'high'
     })
   },
@@ -200,10 +191,6 @@ STATE_UPDATE: {"cpuUsage": "XX%", "memUsage": "XX%", "diskUsage": "XX%", "checke
         ? { type: 'ssh', sshSessionId: options.sshSessionId as string }
         : { type: 'local' },
       output: { type: 'notification' },
-      preCheck: {
-        enabled: true,
-        hint: '如果上次检查是 10 分钟以内，可以跳过'
-      },
       priority: 'normal'
     })
   },
@@ -258,10 +245,6 @@ STATE_UPDATE: {"cpuUsage": "XX%", "memUsage": "XX%", "diskUsage": "XX%", "checke
 保持简洁友好。`,
       execution: { type: 'local' },
       output: { type: 'notification' },
-      preCheck: {
-        enabled: true,
-        hint: '如果用户似乎在休息或不在电脑前，不要打扰'
-      },
       priority: 'low'
     })
   }

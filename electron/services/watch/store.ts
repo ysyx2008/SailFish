@@ -57,7 +57,6 @@ export class WatchStore {
       skills: params.skills,
       execution: params.execution,
       output: params.output,
-      preCheck: params.preCheck,
       state: params.state,
       priority: params.priority ?? 'normal',
       createdAt: now,

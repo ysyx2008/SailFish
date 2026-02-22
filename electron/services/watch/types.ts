@@ -5,7 +5,7 @@
  * - 定义何时唤醒 Agent（triggers）
  * - 定义 Agent 做什么（prompt + skills）
  * - 定义结果送哪里（output）
- * - 可选让 Agent 自主决定是否执行（preCheck）
+ * - 事件分流由 EventPool 在程序层完成，不再使用 AI pre-check
  */
 
 // ==================== 触发器 ====================
@@ -83,13 +83,6 @@ export interface WatchOutput {
   type: 'im' | 'notification' | 'log' | 'silent'
 }
 
-// ==================== 预检查 ====================
-
-export interface WatchPreCheck {
-  enabled: boolean
-  hint?: string  // 额外提示，如"周末和节假日不要打扰"
-}
-
 // ==================== Watch 定义 ====================
 
 export type WatchPriority = 'high' | 'normal' | 'low'
@@ -107,8 +100,6 @@ export interface WatchDefinition {
 
   execution: WatchExecution
   output: WatchOutput
-
-  preCheck?: WatchPreCheck
 
   /** 有状态工作流使用的持久化状态 */
   state?: Record<string, unknown>
@@ -154,7 +145,6 @@ export interface CreateWatchParams {
   skills?: string[]
   execution: WatchExecution
   output: WatchOutput
-  preCheck?: WatchPreCheck
   state?: Record<string, unknown>
   priority?: WatchPriority
   enabled?: boolean

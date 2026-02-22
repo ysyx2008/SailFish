@@ -3,7 +3,7 @@
  * 实现 Agent 对关切的完整 CRUD + 触发 + 历史查询
  */
 import { getWatchService } from '../../../watch/watch.service'
-import type { WatchTrigger, WatchExecution, WatchOutput, WatchPreCheck, WatchDefinition, CreateWatchParams } from '../../../watch/types'
+import type { WatchTrigger, WatchExecution, WatchOutput, WatchDefinition, CreateWatchParams } from '../../../watch/types'
 import type { ToolResult, ToolExecutorConfig, AgentConfig } from '../../tools/types'
 
 export async function executeWatchTool(
@@ -80,7 +80,6 @@ async function createWatch(args: Record<string, unknown>): Promise<ToolResult> {
   try {
     const triggers = rawTriggers.map(parseTrigger)
     const output = parseOutput(args.output as string | undefined)
-    const preCheck = parsePreCheck(args.pre_check as boolean | undefined, args.pre_check_hint as string | undefined)
 
     const params: CreateWatchParams = {
       name: name.trim(),
@@ -90,7 +89,6 @@ async function createWatch(args: Record<string, unknown>): Promise<ToolResult> {
       skills: args.skills as string[] | undefined,
       execution: { type: 'local' } as WatchExecution,
       output,
-      preCheck,
       priority: (args.priority as CreateWatchParams['priority']) || 'normal',
       enabled: args.enabled as boolean ?? true,
     }
@@ -124,12 +122,6 @@ async function updateWatch(args: Record<string, unknown>): Promise<ToolResult> {
     if (args.prompt) updates.prompt = (args.prompt as string).trim()
     if (args.triggers) updates.triggers = (args.triggers as Array<Record<string, unknown>>).map(parseTrigger)
     if (args.output) updates.output = parseOutput(args.output as string)
-    if (args.pre_check !== undefined || args.pre_check_hint !== undefined) {
-      updates.preCheck = parsePreCheck(
-        args.pre_check as boolean ?? existing.preCheck?.enabled,
-        args.pre_check_hint as string ?? existing.preCheck?.hint
-      )
-    }
     if (args.priority) updates.priority = args.priority as CreateWatchParams['priority']
     if (args.enabled !== undefined) updates.enabled = args.enabled as boolean
 
@@ -290,11 +282,6 @@ function parseOutput(raw: string | undefined): WatchOutput {
     ? raw as WatchOutput['type']
     : 'im'
   return { type }
-}
-
-function parsePreCheck(enabled: boolean | undefined, hint: string | undefined): WatchPreCheck | undefined {
-  if (enabled === undefined && hint === undefined) return undefined
-  return { enabled: enabled ?? false, hint }
 }
 
 function formatTriggerBrief(t: WatchTrigger): string {
