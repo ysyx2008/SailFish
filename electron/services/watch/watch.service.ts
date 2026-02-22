@@ -422,7 +422,7 @@ export class WatchService {
       if (ptyId) {
         try {
           if (watch.execution.type === 'local') {
-            this.config.ptyService.destroy(ptyId)
+            this.config.ptyService.dispose(ptyId)
           } else if (watch.execution.type === 'ssh') {
             this.config.sshService.disconnect(ptyId)
           }
