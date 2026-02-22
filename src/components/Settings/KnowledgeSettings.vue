@@ -137,9 +137,11 @@ const loadSettings = async () => {
     settings.value.localModel = 'lite'
     settings.value.embeddingMode = 'local'
     mcpServers.value = await api.mcp.getServerStatuses()
-    if (settings.value.enabled) {
-      await loadAllData()
+    if (!settings.value.enabled) {
+      settings.value.enabled = true
+      await saveSettings()
     }
+    await loadAllData()
   } catch (error) {
     console.error('加载设置失败:', error)
   } finally {
@@ -156,9 +158,6 @@ const saveSettings = async () => {
     const result = await api.knowledge.updateSettings(plainSettings)
     if (!result.success) {
       console.error('保存设置失败:', result.error)
-    }
-    if (settings.value.enabled) {
-      await loadAllData()
     }
   } catch (error) {
     console.error('保存设置异常:', error)
@@ -364,26 +363,12 @@ onUnmounted(() => {
 
     <template v-else>
       <!-- 初始化中 -->
-      <div v-if="settings.enabled && !isKnowledgeInitialized" class="init-status">
+      <div v-if="!isKnowledgeInitialized" class="init-status">
         <Loader2 class="spinner" :size="16" />
         <span>{{ t('knowledgeSettings.initializing') }}</span>
       </div>
 
-      <!-- 启用开关 -->
-      <div class="setting-group">
-        <div class="setting-row">
-          <div class="setting-info">
-            <label class="setting-label">{{ t('knowledgeSettings.enable') }}</label>
-            <p class="setting-desc">{{ t('knowledgeSettings.enableHint') }}</p>
-          </div>
-          <label class="switch">
-            <input type="checkbox" v-model="settings.enabled" @change="saveSettings" />
-            <span class="slider"></span>
-          </label>
-        </div>
-      </div>
-
-      <template v-if="settings.enabled">
+      <template v-else>
         <!-- ==================== 内嵌管理面板 ==================== -->
         <div class="manager-panel">
           <!-- Tab 栏 -->
@@ -676,8 +661,8 @@ input:checked + .slider:before { transform: translateX(20px); }
 
 .manager-body {
   display: flex;
-  min-height: 300px;
-  max-height: 420px;
+  height: calc(100vh - 280px);
+  min-height: 360px;
 }
 
 .list-panel {
