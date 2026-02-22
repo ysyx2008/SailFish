@@ -2,7 +2,7 @@
  * Agent 服务
  * 
  * OOP 重构版本：AgentService 作为工厂和生命周期管理器
- * 实际执行逻辑在 Agent 基类和 TerminalAgent 子类中
+ * 实际执行逻辑在 Agent 基类和 SailFish 子类中
  */
 import type { AiService } from '../ai.service'
 import type { PtyService } from '../pty.service'
@@ -23,7 +23,7 @@ import type {
   RunStatus,
   AgentExecutionPhase
 } from './types'
-import { TerminalAgent } from './terminal-agent'
+import { SailFish } from './sailfish'
 import { assessCommandRisk, analyzeCommand } from './risk-assessor'
 import type { CommandHandlingInfo } from './risk-assessor'
 import { setConfigService as setI18nConfigService } from './i18n'
@@ -43,19 +43,21 @@ export { assessCommandRisk, analyzeCommand }
 
 // 导出 Agent 类
 export { Agent } from './agent'
-export { TerminalAgent } from './terminal-agent'
+export { SailFish } from './sailfish'
+/** @deprecated Use SailFish instead */
+export { SailFish as TerminalAgent } from './sailfish'
 
 /**
  * Agent 服务 - 工厂和生命周期管理器
  * 
  * 职责：
- * - 创建和管理 TerminalAgent 实例
+ * - 创建和管理 SailFish 实例
  * - 提供向后兼容的 API
  * - 管理全局回调
  */
 export class AgentService {
-  /** Agent 实例映射（按 ptyId） */
-  private agents: Map<string, TerminalAgent> = new Map()
+  /** Agent 实例映射（按 agentId，终端 Agent 用 ptyId 作为 key） */
+  private agents: Map<string, SailFish> = new Map()
   
   /** 依赖服务集合 */
   private services: AgentServices
@@ -137,10 +139,10 @@ export class AgentService {
   /**
    * 获取或创建 Agent 实例
    */
-  getOrCreateAgent(ptyId: string): TerminalAgent {
+  getOrCreateAgent(ptyId: string): SailFish {
     let agent = this.agents.get(ptyId)
     if (!agent) {
-      agent = new TerminalAgent(ptyId, this.services)
+      agent = new SailFish(this.services, ptyId)
       agent.setCallbacks(this.defaultCallbacks)
       this.agents.set(ptyId, agent)
       console.log(`[AgentService] Created agent for terminal: ${ptyId}`)
@@ -151,7 +153,7 @@ export class AgentService {
   /**
    * 获取 Agent 实例（不创建）
    */
-  getAgent(ptyId: string): TerminalAgent | undefined {
+  getAgent(ptyId: string): SailFish | undefined {
     return this.agents.get(ptyId)
   }
 
@@ -162,6 +164,43 @@ export class AgentService {
     return this.agents.has(ptyId)
   }
   
+  /**
+   * 创建独立助手 Agent（无终端绑定）
+   */
+  createAssistantAgent(agentId: string): SailFish {
+    let agent = this.agents.get(agentId)
+    if (!agent) {
+      agent = new SailFish(this.services)
+      agent.setCallbacks(this.defaultCallbacks)
+      this.agents.set(agentId, agent)
+      console.log(`[AgentService] Created assistant agent: ${agentId}`)
+    }
+    return agent
+  }
+
+  /**
+   * 运行独立助手 Agent
+   */
+  async runAssistant(
+    agentId: string,
+    userMessage: string,
+    context: AgentContext,
+    config?: Partial<AgentConfig>,
+    profileId?: string,
+    callbacks?: AgentCallbacks
+  ): Promise<string> {
+    const agent = this.createAssistantAgent(agentId)
+    
+    if (config) {
+      agent.updateConfig(config)
+    }
+    
+    return agent.run(userMessage, context, {
+      profileId,
+      callbacks
+    })
+  }
+
   // ==================== 生命周期管理 ====================
 
   /**
@@ -205,7 +244,7 @@ export class AgentService {
   /**
    * 运行 Agent
    * 
-   * 向后兼容的便捷方法，内部委托给 TerminalAgent
+   * 向后兼容的便捷方法，内部委托给 SailFish
    */
   async run(
     ptyId: string,

@@ -20,4 +20,5 @@ import './calendar'
 import './scheduler'
 import './config'
 import './skill-creator'
+import './terminal'
 

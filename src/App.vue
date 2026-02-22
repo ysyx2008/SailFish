@@ -396,6 +396,7 @@ const initializeApp = async () => {
 
 // 是否显示欢迎页（没有打开任何终端且不在智能巡检界面时显示）
 const showWelcomePage = computed(() => terminalStore.tabs.length === 0 && !showSmartPatrol.value)
+const isAssistantTab = computed(() => terminalStore.activeTab?.type === 'assistant')
 
 // 从欢迎页打开本地终端
 const openLocalFromWelcome = async () => {
@@ -689,11 +690,23 @@ onUnmounted(() => {
           v-else-if="showSmartPatrol"
           @back="backFromSmartPatrol"
         />
+        <!-- 助手标签页：AI 面板占满主区域 -->
+        <template v-else-if="isAssistantTab">
+          <template v-for="tab in terminalStore.tabs" :key="'assist-' + tab.id">
+            <AiPanel 
+              v-if="tab.type === 'assistant'"
+              v-show="tab.id === terminalStore.activeTabId"
+              :tab-id="tab.id"
+              :visible="tab.id === terminalStore.activeTabId"
+              class="assistant-full-panel"
+            />
+          </template>
+        </template>
         <TerminalContainer v-else />
       </main>
 
-      <!-- AI 面板 - Steam 版不渲染；非 Steam 版仅在有终端时显示 -->
-      <template v-if="!isSteamBuild && showAiPanel && !showWelcomePage">
+      <!-- AI 面板侧栏 - 仅在非助手标签页时显示 -->
+      <template v-if="!isSteamBuild && showAiPanel && !showWelcomePage && !isAssistantTab">
         <div 
           class="resize-handle" 
           @mousedown="startResize"
@@ -702,6 +715,7 @@ onUnmounted(() => {
         <aside class="ai-sidebar" :style="{ width: aiPanelWidth + 'px' }">
           <template v-for="tab in terminalStore.tabs" :key="tab.id">
             <AiPanel 
+              v-if="tab.type !== 'assistant'"
               v-show="tab.id === terminalStore.activeTabId"
               :tab-id="tab.id"
               :visible="tab.id === terminalStore.activeTabId"
@@ -926,6 +940,13 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* 助手标签页全宽 AI 面板 */
+.assistant-full-panel {
+  flex: 1;
+  width: 100%;
+  max-width: 100%;
 }
 
 /* AI 侧边栏 */

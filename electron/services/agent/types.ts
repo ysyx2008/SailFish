@@ -99,7 +99,7 @@ export interface PreviousTaskContext {
 
 // Agent 上下文
 export interface AgentContext {
-  ptyId: string
+  ptyId?: string
   terminalOutput: string[]  // 最近的终端输出
   systemInfo: {
     os: string
@@ -163,7 +163,7 @@ export interface AllowedToolKey {
 // Agent 运行状态
 export interface AgentRun {
   id: string
-  ptyId: string
+  ptyId?: string
   requestId?: string  // AI Debug: 当前请求 ID（用于调试日志）
   originalUserRequest: string  // 当前任务的原始用户请求（用于保存任务记忆）
   messages: import('../ai.service').AiMessage[]

@@ -418,34 +418,35 @@ export function useAgentMode(
     const tabId = currentTabId.value
     const message = inputText.value
 
+    const isAssistantMode = currentTab.value?.type === 'assistant'
+
     // 如果 Agent 正在运行，发送补充消息而不是启动新任务
-    const runningContext = terminalStore.getAgentContext(tabId)
-    if (isAgentRunning.value && runningContext?.ptyId) {
+    const agentKey = isAssistantMode ? currentTab.value?.agentId : terminalStore.getAgentContext(tabId)?.ptyId
+    if (isAgentRunning.value && agentKey) {
       inputText.value = ''
       
-      // 检查是否有 asking 步骤在等待回复
       const hasWaitingAsk = agentTaskGroups.value.some(group => 
         group.isCurrentTask && group.steps.some(step => 
           step.type === 'asking' && step.toolResult?.includes('⏳')
         )
       )
       
-      // 如果不是在回复提问，才显示为待处理的补充消息
       if (!hasWaitingAsk) {
         pendingSupplements.value.push(message)
       }
       
-      // 发送到后端（使用 ptyId）
-      await window.electronAPI.agent.addMessage(runningContext.ptyId, message)
+      await window.electronAPI.agent.addMessage(agentKey, message)
       return
     }
 
-    const startTime = Date.now()  // 记录开始时间
+    const startTime = Date.now()
     inputText.value = ''
 
     // 获取 Agent 上下文
-    const context = terminalStore.getAgentContext(tabId)
-    if (!context || !context.ptyId) {
+    const context = isAssistantMode 
+      ? { terminalOutput: [] as string[], systemInfo: { os: 'macos', shell: 'zsh', description: '' } } as any
+      : terminalStore.getAgentContext(tabId)
+    if (!isAssistantMode && (!context || !context.ptyId)) {
       log.error('无法获取终端上下文')
       return
     }
@@ -482,23 +483,41 @@ export function useAgentMode(
     await scrollToBottom()
 
     try {
-      // 调用 Agent API
-      // user_task 和 final_result 步骤由后端统一生成并通过 onStep 回调推送
-      const result = await window.electronAPI.agent.run(
-        context.ptyId,
-        message,
-        {
-          ...context,
-          hostId,
-          sshHost: currentTab.value?.sshConfig?.host,
-          documentContext,
-          images: images.length > 0 ? images : undefined,
-          sessionId: agentState.value?.sessionId,
-          sessionStartTime: agentState.value?.sessionStartTime
-        },
-        { executionMode: executionMode.value, commandTimeout: commandTimeout.value * 1000 },
-        activeProfileId.value || undefined
-      )
+      // 根据模式选择 API
+      let result: { success: boolean; result?: string; error?: string; aborted?: boolean }
+      
+      if (isAssistantMode && currentTab.value?.agentId) {
+        result = await window.electronAPI.agent.runStandalone(
+          currentTab.value.agentId,
+          message,
+          {
+            ...context,
+            hostId,
+            documentContext,
+            images: images.length > 0 ? images : undefined,
+            sessionId: agentState.value?.sessionId,
+            sessionStartTime: agentState.value?.sessionStartTime
+          },
+          { executionMode: executionMode.value, commandTimeout: commandTimeout.value * 1000 },
+          activeProfileId.value || undefined
+        )
+      } else {
+        result = await window.electronAPI.agent.run(
+          context.ptyId,
+          message,
+          {
+            ...context,
+            hostId,
+            sshHost: currentTab.value?.sshConfig?.host,
+            documentContext,
+            images: images.length > 0 ? images : undefined,
+            sessionId: agentState.value?.sessionId,
+            sessionStartTime: agentState.value?.sessionStartTime
+          },
+          { executionMode: executionMode.value, commandTimeout: commandTimeout.value * 1000 },
+          activeProfileId.value || undefined
+        )
+      }
 
       // 后端已通过 onStep 推送 final_result，这里只需设置 finalResult 状态
       if (!result.success) {
@@ -534,30 +553,34 @@ export function useAgentMode(
     await scrollToBottomIfNeeded()
   }
 
-  // 中止 Agent（使用 ptyId）
   const abortAgent = async () => {
-    const context = terminalStore.getAgentContext(currentTabId.value)
-    if (!context?.ptyId) return
+    const tab = currentTab.value
+    const agentKey = tab?.type === 'assistant' 
+      ? tab.agentId 
+      : terminalStore.getAgentContext(currentTabId.value)?.ptyId
+    if (!agentKey) return
 
     try {
-      await window.electronAPI.agent.abort(context.ptyId)
+      await window.electronAPI.agent.abort(agentKey)
     } catch (error) {
       log.error('中止 Agent 失败:', error)
     }
   }
 
-  // 确认工具调用（使用 ptyId）
   // alwaysAllow: 如果为 true，将该工具+参数加入会话白名单，后续自动跳过确认
   const confirmToolCall = async (approved: boolean, alwaysAllow?: boolean) => {
     const confirm = pendingConfirm.value
     if (!confirm) return
 
-    const context = terminalStore.getAgentContext(currentTabId.value)
-    if (!context?.ptyId) return
+    const tab = currentTab.value
+    const agentKey = tab?.type === 'assistant'
+      ? tab.agentId
+      : terminalStore.getAgentContext(currentTabId.value)?.ptyId
+    if (!agentKey) return
 
     try {
       await window.electronAPI.agent.confirm({
-        ptyId: context.ptyId,
+        ptyId: agentKey,
         toolCallId: confirm.toolCallId,
         approved,
         modifiedArgs: undefined,

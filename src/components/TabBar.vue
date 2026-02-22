@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, nextTick, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronLeft, ChevronRight, ChevronDown, Terminal, Monitor, Loader2, X, Plus, Layers, Radio } from 'lucide-vue-next'
+import { ChevronLeft, ChevronRight, ChevronDown, Terminal, Monitor, Loader2, X, Plus, Layers, Radio, Bot } from 'lucide-vue-next'
 import { useTerminalStore } from '../stores/terminal'
 import BatchCommandPanel from './BatchCommandPanel.vue'
 
@@ -119,6 +119,11 @@ const handleNewTab = (shell?: string) => {
   showNewMenu.value = false
 }
 
+const handleNewAssistant = () => {
+  terminalStore.createAssistantTab()
+  showNewMenu.value = false
+}
+
 const toggleNewMenu = (event: MouseEvent) => {
   if (!showNewMenu.value) {
     // 计算菜单位置
@@ -227,6 +232,7 @@ const openBatchPanel = () => {
       >
         <span class="tab-icon">
           <Radio v-if="tab.isRemote" :size="14" class="remote-icon" />
+          <Bot v-else-if="tab.type === 'assistant'" :size="14" />
           <Terminal v-else-if="tab.type === 'local'" :size="14" />
           <Monitor v-else :size="14" />
         </span>
@@ -280,6 +286,14 @@ const openBatchPanel = () => {
     <Teleport to="body">
       <div v-if="showNewMenu" class="shell-menu-overlay" @click="hideNewMenu"></div>
       <div v-if="showNewMenu" class="shell-menu" :style="menuPosition">
+        <div 
+          class="shell-menu-item"
+          @click="handleNewAssistant"
+        >
+          <span class="shell-icon">🤖</span>
+          <span>{{ t('tabs.assistant', '助手') }}</span>
+        </div>
+        <div class="shell-menu-divider"></div>
         <div 
           v-for="option in shellOptions" 
           :key="option.value"
@@ -701,5 +715,11 @@ const openBatchPanel = () => {
 
 .shell-icon {
   font-size: 14px;
+}
+
+.shell-menu-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 0;
 }
 </style>

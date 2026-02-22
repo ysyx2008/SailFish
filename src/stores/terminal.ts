@@ -110,7 +110,7 @@ export interface ParsedDocument {
 export interface TerminalTab {
   id: string
   title: string
-  type: 'local' | 'ssh'
+  type: 'local' | 'ssh' | 'assistant'
   ptyId?: string
   sshConfig?: {
     host: string
@@ -149,6 +149,8 @@ export interface TerminalTab {
   uploadedDocs?: ParsedDocument[]
   // 是否为远程 Gateway Agent 标签页
   isRemote?: boolean
+  // 独立助手 Agent ID（仅 assistant 类型标签页使用）
+  agentId?: string
 }
 
 export interface SplitPane {
@@ -499,6 +501,33 @@ export const useTerminalStore = defineStore('terminal', () => {
   }
 
   /**
+   * 创建独立助手标签页（无终端绑定）
+   */
+  function createAssistantTab(): string {
+    const id = uuidv4()
+    const agentId = `assistant-${id}`
+    const t = i18n.global.t
+    
+    const tab: TerminalTab = {
+      id,
+      title: t('tabs.assistant', '助手'),
+      type: 'assistant',
+      agentId,
+      isConnected: true,
+      isLoading: false,
+      agentState: {
+        isRunning: false,
+        steps: [],
+        agentId
+      }
+    }
+    
+    tabs.value.push(tab)
+    activeTabId.value = id
+    return id
+  }
+
+  /**
    * 创建终端并自动执行 Agent 任务（通用入口）
    * @param prompt Agent 任务指令
    * @param options.type 终端类型，默认 'local'；'headless' 为无终端纯助手（预留）
@@ -512,9 +541,11 @@ export const useTerminalStore = defineStore('terminal', () => {
   }): Promise<string> {
     const type = options?.type ?? 'local'
 
-    // TODO: headless 模式（无终端纯助手）待后续实现
-    const tabType = type === 'headless' ? 'local' : type
-    const tabId = await createTab(tabType, options?.sshConfig, options?.shell, prompt)
+    if (type === 'headless') {
+      return createAssistantTab()
+    }
+
+    const tabId = await createTab(type, options?.sshConfig, options?.shell, prompt)
     return tabId
   }
 
@@ -541,8 +572,12 @@ export const useTerminalStore = defineStore('terminal', () => {
       }
     }
 
-    // 清理终端连接（远程标签页的 PTY 由 Gateway 管理，不在此销毁）
-    if (tab.ptyId && !tab.isRemote) {
+    // 清理连接
+    if (tab.type === 'assistant') {
+      if (tab.agentId) {
+        window.electronAPI.agent.cleanup(tab.agentId).catch(() => {})
+      }
+    } else if (tab.ptyId && !tab.isRemote) {
       if (tab.type === 'local') {
         await window.electronAPI.pty.dispose(tab.ptyId)
       } else {
@@ -1387,6 +1422,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     pendingAiText,
     pendingFocusTabId,
     createTab,
+    createAssistantTab,
     createTabWithExistingPty,
     createTabWithTask,
     pendingSchedulerTasks,

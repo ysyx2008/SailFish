@@ -1,10 +1,10 @@
 /**
- * terminal-agent.ts 单元测试
- * 测试 TerminalAgent 类的终端特定功能：终端模式检测、工具列表获取、系统提示构建
+ * sailfish.ts 单元测试
+ * 测试 SailFish 类的功能：模式检测、工具列表获取、系统提示构建
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-// Mock Electron 模块（必须在导入 TerminalAgent 之前）
+// Mock Electron 模块（必须在导入 SailFish 之前）
 vi.mock('electron', () => ({
   app: {
     getPath: vi.fn().mockReturnValue('/mock/user/data'),
@@ -28,7 +28,7 @@ vi.mock('fs', async (importOriginal) => {
   }
 })
 
-import { TerminalAgent } from '../terminal-agent'
+import { SailFish } from '../sailfish'
 import type { AgentServices, AgentContext } from '../types'
 
 // ==================== Mock 实现 ====================
@@ -113,16 +113,16 @@ function createMockContext(overrides?: Partial<AgentContext>): AgentContext {
   }
 }
 
-// ==================== TerminalAgent 测试 ====================
+// ==================== SailFish 测试 ====================
 
-describe('TerminalAgent', () => {
-  let agent: TerminalAgent
+describe('SailFish', () => {
+  let agent: SailFish
   let mockServices: AgentServices
 
   beforeEach(() => {
     vi.clearAllMocks()
     mockServices = createMockServices()
-    agent = new TerminalAgent('test-pty', mockServices)
+    agent = new SailFish(mockServices, 'test-pty')
   })
 
   describe('constructor', () => {
@@ -150,7 +150,7 @@ describe('TerminalAgent', () => {
         unifiedTerminalService: mockUnifiedService as any
       })
       
-      agent = new TerminalAgent('test-pty', services)
+      agent = new SailFish(services, 'test-pty')
       const tools = agent.getAvailableTools()
       
       expect(Array.isArray(tools)).toBe(true)
@@ -165,7 +165,7 @@ describe('TerminalAgent', () => {
         unifiedTerminalService: mockUnifiedService as any
       })
       
-      agent = new TerminalAgent('ssh-pty', services)
+      agent = new SailFish(services, 'ssh-pty')
       const tools = agent.getAvailableTools()
       
       expect(Array.isArray(tools)).toBe(true)
@@ -177,7 +177,7 @@ describe('TerminalAgent', () => {
       // 移除 unifiedTerminalService
       delete (services as any).unifiedTerminalService
       
-      agent = new TerminalAgent('test-pty', services)
+      agent = new SailFish(services, 'test-pty')
       const tools = agent.getAvailableTools()
       
       expect(Array.isArray(tools)).toBe(true)
@@ -201,7 +201,7 @@ describe('TerminalAgent', () => {
         mcpService: mockMcpService as any
       })
       
-      agent = new TerminalAgent('test-pty', services)
+      agent = new SailFish(services, 'test-pty')
       const tools = agent.getAvailableTools()
       
       // 工具列表应该包含基础工具和 MCP 工具
@@ -229,7 +229,7 @@ describe('TerminalAgent', () => {
         unifiedTerminalService: mockUnifiedService as any
       })
       
-      agent = new TerminalAgent('test-pty', services)
+      agent = new SailFish(services, 'test-pty')
       agent.getAvailableTools() // 触发模式检测
       
       expect(mockUnifiedService.getTerminalType).toHaveBeenCalledWith('test-pty')
@@ -243,7 +243,7 @@ describe('TerminalAgent', () => {
         unifiedTerminalService: mockUnifiedService as any
       })
       
-      agent = new TerminalAgent('ssh-pty', services)
+      agent = new SailFish(services, 'ssh-pty')
       agent.getAvailableTools() // 触发模式检测
       
       expect(mockUnifiedService.getTerminalType).toHaveBeenCalledWith('ssh-pty')
@@ -253,7 +253,7 @@ describe('TerminalAgent', () => {
       const services = createMockServices()
       delete (services as any).unifiedTerminalService
       
-      agent = new TerminalAgent('test-pty', services)
+      agent = new SailFish(services, 'test-pty')
       const tools = agent.getAvailableTools()
       
       // 应该返回工具列表（默认为 local 模式）
@@ -295,10 +295,10 @@ describe('TerminalAgent', () => {
   })
 })
 
-// ==================== TerminalAgent run 测试 ====================
+// ==================== SailFish run 测试 ====================
 
-describe('TerminalAgent run', () => {
-  let agent: TerminalAgent
+describe('SailFish run', () => {
+  let agent: SailFish
   let mockServices: AgentServices
   let mockAiService: ReturnType<typeof createMockAiService>
 
@@ -308,7 +308,7 @@ describe('TerminalAgent run', () => {
     mockServices = createMockServices({
       aiService: mockAiService as any
     })
-    agent = new TerminalAgent('test-pty', mockServices)
+    agent = new SailFish(mockServices, 'test-pty')
   })
 
   it('should run task and return response', async () => {
@@ -395,7 +395,7 @@ describe('TerminalAgent run', () => {
       hostProfileService: mockHostProfileService as any
     })
     
-    agent = new TerminalAgent('test-pty', services)
+    agent = new SailFish(services, 'test-pty')
     
     const context = createMockContext({
       hostId: 'host-1'
@@ -427,10 +427,10 @@ describe('TerminalAgent run', () => {
   })
 })
 
-// ==================== TerminalAgent 工具执行测试 ====================
+// ==================== SailFish 工具执行测试 ====================
 
-describe('TerminalAgent tool execution', () => {
-  let agent: TerminalAgent
+describe('SailFish tool execution', () => {
+  let agent: SailFish
   let mockServices: AgentServices
   let mockAiService: ReturnType<typeof createMockAiService>
 
@@ -440,7 +440,7 @@ describe('TerminalAgent tool execution', () => {
     mockServices = createMockServices({
       aiService: mockAiService as any
     })
-    agent = new TerminalAgent('test-pty', mockServices)
+    agent = new SailFish(mockServices, 'test-pty')
   })
 
   it('should execute command tools', async () => {
@@ -513,10 +513,10 @@ describe('TerminalAgent tool execution', () => {
   })
 })
 
-// ==================== TerminalAgent 回调测试 ====================
+// ==================== SailFish 回调测试 ====================
 
-describe('TerminalAgent callbacks', () => {
-  let agent: TerminalAgent
+describe('SailFish callbacks', () => {
+  let agent: SailFish
   let mockServices: AgentServices
   let mockAiService: ReturnType<typeof createMockAiService>
 
@@ -526,7 +526,7 @@ describe('TerminalAgent callbacks', () => {
     mockServices = createMockServices({
       aiService: mockAiService as any
     })
-    agent = new TerminalAgent('test-pty', mockServices)
+    agent = new SailFish(mockServices, 'test-pty')
   })
 
   it('should trigger onStep callback', async () => {
@@ -596,9 +596,9 @@ describe('TerminalAgent callbacks', () => {
   })
 })
 
-// ==================== TerminalAgent 多实例测试 ====================
+// ==================== SailFish 多实例测试 ====================
 
-describe('TerminalAgent multiple instances', () => {
+describe('SailFish multiple instances', () => {
   let mockServices: AgentServices
 
   beforeEach(() => {
@@ -607,8 +607,8 @@ describe('TerminalAgent multiple instances', () => {
   })
 
   it('should support multiple agents with different ptyIds', () => {
-    const agent1 = new TerminalAgent('pty-1', mockServices)
-    const agent2 = new TerminalAgent('pty-2', mockServices)
+    const agent1 = new SailFish(mockServices, 'pty-1')
+    const agent2 = new SailFish(mockServices, 'pty-2')
     
     expect(agent1.ptyId).toBe('pty-1')
     expect(agent2.ptyId).toBe('pty-2')
@@ -616,8 +616,8 @@ describe('TerminalAgent multiple instances', () => {
   })
 
   it('should have independent configurations', () => {
-    const agent1 = new TerminalAgent('pty-1', mockServices)
-    const agent2 = new TerminalAgent('pty-2', mockServices)
+    const agent1 = new SailFish(mockServices, 'pty-1')
+    const agent2 = new SailFish(mockServices, 'pty-2')
     
     agent1.updateConfig({ executionMode: 'relaxed' })
     
@@ -626,8 +626,8 @@ describe('TerminalAgent multiple instances', () => {
   })
 
   it('should have independent running states', () => {
-    const agent1 = new TerminalAgent('pty-1', mockServices)
-    const agent2 = new TerminalAgent('pty-2', mockServices)
+    const agent1 = new SailFish(mockServices, 'pty-1')
+    const agent2 = new SailFish(mockServices, 'pty-2')
     
     // 两个 agent 都不应该在运行
     expect(agent1.isRunning()).toBe(false)

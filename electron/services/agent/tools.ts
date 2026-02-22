@@ -176,13 +176,50 @@ export interface GetAgentToolsOptions {
  * @param options 可选配置，如终端类型
  */
 export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOptions): ToolDefinition[] {
-  // 内置工具
-  const builtinTools: ToolDefinition[] = [
-    {
-      type: 'function',
-      function: {
-        name: 'execute_command',
-        description: `在当前终端执行 shell 命令。
+  // 根据模式选择 execute_command 工具定义
+  const executeCommandTool: ToolDefinitionWithMeta = options?.mode === 'assistant'
+    ? {
+        type: 'function',
+        function: {
+          name: 'execute_command',
+          description: `执行 shell 命令并返回结果。命令同步执行，等待完成后返回。
+
+**⚠️ 命令长度限制**：最长 500 字符，超过请先写入脚本文件再执行。
+
+**禁止使用的命令**（会被系统拒绝）：
+- vim、vi、nano、emacs 等编辑器 → 请使用 write_file 工具
+- tmux、screen 等终端复用器 → 不支持
+- mc、ranger 等全屏文件管理器 → 请使用 ls、cd 等命令
+
+**不支持的场景**：
+- 交互式命令（需要用户输入的）→ 请用非交互方式（如加 -y 参数）
+- 持续运行的命令（如 tail -f）→ 会在超时后终止
+
+返回值包含：
+- **success**: 命令是否成功执行
+- **output**: stdout + stderr 合并输出
+- **error**: 失败时的错误信息`,
+          parameters: {
+            type: 'object',
+            properties: {
+              command: {
+                type: 'string',
+                description: '要执行的 shell 命令（最长 500 字符）'
+              },
+              cwd: {
+                type: 'string',
+                description: '工作目录（可选，默认使用当前目录）'
+              }
+            },
+            required: ['command']
+          }
+        }
+      }
+    : {
+        type: 'function',
+        function: {
+          name: 'execute_command',
+          description: `在当前终端执行 shell 命令。
 
 **⚠️ 命令长度限制（重要）**：
 - 命令最长 500 字符，超过会被拒绝执行
@@ -211,18 +248,22 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
 - **isRunning**: 为 true 时表示命令仍在运行（持续运行命令或长耗时命令超时）
 
 注意：success=false 时应分析 output/error 内容判断问题原因。`,
-        parameters: {
-          type: 'object',
-          properties: {
-            command: {
-              type: 'string',
-              description: '要执行的 shell 命令（最长 500 字符，超过请先写入脚本文件再执行）'
-            }
-          },
-          required: ['command']
-        }
+          parameters: {
+            type: 'object',
+            properties: {
+              command: {
+                type: 'string',
+                description: '要执行的 shell 命令（最长 500 字符，超过请先写入脚本文件再执行）'
+              }
+            },
+            required: ['command']
+          }
+        },
+        _meta: { supportedModes: ['local', 'ssh'] }
       }
-    },
+
+  // 终端专属工具（仅在 local/ssh 模式可用）
+  const terminalOnlyTools: ToolDefinitionWithMeta[] = [
     {
       type: 'function',
       function: {
@@ -241,7 +282,8 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
           type: 'object',
           properties: {}
         }
-      }
+      },
+      _meta: { supportedModes: ['local', 'ssh'] }
     },
     {
       type: 'function',
@@ -257,7 +299,8 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
             }
           }
         }
-      }
+      },
+      _meta: { supportedModes: ['local', 'ssh'] }
     },
     {
       type: 'function',
@@ -275,7 +318,8 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
           },
           required: ['key']
         }
-      }
+      },
+      _meta: { supportedModes: ['local', 'ssh'] }
     },
     {
       type: 'function',
@@ -304,8 +348,44 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
           },
           required: ['text']
         }
-      }
+      },
+      _meta: { supportedModes: ['local', 'ssh'] }
     },
+    {
+      type: 'function',
+      function: {
+        name: 'wait',
+        description: `等待指定时间后继续执行。用于长耗时命令执行期间，避免频繁查询状态消耗步骤。
+
+使用场景：
+- 执行构建、编译等长时间命令后，等待一段时间再检查结果
+- 等待服务启动、进程完成等
+- 给自己"休息"一下，稍后继续
+
+你可以设置一条有趣的等待消息，让等待过程更生动！`,
+        parameters: {
+          type: 'object',
+          properties: {
+            seconds: {
+              type: 'number',
+              description: '等待的秒数。建议根据任务类型选择：简单检查 10-30 秒，构建任务 60-180 秒，大型编译 300+ 秒'
+            },
+            message: {
+              type: 'string',
+              description: '等待时显示的消息。可以有趣一点，如"我去喝杯咖啡☕"、"容我思考片刻🤔"、"编译中，先摸会儿鱼🐟"'
+            }
+          },
+          required: ['seconds']
+        }
+      },
+      _meta: { supportedModes: ['local', 'ssh'] }
+    }
+  ]
+
+  // 内置工具（所有模式通用）
+  const builtinTools: ToolDefinition[] = [
+    executeCommandTool,
+    ...terminalOnlyTools,
     {
       type: 'function',
       function: {
@@ -361,7 +441,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
           required: ['path']
         }
       },
-      _meta: { supportedModes: ['local'] }
+      _meta: { supportedModes: ['local', 'assistant'] }
     } as ToolDefinitionWithMeta,
     {
       type: 'function',
@@ -406,7 +486,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
           required: ['path', 'old_text', 'new_text']
         }
       },
-      _meta: { supportedModes: ['local'] }
+      _meta: { supportedModes: ['local', 'assistant'] }
     } as ToolDefinitionWithMeta,
     {
       type: 'function',
@@ -473,7 +553,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
           required: ['path']
         }
       },
-      _meta: { supportedModes: ['local'] }
+      _meta: { supportedModes: ['local', 'assistant'] }
     } as ToolDefinitionWithMeta,
     {
       type: 'function',
@@ -560,7 +640,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
           required: ['query']
         }
       },
-      _meta: { supportedModes: ['local'] }
+      _meta: { supportedModes: ['local', 'assistant'] }
     } as ToolDefinitionWithMeta,
     {
       type: 'function',
@@ -626,34 +706,6 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
             }
           },
           required: ['doc_id']
-        }
-      }
-    },
-    {
-      type: 'function',
-      function: {
-        name: 'wait',
-        description: `等待指定时间后继续执行。用于长耗时命令执行期间，避免频繁查询状态消耗步骤。
-
-使用场景：
-- 执行构建、编译等长时间命令后，等待一段时间再检查结果
-- 等待服务启动、进程完成等
-- 给自己"休息"一下，稍后继续
-
-你可以设置一条有趣的等待消息，让等待过程更生动！`,
-        parameters: {
-          type: 'object',
-          properties: {
-            seconds: {
-              type: 'number',
-              description: '等待的秒数。建议根据任务类型选择：简单检查 10-30 秒，构建任务 60-180 秒，大型编译 300+ 秒'
-            },
-            message: {
-              type: 'string',
-              description: '等待时显示的消息。可以有趣一点，如"我去喝杯咖啡☕"、"容我思考片刻🤔"、"编译中，先摸会儿鱼🐟"'
-            }
-          },
-          required: ['seconds']
         }
       }
     },

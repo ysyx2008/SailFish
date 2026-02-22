@@ -1,10 +1,10 @@
 /**
- * TerminalAgent - 终端 Agent 实现
+ * SailFish - 旗鱼 Agent 实现
  * 
- * 继承自 Agent 基类，实现终端特定的行为：
- * - 终端特定的工具列表（根据 local/ssh 模式）
- * - 终端特定的系统提示构建
- * - 终端交互相关的方法
+ * 继承自 Agent 基类，实现具体的 Agent 行为：
+ * - 工具列表管理（内置工具 + 可选技能）
+ * - 系统提示构建
+ * - 终端能力可选（通过 terminal 技能加载）
  */
 
 import { Agent } from './agent'
@@ -16,19 +16,37 @@ import type {
 } from './types'
 import { getAgentTools, AgentMode } from './tools'
 import { buildSystemPrompt } from './prompt-builder'
+import type { SkillSession } from './skills'
 
 /**
- * 终端 Agent
+ * SailFish Agent
  * 
- * 用于管理单个终端（本地或 SSH）的 AI 助手交互
+ * 旗鱼的核心 Agent 实现。默认拥有基础能力（文件操作、知识库、命令执行），
+ * 终端交互能力通过 terminal 技能按需加载。
  */
-export class TerminalAgent extends Agent {
-  /** 终端 ID */
-  readonly ptyId: string
+export class SailFish extends Agent {
+  /** 终端 ID（可选，绑定终端后设置） */
+  readonly ptyId?: string
   
-  constructor(ptyId: string, services: AgentServices) {
+  private _terminalSkillLoaded = false
+  
+  constructor(services: AgentServices, ptyId?: string) {
     super(services)
     this.ptyId = ptyId
+  }
+  
+  /**
+   * 获取技能会话，绑定终端时自动加载 terminal 技能
+   */
+  protected getSkillSession(): SkillSession {
+    const session = super.getSkillSession()
+    if (this.ptyId && !this._terminalSkillLoaded) {
+      this._terminalSkillLoaded = true
+      session.loadSkill('terminal').catch(err => {
+        console.error('[SailFish] Failed to auto-load terminal skill:', err)
+      })
+    }
+    return session
   }
   
   // ==================== 实现抽象方法 ====================
@@ -37,17 +55,20 @@ export class TerminalAgent extends Agent {
    * 获取 Agent 标识
    */
   protected getAgentId(): string {
-    return `terminal:${this.ptyId}`
+    if (this.ptyId) {
+      return `terminal:${this.ptyId}`
+    }
+    return `assistant:${this._sessionId || 'unknown'}`
   }
   
   /**
    * 获取当前可用的工具列表
    * 
-   * 根据终端类型（local/ssh）返回不同的工具集
+   * 根据模式（local/ssh/assistant）返回不同的工具集
    * 如果有加载的技能，返回合并后的工具
    */
   getAvailableTools(): ToolDefinition[] {
-    const mode = this.getTerminalMode()
+    const mode = this.getAgentMode()
     const remoteChannel = this.currentRun?.context?.remoteChannel
     const baseTools = getAgentTools(this.services.mcpService, {
       mode,
@@ -55,8 +76,6 @@ export class TerminalAgent extends Agent {
       includeContextTools: this.contextManagementEnabled
     })
     
-    // 如果有技能会话，用最新的 baseTools 刷新核心工具后返回
-    // （remoteChannel 等上下文可能在不同 run 间变化，coreTools 需要同步更新）
     if (this.currentRun?.skillSession) {
       this.currentRun.skillSession.updateCoreTools(baseTools)
       return this.currentRun.skillSession.getAvailableTools()
@@ -67,8 +86,6 @@ export class TerminalAgent extends Agent {
   
   /**
    * 构建系统提示词
-   * 
-   * 使用终端上下文和选项构建完整的系统提示
    */
   protected buildSystemPrompt(context: AgentContext, options: PromptOptions): string {
     return buildSystemPrompt(
@@ -86,22 +103,18 @@ export class TerminalAgent extends Agent {
     )
   }
   
-  // ==================== 终端特有方法 ====================
+  // ==================== 模式判断 ====================
   
   /**
-   * 获取终端模式（local/ssh）
+   * 获取 Agent 运行模式
    */
-  private getTerminalMode(): AgentMode {
+  private getAgentMode(): AgentMode {
+    if (!this.ptyId) {
+      return 'assistant'
+    }
     if (this.services.unifiedTerminalService) {
       return this.services.unifiedTerminalService.getTerminalType(this.ptyId) as AgentMode
     }
     return 'local'
-  }
-  
-  /**
-   * 获取终端服务
-   */
-  private getTerminalService() {
-    return this.services.unifiedTerminalService || this.services.ptyService
   }
 }

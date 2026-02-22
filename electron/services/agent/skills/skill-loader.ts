@@ -106,19 +106,25 @@ export class SkillSession implements SkillSessionManager {
 
   /**
    * 获取所有可用工具（核心工具 + 已加载技能的工具）
+   * 技能工具同名时会覆写核心工具（技能优先）
    */
   getAvailableTools(): ToolDefinition[] {
-    const tools = [...this.coreTools]
-    
+    const skillTools: ToolDefinition[] = []
     const loadedIds = Array.from(this.loadedSkills.keys())
     for (const skillId of loadedIds) {
       const skill = getSkill(skillId)
       if (skill) {
-        tools.push(...skill.tools)
+        skillTools.push(...skill.tools)
       }
     }
     
-    return tools
+    if (skillTools.length === 0) {
+      return [...this.coreTools]
+    }
+    
+    const skillToolNames = new Set(skillTools.map(t => t.function.name))
+    const filtered = this.coreTools.filter(t => !skillToolNames.has(t.function.name))
+    return [...filtered, ...skillTools]
   }
 
   /**

@@ -1146,6 +1146,7 @@ export default {
     closeTabsToRight: 'Close Tabs to Right',
     localTerminal: 'Local Terminal',
     sshTerminal: 'SSH Terminal',
+    assistant: 'Assistant',
     connecting: 'Connecting...',
     scrollLeft: 'Scroll Left',
     scrollRight: 'Scroll Right',

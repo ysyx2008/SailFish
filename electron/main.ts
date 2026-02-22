@@ -2167,6 +2167,61 @@ ipcMain.handle('agent:addMessage', async (_event, ptyId: string, message: string
   return agentService.addUserMessage(ptyId, message)
 })
 
+// 运行独立助手 Agent（无终端绑定）
+ipcMain.handle('agent:runStandalone', async (event, { agentId, message, context, config, profileId }: {
+  agentId: string
+  message: string
+  context: AgentContext
+  config?: object
+  profileId?: string
+}) => {
+  const debugMode = configService.getAgentDebugMode()
+  const fullConfig = { ...config, debugMode }
+  
+  const callbacks = {
+    onStep: (id: string, step: AgentStep) => {
+      if (!event.sender.isDestroyed()) {
+        const serializedStep = JSON.parse(JSON.stringify(step))
+        event.sender.send('agent:step', { agentId: id, step: serializedStep })
+      }
+    },
+    onNeedConfirm: (confirmation: PendingConfirmation) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('agent:needConfirm', {
+          agentId: confirmation.agentId,
+          toolCallId: confirmation.toolCallId,
+          toolName: confirmation.toolName,
+          toolArgs: JSON.parse(JSON.stringify(confirmation.toolArgs)),
+          riskLevel: confirmation.riskLevel
+        })
+      }
+    },
+    onComplete: (id: string, result: string, pendingUserMessages?: string[]) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('agent:complete', { agentId: id, result, pendingUserMessages })
+      }
+    },
+    onError: (id: string, error: string) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('agent:error', { agentId: id, error })
+      }
+    }
+  }
+
+  try {
+    const result = await agentService.runAssistant(agentId, message, context, fullConfig, profileId, callbacks)
+    return { success: true, result }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+    const isAborted = errorMsg === 'User aborted Agent execution'
+    return {
+      success: false,
+      error: errorMsg,
+      aborted: isAborted
+    }
+  }
+})
+
 // ==================== 远程会话共享服务 ====================
 
 const remoteChatService = getRemoteChatService()

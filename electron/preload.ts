@@ -892,7 +892,16 @@ const electronAPI = {
       profileId?: string
     ) => ipcRenderer.invoke('agent:run', { ptyId, message, context, config, profileId }) as Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>,
 
-    // 中止 Agent（使用 ptyId）
+    // 运行独立助手 Agent（无终端绑定）
+    runStandalone: (
+      agentId: string,
+      message: string,
+      context: AgentContext,
+      config?: AgentConfig,
+      profileId?: string
+    ) => ipcRenderer.invoke('agent:runStandalone', { agentId, message, context, config, profileId }) as Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>,
+
+    // 中止 Agent（使用 ptyId 或 agentId）
     abort: (ptyId: string) => ipcRenderer.invoke('agent:abort', ptyId) as Promise<boolean>,
 
     // 确认工具调用（使用 ptyId）

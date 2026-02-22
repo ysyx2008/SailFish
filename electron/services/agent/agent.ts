@@ -1,11 +1,11 @@
 /**
  * Agent 抽象基类
  * 
- * 实现 Agent 的核心执行逻辑，子类（如 TerminalAgent）实现特定行为。
+ * 实现 Agent 的核心执行逻辑，子类（如 SailFish）实现特定行为。
  * 
  * 职责划分：
  * - Agent（基类）：执行循环、AI 交互、工具执行、步骤管理
- * - TerminalAgent（子类）：终端特定的工具列表、系统提示、终端交互
+ * - SailFish（子类）：工具列表管理、系统提示构建、可选终端能力
  */
 
 import type { AiMessage, ToolCall, ChatWithToolsResult, ToolDefinition } from '../ai.service'
@@ -721,7 +721,7 @@ export abstract class Agent {
     const record: AgentRecord = {
       id: this._sessionId,
       timestamp: this._sessionStartTime,
-      terminalId: run.context.ptyId,
+      terminalId: run.context.ptyId || '',
       terminalType: this._terminalMeta?.terminalType || 'local',
       sshHost: this._terminalMeta?.sshHost,
       userTask: firstUserTask.content,
@@ -1653,6 +1653,8 @@ export abstract class Agent {
    * 设置终端输出监听器
    */
   private setupOutputListener(run: AgentRun): void {
+    if (!run.ptyId) return
+    
     const MAX_BUFFER_LINES = 200
     const terminalService = this.services.unifiedTerminalService || this.services.ptyService
     

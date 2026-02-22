@@ -16,6 +16,7 @@ import { normalizeToolArgs } from './utils'
 
 // 导入各模块的工具函数
 import { executeCommand } from './command'
+import { executeCommandDirect } from './exec'
 import { getTerminalContext, checkTerminalStatus, sendControlKey, sendInput } from './terminal'
 import { fileSearch, readFile, editFile, writeLocalFile, writeRemoteFile } from './file'
 import { rememberInfo, searchKnowledge, getKnowledgeDoc } from './knowledge'
@@ -29,6 +30,7 @@ export type { ToolExecutorConfig, AgentConfig, ToolResult, ErrorCategory } from 
 
 // 导出工具函数供外部使用
 export { executeCommand } from './command'
+export { executeCommandDirect } from './exec'
 export { getTerminalContext, checkTerminalStatus, sendControlKey, sendInput } from './terminal'
 export { fileSearch, readFile, editFile, writeLocalFile, writeRemoteFile } from './file'
 export { rememberInfo, searchKnowledge, getKnowledgeDoc } from './knowledge'
@@ -53,7 +55,7 @@ import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
  * 执行工具调用 - 主入口函数
  */
 export async function executeTool(
-  ptyId: string,
+  ptyId: string | undefined,
   toolCall: ToolCall,
   config: AgentConfig,
   terminalOutput: string[],
@@ -76,7 +78,10 @@ export async function executeTool(
   // 根据工具类型执行
   switch (name) {
     case 'execute_command':
-      return executeCommand(ptyId, args, toolCall.id, config, executor)
+      if (ptyId) {
+        return executeCommand(ptyId, args, toolCall.id, config, executor)
+      }
+      return executeCommandDirect(args, toolCall.id, config, executor)
 
     case 'get_terminal_context':
       return await getTerminalContext(ptyId, args, executor)
