@@ -1929,9 +1929,14 @@ ipcMain.handle('sensor:setAwakened', async (_event, awakened: boolean, intervalM
       sensorService.heartbeat.setInterval(validInterval)
     }
     await sensorService.heartbeat.start()
+    // 如果 email sensor 已配置账户，跟随觉醒模式一起启动
+    if (sensorService.email.shouldAutoStart() && !sensorService.email.running) {
+      await sensorService.email.start()
+    }
     watchService.ensureDailyPatrol()
   } else {
     await sensorService.heartbeat.stop()
+    await sensorService.email.stop()
     watchService.removeDailyPatrol()
   }
   configService.set('agentAwakened', awakened)
@@ -1953,9 +1958,13 @@ ipcMain.handle('sensor:setHeartbeat', async (_event, enabled: boolean, intervalM
       sensorService.heartbeat.setInterval(validInterval)
     }
     await sensorService.heartbeat.start()
+    if (sensorService.email.shouldAutoStart() && !sensorService.email.running) {
+      await sensorService.email.start()
+    }
     watchService.ensureDailyPatrol()
   } else {
     await sensorService.heartbeat.stop()
+    await sensorService.email.stop()
     watchService.removeDailyPatrol()
   }
   configService.set('agentAwakened', enabled)
@@ -3925,7 +3934,7 @@ ipcMain.handle('email:deleteCredential', async (_event, accountId: string) => {
   return await deleteEmailCredential(accountId)
 })
 
-// 同步邮箱账户配置到 email skill
+// 同步邮箱账户配置到 email skill + email sensor
 ipcMain.handle('email:syncAccounts', async (_event, accounts: Array<{
   id: string
   name: string
@@ -3941,7 +3950,32 @@ ipcMain.handle('email:syncAccounts', async (_event, accounts: Array<{
 }>) => {
   const { setEmailAccounts } = await import('./services/agent/skills/email/executor')
   setEmailAccounts(accounts)
-  console.log(`[Email] Synced ${accounts.length} email accounts`)
+
+  // 同步到 EmailSensor（利用 email skill 的 getServerConfig 填充 IMAP host/port）
+  const { getServerConfig } = await import('./services/agent/skills/email/session')
+  const { getEmailCredential } = await import('./services/credential.service')
+
+  const sensorAccounts = accounts.map(a => {
+    const server = getServerConfig(a.provider, {
+      imapHost: a.imapHost,
+      imapPort: a.imapPort
+    })
+    return {
+      accountId: a.id,
+      email: a.email,
+      provider: a.provider,
+      imapHost: server.imapHost,
+      imapPort: server.imapPort,
+      rejectUnauthorized: a.rejectUnauthorized
+    }
+  }).filter(a => a.imapHost)
+
+  sensorService.email.configureAccounts(
+    sensorAccounts,
+    (accountId) => getEmailCredential(accountId)
+  )
+
+  console.log(`[Email] Synced ${accounts.length} account(s) to skill + ${sensorAccounts.length} to sensor`)
 })
 
 // 测试邮箱连接

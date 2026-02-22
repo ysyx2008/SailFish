@@ -1,13 +1,13 @@
 /**
- * Email Sensor - 邮件感知器
+ * Email Sensor - 邮件感知器（多账户）
  *
- * 使用 IMAP IDLE 长连接监听新邮件到达。
- * 复用现有的邮箱凭证体系（credential.service + email skill）。
+ * 为每个已配置的邮箱账户建立独立的 IMAP IDLE 长连接，监听新邮件到达。
+ * 账户列表由 main.ts 在 email:syncAccounts 时同步过来。
  *
- * 工作流程：
+ * 工作流程（每个账户独立）：
  *   1. 连接 IMAP 服务器并选中 INBOX
  *   2. 进入 IDLE 模式，等待服务器推送新邮件通知
- *   3. 收到新邮件时，获取邮件头信息，匹配过滤规则
+ *   3. 收到新邮件时，获取邮件头信息，匹配 Watch 过滤规则
  *   4. 匹配成功则产生 email 事件投入 EventBus
  *   5. 连接断开时自动重连（指数退避）
  */
@@ -24,13 +24,25 @@ interface EmailTarget {
   filter?: EmailFilter
 }
 
-interface EmailAccountInfo {
+export interface EmailAccountInfo {
   accountId: string
   email: string
   provider: string
   imapHost: string
   imapPort: number
   rejectUnauthorized?: boolean
+}
+
+export type EmailCredentialGetter = (accountId: string) => Promise<string | null>
+
+interface AccountConnection {
+  account: EmailAccountInfo
+  imapClient: any
+  connected: boolean
+  reconnectTimer: NodeJS.Timeout | null
+  reconnectDelay: number
+  idleRefreshTimer: NodeJS.Timeout | null
+  lastSeenUid: number
 }
 
 const MAX_RECONNECT_DELAY_MS = 5 * 60 * 1000
@@ -54,30 +66,56 @@ export class EmailSensor implements Sensor {
   private _running = false
   private eventBus: EventBus
   private targets: Map<string, EmailTarget> = new Map()
-  private imapClient: any = null
-  private reconnectTimer: NodeJS.Timeout | null = null
-  private reconnectDelay = INITIAL_RECONNECT_DELAY_MS
-  private idleRefreshTimer: NodeJS.Timeout | null = null
-  private accountInfo: EmailAccountInfo | null = null
-  private getCredential: (() => Promise<string | null>) | null = null
-  private lastSeenUid: number = 0
-  private _connected = false
+
+  private accounts: EmailAccountInfo[] = []
+  private getCredential: EmailCredentialGetter | null = null
+  private connections: Map<string, AccountConnection> = new Map()
 
   get running(): boolean {
     return this._running
   }
 
   get connected(): boolean {
-    return this._connected
+    for (const conn of this.connections.values()) {
+      if (conn.connected) return true
+    }
+    return false
   }
 
   constructor(eventBus: EventBus) {
     this.eventBus = eventBus
   }
 
-  configure(account: EmailAccountInfo, getCredential: () => Promise<string | null>): void {
-    this.accountInfo = account
+  /**
+   * 配置监控的邮箱账户列表。
+   * 如果 Sensor 已运行，会热更新连接（停掉移除的、启动新增的）。
+   */
+  configureAccounts(accounts: EmailAccountInfo[], getCredential: EmailCredentialGetter): void {
     this.getCredential = getCredential
+
+    const oldIds = new Set(this.accounts.map(a => a.accountId))
+    const newIds = new Set(accounts.map(a => a.accountId))
+
+    const removed = this.accounts.filter(a => !newIds.has(a.accountId))
+    const added = accounts.filter(a => !oldIds.has(a.accountId))
+
+    this.accounts = accounts
+
+    if (this._running) {
+      for (const acct of removed) {
+        this.stopAccount(acct.accountId)
+      }
+      for (const acct of added) {
+        this.startAccount(acct)
+      }
+    }
+
+    console.log(`[EmailSensor] Configured ${accounts.length} account(s) (added=${added.length}, removed=${removed.length})`)
+  }
+
+  /** 保留旧 API 兼容（单账户） */
+  configure(account: EmailAccountInfo, getCredentialFn: () => Promise<string | null>): void {
+    this.configureAccounts([account], async () => getCredentialFn())
   }
 
   addTarget(watchId: string, filter?: EmailFilter): void {
@@ -93,131 +131,172 @@ export class EmailSensor implements Sensor {
   }
 
   shouldAutoStart(): boolean {
-    return this.targets.size > 0 && this.accountInfo !== null && this.getCredential !== null
+    return this.accounts.length > 0 && this.getCredential !== null
   }
 
   async start(): Promise<void> {
     if (this._running) return
-    if (!this.accountInfo || !this.getCredential) {
-      console.log('[EmailSensor] No account configured, skipping start')
+    if (!this.accounts.length || !this.getCredential) {
+      console.log('[EmailSensor] No accounts configured, skipping start')
       return
     }
     this._running = true
-    await this.connect()
+
+    for (const acct of this.accounts) {
+      await this.startAccount(acct)
+    }
   }
 
   async stop(): Promise<void> {
     if (!this._running) return
     this._running = false
 
-    this.clearTimers()
-    await this.disconnect()
+    const stopTasks = Array.from(this.connections.keys()).map(id => this.stopAccount(id))
+    await Promise.all(stopTasks)
 
     console.log('[EmailSensor] Stopped')
   }
 
-  private async connect(): Promise<void> {
-    if (!this.accountInfo || !this.getCredential) return
+  getAccountStatuses(): Array<{ accountId: string; email: string; connected: boolean }> {
+    return this.accounts.map(a => ({
+      accountId: a.accountId,
+      email: a.email,
+      connected: this.connections.get(a.accountId)?.connected ?? false
+    }))
+  }
 
-    const credential = await this.getCredential()
+  // ==================== 单账户连接管理 ====================
+
+  private async startAccount(account: EmailAccountInfo): Promise<void> {
+    if (this.connections.has(account.accountId)) return
+
+    const conn: AccountConnection = {
+      account,
+      imapClient: null,
+      connected: false,
+      reconnectTimer: null,
+      reconnectDelay: INITIAL_RECONNECT_DELAY_MS,
+      idleRefreshTimer: null,
+      lastSeenUid: 0
+    }
+    this.connections.set(account.accountId, conn)
+
+    await this.connectAccount(conn)
+  }
+
+  private async stopAccount(accountId: string): Promise<void> {
+    const conn = this.connections.get(accountId)
+    if (!conn) return
+
+    this.clearAccountTimers(conn)
+    await this.disconnectAccount(conn)
+    this.connections.delete(accountId)
+
+    console.log(`[EmailSensor] Account ${conn.account.email} stopped`)
+  }
+
+  private async connectAccount(conn: AccountConnection): Promise<void> {
+    if (!this.getCredential) return
+
+    const credential = await this.getCredential(conn.account.accountId)
     if (!credential) {
-      console.error('[EmailSensor] Failed to obtain credential')
+      console.error(`[EmailSensor] No credential for ${conn.account.email}`)
       return
     }
 
     try {
       const ImapFlow = await loadImapFlow()
 
-      this.imapClient = new ImapFlow({
-        host: this.accountInfo.imapHost,
-        port: this.accountInfo.imapPort,
+      conn.imapClient = new ImapFlow({
+        host: conn.account.imapHost,
+        port: conn.account.imapPort,
         secure: true,
         auth: {
-          user: this.accountInfo.email,
+          user: conn.account.email,
           pass: credential
         },
         logger: false,
         tls: {
-          rejectUnauthorized: this.accountInfo.rejectUnauthorized !== false
+          rejectUnauthorized: conn.account.rejectUnauthorized !== false
         }
       })
 
-      this.imapClient.on('close', () => {
-        this._connected = false
-        console.log('[EmailSensor] IMAP connection closed')
-        if (this._running) {
-          this.scheduleReconnect()
+      conn.imapClient.on('close', () => {
+        conn.connected = false
+        console.log(`[EmailSensor] ${conn.account.email}: IMAP connection closed`)
+        if (this._running && this.connections.has(conn.account.accountId)) {
+          this.scheduleReconnect(conn)
         }
       })
 
-      this.imapClient.on('error', (err: Error) => {
-        console.error('[EmailSensor] IMAP error:', err.message)
+      conn.imapClient.on('error', (err: Error) => {
+        console.error(`[EmailSensor] ${conn.account.email}: IMAP error:`, err.message)
       })
 
-      await this.imapClient.connect()
-      this._connected = true
-      this.reconnectDelay = INITIAL_RECONNECT_DELAY_MS
+      await conn.imapClient.connect()
+      conn.connected = true
+      conn.reconnectDelay = INITIAL_RECONNECT_DELAY_MS
 
-      console.log(`[EmailSensor] Connected to ${this.accountInfo.email}`)
-      await this.startIdleLoop()
+      console.log(`[EmailSensor] Connected to ${conn.account.email}`)
+      await this.startIdleLoop(conn)
     } catch (err) {
-      console.error('[EmailSensor] Failed to connect:', err)
-      this._connected = false
-      if (this._running) {
-        this.scheduleReconnect()
+      console.error(`[EmailSensor] ${conn.account.email}: Failed to connect:`, err)
+      conn.connected = false
+      if (this._running && this.connections.has(conn.account.accountId)) {
+        this.scheduleReconnect(conn)
       }
     }
   }
 
-  private async disconnect(): Promise<void> {
-    if (this.imapClient) {
+  private async disconnectAccount(conn: AccountConnection): Promise<void> {
+    if (conn.imapClient) {
       try {
-        await this.imapClient.logout()
+        await conn.imapClient.logout()
       } catch { /* already closed */ }
-      this.imapClient = null
-      this._connected = false
+      conn.imapClient = null
+      conn.connected = false
     }
   }
 
-  private async startIdleLoop(): Promise<void> {
-    if (!this.imapClient || !this._running) return
+  private async startIdleLoop(conn: AccountConnection): Promise<void> {
+    if (!conn.imapClient || !this._running) return
 
     try {
-      const lock = await this.imapClient.getMailboxLock('INBOX')
+      const lock = await conn.imapClient.getMailboxLock('INBOX')
       try {
-        const status = await this.imapClient.status('INBOX', { uidNext: true })
-        this.lastSeenUid = (status.uidNext || 1) - 1
+        const status = await conn.imapClient.status('INBOX', { uidNext: true })
+        conn.lastSeenUid = (status.uidNext || 1) - 1
 
-        this.scheduleIdleRefresh()
-        await this.idleAndWait()
+        this.scheduleIdleRefresh(conn)
+        await this.idleAndWait(conn)
       } finally {
         lock.release()
       }
     } catch (err) {
-      console.error('[EmailSensor] IDLE loop error:', err)
-      if (this._running) {
-        this.scheduleReconnect()
+      console.error(`[EmailSensor] ${conn.account.email}: IDLE loop error:`, err)
+      if (this._running && this.connections.has(conn.account.accountId)) {
+        this.scheduleReconnect(conn)
       }
     }
   }
 
-  private async idleAndWait(): Promise<void> {
-    while (this._running && this.imapClient?.usable) {
+  private async idleAndWait(conn: AccountConnection): Promise<void> {
+    while (this._running && conn.imapClient?.usable) {
       try {
-        await this.imapClient.idle()
-        await this.checkNewMail()
+        await conn.imapClient.idle()
+        await this.checkNewMail(conn)
       } catch (err: any) {
         if (err?.code === 'ECONNRESET' || err?.message?.includes('closed')) {
           break
         }
-        console.error('[EmailSensor] IDLE error:', err)
+        console.error(`[EmailSensor] ${conn.account.email}: IDLE error:`, err)
         break
       }
     }
   }
 
-  private async checkNewMail(): Promise<void> {
-    if (!this.imapClient?.usable) return
+  private async checkNewMail(conn: AccountConnection): Promise<void> {
+    if (!conn.imapClient?.usable) return
 
     try {
       const messages: Array<{
@@ -229,17 +308,17 @@ export class EmailSensor implements Sensor {
         }
       }> = []
 
-      for await (const msg of this.imapClient.fetch(
-        { uid: `${this.lastSeenUid + 1}:*` },
+      for await (const msg of conn.imapClient.fetch(
+        { uid: `${conn.lastSeenUid + 1}:*` },
         { envelope: true, uid: true }
       )) {
-        if (msg.uid > this.lastSeenUid) {
+        if (msg.uid > conn.lastSeenUid) {
           messages.push(msg)
         }
       }
 
       for (const msg of messages) {
-        this.lastSeenUid = Math.max(this.lastSeenUid, msg.uid)
+        conn.lastSeenUid = Math.max(conn.lastSeenUid, msg.uid)
 
         const from = msg.envelope?.from?.[0]
         const fromAddr = from?.address || ''
@@ -260,74 +339,73 @@ export class EmailSensor implements Sensor {
                 fromName,
                 subject,
                 date: msg.envelope?.date?.toISOString(),
-                account: this.accountInfo!.email
+                account: conn.account.email
               },
               priority: 'normal'
             }
 
-            console.log(`[EmailSensor] New email from ${fromAddr}: ${subject}`)
+            console.log(`[EmailSensor] ${conn.account.email}: New email from ${fromAddr}: ${subject}`)
             this.eventBus.emit(event)
           }
         }
       }
     } catch (err) {
-      console.error('[EmailSensor] Check new mail error:', err)
+      console.error(`[EmailSensor] ${conn.account.email}: Check new mail error:`, err)
     }
   }
 
   private matchesFilter(filter: EmailFilter | undefined, from: string, subject: string): boolean {
     if (!filter) return true
-
     if (filter.from && !from.toLowerCase().includes(filter.from.toLowerCase())) {
       return false
     }
     if (filter.subject && !subject.toLowerCase().includes(filter.subject.toLowerCase())) {
       return false
     }
-
     return true
   }
 
-  private scheduleReconnect(): void {
-    this.clearTimers()
+  // ==================== 定时器管理 ====================
 
-    const delay = Math.min(this.reconnectDelay, MAX_RECONNECT_DELAY_MS)
-    console.log(`[EmailSensor] Reconnecting in ${delay / 1000}s...`)
+  private scheduleReconnect(conn: AccountConnection): void {
+    this.clearAccountTimers(conn)
 
-    this.reconnectTimer = setTimeout(async () => {
-      this.reconnectTimer = null
-      if (this._running) {
-        this.reconnectDelay = Math.min(this.reconnectDelay * 2, MAX_RECONNECT_DELAY_MS)
-        await this.disconnect()
-        await this.connect()
+    const delay = Math.min(conn.reconnectDelay, MAX_RECONNECT_DELAY_MS)
+    console.log(`[EmailSensor] ${conn.account.email}: Reconnecting in ${delay / 1000}s...`)
+
+    conn.reconnectTimer = setTimeout(async () => {
+      conn.reconnectTimer = null
+      if (this._running && this.connections.has(conn.account.accountId)) {
+        conn.reconnectDelay = Math.min(conn.reconnectDelay * 2, MAX_RECONNECT_DELAY_MS)
+        await this.disconnectAccount(conn)
+        await this.connectAccount(conn)
       }
     }, delay)
   }
 
-  private scheduleIdleRefresh(): void {
-    if (this.idleRefreshTimer) {
-      clearInterval(this.idleRefreshTimer)
+  private scheduleIdleRefresh(conn: AccountConnection): void {
+    if (conn.idleRefreshTimer) {
+      clearInterval(conn.idleRefreshTimer)
     }
-    this.idleRefreshTimer = setInterval(async () => {
-      if (this.imapClient?.usable) {
+    conn.idleRefreshTimer = setInterval(async () => {
+      if (conn.imapClient?.usable) {
         try {
-          await this.imapClient.noop()
-          console.log('[EmailSensor] IDLE keepalive sent')
+          await conn.imapClient.noop()
         } catch {
-          console.log('[EmailSensor] IDLE keepalive failed, will reconnect')
+          console.log(`[EmailSensor] ${conn.account.email}: IDLE keepalive failed`)
         }
       }
     }, IDLE_TIMEOUT_MS)
   }
 
-  private clearTimers(): void {
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer)
-      this.reconnectTimer = null
+  private clearAccountTimers(conn: AccountConnection): void {
+    if (conn.reconnectTimer) {
+      clearTimeout(conn.reconnectTimer)
+      conn.reconnectTimer = null
     }
-    if (this.idleRefreshTimer) {
-      clearInterval(this.idleRefreshTimer)
-      this.idleRefreshTimer = null
+    if (conn.idleRefreshTimer) {
+      clearInterval(conn.idleRefreshTimer)
+      conn.idleRefreshTimer = null
     }
   }
 }
