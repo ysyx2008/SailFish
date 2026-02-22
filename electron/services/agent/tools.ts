@@ -747,13 +747,26 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
 
 **输出级别**：
 - summary（默认）：任务描述 + 最终结果，适合快速浏览定位
-- full：额外包含工具调用列表（执行了哪些命令、操作了哪些文件），适合需要复现操作细节的场景`,
+- full：额外包含工具调用列表（执行了哪些命令、操作了哪些文件），适合需要复现操作细节的场景
+
+**结果控制**：
+- limit 控制返回 Top N（默认 10，最大 30）
+- 支持 start_date / end_date 做时间范围过滤，支持到小时/分钟（YYYY-MM-DD、YYYY-MM-DD HH、YYYY-MM-DD HH:mm，或带时区 ISO）
+- 当结果过多时会提示“仅返回前 N 条，可能还有更多”`,
         parameters: {
           type: 'object',
           properties: {
             keyword: {
               type: 'string',
               description: '搜索关键字，会在用户任务和最终结果中匹配'
+            },
+            start_date: {
+              type: 'string',
+              description: '可选，开始时间（含），支持 YYYY-MM-DD、YYYY-MM-DD HH、YYYY-MM-DD HH:mm，或带时区 ISO 时间'
+            },
+            end_date: {
+              type: 'string',
+              description: '可选，结束时间（含），支持 YYYY-MM-DD、YYYY-MM-DD HH、YYYY-MM-DD HH:mm，或带时区 ISO 时间'
             },
             detail: {
               type: 'string',

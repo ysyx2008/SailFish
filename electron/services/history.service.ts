@@ -40,6 +40,19 @@ export interface AgentRecord {
   status: 'completed' | 'failed' | 'aborted'
 }
 
+export interface SearchAgentRecordsOptions {
+  keyword: string
+  limit?: number
+  startDate?: string
+  endDate?: string
+}
+
+export interface SearchAgentRecordsResult {
+  records: AgentRecord[]
+  totalMatched: number
+  hasMore: boolean
+}
+
 export interface HostProfileData {
   hostId: string
   hostname: string
@@ -288,29 +301,136 @@ export class HistoryService {
    * 搜索范围：userTask、finalResult、以及过程中用户追加的消息（user_task / user_supplement steps）
    */
   searchAgentRecords(keyword: string, limit: number = 10): AgentRecord[] {
+    return this.searchAgentRecordsAdvanced({ keyword, limit }).records
+  }
+
+  /**
+   * 高级搜索 Agent 历史记录
+   * 支持关键字搜索、时间范围过滤，以及 hasMore 提示
+   */
+  searchAgentRecordsAdvanced(options: SearchAgentRecordsOptions): SearchAgentRecordsResult {
+    const keyword = options.keyword?.trim()
+    if (!keyword) {
+      return { records: [], totalMatched: 0, hasMore: false }
+    }
+
     const lowerKeyword = keyword.toLowerCase()
+    const limit = Math.max(1, options.limit ?? 10)
     const files = fs.readdirSync(this.agentDir).filter(f => f.endsWith('.json')).sort().reverse()
     const results: AgentRecord[] = []
+    let totalMatched = 0
+
+    const startTs = this.parseDateBoundary(options.startDate, 'start')
+    const endTs = this.parseDateBoundary(options.endDate, 'end')
 
     for (const file of files) {
-      if (results.length >= limit) break
       const filePath = path.join(this.agentDir, file)
       const records = this.readJsonFile<AgentRecord>(filePath)
       for (let i = records.length - 1; i >= 0; i--) {
         const r = records[i]
+        const ts = r.timestamp || 0
+        if (startTs !== undefined && ts < startTs) continue
+        if (endTs !== undefined && ts > endTs) continue
+
         if (r.userTask?.toLowerCase().includes(lowerKeyword) ||
             r.finalResult?.toLowerCase().includes(lowerKeyword) ||
             r.steps?.some(s =>
               (s.type === 'user_task' || s.type === 'user_supplement') &&
               s.content?.toLowerCase().includes(lowerKeyword)
             )) {
-          results.push(r)
-          if (results.length >= limit) break
+          totalMatched++
+          if (results.length < limit) {
+            results.push(r)
+          }
         }
       }
     }
 
-    return results
+    return {
+      records: results,
+      totalMatched,
+      hasMore: totalMatched > results.length
+    }
+  }
+
+  private parseDateBoundary(value: string | undefined, type: 'start' | 'end'): number | undefined {
+    if (!value) return undefined
+    const text = value.trim()
+    if (!text) return undefined
+
+    const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text)
+    if (dateMatch) {
+      const [_, y, m, d] = dateMatch
+      return this.createLocalDateMs(
+        Number(y),
+        Number(m),
+        Number(d),
+        type === 'start' ? 0 : 23,
+        type === 'start' ? 0 : 59,
+        type === 'start' ? 0 : 59,
+        type === 'start' ? 0 : 999
+      )
+    }
+
+    const hourMatch = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2})$/.exec(text)
+    if (hourMatch) {
+      const [_, y, m, d, hh] = hourMatch
+      return this.createLocalDateMs(
+        Number(y),
+        Number(m),
+        Number(d),
+        Number(hh),
+        type === 'start' ? 0 : 59,
+        type === 'start' ? 0 : 59,
+        type === 'start' ? 0 : 999
+      )
+    }
+
+    const minuteMatch = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/.exec(text)
+    if (minuteMatch) {
+      const [_, y, m, d, hh, mm] = minuteMatch
+      return this.createLocalDateMs(
+        Number(y),
+        Number(m),
+        Number(d),
+        Number(hh),
+        Number(mm),
+        type === 'start' ? 0 : 59,
+        type === 'start' ? 0 : 999
+      )
+    }
+
+    // ISO 时间仅接受带时区的格式，避免环境差异导致的歧义
+    if (/T/.test(text) && (/[zZ]$/.test(text) || /[+-]\d{2}:\d{2}$/.test(text))) {
+      const parsed = new Date(text)
+      return Number.isNaN(parsed.getTime()) ? undefined : parsed.getTime()
+    }
+
+    return undefined
+  }
+
+  private createLocalDateMs(
+    year: number,
+    month: number,
+    day: number,
+    hour: number,
+    minute: number,
+    second: number,
+    millisecond: number
+  ): number | undefined {
+    const date = new Date(year, month - 1, day, hour, minute, second, millisecond)
+    if (
+      date.getFullYear() !== year ||
+      date.getMonth() !== month - 1 ||
+      date.getDate() !== day ||
+      date.getHours() !== hour ||
+      date.getMinutes() !== minute ||
+      date.getSeconds() !== second ||
+      date.getMilliseconds() !== millisecond
+    ) {
+      return undefined
+    }
+    return date.getTime()
   }
 
   // ==================== 导出/导入 ====================

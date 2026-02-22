@@ -322,14 +322,26 @@ export async function searchHistory(
   const limitRaw = typeof args.limit === 'number' ? args.limit : 10
   const limit = Math.min(Math.max(1, limitRaw), 30)
   const detail = args.detail === 'full' ? 'full' : 'summary'
+  const startDate = typeof args.start_date === 'string' ? args.start_date.trim() : ''
+  const endDate = typeof args.end_date === 'string' ? args.end_date.trim() : ''
 
   if (!keyword) {
     return { success: false, output: '', error: '缺少 keyword 参数' }
   }
 
+  const startDateError = validateDateInput(startDate, 'start_date')
+  if (startDateError) return { success: false, output: '', error: startDateError }
+  const endDateError = validateDateInput(endDate, 'end_date')
+  if (endDateError) return { success: false, output: '', error: endDateError }
+  const startDateMs = startDate ? parseDateInputToMs(startDate) : undefined
+  const endDateMs = endDate ? parseDateInputToMs(endDate) : undefined
+  if (startDateMs !== undefined && endDateMs !== undefined && startDateMs > endDateMs) {
+    return { success: false, output: '', error: 'start_date 不能晚于 end_date' }
+  }
+
   executor.addStep({
     type: 'tool_call',
-    content: `搜索历史对话: "${keyword}" (${detail})`,
+    content: `搜索历史对话: "${keyword}" (${detail}${startDate || endDate ? `, ${startDate || '-'} ~ ${endDate || '-'}` : ''})`,
     toolName: 'search_history',
     toolArgs: args,
     riskLevel: 'safe'
@@ -346,7 +358,13 @@ export async function searchHistory(
   }
 
   try {
-    const records = historyService.searchAgentRecords(keyword, limit)
+    const searchResult = historyService.searchAgentRecordsAdvanced({
+      keyword,
+      limit,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined
+    })
+    const records = searchResult.records
 
     if (records.length === 0) {
       executor.addStep({
@@ -401,7 +419,13 @@ export async function searchHistory(
       return lines.join('\n')
     }).join('\n\n')
 
-    const output = `找到 ${records.length} 条相关历史记录：\n\n${formatted}`
+    const rangeLine = startDate || endDate
+      ? `时间范围: ${startDate || '(最早)'} ~ ${endDate || '(最新)'}\n`
+      : ''
+    const moreHint = searchResult.hasMore
+      ? `\n\n⚠️ 当前仅返回前 ${records.length} 条（总命中 ${searchResult.totalMatched} 条）。可缩小时间范围、提高关键词精度，或调大 limit 后重试。`
+      : ''
+    const output = `找到 ${records.length} 条相关历史记录（总命中 ${searchResult.totalMatched} 条）：\n${rangeLine}\n${formatted}${moreHint}`
 
     const displayOutput = output.length > 500
       ? truncateFromEnd(output, 500)
@@ -409,7 +433,7 @@ export async function searchHistory(
 
     executor.addStep({
       type: 'tool_result',
-      content: `找到 ${records.length} 条历史记录 (${detail})`,
+      content: `找到 ${records.length}/${searchResult.totalMatched} 条历史记录 (${detail})${searchResult.hasMore ? '，还有更多' : ''}`,
       toolName: 'search_history',
       toolResult: displayOutput
     })
@@ -424,4 +448,94 @@ export async function searchHistory(
     })
     return { success: false, output: '', error: errorMsg }
   }
+}
+
+function validateDateInput(value: string, field: 'start_date' | 'end_date'): string | null {
+  if (!value) return null
+
+  const parsed = parseDateInputToMs(value, 'start')
+  if (parsed === undefined) {
+    return `${field} 格式无效，请使用 YYYY-MM-DD、YYYY-MM-DD HH、YYYY-MM-DD HH:mm 或带时区的 ISO 时间`
+  }
+  return null
+}
+
+function parseDateInputToMs(value: string, boundary: 'start' | 'end' = 'start'): number | undefined {
+  if (!value) return undefined
+  const text = value.trim()
+  if (!text) return undefined
+
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text)
+  if (dateMatch) {
+    const [_, y, m, d] = dateMatch
+    return createLocalDateMs(
+      Number(y),
+      Number(m),
+      Number(d),
+      boundary === 'start' ? 0 : 23,
+      boundary === 'start' ? 0 : 59,
+      boundary === 'start' ? 0 : 59,
+      boundary === 'start' ? 0 : 999
+    )
+  }
+
+  const hourMatch = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2})$/.exec(text)
+  if (hourMatch) {
+    const [_, y, m, d, hh] = hourMatch
+    return createLocalDateMs(
+      Number(y),
+      Number(m),
+      Number(d),
+      Number(hh),
+      boundary === 'start' ? 0 : 59,
+      boundary === 'start' ? 0 : 59,
+      boundary === 'start' ? 0 : 999
+    )
+  }
+
+  const minuteMatch = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/.exec(text)
+  if (minuteMatch) {
+    const [_, y, m, d, hh, mm] = minuteMatch
+    return createLocalDateMs(
+      Number(y),
+      Number(m),
+      Number(d),
+      Number(hh),
+      Number(mm),
+      boundary === 'start' ? 0 : 59,
+      boundary === 'start' ? 0 : 999
+    )
+  }
+
+  // ISO 时间仅接受带时区的形式，避免环境相关歧义
+  if (/T/.test(text) && (/[zZ]$/.test(text) || /[+-]\d{2}:\d{2}$/.test(text))) {
+    const parsed = new Date(text)
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed.getTime()
+  }
+
+  return undefined
+}
+
+function createLocalDateMs(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second: number,
+  millisecond: number
+): number | undefined {
+  const date = new Date(year, month - 1, day, hour, minute, second, millisecond)
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day ||
+    date.getHours() !== hour ||
+    date.getMinutes() !== minute ||
+    date.getSeconds() !== second ||
+    date.getMilliseconds() !== millisecond
+  ) {
+    return undefined
+  }
+  return date.getTime()
 }
