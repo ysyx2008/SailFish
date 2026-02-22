@@ -601,10 +601,21 @@ export class WatchService {
 
   private async deliverOutput(watch: WatchDefinition, result: WatchExecutionResult): Promise<void> {
     if (result.skipped) return
+    if (!result.output?.trim() && result.success) return
 
     const outputType = watch.output.type
 
     if (outputType === 'silent') return
+
+    if (outputType === 'desktop') {
+      const sent = this.sendDesktopMessage(watch, result)
+      if (!sent) {
+        // App 窗口不可用时降级：先尝试 IM，再降级到系统通知
+        const imOk = await this.sendIMNotification(watch, result)
+        if (!imOk) this.sendNotification(watch, result)
+      }
+      return
+    }
 
     if (outputType === 'notification') {
       this.sendNotification(watch, result)
@@ -620,6 +631,29 @@ export class WatchService {
     }
 
     // 'log' 类型不做额外投递，执行历史已记录
+  }
+
+  /** 向 App 桌面对话面板推送主动消息 */
+  private sendDesktopMessage(watch: WatchDefinition, result: WatchExecutionResult): boolean {
+    if (!this.config?.mainWindow || this.config.mainWindow.isDestroyed()) {
+      return false
+    }
+
+    const message = result.success
+      ? result.output.trim()
+      : `执行出错: ${result.error || '未知错误'}`
+
+    if (!message) return false
+
+    this.config.mainWindow.webContents.send('watch:proactiveMessage', {
+      watchId: watch.id,
+      watchName: watch.name,
+      message,
+      timestamp: Date.now()
+    })
+
+    console.log(`[WatchService] Desktop message sent: ${watch.name}`)
+    return true
   }
 
   private sendNotification(watch: WatchDefinition, result: WatchExecutionResult): void {
@@ -1034,7 +1068,7 @@ export class WatchService {
 - 如果是深夜或周末，降低打扰意愿`,
         skills: ['calendar', 'email'],
         execution: { type: 'local' },
-        output: { type: 'im' },
+        output: { type: 'desktop' },
         priority: 'low',
         createdAt: Date.now(),
         updatedAt: Date.now()

@@ -119,6 +119,7 @@ let cleanupGatewayRemoteTask: (() => void) | null = null
 let cleanupImConnectionChange: (() => void) | null = null
 let cleanupRunTask: (() => void) | null = null
 let cleanupInstallSkill: (() => void) | null = null
+let cleanupWatchProactiveMessage: (() => void) | null = null
 
 
 onMounted(async () => {
@@ -243,6 +244,44 @@ onMounted(async () => {
       terminalStore.pendingSchedulerTasks[remoteTab.id] = data.message
       log.debug(`[RemoteChat] 远程任务已提交: tabId=${remoteTab.id}, agentId=${data.agentId}`)
     }
+  })
+
+  // 监听 Watch 主动消息（desktop 输出通道）：在助手 tab 中直接展示 AI 主动消息
+  const WATCH_ASSISTANT_AGENT_ID = '__watch_assistant__'
+  cleanupWatchProactiveMessage = window.electronAPI.watch.onProactiveMessage((data) => {
+    log.debug(`[Watch] proactiveMessage: watchName=${data.watchName}, len=${data.message.length}`)
+
+    // 找到/创建专用助手 tab
+    let tab = terminalStore.tabs.find(t => t.agentId === WATCH_ASSISTANT_AGENT_ID)
+    if (!tab) {
+      const tabId = terminalStore.createAssistantTab({
+        agentId: WATCH_ASSISTANT_AGENT_ID,
+        title: t('watch.assistantTabTitle', '旗鱼助手'),
+        activate: false
+      })
+      tab = terminalStore.tabs.find(t => t.id === tabId)
+    }
+    if (!tab) return
+
+    const ts = Date.now()
+    terminalStore.addAgentStep(tab.id, {
+      id: `watch_user_task_${ts}`,
+      type: 'user_task',
+      content: `[${data.watchName}]`,
+      timestamp: ts
+    })
+    terminalStore.addAgentStep(tab.id, {
+      id: `watch_msg_${ts}`,
+      type: 'message',
+      content: data.message,
+      timestamp: ts
+    })
+    terminalStore.addAgentStep(tab.id, {
+      id: `watch_final_${ts}`,
+      type: 'final_result',
+      content: data.message,
+      timestamp: ts
+    })
   })
 
   // 全局监听 IM 渠道连接状态变化，弹 toast 通知
@@ -548,6 +587,7 @@ onUnmounted(() => {
   cleanupImConnectionChange?.()
   cleanupRunTask?.()
   cleanupInstallSkill?.()
+  cleanupWatchProactiveMessage?.()
 })
 </script>
 

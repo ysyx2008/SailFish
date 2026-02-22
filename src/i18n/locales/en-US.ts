@@ -1908,10 +1908,13 @@ export default {
     assistantOnly: 'Assistant Only',
 
     outputType: 'Output Delivery',
+    outputDesktop: 'In-App Chat',
     outputIM: 'IM Push',
     outputNotification: 'System Notification',
     outputLog: 'Log Only',
     outputSilent: 'Silent',
+
+    assistantTabTitle: 'SailFish Assistant',
 
     statusCompleted: 'Completed',
     statusFailed: 'Failed',

@@ -19,7 +19,7 @@ const emit = defineEmits<{ close: [] }>()
 
 type WatchTriggerType = 'cron' | 'interval' | 'heartbeat' | 'webhook' | 'manual' | 'file_change' | 'calendar' | 'email'
 type WatchPriority = 'high' | 'normal' | 'low'
-type WatchOutputType = 'im' | 'notification' | 'log' | 'silent'
+type WatchOutputType = 'desktop' | 'im' | 'notification' | 'log' | 'silent'
 type WatchRunStatus = 'completed' | 'failed' | 'skipped' | 'timeout' | 'cancelled' | 'running'
 
 interface WatchTrigger {
@@ -107,7 +107,7 @@ const getTriggerIcon = (type: WatchTriggerType | string) => {
 }
 
 const getOutputLabel = (type: WatchOutputType): string => {
-  const map: Record<WatchOutputType, string> = { im: t('watch.outputIM'), notification: t('watch.outputNotification'), log: t('watch.outputLog'), silent: t('watch.outputSilent') }
+  const map: Record<WatchOutputType, string> = { desktop: t('watch.outputDesktop'), im: t('watch.outputIM'), notification: t('watch.outputNotification'), log: t('watch.outputLog'), silent: t('watch.outputSilent') }
   return map[type] || type
 }
 

@@ -277,10 +277,10 @@ function parseTrigger(raw: Record<string, unknown>): WatchTrigger {
 }
 
 function parseOutput(raw: string | undefined): WatchOutput {
-  const validTypes = ['im', 'notification', 'log', 'silent'] as const
+  const validTypes = ['desktop', 'im', 'notification', 'log', 'silent'] as const
   const type = (typeof raw === 'string' && validTypes.includes(raw as typeof validTypes[number]))
     ? raw as WatchOutput['type']
-    : 'im'
+    : 'desktop'
   return { type }
 }
 

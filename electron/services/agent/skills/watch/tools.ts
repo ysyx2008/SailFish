@@ -45,6 +45,7 @@ export const watchTools: ToolDefinition[] = [
 例如用户说"每天 9 点检查邮件"，prompt 应为"检查邮箱是否有重要邮件，有则推送摘要"。
 
 **输出投递**：
+- desktop: 在应用内对话面板展示结果（默认，推荐）
 - im: 通过 IM（钉钉/飞书等）推送结果
 - notification: 系统通知
 - log: 仅记录日志
@@ -85,8 +86,8 @@ export const watchTools: ToolDefinition[] = [
           description: { type: 'string', description: '详细描述（可选）' },
           output: {
             type: 'string',
-            enum: ['im', 'notification', 'log', 'silent'],
-            description: '结果投递方式，默认 "im"'
+            enum: ['desktop', 'im', 'notification', 'log', 'silent'],
+            description: '结果投递方式。desktop=应用内对话面板, im=IM推送, notification=系统通知, log=仅记录, silent=静默。默认 "desktop"'
           },
           priority: {
             type: 'string',
@@ -133,7 +134,7 @@ export const watchTools: ToolDefinition[] = [
               required: ['type']
             }
           },
-          output: { type: 'string', enum: ['im', 'notification', 'log', 'silent'] },
+          output: { type: 'string', enum: ['desktop', 'im', 'notification', 'log', 'silent'] },
           priority: { type: 'string', enum: ['high', 'normal', 'low'] },
           enabled: { type: 'boolean' }
         },

@@ -80,7 +80,7 @@ export interface WatchExecution {
 // ==================== 输出配置 ====================
 
 export interface WatchOutput {
-  type: 'im' | 'notification' | 'log' | 'silent'
+  type: 'desktop' | 'im' | 'notification' | 'log' | 'silent'
 }
 
 // ==================== Watch 定义 ====================

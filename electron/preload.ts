@@ -2618,6 +2618,15 @@ const electronAPI = {
       ipcRenderer.on('watch:task-completed', handler)
       return () => { ipcRenderer.removeListener('watch:task-completed', handler) }
     },
+    onProactiveMessage: (callback: (data: { watchId: string; watchName: string; message: string; timestamp: number }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
+        if (data && typeof data === 'object' && 'watchId' in data && 'message' in data) {
+          callback(data as { watchId: string; watchName: string; message: string; timestamp: number })
+        }
+      }
+      ipcRenderer.on('watch:proactiveMessage', handler)
+      return () => { ipcRenderer.removeListener('watch:proactiveMessage', handler) }
+    },
   },
 
   sensor: {

@@ -1911,10 +1911,13 @@ export default {
 
     // 输出方式
     outputType: '结果投递',
+    outputDesktop: '应用内对话',
     outputIM: 'IM 推送',
     outputNotification: '系统通知',
     outputLog: '仅记录',
     outputSilent: '静默',
+
+    assistantTabTitle: '旗鱼助手',
 
     // 状态
     statusCompleted: '完成',
