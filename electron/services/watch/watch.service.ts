@@ -1105,10 +1105,7 @@ Should this task run now? Respond in JSON format:
         skills: ['calendar', 'email'],
         execution: { type: 'local' },
         output: { type: 'im' },
-        preCheck: {
-          enabled: true,
-          hint: '深夜（22:00-8:00）和周末降低打扰意愿，非紧急事项可跳过'
-        },
+        preCheck: { enabled: false },
         priority: 'low',
         createdAt: Date.now(),
         updatedAt: Date.now()
