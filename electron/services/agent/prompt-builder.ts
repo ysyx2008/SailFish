@@ -449,19 +449,20 @@ ${taskIdList}`
     const channel = this.context.remoteChannel
     if (!channel || channel === 'desktop') return ''
 
-    // IM 平台名称映射（钉钉/飞书共享同一套提示模板）
-    const imPlatforms: Record<string, string> = {
-      dingtalk: '钉钉机器人',
-      feishu: '飞书机器人'
+    const imPlatforms: Record<string, { name: string; fileLimit: string; imageLimit: string }> = {
+      dingtalk: { name: '钉钉机器人', fileLimit: '20MB', imageLimit: '20MB' },
+      feishu:   { name: '飞书机器人', fileLimit: '30MB', imageLimit: '10MB' },
+      slack:    { name: 'Slack Bot', fileLimit: '1GB', imageLimit: '1GB' },
+      telegram: { name: 'Telegram Bot', fileLimit: '50MB', imageLimit: '10MB' },
+      wecom:    { name: '企业微信机器人', fileLimit: '20MB', imageLimit: '20MB' },
     }
 
-    const platformName = imPlatforms[channel]
-    if (platformName) {
-      const sizeLimit = channel === 'dingtalk' ? '20MB' : '30MB'
-      const imageSizeLimit = channel === 'dingtalk' ? '20MB' : '10MB'
-      return `**交互通道**：用户通过${platformName}与你对话，你的回复将作为 IM 消息发送
-- 你可以使用 \`send_image_to_chat\` 发送图片（限${imageSizeLimit}），图片会在聊天中内联显示
-- 你可以使用 \`send_file_to_chat\` 发送其他文件（限${sizeLimit}）
+    const imMeta = imPlatforms[channel]
+    if (imMeta) {
+      return `**交互通道**：用户通过${imMeta.name}与你对话，你的回复将作为 IM 消息发送
+- 你可以使用 \`send_image_to_chat\` 发送图片（限${imMeta.imageLimit}），图片会在聊天中内联显示
+- 你可以使用 \`send_file_to_chat\` 发送其他文件（限${imMeta.fileLimit}）
+- 当用户要求发送/查看文件时，必须使用 \`send_file_to_chat\` 真正发送文件，不要只读取内容
 - 当用户要求查看图片时，优先用 \`send_image_to_chat\`；其他文件用 \`send_file_to_chat\``
     }
 

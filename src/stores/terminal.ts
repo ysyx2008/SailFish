@@ -149,6 +149,8 @@ export interface TerminalTab {
   uploadedDocs?: ParsedDocument[]
   // 是否为远程 Gateway Agent 标签页
   isRemote?: boolean
+  // 远程 IM 通道类型（仅远程 Agent 标签页使用，决定可用的 IM 工具集）
+  remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'
   // 独立助手 Agent ID（仅 assistant 类型标签页使用）
   agentId?: string
 }
@@ -507,6 +509,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     agentId?: string
     title?: string
     isRemote?: boolean
+    remoteChannel?: TerminalTab['remoteChannel']
     activate?: boolean
   }): string {
     const id = uuidv4()
@@ -521,6 +524,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       isConnected: true,
       isLoading: false,
       isRemote: options?.isRemote,
+      remoteChannel: options?.remoteChannel,
       agentState: {
         isRunning: false,
         steps: [],

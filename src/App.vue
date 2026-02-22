@@ -231,9 +231,12 @@ onMounted(async () => {
         agentId: data.agentId,
         title: '📡 Remote Agent',
         isRemote: true,
+        remoteChannel: data.remoteChannel,
         activate: false
       })
       remoteTab = terminalStore.tabs.find(tab => tab.id === newTabId)
+    } else if (data.remoteChannel) {
+      remoteTab.remoteChannel = data.remoteChannel
     }
     if (remoteTab) {
       // 把远程消息作为 pendingSchedulerTask，AiPanel 会自动消费并执行 runAgent

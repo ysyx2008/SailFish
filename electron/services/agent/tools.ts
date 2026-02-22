@@ -165,7 +165,7 @@ export interface GetAgentToolsOptions {
   /** Agent 运行模式，用于过滤不适用的工具 */
   mode?: AgentMode
   /** 请求来源通道（用于条件性加载 IM 专属工具） */
-  remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu'
+  remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'
   /** 是否包含上下文管理工具（用量超过阈值时启用，节省 token） */
   includeContextTools?: boolean
 }
@@ -988,16 +988,21 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
     })
   }
 
-  // IM 通道专属工具：仅在钉钉/飞书通道时可用
-  if (options?.remoteChannel === 'dingtalk' || options?.remoteChannel === 'feishu') {
-    const platformName = options.remoteChannel === 'dingtalk' ? '钉钉' : '飞书'
-    const sizeLimit = options.remoteChannel === 'dingtalk' ? '20MB' : '30MB'
-
+  // IM 通道专属工具：所有 IM 平台均可发送文件和图片
+  const imPlatformMeta: Record<string, { name: string; fileLimit: string; imageLimit: string }> = {
+    dingtalk: { name: '钉钉', fileLimit: '20MB', imageLimit: '20MB' },
+    feishu:   { name: '飞书', fileLimit: '30MB', imageLimit: '10MB' },
+    slack:    { name: 'Slack', fileLimit: '1GB', imageLimit: '1GB' },
+    telegram: { name: 'Telegram', fileLimit: '50MB', imageLimit: '10MB' },
+    wecom:    { name: '企业微信', fileLimit: '20MB', imageLimit: '20MB' },
+  }
+  const imMeta = options?.remoteChannel ? imPlatformMeta[options.remoteChannel] : undefined
+  if (imMeta) {
     filteredTools.push({
       type: 'function',
       function: {
         name: 'send_file_to_chat',
-        description: `发送本地文件到当前${platformName}聊天。将机器上的文件通过${platformName}机器人发送给用户。
+        description: `发送本地文件到当前${imMeta.name}聊天。将机器上的文件通过${imMeta.name}机器人发送给用户。
 
 **使用场景**：
 - 用户要求你把某个文件发过来
@@ -1005,7 +1010,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
 - 发送配置文件、脚本等需要用户查看的文件
 
 **限制**：
-- 文件大小不超过 ${sizeLimit}
+- 文件大小不超过 ${imMeta.fileLimit}
 - 不限文件格式
 - 一次只能发送一个文件，多个文件需多次调用
 
@@ -1030,12 +1035,11 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       }
     })
 
-    const imageSizeLimit = options.remoteChannel === 'dingtalk' ? '20MB' : '10MB'
     filteredTools.push({
       type: 'function',
       function: {
         name: 'send_image_to_chat',
-        description: `发送图片到当前${platformName}聊天，图片会在聊天中内联显示。
+        description: `发送图片到当前${imMeta.name}聊天，图片会在聊天中内联显示。
 
 **使用场景**：
 - 用户要求查看某张图片
@@ -1045,7 +1049,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
 **支持的图片格式**：jpg/jpeg、png、gif、bmp、webp 等常见格式
 
 **限制**：
-- 图片大小不超过 ${imageSizeLimit}
+- 图片大小不超过 ${imMeta.imageLimit}
 - 一次只能发送一张图片
 
 **注意**：

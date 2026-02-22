@@ -106,7 +106,7 @@ export interface AgentContext {
     shell: string
   }
   terminalType: 'local' | 'ssh'  // 终端类型：本地终端或 SSH 远程终端
-  remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu'  // 请求来源通道：桌面端、Web远程、钉钉、飞书
+  remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'
   cwd?: string  // 当前工作目录（用于告知 AI 当前位置，帮助正确处理相对路径）
   hostId?: string  // 主机档案 ID
   documentContext?: string  // 用户上传的文档内容

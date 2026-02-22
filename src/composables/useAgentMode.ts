@@ -500,6 +500,7 @@ export function useAgentMode(
             hostId,
             documentContext,
             images: images.length > 0 ? images : undefined,
+            remoteChannel: currentTab.value.remoteChannel,
             sessionId: agentState.value?.sessionId,
             sessionStartTime: agentState.value?.sessionStartTime
           },
