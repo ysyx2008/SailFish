@@ -154,6 +154,8 @@ interface StoreSchema {
   agentAwakened: boolean           // 觉醒模式：AI 主动感知环境、推送消息
   watchHeartbeatEnabled: boolean  // Watch 心跳传感器是否启用（觉醒模式内部使用）
   watchHeartbeatInterval: number  // Watch 心跳间隔（分钟）
+  watchEventPoolDrainMinutes: number  // EventPool 排水间隔（分钟），默认 15
+  watchQuietHours: { start: string; end: string } | null  // 静默时段（24h 格式），null 表示不启用
 }
 
 const defaultConfig: StoreSchema = {
@@ -212,7 +214,9 @@ const defaultConfig: StoreSchema = {
   skillMarketRegistryUrl: '',
   agentAwakened: true,
   watchHeartbeatEnabled: true,
-  watchHeartbeatInterval: 30
+  watchHeartbeatInterval: 30,
+  watchEventPoolDrainMinutes: 15,
+  watchQuietHours: null
 }
 
 export class ConfigService {

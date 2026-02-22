@@ -21,6 +21,7 @@ import type {
 import { WatchStore, getWatchStore } from './store'
 import type { SensorEvent, EventHandler } from '../sensor/types'
 import { getEventBus } from '../sensor/event-bus'
+import { EventPool, type EventPoolConfig } from './event-pool'
 import type { PtyService } from '../pty.service'
 import type { SshService, SshConfig } from '../ssh.service'
 import type { ConfigService, SshSession } from '../config.service'
@@ -71,6 +72,7 @@ export class WatchService {
   private runningWatches: Map<string, { watchId: string; ptyId: string | null; startTime: number }> = new Map()
   private isRunning = false
   private eventHandler: EventHandler | null = null
+  private eventPool: EventPool | null = null
   private checkInterval: NodeJS.Timeout | null = null
 
   constructor() {
@@ -98,10 +100,20 @@ export class WatchService {
 
     this.isRunning = true
 
-    // 订阅事件总线
+    // 通过 EventPool 订阅事件总线（分流即时/攒批事件）
     const eventBus = getEventBus()
     this.eventHandler = (event) => this.handleEvent(event)
-    eventBus.on(this.eventHandler)
+    const drainMinutes = this.config?.configService
+      ? this.config.configService.get('watchEventPoolDrainMinutes')
+      : 15
+    const quietHours = this.config?.configService
+      ? this.config.configService.get('watchQuietHours')
+      : null
+    this.eventPool = new EventPool(this.eventHandler, {
+      drainIntervalMs: (drainMinutes || 15) * 60 * 1000,
+      quietHours
+    })
+    this.eventPool.attach(eventBus)
 
     // 调度触发器 + 注册传感器 target
     const watches = this.store.getAll()
@@ -123,10 +135,11 @@ export class WatchService {
     this.isRunning = false
 
     // 取消事件订阅
-    if (this.eventHandler) {
-      getEventBus().off(this.eventHandler)
-      this.eventHandler = null
+    if (this.eventPool) {
+      this.eventPool.detach(getEventBus())
+      this.eventPool = null
     }
+    this.eventHandler = null
 
     // 清除所有定时器
     for (const timer of this.timers.values()) {
@@ -548,7 +561,19 @@ export class WatchService {
     const parts: string[] = []
 
     // 事件上下文
-    if (event.type === 'heartbeat') {
+    if (event.type === 'heartbeat' && event.payload.isBatch) {
+      const p = event.payload
+      parts.push(`[Batch wake-up at ${new Date().toLocaleString()}, ${p.eventCount} event(s) since last check: ${p.summary}]`)
+      const subEvents = p.events as Array<{ type: string; source: string; timestamp: number; payload: Record<string, unknown> }>
+      if (subEvents?.length) {
+        const lines = subEvents.slice(0, 20).map((e, i) => {
+          if (e.type === 'email') return `  ${i + 1}. Email from ${e.payload.fromName || e.payload.from}: "${e.payload.subject}"`
+          if (e.type === 'calendar') return `  ${i + 1}. Calendar: "${e.payload.summary}" in ${e.payload.minutesUntilStart}min`
+          return `  ${i + 1}. ${e.type} from ${e.source}`
+        })
+        parts.push(`Recent events:\n${lines.join('\n')}`)
+      }
+    } else if (event.type === 'heartbeat') {
       parts.push(`[Heartbeat wake-up at ${new Date().toLocaleString()}]`)
     } else if (event.type === 'webhook') {
       const payloadStr = Object.keys(event.payload).length > 0
