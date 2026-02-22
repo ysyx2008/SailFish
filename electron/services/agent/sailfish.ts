@@ -99,7 +99,8 @@ export class SailFish extends Agent {
       options.aiRules,
       options.taskSummaries,
       options.relatedTaskDigests,
-      options.availableTaskIds
+      options.availableTaskIds,
+      options.contextKnowledgeDoc
     )
   }
   

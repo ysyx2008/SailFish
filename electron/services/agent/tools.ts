@@ -646,25 +646,13 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       type: 'function',
       function: {
         name: 'remember_info',
-        description: `**仅在用户明确要求"记住XX"/"帮我记一下"时使用**。将用户指定的信息保存到知识库，未来交互时自动提供。
-
-不要主动调用此工具。只有用户说了类似"记住这个"、"帮我记一下"、"以后都这样做"等明确指令时才使用。
-关键细节（名称、路径、版本等）必须准确。`,
+        description: '将信息整合到持久知识文档中，未来交互时自动提供。适用于用户要求记住的偏好、配置、约定等长期有效的信息。',
         parameters: {
           type: 'object',
           properties: {
             info: {
               type: 'string',
               description: '要记住的信息，关键细节必须完整准确'
-            },
-            volatility: {
-              type: 'string',
-              enum: ['stable', 'moderate', 'volatile'],
-              description: '信息的易变性。stable=几乎不变(如OS类型、硬件)；moderate=偶尔变化(如服务端口、软件版本)；volatile=经常变化(如证书到期时间)。默认 moderate'
-            },
-            source: {
-              type: 'string',
-              description: '信息来源，如 "nginx -T 输出"、"用户告知"、"systemctl status 确认"'
             }
           },
           required: ['info']

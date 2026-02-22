@@ -1588,6 +1588,13 @@ interface Window {
       setRegistryUrl: (url: string) => Promise<void>
       fetchRegistry: (force?: boolean) => Promise<any>
     }
+    // L2 知识文档（结构化持久记忆）
+    contextKnowledge: {
+      list: () => Promise<{ success: boolean; items: Array<{ contextId: string; content: string }>; error?: string }>
+      get: (contextId: string) => Promise<{ success: boolean; content: string; error?: string }>
+      set: (contextId: string, content: string) => Promise<{ success: boolean; error?: string }>
+      delete: (contextId: string) => Promise<{ success: boolean; error?: string }>
+    }
     // 终端屏幕内容服务（主进程请求渲染进程数据）
     screen: {
       // 注册获取最近 N 行的请求处理器

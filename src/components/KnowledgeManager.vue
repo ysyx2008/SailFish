@@ -37,9 +37,20 @@ const selectedDoc = ref<KnowledgeDocument | null>(null)
 const selectedDocIds = ref<Set<string>>(new Set())
 const batchDeleting = ref(false)
 const clearing = ref(false)
-const activeTab = ref<'documents' | 'memories'>('documents')
+const activeTab = ref<'documents' | 'memories' | 'contextDocs'>('documents')
 const exporting = ref(false)
 const importing = ref(false)
+
+// L2 知识文档
+interface ContextKnowledgeItem {
+  contextId: string
+  content: string
+}
+const contextDocs = ref<ContextKnowledgeItem[]>([])
+const selectedContextId = ref<string | null>(null)
+const contextDocContent = ref('')
+const contextDocSaving = ref(false)
+const contextDocDirty = ref(false)
 
 // 普通文档（排除主机记忆）
 const normalDocuments = computed(() => {
@@ -130,6 +141,9 @@ const loadData = async () => {
     if (result.success && result.stats) {
       stats.value = result.stats
     }
+    
+    // 加载 L2 知识文档
+    await loadContextDocs()
   } catch (error) {
     console.error('加载知识库数据失败:', error)
   } finally {
@@ -328,6 +342,78 @@ const importKnowledge = async () => {
   }
 }
 
+// ==================== L2 知识文档操作 ====================
+
+const loadContextDocs = async () => {
+  try {
+    const result = await window.electronAPI.contextKnowledge.list()
+    if (result.success) {
+      contextDocs.value = result.items
+    }
+  } catch (error) {
+    console.error('加载知识文档失败:', error)
+  }
+}
+
+const selectContextDoc = (item: ContextKnowledgeItem) => {
+  if (contextDocDirty.value && selectedContextId.value) {
+    if (!confirm('当前文档有未保存的修改，确定要切换吗？')) return
+  }
+  selectedContextId.value = item.contextId
+  contextDocContent.value = item.content
+  contextDocDirty.value = false
+}
+
+const onContextDocInput = () => {
+  contextDocDirty.value = true
+}
+
+const saveContextDoc = async () => {
+  if (!selectedContextId.value) return
+  try {
+    contextDocSaving.value = true
+    const result = await window.electronAPI.contextKnowledge.set(
+      selectedContextId.value,
+      contextDocContent.value
+    )
+    if (result.success) {
+      contextDocDirty.value = false
+      await loadContextDocs()
+    } else {
+      alert('保存失败: ' + (result.error || '未知错误'))
+    }
+  } catch (error) {
+    console.error('保存知识文档失败:', error)
+  } finally {
+    contextDocSaving.value = false
+  }
+}
+
+const deleteContextDoc = async (contextId: string) => {
+  if (!confirm(`确定删除 "${contextId}" 的知识文档吗？`)) return
+  try {
+    const result = await window.electronAPI.contextKnowledge.delete(contextId)
+    if (result.success) {
+      if (selectedContextId.value === contextId) {
+        selectedContextId.value = null
+        contextDocContent.value = ''
+        contextDocDirty.value = false
+      }
+      await loadContextDocs()
+    } else {
+      alert('删除失败: ' + (result.error || '未知错误'))
+    }
+  } catch (error) {
+    console.error('删除知识文档失败:', error)
+  }
+}
+
+const getContextLabel = (contextId: string): string => {
+  if (contextId === 'local') return '💻 本地主机'
+  if (contextId === 'personal') return '👤 个人'
+  return `🌐 ${contextId}`
+}
+
 // 搜索框引用
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
@@ -390,6 +476,13 @@ onUnmounted(() => {
               @click="activeTab = 'memories'"
             >
               🧠 {{ t('knowledgeManager.tabMemories') }} ({{ memoryDocuments.length }})
+            </button>
+            <button 
+              class="tab-btn" 
+              :class="{ active: activeTab === 'contextDocs' }"
+              @click="activeTab = 'contextDocs'"
+            >
+              📋 知识文档 ({{ contextDocs.length }})
             </button>
           </div>
 
@@ -546,56 +639,129 @@ onUnmounted(() => {
               </button>
             </div>
           </template>
+
+          <!-- 知识文档标签页 -->
+          <template v-if="activeTab === 'contextDocs'">
+            <div class="context-doc-list" v-if="!loading">
+              <div 
+                v-for="item in contextDocs" 
+                :key="item.contextId"
+                class="context-doc-item"
+                :class="{ active: selectedContextId === item.contextId }"
+                @click="selectContextDoc(item)"
+              >
+                <div class="context-doc-label">{{ getContextLabel(item.contextId) }}</div>
+                <div class="context-doc-preview">{{ item.content.substring(0, 60) || '（空文档）' }}</div>
+                <button 
+                  class="btn-icon btn-delete-small"
+                  @click.stop="deleteContextDoc(item.contextId)"
+                  :title="t('knowledgeManager.delete')"
+                >
+                  <X :size="12" />
+                </button>
+              </div>
+
+              <div v-if="contextDocs.length === 0" class="empty-state">
+                暂无知识文档。Agent 在执行任务后会自动创建和更新。
+              </div>
+            </div>
+
+            <div v-else class="loading-state">
+              {{ t('knowledgeManager.loading') }}
+            </div>
+
+            <div class="list-actions">
+              <button class="btn btn-sm" @click="loadContextDocs">🔄 {{ t('knowledgeManager.refresh') }}</button>
+            </div>
+          </template>
         </div>
 
-        <!-- 右侧：文档详情 -->
+        <!-- 右侧面板 -->
         <div class="doc-detail-panel">
-          <template v-if="selectedDoc">
-            <div class="detail-header">
-              <h3>{{ selectedDoc.filename }}</h3>
-              <div class="detail-meta">
-                <span>{{ t('knowledgeManager.type') }}：{{ selectedDoc.fileType }}</span>
-                <span>{{ t('knowledgeManager.size') }}：{{ formatSize(selectedDoc.fileSize) }}</span>
-                <span>{{ t('knowledgeManager.chunkCount') }}：{{ selectedDoc.chunkCount }}</span>
-              </div>
-            </div>
-
-            <div class="detail-row">
-              <div class="detail-section detail-section-half">
-                <h4>{{ t('knowledgeManager.tags') }}</h4>
-                <div class="tags-list">
-                  <span v-for="tag in selectedDoc.tags" :key="tag" class="tag">
-                    {{ tag }}
-                  </span>
-                  <span v-if="selectedDoc.tags.length === 0" class="no-tags">
-                    {{ t('knowledgeManager.noTags') }}
-                  </span>
+          <!-- 知识文档编辑模式 -->
+          <template v-if="activeTab === 'contextDocs'">
+            <template v-if="selectedContextId">
+              <div class="detail-header">
+                <h3>{{ getContextLabel(selectedContextId) }}</h3>
+                <div class="detail-meta">
+                  <span>{{ contextDocContent.length }} 字符</span>
+                  <span v-if="contextDocDirty" class="unsaved-badge">● 未保存</span>
                 </div>
               </div>
-
-              <div class="detail-section detail-section-half">
-                <h4>{{ t('knowledgeManager.timeInfo') }}</h4>
-                <div class="time-info">
-                  <div>{{ t('knowledgeManager.createdAt') }}：{{ formatDate(selectedDoc.createdAt) }}</div>
-                  <div>{{ t('knowledgeManager.updatedAt') }}：{{ formatDate(selectedDoc.updatedAt) }}</div>
-                </div>
+              <div class="context-doc-editor">
+                <textarea
+                  v-model="contextDocContent"
+                  @input="onContextDocInput"
+                  class="context-doc-textarea"
+                  placeholder="在此编辑知识文档内容（Markdown 格式）..."
+                  spellcheck="false"
+                ></textarea>
               </div>
-            </div>
-
-            <div class="detail-section detail-section-content">
-              <h4>{{ t('knowledgeManager.contentPreview') }}</h4>
-              <div class="content-preview">
-                {{ selectedDoc.content.slice(0, 1000) }}
-                <span v-if="selectedDoc.content.length > 1000" class="more">
-                  ... ({{ t('knowledgeManager.totalChars', { count: selectedDoc.content.length }) }})
-                </span>
+              <div class="context-doc-actions">
+                <button 
+                  class="btn btn-primary btn-sm" 
+                  @click="saveContextDoc"
+                  :disabled="contextDocSaving || !contextDocDirty"
+                >
+                  {{ contextDocSaving ? '保存中...' : '💾 保存' }}
+                </button>
+                <span class="context-doc-hint">Agent 执行任务后会自动更新此文档</span>
               </div>
+            </template>
+            <div v-else class="no-selection">
+              <p>选择左侧知识文档进行编辑</p>
             </div>
           </template>
 
-          <div v-else class="no-selection">
-            <p>{{ t('knowledgeManager.selectDocToView') }}</p>
-          </div>
+          <!-- 普通文档/记忆详情模式 -->
+          <template v-else>
+            <template v-if="selectedDoc">
+              <div class="detail-header">
+                <h3>{{ selectedDoc.filename }}</h3>
+                <div class="detail-meta">
+                  <span>{{ t('knowledgeManager.type') }}：{{ selectedDoc.fileType }}</span>
+                  <span>{{ t('knowledgeManager.size') }}：{{ formatSize(selectedDoc.fileSize) }}</span>
+                  <span>{{ t('knowledgeManager.chunkCount') }}：{{ selectedDoc.chunkCount }}</span>
+                </div>
+              </div>
+
+              <div class="detail-row">
+                <div class="detail-section detail-section-half">
+                  <h4>{{ t('knowledgeManager.tags') }}</h4>
+                  <div class="tags-list">
+                    <span v-for="tag in selectedDoc.tags" :key="tag" class="tag">
+                      {{ tag }}
+                    </span>
+                    <span v-if="selectedDoc.tags.length === 0" class="no-tags">
+                      {{ t('knowledgeManager.noTags') }}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="detail-section detail-section-half">
+                  <h4>{{ t('knowledgeManager.timeInfo') }}</h4>
+                  <div class="time-info">
+                    <div>{{ t('knowledgeManager.createdAt') }}：{{ formatDate(selectedDoc.createdAt) }}</div>
+                    <div>{{ t('knowledgeManager.updatedAt') }}：{{ formatDate(selectedDoc.updatedAt) }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="detail-section detail-section-content">
+                <h4>{{ t('knowledgeManager.contentPreview') }}</h4>
+                <div class="content-preview">
+                  {{ selectedDoc.content.slice(0, 1000) }}
+                  <span v-if="selectedDoc.content.length > 1000" class="more">
+                    ... ({{ t('knowledgeManager.totalChars', { count: selectedDoc.content.length }) }})
+                  </span>
+                </div>
+              </div>
+            </template>
+
+            <div v-else class="no-selection">
+              <p>{{ t('knowledgeManager.selectDocToView') }}</p>
+            </div>
+          </template>
         </div>
       </div>
     </div>
@@ -1099,6 +1265,115 @@ onUnmounted(() => {
 
 .btn-delete-small:hover {
   color: var(--accent-error);
+}
+
+/* 知识文档标签页 */
+.context-doc-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.context-doc-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+  position: relative;
+}
+
+.context-doc-item:hover {
+  background: var(--bg-hover);
+}
+
+.context-doc-item.active {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.context-doc-item:hover .btn-delete-small {
+  opacity: 1;
+}
+
+.context-doc-item .btn-delete-small {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.context-doc-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.context-doc-preview {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.context-doc-item.active .context-doc-preview {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* 知识文档编辑器 */
+.context-doc-editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.context-doc-textarea {
+  flex: 1;
+  width: 100%;
+  padding: 12px;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  line-height: 1.6;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  resize: none;
+  tab-size: 2;
+}
+
+.context-doc-textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.context-doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 12px;
+}
+
+.btn-primary {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.1);
+}
+
+.context-doc-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.unsaved-badge {
+  color: var(--accent-warning, #f59e0b);
+  font-weight: 500;
 }
 </style>
 

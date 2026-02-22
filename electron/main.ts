@@ -3859,6 +3859,52 @@ ipcMain.handle('knowledge:switchModel', async (_event, modelId: ModelTier) => {
   }
 })
 
+// ==================== 知识文档（L2 Context Knowledge） ====================
+
+ipcMain.handle('contextKnowledge:list', async () => {
+  try {
+    const { getContextKnowledgeService } = await import('./services/knowledge/context-knowledge')
+    const service = getContextKnowledgeService()
+    const ids = service.listContextIds()
+    const items = ids.map(id => ({
+      contextId: id,
+      content: service.getDocument(id)
+    }))
+    return { success: true, items }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : '获取列表失败', items: [] }
+  }
+})
+
+ipcMain.handle('contextKnowledge:get', async (_event, contextId: string) => {
+  try {
+    const { getContextKnowledgeService } = await import('./services/knowledge/context-knowledge')
+    return { success: true, content: getContextKnowledgeService().getDocument(contextId) }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : '获取文档失败', content: '' }
+  }
+})
+
+ipcMain.handle('contextKnowledge:set', async (_event, contextId: string, content: string) => {
+  try {
+    const { getContextKnowledgeService } = await import('./services/knowledge/context-knowledge')
+    getContextKnowledgeService().setDocument(contextId, content)
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : '保存文档失败' }
+  }
+})
+
+ipcMain.handle('contextKnowledge:delete', async (_event, contextId: string) => {
+  try {
+    const { getContextKnowledgeService } = await import('./services/knowledge/context-knowledge')
+    getContextKnowledgeService().deleteDocument(contextId)
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : '删除文档失败' }
+  }
+})
+
 // ==================== 邮箱相关 ====================
 
 // 设置邮箱凭据

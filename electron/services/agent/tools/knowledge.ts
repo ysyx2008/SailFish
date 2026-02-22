@@ -4,11 +4,12 @@
  */
 import { t } from '../i18n'
 import { getKnowledgeService } from '../../knowledge'
+import { getContextKnowledgeService } from '../../knowledge/context-knowledge'
 import { truncateFromEnd } from './utils'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
 
 /**
- * 记住信息
+ * 记住信息 — 通过 LLM 将信息整合到知识文档中
  */
 export async function rememberInfo(
   args: Record<string, unknown>,
@@ -20,24 +21,6 @@ export async function rememberInfo(
     return { success: false, output: '', error: t('error.info_required') }
   }
 
-  // 只过滤纯粹的动态数据
-  const pureDynamicPatterns = [
-    /^(cpu|内存|磁盘|memory|disk)\s*(使用率|usage|占用)?\s*[:：]?\s*\d+(\.\d+)?%$/i,
-    /^pid\s*[:=]?\s*\d+$/i,
-    /^(uptime|运行时间)\s*[:：]?\s*[\d\s]+$/i,
-  ]
-  
-  const isPureDynamic = pureDynamicPatterns.some(p => p.test(info.trim()))
-  
-  if (isPureDynamic) {
-    executor.addStep({
-      type: 'tool_result',
-      content: `${t('memory.skip_dynamic')}: "${info}"`,
-      toolName: 'remember_info'
-    })
-    return { success: true, output: t('success.dynamic_data_skip') }
-  }
-
   executor.addStep({
     type: 'tool_call',
     content: `${t('memory.remember')}: ${info}`,
@@ -46,50 +29,11 @@ export async function rememberInfo(
     riskLevel: 'safe'
   })
 
-  const hostId = executor.getHostId()
-  let savedToKnowledge = false
-  
-  // 提取 Agent 传入的可选元数据（观察日志模型）
-  const volatility = args.volatility as string | undefined
-  const source = args.source as string | undefined
-  
-  if (hostId) {
-    try {
-      const knowledgeService = getKnowledgeService()
-      if (knowledgeService && knowledgeService.isEnabled()) {
-        const result = await knowledgeService.addHostMemorySmart(hostId, info, {
-          volatility: volatility as 'stable' | 'moderate' | 'volatile' | undefined,
-          source
-        })
-        
-        if (result.success) {
-          savedToKnowledge = true
-          const memoryCount = knowledgeService.getHostMemoryCount(hostId)
-          
-          let resultMessage = ''
-          if (result.action === 'skip') {
-            resultMessage = `${t('memory.skip_duplicate')}: ${result.message}`
-          } else {
-            resultMessage = `${t('memory.remembered')}: ${info} ${t('memory.remembered_knowledge', { count: memoryCount })}`
-          }
-          
-          if (config.debugMode) {
-            executor.addStep({
-              type: 'tool_result',
-              content: resultMessage,
-              toolName: 'remember_info'
-            })
-          }
-          
-          return { success: true, output: result.message }
-        }
-      }
-    } catch (error) {
-      console.error('[rememberInfo] 保存到知识库失败:', error)
-    }
-  }
+  const contextId = executor.getHostId() || 'personal'
+  const aiService = executor.getAiService?.()
+  const profileId = executor.getActiveProfileId?.()
 
-  if (!savedToKnowledge) {
+  if (!aiService) {
     executor.addStep({
       type: 'tool_result',
       content: t('memory.cannot_save'),
@@ -98,7 +42,30 @@ export async function rememberInfo(
     return { success: false, output: '', error: t('error.knowledge_not_available') }
   }
 
-  return { success: false, output: '', error: t('error.cannot_save_unknown_host') }
+  try {
+    const ckService = getContextKnowledgeService()
+    const result = await ckService.rememberInfo(contextId, info, aiService, profileId)
+
+    const resultMessage = result.updated
+      ? `已将信息整合到知识文档中（${contextId}）`
+      : `信息已存在或无需更新（${contextId}）`
+
+    executor.addStep({
+      type: 'tool_result',
+      content: resultMessage,
+      toolName: 'remember_info'
+    })
+
+    return { success: true, output: resultMessage }
+  } catch (error) {
+    console.error('[rememberInfo] 更新知识文档失败:', error)
+    executor.addStep({
+      type: 'tool_result',
+      content: t('memory.cannot_save'),
+      toolName: 'remember_info'
+    })
+    return { success: false, output: '', error: t('error.knowledge_not_available') }
+  }
 }
 
 /**

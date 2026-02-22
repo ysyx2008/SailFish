@@ -97,6 +97,8 @@ export interface BuildSystemPromptOptions {
   knowledgeEnabled?: boolean
   /** 从历史对话中语义检索的相关对话 */
   conversationHistory?: Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }>
+  /** L2 知识文档（结构化 Markdown，整份注入） */
+  contextKnowledgeDoc?: string
   /** 用户自定义的 AI 规则 */
   aiRules?: string
   /** 任务历史总结列表（L1 层） */
@@ -122,6 +124,7 @@ export class PromptBuilder {
   private readonly knowledgeContext?: string
   private readonly knowledgeEnabled?: boolean
   private readonly conversationHistory?: Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }>
+  private readonly contextKnowledgeDoc?: string
   private readonly aiRules?: string
   private readonly taskSummaries?: string
   private readonly relatedTaskDigests?: string
@@ -135,6 +138,7 @@ export class PromptBuilder {
     this.knowledgeContext = options.knowledgeContext
     this.knowledgeEnabled = options.knowledgeEnabled
     this.conversationHistory = options.conversationHistory
+    this.contextKnowledgeDoc = options.contextKnowledgeDoc
     this.aiRules = options.aiRules
     this.taskSummaries = options.taskSummaries
     this.relatedTaskDigests = options.relatedTaskDigests
@@ -495,6 +499,12 @@ ${taskIdList}`
 
     let hostContext = `## 主机环境\n${lines.join('\n')}`
 
+    // L2 知识文档（结构化的持久记忆，整份注入）
+    if (this.contextKnowledgeDoc) {
+      hostContext += '\n\n## 已知信息（来自历史交互）\n'
+      hostContext += this.contextKnowledgeDoc
+    }
+
     // 添加相关历史对话（从知识库语义检索）
     if (this.conversationHistory && this.conversationHistory.length > 0) {
       hostContext += '\n\n## 相关历史（自动检索）'
@@ -555,7 +565,8 @@ export function buildSystemPrompt(
   aiRules?: string,
   taskSummaries?: string,
   relatedTaskDigests?: string,
-  availableTaskIds?: Array<{ id: string; summary: string }>
+  availableTaskIds?: Array<{ id: string; summary: string }>,
+  contextKnowledgeDoc?: string
 ): string {
   const builder = new PromptBuilder({
     context,
@@ -564,6 +575,7 @@ export function buildSystemPrompt(
     knowledgeContext,
     knowledgeEnabled,
     conversationHistory,
+    contextKnowledgeDoc,
     executionMode,
     aiRules,
     taskSummaries,

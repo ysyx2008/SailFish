@@ -33,6 +33,7 @@ import type { ToolExecutorConfig, ToolResult } from './tools/types'
 import { executeTool } from './tools/index'
 import { buildTaskHistoryContext } from './context-builder'
 import { getKnowledgeService } from '../knowledge'
+import { getContextKnowledgeService } from '../knowledge/context-knowledge'
 import { t } from './i18n'
 import { createSkillSession, SkillSession } from './skills'
 import { PromptBuilder } from './prompt-builder'
@@ -610,6 +611,11 @@ export abstract class Agent {
       })
     }
     
+    // L2: 异步更新知识文档
+    this.updateContextKnowledgeAsync(run, result).catch(err => {
+      console.error('[Agent] 知识文档更新失败:', err)
+    })
+    
     // 添加 final_result 步骤（统一由后端生成，前端通过 onStep 回调接收）
     if (result) {
       this.addStep({
@@ -781,6 +787,51 @@ export abstract class Agent {
   }
   
   /**
+   * L2: 异步更新知识文档
+   * 收集执行记录，交给 LLM 判断是否有值得持久化的新信息
+   */
+  private async updateContextKnowledgeAsync(run: AgentRun, result?: string): Promise<void> {
+    const aiService = this.services.aiService
+    if (!aiService) return
+
+    // 跳过纯对话（没有执行过工具的任务不太可能产生新的系统知识）
+    const toolSteps = run.steps.filter(s => s.type === 'tool_call' && s.toolName)
+    if (toolSteps.length === 0) return
+
+    const contextId = run.context.hostId || 'personal'
+    const MAX_ARG_DISPLAY = 200
+    const MAX_RESULT_DISPLAY = 300
+    const MAX_FINAL_RESULT_DISPLAY = 500
+    
+    const commandRecords: string[] = []
+    for (const step of run.steps) {
+      if (step.type === 'tool_call' && step.toolName && step.toolArgs) {
+        const argsStr = Object.entries(step.toolArgs)
+          .map(([k, v]) => `${k}=${typeof v === 'string' ? v.substring(0, MAX_ARG_DISPLAY) : JSON.stringify(v).substring(0, MAX_ARG_DISPLAY)}`)
+          .join(', ')
+        commandRecords.push(`[${step.toolName}] ${argsStr}`)
+      }
+      if (step.type === 'tool_result' && step.toolName && step.toolResult) {
+        commandRecords.push(`  → ${step.toolResult.substring(0, MAX_RESULT_DISPLAY)}`)
+      }
+    }
+    
+    if (result) {
+      commandRecords.push(`\n最终结果: ${result.substring(0, MAX_FINAL_RESULT_DISPLAY)}`)
+    }
+    
+    if (commandRecords.length === 0) return
+
+    const ckService = getContextKnowledgeService()
+    const profileId = this.services.configService?.getActiveAiProfile() ?? undefined
+    
+    await ckService.updateWithLLM(contextId, aiService, profileId, {
+      userRequest: run.originalUserRequest,
+      commandRecords
+    })
+  }
+  
+  /**
    * 清理运行资源
    * 注意：技能会话在 Agent 实例级别维护，不在单次 Run 结束时清理
    */
@@ -863,12 +914,23 @@ export abstract class Agent {
       }
     }
     
+    // 加载 L2 知识文档
+    let contextKnowledgeDoc = ''
+    const contextId = run.context.hostId || 'personal'
+    try {
+      const ckService = getContextKnowledgeService()
+      contextKnowledgeDoc = ckService.getDocument(contextId)
+    } catch (e) {
+      console.log('[Agent] ContextKnowledge load error:', e)
+    }
+
     // 构建系统提示
     const promptOptions: PromptOptions = {
       mbtiType: this.services.configService?.getAgentMbti() ?? undefined,
       knowledgeContext: knowledgeResult.context,
       knowledgeEnabled: knowledgeResult.enabled,
       conversationHistory: knowledgeResult.conversationHistory,
+      contextKnowledgeDoc,
       aiRules: this.services.configService?.getAiRules() ?? '',
       taskSummaries,
       relatedTaskDigests,
@@ -1472,7 +1534,9 @@ export abstract class Agent {
         const archive = run.compressedArchives?.find(a => a.id === archiveId)
         return archive ? archive.messages : null
       },
-      historyService: this.services.historyService
+      historyService: this.services.historyService,
+      getAiService: () => this.services.aiService,
+      getActiveProfileId: () => this.services.configService?.getActiveAiProfile() ?? undefined
     }
   }
   

@@ -2038,6 +2038,32 @@ const electronAPI = {
     }
   },
 
+  // L2 知识文档（结构化持久记忆）
+  contextKnowledge: {
+    list: () =>
+      ipcRenderer.invoke('contextKnowledge:list') as Promise<{
+        success: boolean
+        items: Array<{ contextId: string; content: string }>
+        error?: string
+      }>,
+    get: (contextId: string) =>
+      ipcRenderer.invoke('contextKnowledge:get', contextId) as Promise<{
+        success: boolean
+        content: string
+        error?: string
+      }>,
+    set: (contextId: string, content: string) =>
+      ipcRenderer.invoke('contextKnowledge:set', contextId, content) as Promise<{
+        success: boolean
+        error?: string
+      }>,
+    delete: (contextId: string) =>
+      ipcRenderer.invoke('contextKnowledge:delete', contextId) as Promise<{
+        success: boolean
+        error?: string
+      }>
+  },
+
   // 终端屏幕内容服务（供主进程请求渲染进程数据）
   screen: {
     // 注册获取最近 N 行的处理函数

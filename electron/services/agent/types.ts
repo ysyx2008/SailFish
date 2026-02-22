@@ -416,6 +416,8 @@ export interface PromptOptions {
   knowledgeEnabled?: boolean
   /** 从历史对话中语义检索的相关对话 */
   conversationHistory?: Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }>
+  /** L2 知识文档内容 */
+  contextKnowledgeDoc?: string
   /** 用户自定义 AI 规则 */
   aiRules?: string
   /** 任务历史摘要 */

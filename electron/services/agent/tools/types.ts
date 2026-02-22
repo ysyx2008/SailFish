@@ -69,6 +69,9 @@ export interface ToolExecutorConfig {
   getCompressedArchive?: (archiveId: string) => import('../../ai.service').AiMessage[] | null
   // 历史记录服务（search_history 工具使用）
   historyService?: HistoryService
+  // AI 服务（remember_info 等工具触发 LLM 更新时使用）
+  getAiService?: () => import('../../ai.service').AiService | undefined
+  getActiveProfileId?: () => string | undefined
 }
 
 // 重新导出常用类型
