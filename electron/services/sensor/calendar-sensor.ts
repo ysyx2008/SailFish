@@ -1,8 +1,12 @@
 /**
- * Calendar Sensor - 日历事件感知器
+ * Calendar Sensor - 日历事件感知器（CalDAV + 本地 .ics 双模式）
  *
- * 扫描 .ics 文件，在日历事件即将开始时产生 calendar 事件。
- * 支持标准 iCalendar 格式，可监控多个 .ics 文件或目录。
+ * 优先使用 CalDAV 轮询已配置的日历账户获取事件，
+ * 无账户时回退到扫描本地 .ics 文件。
+ *
+ * 产生两类事件：
+ * - upcoming：日历事件即将开始（在 beforeMinutes 窗口内）
+ * - changed：检测到新增或取消的日历事件
  *
  * 设计原则：纯确定性逻辑，不消耗 AI 资源。
  */
@@ -17,7 +21,7 @@ interface CalendarEvent {
   location?: string
   dtstart: Date
   dtend?: Date
-  rrule?: string
+  account?: string
 }
 
 interface CalendarTarget {
@@ -26,8 +30,36 @@ interface CalendarTarget {
   beforeMinutes: number
 }
 
-const CHECK_INTERVAL_MS = 60 * 1000
+export interface CalendarAccountInfo {
+  accountId: string
+  name: string
+  provider: string
+  username: string
+  serverUrl?: string
+}
+
+export type CalendarCredentialGetter = (accountId: string) => Promise<string | null>
+
+interface AccountState {
+  account: CalendarAccountInfo
+  client: any
+  calendars: any[]
+  lastKnownUids: Set<string>
+  connected: boolean
+}
+
+const CHECK_INTERVAL_MS = 5 * 60 * 1000
 const ALREADY_NOTIFIED_TTL_MS = 24 * 60 * 60 * 1000
+const LOOKAHEAD_MS = 24 * 60 * 60 * 1000
+
+let tsdavModule: typeof import('tsdav') | null = null
+
+async function loadTsdav(): Promise<typeof import('tsdav')> {
+  if (!tsdavModule) {
+    tsdavModule = await import('tsdav')
+  }
+  return tsdavModule
+}
 
 export class CalendarSensor implements Sensor {
   readonly id = 'calendar'
@@ -37,7 +69,11 @@ export class CalendarSensor implements Sensor {
   private eventBus: EventBus
   private targets: Map<string, CalendarTarget> = new Map()
   private checkTimer: NodeJS.Timeout | null = null
-  private notifiedEvents: Map<string, number> = new Map() // uid -> notified timestamp
+  private notifiedEvents: Map<string, number> = new Map()
+
+  private accounts: CalendarAccountInfo[] = []
+  private getCredential: CalendarCredentialGetter | null = null
+  private accountStates: Map<string, AccountState> = new Map()
 
   get running(): boolean {
     return this._running
@@ -47,26 +83,31 @@ export class CalendarSensor implements Sensor {
     this.eventBus = eventBus
   }
 
-  async start(): Promise<void> {
-    if (this._running) return
-    this._running = true
+  /**
+   * 配置日历账户列表（CalDAV）。
+   * 如果 Sensor 已运行，会热更新连接。
+   */
+  configureAccounts(accounts: CalendarAccountInfo[], getCredential: CalendarCredentialGetter): void {
+    this.getCredential = getCredential
 
-    this.checkTimer = setInterval(() => this.checkUpcomingEvents(), CHECK_INTERVAL_MS)
-    await this.checkUpcomingEvents()
+    const oldIds = new Set(this.accounts.map(a => a.accountId))
+    const newIds = new Set(accounts.map(a => a.accountId))
 
-    console.log(`[CalendarSensor] Started with ${this.targets.size} targets`)
-  }
+    const removed = this.accounts.filter(a => !newIds.has(a.accountId))
+    const added = accounts.filter(a => !oldIds.has(a.accountId))
 
-  async stop(): Promise<void> {
-    if (!this._running) return
-    this._running = false
+    this.accounts = accounts
 
-    if (this.checkTimer) {
-      clearInterval(this.checkTimer)
-      this.checkTimer = null
+    if (this._running) {
+      for (const acct of removed) {
+        this.disconnectAccount(acct.accountId)
+      }
+      for (const acct of added) {
+        this.connectAccount(acct)
+      }
     }
 
-    console.log('[CalendarSensor] Stopped')
+    console.log(`[CalendarSensor] Configured ${accounts.length} account(s) (added=${added.length}, removed=${removed.length})`)
   }
 
   addTarget(watchId: string, target: Omit<CalendarTarget, 'watchId'>): void {
@@ -82,13 +123,324 @@ export class CalendarSensor implements Sensor {
   }
 
   shouldAutoStart(): boolean {
-    return this.targets.size > 0
+    return this.targets.size > 0 || this.accounts.length > 0
   }
+
+  async start(): Promise<void> {
+    if (this._running) return
+    this._running = true
+
+    // 连接所有已配置的 CalDAV 账户
+    for (const acct of this.accounts) {
+      await this.connectAccount(acct)
+    }
+
+    this.checkTimer = setInterval(() => this.checkUpcomingEvents(), CHECK_INTERVAL_MS)
+    await this.checkUpcomingEvents()
+
+    console.log(`[CalendarSensor] Started with ${this.accounts.length} CalDAV account(s), ${this.targets.size} target(s)`)
+  }
+
+  async stop(): Promise<void> {
+    if (!this._running) return
+    this._running = false
+
+    if (this.checkTimer) {
+      clearInterval(this.checkTimer)
+      this.checkTimer = null
+    }
+
+    for (const id of this.accountStates.keys()) {
+      this.disconnectAccount(id)
+    }
+
+    console.log('[CalendarSensor] Stopped')
+  }
+
+  getAccountStatuses(): Array<{ accountId: string; name: string; connected: boolean }> {
+    return this.accounts.map(a => ({
+      accountId: a.accountId,
+      name: a.name,
+      connected: this.accountStates.get(a.accountId)?.connected ?? false
+    }))
+  }
+
+  // ==================== CalDAV 账户管理 ====================
+
+  private async connectAccount(account: CalendarAccountInfo): Promise<void> {
+    if (!this.getCredential) return
+    if (this.accountStates.has(account.accountId)) return
+
+    const credential = await this.getCredential(account.accountId)
+    if (!credential) {
+      console.error(`[CalendarSensor] No credential for ${account.name}`)
+      return
+    }
+
+    try {
+      const tsdav = await loadTsdav()
+
+      const serverUrl = this.resolveServerUrl(account)
+      if (!serverUrl) {
+        console.error(`[CalendarSensor] No server URL for ${account.name}`)
+        return
+      }
+
+      const client = new tsdav.DAVClient({
+        serverUrl,
+        credentials: {
+          username: account.username,
+          password: credential
+        },
+        authMethod: 'Basic',
+        defaultAccountType: 'caldav'
+      })
+
+      await client.login()
+      const calendars = await client.fetchCalendars()
+
+      this.accountStates.set(account.accountId, {
+        account,
+        client,
+        calendars,
+        lastKnownUids: new Set(),
+        connected: true
+      })
+
+      console.log(`[CalendarSensor] Connected to ${account.name} (${calendars.length} calendars)`)
+    } catch (err) {
+      console.error(`[CalendarSensor] Failed to connect ${account.name}:`, err)
+    }
+  }
+
+  private disconnectAccount(accountId: string): void {
+    this.accountStates.delete(accountId)
+  }
+
+  private resolveServerUrl(account: CalendarAccountInfo): string {
+    if (account.serverUrl) return account.serverUrl
+
+    const configs: Record<string, string> = {
+      google: 'https://apidata.googleusercontent.com/caldav/v2',
+      icloud: 'https://caldav.icloud.com',
+      outlook: 'https://outlook.office365.com/caldav',
+      fastmail: 'https://caldav.fastmail.com/dav'
+    }
+    return configs[account.provider] || ''
+  }
+
+  // ==================== 事件检查 ====================
 
   private async checkUpcomingEvents(): Promise<void> {
     this.cleanupOldNotifications()
 
+    // CalDAV 模式
+    if (this.accountStates.size > 0) {
+      await this.checkCalDAVEvents()
+    }
+
+    // 本地 .ics 模式（Watch target 指定了 icsPath 的情况）
+    await this.checkLocalIcsEvents()
+  }
+
+  private async checkCalDAVEvents(): Promise<void> {
+    const now = new Date()
+    const timeMin = now.toISOString()
+    const timeMax = new Date(now.getTime() + LOOKAHEAD_MS).toISOString()
+
+    for (const [accountId, state] of this.accountStates) {
+      try {
+        const events = await this.fetchCalDAVEvents(state, timeMin, timeMax)
+        const currentUids = new Set(events.map(e => e.uid))
+
+        // 检测新增事件
+        for (const evt of events) {
+          if (!state.lastKnownUids.has(evt.uid)) {
+            this.emitChangedEvent(evt, 'added', accountId)
+          }
+        }
+
+        // 检测取消事件
+        for (const uid of state.lastKnownUids) {
+          if (!currentUids.has(uid)) {
+            this.emitChangedEvent({ uid, summary: '(removed)', dtstart: now }, 'removed', accountId)
+          }
+        }
+
+        // 检测即将开始的事件
+        for (const evt of events) {
+          this.checkAndEmitUpcoming(evt, accountId)
+        }
+
+        state.lastKnownUids = currentUids
+      } catch (err) {
+        console.error(`[CalendarSensor] CalDAV poll error (${state.account.name}):`, err)
+        state.connected = false
+        // 尝试重连
+        this.accountStates.delete(accountId)
+        await this.connectAccount(state.account)
+      }
+    }
+  }
+
+  private async fetchCalDAVEvents(state: AccountState, timeMin: string, timeMax: string): Promise<CalendarEvent[]> {
+    const tsdav = await loadTsdav()
+    const events: CalendarEvent[] = []
+
+    for (const calendar of state.calendars) {
+      try {
+        const objects = await tsdav.fetchCalendarObjects({
+          calendar: calendar as any,
+          timeRange: { start: timeMin, end: timeMax },
+          headers: (state.client as any).authHeaders
+        })
+
+        for (const obj of objects) {
+          const parsed = this.parseVCalendarData(obj.data, state.account.name)
+          events.push(...parsed)
+        }
+      } catch {
+        // individual calendar fetch failures are expected (permissions etc.)
+      }
+    }
+
+    return events
+  }
+
+  /** 从 VCALENDAR data 字符串中提取 VEVENT */
+  private parseVCalendarData(data: string, accountName?: string): CalendarEvent[] {
+    if (!data) return []
+
+    const events: CalendarEvent[] = []
+    const now = new Date()
+    const maxTime = new Date(now.getTime() + LOOKAHEAD_MS)
+    const blocks = data.split('BEGIN:VEVENT')
+
+    for (let i = 1; i < blocks.length; i++) {
+      const block = blocks[i].split('END:VEVENT')[0]
+      if (!block) continue
+
+      const uid = this.extractField(block, 'UID')
+      const summary = this.extractField(block, 'SUMMARY')
+      const dtstart = this.parseIcsDate(this.extractField(block, 'DTSTART'))
+
+      if (!uid || !summary || !dtstart) continue
+      if (dtstart < now || dtstart > maxTime) continue
+
+      events.push({
+        uid,
+        summary,
+        description: this.extractField(block, 'DESCRIPTION'),
+        location: this.extractField(block, 'LOCATION'),
+        dtstart,
+        dtend: this.parseIcsDate(this.extractField(block, 'DTEND')),
+        account: accountName
+      })
+    }
+
+    return events
+  }
+
+  private checkAndEmitUpcoming(evt: CalendarEvent, accountId: string): void {
+    const now = new Date()
+    const defaultBeforeMinutes = 15
+
     for (const [watchId, target] of this.targets) {
+      const beforeMs = (target.beforeMinutes || defaultBeforeMinutes) * 60 * 1000
+      const timeDiff = evt.dtstart.getTime() - now.getTime()
+      const notifyKey = `${watchId}:${evt.uid}:${evt.dtstart.getTime()}`
+
+      if (timeDiff > 0 && timeDiff <= beforeMs && !this.notifiedEvents.has(notifyKey)) {
+        this.notifiedEvents.set(notifyKey, Date.now())
+
+        const event: SensorEvent = {
+          id: `cal-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+          type: 'calendar',
+          source: this.id,
+          timestamp: Date.now(),
+          watchId,
+          payload: {
+            uid: evt.uid,
+            summary: evt.summary,
+            description: evt.description,
+            location: evt.location,
+            startsAt: evt.dtstart.toISOString(),
+            endsAt: evt.dtend?.toISOString(),
+            minutesUntilStart: Math.round(timeDiff / 60000),
+            account: evt.account,
+            eventType: 'upcoming'
+          },
+          priority: timeDiff <= 5 * 60 * 1000 ? 'high' : 'normal'
+        }
+
+        console.log(`[CalendarSensor] Upcoming: "${evt.summary}" in ${Math.round(timeDiff / 60000)}min`)
+        this.eventBus.emit(event)
+      }
+    }
+
+    // 没有 Watch target 时也发 upcoming 事件（给日常巡视 batch 用）
+    if (this.targets.size === 0) {
+      const timeDiff = evt.dtstart.getTime() - now.getTime()
+      const defaultBeforeMs = defaultBeforeMinutes * 60 * 1000
+      const notifyKey = `global:${evt.uid}:${evt.dtstart.getTime()}`
+
+      if (timeDiff > 0 && timeDiff <= defaultBeforeMs && !this.notifiedEvents.has(notifyKey)) {
+        this.notifiedEvents.set(notifyKey, Date.now())
+
+        const event: SensorEvent = {
+          id: `cal-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+          type: 'calendar',
+          source: this.id,
+          timestamp: Date.now(),
+          payload: {
+            uid: evt.uid,
+            summary: evt.summary,
+            description: evt.description,
+            location: evt.location,
+            startsAt: evt.dtstart.toISOString(),
+            endsAt: evt.dtend?.toISOString(),
+            minutesUntilStart: Math.round(timeDiff / 60000),
+            account: evt.account,
+            eventType: 'upcoming'
+          },
+          priority: timeDiff <= 5 * 60 * 1000 ? 'high' : 'normal'
+        }
+
+        this.eventBus.emit(event)
+      }
+    }
+  }
+
+  private emitChangedEvent(evt: CalendarEvent, changeType: 'added' | 'removed', accountId: string): void {
+    const event: SensorEvent = {
+      id: `cal-chg-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+      type: 'calendar',
+      source: this.id,
+      timestamp: Date.now(),
+      payload: {
+        uid: evt.uid,
+        summary: evt.summary,
+        description: evt.description,
+        location: evt.location,
+        startsAt: evt.dtstart.toISOString(),
+        endsAt: evt.dtend?.toISOString(),
+        account: evt.account || accountId,
+        eventType: 'changed',
+        changeType
+      },
+      priority: 'normal'
+    }
+
+    console.log(`[CalendarSensor] Event ${changeType}: "${evt.summary}"`)
+    this.eventBus.emit(event)
+  }
+
+  // ==================== 本地 .ics 回退 ====================
+
+  private async checkLocalIcsEvents(): Promise<void> {
+    for (const [watchId, target] of this.targets) {
+      if (!target.icsPath && this.accountStates.size > 0) continue
+
       try {
         const icsFiles = this.findIcsFiles(target.icsPath)
         const now = new Date()
@@ -118,21 +470,23 @@ export class CalendarSensor implements Sensor {
                   startsAt: calEvent.dtstart.toISOString(),
                   endsAt: calEvent.dtend?.toISOString(),
                   minutesUntilStart: Math.round(timeDiff / 60000),
-                  icsFile
+                  icsFile,
+                  eventType: 'upcoming'
                 },
                 priority: timeDiff <= 5 * 60 * 1000 ? 'high' : 'normal'
               }
 
-              console.log(`[CalendarSensor] Upcoming: "${calEvent.summary}" in ${Math.round(timeDiff / 60000)}min`)
               this.eventBus.emit(event)
             }
           }
         }
       } catch (err) {
-        console.error(`[CalendarSensor] Error checking watch ${watchId}:`, err)
+        console.error(`[CalendarSensor] Error checking local ICS for watch ${watchId}:`, err)
       }
     }
   }
+
+  // ==================== .ics 文件解析 ====================
 
   private findIcsFiles(icsPath?: string): string[] {
     if (!icsPath) {
@@ -189,50 +543,19 @@ export class CalendarSensor implements Sensor {
     } catch { /* permission denied etc. */ }
   }
 
-  /**
-   * 简易 iCalendar 解析器
-   * 只提取 VEVENT 中的关键字段，不依赖外部库
-   */
   private parseIcsFile(filePath: string): CalendarEvent[] {
-    const events: CalendarEvent[] = []
-
     try {
       const content = fs.readFileSync(filePath, 'utf-8')
-      const veventBlocks = content.split('BEGIN:VEVENT')
-
-      for (let i = 1; i < veventBlocks.length; i++) {
-        const block = veventBlocks[i].split('END:VEVENT')[0]
-        if (!block) continue
-
-        const uid = this.extractField(block, 'UID')
-        const summary = this.extractField(block, 'SUMMARY')
-        const dtstart = this.parseIcsDate(this.extractField(block, 'DTSTART'))
-
-        if (!uid || !summary || !dtstart) continue
-
-        const now = new Date()
-        const dayFromNow = new Date(now.getTime() + 24 * 60 * 60 * 1000)
-        if (dtstart < now || dtstart > dayFromNow) continue
-
-        events.push({
-          uid,
-          summary,
-          description: this.extractField(block, 'DESCRIPTION'),
-          location: this.extractField(block, 'LOCATION'),
-          dtstart,
-          dtend: this.parseIcsDate(this.extractField(block, 'DTEND')),
-          rrule: this.extractField(block, 'RRULE')
-        })
-      }
+      return this.parseVCalendarData(content)
     } catch (err) {
       console.error(`[CalendarSensor] Failed to parse ${filePath}:`, err)
+      return []
     }
-
-    return events
   }
 
+  // ==================== 工具方法 ====================
+
   private extractField(block: string, fieldName: string): string | undefined {
-    // iCalendar 字段可能有参数，如 DTSTART;TZID=Asia/Shanghai:20250101T090000
     const regex = new RegExp(`^${fieldName}(?:;[^:]*)?:(.+)$`, 'm')
     const match = block.match(regex)
     return match?.[1]?.trim()
@@ -241,7 +564,6 @@ export class CalendarSensor implements Sensor {
   private parseIcsDate(value?: string): Date | undefined {
     if (!value) return undefined
 
-    // 格式：20250101T090000Z 或 20250101T090000
     const cleaned = value.replace(/[^0-9TZ]/g, '')
 
     if (cleaned.length >= 15) {

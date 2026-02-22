@@ -1929,14 +1929,18 @@ ipcMain.handle('sensor:setAwakened', async (_event, awakened: boolean, intervalM
       sensorService.heartbeat.setInterval(validInterval)
     }
     await sensorService.heartbeat.start()
-    // 如果 email sensor 已配置账户，跟随觉醒模式一起启动
+    // 如果 email/calendar sensor 已配置账户，跟随觉醒模式一起启动
     if (sensorService.email.shouldAutoStart() && !sensorService.email.running) {
       await sensorService.email.start()
+    }
+    if (sensorService.calendar.shouldAutoStart() && !sensorService.calendar.running) {
+      await sensorService.calendar.start()
     }
     watchService.ensureDailyPatrol()
   } else {
     await sensorService.heartbeat.stop()
     await sensorService.email.stop()
+    await sensorService.calendar.stop()
     watchService.removeDailyPatrol()
   }
   configService.set('agentAwakened', awakened)
@@ -1961,10 +1965,14 @@ ipcMain.handle('sensor:setHeartbeat', async (_event, enabled: boolean, intervalM
     if (sensorService.email.shouldAutoStart() && !sensorService.email.running) {
       await sensorService.email.start()
     }
+    if (sensorService.calendar.shouldAutoStart() && !sensorService.calendar.running) {
+      await sensorService.calendar.start()
+    }
     watchService.ensureDailyPatrol()
   } else {
     await sensorService.heartbeat.stop()
     await sensorService.email.stop()
+    await sensorService.calendar.stop()
     watchService.removeDailyPatrol()
   }
   configService.set('agentAwakened', enabled)
@@ -4090,7 +4098,7 @@ ipcMain.handle('calendar:deleteCredential', async (_event, accountId: string) =>
   return await deleteCalendarCredential(accountId)
 })
 
-// 同步日历账户配置到 calendar skill
+// 同步日历账户配置到 calendar skill + calendar sensor
 ipcMain.handle('calendar:syncAccounts', async (_event, accounts: Array<{
   id: string
   name: string
@@ -4101,7 +4109,24 @@ ipcMain.handle('calendar:syncAccounts', async (_event, accounts: Array<{
   const { setCalendarAccounts } = await import('./services/agent/skills/calendar/executor')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setCalendarAccounts(accounts as any)
-  console.log(`[Calendar] Synced ${accounts.length} calendar accounts`)
+
+  // 同步到 CalendarSensor
+  const { getCalendarCredential } = await import('./services/credential.service')
+
+  const sensorAccounts = accounts.map(a => ({
+    accountId: a.id,
+    name: a.name,
+    provider: a.provider,
+    username: a.username,
+    serverUrl: a.serverUrl
+  }))
+
+  sensorService.calendar.configureAccounts(
+    sensorAccounts,
+    (accountId) => getCalendarCredential(accountId)
+  )
+
+  console.log(`[Calendar] Synced ${accounts.length} account(s) to skill + sensor`)
 })
 
 // 测试日历连接
