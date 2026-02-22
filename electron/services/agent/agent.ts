@@ -748,6 +748,7 @@ export abstract class Agent {
     this._terminalMeta = undefined
     this.taskMemory.clear()
   }
+
   
   /**
    * L2: 异步更新知识文档
