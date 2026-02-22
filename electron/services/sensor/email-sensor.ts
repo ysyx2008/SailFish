@@ -90,7 +90,7 @@ export class EmailSensor implements Sensor {
    * 配置监控的邮箱账户列表。
    * 如果 Sensor 已运行，会热更新连接（停掉移除的、启动新增的）。
    */
-  configureAccounts(accounts: EmailAccountInfo[], getCredential: EmailCredentialGetter): void {
+  async configureAccounts(accounts: EmailAccountInfo[], getCredential: EmailCredentialGetter): Promise<void> {
     this.getCredential = getCredential
 
     const oldIds = new Set(this.accounts.map(a => a.accountId))
@@ -103,10 +103,10 @@ export class EmailSensor implements Sensor {
 
     if (this._running) {
       for (const acct of removed) {
-        this.stopAccount(acct.accountId)
+        await this.stopAccount(acct.accountId)
       }
       for (const acct of added) {
-        this.startAccount(acct)
+        await this.startAccount(acct)
       }
     }
 

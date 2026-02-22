@@ -87,7 +87,7 @@ export class CalendarSensor implements Sensor {
    * 配置日历账户列表（CalDAV）。
    * 如果 Sensor 已运行，会热更新连接。
    */
-  configureAccounts(accounts: CalendarAccountInfo[], getCredential: CalendarCredentialGetter): void {
+  async configureAccounts(accounts: CalendarAccountInfo[], getCredential: CalendarCredentialGetter): Promise<void> {
     this.getCredential = getCredential
 
     const oldIds = new Set(this.accounts.map(a => a.accountId))
@@ -103,7 +103,7 @@ export class CalendarSensor implements Sensor {
         this.disconnectAccount(acct.accountId)
       }
       for (const acct of added) {
-        this.connectAccount(acct)
+        await this.connectAccount(acct)
       }
     }
 
@@ -299,8 +299,8 @@ export class CalendarSensor implements Sensor {
           const parsed = this.parseVCalendarData(obj.data, state.account.name)
           events.push(...parsed)
         }
-      } catch {
-        // individual calendar fetch failures are expected (permissions etc.)
+      } catch (err) {
+        console.warn(`[CalendarSensor] Failed to fetch calendar objects:`, err instanceof Error ? err.message : err)
       }
     }
 
@@ -341,16 +341,21 @@ export class CalendarSensor implements Sensor {
     return events
   }
 
-  private checkAndEmitUpcoming(evt: CalendarEvent, accountId: string): void {
+  private checkAndEmitUpcoming(evt: CalendarEvent, _accountId: string): void {
     const now = new Date()
-    const defaultBeforeMinutes = 15
+    const DEFAULT_BEFORE_MIN = 15
 
-    for (const [watchId, target] of this.targets) {
-      const beforeMs = (target.beforeMinutes || defaultBeforeMinutes) * 60 * 1000
+    // 有 Watch target 时按各自配置发送；无 target 时用默认窗口发给日常巡视 batch
+    const entries: Array<{ watchId?: string; beforeMinutes: number }> =
+      this.targets.size > 0
+        ? Array.from(this.targets.entries()).map(([wid, t]) => ({ watchId: wid, beforeMinutes: t.beforeMinutes || DEFAULT_BEFORE_MIN }))
+        : [{ beforeMinutes: DEFAULT_BEFORE_MIN }]
+
+    for (const { watchId, beforeMinutes } of entries) {
       const timeDiff = evt.dtstart.getTime() - now.getTime()
-      const notifyKey = `${watchId}:${evt.uid}:${evt.dtstart.getTime()}`
+      const notifyKey = `${watchId ?? 'global'}:${evt.uid}:${evt.dtstart.getTime()}`
 
-      if (timeDiff > 0 && timeDiff <= beforeMs && !this.notifiedEvents.has(notifyKey)) {
+      if (timeDiff > 0 && timeDiff <= beforeMinutes * 60 * 1000 && !this.notifiedEvents.has(notifyKey)) {
         this.notifiedEvents.set(notifyKey, Date.now())
 
         const event: SensorEvent = {
@@ -373,39 +378,9 @@ export class CalendarSensor implements Sensor {
           priority: timeDiff <= 5 * 60 * 1000 ? 'high' : 'normal'
         }
 
-        console.log(`[CalendarSensor] Upcoming: "${evt.summary}" in ${Math.round(timeDiff / 60000)}min`)
-        this.eventBus.emit(event)
-      }
-    }
-
-    // 没有 Watch target 时也发 upcoming 事件（给日常巡视 batch 用）
-    if (this.targets.size === 0) {
-      const timeDiff = evt.dtstart.getTime() - now.getTime()
-      const defaultBeforeMs = defaultBeforeMinutes * 60 * 1000
-      const notifyKey = `global:${evt.uid}:${evt.dtstart.getTime()}`
-
-      if (timeDiff > 0 && timeDiff <= defaultBeforeMs && !this.notifiedEvents.has(notifyKey)) {
-        this.notifiedEvents.set(notifyKey, Date.now())
-
-        const event: SensorEvent = {
-          id: `cal-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
-          type: 'calendar',
-          source: this.id,
-          timestamp: Date.now(),
-          payload: {
-            uid: evt.uid,
-            summary: evt.summary,
-            description: evt.description,
-            location: evt.location,
-            startsAt: evt.dtstart.toISOString(),
-            endsAt: evt.dtend?.toISOString(),
-            minutesUntilStart: Math.round(timeDiff / 60000),
-            account: evt.account,
-            eventType: 'upcoming'
-          },
-          priority: timeDiff <= 5 * 60 * 1000 ? 'high' : 'normal'
+        if (watchId) {
+          console.log(`[CalendarSensor] Upcoming: "${evt.summary}" in ${Math.round(timeDiff / 60000)}min`)
         }
-
         this.eventBus.emit(event)
       }
     }

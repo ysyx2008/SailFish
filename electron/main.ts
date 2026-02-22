@@ -3960,30 +3960,34 @@ ipcMain.handle('email:syncAccounts', async (_event, accounts: Array<{
   setEmailAccounts(accounts)
 
   // 同步到 EmailSensor（利用 email skill 的 getServerConfig 填充 IMAP host/port）
-  const { getServerConfig } = await import('./services/agent/skills/email/session')
-  const { getEmailCredential } = await import('./services/credential.service')
+  try {
+    const { getServerConfig } = await import('./services/agent/skills/email/session')
+    const { getEmailCredential } = await import('./services/credential.service')
 
-  const sensorAccounts = accounts.map(a => {
-    const server = getServerConfig(a.provider, {
-      imapHost: a.imapHost,
-      imapPort: a.imapPort
-    })
-    return {
-      accountId: a.id,
-      email: a.email,
-      provider: a.provider,
-      imapHost: server.imapHost,
-      imapPort: server.imapPort,
-      rejectUnauthorized: a.rejectUnauthorized
-    }
-  }).filter(a => a.imapHost)
+    const sensorAccounts = accounts.map(a => {
+      const server = getServerConfig(a.provider, {
+        imapHost: a.imapHost,
+        imapPort: a.imapPort
+      })
+      return {
+        accountId: a.id,
+        email: a.email,
+        provider: a.provider,
+        imapHost: server.imapHost,
+        imapPort: server.imapPort,
+        rejectUnauthorized: a.rejectUnauthorized
+      }
+    }).filter(a => a.imapHost)
 
-  sensorService.email.configureAccounts(
-    sensorAccounts,
-    (accountId) => getEmailCredential(accountId)
-  )
+    await sensorService.email.configureAccounts(
+      sensorAccounts,
+      (accountId) => getEmailCredential(accountId)
+    )
 
-  console.log(`[Email] Synced ${accounts.length} account(s) to skill + ${sensorAccounts.length} to sensor`)
+    console.log(`[Email] Synced ${accounts.length} account(s) to skill + ${sensorAccounts.length} to sensor`)
+  } catch (err) {
+    console.error('[Email] Failed to sync accounts to sensor:', err)
+  }
 })
 
 // 测试邮箱连接
@@ -4111,22 +4115,26 @@ ipcMain.handle('calendar:syncAccounts', async (_event, accounts: Array<{
   setCalendarAccounts(accounts as any)
 
   // 同步到 CalendarSensor
-  const { getCalendarCredential } = await import('./services/credential.service')
+  try {
+    const { getCalendarCredential } = await import('./services/credential.service')
 
-  const sensorAccounts = accounts.map(a => ({
-    accountId: a.id,
-    name: a.name,
-    provider: a.provider,
-    username: a.username,
-    serverUrl: a.serverUrl
-  }))
+    const sensorAccounts = accounts.map(a => ({
+      accountId: a.id,
+      name: a.name,
+      provider: a.provider,
+      username: a.username,
+      serverUrl: a.serverUrl
+    }))
 
-  sensorService.calendar.configureAccounts(
-    sensorAccounts,
-    (accountId) => getCalendarCredential(accountId)
-  )
+    await sensorService.calendar.configureAccounts(
+      sensorAccounts,
+      (accountId) => getCalendarCredential(accountId)
+    )
 
-  console.log(`[Calendar] Synced ${accounts.length} account(s) to skill + sensor`)
+    console.log(`[Calendar] Synced ${accounts.length} account(s) to skill + sensor`)
+  } catch (err) {
+    console.error('[Calendar] Failed to sync accounts to sensor:', err)
+  }
 })
 
 // 测试日历连接
