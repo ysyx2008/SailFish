@@ -496,8 +496,8 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
               description: '简短的搜索词，1-3个核心关键词即可，避免堆砌'
             },
             limit: {
-              type: 'number',
-              description: '返回结果数量，默认 5，最大 20'
+              type: 'integer',
+              description: '返回结果数量（整数），默认 5，范围 1-20'
             }
           },
           required: ['query']

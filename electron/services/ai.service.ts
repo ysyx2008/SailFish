@@ -79,6 +79,15 @@ export interface AiMessage {
   reasoning_content?: string  // 用于 think 模型的思考内容（DeepSeek-R1 等）
 }
 
+interface ToolParameterSchema {
+  type: string
+  description?: string
+  enum?: string[]
+  items?: ToolParameterSchema
+  properties?: Record<string, ToolParameterSchema>
+  required?: string[]
+}
+
 // Tool Calling 相关类型
 export interface ToolDefinition {
   type: 'function'
@@ -87,12 +96,7 @@ export interface ToolDefinition {
     description: string
     parameters: {
       type: 'object'
-      properties: Record<string, {
-        type: string
-        description: string
-        enum?: string[]
-        items?: { type: string }  // 数组类型的元素类型
-      }>
+      properties: Record<string, ToolParameterSchema>
       required?: string[]
     }
   }
