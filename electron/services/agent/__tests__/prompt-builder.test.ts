@@ -34,7 +34,7 @@ import {
   getAllMbtiTypes,
   buildSystemPrompt
 } from '../prompt-builder'
-import type { AgentContext, HostProfileServiceInterface, HostMemoryEntry } from '../types'
+import type { AgentContext, HostProfileServiceInterface } from '../types'
 
 // ==================== 辅助函数 ====================
 
@@ -352,17 +352,22 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('已安装工具')
     })
 
-    it('should include host memories when provided', () => {
+    it('should include conversation history when provided', () => {
       const context = createMockContext()
       const builder = new PromptBuilder({ 
         context,
-        hostMemories: ['这台服务器运行 MySQL', '端口 3306 已开放']
+        conversationHistory: [{
+          userRequest: '检查 MySQL 状态',
+          finalResult: 'MySQL 运行正常，端口 3306',
+          status: 'success',
+          timestamp: Date.now() - 60 * 60 * 1000,
+          relevance: 0.9
+        }]
       })
       const prompt = builder.build()
       
-      expect(prompt).toContain('已知信息')
-      expect(prompt).toContain('这台服务器运行 MySQL')
-      expect(prompt).toContain('端口 3306 已开放')
+      expect(prompt).toContain('相关历史')
+      expect(prompt).toContain('检查 MySQL 状态')
     })
   })
 
@@ -516,184 +521,79 @@ describe('buildSystemPrompt (backward compatible)', () => {
   })
 })
 
-// ==================== 观察日志模型测试 ====================
+// ==================== 对话历史检索测试 ====================
 
-describe('Observation Ledger Model', () => {
-  describe('formatMemoryAnnotation', () => {
-    it('should show "刚刚确认" for recent memories (< 1 hour)', () => {
-      const entry: HostMemoryEntry = {
-        content: '测试内容',
-        createdAt: Date.now() - 30 * 60 * 1000 // 30 分钟前
-      }
-      const result = PromptBuilder.formatMemoryAnnotation(entry)
-      expect(result).toContain('刚刚确认')
+describe('Conversation History in Prompt', () => {
+  describe('formatTimeAgo', () => {
+    it('should show "刚刚" for recent timestamps (< 1 hour)', () => {
+      const result = PromptBuilder.formatTimeAgo(Date.now() - 30 * 60 * 1000)
+      expect(result).toBe('刚刚')
     })
 
-    it('should show hours for memories < 24 hours', () => {
-      const entry: HostMemoryEntry = {
-        content: '测试内容',
-        createdAt: Date.now() - 5 * 60 * 60 * 1000 // 5 小时前
-      }
-      const result = PromptBuilder.formatMemoryAnnotation(entry)
-      expect(result).toContain('5小时前确认')
+    it('should show hours for timestamps < 24 hours', () => {
+      const result = PromptBuilder.formatTimeAgo(Date.now() - 5 * 60 * 60 * 1000)
+      expect(result).toBe('5小时前')
     })
 
-    it('should show days for memories < 30 days', () => {
-      const entry: HostMemoryEntry = {
-        content: '测试内容',
-        createdAt: Date.now() - 3 * 24 * 60 * 60 * 1000 // 3 天前
-      }
-      const result = PromptBuilder.formatMemoryAnnotation(entry)
-      expect(result).toContain('3天前确认')
+    it('should show days for timestamps < 30 days', () => {
+      const result = PromptBuilder.formatTimeAgo(Date.now() - 3 * 24 * 60 * 60 * 1000)
+      expect(result).toBe('3天前')
     })
 
-    it('should show months for memories >= 30 days', () => {
-      const entry: HostMemoryEntry = {
-        content: '测试内容',
-        createdAt: Date.now() - 65 * 24 * 60 * 60 * 1000 // ~2 个月前
-      }
-      const result = PromptBuilder.formatMemoryAnnotation(entry)
-      expect(result).toContain('2个月前确认')
-    })
-
-    it('should include source tag when source is provided', () => {
-      const entry: HostMemoryEntry = {
-        content: '测试内容',
-        createdAt: Date.now() - 2 * 60 * 60 * 1000,
-        source: 'auto-extraction'
-      }
-      const result = PromptBuilder.formatMemoryAnnotation(entry)
-      expect(result).toContain('via auto-extraction')
-    })
-
-    it('should not include source tag when source is absent', () => {
-      const entry: HostMemoryEntry = {
-        content: '测试内容',
-        createdAt: Date.now()
-      }
-      const result = PromptBuilder.formatMemoryAnnotation(entry)
-      expect(result).not.toContain('via')
-    })
-
-    it('should warn stale volatile memories (> 1 day)', () => {
-      const entry: HostMemoryEntry = {
-        content: '测试内容',
-        createdAt: Date.now() - 2 * 24 * 60 * 60 * 1000, // 2 天前
-        volatility: 'volatile'
-      }
-      const result = PromptBuilder.formatMemoryAnnotation(entry)
-      expect(result).toContain('⚠️ 建议验证')
-    })
-
-    it('should NOT warn fresh volatile memories (< 1 day)', () => {
-      const entry: HostMemoryEntry = {
-        content: '测试内容',
-        createdAt: Date.now() - 12 * 60 * 60 * 1000, // 12 小时前
-        volatility: 'volatile'
-      }
-      const result = PromptBuilder.formatMemoryAnnotation(entry)
-      expect(result).not.toContain('建议验证')
-    })
-
-    it('should warn stale moderate memories (> 7 days)', () => {
-      const entry: HostMemoryEntry = {
-        content: '测试内容',
-        createdAt: Date.now() - 10 * 24 * 60 * 60 * 1000, // 10 天前
-        volatility: 'moderate'
-      }
-      const result = PromptBuilder.formatMemoryAnnotation(entry)
-      expect(result).toContain('⚠️ 建议验证')
-    })
-
-    it('should NOT warn moderate memories within 7 days', () => {
-      const entry: HostMemoryEntry = {
-        content: '测试内容',
-        createdAt: Date.now() - 3 * 24 * 60 * 60 * 1000, // 3 天前
-        volatility: 'moderate'
-      }
-      const result = PromptBuilder.formatMemoryAnnotation(entry)
-      expect(result).not.toContain('建议验证')
-    })
-
-    it('should NEVER warn stable memories regardless of age', () => {
-      const entry: HostMemoryEntry = {
-        content: '测试内容',
-        createdAt: Date.now() - 365 * 24 * 60 * 60 * 1000, // 1 年前
-        volatility: 'stable'
-      }
-      const result = PromptBuilder.formatMemoryAnnotation(entry)
-      expect(result).not.toContain('建议验证')
-    })
-
-    it('should default to moderate volatility when not specified', () => {
-      const entry: HostMemoryEntry = {
-        content: '测试内容',
-        createdAt: Date.now() - 10 * 24 * 60 * 60 * 1000 // 10 天前
-        // volatility 未设置，默认 moderate
-      }
-      const result = PromptBuilder.formatMemoryAnnotation(entry)
-      expect(result).toContain('⚠️ 建议验证')
+    it('should show months for timestamps >= 30 days', () => {
+      const result = PromptBuilder.formatTimeAgo(Date.now() - 65 * 24 * 60 * 60 * 1000)
+      expect(result).toBe('2个月前')
     })
   })
 
-  describe('HostMemoryEntry in prompt', () => {
-    it('should format HostMemoryEntry with annotation', () => {
+  describe('conversation history in prompt', () => {
+    it('should include conversation history section', () => {
       const context = createMockContext()
-      const entries: HostMemoryEntry[] = [{
-        content: 'MySQL 运行在端口 3306',
-        createdAt: Date.now() - 2 * 60 * 60 * 1000, // 2 小时前
-        volatility: 'moderate',
-        source: 'remember_info'
-      }]
-      const builder = new PromptBuilder({ 
+      const builder = new PromptBuilder({
         context,
-        hostMemories: entries
+        conversationHistory: [{
+          userRequest: '部署前端到生产环境',
+          finalResult: '部署成功',
+          status: 'success',
+          timestamp: Date.now() - 3 * 24 * 60 * 60 * 1000,
+          relevance: 0.85
+        }]
       })
       const prompt = builder.build()
-      
-      expect(prompt).toContain('MySQL 运行在端口 3306')
-      expect(prompt).toContain('2小时前确认')
-      expect(prompt).toContain('via remember_info')
+
+      expect(prompt).toContain('相关历史')
+      expect(prompt).toContain('部署前端到生产环境')
+      expect(prompt).toContain('部署成功')
+      expect(prompt).toContain('✓')
     })
 
-    it('should handle mixed string[] and HostMemoryEntry[] format', () => {
+    it('should show failed status icon', () => {
       const context = createMockContext()
-      // 混合格式：旧 string 和新 HostMemoryEntry
-      const mixedMemories = [
-        '旧格式记忆',
-        {
-          content: '新格式记忆',
-          createdAt: Date.now(),
-          volatility: 'stable' as const
-        }
-      ] as (string | HostMemoryEntry)[]
-      
-      const builder = new PromptBuilder({ 
+      const builder = new PromptBuilder({
         context,
-        hostMemories: mixedMemories as any
+        conversationHistory: [{
+          userRequest: 'nginx 排错',
+          finalResult: '排查失败',
+          status: 'failed',
+          timestamp: Date.now(),
+          relevance: 0.7
+        }]
       })
       const prompt = builder.build()
-      
-      expect(prompt).toContain('旧格式记忆')
-      expect(prompt).toContain('新格式记忆')
-      expect(prompt).toContain('刚刚确认')
+
+      expect(prompt).toContain('✗')
+      expect(prompt).toContain('nginx 排错')
     })
 
-    it('should include freshness header text', () => {
+    it('should not include section when conversation history is empty', () => {
       const context = createMockContext()
-      const entries: HostMemoryEntry[] = [{
-        content: '测试',
-        createdAt: Date.now()
-      }]
-      const builder = new PromptBuilder({ 
+      const builder = new PromptBuilder({
         context,
-        hostMemories: entries
+        conversationHistory: []
       })
       const prompt = builder.build()
-      
-      expect(prompt).toContain('已知信息')
-      expect(prompt).toContain('历史交互')
-      expect(prompt).toContain('较旧的信息可能已过时')
+
+      expect(prompt).not.toContain('相关历史')
     })
   })
 })
@@ -744,20 +644,24 @@ describe('Edge cases', () => {
     expect(prompt).toContain('未成功获取')
   })
 
-  it('should handle very long host memories', () => {
+  it('should handle conversation history in prompt', () => {
     const context = createMockContext()
-    const manyMemories = Array(50).fill(null).map((_, i) => `记忆条目 ${i}`)
+    const history = Array(10).fill(null).map((_, i) => ({
+      userRequest: `任务 ${i}`,
+      finalResult: `结果 ${i}`,
+      status: 'success',
+      timestamp: Date.now() - i * 60 * 60 * 1000,
+      relevance: 0.9 - i * 0.05
+    }))
     
     const builder = new PromptBuilder({ 
       context,
-      hostMemories: manyMemories
+      conversationHistory: history
     })
     const prompt = builder.build()
     
-    // 应该限制数量（最多 15 条）
-    expect(prompt).toContain('记忆条目 0')
-    expect(prompt).toContain('记忆条目 14')
-    expect(prompt).not.toContain('记忆条目 15')
+    expect(prompt).toContain('任务 0')
+    expect(prompt).toContain('任务 9')
   })
 
   it('should handle whitespace-only user rules', () => {

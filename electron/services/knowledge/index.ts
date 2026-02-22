@@ -58,6 +58,26 @@ export interface SmartMemoryResult {
   docId?: string
 }
 
+/** 对话索引条目（用于跨会话语义检索） */
+export interface ConversationIndexEntry {
+  taskId: string
+  hostId: string
+  userRequest: string
+  finalResult: string
+  status: 'success' | 'failed' | 'aborted'
+  timestamp: number
+}
+
+/** 对话检索结果 */
+export interface ConversationSearchResult {
+  taskId: string
+  userRequest: string
+  finalResult: string
+  status: string
+  timestamp: number
+  relevance: number
+}
+
 /**
  * RRF 融合分数阈值
  * RRF 分数 = 1/(k+rank+1)，k=60 时：
@@ -1493,6 +1513,141 @@ export class KnowledgeService extends EventEmitter {
         message: '检测失败，已直接保存',
         docId: docId || undefined
       }
+    }
+  }
+
+  // ==================== 对话索引（跨会话语义检索）====================
+
+  /**
+   * 索引一次对话摘要，用于未来的跨会话语义检索。
+   * 不调用 LLM，仅将 userRequest + finalResult 写入向量库。
+   */
+  async indexConversation(entry: ConversationIndexEntry): Promise<string | null> {
+    if (!entry.userRequest || !entry.hostId) return null
+
+    try {
+      if (!this.isInitialized) {
+        await this.initialize()
+      }
+
+      const indexText = entry.finalResult
+        ? `${entry.userRequest}\n${entry.finalResult}`
+        : entry.userRequest
+
+      // 以 taskId 作为去重依据，同一任务不重复索引
+      const contentHash = this.computeContentHash(`conv:${entry.taskId}`)
+      const existing = Array.from(this.documentsIndex.values()).find(
+        d => d.fileType === 'conversation' && d.contentHash === contentHash
+      )
+      if (existing) return existing.id
+
+      const docId = uuidv4()
+      const now = entry.timestamp || Date.now()
+
+      const document: KnowledgeDocument = {
+        id: docId,
+        filename: `conv_${entry.hostId}_${entry.taskId}`,
+        content: indexText,
+        fileSize: Buffer.from(indexText).length,
+        fileType: 'conversation',
+        contentHash,
+        hostId: entry.hostId,
+        tags: ['conversation', entry.hostId],
+        createdAt: now,
+        updatedAt: now,
+        chunkCount: 1,
+        source: entry.status
+      }
+
+      const embedding = await this.embeddingService.embedSingle(indexText)
+
+      const record: VectorRecord = {
+        id: uuidv4(),
+        docId,
+        content: indexText,
+        vector: embedding,
+        filename: document.filename,
+        hostId: entry.hostId,
+        tags: document.tags.join(','),
+        chunkIndex: 0,
+        createdAt: now
+      }
+
+      await this.vectorStorage.addRecords([record])
+      await this.bm25Index.addDocuments([{
+        id: record.id,
+        docId: record.docId,
+        content: indexText,
+        filename: record.filename,
+        hostId: record.hostId,
+        tags: record.tags
+      }])
+
+      this.documentsIndex.set(docId, document)
+      this.saveDocumentsIndex()
+
+      return docId
+    } catch (error) {
+      console.error('[KnowledgeService] 对话索引失败:', error)
+      return null
+    }
+  }
+
+  /**
+   * 语义检索相关历史对话。
+   * 返回与当前查询最相关的历史对话摘要（按相关度排序）。
+   */
+  async searchConversations(
+    query: string,
+    hostId?: string,
+    limit: number = 5
+  ): Promise<ConversationSearchResult[]> {
+    try {
+      if (!this.isInitialized) {
+        await this.initialize()
+      }
+
+      const queryEmbedding = await this.embeddingService.embedSingle(query)
+      const results = await this.vectorStorage.hybridSearch(
+        query,
+        queryEmbedding,
+        {
+          query,
+          limit: limit * 2,
+          hostId,
+          tags: ['conversation'],
+          similarity: 0.35
+        }
+      )
+
+      if (results.length === 0) return []
+
+      const conversationResults: ConversationSearchResult[] = []
+
+      for (const r of results) {
+        const doc = this.documentsIndex.get(r.docId)
+        if (!doc || doc.fileType !== 'conversation') continue
+
+        const lines = r.content.split('\n')
+        const userRequest = lines[0] || ''
+        const finalResult = lines.slice(1).join('\n')
+
+        conversationResults.push({
+          taskId: doc.filename.replace(`conv_${doc.hostId}_`, ''),
+          userRequest,
+          finalResult: finalResult.length > 200
+            ? finalResult.substring(0, 200) + '...'
+            : finalResult,
+          status: doc.source || 'unknown',
+          timestamp: doc.createdAt,
+          relevance: r.score
+        })
+      }
+
+      return conversationResults.slice(0, limit)
+    } catch (error) {
+      console.error('[KnowledgeService] 对话检索失败:', error)
+      return []
     }
   }
 }

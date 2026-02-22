@@ -4,7 +4,7 @@
  * OOP 重构版本：将纯函数封装为 PromptBuilder 类
  * 注意：重构不改变任何提示词内容，只是代码组织形式的改变
  */
-import type { AgentContext, HostProfileServiceInterface, ExecutionMode, HostMemoryEntry } from './types'
+import type { AgentContext, HostProfileServiceInterface, ExecutionMode } from './types'
 import type { AgentMbtiType } from '../config.service'
 import { getSkillsSummary } from './skills/registry'
 import { getUserSkillService } from '../user-skill.service'
@@ -95,8 +95,8 @@ export interface BuildSystemPromptOptions {
   mbtiType?: AgentMbtiType
   knowledgeContext?: string
   knowledgeEnabled?: boolean
-  /** 从知识库获取的主机记忆（兼容旧格式 string[] 或新格式 HostMemoryEntry[]） */
-  hostMemories?: string[] | HostMemoryEntry[]
+  /** 从历史对话中语义检索的相关对话 */
+  conversationHistory?: Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }>
   /** 用户自定义的 AI 规则 */
   aiRules?: string
   /** 任务历史总结列表（L1 层） */
@@ -121,7 +121,7 @@ export class PromptBuilder {
   private readonly mbtiType?: AgentMbtiType
   private readonly knowledgeContext?: string
   private readonly knowledgeEnabled?: boolean
-  private readonly hostMemories?: string[] | HostMemoryEntry[]
+  private readonly conversationHistory?: Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }>
   private readonly aiRules?: string
   private readonly taskSummaries?: string
   private readonly relatedTaskDigests?: string
@@ -134,7 +134,7 @@ export class PromptBuilder {
     this.mbtiType = options.mbtiType
     this.knowledgeContext = options.knowledgeContext
     this.knowledgeEnabled = options.knowledgeEnabled
-    this.hostMemories = options.hostMemories
+    this.conversationHistory = options.conversationHistory
     this.aiRules = options.aiRules
     this.taskSummaries = options.taskSummaries
     this.relatedTaskDigests = options.relatedTaskDigests
@@ -243,44 +243,18 @@ ${this.buildTaskMemorySection()}`
   // ==================== 静态方法（便捷访问） ====================
 
   /**
-   * 格式化记忆的时效标注
-   * 根据 volatility 和 createdAt 生成新鲜度提示
+   * 格式化时间距离
    */
-  static formatMemoryAnnotation(entry: HostMemoryEntry): string {
+  static formatTimeAgo(timestamp: number): string {
     const now = Date.now()
-    const ageMs = now - entry.createdAt
+    const ageMs = now - timestamp
     const ageHours = ageMs / (1000 * 60 * 60)
     const ageDays = ageHours / 24
 
-    // 格式化时间距离
-    let timeAgo: string
-    if (ageHours < 1) {
-      timeAgo = '刚刚确认'
-    } else if (ageHours < 24) {
-      timeAgo = `${Math.floor(ageHours)}小时前确认`
-    } else if (ageDays < 30) {
-      timeAgo = `${Math.floor(ageDays)}天前确认`
-    } else {
-      timeAgo = `${Math.floor(ageDays / 30)}个月前确认`
-    }
-
-    // 来源标注
-    const sourceTag = entry.source ? ` via ${entry.source}` : ''
-
-    // 根据 volatility 决定新鲜度警告阈值
-    const volatility = entry.volatility || 'moderate'
-    let isStale = false
-    if (volatility === 'volatile') {
-      isStale = ageDays > 1   // volatile: > 1 天就过时
-    } else if (volatility === 'moderate') {
-      isStale = ageDays > 7   // moderate: > 7 天就过时
-    }
-    // stable: 永不标记为过时
-
-    if (isStale) {
-      return `(${timeAgo}${sourceTag}, ⚠️ 建议验证)`
-    }
-    return `(${timeAgo}${sourceTag})`
+    if (ageHours < 1) return '刚刚'
+    if (ageHours < 24) return `${Math.floor(ageHours)}小时前`
+    if (ageDays < 30) return `${Math.floor(ageDays)}天前`
+    return `${Math.floor(ageDays / 30)}个月前`
   }
 
   /**
@@ -521,19 +495,16 @@ ${taskIdList}`
 
     let hostContext = `## 主机环境\n${lines.join('\n')}`
 
-    // 添加已知信息（来自知识库，已由 KnowledgeService 完成去重和冗余过滤）
-    if (this.hostMemories && this.hostMemories.length > 0) {
-      hostContext += '\n\n## 已知信息（来自历史交互）'
-      hostContext += '\n以下信息来自历史任务，标注了确认时间。较旧的信息可能已过时，关键操作前建议验证。\n'
+    // 添加相关历史对话（从知识库语义检索）
+    if (this.conversationHistory && this.conversationHistory.length > 0) {
+      hostContext += '\n\n## 相关历史（自动检索）'
+      hostContext += '\n以下是与当前任务可能相关的过往交互，供参考：\n'
       
-      for (const memory of this.hostMemories.slice(0, 15)) {
-        if (typeof memory === 'string') {
-          hostContext += `\n- ${memory}`
-        } else {
-          const entry = memory as HostMemoryEntry
-          const annotation = PromptBuilder.formatMemoryAnnotation(entry)
-          hostContext += `\n- ${entry.content} ${annotation}`
-        }
+      for (const conv of this.conversationHistory) {
+        const timeAgo = PromptBuilder.formatTimeAgo(conv.timestamp)
+        const statusIcon = conv.status === 'success' ? '✓' : conv.status === 'failed' ? '✗' : '⊘'
+        const result = conv.finalResult ? ` → ${conv.finalResult}` : ''
+        hostContext += `\n- [${timeAgo}] ${statusIcon} "${conv.userRequest}"${result}`
       }
     }
 
@@ -579,7 +550,7 @@ export function buildSystemPrompt(
   mbtiType?: AgentMbtiType,
   knowledgeContext?: string,
   knowledgeEnabled?: boolean,
-  hostMemories?: string[] | HostMemoryEntry[],
+  conversationHistory?: Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }>,
   executionMode?: ExecutionMode,
   aiRules?: string,
   taskSummaries?: string,
@@ -592,7 +563,7 @@ export function buildSystemPrompt(
     mbtiType,
     knowledgeContext,
     knowledgeEnabled,
-    hostMemories,
+    conversationHistory,
     executionMode,
     aiRules,
     taskSummaries,

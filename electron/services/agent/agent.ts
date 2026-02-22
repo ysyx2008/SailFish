@@ -33,7 +33,6 @@ import type { ToolExecutorConfig, ToolResult } from './tools/types'
 import { executeTool } from './tools/index'
 import { buildTaskHistoryContext } from './context-builder'
 import { getKnowledgeService } from '../knowledge'
-import { parseObservationsFromLLMResponse } from '../knowledge/memory-utils'
 import { t } from './i18n'
 import { createSkillSession, SkillSession } from './skills'
 import { PromptBuilder } from './prompt-builder'
@@ -604,11 +603,10 @@ export abstract class Agent {
     this.accumulateSessionData(run, status, result)
     this.saveSessionToHistory()
     
-    // 异步提取观察记忆（观察日志模型 - Observation Ledger）
-    // 不阻塞用户，后台自动从任务执行记录中提取环境事实
-    if (status === 'success' && run.context.hostId) {
-      this.extractObservationsAsync(run).catch(err => {
-        console.error('[Agent] 自动提取观察失败:', err)
+    // 异步索引对话摘要到知识库（用于跨会话语义检索）
+    if (run.context.hostId) {
+      this.indexConversationAsync(run, status, result).catch(err => {
+        console.error('[Agent] 对话索引失败:', err)
       })
     }
     
@@ -752,143 +750,34 @@ export abstract class Agent {
     this.taskMemory.clear()
   }
   
-  // ==================== 观察自动提取（Observation Ledger）====================
-  
-  /** 观察提取配置常量 */
-  private static readonly OBSERVATION_EXTRACTION = {
-    MAX_CMD_LENGTH: 200,          // 单条命令截断长度
-    MAX_OUTPUT_LENGTH: 500,       // 单条输出截断长度
-    MAX_TOTAL_LENGTH: 3000,       // 提取 prompt 中执行记录的总长度上限（约 4K tokens）
-    MAX_OBSERVATIONS: 10,         // 单次提取的最大观察数
-    MAX_CONTENT_LENGTH: 500,      // 单条观察内容的最大长度
-    MAX_SOURCE_LENGTH: 200,       // source 字段的最大长度
-  } as const
+  // ==================== 对话索引（用于跨会话语义检索）====================
 
   /**
-   * 异步从任务执行记录中提取观察（Observation Ledger 自动提取）
-   * 
-   * 在任务完成后自动调用，用轻量 LLM 调用提取值得记忆的环境事实。
-   * 完全异步，不阻塞用户。
+   * 异步将对话摘要索引到知识库
+   * 任务完成后调用，不阻塞用户。用于未来新对话时检索相关历史。
    */
-  private async extractObservationsAsync(run: AgentRun): Promise<void> {
+  private async indexConversationAsync(
+    run: AgentRun,
+    status: 'success' | 'failed' | 'aborted',
+    finalResult?: string
+  ): Promise<void> {
     const hostId = run.context.hostId
     if (!hostId) return
     
     const knowledgeService = getKnowledgeService()
     if (!knowledgeService?.isEnabled()) return
-    if (knowledgeService.getSettings().enableHostMemory === false) return
     
-    // 收集命令执行记录
-    const records = this.collectCommandRecords(run)
-    if (records.length === 0) return
+    const userRequest = run.originalUserRequest
+    if (!userRequest || userRequest.trim().length < 5) return
     
-    // 调用 LLM 提取观察
-    const observations = await this.callObservationExtractionLLM(run, records)
-    if (observations.length === 0) return
-    
-    // 保存观察到知识库
-    await this.saveExtractedObservations(knowledgeService, hostId, observations)
-  }
-
-  /**
-   * 从任务步骤中收集命令执行记录（命令 + 输出）
-   */
-  private collectCommandRecords(run: AgentRun): string[] {
-    const { MAX_CMD_LENGTH, MAX_OUTPUT_LENGTH, MAX_TOTAL_LENGTH } = Agent.OBSERVATION_EXTRACTION
-    const records: string[] = []
-    
-    for (const step of run.steps) {
-      if (step.toolName === 'execute_command' && step.toolArgs?.command) {
-        const cmd = String(step.toolArgs.command)
-        const shortCmd = cmd.length > MAX_CMD_LENGTH ? cmd.substring(0, MAX_CMD_LENGTH) + '...' : cmd
-        records.push(`$ ${shortCmd}`)
-      }
-      if (step.type === 'tool_result' && step.toolName === 'execute_command' && step.toolResult) {
-        const rawOutput = typeof step.toolResult === 'string' ? step.toolResult : JSON.stringify(step.toolResult)
-        const output = rawOutput.length > MAX_OUTPUT_LENGTH
-          ? rawOutput.substring(0, MAX_OUTPUT_LENGTH) + '...'
-          : rawOutput
-        records.push(output)
-      }
-    }
-    
-    // 截断总长度
-    let totalLength = 0
-    const truncated: string[] = []
-    for (const record of records) {
-      if (totalLength + record.length > MAX_TOTAL_LENGTH) break
-      truncated.push(record)
-      totalLength += record.length
-    }
-    
-    return truncated
-  }
-
-  /**
-   * 调用 LLM 从执行记录中提取观察
-   */
-  private async callObservationExtractionLLM(
-    run: AgentRun,
-    records: string[]
-  ): Promise<Array<{ content: string; volatility?: string; source?: string }>> {
-    const prompt = `你是一个信息提取助手。从以下任务执行记录中，提取关于这台主机/环境的客观事实。
-
-规则：
-- 只提取可复用的环境信息（配置、版本、路径、端口、架构等）
-- 跳过临时状态（如当前 CPU 占用率、某个进程 PID、一次性操作结果）
-- 跳过操作过程本身（"执行了 xxx 命令"不需要记）
-- 每条观察用一句自然语言描述，信息必须完整准确
-- 标注 volatility：stable（几乎不变，如 OS 类型、硬件架构）/ moderate（偶尔变，如服务端口、软件版本）/ volatile（经常变，如证书到期时间、磁盘用量）
-- 标注 source：信息来源命令
-
-用户请求：${run.originalUserRequest}
-
-执行记录：
-${records.join('\n')}
-
-输出严格的 JSON 数组（如果没有值得记录的信息，返回空数组 []）：
-[{"content": "描述", "volatility": "stable|moderate|volatile", "source": "来源命令"}]`
-    
-    try {
-      const response = await this.services.aiService.chat([
-        { role: 'user', content: prompt }
-      ], this.profileId)
-      
-      const { MAX_CONTENT_LENGTH, MAX_OBSERVATIONS, MAX_SOURCE_LENGTH } = Agent.OBSERVATION_EXTRACTION
-      return parseObservationsFromLLMResponse(response, MAX_OBSERVATIONS, MAX_CONTENT_LENGTH, MAX_SOURCE_LENGTH)
-    } catch (error) {
-      console.error('[Agent] 观察提取 LLM 调用失败:', error)
-      return []
-    }
-  }
-
-  /**
-   * 将提取的观察保存到知识库
-   */
-  private async saveExtractedObservations(
-    knowledgeService: NonNullable<ReturnType<typeof getKnowledgeService>>,
-    hostId: string,
-    observations: Array<{ content: string; volatility?: string; source?: string }>
-  ): Promise<void> {
-    let savedCount = 0
-    
-    for (const obs of observations) {
-      // volatility 已在 parseObservationsFromLLMResponse 中校验，这里只需设默认值
-      const volatility = (obs.volatility as 'stable' | 'moderate' | 'volatile') || 'moderate'
-      
-      const result = await knowledgeService.addHostMemorySmart(hostId, obs.content, {
-        volatility,
-        source: obs.source  // 已在 parseObservationsFromLLMResponse 中净化
-      })
-      
-      if (result.success && result.action === 'save') {
-        savedCount++
-      }
-    }
-    
-    if (savedCount > 0) {
-      console.log(`[Agent] 自动提取并保存 ${savedCount} 条观察记忆 (hostId: ${hostId})`)
-    }
+    await knowledgeService.indexConversation({
+      taskId: run.id,
+      hostId,
+      userRequest,
+      finalResult: finalResult || '',
+      status,
+      timestamp: Date.now()
+    })
   }
   
   /**
@@ -979,7 +868,7 @@ ${records.join('\n')}
       mbtiType: this.services.configService?.getAgentMbti() ?? undefined,
       knowledgeContext: knowledgeResult.context,
       knowledgeEnabled: knowledgeResult.enabled,
-      hostMemories: knowledgeResult.hostMemories,
+      conversationHistory: knowledgeResult.conversationHistory,
       aiRules: this.services.configService?.getAiRules() ?? '',
       taskSummaries,
       relatedTaskDigests,
@@ -1014,7 +903,7 @@ ${records.join('\n')}
   protected async loadKnowledgeContext(message: string, hostId?: string): Promise<KnowledgeContextResult> {
     let context = ''
     let enabled = false
-    let hostMemories: string[] | import('./types').HostMemoryEntry[] = []
+    let conversationHistory: KnowledgeContextResult['conversationHistory'] = []
     
     try {
       const knowledgeService = getKnowledgeService()
@@ -1022,15 +911,14 @@ ${records.join('\n')}
         enabled = true
         context = await knowledgeService.buildContext(message, { hostId })
         
-        if (hostId) {
-          hostMemories = await knowledgeService.getHostMemoriesWithMetadata(hostId, message, 30)
-        }
+        // 从历史对话中语义检索相关内容（替代旧的 host memory）
+        conversationHistory = await knowledgeService.searchConversations(message, hostId, 5)
       }
     } catch (e) {
       console.log('[Agent] Knowledge service error:', e)
     }
     
-    return { context, enabled, hostMemories }
+    return { context, enabled, conversationHistory }
   }
   
   // ==================== 受保护方法：执行循环 ====================

@@ -77,7 +77,7 @@ export class TerminalAgent extends Agent {
       options.mbtiType ?? null,
       options.knowledgeContext,
       options.knowledgeEnabled,
-      options.hostMemories,
+      options.conversationHistory,
       this.executionMode,
       options.aiRules,
       options.taskSummaries,
