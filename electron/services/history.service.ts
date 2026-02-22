@@ -283,6 +283,36 @@ export class HistoryService {
     return undefined
   }
 
+  /**
+   * 关键字搜索 Agent 历史记录
+   * 搜索范围：userTask、finalResult、以及过程中用户追加的消息（user_task / user_supplement steps）
+   */
+  searchAgentRecords(keyword: string, limit: number = 10): AgentRecord[] {
+    const lowerKeyword = keyword.toLowerCase()
+    const files = fs.readdirSync(this.agentDir).filter(f => f.endsWith('.json')).sort().reverse()
+    const results: AgentRecord[] = []
+
+    for (const file of files) {
+      if (results.length >= limit) break
+      const filePath = path.join(this.agentDir, file)
+      const records = this.readJsonFile<AgentRecord>(filePath)
+      for (let i = records.length - 1; i >= 0; i--) {
+        const r = records[i]
+        if (r.userTask?.toLowerCase().includes(lowerKeyword) ||
+            r.finalResult?.toLowerCase().includes(lowerKeyword) ||
+            r.steps?.some(s =>
+              (s.type === 'user_task' || s.type === 'user_supplement') &&
+              s.content?.toLowerCase().includes(lowerKeyword)
+            )) {
+          results.push(r)
+          if (results.length >= limit) break
+        }
+      }
+    }
+
+    return results
+  }
+
   // ==================== 导出/导入 ====================
 
   /**

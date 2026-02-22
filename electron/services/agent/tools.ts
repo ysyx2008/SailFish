@@ -926,6 +926,37 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
         }
       }
     },
+    // ==================== 历史搜索工具 ====================
+    {
+      type: 'function',
+      function: {
+        name: 'search_history',
+        description: `搜索历史对话记录。当你需要回顾之前跨会话的交互内容时使用（recall_task 只能查当前会话内的任务）。
+
+**输出级别**：
+- summary（默认）：任务描述 + 最终结果，适合快速浏览定位
+- full：额外包含工具调用列表（执行了哪些命令、操作了哪些文件），适合需要复现操作细节的场景`,
+        parameters: {
+          type: 'object',
+          properties: {
+            keyword: {
+              type: 'string',
+              description: '搜索关键字，会在用户任务和最终结果中匹配'
+            },
+            detail: {
+              type: 'string',
+              enum: ['summary', 'full'],
+              description: '输出级别。summary=仅任务和结果；full=额外包含工具调用记录。默认 summary'
+            },
+            limit: {
+              type: 'number',
+              description: '返回结果数量，默认 10，最大 30'
+            }
+          },
+          required: ['keyword']
+        }
+      }
+    },
     // ==================== IM 主动通知工具 ====================
     {
       type: 'function',

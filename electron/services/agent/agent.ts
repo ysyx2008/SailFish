@@ -1471,7 +1471,8 @@ export abstract class Agent {
       getCompressedArchive: (archiveId: string) => {
         const archive = run.compressedArchives?.find(a => a.id === archiveId)
         return archive ? archive.messages : null
-      }
+      },
+      historyService: this.services.historyService
     }
   }
   

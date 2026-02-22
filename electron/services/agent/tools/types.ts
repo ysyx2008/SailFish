@@ -1,6 +1,7 @@
 /**
  * 工具执行器类型定义
  */
+import type { HistoryService } from '../../history.service'
 import type { McpService } from '../../mcp.service'
 import type { UnifiedTerminalInterface } from '../../unified-terminal.service'
 import type { SftpService } from '../../sftp.service'
@@ -66,6 +67,8 @@ export interface ToolExecutorConfig {
   } | null
   getCompressedArchives?: () => Array<{ id: string; summary: string; messageCount: number; timestamp: number }>
   getCompressedArchive?: (archiveId: string) => import('../../ai.service').AiMessage[] | null
+  // 历史记录服务（search_history 工具使用）
+  historyService?: HistoryService
 }
 
 // 重新导出常用类型

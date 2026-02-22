@@ -1,8 +1,9 @@
 /**
  * 任务记忆工具
- * 包括：回忆任务摘要、深度回忆任务详情
+ * 包括：回忆任务摘要、深度回忆任务详情、搜索历史对话
  */
 import { t } from '../i18n'
+import { truncateFromEnd } from './utils'
 import type { ToolExecutorConfig, ToolResult } from './types'
 
 /**
@@ -308,4 +309,119 @@ export function deepRecall(
   })
   
   return { success: true, output }
+}
+
+/**
+ * 搜索历史对话记录（跨会话）
+ */
+export async function searchHistory(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const keyword = typeof args.keyword === 'string' ? args.keyword.slice(0, 200).trim() : ''
+  const limitRaw = typeof args.limit === 'number' ? args.limit : 10
+  const limit = Math.min(Math.max(1, limitRaw), 30)
+  const detail = args.detail === 'full' ? 'full' : 'summary'
+
+  if (!keyword) {
+    return { success: false, output: '', error: '缺少 keyword 参数' }
+  }
+
+  executor.addStep({
+    type: 'tool_call',
+    content: `搜索历史对话: "${keyword}" (${detail})`,
+    toolName: 'search_history',
+    toolArgs: args,
+    riskLevel: 'safe'
+  })
+
+  const historyService = executor.historyService
+  if (!historyService) {
+    executor.addStep({
+      type: 'tool_result',
+      content: '历史服务不可用',
+      toolName: 'search_history'
+    })
+    return { success: false, output: '', error: '历史服务不可用' }
+  }
+
+  try {
+    const records = historyService.searchAgentRecords(keyword, limit)
+
+    if (records.length === 0) {
+      executor.addStep({
+        type: 'tool_result',
+        content: `未找到包含"${keyword}"的历史记录`,
+        toolName: 'search_history'
+      })
+      return { success: true, output: `未找到包含"${keyword}"的历史记录` }
+    }
+
+    const formatted = records.map((r, i) => {
+      const date = new Date(r.timestamp || 0).toLocaleString('zh-CN')
+      const statusIcon = r.status === 'completed' ? '✅' : r.status === 'failed' ? '❌' : '⚠️'
+      const task = r.userTask || '(无任务描述)'
+      const result = r.finalResult
+        ? (r.finalResult.length > 300 ? r.finalResult.substring(0, 300) + '...' : r.finalResult)
+        : '(无结果)'
+
+      const lines = [`### ${i + 1}. ${statusIcon} ${date}`, `**任务**: ${task}`]
+
+      if (r.steps?.length > 0) {
+        const supplements = r.steps.filter(s => s.type === 'user_supplement' && s.content)
+        if (supplements.length > 0) {
+          lines.push('**用户追加**:')
+          for (const s of supplements) {
+            const msg = s.content.length > 150 ? s.content.substring(0, 150) + '...' : s.content
+            lines.push(`- ${msg}`)
+          }
+        }
+      }
+
+      lines.push(`**结果**: ${result}`)
+
+      if (detail === 'full' && r.steps?.length > 0) {
+        lines.push('', '**工具调用**:')
+        const toolSteps = r.steps.filter(s => s.type === 'tool_call' && s.toolName)
+        for (const step of toolSteps) {
+          let entry = `- \`${step.toolName}\``
+          if (step.toolArgs?.command) {
+            const cmd = String(step.toolArgs.command)
+            entry += `: ${cmd.length > 80 ? cmd.substring(0, 80) + '...' : cmd}`
+          } else if (step.toolArgs?.path || step.toolArgs?.file_path) {
+            entry += `: ${step.toolArgs.path || step.toolArgs.file_path}`
+          }
+          lines.push(entry)
+        }
+        if (toolSteps.length === 0) {
+          lines.push('- (无工具调用记录)')
+        }
+      }
+
+      return lines.join('\n')
+    }).join('\n\n')
+
+    const output = `找到 ${records.length} 条相关历史记录：\n\n${formatted}`
+
+    const displayOutput = output.length > 500
+      ? truncateFromEnd(output, 500)
+      : output
+
+    executor.addStep({
+      type: 'tool_result',
+      content: `找到 ${records.length} 条历史记录 (${detail})`,
+      toolName: 'search_history',
+      toolResult: displayOutput
+    })
+
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : '搜索失败'
+    executor.addStep({
+      type: 'tool_result',
+      content: `历史搜索失败: ${errorMsg}`,
+      toolName: 'search_history'
+    })
+    return { success: false, output: '', error: errorMsg }
+  }
 }

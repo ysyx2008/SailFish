@@ -21,7 +21,7 @@ import { getTerminalContext, checkTerminalStatus, sendControlKey, sendInput } fr
 import { fileSearch, readFile, editFile, writeLocalFile, writeRemoteFile } from './file'
 import { rememberInfo, searchKnowledge, getKnowledgeDoc } from './knowledge'
 import { createPlan, updatePlan, clearPlan } from './plan'
-import { recallTask, deepRecall } from './memory'
+import { recallTask, deepRecall, searchHistory } from './memory'
 import { compressContext, recallCompressed, manageMemory } from './context'
 import { wait, askUser, sendFileToChat, sendImageToChat, sendIMNotification, executeMcpTool, loadSkillTool, unloadSkillTool, loadUserSkillTool, executeSkillTool } from './misc'
 
@@ -35,7 +35,7 @@ export { getTerminalContext, checkTerminalStatus, sendControlKey, sendInput } fr
 export { fileSearch, readFile, editFile, writeLocalFile, writeRemoteFile } from './file'
 export { rememberInfo, searchKnowledge, getKnowledgeDoc } from './knowledge'
 export { createPlan, updatePlan, clearPlan } from './plan'
-export { recallTask, deepRecall } from './memory'
+export { recallTask, deepRecall, searchHistory } from './memory'
 export { compressContext, recallCompressed, manageMemory } from './context'
 export { wait, askUser, sendFileToChat, sendImageToChat, sendIMNotification, executeMcpTool, loadSkillTool, unloadSkillTool, loadUserSkillTool, executeSkillTool } from './misc'
 
@@ -118,6 +118,9 @@ export async function executeTool(
 
     case 'get_knowledge_doc':
       return getKnowledgeDoc(args, executor)
+
+    case 'search_history':
+      return searchHistory(args, executor)
 
     case 'wait':
       return wait(args, executor)
