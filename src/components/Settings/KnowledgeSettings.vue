@@ -538,27 +538,18 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- ==================== 其他设置 ==================== -->
-        <div class="setting-group">
-          <div class="setting-row">
-            <div class="setting-info">
-              <label class="setting-label">{{ t('knowledgeSettings.autoSaveUploads') }}</label>
-              <p class="setting-desc">{{ t('knowledgeSettings.autoSaveUploadsDesc') }}</p>
-            </div>
+        <!-- ==================== 底部设置栏 ==================== -->
+        <div class="bottom-settings">
+          <div class="bottom-item">
+            <label class="setting-label">{{ t('knowledgeSettings.autoSaveUploads') }}</label>
             <label class="switch">
               <input type="checkbox" v-model="settings.autoSaveUploads" @change="saveSettings" />
               <span class="slider"></span>
             </label>
           </div>
-        </div>
-
-        <div class="setting-group">
-          <div class="setting-row">
-            <div class="setting-info">
-              <label class="setting-label">{{ t('knowledgeSettings.mcpKnowledgeService') }}</label>
-              <p class="setting-desc">{{ t('knowledgeSettings.mcpKnowledgeDesc') }}</p>
-            </div>
-            <select v-model="settings.mcpKnowledgeServerId" class="select" @change="saveSettings">
+          <div class="bottom-item">
+            <label class="setting-label">{{ t('knowledgeSettings.mcpKnowledgeService') }}</label>
+            <select v-model="settings.mcpKnowledgeServerId" class="select select-sm" @change="saveSettings">
               <option value="">{{ t('knowledgeSettings.notUse') }}</option>
               <option v-for="server in mcpServers.filter(s => s.connected)" :key="server.id" :value="server.id">
                 {{ server.name }}
@@ -628,6 +619,22 @@ input:checked + .slider:before { transform: translateX(20px); }
   border: 1px solid var(--border-color); border-radius: 6px;
   background: var(--bg-tertiary); color: var(--text-primary); min-width: 140px;
 }
+.select-sm { padding: 5px 8px; font-size: 12px; min-width: 100px; }
+
+/* 底部设置栏 */
+.bottom-settings {
+  display: flex;
+  gap: 24px;
+  padding: 12px 0 4px;
+}
+
+.bottom-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bottom-item .setting-label { font-size: 12px; margin: 0; white-space: nowrap; }
 
 /* ==================== 内嵌管理面板 ==================== */
 .manager-panel {
