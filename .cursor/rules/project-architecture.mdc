@@ -31,57 +31,57 @@ SFTerminal/
 │   ├── cli/                     # CLI 模式入口
 │   │   ├── main.js              # CLI 启动器（JS，注册 electron-shim）
 │   │   ├── electron-shim.js     # Electron API 模拟层
-│   │   ├── index.ts             # CLI 命令实现（33 个命令）
+│   │   ├── index.ts             # CLI 命令实现
 │   │   └── test-cli.sh          # CLI 自动化回归测试
-│   └── services/                # 后端服务（26 个）
+│   └── services/                # 后端服务
 │       ├── ai.service.ts        # AI 对话（多 provider 支持）
 │       ├── config.service.ts    # 配置管理（electron-store）
 │       ├── pty.service.ts       # 本地终端（node-pty）
 │       ├── ssh.service.ts       # SSH 连接管理
 │       ├── sftp.service.ts      # SFTP 文件传输
-│       ├── host-profile.service.ts  # 主机画像
-│       ├── history.service.ts   # 对话/Agent 历史（磁盘 JSON，Agent 直接写入）
-│       ├── scheduler.service.ts # 定时任务
+│       ├── unified-terminal.service.ts # 统一终端服务
+│       ├── terminal-state.service.ts   # 终端状态管理
+│       ├── host-profile.service.ts     # 主机画像
+│       ├── history.service.ts   # 对话/Agent 历史（L3 对话记录）
+│       ├── scheduler.service.ts # 定时任务（已整合到 Watch）
 │       ├── mcp.service.ts       # MCP 服务器管理
 │       ├── local-fs.service.ts  # 本地文件系统
-│       ├── document-parser.service.ts # 文档解析
-│       ├── file-search.service.ts     # 文件搜索
-│       ├── user-skill.service.ts      # 用户技能
+│       ├── document-parser.service.ts  # 文档解析
+│       ├── file-search.service.ts      # 文件搜索
+│       ├── user-skill.service.ts       # 用户技能
+│       ├── skill-market.service.ts     # 技能市场
 │       ├── gateway.service.ts   # 网关服务
 │       ├── credential.service.ts # 凭证存储
+│       ├── remote-chat.service.ts      # 远程对话服务
+│       ├── screen-content.service.ts   # 屏幕内容服务
+│       ├── command-executor.service.ts # 命令执行服务
+│       ├── menu.service.ts      # 菜单服务
+│       ├── ai-debug.service.ts  # AI 调试服务
+│       ├── xshell-import.service.ts    # Xshell 导入
 │       ├── agent/               # AI Agent 子系统
-│       │   ├── agent.ts         # Agent 抽象基类（ReAct 循环、会话追踪、持久化）
+│       │   ├── agent.ts         # Agent 抽象基类（ReAct 循环、会话追踪、持久化、观察提取）
 │       │   ├── index.ts         # AgentService（Agent 实例管理，按 ptyId 复用）
-│       │   ├── terminal-agent.ts # 终端 Agent 实现
+│       │   ├── sailfish.ts      # 旗鱼 Agent 实现
+│       │   ├── orchestrator.ts  # 编排器（多 Agent 协调）
+│       │   ├── tool-executor.ts # 工具执行器
 │       │   ├── tools.ts         # 工具定义（Function Calling）
-│       │   ├── tools/           # 工具执行器（command/file/knowledge/plan/memory）
-│       │   ├── skills/          # 技能系统（excel/email/browser/word/watch/scheduler）
+│       │   ├── tools/           # 工具实现（command/file/knowledge/plan/memory/terminal/context/exec）
+│       │   ├── skills/          # 技能系统（excel/email/browser/word/watch/scheduler/calendar/terminal/skill-creator）
 │       │   ├── prompt-builder.ts # 系统提示构建
-│       │   ├── context-builder.ts # 上下文管理（任务历史压缩，多级别）
-│       │   ├── task-memory.ts   # 任务记忆（多层压缩存储）
-│       │   └── risk-assessor.ts # 风险评估
+│       │   ├── context-builder.ts # 上下文管理（L1 任务历史压缩）
+│       │   ├── task-memory.ts   # 任务记忆存储（L1）
+│       │   ├── risk-assessor.ts # 风险评估
+│       │   └── i18n.ts          # Agent 国际化
 │       ├── watch/               # Watch 感知层
-│       │   ├── types.ts         # Watch 数据模型（WatchDefinition, 8 种 WatchTrigger）
-│       │   ├── store.ts         # Watch 持久化 + 共享状态存储
-│       │   ├── watch.service.ts # Watch CRUD + 事件匹配 + Agent 执行 + 状态管理
-│       │   └── templates.ts     # 内置 Watch 模板（8 个预设，5 个分类）
-│       ├── sensor/              # 传感器系统
-│       │   ├── types.ts         # 事件类型（SensorEvent, Sensor 接口）
-│       │   ├── event-bus.ts     # 内存事件总线（优先级队列）
-│       │   ├── heartbeat-sensor.ts # 心跳传感器
-│       │   ├── file-watch-sensor.ts # 文件变化传感器（fs.watch）
-│       │   ├── calendar-sensor.ts # 日历事件传感器（iCalendar 解析）
-│       │   ├── email-sensor.ts  # 邮件传感器（IMAP IDLE 长连接）
-│       │   └── index.ts         # SensorService（传感器生命周期管理）
-│       ├── knowledge/           # 知识库（向量存储 + 嵌入）
+│       ├── sensor/              # 传感器系统（heartbeat/file-watch/calendar/email）
+│       ├── terminal-awareness/  # 终端感知（进程监控）
+│       ├── knowledge/           # 知识库（L2 知识文档，向量存储 + 嵌入 + BM25）
 │       ├── im/                  # IM 集成（钉钉/飞书/企业微信/Slack/Telegram）
 │       ├── speech/              # 语音识别
 │       └── __tests__/           # 服务单元测试
 ├── src/                         # 前端（Vue 3）
 │   ├── views/                   # 页面视图
 │   ├── components/              # 组件
-│   │   ├── Terminal.vue         # 终端组件
-│   │   ├── AiPanel.vue          # AI 对话面板
 │   │   ├── Settings/            # 设置页组件
 │   │   ├── FileManager/         # 文件管理器
 │   │   ├── FileExplorer/        # 文件浏览器
@@ -90,16 +90,9 @@ SFTerminal/
 │   │   ├── terminal.ts          # 终端状态、标签页、Agent 状态
 │   │   └── config.ts            # 配置、AI profiles、SSH 会话
 │   ├── composables/             # 组合式函数
-│   │   ├── useAgentMode.ts      # Agent 模式
-│   │   ├── useSftp.ts           # SFTP 操作
-│   │   ├── useSpeechRecognition.ts # 语音识别
-│   │   └── ...
 │   ├── i18n/                    # 国际化（中/英）
 │   └── themes/                  # 终端主题
-├── resources/                   # 打包资源
-│   ├── models/embedding/        # 嵌入模型（bge-small-zh-v1.5）
-│   ├── models/speech/           # 语音模型（paraformer）
-│   └── everything/              # Windows Everything 搜索工具
+├── resources/                   # 打包资源（嵌入模型、语音模型等）
 ├── scripts/                     # 构建/模型下载脚本
 ├── docs/                        # 文档
 ├── website/                     # 官网
@@ -131,7 +124,7 @@ SFTerminal/
 - **工具系统**：内置工具 + 技能系统（按需加载）+ MCP 工具
 - **风险评估**：safe / moderate / dangerous / blocked 四级
 - **执行模式**：strict（全确认）/ relaxed（危险确认）/ free（全自动）
-- **任务记忆**：多层压缩（L0 完整 → L2 摘要），由 `TaskMemoryStore` 管理
+- **三级记忆架构**：见下方独立章节
 - **上下文管理**：`ContextBuilder` 根据 token 预算动态选择压缩级别
 
 ### Agent 会话与持久化
@@ -156,11 +149,28 @@ SFTerminal/
 - **Scheduler 废弃**：旧版定时任务已整合到关切系统，启动时自动迁移数据，`schedule_*` 工具标记为废弃
 - **详细设计**：见 `docs/sensor-loop-architecture.md`
 
-### 知识库
-- 本地向量数据库（LanceDB）
-- 嵌入模型：bge-small-zh-v1.5（bundled）
-- 文档解析：PDF / Word / Excel / 纯文本
-- 主机记忆：Agent 自动积累的服务器信息
+### 三级记忆架构
+
+Agent 的记忆分三层，模拟人类记忆的衰减梯度，三层协同在有限上下文窗口内模拟无限记忆：
+
+**L1 — 任务记忆（工作记忆）**
+- 当前会话中最近几个任务的对话记录，直接作为 messages 注入上下文
+- 5 级渐进式压缩（L0 完整对话 → L4 一句话），越近期越完整，在固定 token 预算内最大化信息保留
+- 类比：刚做完的事，记得每句话
+
+**L2 — 知识文档（长期事实记忆）**
+- 按上下文维度（contextId）组织的持久化知识，每次对话时自动注入 system prompt
+- contextId 根据场景不同：终端模式 = hostId（主机档案），无终端模式 = userId（用户个人档案）
+- 设计目标：每个 contextId 对应一份结构化知识文档，固定 token 预算，整份注入，少而精
+- 核心原则：只保留高频复用的核心事实，每条信息都值得花 token 自动注入
+- 类比：记住的客观知识，不需要回忆具体经历就能想起来
+
+**L3 — 对话记录（情景记忆）**
+- 完整的历史对话记录（messages、steps、工具调用细节），永久保存
+- Agent 通过搜索工具主动检索，按需加载，不占日常 token
+- 与 L2 互补：L2 提供事实（"nginx 监听 8080"），L3 提供经验（"上次怎么排查的"）
+- 有了 L3 兜底，L2 不需要"什么都记"，可以收紧写入标准
+- 类比：需要"想一想"才能回忆的完整经历
 
 ## 构建与发布
 
