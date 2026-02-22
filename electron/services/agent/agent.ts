@@ -604,13 +604,6 @@ export abstract class Agent {
     this.accumulateSessionData(run, status, result)
     this.saveSessionToHistory()
     
-    // 异步索引对话摘要到知识库（用于跨会话语义检索）
-    if (run.context.hostId) {
-      this.indexConversationAsync(run, status, result).catch(err => {
-        console.error('[Agent] 对话索引失败:', err)
-      })
-    }
-    
     // L2: 异步更新知识文档
     this.updateContextKnowledgeAsync(run, result).catch(err => {
       console.error('[Agent] 知识文档更新失败:', err)
@@ -756,36 +749,6 @@ export abstract class Agent {
     this.taskMemory.clear()
   }
   
-  // ==================== 对话索引（用于跨会话语义检索）====================
-
-  /**
-   * 异步将对话摘要索引到知识库
-   * 任务完成后调用，不阻塞用户。用于未来新对话时检索相关历史。
-   */
-  private async indexConversationAsync(
-    run: AgentRun,
-    status: 'success' | 'failed' | 'aborted',
-    finalResult?: string
-  ): Promise<void> {
-    const hostId = run.context.hostId
-    if (!hostId) return
-    
-    const knowledgeService = getKnowledgeService()
-    if (!knowledgeService?.isEnabled()) return
-    
-    const userRequest = run.originalUserRequest
-    if (!userRequest || userRequest.trim().length < 5) return
-    
-    await knowledgeService.indexConversation({
-      taskId: run.id,
-      hostId,
-      userRequest,
-      finalResult: finalResult || '',
-      status,
-      timestamp: Date.now()
-    })
-  }
-  
   /**
    * L2: 异步更新知识文档
    * 收集执行记录，交给 LLM 判断是否有值得持久化的新信息
@@ -929,7 +892,6 @@ export abstract class Agent {
       mbtiType: this.services.configService?.getAgentMbti() ?? undefined,
       knowledgeContext: knowledgeResult.context,
       knowledgeEnabled: knowledgeResult.enabled,
-      conversationHistory: knowledgeResult.conversationHistory,
       contextKnowledgeDoc,
       aiRules: this.services.configService?.getAiRules() ?? '',
       taskSummaries,
@@ -965,22 +927,18 @@ export abstract class Agent {
   protected async loadKnowledgeContext(message: string, hostId?: string): Promise<KnowledgeContextResult> {
     let context = ''
     let enabled = false
-    let conversationHistory: KnowledgeContextResult['conversationHistory'] = []
     
     try {
       const knowledgeService = getKnowledgeService()
       if (knowledgeService && knowledgeService.isEnabled()) {
         enabled = true
         context = await knowledgeService.buildContext(message, { hostId })
-        
-        // 从历史对话中语义检索相关内容（替代旧的 host memory）
-        conversationHistory = await knowledgeService.searchConversations(message, hostId, 5)
       }
     } catch (e) {
       console.log('[Agent] Knowledge service error:', e)
     }
     
-    return { context, enabled, conversationHistory }
+    return { context, enabled, conversationHistory: [] }
   }
   
   // ==================== 受保护方法：执行循环 ====================
