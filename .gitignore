@@ -49,3 +49,4 @@ website/public/skills/
 resources/models/speech/**/*.onnx
 resources/models/speech/**/tokens.json
 .cursor/skills/steam-publish/SKILL.md
+docs/openclaw-comparison.md
