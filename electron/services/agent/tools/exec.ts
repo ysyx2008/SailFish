@@ -33,14 +33,14 @@ export async function executeCommandDirect(
     executor.addStep({
       type: 'tool_call',
       content: `🚫 ${command.slice(0, 100)}...`,
-      toolName: 'execute_command',
+      toolName: 'exec',
       toolArgs: { command: command.slice(0, 100) + '...' },
       riskLevel: 'blocked'
     })
     executor.addStep({
       type: 'tool_result',
       content: errorMsg,
-      toolName: 'execute_command',
+      toolName: 'exec',
       toolResult: errorMsg
     })
     return { success: false, output: '', error: errorMsg }
@@ -51,7 +51,7 @@ export async function executeCommandDirect(
     executor.addStep({
       type: 'tool_call',
       content: `🚫 ${command}`,
-      toolName: 'execute_command',
+      toolName: 'exec',
       toolArgs: { command },
       riskLevel: 'blocked'
     })
@@ -59,7 +59,7 @@ export async function executeCommandDirect(
     executor.addStep({
       type: 'tool_result',
       content: errorMsg,
-      toolName: 'execute_command',
+      toolName: 'exec',
       toolResult: errorMsg
     })
     return { success: false, output: '', error: errorMsg }
@@ -80,7 +80,7 @@ export async function executeCommandDirect(
   executor.addStep({
     type: 'tool_call',
     content: `${t('status.executing')}: ${command}`,
-    toolName: 'execute_command',
+    toolName: 'exec',
     toolArgs: { command },
     riskLevel
   })
@@ -88,13 +88,13 @@ export async function executeCommandDirect(
   let userApproved = false
   if (needConfirm) {
     const approved = await executor.waitForConfirmation(
-      toolCallId, 'execute_command', { command }, riskLevel
+      toolCallId, 'exec', { command }, riskLevel
     )
     if (!approved) {
       executor.addStep({
         type: 'tool_result',
         content: `⛔ ${t('status.user_rejected')}`,
-        toolName: 'execute_command',
+        toolName: 'exec',
         toolResult: t('status.user_rejected')
       })
       return { success: false, output: '', error: t('error.user_rejected_command') }
@@ -115,7 +115,7 @@ export async function executeCommandDirect(
         executor.addStep({
           type: 'tool_result',
           content: `⏱️ ${t('status.command_timeout')} (${timeout / 1000}${t('misc.seconds')})`,
-          toolName: 'execute_command',
+          toolName: 'exec',
           toolResult: output
         })
         resolve({
@@ -131,7 +131,7 @@ export async function executeCommandDirect(
         executor.addStep({
           type: 'tool_result',
           content: `${t('status.command_complete')} (exit: ${exitCode})`,
-          toolName: 'execute_command',
+          toolName: 'exec',
           toolResult: output
         })
       }

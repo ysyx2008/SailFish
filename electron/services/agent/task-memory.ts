@@ -143,7 +143,7 @@ function extractDigest(steps: AgentStep[], userRequest: string): TaskDigest {
   
   for (const step of steps) {
     // 提取命令
-    if (step.toolName === 'execute_command' && step.toolArgs?.command) {
+    if ((step.toolName === 'execute_command' || step.toolName === 'exec') && step.toolArgs?.command) {
       const cmd = String(step.toolArgs.command)
       // 只保留命令的简短形式（前 100 字符）
       commands.push(cmd.length > 100 ? cmd.substring(0, 100) + '...' : cmd)

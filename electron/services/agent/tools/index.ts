@@ -78,9 +78,9 @@ export async function executeTool(
   // 根据工具类型执行
   switch (name) {
     case 'execute_command':
-      if (ptyId) {
-        return executeCommand(ptyId, args, toolCall.id, config, executor)
-      }
+      return executeCommand(ptyId!, args, toolCall.id, config, executor)
+
+    case 'exec':
       return executeCommandDirect(args, toolCall.id, config, executor)
 
     case 'get_terminal_context':

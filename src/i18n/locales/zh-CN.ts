@@ -990,6 +990,7 @@ export default {
     },
     toolNames: {
       execute_command: '执行命令',
+      exec: '运行命令',
       read_file: '读取文件',
       write_file: '写入文件',
       write_local_file: '写入本地文件',

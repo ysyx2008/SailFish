@@ -1657,7 +1657,7 @@ export abstract class Agent {
   protected setExecutionPhase(run: AgentRun, toolName: string): void {
     if (toolName === 'write_file' || toolName === 'edit_file') {
       run.executionPhase = 'writing_file'
-    } else if (toolName === 'execute_command' || toolName === 'run_command') {
+    } else if (toolName === 'execute_command' || toolName === 'exec' || toolName === 'run_command') {
       run.executionPhase = 'executing_command'
     } else if (toolName === 'wait') {
       run.executionPhase = 'waiting'
@@ -1710,7 +1710,7 @@ export abstract class Agent {
    * 生成工具白名单键
    */
   private generateAllowedToolKey(toolName: string, toolArgs: Record<string, unknown>): string {
-    const keyArgs = toolName === 'execute_command' ? { command: toolArgs.command } : toolArgs
+    const keyArgs = (toolName === 'execute_command' || toolName === 'exec') ? { command: toolArgs.command } : toolArgs
     return `${toolName}:${JSON.stringify(keyArgs)}`
   }
   

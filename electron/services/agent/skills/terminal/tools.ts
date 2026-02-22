@@ -1,15 +1,14 @@
 /**
  * 终端技能工具定义
  * 
- * 包含 PTY 版 execute_command 和终端专属工具。
- * 加载后会覆写基础工具集中的 execute_command（child_process 版）。
+ * 终端模式的所有工具：execute_command（PTY）+ 终端交互工具。
+ * 基础工具集不包含这些，由 terminal 技能加载后提供。
  */
 
 import type { ToolDefinition } from '../../tools'
 
 /**
  * PTY 版 execute_command 工具定义
- * 加载 terminal 技能后会覆写 base 版
  */
 export const ptyExecuteCommandTool: ToolDefinition = {
   type: 'function',

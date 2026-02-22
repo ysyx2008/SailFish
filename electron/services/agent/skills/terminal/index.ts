@@ -1,11 +1,8 @@
 /**
  * 终端技能
  * 
- * 为 Agent 提供 PTY 终端交互能力。加载后：
- * - 用 PTY 版 execute_command 覆写基础版（child_process）
- * - 新增终端专属工具：check_terminal_status, get_terminal_context, send_control_key, send_input, wait
- * 
- * 终端标签页创建 Agent 时自动加载此技能，用户无感。
+ * 为 Agent 提供 PTY 终端交互能力，绑定终端时自动加载。
+ * 提供的工具：execute_command, check_terminal_status, get_terminal_context, send_control_key, send_input, wait
  */
 
 import { registerSkill } from '../registry'
