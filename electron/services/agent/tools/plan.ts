@@ -40,7 +40,7 @@ export function createPlan(
     return { success: false, output: '', error: t('error.plan_steps_required') }
   }
   
-  if (stepsRaw.length > 10) {
+  if (stepsRaw.length > 50) {
     return { success: false, output: '', error: t('error.plan_steps_max') }
   }
   

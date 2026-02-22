@@ -788,7 +788,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
                 },
                 required: ['title']
               },
-              description: '计划步骤列表，建议 4-8 步，不超过 10 步'
+              description: '计划步骤列表，按需拆分，粒度适中即可'
             }
           },
           required: ['title', 'steps']
