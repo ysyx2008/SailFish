@@ -12,6 +12,8 @@ export default {
     subtitle: 'AI-powered smart assistant',
     subtitleSteam: 'Efficient terminal & connection manager',
     quickStart: 'Quick Start',
+    assistant: 'AI Assistant',
+    assistantDesc: 'Chat with AI directly',
     localTerminal: 'Local Terminal',
     localTerminalDesc: 'Open local command line',
     sshConnect: 'SSH Connect',

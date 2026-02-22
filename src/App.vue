@@ -398,6 +398,11 @@ const initializeApp = async () => {
 const showWelcomePage = computed(() => terminalStore.tabs.length === 0 && !showSmartPatrol.value)
 const isAssistantTab = computed(() => terminalStore.activeTab?.type === 'assistant')
 
+// 从欢迎页打开助手
+const openAssistantFromWelcome = () => {
+  terminalStore.createAssistantTab()
+}
+
 // 从欢迎页打开本地终端
 const openLocalFromWelcome = async () => {
   await terminalStore.createTab('local')
@@ -681,6 +686,7 @@ onUnmounted(() => {
       <main class="terminal-area">
         <WelcomePage 
           v-if="showWelcomePage"
+          @open-assistant="openAssistantFromWelcome"
           @open-local="openLocalFromWelcome"
           @open-ssh="openSshFromWelcome"
           @open-session-manager="openSessionManagerFromWelcome"

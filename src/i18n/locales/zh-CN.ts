@@ -12,6 +12,8 @@ export default {
     subtitle: 'AI 驱动的智能助手',
     subtitleSteam: '高效的终端与连接管理工具',
     quickStart: '快速开始',
+    assistant: 'AI 助手',
+    assistantDesc: '与 AI 直接对话',
     localTerminal: '本地终端',
     localTerminalDesc: '打开本机命令行终端',
     sshConnect: 'SSH 连接',

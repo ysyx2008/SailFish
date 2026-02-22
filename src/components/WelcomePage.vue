@@ -5,7 +5,7 @@
  */
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { SquareTerminal, Monitor } from 'lucide-vue-next'
+import { Bot, SquareTerminal, Monitor } from 'lucide-vue-next'
 import { useConfigStore, type SshSession } from '../stores/config'
 import MatrixRain from './EasterEgg/MatrixRain.vue'
 import sailfishLogo from '../../resources/logo.png'
@@ -59,11 +59,16 @@ const nextTip = () => {
 }
 
 const emit = defineEmits<{
+  'open-assistant': []
   'open-local': []
   'open-ssh': [session: SshSession]
   'open-session-manager': []
   'open-smart-patrol': []
 }>()
+
+const openAssistant = () => {
+  emit('open-assistant')
+}
 
 // 最近连接的会话（最多显示 5 个，按最近使用时间逆序排序）
 const recentSessions = computed(() => {
@@ -114,6 +119,17 @@ const formatHost = (session: SshSession) => {
       <div class="quick-start">
         <h2 class="section-title">{{ t('welcome.quickStart') }}</h2>
         <div class="action-cards">
+          <!-- AI 助手 -->
+          <div class="action-card" @click="openAssistant">
+            <div class="card-icon assistant">
+              <Bot :size="32" :stroke-width="1.5" />
+            </div>
+            <div class="card-content">
+              <div class="card-title">{{ t('welcome.assistant') }}</div>
+              <div class="card-desc">{{ t('welcome.assistantDesc') }}</div>
+            </div>
+          </div>
+
           <!-- 本地终端 -->
           <div class="action-card" @click="openLocalTerminal">
             <div class="card-icon local">
@@ -388,9 +404,9 @@ const formatHost = (session: SshSession) => {
   animation: cardFadeIn 0.25s ease-out both;
 }
 
-.action-card:nth-child(1) { animation-delay: 0.12s; }
-.action-card:nth-child(2) { animation-delay: 0.18s; }
-.action-card:nth-child(3) { animation-delay: 0.24s; }
+.action-card:nth-child(1) { animation-delay: 0.10s; }
+.action-card:nth-child(2) { animation-delay: 0.16s; }
+.action-card:nth-child(3) { animation-delay: 0.22s; }
 
 @keyframes cardFadeIn {
   from { opacity: 0; }
@@ -467,6 +483,11 @@ const formatHost = (session: SshSession) => {
 .action-card:hover:not(.disabled) .card-icon {
   transform: scale(1.06) translateY(-3px);
   box-shadow: 0 12px 25px rgba(0, 0, 0, 0.35);
+}
+
+.card-icon.assistant {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
 }
 
 .card-icon.local {
