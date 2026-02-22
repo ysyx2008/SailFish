@@ -169,7 +169,7 @@ export default {
       aiRules: 'AI Rules',
       mcp: 'MCP Servers',
       skills: 'Skills',
-      knowledge: 'Knowledge Base',
+      knowledge: 'Memory',
       email: 'Email',
       calendar: 'Calendar',
       im: 'Messaging',
@@ -585,11 +585,11 @@ export default {
 
   // Knowledge Settings
   knowledgeSettings: {
-    title: 'Knowledge Base Settings',
-    description: 'Local knowledge base allows AI to understand your documents and host memories',
-    enable: 'Enable Knowledge Base',
-    enableHint: 'When enabled, documents and host memories can be stored to make Agent smarter',
-    initializing: 'Knowledge base initializing...',
+    title: 'Memory & Knowledge',
+    description: 'Let AI remember key information and understand your documents',
+    enable: 'Enable Memory & Knowledge',
+    enableHint: 'When enabled, AI can accumulate memories and retrieve document content',
+    initializing: 'Initializing...',
     // Security settings
     securitySettings: 'Security Settings',
     knowledgePassword: 'Knowledge Base Password',
@@ -646,8 +646,6 @@ export default {
     docProcessing: 'Document Processing',
     autoSaveUploads: 'Auto-save Uploaded Documents',
     autoSaveUploadsDesc: 'Automatically save uploaded documents to knowledge base',
-    enableHostMemory: 'Host Memory',
-    enableHostMemoryDesc: 'Let AI remember key host information and configurations',
     chunkStrategy: 'Chunking Strategy',
     chunkStrategyDesc: 'How to split long documents',
     chunkParagraph: 'By Paragraph',

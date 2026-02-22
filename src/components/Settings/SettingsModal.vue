@@ -362,7 +362,7 @@ const tabGroups = computed(() => {
         { id: 'aiRules' as const, label: t('settings.tabs.aiRules'), icon: '📋' },
         { id: 'mcp' as const, label: t('settings.tabs.mcp'), icon: '🔌' },
         { id: 'skills' as const, label: t('settings.tabs.skills'), icon: '🧩' },
-        { id: 'knowledge' as const, label: t('settings.tabs.knowledge'), icon: '📚' }
+        { id: 'knowledge' as const, label: t('settings.tabs.knowledge'), icon: '💡' }
       ]
     },
     {

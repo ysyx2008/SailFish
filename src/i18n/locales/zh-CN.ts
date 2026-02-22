@@ -169,7 +169,7 @@ export default {
       aiRules: 'AI 规则',
       mcp: 'MCP 服务器',
       skills: '技能',
-      knowledge: '知识库',
+      knowledge: '记忆',
       email: '邮箱账户',
       calendar: '日历账户',
       im: '即时通讯',
@@ -585,11 +585,11 @@ export default {
 
   // 知识库设置
   knowledgeSettings: {
-    title: '知识库设置',
-    description: '本地知识库让 AI 能够理解您的文档和主机记忆',
-    enable: '启用知识库',
-    enableHint: '开启后可存储文档和主机记忆，让助手更智能地协助您',
-    initializing: '知识库正在初始化...',
+    title: '记忆与知识库',
+    description: '让 AI 能记住关键信息并理解您的文档',
+    enable: '启用记忆与知识库',
+    enableHint: '开启后 AI 可自动积累记忆并检索文档内容',
+    initializing: '正在初始化...',
     // 安全设置
     securitySettings: '安全设置',
     knowledgePassword: '知识库密码',
@@ -646,8 +646,6 @@ export default {
     docProcessing: '文档处理',
     autoSaveUploads: '自动保存上传文档',
     autoSaveUploadsDesc: '上传的文档自动保存到知识库',
-    enableHostMemory: '主机记忆',
-    enableHostMemoryDesc: '让 AI 自动记住主机的关键信息和配置',
     chunkStrategy: '分块策略',
     chunkStrategyDesc: '长文档的切分方式',
     chunkParagraph: '按段落',

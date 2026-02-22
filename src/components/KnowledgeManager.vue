@@ -349,7 +349,7 @@ onUnmounted(() => {
   <div class="modal-overlay" @click.self="emit('close')">
     <div class="knowledge-manager">
       <div class="manager-header">
-        <h2>🧠 记忆管理</h2>
+        <h2>💡 记忆管理</h2>
         <button class="btn-icon" @click="emit('close')" :title="t('knowledgeManager.close')">
           <X :size="18" />
         </button>
@@ -365,7 +365,7 @@ onUnmounted(() => {
               :class="{ active: activeTab === 'memory' }"
               @click="activeTab = 'memory'"
             >
-              🧠 记忆 ({{ contextDocs.length }})
+              💡 记忆 ({{ contextDocs.length }})
             </button>
             <button 
               class="tab-btn" 

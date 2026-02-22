@@ -17,7 +17,6 @@ import WelcomePage from './components/WelcomePage.vue'
 import SmartPatrolPage from './components/SmartPatrolPage.vue'
 import Toast from './components/common/Toast.vue'
 import ConfirmDialog from './components/common/ConfirmDialog.vue'
-import KnowledgeManager from './components/KnowledgeManager.vue'
 import { useConfirm } from './composables/useConfirm'
 import { toast } from './composables/useToast'
 import type { SftpConnectionConfig } from './composables/useSftp'
@@ -124,8 +123,6 @@ let cleanupImConnectionChange: (() => void) | null = null
 let cleanupRunTask: (() => void) | null = null
 let cleanupInstallSkill: (() => void) | null = null
 
-// 知识库管理器显示状态
-const showKnowledgeManager = ref(false)
 
 onMounted(async () => {
   // 注册全局快捷键
@@ -544,7 +541,8 @@ const handleMenuCommand = async (command: string) => {
       toggleAiPanel()
       break
     case 'toggleKnowledge':
-      showKnowledgeManager.value = true
+      settingsInitialTab.value = 'knowledge'
+      showSettings.value = true
       break
     case 'openSettings':
       showSettings.value = true
@@ -770,11 +768,6 @@ onUnmounted(() => {
       @complete="onSetupComplete"
     />
 
-    <!-- 知识库管理器 -->
-    <KnowledgeManager
-      v-if="showKnowledgeManager"
-      @close="showKnowledgeManager = false"
-    />
 
     <!-- 关切面板 -->
     <WatchManager
