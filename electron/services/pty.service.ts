@@ -721,23 +721,32 @@ export class PtyService {
    */
   async getCwd(id: string): Promise<string | null> {
     const instance = this.instances.get(id)
-    if (!instance) return null
+    if (!instance) {
+      console.warn(`[PtyService] getCwd: 实例不存在 id=${id}`)
+      return null
+    }
 
     const shellPid = instance.pty.pid
-    if (!shellPid) return null
+    if (!shellPid) {
+      console.warn(`[PtyService] getCwd: pid 不可用 id=${id}`)
+      return null
+    }
 
     try {
       if (process.platform === 'darwin') {
-        // macOS: 使用 lsof 获取 cwd
-        // 使用 -d cwd 直接筛选 cwd 文件描述符，head -1 确保只取第一行
         const { stdout } = await execAsync(
           `lsof -a -d cwd -p ${shellPid} -Fn 2>/dev/null | grep '^n' | head -1 | cut -c2-`,
           { timeout: 2000 }
         )
-        // lsof 对非 ASCII 字符输出 \xXX 格式，需要解码
         const cwd = decodeLsofPath(stdout.trim())
         if (cwd && cwd.startsWith('/')) {
           return cwd
+        }
+        // lsof 返回了但无法解析出路径 — 记录日志帮助诊断
+        if (stdout.trim()) {
+          console.warn(`[PtyService] getCwd: lsof 输出无法解析, pid=${shellPid}, stdout="${stdout.trim().slice(0, 80)}"`)
+        } else {
+          console.warn(`[PtyService] getCwd: lsof 输出为空, pid=${shellPid}`)
         }
       } else if (process.platform === 'linux') {
         // Linux: 读取 /proc/pid/cwd 符号链接

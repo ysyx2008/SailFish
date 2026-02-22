@@ -4,6 +4,7 @@
  * OOP 重构版本：AgentService 作为工厂和生命周期管理器
  * 实际执行逻辑在 Agent 基类和 SailFish 子类中
  */
+import os from 'os'
 import type { AiService } from '../ai.service'
 import type { PtyService } from '../pty.service'
 import type { SshService } from '../ssh.service'
@@ -195,7 +196,13 @@ export class AgentService {
       agent.updateConfig(config)
     }
     
-    return agent.run(userMessage, context, {
+    // assistant 模式无终端，用 HOME 目录兜底（避免系统提示词显示"未成功获取"触发 AI 执行 pwd）
+    const enrichedContext: AgentContext = {
+      ...context,
+      cwd: context.cwd || os.homedir()
+    }
+    
+    return agent.run(userMessage, enrichedContext, {
       profileId,
       callbacks
     })
@@ -267,7 +274,7 @@ export class AgentService {
     const cwd = await terminalStateService.refreshCwd(ptyId, 'initial')
     const enrichedContext: AgentContext = {
       ...context,
-      cwd: cwd !== '~' ? cwd : undefined  // 只有获取到有效路径时才设置
+      cwd: (cwd && cwd !== '~') ? cwd : os.homedir()
     }
     
     // 运行

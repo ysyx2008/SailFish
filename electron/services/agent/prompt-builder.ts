@@ -226,7 +226,7 @@ export class PromptBuilder {
 
 你是旗鱼（SailFish）AI Agent，一个能帮助用户完成各类任务的智能助手。
 当前时间：${currentTime}
-${this.context.cwd ? `当前工作目录：${this.context.cwd}` : '当前工作目录：未成功获取'}
+${this.context.cwd ? `当前工作目录：${this.context.cwd}（系统实时获取，无需执行 pwd 验证）` : '当前工作目录：未成功获取'}
 ${styleSection}
 ${userRulesSection}
 ${hostContext}

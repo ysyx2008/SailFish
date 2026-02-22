@@ -93,9 +93,6 @@ const CWD_CHANGE_PATTERNS = [
   /^\s*builtin\s+cd\s+(.+?)\s*$/,
 ]
 
-// 用于解析 pwd 输出的模式
-const PWD_OUTPUT_PATTERN = /^(\/[^\n\r]*|[A-Z]:\\[^\n\r]*)$/m
-
 export class TerminalStateService {
   private states: Map<string, TerminalState> = new Map()
   private ptyService?: PtyService
@@ -272,10 +269,10 @@ export class TerminalStateService {
         // 本地终端：优先使用系统调用获取 CWD（无需在终端中执行命令）
         newCwd = await this.ptyService.getCwd(id)
         
-        // 如果系统调用失败，回退到执行 pwd 命令（仅用于初始化场景）
+        // lsof 可能因系统繁忙短暂失败，对 initial 场景重试一次
         if (!newCwd && trigger === 'initial') {
-          const result = await this.ptyService.executeInTerminal(id, 'pwd', 3000)
-          newCwd = this.parsePwdOutput(result.output)
+          await new Promise(r => setTimeout(r, 200))
+          newCwd = await this.ptyService.getCwd(id)
         }
       } else if (state.type === 'ssh') {
         // SSH 终端：从终端屏幕提示符解析 CWD
@@ -325,32 +322,6 @@ export class TerminalStateService {
       console.error('[TerminalStateService] Failed to refresh CWD:', error)
       return state.cwd
     }
-  }
-
-  /**
-   * 解析 pwd 命令输出
-   */
-  private parsePwdOutput(output: string): string {
-    // 去除 ANSI 转义序列
-    // eslint-disable-next-line no-control-regex
-    const cleanOutput = output.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').trim()
-    
-    // 尝试匹配路径
-    const match = cleanOutput.match(PWD_OUTPUT_PATTERN)
-    if (match) {
-      return match[1]
-    }
-
-    // 尝试获取最后一行非空内容
-    const lines = cleanOutput.split('\n').filter(l => l.trim())
-    const lastLine = lines[lines.length - 1]
-    
-    // 验证是否像路径
-    if (lastLine && (lastLine.startsWith('/') || /^[A-Z]:\\/.test(lastLine))) {
-      return lastLine.trim()
-    }
-
-    return ''
   }
 
   /**
