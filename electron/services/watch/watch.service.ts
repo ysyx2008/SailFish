@@ -573,6 +573,7 @@ export class WatchService {
         })
         parts.push(`Recent events:\n${lines.join('\n')}`)
       }
+      parts.push('[If none of these events are worth notifying the user about, reply with just "NO_ACTION" and nothing else. The events will be discarded and you can check again next time.]')
     } else if (event.type === 'heartbeat') {
       parts.push(`[Heartbeat wake-up at ${new Date().toLocaleString()}]`)
     } else if (event.type === 'webhook') {
@@ -626,7 +627,13 @@ export class WatchService {
 
   private async deliverOutput(watch: WatchDefinition, result: WatchExecutionResult): Promise<void> {
     if (result.skipped) return
-    if (!result.output?.trim() && result.success) return
+
+    const trimmedOutput = result.output?.trim() || ''
+    if (!trimmedOutput && result.success) return
+    if (trimmedOutput.toUpperCase() === 'NO_ACTION') {
+      console.log(`[WatchService] Agent decided NO_ACTION for: ${watch.name}`)
+      return
+    }
 
     const outputType = watch.output.type
 
@@ -1087,10 +1094,9 @@ export class WatchService {
 3. **环境感知**：如果有任何值得用户注意的事情，主动告知
 
 **重要行为准则**：
-- 如果一切正常、没什么特别的——保持沉默，不要打扰用户
+- 如果一切正常、没什么值得关注的——直接回复 NO_ACTION，不要打扰用户
 - 只在确实有值得关注的信息时才推送消息
-- 推送时用简洁自然的语气，像朋友提醒一样
-- 如果是深夜或周末，降低打扰意愿`,
+- 推送时用简洁自然的语气，像朋友提醒一样`,
         skills: ['calendar', 'email'],
         execution: { type: 'local' },
         output: { type: 'desktop' },
