@@ -696,35 +696,40 @@ onUnmounted(() => {
           v-else-if="showSmartPatrol"
           @back="backFromSmartPatrol"
         />
-        <!-- 助手标签页：AI 面板占满主区域 -->
-        <template v-else-if="isAssistantTab">
+        <!-- 助手 + 终端始终挂载，v-show 控制可见性，避免切换 Tab 类型时销毁 AiPanel 丢失事件监听 -->
+        <template v-else>
           <template v-for="tab in terminalStore.tabs" :key="'assist-' + tab.id">
             <AiPanel 
               v-if="tab.type === 'assistant'"
-              v-show="tab.id === terminalStore.activeTabId"
+              v-show="isAssistantTab && tab.id === terminalStore.activeTabId"
               :tab-id="tab.id"
-              :visible="tab.id === terminalStore.activeTabId"
+              :visible="isAssistantTab && tab.id === terminalStore.activeTabId"
               class="assistant-full-panel"
             />
           </template>
+          <TerminalContainer v-show="!isAssistantTab" />
         </template>
-        <TerminalContainer v-else />
       </main>
 
-      <!-- AI 面板侧栏 - 仅在非助手标签页时显示 -->
-      <template v-if="!isSteamBuild && showAiPanel && !showWelcomePage && !isAssistantTab">
+      <!-- AI 面板侧栏 - 始终挂载，v-show 控制可见性 -->
+      <template v-if="!isSteamBuild">
         <div 
+          v-show="showAiPanel && !showWelcomePage && !isAssistantTab"
           class="resize-handle" 
           @mousedown="startResize"
           :class="{ resizing: isResizing }"
         ></div>
-        <aside class="ai-sidebar" :style="{ width: aiPanelWidth + 'px' }">
+        <aside 
+          v-show="showAiPanel && !showWelcomePage && !isAssistantTab" 
+          class="ai-sidebar" 
+          :style="{ width: aiPanelWidth + 'px' }"
+        >
           <template v-for="tab in terminalStore.tabs" :key="tab.id">
             <AiPanel 
               v-if="tab.type !== 'assistant'"
               v-show="tab.id === terminalStore.activeTabId"
               :tab-id="tab.id"
-              :visible="tab.id === terminalStore.activeTabId"
+              :visible="!isAssistantTab && tab.id === terminalStore.activeTabId"
               @close="showAiPanel = false" 
             />
           </template>
