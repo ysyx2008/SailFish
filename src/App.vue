@@ -116,9 +116,6 @@ let cleanupMenuCommand: (() => void) | null = null
 let cleanupSchedulerTaskStarted: (() => void) | null = null
 let cleanupGatewayRemoteTab: (() => void) | null = null
 let cleanupGatewayRemoteTask: (() => void) | null = null
-let cleanupRemoteAgentStep: (() => void) | null = null
-let cleanupRemoteAgentComplete: (() => void) | null = null
-let cleanupRemoteAgentConfirm: (() => void) | null = null
 let cleanupImConnectionChange: (() => void) | null = null
 let cleanupRunTask: (() => void) | null = null
 let cleanupInstallSkill: (() => void) | null = null
@@ -204,125 +201,45 @@ onMounted(async () => {
     showSettings.value = true
   })
 
-  // 监听远程 Gateway 终端标签页创建事件
+  // 监听远程 Gateway 助手标签页创建事件
   cleanupGatewayRemoteTab = window.electronAPI.gateway.onRemoteTabCreated((data) => {
-    if (data.ptyId) {
-      // 检查是否已经为此 ptyId 创建过标签页（避免重复创建）
-      const existingTab = terminalStore.tabs.find(tab => tab.ptyId === data.ptyId)
-      if (!existingTab) {
-        terminalStore.createTabWithExistingPty({
-          ptyId: data.ptyId,
-          title: data.title || '📡 Remote Agent',
-          type: data.type || 'local',
-          isRemote: true,
-          activate: false  // 不激活，避免干扰用户当前操作
-        })
-        log.debug(`[Gateway] 远程 Agent 终端标签页已创建（后台）: ptyId=${data.ptyId}`)
-      }
+    if (!data.agentId) return
+    const existingTab = terminalStore.tabs.find(tab => tab.agentId === data.agentId)
+    if (!existingTab) {
+      terminalStore.createAssistantTab({
+        agentId: data.agentId,
+        title: data.title || '📡 Remote Agent',
+        isRemote: true,
+        activate: false
+      })
+      log.debug(`[Gateway] 远程助手标签页已创建: agentId=${data.agentId}`)
     }
   })
 
-  // 监听远程 Gateway 任务开始事件（关键时刻 Toast 通知 + 初始化 Agent 消息）
+  // 监听远程 Gateway 任务开始事件：Toast 通知 + 把消息放入 pendingSchedulerTask 让 AiPanel 自动执行
   cleanupGatewayRemoteTask = window.electronAPI.gateway.onRemoteTaskStarted((data) => {
-    log.debug(`[RemoteDebug] onRemoteTaskStarted: ptyId=${data.ptyId}, remoteChannel=${data.remoteChannel}, message="${data.message.substring(0, 60)}"`)
+    log.debug(`[RemoteChat] onRemoteTaskStarted: agentId=${data.agentId}, message="${data.message.substring(0, 60)}"`)
     const preview = data.message.length > 60
       ? data.message.substring(0, 60) + '...'
       : data.message
     toast.info(`📡 ${t('gateway.remoteTaskStarted')}: ${preview}`, 5000)
 
-    // 在远程标签页中初始化 Agent 状态，让 AiPanel 能显示进度
-    // 如果标签页不存在（用户手动关闭后再次收到任务），自动重新创建
-    let remoteTab = terminalStore.tabs.find(tab => tab.ptyId === data.ptyId)
-    log.debug(`[RemoteDebug] 查找 tab: ptyId=${data.ptyId}, found=${!!remoteTab}, isRemote=${remoteTab?.isRemote}, tabId=${remoteTab?.id}`)
+    // 找到或创建远程助手 tab
+    let remoteTab = terminalStore.tabs.find(tab => tab.agentId === data.agentId)
     if (!remoteTab) {
-      const newTabId = terminalStore.createTabWithExistingPty({
-        ptyId: data.ptyId,
+      const newTabId = terminalStore.createAssistantTab({
+        agentId: data.agentId,
         title: '📡 Remote Agent',
-        type: 'local',
         isRemote: true,
-        activate: false  // 不激活，避免干扰用户当前操作
+        activate: false
       })
       remoteTab = terminalStore.tabs.find(tab => tab.id === newTabId)
-      log.debug(`[RemoteDebug] 新建远程 tab: newTabId=${newTabId}, found=${!!remoteTab}`)
-
-      // 等 Terminal.vue 挂载完成后触发 resize，让 shell 重绘 prompt
-      setTimeout(() => {
-        window.electronAPI.pty.resize(data.ptyId, 80, 24)
-      }, 300)
     }
     if (remoteTab) {
-      // 不切换 tab、不打开 AI 面板，避免干扰用户当前操作；tab 已在栏内可见，用户可自行点击查看
-      // 标记 Agent 正在运行
-      const hadAgentState = !!remoteTab.agentState
-      const prevStepsCount = remoteTab.agentState?.steps?.length ?? 0
-      if (!remoteTab.agentState) {
-        remoteTab.agentState = {
-          isRunning: true,
-          steps: [],
-          pendingConfirm: undefined,
-          agentId: undefined,
-          userTask: data.message
-        }
-      } else {
-        remoteTab.agentState.isRunning = true
-        remoteTab.agentState.userTask = data.message
-      }
-      remoteTab.aiLoading = true
-
-      // user_task 步骤由后端 Agent 统一生成并通过 onStep 推送，前端不再手动添加
-      log.debug(`[RemoteDebug] 远程任务已启动: tabId=${remoteTab.id}, hadAgentState=${hadAgentState}, prevSteps=${prevStepsCount}, nowSteps=${remoteTab.agentState!.steps.length}`)
-    } else {
-      log.warn(`[RemoteDebug] 无法找到或创建远程 tab: ptyId=${data.ptyId}`)
+      // 把远程消息作为 pendingSchedulerTask，AiPanel 会自动消费并执行 runAgent
+      terminalStore.pendingSchedulerTasks[remoteTab.id] = data.message
+      log.debug(`[RemoteChat] 远程任务已提交: tabId=${remoteTab.id}, agentId=${data.agentId}`)
     }
-  })
-
-  // 远程 Agent 事件路由：直接写入 store，不依赖 useAgentMode 的 tab 过滤
-  // 这确保即使用户不在远程标签页上，事件数据也不会丢失
-  cleanupRemoteAgentStep = window.electronAPI.agent.onStep((data: { agentId: string; ptyId?: string; step: any }) => {
-    if (!data.ptyId) return
-    // 只处理远程标签页的事件
-    const tab = terminalStore.tabs.find(tab => tab.ptyId === data.ptyId && tab.isRemote)
-    if (!tab) return
-    // 确保 agentState 存在
-    if (!tab.agentState) {
-      log.warn(`[RemoteDebug] onStep: tab ${tab.id} 的 agentState 不存在，手动创建`)
-      tab.agentState = { isRunning: true, steps: [], agentId: data.agentId }
-    }
-    // 关联 agentId
-    if (data.agentId && !tab.agentState!.agentId) {
-      tab.agentState!.agentId = data.agentId
-    }
-    // 存入 store（addAgentStep 自动处理新增/更新）
-    const prevCount = tab.agentState!.steps.length
-    terminalStore.addAgentStep(tab.id, data.step)
-    const newCount = tab.agentState!.steps.length
-    // 仅在新增步骤或特殊类型时打印，避免流式 message 更新刷屏
-    if (newCount !== prevCount || data.step.type !== 'message') {
-      log.debug(`[RemoteDebug] onStep: type=${data.step.type}, id=${data.step.id}, tabId=${tab.id}, steps: ${prevCount}→${newCount}`)
-    }
-  })
-
-  cleanupRemoteAgentComplete = window.electronAPI.agent.onComplete((data: { agentId: string; ptyId?: string; result: string }) => {
-    if (!data.ptyId) return
-    const tab = terminalStore.tabs.find(tab => tab.ptyId === data.ptyId && tab.isRemote)
-    if (!tab || !tab.agentState) return
-    log.debug(`[RemoteDebug] onComplete: ptyId=${data.ptyId}, tabId=${tab.id}, stepsBeforeComplete=${tab.agentState.steps.length}, result="${data.result.substring(0, 60)}"`)
-    // final_result 步骤由后端 Agent 统一生成并通过 onStep 推送
-    tab.agentState.isRunning = false
-    tab.aiLoading = false
-  })
-
-  cleanupRemoteAgentConfirm = window.electronAPI.agent.onNeedConfirm((data: any) => {
-    if (!data.ptyId) return
-    const tab = terminalStore.tabs.find(tab => tab.ptyId === data.ptyId && tab.isRemote)
-    if (!tab || !tab.agentState) return
-    terminalStore.setAgentPendingConfirm(tab.id, {
-      agentId: data.agentId,
-      toolCallId: data.toolCallId,
-      toolName: data.toolName,
-      toolArgs: data.toolArgs,
-      riskLevel: data.riskLevel
-    })
   })
 
   // 全局监听 IM 渠道连接状态变化，弹 toast 通知
@@ -625,9 +542,6 @@ onUnmounted(() => {
   cleanupSchedulerTaskStarted?.()
   cleanupGatewayRemoteTab?.()
   cleanupGatewayRemoteTask?.()
-  cleanupRemoteAgentStep?.()
-  cleanupRemoteAgentComplete?.()
-  cleanupRemoteAgentConfirm?.()
   cleanupImConnectionChange?.()
   cleanupRunTask?.()
   cleanupInstallSkill?.()

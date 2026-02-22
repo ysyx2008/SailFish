@@ -2678,16 +2678,14 @@ const electronAPI = {
     setAutoStart: (enabled: boolean) =>
       ipcRenderer.invoke('gateway:setAutoStart', enabled) as Promise<void>,
 
-    // 监听远程终端标签页创建事件
+    // 监听远程助手标签页创建事件
     onRemoteTabCreated: (callback: (data: {
-      ptyId: string
+      agentId: string
       title: string
-      type: 'local' | 'ssh'
     }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: {
-        ptyId: string
+        agentId: string
         title: string
-        type: 'local' | 'ssh'
       }) => callback(data)
       ipcRenderer.on('gateway:remoteTabCreated', handler)
       return () => {
@@ -2697,12 +2695,12 @@ const electronAPI = {
 
     // 监听远程任务开始事件
     onRemoteTaskStarted: (callback: (data: {
-      ptyId: string
+      agentId: string
       message: string
       remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'
     }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: {
-        ptyId: string
+        agentId: string
         message: string
         remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'
       }) => callback(data)

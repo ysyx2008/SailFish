@@ -662,24 +662,24 @@ watch(() => terminalStore.pendingAiText, (text) => {
   }
 }, { immediate: true })
 
-// 监听定时任务：当切换到有 pendingSchedulerTask 的 tab 时自动执行
-// 注意：每个 AiPanel 实例都有自己的 currentTabId（props.tabId），只有目标 tab 的实例才应处理
-watch(() => terminalStore.activeTabId, (tabId) => {
-  // 只有当切换到的 tab 与当前 AiPanel 实例绑定的 tab 匹配时才处理
-  // 这样确保任务在正确的终端中执行，而不是在其他 tab 的旧终端中执行
-  if (tabId && tabId === currentTabId.value) {
-    const pendingTask = terminalStore.consumePendingSchedulerTask(tabId)
-    if (pendingTask) {
-      console.log(`[AiPanel] 检测到定时任务，自动执行: ${pendingTask.substring(0, 50)}...`)
-      // 设置输入文本并执行
-      inputText.value = pendingTask
-      // 稍微延迟确保 tab 完全切换
-      setTimeout(() => {
+// 监听定时任务 / 远程任务：当有 pendingSchedulerTask 时自动执行
+// 触发时机：tab 切换到当前实例、或新的 pending task 被写入当前 tab
+const isMounted = ref(false)
+watch(
+  [() => terminalStore.activeTabId, () => terminalStore.pendingSchedulerTasks[currentTabId.value], isMounted],
+  ([_tabId, pendingTask, mounted]) => {
+    if (!mounted || !pendingTask) return
+    const task = terminalStore.consumePendingSchedulerTask(currentTabId.value)
+    if (task) {
+      console.log(`[AiPanel] 检测到待执行任务，自动执行: ${task.substring(0, 50)}...`)
+      inputText.value = task
+      nextTick(() => {
         runAgent()
-      }, 100)
+      })
     }
-  }
-}, { immediate: true })
+  },
+  { immediate: true }
+)
 
 // ==================== 诊断和分析（通过 Agent 执行） ====================
 
@@ -843,9 +843,8 @@ const handleKeyDown = (e: KeyboardEvent) => {
 // ==================== 生命周期 ====================
 
 onMounted(() => {
-  // 加载主机档案
+  isMounted.value = true
   loadHostProfile()
-  // 注册键盘事件
   document.addEventListener('keydown', handleKeyDown)
 })
 

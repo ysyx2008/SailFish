@@ -2180,12 +2180,16 @@ ipcMain.handle('agent:runStandalone', async (event, { agentId, message, context,
   const debugMode = configService.getAgentDebugMode()
   const fullConfig = { ...config, debugMode }
   
+  const rcs = getRemoteChatService()
+  const isRemote = agentId === rcs.getAgentId()
+
   const callbacks = {
     onStep: (_runId: string, step: AgentStep) => {
       if (!event.sender.isDestroyed()) {
         const serializedStep = JSON.parse(JSON.stringify(step))
         event.sender.send('agent:step', { agentId, step: serializedStep })
       }
+      if (isRemote) rcs.onAgentStep(step)
     },
     onNeedConfirm: (confirmation: PendingConfirmation) => {
       if (!event.sender.isDestroyed()) {
@@ -2202,11 +2206,13 @@ ipcMain.handle('agent:runStandalone', async (event, { agentId, message, context,
       if (!event.sender.isDestroyed()) {
         event.sender.send('agent:complete', { agentId, result, pendingUserMessages })
       }
+      if (isRemote) rcs.onAgentComplete(result)
     },
     onError: (_runId: string, error: string) => {
       if (!event.sender.isDestroyed()) {
         event.sender.send('agent:error', { agentId, error })
       }
+      if (isRemote) rcs.onAgentError(error)
     }
   }
 
@@ -2216,6 +2222,7 @@ ipcMain.handle('agent:runStandalone', async (event, { agentId, message, context,
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error'
     const isAborted = errorMsg === 'User aborted Agent execution'
+    if (isRemote) rcs.onAgentError(errorMsg)
     return {
       success: false,
       error: errorMsg,
@@ -2229,7 +2236,6 @@ ipcMain.handle('agent:runStandalone', async (event, { agentId, message, context,
 const remoteChatService = getRemoteChatService()
 remoteChatService.setDependencies({
   agentService,
-  ptyService,
   configService,
   mainWindow: null  // 初始化时 mainWindow 还未创建
 })

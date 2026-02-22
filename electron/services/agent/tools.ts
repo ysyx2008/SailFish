@@ -378,7 +378,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
           required: ['seconds']
         }
       },
-      _meta: { supportedModes: ['local', 'ssh'] }
+      _meta: { supportedModes: ['local', 'ssh', 'assistant'] }
     }
   ]
 

@@ -503,18 +503,24 @@ export const useTerminalStore = defineStore('terminal', () => {
   /**
    * 创建独立助手标签页（无终端绑定）
    */
-  function createAssistantTab(): string {
+  function createAssistantTab(options?: {
+    agentId?: string
+    title?: string
+    isRemote?: boolean
+    activate?: boolean
+  }): string {
     const id = uuidv4()
-    const agentId = `assistant-${id}`
+    const agentId = options?.agentId || `assistant-${id}`
     const t = i18n.global.t
     
     const tab: TerminalTab = {
       id,
-      title: t('tabs.assistant', '助手'),
+      title: options?.title || t('tabs.assistant', '助手'),
       type: 'assistant',
       agentId,
       isConnected: true,
       isLoading: false,
+      isRemote: options?.isRemote,
       agentState: {
         isRunning: false,
         steps: [],
@@ -523,7 +529,14 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
     
     tabs.value.push(tab)
-    activeTabId.value = id
+    if (options?.activate !== false) {
+      activeTabId.value = id
+    } else {
+      // 不抢焦点：仅当当前没有选中 tab 时才选中新 tab（例如首个 tab）
+      if (!activeTabId.value) {
+        activeTabId.value = id
+      }
+    }
     return id
   }
 
@@ -1089,6 +1102,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     if (tab) {
       tab.agentState = {
         isRunning: false,
+        agentId: tab.agentState?.agentId,
         sessionId: preserveSession ? tab.agentState?.sessionId : undefined,
         sessionStartTime: preserveSession ? tab.agentState?.sessionStartTime : undefined,
         steps: preserveSession ? (tab.agentState?.steps || []) : []

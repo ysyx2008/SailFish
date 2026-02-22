@@ -2,20 +2,21 @@
  * Remote Chat Service - 远程会话核心服务
  *
  * 统一管理 Web Service 和 IM 集成的共享会话状态。
- * 所有远程通道（Web、钉钉、飞书）共享同一个：
- * - PTY 终端
- * - 对话历史
- * - Agent 运行状态
+ * 所有远程通道（Web、钉钉、飞书等）共享同一个 Agent 会话。
  *
  * 架构：
- *   Web / IM ──→ RemoteChatService.sendMessage(callbacks)
+ *   Web / IM ──→ RemoteChatService.sendMessage()
  *                        │
- *                  agentService.run()
+ *          通知桌面前端创建 assistant tab + pendingTask
  *                        │
- *             state 更新 + desktop 通知 + 调用方回调
+ *          前端 AiPanel 走 runStandalone 驱动执行
+ *                        │
+ *          后端 runStandalone IPC handler 回调 onAgentStep/onAgentComplete
+ *                        │
+ *             IM/SSE 回调 + sendMessage Promise resolve
  */
 
-import * as os from 'os'
+import { v4 as uuidv4 } from 'uuid'
 
 // ==================== 类型定义 ====================
 
@@ -28,20 +29,11 @@ export interface ChatMessage {
 
 export interface RemoteChatDependencies {
   agentService: {
-    run: (ptyId: string, message: string, context: any, config?: any, profileId?: string, workerOptions?: any, callbacks?: any) => Promise<string>
-    abort: (ptyId: string) => boolean
-    confirmToolCall: (ptyId: string, toolCallId: string, approved: boolean, modifiedArgs?: Record<string, unknown>, alwaysAllow?: boolean) => boolean
-    getRunStatus: (ptyId: string) => any
-    cleanupAgent: (ptyId: string) => void
-    addUserMessage: (ptyId: string, message: string) => boolean
-  }
-  ptyService: {
-    create: (options?: any) => string | Promise<string>
-    write: (id: string, data: string) => void
-    resize: (id: string, cols: number, rows: number) => void
-    dispose: (id: string) => void
-    onData: (id: string, callback: (data: string) => void) => () => void
-    hasInstance: (id: string) => boolean
+    abort: (agentId: string) => boolean
+    confirmToolCall: (agentId: string, toolCallId: string, approved: boolean, modifiedArgs?: Record<string, unknown>, alwaysAllow?: boolean) => boolean
+    getRunStatus: (agentId: string) => any
+    cleanupAgent: (agentId: string) => void
+    addUserMessage: (agentId: string, message: string) => boolean
   }
   configService: {
     getActiveAiProfile: () => any
@@ -66,9 +58,6 @@ export interface AgentCallbacks {
   onError?: (agentId: string, error: string) => void
 }
 
-// 有意义的操作步骤类型（记录到历史 steps 中）
-// tool_result 不单独渲染为卡片：tool_call 步骤会被更新（同一 id），
-// 结果通过 step_update 回填到已有的 tool_call 卡片中
 export const VISIBLE_STEP_TYPES = new Set([
   'tool_call', 'error', 'confirm',
   'plan_created', 'plan_updated', 'plan_archived',
@@ -81,21 +70,23 @@ export type RemoteChatEventListener = (event: any) => void
 
 export class RemoteChatService {
   private deps: RemoteChatDependencies | null = null
-  private ptyId: string | null = null
+  private agentId: string = `remote-agent-${uuidv4()}`
   private _isRunning = false
   private history: ChatMessage[] = []
   private _pendingConfirm: any | null = null
   private _executionMode: 'strict' | 'relaxed' | 'free' = 'relaxed'
-  private ptyUnsubscribe: (() => void) | null = null
+  private _tabCreated = false
+
+  // 当前运行的 IM/SSE 回调和状态
+  private _callerCallbacks: AgentCallbacks | null = null
+  private _currentAssistantMsg: ChatMessage | null = null
+  private _runResolve: (() => void) | null = null
 
   // ---- 事件广播：供 SSE /api/chat/events 端点使用 ----
   private listeners = new Set<RemoteChatEventListener>()
   private emittedStepIds = new Set<string>()
   private currentMessageStepId: string | null = null
 
-  /**
-   * 订阅实时事件（返回取消订阅函数）
-   */
   subscribe(listener: RemoteChatEventListener): () => void {
     this.listeners.add(listener)
     return () => { this.listeners.delete(listener) }
@@ -107,25 +98,16 @@ export class RemoteChatService {
     }
   }
 
-  /**
-   * 注入依赖
-   */
   setDependencies(deps: RemoteChatDependencies) {
     this.deps = deps
   }
 
-  /**
-   * 更新 mainWindow 引用
-   */
   setMainWindow(win: RemoteChatDependencies['mainWindow']) {
     if (this.deps) {
       this.deps.mainWindow = win
     }
   }
 
-  /**
-   * 读取配置值（代理 configService.get）
-   */
   getConfigValue(key: any): any {
     return this.deps?.configService.get(key)
   }
@@ -134,7 +116,7 @@ export class RemoteChatService {
 
   getState() {
     return {
-      ptyId: this.ptyId,
+      agentId: this.agentId,
       isRunning: this._isRunning,
       history: this.history,
       pendingConfirm: this._pendingConfirm,
@@ -147,80 +129,42 @@ export class RemoteChatService {
   get pendingConfirm(): any | null { return this._pendingConfirm }
   get executionMode(): 'strict' | 'relaxed' | 'free' { return this._executionMode }
   set executionMode(mode: 'strict' | 'relaxed' | 'free') { this._executionMode = mode }
-  getPtyId(): string | null { return this.ptyId }
-
-  // ==================== PTY 管理 ====================
-
-  /**
-   * 确保 PTY 终端存在，不存在则创建
-   */
-  async ensurePty(): Promise<string> {
-    // 检查现有 PTY 是否仍然存活
-    if (this.ptyId) {
-      if (this.deps?.ptyService.hasInstance(this.ptyId)) {
-        return this.ptyId
-      }
-      // PTY 已被销毁，清理旧状态
-      if (this.ptyUnsubscribe) {
-        this.ptyUnsubscribe()
-        this.ptyUnsubscribe = null
-      }
-      this.ptyId = null
-    }
-
-    if (!this.deps) throw new Error('Dependencies not set')
-
-    const ptyId = await this.deps.ptyService.create()
-    this.ptyId = ptyId
-
-    // 订阅终端输出
-    this.ptyUnsubscribe = this.deps.ptyService.onData(ptyId, (_data: string) => {
-      // 终端输出可用于 Agent context
-    })
-
-    // 通知桌面端创建可见标签页
-    this.sendToDesktop('gateway:remoteTabCreated', {
-      ptyId,
-      title: '📡 Remote Agent',
-      type: 'local'
-    })
-
-    return ptyId
-  }
+  getAgentId(): string { return this.agentId }
 
   // ==================== 核心操作 ====================
 
+  private ensureDesktopTab(): void {
+    if (!this._tabCreated) {
+      this._tabCreated = true
+      this.sendToDesktop('gateway:remoteTabCreated', {
+        agentId: this.agentId,
+        title: '📡 Remote Agent'
+      })
+    }
+  }
+
   /**
-   * 发送消息并运行 Agent
+   * 发送消息：通知前端创建 tab + pendingTask，等待前端 runStandalone 完成
    *
-   * @param message 用户消息
-   * @param callbacks 通道特定的回调（SSE、IM 等各自处理输出）
-   * @param remoteChannel 请求来源通道（desktop/web/dingtalk/feishu）
-   * @throws Error 如果 Agent 正在运行或依赖未注入
+   * 不直接调 agentService，由前端 AiPanel 驱动执行。
+   * 通过 onAgentStep / onAgentComplete / onAgentError 接收结果。
    */
   async sendMessage(message: string, callbacks?: AgentCallbacks, remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'): Promise<void> {
     if (!this.deps) throw new Error('Dependencies not set')
     if (this._isRunning) throw new Error('Agent is already running')
 
-    await this.ensurePty()
+    this.ensureDesktopTab()
 
-    // 通知桌面端：远程任务开始（所有通道统一在此发送，确保 ptyId 有效）
     const remoteChannelValue = remoteChannel || 'desktop'
-    console.log(`[RemoteDebug][Backend] sendMessage: 发送 gateway:remoteTaskStarted, ptyId=${this.ptyId}, remoteChannel=${remoteChannelValue}, message="${message.trim().substring(0, 60)}"`)
-    this.sendToDesktop('gateway:remoteTaskStarted', {
-      ptyId: this.ptyId,
-      message: message.trim(),
-      remoteChannel: remoteChannelValue
-    })
+    console.log(`[RemoteChat] sendMessage: agentId=${this.agentId}, remoteChannel=${remoteChannelValue}, message="${message.trim().substring(0, 60)}"`)
 
-    // 添加用户消息到历史
     this.history.push({
       role: 'user',
       content: message.trim(),
       timestamp: Date.now()
     })
 
-    const assistantMsg: ChatMessage = {
+    this._currentAssistantMsg = {
       role: 'assistant',
       content: '',
       timestamp: Date.now(),
@@ -229,265 +173,192 @@ export class RemoteChatService {
 
     this._isRunning = true
     this._pendingConfirm = null
+    this._callerCallbacks = callbacks || null
     this.emittedStepIds.clear()
     this.currentMessageStepId = null
 
-    // 广播：任务开始（供旁听的 SSE 客户端创建 UI）
     this.emitEvent({ type: 'task_started', message: message.trim() })
 
-    const context = {
-      ptyId: this.ptyId!,
-      terminalOutput: [],
-      systemInfo: {
-        os: `${os.type()} ${os.release()}`,
-        shell: process.env.SHELL || 'bash'
-      },
-      terminalType: 'local' as const,
-      remoteChannel: remoteChannel || 'desktop' as const,
-      hostId: 'local'
-    }
+    // 通知前端创建 tab + 提交任务
+    this.sendToDesktop('gateway:remoteTaskStarted', {
+      agentId: this.agentId,
+      message: message.trim(),
+      remoteChannel: remoteChannelValue
+    })
 
-    const agentConfig = {
-      executionMode: this._executionMode,
-      debugMode: this.deps.configService.getAgentDebugMode()
-    }
-
-    const activeProfile = this.deps.configService.getActiveAiProfile()
-    const profileId = activeProfile?.id
-
-    const agentCallbacks = {
-      onStep: (agentId: string, step: any) => {
-        const serializedStep = JSON.parse(JSON.stringify(step))
-
-        // 跟踪步骤到历史
-        if (VISIBLE_STEP_TYPES.has(step.type)) {
-          const idx = assistantMsg.steps!.findIndex((s: any) => s.id === step.id)
-          if (idx === -1) {
-            assistantMsg.steps!.push(serializedStep)
-          } else {
-            assistantMsg.steps![idx] = serializedStep
-          }
-        }
-
-        // 跟踪最终文本内容
-        if (step.type === 'message' && step.content && !step.isStreaming) {
-          assistantMsg.content = step.content
-        }
-
-        // 通知桌面端
-        // 仅对非流式 message 更新的步骤打印日志，避免刷屏
-        if (step.type !== 'message' || !step.isStreaming) {
-          console.log(`[RemoteDebug][Backend] onStep → desktop: type=${step.type}, id=${step.id}, ptyId=${this.ptyId}`)
-        }
-        this.sendToDesktop('agent:step', {
-          agentId,
-          ptyId: this.ptyId,
-          step: serializedStep
-        })
-
-        // 广播 SSE 格式事件（与 Gateway handleChatMessage 输出格式一致）
-        if (step.type === 'thinking') {
-          if (!this.emittedStepIds.has(step.id)) {
-            this.emittedStepIds.add(step.id)
-            this.emitEvent({ type: 'thinking', content: step.content })
-          }
-        } else if (step.type === 'message' && step.content) {
-          if (this.currentMessageStepId !== step.id) {
-            this.currentMessageStepId = step.id
-            this.emitEvent({ type: 'text_new', content: step.content, stepId: step.id })
-          } else {
-            this.emitEvent({ type: 'text_replace', content: step.content, stepId: step.id })
-          }
-          if (step.type === 'message' && !step.isStreaming) {
-            // 流式结束：确保最终内容已发送
-            this.emitEvent({ type: 'text_replace', content: step.content, stepId: step.id })
-          }
-        } else if (VISIBLE_STEP_TYPES.has(step.type)) {
-          if (!this.emittedStepIds.has(step.id)) {
-            this.emittedStepIds.add(step.id)
-            this.emitEvent({ type: 'step', step: serializedStep })
-          } else {
-            this.emitEvent({ type: 'step_update', step: serializedStep })
-          }
-          if (step.type === 'tool_call') {
-            this.currentMessageStepId = null
-          }
-        }
-
-        // 转发到调用方
-        callbacks?.onStep?.(agentId, step)
-      },
-
-      onNeedConfirm: (confirmation: any) => {
-        this._pendingConfirm = {
-          toolCallId: confirmation.toolCallId,
-          toolName: confirmation.toolName,
-          toolArgs: JSON.parse(JSON.stringify(confirmation.toolArgs)),
-          riskLevel: confirmation.riskLevel
-        }
-
-        // 通知桌面端
-        this.sendToDesktop('agent:needConfirm', {
-          agentId: confirmation.agentId,
-          ptyId: this.ptyId,
-          toolCallId: confirmation.toolCallId,
-          toolName: confirmation.toolName,
-          toolArgs: JSON.parse(JSON.stringify(confirmation.toolArgs)),
-          riskLevel: confirmation.riskLevel
-        })
-
-        // 转发到调用方
-        callbacks?.onNeedConfirm?.(confirmation)
-
-        // 广播
-        this.emitEvent({ type: 'need_confirm', confirmation: this._pendingConfirm })
-      },
-
-      onComplete: (agentId: string, result: string) => {
-        assistantMsg.content = result
-        this.history.push(assistantMsg)
-        this._isRunning = false
-        this._pendingConfirm = null
-
-        // 通知桌面端
-        console.log(`[RemoteDebug][Backend] onComplete → desktop: ptyId=${this.ptyId}, result="${result.substring(0, 60)}"`)
-        this.sendToDesktop('agent:complete', {
-          agentId,
-          ptyId: this.ptyId,
-          result
-        })
-
-        // 转发到调用方
-        callbacks?.onComplete?.(agentId, result)
-
-        // 广播
-        this.emitEvent({ type: 'complete', content: result })
-        this.emittedStepIds.clear()
-        this.currentMessageStepId = null
-      },
-
-      onError: (agentId: string, error: string) => {
-        assistantMsg.content = `Error: ${error}`
-        this.history.push(assistantMsg)
-        this._isRunning = false
-        this._pendingConfirm = null
-
-        // 通知桌面端
-        console.log(`[RemoteDebug][Backend] onError → desktop: ptyId=${this.ptyId}, error="${error.substring(0, 80)}"`)
-        this.sendToDesktop('agent:error', {
-          agentId,
-          ptyId: this.ptyId,
-          error
-        })
-
-        // 转发到调用方
-        callbacks?.onError?.(agentId, error)
-
-        // 广播
-        this.emitEvent({ type: 'error', error })
-        this.emittedStepIds.clear()
-        this.currentMessageStepId = null
-      }
-    }
-
-    try {
-      await this.deps.agentService.run(
-        this.ptyId!,
-        message.trim(),
-        context,
-        agentConfig,
-        profileId,
-        undefined,
-        agentCallbacks
-      )
-
-      // 后备：如果 onComplete/onError 没被调用
-      if (this._isRunning) {
-        this._isRunning = false
-        if (!assistantMsg.content) assistantMsg.content = 'Done'
-        this.history.push(assistantMsg)
-        callbacks?.onComplete?.('', assistantMsg.content)
-      }
-    } catch (err: any) {
-      if (this._isRunning) {
-        this._isRunning = false
-        const errMsg = err.message || 'Unknown error'
-        assistantMsg.content = `Error: ${errMsg}`
-        this.history.push(assistantMsg)
-        callbacks?.onError?.('', errMsg)
-      }
-    }
+    // 等待前端执行完成（由 onAgentComplete / onAgentError 触发 resolve）
+    return new Promise<void>((resolve) => {
+      this._runResolve = resolve
+    })
   }
 
   /**
-   * 确认工具调用
+   * 前端 runStandalone 产生的步骤事件（由 main.ts IPC handler 调用）
    */
+  onAgentStep(step: any): void {
+    if (!this._isRunning) return
+
+    const serializedStep = JSON.parse(JSON.stringify(step))
+
+    if (this._currentAssistantMsg && VISIBLE_STEP_TYPES.has(step.type)) {
+      const idx = this._currentAssistantMsg.steps!.findIndex((s: any) => s.id === step.id)
+      if (idx === -1) {
+        this._currentAssistantMsg.steps!.push(serializedStep)
+      } else {
+        this._currentAssistantMsg.steps![idx] = serializedStep
+      }
+    }
+
+    if (step.type === 'message' && step.content && !step.isStreaming) {
+      if (this._currentAssistantMsg) this._currentAssistantMsg.content = step.content
+    }
+
+    // 广播 SSE 事件
+    if (step.type === 'thinking') {
+      if (!this.emittedStepIds.has(step.id)) {
+        this.emittedStepIds.add(step.id)
+        this.emitEvent({ type: 'thinking', content: step.content })
+      }
+    } else if (step.type === 'message' && step.content) {
+      if (this.currentMessageStepId !== step.id) {
+        this.currentMessageStepId = step.id
+        this.emitEvent({ type: 'text_new', content: step.content, stepId: step.id })
+      } else {
+        this.emitEvent({ type: 'text_replace', content: step.content, stepId: step.id })
+      }
+      if (!step.isStreaming) {
+        this.emitEvent({ type: 'text_replace', content: step.content, stepId: step.id })
+      }
+    } else if (VISIBLE_STEP_TYPES.has(step.type)) {
+      if (!this.emittedStepIds.has(step.id)) {
+        this.emittedStepIds.add(step.id)
+        this.emitEvent({ type: 'step', step: serializedStep })
+      } else {
+        this.emitEvent({ type: 'step_update', step: serializedStep })
+      }
+      if (step.type === 'tool_call') {
+        this.currentMessageStepId = null
+      }
+    }
+
+    // 转发确认请求
+    if (step.type === 'confirm') {
+      this._pendingConfirm = {
+        toolCallId: step.toolCallId || step.id,
+        toolName: step.toolName,
+        toolArgs: step.toolArgs,
+        riskLevel: step.riskLevel
+      }
+      this._callerCallbacks?.onNeedConfirm?.(this._pendingConfirm)
+      this.emitEvent({ type: 'need_confirm', confirmation: this._pendingConfirm })
+    }
+
+    this._callerCallbacks?.onStep?.(this.agentId, step)
+  }
+
+  /**
+   * 前端 Agent 执行完成（由 main.ts IPC handler 调用）
+   */
+  onAgentComplete(result: string): void {
+    if (!this._isRunning) return
+
+    if (this._currentAssistantMsg) {
+      this._currentAssistantMsg.content = result
+      this.history.push(this._currentAssistantMsg)
+      this._currentAssistantMsg = null
+    }
+
+    this._isRunning = false
+    this._pendingConfirm = null
+
+    console.log(`[RemoteChat] onAgentComplete: agentId=${this.agentId}, result="${result.substring(0, 60)}"`)
+
+    this._callerCallbacks?.onComplete?.(this.agentId, result)
+    this._callerCallbacks = null
+
+    this.emitEvent({ type: 'complete', content: result })
+    this.emittedStepIds.clear()
+    this.currentMessageStepId = null
+
+    this._runResolve?.()
+    this._runResolve = null
+  }
+
+  /**
+   * 前端 Agent 执行出错（由 main.ts IPC handler 调用）
+   */
+  onAgentError(error: string): void {
+    if (!this._isRunning) return
+
+    if (this._currentAssistantMsg) {
+      this._currentAssistantMsg.content = `Error: ${error}`
+      this.history.push(this._currentAssistantMsg)
+      this._currentAssistantMsg = null
+    }
+
+    this._isRunning = false
+    this._pendingConfirm = null
+
+    console.log(`[RemoteChat] onAgentError: agentId=${this.agentId}, error="${error.substring(0, 80)}"`)
+
+    this._callerCallbacks?.onError?.(this.agentId, error)
+    this._callerCallbacks = null
+
+    this.emitEvent({ type: 'error', error })
+    this.emittedStepIds.clear()
+    this.currentMessageStepId = null
+
+    this._runResolve?.()
+    this._runResolve = null
+  }
+
   confirmToolCall(
     toolCallId?: string,
     approved = true,
     modifiedArgs?: Record<string, unknown>,
     alwaysAllow?: boolean
   ): boolean {
-    if (!this.deps || !this.ptyId || !this._pendingConfirm) return false
-
+    if (!this.deps || !this._pendingConfirm) return false
     const id = toolCallId || this._pendingConfirm.toolCallId
     const result = this.deps.agentService.confirmToolCall(
-      this.ptyId, id, approved, modifiedArgs, alwaysAllow
+      this.agentId, id, approved, modifiedArgs, alwaysAllow
     )
-    // 无论成功与否都清除 pendingConfirm：
-    // 失败通常意味着 Agent 任务已结束，不应卡在确认状态
     this._pendingConfirm = null
     return result
   }
 
-  /**
-   * 中止当前任务
-   */
   abort(): boolean {
-    if (!this.deps || !this.ptyId || !this._isRunning) return false
-    return this.deps.agentService.abort(this.ptyId)
+    if (!this.deps || !this._isRunning) return false
+    return this.deps.agentService.abort(this.agentId)
   }
 
-  /**
-   * 补充消息（任务执行中追加信息）
-   */
   supplement(message: string): boolean {
-    if (!this.deps || !this.ptyId || !this._isRunning) return false
-    return this.deps.agentService.addUserMessage(this.ptyId, message)
+    if (!this.deps || !this._isRunning) return false
+    return this.deps.agentService.addUserMessage(this.agentId, message)
   }
 
-  /**
-   * 清空对话历史
-   */
   clearHistory(): void {
-    if (this.ptyId && this.deps) {
-      this.deps.agentService.cleanupAgent(this.ptyId)
+    if (this.deps) {
+      this.deps.agentService.cleanupAgent(this.agentId)
     }
+    this.agentId = `remote-agent-${uuidv4()}`
+    this._tabCreated = false
     this.history = []
     this._pendingConfirm = null
+    this._callerCallbacks = null
+    this._currentAssistantMsg = null
+    this._runResolve = null
     this.emitEvent({ type: 'history_cleared' })
   }
 
-  /**
-   * 获取 Agent 运行状态
-   */
   getAgentStatus(): any {
-    if (!this.deps || !this.ptyId) return null
-    return this.deps.agentService.getRunStatus(this.ptyId)
+    if (!this.deps) return null
+    return this.deps.agentService.getRunStatus(this.agentId)
   }
 
-  /**
-   * 释放资源（应用退出时调用）
-   */
   async dispose(): Promise<void> {
-    if (this.ptyUnsubscribe) {
-      this.ptyUnsubscribe()
-      this.ptyUnsubscribe = null
-    }
-    if (this.ptyId && this.deps) {
-      try { this.deps.agentService.cleanupAgent(this.ptyId) } catch { /* ignore */ }
-      try { this.deps.ptyService.dispose(this.ptyId) } catch { /* ignore */ }
-      this.ptyId = null
+    if (this.deps) {
+      try { this.deps.agentService.cleanupAgent(this.agentId) } catch { /* ignore */ }
     }
   }
 

@@ -1949,12 +1949,11 @@ interface Window {
       getAutoStart: () => Promise<boolean>
       setAutoStart: (enabled: boolean) => Promise<void>
       onRemoteTabCreated: (callback: (data: {
-        ptyId: string
+        agentId: string
         title: string
-        type: 'local' | 'ssh'
       }) => void) => () => void
       onRemoteTaskStarted: (callback: (data: {
-        ptyId: string
+        agentId: string
         message: string
         remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'
       }) => void) => () => void
