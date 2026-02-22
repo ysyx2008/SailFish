@@ -25,63 +25,44 @@ interface KnowledgeStats {
   lastUpdated?: number
 }
 
-const emit = defineEmits<{
-  close: []
-}>()
-
-const documents = ref<KnowledgeDocument[]>([])
-const stats = ref<KnowledgeStats | null>(null)
-const loading = ref(true)
-const searchQuery = ref('')
-const selectedDoc = ref<KnowledgeDocument | null>(null)
-const selectedDocIds = ref<Set<string>>(new Set())
-const batchDeleting = ref(false)
-const clearing = ref(false)
-const activeTab = ref<'documents' | 'memories' | 'contextDocs'>('documents')
-const exporting = ref(false)
-const importing = ref(false)
-
-// L2 知识文档
 interface ContextKnowledgeItem {
   contextId: string
   content: string
 }
+
+const emit = defineEmits<{
+  close: []
+}>()
+
+// ==================== 共享状态 ====================
+const loading = ref(true)
+const activeTab = ref<'memory' | 'knowledge'>('memory')
+
+// ==================== 记忆 tab 状态 ====================
 const contextDocs = ref<ContextKnowledgeItem[]>([])
 const selectedContextId = ref<string | null>(null)
 const contextDocContent = ref('')
 const contextDocSaving = ref(false)
 const contextDocDirty = ref(false)
 
-// 普通文档（排除主机记忆）
-const normalDocuments = computed(() => {
+// ==================== 知识库 tab 状态 ====================
+const documents = ref<KnowledgeDocument[]>([])
+const stats = ref<KnowledgeStats | null>(null)
+const searchQuery = ref('')
+const selectedDoc = ref<KnowledgeDocument | null>(null)
+const selectedDocIds = ref<Set<string>>(new Set())
+const batchDeleting = ref(false)
+const clearing = ref(false)
+const exporting = ref(false)
+const importing = ref(false)
+
+// 知识库文档（排除旧的 host-memory 类型）
+const kbDocuments = computed(() => {
   return documents.value.filter(doc => doc.fileType !== 'host-memory')
 })
 
-// 主机记忆文档
-const memoryDocuments = computed(() => {
-  return documents.value.filter(doc => doc.fileType === 'host-memory')
-})
-
-// 按主机分组的记忆
-const memoriesByHost = computed(() => {
-  const grouped = new Map<string, KnowledgeDocument[]>()
-  for (const doc of memoryDocuments.value) {
-    const hostId = doc.hostId || 'unknown'
-    if (!grouped.has(hostId)) {
-      grouped.set(hostId, [])
-    }
-    grouped.get(hostId)!.push(doc)
-  }
-  // 按时间倒序排序每个主机的记忆
-  for (const [, memories] of grouped) {
-    memories.sort((a, b) => b.createdAt - a.createdAt)
-  }
-  return grouped
-})
-
-// 过滤后的文档（仅普通文档）
 const filteredDocuments = computed(() => {
-  const docs = normalDocuments.value
+  const docs = kbDocuments.value
   if (!searchQuery.value) return docs
   const query = searchQuery.value.toLowerCase()
   return docs.filter(doc => 
@@ -90,33 +71,21 @@ const filteredDocuments = computed(() => {
   )
 })
 
-// 过滤后的记忆
-const filteredMemories = computed(() => {
-  if (!searchQuery.value) return memoryDocuments.value
-  const query = searchQuery.value.toLowerCase()
-  return memoryDocuments.value.filter(doc => 
-    doc.content.toLowerCase().includes(query) ||
-    (doc.hostId || '').toLowerCase().includes(query)
-  )
-})
-
-// 是否全选
 const isAllSelected = computed(() => {
   if (filteredDocuments.value.length === 0) return false
   return filteredDocuments.value.every(doc => selectedDocIds.value.has(doc.id))
 })
 
-// 是否有选中项
 const hasSelection = computed(() => selectedDocIds.value.size > 0)
 
-// 格式化文件大小
+// ==================== 工具函数 ====================
+
 const formatSize = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-// 格式化日期
 const formatDate = (timestamp: number): string => {
   const { locale } = useI18n()
   return new Date(timestamp).toLocaleString(locale.value, {
@@ -128,221 +97,24 @@ const formatDate = (timestamp: number): string => {
   })
 }
 
-// 加载数据
+const getContextLabel = (contextId: string): string => {
+  if (contextId === 'local') return '💻 本地主机'
+  if (contextId === 'personal') return '👤 个人'
+  return `🌐 ${contextId}`
+}
+
+// ==================== 数据加载 ====================
+
 const loadData = async () => {
   try {
     loading.value = true
-    
-    // 获取文档列表
-    documents.value = await window.electronAPI.knowledge.getDocuments()
-    
-    // 获取统计信息
-    const result = await window.electronAPI.knowledge.getStats()
-    if (result.success && result.stats) {
-      stats.value = result.stats
-    }
-    
-    // 加载 L2 知识文档
-    await loadContextDocs()
+    await Promise.all([loadContextDocs(), loadKnowledgeDocs()])
   } catch (error) {
-    console.error('加载知识库数据失败:', error)
+    console.error('加载数据失败:', error)
   } finally {
     loading.value = false
   }
 }
-
-// 切换单个文档选择
-const toggleDocSelection = (docId: string, event: Event) => {
-  event.stopPropagation()
-  if (selectedDocIds.value.has(docId)) {
-    selectedDocIds.value.delete(docId)
-  } else {
-    selectedDocIds.value.add(docId)
-  }
-  selectedDocIds.value = new Set(selectedDocIds.value)
-}
-
-// 全选/取消全选
-const toggleSelectAll = () => {
-  if (isAllSelected.value) {
-    filteredDocuments.value.forEach(doc => selectedDocIds.value.delete(doc.id))
-  } else {
-    filteredDocuments.value.forEach(doc => selectedDocIds.value.add(doc.id))
-  }
-  selectedDocIds.value = new Set(selectedDocIds.value)
-}
-
-// 清空选择
-const clearSelection = () => {
-  selectedDocIds.value = new Set()
-}
-
-// 删除文档
-const deleteDocument = async (doc: KnowledgeDocument) => {
-  if (!confirm(t('knowledgeManager.confirmDelete', { name: doc.filename }))) {
-    return
-  }
-  
-  try {
-    const result = await window.electronAPI.knowledge.removeDocument(doc.id)
-    if (result.success) {
-      await loadData()
-      selectedDocIds.value.delete(doc.id)
-      selectedDocIds.value = new Set(selectedDocIds.value)
-      if (selectedDoc.value?.id === doc.id) {
-        selectedDoc.value = null
-      }
-    } else {
-      alert(`${t('knowledgeManager.deleteFailed')}: ${result.error}`)
-    }
-  } catch (error) {
-    console.error('Delete document failed:', error)
-  }
-}
-
-// 批量删除文档
-const batchDeleteDocuments = async () => {
-  const count = selectedDocIds.value.size
-  if (count === 0) return
-  
-  if (!confirm(t('knowledgeManager.confirmBatchDelete', { count }))) {
-    return
-  }
-  
-  try {
-    batchDeleting.value = true
-    const docIds = Array.from(selectedDocIds.value)
-    const result = await window.electronAPI.knowledge.removeDocuments(docIds)
-    
-    if (result.success) {
-      await loadData()
-      clearSelection()
-      if (selectedDoc.value && docIds.includes(selectedDoc.value.id)) {
-        selectedDoc.value = null
-      }
-    } else {
-      alert(`${t('knowledgeManager.batchDeleteFailed')}: ${result.error}`)
-    }
-  } catch (error) {
-    console.error('Batch delete documents failed:', error)
-  } finally {
-    batchDeleting.value = false
-  }
-}
-
-// 清空知识库（仅普通文档）
-const clearKnowledge = async () => {
-  if (normalDocuments.value.length === 0) return
-  
-  if (!confirm(t('knowledgeManager.confirmClear', { count: normalDocuments.value.length }))) {
-    return
-  }
-  
-  try {
-    clearing.value = true
-    // 只删除普通文档，保留主机记忆
-    const docIds = normalDocuments.value.map(d => d.id)
-    const result = await window.electronAPI.knowledge.removeDocuments(docIds)
-    
-    // 无论成功与否都刷新数据，显示实际状态
-    await loadData()
-    selectedDoc.value = null
-    clearSelection()
-    
-    // 如果有删除失败的情况，提示用户
-    if (result.failed && result.failed > 0) {
-      alert(`${t('knowledgeManager.clearFailed')}: ${result.deleted} 个成功, ${result.failed} 个失败`)
-    }
-  } catch (error) {
-    console.error('Clear knowledge base failed:', error)
-    // 出错也刷新数据
-    await loadData()
-  } finally {
-    clearing.value = false
-  }
-}
-
-// 清空所有主机记忆
-const clearAllMemories = async () => {
-  if (memoryDocuments.value.length === 0) return
-  
-  if (!confirm(`确定要清空所有主机记忆吗？共 ${memoryDocuments.value.length} 条记忆将被删除。`)) {
-    return
-  }
-  
-  try {
-    clearing.value = true
-    const docIds = memoryDocuments.value.map(d => d.id)
-    const result = await window.electronAPI.knowledge.removeDocuments(docIds)
-    
-    // 无论成功与否都刷新数据，显示实际状态
-    await loadData()
-    if (selectedDoc.value && selectedDoc.value.fileType === 'host-memory') {
-      selectedDoc.value = null
-    }
-    
-    // 如果有删除失败的情况，提示用户
-    if (result.failed && result.failed > 0) {
-      alert(`清空记忆部分失败: ${result.deleted} 条成功, ${result.failed} 条失败`)
-    }
-  } catch (error) {
-    console.error('Clear memories failed:', error)
-    // 出错也刷新数据
-    await loadData()
-  } finally {
-    clearing.value = false
-  }
-}
-
-// 查看文档详情
-const viewDocument = (doc: KnowledgeDocument) => {
-  selectedDoc.value = doc
-}
-
-// 导出知识库
-const exportKnowledge = async () => {
-  try {
-    exporting.value = true
-    const result = await window.electronAPI.knowledge.exportData()
-    if (result.canceled) return
-    if (result.success) {
-      alert(t('knowledgeManager.exportSuccess', { path: result.path }))
-    } else {
-      alert(t('knowledgeManager.exportFailed') + ': ' + (result.error || t('knowledgeManager.unknownError')))
-    }
-  } catch (error) {
-    console.error('Export failed:', error)
-    alert(t('knowledgeManager.exportFailed'))
-  } finally {
-    exporting.value = false
-  }
-}
-
-// 导入知识库
-const importKnowledge = async () => {
-  if (!confirm(t('knowledgeManager.confirmImport'))) {
-    return
-  }
-  
-  try {
-    importing.value = true
-    const result = await window.electronAPI.knowledge.importData()
-    if (result.canceled) return
-    if (result.success) {
-      alert(t('knowledgeManager.importSuccess', { count: result.imported || 0 }))
-      await loadData()
-    } else {
-      alert(t('knowledgeManager.importFailed') + ': ' + (result.error || t('knowledgeManager.unknownError')))
-    }
-  } catch (error) {
-    console.error('Import failed:', error)
-    alert(t('knowledgeManager.importFailed'))
-  } finally {
-    importing.value = false
-  }
-}
-
-// ==================== L2 知识文档操作 ====================
 
 const loadContextDocs = async () => {
   try {
@@ -351,13 +123,27 @@ const loadContextDocs = async () => {
       contextDocs.value = result.items
     }
   } catch (error) {
-    console.error('加载知识文档失败:', error)
+    console.error('加载记忆失败:', error)
   }
 }
 
+const loadKnowledgeDocs = async () => {
+  try {
+    documents.value = await window.electronAPI.knowledge.getDocuments()
+    const result = await window.electronAPI.knowledge.getStats()
+    if (result.success && result.stats) {
+      stats.value = result.stats
+    }
+  } catch (error) {
+    console.error('加载知识库失败:', error)
+  }
+}
+
+// ==================== 记忆操作 ====================
+
 const selectContextDoc = (item: ContextKnowledgeItem) => {
   if (contextDocDirty.value && selectedContextId.value) {
-    if (!confirm('当前文档有未保存的修改，确定要切换吗？')) return
+    if (!confirm('当前记忆有未保存的修改，确定要切换吗？')) return
   }
   selectedContextId.value = item.contextId
   contextDocContent.value = item.content
@@ -383,14 +169,15 @@ const saveContextDoc = async () => {
       alert('保存失败: ' + (result.error || '未知错误'))
     }
   } catch (error) {
-    console.error('保存知识文档失败:', error)
+    console.error('保存记忆失败:', error)
   } finally {
     contextDocSaving.value = false
   }
 }
 
 const deleteContextDoc = async (contextId: string) => {
-  if (!confirm(`确定删除 "${contextId}" 的知识文档吗？`)) return
+  const label = getContextLabel(contextId)
+  if (!confirm(`确定删除「${label}」的记忆吗？`)) return
   try {
     const result = await window.electronAPI.contextKnowledge.delete(contextId)
     if (result.success) {
@@ -404,34 +191,151 @@ const deleteContextDoc = async (contextId: string) => {
       alert('删除失败: ' + (result.error || '未知错误'))
     }
   } catch (error) {
-    console.error('删除知识文档失败:', error)
+    console.error('删除记忆失败:', error)
   }
 }
 
-const getContextLabel = (contextId: string): string => {
-  if (contextId === 'local') return '💻 本地主机'
-  if (contextId === 'personal') return '👤 个人'
-  return `🌐 ${contextId}`
+// ==================== 知识库操作 ====================
+
+const toggleDocSelection = (docId: string, event: Event) => {
+  event.stopPropagation()
+  if (selectedDocIds.value.has(docId)) {
+    selectedDocIds.value.delete(docId)
+  } else {
+    selectedDocIds.value.add(docId)
+  }
+  selectedDocIds.value = new Set(selectedDocIds.value)
 }
 
-// 搜索框引用
+const toggleSelectAll = () => {
+  if (isAllSelected.value) {
+    filteredDocuments.value.forEach(doc => selectedDocIds.value.delete(doc.id))
+  } else {
+    filteredDocuments.value.forEach(doc => selectedDocIds.value.add(doc.id))
+  }
+  selectedDocIds.value = new Set(selectedDocIds.value)
+}
+
+const clearSelection = () => {
+  selectedDocIds.value = new Set()
+}
+
+const viewDocument = (doc: KnowledgeDocument) => {
+  selectedDoc.value = doc
+}
+
+const deleteDocument = async (doc: KnowledgeDocument) => {
+  if (!confirm(t('knowledgeManager.confirmDelete', { name: doc.filename }))) return
+  try {
+    const result = await window.electronAPI.knowledge.removeDocument(doc.id)
+    if (result.success) {
+      await loadKnowledgeDocs()
+      selectedDocIds.value.delete(doc.id)
+      selectedDocIds.value = new Set(selectedDocIds.value)
+      if (selectedDoc.value?.id === doc.id) selectedDoc.value = null
+    } else {
+      alert(`${t('knowledgeManager.deleteFailed')}: ${result.error}`)
+    }
+  } catch (error) {
+    console.error('Delete document failed:', error)
+  }
+}
+
+const batchDeleteDocuments = async () => {
+  const count = selectedDocIds.value.size
+  if (count === 0) return
+  if (!confirm(t('knowledgeManager.confirmBatchDelete', { count }))) return
+  try {
+    batchDeleting.value = true
+    const docIds = Array.from(selectedDocIds.value)
+    const result = await window.electronAPI.knowledge.removeDocuments(docIds)
+    if (result.success) {
+      await loadKnowledgeDocs()
+      clearSelection()
+      if (selectedDoc.value && docIds.includes(selectedDoc.value.id)) selectedDoc.value = null
+    } else {
+      alert(`${t('knowledgeManager.batchDeleteFailed')}: ${result.error}`)
+    }
+  } catch (error) {
+    console.error('Batch delete failed:', error)
+  } finally {
+    batchDeleting.value = false
+  }
+}
+
+const clearKnowledge = async () => {
+  if (kbDocuments.value.length === 0) return
+  if (!confirm(t('knowledgeManager.confirmClear', { count: kbDocuments.value.length }))) return
+  try {
+    clearing.value = true
+    const docIds = kbDocuments.value.map(d => d.id)
+    const result = await window.electronAPI.knowledge.removeDocuments(docIds)
+    await loadKnowledgeDocs()
+    selectedDoc.value = null
+    clearSelection()
+    if (result.failed && result.failed > 0) {
+      alert(`${t('knowledgeManager.clearFailed')}: ${result.deleted} 个成功, ${result.failed} 个失败`)
+    }
+  } catch (error) {
+    console.error('Clear knowledge base failed:', error)
+    await loadKnowledgeDocs()
+  } finally {
+    clearing.value = false
+  }
+}
+
+const exportKnowledge = async () => {
+  try {
+    exporting.value = true
+    const result = await window.electronAPI.knowledge.exportData()
+    if (result.canceled) return
+    if (result.success) {
+      alert(t('knowledgeManager.exportSuccess', { path: result.path }))
+    } else {
+      alert(t('knowledgeManager.exportFailed') + ': ' + (result.error || t('knowledgeManager.unknownError')))
+    }
+  } catch (error) {
+    console.error('Export failed:', error)
+    alert(t('knowledgeManager.exportFailed'))
+  } finally {
+    exporting.value = false
+  }
+}
+
+const importKnowledge = async () => {
+  if (!confirm(t('knowledgeManager.confirmImport'))) return
+  try {
+    importing.value = true
+    const result = await window.electronAPI.knowledge.importData()
+    if (result.canceled) return
+    if (result.success) {
+      alert(t('knowledgeManager.importSuccess', { count: result.imported || 0 }))
+      await loadKnowledgeDocs()
+    } else {
+      alert(t('knowledgeManager.importFailed') + ': ' + (result.error || t('knowledgeManager.unknownError')))
+    }
+  } catch (error) {
+    console.error('Import failed:', error)
+    alert(t('knowledgeManager.importFailed'))
+  } finally {
+    importing.value = false
+  }
+}
+
+// ==================== 生命周期 ====================
+
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
-// ESC 关闭处理
 const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
-    e.stopImmediatePropagation() // 阻止事件传播到父组件，防止同时关闭设置界面
+    e.stopImmediatePropagation()
     emit('close')
   }
 }
 
 onMounted(async () => {
   loadData()
-  
-  // 添加键盘事件监听
   document.addEventListener('keydown', handleKeydown, true)
-  
-  // 聚焦到搜索框
   await nextTick()
   searchInputRef.value?.focus()
 })
@@ -445,60 +349,82 @@ onUnmounted(() => {
   <div class="modal-overlay" @click.self="emit('close')">
     <div class="knowledge-manager">
       <div class="manager-header">
-        <h2>📚 {{ t('knowledgeManager.title') }}</h2>
+        <h2>🧠 记忆管理</h2>
         <button class="btn-icon" @click="emit('close')" :title="t('knowledgeManager.close')">
           <X :size="18" />
         </button>
       </div>
 
       <div class="manager-body">
-        <!-- 左侧：文档列表 -->
+        <!-- 左侧面板 -->
         <div class="doc-list-panel">
-          <!-- 统计信息 -->
-          <div v-if="stats" class="stats-bar">
-            <span>{{ normalDocuments.length }} {{ t('knowledgeManager.tabDocuments') }}</span>
-            <span>{{ memoryDocuments.length }} {{ t('knowledgeManager.tabMemories') }}</span>
-            <span>{{ formatSize(stats.totalSize) }}</span>
-          </div>
-
           <!-- 标签页切换 -->
           <div class="tab-bar">
             <button 
               class="tab-btn" 
-              :class="{ active: activeTab === 'documents' }"
-              @click="activeTab = 'documents'"
+              :class="{ active: activeTab === 'memory' }"
+              @click="activeTab = 'memory'"
             >
-              📄 {{ t('knowledgeManager.tabDocuments') }} ({{ normalDocuments.length }})
+              🧠 记忆 ({{ contextDocs.length }})
             </button>
             <button 
               class="tab-btn" 
-              :class="{ active: activeTab === 'memories' }"
-              @click="activeTab = 'memories'"
+              :class="{ active: activeTab === 'knowledge' }"
+              @click="activeTab = 'knowledge'"
             >
-              🧠 {{ t('knowledgeManager.tabMemories') }} ({{ memoryDocuments.length }})
-            </button>
-            <button 
-              class="tab-btn" 
-              :class="{ active: activeTab === 'contextDocs' }"
-              @click="activeTab = 'contextDocs'"
-            >
-              📋 知识文档 ({{ contextDocs.length }})
+              📚 知识库 ({{ kbDocuments.length }})
             </button>
           </div>
 
-          <!-- 搜索框 -->
-          <div class="search-bar">
-            <input 
-              ref="searchInputRef"
-              type="text"
-              v-model="searchQuery"
-              :placeholder="activeTab === 'documents' ? t('knowledgeManager.searchPlaceholder') : t('knowledgeManager.searchMemoriesPlaceholder')"
-              class="search-input"
-            />
-          </div>
+          <!-- ==================== 记忆 tab ==================== -->
+          <template v-if="activeTab === 'memory'">
+            <div class="context-doc-list" v-if="!loading">
+              <div 
+                v-for="item in contextDocs" 
+                :key="item.contextId"
+                class="context-doc-item"
+                :class="{ active: selectedContextId === item.contextId }"
+                @click="selectContextDoc(item)"
+              >
+                <div class="context-doc-label">{{ getContextLabel(item.contextId) }}</div>
+                <div class="context-doc-preview">{{ item.content.substring(0, 80) || '（空）' }}</div>
+                <button 
+                  class="btn-icon btn-delete-small"
+                  @click.stop="deleteContextDoc(item.contextId)"
+                  :title="t('knowledgeManager.delete')"
+                >
+                  <X :size="12" />
+                </button>
+              </div>
 
-          <!-- 文档标签页 -->
-          <template v-if="activeTab === 'documents'">
+              <div v-if="contextDocs.length === 0" class="empty-state">
+                <p>暂无记忆</p>
+                <p class="empty-hint">Agent 在执行任务后会自动积累记忆</p>
+              </div>
+            </div>
+
+            <div v-else class="loading-state">
+              {{ t('knowledgeManager.loading') }}
+            </div>
+
+            <div class="list-actions">
+              <button class="btn btn-sm" @click="loadContextDocs">🔄 {{ t('knowledgeManager.refresh') }}</button>
+            </div>
+          </template>
+
+          <!-- ==================== 知识库 tab ==================== -->
+          <template v-if="activeTab === 'knowledge'">
+            <!-- 搜索框 -->
+            <div class="search-bar">
+              <input 
+                ref="searchInputRef"
+                type="text"
+                v-model="searchQuery"
+                :placeholder="t('knowledgeManager.searchPlaceholder')"
+                class="search-input"
+              />
+            </div>
+
             <!-- 批量操作栏 -->
             <div class="batch-actions-bar" v-if="filteredDocuments.length > 0">
               <label class="checkbox-wrapper">
@@ -572,7 +498,7 @@ onUnmounted(() => {
               <button 
                 class="btn btn-danger btn-sm"
                 @click="clearKnowledge"
-                :disabled="normalDocuments.length === 0 || clearing"
+                :disabled="kbDocuments.length === 0 || clearing"
               >
                 {{ clearing ? t('knowledgeManager.clearing') : t('knowledgeManager.clearAll') }}
               </button>
@@ -582,104 +508,15 @@ onUnmounted(() => {
               <button class="btn btn-sm" @click="importKnowledge" :disabled="importing">
                 {{ importing ? t('knowledgeManager.importing') : `📥 ${t('knowledgeManager.import')}` }}
               </button>
-              <button class="btn btn-sm" @click="loadData">🔄 {{ t('knowledgeManager.refresh') }}</button>
-            </div>
-          </template>
-
-          <!-- 主机记忆标签页 -->
-          <template v-else>
-            <div class="memory-list" v-if="!loading">
-              <!-- 按主机分组显示 -->
-              <div v-for="[hostId, memories] in memoriesByHost" :key="hostId" class="memory-group">
-                <div class="memory-group-header">
-                  <span class="host-icon">{{ hostId === 'local' ? '💻' : '🌐' }}</span>
-                  <span class="host-name">{{ hostId }}</span>
-                  <span class="memory-count">{{ t('knowledgeManager.memoryCount', { count: memories.length }) }}</span>
-                </div>
-                <div class="memory-items">
-                  <div 
-                    v-for="memory in (searchQuery ? memories.filter(m => m.content.toLowerCase().includes(searchQuery.toLowerCase())) : memories)" 
-                    :key="memory.id"
-                    class="memory-item"
-                    :class="{ active: selectedDoc?.id === memory.id }"
-                    @click="viewDocument(memory)"
-                  >
-                    <div class="memory-content">{{ memory.content }}</div>
-                    <div class="memory-meta">
-                      <span>{{ formatDate(memory.createdAt) }}</span>
-                      <button 
-                        class="btn-icon btn-delete-small"
-                        @click.stop="deleteDocument(memory)"
-                        :title="t('knowledgeManager.delete')"
-                      >
-                        <X :size="12" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div v-if="filteredMemories.length === 0" class="empty-state">
-                {{ searchQuery ? t('knowledgeManager.noMatchingMemories') : t('knowledgeManager.noMemories') }}
-              </div>
-            </div>
-
-            <div v-else class="loading-state">
-              {{ t('knowledgeManager.loading') }}
-            </div>
-
-            <!-- 记忆操作按钮 -->
-            <div class="list-actions" v-if="memoryDocuments.length > 0">
-              <button 
-                class="btn btn-danger btn-sm"
-                @click="clearAllMemories"
-                :disabled="clearing"
-              >
-                {{ clearing ? t('knowledgeManager.clearingMemories') : t('knowledgeManager.clearAllMemories') }}
-              </button>
-            </div>
-          </template>
-
-          <!-- 知识文档标签页 -->
-          <template v-if="activeTab === 'contextDocs'">
-            <div class="context-doc-list" v-if="!loading">
-              <div 
-                v-for="item in contextDocs" 
-                :key="item.contextId"
-                class="context-doc-item"
-                :class="{ active: selectedContextId === item.contextId }"
-                @click="selectContextDoc(item)"
-              >
-                <div class="context-doc-label">{{ getContextLabel(item.contextId) }}</div>
-                <div class="context-doc-preview">{{ item.content.substring(0, 60) || '（空文档）' }}</div>
-                <button 
-                  class="btn-icon btn-delete-small"
-                  @click.stop="deleteContextDoc(item.contextId)"
-                  :title="t('knowledgeManager.delete')"
-                >
-                  <X :size="12" />
-                </button>
-              </div>
-
-              <div v-if="contextDocs.length === 0" class="empty-state">
-                暂无知识文档。Agent 在执行任务后会自动创建和更新。
-              </div>
-            </div>
-
-            <div v-else class="loading-state">
-              {{ t('knowledgeManager.loading') }}
-            </div>
-
-            <div class="list-actions">
-              <button class="btn btn-sm" @click="loadContextDocs">🔄 {{ t('knowledgeManager.refresh') }}</button>
+              <button class="btn btn-sm" @click="loadKnowledgeDocs">🔄 {{ t('knowledgeManager.refresh') }}</button>
             </div>
           </template>
         </div>
 
         <!-- 右侧面板 -->
         <div class="doc-detail-panel">
-          <!-- 知识文档编辑模式 -->
-          <template v-if="activeTab === 'contextDocs'">
+          <!-- 记忆编辑 -->
+          <template v-if="activeTab === 'memory'">
             <template v-if="selectedContextId">
               <div class="detail-header">
                 <h3>{{ getContextLabel(selectedContextId) }}</h3>
@@ -693,7 +530,7 @@ onUnmounted(() => {
                   v-model="contextDocContent"
                   @input="onContextDocInput"
                   class="context-doc-textarea"
-                  placeholder="在此编辑知识文档内容（Markdown 格式）..."
+                  placeholder="在此编辑记忆内容（Markdown 格式）&#10;&#10;Agent 会在每次任务结束后自动更新此文档，记录有用的系统信息和用户偏好。&#10;你也可以手动编辑来纠正或补充信息。"
                   spellcheck="false"
                 ></textarea>
               </div>
@@ -705,15 +542,18 @@ onUnmounted(() => {
                 >
                   {{ contextDocSaving ? '保存中...' : '💾 保存' }}
                 </button>
-                <span class="context-doc-hint">Agent 执行任务后会自动更新此文档</span>
+                <span class="context-doc-hint">Agent 执行任务后会自动更新</span>
               </div>
             </template>
             <div v-else class="no-selection">
-              <p>选择左侧知识文档进行编辑</p>
+              <div class="no-selection-content">
+                <p class="no-selection-title">选择左侧记忆进行查看或编辑</p>
+                <p class="no-selection-hint">每台主机、每种连接方式各有独立的记忆文档</p>
+              </div>
             </div>
           </template>
 
-          <!-- 普通文档/记忆详情模式 -->
+          <!-- 知识库文档详情 -->
           <template v-else>
             <template v-if="selectedDoc">
               <div class="detail-header">
@@ -729,15 +569,10 @@ onUnmounted(() => {
                 <div class="detail-section detail-section-half">
                   <h4>{{ t('knowledgeManager.tags') }}</h4>
                   <div class="tags-list">
-                    <span v-for="tag in selectedDoc.tags" :key="tag" class="tag">
-                      {{ tag }}
-                    </span>
-                    <span v-if="selectedDoc.tags.length === 0" class="no-tags">
-                      {{ t('knowledgeManager.noTags') }}
-                    </span>
+                    <span v-for="tag in selectedDoc.tags" :key="tag" class="tag">{{ tag }}</span>
+                    <span v-if="selectedDoc.tags.length === 0" class="no-tags">{{ t('knowledgeManager.noTags') }}</span>
                   </div>
                 </div>
-
                 <div class="detail-section detail-section-half">
                   <h4>{{ t('knowledgeManager.timeInfo') }}</h4>
                   <div class="time-info">
@@ -811,22 +646,12 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-/* 左侧文档列表 */
+/* 左侧面板 */
 .doc-list-panel {
   width: 320px;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border-color);
-}
-
-.stats-bar {
-  display: flex;
-  gap: 16px;
-  padding: 12px 16px;
-  background: var(--bg-tertiary);
-  border-bottom: 1px solid var(--border-color);
-  font-size: 12px;
-  color: var(--text-muted);
 }
 
 .search-bar {
@@ -861,29 +686,13 @@ onUnmounted(() => {
   border: 1px solid transparent;
 }
 
-.doc-item:hover {
-  background: var(--bg-hover);
-}
+.doc-item:hover { background: var(--bg-hover); }
+.doc-item.active { background: var(--accent-primary); color: white; }
+.doc-item.selected:not(.active) { background: var(--bg-hover); border-color: var(--accent-primary); }
 
-.doc-item.active {
-  background: var(--accent-primary);
-  color: white;
-}
+.doc-icon { font-size: 24px; flex-shrink: 0; }
 
-.doc-item.selected:not(.active) {
-  background: var(--bg-hover);
-  border-color: var(--accent-primary);
-}
-
-.doc-icon {
-  font-size: 24px;
-  flex-shrink: 0;
-}
-
-.doc-info {
-  flex: 1;
-  min-width: 0;
-}
+.doc-info { flex: 1; min-width: 0; }
 
 .doc-name {
   font-size: 13px;
@@ -901,23 +710,21 @@ onUnmounted(() => {
   margin-top: 2px;
 }
 
-.doc-item.active .doc-meta {
-  color: rgba(255, 255, 255, 0.7);
-}
+.doc-item.active .doc-meta { color: rgba(255, 255, 255, 0.7); }
 
-.btn-delete {
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.doc-item:hover .btn-delete {
-  opacity: 1;
-}
+.btn-delete { opacity: 0; transition: opacity 0.2s; }
+.doc-item:hover .btn-delete { opacity: 1; }
 
 .empty-state,
 .loading-state {
   text-align: center;
   padding: 40px;
+  color: var(--text-muted);
+}
+
+.empty-hint {
+  font-size: 12px;
+  margin-top: 8px;
   color: var(--text-muted);
 }
 
@@ -929,7 +736,7 @@ onUnmounted(() => {
   gap: 8px;
 }
 
-/* 右侧详情 */
+/* 右侧面板 */
 .doc-detail-panel {
   flex: 1;
   padding: 20px;
@@ -938,15 +745,8 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
-.detail-header {
-  margin-bottom: 20px;
-}
-
-.detail-header h3 {
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
+.detail-header { margin-bottom: 20px; }
+.detail-header h3 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
 
 .detail-meta {
   display: flex;
@@ -961,55 +761,15 @@ onUnmounted(() => {
   margin-bottom: 16px;
 }
 
-.detail-section {
-  margin-bottom: 20px;
-}
+.detail-section { margin-bottom: 20px; }
+.detail-section-half { flex: 1; min-width: 0; margin-bottom: 0; }
+.detail-section-content { flex: 1; display: flex; flex-direction: column; min-height: 0; margin-bottom: 0; }
+.detail-section h4 { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; }
 
-.detail-section-half {
-  flex: 1;
-  min-width: 0;
-  margin-bottom: 0;
-}
-
-.detail-section-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  margin-bottom: 0;
-}
-
-.detail-section h4 {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 8px;
-}
-
-.tags-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.tag {
-  padding: 2px 8px;
-  font-size: 11px;
-  background: var(--accent-primary);
-  color: white;
-  border-radius: 4px;
-}
-
-.no-tags {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.time-info {
-  font-size: 12px;
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
+.tags-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { padding: 2px 8px; font-size: 11px; background: var(--accent-primary); color: white; border-radius: 4px; }
+.no-tags { font-size: 12px; color: var(--text-muted); }
+.time-info { font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
 
 .content-preview {
   font-size: 12px;
@@ -1025,10 +785,7 @@ onUnmounted(() => {
   word-break: break-all;
 }
 
-.more {
-  color: var(--text-muted);
-  font-style: italic;
-}
+.more { color: var(--text-muted); font-style: italic; }
 
 .no-selection {
   height: 100%;
@@ -1038,7 +795,11 @@ onUnmounted(() => {
   color: var(--text-muted);
 }
 
-/* 按钮样式 */
+.no-selection-content { text-align: center; }
+.no-selection-title { font-size: 14px; margin-bottom: 8px; }
+.no-selection-hint { font-size: 12px; color: var(--text-muted); }
+
+/* 按钮 */
 .btn-icon {
   display: flex;
   align-items: center;
@@ -1052,10 +813,7 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-.btn-icon:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
+.btn-icon:hover { background: var(--bg-hover); color: var(--text-primary); }
 
 .btn {
   padding: 8px 16px;
@@ -1066,24 +824,12 @@ onUnmounted(() => {
   transition: all 0.2s;
 }
 
-.btn-sm {
-  padding: 6px 12px;
-  font-size: 12px;
-}
-
-.btn-danger {
-  background: var(--accent-error);
-  color: white;
-}
-
-.btn-danger:hover {
-  filter: brightness(1.1);
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+.btn-danger { background: var(--accent-error); color: white; }
+.btn-danger:hover { filter: brightness(1.1); }
+.btn-primary { background: var(--accent-primary); color: white; }
+.btn-primary:hover { filter: brightness(1.1); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* 批量操作栏 */
 .batch-actions-bar {
@@ -1104,11 +850,7 @@ onUnmounted(() => {
   color: var(--text-secondary);
 }
 
-.checkbox-wrapper input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
-  cursor: pointer;
-}
+.checkbox-wrapper input[type="checkbox"] { width: 14px; height: 14px; cursor: pointer; }
 
 .selection-info {
   font-size: 12px;
@@ -1127,24 +869,12 @@ onUnmounted(() => {
   padding: 0;
 }
 
-.btn-link:hover {
-  text-decoration: underline;
-}
+.btn-link:hover { text-decoration: underline; }
 
-/* 文档复选框 */
-.doc-checkbox {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
+.doc-checkbox { display: flex; align-items: center; flex-shrink: 0; }
+.doc-checkbox input[type="checkbox"] { width: 14px; height: 14px; cursor: pointer; }
 
-.doc-checkbox input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
-  cursor: pointer;
-}
-
-/* 标签页样式 */
+/* 标签页 */
 .tab-bar {
   display: flex;
   border-bottom: 1px solid var(--border-color);
@@ -1163,111 +893,10 @@ onUnmounted(() => {
   transition: all 0.2s;
 }
 
-.tab-btn:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
+.tab-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+.tab-btn.active { color: var(--accent-primary); border-bottom-color: var(--accent-primary); }
 
-.tab-btn.active {
-  color: var(--accent-primary);
-  border-bottom-color: var(--accent-primary);
-}
-
-/* 主机记忆列表样式 */
-.memory-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-}
-
-.memory-group {
-  margin-bottom: 16px;
-}
-
-.memory-group-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--bg-tertiary);
-  border-radius: 6px;
-  margin-bottom: 8px;
-}
-
-.host-icon {
-  font-size: 16px;
-}
-
-.host-name {
-  font-size: 13px;
-  font-weight: 600;
-  flex: 1;
-}
-
-.memory-count {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.memory-items {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.memory-item {
-  padding: 10px 12px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.memory-item:hover {
-  border-color: var(--accent-primary);
-}
-
-.memory-item.active {
-  border-color: var(--accent-primary);
-  background: var(--bg-hover);
-}
-
-.memory-content {
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-primary);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.memory-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 6px;
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.btn-delete-small {
-  width: 20px;
-  height: 20px;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.memory-item:hover .btn-delete-small {
-  opacity: 1;
-}
-
-.btn-delete-small:hover {
-  color: var(--accent-error);
-}
-
-/* 知识文档标签页 */
+/* 记忆列表 */
 .context-doc-list {
   flex: 1;
   overflow-y: auto;
@@ -1286,18 +915,18 @@ onUnmounted(() => {
   position: relative;
 }
 
-.context-doc-item:hover {
-  background: var(--bg-hover);
+.context-doc-item:hover { background: var(--bg-hover); }
+.context-doc-item.active { background: var(--accent-primary); color: white; }
+
+.btn-delete-small {
+  width: 20px;
+  height: 20px;
+  opacity: 0;
+  transition: opacity 0.2s;
 }
 
-.context-doc-item.active {
-  background: var(--accent-primary);
-  color: white;
-}
-
-.context-doc-item:hover .btn-delete-small {
-  opacity: 1;
-}
+.context-doc-item:hover .btn-delete-small { opacity: 1; }
+.btn-delete-small:hover { color: var(--accent-error); }
 
 .context-doc-item .btn-delete-small {
   position: absolute;
@@ -1305,10 +934,7 @@ onUnmounted(() => {
   right: 8px;
 }
 
-.context-doc-label {
-  font-size: 13px;
-  font-weight: 500;
-}
+.context-doc-label { font-size: 13px; font-weight: 500; }
 
 .context-doc-preview {
   font-size: 11px;
@@ -1318,11 +944,9 @@ onUnmounted(() => {
   text-overflow: ellipsis;
 }
 
-.context-doc-item.active .context-doc-preview {
-  color: rgba(255, 255, 255, 0.7);
-}
+.context-doc-item.active .context-doc-preview { color: rgba(255, 255, 255, 0.7); }
 
-/* 知识文档编辑器 */
+/* 记忆编辑器 */
 .context-doc-editor {
   flex: 1;
   min-height: 0;
@@ -1357,15 +981,6 @@ onUnmounted(() => {
   padding-top: 12px;
 }
 
-.btn-primary {
-  background: var(--accent-primary);
-  color: white;
-}
-
-.btn-primary:hover {
-  filter: brightness(1.1);
-}
-
 .context-doc-hint {
   font-size: 11px;
   color: var(--text-muted);
@@ -1376,4 +991,3 @@ onUnmounted(() => {
   font-weight: 500;
 }
 </style>
-

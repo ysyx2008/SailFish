@@ -1569,19 +1569,9 @@ export default {
 
   // Knowledge Manager
   knowledgeManager: {
-    title: 'Knowledge Base Manager',
+    title: 'Memory Manager',
     close: 'Close',
-    documents: 'documents',
-    chunks: 'chunks',
     searchPlaceholder: 'Search documents...',
-    searchMemoriesPlaceholder: 'Search memories...',
-    // Tabs
-    tabDocuments: 'Documents',
-    tabMemories: 'Host Memories',
-    // Import/export with encrypted data hint
-    importEncryptedHint: 'The imported knowledge base contains encrypted data. Please go to settings page to unlock with the original password.',
-    importPasswordHint: 'If the imported knowledge base has a password set, you need to use the original password to access encrypted data.',
-    exportEncryptedHint: 'The exported data contains encrypted content. You will need to use the same password to unlock it when importing on another device.',
     unknownError: 'Unknown error',
     selectAll: 'Select All',
     selected: '{count} selected',
@@ -1621,12 +1611,7 @@ export default {
     exportFailed: 'Export failed',
     importSuccess: 'Import successful, {count} documents imported',
     importFailed: 'Import failed',
-    confirmImport: 'Import will merge with existing data. Continue?',
-    memoryCount: '{count} memories',
-    noMatchingMemories: 'No matching memories',
-    noMemories: 'No host memories',
-    clearingMemories: 'Clearing...',
-    clearAllMemories: 'Clear All Memories'
+    confirmImport: 'Import will merge with existing data. Continue?'
   },
 
   // Email Settings

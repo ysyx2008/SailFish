@@ -1569,19 +1569,9 @@ export default {
 
   // 知识库管理器
   knowledgeManager: {
-    title: '知识库管理',
+    title: '记忆管理',
     close: '关闭',
-    documents: '个文档',
-    chunks: '个分块',
     searchPlaceholder: '搜索文档...',
-    searchMemoriesPlaceholder: '搜索记忆内容...',
-    // 标签页
-    tabDocuments: '文档',
-    tabMemories: '主机记忆',
-    // 导入/导出加密数据提示
-    importEncryptedHint: '导入的知识库包含加密数据，请前往设置页面使用原密码解锁。',
-    importPasswordHint: '如果导入的知识库设置了密码，您需要使用原来的密码才能访问加密数据。',
-    exportEncryptedHint: '导出的数据包含加密内容，在其他设备导入时需要使用相同的密码解锁。',
     unknownError: '未知错误',
     selectAll: '全选',
     selected: '已选 {count} 个',
@@ -1621,12 +1611,7 @@ export default {
     exportFailed: '导出失败',
     importSuccess: '导入成功，共导入 {count} 个文档',
     importFailed: '导入失败',
-    confirmImport: '导入将与现有数据合并，确定要继续吗？',
-    memoryCount: '{count} 条记忆',
-    noMatchingMemories: '没有匹配的记忆',
-    noMemories: '暂无主机记忆',
-    clearingMemories: '清除中...',
-    clearAllMemories: '清空所有记忆'
+    confirmImport: '导入将与现有数据合并，确定要继续吗？'
   },
 
   // 邮箱设置
