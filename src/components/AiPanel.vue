@@ -181,7 +181,8 @@ const {
   loadHistoryRecord,
   hasExistingConversation,
   formatHistoryTime,
-  saveCurrentSession
+  saveCurrentSession,
+  getAgentKey
 } = useAgentMode(
   messagesRef,
   getDocumentContext,
@@ -374,11 +375,11 @@ const doClearMessages = async () => {
     terminalStore.clearAiMessages(currentTabId.value)
     terminalStore.clearAgentState(currentTabId.value, false)  // 不保留历史
     
-    // 清空后端的任务历史记忆（按终端隔离）
-    const context = terminalStore.getAgentContext(currentTabId.value)
-    if (context?.ptyId) {
+    // 清空后端的任务历史记忆
+    const key = getAgentKey()
+    if (key) {
       try {
-        await window.electronAPI.agent.clearHistory(context.ptyId)
+        await window.electronAPI.agent.clearHistory(key)
       } catch (e) {
         console.warn('[AiPanel] Failed to clear agent history:', e)
       }
@@ -619,8 +620,9 @@ const handleSend = async () => {
   closeMentionMenu()
   
   // 如果输入为空且有等待的提问有默认值，发送空消息让后端使用默认值（没有图片时）
-  if (!inputText.value.trim() && !hasImages() && canSendEmpty.value && isAgentRunning.value && agentState.value?.agentId) {
-    window.electronAPI.agent.addMessage(agentState.value.agentId, '')
+  const agentKey = getAgentKey()
+  if (!inputText.value.trim() && !hasImages() && canSendEmpty.value && isAgentRunning.value && agentKey) {
+    window.electronAPI.agent.addMessage(agentKey, '')
     return
   }
   

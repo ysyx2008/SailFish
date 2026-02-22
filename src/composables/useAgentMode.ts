@@ -298,13 +298,18 @@ export function useAgentMode(
     return collapsedTaskIds.value.has(taskId)
   }
 
+  // 获取当前 tab 对应的 Agent 标识符（终端用 ptyId，助手用 agentId）
+  const getAgentKey = (): string | undefined => {
+    const tab = currentTab.value
+    if (tab?.type === 'assistant') return tab.agentId
+    return terminalStore.getAgentContext(currentTabId.value)?.ptyId || undefined
+  }
+
   // 监听执行模式变化，实时更新运行中的 Agent
   watch(executionMode, async (newValue) => {
-    const context = terminalStore.getAgentContext(currentTabId.value)
     const promises: Promise<unknown>[] = []
 
     // 远程 tab：同步到 RemoteChatService（运行时覆盖，不持久化）
-    // 无论 agent 是否正在运行都需要同步，确保下次 IM 消息到来时使用新模式
     if (currentTab.value?.isRemote) {
       promises.push(
         window.electronAPI.remoteChat.setExecutionMode(newValue).catch(err => {
@@ -313,10 +318,10 @@ export function useAgentMode(
       )
     }
 
-    // 同时更新当前运行中的 Agent 实例（对当前正在执行的任务立即生效）
-    if (context?.ptyId && isAgentRunning.value) {
+    const key = getAgentKey()
+    if (key && isAgentRunning.value) {
       promises.push(
-        window.electronAPI.agent.updateConfig(context.ptyId, { executionMode: newValue })
+        window.electronAPI.agent.updateConfig(key, { executionMode: newValue })
       )
     }
 
@@ -325,17 +330,17 @@ export function useAgentMode(
 
   // 监听超时设置变化
   watch(commandTimeout, async (newValue) => {
-    const context = terminalStore.getAgentContext(currentTabId.value)
-    if (context?.ptyId && isAgentRunning.value) {
-      await window.electronAPI.agent.updateConfig(context.ptyId, { commandTimeout: newValue * 1000 })
+    const key = getAgentKey()
+    if (key && isAgentRunning.value) {
+      await window.electronAPI.agent.updateConfig(key, { commandTimeout: newValue * 1000 })
     }
   })
 
   // 监听模型配置变化，实时同步到运行中的 Agent
   watch(activeProfileId, async (newValue) => {
-    const context = terminalStore.getAgentContext(currentTabId.value)
-    if (context?.ptyId && isAgentRunning.value && newValue) {
-      await window.electronAPI.agent.updateConfig(context.ptyId, { profileId: newValue })
+    const key = getAgentKey()
+    if (key && isAgentRunning.value && newValue) {
+      await window.electronAPI.agent.updateConfig(key, { profileId: newValue })
     }
   })
 
@@ -595,16 +600,14 @@ export function useAgentMode(
     }
   }
 
-  // 发送 Agent 回复（用于用户点击选项快速回复，使用 ptyId）
+  // 发送 Agent 回复（用于用户点击选项快速回复）
   const sendAgentReply = async (message: string) => {
     if (!message.trim() || !currentTabId.value) return
 
-    // 只有在 Agent 运行中才能发送回复
-    const context = terminalStore.getAgentContext(currentTabId.value)
-    if (!isAgentRunning.value || !context?.ptyId) return
+    const key = getAgentKey()
+    if (!isAgentRunning.value || !key) return
 
-    // 直接发送到后端，不添加到 pendingSupplements（选项点击不需要显示等待状态）
-    await window.electronAPI.agent.addMessage(context.ptyId, message)
+    await window.electronAPI.agent.addMessage(key, message)
   }
 
   // 获取步骤类型的图标
@@ -953,6 +956,7 @@ export function useAgentMode(
     loadHistoryRecord,
     hasExistingConversation,
     formatHistoryTime,
-    saveCurrentSession  // 保存当前会话（清空对话时调用）
+    saveCurrentSession,  // 保存当前会话（清空对话时调用）
+    getAgentKey  // 获取当前 tab 对应的 Agent 标识符
   }
 }

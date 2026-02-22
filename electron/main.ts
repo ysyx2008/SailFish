@@ -2168,6 +2168,8 @@ ipcMain.handle('agent:addMessage', async (_event, ptyId: string, message: string
 })
 
 // 运行独立助手 Agent（无终端绑定）
+// 注意：事件中使用前端传入的 agentId（如 assistant-<uuid>），而非后端 run.id，
+// 因为独立助手没有 ptyId，前端依赖 agentId 匹配事件到正确的标签页。
 ipcMain.handle('agent:runStandalone', async (event, { agentId, message, context, config, profileId }: {
   agentId: string
   message: string
@@ -2179,16 +2181,16 @@ ipcMain.handle('agent:runStandalone', async (event, { agentId, message, context,
   const fullConfig = { ...config, debugMode }
   
   const callbacks = {
-    onStep: (id: string, step: AgentStep) => {
+    onStep: (_runId: string, step: AgentStep) => {
       if (!event.sender.isDestroyed()) {
         const serializedStep = JSON.parse(JSON.stringify(step))
-        event.sender.send('agent:step', { agentId: id, step: serializedStep })
+        event.sender.send('agent:step', { agentId, step: serializedStep })
       }
     },
     onNeedConfirm: (confirmation: PendingConfirmation) => {
       if (!event.sender.isDestroyed()) {
         event.sender.send('agent:needConfirm', {
-          agentId: confirmation.agentId,
+          agentId,
           toolCallId: confirmation.toolCallId,
           toolName: confirmation.toolName,
           toolArgs: JSON.parse(JSON.stringify(confirmation.toolArgs)),
@@ -2196,14 +2198,14 @@ ipcMain.handle('agent:runStandalone', async (event, { agentId, message, context,
         })
       }
     },
-    onComplete: (id: string, result: string, pendingUserMessages?: string[]) => {
+    onComplete: (_runId: string, result: string, pendingUserMessages?: string[]) => {
       if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:complete', { agentId: id, result, pendingUserMessages })
+        event.sender.send('agent:complete', { agentId, result, pendingUserMessages })
       }
     },
-    onError: (id: string, error: string) => {
+    onError: (_runId: string, error: string) => {
       if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:error', { agentId: id, error })
+        event.sender.send('agent:error', { agentId, error })
       }
     }
   }
