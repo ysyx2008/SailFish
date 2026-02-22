@@ -121,6 +121,51 @@ export interface WordStyleConfig {
     }
     /** 编号层级规则（按优先级排序，先匹配的优先） */
     numberingRules?: NumberingRule[]
+    /** 表格样式 */
+    table?: {
+      /** 表头底色（十六进制，如 "4472C4"） */
+      headerBackground?: string
+      /** 表头文字颜色（十六进制，如 "FFFFFF"） */
+      headerTextColor?: string
+      /** 表头是否加粗（默认 true） */
+      headerBold?: boolean
+      /** 表头对齐方式（默认 center） */
+      headerAlign?: 'left' | 'center' | 'right'
+      /** 数据行交替底色 [第1/3/5行, 第2/4/6行]（如 ["FFFFFF", "F2F2F2"]），表头底色独立控制 */
+      alternatingColors?: [string, string]
+      /** 边框颜色（十六进制，默认 "000000"） */
+      borderColor?: string
+      /** 边框粗细（half-point，默认 4 = 0.5pt） */
+      borderSize?: number
+      /** 表格字号（磅），不设置则取正文字号的 75% */
+      fontSize?: number
+      /** 表格字体，不设置则继承正文字体 */
+      font?: string
+      /** 表格西文字体，不设置则继承正文 fontAscii */
+      fontAscii?: string
+      /** 单元格内边距（twips，默认 { top: 30, bottom: 30, left: 80, right: 80 }） */
+      cellPadding?: { top?: number; bottom?: number; left?: number; right?: number }
+    }
+    /** 代码块样式 */
+    codeBlock?: {
+      /** 字体（默认 "Courier New"） */
+      font?: string
+      /** 字号（磅，默认 10） */
+      fontSize?: number
+      /** 背景色（十六进制，默认 "F5F5F5"） */
+      background?: string
+      /** 文字颜色 */
+      color?: string
+    }
+    /** 引用块样式 */
+    blockquote?: {
+      /** 左侧竖线颜色（十六进制，默认 "CCCCCC"） */
+      borderColor?: string
+      /** 是否斜体（默认 true） */
+      italic?: boolean
+      /** 文字颜色（默认 "666666"） */
+      color?: string
+    }
   }
 }
 
@@ -143,7 +188,16 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
         4: { size: 12, bold: true },
         5: { size: 11, bold: true },
         6: { size: 11, bold: true }
-      }
+      },
+      table: {
+        headerBackground: 'F2F2F2',
+        headerBold: true,
+        headerAlign: 'center',
+        borderColor: 'D9D9D9',
+        borderSize: 4
+      },
+      codeBlock: { font: 'Courier New', fontSize: 10, background: 'F5F5F5' },
+      blockquote: { borderColor: 'CCCCCC', italic: true, color: '666666' }
     }
   },
   formal: {
@@ -161,7 +215,18 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
         4: { font: '宋体', size: 12, bold: true },
         5: { font: '宋体', size: 12, bold: true },
         6: { font: '宋体', size: 12, bold: true }
-      }
+      },
+      table: {
+        headerBackground: '4472C4',
+        headerTextColor: 'FFFFFF',
+        headerBold: true,
+        headerAlign: 'center',
+        alternatingColors: ['FFFFFF', 'D9E2F3'],
+        borderColor: '8EAADB',
+        borderSize: 4
+      },
+      codeBlock: { font: 'Courier New', fontSize: 10, background: 'F5F5F5' },
+      blockquote: { borderColor: '4472C4', italic: true, color: '404040' }
     }
   },
   tech: {
@@ -179,7 +244,19 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
         4: { font: '微软雅黑', size: 11, bold: true },
         5: { font: '微软雅黑', size: 11, bold: true },
         6: { font: '微软雅黑', size: 11, bold: true }
-      }
+      },
+      table: {
+        headerBackground: '2B579A',
+        headerTextColor: 'FFFFFF',
+        headerBold: true,
+        headerAlign: 'center',
+        alternatingColors: ['FFFFFF', 'F0F4FA'],
+        borderColor: 'B4C6E7',
+        borderSize: 4,
+        font: '微软雅黑'
+      },
+      codeBlock: { font: 'Consolas', fontSize: 9.5, background: 'F0F0F0', color: '333333' },
+      blockquote: { borderColor: '2B579A', italic: false, color: '555555' }
     }
   },
   academic: {
@@ -197,7 +274,16 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
         4: { font: 'Times New Roman', size: 12, bold: true },
         5: { font: 'Times New Roman', size: 12, bold: true },
         6: { font: 'Times New Roman', size: 12, bold: true }
-      }
+      },
+      table: {
+        headerBackground: 'F2F2F2',
+        headerBold: true,
+        headerAlign: 'center',
+        borderColor: '000000',
+        borderSize: 4
+      },
+      codeBlock: { font: 'Courier New', fontSize: 10, background: 'F8F8F8' },
+      blockquote: { borderColor: 'AAAAAA', italic: true, color: '555555' }
     }
   },
   // 中国党政机关公文格式 (GB/T 9704-2012)
@@ -245,7 +331,19 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
           pattern: '^（\\d+）',
           style: { font: '仿宋', size: 16, bold: false, indent: 0 }
         }
-      ]
+      ],
+      table: {
+        headerBackground: 'F2F2F2',
+        headerBold: true,
+        headerAlign: 'center',
+        borderColor: '000000',
+        borderSize: 4,
+        font: '仿宋',
+        fontAscii: 'Times New Roman',
+        fontSize: 12
+      },
+      codeBlock: { font: 'Courier New', fontSize: 10, background: 'F5F5F5' },
+      blockquote: { borderColor: '999999', italic: true, color: '333333' }
     }
   },
   // 证券公司公文格式（参照 GB/T 9704-2012 及国元证券公文处理规范）
@@ -293,7 +391,19 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
           pattern: '^（\\d+）',
           style: { font: '仿宋_GB2312', size: 16, bold: false, indent: 0 }
         }
-      ]
+      ],
+      table: {
+        headerBackground: 'F2F2F2',
+        headerBold: true,
+        headerAlign: 'center',
+        borderColor: '000000',
+        borderSize: 4,
+        font: '仿宋_GB2312',
+        fontAscii: 'Times New Roman',
+        fontSize: 12
+      },
+      codeBlock: { font: 'Courier New', fontSize: 10, background: 'F5F5F5' },
+      blockquote: { borderColor: '999999', italic: true, color: '333333' }
     }
   }
 }
@@ -610,7 +720,7 @@ function tokensToDocxElements(
         break
         
       case 'code':
-        elements.push(createCodeBlock(token as Tokens.Code))
+        elements.push(createCodeBlock(token as Tokens.Code, style))
         lastAlign = undefined
         break
         
@@ -923,18 +1033,9 @@ function createList(token: Tokens.List, _style: WordStyleConfig): Paragraph[] {
 }
 
 /**
- * 表格单元格边框样式
+ * 默认表格单元格内边距（twips，1pt = 20twips）
  */
-const TABLE_BORDER = {
-  style: BorderStyle.SINGLE,
-  size: 4, // 0.5pt（half-point 单位）
-  color: '000000'
-}
-
-/**
- * 表格单元格内边距（twips，1pt = 20twips）
- */
-const TABLE_CELL_MARGINS = {
+const DEFAULT_CELL_MARGINS = {
   top: 30,      // 1.5pt
   bottom: 30,   // 1.5pt
   left: 80,     // 4pt
@@ -943,97 +1044,111 @@ const TABLE_CELL_MARGINS = {
 
 /**
  * 创建表格
- * 规范化表格样式：表头有底色和加粗，单元格有内边距和垂直居中，
- * 字号略小于正文以适应表格空间，偶数行可选浅灰底色提升可读性
+ * 从主题配置读取表头底色、交替行色、边框、字体等，生成风格统一的表格
  */
 function createTable(token: Tokens.Table, style: WordStyleConfig): Table {
   const rows: TableRow[] = []
   const config = style.config
+  const tc = config.table || {}
 
-  // 表格内文字号：比正文小一号（正文 16pt → 表格 12pt; 正文 12pt → 表格 10.5pt）
-  const tableFontSize = config.fontSize
-    ? Math.max(Math.round(config.fontSize * 0.75), 9)
-    : 10.5
-  const tableFontSizeHalf = tableFontSize * 2 // docx 用半磅
+  // 表格字号：优先用主题配置，否则取正文字号的 75%
+  const tableFontSize = tc.fontSize
+    ?? (config.fontSize ? Math.max(Math.round(config.fontSize * 0.75), 9) : 10.5)
+  const tableFontSizeHalf = tableFontSize * 2
 
-  // 表格内文字体
-  const tableFont = buildFontConfig(config.font, config.fontAscii)
+  // 表格字体：优先用主题配置，否则继承正文
+  const tableFont = buildFontConfig(
+    tc.font || config.font,
+    tc.fontAscii || config.fontAscii
+  )
 
-  // 单元格公共边框
-  const cellBorders = {
-    top: TABLE_BORDER,
-    bottom: TABLE_BORDER,
-    left: TABLE_BORDER,
-    right: TABLE_BORDER
+  // 边框
+  const border = {
+    style: BorderStyle.SINGLE,
+    size: tc.borderSize ?? 4,
+    color: tc.borderColor || '000000'
   }
+  const cellBorders = { top: border, bottom: border, left: border, right: border }
 
-  // 表格单元格内段落行距：使用单倍行距，避免继承文档级固定行距（如28.5pt）导致单元格过高
+  // 内边距
+  const cellMargins = tc.cellPadding
+    ? { top: tc.cellPadding.top ?? 30, bottom: tc.cellPadding.bottom ?? 30, left: tc.cellPadding.left ?? 80, right: tc.cellPadding.right ?? 80 }
+    : DEFAULT_CELL_MARGINS
+
+  // 表格单元格内段落行距：使用单倍行距，避免继承文档级固定行距导致单元格过高
   const tableCellSpacing = { before: 0, after: 0, line: 240 }
+
+  // 表头配置
+  const headerBold = tc.headerBold !== false
+  const headerBg = tc.headerBackground || 'F2F2F2'
+  const headerTextColor = tc.headerTextColor
+  const headerAlignDefault = tc.headerAlign || 'center'
+
+  // 交替行色
+  const altColors = tc.alternatingColors
 
   // 表头行
   if (token.header && token.header.length > 0) {
     rows.push(new TableRow({
-      tableHeader: true, // 跨页时重复表头
+      tableHeader: true,
       children: token.header.map((cell, colIdx) => {
+        const headerBaseStyle: InlineBaseStyle = {
+          font: tableFont,
+          size: tableFontSize,
+          bold: headerBold,
+          color: headerTextColor
+        }
         const children = cell.tokens && cell.tokens.length > 0
-          ? parseInlineTokens(cell.tokens, { font: tableFont, size: tableFontSize, bold: true })
-          : [new TextRun({ text: decodeHtmlEntities(cell.text), font: tableFont, size: tableFontSizeHalf, bold: true })]
-        
-        // 对齐方式：优先用 Markdown 表格的列对齐设置
+          ? parseInlineTokens(cell.tokens, headerBaseStyle)
+          : [new TextRun({ text: decodeHtmlEntities(cell.text), font: tableFont, size: tableFontSizeHalf, bold: headerBold, color: headerTextColor })]
+
         const align = token.align?.[colIdx]
         const alignment = align === 'center' ? AlignmentType.CENTER
           : align === 'right' ? AlignmentType.RIGHT
-          : AlignmentType.CENTER // 表头默认居中
+          : getAlignment(headerAlignDefault)
 
         return new TableCell({
-          children: [new Paragraph({
-            children,
-            alignment,
-            spacing: tableCellSpacing
-          })],
+          children: [new Paragraph({ children, alignment, spacing: tableCellSpacing })],
           borders: cellBorders,
           verticalAlign: VerticalAlignTable.CENTER,
-          margins: TABLE_CELL_MARGINS,
-          shading: {
-            type: ShadingType.CLEAR,
-            fill: 'F2F2F2', // 浅灰底色
-            color: 'auto'
-          }
+          margins: cellMargins,
+          shading: { type: ShadingType.CLEAR, fill: headerBg, color: 'auto' }
         })
       })
     }))
   }
-  
+
   // 数据行
   for (let rowIdx = 0; rowIdx < token.rows.length; rowIdx++) {
     const row = token.rows[rowIdx]
-    
+
+    // 交替行底色
+    const rowShading = altColors
+      ? { type: ShadingType.CLEAR as const, fill: altColors[rowIdx % 2], color: 'auto' as const }
+      : undefined
+
     rows.push(new TableRow({
       children: row.map((cell, colIdx) => {
         const children = cell.tokens && cell.tokens.length > 0
           ? parseInlineTokens(cell.tokens, { font: tableFont, size: tableFontSize })
           : [new TextRun({ text: decodeHtmlEntities(cell.text), font: tableFont, size: tableFontSizeHalf })]
-        
-        // 对齐方式：优先用 Markdown 表格的列对齐设置
+
         const align = token.align?.[colIdx]
         const alignment = align === 'center' ? AlignmentType.CENTER
           : align === 'right' ? AlignmentType.RIGHT
           : AlignmentType.LEFT
 
         return new TableCell({
-          children: [new Paragraph({
-            children,
-            alignment,
-            spacing: tableCellSpacing
-          })],
+          children: [new Paragraph({ children, alignment, spacing: tableCellSpacing })],
           borders: cellBorders,
           verticalAlign: VerticalAlignTable.CENTER,
-          margins: TABLE_CELL_MARGINS
+          margins: cellMargins,
+          shading: rowShading
         })
       })
     }))
   }
-  
+
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     rows
@@ -1043,50 +1158,55 @@ function createTable(token: Tokens.Table, style: WordStyleConfig): Table {
 /**
  * 创建代码块
  */
-function createCodeBlock(token: Tokens.Code): Paragraph {
+function createCodeBlock(token: Tokens.Code, style: WordStyleConfig): Paragraph {
+  const cb = style.config.codeBlock || {}
   return new Paragraph({
-    shading: { fill: 'F5F5F5' },
+    shading: { fill: cb.background || 'F5F5F5' },
     spacing: { before: 200, after: 200 },
     children: [new TextRun({
       text: decodeHtmlEntities(token.text),
-      font: 'Courier New',
-      size: 20 // 10pt
+      font: cb.font || 'Courier New',
+      size: (cb.fontSize || 10) * 2,
+      color: cb.color
     })]
   })
 }
 
 /**
  * 创建引用块
- * 字体和字号由 Normal 样式控制，仅添加斜体标记
  */
-function createBlockquote(token: Tokens.Blockquote, _style: WordStyleConfig): Paragraph {
+function createBlockquote(token: Tokens.Blockquote, style: WordStyleConfig): Paragraph {
+  const bq = style.config.blockquote || {}
+  const useItalic = bq.italic !== false
+  const textColor = bq.color || '666666'
+  const borderClr = bq.borderColor || 'CCCCCC'
+
   let children: TextRun[] = []
-  
+  const baseStyle: InlineBaseStyle = { italic: useItalic, color: textColor }
+
   if (token.tokens && token.tokens.length > 0) {
-    // blockquote.tokens 结构：[{ type: 'paragraph', tokens: [...内联格式...] }]
     const firstToken = token.tokens[0]
-    
-    if ((firstToken.type === 'paragraph' || firstToken.type === 'text') && 
+
+    if ((firstToken.type === 'paragraph' || firstToken.type === 'text') &&
         'tokens' in firstToken && firstToken.tokens) {
-      children = parseInlineTokens(firstToken.tokens, { italic: true })
+      children = parseInlineTokens(firstToken.tokens, baseStyle)
     } else {
-      children = parseInlineTokens(token.tokens, { italic: true })
+      children = parseInlineTokens(token.tokens, baseStyle)
     }
   }
-  
-  // 如果没有解析到任何内容，使用原始文本
+
   if (children.length === 0) {
     children = [new TextRun({
       text: decodeHtmlEntities(token.text || ''),
-      italics: true,
-      color: '666666'
+      italics: useItalic,
+      color: textColor
     })]
   }
-  
+
   return new Paragraph({
     indent: { left: convertInchesToTwip(0.5) },
     border: {
-      left: { style: BorderStyle.SINGLE, size: 12, color: 'CCCCCC' }
+      left: { style: BorderStyle.SINGLE, size: 12, color: borderClr }
     },
     children
   })

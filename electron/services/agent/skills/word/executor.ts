@@ -1901,14 +1901,23 @@ async function wordFromMarkdown(
   }
 
   try {
+    // 如果文件正在会话中编辑，检查是否有未保存修改
+    if (isSessionOpen(filePath)) {
+      const session = getSession(filePath)
+      if (session?.dirty) {
+        return { success: false, output: '', error: t('word.unsaved_changes', { path: filePath }) + '\n请先 word_save 保存或 word_close 关闭（discard_changes=true）后再重写。' }
+      }
+      closeSession(filePath, false)
+    }
+
     // 如果文件已存在，创建备份
     if (fs.existsSync(filePath)) {
-      const now = new Date()
-      const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`
       const ext = path.extname(filePath)
       const baseName = filePath.slice(0, -ext.length)
-      const backupPath = `${baseName}_${timestamp}${ext}.bak`
-      fs.copyFileSync(filePath, backupPath)
+      const backupPath = `${baseName}${ext}.bak`
+      if (!fs.existsSync(backupPath)) {
+        fs.copyFileSync(filePath, backupPath)
+      }
     }
 
     // 转换 Markdown 为 docx
@@ -2119,6 +2128,13 @@ function formatStyleSummary(config: WordStyleConfig['config']): string {
     parts.push(`${config.lineSpacing}倍行距`)
   }
   if (config.firstLineIndent) parts.push(`首行缩进${config.firstLineIndentChars || 2}字符`)
+  if (config.table) {
+    const t = config.table
+    const tableParts: string[] = []
+    if (t.headerBackground) tableParts.push(`表头#${t.headerBackground}`)
+    if (t.alternatingColors) tableParts.push('交替行色')
+    if (tableParts.length > 0) parts.push(`表格(${tableParts.join(',')})`)
+  }
   return parts.join('，')
 }
 

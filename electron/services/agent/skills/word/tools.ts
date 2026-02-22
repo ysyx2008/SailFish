@@ -488,46 +488,29 @@ word_delete_paragraph({
     type: 'function',
     function: {
       name: 'word_from_markdown',
-      description: `【推荐】从 Markdown 内容快速生成 Word 文档。一次调用完成整个文档的创建。
+      description: `【推荐】从 Markdown 快速生成或重写 Word 文档。一次调用完成整个文档，效率远高于逐段 word_add。
+如果目标文件已存在，会自动备份后覆盖——可用于"读取→修改→重写"的编辑场景。
+
+**推荐工作流**：
+1. 新建文档：直接调用，传入 Markdown 内容和样式
+2. 编辑文档：先 word_read 获取内容 → 修改 Markdown → 调用本工具覆盖重写
 
 **支持的 Markdown 语法**：
-- 标题：# ## ### 等
-- 段落：普通文本
-- 列表：- 或 1. 2. 3.
-- 表格：| 列1 | 列2 |
-- 加粗：**文本**
-- 斜体：*文本*
-- 代码块：\`\`\`代码\`\`\`
-- 引用：> 引用文本
-- 无缩进段落：<p>顶格文本</p>（用于公文主送机关等需要顶格的行）
-- 对齐：<p align="right">右对齐</p>、<center>居中</center>
+标题(# ## ###)、段落、列表(- 或 1.)、表格(| |)、加粗(**)、斜体(*)、代码块(\`\`\`)、引用(>)
+特殊标签：<p>顶格段落</p>、<p align="right">右对齐</p>、<center>居中</center>
 
-**预设样式**：
-- simple：简洁风格（默认）
-- formal：正式报告（宋体，首行缩进）
-- tech：技术文档（微软雅黑）
+**预设样式**（每个样式包含正文、标题、表格、代码块、引用的完整主题）：
+- simple：简洁风格（默认，灰色表头）
+- formal：正式报告（宋体，蓝色表头+交替行色）
+- tech：技术文档（微软雅黑，深蓝表头）
 - academic：学术论文（Times New Roman，双倍行距）
-- official：公文格式（GB/T 9704-2012 党政机关公文格式）
-- securities：证券公文（证券公司公文格式）
+- official：公文格式（GB/T 9704-2012，仿宋三号）
+- securities：证券公文（仿宋_GB2312）
+也可传入通过 word_create_style 创建的自定义样式名。
 
 **公文格式特别说明**：
-使用 official 或 securities 样式时，会自动识别中文编号并应用对应格式：
-- "一、二、三、..." → 黑体
-- "（一）（二）..." → 楷体加粗
-- "1. 2. 3. ..." → 仿宋加粗
-- "（1）（2）..." → 仿宋
-- 普通段落 → 仿宋三号，首行缩进两字
-
-**公文格式注意事项**：
-- 主送机关（如"各部门、各分支机构："）需要顶格，请用 <p> 标签包裹
-- 落款（发文机关和日期）用 <p align="right"> 包裹，系统会自动在落款前插入空行
-
-**示例**：
-word_from_markdown({
-  path: "通知.docx",
-  markdown: "# 关于加强信息安全的通知\\n\\n<p>各部门、各分支机构：</p>\\n\\n正文内容...\\n\\n<p align=\\"right\\">XX公司</p>\\n<p align=\\"right\\">2024年1月1日</p>",
-  style: "official"
-})`,
+official/securities 会自动识别中文编号：一、→黑体 （一）→楷体加粗 1.→仿宋加粗 （1）→仿宋
+主送机关用 <p> 包裹顶格，落款用 <p align="right"> 包裹，系统自动在落款前加空行。`,
       parameters: {
         type: 'object',
         properties: {
@@ -553,25 +536,32 @@ word_from_markdown({
     type: 'function',
     function: {
       name: 'word_create_style',
-      description: `创建自定义格式规范。支持多种方式：
+      description: `创建自定义文档主题。用户可能用口语描述（如"标题用黑体二号居中，正文仿宋三号"），请翻译为 config。
 
-1. **直接指定配置**：通过 config 参数传入样式 JSON 配置
-2. **基于已有样式修改**：通过 base 指定基础样式，再用 config 覆盖部分属性
-3. **从样板文档提取**：上传一个已格式化好的 .docx 文件，自动提取样式
-4. **从格式说明解析**：上传格式说明文档（PDF/Word/文本），AI 理解后生成样式
+**创建方式**：
+1. 直接指定 config JSON
+2. base + config：基于已有样式（如 official）修改部分属性
+3. from_template：从 .docx 样板文件提取
+4. from_description：从格式说明文档解析
 
-创建的样式会保存到知识库，可在后续生成文档时使用。
+创建的样式保存到知识库，后续 word_from_markdown 可直接使用。
 
-config 可用属性：
-- font: 中文字体（如 "仿宋_GB2312"）
-- fontAscii: 西文字体（如 "Times New Roman"）
-- fontSize: 正文字号（磅，如 16）
-- lineSpacing: 行距倍数（如 1.5）
-- lineSpacingFixed: 固定行距（磅，如 28.5）
-- firstLineIndent: 是否首行缩进
-- firstLineIndentChars: 首行缩进字符数
-- headings: 各级标题样式，键为 1-6，值含 font/fontAscii/size/bold/align
-- numberingRules: 编号层级规则数组`,
+**中文字号 → 磅值对照**：
+初号=42, 小初=36, 一号=26, 小一=24, 二号=22, 小二=18, 三号=16, 小三=15, 四号=14, 小四=12, 五号=10.5, 小五=9
+
+**config 属性**：
+- font/fontAscii: 中文字体/西文字体
+- fontSize: 正文字号（磅）
+- lineSpacing: 行距倍数 | lineSpacingFixed: 固定行距（磅）
+- firstLineIndent/firstLineIndentChars: 首行缩进
+- headings: { 1: { font, fontAscii, size, bold, align }, 2: {...}, ... }
+- numberingRules: 编号层级规则数组
+- table: { headerBackground, headerTextColor, headerBold, headerAlign, alternatingColors, borderColor, borderSize, fontSize, font, fontAscii, cellPadding }
+- codeBlock: { font, fontSize, background, color }
+- blockquote: { borderColor, italic, color }
+
+**示例**（用户说"标题黑体二号居中，正文宋体四号，表头蓝底白字"）：
+config: { font:"宋体", fontSize:14, headings:{1:{font:"黑体",size:22,align:"center"}}, table:{headerBackground:"4472C4",headerTextColor:"FFFFFF"} }`,
       parameters: {
         type: 'object',
         properties: {
@@ -608,12 +598,11 @@ config 可用属性：
     type: 'function',
     function: {
       name: 'word_edit_style',
-      description: `编辑已有样式的属性。
+      description: `修改已有样式的部分属性（增量更新）。用户说"把一级标题改成黑体二号"就传 config: { headings: { 1: { font:"黑体", size:22 } } }。
 
-- 对自定义样式：直接修改
-- 对预设样式：会自动复制为自定义副本后修改
-- 支持修改部分属性（增量更新），未指定的属性保持不变
-- 支持重命名样式`,
+- 对预设样式：自动复制为自定义副本后修改
+- 未指定的属性保持不变
+- 字号对照：初号42 小初36 一号26 小一24 二号22 小二18 三号16 小三15 四号14 小四12 五号10.5 小五9`,
       parameters: {
         type: 'object',
         properties: {
