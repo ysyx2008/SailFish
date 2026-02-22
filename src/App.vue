@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, provide, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Server, Bot, Settings, X, Loader2, Eye } from 'lucide-vue-next'
+import { Server, Bot, Settings, X, Loader2, Eye, AlertCircle } from 'lucide-vue-next'
 import { useTerminalStore } from './stores/terminal'
 import { useConfigStore, type SshSession } from './stores/config'
 import TabBar from './components/TabBar.vue'
-import TerminalContainer from './components/TerminalContainer.vue'
 import AiPanel from './components/AiPanel.vue'
+import Terminal from './components/Terminal.vue'
 import SessionManager from './components/SessionManager.vue'
 import SettingsModal from './components/Settings/SettingsModal.vue'
 import FileExplorer from './components/FileExplorer/FileExplorer.vue'
@@ -396,8 +396,6 @@ const initializeApp = async () => {
 
 // 是否显示欢迎页（没有打开任何终端且不在智能巡检界面时显示）
 const showWelcomePage = computed(() => terminalStore.tabs.length === 0 && !showSmartPatrol.value)
-const isAssistantTab = computed(() => terminalStore.activeTab?.type === 'assistant')
-
 // 从欢迎页打开助手
 const openAssistantFromWelcome = () => {
   terminalStore.createAssistantTab()
@@ -696,45 +694,58 @@ onUnmounted(() => {
           v-else-if="showSmartPatrol"
           @back="backFromSmartPatrol"
         />
-        <!-- 助手 + 终端始终挂载，v-show 控制可见性，避免切换 Tab 类型时销毁 AiPanel 丢失事件监听 -->
-        <template v-else>
-          <template v-for="tab in terminalStore.tabs" :key="'assist-' + tab.id">
-            <AiPanel 
-              v-if="tab.type === 'assistant'"
-              v-show="isAssistantTab && tab.id === terminalStore.activeTabId"
+        <!-- 每个 Tab 一个独立 div，始终挂载，v-show 控制可见性 -->
+        <template v-else v-for="tab in terminalStore.tabs" :key="tab.id">
+          <!-- ===== 助手 Tab ===== -->
+          <div v-if="tab.type === 'assistant'" v-show="tab.id === terminalStore.activeTabId" class="tab-view assistant-tab">
+            <AiPanel
               :tab-id="tab.id"
-              :visible="isAssistantTab && tab.id === terminalStore.activeTabId"
-              class="assistant-full-panel"
+              :visible="tab.id === terminalStore.activeTabId"
             />
-          </template>
-          <TerminalContainer v-show="!isAssistantTab" />
+          </div>
+          <!-- ===== 终端 Tab (local / ssh) ===== -->
+          <div v-else v-show="tab.id === terminalStore.activeTabId" class="tab-view terminal-tab">
+            <div class="terminal-main">
+              <Terminal
+                v-if="tab.ptyId"
+                :tab-id="tab.id"
+                :pty-id="tab.ptyId"
+                :type="tab.type"
+                :is-active="tab.id === terminalStore.activeTabId"
+              />
+              <div v-else-if="tab.isLoading" class="terminal-loading">
+                <div class="loading-spinner"></div>
+                <span>{{ tab.loadingMessage || t('terminal.connecting') }}</span>
+              </div>
+              <div v-else class="terminal-error">
+                <AlertCircle :size="48" />
+                <span class="error-title">{{ t('terminal.connectionFailed') }}</span>
+                <span v-if="tab.connectionError" class="error-detail">{{ tab.connectionError }}</span>
+                <button class="btn btn-sm" @click="terminalStore.closeTab(tab.id)">{{ t('common.close') }}</button>
+              </div>
+            </div>
+            <template v-if="!isSteamBuild">
+              <div
+                v-show="showAiPanel"
+                class="resize-handle"
+                @mousedown="startResize"
+                :class="{ resizing: isResizing }"
+              ></div>
+              <div
+                v-show="showAiPanel"
+                class="tab-ai-sidebar"
+                :style="{ width: aiPanelWidth + 'px' }"
+              >
+                <AiPanel
+                  :tab-id="tab.id"
+                  :visible="tab.id === terminalStore.activeTabId && showAiPanel"
+                  @close="showAiPanel = false"
+                />
+              </div>
+            </template>
+          </div>
         </template>
       </main>
-
-      <!-- AI 面板侧栏 - 始终挂载，v-show 控制可见性 -->
-      <template v-if="!isSteamBuild">
-        <div 
-          v-show="showAiPanel && !showWelcomePage && !isAssistantTab"
-          class="resize-handle" 
-          @mousedown="startResize"
-          :class="{ resizing: isResizing }"
-        ></div>
-        <aside 
-          v-show="showAiPanel && !showWelcomePage && !isAssistantTab" 
-          class="ai-sidebar" 
-          :style="{ width: aiPanelWidth + 'px' }"
-        >
-          <template v-for="tab in terminalStore.tabs" :key="tab.id">
-            <AiPanel 
-              v-if="tab.type !== 'assistant'"
-              v-show="tab.id === terminalStore.activeTabId"
-              :tab-id="tab.id"
-              :visible="!isAssistantTab && tab.id === terminalStore.activeTabId"
-              @close="showAiPanel = false" 
-            />
-          </template>
-        </aside>
-      </template>
     </div>
 
     <!-- 控制面板 -->
@@ -953,15 +964,31 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-/* 助手标签页全宽 AI 面板 */
-.assistant-full-panel {
+/* 每个 Tab 的独立容器 */
+.tab-view {
   flex: 1;
-  width: 100%;
-  max-width: 100%;
+  overflow: hidden;
 }
 
-/* AI 侧边栏 */
-.ai-sidebar {
+.assistant-tab {
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-tab {
+  display: flex;
+  flex-direction: row;
+}
+
+.terminal-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 终端 Tab 内的 AI 侧栏 */
+.tab-ai-sidebar {
   min-width: 280px;
   background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
   border-left: 1px solid var(--border-color);
@@ -969,22 +996,9 @@ onUnmounted(() => {
   flex-direction: column;
   flex-shrink: 0;
   position: relative;
-  animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes slideInRight {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-/* AI 侧边栏左边缘光效 */
-.ai-sidebar::before {
+.tab-ai-sidebar::before {
   content: '';
   position: absolute;
   top: 0;
@@ -993,6 +1007,54 @@ onUnmounted(() => {
   width: 1px;
   background: linear-gradient(180deg, transparent, rgba(var(--accent-secondary-rgb, 116, 199, 236), 0.15), transparent);
   pointer-events: none;
+}
+
+/* 终端 loading / error 状态 */
+.terminal-loading,
+.terminal-error {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--text-muted);
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--bg-surface);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.terminal-error svg {
+  color: var(--accent-error);
+  opacity: 0.8;
+}
+
+.terminal-error .error-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.terminal-error .error-detail {
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-width: 400px;
+  text-align: center;
+  line-height: 1.5;
+  padding: 8px 16px;
+  background: var(--bg-surface);
+  border-radius: 6px;
+  border: 1px solid var(--border-primary);
 }
 
 /* 拖拽调整宽度手柄 */

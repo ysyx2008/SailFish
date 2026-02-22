@@ -245,7 +245,7 @@
   border-right: 1px solid rgba(0, 255, 255, 0.15);
 }
 
-[data-ui-theme="cyberpunk"] .ai-sidebar {
+[data-ui-theme="cyberpunk"] .tab-ai-sidebar {
   background: linear-gradient(180deg, rgba(15, 15, 24, 0.98), rgba(10, 10, 15, 0.95));
   border-left: 1px solid rgba(255, 0, 255, 0.15);
 }
