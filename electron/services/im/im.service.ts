@@ -32,6 +32,7 @@ import { SlackAdapter } from './slack-adapter'
 import { TelegramAdapter } from './telegram-adapter'
 import { WeComAdapter } from './wecom-adapter'
 import { RemoteChatService } from '../remote-chat.service'
+import { getConfigService } from '../config.service'
 import { t } from '../agent/i18n'
 
 export interface IMServiceDependencies {
@@ -144,6 +145,8 @@ function formatToolNotification(toolName: string, toolArgs?: Record<string, unkn
 }
 
 export class IMService {
+  private static readonly CONTACT_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+
   private deps: IMServiceDependencies | null = null
   private dingtalkAdapter: DingTalkAdapter | null = null
   private feishuAdapter: FeishuAdapter | null = null
@@ -165,6 +168,13 @@ export class IMService {
 
   /** 最近一次联系 AI 的 IM 渠道上下文（用于主动推送） */
   private lastContact: IMLastContact | null = null
+  /** 各平台最近一次联系记录（持久化） */
+  private contactsByPlatform: Partial<Record<IMPlatform, IMLastContact>> = {}
+
+  constructor() {
+    this.loadPersistedContacts()
+    this.lastContact = this.pickMostRecentContact(this.contactsByPlatform)
+  }
 
   /** 便捷访问共享会话服务 */
   private get chat(): RemoteChatService {
@@ -471,19 +481,9 @@ export class IMService {
       return { success: false, error: t('im.notification_empty') }
     }
 
-    if (!this.lastContact) {
+    const targets = this.getNotificationTargets()
+    if (targets.length === 0) {
       return { success: false, error: t('im.notification_no_contact') }
-    }
-
-    const { platform, replyContext } = this.lastContact
-    const adapter = this.getAdapter(platform)
-
-    if (!adapter) {
-      return { success: false, error: t('im.notification_no_adapter', { platform }) }
-    }
-
-    if (!adapter.isConnected()) {
-      return { success: false, error: t('im.notification_not_connected', { platform }) }
     }
 
     // 截断过长文本（adapter 内部也有截断，此处做防御性限制）
@@ -491,18 +491,33 @@ export class IMService {
       ? text.substring(0, IM_TEXT_MAX_LENGTH - 20) + t('im.text_truncated')
       : text
 
-    try {
-      if (options?.markdown) {
-        await adapter.sendMarkdown(replyContext, options.title || t('im.notification_title'), truncated)
-      } else {
-        await adapter.sendText(replyContext, truncated)
+    let lastError = ''
+    for (const contact of targets) {
+      const adapter = this.getAdapter(contact.platform)
+      if (!adapter || !adapter.isConnected()) continue
+
+      try {
+        if (options?.markdown) {
+          await adapter.sendMarkdown(contact.replyContext, options.title || t('im.notification_title'), truncated)
+        } else {
+          await adapter.sendText(contact.replyContext, truncated)
+        }
+        this.lastContact = contact
+        console.log(`[IM] Proactive notification sent via ${contact.platform}`)
+        return { success: true, platform: contact.platform }
+      } catch (err: any) {
+        lastError = err?.message || 'Unknown error'
+        console.error(`[IM] Failed to send proactive notification via ${contact.platform}:`, err)
+        // 该平台上下文失效时，从联系人池移除，避免后续重复失败
+        delete this.contactsByPlatform[contact.platform]
+        if (this.lastContact?.platform === contact.platform) {
+          this.lastContact = null
+        }
+        this.persistContacts()
       }
-      console.log(`[IM] Proactive notification sent via ${platform}`)
-      return { success: true, platform }
-    } catch (err: any) {
-      console.error(`[IM] Failed to send proactive notification via ${platform}:`, err)
-      return { success: false, platform, error: err.message || 'Unknown error' }
     }
+
+    return { success: false, error: lastError || t('im.notification_no_contact') }
   }
 
   // ==================== 消息处理核心 ====================
@@ -520,7 +535,7 @@ export class IMService {
     if (!adapter) return
 
     // 记录最近联系的渠道，用于后续主动推送
-    this.lastContact = {
+    const contact: IMLastContact = {
       platform: msg.platform,
       replyContext: msg.replyContext,
       userId: msg.userId,
@@ -529,6 +544,9 @@ export class IMService {
       chatType: msg.chatType,
       updatedAt: Date.now(),
     }
+    this.lastContact = contact
+    this.contactsByPlatform[msg.platform] = contact
+    this.persistContacts()
 
     const replyContext = msg.replyContext
 
@@ -916,6 +934,104 @@ export class IMService {
     if (platform === 'telegram') return this.telegramAdapter
     if (platform === 'wecom') return this.wecomAdapter
     return null
+  }
+
+  private loadPersistedContacts(): void {
+    try {
+      const configService = getConfigService()
+      const stored = configService.get('imLastContacts') as Record<string, unknown> | undefined
+      if (!stored || typeof stored !== 'object') return
+
+      const parsed: Partial<Record<IMPlatform, IMLastContact>> = {}
+      const platforms: IMPlatform[] = ['dingtalk', 'feishu', 'slack', 'telegram', 'wecom']
+      for (const platform of platforms) {
+        const raw = stored[platform] as IMLastContact | undefined
+        if (this.isValidContact(raw) && !this.isContactExpired(raw)) {
+          parsed[platform] = raw
+        }
+      }
+      this.contactsByPlatform = parsed
+    } catch (err) {
+      console.warn('[IM] Failed to load persisted contacts:', err)
+      this.contactsByPlatform = {}
+    }
+  }
+
+  private persistContacts(): void {
+    try {
+      const configService = getConfigService()
+      const serializable: Record<string, unknown> = {}
+      const platforms: IMPlatform[] = ['dingtalk', 'feishu', 'slack', 'telegram', 'wecom']
+      for (const platform of platforms) {
+        const contact = this.contactsByPlatform[platform]
+        if (!contact) continue
+        const safe = this.toSerializableContact(contact)
+        if (safe) serializable[platform] = safe
+      }
+      configService.set('imLastContacts', serializable)
+    } catch (err) {
+      console.warn('[IM] Failed to persist contacts:', err)
+    }
+  }
+
+  private toSerializableContact(contact: IMLastContact): IMLastContact | null {
+    try {
+      // 防御性校验：仅持久化可 JSON 序列化的 replyContext
+      JSON.stringify(contact.replyContext)
+      return contact
+    } catch {
+      console.warn(`[IM] Skip persisting contact for ${contact.platform}: replyContext is not serializable`)
+      return null
+    }
+  }
+
+  private isValidContact(contact: any): contact is IMLastContact {
+    return !!contact
+      && typeof contact.platform === 'string'
+      && typeof contact.replyContext !== 'undefined'
+      && typeof contact.userId === 'string'
+      && typeof contact.userName === 'string'
+      && (contact.chatType === 'single' || contact.chatType === 'group')
+      && typeof contact.updatedAt === 'number'
+  }
+
+  private isContactExpired(contact: IMLastContact): boolean {
+    return (Date.now() - contact.updatedAt) > IMService.CONTACT_TTL_MS
+  }
+
+  private pickMostRecentContact(
+    contacts: Partial<Record<IMPlatform, IMLastContact>>
+  ): IMLastContact | null {
+    const list = Object.values(contacts)
+      .filter((contact): contact is IMLastContact => !!contact)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+    return list[0] || null
+  }
+
+  private getNotificationTargets(): IMLastContact[] {
+    const connectedPlatforms: IMPlatform[] = ['dingtalk', 'feishu', 'slack', 'telegram', 'wecom']
+      .filter((platform) => {
+        const adapter = this.getAdapter(platform)
+        return !!adapter && adapter.isConnected()
+      })
+
+    if (connectedPlatforms.length === 0) return []
+
+    const candidates = connectedPlatforms
+      .map((platform) => this.contactsByPlatform[platform])
+      .filter((contact): contact is IMLastContact => !!contact && !this.isContactExpired(contact))
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+
+    if (candidates.length === 0) return []
+
+    const preferredPlatform = this.lastContact?.platform
+    if (preferredPlatform) {
+      const preferred = candidates.find(c => c.platform === preferredPlatform)
+      if (preferred) {
+        return [preferred, ...candidates.filter(c => c.platform !== preferredPlatform)]
+      }
+    }
+    return candidates
   }
 
   private getSessionStatus(): string {

@@ -148,6 +148,7 @@ interface StoreSchema {
   imTelegramAutoConnect: boolean  // Telegram 自动连接
   imTelegramBotToken: string      // Telegram Bot Token
   imExecutionMode: 'strict' | 'relaxed' | 'free'  // IM Agent 执行模式，默认 relaxed
+  imLastContacts: Record<string, unknown> // IM 各平台最近联系人（主动推送使用）
   logLevel: LogLevel  // 日志级别
   skillMarketRegistryUrl: string  // 技能市场 registry URL
   agentAwakened: boolean           // 觉醒模式：AI 主动感知环境、推送消息
@@ -206,6 +207,7 @@ const defaultConfig: StoreSchema = {
   imTelegramAutoConnect: false,
   imTelegramBotToken: '',
   imExecutionMode: 'relaxed',
+  imLastContacts: {},
   logLevel: 'warn',
   skillMarketRegistryUrl: '',
   agentAwakened: true,
