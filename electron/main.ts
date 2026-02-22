@@ -921,6 +921,42 @@ app.whenReady().then(async () => {
 
       const awakened = configService.get('agentAwakened') as boolean ?? false
       const heartbeatInterval = configService.get('watchHeartbeatInterval') as number ?? 30
+
+      // 启动传感器前，先把已保存的邮箱/日历账户注入传感器，否则 shouldAutoStart() 会因为 accounts 为空而跳过
+      try {
+        const emailAccounts = (configService.get('emailAccounts' as any) || []) as Array<{
+          id: string; email: string; provider: string; imapHost?: string; imapPort?: number; rejectUnauthorized?: boolean
+        }>
+        if (emailAccounts.length > 0) {
+          const { getServerConfig } = await import('./services/agent/skills/email/session')
+          const { getEmailCredential } = await import('./services/credential.service')
+          const sensorAccounts = emailAccounts.map(a => {
+            const server = getServerConfig(a.provider, { imapHost: a.imapHost, imapPort: a.imapPort })
+            return { accountId: a.id, email: a.email, provider: a.provider, imapHost: server.imapHost, imapPort: server.imapPort, rejectUnauthorized: a.rejectUnauthorized }
+          }).filter(a => a.imapHost)
+          await sensorService.email.configureAccounts(sensorAccounts, (id) => getEmailCredential(id))
+          console.log(`[Main] Email sensor: loaded ${sensorAccounts.length} account(s) from config`)
+        }
+      } catch (e) {
+        console.error('[Main] Email sensor 账户加载失败:', e)
+      }
+
+      try {
+        const calendarAccounts = (configService.get('calendarAccounts' as any) || []) as Array<{
+          id: string; name: string; provider: string; username: string; serverUrl?: string
+        }>
+        if (calendarAccounts.length > 0) {
+          const { getCalendarCredential } = await import('./services/credential.service')
+          const sensorAccounts = calendarAccounts.map(a => ({
+            accountId: a.id, name: a.name, provider: a.provider, username: a.username, serverUrl: a.serverUrl
+          }))
+          await sensorService.calendar.configureAccounts(sensorAccounts, (id) => getCalendarCredential(id))
+          console.log(`[Main] Calendar sensor: loaded ${sensorAccounts.length} account(s) from config`)
+        }
+      } catch (e) {
+        console.error('[Main] Calendar sensor 账户加载失败:', e)
+      }
+
       sensorService.start({
         heartbeatEnabled: awakened,
         heartbeatIntervalMinutes: heartbeatInterval
@@ -928,10 +964,10 @@ app.whenReady().then(async () => {
         console.error('[Main] Sensor 服务启动失败:', e)
       })
 
-      // 觉醒模式：确保内置「日常巡视」关切存在
+      // 觉醒模式：确保内置「日常检查」关切存在
       if (awakened) {
         try { watchService.ensureDailyPatrol() } catch (e) {
-          console.error('[Main] 日常巡视关切创建失败:', e)
+          console.error('[Main] 日常检查关切创建失败:', e)
         }
       }
     } catch (e) {

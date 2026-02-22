@@ -345,7 +345,7 @@ export class CalendarSensor implements Sensor {
     const now = new Date()
     const DEFAULT_BEFORE_MIN = 15
 
-    // 有 Watch target 时按各自配置发送；无 target 时用默认窗口发给日常巡视 batch
+    // 有 Watch target 时按各自配置发送；无 target 时用默认窗口发给日常检查 batch
     const entries: Array<{ watchId?: string; beforeMinutes: number }> =
       this.targets.size > 0
         ? Array.from(this.targets.entries()).map(([wid, t]) => ({ watchId: wid, beforeMinutes: t.beforeMinutes || DEFAULT_BEFORE_MIN }))

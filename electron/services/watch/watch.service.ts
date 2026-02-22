@@ -560,67 +560,73 @@ export class WatchService {
   private buildEnhancedPrompt(watch: WatchDefinition, event: SensorEvent): string {
     const parts: string[] = []
 
-    // 事件上下文
-    if (event.type === 'heartbeat' && event.payload.isBatch) {
-      const p = event.payload
-      parts.push(`[Batch wake-up at ${new Date().toLocaleString()}, ${p.eventCount} event(s) since last check: ${p.summary}]`)
-      const subEvents = p.events as Array<{ type: string; source: string; timestamp: number; payload: Record<string, unknown> }>
-      if (subEvents?.length) {
-        const lines = subEvents.slice(0, 20).map((e, i) => {
-          if (e.type === 'email') return `  ${i + 1}. Email from ${e.payload.fromName || e.payload.from}: "${e.payload.subject}"`
-          if (e.type === 'calendar') return `  ${i + 1}. Calendar: "${e.payload.summary}" in ${e.payload.minutesUntilStart}min`
-          return `  ${i + 1}. ${e.type} from ${e.source}`
-        })
-        parts.push(`Recent events:\n${lines.join('\n')}`)
+    // 事件上下文：统一格式化，Agent 只需要知道"发生了什么"
+    parts.push(`[当前时间：${new Date().toLocaleString()}]`)
+
+    const eventLines = this.formatEventLines(event)
+    if (eventLines.length) {
+      parts.push(`触发事件：\n${eventLines.join('\n')}`)
+      if (eventLines.length > 1) {
+        parts.push('[如果这些事件都不值得通知用户，直接回复 "NO_ACTION" 即可。这些事件会被丢弃，下次再看。]')
       }
-      parts.push('[If none of these events are worth notifying the user about, reply with just "NO_ACTION" and nothing else. The events will be discarded and you can check again next time.]')
-    } else if (event.type === 'heartbeat') {
-      parts.push(`[Heartbeat wake-up at ${new Date().toLocaleString()}]`)
-    } else if (event.type === 'webhook') {
-      const payloadStr = Object.keys(event.payload).length > 0
-        ? `\nWebhook payload: ${JSON.stringify(event.payload).substring(0, 500)}`
-        : ''
-      parts.push(`[Triggered by webhook${payloadStr}]`)
-    } else if (event.type === 'manual') {
-      parts.push(`[Manually triggered]`)
-    } else if (event.type === 'file_change') {
-      const p = event.payload
-      parts.push(`[File ${p.changeType}: ${p.filename} in ${p.directory}]`)
-    } else if (event.type === 'calendar') {
-      const p = event.payload
-      parts.push(`[Upcoming calendar event: "${p.summary}" starts in ${p.minutesUntilStart} minutes${p.location ? `, location: ${p.location}` : ''}]`)
-    } else if (event.type === 'email') {
-      const p = event.payload
-      parts.push(`[New email from ${p.fromName || p.from}: "${p.subject}"]`)
     }
 
     // Watch 自身状态（工作流延续）
     if (watch.state && Object.keys(watch.state).length > 0) {
-      parts.push(`[Watch state from last execution: ${JSON.stringify(watch.state).substring(0, 500)}]`)
+      parts.push(`[上次执行的 Watch 状态：${JSON.stringify(watch.state).substring(0, 500)}]`)
     }
 
     // 共享状态（跨 Watch 上下文）
     const sharedState = this.store.getSharedState()
     if (Object.keys(sharedState).length > 0) {
-      parts.push(`[Shared context: ${JSON.stringify(sharedState).substring(0, 800)}]`)
+      parts.push(`[跨关切共享上下文：${JSON.stringify(sharedState).substring(0, 800)}]`)
     }
 
     // 状态管理指令
     parts.push(
-      '\n[If you need to save state for future executions, include at the end of your response:',
-      'STATE_UPDATE: {"key": "value"} for watch-specific state,',
-      'SHARED_UPDATE: {"key": "value"} for cross-watch shared context.]'
+      '\n[如需保存状态供后续执行使用，请在回复末尾附上：',
+      'STATE_UPDATE: {"key": "value"} 用于当前关切的私有状态，',
+      'SHARED_UPDATE: {"key": "value"} 用于跨关切的共享上下文。]'
     )
 
     // 技能提示
     if (watch.skills && watch.skills.length > 0) {
-      parts.push(`[Pre-load skills: ${watch.skills.join(', ')}]`)
+      parts.push(`[预加载技能：${watch.skills.join(', ')}]`)
     }
 
     // 原始 prompt
     parts.push(watch.prompt)
 
     return parts.join('\n')
+  }
+
+  private formatEventLines(event: SensorEvent): string[] {
+    // 批量事件：展开子事件
+    if (event.type === 'heartbeat' && event.payload.isBatch) {
+      const subEvents = event.payload.events as Array<{ type: string; source: string; timestamp: number; payload: Record<string, unknown> }> | undefined
+      if (!subEvents?.length) return ['- 例行检查（无新事件）']
+      return subEvents.slice(0, 20).map((e, i) => `  ${i + 1}. ${this.describeEvent(e.type, e.payload)}`)
+    }
+    // 单个事件
+    if (event.type === 'heartbeat') return ['- 例行检查']
+    return [`- ${this.describeEvent(event.type, event.payload)}`]
+  }
+
+  private describeEvent(type: string, payload: Record<string, unknown>): string {
+    switch (type) {
+      case 'email':
+        return `邮件 来自 ${payload.fromName || payload.from}："${payload.subject}"`
+      case 'calendar':
+        return `日历 "${payload.summary}" ${payload.minutesUntilStart}分钟后开始${payload.location ? `（${payload.location}）` : ''}`
+      case 'file_change':
+        return `文件变更 ${payload.changeType}：${payload.directory}/${payload.filename}`
+      case 'webhook':
+        return `Webhook${Object.keys(payload).length ? `：${JSON.stringify(payload).substring(0, 500)}` : ''}`
+      case 'manual':
+        return '用户手动触发'
+      default:
+        return `${type}${payload.source ? ` 来自 ${payload.source}` : ''}`
+    }
   }
 
   // ==================== 输出投递 ====================
@@ -1073,7 +1079,7 @@ export class WatchService {
   private static readonly DAILY_PATROL_ID = '__daily_patrol__'
 
   /**
-   * 确保内置「日常巡视」关切存在（觉醒模式开启时调用）
+   * 确保内置「日常检查」关切存在（觉醒模式开启时调用）
    * 幂等：已存在则跳过
    */
   ensureDailyPatrol(): boolean {
@@ -1083,20 +1089,19 @@ export class WatchService {
 
       const patrol: WatchDefinition = {
         id: WatchService.DAILY_PATROL_ID,
-        name: '日常巡视',
-        description: '觉醒模式下的主动巡视——定期检查环境变化，有值得关注的事主动告知用户',
+        name: '日常检查',
+        description: '觉醒模式下定期看看环境有没有变化，有事就主动告知用户',
         enabled: true,
         triggers: [{ type: 'heartbeat' }],
-        prompt: `你刚刚被心跳唤醒了。作为用户的个人助手，请快速巡视一下当前环境：
+        prompt: `你是用户的个人助手，刚被定时唤醒。看看当前有没有值得告诉用户的事：
 
-1. **日历**：检查接下来几小时有没有日程安排，有的话提前告知
-2. **已有关切**：查看你之前创建的关切是否有异常（用 watch_list）
-3. **环境感知**：如果有任何值得用户注意的事情，主动告知
+1. **日历**：接下来几小时有没有日程，有的话提前说一声
+2. **已有关切**：之前创建的关切有没有异常（用 watch_list 看看）
+3. **其他**：有什么值得用户注意的就主动说
 
-**重要行为准则**：
-- 如果一切正常、没什么值得关注的——直接回复 NO_ACTION，不要打扰用户
-- 只在确实有值得关注的信息时才推送消息
-- 推送时用简洁自然的语气，像朋友提醒一样`,
+**行为准则**：
+- 没什么事就回复 NO_ACTION，别打扰用户
+- 有事才说，用简洁自然的语气，像朋友提醒一样`,
         skills: ['calendar', 'email'],
         execution: { type: 'local' },
         output: { type: 'desktop' },
@@ -1107,14 +1112,14 @@ export class WatchService {
 
       const created = this.store.createWithId(patrol)
       if (!created) {
-        console.warn('[WatchService] 日常巡视关切创建失败')
+        console.warn('[WatchService] 日常检查关切创建失败')
         return false
       }
 
       if (this.isRunning) {
         this.registerSensorTargets(patrol)
       }
-      console.log('[WatchService] 日常巡视关切已创建')
+      console.log('[WatchService] 日常检查关切已创建')
       return true
     } catch (e) {
       console.error('[WatchService] ensureDailyPatrol 异常:', e)
@@ -1123,7 +1128,7 @@ export class WatchService {
   }
 
   /**
-   * 移除内置「日常巡视」关切（觉醒模式关闭时调用）
+   * 移除内置「日常检查」关切（觉醒模式关闭时调用）
    */
   removeDailyPatrol(): void {
     try {
@@ -1137,7 +1142,7 @@ export class WatchService {
         console.warn('[WatchService] unregisterSensorTargets failed:', e)
       }
       this.store.delete(WatchService.DAILY_PATROL_ID)
-      console.log('[WatchService] 日常巡视关切已移除')
+      console.log('[WatchService] 日常检查关切已移除')
     } catch (e) {
       console.error('[WatchService] removeDailyPatrol 异常:', e)
     }

@@ -195,7 +195,7 @@ const awakened = ref(false)
 const heartbeatInterval = ref(30)
 const awakenedRunning = ref(false)
 
-// 巡视执行状态
+// 检查执行状态
 const patrolling = ref(false)
 const patrolStatus = ref<'idle' | 'running' | 'done' | 'skipped' | 'error'>('idle')
 const patrolMessage = ref('')
@@ -265,13 +265,13 @@ async function manualHeartbeat() {
   }
 }
 
-// 监听关切执行事件，更新巡视状态
+// 监听关切执行事件，更新检查状态
 let cleanupTaskStarted: (() => void) | null = null
 let cleanupTaskCompleted: (() => void) | null = null
 
 function setupPatrolListeners() {
   cleanupTaskStarted = window.electronAPI.watch.onTaskStarted((data) => {
-    if (data.watchName === '日常巡视' || data.watchId === '__daily_patrol__') {
+    if (data.watchName === '日常检查' || data.watchId === '__daily_patrol__') {
       patrolling.value = true
       patrolStatus.value = 'running'
       patrolMessage.value = t('awaken.patrolRunning')
@@ -1001,7 +1001,7 @@ onUnmounted(() => {
   color: var(--text-muted);
 }
 
-/* 巡视状态 */
+/* 检查状态 */
 .patrol-status {
   display: flex;
   align-items: center;
