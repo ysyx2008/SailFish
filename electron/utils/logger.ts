@@ -117,14 +117,5 @@ export function getLogDir(): string | null {
 }
 
 export function createLogger(tag: string): Logger {
-  if (_initialized) {
-    return log.scope(tag)
-  }
-  const prefix = `[${tag}]`
-  return {
-    debug(...args: unknown[]) { console.debug(prefix, ...args) },
-    info(...args: unknown[]) { console.log(prefix, ...args) },
-    warn(...args: unknown[]) { console.warn(prefix, ...args) },
-    error(...args: unknown[]) { console.error(prefix, ...args) },
-  }
+  return log.scope(tag)
 }
