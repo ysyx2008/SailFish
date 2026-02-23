@@ -61,7 +61,7 @@ export class SailFish extends Agent {
     if (this.ptyId) {
       return `terminal:${this.ptyId}`
     }
-    return `assistant:${this._sessionId || 'unknown'}`
+    return `assistant:${this.currentRun?.id || 'unknown'}`
   }
   
   /**
