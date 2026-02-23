@@ -6,10 +6,11 @@
  *
  * 工作流程（每个账户独立）：
  *   1. 连接 IMAP 服务器并选中 INBOX
- *   2. 进入 IDLE 模式，等待服务器推送新邮件通知
- *   3. 收到新邮件时，获取邮件头信息，匹配 Watch 过滤规则
- *   4. 匹配成功则产生 email 事件投入 EventBus
- *   5. 连接断开时自动重连（指数退避）
+ *   2. 首次连接时扫描已有未读邮件（最多 50 封），补发事件（payload.catchUp=true）
+ *   3. 进入 IDLE 模式，等待服务器推送新邮件通知
+ *   4. 收到新邮件时，获取邮件头信息，匹配 Watch 过滤规则
+ *   5. 匹配成功则产生 email 事件投入 EventBus
+ *   6. 连接断开时自动重连（指数退避），重连后补漏断线期间到达的邮件
  */
 import type { Sensor, SensorEvent, EventBus } from './types'
 
@@ -48,6 +49,7 @@ interface AccountConnection {
 const MAX_RECONNECT_DELAY_MS = 5 * 60 * 1000
 const INITIAL_RECONNECT_DELAY_MS = 5 * 1000
 const IDLE_TIMEOUT_MS = 25 * 60 * 1000
+const MAX_UNSEEN_SCAN = 50
 
 let ImapFlowClass: any = null
 
@@ -264,8 +266,13 @@ export class EmailSensor implements Sensor {
     try {
       const lock = await conn.imapClient.getMailboxLock('INBOX')
       try {
-        const status = await conn.imapClient.status('INBOX', { uidNext: true })
-        conn.lastSeenUid = (status.uidNext || 1) - 1
+        if (conn.lastSeenUid === 0) {
+          const status = await conn.imapClient.status('INBOX', { uidNext: true })
+          conn.lastSeenUid = (status.uidNext || 1) - 1
+          await this.checkUnseenMail(conn)
+        } else {
+          await this.checkNewMail(conn)
+        }
 
         this.scheduleIdleRefresh(conn)
         await this.idleAndWait(conn)
@@ -295,62 +302,78 @@ export class EmailSensor implements Sensor {
     }
   }
 
+  /**
+   * 首次连接时扫描 INBOX 中已有的未读邮件，补发事件。
+   * 限制最多处理最近 MAX_UNSEEN_SCAN 封，防止积压大量未读时拖慢启动。
+   */
+  private async checkUnseenMail(conn: AccountConnection): Promise<void> {
+    if (!conn.imapClient?.usable || this.targets.size === 0) return
+
+    try {
+      const unseenSeqs: number[] = await conn.imapClient.search({ seen: false })
+      if (!unseenSeqs?.length) return
+
+      const toScan = unseenSeqs.length > MAX_UNSEEN_SCAN
+        ? unseenSeqs.slice(-MAX_UNSEEN_SCAN)
+        : unseenSeqs
+
+      console.log(`[EmailSensor] ${conn.account.email}: Scanning ${toScan.length} unseen email(s) at startup (total unseen: ${unseenSeqs.length})`)
+
+      for await (const msg of conn.imapClient.fetch(toScan, { envelope: true, uid: true })) {
+        this.emitMailEvents(conn, msg, true)
+      }
+    } catch (err) {
+      console.error(`[EmailSensor] ${conn.account.email}: Check unseen mail error:`, err)
+    }
+  }
+
   private async checkNewMail(conn: AccountConnection): Promise<void> {
     if (!conn.imapClient?.usable) return
 
     try {
-      const messages: Array<{
-        uid: number
-        envelope: {
-          from?: Array<{ name?: string; address?: string }>
-          subject?: string
-          date?: Date
-        }
-      }> = []
-
       for await (const msg of conn.imapClient.fetch(
         { uid: `${conn.lastSeenUid + 1}:*` },
         { envelope: true, uid: true }
       )) {
         if (msg.uid > conn.lastSeenUid) {
-          messages.push(msg)
-        }
-      }
-
-      for (const msg of messages) {
-        conn.lastSeenUid = Math.max(conn.lastSeenUid, msg.uid)
-
-        const from = msg.envelope?.from?.[0]
-        const fromAddr = from?.address || ''
-        const fromName = from?.name || ''
-        const subject = msg.envelope?.subject || ''
-
-        for (const [watchId, target] of this.targets) {
-          if (this.matchesFilter(target.filter, fromAddr, subject)) {
-            const event: SensorEvent = {
-              id: `em-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
-              type: 'email',
-              source: this.id,
-              timestamp: Date.now(),
-              watchId,
-              payload: {
-                uid: msg.uid,
-                from: fromAddr,
-                fromName,
-                subject,
-                date: msg.envelope?.date?.toISOString(),
-                account: conn.account.email
-              },
-              priority: 'normal'
-            }
-
-            console.log(`[EmailSensor] ${conn.account.email}: New email from ${fromAddr}: ${subject}`)
-            this.eventBus.emit(event)
-          }
+          conn.lastSeenUid = msg.uid
+          this.emitMailEvents(conn, msg, false)
         }
       }
     } catch (err) {
       console.error(`[EmailSensor] ${conn.account.email}: Check new mail error:`, err)
+    }
+  }
+
+  private emitMailEvents(conn: AccountConnection, msg: any, catchUp: boolean): void {
+    const from = msg.envelope?.from?.[0]
+    const fromAddr = from?.address || ''
+    const fromName = from?.name || ''
+    const subject = msg.envelope?.subject || ''
+
+    for (const [watchId, target] of this.targets) {
+      if (this.matchesFilter(target.filter, fromAddr, subject)) {
+        const event: SensorEvent = {
+          id: `em-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+          type: 'email',
+          source: this.id,
+          timestamp: Date.now(),
+          watchId,
+          payload: {
+            uid: msg.uid,
+            from: fromAddr,
+            fromName,
+            subject,
+            date: msg.envelope?.date?.toISOString(),
+            account: conn.account.email,
+            ...(catchUp && { catchUp: true })
+          },
+          priority: 'normal'
+        }
+
+        console.log(`[EmailSensor] ${conn.account.email}: ${catchUp ? 'Unseen' : 'New'} email from ${fromAddr}: ${subject}`)
+        this.eventBus.emit(event)
+      }
     }
   }
 
