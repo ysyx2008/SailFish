@@ -5,6 +5,9 @@
 import type { PtyService } from './pty.service'
 import type { SshService } from './ssh.service'
 import { getScreenAnalysisFromFrontend } from './screen-content.service'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('TerminalState')
 
 export interface TerminalState {
   /** 终端 ID (ptyId 或 sshId) */
@@ -186,7 +189,7 @@ export class TerminalStateService {
       try {
         callback(event)
       } catch (e) {
-        console.error('[TerminalStateService] CWD change callback error:', e)
+        log.error('CWD change callback error:', e)
       }
     }
   }
@@ -277,13 +280,12 @@ export class TerminalStateService {
       } else if (state.type === 'ssh') {
         // SSH 终端：从终端屏幕提示符解析 CWD
         // exec channel 会创建新会话，无法获取当前 shell 的 CWD
-        console.log(`[TerminalStateService] refreshCwd: SSH 终端 ${id}, 从屏幕分析获取 CWD`)
+        log.info(`refreshCwd: SSH 终端 ${id}, 从屏幕分析获取 CWD`)
         const analysis = await getScreenAnalysisFromFrontend(id, 2000)
-        console.log(`[TerminalStateService] refreshCwd: SSH 终端 ${id}, 屏幕分析结果:`, JSON.stringify(analysis?.context, null, 2))
+        log.info(`refreshCwd: SSH 终端 ${id}, 屏幕分析结果:`, JSON.stringify(analysis?.context, null, 2))
         if (analysis?.context?.cwdFromPrompt) {
-          // 从提示符解析到的路径可能是 ~ 开头，需要展开
           const cwdFromPrompt = analysis.context.cwdFromPrompt
-          console.log(`[TerminalStateService] refreshCwd: SSH 终端 ${id}, 提示符 CWD: ${cwdFromPrompt}`)
+          log.info(`refreshCwd: SSH 终端 ${id}, 提示符 CWD: ${cwdFromPrompt}`)
           if (cwdFromPrompt.startsWith('~')) {
             // 对于 ~ 路径，保持原样，SFTP 服务会处理
             newCwd = cwdFromPrompt
@@ -291,7 +293,7 @@ export class TerminalStateService {
             newCwd = cwdFromPrompt
           }
         } else {
-          console.log(`[TerminalStateService] refreshCwd: SSH 终端 ${id}, 无法从提示符获取 CWD, 可视内容:`, analysis?.visibleContent?.slice(-3))
+          log.info(`refreshCwd: SSH 终端 ${id}, 无法从提示符获取 CWD, 可视内容:`, analysis?.visibleContent?.slice(-3))
         }
       }
 
@@ -319,7 +321,7 @@ export class TerminalStateService {
 
       return state.cwd
     } catch (error) {
-      console.error('[TerminalStateService] Failed to refresh CWD:', error)
+      log.error('Failed to refresh CWD:', error)
       return state.cwd
     }
   }
@@ -397,7 +399,7 @@ export class TerminalStateService {
       try {
         callback(event)
       } catch (e) {
-        console.error('[TerminalStateService] Command execution callback error:', e)
+        log.error('Command execution callback error:', e)
       }
     }
   }

@@ -5,6 +5,9 @@
 
 import * as fs from 'fs'
 import { execSync } from 'child_process'
+import { createLogger } from '../../../../utils/logger'
+
+const log = createLogger('BrowserDetector')
 
 export interface BrowserInfo {
   name: string
@@ -23,7 +26,7 @@ export function detectBrowser(): BrowserInfo | null {
   
   for (const browser of browsers) {
     if (fs.existsSync(browser.executablePath)) {
-      console.log(`[BrowserDetector] Found ${browser.name} at ${browser.executablePath}`)
+      log.info(`Found ${browser.name} at ${browser.executablePath}`)
       return browser
     }
   }
@@ -43,7 +46,7 @@ export function detectBrowser(): BrowserInfo | null {
       try {
         const result = execSync(`which ${browser.cmd}`, { encoding: 'utf-8' }).trim()
         if (result) {
-          console.log(`[BrowserDetector] Found ${browser.name} at ${result}`)
+          log.info(`Found ${browser.name} at ${result}`)
           return {
             name: browser.name,
             type: browser.type,
@@ -56,7 +59,7 @@ export function detectBrowser(): BrowserInfo | null {
     }
   }
   
-  console.warn('[BrowserDetector] No browser found')
+  log.warn('No browser found')
   return null
 }
 

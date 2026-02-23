@@ -6,6 +6,9 @@
 import { registerSkill } from '../registry'
 import type { Skill } from '../types'
 import { schedulerTools } from './tools'
+import { createLogger } from '../../../../utils/logger'
+
+const log = createLogger('SchedulerSkill')
 
 const schedulerSkill: Skill = {
   id: 'scheduler',
@@ -14,11 +17,11 @@ const schedulerSkill: Skill = {
   tools: schedulerTools,
   
   async init() {
-    console.log('[SchedulerSkill] Initialized')
+    log.info('Initialized')
   },
   
   async cleanup() {
-    console.log('[SchedulerSkill] Cleaned up')
+    log.info('Cleaned up')
   }
 }
 
@@ -26,7 +29,7 @@ const schedulerSkill: Skill = {
 try {
   registerSkill(schedulerSkill)
 } catch (error) {
-  console.error('[SchedulerSkill] Failed to register:', error)
+  log.error('Failed to register:', error)
 }
 
 export { schedulerSkill }

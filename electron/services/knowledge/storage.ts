@@ -13,6 +13,9 @@ import type {
   KnowledgeStats 
 } from './types'
 import { getBM25Index, type BM25SearchResult } from './bm25'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('KnowledgeStorage')
 
 // LanceDB 记录类型
 export interface VectorRecord {
@@ -87,7 +90,7 @@ export class VectorStorage extends EventEmitter {
         // 检查现有数据的向量维度是否匹配
         const dimensionMismatch = await this.checkDimensionMismatch(dimensions)
         if (dimensionMismatch) {
-          console.log(`[VectorStorage] 检测到向量维度变化 (${dimensionMismatch} -> ${dimensions})，自动清空旧索引...`)
+          log.info(`检测到向量维度变化 (${dimensionMismatch} -> ${dimensions})，自动清空旧索引...`)
           await this.db.dropTable(this.tableName)
           this.table = null
           this.emit('dimensionMismatch', { old: dimensionMismatch, new: dimensions })
@@ -101,7 +104,7 @@ export class VectorStorage extends EventEmitter {
       this.isInitialized = true
       this.emit('initialized')
     } catch (error) {
-      console.error('[VectorStorage] Initialization failed:', error)
+      log.error('Initialization failed:', error)
       throw error
     }
   }
@@ -135,7 +138,7 @@ export class VectorStorage extends EventEmitter {
         }
       } catch {
         // 无法读取，可能数据损坏，清空重建
-        console.warn('[VectorStorage] 无法读取现有数据，将清空重建')
+        log.warn('无法读取现有数据，将清空重建')
         return -1  // 返回特殊值表示需要重建
       }
       return null
@@ -245,14 +248,14 @@ export class VectorStorage extends EventEmitter {
         } else {
           // 执行 compact 操作清理已删除的数据（异步，不阻塞）
           this.compactIfNeeded().catch(e => {
-            console.warn('[VectorStorage] Compact failed:', e)
+            log.warn('Compact failed:', e)
           })
         }
       }
       
       return removed
     } catch (error) {
-      console.error('[VectorStorage] Failed to remove chunks:', error)
+      log.error('Failed to remove chunks:', error)
       return 0
     }
   }
@@ -290,25 +293,25 @@ export class VectorStorage extends EventEmitter {
           ? { cleanupOlderThan: new Date() }
           : undefined
         await this.table.optimize(options)
-        console.log(`[VectorStorage] Compact (optimize${aggressive ? ', aggressive' : ''}) completed`)
+        log.info(`Compact (optimize${aggressive ? ', aggressive' : ''}) completed`)
       } else if (typeof this.table.cleanup === 'function') {
         await this.table.cleanup()
-        console.log('[VectorStorage] Compact (cleanup) completed')
+        log.info('Compact (cleanup) completed')
       } else if (typeof this.table.compaction === 'function') {
         await this.table.compaction()
-        console.log('[VectorStorage] Compact (compaction) completed')
+        log.info('Compact (compaction) completed')
       } else {
-        console.warn('[VectorStorage] No compact method available, will rely on delete')
+        log.warn('No compact method available, will rely on delete')
       }
       
       // 重新打开表以刷新缓存（确保删除的数据不会被缓存返回）
       const tableNames = await this.db.tableNames()
       if (tableNames.includes(this.tableName)) {
         this.table = await this.db.openTable(this.tableName)
-        console.log('[VectorStorage] Table reopened to refresh cache')
+        log.info('Table reopened to refresh cache')
       }
     } catch (error) {
-      console.error('[VectorStorage] Compact failed:', error)
+      log.error('Compact failed:', error)
     }
   }
 
@@ -324,7 +327,7 @@ export class VectorStorage extends EventEmitter {
       const filtered = (allRows as VectorRecord[]).filter(r => r.docId === docId)
       return filtered
     } catch (error) {
-      console.error('[VectorStorage] Failed to get records by docId:', error)
+      log.error('Failed to get records by docId:', error)
       return []
     }
   }
@@ -347,7 +350,7 @@ export class VectorStorage extends EventEmitter {
       }
       return result
     } catch (error) {
-      console.error('[VectorStorage] Failed to get records by docIds:', error)
+      log.error('Failed to get records by docIds:', error)
       return new Map()
     }
   }
@@ -381,7 +384,7 @@ export class VectorStorage extends EventEmitter {
 
       return this.formatResults(results, options)
     } catch (error) {
-      console.error('[VectorStorage] Vector search failed:', error)
+      log.error('Vector search failed:', error)
       return []
     }
   }
@@ -396,7 +399,7 @@ export class VectorStorage extends EventEmitter {
   ): Promise<SearchResult[]> {
     // LanceDB 没有内置全文搜索，使用向量搜索
     // 调用方需要先将 query 转为 embedding
-    console.warn('[VectorStorage] searchByText requires embedding, use hybridSearch instead')
+    log.warn('searchByText requires embedding, use hybridSearch instead')
     return []
   }
 
@@ -439,7 +442,7 @@ export class VectorStorage extends EventEmitter {
       // 4. 返回前 limit 个结果
       return fusedResults.slice(0, limit)
     } catch (error) {
-      console.error('[VectorStorage] Hybrid search failed:', error)
+      log.error('Hybrid search failed:', error)
       return []
     }
   }
@@ -598,13 +601,13 @@ export class VectorStorage extends EventEmitter {
       const tablePath = path.join(this.storagePath, `${this.tableName}.lance`)
       if (fs.existsSync(tablePath)) {
         fs.rmSync(tablePath, { recursive: true, force: true })
-        console.log('[VectorStorage] 已删除 LanceDB 数据目录:', tablePath)
+        log.info('已删除 LanceDB 数据目录:', tablePath)
       }
       
       this.deleteCount = 0
       this.emit('cleared')
     } catch (error) {
-      console.error('[VectorStorage] Clear failed:', error)
+      log.error('Clear failed:', error)
       throw error
     }
   }
@@ -646,7 +649,7 @@ export class VectorStorage extends EventEmitter {
           createdAt: r.createdAt
         }))
     } catch (error) {
-      console.error('[VectorStorage] Failed to get valid records:', error)
+      log.error('Failed to get valid records:', error)
       return []
     }
   }
@@ -667,7 +670,7 @@ export class VectorStorage extends EventEmitter {
       }
       return docIds
     } catch (error) {
-      console.error('[VectorStorage] Failed to get all docIds:', error)
+      log.error('Failed to get all docIds:', error)
       return new Set()
     }
   }

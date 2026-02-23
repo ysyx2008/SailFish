@@ -868,7 +868,11 @@ const electronAPI = {
 
     // 日志级别
     getLogLevel: () => ipcRenderer.invoke('config:getLogLevel') as Promise<string>,
-    setLogLevel: (level: string) => ipcRenderer.invoke('config:setLogLevel', level)
+    setLogLevel: (level: string) => ipcRenderer.invoke('config:setLogLevel', level),
+
+    // 日志目录
+    getLogDir: () => ipcRenderer.invoke('config:getLogDir') as Promise<string | null>,
+    openLogDir: () => ipcRenderer.invoke('config:openLogDir') as Promise<void>
   },
 
   // Xshell 导入操作

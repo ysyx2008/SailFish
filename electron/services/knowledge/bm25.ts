@@ -6,6 +6,9 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
 import { EventEmitter } from 'events'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('BM25')
 
 // 动态导入 jieba-wasm
 let jiebaModule: any = null
@@ -86,7 +89,7 @@ export class BM25Index extends EventEmitter {
 
       this.isInitialized = true
     } catch (error) {
-      console.error('[BM25] Initialization failed:', error)
+      log.error('Initialization failed:', error)
       throw error
     }
   }
@@ -347,7 +350,7 @@ export class BM25Index extends EventEmitter {
 
       fs.writeFileSync(this.indexPath, JSON.stringify(data), 'utf-8')
     } catch (error) {
-      console.error('[BM25] Failed to save index:', error)
+      log.error('Failed to save index:', error)
     }
   }
 
@@ -363,7 +366,7 @@ export class BM25Index extends EventEmitter {
       const data = JSON.parse(fs.readFileSync(this.indexPath, 'utf-8'))
       
       if (data.version !== 2) {
-        console.warn('[BM25] Index version mismatch (v%d → v2), rebuilding', data.version || 1)
+        log.warn('Index version mismatch (v%d → v2), rebuilding', data.version || 1)
         return
       }
 
@@ -380,7 +383,7 @@ export class BM25Index extends EventEmitter {
         this.invertedIndex.set(term, new Map(postings))
       }
     } catch (error) {
-      console.error('[BM25] Failed to load index:', error)
+      log.error('Failed to load index:', error)
       // 清空重建
       this.documents.clear()
       this.invertedIndex.clear()

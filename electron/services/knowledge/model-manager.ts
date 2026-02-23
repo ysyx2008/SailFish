@@ -11,6 +11,9 @@ import * as crypto from 'crypto'
 import { app } from 'electron'
 import { EventEmitter } from 'events'
 import type { ModelInfo, ModelTier, ModelStatus, DownloadProgressCallback } from './types'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('ModelManager')
 
 // 模型定义
 const MODELS: Record<ModelTier, ModelInfo> = {
@@ -79,7 +82,7 @@ export class ModelManager extends EventEmitter {
       }
     }
     this.bundledModelsPath = resourcesPath
-    console.log('[ModelManager] bundledModelsPath:', this.bundledModelsPath)
+    log.info('bundledModelsPath:', this.bundledModelsPath)
 
     // 用户下载的模型路径
     this.downloadedModelsPath = path.join(app.getPath('userData'), 'models', 'embedding')
@@ -139,7 +142,7 @@ export class ModelManager extends EventEmitter {
     
     // 检查模型目录是否存在
     if (!fs.existsSync(modelPath)) {
-      console.warn(`[ModelManager] Model ${id} not available: directory not found at ${modelPath}`)
+      log.warn(`Model ${id} not available: directory not found at ${modelPath}`)
       return false
     }
 
@@ -147,7 +150,7 @@ export class ModelManager extends EventEmitter {
     const requiredFiles = ['config.json', 'tokenizer.json']
     for (const file of requiredFiles) {
       if (!fs.existsSync(path.join(modelPath, file))) {
-        console.warn(`[ModelManager] Model ${id} not available: missing ${file}`)
+        log.warn(`Model ${id} not available: missing ${file}`)
         return false
       }
     }
@@ -156,7 +159,7 @@ export class ModelManager extends EventEmitter {
     const onnxPath = path.join(modelPath, 'onnx', 'model_quantized.onnx')
     const onnxAltPath = path.join(modelPath, 'onnx', 'model.onnx')
     if (!fs.existsSync(onnxPath) && !fs.existsSync(onnxAltPath)) {
-      console.warn(`[ModelManager] Model ${id} not available: missing ONNX model`)
+      log.warn(`Model ${id} not available: missing ONNX model`)
       return false
     }
 
@@ -235,7 +238,7 @@ export class ModelManager extends EventEmitter {
     }
 
     if (this.isModelAvailable(id)) {
-      console.log(`[ModelManager] Model ${id} already available`)
+      log.info(`Model ${id} already available`)
       return
     }
 
@@ -268,7 +271,7 @@ export class ModelManager extends EventEmitter {
           fs.mkdirSync(fileDir, { recursive: true })
         }
 
-        console.log(`[ModelManager] Downloading ${file}...`)
+        log.info(`Downloading ${file}...`)
         
         await this.downloadFile(fileUrl, filePath, (downloaded, _total) => {
           // 估算总体进度
@@ -297,7 +300,7 @@ export class ModelManager extends EventEmitter {
       }
       
       this.emit('downloadComplete', id)
-      console.log(`[ModelManager] Model ${id} downloaded successfully`)
+      log.info(`Model ${id} downloaded successfully`)
 
     } catch (error) {
       // 下载失败，清理部分下载的文件

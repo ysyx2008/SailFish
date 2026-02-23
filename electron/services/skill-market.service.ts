@@ -6,6 +6,9 @@ import * as fs from 'fs'
 import * as path from 'path'
 import type { ConfigService } from './config.service'
 import type { UserSkillService } from './user-skill.service'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('SkillMarket')
 
 const DEFAULT_REGISTRY_URL = 'https://www.sfterm.com/skill-registry.json'
 
@@ -190,7 +193,7 @@ export class SkillMarketService {
     } catch (error) {
       // 网络失败时使用内置 fallback，保证用户不会看到空白市场
       if (!this.registryCache) {
-        console.warn('[SkillMarket] Remote registry unavailable, using bundled fallback')
+        log.warn('Remote registry unavailable, using bundled fallback')
         this.registryCache = BUNDLED_REGISTRY
         this.cacheTime = Date.now()
       }
@@ -267,11 +270,11 @@ export class SkillMarketService {
       fs.renameSync(tmpPath, targetPath)
 
       this.userSkillService.refresh()
-      console.log(`[SkillMarket] Installed skill: ${skillId} v${skill.version}`)
+      log.info(`Installed skill: ${skillId} v${skill.version}`)
       return { success: true }
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error'
-      console.error(`[SkillMarket] Failed to install ${skillId}:`, error)
+      log.error(`Failed to install ${skillId}:`, error)
       return { success: false, error: msg }
     }
   }
@@ -289,7 +292,7 @@ export class SkillMarketService {
       if (fs.existsSync(skillDir) && fs.statSync(skillDir).isDirectory()) {
         fs.rmSync(skillDir, { recursive: true })
         this.userSkillService.refresh()
-        console.log(`[SkillMarket] Uninstalled skill: ${skillId}`)
+        log.info(`Uninstalled skill: ${skillId}`)
         return { success: true }
       }
 
@@ -298,14 +301,14 @@ export class SkillMarketService {
       if (fs.existsSync(skillFile)) {
         fs.unlinkSync(skillFile)
         this.userSkillService.refresh()
-        console.log(`[SkillMarket] Uninstalled skill: ${skillId}`)
+        log.info(`Uninstalled skill: ${skillId}`)
         return { success: true }
       }
 
       return { success: false, error: `Skill "${skillId}" not found locally` }
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error'
-      console.error(`[SkillMarket] Failed to uninstall ${skillId}:`, error)
+      log.error(`Failed to uninstall ${skillId}:`, error)
       return { success: false, error: msg }
     }
   }

@@ -2,7 +2,9 @@ import Store from 'electron-store'
 import { safeStorage } from 'electron'
 import type { KnowledgeSettings } from './knowledge/types'
 import { DEFAULT_KNOWLEDGE_SETTINGS } from './knowledge/types'
-import type { LogLevel } from '../utils/logger'
+import { createLogger, type LogLevel } from '../utils/logger'
+
+const log = createLogger('Config')
 
 export interface AiProfile {
   id: string
@@ -233,7 +235,7 @@ export class ConfigService {
         encryptionKey = keyBuffer.toString('hex').substring(0, 32) // 取前32字符作为密钥
       }
     } catch (e) {
-      console.warn('safeStorage not available, using unencrypted storage')
+      log.warn('safeStorage not available, using unencrypted storage')
     }
 
     // CLI 模式使用独立的配置文件，避免读取 Electron 加密的配置
@@ -243,7 +245,7 @@ export class ConfigService {
       : 'qiyu-terminal-config'
 
     if (isCli) {
-      console.warn('[CLI] 配置文件未加密存储，请勿在共享环境中保存敏感信息（如 API Key）')
+      log.warn('配置文件未加密存储，请勿在共享环境中保存敏感信息（如 API Key）')
     }
 
     this.store = new Store<StoreSchema>({

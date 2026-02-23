@@ -13,6 +13,9 @@
  *   6. 连接断开时自动重连（指数退避），重连后补漏断线期间到达的邮件
  */
 import type { Sensor, SensorEvent, EventBus } from './types'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('EmailSensor')
 
 interface EmailFilter {
   from?: string
@@ -112,7 +115,7 @@ export class EmailSensor implements Sensor {
       }
     }
 
-    console.log(`[EmailSensor] Configured ${accounts.length} account(s) (added=${added.length}, removed=${removed.length})`)
+    log.info(`Configured ${accounts.length} account(s) (added=${added.length}, removed=${removed.length})`)
   }
 
   /** 保留旧 API 兼容（单账户） */
@@ -139,7 +142,7 @@ export class EmailSensor implements Sensor {
   async start(): Promise<void> {
     if (this._running) return
     if (!this.accounts.length || !this.getCredential) {
-      console.log('[EmailSensor] No accounts configured, skipping start')
+      log.info('No accounts configured, skipping start')
       return
     }
     this._running = true
@@ -156,7 +159,7 @@ export class EmailSensor implements Sensor {
     const stopTasks = Array.from(this.connections.keys()).map(id => this.stopAccount(id))
     await Promise.all(stopTasks)
 
-    console.log('[EmailSensor] Stopped')
+    log.info('Stopped')
   }
 
   getAccountStatuses(): Array<{ accountId: string; email: string; connected: boolean }> {
@@ -194,7 +197,7 @@ export class EmailSensor implements Sensor {
     await this.disconnectAccount(conn)
     this.connections.delete(accountId)
 
-    console.log(`[EmailSensor] Account ${conn.account.email} stopped`)
+    log.info(`Account ${conn.account.email} stopped`)
   }
 
   private async connectAccount(conn: AccountConnection): Promise<void> {
@@ -202,7 +205,7 @@ export class EmailSensor implements Sensor {
 
     const credential = await this.getCredential(conn.account.accountId)
     if (!credential) {
-      console.error(`[EmailSensor] No credential for ${conn.account.email}`)
+      log.error(`No credential for ${conn.account.email}`)
       return
     }
 
@@ -225,24 +228,24 @@ export class EmailSensor implements Sensor {
 
       conn.imapClient.on('close', () => {
         conn.connected = false
-        console.log(`[EmailSensor] ${conn.account.email}: IMAP connection closed`)
+        log.info(`${conn.account.email}: IMAP connection closed`)
         if (this._running && this.connections.has(conn.account.accountId)) {
           this.scheduleReconnect(conn)
         }
       })
 
       conn.imapClient.on('error', (err: Error) => {
-        console.error(`[EmailSensor] ${conn.account.email}: IMAP error:`, err.message)
+        log.error(`${conn.account.email}: IMAP error:`, err.message)
       })
 
       await conn.imapClient.connect()
       conn.connected = true
       conn.reconnectDelay = INITIAL_RECONNECT_DELAY_MS
 
-      console.log(`[EmailSensor] Connected to ${conn.account.email}`)
+      log.info(`Connected to ${conn.account.email}`)
       await this.startIdleLoop(conn)
     } catch (err) {
-      console.error(`[EmailSensor] ${conn.account.email}: Failed to connect:`, err)
+      log.error(`${conn.account.email}: Failed to connect:`, err)
       conn.connected = false
       if (this._running && this.connections.has(conn.account.accountId)) {
         this.scheduleReconnect(conn)
@@ -280,7 +283,7 @@ export class EmailSensor implements Sensor {
         lock.release()
       }
     } catch (err) {
-      console.error(`[EmailSensor] ${conn.account.email}: IDLE loop error:`, err)
+      log.error(`${conn.account.email}: IDLE loop error:`, err)
       if (this._running && this.connections.has(conn.account.accountId)) {
         this.scheduleReconnect(conn)
       }
@@ -296,7 +299,7 @@ export class EmailSensor implements Sensor {
         if (err?.code === 'ECONNRESET' || err?.message?.includes('closed')) {
           break
         }
-        console.error(`[EmailSensor] ${conn.account.email}: IDLE error:`, err)
+        log.error(`${conn.account.email}: IDLE error:`, err)
         break
       }
     }
@@ -317,13 +320,13 @@ export class EmailSensor implements Sensor {
         ? unseenSeqs.slice(-MAX_UNSEEN_SCAN)
         : unseenSeqs
 
-      console.log(`[EmailSensor] ${conn.account.email}: Scanning ${toScan.length} unseen email(s) at startup (total unseen: ${unseenSeqs.length})`)
+      log.info(`${conn.account.email}: Scanning ${toScan.length} unseen email(s) at startup (total unseen: ${unseenSeqs.length})`)
 
       for await (const msg of conn.imapClient.fetch(toScan, { envelope: true, uid: true })) {
         this.emitMailEvents(conn, msg, true)
       }
     } catch (err) {
-      console.error(`[EmailSensor] ${conn.account.email}: Check unseen mail error:`, err)
+      log.error(`${conn.account.email}: Check unseen mail error:`, err)
     }
   }
 
@@ -341,7 +344,7 @@ export class EmailSensor implements Sensor {
         }
       }
     } catch (err) {
-      console.error(`[EmailSensor] ${conn.account.email}: Check new mail error:`, err)
+      log.error(`${conn.account.email}: Check new mail error:`, err)
     }
   }
 
@@ -371,7 +374,7 @@ export class EmailSensor implements Sensor {
           priority: 'normal'
         }
 
-        console.log(`[EmailSensor] ${conn.account.email}: ${catchUp ? 'Unseen' : 'New'} email from ${fromAddr}: ${subject}`)
+        log.info(`${conn.account.email}: ${catchUp ? 'Unseen' : 'New'} email from ${fromAddr}: ${subject}`)
         this.eventBus.emit(event)
       }
     }
@@ -394,7 +397,7 @@ export class EmailSensor implements Sensor {
     this.clearAccountTimers(conn)
 
     const delay = Math.min(conn.reconnectDelay, MAX_RECONNECT_DELAY_MS)
-    console.log(`[EmailSensor] ${conn.account.email}: Reconnecting in ${delay / 1000}s...`)
+    log.info(`${conn.account.email}: Reconnecting in ${delay / 1000}s...`)
 
     conn.reconnectTimer = setTimeout(async () => {
       conn.reconnectTimer = null
@@ -415,7 +418,7 @@ export class EmailSensor implements Sensor {
         try {
           await conn.imapClient.noop()
         } catch {
-          console.log(`[EmailSensor] ${conn.account.email}: IDLE keepalive failed`)
+          log.info(`${conn.account.email}: IDLE keepalive failed`)
         }
       }
     }, IDLE_TIMEOUT_MS)

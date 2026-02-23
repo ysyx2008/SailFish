@@ -17,6 +17,9 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('RemoteChat')
 
 // ==================== 类型定义 ====================
 
@@ -156,7 +159,7 @@ export class RemoteChatService {
     this.ensureDesktopTab()
 
     const remoteChannelValue = remoteChannel || 'desktop'
-    console.log(`[RemoteChat] sendMessage: agentId=${this.agentId}, remoteChannel=${remoteChannelValue}, message="${message.trim().substring(0, 60)}"`)
+    log.info(`sendMessage: agentId=${this.agentId}, remoteChannel=${remoteChannelValue}, message="${message.trim().substring(0, 60)}"`)
 
     this.history.push({
       role: 'user',
@@ -271,7 +274,7 @@ export class RemoteChatService {
     this._isRunning = false
     this._pendingConfirm = null
 
-    console.log(`[RemoteChat] onAgentComplete: agentId=${this.agentId}, result="${result.substring(0, 60)}"`)
+    log.info(`onAgentComplete: agentId=${this.agentId}, result="${result.substring(0, 60)}"`)
 
     this._callerCallbacks?.onComplete?.(this.agentId, result)
     this._callerCallbacks = null
@@ -299,7 +302,7 @@ export class RemoteChatService {
     this._isRunning = false
     this._pendingConfirm = null
 
-    console.log(`[RemoteChat] onAgentError: agentId=${this.agentId}, error="${error.substring(0, 80)}"`)
+    log.info(`onAgentError: agentId=${this.agentId}, error="${error.substring(0, 80)}"`)
 
     this._callerCallbacks?.onError?.(this.agentId, error)
     this._callerCallbacks = null

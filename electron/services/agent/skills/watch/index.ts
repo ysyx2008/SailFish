@@ -6,6 +6,9 @@
 import { registerSkill } from '../registry'
 import type { Skill } from '../types'
 import { watchTools } from './tools'
+import { createLogger } from '../../../../utils/logger'
+
+const log = createLogger('WatchSkill')
 
 const watchSkill: Skill = {
   id: 'watch',
@@ -14,18 +17,18 @@ const watchSkill: Skill = {
   tools: watchTools,
 
   async init() {
-    console.log('[WatchSkill] Initialized')
+    log.info('Initialized')
   },
 
   async cleanup() {
-    console.log('[WatchSkill] Cleaned up')
+    log.info('Cleaned up')
   }
 }
 
 try {
   registerSkill(watchSkill)
 } catch (error) {
-  console.error('[WatchSkill] Failed to register:', error)
+  log.error('Failed to register:', error)
 }
 
 export { watchSkill }

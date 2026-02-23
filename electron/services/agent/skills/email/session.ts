@@ -5,6 +5,9 @@
 
 import type { ImapFlow } from 'imapflow'
 import type { Transporter } from 'nodemailer'
+import { createLogger } from '../../../../utils/logger'
+
+const log = createLogger('EmailSession')
 
 export interface EmailSession {
   /** 账户 ID */
@@ -43,7 +46,7 @@ function startTimeoutChecker(): void {
     const entries = Array.from(openSessions.entries())
     for (const [accountId, session] of entries) {
       if (now - session.lastAccess > SESSION_TIMEOUT) {
-        console.log(`[EmailSession] Auto-closing timed out session: ${accountId}`)
+        log.info(`Auto-closing timed out session: ${accountId}`)
         closeSession(accountId)
       }
     }
@@ -139,7 +142,7 @@ export async function closeSession(accountId: string): Promise<void> {
       try {
         await session.imapClient.logout()
       } catch (error) {
-        console.error(`[EmailSession] Error closing IMAP connection for ${accountId}:`, error)
+        log.error(`Error closing IMAP connection for ${accountId}:`, error)
       }
     }
     
@@ -148,7 +151,7 @@ export async function closeSession(accountId: string): Promise<void> {
       try {
         session.smtpTransporter.close()
       } catch (error) {
-        console.error(`[EmailSession] Error closing SMTP connection for ${accountId}:`, error)
+        log.error(`Error closing SMTP connection for ${accountId}:`, error)
       }
     }
   } finally {

@@ -3,6 +3,9 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
+import { createLogger } from '../../../../utils/logger'
+
+const log = createLogger('ConfigExecutor')
 import { getConfigService } from '../../../config.service'
 import { getIMService } from '../../../im/im.service'
 import {
@@ -795,6 +798,6 @@ function notifyFrontendConfigChanged(): void {
       }
     }
   } catch (err) {
-    console.warn('[ConfigSkill] Failed to notify frontend:', err)
+    log.warn('Failed to notify frontend:', err)
   }
 }

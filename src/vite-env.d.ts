@@ -610,6 +610,9 @@ interface Window {
       // 日志级别
       getLogLevel: () => Promise<string>
       setLogLevel: (level: string) => Promise<void>
+      // 日志目录
+      getLogDir: () => Promise<string | null>
+      openLogDir: () => Promise<void>
     }
     xshell: {
       selectFiles: () => Promise<{ canceled: boolean; filePaths: string[] }>

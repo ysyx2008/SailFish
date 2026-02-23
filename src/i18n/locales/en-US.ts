@@ -429,7 +429,8 @@ export default {
     agentDebugMode: 'Agent Debug Mode',
     agentDebugModeDesc: 'Show detailed tool call steps when enabled, simpler interaction when disabled',
     logLevel: 'Log Level',
-    logLevelDesc: 'Controls console log verbosity. Debug outputs the most, Silent suppresses all. Warn is recommended',
+    logLevelDesc: 'Controls log verbosity. Debug outputs the most, Silent suppresses all. Warn is recommended. Logs are also written to files for troubleshooting',
+    openLogDir: 'Open Log Directory',
     // Steam build: no AI/API config entry
     steamNoAiConfig: 'The Steam version does not offer AI service configuration. You can use terminal, SSH, and file management features as normal.'
   },

@@ -1,6 +1,9 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('XshellImport')
 
 export interface XshellSession {
   name: string
@@ -49,7 +52,7 @@ export class XshellImportService {
       
       // 调试：记录找到的节名称
       const sectionNames = Object.keys(sections)
-      console.log(`[Xshell] 文件 ${fileName} 的节: ${sectionNames.join(', ')}`)
+      log.info(`文件 ${fileName} 的节: ${sectionNames.join(', ')}`)
       
       // 连接信息在 [CONNECTION] 节
       const connectionSection = sections['CONNECTION'] || sections['Connection'] || {}
@@ -72,9 +75,9 @@ export class XshellImportService {
         // 提供更详细的调试信息
         const connKeys = Object.keys(connectionSection)
         const sshKeys = Object.keys(sshSection)
-        console.warn(`[Xshell] 文件 ${fileName} 无主机信息`)
-        console.warn(`[Xshell] CONNECTION 键: ${connKeys.join(', ') || '(空)'}`)
-        console.warn(`[Xshell] CONNECTION:SSH 键: ${sshKeys.join(', ') || '(空)'}`)
+        log.warn(`文件 ${fileName} 无主机信息`)
+        log.warn(`CONNECTION 键: ${connKeys.join(', ') || '(空)'}`)
+        log.warn(`CONNECTION:SSH 键: ${sshKeys.join(', ') || '(空)'}`)
         return { error: `无主机信息 (节: ${sectionNames.slice(0, 5).join(', ')}${sectionNames.length > 5 ? '...' : ''})` }
       }
       
@@ -107,7 +110,7 @@ export class XshellImportService {
         group: undefined
       }
     } catch (error) {
-      console.error(`[Xshell] 解析文件 ${filePath} 失败:`, error)
+      log.error(`解析文件 ${filePath} 失败:`, error)
       return { error: `解析异常: ${error}` }
     }
   }
@@ -201,12 +204,12 @@ export class XshellImportService {
     const errors: string[] = []
     const stats = { totalFiles: 0, parsedFiles: 0, failedFiles: 0 }
     
-    console.log(`[Xshell] 开始导入目录: ${dirPath}`)
+    log.info(`开始导入目录: ${dirPath}`)
     
     try {
       this.scanDirectory(dirPath, sessions, errors, '', stats)
       
-      console.log(`[Xshell] 导入完成: 总文件 ${stats.totalFiles}, 成功 ${stats.parsedFiles}, 失败 ${stats.failedFiles}`)
+      log.info(`导入完成: 总文件 ${stats.totalFiles}, 成功 ${stats.parsedFiles}, 失败 ${stats.failedFiles}`)
       
       return {
         success: sessions.length > 0,
@@ -215,7 +218,7 @@ export class XshellImportService {
         debug: stats
       }
     } catch (error) {
-      console.error(`[Xshell] 导入目录失败:`, error)
+      log.error('导入目录失败:', error)
       return {
         success: false,
         sessions: [],
@@ -233,7 +236,7 @@ export class XshellImportService {
     const errors: string[] = []
     const totalStats = { totalFiles: 0, parsedFiles: 0, failedFiles: 0 }
     
-    console.log(`[Xshell] 开始导入 ${dirPaths.length} 个目录`)
+    log.info(`开始导入 ${dirPaths.length} 个目录`)
     
     for (const dirPath of dirPaths) {
       const result = this.importFromDirectory(dirPath)
@@ -246,7 +249,7 @@ export class XshellImportService {
       }
     }
     
-    console.log(`[Xshell] 多目录导入完成: 总文件 ${totalStats.totalFiles}, 成功 ${totalStats.parsedFiles}, 失败 ${totalStats.failedFiles}`)
+    log.info(`多目录导入完成: 总文件 ${totalStats.totalFiles}, 成功 ${totalStats.parsedFiles}, 失败 ${totalStats.failedFiles}`)
     
     return {
       success: sessions.length > 0,

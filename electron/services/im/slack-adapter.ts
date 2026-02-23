@@ -20,6 +20,9 @@ import * as path from 'path'
 import type { IMAdapter, IMIncomingMessage, IMPlatform, SlackConfig, IMAttachment } from './types'
 import { IM_TEXT_MAX_LENGTH, IM_FILE_MAX_SIZE_SLACK, IM_DOWNLOAD_MAX_SIZE } from './types'
 import { t } from '../agent/i18n'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('Slack')
 
 // Slack SDK 懒加载
 let App: any
@@ -31,7 +34,7 @@ async function loadSDK() {
     App = bolt.App
     LogLevel = bolt.LogLevel
   } catch (err) {
-    console.error('[Slack] Failed to load @slack/bolt:', err)
+    log.error('Failed to load @slack/bolt:', err)
     throw new Error('@slack/bolt not available. Install with: npm install @slack/bolt')
   }
 }
@@ -52,7 +55,7 @@ export class SlackAdapter implements IMAdapter {
 
   async start(): Promise<void> {
     if (this.connected) {
-      console.log('[Slack] Already connected')
+      log.info('Already connected')
       return
     }
 
@@ -70,7 +73,7 @@ export class SlackAdapter implements IMAdapter {
       try {
         await this.handleMessageEvent(message)
       } catch (err) {
-        console.error('[Slack] Error handling message event:', err)
+        log.error('Error handling message event:', err)
       }
     })
 
@@ -78,7 +81,7 @@ export class SlackAdapter implements IMAdapter {
       await this.app.start()
       this.connected = true
       this.onConnectionChange?.(true)
-      console.log('[Slack] Socket Mode connected')
+      log.info('Socket Mode connected')
     } catch (err) {
       this.connected = false
       this.onConnectionChange?.(false)
@@ -97,7 +100,7 @@ export class SlackAdapter implements IMAdapter {
     }
     this.connected = false
     this.onConnectionChange?.(false)
-    console.log('[Slack] Disconnected')
+    log.info('Disconnected')
   }
 
   isConnected(): boolean {
@@ -237,7 +240,7 @@ export class SlackAdapter implements IMAdapter {
             attachments.push(attachment)
           }
         } catch (err) {
-          console.error('[Slack] Failed to download file:', err)
+          log.error('Failed to download file:', err)
         }
       }
     }
@@ -274,7 +277,7 @@ export class SlackAdapter implements IMAdapter {
 
     // 检查文件大小
     if (file.size && file.size > IM_DOWNLOAD_MAX_SIZE) {
-      console.warn(`[Slack] File too large: ${(file.size / 1024 / 1024).toFixed(1)}MB`)
+      log.warn(`File too large: ${(file.size / 1024 / 1024).toFixed(1)}MB`)
       return null
     }
 
@@ -314,10 +317,10 @@ export class SlackAdapter implements IMAdapter {
 
       fs.writeFileSync(localPath, buffer)
 
-      console.log(`[Slack] Downloaded file: ${localPath} (${(buffer.length / 1024).toFixed(1)}KB)`)
+      log.info(`Downloaded file: ${localPath} (${(buffer.length / 1024).toFixed(1)}KB)`)
       return { type: attachmentType, localPath, fileName }
     } catch (err: any) {
-      console.error(`[Slack] Failed to download file:`, err.message || err)
+      log.error('Failed to download file:', err.message || err)
       return null
     }
   }

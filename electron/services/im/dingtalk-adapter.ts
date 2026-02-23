@@ -17,6 +17,9 @@ import * as path from 'path'
 import type { IMAdapter, IMIncomingMessage, IMPlatform, DingTalkConfig, IMAttachment } from './types'
 import { IM_TEXT_MAX_LENGTH, IM_FILE_MAX_SIZE_DINGTALK, IM_DOWNLOAD_MAX_SIZE } from './types'
 import { t } from '../agent/i18n'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('DingTalk')
 
 // dingtalk-stream SDK 导入
 let DWClient: any
@@ -28,7 +31,7 @@ async function loadSDK() {
     DWClient = sdk.DWClient
     TOPIC_ROBOT = sdk.TOPIC_ROBOT
   } catch (err) {
-    console.error('[DingTalk] Failed to load dingtalk-stream SDK:', err)
+    log.error('Failed to load dingtalk-stream SDK:', err)
     throw new Error('dingtalk-stream SDK not available')
   }
 }
@@ -73,7 +76,7 @@ export class DingTalkAdapter implements IMAdapter {
 
   async start(): Promise<void> {
     if (this.connected) {
-      console.log('[DingTalk] Already connected')
+      log.info('Already connected')
       return
     }
 
@@ -89,7 +92,7 @@ export class DingTalkAdapter implements IMAdapter {
       try {
         await this.handleRobotMessage(res)
       } catch (err) {
-        console.error('[DingTalk] Error handling robot message:', err)
+        log.error('Error handling robot message:', err)
       }
     })
 
@@ -103,7 +106,7 @@ export class DingTalkAdapter implements IMAdapter {
       await this.client.connect()
       this.connected = true
       this.onConnectionChange?.(true)
-      console.log('[DingTalk] Stream connected')
+      log.info('Stream connected')
     } catch (err) {
       this.connected = false
       this.onConnectionChange?.(false)
@@ -120,7 +123,7 @@ export class DingTalkAdapter implements IMAdapter {
     }
     this.connected = false
     this.onConnectionChange?.(false)
-    console.log('[DingTalk] Disconnected')
+    log.info('Disconnected')
   }
 
   isConnected(): boolean {
@@ -342,10 +345,10 @@ export class DingTalkAdapter implements IMAdapter {
           attachments.push(attachment)
         }
       } catch (err) {
-        console.error(`[DingTalk] Failed to process ${robotMsg.msgtype} message:`, err)
+        log.error(`Failed to process ${robotMsg.msgtype} message:`, err)
       }
     } else {
-      console.log(`[DingTalk] Unsupported message type: ${robotMsg.msgtype}, ignoring`)
+      log.info(`Unsupported message type: ${robotMsg.msgtype}, ignoring`)
       return
     }
 
@@ -394,7 +397,7 @@ export class DingTalkAdapter implements IMAdapter {
     const parsed = typeof content === 'string' ? JSON.parse(content) : (content || {})
     const downloadCode = parsed.downloadCode || parsed.pictureDownloadCode
     if (!downloadCode) {
-      console.warn(`[DingTalk] No downloadCode in ${msgtype} message`)
+      log.warn(`No downloadCode in ${msgtype} message`)
       return null
     }
 
@@ -470,10 +473,10 @@ export class DingTalkAdapter implements IMAdapter {
 
       fs.writeFileSync(localPath, buffer)
 
-      console.log(`[DingTalk] Downloaded ${msgtype}: ${localPath} (${(buffer.length / 1024).toFixed(1)}KB)`)
+      log.info(`Downloaded ${msgtype}: ${localPath} (${(buffer.length / 1024).toFixed(1)}KB)`)
       return { type: attachmentType, localPath, fileName }
     } catch (err: any) {
-      console.error(`[DingTalk] Failed to download ${msgtype}:`, err.message || err)
+      log.error(`Failed to download ${msgtype}:`, err.message || err)
       return null
     }
   }

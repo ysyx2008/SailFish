@@ -6,6 +6,9 @@
  * - Linux: Secret Service (libsecret)
  */
 
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('Credential')
 const SERVICE_NAME = 'SFTerminal'
 
 // keytar 模块（延迟加载）
@@ -32,9 +35,9 @@ export async function setCredential(key: string, secret: string): Promise<void> 
   try {
     const kt = await getKeytar()
     await kt.setPassword(SERVICE_NAME, key, secret)
-    console.log(`[CredentialService] Credential stored: ${key}`)
+    log.info(`Credential stored: ${key}`)
   } catch (error) {
-    console.error(`[CredentialService] Failed to store credential: ${key}`, error)
+    log.error(`Failed to store credential: ${key}`, error)
     throw new Error(`无法存储凭据: ${error instanceof Error ? error.message : '未知错误'}`)
   }
 }
@@ -50,7 +53,7 @@ export async function getCredential(key: string): Promise<string | null> {
     const secret = await kt.getPassword(SERVICE_NAME, key)
     return secret
   } catch (error) {
-    console.error(`[CredentialService] Failed to get credential: ${key}`, error)
+    log.error(`Failed to get credential: ${key}`, error)
     return null
   }
 }
@@ -65,11 +68,11 @@ export async function deleteCredential(key: string): Promise<boolean> {
     const kt = await getKeytar()
     const result = await kt.deletePassword(SERVICE_NAME, key)
     if (result) {
-      console.log(`[CredentialService] Credential deleted: ${key}`)
+      log.info(`Credential deleted: ${key}`)
     }
     return result
   } catch (error) {
-    console.error(`[CredentialService] Failed to delete credential: ${key}`, error)
+    log.error(`Failed to delete credential: ${key}`, error)
     return false
   }
 }
@@ -89,7 +92,7 @@ export async function listCredentials(prefix?: string): Promise<string[]> {
     }
     return keys
   } catch (error) {
-    console.error(`[CredentialService] Failed to list credentials`, error)
+    log.error('Failed to list credentials', error)
     return []
   }
 }
@@ -187,7 +190,7 @@ export async function getOAuth2Token(accountId: string): Promise<OAuth2Token | n
     
     // 检查是否过期（提前 5 分钟判断）
     if (token.expiresAt && Date.now() > (token.expiresAt - 5 * 60 * 1000)) {
-      console.log(`[CredentialService] OAuth2 token expired for: ${accountId}`)
+      log.info(`OAuth2 token expired for: ${accountId}`)
       // 返回 token 以便调用者使用 refreshToken 刷新
       return token
     }

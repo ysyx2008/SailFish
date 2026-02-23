@@ -7,6 +7,9 @@ import { registerSkill } from '../registry'
 import type { Skill } from '../types'
 import { excelTools } from './tools'
 import { closeAllSessions } from './session'
+import { createLogger } from '../../../../utils/logger'
+
+const log = createLogger('ExcelSkill')
 
 const excelSkill: Skill = {
   id: 'excel',
@@ -16,13 +19,13 @@ const excelSkill: Skill = {
   
   async init() {
     // exceljs 会在执行时动态 import，这里不需要预加载
-    console.log('[ExcelSkill] Initialized')
+    log.info('Initialized')
   },
   
   async cleanup() {
     // 关闭所有打开的 Excel 文件
     await closeAllSessions()
-    console.log('[ExcelSkill] Cleaned up')
+    log.info('Cleaned up')
   }
 }
 

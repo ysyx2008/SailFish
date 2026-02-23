@@ -6,6 +6,9 @@
 import type { SkillState, SkillLoadResult, SkillSessionManager } from './types'
 import type { ToolDefinition } from '../tools'
 import { getSkill, getSkillsSummary } from './registry'
+import { createLogger } from '../../../utils/logger'
+
+const log = createLogger('SkillLoader')
 
 /**
  * 技能会话管理器实现
@@ -98,7 +101,7 @@ export class SkillSession implements SkillSessionManager {
       try {
         await skill.cleanup()
       } catch (error) {
-        console.error(`[SkillSession] Error cleaning up skill "${skillId}":`, error)
+        log.error(`Error cleaning up skill "${skillId}":`, error)
       }
     }
     this.loadedSkills.delete(skillId)

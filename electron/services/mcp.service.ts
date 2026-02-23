@@ -10,6 +10,9 @@ import type { ToolDefinition } from './ai.service'
 import { ChildProcess } from 'child_process'
 import { EventEmitter } from 'events'
 import { app } from 'electron'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('MCP')
 
 // MCP 服务器配置
 export interface McpServerConfig {
@@ -103,7 +106,7 @@ export class McpService extends EventEmitter {
       await this.disconnect(config.id)
     }
 
-    console.log(`[MCP] Connecting to server: ${config.name} (${config.id})`)
+    log.info(`Connecting to server: ${config.name} (${config.id})`)
 
     try {
       let transport: Transport
@@ -117,9 +120,9 @@ export class McpService extends EventEmitter {
         // 合并环境变量
         const mergedEnv = { ...process.env, ...config.env }
         
-        console.log(`[MCP] Starting ${config.name} with command: ${config.command}`)
-        console.log(`[MCP] Args: ${JSON.stringify(config.args)}`)
-        console.log(`[MCP] Custom env keys: ${Object.keys(config.env || {}).join(', ') || 'none'}`)
+        log.info(`Starting ${config.name} with command: ${config.command}`)
+        log.info(`Args: ${JSON.stringify(config.args)}`)
+        log.info(`Custom env keys: ${Object.keys(config.env || {}).join(', ') || 'none'}`)
 
         // StdioClientTransport 会自动创建和管理子进程
         transport = new StdioClientTransport({
@@ -170,12 +173,12 @@ export class McpService extends EventEmitter {
       }
       this.connections.set(config.id, connection)
 
-      console.log(`[MCP] Connected to ${config.name}: ${tools.length} tools, ${resources.length} resources, ${prompts.length} prompts`)
+      log.info(`Connected to ${config.name}: ${tools.length} tools, ${resources.length} resources, ${prompts.length} prompts`)
       
       this.emit('connected', config.id)
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : '连接失败'
-      console.error(`[MCP] Failed to connect to ${config.name}:`, error)
+      log.error(`Failed to connect to ${config.name}:`, error)
       throw new Error(`连接 MCP 服务器 ${config.name} 失败: ${errorMsg}`)
     }
   }
@@ -187,12 +190,12 @@ export class McpService extends EventEmitter {
     const connection = this.connections.get(serverId)
     if (!connection) return
 
-    console.log(`[MCP] Disconnecting from server: ${connection.config.name}`)
+    log.info(`Disconnecting from server: ${connection.config.name}`)
 
     try {
       await connection.client.close()
     } catch (error) {
-      console.error(`[MCP] Error closing client:`, error)
+      log.error(`Error closing client:`, error)
     }
 
     // 终止子进程
@@ -239,7 +242,7 @@ export class McpService extends EventEmitter {
         inputSchema: tool.inputSchema as McpTool['inputSchema']
       }))
     } catch (error) {
-      console.error(`[MCP] Failed to fetch tools from ${config.name}:`, error)
+      log.error(`Failed to fetch tools from ${config.name}:`, error)
       return []
     }
   }
@@ -261,9 +264,9 @@ export class McpService extends EventEmitter {
     } catch (error: unknown) {
       // MCP error -32601 表示服务器不支持此方法，静默处理
       if (error && typeof error === 'object' && 'code' in error && error.code === -32601) {
-        console.log(`[MCP] ${config.name} 不支持 resources/list 方法`)
+        log.info(`${config.name} 不支持 resources/list 方法`)
       } else {
-        console.warn(`[MCP] 从 ${config.name} 获取资源列表失败:`, error instanceof Error ? error.message : error)
+        log.warn(`从 ${config.name} 获取资源列表失败:`, error instanceof Error ? error.message : error)
       }
       return []
     }
@@ -285,9 +288,9 @@ export class McpService extends EventEmitter {
     } catch (error: unknown) {
       // MCP error -32601 表示服务器不支持此方法，静默处理
       if (error && typeof error === 'object' && 'code' in error && error.code === -32601) {
-        console.log(`[MCP] ${config.name} 不支持 prompts/list 方法`)
+        log.info(`${config.name} 不支持 prompts/list 方法`)
       } else {
-        console.warn(`[MCP] 从 ${config.name} 获取提示模板失败:`, error instanceof Error ? error.message : error)
+        log.warn(`从 ${config.name} 获取提示模板失败:`, error instanceof Error ? error.message : error)
       }
       return []
     }
@@ -361,7 +364,7 @@ export class McpService extends EventEmitter {
     
     // 最终安全检查
     if (result.length > MAX_LENGTH) {
-      console.warn(`[MCP] 工具名称截断: ${result.length} -> ${MAX_LENGTH}`)
+      log.warn(`工具名称截断: ${result.length} -> ${MAX_LENGTH}`)
       return result.substring(0, MAX_LENGTH)
     }
     
@@ -421,7 +424,7 @@ export class McpService extends EventEmitter {
     }
 
     try {
-      console.log(`[MCP] Calling tool ${toolName} on ${connection.config.name}`)
+      log.info(`Calling tool ${toolName} on ${connection.config.name}`)
       const result = await connection.client.callTool({
         name: toolName,
         arguments: args
@@ -440,7 +443,7 @@ export class McpService extends EventEmitter {
       return { success: true, content }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : '工具调用失败'
-      console.error(`[MCP] Tool call failed:`, error)
+      log.error(`Tool call failed:`, error)
       return { success: false, error: errorMsg }
     }
   }
@@ -460,7 +463,7 @@ export class McpService extends EventEmitter {
     }
 
     try {
-      console.log(`[MCP] Reading resource ${uri} from ${connection.config.name}`)
+      log.info(`Reading resource ${uri} from ${connection.config.name}`)
       const result = await connection.client.readResource({ uri })
 
       // 提取内容
@@ -479,7 +482,7 @@ export class McpService extends EventEmitter {
       return { success: true, content, mimeType }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : '资源读取失败'
-      console.error(`[MCP] Resource read failed:`, error)
+      log.error(`Resource read failed:`, error)
       return { success: false, error: errorMsg }
     }
   }
@@ -498,7 +501,7 @@ export class McpService extends EventEmitter {
     }
 
     try {
-      console.log(`[MCP] Getting prompt ${promptName} from ${connection.config.name}`)
+      log.info(`Getting prompt ${promptName} from ${connection.config.name}`)
       const result = await connection.client.getPrompt({
         name: promptName,
         arguments: args
@@ -516,7 +519,7 @@ export class McpService extends EventEmitter {
       return { success: true, messages }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : '获取提示模板失败'
-      console.error(`[MCP] Get prompt failed:`, error)
+      log.error(`Get prompt failed:`, error)
       return { success: false, error: errorMsg }
     }
   }
@@ -571,7 +574,7 @@ export class McpService extends EventEmitter {
     connection.resources = await this.fetchResources(connection.client, connection.config)
     connection.prompts = await this.fetchPrompts(connection.client, connection.config)
 
-    console.log(`[MCP] Refreshed ${connection.config.name}: ${connection.tools.length} tools, ${connection.resources.length} resources, ${connection.prompts.length} prompts`)
+    log.info(`Refreshed ${connection.config.name}: ${connection.tools.length} tools, ${connection.resources.length} resources, ${connection.prompts.length} prompts`)
     
     this.emit('refreshed', serverId)
   }

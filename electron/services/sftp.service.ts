@@ -3,6 +3,9 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { EventEmitter } from 'events'
 import { getSshErrorMessage } from './ssh-error'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('SFTP')
 
 export interface SftpConfig {
   host: string
@@ -150,41 +153,36 @@ export class SftpService extends EventEmitter {
     // 修复错误的路径格式（如 /~ 或 /~/xxx 应该是 ~ 或 ~/xxx）
     if (remotePath === '/~' || remotePath.startsWith('/~/')) {
       remotePath = remotePath.slice(1) // 移除开头的 /
-      console.log(`[SFTP] 修复路径格式: ${remotePath.slice(0, 1) === '~' ? '/~ -> ~' : '/~/ -> ~/'}`)
+      log.info(`修复路径格式: ${remotePath.slice(0, 1) === '~' ? '/~ -> ~' : '/~/ -> ~/'}`)
     }
 
-    // 解析 ~ 路径 - SFTP 协议不支持 ~，必须展开为绝对路径
     let resolvedPath = remotePath
     if (remotePath === '~' || remotePath.startsWith('~/')) {
-      console.log(`[SFTP] 开始解析 ~ 路径: ${remotePath}`)
+      log.info(`开始解析 ~ 路径: ${remotePath}`)
       try {
-        // sftp.cwd() 返回 SFTP 会话的当前工作目录（通常是 home 目录）
         const homePath = await sftp.cwd()
-        console.log(`[SFTP] sftp.cwd() 返回: ${homePath}`)
+        log.info(`sftp.cwd() 返回: ${homePath}`)
         
         if (remotePath === '~') {
           resolvedPath = homePath
         } else {
-          // ~/xxx -> /home/user/xxx
           resolvedPath = homePath + remotePath.slice(1)
         }
-        console.log(`[SFTP] ~ 路径解析: ${remotePath} -> ${resolvedPath}`)
+        log.info(`~ 路径解析: ${remotePath} -> ${resolvedPath}`)
       } catch (e) {
-        console.error(`[SFTP] sftp.cwd() 失败:`, e)
-        // 回退：尝试使用 realpath
+        log.error('sftp.cwd() 失败:', e)
         try {
           const realHome = await sftp.realPath('~')
-          console.log(`[SFTP] sftp.realPath('~') 返回: ${realHome}`)
+          log.info(`sftp.realPath('~') 返回: ${realHome}`)
           if (remotePath === '~') {
             resolvedPath = realHome
           } else {
             resolvedPath = realHome + remotePath.slice(1)
           }
         } catch (e2) {
-          console.error(`[SFTP] sftp.realPath('~') 也失败:`, e2)
-          // 最后的回退：直接用 . 作为 home
+          log.error("sftp.realPath('~') 也失败:", e2)
           resolvedPath = remotePath === '~' ? '.' : '.' + remotePath.slice(1)
-          console.log(`[SFTP] 使用回退路径: ${resolvedPath}`)
+          log.info(`使用回退路径: ${resolvedPath}`)
         }
       }
     }

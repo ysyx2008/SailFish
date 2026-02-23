@@ -5,6 +5,9 @@
 import { EventEmitter } from 'events'
 import type { ModelTier, ModelInfo } from './types'
 import { getModelManager, ModelManager } from './model-manager'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('Embedding')
 
 // 动态导入 transformers（延迟加载）
 let pipeline: any = null
@@ -55,7 +58,7 @@ export class EmbeddingService extends EventEmitter {
     if (!this.modelManager.isModelAvailable(targetModel.id)) {
       // 如果指定的模型不可用，降级到轻量模型
       if (modelId && modelId !== 'lite') {
-        console.warn(`[Embedding] Model ${modelId} not available, falling back to lite`)
+        log.warn(`Model ${modelId} not available, falling back to lite`)
         return this.initialize('lite')
       }
       throw new Error(`模型 ${targetModel.id} 不可用，请先下载`)
@@ -107,7 +110,7 @@ export class EmbeddingService extends EventEmitter {
       this.currentModelId = model.id
       this.emit('loaded', model.id)
     } catch (error) {
-      console.error(`[Embedding] Failed to load model:`, error)
+      log.error('Failed to load model:', error)
       this.emit('error', error)
       throw error
     }
@@ -147,7 +150,7 @@ export class EmbeddingService extends EventEmitter {
 
       return results
     } catch (error) {
-      console.error('[Embedding] Failed to generate embeddings:', error)
+      log.error('Failed to generate embeddings:', error)
       throw error
     }
   }

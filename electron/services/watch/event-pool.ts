@@ -14,6 +14,9 @@
  * 静默时段：可配置不打扰的时间窗口（默认关闭）
  */
 import type { SensorEvent, EventBus, EventHandler } from '../sensor/types'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('EventPool')
 
 export interface EventPoolConfig {
   /** 排水间隔（毫秒），默认 15 分钟 */
@@ -54,7 +57,7 @@ export class EventPool {
     eventBus.on(this.busHandler)
 
     this.startDrainTimer()
-    console.log(`[EventPool] Attached (drain every ${this.drainIntervalMs / 1000}s, maxPool=${this.maxPoolSize})`)
+    log.info(`Attached (drain every ${this.drainIntervalMs / 1000}s, maxPool=${this.maxPoolSize})`)
   }
 
   /** 从 EventBus 脱离 */
@@ -99,7 +102,7 @@ export class EventPool {
       priority: 'normal'
     }
 
-    console.log(`[EventPool] Draining ${batch.length} pooled event(s)`)
+    log.info(`Draining ${batch.length} pooled event(s)`)
     await this.downstream(batchEvent)
   }
 
@@ -125,10 +128,10 @@ export class EventPool {
   private async onEvent(event: SensorEvent): Promise<void> {
     if (event.type === 'heartbeat') {
       if (this.pool.length === 0) {
-        console.log('[EventPool] Heartbeat: pool empty, skipping')
+        log.info('Heartbeat: pool empty, skipping')
         return
       }
-      console.log(`[EventPool] Heartbeat: draining ${this.pool.length} pooled event(s)`)
+      log.info(`Heartbeat: draining ${this.pool.length} pooled event(s)`)
       await this.drain()
       return
     }
@@ -157,7 +160,7 @@ export class EventPool {
     this.pool.push(event)
 
     if (this.pool.length >= this.maxPoolSize) {
-      console.log(`[EventPool] Pool full (${this.maxPoolSize}), force draining`)
+      log.info(`Pool full (${this.maxPoolSize}), force draining`)
       this.drain()
     }
   }
@@ -166,7 +169,7 @@ export class EventPool {
     this.stopDrainTimer()
     this.drainTimer = setInterval(async () => {
       if (this.isInQuietHours()) {
-        console.log('[EventPool] In quiet hours, skipping drain')
+        log.info('In quiet hours, skipping drain')
         return
       }
       await this.drain()

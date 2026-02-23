@@ -8,6 +8,9 @@
 import { registerSkill } from '../registry'
 import type { Skill } from '../types'
 import { getAllTerminalTools } from './tools'
+import { createLogger } from '../../../../utils/logger'
+
+const log = createLogger('TerminalSkill')
 
 const terminalSkill: Skill = {
   id: 'terminal',
@@ -16,18 +19,18 @@ const terminalSkill: Skill = {
   tools: getAllTerminalTools(),
 
   async init() {
-    console.log('[TerminalSkill] Initialized')
+    log.info('Initialized')
   },
 
   async cleanup() {
-    console.log('[TerminalSkill] Cleaned up')
+    log.info('Cleaned up')
   }
 }
 
 try {
   registerSkill(terminalSkill)
 } catch (error) {
-  console.error('[TerminalSkill] Failed to register:', error)
+  log.error('Failed to register:', error)
 }
 
 export { terminalSkill }

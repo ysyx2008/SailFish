@@ -4,6 +4,9 @@
  */
 
 import type { Workbook } from 'exceljs'
+import { createLogger } from '../../../../utils/logger'
+
+const log = createLogger('ExcelSession')
 
 interface ExcelSession {
   /** 文件路径 */
@@ -38,7 +41,7 @@ function startTimeoutChecker(): void {
     const entries = Array.from(openSessions.entries())
     for (const [filePath, session] of entries) {
       if (now - session.lastAccess > SESSION_TIMEOUT) {
-        console.log(`[ExcelSession] Auto-closing timed out session: ${filePath}`)
+        log.info(`Auto-closing timed out session: ${filePath}`)
         closeSession(filePath, false) // 不保存，因为超时可能意味着问题
       }
     }

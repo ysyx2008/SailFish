@@ -8,6 +8,7 @@ import { ConfigService } from '../services/config.service'
 import { AiService } from '../services/ai.service'
 import { HistoryService } from '../services/history.service'
 import { HostProfileService } from '../services/host-profile.service'
+import { initLogging } from '../utils/logger'
 
 // ==================== Helpers ====================
 
@@ -1514,6 +1515,9 @@ Examples:
 // ==================== Main ====================
 
 async function main(): Promise<void> {
+  const config = new ConfigService()
+  initLogging(config.getLogLevel())
+
   const args = process.argv.slice(2)
   const command = args[0]
 

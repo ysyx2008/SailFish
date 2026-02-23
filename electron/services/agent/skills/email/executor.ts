@@ -4,7 +4,10 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
+import { createLogger } from '../../../../utils/logger'
 import type { ToolResult, AgentConfig } from '../../types'
+
+const log = createLogger('EmailExecutor')
 import type { ToolExecutorConfig } from '../../tool-executor'
 import { t } from '../../i18n'
 import { getEmailCredential } from '../../../credential.service'
@@ -142,7 +145,7 @@ async function emailConnect(
       return { success: true, output }
     }
     // 连接已断开，先关闭旧会话再重新连接
-    console.log(`[EmailSkill] IMAP connection lost for ${account.email}, reconnecting...`)
+    log.info(`IMAP connection lost for ${account.email}, reconnecting...`)
     await closeSession(account.id)
   }
 

@@ -7,6 +7,9 @@ import { registerSkill } from '../registry'
 import type { Skill } from '../types'
 import { emailTools } from './tools'
 import { closeAllSessions } from './session'
+import { createLogger } from '../../../../utils/logger'
+
+const log = createLogger('EmailSkill')
 
 const emailSkill: Skill = {
   id: 'email',
@@ -16,13 +19,13 @@ const emailSkill: Skill = {
   
   async init() {
     // 依赖模块会在执行时动态导入
-    console.log('[EmailSkill] Initialized')
+    log.info('Initialized')
   },
   
   async cleanup() {
     // 关闭所有邮箱连接
     await closeAllSessions()
-    console.log('[EmailSkill] Cleaned up')
+    log.info('Cleaned up')
   }
 }
 
@@ -30,7 +33,7 @@ const emailSkill: Skill = {
 try {
   registerSkill(emailSkill)
 } catch (error) {
-  console.error('[EmailSkill] Failed to register:', error)
+  log.error('Failed to register:', error)
 }
 
 export { emailSkill }

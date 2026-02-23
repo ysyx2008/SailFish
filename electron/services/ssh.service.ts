@@ -5,6 +5,9 @@ import stripAnsi from 'strip-ansi'
 import * as iconv from 'iconv-lite'
 import { getUnixProbeCommands } from './host-profile.service'
 import { getSshErrorMessage } from './ssh-error'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('SSH')
 
 // 支持的字符编码（与前端保持一致）
 export type SshEncoding = 
@@ -185,7 +188,7 @@ export class SshService {
 
             // 监听关闭
             stream.on('close', () => {
-              console.log(`SSH ${id} stream closed`)
+              log.info(`${id} stream closed`)
               // 触发断开连接事件（stream 关闭通常意味着连接断开）
               this.emitDisconnect({ id, reason: 'stream_closed' })
               client.end()
@@ -198,7 +201,7 @@ export class SshService {
       })
 
       client.on('error', err => {
-        console.error(`SSH ${id} error:`, err)
+        log.error(`${id} error:`, err)
         // 触发断开连接事件
         this.emitDisconnect({ id, reason: 'error', error: err })
         this.instances.delete(id)
@@ -210,7 +213,7 @@ export class SshService {
       })
 
       client.on('close', () => {
-        console.log(`SSH ${id} connection closed`)
+        log.info(`${id} connection closed`)
         // 触发断开连接事件（如果还没触发过）
         this.emitDisconnect({ id, reason: 'closed' })
         this.instances.delete(id)
@@ -268,7 +271,7 @@ export class SshService {
       }
 
       jumpClient.on('ready', () => {
-        console.log(`[SSH] Jump host connected: ${jumpHost.username}@${jumpHost.host}`)
+        log.info(`Jump host connected: ${jumpHost.username}@${jumpHost.host}`)
         
         // 通过跳板机建立到目标服务器的隧道
         jumpClient.forwardOut(
@@ -278,7 +281,7 @@ export class SshService {
           config.port,
           async (err, stream) => {
             if (err) {
-              console.error(`[SSH] Forward failed:`, err)
+              log.error(`Forward failed:`, err)
               jumpClient.end()
               reject(new Error(`通过跳板机建立隧道失败: ${err.message}`))
               return
@@ -304,14 +307,14 @@ export class SshService {
       })
 
       jumpClient.on('error', err => {
-        console.error(`[SSH] Jump host error:`, err)
+        log.error(`Jump host error:`, err)
         // 使用错误解析工具提供更友好的错误信息
         const friendlyMessage = getSshErrorMessage(err)
         reject(new Error(`连接跳板机失败: ${friendlyMessage}`))
       })
 
       jumpClient.on('close', () => {
-        console.log(`[SSH] Jump host connection closed`)
+        log.info(`Jump host connection closed`)
         // 跳板机关闭时，也关闭目标连接
         const instance = this.instances.get(id)
         if (instance) {
@@ -416,7 +419,7 @@ export class SshService {
         try {
           callback(event)
         } catch (e) {
-          console.error(`[SshService] Disconnect callback error:`, e)
+          log.error(`Disconnect callback error:`, e)
         }
       }
       // 清理回调
@@ -470,7 +473,7 @@ export class SshService {
       // 使用 exec 在单独的通道执行，不影响终端
       instance.client.exec(probeCommand, (err, stream) => {
         if (err) {
-          console.error('[SSH Probe] exec 失败:', err)
+          log.error('Probe exec 失败:', err)
           resolve('error')
           return
         }
@@ -484,7 +487,7 @@ export class SshService {
         
         stream.stderr.on('data', (data: Buffer) => {
           // 忽略 stderr，但记录日志
-          console.log('[SSH Probe] stderr:', data.toString())
+          log.info('Probe stderr:', data.toString())
         })
         
         stream.on('close', () => {
@@ -526,7 +529,7 @@ export class SshService {
     return new Promise((resolve) => {
       const instance = this.instances.get(id)
       if (!instance?.stream) {
-        console.error(`[SshService] SSH 实例不存在: id=${id}, 现有实例: ${Array.from(this.instances.keys()).join(', ')}`)
+        log.error(`SSH 实例不存在: id=${id}, 现有实例: ${Array.from(this.instances.keys()).join(', ')}`)
         resolve({ output: `SSH 终端实例不存在 (id=${id})`, duration: 0 })
         return
       }
@@ -702,7 +705,7 @@ export class SshService {
       }
     } catch (err) {
       // exec channel 失败，回退到基本检测
-      console.log(`[SshService] exec channel 状态检测失败: ${err}`)
+      log.info(`exec channel 状态检测失败: ${err}`)
     }
 
     // 回退方案：依赖 TerminalStateService 的状态追踪
@@ -753,7 +756,7 @@ export class SshService {
 
         stream.stderr.on('data', (data: Buffer) => {
           // 忽略 stderr，或者可以记录
-          console.log(`[SshService] exec stderr: ${data.toString('utf-8')}`)
+          log.info(`exec stderr: ${data.toString('utf-8')}`)
         })
 
         stream.on('close', () => {
@@ -780,19 +783,19 @@ export class SshService {
    * 通过独立的 exec channel 执行 pwd 命令，不会在终端界面显示
    */
   async getRemoteCwd(id: string): Promise<string | null> {
-    console.log(`[SshService] getRemoteCwd: 开始获取 SSH ${id} 的 CWD`)
+    log.info(`getRemoteCwd: 开始获取 SSH ${id} 的 CWD`)
     try {
       const output = await this.execCommand(id, 'pwd', 3000)
       const cwd = output.trim()
-      console.log(`[SshService] getRemoteCwd: SSH ${id} pwd 输出: "${cwd}"`)
+      log.info(`getRemoteCwd: SSH ${id} pwd 输出: "${cwd}"`)
       // 验证输出是否为有效路径
       if (cwd && cwd.startsWith('/')) {
         return cwd
       }
-      console.log(`[SshService] getRemoteCwd: SSH ${id} 输出不是有效路径`)
+      log.info(`getRemoteCwd: SSH ${id} 输出不是有效路径`)
       return null
     } catch (err) {
-      console.error(`[SshService] getRemoteCwd: SSH ${id} 执行 pwd 失败:`, err)
+      log.error(`getRemoteCwd: SSH ${id} 执行 pwd 失败:`, err)
       return null
     }
   }

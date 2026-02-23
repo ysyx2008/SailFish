@@ -13,6 +13,9 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
 import type { AiService } from '../ai.service'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('ContextKnowledge')
 
 export interface ContextKnowledgeOptions {
   /** 文档最大字符数（约等于 token 预算 × 2） */
@@ -63,7 +66,7 @@ export class ContextKnowledgeService {
         this.cache.set(id, content)
       }
     } catch (error) {
-      console.warn('[ContextKnowledge] 加载已有文档失败:', error)
+      log.warn('加载已有文档失败:', error)
     }
   }
 
@@ -99,7 +102,7 @@ export class ContextKnowledgeService {
         fs.unlinkSync(filePath)
       }
     } catch (error) {
-      console.warn('[ContextKnowledge] 删除文档失败:', error)
+      log.warn('删除文档失败:', error)
     }
   }
 
@@ -171,7 +174,7 @@ export class ContextKnowledgeService {
 
       return result
     } catch (error) {
-      console.error('[ContextKnowledge] LLM 调用失败:', error)
+      log.error('LLM 调用失败:', error)
       return { updated: false, document: currentDoc }
     }
   }
@@ -183,7 +186,7 @@ export class ContextKnowledgeService {
       fs.writeFileSync(tempPath, content, 'utf-8')
       fs.renameSync(tempPath, finalPath)
     } catch (error) {
-      console.error('[ContextKnowledge] 写入失败:', error)
+      log.error('写入失败:', error)
     }
   }
 

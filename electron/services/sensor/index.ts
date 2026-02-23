@@ -9,6 +9,9 @@ import { HeartbeatSensor } from './heartbeat-sensor'
 import { FileWatchSensor } from './file-watch-sensor'
 import { CalendarSensor } from './calendar-sensor'
 import { EmailSensor } from './email-sensor'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('SensorService')
 
 export interface SensorServiceConfig {
   /** 是否启用心跳（默认 false，用户显式开启） */
@@ -57,7 +60,7 @@ export class SensorService {
 
   register(sensor: Sensor): void {
     this.sensors.set(sensor.id, sensor)
-    console.log(`[SensorService] Registered sensor: ${sensor.id}`)
+    log.info(`Registered sensor: ${sensor.id}`)
   }
 
   unregister(sensorId: string): void {
@@ -80,21 +83,21 @@ export class SensorService {
 
     for (const [id, sensor] of this.sensors) {
       if (id === 'heartbeat' && !heartbeatEnabled) {
-        console.log('[SensorService] Heartbeat disabled, skipping')
+        log.info('Heartbeat disabled, skipping')
         continue
       }
       if (sensor.shouldAutoStart && !sensor.shouldAutoStart()) {
-        console.log(`[SensorService] ${id} not ready, skipping`)
+        log.info(`${id} not ready, skipping`)
         continue
       }
       try {
         await sensor.start()
       } catch (err) {
-        console.error(`[SensorService] Failed to start sensor ${id}:`, err)
+        log.error(`Failed to start sensor ${id}:`, err)
       }
     }
 
-    console.log('[SensorService] Started')
+    log.info('Started')
   }
 
   async stop(): Promise<void> {
@@ -104,12 +107,12 @@ export class SensorService {
       try {
         await sensor.stop()
       } catch (err) {
-        console.error(`[SensorService] Failed to stop sensor ${sensor.id}:`, err)
+        log.error(`Failed to stop sensor ${sensor.id}:`, err)
       }
     }
 
     this._running = false
-    console.log('[SensorService] Stopped')
+    log.info('Stopped')
   }
 
   getSensorStatus(): Array<{ id: string; name: string; running: boolean }> {

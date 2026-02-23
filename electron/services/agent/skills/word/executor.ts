@@ -4,6 +4,7 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
+import { createLogger } from '../../../../utils/logger'
 import {
   Document,
   Packer,
@@ -71,6 +72,8 @@ import { promisify } from 'util'
 
 const execAsync = promisify(exec)
 
+const log = createLogger('WordExecutor')
+
 /**
  * 获取或自动创建 XML 编辑会话
  * 编辑已有文档时，首次操作自动加载文件到内存，后续操作复用会话
@@ -126,11 +129,11 @@ function loadCustomStyles(): void {
             defaultStyleName = styleData.name
           }
         } catch (e) {
-          console.error(`[WordSkill] Failed to parse style doc ${doc.id}:`, e)
+          log.error(`Failed to parse style doc ${doc.id}:`, e)
         }
       }
       
-      console.log(`[WordSkill] Loaded ${customStyles.size} custom styles from knowledge base`)
+      log.info(`Loaded ${customStyles.size} custom styles from knowledge base`)
     } else {
       // 从本地 JSON 加载（备用）
       if (fs.existsSync(STYLES_FILE_PATH)) {
@@ -143,11 +146,11 @@ function loadCustomStyles(): void {
         if (data.defaultStyle) {
           defaultStyleName = data.defaultStyle
         }
-        console.log(`[WordSkill] Loaded ${customStyles.size} custom styles from local file`)
+        log.info(`Loaded ${customStyles.size} custom styles from local file`)
       }
     }
   } catch (e) {
-    console.error('[WordSkill] Failed to load custom styles:', e)
+    log.error('Failed to load custom styles:', e)
   }
   
   stylesLoaded = true
@@ -183,11 +186,11 @@ async function saveStyleToKnowledge(style: WordStyleConfig): Promise<string | nu
     })
     
     styleDocIds.set(style.name, docId)
-    console.log(`[WordSkill] Saved style "${style.name}" to knowledge base (doc: ${docId})`)
+    log.info(`Saved style "${style.name}" to knowledge base (doc: ${docId})`)
     
     return docId
   } catch (e) {
-    console.error('[WordSkill] Failed to save style to knowledge:', e)
+    log.error('Failed to save style to knowledge:', e)
     return null
   }
 }
@@ -223,9 +226,9 @@ function saveCustomStylesToFile(): void {
     }
     
     fs.writeFileSync(STYLES_FILE_PATH, JSON.stringify(data, null, 2))
-    console.log(`[WordSkill] Saved ${customStyles.size} custom styles to local file`)
+    log.info(`Saved ${customStyles.size} custom styles to local file`)
   } catch (e) {
-    console.error('[WordSkill] Failed to save custom styles to file:', e)
+    log.error('Failed to save custom styles to file:', e)
   }
 }
 
@@ -259,7 +262,7 @@ async function detectOffice(): Promise<DetectedOffice> {
       // 尝试通过 PowerShell 检测 Word COM 对象是否可用
       await execAsync('powershell -Command "New-Object -ComObject Word.Application | Out-Null"', { timeout: 5000 })
       detectedOfficeCache = 'msword'
-      console.log('[WordSkill] Detected MS Word on Windows')
+      log.info('Detected MS Word on Windows')
       return detectedOfficeCache
     } catch {
       // Word 不可用
@@ -270,7 +273,7 @@ async function detectOffice(): Promise<DetectedOffice> {
       // 检测 MS Word for Mac
       await execAsync('test -d "/Applications/Microsoft Word.app"')
       detectedOfficeCache = 'msword'
-      console.log('[WordSkill] Detected MS Word on macOS')
+      log.info('Detected MS Word on macOS')
       return detectedOfficeCache
     } catch {
       // Word 不存在，检测 LibreOffice
@@ -279,7 +282,7 @@ async function detectOffice(): Promise<DetectedOffice> {
     try {
       await execAsync('test -d "/Applications/LibreOffice.app"')
       detectedOfficeCache = 'libreoffice'
-      console.log('[WordSkill] Detected LibreOffice on macOS')
+      log.info('Detected LibreOffice on macOS')
       return detectedOfficeCache
     } catch {
       // LibreOffice 也不存在
@@ -289,7 +292,7 @@ async function detectOffice(): Promise<DetectedOffice> {
     try {
       await execAsync('which libreoffice')
       detectedOfficeCache = 'libreoffice'
-      console.log('[WordSkill] Detected LibreOffice on Linux')
+      log.info('Detected LibreOffice on Linux')
       return detectedOfficeCache
     } catch {
       // LibreOffice 不存在
@@ -297,7 +300,7 @@ async function detectOffice(): Promise<DetectedOffice> {
   }
 
   detectedOfficeCache = null
-  console.log('[WordSkill] No Office software detected')
+  log.info('No Office software detected')
   return detectedOfficeCache
 }
 

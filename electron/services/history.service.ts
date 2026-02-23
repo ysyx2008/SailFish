@@ -1,6 +1,9 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('History')
 
 // ==================== 类型定义 ====================
 
@@ -170,7 +173,7 @@ export class HistoryService {
         return JSON.parse(content) as T[]
       }
     } catch (e) {
-      console.error(`读取历史文件失败: ${filePath}`, e)
+      log.error(`读取历史文件失败: ${filePath}`, e)
     }
     return []
   }
@@ -182,7 +185,7 @@ export class HistoryService {
     try {
       fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8')
     } catch (e) {
-      console.error(`写入历史文件失败: ${filePath}`, e)
+      log.error(`写入历史文件失败: ${filePath}`, e)
     }
   }
 

@@ -2,9 +2,12 @@
  * 日历技能执行器
  */
 
+import { createLogger } from '../../../../utils/logger'
 import type { ToolResult, AgentConfig } from '../../types'
 import type { ToolExecutorConfig } from '../../tool-executor'
 import { t } from '../../i18n'
+
+const log = createLogger('CalendarExecutor')
 import { getCalendarCredential } from '../../../credential.service'
 import {
   isSessionOpen,
@@ -143,7 +146,7 @@ async function calendarConnect(
       return { success: true, output }
     }
     // 连接已断开，先关闭旧会话再重新连接
-    console.log(`[CalendarSkill] Connection lost for ${account.name}, reconnecting...`)
+    log.info(`Connection lost for ${account.name}, reconnecting...`)
     await closeSession(account.id)
   }
 
@@ -844,7 +847,7 @@ async function calendarDelete(
         })
         deletedCount++
       } catch (e) {
-        console.error(`[CalendarSkill] Failed to delete event: ${event.title}`, e)
+        log.error(`Failed to delete event: ${event.title}`, e)
       }
     }
 
@@ -1429,7 +1432,7 @@ async function todoDelete(
         })
         deletedCount++
       } catch (e) {
-        console.error(`[CalendarSkill] Failed to delete todo: ${todo.title}`, e)
+        log.error(`Failed to delete todo: ${todo.title}`, e)
       }
     }
 
@@ -1475,7 +1478,7 @@ async function detectTodoSupport(
 ): Promise<boolean> {
   // 已知不支持的服务商直接返回
   if (PROVIDERS_WITHOUT_TODO.includes(provider)) {
-    console.log(`[CalendarSkill] Provider "${provider}" is known to not support VTODO`)
+    log.info(`Provider "${provider}" is known to not support VTODO`)
     return false
   }
 
@@ -1516,14 +1519,14 @@ async function detectTodoSupport(
     // 207 Multi-Status 说明服务器能处理 VTODO 查询（即使结果为空）
     // 4xx/5xx 错误说明不支持
     if (response.status === 207) {
-      console.log('[CalendarSkill] VTODO support detected via REPORT probe')
+      log.info('VTODO support detected via REPORT probe')
       return true
     }
 
-    console.log(`[CalendarSkill] VTODO REPORT probe returned status ${response.status}, assuming not supported`)
+    log.info(`VTODO REPORT probe returned status ${response.status}, assuming not supported`)
     return false
   } catch (error) {
-    console.log('[CalendarSkill] VTODO REPORT probe failed, assuming not supported:', error)
+    log.info('VTODO REPORT probe failed, assuming not supported:', error)
     return false
   }
 }
@@ -1749,7 +1752,7 @@ function parseICalEvent(icalData: string | undefined, url?: string, etag?: strin
     }
 
     if (!uid || !dtstart) {
-      console.log('[CalendarSkill] Missing required fields - uid:', uid, 'dtstart:', dtstart, 'summary:', summary)
+      log.info('Missing required fields - uid:', uid, 'dtstart:', dtstart, 'summary:', summary)
       return null
     }
 
@@ -1770,7 +1773,7 @@ function parseICalEvent(icalData: string | undefined, url?: string, etag?: strin
       etag
     }
   } catch (error) {
-    console.error('[CalendarSkill] Failed to parse iCal event:', error, 'Data:', icalData?.substring(0, 500))
+    log.error('Failed to parse iCal event:', error, 'Data:', icalData?.substring(0, 500))
     return null
   }
 }
@@ -2221,7 +2224,7 @@ function parseICalTodo(icalData: string | undefined, url?: string, etag?: string
       etag
     }
   } catch (error) {
-    console.error('[CalendarSkill] Failed to parse iCal todo:', error, 'Data:', icalData?.substring(0, 500))
+    log.error('Failed to parse iCal todo:', error, 'Data:', icalData?.substring(0, 500))
     return null
   }
 }

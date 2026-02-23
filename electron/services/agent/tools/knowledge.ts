@@ -7,6 +7,9 @@ import { getKnowledgeService } from '../../knowledge'
 import { getContextKnowledgeService } from '../../knowledge/context-knowledge'
 import { truncateFromEnd } from './utils'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
+import { createLogger } from '../../../utils/logger'
+
+const log = createLogger('KnowledgeTool')
 
 /**
  * 记住信息 — 通过 LLM 将信息整合到知识文档中
@@ -58,7 +61,7 @@ export async function rememberInfo(
 
     return { success: true, output: resultMessage }
   } catch (error) {
-    console.error('[rememberInfo] 更新知识文档失败:', error)
+    log.error('更新知识文档失败:', error)
     executor.addStep({
       type: 'tool_result',
       content: t('memory.cannot_save'),

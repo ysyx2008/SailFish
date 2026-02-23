@@ -5,6 +5,9 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('DocumentParser')
 
 // 文档解析结果接口
 export interface ParsedDocument {
@@ -92,14 +95,14 @@ export class DocumentParserService {
       const pdf2jsonModule = await import('pdf2json')
       this.PDFParser = pdf2jsonModule.default
     } catch (e) {
-      console.warn('[DocumentParser] pdf2json 未安装，PDF 解析将不可用:', e)
+      log.warn('pdf2json 未安装，PDF 解析将不可用:', e)
     }
 
     try {
       // 动态导入 mammoth
       this.mammoth = await import('mammoth')
     } catch (e) {
-      console.warn('[DocumentParser] mammoth 未安装，.docx 解析将不可用:', e)
+      log.warn('mammoth 未安装，.docx 解析将不可用:', e)
     }
 
     try {
@@ -107,14 +110,14 @@ export class DocumentParserService {
       const wordExtractorModule = await import('word-extractor')
       this.WordExtractor = wordExtractorModule.default
     } catch (e) {
-      console.warn('[DocumentParser] word-extractor 未安装，.doc 解析将不可用:', e)
+      log.warn('word-extractor 未安装，.doc 解析将不可用:', e)
     }
 
     try {
       // 动态导入 exceljs（用于 .xlsx/.xls 格式）
       this.ExcelJS = await import('exceljs')
     } catch (e) {
-      console.warn('[DocumentParser] exceljs 未安装，Excel 解析将不可用:', e)
+      log.warn('exceljs 未安装，Excel 解析将不可用:', e)
     }
 
     this.isInitialized = true

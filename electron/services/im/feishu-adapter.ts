@@ -19,6 +19,9 @@ import * as path from 'path'
 import type { IMAdapter, IMIncomingMessage, IMPlatform, FeishuConfig, IMAttachment } from './types'
 import { IM_TEXT_MAX_LENGTH, IM_FILE_MAX_SIZE_FEISHU, IM_IMAGE_MAX_SIZE_FEISHU, IM_DOWNLOAD_MAX_SIZE } from './types'
 import { t } from '../agent/i18n'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('Feishu')
 
 // 飞书 SDK 懒加载
 let lark: any
@@ -27,7 +30,7 @@ async function loadSDK() {
   try {
     lark = await import('@larksuiteoapi/node-sdk')
   } catch (err) {
-    console.error('[Feishu] Failed to load @larksuiteoapi/node-sdk:', err)
+    log.error('Failed to load @larksuiteoapi/node-sdk:', err)
     throw new Error('@larksuiteoapi/node-sdk not available')
   }
 }
@@ -51,7 +54,7 @@ export class FeishuAdapter implements IMAdapter {
 
   async start(): Promise<void> {
     if (this.connected || this.starting) {
-      console.log('[Feishu] Already connected or connecting')
+      log.info('Already connected or connecting')
       return
     }
 
@@ -74,7 +77,7 @@ export class FeishuAdapter implements IMAdapter {
           try {
             await this.handleMessageEvent(data)
           } catch (err) {
-            console.error('[Feishu] Error handling message event:', err)
+            log.error('Error handling message event:', err)
           }
         }
       })
@@ -112,7 +115,7 @@ export class FeishuAdapter implements IMAdapter {
     }
     this.client = null
     this.updateConnected(false)
-    console.log('[Feishu] Disconnected')
+    log.info('Disconnected')
   }
 
   isConnected(): boolean {
@@ -152,7 +155,7 @@ export class FeishuAdapter implements IMAdapter {
     if (this.connected !== value) {
       this.connected = value
       this.onConnectionChange?.(value)
-      console.log(`[Feishu] Connection state changed: ${value ? 'connected' : 'disconnected'}`)
+      log.info(`Connection state changed: ${value ? 'connected' : 'disconnected'}`)
     }
   }
 
@@ -461,10 +464,10 @@ export class FeishuAdapter implements IMAdapter {
           attachments.push(attachment)
         }
       } catch (err) {
-        console.error(`[Feishu] Failed to process ${messageType} message:`, err)
+        log.error(`Failed to process ${messageType} message:`, err)
       }
     } else {
-      console.log(`[Feishu] Unsupported message type: ${messageType}, ignoring`)
+      log.info(`Unsupported message type: ${messageType}, ignoring`)
       return
     }
 
@@ -549,7 +552,7 @@ export class FeishuAdapter implements IMAdapter {
     }
 
     if (!fileKey) {
-      console.warn(`[Feishu] No file_key/image_key in ${messageType} message`)
+      log.warn(`No file_key/image_key in ${messageType} message`)
       return null
     }
 
@@ -571,7 +574,7 @@ export class FeishuAdapter implements IMAdapter {
       await this.saveResponseToFile(resp, localPath)
     } catch (err: any) {
       const errDetail = await this.extractApiErrorDetail(err)
-      console.error(`[Feishu] Failed to download ${messageType} (key=${fileKey}, msgId=${messageId}): ${errDetail}`)
+      log.error(`Failed to download ${messageType} (key=${fileKey}, msgId=${messageId}): ${errDetail}`)
       return null
     }
 
@@ -580,11 +583,11 @@ export class FeishuAdapter implements IMAdapter {
       const stat = fs.statSync(localPath)
       if (stat.size > IM_DOWNLOAD_MAX_SIZE) {
         fs.unlinkSync(localPath)
-        console.error(`[Feishu] File too large: ${(stat.size / 1024 / 1024).toFixed(1)}MB`)
+        log.error(`File too large: ${(stat.size / 1024 / 1024).toFixed(1)}MB`)
         return null
       }
 
-      console.log(`[Feishu] Downloaded ${messageType}: ${localPath} (${(stat.size / 1024).toFixed(1)}KB)`)
+      log.info(`Downloaded ${messageType}: ${localPath} (${(stat.size / 1024).toFixed(1)}KB)`)
       return { type: attachmentType, localPath, fileName }
     } catch {
       return null

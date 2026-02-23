@@ -34,6 +34,9 @@ import { WeComAdapter } from './wecom-adapter'
 import { RemoteChatService } from '../remote-chat.service'
 import { getConfigService } from '../config.service'
 import { t } from '../agent/i18n'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('IMService')
 
 export interface IMServiceDependencies {
   remoteChatService: RemoteChatService
@@ -224,10 +227,10 @@ export class IMService {
       }
 
       await this.dingtalkAdapter.start()
-      console.log('[IM] DingTalk started')
+      log.info('DingTalk started')
       return { success: true }
     } catch (err: any) {
-      console.error('[IM] DingTalk start failed:', err)
+      log.error('DingTalk start failed:', err)
       this.dingtalkAdapter = null
       return { success: false, error: err.message || 'Failed to connect' }
     }
@@ -238,7 +241,7 @@ export class IMService {
       await this.dingtalkAdapter.stop() // adapter.stop() 内已触发 onConnectionChange(false)，无需再 sendToDesktop
       this.dingtalkAdapter = null
       this.config.dingtalk.enabled = false
-      console.log('[IM] DingTalk stopped')
+      log.info('DingTalk stopped')
     }
   }
 
@@ -265,10 +268,10 @@ export class IMService {
       }
 
       await this.feishuAdapter.start()
-      console.log('[IM] Feishu started')
+      log.info('Feishu started')
       return { success: true }
     } catch (err: any) {
-      console.error('[IM] Feishu start failed:', err)
+      log.error('Feishu start failed:', err)
       this.feishuAdapter = null
       return { success: false, error: err.message || 'Failed to connect' }
     }
@@ -279,7 +282,7 @@ export class IMService {
       await this.feishuAdapter.stop() // adapter 内已触发 onConnectionChange(false)
       this.feishuAdapter = null
       this.config.feishu.enabled = false
-      console.log('[IM] Feishu stopped')
+      log.info('Feishu stopped')
     }
   }
 
@@ -312,10 +315,10 @@ export class IMService {
       }
 
       await this.slackAdapter.start()
-      console.log('[IM] Slack started')
+      log.info('Slack started')
       return { success: true }
     } catch (err: any) {
-      console.error('[IM] Slack start failed:', err)
+      log.error('Slack start failed:', err)
       this.slackAdapter = null
       return { success: false, error: err.message || 'Failed to connect' }
     }
@@ -326,7 +329,7 @@ export class IMService {
       await this.slackAdapter.stop() // adapter 内已触发 onConnectionChange(false)
       this.slackAdapter = null
       this.config.slack.enabled = false
-      console.log('[IM] Slack stopped')
+      log.info('Slack stopped')
     }
   }
 
@@ -356,10 +359,10 @@ export class IMService {
       }
 
       await this.telegramAdapter.start()
-      console.log('[IM] Telegram started')
+      log.info('Telegram started')
       return { success: true }
     } catch (err: any) {
-      console.error('[IM] Telegram start failed:', err)
+      log.error('Telegram start failed:', err)
       this.telegramAdapter = null
       return { success: false, error: err.message || 'Failed to connect' }
     }
@@ -370,7 +373,7 @@ export class IMService {
       await this.telegramAdapter.stop() // adapter 内已触发 onConnectionChange(false)
       this.telegramAdapter = null
       this.config.telegram.enabled = false
-      console.log('[IM] Telegram stopped')
+      log.info('Telegram stopped')
     }
   }
 
@@ -400,10 +403,10 @@ export class IMService {
       }
 
       await this.wecomAdapter.start()
-      console.log('[IM] WeCom started')
+      log.info('WeCom started')
       return { success: true }
     } catch (err: any) {
-      console.error('[IM] WeCom start failed:', err)
+      log.error('WeCom start failed:', err)
       this.wecomAdapter = null
       return { success: false, error: err.message || 'Failed to connect' }
     }
@@ -414,7 +417,7 @@ export class IMService {
       await this.wecomAdapter.stop() // adapter 内已触发 onConnectionChange(false)
       this.wecomAdapter = null
       this.config.wecom.enabled = false
-      console.log('[IM] WeCom stopped')
+      log.info('WeCom stopped')
     }
   }
 
@@ -503,11 +506,11 @@ export class IMService {
           await adapter.sendText(contact.replyContext, truncated)
         }
         this.lastContact = contact
-        console.log(`[IM] Proactive notification sent via ${contact.platform}`)
+        log.info(`Proactive notification sent via ${contact.platform}`)
         return { success: true, platform: contact.platform }
       } catch (err: any) {
         lastError = err?.message || 'Unknown error'
-        console.error(`[IM] Failed to send proactive notification via ${contact.platform}:`, err)
+        log.error(`Failed to send proactive notification via ${contact.platform}:`, err)
         // 该平台上下文失效时，从联系人池移除，避免后续重复失败
         delete this.contactsByPlatform[contact.platform]
         if (this.lastContact?.platform === contact.platform) {
@@ -527,7 +530,7 @@ export class IMService {
    */
   private async handleIncomingMessage(msg: IMIncomingMessage) {
     if (!this.deps) {
-      console.error('[IM] Dependencies not set, ignoring message')
+      log.error('Dependencies not set, ignoring message')
       return
     }
 
@@ -568,7 +571,7 @@ export class IMService {
           await adapter.sendText(replyContext, t('im.reply_busy'))
         }
       } catch (err) {
-        console.error('[IM] Failed to send busy reply:', err)
+        log.error('Failed to send busy reply:', err)
       }
       return
     }
@@ -592,7 +595,7 @@ export class IMService {
           return
         }
       } catch (err) {
-        console.error('[IM] Failed to send command reply:', err)
+        log.error('Failed to send command reply:', err)
         return
       }
     }
@@ -616,7 +619,7 @@ export class IMService {
           t('im.confirm_hint', { toolName: pendingConfirm?.toolName || 'unknown' })
         )
       } catch (err) {
-        console.error('[IM] Failed to send confirm hint:', err)
+        log.error('Failed to send confirm hint:', err)
       }
       return
     }
@@ -632,7 +635,7 @@ export class IMService {
         await adapter.sendText(replyContext, t('im.confirm_failed'))
       }
     } catch (err) {
-      console.error('[IM] Failed to send confirm result:', err)
+      log.error('Failed to send confirm result:', err)
     }
   }
 
@@ -670,7 +673,7 @@ export class IMService {
     let sendQueue: Promise<void> = Promise.resolve()
     const enqueueSend = (fn: () => Promise<void>): void => {
       sendQueue = sendQueue.then(() => fn().catch(err => {
-        console.error('[IM] Send queue error:', err)
+        log.error('Send queue error:', err)
       }))
     }
 
@@ -682,7 +685,7 @@ export class IMService {
         try {
           await adapter.sendMarkdown(replyContext, '旗鱼', text)
         } catch (err) {
-          console.error('[IM] Failed to send text:', err)
+          log.error('Failed to send text:', err)
         }
       }
     }
@@ -850,7 +853,7 @@ export class IMService {
       )
       return { success: true }
     } catch (err: any) {
-      console.error('[IM] Failed to send file:', err)
+      log.error('Failed to send file:', err)
       return { success: false, error: err.message || 'Failed to send file' }
     }
   }
@@ -871,7 +874,7 @@ export class IMService {
       )
       return { success: true }
     } catch (err: any) {
-      console.error('[IM] Failed to send image:', err)
+      log.error('Failed to send image:', err)
       return { success: false, error: err.message || 'Failed to send image' }
     }
   }
@@ -952,7 +955,7 @@ export class IMService {
       }
       this.contactsByPlatform = parsed
     } catch (err) {
-      console.warn('[IM] Failed to load persisted contacts:', err)
+      log.warn('Failed to load persisted contacts:', err)
       this.contactsByPlatform = {}
     }
   }
@@ -970,7 +973,7 @@ export class IMService {
       }
       configService.set('imLastContacts', serializable)
     } catch (err) {
-      console.warn('[IM] Failed to persist contacts:', err)
+      log.warn('Failed to persist contacts:', err)
     }
   }
 
@@ -980,7 +983,7 @@ export class IMService {
       JSON.stringify(contact.replyContext)
       return contact
     } catch {
-      console.warn(`[IM] Skip persisting contact for ${contact.platform}: replyContext is not serializable`)
+      log.warn(`Skip persisting contact for ${contact.platform}: replyContext is not serializable`)
       return null
     }
   }

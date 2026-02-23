@@ -4,6 +4,9 @@
  */
 import type { McpService } from '../mcp.service'
 import type { SearchOptions, SearchResult } from './types'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('McpAdapter')
 
 // MCP 知识库工具名称（标准化）
 const MCP_TOOLS = {
@@ -164,7 +167,7 @@ export class McpKnowledgeAdapter {
         source: 'mcp' as const
       }))
     } catch (error) {
-      console.error('[McpKnowledgeAdapter] Failed to parse search result:', error)
+      log.error('Failed to parse search result:', error)
       return []
     }
   }
@@ -195,7 +198,7 @@ export class McpKnowledgeAdapter {
       
       throw new Error('无法解析 embedding 结果')
     } catch (error) {
-      console.error('[McpKnowledgeAdapter] Failed to parse embedding result:', error)
+      log.error('Failed to parse embedding result:', error)
       throw error
     }
   }

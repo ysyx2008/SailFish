@@ -20,6 +20,9 @@ import type { AgentPlanStep } from './types'
 import { getOrchestratorTools } from './orchestrator-tools'
 import type { AiService, AiMessage } from '../ai.service'
 import type { SshSession } from '../config.service'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('Orchestrator')
 
 /**
  * 协调器服务
@@ -105,7 +108,7 @@ export class OrchestratorService {
     
     // 启动 Master Agent 循环
     this.runMasterAgent(orchestratorId).catch(error => {
-      console.error(`[Orchestrator] Master Agent error:`, error)
+      log.error('Master Agent error:', error)
       this.handleError(orchestratorId, error.message || String(error))
     })
     
@@ -126,7 +129,7 @@ export class OrchestratorService {
       try {
         await this.closeTerminal?.(terminalId)
       } catch (e) {
-        console.warn(`[Orchestrator] Failed to close terminal ${terminalId}:`, e)
+        log.warn(`Failed to close terminal ${terminalId}:`, e)
       }
     }
     
@@ -326,7 +329,7 @@ export class OrchestratorService {
         }
         
       } catch (error) {
-        console.error(`[Orchestrator] AI call error:`, error)
+        log.error('AI call error:', error)
         this.handleError(orchestratorId, error instanceof Error ? error.message : String(error))
         break
       }

@@ -4,6 +4,9 @@
  */
 import type { AiService } from '../ai.service'
 import type { SearchResult } from './types'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('Reranker')
 
 export class Reranker {
   private aiService: AiService
@@ -63,7 +66,7 @@ export class Reranker {
 
       return reranked
     } catch (error) {
-      console.error('[Reranker] Failed to rerank:', error)
+      log.error('Failed to rerank:', error)
       // 重排序失败时返回原始结果
       return candidates.slice(0, topK)
     }

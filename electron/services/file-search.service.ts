@@ -10,6 +10,9 @@ import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
 import { app } from 'electron'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('FileSearch')
 
 /**
  * 搜索结果
@@ -94,7 +97,7 @@ export class FileSearchService {
 
     // 检查文件是否存在
     if (!fs.existsSync(esExe) || !fs.existsSync(everythingExe)) {
-      console.log('[FileSearch] Everything 文件不存在:', this.everythingPath)
+      log.info('Everything 文件不存在:', this.everythingPath)
       return false
     }
 
@@ -128,7 +131,7 @@ export class FileSearchService {
     }
 
     // 启动 Everything（后台运行，最小化）
-    console.log('[FileSearch] 启动 Everything...')
+    log.info('启动 Everything...')
     this.everythingProcess = spawn(everythingExe, ['-startup', '-minimized'], {
       detached: true,
       stdio: 'ignore',
@@ -148,14 +151,14 @@ export class FileSearchService {
         const esExe = path.join(this.everythingPath, 'es.exe')
         await this.execCommand(esExe, ['-n', '1', 'test'])
         this.everythingReady = true
-        console.log('[FileSearch] Everything 已就绪')
+        log.info('Everything 已就绪')
         return true
       } catch {
         // 继续等待
       }
     }
 
-    console.log('[FileSearch] Everything 启动超时')
+    log.info('Everything 启动超时')
     return false
   }
 
@@ -289,7 +292,7 @@ export class FileSearchService {
       }
     }
 
-    console.log(`[FileSearch] 使用 ${backend} 搜索 "${query}"，找到 ${results.length} 个结果`)
+    log.info(`使用 ${backend} 搜索 "${query}"，找到 ${results.length} 个结果`)
     return results
   }
 
@@ -387,7 +390,7 @@ export class FileSearchService {
 
       return results
     } catch (error) {
-      console.error('[FileSearch] Spotlight 搜索失败:', error)
+      log.error('Spotlight 搜索失败:', error)
       return []
     }
   }
@@ -455,7 +458,7 @@ export class FileSearchService {
 
       return results
     } catch (error) {
-      console.error('[FileSearch] Everything 搜索失败:', error)
+      log.error('Everything 搜索失败:', error)
       return []
     }
   }
@@ -520,7 +523,7 @@ export class FileSearchService {
 
       return results
     } catch (error) {
-      console.error('[FileSearch] locate 搜索失败:', error)
+      log.error('locate 搜索失败:', error)
       return []
     }
   }
@@ -599,7 +602,7 @@ export class FileSearchService {
 
       return results
     } catch (error) {
-      console.error('[FileSearch] fd 搜索失败:', error)
+      log.error('fd 搜索失败:', error)
       return []
     }
   }

@@ -12,6 +12,9 @@ import type { SshService } from '../ssh.service'
 import type { TerminalStateService, TerminalState, CommandExecution } from '../terminal-state.service'
 import { ProcessMonitor, getProcessMonitor, initProcessMonitor, type ProcessState } from './process-monitor'
 import { getScreenAnalysisFromFrontend, getVisibleContentFromBuffer } from '../screen-content.service'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('TerminalAwareness')
 
 // ==================== 类型定义 ====================
 
@@ -183,7 +186,7 @@ export class TerminalAwarenessService {
       screenAnalysis = await getScreenAnalysisFromFrontend(ptyId, 2000)
     } catch (e) {
       // 实时获取失败，使用默认值（synthesizeAwareness 会处理 null）
-      console.warn(`[TerminalAwareness] 获取屏幕分析失败: ${e}`)
+      log.warn(`获取屏幕分析失败: ${e}`)
     }
 
     // 4. 综合判断

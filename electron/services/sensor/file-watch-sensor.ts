@@ -7,6 +7,9 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import type { Sensor, SensorEvent, EventBus } from './types'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('FileWatchSensor')
 
 interface FileWatchTarget {
   watchId: string
@@ -43,7 +46,7 @@ export class FileWatchSensor implements Sensor {
       this.startWatching(watchId, target)
     }
 
-    console.log(`[FileWatchSensor] Started with ${this.targets.size} targets`)
+    log.info(`Started with ${this.targets.size} targets`)
   }
 
   async stop(): Promise<void> {
@@ -62,7 +65,7 @@ export class FileWatchSensor implements Sensor {
     }
     this.debounceTimers.clear()
 
-    console.log('[FileWatchSensor] Stopped')
+    log.info('Stopped')
   }
 
   addTarget(watchId: string, target: Omit<FileWatchTarget, 'watchId'>): void {
@@ -112,7 +115,7 @@ export class FileWatchSensor implements Sensor {
       try {
         const resolved = path.resolve(targetPath)
         if (!this.isPathSafe(resolved)) {
-          console.warn(`[FileWatchSensor] Refused to watch sensitive path: ${resolved}`)
+          log.warn(`Refused to watch sensitive path: ${resolved}`)
           continue
         }
         const stat = fs.statSync(resolved)
@@ -134,12 +137,12 @@ export class FileWatchSensor implements Sensor {
         })
 
         watcher.on('error', (err) => {
-          console.error(`[FileWatchSensor] Watcher error for ${resolved}:`, err)
+          log.error(`Watcher error for ${resolved}:`, err)
         })
 
         watcherList.push(watcher)
       } catch (err) {
-        console.error(`[FileWatchSensor] Cannot watch ${targetPath}:`, err)
+        log.error(`Cannot watch ${targetPath}:`, err)
       }
     }
 
@@ -182,7 +185,7 @@ export class FileWatchSensor implements Sensor {
         priority: 'normal'
       }
 
-      console.log(`[FileWatchSensor] ${payload.changeType}: ${payload.filename}`)
+      log.info(`${payload.changeType}: ${payload.filename}`)
       this.eventBus.emit(event)
     }, DEBOUNCE_MS))
   }

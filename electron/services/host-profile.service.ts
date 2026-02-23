@@ -4,6 +4,9 @@ import * as os from 'os'
 import { app } from 'electron'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('HostProfile')
 
 const execAsync = promisify(exec)
 
@@ -131,7 +134,7 @@ export class HostProfileService {
         this.profiles.set(profile.hostId, profile)
       }
     } catch (e) {
-      console.error('加载主机档案失败:', e)
+      log.error('加载主机档案失败:', e)
     }
   }
 
@@ -144,7 +147,7 @@ export class HostProfileService {
       fs.writeFileSync(filePath, JSON.stringify(profile, null, 2), 'utf-8')
       this.profiles.set(profile.hostId, profile)
     } catch (e) {
-      console.error('保存主机档案失败:', e)
+      log.error('保存主机档案失败:', e)
     }
   }
 
@@ -167,7 +170,7 @@ export class HostProfileService {
    */
   updateProfile(hostId: string, updates: Partial<HostProfile>): HostProfile {
     if (!hostId) {
-      console.warn('[HostProfile] updateProfile called with undefined hostId, using "local"')
+      log.warn('updateProfile called with undefined hostId, using "local"')
       hostId = 'local'
     }
     const existing = this.profiles.get(hostId)
@@ -236,7 +239,7 @@ export class HostProfileService {
       }
       this.profiles.delete(hostId)
     } catch (e) {
-      console.error('删除主机档案失败:', e)
+      log.error('删除主机档案失败:', e)
     }
   }
 
@@ -503,14 +506,14 @@ export class HostProfileService {
     // 使用多种方式检测 Windows
     const isWindows = process.platform === 'win32' || os.platform() === 'win32' || os.type() === 'Windows_NT'
     
-    console.log('[HostProfile] 探测本地主机, platform:', process.platform, 'os.platform:', os.platform(), 'os.type:', os.type(), 'isWindows:', isWindows)
+    log.info('探测本地主机, platform:', process.platform, 'os.platform:', os.platform(), 'os.type:', os.type(), 'isWindows:', isWindows)
     
     try {
       // 探测主机名（Windows 和 Unix 都支持 hostname 命令）
       const { stdout: hostname } = await execAsync('hostname')
       result.hostname = hostname.trim()
     } catch (e) { 
-      console.log('[HostProfile] hostname 探测失败:', e)
+      log.info('hostname 探测失败:', e)
     }
 
     try {
@@ -518,7 +521,7 @@ export class HostProfileService {
       const { stdout: username } = await execAsync('whoami')
       result.username = username.trim()
     } catch (e) { 
-      console.log('[HostProfile] whoami 探测失败:', e)
+      log.info('whoami 探测失败:', e)
     }
 
     if (isWindows) {
@@ -539,7 +542,7 @@ export class HostProfileService {
             result.osVersion = `${captionMatch[1].trim()} ${versionMatch?.[1]?.trim() || ''}`.trim()
           }
         } catch (e) {
-          console.log('[HostProfile] Windows 版本探测失败:', e)
+          log.info('Windows 版本探测失败:', e)
         }
       }
 
@@ -575,7 +578,7 @@ export class HostProfileService {
       // Windows 主目录
       result.homeDir = process.env.USERPROFILE || os.homedir() || undefined
       
-      console.log('[HostProfile] Windows 探测结果:', result)
+      log.info('Windows 探测结果:', result)
 
     } else {
       // Unix/Linux/macOS 系统探测
@@ -659,10 +662,10 @@ export class HostProfileService {
         result.homeDir = process.env.HOME || os.homedir() || undefined
       } catch { /* ignore */ }
       
-      console.log('[HostProfile] Unix 探测结果:', result)
+      log.info('Unix 探测结果:', result)
     }
 
-    console.log('[HostProfile] 最终探测结果:', result)
+    log.info('最终探测结果:', result)
     return result
   }
 
@@ -671,12 +674,12 @@ export class HostProfileService {
    */
   async probeAndUpdateLocal(): Promise<HostProfile> {
     const probeResult = await this.probeLocal()
-    console.log('[HostProfile] probeAndUpdateLocal 探测结果:', probeResult)
+    log.info('probeAndUpdateLocal 探测结果:', probeResult)
     const profile = this.updateProfile('local', {
       ...probeResult,
       lastProbed: Date.now()
     })
-    console.log('[HostProfile] probeAndUpdateLocal 更新后档案:', profile)
+    log.info('probeAndUpdateLocal 更新后档案:', profile)
     return profile
   }
 }

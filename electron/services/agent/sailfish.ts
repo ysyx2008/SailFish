@@ -17,6 +17,9 @@ import type {
 import { getAgentTools, AgentMode } from './tools'
 import { buildSystemPrompt } from './prompt-builder'
 import type { SkillSession } from './skills'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('SailfishAgent')
 
 /**
  * SailFish Agent
@@ -43,7 +46,7 @@ export class SailFish extends Agent {
     if (this.ptyId && !this._terminalSkillLoaded) {
       this._terminalSkillLoaded = true
       session.loadSkill('terminal').catch(err => {
-        console.error('[SailFish] Failed to auto-load terminal skill:', err)
+        log.error('Failed to auto-load terminal skill:', err)
       })
     }
     return session

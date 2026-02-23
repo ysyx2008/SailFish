@@ -10,6 +10,9 @@
  * - 环境分析：由前端 TerminalScreenService 分析
  */
 import { BrowserWindow, ipcMain } from 'electron'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('ScreenContent')
 
 /** 屏幕分析结果（与前端 TerminalAwarenessState 保持一致） */
 export interface ScreenAnalysis {
@@ -125,14 +128,13 @@ export async function getLastNLinesFromBuffer(
 ): Promise<string[] | null> {
   const mainWindow = getMainWindow()
   if (!mainWindow || mainWindow.isDestroyed()) {
-    console.warn('[ScreenContent] mainWindow 不可用')
+    log.warn('mainWindow 不可用')
     return null
   }
 
   return new Promise((resolve) => {
     const requestId = `${ptyId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     
-    // 设置超时
     const timeout = setTimeout(() => {
       pendingRequests.delete(requestId)
       resolve(null)
@@ -144,25 +146,17 @@ export async function getLastNLinesFromBuffer(
       timeout 
     })
     
-    // 发送请求到渲染进程
     mainWindow.webContents.send('screen:requestLastNLines', { requestId, ptyId, lines })
   })
 }
 
-/**
- * 从 xterm buffer 获取可视区域内容
- * 
- * @param ptyId 终端 ID
- * @param timeoutMs 超时时间（毫秒），默认 3000
- * @returns 行数组，如果失败返回 null
- */
 export async function getVisibleContentFromBuffer(
   ptyId: string,
   timeoutMs: number = 3000
 ): Promise<string[] | null> {
   const mainWindow = getMainWindow()
   if (!mainWindow || mainWindow.isDestroyed()) {
-    console.warn('[ScreenContent] mainWindow 不可用')
+    log.warn('mainWindow 不可用')
     return null
   }
 
@@ -203,7 +197,7 @@ export async function getScreenAnalysisFromFrontend(
 ): Promise<ScreenAnalysis | null> {
   const mainWindow = getMainWindow()
   if (!mainWindow || mainWindow.isDestroyed()) {
-    console.warn('[ScreenContent] mainWindow 不可用，无法获取屏幕分析')
+    log.warn('mainWindow 不可用，无法获取屏幕分析')
     return null
   }
 

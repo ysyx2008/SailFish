@@ -7,6 +7,9 @@ import { registerSkill } from '../registry'
 import type { Skill } from '../types'
 import { browserTools } from './tools'
 import { closeAllSessions } from './session'
+import { createLogger } from '../../../../utils/logger'
+
+const log = createLogger('BrowserSkill')
 
 const browserSkill: Skill = {
   id: 'browser',
@@ -18,13 +21,13 @@ const browserSkill: Skill = {
   
   async init() {
     // playwright-core 会在执行时动态 import，这里不需要预加载
-    console.log('[BrowserSkill] Initialized')
+    log.info('Initialized')
   },
   
   async cleanup() {
     // 关闭所有打开的浏览器
     await closeAllSessions()
-    console.log('[BrowserSkill] Cleaned up')
+    log.info('Cleaned up')
   }
 }
 

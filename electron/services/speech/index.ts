@@ -5,6 +5,9 @@
 import * as path from 'path'
 import * as fs from 'fs'
 import { app, utilityProcess, UtilityProcess } from 'electron'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('Speech')
 
 const MODEL_NAME = 'sherpa-onnx-paraformer-zh-2024-03-09'
 const PUNCT_MODEL_NAME = 'sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8'
@@ -112,10 +115,10 @@ function startWorker(): void {
   if (worker) return
 
   const workerPath = getWorkerPath()
-  console.log('[Speech] Starting worker from:', workerPath)
+  log.info('Starting worker from:', workerPath)
 
   if (!fs.existsSync(workerPath)) {
-    console.error('[Speech] Worker file not found:', workerPath)
+    log.error('Worker file not found:', workerPath)
     return
   }
 
@@ -126,7 +129,7 @@ function startWorker(): void {
     env.DYLD_LIBRARY_PATH = env.DYLD_LIBRARY_PATH
       ? `${sherpaLib}:${env.DYLD_LIBRARY_PATH}`
       : sherpaLib
-    console.log('[Speech] DYLD_LIBRARY_PATH:', env.DYLD_LIBRARY_PATH)
+    log.info('DYLD_LIBRARY_PATH:', env.DYLD_LIBRARY_PATH)
   }
 
   worker = utilityProcess.fork(workerPath, [], {
@@ -150,16 +153,16 @@ function startWorker(): void {
 
   // 处理 Worker 输出
   worker.stdout?.on('data', (data) => {
-    console.log('[SpeechWorker]', data.toString().trim())
+    log.info('[Worker]', data.toString().trim())
   })
 
   worker.stderr?.on('data', (data) => {
-    console.error('[SpeechWorker Error]', data.toString().trim())
+    log.error('[Worker]', data.toString().trim())
   })
 
   // 处理 Worker 退出
   worker.on('exit', (code) => {
-    console.log('[Speech] Worker exited with code:', code)
+    log.info('Worker exited with code:', code)
     worker = null
     isInitialized = false
 
@@ -195,7 +198,7 @@ export async function initialize(): Promise<{ success: boolean; error?: string; 
     const punctModelPath = path.join(punctDir, 'model.int8.onnx')
     const hasPunctModel = fs.existsSync(punctModelPath)
 
-    console.log('[Speech] Punctuation model available:', hasPunctModel)
+    log.info('Punctuation model available:', hasPunctModel)
 
     const result = await sendToWorker('initialize', { 
       modelPath, 
@@ -206,7 +209,7 @@ export async function initialize(): Promise<{ success: boolean; error?: string; 
     isInitialized = true
     return { success: true, hasPunctuation: result?.hasPunctuation }
   } catch (error) {
-    console.error('[Speech] Initialize error:', error)
+    log.error('Initialize error:', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -245,7 +248,7 @@ export async function transcribe(
       result: { text: result.text, hasPunctuation: result.hasPunctuation }
     }
   } catch (error) {
-    console.error('[Speech] Transcribe error:', error)
+    log.error('Transcribe error:', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
@@ -301,5 +304,5 @@ export function dispose(): void {
   }
   isInitialized = false
   pendingCallbacks.clear()
-  console.log('[Speech] Disposed')
+  log.info('Disposed')
 }

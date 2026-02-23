@@ -25,6 +25,9 @@
 import * as http from 'http'
 import * as crypto from 'crypto'
 import { RemoteChatService, VISIBLE_STEP_TYPES } from './remote-chat.service'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('Gateway')
 
 // 类型定义 ---------------------------------------------------------------
 
@@ -121,9 +124,9 @@ export class GatewayService {
       })
 
       this.server.listen(this.config.port, this.config.host, () => {
-        console.log(`[Gateway] Server started on ${this.config.host}:${this.config.port}`)
-        console.log(`[Gateway] Chat page: http://localhost:${this.config.port}/chat`)
-        console.log(`[Gateway] API Token: ${this.config.apiToken}`)
+        log.info(`Server started on ${this.config.host}:${this.config.port}`)
+        log.info(`Chat page: http://localhost:${this.config.port}/chat`)
+        log.info(`API Token: ${this.config.apiToken}`)
         resolve({ success: true })
       })
     })
@@ -137,7 +140,7 @@ export class GatewayService {
     if (this.server) {
       return new Promise((resolve) => {
         this.server!.close(() => {
-          console.log('[Gateway] Server stopped')
+          log.info('Server stopped')
           this.server = null
           resolve()
         })
@@ -317,7 +320,7 @@ export class GatewayService {
       }))
 
     } catch (err) {
-      console.error('[Gateway] Webhook error:', err)
+      log.error('Webhook error:', err)
       res.writeHead(500, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: 'Internal error' }))
     }

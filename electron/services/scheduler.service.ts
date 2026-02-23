@@ -17,6 +17,9 @@ import type { SshService, SshConfig } from './ssh.service'
 import type { ConfigService, SshSession } from './config.service'
 import type { AgentService } from './agent'
 import type { AgentContext, AgentCallbacks, AgentStep } from './agent/types'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('Scheduler')
 
 // cron-parser 动态导入 (v5 使用 CronExpressionParser.parse)
 let CronExpressionParser: typeof import('cron-parser').default | null = null
@@ -83,7 +86,7 @@ export class SchedulerService {
    */
   init(config: SchedulerServiceConfig): void {
     this.config = config
-    console.log('[SchedulerService] 初始化完成')
+    log.info('初始化完成')
   }
 
   /**
@@ -91,7 +94,7 @@ export class SchedulerService {
    */
   async start(): Promise<void> {
     if (this.isRunning) {
-      console.log('[SchedulerService] 调度器已在运行')
+      log.info('调度器已在运行')
       return
     }
 
@@ -102,13 +105,13 @@ export class SchedulerService {
         // v5 使用默认导出 CronExpressionParser
         CronExpressionParser = (cronParserModule as any).default || cronParserModule.CronExpressionParser
       } catch (e) {
-        console.error('[SchedulerService] 无法加载 cron-parser:', e)
+        log.error('无法加载 cron-parser:', e)
         throw new Error('cron-parser 模块加载失败')
       }
     }
 
     this.isRunning = true
-    console.log('[SchedulerService] 调度器启动')
+    log.info('调度器启动')
 
     // 计算所有任务的下次执行时间
     const tasks = this.store.getTasks()
@@ -135,7 +138,7 @@ export class SchedulerService {
     // 清除所有定时器
     for (const [taskId, timer] of this.timers) {
       clearTimeout(timer)
-      console.log(`[SchedulerService] 清除任务定时器: ${taskId}`)
+      log.info(`清除任务定时器: ${taskId}`)
     }
     this.timers.clear()
 
@@ -145,7 +148,7 @@ export class SchedulerService {
       this.checkInterval = null
     }
 
-    console.log('[SchedulerService] 调度器已停止')
+    log.info('调度器已停止')
   }
 
   // ==================== 任务 CRUD ====================
@@ -188,7 +191,7 @@ export class SchedulerService {
       this.scheduleTask(task)
     }
 
-    console.log(`[SchedulerService] 创建任务: ${task.name} (${task.id})`)
+    log.info(`创建任务: ${task.name} (${task.id})`)
     return task
   }
 
@@ -204,7 +207,7 @@ export class SchedulerService {
       if (task.enabled && this.isRunning) {
         this.scheduleTask(task)
       }
-      console.log(`[SchedulerService] 更新任务: ${task.name} (${task.id})`)
+      log.info(`更新任务: ${task.name} (${task.id})`)
     }
 
     return task
@@ -217,7 +220,7 @@ export class SchedulerService {
     this.cancelTaskTimer(id)
     const result = this.store.deleteTask(id)
     if (result) {
-      console.log(`[SchedulerService] 删除任务: ${id}`)
+      log.info(`删除任务: ${id}`)
     }
     return result
   }
@@ -234,7 +237,7 @@ export class SchedulerService {
       } else {
         this.cancelTaskTimer(id)
       }
-      console.log(`[SchedulerService] 切换任务: ${task.name} -> ${task.enabled ? '启用' : '禁用'}`)
+      log.info(`切换任务: ${task.name} -> ${task.enabled ? '启用' : '禁用'}`)
     }
 
     return task
@@ -323,7 +326,7 @@ export class SchedulerService {
     if (!manual) {
       const freshTask = this.store.getTask(task.id)
       if (freshTask?.lastRun?.at && (Date.now() - freshTask.lastRun.at) < 1000) {
-        console.log(`[SchedulerService] 任务在 1 秒内已触发过，跳过重复触发: ${task.name}`)
+        log.info(`任务在 1 秒内已触发过，跳过重复触发: ${task.name}`)
         return {
           success: true,
           output: '',
@@ -336,7 +339,7 @@ export class SchedulerService {
     let ptyId: string | null = null
     let result: TaskExecutionResult
 
-    console.log(`[SchedulerService] 开始执行任务: ${task.name} (${task.id})`)
+    log.info(`开始执行任务: ${task.name} (${task.id})`)
 
     try {
       // 1. 创建终端
@@ -344,7 +347,7 @@ export class SchedulerService {
         ptyId = this.config.ptyService.create({
           cwd: task.target.workingDirectory
         })
-        console.log(`[SchedulerService] 创建本地终端: ${ptyId}`)
+        log.info(`创建本地终端: ${ptyId}`)
       } else if (task.target.type === 'ssh') {
         const sshSession = this.getSshSession(task.target.sshSessionId || '')
         if (!sshSession) {
@@ -361,7 +364,7 @@ export class SchedulerService {
         }
         
         ptyId = await this.config.sshService.connect(sshConfig)
-        console.log(`[SchedulerService] 创建 SSH 终端: ${ptyId} -> ${sshSession.name}`)
+        log.info(`创建 SSH 终端: ${ptyId} -> ${sshSession.name}`)
       }
       // assistant 模式不需要终端
 
@@ -421,7 +424,7 @@ export class SchedulerService {
       this.scheduleTask(task)
     }
 
-    console.log(`[SchedulerService] 任务已触发: ${task.name}, Agent 执行中...`)
+    log.info(`任务已触发: ${task.name}, Agent 执行中...`)
 
     return result
   }
@@ -570,7 +573,7 @@ export class SchedulerService {
    */
   private scheduleTask(task: ScheduledTask): void {
     if (!CronExpressionParser) {
-      console.error('[SchedulerService] cron-parser 未加载')
+      log.error('cron-parser 未加载')
       return
     }
 
@@ -581,7 +584,7 @@ export class SchedulerService {
       const nextRun = this.calculateNextRun(task.schedule)
       
       if (!nextRun) {
-        console.log(`[SchedulerService] 任务无下次执行时间: ${task.name}`)
+        log.info(`任务无下次执行时间: ${task.name}`)
         return
       }
 
@@ -589,7 +592,7 @@ export class SchedulerService {
       
       if (delay <= 0) {
         // 如果时间已过，立即执行
-        console.log(`[SchedulerService] 任务立即执行: ${task.name}`)
+        log.info(`任务立即执行: ${task.name}`)
         this.executeTask(task)
         return
       }
@@ -606,10 +609,10 @@ export class SchedulerService {
       this.timers.set(task.id, timer)
 
       const nextRunDate = new Date(nextRun)
-      console.log(`[SchedulerService] 任务已调度: ${task.name}, 下次执行: ${nextRunDate.toLocaleString()}`)
+      log.info(`任务已调度: ${task.name}, 下次执行: ${nextRunDate.toLocaleString()}`)
 
     } catch (error) {
-      console.error(`[SchedulerService] 调度任务失败: ${task.name}`, error)
+      log.error(`调度任务失败: ${task.name}`, error)
     }
   }
 
@@ -631,7 +634,7 @@ export class SchedulerService {
           // 解析间隔表达式，如 "30m", "1h", "2d"
           const match = schedule.expression.match(/^(\d+)(s|m|h|d)$/)
           if (!match) {
-            console.error(`[SchedulerService] 无效的间隔表达式: ${schedule.expression}`)
+            log.error(`无效的间隔表达式: ${schedule.expression}`)
             return null
           }
           
@@ -653,7 +656,7 @@ export class SchedulerService {
           // ISO 日期时间格式
           const timestamp = new Date(schedule.expression).getTime()
           if (isNaN(timestamp)) {
-            console.error(`[SchedulerService] 无效的日期格式: ${schedule.expression}`)
+            log.error(`无效的日期格式: ${schedule.expression}`)
             return null
           }
           // 一次性任务，如果时间已过则不执行
@@ -664,7 +667,7 @@ export class SchedulerService {
           return null
       }
     } catch (error) {
-      console.error(`[SchedulerService] 计算下次执行时间失败:`, error)
+      log.error(`计算下次执行时间失败:`, error)
       return null
     }
   }
@@ -720,7 +723,7 @@ export class SchedulerService {
       })
       notification.show()
     } catch (error) {
-      console.error('[SchedulerService] 发送通知失败:', error)
+      log.error('发送通知失败:', error)
     }
   }
 

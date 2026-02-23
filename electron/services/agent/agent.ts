@@ -38,6 +38,9 @@ import { t } from './i18n'
 import { createSkillSession, SkillSession } from './skills'
 import { PromptBuilder } from './prompt-builder'
 import { aiDebugService } from '../ai-debug.service'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('Agent')
 
 /**
  * Agent 抽象基类
@@ -436,7 +439,7 @@ export abstract class Agent {
           task.messages
         )
       }
-      console.log(`[Agent] Restored TaskMemory from HistoryService: ${tasks.length} tasks (from messages)`)
+      log.info(`Restored TaskMemory from HistoryService: ${tasks.length} tasks (from messages)`)
     } else if (record.steps && record.steps.length > 0) {
       // 降级：旧记录没有 messages，从 steps 重建基本 TaskMemory
       const tasks = this.splitStepsIntoTasks(record.steps)
@@ -449,7 +452,7 @@ export abstract class Agent {
           task.finalResult
         )
       }
-      console.log(`[Agent] Restored TaskMemory from HistoryService: ${tasks.length} tasks (from steps, no messages)`)
+      log.info(`Restored TaskMemory from HistoryService: ${tasks.length} tasks (from steps, no messages)`)
     }
     
     // 恢复 _sessionSteps（避免后续保存时覆盖旧步骤）
@@ -606,7 +609,7 @@ export abstract class Agent {
     
     // L2: 异步更新知识文档
     this.updateContextKnowledgeAsync(run, result).catch(err => {
-      console.error('[Agent] 知识文档更新失败:', err)
+      log.error('知识文档更新失败:', err)
     })
     
     // 添加 final_result 步骤（统一由后端生成，前端通过 onStep 回调接收）
@@ -684,7 +687,7 @@ export abstract class Agent {
     try {
       historyService.saveAgentRecord(record)
     } catch (err) {
-      console.error('[Agent] 保存会话历史失败:', err)
+      log.error('保存会话历史失败:', err)
     }
   }
   
@@ -733,7 +736,7 @@ export abstract class Agent {
     try {
       historyService.saveAgentRecord(record)
     } catch (err) {
-      console.error('[Agent] 保存检查点失败:', err)
+      log.error('保存检查点失败:', err)
     }
   }
   
@@ -885,7 +888,7 @@ export abstract class Agent {
       const ckService = getContextKnowledgeService()
       contextKnowledgeDoc = ckService.getDocument(contextId)
     } catch (e) {
-      console.log('[Agent] ContextKnowledge load error:', e)
+      log.warn('ContextKnowledge load error:', e)
     }
 
     // 构建系统提示
@@ -936,7 +939,7 @@ export abstract class Agent {
         context = await knowledgeService.buildContext(message, { hostId })
       }
     } catch (e) {
-      console.log('[Agent] Knowledge service error:', e)
+      log.warn('Knowledge service error:', e)
     }
     
     return { context, enabled, conversationHistory: [] }
@@ -1031,7 +1034,7 @@ export abstract class Agent {
         const isAborted = errorMsg.toLowerCase().includes('aborted')
         
         if (isAborted && run.pendingUserMessages.length > 0) {
-          console.log('[Agent] AI 输出被用户消息中断，继续循环处理')
+          log.info('AI 输出被用户消息中断，继续循环处理')
           // 修复不完整的 tool_calls 消息序列
           // 当 abort 发生在工具执行过程中时，可能存在 assistant 消息（含 tool_calls）但缺少对应的 tool result
           this.fixIncompleteToolCalls(run)
@@ -1983,7 +1986,7 @@ export abstract class Agent {
     // 为缺失的 tool_call_id 添加占位的 tool result
     const missingToolCalls = toolCalls.filter(tc => !existingToolCallIds.has(tc.id))
     if (missingToolCalls.length > 0) {
-      console.log(`[Agent] 修复 ${missingToolCalls.length} 个缺失的 tool result 消息`)
+      log.info(`修复 ${missingToolCalls.length} 个缺失的 tool result 消息`)
       for (const tc of missingToolCalls) {
         messages.push({
           role: 'tool',

@@ -33,10 +33,14 @@ import { createReranker, Reranker } from './reranker'
 import { getBM25Index, BM25Index } from './bm25'
 import { encrypt, decrypt, isEncrypted } from './crypto'
 
+import { createLogger } from '../../utils/logger'
+
 import type { AiService } from '../ai.service'
 import type { McpService } from '../mcp.service'
 import type { ConfigService } from '../config.service'
 import type { ParsedDocument } from '../document-parser.service'
+
+const log = createLogger('Knowledge')
 
 // ==================== 观察日志模型类型 ====================
 
@@ -140,8 +144,8 @@ export class KnowledgeService extends EventEmitter {
     // 当配置被重置为默认值（加密密钥变化、文件损坏等），但文档索引仍在磁盘上时，
     // 自动恢复 enabled 和 enableHostMemory 设置，避免用户感知到"知识库突然消失"。
     if (!this.settings.enabled && this.documentsIndex.size > 0) {
-      console.warn(
-        `[KnowledgeService] 配置异常恢复：知识库已禁用但存在 ${this.documentsIndex.size} 个文档，自动启用。` +
+      log.warn(
+        `配置异常恢复：知识库已禁用但存在 ${this.documentsIndex.size} 个文档，自动启用。` +
         '如果你确实想禁用知识库，请在设置中手动关闭。'
       )
       this.settings.enabled = true
@@ -181,7 +185,7 @@ export class KnowledgeService extends EventEmitter {
       
       // 监听维度变化事件（模型升级时自动清空旧索引）
       this.vectorStorage.once('dimensionMismatch', async ({ old: oldDim, new: newDim }) => {
-        console.log(`[KnowledgeService] 模型维度变化 ${oldDim} -> ${newDim}，同步清空 BM25 索引...`)
+        log.info(`模型维度变化 ${oldDim} -> ${newDim}，同步清空 BM25 索引...`)
         await this.bm25Index.clear()
         this.emit('indexCleared', { reason: 'dimension_mismatch', oldDimensions: oldDim, newDimensions: newDim })
       })
@@ -213,7 +217,7 @@ export class KnowledgeService extends EventEmitter {
       // 清理孤儿数据（向量库和 BM25 中存在但 documentsIndex 中不存在的数据）
       await this.cleanupOrphanData()
     } catch (error) {
-      console.error('[KnowledgeService] Initialization failed:', error)
+      log.error('Initialization failed:', error)
       this.emit('error', error)
       throw error
     }
@@ -232,7 +236,7 @@ export class KnowledgeService extends EventEmitter {
     // 如果向量库和 BM25 索引都有数据，跳过重建
     if (stats.chunkCount > 0 && bm25Stats.documentCount > 0) return
     
-    console.log(`[KnowledgeService] 开始重建索引，共 ${docs.length} 个文档...`)
+    log.info(`开始重建索引，共 ${docs.length} 个文档...`)
     
     for (let i = 0; i < docs.length; i++) {
       const doc = docs[i]
@@ -252,7 +256,7 @@ export class KnowledgeService extends EventEmitter {
           try {
             contentForIndex = decrypt(doc.content)
           } catch (e) {
-            console.warn(`[KnowledgeService] 解密失败，跳过: ${doc.filename}`)
+            log.warn(`解密失败，跳过: ${doc.filename}`)
             continue
           }
         }
@@ -296,13 +300,13 @@ export class KnowledgeService extends EventEmitter {
           await this.bm25Index.addDocuments(bm25Docs)
         }
         
-        console.log(`[KnowledgeService] 已重建 ${i + 1}/${docs.length}: ${doc.filename}`)
+        log.info(`已重建 ${i + 1}/${docs.length}: ${doc.filename}`)
       } catch (error) {
-        console.error(`[KnowledgeService] Failed to rebuild index for ${doc.filename}:`, error)
+        log.error(`Failed to rebuild index for ${doc.filename}:`, error)
       }
     }
     
-    console.log('[KnowledgeService] 索引重建完成')
+    log.info('索引重建完成')
   }
 
   /**
@@ -321,7 +325,7 @@ export class KnowledgeService extends EventEmitter {
         return
       }
 
-      console.log(`[KnowledgeService] 发现 ${orphanDocIds.length} 个孤儿文档，开始清理...`)
+      log.info(`发现 ${orphanDocIds.length} 个孤儿文档，开始清理...`)
 
       // 第一轮：逐个删除 + 强制 aggressive compact
       for (const docId of orphanDocIds) {
@@ -333,19 +337,19 @@ export class KnowledgeService extends EventEmitter {
       // 验证：compact 后重新检查是否还有孤儿
       const remaining = await this.findOrphanDocIds(validDocIds)
       if (remaining.length === 0) {
-        console.log(`[KnowledgeService] 清理了 ${orphanDocIds.length} 个孤儿文档`)
+        log.info(`清理了 ${orphanDocIds.length} 个孤儿文档`)
         return
       }
 
       // 如果软删除无效，通过重建表彻底清除
-      console.warn(
-        `[KnowledgeService] 软删除后仍有 ${remaining.length} 个孤儿残留，` +
+      log.warn(
+        `软删除后仍有 ${remaining.length} 个孤儿残留，` +
         '将重建向量表彻底清除...'
       )
       await this.rebuildVectorTable(validDocIds)
-      console.log('[KnowledgeService] 向量表重建完成，孤儿数据已彻底清除')
+      log.info('向量表重建完成，孤儿数据已彻底清除')
     } catch (error) {
-      console.error('[KnowledgeService] 清理孤儿数据失败:', error)
+      log.error('清理孤儿数据失败:', error)
     }
   }
 
@@ -389,7 +393,7 @@ export class KnowledgeService extends EventEmitter {
         }
       }
     } catch (error) {
-      console.error('[KnowledgeService] Failed to load documents index:', error)
+      log.error('Failed to load documents index:', error)
     }
   }
 
@@ -416,7 +420,7 @@ export class KnowledgeService extends EventEmitter {
       fs.renameSync(tempPath, this.documentsMetaPath)
       return true
     } catch (error) {
-      console.error('[KnowledgeService] Failed to save documents index:', error)
+      log.error('Failed to save documents index:', error)
       return false
     }
   }
@@ -460,7 +464,7 @@ export class KnowledgeService extends EventEmitter {
     const duplicateCheck = this.isDuplicate(doc.content)
     
     if (duplicateCheck.isDuplicate && duplicateCheck.existingDoc) {
-      console.log(`[KnowledgeService] 文档重复，已跳过: ${doc.filename} (与 ${duplicateCheck.existingDoc.filename} 相同)`)
+      log.info(`文档重复，已跳过: ${doc.filename} (与 ${duplicateCheck.existingDoc.filename} 相同)`)
       // 返回已存在文档的 ID，不重复添加
       return duplicateCheck.existingDoc.id
     }
@@ -585,7 +589,7 @@ export class KnowledgeService extends EventEmitter {
           failed++
         }
       } catch (error) {
-        console.error(`[KnowledgeService] Failed to remove document ${docId}:`, error)
+        log.error(`Failed to remove document ${docId}:`, error)
         failed++
       }
     }
@@ -593,13 +597,13 @@ export class KnowledgeService extends EventEmitter {
     if (success > 0) {
       const saved = this.saveDocumentsIndex()
       if (!saved) {
-        console.error('[KnowledgeService] 批量删除后保存索引失败！')
+        log.error('批量删除后保存索引失败！')
         failed += success
         success = 0
       } else {
         // aggressive compact 立即清理旧版本数据文件
         await this.vectorStorage.compact(true)
-        console.log(`[KnowledgeService] 批量删除完成: ${success} 成功, ${failed} 失败`)
+        log.info(`批量删除完成: ${success} 成功, ${failed} 失败`)
       }
     }
 
@@ -643,7 +647,7 @@ export class KnowledgeService extends EventEmitter {
         const mcpResults = await this.mcpAdapter.search(query, searchOptions)
         results.push(...mcpResults)
       } catch (error) {
-        console.warn('[KnowledgeService] MCP search failed:', error)
+        log.warn('MCP search failed:', error)
       }
     }
 
@@ -658,7 +662,7 @@ export class KnowledgeService extends EventEmitter {
     // 过滤掉已删除但残留在索引中的孤儿数据
     results = results.filter(result => {
       if (result.docId && !this.documentsIndex.has(result.docId)) {
-        console.log('[KnowledgeService] 过滤孤儿数据:', result.docId)
+        log.info('过滤孤儿数据:', result.docId)
         return false
       }
       return true
@@ -674,7 +678,7 @@ export class KnowledgeService extends EventEmitter {
           }
         } catch (e) {
           // 解密失败，保持原样（可能是密码未设置或错误）
-          console.warn('[KnowledgeService] 解密失败:', e)
+          log.warn('解密失败:', e)
           return result
         }
       }
@@ -752,7 +756,7 @@ export class KnowledgeService extends EventEmitter {
     const relevantResults = results.filter(r => r.score >= MIN_RRF_SCORE)
 
     if (relevantResults.length === 0) {
-      console.log('[KnowledgeService] 知识库搜索结果相关性不足，跳过召回')
+      log.info('知识库搜索结果相关性不足，跳过召回')
       return ''
     }
 
@@ -1209,7 +1213,7 @@ export class KnowledgeService extends EventEmitter {
 
       return docId
     } catch (error) {
-      console.error('[KnowledgeService] 保存主机记忆失败:', error)
+      log.error('保存主机记忆失败:', error)
       return null
     }
   }
@@ -1281,7 +1285,7 @@ export class KnowledgeService extends EventEmitter {
         content: decrypt(result.content)
       }))
     } catch (error) {
-      console.error('[KnowledgeService] 搜索主机记忆失败:', error)
+      log.error('搜索主机记忆失败:', error)
       return []
     }
   }
@@ -1318,7 +1322,7 @@ export class KnowledgeService extends EventEmitter {
         }
       }
     } catch (error) {
-      console.warn('[KnowledgeService] 向量批量获取失败，跳过聚类去重:', error)
+      log.warn('向量批量获取失败，跳过聚类去重:', error)
       vectorMap = new Map()
     }
 
@@ -1389,7 +1393,7 @@ export class KnowledgeService extends EventEmitter {
       const items = await this.getHostMemoriesInternal(hostId, contextHint, maxMemories)
       return items.map(m => m.content)
     } catch (error) {
-      console.error('[KnowledgeService] 获取主机记忆失败:', error)
+      log.error('获取主机记忆失败:', error)
       return []
     }
   }
@@ -1417,7 +1421,7 @@ export class KnowledgeService extends EventEmitter {
         source: item.source
       }))
     } catch (error) {
-      console.error('[KnowledgeService] getHostMemoriesWithMetadata 失败:', error)
+      log.error('getHostMemoriesWithMetadata 失败:', error)
       return []
     }
   }
@@ -1504,7 +1508,7 @@ export class KnowledgeService extends EventEmitter {
       }
       return { success: false, action: 'error', message: '保存失败' }
     } catch (error) {
-      console.error('[KnowledgeService] 智能添加记忆失败:', error)
+      log.error('智能添加记忆失败:', error)
       // 出错时尝试普通保存
       const docId = await this.addHostMemory(hostId, memory, options)
       return {
@@ -1588,7 +1592,7 @@ export class KnowledgeService extends EventEmitter {
 
       return docId
     } catch (error) {
-      console.error('[KnowledgeService] 对话索引失败:', error)
+      log.error('对话索引失败:', error)
       return null
     }
   }
@@ -1646,7 +1650,7 @@ export class KnowledgeService extends EventEmitter {
 
       return conversationResults.slice(0, limit)
     } catch (error) {
-      console.error('[KnowledgeService] 对话检索失败:', error)
+      log.error('对话检索失败:', error)
       return []
     }
   }

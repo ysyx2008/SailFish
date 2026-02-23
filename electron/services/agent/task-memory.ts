@@ -5,6 +5,9 @@
 
 import type { AiMessage } from '../ai.service'
 import type { AgentStep, TaskMemory, TaskDigest, TaskSummary, RelatedTaskDigest } from './types'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('TaskMemory')
 
 /**
  * 从文本中提取关键词
@@ -568,7 +571,7 @@ const taskMemoryStores: Map<string, TaskMemoryStore> = new Map()
  */
 export function getTaskMemoryStore(ptyId: string): TaskMemoryStore {
   if (!ptyId) {
-    console.warn('[TaskMemory] getTaskMemoryStore called without ptyId, using fallback')
+    log.warn('getTaskMemoryStore called without ptyId, using fallback')
     ptyId = '__fallback__'
   }
   

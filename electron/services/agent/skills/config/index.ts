@@ -6,6 +6,9 @@
 import { registerSkill } from '../registry'
 import type { Skill } from '../types'
 import { configTools } from './tools'
+import { createLogger } from '../../../../utils/logger'
+
+const log = createLogger('ConfigSkill')
 
 const configSkill: Skill = {
   id: 'config',
@@ -14,18 +17,18 @@ const configSkill: Skill = {
   tools: configTools,
 
   async init() {
-    console.log('[ConfigSkill] Initialized')
+    log.info('Initialized')
   },
 
   async cleanup() {
-    console.log('[ConfigSkill] Cleaned up')
+    log.info('Cleaned up')
   }
 }
 
 try {
   registerSkill(configSkill)
 } catch (error) {
-  console.error('[ConfigSkill] Failed to register:', error)
+  log.error('Failed to register:', error)
 }
 
 export { configSkill }

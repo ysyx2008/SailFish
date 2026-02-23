@@ -10,6 +10,7 @@
  */
 import type { BrowserWindow } from 'electron'
 import { Notification } from 'electron'
+import { createLogger } from '../../utils/logger'
 import type {
   WatchDefinition,
   CreateWatchParams,
@@ -18,6 +19,8 @@ import type {
   WatchRunStatus,
   WatchPriority
 } from './types'
+
+const log = createLogger('WatchService')
 import { WatchStore, getWatchStore } from './store'
 import type { SensorEvent, EventHandler } from '../sensor/types'
 import { getEventBus } from '../sensor/event-bus'
@@ -81,7 +84,7 @@ export class WatchService {
 
   init(config: WatchServiceConfig): void {
     this.config = config
-    console.log('[WatchService] Initialized')
+    log.info('Initialized')
   }
 
   async start(): Promise<void> {
@@ -93,7 +96,7 @@ export class WatchService {
         const mod = await import('cron-parser')
         CronExpressionParser = (mod as any).default || (mod as any).CronExpressionParser
       } catch (e) {
-        console.error('[WatchService] Failed to load cron-parser:', e)
+        log.error('Failed to load cron-parser:', e)
         throw new Error('cron-parser module not available')
       }
     }
@@ -127,7 +130,7 @@ export class WatchService {
     // 每分钟检查遗漏的调度
     this.checkInterval = setInterval(() => this.checkMissedSchedules(), 60 * 1000)
 
-    console.log(`[WatchService] Started with ${watches.filter(w => w.enabled).length} active watches`)
+    log.info(`Started with ${watches.filter(w => w.enabled).length} active watches`)
   }
 
   stop(): void {
@@ -161,7 +164,7 @@ export class WatchService {
     // 中止正在运行的 Watch（清理 PTY 和 Agent）
     if (this.runningWatches.size > 0 && this.config) {
       for (const [watchId, info] of this.runningWatches) {
-        console.log(`[WatchService] Aborting running watch: ${watchId}`)
+        log.info(`Aborting running watch: ${watchId}`)
         if (info.ptyId) {
           try { this.config.agentService.abort(info.ptyId) } catch { /* ignore */ }
         }
@@ -169,7 +172,7 @@ export class WatchService {
       this.runningWatches.clear()
     }
 
-    console.log('[WatchService] Stopped')
+    log.info('Stopped')
   }
 
   // ==================== Watch CRUD ====================
@@ -200,7 +203,7 @@ export class WatchService {
       this.registerSensorTargets(watch)
     }
 
-    console.log(`[WatchService] Created watch: ${watch.name} (${watch.id})`)
+    log.info(`Created watch: ${watch.name} (${watch.id})`)
     return watch
   }
 
@@ -311,19 +314,19 @@ export class WatchService {
     const watches = this.findMatchingWatches(event)
     if (watches.length === 0) return
 
-    console.log(`[WatchService] Event ${event.type} matched ${watches.length} watch(es)`)
+    log.info(`Event ${event.type} matched ${watches.length} watch(es)`)
 
     for (const watch of watches) {
       // 检查是否过期
       if (watch.expiresAt && watch.expiresAt < Date.now()) {
-        console.log(`[WatchService] Watch expired: ${watch.name}`)
+        log.info(`Watch expired: ${watch.name}`)
         this.store.update(watch.id, { enabled: false })
         continue
       }
 
       // 检查是否已在运行
       if (this.runningWatches.has(watch.id)) {
-        console.log(`[WatchService] Watch already running: ${watch.name}`)
+        log.info(`Watch already running: ${watch.name}`)
         continue
       }
 
@@ -677,7 +680,7 @@ export class WatchService {
     const trimmedOutput = result.output?.trim() || ''
     if (!trimmedOutput && result.success) return
     if (this.isNoAction(trimmedOutput)) {
-      console.log(`[WatchService] Agent decided NO_ACTION for: ${watch.name}`)
+      log.info(`Agent decided NO_ACTION for: ${watch.name}`)
       return
     }
 
@@ -738,7 +741,7 @@ export class WatchService {
       watchName: watch.name
     })
 
-    console.log(`[WatchService] Proactive message delivered for: ${watch.name}`)
+    log.info(`Proactive message delivered for: ${watch.name}`)
   }
 
   /** 通知前端确保 __watch_assistant__ tab 存在（Agent 执行前调用） */
@@ -770,7 +773,7 @@ export class WatchService {
       })
       notification.show()
     } catch (err) {
-      console.error('[WatchService] Failed to send notification:', err)
+      log.error('Failed to send notification:', err)
     }
   }
 
@@ -791,7 +794,7 @@ export class WatchService {
       })
       return sendResult.success
     } catch (err) {
-      console.error('[WatchService] Failed to send IM notification:', err)
+      log.error('Failed to send IM notification:', err)
       return false
     }
   }
@@ -863,7 +866,7 @@ export class WatchService {
 
       this.timers.set(timerKey, timer)
     } catch (err) {
-      console.error(`[WatchService] Failed to schedule cron for ${watchId}:`, err)
+      log.error(`Failed to schedule cron for ${watchId}:`, err)
     }
   }
 
@@ -961,15 +964,15 @@ export class WatchService {
       this.applyStateUpdate(output, /STATE_UPDATE:\s*(\{[^}]{1,2000}\})/i, (parsed) => {
         const currentState = this.store.get(watchId)?.state || {}
         this.store.updateState(watchId, { ...currentState, ...parsed })
-        console.log(`[WatchService] Updated state for watch ${watchId}`)
+        log.info(`Updated state for watch ${watchId}`)
       })
 
       this.applyStateUpdate(output, /SHARED_UPDATE:\s*(\{[^}]{1,2000}\})/i, (parsed) => {
         this.store.mergeSharedState(parsed)
-        console.log('[WatchService] Updated shared state')
+        log.info('Updated shared state')
       })
     } catch (err) {
-      console.error('[WatchService] Failed to extract state updates:', err)
+      log.error('Failed to extract state updates:', err)
     }
   }
 
@@ -1019,7 +1022,7 @@ export class WatchService {
           })
           if (!sensor.fileWatch.running && sensor.running) {
             sensor.fileWatch.start().catch(err =>
-              console.error('[WatchService] Failed to start FileWatchSensor:', err)
+              log.error('Failed to start FileWatchSensor:', err)
             )
           }
         } else if (trigger.type === 'calendar') {
@@ -1029,19 +1032,19 @@ export class WatchService {
           })
           if (!sensor.calendar.running && sensor.running) {
             sensor.calendar.start().catch(err =>
-              console.error('[WatchService] Failed to start CalendarSensor:', err)
+              log.error('Failed to start CalendarSensor:', err)
             )
           }
         } else if (trigger.type === 'email') {
           sensor.email.addTarget(watch.id, trigger.filter)
           if (!sensor.email.running && sensor.running) {
             sensor.email.start().catch(err =>
-              console.error('[WatchService] Failed to start EmailSensor:', err)
+              log.error('Failed to start EmailSensor:', err)
             )
           }
         }
       } catch (err) {
-        console.error(`[WatchService] Failed to register sensor target for watch ${watch.id}:`, err)
+        log.error(`Failed to register sensor target for watch ${watch.id}:`, err)
       }
     }
   }
@@ -1178,17 +1181,17 @@ export class WatchService {
 
       const created = this.store.createWithId(patrol)
       if (!created) {
-        console.warn('[WatchService] 日常检查关切创建失败')
+        log.warn('日常检查关切创建失败')
         return false
       }
 
       if (this.isRunning) {
         this.registerSensorTargets(patrol)
       }
-      console.log('[WatchService] 日常检查关切已创建')
+      log.info('日常检查关切已创建')
       return true
     } catch (e) {
-      console.error('[WatchService] ensureDailyPatrol 异常:', e)
+      log.error('ensureDailyPatrol 异常:', e)
       return false
     }
   }
@@ -1202,15 +1205,15 @@ export class WatchService {
       if (!existing) return
 
       try { this.cancelTimers(WatchService.DAILY_PATROL_ID) } catch (e) {
-        console.warn('[WatchService] cancelTimers failed:', e)
+        log.warn('cancelTimers failed:', e)
       }
       try { this.unregisterSensorTargets(WatchService.DAILY_PATROL_ID) } catch (e) {
-        console.warn('[WatchService] unregisterSensorTargets failed:', e)
+        log.warn('unregisterSensorTargets failed:', e)
       }
       this.store.delete(WatchService.DAILY_PATROL_ID)
-      console.log('[WatchService] 日常检查关切已移除')
+      log.info('日常检查关切已移除')
     } catch (e) {
-      console.error('[WatchService] removeDailyPatrol 异常:', e)
+      log.error('removeDailyPatrol 异常:', e)
     }
   }
 
@@ -1279,7 +1282,7 @@ export class WatchService {
       }
 
       if (result.migrated > 0) {
-        console.log(`[WatchService] 已从 Scheduler 迁移 ${result.migrated} 个任务`)
+        log.info(`已从 Scheduler 迁移 ${result.migrated} 个任务`)
       }
     } catch (err) {
       result.errors.push(`迁移失败: ${err instanceof Error ? err.message : String(err)}`)

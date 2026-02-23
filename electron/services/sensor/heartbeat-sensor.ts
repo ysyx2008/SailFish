@@ -5,6 +5,9 @@
  * 不指定具体任务，而是让 AI 根据上下文（日历、邮件、记忆等）自主判断。
  */
 import type { Sensor, SensorEvent, EventBus } from './types'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('HeartbeatSensor')
 
 const DEFAULT_INTERVAL_MS = 30 * 60 * 1000  // 默认 30 分钟
 
@@ -36,7 +39,7 @@ export class HeartbeatSensor implements Sensor {
       this.beat()
     }, this.intervalMs)
 
-    console.log(`[HeartbeatSensor] Started (interval: ${this.intervalMs / 60000}min)`)
+    log.info(`Started (interval: ${this.intervalMs / 60000}min)`)
   }
 
   async stop(): Promise<void> {
@@ -48,7 +51,7 @@ export class HeartbeatSensor implements Sensor {
       this.timer = null
     }
 
-    console.log('[HeartbeatSensor] Stopped')
+    log.info('Stopped')
   }
 
   /** 手动触发一次心跳（用于测试或 Webhook wake） */
@@ -64,7 +67,7 @@ export class HeartbeatSensor implements Sensor {
       priority: 'normal'
     }
 
-    console.log(`[HeartbeatSensor] Beat at ${new Date().toLocaleTimeString()}`)
+    log.info(`Beat at ${new Date().toLocaleTimeString()}`)
     this.eventBus.emit(event)
   }
 

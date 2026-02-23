@@ -7,6 +7,9 @@ import { registerSkill } from '../registry'
 import type { Skill } from '../types'
 import { calendarTools } from './tools'
 import { closeAllSessions } from './session'
+import { createLogger } from '../../../../utils/logger'
+
+const log = createLogger('CalendarSkill')
 
 const calendarSkill: Skill = {
   id: 'calendar',
@@ -16,13 +19,13 @@ const calendarSkill: Skill = {
   
   async init() {
     // 依赖模块会在执行时动态导入
-    console.log('[CalendarSkill] Initialized')
+    log.info('Initialized')
   },
   
   async cleanup() {
     // 关闭所有日历连接
     await closeAllSessions()
-    console.log('[CalendarSkill] Cleaned up')
+    log.info('Cleaned up')
   }
 }
 
@@ -30,7 +33,7 @@ const calendarSkill: Skill = {
 try {
   registerSkill(calendarSkill)
 } catch (error) {
-  console.error('[CalendarSkill] Failed to register:', error)
+  log.error('Failed to register:', error)
 }
 
 export { calendarSkill }

@@ -18,6 +18,9 @@ import * as path from 'path'
 import type { IMAdapter, IMIncomingMessage, IMPlatform, TelegramConfig, IMAttachment } from './types'
 import { IM_TEXT_MAX_LENGTH, IM_FILE_MAX_SIZE_TELEGRAM, IM_IMAGE_MAX_SIZE_TELEGRAM, IM_DOWNLOAD_MAX_SIZE } from './types'
 import { t } from '../agent/i18n'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('Telegram')
 
 // Telegraf SDK 懒加载
 let Telegraf: any
@@ -27,7 +30,7 @@ async function loadSDK() {
     const telegraf = await import('telegraf')
     Telegraf = telegraf.Telegraf
   } catch (err) {
-    console.error('[Telegram] Failed to load telegraf:', err)
+    log.error('Failed to load telegraf:', err)
     throw new Error('telegraf not available. Install with: npm install telegraf')
   }
 }
@@ -48,7 +51,7 @@ export class TelegramAdapter implements IMAdapter {
 
   async start(): Promise<void> {
     if (this.connected) {
-      console.log('[Telegram] Already connected')
+      log.info('Already connected')
       return
     }
 
@@ -61,7 +64,7 @@ export class TelegramAdapter implements IMAdapter {
       try {
         await this.handleMessage(ctx)
       } catch (err) {
-        console.error('[Telegram] Error handling text message:', err)
+        log.error('Error handling text message:', err)
       }
     })
 
@@ -71,7 +74,7 @@ export class TelegramAdapter implements IMAdapter {
         try {
           await this.handleMessage(ctx)
         } catch (err) {
-          console.error(`[Telegram] Error handling ${msgType} message:`, err)
+          log.error(`Error handling ${msgType} message:`, err)
         }
       })
     }
@@ -81,7 +84,7 @@ export class TelegramAdapter implements IMAdapter {
       await this.bot.launch({ dropPendingUpdates: true })
       this.connected = true
       this.onConnectionChange?.(true)
-      console.log('[Telegram] Long polling started')
+      log.info('Long polling started')
     } catch (err) {
       this.connected = false
       this.onConnectionChange?.(false)
@@ -100,7 +103,7 @@ export class TelegramAdapter implements IMAdapter {
     }
     this.connected = false
     this.onConnectionChange?.(false)
-    console.log('[Telegram] Disconnected')
+    log.info('Disconnected')
   }
 
   isConnected(): boolean {
@@ -335,10 +338,10 @@ export class TelegramAdapter implements IMAdapter {
 
       fs.writeFileSync(localPath, buffer)
 
-      console.log(`[Telegram] Downloaded ${type}: ${localPath} (${(buffer.length / 1024).toFixed(1)}KB)`)
+      log.info(`Downloaded ${type}: ${localPath} (${(buffer.length / 1024).toFixed(1)}KB)`)
       return { type, localPath, fileName }
     } catch (err: any) {
-      console.error(`[Telegram] Failed to download ${type}:`, err.message || err)
+      log.error(`Failed to download ${type}:`, err.message || err)
       return null
     }
   }

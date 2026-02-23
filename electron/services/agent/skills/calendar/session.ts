@@ -5,6 +5,9 @@
 
 import type { DAVClient, DAVCalendar } from 'tsdav'
 import type { Calendar, CalDAVServerConfig } from './types'
+import { createLogger } from '../../../../utils/logger'
+
+const log = createLogger('CalendarSession')
 
 export interface CalendarSession {
   /** 账户 ID */
@@ -51,7 +54,7 @@ function startTimeoutChecker(): void {
     const entries = Array.from(openSessions.entries())
     for (const [accountId, session] of entries) {
       if (now - session.lastAccess > SESSION_TIMEOUT) {
-        console.log(`[CalendarSession] Auto-closing timed out session: ${accountId}`)
+        log.info(`Auto-closing timed out session: ${accountId}`)
         closeSession(accountId)
       }
     }
@@ -153,7 +156,7 @@ export async function closeSession(accountId: string): Promise<void> {
       session.client = null
     }
   } catch (error) {
-    console.error(`[CalendarSession] Error closing session for ${accountId}:`, error)
+    log.error(`Error closing session for ${accountId}:`, error)
   } finally {
     openSessions.delete(accountId)
     

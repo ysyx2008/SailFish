@@ -4,6 +4,9 @@
  */
 
 import type { Skill } from './types'
+import { createLogger } from '../../../utils/logger'
+
+const log = createLogger('SkillRegistry')
 
 // 技能注册表（技能 ID -> 技能定义）
 const skillRegistry = new Map<string, Skill>()
@@ -13,10 +16,10 @@ const skillRegistry = new Map<string, Skill>()
  */
 export function registerSkill(skill: Skill): void {
   if (skillRegistry.has(skill.id)) {
-    console.warn(`[SkillRegistry] Skill "${skill.id}" is already registered, overwriting...`)
+    log.warn(`Skill "${skill.id}" is already registered, overwriting...`)
   }
   skillRegistry.set(skill.id, skill)
-  console.log(`[SkillRegistry] Registered skill: ${skill.id} (${skill.tools.length} tools)`)
+  log.info(`Registered skill: ${skill.id} (${skill.tools.length} tools)`)
 }
 
 /**

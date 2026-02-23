@@ -21,6 +21,9 @@ import * as path from 'path'
 import type { IMAdapter, IMIncomingMessage, IMPlatform, WeComConfig, IMAttachment } from './types'
 import { IM_TEXT_MAX_LENGTH, IM_FILE_MAX_SIZE_WECOM, IM_DOWNLOAD_MAX_SIZE } from './types'
 import { t } from '../agent/i18n'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('WeCom')
 
 /** 企业微信 API 基础地址 */
 const WECOM_API_BASE = 'https://qyapi.weixin.qq.com/cgi-bin'
@@ -60,7 +63,7 @@ export class WeComAdapter implements IMAdapter {
 
   async start(): Promise<void> {
     if (this.connected) {
-      console.log('[WeCom] Already connected')
+      log.info('Already connected')
       return
     }
 
@@ -72,7 +75,7 @@ export class WeComAdapter implements IMAdapter {
 
     this.connected = true
     this.onConnectionChange?.(true)
-    console.log(`[WeCom] Callback server started on port ${this.config.callbackPort}`)
+    log.info(`Callback server started on port ${this.config.callbackPort}`)
   }
 
   async stop(): Promise<void> {
@@ -86,7 +89,7 @@ export class WeComAdapter implements IMAdapter {
     this.accessToken = ''
     this.tokenExpiresAt = 0
     this.onConnectionChange?.(false)
-    console.log('[WeCom] Disconnected')
+    log.info('Disconnected')
   }
 
   isConnected(): boolean {
@@ -156,7 +159,7 @@ export class WeComAdapter implements IMAdapter {
       })
 
       this.server.on('error', (err) => {
-        console.error('[WeCom] Callback server error:', err)
+        log.error('Callback server error:', err)
         if (!this.connected) {
           reject(err)
         }
@@ -204,7 +207,7 @@ export class WeComAdapter implements IMAdapter {
     // 验证签名
     const expectedSignature = this.computeSignature(timestamp, nonce, echostr)
     if (expectedSignature !== msgSignature) {
-      console.error('[WeCom] Verification signature mismatch')
+      log.error('Verification signature mismatch')
       res.writeHead(403)
       res.end('Invalid Signature')
       return
@@ -215,9 +218,9 @@ export class WeComAdapter implements IMAdapter {
       const decrypted = this.decrypt(echostr)
       res.writeHead(200, { 'Content-Type': 'text/plain' })
       res.end(decrypted)
-      console.log('[WeCom] URL verification successful')
+      log.info('URL verification successful')
     } catch (err) {
-      console.error('[WeCom] Failed to decrypt echostr:', err)
+      log.error('Failed to decrypt echostr:', err)
       res.writeHead(500)
       res.end('Decryption Error')
     }
@@ -234,7 +237,7 @@ export class WeComAdapter implements IMAdapter {
     req.on('data', (chunk: Buffer) => {
       totalSize += chunk.length
       if (totalSize > MAX_REQUEST_SIZE) {
-        console.error('[WeCom] Request body too large, aborting')
+        log.error('Request body too large, aborting')
         req.destroy()
         return
       }
@@ -253,7 +256,7 @@ export class WeComAdapter implements IMAdapter {
 
         await this.processCallback(body, msgSignature, timestamp, nonce)
       } catch (err) {
-        console.error('[WeCom] Error processing callback:', err)
+        log.error('Error processing callback:', err)
       }
     })
   }
@@ -265,14 +268,14 @@ export class WeComAdapter implements IMAdapter {
     // 从 XML 中提取 Encrypt 字段
     const encrypt = this.extractXmlValue(xmlBody, 'Encrypt')
     if (!encrypt) {
-      console.warn('[WeCom] No Encrypt field in callback body')
+      log.warn('No Encrypt field in callback body')
       return
     }
 
     // 验证签名
     const expectedSignature = this.computeSignature(timestamp, nonce, encrypt)
     if (expectedSignature !== msgSignature) {
-      console.error('[WeCom] Callback signature mismatch')
+      log.error('Callback signature mismatch')
       return
     }
 
@@ -301,7 +304,7 @@ export class WeComAdapter implements IMAdapter {
           const attachment = await this.downloadMedia(mediaId, 'image')
           if (attachment) attachments.push(attachment)
         } catch (err) {
-          console.error('[WeCom] Failed to download image:', err)
+          log.error('Failed to download image:', err)
         }
       }
     } else if (msgType === 'voice') {
@@ -311,7 +314,7 @@ export class WeComAdapter implements IMAdapter {
           const attachment = await this.downloadMedia(mediaId, 'audio')
           if (attachment) attachments.push(attachment)
         } catch (err) {
-          console.error('[WeCom] Failed to download voice:', err)
+          log.error('Failed to download voice:', err)
         }
       }
     } else if (msgType === 'video') {
@@ -321,7 +324,7 @@ export class WeComAdapter implements IMAdapter {
           const attachment = await this.downloadMedia(mediaId, 'video')
           if (attachment) attachments.push(attachment)
         } catch (err) {
-          console.error('[WeCom] Failed to download video:', err)
+          log.error('Failed to download video:', err)
         }
       }
     } else if (msgType === 'file') {
@@ -331,11 +334,11 @@ export class WeComAdapter implements IMAdapter {
           const attachment = await this.downloadMedia(mediaId, 'file')
           if (attachment) attachments.push(attachment)
         } catch (err) {
-          console.error('[WeCom] Failed to download file:', err)
+          log.error('Failed to download file:', err)
         }
       }
     } else {
-      console.log(`[WeCom] Unsupported message type: ${msgType}, ignoring`)
+      log.info(`Unsupported message type: ${msgType}, ignoring`)
       return
     }
 
@@ -553,7 +556,7 @@ export class WeComAdapter implements IMAdapter {
     const localPath = path.join(tempDir, fileName)
     fs.writeFileSync(localPath, buffer)
 
-    console.log(`[WeCom] Downloaded ${type}: ${localPath} (${(buffer.length / 1024).toFixed(1)}KB)`)
+    log.info(`Downloaded ${type}: ${localPath} (${(buffer.length / 1024).toFixed(1)}KB)`)
     return { type, localPath, fileName }
   }
 

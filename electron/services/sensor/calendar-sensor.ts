@@ -13,6 +13,9 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import type { Sensor, SensorEvent, EventBus } from './types'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('CalendarSensor')
 
 interface CalendarEvent {
   uid: string
@@ -107,7 +110,7 @@ export class CalendarSensor implements Sensor {
       }
     }
 
-    console.log(`[CalendarSensor] Configured ${accounts.length} account(s) (added=${added.length}, removed=${removed.length})`)
+    log.info(`Configured ${accounts.length} account(s) (added=${added.length}, removed=${removed.length})`)
   }
 
   addTarget(watchId: string, target: Omit<CalendarTarget, 'watchId'>): void {
@@ -138,7 +141,7 @@ export class CalendarSensor implements Sensor {
     this.checkTimer = setInterval(() => this.checkUpcomingEvents(), CHECK_INTERVAL_MS)
     await this.checkUpcomingEvents()
 
-    console.log(`[CalendarSensor] Started with ${this.accounts.length} CalDAV account(s), ${this.targets.size} target(s)`)
+    log.info(`Started with ${this.accounts.length} CalDAV account(s), ${this.targets.size} target(s)`)
   }
 
   async stop(): Promise<void> {
@@ -154,7 +157,7 @@ export class CalendarSensor implements Sensor {
       this.disconnectAccount(id)
     }
 
-    console.log('[CalendarSensor] Stopped')
+    log.info('Stopped')
   }
 
   getAccountStatuses(): Array<{ accountId: string; name: string; connected: boolean }> {
@@ -173,7 +176,7 @@ export class CalendarSensor implements Sensor {
 
     const credential = await this.getCredential(account.accountId)
     if (!credential) {
-      console.error(`[CalendarSensor] No credential for ${account.name}`)
+      log.error(`No credential for ${account.name}`)
       return
     }
 
@@ -182,7 +185,7 @@ export class CalendarSensor implements Sensor {
 
       const serverUrl = this.resolveServerUrl(account)
       if (!serverUrl) {
-        console.error(`[CalendarSensor] No server URL for ${account.name}`)
+        log.error(`No server URL for ${account.name}`)
         return
       }
 
@@ -207,9 +210,9 @@ export class CalendarSensor implements Sensor {
         connected: true
       })
 
-      console.log(`[CalendarSensor] Connected to ${account.name} (${calendars.length} calendars)`)
+      log.info(`Connected to ${account.name} (${calendars.length} calendars)`)
     } catch (err) {
-      console.error(`[CalendarSensor] Failed to connect ${account.name}:`, err)
+      log.error(`Failed to connect ${account.name}:`, err)
     }
   }
 
@@ -274,7 +277,7 @@ export class CalendarSensor implements Sensor {
 
         state.lastKnownUids = currentUids
       } catch (err) {
-        console.error(`[CalendarSensor] CalDAV poll error (${state.account.name}):`, err)
+        log.error(`CalDAV poll error (${state.account.name}):`, err)
         state.connected = false
         // 尝试重连
         this.accountStates.delete(accountId)
@@ -300,7 +303,7 @@ export class CalendarSensor implements Sensor {
           events.push(...parsed)
         }
       } catch (err) {
-        console.warn(`[CalendarSensor] Failed to fetch calendar objects:`, err instanceof Error ? err.message : err)
+        log.warn(`Failed to fetch calendar objects:`, err instanceof Error ? err.message : err)
       }
     }
 
@@ -379,7 +382,7 @@ export class CalendarSensor implements Sensor {
         }
 
         if (watchId) {
-          console.log(`[CalendarSensor] Upcoming: "${evt.summary}" in ${Math.round(timeDiff / 60000)}min`)
+          log.info(`Upcoming: "${evt.summary}" in ${Math.round(timeDiff / 60000)}min`)
         }
         this.eventBus.emit(event)
       }
@@ -406,7 +409,7 @@ export class CalendarSensor implements Sensor {
       priority: 'normal'
     }
 
-    console.log(`[CalendarSensor] Event ${changeType}: "${evt.summary}"`)
+    log.info(`Event ${changeType}: "${evt.summary}"`)
     this.eventBus.emit(event)
   }
 
@@ -456,7 +459,7 @@ export class CalendarSensor implements Sensor {
           }
         }
       } catch (err) {
-        console.error(`[CalendarSensor] Error checking local ICS for watch ${watchId}:`, err)
+        log.error(`Error checking local ICS for watch ${watchId}:`, err)
       }
     }
   }
@@ -523,7 +526,7 @@ export class CalendarSensor implements Sensor {
       const content = fs.readFileSync(filePath, 'utf-8')
       return this.parseVCalendarData(content)
     } catch (err) {
-      console.error(`[CalendarSensor] Failed to parse ${filePath}:`, err)
+      log.error(`Failed to parse ${filePath}:`, err)
       return []
     }
   }

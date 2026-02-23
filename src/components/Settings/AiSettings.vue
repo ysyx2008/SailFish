@@ -27,6 +27,11 @@ onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown, true)
 })
 const debugMode = computed(() => configStore.agentDebugMode)
+
+const openLogDir = () => {
+  window.electronAPI.config.openLogDir()
+}
+
 const editingProfile = ref<AiProfile | null>(null)
 
 const formData = ref<Partial<AiProfile>>({
@@ -392,6 +397,9 @@ const openKeyUrl = (url: string) => {
         <p class="section-desc">
           {{ t('aiSettings.logLevelDesc') }}
         </p>
+        <button class="open-log-dir-btn" @click="openLogDir">
+          {{ t('aiSettings.openLogDir') }}
+        </button>
       </div>
     </template>
   </div>
@@ -757,6 +765,24 @@ const openKeyUrl = (url: string) => {
 }
 
 .log-level-select:focus {
+  border-color: var(--accent-primary);
+}
+
+.open-log-dir-btn {
+  margin-top: 8px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #555);
+  background: var(--bg-secondary, #2a2a2a);
+  color: var(--text-secondary, #aaa);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.open-log-dir-btn:hover {
+  background: var(--bg-hover, #333);
+  color: var(--text-primary, #e0e0e0);
   border-color: var(--accent-primary);
 }
 

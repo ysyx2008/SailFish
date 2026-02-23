@@ -3,6 +3,7 @@
  * 使用 electron-store 管理 Watch 定义和执行历史
  */
 import Store from 'electron-store'
+import { createLogger } from '../../utils/logger'
 import type {
   WatchDefinition,
   WatchRunRecord,
@@ -10,6 +11,8 @@ import type {
   CreateWatchParams,
   WatchPriority
 } from './types'
+
+const log = createLogger('WatchStore')
 
 interface WatchStoreSchema {
   watches: WatchDefinition[]
@@ -73,7 +76,7 @@ export class WatchStore {
   /** 使用预设 ID 创建（用于内置关切），幂等 */
   createWithId(watch: WatchDefinition): WatchDefinition | null {
     if (!watch?.id) {
-      console.warn('[WatchStore] createWithId: watch.id is required')
+      log.warn('createWithId: watch.id is required')
       return null
     }
     const watches = this.getAll()

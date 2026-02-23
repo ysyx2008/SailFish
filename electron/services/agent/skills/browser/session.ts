@@ -10,6 +10,9 @@ import type { RefMap } from './snapshot'
 import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
+import { createLogger } from '../../../../utils/logger'
+
+const log = createLogger('BrowserSession')
 
 // 浏览器 profile 存储目录（持久化上下文）
 const getProfilesDir = () => path.join(app.getPath('userData'), 'browser-profiles')
@@ -113,9 +116,9 @@ async function backupCookies(context: BrowserContext, profileDir: string): Promi
     const state = await context.storageState()
     const backupPath = getCookiesBackupPath(profileDir)
     fs.writeFileSync(backupPath, JSON.stringify(state, null, 2))
-    console.log(`[BrowserSession] Backed up ${state.cookies.length} cookies to ${backupPath}`)
+    log.info(`Backed up ${state.cookies.length} cookies to ${backupPath}`)
   } catch (error) {
-    console.error('[BrowserSession] Failed to backup cookies:', error)
+    log.error('Failed to backup cookies:', error)
   }
 }
 
@@ -137,10 +140,10 @@ async function restoreSessionCookies(context: BrowserContext, profileDir: string
     const sessionCookies = cookies.filter((c: { expires: number }) => c.expires === -1)
     if (sessionCookies.length > 0) {
       await context.addCookies(sessionCookies)
-      console.log(`[BrowserSession] Restored ${sessionCookies.length} session cookies`)
+      log.info(`Restored ${sessionCookies.length} session cookies`)
     }
   } catch (error) {
-    console.error('[BrowserSession] Failed to restore session cookies:', error)
+    log.error('Failed to restore session cookies:', error)
   }
 }
 
@@ -150,7 +153,7 @@ async function restoreSessionCookies(context: BrowserContext, profileDir: string
 export async function saveStorageState(session: BrowserSession, profileName: string): Promise<string> {
   const profileDir = getProfileDir(profileName)
   await backupCookies(session.context, profileDir)
-  console.log(`[BrowserSession] Profile state saved to ${profileDir}`)
+  log.info(`Profile state saved to ${profileDir}`)
   return profileDir
 }
 
@@ -242,7 +245,7 @@ function startTimeoutChecker() {
     const now = Date.now()
     for (const [ptyId, session] of Array.from(sessions.entries())) {
       if (now - session.lastActivityAt > SESSION_TIMEOUT) {
-        console.log(`[BrowserSession] Session ${ptyId} timed out, closing...`)
+        log.info(`Session ${ptyId} timed out, closing...`)
         await closeSession(ptyId)
       }
     }
@@ -298,10 +301,10 @@ function cleanStaleLock(profileDir: string): void {
     try {
       if (fs.existsSync(lockPath)) {
         fs.rmSync(lockPath, { force: true })
-        console.log(`[BrowserSession] Removed stale lock file: ${lockPath}`)
+        log.info(`Removed stale lock file: ${lockPath}`)
       }
     } catch (error) {
-      console.warn(`[BrowserSession] Failed to remove lock file ${lockPath}:`, error)
+      log.warn(`Failed to remove lock file ${lockPath}:`, error)
     }
   }
 }
@@ -317,7 +320,7 @@ function registerPageCloseHandler(session: BrowserSession, page: Page, ptyId: st
       if (session.currentPageIndex >= session.pages.length) {
         session.currentPageIndex = Math.max(0, session.pages.length - 1)
       }
-      console.log(`[BrowserSession] Tab closed for ${ptyId}, now ${session.pages.length} tabs`)
+      log.info(`Tab closed for ${ptyId}, now ${session.pages.length} tabs`)
     }
   })
 }
@@ -412,7 +415,7 @@ export async function createSession(
     session.pages.push(newPage)
     session.currentPageIndex = session.pages.length - 1
     session.lastActivityAt = Date.now()
-    console.log(`[BrowserSession] New tab opened for ${ptyId}, now ${session.pages.length} tabs, switched to tab ${session.currentPageIndex}`)
+    log.info(`New tab opened for ${ptyId}, now ${session.pages.length} tabs, switched to tab ${session.currentPageIndex}`)
     registerPageCloseHandler(session, newPage, ptyId)
   })
   
@@ -425,7 +428,7 @@ export async function createSession(
   sessions.set(ptyId, session)
   startTimeoutChecker()
   
-  console.log(`[BrowserSession] Created session for ${ptyId} using ${browserInfo.name}, profile: ${profileDir}`)
+  log.info(`Created session for ${ptyId} using ${browserInfo.name}, profile: ${profileDir}`)
   return session
 }
 
@@ -451,14 +454,14 @@ export async function closeSession(ptyId: string, _saveProfile: boolean = true):
     // 持久化上下文：关闭 context 会同时关闭浏览器并自动保存持久化数据
     await session.context.close()
     if (savedProfile) {
-      console.log(`[BrowserSession] Closed session for ${ptyId}, profile "${savedProfile}" auto-saved`)
+      log.info(`Closed session for ${ptyId}, profile "${savedProfile}" auto-saved`)
     }
   } catch (error) {
-    console.error(`[BrowserSession] Error closing browser for ${ptyId}:`, error)
+    log.error(`Error closing browser for ${ptyId}:`, error)
   }
   
   sessions.delete(ptyId)
-  console.log(`[BrowserSession] Closed session for ${ptyId}`)
+  log.info(`Closed session for ${ptyId}`)
   return { closed: true, savedProfile }
 }
 

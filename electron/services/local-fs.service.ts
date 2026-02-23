@@ -2,6 +2,9 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
 import { EventEmitter } from 'events'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('LocalFS')
 
 // 本地文件信息类型（与 SFTP 保持一致的结构）
 export interface LocalFileInfo {
@@ -96,7 +99,7 @@ export class LocalFsService extends EventEmitter {
         })
       } catch (err) {
         // 无法访问的文件跳过
-        console.warn(`[LocalFs] 无法访问: ${fullPath}`, err)
+        log.warn(`无法访问: ${fullPath}`, err)
       }
     }
 

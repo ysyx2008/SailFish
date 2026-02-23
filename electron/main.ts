@@ -63,7 +63,7 @@ function parseDeepLinkUrl(url: string): { action: string; task?: string; skillId
     }
     return { action }
   } catch (e) {
-    console.warn('[DeepLink] Failed to parse URL:', url, e)
+    log.warn('DeepLink: Failed to parse URL:', url, e)
     return null
   }
 }
@@ -72,7 +72,7 @@ function parseDeepLinkUrl(url: string): { action: string; task?: string; skillId
  * 处理深链 URL：解析后发送给渲染进程执行
  */
 function handleDeepLink(url: string) {
-  console.log('[DeepLink] Handling URL:', url.substring(0, 100))
+  log.info('DeepLink: Handling URL:', url.substring(0, 100))
   const parsed = parseDeepLinkUrl(url)
   if (!parsed) return
 
@@ -205,7 +205,7 @@ async function fixPathAsync(): Promise<void> {
     }
   } catch (error) {
     // 异步获取失败不影响，因为已经有常见路径了
-    console.warn('[fixPath] 异步获取 PATH 失败，使用预设路径:', error)
+    log.warn('fixPath: 异步获取 PATH 失败，使用预设路径:', error)
     
     // 尝试展开 nvm 路径（可能之前没添加）
     try {
@@ -258,7 +258,7 @@ import { PtyService } from './services/pty.service'
 import { SshService } from './services/ssh.service'
 import { AiService } from './services/ai.service'
 import { ConfigService, McpServerConfig, setConfigServiceInstance } from './services/config.service'
-import { setLogLevel as setBackendLogLevel } from './utils/logger'
+import { initLogging, setLogLevel as setBackendLogLevel, getLogDir, createLogger } from './utils/logger'
 import { XshellImportService } from './services/xshell-import.service'
 import { AgentService, AgentStep, AgentContext } from './services/agent'
 import type { PendingConfirmation } from './services/agent/types'
@@ -306,7 +306,7 @@ process.on('uncaughtException', (error) => {
   if (error.message?.includes('EPIPE') || error.message?.includes('read EPIPE')) {
     return
   }
-  console.error('Uncaught exception:', error)
+  log.error('Uncaught exception:', error)
 })
 
 process.on('unhandledRejection', (reason) => {
@@ -314,8 +314,10 @@ process.on('unhandledRejection', (reason) => {
   if (String(reason).includes('EPIPE')) {
     return
   }
-  console.error('Unhandled rejection:', reason)
+  log.error('Unhandled rejection:', reason)
 })
+
+const log = createLogger('Main')
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -335,7 +337,7 @@ const sshService = new SshService()
 const aiService = new AiService()
 const configService = new ConfigService()
 setConfigServiceInstance(configService)
-setBackendLogLevel(configService.getLogLevel())
+initLogging(configService.getLogLevel())
 const xshellImportService = new XshellImportService()
 const hostProfileService = new HostProfileService()
 const mcpService = new McpService()
@@ -416,7 +418,7 @@ async function initKnowledgeService(): Promise<void> {
     if (knowledgeService && knowledgeService.isEnabled()) {
       // 监听模型升级事件（维度变化导致索引重建）
       knowledgeService.once('indexCleared', ({ reason, oldDimensions, newDimensions }) => {
-        console.log(`[Main] 知识库模型升级: ${reason} (${oldDimensions} -> ${newDimensions})`)
+        log.info(`知识库模型升级: ${reason} (${oldDimensions} -> ${newDimensions})`)
         // 通知前端正在升级
         mainWindow?.webContents.send('knowledge:upgrading', { 
           reason: 'model_upgrade',
@@ -440,17 +442,17 @@ async function initKnowledgeService(): Promise<void> {
       knowledgeService.search('预热', { limit: 1 }).catch(() => {
         // 忽略预热错误（可能知识库为空）
       })
-      console.log('[Main] Embedding 预热推理已启动')
+      log.info('Embedding 预热推理已启动')
     }
   } catch (e) {
-    console.error('[Main] Failed to initialize KnowledgeService:', e)
+    log.error('Failed to initialize KnowledgeService:', e)
   } finally {
     // 无论成功与否，都标记为就绪（避免无限等待）
     knowledgeReady = true
     knowledgeReadyResolve?.()
     // 通知前端知识库已就绪
     mainWindow?.webContents.send('knowledge:ready')
-    console.log('[Main] 知识库服务初始化完成')
+    log.info('知识库服务初始化完成')
   }
 }
 
@@ -488,7 +490,7 @@ async function migrateHostNotesToKnowledge(): Promise<void> {
     // 创建迁移标记文件
     fs.writeFileSync(migrationFlagPath, new Date().toISOString(), 'utf-8')
   } catch (e) {
-    console.error('[Main] 迁移主机 notes 失败:', e)
+    log.error('迁移主机 notes 失败:', e)
   }
 }
 
@@ -871,7 +873,7 @@ app.whenReady().then(async () => {
     // 稍微延迟初始化，确保前端 Vue 组件已挂载并注册好事件监听器
     setTimeout(() => {
       initKnowledgeService().catch(e => {
-        console.error('[Main] 知识库服务初始化失败:', e)
+        log.error('知识库服务初始化失败:', e)
       })
     }, 500)
 
@@ -885,10 +887,10 @@ app.whenReady().then(async () => {
         mainWindow
       })
       schedulerService.start().catch(e => {
-        console.error('[Main] 定时任务调度服务启动失败:', e)
+        log.error('定时任务调度服务启动失败:', e)
       })
     } catch (e) {
-      console.error('[Main] 定时任务调度服务初始化失败:', e)
+      log.error('定时任务调度服务初始化失败:', e)
     }
 
     // 初始化 Watch & Sensor 服务（感知层）
@@ -903,20 +905,20 @@ app.whenReady().then(async () => {
         mainWindow
       })
       watchService.start().catch(e => {
-        console.error('[Main] Watch 服务启动失败:', e)
+        log.error('Watch 服务启动失败:', e)
       })
 
       // 从旧版定时任务迁移数据到关切系统
       try {
         const migration = watchService.migrateFromScheduler()
         if (migration.migrated > 0) {
-          console.log(`[Main] 定时任务迁移完成: ${migration.migrated} 个迁移, ${migration.skipped} 个跳过`)
+          log.info(`定时任务迁移完成: ${migration.migrated} 个迁移, ${migration.skipped} 个跳过`)
         }
         if (migration.errors.length > 0) {
-          console.warn('[Main] 迁移警告:', migration.errors)
+          log.warn('迁移警告:', migration.errors)
         }
       } catch (e) {
-        console.error('[Main] 定时任务迁移失败:', e)
+        log.error('定时任务迁移失败:', e)
       }
 
       const awakened = configService.get('agentAwakened') as boolean ?? false
@@ -935,10 +937,10 @@ app.whenReady().then(async () => {
             return { accountId: a.id, email: a.email, provider: a.provider, imapHost: server.imapHost, imapPort: server.imapPort, rejectUnauthorized: a.rejectUnauthorized }
           }).filter(a => a.imapHost)
           await sensorService.email.configureAccounts(sensorAccounts, (id) => getEmailCredential(id))
-          console.log(`[Main] Email sensor: loaded ${sensorAccounts.length} account(s) from config`)
+          log.info(`Email sensor: loaded ${sensorAccounts.length} account(s) from config`)
         }
       } catch (e) {
-        console.error('[Main] Email sensor 账户加载失败:', e)
+        log.error('Email sensor 账户加载失败:', e)
       }
 
       try {
@@ -951,27 +953,27 @@ app.whenReady().then(async () => {
             accountId: a.id, name: a.name, provider: a.provider, username: a.username, serverUrl: a.serverUrl
           }))
           await sensorService.calendar.configureAccounts(sensorAccounts, (id) => getCalendarCredential(id))
-          console.log(`[Main] Calendar sensor: loaded ${sensorAccounts.length} account(s) from config`)
+          log.info(`Calendar sensor: loaded ${sensorAccounts.length} account(s) from config`)
         }
       } catch (e) {
-        console.error('[Main] Calendar sensor 账户加载失败:', e)
+        log.error('Calendar sensor 账户加载失败:', e)
       }
 
       sensorService.start({
         heartbeatEnabled: awakened,
         heartbeatIntervalMinutes: heartbeatInterval
       }).catch(e => {
-        console.error('[Main] Sensor 服务启动失败:', e)
+        log.error('Sensor 服务启动失败:', e)
       })
 
       // 觉醒模式：确保内置「日常检查」关切存在
       if (awakened) {
         try { watchService.ensureDailyPatrol() } catch (e) {
-          console.error('[Main] 日常检查关切创建失败:', e)
+          log.error('日常检查关切创建失败:', e)
         }
       }
     } catch (e) {
-      console.error('[Main] Watch/Sensor 服务初始化失败:', e)
+      log.error('Watch/Sensor 服务初始化失败:', e)
     }
 
     // Gateway 远程访问自动启动
@@ -980,12 +982,12 @@ app.whenReady().then(async () => {
       const host = configService.get('gatewayHost') || '0.0.0.0'
       gatewayService.start({ enabled: true, port, host, apiToken: '' }).then(result => {
         if (result.success) {
-          console.log(`[Gateway] Auto-started on ${host}:${port}`)
+          log.info(`Gateway auto-started on ${host}:${port}`)
         } else {
-          console.error('[Gateway] Auto-start failed:', result.error)
+          log.error('Gateway auto-start failed:', result.error)
         }
       }).catch(e => {
-        console.error('[Gateway] Auto-start error:', e)
+        log.error('Gateway auto-start error:', e)
       })
     }
 
@@ -996,11 +998,11 @@ app.whenReady().then(async () => {
       if (dtClientId && dtClientSecret) {
         imService.startDingTalk({ enabled: true, clientId: dtClientId, clientSecret: dtClientSecret }).then(result => {
           if (result.success) {
-            console.log('[IM] DingTalk auto-connect started')
+            log.info('IM: DingTalk auto-connect started')
           } else {
-            console.error('[IM] DingTalk auto-connect failed:', result.error)
+            log.error('IM: DingTalk auto-connect failed:', result.error)
           }
-        }).catch(e => console.error('[IM] DingTalk auto-connect error:', e))
+        }).catch(e => log.error('IM: DingTalk auto-connect error:', e))
       }
     }
     if (configService.get('imFeishuAutoConnect')) {
@@ -1009,11 +1011,11 @@ app.whenReady().then(async () => {
       if (fsAppId && fsAppSecret) {
         imService.startFeishu({ enabled: true, appId: fsAppId, appSecret: fsAppSecret }).then(result => {
           if (result.success) {
-            console.log('[IM] Feishu auto-connect started')
+            log.info('IM: Feishu auto-connect started')
           } else {
-            console.error('[IM] Feishu auto-connect failed:', result.error)
+            log.error('IM: Feishu auto-connect failed:', result.error)
           }
-        }).catch(e => console.error('[IM] Feishu auto-connect error:', e))
+        }).catch(e => log.error('IM: Feishu auto-connect error:', e))
       }
     }
     if (configService.get('imSlackAutoConnect')) {
@@ -1022,11 +1024,11 @@ app.whenReady().then(async () => {
       if (slackBotToken && slackAppToken) {
         imService.startSlack({ enabled: true, botToken: slackBotToken, appToken: slackAppToken }).then(result => {
           if (result.success) {
-            console.log('[IM] Slack auto-connect started')
+            log.info('IM: Slack auto-connect started')
           } else {
-            console.error('[IM] Slack auto-connect failed:', result.error)
+            log.error('IM: Slack auto-connect failed:', result.error)
           }
-        }).catch(e => console.error('[IM] Slack auto-connect error:', e))
+        }).catch(e => log.error('IM: Slack auto-connect error:', e))
       }
     }
     if (configService.get('imTelegramAutoConnect')) {
@@ -1034,11 +1036,11 @@ app.whenReady().then(async () => {
       if (tgBotToken) {
         imService.startTelegram({ enabled: true, botToken: tgBotToken }).then(result => {
           if (result.success) {
-            console.log('[IM] Telegram auto-connect started')
+            log.info('IM: Telegram auto-connect started')
           } else {
-            console.error('[IM] Telegram auto-connect failed:', result.error)
+            log.error('IM: Telegram auto-connect failed:', result.error)
           }
-        }).catch(e => console.error('[IM] Telegram auto-connect error:', e))
+        }).catch(e => log.error('IM: Telegram auto-connect error:', e))
       }
     }
     if (configService.get('imWeComAutoConnect')) {
@@ -1051,11 +1053,11 @@ app.whenReady().then(async () => {
       if (wcCorpId && wcCorpSecret && wcAgentId && wcToken && wcEncodingAESKey) {
         imService.startWeCom({ enabled: true, corpId: wcCorpId, corpSecret: wcCorpSecret, agentId: wcAgentId, token: wcToken, encodingAESKey: wcEncodingAESKey, callbackPort: wcCallbackPort }).then(result => {
           if (result.success) {
-            console.log('[IM] WeCom auto-connect started')
+            log.info('IM: WeCom auto-connect started')
           } else {
-            console.error('[IM] WeCom auto-connect failed:', result.error)
+            log.error('IM: WeCom auto-connect failed:', result.error)
           }
-        }).catch(e => console.error('[IM] WeCom auto-connect error:', e))
+        }).catch(e => log.error('IM: WeCom auto-connect error:', e))
       }
     }
   })
@@ -1526,13 +1528,13 @@ let updateStatus: {
 
 // 自动更新事件处理
 autoUpdater.on('checking-for-update', () => {
-  console.log('[AutoUpdater] 正在检查更新...')
+  log.info('AutoUpdater: 正在检查更新...')
   updateStatus = { status: 'checking' }
   mainWindow?.webContents.send('updater:status-changed', updateStatus)
 })
 
 autoUpdater.on('update-available', (info) => {
-  console.log('[AutoUpdater] 发现新版本:', info.version)
+  log.info('AutoUpdater: 发现新版本:', info.version)
   updateStatus = {
     status: 'available',
     info: {
@@ -1545,13 +1547,13 @@ autoUpdater.on('update-available', (info) => {
 })
 
 autoUpdater.on('update-not-available', () => {
-  console.log('[AutoUpdater] 当前已是最新版本')
+  log.info('AutoUpdater: 当前已是最新版本')
   updateStatus = { status: 'not-available' }
   mainWindow?.webContents.send('updater:status-changed', updateStatus)
 })
 
 autoUpdater.on('download-progress', (progress) => {
-  console.log(`[AutoUpdater] 下载进度: ${progress.percent.toFixed(1)}%`)
+  log.info(`AutoUpdater: 下载进度: ${progress.percent.toFixed(1)}%`)
   updateStatus = {
     status: 'downloading',
     progress: {
@@ -1565,7 +1567,7 @@ autoUpdater.on('download-progress', (progress) => {
 })
 
 autoUpdater.on('update-downloaded', (info) => {
-  console.log('[AutoUpdater] 更新下载完成:', info.version)
+  log.info('AutoUpdater: 更新下载完成:', info.version)
   updateStatus = {
     status: 'downloaded',
     info: {
@@ -1578,7 +1580,7 @@ autoUpdater.on('update-downloaded', (info) => {
 })
 
 autoUpdater.on('error', (error) => {
-  console.error('[AutoUpdater] 更新错误:', error)
+  log.error('AutoUpdater: 更新错误:', error)
   updateStatus = {
     status: 'error',
     error: error.message || '未知错误'
@@ -1591,7 +1593,7 @@ ipcMain.handle('updater:checkForUpdates', async () => {
   try {
     // 开发模式下模拟检查更新
     if (!app.isPackaged) {
-      console.log('[AutoUpdater] 开发模式，模拟检查更新')
+      log.info('AutoUpdater: 开发模式，模拟检查更新')
       updateStatus = { status: 'checking' }
       mainWindow?.webContents.send('updater:status-changed', updateStatus)
       
@@ -1606,7 +1608,7 @@ ipcMain.handle('updater:checkForUpdates', async () => {
     const result = await autoUpdater.checkForUpdates()
     return { success: true, updateInfo: result?.updateInfo }
   } catch (error) {
-    console.error('[AutoUpdater] 检查更新失败:', error)
+    log.error('AutoUpdater: 检查更新失败:', error)
     return { success: false, error: error instanceof Error ? error.message : '检查更新失败' }
   }
 })
@@ -1615,14 +1617,14 @@ ipcMain.handle('updater:checkForUpdates', async () => {
 ipcMain.handle('updater:downloadUpdate', async () => {
   try {
     if (!app.isPackaged) {
-      console.log('[AutoUpdater] 开发模式，模拟下载更新')
+      log.info('AutoUpdater: 开发模式，模拟下载更新')
       return { success: false, error: '开发模式不支持下载更新' }
     }
     
     await autoUpdater.downloadUpdate()
     return { success: true }
   } catch (error) {
-    console.error('[AutoUpdater] 下载更新失败:', error)
+    log.error('AutoUpdater: 下载更新失败:', error)
     return { success: false, error: error instanceof Error ? error.message : '下载更新失败' }
   }
 })
@@ -1633,7 +1635,7 @@ ipcMain.handle('updater:quitAndInstall', async () => {
     autoUpdater.quitAndInstall(false, true)
     return { success: true }
   } catch (error) {
-    console.error('[AutoUpdater] 安装更新失败:', error)
+    log.error('AutoUpdater: 安装更新失败:', error)
     return { success: false, error: error instanceof Error ? error.message : '安装更新失败' }
   }
 })
@@ -1843,6 +1845,18 @@ ipcMain.handle('config:setLogLevel', async (_event, level: string) => {
   setBackendLogLevel(logLevel)
 })
 
+ipcMain.handle('config:getLogDir', async () => {
+  return getLogDir()
+})
+
+ipcMain.handle('config:openLogDir', async () => {
+  const logDir = getLogDir()
+  if (logDir) {
+    const { shell } = require('electron')
+    shell.openPath(logDir)
+  }
+})
+
 // ==================== 定时任务调度相关 ====================
 
 ipcMain.handle('scheduler:getTasks', async () => {
@@ -1922,7 +1936,7 @@ ipcMain.handle('watch:toggle', async (_event, id: string) => {
 ipcMain.handle('watch:trigger', async (_event, id: string) => {
   // Fire-and-forget: 不阻塞前端等待执行完成，通过 IPC 事件推送状态
   watchService.triggerWatch(id).catch(e => {
-    console.error('[Main] Watch trigger failed:', e)
+    log.error('Watch trigger failed:', e)
   })
   return { triggered: true }
 })
@@ -1956,7 +1970,7 @@ ipcMain.handle('sensor:getStatusDetailed', async () => {
   try {
     return sensorService.getSensorStatusDetailed()
   } catch (error) {
-    console.error('[sensor:getStatusDetailed]', error)
+    log.error('sensor:getStatusDetailed', error)
     return sensorService.getSensorStatus()
   }
 })
@@ -1998,7 +2012,7 @@ ipcMain.handle('sensor:setAwakened', async (_event, awakened: boolean, intervalM
 
 // 向后兼容：旧的 setHeartbeat IPC，内部转发到 setAwakened 逻辑
 ipcMain.handle('sensor:setHeartbeat', async (_event, enabled: boolean, intervalMinutes?: number) => {
-  console.warn('[DEPRECATED] sensor:setHeartbeat 已废弃，请使用 sensor:setAwakened')
+  log.warn('[DEPRECATED] sensor:setHeartbeat 已废弃，请使用 sensor:setAwakened')
   const validInterval = (intervalMinutes && intervalMinutes > 0 && intervalMinutes <= 1440)
     ? intervalMinutes
     : undefined
@@ -2659,7 +2673,7 @@ ipcMain.handle('history:exportToFolder', async (_event, options?: { includeSshPa
     
     return historyService.exportToFolder(exportDir, configData, hostProfiles, options)
   } catch (error) {
-    console.error('导出到文件夹失败:', error)
+    log.error('导出到文件夹失败:', error)
     return { success: false, error: error instanceof Error ? error.message : '导出失败' }
   }
 })
@@ -2733,7 +2747,7 @@ ipcMain.handle('history:importFromFolder', async () => {
   
   return importResult
   } catch (error) {
-    console.error('从文件夹导入失败:', error)
+    log.error('从文件夹导入失败:', error)
     return { success: false, imported: [], error: error instanceof Error ? error.message : '导入失败' }
   }
 })
@@ -2825,7 +2839,7 @@ ipcMain.handle('hostProfile:probeSsh', async (_event, sshId: string, hostId: str
     
     return updatedProfile
   } catch (error) {
-    console.error('[SSH Probe] 探测失败:', error)
+    log.error('SSH Probe 探测失败:', error)
     return null
   }
 })
@@ -3152,13 +3166,13 @@ ipcMain.handle('sftp:hasSession', async (_event, sessionId: string) => {
 
 // 列出目录内容
 ipcMain.handle('sftp:list', async (_event, sessionId: string, remotePath: string) => {
-  console.log(`[SFTP] list 请求: sessionId=${sessionId}, remotePath=${remotePath}`)
+  log.info(`SFTP list 请求: sessionId=${sessionId}, remotePath=${remotePath}`)
   try {
     const { files, resolvedPath } = await sftpService.list(sessionId, remotePath)
-    console.log(`[SFTP] list 结果: resolvedPath=${resolvedPath}, 文件数=${files.length}`)
+    log.info(`SFTP list 结果: resolvedPath=${resolvedPath}, 文件数=${files.length}`)
     return { success: true, data: files, resolvedPath }
   } catch (error) {
-    console.error(`[SFTP] list 失败:`, error)
+    log.error('SFTP list 失败:', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : '列出目录失败'
@@ -3654,7 +3668,7 @@ ipcMain.handle('knowledge:updateSettings', async (_event, settings: Partial<Know
     await getKnowledge().updateSettings(settings)
     return { success: true }
   } catch (error) {
-    console.error('[Knowledge] 更新设置失败:', error)
+    log.error('Knowledge 更新设置失败:', error)
     return { 
       success: false, 
       error: error instanceof Error ? error.message : '更新设置失败' 
@@ -4029,9 +4043,9 @@ ipcMain.handle('email:syncAccounts', async (_event, accounts: Array<{
       (accountId) => getEmailCredential(accountId)
     )
 
-    console.log(`[Email] Synced ${accounts.length} account(s) to skill + ${sensorAccounts.length} to sensor`)
+    log.info(`Email: Synced ${accounts.length} account(s) to skill + ${sensorAccounts.length} to sensor`)
   } catch (err) {
-    console.error('[Email] Failed to sync accounts to sensor:', err)
+    log.error('Email: Failed to sync accounts to sensor:', err)
   }
 })
 
@@ -4176,9 +4190,9 @@ ipcMain.handle('calendar:syncAccounts', async (_event, accounts: Array<{
       (accountId) => getCalendarCredential(accountId)
     )
 
-    console.log(`[Calendar] Synced ${accounts.length} account(s) to skill + sensor`)
+    log.info(`Calendar: Synced ${accounts.length} account(s) to skill + sensor`)
   } catch (err) {
-    console.error('[Calendar] Failed to sync accounts to sensor:', err)
+    log.error('Calendar: Failed to sync accounts to sensor:', err)
   }
 })
 

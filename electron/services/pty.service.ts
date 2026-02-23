@@ -5,6 +5,9 @@ import { exec, execSync } from 'child_process'
 import { promisify } from 'util'
 import stripAnsi from 'strip-ansi'
 import * as iconv from 'iconv-lite'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('PTY')
 
 const execAsync = promisify(exec)
 
@@ -120,11 +123,11 @@ export class PtyService {
       const match = output.match(/(\d+)/)
       if (match) {
         const codePage = parseInt(match[1], 10)
-        console.log(`[PtyService] Windows 控制台代码页: ${codePage}`)
+        log.info(`Windows 控制台代码页: ${codePage}`)
         return codePage
       }
     } catch (error) {
-      console.warn('[PtyService] 无法检测 Windows 代码页:', error)
+      log.warn('无法检测 Windows 代码页:', error)
     }
     
     return null
@@ -153,7 +156,7 @@ export class PtyService {
     
     // Windows: 默认使用 UTF-8，这是现代 Windows 的推荐方式
     // 我们会在 shell 启动时通过 chcp 65001 确保代码页正确
-    console.log('[PtyService] Windows 默认使用 UTF-8 编码')
+    log.info('Windows 默认使用 UTF-8 编码')
     return 'utf-8'
   }
 
@@ -180,7 +183,7 @@ export class PtyService {
     // 是否需要手动处理编码（非 UTF-8 在 Windows 上需要）
     const needManualEncoding = isWindows && encoding !== 'utf-8'
     
-    console.log(`[PtyService] 创建终端: encoding=${encoding}, needManualEncoding=${needManualEncoding}`)
+    log.info(`创建终端: encoding=${encoding}, needManualEncoding=${needManualEncoding}`)
 
     // 合并环境变量
     const env = {
@@ -242,7 +245,7 @@ export class PtyService {
 
     // 监听退出
     ptyProcess.onExit(({ exitCode }) => {
-      console.log(`PTY ${id} exited with code ${exitCode}`)
+      log.info(`${id} exited with code ${exitCode}`)
       this.instances.delete(id)
     })
 
@@ -553,7 +556,7 @@ export class PtyService {
     return new Promise((resolve) => {
       const instance = this.instances.get(id)
       if (!instance) {
-        console.error(`[PtyService] 终端实例不存在: id=${id}, 现有实例: ${Array.from(this.instances.keys()).join(', ')}`)
+        log.error(`终端实例不存在: id=${id}, 现有实例: ${Array.from(this.instances.keys()).join(', ')}`)
         resolve({ output: `终端实例不存在 (id=${id})`, duration: 0 })
         return
       }
@@ -607,10 +610,10 @@ export class PtyService {
         const now = Date.now()
         if (!this.lastPromptLog || now - this.lastPromptLog > 2000) {
           this.lastPromptLog = now
-          console.log(`[PtyService] 提示符检测: matched=${matched}, lastLine="${lastLine.slice(-50)}"`)
+          log.debug(`提示符检测: matched=${matched}, lastLine="${lastLine.slice(-50)}"`)
         }
         if (matched) {
-          console.log(`[PtyService] ✓ 检测到提示符: "${lastLine.slice(-40)}"`)
+          log.debug(`✓ 检测到提示符: "${lastLine.slice(-40)}"`)
         }
         return matched
       }
@@ -722,13 +725,13 @@ export class PtyService {
   async getCwd(id: string): Promise<string | null> {
     const instance = this.instances.get(id)
     if (!instance) {
-      console.warn(`[PtyService] getCwd: 实例不存在 id=${id}`)
+      log.warn(`getCwd: 实例不存在 id=${id}`)
       return null
     }
 
     const shellPid = instance.pty.pid
     if (!shellPid) {
-      console.warn(`[PtyService] getCwd: pid 不可用 id=${id}`)
+      log.warn(`getCwd: pid 不可用 id=${id}`)
       return null
     }
 
@@ -744,9 +747,9 @@ export class PtyService {
         }
         // lsof 返回了但无法解析出路径 — 记录日志帮助诊断
         if (stdout.trim()) {
-          console.warn(`[PtyService] getCwd: lsof 输出无法解析, pid=${shellPid}, stdout="${stdout.trim().slice(0, 80)}"`)
+          log.warn(`getCwd: lsof 输出无法解析, pid=${shellPid}, stdout="${stdout.trim().slice(0, 80)}"`)
         } else {
-          console.warn(`[PtyService] getCwd: lsof 输出为空, pid=${shellPid}`)
+          log.warn(`getCwd: lsof 输出为空, pid=${shellPid}`)
         }
       } else if (process.platform === 'linux') {
         // Linux: 读取 /proc/pid/cwd 符号链接
@@ -823,7 +826,7 @@ export class PtyService {
         }
       }
     } catch (error) {
-      console.error('[PtyService] 获取终端状态失败:', error)
+      log.error('获取终端状态失败:', error)
       return {
         isIdle: true,
         shellPid,

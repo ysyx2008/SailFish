@@ -5,6 +5,9 @@
 
 import type { Document } from 'docx'
 import type JSZip from 'jszip'
+import { createLogger } from '../../../../utils/logger'
+
+const log = createLogger('WordSession')
 
 /** 页面设置 */
 export interface PageSettings {
@@ -109,7 +112,7 @@ function startTimeoutChecker(): void {
     const entries = Array.from(openSessions.entries())
     for (const [filePath, session] of entries) {
       if (now - session.lastAccess > SESSION_TIMEOUT) {
-        console.log(`[WordSession] Auto-closing timed out session: ${filePath}`)
+        log.info(`Auto-closing timed out session: ${filePath}`)
         closeSession(filePath, false)
       }
     }

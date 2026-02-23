@@ -29,6 +29,9 @@ import { assessCommandRisk, analyzeCommand } from './risk-assessor'
 import type { CommandHandlingInfo } from './risk-assessor'
 import { setConfigService as setI18nConfigService } from './i18n'
 import { getTerminalStateService } from '../terminal-state.service'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('AgentService')
 
 // 重新导出类型，供外部使用
 export type {
@@ -146,7 +149,7 @@ export class AgentService {
       agent = new SailFish(this.services, ptyId)
       agent.setCallbacks(this.defaultCallbacks)
       this.agents.set(ptyId, agent)
-      console.log(`[AgentService] Created agent for terminal: ${ptyId}`)
+      log.info(`Created agent for terminal: ${ptyId}`)
     }
     return agent
   }
@@ -174,7 +177,7 @@ export class AgentService {
       agent = new SailFish(this.services)
       agent.setCallbacks(this.defaultCallbacks)
       this.agents.set(agentId, agent)
-      console.log(`[AgentService] Created assistant agent: ${agentId}`)
+      log.info(`Created assistant agent: ${agentId}`)
     }
     return agent
   }
@@ -218,7 +221,7 @@ export class AgentService {
     if (agent) {
       agent.cleanup()
       this.agents.delete(ptyId)
-      console.log(`[AgentService] Cleaned up agent for terminal: ${ptyId}`)
+      log.info(`Cleaned up agent for terminal: ${ptyId}`)
     }
     }
 
@@ -228,7 +231,7 @@ export class AgentService {
   cleanupAllAgents(): void {
     Array.from(this.agents.entries()).forEach(([ptyId, agent]) => {
       agent.cleanup()
-      console.log(`[AgentService] Cleaned up agent for terminal: ${ptyId}`)
+      log.info(`Cleaned up agent for terminal: ${ptyId}`)
     })
     this.agents.clear()
   }

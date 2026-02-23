@@ -4,6 +4,9 @@
 import { t } from '../i18n'
 import type { ErrorCategory } from './types'
 import { PATH_PARAM_NAMES } from './types'
+import { createLogger } from '../../../utils/logger'
+
+const log = createLogger('ToolUtils')
 
 /**
  * 分析错误类型
@@ -229,7 +232,7 @@ export function tryDecodePythonEscapesForPath(str: string): string {
       return str
     }
     
-    console.log(`[ToolExecutor] Decoded Python escapes in path: "${str.substring(0, 50)}..." -> "${decoded.substring(0, 50)}..."`)
+    log.info(`Decoded Python escapes in path: "${str.substring(0, 50)}..." -> "${decoded.substring(0, 50)}..."`)
     return decoded
   } catch {
     return str

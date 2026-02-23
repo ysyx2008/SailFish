@@ -5,6 +5,9 @@
  * 支持优先级队列和事件历史记录。
  */
 import type { SensorEvent, EventBus, EventHandler, SensorEventPriority } from './types'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('EventBus')
 
 const PRIORITY_WEIGHT: Record<SensorEventPriority, number> = {
   high: 0,
@@ -66,7 +69,7 @@ export class MemoryEventBus implements EventBus {
               })
             ])
           } catch (err) {
-            console.error(`[EventBus] Handler error for event ${event.type}:`, err)
+            log.error(`Handler error for event ${event.type}:`, err)
           }
         }
       }

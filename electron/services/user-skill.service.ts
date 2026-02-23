@@ -5,6 +5,9 @@
 import { app, shell } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('UserSkill')
 
 /**
  * 用户技能定义
@@ -57,7 +60,7 @@ export class UserSkillService {
   private ensureSkillsDir(): void {
     if (!fs.existsSync(this.skillsDir)) {
       fs.mkdirSync(this.skillsDir, { recursive: true })
-      console.log(`[UserSkill] Created skills directory: ${this.skillsDir}`)
+      log.info(`Created skills directory: ${this.skillsDir}`)
     }
   }
 
@@ -163,7 +166,7 @@ export class UserSkillService {
         }
       }
     } catch (error) {
-      console.error('[UserSkill] Error scanning skills directory:', error)
+      log.error('Error scanning skills directory:', error)
     }
 
     // 按名称排序
@@ -172,7 +175,7 @@ export class UserSkillService {
     // 缓存结果
     this.cachedSkills = skills
     
-    console.log(`[UserSkill] Scanned ${skills.length} skills`)
+    log.info(`Scanned ${skills.length} skills`)
     return skills
   }
 
@@ -196,7 +199,7 @@ export class UserSkillService {
         lastModified: stats.mtimeMs
       }
     } catch (error) {
-      console.error(`[UserSkill] Error parsing skill file ${filePath}:`, error)
+      log.error(`Error parsing skill file ${filePath}:`, error)
       return null
     }
   }
@@ -240,7 +243,7 @@ export class UserSkillService {
       const { body } = this.parseFrontmatter(content)
       return body.trim()
     } catch (error) {
-      console.error(`[UserSkill] Error reading skill content:`, error)
+      log.error('Error reading skill content:', error)
       return skill.content
     }
   }
@@ -251,7 +254,7 @@ export class UserSkillService {
   toggleSkill(skillId: string, enabled: boolean): boolean {
     const skill = this.getSkill(skillId)
     if (!skill) {
-      console.warn(`[UserSkill] Skill not found: ${skillId}`)
+      log.warn(`Skill not found: ${skillId}`)
       return false
     }
 
@@ -290,10 +293,10 @@ export class UserSkillService {
       // 清除缓存以强制重新扫描
       this.cachedSkills = null
 
-      console.log(`[UserSkill] Toggled skill ${skillId} to ${enabled ? 'enabled' : 'disabled'}`)
+      log.info(`Toggled skill ${skillId} to ${enabled ? 'enabled' : 'disabled'}`)
       return true
     } catch (error) {
-      console.error(`[UserSkill] Error toggling skill ${skillId}:`, error)
+      log.error(`Error toggling skill ${skillId}:`, error)
       return false
     }
   }
@@ -415,11 +418,11 @@ export class UserSkillService {
         )
       }
 
-      console.log(`[UserSkill] Copied ${count} files to ${destPath}`)
+      log.info(`Copied ${count} files to ${destPath}`)
       return { success: true, count }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Copy failed'
-      console.error('[UserSkill] Error copying skills:', error)
+      log.error('Error copying skills:', error)
       return { success: false, count: 0, error: errorMsg }
     }
   }
@@ -446,7 +449,7 @@ export class UserSkillService {
 
         // 如果目标已存在，跳过
         if (fs.existsSync(destEntryPath)) {
-          console.log(`[UserSkill] Skipped existing: ${entry.name}`)
+          log.info(`Skipped existing: ${entry.name}`)
           skipped++
           continue
         }
@@ -463,11 +466,11 @@ export class UserSkillService {
       // 清除缓存
       this.cachedSkills = null
 
-      console.log(`[UserSkill] Imported ${imported}, skipped ${skipped}`)
+      log.info(`Imported ${imported}, skipped ${skipped}`)
       return { success: true, imported, skipped }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Import failed'
-      console.error('[UserSkill] Error importing skills:', error)
+      log.error('Error importing skills:', error)
       return { success: false, imported: 0, skipped: 0, error: errorMsg }
     }
   }
