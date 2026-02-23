@@ -18,7 +18,8 @@ import {
   LineRuleType,
   VerticalAlignTable,
   ShadingType,
-  convertInchesToTwip
+  convertInchesToTwip,
+  LevelFormat
 } from 'docx'
 import { marked, Token, Tokens } from 'marked'
 import JSZip from 'jszip'
@@ -167,6 +168,28 @@ export interface WordStyleConfig {
       color?: string
     }
   }
+}
+
+/**
+ * Markdown → docx 转换过程中的累积上下文
+ * 用于收集有序列表的编号定义，最终传递给 Document 构造器
+ */
+interface DocxBuildContext {
+  numberingConfigs: {
+    reference: string
+    levels: {
+      level: number
+      format: (typeof LevelFormat)[keyof typeof LevelFormat]
+      text: string
+      alignment: (typeof AlignmentType)[keyof typeof AlignmentType]
+      start?: number
+      style?: {
+        run?: Record<string, unknown>
+        paragraph?: { indent: { left: number; hanging: number } }
+      }
+    }[]
+  }[]
+  orderedListCounter: number
 }
 
 /**
@@ -658,12 +681,16 @@ export async function markdownToDocx(
   // 解析 Markdown
   const tokens = marked.lexer(markdown)
   
-  // 转换为 docx 元素
-  const children = tokensToDocxElements(tokens, styleConfig)
+  // 构建上下文（收集有序列表编号定义）
+  const ctx: DocxBuildContext = { numberingConfigs: [], orderedListCounter: 0 }
   
-  // 创建文档（包含文档级别的样式定义）
+  // 转换为 docx 元素
+  const children = tokensToDocxElements(tokens, styleConfig, ctx)
+  
+  // 创建文档（包含文档级别的样式定义 + 有序列表编号定义）
   const doc = new Document({
     styles: buildDocumentStyles(styleConfig),
+    numbering: ctx.numberingConfigs.length > 0 ? { config: ctx.numberingConfigs } : undefined,
     sections: [{
       properties: {},
       children: children.length > 0 ? children : [new Paragraph({ children: [] })]
@@ -684,7 +711,8 @@ export async function markdownToDocx(
  */
 function tokensToDocxElements(
   tokens: Token[],
-  style: WordStyleConfig
+  style: WordStyleConfig,
+  ctx: DocxBuildContext
 ): (Paragraph | Table)[] {
   const elements: (Paragraph | Table)[] = []
   // 跟踪上一个元素的对齐方式，用于判断落款前是否需要空行
@@ -710,7 +738,7 @@ function tokensToDocxElements(
       }
         
       case 'list':
-        elements.push(...createList(token as Tokens.List, style))
+        elements.push(...createList(token as Tokens.List, style, ctx))
         lastAlign = undefined
         break
         
@@ -993,42 +1021,88 @@ function parseInlineTokens(
 }
 
 /**
- * 创建列表
+ * 解析列表项的文本内容（提取内联格式：加粗、斜体等）
  */
-function createList(token: Tokens.List, _style: WordStyleConfig): Paragraph[] {
-  const paragraphs: Paragraph[] = []
-  
-  for (const item of token.items) {
-    let children: TextRun[] = []
-    
-    if (item.tokens && item.tokens.length > 0) {
-      // 列表项的 tokens 结构：item.tokens[0] 是 'text' 类型，其 tokens 属性才是真正的内联格式
-      // 例如：item.tokens = [{ type: 'text', text: '**粗体**', tokens: [{ type: 'strong', ... }] }]
-      const firstToken = item.tokens[0]
-      
-      if (firstToken.type === 'text' && 'tokens' in firstToken && firstToken.tokens) {
-        // 使用内部的 tokens 数组（包含 strong、em 等内联格式）
-        // 字体和字号由文档 listParagraph 样式控制
-        children = parseInlineTokens(firstToken.tokens, {})
-      } else {
-        // 其他情况：直接使用 item.tokens
-        children = parseInlineTokens(item.tokens, {})
+function parseListItemContent(item: Tokens.ListItem): TextRun[] {
+  if (item.tokens && item.tokens.length > 0) {
+    // item.tokens[0] 通常是 'text' 类型，其 tokens 属性包含真正的内联格式
+    const firstToken = item.tokens[0]
+
+    if (firstToken.type === 'text' && 'tokens' in firstToken && firstToken.tokens) {
+      const runs = parseInlineTokens(firstToken.tokens, {})
+      if (runs.length > 0) return runs
+    } else if (firstToken.type !== 'list') {
+      const inlineTokens = item.tokens.filter(t => t.type !== 'list')
+      if (inlineTokens.length > 0) {
+        const runs = parseInlineTokens(inlineTokens, {})
+        if (runs.length > 0) return runs
       }
     }
-    
-    // 如果没有解析到任何内容，使用原始文本（字体字号由样式控制）
-    if (children.length === 0) {
-      children = [new TextRun({
-        text: decodeHtmlEntities(item.text || '')
-      })]
-    }
-    
-    paragraphs.push(new Paragraph({
-      bullet: { level: 0 },
-      children
-    }))
   }
-  
+
+  return [new TextRun({ text: decodeHtmlEntities(item.text || '') })]
+}
+
+/**
+ * 创建列表（支持有序/无序，递归处理嵌套）
+ */
+function createList(token: Tokens.List, style: WordStyleConfig, ctx: DocxBuildContext, parentLevel = 0): Paragraph[] {
+  const paragraphs: Paragraph[] = []
+
+  let numberingRef: string | undefined
+  if (token.ordered) {
+    numberingRef = `ordered-list-${ctx.orderedListCounter++}`
+    const cfg = style.config
+    const baseIndent = convertInchesToTwip(0.25)
+    ctx.numberingConfigs.push({
+      reference: numberingRef,
+      levels: [{
+        level: 0,
+        format: LevelFormat.DECIMAL,
+        text: '%1.',
+        alignment: AlignmentType.START,
+        start: typeof token.start === 'number' && token.start > 0 ? token.start : 1,
+        style: {
+          run: {
+            font: buildFontConfig(cfg.font, cfg.fontAscii),
+            size: cfg.fontSize ? cfg.fontSize * 2 : undefined
+          },
+          paragraph: {
+            indent: {
+              left: baseIndent + parentLevel * baseIndent,
+              hanging: baseIndent
+            }
+          }
+        }
+      }]
+    })
+  }
+
+  for (const item of token.items) {
+    const children = parseListItemContent(item)
+
+    if (token.ordered && numberingRef) {
+      paragraphs.push(new Paragraph({
+        numbering: { reference: numberingRef, level: 0 },
+        children
+      }))
+    } else {
+      paragraphs.push(new Paragraph({
+        bullet: { level: parentLevel },
+        children
+      }))
+    }
+
+    // 递归处理嵌套列表
+    if (item.tokens) {
+      for (const sub of item.tokens) {
+        if (sub.type === 'list') {
+          paragraphs.push(...createList(sub as Tokens.List, style, ctx, parentLevel + 1))
+        }
+      }
+    }
+  }
+
   return paragraphs
 }
 
