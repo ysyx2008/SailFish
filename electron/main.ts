@@ -1834,6 +1834,15 @@ ipcMain.handle('config:setAiRules', async (_event, rules: string) => {
   configService.setAiRules(rules)
 })
 
+// Agent 个性描述
+ipcMain.handle('config:getAgentPersonalityText', async () => {
+  return configService.getAgentPersonalityText()
+})
+
+ipcMain.handle('config:setAgentPersonalityText', async (_event, text: string) => {
+  configService.setAgentPersonalityText(text)
+})
+
 // 日志级别
 ipcMain.handle('config:getLogLevel', async () => {
   return configService.getLogLevel()

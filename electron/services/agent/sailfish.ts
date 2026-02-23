@@ -100,6 +100,7 @@ export class SailFish extends Agent {
       options.conversationHistory,
       this.executionMode,
       options.aiRules,
+      options.personalityText,
       options.taskSummaries,
       options.relatedTaskDigests,
       options.availableTaskIds,

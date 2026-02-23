@@ -101,6 +101,8 @@ export interface BuildSystemPromptOptions {
   contextKnowledgeDoc?: string
   /** 用户自定义的 AI 规则 */
   aiRules?: string
+  /** 用户自定义个性描述（在 MBTI 基础上追加） */
+  personalityText?: string
   /** 任务历史总结列表（L1 层） */
   taskSummaries?: string
   /** 语义预加载的相关任务摘要（L2 层） */
@@ -126,6 +128,7 @@ export class PromptBuilder {
   private readonly conversationHistory?: Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }>
   private readonly contextKnowledgeDoc?: string
   private readonly aiRules?: string
+  private readonly personalityText?: string
   private readonly taskSummaries?: string
   private readonly relatedTaskDigests?: string
   private readonly availableTaskIds?: Array<{ id: string; summary: string }>
@@ -140,6 +143,7 @@ export class PromptBuilder {
     this.conversationHistory = options.conversationHistory
     this.contextKnowledgeDoc = options.contextKnowledgeDoc
     this.aiRules = options.aiRules
+    this.personalityText = options.personalityText
     this.taskSummaries = options.taskSummaries
     this.relatedTaskDigests = options.relatedTaskDigests
     this.availableTaskIds = options.availableTaskIds
@@ -162,6 +166,12 @@ export class PromptBuilder {
     // 用户自定义规则
     const userRulesSection = this.aiRules && this.aiRules.trim()
       ? `\n\n## 用户自定义规则（重要！必须遵守）\n\n用户设置了以下规则，你必须严格遵守：\n\n${this.aiRules.trim()}\n`
+      : ''
+    
+    // 用户个性描述（在 MBTI 基础上追加）
+    const personalityText = this.personalityText?.trim()
+    const personalitySection = personalityText
+      ? `\n\n## 你的个性补充（在 MBTI 基础上追加）\n${personalityText}\n\n**注意：以上是用户自定义的个性偏好，需要在 MBTI 风格基础上保持一致。**\n`
       : ''
     
     // 当前本地时间（用于角色认知）
@@ -228,6 +238,7 @@ export class PromptBuilder {
 当前时间：${currentTime}
 ${this.context.cwd ? `当前工作目录：${this.context.cwd}（系统实时获取，无需执行 pwd 验证）` : '当前工作目录：未成功获取'}
 ${styleSection}
+${personalitySection}
 ${userRulesSection}
 ${hostContext}
 ${this.buildRemoteChannelContext()}
@@ -565,6 +576,7 @@ export function buildSystemPrompt(
   conversationHistory?: Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }>,
   executionMode?: ExecutionMode,
   aiRules?: string,
+  personalityText?: string,
   taskSummaries?: string,
   relatedTaskDigests?: string,
   availableTaskIds?: Array<{ id: string; summary: string }>,
@@ -580,6 +592,7 @@ export function buildSystemPrompt(
     contextKnowledgeDoc,
     executionMode,
     aiRules,
+    personalityText,
     taskSummaries,
     relatedTaskDigests,
     availableTaskIds

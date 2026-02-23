@@ -607,6 +607,9 @@ interface Window {
       // AI Rules
       getAiRules: () => Promise<string>
       setAiRules: (rules: string) => Promise<void>
+      // Agent 个性描述
+      getAgentPersonalityText: () => Promise<string>
+      setAgentPersonalityText: (text: string) => Promise<void>
       // 日志级别
       getLogLevel: () => Promise<string>
       setLogLevel: (level: string) => Promise<void>

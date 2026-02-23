@@ -420,6 +420,8 @@ export interface PromptOptions {
   contextKnowledgeDoc?: string
   /** 用户自定义 AI 规则 */
   aiRules?: string
+  /** 用户自定义个性描述（在 MBTI 基础上追加） */
+  personalityText?: string
   /** 任务历史摘要 */
   taskSummaries?: string
   /** 相关任务摘要 */

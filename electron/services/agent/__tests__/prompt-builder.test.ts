@@ -196,6 +196,33 @@ describe('PromptBuilder', () => {
       
       expect(prompt).not.toContain('用户自定义规则')
     })
+
+    it('should include personality section when provided', () => {
+      const context = createMockContext()
+      const builder = new PromptBuilder({
+        context,
+        personalityText: '回答要先结论后细节，少客套'
+      })
+      const prompt = builder.build()
+
+      expect(prompt).toContain('你的个性补充')
+      expect(prompt).toContain('先结论后细节')
+    })
+
+    it('should place personality section after MBTI section', () => {
+      const context = createMockContext()
+      const builder = new PromptBuilder({
+        context,
+        mbtiType: 'INTJ',
+        personalityText: '保持直接风格'
+      })
+      const prompt = builder.build()
+
+      const mbtiPos = prompt.indexOf('## 你的风格（重要！）')
+      const personalityPos = prompt.indexOf('## 你的个性补充（在 MBTI 基础上追加）')
+      expect(mbtiPos).toBeGreaterThan(-1)
+      expect(personalityPos).toBeGreaterThan(mbtiPos)
+    })
   })
 
   describe('SSH terminal', () => {
@@ -493,9 +520,16 @@ describe('buildSystemPrompt (backward compatible)', () => {
       'INTJ',
       '知识库内容',
       true,
-      ['记忆1', '记忆2'],
+      [{
+        userRequest: '记忆1',
+        finalResult: '记忆2',
+        status: 'success',
+        timestamp: Date.now(),
+        relevance: 0.9
+      }],
       'strict',
       '用户规则',
+      '个性补充',
       '任务摘要',
       '相关任务',
       [{ id: 'task1', summary: '测试任务' }]
@@ -505,6 +539,7 @@ describe('buildSystemPrompt (backward compatible)', () => {
     expect(prompt).toContain('知识库内容')
     expect(prompt).toContain('记忆1')
     expect(prompt).toContain('用户规则')
+    expect(prompt).toContain('个性补充')
     expect(prompt).toContain('任务摘要')
     expect(prompt).toContain('task1')
   })

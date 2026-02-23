@@ -2016,6 +2016,12 @@ export default {
     patrolDone: 'All clear',
     patrolSkipped: 'Nothing noteworthy',
     patrolError: 'Check failed, see logs',
+    personalityTitle: 'Personality Add-on',
+    personalityHint: 'MBTI stays in AI Settings; add extra personality preferences here',
+    personalityPlaceholder: 'Example: Be direct and less ceremonial; lead with conclusions; challenge unreasonable plans clearly when needed.',
+    personalityChars: 'characters',
+    personalityUnsavedConfirm: 'You have unsaved personality changes. Close without saving?',
+    personalitySaveFailed: 'Failed to save. Please try again.',
   },
 
   heartbeat: {

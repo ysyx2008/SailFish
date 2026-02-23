@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useConfigStore } from '../stores/config'
 import {
   X, Play, Trash2, Eye, EyeOff, RefreshCw, History,
   Clock, Heart, Globe, Zap, FolderOpen, Calendar, Mail,
@@ -8,6 +9,7 @@ import {
 } from 'lucide-vue-next'
 
 const { t } = useI18n()
+const configStore = useConfigStore()
 
 const props = defineProps<{
   initialTab?: string
@@ -76,6 +78,12 @@ const selectedTemplateCategory = ref<string>('all')
 const sharedState = ref<Record<string, unknown>>({})
 const sensorStatus = ref<Array<{ id: string; name: string; running: boolean; details?: Record<string, any> }>>([])
 const recentEvents = ref<Array<{ id: string; type: string; source: string; timestamp: number }>>([])
+const personalityText = ref('')
+const personalityOriginal = ref('')
+const personalitySaving = ref(false)
+const personalityError = ref('')
+const PERSONALITY_MAX_LENGTH = 1000
+const personalityDirty = computed(() => personalityText.value !== personalityOriginal.value)
 
 // ==================== Utilities ====================
 
@@ -310,6 +318,42 @@ async function manualHeartbeat() {
   }
 }
 
+function loadPersonalitySettings() {
+  personalityText.value = configStore.agentPersonalityText || ''
+  personalityOriginal.value = personalityText.value
+}
+
+async function savePersonalityText() {
+  if (!personalityDirty.value) return
+  personalitySaving.value = true
+  personalityError.value = ''
+  try {
+    const safeText = personalityText.value.length > PERSONALITY_MAX_LENGTH
+      ? personalityText.value.substring(0, PERSONALITY_MAX_LENGTH)
+      : personalityText.value
+    await configStore.setAgentPersonalityText(safeText)
+    personalityText.value = safeText
+    personalityOriginal.value = safeText
+  } catch (e) {
+    console.error('保存个性补充失败:', e)
+    personalityError.value = t('awaken.personalitySaveFailed')
+  } finally {
+    personalitySaving.value = false
+  }
+}
+
+function resetPersonalityText() {
+  personalityText.value = personalityOriginal.value
+  personalityError.value = ''
+}
+
+function requestClose() {
+  if (personalityDirty.value && !confirm(t('awaken.personalityUnsavedConfirm'))) {
+    return
+  }
+  emit('close')
+}
+
 // ==================== Lifecycle ====================
 
 let refreshTimer: NodeJS.Timeout | null = null
@@ -317,12 +361,13 @@ let cleanupWatchStarted: (() => void) | null = null
 let cleanupWatchCompleted: (() => void) | null = null
 
 const handleKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'Escape') emit('close')
+  if (e.key === 'Escape') requestClose()
 }
 
 onMounted(async () => {
   document.addEventListener('keydown', handleKeydown, true)
   await Promise.all([loadWatchData().catch(() => {}), loadAwakenSettings()])
+  loadPersonalitySettings()
   loadTemplates(); loadSharedState()
   refreshTimer = setInterval(loadWatchData, 30000)
 
@@ -374,7 +419,7 @@ onUnmounted(() => {
         <div class="header-stats" v-if="watches.length > 0">
           <span class="stat-item">{{ enabledCount }} {{ t('watch.activeCount') }}</span>
         </div>
-        <button class="btn-icon" @click="emit('close')" :title="t('watch.close')">
+        <button class="btn-icon" @click="requestClose" :title="t('watch.close')">
           <X :size="18" />
         </button>
       </div>
@@ -386,8 +431,17 @@ onUnmounted(() => {
             <input type="checkbox" v-model="awakened" @change="toggleAwakened" />
             <span class="toggle-slider"></span>
           </label>
+          <div class="ecg-monitor" :class="{ active: awakenedRunning }">
+            <svg width="120" height="24" viewBox="0 0 120 24">
+              <line v-if="!awakenedRunning" class="ecg-flatline" x1="0" y1="12" x2="120" y2="12" />
+              <g v-else class="ecg-wave">
+                <polyline class="ecg-line"
+                  points="0,12 15,12 17,9 19,12 24,12 26,2 28,22 30,6 32,12 40,12 43,9 46,12 60,12 75,12 77,9 79,12 84,12 86,2 88,22 90,6 92,12 100,12 103,9 106,12 120,12 135,12 137,9 139,12 144,12 146,2 148,22 150,6 152,12 160,12 163,9 166,12 180,12"
+                />
+              </g>
+            </svg>
+          </div>
           <span class="awaken-status" :class="{ active: awakenedRunning }">
-            <span class="status-dot"></span>
             {{ awakenedRunning ? t('awaken.running') : t('awaken.stopped') }}
           </span>
         </div>
@@ -412,6 +466,32 @@ onUnmounted(() => {
             {{ t('awaken.trigger') }}
           </button>
         </div>
+      </div>
+      
+      <div class="personality-bar">
+        <div class="personality-header">
+          <h3>{{ t('awaken.personalityTitle') }}</h3>
+          <span class="personality-note">{{ t('awaken.personalityHint') }}</span>
+        </div>
+        <textarea
+          v-model="personalityText"
+          class="personality-textarea"
+          :placeholder="t('awaken.personalityPlaceholder')"
+          :maxlength="PERSONALITY_MAX_LENGTH"
+          spellcheck="false"
+        />
+        <div class="personality-actions">
+          <span class="personality-length">{{ personalityText.length }}/{{ PERSONALITY_MAX_LENGTH }} {{ t('awaken.personalityChars') }}</span>
+          <div class="personality-buttons">
+            <button class="btn btn-sm" @click="resetPersonalityText" :disabled="!personalityDirty || personalitySaving">
+              {{ t('common.reset') }}
+            </button>
+            <button class="btn btn-primary btn-sm" @click="savePersonalityText" :disabled="!personalityDirty || personalitySaving">
+              {{ personalitySaving ? t('common.saving') : t('common.save') }}
+            </button>
+          </div>
+        </div>
+        <div v-if="personalityError" class="personality-error">{{ personalityError }}</div>
       </div>
 
       <div class="panel-body">
@@ -852,15 +932,53 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--text-secondary);
 }
-.awaken-status .status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-tertiary);
+.awaken-status.active {
+  color: #10b981;
 }
-.awaken-status.active .status-dot {
-  background: #10b981;
-  box-shadow: 0 0 4px #10b98180;
+
+/* ==================== ECG Monitor ==================== */
+
+.ecg-monitor {
+  width: 120px;
+  height: 24px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.ecg-monitor svg {
+  display: block;
+}
+
+.ecg-flatline {
+  stroke: var(--text-tertiary);
+  stroke-width: 1.5;
+  opacity: 0.3;
+}
+
+.ecg-line {
+  fill: none;
+  stroke: #10b981;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 2px rgba(16, 185, 129, 0.6));
+}
+
+.ecg-wave {
+  animation: ecg-scroll 1.5s linear infinite;
+}
+
+.ecg-monitor.active {
+  border-color: rgba(16, 185, 129, 0.3);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.1);
+}
+
+@keyframes ecg-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-60px); }
 }
 
 .awaken-center {
@@ -892,6 +1010,74 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.personality-bar {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.personality-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.personality-header h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.personality-note {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.personality-textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: var(--font-mono);
+}
+
+.personality-textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.personality-actions {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.personality-length {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.personality-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.personality-error {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #ef4444;
 }
 
 .patrol-hint {

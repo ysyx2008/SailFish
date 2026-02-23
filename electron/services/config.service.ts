@@ -127,6 +127,7 @@ interface StoreSchema {
   defaultGroupSortOrder: number
   fileBookmarks: FileBookmark[]
   aiRules: string  // 用户自定义的 AI 规则/指令
+  agentPersonalityText: string  // 用户自定义个性描述（在 MBTI 基础上追加）
   gatewayAutoStart: boolean  // Gateway 远程访问自动启动
   gatewayPort: number        // Gateway 端口
   gatewayHost: string        // Gateway 监听地址
@@ -189,6 +190,7 @@ const defaultConfig: StoreSchema = {
   defaultGroupSortOrder: -1,
   fileBookmarks: [],
   aiRules: '',
+  agentPersonalityText: '',
   gatewayAutoStart: false,
   gatewayPort: 3721,
   gatewayHost: '0.0.0.0',
@@ -753,6 +755,24 @@ export class ConfigService {
    */
   setAiRules(rules: string): void {
     this.store.set('aiRules', rules)
+  }
+
+  /**
+   * 获取 Agent 个性描述
+   */
+  getAgentPersonalityText(): string {
+    return this.store.get('agentPersonalityText') || ''
+  }
+
+  /**
+   * 设置 Agent 个性描述
+   */
+  setAgentPersonalityText(text: string): void {
+    const MAX_PERSONALITY_TEXT_LENGTH = 1000
+    const safeText = text.length > MAX_PERSONALITY_TEXT_LENGTH
+      ? text.substring(0, MAX_PERSONALITY_TEXT_LENGTH)
+      : text
+    this.store.set('agentPersonalityText', safeText)
   }
 
   // ==================== 日志级别 ====================

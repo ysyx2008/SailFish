@@ -865,6 +865,9 @@ const electronAPI = {
     // AI Rules
     getAiRules: () => ipcRenderer.invoke('config:getAiRules') as Promise<string>,
     setAiRules: (rules: string) => ipcRenderer.invoke('config:setAiRules', rules),
+    // Agent 个性描述
+    getAgentPersonalityText: () => ipcRenderer.invoke('config:getAgentPersonalityText') as Promise<string>,
+    setAgentPersonalityText: (text: string) => ipcRenderer.invoke('config:setAgentPersonalityText', text),
 
     // 日志级别
     getLogLevel: () => ipcRenderer.invoke('config:getLogLevel') as Promise<string>,

@@ -2033,6 +2033,12 @@ export default {
     patrolDone: '看完了，一切正常',
     patrolSkipped: '没什么需要关注的',
     patrolError: '检查出错，请查看日志',
+    personalityTitle: '个性补充',
+    personalityHint: 'MBTI 在 AI 设置页管理，这里追加个性偏好',
+    personalityPlaceholder: '例如：回答更直接，少用客套；先给结论再给细节；必要时明确反对不合理方案。',
+    personalityChars: '字符',
+    personalityUnsavedConfirm: '个性补充有未保存修改，确定直接关闭吗？',
+    personalitySaveFailed: '保存失败，请稍后重试',
   },
 
   // 保留旧 key 以防其他地方引用
