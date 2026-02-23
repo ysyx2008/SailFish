@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore } from '../stores/config'
 import {
   X, Play, Trash2, Eye, EyeOff, RefreshCw, History,
   Clock, Heart, Globe, Zap, FolderOpen, Calendar, Mail,
-  LayoutTemplate, Database, Plus, Power
+  LayoutTemplate, Database, Plus, Power, Sparkles
 } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -59,11 +59,20 @@ interface WatchHistoryRecord {
 
 // ==================== Navigation ====================
 
-type NavTab = 'watches' | 'templates' | 'sensors' | 'history'
-const VALID_TABS: NavTab[] = ['watches', 'templates', 'sensors', 'history']
+type NavTab = 'watches' | 'templates' | 'sensors' | 'history' | 'personality'
+const VALID_TABS: NavTab[] = ['watches', 'templates', 'sensors', 'history', 'personality']
 const activeTab = ref<NavTab>(
   props.initialTab && VALID_TABS.includes(props.initialTab as NavTab) ? props.initialTab as NavTab : 'watches'
 )
+
+function switchTab(tab: NavTab, onSwitch?: () => void) {
+  if (activeTab.value === 'personality' && tab !== 'personality' && personalityDirty.value) {
+    if (!confirm(t('awaken.personalityUnsavedConfirm'))) return
+    resetPersonalityText()
+  }
+  activeTab.value = tab
+  onSwitch?.()
+}
 
 // ==================== State ====================
 
@@ -250,11 +259,20 @@ const triggerHeartbeat = async () => {
 const awakened = ref(false)
 const heartbeatInterval = ref(30)
 const awakenedRunning = ref(false)
+const ecgBooting = ref(false)
+const ecgBaselineFlashing = ref(false)
 const patrolling = ref(false)
 const patrolStatus = ref<'idle' | 'running' | 'done' | 'skipped' | 'error'>('idle')
 const patrolMessage = ref('')
 let patrolStatusTimer: ReturnType<typeof setTimeout> | null = null
 let patrolTimeout: ReturnType<typeof setTimeout> | null = null
+let ecgBootTimer: ReturnType<typeof setTimeout> | null = null
+let ecgFlashTimer: ReturnType<typeof setTimeout> | null = null
+let awakenStateHydrated = false
+
+const ECG_BASELINE_FLASH_MS = 320
+const ECG_BOOT_MS = 900
+const awakenReady = computed(() => awakened.value && !ecgBaselineFlashing.value && !ecgBooting.value)
 
 function clearPatrolStatus() {
   if (patrolStatusTimer) clearTimeout(patrolStatusTimer)
@@ -272,6 +290,25 @@ async function loadAwakenSettings() {
     const statusList = await window.electronAPI.sensor.getStatus()
     awakenedRunning.value = statusList.some((s: any) => s.id === 'heartbeat' && s.running)
   } catch { /* ignore */ }
+  finally {
+    awakenStateHydrated = true
+  }
+}
+
+function startEcgBoot() {
+  ecgBaselineFlashing.value = true
+  ecgBooting.value = false
+  if (ecgFlashTimer) clearTimeout(ecgFlashTimer)
+  if (ecgBootTimer) clearTimeout(ecgBootTimer)
+  ecgFlashTimer = setTimeout(() => {
+    ecgBaselineFlashing.value = false
+    ecgBooting.value = true
+    ecgFlashTimer = null
+    ecgBootTimer = setTimeout(() => {
+      ecgBooting.value = false
+      ecgBootTimer = null
+    }, ECG_BOOT_MS)
+  }, ECG_BASELINE_FLASH_MS)
 }
 
 async function toggleAwakened() {
@@ -284,6 +321,26 @@ async function toggleAwakened() {
     awakened.value = prev
   }
 }
+
+watch(awakened, (next, prev) => {
+  if (!awakenStateHydrated) return
+  if (next && !prev) {
+    startEcgBoot()
+    return
+  }
+  if (!next) {
+    ecgBaselineFlashing.value = false
+    ecgBooting.value = false
+    if (ecgFlashTimer) {
+      clearTimeout(ecgFlashTimer)
+      ecgFlashTimer = null
+    }
+    if (ecgBootTimer) {
+      clearTimeout(ecgBootTimer)
+      ecgBootTimer = null
+    }
+  }
+})
 
 async function updateAwakenInterval() {
   if (heartbeatInterval.value < 1) heartbeatInterval.value = 1
@@ -401,6 +458,8 @@ onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer)
   if (patrolStatusTimer) clearTimeout(patrolStatusTimer)
   if (patrolTimeout) clearTimeout(patrolTimeout)
+  if (ecgFlashTimer) clearTimeout(ecgFlashTimer)
+  if (ecgBootTimer) clearTimeout(ecgBootTimer)
   cleanupWatchStarted?.(); cleanupWatchCompleted?.()
   for (const timeout of watchTimeouts.values()) clearTimeout(timeout)
   watchTimeouts.clear()
@@ -433,24 +492,27 @@ onUnmounted(() => {
           </label>
           <div class="ecg-monitor" :class="{ active: awakened }">
             <svg width="120" height="24" viewBox="0 0 120 24">
-              <line v-if="!awakened" class="ecg-flatline" x1="0" y1="12" x2="120" y2="12" />
-              <g v-else class="ecg-wave">
-                <polyline class="ecg-line"
-                  points="0,12 15,12 17,9 19,12 24,12 26,2 28,22 30,6 32,12 40,12 43,9 46,12 60,12 75,12 77,9 79,12 84,12 86,2 88,22 90,6 92,12 100,12 103,9 106,12 120,12 135,12 137,9 139,12 144,12 146,2 148,22 150,6 152,12 160,12 163,9 166,12 180,12"
-                />
+              <line class="ecg-flatline" :class="{ active: awakened, flashing: ecgBaselineFlashing }" x1="0" y1="12" x2="120" y2="12" />
+              <g v-if="awakened && !ecgBaselineFlashing" class="ecg-wave-track">
+                <g class="ecg-wave-reveal" :class="{ booting: ecgBooting }">
+                  <polyline class="ecg-line"
+                    points="0,12 15,12 17,9 19,12 24,12 26,2 28,22 30,6 32,12 40,12 43,9 46,12 60,12 75,12 77,9 79,12 84,12 86,2 88,22 90,6 92,12 100,12 103,9 106,12 120,12 135,12 137,9 139,12 144,12 146,2 148,22 150,6 152,12 160,12 163,9 166,12 180,12"
+                  />
+                </g>
               </g>
             </svg>
           </div>
-          <span class="awaken-status" :class="{ active: awakened }">
-            {{ awakened ? t('awaken.running') : t('awaken.stopped') }}
+          <span class="awaken-status" :class="{ active: awakenReady }">
+            {{ awakenReady ? t('awaken.running') : t('awaken.stopped') }}
           </span>
         </div>
-        <div class="awaken-center" v-if="awakened">
+        <div class="awaken-center" :class="{ pending: !awakenReady }">
           <input
             type="number"
             v-model.number="heartbeatInterval"
             :min="1" :max="1440"
             class="interval-input"
+            :disabled="!awakenReady"
             @change="updateAwakenInterval"
           />
           <span class="interval-unit">min</span>
@@ -460,7 +522,7 @@ onUnmounted(() => {
             <RefreshCw v-if="patrolStatus === 'running'" :size="12" class="spinning" />
             {{ patrolMessage }}
           </span>
-          <button v-if="awakened" class="btn btn-sm" :disabled="patrolling" @click="manualHeartbeat">
+          <button class="btn btn-sm awaken-trigger-btn" :class="{ hidden: !awakenReady }" :disabled="!awakenReady || patrolling" @click="manualHeartbeat">
             <RefreshCw v-if="patrolling" :size="13" class="spinning" />
             <Heart v-else :size="13" />
             {{ t('awaken.trigger') }}
@@ -468,38 +530,18 @@ onUnmounted(() => {
         </div>
       </div>
       
-      <div class="personality-bar">
-        <div class="personality-header">
-          <h3>{{ t('awaken.personalityTitle') }}</h3>
-          <span class="personality-note">{{ t('awaken.personalityHint') }}</span>
-        </div>
-        <textarea
-          v-model="personalityText"
-          class="personality-textarea"
-          :placeholder="t('awaken.personalityPlaceholder')"
-          :maxlength="PERSONALITY_MAX_LENGTH"
-          spellcheck="false"
-        />
-        <div class="personality-actions">
-          <span class="personality-length">{{ personalityText.length }}/{{ PERSONALITY_MAX_LENGTH }} {{ t('awaken.personalityChars') }}</span>
-          <div class="personality-buttons">
-            <button class="btn btn-sm" @click="resetPersonalityText" :disabled="!personalityDirty || personalitySaving">
-              {{ t('common.reset') }}
-            </button>
-            <button class="btn btn-primary btn-sm" @click="savePersonalityText" :disabled="!personalityDirty || personalitySaving">
-              {{ personalitySaving ? t('common.saving') : t('common.save') }}
-            </button>
-          </div>
-        </div>
-        <div v-if="personalityError" class="personality-error">{{ personalityError }}</div>
-      </div>
-
       <div class="panel-body">
         <!-- Left Nav -->
         <nav class="panel-nav">
           <div class="nav-group">
+            <button class="nav-item" :class="{ active: activeTab === 'personality' }" @click="switchTab('personality')">
+              <Sparkles :size="16" />
+              <span>{{ t('awaken.personalityNav') }}</span>
+            </button>
+          </div>
+          <div class="nav-group">
             <div class="nav-group-label">{{ t('watch.navAutomation') }}</div>
-            <button class="nav-item" :class="{ active: activeTab === 'watches' }" @click="activeTab = 'watches'">
+            <button class="nav-item" :class="{ active: activeTab === 'watches' }" @click="switchTab('watches')">
               <Eye :size="16" />
               <span>{{ t('watch.watches') }}</span>
               <span v-if="watches.length" class="nav-badge">{{ watches.length }}</span>
@@ -507,18 +549,18 @@ onUnmounted(() => {
           </div>
           <div class="nav-group">
             <div class="nav-group-label">{{ t('watch.navTools') }}</div>
-            <button class="nav-item" :class="{ active: activeTab === 'templates' }" @click="activeTab = 'templates'; loadTemplates()">
+            <button class="nav-item" :class="{ active: activeTab === 'templates' }" @click="switchTab('templates', loadTemplates)">
               <LayoutTemplate :size="16" />
               <span>{{ t('watch.templates') }}</span>
             </button>
-            <button class="nav-item" :class="{ active: activeTab === 'sensors' }" @click="activeTab = 'sensors'; loadSensorData(); loadSharedState()">
+            <button class="nav-item" :class="{ active: activeTab === 'sensors' }" @click="switchTab('sensors', () => { loadSensorData(); loadSharedState() })">
               <Heart :size="16" />
               <span>{{ t('watch.sensors') }}</span>
             </button>
           </div>
           <div class="nav-group">
             <div class="nav-group-label">{{ t('watch.navRecords') }}</div>
-            <button class="nav-item" :class="{ active: activeTab === 'history' }" @click="activeTab = 'history'; loadWatchData()">
+            <button class="nav-item" :class="{ active: activeTab === 'history' }" @click="switchTab('history', loadWatchData)">
               <History :size="16" />
               <span>{{ t('watch.executionHistory') }}</span>
             </button>
@@ -527,6 +569,37 @@ onUnmounted(() => {
 
         <!-- Content Area -->
         <div class="panel-content">
+
+          <!-- ===================== 个性 ===================== -->
+          <template v-if="activeTab === 'personality'">
+            <div class="content-page personality-page">
+              <div class="personality-content">
+                <div class="personality-header">
+                  <h3>{{ t('awaken.personalityTitle') }}</h3>
+                  <span class="personality-note">{{ t('awaken.personalityHint') }}</span>
+                </div>
+                <textarea
+                  v-model="personalityText"
+                  class="personality-textarea"
+                  :placeholder="t('awaken.personalityPlaceholder')"
+                  :maxlength="PERSONALITY_MAX_LENGTH"
+                  spellcheck="false"
+                />
+                <div class="personality-footer">
+                  <span class="personality-length">{{ personalityText.length }}/{{ PERSONALITY_MAX_LENGTH }} {{ t('awaken.personalityChars') }}</span>
+                  <div class="personality-buttons">
+                    <button class="btn btn-sm" @click="resetPersonalityText" :disabled="!personalityDirty || personalitySaving">
+                      {{ t('common.reset') }}
+                    </button>
+                    <button class="btn btn-primary btn-sm" @click="savePersonalityText" :disabled="!personalityDirty || personalitySaving">
+                      {{ personalitySaving ? t('common.saving') : t('common.save') }}
+                    </button>
+                  </div>
+                </div>
+                <div v-if="personalityError" class="personality-error">{{ personalityError }}</div>
+              </div>
+            </div>
+          </template>
 
           <!-- ===================== 关切列表 ===================== -->
           <template v-if="activeTab === 'watches'">
@@ -957,6 +1030,15 @@ onUnmounted(() => {
   stroke-width: 1.5;
   opacity: 0.3;
 }
+.ecg-flatline.active {
+  opacity: 0.22;
+}
+.ecg-flatline.flashing {
+  stroke: #8af7c5;
+  stroke-width: 1.8;
+  filter: drop-shadow(0 0 4px rgba(138, 247, 197, 0.8));
+  animation: ecg-flatline-flash 100ms ease-in-out 3;
+}
 
 .ecg-line {
   fill: none;
@@ -967,8 +1049,17 @@ onUnmounted(() => {
   filter: drop-shadow(0 0 2px rgba(16, 185, 129, 0.6));
 }
 
-.ecg-wave {
+.ecg-wave-track {
   animation: ecg-scroll 1.5s linear infinite;
+}
+
+.ecg-wave-reveal {
+  clip-path: inset(0 0 0 0);
+}
+
+.ecg-wave-reveal.booting {
+  clip-path: inset(0 0 0 100%);
+  animation: ecg-reveal-right-to-left 1.05s linear forwards;
 }
 
 .ecg-monitor.active {
@@ -981,10 +1072,25 @@ onUnmounted(() => {
   to { transform: translateX(-60px); }
 }
 
+@keyframes ecg-reveal-right-to-left {
+  from { clip-path: inset(0 0 0 100%); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes ecg-flatline-flash {
+  0% { opacity: 0.18; }
+  50% { opacity: 1; }
+  100% { opacity: 0.2; }
+}
+
 .awaken-center {
   display: flex;
   align-items: center;
   gap: 4px;
+  min-width: 88px;
+}
+.awaken-center.pending {
+  visibility: hidden;
 }
 .interval-input {
   width: 50px;
@@ -1010,44 +1116,57 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 110px;
+  justify-content: flex-end;
 }
 
-.personality-bar {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-secondary);
+.awaken-trigger-btn.hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.personality-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.personality-content {
+  display: flex;
+  flex-direction: column;
+  padding: 20px 24px;
+  gap: 12px;
+  max-width: 640px;
 }
 
 .personality-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .personality-header h3 {
   margin: 0;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
 }
 
 .personality-note {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
 }
 
 .personality-textarea {
   width: 100%;
-  min-height: 72px;
+  min-height: 160px;
   resize: vertical;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.6;
   font-family: var(--font-mono);
 }
 
@@ -1056,8 +1175,7 @@ onUnmounted(() => {
   border-color: var(--accent-primary);
 }
 
-.personality-actions {
-  margin-top: 8px;
+.personality-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1075,7 +1193,6 @@ onUnmounted(() => {
 }
 
 .personality-error {
-  margin-top: 6px;
   font-size: 11px;
   color: #ef4444;
 }

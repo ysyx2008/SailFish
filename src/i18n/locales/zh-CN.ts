@@ -1949,7 +1949,7 @@ export default {
     noEvents: '暂无事件',
     sensorRunning: '运行中',
     sensorStopped: '已停止',
-    targets: '个监听',
+    targets: '个关切',
     triggerHeartbeatBtn: '触发心跳',
 
     // 历史
@@ -2033,11 +2033,12 @@ export default {
     patrolDone: '看完了，一切正常',
     patrolSkipped: '没什么需要关注的',
     patrolError: '检查出错，请查看日志',
-    personalityTitle: '个性补充',
+    personalityTitle: '个性',
+    personalityNav: '个性',
     personalityHint: 'MBTI 在 AI 设置页管理，这里追加个性偏好',
     personalityPlaceholder: '例如：回答更直接，少用客套；先给结论再给细节；必要时明确反对不合理方案。',
     personalityChars: '字符',
-    personalityUnsavedConfirm: '个性补充有未保存修改，确定直接关闭吗？',
+    personalityUnsavedConfirm: '个性设置有未保存修改，确定直接关闭吗？',
     personalitySaveFailed: '保存失败，请稍后重试',
   },
 
