@@ -185,7 +185,8 @@ export class CalendarSensor implements Sensor {
 
       const serverUrl = this.resolveServerUrl(account)
       if (!serverUrl) {
-        log.error(`No server URL for ${account.name}`)
+        // 配置缺失时跳过该账户，避免持续输出 error 干扰终端
+        log.warn(`Skip account without server URL: ${account.name} (provider=${account.provider})`)
         return
       }
 
@@ -227,6 +228,7 @@ export class CalendarSensor implements Sensor {
       google: 'https://apidata.googleusercontent.com/caldav/v2',
       icloud: 'https://caldav.icloud.com',
       outlook: 'https://outlook.office365.com/caldav',
+      wecom: 'https://caldav.wecom.work',
       fastmail: 'https://caldav.fastmail.com/dav'
     }
     return configs[account.provider] || ''
