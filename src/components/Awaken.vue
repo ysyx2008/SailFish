@@ -431,9 +431,9 @@ onUnmounted(() => {
             <input type="checkbox" v-model="awakened" @change="toggleAwakened" />
             <span class="toggle-slider"></span>
           </label>
-          <div class="ecg-monitor" :class="{ active: awakenedRunning }">
+          <div class="ecg-monitor" :class="{ active: awakened }">
             <svg width="120" height="24" viewBox="0 0 120 24">
-              <line v-if="!awakenedRunning" class="ecg-flatline" x1="0" y1="12" x2="120" y2="12" />
+              <line v-if="!awakened" class="ecg-flatline" x1="0" y1="12" x2="120" y2="12" />
               <g v-else class="ecg-wave">
                 <polyline class="ecg-line"
                   points="0,12 15,12 17,9 19,12 24,12 26,2 28,22 30,6 32,12 40,12 43,9 46,12 60,12 75,12 77,9 79,12 84,12 86,2 88,22 90,6 92,12 100,12 103,9 106,12 120,12 135,12 137,9 139,12 144,12 146,2 148,22 150,6 152,12 160,12 163,9 166,12 180,12"
@@ -441,8 +441,8 @@ onUnmounted(() => {
               </g>
             </svg>
           </div>
-          <span class="awaken-status" :class="{ active: awakenedRunning }">
-            {{ awakenedRunning ? t('awaken.running') : t('awaken.stopped') }}
+          <span class="awaken-status" :class="{ active: awakened }">
+            {{ awakened ? t('awaken.running') : t('awaken.stopped') }}
           </span>
         </div>
         <div class="awaken-center" v-if="awakened">
