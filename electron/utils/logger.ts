@@ -36,9 +36,6 @@ function getDateString(): string {
 function resolveLogDir(): string {
   try {
     const { app } = require('electron')
-    if (process.platform === 'darwin') {
-      return path.join(app.getPath('home'), 'Library', 'Logs', app.getName())
-    }
     return path.join(app.getPath('userData'), 'logs')
   } catch {
     return path.join(require('os').homedir(), '.sailfish', 'logs')
@@ -95,8 +92,13 @@ export function initLogging(level?: LogLevel): void {
 
 function applyLogLevel(): void {
   const mapped = LOG_LEVEL_MAP[_level]
-  log.transports.file.level = mapped === false ? false : mapped
   log.transports.console.level = mapped === false ? false : mapped
+  // 文件始终记录 info 及以上，仅当用户主动设为 debug 时跟随
+  if (mapped === 'debug' || mapped === 'silly') {
+    log.transports.file.level = mapped
+  } else {
+    log.transports.file.level = 'info'
+  }
 }
 
 export function setLogLevel(level: LogLevel): void {
