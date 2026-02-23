@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, provide, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Server, Bot, Settings, X, Loader2, Eye, AlertCircle } from 'lucide-vue-next'
+import { Server, Bot, Settings, X, Loader2, Heart, AlertCircle } from 'lucide-vue-next'
 import { useTerminalStore } from './stores/terminal'
 import { useConfigStore, type SshSession } from './stores/config'
 import TabBar from './components/TabBar.vue'
@@ -600,8 +600,8 @@ onUnmounted(() => {
           <button class="btn-icon" @click="toggleAiPanel" :title="t('header.aiAssistant')">
             <Bot :size="18" />
           </button>
-          <button class="btn-icon" @click="showWatchManager = true" :title="t('watch.panelTitle')">
-            <Eye :size="18" />
+          <button class="btn-icon" @click="showWatchManager = true" :title="t('awaken.title')">
+            <Heart :size="18" />
           </button>
           <ConnectionStatusPopover @open-settings="openConnectionSettings" />
         </template>
