@@ -261,8 +261,18 @@ onMounted(async () => {
     }
   })
 
-  // 觉醒主动推送：Agent 静默执行完成后有消息要告知用户
+  // 觉醒主动推送：Watch 执行完成后有消息要告知用户
   cleanupWatchProactiveMessage = window.electronAPI.watch.onProactiveMessage((data) => {
+    const tab = terminalStore.tabs.find(t => t.agentId === data.agentId)
+    if (tab) {
+      terminalStore.addAgentStep(tab.id, {
+        id: `proactive-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        type: 'message',
+        content: data.message,
+        timestamp: Date.now()
+      })
+    }
+
     const preview = data.message.length > 100
       ? data.message.substring(0, 100) + '...'
       : data.message

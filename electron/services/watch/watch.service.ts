@@ -685,10 +685,12 @@ export class WatchService {
 
     if (outputType === 'silent') return
 
+    const windowAvailable = this.config?.mainWindow && !this.config.mainWindow.isDestroyed()
+
     if (outputType === 'desktop') {
       if (silent) {
         this.deliverProactiveMessage(watch, result)
-      } else if (!this.config?.mainWindow || this.config.mainWindow.isDestroyed()) {
+      } else if (!windowAvailable) {
         const imOk = await this.sendIMNotification(watch, result)
         if (!imOk) this.sendNotification(watch, result)
       }
@@ -696,51 +698,40 @@ export class WatchService {
     }
 
     if (outputType === 'notification') {
-      this.sendNotification(watch, result)
+      if (windowAvailable) {
+        this.deliverProactiveMessage(watch, result)
+      } else {
+        const imOk = await this.sendIMNotification(watch, result)
+        if (!imOk) this.sendNotification(watch, result)
+      }
       return
     }
 
     if (outputType === 'im') {
       const imResult = await this.sendIMNotification(watch, result)
       if (!imResult) {
-        this.sendNotification(watch, result)
+        if (windowAvailable) {
+          this.deliverProactiveMessage(watch, result)
+        } else {
+          this.sendNotification(watch, result)
+        }
       }
       return
     }
   }
 
   /**
-   * 静默执行完成后的主动推送：
+   * 将 Watch 执行结果推送到应用内：
    * 1. 确保助手 tab 存在
-   * 2. 注入 Agent 的自然语言消息（仅最终回复，不含工具调用细节）
-   * 3. 发送 proactive-message 事件供前端弹 toast
+   * 2. 发送 proactive-message 事件，由 App.vue 负责注入 step 并弹 toast
    */
   private deliverProactiveMessage(watch: WatchDefinition, result: WatchExecutionResult): void {
     const mainWindow = this.config?.mainWindow
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      this.sendNotification(watch, result)
-      return
-    }
+    if (!mainWindow || mainWindow.isDestroyed()) return
 
     const agentId = WatchService.WATCH_ASSISTANT_AGENT_ID
 
     mainWindow.webContents.send('watch:ensureTab', { agentId })
-
-    const messageStep: AgentStep = {
-      id: `proactive-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      type: 'message',
-      content: result.output,
-      timestamp: Date.now()
-    }
-    mainWindow.webContents.send('agent:step', {
-      agentId,
-      step: messageStep
-    })
-    mainWindow.webContents.send('agent:complete', {
-      agentId,
-      result: result.output
-    })
-
     mainWindow.webContents.send('watch:proactive-message', {
       agentId,
       message: result.output,
@@ -769,6 +760,14 @@ export class WatchService {
         : (result.error || 'Failed')
 
       const notification = new Notification({ title, body, silent: false })
+      notification.once('click', () => {
+        const mainWindow = this.config?.mainWindow
+        if (!mainWindow || mainWindow.isDestroyed()) return
+        mainWindow.restore()
+        mainWindow.show()
+        mainWindow.focus()
+        this.deliverProactiveMessage(watch, result)
+      })
       notification.show()
     } catch (err) {
       console.error('[WatchService] Failed to send notification:', err)
