@@ -2644,6 +2644,8 @@ const electronAPI = {
   sensor: {
     getStatus: () =>
       ipcRenderer.invoke('sensor:getStatus'),
+    getStatusDetailed: () =>
+      ipcRenderer.invoke('sensor:getStatusDetailed'),
     getRecentEvents: (limit?: number) =>
       ipcRenderer.invoke('sensor:getRecentEvents', limit),
     setHeartbeat: (enabled: boolean, intervalMinutes?: number) =>

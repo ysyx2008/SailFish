@@ -120,6 +120,42 @@ export class SensorService {
     }))
   }
 
+  getSensorStatusDetailed(): Array<{
+    id: string; name: string; running: boolean;
+    details?: Record<string, unknown>
+  }> {
+    return Array.from(this.sensors.values()).map(s => {
+      const base: { id: string; name: string; running: boolean; details?: Record<string, unknown> } = {
+        id: s.id,
+        name: s.name,
+        running: s.running
+      }
+
+      if (s.id === 'heartbeat') {
+        const hb = s as HeartbeatSensor
+        base.details = { intervalMinutes: hb.getIntervalMinutes() }
+      } else if (s.id === 'email') {
+        const em = s as EmailSensor
+        base.details = {
+          connected: em.connected,
+          targetCount: em.getTargetCount(),
+          accounts: em.getAccountStatuses()
+        }
+      } else if (s.id === 'file-watch') {
+        const fw = s as FileWatchSensor
+        base.details = { targetCount: fw.getTargetCount?.() ?? 0 }
+      } else if (s.id === 'calendar') {
+        const cal = s as CalendarSensor
+        base.details = {
+          targetCount: cal.getTargetCount?.() ?? 0,
+          accountStatuses: cal.getAccountStatuses?.() ?? []
+        }
+      }
+
+      return base
+    })
+  }
+
   getSensor(id: string): Sensor | undefined {
     return this.sensors.get(id)
   }

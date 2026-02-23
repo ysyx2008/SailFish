@@ -1948,6 +1948,7 @@ export default {
     noEvents: '暂无事件',
     sensorRunning: '运行中',
     sensorStopped: '已停止',
+    targets: '个监听',
     triggerHeartbeatBtn: '触发心跳',
 
     // 历史

@@ -1952,6 +1952,15 @@ ipcMain.handle('sensor:getStatus', async () => {
   return sensorService.getSensorStatus()
 })
 
+ipcMain.handle('sensor:getStatusDetailed', async () => {
+  try {
+    return sensorService.getSensorStatusDetailed()
+  } catch (error) {
+    console.error('[sensor:getStatusDetailed]', error)
+    return sensorService.getSensorStatus()
+  }
+})
+
 ipcMain.handle('sensor:getRecentEvents', async (_event, limit?: number) => {
   return sensorService.getRecentEvents(limit)
 })

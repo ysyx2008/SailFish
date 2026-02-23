@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import {
   X, Play, Trash2, Eye, EyeOff, RefreshCw, History,
   Clock, Heart, Globe, Zap, FolderOpen, Calendar, Mail,
-  LayoutTemplate, Database, Plus
+  LayoutTemplate, Database, Plus, Power
 } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -74,7 +74,7 @@ const runningWatches = ref<Set<string>>(new Set())
 const templates = ref<WatchTemplateInfo[]>([])
 const selectedTemplateCategory = ref<string>('all')
 const sharedState = ref<Record<string, unknown>>({})
-const sensorStatus = ref<Array<{ id: string; name: string; running: boolean }>>([])
+const sensorStatus = ref<Array<{ id: string; name: string; running: boolean; details?: Record<string, any> }>>([])
 const recentEvents = ref<Array<{ id: string; type: string; source: string; timestamp: number }>>([])
 
 // ==================== Utilities ====================
@@ -155,7 +155,8 @@ const loadSharedState = async () => {
 
 const loadSensorData = async () => {
   try {
-    sensorStatus.value = await window.electronAPI.sensor.getStatus()
+    const detailed = window.electronAPI.sensor.getStatusDetailed
+    sensorStatus.value = detailed ? await detailed() : await window.electronAPI.sensor.getStatus()
     recentEvents.value = await window.electronAPI.sensor.getRecentEvents(20)
   } catch (e) { console.error('Failed to load sensor data:', e) }
 }
@@ -236,6 +237,79 @@ const triggerHeartbeat = async () => {
   setTimeout(loadSensorData, 500)
 }
 
+// ==================== 觉醒控制 ====================
+
+const awakened = ref(false)
+const heartbeatInterval = ref(30)
+const awakenedRunning = ref(false)
+const patrolling = ref(false)
+const patrolStatus = ref<'idle' | 'running' | 'done' | 'skipped' | 'error'>('idle')
+const patrolMessage = ref('')
+let patrolStatusTimer: ReturnType<typeof setTimeout> | null = null
+let patrolTimeout: ReturnType<typeof setTimeout> | null = null
+
+function clearPatrolStatus() {
+  if (patrolStatusTimer) clearTimeout(patrolStatusTimer)
+  patrolStatusTimer = setTimeout(() => {
+    patrolStatus.value = 'idle'
+    patrolMessage.value = ''
+  }, 8000)
+}
+
+async function loadAwakenSettings() {
+  try {
+    awakened.value = !!(await window.electronAPI.config.get('agentAwakened'))
+    const interval = await window.electronAPI.config.get('watchHeartbeatInterval')
+    if (interval && typeof interval === 'number') heartbeatInterval.value = interval
+    const statusList = await window.electronAPI.sensor.getStatus()
+    awakenedRunning.value = statusList.some((s: any) => s.id === 'heartbeat' && s.running)
+  } catch { /* ignore */ }
+}
+
+async function toggleAwakened() {
+  const prev = !awakened.value
+  try {
+    await window.electronAPI.sensor.setAwakened(awakened.value, heartbeatInterval.value)
+    awakenedRunning.value = awakened.value
+  } catch (e) {
+    console.error('Failed to toggle awakened:', e)
+    awakened.value = prev
+  }
+}
+
+async function updateAwakenInterval() {
+  if (heartbeatInterval.value < 1) heartbeatInterval.value = 1
+  if (heartbeatInterval.value > 1440) heartbeatInterval.value = 1440
+  if (awakened.value) {
+    await window.electronAPI.sensor.setAwakened(true, heartbeatInterval.value)
+  } else {
+    await window.electronAPI.config.set('watchHeartbeatInterval', heartbeatInterval.value)
+  }
+}
+
+async function manualHeartbeat() {
+  patrolling.value = true
+  patrolStatus.value = 'running'
+  patrolMessage.value = t('awaken.patrolRunning')
+  if (patrolTimeout) clearTimeout(patrolTimeout)
+  patrolTimeout = setTimeout(() => {
+    if (patrolling.value) {
+      patrolling.value = false
+      patrolStatus.value = 'done'
+      patrolMessage.value = t('awaken.patrolDone')
+      clearPatrolStatus()
+    }
+  }, 5 * 60 * 1000)
+  try {
+    await window.electronAPI.sensor.triggerHeartbeat()
+  } catch (e) {
+    patrolling.value = false
+    patrolStatus.value = 'error'
+    patrolMessage.value = t('awaken.patrolError')
+    clearPatrolStatus()
+  }
+}
+
 // ==================== Lifecycle ====================
 
 let refreshTimer: NodeJS.Timeout | null = null
@@ -248,17 +322,40 @@ const handleKeydown = (e: KeyboardEvent) => {
 
 onMounted(async () => {
   document.addEventListener('keydown', handleKeydown, true)
-  await loadWatchData()
+  await Promise.all([loadWatchData().catch(() => {}), loadAwakenSettings()])
   loadTemplates(); loadSharedState()
   refreshTimer = setInterval(loadWatchData, 30000)
 
-  cleanupWatchStarted = window.electronAPI.watch.onTaskStarted?.((data: any) => { if (data?.watchId) markWatchRunning(data.watchId) })
-  cleanupWatchCompleted = window.electronAPI.watch.onTaskCompleted?.((data: any) => { if (data?.watchId) markWatchCompleted(data.watchId) })
+  cleanupWatchStarted = window.electronAPI.watch.onTaskStarted?.((data: any) => {
+    if (data?.watchId) markWatchRunning(data.watchId)
+    if (data?.watchName === '日常检查' || data?.watchId === '__daily_patrol__') {
+      patrolling.value = true
+      patrolStatus.value = 'running'
+      patrolMessage.value = t('awaken.patrolRunning')
+    }
+  })
+  cleanupWatchCompleted = window.electronAPI.watch.onTaskCompleted?.((data: any) => {
+    if (data?.watchId) markWatchCompleted(data.watchId)
+    if (data?.watchId === '__daily_patrol__') {
+      patrolling.value = false
+      if (patrolTimeout) { clearTimeout(patrolTimeout); patrolTimeout = null }
+      if (data.result?.success) {
+        patrolStatus.value = data.result.skipped ? 'skipped' : 'done'
+        patrolMessage.value = data.result.skipped ? t('awaken.patrolSkipped') : t('awaken.patrolDone')
+      } else {
+        patrolStatus.value = 'error'
+        patrolMessage.value = data.result?.error || t('awaken.patrolError')
+      }
+      clearPatrolStatus()
+    }
+  })
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown, true)
   if (refreshTimer) clearInterval(refreshTimer)
+  if (patrolStatusTimer) clearTimeout(patrolStatusTimer)
+  if (patrolTimeout) clearTimeout(patrolTimeout)
   cleanupWatchStarted?.(); cleanupWatchCompleted?.()
   for (const timeout of watchTimeouts.values()) clearTimeout(timeout)
   watchTimeouts.clear()
@@ -271,8 +368,8 @@ onUnmounted(() => {
       <!-- Header -->
       <div class="panel-header">
         <h2>
-          <Eye :size="16" style="margin-right: 6px;" />
-          {{ t('watch.panelTitle') }}
+          <Heart :size="16" style="margin-right: 6px;" />
+          {{ t('awaken.title') }}
         </h2>
         <div class="header-stats" v-if="watches.length > 0">
           <span class="stat-item">{{ enabledCount }} {{ t('watch.activeCount') }}</span>
@@ -280,6 +377,41 @@ onUnmounted(() => {
         <button class="btn-icon" @click="emit('close')" :title="t('watch.close')">
           <X :size="18" />
         </button>
+      </div>
+
+      <!-- 觉醒主控栏 -->
+      <div class="awaken-bar">
+        <div class="awaken-left">
+          <label class="awaken-toggle">
+            <input type="checkbox" v-model="awakened" @change="toggleAwakened" />
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="awaken-status" :class="{ active: awakenedRunning }">
+            <span class="status-dot"></span>
+            {{ awakenedRunning ? t('awaken.running') : t('awaken.stopped') }}
+          </span>
+        </div>
+        <div class="awaken-center" v-if="awakened">
+          <input
+            type="number"
+            v-model.number="heartbeatInterval"
+            :min="1" :max="1440"
+            class="interval-input"
+            @change="updateAwakenInterval"
+          />
+          <span class="interval-unit">min</span>
+        </div>
+        <div class="awaken-right">
+          <span v-if="patrolStatus !== 'idle'" class="patrol-hint" :class="patrolStatus">
+            <RefreshCw v-if="patrolStatus === 'running'" :size="12" class="spinning" />
+            {{ patrolMessage }}
+          </span>
+          <button v-if="awakened" class="btn btn-sm" :disabled="patrolling" @click="manualHeartbeat">
+            <RefreshCw v-if="patrolling" :size="13" class="spinning" />
+            <Heart v-else :size="13" />
+            {{ t('awaken.trigger') }}
+          </button>
+        </div>
       </div>
 
       <div class="panel-body">
@@ -500,6 +632,35 @@ onUnmounted(() => {
                   <div class="sensor-info">
                     <div class="sensor-name">{{ s.name }}</div>
                     <div class="sensor-status-text">{{ s.running ? t('watch.sensorRunning') : t('watch.sensorStopped') }}</div>
+                    <div v-if="s.details" class="sensor-details">
+                      <template v-if="s.id === 'heartbeat'">
+                        <span class="detail-tag">{{ s.details.intervalMinutes }}min</span>
+                      </template>
+                      <template v-else-if="s.id === 'email'">
+                        <span class="detail-tag" :class="{ warn: !s.details.connected }">
+                          {{ s.details.connected ? 'IMAP ✓' : 'IMAP ✗' }}
+                        </span>
+                        <span class="detail-tag">{{ s.details.targetCount }} {{ t('watch.targets') }}</span>
+                        <div v-if="s.details.accounts?.length" class="detail-accounts">
+                          <div v-for="acct in (s.details.accounts as any[])" :key="acct.accountId" class="detail-account">
+                            <span class="acct-dot" :class="{ connected: acct.connected }"></span>
+                            <span class="acct-email">{{ acct.email }}</span>
+                          </div>
+                        </div>
+                      </template>
+                      <template v-else-if="s.id === 'calendar'">
+                        <span class="detail-tag">{{ s.details.targetCount }} {{ t('watch.targets') }}</span>
+                        <div v-if="s.details.accountStatuses?.length" class="detail-accounts">
+                          <div v-for="acct in (s.details.accountStatuses as any[])" :key="acct.accountId" class="detail-account">
+                            <span class="acct-dot" :class="{ connected: acct.connected }"></span>
+                            <span class="acct-email">{{ acct.name }}</span>
+                          </div>
+                        </div>
+                      </template>
+                      <template v-else-if="s.id === 'file-watch'">
+                        <span class="detail-tag">{{ s.details.targetCount }} {{ t('watch.targets') }}</span>
+                      </template>
+                    </div>
                   </div>
                   <button v-if="s.id === 'heartbeat'" class="btn btn-sm" @click="triggerHeartbeat" :title="t('watch.triggerHeartbeatBtn')">
                     <Heart :size="14" /> {{ t('watch.trigger') }}
@@ -632,6 +793,125 @@ onUnmounted(() => {
   cursor: pointer;
 }
 .panel-header .btn-icon:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* ==================== Awaken Bar ==================== */
+
+.awaken-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  flex-shrink: 0;
+}
+
+.awaken-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.awaken-toggle {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  cursor: pointer;
+}
+.awaken-toggle input { display: none; }
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-tertiary);
+  border-radius: 10px;
+  transition: background 0.2s;
+}
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 2px;
+  top: 2px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+.awaken-toggle input:checked + .toggle-slider {
+  background: var(--accent-color, #10b981);
+}
+.awaken-toggle input:checked + .toggle-slider::before {
+  transform: translateX(16px);
+}
+
+.awaken-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.awaken-status .status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+}
+.awaken-status.active .status-dot {
+  background: #10b981;
+  box-shadow: 0 0 4px #10b98180;
+}
+
+.awaken-center {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.interval-input {
+  width: 50px;
+  padding: 2px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+  text-align: center;
+}
+.interval-input:focus {
+  outline: none;
+  border-color: var(--accent-color, #10b981);
+}
+.interval-unit {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.awaken-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.patrol-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.patrol-hint.running { color: var(--accent-color, #10b981); }
+.patrol-hint.done { color: #10b981; }
+.patrol-hint.skipped { color: var(--text-tertiary); }
+.patrol-hint.error { color: #ef4444; }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spinning {
+  animation: spin 1s linear infinite;
+}
 
 .panel-body {
   display: flex;
@@ -941,15 +1221,29 @@ onUnmounted(() => {
 }
 
 .sensor-card {
-  display: flex; align-items: center; gap: 12px;
+  display: flex; align-items: flex-start; gap: 12px;
   padding: 14px 16px; border-radius: 8px; border: 1px solid var(--border-color);
-  min-width: 240px; flex: 1; max-width: 360px;
+  min-width: 240px; flex: 1; max-width: 400px;
 }
-.sensor-indicator { width: 10px; height: 10px; border-radius: 50%; background: #6c757d; flex-shrink: 0; }
+.sensor-indicator { width: 10px; height: 10px; border-radius: 50%; background: #6c757d; flex-shrink: 0; margin-top: 4px; }
 .sensor-indicator.active { background: #28a745; box-shadow: 0 0 6px rgba(40, 167, 69, 0.4); }
 .sensor-info { flex: 1; }
 .sensor-name { font-size: 13px; font-weight: 500; }
 .sensor-status-text { font-size: 11px; color: var(--text-muted); }
+
+.sensor-details { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.detail-tag {
+  font-size: 10px; padding: 1px 6px; border-radius: 3px;
+  background: var(--bg-tertiary); color: var(--text-secondary);
+}
+.detail-tag.warn { background: rgba(248, 81, 73, 0.12); color: #f85149; }
+.detail-accounts { width: 100%; margin-top: 4px; }
+.detail-account {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--text-secondary); padding: 1px 0;
+}
+.acct-dot { width: 5px; height: 5px; border-radius: 50%; background: #6c757d; flex-shrink: 0; }
+.acct-dot.connected { background: #28a745; }
 
 .content-section { padding: 0 24px 20px; }
 .content-section h4 { font-size: 12px; font-weight: 600; color: var(--text-muted); margin: 20px 0 10px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px; }

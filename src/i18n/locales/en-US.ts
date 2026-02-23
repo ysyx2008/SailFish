@@ -1942,6 +1942,7 @@ export default {
     noEvents: 'No events yet',
     sensorRunning: 'Running',
     sensorStopped: 'Stopped',
+    targets: 'target(s)',
     triggerHeartbeatBtn: 'Trigger Heartbeat',
 
     noHistory: 'No execution records',
