@@ -5,9 +5,10 @@
  * 替代之前 AI pre-check 的角色，更快、更便宜、更可预测。
  *
  * 分流规则：
- * - 即时事件（high 优先级 / webhook / manual）：直接转发给 WatchService
- * - 攒批事件（normal/low 优先级的 heartbeat / email / calendar / cron / interval）：
- *   放入池中，定时排水时一次性投递
+ * - 即时事件（high 优先级 / webhook / manual / file_change）：直接转发给 WatchService
+ * - 心跳事件：触发一次排水，把池中已攒的事件打包投递；池空则跳过，不唤醒 AI
+ * - 其他事件（normal/low 优先级的 email / calendar / cron / interval）：
+ *   放入池中等待排水
  *
  * 去重：按 event.id 幂等，同一事件不会入池两次
  * 静默时段：可配置不打扰的时间窗口（默认关闭）
@@ -122,6 +123,16 @@ export class EventPool {
   // ==================== 内部逻辑 ====================
 
   private async onEvent(event: SensorEvent): Promise<void> {
+    if (event.type === 'heartbeat') {
+      if (this.pool.length === 0) {
+        console.log('[EventPool] Heartbeat: pool empty, skipping')
+        return
+      }
+      console.log(`[EventPool] Heartbeat: draining ${this.pool.length} pooled event(s)`)
+      await this.drain()
+      return
+    }
+
     if (this.shouldPassThrough(event)) {
       await this.downstream(event)
       return
@@ -136,8 +147,6 @@ export class EventPool {
     if (event.type === 'webhook') return true
     if (event.type === 'manual') return true
     if (event.type === 'file_change') return true
-    if (event.type === 'heartbeat') return true
-    if (event.type === 'email') return true
     return false
   }
 
