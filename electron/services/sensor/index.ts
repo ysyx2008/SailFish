@@ -74,6 +74,10 @@ export class SensorService {
 
     const heartbeatEnabled = config?.heartbeatEnabled ?? false
 
+    if (config?.heartbeatIntervalMinutes) {
+      this.heartbeat.setInterval(config.heartbeatIntervalMinutes)
+    }
+
     for (const [id, sensor] of this.sensors) {
       if (id === 'heartbeat' && !heartbeatEnabled) {
         console.log('[SensorService] Heartbeat disabled, skipping')

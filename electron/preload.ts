@@ -2627,6 +2627,18 @@ const electronAPI = {
       ipcRenderer.on('watch:ensureTab', handler)
       return () => { ipcRenderer.removeListener('watch:ensureTab', handler) }
     },
+    onProactiveMessage: (callback: (data: { agentId: string; message: string; watchName: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
+        if (data && typeof data === 'object') {
+          const { agentId, message, watchName } = data as Record<string, unknown>
+          if (typeof agentId === 'string' && typeof message === 'string') {
+            callback({ agentId, message, watchName: typeof watchName === 'string' ? watchName : '' })
+          }
+        }
+      }
+      ipcRenderer.on('watch:proactive-message', handler)
+      return () => { ipcRenderer.removeListener('watch:proactive-message', handler) }
+    },
   },
 
   sensor: {

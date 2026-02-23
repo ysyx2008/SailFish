@@ -347,6 +347,10 @@ export class WatchService {
 
   // ==================== 执行引擎 ====================
 
+  private static readonly AUTO_TRIGGER_TYPES = new Set([
+    'heartbeat', 'cron', 'interval', 'email', 'calendar', 'file_change'
+  ])
+
   private async executeWatch(watch: WatchDefinition, event: SensorEvent): Promise<WatchExecutionResult> {
     if (!this.config) {
       return { success: false, output: '', error: 'WatchService not initialized', duration: 0 }
@@ -355,20 +359,22 @@ export class WatchService {
     const startTime = Date.now()
     const enhancedPrompt = this.buildEnhancedPrompt(watch, event)
     const isDesktop = watch.output.type === 'desktop'
+    const isSilent = isDesktop && WatchService.AUTO_TRIGGER_TYPES.has(event.type)
 
     let ptyId: string | null = null
     let result: WatchExecutionResult
 
     try {
       if (isDesktop) {
-        // desktop 输出：直接通过助手 Agent 执行，不需要 PTY
-        this.ensureDesktopTab()
+        if (!isSilent) {
+          this.ensureDesktopTab()
+          this.notifyFrontend('watch:task-started', {
+            watchId: watch.id, ptyId: null, watchName: watch.name,
+            prompt: enhancedPrompt, triggerType: event.type, executionType: 'assistant'
+          })
+        }
         this.runningWatches.set(watch.id, { watchId: watch.id, ptyId: null, startTime })
-        this.notifyFrontend('watch:task-started', {
-          watchId: watch.id, ptyId: null, watchName: watch.name,
-          prompt: enhancedPrompt, triggerType: event.type, executionType: 'assistant'
-        })
-        result = await this.executeWithAssistantAgent(watch, enhancedPrompt)
+        result = await this.executeWithAssistantAgent(watch, enhancedPrompt, isSilent)
       } else {
         // 其他输出类型：创建 PTY 执行
         if (watch.execution.type === 'local') {
@@ -412,9 +418,7 @@ export class WatchService {
 
     this.recordExecution(watch, event, result)
 
-    // desktop 路径的投递已由 executeWithAssistantAgent 的 callbacks 完成，
-    // deliverOutput 只处理非 desktop 输出和 NO_ACTION / 降级逻辑
-    await this.deliverOutput(watch, result)
+    await this.deliverOutput(watch, result, isSilent)
 
     this.notifyFrontend('watch:task-completed', {
       watchId: watch.id,
@@ -429,10 +433,11 @@ export class WatchService {
     return result
   }
 
-  /** desktop 输出：通过 __watch_assistant__ 助手 Agent 执行，steps 直接推送到前端 */
+  /** desktop 输出：通过 __watch_assistant__ 助手 Agent 执行 */
   private async executeWithAssistantAgent(
     watch: WatchDefinition,
-    prompt: string
+    prompt: string,
+    silent: boolean = false
   ): Promise<WatchExecutionResult> {
     if (!this.config?.agentService) {
       return { success: false, output: '', error: 'Agent service not available', duration: 0 }
@@ -446,7 +451,7 @@ export class WatchService {
 
     const callbacks: AgentCallbacks = {
       onStep: (_runId: string, step: AgentStep) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
+        if (!silent && mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('agent:step', {
             agentId, step: JSON.parse(JSON.stringify(step))
           })
@@ -457,14 +462,14 @@ export class WatchService {
         }
       },
       onComplete: (_runId: string, result: string, pendingUserMessages?: string[]) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
+        if (!silent && mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('agent:complete', { agentId, result, pendingUserMessages })
         }
       },
       onError: (_runId: string, error: string) => {
         hasError = true
         errorMessage = error || errorMessage
-        if (mainWindow && !mainWindow.isDestroyed()) {
+        if (!silent && mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('agent:error', { agentId, error })
         }
       }
@@ -666,7 +671,7 @@ export class WatchService {
     return lastLine === 'NO_ACTION'
   }
 
-  private async deliverOutput(watch: WatchDefinition, result: WatchExecutionResult): Promise<void> {
+  private async deliverOutput(watch: WatchDefinition, result: WatchExecutionResult, silent: boolean = false): Promise<void> {
     if (result.skipped) return
 
     const trimmedOutput = result.output?.trim() || ''
@@ -681,9 +686,9 @@ export class WatchService {
     if (outputType === 'silent') return
 
     if (outputType === 'desktop') {
-      // desktop 投递已由 executeWithAssistantAgent 的 callbacks 完成，
-      // 这里只在窗口不可用时做降级
-      if (!this.config?.mainWindow || this.config.mainWindow.isDestroyed()) {
+      if (silent) {
+        this.deliverProactiveMessage(watch, result)
+      } else if (!this.config?.mainWindow || this.config.mainWindow.isDestroyed()) {
         const imOk = await this.sendIMNotification(watch, result)
         if (!imOk) this.sendNotification(watch, result)
       }
@@ -702,6 +707,47 @@ export class WatchService {
       }
       return
     }
+  }
+
+  /**
+   * 静默执行完成后的主动推送：
+   * 1. 确保助手 tab 存在
+   * 2. 注入 Agent 的自然语言消息（仅最终回复，不含工具调用细节）
+   * 3. 发送 proactive-message 事件供前端弹 toast
+   */
+  private deliverProactiveMessage(watch: WatchDefinition, result: WatchExecutionResult): void {
+    const mainWindow = this.config?.mainWindow
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      this.sendNotification(watch, result)
+      return
+    }
+
+    const agentId = WatchService.WATCH_ASSISTANT_AGENT_ID
+
+    mainWindow.webContents.send('watch:ensureTab', { agentId })
+
+    const messageStep: AgentStep = {
+      id: `proactive-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      type: 'message',
+      content: result.output,
+      timestamp: Date.now()
+    }
+    mainWindow.webContents.send('agent:step', {
+      agentId,
+      step: messageStep
+    })
+    mainWindow.webContents.send('agent:complete', {
+      agentId,
+      result: result.output
+    })
+
+    mainWindow.webContents.send('watch:proactive-message', {
+      agentId,
+      message: result.output,
+      watchName: watch.name
+    })
+
+    console.log(`[WatchService] Proactive message delivered for: ${watch.name}`)
   }
 
   /** 通知前端确保 __watch_assistant__ tab 存在（Agent 执行前调用） */

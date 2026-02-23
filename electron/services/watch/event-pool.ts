@@ -136,6 +136,8 @@ export class EventPool {
     if (event.type === 'webhook') return true
     if (event.type === 'manual') return true
     if (event.type === 'file_change') return true
+    if (event.type === 'heartbeat') return true
+    if (event.type === 'email') return true
     return false
   }
 

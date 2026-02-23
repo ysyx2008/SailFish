@@ -119,6 +119,7 @@ let cleanupGatewayRemoteTask: (() => void) | null = null
 let cleanupImConnectionChange: (() => void) | null = null
 let cleanupRunTask: (() => void) | null = null
 let cleanupInstallSkill: (() => void) | null = null
+let cleanupWatchEnsureTab: (() => void) | null = null
 let cleanupWatchProactiveMessage: (() => void) | null = null
 
 
@@ -248,7 +249,7 @@ onMounted(async () => {
 
   // Watch desktop 输出：确保助手 tab 存在，后续 steps 通过标准 agent:step 事件流入
   const WATCH_ASSISTANT_AGENT_ID = '__watch_assistant__'
-  cleanupWatchProactiveMessage = window.electronAPI.watch.onEnsureTab((data) => {
+  cleanupWatchEnsureTab = window.electronAPI.watch.onEnsureTab((data) => {
     const existing = terminalStore.tabs.find(t => t.agentId === data.agentId)
     if (!existing) {
       terminalStore.createAssistantTab({
@@ -258,6 +259,19 @@ onMounted(async () => {
       })
       log.debug(`[Watch] Created assistant tab: ${data.agentId}`)
     }
+  })
+
+  // 觉醒主动推送：Agent 静默执行完成后有消息要告知用户
+  cleanupWatchProactiveMessage = window.electronAPI.watch.onProactiveMessage((data) => {
+    const preview = data.message.length > 100
+      ? data.message.substring(0, 100) + '...'
+      : data.message
+    toast.proactive(preview, () => {
+      const tab = terminalStore.tabs.find(t => t.agentId === data.agentId)
+      if (tab) {
+        terminalStore.setActiveTab(tab.id)
+      }
+    })
   })
 
   // 全局监听 IM 渠道连接状态变化，弹 toast 通知
@@ -563,6 +577,7 @@ onUnmounted(() => {
   cleanupImConnectionChange?.()
   cleanupRunTask?.()
   cleanupInstallSkill?.()
+  cleanupWatchEnsureTab?.()
   cleanupWatchProactiveMessage?.()
 })
 </script>
