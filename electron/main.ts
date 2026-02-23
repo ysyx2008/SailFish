@@ -867,7 +867,7 @@ app.whenReady().then(async () => {
   createTray()
 
   // 窗口内容加载完成后，异步初始化重量级服务
-  mainWindow?.webContents.on('did-finish-load', () => {
+  mainWindow?.webContents.on('did-finish-load', async () => {
     // 稍微延迟初始化，确保前端 Vue 组件已挂载并注册好事件监听器
     setTimeout(() => {
       initKnowledgeService().catch(e => {
