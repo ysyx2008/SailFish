@@ -166,14 +166,21 @@ export abstract class Agent {
     }
     
     const run = this.initializeRun(message, context, options)
+    const taskPreview = message.length > 80 ? message.slice(0, 80) + '...' : message
+    log.info(`Task started: runId=${run.id}, ptyId=${run.ptyId}, mode=${this.executionMode}, task="${taskPreview}"`)
+    const taskStartTime = Date.now()
     
     try {
       await this.buildContext(run, message)
       const result = await this.executeLoop(run)
       this.finalizeRun(run, result)
+      const elapsed = ((Date.now() - taskStartTime) / 1000).toFixed(1)
+      log.info(`Task completed: runId=${run.id}, duration=${elapsed}s, steps=${run.steps.length}`)
       return result
     } catch (error) {
       this.handleError(run, error)
+      const elapsed = ((Date.now() - taskStartTime) / 1000).toFixed(1)
+      log.error(`Task failed: runId=${run.id}, duration=${elapsed}s, error=${error instanceof Error ? error.message : error}`)
       throw error
     } finally {
       this.cleanupRun(run)
@@ -1329,10 +1336,13 @@ export abstract class Agent {
     toolCalls: ToolCall[],
     toolExecutorConfig: ToolExecutorConfig
   ): Promise<void> {
-    // 设置执行阶段（并行读取属于安全打断）
+    const toolNames = toolCalls.map(tc => tc.function.name).join(', ')
+    log.info(`Tools parallel batch: [${toolNames}]`)
+
     run.executionPhase = 'reading'
     run.currentToolName = `${toolCalls.length} tools`
     
+    const batchStartTime = Date.now()
     const parallelPromises = toolCalls.map(async (toolCall) => {
       // 检查 abort 状态
       if (run.aborted) {
@@ -1375,6 +1385,10 @@ export abstract class Agent {
     
     const results = await Promise.all(parallelPromises)
     
+    const batchElapsed = Date.now() - batchStartTime
+    const successCount = results.filter(r => r.result.success).length
+    log.info(`Tools parallel done: ${successCount}/${results.length} succeeded, ${batchElapsed}ms`)
+
     // 按原始顺序处理结果
     for (const { toolCall, result, toolArgs } of results) {
       this.processToolResult(run, toolCall, result, toolArgs)
@@ -1399,6 +1413,7 @@ export abstract class Agent {
     const toolName = toolCall.function.name
     this.setExecutionPhase(run, toolName)
     
+    const toolStartTime = Date.now()
     let result: ToolResult
     try {
       result = await executeTool(
@@ -1409,12 +1424,18 @@ export abstract class Agent {
         toolExecutorConfig
       )
     } catch (error) {
-      // 捕获异常，与并行执行行为保持一致
       result = { 
         success: false, 
         output: '', 
         error: error instanceof Error ? error.message : String(error) 
       }
+    }
+    
+    const toolElapsed = Date.now() - toolStartTime
+    if (result.success) {
+      log.info(`Tool executed: ${toolName}, ${toolElapsed}ms, outputLen=${result.output.length}`)
+    } else {
+      log.warn(`Tool failed: ${toolName}, ${toolElapsed}ms, error=${(result.error || '').slice(0, 200)}`)
     }
     
     this.processToolResult(run, toolCall, result, toolArgs)

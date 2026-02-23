@@ -5,6 +5,9 @@ import * as https from 'https'
 import * as http from 'http'
 import { t } from './agent/i18n'
 import { aiDebugService } from './ai-debug.service'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('AI')
 
 // AI 请求超时配置（毫秒）
 const AI_TIMEOUT = {
@@ -240,6 +243,9 @@ export class AiService {
       throw new Error(t('error.ai_no_config'))
     }
 
+    const startTime = Date.now()
+    log.info(`Chat request: model=${profile.model}, messages=${messages.length}`)
+
     const requestBody = {
       model: profile.model,
       messages,
@@ -261,8 +267,13 @@ export class AiService {
         throw new Error(t('error.api_request_failed', { data: data.error.message || t('error.api_error_generic') }))
       }
 
-      return data.choices?.[0]?.message?.content || ''
+      const result = data.choices?.[0]?.message?.content || ''
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+      log.info(`Chat done: model=${profile.model}, duration=${elapsed}s, responseLen=${result.length}`)
+      return result
     } catch (error) {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+      log.error(`Chat failed: model=${profile.model}, duration=${elapsed}s, error=${error instanceof Error ? error.message : error}`)
       if (error instanceof Error) {
         if (error.message === t('error.context_length_exceeded')) {
           throw error
@@ -384,6 +395,22 @@ export class AiService {
     if (!profile) {
       onError(t('error.ai_no_config'))
       return
+    }
+
+    const streamStartTime = Date.now()
+    log.info(`ChatStream request: model=${profile.model}, messages=${messages.length}`)
+
+    const originalOnDone = onDone
+    const originalOnError = onError
+    onDone = () => {
+      const elapsed = ((Date.now() - streamStartTime) / 1000).toFixed(1)
+      log.info(`ChatStream done: model=${profile.model}, duration=${elapsed}s`)
+      originalOnDone()
+    }
+    onError = (error: string) => {
+      const elapsed = ((Date.now() - streamStartTime) / 1000).toFixed(1)
+      log.error(`ChatStream failed: model=${profile.model}, duration=${elapsed}s, error=${error}`)
+      originalOnError(error)
     }
 
     const requestBody = {
@@ -596,6 +623,9 @@ export class AiService {
       throw new Error(t('error.ai_no_config'))
     }
 
+    const startTime = Date.now()
+    log.info(`ChatWithTools request: model=${profile.model}, messages=${messages.length}, tools=${tools.length}`)
+
     // 转换消息格式，处理 tool_calls、reasoning_content 和多模态图片
     const formattedMessages = messages.map(msg => formatMessageForApi(msg))
 
@@ -634,12 +664,18 @@ export class AiService {
         throw new Error(t('error.ai_empty_response'))
       }
 
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+      const toolNames = choice.message?.tool_calls?.map(tc => tc.function.name).join(', ') || ''
+      log.info(`ChatWithTools done: model=${profile.model}, duration=${elapsed}s, finish=${choice.finish_reason}, tools=[${toolNames}]`)
+
       return {
         content: choice.message?.content || undefined,
         tool_calls: choice.message?.tool_calls,
         finish_reason: choice.finish_reason as ChatWithToolsResult['finish_reason']
       }
     } catch (error) {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+      log.error(`ChatWithTools failed: model=${profile.model}, duration=${elapsed}s, error=${error instanceof Error ? error.message : error}`)
       if (error instanceof Error) {
         if (error.message === t('error.context_length_exceeded')) {
           throw error
@@ -676,6 +712,9 @@ export class AiService {
     const reqId = requestId || `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     const abortController = new AbortController()
     this.abortControllers.set(reqId, abortController)
+
+    const startTime = Date.now()
+    log.info(`Request started: model=${profile.model}, messages=${messages.length}, tools=${tools.length}`)
 
     // AI Debug: 记录请求开始
     aiDebugService.logRequestStart(reqId, {
@@ -815,6 +854,8 @@ export class AiService {
           })
           res.on('end', () => {
             const parsed = parseApiError(errorData)
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+            log.error(`Request HTTP error: model=${profile.model}, status=${res.statusCode}, duration=${elapsed}s, error=${parsed.message.slice(0, 200)}`)
             if (parsed.code === 'context_length_exceeded') {
               complete(() => onError(t('error.context_length_exceeded')))
             } else {
@@ -944,10 +985,15 @@ export class AiService {
         res.on('end', () => {
           // 如果有思考内容但没有最终内容，把思考内容作为最终内容
           const finalContent = content || (reasoningContent ? `🤔 **思考过程**\n\n> ${reasoningContent.replace(/\n/g, '\n> ')}` : undefined)
+
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+          const toolNames = toolCalls.map(tc => tc.function.name).join(', ')
+          log.info(`Request done: model=${profile.model}, duration=${elapsed}s, finish=${finishReason || 'end'}, tools=[${toolNames}], contentLen=${(finalContent || '').length}`)
+
           // AI Debug: 记录响应完成（包含工具调用）
           aiDebugService.logResponseDone(reqId, {
             response: finalContent,
-            reasoningContent: reasoningContent || undefined,  // 传递原始思考内容
+            reasoningContent: reasoningContent || undefined,
             finishReason,
             toolCalls: toolCalls.length > 0 ? toolCalls.map(tc => ({
               id: tc.id,
@@ -968,7 +1014,8 @@ export class AiService {
         })
 
         res.on('error', (err) => {
-          // AI Debug: 记录错误
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+          log.error(`Request failed: model=${profile.model}, duration=${elapsed}s, error=${err.message}`)
           aiDebugService.logResponseError(reqId, err.message)
           complete(() => onError(t('error.request_error', { message: translateNetworkError(err.message) })))
         })
