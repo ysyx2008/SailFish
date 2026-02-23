@@ -216,7 +216,7 @@ Watch 执行结果可通过 IM 推送：
 - [x] Webhook 端点集成到 Gateway（含速率限制 30次/分钟/token）
 - [x] main.ts 集成 + 16 IPC handlers + preload API（强类型化）
 - [x] CLI 命令（watch:list/create/trigger/delete/history + sensor:status/heartbeat）
-- [x] 前端 Watch 管理界面（WatchManager.vue）+ IPC 事件驱动状态
+- [x] 前端 Watch 管理界面（Awaken.vue）+ IPC 事件驱动状态
 - [x] Settings 心跳传感器配置 UI
 - [x] i18n 国际化（中英双语完整覆盖）
 - [x] 测试用例集成到 test-cli.sh（51 总测试，48 通过，0 失败）
@@ -234,7 +234,7 @@ Watch 执行结果可通过 IM 推送：
 ### Phase 3：高级特性（已完成）
 - [x] 有状态工作流（Watch 自身状态 + 跨 Watch 共享状态 + 状态自动提取 + Schema 验证）
 - [x] Watch 模板市场（8 个内置模板，5 个分类，CLI + 前端支持）
-- [x] WatchManager UI 增强（模板面板 + 新传感器触发器编辑 + 共享状态面板）
+- [x] Awaken UI 增强（模板面板 + 新传感器触发器编辑 + 共享状态面板）
 - [x] CLI 新增 3 命令（watch:templates / watch:from-template / watch:state）
 - [x] i18n 完整覆盖（中英双语）
 - [x] 测试 58 总计，55 通过，0 失败

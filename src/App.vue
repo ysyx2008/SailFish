@@ -11,7 +11,7 @@ import SessionManager from './components/SessionManager.vue'
 import SettingsModal from './components/Settings/SettingsModal.vue'
 import FileExplorer from './components/FileExplorer/FileExplorer.vue'
 import ConnectionStatusPopover from './components/ConnectionStatusPopover.vue'
-import WatchManager from './components/WatchManager.vue'
+import Awaken from './components/Awaken.vue'
 import SetupWizard from './components/SetupWizard.vue'
 import WelcomePage from './components/WelcomePage.vue'
 import SmartPatrolPage from './components/SmartPatrolPage.vue'
@@ -48,7 +48,7 @@ const showSidebar = ref(false)
 const showAiPanel = ref(isSteamBuild ? false : true)
 const showSettings = ref(false)
 const showSmartPatrol = ref(false)
-const showWatchManager = ref(false)
+const showAwaken = ref(false)
 
 // UI 主题
 const currentUiTheme = computed(() => configStore.uiTheme)
@@ -610,7 +610,7 @@ onUnmounted(() => {
           <button class="btn-icon" @click="toggleAiPanel" :title="t('header.aiAssistant')">
             <Bot :size="18" />
           </button>
-          <button class="btn-icon" @click="showWatchManager = true" :title="t('awaken.title')">
+          <button class="btn-icon" @click="showAwaken = true" :title="t('awaken.title')">
             <Heart :size="18" />
           </button>
           <ConnectionStatusPopover @open-settings="openConnectionSettings" />
@@ -728,9 +728,9 @@ onUnmounted(() => {
 
 
     <!-- 关切面板 -->
-    <WatchManager
-      v-if="showWatchManager"
-      @close="showWatchManager = false"
+    <Awaken
+      v-if="showAwaken"
+      @close="showAwaken = false"
     />
 
     <!-- 知识库升级进度提示 -->
