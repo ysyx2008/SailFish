@@ -966,10 +966,10 @@ app.whenReady().then(async () => {
         log.error('Sensor 服务启动失败:', e)
       })
 
-      // 觉醒模式：确保内置「日常检查」关切存在
+      // 觉醒模式：确保内置「唤醒」关切存在
       if (awakened) {
-        try { watchService.ensureDailyPatrol() } catch (e) {
-          log.error('日常检查关切创建失败:', e)
+        try { watchService.ensureWakeup() } catch (e) {
+          log.error('唤醒关切创建失败:', e)
         }
       }
     } catch (e) {
@@ -2004,12 +2004,12 @@ ipcMain.handle('sensor:setAwakened', async (_event, awakened: boolean, intervalM
     if (sensorService.calendar.shouldAutoStart() && !sensorService.calendar.running) {
       await sensorService.calendar.start()
     }
-    watchService.ensureDailyPatrol()
+    watchService.ensureWakeup()
   } else {
     await sensorService.heartbeat.stop()
     await sensorService.email.stop()
     await sensorService.calendar.stop()
-    watchService.removeDailyPatrol()
+    watchService.removeWakeup()
   }
   configService.set('agentAwakened', awakened)
   configService.set('watchHeartbeatEnabled', awakened)
@@ -2036,12 +2036,12 @@ ipcMain.handle('sensor:setHeartbeat', async (_event, enabled: boolean, intervalM
     if (sensorService.calendar.shouldAutoStart() && !sensorService.calendar.running) {
       await sensorService.calendar.start()
     }
-    watchService.ensureDailyPatrol()
+    watchService.ensureWakeup()
   } else {
     await sensorService.heartbeat.stop()
     await sensorService.email.stop()
     await sensorService.calendar.stop()
-    watchService.removeDailyPatrol()
+    watchService.removeWakeup()
   }
   configService.set('agentAwakened', enabled)
   configService.set('watchHeartbeatEnabled', enabled)

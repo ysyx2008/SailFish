@@ -426,11 +426,11 @@ onMounted(async () => {
   await Promise.all([loadWatchData().catch(() => {}), loadAwakenSettings()])
   loadPersonalitySettings()
   loadTemplates(); loadSharedState()
-  refreshTimer = setInterval(loadWatchData, 30000)
+  refreshTimer = setInterval(loadWatchData, 5 * 60 * 1000)
 
   cleanupWatchStarted = window.electronAPI.watch.onTaskStarted?.((data: any) => {
     if (data?.watchId) markWatchRunning(data.watchId)
-    if (data?.watchName === '日常检查' || data?.watchId === '__daily_patrol__') {
+    if (data?.watchId === '__wakeup__' || data?.watchId === '__daily_patrol__') {
       patrolling.value = true
       patrolStatus.value = 'running'
       patrolMessage.value = t('awaken.patrolRunning')
@@ -438,7 +438,7 @@ onMounted(async () => {
   })
   cleanupWatchCompleted = window.electronAPI.watch.onTaskCompleted?.((data: any) => {
     if (data?.watchId) markWatchCompleted(data.watchId)
-    if (data?.watchId === '__daily_patrol__') {
+    if (data?.watchId === '__wakeup__' || data?.watchId === '__daily_patrol__') {
       patrolling.value = false
       if (patrolTimeout) { clearTimeout(patrolTimeout); patrolTimeout = null }
       if (data.result?.success) {

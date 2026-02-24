@@ -490,7 +490,7 @@ export class WatchService {
 
       const agentResult = await Promise.race([
         this.config.agentService.runAssistant(agentId, prompt, context, {
-          enabled: true, maxSteps: 50, commandTimeout: 30000,
+          enabled: true, commandTimeout: 30000,
           autoExecuteSafe: true, autoExecuteModerate: true,
           executionMode: 'relaxed', debugMode: false
         }, undefined, callbacks),
@@ -564,7 +564,7 @@ export class WatchService {
       const agentResult = await Promise.race([
         this.config.agentService.run(
           ptyId, prompt, context,
-          { enabled: true, maxSteps: 50, commandTimeout: 30000,
+          { enabled: true, commandTimeout: 30000,
             autoExecuteSafe: true, autoExecuteModerate: true,
             executionMode: 'relaxed', debugMode: false },
           undefined, undefined, callbacks
@@ -608,22 +608,24 @@ export class WatchService {
     }
 
     // Watch 自身状态（工作流延续）
-    if (watch.state && Object.keys(watch.state).length > 0) {
-      parts.push(`[上次执行的 Watch 状态：${JSON.stringify(watch.state).substring(0, 500)}]`)
+    const hasState = watch.state && Object.keys(watch.state).length > 0
+    if (hasState) {
+      parts.push(`[当前 Watch 状态：${JSON.stringify(watch.state).substring(0, 500)}]`)
     }
 
     // 共享状态（跨 Watch 上下文）
     const sharedState = this.store.getSharedState()
-    if (Object.keys(sharedState).length > 0) {
+    const hasSharedState = Object.keys(sharedState).length > 0
+    if (hasSharedState) {
       parts.push(`[跨关切共享上下文：${JSON.stringify(sharedState).substring(0, 800)}]`)
     }
 
-    // 状态管理指令
-    parts.push(
-      '\n[如需保存状态供后续执行使用，请在回复末尾附上：',
-      'STATE_UPDATE: {"key": "value"} 用于当前关切的私有状态，',
-      'SHARED_UPDATE: {"key": "value"} 用于跨关切的共享上下文。]'
-    )
+    // 状态管理指令：仅在已有状态或 prompt 引用了 STATE_UPDATE 时注入完整说明
+    if (hasState || hasSharedState || watch.prompt.includes('STATE_UPDATE')) {
+      parts.push(
+        '\n[状态持久化：回复末尾附 STATE_UPDATE: {...} 更新本关切状态，SHARED_UPDATE: {...} 更新跨关切共享状态。]'
+      )
+    }
 
     // 技能提示
     if (watch.skills && watch.skills.length > 0) {
@@ -1145,75 +1147,70 @@ export class WatchService {
 
   // ==================== 觉醒模式 ====================
 
-  private static readonly DAILY_PATROL_ID = '__daily_patrol__'
+  private static readonly WAKEUP_ID = '__wakeup__'
+  /** @deprecated 旧 ID，仅用于迁移清理 */
+  private static readonly LEGACY_PATROL_ID = '__daily_patrol__'
 
-  /**
-   * 确保内置「日常检查」关切存在（觉醒模式开启时调用）
-   * 幂等：已存在则跳过
-   */
-  ensureDailyPatrol(): boolean {
+  /** 确保内置「唤醒」关切存在（觉醒模式开启时调用），幂等 */
+  ensureWakeup(): boolean {
     try {
-      const existing = this.store.get(WatchService.DAILY_PATROL_ID)
+      // 清理旧版日常检查
+      if (this.store.get(WatchService.LEGACY_PATROL_ID)) {
+        try { this.cancelTimers(WatchService.LEGACY_PATROL_ID) } catch { /* ignore */ }
+        try { this.unregisterSensorTargets(WatchService.LEGACY_PATROL_ID) } catch { /* ignore */ }
+        this.store.delete(WatchService.LEGACY_PATROL_ID)
+        log.info('旧版日常检查已清理')
+      }
+
+      const existing = this.store.get(WatchService.WAKEUP_ID)
       if (existing) return true
 
-      const patrol: WatchDefinition = {
-        id: WatchService.DAILY_PATROL_ID,
-        name: '日常检查',
-        description: '觉醒模式下定期看看环境有没有变化，有事就主动告知用户',
+      const wakeup: WatchDefinition = {
+        id: WatchService.WAKEUP_ID,
+        name: '唤醒',
+        description: '觉醒模式下的定时唤醒，AI 自主决定醒来后做什么',
         enabled: true,
         triggers: [{ type: 'heartbeat' }],
-        prompt: `你是用户的个人助手，刚被定时唤醒。看看有没有值得告诉用户的事：
-
-1. **日历**：接下来几小时有没有日程，有的话提前说一声
-2. **邮件**：有没有重要的未读邮件
-3. **已有关切**：之前创建的关切有没有异常（用 watch_list 看看）
-
-**行为准则**：
-- 没什么事就回复 NO_ACTION，别打扰用户
-- 有事才说，用简洁自然的语气，像朋友提醒一样`,
-        skills: ['calendar', 'email'],
+        prompt: `你刚被定时唤醒。看看状态里的 lastWakeDate，如果是今天就 NO_ACTION。
+否则自行决定该做什么，做完后用当天日期记录 STATE_UPDATE: {"lastWakeDate": "YYYY-MM-DD"}。`,
         execution: { type: 'local' },
         output: { type: 'desktop' },
-        priority: 'low',
+        priority: 'normal',
         createdAt: Date.now(),
         updatedAt: Date.now()
       }
 
-      const created = this.store.createWithId(patrol)
+      const created = this.store.createWithId(wakeup)
       if (!created) {
-        log.warn('日常检查关切创建失败')
+        log.warn('唤醒关切创建失败')
         return false
       }
 
       if (this.isRunning) {
-        this.registerSensorTargets(patrol)
+        this.registerSensorTargets(wakeup)
       }
-      log.info('日常检查关切已创建')
+      log.info('唤醒关切已创建')
       return true
     } catch (e) {
-      log.error('ensureDailyPatrol 异常:', e)
+      log.error('ensureWakeup 异常:', e)
       return false
     }
   }
 
-  /**
-   * 移除内置「日常检查」关切（觉醒模式关闭时调用）
-   */
-  removeDailyPatrol(): void {
+  /** 移除内置「唤醒」关切（觉醒模式关闭时调用） */
+  removeWakeup(): void {
     try {
-      const existing = this.store.get(WatchService.DAILY_PATROL_ID)
-      if (!existing) return
-
-      try { this.cancelTimers(WatchService.DAILY_PATROL_ID) } catch (e) {
-        log.warn('cancelTimers failed:', e)
+      // 同时清理新旧两个 ID
+      for (const id of [WatchService.WAKEUP_ID, WatchService.LEGACY_PATROL_ID]) {
+        const existing = this.store.get(id)
+        if (!existing) continue
+        try { this.cancelTimers(id) } catch { /* ignore */ }
+        try { this.unregisterSensorTargets(id) } catch { /* ignore */ }
+        this.store.delete(id)
+        log.info(`${id} 关切已移除`)
       }
-      try { this.unregisterSensorTargets(WatchService.DAILY_PATROL_ID) } catch (e) {
-        log.warn('unregisterSensorTargets failed:', e)
-      }
-      this.store.delete(WatchService.DAILY_PATROL_ID)
-      log.info('日常检查关切已移除')
     } catch (e) {
-      log.error('removeDailyPatrol 异常:', e)
+      log.error('removeWakeup 异常:', e)
     }
   }
 
