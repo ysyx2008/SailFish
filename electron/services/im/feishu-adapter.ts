@@ -38,12 +38,18 @@ async function loadSDK() {
 export class FeishuAdapter implements IMAdapter {
   readonly platform: IMPlatform = 'feishu'
 
+  private static readonly RECONNECT_BASE_DELAY = 5_000
+  private static readonly RECONNECT_MAX_DELAY = 60_000
+
   private client: any = null
   private wsClient: any = null
   private connected = false
   private starting = false
+  private stopped = false
   private config: FeishuConfig
   private healthCheckTimer: ReturnType<typeof setInterval> | null = null
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private reconnectAttempts = 0
 
   onMessage: ((msg: IMIncomingMessage) => void) | null = null
   onConnectionChange: ((connected: boolean) => void) | null = null
@@ -58,45 +64,16 @@ export class FeishuAdapter implements IMAdapter {
       return
     }
 
+    this.cancelReconnect()
+    this.stopped = false
     this.starting = true
     try {
       await loadSDK()
-
-      // 先验证凭证，失败时直接返回飞书的错误信息给用户
       await this.verifyCredentials()
-
-      this.client = new lark.Client({
-        appId: this.config.appId,
-        appSecret: this.config.appSecret,
-        appType: lark.AppType.SelfBuild,
-        domain: lark.Domain.Feishu,
-      })
-
-      const eventDispatcher = new lark.EventDispatcher({}).register({
-        'im.message.receive_v1': async (data: any) => {
-          try {
-            await this.handleMessageEvent(data)
-          } catch (err) {
-            log.error('Error handling message event:', err)
-          }
-        }
-      })
-
-      this.wsClient = new lark.WSClient({
-        appId: this.config.appId,
-        appSecret: this.config.appSecret,
-        loggerLevel: lark.LoggerLevel.warn,
-      })
-
-      await this.wsClient.start({ eventDispatcher })
-      this.startHealthCheck()
+      await this.connectWS()
     } catch (err) {
       this.updateConnected(false)
-      if (this.wsClient) {
-        try { this.wsClient.close({ force: true }) } catch { /* ignore */ }
-        this.wsClient = null
-      }
-      this.client = null
+      this.cleanupWS()
       throw err
     } finally {
       this.starting = false
@@ -104,18 +81,104 @@ export class FeishuAdapter implements IMAdapter {
   }
 
   async stop(): Promise<void> {
+    this.stopped = true
+    this.starting = false
+    this.cancelReconnect()
     this.stopHealthCheck()
-    if (this.wsClient) {
-      try {
-        this.wsClient.close({ force: true })
-      } catch {
-        // close() 可能在未连接状态下抛异常，安全忽略
+    this.cleanupWS()
+    this.updateConnected(false)
+    log.info('Disconnected')
+  }
+
+  /**
+   * 建立 WebSocket 连接（复用于首次连接和自动重连）
+   */
+  private async connectWS(): Promise<void> {
+    this.client = new lark.Client({
+      appId: this.config.appId,
+      appSecret: this.config.appSecret,
+      appType: lark.AppType.SelfBuild,
+      domain: lark.Domain.Feishu,
+    })
+
+    const eventDispatcher = new lark.EventDispatcher({}).register({
+      'im.message.receive_v1': async (data: any) => {
+        try {
+          await this.handleMessageEvent(data)
+        } catch (err) {
+          log.error('Error handling message event:', err)
+        }
       }
+    })
+
+    this.wsClient = new lark.WSClient({
+      appId: this.config.appId,
+      appSecret: this.config.appSecret,
+      loggerLevel: lark.LoggerLevel.warn,
+    })
+
+    await this.wsClient.start({ eventDispatcher })
+    this.startHealthCheck()
+  }
+
+  /**
+   * 清理 WS 相关资源
+   */
+  private cleanupWS(): void {
+    if (this.wsClient) {
+      try { this.wsClient.close({ force: true }) } catch { /* ignore */ }
       this.wsClient = null
     }
     this.client = null
-    this.updateConnected(false)
-    log.info('Disconnected')
+  }
+
+  // ==================== 自动重连 ====================
+
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer || this.stopped) return
+
+    const delay = Math.min(
+      FeishuAdapter.RECONNECT_BASE_DELAY * Math.pow(2, this.reconnectAttempts),
+      FeishuAdapter.RECONNECT_MAX_DELAY,
+    )
+    const attempt = ++this.reconnectAttempts
+
+    log.info(`Auto-reconnect #${attempt} scheduled in ${(delay / 1000).toFixed(0)}s`)
+
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null
+      await this.attemptReconnect(attempt)
+    }, delay)
+  }
+
+  private cancelReconnect(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+    this.reconnectAttempts = 0
+  }
+
+  /**
+   * 自动重连：跳过 verifyCredentials（凭证已在首次连接时验证），直接重建 WS
+   */
+  private async attemptReconnect(attempt: number): Promise<void> {
+    if (this.connected || this.starting || this.stopped) return
+
+    log.info(`Attempting reconnect #${attempt}...`)
+    this.starting = true
+    try {
+      this.stopHealthCheck()
+      this.cleanupWS()
+      await this.connectWS()
+      log.info('Reconnected successfully')
+    } catch (err: any) {
+      log.warn(`Reconnect #${this.reconnectAttempts} failed: ${err.message || err}`)
+      this.cleanupWS()
+      this.scheduleReconnect()
+    } finally {
+      this.starting = false
+    }
   }
 
   isConnected(): boolean {
@@ -156,6 +219,12 @@ export class FeishuAdapter implements IMAdapter {
       this.connected = value
       this.onConnectionChange?.(value)
       log.info(`Connection state changed: ${value ? 'connected' : 'disconnected'}`)
+
+      if (value) {
+        this.cancelReconnect()
+      } else if (!this.starting) {
+        this.scheduleReconnect()
+      }
     }
   }
 
