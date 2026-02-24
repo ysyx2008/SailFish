@@ -2021,7 +2021,7 @@ export default {
     personalityTitle: 'Personality',
     personalityNav: 'Personality',
     personalityHint: 'Define Agent personality; takes priority over MBTI style',
-    personalityPlaceholder: 'Example: Be direct and less ceremonial; lead with conclusions; challenge unreasonable plans clearly when needed.',
+    personalityPlaceholder: 'Define communication style, values, and attitudes, e.g.:\n\nStyle: Be direct, lead with conclusions, skip formalities\nValues: Prioritize efficiency and pragmatism over trends\nAttitude: Challenge bad ideas openly, express disagreement clearly',
     personalityChars: 'characters',
     personalityUnsavedConfirm: 'Unsaved personality changes. Close without saving?',
     personalitySaveFailed: 'Failed to save. Please try again.',

@@ -2038,7 +2038,7 @@ export default {
     personalityTitle: '个性',
     personalityNav: '个性',
     personalityHint: '定义 Agent 的个性，优先于 MBTI 风格',
-    personalityPlaceholder: '例如：回答更直接，少用客套；先给结论再给细节；必要时明确反对不合理方案。',
+    personalityPlaceholder: '可以定义沟通风格、价值观和态度，例如：\n\n沟通：回答直接，先结论后细节，少客套\n价值观：重视效率，务实优先，不盲目追新\n态度：敢于质疑不合理方案，有分歧时明确表达',
     personalityChars: '字符',
     personalityUnsavedConfirm: '个性设置有未保存修改，确定直接关闭吗？',
     personalitySaveFailed: '保存失败，请稍后重试',
