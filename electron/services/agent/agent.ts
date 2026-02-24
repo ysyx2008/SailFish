@@ -1076,6 +1076,20 @@ export abstract class Agent {
     
     // 处理工具调用
     if (response.tool_calls && response.tool_calls.length > 0) {
+      const validToolCalls = response.tool_calls.filter(tc => {
+        if (!tc.id || !tc.function.name || !tc.function.arguments) return false
+        try { JSON.parse(tc.function.arguments); return true }
+        catch { return false }
+      })
+      
+      if (validToolCalls.length < response.tool_calls.length) {
+        log.warn(`Discarded ${response.tool_calls.length - validToolCalls.length} tool_calls with malformed arguments`)
+      }
+      
+      if (validToolCalls.length === 0) {
+        return { response, hasToolCalls: false }
+      }
+      
       // 移除初始步骤
       if (run.initialStepId) {
         this.removeStep(run.initialStepId)
@@ -1086,7 +1100,7 @@ export abstract class Agent {
       const assistantMsg: AiMessage = {
         role: 'assistant',
         content: response.content || '',
-        tool_calls: response.tool_calls
+        tool_calls: validToolCalls
       }
       if (response.reasoning_content) {
         assistantMsg.reasoning_content = response.reasoning_content
@@ -1095,7 +1109,7 @@ export abstract class Agent {
       run.taskMessageLog.push({ ...assistantMsg })
       
       // 执行工具调用
-      await this.executeToolCalls(run, response.tool_calls, toolExecutorConfig)
+      await this.executeToolCalls(run, validToolCalls, toolExecutorConfig)
       
       return { response, hasToolCalls: true }
     }

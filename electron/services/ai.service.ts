@@ -1054,10 +1054,21 @@ export class AiService {
       // 支持中止请求
       abortController.signal.addEventListener('abort', () => {
         req?.destroy()
+        const filteredCount = toolCalls.length
+        const validToolCalls = toolCalls.filter(tc => {
+          if (!tc.id || !tc.function.name || !tc.function.arguments) return false
+          try { JSON.parse(tc.function.arguments); return true }
+          catch { return false }
+        })
+        if (validToolCalls.length < filteredCount) {
+          log.info(`Abort: filtered ${filteredCount - validToolCalls.length}/${filteredCount} incomplete tool_calls`)
+        }
+        const finalContent = content || (reasoningContent ? `🤔 **思考过程**\n\n> ${reasoningContent.replace(/\n/g, '\n> ')}` : undefined)
         complete(() => onDone({
-          content: content || undefined,
-          tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
-          finish_reason: 'stop'
+          content: finalContent,
+          tool_calls: validToolCalls.length > 0 ? validToolCalls : undefined,
+          finish_reason: 'stop',
+          reasoning_content: reasoningContent || undefined
         }))
       })
 
