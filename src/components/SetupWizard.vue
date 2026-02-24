@@ -45,19 +45,6 @@ const allAiTemplates = [
     descKey: 'aiSettings.templates.deepseek',
     keyUrl: 'https://platform.deepseek.com/api_keys',
     contextLength: 128000,
-    recommended: true,
-    isLocal: false,
-    needsApiKey: true,
-    isCustom: false
-  },
-  {
-    name: 'OpenAI',
-    apiUrl: 'https://api.openai.com/v1/chat/completions',
-    model: 'gpt-4o-mini',
-    descKey: 'aiSettings.templates.openai',
-    keyUrl: 'https://platform.openai.com/api-keys',
-    contextLength: 128000,
-    recommended: false,
     isLocal: false,
     needsApiKey: true,
     isCustom: false
@@ -69,7 +56,50 @@ const allAiTemplates = [
     descKey: 'aiSettings.templates.qwen',
     keyUrl: 'https://bailian.console.aliyun.com/?tab=model#/api-key',
     contextLength: 128000,
-    recommended: false,
+    isLocal: false,
+    needsApiKey: true,
+    isCustom: false
+  },
+  {
+    name: 'Doubao',
+    apiUrl: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+    model: 'doubao-1.5-pro-32k',
+    descKey: 'aiSettings.templates.doubao',
+    keyUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey',
+    contextLength: 32000,
+    isLocal: false,
+    needsApiKey: true,
+    isCustom: false
+  },
+  {
+    name: 'Zhipu',
+    apiUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+    model: 'glm-4-plus',
+    descKey: 'aiSettings.templates.zhipu',
+    keyUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
+    contextLength: 128000,
+    isLocal: false,
+    needsApiKey: true,
+    isCustom: false
+  },
+  {
+    name: 'Kimi',
+    apiUrl: 'https://api.moonshot.cn/v1/chat/completions',
+    model: 'moonshot-v1-auto',
+    descKey: 'aiSettings.templates.kimi',
+    keyUrl: 'https://platform.moonshot.cn/console/api-keys',
+    contextLength: 128000,
+    isLocal: false,
+    needsApiKey: true,
+    isCustom: false
+  },
+  {
+    name: 'OpenAI',
+    apiUrl: 'https://api.openai.com/v1/chat/completions',
+    model: 'gpt-4o-mini',
+    descKey: 'aiSettings.templates.openai',
+    keyUrl: 'https://platform.openai.com/api-keys',
+    contextLength: 128000,
     isLocal: false,
     needsApiKey: true,
     isCustom: false
@@ -82,7 +112,6 @@ const allAiTemplates = [
     keyUrl: 'https://ollama.com/',
     contextLength: 32000,
     isLocal: true,
-    recommended: false,
     needsApiKey: false,
     isCustom: false
   },
@@ -94,7 +123,6 @@ const allAiTemplates = [
     keyUrl: '',
     contextLength: 128000,
     isLocal: false,
-    recommended: false,
     needsApiKey: true,
     isCustom: true
   }
@@ -114,14 +142,12 @@ const aiTemplates = computed(() => {
   
   return templates.map((tpl, index) => ({
     index,
-    name: tpl.descKey === 'aiSettings.templates.qwen' && !t('aiSettings.templates.qwen').includes('Qwen') ? '通义千问' : 
-          tpl.isCustom ? t('aiSettings.templates.customName') : tpl.name,
+    name: tpl.isCustom ? t('aiSettings.templates.customName') : tpl.name,
     apiUrl: tpl.apiUrl,
     model: tpl.model,
     desc: t(tpl.descKey),
     keyUrl: tpl.keyUrl,
     contextLength: tpl.contextLength,
-    recommended: tpl.recommended,
     needsApiKey: tpl.needsApiKey,
     isCustom: tpl.isCustom
   }))
@@ -484,15 +510,13 @@ onMounted(async () => {
                 class="ai-template-card"
                 :class="{ 
                   selected: selectedTemplateIndex === template.index,
-                  configured: isTemplateConfigured(template.name),
-                  recommended: template.recommended && !isTemplateConfigured(template.name)
+                  configured: isTemplateConfigured(template.name)
                 }"
               >
                 <div class="ai-template-header" @click="selectTemplate(template.index)">
                   <div class="ai-template-info">
                     <div class="ai-template-name">
                       {{ template.name }}
-                      <span v-if="template.recommended && !isTemplateConfigured(template.name)" class="recommended-tag">{{ t('aiSettings.recommended') }}</span>
                       <span v-if="isTemplateConfigured(template.name)" class="configured-tag">
                         <Check :size="12" />
                         {{ t('setup.aiConfig.configured') }}
@@ -958,9 +982,6 @@ onMounted(async () => {
   background: rgba(16, 185, 129, 0.05);
 }
 
-.ai-template-card.recommended:not(.configured) {
-  border-color: rgba(16, 185, 129, 0.5);
-}
 
 .ai-template-header {
   display: flex;
@@ -993,15 +1014,6 @@ onMounted(async () => {
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 4px;
-}
-
-.recommended-tag {
-  font-size: 10px;
-  font-weight: 500;
-  color: #10b981;
-  background: rgba(16, 185, 129, 0.15);
-  padding: 2px 8px;
-  border-radius: 10px;
 }
 
 .configured-tag {

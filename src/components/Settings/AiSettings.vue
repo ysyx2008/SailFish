@@ -148,14 +148,6 @@ const allTemplates = [
     apiUrl: 'https://api.deepseek.com/v1/chat/completions',
     model: 'deepseek-chat',
     keyUrl: 'https://platform.deepseek.com/api_keys',
-    recommended: true,
-    isLocal: false
-  },
-  {
-    name: 'OpenAI',
-    apiUrl: 'https://api.openai.com/v1/chat/completions',
-    model: 'gpt-3.5-turbo',
-    keyUrl: 'https://platform.openai.com/api-keys',
     isLocal: false
   },
   {
@@ -166,11 +158,39 @@ const allTemplates = [
     isLocal: false
   },
   {
+    name: 'Doubao',
+    apiUrl: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+    model: 'doubao-1.5-pro-32k',
+    keyUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey',
+    isLocal: false
+  },
+  {
+    name: 'Zhipu',
+    apiUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+    model: 'glm-4-plus',
+    keyUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
+    isLocal: false
+  },
+  {
+    name: 'Kimi',
+    apiUrl: 'https://api.moonshot.cn/v1/chat/completions',
+    model: 'moonshot-v1-auto',
+    keyUrl: 'https://platform.moonshot.cn/console/api-keys',
+    isLocal: false
+  },
+  {
+    name: 'OpenAI',
+    apiUrl: 'https://api.openai.com/v1/chat/completions',
+    model: 'gpt-4o-mini',
+    keyUrl: 'https://platform.openai.com/api-keys',
+    isLocal: false
+  },
+  {
     name: 'Ollama',
     apiUrl: 'http://localhost:11434/v1/chat/completions',
-    model: 'llama2',
+    model: 'qwen2.5:7b',
     keyUrl: 'https://ollama.com/',
-    isLocal: true  // 本地服务，Steam版可用
+    isLocal: true
   }
 ]
 
@@ -216,9 +236,6 @@ const openKeyUrl = (url: string) => {
         </div>
         <p class="section-desc">
           {{ t('aiSettings.apiKeyNotRequired') }}
-        </p>
-        <p class="model-recommendation">
-          {{ t('aiSettings.modelRecommendation') }}
         </p>
 
         <!-- 配置列表 -->
@@ -274,11 +291,9 @@ const openKeyUrl = (url: string) => {
             v-for="template in templates"
             :key="template.name"
             class="template-btn"
-            :class="{ recommended: template.recommended }"
             @click="applyTemplate(template)"
           >
             {{ template.name }}
-            <span v-if="template.recommended" class="recommended-badge">{{ t('aiSettings.recommended') }}</span>
           </button>
         </div>
 
@@ -436,16 +451,6 @@ const openKeyUrl = (url: string) => {
   margin-bottom: 8px;
 }
 
-.model-recommendation {
-  font-size: 12px;
-  color: var(--accent-primary);
-  background: rgba(137, 180, 250, 0.1);
-  padding: 8px 12px;
-  border-radius: 6px;
-  margin-bottom: 16px;
-  border-left: 3px solid var(--accent-primary);
-}
-
 .profile-list {
   display: flex;
   flex-direction: column;
@@ -564,31 +569,6 @@ const openKeyUrl = (url: string) => {
 .template-btn:hover {
   background: var(--accent-primary);
   color: var(--bg-primary);
-}
-
-.template-btn.recommended {
-  border-color: #10b981;
-  color: #10b981;
-  background: rgba(16, 185, 129, 0.08);
-}
-
-.template-btn.recommended:hover {
-  background: #10b981;
-  color: white;
-  border-color: #10b981;
-}
-
-.template-btn .recommended-badge {
-  font-size: 10px;
-  font-weight: 500;
-  margin-left: 4px;
-  padding: 1px 4px;
-  border-radius: 3px;
-  background: rgba(16, 185, 129, 0.15);
-}
-
-.template-btn.recommended:hover .recommended-badge {
-  background: rgba(255, 255, 255, 0.2);
 }
 
 .form-label-row {

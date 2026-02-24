@@ -376,7 +376,7 @@ export default {
     apiKey: 'API Key',
     apiKeyPlaceholder: 'sk-...（本地部署可留空）',
     apiKeyNotRequired: '大多数 API 服务需要提供 Key 才能正常使用（本地部署的 Ollama 等除外）。',
-    modelRecommendation: '💡 建议优先使用对话模型（如 deepseek-chat）而非思考模型（如 deepseek-reasoner），对话模型已足够满足日常使用，且响应更快、成本更低。',
+    modelRecommendation: '',
     model: '模型名称',
     modelPlaceholder: '例如：qwen-72b, gpt-3.5-turbo',
     proxy: '代理地址',
@@ -416,15 +416,17 @@ export default {
       ESFP: { name: '表演者', desc: '乐观开朗、善于表达' }
     },
     templates: {
-      openai: 'OpenAI 官方 API，支持 GPT-3.5、GPT-4 等模型',
+      openai: 'OpenAI 官方 API，支持 GPT-4o 等模型',
       qwen: '阿里云通义千问，国内访问速度快',
       deepseek: 'DeepSeek 大模型，性价比高',
+      doubao: '字节跳动豆包大模型，火山引擎提供服务',
+      zhipu: '智谱 GLM 大模型，支持 GLM-4 系列',
+      kimi: 'Moonshot Kimi，支持超长上下文',
       ollama: '本地部署的 Ollama，数据不出本地',
       custom: '手动配置 API 地址、模型等信息',
       customName: '自定义'
     },
     getApiKey: '获取 Key',
-    recommended: '推荐',
     // 助手调试模式
     agentDebugMode: '助手调试模式',
     agentDebugModeDesc: '开启后显示详细的工具调用步骤，关闭后交互更简洁自然',
@@ -1388,7 +1390,7 @@ export default {
       subtitleSimple: '选择一个 AI 服务，填写 API Key 即可开始',
       intro: '大模型是 AI 功能的核心，您需要配置至少一个模型才能使用 AI 对话和助手功能。',
       hint: '支持 OpenAI 兼容接口，包括 vLLM、FastChat、Ollama 等私有化部署方案。',
-      modelRecommendation: '💡 建议优先使用对话模型（如 deepseek-chat）而非思考模型（如 deepseek-reasoner），对话模型已足够满足日常使用，且响应更快、成本更低。',
+      modelRecommendation: '',
       configuredModels: '已配置的模型',
       addNewModel: '添加新模型',
       quickTemplates: '快速模板：',

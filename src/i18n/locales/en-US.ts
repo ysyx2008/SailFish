@@ -376,7 +376,7 @@ export default {
     apiKey: 'API Key',
     apiKeyPlaceholder: 'sk-... (optional for local deployment)',
     apiKeyNotRequired: 'Most API services require a key to work (except local deployments like Ollama).',
-    modelRecommendation: '💡 We recommend using chat models (e.g., deepseek-chat) over reasoning models (e.g., deepseek-reasoner). Chat models are sufficient for daily use, with faster response and lower cost.',
+    modelRecommendation: '',
     model: 'Model Name',
     modelPlaceholder: 'e.g., qwen-72b, gpt-3.5-turbo',
     proxy: 'Proxy',
@@ -416,15 +416,17 @@ export default {
       ESFP: { name: 'Entertainer', desc: 'Cheerful, expressive' }
     },
     templates: {
-      openai: 'OpenAI official API, supports GPT-3.5, GPT-4, etc.',
+      openai: 'OpenAI official API, supports GPT-4o, etc.',
       qwen: 'Alibaba Qwen, fast access in China',
       deepseek: 'DeepSeek LLM, cost-effective',
+      doubao: 'ByteDance Doubao, powered by Volcengine',
+      zhipu: 'Zhipu GLM, supports GLM-4 series',
+      kimi: 'Moonshot Kimi, supports extra-long context',
       ollama: 'Local Ollama deployment, data stays local',
       custom: 'Manually configure API URL, model, etc.',
       customName: 'Custom'
     },
     getApiKey: 'Get Key',
-    recommended: 'Recommended',
     // Agent debug mode
     agentDebugMode: 'Agent Debug Mode',
     agentDebugModeDesc: 'Show detailed tool call steps when enabled, simpler interaction when disabled',
@@ -1388,7 +1390,7 @@ export default {
       subtitleSimple: 'Choose an AI service and enter your API Key',
       intro: 'AI model is the core of AI features. You need to configure at least one model to use AI chat and Agent features.',
       hint: 'Supports OpenAI-compatible APIs, including vLLM, FastChat, Ollama and other private deployment solutions.',
-      modelRecommendation: '💡 We recommend using chat models (e.g., deepseek-chat) over reasoning models (e.g., deepseek-reasoner). Chat models are sufficient for daily use, with faster response and lower cost.',
+      modelRecommendation: '',
       configuredModels: 'Configured Models',
       addNewModel: 'Add New Model',
       quickTemplates: 'Quick Templates:',
