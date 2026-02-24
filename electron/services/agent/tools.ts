@@ -219,6 +219,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
 **支持的文件格式**：
 - 📄 **PDF 文件**：自动提取文本内容（不支持扫描件 OCR）
 - 📝 **Word 文档**：支持 .docx（Office 2007+）和 .doc（97-2003）格式
+- 🖼️ **图片文件**：jpg/jpeg、png、gif、bmp、webp，读取后自动注入视觉上下文供 AI 分析（最大 10MB）
 - 📃 **文本文件**：txt、md、json、xml、html、csv 等
 
 **读取方式**（仅适用于文本文件）：

@@ -10,6 +10,7 @@ import { getFileSearchService } from '../../file-search.service'
 import { getDocumentParserService } from '../../document-parser.service'
 import { categorizeError, getErrorRecoverySuggestion, truncateFromEnd, formatFileSize } from './utils'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
+import { VISION_IMAGE_EXTENSIONS, IMAGE_MIME_TYPES } from './types'
 
 /**
  * 文件搜索
@@ -120,6 +121,74 @@ function isDocumentType(filePath: string): boolean {
 }
 
 /**
+ * 检测是否为 AI Vision 可处理的图片类型
+ */
+function isVisionImageType(filePath: string): boolean {
+  const ext = path.extname(filePath).toLowerCase()
+  return VISION_IMAGE_EXTENSIONS.has(ext)
+}
+
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
+
+/**
+ * 读取图片文件为 base64 data URL，返回给 AI 进行视觉分析
+ */
+function readImageFile(
+  filePath: string,
+  fileSize: number,
+  executor: ToolExecutorConfig
+): ToolResult {
+  const ext = path.extname(filePath).toLowerCase()
+  const fileName = path.basename(filePath)
+  const mime = IMAGE_MIME_TYPES[ext]
+  if (!mime) {
+    return { success: false, output: '', error: t('file.unsupported_format') }
+  }
+
+  if (fileSize > MAX_IMAGE_SIZE) {
+    const sizeMB = (fileSize / (1024 * 1024)).toFixed(1)
+    const errorMsg = t('file.image_too_large', { size: sizeMB })
+    executor.addStep({
+      type: 'tool_result',
+      content: `${t('file.read_failed')}: ${errorMsg}`,
+      toolName: 'read_file',
+      toolResult: errorMsg
+    })
+    return { success: false, output: '', error: errorMsg }
+  }
+
+  try {
+    const buffer = fs.readFileSync(filePath)
+    const base64 = buffer.toString('base64')
+    const dataUrl = `data:${mime};base64,${base64}`
+
+    const sizeDisplay = formatFileSize(fileSize)
+
+    executor.addStep({
+      type: 'tool_result',
+      content: `🖼️ ${t('file.image_read_success', { name: fileName, size: sizeDisplay })}`,
+      toolName: 'read_file',
+      toolResult: `${fileName} (${sizeDisplay})`
+    })
+
+    return {
+      success: true,
+      output: t('file.image_read_output', { name: fileName, size: sizeDisplay }),
+      images: [dataUrl]
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : t('file.read_error')
+    executor.addStep({
+      type: 'tool_result',
+      content: `${t('file.read_failed')}: ${errorMsg}`,
+      toolName: 'read_file',
+      toolResult: errorMsg
+    })
+    return { success: false, output: '', error: errorMsg }
+  }
+}
+
+/**
  * 读取文档文件
  */
 async function readDocumentFile(
@@ -223,6 +292,28 @@ export async function readFile(
 
     if (isDocumentType(filePath) && !infoOnly) {
       return await readDocumentFile(filePath, fileSize, executor)
+    }
+
+    if (isVisionImageType(filePath)) {
+      if (infoOnly) {
+        const ext = path.extname(filePath).toLowerCase()
+        const maxMB = MAX_IMAGE_SIZE / 1024 / 1024
+        const canRead = fileSize <= MAX_IMAGE_SIZE
+        const info = `## ${t('file.info_header')}
+- **${t('file.info_path')}**: ${filePath}
+- **${t('file.info_size')}**: ${t('file.info_size_value', { sizeMB, sizeBytes: fileSize.toLocaleString() })}
+- **${t('file.image_type')}**: ${ext.slice(1).toUpperCase()}
+- **${t('file.image_readable')}**: ${canRead ? t('file.image_readable_yes') : t('file.image_readable_no', { max: maxMB })}`
+
+        executor.addStep({
+          type: 'tool_result',
+          content: `${t('file.file_info')}: ${sizeMB} MB, ${t('file.image_type_short')}`,
+          toolName: 'read_file',
+          toolResult: info
+        })
+        return { success: true, output: info }
+      }
+      return readImageFile(filePath, fileSize, executor)
     }
 
     if (infoOnly) {

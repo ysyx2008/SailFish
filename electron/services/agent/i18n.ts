@@ -133,6 +133,7 @@ const translations = {
     'agent.no_response': 'AI 未返回任何内容',
     'agent.context_limit_exceeded': '⚠️ 对话上下文超出模型限制（当前 {current} tokens，模型限制 {limit} tokens，占用 {percentage}%）。\n\n建议：\n1. 开始新对话\n2. 或切换到上下文更长的模型',
     'agent.context_pressure_warning': '[系统] 上下文用量告警（已用 {percentage}%，剩余约 {remaining} tokens）。请立即调用 compress_context 压缩较早的对话内容，否则下次请求可能因超出模型上下文限制而失败。',
+    'agent.image_from_tool': '[系统：以下是工具读取的图片，请分析其内容]',
 
     // 上下文管理工具
     'context_tool.compress_success': '上下文已压缩。压缩前: ~{before} tokens, 压缩后: ~{after} tokens, 释放: ~{freed} tokens。归档 ID: {archiveId}（可通过 recall_compressed 找回原始内容）',
@@ -262,6 +263,16 @@ const translations = {
     'file.edit': '编辑文件',
     'file.edit_success': '文件编辑成功: {path}',
     'file.edit_failed': '文件编辑失败',
+    'file.unsupported_format': '不支持的图片格式',
+    'file.read_error': '读取文件失败',
+    'file.image_too_large': '图片文件过大（{size} MB），最大支持 10MB',
+    'file.image_read_success': '图片已读取: {name} ({size})，已注入视觉上下文',
+    'file.image_read_output': '图片 {name} ({size}) 已读取并注入视觉上下文，你现在可以分析这张图片。',
+    'file.image_type': '类型',
+    'file.image_type_short': '图片',
+    'file.image_readable': '可读取',
+    'file.image_readable_yes': '是（read_file 读取后可视觉分析）',
+    'file.image_readable_no': '否（超过 {max}MB 限制）',
 
     // Excel 操作
     'excel.action_required': '需要指定操作类型（read/write/modify）',
@@ -874,8 +885,8 @@ const translations = {
     'im.attachment_audio': '语音（二进制）',
     'im.attachment_video': '视频（二进制）',
     'im.attachment_file': '文件',
-    'im.attachment_binary_warn': '（⚠️ 二进制文件，不要用 read_file 读取）',
-    'im.attachment_binary_guidance': '\n\n注意：图片/语音/视频是二进制文件，不能用 read_file 读取（会产生无意义的乱码并占满上下文）。你可以用 run_command 执行 file 命令查看文件信息，或直接告知用户文件已收到。如果用户需要处理图片，可以用 run_command 调用系统工具（如 sips、ffprobe 等）获取元数据。',
+    'im.attachment_binary_warn': '（⚠️ 二进制文件）',
+    'im.attachment_binary_guidance': '\n\n提示：常见图片格式（jpg/png/gif/bmp/webp）可以用 read_file 读取并分析其视觉内容。语音/视频等其他二进制文件不能用 read_file 读取，请用 run_command 调用系统工具（如 sips、ffprobe 等）获取元数据。',
     'im.attachment_sent': '📎 用户同时发送了文件：',
     'im.attachment_sent_only': '📎 用户发送了文件：',
     'im.attachment_help_hint': '\n\n请协助用户处理。',
@@ -1026,6 +1037,7 @@ const translations = {
     'agent.no_response': 'AI returned no response',
     'agent.context_limit_exceeded': '⚠️ Conversation context exceeds model limit (current {current} tokens, model limit {limit} tokens, {percentage}% used).\n\nSuggestions:\n1. Start a new conversation\n2. Or switch to a model with larger context',
     'agent.context_pressure_warning': '[System] Context usage critical ({percentage}%, ~{remaining} tokens remaining). You MUST call compress_context immediately to compress earlier conversation, otherwise the next request may fail due to exceeding the model context limit.',
+    'agent.image_from_tool': '[System: Below is the image read by the tool, please analyze its content]',
 
     // Context management tools
     'context_tool.compress_success': 'Context compressed. Before: ~{before} tokens, After: ~{after} tokens, Freed: ~{freed} tokens. Archive ID: {archiveId} (use recall_compressed to retrieve original content)',
@@ -1155,6 +1167,16 @@ Please output the summary in the following format:
     'file.edit': 'Edit file',
     'file.edit_success': 'File edited successfully: {path}',
     'file.edit_failed': 'File edit failed',
+    'file.unsupported_format': 'Unsupported image format',
+    'file.read_error': 'Failed to read file',
+    'file.image_too_large': 'Image file too large ({size} MB), maximum is 10MB',
+    'file.image_read_success': 'Image read: {name} ({size}), injected into visual context',
+    'file.image_read_output': 'Image {name} ({size}) read and injected into visual context. You can now analyze this image.',
+    'file.image_type': 'Type',
+    'file.image_type_short': 'Image',
+    'file.image_readable': 'Readable',
+    'file.image_readable_yes': 'Yes (read_file will inject into visual context for AI analysis)',
+    'file.image_readable_no': 'No (exceeds {max}MB limit)',
 
     // Excel operations
     'excel.action_required': 'Action type required (read/write/modify)',
@@ -1767,8 +1789,8 @@ Please output the summary in the following format:
     'im.attachment_audio': 'Audio (binary)',
     'im.attachment_video': 'Video (binary)',
     'im.attachment_file': 'File',
-    'im.attachment_binary_warn': ' (⚠️ binary file, do not use read_file)',
-    'im.attachment_binary_guidance': '\n\nNote: Images/audio/video are binary files. Do not use read_file (it will produce garbled text and fill up the context). Use run_command with tools like file, sips, ffprobe to inspect metadata, or simply acknowledge receipt to the user.',
+    'im.attachment_binary_warn': ' (⚠️ binary file)',
+    'im.attachment_binary_guidance': '\n\nTip: Common image formats (jpg/png/gif/bmp/webp) can be read with read_file to analyze visual content. Audio/video and other binary files cannot be read with read_file — use run_command with tools like file, sips, ffprobe to inspect metadata.',
     'im.attachment_sent': '📎 User also sent files:',
     'im.attachment_sent_only': '📎 User sent files:',
     'im.attachment_help_hint': '\n\nPlease help the user process these.',

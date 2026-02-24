@@ -123,6 +123,7 @@ export interface ToolResult {
   output: string
   error?: string
   isRunning?: boolean  // 命令仍在后台执行（用于长耗时命令超时但未失败的情况）
+  images?: string[]    // 图片 base64 data URL（read_file 读取图片时返回，注入 AI 上下文供视觉分析）
 }
 
 // 待确认的工具调用

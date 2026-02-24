@@ -1472,6 +1472,19 @@ export abstract class Agent {
     }
     run.messages.push(toolMsg)
     run.taskMessageLog.push({ ...toolMsg })
+    
+    // 如果工具返回了图片，追加一条 user 消息携带图片
+    // 用 user 消息而非 tool 消息携带图片，兼容所有 AI 提供商
+    if (result.images && result.images.length > 0) {
+      const imageMsg: AiMessage = {
+        role: 'user',
+        content: t('agent.image_from_tool'),
+        images: result.images
+      }
+      run.messages.push(imageMsg)
+      // taskMessageLog 不保存 images（base64 太大，会撑爆持久化存储）
+      run.taskMessageLog.push({ role: 'user', content: imageMsg.content })
+    }
   }
   
   /**
