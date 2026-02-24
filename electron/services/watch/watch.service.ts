@@ -277,6 +277,12 @@ export class WatchService {
       return { success: false, output: '', error: 'Watch not found', duration: 0 }
     }
 
+    // 唤醒关切：通过 drain 事件池触发，使其能看到池中积累的事件（或空 batch 做例行检查）
+    if (id === WatchService.WAKEUP_ID && this.eventPool) {
+      await this.eventPool.drain(true, { fromManualCheck: true })
+      return { success: true, output: '', error: '', duration: 0, skipped: false }
+    }
+
     const event: SensorEvent = {
       id: `manual-${Date.now().toString(36)}`,
       type: 'manual',
@@ -362,7 +368,7 @@ export class WatchService {
     const startTime = Date.now()
     const enhancedPrompt = this.buildEnhancedPrompt(watch, event)
     const isDesktop = watch.output.type === 'desktop'
-    const isSilent = isDesktop && WatchService.AUTO_TRIGGER_TYPES.has(event.type)
+    const isSilent = isDesktop && WatchService.AUTO_TRIGGER_TYPES.has(event.type) && !event.payload?.fromManualCheck
 
     let ptyId: string | null = null
     let result: WatchExecutionResult
@@ -1151,6 +1157,9 @@ export class WatchService {
   /** @deprecated 旧 ID，仅用于迁移清理 */
   private static readonly LEGACY_PATROL_ID = '__daily_patrol__'
 
+  /** 唤醒关切的 prompt：提醒 Agent 结合个性决定是否 NO_ACTION，支持「主动交流」类个性 */
+  private static readonly WAKEUP_PROMPT = `你刚被定时唤醒。根据触发事件和跨关切共享上下文，自行决定该做什么。请结合你的个性设定：若你的个性倾向主动与用户交流，即便无新事件也可简短问候或分享想法；若确实无要事且个性不倾向主动 outreach，可回复 NO_ACTION。`
+
   /** 确保内置「唤醒」关切存在（觉醒模式开启时调用），幂等 */
   ensureWakeup(): boolean {
     try {
@@ -1163,7 +1172,29 @@ export class WatchService {
       }
 
       const existing = this.store.get(WatchService.WAKEUP_ID)
-      if (existing) return true
+      if (existing) {
+        if (existing.prompt?.includes('lastWakeDate')) {
+          this.store.update(WatchService.WAKEUP_ID, {
+            prompt: WatchService.WAKEUP_PROMPT,
+            updatedAt: Date.now()
+          })
+          if (existing.state?.lastWakeDate) {
+            const { lastWakeDate, ...rest } = existing.state as Record<string, unknown>
+            this.store.updateState(WatchService.WAKEUP_ID, rest)
+          }
+          log.info('唤醒关切已迁移（移除 lastWakeDate）')
+        } else if (
+          !existing.prompt?.includes('结合你的个性设定') &&
+          existing.prompt?.includes('如无值得处理的事，回复 NO_ACTION')
+        ) {
+          this.store.update(WatchService.WAKEUP_ID, {
+            prompt: WatchService.WAKEUP_PROMPT,
+            updatedAt: Date.now()
+          })
+          log.info('唤醒关切已迁移（支持个性主动交流）')
+        }
+        return true
+      }
 
       const wakeup: WatchDefinition = {
         id: WatchService.WAKEUP_ID,
@@ -1171,8 +1202,7 @@ export class WatchService {
         description: '觉醒模式下的定时唤醒，AI 自主决定醒来后做什么',
         enabled: true,
         triggers: [{ type: 'heartbeat' }],
-        prompt: `你刚被定时唤醒。看看状态里的 lastWakeDate，如果是今天就 NO_ACTION。
-否则自行决定该做什么，做完后用当天日期记录 STATE_UPDATE: {"lastWakeDate": "YYYY-MM-DD"}。`,
+        prompt: WatchService.WAKEUP_PROMPT,
         execution: { type: 'local' },
         output: { type: 'desktop' },
         priority: 'normal',
