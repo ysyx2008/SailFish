@@ -101,7 +101,7 @@ export interface BuildSystemPromptOptions {
   contextKnowledgeDoc?: string
   /** 用户自定义的 AI 规则 */
   aiRules?: string
-  /** 用户自定义个性描述（在 MBTI 基础上追加） */
+  /** 用户自定义个性定义（优先级高于 MBTI） */
   personalityText?: string
   /** 任务历史总结列表（L1 层） */
   taskSummaries?: string
@@ -157,21 +157,22 @@ export class PromptBuilder {
    * 注意：输出与原始 buildSystemPrompt 函数完全一致
    */
   build(): string {
-    // MBTI 风格提示
+    // 个性 & MBTI：个性为主定义，MBTI 为风格参考
     const mbtiStyle = PromptBuilder.getMbtiStylePrompt(this.mbtiType ?? null)
-    const styleSection = mbtiStyle 
-      ? `\n\n## 你的风格（重要！）\n${mbtiStyle}\n\n**注意：请始终保持上述风格回复，即使历史对话中的风格有所不同。**\n` 
-      : ''
+    const personalityText = this.personalityText?.trim()
+
+    let personalitySection = ''
+    if (personalityText && mbtiStyle) {
+      personalitySection = `\n\n## 你的个性（重要！）\n${personalityText}\n\n### 风格参考（MBTI）\n${mbtiStyle}\n`
+    } else if (personalityText) {
+      personalitySection = `\n\n## 你的个性（重要！）\n${personalityText}\n`
+    } else if (mbtiStyle) {
+      personalitySection = `\n\n## 你的风格（重要！）\n${mbtiStyle}\n`
+    }
     
     // 用户自定义规则
     const userRulesSection = this.aiRules && this.aiRules.trim()
       ? `\n\n## 用户自定义规则（重要！必须遵守）\n\n用户设置了以下规则，你必须严格遵守：\n\n${this.aiRules.trim()}\n`
-      : ''
-    
-    // 用户个性描述（在 MBTI 基础上追加）
-    const personalityText = this.personalityText?.trim()
-    const personalitySection = personalityText
-      ? `\n\n## 你的个性补充（在 MBTI 基础上追加）\n${personalityText}\n\n**注意：以上是用户自定义的个性偏好，需要在 MBTI 风格基础上保持一致。**\n`
       : ''
     
     // 当前本地时间（用于角色认知）
@@ -237,7 +238,6 @@ export class PromptBuilder {
 你是旗鱼（SailFish）AI Agent，一个能帮助用户完成各类任务的智能助手。
 当前时间：${currentTime}
 ${this.context.cwd ? `当前工作目录：${this.context.cwd}（系统实时获取，无需执行 pwd 验证）` : '当前工作目录：未成功获取'}
-${styleSection}
 ${personalitySection}
 ${userRulesSection}
 ${hostContext}

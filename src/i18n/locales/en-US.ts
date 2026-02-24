@@ -2020,7 +2020,7 @@ export default {
     patrolError: 'Check failed, see logs',
     personalityTitle: 'Personality',
     personalityNav: 'Personality',
-    personalityHint: 'MBTI stays in AI Settings; add extra personality preferences here',
+    personalityHint: 'Define Agent personality; takes priority over MBTI style',
     personalityPlaceholder: 'Example: Be direct and less ceremonial; lead with conclusions; challenge unreasonable plans clearly when needed.',
     personalityChars: 'characters',
     personalityUnsavedConfirm: 'Unsaved personality changes. Close without saving?',

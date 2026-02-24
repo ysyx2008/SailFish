@@ -197,7 +197,7 @@ describe('PromptBuilder', () => {
       expect(prompt).not.toContain('用户自定义规则')
     })
 
-    it('should include personality section when provided', () => {
+    it('should include personality as primary section when provided', () => {
       const context = createMockContext()
       const builder = new PromptBuilder({
         context,
@@ -205,11 +205,11 @@ describe('PromptBuilder', () => {
       })
       const prompt = builder.build()
 
-      expect(prompt).toContain('你的个性补充')
+      expect(prompt).toContain('## 你的个性（重要！）')
       expect(prompt).toContain('先结论后细节')
     })
 
-    it('should place personality section after MBTI section', () => {
+    it('should nest MBTI under personality when both provided', () => {
       const context = createMockContext()
       const builder = new PromptBuilder({
         context,
@@ -218,10 +218,22 @@ describe('PromptBuilder', () => {
       })
       const prompt = builder.build()
 
-      const mbtiPos = prompt.indexOf('## 你的风格（重要！）')
-      const personalityPos = prompt.indexOf('## 你的个性补充（在 MBTI 基础上追加）')
-      expect(mbtiPos).toBeGreaterThan(-1)
-      expect(personalityPos).toBeGreaterThan(mbtiPos)
+      expect(prompt).toContain('## 你的个性（重要！）')
+      expect(prompt).toContain('保持直接风格')
+      expect(prompt).toContain('### 风格参考（MBTI）')
+      expect(prompt).not.toContain('## 你的风格（重要！）')
+    })
+
+    it('should use MBTI as primary when no personality text', () => {
+      const context = createMockContext()
+      const builder = new PromptBuilder({
+        context,
+        mbtiType: 'INTJ',
+      })
+      const prompt = builder.build()
+
+      expect(prompt).toContain('## 你的风格（重要！）')
+      expect(prompt).not.toContain('## 你的个性（重要！）')
     })
   })
 
