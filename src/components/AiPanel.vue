@@ -221,7 +221,8 @@ const {
   isInitializing: isSpeechInitializing,
   error: speechError,
   startRecording,
-  stopRecording
+  stopRecording,
+  cancelRecording
 } = useSpeechRecognition()
 
 // 监听语音识别错误并显示提示
@@ -247,6 +248,67 @@ const handleRecordClick = async () => {
   } else {
     // 开始录音
     await startRecording()
+  }
+}
+
+// Push-to-Talk：按住 Ctrl 说话，松开后延迟 500ms 再停止录音（避免末尾语音丢失）
+const isPushToTalk = ref(false)
+let pttStopTimer: ReturnType<typeof setTimeout> | null = null
+
+const clearPTTStopTimer = () => {
+  if (pttStopTimer) {
+    clearTimeout(pttStopTimer)
+    pttStopTimer = null
+  }
+}
+
+const handlePTTKeyDown = (event: KeyboardEvent) => {
+  if (!props.visible || terminalStore.activeTabId !== currentTabId.value) return
+  if (event.key !== 'Control') {
+    if (isPushToTalk.value) {
+      clearPTTStopTimer()
+      isPushToTalk.value = false
+      cancelRecording()
+    }
+    return
+  }
+  if (event.repeat) return
+  if (event.altKey || event.shiftKey || event.metaKey) return
+  // 如果正在延迟等停止，重新按下 Ctrl 则取消停止、继续录音
+  if (pttStopTimer) {
+    clearPTTStopTimer()
+    return
+  }
+  if (isRecording.value || isTranscribing.value || isSpeechInitializing.value) return
+
+  isPushToTalk.value = true
+  startRecording()
+}
+
+const finishPTTRecording = async () => {
+  pttStopTimer = null
+  isPushToTalk.value = false
+  const result = await stopRecording()
+  if (!isMounted.value) return
+  if (result?.text) {
+    inputText.value = (inputText.value + ' ' + result.text).trim()
+    nextTick(() => {
+      mentionInputRef.value?.focus()
+    })
+  }
+}
+
+const handlePTTKeyUp = (event: KeyboardEvent) => {
+  if (event.key !== 'Control' || !isPushToTalk.value) return
+  clearPTTStopTimer()
+  pttStopTimer = setTimeout(finishPTTRecording, 200)
+}
+
+const handlePTTWindowBlur = () => {
+  if (isPushToTalk.value) {
+    clearPTTStopTimer()
+    isPushToTalk.value = false
+    cancelRecording()
   }
 }
 
@@ -846,11 +908,17 @@ onMounted(() => {
   isMounted.value = true
   loadHostProfile()
   document.addEventListener('keydown', handleKeyDown)
+  document.addEventListener('keydown', handlePTTKeyDown)
+  document.addEventListener('keyup', handlePTTKeyUp)
+  window.addEventListener('blur', handlePTTWindowBlur)
 })
 
 onUnmounted(() => {
-  // 清理键盘事件
+  clearPTTStopTimer()
   document.removeEventListener('keydown', handleKeyDown)
+  document.removeEventListener('keydown', handlePTTKeyDown)
+  document.removeEventListener('keyup', handlePTTKeyUp)
+  window.removeEventListener('blur', handlePTTWindowBlur)
 })
 </script>
 
@@ -1550,11 +1618,11 @@ onUnmounted(() => {
               </span>
             </div>
           </div>
-          <!-- 语音输入按钮（普通模式和 Agent 运行时都显示） -->
+          <!-- 语音输入按钮（普通模式和 Agent 运行时都显示，支持按住 Ctrl 说话） -->
           <button
             v-if="!isLoading || isAgentRunning"
             class="voice-btn"
-            :class="{ 'recording': isRecording, 'transcribing': isTranscribing }"
+            :class="{ 'recording': isRecording, 'transcribing': isTranscribing, 'ptt': isPushToTalk }"
             :disabled="isTranscribing || isSpeechInitializing"
             :title="isRecording ? t('ai.stopRecording') : (isTranscribing ? t('ai.transcribing') : t('ai.startRecording'))"
             @click="handleRecordClick"
