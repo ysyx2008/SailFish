@@ -1136,7 +1136,7 @@ onUnmounted(() => {
   flex-direction: column;
   padding: 20px 24px;
   gap: 12px;
-  max-width: 640px;
+  height: 100%;
 }
 
 .personality-header {
@@ -1158,8 +1158,9 @@ onUnmounted(() => {
 
 .personality-textarea {
   width: 100%;
-  min-height: 160px;
-  resize: vertical;
+  flex: 1;
+  min-height: 120px;
+  resize: none;
   padding: 10px 12px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
