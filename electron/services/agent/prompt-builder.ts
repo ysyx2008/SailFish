@@ -8,6 +8,7 @@ import type { AgentContext, HostProfileServiceInterface, ExecutionMode } from '.
 import type { AgentMbtiType } from '../config.service'
 import { getSkillsSummary } from './skills/registry'
 import { getUserSkillService } from '../user-skill.service'
+import { getWorkspacePath } from './tools/file'
 
 /**
  * MBTI 风格描述映射
@@ -385,6 +386,8 @@ ${!isSshTerminal ? `
 - 长文本分析结果直接在对话中回复，不要发送到终端
 
 **临时文件清理**：任务过程中创建的所有临时文件（脚本、配置、中间产物等），使用完毕后一般应当及时清除，不要在系统中留下垃圾
+
+**私有工作空间**：\`${getWorkspacePath()}\` 是你的私有数据目录，在此目录内读写文件**无需用户确认**（任何执行模式下均自动通过）。适用于保存任务记录、中间数据、技能运行数据等。用户文件系统的确认规则不变。
 
 **长耗时命令**：执行 → \`wait\` 等待 → \`check_terminal_status\` 确认，超时不代表失败
 - 等待时可以说点有趣的话，比如："去喝杯咖啡☕马上回来"、"编译中，先摸会儿鱼🐟"、"让子弹飞一会儿🎬"

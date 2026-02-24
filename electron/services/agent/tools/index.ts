@@ -32,7 +32,7 @@ export type { ToolExecutorConfig, AgentConfig, ToolResult, ErrorCategory } from 
 export { executeCommand } from './command'
 export { executeCommandDirect } from './exec'
 export { getTerminalContext, checkTerminalStatus, sendControlKey, sendInput } from './terminal'
-export { fileSearch, readFile, editFile, writeLocalFile, writeRemoteFile } from './file'
+export { fileSearch, readFile, editFile, writeLocalFile, writeRemoteFile, getWorkspacePath, isInWorkspace } from './file'
 export { rememberInfo, searchKnowledge, getKnowledgeDoc } from './knowledge'
 export { createPlan, updatePlan, clearPlan } from './plan'
 export { recallTask, deepRecall, searchHistory } from './memory'

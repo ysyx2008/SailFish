@@ -4,6 +4,7 @@
  */
 import * as fs from 'fs'
 import * as path from 'path'
+import { app } from 'electron'
 import { t } from '../i18n'
 import { getTerminalStateService } from '../../terminal-state.service'
 import { getFileSearchService } from '../../file-search.service'
@@ -11,6 +12,42 @@ import { getDocumentParserService } from '../../document-parser.service'
 import { categorizeError, getErrorRecoverySuggestion, truncateFromEnd, formatFileSize } from './utils'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
 import { VISION_IMAGE_EXTENSIONS, IMAGE_MIME_TYPES } from './types'
+
+/**
+ * 获取 Agent workspace 目录路径
+ */
+export function getWorkspacePath(): string {
+  return path.join(app.getPath('userData'), 'agent-workspace')
+}
+
+/**
+ * 判断文件路径是否在 Agent workspace 内
+ * 使用 realpath 解析符号链接，防止通过 symlink 绕过
+ */
+export function isInWorkspace(filePath: string): boolean {
+  const workspace = getWorkspacePath()
+  let resolved: string
+  try {
+    resolved = fs.realpathSync(path.resolve(filePath))
+  } catch {
+    // 文件不存在时 realpathSync 会抛异常，回退到 resolve 检查父目录链
+    resolved = path.resolve(filePath)
+    // 逐级向上查找已存在的祖先目录，用 realpath 验证
+    let dir = path.dirname(resolved)
+    while (dir !== path.dirname(dir)) {
+      try {
+        const realDir = fs.realpathSync(dir)
+        resolved = path.join(realDir, path.relative(dir, resolved))
+        break
+      } catch {
+        dir = path.dirname(dir)
+      }
+    }
+  }
+  const normalizedResolved = resolved.replace(/\\/g, '/')
+  const normalizedWorkspace = workspace.replace(/\\/g, '/')
+  return normalizedResolved.startsWith(normalizedWorkspace + '/') || normalizedResolved === normalizedWorkspace
+}
 
 /**
  * 文件搜索
@@ -497,6 +534,8 @@ export async function editFile(
   const oldTextPreview = oldText.length > 50 ? oldText.substring(0, 50) + '...' : oldText
   const newTextPreview = newText.length > 50 ? newText.substring(0, 50) + '...' : newText
   
+  const inWorkspace = isInWorkspace(filePath)
+
   executor.addStep({
     type: 'tool_call',
     content: `${t('file.edit')}: ${filePath}`,
@@ -506,10 +545,10 @@ export async function editFile(
       old_text: oldTextPreview,
       new_text: newTextPreview
     },
-    riskLevel: 'moderate'
+    riskLevel: inWorkspace ? 'safe' : 'moderate'
   })
 
-  if (config.executionMode === 'strict') {
+  if (!inWorkspace && config.executionMode === 'strict') {
     const approved = await executor.waitForConfirmation(
       toolCallId, 
       'edit_file', 
@@ -674,7 +713,8 @@ export async function writeLocalFile(
   }
 
   const fileExists = fs.existsSync(filePath)
-  const isDangerousOverwrite = mode === 'overwrite' && fileExists
+  const inWorkspace = isInWorkspace(filePath)
+  const isDangerousOverwrite = mode === 'overwrite' && fileExists && !inWorkspace
 
   executor.addStep({
     type: 'tool_call',
@@ -690,10 +730,10 @@ export async function writeLocalFile(
       ...(pattern !== undefined && { pattern }),
       ...(replacement !== undefined && { replacement })
     },
-    riskLevel: isDangerousOverwrite ? 'dangerous' : 'moderate'
+    riskLevel: inWorkspace ? 'safe' : (isDangerousOverwrite ? 'dangerous' : 'moderate')
   })
 
-  if (isDangerousOverwrite || config.executionMode === 'strict') {
+  if (!inWorkspace && (isDangerousOverwrite || config.executionMode === 'strict')) {
     const approved = await executor.waitForConfirmation(
       toolCallId, 
       'write_local_file', 

@@ -124,6 +124,7 @@ SFTerminal/
 - **工具系统**：内置工具 + 技能系统（按需加载）+ MCP 工具
 - **风险评估**：safe / moderate / dangerous / blocked 四级
 - **执行模式**：strict（全确认）/ relaxed（危险确认）/ free（全自动）
+- **Agent Workspace**：`{userData}/agent-workspace/`，Agent 私有数据目录，文件读写自动跳过确认
 - **三级记忆架构**：见下方独立章节
 - **上下文管理**：`ContextBuilder` 根据 token 预算动态选择压缩级别
 
