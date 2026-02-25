@@ -72,7 +72,22 @@ export class SailFish extends Agent {
    */
   getAvailableTools(): ToolDefinition[] {
     const mode = this.getAgentMode()
-    const remoteChannel = this.currentRun?.context?.remoteChannel
+    let remoteChannel = this.currentRun?.context?.remoteChannel
+
+    // 没有 remoteChannel 时，检查 IM 最近联系人以决定是否注册 IM 工具
+    if (!remoteChannel) {
+      try {
+        const { getIMService } = require('../../im/im.service')
+        const lastContact = getIMService().getLastContact()
+        const validPlatforms = ['dingtalk', 'feishu', 'slack', 'telegram', 'wecom']
+        if (lastContact && validPlatforms.includes(lastContact.platform)) {
+          remoteChannel = lastContact.platform as typeof remoteChannel
+        }
+      } catch {
+        // IM service not available in CLI mode
+      }
+    }
+
     const baseTools = getAgentTools(this.services.mcpService, {
       mode,
       remoteChannel,

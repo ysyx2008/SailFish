@@ -691,7 +691,8 @@ export class IMService {
       const context = {
         terminalOutput: [] as string[],
         systemInfo: { os: process.platform, shell: process.env.SHELL || '/bin/bash' },
-        terminalType: 'local' as const
+        terminalType: 'local' as const,
+        remoteChannel: msg.platform as any
       }
 
       await this.deps.agentService.runAssistant(agentId, fullMessage, context, {
@@ -825,52 +826,90 @@ export class IMService {
 
   /**
    * 为当前活跃的 IM 会话发送文件
-   * 仅在 Agent 通过 IM 通道运行时可用
+   * 优先使用活跃会话，无活跃会话时通过最近联系人主动推送
    */
   async sendFileForCurrentSession(filePath: string, fileName?: string): Promise<SendFileResult> {
-    if (!this.activeSession) {
-      return { success: false, error: 'No active IM session' }
+    if (this.activeSession) {
+      try {
+        await this.activeSession.adapter.sendFile(
+          this.activeSession.replyContext,
+          filePath,
+          fileName
+        )
+        return { success: true }
+      } catch (err: any) {
+        log.error('Failed to send file:', err)
+        return { success: false, error: err.message || 'Failed to send file' }
+      }
     }
 
-    try {
-      await this.activeSession.adapter.sendFile(
-        this.activeSession.replyContext,
-        filePath,
-        fileName
-      )
-      return { success: true }
-    } catch (err: any) {
-      log.error('Failed to send file:', err)
-      return { success: false, error: err.message || 'Failed to send file' }
-    }
+    return this.sendFileProactive(filePath, fileName)
   }
 
   /**
    * 为当前活跃的 IM 会话发送图片（内联显示）
-   * 仅在 Agent 通过 IM 通道运行时可用
+   * 优先使用活跃会话，无活跃会话时通过最近联系人主动推送
    */
   async sendImageForCurrentSession(filePath: string): Promise<SendFileResult> {
-    if (!this.activeSession) {
-      return { success: false, error: 'No active IM session' }
+    if (this.activeSession) {
+      try {
+        await this.activeSession.adapter.sendImage(
+          this.activeSession.replyContext,
+          filePath
+        )
+        return { success: true }
+      } catch (err: any) {
+        log.error('Failed to send image:', err)
+        return { success: false, error: err.message || 'Failed to send image' }
+      }
     }
 
-    try {
-      await this.activeSession.adapter.sendImage(
-        this.activeSession.replyContext,
-        filePath
-      )
-      return { success: true }
-    } catch (err: any) {
-      log.error('Failed to send image:', err)
-      return { success: false, error: err.message || 'Failed to send image' }
-    }
+    return this.sendImageProactive(filePath)
   }
 
   /**
-   * 当前是否有活跃的 IM 会话
+   * 当前是否有活跃的 IM 会话或可用的最近联系人
    */
   hasActiveSession(): boolean {
-    return this.activeSession !== null
+    return this.activeSession !== null || this.lastContact !== null
+  }
+
+  /**
+   * 通过最近联系人主动发送图片
+   */
+  private async sendImageProactive(filePath: string): Promise<SendFileResult> {
+    const targets = this.getNotificationTargets()
+    for (const contact of targets) {
+      const adapter = this.getAdapter(contact.platform)
+      if (!adapter || !adapter.isConnected()) continue
+      try {
+        await adapter.sendImage(contact.replyContext, filePath)
+        log.info(`Proactive image sent via ${contact.platform}`)
+        return { success: true }
+      } catch (err: any) {
+        log.error(`Failed to send image via ${contact.platform}:`, err)
+      }
+    }
+    return { success: false, error: 'No available IM channel' }
+  }
+
+  /**
+   * 通过最近联系人主动发送文件
+   */
+  private async sendFileProactive(filePath: string, fileName?: string): Promise<SendFileResult> {
+    const targets = this.getNotificationTargets()
+    for (const contact of targets) {
+      const adapter = this.getAdapter(contact.platform)
+      if (!adapter || !adapter.isConnected()) continue
+      try {
+        await adapter.sendFile(contact.replyContext, filePath, fileName)
+        log.info(`Proactive file sent via ${contact.platform}`)
+        return { success: true }
+      } catch (err: any) {
+        log.error(`Failed to send file via ${contact.platform}:`, err)
+      }
+    }
+    return { success: false, error: 'No available IM channel' }
   }
 
   // ==================== 工具方法 ====================
