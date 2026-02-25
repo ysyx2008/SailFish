@@ -10,7 +10,6 @@ import { executeEmailTool } from '../skills/email/executor'
 import { executeBrowserTool } from '../skills/browser/executor'
 import { executeWordTool } from '../skills/word/executor'
 import { executeCalendarTool } from '../skills/calendar/executor'
-import { executeSchedulerTool } from '../skills/scheduler/executor'
 import { executeWatchTool } from '../skills/watch/executor'
 import { executeConfigTool } from '../skills/config/executor'
 import { executeSkillCreatorTool } from '../skills/skill-creator/executor'
@@ -775,10 +774,6 @@ export async function executeSkillTool(
 
   if (toolName.startsWith('calendar_') || toolName.startsWith('todo_')) {
     return executeCalendarTool(toolName, ptyId, args, toolCallId, config, executor)
-  }
-
-  if (toolName.startsWith('schedule_')) {
-    return executeSchedulerTool(toolName, ptyId, args, toolCallId, config, executor)
   }
 
   if (toolName.startsWith('watch_')) {
