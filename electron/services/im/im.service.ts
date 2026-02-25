@@ -663,6 +663,7 @@ export class IMService {
     let textBuffer = ''
     let hasSentText = false
     const notifiedToolCalls = new Set<string>()
+    const sentMessageStepIds = new Set<string>()
 
     let sendQueue: Promise<void> = Promise.resolve()
     const enqueueSend = (fn: () => Promise<void>): void => {
@@ -710,7 +711,8 @@ export class IMService {
           if (step.type === 'message' && step.content) {
             if (step.isStreaming) {
               textBuffer = step.content
-            } else {
+            } else if (!sentMessageStepIds.has(step.id)) {
+              sentMessageStepIds.add(step.id)
               textBuffer = step.content
               enqueueSend(() => flushTextBuffer())
             }
