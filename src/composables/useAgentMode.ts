@@ -365,13 +365,11 @@ export function useAgentMode(
         }
         groups.push(currentGroup)
       } else if (step.type === 'final_result') {
-        // 结束当前任务
         if (currentGroup) {
           currentGroup.finalResult = step.content
           currentGroup = null
         }
       } else if (step.type !== 'confirm') {
-        // 添加到当前任务的步骤
         if (currentGroup) {
           currentGroup.steps.push(step)
         } else {
@@ -682,7 +680,9 @@ export function useAgentMode(
     }
     
     // 监听步骤更新
-    cleanupStepListener = window.electronAPI.agent.onStep((data: { agentId: string; ptyId?: string; step: AgentStep }) => {
+    cleanupStepListener = window.electronAPI.agent.onStep((data: { agentId: string; ptyId?: string; step: AgentStep; wakeup?: boolean }) => {
+      // 唤醒模式的 step 只给 Awaken 面板，不进入对话记录
+      if (data.wakeup) return
       // 只处理属于当前 tab 的事件（使用 ptyId 可靠匹配）
       if (!isEventForThisTab(data.agentId, data.ptyId)) return
       
@@ -817,14 +817,17 @@ export function useAgentMode(
   const allHistory = ref<AgentRecord[]>([])
   const isLoadingAllHistory = ref(false)
 
+  const isWakeupRecord = (r: AgentRecord) =>
+    r.userTask.startsWith('[当前时间：') && r.userTask.includes('触发事件')
+
   // 加载近期历史（最近 5 条，用于欢迎页）
   const loadRecentHistory = async () => {
     if (isLoadingHistory.value) return
     isLoadingHistory.value = true
     try {
       const records = await window.electronAPI.history.getAgentRecords() as AgentRecord[]
-      // 按时间倒序，取最近 5 条
       recentHistory.value = records
+        .filter(r => !isWakeupRecord(r))
         .sort((a, b) => b.timestamp - a.timestamp)
         .slice(0, 5)
     } catch (e) {
@@ -840,8 +843,9 @@ export function useAgentMode(
     isLoadingAllHistory.value = true
     try {
       const records = await window.electronAPI.history.getAgentRecords() as AgentRecord[]
-      // 按时间倒序排列
-      allHistory.value = records.sort((a, b) => b.timestamp - a.timestamp)
+      allHistory.value = records
+        .filter(r => !isWakeupRecord(r))
+        .sort((a, b) => b.timestamp - a.timestamp)
     } catch (e) {
       log.error('加载全部历史记录失败:', e)
     } finally {

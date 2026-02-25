@@ -115,6 +115,7 @@ export interface AgentContext {
   sessionId?: string  // 从 HistoryService 恢复的会话 ID（后端自行加载历史数据）
   sessionStartTime?: number  // 从 HistoryService 恢复的会话开始时间
   currentPlan?: AgentPlan  // 当前执行计划（从前端 steps 恢复，用于跨对话持久化）
+  wakeup?: boolean  // 唤醒模式：静默运行，不累积到会话历史
 }
 
 // 工具执行结果

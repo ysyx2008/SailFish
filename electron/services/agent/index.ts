@@ -60,6 +60,9 @@ export { SailFish as TerminalAgent } from './sailfish'
  * - 管理全局回调
  */
 export class AgentService {
+  /** 陪伴 Agent 固定 ID：觉醒唤醒、IM 对话、桌面助手共用同一实例 */
+  static readonly COMPANION_AGENT_ID = '__companion__'
+
   /** Agent 实例映射（按 agentId，终端 Agent 用 ptyId 作为 key） */
   private agents: Map<string, SailFish> = new Map()
   

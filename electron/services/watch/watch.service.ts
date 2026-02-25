@@ -454,7 +454,7 @@ export class WatchService {
   }
 
   /**
-   * desktop 输出：通过 __watch_assistant__ 助手 Agent 执行
+   * desktop 输出：通过 Companion Agent 执行
    * @param wakeupMode 唤醒模式：发送 agent:step（内心独白）但不发送 agent:complete/error
    */
   private async executeWithAssistantAgent(
@@ -482,7 +482,8 @@ export class WatchService {
       onStep: (_runId: string, step: AgentStep) => {
         if (shouldSendSteps && mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('agent:step', {
-            agentId, step: JSON.parse(JSON.stringify(step))
+            agentId, step: JSON.parse(JSON.stringify(step)),
+            ...(wakeupMode ? { wakeup: true } : {})
           })
         }
         if (step.type === 'error') {
@@ -508,7 +509,8 @@ export class WatchService {
       const context: AgentContext = {
         terminalOutput: [],
         systemInfo: { os: process.platform, shell: process.env.SHELL || '/bin/bash' },
-        terminalType: 'local'
+        terminalType: 'local',
+        ...(wakeupMode ? { wakeup: true } : {})
       }
 
       const timeoutMs = (watch.execution.timeout ?? DEFAULT_TIMEOUT_SECONDS) * 1000
@@ -695,7 +697,7 @@ export class WatchService {
 
   // ==================== 输出投递 ====================
 
-  private static readonly WATCH_ASSISTANT_AGENT_ID = '__watch_assistant__'
+  private static readonly WATCH_ASSISTANT_AGENT_ID = '__companion__'
 
   private isNoAction(output: string): boolean {
     const lastLine = output.trim().split('\n').pop()?.trim().toUpperCase() || ''
@@ -775,7 +777,7 @@ export class WatchService {
     log.info(`Proactive message delivered for: ${watch.name}`)
   }
 
-  /** 通知前端确保 __watch_assistant__ tab 存在（Agent 执行前调用） */
+  /** 通知前端确保 companion tab 存在（Agent 执行前调用） */
   private ensureDesktopTab(): boolean {
     if (!this.config?.mainWindow || this.config.mainWindow.isDestroyed()) {
       return false

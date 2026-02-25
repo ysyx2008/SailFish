@@ -257,7 +257,7 @@ export abstract class Agent {
    * 处理工具调用确认
    */
   confirmToolCall(
-    toolCallId: string, 
+    toolCallId: string | undefined, 
     approved: boolean, 
     modifiedArgs?: Record<string, unknown>,
     alwaysAllow?: boolean
@@ -266,7 +266,7 @@ export abstract class Agent {
       return false
     }
     
-    if (this.currentRun.pendingConfirmation.toolCallId === toolCallId) {
+    if (!toolCallId || this.currentRun.pendingConfirmation.toolCallId === toolCallId) {
       // 如果用户选择"始终允许"，将工具+参数加入白名单
       if (approved && alwaysAllow) {
         const { toolName, toolArgs } = this.currentRun.pendingConfirmation
@@ -281,6 +281,13 @@ export abstract class Agent {
     return false
   }
   
+  /**
+   * 是否有待确认的工具调用
+   */
+  hasPendingConfirmation(): boolean {
+    return !!this.currentRun?.pendingConfirmation
+  }
+
   /**
    * 获取运行状态
    */
@@ -610,9 +617,11 @@ export abstract class Agent {
       run.taskMessageLog
     )
     
-    // 累积到会话级别并持久化
-    this.accumulateSessionData(run, status, result)
-    this.saveSessionToHistory()
+    // 唤醒 run 不累积到会话历史（静默运行，L1 记忆已保存）
+    if (!run.context.wakeup) {
+      this.accumulateSessionData(run, status, result)
+      this.saveSessionToHistory()
+    }
     
     // L2: 异步更新知识文档
     this.updateContextKnowledgeAsync(run, result).catch(err => {
@@ -703,6 +712,7 @@ export abstract class Agent {
    * 每完成一轮工具调用后自动触发，确保程序意外退出时不丢失对话记录
    */
   private saveCheckpoint(run: AgentRun): void {
+    if (run.context.wakeup) return
     const historyService = this.services.historyService
     if (!historyService || !this._sessionId || !this._sessionStartTime) return
     
@@ -849,9 +859,10 @@ export abstract class Agent {
       content: errorMessage
     })
     
-    // 累积到会话级别并持久化
-    this.accumulateSessionData(run, 'failed', errorMessage)
-    this.saveSessionToHistory()
+    if (!run.context.wakeup) {
+      this.accumulateSessionData(run, 'failed', errorMessage)
+      this.saveSessionToHistory()
+    }
     
     this.callbacks?.onError?.(run.id, errorMessage)
   }

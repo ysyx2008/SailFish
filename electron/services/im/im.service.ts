@@ -1,13 +1,13 @@
 /**
  * IM Service - 即时通讯平台集成服务
  *
- * 管理钉钉、飞书的连接，将 IM 消息桥接到共享的 RemoteChatService。
- * 所有远程通道（Web、钉钉、飞书）共享同一个会话、PTY 和历史记录。
+ * 管理钉钉、飞书的连接，将 IM 消息路由到 Companion Agent。
+ * IM 对话与觉醒唤醒、桌面助手共用同一个 Agent 会话，保持连贯上下文。
  *
  * 架构：
  *   IM 平台 ──→ Adapter ──→ IMService.handleMessage()
  *                                   │
- *                          RemoteChatService（共享会话）
+ *                          AgentService.runAssistant(COMPANION_AGENT_ID)
  *                                   │
  *                          callbacks 聚合文本 ──→ Adapter.sendMarkdown()
  */
@@ -32,6 +32,7 @@ import { SlackAdapter } from './slack-adapter'
 import { TelegramAdapter } from './telegram-adapter'
 import { WeComAdapter } from './wecom-adapter'
 import { RemoteChatService } from '../remote-chat.service'
+import { AgentService } from '../agent'
 import { getConfigService } from '../config.service'
 import { t } from '../agent/i18n'
 import { createLogger } from '../../utils/logger'
@@ -40,6 +41,7 @@ const log = createLogger('IMService')
 
 export interface IMServiceDependencies {
   remoteChatService: RemoteChatService
+  agentService: import('../agent').AgentService
   mainWindow: {
     webContents: {
       send: (channel: string, ...args: any[]) => void
@@ -201,11 +203,10 @@ export class IMService {
   }
 
   /**
-   * 设置 Agent 执行模式（同步到 RemoteChatService）
+   * 设置 Agent 执行模式
    */
   setExecutionMode(mode: 'strict' | 'relaxed' | 'free') {
     this.config.executionMode = mode
-    this.chat.executionMode = mode
   }
 
   // ==================== 钉钉管理 ====================
@@ -556,16 +557,19 @@ export class IMService {
     // 构建完整消息文本（含附件信息）
     const fullMessage = this.buildAgentMessage(msg)
 
-    // 检查是否是确认/拒绝操作（仅对纯文本消息生效）
-    if (this.chat.pendingConfirm && !msg.attachments?.length) {
+    // Companion Agent 实例
+    const companion = this.deps.agentService.createAssistantAgent(AgentService.COMPANION_AGENT_ID)
+
+    // 检查是否有待确认的工具调用（仅对纯文本消息生效）
+    if (companion.hasPendingConfirmation() && !msg.attachments?.length) {
       await this.handleConfirmResponse(adapter, replyContext, msg.text)
       return
     }
 
     // 如果 Agent 正在运行，尝试补充消息（包括 ask_user 的回复）
-    if (this.chat.isRunning) {
+    if (companion.isRunning()) {
       try {
-        if (this.chat.supplement(fullMessage)) {
+        if (companion.addUserMessage(fullMessage)) {
           await adapter.sendText(replyContext, t('im.reply_received'))
         } else {
           await adapter.sendText(replyContext, t('im.reply_busy'))
@@ -580,11 +584,6 @@ export class IMService {
     if (!msg.attachments?.length) {
       const lowerText = msg.text.toLowerCase().trim()
       try {
-        if (lowerText === '/clear' || lowerText === '清空' || lowerText === '清空历史' || lowerText === 'clear') {
-          this.chat.clearHistory()
-          await adapter.sendText(replyContext, t('im.history_cleared'))
-          return
-        }
         if (lowerText === '/status' || lowerText === '状态' || lowerText === 'status') {
           const status = this.getSessionStatus()
           await adapter.sendText(replyContext, status)
@@ -608,15 +607,16 @@ export class IMService {
    * 处理确认/拒绝回复
    */
   private async handleConfirmResponse(adapter: IMAdapter, replyContext: any, text: string) {
+    const companion = this.deps!.agentService.createAssistantAgent(AgentService.COMPANION_AGENT_ID)
     const lowerText = text.toLowerCase().trim()
     const isApproved = CONFIRM_KEYWORDS.some(kw => lowerText === kw)
     const isRejected = REJECT_KEYWORDS.some(kw => lowerText === kw)
 
     if (!isApproved && !isRejected) {
       try {
-        const pendingConfirm = this.chat.pendingConfirm
+        const status = companion.getRunStatus()
         await adapter.sendText(replyContext,
-          t('im.confirm_hint', { toolName: pendingConfirm?.toolName || 'unknown' })
+          t('im.confirm_hint', { toolName: status?.currentToolName || 'unknown' })
         )
       } catch (err) {
         log.error('Failed to send confirm hint:', err)
@@ -624,7 +624,7 @@ export class IMService {
       return
     }
 
-    const success = this.chat.confirmToolCall(undefined, isApproved)
+    const success = companion.confirmToolCall(undefined, isApproved)
 
     try {
       if (success) {
@@ -640,36 +640,30 @@ export class IMService {
   }
 
   /**
-   * 执行 Agent 任务
+   * 执行 Agent 任务（直接调用 Companion Agent，不经过 RemoteChatService 前端往返）
    */
   private async runAgentTask(adapter: IMAdapter, replyContext: any, msg: IMIncomingMessage) {
     if (!this.deps) return
 
-    // 设置当前活跃会话（供 send_file_to_chat 工具使用）
     this.activeSession = { adapter, replyContext }
-
-    // 构建完整消息文本（含附件路径信息）
     const fullMessage = this.buildAgentMessage(msg)
+    const agentId = AgentService.COMPANION_AGENT_ID
 
-    // 发送处理中提示
     try {
       await adapter.sendText(replyContext, t('im.processing'))
     } catch { /* ignore */ }
 
-    // 通知桌面端
+    // 确保桌面端有 companion tab（不激活，不抢焦点）
+    this.sendToDesktop('watch:ensureTab', { agentId })
     this.sendToDesktop('im:taskStarted', {
-      platform: msg.platform,
-      userId: msg.userId,
-      userName: msg.userName,
-      message: fullMessage
+      platform: msg.platform, userId: msg.userId,
+      userName: msg.userName, message: fullMessage
     })
 
-    // IM 专用：文本缓冲和工具调用去重
     let textBuffer = ''
     let hasSentText = false
     const notifiedToolCalls = new Set<string>()
 
-    // 发送队列：序列化所有 IM 消息发送，防止并发导致消息乱序
     let sendQueue: Promise<void> = Promise.resolve()
     const enqueueSend = (fn: () => Promise<void>): void => {
       sendQueue = sendQueue.then(() => fn().catch(err => {
@@ -690,67 +684,64 @@ export class IMService {
       }
     }
 
-    // 将 IM 平台类型映射为 remoteChannel（显式匹配，避免未来新增平台时默认值错误）
-    const channelMap: Record<IMPlatform, 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'> = {
-      dingtalk: 'dingtalk',
-      feishu: 'feishu',
-      slack: 'slack',
-      telegram: 'telegram',
-      wecom: 'wecom',
-    }
-    const remoteChannel = channelMap[msg.platform]
+    const mainWindow = this.deps.mainWindow
 
     try {
-      await this.chat.sendMessage(fullMessage, {
-        onStep: (_agentId: string, step: any) => {
+      const context = {
+        terminalOutput: [] as string[],
+        systemInfo: { os: process.platform, shell: process.env.SHELL || '/bin/bash' },
+        terminalType: 'local' as const
+      }
+
+      await this.deps.agentService.runAssistant(agentId, fullMessage, context, {
+        enabled: true, commandTimeout: 30000,
+        autoExecuteSafe: true, autoExecuteModerate: true,
+        executionMode: this.config.executionMode as 'strict' | 'relaxed' | 'free',
+        debugMode: false
+      }, undefined, {
+        onStep: (_runId: string, step: any) => {
+          // 同步到桌面 companion tab
+          if (mainWindow && !mainWindow.webContents.isDestroyed()) {
+            mainWindow.webContents.send('agent:step', {
+              agentId, step: JSON.parse(JSON.stringify(step))
+            })
+          }
+
           if (step.type === 'message' && step.content) {
             if (step.isStreaming) {
-              // 流式中：只累积，不发送
               textBuffer = step.content
             } else {
-              // 流式结束：发送完整消息
               textBuffer = step.content
               enqueueSend(() => flushTextBuffer())
             }
           } else if (step.type === 'asking' && step.toolArgs) {
-            // ask_user 工具：去重（updateStep 轮询更新剩余时间会反复触发 onStep）
             const askKey = step.id || `asking:${step.toolArgs.question}`
             if (notifiedToolCalls.has(askKey)) return
             notifiedToolCalls.add(askKey)
 
-            // 先发送缓冲文本，再展示问题（避免乱序）
             const sendAsk = async () => {
               await flushTextBuffer()
-
               const question = step.toolArgs.question || step.content || ''
               const options = step.toolArgs.options as string[] | undefined
               const lines = [t('im.need_reply'), '', question]
-
               if (options && options.length > 0) {
                 lines.push('')
-                options.forEach((opt: string, i: number) => {
-                  lines.push(`${i + 1}. ${opt}`)
-                })
+                options.forEach((opt: string, i: number) => { lines.push(`${i + 1}. ${opt}`) })
                 lines.push('', t('im.need_reply_select'))
               } else {
                 lines.push('', t('im.need_reply_input'))
               }
-
               try {
                 await adapter.sendMarkdown(replyContext, t('im.need_reply_title'), lines.join('\n'))
               } catch { /* ignore */ }
             }
             enqueueSend(sendAsk)
           } else if (step.type === 'tool_call' && step.toolName) {
-            // ask_user 的工具调用不重复提示（已在 asking 步骤中处理）
             if (step.toolName === 'ask_user') return
-
-            // 去重：同一个工具调用只通知一次
             const toolCallKey = step.id || `${step.toolName}:${JSON.stringify(step.toolArgs || {})}`
             if (notifiedToolCalls.has(toolCallKey)) return
             notifiedToolCalls.add(toolCallKey)
 
-            // 先发送缓冲文本，再发工具通知（避免乱序）
             const sendToolNotify = async () => {
               await flushTextBuffer()
               try {
@@ -763,13 +754,11 @@ export class IMService {
         },
 
         onNeedConfirm: (confirmation: any) => {
-          // 先发送缓冲区中的文本，再发送确认卡片（避免乱序）
           const sendConfirm = async () => {
             await flushTextBuffer()
             const riskEmoji = confirmation.riskLevel === 'dangerous' ? '🔴' : '🟡'
             const argsText = JSON.stringify(confirmation.toolArgs, null, 2)
               .substring(0, 500)
-
             try {
               await adapter.sendMarkdown(replyContext, t('im.need_confirm'), [
                 t('im.need_confirm_title', { riskEmoji }),
@@ -788,47 +777,43 @@ export class IMService {
           enqueueSend(sendConfirm)
         },
 
-        onComplete: (_agentId: string, _result: string) => {
-          // 先发送残留文本，再决定是否发完成通知（避免乱序和冗余）
+        onComplete: (_runId: string, result: string) => {
           const finish = async () => {
             await flushTextBuffer()
-            // 已发送过文本回复时，不再单独发完成通知（避免冗余）
             if (!hasSentText) {
-              try {
-                await adapter.sendText(replyContext, t('im.task_complete'))
-              } catch { /* ignore */ }
+              try { await adapter.sendText(replyContext, t('im.task_complete')) } catch { /* ignore */ }
             }
           }
           enqueueSend(finish)
+
+          if (mainWindow && !mainWindow.webContents.isDestroyed()) {
+            mainWindow.webContents.send('agent:complete', { agentId, result })
+          }
           this.sendToDesktop('im:taskComplete', {
-            platform: msg.platform,
-            userId: msg.userId,
+            platform: msg.platform, userId: msg.userId
           })
         },
 
-        onError: (_agentId: string, error: string) => {
-          // 先发送残留文本，再发送错误提示（避免乱序）
+        onError: (_runId: string, error: string) => {
           const finish = async () => {
             await flushTextBuffer()
-            try {
-              await adapter.sendText(replyContext, t('im.task_error', { error }))
-            } catch { /* ignore */ }
+            try { await adapter.sendText(replyContext, t('im.task_error', { error })) } catch { /* ignore */ }
           }
           enqueueSend(finish)
+
+          if (mainWindow && !mainWindow.webContents.isDestroyed()) {
+            mainWindow.webContents.send('agent:error', { agentId, error })
+          }
           this.sendToDesktop('im:taskError', {
-            platform: msg.platform,
-            userId: msg.userId,
-            error,
+            platform: msg.platform, userId: msg.userId, error
           })
         }
-      }, remoteChannel)
+      })
     } catch (err: any) {
-      // sendMessage 抛异常（如 Agent 正在运行、PTY 创建失败等）
       try {
         await adapter.sendText(replyContext, `❌ ${err.message || 'Unknown error'}`)
       } catch { /* ignore */ }
     } finally {
-      // 等待发送队列中所有消息发送完毕，再清理会话
       try { await sendQueue } catch { /* ignore */ }
       this.activeSession = null
     }
@@ -1038,16 +1023,15 @@ export class IMService {
   }
 
   private getSessionStatus(): string {
-    const state = this.chat.getState()
+    const companion = this.deps?.agentService?.createAssistantAgent(AgentService.COMPANION_AGENT_ID)
+    const runStatus = companion?.getRunStatus()
     const connected = (name: string, isConn: boolean) =>
       `${name}: ${isConn ? '✅' : '❌'}`
 
     return [
       t('im.status_title'),
-      `${t('im.status_state')}: ${state.isRunning ? t('im.status_running') : t('im.status_idle')}`,
-      `${t('im.status_history')}: ${t('im.status_history_count', { count: state.history.length })}`,
-      `${t('im.status_terminal')}: ${state.ptyId || t('im.status_terminal_none')}`,
-      `${t('im.status_exec_mode')}: ${state.executionMode}`,
+      `${t('im.status_state')}: ${runStatus?.isRunning ? t('im.status_running') : t('im.status_idle')}`,
+      `${t('im.status_exec_mode')}: ${this.config.executionMode}`,
       connected('DingTalk', this.isDingTalkConnected()),
       connected('Feishu', this.isFeishuConnected()),
       connected('Slack', this.isSlackConnected()),

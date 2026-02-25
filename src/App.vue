@@ -249,7 +249,7 @@ onMounted(async () => {
   })
 
   // Watch desktop 输出：确保助手 tab 存在，后续 steps 通过标准 agent:step 事件流入
-  const WATCH_ASSISTANT_AGENT_ID = '__watch_assistant__'
+  const COMPANION_AGENT_ID = '__companion__'
   cleanupWatchEnsureTab = window.electronAPI.watch.onEnsureTab((data) => {
     const existing = terminalStore.tabs.find(t => t.agentId === data.agentId)
     if (!existing) {

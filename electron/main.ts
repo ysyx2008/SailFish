@@ -2382,6 +2382,7 @@ ipcMain.handle('gateway:getAuditLog', async (_event, limit?: number) => {
 const imService = getIMService()
 imService.setDependencies({
   remoteChatService,
+  agentService,
   mainWindow: null
 })
 // 从持久化配置恢复 IM 执行模式

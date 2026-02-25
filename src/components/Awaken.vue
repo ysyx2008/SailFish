@@ -83,7 +83,7 @@ const selectedWatch = ref<WatchDefinition | null>(null)
 const runningWatches = ref<Set<string>>(new Set())
 
 // 手动触发时的 Agent 实时输出（内心独白）
-const WATCH_ASSISTANT_AGENT_ID = '__watch_assistant__'
+const COMPANION_AGENT_ID = '__companion__'
 const liveExecutionWatchId = ref<string | null>(null)
 const liveSteps = ref<Array<{ id: string; type: string; content: string; toolName?: string; toolResult?: string }>>([])
 
@@ -484,7 +484,7 @@ onMounted(async () => {
   })
   // 监听关切助手的 Agent 步骤，用于详情面板展示内心独白
   cleanupAgentStep = window.electronAPI.agent.onStep((data: { agentId: string; step: { id: string; type: string; content: string; toolName?: string; toolResult?: string } }) => {
-    if (data.agentId !== WATCH_ASSISTANT_AGENT_ID || !liveExecutionWatchId.value) return
+    if (data.agentId !== COMPANION_AGENT_ID || !liveExecutionWatchId.value) return
     const step = data.step
     const idx = liveSteps.value.findIndex(s => s.id === step.id)
     const entry = { id: step.id, type: step.type, content: step.content, toolName: step.toolName, toolResult: step.toolResult }
