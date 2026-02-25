@@ -132,10 +132,33 @@ export interface AiProfile {
 }
 
 /**
+ * 检测 API 错误是否因为不支持 image_url（视觉/多模态）
+ */
+function isVisionNotSupportedError(errorMsg: string): boolean {
+  const lower = errorMsg.toLowerCase()
+  return lower.includes('image_url') && (
+    lower.includes('unknown variant') ||
+    lower.includes('not supported') ||
+    lower.includes('invalid type') ||
+    lower.includes('invalid_type') ||
+    lower.includes('expected `text`') ||
+    lower.includes("expected 'text'")
+  )
+}
+
+/**
+ * 检测消息列表中是否包含图片
+ */
+function messagesContainImages(messages: AiMessage[]): boolean {
+  return messages.some(m => m.images && m.images.length > 0)
+}
+
+/**
  * 将 AiMessage 转换为 API 请求格式
  * 如果消息包含图片，content 会转为多模态数组格式（OpenAI Vision API）
+ * @param stripImages 为 true 时忽略图片（用于 API 不支持视觉时的降级）
  */
-function formatMessageForApi(msg: AiMessage): Record<string, unknown> {
+function formatMessageForApi(msg: AiMessage, stripImages = false): Record<string, unknown> {
   if (msg.role === 'tool') {
     return {
       role: 'tool' as const,
@@ -154,8 +177,8 @@ function formatMessageForApi(msg: AiMessage): Record<string, unknown> {
     }
     return assistantMsg
   }
-  // user / system 消息：如果有图片，转为多模态格式
-  if (msg.images && msg.images.length > 0 && msg.role === 'user') {
+  // user / system 消息：如果有图片且未要求剥离，转为多模态格式
+  if (!stripImages && msg.images && msg.images.length > 0 && msg.role === 'user') {
     const parts: AiContentPart[] = []
     // 文本部分
     if (msg.content) {
@@ -626,21 +649,22 @@ export class AiService {
     const startTime = Date.now()
     log.info(`ChatWithTools request: model=${profile.model}, messages=${messages.length}, tools=${tools.length}`)
 
-    // 转换消息格式，处理 tool_calls、reasoning_content 和多模态图片
-    const formattedMessages = messages.map(msg => formatMessageForApi(msg))
+    const hasImages = messagesContainImages(messages)
 
-    const requestBody = {
-      model: profile.model,
-      messages: formattedMessages,
-      tools: tools.length > 0 ? tools : undefined,
-      tool_choice: tools.length > 0 ? 'auto' : undefined,
-      parallel_tool_calls: tools.length > 0 ? true : undefined,
-      temperature: 0.7,
-      max_tokens: 4096
-    }
+    const doRequest = async (stripImages: boolean): Promise<ChatWithToolsResult> => {
+      const fmtMessages = messages.map(msg => formatMessageForApi(msg, stripImages))
 
-    try {
-      const data = await this.makeRequest<{
+      const body = {
+        model: profile.model,
+        messages: fmtMessages,
+        tools: tools.length > 0 ? tools : undefined,
+        tool_choice: tools.length > 0 ? 'auto' : undefined,
+        parallel_tool_calls: tools.length > 0 ? true : undefined,
+        temperature: 0.7,
+        max_tokens: 4096
+      }
+
+      let data: {
         choices?: {
           message?: {
             content?: string | null
@@ -649,14 +673,29 @@ export class AiService {
           finish_reason?: string
         }[]
         error?: { message?: string; code?: string; type?: string }
-      }>(profile, requestBody)
+      }
+
+      try {
+        data = await this.makeRequest(profile, body)
+      } catch (err) {
+        if (!stripImages && hasImages && err instanceof Error && isVisionNotSupportedError(err.message)) {
+          log.warn(`Vision not supported by model ${profile.model}, retrying without images`)
+          return doRequest(true)
+        }
+        throw err
+      }
 
       if (data.error) {
         const code = data.error.code?.toLowerCase() || data.error.type?.toLowerCase() || ''
         if (code === 'context_length_exceeded') {
           throw new Error(t('error.context_length_exceeded'))
         }
-        throw new Error(t('error.api_request_failed', { data: data.error.message || t('error.api_error_generic') }))
+        const errorMsg = data.error.message || t('error.api_error_generic')
+        if (!stripImages && hasImages && isVisionNotSupportedError(errorMsg)) {
+          log.warn(`Vision not supported by model ${profile.model}, retrying without images`)
+          return doRequest(true)
+        }
+        throw new Error(t('error.api_request_failed', { data: errorMsg }))
       }
 
       const choice = data.choices?.[0]
@@ -673,6 +712,10 @@ export class AiService {
         tool_calls: choice.message?.tool_calls,
         finish_reason: choice.finish_reason as ChatWithToolsResult['finish_reason']
       }
+    }
+
+    try {
+      return await doRequest(false)
     } catch (error) {
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
       log.error(`ChatWithTools failed: model=${profile.model}, duration=${elapsed}s, error=${error instanceof Error ? error.message : error}`)
@@ -780,18 +823,37 @@ export class AiService {
       }, AI_TIMEOUT.SOCKET_IDLE)
     }
 
-    // 转换消息格式，支持 think 模型的 reasoning_content 和多模态图片
-    const formattedMessages = messages.map(msg => formatMessageForApi(msg))
+    // 视觉降级标记：API 不支持 image_url 时自动剥离图片重试
+    let stripImages = false
+    const hasImages = messagesContainImages(messages)
 
-    const requestBody = {
-      model: profile.model,
-      messages: formattedMessages,
-      tools: tools.length > 0 ? tools : undefined,
-      tool_choice: tools.length > 0 ? 'auto' : undefined,
-      parallel_tool_calls: tools.length > 0 ? true : undefined,
-      temperature: 0.7,
-      max_tokens: 4096,
-      stream: true
+    const rebuildRequestBody = () => {
+      const fmtMsgs = messages.map(msg => formatMessageForApi(msg, stripImages))
+      return {
+        model: profile.model,
+        messages: fmtMsgs,
+        tools: tools.length > 0 ? tools : undefined,
+        tool_choice: tools.length > 0 ? 'auto' : undefined,
+        parallel_tool_calls: tools.length > 0 ? true : undefined,
+        temperature: 0.7,
+        max_tokens: 4096,
+        stream: true
+      }
+    }
+
+    let requestBody = rebuildRequestBody()
+
+    // 视觉降级重试：剥离图片后重新请求（最多触发一次）
+    const tryVisionFallback = (errorMsg: string): boolean => {
+      if (!stripImages && hasImages && isVisionNotSupportedError(errorMsg)) {
+        log.warn(`Vision not supported by model ${profile.model}, retrying without images`)
+        stripImages = true
+        requestBody = rebuildRequestBody()
+        resetForRetry()
+        doRequest()
+        return true
+      }
+      return false
     }
 
     // 尝试重试的辅助函数
@@ -858,6 +920,8 @@ export class AiService {
             log.error(`Request HTTP error: model=${profile.model}, status=${res.statusCode}, duration=${elapsed}s, error=${parsed.message.slice(0, 200)}`)
             if (parsed.code === 'context_length_exceeded') {
               complete(() => onError(t('error.context_length_exceeded')))
+            } else if (tryVisionFallback(parsed.message)) {
+              // 已降级重试
             } else {
               complete(() => onError(t('error.api_request_failed', { data: parsed.message })))
             }
@@ -1034,7 +1098,6 @@ export class AiService {
       req.on('error', (err) => {
         // 如果是中止导致的错误，不报错
         if (err.message === 'aborted' || err.message.includes('socket hang up')) {
-          // AI Debug: 记录中止
           aiDebugService.logResponseDone(reqId, { finishReason: 'aborted' })
           complete(() => onDone({
             content: undefined,
@@ -1043,9 +1106,9 @@ export class AiService {
           }))
           return
         }
+        if (tryVisionFallback(err.message)) return
         // 尝试重试网络错误
         if (!tryRetry(err.message, doRequest)) {
-          // AI Debug: 记录请求错误
           aiDebugService.logResponseError(reqId, err.message)
           complete(() => onError(t('error.request_error', { message: translateNetworkError(err.message) })))
         }
@@ -1076,9 +1139,9 @@ export class AiService {
       req.end()
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error'
-      // 尝试重试
+      if (tryVisionFallback(errorMsg)) return
+      // 尝试重试网络错误
       if (!tryRetry(errorMsg, doRequest)) {
-        // AI Debug: 记录请求异常
         aiDebugService.logResponseError(reqId, `Exception: ${errorMsg}`)
         if (error instanceof Error) {
           complete(() => onError(t('error.ai_request_failed', { message: translateNetworkError(error.message) })))

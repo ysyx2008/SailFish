@@ -1402,6 +1402,17 @@ onUnmounted(() => {
                         <div v-if="step.toolResult && step.toolResult !== '已拒绝' && step.toolResult !== step.content && step.type !== 'asking'" class="step-result">
                           <pre>{{ step.toolResult }}</pre>
                         </div>
+                        <!-- 步骤中的图片（如 read_file 读取的图片） -->
+                        <div v-if="step.images && step.images.length > 0" class="step-images">
+                          <img
+                            v-for="(imgUrl, imgIdx) in step.images"
+                            :key="imgIdx"
+                            :src="imgUrl"
+                            :alt="step.toolResult || `image ${imgIdx + 1}`"
+                            class="step-image"
+                            @click="openImagePreview(imgUrl)"
+                          />
+                        </div>
                       </div>
                     </div>
                     <!-- AI 思考中指示器（当 Agent 运行中且没有流式输出时显示） -->
@@ -4146,6 +4157,27 @@ onUnmounted(() => {
   white-space: pre-wrap;
   word-break: break-all;
   color: var(--text-muted);
+}
+
+.step-images {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.step-image {
+  max-width: 200px;
+  max-height: 150px;
+  border-radius: 6px;
+  cursor: pointer;
+  object-fit: contain;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.step-image:hover {
+  transform: scale(1.03);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .agent-step-inline.thinking {

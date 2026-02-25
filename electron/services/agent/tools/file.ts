@@ -203,14 +203,15 @@ function readImageFile(
 
     executor.addStep({
       type: 'tool_result',
-      content: `🖼️ ${t('file.image_read_success', { name: fileName, size: sizeDisplay })}`,
+      content: t('file.image_read_success', { name: fileName, size: sizeDisplay }),
       toolName: 'read_file',
-      toolResult: `${fileName} (${sizeDisplay})`
+      toolResult: `${fileName} (${sizeDisplay})`,
+      images: [dataUrl]
     })
 
     return {
       success: true,
-      output: t('file.image_read_output', { name: fileName, size: sizeDisplay }),
+      output: t('file.image_read_output', { name: fileName, size: sizeDisplay, path: filePath }),
       images: [dataUrl]
     }
   } catch (error) {
