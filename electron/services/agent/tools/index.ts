@@ -23,7 +23,7 @@ import { rememberInfo, searchKnowledge, getKnowledgeDoc } from './knowledge'
 import { createPlan, updatePlan, clearPlan } from './plan'
 import { recallTask, deepRecall, searchHistory } from './memory'
 import { compressContext, recallCompressed, manageMemory } from './context'
-import { wait, askUser, sendFileToChat, sendImageToChat, sendIMNotification, executeMcpTool, loadSkillTool, unloadSkillTool, loadUserSkillTool, executeSkillTool } from './misc'
+import { wait, askUser, sendFileToChat, sendImageToChat, messageUser, executeMcpTool, loadSkillTool, unloadSkillTool, loadUserSkillTool, executeSkillTool } from './misc'
 
 // 重新导出类型
 export type { ToolExecutorConfig, AgentConfig, ToolResult, ErrorCategory } from './types'
@@ -37,7 +37,7 @@ export { rememberInfo, searchKnowledge, getKnowledgeDoc } from './knowledge'
 export { createPlan, updatePlan, clearPlan } from './plan'
 export { recallTask, deepRecall, searchHistory } from './memory'
 export { compressContext, recallCompressed, manageMemory } from './context'
-export { wait, askUser, sendFileToChat, sendImageToChat, sendIMNotification, executeMcpTool, loadSkillTool, unloadSkillTool, loadUserSkillTool, executeSkillTool } from './misc'
+export { wait, askUser, sendFileToChat, sendImageToChat, messageUser, executeMcpTool, loadSkillTool, unloadSkillTool, loadUserSkillTool, executeSkillTool } from './misc'
 
 // 导出工具函数
 export {
@@ -128,8 +128,8 @@ export async function executeTool(
     case 'ask_user':
       return askUser(args, executor)
 
-    case 'send_im_notification':
-      return sendIMNotification(args, executor)
+    case 'talk_to_user':
+      return messageUser(args, executor)
 
     case 'create_plan':
       return createPlan(args, executor)

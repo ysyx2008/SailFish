@@ -6,7 +6,7 @@
  *
  * 分流规则：
  * - 即时事件（high 优先级 / webhook / manual / file_change）：直接转发给 WatchService
- * - 心跳事件：触发一次排水，把池中已攒的事件打包投递；池空则跳过，不唤醒 AI
+ * - 心跳事件：触发排水并投递；池空时也发送空 batch，让唤醒能做例行检查
  * - 其他事件（normal/low 优先级的 email / calendar / cron / interval）：
  *   放入池中等待排水
  *
@@ -76,9 +76,11 @@ export class EventPool {
     return this.pool.length
   }
 
-  /** 手动排水（可供外部触发） */
-  async drain(): Promise<void> {
-    if (this.pool.length === 0) return
+  /** 手动排水（可供外部触发）
+   * @param forceEmitEmpty 池空时是否仍发送空 batch（用于唤醒例行检查）
+   * @param options.fromManualCheck 来自手动检查时设为 true，前端会显示内心独白 */
+  async drain(forceEmitEmpty = false, options?: { fromManualCheck?: boolean }): Promise<void> {
+    if (this.pool.length === 0 && !forceEmitEmpty) return
 
     const batch = this.pool.splice(0)
     this.seenIds.clear()
@@ -91,18 +93,19 @@ export class EventPool {
       payload: {
         isBatch: true,
         eventCount: batch.length,
+        ...(options?.fromManualCheck && { fromManualCheck: true }),
         events: batch.map(e => ({
           type: e.type,
           source: e.source,
           timestamp: e.timestamp,
           payload: e.payload
         })),
-        summary: this.buildBatchSummary(batch)
+        summary: batch.length ? this.buildBatchSummary(batch) : ''
       },
       priority: 'normal'
     }
 
-    log.info(`Draining ${batch.length} pooled event(s)`)
+    log.info(batch.length ? `Draining ${batch.length} pooled event(s)` : 'Heartbeat: sending empty batch for routine check')
     await this.downstream(batchEvent)
   }
 
@@ -127,12 +130,7 @@ export class EventPool {
 
   private async onEvent(event: SensorEvent): Promise<void> {
     if (event.type === 'heartbeat') {
-      if (this.pool.length === 0) {
-        log.info('Heartbeat: pool empty, skipping')
-        return
-      }
-      log.info(`Heartbeat: draining ${this.pool.length} pooled event(s)`)
-      await this.drain()
+      await this.drain(true)  // 池空也发送，让唤醒能做例行检查
       return
     }
 

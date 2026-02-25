@@ -104,6 +104,8 @@ export interface BuildSystemPromptOptions {
   aiRules?: string
   /** 用户自定义个性定义（优先级高于 MBTI） */
   personalityText?: string
+  /** AI 名字（用户自定义，默认旗鱼） */
+  agentName?: string
   /** 任务历史总结列表（L1 层） */
   taskSummaries?: string
   /** 语义预加载的相关任务摘要（L2 层） */
@@ -130,6 +132,7 @@ export class PromptBuilder {
   private readonly contextKnowledgeDoc?: string
   private readonly aiRules?: string
   private readonly personalityText?: string
+  private readonly agentName?: string
   private readonly taskSummaries?: string
   private readonly relatedTaskDigests?: string
   private readonly availableTaskIds?: Array<{ id: string; summary: string }>
@@ -145,6 +148,7 @@ export class PromptBuilder {
     this.contextKnowledgeDoc = options.contextKnowledgeDoc
     this.aiRules = options.aiRules
     this.personalityText = options.personalityText
+    this.agentName = options.agentName
     this.taskSummaries = options.taskSummaries
     this.relatedTaskDigests = options.relatedTaskDigests
     this.availableTaskIds = options.availableTaskIds
@@ -234,9 +238,11 @@ export class PromptBuilder {
     // 任务示例暂时禁用以节约 token，方法代码保留以备后用
     // const simpleTaskExample = this.buildSimpleTaskExample(isWindows)
 
+    const displayName = this.agentName?.trim() || '旗鱼（SailFish）AI Agent'
+
     return `**CRITICAL RULE: You MUST respond in the SAME language the user uses. If user writes in English, reply in English. If user writes in Japanese, reply in Japanese. If user writes in Chinese, reply in Chinese.**
 
-你是旗鱼（SailFish）AI Agent，一个能帮助用户完成各类任务的智能助手。
+你是${displayName}，一个能帮助用户完成各类任务的智能助手。
 当前时间：${currentTime}
 ${this.context.cwd ? `当前工作目录：${this.context.cwd}（系统实时获取，无需执行 pwd 验证）` : '当前工作目录：未成功获取'}
 ${personalitySection}
@@ -583,7 +589,8 @@ export function buildSystemPrompt(
   taskSummaries?: string,
   relatedTaskDigests?: string,
   availableTaskIds?: Array<{ id: string; summary: string }>,
-  contextKnowledgeDoc?: string
+  contextKnowledgeDoc?: string,
+  agentName?: string
 ): string {
   const builder = new PromptBuilder({
     context,
@@ -596,6 +603,7 @@ export function buildSystemPrompt(
     executionMode,
     aiRules,
     personalityText,
+    agentName,
     taskSummaries,
     relatedTaskDigests,
     availableTaskIds

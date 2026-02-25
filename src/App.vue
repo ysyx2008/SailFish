@@ -121,6 +121,7 @@ let cleanupRunTask: (() => void) | null = null
 let cleanupInstallSkill: (() => void) | null = null
 let cleanupWatchEnsureTab: (() => void) | null = null
 let cleanupWatchProactiveMessage: (() => void) | null = null
+let cleanupWatchActivateMessage: (() => void) | null = null
 
 
 onMounted(async () => {
@@ -261,28 +262,68 @@ onMounted(async () => {
     }
   })
 
-  // 觉醒主动推送：Watch 执行完成后有消息要告知用户
-  cleanupWatchProactiveMessage = window.electronAPI.watch.onProactiveMessage((data) => {
-    const tab = terminalStore.tabs.find(t => t.agentId === data.agentId)
-    if (tab) {
-      terminalStore.addAgentStep(tab.id, {
-        id: `proactive-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        type: 'message',
-        content: data.message,
-        timestamp: Date.now()
+  // 觉醒主动推送：收到消息先存着，弹通知；用户点击通知后才创建标签页展开对话
+  const pendingProactiveMessages: Array<{ agentId: string; message: string; watchName: string; timestamp: number }> = []
+
+  const activateProactiveMessages = (agentId: string) => {
+    const messages = pendingProactiveMessages.filter(m => m.agentId === agentId)
+    if (messages.length === 0) return
+
+    let tab = terminalStore.tabs.find(t => t.agentId === agentId)
+    if (!tab) {
+      const tabId = terminalStore.createAssistantTab({
+        agentId,
+        title: configStore.agentName || t('watch.assistantTabTitle'),
+        activate: true
       })
+      tab = terminalStore.tabs.find(t => t.id === tabId)
+    } else {
+      terminalStore.setActiveTab(tab.id)
     }
+
+    if (tab) {
+      for (const msg of messages) {
+        const uid = `proactive-${msg.timestamp}-${Math.random().toString(36).substring(2, 6)}`
+        terminalStore.addAgentStep(tab.id, {
+          id: `${uid}-task`,
+          type: 'user_task',
+          content: `__proactive__`,
+          timestamp: msg.timestamp
+        })
+        terminalStore.addAgentStep(tab.id, {
+          id: `${uid}-result`,
+          type: 'final_result',
+          content: msg.message,
+          timestamp: msg.timestamp
+        })
+      }
+    }
+
+    // 清除已展示的消息
+    pendingProactiveMessages.splice(0, pendingProactiveMessages.length,
+      ...pendingProactiveMessages.filter(m => m.agentId !== agentId))
+  }
+
+  cleanupWatchProactiveMessage = window.electronAPI.watch.onProactiveMessage((data) => {
+    pendingProactiveMessages.push({
+      agentId: data.agentId,
+      message: data.message,
+      watchName: data.watchName,
+      timestamp: Date.now()
+    })
 
     const preview = data.message.length > 100
       ? data.message.substring(0, 100) + '...'
       : data.message
     toast.proactive(preview, () => {
-      const tab = terminalStore.tabs.find(t => t.agentId === data.agentId)
-      if (tab) {
-        terminalStore.setActiveTab(tab.id)
-      }
+      activateProactiveMessages(data.agentId)
     })
   })
+
+  // 系统通知点击：激活应用并展开对话
+  cleanupWatchActivateMessage = window.electronAPI.watch.onActivateMessage?.((data: { agentId: string }) => {
+    activateProactiveMessages(data.agentId)
+  }) || null
 
   // 全局监听 IM 渠道连接状态变化，弹 toast 通知
   const imPlatformNames: Record<string, string> = {
@@ -589,6 +630,7 @@ onUnmounted(() => {
   cleanupInstallSkill?.()
   cleanupWatchEnsureTab?.()
   cleanupWatchProactiveMessage?.()
+  cleanupWatchActivateMessage?.()
 })
 </script>
 

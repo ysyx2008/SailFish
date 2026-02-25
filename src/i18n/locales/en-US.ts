@@ -1910,6 +1910,7 @@ export default {
     remoteHost: 'Remote Host',
     assistantOnly: 'Assistant Only',
 
+    liveOutput: 'Inner Monologue',
     outputType: 'Output Delivery',
     outputDesktop: 'In-App Chat',
     outputIM: 'IM Push',
@@ -2018,6 +2019,8 @@ export default {
     patrolDone: 'All clear',
     patrolSkipped: 'Nothing noteworthy',
     patrolError: 'Check failed, see logs',
+    nameLabel: 'Name',
+    namePlaceholder: 'SailFish',
     personalityTitle: 'Personality',
     personalityNav: 'Personality',
     personalityHint: 'Define Agent personality; takes priority over MBTI style',

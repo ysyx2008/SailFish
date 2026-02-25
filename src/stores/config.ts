@@ -282,6 +282,8 @@ export const useConfigStore = defineStore('config', () => {
   const aiRules = ref<string>('')
   // Agent 个性描述（在 MBTI 基础上追加）
   const agentPersonalityText = ref<string>('')
+  // AI 名字（默认旗鱼，用户可自定义）
+  const agentName = ref<string>('')
 
   // 日志级别
   const logLevel = ref<LogLevel>('warn')
@@ -368,6 +370,10 @@ export const useConfigStore = defineStore('config', () => {
       // 加载 Agent 个性描述
       const personalityText = await window.electronAPI.config.getAgentPersonalityText()
       agentPersonalityText.value = personalityText || ''
+
+      // 加载 AI 名字
+      const savedAgentName = await window.electronAPI.config.getAgentName()
+      agentName.value = savedAgentName || ''
 
       // 加载日志级别
       const savedLogLevel = await window.electronAPI.config.get('logLevel') as string | undefined
@@ -626,6 +632,11 @@ export const useConfigStore = defineStore('config', () => {
     agentPersonalityText.value = text
   }
 
+  async function setAgentName(name: string): Promise<void> {
+    await window.electronAPI.config.setAgentName(name)
+    agentName.value = name
+  }
+
   // ==================== 日志级别 ====================
 
   async function setLogLevel(level: LogLevel): Promise<void> {
@@ -869,6 +880,7 @@ export const useConfigStore = defineStore('config', () => {
     defaultGroupSortOrder,
     aiRules,
     agentPersonalityText,
+    agentName,
     logLevel,
     emailAccounts,
 
@@ -902,6 +914,7 @@ export const useConfigStore = defineStore('config', () => {
     updateGroupsSortOrder,
     setAiRules,
     setAgentPersonalityText,
+    setAgentName,
     setLogLevel,
     addEmailAccount,
     updateEmailAccount,

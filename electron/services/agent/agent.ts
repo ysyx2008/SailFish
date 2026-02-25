@@ -906,6 +906,7 @@ export abstract class Agent {
       contextKnowledgeDoc,
       aiRules: this.services.configService?.getAiRules() ?? '',
       personalityText: this.services.configService?.getAgentPersonalityText() ?? '',
+      agentName: this.services.configService?.getAgentName() ?? '',
       taskSummaries,
       relatedTaskDigests,
       availableTaskIds

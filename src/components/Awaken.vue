@@ -82,6 +82,11 @@ const loading = ref(true)
 const selectedWatch = ref<WatchDefinition | null>(null)
 const runningWatches = ref<Set<string>>(new Set())
 
+// 手动触发时的 Agent 实时输出（内心独白）
+const WATCH_ASSISTANT_AGENT_ID = '__watch_assistant__'
+const liveExecutionWatchId = ref<string | null>(null)
+const liveSteps = ref<Array<{ id: string; type: string; content: string; toolName?: string; toolResult?: string }>>([])
+
 const templates = ref<WatchTemplateInfo[]>([])
 const selectedTemplateCategory = ref<string>('all')
 const sharedState = ref<Record<string, unknown>>({})
@@ -144,6 +149,15 @@ const getStatusClass = (status: string): string => {
 const getStatusIcon = (status: WatchRunStatus): string => {
   const map: Record<string, string> = { completed: '✓', failed: '✗', skipped: '⊘', timeout: '⏱', cancelled: '—', running: '●' }
   return map[status] || '?'
+}
+
+/** Agent 步骤图标（用于内心独白展示） */
+const getStepIcon = (type: string): string => {
+  const map: Record<string, string> = {
+    thinking: '🤔', tool_call: '🔧', tool_result: '📋', message: '💬', error: '❌',
+    final_result: '✅', waiting: '⏳', asking: '❓', user_task: '👤'
+  }
+  return map[type] || '•'
 }
 
 // ==================== Data Loading ====================
@@ -366,7 +380,7 @@ async function manualHeartbeat() {
     }
   }, 5 * 60 * 1000)
   try {
-    await window.electronAPI.sensor.triggerHeartbeat()
+    await window.electronAPI.watch.trigger('__wakeup__')
   } catch (e) {
     patrolling.value = false
     patrolStatus.value = 'error'
@@ -375,9 +389,19 @@ async function manualHeartbeat() {
   }
 }
 
+// AI 名字
+const agentNameInput = ref('')
+
 function loadPersonalitySettings() {
   personalityText.value = configStore.agentPersonalityText || ''
   personalityOriginal.value = personalityText.value
+  agentNameInput.value = configStore.agentName || ''
+}
+
+async function saveAgentName() {
+  const trimmed = agentNameInput.value.trim()
+  if (trimmed === (configStore.agentName || '')) return
+  await configStore.setAgentName(trimmed)
 }
 
 async function savePersonalityText() {
@@ -416,6 +440,7 @@ function requestClose() {
 let refreshTimer: NodeJS.Timeout | null = null
 let cleanupWatchStarted: (() => void) | null = null
 let cleanupWatchCompleted: (() => void) | null = null
+let cleanupAgentStep: (() => void) | null = null
 
 const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') requestClose()
@@ -430,6 +455,11 @@ onMounted(async () => {
 
   cleanupWatchStarted = window.electronAPI.watch.onTaskStarted?.((data: any) => {
     if (data?.watchId) markWatchRunning(data.watchId)
+    // 手动触发时，开始收集 Agent 内心独白（仅 desktop 输出会触发 task-started 并发送 agent:step）
+    if (data?.watchId && data?.executionType === 'assistant') {
+      liveExecutionWatchId.value = data.watchId
+      liveSteps.value = []
+    }
     if (data?.watchId === '__wakeup__' || data?.watchId === '__daily_patrol__') {
       patrolling.value = true
       patrolStatus.value = 'running'
@@ -438,6 +468,7 @@ onMounted(async () => {
   })
   cleanupWatchCompleted = window.electronAPI.watch.onTaskCompleted?.((data: any) => {
     if (data?.watchId) markWatchCompleted(data.watchId)
+    // 不在此清空 liveExecutionWatchId，保留内心独白供用户查看
     if (data?.watchId === '__wakeup__' || data?.watchId === '__daily_patrol__') {
       patrolling.value = false
       if (patrolTimeout) { clearTimeout(patrolTimeout); patrolTimeout = null }
@@ -451,6 +482,18 @@ onMounted(async () => {
       clearPatrolStatus()
     }
   })
+  // 监听关切助手的 Agent 步骤，用于详情面板展示内心独白
+  cleanupAgentStep = window.electronAPI.agent.onStep((data: { agentId: string; step: { id: string; type: string; content: string; toolName?: string; toolResult?: string } }) => {
+    if (data.agentId !== WATCH_ASSISTANT_AGENT_ID || !liveExecutionWatchId.value) return
+    const step = data.step
+    const idx = liveSteps.value.findIndex(s => s.id === step.id)
+    const entry = { id: step.id, type: step.type, content: step.content, toolName: step.toolName, toolResult: step.toolResult }
+    if (idx >= 0) {
+      liveSteps.value[idx] = entry
+    } else {
+      liveSteps.value.push(entry)
+    }
+  })
 })
 
 onUnmounted(() => {
@@ -460,7 +503,7 @@ onUnmounted(() => {
   if (patrolTimeout) clearTimeout(patrolTimeout)
   if (ecgFlashTimer) clearTimeout(ecgFlashTimer)
   if (ecgBootTimer) clearTimeout(ecgBootTimer)
-  cleanupWatchStarted?.(); cleanupWatchCompleted?.()
+  cleanupWatchStarted?.(); cleanupWatchCompleted?.(); cleanupAgentStep?.()
   for (const timeout of watchTimeouts.values()) clearTimeout(timeout)
   watchTimeouts.clear()
 })
@@ -574,6 +617,18 @@ onUnmounted(() => {
           <template v-if="activeTab === 'personality'">
             <div class="content-page personality-page">
               <div class="personality-content">
+                <div class="personality-name-row">
+                  <label class="personality-name-label">{{ t('awaken.nameLabel') }}</label>
+                  <input
+                    v-model="agentNameInput"
+                    class="personality-name-input"
+                    :placeholder="t('awaken.namePlaceholder')"
+                    maxlength="20"
+                    spellcheck="false"
+                    @blur="saveAgentName"
+                    @keydown.enter="($event.target as HTMLInputElement)?.blur()"
+                  />
+                </div>
                 <div class="personality-header">
                   <h3>{{ t('awaken.personalityTitle') }}</h3>
                   <span class="personality-note">{{ t('awaken.personalityHint') }}</span>
@@ -689,6 +744,29 @@ onUnmounted(() => {
                     <div class="detail-section">
                       <h4>{{ t('watch.prompt') }}</h4>
                       <div class="prompt-content">{{ selectedWatch.prompt }}</div>
+                    </div>
+                    <!-- 手动触发时的 Agent 内心独白（实时执行过程） -->
+                    <div class="detail-section live-output-section" v-if="selectedWatch.id === liveExecutionWatchId && liveSteps.length > 0">
+                      <h4>{{ t('watch.liveOutput') }}</h4>
+                      <div class="live-steps">
+                        <div
+                          v-for="step in liveSteps"
+                          :key="step.id"
+                          class="live-step"
+                          :class="[step.type, step.type === 'thinking' ? 'step-thinking' : '']"
+                        >
+                          <span class="live-step-icon">{{ getStepIcon(step.type) }}</span>
+                          <div class="live-step-content">
+                            <div v-if="step.type === 'tool_call' && step.toolName" class="live-step-tool">
+                              {{ step.toolName }}{{ step.content ? ': ' + step.content : '' }}
+                            </div>
+                            <div v-else-if="step.content" class="live-step-text">{{ step.content }}</div>
+                            <div v-if="step.toolResult && step.toolResult !== step.content" class="live-step-result">
+                              <pre>{{ step.toolResult }}</pre>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                     <div class="detail-section" v-if="selectedWatch.skills?.length">
                       <h4>{{ t('watch.skills') }}</h4>
@@ -1139,6 +1217,37 @@ onUnmounted(() => {
   height: 100%;
 }
 
+.personality-name-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.personality-name-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.personality-name-input {
+  flex: 0 0 160px;
+  padding: 5px 10px;
+  font-size: 13px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.2s;
+}
+.personality-name-input:focus {
+  border-color: var(--primary);
+}
+.personality-name-input::placeholder {
+  color: var(--text-muted);
+}
+
 .personality-header {
   display: flex;
   flex-direction: column;
@@ -1470,6 +1579,27 @@ onUnmounted(() => {
   line-height: 1.6; white-space: pre-wrap; word-break: break-word;
   max-height: 200px; overflow-y: auto;
 }
+
+/* 手动触发时的 Agent 内心独白 */
+.live-output-section { background: rgba(0,0,0,0.15); border-radius: 8px; padding: 12px; border: 1px solid var(--border-color); }
+.live-steps { max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.live-step {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 8px 10px; border-radius: 6px; font-size: 12px; line-height: 1.5;
+  background: var(--bg-primary, rgba(0,0,0,0.2));
+}
+.live-step.step-thinking { opacity: 0.9; }
+.live-step.thinking { border-left: 3px solid rgba(59, 130, 246, 0.5); }
+.live-step.tool_call { border-left: 3px solid var(--accent-primary); color: var(--accent-primary); }
+.live-step.tool_result { border-left: 3px solid rgba(40, 167, 69, 0.5); }
+.live-step.final_result { border-left: 3px solid #28a745; background: rgba(40, 167, 69, 0.08); }
+.live-step.error { border-left: 3px solid #dc3545; color: #dc3545; }
+.live-step-icon { flex-shrink: 0; font-size: 14px; }
+.live-step-content { flex: 1; min-width: 0; word-break: break-word; }
+.live-step-tool { font-weight: 500; }
+.live-step-text { color: var(--text-secondary); white-space: pre-wrap; }
+.live-step-result { margin-top: 6px; padding: 6px; background: rgba(0,0,0,0.2); border-radius: 4px; font-size: 11px; overflow-x: auto; }
+.live-step-result pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
 
 .webhook-url { display: block; padding: 8px 12px; background: var(--bg-primary, rgba(0,0,0,0.2)); border-radius: 6px; font-size: 12px; word-break: break-all; }
 .trigger-list { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }

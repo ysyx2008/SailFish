@@ -868,6 +868,9 @@ const electronAPI = {
     // Agent 个性描述
     getAgentPersonalityText: () => ipcRenderer.invoke('config:getAgentPersonalityText') as Promise<string>,
     setAgentPersonalityText: (text: string) => ipcRenderer.invoke('config:setAgentPersonalityText', text),
+    // AI 名字
+    getAgentName: () => ipcRenderer.invoke('config:getAgentName') as Promise<string>,
+    setAgentName: (name: string) => ipcRenderer.invoke('config:setAgentName', name),
 
     // 日志级别
     getLogLevel: () => ipcRenderer.invoke('config:getLogLevel') as Promise<string>,
@@ -2645,6 +2648,15 @@ const electronAPI = {
       }
       ipcRenderer.on('watch:proactive-message', handler)
       return () => { ipcRenderer.removeListener('watch:proactive-message', handler) }
+    },
+    onActivateMessage: (callback: (data: { agentId: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
+        if (data && typeof data === 'object' && 'agentId' in data) {
+          callback(data as { agentId: string })
+        }
+      }
+      ipcRenderer.on('watch:activate-message', handler)
+      return () => { ipcRenderer.removeListener('watch:activate-message', handler) }
     },
   },
 

@@ -1275,6 +1275,17 @@ onUnmounted(() => {
         <!-- Agent 任务列表（每个任务：用户任务 + 步骤块 + 最终结果） -->
         <template v-if="agentTaskGroups.length > 0">
           <template v-for="group in agentTaskGroups" :key="group.id">
+            <!-- Agent 主动消息：只显示一条干净的 AI 气泡 -->
+            <template v-if="group.isProactive">
+              <div v-if="group.finalResult" class="message assistant">
+                <div class="message-wrapper">
+                  <div class="message-content markdown-content" v-html="renderMarkdown(group.finalResult)"></div>
+                </div>
+              </div>
+            </template>
+
+            <!-- 普通任务：用户任务 + 步骤 + 最终结果 -->
+            <template v-else>
             <!-- 用户任务 -->
             <div class="message user">
               <div class="message-wrapper">
@@ -1418,6 +1429,7 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
+            </template>
           </template>
         </template>
 

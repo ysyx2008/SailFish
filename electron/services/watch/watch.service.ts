@@ -368,14 +368,24 @@ export class WatchService {
     const startTime = Date.now()
     const enhancedPrompt = this.buildEnhancedPrompt(watch, event)
     const isDesktop = watch.output.type === 'desktop'
-    const isSilent = isDesktop && WatchService.AUTO_TRIGGER_TYPES.has(event.type) && !event.payload?.fromManualCheck
+    const isWakeup = watch.id === WatchService.WAKEUP_ID
+    // 唤醒 Watch 始终"静默执行"：内心独白只在 Awaken 面板展示，不走主聊天；有话说才通知用户
+    const isSilent = isWakeup
+      ? true
+      : (isDesktop && WatchService.AUTO_TRIGGER_TYPES.has(event.type) && !event.payload?.fromManualCheck)
 
     let ptyId: string | null = null
     let result: WatchExecutionResult
 
     try {
       if (isDesktop) {
-        if (!isSilent) {
+        // 唤醒 Watch：只通知 Awaken 面板（不创建聊天标签页），标签页由 talk_to_user 按需创建
+        if (isWakeup) {
+          this.notifyFrontend('watch:task-started', {
+            watchId: watch.id, ptyId: null, watchName: watch.name,
+            prompt: enhancedPrompt, triggerType: event.type, executionType: 'assistant'
+          })
+        } else if (!isSilent) {
           this.ensureDesktopTab()
           this.notifyFrontend('watch:task-started', {
             watchId: watch.id, ptyId: null, watchName: watch.name,
@@ -383,7 +393,8 @@ export class WatchService {
           })
         }
         this.runningWatches.set(watch.id, { watchId: watch.id, ptyId: null, startTime })
-        result = await this.executeWithAssistantAgent(watch, enhancedPrompt, isSilent)
+        // 唤醒 Watch：发送 agent:step（内心独白），但不发送 agent:complete/error（不影响主聊天）
+        result = await this.executeWithAssistantAgent(watch, enhancedPrompt, isSilent, isWakeup)
       } else {
         // 其他输出类型：创建 PTY 执行
         if (watch.execution.type === 'local') {
@@ -442,11 +453,15 @@ export class WatchService {
     return result
   }
 
-  /** desktop 输出：通过 __watch_assistant__ 助手 Agent 执行 */
+  /**
+   * desktop 输出：通过 __watch_assistant__ 助手 Agent 执行
+   * @param wakeupMode 唤醒模式：发送 agent:step（内心独白）但不发送 agent:complete/error
+   */
   private async executeWithAssistantAgent(
     watch: WatchDefinition,
     prompt: string,
-    silent: boolean = false
+    silent: boolean = false,
+    wakeupMode: boolean = false
   ): Promise<WatchExecutionResult> {
     if (!this.config?.agentService) {
       return { success: false, output: '', error: 'Agent service not available', duration: 0 }
@@ -458,9 +473,14 @@ export class WatchService {
     let hasError = false
     let errorMessage = ''
 
+    // 唤醒模式：始终发送 agent:step（Awaken 面板内心独白），但不发送 complete/error
+    // 普通模式：silent 时不发送任何 IPC，非 silent 时全部发送
+    const shouldSendSteps = wakeupMode || !silent
+    const shouldSendCompletion = !wakeupMode && !silent
+
     const callbacks: AgentCallbacks = {
       onStep: (_runId: string, step: AgentStep) => {
-        if (!silent && mainWindow && !mainWindow.isDestroyed()) {
+        if (shouldSendSteps && mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('agent:step', {
             agentId, step: JSON.parse(JSON.stringify(step))
           })
@@ -471,14 +491,14 @@ export class WatchService {
         }
       },
       onComplete: (_runId: string, result: string, pendingUserMessages?: string[]) => {
-        if (!silent && mainWindow && !mainWindow.isDestroyed()) {
+        if (shouldSendCompletion && mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('agent:complete', { agentId, result, pendingUserMessages })
         }
       },
       onError: (_runId: string, error: string) => {
         hasError = true
         errorMessage = error || errorMessage
-        if (!silent && mainWindow && !mainWindow.isDestroyed()) {
+        if (shouldSendCompletion && mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('agent:error', { agentId, error })
         }
       }
@@ -648,7 +668,7 @@ export class WatchService {
     // 批量事件：展开子事件
     if (event.type === 'heartbeat' && event.payload.isBatch) {
       const subEvents = event.payload.events as Array<{ type: string; source: string; timestamp: number; payload: Record<string, unknown> }> | undefined
-      if (!subEvents?.length) return ['- 例行检查（无新事件）']
+      if (!subEvents?.length) return ['- 例行检查（传感器未检测到新的邮件、日历或文件变化）']
       return subEvents.slice(0, 20).map((e, i) => `  ${i + 1}. ${this.describeEvent(e.type, e.payload)}`)
     }
     // 单个事件
@@ -697,6 +717,9 @@ export class WatchService {
     if (outputType === 'silent') return
 
     const windowAvailable = this.config?.mainWindow && !this.config.mainWindow.isDestroyed()
+
+    // 唤醒 Watch：消息投递由 Agent 通过 talk_to_user 工具完成，此处不重复投递
+    if (watch.id === WatchService.WAKEUP_ID) return
 
     if (outputType === 'desktop') {
       if (silent) {
@@ -1157,8 +1180,11 @@ export class WatchService {
   /** @deprecated 旧 ID，仅用于迁移清理 */
   private static readonly LEGACY_PATROL_ID = '__daily_patrol__'
 
-  /** 唤醒关切的 prompt：提醒 Agent 结合个性决定是否 NO_ACTION，支持「主动交流」类个性 */
-  private static readonly WAKEUP_PROMPT = `你刚被定时唤醒。根据触发事件和跨关切共享上下文，自行决定该做什么。请结合你的个性设定：若你的个性倾向主动与用户交流，即便无新事件也可简短问候或分享想法；若确实无要事且个性不倾向主动 outreach，可回复 NO_ACTION。`
+  /** 唤醒关切的 prompt */
+  private static readonly WAKEUP_PROMPT = `你刚被定时唤醒。上方的「触发事件」是传感器已采集的最新数据（日历、邮件、文件变更等）。
+用户看不到你的常规输出，只有通过 talk_to_user 工具发送的消息才能送达用户。
+有话想说就调用 talk_to_user，没有值得打扰用户的事就直接结束。
+请结合你的个性设定决定：若你的个性倾向主动交流，即便无新事件也可简短问候或分享想法。`
 
   /** 确保内置「唤醒」关切存在（觉醒模式开启时调用），幂等 */
   ensureWakeup(): boolean {
@@ -1184,8 +1210,7 @@ export class WatchService {
           }
           log.info('唤醒关切已迁移（移除 lastWakeDate）')
         } else if (
-          !existing.prompt?.includes('结合你的个性设定') &&
-          existing.prompt?.includes('如无值得处理的事，回复 NO_ACTION')
+          !existing.prompt?.includes('常规输出')
         ) {
           this.store.update(WatchService.WAKEUP_ID, {
             prompt: WatchService.WAKEUP_PROMPT,

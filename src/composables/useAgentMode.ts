@@ -25,6 +25,7 @@ export interface AgentTaskGroup {
   steps: AgentStep[]
   finalResult?: string
   isCurrentTask: boolean
+  isProactive?: boolean
 }
 
 // Agent 状态类型
@@ -353,13 +354,14 @@ export function useAgentMode(
     
     for (const step of allSteps) {
       if (step.type === 'user_task') {
-        // 开始新任务
+        const isProactive = step.content === '__proactive__'
         currentGroup = {
           id: step.id,
-          userTask: step.content,
-          images: step.images,  // 附带的图片
+          userTask: isProactive ? '' : step.content,
+          images: step.images,
           steps: [],
-          isCurrentTask: false
+          isCurrentTask: false,
+          isProactive
         }
         groups.push(currentGroup)
       } else if (step.type === 'final_result') {

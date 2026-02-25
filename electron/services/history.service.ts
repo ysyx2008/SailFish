@@ -340,8 +340,10 @@ export class HistoryService {
           ? (r.userTask?.toLowerCase().includes(lowerKeyword) ||
               r.finalResult?.toLowerCase().includes(lowerKeyword) ||
               r.steps?.some(s =>
-                (s.type === 'user_task' || s.type === 'user_supplement') &&
-                s.content?.toLowerCase().includes(lowerKeyword)
+                ((s.type === 'user_task' || s.type === 'user_supplement') &&
+                  s.content?.toLowerCase().includes(lowerKeyword)) ||
+                (s.toolName === 'talk_to_user' &&
+                  (s.toolArgs as Record<string, unknown>)?.message?.toString().toLowerCase().includes(lowerKeyword))
               ))
           : true
         if (matchedByKeyword) {

@@ -610,6 +610,9 @@ interface Window {
       // Agent 个性描述
       getAgentPersonalityText: () => Promise<string>
       setAgentPersonalityText: (text: string) => Promise<void>
+      // AI 名字
+      getAgentName: () => Promise<string>
+      setAgentName: (name: string) => Promise<void>
       // 日志级别
       getLogLevel: () => Promise<string>
       setLogLevel: (level: string) => Promise<void>

@@ -128,6 +128,7 @@ interface StoreSchema {
   fileBookmarks: FileBookmark[]
   aiRules: string  // 用户自定义的 AI 规则/指令
   agentPersonalityText: string  // 用户自定义个性描述（在 MBTI 基础上追加）
+  agentName: string             // AI 名字（默认旗鱼，用户可自定义）
   gatewayAutoStart: boolean  // Gateway 远程访问自动启动
   gatewayPort: number        // Gateway 端口
   gatewayHost: string        // Gateway 监听地址
@@ -191,6 +192,7 @@ const defaultConfig: StoreSchema = {
   fileBookmarks: [],
   aiRules: '',
   agentPersonalityText: '',
+  agentName: '',
   gatewayAutoStart: false,
   gatewayPort: 3721,
   gatewayHost: '0.0.0.0',
@@ -773,6 +775,17 @@ export class ConfigService {
       ? text.substring(0, MAX_PERSONALITY_TEXT_LENGTH)
       : text
     this.store.set('agentPersonalityText', safeText)
+  }
+
+  // ==================== AI 名字 ====================
+
+  getAgentName(): string {
+    return this.store.get('agentName') || ''
+  }
+
+  setAgentName(name: string): void {
+    const safeName = (name || '').trim().substring(0, 20)
+    this.store.set('agentName', safeName)
   }
 
   // ==================== 日志级别 ====================

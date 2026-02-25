@@ -3,6 +3,8 @@
  * 包括：等待、向用户提问、MCP 工具、技能工具
  */
 import { t } from '../i18n'
+import { createLogger } from '../../../utils/logger'
+const log = createLogger('tools/misc')
 import { executeExcelTool } from '../skills/excel/executor'
 import { executeEmailTool } from '../skills/email/executor'
 import { executeBrowserTool } from '../skills/browser/executor'
@@ -631,9 +633,9 @@ export async function loadUserSkillTool(
 }
 
 /**
- * 通过 IM 渠道发送主动通知
+ * 发消息给用户（通过可用渠道：IM、应用内通知等）
  */
-export async function sendIMNotification(
+export async function messageUser(
   args: Record<string, unknown>,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
@@ -644,46 +646,105 @@ export async function sendIMNotification(
     return { success: false, output: '', error: t('im.tool_message_required') }
   }
 
-  const { getIMService } = await import('../../im/im.service')
-  const imService = getIMService()
+  const deliveredVia: string[] = []
 
-  const lastContact = imService.getLastContact()
-  if (!lastContact) {
-    return { success: false, output: '', error: t('im.tool_no_contact') }
+  // 尝试通过 IM 渠道发送
+  try {
+    const { getIMService } = await import('../../im/im.service')
+    const imService = getIMService()
+    const lastContact = imService.getLastContact()
+
+    if (lastContact) {
+      executor.addStep({
+        type: 'tool_call',
+        content: t('im.tool_sending_notification', { platform: lastContact.platform }),
+        toolName: 'talk_to_user',
+        toolArgs: { message: message.substring(0, 100), title },
+        riskLevel: 'safe'
+      })
+
+      const result = await imService.sendNotification(message, {
+        markdown: !!title,
+        title,
+      })
+      if (result.success) {
+        deliveredVia.push(result.platform || 'IM')
+      }
+    }
+  } catch (e) {
+    log.debug('messageUser: IM delivery unavailable:', e)
   }
 
-  executor.addStep({
-    type: 'tool_call',
-    content: t('im.tool_sending_notification', { platform: lastContact.platform }),
-    toolName: 'send_im_notification',
-    toolArgs: { message: message.substring(0, 100), title },
-    riskLevel: 'safe'
-  })
+  // 应用内：发送待展示消息（不创建标签页，用户点击通知后才展开）
+  let windowFocused = false
+  try {
+    const electron = require('electron')
+    const windows = electron.BrowserWindow?.getAllWindows?.()
+    if (windows?.length > 0) {
+      const mainWindow = windows[0]
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('watch:proactive-message', {
+          agentId: '__watch_assistant__',
+          message,
+          watchName: title || ''
+        })
+        deliveredVia.push('app')
+        windowFocused = mainWindow.isFocused()
+      }
+    }
+  } catch (e) {
+    log.debug('messageUser: app delivery failed:', e)
+  }
 
-  const result = await imService.sendNotification(message, {
-    markdown: !!title,
-    title,
-  })
+  // 窗口不存在或没有焦点时，发系统通知；点击通知时激活应用并展开对话
+  if (!windowFocused) {
+    try {
+      const electron = require('electron')
+      const { Notification } = electron
+      if (Notification.isSupported()) {
+        const notification = new Notification({
+          title: title || 'SailFish',
+          body: message.length > 200 ? message.substring(0, 200) + '...' : message
+        })
+        notification.on('click', () => {
+          const windows = electron.BrowserWindow?.getAllWindows?.()
+          if (windows?.length > 0) {
+            const win = windows[0]
+            if (!win.isDestroyed()) {
+              win.show()
+              win.focus()
+              win.webContents.send('watch:activate-message', { agentId: '__watch_assistant__' })
+            }
+          }
+        })
+        notification.show()
+      }
+    } catch (e) {
+      log.debug('messageUser: system notification failed:', e)
+    }
+  }
 
-  if (result.success) {
-    const output = t('im.tool_notification_sent', { platform: result.platform || '' })
+  if (deliveredVia.length > 0) {
+    const output = t('im.tool_notification_sent', { platform: deliveredVia.join(', ') })
     executor.addStep({
       type: 'tool_result',
-      content: t('im.tool_notification_sent_step', { platform: result.platform || '' }),
-      toolName: 'send_im_notification',
+      content: t('im.tool_notification_sent_step', { platform: deliveredVia.join(', ') }),
+      toolName: 'talk_to_user',
       toolResult: output
     })
     return { success: true, output }
   } else {
+    const error = t('im.tool_no_contact')
     executor.addStep({
       type: 'tool_result',
-      content: t('im.tool_notification_failed', { error: result.error || '' }),
-      toolName: 'send_im_notification',
-      toolResult: result.error || ''
+      content: t('im.tool_notification_failed', { error }),
+      toolName: 'talk_to_user',
+      toolResult: error
     })
-    return { success: false, output: '', error: result.error }
+    return { success: false, output: '', error }
   }
 }
+
 
 /**
  * 执行技能工具

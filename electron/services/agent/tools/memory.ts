@@ -397,6 +397,14 @@ export async function searchHistory(
             lines.push(`- ${msg}`)
           }
         }
+        const talkSteps = r.steps.filter(s => s.toolName === 'talk_to_user' && s.toolArgs)
+        if (talkSteps.length > 0) {
+          lines.push('**主动消息**:')
+          for (const s of talkSteps) {
+            const msg = String((s.toolArgs as Record<string, unknown>)?.message || '')
+            lines.push(`- ${msg.length > 200 ? msg.substring(0, 200) + '...' : msg}`)
+          }
+        }
       }
 
       lines.push(`**结果**: ${result}`)

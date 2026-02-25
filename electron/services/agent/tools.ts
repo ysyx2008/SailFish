@@ -784,29 +784,29 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
         }
       }
     },
-    // ==================== IM 主动通知工具 ====================
+    // ==================== 发消息给用户 ====================
     {
       type: 'function',
       function: {
-        name: 'send_im_notification',
-        description: `向用户最近使用的 IM 渠道（钉钉或飞书）发送通知消息。
+        name: 'talk_to_user',
+        description: `主动跟用户说话。消息会通过最合适的渠道送达：应用内对话、IM（钉钉/飞书/Slack 等）。
 
 **使用场景**：
-- 定时任务完成后通知用户结果
-- 需要主动提醒用户某些事项
-- 异步任务执行完毕后告知用户
+- 定时任务完成后告知用户结果
+- 需要主动提醒用户某些事项（日程、邮件等）
+- 想跟用户打个招呼、分享想法
 
-消息会发送到最后一个与 AI 对话的 IM 渠道。如果没有 IM 渠道连接或没有用户联系过，则无法发送。`,
+注意：这是你主动跟用户说话的唯一方式。只在确实有话要说时调用。`,
         parameters: {
           type: 'object',
           properties: {
             message: {
               type: 'string',
-              description: '要发送的通知内容'
+              description: '要发送给用户的消息内容'
             },
             title: {
               type: 'string',
-              description: '通知标题（可选，指定后以 Markdown 卡片形式发送）'
+              description: '消息标题（可选，指定后以卡片形式发送）'
             }
           },
           required: ['message']

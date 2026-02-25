@@ -1843,6 +1843,15 @@ ipcMain.handle('config:setAgentPersonalityText', async (_event, text: string) =>
   configService.setAgentPersonalityText(text)
 })
 
+// AI 名字
+ipcMain.handle('config:getAgentName', async () => {
+  return configService.getAgentName()
+})
+
+ipcMain.handle('config:setAgentName', async (_event, name: string) => {
+  configService.setAgentName(name)
+})
+
 // 日志级别
 ipcMain.handle('config:getLogLevel', async () => {
   return configService.getLogLevel()

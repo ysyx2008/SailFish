@@ -1913,6 +1913,7 @@ export default {
     assistantOnly: '仅对话',
 
     // 输出方式
+    liveOutput: '内心独白',
     outputType: '结果投递',
     outputDesktop: '应用内对话',
     outputIM: 'IM 推送',
@@ -2035,6 +2036,8 @@ export default {
     patrolDone: '看完了，一切正常',
     patrolSkipped: '没什么需要关注的',
     patrolError: '检查出错，请查看日志',
+    nameLabel: '名字',
+    namePlaceholder: '旗鱼',
     personalityTitle: '个性',
     personalityNav: '个性',
     personalityHint: '定义 Agent 的个性，优先于 MBTI 风格',

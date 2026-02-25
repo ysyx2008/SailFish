@@ -423,6 +423,8 @@ export interface PromptOptions {
   aiRules?: string
   /** 用户自定义个性定义（优先级高于 MBTI） */
   personalityText?: string
+  /** AI 名字 */
+  agentName?: string
   /** 任务历史摘要 */
   taskSummaries?: string
   /** 相关任务摘要 */
