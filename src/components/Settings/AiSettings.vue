@@ -32,6 +32,11 @@ const openLogDir = () => {
   window.electronAPI.config.openLogDir()
 }
 
+const openAiDebugLogDir = async () => {
+  const aiDebugLogDir = await window.electronAPI.aiDebugGetLogDir()
+  await window.electronAPI.shell.openPath(aiDebugLogDir)
+}
+
 const editingProfile = ref<AiProfile | null>(null)
 
 const formData = ref<Partial<AiProfile>>({
@@ -412,9 +417,14 @@ const openKeyUrl = (url: string) => {
         <p class="section-desc">
           {{ t('aiSettings.logLevelDesc') }}
         </p>
-        <button class="open-log-dir-btn" @click="openLogDir">
-          {{ t('aiSettings.openLogDir') }}
-        </button>
+        <div class="log-dir-actions">
+          <button class="open-log-dir-btn" @click="openLogDir">
+            {{ t('aiSettings.openLogDir') }}
+          </button>
+          <button class="open-log-dir-btn" @click="openAiDebugLogDir">
+            {{ t('aiSettings.openAiDebugLogDir') }}
+          </button>
+        </div>
       </div>
     </template>
   </div>
@@ -764,6 +774,12 @@ const openKeyUrl = (url: string) => {
   background: var(--bg-hover, #333);
   color: var(--text-primary, #e0e0e0);
   border-color: var(--accent-primary);
+}
+
+.log-dir-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 </style>

@@ -433,6 +433,7 @@ export default {
     logLevel: 'Log Level',
     logLevelDesc: 'Controls log verbosity. Debug outputs the most, Silent suppresses all. Warn is recommended. Logs are also written to files for troubleshooting',
     openLogDir: 'Open Log Directory',
+    openAiDebugLogDir: 'Open AI Conversation Log Directory',
     // Steam build: no AI/API config entry
     steamNoAiConfig: 'The Steam version does not offer AI service configuration. You can use terminal, SSH, and file management features as normal.'
   },

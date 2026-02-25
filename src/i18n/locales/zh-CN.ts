@@ -433,6 +433,7 @@ export default {
     logLevel: '日志级别',
     logLevelDesc: '控制日志输出量。Debug 输出最多，Silent 完全静默，推荐使用 Warn。日志同时写入文件便于排查问题',
     openLogDir: '打开日志目录',
+    openAiDebugLogDir: '打开 AI 对话日志目录',
     // Steam 版：不提供任何 AI/API 配置入口
     steamNoAiConfig: 'Steam 版本不提供 AI 服务配置。您可正常使用终端、SSH 与文件管理功能。'
   },
