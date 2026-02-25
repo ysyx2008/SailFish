@@ -734,6 +734,11 @@ watch(
     const task = terminalStore.consumePendingSchedulerTask(currentTabId.value)
     if (task) {
       console.log(`[AiPanel] 检测到待执行任务，自动执行: ${task.substring(0, 50)}...`)
+      // 自动任务执行前刷新 AI Profile，确保使用用户最新选择的模型
+      const latestProfileId = configStore.activeAiProfileId
+      if (latestProfileId) {
+        activeProfileId.value = latestProfileId
+      }
       inputText.value = task
       nextTick(() => {
         runAgent()
