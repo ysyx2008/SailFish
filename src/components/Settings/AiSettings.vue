@@ -191,6 +191,34 @@ const allTemplates = [
     isLocal: false
   },
   {
+    name: 'Claude',
+    apiUrl: 'https://api.anthropic.com/v1/chat/completions',
+    model: 'claude-sonnet-4-6',
+    keyUrl: 'https://console.anthropic.com/settings/keys',
+    isLocal: false
+  },
+  {
+    name: 'Gemini',
+    apiUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+    model: 'gemini-2.0-flash',
+    keyUrl: 'https://aistudio.google.com/apikey',
+    isLocal: false
+  },
+  {
+    name: 'Grok',
+    apiUrl: 'https://api.x.ai/v1/chat/completions',
+    model: 'grok-3-fast',
+    keyUrl: 'https://console.x.ai/team/default/api-keys',
+    isLocal: false
+  },
+  {
+    name: 'Mistral',
+    apiUrl: 'https://api.mistral.ai/v1/chat/completions',
+    model: 'mistral-large-latest',
+    keyUrl: 'https://console.mistral.ai/api-keys',
+    isLocal: false
+  },
+  {
     name: 'Ollama',
     apiUrl: 'http://localhost:11434/v1/chat/completions',
     model: 'qwen2.5:7b',

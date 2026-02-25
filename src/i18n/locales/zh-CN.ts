@@ -422,6 +422,10 @@ export default {
       doubao: '字节跳动豆包大模型，火山引擎提供服务',
       zhipu: '智谱 GLM 大模型，支持 GLM-4 系列',
       kimi: 'Moonshot Kimi，支持超长上下文',
+      claude: 'Anthropic Claude，推理能力强，支持 200K 上下文',
+      gemini: 'Google Gemini，支持超长上下文（100 万 token）',
+      grok: 'xAI Grok，实时信息与推理能力兼备',
+      mistral: 'Mistral AI，欧洲开源大模型领军者',
       ollama: '本地部署的 Ollama，数据不出本地',
       custom: '手动配置 API 地址、模型等信息',
       customName: '自定义'

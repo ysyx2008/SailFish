@@ -422,6 +422,10 @@ export default {
       doubao: 'ByteDance Doubao, powered by Volcengine',
       zhipu: 'Zhipu GLM, supports GLM-4 series',
       kimi: 'Moonshot Kimi, supports extra-long context',
+      claude: 'Anthropic Claude, strong reasoning, 200K context',
+      gemini: 'Google Gemini, supports ultra-long context (1M tokens)',
+      grok: 'xAI Grok, real-time info with strong reasoning',
+      mistral: 'Mistral AI, leading European open-source LLM',
       ollama: 'Local Ollama deployment, data stays local',
       custom: 'Manually configure API URL, model, etc.',
       customName: 'Custom'

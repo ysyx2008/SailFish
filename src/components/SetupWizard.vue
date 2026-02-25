@@ -105,6 +105,50 @@ const allAiTemplates = [
     isCustom: false
   },
   {
+    name: 'Claude',
+    apiUrl: 'https://api.anthropic.com/v1/chat/completions',
+    model: 'claude-sonnet-4-6',
+    descKey: 'aiSettings.templates.claude',
+    keyUrl: 'https://console.anthropic.com/settings/keys',
+    contextLength: 200000,
+    isLocal: false,
+    needsApiKey: true,
+    isCustom: false
+  },
+  {
+    name: 'Gemini',
+    apiUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+    model: 'gemini-2.0-flash',
+    descKey: 'aiSettings.templates.gemini',
+    keyUrl: 'https://aistudio.google.com/apikey',
+    contextLength: 1000000,
+    isLocal: false,
+    needsApiKey: true,
+    isCustom: false
+  },
+  {
+    name: 'Grok',
+    apiUrl: 'https://api.x.ai/v1/chat/completions',
+    model: 'grok-3-fast',
+    descKey: 'aiSettings.templates.grok',
+    keyUrl: 'https://console.x.ai/team/default/api-keys',
+    contextLength: 131072,
+    isLocal: false,
+    needsApiKey: true,
+    isCustom: false
+  },
+  {
+    name: 'Mistral',
+    apiUrl: 'https://api.mistral.ai/v1/chat/completions',
+    model: 'mistral-large-latest',
+    descKey: 'aiSettings.templates.mistral',
+    keyUrl: 'https://console.mistral.ai/api-keys',
+    contextLength: 128000,
+    isLocal: false,
+    needsApiKey: true,
+    isCustom: false
+  },
+  {
     name: 'Ollama',
     apiUrl: 'http://localhost:11434/v1/chat/completions',
     model: 'qwen2.5:7b',
