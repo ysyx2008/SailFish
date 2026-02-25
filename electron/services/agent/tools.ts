@@ -892,6 +892,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
 - 一次只能发送一张图片
 
 **注意**：
+- 直接传文件路径即可，**不需要先 read_file**
 - 先确认文件存在且路径正确
 - 非图片文件请使用 send_file_to_chat`,
         parameters: {
