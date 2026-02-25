@@ -199,6 +199,255 @@ function formatMessageForApi(msg: AiMessage, stripImages = false): Record<string
   }
 }
 
+// === Anthropic Native API Adapter ===
+
+function isAnthropicNativeApi(apiUrl: string): boolean {
+  try {
+    const url = new URL(apiUrl)
+    return url.hostname === 'api.anthropic.com' && !apiUrl.includes('/chat/completions')
+  } catch {
+    return false
+  }
+}
+
+function getRequestHeaders(profile: AiProfile): Record<string, string> {
+  if (isAnthropicNativeApi(profile.apiUrl)) {
+    return {
+      'Content-Type': 'application/json',
+      'x-api-key': profile.apiKey,
+      'anthropic-version': '2023-06-01'
+    }
+  }
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${profile.apiKey}`
+  }
+}
+
+function convertToAnthropicBody(body: Record<string, unknown>): Record<string, unknown> {
+  const rawMessages = body.messages as Array<Record<string, unknown>>
+  let system = ''
+  const messages: Array<Record<string, unknown>> = []
+
+  for (const msg of rawMessages) {
+    const role = msg.role as string
+
+    if (role === 'system') {
+      if (system) system += '\n'
+      system += (msg.content as string) || ''
+      continue
+    }
+
+    if (role === 'user') {
+      const images = msg.images as string[] | undefined
+      if (images && images.length > 0) {
+        const parts: Array<Record<string, unknown>> = []
+        if (msg.content) parts.push({ type: 'text', text: msg.content })
+        for (const imgUrl of images) {
+          const match = imgUrl.match(/^data:(image\/[^;]+);base64,(.+)$/)
+          if (match) {
+            parts.push({ type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } })
+          }
+        }
+        messages.push({ role: 'user', content: parts })
+        continue
+      }
+      if (Array.isArray(msg.content)) {
+        const parts: Array<Record<string, unknown>> = []
+        for (const part of msg.content as Array<Record<string, unknown>>) {
+          if (part.type === 'text') {
+            parts.push({ type: 'text', text: part.text })
+          } else if (part.type === 'image_url') {
+            const url = (part.image_url as Record<string, unknown>)?.url as string
+            const match = url?.match(/^data:(image\/[^;]+);base64,(.+)$/)
+            if (match) {
+              parts.push({ type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } })
+            } else if (url) {
+              parts.push({ type: 'image', source: { type: 'url', url } })
+            }
+          }
+        }
+        messages.push({ role: 'user', content: parts })
+        continue
+      }
+      messages.push({ role: 'user', content: msg.content })
+      continue
+    }
+
+    if (role === 'assistant') {
+      const blocks: Array<Record<string, unknown>> = []
+      if (msg.content) blocks.push({ type: 'text', text: msg.content })
+      const tcs = msg.tool_calls as ToolCall[] | undefined
+      if (tcs) {
+        for (const tc of tcs) {
+          let input = {}
+          try { input = JSON.parse(tc.function.arguments) } catch { /* noop */ }
+          blocks.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input })
+        }
+      }
+      if (blocks.length === 1 && blocks[0].type === 'text') {
+        messages.push({ role: 'assistant', content: blocks[0].text })
+      } else if (blocks.length > 0) {
+        messages.push({ role: 'assistant', content: blocks })
+      } else {
+        messages.push({ role: 'assistant', content: [{ type: 'text', text: '' }] })
+      }
+      continue
+    }
+
+    if (role === 'tool') {
+      const result = {
+        type: 'tool_result' as const,
+        tool_use_id: msg.tool_call_id as string,
+        content: (msg.content as string) || ''
+      }
+      const last = messages[messages.length - 1]
+      if (last?.role === 'user' && Array.isArray(last.content) &&
+          (last.content as Array<Record<string, unknown>>).every(c => c.type === 'tool_result')) {
+        (last.content as Array<Record<string, unknown>>).push(result)
+      } else {
+        messages.push({ role: 'user', content: [result] })
+      }
+      continue
+    }
+  }
+
+  const result: Record<string, unknown> = {
+    model: body.model,
+    max_tokens: body.max_tokens || 4096,
+    messages
+  }
+  if (system) result.system = system
+  if (body.temperature !== undefined) result.temperature = body.temperature
+  if (body.stream) result.stream = true
+
+  const tools = body.tools as ToolDefinition[] | undefined
+  if (tools && tools.length > 0) {
+    result.tools = tools.map(td => ({
+      name: td.function.name,
+      description: td.function.description,
+      input_schema: td.function.parameters
+    }))
+    if (body.tool_choice === 'auto') {
+      result.tool_choice = { type: 'auto' }
+    } else if (body.tool_choice === 'none') {
+      result.tool_choice = { type: 'none' }
+    } else if (body.tool_choice === 'required') {
+      result.tool_choice = { type: 'any' }
+    }
+  }
+
+  return result
+}
+
+function convertFromAnthropicResponse(resp: Record<string, unknown>): Record<string, unknown> {
+  if (resp.type === 'error') {
+    const err = resp.error as Record<string, unknown> | undefined
+    return {
+      error: {
+        message: err?.message || 'Unknown Anthropic API error',
+        type: err?.type,
+        code: err?.type
+      }
+    }
+  }
+
+  const contentBlocks = resp.content as Array<Record<string, unknown>> | undefined
+  let text = ''
+  const toolCalls: ToolCall[] = []
+
+  if (contentBlocks) {
+    for (const block of contentBlocks) {
+      if (block.type === 'text') text += (block.text as string) || ''
+      else if (block.type === 'tool_use') {
+        toolCalls.push({
+          id: (block.id as string) || '',
+          type: 'function',
+          function: {
+            name: (block.name as string) || '',
+            arguments: JSON.stringify(block.input || {})
+          }
+        })
+      }
+    }
+  }
+
+  const message: Record<string, unknown> = { role: 'assistant', content: text || null }
+  if (toolCalls.length > 0) message.tool_calls = toolCalls
+
+  const stopReason = resp.stop_reason as string
+  const finishReason = stopReason === 'tool_use' ? 'tool_calls'
+    : stopReason === 'max_tokens' ? 'length' : 'stop'
+
+  const rawUsage = resp.usage as Record<string, number> | undefined
+  const usage = rawUsage ? {
+    prompt_tokens: rawUsage.input_tokens ?? 0,
+    completion_tokens: rawUsage.output_tokens ?? 0,
+    total_tokens: (rawUsage.input_tokens ?? 0) + (rawUsage.output_tokens ?? 0)
+  } : undefined
+
+  return { choices: [{ message, finish_reason: finishReason }], usage }
+}
+
+interface AnthropicStreamDelta {
+  content?: string
+  reasoning_content?: string
+  tool_calls?: Array<{ index: number; id?: string; function?: { name?: string; arguments?: string } }>
+  finish_reason?: string
+  done?: boolean
+}
+
+function parseAnthropicStreamEvent(data: string): AnthropicStreamDelta | null {
+  try {
+    const json = JSON.parse(data) as Record<string, unknown>
+    switch (json.type) {
+      case 'content_block_start': {
+        const cb = json.content_block as Record<string, unknown>
+        if (cb?.type === 'tool_use') {
+          return {
+            tool_calls: [{
+              index: json.index as number,
+              id: cb.id as string,
+              function: { name: cb.name as string }
+            }]
+          }
+        }
+        return null
+      }
+      case 'content_block_delta': {
+        const d = json.delta as Record<string, unknown>
+        if (d?.type === 'text_delta') return { content: d.text as string }
+        if (d?.type === 'input_json_delta') {
+          return {
+            tool_calls: [{
+              index: json.index as number,
+              function: { arguments: d.partial_json as string }
+            }]
+          }
+        }
+        if (d?.type === 'thinking_delta') return { reasoning_content: d.thinking as string }
+        return null
+      }
+      case 'message_delta': {
+        const d = json.delta as Record<string, unknown>
+        const sr = d?.stop_reason as string
+        if (sr) {
+          return {
+            finish_reason: sr === 'tool_use' ? 'tool_calls' : sr === 'max_tokens' ? 'length' : 'stop'
+          }
+        }
+        return null
+      }
+      case 'message_stop':
+        return { done: true }
+      default:
+        return null
+    }
+  } catch {
+    return null
+  }
+}
+
 export class AiService {
   private configService: ConfigService
   // 使用 Map 存储多个请求的 AbortController，支持多个终端同时请求
@@ -321,14 +570,10 @@ export class AiService {
         port: url.port || (isHttps ? 443 : 80),
         path: url.pathname + url.search,
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${profile.apiKey}`
-        },
-        timeout: AI_TIMEOUT.CONNECT  // 连接超时
+        headers: getRequestHeaders(profile),
+        timeout: AI_TIMEOUT.CONNECT
       }
 
-      // 应用代理
       if (profile.proxy) {
         options.agent = this.getProxyAgent(profile.proxy)
       }
@@ -367,7 +612,11 @@ export class AiService {
           if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
             complete(() => {
               try {
-                resolve(JSON.parse(data))
+                let parsed = JSON.parse(data)
+                if (isAnthropicNativeApi(profile.apiUrl)) {
+                  parsed = convertFromAnthropicResponse(parsed)
+                }
+                resolve(parsed)
               } catch {
                 reject(new Error(t('error.ai_parse_failed', { data })))
               }
@@ -396,7 +645,8 @@ export class AiService {
         })
       }
 
-      req.write(JSON.stringify(body))
+      const finalBody = isAnthropicNativeApi(profile.apiUrl) ? convertToAnthropicBody(body as Record<string, unknown>) : body
+      req.write(JSON.stringify(finalBody))
       req.end()
     })
   }
@@ -420,6 +670,7 @@ export class AiService {
       return
     }
 
+    const isAnthropic = isAnthropicNativeApi(profile.apiUrl)
     const streamStartTime = Date.now()
     log.info(`ChatStream request: model=${profile.model}, messages=${messages.length}`)
 
@@ -488,19 +739,14 @@ export class AiService {
         port: url.port || (isHttps ? 443 : 80),
         path: url.pathname + url.search,
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${profile.apiKey}`
-        },
-        timeout: AI_TIMEOUT.CONNECT  // 连接超时
+        headers: getRequestHeaders(profile),
+        timeout: AI_TIMEOUT.CONNECT
       }
 
-      // 应用代理
       if (profile.proxy) {
         options.agent = this.getProxyAgent(profile.proxy)
       }
 
-      // 启动总超时计时器
       totalTimeoutId = setTimeout(() => {
         if (!isCompleted) {
           req?.destroy()
@@ -508,8 +754,8 @@ export class AiService {
         }
       }, AI_TIMEOUT.TOTAL)
 
-      let hasReasoningOutput = false  // 标记是否已输出思考内容
-      let hasContentOutput = false    // 标记是否已输出正常内容
+      let hasReasoningOutput = false
+      let hasContentOutput = false
 
       req = httpModule.request(options, (res) => {
         // 开始接收响应，启动空闲超时
@@ -549,9 +795,29 @@ export class AiService {
             if (!trimmedLine) continue
 
             if (trimmedLine.startsWith('data: ')) {
-              const data = trimmedLine.slice(6)
-              if (data === '[DONE]') {
-                // 如果只有思考内容没有回复，添加结束标记
+              const data = trimmedLine.slice(6).trim()
+              if (!data) continue
+
+              let delta: { content?: string; reasoning_content?: string } | undefined
+              let isDone = false
+
+              if (isAnthropic) {
+                const event = parseAnthropicStreamEvent(data)
+                if (!event) continue
+                isDone = !!event.done
+                delta = event
+              } else {
+                if (data === '[DONE]') {
+                  isDone = true
+                } else {
+                  try {
+                    const json = JSON.parse(data)
+                    delta = json.choices?.[0]?.delta
+                  } catch { continue }
+                }
+              }
+
+              if (isDone) {
                 if (hasReasoningOutput && !hasContentOutput) {
                   onChunk('\n\n</details>\n')
                 }
@@ -559,33 +825,20 @@ export class AiService {
                 return
               }
 
-              try {
-                const parsed = JSON.parse(data) as {
-                  choices?: { delta?: { content?: string; reasoning_content?: string } }[]
+              if (delta?.reasoning_content) {
+                if (!hasReasoningOutput) {
+                  hasReasoningOutput = true
+                  onChunk('<details open>\n<summary>🤔 <strong>思考过程</strong>（点击折叠）</summary>\n\n<blockquote>\n\n')
                 }
-                const delta = parsed.choices?.[0]?.delta
-                
-                // 处理 think 模型的 reasoning_content（思考过程）
-                if (delta?.reasoning_content) {
-                  if (!hasReasoningOutput) {
-                    hasReasoningOutput = true
-                    // 使用 details 标签创建可折叠的思考区域
-                    onChunk('<details open>\n<summary>🤔 <strong>思考过程</strong>（点击折叠）</summary>\n\n<blockquote>\n\n')
-                  }
-                  onChunk(delta.reasoning_content)
+                onChunk(delta.reasoning_content)
+              }
+
+              if (delta?.content) {
+                if (hasReasoningOutput && !hasContentOutput) {
+                  hasContentOutput = true
+                  onChunk('\n\n</blockquote>\n</details>\n\n---\n\n### 💬 回复\n\n')
                 }
-                
-                // 处理正常的 content
-                if (delta?.content) {
-                  // 如果之前有思考过程，现在开始输出最终内容，添加分隔
-                  if (hasReasoningOutput && !hasContentOutput) {
-                    hasContentOutput = true
-                    onChunk('\n\n</blockquote>\n</details>\n\n---\n\n### 💬 回复\n\n')
-                  }
-                  onChunk(delta.content)
-                }
-              } catch {
-                // 忽略解析错误
+                onChunk(delta.content)
               }
             }
           }
@@ -621,7 +874,8 @@ export class AiService {
         complete(() => onDone())
       })
 
-      req.write(JSON.stringify(requestBody))
+      const chatStreamBody = isAnthropic ? convertToAnthropicBody(requestBody as Record<string, unknown>) : requestBody
+      req.write(JSON.stringify(chatStreamBody))
       req.end()
     } catch (error) {
       if (error instanceof Error) {
@@ -750,6 +1004,8 @@ export class AiService {
       onError(t('error.ai_no_config'))
       return
     }
+
+    const isAnthropic = isAnthropicNativeApi(profile.apiUrl)
 
     // 创建 AbortController，使用 requestId 或生成一个唯一 ID
     const reqId = requestId || `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
@@ -881,18 +1137,14 @@ export class AiService {
         port: url.port || (isHttps ? 443 : 80),
         path: url.pathname + url.search,
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${profile.apiKey}`
-        },
-        timeout: AI_TIMEOUT.CONNECT  // 连接超时
+        headers: getRequestHeaders(profile),
+        timeout: AI_TIMEOUT.CONNECT
       }
 
       if (profile.proxy) {
         options.agent = this.getProxyAgent(profile.proxy)
       }
 
-      // 启动总超时计时器
       totalTimeoutId = setTimeout(() => {
         if (!isCompleted) {
           req?.destroy()
@@ -900,8 +1152,8 @@ export class AiService {
         }
       }, AI_TIMEOUT.TOTAL)
 
-      let hasReasoningOutput = false  // 标记是否已输出思考内容的开始标记
-      let hasContentOutput = false    // 标记是否已开始输出正常内容
+      let hasReasoningOutput = false
+      let hasContentOutput = false
 
       req = httpModule.request(options, (res) => {
         // 开始接收响应，启动空闲超时
@@ -945,102 +1197,91 @@ export class AiService {
           buffer = lines.pop() || ''
 
           for (const line of lines) {
-            // 再次检查，防止在循环中被 abort
-            if (abortController.signal.aborted || isCompleted) {
-              return
-            }
+            if (abortController.signal.aborted || isCompleted) return
             if (line.startsWith('data: ')) {
               const data = line.slice(6).trim()
-              if (data === '[DONE]') {
-                // 如果有思考内容但没有最终内容
+              if (!data) continue
+
+              let delta: AnthropicStreamDelta | { content?: string; reasoning_content?: string; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } | undefined
+              let reason: string | undefined
+              let isDone = false
+
+              if (isAnthropic) {
+                const event = parseAnthropicStreamEvent(data)
+                if (!event) continue
+                isDone = !!event.done
+                delta = event
+                reason = event.finish_reason
+              } else {
+                if (data === '[DONE]') {
+                  isDone = true
+                } else {
+                  try {
+                    const json = JSON.parse(data)
+                    delta = json.choices?.[0]?.delta
+                    reason = json.choices?.[0]?.finish_reason
+                  } catch { continue }
+                }
+              }
+
+              if (reason) finishReason = reason
+
+              if (isDone) {
                 const finalContent = content || (reasoningContent ? `🤔 **思考过程**\n\n> ${reasoningContent.replace(/\n/g, '\n> ')}` : undefined)
                 complete(() => onDone({
                   content: finalContent,
                   tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
                   finish_reason: finishReason as ChatWithToolsResult['finish_reason'],
-                  reasoning_content: reasoningContent || undefined  // 返回原始思考内容，用于消息历史
+                  reasoning_content: reasoningContent || undefined
                 }))
                 return
               }
 
-              try {
-                const json = JSON.parse(data)
-                const delta = json.choices?.[0]?.delta
-                const reason = json.choices?.[0]?.finish_reason
-
-                if (reason) {
-                  finishReason = reason
+              if (delta?.reasoning_content) {
+                if (!hasReasoningOutput) {
+                  hasReasoningOutput = true
+                  onChunk(t('ai.thinking_with_emoji'))
                 }
+                reasoningContent += delta.reasoning_content
+                onChunk(delta.reasoning_content.replace(/\n/g, '\n> '))
+                aiDebugService.logResponseChunk(reqId, `[THINKING] ${delta.reasoning_content}`)
+              }
 
-                // 处理 think 模型的 reasoning_content（思考过程）
-                // DeepSeek-R1 等模型会返回 reasoning_content 字段
-                if (delta?.reasoning_content) {
-                  // 第一次收到 reasoning_content 时，输出开始标记
-                  if (!hasReasoningOutput) {
-                    hasReasoningOutput = true
-                    // Agent 模式：简单的思考指示，不使用 HTML
-                    onChunk(t('ai.thinking_with_emoji'))
-                  }
-                  reasoningContent += delta.reasoning_content
-                  // 输出思考内容，使用引用格式
-                  onChunk(delta.reasoning_content.replace(/\n/g, '\n> '))
-                  // AI Debug: 记录思考过程
-                  aiDebugService.logResponseChunk(reqId, `[THINKING] ${delta.reasoning_content}`)
+              if (delta?.content) {
+                if (hasReasoningOutput && !hasContentOutput) {
+                  hasContentOutput = true
+                  onChunk('\n\n---\n\n**回复：** ')
                 }
+                content += delta.content
+                onChunk(delta.content)
+                aiDebugService.logResponseChunk(reqId, delta.content)
+              }
 
-                // 处理正常的 content（最终回复）
-                if (delta?.content) {
-                  // 如果之前有思考过程，现在开始输出最终内容，添加分隔
-                  if (hasReasoningOutput && !hasContentOutput) {
-                    hasContentOutput = true
-                    onChunk('\n\n---\n\n**回复：** ')
-                  }
-                  content += delta.content
-                  onChunk(delta.content)
-                  // AI Debug: 记录响应流式片段
-                  aiDebugService.logResponseChunk(reqId, delta.content)
+              if (delta?.tool_calls) {
+                if (hasReasoningOutput && !hasContentOutput) {
+                  hasContentOutput = true
+                  onChunk('\n\n')
                 }
-
-                // 处理 tool_calls 流式更新
-                if (delta?.tool_calls) {
-                  // 如果有思考过程还没关闭，先关闭
-                  if (hasReasoningOutput && !hasContentOutput) {
-                    hasContentOutput = true
-                    onChunk('\n\n')
-                  }
-                  
-                  for (const tc of delta.tool_calls) {
-                    const index = tc.index ?? 0
-                    if (!toolCalls[index]) {
-                      toolCalls[index] = {
-                        id: tc.id || '',
-                        type: 'function',
-                        function: {
-                          name: tc.function?.name || '',
-                          arguments: tc.function?.arguments || ''
-                        }
-                      }
-                    } else {
-                      if (tc.id) {
-                        toolCalls[index].id = tc.id
-                      }
-                      if (tc.function?.name) {
-                        toolCalls[index].function.name = tc.function.name
-                      }
-                      if (tc.function?.arguments) {
-                        toolCalls[index].function.arguments += tc.function.arguments
+                for (const tc of delta.tool_calls) {
+                  const index = tc.index ?? 0
+                  if (!toolCalls[index]) {
+                    toolCalls[index] = {
+                      id: tc.id || '',
+                      type: 'function',
+                      function: {
+                        name: tc.function?.name || '',
+                        arguments: tc.function?.arguments || ''
                       }
                     }
-                    // 通知工具调用参数生成进度
-                    if (onToolCallProgress && toolCalls[index]) {
-                      const toolName = toolCalls[index].function.name
-                      const argsLength = toolCalls[index].function.arguments.length
-                      onToolCallProgress(toolName, argsLength)
-                    }
+                  } else {
+                    if (tc.id) toolCalls[index].id = tc.id
+                    if (tc.function?.name) toolCalls[index].function.name = tc.function.name
+                    if (tc.function?.arguments) toolCalls[index].function.arguments += tc.function.arguments
+                  }
+                  if (onToolCallProgress && toolCalls[index]) {
+                    onToolCallProgress(toolCalls[index].function.name, toolCalls[index].function.arguments.length)
                   }
                 }
-              } catch {
-                // 忽略解析错误
               }
             }
           }
@@ -1135,7 +1376,8 @@ export class AiService {
         }))
       })
 
-      req.write(JSON.stringify(requestBody))
+      const toolStreamBody = isAnthropic ? convertToAnthropicBody(requestBody as Record<string, unknown>) : requestBody
+      req.write(JSON.stringify(toolStreamBody))
       req.end()
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error'

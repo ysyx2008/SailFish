@@ -106,7 +106,7 @@ const allAiTemplates = [
   },
   {
     name: 'Claude',
-    apiUrl: 'https://api.anthropic.com/v1/chat/completions',
+    apiUrl: 'https://api.anthropic.com/v1/messages',
     model: 'claude-sonnet-4-6',
     descKey: 'aiSettings.templates.claude',
     keyUrl: 'https://console.anthropic.com/settings/keys',
