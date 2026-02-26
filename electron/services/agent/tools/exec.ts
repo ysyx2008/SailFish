@@ -14,6 +14,7 @@ import { truncateFromEnd } from './utils'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
 
 const DEFAULT_TIMEOUT = 60_000
+const MAX_TIMEOUT = 600_000
 const MAX_BUFFER = 10 * 1024 * 1024  // 10MB
 
 export async function executeCommandDirect(
@@ -103,7 +104,15 @@ export async function executeCommandDirect(
   }
 
   const cwd = (args.cwd as string) || undefined
-  const timeout = config.commandTimeout || DEFAULT_TIMEOUT
+
+  // timeout 优先级：工具参数 > config.commandTimeout > DEFAULT_TIMEOUT
+  const rawTimeoutSec = args.timeout as number | undefined
+  let timeout: number
+  if (typeof rawTimeoutSec === 'number' && Number.isFinite(rawTimeoutSec) && rawTimeoutSec > 0) {
+    timeout = Math.min(rawTimeoutSec * 1000, MAX_TIMEOUT)
+  } else {
+    timeout = config.commandTimeout || DEFAULT_TIMEOUT
+  }
 
   return new Promise<ToolResult>((resolve) => {
     exec(command, { cwd, timeout, maxBuffer: MAX_BUFFER, shell: '/bin/bash' }, (error, stdout, stderr) => {

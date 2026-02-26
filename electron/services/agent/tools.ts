@@ -183,22 +183,29 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
         type: 'function',
         function: {
           name: 'exec',
-          description: `运行 shell 命令并返回输出。非交互式，同步等待完成。
+          description: `运行 shell 命令并返回输出。同步等待命令完成后返回结果。
 
 适用于：查询系统信息、运行脚本、文件操作等需要命令行辅助的场景。
-不适用于：交互式命令、持续运行的命令（如 tail -f）、需要终端 UI 的程序（vim/nano/tmux 等）。
+不适用于：交互式命令、需要终端 UI 的程序（vim/nano/tmux 等）。
 
-命令长度上限 500 字符，超过请先写入脚本文件再执行。`,
+**长时间命令**：通过 timeout 参数延长等待时间（默认 60 秒，最大 600 秒）。
+可以用 shell 组合命令实现"等待+检查"，如：\`sleep 120 && tail -10 logfile && ls /output/dir\`
+
+命令长度上限 800 字符，超过请先写入脚本文件再执行。`,
           parameters: {
             type: 'object',
             properties: {
               command: {
                 type: 'string',
-                description: '要执行的 shell 命令（最长 500 字符）'
+                description: '要执行的 shell 命令（最长 800 字符）'
               },
               cwd: {
                 type: 'string',
                 description: '工作目录（可选，默认使用当前目录）'
+              },
+              timeout: {
+                type: 'number',
+                description: '超时秒数（默认 60，最大 600）。长时间命令（如构建、下载、sleep+check 轮询）应设置足够的 timeout'
               }
             },
             required: ['command']
