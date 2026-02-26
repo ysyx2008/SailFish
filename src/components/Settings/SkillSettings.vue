@@ -1118,9 +1118,11 @@ enabled: true
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 4px;
-  white-space: nowrap;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .skill-actions {
