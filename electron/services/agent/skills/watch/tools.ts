@@ -197,5 +197,35 @@ export const watchTools: ToolDefinition[] = [
         }
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'watch_state_update',
+      description: `更新关切的持久化状态（用于有状态工作流）。
+
+**两种状态**：
+- watch_state: 当前关切的私有状态（仅本关切可见）
+- shared_state: 跨关切共享状态（所有关切可读写）
+
+状态在每次执行时自动注入到上下文中，用于跨执行保持记忆。`,
+      parameters: {
+        type: 'object',
+        properties: {
+          watch_id: {
+            type: 'string',
+            description: '关切 ID（更新 watch_state 时必填，仅更新 shared_state 时可省略）'
+          },
+          watch_state: {
+            type: 'object',
+            description: '要合并到当前关切私有状态的键值对（增量合并，不会清除未提及的 key）'
+          },
+          shared_state: {
+            type: 'object',
+            description: '要合并到跨关切共享状态的键值对（增量合并）'
+          }
+        }
+      }
+    }
   }
 ]

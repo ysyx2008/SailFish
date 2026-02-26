@@ -29,6 +29,8 @@ export async function executeWatchTool(
       return triggerWatch(args, executor)
     case 'watch_history':
       return getHistory(args)
+    case 'watch_state_update':
+      return updateWatchState(args)
     default:
       return { success: false, output: '', error: `未知的关切工具: ${toolName}` }
   }
@@ -229,6 +231,64 @@ async function getHistory(args: Record<string, unknown>): Promise<ToolResult> {
     return { success: true, output: `最近 ${history.length} 条执行记录:\n\n${list}` }
   } catch (error) {
     return { success: false, output: '', error: `获取历史记录失败: ${errMsg(error)}` }
+  }
+}
+
+const MAX_STATE_KEYS = 20
+const MAX_KEY_LENGTH = 100
+const MAX_STRING_VALUE_LENGTH = 500
+
+function sanitizeState(raw: Record<string, unknown>): Record<string, unknown> {
+  const keys = Object.keys(raw)
+  if (keys.length > MAX_STATE_KEYS) {
+    throw new Error(`状态键数量超出限制 (${keys.length}/${MAX_STATE_KEYS})`)
+  }
+  const result: Record<string, unknown> = {}
+  for (const key of keys) {
+    if (typeof key !== 'string' || key.length > MAX_KEY_LENGTH) continue
+    const val = raw[key]
+    if (typeof val === 'string') {
+      result[key] = val.slice(0, MAX_STRING_VALUE_LENGTH)
+    } else if (typeof val === 'number' || typeof val === 'boolean' || val === null) {
+      result[key] = val
+    }
+  }
+  return result
+}
+
+async function updateWatchState(args: Record<string, unknown>): Promise<ToolResult> {
+  const watchId = args.watch_id as string | undefined
+  const watchState = args.watch_state as Record<string, unknown> | undefined
+  const sharedState = args.shared_state as Record<string, unknown> | undefined
+
+  if (!watchState && !sharedState) {
+    return { success: false, output: '', error: '至少需要提供 watch_state 或 shared_state' }
+  }
+
+  try {
+    const service = getWatchService()
+    const updates: string[] = []
+
+    if (watchState && watchId?.trim()) {
+      const watch = service.get(watchId)
+      if (!watch) return { success: false, output: '', error: `关切不存在: ${watchId}` }
+      const sanitized = sanitizeState(watchState)
+      const merged = { ...(watch.state || {}), ...sanitized }
+      service.updateWatchState(watchId, merged)
+      updates.push(`watch_state(${Object.keys(sanitized).join(', ')})`)
+    } else if (watchState && !watchId?.trim()) {
+      return { success: false, output: '', error: '更新 watch_state 需要提供 watch_id' }
+    }
+
+    if (sharedState) {
+      const sanitized = sanitizeState(sharedState)
+      service.mergeSharedState(sanitized)
+      updates.push(`shared_state(${Object.keys(sanitized).join(', ')})`)
+    }
+
+    return { success: true, output: `✅ 状态已更新: ${updates.join(', ')}` }
+  } catch (error) {
+    return { success: false, output: '', error: `状态更新失败: ${errMsg(error)}` }
   }
 }
 

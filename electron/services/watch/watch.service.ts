@@ -64,6 +64,8 @@ export interface WatchExecutionResult {
   skipped?: boolean
   skipReason?: string
   steps?: AgentStep[]
+  /** Agent 通过 talk_to_user 产生的用户可见消息（与内部 output 分离） */
+  userMessage?: string
 }
 
 // ==================== Watch Service ====================
@@ -432,10 +434,6 @@ export class WatchService {
       }
     }
 
-    if (result.success && result.output) {
-      this.extractAndApplyStateUpdates(watch.id, result.output)
-    }
-
     this.recordExecution(watch, event, result)
 
     await this.deliverOutput(watch, result, isSilent)
@@ -607,14 +605,16 @@ export class WatchService {
       return {
         success: !hasError, output: finalOutput.trim(),
         error: hasError ? errorMessage : undefined,
-        duration: Date.now() - startTime, steps
+        duration: Date.now() - startTime, steps,
+        userMessage: this.extractUserMessage(steps)
       }
     } catch (error) {
       try { this.config.agentService.abort(ptyId) } catch { /* ignore */ }
       return {
         success: false, output: finalOutput.trim(),
         error: error instanceof Error ? error.message : String(error),
-        duration: Date.now() - startTime, steps
+        duration: Date.now() - startTime, steps,
+        userMessage: this.extractUserMessage(steps)
       }
     }
   }
@@ -648,17 +648,18 @@ export class WatchService {
       parts.push(`[跨关切共享上下文：${JSON.stringify(sharedState).substring(0, 800)}]`)
     }
 
-    // 状态管理指令：仅在已有状态或 prompt 引用了 STATE_UPDATE 时注入完整说明
-    if (hasState || hasSharedState || watch.prompt.includes('STATE_UPDATE')) {
-      parts.push(
-        '\n[状态持久化：回复末尾附 STATE_UPDATE: {...} 更新本关切状态，SHARED_UPDATE: {...} 更新跨关切共享状态。]'
-      )
+    // 状态管理提示：有状态时告知可通过工具更新
+    if (hasState || hasSharedState) {
+      parts.push('[需要更新状态时，调用 watch_state_update 工具。]')
     }
 
     // 技能提示
     if (watch.skills && watch.skills.length > 0) {
       parts.push(`[预加载技能：${watch.skills.join(', ')}]`)
     }
+
+    // 用户可见消息必须通过 talk_to_user 发送，最终文本回复仅用于内部记录
+    parts.push('[通知用户时，必须调用 talk_to_user 工具发送消息。最终文本回复仅作为内部日志，不会作为通知正文。]')
 
     // 原始 prompt
     parts.push(watch.prompt)
@@ -744,6 +745,8 @@ export class WatchService {
     }
 
     if (outputType === 'im') {
+      if (result.userMessage) return
+
       const imResult = await this.sendIMNotification(watch, result)
       if (!imResult) {
         if (windowAvailable) {
@@ -754,6 +757,14 @@ export class WatchService {
       }
       return
     }
+  }
+
+  /** 从 Agent 执行步骤中提取 talk_to_user 的消息内容 */
+  private extractUserMessage(steps?: AgentStep[]): string | undefined {
+    if (!steps || steps.length === 0) return undefined
+    const talkSteps = steps.filter(s => s.toolName === 'talk_to_user' && s.toolArgs)
+    if (talkSteps.length === 0) return undefined
+    return talkSteps.map(s => (s.toolArgs as Record<string, unknown>)?.message as string).filter(Boolean).join('\n')
   }
 
   /**
@@ -770,7 +781,7 @@ export class WatchService {
     mainWindow.webContents.send('watch:ensureTab', { agentId })
     mainWindow.webContents.send('watch:proactive-message', {
       agentId,
-      message: result.output,
+      message: result.userMessage || result.output,
       watchName: watch.name
     })
 
@@ -792,7 +803,7 @@ export class WatchService {
     try {
       const title = result.success ? `✓ ${watch.name}` : `✗ ${watch.name}`
       const body = result.success
-        ? (result.output.substring(0, 200) || `Completed in ${Math.round(result.duration / 1000)}s`)
+        ? (result.userMessage || `已完成 (${Math.round(result.duration / 1000)}s)`).substring(0, 200)
         : (result.error || 'Failed')
 
       const notification = new Notification({ title, body, silent: false })
@@ -818,7 +829,7 @@ export class WatchService {
 
       const title = result.success ? `✓ ${watch.name}` : `✗ ${watch.name}`
       const message = result.success
-        ? (result.output.substring(0, 2000) || `Completed in ${Math.round(result.duration / 1000)}s`)
+        ? (result.userMessage || `已完成 (${Math.round(result.duration / 1000)}s)`).substring(0, 2000)
         : `Error: ${result.error || 'Unknown'}`
 
       const sendResult = await imService.sendNotification(`**${title}**\n\n${message}`, {
@@ -989,54 +1000,8 @@ export class WatchService {
     this.store.clearSharedState()
   }
 
-  private static readonly MAX_STATE_JSON_LENGTH = 2000
-  private static readonly MAX_STATE_KEYS = 20
-
-  private extractAndApplyStateUpdates(watchId: string, output: string): void {
-    try {
-      this.applyStateUpdate(output, /STATE_UPDATE:\s*(\{[^}]{1,2000}\})/i, (parsed) => {
-        const currentState = this.store.get(watchId)?.state || {}
-        this.store.updateState(watchId, { ...currentState, ...parsed })
-        log.info(`Updated state for watch ${watchId}`)
-      })
-
-      this.applyStateUpdate(output, /SHARED_UPDATE:\s*(\{[^}]{1,2000}\})/i, (parsed) => {
-        this.store.mergeSharedState(parsed)
-        log.info('Updated shared state')
-      })
-    } catch (err) {
-      log.error('Failed to extract state updates:', err)
-    }
-  }
-
-  private applyStateUpdate(
-    output: string,
-    pattern: RegExp,
-    apply: (data: Record<string, unknown>) => void
-  ): void {
-    const match = output.match(pattern)
-    if (!match?.[1]) return
-
-    try {
-      const parsed = JSON.parse(match[1])
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return
-
-      const keys = Object.keys(parsed)
-      if (keys.length > WatchService.MAX_STATE_KEYS) return
-
-      const sanitized: Record<string, unknown> = {}
-      for (const key of keys) {
-        if (typeof key !== 'string' || key.length > 100) continue
-        const val = parsed[key]
-        if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean' || val === null) {
-          sanitized[key] = typeof val === 'string' ? val.slice(0, 500) : val
-        }
-      }
-
-      if (Object.keys(sanitized).length > 0) {
-        apply(sanitized)
-      }
-    } catch { /* invalid JSON, skip */ }
+  mergeSharedState(updates: Record<string, unknown>): void {
+    this.store.mergeSharedState(updates)
   }
 
   // ==================== 传感器 target 管理 ====================
