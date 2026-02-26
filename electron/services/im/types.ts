@@ -82,6 +82,8 @@ export interface IMIncomingMessage {
   replyContext: any
   /** 附件列表（图片、语音、视频、文件），已下载到本地 */
   attachments?: IMAttachment[]
+  /** 该平台首次联系标记（由 IMService 在消息处理时设置） */
+  isFirstContact?: boolean
 }
 
 /**

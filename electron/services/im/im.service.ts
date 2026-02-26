@@ -174,6 +174,8 @@ export class IMService {
   private lastContact: IMLastContact | null = null
   /** 各平台最近一次联系记录（持久化） */
   private contactsByPlatform: Partial<Record<IMPlatform, IMLastContact>> = {}
+  /** 本次运行期间已发送过 im_connected 事件的平台（避免重连时重复触发） */
+  private emittedConnectPlatforms = new Set<IMPlatform>()
 
   constructor() {
     this.loadPersistedContacts()
@@ -203,6 +205,46 @@ export class IMService {
     this.config.executionMode = mode
   }
 
+  // ==================== IM 生命周期事件 ====================
+
+  /**
+   * 平台连接成功后，向事件总线发送 im_connected 事件
+   * 觉醒模式下的 wakeup Watch 会捕获此事件，让 Agent 自主决定如何问候
+   */
+  private emitConnectedEvent(platform: IMPlatform): void {
+    if (this.emittedConnectPlatforms.has(platform)) return
+    const contact = this.contactsByPlatform[platform]
+    if (!contact || this.isContactExpired(contact)) return
+
+    this.emittedConnectPlatforms.add(platform)
+
+    try {
+      const { getEventBus } = require('../sensor/event-bus')
+      const eventBus = getEventBus()
+      eventBus.emit({
+        id: `im-conn-${platform}-${Date.now().toString(36)}`,
+        type: 'im_connected',
+        source: `im:${platform}`,
+        timestamp: Date.now(),
+        payload: {
+          platform,
+          userName: contact.userName,
+          userId: contact.userId,
+          chatType: contact.chatType,
+        },
+        priority: 'normal'
+      })
+      log.info(`Emitted im_connected event for ${platform}`)
+    } catch (err) {
+      log.warn(`Failed to emit im_connected event:`, err)
+    }
+  }
+
+  private handleConnectionChange(platform: IMPlatform, connected: boolean): void {
+    this.sendToDesktop('im:connectionChange', { platform, connected })
+    if (connected) this.emitConnectedEvent(platform)
+  }
+
   // ==================== 钉钉管理 ====================
 
   async startDingTalk(config: DingTalkConfig): Promise<{ success: boolean; error?: string }> {
@@ -217,9 +259,8 @@ export class IMService {
       this.dingtalkAdapter = new DingTalkAdapter(config)
 
       this.dingtalkAdapter.onMessage = (msg) => this.handleIncomingMessage(msg)
-      this.dingtalkAdapter.onConnectionChange = (connected) => {
-        this.sendToDesktop('im:connectionChange', { platform: 'dingtalk', connected })
-      }
+      this.dingtalkAdapter.onConnectionChange = (connected) =>
+        this.handleConnectionChange('dingtalk', connected)
 
       await this.dingtalkAdapter.start()
       log.info('DingTalk started')
@@ -233,7 +274,7 @@ export class IMService {
 
   async stopDingTalk(): Promise<void> {
     if (this.dingtalkAdapter) {
-      await this.dingtalkAdapter.stop() // adapter.stop() 内已触发 onConnectionChange(false)，无需再 sendToDesktop
+      await this.dingtalkAdapter.stop()
       this.dingtalkAdapter = null
       this.config.dingtalk.enabled = false
       log.info('DingTalk stopped')
@@ -258,9 +299,8 @@ export class IMService {
       this.feishuAdapter = new FeishuAdapter(config)
 
       this.feishuAdapter.onMessage = (msg) => this.handleIncomingMessage(msg)
-      this.feishuAdapter.onConnectionChange = (connected) => {
-        this.sendToDesktop('im:connectionChange', { platform: 'feishu', connected })
-      }
+      this.feishuAdapter.onConnectionChange = (connected) =>
+        this.handleConnectionChange('feishu', connected)
 
       await this.feishuAdapter.start()
       log.info('Feishu started')
@@ -274,7 +314,7 @@ export class IMService {
 
   async stopFeishu(): Promise<void> {
     if (this.feishuAdapter) {
-      await this.feishuAdapter.stop() // adapter 内已触发 onConnectionChange(false)
+      await this.feishuAdapter.stop()
       this.feishuAdapter = null
       this.config.feishu.enabled = false
       log.info('Feishu stopped')
@@ -305,9 +345,8 @@ export class IMService {
       this.slackAdapter = new SlackAdapter(config)
 
       this.slackAdapter.onMessage = (msg: IMIncomingMessage) => this.handleIncomingMessage(msg)
-      this.slackAdapter.onConnectionChange = (connected: boolean) => {
-        this.sendToDesktop('im:connectionChange', { platform: 'slack', connected })
-      }
+      this.slackAdapter.onConnectionChange = (connected: boolean) =>
+        this.handleConnectionChange('slack', connected)
 
       await this.slackAdapter.start()
       log.info('Slack started')
@@ -321,7 +360,7 @@ export class IMService {
 
   async stopSlack(): Promise<void> {
     if (this.slackAdapter) {
-      await this.slackAdapter.stop() // adapter 内已触发 onConnectionChange(false)
+      await this.slackAdapter.stop()
       this.slackAdapter = null
       this.config.slack.enabled = false
       log.info('Slack stopped')
@@ -349,9 +388,8 @@ export class IMService {
       this.telegramAdapter = new TelegramAdapter(config)
 
       this.telegramAdapter.onMessage = (msg: IMIncomingMessage) => this.handleIncomingMessage(msg)
-      this.telegramAdapter.onConnectionChange = (connected: boolean) => {
-        this.sendToDesktop('im:connectionChange', { platform: 'telegram', connected })
-      }
+      this.telegramAdapter.onConnectionChange = (connected: boolean) =>
+        this.handleConnectionChange('telegram', connected)
 
       await this.telegramAdapter.start()
       log.info('Telegram started')
@@ -365,7 +403,7 @@ export class IMService {
 
   async stopTelegram(): Promise<void> {
     if (this.telegramAdapter) {
-      await this.telegramAdapter.stop() // adapter 内已触发 onConnectionChange(false)
+      await this.telegramAdapter.stop()
       this.telegramAdapter = null
       this.config.telegram.enabled = false
       log.info('Telegram stopped')
@@ -393,9 +431,8 @@ export class IMService {
       this.wecomAdapter = new WeComAdapter(config)
 
       this.wecomAdapter.onMessage = (msg: IMIncomingMessage) => this.handleIncomingMessage(msg)
-      this.wecomAdapter.onConnectionChange = (connected: boolean) => {
-        this.sendToDesktop('im:connectionChange', { platform: 'wecom', connected })
-      }
+      this.wecomAdapter.onConnectionChange = (connected: boolean) =>
+        this.handleConnectionChange('wecom', connected)
 
       await this.wecomAdapter.start()
       log.info('WeCom started')
@@ -409,7 +446,7 @@ export class IMService {
 
   async stopWeCom(): Promise<void> {
     if (this.wecomAdapter) {
-      await this.wecomAdapter.stop() // adapter 内已触发 onConnectionChange(false)
+      await this.wecomAdapter.stop()
       this.wecomAdapter = null
       this.config.wecom.enabled = false
       log.info('WeCom stopped')
@@ -532,6 +569,9 @@ export class IMService {
     const adapter = this.getAdapter(msg.platform)
     if (!adapter) return
 
+    // 检测是否为该平台的首次联系（在保存 contact 之前判断）
+    const isFirstContact = !this.contactsByPlatform[msg.platform]
+
     // 记录最近联系的渠道，用于后续主动推送
     const contact: IMLastContact = {
       platform: msg.platform,
@@ -545,6 +585,11 @@ export class IMService {
     this.lastContact = contact
     this.contactsByPlatform[msg.platform] = contact
     this.persistContacts()
+
+    // 首次联系：标记到消息上，让 Agent 自己决定如何打招呼
+    if (isFirstContact) {
+      msg = { ...msg, isFirstContact: true }
+    }
 
     const replyContext = msg.replyContext
 
@@ -919,6 +964,10 @@ export class IMService {
    */
   private buildAgentMessage(msg: IMIncomingMessage): string {
     let text = msg.text || ''
+
+    if (msg.isFirstContact) {
+      text = t('im.first_contact_context', { userName: msg.userName, platform: msg.platform }) + '\n' + text
+    }
 
     if (msg.attachments && msg.attachments.length > 0) {
       const BINARY_TYPES = new Set<IMAttachment['type']>(['image', 'audio', 'video'])

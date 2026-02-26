@@ -944,6 +944,9 @@ const translations = {
     'im.tool_notification_sent': '通知已通过 {platform} 发送成功',
     'im.tool_notification_sent_step': '✅ 通知已通过 {platform} 发送成功',
     'im.tool_notification_failed': '❌ 发送失败: {error}',
+
+    // IM 上下文
+    'im.first_contact_context': '[系统提示：这是用户 {userName} 通过 {platform} 首次与你联系，请在回复中自然地打个招呼、做个自我介绍。]',
   },
   'en-US': {
     // Tool names
@@ -1879,6 +1882,9 @@ Please output the summary in the following format:
     'im.tool_notification_sent': 'Notification sent via {platform}',
     'im.tool_notification_sent_step': '✅ Notification sent via {platform}',
     'im.tool_notification_failed': '❌ Send failed: {error}',
+
+    // IM context
+    'im.first_contact_context': '[System note: This is the first time user {userName} has contacted you via {platform}. Please naturally greet them and introduce yourself in your response.]',
   }
 } as const
 

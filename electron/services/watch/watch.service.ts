@@ -359,7 +359,7 @@ export class WatchService {
   // ==================== 执行引擎 ====================
 
   private static readonly AUTO_TRIGGER_TYPES = new Set([
-    'heartbeat', 'cron', 'interval', 'email', 'calendar', 'file_change'
+    'heartbeat', 'cron', 'interval', 'email', 'calendar', 'file_change', 'im_connected'
   ])
 
   private async executeWatch(watch: WatchDefinition, event: SensorEvent): Promise<WatchExecutionResult> {
@@ -691,6 +691,8 @@ export class WatchService {
         return `Webhook${Object.keys(payload).length ? `：${JSON.stringify(payload).substring(0, 500)}` : ''}`
       case 'manual':
         return '用户手动触发'
+      case 'im_connected':
+        return `IM 上线：${payload.platform}${payload.userName ? `（最近联系人：${payload.userName}）` : ''}`
       default:
         return `${type}${payload.source ? ` 来自 ${payload.source}` : ''}`
     }
@@ -1040,6 +1042,36 @@ export class WatchService {
               log.error('Failed to start EmailSensor:', err)
             )
           }
+        } else if (trigger.type === 'command_probe') {
+          sensor.commandProbe.addTarget(watch.id, {
+            command: trigger.command,
+            shell: trigger.shell,
+            interval: trigger.interval,
+            triggerOn: trigger.triggerOn,
+            pattern: trigger.pattern,
+            workingDirectory: trigger.workingDirectory,
+          })
+          if (!sensor.commandProbe.running && sensor.running) {
+            sensor.commandProbe.start().catch(err =>
+              log.error('Failed to start CommandProbeSensor:', err)
+            )
+          }
+        } else if (trigger.type === 'http_probe') {
+          sensor.httpProbe.addTarget(watch.id, {
+            url: trigger.url,
+            method: trigger.method,
+            headers: trigger.headers,
+            body: trigger.body,
+            interval: trigger.interval,
+            triggerOn: trigger.triggerOn,
+            pattern: trigger.pattern,
+            timeout: trigger.timeout,
+          })
+          if (!sensor.httpProbe.running && sensor.running) {
+            sensor.httpProbe.start().catch(err =>
+              log.error('Failed to start HttpProbeSensor:', err)
+            )
+          }
         }
       } catch (err) {
         log.error(`Failed to register sensor target for watch ${watch.id}:`, err)
@@ -1054,6 +1086,8 @@ export class WatchService {
     sensor.fileWatch.removeTarget(watchId)
     sensor.calendar.removeTarget(watchId)
     sensor.email.removeTarget(watchId)
+    sensor.commandProbe.removeTarget(watchId)
+    sensor.httpProbe.removeTarget(watchId)
   }
 
   // ==================== 工具 ====================
@@ -1096,6 +1130,7 @@ export class WatchService {
         case 'heartbeat':
         case 'webhook':
         case 'manual':
+        case 'im_connected':
           break
         case 'file_change':
           if (!trigger.paths || trigger.paths.length === 0) {
@@ -1148,10 +1183,16 @@ export class WatchService {
   private static readonly LEGACY_PATROL_ID = '__daily_patrol__'
 
   /** 唤醒关切的 prompt */
-  private static readonly WAKEUP_PROMPT = `你刚被定时唤醒。上方的「触发事件」是传感器已采集的最新数据（日历、邮件、文件变更等）。
+  private static readonly WAKEUP_PROMPT = `你刚被唤醒。上方的「触发事件」是传感器已采集的最新数据（日历、邮件、文件变更、IM 上线等）。
 用户看不到你的常规输出，只有通过 talk_to_user 工具发送的消息才能送达用户。
 有话想说就调用 talk_to_user，没有值得打扰用户的事就直接结束。
-请结合你的个性设定决定：若你的个性倾向主动交流，即便无新事件也可简短问候或分享想法。`
+请结合你的个性设定决定：若你的个性倾向主动交流，即便无新事件也可简短问候或分享想法。
+当触发事件是「IM 上线」时，说明用户刚通过 IM 平台连上了你，这是主动打招呼的好时机——用你的个性和上下文决定怎么说，别用模板化的问候。`
+
+  private static readonly WAKEUP_TRIGGERS: WatchTrigger[] = [
+    { type: 'heartbeat' },
+    { type: 'im_connected' },
+  ]
 
   /** 确保内置「唤醒」关切存在（觉醒模式开启时调用），幂等 */
   ensureWakeup(): boolean {
@@ -1166,24 +1207,25 @@ export class WatchService {
 
       const existing = this.store.get(WatchService.WAKEUP_ID)
       if (existing) {
+        let needsUpdate = false
+
         if (existing.prompt?.includes('lastWakeDate')) {
-          this.store.update(WatchService.WAKEUP_ID, {
-            prompt: WatchService.WAKEUP_PROMPT,
-            updatedAt: Date.now()
-          })
           if (existing.state?.lastWakeDate) {
             const { lastWakeDate, ...rest } = existing.state as Record<string, unknown>
             this.store.updateState(WatchService.WAKEUP_ID, rest)
           }
-          log.info('唤醒关切已迁移（移除 lastWakeDate）')
-        } else if (
-          !existing.prompt?.includes('常规输出')
-        ) {
+          needsUpdate = true
+        } else if (!existing.prompt?.includes('IM 上线')) {
+          needsUpdate = true
+        }
+
+        if (needsUpdate) {
           this.store.update(WatchService.WAKEUP_ID, {
             prompt: WatchService.WAKEUP_PROMPT,
+            triggers: WatchService.WAKEUP_TRIGGERS,
             updatedAt: Date.now()
           })
-          log.info('唤醒关切已迁移（支持个性主动交流）')
+          log.info('唤醒关切已迁移（支持 IM 上线事件）')
         }
         return true
       }
@@ -1193,7 +1235,7 @@ export class WatchService {
         name: '唤醒',
         description: '觉醒模式下的定时唤醒，AI 自主决定醒来后做什么',
         enabled: true,
-        triggers: [{ type: 'heartbeat' }],
+        triggers: WatchService.WAKEUP_TRIGGERS,
         prompt: WatchService.WAKEUP_PROMPT,
         execution: { type: 'local' },
         output: { type: 'desktop' },

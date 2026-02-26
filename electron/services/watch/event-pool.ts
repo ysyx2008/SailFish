@@ -148,6 +148,7 @@ export class EventPool {
     if (event.type === 'webhook') return true
     if (event.type === 'manual') return true
     if (event.type === 'file_change') return true
+    if (event.type === 'im_connected') return true
     return false
   }
 

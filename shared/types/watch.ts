@@ -55,6 +55,40 @@ export interface EmailTrigger {
   }
 }
 
+export interface IMConnectedTrigger {
+  type: 'im_connected'
+}
+
+export interface CommandProbeTrigger {
+  type: 'command_probe'
+  command: string
+  /** 指定 shell（如 'bash', 'powershell'），不指定则自动检测 */
+  shell?: string
+  /** 探测间隔（秒），最小 10 */
+  interval: number
+  /** 触发条件：output_changed=输出变化, regex_match=正则匹配, exit_code_nonzero=退出码非零 */
+  triggerOn: 'output_changed' | 'regex_match' | 'exit_code_nonzero'
+  /** 正则表达式（仅 regex_match 模式） */
+  pattern?: string
+  workingDirectory?: string
+}
+
+export interface HttpProbeTrigger {
+  type: 'http_probe'
+  url: string
+  method?: string
+  headers?: Record<string, string>
+  body?: string
+  /** 探测间隔（秒），最小 10 */
+  interval: number
+  /** 触发条件：status_changed=状态码变化, status_error=非2xx, body_changed=响应体变化, regex_match=正则匹配 */
+  triggerOn: 'status_changed' | 'status_error' | 'body_changed' | 'regex_match'
+  /** 正则表达式（仅 regex_match 模式） */
+  pattern?: string
+  /** 请求超时（毫秒），默认 10000 */
+  timeout?: number
+}
+
 export type WatchTrigger =
   | CronTrigger
   | IntervalTrigger
@@ -64,6 +98,9 @@ export type WatchTrigger =
   | FileChangeTrigger
   | CalendarTrigger
   | EmailTrigger
+  | IMConnectedTrigger
+  | CommandProbeTrigger
+  | HttpProbeTrigger
 
 export type WatchTriggerType = WatchTrigger['type']
 
