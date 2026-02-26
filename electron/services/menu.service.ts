@@ -134,6 +134,8 @@ const menuI18n = {
 
 type MenuKey = keyof typeof menuI18n['zh-CN']
 
+const IS_STEAM_BUILD = process.env.VITE_STEAM_BUILD === 'true'
+
 export class MenuService {
   private language: 'zh-CN' | 'en-US' = 'zh-CN'
   private mainWindow: BrowserWindow | null = null
@@ -332,21 +334,23 @@ export class MenuService {
         accelerator: 'CmdOrCtrl+B',
         click: () => this.sendCommand('toggleSidebar')
       },
-      {
-        label: this.t('toggleAiPanel'),
-        accelerator: 'CmdOrCtrl+I',
-        click: () => this.sendCommand('toggleAiPanel')
-      },
-      {
-        label: this.t('toggleKnowledge'),
-        accelerator: 'CmdOrCtrl+Shift+K',
-        click: () => this.sendCommand('toggleKnowledge')
-      },
-      {
-        label: this.t('aiDebugConsole'),
-        accelerator: 'F12',
-        click: () => this.sendCommand('openAiDebugConsole')
-      },
+      ...(!IS_STEAM_BUILD ? [
+        {
+          label: this.t('toggleAiPanel'),
+          accelerator: 'CmdOrCtrl+I',
+          click: () => this.sendCommand('toggleAiPanel')
+        },
+        {
+          label: this.t('toggleKnowledge'),
+          accelerator: 'CmdOrCtrl+Shift+K',
+          click: () => this.sendCommand('toggleKnowledge')
+        },
+        {
+          label: this.t('aiDebugConsole'),
+          accelerator: 'F12',
+          click: () => this.sendCommand('openAiDebugConsole')
+        },
+      ] as MenuItemConstructorOptions[] : []),
       { type: 'separator' },
       {
         label: this.t('zoomIn'),

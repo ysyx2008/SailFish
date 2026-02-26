@@ -211,7 +211,7 @@ onMounted(async () => {
     if (!existingTab) {
       terminalStore.createAssistantTab({
         agentId: data.agentId,
-        title: data.title || '📡 Remote Agent',
+        title: data.title || `📡 ${t('gateway.remoteChat', '远程对话')}`,
         isRemote: true,
         activate: false
       })
@@ -232,7 +232,7 @@ onMounted(async () => {
     if (!remoteTab) {
       const newTabId = terminalStore.createAssistantTab({
         agentId: data.agentId,
-        title: '📡 Remote Agent',
+        title: `📡 ${t('gateway.remoteChat', '远程对话')}`,
         isRemote: true,
         remoteChannel: data.remoteChannel,
         activate: false
@@ -538,11 +538,13 @@ const handleMenuCommand = async (command: string) => {
       toggleSidebar()
       break
     case 'toggleAiPanel':
-      toggleAiPanel()
+      if (!isSteamBuild) toggleAiPanel()
       break
     case 'toggleKnowledge':
-      settingsInitialTab.value = 'knowledge'
-      showSettings.value = true
+      if (!isSteamBuild) {
+        settingsInitialTab.value = 'knowledge'
+        showSettings.value = true
+      }
       break
     case 'openSettings':
       showSettings.value = true
@@ -576,8 +578,7 @@ const handleMenuCommand = async (command: string) => {
       window.dispatchEvent(new CustomEvent('toggle-batch-panel'))
       break
     case 'openAiDebugConsole':
-      // 打开 AI 调试控制台
-      window.electronAPI.aiDebugOpenWindow()
+      if (!isSteamBuild) window.electronAPI.aiDebugOpenWindow()
       break
   }
 }
@@ -694,8 +695,8 @@ onUnmounted(() => {
         />
         <!-- 每个 Tab 一个独立 div，始终挂载，v-show 控制可见性 -->
         <template v-else v-for="tab in terminalStore.tabs" :key="tab.id">
-          <!-- ===== 助手 Tab ===== -->
-          <div v-if="tab.type === 'assistant'" v-show="tab.id === terminalStore.activeTabId" class="tab-view assistant-tab">
+          <!-- ===== 助手 Tab（Steam 版不渲染） ===== -->
+          <div v-if="tab.type === 'assistant' && !isSteamBuild" v-show="tab.id === terminalStore.activeTabId" class="tab-view assistant-tab">
             <AiPanel
               :tab-id="tab.id"
               :visible="tab.id === terminalStore.activeTabId"
@@ -769,15 +770,15 @@ onUnmounted(() => {
     />
 
 
-    <!-- 关切面板 -->
+    <!-- 关切面板（Steam 版不渲染） -->
     <Awaken
-      v-if="showAwaken"
+      v-if="showAwaken && !isSteamBuild"
       @close="showAwaken = false"
     />
 
-    <!-- 知识库升级进度提示 -->
+    <!-- 知识库升级进度提示（Steam 版不渲染） -->
     <Transition name="slide-down">
-      <div v-if="knowledgeUpgrading" class="knowledge-upgrade-bar">
+      <div v-if="knowledgeUpgrading && !isSteamBuild" class="knowledge-upgrade-bar">
         <div class="upgrade-content">
           <Loader2 class="upgrade-icon" :size="16" />
           <span class="upgrade-text">

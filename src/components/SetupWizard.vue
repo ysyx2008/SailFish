@@ -702,8 +702,8 @@ onMounted(async () => {
                 </div>
               </div>
 
-              <!-- 知识库 -->
-              <div class="config-card" :class="{ expanded: expandedSection === 'knowledge' }">
+              <!-- 知识库（Steam 版隐藏） -->
+              <div v-if="!isSteamBuild" class="config-card" :class="{ expanded: expandedSection === 'knowledge' }">
                 <div class="config-card-header" @click="toggleSection('knowledge')">
                   <Database :size="20" class="card-icon" />
                   <div class="card-info">
@@ -729,8 +729,8 @@ onMounted(async () => {
                 </div>
               </div>
 
-              <!-- MCP 服务 -->
-              <div class="config-card" :class="{ expanded: expandedSection === 'mcp' }">
+              <!-- MCP 服务（Steam 版隐藏） -->
+              <div v-if="!isSteamBuild" class="config-card" :class="{ expanded: expandedSection === 'mcp' }">
                 <div class="config-card-header" @click="toggleSection('mcp'); loadMcpServers()">
                   <Plug :size="20" class="card-icon" />
                   <div class="card-info">

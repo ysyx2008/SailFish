@@ -15,7 +15,7 @@ Ever had to—
 SailFish Terminal does it: multi-tab terminal, SSH session management, and a dual-pane file manager. Local and remote side by side, drag-and-drop to transfer.
 
 The **Steam version** gives you stable terminal and connection management with Steam’s auto-updates and easy install.  
-For the **full version** (AI assistant, smart chat, local knowledge base, and more), get it free from the [official site](http://www.sfterm.com) or [GitHub](https://github.com/ysyx2008/SFTerminal).
+For more features and updates, visit the [official site](http://www.sfterm.com) or [GitHub](https://github.com/ysyx2008/SFTerminal).
 
 ---
 
@@ -63,7 +63,7 @@ Whether you live in the terminal or are just getting started, SailFish Terminal 
 ## Versions and where to get them
 
 - **Steam version**: Free. Focused on terminal, SSH, and file management, with Steam’s update and download convenience.  
-- **Full version** (AI assistant, smart chat, local knowledge base, etc.): Free for personal use. Get it from the [official site](http://www.sfterm.com) or [GitHub](https://github.com/ysyx2008/SFTerminal).  
+- **Full version** (with more advanced features): Free for personal use. Get it from the [official site](http://www.sfterm.com) or [GitHub](https://github.com/ysyx2008/SFTerminal).  
 
 Not working for you? Feedback and issues are welcome in the repo or community.
 

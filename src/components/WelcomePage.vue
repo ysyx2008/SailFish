@@ -119,8 +119,8 @@ const formatHost = (session: SshSession) => {
       <div class="quick-start">
         <h2 class="section-title">{{ t('welcome.quickStart') }}</h2>
         <div class="action-cards">
-          <!-- AI 助手 -->
-          <div class="action-card" @click="openAssistant">
+          <!-- AI 助手（Steam 版隐藏） -->
+          <div v-if="!isSteamBuild" class="action-card" @click="openAssistant">
             <div class="card-icon assistant">
               <Bot :size="32" :stroke-width="1.5" />
             </div>

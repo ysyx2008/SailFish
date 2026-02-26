@@ -27,6 +27,7 @@ export interface CardStatus {
 }
 
 const { t } = useI18n()
+const isSteamBuild = typeof __STEAM_BUILD__ !== 'undefined' && __STEAM_BUILD__
 
 const props = defineProps<{
   tabId: string
@@ -1297,15 +1298,17 @@ defineExpose({
       :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
       @click.stop
     >
-      <div 
-        class="menu-item"
-        :class="{ disabled: !contextMenu.hasSelection }"
-        @click="contextMenu.hasSelection && menuSendToAi()"
-      >
-        <span class="menu-icon">🤖</span>
-        <span>{{ t('terminal.contextMenu.sendToAi') }}</span>
-      </div>
-      <div class="menu-divider"></div>
+      <template v-if="!isSteamBuild">
+        <div 
+          class="menu-item"
+          :class="{ disabled: !contextMenu.hasSelection }"
+          @click="contextMenu.hasSelection && menuSendToAi()"
+        >
+          <span class="menu-icon">🤖</span>
+          <span>{{ t('terminal.contextMenu.sendToAi') }}</span>
+        </div>
+        <div class="menu-divider"></div>
+      </template>
       <div 
         class="menu-item" 
         :class="{ disabled: !contextMenu.hasSelection }"

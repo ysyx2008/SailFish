@@ -7,6 +7,7 @@ import BatchCommandPanel from './BatchCommandPanel.vue'
 
 const { t } = useI18n()
 const terminalStore = useTerminalStore()
+const isSteamBuild = typeof __STEAM_BUILD__ !== 'undefined' && __STEAM_BUILD__
 
 // 拖拽状态
 const dragIndex = ref<number | null>(null)
@@ -286,14 +287,16 @@ const openBatchPanel = () => {
     <Teleport to="body">
       <div v-if="showNewMenu" class="shell-menu-overlay" @click="hideNewMenu"></div>
       <div v-if="showNewMenu" class="shell-menu" :style="menuPosition">
-        <div 
-          class="shell-menu-item"
-          @click="handleNewAssistant"
-        >
-          <span class="shell-icon">🤖</span>
-          <span>{{ t('tabs.assistant', '助手') }}</span>
-        </div>
-        <div class="shell-menu-divider"></div>
+        <template v-if="!isSteamBuild">
+          <div 
+            class="shell-menu-item"
+            @click="handleNewAssistant"
+          >
+            <span class="shell-icon">🤖</span>
+            <span>{{ t('tabs.assistant', '助手') }}</span>
+          </div>
+          <div class="shell-menu-divider"></div>
+        </template>
         <div 
           v-for="option in shellOptions" 
           :key="option.value"
