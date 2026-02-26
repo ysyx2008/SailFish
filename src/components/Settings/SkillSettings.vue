@@ -436,7 +436,7 @@ watch(() => props.pendingInstallSkillId, (newId) => {
             </div>
             <div class="skill-info">
               <div class="skill-name">{{ skill.name }}</div>
-              <div class="skill-desc" v-if="skill.description">{{ skill.description }}</div>
+              <div class="skill-desc" v-if="skill.description" :title="skill.description">{{ skill.description }}</div>
             </div>
           </div>
         </div>
@@ -483,7 +483,7 @@ watch(() => props.pendingInstallSkillId, (newId) => {
                 {{ skill.name }}
                 <span class="skill-version" v-if="skill.version">v{{ skill.version }}</span>
               </div>
-              <div class="skill-desc" v-if="skill.description">{{ skill.description }}</div>
+              <div class="skill-desc" v-if="skill.description" :title="skill.description">{{ skill.description }}</div>
             </div>
             <div class="skill-actions">
               <button class="btn-icon btn-sm" @click="viewSkill(skill)" :title="t('skillSettings.view')">
@@ -656,7 +656,7 @@ enabled: true
                   <span class="skill-version">v{{ skill.version }}</span>
                   <span v-if="skill.hasUpdate" class="update-badge">{{ t('skillSettings.updateAvailable') }}</span>
                 </div>
-                <div class="skill-desc" v-if="skill.description">{{ skill.description }}</div>
+                <div class="skill-desc" v-if="skill.description" :title="skill.description">{{ skill.description }}</div>
                 <div class="market-item-meta">
                   <span class="meta-item">{{ t('skillSettings.by') }} {{ skill.author }}</span>
                   <span v-if="skill.category" class="meta-item tag">{{ skill.category }}</span>
