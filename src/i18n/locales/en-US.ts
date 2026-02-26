@@ -591,7 +591,8 @@ export default {
     skillDetailNotInstalled: 'Install to preview full content',
     builtinSkills: 'Built-in Skills',
     builtinSkillsDesc: 'Built-in skills provide core capabilities like Excel, browser, and terminal. Agent loads them on demand. Disabling a skill prevents the Agent from using it.',
-    builtinTag: 'Built-in'
+    extensionSkills: 'Extension Skills',
+    extensionSkillsDesc: 'Extension skills teach AI how to complete specific tasks via SKILL.md files. Install from the market or add manually.'
   },
 
   // Knowledge Settings

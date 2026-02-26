@@ -410,28 +410,14 @@ watch(() => props.pendingInstallSkillId, (newId) => {
     </div>
 
     <!-- ========== 我的技能 ========== -->
-    <div v-if="activeSubTab === 'my'" class="settings-section">
-      <div class="section-header">
-        <div class="header-left">
-          <h4>{{ t('skillSettings.title') }}</h4>
-          <span class="enabled-badge" v-if="enabledCount > 0">
-            {{ enabledCount }} {{ t('skillSettings.enabled') }}
-          </span>
-        </div>
-        <div class="header-actions">
-          <button class="btn btn-sm" @click="refreshSkills" :disabled="loading" :title="t('skillSettings.refresh')">
-            <RefreshCw :size="14" :class="{ spinning: loading }" />
-          </button>
-          <button class="btn btn-primary btn-sm" @click="openFolder">
-            <FolderOpen :size="14" />
-            {{ t('skillSettings.openFolder') }}
-          </button>
-        </div>
-      </div>
-
+    <div v-if="activeSubTab === 'my'" class="my-skills-panel">
       <!-- 内置技能 -->
-      <div class="builtin-section" v-if="builtinSkills.length > 0">
-        <h5 class="builtin-title">{{ t('skillSettings.builtinSkills') }}</h5>
+      <div class="settings-section" v-if="builtinSkills.length > 0">
+        <div class="section-header">
+          <div class="header-left">
+            <h4>{{ t('skillSettings.builtinSkills') }}</h4>
+          </div>
+        </div>
         <p class="section-desc">{{ t('skillSettings.builtinSkillsDesc') }}</p>
         <div class="skill-list">
           <div
@@ -449,20 +435,34 @@ watch(() => props.pendingInstallSkillId, (newId) => {
               />
             </div>
             <div class="skill-info">
-              <div class="skill-name">
-                {{ skill.name }}
-                <span class="builtin-tag">{{ t('skillSettings.builtinTag') }}</span>
-              </div>
+              <div class="skill-name">{{ skill.name }}</div>
               <div class="skill-desc" v-if="skill.description">{{ skill.description }}</div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 用户技能 -->
-      <div class="user-skill-section">
-        <h5 class="user-skill-title">{{ t('skillSettings.mySkills') }}</h5>
-        <p class="section-desc">{{ t('skillSettings.description') }}</p>
+      <!-- 扩展技能 -->
+      <div class="settings-section">
+        <div class="section-header">
+          <div class="header-left">
+            <h4>{{ t('skillSettings.extensionSkills') }}</h4>
+            <span class="enabled-badge" v-if="skills.filter(s => s.enabled).length > 0">
+              {{ skills.filter(s => s.enabled).length }} {{ t('skillSettings.enabled') }}
+            </span>
+          </div>
+          <div class="header-actions">
+            <button class="btn btn-sm" @click="refreshSkills" :disabled="loading" :title="t('skillSettings.refresh')">
+              <RefreshCw :size="14" :class="{ spinning: loading }" />
+            </button>
+            <button class="btn btn-primary btn-sm" @click="openFolder">
+              <FolderOpen :size="14" />
+              {{ t('skillSettings.openFolder') }}
+            </button>
+          </div>
+        </div>
+        <p class="section-desc">{{ t('skillSettings.extensionSkillsDesc') }}</p>
+
         <div class="skill-list">
           <div
             v-for="skill in skills"
@@ -507,18 +507,17 @@ watch(() => props.pendingInstallSkillId, (newId) => {
             <p>{{ t('skillSettings.loading') }}</p>
           </div>
         </div>
-      </div>
 
-      <div class="help-section">
-        <h5>{{ t('skillSettings.howToAdd') }}</h5>
-        <ol class="help-list">
-          <li>{{ t('skillSettings.step1') }}</li>
-          <li>{{ t('skillSettings.step2') }}</li>
-          <li>{{ t('skillSettings.step3') }}</li>
-        </ol>
-        <div class="skill-format">
-          <h6>{{ t('skillSettings.formatTitle') }}</h6>
-          <pre class="format-example">---
+        <div class="help-section">
+          <h5>{{ t('skillSettings.howToAdd') }}</h5>
+          <ol class="help-list">
+            <li>{{ t('skillSettings.step1') }}</li>
+            <li>{{ t('skillSettings.step2') }}</li>
+            <li>{{ t('skillSettings.step3') }}</li>
+          </ol>
+          <div class="skill-format">
+            <h6>{{ t('skillSettings.formatTitle') }}</h6>
+            <pre class="format-example">---
 name: {{ t('skillSettings.exampleName') }}
 description: {{ t('skillSettings.exampleDesc') }}
 version: 1.0
@@ -526,6 +525,7 @@ enabled: true
 ---
 
 {{ t('skillSettings.exampleContent') }}</pre>
+          </div>
         </div>
       </div>
     </div>
@@ -1055,28 +1055,11 @@ enabled: true
   margin-top: auto;
 }
 
-/* 内置技能 */
-.builtin-section {
-  margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.builtin-title,
-.user-skill-title {
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 4px;
-  color: var(--text-primary);
-}
-
-.builtin-tag {
-  font-size: 10px;
-  padding: 1px 6px;
-  background: var(--accent-primary);
-  color: var(--bg-primary);
-  border-radius: 8px;
-  font-weight: 500;
+/* 两组面板 */
+.my-skills-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 /* 技能列表 */

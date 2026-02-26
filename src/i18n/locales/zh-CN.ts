@@ -591,7 +591,8 @@ export default {
     skillDetailNotInstalled: '安装后即可预览完整内容',
     builtinSkills: '内置技能',
     builtinSkillsDesc: '内置技能提供 Excel、浏览器、终端等核心能力，Agent 按需加载。禁用后 Agent 将无法使用对应能力。',
-    builtinTag: '内置'
+    extensionSkills: '扩展技能',
+    extensionSkillsDesc: '扩展技能通过 SKILL.md 文件教 AI 如何完成特定任务。从技能市场安装或手动添加。'
   },
 
   // 知识库设置
