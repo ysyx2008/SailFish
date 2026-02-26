@@ -6,7 +6,7 @@ import { Bot, HardDrive, CalendarRange, FolderOpen, History, Download, Upload, T
 
 const { t } = useI18n()
 
-import type { AgentStepRecord, AgentRecord } from '@shared/types'
+import type { AgentRecord } from '@shared/types'
 
 // 存储统计
 const storageStats = ref<{

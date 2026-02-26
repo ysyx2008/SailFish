@@ -29,6 +29,9 @@ type AgentPlan = import('@shared/types').AgentPlan
 type AgentStep = import('@shared/types').AgentStep
 type PendingConfirmation = import('@shared/types').PendingConfirmation
 type HostProfile = import('@shared/types').HostProfile
+type PlanStepStatus = import('@shared/types').PlanStepStatus
+type WatchDefinition = import('@shared/types').WatchDefinition
+type WatchHistoryRecord = import('@shared/types').WatchHistoryRecord
 
 // MCP 相关类型
 interface McpServerConfig {
@@ -214,7 +217,7 @@ interface Window {
       onDisconnected: (id: string, callback: (event: { reason: string; error?: string }) => void) => () => void
     }
     terminalState: {
-      init: (id: string, type: 'local' | 'ssh', initialCwd?: string) => Promise<void>
+      init: (id: string, type: TerminalType, initialCwd?: string) => Promise<void>
       remove: (id: string) => Promise<void>
       get: (id: string) => Promise<{
         id: string
@@ -616,7 +619,7 @@ interface Window {
           ptyId: string
           terminalOutput: string[]
           systemInfo: { os: string; shell: string }
-          terminalType: 'local' | 'ssh'
+          terminalType: TerminalType
           hostId?: string
           sshHost?: string
           documentContext?: string
@@ -631,6 +634,28 @@ interface Window {
           autoExecuteSafe?: boolean
           autoExecuteModerate?: boolean
           executionMode?: ExecutionMode
+        },
+        profileId?: string
+      ) => Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>
+      runStandalone: (
+        agentId: string,
+        message: string,
+        context: {
+          ptyId?: string
+          terminalOutput?: string[]
+          systemInfo?: { os: string; shell: string }
+          terminalType?: TerminalType
+          hostId?: string
+          sshHost?: string
+          documentContext?: string
+          images?: string[]
+          remoteChannel?: RemoteChannel
+          sessionId?: string
+          sessionStartTime?: number
+        },
+        config?: {
+          executionMode?: ExecutionMode
+          commandTimeout?: number
         },
         profileId?: string
       ) => Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>
@@ -1938,6 +1963,41 @@ interface Window {
     // Web Chat 会话（运行时配置）
     webChat: {
       setExecutionMode: (mode: ExecutionMode) => Promise<void>
+    }
+
+    // Watch & Sensor（感知层）
+    watch: {
+      getAll: () => Promise<WatchDefinition[]>
+      get: (id: string) => Promise<WatchDefinition | null>
+      create: (params: Record<string, unknown>) => Promise<WatchDefinition>
+      update: (id: string, updates: Record<string, unknown>) => Promise<WatchDefinition | null>
+      delete: (id: string) => Promise<boolean>
+      toggle: (id: string) => Promise<WatchDefinition | null>
+      trigger: (id: string) => Promise<void>
+      getHistory: (watchId?: string, limit?: number) => Promise<WatchHistoryRecord[]>
+      clearHistory: (watchId?: string) => Promise<void>
+      isRunning: (id: string) => Promise<boolean>
+      getRunning: () => Promise<string[]>
+      getSshSessions: () => Promise<Array<{ id: string; name: string; host: string; port: number; username: string }>>
+      getTemplates: () => Promise<Array<{ id: string; name: string; nameEn: string; description: string; descriptionEn: string; category: string; icon: string }>>
+      getTemplateCategories: () => Promise<string[]>
+      createFromTemplate: (templateId: string, options?: Record<string, unknown>) => Promise<WatchDefinition | null>
+      getSharedState: () => Promise<Record<string, unknown>>
+      setSharedState: (key: string, value: unknown) => Promise<void>
+      clearSharedState: () => Promise<void>
+      onTaskStarted?: (callback: (data: { watchId: string; ptyId?: string; watchName?: string; executionType?: string }) => void) => () => void
+      onTaskCompleted?: (callback: (data: { watchId: string; result?: { success: boolean; skipped?: boolean; error?: string } }) => void) => () => void
+      onEnsureTab: (callback: (data: { agentId: string }) => void) => () => void
+      onProactiveMessage: (callback: (data: { agentId: string; message: string; watchName: string }) => void) => () => void
+      onActivateMessage?: (callback: (data: { agentId: string }) => void) => () => void
+    }
+    sensor: {
+      getStatus: () => Promise<Array<{ id: string; name: string; running: boolean; details?: Record<string, unknown> }>>
+      getStatusDetailed?: () => Promise<Array<{ id: string; name: string; running: boolean; details?: Record<string, unknown> }>>
+      getRecentEvents: (limit?: number) => Promise<Array<{ id: string; type: string; source: string; timestamp: number }>>
+      setHeartbeat: (enabled: boolean, intervalMinutes?: number) => Promise<void>
+      setAwakened: (awakened: boolean, intervalMinutes?: number) => Promise<void>
+      triggerHeartbeat: () => Promise<void>
     }
 
     // IM 集成

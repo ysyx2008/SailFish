@@ -282,7 +282,7 @@ import { initTerminalStateService, type TerminalState, type CwdChangeEvent, type
 import { initTerminalAwarenessService, type TerminalAwareness } from './services/terminal-awareness'
 import { initScreenContentService } from './services/screen-content.service'
 import { menuService } from './services/menu.service'
-import { aiDebugService } from './services/ai-debug.service'
+import { getAiDebugService } from './services/ai-debug.service'
 import { getSchedulerService, type CreateTaskParams } from './services/scheduler.service'
 import { getWatchService } from './services/watch/watch.service'
 import { getSensorService } from './services/sensor'
@@ -823,8 +823,7 @@ function createAiDebugWindow(): void {
     aiDebugWindow.loadFile(join(__dirname, '../dist/ai-debug.html'))
   }
 
-  // 设置到 aiDebugService
-  aiDebugService.setDebugWindow(aiDebugWindow)
+  getAiDebugService().setDebugWindow(aiDebugWindow)
 
   // 在浏览器中打开外部链接
   aiDebugWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -834,7 +833,7 @@ function createAiDebugWindow(): void {
 
   aiDebugWindow.on('closed', () => {
     aiDebugWindow = null
-    aiDebugService.setDebugWindow(null)
+    getAiDebugService().setDebugWindow(null)
   })
 }
 

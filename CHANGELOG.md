@@ -2,7 +2,54 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.9.0 (2026-02-21) (Latest)
+## v10.10.0 (2026-02-26) (Latest)
+
+### New Features
+- 🧠 **Sensor Loop & Watch System**: Complete Watch system with 4 sensor types (heartbeat, file-watch, calendar, email), 8 built-in templates, stateful workflows, event pool dispatch layer, and webhook support
+- 🌅 **Awaken Mode**: AI transforms from a passive tool into a proactive assistant — personality-driven conversations, silent background execution, toast push notifications, and ECG heartbeat animation
+- 🤖 **Anthropic Native API**: Claude models now use Anthropic's native API instead of the OpenAI compatibility layer
+- 📊 **Excel Style Themes**: New style theme system with preset/custom styles and cell-level control; quick Markdown-to-Excel generation
+- 📝 **Word Theme Extension**: Theme system extended to tables, code blocks, and quotes; Markdown ordered lists convert to Word numbered lists
+- 📚 **L2 Knowledge Docs Refactor**: Each contextId now maps to a single structured Markdown document, replacing the old fragmented entries
+- 🏗️ **Agent Architecture Refactor**: TerminalAgent → SailFish, decoupled from terminal dependency; new standalone AI assistant tab
+- 🧩 **Tab Independent Rendering**: Each tab renders in its own self-contained div, preventing component destruction on tab switch
+- 🎭 **Personality Skill**: Define Agent personality through natural conversation
+- 🛠️ **Built-in Skills Display**: Settings page shows all built-in skills with enable/disable toggle
+- 📦 **Shared Types System**: Created `shared/types/` to eliminate duplicate type definitions between frontend and backend
+- 🎤 **Push-to-Talk**: Hold Ctrl key for voice input
+- 🔍 **History Search**: Search agent history records with time range filtering
+- 📋 **Unified Logging**: `electron-log` based logging with daily file rotation, configurable log levels
+- 📁 **Agent Workspace**: Dedicated workspace directory for confirmation-free file operations
+- 🖼️ **Image Reading**: `read_file` tool supports reading images and injecting AI vision context
+- 🔌 **Feishu WebSocket**: WebSocket connection management with auto-reconnect for Feishu/Lark
+- 🤖 **AI Templates**: New presets for Claude, Gemini, Grok, Mistral, Doubao, Zhipu, and Kimi
+
+### Improvements
+- 🔀 **Command Execution Split**: `execute_command` split into terminal (PTY) and assistant (exec) versions with configurable timeout (up to 600s)
+- 🌐 **Remote Channels**: Remote channels now use assistant tab instead of terminal tab; WebChatService backend-driven architecture
+- 📋 **Plan Steps**: `create_plan` step limit raised from 10 to 50
+- 🧠 **Memory System**: Removed auto observation extraction; now uses semantic search on conversation history
+- 🔔 **Watch Prompt Injection**: Active watch list summary injected into agent prompt for awareness
+- 📱 **IM Tools**: IM tools now available in all modes, not just remote channels
+- ⚙️ **Settings UI**: Bottom items side-by-side layout; memory/knowledge management embedded in settings page; skills page simplified to built-in/extension groups
+- 🗑️ **Scheduler Deprecated**: Old scheduled tasks auto-migrate to Watch system; `schedule_*` tools marked deprecated
+- 🚫 **NO_ACTION**: Agent can skip notifications for batched sensor events not worth reporting
+
+### Bug Fixes
+- 🔧 Fixed thinking model execution: user interruption no longer causes immediate "task completed"
+- 🔧 Fixed remote conversations (IM/Web/Watch) now correctly marked as assistant mode
+- 🔧 Fixed IM duplicate message sending with deduplication
+- 🔧 Fixed AI timeout retry mechanism that was silently failing
+- 🔧 Fixed Steam version: hidden residual AI function entries that caused review failure
+- 🔧 Fixed heartbeat events now properly trigger event pool drain
+- 🔧 Fixed email sensor: startup scan for missed unread emails; reconnect gap recovery
+- 🔧 Fixed `did-finish-load` callback missing async causing startup failure
+- 🔧 Fixed multi-channel IM proactive notification routing for single user
+- 🔧 Fixed redundant `pwd` commands in terminal
+- 🔧 Fixed IM file sending tool now available on all platforms
+- 🔧 Fixed `send_image_to_chat` tool: image reading now compatible with non-vision AI models
+
+## v10.9.0 (2026-02-21)
 
 ### New Features
 - ⚙️ **Config Skill: Email & Calendar**: Config management skill now supports email and calendar account management

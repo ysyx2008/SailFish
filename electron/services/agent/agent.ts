@@ -40,7 +40,7 @@ import { formatWatchListForPrompt } from './skills/watch/executor'
 import { t } from './i18n'
 import { createSkillSession, SkillSession } from './skills'
 import { PromptBuilder } from './prompt-builder'
-import { aiDebugService } from '../ai-debug.service'
+import { getAiDebugService } from '../ai-debug.service'
 import { createLogger } from '../../utils/logger'
 
 const log = createLogger('Agent')
@@ -1510,7 +1510,7 @@ export abstract class Agent {
     
     // AI Debug: 记录工具执行结果
     if (run.requestId) {
-      aiDebugService.logToolResult(run.requestId, {
+      getAiDebugService().logToolResult(run.requestId, {
         toolCallId: toolCall.id,
         success: result.success,
         result: resultContent

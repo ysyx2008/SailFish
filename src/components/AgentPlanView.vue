@@ -6,7 +6,7 @@
  */
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { AgentPlan } from '@shared/types'
+import type { AgentPlan, PlanStepStatus } from '@shared/types'
 
 const { t } = useI18n()
 

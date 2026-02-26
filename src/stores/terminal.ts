@@ -39,7 +39,7 @@ export type {
   PendingConfirmation,
 } from '@shared/types'
 
-import type { TerminalType, AgentStep, AgentPlan, PendingConfirmation, RemoteChannel } from '@shared/types'
+import type { TerminalType, AgentStep, PendingConfirmation, RemoteChannel } from '@shared/types'
 
 export interface AgentState {
   isRunning: boolean

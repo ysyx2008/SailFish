@@ -60,8 +60,8 @@ export const translations = {
         },
         {
           title: '丰富的 Agent 技能',
-          description: '开箱即用的技能扩展：浏览器自动化、邮件收发、日程管理、定时任务、Excel/Word 处理，让 AI 的能力远不止命令行。',
-          highlights: ['浏览器自动化', '邮件 / 日程管理', 'Excel / Word 处理'],
+          description: '开箱即用的技能扩展：浏览器自动化、邮件收发、日程管理、Excel/Word 样式主题处理，让 AI 的能力远不止命令行。觉醒模式下 AI 主动监控、推送通知。',
+          highlights: ['觉醒模式 & 传感器', '邮件 / 日程管理', 'Excel / Word 处理'],
         },
         {
           title: '本地知识库',
@@ -307,8 +307,8 @@ export const translations = {
         },
         {
           title: 'Rich Agent Skills',
-          description: 'Out-of-the-box skill extensions: browser automation, email management, calendar scheduling, cron jobs, Excel/Word processing — AI capabilities far beyond the command line.',
-          highlights: ['Browser Automation', 'Email / Calendar', 'Excel / Word Processing'],
+          description: 'Out-of-the-box skill extensions: browser automation, email management, calendar scheduling, Excel/Word style themes — AI capabilities far beyond the command line. In Awaken mode, AI proactively monitors and pushes notifications.',
+          highlights: ['Awaken Mode & Sensors', 'Email / Calendar', 'Excel / Word Processing'],
         },
         {
           title: 'Local Knowledge Base',

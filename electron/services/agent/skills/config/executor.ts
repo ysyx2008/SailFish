@@ -7,7 +7,7 @@ import { createLogger } from '../../../../utils/logger'
 
 const log = createLogger('ConfigExecutor')
 import { getConfigService } from '../../../config.service'
-import { getIMService } from '../../../im/im.service'
+import type { IMService } from '../../../im/im.service'
 import {
   getEmailCredential, setEmailCredential, deleteEmailCredential,
   getCalendarCredential, setCalendarCredential, deleteCalendarCredential
@@ -261,7 +261,7 @@ interface IMPlatformDef {
   credKeys: string[]
   autoConnectKey: string
   buildConfig: (config: ReturnType<typeof getConfigService>) => Record<string, unknown>
-  start: (imService: ReturnType<typeof getIMService>, cfg: any) => Promise<{ success: boolean; error?: string }>
+  start: (imService: IMService, cfg: any) => Promise<{ success: boolean; error?: string }>
 }
 
 const IM_PLATFORMS: Record<string, IMPlatformDef> = {
@@ -326,6 +326,7 @@ async function connectIM(args: Record<string, unknown>): Promise<ToolResult> {
   }
 
   try {
+    const { getIMService } = await import('../../../im/im.service')
     const imService = getIMService()
     const imConfig = def.buildConfig(config)
     const result = await def.start(imService, imConfig)

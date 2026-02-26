@@ -106,7 +106,7 @@ export function useMentions(
   /**
    * 获取当前终端的类型
    */
-  const getTerminalType = (): 'local' | 'ssh' | null => {
+  const getTerminalType = (): TerminalType | null => {
     if (!currentTabId.value) return null
     const tab = terminalStore.tabs.find(t => t.id === currentTabId.value)
     return tab?.type || null

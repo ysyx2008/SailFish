@@ -48,6 +48,8 @@
 | 功能 | 说明 |
 |------|------|
 | 🤖 **AI Agent** | 描述任务，Agent 自动规划执行 |
+| 🌅 **觉醒模式** | AI 变为主动助手 —— 个性驱动的对话、后台监控、推送通知 |
+| 🧠 **关切与传感器** | 心跳、文件变化、日历、邮件四种传感器触发自动化工作流，支持有状态上下文 |
 | 🌐 **远程 Agent** | 随时随地访问你的 Agent——Web、钉钉、飞书、企业微信、Slack、Telegram |
 | 🖥️ **SSH/SFTP** | 完整的远程连接和文件管理 |
 | 📁 **文件管理器** | 双栏文件管理器，支持本地与远程 |
@@ -55,6 +57,7 @@
 | 🔌 **MCP 扩展** | 通过 MCP 协议接入外部工具 |
 | 🗄️ **数据库** | 自然语言执行 SQL 和分析 |
 | 🛒 **技能市场** | 浏览、安装、分享社区 Agent 技能，一键扩展 |
+| 📊 **Excel & Word** | 样式主题、Markdown 生成 Excel、编号列表等 —— 全部通过自然语言完成 |
 | 🔒 **系统托盘** | 最小化到托盘；Cmd+W 隐藏窗口不退出，单实例运行 |
 | 🖥️ **CLI 模式** | 无需 Electron 运行全部后端服务 —— 通过 `npm run sft` 实现无头自动化 |
 
@@ -100,7 +103,8 @@ npm run build:linux  # Linux
 - DeepSeek V3
 - 通义千问 qwen-plus / qwen-max
 - OpenAI GPT-4o / GPT-4o-mini
-- Claude 4.5 Sonnet
+- Claude 4.5 Sonnet（支持 Anthropic 原生 API）
+- Gemini、Grok、Mistral、豆包、智谱 GLM、Kimi（内置预设模板）
 
 ## 📖 文档
 

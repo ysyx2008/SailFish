@@ -91,7 +91,9 @@ async function getOrCreateXmlSession(filePath: string): Promise<{ documentXml: s
 }
 
 // 备用存储路径（知识库未启用时使用）
-const STYLES_FILE_PATH = path.join(app.getPath('userData'), 'word-styles.json')
+function getStylesFilePath(): string {
+  return path.join(app.getPath('userData'), 'word-styles.json')
+}
 
 // 样式文档标记 tag
 const WORD_STYLE_TAG = 'word_style'
@@ -136,8 +138,8 @@ function loadCustomStyles(): void {
       log.info(`Loaded ${customStyles.size} custom styles from knowledge base`)
     } else {
       // 从本地 JSON 加载（备用）
-      if (fs.existsSync(STYLES_FILE_PATH)) {
-        const data = JSON.parse(fs.readFileSync(STYLES_FILE_PATH, 'utf-8'))
+      if (fs.existsSync(getStylesFilePath())) {
+        const data = JSON.parse(fs.readFileSync(getStylesFilePath(), 'utf-8'))
         if (data.styles) {
           for (const [name, style] of Object.entries(data.styles)) {
             customStyles.set(name, style as WordStyleConfig)
@@ -220,12 +222,13 @@ function saveCustomStylesToFile(): void {
       defaultStyle: defaultStyleName
     }
     
-    const dir = path.dirname(STYLES_FILE_PATH)
+    const filePath = getStylesFilePath()
+    const dir = path.dirname(filePath)
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true })
     }
     
-    fs.writeFileSync(STYLES_FILE_PATH, JSON.stringify(data, null, 2))
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2))
     log.info(`Saved ${customStyles.size} custom styles to local file`)
   } catch (e) {
     log.error('Failed to save custom styles to file:', e)

@@ -4,7 +4,7 @@ import { SocksProxyAgent } from 'socks-proxy-agent'
 import * as https from 'https'
 import * as http from 'http'
 import { t } from './agent/i18n'
-import { aiDebugService } from './ai-debug.service'
+import { getAiDebugService } from './ai-debug.service'
 import { createLogger } from '../utils/logger'
 
 const log = createLogger('AI')
@@ -1016,7 +1016,7 @@ export class AiService {
     log.info(`Request started: model=${profile.model}, messages=${messages.length}, tools=${tools.length}`)
 
     // AI Debug: 记录请求开始
-    aiDebugService.logRequestStart(reqId, {
+    getAiDebugService().logRequestStart(reqId, {
       profileId: profile.id,
       model: profile.model,
       messages: messages.map(m => ({
@@ -1118,7 +1118,7 @@ export class AiService {
         retryCount++
         const retryMsg = `⚠️ 网络错误，正在重试 (${retryCount}/${AI_RETRY.MAX_RETRIES})...`
         onChunk(retryMsg + '\n')
-        aiDebugService.logResponseError(reqId, `${errorMsg} - 准备重试 ${retryCount}/${AI_RETRY.MAX_RETRIES}`)
+        getAiDebugService().logResponseError(reqId, `${errorMsg} - 准备重试 ${retryCount}/${AI_RETRY.MAX_RETRIES}`)
         resetForRetry()
         setTimeout(doRequest, AI_RETRY.RETRY_DELAY)
         return true
@@ -1244,7 +1244,7 @@ export class AiService {
                 }
                 reasoningContent += delta.reasoning_content
                 onChunk(delta.reasoning_content.replace(/\n/g, '\n> '))
-                aiDebugService.logResponseChunk(reqId, `[THINKING] ${delta.reasoning_content}`)
+                getAiDebugService().logResponseChunk(reqId, `[THINKING] ${delta.reasoning_content}`)
               }
 
               if (delta?.content) {
@@ -1254,7 +1254,7 @@ export class AiService {
                 }
                 content += delta.content
                 onChunk(delta.content)
-                aiDebugService.logResponseChunk(reqId, delta.content)
+                getAiDebugService().logResponseChunk(reqId, delta.content)
               }
 
               if (delta?.tool_calls) {
@@ -1296,7 +1296,7 @@ export class AiService {
           log.info(`Request done: model=${profile.model}, duration=${elapsed}s, finish=${finishReason || 'end'}, tools=[${toolNames}], contentLen=${(finalContent || '').length}`)
 
           // AI Debug: 记录响应完成（包含工具调用）
-          aiDebugService.logResponseDone(reqId, {
+          getAiDebugService().logResponseDone(reqId, {
             response: finalContent,
             reasoningContent: reasoningContent || undefined,
             finishReason,
@@ -1321,7 +1321,7 @@ export class AiService {
         res.on('error', (err) => {
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
           log.error(`Request failed: model=${profile.model}, duration=${elapsed}s, error=${err.message}`)
-          aiDebugService.logResponseError(reqId, err.message)
+          getAiDebugService().logResponseError(reqId, err.message)
           complete(() => onError(t('error.request_error', { message: translateNetworkError(err.message) })))
         })
       })
@@ -1331,7 +1331,7 @@ export class AiService {
         req?.destroy()
         if (!tryRetry('ETIMEDOUT', doRequest)) {
           const errorMsg = t('error.ai_connection_timeout')
-          aiDebugService.logResponseError(reqId, errorMsg)
+          getAiDebugService().logResponseError(reqId, errorMsg)
           complete(() => onError(errorMsg))
         }
       })
@@ -1339,7 +1339,7 @@ export class AiService {
       req.on('error', (err) => {
         // 如果是中止导致的错误，不报错
         if (err.message === 'aborted' || err.message.includes('socket hang up')) {
-          aiDebugService.logResponseDone(reqId, { finishReason: 'aborted' })
+          getAiDebugService().logResponseDone(reqId, { finishReason: 'aborted' })
           complete(() => onDone({
             content: undefined,
             tool_calls: undefined,
@@ -1350,7 +1350,7 @@ export class AiService {
         if (tryVisionFallback(err.message)) return
         // 尝试重试网络错误
         if (!tryRetry(err.message, doRequest)) {
-          aiDebugService.logResponseError(reqId, err.message)
+          getAiDebugService().logResponseError(reqId, err.message)
           complete(() => onError(t('error.request_error', { message: translateNetworkError(err.message) })))
         }
       })
@@ -1384,7 +1384,7 @@ export class AiService {
       if (tryVisionFallback(errorMsg)) return
       // 尝试重试网络错误
       if (!tryRetry(errorMsg, doRequest)) {
-        aiDebugService.logResponseError(reqId, `Exception: ${errorMsg}`)
+        getAiDebugService().logResponseError(reqId, `Exception: ${errorMsg}`)
         if (error instanceof Error) {
           complete(() => onError(t('error.ai_request_failed', { message: translateNetworkError(error.message) })))
         } else {

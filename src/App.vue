@@ -735,7 +735,7 @@ onUnmounted(() => {
                 v-if="tab.ptyId"
                 :tab-id="tab.id"
                 :pty-id="tab.ptyId"
-                :type="tab.type"
+                :type="(tab.type as 'local' | 'ssh')"
                 :is-active="tab.id === terminalStore.activeTabId"
               />
               <div v-else-if="tab.isLoading" class="terminal-loading">

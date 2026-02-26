@@ -34,7 +34,9 @@ const log = createLogger('ExcelExecutor')
 
 // ==================== 样式管理基础设施 ====================
 
-const STYLES_FILE_PATH = path.join(app.getPath('userData'), 'excel-styles.json')
+function getStylesFilePath(): string {
+  return path.join(app.getPath('userData'), 'excel-styles.json')
+}
 const EXCEL_STYLE_TAG = 'excel_style'
 
 const customStyles = new Map<string, ExcelStyleConfig>()
@@ -66,8 +68,8 @@ function loadCustomStyles(): void {
       }
       log.info(`Loaded ${customStyles.size} custom excel styles from knowledge base`)
     } else {
-      if (fs.existsSync(STYLES_FILE_PATH)) {
-        const data = JSON.parse(fs.readFileSync(STYLES_FILE_PATH, 'utf-8'))
+      if (fs.existsSync(getStylesFilePath())) {
+        const data = JSON.parse(fs.readFileSync(getStylesFilePath(), 'utf-8'))
         if (data.styles) {
           for (const [name, style] of Object.entries(data.styles)) {
             customStyles.set(name, style as ExcelStyleConfig)
@@ -133,11 +135,12 @@ function saveCustomStylesToFile(): void {
       styles: Object.fromEntries(customStyles),
       defaultStyle: defaultStyleName
     }
-    const dir = path.dirname(STYLES_FILE_PATH)
+    const filePath = getStylesFilePath()
+    const dir = path.dirname(filePath)
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true })
     }
-    fs.writeFileSync(STYLES_FILE_PATH, JSON.stringify(data, null, 2))
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2))
     log.info(`Saved ${customStyles.size} custom excel styles to local file`)
   } catch (e) {
     log.error('Failed to save custom excel styles to file:', e)
@@ -804,7 +807,7 @@ interface ParsedSheet {
  * 清理 Sheet 名称，确保符合 Excel 限制（31 字符，禁止 \/*?:[]）
  */
 function sanitizeSheetName(name: string): string {
-  let cleaned = name.replace(/[\\/*?:\[\]]/g, '_')
+  let cleaned = name.replace(/[\\/*?:[\]]/g, '_')
   if (cleaned.length > 31) {
     cleaned = cleaned.slice(0, 31)
   }

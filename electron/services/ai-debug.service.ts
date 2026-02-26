@@ -445,5 +445,11 @@ class AiDebugService extends EventEmitter {
   }
 }
 
-// 单例导出
-export const aiDebugService = new AiDebugService()
+let _instance: AiDebugService | null = null
+
+export function getAiDebugService(): AiDebugService {
+  if (!_instance) {
+    _instance = new AiDebugService()
+  }
+  return _instance
+}

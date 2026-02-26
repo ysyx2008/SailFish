@@ -48,6 +48,8 @@
 | Feature | Description |
 |---------|-------------|
 | 🤖 **AI Agent** | Describe tasks, Agent plans and executes automatically |
+| 🌅 **Awaken Mode** | AI becomes a proactive assistant — personality-driven conversations, background monitoring, push notifications |
+| 🧠 **Watch & Sensors** | Heartbeat, file-watch, calendar, and email sensors trigger automated workflows with stateful context |
 | 🌐 **Remote Agent** | Access your Agent from anywhere — Web UI, DingTalk, Feishu, WeCom, Slack, or Telegram |
 | 🖥️ **SSH/SFTP** | Full remote connection and file management |
 | 📁 **File Manager** | Dual-pane file manager for local & remote |
@@ -55,6 +57,7 @@
 | 🔌 **MCP Extension** | Connect external tools via Model Context Protocol |
 | 🗄️ **Database** | Natural language SQL execution and analysis |
 | 🛒 **Skill Market** | Browse, install, and share community Agent skills with one click |
+| 📊 **Excel & Word** | Style themes, Markdown-to-Excel, numbered lists, and more — all via natural language |
 | 🔒 **System Tray** | Minimize to tray; Cmd+W hides window without quitting. Single instance. |
 | 🖥️ **CLI Mode** | Run all backend services without Electron — headless automation via `npm run sft` |
 
@@ -98,9 +101,10 @@ SailFish supports OpenAI-compatible APIs. Configure in Settings:
 
 **Recommended models for Agent mode** (requires Function Calling):
 - OpenAI GPT-4o / GPT-4o-mini
-- Claude 4.5 Sonnet
+- Claude 4.5 Sonnet (native Anthropic API supported)
 - DeepSeek V3
 - Qwen qwen-plus / qwen-max
+- Gemini, Grok, Mistral, Doubao, Zhipu GLM, Kimi (presets included)
 
 ## 📖 Documentation
 

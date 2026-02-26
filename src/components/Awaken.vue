@@ -3,9 +3,9 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore } from '../stores/config'
 import {
-  X, Play, Trash2, Eye, EyeOff, RefreshCw, History,
+  X, Play, Trash2, Eye, RefreshCw, History,
   Clock, Heart, Globe, Zap, FolderOpen, Calendar, Mail,
-  LayoutTemplate, Database, Plus, Power, Sparkles
+  LayoutTemplate, Database, Plus, Sparkles
 } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -20,7 +20,7 @@ const emit = defineEmits<{ close: [] }>()
 // ==================== Types ====================
 
 import type {
-  WatchTriggerType, WatchPriority, WatchRunStatus, WatchTrigger,
+  WatchTriggerType, WatchRunStatus, WatchTrigger,
   WatchDefinition, WatchHistoryRecord
 } from '@shared/types'
 
@@ -88,7 +88,7 @@ const getTriggerLabel = (trigger: WatchTrigger): string => {
     case 'file_change': return t('watch.triggerFileChange')
     case 'calendar': return `${t('watch.triggerCalendar')} (${trigger.beforeMinutes}min)`
     case 'email': return t('watch.triggerEmail')
-    default: return trigger.type
+    default: return (trigger as { type: string }).type
   }
 }
 
@@ -428,7 +428,6 @@ onMounted(async () => {
 
   cleanupWatchStarted = window.electronAPI.watch.onTaskStarted?.((data: any) => {
     if (data?.watchId) markWatchRunning(data.watchId)
-    // 手动触发时，开始收集 Agent 内心独白（仅 desktop 输出会触发 task-started 并发送 agent:step）
     if (data?.watchId && data?.executionType === 'assistant') {
       liveExecutionWatchId.value = data.watchId
       liveSteps.value = []
@@ -438,7 +437,7 @@ onMounted(async () => {
       patrolStatus.value = 'running'
       patrolMessage.value = t('awaken.patrolRunning')
     }
-  })
+  }) ?? null
   cleanupWatchCompleted = window.electronAPI.watch.onTaskCompleted?.((data: any) => {
     if (data?.watchId) markWatchCompleted(data.watchId)
     // 不在此清空 liveExecutionWatchId，保留内心独白供用户查看
@@ -454,7 +453,7 @@ onMounted(async () => {
       }
       clearPatrolStatus()
     }
-  })
+  }) ?? null
   // 监听关切助手的 Agent 步骤，用于详情面板展示内心独白
   cleanupAgentStep = window.electronAPI.agent.onStep((data: { agentId: string; step: { id: string; type: string; content: string; toolName?: string; toolResult?: string } }) => {
     if (data.agentId !== WATCH_AGENT_ID || !liveExecutionWatchId.value) return
