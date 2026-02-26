@@ -19,42 +19,15 @@ const emit = defineEmits<{ close: [] }>()
 
 // ==================== Types ====================
 
-type WatchTriggerType = 'cron' | 'interval' | 'heartbeat' | 'webhook' | 'manual' | 'file_change' | 'calendar' | 'email'
-type WatchPriority = 'high' | 'normal' | 'low'
-type WatchOutputType = 'desktop' | 'im' | 'notification' | 'log' | 'silent'
-type WatchRunStatus = 'completed' | 'failed' | 'skipped' | 'timeout' | 'cancelled' | 'running'
+import type {
+  WatchTriggerType, WatchPriority, WatchRunStatus, WatchTrigger,
+  WatchDefinition, WatchHistoryRecord
+} from '@shared/types'
 
-interface WatchTrigger {
-  type: WatchTriggerType
-  expression?: string
-  seconds?: number
-  token?: string
-  paths?: string[]
-  pattern?: string
-  events?: Array<'add' | 'change' | 'unlink'>
-  icsPath?: string
-  beforeMinutes?: number
-  filter?: { from?: string; subject?: string; unseen?: boolean }
-}
+type WatchOutputType = 'desktop' | 'im' | 'notification' | 'log' | 'silent'
 
 interface WatchTemplateInfo {
   id: string; name: string; nameEn: string; description: string; descriptionEn: string; category: string; icon: string
-}
-
-interface WatchDefinition {
-  id: string; name: string; description?: string; enabled: boolean; triggers: WatchTrigger[]; prompt: string
-  skills?: string[]
-  execution: { type: 'assistant' | 'local' | 'ssh'; sshSessionId?: string; sshSessionName?: string; workingDirectory?: string; timeout?: number }
-  output: { type: WatchOutputType }
-  state?: Record<string, unknown>; priority: WatchPriority
-  createdAt: number; updatedAt: number; expiresAt?: number
-  lastRun?: { at: number; status: WatchRunStatus; duration: number; triggerType: string; output?: string; error?: string; skipReason?: string }
-  nextRun?: number
-}
-
-interface WatchHistoryRecord {
-  id: string; watchId: string; watchName: string; at: number; status: WatchRunStatus; duration: number
-  triggerType: string; output?: string; error?: string; skipReason?: string
 }
 
 // ==================== Navigation ====================

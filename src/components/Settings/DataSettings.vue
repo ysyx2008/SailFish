@@ -6,29 +6,7 @@ import { Bot, HardDrive, CalendarRange, FolderOpen, History, Download, Upload, T
 
 const { t } = useI18n()
 
-interface AgentStepRecord {
-  id: string
-  type: string
-  content: string
-  toolName?: string
-  toolArgs?: Record<string, unknown>
-  toolResult?: string
-  riskLevel?: string
-  timestamp: number
-}
-
-interface AgentRecord {
-  id: string
-  timestamp: number
-  terminalId: string
-  terminalType: 'local' | 'ssh'
-  sshHost?: string
-  userTask: string
-  steps: AgentStepRecord[]
-  finalResult?: string
-  duration: number
-  status: 'completed' | 'failed' | 'aborted'
-}
+import type { AgentStepRecord, AgentRecord } from '@shared/types'
 
 // 存储统计
 const storageStats = ref<{

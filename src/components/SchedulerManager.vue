@@ -6,10 +6,11 @@ import SchedulerTaskEditor from './SchedulerTaskEditor.vue'
 
 const { t } = useI18n()
 
-// 类型定义
+import type { TerminalType } from '@shared/types'
+
 type TaskRunStatus = 'success' | 'failed' | 'timeout' | 'cancelled' | 'running'
 type ScheduleType = 'cron' | 'interval' | 'once'
-type TargetType = 'local' | 'ssh' | 'assistant'
+type TargetType = TerminalType
 
 interface ScheduleConfig {
   type: ScheduleType

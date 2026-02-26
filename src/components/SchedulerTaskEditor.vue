@@ -5,9 +5,10 @@ import { X, Clock, Server, Terminal, MessageSquare } from 'lucide-vue-next'
 
 const { t } = useI18n()
 
-// 类型定义
+import type { TerminalType } from '@shared/types'
+
 type ScheduleType = 'cron' | 'interval' | 'once'
-type TargetType = 'local' | 'ssh' | 'assistant'
+type TargetType = TerminalType
 
 interface ScheduleConfig {
   type: ScheduleType

@@ -4,20 +4,9 @@
  */
 import { ref, watch } from 'vue'
 import { useTerminalStore } from '../stores/terminal'
+import type { HostProfile } from '@shared/types'
 
-// 主机档案类型
-export interface HostProfile {
-  hostId: string
-  hostname: string
-  username: string
-  os: string
-  osVersion: string
-  shell: string
-  packageManager?: string
-  installedTools: string[]
-  lastProbed: number
-  lastUpdated: number
-}
+export type { HostProfile } from '@shared/types'
 
 export function useHostProfile() {
   const terminalStore = useTerminalStore()

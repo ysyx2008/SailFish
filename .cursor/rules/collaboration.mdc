@@ -30,3 +30,4 @@ alwaysApply: true
 - 不跑测试就说"完成了"
 - 未经确认进行大范围重构
 - 写基于关键词匹配的脆弱代码
+- **重复定义类型**：前后端共用的类型必须定义在 `shared/types/` 中，不得在 `src/`、`electron/` 或 Vue 组件中重复定义相同的 interface/type。需要时通过 `import type { ... } from '@shared/types'` 导入

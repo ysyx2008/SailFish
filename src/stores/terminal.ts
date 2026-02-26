@@ -28,61 +28,18 @@ export interface AiMessage {
   timestamp: Date
 }
 
-// Agent 相关类型
-export type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
+// Agent 共享类型（从 @shared/types 统一导入）
+export type {
+  TerminalType,
+  RiskLevel,
+  StepProgress,
+  AgentPlanStep,
+  AgentPlan,
+  AgentStep,
+  PendingConfirmation,
+} from '@shared/types'
 
-// 计划步骤进度
-export interface PlanStepProgress {
-  value: number
-  current?: number
-  total?: number
-  eta?: string
-  speed?: string
-  isIndeterminate: boolean
-  statusText?: string
-}
-
-// 计划步骤
-export interface AgentPlanStep {
-  id: string
-  title: string
-  description?: string
-  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped'
-  result?: string
-  progress?: PlanStepProgress
-}
-
-// Agent 执行计划
-export interface AgentPlan {
-  id: string
-  title: string
-  steps: AgentPlanStep[]
-  createdAt: number
-  updatedAt: number
-}
-
-export interface AgentStep {
-  id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'plan_created' | 'plan_updated' | 'plan_archived'
-  content: string
-  images?: string[]  // 用户消息附带的图片（base64 data URL），用于在聊天中显示
-  toolName?: string
-  toolArgs?: Record<string, unknown>
-  toolResult?: string
-  riskLevel?: RiskLevel
-  timestamp: number
-  isStreaming?: boolean
-  plan?: AgentPlan  // 计划数据（仅 plan_created/plan_updated 类型使用）
-  contextTokens?: number  // 当前上下文的 token 数（后端计算）
-}
-
-export interface PendingConfirmation {
-  agentId: string
-  toolCallId: string
-  toolName: string
-  toolArgs: Record<string, unknown>
-  riskLevel: RiskLevel
-}
+import type { TerminalType, AgentStep, AgentPlan, PendingConfirmation, RemoteChannel } from '@shared/types'
 
 export interface AgentState {
   isRunning: boolean
@@ -110,7 +67,7 @@ export interface ParsedDocument {
 export interface TerminalTab {
   id: string
   title: string
-  type: 'local' | 'ssh' | 'assistant'
+  type: TerminalType
   ptyId?: string
   sshConfig?: {
     host: string
@@ -150,7 +107,7 @@ export interface TerminalTab {
   // 是否为远程 Gateway Agent 标签页
   isRemote?: boolean
   // 远程 IM 通道类型（仅远程 Agent 标签页使用，决定可用的 IM 工具集）
-  remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'
+  remoteChannel?: RemoteChannel
   // 独立助手 Agent ID（仅 assistant 类型标签页使用）
   agentId?: string
 }

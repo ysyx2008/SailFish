@@ -16,10 +16,10 @@ export type TaskRunStatus = 'success' | 'failed' | 'timeout' | 'cancelled' | 'ru
  */
 export type ScheduleType = 'cron' | 'interval' | 'once'
 
-/**
- * 执行目标类型
- */
-export type TargetType = 'local' | 'ssh' | 'assistant'
+import type { TerminalType } from '@shared/types'
+
+/** @deprecated Use TerminalType from @shared/types */
+export type TargetType = TerminalType
 
 /**
  * 调度配置

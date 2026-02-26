@@ -24,6 +24,7 @@
 
 import * as http from 'http'
 import * as crypto from 'crypto'
+import type { ExecutionMode } from '@shared/types'
 import { WebChatService, VISIBLE_STEP_TYPES } from './web-chat.service'
 import { createLogger } from '../utils/logger'
 
@@ -354,7 +355,7 @@ export class GatewayService {
 
     // 更新执行模式
     if (executionMode && ['strict', 'relaxed', 'free'].includes(executionMode)) {
-      this.chat.executionMode = executionMode as 'strict' | 'relaxed' | 'free'
+      this.chat.executionMode = executionMode as ExecutionMode
     }
 
     // SSE 响应

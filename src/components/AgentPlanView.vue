@@ -6,43 +6,9 @@
  */
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { AgentPlan } from '@shared/types'
 
 const { t } = useI18n()
-
-// 步骤进度信息
-interface StepProgress {
-  value: number
-  current?: number
-  total?: number
-  eta?: string
-  speed?: string
-  isIndeterminate: boolean
-  statusText?: string
-}
-
-// 计划步骤状态
-type PlanStepStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped'
-
-// 计划步骤
-interface AgentPlanStep {
-  id: string
-  title: string
-  description?: string
-  status: PlanStepStatus
-  result?: string
-  progress?: StepProgress
-  // 多终端支持
-  terminalName?: string
-}
-
-// Agent 执行计划
-interface AgentPlan {
-  id: string
-  title: string
-  steps: AgentPlanStep[]
-  createdAt: number
-  updatedAt: number
-}
 
 const props = withDefaults(defineProps<{
   plan: AgentPlan

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { ExecutionMode } from '@shared/types'
 import { useTerminalStore } from '../../stores/terminal'
 
 const { t, locale } = useI18n()
@@ -79,7 +80,7 @@ const slAutoConnect = ref(false)
 const tgAutoConnect = ref(false)
 const wcAutoConnect = ref(false)
 // 执行模式
-const executionMode = ref<'strict' | 'relaxed' | 'free'>('relaxed')
+const executionMode = ref<ExecutionMode>('relaxed')
 // 自由模式二次确认弹窗
 const showFreeModeConfirm = ref(false)
 
@@ -343,7 +344,7 @@ async function toggleWcAutoConnect() {
   }
 }
 
-async function changeExecutionMode(mode: 'strict' | 'relaxed' | 'free') {
+async function changeExecutionMode(mode: ExecutionMode) {
   const oldMode = executionMode.value
   executionMode.value = mode
   try {

@@ -1,5 +1,6 @@
 import Store from 'electron-store'
 import { safeStorage } from 'electron'
+import type { ExecutionMode } from '@shared/types'
 import type { KnowledgeSettings } from './knowledge/types'
 import { DEFAULT_KNOWLEDGE_SETTINGS } from './knowledge/types'
 import { createLogger, type LogLevel } from '../utils/logger'
@@ -151,7 +152,7 @@ interface StoreSchema {
   imSlackAppToken: string         // Slack App-Level Token (xapp-...)
   imTelegramAutoConnect: boolean  // Telegram 自动连接
   imTelegramBotToken: string      // Telegram Bot Token
-  imExecutionMode: 'strict' | 'relaxed' | 'free'  // IM Agent 执行模式，默认 relaxed
+  imExecutionMode: ExecutionMode  // IM Agent 执行模式，默认 relaxed
   imLastContacts: Record<string, unknown> // IM 各平台最近联系人（主动推送使用）
   logLevel: LogLevel  // 日志级别
   skillMarketRegistryUrl: string  // 技能市场 registry URL

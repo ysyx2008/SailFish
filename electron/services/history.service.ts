@@ -7,40 +7,18 @@ const log = createLogger('History')
 
 // ==================== 类型定义 ====================
 
+// 从共享类型导入并重新导出
+import type { TerminalType, AgentStepRecord, AgentRecord } from '@shared/types'
+export type { AgentStepRecord, AgentRecord } from '@shared/types'
+
 export interface ChatRecord {
   id: string
   timestamp: number
   terminalId: string
-  terminalType: 'local' | 'ssh' | 'assistant'
+  terminalType: TerminalType
   sshHost?: string
   role: 'user' | 'assistant'
   content: string
-}
-
-export interface AgentStepRecord {
-  id: string
-  type: string
-  content: string
-  toolName?: string
-  toolArgs?: Record<string, unknown>
-  toolResult?: string
-  riskLevel?: string
-  timestamp: number
-}
-
-export interface AgentRecord {
-  id: string
-  timestamp: number
-  terminalId: string
-  terminalType: 'local' | 'ssh' | 'assistant'
-  sshHost?: string
-  userTask: string
-  steps: AgentStepRecord[]
-  // 完整 API 对话记录（权威数据源，用于上下文恢复）
-  messages?: Array<{ role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string }>
-  finalResult?: string
-  duration: number
-  status: 'completed' | 'failed' | 'aborted'
 }
 
 export interface SearchAgentRecordsOptions {

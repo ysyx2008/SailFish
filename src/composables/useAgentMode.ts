@@ -7,59 +7,24 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted, Ref } from 'vue
 import { useI18n } from 'vue-i18n'
 import { useTerminalStore } from '../stores/terminal'
 import { useConfigStore } from '../stores/config'
+import type { ExecutionMode } from '@shared/types'
 import type { AgentStep, AgentState } from '../stores/terminal'
 import { createLogger } from '../utils/logger'
 
 const log = createLogger('Agent')
 
-// 判断用户是否在底部附近的阈值（像素）
 const SCROLL_THRESHOLD = 100
-// 滚动节流间隔（毫秒）
 const SCROLL_THROTTLE_MS = 1000
 
-// Agent 任务分组类型
 export interface AgentTaskGroup {
   id: string
   userTask: string
-  images?: string[]  // 用户消息附带的图片（用于聊天中显示）
+  images?: string[]
   steps: AgentStep[]
   finalResult?: string
   isCurrentTask: boolean
   isProactive?: boolean
 }
-
-// Agent 状态类型
-// 计划步骤进度
-interface PlanStepProgress {
-  value: number
-  current?: number
-  total?: number
-  eta?: string
-  speed?: string
-  isIndeterminate: boolean
-  statusText?: string
-}
-
-// 计划步骤
-interface AgentPlanStep {
-  id: string
-  title: string
-  description?: string
-  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped'
-  result?: string
-  progress?: PlanStepProgress
-}
-
-// Agent 执行计划
-interface AgentPlan {
-  id: string
-  title: string
-  steps: AgentPlanStep[]
-  createdAt: number
-  updatedAt: number
-}
-
-// AgentState 类型从 terminal store 导入
 
 export function useAgentMode(
   messagesRef: Ref<HTMLDivElement | null>,
@@ -95,7 +60,7 @@ export function useAgentMode(
   let lastScrollTime = 0
 
   // Agent 执行模式设置
-  const executionMode = ref<'strict' | 'relaxed' | 'free'>('relaxed')  // 执行模式：strict=严格，relaxed=宽松，free=自由
+  const executionMode = ref<ExecutionMode>('relaxed')
   const commandTimeout = ref(10)     // 命令超时时间（秒），默认 10 秒
   const activeProfileId = ref<string>(configStore.activeAiProfileId || '')  // 当前终端选择的 AI 配置档案 ID（每个终端独立，初始值继承全局设置）
   const collapsedTaskIds = ref<Set<string>>(new Set())  // 已折叠的任务 ID

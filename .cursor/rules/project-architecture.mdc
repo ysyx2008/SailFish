@@ -25,6 +25,7 @@ SailFish（旗鱼）是一个私人 AI Agent 桌面应用（代码仓库名 SFTe
 
 ```
 SFTerminal/
+├── shared/types/                # 前后端共享类型（@shared/types 别名，唯一数据源）
 ├── electron/                    # Electron 主进程 + 后端服务
 │   ├── main.ts                  # 主进程入口（窗口、IPC、服务初始化）
 │   ├── preload.ts               # 预加载脚本（IPC 桥接）
@@ -100,6 +101,11 @@ SFTerminal/
 ```
 
 ## 关键架构模式
+
+### 共享类型（shared/types/）
+- 前后端共用类型统一定义在 `shared/types/`（`@shared/types`），禁止重复定义
+- 后端通过 re-export 保持 import 路径兼容；仅后端使用的类型留在 `electron/services/` 中
+- 前端 `vite-env.d.ts` 通过 `type X = import('@shared/types').X` 保持全局可用
 
 ### 前后端通信
 - Electron IPC：`ipcMain.handle` ↔ `ipcRenderer.invoke`

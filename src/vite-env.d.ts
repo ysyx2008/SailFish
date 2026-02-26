@@ -18,76 +18,17 @@ declare module '*.vue' {
   export default component
 }
 
-// Agent 相关类型
-type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
-
-// 计划步骤进度
-interface PlanStepProgress {
-  value: number
-  current?: number
-  total?: number
-  eta?: string
-  speed?: string
-  isIndeterminate: boolean
-  statusText?: string
-}
-
-// 计划步骤
-interface AgentPlanStep {
-  id: string
-  title: string
-  description?: string
-  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped'
-  result?: string
-  progress?: PlanStepProgress
-}
-
-// Agent 执行计划
-interface AgentPlan {
-  id: string
-  title: string
-  steps: AgentPlanStep[]
-  createdAt: number
-  updatedAt: number
-}
-
-interface AgentStep {
-  id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'plan_created' | 'plan_updated' | 'plan_archived'
-  content: string
-  toolName?: string
-  toolArgs?: Record<string, unknown>
-  toolResult?: string
-  riskLevel?: RiskLevel
-  timestamp: number
-  isStreaming?: boolean
-  plan?: AgentPlan  // 计划数据
-  contextTokens?: number  // 当前上下文的 token 数（后端计算）
-}
-
-interface PendingConfirmation {
-  agentId: string
-  toolCallId: string
-  toolName: string
-  toolArgs: Record<string, unknown>
-  riskLevel: RiskLevel
-}
-
-interface HostProfile {
-  hostId: string
-  hostname: string
-  username: string
-  os: string
-  osVersion: string
-  shell: string
-  packageManager?: string
-  installedTools: string[]
-  homeDir?: string
-  currentDir?: string
-  notes: string[]
-  lastProbed: number
-  lastUpdated: number
-}
+// 共享类型（从 @shared/types 导入，保持全局可用）
+type TerminalType = import('@shared/types').TerminalType
+type ExecutionMode = import('@shared/types').ExecutionMode
+type RemoteChannel = import('@shared/types').RemoteChannel
+type RiskLevel = import('@shared/types').RiskLevel
+type StepProgress = import('@shared/types').StepProgress
+type AgentPlanStep = import('@shared/types').AgentPlanStep
+type AgentPlan = import('@shared/types').AgentPlan
+type AgentStep = import('@shared/types').AgentStep
+type PendingConfirmation = import('@shared/types').PendingConfirmation
+type HostProfile = import('@shared/types').HostProfile
 
 // MCP 相关类型
 interface McpServerConfig {
@@ -689,7 +630,7 @@ interface Window {
           commandTimeout?: number
           autoExecuteSafe?: boolean
           autoExecuteModerate?: boolean
-          executionMode?: 'strict' | 'relaxed' | 'free'
+          executionMode?: ExecutionMode
         },
         profileId?: string
       ) => Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>
@@ -703,7 +644,7 @@ interface Window {
       }) => Promise<boolean>
       getStatus: (ptyId: string) => Promise<unknown>
       cleanup: (ptyId: string) => Promise<void>
-      updateConfig: (ptyId: string, config: { executionMode?: 'strict' | 'relaxed' | 'free'; commandTimeout?: number; profileId?: string }) => Promise<boolean>
+      updateConfig: (ptyId: string, config: { executionMode?: ExecutionMode; commandTimeout?: number; profileId?: string }) => Promise<boolean>
       addMessage: (ptyId: string, message: string) => Promise<boolean>
       getExecutionPhase: (ptyId: string) => Promise<{
         phase: 'thinking' | 'executing_command' | 'writing_file' | 'waiting' | 'confirming' | 'idle'
@@ -1964,7 +1905,7 @@ interface Window {
       onRemoteTaskStarted: (callback: (data: {
         agentId: string
         message: string
-        remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'
+        remoteChannel?: RemoteChannel
       }) => void) => () => void
       getAuditLog: (limit?: number) => Promise<Array<{
         id: string
@@ -1986,7 +1927,7 @@ interface Window {
 
     // Web Chat 会话（运行时配置）
     webChat: {
-      setExecutionMode: (mode: 'strict' | 'relaxed' | 'free') => Promise<void>
+      setExecutionMode: (mode: ExecutionMode) => Promise<void>
     }
 
     // IM 集成
@@ -2014,10 +1955,10 @@ interface Window {
         slack: { botToken: string; appToken: string; autoConnect: boolean }
         telegram: { botToken: string; autoConnect: boolean }
         wecom: { corpId: string; corpSecret: string; agentId: number; token: string; encodingAESKey: string; callbackPort: number; autoConnect: boolean }
-        executionMode: 'strict' | 'relaxed' | 'free'
+        executionMode: ExecutionMode
       }>
       setAutoConnect: (platform: string, enabled: boolean) => Promise<void>
-      setExecutionMode: (mode: 'strict' | 'relaxed' | 'free') => Promise<void>
+      setExecutionMode: (mode: ExecutionMode) => Promise<void>
       sendNotification: (text: string, options?: { markdown?: boolean; title?: string }) => Promise<{ success: boolean; platform?: string; error?: string }>
       onConnectionChange: (callback: (data: { platform: string; connected: boolean }) => void) => () => void
     }

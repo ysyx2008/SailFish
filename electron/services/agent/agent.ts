@@ -23,9 +23,10 @@ import type {
   KnowledgeContextResult,
   RunStatus,
   RiskLevel,
+  TerminalType,
   ExecutionMode,
   AgentExecutionPhase,
-  PendingConfirmation
+  PendingConfirmationInternal
 } from './types'
 import { DEFAULT_AGENT_CONFIG } from './types'
 import { TaskMemoryStore } from './task-memory'
@@ -108,7 +109,7 @@ export abstract class Agent {
   private _sessionMessages: AiMessage[] = []
   
   /** 终端元数据（从首次 run 的 context 获取） */
-  private _terminalMeta?: { terminalType: 'local' | 'ssh' | 'assistant'; sshHost?: string }
+  private _terminalMeta?: { terminalType: TerminalType; sshHost?: string }
   /** 是否正在从 HistoryService 恢复（防止并发竞态） */
   private _isRestoring = false
   
@@ -1728,7 +1729,7 @@ export abstract class Agent {
     riskLevel: RiskLevel
   ): Promise<{ approved: boolean; modifiedArgs?: Record<string, unknown> }> {
     return new Promise((resolve) => {
-      const confirmation: PendingConfirmation = {
+      const confirmation: PendingConfirmationInternal = {
         agentId: run.id,
         toolCallId,
         toolName,

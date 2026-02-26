@@ -2,8 +2,21 @@
  * Agent 服务类型定义
  */
 
-// 执行模式
-export type ExecutionMode = 'strict' | 'relaxed' | 'free'
+// 从共享类型导入并重新导出（保持后端 import 路径兼容）
+export type {
+  TerminalType,
+  ExecutionMode,
+  RemoteChannel,
+  RiskLevel,
+  PlanStepStatus,
+  StepProgress,
+  AgentPlanStep,
+  AgentPlan,
+  AgentStep,
+  PendingConfirmation,
+} from '@shared/types'
+
+import type { TerminalType, ExecutionMode, RemoteChannel, PendingConfirmation, AgentStep, AgentPlan } from '@shared/types'
 
 // Agent 配置
 export interface AgentConfig {
@@ -16,66 +29,12 @@ export interface AgentConfig {
   debugMode: boolean            // 调试模式：显示详细的工具调用步骤
 }
 
-// 命令风险等级
-export type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
-
-// Agent 执行步骤
-export interface AgentStep {
-  id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'plan_created' | 'plan_updated' | 'plan_archived' | 'user_task' | 'final_result'
-  content: string
-  images?: string[]  // 用户消息附带的图片（base64 data URL），用于在聊天中显示
-  toolName?: string
-  toolArgs?: Record<string, unknown>
-  toolResult?: string
-  riskLevel?: RiskLevel
-  timestamp: number
-  isStreaming?: boolean  // 是否正在流式输出
-  plan?: AgentPlan       // 任务计划（仅 plan_created/plan_updated 类型使用）
-  progress?: StepProgress  // 命令执行进度（仅 tool_result 类型使用）
-  contextTokens?: number  // 当前上下文的 token 数（后端计算）
-}
-
-// 步骤进度信息
-export interface StepProgress {
-  value: number           // 进度值 (0-100)
-  current?: number        // 当前值
-  total?: number          // 总数
-  eta?: string            // 预计剩余时间
-  speed?: string          // 速度
-  isIndeterminate: boolean // 是否为不确定进度
-  statusText?: string     // 状态文本
-}
-
-// ==================== Plan/Todo 相关类型 ====================
-
-// 计划步骤状态
-export type PlanStepStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped'
-
-// 计划步骤
-export interface AgentPlanStep {
-  id: string
-  title: string
-  description?: string
-  status: PlanStepStatus
-  result?: string
-  startedAt?: number
-  completedAt?: number
-  progress?: StepProgress
-  // 多终端支持（智能巡检模式）
-  terminalId?: string       // 关联的终端 ID
-  terminalName?: string     // 终端显示名（如 "prod-web-1"）
-  hostId?: string           // 主机配置 ID
-  isParallel?: boolean      // 是否与其他步骤并行执行
-}
-
-// Agent 执行计划
-export interface AgentPlan {
-  id: string
-  title: string
-  steps: AgentPlanStep[]
-  createdAt: number
-  updatedAt: number
+/**
+ * 后端内部使用的 PendingConfirmation，包含 resolve 回调
+ * IPC 传输时 resolve 会被剥离，前端使用 @shared/types 的 PendingConfirmation
+ */
+export interface PendingConfirmationInternal extends PendingConfirmation {
+  resolve: (approved: boolean, modifiedArgs?: Record<string, unknown>) => void
 }
 
 // 之前任务的执行步骤（用于上下文）
@@ -90,11 +49,11 @@ export interface PreviousAgentStep {
 
 // 之前已完成任务的上下文信息（包含完整执行步骤）
 export interface PreviousTaskContext {
-  userTask: string  // 用户的原始任务
-  steps: PreviousAgentStep[]  // 执行步骤
-  finalResult: string  // 最终结果
-  timestamp: number  // 完成时间
-  messages?: import('../ai.service').AiMessage[]  // 完整 API 对话记录（有则优先使用）
+  userTask: string
+  steps: PreviousAgentStep[]
+  finalResult: string
+  timestamp: number
+  messages?: import('../ai.service').AiMessage[]
 }
 
 // Agent 上下文
@@ -105,8 +64,8 @@ export interface AgentContext {
     os: string
     shell: string
   }
-  terminalType: 'local' | 'ssh' | 'assistant'  // 终端类型：本地终端、SSH 远程终端、无终端助手模式（IM/Web/桌面助手）
-  remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'
+  terminalType: TerminalType
+  remoteChannel?: RemoteChannel
   cwd?: string  // 当前工作目录（用于告知 AI 当前位置，帮助正确处理相对路径）
   hostId?: string  // 主机档案 ID
   documentContext?: string  // 用户上传的文档内容
@@ -125,16 +84,6 @@ export interface ToolResult {
   error?: string
   isRunning?: boolean  // 命令仍在后台执行（用于长耗时命令超时但未失败的情况）
   images?: string[]    // 图片 base64 data URL（read_file 读取图片时返回，注入 AI 上下文供视觉分析）
-}
-
-// 待确认的工具调用
-export interface PendingConfirmation {
-  agentId: string
-  toolCallId: string
-  toolName: string
-  toolArgs: Record<string, unknown>
-  riskLevel: RiskLevel
-  resolve: (approved: boolean, modifiedArgs?: Record<string, unknown>) => void
 }
 
 // Worker Agent 选项（智能巡检模式）
@@ -172,8 +121,8 @@ export interface AgentRun {
   steps: AgentStep[]
   isRunning: boolean
   aborted: boolean
-  pendingConfirmation?: PendingConfirmation
-  pendingUserMessages: string[]  // 用户补充消息队列
+  pendingConfirmation?: PendingConfirmationInternal
+  pendingUserMessages: string[]
   config: AgentConfig
   context: AgentContext  // 运行上下文
   // 实时终端输出缓冲区（Agent 运行期间收集）
@@ -223,10 +172,10 @@ export interface HostProfileServiceInterface {
 // Agent 事件回调
 export interface AgentCallbacks {
   onStep?: (agentId: string, step: AgentStep) => void
-  onNeedConfirm?: (confirmation: PendingConfirmation) => void
-  onComplete?: (agentId: string, result: string, pendingUserMessages?: string[]) => void  // 附带未处理的用户消息
+  onNeedConfirm?: (confirmation: PendingConfirmationInternal) => void
+  onComplete?: (agentId: string, result: string, pendingUserMessages?: string[]) => void
   onError?: (agentId: string, error: string) => void
-  onTextChunk?: (agentId: string, chunk: string) => void  // 流式文本回调
+  onTextChunk?: (agentId: string, chunk: string) => void
 }
 
 // 默认配置

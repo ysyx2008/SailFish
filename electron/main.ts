@@ -261,7 +261,7 @@ import { ConfigService, McpServerConfig, setConfigServiceInstance } from './serv
 import { initLogging, setLogLevel as setBackendLogLevel, getLogDir, createLogger } from './utils/logger'
 import { XshellImportService } from './services/xshell-import.service'
 import { AgentService, AgentStep, AgentContext } from './services/agent'
-import type { PendingConfirmation } from './services/agent/types'
+import type { PendingConfirmation, ExecutionMode } from './services/agent/types'
 import { orchestratorService } from './services/agent/orchestrator'
 import type { OrchestratorConfig } from './services/agent/orchestrator-types'
 import { HistoryService, AgentRecord } from './services/history.service'
@@ -2252,7 +2252,7 @@ ipcMain.handle('agent:cleanup', async (_event, ptyId: string) => {
 })
 
 // 更新 Agent 配置（如执行模式、超时时间，改用 ptyId）
-ipcMain.handle('agent:updateConfig', async (_event, ptyId: string, config: { executionMode?: 'strict' | 'relaxed' | 'free'; commandTimeout?: number; profileId?: string }) => {
+ipcMain.handle('agent:updateConfig', async (_event, ptyId: string, config: { executionMode?: ExecutionMode; commandTimeout?: number; profileId?: string }) => {
   return agentService.updateConfig(ptyId, config)
 })
 
@@ -2389,7 +2389,7 @@ imService.setDependencies({
 // 从持久化配置恢复 IM 执行模式
 const savedImExecutionMode = configService.get('imExecutionMode') as string | undefined
 if (savedImExecutionMode && ['strict', 'relaxed', 'free'].includes(savedImExecutionMode)) {
-  imService.setExecutionMode(savedImExecutionMode as 'strict' | 'relaxed' | 'free')
+  imService.setExecutionMode(savedImExecutionMode as ExecutionMode)
 }
 
 ipcMain.handle('im:startDingTalk', async (_event, config: DingTalkConfig) => {
@@ -2504,13 +2504,13 @@ ipcMain.handle('im:setAutoConnect', async (_event, platform: string, enabled: bo
   }
 })
 
-ipcMain.handle('im:setExecutionMode', async (_event, mode: 'strict' | 'relaxed' | 'free') => {
+ipcMain.handle('im:setExecutionMode', async (_event, mode: ExecutionMode) => {
   configService.set('imExecutionMode', mode)
   imService.setExecutionMode(mode)
 })
 
 // 更新远程 Agent 运行时执行模式（仅运行时，不持久化，用于 tab 界面手动切换）
-ipcMain.handle('web-chat:setExecutionMode', async (_event, mode: 'strict' | 'relaxed' | 'free') => {
+ipcMain.handle('web-chat:setExecutionMode', async (_event, mode: ExecutionMode) => {
   if (!['strict', 'relaxed', 'free'].includes(mode)) return
   webChatService.executionMode = mode
 })

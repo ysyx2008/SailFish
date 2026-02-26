@@ -74,7 +74,9 @@ export interface SshSession {
 // 定时任务相关类型
 export type TaskRunStatus = 'success' | 'failed' | 'timeout' | 'cancelled' | 'running'
 export type ScheduleType = 'cron' | 'interval' | 'once'
-export type TargetType = 'local' | 'ssh' | 'assistant'
+export type { TerminalType } from '@shared/types'
+/** @deprecated Use TerminalType from @shared/types */
+export type TargetType = import('@shared/types').TerminalType
 
 export interface ScheduleConfig {
   type: ScheduleType
@@ -279,21 +281,9 @@ export interface UserSkill {
   lastModified: number
 }
 
-// Agent 相关类型
-export type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
-
-export interface AgentStep {
-  id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'user_task' | 'final_result' | 'user_supplement' | 'waiting' | 'asking'
-  content: string
-  images?: string[]  // 用户消息附带的图片（base64 data URL），用于在聊天中显示
-  toolName?: string
-  toolArgs?: Record<string, unknown>
-  toolResult?: string
-  riskLevel?: RiskLevel
-  timestamp: number
-  isStreaming?: boolean
-}
+// Agent 相关类型（从共享类型导入）
+import type { ExecutionMode, RemoteChannel, RiskLevel, AgentStep, PendingConfirmation } from '@shared/types'
+export type { ExecutionMode, RemoteChannel, RiskLevel, AgentStep, PendingConfirmation } from '@shared/types'
 
 export interface AgentContext {
   ptyId: string
@@ -302,9 +292,9 @@ export interface AgentContext {
     os: string
     shell: string
   }
-  hostId?: string  // 主机档案 ID
-  documentContext?: string  // 用户上传的文档内容
-  images?: string[]  // 用户上传的图片（base64 data URL），用于视觉理解
+  hostId?: string
+  documentContext?: string
+  images?: string[]
 }
 
 export interface AgentConfig {
@@ -313,15 +303,7 @@ export interface AgentConfig {
   commandTimeout?: number
   autoExecuteSafe?: boolean
   autoExecuteModerate?: boolean
-  executionMode?: 'strict' | 'relaxed' | 'free'  // 执行模式：strict=严格，relaxed=宽松，free=自由
-}
-
-export interface PendingConfirmation {
-  agentId: string
-  toolCallId: string
-  toolName: string
-  toolArgs: Record<string, unknown>
-  riskLevel: RiskLevel
+  executionMode?: ExecutionMode
 }
 
 // 暴露给渲染进程的 API
@@ -933,7 +915,7 @@ const electronAPI = {
     clearHistory: (ptyId: string) => ipcRenderer.invoke('agent:clearHistory', ptyId) as Promise<void>,
 
     // 更新 Agent 配置（如执行模式、超时时间、模型配置，使用 ptyId）
-    updateConfig: (ptyId: string, config: { executionMode?: 'strict' | 'relaxed' | 'free'; commandTimeout?: number; profileId?: string }) =>
+    updateConfig: (ptyId: string, config: { executionMode?: ExecutionMode; commandTimeout?: number; profileId?: string }) =>
       ipcRenderer.invoke('agent:updateConfig', ptyId, config) as Promise<boolean>,
 
     // 添加用户补充消息（Agent 执行过程中，使用 ptyId）
@@ -2739,12 +2721,12 @@ const electronAPI = {
     onRemoteTaskStarted: (callback: (data: {
       agentId: string
       message: string
-      remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'
+      remoteChannel?: RemoteChannel
     }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: {
         agentId: string
         message: string
-        remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'
+        remoteChannel?: RemoteChannel
       }) => callback(data)
       ipcRenderer.on('gateway:remoteTaskStarted', handler)
       return () => {
@@ -2782,7 +2764,7 @@ const electronAPI = {
 
   // Web Chat 会话（运行时配置）
   webChat: {
-    setExecutionMode: (mode: 'strict' | 'relaxed' | 'free') =>
+    setExecutionMode: (mode: ExecutionMode) =>
       ipcRenderer.invoke('web-chat:setExecutionMode', mode) as Promise<void>,
   },
 
@@ -2823,11 +2805,11 @@ const electronAPI = {
         slack: { botToken: string; appToken: string; autoConnect: boolean }
         telegram: { botToken: string; autoConnect: boolean }
         wecom: { corpId: string; corpSecret: string; agentId: number; token: string; encodingAESKey: string; callbackPort: number; autoConnect: boolean }
-        executionMode: 'strict' | 'relaxed' | 'free'
+        executionMode: ExecutionMode
       }>,
     setAutoConnect: (platform: string, enabled: boolean) =>
       ipcRenderer.invoke('im:setAutoConnect', platform, enabled) as Promise<void>,
-    setExecutionMode: (mode: 'strict' | 'relaxed' | 'free') =>
+    setExecutionMode: (mode: ExecutionMode) =>
       ipcRenderer.invoke('im:setExecutionMode', mode) as Promise<void>,
     sendNotification: (text: string, options?: { markdown?: boolean; title?: string }) =>
       ipcRenderer.invoke('im:sendNotification', text, options) as Promise<{ success: boolean; platform?: string; error?: string }>,

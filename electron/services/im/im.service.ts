@@ -12,6 +12,7 @@
  *                          callbacks 聚合文本 ──→ Adapter.sendMarkdown()
  */
 
+import type { ExecutionMode } from '@shared/types'
 import type {
   IMServiceConfig,
   IMAdapter,
@@ -198,7 +199,7 @@ export class IMService {
   /**
    * 设置 Agent 执行模式
    */
-  setExecutionMode(mode: 'strict' | 'relaxed' | 'free') {
+  setExecutionMode(mode: ExecutionMode) {
     this.config.executionMode = mode
   }
 
@@ -693,7 +694,7 @@ export class IMService {
       await this.deps.agentService.runAssistant(agentId, fullMessage, context, {
         enabled: true, commandTimeout: 30000,
         autoExecuteSafe: true, autoExecuteModerate: true,
-        executionMode: this.config.executionMode as 'strict' | 'relaxed' | 'free',
+        executionMode: this.config.executionMode,
         debugMode: false
       }, undefined, {
         onStep: (_runId: string, step: any) => {

@@ -2,6 +2,8 @@
  * IM Service Types - 即时通讯平台集成类型定义
  */
 
+import type { ExecutionMode } from '@shared/types'
+
 // ==================== 配置类型 ====================
 
 export interface DingTalkConfig {
@@ -44,7 +46,7 @@ export interface IMServiceConfig {
   telegram: TelegramConfig
   wecom: WeComConfig
   /** Agent 执行模式，默认 relaxed */
-  executionMode: 'strict' | 'relaxed' | 'free'
+  executionMode: ExecutionMode
   /** 空闲会话超时（分钟），默认 60 */
   sessionTimeoutMinutes: number
 }

@@ -64,6 +64,11 @@ export default defineConfig({
           define: {
             __STEAM_BUILD__: isSteamBuild
           },
+          resolve: {
+            alias: {
+              '@shared': resolve(__dirname, 'shared')
+            }
+          },
           build: {
             outDir: 'dist-electron',
             emptyOutDir: true,  // 构建前清空输出目录，防止旧文件堆积
@@ -106,6 +111,11 @@ export default defineConfig({
           options.reload()
         },
         vite: {
+          resolve: {
+            alias: {
+              '@shared': resolve(__dirname, 'shared')
+            }
+          },
           build: {
             outDir: 'dist-electron'
           },
@@ -120,7 +130,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
-      '@electron': resolve(__dirname, 'electron')
+      '@electron': resolve(__dirname, 'electron'),
+      '@shared': resolve(__dirname, 'shared')
     }
   },
   build: {

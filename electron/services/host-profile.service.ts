@@ -12,21 +12,9 @@ const execAsync = promisify(exec)
 
 // ==================== 类型定义 ====================
 
-export interface HostProfile {
-  hostId: string              // 唯一标识: local 或 user@host
-  hostname: string            // 主机名
-  username: string            // 用户名
-  os: string                  // 操作系统
-  osVersion: string           // 系统版本
-  shell: string               // 默认 shell
-  packageManager?: string     // 包管理器
-  installedTools: string[]    // 已安装的常用工具
-  homeDir?: string            // 用户主目录
-  currentDir?: string         // 当前工作目录
-  notes?: string[]            // 用户笔记（已迁移到知识库，保留兼容）
-  lastProbed: number          // 上次探测时间
-  lastUpdated: number         // 上次更新时间
-}
+// 从共享类型导入并重新导出
+import type { HostProfile } from '@shared/types'
+export type { HostProfile } from '@shared/types'
 
 export interface ProbeResult {
   hostname?: string

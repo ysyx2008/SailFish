@@ -9,14 +9,10 @@ import { getUserSkillService } from '../user-skill.service'
 // 重新导出 ToolDefinition 类型供技能模块使用
 export type { ToolDefinition }
 
-/**
- * Agent 运行模式
- * - local: 本地终端
- * - ssh: SSH 远程终端
- * - assistant: 纯助手模式（无终端，仅对话/知识问答）
- * 未来可扩展: docker, k8s, wsl 等
- */
-export type AgentMode = 'local' | 'ssh' | 'assistant'
+import type { TerminalType, RemoteChannel } from '@shared/types'
+
+/** @deprecated Use TerminalType from @shared/types */
+export type AgentMode = TerminalType
 
 /**
  * 工具元数据
@@ -165,7 +161,7 @@ export interface GetAgentToolsOptions {
   /** Agent 运行模式，用于过滤不适用的工具 */
   mode?: AgentMode
   /** 请求来源通道（用于条件性加载 IM 专属工具） */
-  remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'
+  remoteChannel?: RemoteChannel
   /** 是否包含上下文管理工具（用量超过阈值时启用，节省 token） */
   includeContextTools?: boolean
 }

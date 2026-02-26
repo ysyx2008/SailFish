@@ -14,6 +14,7 @@
 
 import * as os from 'os'
 import { v4 as uuidv4 } from 'uuid'
+import type { ExecutionMode, RemoteChannel } from '@shared/types'
 import { createLogger } from '../utils/logger'
 
 const log = createLogger('WebChat')
@@ -75,7 +76,7 @@ export class WebChatService {
   private _isRunning = false
   private history: ChatMessage[] = []
   private _pendingConfirm: any | null = null
-  private _executionMode: 'strict' | 'relaxed' | 'free' = 'relaxed'
+  private _executionMode: ExecutionMode = 'relaxed'
   private _tabCreated = false
 
   private _callerCallbacks: AgentCallbacks | null = null
@@ -126,8 +127,8 @@ export class WebChatService {
   getHistory(): ChatMessage[] { return this.history }
   get isRunning(): boolean { return this._isRunning }
   get pendingConfirm(): any | null { return this._pendingConfirm }
-  get executionMode(): 'strict' | 'relaxed' | 'free' { return this._executionMode }
-  set executionMode(mode: 'strict' | 'relaxed' | 'free') { this._executionMode = mode }
+  get executionMode(): ExecutionMode { return this._executionMode }
+  set executionMode(mode: ExecutionMode) { this._executionMode = mode }
   getAgentId(): string { return this.agentId }
 
   // ==================== 核心操作 ====================
@@ -150,7 +151,7 @@ export class WebChatService {
    * 2. 直接调用 agentService.runAssistant
    * 3. 通过回调将事件推送到前端（IPC）和 SSE 订阅者
    */
-  async sendMessage(message: string, callbacks?: AgentCallbacks, remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'): Promise<void> {
+  async sendMessage(message: string, callbacks?: AgentCallbacks, remoteChannel?: RemoteChannel): Promise<void> {
     if (!this.deps) throw new Error('Dependencies not set')
     if (this._isRunning) throw new Error('Agent is already running')
 
