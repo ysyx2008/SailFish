@@ -789,7 +789,7 @@ function isSensitiveKey(key: string): boolean {
 }
 
 /** 通知前端配置已变更，触发 loadConfig() 刷新 */
-function notifyFrontendConfigChanged(): void {
+export function notifyFrontendConfigChanged(): void {
   try {
     const windows = BrowserWindow.getAllWindows()
     for (const win of windows) {

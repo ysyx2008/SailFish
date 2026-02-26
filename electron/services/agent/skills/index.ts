@@ -6,7 +6,7 @@
 export type { Skill, SkillState, SkillLoadResult, SkillSessionManager } from './types'
 
 // 导出注册表
-export { registerSkill, getSkill, getAllSkills, getSkillsSummary, hasSkill } from './registry'
+export { registerSkill, getSkill, getAllSkills, getSkillsSummary, getBuiltinSkillsForSettings, hasSkill } from './registry'
 
 // 导出加载器
 export { SkillSession, createSkillSession } from './skill-loader'
@@ -21,4 +21,5 @@ import './watch'
 import './config'
 import './skill-creator'
 import './terminal'
+import './personality'
 

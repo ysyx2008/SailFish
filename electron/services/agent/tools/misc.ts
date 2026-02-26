@@ -13,6 +13,7 @@ import { executeCalendarTool } from '../skills/calendar/executor'
 import { executeWatchTool } from '../skills/watch/executor'
 import { executeConfigTool } from '../skills/config/executor'
 import { executeSkillCreatorTool } from '../skills/skill-creator/executor'
+import { executePersonalityTool } from '../skills/personality/executor'
 import { getUserSkillService } from '../../user-skill.service'
 import { formatRemainingTime, formatTotalTime, truncateFromEnd } from './utils'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
@@ -787,6 +788,10 @@ export async function executeSkillTool(
   if (toolName.startsWith('skill_')) {
     return executeSkillCreatorTool(toolName, ptyId, args, toolCallId, config, executor)
   }
-  
+
+  if (toolName.startsWith('personality_')) {
+    return executePersonalityTool(toolName, ptyId, args, toolCallId, config, executor)
+  }
+
   return { success: false, output: '', error: t('error.unknown_tool', { name: toolName }) }
 }

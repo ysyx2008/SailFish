@@ -545,6 +545,22 @@ const translations = {
     'calendar.todo_not_supported': '⚠️ {provider} 不支持待办事项（VTODO），todo 相关功能不可用',
     'calendar.todo_not_supported_error': '{provider} 的日历服务不支持待办事项（VTODO）。支持待办事项的服务包括：iCloud、Nextcloud、Radicale、Baikal 等。',
 
+    // 个性定义
+    'personality.reading': '读取当前个性配置',
+    'personality.read_done': '已读取个性配置',
+    'personality.writing': '写入个性定义',
+    'personality.written': '个性定义已更新，下一轮对话将使用新个性',
+    'personality.previewing': '预览个性定义效果',
+    'personality.preview_done': '个性定义预览已生成',
+    'personality.text_empty': '个性定义文本不能为空',
+    'personality.text_too_long': '个性定义文本超出限制（{current}/{max} 字符）',
+    'personality.invalid_mbti': '无效的 MBTI 类型: {mbti}',
+    'personality.unknown_tool': '未知的个性工具: {name}',
+    'personality.name_default': '旗鱼（默认）',
+    'personality.not_set': '未设置',
+    'personality.using_default': '未设置（当前使用默认风格）',
+    'personality.confirm_hint': '确认无误后，请使用 `personality_craft` 正式写入。',
+
     // 技能系统
     'skill.id_required': '技能 ID 不能为空',
     'skill.session_not_initialized': '技能会话未初始化',
@@ -1463,6 +1479,22 @@ Please output the summary in the following format:
     'calendar.todo_delete_failed': 'Failed to delete todos',
     'calendar.todo_not_supported': '⚠️ {provider} does not support todos (VTODO), todo features are unavailable',
     'calendar.todo_not_supported_error': 'The calendar service of {provider} does not support todos (VTODO). Services that support todos include: iCloud, Nextcloud, Radicale, Baikal, etc.',
+
+    // Personality
+    'personality.reading': 'Reading current personality config',
+    'personality.read_done': 'Personality config loaded',
+    'personality.writing': 'Writing personality definition',
+    'personality.written': 'Personality updated, new personality takes effect on next conversation',
+    'personality.previewing': 'Previewing personality definition',
+    'personality.preview_done': 'Personality preview generated',
+    'personality.text_empty': 'Personality text cannot be empty',
+    'personality.text_too_long': 'Personality text exceeds limit ({current}/{max} characters)',
+    'personality.invalid_mbti': 'Invalid MBTI type: {mbti}',
+    'personality.unknown_tool': 'Unknown personality tool: {name}',
+    'personality.name_default': 'SailFish (default)',
+    'personality.not_set': 'Not set',
+    'personality.using_default': 'Not set (using default style)',
+    'personality.confirm_hint': 'When confirmed, use `personality_craft` to save.',
 
     // Skill system
     'skill.id_required': 'Skill ID required',
