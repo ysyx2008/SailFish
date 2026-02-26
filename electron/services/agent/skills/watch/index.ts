@@ -13,7 +13,7 @@ const log = createLogger('WatchSkill')
 const watchSkill: Skill = {
   id: 'watch',
   name: '关切',
-  description: '管理 AI 的关切（关注点），支持创建、查看、修改、删除、触发。关切让 AI 能主动关注并执行任务，包括定时执行、文件监控、邮件触发、日历提醒、心跳唤醒等多种触发方式。',
+  description: '关切 = 到点或触发时由 AI **自动执行**你设定的任务（如每天检查、文件变化时执行、收到邮件时处理），结果可推送到桌面/IM。支持 cron/间隔/文件监控/邮件/日历事件/webhook 等触发。与「日程」不同：日程只在日历记一条、到点提醒；关切是到时 AI 真的去执行指令。用户说「每天帮我做 X」「到点自动检查 Y」时用本技能。',
   tools: watchTools,
 
   async init() {

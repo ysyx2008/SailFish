@@ -365,3 +365,19 @@ function formatTriggerBrief(t: WatchTrigger): string {
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
+
+/**
+ * 将关切列表格式化为供系统提示词注入的摘要（供 Agent 知晓已有关切，避免重复创建）
+ */
+export function formatWatchListForPrompt(watches: WatchDefinition[]): string {
+  if (watches.length === 0) return ''
+  return watches
+    .map(w => {
+      const status = w.enabled ? '启用' : '禁用'
+      const triggers = w.triggers.map(t => formatTriggerBrief(t)).join(', ')
+      const nextRun = w.nextRun ? new Date(w.nextRun).toLocaleString('zh-CN') : '—'
+      const promptPreview = w.prompt.length > 80 ? `${w.prompt.substring(0, 80)}...` : w.prompt
+      return `- **${w.name}** (ID: \`${w.id}\`) [${status}] 触发: ${triggers} 下次: ${nextRun}\n  指令: ${promptPreview}`
+    })
+    .join('\n\n')
+}

@@ -114,6 +114,8 @@ export interface BuildSystemPromptOptions {
   availableTaskIds?: Array<{ id: string; summary: string }>
   /** 执行模式 */
   executionMode?: ExecutionMode
+  /** 当前已设置的关切列表摘要（注入提示词，供 Agent 知晓避免重复创建） */
+  watchListSummary?: string
 }
 
 /**
@@ -137,6 +139,7 @@ export class PromptBuilder {
   private readonly relatedTaskDigests?: string
   private readonly availableTaskIds?: Array<{ id: string; summary: string }>
   private readonly executionMode?: ExecutionMode
+  private readonly watchListSummary?: string
 
   constructor(options: BuildSystemPromptOptions) {
     this.context = options.context
@@ -153,6 +156,7 @@ export class PromptBuilder {
     this.relatedTaskDigests = options.relatedTaskDigests
     this.availableTaskIds = options.availableTaskIds
     this.executionMode = options.executionMode
+    this.watchListSummary = options.watchListSummary
   }
 
   // ==================== 公开方法 ====================
@@ -249,6 +253,7 @@ ${personalitySection}
 ${userRulesSection}
 ${hostContext}
 ${this.buildRemoteChannelContext()}
+${this.buildWatchListSection()}
 ## 工作方式
 - **调用工具前**：用 1 句话说明你要做什么
 - **工具执行后**：用通俗语言解释结果和发现
@@ -409,13 +414,10 @@ ${isSshTerminal ? `
 - 讨论/咨询时回答问题即可，不必执行工具
 - 需要确认时**必须用 \`ask_user\`**，不要只在消息里问然后等回复
 
-**主动关切**：
-当你在任务过程中发现某件事值得持续关注（定时执行、监控、提醒等），先 \`load_skill("watch")\` 加载关切技能，然后用 \`watch_create\` 创建关切。典型场景：
-- 部署了服务 → 创建关切监控运行状态
-- 发现了待跟进事项 → 设定提醒
-- 用户提到了截止日期 → 创建定时提醒
-- 用户要求定期检查邮件/日历 → 创建对应触发器的关切
-创建后告知用户，让他们知道你在主动帮忙盯着。不要频繁创建，只在真正有价值的时候。
+**关切**（\`load_skill("watch")\` + \`watch_create\`）：
+关切 = 到点或触发时**由 AI 自动执行**你设定的任务（如检查服务器、处理邮件、跑脚本），结果可推送到桌面/IM。不是「在日历记一条、到点只提醒」——那种用日程（calendar）。用户说「每天/每周帮我做 X」「到点自动检查 Y」「文件变了执行 Z」时，一般应创建关切。
+
+当你在任务中发现某件事值得持续关注且需 AI 到时自动执行，用关切。典型：部署了服务 → 建关切监控；用户要求定期检查邮件/日志 → 建对应触发器。下方已列出当前已设置的关切，避免重复创建；修改/删除用 \`watch_update\` / \`watch_toggle\` / \`watch_delete\`。
 ${documentRule}
 ${knowledgeRule}
 ${this.buildExecutionModeNote()}`
@@ -460,6 +462,15 @@ ${taskIdList}`
     }
 
     return section
+  }
+
+  /**
+   * 构建当前已设置关切列表章节（供 Agent 知晓，避免重复创建）
+   */
+  private buildWatchListSection(): string {
+    const trimmed = this.watchListSummary?.trim()
+    if (!trimmed) return ''
+    return `\n## 当前已设置的关切\n以下关切已存在，回答用户或创建新关切前请先参考。\n\n${trimmed}\n`
   }
 
   /**
@@ -590,7 +601,8 @@ export function buildSystemPrompt(
   relatedTaskDigests?: string,
   availableTaskIds?: Array<{ id: string; summary: string }>,
   contextKnowledgeDoc?: string,
-  agentName?: string
+  agentName?: string,
+  watchListSummary?: string
 ): string {
   const builder = new PromptBuilder({
     context,
@@ -606,7 +618,8 @@ export function buildSystemPrompt(
     agentName,
     taskSummaries,
     relatedTaskDigests,
-    availableTaskIds
+    availableTaskIds,
+    watchListSummary
   })
   return builder.build()
 }

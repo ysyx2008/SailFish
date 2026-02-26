@@ -34,6 +34,8 @@ import { executeTool } from './tools/index'
 import { buildTaskHistoryContext } from './context-builder'
 import { getKnowledgeService } from '../knowledge'
 import { getContextKnowledgeService } from '../knowledge/context-knowledge'
+import { getWatchService } from '../watch/watch.service'
+import { formatWatchListForPrompt } from './skills/watch/executor'
 import { t } from './i18n'
 import { createSkillSession, SkillSession } from './skills'
 import { PromptBuilder } from './prompt-builder'
@@ -923,6 +925,15 @@ export abstract class Agent {
       log.warn('ContextKnowledge load error:', e)
     }
 
+    // 关切列表摘要（注入提示词，供 Agent 知晓已有关切）
+    let watchListSummary = ''
+    try {
+      const watches = getWatchService().getAll()
+      watchListSummary = formatWatchListForPrompt(watches)
+    } catch (e) {
+      log.warn('Watch list for prompt error:', e)
+    }
+
     // 构建系统提示
     const promptOptions: PromptOptions = {
       mbtiType: this.services.configService?.getAgentMbti() ?? undefined,
@@ -934,7 +945,8 @@ export abstract class Agent {
       agentName: this.services.configService?.getAgentName() ?? '',
       taskSummaries,
       relatedTaskDigests,
-      availableTaskIds
+      availableTaskIds,
+      watchListSummary: watchListSummary || undefined
     }
     
     const systemPrompt = this.buildSystemPrompt(run.context, promptOptions)

@@ -120,7 +120,8 @@ export class SailFish extends Agent {
       options.relatedTaskDigests,
       options.availableTaskIds,
       options.contextKnowledgeDoc,
-      options.agentName
+      options.agentName,
+      options.watchListSummary
     )
   }
   

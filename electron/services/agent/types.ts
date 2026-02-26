@@ -432,6 +432,8 @@ export interface PromptOptions {
   relatedTaskDigests?: string
   /** 可用任务 ID 列表 */
   availableTaskIds?: Array<{ id: string; summary: string }>
+  /** 当前已设置的关切列表摘要（注入提示词，供 Agent 知晓避免重复创建） */
+  watchListSummary?: string
 }
 
 /**
