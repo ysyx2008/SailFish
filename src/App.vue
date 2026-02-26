@@ -305,19 +305,45 @@ onMounted(async () => {
   }
 
   cleanupWatchProactiveMessage = window.electronAPI.watch.onProactiveMessage((data) => {
-    pendingProactiveMessages.push({
-      agentId: data.agentId,
-      message: data.message,
-      watchName: data.watchName,
-      timestamp: Date.now()
-    })
-
     const preview = data.message.length > 100
       ? data.message.substring(0, 100) + '...'
       : data.message
-    toast.proactive(preview, () => {
-      activateProactiveMessages(data.agentId)
-    })
+
+    // 优先精确匹配 agentId，回退到 companion tab（IM 对话镜像）
+    const tab = terminalStore.tabs.find(t => t.agentId === data.agentId)
+      || terminalStore.tabs.find(t => t.agentId === '__companion__')
+
+    if (tab) {
+      const uid = `proactive-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`
+      terminalStore.addAgentStep(tab.id, {
+        id: `${uid}-task`,
+        type: 'user_task',
+        content: '__proactive__',
+        timestamp: Date.now()
+      })
+      terminalStore.addAgentStep(tab.id, {
+        id: `${uid}-result`,
+        type: 'final_result',
+        content: data.message,
+        timestamp: Date.now()
+      })
+      const tabId = tab.id
+      toast.proactive(preview, () => {
+        if (terminalStore.tabs.find(t => t.id === tabId)) {
+          terminalStore.setActiveTab(tabId)
+        }
+      })
+    } else {
+      pendingProactiveMessages.push({
+        agentId: data.agentId,
+        message: data.message,
+        watchName: data.watchName,
+        timestamp: Date.now()
+      })
+      toast.proactive(preview, () => {
+        activateProactiveMessages(data.agentId)
+      })
+    }
   })
 
   // 系统通知点击：激活应用并展开对话
