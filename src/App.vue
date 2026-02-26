@@ -219,9 +219,10 @@ onMounted(async () => {
     }
   })
 
-  // 监听远程 Gateway 任务开始事件：Toast 通知 + 把消息放入 pendingSchedulerTask 让 AiPanel 自动执行
+  // 监听远程 Gateway 任务开始事件：Toast 通知 + 设置 tab running 状态
+  // 后端 WebChatService 直驱 Agent 执行，前端仅渲染
   cleanupGatewayRemoteTask = window.electronAPI.gateway.onRemoteTaskStarted((data) => {
-    log.debug(`[RemoteChat] onRemoteTaskStarted: agentId=${data.agentId}, message="${data.message.substring(0, 60)}"`)
+    log.debug(`[WebChat] onRemoteTaskStarted: agentId=${data.agentId}, message="${data.message.substring(0, 60)}"`)
     const preview = data.message.length > 60
       ? data.message.substring(0, 60) + '...'
       : data.message
@@ -242,14 +243,13 @@ onMounted(async () => {
       remoteTab.remoteChannel = data.remoteChannel
     }
     if (remoteTab) {
-      // 把远程消息作为 pendingSchedulerTask，AiPanel 会自动消费并执行 runAgent
-      terminalStore.pendingSchedulerTasks[remoteTab.id] = data.message
-      log.debug(`[RemoteChat] 远程任务已提交: tabId=${remoteTab.id}, agentId=${data.agentId}`)
+      // 仅设置 running 状态，后端已在执行 Agent，steps 通过 agent:step IPC 事件流入
+      terminalStore.setAgentRunning(remoteTab.id, true, data.agentId, data.message)
+      log.debug(`[WebChat] 远程任务已开始: tabId=${remoteTab.id}, agentId=${data.agentId}`)
     }
   })
 
   // Watch desktop 输出：确保助手 tab 存在，后续 steps 通过标准 agent:step 事件流入
-  const COMPANION_AGENT_ID = '__companion__'
   cleanupWatchEnsureTab = window.electronAPI.watch.onEnsureTab((data) => {
     const existing = terminalStore.tabs.find(t => t.agentId === data.agentId)
     if (!existing) {

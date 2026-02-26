@@ -1,25 +1,22 @@
 /**
- * Remote Chat Service - 远程会话核心服务
+ * Web Chat Service - Web 远程会话服务
  *
- * 统一管理 Web Service 和 IM 集成的共享会话状态。
- * 所有远程通道（Web、钉钉、飞书等）共享同一个 Agent 会话。
+ * 管理通过 Gateway HTTP 端点发起的 Web 会话。
+ * 后端直驱 Agent 执行，前端仅渲染；SSE 实时推送事件给 Web 客户端。
  *
  * 架构：
- *   Web / IM ──→ RemoteChatService.sendMessage()
- *                        │
- *          通知桌面前端创建 assistant tab + pendingTask
- *                        │
- *          前端 AiPanel 走 runStandalone 驱动执行
- *                        │
- *          后端 runStandalone IPC handler 回调 onAgentStep/onAgentComplete
- *                        │
- *             IM/SSE 回调 + sendMessage Promise resolve
+ *   Web 客户端 ──→ GatewayService ──→ WebChatService.sendMessage()
+ *                                              │
+ *                              后端直接调用 agentService.runAssistant()
+ *                                              │
+ *                          IPC 推送到桌面前端渲染 + SSE 推送到 Web 客户端
  */
 
+import * as os from 'os'
 import { v4 as uuidv4 } from 'uuid'
 import { createLogger } from '../utils/logger'
 
-const log = createLogger('RemoteChat')
+const log = createLogger('WebChat')
 
 // ==================== 类型定义 ====================
 
@@ -30,8 +27,9 @@ export interface ChatMessage {
   steps?: any[]
 }
 
-export interface RemoteChatDependencies {
+export interface WebChatDependencies {
   agentService: {
+    runAssistant: (agentId: string, userMessage: string, context: any, config?: any, profileId?: string, callbacks?: any) => Promise<string>
     abort: (agentId: string) => boolean
     confirmToolCall: (agentId: string, toolCallId: string, approved: boolean, modifiedArgs?: Record<string, unknown>, alwaysAllow?: boolean) => boolean
     getRunStatus: (agentId: string) => any
@@ -69,10 +67,10 @@ export const VISIBLE_STEP_TYPES = new Set([
 
 // ==================== 核心服务 ====================
 
-export type RemoteChatEventListener = (event: any) => void
+export type WebChatEventListener = (event: any) => void
 
-export class RemoteChatService {
-  private deps: RemoteChatDependencies | null = null
+export class WebChatService {
+  private deps: WebChatDependencies | null = null
   private agentId: string = `remote-agent-${uuidv4()}`
   private _isRunning = false
   private history: ChatMessage[] = []
@@ -80,17 +78,15 @@ export class RemoteChatService {
   private _executionMode: 'strict' | 'relaxed' | 'free' = 'relaxed'
   private _tabCreated = false
 
-  // 当前运行的 IM/SSE 回调和状态
   private _callerCallbacks: AgentCallbacks | null = null
   private _currentAssistantMsg: ChatMessage | null = null
-  private _runResolve: (() => void) | null = null
 
   // ---- 事件广播：供 SSE /api/chat/events 端点使用 ----
-  private listeners = new Set<RemoteChatEventListener>()
+  private listeners = new Set<WebChatEventListener>()
   private emittedStepIds = new Set<string>()
   private currentMessageStepId: string | null = null
 
-  subscribe(listener: RemoteChatEventListener): () => void {
+  subscribe(listener: WebChatEventListener): () => void {
     this.listeners.add(listener)
     return () => { this.listeners.delete(listener) }
   }
@@ -101,11 +97,11 @@ export class RemoteChatService {
     }
   }
 
-  setDependencies(deps: RemoteChatDependencies) {
+  setDependencies(deps: WebChatDependencies) {
     this.deps = deps
   }
 
-  setMainWindow(win: RemoteChatDependencies['mainWindow']) {
+  setMainWindow(win: WebChatDependencies['mainWindow']) {
     if (this.deps) {
       this.deps.mainWindow = win
     }
@@ -147,10 +143,12 @@ export class RemoteChatService {
   }
 
   /**
-   * 发送消息：通知前端创建 tab + pendingTask，等待前端 runStandalone 完成
+   * 发送消息：后端直驱 Agent 执行，不依赖前端转发
    *
-   * 不直接调 agentService，由前端 AiPanel 驱动执行。
-   * 通过 onAgentStep / onAgentComplete / onAgentError 接收结果。
+   * 执行流程：
+   * 1. 通知前端创建 tab + 显示任务开始
+   * 2. 直接调用 agentService.runAssistant
+   * 3. 通过回调将事件推送到前端（IPC）和 SSE 订阅者
    */
   async sendMessage(message: string, callbacks?: AgentCallbacks, remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'): Promise<void> {
     if (!this.deps) throw new Error('Dependencies not set')
@@ -182,21 +180,78 @@ export class RemoteChatService {
 
     this.emitEvent({ type: 'task_started', message: message.trim() })
 
-    // 通知前端创建 tab + 提交任务
+    // 通知前端显示任务开始（前端仅设置 running 状态，不驱动执行）
     this.sendToDesktop('gateway:remoteTaskStarted', {
       agentId: this.agentId,
       message: message.trim(),
       remoteChannel: remoteChannelValue
     })
 
-    // 等待前端执行完成（由 onAgentComplete / onAgentError 触发 resolve）
-    return new Promise<void>((resolve) => {
-      this._runResolve = resolve
-    })
+    // 后端直驱 Agent
+    const context = {
+      terminalOutput: [] as string[],
+      systemInfo: { os: process.platform, shell: process.env.SHELL || '/bin/bash' },
+      terminalType: 'local' as const,
+      cwd: os.homedir(),
+      remoteChannel: remoteChannelValue
+    }
+
+    const debugMode = this.deps.configService.getAgentDebugMode()
+
+    const agentCallbacks = {
+      onStep: (_runId: string, step: any) => {
+        this.onAgentStep(step)
+        this.sendToDesktop('agent:step', {
+          agentId: this.agentId,
+          step: JSON.parse(JSON.stringify(step))
+        })
+      },
+      onNeedConfirm: (confirmation: any) => {
+        this.sendToDesktop('agent:needConfirm', {
+          agentId: this.agentId,
+          toolCallId: confirmation.toolCallId,
+          toolName: confirmation.toolName,
+          toolArgs: JSON.parse(JSON.stringify(confirmation.toolArgs)),
+          riskLevel: confirmation.riskLevel
+        })
+      },
+      onComplete: (_runId: string, result: string, pendingUserMessages?: string[]) => {
+        this.onAgentComplete(result)
+        this.sendToDesktop('agent:complete', { agentId: this.agentId, result, pendingUserMessages })
+      },
+      onError: (_runId: string, error: string) => {
+        this.onAgentError(error)
+        this.sendToDesktop('agent:error', { agentId: this.agentId, error })
+      }
+    }
+
+    try {
+      await this.deps.agentService.runAssistant(
+        this.agentId,
+        message.trim(),
+        context,
+        {
+          enabled: true,
+          commandTimeout: 30000,
+          autoExecuteSafe: true,
+          autoExecuteModerate: true,
+          executionMode: this._executionMode,
+          debugMode
+        },
+        undefined,
+        agentCallbacks
+      )
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      if (this._isRunning) {
+        this.onAgentError(errorMsg)
+        this.sendToDesktop('agent:error', { agentId: this.agentId, error: errorMsg })
+      }
+    }
   }
 
   /**
-   * 前端 runStandalone 产生的步骤事件（由 main.ts IPC handler 调用）
+   * Agent 步骤事件处理：更新内部状态 + 广播 SSE + 转发给调用方回调
    */
   onAgentStep(step: any): void {
     if (!this._isRunning) return
@@ -260,7 +315,7 @@ export class RemoteChatService {
   }
 
   /**
-   * 前端 Agent 执行完成（由 main.ts IPC handler 调用）
+   * Agent 执行完成
    */
   onAgentComplete(result: string): void {
     if (!this._isRunning) return
@@ -282,13 +337,10 @@ export class RemoteChatService {
     this.emitEvent({ type: 'complete', content: result })
     this.emittedStepIds.clear()
     this.currentMessageStepId = null
-
-    this._runResolve?.()
-    this._runResolve = null
   }
 
   /**
-   * 前端 Agent 执行出错（由 main.ts IPC handler 调用）
+   * Agent 执行出错
    */
   onAgentError(error: string): void {
     if (!this._isRunning) return
@@ -310,9 +362,6 @@ export class RemoteChatService {
     this.emitEvent({ type: 'error', error })
     this.emittedStepIds.clear()
     this.currentMessageStepId = null
-
-    this._runResolve?.()
-    this._runResolve = null
   }
 
   confirmToolCall(
@@ -350,7 +399,6 @@ export class RemoteChatService {
     this._pendingConfirm = null
     this._callerCallbacks = null
     this._currentAssistantMsg = null
-    this._runResolve = null
     this.emitEvent({ type: 'history_cleared' })
   }
 
@@ -379,9 +427,9 @@ export class RemoteChatService {
 
 // ==================== 单例管理 ====================
 
-let instance: RemoteChatService | null = null
+let instance: WebChatService | null = null
 
-export function getRemoteChatService(): RemoteChatService {
-  if (!instance) instance = new RemoteChatService()
+export function getWebChatService(): WebChatService {
+  if (!instance) instance = new WebChatService()
   return instance
 }

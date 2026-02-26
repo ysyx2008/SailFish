@@ -683,7 +683,7 @@ export async function messageUser(
       const mainWindow = windows[0]
       if (!mainWindow.isDestroyed()) {
         mainWindow.webContents.send('watch:proactive-message', {
-          agentId: '__companion__',
+          agentId: executor.agentId || '__companion__',
           message,
           watchName: title || ''
         })
@@ -712,7 +712,7 @@ export async function messageUser(
             if (!win.isDestroyed()) {
               win.show()
               win.focus()
-              win.webContents.send('watch:activate-message', { agentId: '__companion__' })
+              win.webContents.send('watch:activate-message', { agentId: executor.agentId || '__companion__' })
             }
           }
         })

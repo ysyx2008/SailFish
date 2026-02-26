@@ -52,7 +52,7 @@ SFTerminal/
 │       ├── skill-market.service.ts     # 技能市场
 │       ├── gateway.service.ts   # 网关服务
 │       ├── credential.service.ts # 凭证存储
-│       ├── remote-chat.service.ts      # 远程对话服务
+│       ├── web-chat.service.ts         # Web 远程会话服务（后端直驱）
 │       ├── screen-content.service.ts   # 屏幕内容服务
 │       ├── command-executor.service.ts # 命令执行服务
 │       ├── menu.service.ts      # 菜单服务
@@ -105,6 +105,7 @@ SFTerminal/
 - Electron IPC：`ipcMain.handle` ↔ `ipcRenderer.invoke`
 - 前端通过 `preload.ts` 暴露的 API 调用后端服务
 - `main.ts` 中注册所有 IPC handler，大多是对服务方法的薄封装
+- 远程 Web 会话由 WebChatService 后端直驱 Agent 执行，前端仅渲染；SSE 实时推送到 Web 客户端
 
 ### CLI 模式（纯 Node.js 运行后端）
 - **入口**：`electron/cli/main.js`（纯 JS）
@@ -147,6 +148,7 @@ SFTerminal/
 - **有状态工作流**：Watch 自身状态 + 跨 Watch 共享状态，Agent 可通过 `STATE_UPDATE` / `SHARED_UPDATE` 指令自动更新
 - **模板系统**：8 个内置模板（晨间简报 / 日历提醒 / 邮件分类 / 日志监控 / 部署通知 / 服务器巡检 / 文件监控 / 工作总结）
 - **串行执行**：所有事件通过 EventBus 排队，Watch 依次处理，不并发
+- **独立 Agent**：Watch 使用独立的 `__watch__` Agent ID，与 IM/桌面助手的 `__companion__` 隔离
 - **Scheduler 废弃**：旧版定时任务已整合到关切系统，启动时自动迁移数据，`schedule_*` 工具标记为废弃
 - **详细设计**：见 `docs/sensor-loop-architecture.md`
 

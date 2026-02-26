@@ -31,7 +31,6 @@ import { FeishuAdapter } from './feishu-adapter'
 import { SlackAdapter } from './slack-adapter'
 import { TelegramAdapter } from './telegram-adapter'
 import { WeComAdapter } from './wecom-adapter'
-import { RemoteChatService } from '../remote-chat.service'
 import { AgentService } from '../agent'
 import { getConfigService } from '../config.service'
 import { t } from '../agent/i18n'
@@ -40,7 +39,6 @@ import { createLogger } from '../../utils/logger'
 const log = createLogger('IMService')
 
 export interface IMServiceDependencies {
-  remoteChatService: RemoteChatService
   agentService: import('../agent').AgentService
   mainWindow: {
     webContents: {
@@ -179,11 +177,6 @@ export class IMService {
   constructor() {
     this.loadPersistedContacts()
     this.lastContact = this.pickMostRecentContact(this.contactsByPlatform)
-  }
-
-  /** 便捷访问共享会话服务 */
-  private get chat(): RemoteChatService {
-    return this.deps!.remoteChatService
   }
 
   /**
@@ -640,7 +633,7 @@ export class IMService {
   }
 
   /**
-   * 执行 Agent 任务（直接调用 Companion Agent，不经过 RemoteChatService 前端往返）
+   * 执行 Agent 任务（直接调用 Companion Agent）
    */
   private async runAgentTask(adapter: IMAdapter, replyContext: any, msg: IMIncomingMessage) {
     if (!this.deps) return

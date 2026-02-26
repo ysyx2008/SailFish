@@ -59,6 +59,9 @@ export abstract class Agent {
   
   /** AI 配置档案 ID（每个 Agent 实例独立，未设置时 fallback 到全局） */
   profileId?: string
+
+  /** Agent 实例的逻辑 ID（用于路由 proactive message 等场景） */
+  private _agentId?: string
   
   // ==================== 状态（持久化） ====================
   
@@ -119,6 +122,17 @@ export abstract class Agent {
    */
   protected createTaskMemory(): TaskMemoryStore {
     return new TaskMemoryStore()
+  }
+
+  /**
+   * 设置 Agent 实例的逻辑 ID（由 AgentService.createAssistantAgent 调用）
+   */
+  setAgentId(id: string): void {
+    this._agentId = id
+  }
+
+  getAgentId(): string | undefined {
+    return this._agentId
   }
   
   /**
@@ -605,7 +619,15 @@ export abstract class Agent {
       run.taskMessageLog.push({ role: 'assistant', content: result })
     }
     
-    // 保存任务到记忆
+    // 先添加 final_result 步骤到 run.steps，确保后续保存包含完整数据
+    if (result) {
+      this.addStep({
+        type: 'final_result',
+        content: result
+      })
+    }
+    
+    // 保存任务到记忆（此时 run.steps 已包含 final_result）
     const status = run.aborted ? 'aborted' : 'success'
     
     this.taskMemory.saveTask(
@@ -627,14 +649,6 @@ export abstract class Agent {
     this.updateContextKnowledgeAsync(run, result).catch(err => {
       log.error('知识文档更新失败:', err)
     })
-    
-    // 添加 final_result 步骤（统一由后端生成，前端通过 onStep 回调接收）
-    if (result) {
-      this.addStep({
-        type: 'final_result',
-        content: result
-      })
-    }
     
     // 触发完成回调
     this.callbacks?.onComplete?.(run.id, result, run.pendingUserMessages)
@@ -1518,6 +1532,7 @@ export abstract class Agent {
    */
   protected createToolExecutorConfig(run: AgentRun): ToolExecutorConfig {
     return {
+      agentId: this._agentId || run.ptyId || undefined,
       terminalService: this.services.unifiedTerminalService || this.services.ptyService as any,
       hostProfileService: this.services.hostProfileService,
       mcpService: this.services.mcpService,

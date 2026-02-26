@@ -30,6 +30,8 @@ export const PATH_PARAM_NAMES = new Set([
  * 工具执行器配置
  */
 export interface ToolExecutorConfig {
+  /** Agent 实例的逻辑 ID（用于 talk_to_user 等工具路由 proactive message） */
+  agentId?: string
   /** 统一终端服务（支持 PTY 和 SSH） */
   terminalService: UnifiedTerminalInterface
   hostProfileService?: HostProfileServiceInterface

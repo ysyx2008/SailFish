@@ -698,7 +698,7 @@ export class WatchService {
 
   // ==================== 输出投递 ====================
 
-  private static readonly WATCH_ASSISTANT_AGENT_ID = '__companion__'
+  private static readonly WATCH_ASSISTANT_AGENT_ID = '__watch__'
 
   private isNoAction(output: string): boolean {
     const lastLine = output.trim().split('\n').pop()?.trim().toUpperCase() || ''

@@ -2780,10 +2780,10 @@ const electronAPI = {
     }
   },
 
-  // 远程会话（运行时配置）
-  remoteChat: {
+  // Web Chat 会话（运行时配置）
+  webChat: {
     setExecutionMode: (mode: 'strict' | 'relaxed' | 'free') =>
-      ipcRenderer.invoke('remote-chat:setExecutionMode', mode) as Promise<void>,
+      ipcRenderer.invoke('web-chat:setExecutionMode', mode) as Promise<void>,
   },
 
   // IM 集成

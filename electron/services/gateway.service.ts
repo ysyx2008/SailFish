@@ -24,7 +24,7 @@
 
 import * as http from 'http'
 import * as crypto from 'crypto'
-import { RemoteChatService, VISIBLE_STEP_TYPES } from './remote-chat.service'
+import { WebChatService, VISIBLE_STEP_TYPES } from './web-chat.service'
 import { createLogger } from '../utils/logger'
 
 const log = createLogger('Gateway')
@@ -39,7 +39,7 @@ export interface GatewayConfig {
 }
 
 export interface GatewayDependencies {
-  remoteChatService: RemoteChatService
+  webChatService: WebChatService
   mainWindow: {
     webContents: {
       send: (channel: string, ...args: any[]) => void
@@ -72,9 +72,9 @@ export class GatewayService {
   private auditLog: AuditLogEntry[] = []
   private static readonly MAX_AUDIT_LOG = 500  // 最多保留 500 条记录
 
-  /** 便捷访问共享会话服务 */
-  private get chat(): RemoteChatService {
-    return this.deps!.remoteChatService
+  /** 便捷访问 Web Chat 服务 */
+  private get chat(): WebChatService {
+    return this.deps!.webChatService
   }
 
   /**
@@ -134,7 +134,7 @@ export class GatewayService {
 
   /**
    * 停止 Gateway 服务
-   * 注意：不销毁 PTY，因为 PTY 由 RemoteChatService 统一管理，IM 等通道可能仍在使用
+   * 注意：不销毁 PTY，因为 PTY 由 WebChatService 统一管理，IM 等通道可能仍在使用
    */
   async stop(): Promise<void> {
     if (this.server) {
@@ -380,7 +380,7 @@ export class GatewayService {
       details: { message: message.trim(), executionMode: this.chat.executionMode }
     })
 
-    // 注：gateway:remoteTaskStarted 已统一在 RemoteChatService.sendMessage 中发送
+    // 注：gateway:remoteTaskStarted 已统一在 WebChatService.sendMessage 中发送
 
     // ---- SSE 专用的流式渲染状态 ----
     const sentStepIds = new Set<string>()
@@ -622,7 +622,7 @@ export class GatewayService {
     const state = this.chat.getState()
     res.write(`data: ${JSON.stringify({ type: 'init', isRunning: state.isRunning, historyCount: state.history.length })}\n\n`)
 
-    // 订阅 RemoteChatService 的实时事件
+    // 订阅 WebChatService 的实时事件
     const unsubscribe = this.chat.subscribe((event: any) => {
       try {
         res.write(`data: ${JSON.stringify(event)}\n\n`)

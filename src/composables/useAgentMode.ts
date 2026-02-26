@@ -310,11 +310,11 @@ export function useAgentMode(
   watch(executionMode, async (newValue) => {
     const promises: Promise<unknown>[] = []
 
-    // 远程 tab：同步到 RemoteChatService（运行时覆盖，不持久化）
+    // 远程 tab：同步到 WebChatService（运行时覆盖，不持久化）
     if (currentTab.value?.isRemote) {
       promises.push(
-        window.electronAPI.remoteChat.setExecutionMode(newValue).catch(err => {
-          log.error('Failed to sync execution mode to RemoteChatService:', err)
+        window.electronAPI.webChat.setExecutionMode(newValue).catch(err => {
+          log.error('Failed to sync execution mode to WebChatService:', err)
         })
       )
     }

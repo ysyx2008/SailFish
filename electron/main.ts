@@ -286,7 +286,7 @@ import { getSchedulerService, type CreateTaskParams } from './services/scheduler
 import { getWatchService } from './services/watch/watch.service'
 import { getSensorService } from './services/sensor'
 import type { CreateWatchParams } from './services/watch/types'
-import { getRemoteChatService } from './services/remote-chat.service'
+import { getWebChatService } from './services/web-chat.service'
 import { getGatewayService, type GatewayConfig } from './services/gateway.service'
 import { getIMService } from './services/im/im.service'
 import type { DingTalkConfig, FeishuConfig, SlackConfig, TelegramConfig, WeComConfig } from './services/im/types'
@@ -573,7 +573,7 @@ function showMainWindow() {
 function setupWindowServices() {
   if (!mainWindow) return
 
-  remoteChatService.setMainWindow(mainWindow)
+  webChatService.setMainWindow(mainWindow)
   gatewayService.setMainWindow(mainWindow)
   imService.setMainWindow(mainWindow)
   menuService.setMainWindow(mainWindow)
@@ -592,7 +592,7 @@ function cleanupAllServices() {
   schedulerService.stop()
   gatewayService.stop().catch(() => {})
   imService.stopAll().catch(() => {})
-  remoteChatService.dispose().catch(() => {})
+  webChatService.dispose().catch(() => {})
   ptyService.disposeAll()
   sshService.disposeAll()
   sftpService.disconnectAll()
@@ -2273,9 +2273,11 @@ ipcMain.handle('agent:runStandalone', async (event, { agentId, message, context,
 }) => {
   const debugMode = configService.getAgentDebugMode()
   const fullConfig = { ...config, debugMode }
-  
-  const rcs = getRemoteChatService()
-  const isRemote = agentId === rcs.getAgentId()
+
+  // WebChatService 已改为后端直驱，不再需要 runStandalone 转发
+  // 但桌面用户仍可通过远程 tab UI 发送消息，此时需要同步事件到 WebChatService
+  const wcs = getWebChatService()
+  const isRemote = agentId === wcs.getAgentId()
 
   const callbacks = {
     onStep: (_runId: string, step: AgentStep) => {
@@ -2283,7 +2285,7 @@ ipcMain.handle('agent:runStandalone', async (event, { agentId, message, context,
         const serializedStep = JSON.parse(JSON.stringify(step))
         event.sender.send('agent:step', { agentId, step: serializedStep })
       }
-      if (isRemote) rcs.onAgentStep(step)
+      if (isRemote) wcs.onAgentStep(step)
     },
     onNeedConfirm: (confirmation: PendingConfirmation) => {
       if (!event.sender.isDestroyed()) {
@@ -2300,13 +2302,13 @@ ipcMain.handle('agent:runStandalone', async (event, { agentId, message, context,
       if (!event.sender.isDestroyed()) {
         event.sender.send('agent:complete', { agentId, result, pendingUserMessages })
       }
-      if (isRemote) rcs.onAgentComplete(result)
+      if (isRemote) wcs.onAgentComplete(result)
     },
     onError: (_runId: string, error: string) => {
       if (!event.sender.isDestroyed()) {
         event.sender.send('agent:error', { agentId, error })
       }
-      if (isRemote) rcs.onAgentError(error)
+      if (isRemote) wcs.onAgentError(error)
     }
   }
 
@@ -2316,7 +2318,7 @@ ipcMain.handle('agent:runStandalone', async (event, { agentId, message, context,
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error'
     const isAborted = errorMsg === 'User aborted Agent execution'
-    if (isRemote) rcs.onAgentError(errorMsg)
+    if (isRemote) wcs.onAgentError(errorMsg)
     return {
       success: false,
       error: errorMsg,
@@ -2327,18 +2329,18 @@ ipcMain.handle('agent:runStandalone', async (event, { agentId, message, context,
 
 // ==================== 远程会话共享服务 ====================
 
-const remoteChatService = getRemoteChatService()
-remoteChatService.setDependencies({
+const webChatService = getWebChatService()
+webChatService.setDependencies({
   agentService,
   configService,
-  mainWindow: null  // 初始化时 mainWindow 还未创建
+  mainWindow: null
 })
 
 // ==================== Gateway 远程访问 ====================
 
 const gatewayService = getGatewayService()
 gatewayService.setDependencies({
-  remoteChatService,
+  webChatService,
   mainWindow: null
 })
 
@@ -2381,7 +2383,6 @@ ipcMain.handle('gateway:getAuditLog', async (_event, limit?: number) => {
 
 const imService = getIMService()
 imService.setDependencies({
-  remoteChatService,
   agentService,
   mainWindow: null
 })
@@ -2509,9 +2510,9 @@ ipcMain.handle('im:setExecutionMode', async (_event, mode: 'strict' | 'relaxed' 
 })
 
 // 更新远程 Agent 运行时执行模式（仅运行时，不持久化，用于 tab 界面手动切换）
-ipcMain.handle('remote-chat:setExecutionMode', async (_event, mode: 'strict' | 'relaxed' | 'free') => {
+ipcMain.handle('web-chat:setExecutionMode', async (_event, mode: 'strict' | 'relaxed' | 'free') => {
   if (!['strict', 'relaxed', 'free'].includes(mode)) return
-  remoteChatService.executionMode = mode
+  webChatService.executionMode = mode
 })
 
 ipcMain.handle('im:sendNotification', async (_event, text: string, options?: { markdown?: boolean; title?: string }) => {
