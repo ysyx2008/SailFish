@@ -255,7 +255,7 @@ onMounted(async () => {
     if (!existing) {
       terminalStore.createAssistantTab({
         agentId: data.agentId,
-        title: t('watch.assistantTabTitle', '旗鱼助手'),
+        title: t('watch.assistantTabTitle', '远程对话'),
         activate: false
       })
       log.debug(`[Watch] Created assistant tab: ${data.agentId}`)

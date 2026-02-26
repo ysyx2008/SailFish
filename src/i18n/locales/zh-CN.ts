@@ -1926,7 +1926,7 @@ export default {
     outputLog: '仅记录',
     outputSilent: '静默',
 
-    assistantTabTitle: '旗鱼助手',
+    assistantTabTitle: '远程对话',
 
     // 状态
     statusCompleted: '完成',

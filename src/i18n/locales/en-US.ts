@@ -1923,7 +1923,7 @@ export default {
     outputLog: 'Log Only',
     outputSilent: 'Silent',
 
-    assistantTabTitle: 'SailFish Assistant',
+    assistantTabTitle: 'Remote Chat',
 
     statusCompleted: 'Completed',
     statusFailed: 'Failed',
