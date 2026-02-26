@@ -319,6 +319,16 @@ const translations = {
     'excel.confirm_from_md': '确认从 Markdown 生成 Excel 文件: {path}（{sheets} 个 Sheet）',
     'excel.created_from_md': '已从 Markdown 生成 Excel 文件: {path}（{sheets} 个 Sheet）',
     'excel.from_md_failed': '从 Markdown 生成 Excel 失败',
+    'excel.styles_applied': '已应用 {count} 个单元格样式（Sheet: {sheet}）',
+    'excel.style_name_required': '请指定样式名称',
+    'excel.style_created': '已创建 Excel 样式: {name}',
+    'excel.style_edited': '已修改 Excel 样式: {name}',
+    'excel.style_copied_and_edited': '已基于预设样式 "{from}" 创建自定义样式 "{to}"',
+    'excel.style_deleted': '已删除 Excel 样式: {name}',
+    'excel.style_set_as_default': '已将 "{name}" 设为 Excel 默认样式',
+    'excel.style_not_found': 'Excel 样式不存在: {name}',
+    'excel.style_create_failed': '创建 Excel 样式失败',
+    'excel.style_preset_cannot_delete': '"{name}" 是预设样式，不能删除',
 
     // Word 操作
     'word.already_open': '文件已打开: {path}',
@@ -1228,6 +1238,16 @@ Please output the summary in the following format:
     'excel.confirm_from_md': 'Confirm generating Excel file from Markdown: {path} ({sheets} sheets)',
     'excel.created_from_md': 'Generated Excel file from Markdown: {path} ({sheets} sheets)',
     'excel.from_md_failed': 'Failed to generate Excel from Markdown',
+    'excel.styles_applied': 'Applied styles to {count} cells (Sheet: {sheet})',
+    'excel.style_name_required': 'Please specify style name',
+    'excel.style_created': 'Created Excel style: {name}',
+    'excel.style_edited': 'Modified Excel style: {name}',
+    'excel.style_copied_and_edited': 'Created custom style "{to}" based on preset "{from}"',
+    'excel.style_deleted': 'Deleted Excel style: {name}',
+    'excel.style_set_as_default': 'Set "{name}" as default Excel style',
+    'excel.style_not_found': 'Excel style not found: {name}',
+    'excel.style_create_failed': 'Failed to create Excel style',
+    'excel.style_preset_cannot_delete': '"{name}" is a preset style and cannot be deleted',
 
     // Word operations
     'word.already_open': 'File already open: {path}',
