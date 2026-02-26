@@ -158,6 +158,59 @@ export const excelTools: ToolDefinition[] = [
         required: ['path']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'excel_from_markdown',
+      description: `从 Markdown 内容直接生成 Excel 文件（快速模式，无需 open/modify/save 流程）。
+
+**Markdown 格式要求**：
+- 使用标准 Markdown 表格语法
+- 第一行为表头，自动加粗
+- 多个表格用 \`## 标题\` 分隔，每个标题+表格成为一个 Sheet
+- 没有标题的表格使用默认 Sheet 名
+
+**示例**：
+\`\`\`markdown
+## 销售数据
+
+| 月份 | 销售额 | 增长率 |
+|------|--------|--------|
+| 1月  | 10000  | 5%     |
+| 2月  | 12000  | 20%    |
+
+## 员工信息
+
+| 姓名 | 部门 | 入职日期   |
+|------|------|-----------|
+| 张三 | 技术 | 2024-01-01 |
+\`\`\`
+
+**特性**：
+- 自动调整列宽
+- 表头加粗 + 底色 + 边框
+- 数字自动识别（不会变成文本）
+- 文件已存在时自动备份`,
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: '目标文件路径（.xlsx），绝对路径或相对于当前目录'
+          },
+          markdown: {
+            type: 'string',
+            description: 'Markdown 内容（包含表格）'
+          },
+          sheet_name: {
+            type: 'string',
+            description: '当 Markdown 中只有一个表格且无标题时使用的 Sheet 名（默认 "Sheet1"）'
+          }
+        },
+        required: ['path', 'markdown']
+      }
+    }
   }
 ]
 

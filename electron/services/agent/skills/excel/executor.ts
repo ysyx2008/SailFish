@@ -38,6 +38,8 @@ export async function executeExcelTool(
       return await excelSave(ptyId, args, toolCallId, config, executor)
     case 'excel_close':
       return await excelClose(ptyId, args, executor)
+    case 'excel_from_markdown':
+      return await excelFromMarkdown(ptyId, args, toolCallId, config, executor)
     default:
       return { success: false, output: '', error: t('error.unknown_tool', { name: toolName }) }
   }
@@ -472,6 +474,299 @@ async function excelClose(
   })
 
   return { success: true, output }
+}
+
+/**
+ * 从 Markdown 直接生成 Excel 文件（快速模式）
+ */
+async function excelFromMarkdown(
+  ptyId: string,
+  args: Record<string, unknown>,
+  toolCallId: string,
+  config: AgentConfig,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  if (!args.path) {
+    return { success: false, output: '', error: t('error.file_path_required') }
+  }
+  if (!args.markdown) {
+    return { success: false, output: '', error: t('excel.markdown_required') }
+  }
+
+  let filePath = resolvePath(ptyId, args.path as string)
+  const markdown = args.markdown as string
+  const defaultSheetName = (args.sheet_name as string) || 'Sheet1'
+
+  if (!filePath.toLowerCase().endsWith('.xlsx')) {
+    filePath += '.xlsx'
+  }
+
+  // 解析 Markdown 表格
+  const sheets = parseMarkdownTables(markdown, defaultSheetName)
+  if (sheets.length === 0) {
+    return { success: false, output: '', error: t('excel.no_tables_found') }
+  }
+
+  // 用户确认
+  executor.addStep({
+    type: 'tool_call',
+    content: t('excel.confirm_from_md', { path: filePath, sheets: sheets.length }),
+    toolName: 'excel_from_markdown',
+    toolArgs: { path: filePath, sheets: sheets.length },
+    riskLevel: 'moderate'
+  })
+
+  const approved = await executor.waitForConfirmation(
+    toolCallId,
+    'excel_from_markdown',
+    { path: filePath },
+    'moderate'
+  )
+
+  if (!approved) {
+    return { success: false, output: '', error: t('excel.user_rejected') }
+  }
+
+  try {
+    // 如果文件正在会话中，先检查冲突
+    if (isSessionOpen(filePath)) {
+      const session = getSession(filePath)
+      if (session?.dirty) {
+        return { success: false, output: '', error: t('excel.unsaved_changes', { path: filePath }) }
+      }
+      closeSession(filePath, false)
+    }
+
+    // 已存在文件则备份（带时间戳，与 excelSave 一致）
+    if (fs.existsSync(filePath)) {
+      const now = new Date()
+      const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`
+      const ext = path.extname(filePath)
+      const baseName = filePath.slice(0, -ext.length)
+      let backupPath = `${baseName}_${timestamp}${ext}.bak`
+      let counter = 2
+      while (fs.existsSync(backupPath)) {
+        backupPath = `${baseName}_${timestamp}_${counter}${ext}.bak`
+        counter++
+      }
+      fs.copyFileSync(filePath, backupPath)
+    }
+
+    const ExcelJS = await import('exceljs')
+    const workbook = new ExcelJS.Workbook()
+    workbook.calcProperties = { fullCalcOnLoad: true }
+
+    const sheetSummaries: string[] = []
+
+    for (const sheet of sheets) {
+      const worksheet = workbook.addWorksheet(sheet.name)
+
+      // 写入表头
+      if (sheet.headers.length > 0) {
+        const headerRow = worksheet.addRow(sheet.headers)
+        headerRow.eachCell((cell) => {
+          cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF4472C4' }
+          }
+          cell.alignment = { vertical: 'middle', horizontal: 'center' }
+          cell.border = {
+            top: { style: 'thin' },
+            bottom: { style: 'thin' },
+            left: { style: 'thin' },
+            right: { style: 'thin' }
+          }
+        })
+      }
+
+      // 写入数据行
+      for (const row of sheet.rows) {
+        const dataRow = worksheet.addRow(row.map(parseSmartValue))
+        dataRow.eachCell((cell) => {
+          cell.border = {
+            top: { style: 'thin' },
+            bottom: { style: 'thin' },
+            left: { style: 'thin' },
+            right: { style: 'thin' }
+          }
+          cell.alignment = { vertical: 'middle' }
+        })
+      }
+
+      // 自动调整列宽（基于内容长度）
+      worksheet.columns.forEach((column) => {
+        let maxLen = 8
+        column.eachCell?.({ includeEmpty: false }, (cell) => {
+          const cellLen = String(cell.value ?? '').length
+          // CJK 字符占约 2 个字符宽度
+          const visualLen = [...String(cell.value ?? '')].reduce((len, ch) => {
+            return len + (ch.charCodeAt(0) > 0x7F ? 2 : 1)
+          }, 0)
+          maxLen = Math.max(maxLen, visualLen)
+        })
+        column.width = Math.min(maxLen + 3, 50)
+      })
+
+      sheetSummaries.push(`- **${sheet.name}**: ${sheet.rows.length} ${t('excel.rows')}`)
+    }
+
+    // 确保目录存在
+    const dir = path.dirname(filePath)
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
+    }
+
+    await workbook.xlsx.writeFile(filePath)
+
+    const output = t('excel.created_from_md', { path: filePath, sheets: sheets.length }) + '\n\n' + sheetSummaries.join('\n')
+
+    executor.addStep({
+      type: 'tool_result',
+      content: output,
+      toolName: 'excel_from_markdown',
+      toolResult: output
+    })
+
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : t('excel.from_md_failed')
+    return { success: false, output: '', error: errorMsg }
+  }
+}
+
+// ============ Markdown 解析 ============
+
+interface ParsedSheet {
+  name: string
+  headers: string[]
+  rows: string[][]
+}
+
+/**
+ * 清理 Sheet 名称，确保符合 Excel 限制（31 字符，禁止 \/*?:[]）
+ */
+function sanitizeSheetName(name: string): string {
+  let cleaned = name.replace(/[\\/*?:\[\]]/g, '_')
+  if (cleaned.length > 31) {
+    cleaned = cleaned.slice(0, 31)
+  }
+  return cleaned || 'Sheet'
+}
+
+/**
+ * 从 Markdown 提取所有表格，按 ## 标题分成多个 Sheet
+ */
+function parseMarkdownTables(markdown: string, defaultSheetName: string): ParsedSheet[] {
+  const sheets: ParsedSheet[] = []
+  const lines = markdown.split('\n')
+
+  let currentTitle = ''
+  let tableLines: string[] = []
+  let sheetIndex = 0
+
+  const flushTable = () => {
+    if (tableLines.length === 0) return
+
+    const parsed = parseTableLines(tableLines)
+    if (parsed) {
+      const rawName = currentTitle || (sheetIndex === 0 ? defaultSheetName : `Sheet${sheetIndex + 1}`)
+      const name = sanitizeSheetName(rawName)
+      let finalName = name
+      let dupIdx = 2
+      while (sheets.some(s => s.name === finalName)) {
+        finalName = sanitizeSheetName(`${name} (${dupIdx++})`)
+      }
+      sheets.push({ name: finalName, headers: parsed.headers, rows: parsed.rows })
+      sheetIndex++
+    }
+    tableLines = []
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+
+    // 检测 ## 标题
+    const headingMatch = trimmed.match(/^#{1,3}\s+(.+)$/)
+    if (headingMatch) {
+      flushTable()
+      currentTitle = headingMatch[1].trim()
+      continue
+    }
+
+    // 检测表格行（以 | 开头或包含 |）
+    if (trimmed.startsWith('|') || (trimmed.includes('|') && tableLines.length > 0)) {
+      tableLines.push(trimmed)
+    } else if (tableLines.length > 0 && trimmed === '') {
+      // 空行结束当前表格
+      flushTable()
+    } else if (tableLines.length > 0) {
+      // 非表格行结束当前表格
+      flushTable()
+    }
+  }
+
+  flushTable()
+  return sheets
+}
+
+/**
+ * 解析表格行（含分隔符行）
+ */
+function parseTableLines(lines: string[]): { headers: string[]; rows: string[][] } | null {
+  if (lines.length < 2) return null
+
+  const parseRow = (line: string): string[] => {
+    let trimmed = line.trim()
+    if (trimmed.startsWith('|')) trimmed = trimmed.slice(1)
+    if (trimmed.endsWith('|')) trimmed = trimmed.slice(0, -1)
+    return trimmed.split('|').map(cell => cell.trim())
+  }
+
+  const headers = parseRow(lines[0])
+
+  // 找到分隔符行（---）并跳过
+  let dataStart = 1
+  if (lines.length > 1) {
+    const possibleSep = lines[1].trim()
+    if (/^[\s|:-]+$/.test(possibleSep)) {
+      dataStart = 2
+    }
+  }
+
+  const rows: string[][] = []
+  for (let i = dataStart; i < lines.length; i++) {
+    const trimmed = lines[i].trim()
+    if (!trimmed || /^[\s|:-]+$/.test(trimmed)) continue
+    rows.push(parseRow(trimmed))
+  }
+
+  if (headers.length === 0) return null
+  return { headers, rows }
+}
+
+/**
+ * 智能解析单元格值：数字、百分比、布尔值等
+ */
+function parseSmartValue(value: string): string | number | boolean {
+  if (value === '') return ''
+
+  // 布尔
+  if (value.toLowerCase() === 'true') return true
+  if (value.toLowerCase() === 'false') return false
+
+  // 纯数字（含负数、小数）
+  if (/^-?\d+(\.\d+)?$/.test(value)) {
+    return Number(value)
+  }
+
+  // 千分位数字（如 1,234 或 1,234.56）
+  if (/^-?\d{1,3}(,\d{3})*(\.\d+)?$/.test(value)) {
+    return Number(value.replace(/,/g, ''))
+  }
+
+  return value
 }
 
 // ============ 辅助函数 ============

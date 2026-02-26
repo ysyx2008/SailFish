@@ -314,6 +314,11 @@ const translations = {
     'excel.unsaved_changes': '有未保存的修改: {path}，请先保存或使用 discard_changes=true 丢弃',
     'excel.closed': '已关闭 Excel 文件: {path}',
     'excel.closed_discarded': '已关闭 Excel 文件: {path}（未保存的修改已丢弃）',
+    'excel.markdown_required': '请提供 Markdown 内容',
+    'excel.no_tables_found': 'Markdown 中未找到任何表格',
+    'excel.confirm_from_md': '确认从 Markdown 生成 Excel 文件: {path}（{sheets} 个 Sheet）',
+    'excel.created_from_md': '已从 Markdown 生成 Excel 文件: {path}（{sheets} 个 Sheet）',
+    'excel.from_md_failed': '从 Markdown 生成 Excel 失败',
 
     // Word 操作
     'word.already_open': '文件已打开: {path}',
@@ -1218,6 +1223,11 @@ Please output the summary in the following format:
     'excel.unsaved_changes': 'Unsaved changes: {path}, please save first or use discard_changes=true',
     'excel.closed': 'Closed Excel file: {path}',
     'excel.closed_discarded': 'Closed Excel file: {path} (unsaved changes discarded)',
+    'excel.markdown_required': 'Please provide Markdown content',
+    'excel.no_tables_found': 'No tables found in Markdown content',
+    'excel.confirm_from_md': 'Confirm generating Excel file from Markdown: {path} ({sheets} sheets)',
+    'excel.created_from_md': 'Generated Excel file from Markdown: {path} ({sheets} sheets)',
+    'excel.from_md_failed': 'Failed to generate Excel from Markdown',
 
     // Word operations
     'word.already_open': 'File already open: {path}',
