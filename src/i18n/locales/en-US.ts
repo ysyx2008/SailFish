@@ -2052,7 +2052,8 @@ export default {
   // Gateway remote access notifications
   gateway: {
     remoteTaskStarted: 'Remote task started',
-    remoteConnected: 'Remote client connected'
+    remoteConnected: 'Remote client connected',
+    remoteChat: 'Remote Chat'
   },
 
   // IM channel connection notifications

@@ -141,7 +141,7 @@ export class RemoteChatService {
       this._tabCreated = true
       this.sendToDesktop('gateway:remoteTabCreated', {
         agentId: this.agentId,
-        title: '📡 Remote Agent'
+        title: '📡 远程对话'
       })
     }
   }

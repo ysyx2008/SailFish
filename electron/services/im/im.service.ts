@@ -662,6 +662,7 @@ export class IMService {
 
     let textBuffer = ''
     let hasSentText = false
+    let lastFlushedContent = ''
     const notifiedToolCalls = new Set<string>()
     const sentMessageStepIds = new Set<string>()
 
@@ -677,6 +678,7 @@ export class IMService {
         hasSentText = true
         const text = textBuffer
         textBuffer = ''
+        lastFlushedContent = text
         try {
           await adapter.sendMarkdown(replyContext, '旗鱼', text)
         } catch (err) {
@@ -783,7 +785,10 @@ export class IMService {
         onComplete: (_runId: string, result: string) => {
           const finish = async () => {
             await flushTextBuffer()
-            if (!hasSentText) {
+            const resultText = result?.trim() || ''
+            if (resultText && resultText !== lastFlushedContent.trim()) {
+              try { await adapter.sendMarkdown(replyContext, '旗鱼', result) } catch { /* ignore */ }
+            } else if (!hasSentText) {
               try { await adapter.sendText(replyContext, t('im.task_complete')) } catch { /* ignore */ }
             }
           }

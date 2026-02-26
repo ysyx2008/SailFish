@@ -2070,7 +2070,8 @@ export default {
   // Gateway 远程访问通知
   gateway: {
     remoteTaskStarted: '远程任务开始',
-    remoteConnected: '远程客户端已连接'
+    remoteConnected: '远程客户端已连接',
+    remoteChat: '远程对话'
   },
 
   // IM 渠道连接状态通知
