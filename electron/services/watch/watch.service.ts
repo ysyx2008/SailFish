@@ -359,7 +359,8 @@ export class WatchService {
   // ==================== 执行引擎 ====================
 
   private static readonly AUTO_TRIGGER_TYPES = new Set([
-    'heartbeat', 'cron', 'interval', 'email', 'calendar', 'file_change', 'im_connected'
+    'heartbeat', 'cron', 'interval', 'email', 'calendar', 'file_change', 'im_connected',
+    'command_probe', 'http_probe'
   ])
 
   private async executeWatch(watch: WatchDefinition, event: SensorEvent): Promise<WatchExecutionResult> {
@@ -693,6 +694,10 @@ export class WatchService {
         return '用户手动触发'
       case 'im_connected':
         return `IM 上线：${payload.platform}${payload.userName ? `（最近联系人：${payload.userName}）` : ''}`
+      case 'command_probe':
+        return `命令探针 \`${payload.command}\`：${payload.reason}${payload.output ? `\n输出：${String(payload.output).substring(0, 500)}` : ''}`
+      case 'http_probe':
+        return `HTTP 探针 ${payload.method || 'GET'} ${payload.url}：${payload.reason}${payload.status != null ? ` (HTTP ${payload.status})` : ''}`
       default:
         return `${type}${payload.source ? ` 来自 ${payload.source}` : ''}`
     }
@@ -1143,6 +1148,34 @@ export class WatchService {
           }
           break
         case 'email':
+          break
+        case 'command_probe':
+          if (!trigger.command?.trim()) {
+            throw new Error('Command probe trigger requires a command')
+          }
+          if (!trigger.interval || trigger.interval < MIN_INTERVAL_SECONDS) {
+            throw new Error(`Command probe interval must be at least ${MIN_INTERVAL_SECONDS} seconds`)
+          }
+          if (!['output_changed', 'regex_match', 'exit_code_nonzero'].includes(trigger.triggerOn)) {
+            throw new Error(`Invalid command probe triggerOn: ${trigger.triggerOn}`)
+          }
+          if (trigger.triggerOn === 'regex_match' && !trigger.pattern?.trim()) {
+            throw new Error('Command probe regex_match requires a pattern')
+          }
+          break
+        case 'http_probe':
+          if (!trigger.url?.trim()) {
+            throw new Error('HTTP probe trigger requires a URL')
+          }
+          if (!trigger.interval || trigger.interval < MIN_INTERVAL_SECONDS) {
+            throw new Error(`HTTP probe interval must be at least ${MIN_INTERVAL_SECONDS} seconds`)
+          }
+          if (!['status_changed', 'status_error', 'body_changed', 'regex_match'].includes(trigger.triggerOn)) {
+            throw new Error(`Invalid HTTP probe triggerOn: ${trigger.triggerOn}`)
+          }
+          if (trigger.triggerOn === 'regex_match' && !trigger.pattern?.trim()) {
+            throw new Error('HTTP probe regex_match requires a pattern')
+          }
           break
         default:
           throw new Error(`Unknown trigger type: ${(trigger as any).type}`)

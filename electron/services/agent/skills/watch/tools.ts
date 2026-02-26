@@ -39,6 +39,8 @@ export const watchTools: ToolDefinition[] = [
 - calendar: 日历事件前 N 分钟触发
 - email: 收到新邮件时触发（可过滤发件人/主题）
 - webhook: 外部 HTTP 请求触发
+- command_probe: 定时执行命令，根据输出变化/正则匹配/退出码触发。通用探针，可监控磁盘、进程、日志、Git 等任意数据源
+- http_probe: 定时 HTTP 请求，根据状态码/响应体变化/正则匹配触发。可监控 API 健康、网页变化等
 
 **重要**：prompt 字段只写"执行时要做的动作"，绝不要包含调度描述。
 否则执行时 Agent 会把 prompt 当成新请求，再次创建关切，导致无限循环。
@@ -69,16 +71,29 @@ export const watchTools: ToolDefinition[] = [
               properties: {
                 type: {
                   type: 'string',
-                  enum: ['cron', 'interval', 'heartbeat', 'manual', 'file_change', 'calendar', 'email', 'webhook'],
+                  enum: ['cron', 'interval', 'heartbeat', 'manual', 'file_change', 'calendar', 'email', 'webhook', 'command_probe', 'http_probe'],
                   description: '触发类型'
                 },
                 expression: { type: 'string', description: 'cron 表达式（仅 cron 类型）' },
                 seconds: { type: 'number', description: '间隔秒数（仅 interval 类型）' },
                 paths: { type: 'array', items: { type: 'string' }, description: '监控路径（仅 file_change 类型）' },
-                pattern: { type: 'string', description: 'glob 过滤（仅 file_change 类型）' },
+                pattern: { type: 'string', description: 'glob 过滤（file_change）/ 正则表达式（command_probe、http_probe 的 regex_match 模式）' },
                 before_minutes: { type: 'number', description: '提前分钟数（仅 calendar 类型）' },
                 filter_from: { type: 'string', description: '发件人过滤（仅 email 类型）' },
-                filter_subject: { type: 'string', description: '主题过滤（仅 email 类型）' }
+                filter_subject: { type: 'string', description: '主题过滤（仅 email 类型）' },
+                command: { type: 'string', description: '要执行的命令（仅 command_probe 类型）。根据目标平台选择合适的命令' },
+                shell: { type: 'string', description: '指定 shell（如 bash、powershell），不指定则自动检测（仅 command_probe 类型）' },
+                probe_interval: { type: 'number', description: '探测间隔秒数（command_probe / http_probe 类型，最小 10）' },
+                trigger_on: {
+                  type: 'string',
+                  description: '触发条件。command_probe: output_changed / regex_match / exit_code_nonzero。http_probe: status_changed / status_error / body_changed / regex_match'
+                },
+                working_directory: { type: 'string', description: '命令工作目录（仅 command_probe 类型）' },
+                url: { type: 'string', description: 'HTTP 请求地址（仅 http_probe 类型）' },
+                method: { type: 'string', description: 'HTTP 方法（默认 GET，仅 http_probe 类型）' },
+                headers: { type: 'object', description: 'HTTP 请求头（仅 http_probe 类型）' },
+                body: { type: 'string', description: 'HTTP 请求体（仅 http_probe 类型）' },
+                timeout: { type: 'number', description: '请求超时毫秒（默认 10000，仅 http_probe 类型）' }
               },
               required: ['type']
             }
@@ -122,14 +137,24 @@ export const watchTools: ToolDefinition[] = [
             items: {
               type: 'object',
               properties: {
-                type: { type: 'string', enum: ['cron', 'interval', 'heartbeat', 'manual', 'file_change', 'calendar', 'email', 'webhook'] },
+                type: { type: 'string', enum: ['cron', 'interval', 'heartbeat', 'manual', 'file_change', 'calendar', 'email', 'webhook', 'command_probe', 'http_probe'] },
                 expression: { type: 'string' },
                 seconds: { type: 'number' },
                 paths: { type: 'array', items: { type: 'string' } },
                 pattern: { type: 'string' },
                 before_minutes: { type: 'number' },
                 filter_from: { type: 'string' },
-                filter_subject: { type: 'string' }
+                filter_subject: { type: 'string' },
+                command: { type: 'string' },
+                shell: { type: 'string' },
+                probe_interval: { type: 'number' },
+                trigger_on: { type: 'string' },
+                working_directory: { type: 'string' },
+                url: { type: 'string' },
+                method: { type: 'string' },
+                headers: { type: 'object' },
+                body: { type: 'string' },
+                timeout: { type: 'number' }
               },
               required: ['type']
             }

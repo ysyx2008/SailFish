@@ -331,6 +331,46 @@ function parseTrigger(raw: Record<string, unknown>): WatchTrigger {
       if (typeof raw.filter_subject === 'string' && raw.filter_subject.trim()) filter.subject = raw.filter_subject.trim()
       return { type: 'email', filter }
     }
+    case 'command_probe': {
+      const command = raw.command as string
+      if (!command?.trim()) throw new Error('command_probe 需要 command 字段')
+      const interval = Number(raw.probe_interval || raw.interval)
+      if (!Number.isFinite(interval) || interval < 10) throw new Error('command_probe 需要 probe_interval >= 10')
+      const triggerOn = (raw.trigger_on || raw.triggerOn) as string
+      if (!['output_changed', 'regex_match', 'exit_code_nonzero'].includes(triggerOn)) {
+        throw new Error('command_probe 的 trigger_on 必须是 output_changed / regex_match / exit_code_nonzero')
+      }
+      return {
+        type: 'command_probe',
+        command: command.trim(),
+        shell: raw.shell as string | undefined,
+        interval,
+        triggerOn: triggerOn as 'output_changed' | 'regex_match' | 'exit_code_nonzero',
+        pattern: raw.pattern as string | undefined,
+        workingDirectory: (raw.working_directory || raw.workingDirectory) as string | undefined,
+      }
+    }
+    case 'http_probe': {
+      const url = raw.url as string
+      if (!url?.trim()) throw new Error('http_probe 需要 url 字段')
+      const interval = Number(raw.probe_interval || raw.interval)
+      if (!Number.isFinite(interval) || interval < 10) throw new Error('http_probe 需要 probe_interval >= 10')
+      const triggerOn = (raw.trigger_on || raw.triggerOn) as string
+      if (!['status_changed', 'status_error', 'body_changed', 'regex_match'].includes(triggerOn)) {
+        throw new Error('http_probe 的 trigger_on 必须是 status_changed / status_error / body_changed / regex_match')
+      }
+      return {
+        type: 'http_probe',
+        url: url.trim(),
+        method: raw.method as string | undefined,
+        headers: raw.headers as Record<string, string> | undefined,
+        body: raw.body as string | undefined,
+        interval,
+        triggerOn: triggerOn as 'status_changed' | 'status_error' | 'body_changed' | 'regex_match',
+        pattern: raw.pattern as string | undefined,
+        timeout: raw.timeout ? Number(raw.timeout) : undefined,
+      }
+    }
     default:
       throw new Error(`不支持的触发类型: ${type}`)
   }
@@ -358,8 +398,22 @@ function formatTriggerBrief(t: WatchTrigger): string {
     case 'file_change': return `文件变化(${t.paths.length}个路径)`
     case 'calendar': return `日历(提前${t.beforeMinutes}分钟)`
     case 'email': return '邮件'
+    case 'command_probe': {
+      const cmd = t.command.length > 30 ? t.command.substring(0, 27) + '...' : t.command
+      return `命令探针(${cmd}, 每${formatInterval(t.interval)})`
+    }
+    case 'http_probe': {
+      const host = (() => { try { return new URL(t.url).host } catch { return t.url } })()
+      return `HTTP探针(${host}, 每${formatInterval(t.interval)})`
+    }
     default: return (t as WatchTrigger).type
   }
+}
+
+function formatInterval(seconds: number): string {
+  if (seconds >= 3600) return `${Math.round(seconds / 3600)}小时`
+  if (seconds >= 60) return `${Math.round(seconds / 60)}分钟`
+  return `${seconds}秒`
 }
 
 function errMsg(e: unknown): string {

@@ -9,6 +9,8 @@ import { HeartbeatSensor } from './heartbeat-sensor'
 import { FileWatchSensor } from './file-watch-sensor'
 import { CalendarSensor } from './calendar-sensor'
 import { EmailSensor } from './email-sensor'
+import { CommandProbeSensor } from './command-probe-sensor'
+import { HttpProbeSensor } from './http-probe-sensor'
 import { createLogger } from '../../utils/logger'
 
 const log = createLogger('SensorService')
@@ -33,6 +35,10 @@ export class SensorService {
   readonly calendar: CalendarSensor
   /** 邮件传感器 */
   readonly email: EmailSensor
+  /** 命令探针传感器 */
+  readonly commandProbe: CommandProbeSensor
+  /** HTTP 探针传感器 */
+  readonly httpProbe: HttpProbeSensor
 
   constructor(config?: SensorServiceConfig) {
     this.eventBus = getEventBus()
@@ -43,11 +49,15 @@ export class SensorService {
     this.fileWatch = new FileWatchSensor(this.eventBus)
     this.calendar = new CalendarSensor(this.eventBus)
     this.email = new EmailSensor(this.eventBus)
+    this.commandProbe = new CommandProbeSensor(this.eventBus)
+    this.httpProbe = new HttpProbeSensor(this.eventBus)
 
     this.register(this.heartbeat)
     this.register(this.fileWatch)
     this.register(this.calendar)
     this.register(this.email)
+    this.register(this.commandProbe)
+    this.register(this.httpProbe)
   }
 
   get running(): boolean {
@@ -153,6 +163,12 @@ export class SensorService {
           targetCount: cal.getTargetCount?.() ?? 0,
           accountStatuses: cal.getAccountStatuses?.() ?? []
         }
+      } else if (s.id === 'command_probe') {
+        const cp = s as CommandProbeSensor
+        base.details = { targetCount: cp.getTargetCount() }
+      } else if (s.id === 'http_probe') {
+        const hp = s as HttpProbeSensor
+        base.details = { targetCount: hp.getTargetCount() }
       }
 
       return base
@@ -188,4 +204,6 @@ export { HeartbeatSensor } from './heartbeat-sensor'
 export { FileWatchSensor } from './file-watch-sensor'
 export { CalendarSensor } from './calendar-sensor'
 export { EmailSensor } from './email-sensor'
+export { CommandProbeSensor } from './command-probe-sensor'
+export { HttpProbeSensor } from './http-probe-sensor'
 export type { Sensor, SensorEvent, EventBus, EventHandler } from './types'

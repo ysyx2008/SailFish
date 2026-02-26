@@ -149,6 +149,8 @@ export class EventPool {
     if (event.type === 'manual') return true
     if (event.type === 'file_change') return true
     if (event.type === 'im_connected') return true
+    if (event.type === 'command_probe') return true
+    if (event.type === 'http_probe') return true
     return false
   }
 
