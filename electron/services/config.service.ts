@@ -156,6 +156,7 @@ interface StoreSchema {
   imLastContacts: Record<string, unknown> // IM 各平台最近联系人（主动推送使用）
   logLevel: LogLevel  // 日志级别
   skillMarketRegistryUrl: string  // 技能市场 registry URL
+  disabledBuiltinSkills: string[] // 被禁用的内置技能 ID 列表
   agentAwakened: boolean           // 觉醒模式：AI 主动感知环境、推送消息
   watchHeartbeatEnabled: boolean  // Watch 心跳传感器是否启用（觉醒模式内部使用）
   watchHeartbeatInterval: number  // Watch 心跳间隔（分钟）
@@ -219,6 +220,7 @@ const defaultConfig: StoreSchema = {
   imLastContacts: {},
   logLevel: 'warn',
   skillMarketRegistryUrl: '',
+  disabledBuiltinSkills: [],
   agentAwakened: true,
   watchHeartbeatEnabled: true,
   watchHeartbeatInterval: 30,

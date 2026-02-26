@@ -1500,6 +1500,16 @@ interface Window {
       // 获取拖放文件的路径（Electron 24+ 推荐方式）
       getPathForFile: (file: File) => string
     }
+    // 内置技能
+    builtinSkill: {
+      list: () => Promise<Array<{
+        id: string
+        name: string
+        description: string
+        enabled: boolean
+      }>>
+      toggle: (skillId: string, enabled: boolean) => Promise<boolean>
+    }
     // 用户技能操作
     userSkill: {
       list: () => Promise<Array<{

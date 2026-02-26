@@ -588,7 +588,10 @@ export default {
     skillDetailLoading: 'Loading skill content...',
     skillDetailError: 'Failed to load skill content',
     skillCount: '{count} skills',
-    skillDetailNotInstalled: 'Install to preview full content'
+    skillDetailNotInstalled: 'Install to preview full content',
+    builtinSkills: 'Built-in Skills',
+    builtinSkillsDesc: 'Built-in skills provide core capabilities like Excel, browser, and terminal. Agent loads them on demand. Disabling a skill prevents the Agent from using it.',
+    builtinTag: 'Built-in'
   },
 
   // Knowledge Settings

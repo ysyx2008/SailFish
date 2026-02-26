@@ -1710,6 +1710,14 @@ const electronAPI = {
     }
   },
 
+  // 内置技能
+  builtinSkill: {
+    list: () =>
+      ipcRenderer.invoke('builtinSkill:list') as Promise<Array<{ id: string; name: string; description: string; enabled: boolean }>>,
+    toggle: (skillId: string, enabled: boolean) =>
+      ipcRenderer.invoke('builtinSkill:toggle', skillId, enabled) as Promise<boolean>
+  },
+
   // 用户技能操作
   userSkill: {
     // 获取所有技能列表

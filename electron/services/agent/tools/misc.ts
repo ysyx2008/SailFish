@@ -15,6 +15,7 @@ import { executeConfigTool } from '../skills/config/executor'
 import { executeSkillCreatorTool } from '../skills/skill-creator/executor'
 import { executePersonalityTool } from '../skills/personality/executor'
 import { getUserSkillService } from '../../user-skill.service'
+import { getConfigService } from '../../config.service'
 import { formatRemainingTime, formatTotalTime, truncateFromEnd } from './utils'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
 
@@ -459,6 +460,11 @@ export async function loadSkillTool(
 
   if (!executor.skillSession) {
     return { success: false, output: '', error: t('skill.session_not_initialized') }
+  }
+
+  const disabledSkills = getConfigService().get('disabledBuiltinSkills') || []
+  if (disabledSkills.includes(skillId)) {
+    return { success: false, output: '', error: `Skill "${skillId}" is disabled` }
   }
 
   executor.addStep({

@@ -271,6 +271,7 @@ import { SftpService, SftpConfig } from './services/sftp.service'
 import { LocalFsService } from './services/local-fs.service'
 import { McpService } from './services/mcp.service'
 import { getUserSkillService, UserSkill } from './services/user-skill.service'
+import { getBuiltinSkillsForSettings } from './services/agent/skills/registry'
 import { getSkillMarketService, type MarketSkillItem, type SkillOperationResult, type SkillRegistry } from './services/skill-market.service'
 import { getKnowledgeService, KnowledgeService } from './services/knowledge'
 import type { KnowledgeSettings, SearchOptions, AddDocumentOptions, ModelTier } from './services/knowledge/types'
@@ -3589,6 +3590,30 @@ ipcMain.handle('mcp:connectEnabledServers', async () => {
 // 断开所有 MCP 连接
 ipcMain.handle('mcp:disconnectAll', async () => {
   await mcpService.disconnectAll()
+})
+
+// ==================== 内置技能相关 ====================
+
+ipcMain.handle('builtinSkill:list', async () => {
+  const disabledIds = configService.get('disabledBuiltinSkills') || []
+  return getBuiltinSkillsForSettings(disabledIds)
+})
+
+ipcMain.handle('builtinSkill:toggle', async (_event, skillId: string, enabled: boolean) => {
+  if (!skillId || typeof skillId !== 'string') return false
+  try {
+    const disabledIds = new Set(configService.get('disabledBuiltinSkills') || [])
+    if (enabled) {
+      disabledIds.delete(skillId)
+    } else {
+      disabledIds.add(skillId)
+    }
+    configService.set('disabledBuiltinSkills', Array.from(disabledIds))
+    return true
+  } catch (error) {
+    log.error('Failed to toggle builtin skill:', error)
+    return false
+  }
 })
 
 // ==================== 用户技能相关 ====================

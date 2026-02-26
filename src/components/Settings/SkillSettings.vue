@@ -9,6 +9,13 @@ const props = defineProps<{
 
 const { t, locale } = useI18n()
 
+interface BuiltinSkill {
+  id: string
+  name: string
+  description: string
+  enabled: boolean
+}
+
 interface UserSkill {
   id: string
   name: string
@@ -43,6 +50,9 @@ interface SkillCategory {
 
 type SubTab = 'my' | 'market'
 const activeSubTab = ref<SubTab>('my')
+
+// 内置技能
+const builtinSkills = ref<BuiltinSkill[]>([])
 
 // 我的技能
 const skills = ref<UserSkill[]>([])
@@ -96,7 +106,10 @@ onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown, true)
 })
 
-const enabledCount = computed(() => skills.value.filter(s => s.enabled).length)
+const enabledCount = computed(() =>
+  builtinSkills.value.filter(s => s.enabled).length +
+  skills.value.filter(s => s.enabled).length
+)
 
 const featuredSkills = computed(() => marketSkills.value.filter(s => s.featured))
 
@@ -125,6 +138,28 @@ const categoryLabel = (cat: SkillCategory) =>
 
 const categoryCount = (catId: string) =>
   marketSkills.value.filter(s => s.category === catId).length
+
+// ========== 内置技能 ==========
+
+const loadBuiltinSkills = async () => {
+  try {
+    builtinSkills.value = await window.electronAPI.builtinSkill.list()
+  } catch (error) {
+    console.error('Failed to load builtin skills:', error)
+  }
+}
+
+const toggleBuiltinSkill = async (skill: BuiltinSkill) => {
+  const newEnabled = !skill.enabled
+  try {
+    const success = await window.electronAPI.builtinSkill.toggle(skill.id, newEnabled)
+    if (success) {
+      skill.enabled = newEnabled
+    }
+  } catch (error) {
+    console.error('Failed to toggle builtin skill:', error)
+  }
+}
 
 // ========== 我的技能 ==========
 
@@ -342,6 +377,7 @@ const handlePendingInstall = async (skillId: string) => {
 }
 
 onMounted(() => {
+  loadBuiltinSkills()
   loadSkills()
 })
 
@@ -392,50 +428,84 @@ watch(() => props.pendingInstallSkillId, (newId) => {
           </button>
         </div>
       </div>
-      <p class="section-desc">{{ t('skillSettings.description') }}</p>
 
-      <div class="skill-list">
-        <div
-          v-for="skill in skills"
-          :key="skill.id"
-          class="skill-item"
-          :class="{ disabled: !skill.enabled }"
-        >
-          <div class="skill-toggle">
-            <input
-              type="checkbox"
-              :checked="skill.enabled"
-              @change="toggleSkill(skill)"
-              :title="t('skillSettings.toggleEnable')"
-            />
-          </div>
-          <div class="skill-info">
-            <div class="skill-name">
-              {{ skill.name }}
-              <span class="skill-version" v-if="skill.version">v{{ skill.version }}</span>
+      <!-- 内置技能 -->
+      <div class="builtin-section" v-if="builtinSkills.length > 0">
+        <h5 class="builtin-title">{{ t('skillSettings.builtinSkills') }}</h5>
+        <p class="section-desc">{{ t('skillSettings.builtinSkillsDesc') }}</p>
+        <div class="skill-list">
+          <div
+            v-for="skill in builtinSkills"
+            :key="'builtin-' + skill.id"
+            class="skill-item"
+            :class="{ disabled: !skill.enabled }"
+          >
+            <div class="skill-toggle">
+              <input
+                type="checkbox"
+                :checked="skill.enabled"
+                @change="toggleBuiltinSkill(skill)"
+                :title="t('skillSettings.toggleEnable')"
+              />
             </div>
-            <div class="skill-desc" v-if="skill.description">{{ skill.description }}</div>
-          </div>
-          <div class="skill-actions">
-            <button class="btn-icon btn-sm" @click="viewSkill(skill)" :title="t('skillSettings.view')">
-              <Eye :size="14" />
-            </button>
-            <button class="btn-icon btn-sm btn-danger-ghost" @click.stop="removeUserSkill(skill)" :title="t('skillSettings.uninstall')">
-              <Trash2 :size="14" />
-            </button>
+            <div class="skill-info">
+              <div class="skill-name">
+                {{ skill.name }}
+                <span class="builtin-tag">{{ t('skillSettings.builtinTag') }}</span>
+              </div>
+              <div class="skill-desc" v-if="skill.description">{{ skill.description }}</div>
+            </div>
           </div>
         </div>
+      </div>
 
-        <div v-if="skills.length === 0 && !loading" class="empty-state">
-          <div class="empty-icon">📁</div>
-          <p>{{ t('skillSettings.noSkills') }}</p>
-          <p class="tip">{{ t('skillSettings.noSkillsTip') }}</p>
-          <button class="btn btn-outline btn-sm" @click="openFolder">{{ t('skillSettings.openFolder') }}</button>
-        </div>
+      <!-- 用户技能 -->
+      <div class="user-skill-section">
+        <h5 class="user-skill-title">{{ t('skillSettings.mySkills') }}</h5>
+        <p class="section-desc">{{ t('skillSettings.description') }}</p>
+        <div class="skill-list">
+          <div
+            v-for="skill in skills"
+            :key="skill.id"
+            class="skill-item"
+            :class="{ disabled: !skill.enabled }"
+          >
+            <div class="skill-toggle">
+              <input
+                type="checkbox"
+                :checked="skill.enabled"
+                @change="toggleSkill(skill)"
+                :title="t('skillSettings.toggleEnable')"
+              />
+            </div>
+            <div class="skill-info">
+              <div class="skill-name">
+                {{ skill.name }}
+                <span class="skill-version" v-if="skill.version">v{{ skill.version }}</span>
+              </div>
+              <div class="skill-desc" v-if="skill.description">{{ skill.description }}</div>
+            </div>
+            <div class="skill-actions">
+              <button class="btn-icon btn-sm" @click="viewSkill(skill)" :title="t('skillSettings.view')">
+                <Eye :size="14" />
+              </button>
+              <button class="btn-icon btn-sm btn-danger-ghost" @click.stop="removeUserSkill(skill)" :title="t('skillSettings.uninstall')">
+                <Trash2 :size="14" />
+              </button>
+            </div>
+          </div>
 
-        <div v-if="loading && skills.length === 0" class="loading-state">
-          <div class="spinner"></div>
-          <p>{{ t('skillSettings.loading') }}</p>
+          <div v-if="skills.length === 0 && !loading" class="empty-state">
+            <div class="empty-icon">📁</div>
+            <p>{{ t('skillSettings.noSkills') }}</p>
+            <p class="tip">{{ t('skillSettings.noSkillsTip') }}</p>
+            <button class="btn btn-outline btn-sm" @click="openFolder">{{ t('skillSettings.openFolder') }}</button>
+          </div>
+
+          <div v-if="loading && skills.length === 0" class="loading-state">
+            <div class="spinner"></div>
+            <p>{{ t('skillSettings.loading') }}</p>
+          </div>
         </div>
       </div>
 
@@ -983,6 +1053,30 @@ enabled: true
   align-items: center;
   justify-content: space-between;
   margin-top: auto;
+}
+
+/* 内置技能 */
+.builtin-section {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.builtin-title,
+.user-skill-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+}
+
+.builtin-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  background: var(--accent-primary);
+  color: var(--bg-primary);
+  border-radius: 8px;
+  font-weight: 500;
 }
 
 /* 技能列表 */

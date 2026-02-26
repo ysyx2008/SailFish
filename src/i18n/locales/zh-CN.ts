@@ -588,7 +588,10 @@ export default {
     skillDetailLoading: '加载技能内容...',
     skillDetailError: '无法加载技能内容',
     skillCount: '{count} 个技能',
-    skillDetailNotInstalled: '安装后即可预览完整内容'
+    skillDetailNotInstalled: '安装后即可预览完整内容',
+    builtinSkills: '内置技能',
+    builtinSkillsDesc: '内置技能提供 Excel、浏览器、终端等核心能力，Agent 按需加载。禁用后 Agent 将无法使用对应能力。',
+    builtinTag: '内置'
   },
 
   // 知识库设置

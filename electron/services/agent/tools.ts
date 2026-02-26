@@ -5,6 +5,7 @@ import type { ToolDefinition } from '../ai.service'
 import type { McpService } from '../mcp.service'
 import { getSkillsSummary } from './skills/registry'
 import { getUserSkillService } from '../user-skill.service'
+import { getConfigService } from '../config.service'
 
 // 重新导出 ToolDefinition 类型供技能模块使用
 export type { ToolDefinition }
@@ -34,7 +35,8 @@ interface ToolDefinitionWithMeta extends ToolDefinition {
  * 从技能注册表获取可用技能列表
  */
 function buildLoadSkillTool(): ToolDefinition {
-  const skills = getSkillsSummary()
+  const disabledIds = new Set(getConfigService().get('disabledBuiltinSkills') || [])
+  const skills = getSkillsSummary().filter(s => !disabledIds.has(s.id))
   const skillsList = skills.length > 0
     ? skills.map(s => `- **${s.id}**: ${s.name} - ${s.description}`).join('\n')
     : '- 暂无可用技能'
@@ -73,8 +75,9 @@ ${skillsList}
  * 卸载已加载的技能，释放工具槽位
  */
 function buildUnloadSkillTool(): ToolDefinition {
-  const skills = getSkillsSummary()
-  
+  const disabledIds = new Set(getConfigService().get('disabledBuiltinSkills') || [])
+  const skills = getSkillsSummary().filter(s => !disabledIds.has(s.id))
+
   return {
     type: 'function',
     function: {
