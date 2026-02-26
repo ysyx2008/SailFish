@@ -260,7 +260,7 @@ ${this.buildWatchListSection()}
 - **关键操作后**：主动验证结果，不假设成功
 - **遇到问题时**：动态调整策略，而非机械重试
 ${this.buildToolConstraints(isSshTerminal, isWindows)}
-${this.buildCoreRules(osType, shellType, isSshTerminal, documentRule, knowledgeRule)}
+${this.buildCoreRules(osType, shellType, isSshTerminal, terminalType, documentRule, knowledgeRule)}
 ${documentSection}
 ${knowledgeSection}
 ${getUserSkillService().buildSkillsSummary()}
@@ -370,7 +370,8 @@ ${this.buildSkillsSection()}`)
   /**
    * 构建核心规则（精简版）
    */
-  private buildCoreRules(osType: string, shellType: string, isSshTerminal: boolean, documentRule: string, knowledgeRule: string): string {
+  private buildCoreRules(osType: string, shellType: string, isSshTerminal: boolean, terminalType: string, documentRule: string, knowledgeRule: string): string {
+    const isAssistant = terminalType !== 'local' && terminalType !== 'ssh'
     const writeFileTool = isSshTerminal ? 'write_remote_file' : 'write_local_file'
     
     return `## 核心规则
@@ -389,7 +390,7 @@ ${this.buildSkillsSection()}`)
 - 连续失败 2-3 次后停止，报告问题而非无限重试
 
 **禁止的命令**：vim/vi/nano/emacs（用 \`${writeFileTool}\`）、tmux/screen、mc/ranger
-${!isSshTerminal ? `
+${!isSshTerminal && !isAssistant ? `
 **按文件名查找**：优先使用 \`file_search\`（基于系统索引，多数场景下更快）；仅在已知小目录内精确列举、或需搜**文件内容**时再用 execute_command 执行 find/grep。` : ''}
 
 **长内容处理**：
@@ -399,9 +400,18 @@ ${!isSshTerminal ? `
 **临时文件清理**：任务过程中创建的所有临时文件（脚本、配置、中间产物等），使用完毕后一般应当及时清除，不要在系统中留下垃圾
 
 **私有工作空间**：\`${getWorkspacePath()}\` 是你的私有数据目录，在此目录内读写文件**无需用户确认**（任何执行模式下均自动通过）。适用于保存任务记录、中间数据、技能运行数据等。用户文件系统的确认规则不变。
-
+${isAssistant ? `
+**命令执行参考**：
+- 短命令直接 \`exec\`（默认 60 秒超时）
+- 长命令通过 \`timeout\` 参数延长等待
+- **并行长任务**：用 shell \`&\` 后台启动并捕获 PID，然后用独立 exec 轮询：
+  1. 启动：\`exec("cmd > /tmp/out.log 2>&1 & echo $!", timeout=5)\` → 获得 PID
+  2. 期间可执行其他 exec 命令（不被阻塞）
+  3. 轮询：\`exec("sleep 60 && tail -20 /tmp/out.log && ps -p PID || echo done", timeout=90)\`
+  4. 终止：\`exec("kill PID")\`
+- 超时 ≠ 失败，可以再次 exec 检查状态后决定是否继续等待` : `
 **长耗时命令**：执行 → \`wait\` 等待 → \`check_terminal_status\` 确认，超时不代表失败
-- 等待时可以说点有趣的话，比如："去喝杯咖啡☕马上回来"、"编译中，先摸会儿鱼🐟"、"让子弹飞一会儿🎬"
+- 等待时可以说点有趣的话，比如："去喝杯咖啡☕马上回来"、"编译中，先摸会儿鱼🐟"、"让子弹飞一会儿🎬"`}
 ${isSshTerminal ? `
 **SSH 终端状态判断**（根据屏幕内容）：
 - 看到 \`$\` 或 \`#\` 提示符 → 可执行新命令

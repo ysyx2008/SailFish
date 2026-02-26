@@ -686,7 +686,7 @@ export class IMService {
       const context = {
         terminalOutput: [] as string[],
         systemInfo: { os: process.platform, shell: process.env.SHELL || '/bin/bash' },
-        terminalType: 'local' as const,
+        terminalType: 'assistant' as const,
         remoteChannel: msg.platform as any
       }
 

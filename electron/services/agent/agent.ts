@@ -108,7 +108,7 @@ export abstract class Agent {
   private _sessionMessages: AiMessage[] = []
   
   /** 终端元数据（从首次 run 的 context 获取） */
-  private _terminalMeta?: { terminalType: 'local' | 'ssh'; sshHost?: string }
+  private _terminalMeta?: { terminalType: 'local' | 'ssh' | 'assistant'; sshHost?: string }
   /** 是否正在从 HistoryService 恢复（防止并发竞态） */
   private _isRestoring = false
   

@@ -507,7 +507,7 @@ export class WatchService {
       const context: AgentContext = {
         terminalOutput: [],
         systemInfo: { os: process.platform, shell: process.env.SHELL || '/bin/bash' },
-        terminalType: 'local',
+        terminalType: 'assistant',
         ...(wakeupMode ? { wakeup: true } : {})
       }
 

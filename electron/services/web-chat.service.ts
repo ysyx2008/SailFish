@@ -191,7 +191,7 @@ export class WebChatService {
     const context = {
       terminalOutput: [] as string[],
       systemInfo: { os: process.platform, shell: process.env.SHELL || '/bin/bash' },
-      terminalType: 'local' as const,
+      terminalType: 'assistant' as const,
       cwd: os.homedir(),
       remoteChannel: remoteChannelValue
     }

@@ -11,7 +11,7 @@ export interface ChatRecord {
   id: string
   timestamp: number
   terminalId: string
-  terminalType: 'local' | 'ssh'
+  terminalType: 'local' | 'ssh' | 'assistant'
   sshHost?: string
   role: 'user' | 'assistant'
   content: string
@@ -32,7 +32,7 @@ export interface AgentRecord {
   id: string
   timestamp: number
   terminalId: string
-  terminalType: 'local' | 'ssh'
+  terminalType: 'local' | 'ssh' | 'assistant'
   sshHost?: string
   userTask: string
   steps: AgentStepRecord[]

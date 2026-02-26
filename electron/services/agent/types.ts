@@ -105,7 +105,7 @@ export interface AgentContext {
     os: string
     shell: string
   }
-  terminalType: 'local' | 'ssh'  // 终端类型：本地终端或 SSH 远程终端
+  terminalType: 'local' | 'ssh' | 'assistant'  // 终端类型：本地终端、SSH 远程终端、无终端助手模式（IM/Web/桌面助手）
   remoteChannel?: 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom'
   cwd?: string  // 当前工作目录（用于告知 AI 当前位置，帮助正确处理相对路径）
   hostId?: string  // 主机档案 ID
