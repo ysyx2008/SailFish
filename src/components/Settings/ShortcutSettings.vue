@@ -18,7 +18,7 @@ interface ShortcutGroup {
 const shortcutGroups = computed<ShortcutGroup[]>(() => [
   {
     label: t('shortcutSettings.groups.create'),
-    actions: ['newLocalTerminal', 'newAssistantTab', 'newSshTerminal', 'newSshConnection'],
+    actions: ['newAssistantTab', 'newLocalTerminal', 'newSshTerminal', 'newSshConnection'],
   },
   {
     label: t('shortcutSettings.groups.view'),
