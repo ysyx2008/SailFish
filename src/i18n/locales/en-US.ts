@@ -705,6 +705,8 @@ export default {
     description: 'Customize application shortcuts. Click a shortcut area and press a new key combination to change it.',
     actions: {
       newLocalTerminal: 'New Local Terminal',
+      newAssistantTab: 'New AI Assistant',
+      newSshTerminal: 'New SSH Terminal',
       newSshConnection: 'New SSH Connection',
       batchCommand: 'Batch Command',
       openFileManager: 'Open File Manager',

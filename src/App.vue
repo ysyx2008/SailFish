@@ -117,6 +117,18 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
     return
   }
 
+  if (matchAccelerator(event, shortcuts.newAssistantTab)) {
+    event.preventDefault()
+    terminalStore.createAssistantTab()
+    return
+  }
+
+  if (matchAccelerator(event, shortcuts.newSshTerminal)) {
+    event.preventDefault()
+    showSidebar.value = true
+    return
+  }
+
   // Ctrl+W / Cmd+W 关闭当前终端或窗口（不可自定义，始终生效）
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'w') {
     event.preventDefault()
@@ -569,6 +581,12 @@ const handleMenuCommand = async (command: string) => {
   switch (command) {
     case 'newLocalTerminal':
       terminalStore.createTab('local')
+      break
+    case 'newAssistantTab':
+      terminalStore.createAssistantTab()
+      break
+    case 'newSshTerminal':
+      showSidebar.value = true
       break
     case 'newSshConnection':
       showSidebar.value = true

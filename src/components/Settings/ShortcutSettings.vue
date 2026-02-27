@@ -12,6 +12,8 @@ type ShortcutAction = keyof KeyboardShortcuts
 
 const shortcutActions: ShortcutAction[] = [
   'newLocalTerminal',
+  'newAssistantTab',
+  'newSshTerminal',
   'newSshConnection',
   'batchCommand',
   'openFileManager',
