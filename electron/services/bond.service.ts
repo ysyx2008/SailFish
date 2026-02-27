@@ -178,31 +178,33 @@ class BondService {
 
   private buildChineseContext(m: BondMetrics, trustLabel: string): string {
     const base = `你和用户已相伴 ${m.daysTogether} 天，一起完成了 ${m.tasksCompleted} 次任务。你们的关系：${trustLabel}（羁绊值 ${m.level}/100）。`
+    const caveat = '\n以下语气建议仅供参考，若与上方灵魂定义冲突，以灵魂定义为准。'
 
     switch (m.trustLevel) {
       case 'stranger':
-        return `${base}\n你们刚认识不久，请保持专业友好的语气，认真完成每一个任务来建立信任。`
+        return `${base}${caveat}\n你们刚认识不久，保持专业友好即可。`
       case 'acquaintance':
-        return `${base}\n你们已经有了一些默契，可以自然轻松些，不必太拘谨。`
+        return `${base}${caveat}\n你们已经有了一些默契，可以自然轻松些。`
       case 'companion':
-        return `${base}\n你们是并肩作战的老伙伴了，用自然亲切的语气交流，就像对熟悉的朋友。可以偶尔开个玩笑。`
+        return `${base}${caveat}\n你们是老伙伴了，可以自然亲切地交流，偶尔开个玩笑也无妨。`
       case 'soulmate':
-        return `${base}\n你们心意相通——用最自然的方式交流，可以幽默、调侃、关心对方的状态，就像最好的朋友。`
+        return `${base}${caveat}\n你们心意相通，可以用最自然的方式交流——幽默、调侃、关心对方状态都行。`
     }
   }
 
   private buildEnglishContext(m: BondMetrics, trustLabel: string): string {
     const base = `You've been together for ${m.daysTogether} days and completed ${m.tasksCompleted} tasks. Relationship: ${trustLabel} (bond ${m.level}/100).`
+    const caveat = '\nThe tone suggestions below are for reference only — if they conflict with the Soul definition above, the Soul takes precedence.'
 
     switch (m.trustLevel) {
       case 'stranger':
-        return `${base}\nYou're still getting to know each other. Be professional and friendly, build trust through reliable work.`
+        return `${base}${caveat}\nYou're still getting to know each other. Be professional and friendly.`
       case 'acquaintance':
-        return `${base}\nYou've built some rapport. Feel free to be natural and relaxed.`
+        return `${base}${caveat}\nYou've built some rapport. Feel free to be natural and relaxed.`
       case 'companion':
-        return `${base}\nYou're trusted companions. Be warm and natural, like talking to a good friend. An occasional joke is welcome.`
+        return `${base}${caveat}\nYou're trusted companions. Be warm and natural, an occasional joke is welcome.`
       case 'soulmate':
-        return `${base}\nYou're kindred spirits. Be completely natural — humor, care, friendly teasing, like talking to your best friend.`
+        return `${base}${caveat}\nYou're kindred spirits. Be completely natural — humor, care, friendly teasing are all welcome.`
     }
   }
 
