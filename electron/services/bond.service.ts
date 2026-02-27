@@ -104,7 +104,7 @@ class BondService {
     const config = this.ensureConfig()
 
     const firstUseDate = config.get('appLifecycleFirstUseDate') || Date.now()
-    const daysTogether = Math.floor((Date.now() - firstUseDate) / 86400000)
+    const daysTogether = Math.floor((Date.now() - firstUseDate) / 86400000) + 1
     const tasksCompleted = config.get('appLifecycleTotalConversations') || 0
     const executionMode = config.get('imExecutionMode') || 'relaxed'
 
