@@ -72,6 +72,10 @@ description: Automates SFTerminal release workflow: fix build/type errors, updat
 
 发版时把**上一版**的"(Latest)"/"（最新版本）"移到**本版**，上一版改为普通 `## vX.Y.Z (YYYY-MM-DD)`。
 
+### 版本一句话总结
+
+每个版本标题下方、分类列表之前，需要写一段**一句话总结**（1-2 句），概括该版本的核心主题和亮点。总结应聚焦于"这个版本最重要的变化是什么"，而非罗列所有改动。中英文日志均需包含，内容对应。
+
 ### 分类与条目格式
 
 **CHANGELOG.md：**

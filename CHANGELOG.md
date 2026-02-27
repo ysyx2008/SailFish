@@ -4,6 +4,8 @@ All notable changes to SailFish will be documented in this file.
 
 ## v10.10.0 (2026-02-26) (Latest)
 
+SailFish evolves from a passive tool into a proactive assistant — the Sensor Loop and Watch system enable AI to perceive environmental changes and act autonomously, Awaken Mode gives the Agent personality and initiative, alongside major infrastructure upgrades including Agent architecture decoupling, knowledge document refactoring, and Office style themes.
+
 ### New Features
 - 🧠 **Sensor Loop & Watch System**: Complete Watch system with 4 sensor types (heartbeat, file-watch, calendar, email), 8 built-in templates, stateful workflows, event pool dispatch layer, and webhook support
 - 🌅 **Awaken Mode**: AI transforms from a passive tool into a proactive assistant — personality-driven conversations, silent background execution, toast push notifications, and ECG heartbeat animation
