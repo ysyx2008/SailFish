@@ -2,7 +2,29 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.10.0 (2026-02-26) (Latest)
+## v10.11.0 (2026-02-27) (Latest)
+
+Keyboard shortcuts become fully customizable, the Sensor Loop gains app lifecycle awareness and universal probes, and the Awaken system refines its identity with "Soul" replacing "Personality".
+
+### New Features
+- ⌨️ **Keyboard Shortcut Customization**: Full shortcut settings page with customizable bindings for AI Assistant (⌘T), Local Terminal (⌘⇧T), SSH Terminal, and Voice Input
+- 🔮 **App Lifecycle Sensor**: New sensor type that detects app lifecycle events (startup, shutdown) and checks milestone conditions
+- 🔬 **Command & HTTP Probes**: Universal probe sensors for monitoring command outputs and HTTP endpoints
+
+### Improvements
+- 🧠 **Awaken "Soul" System**: "Personality" renamed to "Soul" with MBTI selection migrated to the Awaken panel
+- 🎯 **Terminal-aware UI Controls**: AI buttons and menus dynamically adapt based on current terminal state
+- 🤝 **Event-driven IM Greetings**: IM greetings now triggered by events, Agent autonomously decides how to greet
+- ⚡ **Speech Model Preloading**: Voice model preloaded when configuring speech shortcuts for instant availability
+- 🎨 **Shortcut Settings Redesign**: Redesigned keyboard shortcut settings interface with centered layout
+
+### Bug Fixes
+- 🔧 Fixed PTT voice input continuing to record after key release due to race condition
+- 🔧 Fixed shortcut settings not refreshing after restoring defaults
+- 🔧 Fixed legacy shortcut configurations not auto-migrating to new defaults
+- 🔧 Fixed Awaken panel ESC close not syncing awakened state to main UI
+
+## v10.10.0 (2026-02-26)
 
 SailFish evolves from a passive tool into a proactive assistant — the Sensor Loop and Watch system enable AI to perceive environmental changes and act autonomously, Awaken Mode gives the Agent personality and initiative, alongside major infrastructure upgrades including Agent architecture decoupling, knowledge document refactoring, and Office style themes.
 
