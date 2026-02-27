@@ -386,6 +386,8 @@ export default {
     proxyPlaceholder: 'http://proxy:port (optional)',
     contextLength: 'Context Length',
     contextLengthHint: 'tokens',
+    maxOutputTokens: 'Max Output Tokens',
+    maxOutputTokensHint: 'default 8192',
     saveProfile: 'Save Profile',
     deleteProfile: 'Delete Profile',
     setActive: 'Set as Active',

@@ -43,7 +43,8 @@ export interface AiProfile {
   apiKey: string
   model: string
   proxy?: string
-  contextLength?: number  // 模型上下文长度（tokens），默认 8000
+  contextLength?: number  // 模型上下文长度（tokens），默认 128000
+  maxOutputTokens?: number  // 单次回复最大输出 token 数，默认 8192
 }
 
 // 跳板机配置

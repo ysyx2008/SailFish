@@ -91,8 +91,7 @@ export function useContextStats(
     
     messageCount = allSteps.length
     
-    // 从当前 AI 配置获取上下文长度，默认 8000
-    const maxTokens = activeAiProfile.value?.contextLength || 8000
+    const maxTokens = activeAiProfile.value?.contextLength || 128000
     
     return {
       messageCount,

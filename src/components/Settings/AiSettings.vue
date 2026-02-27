@@ -45,7 +45,8 @@ const formData = ref<Partial<AiProfile>>({
   apiKey: '',
   model: '',
   proxy: '',
-  contextLength: 8000
+  contextLength: 128000,
+  maxOutputTokens: undefined
 })
 
 const profiles = computed(() => configStore.aiProfiles)
@@ -58,7 +59,8 @@ const resetForm = () => {
     apiKey: '',
     model: '',
     proxy: '',
-    contextLength: 8000
+    contextLength: 128000,
+    maxOutputTokens: undefined
   }
   editingProfile.value = null
 }
@@ -331,8 +333,13 @@ const openKeyUrl = (url: string) => {
           <div class="form-row">
             <div class="form-group flex-1">
               <label class="form-label">{{ t('aiSettings.contextLength') }}（{{ t('aiSettings.contextLengthHint') }}）</label>
-              <input v-model.number="formData.contextLength" type="number" class="input" placeholder="8000" />
-              <span class="form-hint">GPT-3.5(4K/16K)、GPT-4(8K/128K)、Claude(200K)、Qwen(32K)</span>
+              <input v-model.number="formData.contextLength" type="number" class="input" placeholder="128000" min="1" max="2000000" />
+              <span class="form-hint">DeepSeek(64K)、GPT-4o(128K)、Claude(200K)、Gemini(1M)</span>
+            </div>
+            <div class="form-group flex-1">
+              <label class="form-label">{{ t('aiSettings.maxOutputTokens') }}（{{ t('aiSettings.maxOutputTokensHint') }}）</label>
+              <input v-model.number="formData.maxOutputTokens" type="number" class="input" placeholder="8192" min="1" max="128000" />
+              <span class="form-hint">DeepSeek(8K)、GPT-4o(16K)、Claude(8K)、Qwen(8K)</span>
             </div>
           </div>
           <div class="form-group">

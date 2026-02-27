@@ -134,7 +134,8 @@ export interface AiProfile {
   apiKey: string
   model: string
   proxy?: string
-  contextLength?: number  // 模型上下文长度（tokens），默认 8000
+  contextLength?: number  // 模型上下文长度（tokens），默认 128000
+  maxOutputTokens?: number  // 单次回复最大输出 token 数，默认 8192
 }
 
 /**
@@ -921,7 +922,7 @@ export class AiService {
         tool_choice: tools.length > 0 ? 'auto' : undefined,
         parallel_tool_calls: tools.length > 0 ? true : undefined,
         temperature: 0.7,
-        max_tokens: 16384
+        max_tokens: profile.maxOutputTokens || 8192
       }
 
       let data: {
@@ -1102,7 +1103,7 @@ export class AiService {
         tool_choice: tools.length > 0 ? 'auto' : undefined,
         parallel_tool_calls: tools.length > 0 ? true : undefined,
         temperature: 0.7,
-        max_tokens: 16384,
+        max_tokens: profile.maxOutputTokens || 8192,
         stream: true
       }
     }

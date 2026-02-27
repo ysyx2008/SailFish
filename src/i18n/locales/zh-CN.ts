@@ -386,6 +386,8 @@ export default {
     proxyPlaceholder: 'http://proxy:port（可选）',
     contextLength: '上下文长度',
     contextLengthHint: 'tokens',
+    maxOutputTokens: '最大输出长度',
+    maxOutputTokensHint: '默认 8192',
     saveProfile: '保存配置',
     deleteProfile: '删除配置',
     setActive: '设为当前',
