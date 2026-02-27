@@ -58,6 +58,7 @@ export function useSpeechRecognition() {
   let audioContext: AudioContext | null = null
   let audioChunks: Float32Array[] = []
   let mediaStream: MediaStream | null = null
+  let startAborted = false
 
   // 计算属性
   const canRecord = computed(() => isModelReady.value && !isRecording.value && !isTranscribing.value)
@@ -105,6 +106,17 @@ export function useSpeechRecognition() {
     }
   }
 
+  function releaseMediaResources(): void {
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(track => track.stop())
+      mediaStream = null
+    }
+    if (audioContext) {
+      audioContext.close().catch(() => {})
+      audioContext = null
+    }
+  }
+
   /**
    * 开始录音
    */
@@ -118,6 +130,7 @@ export function useSpeechRecognition() {
     try {
       error.value = null
       audioChunks = []
+      startAborted = false
 
       // 确保模型已初始化
       if (!isModelReady.value) {
@@ -125,6 +138,10 @@ export function useSpeechRecognition() {
         const initialized = await checkAndInitialize()
         console.log('[useSpeechRecognition] Initialize result:', initialized, 'error:', error.value)
         if (!initialized) return false
+        if (startAborted) {
+          releaseMediaResources()
+          return false
+        }
       }
 
       // 请求麦克风权限并获取音频流
@@ -145,6 +162,11 @@ export function useSpeechRecognition() {
         mediaStream = await navigator.mediaDevices.getUserMedia({
           audio: true
         })
+      }
+
+      if (startAborted) {
+        releaseMediaResources()
+        return false
       }
 
       // 创建 AudioContext 用于处理音频数据
@@ -184,6 +206,7 @@ export function useSpeechRecognition() {
       isRecording.value = true
       return true
     } catch (err) {
+      releaseMediaResources()
       error.value = err instanceof Error ? err.message : '无法访问麦克风'
       return false
     }
@@ -193,24 +216,19 @@ export function useSpeechRecognition() {
    * 停止录音并转录
    */
   async function stopRecording(): Promise<TranscriptionResult | null> {
-    if (!isRecording.value) return null
+    startAborted = true
+
+    if (!isRecording.value) {
+      releaseMediaResources()
+      audioChunks = []
+      return null
+    }
 
     isRecording.value = false
 
     try {
-      // 停止媒体流
-      if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop())
-        mediaStream = null
-      }
+      releaseMediaResources()
 
-      // 关闭 AudioContext
-      if (audioContext) {
-        await audioContext.close()
-        audioContext = null
-      }
-
-      // 合并音频数据
       if (audioChunks.length === 0) {
         error.value = '未录制到音频'
         return null
@@ -249,25 +267,13 @@ export function useSpeechRecognition() {
   }
 
   /**
-   * 取消录音
+   * 取消录音（也能中止尚未完成的 startRecording）
    */
   function cancelRecording(): void {
-    if (!isRecording.value) return
-
+    startAborted = true
     isRecording.value = false
     audioChunks = []
-
-    // 停止媒体流
-    if (mediaStream) {
-      mediaStream.getTracks().forEach(track => track.stop())
-      mediaStream = null
-    }
-
-    // 关闭 AudioContext
-    if (audioContext) {
-      audioContext.close()
-      audioContext = null
-    }
+    releaseMediaResources()
   }
 
   /**
