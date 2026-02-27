@@ -18,6 +18,7 @@ export interface KeyboardShortcuts {
   clearTerminal: string
   openSettings: string
   aiDebugConsole: string
+  voiceInput: string
 }
 
 export const DEFAULT_KEYBOARD_SHORTCUTS: KeyboardShortcuts = {
@@ -32,6 +33,7 @@ export const DEFAULT_KEYBOARD_SHORTCUTS: KeyboardShortcuts = {
   clearTerminal: 'CmdOrCtrl+K',
   openSettings: 'CmdOrCtrl+,',
   aiDebugConsole: 'F12',
+  voiceInput: 'Control',
 }
 
 export interface AiProfile {
@@ -430,18 +432,10 @@ export const useConfigStore = defineStore('config', () => {
         await window.electronAPI.email.syncAccounts(plainAccounts)
       }
 
-      // 加载快捷键设置（含旧版迁移）
+      // 加载快捷键设置
       const savedShortcuts = await window.electronAPI.config.get('keyboardShortcuts') as Partial<KeyboardShortcuts> | null | undefined
       if (savedShortcuts && typeof savedShortcuts === 'object') {
-        const merged = { ...DEFAULT_KEYBOARD_SHORTCUTS, ...savedShortcuts }
-        // 迁移：旧版没有 newAssistantTab，CmdOrCtrl+T 绑定在 newLocalTerminal 上
-        if (!('newAssistantTab' in savedShortcuts)) {
-          merged.newAssistantTab = DEFAULT_KEYBOARD_SHORTCUTS.newAssistantTab
-          merged.newLocalTerminal = DEFAULT_KEYBOARD_SHORTCUTS.newLocalTerminal
-          // 持久化迁移结果
-          await window.electronAPI.config.setKeyboardShortcuts({ ...merged })
-        }
-        keyboardShortcuts.value = merged
+        keyboardShortcuts.value = { ...DEFAULT_KEYBOARD_SHORTCUTS, ...savedShortcuts }
       }
 
       // 加载日历账户

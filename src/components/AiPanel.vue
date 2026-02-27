@@ -264,7 +264,7 @@ const handleRecordClick = async () => {
   }
 }
 
-// Push-to-Talk：按住 Ctrl 说话，松开后延迟 500ms 再停止录音（避免末尾语音丢失）
+// Push-to-Talk：按住配置的按键说话，松开后延迟停止录音（避免末尾语音丢失）
 const isPushToTalk = ref(false)
 let pttStopTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -275,9 +275,26 @@ const clearPTTStopTimer = () => {
   }
 }
 
+const MODIFIER_KEYS = new Set(['Control', 'Meta', 'Shift', 'Alt'])
+const MODIFIER_EVENT_PROPS: Record<string, keyof KeyboardEvent> = {
+  Control: 'ctrlKey',
+  Meta: 'metaKey',
+  Shift: 'shiftKey',
+  Alt: 'altKey',
+}
+
+function hasOtherModifiers(event: KeyboardEvent, pttKey: string): boolean {
+  for (const [key, prop] of Object.entries(MODIFIER_EVENT_PROPS)) {
+    if (key !== pttKey && event[prop as keyof KeyboardEvent]) return true
+  }
+  return false
+}
+
 const handlePTTKeyDown = (event: KeyboardEvent) => {
-  if (!props.visible || terminalStore.activeTabId !== currentTabId.value) return
-  if (event.key !== 'Control') {
+  const pttKey = configStore.keyboardShortcuts.voiceInput
+  if (!pttKey || !props.visible || terminalStore.activeTabId !== currentTabId.value) return
+
+  if (event.key !== pttKey) {
     if (isPushToTalk.value) {
       clearPTTStopTimer()
       isPushToTalk.value = false
@@ -286,8 +303,7 @@ const handlePTTKeyDown = (event: KeyboardEvent) => {
     return
   }
   if (event.repeat) return
-  if (event.altKey || event.shiftKey || event.metaKey) return
-  // 如果正在延迟等停止，重新按下 Ctrl 则取消停止、继续录音
+  if (MODIFIER_KEYS.has(pttKey) && hasOtherModifiers(event, pttKey)) return
   if (pttStopTimer) {
     clearPTTStopTimer()
     return
@@ -312,7 +328,8 @@ const finishPTTRecording = async () => {
 }
 
 const handlePTTKeyUp = (event: KeyboardEvent) => {
-  if (event.key !== 'Control' || !isPushToTalk.value) return
+  const pttKey = configStore.keyboardShortcuts.voiceInput
+  if (event.key !== pttKey || !isPushToTalk.value) return
   clearPTTStopTimer()
   pttStopTimer = setTimeout(finishPTTRecording, 200)
 }

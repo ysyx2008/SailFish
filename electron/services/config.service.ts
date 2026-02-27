@@ -118,6 +118,7 @@ export interface KeyboardShortcuts {
   clearTerminal: string
   openSettings: string
   aiDebugConsole: string
+  voiceInput: string
 }
 
 export const DEFAULT_KEYBOARD_SHORTCUTS: KeyboardShortcuts = {
@@ -132,6 +133,7 @@ export const DEFAULT_KEYBOARD_SHORTCUTS: KeyboardShortcuts = {
   clearTerminal: 'CmdOrCtrl+K',
   openSettings: 'CmdOrCtrl+,',
   aiDebugConsole: 'F12',
+  voiceInput: 'Control',
 }
 
 interface StoreSchema {

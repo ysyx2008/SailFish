@@ -10,45 +10,38 @@ const isMac = navigator.platform.toLowerCase().includes('mac')
 
 type ShortcutAction = keyof KeyboardShortcuts
 
-interface ShortcutGroup {
-  label: string
-  actions: ShortcutAction[]
+const allActions: ShortcutAction[] = [
+  'newAssistantTab',
+  'newLocalTerminal',
+  'newSshConnection',
+  'toggleSidebar',
+  'toggleAiPanel',
+  'toggleKnowledge',
+  'openFileManager',
+  'clearTerminal',
+  'batchCommand',
+  'openSettings',
+  'aiDebugConsole',
+  'voiceInput',
+]
+
+const HOLD_KEY_ACTIONS: ShortcutAction[] = ['voiceInput']
+
+function isHoldKeyAction(action: ShortcutAction): boolean {
+  return HOLD_KEY_ACTIONS.includes(action)
 }
-
-const shortcutGroups = computed<ShortcutGroup[]>(() => [
-  {
-    label: t('shortcutSettings.groups.create'),
-    actions: ['newAssistantTab', 'newLocalTerminal', 'newSshConnection'],
-  },
-  {
-    label: t('shortcutSettings.groups.view'),
-    actions: ['toggleSidebar', 'toggleAiPanel', 'toggleKnowledge', 'openFileManager'],
-  },
-  {
-    label: t('shortcutSettings.groups.edit'),
-    actions: ['clearTerminal', 'batchCommand', 'openSettings', 'aiDebugConsole'],
-  },
-])
-
-const allActions = computed(() => shortcutGroups.value.flatMap(g => g.actions))
 
 const recordingAction = ref<ShortcutAction | null>(null)
 const conflictMessage = ref<string>('')
 
+const KEY_DISPLAY_MAP: Record<string, string> = isMac
+  ? { CmdOrCtrl: '⌘', Shift: '⇧', Alt: '⌥', Control: '⌃', Meta: '⌘' }
+  : { CmdOrCtrl: 'Ctrl', Control: 'Ctrl', Meta: 'Win' }
+
 function acceleratorToKeys(accelerator: string): string[] {
   if (!accelerator) return []
   const parts = accelerator.split('+')
-  return parts.map(part => {
-    if (isMac) {
-      if (part === 'CmdOrCtrl') return '⌘'
-      if (part === 'Shift') return '⇧'
-      if (part === 'Alt') return '⌥'
-    } else {
-      if (part === 'CmdOrCtrl') return 'Ctrl'
-    }
-    if (part === ',') return ','
-    return part
-  })
+  return parts.map(part => KEY_DISPLAY_MAP[part] ?? part)
 }
 
 function keyEventToAccelerator(e: KeyboardEvent): string | null {
@@ -97,7 +90,7 @@ function keyEventToAccelerator(e: KeyboardEvent): string | null {
 
 function findConflict(accelerator: string, excludeAction: ShortcutAction): ShortcutAction | null {
   if (!accelerator) return null
-  for (const action of allActions.value) {
+  for (const action of allActions) {
     if (action === excludeAction) continue
     if (configStore.keyboardShortcuts[action] === accelerator) {
       return action
@@ -120,6 +113,17 @@ function handleKeydown(e: KeyboardEvent, action: ShortcutAction) {
   if (e.key === 'Escape') {
     recordingAction.value = null
     conflictMessage.value = ''
+    return
+  }
+
+  if (isHoldKeyAction(action)) {
+    const modifiers = ['Control', 'Meta', 'Shift', 'Alt']
+    if (!modifiers.includes(e.key)) return
+    const keyValue = e.key
+    conflictMessage.value = ''
+    const newShortcuts = { ...configStore.keyboardShortcuts, [action]: keyValue }
+    configStore.setKeyboardShortcuts(newShortcuts)
+    recordingAction.value = null
     return
   }
 
@@ -168,7 +172,7 @@ function resetAll() {
 }
 
 const isModified = computed(() => {
-  return allActions.value.some(
+  return allActions.some(
     action => configStore.keyboardShortcuts[action] !== DEFAULT_KEYBOARD_SHORTCUTS[action]
   )
 })
@@ -198,20 +202,17 @@ function isActionModified(action: ShortcutAction): boolean {
       {{ conflictMessage }}
     </div>
 
-    <div
-      v-for="(group, gi) in shortcutGroups"
-      :key="gi"
-      class="shortcut-group"
-    >
-      <div class="group-label">{{ group.label }}</div>
-      <div class="shortcut-list">
-        <div
-          v-for="action in group.actions"
-          :key="action"
-          class="shortcut-row"
-          :class="{ modified: isActionModified(action) }"
-        >
-          <span class="shortcut-label">{{ t(`shortcutSettings.actions.${action}`) }}</span>
+    <div class="shortcut-list">
+      <div
+        v-for="action in allActions"
+        :key="action"
+        class="shortcut-row"
+        :class="{ modified: isActionModified(action) }"
+      >
+          <div class="shortcut-label-wrap">
+            <span class="shortcut-label">{{ t(`shortcutSettings.actions.${action}`) }}</span>
+            <span v-if="isHoldKeyAction(action)" class="shortcut-hint">{{ t('shortcutSettings.holdToTalk') }}</span>
+          </div>
           <div class="shortcut-right">
             <div class="shortcut-actions">
               <button
@@ -238,7 +239,7 @@ function isActionModified(action: ShortcutAction): boolean {
               @keydown="handleKeydown($event, action)"
             >
               <template v-if="recordingAction === action">
-                <span class="recording-text">{{ t('shortcutSettings.recording') }}</span>
+                <span class="recording-text">{{ isHoldKeyAction(action) ? t('shortcutSettings.recordingModifier') : t('shortcutSettings.recording') }}</span>
               </template>
               <template v-else-if="configStore.keyboardShortcuts[action]">
                 <span class="keycap-group">
@@ -256,7 +257,6 @@ function isActionModified(action: ShortcutAction): boolean {
           </div>
         </div>
       </div>
-    </div>
   </div>
 </template>
 
@@ -306,21 +306,6 @@ function isActionModified(action: ShortcutAction): boolean {
   background: var(--bg-hover);
 }
 
-/* 分组 */
-.shortcut-group {
-  margin-bottom: 6px;
-}
-
-.group-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 10px 10px 6px;
-  user-select: none;
-}
-
 .shortcut-list {
   background: var(--bg-tertiary);
   border-radius: 8px;
@@ -343,13 +328,26 @@ function isActionModified(action: ShortcutAction): boolean {
   background: var(--bg-hover);
 }
 
-.shortcut-label {
+.shortcut-label-wrap {
   flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.shortcut-label {
   font-size: 13px;
   color: var(--text-primary);
 }
 
-.shortcut-row.modified .shortcut-label {
+.shortcut-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.shortcut-row.modified .shortcut-label-wrap .shortcut-label {
   color: var(--accent-primary);
 }
 
