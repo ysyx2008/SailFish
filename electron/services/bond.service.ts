@@ -162,21 +162,13 @@ class BondService {
   }
 
   /**
-   * 生成注入 prompt 的羁绊上下文文本
+   * 生成注入 prompt 的羁绊上下文文本（系统提示词统一中文）
    */
-  getBondContext(lang: 'zh-CN' | 'en-US' = 'zh-CN'): string {
+  getBondContext(): string {
     const m = this.calculate()
     if (m.daysTogether === 0 && m.tasksCompleted === 0) return ''
 
-    const label = TRUST_LABELS[m.trustLevel]
-
-    if (lang === 'en-US') {
-      return this.buildEnglishContext(m, label.en)
-    }
-    return this.buildChineseContext(m, label.zh)
-  }
-
-  private buildChineseContext(m: BondMetrics, trustLabel: string): string {
+    const trustLabel = TRUST_LABELS[m.trustLevel].zh
     const base = `你和用户已相伴 ${m.daysTogether} 天，一起完成了 ${m.tasksCompleted} 次任务。你们的关系：${trustLabel}（羁绊值 ${m.level}/100）。`
     const caveat = '\n以下语气建议仅供参考，若与上方灵魂定义冲突，以灵魂定义为准。'
 
@@ -189,22 +181,6 @@ class BondService {
         return `${base}${caveat}\n你们是老伙伴了，可以自然亲切地交流，偶尔开个玩笑也无妨。`
       case 'soulmate':
         return `${base}${caveat}\n你们心意相通，可以用最自然的方式交流——幽默、调侃、关心对方状态都行。`
-    }
-  }
-
-  private buildEnglishContext(m: BondMetrics, trustLabel: string): string {
-    const base = `You've been together for ${m.daysTogether} days and completed ${m.tasksCompleted} tasks. Relationship: ${trustLabel} (bond ${m.level}/100).`
-    const caveat = '\nThe tone suggestions below are for reference only — if they conflict with the Soul definition above, the Soul takes precedence.'
-
-    switch (m.trustLevel) {
-      case 'stranger':
-        return `${base}${caveat}\nYou're still getting to know each other. Be professional and friendly.`
-      case 'acquaintance':
-        return `${base}${caveat}\nYou've built some rapport. Feel free to be natural and relaxed.`
-      case 'companion':
-        return `${base}${caveat}\nYou're trusted companions. Be warm and natural, an occasional joke is welcome.`
-      case 'soulmate':
-        return `${base}${caveat}\nYou're kindred spirits. Be completely natural — humor, care, friendly teasing are all welcome.`
     }
   }
 

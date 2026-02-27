@@ -2109,7 +2109,7 @@ export abstract class Agent {
 
   private resolveBondContext(): string | undefined {
     try {
-      return getBondService().getBondContext(this.services.configService?.getLanguage())
+      return getBondService().getBondContext()
     } catch {
       return undefined
     }
