@@ -2,7 +2,29 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.11.2 (2026-02-27) (Latest)
+## v10.11.3 (2026-02-28) (Latest)
+
+Improved AI model compatibility and robustness, with fixes for output truncation, token limits, and vision fallback, plus a new IM process message toggle.
+
+### New Features
+- 📩 **IM Process Message Toggle**: Added a "Send Process Messages" switch to reduce IM notification noise — when disabled, only final results and errors are sent
+
+### Improvements
+- 🏷️ **Product Name Update**: Changed productName from "SFTerm" to "SailFish" in build configuration
+
+### Bug Fixes
+- 🔧 Fixed vision fallback logic causing errors when sending images to text-only models like Zhipu GLM-5
+- 🔧 Fixed `max_tokens` exceeding model limits for DeepSeek and other models, optimized default context length values
+- 🔧 Fixed LLM API edge case handling where output truncation caused tasks to falsely appear completed
+- 🔧 Fixed Orchestrator crash on output truncation (same issue as Agent)
+- 🔧 Fixed IM `sendProcessMessages` toggle API rollback not working on failure
+- 🔧 Fixed `flushTextBuffer` leaking intermediate text in silent mode during asking/needConfirm flows
+- 🔧 Fixed IM replies showing `talk_to_user` context prefix
+- 🔧 Fixed sensors starting sequentially instead of in parallel, causing AppLifecycle sensor not to start
+- 🔧 Fixed `daysTogether` calculation not including the first use date
+- 🔧 Fixed Awaken dialog not being persisted and greeting content repeating on IM reconnection
+
+## v10.11.2 (2026-02-27)
 
 Bug fixes for IM message routing, Watch system cleanup, and backend service initialization reliability.
 

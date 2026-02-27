@@ -2028,9 +2028,11 @@ interface Window {
         telegram: { botToken: string; autoConnect: boolean }
         wecom: { corpId: string; corpSecret: string; agentId: number; token: string; encodingAESKey: string; callbackPort: number; autoConnect: boolean }
         executionMode: ExecutionMode
+        sendProcessMessages: boolean
       }>
       setAutoConnect: (platform: string, enabled: boolean) => Promise<void>
       setExecutionMode: (mode: ExecutionMode) => Promise<void>
+      setSendProcessMessages: (enabled: boolean) => Promise<void>
       sendNotification: (text: string, options?: { markdown?: boolean; title?: string }) => Promise<{ success: boolean; platform?: string; error?: string }>
       onConnectionChange: (callback: (data: { platform: string; connected: boolean }) => void) => () => void
     }
