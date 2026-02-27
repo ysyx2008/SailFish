@@ -1012,7 +1012,9 @@ export abstract class Agent {
     let lastResponse: ChatWithToolsResult | null = null
     let hasExecutedAnyTool = false
     let noToolCallRetryCount = 0
+    let truncationRetryCount = 0
     const MAX_NO_TOOL_RETRIES = 2
+    const MAX_TRUNCATION_RETRIES = 3
     
     // 创建工具执行器配置
     const toolExecutorConfig = this.createToolExecutorConfig(run)
@@ -1034,9 +1036,20 @@ export abstract class Agent {
             lastResponse = stepResult.response
           }
           
+          // 输出被截断时强制继续循环（已在 executeStep 中注入续写提示）
+          if (stepResult.truncated) {
+            truncationRetryCount++
+            if (truncationRetryCount >= MAX_TRUNCATION_RETRIES) {
+              log.warn('Output repeatedly truncated, giving up continuation')
+              return lastResponse?.content || t('agent.no_response')
+            }
+            continue
+          }
+          
           if (stepResult.hasToolCalls) {
             hasExecutedAnyTool = true
             noToolCallRetryCount = 0
+            truncationRetryCount = 0
             // 每完成一轮工具调用后保存检查点，防止程序意外退出丢失对话记录
             this.saveCheckpoint(run)
           }
@@ -1116,19 +1129,65 @@ export abstract class Agent {
   protected async executeStep(
     run: AgentRun, 
     toolExecutorConfig: ToolExecutorConfig
-  ): Promise<{ response: ChatWithToolsResult | null; hasToolCalls: boolean }> {
+  ): Promise<{ response: ChatWithToolsResult | null; hasToolCalls: boolean; truncated?: boolean }> {
     // 更新上下文状态（注入 Context Status + 渐进式提醒）
     this.updateContextPressure(run)
     
     // 调用 AI
     const response = await this.callAiWithStreaming(run)
     
+    // 处理 finish_reason=length（输出被 max_tokens 截断）
+    if (response.finish_reason === 'length') {
+      const totalToolCalls = response.tool_calls?.length || 0
+      const validToolCalls = (response.tool_calls || []).filter(tc => {
+        if (!tc.id || !tc.function.name || !tc.function.arguments) return false
+        try { JSON.parse(tc.function.arguments); return true }
+        catch (e) { if (e instanceof SyntaxError) return false; throw e }
+      })
+      const discardedCount = totalToolCalls - validToolCalls.length
+      
+      if (discardedCount > 0) {
+        log.warn(`Output truncated (finish_reason=length): discarded ${discardedCount}/${totalToolCalls} tool_calls with incomplete arguments`)
+      } else if (totalToolCalls === 0) {
+        log.warn(`Output truncated (finish_reason=length): text content may be incomplete`)
+      }
+      
+      // 有有效的工具调用 → 正常执行，截断的已被丢弃
+      if (validToolCalls.length > 0) {
+        log.info(`Proceeding with ${validToolCalls.length} valid tool_calls despite truncation`)
+        // 继续走正常的工具调用流程（下面的 if 分支会处理）
+        response.tool_calls = validToolCalls
+      } else {
+        // 没有可用的工具调用，注入续写提示让 AI 重试
+        const truncationHint: AiMessage = {
+          role: 'assistant',
+          content: response.content || ''
+        }
+        run.messages.push(truncationHint)
+        run.taskMessageLog.push({ ...truncationHint })
+        
+        const continuationPrompt: AiMessage = {
+          role: 'user',
+          content: t('agent.output_truncated_hint')
+        }
+        run.messages.push(continuationPrompt)
+        run.taskMessageLog.push({ ...continuationPrompt })
+        
+        this.addStep({
+          type: 'thinking',
+          content: `⚠️ ${t('agent.output_truncated')}`
+        })
+        
+        return { response, hasToolCalls: false, truncated: true }
+      }
+    }
+    
     // 处理工具调用
     if (response.tool_calls && response.tool_calls.length > 0) {
       const validToolCalls = response.tool_calls.filter(tc => {
         if (!tc.id || !tc.function.name || !tc.function.arguments) return false
         try { JSON.parse(tc.function.arguments); return true }
-        catch { return false }
+        catch (e) { if (e instanceof SyntaxError) return false; throw e }
       })
       
       if (validToolCalls.length < response.tool_calls.length) {

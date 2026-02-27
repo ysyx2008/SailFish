@@ -20,8 +20,14 @@ const AI_TIMEOUT = {
 const AI_RETRY = {
   MAX_RETRIES: 3,            // 最大重试次数
   RETRY_DELAY: 2000,         // 重试间隔：2 秒
-  // 可重试的错误码
-  RETRYABLE_ERRORS: ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED', 'EPIPE', 'EAI_AGAIN']
+  RATE_LIMIT_MAX_RETRIES: 3, // Rate limit 最大重试次数
+  RATE_LIMIT_BASE_DELAY: 5000, // Rate limit 基础退避：5 秒
+  SERVER_ERROR_MAX_RETRIES: 2, // 5xx 服务端错误最大重试次数
+  SERVER_ERROR_BASE_DELAY: 3000, // 5xx 基础退避：3 秒
+  // 可重试的网络错误码
+  RETRYABLE_ERRORS: ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED', 'EPIPE', 'EAI_AGAIN'],
+  // 可重试的 HTTP 状态码（服务端临时错误）
+  RETRYABLE_STATUS_CODES: [500, 502, 503, 529] as readonly number[]
 }
 
 // 判断错误是否可重试
@@ -915,7 +921,7 @@ export class AiService {
         tool_choice: tools.length > 0 ? 'auto' : undefined,
         parallel_tool_calls: tools.length > 0 ? true : undefined,
         temperature: 0.7,
-        max_tokens: 4096
+        max_tokens: 16384
       }
 
       let data: {
@@ -1038,6 +1044,10 @@ export class AiService {
     let req: http.ClientRequest | undefined
     // 重试计数器
     let retryCount = 0
+    // Rate limit 重试计数器（独立于网络错误重试）
+    let rateLimitRetryCount = 0
+    // 5xx 服务端错误重试计数器（独立于网络错误重试）
+    let serverErrorRetryCount = 0
 
     // 收集的数据
     let content = ''
@@ -1092,7 +1102,7 @@ export class AiService {
         tool_choice: tools.length > 0 ? 'auto' : undefined,
         parallel_tool_calls: tools.length > 0 ? true : undefined,
         temperature: 0.7,
-        max_tokens: 4096,
+        max_tokens: 16384,
         stream: true
       }
     }
@@ -1170,8 +1180,41 @@ export class AiService {
             const parsed = parseApiError(errorData)
             const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
             log.error(`Request HTTP error: model=${profile.model}, status=${res.statusCode}, duration=${elapsed}s, error=${parsed.message.slice(0, 200)}`)
-            if (parsed.code === 'context_length_exceeded') {
+            if (res.statusCode === 429 && rateLimitRetryCount < AI_RETRY.RATE_LIMIT_MAX_RETRIES) {
+              // Rate limit: 指数退避重试，优先使用 Retry-After header
+              rateLimitRetryCount++
+              const retryAfterHeader = res.headers['retry-after']
+              const defaultBackoff = AI_RETRY.RATE_LIMIT_BASE_DELAY * Math.pow(2, rateLimitRetryCount - 1)
+              let retryAfterMs = defaultBackoff
+              if (retryAfterHeader) {
+                const seconds = Number(retryAfterHeader)
+                if (!isNaN(seconds) && seconds > 0) {
+                  retryAfterMs = seconds * 1000
+                } else {
+                  // Retry-After 也可以是 HTTP 日期格式（RFC 1123）
+                  const date = Date.parse(retryAfterHeader)
+                  if (!isNaN(date)) {
+                    retryAfterMs = Math.max(1000, date - Date.now())
+                  }
+                }
+              }
+              const retryAfterSec = (retryAfterMs / 1000).toFixed(0)
+              log.warn(`Rate limited (429), retrying in ${retryAfterSec}s (${rateLimitRetryCount}/${AI_RETRY.RATE_LIMIT_MAX_RETRIES})`)
+              onChunk(`⚠️ ${t('error.rate_limited', { seconds: retryAfterSec, attempt: String(rateLimitRetryCount), max: String(AI_RETRY.RATE_LIMIT_MAX_RETRIES) })}\n`)
+              getAiDebugService().logResponseError(reqId, `429 Rate Limited - retry ${rateLimitRetryCount}/${AI_RETRY.RATE_LIMIT_MAX_RETRIES} in ${retryAfterSec}s`)
+              resetForRetry()
+              setTimeout(doRequest, retryAfterMs)
+            } else if (parsed.code === 'context_length_exceeded') {
               complete(() => onError(t('error.context_length_exceeded')))
+            } else if (res.statusCode && AI_RETRY.RETRYABLE_STATUS_CODES.includes(res.statusCode) && serverErrorRetryCount < AI_RETRY.SERVER_ERROR_MAX_RETRIES) {
+              serverErrorRetryCount++
+              const delay = AI_RETRY.SERVER_ERROR_BASE_DELAY * Math.pow(2, serverErrorRetryCount - 1)
+              const delaySec = (delay / 1000).toFixed(0)
+              log.warn(`Server error (${res.statusCode}), retrying in ${delaySec}s (${serverErrorRetryCount}/${AI_RETRY.SERVER_ERROR_MAX_RETRIES})`)
+              onChunk(`⚠️ ${t('error.server_error_retry', { status: String(res.statusCode), seconds: delaySec, attempt: String(serverErrorRetryCount), max: String(AI_RETRY.SERVER_ERROR_MAX_RETRIES) })}\n`)
+              getAiDebugService().logResponseError(reqId, `${res.statusCode} Server Error - retry ${serverErrorRetryCount}/${AI_RETRY.SERVER_ERROR_MAX_RETRIES} in ${delaySec}s`)
+              resetForRetry()
+              setTimeout(doRequest, delay)
             } else if (tryVisionFallback(parsed.message)) {
               // 已降级重试
             } else {
@@ -1288,6 +1331,20 @@ export class AiService {
         })
 
         res.on('end', () => {
+          // 流结束但未收到 [DONE] 或 finish_reason：检测不完整的 tool calls
+          // 某些 API 在 max_tokens 截断时可能不发送 finish_reason 就断流
+          if (!finishReason && toolCalls.length > 0) {
+            const hasIncomplete = toolCalls.some(tc => {
+              if (!tc.function.arguments) return true
+              try { JSON.parse(tc.function.arguments); return false }
+              catch (e) { if (e instanceof SyntaxError) return true; throw e }
+            })
+            if (hasIncomplete) {
+              finishReason = 'length'
+              log.warn(`Stream ended without finish_reason but has incomplete tool_calls, treating as length truncation`)
+            }
+          }
+
           // 如果有思考内容但没有最终内容，把思考内容作为最终内容
           const finalContent = content || (reasoningContent ? `🤔 **思考过程**\n\n> ${reasoningContent.replace(/\n/g, '\n> ')}` : undefined)
 
@@ -1314,7 +1371,7 @@ export class AiService {
             content: finalContent,
             tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
             finish_reason: finishReason as ChatWithToolsResult['finish_reason'],
-            reasoning_content: reasoningContent || undefined  // 返回原始思考内容，用于消息历史
+            reasoning_content: reasoningContent || undefined
           }))
         })
 
@@ -1362,7 +1419,7 @@ export class AiService {
         const validToolCalls = toolCalls.filter(tc => {
           if (!tc.id || !tc.function.name || !tc.function.arguments) return false
           try { JSON.parse(tc.function.arguments); return true }
-          catch { return false }
+          catch (e) { if (e instanceof SyntaxError) return false; throw e }
         })
         if (validToolCalls.length < filteredCount) {
           log.info(`Abort: filtered ${filteredCount - validToolCalls.length}/${filteredCount} incomplete tool_calls`)

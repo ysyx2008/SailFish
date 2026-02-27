@@ -337,6 +337,8 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
 
 **⚠️ 禁止用此工具创建Office文档（.docx/.xlsx/.pptx）**，会被降级为.md纯文本。
 
+**⚠️ 大文件必须分段写入**：如果要写入的内容很长，不要试图在一次调用中写完整个文件，否则可能因超出输出限制而整个调用失败。应先用 create 模式写入前面一部分，再用 append 模式分次追加剩余内容。
+
 **⚠️ 重要文件请先备份**：修改配置文件、脚本等重要文件前，必须先执行备份命令：
 \`cp file.txt file.txt.$(date +%Y%m%d_%H%M%S).bak\`
 不需要备份：新建文件、临时文件、日志文件、明确不重要的文件`,
@@ -396,6 +398,8 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
 1. **新建模式（默认）**：mode='create'，仅创建新文件，如果文件已存在则报错
 2. **覆盖模式**：mode='overwrite'，用 content 替换整个文件
 3. **追加模式**：mode='append'，在文件末尾追加 content
+
+**⚠️ 大文件必须分段写入**：如果要写入的内容很长，不要试图在一次调用中写完整个文件，否则可能因超出输出限制而整个调用失败。应先用 create 模式写入前面一部分，再用 append 模式分次追加剩余内容。
 
 **注意**：路径不支持 \`~\`，请用相对路径或绝对路径
 
