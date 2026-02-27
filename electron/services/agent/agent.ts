@@ -809,7 +809,15 @@ export abstract class Agent {
     for (const step of run.steps) {
       if (step.type === 'tool_call' && step.toolName && step.toolArgs) {
         const argsStr = Object.entries(step.toolArgs)
-          .map(([k, v]) => `${k}=${typeof v === 'string' ? v.substring(0, MAX_ARG_DISPLAY) : JSON.stringify(v).substring(0, MAX_ARG_DISPLAY)}`)
+          .map(([k, v]) => {
+            let str: string
+            if (typeof v === 'string') {
+              str = v
+            } else {
+              try { str = JSON.stringify(v) ?? String(v) } catch { str = String(v) }
+            }
+            return `${k}=${str.substring(0, MAX_ARG_DISPLAY)}`
+          })
           .join(', ')
         commandRecords.push(`[${step.toolName}] ${argsStr}`)
       }
