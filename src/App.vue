@@ -66,6 +66,13 @@ const showFileExplorer = ref(false)
 const sftpConfig = ref<SftpConnectionConfig | null>(null)
 const showSetupWizard = ref(false)
 
+async function onAwakenClose() {
+  showAwaken.value = false
+  try {
+    isAwakened.value = !!(await window.electronAPI.config.get('agentAwakened'))
+  } catch { /* ignore */ }
+}
+
 // AI 面板宽度
 const aiPanelWidth = ref(420)
 const isResizing = ref(false)
@@ -858,7 +865,7 @@ onUnmounted(() => {
     <!-- 关切面板（Steam 版不渲染） -->
     <Awaken
       v-if="showAwaken && !isSteamBuild"
-      @close="showAwaken = false"
+      @close="onAwakenClose"
       @awakened-change="isAwakened = $event"
     />
 
