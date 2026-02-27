@@ -205,7 +205,7 @@ describe('PromptBuilder', () => {
       })
       const prompt = builder.build()
 
-      expect(prompt).toContain('## 你的个性（重要！）')
+      expect(prompt).toContain('## 你的灵魂（重要！）')
       expect(prompt).toContain('先结论后细节')
     })
 
@@ -218,7 +218,7 @@ describe('PromptBuilder', () => {
       })
       const prompt = builder.build()
 
-      expect(prompt).toContain('## 你的个性（重要！）')
+      expect(prompt).toContain('## 你的灵魂（重要！）')
       expect(prompt).toContain('保持直接风格')
       expect(prompt).toContain('### 风格参考（MBTI）')
       expect(prompt).not.toContain('## 你的风格（重要！）')
@@ -233,7 +233,7 @@ describe('PromptBuilder', () => {
       const prompt = builder.build()
 
       expect(prompt).toContain('## 你的风格（重要！）')
-      expect(prompt).not.toContain('## 你的个性（重要！）')
+      expect(prompt).not.toContain('## 你的灵魂（重要！）')
     })
   })
 
