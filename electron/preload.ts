@@ -2824,11 +2824,14 @@ const electronAPI = {
         telegram: { botToken: string; autoConnect: boolean }
         wecom: { corpId: string; corpSecret: string; agentId: number; token: string; encodingAESKey: string; callbackPort: number; autoConnect: boolean }
         executionMode: ExecutionMode
+        sendProcessMessages: boolean
       }>,
     setAutoConnect: (platform: string, enabled: boolean) =>
       ipcRenderer.invoke('im:setAutoConnect', platform, enabled) as Promise<void>,
     setExecutionMode: (mode: ExecutionMode) =>
       ipcRenderer.invoke('im:setExecutionMode', mode) as Promise<void>,
+    setSendProcessMessages: (enabled: boolean) =>
+      ipcRenderer.invoke('im:setSendProcessMessages', enabled) as Promise<void>,
     sendNotification: (text: string, options?: { markdown?: boolean; title?: string }) =>
       ipcRenderer.invoke('im:sendNotification', text, options) as Promise<{ success: boolean; platform?: string; error?: string }>,
 

@@ -2459,6 +2459,11 @@ const savedImExecutionMode = configService.get('imExecutionMode') as string | un
 if (savedImExecutionMode && ['strict', 'relaxed', 'free'].includes(savedImExecutionMode)) {
   imService.setExecutionMode(savedImExecutionMode as ExecutionMode)
 }
+// 从持久化配置恢复 IM 过程消息设置
+const savedImSendProcess = configService.get('imSendProcessMessages')
+if (savedImSendProcess === false) {
+  imService.setSendProcessMessages(false)
+}
 
 ipcMain.handle('im:startDingTalk', async (_event, config: DingTalkConfig) => {
   // 保存配置
@@ -2555,6 +2560,7 @@ ipcMain.handle('im:getConfig', async () => {
       autoConnect: configService.get('imWeComAutoConnect') || false,
     },
     executionMode: (configService.get('imExecutionMode') as string) || 'relaxed',
+    sendProcessMessages: configService.get('imSendProcessMessages') !== false,
   }
 })
 
@@ -2575,6 +2581,11 @@ ipcMain.handle('im:setAutoConnect', async (_event, platform: string, enabled: bo
 ipcMain.handle('im:setExecutionMode', async (_event, mode: ExecutionMode) => {
   configService.set('imExecutionMode', mode)
   imService.setExecutionMode(mode)
+})
+
+ipcMain.handle('im:setSendProcessMessages', async (_event, enabled: boolean) => {
+  configService.set('imSendProcessMessages', enabled)
+  imService.setSendProcessMessages(enabled)
 })
 
 // 更新远程 Agent 运行时执行模式（仅运行时，不持久化，用于 tab 界面手动切换）

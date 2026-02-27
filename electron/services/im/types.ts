@@ -49,6 +49,8 @@ export interface IMServiceConfig {
   executionMode: ExecutionMode
   /** 空闲会话超时（分钟），默认 60 */
   sessionTimeoutMinutes: number
+  /** 是否发送过程消息（工具调用、中间文本等），关闭后仅发送最终结果和错误，默认 true */
+  sendProcessMessages: boolean
 }
 
 // ==================== 适配器接口 ====================

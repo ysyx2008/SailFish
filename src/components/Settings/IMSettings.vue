@@ -81,6 +81,8 @@ const tgAutoConnect = ref(false)
 const wcAutoConnect = ref(false)
 // 执行模式
 const executionMode = ref<ExecutionMode>('relaxed')
+// 发送过程消息
+const sendProcessMessages = ref(true)
 // 自由模式二次确认弹窗
 const showFreeModeConfirm = ref(false)
 
@@ -142,6 +144,7 @@ async function loadIMSettings() {
     wcCallbackPort.value = config.wecom?.callbackPort || 3722
     wcAutoConnect.value = config.wecom?.autoConnect || false
     executionMode.value = config.executionMode || 'relaxed'
+    sendProcessMessages.value = config.sendProcessMessages !== false
   } catch {
     // ignore
   }
@@ -341,6 +344,15 @@ async function toggleWcAutoConnect() {
     await window.electronAPI.im.setAutoConnect('wecom', wcAutoConnect.value)
   } catch {
     wcAutoConnect.value = !wcAutoConnect.value
+  }
+}
+
+async function toggleSendProcessMessages() {
+  const oldVal = sendProcessMessages.value
+  try {
+    await window.electronAPI.im.setSendProcessMessages(sendProcessMessages.value)
+  } catch {
+    sendProcessMessages.value = oldVal
   }
 }
 
@@ -794,6 +806,14 @@ function cancelFreeMode() {
           >{{ t('settings.im.modeFree') }}</button>
         </div>
         <span class="execution-mode-desc">{{ t('settings.im.executionModeDesc') }}</span>
+      </div>
+
+      <div class="process-messages-section">
+        <label class="process-messages-label">
+          <input type="checkbox" v-model="sendProcessMessages" @change="toggleSendProcessMessages" />
+          <span class="process-messages-title">{{ t('settings.im.sendProcessMessages') }}</span>
+        </label>
+        <span class="process-messages-desc">{{ t('settings.im.sendProcessMessagesDesc') }}</span>
       </div>
     </div>
 
@@ -1320,6 +1340,47 @@ function cancelFreeMode() {
 
 .mode-option-free.active {
   background: var(--danger-color, #f85149);
+}
+
+/* 过程消息开关 */
+.process-messages-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  margin-top: 8px;
+}
+
+.process-messages-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.process-messages-label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--accent-primary);
+}
+
+.process-messages-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.process-messages-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
 }
 
 .mode-option-free:hover:not(.active) {

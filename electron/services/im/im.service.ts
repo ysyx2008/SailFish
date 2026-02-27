@@ -166,6 +166,7 @@ export class IMService {
     wecom: { enabled: false, corpId: '', corpSecret: '', agentId: 0, token: '', encodingAESKey: '', callbackPort: 3722 },
     executionMode: 'relaxed',
     sessionTimeoutMinutes: 60,
+    sendProcessMessages: true,
   }
 
   /** 当前活跃的 IM 会话上下文（Agent 运行期间有效） */
@@ -207,6 +208,13 @@ export class IMService {
    */
   setExecutionMode(mode: ExecutionMode) {
     this.config.executionMode = mode
+  }
+
+  /**
+   * 设置是否发送过程消息
+   */
+  setSendProcessMessages(enabled: boolean) {
+    this.config.sendProcessMessages = enabled
   }
 
   /**
@@ -727,6 +735,7 @@ export class IMService {
       userName: msg.userName, message: fullMessage
     })
 
+    const sendProcess = this.config.sendProcessMessages
     let textBuffer = ''
     let hasSentText = false
     let lastFlushedContent = ''
@@ -785,7 +794,9 @@ export class IMService {
             } else if (!sentMessageStepIds.has(step.id)) {
               sentMessageStepIds.add(step.id)
               textBuffer = step.content
-              enqueueSend(() => flushTextBuffer())
+              if (sendProcess) {
+                enqueueSend(() => flushTextBuffer())
+              }
             }
           } else if (step.type === 'asking' && step.toolArgs) {
             const askKey = step.id || `asking:${step.toolArgs.question}`
@@ -811,6 +822,7 @@ export class IMService {
             enqueueSend(sendAsk)
           } else if (step.type === 'tool_call' && step.toolName) {
             if (step.toolName === 'ask_user') return
+            if (!sendProcess) return
             const toolCallKey = step.id || `${step.toolName}:${JSON.stringify(step.toolArgs || {})}`
             if (notifiedToolCalls.has(toolCallKey)) return
             notifiedToolCalls.add(toolCallKey)
@@ -852,7 +864,12 @@ export class IMService {
 
         onComplete: (_runId: string, result: string) => {
           const finish = async () => {
-            await flushTextBuffer()
+            if (sendProcess) {
+              await flushTextBuffer()
+            } else {
+              textBuffer = ''
+              lastFlushedContent = ''
+            }
             const resultText = result?.trim() || ''
             if (resultText && resultText !== lastFlushedContent.trim()) {
               try { await adapter.sendMarkdown(replyContext, '旗鱼', result) } catch { /* ignore */ }
@@ -872,7 +889,12 @@ export class IMService {
 
         onError: (_runId: string, error: string) => {
           const finish = async () => {
-            await flushTextBuffer()
+            if (sendProcess) {
+              await flushTextBuffer()
+            } else {
+              textBuffer = ''
+              lastFlushedContent = ''
+            }
             try { await adapter.sendText(replyContext, t('im.task_error', { error })) } catch { /* ignore */ }
           }
           enqueueSend(finish)

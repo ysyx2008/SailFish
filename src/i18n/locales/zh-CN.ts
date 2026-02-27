@@ -263,6 +263,8 @@ export default {
       autoConnect: '启动时自动连接',
       executionMode: '运行模式',
       executionModeDesc: '控制 IM Agent 执行命令时的确认策略',
+      sendProcessMessages: '发送过程消息',
+      sendProcessMessagesDesc: '关闭后仅在任务完成或出错时发送消息，减少打扰',
       modeStrict: '严格',
       modeRelaxed: '宽松',
       modeFree: '自由',

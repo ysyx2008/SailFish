@@ -263,6 +263,8 @@ export default {
       autoConnect: 'Auto-connect on startup',
       executionMode: 'Execution Mode',
       executionModeDesc: 'Controls when the IM Agent asks for confirmation before executing commands',
+      sendProcessMessages: 'Send process messages',
+      sendProcessMessagesDesc: 'When off, only sends final results or errors to reduce interruptions',
       modeStrict: 'Strict',
       modeRelaxed: 'Relaxed',
       modeFree: 'Free',
