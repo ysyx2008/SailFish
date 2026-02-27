@@ -15,7 +15,7 @@ import type {
   PromptOptions
 } from './types'
 import { getAgentTools, AgentMode } from './tools'
-import { buildSystemPrompt } from './prompt-builder'
+import { PromptBuilder } from './prompt-builder'
 import type { SkillSession } from './skills'
 import { createLogger } from '../../utils/logger'
 
@@ -106,24 +106,24 @@ export class SailFish extends Agent {
    * 构建系统提示词
    */
   protected buildSystemPrompt(context: AgentContext, options: PromptOptions): string {
-    return buildSystemPrompt(
+    return new PromptBuilder({
       context,
-      this.services.hostProfileService,
-      options.mbtiType ?? null,
-      options.knowledgeContext,
-      options.knowledgeEnabled,
-      options.conversationHistory,
-      this.executionMode,
-      options.aiRules,
-      options.personalityText,
-      options.taskSummaries,
-      options.relatedTaskDigests,
-      options.availableTaskIds,
-      options.contextKnowledgeDoc,
-      options.agentName,
-      options.watchListSummary,
-      options.bondContext
-    )
+      hostProfileService: this.services.hostProfileService,
+      executionMode: this.executionMode,
+      mbtiType: options.mbtiType ?? null,
+      knowledgeContext: options.knowledgeContext,
+      knowledgeEnabled: options.knowledgeEnabled,
+      conversationHistory: options.conversationHistory,
+      contextKnowledgeDoc: options.contextKnowledgeDoc,
+      aiRules: options.aiRules,
+      personalityText: options.personalityText,
+      agentName: options.agentName,
+      taskSummaries: options.taskSummaries,
+      relatedTaskDigests: options.relatedTaskDigests,
+      availableTaskIds: options.availableTaskIds,
+      watchListSummary: options.watchListSummary,
+      bondContext: options.bondContext,
+    }).build()
   }
   
   // ==================== 模式判断 ====================
