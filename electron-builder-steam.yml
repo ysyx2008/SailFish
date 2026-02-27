@@ -3,7 +3,7 @@
 # 排除项：embedding 模型(23M)、语音模型(293M)、sherpa-onnx(72M)、onnxruntime(74M)、
 #         @lancedb(80M)、@xenova/transformers(137M)，合计约 ~540M+
 appId: com.sfterm.terminal
-productName: SFTerm
+productName: SailFish
 protocols:
   - name: "SailFish Protocol"
     schemes:
@@ -133,7 +133,7 @@ linux:
   executableName: sfterm
   desktop:
     entry:
-      Name: SFTerm
+      Name: SailFish
       Name[zh_CN]: 旗鱼终端
       Comment: Terminal & Connection Manager
       Comment[zh_CN]: 高效的终端与连接管理工具

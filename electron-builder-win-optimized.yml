@@ -1,6 +1,6 @@
 # 专门针对Windows的优化配置
 appId: com.sfterm.terminal
-productName: SFTerm
+productName: SailFish
 directories:
   buildResources: resources
   output: release

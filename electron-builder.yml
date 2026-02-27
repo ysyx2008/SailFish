@@ -2,7 +2,7 @@
 # 如果 macOS 打包后 SSH 连接失败，尝试改回旧值排查
 # 安全回退值：appId: com.qiyu.terminal, productName: 旗鱼
 appId: com.sfterm.terminal
-productName: SFTerm
+productName: SailFish
 protocols:
   - name: "SailFish Protocol"
     schemes:
