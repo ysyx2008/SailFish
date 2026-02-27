@@ -804,7 +804,11 @@ export class IMService {
             notifiedToolCalls.add(askKey)
 
             const sendAsk = async () => {
-              await flushTextBuffer()
+              if (sendProcess) {
+                await flushTextBuffer()
+              } else {
+                textBuffer = ''
+              }
               const question = step.toolArgs.question || step.content || ''
               const options = step.toolArgs.options as string[] | undefined
               const lines = [t('im.need_reply'), '', question]
@@ -840,7 +844,11 @@ export class IMService {
 
         onNeedConfirm: (confirmation: any) => {
           const sendConfirm = async () => {
-            await flushTextBuffer()
+            if (sendProcess) {
+              await flushTextBuffer()
+            } else {
+              textBuffer = ''
+            }
             const riskEmoji = confirmation.riskLevel === 'dangerous' ? '🔴' : '🟡'
             const argsText = JSON.stringify(confirmation.toolArgs, null, 2)
               .substring(0, 500)
