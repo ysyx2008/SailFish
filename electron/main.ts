@@ -1796,6 +1796,10 @@ ipcMain.handle('config:setKeyboardShortcuts', async (_event, shortcuts: import('
   menuService.updateMenu(undefined, sanitized)
 })
 
+ipcMain.on('menu:setTerminalState', (_event, hasTerminal: boolean) => {
+  menuService.setHasTerminal(Boolean(hasTerminal))
+})
+
 ipcMain.handle('config:getSponsorStatus', async () => {
   return configService.getSponsorStatus()
 })

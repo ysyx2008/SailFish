@@ -145,6 +145,7 @@ export class MenuService {
   private language: 'zh-CN' | 'en-US' = 'zh-CN'
   private mainWindow: BrowserWindow | null = null
   private shortcuts: KeyboardShortcuts = { ...DEFAULT_KEYBOARD_SHORTCUTS }
+  private hasTerminal = false
 
   /**
    * 获取翻译文本
@@ -267,6 +268,7 @@ export class MenuService {
       {
         label: this.t('openFileManager'),
         accelerator: this.shortcuts.openFileManager || undefined,
+        enabled: this.hasTerminal,
         click: () => this.sendCommand('openFileManager')
       },
       { type: 'separator' },
@@ -527,6 +529,16 @@ export class MenuService {
     )
 
     return Menu.buildFromTemplate(template)
+  }
+
+  /**
+   * 设置是否有终端标签页（影响文件管理器等菜单项的启用状态）
+   */
+  setHasTerminal(value: boolean): void {
+    if (this.hasTerminal !== value) {
+      this.hasTerminal = value
+      this.applyMenu()
+    }
   }
 
   /**

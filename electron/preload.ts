@@ -2300,7 +2300,10 @@ const electronAPI = {
       return () => {
         ipcRenderer.removeListener('menu:command', handler)
       }
-    }
+    },
+    // 通知菜单服务终端标签页状态
+    setTerminalState: (hasTerminal: boolean) =>
+      ipcRenderer.send('menu:setTerminalState', hasTerminal)
   },
 
   // 文件管理器窗口操作

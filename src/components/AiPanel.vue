@@ -44,6 +44,19 @@ const configStore = useConfigStore()
 const terminalStore = useTerminalStore()
 const showSettings = inject<() => void>('showSettings')
 
+const isStandaloneAssistant = computed(() => {
+  const tab = terminalStore.tabs.find(t => t.id === props.tabId)
+  return tab?.type === 'assistant'
+})
+
+const handleClose = () => {
+  if (isStandaloneAssistant.value) {
+    terminalStore.closeTab(props.tabId)
+  } else if (terminalStore.tabs.some(t => t.id === props.tabId)) {
+    emit('close')
+  }
+}
+
 // Refs
 const messagesRef = ref<HTMLDivElement | null>(null)
 
@@ -967,7 +980,7 @@ onUnmounted(() => {
         <button class="btn-icon" @click="clearMessages" :title="t('ai.clearChat')">
           <Trash2 :size="16" />
         </button>
-        <button class="btn-icon" @click="emit('close')" :title="t('ai.closePanel')">
+        <button class="btn-icon" @click="handleClose" :title="t('ai.closePanel')">
           <X :size="16" />
         </button>
       </div>

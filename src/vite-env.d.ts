@@ -1454,6 +1454,7 @@ interface Window {
     // 菜单命令监听
     menu: {
       onCommand: (callback: (data: { command: string; args: unknown[] }) => void) => () => void
+      setTerminalState: (hasTerminal: boolean) => void
     }
     // 邮箱相关
     email: {

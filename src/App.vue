@@ -51,6 +51,8 @@ const showSmartPatrol = ref(false)
 const showAwaken = ref(false)
 const isAwakened = ref(false)
 
+const hasTerminalTab = computed(() => terminalStore.tabs.some(t => t.type === 'local' || t.type === 'ssh'))
+
 // UI 主题
 const currentUiTheme = computed(() => configStore.uiTheme)
 // 当前主题的颜色模式（dark/light）
@@ -565,6 +567,11 @@ watch(() => Object.keys(terminalStore.pendingSchedulerTasks).length, (count) => 
   }
 })
 
+// 同步终端标签页状态到菜单栏（控制文件管理器等菜单项的启用/禁用）
+watch(hasTerminalTab, (val) => {
+  window.electronAPI.menu.setTerminalState(val)
+}, { immediate: true })
+
 const openConnectionSettings = (tab?: string) => {
   settingsInitialTab.value = tab || undefined
   showSettings.value = true
@@ -728,7 +735,7 @@ onUnmounted(() => {
       </div>
       <div class="header-right">
         <template v-if="!isSteamBuild">
-          <button class="btn-icon" @click="toggleAiPanel" :title="t('header.aiAssistant')">
+          <button v-if="hasTerminalTab" class="btn-icon" @click="toggleAiPanel" :title="t('header.aiAssistant')">
             <Bot :size="18" />
           </button>
           <button class="btn-icon" :class="{ 'awakened-active': isAwakened }" @click="showAwaken = true" :title="t('awaken.title') + ' — ' + t('awaken.description')">
