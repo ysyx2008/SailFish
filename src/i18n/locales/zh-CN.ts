@@ -717,7 +717,13 @@ export default {
       openSettings: '打开控制面板',
       aiDebugConsole: 'AI 调试控制台',
     },
+    groups: {
+      create: '新建',
+      view: '视图',
+      edit: '编辑',
+    },
     recording: '请按下快捷键...',
+    clickToSet: '点击设置',
     reset: '恢复默认',
     resetAll: '全部恢复默认',
     resetAllConfirm: '确定将所有快捷键恢复为默认设置吗？',

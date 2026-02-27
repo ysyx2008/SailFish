@@ -717,7 +717,13 @@ export default {
       openSettings: 'Open Control Panel',
       aiDebugConsole: 'AI Debug Console',
     },
+    groups: {
+      create: 'Create',
+      view: 'View',
+      edit: 'Edit',
+    },
     recording: 'Press a shortcut...',
+    clickToSet: 'Click to set',
     reset: 'Reset',
     resetAll: 'Reset All',
     resetAllConfirm: 'Are you sure you want to reset all shortcuts to defaults?',
