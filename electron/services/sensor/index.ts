@@ -103,6 +103,8 @@ export class SensorService {
       this.heartbeat.setInterval(config.heartbeatIntervalMinutes)
     }
 
+    const startTasks: Array<Promise<void>> = []
+
     for (const [id, sensor] of this.sensors) {
       if (id === 'heartbeat' && !heartbeatEnabled) {
         log.info('Heartbeat disabled, skipping')
@@ -112,13 +114,14 @@ export class SensorService {
         log.info(`${id} not ready, skipping`)
         continue
       }
-      try {
-        await sensor.start()
-      } catch (err) {
-        log.error(`Failed to start sensor ${id}:`, err)
-      }
+      startTasks.push(
+        sensor.start().catch(err => {
+          log.error(`Failed to start sensor ${id}:`, err)
+        })
+      )
     }
 
+    await Promise.allSettled(startTasks)
     log.info('Started')
   }
 
