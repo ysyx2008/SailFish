@@ -49,6 +49,7 @@ const showAiPanel = ref(isSteamBuild ? false : true)
 const showSettings = ref(false)
 const showSmartPatrol = ref(false)
 const showAwaken = ref(false)
+const isAwakened = ref(false)
 
 // UI 主题
 const currentUiTheme = computed(() => configStore.uiTheme)
@@ -167,6 +168,11 @@ let cleanupWatchActivateMessage: (() => void) | null = null
 onMounted(async () => {
   // 注册全局快捷键
   document.addEventListener('keydown', handleGlobalKeydown)
+
+  // 加载觉醒状态
+  try {
+    isAwakened.value = !!(await window.electronAPI.config.get('agentAwakened'))
+  } catch { /* ignore */ }
 
   // 注册终端数量查询响应（用于退出确认）
   cleanupTerminalCountListener = window.electronAPI.window.onRequestTerminalCount(() => {
@@ -725,8 +731,8 @@ onUnmounted(() => {
           <button class="btn-icon" @click="toggleAiPanel" :title="t('header.aiAssistant')">
             <Bot :size="18" />
           </button>
-          <button class="btn-icon" @click="showAwaken = true" :title="t('awaken.title')">
-            <Heart :size="18" />
+          <button class="btn-icon" :class="{ 'awakened-active': isAwakened }" @click="showAwaken = true" :title="t('awaken.title') + ' — ' + t('awaken.description')">
+            <Heart :size="18" fill="currentColor" />
           </button>
           <ConnectionStatusPopover @open-settings="openConnectionSettings" />
         </template>
@@ -846,6 +852,7 @@ onUnmounted(() => {
     <Awaken
       v-if="showAwaken && !isSteamBuild"
       @close="showAwaken = false"
+      @awakened-change="isAwakened = $event"
     />
 
     <!-- 知识库升级进度提示（Steam 版不渲染） -->
@@ -945,6 +952,10 @@ onUnmounted(() => {
   height: 30px;
   padding: 6px;
   border-radius: 6px;
+}
+
+.btn-icon.awakened-active {
+  color: #10b981;
 }
 
 .header-center {

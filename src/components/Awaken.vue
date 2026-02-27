@@ -15,7 +15,7 @@ const props = defineProps<{
   initialTab?: string
 }>()
 
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; 'awakened-change': [value: boolean] }>()
 
 // ==================== Types ====================
 
@@ -303,6 +303,7 @@ async function toggleAwakened() {
   try {
     await window.electronAPI.sensor.setAwakened(awakened.value, heartbeatInterval.value)
     awakenedRunning.value = awakened.value
+    emit('awakened-change', awakened.value)
   } catch (e) {
     console.error('Failed to toggle awakened:', e)
     awakened.value = prev
@@ -497,6 +498,8 @@ onUnmounted(() => {
           <X :size="18" />
         </button>
       </div>
+
+      <p class="awaken-desc">{{ t('awaken.description') }}</p>
 
       <!-- 觉醒主控栏 -->
       <div class="awaken-bar">
@@ -998,6 +1001,16 @@ onUnmounted(() => {
 .panel-header .btn-icon:hover { background: var(--bg-hover); color: var(--text-primary); }
 
 /* ==================== Awaken Bar ==================== */
+
+.awaken-desc {
+  margin: 0;
+  padding: 6px 16px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
 
 .awaken-bar {
   display: flex;
