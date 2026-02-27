@@ -2,7 +2,21 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.11.1 (2026-02-27) (Latest)
+## v10.11.2 (2026-02-27) (Latest)
+
+Bug fixes for IM message routing, Watch system cleanup, and backend service initialization reliability.
+
+### Improvements
+- 🧹 **Watch Shared State Removed**: Removed cross-Watch shared state (sharedState) mechanism to simplify the Watch architecture
+- 💡 **Awaken Interval Hint**: Added descriptive text to the Awaken interval input field for better clarity
+
+### Bug Fixes
+- 🔧 Fixed IM `talk_to_user` proactive messages and IM replies not routing to the correct tab with proper context continuity
+- 🔧 Fixed event-bus using dynamic import causing module-not-found errors in packaged builds — switched to static import
+- 🔧 Fixed backend service initialization depending on `did-finish-load` event, which could cause race conditions
+- 🔧 Fixed `updateContextKnowledgeAsync` crashing with TypeError when `toolArgs` is undefined
+
+## v10.11.1 (2026-02-27)
 
 Internal improvements to prompt engineering and Agent relationship tracking, plus bug fixes for Awaken mode and Steam edition.
 
