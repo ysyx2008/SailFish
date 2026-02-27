@@ -970,8 +970,11 @@ export abstract class Agent {
       }
     }
     
-    // 添加当前用户消息（如果有图片，附带 images 字段）
-    const enhancedMessage = this.enhanceUserMessage(message)
+    // 添加当前用户消息（如果有图片，附带 images 字段；如有主动消息上下文，注入到 API 消息中）
+    let enhancedMessage = this.enhanceUserMessage(message)
+    if (run.context.proactiveContext) {
+      enhancedMessage = run.context.proactiveContext.trim() + '\n\n' + enhancedMessage
+    }
     const userMsg: AiMessage = { role: 'user', content: enhancedMessage }
     if (run.context.images && run.context.images.length > 0) {
       userMsg.images = run.context.images

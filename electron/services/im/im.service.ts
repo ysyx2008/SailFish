@@ -696,19 +696,19 @@ export class IMService {
     if (!this.deps) return
 
     this.activeSession = { adapter, replyContext }
-    let fullMessage = this.buildAgentMessage(msg)
+    const fullMessage = this.buildAgentMessage(msg)
     const agentId = AgentService.COMPANION_AGENT_ID
 
-    // 如果有 talk_to_user 发送的主动消息上下文，注入到本次对话中
+    // 如果有 talk_to_user 发送的主动消息上下文，通过 AgentContext 注入（不污染 UI 显示的用户消息）
+    let proactiveContext: string | undefined
     if (this.pendingProactiveContext) {
       const ctx = this.pendingProactiveContext
       const elapsed = Date.now() - ctx.timestamp
       // 30 分钟内的主动消息才注入（避免过期上下文干扰）
       if (elapsed < 30 * 60 * 1000) {
-        const contextPrefix = ctx.title
-          ? `[${t('im.proactive_context_prefix')}: ${ctx.title}]\n${ctx.message}\n\n`
-          : `[${t('im.proactive_context_prefix')}]\n${ctx.message}\n\n`
-        fullMessage = contextPrefix + fullMessage
+        proactiveContext = ctx.title
+          ? `[${t('im.proactive_context_prefix')}: ${ctx.title}]\n${ctx.message}`
+          : `[${t('im.proactive_context_prefix')}]\n${ctx.message}`
         log.debug('Injected proactive context into IM reply:', {
           title: ctx.title, elapsedMs: elapsed, contextLength: ctx.message.length
         })
@@ -761,7 +761,8 @@ export class IMService {
         terminalOutput: [] as string[],
         systemInfo: { os: process.platform, shell: process.env.SHELL || '/bin/bash' },
         terminalType: 'assistant' as const,
-        remoteChannel: msg.platform as any
+        remoteChannel: msg.platform as any,
+        proactiveContext
       }
 
       await this.deps.agentService.runAssistant(agentId, fullMessage, context, {
