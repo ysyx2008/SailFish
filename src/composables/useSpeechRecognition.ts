@@ -68,14 +68,14 @@ export function useSpeechRecognition() {
    * 检查并初始化语音识别服务
    */
   async function checkAndInitialize(): Promise<boolean> {
-    console.log('[useSpeechRecognition] checkAndInitialize called')
+    console.debug('[useSpeechRecognition] checkAndInitialize called')
     try {
       // 检查模型是否可用
       const modelInfo = await window.electronAPI.speech.getModelInfo()
-      console.log('[useSpeechRecognition] modelInfo:', modelInfo)
+      console.debug('[useSpeechRecognition] modelInfo:', modelInfo)
       if (!modelInfo.available) {
         error.value = '语音模型未安装'
-        console.log('[useSpeechRecognition] Model not available')
+        console.debug('[useSpeechRecognition] Model not available')
         return false
       }
 

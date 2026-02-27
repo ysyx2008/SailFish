@@ -233,6 +233,7 @@ const {
   isTranscribing,
   isInitializing: isSpeechInitializing,
   error: speechError,
+  checkAndInitialize: initSpeech,
   startRecording,
   stopRecording,
   cancelRecording
@@ -946,6 +947,10 @@ onMounted(() => {
   document.addEventListener('keydown', handlePTTKeyDown)
   document.addEventListener('keyup', handlePTTKeyUp)
   window.addEventListener('blur', handlePTTWindowBlur)
+
+  if (configStore.keyboardShortcuts.voiceInput) {
+    initSpeech()
+  }
 })
 
 onUnmounted(() => {
