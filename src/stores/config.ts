@@ -430,10 +430,18 @@ export const useConfigStore = defineStore('config', () => {
         await window.electronAPI.email.syncAccounts(plainAccounts)
       }
 
-      // 加载快捷键设置
+      // 加载快捷键设置（含旧版迁移）
       const savedShortcuts = await window.electronAPI.config.get('keyboardShortcuts') as Partial<KeyboardShortcuts> | null | undefined
       if (savedShortcuts && typeof savedShortcuts === 'object') {
-        keyboardShortcuts.value = { ...DEFAULT_KEYBOARD_SHORTCUTS, ...savedShortcuts }
+        const merged = { ...DEFAULT_KEYBOARD_SHORTCUTS, ...savedShortcuts }
+        // 迁移：旧版没有 newAssistantTab，CmdOrCtrl+T 绑定在 newLocalTerminal 上
+        if (!('newAssistantTab' in savedShortcuts)) {
+          merged.newAssistantTab = DEFAULT_KEYBOARD_SHORTCUTS.newAssistantTab
+          merged.newLocalTerminal = DEFAULT_KEYBOARD_SHORTCUTS.newLocalTerminal
+          // 持久化迁移结果
+          await window.electronAPI.config.setKeyboardShortcuts({ ...merged })
+        }
+        keyboardShortcuts.value = merged
       }
 
       // 加载日历账户

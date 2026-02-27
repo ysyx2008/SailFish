@@ -581,7 +581,12 @@ function setupWindowServices() {
 
   const lang = configService?.getLanguage() || 'zh-CN'
   menuService.setLanguage(lang)
-  const shortcuts = configService?.get('keyboardShortcuts')
+  let shortcuts = configService?.get('keyboardShortcuts')
+  if (shortcuts && !('newAssistantTab' in shortcuts)) {
+    const { DEFAULT_KEYBOARD_SHORTCUTS } = require('./services/config.service')
+    shortcuts = { ...DEFAULT_KEYBOARD_SHORTCUTS, ...shortcuts, newAssistantTab: DEFAULT_KEYBOARD_SHORTCUTS.newAssistantTab, newLocalTerminal: DEFAULT_KEYBOARD_SHORTCUTS.newLocalTerminal }
+    configService?.set('keyboardShortcuts', shortcuts)
+  }
   if (shortcuts) {
     menuService.setShortcuts(shortcuts)
   }
