@@ -59,6 +59,14 @@ export interface IMConnectedTrigger {
   type: 'im_connected'
 }
 
+export interface AppLifecycleTrigger {
+  type: 'app_lifecycle'
+}
+
+export interface MilestoneTrigger {
+  type: 'milestone'
+}
+
 export interface CommandProbeTrigger {
   type: 'command_probe'
   command: string
@@ -99,6 +107,8 @@ export type WatchTrigger =
   | CalendarTrigger
   | EmailTrigger
   | IMConnectedTrigger
+  | AppLifecycleTrigger
+  | MilestoneTrigger
   | CommandProbeTrigger
   | HttpProbeTrigger
 

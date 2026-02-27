@@ -162,6 +162,10 @@ interface StoreSchema {
   watchHeartbeatInterval: number  // Watch 心跳间隔（分钟）
   watchEventPoolDrainMinutes: number  // EventPool 排水间隔（分钟），默认 15
   watchQuietHours: { start: string; end: string } | null  // 静默时段（24h 格式），null 表示不启用
+  // App Lifecycle / 里程碑
+  appLifecycleFirstUseDate: number       // 首次使用时间戳
+  appLifecycleTotalConversations: number  // 累计对话次数
+  appLifecycleAchievedMilestones: string[] // 已达成的里程碑 ID
 }
 
 const defaultConfig: StoreSchema = {
@@ -225,7 +229,10 @@ const defaultConfig: StoreSchema = {
   watchHeartbeatEnabled: true,
   watchHeartbeatInterval: 30,
   watchEventPoolDrainMinutes: 15,
-  watchQuietHours: null
+  watchQuietHours: null,
+  appLifecycleFirstUseDate: 0,
+  appLifecycleTotalConversations: 0,
+  appLifecycleAchievedMilestones: []
 }
 
 export class ConfigService {

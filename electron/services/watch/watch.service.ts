@@ -360,7 +360,7 @@ export class WatchService {
 
   private static readonly AUTO_TRIGGER_TYPES = new Set([
     'heartbeat', 'cron', 'interval', 'email', 'calendar', 'file_change', 'im_connected',
-    'command_probe', 'http_probe'
+    'command_probe', 'http_probe', 'app_lifecycle', 'milestone'
   ])
 
   private async executeWatch(watch: WatchDefinition, event: SensorEvent): Promise<WatchExecutionResult> {
@@ -698,8 +698,39 @@ export class WatchService {
         return `命令探针 \`${payload.command}\`：${payload.reason}${payload.output ? `\n输出：${String(payload.output).substring(0, 500)}` : ''}`
       case 'http_probe':
         return `HTTP 探针 ${payload.method || 'GET'} ${payload.url}：${payload.reason}${payload.status != null ? ` (HTTP ${payload.status})` : ''}`
+      case 'app_lifecycle':
+        return this.describeAppLifecycle(payload)
+      case 'milestone':
+        return this.describeMilestone(payload)
       default:
         return `${type}${payload.source ? ` 来自 ${payload.source}` : ''}`
+    }
+  }
+
+  private describeAppLifecycle(payload: Record<string, unknown>): string {
+    const event = payload.event as string
+    const days = payload.daysTogether as number | undefined
+    const convos = payload.totalConversations as number | undefined
+    const statsNote = days != null ? `（已陪伴 ${days} 天，共 ${convos ?? 0} 次对话）` : ''
+    switch (event) {
+      case 'app_started': return `应用启动${statsNote}`
+      case 'app_will_quit': return `应用即将退出${statsNote}`
+      case 'app_resumed': return '系统从睡眠/锁屏恢复'
+      case 'app_idle': return `系统空闲（${payload.idleSeconds}秒）`
+      case 'awakening_enabled': return '用户开启了觉醒模式'
+      case 'awakening_disabled': return '用户关闭了觉醒模式'
+      default: return `应用事件：${event}`
+    }
+  }
+
+  private describeMilestone(payload: Record<string, unknown>): string {
+    const mt = payload.milestoneType as string
+    const value = payload.value as number
+    switch (mt) {
+      case 'days_together': return `里程碑：你们已经在一起 ${value} 天了！`
+      case 'conversations': return `里程碑：累计完成了第 ${value} 次对话！`
+      case 'anniversary': return `里程碑：${value} 周年纪念日！`
+      default: return `里程碑：${mt} = ${value}`
     }
   }
 
@@ -1136,6 +1167,8 @@ export class WatchService {
         case 'webhook':
         case 'manual':
         case 'im_connected':
+        case 'app_lifecycle':
+        case 'milestone':
           break
         case 'file_change':
           if (!trigger.paths || trigger.paths.length === 0) {
@@ -1216,15 +1249,21 @@ export class WatchService {
   private static readonly LEGACY_PATROL_ID = '__daily_patrol__'
 
   /** 唤醒关切的 prompt */
-  private static readonly WAKEUP_PROMPT = `你刚被唤醒。上方的「触发事件」是传感器已采集的最新数据（日历、邮件、文件变更、IM 上线等）。
+  private static readonly WAKEUP_PROMPT = `你刚被唤醒。上方的「触发事件」是传感器已采集的最新数据（日历、邮件、文件变更、IM 上线、应用生命周期、里程碑等）。
 用户看不到你的常规输出，只有通过 talk_to_user 工具发送的消息才能送达用户。
 有话想说就调用 talk_to_user，没有值得打扰用户的事就直接结束。
 请结合你的个性设定决定：若你的个性倾向主动交流，即便无新事件也可简短问候或分享想法。
-当触发事件是「IM 上线」时，说明用户刚通过 IM 平台连上了你，这是主动打招呼的好时机——用你的个性和上下文决定怎么说，别用模板化的问候。`
+特殊事件处理指南：
+- IM 上线：用户刚通过 IM 平台连上了你，主动打招呼。
+- 应用启动：用户刚打开了应用，可以根据当天时间和陪伴天数来决定是否问好。
+- 里程碑（陪伴天数/对话次数/周年纪念日）：这是值得庆祝的时刻，用真诚而有个性的方式表达。
+以上都不要用模板化的措辞，用你自己的个性和上下文来决定说什么、怎么说。`
 
   private static readonly WAKEUP_TRIGGERS: WatchTrigger[] = [
     { type: 'heartbeat' },
     { type: 'im_connected' },
+    { type: 'app_lifecycle' },
+    { type: 'milestone' },
   ]
 
   /** 确保内置「唤醒」关切存在（觉醒模式开启时调用），幂等 */
@@ -1248,7 +1287,7 @@ export class WatchService {
             this.store.updateState(WatchService.WAKEUP_ID, rest)
           }
           needsUpdate = true
-        } else if (!existing.prompt?.includes('IM 上线')) {
+        } else if (!existing.prompt?.includes('里程碑')) {
           needsUpdate = true
         }
 
@@ -1258,7 +1297,7 @@ export class WatchService {
             triggers: WatchService.WAKEUP_TRIGGERS,
             updatedAt: Date.now()
           })
-          log.info('唤醒关切已迁移（支持 IM 上线事件）')
+          log.info('唤醒关切已迁移（支持生命周期与里程碑事件）')
         }
         return true
       }

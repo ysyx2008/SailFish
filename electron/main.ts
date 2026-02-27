@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog, session, Tray, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, dialog, session, Tray, Menu, nativeImage, powerMonitor } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import path, { join } from 'path'
 import * as fs from 'fs'
@@ -962,6 +962,8 @@ app.whenReady().then(async () => {
       sensorService.start({
         heartbeatEnabled: awakened,
         heartbeatIntervalMinutes: heartbeatInterval
+      }).then(() => {
+        sensorService.appLifecycle.notifyAppStarted()
       }).catch(e => {
         log.error('Sensor 服务启动失败:', e)
       })
@@ -972,6 +974,11 @@ app.whenReady().then(async () => {
           log.error('唤醒关切创建失败:', e)
         }
       }
+
+      // 系统电源事件：休眠恢复
+      powerMonitor.on('resume', () => {
+        sensorService.appLifecycle.notifyResumed()
+      })
     } catch (e) {
       log.error('Watch/Sensor 服务初始化失败:', e)
     }
@@ -1095,6 +1102,7 @@ app.whenReady().then(async () => {
 // 处理 Cmd+Q / 托盘退出
 app.on('before-quit', (event) => {
   isQuitting = true
+  sensorService.appLifecycle.notifyAppWillQuit()
   
   if (forceQuit) {
     return
@@ -2022,6 +2030,7 @@ ipcMain.handle('sensor:setAwakened', async (_event, awakened: boolean, intervalM
   }
   configService.set('agentAwakened', awakened)
   configService.set('watchHeartbeatEnabled', awakened)
+  sensorService.appLifecycle.notifyAwakeningChanged(awakened)
   if (validInterval) {
     configService.set('watchHeartbeatInterval', validInterval)
   }
@@ -2191,6 +2200,7 @@ ipcMain.handle('agent:run', async (event, { ptyId, message, context, config, pro
       if (!event.sender.isDestroyed()) {
         event.sender.send('agent:complete', { agentId, ptyId, result, pendingUserMessages })
       }
+      sensorService.appLifecycle.notifyConversationCompleted()
     },
     onError: (agentId: string, error: string) => {
       if (!event.sender.isDestroyed()) {
@@ -2303,6 +2313,7 @@ ipcMain.handle('agent:runStandalone', async (event, { agentId, message, context,
         event.sender.send('agent:complete', { agentId, result, pendingUserMessages })
       }
       if (isRemote) wcs.onAgentComplete(result)
+      sensorService.appLifecycle.notifyConversationCompleted()
     },
     onError: (_runId: string, error: string) => {
       if (!event.sender.isDestroyed()) {

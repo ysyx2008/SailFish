@@ -11,6 +11,7 @@ import { CalendarSensor } from './calendar-sensor'
 import { EmailSensor } from './email-sensor'
 import { CommandProbeSensor } from './command-probe-sensor'
 import { HttpProbeSensor } from './http-probe-sensor'
+import { AppLifecycleSensor } from './app-lifecycle-sensor'
 import { createLogger } from '../../utils/logger'
 
 const log = createLogger('SensorService')
@@ -39,6 +40,8 @@ export class SensorService {
   readonly commandProbe: CommandProbeSensor
   /** HTTP 探针传感器 */
   readonly httpProbe: HttpProbeSensor
+  /** 应用生命周期与里程碑传感器 */
+  readonly appLifecycle: AppLifecycleSensor
 
   constructor(config?: SensorServiceConfig) {
     this.eventBus = getEventBus()
@@ -51,6 +54,7 @@ export class SensorService {
     this.email = new EmailSensor(this.eventBus)
     this.commandProbe = new CommandProbeSensor(this.eventBus)
     this.httpProbe = new HttpProbeSensor(this.eventBus)
+    this.appLifecycle = new AppLifecycleSensor(this.eventBus)
 
     this.register(this.heartbeat)
     this.register(this.fileWatch)
@@ -58,6 +62,7 @@ export class SensorService {
     this.register(this.email)
     this.register(this.commandProbe)
     this.register(this.httpProbe)
+    this.register(this.appLifecycle)
   }
 
   get running(): boolean {
@@ -169,6 +174,9 @@ export class SensorService {
       } else if (s.id === 'http_probe') {
         const hp = s as HttpProbeSensor
         base.details = { targetCount: hp.getTargetCount() }
+      } else if (s.id === 'app_lifecycle') {
+        const al = s as AppLifecycleSensor
+        base.details = al.getStatus()
       }
 
       return base
@@ -206,4 +214,5 @@ export { CalendarSensor } from './calendar-sensor'
 export { EmailSensor } from './email-sensor'
 export { CommandProbeSensor } from './command-probe-sensor'
 export { HttpProbeSensor } from './http-probe-sensor'
+export { AppLifecycleSensor } from './app-lifecycle-sensor'
 export type { Sensor, SensorEvent, EventBus, EventHandler } from './types'

@@ -74,7 +74,7 @@ SFTerminal/
 │       │   ├── risk-assessor.ts # 风险评估
 │       │   └── i18n.ts          # Agent 国际化
 │       ├── watch/               # Watch 感知层
-│       ├── sensor/              # 传感器系统（heartbeat/file-watch/calendar/email）
+│       ├── sensor/              # 传感器系统（heartbeat/file-watch/calendar/email/app-lifecycle）
 │       ├── terminal-awareness/  # 终端感知（进程监控）
 │       ├── knowledge/           # 知识库（L2 知识文档，向量存储 + 嵌入 + BM25）
 │       ├── im/                  # IM 集成（钉钉/飞书/企业微信/Slack/Telegram）
@@ -147,8 +147,8 @@ SFTerminal/
 ### 关切系统（Watch / Sensor Loop）
 - **关切（Watch）**：Agent 的"关注点"配置，定义触发条件、执行 prompt、输出渠道
 - **Agent 驱动**：关切主要由 Agent 通过 `watch_*` 工具创建和管理，UI 面板为只读仪表盘
-- **触发器（8 种）**：cron / interval / heartbeat / webhook / manual / file_change / calendar / email
-- **传感器（4 种）**：HeartbeatSensor / FileWatchSensor / CalendarSensor / EmailSensor
+- **触发器（10 种）**：cron / interval / heartbeat / webhook / manual / file_change / calendar / email / app_lifecycle / milestone
+- **传感器（5 种）**：HeartbeatSensor / FileWatchSensor / CalendarSensor / EmailSensor / AppLifecycleSensor（生命周期事件 + 里程碑检查）
 - **Webhook**：Gateway 的 `POST /hooks/:token` 端点，外部系统可触发 Watch
 - **Pre-check**：执行前让 AI 自主判断"该不该做"（Agency of Omission）
 - **有状态工作流**：Watch 自身状态 + 跨 Watch 共享状态，Agent 可通过 `STATE_UPDATE` / `SHARED_UPDATE` 指令自动更新

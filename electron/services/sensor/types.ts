@@ -11,6 +11,7 @@ export type SensorEventType =
   | 'heartbeat' | 'cron' | 'interval' | 'webhook' | 'manual'
   | 'file_change' | 'calendar' | 'email'
   | 'im_connected'
+  | 'app_lifecycle' | 'milestone'
   | 'command_probe' | 'http_probe'
 
 export type SensorEventPriority = 'high' | 'normal' | 'low'
