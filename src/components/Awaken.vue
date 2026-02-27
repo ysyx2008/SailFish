@@ -537,7 +537,8 @@ onUnmounted(() => {
             {{ awakenReady ? t('awaken.running') : t('awaken.stopped') }}
           </span>
         </div>
-        <div class="awaken-center" :class="{ pending: !awakenReady }">
+        <div class="awaken-center" :class="{ pending: !awakenReady }" :title="t('awaken.intervalDesc')">
+          <span class="interval-label">{{ t('awaken.intervalPrefix') }}</span>
           <input
             type="number"
             v-model.number="heartbeatInterval"
@@ -546,7 +547,8 @@ onUnmounted(() => {
             :disabled="!awakenReady"
             @change="updateAwakenInterval"
           />
-          <span class="interval-unit">min</span>
+          <span class="interval-unit">{{ t('awaken.intervalUnit') }}</span>
+          <span class="interval-label">{{ t('awaken.intervalSuffix') }}</span>
         </div>
         <div class="awaken-right">
           <span v-if="patrolStatus !== 'idle'" class="patrol-hint" :class="patrolStatus">
@@ -1205,6 +1207,11 @@ onUnmounted(() => {
 .interval-unit {
   font-size: 11px;
   color: var(--text-tertiary);
+}
+.interval-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
 }
 
 .awaken-right {
