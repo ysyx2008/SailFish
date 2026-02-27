@@ -640,6 +640,11 @@ export async function loadUserSkillTool(
 
 /**
  * 发消息给用户（通过可用渠道：IM、应用内通知等）
+ *
+ * 桌面通知统一使用 __companion__ agentId：
+ * - talk_to_user 可能由任意 Agent（如 __watch__）调用，但用户回复（无论 IM 还是应用内）
+ *   始终路由到 companion agent，使用统一 agentId 确保 tab 复用和上下文连贯
+ * - 调用方 Agent 的工具执行步骤仍保留在其自身的 tab/上下文中
  */
 export async function messageUser(
   args: Record<string, unknown>,
@@ -653,6 +658,8 @@ export async function messageUser(
   }
 
   const deliveredVia: string[] = []
+  // 与 AgentService.COMPANION_AGENT_ID 保持一致（不直接 import 以避免循环依赖）
+  const companionAgentId = '__companion__'
 
   // 尝试通过 IM 渠道发送
   try {
@@ -675,6 +682,11 @@ export async function messageUser(
       })
       if (result.success) {
         deliveredVia.push(result.platform || 'IM')
+        try {
+          imService.addProactiveContext(message, title)
+        } catch (e) {
+          log.debug('messageUser: failed to record proactive context:', e)
+        }
       }
     }
   } catch (e) {
@@ -690,7 +702,7 @@ export async function messageUser(
       const mainWindow = windows[0]
       if (!mainWindow.isDestroyed()) {
         mainWindow.webContents.send('watch:proactive-message', {
-          agentId: executor.agentId || '__companion__',
+          agentId: companionAgentId,
           message,
           watchName: title || ''
         })
@@ -719,7 +731,7 @@ export async function messageUser(
             if (!win.isDestroyed()) {
               win.show()
               win.focus()
-              win.webContents.send('watch:activate-message', { agentId: executor.agentId || '__companion__' })
+              win.webContents.send('watch:activate-message', { agentId: companionAgentId })
             }
           }
         })

@@ -178,6 +178,9 @@ export class IMService {
   /** 本次运行期间已发送过 im_connected 事件的平台（避免重连时重复触发） */
   private emittedConnectPlatforms = new Set<IMPlatform>()
 
+  /** talk_to_user 发送的主动消息上下文，供下次 IM 回复时注入 companion agent */
+  private pendingProactiveContext: { message: string; title?: string; timestamp: number } | null = null
+
   constructor() {
     this.loadPersistedContacts()
     this.lastContact = this.pickMostRecentContact(this.contactsByPlatform)
@@ -204,6 +207,14 @@ export class IMService {
    */
   setExecutionMode(mode: ExecutionMode) {
     this.config.executionMode = mode
+  }
+
+  /**
+   * 记录 talk_to_user 发送的主动消息上下文
+   * 当用户从 IM 回复时，companion agent 可获知之前发了什么
+   */
+  addProactiveContext(message: string, title?: string): void {
+    this.pendingProactiveContext = { message, title, timestamp: Date.now() }
   }
 
   // ==================== IM 生命周期事件 ====================
@@ -685,8 +696,25 @@ export class IMService {
     if (!this.deps) return
 
     this.activeSession = { adapter, replyContext }
-    const fullMessage = this.buildAgentMessage(msg)
+    let fullMessage = this.buildAgentMessage(msg)
     const agentId = AgentService.COMPANION_AGENT_ID
+
+    // 如果有 talk_to_user 发送的主动消息上下文，注入到本次对话中
+    if (this.pendingProactiveContext) {
+      const ctx = this.pendingProactiveContext
+      const elapsed = Date.now() - ctx.timestamp
+      // 30 分钟内的主动消息才注入（避免过期上下文干扰）
+      if (elapsed < 30 * 60 * 1000) {
+        const contextPrefix = ctx.title
+          ? `[${t('im.proactive_context_prefix')}: ${ctx.title}]\n${ctx.message}\n\n`
+          : `[${t('im.proactive_context_prefix')}]\n${ctx.message}\n\n`
+        fullMessage = contextPrefix + fullMessage
+        log.debug('Injected proactive context into IM reply:', {
+          title: ctx.title, elapsedMs: elapsed, contextLength: ctx.message.length
+        })
+      }
+      this.pendingProactiveContext = null
+    }
 
     try {
       await adapter.sendText(replyContext, t('im.processing'))
