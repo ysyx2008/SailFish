@@ -874,14 +874,34 @@ app.whenReady().then(async () => {
   setupWindowServices()
   createTray()
 
-  // 窗口内容加载完成后，异步初始化重量级服务
-  mainWindow?.webContents.on('did-finish-load', async () => {
-    // 稍微延迟初始化，确保前端 Vue 组件已挂载并注册好事件监听器
-    setTimeout(() => {
+  // 知识库需要等前端 Vue 组件挂载，优先走 did-finish-load
+  let knowledgeInitDone = false
+  mainWindow?.webContents.on('did-finish-load', () => {
+    log.info('mainWindow did-finish-load fired')
+    if (!knowledgeInitDone) {
+      knowledgeInitDone = true
+      setTimeout(() => {
+        initKnowledgeService().catch(e => {
+          log.error('知识库服务初始化失败:', e)
+        })
+      }, 500)
+    }
+  })
+  // 兜底：如果 did-finish-load 10s 内未触发，强制初始化
+  setTimeout(() => {
+    if (!knowledgeInitDone) {
+      knowledgeInitDone = true
+      log.warn('did-finish-load 未触发，兜底初始化知识库')
       initKnowledgeService().catch(e => {
         log.error('知识库服务初始化失败:', e)
       })
-    }, 500)
+    }
+  }, 10_000)
+
+  // 后端服务初始化：直接在 app.whenReady 中执行，不依赖 did-finish-load
+  // 打包版中 did-finish-load 可能因事件竞争不触发，导致所有后端服务不启动
+  ;(async () => {
+    log.info('开始初始化后端服务')
 
     // 初始化定时任务调度服务
     try {
@@ -1086,6 +1106,8 @@ app.whenReady().then(async () => {
         }).catch(e => log.error('IM: WeCom auto-connect error:', e))
       }
     }
+  })().catch(e => {
+    log.error('后端服务初始化失败:', e)
   })
 
   // 处理缓存的深链 URL 队列（窗口就绪前收到的）
