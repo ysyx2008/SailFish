@@ -23,6 +23,13 @@ const VISION_MODEL_PATTERNS: RegExp[] = [
   /qwen-vl/i,           // qwen-vl-plus, qwen-vl-max
   /qwen2-vl/i,          // qwen2-vl-7b 等
   /qwen2\.5-vl/i,       // qwen2.5-vl-*
+  /qwen3/i,             // qwen3, qwen3.5（原生多模态）
+  /qwen-max/i,          // qwen-max（原生多模态）
+  /qwen-plus/i,         // qwen-plus（原生多模态）
+  // 智谱（Zhipu / BigModel）— 仅 V 后缀的视觉模型支持图片，GLM-5 等文本模型不支持
+  /glm-4\.6v/i,         // glm-4.6v, glm-4.6v-flash
+  /glm-4v/i,            // glm-4v-flash, glm-4v-plus
+  /glm-4\.1v/i,         // glm-4.1v-thinking-*
   // 豆包（火山引擎）
   /doubao.*vision/i,    // doubao-*-vision-*
   /doubao.*vl/i,        // doubao-*-vl-*

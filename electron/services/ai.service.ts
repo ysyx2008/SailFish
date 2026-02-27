@@ -140,6 +140,7 @@ export interface AiProfile {
 
 /**
  * 检测 API 错误是否因为不支持 image_url（视觉/多模态）
+ * 精确匹配：错误消息明确提及 image_url 相关问题
  */
 function isVisionNotSupportedError(errorMsg: string): boolean {
   const lower = errorMsg.toLowerCase()
@@ -150,6 +151,24 @@ function isVisionNotSupportedError(errorMsg: string): boolean {
     lower.includes('invalid_type') ||
     lower.includes('expected `text`') ||
     lower.includes("expected 'text'")
+  )
+}
+
+/**
+ * 检测请求含图片时 API 返回的参数错误（宽松匹配）
+ * 部分 API（如智谱 GLM-5）对不支持的 content 类型只返回泛化错误，
+ * 不会在错误消息中提及 image_url，此函数捕获这类情况。
+ * 仅在 hasImages=true 时调用，避免误伤。
+ */
+function isGenericParamErrorWithImages(errorMsg: string): boolean {
+  const lower = errorMsg.toLowerCase()
+  return (
+    lower.includes('参数有误') ||
+    lower.includes('invalid parameter') ||
+    lower.includes('invalid_request_error') ||
+    lower.includes('unrecognized request argument') ||
+    lower.includes('invalid content type') ||
+    lower.includes('invalid message format')
   )
 }
 
@@ -939,8 +958,9 @@ export class AiService {
       try {
         data = await this.makeRequest(profile, body)
       } catch (err) {
-        if (!stripImages && hasImages && err instanceof Error && isVisionNotSupportedError(err.message)) {
-          log.warn(`Vision not supported by model ${profile.model}, retrying without images`)
+        if (!stripImages && hasImages && err instanceof Error &&
+            (isVisionNotSupportedError(err.message) || isGenericParamErrorWithImages(err.message))) {
+          log.warn(`Model ${profile.model} may not support images (error: ${err.message}), retrying without images`)
           return doRequest(true)
         }
         throw err
@@ -952,8 +972,9 @@ export class AiService {
           throw new Error(t('error.context_length_exceeded'))
         }
         const errorMsg = data.error.message || t('error.api_error_generic')
-        if (!stripImages && hasImages && isVisionNotSupportedError(errorMsg)) {
-          log.warn(`Vision not supported by model ${profile.model}, retrying without images`)
+        if (!stripImages && hasImages &&
+            (isVisionNotSupportedError(errorMsg) || isGenericParamErrorWithImages(errorMsg))) {
+          log.warn(`Model ${profile.model} may not support images (error: ${errorMsg}), retrying without images`)
           return doRequest(true)
         }
         throw new Error(t('error.api_request_failed', { data: errorMsg }))
@@ -1112,8 +1133,9 @@ export class AiService {
 
     // 视觉降级重试：剥离图片后重新请求（最多触发一次）
     const tryVisionFallback = (errorMsg: string): boolean => {
-      if (!stripImages && hasImages && isVisionNotSupportedError(errorMsg)) {
-        log.warn(`Vision not supported by model ${profile.model}, retrying without images`)
+      if (!stripImages && hasImages &&
+          (isVisionNotSupportedError(errorMsg) || isGenericParamErrorWithImages(errorMsg))) {
+        log.warn(`Model ${profile.model} may not support images (error: ${errorMsg}), retrying without images`)
         stripImages = true
         requestBody = rebuildRequestBody()
         resetForRetry()
