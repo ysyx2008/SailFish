@@ -643,13 +643,10 @@ export abstract class Agent {
       run.taskMessageLog
     )
     
-    // 唤醒 run 不累积到会话历史（静默运行，L1 记忆已保存）
-    if (!run.context.wakeup) {
-      this.accumulateSessionData(run, status, result)
-      this.saveSessionToHistory()
-    }
+    this.accumulateSessionData(run, status, result)
+    this.saveSessionToHistory()
     
-    // L2: 异步更新知识文档
+    // L2: 异步更新知识文档（唤醒 run 跳过，避免短问候污染知识文档）
     this.updateContextKnowledgeAsync(run, result).catch(err => {
       log.error('知识文档更新失败:', err)
     })
@@ -730,7 +727,6 @@ export abstract class Agent {
    * 每完成一轮工具调用后自动触发，确保程序意外退出时不丢失对话记录
    */
   private saveCheckpoint(run: AgentRun): void {
-    if (run.context.wakeup) return
     const historyService = this.services.historyService
     if (!historyService || !this._sessionId || !this._sessionStartTime) return
     
@@ -795,6 +791,9 @@ export abstract class Agent {
   private async updateContextKnowledgeAsync(run: AgentRun, result?: string): Promise<void> {
     const aiService = this.services.aiService
     if (!aiService) return
+
+    // 唤醒 run 跳过（短问候不产生值得持久化的系统知识）
+    if (run.context.wakeup) return
 
     // 跳过纯对话（没有执行过工具的任务不太可能产生新的系统知识）
     const toolSteps = run.steps.filter(s => s.type === 'tool_call' && s.toolName)
@@ -885,10 +884,8 @@ export abstract class Agent {
       content: errorMessage
     })
     
-    if (!run.context.wakeup) {
-      this.accumulateSessionData(run, 'failed', errorMessage)
-      this.saveSessionToHistory()
-    }
+    this.accumulateSessionData(run, 'failed', errorMessage)
+    this.saveSessionToHistory()
     
     this.callbacks?.onError?.(run.id, errorMessage)
   }
