@@ -2600,12 +2600,6 @@ const electronAPI = {
       ipcRenderer.invoke('watch:getTemplateCategories'),
     createFromTemplate: (templateId: string, options?: Record<string, unknown>) =>
       ipcRenderer.invoke('watch:createFromTemplate', templateId, options),
-    getSharedState: () =>
-      ipcRenderer.invoke('watch:getSharedState'),
-    setSharedState: (key: string, value: unknown) =>
-      ipcRenderer.invoke('watch:setSharedState', key, value),
-    clearSharedState: () =>
-      ipcRenderer.invoke('watch:clearSharedState'),
     onTaskStarted: (callback: (data: { watchId: string; ptyId?: string; watchName?: string }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
         if (data && typeof data === 'object' && 'watchId' in data) {

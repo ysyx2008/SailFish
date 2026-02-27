@@ -17,15 +17,13 @@ const log = createLogger('WatchStore')
 interface WatchStoreSchema {
   watches: WatchDefinition[]
   history: WatchHistoryRecord[]
-  sharedState: Record<string, unknown>
 }
 
 const MAX_HISTORY_RECORDS = 500
 
 const defaults: WatchStoreSchema = {
   watches: [],
-  history: [],
-  sharedState: {}
+  history: []
 }
 
 export class WatchStore {
@@ -36,6 +34,10 @@ export class WatchStore {
       name: 'qiyu-terminal-watches',
       defaults
     })
+    // 清理已废弃的 sharedState 字段
+    if ((this.store as any).has('sharedState')) {
+      ;(this.store as any).delete('sharedState')
+    }
   }
 
   // ==================== Watch CRUD ====================
@@ -183,34 +185,6 @@ export class WatchStore {
     }
   }
 
-  // ==================== 共享状态 ====================
-
-  getSharedState(): Record<string, unknown> {
-    return this.store.get('sharedState') || {}
-  }
-
-  setSharedState(key: string, value: unknown): void {
-    const state = this.getSharedState()
-    state[key] = value
-    this.store.set('sharedState', state)
-  }
-
-  mergeSharedState(updates: Record<string, unknown>): void {
-    const state = this.getSharedState()
-    Object.assign(state, updates)
-    this.store.set('sharedState', state)
-  }
-
-  deleteSharedStateKey(key: string): void {
-    const state = this.getSharedState()
-    delete state[key]
-    this.store.set('sharedState', state)
-  }
-
-  clearSharedState(): void {
-    this.store.set('sharedState', {})
-  }
-
   // ==================== 辅助 ====================
 
   private generateId(): string {
@@ -222,15 +196,13 @@ export class WatchStore {
   exportData(): WatchStoreSchema {
     return {
       watches: this.getAll(),
-      history: this.store.get('history') || [],
-      sharedState: this.getSharedState()
+      history: this.store.get('history') || []
     }
   }
 
   importData(data: Partial<WatchStoreSchema>): void {
     if (data.watches) this.store.set('watches', data.watches)
     if (data.history) this.store.set('history', data.history)
-    if (data.sharedState) this.store.set('sharedState', data.sharedState)
   }
 }
 

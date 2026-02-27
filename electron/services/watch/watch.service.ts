@@ -642,15 +642,8 @@ export class WatchService {
       parts.push(`[当前 Watch 状态：${JSON.stringify(watch.state).substring(0, 500)}]`)
     }
 
-    // 共享状态（跨 Watch 上下文）
-    const sharedState = this.store.getSharedState()
-    const hasSharedState = Object.keys(sharedState).length > 0
-    if (hasSharedState) {
-      parts.push(`[跨关切共享上下文：${JSON.stringify(sharedState).substring(0, 800)}]`)
-    }
-
     // 状态管理提示：有状态时告知可通过工具更新
-    if (hasState || hasSharedState) {
+    if (hasState) {
       parts.push('[需要更新状态时，调用 watch_state_update 工具。]')
     }
 
@@ -1025,22 +1018,6 @@ export class WatchService {
   }
 
   // ==================== 状态管理 ====================
-
-  getSharedState(): Record<string, unknown> {
-    return this.store.getSharedState()
-  }
-
-  setSharedState(key: string, value: unknown): void {
-    this.store.setSharedState(key, value)
-  }
-
-  clearSharedState(): void {
-    this.store.clearSharedState()
-  }
-
-  mergeSharedState(updates: Record<string, unknown>): void {
-    this.store.mergeSharedState(updates)
-  }
 
   // ==================== 传感器 target 管理 ====================
 

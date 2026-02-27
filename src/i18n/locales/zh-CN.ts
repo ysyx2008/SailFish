@@ -2041,10 +2041,6 @@ export default {
     useTemplate: '使用',
     noTemplates: '该分类下暂无模板',
 
-    // 共享状态
-    sharedState: '共享状态',
-    confirmClearSharedState: '确定要清除所有共享状态吗？这可能影响有状态工作流。',
-
     // 验证
     validation: {
       nameRequired: '请输入关切名称',

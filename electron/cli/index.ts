@@ -779,41 +779,6 @@ async function watchFromTemplate(args: string[]): Promise<void> {
   }
 }
 
-async function watchSharedState(args: string[]): Promise<void> {
-  const { getWatchStore } = require('../services/watch/store')
-  const store = getWatchStore()
-  const subcommand = args[0]
-
-  if (subcommand === 'clear') {
-    store.clearSharedState()
-    console.log('Shared state cleared.')
-    return
-  }
-
-  if (subcommand === 'set' && args[1] && args[2]) {
-    try {
-      const value = JSON.parse(args[2])
-      store.setSharedState(args[1], value)
-      console.log(`Shared state "${args[1]}" set.`)
-    } catch {
-      store.setSharedState(args[1], args[2])
-      console.log(`Shared state "${args[1]}" set.`)
-    }
-    return
-  }
-
-  const state = store.getSharedState()
-  if (Object.keys(state).length === 0) {
-    console.log('No shared state.')
-    return
-  }
-  console.log('\n  Shared State:\n')
-  for (const [key, value] of Object.entries(state)) {
-    console.log(`  ${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`)
-  }
-  console.log()
-}
-
 // ==================== SSH Session Commands ====================
 
 async function sshList(): Promise<void> {
@@ -1491,7 +1456,6 @@ Watch (Sensor Loop):
     --limit <n>              Number of records (default: 10)
   watch:templates            List available watch templates
   watch:from-template <id>   Create watch from template
-  watch:state [clear|set]    View/manage shared workflow state
   sensor:status              Show sensor status
   sensor:heartbeat           Trigger a heartbeat now
   bond:status                Show bond metrics and milestones
@@ -1611,7 +1575,6 @@ async function main(): Promise<void> {
       case 'watch:history':     await watchHistory(cmdArgs); break
       case 'watch:templates':   await watchTemplates(); break
       case 'watch:from-template': await watchFromTemplate(cmdArgs); break
-      case 'watch:state':       await watchSharedState(cmdArgs); break
       case 'sensor:status':     await sensorStatus(); break
       case 'sensor:heartbeat':  await sensorHeartbeat(); break
       case 'bond:status':       await bondStatus(); break

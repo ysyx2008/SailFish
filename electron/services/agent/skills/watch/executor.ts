@@ -259,34 +259,23 @@ function sanitizeState(raw: Record<string, unknown>): Record<string, unknown> {
 async function updateWatchState(args: Record<string, unknown>): Promise<ToolResult> {
   const watchId = args.watch_id as string | undefined
   const watchState = args.watch_state as Record<string, unknown> | undefined
-  const sharedState = args.shared_state as Record<string, unknown> | undefined
 
-  if (!watchState && !sharedState) {
-    return { success: false, output: '', error: '至少需要提供 watch_state 或 shared_state' }
+  if (!watchId?.trim()) {
+    return { success: false, output: '', error: '需要提供 watch_id' }
+  }
+  if (!watchState) {
+    return { success: false, output: '', error: '需要提供 watch_state' }
   }
 
   try {
     const service = getWatchService()
-    const updates: string[] = []
+    const watch = service.get(watchId)
+    if (!watch) return { success: false, output: '', error: `关切不存在: ${watchId}` }
+    const sanitized = sanitizeState(watchState)
+    const merged = { ...(watch.state || {}), ...sanitized }
+    service.updateWatchState(watchId, merged)
 
-    if (watchState && watchId?.trim()) {
-      const watch = service.get(watchId)
-      if (!watch) return { success: false, output: '', error: `关切不存在: ${watchId}` }
-      const sanitized = sanitizeState(watchState)
-      const merged = { ...(watch.state || {}), ...sanitized }
-      service.updateWatchState(watchId, merged)
-      updates.push(`watch_state(${Object.keys(sanitized).join(', ')})`)
-    } else if (watchState && !watchId?.trim()) {
-      return { success: false, output: '', error: '更新 watch_state 需要提供 watch_id' }
-    }
-
-    if (sharedState) {
-      const sanitized = sanitizeState(sharedState)
-      service.mergeSharedState(sanitized)
-      updates.push(`shared_state(${Object.keys(sanitized).join(', ')})`)
-    }
-
-    return { success: true, output: `✅ 状态已更新: ${updates.join(', ')}` }
+    return { success: true, output: `✅ 状态已更新: watch_state(${Object.keys(sanitized).join(', ')})` }
   } catch (error) {
     return { success: false, output: '', error: `状态更新失败: ${errMsg(error)}` }
   }

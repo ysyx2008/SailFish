@@ -2028,9 +2028,6 @@ export default {
     useTemplate: 'Use',
     noTemplates: 'No templates in this category',
 
-    sharedState: 'Shared State',
-    confirmClearSharedState: 'Clear all shared state? This may affect stateful workflows.',
-
     validation: {
       nameRequired: 'Watch name is required',
       promptRequired: 'Task prompt is required',

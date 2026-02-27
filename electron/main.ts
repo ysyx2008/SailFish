@@ -2167,21 +2167,6 @@ ipcMain.handle('watch:createFromTemplate', async (_event, templateId: string, op
   return watchService.createFromTemplate(templateId, options)
 })
 
-// Watch 共享状态
-ipcMain.handle('watch:getSharedState', async () => {
-  return watchService.getSharedState()
-})
-
-ipcMain.handle('watch:setSharedState', async (_event, key: string, value: unknown) => {
-  watchService.setSharedState(key, value)
-  return { success: true }
-})
-
-ipcMain.handle('watch:clearSharedState', async () => {
-  watchService.clearSharedState()
-  return { success: true }
-})
-
 // Xshell 导入相关
 ipcMain.handle('xshell:selectFiles', async () => {
   const result = await dialog.showOpenDialog({

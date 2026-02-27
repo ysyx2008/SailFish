@@ -5,7 +5,7 @@ import { useConfigStore, type AgentMbtiType } from '../stores/config'
 import {
   X, Play, Trash2, Eye, RefreshCw, History,
   Clock, Heart, Globe, Zap, FolderOpen, Calendar, Mail,
-  LayoutTemplate, Database, Plus, Sparkles, Brain
+  LayoutTemplate, Plus, Sparkles, Brain
 } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -62,7 +62,6 @@ const liveSteps = ref<Array<{ id: string; type: string; content: string; toolNam
 
 const templates = ref<WatchTemplateInfo[]>([])
 const selectedTemplateCategory = ref<string>('all')
-const sharedState = ref<Record<string, unknown>>({})
 const sensorStatus = ref<Array<{ id: string; name: string; running: boolean; details?: Record<string, any> }>>([])
 const recentEvents = ref<Array<{ id: string; type: string; source: string; timestamp: number }>>([])
 const personalityText = ref('')
@@ -153,10 +152,6 @@ const loadTemplates = async () => {
   try { templates.value = await window.electronAPI.watch.getTemplates() } catch (e) { console.error('Failed to load templates:', e) }
 }
 
-const loadSharedState = async () => {
-  try { sharedState.value = await window.electronAPI.watch.getSharedState() } catch (e) { console.error('Failed to load shared state:', e) }
-}
-
 const loadSensorData = async () => {
   try {
     const detailed = window.electronAPI.sensor.getStatusDetailed
@@ -228,12 +223,6 @@ const useTemplate = async (tpl: WatchTemplateInfo) => {
       selectedWatch.value = watches.value.find(w => w.id === watch.id) || null
     }
   } catch (e) { console.error('Failed to create from template:', e) }
-}
-
-const clearSharedState = async () => {
-  if (!confirm(t('watch.confirmClearSharedState'))) return
-  await window.electronAPI.watch.clearSharedState()
-  sharedState.value = {}
 }
 
 const triggerHeartbeat = async () => {
@@ -448,7 +437,7 @@ onMounted(async () => {
   document.addEventListener('keydown', handleKeydown, true)
   await Promise.all([loadWatchData().catch(() => {}), loadAwakenSettings()])
   loadPersonalitySettings()
-  loadTemplates(); loadSharedState()
+  loadTemplates()
   refreshTimer = setInterval(loadWatchData, 5 * 60 * 1000)
 
   cleanupWatchStarted = window.electronAPI.watch.onTaskStarted?.((data: any) => {
@@ -600,7 +589,7 @@ onUnmounted(() => {
               <LayoutTemplate :size="16" />
               <span>{{ t('watch.templates') }}</span>
             </button>
-            <button class="nav-item" :class="{ active: activeTab === 'sensors' }" @click="switchTab('sensors', () => { loadSensorData(); loadSharedState() })">
+            <button class="nav-item" :class="{ active: activeTab === 'sensors' }" @click="switchTab('sensors', () => { loadSensorData() })">
               <Heart :size="16" />
               <span>{{ t('watch.sensors') }}</span>
             </button>
@@ -941,18 +930,6 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <div v-if="Object.keys(sharedState).length > 0" class="content-section">
-                <div class="section-header-row">
-                  <h4><Database :size="14" /> {{ t('watch.sharedState') }}</h4>
-                  <button class="btn btn-sm btn-danger" @click="clearSharedState"><Trash2 :size="12" /></button>
-                </div>
-                <div class="state-list">
-                  <div v-for="(value, key) in sharedState" :key="String(key)" class="state-item">
-                    <span class="state-key">{{ String(key) }}</span>
-                    <span class="state-value">{{ typeof value === 'object' ? JSON.stringify(value) : String(value) }}</span>
-                  </div>
-                </div>
-              </div>
             </div>
           </template>
 

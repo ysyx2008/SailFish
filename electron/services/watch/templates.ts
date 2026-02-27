@@ -99,7 +99,7 @@ export const watchTemplates: WatchTemplate[] = [
 3. 如果需要回复，建议回复要点
 4. 如果是垃圾邮件或营销邮件，标记为低优先级
 
-完成后用 watch_state_update 工具将摘要和紧急程度保存到 shared_state。`,
+完成后用 watch_state_update 工具将摘要和紧急程度保存到当前关切的状态中。`,
       skills: ['email'],
       execution: { type: 'local' },
       output: { type: 'notification' },
