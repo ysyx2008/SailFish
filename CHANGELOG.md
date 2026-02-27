@@ -2,7 +2,21 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.11.0 (2026-02-27) (Latest)
+## v10.11.1 (2026-02-27) (Latest)
+
+Internal improvements to prompt engineering and Agent relationship tracking, plus bug fixes for Awaken mode and Steam edition.
+
+### Improvements
+- 🤝 **Bond System**: Internal relationship tracking that quantifies the depth of user-Agent interactions over time
+- 📝 **Prompt Builder Refactor**: Section-based array architecture for system prompts with standardized Markdown formatting
+- 🌐 **Unified Chinese Prompts**: System prompts consolidated to Chinese, removing redundant English translations
+
+### Bug Fixes
+- 🔧 Fixed Awaken mode heartbeat sensor not auto-starting on launch
+- 🔧 Fixed Steam edition exposing AI-related options in shortcut and data management settings
+- 🔧 Fixed bond tone guidance overriding Soul definitions — Soul now takes precedence
+
+## v10.11.0 (2026-02-27)
 
 Keyboard shortcuts become fully customizable, the Sensor Loop gains app lifecycle awareness and universal probes, and the Awaken system refines its identity with "Soul" replacing "Personality".
 
