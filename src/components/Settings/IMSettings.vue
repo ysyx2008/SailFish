@@ -348,11 +348,10 @@ async function toggleWcAutoConnect() {
 }
 
 async function toggleSendProcessMessages() {
-  const oldVal = sendProcessMessages.value
   try {
     await window.electronAPI.im.setSendProcessMessages(sendProcessMessages.value)
   } catch {
-    sendProcessMessages.value = oldVal
+    sendProcessMessages.value = !sendProcessMessages.value
   }
 }
 
