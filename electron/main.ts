@@ -930,6 +930,11 @@ app.whenReady().then(async () => {
       const awakened = configService.get('agentAwakened') as boolean ?? false
       const heartbeatInterval = configService.get('watchHeartbeatInterval') as number ?? 30
 
+      // 修复配置不同步：agentAwakened 与 watchHeartbeatEnabled 应保持一致
+      if (awakened !== (configService.get('watchHeartbeatEnabled') as boolean ?? false)) {
+        configService.set('watchHeartbeatEnabled', awakened)
+      }
+
       // 启动传感器前，先把已保存的邮箱/日历账户注入传感器，否则 shouldAutoStart() 会因为 accounts 为空而跳过
       try {
         const emailAccounts = (configService.get('emailAccounts' as any) || []) as Array<{
@@ -968,9 +973,16 @@ app.whenReady().then(async () => {
       sensorService.start({
         heartbeatEnabled: awakened,
         heartbeatIntervalMinutes: heartbeatInterval
-      }).then(() => {
+      }).then(async () => {
         sensorService.appLifecycle.notifyAppStarted()
         bondService.recalculate()
+
+        // 安全保障：如果觉醒模式开启但心跳未启动，强制启动
+        if (awakened && !sensorService.heartbeat.running) {
+          log.warn('觉醒模式已开启但心跳未启动，强制启动心跳')
+          sensorService.heartbeat.setInterval(heartbeatInterval)
+          await sensorService.heartbeat.start()
+        }
       }).catch(e => {
         log.error('Sensor 服务启动失败:', e)
       })

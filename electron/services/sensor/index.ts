@@ -87,7 +87,14 @@ export class SensorService {
   }
 
   async start(config?: SensorServiceConfig): Promise<void> {
-    if (this._running) return
+    if (this._running) {
+      log.warn(`start() called but already running, ensuring heartbeat state`)
+      // 即使已在运行，也确保心跳按需启停
+      if (config) {
+        await this.ensureHeartbeat(config)
+      }
+      return
+    }
     this._running = true
 
     const heartbeatEnabled = config?.heartbeatEnabled ?? false
@@ -113,6 +120,26 @@ export class SensorService {
     }
 
     log.info('Started')
+  }
+
+  /**
+   * 确保心跳传感器状态与配置一致（在 start() 被重复调用时兜底）
+   */
+  private async ensureHeartbeat(config: SensorServiceConfig): Promise<void> {
+    const heartbeatEnabled = config.heartbeatEnabled ?? false
+    if (config.heartbeatIntervalMinutes) {
+      this.heartbeat.setInterval(config.heartbeatIntervalMinutes)
+    }
+    if (heartbeatEnabled && !this.heartbeat.running) {
+      log.info('Heartbeat was not running, starting now')
+      try {
+        await this.heartbeat.start()
+      } catch (err) {
+        log.error('Failed to start heartbeat:', err)
+      }
+    } else if (!heartbeatEnabled && this.heartbeat.running) {
+      await this.heartbeat.stop()
+    }
   }
 
   async stop(): Promise<void> {
