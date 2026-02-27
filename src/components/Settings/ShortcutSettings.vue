@@ -7,10 +7,13 @@ const { t } = useI18n()
 const configStore = useConfigStore()
 
 const isMac = navigator.platform.toLowerCase().includes('mac')
+const isSteamBuild = __STEAM_BUILD__
 
 type ShortcutAction = keyof KeyboardShortcuts
 
-const allActions: ShortcutAction[] = [
+const AI_ACTIONS: ShortcutAction[] = ['newAssistantTab', 'toggleAiPanel', 'toggleKnowledge', 'aiDebugConsole', 'voiceInput']
+
+const allActions: ShortcutAction[] = ([
   'newAssistantTab',
   'newLocalTerminal',
   'newSshConnection',
@@ -23,7 +26,7 @@ const allActions: ShortcutAction[] = [
   'openSettings',
   'aiDebugConsole',
   'voiceInput',
-]
+] as ShortcutAction[]).filter(a => !isSteamBuild || !AI_ACTIONS.includes(a))
 
 const HOLD_KEY_ACTIONS: ShortcutAction[] = ['voiceInput']
 

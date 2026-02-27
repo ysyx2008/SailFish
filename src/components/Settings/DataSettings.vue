@@ -5,6 +5,7 @@ import { marked } from 'marked'
 import { Bot, HardDrive, CalendarRange, FolderOpen, History, Download, Upload, Trash2, Clock, AlertTriangle, Search, X, ChevronDown, ChevronRight, ExternalLink, Monitor, Server } from 'lucide-vue-next'
 
 const { t } = useI18n()
+const isSteamBuild = __STEAM_BUILD__
 
 import type { AgentRecord } from '@shared/types'
 
@@ -328,7 +329,7 @@ onUnmounted(() => {
         <h4>{{ t('dataSettings.storageStats') }}</h4>
       </div>
       <div v-if="storageStats" class="stats-grid">
-        <div class="stat-card stat-agent">
+        <div v-if="!isSteamBuild" class="stat-card stat-agent">
           <div class="stat-icon-wrap agent">
             <Bot :size="18" />
           </div>
@@ -360,7 +361,7 @@ onUnmounted(() => {
       </div>
       <div v-else class="loading">{{ t('dataSettings.loading') }}</div>
       
-      <button class="btn btn-ghost view-history-btn" @click="openHistoryViewer">
+      <button v-if="!isSteamBuild" class="btn btn-ghost view-history-btn" @click="openHistoryViewer">
         <History :size="15" />
         {{ t('dataSettings.viewHistory') }}
       </button>
@@ -394,7 +395,7 @@ onUnmounted(() => {
             <input type="checkbox" v-model="exportOptions.includeSshPasswords">
             <span>{{ t('dataSettings.includeSshPasswords') }}</span>
           </label>
-          <label class="checkbox-label">
+          <label v-if="!isSteamBuild" class="checkbox-label">
             <input type="checkbox" v-model="exportOptions.includeApiKeys">
             <span>{{ t('dataSettings.includeApiKeys') }}</span>
           </label>
