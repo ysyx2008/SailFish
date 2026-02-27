@@ -706,7 +706,6 @@ export default {
     actions: {
       newLocalTerminal: 'New Local Terminal',
       newAssistantTab: 'New AI Assistant',
-      newSshTerminal: 'New SSH Terminal',
       newSshConnection: 'New SSH Connection',
       batchCommand: 'Batch Command',
       openFileManager: 'Open File Manager',

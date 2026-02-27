@@ -706,7 +706,6 @@ export default {
     actions: {
       newLocalTerminal: '新建本地终端',
       newAssistantTab: '新建 AI 助手',
-      newSshTerminal: '新建 SSH 终端',
       newSshConnection: '新建 SSH 连接',
       batchCommand: '批量操作',
       openFileManager: '打开文件管理器',

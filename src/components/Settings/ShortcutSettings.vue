@@ -18,7 +18,7 @@ interface ShortcutGroup {
 const shortcutGroups = computed<ShortcutGroup[]>(() => [
   {
     label: t('shortcutSettings.groups.create'),
-    actions: ['newAssistantTab', 'newLocalTerminal', 'newSshTerminal', 'newSshConnection'],
+    actions: ['newAssistantTab', 'newLocalTerminal', 'newSshConnection'],
   },
   {
     label: t('shortcutSettings.groups.view'),
@@ -327,7 +327,6 @@ function isActionModified(action: ShortcutAction): boolean {
 .shortcut-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 0 14px;
   height: 40px;
   transition: background 0.1s ease;
@@ -342,6 +341,7 @@ function isActionModified(action: ShortcutAction): boolean {
 }
 
 .shortcut-label {
+  flex: 1;
   font-size: 13px;
   color: var(--text-primary);
 }
@@ -351,6 +351,7 @@ function isActionModified(action: ShortcutAction): boolean {
 }
 
 .shortcut-right {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 4px;

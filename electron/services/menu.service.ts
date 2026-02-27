@@ -28,7 +28,6 @@ const menuI18n = {
     file: '终端',
     newLocalTerminal: '新建本地终端',
     newAssistantTab: '新建 AI 助手',
-    newSshTerminal: '新建 SSH 终端',
     newSshConnection: '新建 SSH 连接',
     batchCommand: '批量操作',
     openFileManager: '打开文件管理器',
@@ -89,7 +88,6 @@ const menuI18n = {
     file: 'Terminal',
     newLocalTerminal: 'New Local Terminal',
     newAssistantTab: 'New AI Assistant',
-    newSshTerminal: 'New SSH Terminal',
     newSshConnection: 'New SSH Connection',
     batchCommand: 'Batch Command',
     openFileManager: 'Open File Manager',
@@ -247,11 +245,6 @@ export class MenuService {
         label: this.t('newAssistantTab'),
         accelerator: this.shortcuts.newAssistantTab || undefined,
         click: () => this.sendCommand('newAssistantTab')
-      },
-      {
-        label: this.t('newSshTerminal'),
-        accelerator: this.shortcuts.newSshTerminal || undefined,
-        click: () => this.sendCommand('newSshTerminal')
       },
       {
         label: this.t('newSshConnection'),

@@ -9,7 +9,6 @@ import { setLogLevel as setFrontendLogLevel, type LogLevel } from '../utils/logg
 export interface KeyboardShortcuts {
   newLocalTerminal: string
   newAssistantTab: string
-  newSshTerminal: string
   newSshConnection: string
   batchCommand: string
   openFileManager: string
@@ -24,7 +23,6 @@ export interface KeyboardShortcuts {
 export const DEFAULT_KEYBOARD_SHORTCUTS: KeyboardShortcuts = {
   newLocalTerminal: '',
   newAssistantTab: 'CmdOrCtrl+T',
-  newSshTerminal: '',
   newSshConnection: 'CmdOrCtrl+N',
   batchCommand: 'CmdOrCtrl+Shift+B',
   openFileManager: 'CmdOrCtrl+F',

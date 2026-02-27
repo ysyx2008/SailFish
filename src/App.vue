@@ -133,12 +133,6 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
     return
   }
 
-  if (matchAccelerator(event, shortcuts.newSshTerminal)) {
-    event.preventDefault()
-    showSidebar.value = true
-    return
-  }
-
   if (event.key === 'Escape' && showSidebar.value) {
     showSidebar.value = false
     return
@@ -609,9 +603,6 @@ const handleMenuCommand = async (command: string) => {
       break
     case 'newAssistantTab':
       terminalStore.createAssistantTab()
-      break
-    case 'newSshTerminal':
-      showSidebar.value = true
       break
     case 'newSshConnection':
       showSidebar.value = true
