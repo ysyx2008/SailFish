@@ -21,6 +21,7 @@ import { getOrchestratorTools } from './orchestrator-tools'
 import type { AiService, AiMessage } from '../ai.service'
 import type { SshSession } from '../config.service'
 import { createLogger } from '../../utils/logger'
+import { t } from './i18n'
 
 const log = createLogger('Orchestrator')
 
@@ -216,12 +217,38 @@ export class OrchestratorService {
     let maxIterations = 50  // 防止无限循环
     let hasExecutedAnyTool = false  // 追踪是否执行过任何工具
     let noToolCallRetryCount = 0  // 无工具调用时的重试次数
+    let truncationRetryCount = 0  // 输出截断时的重试次数
     const MAX_NO_TOOL_RETRIES = 2  // 最大重试次数
+    const MAX_TRUNCATION_RETRIES = 3  // 截断最大重试次数
     
     while (run.status === 'running' && maxIterations-- > 0) {
       try {
         // 调用 AI（使用支持工具调用的方法，传递配置的 profileId）
         const response = await this.aiService.chatWithTools(messages, tools, run.config.profileId)
+        
+        // 处理 finish_reason=length（输出被 max_tokens 截断）
+        if (response.finish_reason === 'length') {
+          const validToolCalls = (response.tool_calls || []).filter(tc => {
+            if (!tc.id || !tc.function.name || !tc.function.arguments) return false
+            try { JSON.parse(tc.function.arguments); return true }
+            catch (e) { if (e instanceof SyntaxError) return false; throw e }
+          })
+          
+          if (validToolCalls.length > 0) {
+            response.tool_calls = validToolCalls
+          } else {
+            truncationRetryCount++
+            if (truncationRetryCount >= MAX_TRUNCATION_RETRIES) {
+              log.warn('Orchestrator output repeatedly truncated, giving up')
+              this.handleError(orchestratorId, t('agent.output_truncated'))
+              break
+            }
+            log.warn(`Orchestrator output truncated (finish_reason=length), retry ${truncationRetryCount}/${MAX_TRUNCATION_RETRIES}`)
+            messages.push({ role: 'assistant', content: response.content || '' })
+            messages.push({ role: 'user', content: t('agent.output_truncated_hint') })
+            continue
+          }
+        }
         
         // 处理响应
         if (response.content) {
@@ -294,17 +321,30 @@ export class OrchestratorService {
         // 标记已执行工具
         hasExecutedAnyTool = true
         noToolCallRetryCount = 0  // 重置重试计数
+        truncationRetryCount = 0  // 重置截断计数
+        
+        // 过滤掉参数 JSON 无效的工具调用
+        const validToolCalls = response.tool_calls.filter(tc => {
+          if (!tc.function.arguments) return false
+          try { JSON.parse(tc.function.arguments); return true }
+          catch (e) { if (e instanceof SyntaxError) return false; throw e }
+        })
+        
+        if (validToolCalls.length === 0) {
+          log.warn('All tool calls have invalid arguments, skipping')
+          continue
+        }
         
         // 处理工具调用
         messages.push({
           role: 'assistant',
           content: response.content || '',
-          tool_calls: response.tool_calls
+          tool_calls: validToolCalls
         })
         
-        for (const toolCall of response.tool_calls) {
+        for (const toolCall of validToolCalls) {
           const toolName = toolCall.function.name
-          const toolArgs = JSON.parse(toolCall.function.arguments || '{}')
+          const toolArgs = JSON.parse(toolCall.function.arguments)
           
           let toolResult: string
           
