@@ -121,7 +121,8 @@ export class SailFish extends Agent {
       options.availableTaskIds,
       options.contextKnowledgeDoc,
       options.agentName,
-      options.watchListSummary
+      options.watchListSummary,
+      options.bondContext
     )
   }
   

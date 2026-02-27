@@ -2671,6 +2671,16 @@ const electronAPI = {
       ipcRenderer.invoke('sensor:triggerHeartbeat'),
   },
 
+  // 羁绊系统
+  bond: {
+    getMetrics: () =>
+      ipcRenderer.invoke('bond:getMetrics'),
+    getMilestones: () =>
+      ipcRenderer.invoke('bond:getMilestones'),
+    recalculate: () =>
+      ipcRenderer.invoke('bond:recalculate'),
+  },
+
   // 文件工具
   fileUtils: {
     // 获取拖放文件的路径（Electron 24+ 推荐方式）

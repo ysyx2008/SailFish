@@ -257,6 +257,7 @@ run_test "watch:list 不崩溃"                 $CLI watch:list
 run_test "watch:history 不崩溃"              $CLI watch:history
 run_test "sensor:status 不崩溃"              $CLI sensor:status
 run_test "sensor:heartbeat 不崩溃"           $CLI sensor:heartbeat
+run_test "bond:status 不崩溃"               $CLI bond:status
 
 # watch:create + watch:delete 闭环
 assert_contains "watch:create 创建 Watch"    "Watch created" \

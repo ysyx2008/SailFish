@@ -286,6 +286,7 @@ import { getAiDebugService } from './services/ai-debug.service'
 import { getSchedulerService, type CreateTaskParams } from './services/scheduler.service'
 import { getWatchService } from './services/watch/watch.service'
 import { getSensorService } from './services/sensor'
+import { getBondService } from './services/bond.service'
 import type { CreateWatchParams } from './services/watch/types'
 import { getWebChatService } from './services/web-chat.service'
 import { getGatewayService, type GatewayConfig } from './services/gateway.service'
@@ -358,6 +359,7 @@ const schedulerService = getSchedulerService()
 // Watch & Sensor 服务（感知层）
 const sensorService = getSensorService()
 const watchService = getWatchService()
+const bondService = getBondService()
 
 // 终端状态服务（CWD 追踪、命令状态等）
 const terminalStateService = initTerminalStateService(ptyService, sshService)
@@ -968,6 +970,7 @@ app.whenReady().then(async () => {
         heartbeatIntervalMinutes: heartbeatInterval
       }).then(() => {
         sensorService.appLifecycle.notifyAppStarted()
+        bondService.recalculate()
       }).catch(e => {
         log.error('Sensor 服务启动失败:', e)
       })
@@ -2093,6 +2096,20 @@ ipcMain.handle('sensor:setHeartbeat', async (_event, enabled: boolean, intervalM
 ipcMain.handle('sensor:triggerHeartbeat', async () => {
   sensorService.heartbeat.beat()
   return { success: true }
+})
+
+// 羁绊系统
+ipcMain.handle('bond:getMetrics', async () => {
+  return bondService.calculate()
+})
+
+ipcMain.handle('bond:getMilestones', async () => {
+  return bondService.getAllMilestones()
+})
+
+ipcMain.handle('bond:recalculate', async () => {
+  const newMilestones = bondService.recalculate()
+  return { metrics: bondService.calculate(), newMilestones }
 })
 
 // Watch 模板

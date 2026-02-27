@@ -1,4 +1,5 @@
 export * from './agent'
+export * from './bond'
 export * from './history'
 export * from './host'
 export * from './watch'

@@ -30,6 +30,7 @@ import type {
 } from './types'
 import { DEFAULT_AGENT_CONFIG } from './types'
 import { TaskMemoryStore } from './task-memory'
+import { getBondService } from '../bond.service'
 import type { ToolExecutorConfig, ToolResult } from './tools/types'
 import { executeTool } from './tools/index'
 import { buildTaskHistoryContext } from './context-builder'
@@ -947,7 +948,8 @@ export abstract class Agent {
       taskSummaries,
       relatedTaskDigests,
       availableTaskIds,
-      watchListSummary: watchListSummary || undefined
+      watchListSummary: watchListSummary || undefined,
+      bondContext: this.resolveBondContext()
     }
     
     const systemPrompt = this.buildSystemPrompt(run.context, promptOptions)
@@ -2101,8 +2103,15 @@ export abstract class Agent {
    * 增强用户消息
    */
   private enhanceUserMessage(message: string): string {
-    // 添加语言提示
     const languageHint = this.getLanguageHint()
     return languageHint + message
+  }
+
+  private resolveBondContext(): string | undefined {
+    try {
+      return getBondService().getBondContext(this.services.configService?.getLanguage())
+    } catch {
+      return undefined
+    }
   }
 }

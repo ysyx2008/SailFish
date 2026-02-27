@@ -197,6 +197,10 @@ interface StoreSchema {
   appLifecycleFirstUseDate: number       // 首次使用时间戳
   appLifecycleTotalConversations: number  // 累计对话次数
   appLifecycleAchievedMilestones: string[] // 已达成的里程碑 ID
+  // 羁绊系统
+  bondLevel: number                    // 综合羁绊值 (0-100)
+  bondMilestones: string[]             // 已达成的羁绊里程碑
+  bondLastCalculatedAt: number         // 上次计算时间
   keyboardShortcuts: KeyboardShortcuts  // 自定义快捷键
 }
 
@@ -265,6 +269,9 @@ const defaultConfig: StoreSchema = {
   appLifecycleFirstUseDate: 0,
   appLifecycleTotalConversations: 0,
   appLifecycleAchievedMilestones: [],
+  bondLevel: 0,
+  bondMilestones: [],
+  bondLastCalculatedAt: 0,
   keyboardShortcuts: { ...DEFAULT_KEYBOARD_SHORTCUTS }
 }
 

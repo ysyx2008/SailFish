@@ -719,6 +719,34 @@ async function sensorHeartbeat(): Promise<void> {
   console.log('Heartbeat triggered.')
 }
 
+async function bondStatus(): Promise<void> {
+  const { getBondService } = require('../services/bond.service')
+  const service = getBondService()
+  const metrics = service.calculate()
+  const milestones = service.getAllMilestones()
+
+  const trustLabels: Record<string, string> = {
+    stranger: '陌生人 (Stranger)',
+    acquaintance: '相识 (Acquaintance)',
+    companion: '伙伴 (Companion)',
+    soulmate: '知己 (Soulmate)',
+  }
+
+  console.log('\n  Bond Metrics:')
+  console.log(`    Level:       ${metrics.level}/100`)
+  console.log(`    Trust:       ${trustLabels[metrics.trustLevel] || metrics.trustLevel}`)
+  console.log(`    Days:        ${metrics.daysTogether}`)
+  console.log(`    Tasks:       ${metrics.tasksCompleted}`)
+  console.log(`    Exec Mode:   ${metrics.executionMode}`)
+
+  console.log('\n  Milestones:')
+  for (const m of milestones) {
+    const icon = m.achieved ? '★' : '☆'
+    console.log(`    ${icon} ${m.label_zh} (${m.label_en}) — threshold: ${m.threshold}`)
+  }
+  console.log()
+}
+
 async function watchTemplates(): Promise<void> {
   const { watchTemplates: templates } = require('../services/watch/templates')
   console.log(`\n  Watch Templates (${templates.length}):\n`)
@@ -1466,6 +1494,7 @@ Watch (Sensor Loop):
   watch:state [clear|set]    View/manage shared workflow state
   sensor:status              Show sensor status
   sensor:heartbeat           Trigger a heartbeat now
+  bond:status                Show bond metrics and milestones
 
 IM Integration:
   im:status                  Show IM platform credential & connection status
@@ -1585,6 +1614,7 @@ async function main(): Promise<void> {
       case 'watch:state':       await watchSharedState(cmdArgs); break
       case 'sensor:status':     await sensorStatus(); break
       case 'sensor:heartbeat':  await sensorHeartbeat(); break
+      case 'bond:status':       await bondStatus(); break
 
       // IM
       case 'im:status':      await imStatus(); break

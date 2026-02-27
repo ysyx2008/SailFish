@@ -10,6 +10,7 @@
  */
 import type { Sensor, SensorEvent, EventBus, SensorEventPriority } from './types'
 import { getConfigService, type ConfigService } from '../config.service'
+import { getBondService } from '../bond.service'
 import { createLogger } from '../../utils/logger'
 
 const log = createLogger('AppLifecycleSensor')
@@ -122,6 +123,7 @@ export class AppLifecycleSensor implements Sensor {
     this.totalConversations++
     this.configService?.set('appLifecycleTotalConversations', this.totalConversations)
     this.checkConversationMilestone()
+    try { getBondService().recalculate() } catch (e) { log.warn('Bond recalculate failed:', e) }
   }
 
   // ==================== 里程碑检查 ====================

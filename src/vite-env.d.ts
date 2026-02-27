@@ -32,6 +32,8 @@ type HostProfile = import('@shared/types').HostProfile
 type PlanStepStatus = import('@shared/types').PlanStepStatus
 type WatchDefinition = import('@shared/types').WatchDefinition
 type WatchHistoryRecord = import('@shared/types').WatchHistoryRecord
+type BondMetrics = import('@shared/types').BondMetrics
+type BondTrustLevel = import('@shared/types').BondTrustLevel
 
 // MCP 相关类型
 interface McpServerConfig {

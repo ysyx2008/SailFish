@@ -383,6 +383,8 @@ export interface PromptOptions {
   availableTaskIds?: Array<{ id: string; summary: string }>
   /** 当前已设置的关切列表摘要（注入提示词，供 Agent 知晓避免重复创建） */
   watchListSummary?: string
+  /** 羁绊上下文（注入提示词，影响对话语气） */
+  bondContext?: string
 }
 
 /**

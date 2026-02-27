@@ -116,6 +116,8 @@ export interface BuildSystemPromptOptions {
   executionMode?: ExecutionMode
   /** 当前已设置的关切列表摘要（注入提示词，供 Agent 知晓避免重复创建） */
   watchListSummary?: string
+  /** 羁绊上下文（注入提示词，影响对话语气） */
+  bondContext?: string
 }
 
 /**
@@ -140,6 +142,7 @@ export class PromptBuilder {
   private readonly availableTaskIds?: Array<{ id: string; summary: string }>
   private readonly executionMode?: ExecutionMode
   private readonly watchListSummary?: string
+  private readonly bondContext?: string
 
   constructor(options: BuildSystemPromptOptions) {
     this.context = options.context
@@ -157,6 +160,7 @@ export class PromptBuilder {
     this.availableTaskIds = options.availableTaskIds
     this.executionMode = options.executionMode
     this.watchListSummary = options.watchListSummary
+    this.bondContext = options.bondContext
   }
 
   // ==================== 公开方法 ====================
@@ -179,6 +183,11 @@ export class PromptBuilder {
       personalitySection = `\n\n## 你的风格（重要！）\n${mbtiStyle}\n`
     }
     
+    // 羁绊（用户与 Agent 的关系深度）
+    const bondSection = this.bondContext?.trim()
+      ? `\n\n## 你与用户的羁绊\n${this.bondContext.trim()}\n`
+      : ''
+
     // 用户自定义规则
     const userRulesSection = this.aiRules && this.aiRules.trim()
       ? `\n\n## 用户自定义规则（重要！必须遵守）\n\n用户设置了以下规则，你必须严格遵守：\n\n${this.aiRules.trim()}\n`
@@ -249,7 +258,7 @@ export class PromptBuilder {
 你是${displayName}，一个能帮助用户完成各类任务的智能助手。
 当前时间：${currentTime}
 ${this.context.cwd ? `当前工作目录：${this.context.cwd}（系统实时获取，无需执行 pwd 验证）` : '当前工作目录：未成功获取'}
-${personalitySection}
+${personalitySection}${bondSection}
 ${userRulesSection}
 ${hostContext}
 ${this.buildRemoteChannelContext()}
@@ -612,7 +621,8 @@ export function buildSystemPrompt(
   availableTaskIds?: Array<{ id: string; summary: string }>,
   contextKnowledgeDoc?: string,
   agentName?: string,
-  watchListSummary?: string
+  watchListSummary?: string,
+  bondContext?: string
 ): string {
   const builder = new PromptBuilder({
     context,
@@ -629,7 +639,8 @@ export function buildSystemPrompt(
     taskSummaries,
     relatedTaskDigests,
     availableTaskIds,
-    watchListSummary
+    watchListSummary,
+    bondContext
   })
   return builder.build()
 }
