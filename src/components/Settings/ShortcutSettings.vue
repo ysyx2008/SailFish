@@ -123,6 +123,16 @@ function handleKeydown(e: KeyboardEvent, action: ShortcutAction) {
     return
   }
 
+  if (e.key === 'Backspace' || e.key === 'Delete') {
+    if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+      const newShortcuts = { ...configStore.keyboardShortcuts, [action]: '' }
+      configStore.setKeyboardShortcuts(newShortcuts)
+      recordingAction.value = null
+      conflictMessage.value = ''
+      return
+    }
+  }
+
   const accelerator = keyEventToAccelerator(e)
   if (!accelerator) return
 
@@ -140,11 +150,11 @@ function handleKeydown(e: KeyboardEvent, action: ShortcutAction) {
   recordingAction.value = null
 }
 
-function clearShortcut(action: ShortcutAction, e: Event) {
-  e.stopPropagation()
-  const newShortcuts = { ...configStore.keyboardShortcuts, [action]: '' }
-  configStore.setKeyboardShortcuts(newShortcuts)
-  conflictMessage.value = ''
+function handleBlur(action: ShortcutAction) {
+  if (recordingAction.value === action) {
+    recordingAction.value = null
+    conflictMessage.value = ''
+  }
 }
 
 function resetShortcut(action: ShortcutAction, e: Event) {
@@ -161,6 +171,7 @@ function resetAll() {
   if (confirm(t('shortcutSettings.resetAllConfirm'))) {
     configStore.setKeyboardShortcuts({ ...DEFAULT_KEYBOARD_SHORTCUTS })
     conflictMessage.value = ''
+    recordingAction.value = null
   }
 }
 
@@ -180,20 +191,20 @@ function isActionModified(action: ShortcutAction): boolean {
     <div class="settings-header-bar">
       <div>
         <h4>{{ t('shortcutSettings.title') }}</h4>
-        <p class="section-description">{{ t('shortcutSettings.description') }}</p>
+        <p class="section-desc">{{ t('shortcutSettings.description') }}</p>
       </div>
       <button
         v-if="isModified"
         class="btn-reset-all"
         @click="resetAll"
-      >
-        {{ t('shortcutSettings.resetAll') }}
-      </button>
+      >{{ t('shortcutSettings.resetAll') }}</button>
     </div>
 
-    <div v-if="conflictMessage" class="conflict-alert">
-      {{ conflictMessage }}
-    </div>
+    <Transition name="fade">
+      <div v-if="conflictMessage" class="conflict-alert">
+        {{ conflictMessage }}
+      </div>
+    </Transition>
 
     <div
       v-for="(group, gi) in shortcutGroups"
@@ -201,53 +212,48 @@ function isActionModified(action: ShortcutAction): boolean {
       class="shortcut-group"
     >
       <div class="group-label">{{ group.label }}</div>
-      <div class="shortcut-list">
+      <div class="group-card">
         <div
-          v-for="action in group.actions"
+          v-for="(action, ai) in group.actions"
           :key="action"
           class="shortcut-row"
-          :class="{ modified: isActionModified(action) }"
+          :class="{ 'first-row': ai === 0 }"
         >
-          <span class="shortcut-label">{{ t(`shortcutSettings.actions.${action}`) }}</span>
+          <span class="shortcut-label">
+            {{ t(`shortcutSettings.actions.${action}`) }}
+          </span>
           <div class="shortcut-right">
-            <div class="shortcut-actions">
-              <button
-                v-if="configStore.keyboardShortcuts[action]"
-                class="btn-action"
-                :title="t('shortcutSettings.clear')"
-                @click="clearShortcut(action, $event)"
-              >✕</button>
-              <button
-                v-if="isActionModified(action)"
-                class="btn-action btn-reset"
-                :title="t('shortcutSettings.reset')"
-                @click="resetShortcut(action, $event)"
-              >↺</button>
-            </div>
+            <button
+              v-if="isActionModified(action)"
+              class="btn-inline"
+              :title="t('shortcutSettings.reset')"
+              @click="resetShortcut(action, $event)"
+            >↺</button>
             <div
-              class="shortcut-recorder"
+              class="shortcut-slot"
               :class="{
                 recording: recordingAction === action,
-                empty: !configStore.keyboardShortcuts[action],
+                empty: !configStore.keyboardShortcuts[action] && recordingAction !== action,
+                modified: isActionModified(action),
               }"
               tabindex="0"
               @click="startRecording(action)"
               @keydown="handleKeydown($event, action)"
+              @blur="handleBlur(action)"
             >
               <template v-if="recordingAction === action">
-                <span class="recording-text">{{ t('shortcutSettings.recording') }}</span>
+                <span class="recording-dot"></span>
+                <span class="recording-label">{{ t('shortcutSettings.recording') }}</span>
               </template>
               <template v-else-if="configStore.keyboardShortcuts[action]">
-                <span class="keycap-group">
-                  <kbd
-                    v-for="(key, i) in acceleratorToKeys(configStore.keyboardShortcuts[action])"
-                    :key="i"
-                    class="keycap"
-                  >{{ key }}</kbd>
-                </span>
+                <kbd
+                  v-for="(key, i) in acceleratorToKeys(configStore.keyboardShortcuts[action])"
+                  :key="i"
+                  class="key"
+                >{{ key }}</kbd>
               </template>
               <template v-else>
-                <span class="empty-text">{{ t('shortcutSettings.clickToSet') }}</span>
+                <span class="empty-hint">—</span>
               </template>
             </div>
           </div>
@@ -259,17 +265,16 @@ function isActionModified(action: ShortcutAction): boolean {
 
 <style scoped>
 .shortcut-settings {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  max-width: 560px;
+  max-width: 480px;
 }
 
+/* 头部 */
 .settings-header-bar {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 16px;
+  gap: 16px;
+  margin-bottom: 20px;
 }
 
 .settings-header-bar h4 {
@@ -278,35 +283,33 @@ function isActionModified(action: ShortcutAction): boolean {
   margin-bottom: 4px;
 }
 
-.section-description {
+.section-desc {
   font-size: 12px;
   color: var(--text-muted);
-  line-height: 1.5;
+  line-height: 1.4;
 }
 
 .btn-reset-all {
   flex-shrink: 0;
-  padding: 5px 12px;
-  font-size: 12px;
-  color: var(--text-secondary);
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
   background: transparent;
   border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border-radius: 5px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.15s;
   white-space: nowrap;
-  margin-top: 2px;
 }
 
 .btn-reset-all:hover {
   color: var(--text-primary);
   border-color: var(--text-muted);
-  background: var(--bg-hover);
 }
 
 /* 分组 */
 .shortcut-group {
-  margin-bottom: 6px;
+  margin-bottom: 12px;
 }
 
 .group-label {
@@ -314,27 +317,27 @@ function isActionModified(action: ShortcutAction): boolean {
   font-weight: 600;
   color: var(--text-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 10px 10px 6px;
-  user-select: none;
+  letter-spacing: 0.04em;
+  padding: 0 2px 5px;
 }
 
-.shortcut-list {
+.group-card {
   background: var(--bg-tertiary);
   border-radius: 8px;
   overflow: hidden;
 }
 
+/* 行 */
 .shortcut-row {
   display: flex;
   align-items: center;
-  padding: 0 14px;
-  height: 40px;
-  transition: background 0.1s ease;
+  height: 36px;
+  padding: 0 12px;
+  transition: background 0.1s;
 }
 
-.shortcut-row + .shortcut-row {
-  border-top: 1px solid color-mix(in srgb, var(--border-color) 50%, transparent);
+.shortcut-row:not(.first-row) {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--border-color) 40%, transparent);
 }
 
 .shortcut-row:hover {
@@ -344,147 +347,147 @@ function isActionModified(action: ShortcutAction): boolean {
 .shortcut-label {
   flex: 1;
   font-size: 13px;
-  color: var(--text-primary);
-}
-
-.shortcut-row.modified .shortcut-label {
-  color: var(--accent-primary);
+  color: var(--text-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .shortcut-right {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
-/* 操作按钮 */
-.shortcut-actions {
-  display: flex;
-  gap: 1px;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-
-.shortcut-row:hover .shortcut-actions {
-  opacity: 1;
-}
-
-.btn-action {
+/* 恢复按钮 */
+.btn-inline {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  font-size: 12px;
+  width: 20px;
+  height: 20px;
+  font-size: 13px;
   color: var(--text-muted);
   background: transparent;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  transition: all 0.12s ease;
+  opacity: 0;
+  transition: all 0.12s;
 }
 
-.btn-action:hover {
-  color: var(--text-primary);
-  background: var(--bg-primary);
+.shortcut-row:hover .btn-inline {
+  opacity: 1;
 }
 
-.btn-action.btn-reset:hover {
+.btn-inline:hover {
   color: var(--accent-primary);
-}
-
-/* 录制区域 */
-.shortcut-recorder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 120px;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: var(--bg-primary);
-  cursor: pointer;
-  outline: none;
-  transition: all 0.15s ease;
-}
-
-.shortcut-recorder:hover {
-  border-color: var(--border-color);
-}
-
-.shortcut-recorder:focus,
-.shortcut-recorder.recording {
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 2px rgba(var(--accent-rgb, 100, 149, 237), 0.15);
-}
-
-.shortcut-recorder.recording {
-  background: rgba(var(--accent-rgb, 100, 149, 237), 0.06);
-}
-
-.shortcut-recorder.empty {
-  background: transparent;
-  border: 1px dashed color-mix(in srgb, var(--border-color) 70%, transparent);
-}
-
-.shortcut-recorder.empty:hover {
-  border-color: var(--text-muted);
   background: var(--bg-primary);
 }
 
-.recording-text {
-  font-size: 11px;
-  color: var(--accent-primary);
-  animation: pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-.empty-text {
-  font-size: 11px;
-  color: var(--text-muted);
-  opacity: 0.6;
-}
-
-/* 按键样式 */
-.keycap-group {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.keycap {
+/* 快捷键槽位 */
+.shortcut-slot {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 22px;
-  height: 20px;
-  padding: 0 5px;
+  gap: 3px;
+  min-width: 80px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s;
+  user-select: none;
+}
+
+.shortcut-slot:hover {
+  background: var(--bg-primary);
+}
+
+.shortcut-slot:focus {
+  border-color: var(--accent-primary);
+}
+
+.shortcut-slot.recording {
+  border-color: var(--accent-primary);
+  background: rgba(var(--accent-rgb, 100, 149, 237), 0.08);
+}
+
+.shortcut-slot.empty {
+  border: 1px dashed color-mix(in srgb, var(--border-color) 60%, transparent);
+  opacity: 0.5;
+}
+
+.shortcut-slot.empty:hover {
+  opacity: 1;
+  border-color: var(--text-muted);
+}
+
+/* 录制状态 */
+.recording-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  animation: blink 1s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.recording-label {
   font-size: 11px;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', var(--font-mono, monospace);
+  color: var(--accent-primary);
+}
+
+.empty-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 按键 */
+.key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 11px;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
   font-weight: 500;
   color: var(--text-primary);
-  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+  background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-bottom-width: 2px;
-  border-radius: 4px;
+  border-radius: 3px;
   line-height: 1;
-  text-align: center;
 }
 
 /* 冲突提示 */
 .conflict-alert {
-  margin-bottom: 10px;
-  padding: 8px 12px;
+  margin-bottom: 12px;
+  padding: 7px 10px;
   font-size: 12px;
   color: #f59e0b;
-  background: rgba(245, 158, 11, 0.08);
-  border: 1px solid rgba(245, 158, 11, 0.15);
+  background: rgba(245, 158, 11, 0.06);
+  border: 1px solid rgba(245, 158, 11, 0.12);
   border-radius: 6px;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>
