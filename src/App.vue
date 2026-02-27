@@ -121,21 +121,26 @@ function matchAccelerator(event: KeyboardEvent, accelerator: string): boolean {
 const handleGlobalKeydown = (event: KeyboardEvent) => {
   const shortcuts = configStore.keyboardShortcuts
 
-  if (matchAccelerator(event, shortcuts.newLocalTerminal)) {
-    event.preventDefault()
-    terminalStore.createTab('local')
-    return
-  }
-
   if (matchAccelerator(event, shortcuts.newAssistantTab)) {
     event.preventDefault()
     terminalStore.createAssistantTab()
     return
   }
 
+  if (matchAccelerator(event, shortcuts.newLocalTerminal)) {
+    event.preventDefault()
+    terminalStore.createTab('local')
+    return
+  }
+
   if (matchAccelerator(event, shortcuts.newSshTerminal)) {
     event.preventDefault()
     showSidebar.value = true
+    return
+  }
+
+  if (event.key === 'Escape' && showSidebar.value) {
+    showSidebar.value = false
     return
   }
 

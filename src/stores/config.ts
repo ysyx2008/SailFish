@@ -22,8 +22,8 @@ export interface KeyboardShortcuts {
 }
 
 export const DEFAULT_KEYBOARD_SHORTCUTS: KeyboardShortcuts = {
-  newLocalTerminal: 'CmdOrCtrl+T',
-  newAssistantTab: '',
+  newLocalTerminal: '',
+  newAssistantTab: 'CmdOrCtrl+T',
   newSshTerminal: '',
   newSshConnection: 'CmdOrCtrl+N',
   batchCommand: 'CmdOrCtrl+Shift+B',
