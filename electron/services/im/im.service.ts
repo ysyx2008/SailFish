@@ -13,6 +13,7 @@
  */
 
 import type { ExecutionMode } from '@shared/types'
+import { getEventBus } from '../sensor/event-bus'
 import type {
   IMServiceConfig,
   IMAdapter,
@@ -219,7 +220,6 @@ export class IMService {
     this.emittedConnectPlatforms.add(platform)
 
     try {
-      const { getEventBus } = require('../sensor/event-bus')
       const eventBus = getEventBus()
       eventBus.emit({
         id: `im-conn-${platform}-${Date.now().toString(36)}`,
