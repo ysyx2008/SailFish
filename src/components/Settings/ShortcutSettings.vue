@@ -142,6 +142,7 @@ function handleKeydown(e: KeyboardEvent, action: ShortcutAction) {
 
 function clearShortcut(action: ShortcutAction, e: Event) {
   e.stopPropagation()
+  recordingAction.value = null
   const newShortcuts = { ...configStore.keyboardShortcuts, [action]: '' }
   configStore.setKeyboardShortcuts(newShortcuts)
   conflictMessage.value = ''
@@ -149,6 +150,7 @@ function clearShortcut(action: ShortcutAction, e: Event) {
 
 function resetShortcut(action: ShortcutAction, e: Event) {
   e.stopPropagation()
+  recordingAction.value = null
   const newShortcuts = {
     ...configStore.keyboardShortcuts,
     [action]: DEFAULT_KEYBOARD_SHORTCUTS[action]
@@ -159,6 +161,7 @@ function resetShortcut(action: ShortcutAction, e: Event) {
 
 function resetAll() {
   if (confirm(t('shortcutSettings.resetAllConfirm'))) {
+    recordingAction.value = null
     configStore.setKeyboardShortcuts({ ...DEFAULT_KEYBOARD_SHORTCUTS })
     conflictMessage.value = ''
   }
@@ -262,8 +265,6 @@ function isActionModified(action: ShortcutAction): boolean {
   display: flex;
   flex-direction: column;
   gap: 0;
-  max-width: 560px;
-  margin: 0 auto;
 }
 
 .settings-header-bar {
