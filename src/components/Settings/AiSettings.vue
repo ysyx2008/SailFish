@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Plus, Pencil, Trash2, X, ExternalLink } from 'lucide-vue-next'
-import { useConfigStore, type AiProfile, type AgentMbtiType } from '../../stores/config'
+import { useConfigStore, type AiProfile } from '../../stores/config'
 import { v4 as uuidv4 } from 'uuid'
 
 const { t } = useI18n()
@@ -50,36 +50,6 @@ const formData = ref<Partial<AiProfile>>({
 
 const profiles = computed(() => configStore.aiProfiles)
 const activeProfileId = computed(() => configStore.activeAiProfileId)
-const currentMbti = computed(() => configStore.agentMbti)
-
-// MBTI 类型数据 (排除 null，因为这是选项列表)
-// 使用 computed 以便翻译能够响应语言切换
-const mbtiTypes = computed(() => [
-  // 分析师型 (NT)
-  { type: 'INTJ' as const, name: t('aiSettings.mbtiTypes.INTJ.name'), desc: t('aiSettings.mbtiTypes.INTJ.desc'), group: t('aiSettings.mbtiGroups.analyst') },
-  { type: 'INTP' as const, name: t('aiSettings.mbtiTypes.INTP.name'), desc: t('aiSettings.mbtiTypes.INTP.desc'), group: t('aiSettings.mbtiGroups.analyst') },
-  { type: 'ENTJ' as const, name: t('aiSettings.mbtiTypes.ENTJ.name'), desc: t('aiSettings.mbtiTypes.ENTJ.desc'), group: t('aiSettings.mbtiGroups.analyst') },
-  { type: 'ENTP' as const, name: t('aiSettings.mbtiTypes.ENTP.name'), desc: t('aiSettings.mbtiTypes.ENTP.desc'), group: t('aiSettings.mbtiGroups.analyst') },
-  // 外交官型 (NF)
-  { type: 'INFJ' as const, name: t('aiSettings.mbtiTypes.INFJ.name'), desc: t('aiSettings.mbtiTypes.INFJ.desc'), group: t('aiSettings.mbtiGroups.diplomat') },
-  { type: 'INFP' as const, name: t('aiSettings.mbtiTypes.INFP.name'), desc: t('aiSettings.mbtiTypes.INFP.desc'), group: t('aiSettings.mbtiGroups.diplomat') },
-  { type: 'ENFJ' as const, name: t('aiSettings.mbtiTypes.ENFJ.name'), desc: t('aiSettings.mbtiTypes.ENFJ.desc'), group: t('aiSettings.mbtiGroups.diplomat') },
-  { type: 'ENFP' as const, name: t('aiSettings.mbtiTypes.ENFP.name'), desc: t('aiSettings.mbtiTypes.ENFP.desc'), group: t('aiSettings.mbtiGroups.diplomat') },
-  // 哨兵型 (SJ)
-  { type: 'ISTJ' as const, name: t('aiSettings.mbtiTypes.ISTJ.name'), desc: t('aiSettings.mbtiTypes.ISTJ.desc'), group: t('aiSettings.mbtiGroups.sentinel') },
-  { type: 'ISFJ' as const, name: t('aiSettings.mbtiTypes.ISFJ.name'), desc: t('aiSettings.mbtiTypes.ISFJ.desc'), group: t('aiSettings.mbtiGroups.sentinel') },
-  { type: 'ESTJ' as const, name: t('aiSettings.mbtiTypes.ESTJ.name'), desc: t('aiSettings.mbtiTypes.ESTJ.desc'), group: t('aiSettings.mbtiGroups.sentinel') },
-  { type: 'ESFJ' as const, name: t('aiSettings.mbtiTypes.ESFJ.name'), desc: t('aiSettings.mbtiTypes.ESFJ.desc'), group: t('aiSettings.mbtiGroups.sentinel') },
-  // 探险家型 (SP)
-  { type: 'ISTP' as const, name: t('aiSettings.mbtiTypes.ISTP.name'), desc: t('aiSettings.mbtiTypes.ISTP.desc'), group: t('aiSettings.mbtiGroups.explorer') },
-  { type: 'ISFP' as const, name: t('aiSettings.mbtiTypes.ISFP.name'), desc: t('aiSettings.mbtiTypes.ISFP.desc'), group: t('aiSettings.mbtiGroups.explorer') },
-  { type: 'ESTP' as const, name: t('aiSettings.mbtiTypes.ESTP.name'), desc: t('aiSettings.mbtiTypes.ESTP.desc'), group: t('aiSettings.mbtiGroups.explorer') },
-  { type: 'ESFP' as const, name: t('aiSettings.mbtiTypes.ESFP.name'), desc: t('aiSettings.mbtiTypes.ESFP.desc'), group: t('aiSettings.mbtiGroups.explorer') }
-])
-
-const setMbti = async (mbti: AgentMbtiType) => {
-  await configStore.setAgentMbti(mbti)
-}
 
 const resetForm = () => {
   formData.value = {
@@ -377,39 +347,8 @@ const openKeyUrl = (url: string) => {
       </div>
     </template>
 
-    <!-- Agent 风格设置、调试、日志（仅非 Steam 版） -->
+    <!-- Agent 调试、日志（仅非 Steam 版） -->
     <template v-if="!isSteamBuild">
-      <div class="settings-section">
-        <div class="section-header">
-          <h4>{{ t('aiSettings.agentPersonality') }}</h4>
-          <button 
-            v-if="currentMbti" 
-            class="btn btn-sm" 
-            @click="setMbti(null)"
-          >
-            {{ t('common.reset') }}
-          </button>
-        </div>
-        <p class="section-desc">
-          {{ t('aiSettings.agentPersonalityDesc') }}
-        </p>
-
-        <div class="mbti-grid">
-          <div
-            v-for="item in mbtiTypes"
-            :key="item.type"
-            class="mbti-card"
-            :class="{ active: currentMbti === item.type }"
-            @click="setMbti(item.type)"
-          >
-            <div class="mbti-type">{{ item.type }}</div>
-            <div class="mbti-name">{{ item.name }}</div>
-            <div class="mbti-desc">{{ item.desc }}</div>
-            <div class="mbti-group">{{ item.group }}</div>
-          </div>
-        </div>
-      </div>
-
       <div class="settings-section">
         <div class="section-header">
           <h4>{{ t('aiSettings.agentDebugMode') }}</h4>
@@ -660,66 +599,6 @@ const openKeyUrl = (url: string) => {
   gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid var(--border-color);
-}
-
-/* MBTI 选择 */
-.mbti-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-}
-
-.mbti-card {
-  display: flex;
-  flex-direction: column;
-  padding: 12px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: center;
-}
-
-.mbti-card:hover {
-  border-color: var(--accent-primary);
-  background: var(--bg-surface);
-}
-
-.mbti-card.active {
-  border-color: var(--accent-primary);
-  background: rgba(137, 180, 250, 0.15);
-}
-
-.mbti-type {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--accent-primary);
-  font-family: var(--font-mono);
-  letter-spacing: 1px;
-}
-
-.mbti-name {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
-  margin-top: 4px;
-}
-
-.mbti-desc {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 4px;
-  line-height: 1.4;
-}
-
-.mbti-group {
-  font-size: 10px;
-  color: var(--text-muted);
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--border-color);
-  opacity: 0.7;
 }
 
 /* Toggle Switch */

@@ -166,15 +166,15 @@ export class PromptBuilder {
    * 注意：输出与原始 buildSystemPrompt 函数完全一致
    */
   build(): string {
-    // 个性 & MBTI：个性为主定义，MBTI 为风格参考
+    // 灵魂 & MBTI：灵魂为主定义，MBTI 为风格参考
     const mbtiStyle = PromptBuilder.getMbtiStylePrompt(this.mbtiType ?? null)
     const personalityText = this.personalityText?.trim()
 
     let personalitySection = ''
     if (personalityText && mbtiStyle) {
-      personalitySection = `\n\n## 你的个性（重要！）\n${personalityText}\n\n### 风格参考（MBTI）\n${mbtiStyle}\n`
+      personalitySection = `\n\n## 你的灵魂（重要！）\n${personalityText}\n\n### 风格参考（MBTI）\n${mbtiStyle}\n`
     } else if (personalityText) {
-      personalitySection = `\n\n## 你的个性（重要！）\n${personalityText}\n`
+      personalitySection = `\n\n## 你的灵魂（重要！）\n${personalityText}\n`
     } else if (mbtiStyle) {
       personalitySection = `\n\n## 你的风格（重要！）\n${mbtiStyle}\n`
     }

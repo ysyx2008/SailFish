@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useConfigStore } from '../stores/config'
+import { useConfigStore, type AgentMbtiType } from '../stores/config'
 import {
   X, Play, Trash2, Eye, RefreshCw, History,
   Clock, Heart, Globe, Zap, FolderOpen, Calendar, Mail,
-  LayoutTemplate, Database, Plus, Sparkles
+  LayoutTemplate, Database, Plus, Sparkles, Brain
 } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -32,8 +32,8 @@ interface WatchTemplateInfo {
 
 // ==================== Navigation ====================
 
-type NavTab = 'watches' | 'templates' | 'sensors' | 'history' | 'personality'
-const VALID_TABS: NavTab[] = ['watches', 'templates', 'sensors', 'history', 'personality']
+type NavTab = 'watches' | 'templates' | 'sensors' | 'history' | 'personality' | 'mbti'
+const VALID_TABS: NavTab[] = ['watches', 'templates', 'sensors', 'history', 'personality', 'mbti']
 const activeTab = ref<NavTab>(
   props.initialTab && VALID_TABS.includes(props.initialTab as NavTab) ? props.initialTab as NavTab : 'watches'
 )
@@ -366,6 +366,30 @@ async function manualHeartbeat() {
 // AI 名字
 const agentNameInput = ref('')
 
+// MBTI
+const currentMbti = computed(() => configStore.agentMbti)
+const mbtiTypes = computed(() => [
+  { type: 'INTJ' as const, name: t('aiSettings.mbtiTypes.INTJ.name'), desc: t('aiSettings.mbtiTypes.INTJ.desc'), group: t('aiSettings.mbtiGroups.analyst') },
+  { type: 'INTP' as const, name: t('aiSettings.mbtiTypes.INTP.name'), desc: t('aiSettings.mbtiTypes.INTP.desc'), group: t('aiSettings.mbtiGroups.analyst') },
+  { type: 'ENTJ' as const, name: t('aiSettings.mbtiTypes.ENTJ.name'), desc: t('aiSettings.mbtiTypes.ENTJ.desc'), group: t('aiSettings.mbtiGroups.analyst') },
+  { type: 'ENTP' as const, name: t('aiSettings.mbtiTypes.ENTP.name'), desc: t('aiSettings.mbtiTypes.ENTP.desc'), group: t('aiSettings.mbtiGroups.analyst') },
+  { type: 'INFJ' as const, name: t('aiSettings.mbtiTypes.INFJ.name'), desc: t('aiSettings.mbtiTypes.INFJ.desc'), group: t('aiSettings.mbtiGroups.diplomat') },
+  { type: 'INFP' as const, name: t('aiSettings.mbtiTypes.INFP.name'), desc: t('aiSettings.mbtiTypes.INFP.desc'), group: t('aiSettings.mbtiGroups.diplomat') },
+  { type: 'ENFJ' as const, name: t('aiSettings.mbtiTypes.ENFJ.name'), desc: t('aiSettings.mbtiTypes.ENFJ.desc'), group: t('aiSettings.mbtiGroups.diplomat') },
+  { type: 'ENFP' as const, name: t('aiSettings.mbtiTypes.ENFP.name'), desc: t('aiSettings.mbtiTypes.ENFP.desc'), group: t('aiSettings.mbtiGroups.diplomat') },
+  { type: 'ISTJ' as const, name: t('aiSettings.mbtiTypes.ISTJ.name'), desc: t('aiSettings.mbtiTypes.ISTJ.desc'), group: t('aiSettings.mbtiGroups.sentinel') },
+  { type: 'ISFJ' as const, name: t('aiSettings.mbtiTypes.ISFJ.name'), desc: t('aiSettings.mbtiTypes.ISFJ.desc'), group: t('aiSettings.mbtiGroups.sentinel') },
+  { type: 'ESTJ' as const, name: t('aiSettings.mbtiTypes.ESTJ.name'), desc: t('aiSettings.mbtiTypes.ESTJ.desc'), group: t('aiSettings.mbtiGroups.sentinel') },
+  { type: 'ESFJ' as const, name: t('aiSettings.mbtiTypes.ESFJ.name'), desc: t('aiSettings.mbtiTypes.ESFJ.desc'), group: t('aiSettings.mbtiGroups.sentinel') },
+  { type: 'ISTP' as const, name: t('aiSettings.mbtiTypes.ISTP.name'), desc: t('aiSettings.mbtiTypes.ISTP.desc'), group: t('aiSettings.mbtiGroups.explorer') },
+  { type: 'ISFP' as const, name: t('aiSettings.mbtiTypes.ISFP.name'), desc: t('aiSettings.mbtiTypes.ISFP.desc'), group: t('aiSettings.mbtiGroups.explorer') },
+  { type: 'ESTP' as const, name: t('aiSettings.mbtiTypes.ESTP.name'), desc: t('aiSettings.mbtiTypes.ESTP.desc'), group: t('aiSettings.mbtiGroups.explorer') },
+  { type: 'ESFP' as const, name: t('aiSettings.mbtiTypes.ESFP.name'), desc: t('aiSettings.mbtiTypes.ESFP.desc'), group: t('aiSettings.mbtiGroups.explorer') },
+])
+const setMbti = async (mbti: AgentMbtiType) => {
+  await configStore.setAgentMbti(mbti)
+}
+
 function loadPersonalitySettings() {
   personalityText.value = configStore.agentPersonalityText || ''
   personalityOriginal.value = personalityText.value
@@ -552,9 +576,14 @@ onUnmounted(() => {
         <!-- Left Nav -->
         <nav class="panel-nav">
           <div class="nav-group">
+            <div class="nav-group-label">{{ t('awaken.navCharacter') }}</div>
             <button class="nav-item" :class="{ active: activeTab === 'personality' }" @click="switchTab('personality')">
               <Sparkles :size="16" />
               <span>{{ t('awaken.personalityNav') }}</span>
+            </button>
+            <button class="nav-item" :class="{ active: activeTab === 'mbti' }" @click="switchTab('mbti')">
+              <Brain :size="16" />
+              <span>{{ t('awaken.mbtiNav') }}</span>
             </button>
           </div>
           <div class="nav-group">
@@ -592,6 +621,10 @@ onUnmounted(() => {
           <template v-if="activeTab === 'personality'">
             <div class="content-page personality-page">
               <div class="personality-content">
+                <div class="personality-header">
+                  <h3>{{ t('awaken.personalityTitle') }}</h3>
+                </div>
+                <p class="personality-hint">{{ t('awaken.personalityHint') }}</p>
                 <div class="personality-name-row">
                   <label class="personality-name-label">{{ t('awaken.nameLabel') }}</label>
                   <input
@@ -603,10 +636,6 @@ onUnmounted(() => {
                     @blur="saveAgentName"
                     @keydown.enter="($event.target as HTMLInputElement)?.blur()"
                   />
-                </div>
-                <div class="personality-header">
-                  <h3>{{ t('awaken.personalityTitle') }}</h3>
-                  <span class="personality-note">{{ t('awaken.personalityHint') }}</span>
                 </div>
                 <textarea
                   v-model="personalityText"
@@ -627,6 +656,33 @@ onUnmounted(() => {
                   </div>
                 </div>
                 <div v-if="personalityError" class="personality-error">{{ personalityError }}</div>
+              </div>
+            </div>
+          </template>
+
+          <!-- ===================== MBTI ===================== -->
+          <template v-if="activeTab === 'mbti'">
+            <div class="content-page mbti-page">
+              <div class="mbti-content">
+                <div class="mbti-header">
+                  <h3>{{ t('aiSettings.agentPersonality') }}</h3>
+                  <button v-if="currentMbti" class="btn btn-sm" @click="setMbti(null)">{{ t('common.reset') }}</button>
+                </div>
+                <span class="personality-note">{{ t('aiSettings.agentPersonalityDesc') }}</span>
+                <div class="mbti-grid">
+                  <div
+                    v-for="item in mbtiTypes"
+                    :key="item.type"
+                    class="mbti-card"
+                    :class="{ active: currentMbti === item.type }"
+                    @click="setMbti(item.type)"
+                  >
+                    <div class="mbti-type">{{ item.type }}</div>
+                    <div class="mbti-name">{{ item.name }}</div>
+                    <div class="mbti-desc">{{ item.desc }}</div>
+                    <div class="mbti-group">{{ item.group }}</div>
+                  </div>
+                </div>
               </div>
             </div>
           </template>
@@ -1235,14 +1291,20 @@ onUnmounted(() => {
 
 .personality-header {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
 }
 
 .personality-header h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
+}
+
+.personality-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 
 .personality-note {
@@ -1290,6 +1352,88 @@ onUnmounted(() => {
 .personality-error {
   font-size: 11px;
   color: #ef4444;
+}
+
+.mbti-page {
+  overflow-y: auto;
+}
+
+.mbti-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 24px;
+}
+
+.mbti-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mbti-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mbti-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.mbti-card {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.mbti-card:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-surface);
+}
+
+.mbti-card.active {
+  border-color: var(--accent-primary);
+  background: rgba(137, 180, 250, 0.15);
+}
+
+.mbti-type {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  letter-spacing: 1px;
+}
+
+.mbti-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-top: 4px;
+}
+
+.mbti-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.mbti-group {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-color);
+  opacity: 0.7;
 }
 
 .patrol-hint {
