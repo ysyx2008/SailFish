@@ -5,6 +5,33 @@ import { setLocale, type LocaleType } from '../i18n'
 import { type UiThemeName } from '../themes/ui-themes'
 import { setLogLevel as setFrontendLogLevel, type LogLevel } from '../utils/logger'
 
+// 快捷键配置（值为 Electron Accelerator 格式，空字符串表示禁用）
+export interface KeyboardShortcuts {
+  newLocalTerminal: string
+  newSshConnection: string
+  batchCommand: string
+  openFileManager: string
+  toggleSidebar: string
+  toggleAiPanel: string
+  toggleKnowledge: string
+  clearTerminal: string
+  openSettings: string
+  aiDebugConsole: string
+}
+
+export const DEFAULT_KEYBOARD_SHORTCUTS: KeyboardShortcuts = {
+  newLocalTerminal: 'CmdOrCtrl+T',
+  newSshConnection: 'CmdOrCtrl+N',
+  batchCommand: 'CmdOrCtrl+Shift+B',
+  openFileManager: 'CmdOrCtrl+F',
+  toggleSidebar: 'CmdOrCtrl+B',
+  toggleAiPanel: 'CmdOrCtrl+I',
+  toggleKnowledge: 'CmdOrCtrl+Shift+K',
+  clearTerminal: 'CmdOrCtrl+K',
+  openSettings: 'CmdOrCtrl+,',
+  aiDebugConsole: 'F12',
+}
+
 export interface AiProfile {
   id: string
   name: string
@@ -294,6 +321,9 @@ export const useConfigStore = defineStore('config', () => {
   // 日历账户
   const calendarAccounts = ref<CalendarAccount[]>([])
 
+  // 快捷键设置
+  const keyboardShortcuts = ref<KeyboardShortcuts>({ ...DEFAULT_KEYBOARD_SHORTCUTS })
+
   // 计算属性
   const activeAiProfile = computed(() =>
     aiProfiles.value.find(p => p.id === activeAiProfileId.value)
@@ -396,6 +426,12 @@ export const useConfigStore = defineStore('config', () => {
       if (emailAccounts.value.length > 0) {
         const plainAccounts = JSON.parse(JSON.stringify(emailAccounts.value))
         await window.electronAPI.email.syncAccounts(plainAccounts)
+      }
+
+      // 加载快捷键设置
+      const savedShortcuts = await window.electronAPI.config.get('keyboardShortcuts') as Partial<KeyboardShortcuts> | null | undefined
+      if (savedShortcuts && typeof savedShortcuts === 'object') {
+        keyboardShortcuts.value = { ...DEFAULT_KEYBOARD_SHORTCUTS, ...savedShortcuts }
       }
 
       // 加载日历账户
@@ -815,6 +851,13 @@ export const useConfigStore = defineStore('config', () => {
     return CALENDAR_PROVIDER_CONFIGS[account.provider].serverUrl
   }
 
+  // ==================== 快捷键设置 ====================
+
+  async function setKeyboardShortcuts(shortcuts: KeyboardShortcuts): Promise<void> {
+    keyboardShortcuts.value = shortcuts
+    await window.electronAPI.config.setKeyboardShortcuts({ ...shortcuts })
+  }
+
   // ==================== 数据迁移 ====================
 
   /**
@@ -927,7 +970,9 @@ export const useConfigStore = defineStore('config', () => {
     updateCalendarAccount,
     deleteCalendarAccount,
     updateCalendarAccountStatus,
-    getCalendarServerUrl
+    getCalendarServerUrl,
+    keyboardShortcuts,
+    setKeyboardShortcuts
   }
 })
 

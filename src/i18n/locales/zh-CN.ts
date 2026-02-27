@@ -176,6 +176,7 @@ export default {
       gateway: 'Web 服务',
       theme: '主题配色',
       terminal: '终端设置',
+      shortcuts: '快捷键',
       data: '数据管理',
       language: '语言',
       about: '关于'
@@ -696,6 +697,30 @@ export default {
     importing: '导入中...',
     import: '导入',
     refresh: '刷新'
+  },
+
+  // 快捷键设置
+  shortcutSettings: {
+    title: '快捷键',
+    description: '自定义应用快捷键。点击快捷键区域后按下新的组合键即可修改。',
+    actions: {
+      newLocalTerminal: '新建本地终端',
+      newSshConnection: '新建 SSH 连接',
+      batchCommand: '批量操作',
+      openFileManager: '打开文件管理器',
+      toggleSidebar: '切换侧边栏',
+      toggleAiPanel: '切换 AI 面板',
+      toggleKnowledge: '记忆与知识库',
+      clearTerminal: '清屏',
+      openSettings: '打开控制面板',
+      aiDebugConsole: 'AI 调试控制台',
+    },
+    recording: '请按下快捷键...',
+    reset: '恢复默认',
+    resetAll: '全部恢复默认',
+    resetAllConfirm: '确定将所有快捷键恢复为默认设置吗？',
+    clear: '清除',
+    conflict: '快捷键冲突：已被「{action}」使用',
   },
 
   // 终端设置

@@ -9,6 +9,7 @@
  */
 
 import { Menu, MenuItemConstructorOptions, shell, BrowserWindow, app } from 'electron'
+import { type KeyboardShortcuts, DEFAULT_KEYBOARD_SHORTCUTS } from './config.service'
 
 // 菜单翻译
 const menuI18n = {
@@ -139,6 +140,7 @@ const IS_STEAM_BUILD = process.env.VITE_STEAM_BUILD === 'true'
 export class MenuService {
   private language: 'zh-CN' | 'en-US' = 'zh-CN'
   private mainWindow: BrowserWindow | null = null
+  private shortcuts: KeyboardShortcuts = { ...DEFAULT_KEYBOARD_SHORTCUTS }
 
   /**
    * 获取翻译文本
@@ -159,6 +161,13 @@ export class MenuService {
    */
   setMainWindow(window: BrowserWindow | null): void {
     this.mainWindow = window
+  }
+
+  /**
+   * 设置自定义快捷键（合并到默认值上，空字符串表示禁用）
+   */
+  setShortcuts(shortcuts: Partial<KeyboardShortcuts>): void {
+    this.shortcuts = { ...DEFAULT_KEYBOARD_SHORTCUTS, ...shortcuts }
   }
 
   /**
@@ -189,7 +198,7 @@ export class MenuService {
         { type: 'separator' },
         {
           label: this.t('preferences'),
-          accelerator: 'CmdOrCtrl+,',
+          accelerator: this.shortcuts.openSettings || undefined,
           click: () => this.sendCommand('openSettings')
         },
         { type: 'separator' },
@@ -226,24 +235,24 @@ export class MenuService {
     const submenu: MenuItemConstructorOptions[] = [
       {
         label: this.t('newLocalTerminal'),
-        accelerator: 'CmdOrCtrl+T',
+        accelerator: this.shortcuts.newLocalTerminal || undefined,
         click: () => this.sendCommand('newLocalTerminal')
       },
       {
         label: this.t('newSshConnection'),
-        accelerator: 'CmdOrCtrl+N',
+        accelerator: this.shortcuts.newSshConnection || undefined,
         click: () => this.sendCommand('newSshConnection')
       },
       { type: 'separator' },
       {
         label: this.t('batchCommand'),
-        accelerator: 'CmdOrCtrl+Shift+B',
+        accelerator: this.shortcuts.batchCommand || undefined,
         click: () => this.sendCommand('batchCommand')
       },
       { type: 'separator' },
       {
         label: this.t('openFileManager'),
-        accelerator: 'CmdOrCtrl+F',
+        accelerator: this.shortcuts.openFileManager || undefined,
         click: () => this.sendCommand('openFileManager')
       },
       { type: 'separator' },
@@ -317,7 +326,7 @@ export class MenuService {
         { type: 'separator' },
         {
           label: this.t('clearTerminal'),
-          accelerator: 'CmdOrCtrl+K',
+          accelerator: this.shortcuts.clearTerminal || undefined,
           click: () => this.sendCommand('clearTerminal')
         }
       ]
@@ -331,23 +340,23 @@ export class MenuService {
     const submenu: MenuItemConstructorOptions[] = [
       {
         label: this.t('toggleSidebar'),
-        accelerator: 'CmdOrCtrl+B',
+        accelerator: this.shortcuts.toggleSidebar || undefined,
         click: () => this.sendCommand('toggleSidebar')
       },
       ...(!IS_STEAM_BUILD ? [
         {
           label: this.t('toggleAiPanel'),
-          accelerator: 'CmdOrCtrl+I',
+          accelerator: this.shortcuts.toggleAiPanel || undefined,
           click: () => this.sendCommand('toggleAiPanel')
         },
         {
           label: this.t('toggleKnowledge'),
-          accelerator: 'CmdOrCtrl+Shift+K',
+          accelerator: this.shortcuts.toggleKnowledge || undefined,
           click: () => this.sendCommand('toggleKnowledge')
         },
         {
           label: this.t('aiDebugConsole'),
-          accelerator: 'F12',
+          accelerator: this.shortcuts.aiDebugConsole || undefined,
           click: () => this.sendCommand('openAiDebugConsole')
         },
       ] as MenuItemConstructorOptions[] : []),
@@ -515,11 +524,14 @@ export class MenuService {
   }
 
   /**
-   * 更新菜单（语言变化时调用）
+   * 更新菜单（语言或快捷键变化时调用）
    */
-  updateMenu(language?: string): void {
+  updateMenu(language?: string, shortcuts?: Partial<KeyboardShortcuts>): void {
     if (language) {
       this.setLanguage(language)
+    }
+    if (shortcuts) {
+      this.setShortcuts(shortcuts)
     }
     this.applyMenu()
   }

@@ -81,15 +81,43 @@ watch([currentUiTheme, currentColorScheme], ([theme, colorScheme]) => {
   document.body.setAttribute('data-color-scheme', colorScheme)
 }, { immediate: true })
 
+/**
+ * 检测 KeyboardEvent 是否匹配 Electron Accelerator 字符串
+ */
+function matchAccelerator(event: KeyboardEvent, accelerator: string): boolean {
+  if (!accelerator) return false
+  const parts = accelerator.split('+')
+  let needCtrl = false, needShift = false, needAlt = false
+  let targetKey = ''
+  for (const part of parts) {
+    switch (part) {
+      case 'CmdOrCtrl': needCtrl = true; break
+      case 'Shift': needShift = true; break
+      case 'Alt': needAlt = true; break
+      default: targetKey = part; break
+    }
+  }
+  if (needCtrl !== (event.ctrlKey || event.metaKey)) return false
+  if (needShift !== event.shiftKey) return false
+  if (needAlt !== event.altKey) return false
+
+  const eventKey = event.key.length === 1 ? event.key.toUpperCase() : event.key
+  if (targetKey === ',') return event.key === ','
+  if (/^F\d{1,2}$/.test(targetKey)) return eventKey === targetKey
+  return eventKey === targetKey || event.key.toLowerCase() === targetKey.toLowerCase()
+}
+
 // 全局快捷键处理
 const handleGlobalKeydown = (event: KeyboardEvent) => {
-  // Ctrl+T / Cmd+T 新建终端标签页
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 't') {
+  const shortcuts = configStore.keyboardShortcuts
+
+  if (matchAccelerator(event, shortcuts.newLocalTerminal)) {
     event.preventDefault()
     terminalStore.createTab('local')
+    return
   }
 
-  // Ctrl+W / Cmd+W 关闭当前终端或窗口
+  // Ctrl+W / Cmd+W 关闭当前终端或窗口（不可自定义，始终生效）
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'w') {
     event.preventDefault()
     handleCloseShortcut()

@@ -93,20 +93,7 @@ const handleKeydown = (e: KeyboardEvent) => {
   }
 }
 
-// 监听快捷键打开面板
-const handleGlobalKeydown = (e: KeyboardEvent) => {
-  // Ctrl/Cmd + Shift + B 打开批量操作面板
-  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'b') {
-    e.preventDefault()
-    if (isOpen.value) {
-      close()
-    } else {
-      open()
-    }
-  }
-}
-
-// 监听菜单命令触发的自定义事件
+// 监听菜单命令触发的自定义事件（快捷键由 Electron 菜单 accelerator 统一处理）
 const handleToggleBatchPanel = () => {
   if (isOpen.value) {
     close()
@@ -116,12 +103,10 @@ const handleToggleBatchPanel = () => {
 }
 
 onMounted(() => {
-  window.addEventListener('keydown', handleGlobalKeydown)
   window.addEventListener('toggle-batch-panel', handleToggleBatchPanel)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleGlobalKeydown)
   window.removeEventListener('toggle-batch-panel', handleToggleBatchPanel)
 })
 

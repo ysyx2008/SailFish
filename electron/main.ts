@@ -581,6 +581,10 @@ function setupWindowServices() {
 
   const lang = configService?.getLanguage() || 'zh-CN'
   menuService.setLanguage(lang)
+  const shortcuts = configService?.get('keyboardShortcuts')
+  if (shortcuts) {
+    menuService.setShortcuts(shortcuts)
+  }
   menuService.applyMenu()
 }
 
@@ -1777,6 +1781,19 @@ ipcMain.handle('config:setLanguage', async (_event, language: string) => {
   }
   // 更新菜单栏语言
   menuService.updateMenu(language)
+})
+
+// 快捷键变更时重建菜单
+ipcMain.handle('config:setKeyboardShortcuts', async (_event, shortcuts: import('./services/config.service').KeyboardShortcuts) => {
+  if (!shortcuts || typeof shortcuts !== 'object') return
+  const { DEFAULT_KEYBOARD_SHORTCUTS: defaults } = await import('./services/config.service')
+  const validKeys = Object.keys(defaults) as (keyof typeof defaults)[]
+  const sanitized: Record<string, string> = {}
+  for (const key of validKeys) {
+    sanitized[key] = typeof shortcuts[key] === 'string' ? shortcuts[key] : defaults[key]
+  }
+  configService.set('keyboardShortcuts', sanitized)
+  menuService.updateMenu(undefined, sanitized)
 })
 
 ipcMain.handle('config:getSponsorStatus', async () => {

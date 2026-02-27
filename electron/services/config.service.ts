@@ -105,6 +105,33 @@ export interface FileBookmark {
 // UI 主题类型
 export type UiThemeType = 'dark' | 'light' | 'blue' | 'gruvbox' | 'forest' | 'ayu-mirage' | 'cyberpunk' | 'lavender' | 'aurora' | 'sponsor-gold' | 'sponsor-sakura' | 'sponsor-rose-pine'
 
+// 快捷键配置（值为 Electron Accelerator 格式，空字符串表示禁用）
+export interface KeyboardShortcuts {
+  newLocalTerminal: string
+  newSshConnection: string
+  batchCommand: string
+  openFileManager: string
+  toggleSidebar: string
+  toggleAiPanel: string
+  toggleKnowledge: string
+  clearTerminal: string
+  openSettings: string
+  aiDebugConsole: string
+}
+
+export const DEFAULT_KEYBOARD_SHORTCUTS: KeyboardShortcuts = {
+  newLocalTerminal: 'CmdOrCtrl+T',
+  newSshConnection: 'CmdOrCtrl+N',
+  batchCommand: 'CmdOrCtrl+Shift+B',
+  openFileManager: 'CmdOrCtrl+F',
+  toggleSidebar: 'CmdOrCtrl+B',
+  toggleAiPanel: 'CmdOrCtrl+I',
+  toggleKnowledge: 'CmdOrCtrl+Shift+K',
+  clearTerminal: 'CmdOrCtrl+K',
+  openSettings: 'CmdOrCtrl+,',
+  aiDebugConsole: 'F12',
+}
+
 interface StoreSchema {
   aiProfiles: AiProfile[]
   activeAiProfile: string
@@ -166,6 +193,7 @@ interface StoreSchema {
   appLifecycleFirstUseDate: number       // 首次使用时间戳
   appLifecycleTotalConversations: number  // 累计对话次数
   appLifecycleAchievedMilestones: string[] // 已达成的里程碑 ID
+  keyboardShortcuts: KeyboardShortcuts  // 自定义快捷键
 }
 
 const defaultConfig: StoreSchema = {
@@ -232,7 +260,8 @@ const defaultConfig: StoreSchema = {
   watchQuietHours: null,
   appLifecycleFirstUseDate: 0,
   appLifecycleTotalConversations: 0,
-  appLifecycleAchievedMilestones: []
+  appLifecycleAchievedMilestones: [],
+  keyboardShortcuts: { ...DEFAULT_KEYBOARD_SHORTCUTS }
 }
 
 export class ConfigService {

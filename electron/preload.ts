@@ -825,6 +825,9 @@ const electronAPI = {
     getLanguage: () => ipcRenderer.invoke('config:getLanguage') as Promise<string>,
     setLanguage: (language: string) => ipcRenderer.invoke('config:setLanguage', language),
 
+    // 快捷键
+    setKeyboardShortcuts: (shortcuts: Record<string, string>) => ipcRenderer.invoke('config:setKeyboardShortcuts', shortcuts),
+
     // 赞助状态
     getSponsorStatus: () => ipcRenderer.invoke('config:getSponsorStatus') as Promise<boolean>,
     setSponsorStatus: (status: boolean) => ipcRenderer.invoke('config:setSponsorStatus', status),

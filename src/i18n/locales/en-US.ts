@@ -176,6 +176,7 @@ export default {
       gateway: 'Web Service',
       theme: 'Theme',
       terminal: 'Terminal',
+      shortcuts: 'Shortcuts',
       data: 'Data',
       language: 'Language',
       about: 'About'
@@ -696,6 +697,30 @@ export default {
     importing: 'Importing...',
     import: 'Import',
     refresh: 'Refresh'
+  },
+
+  // Shortcut Settings
+  shortcutSettings: {
+    title: 'Keyboard Shortcuts',
+    description: 'Customize application shortcuts. Click a shortcut area and press a new key combination to change it.',
+    actions: {
+      newLocalTerminal: 'New Local Terminal',
+      newSshConnection: 'New SSH Connection',
+      batchCommand: 'Batch Command',
+      openFileManager: 'Open File Manager',
+      toggleSidebar: 'Toggle Sidebar',
+      toggleAiPanel: 'Toggle AI Panel',
+      toggleKnowledge: 'Memory & Knowledge',
+      clearTerminal: 'Clear Terminal',
+      openSettings: 'Open Control Panel',
+      aiDebugConsole: 'AI Debug Console',
+    },
+    recording: 'Press a shortcut...',
+    reset: 'Reset',
+    resetAll: 'Reset All',
+    resetAllConfirm: 'Are you sure you want to reset all shortcuts to defaults?',
+    clear: 'Clear',
+    conflict: 'Shortcut conflict: already used by "{action}"',
   },
 
   // Terminal Settings

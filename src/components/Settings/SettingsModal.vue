@@ -18,6 +18,7 @@ import CalendarSettings from './CalendarSettings.vue'
 import SkillSettings from './SkillSettings.vue'
 import GatewaySettings from './GatewaySettings.vue'
 import IMSettings from './IMSettings.vue'
+import ShortcutSettings from './ShortcutSettings.vue'
 import sailfishLogo from '../../../resources/logo.png'
 
 const { t } = useI18n()
@@ -35,7 +36,7 @@ const emit = defineEmits<{
 
 const configStore = useConfigStore()
 
-type SettingsTab = 'ai' | 'aiRules' | 'mcp' | 'skills' | 'knowledge' | 'email' | 'calendar' | 'im' | 'gateway' | 'theme' | 'terminal' | 'data' | 'language' | 'about'
+type SettingsTab = 'ai' | 'aiRules' | 'mcp' | 'skills' | 'knowledge' | 'email' | 'calendar' | 'im' | 'gateway' | 'theme' | 'terminal' | 'shortcuts' | 'data' | 'language' | 'about'
 // Steam 版不展示 AI 配置标签，默认选中「主题」；非 Steam 版默认「AI 模型配置」（__STEAM_BUILD__ 由 vite define 注入）
 const isSteamBuild = __STEAM_BUILD__
 const activeTab = ref<SettingsTab>(isSteamBuild ? 'theme' : 'ai')
@@ -303,10 +304,10 @@ const modalRef = ref<HTMLElement | null>(null)
 let unsubscribeUpdater: (() => void) | null = null
 
 // Steam 版仅保留 theme/terminal/data/language/about，其它 initialTab 均 fallback 到 theme
-const STEAM_TABS: SettingsTab[] = ['theme', 'terminal', 'data', 'language', 'about']
+const STEAM_TABS: SettingsTab[] = ['theme', 'terminal', 'shortcuts', 'data', 'language', 'about']
 // 初始化时设置初始 tab 和获取版本号
 onMounted(async () => {
-  if (props.initialTab && ['ai', 'aiRules', 'mcp', 'skills', 'knowledge', 'email', 'calendar', 'im', 'gateway', 'theme', 'terminal', 'data', 'language', 'about'].includes(props.initialTab)) {
+  if (props.initialTab && ['ai', 'aiRules', 'mcp', 'skills', 'knowledge', 'email', 'calendar', 'im', 'gateway', 'theme', 'terminal', 'shortcuts', 'data', 'language', 'about'].includes(props.initialTab)) {
     const tab = props.initialTab as SettingsTab
     activeTab.value = isSteamBuild && !STEAM_TABS.includes(tab) ? 'theme' : tab
   }
@@ -347,6 +348,7 @@ const tabGroups = computed(() => {
         tabs: [
           { id: 'theme' as const, label: t('settings.tabs.theme'), icon: '🎨' },
           { id: 'terminal' as const, label: t('settings.tabs.terminal'), icon: '⚙️' },
+          { id: 'shortcuts' as const, label: t('settings.tabs.shortcuts'), icon: '⌨️' },
           { id: 'data' as const, label: t('settings.tabs.data'), icon: '💾' },
           { id: 'language' as const, label: t('settings.tabs.language'), icon: '🌐' },
           { id: 'about' as const, label: t('settings.tabs.about'), icon: 'ℹ️' }
@@ -379,6 +381,7 @@ const tabGroups = computed(() => {
       tabs: [
         { id: 'theme' as const, label: t('settings.tabs.theme'), icon: '🎨' },
         { id: 'terminal' as const, label: t('settings.tabs.terminal'), icon: '⚙️' },
+        { id: 'shortcuts' as const, label: t('settings.tabs.shortcuts'), icon: '⌨️' },
         { id: 'data' as const, label: t('settings.tabs.data'), icon: '💾' },
         { id: 'language' as const, label: t('settings.tabs.language'), icon: '🌐' },
         { id: 'about' as const, label: t('settings.tabs.about'), icon: 'ℹ️' }
@@ -509,6 +512,7 @@ const onQrImageError = (event: Event) => {
           <GatewaySettings v-else-if="activeTab === 'gateway'" />
           <ThemeSettings v-else-if="activeTab === 'theme'" />
           <TerminalSettings v-else-if="activeTab === 'terminal'" />
+          <ShortcutSettings v-else-if="activeTab === 'shortcuts'" />
           <DataSettings v-else-if="activeTab === 'data'" />
           <LanguageSettings v-else-if="activeTab === 'language'" />
           <div v-else-if="activeTab === 'about'" ref="aboutContentRef" class="about-content">
