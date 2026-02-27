@@ -262,6 +262,7 @@ function isActionModified(action: ShortcutAction): boolean {
   display: flex;
   flex-direction: column;
   gap: 0;
+  max-width: 560px;
 }
 
 .settings-header-bar {
