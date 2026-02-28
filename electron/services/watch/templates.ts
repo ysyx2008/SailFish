@@ -221,6 +221,30 @@ export const watchTemplates: WatchTemplate[] = [
   },
 
   {
+    id: 'deadline-reminder',
+    name: '待办截止提醒',
+    nameEn: 'Deadline Reminder',
+    description: '每天检查待办事项，提醒临近截止日期的任务',
+    descriptionEn: 'Daily check on TODO items, remind about approaching deadlines',
+    category: 'daily',
+    icon: '⏰',
+    create: (options) => ({
+      name: '待办截止提醒',
+      description: '每天检查待办事项，提醒临近截止日期的任务',
+      triggers: [{ type: 'cron', expression: options?.cron as string || '0 9 * * *' }],
+      prompt: `请检查你的私有工作空间中的 TODO.md 文件，查看用户的待办事项：
+1. 读取 TODO.md 文件
+2. 找出已逾期或 3 天内即将到期的任务
+3. 如果有紧急待办，通过 talk_to_user 提醒用户，语气自然友好
+4. 如果所有待办都不紧急，直接结束，不要打扰用户
+5. 如果 TODO.md 不存在或为空，直接结束`,
+      execution: { type: 'local' },
+      output: { type: options?.output as any || 'desktop' },
+      priority: 'normal'
+    })
+  },
+
+  {
     id: 'periodic-summary',
     name: '定期工作总结',
     nameEn: 'Periodic Work Summary',

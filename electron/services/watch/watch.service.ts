@@ -8,9 +8,12 @@
  * 4. 将结果投递到配置的输出渠道
  * 5. 管理 cron/interval 类型触发器的定时调度
  */
+import * as fs from 'fs'
+import * as path from 'path'
 import type { BrowserWindow } from 'electron'
 import { Notification } from 'electron'
 import { createLogger } from '../../utils/logger'
+import { getWorkspacePath } from '../agent/tools/file'
 import type {
   WatchDefinition,
   CreateWatchParams,
@@ -655,10 +658,33 @@ export class WatchService {
     // 用户可见消息必须通过 talk_to_user 发送，最终文本回复仅用于内部记录
     parts.push('[通知用户时，必须调用 talk_to_user 工具发送消息。最终文本回复仅作为内部日志，不会作为通知正文。]')
 
+    // 唤醒 Watch 注入 TODO.md：让 Agent 醒来时自动感知待办和截止日期
+    if (watch.id === WatchService.WAKEUP_ID) {
+      const todoContent = this.readTodoFile()
+      if (todoContent) {
+        parts.push(`[你的待办事项（来自 workspace/TODO.md）：\n${todoContent}\n]`)
+      }
+    }
+
     // 原始 prompt
     parts.push(watch.prompt)
 
     return parts.join('\n')
+  }
+
+  private readTodoFile(): string | null {
+    try {
+      const todoPath = path.join(getWorkspacePath(), 'TODO.md')
+      if (!fs.existsSync(todoPath)) return null
+      const raw = fs.readFileSync(todoPath, 'utf-8').trim()
+      if (!raw) return null
+      const MAX_CHARS = 3000
+      return raw.length > MAX_CHARS
+        ? raw.substring(0, MAX_CHARS) + '\n... [待办列表过长，已截断]'
+        : raw
+    } catch {
+      return null
+    }
   }
 
   private formatEventLines(event: SensorEvent): string[] {
@@ -1235,6 +1261,11 @@ export class WatchService {
 - 注意当前时间：人类一般在 23:00–07:00 之间睡觉。在这个时段，除非有异常或紧急事件，直接结束，不要打扰用户休息。如果你的记忆中有该用户的具体作息习惯，以实际习惯为准。
 - 「一切正常」「系统运行平稳」这类信息没有通知价值——沉默本身就代表一切正常。
 
+待办事项：
+- 如果上方注入了待办事项（TODO.md），检查是否有临近截止日期的任务（24 小时内到期或已逾期）。
+- 有紧急待办时，在打招呼或通知中自然地提醒用户，不要像机器人一样列清单。
+- 没有紧急待办、或没有待办文件，则忽略此项。
+
 事件处理指南：
 - IM 上线：用户刚通过 IM 连上你。根据时间段、距上次的间隔、最近聊过的话题，自然地打招呼——可以问近况、分享一个发现、接着上次的话题聊，每次换个角度。
 - 应用启动：根据当天时间和陪伴天数决定是否问好。
@@ -1273,7 +1304,7 @@ export class WatchService {
             this.store.updateState(WatchService.WAKEUP_ID, rest)
           }
           needsUpdate = true
-        } else if (!existing.prompt?.includes('里程碑')) {
+        } else if (!existing.prompt?.includes('里程碑') || !existing.prompt?.includes('待办事项')) {
           needsUpdate = true
         }
 
