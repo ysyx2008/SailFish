@@ -10,6 +10,7 @@ import { Upload, Trash2, X, HelpCircle, ChevronDown, Plus, Square, ArrowUp, Chec
 import { useConfigStore } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
 import AgentPlanView from './AgentPlanView.vue'
+import sailfishLogo from '../../resources/logo.png'
 
 // 导入 composables
 import {
@@ -1201,7 +1202,7 @@ onUnmounted(() => {
       </div>
 
       <!-- 消息列表 -->
-      <div ref="messagesRef" class="ai-messages" @click="handleCodeBlockClick" @scroll="updateScrollPosition">
+      <div ref="messagesRef" class="ai-messages" :class="{ 'standalone-mode': isStandaloneAssistant }" :style="isStandaloneAssistant ? { '--assistant-avatar': `url(${sailfishLogo})` } : undefined" @click="handleCodeBlockClick" @scroll="updateScrollPosition">
         <!-- 欢迎页（无任务且无历史对话时显示） -->
         <div v-if="!agentUserTask && agentTaskGroups.length === 0" class="ai-welcome">
           <p>🤖 {{ t('ai.agentWelcome.enabled') }}</p>
@@ -2865,6 +2866,28 @@ onUnmounted(() => {
   justify-content: flex-start;
 }
 
+.standalone-mode .message.assistant {
+  align-items: flex-start;
+}
+
+.standalone-mode .message.assistant::before {
+  content: '';
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  margin-right: 8px;
+  margin-top: 2px;
+  border-radius: 8px;
+  background-image: var(--assistant-avatar);
+  background-size: 68%;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  position: relative;
+  z-index: 1;
+}
+
 .message-wrapper {
   position: relative;
   max-width: 85%;
@@ -2872,6 +2895,10 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 4px;
   transition: transform 0.2s ease;
+}
+
+.standalone-mode .message.assistant .message-wrapper {
+  max-width: calc(85% - 42px);
 }
 
 .message.user .message-content {
