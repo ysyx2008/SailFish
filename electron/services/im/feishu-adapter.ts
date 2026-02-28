@@ -40,10 +40,12 @@ export class FeishuAdapter implements IMAdapter {
 
   private static readonly RECONNECT_BASE_DELAY = 5_000
   private static readonly RECONNECT_MAX_DELAY = 60_000
+  private static readonly SILENT_RECONNECT_LIMIT = 3
 
   private client: any = null
   private wsClient: any = null
   private connected = false
+  private reportedConnected = false
   private starting = false
   private stopped = false
   private config: FeishuConfig
@@ -72,7 +74,7 @@ export class FeishuAdapter implements IMAdapter {
       await this.verifyCredentials()
       await this.connectWS()
     } catch (err) {
-      this.updateConnected(false)
+      this.connected = false
       this.cleanupWS()
       throw err
     } finally {
@@ -86,8 +88,9 @@ export class FeishuAdapter implements IMAdapter {
     this.cancelReconnect()
     this.stopHealthCheck()
     this.cleanupWS()
-    this.updateConnected(false)
-    log.info('Disconnected')
+    this.connected = false
+    this.reportDisconnected()
+    log.info('Stopped')
   }
 
   /**
@@ -175,6 +178,9 @@ export class FeishuAdapter implements IMAdapter {
     } catch (err: any) {
       log.warn(`Reconnect #${this.reconnectAttempts} failed: ${err.message || err}`)
       this.cleanupWS()
+      if (this.reconnectAttempts >= FeishuAdapter.SILENT_RECONNECT_LIMIT) {
+        this.reportDisconnected()
+      }
       this.scheduleReconnect()
     } finally {
       this.starting = false
@@ -214,18 +220,31 @@ export class FeishuAdapter implements IMAdapter {
     }
   }
 
+  /**
+   * 更新实际连接状态。断开时静默重连，不立即通知外部；
+   * 只有重连成功或超过阈值确认失败后才通知。
+   */
   private updateConnected(value: boolean): void {
-    if (this.connected !== value) {
-      this.connected = value
-      this.onConnectionChange?.(value)
-      log.info(`Connection state changed: ${value ? 'connected' : 'disconnected'}`)
+    if (this.connected === value) return
+    this.connected = value
+    log.info(`WebSocket state: ${value ? 'open' : 'closed'}`)
 
-      if (value) {
-        this.cancelReconnect()
-      } else if (!this.starting) {
-        this.scheduleReconnect()
+    if (value) {
+      this.cancelReconnect()
+      if (!this.reportedConnected) {
+        this.reportedConnected = true
+        this.onConnectionChange?.(true)
       }
+    } else if (!this.starting) {
+      this.scheduleReconnect()
     }
+  }
+
+  private reportDisconnected(): void {
+    if (!this.reportedConnected || this.connected) return
+    this.reportedConnected = false
+    this.onConnectionChange?.(false)
+    log.info('Reporting disconnected after failed reconnects')
   }
 
   /**
