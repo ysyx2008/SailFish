@@ -165,7 +165,19 @@ const filteredTemplates = computed(() => {
   return templates.value.filter(t => t.category === selectedTemplateCategory.value)
 })
 
-const enabledCount = computed(() => watches.value.filter(w => w.enabled).length)
+const BUILTIN_WATCH_IDS = new Set(['__wakeup__', '__daily_patrol__'])
+const userWatches = computed(() =>
+  configStore.agentDebugMode
+    ? watches.value
+    : watches.value.filter(w => !BUILTIN_WATCH_IDS.has(w.id))
+)
+const enabledCount = computed(() => userWatches.value.filter(w => w.enabled).length)
+
+watch(() => userWatches.value, (list) => {
+  if (selectedWatch.value && !list.some(w => w.id === selectedWatch.value!.id)) {
+    selectedWatch.value = null
+  }
+})
 
 // ==================== Watch Operations ====================
 
@@ -504,7 +516,7 @@ onUnmounted(() => {
           <Heart :size="16" style="margin-right: 6px;" />
           {{ t('awaken.title') }}
         </h2>
-        <div class="header-stats" v-if="watches.length > 0">
+        <div class="header-stats" v-if="userWatches.length > 0">
           <span class="stat-item">{{ enabledCount }} {{ t('watch.activeCount') }}</span>
         </div>
         <button class="btn-icon" @click="requestClose" :title="t('watch.close')">
@@ -582,7 +594,7 @@ onUnmounted(() => {
             <button class="nav-item" :class="{ active: activeTab === 'watches' }" @click="switchTab('watches')">
               <Eye :size="16" />
               <span>{{ t('watch.watches') }}</span>
-              <span v-if="watches.length" class="nav-badge">{{ watches.length }}</span>
+              <span v-if="userWatches.length" class="nav-badge">{{ userWatches.length }}</span>
             </button>
           </div>
           <div class="nav-group">
@@ -691,7 +703,7 @@ onUnmounted(() => {
                 </div>
 
                 <div class="item-list">
-                  <div v-for="w in watches" :key="w.id" class="list-item" :class="{ active: selectedWatch?.id === w.id, disabled: !w.enabled, running: runningWatches.has(w.id) }" @click="selectWatch(w)">
+                  <div v-for="w in userWatches" :key="w.id" class="list-item" :class="{ active: selectedWatch?.id === w.id, disabled: !w.enabled, running: runningWatches.has(w.id) }" @click="selectWatch(w)">
                     <button class="btn-toggle" :class="{ enabled: w.enabled }" @click.stop="toggleWatch(w)">
                       <span class="toggle-dot"></span>
                     </button>
@@ -720,7 +732,7 @@ onUnmounted(() => {
                     </button>
                   </div>
 
-                  <div v-if="watches.length === 0 && !loading" class="empty-state">
+                  <div v-if="userWatches.length === 0 && !loading" class="empty-state">
                     <Eye :size="40" class="empty-icon" />
                     <p>{{ t('watch.noWatches') }}</p>
                     <p class="hint-text">{{ t('watch.createViaAgent') }}</p>
