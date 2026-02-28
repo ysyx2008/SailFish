@@ -86,7 +86,7 @@ export interface IMLastContact {
 
 /** 工具 → 图标 */
 const TOOL_ICONS: Record<string, string> = {
-  execute_command: '🔧', read_file: '📄', edit_file: '✏️',
+  execute_command: '🔧', exec: '🔧', read_file: '📄', edit_file: '✏️',
   write_local_file: '📝', write_remote_file: '📝', file_search: '🔍',
   search_knowledge: '📚', get_knowledge_doc: '📚',
   recall_task: '🧠', deep_recall: '🧠', wait: '⏳',
@@ -99,6 +99,7 @@ const TOOL_ICONS: Record<string, string> = {
 /** 工具 → 已有 i18n key 的映射（复用已有翻译，避免重复添加） */
 const TOOL_I18N_MAP: Record<string, Parameters<typeof t>[0]> = {
   execute_command: 'tool.execute_command',
+  exec: 'tool.execute_command',
   check_terminal_status: 'tool.check_terminal_status',
   get_terminal_context: 'tool.get_terminal_context',
   send_control_key: 'tool.send_control_key',
@@ -131,7 +132,7 @@ function formatToolNotification(toolName: string, toolArgs?: Record<string, unkn
 
   // 根据工具类型附加关键参数
   let detail = ''
-  if (toolName === 'execute_command') {
+  if (toolName === 'execute_command' || toolName === 'exec') {
     const cmd = toolArgs?.command ? String(toolArgs.command) : ''
     detail = cmd ? `\n$ ${cmd.length > 200 ? cmd.substring(0, 200) + '...' : cmd}` : ''
   } else if (toolArgs?.path) {
