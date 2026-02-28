@@ -658,11 +658,15 @@ export class WatchService {
     // 用户可见消息必须通过 talk_to_user 发送，最终文本回复仅用于内部记录
     parts.push('[通知用户时，必须调用 talk_to_user 工具发送消息。最终文本回复仅作为内部日志，不会作为通知正文。]')
 
-    // 唤醒 Watch 注入 TODO.md：让 Agent 醒来时自动感知待办和截止日期
+    // 唤醒 Watch：注入 workspace 中的持久化文件，让 Agent 醒来时自动感知上下文
     if (watch.id === WatchService.WAKEUP_ID) {
-      const todoContent = this.readTodoFile()
+      const todoContent = this.readWorkspaceFile('TODO.md', 3000)
       if (todoContent) {
         parts.push(`[你的待办事项（来自 workspace/TODO.md）：\n${todoContent}\n]`)
+      }
+      const contactsContent = this.readWorkspaceFile('CONTACTS.md', 2000)
+      if (contactsContent) {
+        parts.push(`[通讯录（来自 workspace/CONTACTS.md）：\n${contactsContent}\n]`)
       }
     }
 
@@ -672,17 +676,18 @@ export class WatchService {
     return parts.join('\n')
   }
 
-  private readTodoFile(): string | null {
+  private readWorkspaceFile(filename: string, maxChars: number): string | null {
     try {
-      const todoPath = path.join(getWorkspacePath(), 'TODO.md')
-      if (!fs.existsSync(todoPath)) return null
-      const raw = fs.readFileSync(todoPath, 'utf-8').trim()
+      const filePath = path.join(getWorkspacePath(), filename)
+      const raw = fs.readFileSync(filePath, 'utf-8').trim()
       if (!raw) return null
-      const MAX_CHARS = 3000
-      return raw.length > MAX_CHARS
-        ? raw.substring(0, MAX_CHARS) + '\n... [待办列表过长，已截断]'
+      return raw.length > maxChars
+        ? raw.slice(0, maxChars) + `\n... [${filename} 内容过长，已截断]`
         : raw
-    } catch {
+    } catch (e: any) {
+      if (e?.code !== 'ENOENT') {
+        log.warn(`读取 ${filename} 失败:`, e)
+      }
       return null
     }
   }
