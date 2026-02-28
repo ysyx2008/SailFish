@@ -2,7 +2,27 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.11.3 (2026-02-28) (Latest)
+## v10.12.0 (2026-02-28) (Latest)
+
+Agent now maintains TODO.md and CONTACTS.md for persistent task and contact tracking, with smarter awaken context injection and refined Watch reminder logic.
+
+### New Features
+- 📝 **TODO.md Management**: Agent can now maintain a `TODO.md` file to track user tasks and deadlines persistently
+- 📇 **CONTACTS.md Management**: Agent can now maintain a `CONTACTS.md` address book for user contacts
+- 🌅 **Awaken Context Summary**: Awaken mode now injects a recent activity summary so the Agent understands what the user has been doing
+
+### Improvements
+- 📋 **TODO/CONTACTS Mechanism Refinement**: Clarified the boundary between TODO document tracking and Watch-based reminders
+- 🔕 **Hide Built-in Awaken Watch**: Built-in awaken Watch entries are now hidden in non-debug mode
+- ⏰ **Smarter TODO Reminders**: Watch reminder logic now intelligently judges reminder timing based on task time spans
+- 🌙 **Reduced Night-time Disturbance**: Optimized awaken prompts to minimize unnecessary notifications at night
+- 🔧 **CI/CD Filename Fix**: Updated OSS upload and website download links to use new "SailFish" naming
+
+### Bug Fixes
+- 🔧 Fixed Feishu (Lark) silently reconnecting on disconnect instead of repeatedly notifying the user
+- 🔧 Fixed IM messages showing raw `exec` tool name instead of the actual command being executed
+
+## v10.11.3 (2026-02-28)
 
 Improved AI model compatibility and robustness, with fixes for output truncation, token limits, and vision fallback, plus a new IM process message toggle.
 
