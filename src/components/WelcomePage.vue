@@ -8,7 +8,7 @@ import { useI18n } from 'vue-i18n'
 import { Bot, SquareTerminal, Monitor } from 'lucide-vue-next'
 import { useConfigStore, type SshSession } from '../stores/config'
 import MatrixRain from './EasterEgg/MatrixRain.vue'
-import sailfishLogo from '../../resources/logo.png'
+import sailfishLogo from '../../resources/logo-7_1024X1024_透明背景.png'
 
 const { t } = useI18n()
 const configStore = useConfigStore()
@@ -111,8 +111,10 @@ const formatHost = (session: SshSession) => {
             <img :src="sailfishLogo" alt="Sailfish" class="sailfish-logo" />
           </div>
         </div>
-        <h1 class="welcome-title">{{ t(isSteamBuild ? 'welcome.titleSteam' : 'welcome.title') }}</h1>
-        <p class="welcome-subtitle">{{ t(isSteamBuild ? 'welcome.subtitleSteam' : 'welcome.subtitle') }}</p>
+        <div class="header-text">
+          <h1 class="welcome-title">{{ t(isSteamBuild ? 'welcome.titleSteam' : 'welcome.title') }}</h1>
+          <p class="welcome-subtitle">{{ t(isSteamBuild ? 'welcome.subtitleSteam' : 'welcome.subtitle') }}</p>
+        </div>
       </div>
 
       <!-- 快速启动卡片 -->
@@ -254,10 +256,17 @@ const formatHost = (session: SshSession) => {
 
 /* Header */
 .welcome-header {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
   margin-bottom: 32px;
   animation: headerEnter 0.35s cubic-bezier(0.16, 1, 0.3, 1) 0.05s forwards;
   opacity: 0;
+}
+
+.header-text {
+  text-align: left;
 }
 
 @keyframes headerEnter {
@@ -272,7 +281,6 @@ const formatHost = (session: SshSession) => {
 }
 
 .logo-container {
-  margin-bottom: 16px;
   transition: transform 0.3s ease;
 }
 
@@ -294,8 +302,8 @@ const formatHost = (session: SshSession) => {
 }
 
 .sailfish-logo {
-  width: 80px;
-  height: 80px;
+  width: 112px;
+  height: 112px;
   object-fit: contain;
   filter: drop-shadow(0 4px 16px rgba(var(--accent-rgb, 59, 130, 246), 0.4));
   transition: filter 0.3s ease;
@@ -311,10 +319,10 @@ const formatHost = (session: SshSession) => {
 }
 
 .welcome-title {
-  font-size: 28px;
+  font-size: 30px;
   font-weight: 800;
   color: var(--text-primary);
-  margin: 0 0 8px 0;
+  margin: 0 0 6px 0;
   letter-spacing: -0.5px;
   /* 渐变文字效果 */
   background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-primary) 100%);
@@ -334,7 +342,8 @@ const formatHost = (session: SshSession) => {
   font-size: 15px;
   color: var(--text-muted);
   margin: 0;
-  opacity: 0.9;
+  opacity: 0.85;
+  letter-spacing: 0.5px;
 }
 
 /* Section Title */
