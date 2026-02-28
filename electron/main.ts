@@ -928,6 +928,7 @@ app.whenReady().then(async () => {
         agentService,
         aiService,
         sensorService,
+        historyService,
         mainWindow
       })
       watchService.start().catch(e => {

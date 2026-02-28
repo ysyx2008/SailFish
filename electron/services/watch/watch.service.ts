@@ -35,6 +35,7 @@ import type { AgentService } from '../agent'
 import type { AgentContext, AgentCallbacks, AgentStep } from '../agent/types'
 import type { AiService } from '../ai.service'
 import type { SensorService } from '../sensor'
+import type { HistoryService } from '../history.service'
 import { watchTemplates, getTemplateById, getAllTemplateCategories, type WatchTemplate } from './templates'
 
 // cron-parser 动态导入
@@ -56,6 +57,7 @@ export interface WatchServiceConfig {
   agentService: AgentService
   aiService: AiService
   sensorService: SensorService
+  historyService?: HistoryService
   mainWindow: BrowserWindow | null
 }
 
@@ -668,6 +670,10 @@ export class WatchService {
       if (contactsContent) {
         parts.push(`[通讯录（来自 workspace/CONTACTS.md）：\n${contactsContent}\n]`)
       }
+      const activityDigest = this.buildRecentActivityDigest()
+      if (activityDigest) {
+        parts.push(activityDigest)
+      }
     }
 
     // 原始 prompt
@@ -677,6 +683,61 @@ export class WatchService {
   }
 
   private static readonly WORKSPACE_FILE_MAX_CHARS = 8000
+
+  private static readonly DIGEST_MAX_RECORDS = 10
+  private static readonly DIGEST_DAYS = 3
+  private static readonly DIGEST_TASK_MAX_CHARS = 100
+  private static readonly DIGEST_RESULT_MAX_CHARS = 150
+
+  private buildRecentActivityDigest(): string | null {
+    const historyService = this.config?.historyService
+    if (!historyService) return null
+
+    try {
+      const now = new Date()
+      const since = new Date(now.getTime() - WatchService.DIGEST_DAYS * 24 * 60 * 60 * 1000)
+      const startDate = since.toISOString().split('T')[0]
+
+      const allRecords = historyService.getAgentRecords(startDate)
+      const userRecords = allRecords.filter(r => r.terminalId && r.terminalId !== '')
+
+      if (userRecords.length === 0) return null
+
+      const recent = userRecords.slice(-WatchService.DIGEST_MAX_RECORDS)
+      const lines: string[] = ['[用户最近的对话活动：']
+
+      for (const r of recent) {
+        const time = new Date(r.timestamp).toLocaleString('zh-CN', {
+          month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+        })
+        const source = r.terminalType === 'assistant' ? '助手' : '终端'
+        const task = this.truncate(r.userTask || '(未知任务)', WatchService.DIGEST_TASK_MAX_CHARS)
+        const statusIcon = r.status === 'completed' ? '✓' : r.status === 'failed' ? '✗' : '…'
+
+        let line = `- ${time} (${source}) ${statusIcon} ${task}`
+        if (r.finalResult) {
+          const result = this.truncate(r.finalResult, WatchService.DIGEST_RESULT_MAX_CHARS)
+          line += `\n  → ${result}`
+        }
+        lines.push(line)
+      }
+
+      if (userRecords.length > WatchService.DIGEST_MAX_RECORDS) {
+        lines.push(`(仅显示最近 ${recent.length} 条，共 ${userRecords.length} 条)`)
+      }
+      lines.push('注意：以上是用户与其他 Agent 的对话摘要。你可以据此了解用户近况，在合适时自然地关心或跟进。不要机械地逐条回应。]')
+
+      return lines.join('\n')
+    } catch (e) {
+      log.warn('构建用户近况摘要失败:', e)
+      return null
+    }
+  }
+
+  private truncate(text: string, maxLen: number): string {
+    const oneLine = text.replace(/\n/g, ' ').trim()
+    return oneLine.length <= maxLen ? oneLine : oneLine.substring(0, maxLen) + '...'
+  }
 
   private readWorkspaceFile(filename: string): string | null {
     try {
@@ -1280,6 +1341,9 @@ export class WatchService {
 - 应用启动：根据当天时间和陪伴天数决定是否问好。
 - 里程碑：值得庆祝的时刻，用真诚而有个性的方式表达。
 - 其他事件：有值得通知的就说，没有就直接结束。
+
+用户近况：
+- 上方可能注入了用户最近的对话活动摘要，包括任务内容和完成状态。这是你了解用户近况的窗口，怎么利用由你自己决定。
 
 风格要求：
 - 结合你的个性设定，像真人朋友一样自然交流，短句优先，一两句话即可。
