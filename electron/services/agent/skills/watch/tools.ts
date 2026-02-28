@@ -30,6 +30,10 @@ export const watchTools: ToolDefinition[] = [
       name: 'watch_create',
       description: `创建一个新的关切（持续关注的事项）。
 
+**重要**：先判断——到时候是"提醒用户去做"还是"我自己去执行操作"？
+前者写 workspace 的 TODO.md 即可（觉醒状态唤醒时自动检查并提醒），后者才需要创建关切。
+例："周五前提交周报，提醒我"→ 写 TODO.md；"每天帮我检查邮箱"→ 创建关切。
+
 **触发方式**（可组合多个）：
 - cron: Cron 表达式，如 "0 9 * * *"（每天 9 点）
 - interval: 固定间隔（秒），如 1800 = 30 分钟

@@ -660,15 +660,15 @@ export class WatchService {
     // 用户可见消息必须通过 talk_to_user 发送，最终文本回复仅用于内部记录
     parts.push('[通知用户时，必须调用 talk_to_user 工具发送消息。最终文本回复仅作为内部日志，不会作为通知正文。]')
 
-    // 唤醒 Watch：注入 workspace 中的持久化文件，让 Agent 醒来时自动感知上下文
+    // 唤醒 Watch：TODO.md 每次注入（提醒机制核心），CONTACTS.md 按需读取
     if (watch.id === WatchService.WAKEUP_ID) {
       const todoContent = this.readWorkspaceFile('TODO.md')
       if (todoContent) {
         parts.push(`[你的待办事项（来自 workspace/TODO.md）：\n${todoContent}\n]`)
       }
-      const contactsContent = this.readWorkspaceFile('CONTACTS.md')
-      if (contactsContent) {
-        parts.push(`[通讯录（来自 workspace/CONTACTS.md）：\n${contactsContent}\n]`)
+      const hasContacts = fs.existsSync(path.join(getWorkspacePath(), 'CONTACTS.md'))
+      if (hasContacts) {
+        parts.push(`[你的工作空间中有 CONTACTS.md，需要时可读取。]`)
       }
       const activityDigest = this.buildRecentActivityDigest()
       if (activityDigest) {
@@ -1331,10 +1331,11 @@ export class WatchService {
 - 「一切正常」「系统运行平稳」这类信息没有通知价值——沉默本身就代表一切正常。
 
 待办事项：
-- 如果上方注入了待办事项（TODO.md），根据每个任务的创建时间和截止日期判断是否需要提醒。
+- 如果上方注入了待办事项（TODO.md），根据每条任务的创建日期和截止时间判断是否需要提醒。
 - 判断逻辑：考虑任务的总时间跨度（从创建到截止），已过去的比例越大越需要提醒。短期任务（几天内）临近截止时提醒；长期任务（数周到数月）在剩余约 1/3 时间时就应该开始提醒。已逾期的任务务必提醒。
 - 有需要提醒的待办时，在打招呼或通知中自然地提及，不要像机器人一样列清单。
-- 没有需要提醒的待办、或没有待办文件，则忽略此项。
+- 顺便清理已完成较久的条目，保持文件精简。
+- 没有 TODO.md 或无需提醒的待办，则忽略此项。
 
 事件处理指南：
 - IM 上线：用户刚通过 IM 连上你。根据时间段、距上次的间隔、最近聊过的话题，自然地打招呼——可以问近况、分享一个发现、接着上次的话题聊，每次换个角度。
