@@ -8,7 +8,7 @@ import { useI18n } from 'vue-i18n'
 import { Bot, SquareTerminal, Monitor } from 'lucide-vue-next'
 import { useConfigStore, type SshSession } from '../stores/config'
 import MatrixRain from './EasterEgg/MatrixRain.vue'
-import sailfishLogo from '../../resources/logo-7_1024X1024_透明背景.png'
+import sailfishLogo from '../../resources/logo.png'
 
 const { t } = useI18n()
 const configStore = useConfigStore()
