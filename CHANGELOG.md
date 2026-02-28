@@ -2,7 +2,16 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.12.0 (2026-02-28) (Latest)
+## v10.12.1 (2026-03-01) (Latest)
+
+Refreshed app branding with a new logo across all platforms, and added an assistant avatar in standalone mode.
+
+### Improvements
+- 🎨 **New App Logo**: Replaced the application logo across all platforms (macOS, Windows, Linux), welcome page, website, and favicon
+- 🐟 **Assistant Avatar**: Added a SailFish logo avatar next to AI messages in standalone assistant mode for a more polished chat experience
+- 🖼️ **Welcome Page Layout**: Updated welcome page logo sizing and layout for better visual balance
+
+## v10.12.0 (2026-02-28)
 
 Agent now maintains TODO.md and CONTACTS.md for persistent task and contact tracking, with smarter awaken context injection and refined Watch reminder logic.
 
