@@ -219,14 +219,14 @@ jobs:
           BUCKET=oss://sfterm-download
           
           # Windows
-          $OSSUTIL cp artifacts/windows-release/SailFish-Setup-${VERSION}.exe ${BUCKET}/SFTerm-Setup.exe -f
+          $OSSUTIL cp artifacts/windows-release/SailFish-Setup-${VERSION}.exe ${BUCKET}/SailFish-Setup.exe -f
           
           # macOS
-          $OSSUTIL cp artifacts/macos-release/SailFish-${VERSION}-arm64.dmg ${BUCKET}/SFTerm-arm64.dmg -f
-          $OSSUTIL cp artifacts/macos-release/SailFish-${VERSION}.dmg ${BUCKET}/SFTerm-x64.dmg -f
+          $OSSUTIL cp artifacts/macos-release/SailFish-${VERSION}-arm64.dmg ${BUCKET}/SailFish-arm64.dmg -f
+          $OSSUTIL cp artifacts/macos-release/SailFish-${VERSION}.dmg ${BUCKET}/SailFish-x64.dmg -f
           
           # Linux
-          $OSSUTIL cp artifacts/linux-release/SailFish-${VERSION}.AppImage ${BUCKET}/SFTerm.AppImage -f
-          $OSSUTIL cp artifacts/linux-release/SFTerm_${VERSION}_amd64.deb ${BUCKET}/SFTerm.deb -f
+          $OSSUTIL cp artifacts/linux-release/SailFish-${VERSION}.AppImage ${BUCKET}/SailFish.AppImage -f
+          $OSSUTIL cp artifacts/linux-release/SFTerm_${VERSION}_amd64.deb ${BUCKET}/SailFish.deb -f
           
           echo "✅ All files uploaded to OSS successfully!"
