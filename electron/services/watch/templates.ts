@@ -234,8 +234,8 @@ export const watchTemplates: WatchTemplate[] = [
       triggers: [{ type: 'cron', expression: options?.cron as string || '0 9 * * *' }],
       prompt: `请检查你的私有工作空间中的 TODO.md 文件，查看用户的待办事项：
 1. 读取 TODO.md 文件
-2. 找出已逾期或 3 天内即将到期的任务
-3. 如果有紧急待办，通过 talk_to_user 提醒用户，语气自然友好
+2. 根据每个任务的创建时间和截止日期判断紧急程度：考虑任务的总时间跨度，短期任务临近截止时提醒，长期任务在剩余约 1/3 时间时就应提醒。已逾期的务必提醒。
+3. 如果有需要提醒的待办，通过 talk_to_user 提醒用户，语气自然友好
 4. 如果所有待办都不紧急，直接结束，不要打扰用户
 5. 如果 TODO.md 不存在或为空，直接结束`,
       execution: { type: 'local' },

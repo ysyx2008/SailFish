@@ -660,11 +660,11 @@ export class WatchService {
 
     // 唤醒 Watch：注入 workspace 中的持久化文件，让 Agent 醒来时自动感知上下文
     if (watch.id === WatchService.WAKEUP_ID) {
-      const todoContent = this.readWorkspaceFile('TODO.md', 3000)
+      const todoContent = this.readWorkspaceFile('TODO.md')
       if (todoContent) {
         parts.push(`[你的待办事项（来自 workspace/TODO.md）：\n${todoContent}\n]`)
       }
-      const contactsContent = this.readWorkspaceFile('CONTACTS.md', 2000)
+      const contactsContent = this.readWorkspaceFile('CONTACTS.md')
       if (contactsContent) {
         parts.push(`[通讯录（来自 workspace/CONTACTS.md）：\n${contactsContent}\n]`)
       }
@@ -676,14 +676,17 @@ export class WatchService {
     return parts.join('\n')
   }
 
-  private readWorkspaceFile(filename: string, maxChars: number): string | null {
+  private static readonly WORKSPACE_FILE_MAX_CHARS = 8000
+
+  private readWorkspaceFile(filename: string): string | null {
     try {
       const filePath = path.join(getWorkspacePath(), filename)
       const raw = fs.readFileSync(filePath, 'utf-8').trim()
       if (!raw) return null
-      return raw.length > maxChars
-        ? raw.slice(0, maxChars) + `\n... [${filename} 内容过长，已截断]`
-        : raw
+      if (raw.length <= WatchService.WORKSPACE_FILE_MAX_CHARS) return raw
+      const lastNewline = raw.lastIndexOf('\n', WatchService.WORKSPACE_FILE_MAX_CHARS)
+      const cutPoint = lastNewline > 0 ? lastNewline : WatchService.WORKSPACE_FILE_MAX_CHARS
+      return raw.slice(0, cutPoint) + `\n... [文件较大，以上为前 ${cutPoint} 字符，完整内容请用 read_file 工具读取 ${filePath}]`
     } catch (e: any) {
       if (e?.code !== 'ENOENT') {
         log.warn(`读取 ${filename} 失败:`, e)
@@ -1267,9 +1270,10 @@ export class WatchService {
 - 「一切正常」「系统运行平稳」这类信息没有通知价值——沉默本身就代表一切正常。
 
 待办事项：
-- 如果上方注入了待办事项（TODO.md），检查是否有临近截止日期的任务（24 小时内到期或已逾期）。
-- 有紧急待办时，在打招呼或通知中自然地提醒用户，不要像机器人一样列清单。
-- 没有紧急待办、或没有待办文件，则忽略此项。
+- 如果上方注入了待办事项（TODO.md），根据每个任务的创建时间和截止日期判断是否需要提醒。
+- 判断逻辑：考虑任务的总时间跨度（从创建到截止），已过去的比例越大越需要提醒。短期任务（几天内）临近截止时提醒；长期任务（数周到数月）在剩余约 1/3 时间时就应该开始提醒。已逾期的任务务必提醒。
+- 有需要提醒的待办时，在打招呼或通知中自然地提及，不要像机器人一样列清单。
+- 没有需要提醒的待办、或没有待办文件，则忽略此项。
 
 事件处理指南：
 - IM 上线：用户刚通过 IM 连上你。根据时间段、距上次的间隔、最近聊过的话题，自然地打招呼——可以问近况、分享一个发现、接着上次的话题聊，每次换个角度。
@@ -1309,7 +1313,7 @@ export class WatchService {
             this.store.updateState(WatchService.WAKEUP_ID, rest)
           }
           needsUpdate = true
-        } else if (!existing.prompt?.includes('里程碑') || !existing.prompt?.includes('待办事项')) {
+        } else if (!existing.prompt?.includes('里程碑') || !existing.prompt?.includes('总时间跨度')) {
           needsUpdate = true
         }
 
