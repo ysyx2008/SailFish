@@ -41,28 +41,28 @@ const handleClick = () => {
 // Matrix 字符集
 const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%^&*()_+-=[]{}|;:,.<>?'
 
-// ASCII 艺术字（大型风格）- SFTerm
+// ASCII 艺术字（大型风格）- SailFish
 const ASCII_ART_EN = [
-  '   SSSSSSSSSSSSSSS FFFFFFFFFFFFFFFFFFFFFFTTTTTTTTTTTTTTTTTTTTTTT                                                            ',
-  ' SS:::::::::::::::SF::::::::::::::::::::FT:::::::::::::::::::::T                                                            ',
-  'S:::::SSSSSS::::::SF::::::::::::::::::::FT:::::::::::::::::::::T                                                            ',
-  'S:::::S     SSSSSSSFF::::::FFFFFFFFF::::FT:::::TT:::::::TT:::::T                                                            ',
-  'S:::::S              F:::::F       FFFFFFTTTTTT  T:::::T  TTTTTTeeeeeeeeeeee    rrrrr   rrrrrrrrr      mmmmmmm    mmmmmmm   ',
-  'S:::::S              F:::::F                     T:::::T      ee::::::::::::ee  r::::rrr:::::::::r   mm:::::::m  m:::::::mm ',
-  ' S::::SSSS           F::::::FFFFFFFFFF           T:::::T     e::::::eeeee:::::eer:::::::::::::::::r m::::::::::mm::::::::::m',
-  '  SS::::::SSSSS      F:::::::::::::::F           T:::::T    e::::::e     e:::::err::::::rrrrr::::::rm::::::::::::::::::::::m',
-  '    SSS::::::::SS    F:::::::::::::::F           T:::::T    e:::::::eeeee::::::e r:::::r     r:::::rm:::::mmm::::::mmm:::::m',
-  '       SSSSSS::::S   F::::::FFFFFFFFFF           T:::::T    e:::::::::::::::::e  r:::::r     rrrrrrrm::::m   m::::m   m::::m',
-  '            S:::::S  F:::::F                     T:::::T    e::::::eeeeeeeeeee   r:::::r            m::::m   m::::m   m::::m',
-  '            S:::::S  F:::::F                     T:::::T    e:::::::e            r:::::r            m::::m   m::::m   m::::m',
-  'SSSSSSS     S:::::SFF:::::::FF                 TT:::::::TT  e::::::::e           r:::::r            m::::m   m::::m   m::::m',
-  'S::::::SSSSSS:::::SF::::::::FF                 T:::::::::T   e::::::::eeeeeeee   r:::::r            m::::m   m::::m   m::::m',
-  'S:::::::::::::::SS F::::::::FF                 T:::::::::T    ee:::::::::::::e   r:::::r            m::::m   m::::m   m::::m',
-  ' SSSSSSSSSSSSSSS   FFFFFFFFFFF                 TTTTTTTTTTT      eeeeeeeeeeeeee   rrrrrrr            mmmmmm   mmmmmm   mmmmmm',
+  '   SSSSSSSSSSSSSSS                     iiii  lllllll FFFFFFFFFFFFFFFFFFFFFF  iiii                  hhhhhhh             ',
+  ' SS:::::::::::::::S                   i::::i l:::::l F::::::::::::::::::::F i::::i                 h:::::h             ',
+  'S:::::SSSSSS::::::S                    iiii  l:::::l F::::::::::::::::::::F  iiii                  h:::::h             ',
+  'S:::::S     SSSSSSS                          l:::::l FF::::::FFFFFFFFF::::F                        h:::::h             ',
+  'S:::::S              aaaaaaaaaaaaa   iiiiiii  l::::l   F:::::F       FFFFFFiiiiiii     ssssssssss   h::::h hhhhh       ',
+  'S:::::S              a::::::::::::a  i:::::i  l::::l   F:::::F             i:::::i   ss::::::::::s  h::::hh:::::hhh    ',
+  ' S::::SSSS           aaaaaaaaa:::::a  i::::i  l::::l   F::::::FFFFFFFFFF    i::::i ss:::::::::::::s h::::::::::::::hh  ',
+  '  SS::::::SSSSS               a::::a  i::::i  l::::l   F:::::::::::::::F    i::::i s::::::ssss:::::sh:::::::hhh::::::h ',
+  '    SSS::::::::SS      aaaaaaa:::::a  i::::i  l::::l   F:::::::::::::::F    i::::i  s:::::s  ssssss h::::::h   h::::::h',
+  '       SSSSSS::::S   aa::::::::::::a  i::::i  l::::l   F::::::FFFFFFFFFF    i::::i    s::::::s      h:::::h     h:::::h',
+  '            S:::::S a::::aaaa::::::a  i::::i  l::::l   F:::::F              i::::i       s::::::s   h:::::h     h:::::h',
+  '            S:::::Sa::::a    a:::::a  i::::i  l::::l   F:::::F              i::::i ssssss   s:::::s h:::::h     h:::::h',
+  'SSSSSSS     S:::::Sa::::a    a:::::a i::::::il::::::lFF:::::::FF           i::::::is:::::ssss::::::sh:::::h     h:::::h',
+  'S::::::SSSSSS:::::Sa:::::aaaa::::::a i::::::il::::::lF::::::::FF           i::::::is::::::::::::::s h:::::h     h:::::h',
+  'S:::::::::::::::SS  a::::::::::aa:::ai::::::il::::::lF::::::::FF           i::::::i s:::::::::::ss  h:::::h     h:::::h',
+  ' SSSSSSSSSSSSSSS     aaaaaaaaaa  aaaaiiiiiiiillllllllFFFFFFFFFFF           iiiiiiii  sssssssssss    hhhhhhh     hhhhhhh',
 ]
 
 // 中文标题（单独绘制，更大字体）
-const TITLE_CN = '「  旗  鱼  终  端  」'
+const TITLE_CN = '「  旗  鱼  」'
 
 const initMatrix = () => {
   const canvas = canvasRef.value
