@@ -1,9 +1,9 @@
 ---
 name: release
-description: Automates SFTerminal release workflow: fix build/type errors, update CHANGELOG (EN + CN), run npm version with pre/post hooks. Use when the user asks to release, 发版, 发布, bump version, or update changelog.
+description: Automates SailFish release workflow: fix build/type errors, update CHANGELOG (EN + CN), run npm version with pre/post hooks. Use when the user asks to release, 发版, 发布, bump version, or update changelog.
 ---
 
-# SFTerminal 发版技能
+# SailFish 发版技能
 
 本技能用于在本仓库内执行发版流程：解决构建/类型错误、更新更新日志、执行 `npm version`。
 

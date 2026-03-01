@@ -470,12 +470,12 @@ export class MenuService {
       },
       {
         label: this.t('reportIssue'),
-        click: () => shell.openExternal('https://github.com/ysyx2008/SFTerminal/issues')
+        click: () => shell.openExternal('https://github.com/ysyx2008/SailFish/issues')
       },
       { type: 'separator' },
       {
         label: this.t('github'),
-        click: () => shell.openExternal('https://github.com/ysyx2008/SFTerminal')
+        click: () => shell.openExternal('https://github.com/ysyx2008/SailFish')
       },
       {
         label: this.t('website'),

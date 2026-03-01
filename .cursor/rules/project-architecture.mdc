@@ -10,7 +10,7 @@ alwaysApply: true
 
 ## 概览
 
-SailFish（旗鱼）是一个私人 AI Agent 桌面应用（代码仓库名 SFTerminal 为历史遗留）。用户用自然语言描述需求，AI 自主规划并执行任务。支持本地和远程 (SSH) 环境操作，可通过钉钉/飞书/企业微信/Slack/Telegram 远程访问 Agent。
+SailFish（旗鱼）是一个私人 AI Agent 桌面应用。用户用自然语言描述需求，AI 自主规划并执行任务。支持本地和远程 (SSH) 环境操作，可通过钉钉/飞书/企业微信/Slack/Telegram 远程访问 Agent。
 
 | 层 | 技术 | 说明 |
 |---|---|---|
@@ -24,7 +24,7 @@ SailFish（旗鱼）是一个私人 AI Agent 桌面应用（代码仓库名 SFTe
 ## 目录结构
 
 ```
-SFTerminal/
+SailFish/
 ├── shared/types/                # 前后端共享类型（@shared/types 别名，唯一数据源）
 ├── electron/                    # Electron 主进程 + 后端服务
 │   ├── main.ts                  # 主进程入口（窗口、IPC、服务初始化）

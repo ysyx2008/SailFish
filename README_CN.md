@@ -9,7 +9,7 @@
 ╚══════╝╚═╝  ╚═╝╚═╝╚══════╝╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝
 </pre>
 
-<img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/resources/logo.png" alt="旗鱼 Logo" width="80">
+<img src="https://raw.githubusercontent.com/ysyx2008/SailFish/main/resources/logo.png" alt="旗鱼 Logo" width="80">
 
 **旗鱼 SailFish**
 
@@ -17,12 +17,12 @@
 
 *说出你的需求，AI 自主规划执行——手机也能遥控*
 
-[![Build](https://github.com/ysyx2008/SFTerminal/actions/workflows/build-release.yml/badge.svg)](https://github.com/ysyx2008/SFTerminal/actions)
+[![Build](https://github.com/ysyx2008/SailFish/actions/workflows/build-release.yml/badge.svg)](https://github.com/ysyx2008/SailFish/actions)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 [![en](https://img.shields.io/badge/lang-English-blue.svg)](./README.md)
 [![cn](https://img.shields.io/badge/lang-中文-red.svg)](./README_CN.md)
 
-[官方网站](http://www.sfterm.com/) · [下载](https://github.com/ysyx2008/SFTerminal/releases) · [文档](./docs/)
+[官方网站](http://www.sfterm.com/) · [下载](https://github.com/ysyx2008/SailFish/releases) · [文档](./docs/)
 
 </div>
 
@@ -40,7 +40,7 @@
 | 📱 不在电脑旁？ | 通过 Web、钉钉、飞书、企业微信、Slack、Telegram 远程访问 Agent |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome.jpg" width="800" alt="旗鱼">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SailFish/main/website/public/screenshot-welcome.jpg" width="800" alt="旗鱼">
 </p>
 
 ## ✨ 核心功能
@@ -62,14 +62,14 @@
 | 🖥️ **CLI 模式** | 无需 Electron 运行全部后端服务 —— 通过 `npm run sft` 实现无头自动化 |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-agent-exec.png" width="800" alt="AI Agent">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SailFish/main/website/public/screenshot-agent-exec.png" width="800" alt="AI Agent">
 </p>
 
 ## 🚀 快速开始
 
 ### 下载安装
 
-从 [GitHub Releases](https://github.com/ysyx2008/SFTerminal/releases) 或 [官方网站](http://www.sfterm.com/) 下载最新版本。
+从 [GitHub Releases](https://github.com/ysyx2008/SailFish/releases) 或 [官方网站](http://www.sfterm.com/) 下载最新版本。
 
 ### 开发调试
 
@@ -126,8 +126,8 @@ npm run build:linux  # Linux
 ## 🔗 相关链接
 
 - 🌐 [官方网站](http://www.sfterm.com/)
-- 📦 [GitHub](https://github.com/ysyx2008/SFTerminal)
-- 🐛 [问题反馈](https://github.com/ysyx2008/SFTerminal/issues)
+- 📦 [GitHub](https://github.com/ysyx2008/SailFish)
+- 🐛 [问题反馈](https://github.com/ysyx2008/SailFish/issues)
 
 ## 🙏 致谢
 

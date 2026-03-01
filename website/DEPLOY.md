@@ -17,7 +17,7 @@
 
 ```powershell
 # 1. 下载部署脚本
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/你的用户名/SFTerminal/feature/Website/website/deploy.ps1" -OutFile "deploy.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/你的用户名/SailFish/feature/Website/website/deploy.ps1" -OutFile "deploy.ps1"
 
 # 2. 修改脚本中的 Git 仓库地址
 notepad deploy.ps1

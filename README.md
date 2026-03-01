@@ -9,7 +9,7 @@
 ╚══════╝╚═╝  ╚═╝╚═╝╚══════╝╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝
 </pre>
 
-<img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/resources/logo.png" alt="SailFish Logo" width="80">
+<img src="https://raw.githubusercontent.com/ysyx2008/SailFish/main/resources/logo.png" alt="SailFish Logo" width="80">
 
 **SailFish**
 
@@ -17,12 +17,12 @@
 
 *Tell AI what you need. It plans and executes autonomously — even from your phone.*
 
-[![Build](https://github.com/ysyx2008/SFTerminal/actions/workflows/build-release.yml/badge.svg)](https://github.com/ysyx2008/SFTerminal/actions)
+[![Build](https://github.com/ysyx2008/SailFish/actions/workflows/build-release.yml/badge.svg)](https://github.com/ysyx2008/SailFish/actions)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 [![en](https://img.shields.io/badge/lang-English-blue.svg)](./README.md)
 [![cn](https://img.shields.io/badge/lang-中文-red.svg)](./README_CN.md)
 
-[Website](http://www.sfterm.com/en/) · [Download](https://github.com/ysyx2008/SFTerminal/releases) · [Documentation](./docs/)
+[Website](http://www.sfterm.com/en/) · [Download](https://github.com/ysyx2008/SailFish/releases) · [Documentation](./docs/)
 
 </div>
 
@@ -40,7 +40,7 @@
 | 📱 Away from your desk? | Access Agent remotely via Web, DingTalk, Feishu, WeCom, Slack, or Telegram |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-welcome_en.jpg" width="800" alt="SailFish">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SailFish/main/website/public/screenshot-welcome_en.jpg" width="800" alt="SailFish">
 </p>
 
 ## ✨ Features
@@ -62,14 +62,14 @@
 | 🖥️ **CLI Mode** | Run all backend services without Electron — headless automation via `npm run sft` |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SFTerminal/main/website/public/screenshot-agent-exec_en.png" width="800" alt="AI Agent">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SailFish/main/website/public/screenshot-agent-exec_en.png" width="800" alt="AI Agent">
 </p>
 
 ## 🚀 Quick Start
 
 ### Download
 
-Get the latest release from [GitHub Releases](https://github.com/ysyx2008/SFTerminal/releases) or [Official Website](http://www.sfterm.com/en/).
+Get the latest release from [GitHub Releases](https://github.com/ysyx2008/SailFish/releases) or [Official Website](http://www.sfterm.com/en/).
 
 ### Development
 
@@ -126,8 +126,8 @@ See [LICENSE](./LICENSE) for details.
 ## 🔗 Links
 
 - 🌐 [Website](http://www.sfterm.com/en/)
-- 📦 [GitHub](https://github.com/ysyx2008/SFTerminal)
-- 🐛 [Issues](https://github.com/ysyx2008/SFTerminal/issues)
+- 📦 [GitHub](https://github.com/ysyx2008/SailFish)
+- 🐛 [Issues](https://github.com/ysyx2008/SailFish/issues)
 
 ## 🙏 Acknowledgements
 

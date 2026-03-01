@@ -15,7 +15,7 @@
 旗鱼终端把这些都做好：多标签终端、SSH 会话管理、双栏文件管理器，本地和远程一目了然，拖拽就能传文件。
 
 **Steam 版**提供稳定的终端与连接管理，自动更新、下载方便。  
-更多功能与更新，请访问[官网](http://www.sfterm.com)或 [GitHub](https://github.com/ysyx2008/SFTerminal)。
+更多功能与更新，请访问[官网](http://www.sfterm.com)或 [GitHub](https://github.com/ysyx2008/SailFish)。
 
 ---
 
@@ -63,10 +63,10 @@
 ## 关于版本与获取方式
 
 - **Steam 版**：免费下载，侧重终端、SSH 与文件管理，享受 Steam 自动更新与下载便利。  
-- **完整版**（含更多高级功能）：面向个人使用完全免费，请从 [官网](http://www.sfterm.com) 或 [GitHub](https://github.com/ysyx2008/SFTerminal) 获取。  
+- **完整版**（含更多高级功能）：面向个人使用完全免费，请从 [官网](http://www.sfterm.com) 或 [GitHub](https://github.com/ysyx2008/SailFish) 获取。  
 
 觉得不好用？欢迎到社区或仓库反馈意见。
 
 ---
 
-*官网：http://www.sfterm.com | 仓库：https://github.com/ysyx2008/SFTerminal*
+*官网：http://www.sfterm.com | 仓库：https://github.com/ysyx2008/SailFish*

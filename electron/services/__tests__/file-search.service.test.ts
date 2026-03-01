@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 vi.mock('electron', () => ({
   app: {
     getPath: vi.fn().mockReturnValue('/mock/user/data'),
-    getName: vi.fn().mockReturnValue('SFTerminal'),
+    getName: vi.fn().mockReturnValue('SailFish'),
     getVersion: vi.fn().mockReturnValue('1.0.0'),
     isPackaged: false
   }

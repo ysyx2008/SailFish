@@ -11,7 +11,7 @@ param(
     [switch]$Setup,      # 首次安装模式
     [switch]$Force,      # 强制重新部署
     [string]$WebRoot = "C:\inetpub\wwwroot\qiyu-terminal",  # 网站根目录
-    [string]$GitRepo = "https://github.com/ysyx2008/SFTerminal.git",  # Git 仓库地址
+    [string]$GitRepo = "https://github.com/ysyx2008/SailFish.git",  # Git 仓库地址
     [string]$Branch = "feature/main"  # 部署分支
 )
 

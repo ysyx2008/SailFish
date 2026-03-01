@@ -14,7 +14,7 @@ const t = useTranslations(lang);
 let version = "7.1.0"; // 默认版本，API 失败时使用
 
 try {
-  const response = await fetch('https://api.github.com/repos/ysyx2008/SFTerminal/releases/latest', {
+  const response = await fetch('https://api.github.com/repos/ysyx2008/SailFish/releases/latest', {
     headers: {
       'Accept': 'application/vnd.github.v3+json',
       'User-Agent': 'SailFish-Website'
@@ -33,7 +33,7 @@ try {
 // 下载源配置
 const DOWNLOAD_SOURCES = {
   github: {
-    baseUrl: `https://github.com/ysyx2008/SFTerminal/releases/download/v${version}`,
+    baseUrl: `https://github.com/ysyx2008/SailFish/releases/download/v${version}`,
     // GitHub 文件名带版本号
     files: {
       'mac-arm64': `SailFish-${version}-arm64.dmg`,
@@ -151,7 +151,7 @@ const sourceConfig = JSON.stringify(DOWNLOAD_SOURCES);
         <strong>{t.download.systemRequirements}</strong>macOS 10.15+ / Windows 10+, Server 2016+ / Linux (glibc 2.17+)
       </p>
       <p>
-        {t.download.moreVersions} <a href="https://github.com/ysyx2008/SFTerminal/releases" target="_blank" rel="noopener">{t.download.githubReleases}</a>
+        {t.download.moreVersions} <a href="https://github.com/ysyx2008/SailFish/releases" target="_blank" rel="noopener">{t.download.githubReleases}</a>
       </p>
     </div>
   </div>
