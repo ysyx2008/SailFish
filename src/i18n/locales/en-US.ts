@@ -596,6 +596,30 @@ export default {
     skillDetailNotInstalled: 'Install to preview full content',
     builtinSkills: 'Built-in Skills',
     builtinSkillsDesc: 'Built-in skills provide core capabilities like Excel, browser, and terminal. Agent loads them on demand. Disabling a skill prevents the Agent from using it.',
+    builtinSkillNames: {
+      excel: 'Excel',
+      email: 'Email',
+      browser: 'Browser Automation',
+      word: 'Word Documents',
+      calendar: 'Calendar',
+      watch: 'Watch',
+      config: 'SailFish Settings',
+      'skill-creator': 'Skill Manager',
+      terminal: 'Terminal Control',
+      personality: 'Personality'
+    },
+    builtinSkillDescs: {
+      excel: 'Read and write Excel files interactively. Supports opening files, reading data, modifying cells, adding/removing sheets, saving and closing. Ideal for data analysis and report processing.',
+      email: 'Send, receive and manage emails. Connects to configured email accounts for reading, searching, sending and deleting emails. Suitable for email processing and auto-reply scenarios.',
+      browser: 'Browser automation powered by Playwright. Perceives page structure via the Accessibility Tree. Supports opening pages, screenshots, content extraction, clicking, typing, scrolling and more. The browser window is visible on screen so you can watch the process.',
+      word: 'Create and edit Word documents interactively. Supports creating documents, adding paragraphs/headings/lists/tables, reading content, saving and closing. Ideal for generating reports and writing documents.',
+      calendar: 'Manage calendars and schedules. Supports viewing, creating, modifying and deleting events and TODOs. Works with CalDAV services (Google Calendar, iCloud, Outlook, etc.).',
+      watch: 'Watch = AI-driven automated tasks triggered on schedule or events (e.g. daily checks, file changes, incoming emails). Results can be pushed to desktop or IM. Supports cron, interval, file monitoring, email, calendar events, webhooks and more.',
+      config: 'Read and modify SailFish app settings (language, theme, terminal, Agent personality, IM credentials, etc.), manage email/calendar accounts, and test IM connections.',
+      'skill-creator': 'Create and manage user skills. Save workflows, best practices and domain knowledge as reusable skill files for future tasks. Supports creating, updating and deleting skills.',
+      terminal: 'PTY terminal interaction: execute commands, view terminal status and output, send control keys and text input, wait for command completion. Auto-loaded when bound to a terminal.',
+      personality: 'Define or modify the Agent\'s personality, communication style, values and name through guided conversation. Use when you want to customize your AI assistant\'s character and behavior.'
+    },
     extensionSkills: 'Extension Skills',
     extensionSkillsDesc: 'Extension skills teach AI how to complete specific tasks via SKILL.md files. Install from the market or add manually.'
   },

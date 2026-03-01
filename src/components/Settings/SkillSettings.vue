@@ -435,8 +435,8 @@ watch(() => props.pendingInstallSkillId, (newId) => {
               />
             </div>
             <div class="skill-info">
-              <div class="skill-name">{{ skill.name }}</div>
-              <div class="skill-desc" v-if="skill.description" :title="skill.description">{{ skill.description }}</div>
+              <div class="skill-name">{{ t(`skillSettings.builtinSkillNames.${skill.id}`, skill.name) }}</div>
+              <div class="skill-desc" v-if="skill.description" :title="t(`skillSettings.builtinSkillDescs.${skill.id}`, skill.description)">{{ t(`skillSettings.builtinSkillDescs.${skill.id}`, skill.description) }}</div>
             </div>
           </div>
         </div>
