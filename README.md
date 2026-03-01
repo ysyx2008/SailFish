@@ -62,7 +62,15 @@
 | 🖥️ **CLI Mode** | Run all backend services without Electron — headless automation via `npm run sft` |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SailFish/main/website/public/screenshot-agent-exec_en.png" width="800" alt="AI Agent">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SailFish/main/website/public/screenshot-assistant_en.png" width="800" alt="AI Assistant">
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SailFish/main/website/public/screenshot-skills_en.png" width="800" alt="Skill Market">
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SailFish/main/website/public/screenshot-im_en.png" width="800" alt="Remote Agent via IM">
 </p>
 
 ## 🚀 Quick Start

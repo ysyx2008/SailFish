@@ -62,7 +62,15 @@
 | 🖥️ **CLI 模式** | 无需 Electron 运行全部后端服务 —— 通过 `npm run sft` 实现无头自动化 |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ysyx2008/SailFish/main/website/public/screenshot-agent-exec.png" width="800" alt="AI Agent">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SailFish/main/website/public/screenshot-assistant.png" width="800" alt="AI 助手">
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SailFish/main/website/public/screenshot-skills.png" width="800" alt="技能市场">
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ysyx2008/SailFish/main/website/public/screenshot-im.png" width="800" alt="远程 Agent">
 </p>
 
 ## 🚀 快速开始
