@@ -1971,6 +1971,7 @@ export default {
     triggerHeartbeat: '心跳',
     triggerWebhook: 'Webhook',
     triggerManual: '手动',
+    triggerIntervalUnit: '秒',
     presets: '常用预设',
 
     // 执行目标

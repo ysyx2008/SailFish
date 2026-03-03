@@ -1970,6 +1970,7 @@ export default {
     triggerHeartbeat: 'Heartbeat',
     triggerWebhook: 'Webhook',
     triggerManual: 'Manual',
+    triggerIntervalUnit: 'seconds',
     presets: 'Presets',
 
     executionTarget: 'Execution Target',

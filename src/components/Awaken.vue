@@ -5,7 +5,7 @@ import { useConfigStore, type AgentMbtiType } from '../stores/config'
 import {
   X, Play, Trash2, Eye, RefreshCw, History,
   Clock, Heart, Globe, Zap, FolderOpen, Calendar, Mail,
-  LayoutTemplate, Plus, Sparkles, Brain
+  LayoutTemplate, Plus, Sparkles, Brain, Pencil
 } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -21,7 +21,7 @@ const emit = defineEmits<{ close: []; 'awakened-change': [value: boolean] }>()
 
 import type {
   WatchTriggerType, WatchRunStatus, WatchTrigger,
-  WatchDefinition, WatchHistoryRecord
+  WatchDefinition, WatchHistoryRecord, WatchPriority
 } from '@shared/types'
 
 type WatchOutputType = 'desktop' | 'im' | 'notification' | 'log' | 'silent'
@@ -181,7 +181,88 @@ watch(() => userWatches.value, (list) => {
 
 // ==================== Watch Operations ====================
 
-const selectWatch = (w: WatchDefinition) => { selectedWatch.value = w }
+const selectWatch = (w: WatchDefinition) => {
+  if (editing.value) cancelEditing()
+  selectedWatch.value = w
+}
+
+// ==================== Edit Mode ====================
+
+const editing = ref(false)
+const editSaving = ref(false)
+const editForm = ref<{
+  name: string
+  description: string
+  prompt: string
+  priority: WatchPriority
+  outputType: WatchOutputType
+  skills: string
+  triggers: WatchTrigger[]
+}>({
+  name: '',
+  description: '',
+  prompt: '',
+  priority: 'normal',
+  outputType: 'desktop',
+  skills: '',
+  triggers: [],
+})
+
+function startEditing() {
+  if (!selectedWatch.value) return
+  const w = selectedWatch.value
+  editForm.value = {
+    name: w.name,
+    description: w.description || '',
+    prompt: w.prompt,
+    priority: w.priority,
+    outputType: w.output.type,
+    skills: w.skills?.join(', ') || '',
+    triggers: structuredClone(w.triggers),
+  }
+  editing.value = true
+}
+
+function cancelEditing() {
+  editing.value = false
+  editSaving.value = false
+}
+
+async function saveEditing() {
+  if (!selectedWatch.value || editSaving.value) return
+  const form = editForm.value
+  if (!form.name.trim()) { alert(t('watch.validation.nameRequired')); return }
+  if (!form.prompt.trim()) { alert(t('watch.validation.promptRequired')); return }
+
+  editSaving.value = true
+  try {
+    const updates: Record<string, unknown> = {
+      name: form.name.trim(),
+      description: form.description.trim() || undefined,
+      prompt: form.prompt.trim(),
+      priority: form.priority,
+      output: { type: form.outputType },
+      skills: form.skills.trim() ? form.skills.split(',').map(s => s.trim()).filter(Boolean) : undefined,
+      triggers: form.triggers,
+    }
+    const updated = await window.electronAPI.watch.update(selectedWatch.value.id, updates)
+    if (updated) {
+      const idx = watches.value.findIndex(x => x.id === updated.id)
+      if (idx >= 0) watches.value[idx] = updated
+      selectedWatch.value = updated
+    }
+    editing.value = false
+  } catch (e) {
+    console.error('Failed to save watch:', e)
+  } finally {
+    editSaving.value = false
+  }
+}
+
+function updateTriggerField(index: number, field: string, value: unknown) {
+  const trigger = editForm.value.triggers[index] as Record<string, unknown>
+  trigger[field] = value
+}
 
 const toggleWatch = async (w: WatchDefinition) => {
   const updated = await window.electronAPI.watch.toggle(w.id)
@@ -744,12 +825,18 @@ onUnmounted(() => {
               <div class="detail-area">
                 <template v-if="selectedWatch">
                   <div class="detail-header">
-                    <div class="detail-title">
+                    <div class="detail-title" v-if="!editing">
                       <h3>{{ selectedWatch.name }}</h3>
                       <span class="watch-badge" :class="{ enabled: selectedWatch.enabled }">{{ selectedWatch.enabled ? t('watch.enabled') : t('watch.disabled') }}</span>
                       <span class="priority-badge" :class="selectedWatch.priority">{{ selectedWatch.priority }}</span>
                     </div>
-                    <div class="detail-actions">
+                    <div class="detail-title" v-else>
+                      <h3>{{ t('watch.editWatch') }}</h3>
+                    </div>
+                    <div class="detail-actions" v-if="!editing">
+                      <button class="btn btn-sm" @click="startEditing">
+                        <Pencil :size="14" /> {{ t('watch.edit') }}
+                      </button>
                       <button class="btn btn-primary btn-sm" @click="triggerWatch(selectedWatch)" :disabled="runningWatches.has(selectedWatch.id)">
                         <Play :size="14" /> {{ t('watch.trigger') }}
                       </button>
@@ -757,8 +844,104 @@ onUnmounted(() => {
                         <Trash2 :size="14" />
                       </button>
                     </div>
+                    <div class="detail-actions" v-else>
+                      <button class="btn btn-sm" @click="cancelEditing" :disabled="editSaving">{{ t('watch.cancel') }}</button>
+                      <button class="btn btn-primary btn-sm" @click="saveEditing" :disabled="editSaving">
+                        {{ editSaving ? t('common.saving') : t('watch.save') }}
+                      </button>
+                    </div>
                   </div>
-                  <div class="detail-body">
+
+                  <!-- ===== Edit Mode ===== -->
+                  <div class="detail-body" v-if="editing">
+                    <div class="edit-section">
+                      <label class="edit-label">{{ t('watch.name') }}</label>
+                      <input v-model="editForm.name" class="edit-input" :placeholder="t('watch.namePlaceholder')" spellcheck="false" />
+                    </div>
+                    <div class="edit-section">
+                      <label class="edit-label">{{ t('watch.description') }}</label>
+                      <input v-model="editForm.description" class="edit-input" :placeholder="t('watch.descriptionPlaceholder')" spellcheck="false" />
+                    </div>
+                    <div class="edit-section">
+                      <label class="edit-label">{{ t('watch.prompt') }}</label>
+                      <textarea v-model="editForm.prompt" class="edit-textarea" :placeholder="t('watch.promptPlaceholder')" spellcheck="false" rows="6" />
+                    </div>
+                    <div class="edit-section">
+                      <label class="edit-label">{{ t('watch.triggers') }}</label>
+                      <div class="edit-triggers">
+                        <div v-for="(tr, idx) in editForm.triggers" :key="idx" class="edit-trigger-item">
+                          <span class="trigger-badge trigger-badge-lg">
+                            <component :is="getTriggerIcon(tr.type)" :size="12" /> {{ tr.type }}
+                          </span>
+                          <template v-if="tr.type === 'cron'">
+                            <input
+                              class="edit-input edit-input-inline"
+                              :value="(tr as any).expression"
+                              @input="updateTriggerField(idx, 'expression', ($event.target as HTMLInputElement).value)"
+                              placeholder="cron expression"
+                              spellcheck="false"
+                            />
+                          </template>
+                          <template v-else-if="tr.type === 'interval'">
+                            <input
+                              type="number"
+                              class="edit-input edit-input-short"
+                              :value="(tr as any).seconds"
+                              @input="updateTriggerField(idx, 'seconds', Number(($event.target as HTMLInputElement).value))"
+                              min="10"
+                            />
+                            <span class="edit-hint">{{ t('watch.triggerIntervalUnit') }}</span>
+                          </template>
+                          <template v-else-if="tr.type === 'file_change'">
+                            <input
+                              class="edit-input edit-input-inline"
+                              :value="(tr as any).paths?.join(', ')"
+                              @input="updateTriggerField(idx, 'paths', ($event.target as HTMLInputElement).value.split(',').map((s: string) => s.trim()).filter(Boolean))"
+                              :placeholder="t('watch.filePathsPlaceholder')"
+                              spellcheck="false"
+                            />
+                          </template>
+                          <template v-else-if="tr.type === 'calendar'">
+                            <input
+                              type="number"
+                              class="edit-input edit-input-short"
+                              :value="(tr as any).beforeMinutes"
+                              @input="updateTriggerField(idx, 'beforeMinutes', Number(($event.target as HTMLInputElement).value))"
+                              min="1"
+                            />
+                            <span class="edit-hint">min</span>
+                          </template>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="edit-row">
+                      <div class="edit-section edit-section-half">
+                        <label class="edit-label">{{ t('watch.priority') }}</label>
+                        <select v-model="editForm.priority" class="edit-select">
+                          <option value="high">{{ t('watch.priorityHigh') }}</option>
+                          <option value="normal">{{ t('watch.priorityNormal') }}</option>
+                          <option value="low">{{ t('watch.priorityLow') }}</option>
+                        </select>
+                      </div>
+                      <div class="edit-section edit-section-half">
+                        <label class="edit-label">{{ t('watch.outputType') }}</label>
+                        <select v-model="editForm.outputType" class="edit-select">
+                          <option value="desktop">{{ t('watch.outputDesktop') }}</option>
+                          <option value="im">{{ t('watch.outputIM') }}</option>
+                          <option value="notification">{{ t('watch.outputNotification') }}</option>
+                          <option value="log">{{ t('watch.outputLog') }}</option>
+                          <option value="silent">{{ t('watch.outputSilent') }}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="edit-section">
+                      <label class="edit-label">{{ t('watch.skills') }}</label>
+                      <input v-model="editForm.skills" class="edit-input" :placeholder="t('watch.skillsPlaceholder')" spellcheck="false" />
+                    </div>
+                  </div>
+
+                  <!-- ===== View Mode ===== -->
+                  <div class="detail-body" v-else>
                     <div class="detail-section" v-if="selectedWatch.description">
                       <h4>{{ t('watch.description') }}</h4>
                       <p>{{ selectedWatch.description }}</p>
@@ -1835,6 +2018,106 @@ onUnmounted(() => {
 .history-trigger { display: flex; align-items: center; gap: 3px; color: var(--text-muted); min-width: 80px; }
 .history-time { color: var(--text-muted); min-width: 150px; }
 .history-duration { color: var(--text-muted); min-width: 60px; text-align: right; }
+
+/* ==================== Edit Form ==================== */
+
+.edit-section {
+  margin-bottom: 16px;
+}
+
+.edit-section-half {
+  flex: 1;
+  min-width: 0;
+}
+
+.edit-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.edit-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.edit-input,
+.edit-select {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.edit-input:focus,
+.edit-select:focus,
+.edit-textarea:focus {
+  border-color: var(--accent-primary);
+}
+
+.edit-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.6;
+  font-family: var(--font-mono);
+  resize: vertical;
+  min-height: 100px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.edit-triggers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.edit-trigger-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.edit-input-inline {
+  flex: 1;
+  min-width: 0;
+}
+
+.edit-input-short {
+  width: 80px;
+  flex: none;
+  text-align: center;
+}
+
+.edit-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.edit-select {
+  cursor: pointer;
+  appearance: auto;
+}
 
 /* ==================== Animations ==================== */
 
