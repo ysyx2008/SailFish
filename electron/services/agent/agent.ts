@@ -1195,7 +1195,29 @@ export abstract class Agent {
       }
       
       if (validToolCalls.length === 0) {
-        return { response, hasToolCalls: false }
+        const discardedNames = response.tool_calls.map(tc => tc.function?.name || 'unknown').join(', ')
+        log.warn(`All tool_calls discarded due to malformed arguments: [${discardedNames}], triggering retry`)
+        
+        const assistantMsg: AiMessage = {
+          role: 'assistant',
+          content: response.content || ''
+        }
+        run.messages.push(assistantMsg)
+        run.taskMessageLog.push({ ...assistantMsg })
+        
+        const retryHint: AiMessage = {
+          role: 'user',
+          content: t('agent.tool_args_malformed', { tools: discardedNames })
+        }
+        run.messages.push(retryHint)
+        run.taskMessageLog.push({ ...retryHint })
+        
+        this.addStep({
+          type: 'thinking',
+          content: `⚠️ ${t('agent.tool_args_malformed_step', { tools: discardedNames })}`
+        })
+        
+        return { response, hasToolCalls: false, truncated: true }
       }
       
       // 移除初始步骤
