@@ -944,6 +944,11 @@ app.whenReady().then(async () => {
         if (migration.errors.length > 0) {
           log.warn('迁移警告:', migration.errors)
         }
+        // 迁移后如果 Scheduler 已无任务，停止 Scheduler 服务
+        if (schedulerService.getTasks().length === 0) {
+          schedulerService.stop()
+          log.info('Scheduler 无剩余任务，已停止')
+        }
       } catch (e) {
         log.error('定时任务迁移失败:', e)
       }

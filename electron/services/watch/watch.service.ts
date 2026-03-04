@@ -1508,6 +1508,25 @@ export class WatchService {
       if (result.migrated > 0) {
         log.info(`已从 Scheduler 迁移 ${result.migrated} 个任务`)
       }
+
+      // 迁移完成后清除旧 Scheduler 数据，防止两套系统并行运行
+      if (result.migrated > 0 || result.skipped > 0) {
+        try {
+          const updatedNames = new Set(this.store.getAll().map((w: WatchDefinition) => w.name))
+          let cleared = 0
+          for (const task of tasks) {
+            if (updatedNames.has(task.name)) {
+              schedulerStore.deleteTask(task.id)
+              cleared++
+            }
+          }
+          if (cleared > 0) {
+            log.info(`已清除 ${cleared} 个旧版 Scheduler 任务`)
+          }
+        } catch (cleanErr) {
+          log.warn('清除旧 Scheduler 数据失败:', cleanErr)
+        }
+      }
     } catch (err) {
       result.errors.push(`迁移失败: ${err instanceof Error ? err.message : String(err)}`)
     }
