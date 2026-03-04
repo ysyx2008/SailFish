@@ -1350,15 +1350,14 @@ onUnmounted(() => {
                   </div>
                   <!-- 用户消息附带的文件 -->
                   <div v-if="group.attachments && group.attachments.length > 0" class="message-attachments">
-                    <div 
+                    <span 
                       v-for="(file, fileIdx) in group.attachments" 
                       :key="fileIdx" 
                       class="attachment-chip"
                     >
-                      <span class="attachment-icon">📎</span>
-                      <span class="attachment-name">{{ file.filename }}</span>
+                      <span class="attachment-name">📎 {{ file.filename }}</span>
                       <span class="attachment-size">{{ formatFileSize(file.fileSize) }}</span>
-                    </div>
+                    </span>
                   </div>
                 </div>
               </div>
@@ -5091,25 +5090,20 @@ onUnmounted(() => {
 .message-attachments {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 4px;
+  margin-top: 6px;
 }
 
 .attachment-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.15);
-  font-size: 12px;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  opacity: 0.7;
+  font-size: 11px;
   line-height: 1.4;
-  color: rgba(255, 255, 255, 0.95);
-}
-
-.attachment-icon {
-  font-size: 12px;
-  flex-shrink: 0;
 }
 
 .attachment-name {
@@ -5117,7 +5111,7 @@ onUnmounted(() => {
 }
 
 .attachment-size {
-  opacity: 0.7;
+  opacity: 0.8;
   flex-shrink: 0;
   white-space: nowrap;
 }
