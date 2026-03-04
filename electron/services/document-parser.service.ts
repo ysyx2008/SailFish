@@ -343,13 +343,15 @@ export class DocumentParserService {
           // 检查是否成功提取到内容
           if (!result.content || result.content.length === 0) {
             if (pageCount > 0) {
-              // 扫描件/图片型 PDF：尝试渲染首页为图片
+              // 扫描件/图片型 PDF：预渲染前 5 页，页数少的可直接处理
+              const PREVIEW_PAGES = 5
+              const pagesToRender = Array.from({ length: Math.min(pageCount, PREVIEW_PAGES) }, (_, i) => i + 1)
               try {
-                const renderResult = await this.renderPdfPages(filePath, [1])
+                const renderResult = await this.renderPdfPages(filePath, pagesToRender)
                 result.images = renderResult.images
                 result.totalPages = renderResult.totalPages
                 result.error = undefined
-                log.info(`Scanned PDF detected: ${pageCount} pages, first page rendered as image`)
+                log.info(`Scanned PDF detected: ${pageCount} pages, rendered ${renderResult.images.length} preview pages`)
               } catch (renderErr) {
                 log.warn('Failed to render scanned PDF page:', renderErr)
                 result.error = `PDF 共 ${pageCount} 页，但未能提取到文本内容。该文件可能是扫描件或图片型 PDF。`
