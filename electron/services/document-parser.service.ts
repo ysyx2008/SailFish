@@ -385,10 +385,10 @@ export class DocumentParserService {
     if (opts.extractImages) {
       await this.parseDocxWithImages(filePath, result)
     } else {
-      // convertToHtml 保留表格等结构信息，LLM 能直接理解语义 HTML
+      // convertToHtml → Markdown，保留表格等结构信息
       try {
         const htmlResult = await this.mammoth.convertToHtml({ path: filePath })
-        result.content = this.cleanMammothHtml(htmlResult.value)
+        result.content = this.mammothHtmlToMarkdown(htmlResult.value)
         this.collectDocxWarnings(htmlResult.messages, result)
       } catch {
         const docxResult = await this.mammoth.extractRawText({ path: filePath })
@@ -425,7 +425,7 @@ export class DocumentParserService {
         )
       })
 
-      result.content = this.cleanMammothHtml(htmlResult.value)
+      result.content = this.mammothHtmlToMarkdown(htmlResult.value)
 
       this.collectDocxWarnings(htmlResult.messages, result)
 
@@ -448,13 +448,84 @@ export class DocumentParserService {
   }
 
   /**
-   * 清理 mammoth 输出的 HTML：移除空 img 占位符，保留语义结构供 LLM 阅读
+   * 将 mammoth 输出的语义 HTML 转为 Markdown，保留表格结构且更省 token
+   * mammoth 的 HTML 元素集有限：h1-h6, p, table/tr/th/td, strong, em, ul, ol, li, a, br, sup, sub, img
    */
-  private cleanMammothHtml(html: string): string {
-    return html
-      .replace(/<img[^>]*src\s*=\s*["']\s*["'][^>]*\/?>/g, '') // 移除 src 为空的 img（图片提取后的占位符）
-      .replace(/<p>\s*<\/p>/g, '') // 移除空段落
-      .trim()
+  private mammothHtmlToMarkdown(html: string): string {
+    let md = html
+      // 移除空 img 占位符（图片提取后的残留）
+      .replace(/<img[^>]*src\s*=\s*["']\s*["'][^>]*\/?>/g, '')
+
+    // 1) 表格：先提取并转换，避免后续替换破坏结构
+    md = md.replace(/<table[^>]*>([\s\S]*?)<\/table>/g, (_match, tableBody: string) => {
+      const rows: string[][] = []
+      const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/g
+      let rowMatch
+      while ((rowMatch = rowRegex.exec(tableBody)) !== null) {
+        const cells: string[] = []
+        const cellRegex = /<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/g
+        let cellMatch
+        while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
+          const text = cellMatch[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+          cells.push(text)
+        }
+        if (cells.length > 0) rows.push(cells)
+      }
+      if (rows.length === 0) return ''
+      const colCount = Math.max(...rows.map(r => r.length))
+      const normalize = (row: string[]) => Array.from({ length: colCount }, (_, i) => row[i] ?? '')
+      const lines: string[] = []
+      lines.push('| ' + normalize(rows[0]).join(' | ') + ' |')
+      lines.push('| ' + normalize(rows[0]).map(() => '---').join(' | ') + ' |')
+      for (let i = 1; i < rows.length; i++) {
+        lines.push('| ' + normalize(rows[i]).join(' | ') + ' |')
+      }
+      return '\n\n' + lines.join('\n') + '\n\n'
+    })
+
+    // 2) 标题
+    md = md.replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/g, (_m, level: string, content: string) => {
+      const text = content.replace(/<[^>]+>/g, '').trim()
+      return '\n\n' + '#'.repeat(Number(level)) + ' ' + text + '\n\n'
+    })
+
+    // 3) 列表（不处理嵌套，mammoth 很少产生深层嵌套）
+    md = md.replace(/<ol[^>]*>([\s\S]*?)<\/ol>/g, (_m, items: string) => {
+      let idx = 0
+      return '\n\n' + items.replace(/<li[^>]*>([\s\S]*?)<\/li>/g, (_lm: string, content: string) => {
+        idx++
+        return idx + '. ' + content.replace(/<[^>]+>/g, '').trim() + '\n'
+      }).trim() + '\n\n'
+    })
+    md = md.replace(/<ul[^>]*>([\s\S]*?)<\/ul>/g, (_m, items: string) => {
+      return '\n\n' + items.replace(/<li[^>]*>([\s\S]*?)<\/li>/g, (_lm: string, content: string) => {
+        return '- ' + content.replace(/<[^>]+>/g, '').trim() + '\n'
+      }).trim() + '\n\n'
+    })
+
+    // 4) 内联元素
+    md = md.replace(/<strong[^>]*>([\s\S]*?)<\/strong>/g, '**$1**')
+    md = md.replace(/<em[^>]*>([\s\S]*?)<\/em>/g, '*$1*')
+    md = md.replace(/<a[^>]*href=["']([^"']*)["'][^>]*>([\s\S]*?)<\/a>/g, '[$2]($1)')
+    md = md.replace(/<br\s*\/?>/g, '\n')
+    md = md.replace(/<sup[^>]*>([\s\S]*?)<\/sup>/g, '^$1^')
+
+    // 5) 段落
+    md = md.replace(/<p[^>]*>([\s\S]*?)<\/p>/g, (_m, content: string) => {
+      const text = content.trim()
+      return text ? text + '\n\n' : ''
+    })
+
+    // 6) 清理残余标签和多余空行
+    md = md.replace(/<[^>]+>/g, '')
+    md = md.replace(/&nbsp;/g, ' ')
+    md = md.replace(/&amp;/g, '&')
+    md = md.replace(/&lt;/g, '<')
+    md = md.replace(/&gt;/g, '>')
+    md = md.replace(/&quot;/g, '"')
+    md = md.replace(/\n{3,}/g, '\n\n')
+
+    return md.trim()
   }
 
   private collectDocxWarnings(messages: Array<{ type: string; message: string }> | undefined, result: ParsedDocument): void {
