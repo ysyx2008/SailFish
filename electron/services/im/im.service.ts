@@ -184,9 +184,6 @@ export class IMService {
   private connectDebounceTimer: NodeJS.Timeout | null = null
   private static readonly CONNECT_DEBOUNCE_MS = 3000
 
-  /** talk_to_user 发送的主动消息上下文，供下次 IM 回复时注入 companion agent */
-  private pendingProactiveContext: { message: string; title?: string; timestamp: number } | null = null
-
   constructor() {
     this.loadPersistedContacts()
     this.lastContact = this.pickMostRecentContact(this.contactsByPlatform)
@@ -220,14 +217,6 @@ export class IMService {
    */
   setSendProcessMessages(enabled: boolean) {
     this.config.sendProcessMessages = enabled
-  }
-
-  /**
-   * 记录 talk_to_user 发送的主动消息上下文
-   * 当用户从 IM 回复时，companion agent 可获知之前发了什么
-   */
-  addProactiveContext(message: string, title?: string): void {
-    this.pendingProactiveContext = { message, title, timestamp: Date.now() }
   }
 
   // ==================== IM 生命周期事件 ====================
@@ -749,23 +738,6 @@ export class IMService {
     const fullMessage = this.buildAgentMessage(msg)
     const agentId = AgentService.COMPANION_AGENT_ID
 
-    // 如果有 talk_to_user 发送的主动消息上下文，通过 AgentContext 注入（不污染 UI 显示的用户消息）
-    let proactiveContext: string | undefined
-    if (this.pendingProactiveContext) {
-      const ctx = this.pendingProactiveContext
-      const elapsed = Date.now() - ctx.timestamp
-      // 30 分钟内的主动消息才注入（避免过期上下文干扰）
-      if (elapsed < 30 * 60 * 1000) {
-        proactiveContext = ctx.title
-          ? `[${t('im.proactive_context_prefix')}: ${ctx.title}]\n${ctx.message}`
-          : `[${t('im.proactive_context_prefix')}]\n${ctx.message}`
-        log.debug('Injected proactive context into IM reply:', {
-          title: ctx.title, elapsedMs: elapsed, contextLength: ctx.message.length
-        })
-      }
-      this.pendingProactiveContext = null
-    }
-
     try {
       await adapter.sendText(replyContext, t('im.processing'))
     } catch { /* ignore */ }
@@ -812,8 +784,7 @@ export class IMService {
         terminalOutput: [] as string[],
         systemInfo: { os: process.platform, shell: process.env.SHELL || '/bin/bash' },
         terminalType: 'assistant' as const,
-        remoteChannel: msg.platform as any,
-        proactiveContext
+        remoteChannel: msg.platform as any
       }
 
       await this.deps.agentService.runAssistant(agentId, fullMessage, context, {

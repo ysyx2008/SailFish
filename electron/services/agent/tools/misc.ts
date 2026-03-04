@@ -684,11 +684,6 @@ export async function messageUser(
       })
       if (result.success) {
         deliveredVia.push(result.platform || 'IM')
-        try {
-          imService.addProactiveContext(message, title)
-        } catch (e) {
-          log.debug('messageUser: failed to record proactive context:', e)
-        }
       }
     }
   } catch (e) {
@@ -710,7 +705,6 @@ export async function messageUser(
         })
         deliveredVia.push('app')
         windowFocused = mainWindow.isFocused()
-        addProactiveContext(companionAgentId, message, title)
       }
     }
   } catch (e) {
@@ -746,6 +740,7 @@ export async function messageUser(
   }
 
   if (deliveredVia.length > 0) {
+    addProactiveContext(companionAgentId, message, title)
     const output = t('im.tool_notification_sent', { platform: deliveredVia.join(', ') })
     executor.addStep({
       type: 'tool_result',
