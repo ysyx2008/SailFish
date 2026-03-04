@@ -781,7 +781,7 @@ export class WatchService {
       case 'manual':
         return '用户手动触发'
       case 'im_connected':
-        return `IM 上线：${payload.platform}${payload.userName ? `（最近联系人：${payload.userName}）` : ''}`
+        return this.describeIMConnected(payload)
       case 'command_probe':
         return `命令探针 \`${payload.command}\`：${payload.reason}${payload.output ? `\n输出：${String(payload.output).substring(0, 500)}` : ''}`
       case 'http_probe':
@@ -793,6 +793,23 @@ export class WatchService {
       default:
         return `${type}${payload.source ? ` 来自 ${payload.source}` : ''}`
     }
+  }
+
+  private static readonly IM_PLATFORM_NAMES: Record<string, string> = {
+    dingtalk: '钉钉', feishu: '飞书', slack: 'Slack', telegram: 'Telegram', wecom: '企业微信'
+  }
+
+  private describeIMConnected(payload: Record<string, unknown>): string {
+    const nameOf = (p: string) => WatchService.IM_PLATFORM_NAMES[p] || p
+    const primary = typeof payload.platform === 'string' ? payload.platform : '未知'
+    const all = Array.isArray(payload.platforms) ? payload.platforms.filter((p): p is string => typeof p === 'string') : []
+    const userName = typeof payload.userName === 'string' ? payload.userName : undefined
+    const userNote = userName ? `（最近联系人：${userName}）` : ''
+
+    if (all.length > 1) {
+      return `IM 上线：用户通过${nameOf(primary)}上线${userNote}（同时在线：${all.map(nameOf).join('、')}）`
+    }
+    return `IM 上线：用户通过${nameOf(primary)}上线${userNote}`
   }
 
   private describeAppLifecycle(payload: Record<string, unknown>): string {

@@ -179,6 +179,10 @@ export class IMService {
   private contactsByPlatform: Partial<Record<IMPlatform, IMLastContact>> = {}
   /** 本次运行期间已发送过 im_connected 事件的平台（避免重连时重复触发） */
   private emittedConnectPlatforms = new Set<IMPlatform>()
+  /** 防抖：多个平台短时间内连接时合并为一个 im_connected 事件 */
+  private pendingConnectPlatforms = new Set<IMPlatform>()
+  private connectDebounceTimer: NodeJS.Timeout | null = null
+  private static readonly CONNECT_DEBOUNCE_MS = 3000
 
   /** talk_to_user 发送的主动消息上下文，供下次 IM 回复时注入 companion agent */
   private pendingProactiveContext: { message: string; title?: string; timestamp: number } | null = null
@@ -229,8 +233,9 @@ export class IMService {
   // ==================== IM 生命周期事件 ====================
 
   /**
-   * 平台连接成功后，向事件总线发送 im_connected 事件
-   * 觉醒模式下的 wakeup Watch 会捕获此事件，让 Agent 自主决定如何问候
+   * 平台连接成功后，收集到防抖窗口中。
+   * 多个平台短时间内连接时（如应用启动），合并为一个 im_connected 事件，
+   * 以最近联系的平台为主，避免 Watch 串行处理导致选错平台。
    */
   private emitConnectedEvent(platform: IMPlatform): void {
     if (this.emittedConnectPlatforms.has(platform)) return
@@ -238,26 +243,58 @@ export class IMService {
     if (!contact || this.isContactExpired(contact)) return
 
     this.emittedConnectPlatforms.add(platform)
+    this.pendingConnectPlatforms.add(platform)
+
+    if (this.connectDebounceTimer) clearTimeout(this.connectDebounceTimer)
+    this.connectDebounceTimer = setTimeout(() => this.flushConnectedEvent(), IMService.CONNECT_DEBOUNCE_MS)
+  }
+
+  /** 防抖窗口结束后，发送合并的 im_connected 事件 */
+  private flushConnectedEvent(): void {
+    this.connectDebounceTimer = null
+    const platforms = Array.from(this.pendingConnectPlatforms)
+    this.pendingConnectPlatforms.clear()
+    if (platforms.length === 0) return
+
+    // 选取最近联系的平台作为主平台（最可能是用户当前使用的）
+    const primary = this.pickMostRecentPlatform(platforms)
+    const contact = this.contactsByPlatform[primary]
+    if (!contact) return
 
     try {
       const eventBus = getEventBus()
       eventBus.emit({
-        id: `im-conn-${platform}-${Date.now().toString(36)}`,
+        id: `im-conn-${primary}-${Date.now().toString(36)}`,
         type: 'im_connected',
-        source: `im:${platform}`,
+        source: `im:${primary}`,
         timestamp: Date.now(),
         payload: {
-          platform,
+          platform: primary,
+          platforms,
           userName: contact.userName,
           userId: contact.userId,
           chatType: contact.chatType,
         },
         priority: 'normal'
       })
-      log.info(`Emitted im_connected event for ${platform}`)
+      log.info(`Emitted im_connected event: primary=${primary}, all=[${platforms.join(',')}]`)
     } catch (err) {
       log.warn(`Failed to emit im_connected event:`, err)
     }
+  }
+
+  /** 从候选平台中选取最近联系过的那个 */
+  private pickMostRecentPlatform(platforms: IMPlatform[]): IMPlatform {
+    let best = platforms[0]
+    let bestTime = 0
+    for (const p of platforms) {
+      const c = this.contactsByPlatform[p]
+      if (c && c.updatedAt > bestTime) {
+        bestTime = c.updatedAt
+        best = p
+      }
+    }
+    return best
   }
 
   private handleConnectionChange(platform: IMPlatform, connected: boolean): void {
@@ -480,6 +517,10 @@ export class IMService {
   // ==================== 全局操作 ====================
 
   async stopAll(): Promise<void> {
+    if (this.connectDebounceTimer) {
+      clearTimeout(this.connectDebounceTimer)
+      this.connectDebounceTimer = null
+    }
     await this.stopDingTalk()
     await this.stopFeishu()
     await this.stopSlack()
