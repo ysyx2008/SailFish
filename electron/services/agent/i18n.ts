@@ -566,6 +566,17 @@ const translations = {
     'personality.using_default': '未设置（当前使用默认风格）',
     'personality.confirm_hint': '确认无误后，请使用 `personality_craft` 正式写入。',
 
+    // PDF 技能
+    'pdf.unknown_tool': '未知的 PDF 工具: {name}',
+    'pdf.path_required': 'PDF 文件路径不能为空',
+    'pdf.pages_required': '页码列表不能为空',
+    'pdf.file_not_found': '文件不存在: {path}',
+    'pdf.rendering_pages': '渲染 PDF 页面: {file} 第 {pages} 页',
+    'pdf.render_result': '已渲染 {rendered} 页（共 {total} 页），页码: {pages}',
+    'pdf.render_failed': 'PDF 页面渲染失败',
+    'pdf.render_failed_detail': 'PDF 页面渲染失败: {error}',
+    'pdf.scanned_pdf_detected': '📄 {name} 是扫描版 PDF（共 {totalPages} 页），首页已作为图片附上。如需查看更多页面，请使用 pdf_view_page 工具，路径: {path}',
+
     // 技能系统
     'skill.id_required': '技能 ID 不能为空',
     'skill.session_not_initialized': '技能会话未初始化',
@@ -1511,6 +1522,17 @@ Please output the summary in the following format:
     'personality.not_set': 'Not set',
     'personality.using_default': 'Not set (using default style)',
     'personality.confirm_hint': 'When confirmed, use `personality_craft` to save.',
+
+    // PDF skill
+    'pdf.unknown_tool': 'Unknown PDF tool: {name}',
+    'pdf.path_required': 'PDF file path is required',
+    'pdf.pages_required': 'Page numbers list is required',
+    'pdf.file_not_found': 'File not found: {path}',
+    'pdf.rendering_pages': 'Rendering PDF pages: {file} page {pages}',
+    'pdf.render_result': 'Rendered {rendered} page(s) (total {total}), pages: {pages}',
+    'pdf.render_failed': 'PDF page rendering failed',
+    'pdf.render_failed_detail': 'PDF page rendering failed: {error}',
+    'pdf.scanned_pdf_detected': '📄 {name} is a scanned PDF ({totalPages} pages). First page attached as image. Use pdf_view_page tool for more pages, path: {path}',
 
     // Skill system
     'skill.id_required': 'Skill ID required',

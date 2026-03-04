@@ -120,7 +120,9 @@ const {
   removeUploadedDoc,
   clearUploadedDocs,
   formatFileSize,
-  getDocumentContext
+  getDocumentContext,
+  getScannedDocImages,
+  getScannedDocContext
 } = useDocumentUpload(currentTabId)
 
 // 图片上传（视觉理解）
@@ -199,17 +201,20 @@ const {
   getAgentKey
 } = useAgentMode(
   messagesRef,
-  getDocumentContext,
+  async () => {
+    const textContext = await getDocumentContext()
+    const scannedContext = getScannedDocContext()
+    return [textContext, scannedContext].filter(Boolean).join('\n\n')
+  },
   getHostIdByTabId,
   autoProbeHostProfile,
   currentTabId,
   {
-    getImages: getImageDataUrls,
+    getImages: () => [...getImageDataUrls(), ...getScannedDocImages()],
     clearImages
   },
   {
     getAttachments: () => uploadedDocs.value
-      .filter(d => !d.error && d.content)
       .map(d => ({ filename: d.filename, fileSize: d.fileSize, fileType: d.fileType })),
     clearAttachments: clearUploadedDocs
   }

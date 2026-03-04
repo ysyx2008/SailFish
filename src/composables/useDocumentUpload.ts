@@ -173,6 +173,29 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     return await documentAPI.formatAsContext(plainDocs)
   }
 
+  // 获取扫描件 PDF 的页面图片（用于视觉模型处理）
+  const getScannedDocImages = (): string[] => {
+    const images: string[] = []
+    for (const doc of uploadedDocs.value) {
+      if (doc.images && doc.images.length > 0) {
+        images.push(...doc.images)
+      }
+    }
+    return images
+  }
+
+  // 获取扫描件文档的文本描述（注入到文档上下文中提示 AI）
+  const getScannedDocContext = (): string => {
+    const scannedDocs = uploadedDocs.value.filter(d => d.images && d.images.length > 0)
+    if (scannedDocs.length === 0) return ''
+    
+    const parts = scannedDocs.map(d => {
+      const totalPages = d.totalPages || d.pageCount || 0
+      return `[扫描版 PDF: ${d.filename}，共 ${totalPages} 页，首页已作为图片附上。如需查看更多页面，使用 pdf_view_page 工具]`
+    })
+    return parts.join('\n')
+  }
+
   // 保存单个文档到知识库
   const saveToKnowledge = async (doc: ParsedDocument, options?: { hostId?: string; tags?: string[] }): Promise<{ success: boolean; duplicate?: boolean; existingFilename?: string }> => {
     if (doc.error || !doc.content) return { success: false }
@@ -277,6 +300,8 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     clearUploadedDocs,
     formatFileSize,
     getDocumentContext,
+    getScannedDocImages,
+    getScannedDocContext,
     saveToKnowledge,
     saveAllToKnowledge,
     checkKnowledgeEnabled,

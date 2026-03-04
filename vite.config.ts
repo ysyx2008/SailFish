@@ -93,6 +93,8 @@ export default defineConfig({
                 // ws 的可选原生加速依赖。rollup 打包 ws 时会把 try { require('bufferutil') }
                 // 转成 throw new Error('Could not resolve "bufferutil"')，破坏原本的 try/catch。
                 // 标记为 external 后 rollup 保留原样 require()，运行时由 ws 自行处理缺失情况。
+                '@napi-rs/canvas',
+                /^pdfjs-dist/,
                 'bufferutil',
                 'utf-8-validate'
               ]

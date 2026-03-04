@@ -14,6 +14,7 @@ import { executeWatchTool } from '../skills/watch/executor'
 import { executeConfigTool } from '../skills/config/executor'
 import { executeSkillCreatorTool } from '../skills/skill-creator/executor'
 import { executePersonalityTool } from '../skills/personality/executor'
+import { executePdfTool } from '../skills/pdf/executor'
 import { getUserSkillService } from '../../user-skill.service'
 import { getConfigService } from '../../config.service'
 import { formatRemainingTime, formatTotalTime, truncateFromEnd } from './utils'
@@ -809,6 +810,10 @@ export async function executeSkillTool(
 
   if (toolName.startsWith('personality_')) {
     return executePersonalityTool(toolName, ptyId, args, toolCallId, config, executor)
+  }
+
+  if (toolName.startsWith('pdf_')) {
+    return executePdfTool(toolName, ptyId, args, toolCallId, config, executor)
   }
 
   return { success: false, output: '', error: t('error.unknown_tool', { name: toolName }) }

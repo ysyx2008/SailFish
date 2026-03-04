@@ -23,10 +23,22 @@ export interface ParsedDocument {
   parseTime: number
   /** 页数（如果适用） */
   pageCount?: number
+  /** 总页数（PDF 渲染时使用，含未渲染的页） */
+  totalPages?: number
+  /** 渲染的页面图片（扫描件 PDF 用，JPEG data URL） */
+  images?: string[]
   /** 元数据 */
   metadata?: Record<string, string>
   /** 错误信息（如果解析失败） */
   error?: string
+}
+
+// PDF 页面渲染选项
+export interface PdfRenderOptions {
+  /** 渲染 DPI，默认 200 */
+  dpi?: number
+  /** JPEG 质量 0-100，默认 85 */
+  quality?: number
 }
 
 // 支持的文档类型
@@ -290,7 +302,7 @@ export class DocumentParserService {
         reject(new Error(`PDF 解析错误: ${message}`))
       })
       
-      pdfParser.on('pdfParser_dataReady', (pdfData: { Pages: Array<{ Texts: Array<{ R: Array<{ T: string }> }> }> }) => {
+      pdfParser.on('pdfParser_dataReady', async (pdfData: { Pages: Array<{ Texts: Array<{ R: Array<{ T: string }> }> }> }) => {
         clearTimeout(timeout)
         try {
           // 提取所有文本
@@ -327,9 +339,18 @@ export class DocumentParserService {
           
           // 检查是否成功提取到内容
           if (!result.content || result.content.length === 0) {
-            // PDF 可能是扫描件或图片型 PDF
             if (pageCount > 0) {
-              result.error = `PDF 共 ${pageCount} 页，但未能提取到文本内容。该文件可能是扫描件或图片型 PDF，暂不支持 OCR 识别。`
+              // 扫描件/图片型 PDF：尝试渲染首页为图片
+              try {
+                const renderResult = await this.renderPdfPages(filePath, [1])
+                result.images = renderResult.images
+                result.totalPages = renderResult.totalPages
+                result.error = undefined
+                log.info(`Scanned PDF detected: ${pageCount} pages, first page rendered as image`)
+              } catch (renderErr) {
+                log.warn('Failed to render scanned PDF page:', renderErr)
+                result.error = `PDF 共 ${pageCount} 页，但未能提取到文本内容。该文件可能是扫描件或图片型 PDF。`
+              }
             } else {
               result.error = 'PDF 文件为空或格式不支持'
             }
@@ -684,6 +705,101 @@ export class DocumentParserService {
       xlsx: !!this.ExcelJS,
       text: true
     }
+  }
+
+  private pdfjsLib: typeof import('pdfjs-dist/legacy/build/pdf.mjs') | null = null
+  private napiCanvas: typeof import('@napi-rs/canvas') | null = null
+
+  private static readonly PDF_POINTS_PER_INCH = 72
+  private static readonly MAX_RENDER_PAGES = 10
+  private static readonly MAX_PDF_FILE_SIZE = 50 * 1024 * 1024 // 50MB
+
+  /**
+   * 将 PDF 指定页面渲染为 JPEG 图片
+   * 用于扫描件/图片型 PDF 的视觉模型处理
+   */
+  async renderPdfPages(
+    filePath: string,
+    pageNumbers: number[],
+    options?: PdfRenderOptions
+  ): Promise<{ images: string[]; totalPages: number }> {
+    if (!filePath || !fs.existsSync(filePath)) {
+      throw new Error(`PDF file not found: ${filePath}`)
+    }
+
+    const fileSize = fs.statSync(filePath).size
+    if (fileSize > DocumentParserService.MAX_PDF_FILE_SIZE) {
+      throw new Error(`PDF file too large: ${(fileSize / 1024 / 1024).toFixed(1)}MB (max ${DocumentParserService.MAX_PDF_FILE_SIZE / 1024 / 1024}MB)`)
+    }
+
+    if (!pageNumbers || pageNumbers.length === 0) {
+      throw new Error('pageNumbers must be a non-empty array')
+    }
+
+    const pagesToRender = pageNumbers.slice(0, DocumentParserService.MAX_RENDER_PAGES)
+
+    const dpi = options?.dpi ?? 200
+    const quality = options?.quality ?? 85
+    const scale = dpi / DocumentParserService.PDF_POINTS_PER_INCH
+
+    if (!this.pdfjsLib) {
+      this.pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
+    }
+    if (!this.napiCanvas) {
+      this.napiCanvas = await import('@napi-rs/canvas')
+    }
+
+    const data = new Uint8Array(await fs.promises.readFile(filePath))
+    const doc = await this.pdfjsLib.getDocument({
+      data,
+      useSystemFonts: true,
+      isEvalSupported: false,
+    }).promise
+
+    const totalPages = doc.numPages
+    const images: string[] = []
+    const { createCanvas } = this.napiCanvas
+
+    const canvasFactory = {
+      create(w: number, h: number) {
+        const c = createCanvas(w, h)
+        return { canvas: c, context: c.getContext('2d') }
+      },
+      reset(pair: { canvas: ReturnType<typeof createCanvas>; context: unknown }, w: number, h: number) {
+        pair.canvas.width = w
+        pair.canvas.height = h
+      },
+      destroy(pair: { canvas: ReturnType<typeof createCanvas> }) {
+        pair.canvas.width = 0
+        pair.canvas.height = 0
+      }
+    }
+
+    for (const pageNum of pagesToRender) {
+      if (pageNum < 1 || pageNum > totalPages) {
+        log.warn(`Page ${pageNum} out of range (1-${totalPages}), skipping`)
+        continue
+      }
+
+      const page = await doc.getPage(pageNum)
+      const viewport = page.getViewport({ scale })
+      const width = Math.floor(viewport.width)
+      const height = Math.floor(viewport.height)
+
+      const canvas = createCanvas(width, height)
+      const ctx = canvas.getContext('2d')
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (page as any).render({ canvasContext: ctx, viewport, canvasFactory }).promise
+
+      const jpegBuffer = canvas.toBuffer('image/jpeg', quality)
+      images.push(`data:image/jpeg;base64,${jpegBuffer.toString('base64')}`)
+
+      log.info(`Rendered page ${pageNum}/${totalPages}: ${width}x${height}, ${(jpegBuffer.length / 1024).toFixed(0)}KB`)
+    }
+
+    doc.destroy()
+    return { images, totalPages }
   }
 }
 

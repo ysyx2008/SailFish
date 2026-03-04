@@ -22,4 +22,5 @@ import './config'
 import './skill-creator'
 import './terminal'
 import './personality'
+import './pdf'
 

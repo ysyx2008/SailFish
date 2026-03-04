@@ -52,7 +52,7 @@ export interface AgentState {
   finalResult?: string   // Agent 完成后的最终回复
 }
 
-// 上传的文档类型
+// 上传的文档类型（与 electron/services/document-parser.service.ts 同步）
 export interface ParsedDocument {
   filename: string
   fileType: string
@@ -60,6 +60,8 @@ export interface ParsedDocument {
   fileSize: number
   parseTime: number
   pageCount?: number
+  totalPages?: number
+  images?: string[]
   metadata?: Record<string, string>
   error?: string
 }

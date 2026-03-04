@@ -249,6 +249,33 @@ async function readDocumentFile(
       maxTextLength: 100000
     })
     
+    // 扫描件 PDF：有图片但无文本内容
+    if (result.images && result.images.length > 0) {
+      // 自动加载 PDF 技能，让 AI 可以用 pdf_view_page 查看更多页面
+      if (executor.skillSession) {
+        try {
+          await executor.skillSession.loadSkill('pdf')
+        } catch (_) { /* skill already loaded or unavailable */ }
+      }
+
+      const totalPages = result.totalPages || result.pageCount || 0
+      const output = t('pdf.scanned_pdf_detected', {
+        name: fileName,
+        totalPages,
+        path: filePath
+      })
+
+      executor.addStep({
+        type: 'tool_result',
+        content: output,
+        toolName: 'read_file',
+        toolResult: output,
+        images: result.images
+      })
+
+      return { success: true, output, images: result.images }
+    }
+
     if (result.error) {
       executor.addStep({
         type: 'tool_result',
@@ -258,7 +285,7 @@ async function readDocumentFile(
       })
       return { success: false, output: '', error: result.error }
     }
-    
+
     const docInfo: string[] = []
     docInfo.push(`📄 ${fileName}`)
     docInfo.push(`${ext.toUpperCase().slice(1)} ${t('file.document_parsed')}`)
@@ -266,14 +293,14 @@ async function readDocumentFile(
       docInfo.push(`${t('file.page_count')}: ${result.pageCount}`)
     }
     docInfo.push(`${t('file.content_length')}: ${result.content.length.toLocaleString()} ${t('file.chars')}`)
-    
+
     executor.addStep({
       type: 'tool_result',
       content: `${t('file.read_success')}: ${docInfo.join(', ')}`,
       toolName: 'read_file',
       toolResult: truncateFromEnd(result.content, 500)
     })
-    
+
     return { success: true, output: result.content }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : t('file.parse_failed')
