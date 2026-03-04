@@ -2028,8 +2028,8 @@ export abstract class Agent {
    * 更新上下文压力状态：注入上下文状态 + 渐进式提醒
    * 
    * 设计原则：程序只提供信息，所有压缩决策由 AI 做。
-   * - < 50%: 仅显示用量（不注入管理章节和工具，节省 token）
-   * - >= 50%: 注入上下文管理章节 + 注册管理工具
+   * - < 50%: 不注入任何上下文信息（节省 token）
+   * - >= 50%: 注入上下文状态 + 管理章节 + 注册管理工具
    * - 70%-85%: 追加压缩建议
    * - 85%+: 注入警告消息到 run.messages
    * - API 自然报错: 最终兜底
@@ -2091,10 +2091,8 @@ export abstract class Agent {
       // 上下文管理章节（超过阈值时追加）
       if (this.contextManagementEnabled) {
         content += PromptBuilder.buildContextManagementSection()
+        content += '\n\n' + statusLines.join('\n')
       }
-
-      // 上下文状态（始终追加）
-      content += '\n\n' + statusLines.join('\n')
 
       run.messages[0].content = content
     }

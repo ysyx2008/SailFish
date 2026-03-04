@@ -247,7 +247,7 @@ export class PromptBuilder {
    */
   static buildContextManagementSection(): string {
     return [
-      '## 运行环境',
+      '# 运行环境',
       '',
       '你运行在 ReAct 循环中，工具调用会追加到上下文（有容量上限，见末尾"上下文状态"）。',
       '',
@@ -302,13 +302,13 @@ export class PromptBuilder {
     const personality = this.personalityText?.trim()
 
     if (personality && mbtiStyle) {
-      return `## 你的灵魂（重要！）\n\n${personality}\n\n### 风格参考（MBTI）\n\n${mbtiStyle}`
+      return `# 你的灵魂（重要！）\n\n${personality}\n\n## 风格参考（MBTI）\n\n${mbtiStyle}`
     }
     if (personality) {
-      return `## 你的灵魂（重要！）\n\n${personality}`
+      return `# 你的灵魂（重要！）\n\n${personality}`
     }
     if (mbtiStyle) {
-      return `## 你的风格（重要！）\n\n${mbtiStyle}`
+      return `# 你的风格（重要！）\n\n${mbtiStyle}`
     }
     return ''
   }
@@ -316,13 +316,13 @@ export class PromptBuilder {
   private buildBondSection(): string {
     const bond = this.bondContext?.trim()
     if (!bond) return ''
-    return `## 你与用户的羁绊\n\n${bond}`
+    return `# 你与用户的羁绊\n\n${bond}`
   }
 
   private buildUserRulesSection(): string {
     const rules = this.aiRules?.trim()
     if (!rules) return ''
-    return `## 用户自定义规则（重要！必须遵守）\n\n用户设置了以下规则，你必须严格遵守：\n\n${rules}`
+    return `# 用户自定义规则（重要！必须遵守）\n\n${rules}`
   }
 
   private buildHostEnvironment(): string {
@@ -344,12 +344,12 @@ export class PromptBuilder {
       lines.push(`- 已安装工具: ${profile.installedTools.join(', ')}`)
     }
 
-    return `## 主机环境\n\n${lines.join('\n')}`
+    return `# 主机环境\n\n${lines.join('\n')}`
   }
 
   private buildKnowledgeDocSection(): string {
     if (!this.contextKnowledgeDoc) return ''
-    return `## 已知信息（来自历史交互）\n\n${this.contextKnowledgeDoc}`
+    return `# 已知信息（来自历史交互）\n\n${this.contextKnowledgeDoc}`
   }
 
   private buildConversationHistorySection(): string {
@@ -363,7 +363,7 @@ export class PromptBuilder {
     })
 
     return [
-      '## 相关历史（自动检索）',
+      '# 相关历史（自动检索）',
       '',
       '以下是与当前任务可能相关的过往交互，供参考：',
       '',
@@ -402,12 +402,12 @@ export class PromptBuilder {
   private buildWatchListSection(): string {
     const trimmed = this.watchListSummary?.trim()
     if (!trimmed) return ''
-    return `## 当前已设置的关切\n\n以下关切已存在，回答用户或创建新关切前请先参考。\n\n${trimmed}`
+    return `# 已有关切\n\n${trimmed}\n\n创建新关切前先检查是否已有相同功能的。`
   }
 
   private buildWorkflowSection(): string {
     return [
-      '## 工作方式',
+      '# 工作方式',
       '',
       '- **调用工具前**：用 1 句话说明你要做什么',
       '- **工具执行后**：用通俗语言解释结果和发现',
@@ -421,7 +421,7 @@ export class PromptBuilder {
 
     if (this.isSshTerminal) {
       sections.push([
-        '## SSH 终端约束',
+        '# SSH 终端约束',
         '',
         '- `read_file`、`edit_file`、`write_local_file` **不可用**（只能操作本地文件）',
         '- 读取远程文件用 `cat`/`head`/`tail`，写入用 `write_remote_file` 或 `echo`/`cat <<EOF`',
@@ -429,7 +429,7 @@ export class PromptBuilder {
       ].join('\n'))
     } else {
       sections.push([
-        '## 工具使用提示',
+        '# 工具使用提示',
         '',
         '- **按文件名搜索时优先用 `file_search`**（基于系统索引，毫秒级响应，比通过 execute_command 执行 find/locate 快得多）；`file_search` 只搜文件名不搜内容，需搜文件内容时请用 execute_command 执行 grep',
         '- `write_remote_file` 不可用（仅 SSH 终端可用）',
@@ -437,7 +437,7 @@ export class PromptBuilder {
     }
 
     sections.push([
-      '## 技能扩展',
+      '# 技能扩展',
       '',
       '通过 `skill(action="load", skill_id="...")` 按需加载额外能力，加载后在整个会话中持续有效。',
       '不再需要时 `skill(action="unload", skill_id="...")` 卸载以释放工具槽位。',
@@ -470,7 +470,7 @@ export class PromptBuilder {
       this.buildExecutionModeNote(),
     ].filter(Boolean)
 
-    return `## 核心规则\n\n${rules.join('\n\n')}`
+    return `# 核心规则\n\n${rules.join('\n\n')}`
   }
 
   private buildPlanRule(): string {
@@ -587,7 +587,7 @@ export class PromptBuilder {
       .join('\n')
 
     const parts = [
-      '## 历史任务',
+      '# 历史任务',
       '',
       '对话历史中包含：最近 1 个任务的完整对话，之后 2 个任务的压缩对话（含工具摘要），再之后 3 个任务的精简对话（仅请求和回复）。更早任务仅在下方列出摘要，需要详情用 `recall(id)` 或 `recall(id, detail="full")`。',
       '',

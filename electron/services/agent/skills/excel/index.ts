@@ -14,7 +14,7 @@ const log = createLogger('ExcelSkill')
 const excelSkill: Skill = {
   id: 'excel',
   name: 'Excel 处理',
-  description: '提供会话式 Excel 文件读写能力。支持打开文件、读取数据、修改单元格、添加/删除 Sheet、保存和关闭等操作。适用于数据分析、报表处理等场景。',
+  description: 'Excel 文件读写，支持读取数据、修改单元格、管理 Sheet。',
   tools: excelTools,
   
   async init() {

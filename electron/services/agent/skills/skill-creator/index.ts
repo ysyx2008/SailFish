@@ -13,7 +13,7 @@ const log = createLogger('SkillCreator')
 const skillCreatorSkill: Skill = {
   id: 'skill-creator',
   name: '技能管理',
-  description: '创建和管理用户技能。可以将操作流程、最佳实践、领域知识保存为可复用的技能文件，供后续任务参考使用。支持创建、更新、删除技能。',
+  description: '创建和管理用户自定义技能（SKILL.md），支持创建、更新、删除。',
   tools: skillCreatorTools,
   
   async init() {

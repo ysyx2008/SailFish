@@ -14,7 +14,7 @@ const log = createLogger('EmailSkill')
 const emailSkill: Skill = {
   id: 'email',
   name: '邮箱管理',
-  description: '提供邮件收发和管理能力，支持连接到配置的邮箱账户，读取、搜索、发送和删除邮件。适用于邮件处理、自动回复等场景。**注意**需要收发邮件时，除非用户明确要求，否则一般应当优先使用此技能工具。',
+  description: '邮件收发和管理，支持连接邮箱账户、读取、搜索、发送和删除邮件。需要收发邮件时优先使用。',
   tools: emailTools,
   
   async init() {

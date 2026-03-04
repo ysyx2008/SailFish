@@ -13,7 +13,7 @@ const log = createLogger('PdfSkill')
 const pdfSkill: Skill = {
   id: 'pdf',
   name: 'PDF 阅读',
-  description: '渲染扫描版/图片型 PDF 的指定页面为图片，配合视觉模型分析内容。当 read_file 读取 PDF 时发现是扫描件（无可提取文本），会自动加载此技能。使用 pdf_view_page 查看指定页面。',
+  description: '渲染扫描版 PDF 页面为图片供视觉模型分析。read_file 遇扫描件时自动加载。',
   tools: pdfTools,
 
   async init() {

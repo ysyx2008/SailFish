@@ -561,13 +561,19 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
     filteredTools.push(...getContextManagementTools())
   }
 
+  // 清理内部元数据，避免发送到 API 浪费 token
+  const cleanTools = filteredTools.map(tool => {
+    const { _meta, ...clean } = tool as ToolDefinitionWithMeta
+    return clean as ToolDefinition
+  })
+
   // 如果有 MCP 服务，添加 MCP 工具
   if (mcpService) {
     const mcpTools = mcpService.getToolDefinitions()
-    return [...filteredTools, ...mcpTools]
+    return [...cleanTools, ...mcpTools]
   }
 
-  return filteredTools
+  return cleanTools
 }
 
 /**

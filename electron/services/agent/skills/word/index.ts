@@ -14,7 +14,7 @@ const log = createLogger('WordSkill')
 const wordSkill: Skill = {
   id: 'word',
   name: 'Word 文档处理',
-  description: '提供会话式 Word 文档创建和编辑能力。支持创建文档、添加段落/标题/列表/表格、读取内容、保存和关闭等操作。适用于生成报告、文档编写等场景。',
+  description: 'Word 文档创建和编辑，支持段落/标题/列表/表格/样式管理。',
   tools: wordTools,
   
   async init() {

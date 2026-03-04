@@ -15,7 +15,7 @@ const log = createLogger('TerminalSkill')
 const terminalSkill: Skill = {
   id: 'terminal',
   name: '终端控制',
-  description: '提供 PTY 终端交互能力：在终端中执行命令、查看终端状态和输出、发送控制键和文本输入、等待命令完成。绑定终端时自动加载。',
+  description: 'PTY 终端交互：执行命令、查看输出、发送控制键、等待完成。绑定终端时自动加载。',
   tools: getAllTerminalTools(),
 
   async init() {

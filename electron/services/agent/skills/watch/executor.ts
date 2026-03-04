@@ -414,13 +414,14 @@ function errMsg(e: unknown): string {
  */
 export function formatWatchListForPrompt(watches: WatchDefinition[]): string {
   if (watches.length === 0) return ''
-  return watches
-    .map(w => {
-      const status = w.enabled ? '启用' : '禁用'
-      const triggers = w.triggers.map(t => formatTriggerBrief(t)).join(', ')
-      const nextRun = w.nextRun ? new Date(w.nextRun).toLocaleString('zh-CN') : '—'
-      const promptPreview = w.prompt.length > 80 ? `${w.prompt.substring(0, 80)}...` : w.prompt
-      return `- **${w.name}** (ID: \`${w.id}\`) [${status}] 触发: ${triggers} 下次: ${nextRun}\n  指令: ${promptPreview}`
-    })
-    .join('\n\n')
+  const enabled = watches.filter(w => w.enabled)
+  const disabled = watches.filter(w => !w.enabled)
+  const parts: string[] = []
+  if (enabled.length > 0) {
+    parts.push(enabled.map(w => `\`${w.id}\`(${w.name})`).join('、'))
+  }
+  if (disabled.length > 0) {
+    parts.push('已禁用: ' + disabled.map(w => `\`${w.id}\`(${w.name})`).join('、'))
+  }
+  return parts.join('\n')
 }

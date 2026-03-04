@@ -312,26 +312,8 @@ export class UserSkillService {
       return ''
     }
 
-    const sections: string[] = []
-    sections.push('## 用户技能')
-    sections.push('')
-    sections.push('用户定义了以下技能，包含特定领域的操作指南和最佳实践：')
-    sections.push('')
-
-    for (const skill of enabledSkills) {
-      const desc = skill.description ? ` - ${skill.description}` : ''
-      sections.push(`- \`${skill.id}\`: **${skill.name}**${desc}`)
-    }
-    
-    sections.push('')
-    sections.push('**工作流程**：')
-    sections.push('1. 收到任务后，先审视上述技能列表，判断是否有相关技能')
-    sections.push('2. 如有相关技能，**必须先**调用 `load_user_skill("技能ID")` 加载完整内容')
-    sections.push('3. 按照技能中的指导执行任务')
-    sections.push('')
-    sections.push('**判断相关性**：根据技能名称和描述判断。例如"安全删除提醒"与删除操作相关，"Git 提交规范"与 git commit 相关。')
-
-    return sections.join('\n')
+    const skillIds = enabledSkills.map(s => `\`${s.id}\``).join('、')
+    return `# 用户技能\n\n有 ${enabledSkills.length} 个用户技能可用（${skillIds}），详见 \`load_user_skill\` 工具。收到任务后先判断是否有相关技能，有则先加载再执行。`
   }
 
   /**
