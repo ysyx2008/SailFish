@@ -1732,6 +1732,10 @@ ipcMain.handle('config:setActiveAiProfile', async (_event, profileId: string) =>
   configService.setActiveAiProfile(profileId)
 })
 
+ipcMain.handle('config:hasVisionCapability', async () => {
+  return configService.hasVisionCapability()
+})
+
 // SSH 会话配置
 ipcMain.handle('config:getSshSessions', async () => {
   return configService.getSshSessions()
@@ -2983,14 +2987,16 @@ ipcMain.handle('document:selectFiles', async () => {
   return { canceled: false, files }
 })
 
-// 解析单个文档
+// 解析单个文档（extractImages 由后端根据视觉模型配置自动决定）
 ipcMain.handle('document:parse', async (_event, file: UploadedFile, options?: ParseOptions) => {
-  return documentParserService.parseDocument(file, options)
+  const extractImages = options?.extractImages ?? configService.hasVisionCapability()
+  return documentParserService.parseDocument(file, { ...options, extractImages })
 })
 
-// 批量解析文档
+// 批量解析文档（extractImages 由后端根据视觉模型配置自动决定）
 ipcMain.handle('document:parseMultiple', async (_event, files: UploadedFile[], options?: ParseOptions) => {
-  return documentParserService.parseDocuments(files, options)
+  const extractImages = options?.extractImages ?? configService.hasVisionCapability()
+  return documentParserService.parseDocuments(files, { ...options, extractImages })
 })
 
 // 格式化为 AI 上下文

@@ -397,6 +397,22 @@ export class ConfigService {
     this.store.set('activeAiProfile', profileId)
   }
 
+  /**
+   * 当前 AI 配置是否具备视觉（多模态）能力
+   * - 当前模型本身标记为 vision → 直接具备
+   * - 当前模型为 general/未标记 → 需 autoVisionModel 开启 + 有效的 visionProfileId
+   */
+  hasVisionCapability(): boolean {
+    const profiles = this.getAiProfiles()
+    const activeId = this.getActiveAiProfile()
+    const profile = profiles.find(p => p.id === activeId)
+    if (!profile) return false
+    if (profile.modelType === 'vision') return true
+    if (!this.get('autoVisionModel')) return false
+    const visionId = profile.visionProfileId
+    return !!(visionId && visionId !== activeId && profiles.some(p => p.id === visionId))
+  }
+
   // ==================== SSH 会话配置 ====================
 
   /**

@@ -17,7 +17,6 @@ import {
   useMarkdown,
   useDocumentUpload,
   useImageUpload,
-  isVisionModel,
   useContextStats,
   useHostProfile,
   useAgentMode,
@@ -673,17 +672,14 @@ watch(inputText, () => {
   nextTick(adjustTextareaHeight)
 })
 
-// 检查当前模型是否支持视觉，不支持时弹出一次提示（同一会话仅提示一次）
 let visionWarningShown = false
-const checkVisionSupport = () => {
+const checkVisionSupport = async () => {
   if (visionWarningShown) return
-  const profile = activeAiProfile.value
-  if (!profile) return
-  // 如果当前模型本身支持视觉，或者配置了视觉模型自动路由，则无需警告
-  const hasVisionCapability = isVisionModel(profile.model, profile.modelType) || profile.visionProfileId
-  if (!hasVisionCapability) {
+  const hasVision = await window.electronAPI.config.hasVisionCapability()
+  if (!hasVision) {
     visionWarningShown = true
-    toast.warning(t('ai.visionNotSupported', { model: profile.model }), 6000)
+    const profile = activeAiProfile.value
+    toast.warning(t('ai.visionNotSupported', { model: profile?.model || '' }), 6000)
   }
 }
 
@@ -5109,9 +5105,9 @@ onUnmounted(() => {
 
 .image-preview-hint {
   font-size: 11px;
-  color: var(--text-muted);
+  color: inherit;
   margin-top: 4px;
-  opacity: 0.8;
+  opacity: 0.7;
 }
 
 .message-image:hover {

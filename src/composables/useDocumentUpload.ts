@@ -5,8 +5,6 @@
  */
 import { ref, computed, type Ref, type ComputedRef } from 'vue'
 import { useTerminalStore, type ParsedDocument } from '../stores/terminal'
-import { useConfigStore } from '../stores/config'
-import { isVisionModel } from './useImageUpload'
 
 // 重新导出类型供外部使用
 export type { ParsedDocument }
@@ -16,21 +14,7 @@ const SUPPORTED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt', '.md', '.json', '
 
 export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef<string | null>) {
   const terminalStore = useTerminalStore()
-  const configStore = useConfigStore()
 
-  /**
-   * 当前是否具备视觉模型能力（用于决定是否提取文档图片）
-   * - 当前模型本身是视觉/多模态模型 → 直接具备，不需要 autoVisionModel 开关
-   * - 当前模型是纯文本模型 → 需要 autoVisionModel 开启 + 配置了 visionProfileId
-   */
-  const hasVisionCapability = computed(() => {
-    const profile = configStore.activeAiProfile
-    if (!profile) return false
-    if (isVisionModel(profile.model, profile.modelType)) return true
-    if (!configStore.autoVisionModel) return false
-    return !!profile.visionProfileId
-  })
-  
   // 上传中状态（全局状态，因为同一时间只能上传一次）
   const isUploadingDocs = ref(false)
   // 拖放悬停状态
@@ -69,10 +53,7 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
         return
       }
       
-      // 解析文档（有视觉模型时提取嵌入图片）
-      const parsedDocs = await documentAPI.parseMultiple(files, {
-        extractImages: hasVisionCapability.value
-      })
+      const parsedDocs = await documentAPI.parseMultiple(files)
       
       // 追加模式：新上传的文档追加到现有列表
       terminalStore.addUploadedDocs(tabId, parsedDocs)
@@ -134,11 +115,8 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     try {
       isUploadingDocs.value = true
       
-      // 解析文档（有视觉模型时提取嵌入图片）
       const documentAPI = (window.electronAPI as { document: typeof window.electronAPI.document }).document
-      const parsedDocs = await documentAPI.parseMultiple(fileInfos, {
-        extractImages: hasVisionCapability.value
-      })
+      const parsedDocs = await documentAPI.parseMultiple(fileInfos)
       
       // 追加模式：新上传的文档追加到现有列表
       terminalStore.addUploadedDocs(tabId, parsedDocs)

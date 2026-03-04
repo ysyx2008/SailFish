@@ -227,25 +227,9 @@ function readImageFile(
   }
 }
 
-/**
- * 读取文档文件
- */
-/**
- * 判断当前 Agent 是否具备视觉模型能力
- * - 当前模型本身是视觉/多模态模型 → 直接具备，不需要开关
- * - 当前模型是纯文本模型 → 需要 autoVisionModel 开启 + 配置了 visionProfileId
- */
 function hasVisionCapability(): boolean {
   try {
-    const configService = getConfigService()
-    const profiles = configService.getAiProfiles()
-    const activeId = configService.getActiveAiProfile()
-    const profile = profiles.find(p => p.id === activeId)
-    if (!profile) return false
-    if (profile.modelType === 'vision') return true
-    if (!configService.get('autoVisionModel')) return false
-    const visionId = profile.visionProfileId
-    return !!(visionId && visionId !== activeId && profiles.some(p => p.id === visionId))
+    return getConfigService().hasVisionCapability()
   } catch {
     return false
   }

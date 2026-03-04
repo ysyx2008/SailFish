@@ -442,6 +442,7 @@ interface Window {
       ) => Promise<void>
       getActiveAiProfile: () => Promise<string>
       setActiveAiProfile: (profileId: string) => Promise<void>
+      hasVisionCapability: () => Promise<boolean>
       getSshSessions: () => Promise<
         Array<{
           id: string

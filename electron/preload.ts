@@ -790,6 +790,7 @@ const electronAPI = {
     getActiveAiProfile: () => ipcRenderer.invoke('config:getActiveAiProfile'),
     setActiveAiProfile: (profileId: string) =>
       ipcRenderer.invoke('config:setActiveAiProfile', profileId),
+    hasVisionCapability: () => ipcRenderer.invoke('config:hasVisionCapability') as Promise<boolean>,
 
     // SSH 会话
     getSshSessions: () => ipcRenderer.invoke('config:getSshSessions'),
