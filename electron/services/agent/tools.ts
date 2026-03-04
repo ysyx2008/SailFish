@@ -143,15 +143,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
         type: 'function',
         function: {
           name: 'exec',
-          description: `运行 shell 命令并返回输出。同步等待命令完成后返回结果。
-
-适用于：查询系统信息、运行脚本、文件操作等需要命令行辅助的场景。
-不适用于：交互式命令、需要终端 UI 的程序（vim/nano/tmux 等）。
-
-**长时间命令**：通过 timeout 参数延长等待时间（默认 60 秒，最大 600 秒）。
-可以用 shell 组合命令实现"等待+检查"，如：\`sleep 120 && tail -10 logfile && ls /output/dir\`
-
-命令长度上限 800 字符，超过请先写入脚本文件再执行。`,
+          description: `运行 shell 命令并返回输出（同步）。不支持交互式命令(vim/nano/tmux)。长时间命令通过 timeout 延长（默认 60s，最大 600s）。命令上限 800 字符。`,
           parameters: {
             type: 'object',
             properties: {
@@ -181,27 +173,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       type: 'function',
       function: {
         name: 'read_file',
-        description: `读取本地文件内容。支持多种读取方式和文件格式：
-
-**支持的文件格式**：
-- 📄 **PDF 文件**：自动提取文本内容（不支持扫描件 OCR）
-- 📝 **Word 文档**：支持 .docx（Office 2007+）和 .doc（97-2003）格式
-- 🖼️ **图片文件**：jpg/jpeg、png、gif、bmp、webp，读取后自动注入视觉上下文供 AI 分析（最大 10MB）
-- 📃 **文本文件**：txt、md、json、xml、html、csv 等
-
-**读取方式**（仅适用于文本文件）：
-1. **完整读取**：不指定任何范围参数，读取整个文件（文件需小于 500KB）
-2. **按行范围读取**：使用 start_line 和 end_line 指定行号范围（从1开始）
-3. **按行数读取**：使用 max_lines 指定从文件开头读取的行数
-4. **从末尾读取**：使用 tail_lines 指定从文件末尾读取的行数
-5. **文件信息查询**：只设置 info_only=true，获取文件大小、行数等信息，不读取内容
-
-⚠️ **仅支持本地文件**：此工具只能读取运行终端程序的本地机器上的文件。
-对于 SSH 远程主机，请使用 execute_command 执行 cat/head/tail/sed 等命令读取远程文件。
-
-对于大文件，建议先使用 info_only=true 查看文件信息，然后根据需要读取特定部分。
-对于 PDF/Word 文档，会自动解析提取文本，最大支持 10MB 文件。
-⚠️ **文件名注意事项**：文件名中可能包含特殊字符（比如中文引号“”等），请严格使用原始文件名。`,
+        description: `读取本地文件。支持文本、PDF、Word(.doc/.docx)、图片(jpg/png/gif/bmp/webp，自动注入视觉上下文)。大文件先用 info_only 查信息，再按行范围读取。仅本地文件，SSH 远程请用命令行。`,
         parameters: {
           type: 'object',
           properties: {
@@ -211,24 +183,12 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
             },
             info_only: {
               type: 'boolean',
-              description: '仅获取文件信息（大小、行数等），不读取内容。对于大文件，建议先查询信息再决定读取范围。'
+              description: '仅获取文件信息（大小、行数等），不读取内容'
             },
-            start_line: {
-              type: 'number',
-              description: '起始行号（从1开始）。与 end_line 配合使用可读取指定行范围。'
-            },
-            end_line: {
-              type: 'number',
-              description: '结束行号（包含）。与 start_line 配合使用可读取指定行范围。'
-            },
-            max_lines: {
-              type: 'number',
-              description: '从文件开头读取的最大行数。例如设置为 100 可读取前100行。'
-            },
-            tail_lines: {
-              type: 'number',
-              description: '从文件末尾读取的行数。例如设置为 50 可读取最后50行（类似 tail -n 50）。'
-            }
+            start_line: { type: 'number', description: '起始行号（从1开始）' },
+            end_line: { type: 'number', description: '结束行号（包含）' },
+            max_lines: { type: 'number', description: '从开头读取的最大行数' },
+            tail_lines: { type: 'number', description: '从末尾读取的行数' }
           },
           required: ['path']
         }
@@ -239,26 +199,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       type: 'function',
       function: {
         name: 'edit_file',
-        description: `精确编辑本地文件。通过查找并替换指定文本来修改文件，无需重写整个文件。
-
-**这是修改现有文件的首选工具**，比重写整个文件更高效、更安全。
-
-**使用方法**：
-1. 提供 old_text：要替换的原始文本（必须与文件内容完全匹配）
-2. 提供 new_text：替换后的新文本
-3. 工具会在文件中查找 old_text 并替换为 new_text
-
-**重要规则**：
-- old_text 必须在文件中**唯一匹配**，否则会报错
-- 如果匹配多处，请提供更多上下文（包含前后几行）使其唯一
-- 保持原有缩进格式，不要改变空白字符
-
-**示例场景**：
-- 修改函数实现：提供函数的完整代码块作为 old_text
-- 修改配置项：提供包含该配置的几行作为 old_text
-- 添加代码：old_text 为插入点附近的代码，new_text 包含原代码+新增内容
-
-⚠️ 如果需要创建新文件或完全重写，请使用 write_local_file 工具。`,
+        description: `查找替换修改本地文件（修改首选工具）。old_text 必须在文件中唯一匹配，匹配多处时提供更多上下文使其唯一。创建新文件请用 write_local_file。`,
         parameters: {
           type: 'object',
           properties: {
@@ -284,25 +225,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       type: 'function',
       function: {
         name: 'write_local_file',
-        description: `写入或创建本地纯文本文件。支持多种写入模式：
-
-**注意**：如果只需要修改文件的一部分，请优先使用 edit_file 工具。
-
-**支持的模式**：
-1. **新建模式（默认）**：mode='create'，仅创建新文件，如果文件已存在则报错
-2. **覆盖模式**：mode='overwrite'，用 content 替换整个文件（文件存在会覆盖）
-3. **追加模式**：mode='append'，在文件末尾追加 content
-4. **插入模式**：mode='insert'，在 insert_at_line 行之前插入 content
-5. **行替换模式**：mode='replace_lines'，用 content 替换 start_line 到 end_line 的内容
-6. **正则替换模式**：mode='regex_replace'，用正则表达式查找替换
-
-**⚠️ 禁止用此工具创建Office文档（.docx/.xlsx/.pptx）**，会被降级为.md纯文本。
-
-**⚠️ 大文件必须分段写入**：如果要写入的内容很长，不要试图在一次调用中写完整个文件，否则可能因超出输出限制而整个调用失败。应先用 create 模式写入前面一部分，再用 append 模式分次追加剩余内容。
-
-**⚠️ 重要文件请先备份**：修改配置文件、脚本等重要文件前，必须先执行备份命令：
-\`cp file.txt file.txt.$(date +%Y%m%d_%H%M%S).bak\`
-不需要备份：新建文件、临时文件、日志文件、明确不重要的文件`,
+        description: `写入或创建本地纯文本文件。部分修改请优先用 edit_file。大文件分段写入（先 create 再 append）。禁止创建 Office 文档。重要文件请先备份。`,
         parameters: {
           type: 'object',
           properties: {
@@ -317,32 +240,14 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
             mode: {
               type: 'string',
               enum: ['create', 'overwrite', 'append', 'insert', 'replace_lines', 'regex_replace'],
-              description: '写入模式：create（新建，默认，文件存在则报错）、overwrite（覆盖）、append（追加）、insert（插入）、replace_lines（行替换）、regex_replace（正则替换）'
+              description: '写入模式（默认 create）'
             },
-            insert_at_line: {
-              type: 'number',
-              description: '插入位置的行号（insert 模式必填，在该行之前插入，从1开始）'
-            },
-            start_line: {
-              type: 'number',
-              description: '替换起始行号（replace_lines 模式必填，从1开始，包含该行）'
-            },
-            end_line: {
-              type: 'number',
-              description: '替换结束行号（replace_lines 模式必填，包含该行）'
-            },
-            pattern: {
-              type: 'string',
-              description: '正则表达式（regex_replace 模式必填）'
-            },
-            replacement: {
-              type: 'string',
-              description: '替换内容（regex_replace 模式必填，可使用 $1 $2 等捕获组）'
-            },
-            replace_all: {
-              type: 'boolean',
-              description: '是否替换所有匹配项（regex_replace 模式，默认 true）'
-            }
+            insert_at_line: { type: 'number', description: 'insert: 插入行号（从1开始）' },
+            start_line: { type: 'number', description: 'replace_lines: 起始行号' },
+            end_line: { type: 'number', description: 'replace_lines: 结束行号' },
+            pattern: { type: 'string', description: 'regex_replace: 正则表达式' },
+            replacement: { type: 'string', description: 'regex_replace: 替换内容（支持 $1 $2）' },
+            replace_all: { type: 'boolean', description: 'regex_replace: 替换全部（默认 true）' }
           },
           required: ['path']
         }
@@ -353,18 +258,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       type: 'function',
       function: {
         name: 'write_remote_file',
-        description: `通过 SFTP 写入远程文件。
-
-**支持的模式**：
-1. **新建模式（默认）**：mode='create'，仅创建新文件，如果文件已存在则报错
-2. **覆盖模式**：mode='overwrite'，用 content 替换整个文件
-3. **追加模式**：mode='append'，在文件末尾追加 content
-
-**⚠️ 大文件必须分段写入**：如果要写入的内容很长，不要试图在一次调用中写完整个文件，否则可能因超出输出限制而整个调用失败。应先用 create 模式写入前面一部分，再用 append 模式分次追加剩余内容。
-
-**注意**：路径不支持 \`~\`，请用相对路径或绝对路径
-
-**局部修改**：如需 insert、replace_lines 等高级功能，请用 execute_command 执行 sed、awk 等命令`,
+        description: `通过 SFTP 写入远程文件。大文件分段写入（先 create 再 append）。路径不支持 ~。局部修改请用命令行 sed/awk。`,
         parameters: {
           type: 'object',
           properties: {
@@ -391,27 +285,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       type: 'function',
       function: {
         name: 'file_search',
-        description: `快速搜索本地文件（毫秒级响应，基于系统索引）。
-
-**优先使用**：按文件名/路径查找时请用本工具，不要用 execute_command 执行 find/locate——本工具通常更快（macOS Spotlight / Windows Everything / Linux locate 索引）；索引可能有短暂延迟。
-
-**搜索能力**：
-- macOS: 使用 Spotlight 索引，全盘瞬时搜索
-- Windows: 使用内置 Everything，全盘瞬时搜索
-- Linux: 使用 locate/fd，快速搜索
-
-**搜索语法**：
-- 支持通配符: \`*\` 匹配任意字符，\`?\` 匹配单个字符
-- 示例: \`*.ts\` 搜索所有 TypeScript 文件
-- 示例: \`config*.json\` 搜索 config 开头的 JSON 文件
-- 示例: \`project\` 搜索包含 project 的文件名
-
-**使用场景**：
-- 快速定位配置文件、日志文件
-- 查找特定类型的文件
-- 在项目中搜索文件
-
-⚠️ 仅支持本地文件系统搜索，不支持 SSH 远程主机。仅搜文件名不搜内容；搜内容请用 grep 等。`,
+        description: `快速搜索本地文件名（基于系统索引，毫秒级）。支持通配符 * 和 ?。仅搜文件名不搜内容，搜内容请用 grep。仅本地，不支持 SSH。`,
         parameters: {
           type: 'object',
           properties: {
@@ -497,24 +371,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       type: 'function',
       function: {
         name: 'ask_user',
-        description: `向用户提问并等待回复。当你需要更多信息才能继续执行任务时使用此工具。
-
-**核心原则：只在制定计划时提问**
-- 开始执行前，先问清楚所有疑问
-- 计划确定后顺畅执行，不再打断用户
-- 执行中遇到意外，优先用合理默认值，实在无法继续才提问
-
-使用场景：
-- 需要用户提供特定信息（如配置参数、路径、选项等）
-- 任务有多种执行方式，需要用户选择
-- 执行前需要用户确认关键决策
-- 遇到歧义或不确定性，需要澄清用户意图
-
-注意：
-- 问题要清晰、具体，让用户知道如何回答
-- 如果有可选项，可以列出供用户选择（最多 10 个选项）
-- 调用此工具后会暂停执行，直到用户回复
-- 可以通过 timeout 参数设置等待时长（默认 120 秒）`,
+        description: `向用户提问并等待回复。只在制定计划时提问，执行中优先用合理默认值。调用后暂停执行直到用户回复。`,
         parameters: {
           type: 'object',
           properties: {
@@ -525,20 +382,11 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
             options: {
               type: 'array',
               items: { type: 'string' },
-              description: '可选项列表（如果问题有固定选项，最多 10 个）。例如：["选项A", "选项B", "选项C"]'
+              description: '可选项列表（最多 10 个）'
             },
-            allow_multiple: {
-              type: 'boolean',
-              description: '是否允许多选（默认 false 为单选）。设为 true 时用户可以选择多个选项'
-            },
-            default_value: {
-              type: 'string',
-              description: '默认值（如果用户直接按回车或不回复时使用）'
-            },
-            timeout: {
-              type: 'number',
-              description: '等待用户回复的超时时间（秒）。默认 120 秒，最短 30 秒，最长 600 秒。简单选择题可设短些（如 60 秒），需要用户查资料的问题可设长些（如 300 秒）。'
-            }
+            allow_multiple: { type: 'boolean', description: '允许多选（默认 false）' },
+            default_value: { type: 'string', description: '默认值' },
+            timeout: { type: 'number', description: '超时秒数（默认 120，范围 30-600）' }
           },
           required: ['question']
         }
@@ -625,32 +473,13 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       type: 'function',
       function: {
         name: 'search_history',
-        description: `搜索历史对话记录。当你需要回顾之前跨会话的交互内容时使用（recall 只能查当前会话内的任务）。
-
-**输出级别**：
-- summary（默认）：任务描述 + 最终结果，适合快速浏览定位
-- full：额外包含工具调用列表（执行了哪些命令、操作了哪些文件），适合需要复现操作细节的场景
-
-**结果控制**：
-- limit 控制返回 Top N（默认 10，最大 30）
-- keyword 可选；可只传时间范围进行检索
-- 支持 start_date / end_date 做时间范围过滤，支持到小时/分钟（YYYY-MM-DD、YYYY-MM-DD HH、YYYY-MM-DD HH:mm，或带时区 ISO）
-- 当结果过多时会提示“仅返回前 N 条，可能还有更多”`,
+        description: `搜索跨会话的历史对话记录（recall 只查当前会话）。keyword/start_date/end_date 至少提供一个。detail: summary（默认）仅任务和结果，full 含工具调用记录。`,
         parameters: {
           type: 'object',
           properties: {
-            keyword: {
-              type: 'string',
-              description: '可选，搜索关键字，会在用户任务和最终结果中匹配'
-            },
-            start_date: {
-              type: 'string',
-              description: '可选，开始时间（含），支持 YYYY-MM-DD、YYYY-MM-DD HH、YYYY-MM-DD HH:mm，或带时区 ISO 时间'
-            },
-            end_date: {
-              type: 'string',
-              description: '可选，结束时间（含），支持 YYYY-MM-DD、YYYY-MM-DD HH、YYYY-MM-DD HH:mm，或带时区 ISO 时间'
-            },
+            keyword: { type: 'string', description: '搜索关键字' },
+            start_date: { type: 'string', description: '开始时间（YYYY-MM-DD 或 YYYY-MM-DD HH:mm）' },
+            end_date: { type: 'string', description: '结束时间' },
             detail: {
               type: 'string',
               enum: ['summary', 'full'],
@@ -670,14 +499,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       type: 'function',
       function: {
         name: 'talk_to_user',
-        description: `主动跟用户说话。消息会通过最合适的渠道送达：应用内对话、IM（钉钉/飞书/Slack 等）。
-
-**使用场景**：
-- 定时任务完成后告知用户结果
-- 需要主动提醒用户某些事项（日程、邮件等）
-- 想跟用户打个招呼、分享想法
-
-注意：这是你主动跟用户说话的唯一方式。只在确实有话要说时调用。`,
+        description: `主动向用户发送消息（应用内或 IM）。你主动说话的唯一方式，只在确实有话要说时调用。`,
         parameters: {
           type: 'object',
           properties: {
