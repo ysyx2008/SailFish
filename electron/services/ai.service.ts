@@ -1061,7 +1061,14 @@ export class AiService {
         content: m.content,
         tool_call_id: m.tool_call_id,
         tool_calls: m.tool_calls,
-        hasImages: m.images && m.images.length > 0 ? m.images.length : undefined
+        images: m.images && m.images.length > 0
+          ? m.images.map((img, i) => {
+              const sizeKB = (img.length * 0.75 / 1024).toFixed(0)
+              const mimeMatch = img.match(/^data:(image\/[^;]+);/)
+              const mime = mimeMatch ? mimeMatch[1] : 'unknown'
+              return `[image_${i}: ${mime}, ~${sizeKB}KB]`
+            })
+          : undefined
       })),
       tools
     })

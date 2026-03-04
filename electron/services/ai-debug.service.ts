@@ -31,6 +31,7 @@ export interface AiLogEntry {
       content: string
       tool_call_id?: string
       tool_calls?: unknown[]
+      images?: string[]
     }>
     tools?: unknown[]
     response?: string

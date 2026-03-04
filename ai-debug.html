@@ -1460,7 +1460,9 @@
             case LogEntry.TYPE.REQUEST_START:
               const msgCount = this.data.messages?.length || 0
               const toolCount = this.data.tools?.length || 0
-              return `${this.model || 'Unknown'} | ${msgCount} 条消息 | ${toolCount} 个工具`
+              const imgMsgCount = (this.data.messages || []).filter(m => m.images?.length > 0).length
+              const imgInfo = imgMsgCount > 0 ? ` | 🖼 ${imgMsgCount} 张图片` : ''
+              return `${this.model || 'Unknown'} | ${msgCount} 条消息 | ${toolCount} 个工具${imgInfo}`
             
             case LogEntry.TYPE.RESPONSE_CHUNK:
               return this.data.chunk?.substring(0, 100) || ''
@@ -2190,12 +2192,17 @@
             `
           } else if (latestUserMsg) {
             const content = latestUserMsg.content || ''
+            const userImages = latestUserMsg.images
+            const imageHtml = userImages?.length > 0
+              ? `<div style="margin-top: 4px; font-size: 11px; color: var(--color-accent-cyan);">🖼 附带图片: ${userImages.map(i => this.markdown.escapeHtml(i)).join(', ')}</div>`
+              : ''
             html += `
               <div class="message-item message-item--user message-item--current">
                 <div class="message-item__role">
                   <span style="color: var(--color-accent-blue);">✨ 本次输入</span>
                 </div>
                 <div class="message-item__content">${this.markdown.escapeHtml(content)}</div>
+                ${imageHtml}
             </div>
           `
           }
@@ -2209,9 +2216,12 @@
             let content = msg.content || ''
             let extraInfo = ''
             
+            if (msg.images?.length > 0) {
+              extraInfo += `<span class="history-message__tools">🖼 ${msg.images.join(', ')}</span>`
+            }
             if (msg.role === 'assistant' && msg.tool_calls?.length > 0) {
               const toolNames = msg.tool_calls.map(tc => tc.function?.name || 'unknown').join(', ')
-              extraInfo = `<span class="history-message__tools">🔧 ${toolNames}</span>`
+              extraInfo += `<span class="history-message__tools">🔧 ${toolNames}</span>`
               if (!content) content = '[工具调用]'
             }
             
