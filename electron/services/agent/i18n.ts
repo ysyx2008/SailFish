@@ -137,7 +137,8 @@ const translations = {
     'agent.tool_args_malformed_step': '工具 [{tools}] 参数格式错误，正在自动重试...',
     'agent.context_limit_exceeded': '⚠️ 对话上下文超出模型限制（当前 {current} tokens，模型限制 {limit} tokens，占用 {percentage}%）。\n\n建议：\n1. 开始新对话\n2. 或切换到上下文更长的模型',
     'agent.context_pressure_warning': '[系统] 上下文用量告警（已用 {percentage}%，剩余约 {remaining} tokens）。请立即调用 compress_context 压缩较早的对话内容，否则下次请求可能因超出模型上下文限制而失败。',
-    'agent.image_from_tool': '[系统：以下是工具读取的图片，请分析其内容]',
+    'agent.images_attached': '系统：用户在本消息中附带了 {count} 张图片，图片已直接嵌入本消息，你可以直接看到并分析，无需使用 read_file 读取',
+    'agent.image_from_tool': '[系统：以下是工具读取的图片，图片已直接嵌入本消息，你可以直接看到并分析]',
 
     // 上下文管理工具
     'context_tool.compress_success': '上下文已压缩。压缩前: ~{before} tokens, 压缩后: ~{after} tokens, 释放: ~{freed} tokens。归档 ID: {archiveId}（可通过 recall_compressed 找回原始内容）',
@@ -1082,7 +1083,8 @@ const translations = {
     'agent.tool_args_malformed_step': 'Tool [{tools}] had malformed arguments, auto-retrying...',
     'agent.context_limit_exceeded': '⚠️ Conversation context exceeds model limit (current {current} tokens, model limit {limit} tokens, {percentage}% used).\n\nSuggestions:\n1. Start a new conversation\n2. Or switch to a model with larger context',
     'agent.context_pressure_warning': '[System] Context usage critical ({percentage}%, ~{remaining} tokens remaining). You MUST call compress_context immediately to compress earlier conversation, otherwise the next request may fail due to exceeding the model context limit.',
-    'agent.image_from_tool': '[System: Below is the image read by the tool, please analyze its content]',
+    'agent.images_attached': 'System: User attached {count} image(s) in this message. The images are directly embedded and visible to you — analyze them directly without using read_file',
+    'agent.image_from_tool': '[System: Below is the image read by the tool. The image is directly embedded and visible to you — analyze it directly]',
 
     // Context management tools
     'context_tool.compress_success': 'Context compressed. Before: ~{before} tokens, After: ~{after} tokens, Freed: ~{freed} tokens. Archive ID: {archiveId} (use recall_compressed to retrieve original content)',

@@ -982,6 +982,13 @@ export abstract class Agent {
     if (run.context.documentContext) {
       enhancedMessage = enhancedMessage + '\n\n' + run.context.documentContext
     }
+    // 如果有用户上传的图片，附带 images 字段并追加提示
+    if (run.context.images && run.context.images.length > 0) {
+      const imageCount = run.context.images.length
+      const totalSize = run.context.images.reduce((sum, img) => sum + img.length, 0)
+      log.info(`User images: ${imageCount} image(s), total base64 size: ${(totalSize / 1024).toFixed(0)}KB`)
+      enhancedMessage += `\n\n[${t('agent.images_attached', { count: imageCount })}]`
+    }
     const userMsg: AiMessage = { role: 'user', content: enhancedMessage }
     if (run.context.images && run.context.images.length > 0) {
       userMsg.images = run.context.images

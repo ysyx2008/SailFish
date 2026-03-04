@@ -1048,6 +1048,11 @@ export class AiService {
     log.info(`Request started: model=${profile.model}, messages=${messages.length}, tools=${tools.length}`)
 
     // AI Debug: 记录请求开始
+    const requestHasImages = messagesContainImages(messages)
+    if (requestHasImages) {
+      const imageMessages = messages.filter(m => m.images && m.images.length > 0)
+      log.info(`Request contains images: ${imageMessages.length} message(s) with images`)
+    }
     getAiDebugService().logRequestStart(reqId, {
       profileId: profile.id,
       model: profile.model,
@@ -1055,7 +1060,8 @@ export class AiService {
         role: m.role,
         content: m.content,
         tool_call_id: m.tool_call_id,
-        tool_calls: m.tool_calls
+        tool_calls: m.tool_calls,
+        hasImages: m.images && m.images.length > 0 ? m.images.length : undefined
       })),
       tools
     })
