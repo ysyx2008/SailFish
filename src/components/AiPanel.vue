@@ -5099,11 +5099,12 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 10px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.1);
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.15);
   font-size: 12px;
   line-height: 1.4;
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .attachment-icon {
@@ -5112,15 +5113,13 @@ onUnmounted(() => {
 }
 
 .attachment-name {
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-all;
 }
 
 .attachment-size {
-  opacity: 0.6;
+  opacity: 0.7;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* ==================== 图片预览弹窗（支持缩放拖拽） ==================== */
