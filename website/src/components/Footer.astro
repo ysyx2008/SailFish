@@ -45,7 +45,10 @@ const currentYear = new Date().getFullYear();
     <!-- 底部信息 -->
     <div class="footer-bottom">
       <div class="footer-brand">
-        <img src="/logo.png" alt={t.common.brandName} class="footer-logo" />
+        <picture>
+          <source srcset="/logo.webp" type="image/webp" />
+          <img src="/logo.png" alt={t.common.brandName} class="footer-logo" />
+        </picture>
         <span>{t.common.brandName}</span>
       </div>
       

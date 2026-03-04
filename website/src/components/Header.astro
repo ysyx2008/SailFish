@@ -25,7 +25,10 @@ const isHomePage = currentPath === '/' || currentPath === '/zh/' || currentPath 
 <header class="header">
   <div class="container header-inner">
     <a href={homeUrl} class="logo">
-      <img src="/logo.png" alt={t.common.brandName} class="logo-img" />
+      <picture>
+        <source srcset="/logo.webp" type="image/webp" />
+        <img src="/logo.png" alt={t.common.brandName} class="logo-img" />
+      </picture>
       <span class="logo-text">{t.common.brandName}</span>
     </a>
     

@@ -46,7 +46,10 @@ try {
     
     <!-- Logo -->
     <div class="hero-logo fade-in fade-in-delay-1">
-      <img src="/logo.png" alt={t.common.brandName} class="hero-logo-img" />
+      <picture>
+        <source srcset="/logo.webp" type="image/webp" />
+        <img src="/logo.png" alt={t.common.brandName} class="hero-logo-img" />
+      </picture>
     </div>
     
     <!-- 主标题 -->
