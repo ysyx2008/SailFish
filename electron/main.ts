@@ -284,6 +284,7 @@ import { initScreenContentService } from './services/screen-content.service'
 import { menuService } from './services/menu.service'
 import { getAiDebugService } from './services/ai-debug.service'
 import { getSchedulerService, type CreateTaskParams } from './services/scheduler.service'
+import { getSchedulerStore } from './services/scheduler.store'
 import { getWatchService } from './services/watch/watch.service'
 import { getSensorService } from './services/sensor'
 import { getBondService } from './services/bond.service'
@@ -937,7 +938,7 @@ app.whenReady().then(async () => {
 
       // 从旧版定时任务迁移数据到关切系统
       try {
-        const migration = watchService.migrateFromScheduler()
+        const migration = watchService.migrateFromScheduler(getSchedulerStore())
         if (migration.migrated > 0) {
           log.info(`定时任务迁移完成: ${migration.migrated} 个迁移, ${migration.skipped} 个跳过`)
         }

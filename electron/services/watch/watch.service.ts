@@ -1461,20 +1461,17 @@ export class WatchService {
   /**
    * 从旧版 Scheduler 迁移数据到 Watch 系统
    * 幂等操作：已迁移的任务（通过 name 匹配）不会重复创建
+   * @param schedulerStore - 由调用方传入，避免在 bundle 环境中 require 失败
    */
-  migrateFromScheduler(): { migrated: number; skipped: number; errors: string[] } {
+  migrateFromScheduler(schedulerStore: { getTasks(): any[]; deleteTask(id: string): boolean } | null | undefined): { migrated: number; skipped: number; errors: string[] } {
     const result = { migrated: 0, skipped: 0, errors: [] as string[] }
 
+    if (!schedulerStore) {
+      result.errors.push('Scheduler store 不可用，跳过迁移')
+      return result
+    }
+
     try {
-      let schedulerStore: any
-      try {
-        const schedulerModule = require('../scheduler.store')
-        schedulerStore = schedulerModule.getSchedulerStore?.()
-      } catch {
-        result.errors.push('Scheduler 模块不可用，跳过迁移')
-        return result
-      }
-      if (!schedulerStore) return result
       const tasks = schedulerStore.getTasks()
 
       if (tasks.length === 0) return result
