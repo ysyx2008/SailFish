@@ -121,8 +121,8 @@ const {
   clearUploadedDocs,
   formatFileSize,
   getDocumentContext,
-  getScannedDocImages,
-  getScannedDocContext
+  getDocImages,
+  getDocImagesContext
 } = useDocumentUpload(currentTabId)
 
 // 图片上传（视觉理解）
@@ -203,14 +203,14 @@ const {
   messagesRef,
   async () => {
     const textContext = await getDocumentContext()
-    const scannedContext = getScannedDocContext()
+    const scannedContext = getDocImagesContext()
     return [textContext, scannedContext].filter(Boolean).join('\n\n')
   },
   getHostIdByTabId,
   autoProbeHostProfile,
   currentTabId,
   {
-    getImages: () => [...getImageDataUrls(), ...getScannedDocImages()],
+    getImages: () => [...getImageDataUrls(), ...getDocImages()],
     clearImages
   },
   {

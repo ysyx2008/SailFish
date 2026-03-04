@@ -5,6 +5,8 @@
  */
 import { ref, computed, type Ref, type ComputedRef } from 'vue'
 import { useTerminalStore, type ParsedDocument } from '../stores/terminal'
+import { useConfigStore } from '../stores/config'
+import { isVisionModel } from './useImageUpload'
 
 // 重新导出类型供外部使用
 export type { ParsedDocument }
@@ -14,6 +16,15 @@ const SUPPORTED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt', '.md', '.json', '
 
 export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef<string | null>) {
   const terminalStore = useTerminalStore()
+  const configStore = useConfigStore()
+
+  /** 当前是否具备视觉模型能力（用于决定是否提取文档图片） */
+  const hasVisionCapability = computed(() => {
+    if (!configStore.autoVisionModel) return false
+    const profile = configStore.activeAiProfile
+    if (!profile) return false
+    return isVisionModel(profile.model, profile.modelType) || !!profile.visionProfileId
+  })
   
   // 上传中状态（全局状态，因为同一时间只能上传一次）
   const isUploadingDocs = ref(false)
@@ -53,8 +64,10 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
         return
       }
       
-      // 解析文档
-      const parsedDocs = await documentAPI.parseMultiple(files)
+      // 解析文档（有视觉模型时提取嵌入图片）
+      const parsedDocs = await documentAPI.parseMultiple(files, {
+        extractImages: hasVisionCapability.value
+      })
       
       // 追加模式：新上传的文档追加到现有列表
       terminalStore.addUploadedDocs(tabId, parsedDocs)
@@ -116,9 +129,11 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     try {
       isUploadingDocs.value = true
       
-      // 解析文档
+      // 解析文档（有视觉模型时提取嵌入图片）
       const documentAPI = (window.electronAPI as { document: typeof window.electronAPI.document }).document
-      const parsedDocs = await documentAPI.parseMultiple(fileInfos)
+      const parsedDocs = await documentAPI.parseMultiple(fileInfos, {
+        extractImages: hasVisionCapability.value
+      })
       
       // 追加模式：新上传的文档追加到现有列表
       terminalStore.addUploadedDocs(tabId, parsedDocs)
@@ -173,8 +188,8 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     return await documentAPI.formatAsContext(plainDocs)
   }
 
-  // 获取扫描件 PDF 的页面图片（用于视觉模型处理）
-  const getScannedDocImages = (): string[] => {
+  // 获取含图片文档的嵌入图片（扫描 PDF 页面 + Word 正文图片等）
+  const getDocImages = (): string[] => {
     const images: string[] = []
     for (const doc of uploadedDocs.value) {
       if (doc.images && doc.images.length > 0) {
@@ -184,19 +199,26 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     return images
   }
 
-  // 获取扫描件文档的文本描述（注入到文档上下文中提示 AI）
-  const getScannedDocContext = (): string => {
-    const scannedDocs = uploadedDocs.value.filter(d => d.images && d.images.length > 0)
-    if (scannedDocs.length === 0) return ''
+  // 获取含图片文档的文本描述（注入到上下文提示 AI）
+  const getDocImagesContext = (): string => {
+    const docsWithImages = uploadedDocs.value.filter(d => d.images && d.images.length > 0)
+    if (docsWithImages.length === 0) return ''
     
-    const parts = scannedDocs.map(d => {
-      const totalPages = d.totalPages || d.pageCount || 0
-      const renderedCount = d.images!.length
+    const parts = docsWithImages.map(d => {
+      const imageCount = d.images!.length
       const pathHint = d.filePath ? `，路径: ${d.filePath}` : ''
-      const pageDesc = renderedCount >= totalPages
-        ? `全部 ${totalPages} 页已作为图片附上`
-        : `前 ${renderedCount} 页已作为图片附上（共 ${totalPages} 页）。如需查看更多页面，使用 pdf_view_page 工具`
-      return `[扫描版 PDF: ${d.filename}${pathHint}，${pageDesc}]`
+
+      if (d.fileType === 'pdf') {
+        const totalPages = d.totalPages || d.pageCount || 0
+        const pageDesc = imageCount >= totalPages
+          ? `全部 ${totalPages} 页已作为图片附上`
+          : `前 ${imageCount} 页已作为图片附上（共 ${totalPages} 页）。如需查看更多页面，使用 pdf_view_page 工具`
+        return `[扫描版 PDF: ${d.filename}${pathHint}，${pageDesc}]`
+      }
+
+      // Word 等其他含图片的文档
+      const tableInfo = d.metadata?.tableCount ? `，含 ${d.metadata.tableCount} 个表格` : ''
+      return `[${d.filename}${pathHint}，文档正文中包含 ${imageCount} 张图片已附上${tableInfo}]`
     })
     return parts.join('\n')
   }
@@ -305,8 +327,8 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     clearUploadedDocs,
     formatFileSize,
     getDocumentContext,
-    getScannedDocImages,
-    getScannedDocContext,
+    getDocImages,
+    getDocImagesContext,
     saveToKnowledge,
     saveAllToKnowledge,
     checkKnowledgeEnabled,

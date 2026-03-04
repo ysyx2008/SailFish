@@ -78,13 +78,16 @@ export interface ParseOptions {
   maxTextLength?: number
   /** 是否提取元数据，默认 true */
   extractMetadata?: boolean
+  /** 是否提取文档中的嵌入图片（需要视觉模型支持），默认 false */
+  extractImages?: boolean
 }
 
 // 默认选项
 const DEFAULT_OPTIONS: Required<ParseOptions> = {
   maxFileSize: 10 * 1024 * 1024, // 10MB
   maxTextLength: 100000, // 100K 字符
-  extractMetadata: true
+  extractMetadata: true,
+  extractImages: false
 }
 
 export class DocumentParserService {
@@ -374,23 +377,87 @@ export class DocumentParserService {
   /**
    * 解析 Word 文档 (.docx)
    */
-  private async parseDocx(filePath: string, result: ParsedDocument, _opts: Required<ParseOptions>): Promise<void> {
+  private async parseDocx(filePath: string, result: ParsedDocument, opts: Required<ParseOptions>): Promise<void> {
     if (!this.mammoth) {
       throw new Error('Word 解析库未安装，请运行: npm install mammoth')
     }
 
-    const docxResult = await this.mammoth.extractRawText({ path: filePath })
-    result.content = docxResult.value
+    if (opts.extractImages) {
+      // 一次 convertToHtml 同时提取文本、图片、表格，避免重复解析
+      await this.parseDocxWithImages(filePath, result)
+    } else {
+      const docxResult = await this.mammoth.extractRawText({ path: filePath })
+      result.content = docxResult.value
+      this.collectDocxWarnings(docxResult.messages, result)
+    }
+  }
 
-    // 记录警告信息
-    if (docxResult.messages && docxResult.messages.length > 0) {
-      const warnings = docxResult.messages
-        .filter((m: { type: string }) => m.type === 'warning')
-        .map((m: { message: string }) => m.message)
-        .join('; ')
-      if (warnings) {
-        result.metadata = { warnings }
+  /**
+   * 从 .docx 一次性提取文本 + 正文嵌入图片 + 表格统计
+   * mammoth.convertToHtml 只处理文档正文，页眉/页脚中的图片不会被提取
+   */
+  private async parseDocxWithImages(filePath: string, result: ParsedDocument): Promise<void> {
+    const MAX_IMAGES = 10
+    const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 单张原始大小上限 5MB
+    const MAX_TOTAL_BYTES = 20 * 1024 * 1024 // 总图片原始大小上限 20MB
+    const images: string[] = []
+    let totalBytes = 0
+
+    try {
+      const htmlResult = await this.mammoth!.convertToHtml({ path: filePath }, {
+        convertImage: this.mammoth!.images.imgElement(
+          (image: { contentType: string; read: (encoding: string) => Promise<string> }) => {
+            return image.read('base64').then((b64: string) => {
+              const rawBytes = b64.length * 3 / 4
+              if (images.length < MAX_IMAGES && rawBytes < MAX_IMAGE_BYTES && totalBytes + rawBytes < MAX_TOTAL_BYTES) {
+                images.push(`data:${image.contentType};base64,${b64}`)
+                totalBytes += rawBytes
+              }
+              return { src: '' }
+            })
+          }
+        )
+      })
+
+      // 从 HTML 提取纯文本（去标签）
+      result.content = htmlResult.value
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/\s+/g, ' ')
+        .trim()
+
+      this.collectDocxWarnings(htmlResult.messages, result)
+
+      const tableMatches = htmlResult.value.match(/<table\b[^>]*>/g)
+      const tableCount = tableMatches ? tableMatches.length : 0
+
+      if (images.length > 0) {
+        result.images = images
+        log.info(`Docx images extracted: ${images.length} images, ${tableCount} tables from ${result.filename}`)
       }
+      if (tableCount > 0) {
+        result.metadata = { ...result.metadata, tableCount: String(tableCount) }
+      }
+    } catch (err) {
+      log.warn('Failed to parse docx with images, falling back to text-only:', err instanceof Error ? err.message : err)
+      const docxResult = await this.mammoth!.extractRawText({ path: filePath })
+      result.content = docxResult.value
+      this.collectDocxWarnings(docxResult.messages, result)
+    }
+  }
+
+  private collectDocxWarnings(messages: Array<{ type: string; message: string }> | undefined, result: ParsedDocument): void {
+    if (!messages || messages.length === 0) return
+    const warnings = messages
+      .filter((m) => m.type === 'warning')
+      .map((m) => m.message)
+      .join('; ')
+    if (warnings) {
+      result.metadata = { ...result.metadata, warnings }
     }
   }
 

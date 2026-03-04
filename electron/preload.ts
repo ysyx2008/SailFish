@@ -1290,13 +1290,17 @@ const electronAPI = {
       maxFileSize?: number
       maxTextLength?: number
       extractMetadata?: boolean
+      extractImages?: boolean
     }) => ipcRenderer.invoke('document:parse', file, options) as Promise<{
       filename: string
+      filePath?: string
       fileType: string
       content: string
       fileSize: number
       parseTime: number
       pageCount?: number
+      totalPages?: number
+      images?: string[]
       metadata?: Record<string, string>
       error?: string
     }>,
@@ -1311,13 +1315,17 @@ const electronAPI = {
       maxFileSize?: number
       maxTextLength?: number
       extractMetadata?: boolean
+      extractImages?: boolean
     }) => ipcRenderer.invoke('document:parseMultiple', files, options) as Promise<Array<{
       filename: string
+      filePath?: string
       fileType: string
       content: string
       fileSize: number
       parseTime: number
       pageCount?: number
+      totalPages?: number
+      images?: string[]
       metadata?: Record<string, string>
       error?: string
     }>>,

@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
+import * as crypto from 'crypto'
 
 // Mock Electron 模块
 vi.mock('electron', () => ({
@@ -75,7 +76,7 @@ describe('DocumentParserService', () => {
       
       // 保存到临时文件
       const tempDir = os.tmpdir()
-      const tempFile = path.join(tempDir, `test-${Date.now()}.xlsx`)
+      const tempFile = path.join(tempDir, `test-${crypto.randomUUID()}.xlsx`)
       await workbook.xlsx.writeFile(tempFile)
       
       try {
@@ -111,7 +112,7 @@ describe('DocumentParserService', () => {
       sheet2.addRow(['苹果', 500])
       
       const tempDir = os.tmpdir()
-      const tempFile = path.join(tempDir, `test-multi-${Date.now()}.xlsx`)
+      const tempFile = path.join(tempDir, `test-multi-${crypto.randomUUID()}.xlsx`)
       await workbook.xlsx.writeFile(tempFile)
       
       try {
@@ -141,7 +142,7 @@ describe('DocumentParserService', () => {
       sheet.getCell('A3').value = { formula: 'SUM(A1:A2)', result: 30 }
       
       const tempDir = os.tmpdir()
-      const tempFile = path.join(tempDir, `test-formula-${Date.now()}.xlsx`)
+      const tempFile = path.join(tempDir, `test-formula-${crypto.randomUUID()}.xlsx`)
       await workbook.xlsx.writeFile(tempFile)
       
       try {
@@ -154,6 +155,378 @@ describe('DocumentParserService', () => {
         expect(result.error).toBeUndefined()
         // 应该显示公式的计算结果而不是公式本身
         expect(result.content).toContain('30')
+      } finally {
+        fs.unlinkSync(tempFile)
+      }
+    })
+  })
+
+  describe('parseDocument - Word (.docx) 图片提取', () => {
+    /**
+     * 用 jszip 构造一个最小化的 .docx 文件（含正文文本 + 一张嵌入图片 + 一个表格）
+     * .docx 本质是 zip，最少需要 [Content_Types].xml、word/document.xml、word/_rels/document.xml.rels、word/media/image1.png
+     */
+    async function createTestDocx(tempDir: string, options: { withImage?: boolean; withTable?: boolean; imageCount?: number } = {}): Promise<string> {
+      const JSZip = (await import('jszip')).default
+      const zip = new JSZip()
+
+      const imgCount = options.imageCount ?? (options.withImage ? 1 : 0)
+
+      // 1x1 red pixel PNG
+      const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
+      const pngBuffer = Buffer.from(pngBase64, 'base64')
+
+      // Content_Types
+      let contentTypes = '<?xml version="1.0" encoding="UTF-8"?>' +
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+        '<Default Extension="xml" ContentType="application/xml"/>' +
+        '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+      if (imgCount > 0) {
+        contentTypes += '<Default Extension="png" ContentType="image/png"/>'
+      }
+      contentTypes += '</Types>'
+      zip.file('[Content_Types].xml', contentTypes)
+
+      // _rels/.rels
+      zip.file('_rels/.rels',
+        '<?xml version="1.0" encoding="UTF-8"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+        '</Relationships>'
+      )
+
+      // word/_rels/document.xml.rels
+      let docRels = '<?xml version="1.0" encoding="UTF-8"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      for (let i = 0; i < imgCount; i++) {
+        docRels += `<Relationship Id="rId${10 + i}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image${i + 1}.png"/>`
+      }
+      docRels += '</Relationships>'
+      zip.file('word/_rels/document.xml.rels', docRels)
+
+      // word/document.xml — 所有命名空间声明在根元素
+      const rootNs = [
+        'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"',
+        'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"',
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"',
+        'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"',
+      ].join(' ')
+
+      let bodyContent = '<w:p><w:r><w:t>单元测试文档正文</w:t></w:r></w:p>'
+
+      for (let i = 0; i < imgCount; i++) {
+        bodyContent +=
+          '<w:p><w:r><w:drawing>' +
+            '<wp:inline distT="0" distB="0" distL="0" distR="0">' +
+              `<wp:extent cx="100" cy="100"/>` +
+              `<wp:docPr id="${i + 1}" name="Picture ${i + 1}"/>` +
+              '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+                '<pic:pic>' +
+                  `<pic:nvPicPr><pic:cNvPr id="${i + 1}" name="image${i + 1}.png"/><pic:cNvPicPr/></pic:nvPicPr>` +
+                  `<pic:blipFill><a:blip r:embed="rId${10 + i}"/></pic:blipFill>` +
+                  '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100" cy="100"/></a:xfrm><a:prstGeom prst="rect"/></pic:spPr>' +
+                '</pic:pic>' +
+              '</a:graphicData></a:graphic>' +
+            '</wp:inline>' +
+          '</w:drawing></w:r></w:p>'
+      }
+
+      if (options.withTable) {
+        bodyContent +=
+          '<w:tbl>' +
+          '<w:tr><w:tc><w:p><w:r><w:t>列A</w:t></w:r></w:p></w:tc>' +
+          '<w:tc><w:p><w:r><w:t>列B</w:t></w:r></w:p></w:tc></w:tr>' +
+          '<w:tr><w:tc><w:p><w:r><w:t>数据1</w:t></w:r></w:p></w:tc>' +
+          '<w:tc><w:p><w:r><w:t>数据2</w:t></w:r></w:p></w:tc></w:tr></w:tbl>'
+      }
+
+      const docXml = `<?xml version="1.0" encoding="UTF-8"?><w:document ${rootNs}><w:body>${bodyContent}</w:body></w:document>`
+      zip.file('word/document.xml', docXml)
+
+      for (let i = 0; i < imgCount; i++) {
+        zip.file(`word/media/image${i + 1}.png`, pngBuffer)
+      }
+
+      const tempFile = path.join(tempDir, `test-docx-${crypto.randomUUID()}.docx`)
+      const buf = await zip.generateAsync({ type: 'nodebuffer' })
+      fs.writeFileSync(tempFile, buf)
+      return tempFile
+    }
+
+    it('extractImages=false 时不提取图片', async () => {
+      const tempDir = os.tmpdir()
+      const tempFile = await createTestDocx(tempDir, { withImage: true })
+
+      try {
+        const result = await service.parseDocument(
+          { name: 'test.docx', path: tempFile, size: fs.statSync(tempFile).size },
+          { extractImages: false }
+        )
+        expect(result.error).toBeUndefined()
+        expect(result.fileType).toBe('docx')
+        expect(result.content).toContain('单元测试文档正文')
+        expect(result.images).toBeUndefined()
+      } finally {
+        fs.unlinkSync(tempFile)
+      }
+    })
+
+    it('extractImages=true 时应提取嵌入图片', async () => {
+      const tempDir = os.tmpdir()
+      const tempFile = await createTestDocx(tempDir, { withImage: true })
+
+      try {
+        const result = await service.parseDocument(
+          { name: 'test.docx', path: tempFile, size: fs.statSync(tempFile).size },
+          { extractImages: true }
+        )
+        expect(result.error).toBeUndefined()
+        expect(result.content).toContain('单元测试文档正文')
+        expect(result.images).toBeDefined()
+        expect(result.images!.length).toBe(1)
+        expect(result.images![0]).toMatch(/^data:image\/png;base64,/)
+      } finally {
+        fs.unlinkSync(tempFile)
+      }
+    })
+
+    it('无图片的 docx，extractImages=true 不应产生 images', async () => {
+      const tempDir = os.tmpdir()
+      const tempFile = await createTestDocx(tempDir, { withImage: false })
+
+      try {
+        const result = await service.parseDocument(
+          { name: 'test.docx', path: tempFile, size: fs.statSync(tempFile).size },
+          { extractImages: true }
+        )
+        expect(result.error).toBeUndefined()
+        expect(result.content).toContain('单元测试文档正文')
+        expect(result.images).toBeUndefined()
+      } finally {
+        fs.unlinkSync(tempFile)
+      }
+    })
+
+    it('应检测并记录表格数量', async () => {
+      const tempDir = os.tmpdir()
+      const tempFile = await createTestDocx(tempDir, { withImage: true, withTable: true })
+
+      try {
+        const result = await service.parseDocument(
+          { name: 'test.docx', path: tempFile, size: fs.statSync(tempFile).size },
+          { extractImages: true }
+        )
+        expect(result.error).toBeUndefined()
+        expect(result.metadata?.tableCount).toBe('1')
+        expect(result.content).toContain('列A')
+        expect(result.content).toContain('数据1')
+      } finally {
+        fs.unlinkSync(tempFile)
+      }
+    })
+
+    it('应正确提取多张图片', async () => {
+      const tempDir = os.tmpdir()
+      const tempFile = await createTestDocx(tempDir, { imageCount: 3 })
+
+      try {
+        const result = await service.parseDocument(
+          { name: 'multi-img.docx', path: tempFile, size: fs.statSync(tempFile).size },
+          { extractImages: true }
+        )
+        expect(result.error).toBeUndefined()
+        expect(result.images).toBeDefined()
+        expect(result.images!.length).toBe(3)
+        result.images!.forEach(img => {
+          expect(img).toMatch(/^data:image\/png;base64,/)
+        })
+      } finally {
+        fs.unlinkSync(tempFile)
+      }
+    })
+
+    it('应保留 filePath', async () => {
+      const tempDir = os.tmpdir()
+      const tempFile = await createTestDocx(tempDir, {})
+
+      try {
+        const result = await service.parseDocument(
+          { name: 'test.docx', path: tempFile, size: fs.statSync(tempFile).size }
+        )
+        expect(result.filePath).toBe(tempFile)
+      } finally {
+        fs.unlinkSync(tempFile)
+      }
+    })
+  })
+
+  describe('parseDocument - 通用行为', () => {
+    it('文件不存在时应返回错误', async () => {
+      const result = await service.parseDocument({
+        name: 'nonexistent.txt',
+        path: '/tmp/definitely-does-not-exist-' + crypto.randomUUID() + '.txt',
+        size: 100
+      })
+      expect(result.error).toContain('文件不存在')
+    })
+
+    it('文件超过大小限制时应返回错误', async () => {
+      const tempDir = os.tmpdir()
+      const tempFile = path.join(tempDir, `test-size-${crypto.randomUUID()}.txt`)
+      fs.writeFileSync(tempFile, 'x')
+
+      try {
+        const result = await service.parseDocument(
+          { name: 'big.txt', path: tempFile, size: 100 },
+          { maxFileSize: 50 }
+        )
+        expect(result.error).toContain('超过限制')
+      } finally {
+        fs.unlinkSync(tempFile)
+      }
+    })
+
+    it('应能解析纯文本文件', async () => {
+      const tempDir = os.tmpdir()
+      const tempFile = path.join(tempDir, `test-txt-${crypto.randomUUID()}.txt`)
+      fs.writeFileSync(tempFile, '这是一段测试文本\n第二行内容')
+
+      try {
+        const result = await service.parseDocument({
+          name: 'test.txt',
+          path: tempFile,
+          size: fs.statSync(tempFile).size
+        })
+        expect(result.error).toBeUndefined()
+        expect(result.fileType).toBe('txt')
+        expect(result.content).toContain('这是一段测试文本')
+        expect(result.content).toContain('第二行内容')
+      } finally {
+        fs.unlinkSync(tempFile)
+      }
+    })
+
+    it('应能解析 Markdown 文件', async () => {
+      const tempDir = os.tmpdir()
+      const tempFile = path.join(tempDir, `test-md-${crypto.randomUUID()}.md`)
+      fs.writeFileSync(tempFile, '# 标题\n\n正文内容\n\n- 列表项')
+
+      try {
+        const result = await service.parseDocument({
+          name: 'test.md',
+          path: tempFile,
+          size: fs.statSync(tempFile).size
+        })
+        expect(result.error).toBeUndefined()
+        expect(result.fileType).toBe('md')
+        expect(result.content).toContain('# 标题')
+        expect(result.content).toContain('列表项')
+      } finally {
+        fs.unlinkSync(tempFile)
+      }
+    })
+
+    it('应能解析 JSON 文件', async () => {
+      const tempDir = os.tmpdir()
+      const tempFile = path.join(tempDir, `test-json-${crypto.randomUUID()}.json`)
+      fs.writeFileSync(tempFile, JSON.stringify({ name: 'test', value: 42 }, null, 2))
+
+      try {
+        const result = await service.parseDocument({
+          name: 'config.json',
+          path: tempFile,
+          size: fs.statSync(tempFile).size
+        })
+        expect(result.error).toBeUndefined()
+        expect(result.fileType).toBe('json')
+        expect(result.content).toContain('"name"')
+        expect(result.content).toContain('42')
+      } finally {
+        fs.unlinkSync(tempFile)
+      }
+    })
+
+    it('过长内容应被截断', async () => {
+      const tempDir = os.tmpdir()
+      const tempFile = path.join(tempDir, `test-long-${crypto.randomUUID()}.txt`)
+      fs.writeFileSync(tempFile, 'A'.repeat(500))
+
+      try {
+        const result = await service.parseDocument(
+          { name: 'long.txt', path: tempFile, size: fs.statSync(tempFile).size },
+          { maxTextLength: 100 }
+        )
+        expect(result.error).toBeUndefined()
+        // 截断后内容以 100 字符 + 截断提示组成，总长度不应超过 100 + 提示文本长度
+        expect(result.content).toContain('内容已截断')
+        expect(result.content.indexOf('A'.repeat(100))).toBe(0)
+      } finally {
+        fs.unlinkSync(tempFile)
+      }
+    })
+  })
+
+  describe('parseDocuments - 批量解析', () => {
+    it('应按顺序解析多个文件', async () => {
+      const tempDir = os.tmpdir()
+      const file1 = path.join(tempDir, `batch-1-${crypto.randomUUID()}.txt`)
+      const file2 = path.join(tempDir, `batch-2-${crypto.randomUUID()}.txt`)
+      fs.writeFileSync(file1, '文件一内容')
+      fs.writeFileSync(file2, '文件二内容')
+
+      try {
+        const results = await service.parseDocuments([
+          { name: 'a.txt', path: file1, size: fs.statSync(file1).size },
+          { name: 'b.txt', path: file2, size: fs.statSync(file2).size }
+        ])
+        expect(results).toHaveLength(2)
+        expect(results[0].content).toContain('文件一内容')
+        expect(results[1].content).toContain('文件二内容')
+        expect(results[0].filename).toBe('a.txt')
+        expect(results[1].filename).toBe('b.txt')
+      } finally {
+        fs.unlinkSync(file1)
+        fs.unlinkSync(file2)
+      }
+    })
+
+    it('批量解析中单个文件失败不应影响其他文件', async () => {
+      const tempDir = os.tmpdir()
+      const file1 = path.join(tempDir, `batch-ok-${crypto.randomUUID()}.txt`)
+      fs.writeFileSync(file1, '正常文件')
+
+      try {
+        const results = await service.parseDocuments([
+          { name: 'ok.txt', path: file1, size: fs.statSync(file1).size },
+          { name: 'bad.txt', path: '/tmp/no-such-file-' + crypto.randomUUID(), size: 100 }
+        ])
+        expect(results).toHaveLength(2)
+        expect(results[0].error).toBeUndefined()
+        expect(results[0].content).toContain('正常文件')
+        expect(results[1].error).toContain('文件不存在')
+      } finally {
+        fs.unlinkSync(file1)
+      }
+    })
+  })
+
+  describe('renderPdfPages - 参数校验', () => {
+    it('文件不存在时应抛出错误', async () => {
+      await expect(
+        service.renderPdfPages('/tmp/no-such-pdf-' + crypto.randomUUID() + '.pdf', [1])
+      ).rejects.toThrow('PDF file not found')
+    })
+
+    it('空页码数组应抛出错误', async () => {
+      const tempDir = os.tmpdir()
+      const tempFile = path.join(tempDir, `empty-pages-${crypto.randomUUID()}.pdf`)
+      fs.writeFileSync(tempFile, 'dummy')
+      try {
+        await expect(
+          service.renderPdfPages(tempFile, [])
+        ).rejects.toThrow('pageNumbers must be a non-empty array')
       } finally {
         fs.unlinkSync(tempFile)
       }
