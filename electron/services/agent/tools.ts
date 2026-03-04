@@ -86,24 +86,10 @@ function buildLoadUserSkillTool(): ToolDefinition {
     type: 'function',
     function: {
       name: 'load_user_skill',
-      description: `加载用户自定义技能的完整内容。用户技能是 SKILL.md 文件，包含特定领域的操作指南和最佳实践。
+      description: `加载用户自定义技能（SKILL.md 操作指南）。与 skill 不同：skill 加载工具函数，本工具加载知识/流程指导。
 
 **可用用户技能**：
-${skillsList}
-
-**使用场景**：
-- 当任务涉及用户技能描述的领域时
-- 需要遵循用户定义的特定操作流程时
-- 用户明确要求使用某个技能时
-
-**使用方式**：
-1. 根据任务需求选择合适的用户技能
-2. 调用此工具获取技能的完整指导内容
-3. 按照技能中的指导执行任务
-
-**与 skill 工具的区别**：
-- skill(action="load"): 加载系统内置技能模块，提供额外的工具函数
-- load_user_skill: 加载用户自定义的操作指南，是知识/流程类内容`,
+${skillsList}`,
       parameters: {
         type: 'object',
         properties: {
@@ -593,20 +579,7 @@ function getContextManagementTools(): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'compress_context',
-        description: `压缩当前对话中较早的工具调用和结果，释放上下文空间。
-
-压缩内容会归档保留（不会删除），之后可通过 recall_compressed 找回。
-
-**何时使用**：
-- "上下文状态"章节显示用量超过 70%
-- 预计后续还有大量工具调用
-- 某个工具返回了很长的输出，你已处理完毕
-
-**参数说明**：
-- summary：你对被压缩内容的摘要（将替换原始消息）
-- keep_recent：保留最近多少组 assistant+tool 消息不压缩（默认 4）
-
-请写清晰、有信息量的摘要，包含关键结果、路径、命令和发现。`,
+        description: `压缩较早的工具调用以释放上下文空间。内容归档保留，可通过 recall_compressed 找回。摘要应包含关键结果、路径、命令和发现。`,
         parameters: {
           type: 'object',
           properties: {
@@ -627,14 +600,7 @@ function getContextManagementTools(): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'recall_compressed',
-        description: `从 compress_context 创建的压缩归档中取回原始消息。
-
-**何时使用**：
-- 需要查看之前被压缩的工具调用的完整输出
-- 需要摘要中遗漏的细节信息
-
-**参数说明**：
-- archive_id：归档 ID（在压缩摘要中显示，如 "ca-1"）。省略则列出所有可用归档。`,
+        description: `从压缩归档中取回原始消息。省略 archive_id 则列出所有可用归档。`,
         parameters: {
           type: 'object',
           properties: {
@@ -650,22 +616,7 @@ function getContextManagementTools(): ToolDefinition[] {
       type: 'function',
       function: {
         name: 'manage_memory',
-        description: `管理会话记忆：为历史任务建议压缩级别，或丢弃不再需要的任务。
-
-**何时使用**：
-- 完成任务后，优化历史任务的存储方式
-- 发现不相关的任务占用了上下文空间
-
-**压缩级别**：
-- 0：完整对话（所有工具调用和结果）
-- 1：压缩对话（工具调用摘要 + 最终回复）
-- 2：精简对话（用户请求 + 最终回复）
-- 3：结构化摘要（命令、路径、关键发现）
-- 4：一句话总结
-
-**参数说明**：
-- suggestions：数组，每项包含 {task_id, level, reason}，设置压缩级别
-- discard：要完全丢弃的任务 ID 数组`,
+        description: `管理历史任务记忆。suggestions 设置压缩级别（0=完整 1=工具摘要 2=请求+回复 3=结构化摘要 4=一句话），discard 丢弃不需要的任务。`,
         parameters: {
           type: 'object',
           properties: {

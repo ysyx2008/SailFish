@@ -249,34 +249,11 @@ export class PromptBuilder {
     return [
       '## 运行环境',
       '',
-      '你运行在 ReAct 循环中，每次工具调用及其结果都会追加到对话上下文，而上下文有容量上限。当前用量见本提示末尾的"上下文状态"章节（每轮更新）。',
+      '你运行在 ReAct 循环中，工具调用会追加到上下文（有容量上限，见末尾"上下文状态"）。',
       '',
-      '### 记忆体系',
+      '**记忆层次**：当前对话 → 任务记忆（`recall`）→ 压缩归档（`recall_compressed`）',
       '',
-      '- **当前对话**：你在上下文中能直接看到的消息',
-      '- **任务记忆**：历史任务的摘要（见上方"历史任务"章节）。用 `recall(id)` 查看摘要，`recall(id, detail="full")` 查看完整步骤',
-      '- **压缩归档**：你通过 `compress_context` 压缩的内容，可通过 `recall_compressed` 随时找回',
-      '',
-      '### 上下文管理工具',
-      '',
-      '- `compress_context`：压缩当前对话中较早的工具调用，内容归档保留而非删除，需要时用 `recall_compressed` 找回',
-      '- `recall_compressed`：从压缩归档中取回原始消息',
-      '- `manage_memory`：任务完成后，调整历史任务的压缩级别（0-4）或丢弃不需要的任务',
-      '',
-      '### 压缩级别参考（用于 manage_memory）',
-      '',
-      '- **Level 0**：完整对话（所有工具调用和结果）',
-      '- **Level 1**：压缩对话（工具调用摘要 + 最终回复）',
-      '- **Level 2**：精简对话（用户请求 + 最终回复）',
-      '- **Level 3**：结构化摘要（命令、路径、关键发现）',
-      '- **Level 4**：一句话总结',
-      '',
-      '### 使用建议',
-      '',
-      '- 关注"上下文状态"章节——使用率每轮更新',
-      '- 使用率超过 70% 时，考虑压缩较早的对话内容',
-      '- 完成任务后，可调用 `manage_memory` 优化历史任务的存储',
-      '- 压缩是归档而非删除——你随时可以找回细节',
+      '**上下文管理**：用量超 70% 时用 `compress_context` 压缩较早内容（归档可找回）；任务完成后用 `manage_memory` 调整历史任务压缩级别或丢弃。',
     ].join('\n')
   }
 
@@ -515,8 +492,7 @@ export class PromptBuilder {
   }
 
   private buildFileSearchRule(): string {
-    if (this.isSshTerminal || this.isAssistant) return ''
-    return '**按文件名查找**：优先使用 `file_search`（基于系统索引，多数场景下更快）；仅在已知小目录内精确列举、或需搜**文件内容**时再用 execute_command 执行 find/grep。'
+    return ''
   }
 
   private buildLongContentRule(): string {
@@ -528,25 +504,17 @@ export class PromptBuilder {
   }
 
   private buildWorkspaceRule(): string {
-    return `**私有工作空间**：\`${getWorkspacePath()}\` 是你的私有数据目录，在此目录内读写文件**无需用户确认**（任何执行模式下均自动通过）。适用于保存任务记录、中间数据、技能运行数据等。用户文件系统的确认规则不变。
-- **待办管理**：维护 \`TODO.md\` 追踪用户的待办事项和截止日期。你在觉醒状态下有定期唤醒机制，每次唤醒时会读取此文件并自动判断哪些任务需要提醒用户——所以**写入 TODO.md 即等于注册了自动提醒**。用户说"帮我记着"、"到时候提醒我"、"别让我忘了"时，写入 TODO.md 即可，不需要额外创建关切（Watch）。判断标准：到时候是"提醒用户去做"→ 写 TODO；"你自己去执行操作"→ 创建关切。
-  每条待办必须包含：创建日期、截止时间（如有，精确到用户给出的粒度，可以是日期也可以是具体时刻）、完成状态。可附加简短备注（关联邮件、上下文等），格式不限但要精炼以节约tokens。已完成的定期清理。
-- **通讯录**：维护 \`CONTACTS.md\` 记录用户提到的联系人信息。处理邮件或对话中出现新联系人时主动补充。每人须含姓名和至少一个识别信息（角色/关系/联系方式），可附简短备注，同样要精炼。
-- 以上文件按需创建。`
+    return `**私有工作空间**：\`${getWorkspacePath()}\` 是你的私有数据目录，读写无需用户确认。
+- **TODO.md**：待办事项（含创建日期、截止时间、完成状态）。定期唤醒时自动读取并提醒用户。"帮我记着/提醒我" → 写 TODO；"你自己去执行" → 创建关切。已完成的定期清理。
+- **CONTACTS.md**：联系人信息（姓名 + 角色/联系方式），遇到新联系人时主动补充。
+- 以上文件按需创建，内容精炼以节约 tokens。`
   }
 
   private buildExecutionGuide(): string {
     if (this.isAssistant) {
       return [
-        '**命令执行参考**：',
-        '- 短命令直接 `exec`（默认 60 秒超时）',
-        '- 长命令通过 `timeout` 参数延长等待',
-        '- **并行长任务**：用 shell `&` 后台启动并捕获 PID，然后用独立 exec 轮询：',
-        '  1. 启动：`exec("cmd > /tmp/out.log 2>&1 & echo $!", timeout=5)` → 获得 PID',
-        '  2. 期间可执行其他 exec 命令（不被阻塞）',
-        '  3. 轮询：`exec("sleep 60 && tail -20 /tmp/out.log && ps -p PID || echo done", timeout=90)`',
-        '  4. 终止：`exec("kill PID")`',
-        '- 超时 ≠ 失败，可以再次 exec 检查状态后决定是否继续等待',
+        '**命令执行**：短命令直接 `exec`，长命令加 `timeout`（默认 60s，最大 600s）。超时 ≠ 失败。',
+        '- **并行长任务**：`exec("cmd > /tmp/out.log 2>&1 & echo $!", timeout=5)` 获取 PID → 独立 exec 轮询 `sleep N && tail -20 /tmp/out.log && ps -p PID || echo done` → `kill PID` 终止',
       ].join('\n')
     }
 
@@ -577,12 +545,7 @@ export class PromptBuilder {
   }
 
   private buildWatchGuide(): string {
-    return [
-      '**关切**（`skill(action="load", skill_id="watch")` + `watch_create`）：',
-      '关切 = 到点或触发时**由 AI 自动执行**你设定的任务（如检查服务器、处理邮件、跑脚本），结果可推送到桌面/IM。不是「在日历记一条、到点只提醒」——那种用日程（calendar）。用户说「每天/每周帮我做 X」「到点自动检查 Y」「文件变了执行 Z」时，一般应创建关切。',
-      '',
-      '当你在任务中发现某件事值得持续关注且需 AI 到时自动执行，用关切。典型：部署了服务 → 建关切监控；用户要求定期检查邮件/日志 → 建对应触发器。下方已列出当前已设置的关切，避免重复创建；修改/删除用 `watch_update` / `watch_toggle` / `watch_delete`。',
-    ].join('\n')
+    return '**关切**（加载 watch 技能后使用）：到点或触发时由 AI 自动执行任务并推送结果。与日程区别：关切 = AI 自动执行，日程 = 只提醒。"每天帮我做X"/"文件变了执行Z" → 关切。已有关切见下方列表，避免重复创建。'
   }
 
   private buildDocumentRule(): string {
@@ -595,18 +558,9 @@ export class PromptBuilder {
   private buildKnowledgeRule(): string {
     if (!this.knowledgeEnabled) return ''
     if (this.knowledgeContext) {
-      return [
-        '**【重要】你有知识库**：你可以访问用户保存的知识库文档，以及记忆的信息。',
-        '- 上面的"相关知识库内容"部分包含了与当前问题相关的预加载内容',
-        '- 如果预加载内容不够详细，使用 `search_knowledge` 工具搜索更多信息',
-        '- **知识库搜索结果已经包含文档内容，直接使用即可，不要用 read_file 去读取知识库文档**',
-        '- 主动引用知识库中的相关内容，告诉用户答案来源于知识库',
-      ].join('\n')
+      return '**知识库**：上方已预加载相关内容，不够时用 `search_knowledge` 补充。搜索结果已含文档内容，直接使用，不要用 read_file 读取。'
     }
-    return [
-      '**知识库工具**：用户有知识库，你可以使用 `search_knowledge` 工具搜索用户保存的文档和笔记。',
-      '- **搜索结果已包含文档内容片段，直接使用即可，不要用 read_file 读取**',
-    ].join('\n')
+    return '**知识库**：可用 `search_knowledge` 搜索用户文档。搜索结果已含内容，直接使用，不要用 read_file 读取。'
   }
 
   private buildKnowledgeContext(): string {
