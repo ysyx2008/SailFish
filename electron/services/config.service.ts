@@ -7,6 +7,9 @@ import { createLogger, type LogLevel } from '../utils/logger'
 
 const log = createLogger('Config')
 
+// AI 模型类型
+export type AiModelType = 'general' | 'vision'
+
 export interface AiProfile {
   id: string
   name: string
@@ -15,6 +18,8 @@ export interface AiProfile {
   model: string
   proxy?: string
   contextLength?: number  // 模型上下文长度（tokens），默认 128000
+  modelType?: AiModelType        // 模型类型，默认 general
+  visionProfileId?: string       // 关联的视觉模型 Profile ID（仅 general 类型有效）
 }
 
 // 跳板机配置
@@ -202,6 +207,7 @@ interface StoreSchema {
   bondMilestones: string[]             // 已达成的羁绊里程碑
   bondLastCalculatedAt: number         // 上次计算时间
   keyboardShortcuts: KeyboardShortcuts  // 自定义快捷键
+  autoVisionModel: boolean  // 自动使用视觉模型：遇到图片时自动切换到关联的视觉模型
 }
 
 const defaultConfig: StoreSchema = {
@@ -272,7 +278,8 @@ const defaultConfig: StoreSchema = {
   bondLevel: 0,
   bondMilestones: [],
   bondLastCalculatedAt: 0,
-  keyboardShortcuts: { ...DEFAULT_KEYBOARD_SHORTCUTS }
+  keyboardShortcuts: { ...DEFAULT_KEYBOARD_SHORTCUTS },
+  autoVisionModel: true
 }
 
 export class ConfigService {

@@ -664,10 +664,13 @@ watch(inputText, () => {
 let visionWarningShown = false
 const checkVisionSupport = () => {
   if (visionWarningShown) return
-  const model = activeAiProfile.value?.model
-  if (model && !isVisionModel(model)) {
+  const profile = activeAiProfile.value
+  if (!profile) return
+  // 如果当前模型本身支持视觉，或者配置了视觉模型自动路由，则无需警告
+  const hasVisionCapability = isVisionModel(profile.model, profile.modelType) || profile.visionProfileId
+  if (!hasVisionCapability) {
     visionWarningShown = true
-    toast.warning(t('ai.visionNotSupported', { model }), 6000)
+    toast.warning(t('ai.visionNotSupported', { model: profile.model }), 6000)
   }
 }
 

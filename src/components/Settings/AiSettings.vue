@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Plus, Pencil, Trash2, X, ExternalLink } from 'lucide-vue-next'
-import { useConfigStore, type AiProfile } from '../../stores/config'
+import { Plus, Pencil, Trash2, X, ExternalLink, Eye } from 'lucide-vue-next'
+import { useConfigStore, type AiProfile, type AiModelType } from '../../stores/config'
 import { v4 as uuidv4 } from 'uuid'
 
 const { t } = useI18n()
@@ -46,7 +46,9 @@ const formData = ref<Partial<AiProfile>>({
   model: '',
   proxy: '',
   contextLength: 128000,
-  maxOutputTokens: undefined
+  maxOutputTokens: undefined,
+  modelType: 'general' as AiModelType,
+  visionProfileId: undefined
 })
 
 const profiles = computed(() => configStore.aiProfiles)
@@ -60,10 +62,19 @@ const resetForm = () => {
     model: '',
     proxy: '',
     contextLength: 128000,
-    maxOutputTokens: undefined
+    maxOutputTokens: undefined,
+    modelType: 'general' as AiModelType,
+    visionProfileId: undefined
   }
   editingProfile.value = null
 }
+
+// 可选的视觉模型列表（排除正在编辑的自身）
+const visionProfileOptions = computed(() => {
+  return profiles.value.filter(p => 
+    p.modelType === 'vision' && p.id !== editingProfile.value?.id
+  )
+})
 
 const openNewProfile = () => {
   resetForm()
@@ -260,7 +271,13 @@ const openKeyUrl = (url: string) => {
               />
             </div>
             <div class="profile-info" @click="setActive(profile.id)">
-              <div class="profile-name">{{ profile.name }}</div>
+              <div class="profile-name">
+                {{ profile.name }}
+                <span v-if="profile.modelType === 'vision'" class="model-type-badge vision">
+                  <Eye :size="10" />
+                  {{ t('aiSettings.modelTypeVision') }}
+                </span>
+              </div>
               <div class="profile-detail">{{ profile.model }} · {{ profile.apiUrl }}</div>
             </div>
             <div class="profile-actions">
@@ -346,6 +363,30 @@ const openKeyUrl = (url: string) => {
             <label class="form-label">{{ t('aiSettings.proxy') }}</label>
             <input v-model="formData.proxy" type="text" class="input" :placeholder="t('aiSettings.proxyPlaceholder')" />
           </div>
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label class="form-label">{{ t('aiSettings.modelType') }}</label>
+              <select v-model="formData.modelType" class="input">
+                <option value="general">{{ t('aiSettings.modelTypeGeneral') }}</option>
+                <option value="vision">{{ t('aiSettings.modelTypeVision') }}</option>
+              </select>
+              <span class="form-hint">{{ t('aiSettings.modelTypeHint') }}</span>
+            </div>
+            <div class="form-group flex-1" v-if="formData.modelType !== 'vision'">
+              <label class="form-label">{{ t('aiSettings.visionProfile') }}</label>
+              <select v-model="formData.visionProfileId" class="input">
+                <option :value="undefined">{{ t('aiSettings.visionProfileNone') }}</option>
+                <option
+                  v-for="vp in visionProfileOptions"
+                  :key="vp.id"
+                  :value="vp.id"
+                >
+                  {{ vp.name }} ({{ vp.model }})
+                </option>
+              </select>
+              <span class="form-hint">{{ t('aiSettings.visionProfileHint') }}</span>
+            </div>
+          </div>
         </div>
         <div class="form-footer">
           <button class="btn" @click="showForm = false">{{ t('common.cancel') }}</button>
@@ -353,6 +394,24 @@ const openKeyUrl = (url: string) => {
         </div>
       </div>
     </template>
+
+    <!-- 自动使用视觉模型 -->
+    <div v-if="!isSteamBuild" class="settings-section">
+      <div class="section-header">
+        <h4>{{ t('aiSettings.autoVisionModel') }}</h4>
+        <label class="toggle-switch">
+          <input 
+            type="checkbox" 
+            :checked="configStore.autoVisionModel" 
+            @change="configStore.setAutoVisionModel(($event.target as HTMLInputElement).checked)"
+          />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <p class="section-desc">
+        {{ t('aiSettings.autoVisionModelDesc') }}
+      </p>
+    </div>
 
     <!-- Agent 调试、日志（仅非 Steam 版） -->
     <template v-if="!isSteamBuild">
@@ -474,9 +533,27 @@ const openKeyUrl = (url: string) => {
 }
 
 .profile-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 14px;
   font-weight: 500;
   color: var(--text-primary);
+}
+
+.model-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: 8px;
+}
+
+.model-type-badge.vision {
+  color: var(--accent-primary);
+  background: rgba(137, 180, 250, 0.15);
 }
 
 .profile-detail {

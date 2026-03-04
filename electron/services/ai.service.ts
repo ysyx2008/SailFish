@@ -127,6 +127,8 @@ export interface ChatWithToolsResult {
   reasoning_content?: string  // think 模型的思考内容
 }
 
+export type { AiModelType } from './config.service'
+
 export interface AiProfile {
   id: string
   name: string
@@ -136,6 +138,8 @@ export interface AiProfile {
   proxy?: string
   contextLength?: number  // 模型上下文长度（tokens），默认 128000
   maxOutputTokens?: number  // 单次回复最大输出 token 数，默认 8192
+  modelType?: import('./config.service').AiModelType  // 模型类型，默认 general
+  visionProfileId?: string  // 关联的视觉模型 Profile ID（仅 general 类型有效）
 }
 
 /**

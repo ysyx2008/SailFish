@@ -36,6 +36,9 @@ export const DEFAULT_KEYBOARD_SHORTCUTS: KeyboardShortcuts = {
   voiceInput: 'Control',
 }
 
+// 与 electron/services/config.service.ts 中的 AiModelType 保持同步
+export type AiModelType = 'general' | 'vision'
+
 export interface AiProfile {
   id: string
   name: string
@@ -45,6 +48,8 @@ export interface AiProfile {
   proxy?: string
   contextLength?: number  // 模型上下文长度（tokens），默认 128000
   maxOutputTokens?: number  // 单次回复最大输出 token 数，默认 8192
+  modelType?: AiModelType        // 模型类型，默认 general
+  visionProfileId?: string       // 关联的视觉模型 Profile ID（仅 general 类型有效）
 }
 
 // 跳板机配置
@@ -329,6 +334,9 @@ export const useConfigStore = defineStore('config', () => {
   // 快捷键设置
   const keyboardShortcuts = ref<KeyboardShortcuts>({ ...DEFAULT_KEYBOARD_SHORTCUTS })
 
+  // 自动使用视觉模型
+  const autoVisionModel = ref<boolean>(true)
+
   // 计算属性
   const activeAiProfile = computed(() =>
     aiProfiles.value.find(p => p.id === activeAiProfileId.value)
@@ -438,6 +446,10 @@ export const useConfigStore = defineStore('config', () => {
       if (savedShortcuts && typeof savedShortcuts === 'object') {
         keyboardShortcuts.value = { ...DEFAULT_KEYBOARD_SHORTCUTS, ...savedShortcuts }
       }
+
+      // 加载自动视觉模型设置
+      const savedAutoVision = await window.electronAPI.config.get('autoVisionModel') as boolean | undefined
+      autoVisionModel.value = savedAutoVision ?? true
 
       // 加载日历账户
       const calAccounts = await window.electronAPI.config.get('calendarAccounts') as CalendarAccount[] | undefined
@@ -625,6 +637,13 @@ export const useConfigStore = defineStore('config', () => {
   async function setAgentDebugMode(enabled: boolean): Promise<void> {
     agentDebugMode.value = enabled
     await window.electronAPI.config.setAgentDebugMode(enabled)
+  }
+
+  // ==================== 视觉模型 ====================
+
+  async function setAutoVisionModel(enabled: boolean): Promise<void> {
+    autoVisionModel.value = enabled
+    await window.electronAPI.config.set('autoVisionModel', enabled)
   }
 
   // ==================== 首次设置向导 ====================
@@ -921,6 +940,7 @@ export const useConfigStore = defineStore('config', () => {
     terminalSettings,
     agentMbti,
     agentDebugMode,
+    autoVisionModel,
     setupCompleted,
     language,
     isSponsor,
@@ -951,6 +971,7 @@ export const useConfigStore = defineStore('config', () => {
     setUiTheme,
     setAgentMbti,
     setAgentDebugMode,
+    setAutoVisionModel,
     setSetupCompleted,
     setLanguage,
     setSponsorStatus,

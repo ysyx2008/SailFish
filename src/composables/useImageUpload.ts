@@ -4,6 +4,7 @@
  * 将图片转为 base64 data URL 发送给 AI 用于视觉理解
  */
 import { ref, type Ref } from 'vue'
+import type { AiModelType } from '../stores/config'
 
 // 支持的图片 MIME 类型
 const SUPPORTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp']
@@ -50,9 +51,11 @@ const VISION_MODEL_PATTERNS: RegExp[] = [
 
 /**
  * 检测模型是否可能支持视觉（多模态图片）
- * 基于已知模型名称模式匹配，不保证 100% 准确
+ * 优先使用 AiProfile 的 modelType 配置；未配置时回退到模型名正则匹配
  */
-export function isVisionModel(modelName: string): boolean {
+export function isVisionModel(modelName: string, modelType?: AiModelType): boolean {
+  if (modelType === 'vision') return true
+  if (modelType === 'general') return false
   if (!modelName) return false
   return VISION_MODEL_PATTERNS.some(pattern => pattern.test(modelName))
 }

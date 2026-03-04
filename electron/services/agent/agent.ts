@@ -1260,6 +1260,56 @@ export abstract class Agent {
   // ==================== 受保护方法：AI 交互 ====================
   
   /**
+   * 检测消息列表中是否有未被 assistant 处理过的新图片
+   * 从末尾往前遍历：遇到 assistant 消息即停止，遇到图片即返回 true
+   */
+  private hasUnseenImages(messages: AiMessage[]): boolean {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i]
+      if (msg.role === 'assistant') break
+      if (msg.images && msg.images.length > 0) return true
+    }
+    return false
+  }
+  
+  /**
+   * 解析本次 API 调用应使用的 profileId
+   * 当满足以下条件时自动切换到视觉模型：
+   * 1. autoVisionModel 全局开关已启用
+   * 2. 当前主模型配置了 visionProfileId
+   * 3. 消息中有未处理的新图片
+   */
+  private resolveEffectiveProfileId(run: AgentRun): string | undefined {
+    const configService = this.services.configService
+    if (!configService) return this.profileId
+    
+    const autoVision = configService.get('autoVisionModel')
+    if (!autoVision) return this.profileId
+    
+    if (!this.hasUnseenImages(run.messages)) return this.profileId
+    
+    // 获取当前主模型的 profile
+    const profiles = configService.getAiProfiles()
+    const currentProfileId = this.profileId || configService.getActiveAiProfile()
+    const currentProfile = profiles.find(p => p.id === currentProfileId)
+    
+    if (!currentProfile) return this.profileId
+    
+    // 如果当前模型本身就是 vision 类型，无需切换
+    if (currentProfile.modelType === 'vision') return this.profileId
+    
+    // 如果配置了关联视觉模型，切换过去（排除自引用和不存在的 profile）
+    const visionId = currentProfile.visionProfileId
+    if (visionId && visionId !== currentProfileId && profiles.some(p => p.id === visionId)) {
+      const visionProfile = profiles.find(p => p.id === visionId)
+      log.info(`Vision routing: switching from ${currentProfile.model} to ${visionProfile?.model || visionId}`)
+      return visionId
+    }
+    
+    return this.profileId
+  }
+  
+  /**
    * 流式调用 AI
    */
   protected async callAiWithStreaming(run: AgentRun): Promise<ChatWithToolsResult> {
@@ -1294,6 +1344,8 @@ export abstract class Agent {
       
       const availableTools = this.getAvailableTools()
       run.requestId = run.id
+      
+      const effectiveProfileId = this.resolveEffectiveProfileId(run)
       
       this.services.aiService.chatWithToolsStream(
         run.messages,
@@ -1370,7 +1422,7 @@ export abstract class Agent {
           }
           reject(new Error(error))
         },
-        this.profileId, // 使用 Agent 实例的 profileId
+        effectiveProfileId, // 视觉路由：有新图片时自动切换到视觉模型
         // onToolCallProgress - 显示工具调用参数生成进度
         (toolName: string, argsLength: number) => {
           const now = Date.now()
