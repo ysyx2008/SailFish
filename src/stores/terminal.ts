@@ -55,6 +55,7 @@ export interface AgentState {
 // 上传的文档类型（与 electron/services/document-parser.service.ts 同步）
 export interface ParsedDocument {
   filename: string
+  filePath?: string
   fileType: string
   content: string
   fileSize: number

@@ -13,6 +13,8 @@ const log = createLogger('DocumentParser')
 export interface ParsedDocument {
   /** 原始文件名 */
   filename: string
+  /** 原始文件完整路径 */
+  filePath?: string
   /** 文件类型 */
   fileType: DocumentType
   /** 解析后的文本内容 */
@@ -201,6 +203,7 @@ export class DocumentParserService {
     // 基础结果对象
     const result: ParsedDocument = {
       filename: file.name,
+      filePath: file.path,
       fileType,
       content: '',
       fileSize: file.size,

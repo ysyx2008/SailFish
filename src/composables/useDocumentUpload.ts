@@ -191,7 +191,8 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     
     const parts = scannedDocs.map(d => {
       const totalPages = d.totalPages || d.pageCount || 0
-      return `[扫描版 PDF: ${d.filename}，共 ${totalPages} 页，首页已作为图片附上。如需查看更多页面，使用 pdf_view_page 工具]`
+      const pathHint = d.filePath ? `，路径: ${d.filePath}` : ''
+      return `[扫描版 PDF: ${d.filename}，共 ${totalPages} 页${pathHint}，首页已作为图片附上。如需查看更多页面，使用 pdf_view_page 工具]`
     })
     return parts.join('\n')
   }
