@@ -69,6 +69,7 @@ function createMockHostProfileService() {
 // Mock 配置服务
 function createMockConfigService() {
   return {
+    get: vi.fn().mockReturnValue(undefined),
     getAgentMbti: vi.fn().mockReturnValue(null),
     getAiRules: vi.fn().mockReturnValue(''),
     getAgentPersonalityText: vi.fn().mockReturnValue(''),
