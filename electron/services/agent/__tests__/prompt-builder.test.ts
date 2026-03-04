@@ -317,9 +317,8 @@ describe('PromptBuilder', () => {
       const builder = new PromptBuilder({ context })
       const prompt = builder.build()
       
-      expect(prompt).toContain('用户上传的参考文档')
-      expect(prompt).toContain('这是文档内容')
-      expect(prompt).toContain('直接使用上下文中的文档内容')
+      expect(prompt).toContain('用户上传的文档')
+      expect(prompt).toContain('sf_uploaded_docs')
     })
 
     it('should not include document section when not provided', () => {
@@ -327,7 +326,7 @@ describe('PromptBuilder', () => {
       const builder = new PromptBuilder({ context })
       const prompt = builder.build()
       
-      expect(prompt).not.toContain('用户上传的参考文档')
+      expect(prompt).not.toContain('用户上传的文档')
     })
   })
 

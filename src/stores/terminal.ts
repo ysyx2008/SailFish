@@ -39,7 +39,7 @@ export type {
   PendingConfirmation,
 } from '@shared/types'
 
-import type { TerminalType, AgentStep, PendingConfirmation, RemoteChannel } from '@shared/types'
+import type { TerminalType, AgentStep, PendingConfirmation, RemoteChannel, AttachmentInfo } from '@shared/types'
 
 export interface AgentState {
   isRunning: boolean
@@ -1091,6 +1091,8 @@ export const useTerminalStore = defineStore('terminal', () => {
       id: string
       type: string
       content: string
+      images?: string[]
+      attachments?: AttachmentInfo[]
       toolName?: string
       toolArgs?: Record<string, unknown>
       toolResult?: string
