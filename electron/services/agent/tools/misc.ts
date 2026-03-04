@@ -16,6 +16,7 @@ import { executeSkillCreatorTool } from '../skills/skill-creator/executor'
 import { executePersonalityTool } from '../skills/personality/executor'
 import { executePdfTool } from '../skills/pdf/executor'
 import { getUserSkillService } from '../../user-skill.service'
+import { addProactiveContext } from '../proactive-store'
 import { getConfigService } from '../../config.service'
 import { formatRemainingTime, formatTotalTime, truncateFromEnd } from './utils'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
@@ -709,6 +710,7 @@ export async function messageUser(
         })
         deliveredVia.push('app')
         windowFocused = mainWindow.isFocused()
+        addProactiveContext(companionAgentId, message, title)
       }
     }
   } catch (e) {

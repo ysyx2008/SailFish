@@ -38,6 +38,7 @@ import { getKnowledgeService } from '../knowledge'
 import { getContextKnowledgeService } from '../knowledge/context-knowledge'
 import { getWatchService } from '../watch/watch.service'
 import { formatWatchListForPrompt } from './skills/watch/executor'
+import { consumeProactiveContext } from './proactive-store'
 import { t } from './i18n'
 import { createSkillSession, SkillSession } from './skills'
 import { PromptBuilder } from './prompt-builder'
@@ -977,8 +978,11 @@ export abstract class Agent {
     
     // 添加当前用户消息（如果有图片，附带 images 字段；如有主动消息上下文，注入到 API 消息中）
     let enhancedMessage = this.enhanceUserMessage(message)
-    if (run.context.proactiveContext) {
-      enhancedMessage = run.context.proactiveContext.trim() + '\n\n' + enhancedMessage
+    // proactiveContext：IM 路径由 context 直传，桌面路径从 proactive-store 补充
+    const proactiveCtx = run.context.proactiveContext
+      || (this._agentId ? consumeProactiveContext(this._agentId) : undefined)
+    if (proactiveCtx?.trim()) {
+      enhancedMessage = proactiveCtx.trim() + '\n\n' + enhancedMessage
     }
     if (run.context.documentContext) {
       enhancedMessage = enhancedMessage + '\n\n' + run.context.documentContext
