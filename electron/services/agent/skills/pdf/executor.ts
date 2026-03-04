@@ -62,10 +62,15 @@ async function viewPdfPage(
     const parser = getDocumentParserService()
     const result = await parser.renderPdfPages(absPath, requestedPages)
 
+    const imageMapping = requestedPages
+      .slice(0, result.images.length)
+      .map((pageNum, i) => `Image ${i + 1} = Page ${pageNum}`)
+      .join(', ')
+
     const output = t('pdf.render_result', {
       rendered: result.images.length,
       total: result.totalPages,
-      pages: requestedPages.join(', ')
+      imageMapping
     })
 
     executor.addStep({
