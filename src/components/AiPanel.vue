@@ -206,6 +206,12 @@ const {
   {
     getImages: getImageDataUrls,
     clearImages
+  },
+  {
+    getAttachments: () => uploadedDocs.value
+      .filter(d => !d.error && d.content)
+      .map(d => ({ filename: d.filename, fileSize: d.fileSize, fileType: d.fileType })),
+    clearAttachments: clearUploadedDocs
   }
 )
 
@@ -1341,6 +1347,18 @@ onUnmounted(() => {
                       class="message-image" 
                       @click="openImagePreview(imgUrl)"
                     />
+                  </div>
+                  <!-- 用户消息附带的文件 -->
+                  <div v-if="group.attachments && group.attachments.length > 0" class="message-attachments">
+                    <div 
+                      v-for="(file, fileIdx) in group.attachments" 
+                      :key="fileIdx" 
+                      class="attachment-chip"
+                    >
+                      <span class="attachment-icon">📎</span>
+                      <span class="attachment-name">{{ file.filename }}</span>
+                      <span class="attachment-size">{{ formatFileSize(file.fileSize) }}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -5067,6 +5085,42 @@ onUnmounted(() => {
 .message-image:hover {
   transform: scale(1.02);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* ==================== 聊天中的文件附件 ==================== */
+.message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.attachment-icon {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.attachment-name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-size {
+  opacity: 0.6;
+  flex-shrink: 0;
 }
 
 /* ==================== 图片预览弹窗（支持缩放拖拽） ==================== */

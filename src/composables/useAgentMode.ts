@@ -7,7 +7,7 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted, Ref } from 'vue
 import { useI18n } from 'vue-i18n'
 import { useTerminalStore } from '../stores/terminal'
 import { useConfigStore } from '../stores/config'
-import type { ExecutionMode } from '@shared/types'
+import type { ExecutionMode, AttachmentInfo } from '@shared/types'
 import type { AgentStep, AgentState } from '../stores/terminal'
 import { createLogger } from '../utils/logger'
 
@@ -20,6 +20,7 @@ export interface AgentTaskGroup {
   id: string
   userTask: string
   images?: string[]
+  attachments?: AttachmentInfo[]
   steps: AgentStep[]
   finalResult?: string
   isCurrentTask: boolean
@@ -35,6 +36,10 @@ export function useAgentMode(
   imageCallbacks?: {
     getImages: () => string[]      // 获取待发送的图片 data URL 列表
     clearImages: () => void        // 清空待发送的图片
+  },
+  attachmentCallbacks?: {
+    getAttachments: () => AttachmentInfo[]  // 获取当前已上传文件的元信息
+    clearAttachments: () => void            // 清空已上传文件列表
   }
 ) {
   const { t } = useI18n()
@@ -324,6 +329,7 @@ export function useAgentMode(
           id: step.id,
           userTask: isProactive ? '' : step.content,
           images: step.images,
+          attachments: step.attachments,
           steps: [],
           isCurrentTask: false,
           isProactive
@@ -448,6 +454,14 @@ export function useAgentMode(
       imageCallbacks?.clearImages()
     }
 
+    // 获取当前已上传文件的元信息（用于 user_task 步骤展示）
+    const attachments = attachmentCallbacks?.getAttachments() || []
+
+    // 清空已上传的文件列表
+    if (attachments.length > 0) {
+      attachmentCallbacks?.clearAttachments()
+    }
+
     // 设置 Agent 状态：正在运行 + 用户任务
     terminalStore.setAgentRunning(tabId, true, undefined, message)
     await scrollToBottom()
@@ -465,6 +479,7 @@ export function useAgentMode(
             hostId,
             documentContext,
             images: images.length > 0 ? images : undefined,
+            attachments: attachments.length > 0 ? attachments : undefined,
             remoteChannel: currentTab.value.remoteChannel,
             sessionId: agentState.value?.sessionId,
             sessionStartTime: agentState.value?.sessionStartTime
@@ -482,6 +497,7 @@ export function useAgentMode(
             sshHost: currentTab.value?.sshConfig?.host,
             documentContext,
             images: images.length > 0 ? images : undefined,
+            attachments: attachments.length > 0 ? attachments : undefined,
             sessionId: agentState.value?.sessionId,
             sessionStartTime: agentState.value?.sessionStartTime
           },

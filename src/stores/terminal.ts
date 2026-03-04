@@ -1109,6 +1109,8 @@ export const useTerminalStore = defineStore('terminal', () => {
       id: s.id,
       type: s.type as AgentStep['type'],
       content: s.content,
+      images: s.images,
+      attachments: s.attachments,
       toolName: s.toolName,
       toolArgs: s.toolArgs,
       toolResult: s.toolResult,

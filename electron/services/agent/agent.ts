@@ -430,7 +430,8 @@ export abstract class Agent {
     this.addStep({
       type: 'user_task',
       content: message,
-      images: context.images
+      images: context.images,
+      attachments: context.attachments
     })
     
     // 添加初始步骤
@@ -493,6 +494,8 @@ export abstract class Agent {
         id: s.id,
         type: s.type as AgentStep['type'],
         content: s.content,
+        images: s.images,
+        attachments: s.attachments,
         toolName: s.toolName,
         toolArgs: s.toolArgs,
         toolResult: s.toolResult,
@@ -694,6 +697,8 @@ export abstract class Agent {
       id: s.id,
       type: s.type,
       content: s.content || '',
+      images: s.images,
+      attachments: s.attachments,
       toolName: s.toolName,
       toolArgs: s.toolArgs ? JSON.parse(JSON.stringify(s.toolArgs)) : undefined,
       toolResult: s.toolResult,
@@ -739,6 +744,8 @@ export abstract class Agent {
       id: s.id,
       type: s.type,
       content: s.content || '',
+      images: s.images,
+      attachments: s.attachments,
       toolName: s.toolName,
       toolArgs: s.toolArgs ? JSON.parse(JSON.stringify(s.toolArgs)) : undefined,
       toolResult: s.toolResult,

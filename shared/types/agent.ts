@@ -49,11 +49,19 @@ export interface AgentPlan {
   updatedAt: number
 }
 
+/** 用户消息附带的文件附件元信息（仅用于 UI 展示，不含文件内容） */
+export interface AttachmentInfo {
+  filename: string
+  fileSize: number
+  fileType: string
+}
+
 export interface AgentStep {
   id: string
   type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'plan_created' | 'plan_updated' | 'plan_archived' | 'user_task' | 'final_result'
   content: string
   images?: string[]
+  attachments?: AttachmentInfo[]
   toolName?: string
   toolArgs?: Record<string, unknown>
   toolResult?: string

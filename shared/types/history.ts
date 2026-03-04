@@ -8,6 +8,8 @@ export interface AgentStepRecord {
   id: string
   type: string
   content: string
+  images?: string[]
+  attachments?: import('./agent').AttachmentInfo[]
   toolName?: string
   toolArgs?: Record<string, unknown>
   toolResult?: string
