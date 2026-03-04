@@ -121,7 +121,8 @@ const {
   clearUploadedDocs,
   formatFileSize,
   getDocumentContext,
-  getDocImages,
+  getDocPreviewImages,
+  getAllDocImages,
   getDocImagesContext
 } = useDocumentUpload(currentTabId)
 
@@ -210,7 +211,8 @@ const {
   autoProbeHostProfile,
   currentTabId,
   {
-    getImages: () => [...getImageDataUrls(), ...getDocImages()],
+    getImages: () => [...getImageDataUrls(), ...getAllDocImages()],
+    getPreviewImages: () => [...getImageDataUrls(), ...getDocPreviewImages()],
     clearImages
   },
   {

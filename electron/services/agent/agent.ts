@@ -427,10 +427,11 @@ export abstract class Agent {
     }
     
     // 添加 user_task 步骤（统一由后端生成，前端通过 onStep 回调接收）
+    // previewImages 仅含 PDF 页面预览（UI 展示用），Word 嵌入图片只传给 AI 不展示
     this.addStep({
       type: 'user_task',
       content: message,
-      images: context.images,
+      images: context.previewImages || context.images,
       attachments: context.attachments
     })
     

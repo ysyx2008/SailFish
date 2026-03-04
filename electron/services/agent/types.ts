@@ -70,6 +70,7 @@ export interface AgentContext {
   hostId?: string  // 主机档案 ID
   documentContext?: string  // 用户上传的文档内容
   images?: string[]  // 用户上传的图片（base64 data URL），发送给 AI 用于视觉理解
+  previewImages?: string[]  // UI 展示用的预览图片（仅 PDF 页面渲染），缺省时用 images
   attachments?: import('@shared/types').AttachmentInfo[]  // 用户上传的文件元信息（用于 user_task 步骤展示）
   sshHost?: string  // SSH 主机地址（用于历史记录元数据）
   sessionId?: string  // 从 HistoryService 恢复的会话 ID（后端自行加载历史数据）

@@ -34,8 +34,9 @@ export function useAgentMode(
   autoProbeHostProfile: () => Promise<void>,
   tabId: Ref<string>,  // 每个 AiPanel 实例固定绑定的 tab ID
   imageCallbacks?: {
-    getImages: () => string[]      // 获取待发送的图片 data URL 列表
-    clearImages: () => void        // 清空待发送的图片
+    getImages: () => string[]          // 全部图片（传给 AI 视觉模型）
+    getPreviewImages?: () => string[]  // UI 展示用的预览图（仅 PDF 页面渲染），默认同 getImages
+    clearImages: () => void
   },
   attachmentCallbacks?: {
     getAttachments: () => AttachmentInfo[]  // 获取当前已上传文件的元信息
@@ -446,10 +447,10 @@ export function useAgentMode(
     // 获取文档上下文
     const documentContext = await getDocumentContext()
     
-    // 获取待发送的图片（传给后端，后端生成 user_task 步骤时携带）
+    // 获取图片：全部图片传给 AI，预览图片存入步骤供 UI 展示
     const images = imageCallbacks?.getImages() || []
+    const previewImages = imageCallbacks?.getPreviewImages?.() || images
 
-    // 清空待发送的图片
     if (images.length > 0) {
       imageCallbacks?.clearImages()
     }
@@ -479,6 +480,7 @@ export function useAgentMode(
             hostId,
             documentContext,
             images: images.length > 0 ? images : undefined,
+            previewImages: previewImages.length < images.length ? previewImages : undefined,
             attachments: attachments.length > 0 ? attachments : undefined,
             remoteChannel: currentTab.value.remoteChannel,
             sessionId: agentState.value?.sessionId,
@@ -497,6 +499,7 @@ export function useAgentMode(
             sshHost: currentTab.value?.sshConfig?.host,
             documentContext,
             images: images.length > 0 ? images : undefined,
+            previewImages: previewImages.length < images.length ? previewImages : undefined,
             attachments: attachments.length > 0 ? attachments : undefined,
             sessionId: agentState.value?.sessionId,
             sessionStartTime: agentState.value?.sessionStartTime

@@ -193,8 +193,22 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     return await documentAPI.formatAsContext(plainDocs)
   }
 
-  // 获取含图片文档的嵌入图片（扫描 PDF 页面 + Word 正文图片等）
-  const getDocImages = (): string[] => {
+  /**
+   * 获取用于 UI 展示的文档预览图片（仅 PDF 页面渲染）
+   * Word 嵌入图片不在用户消息中展示，只通过 getAllDocImages 传给 AI
+   */
+  const getDocPreviewImages = (): string[] => {
+    const images: string[] = []
+    for (const doc of uploadedDocs.value) {
+      if (doc.fileType === 'pdf' && doc.images && doc.images.length > 0) {
+        images.push(...doc.images)
+      }
+    }
+    return images
+  }
+
+  /** 获取所有文档的嵌入图片（PDF 页面 + Word 正文图片等，传给 AI 视觉模型） */
+  const getAllDocImages = (): string[] => {
     const images: string[] = []
     for (const doc of uploadedDocs.value) {
       if (doc.images && doc.images.length > 0) {
@@ -332,7 +346,8 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     clearUploadedDocs,
     formatFileSize,
     getDocumentContext,
-    getDocImages,
+    getDocPreviewImages,
+    getAllDocImages,
     getDocImagesContext,
     saveToKnowledge,
     saveAllToKnowledge,
