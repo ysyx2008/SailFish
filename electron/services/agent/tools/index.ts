@@ -20,10 +20,10 @@ import { executeCommandDirect } from './exec'
 import { getTerminalContext, checkTerminalStatus, sendControlKey, sendInput } from './terminal'
 import { fileSearch, readFile, editFile, writeLocalFile, writeRemoteFile } from './file'
 import { rememberInfo, searchKnowledge, getKnowledgeDoc } from './knowledge'
-import { createPlan, updatePlan, clearPlan } from './plan'
-import { recallTask, deepRecall, searchHistory } from './memory'
+import { createPlan, updatePlan, clearPlan, dispatchPlan } from './plan'
+import { recallTask, deepRecall, searchHistory, dispatchRecall } from './memory'
 import { compressContext, recallCompressed, manageMemory } from './context'
-import { wait, askUser, sendFileToChat, sendImageToChat, messageUser, executeMcpTool, loadSkillTool, unloadSkillTool, loadUserSkillTool, executeSkillTool } from './misc'
+import { wait, askUser, sendFileToChat, sendImageToChat, sendToChat, messageUser, executeMcpTool, loadSkillTool, unloadSkillTool, dispatchSkill, loadUserSkillTool, executeSkillTool } from './misc'
 
 // 重新导出类型
 export type { ToolExecutorConfig, AgentConfig, ToolResult, ErrorCategory } from './types'
@@ -34,10 +34,10 @@ export { executeCommandDirect } from './exec'
 export { getTerminalContext, checkTerminalStatus, sendControlKey, sendInput } from './terminal'
 export { fileSearch, readFile, editFile, writeLocalFile, writeRemoteFile, getWorkspacePath, isInWorkspace } from './file'
 export { rememberInfo, searchKnowledge, getKnowledgeDoc } from './knowledge'
-export { createPlan, updatePlan, clearPlan } from './plan'
-export { recallTask, deepRecall, searchHistory } from './memory'
+export { createPlan, updatePlan, clearPlan, dispatchPlan } from './plan'
+export { recallTask, deepRecall, searchHistory, dispatchRecall } from './memory'
 export { compressContext, recallCompressed, manageMemory } from './context'
-export { wait, askUser, sendFileToChat, sendImageToChat, messageUser, executeMcpTool, loadSkillTool, unloadSkillTool, loadUserSkillTool, executeSkillTool } from './misc'
+export { wait, askUser, sendFileToChat, sendImageToChat, sendToChat, messageUser, executeMcpTool, loadSkillTool, unloadSkillTool, dispatchSkill, loadUserSkillTool, executeSkillTool } from './misc'
 
 // 导出工具函数
 export {
@@ -131,27 +131,29 @@ export async function executeTool(
     case 'talk_to_user':
       return messageUser(args, executor)
 
+    case 'plan':
+      return dispatchPlan(args, executor)
     case 'create_plan':
       return createPlan(args, executor)
-
     case 'update_plan':
       return updatePlan(args, executor)
-
     case 'clear_plan':
       return clearPlan(args, executor)
 
+    case 'skill':
+      return await dispatchSkill(args, config, executor)
     case 'load_skill':
       return await loadSkillTool(args, config, executor)
-
     case 'unload_skill':
       return await unloadSkillTool(args, executor)
 
     case 'load_user_skill':
       return await loadUserSkillTool(args, executor)
 
+    case 'recall':
+      return dispatchRecall(args, executor, ptyId)
     case 'recall_task':
       return recallTask(args, executor, ptyId)
-
     case 'deep_recall':
       return deepRecall(args, executor, ptyId)
 
@@ -164,9 +166,10 @@ export async function executeTool(
     case 'manage_memory':
       return manageMemory(args, executor)
 
+    case 'send_to_chat':
+      return sendToChat(args, executor)
     case 'send_file_to_chat':
       return sendFileToChat(args, executor)
-
     case 'send_image_to_chat':
       return sendImageToChat(args, executor)
 

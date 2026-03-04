@@ -89,11 +89,11 @@ const TOOL_ICONS: Record<string, string> = {
   execute_command: '🔧', exec: '🔧', read_file: '📄', edit_file: '✏️',
   write_local_file: '📝', write_remote_file: '📝', file_search: '🔍',
   search_knowledge: '📚', get_knowledge_doc: '📚',
-  recall_task: '🧠', deep_recall: '🧠', wait: '⏳',
-  create_plan: '📋', update_plan: '📋', clear_plan: '📋',
-  send_file_to_chat: '📤', send_image_to_chat: '🖼️', send_im_notification: '📢',
+  recall: '🧠', recall_task: '🧠', deep_recall: '🧠', wait: '⏳',
+  plan: '📋', create_plan: '📋', update_plan: '📋', clear_plan: '📋',
+  send_to_chat: '📤', send_file_to_chat: '📤', send_image_to_chat: '🖼️', send_im_notification: '📢',
   remember_info: '💾', check_terminal_status: '🖥️', get_terminal_context: '🖥️',
-  send_control_key: '⌨️', send_input: '⌨️', load_skill: '📦', load_user_skill: '📦',
+  send_control_key: '⌨️', send_input: '⌨️', skill: '📦', load_skill: '📦', load_user_skill: '📦',
 }
 
 /** 工具 → 已有 i18n key 的映射（复用已有翻译，避免重复添加） */
@@ -112,12 +112,15 @@ const TOOL_I18N_MAP: Record<string, Parameters<typeof t>[0]> = {
   remember_info: 'tool.remember_info',
   search_knowledge: 'tool.search_knowledge',
   get_knowledge_doc: 'tool.get_knowledge_doc',
+  recall: 'memory.task_recall',
   recall_task: 'memory.task_recall',
   deep_recall: 'memory.deep_recall',
   wait: 'tool.wait',
+  plan: 'tool.plan',
   create_plan: 'tool.create_plan',
   update_plan: 'tool.update_plan',
   clear_plan: 'tool.clear_plan',
+  skill: 'tool.skill',
   ask_user: 'tool.ask_user',
 }
 
@@ -139,7 +142,7 @@ function formatToolNotification(toolName: string, toolArgs?: Record<string, unkn
     detail = `  ${toolArgs.path}`
   } else if (toolName === 'file_search' && (toolArgs?.pattern || toolArgs?.query)) {
     detail = `  ${toolArgs.pattern || toolArgs.query}`
-  } else if ((toolName === 'load_skill' || toolName === 'load_user_skill') && (toolArgs?.skill_id || toolArgs?.name)) {
+  } else if ((toolName === 'skill' || toolName === 'load_skill' || toolName === 'load_user_skill') && (toolArgs?.skill_id || toolArgs?.name)) {
     detail = `  ${toolArgs.skill_id || toolArgs.name}`
   } else if (toolName === 'send_control_key' && toolArgs?.key) {
     detail = ` ${toolArgs.key}`

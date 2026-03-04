@@ -23,6 +23,26 @@ function isPlanFinished(plan: AgentPlan): boolean {
 }
 
 /**
+ * plan 工具统一入口：根据 action 分发到 create/update/clear
+ */
+export function dispatchPlan(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): ToolResult {
+  const action = args.action as string
+  switch (action) {
+    case 'create':
+      return createPlan(args, executor)
+    case 'update':
+      return updatePlan(args, executor)
+    case 'clear':
+      return clearPlan(args, executor)
+    default:
+      return { success: false, output: '', error: `Unknown plan action: ${action}. Use "create", "update", or "clear".` }
+  }
+}
+
+/**
  * 创建任务执行计划
  */
 export function createPlan(

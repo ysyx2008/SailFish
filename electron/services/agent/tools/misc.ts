@@ -307,6 +307,20 @@ export async function sendFileToChat(
 }
 
 /**
+ * send_to_chat 统一入口：根据 type 分发到 sendFileToChat / sendImageToChat
+ */
+export async function sendToChat(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const type = (args.type as string) || 'file'
+  if (type === 'image') {
+    return sendImageToChat(args, executor)
+  }
+  return sendFileToChat(args, executor)
+}
+
+/**
  * 发送图片到当前 IM 聊天（内联显示）
  */
 /** 常见图片文件扩展名 */
@@ -443,6 +457,25 @@ export async function executeMcpTool(
       toolResult: errorMsg
     })
     return { success: false, output: '', error: errorMsg }
+  }
+}
+
+/**
+ * skill 工具统一入口：根据 action 分发到 load / unload
+ */
+export async function dispatchSkill(
+  args: Record<string, unknown>,
+  config: AgentConfig,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const action = args.action as string
+  switch (action) {
+    case 'load':
+      return loadSkillTool(args, config, executor)
+    case 'unload':
+      return unloadSkillTool(args, executor)
+    default:
+      return { success: false, output: '', error: `Unknown skill action: ${action}. Use "load" or "unload".` }
   }
 }
 

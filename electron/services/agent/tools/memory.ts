@@ -7,6 +7,21 @@ import { truncateFromEnd } from './utils'
 import type { ToolExecutorConfig, ToolResult } from './types'
 
 /**
+ * recall 工具统一入口：根据 detail 分发到 recallTask / deepRecall
+ */
+export function dispatchRecall(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig,
+  _ptyId: string | undefined
+): ToolResult {
+  const detail = args.detail as string | undefined
+  if (detail === 'full') {
+    return deepRecall(args, executor, _ptyId)
+  }
+  return recallTask(args, executor, _ptyId)
+}
+
+/**
  * recall_task: 回忆之前任务的摘要
  */
 export function recallTask(

@@ -405,7 +405,7 @@ export class TaskMemoryStore {
   }
   
   /**
-   * recall_task: 获取指定任务的 L2 摘要
+   * recall(detail="summary"): 获取指定任务的 L2 摘要
    * @param taskId 任务 ID
    */
   getDigest(taskId: string): { userRequest: string; digest: TaskDigest } | null {
@@ -420,7 +420,7 @@ export class TaskMemoryStore {
   }
   
   /**
-   * deep_recall: 获取 L3 完整步骤
+   * recall(detail="full"): 获取 L3 完整步骤
    * @param taskId 任务 ID
    * @param stepIndex 可选，指定步骤索引
    */

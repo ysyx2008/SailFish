@@ -112,7 +112,7 @@ export interface BuildSystemPromptOptions {
   taskSummaries?: string
   /** 语义预加载的相关任务摘要（L2 层） */
   relatedTaskDigests?: string
-  /** 所有可用任务的ID列表（用于 recall_task 工具） */
+  /** 所有可用任务的ID列表（用于 recall 工具） */
   availableTaskIds?: Array<{ id: string; summary: string }>
   /** 执行模式 */
   executionMode?: ExecutionMode
@@ -254,7 +254,7 @@ export class PromptBuilder {
       '### 记忆体系',
       '',
       '- **当前对话**：你在上下文中能直接看到的消息',
-      '- **任务记忆**：历史任务的摘要（见上方"历史任务"章节）。用 `recall_task` 查看摘要，`deep_recall` 查看完整步骤',
+      '- **任务记忆**：历史任务的摘要（见上方"历史任务"章节）。用 `recall(id)` 查看摘要，`recall(id, detail="full")` 查看完整步骤',
       '- **压缩归档**：你通过 `compress_context` 压缩的内容，可通过 `recall_compressed` 随时找回',
       '',
       '### 上下文管理工具',
@@ -410,10 +410,8 @@ export class PromptBuilder {
     if (imMeta) {
       return [
         `**交互通道**：用户通过${imMeta.name}与你对话，你的回复将作为 IM 消息发送`,
-        `- 你可以使用 \`send_image_to_chat\` 发送图片（限${imMeta.imageLimit}），图片会在聊天中内联显示`,
-        `- 你可以使用 \`send_file_to_chat\` 发送其他文件（限${imMeta.fileLimit}）`,
-        '- 当用户要求发送/查看文件时，必须使用 `send_file_to_chat` 真正发送文件，不要只读取内容',
-        '- 当用户要求查看图片时，优先用 `send_image_to_chat`；其他文件用 `send_file_to_chat`',
+        `- 你可以使用 \`send_to_chat\` 发送文件或图片。type="image" 发送图片（限${imMeta.imageLimit}，内联显示），type="file" 发送文件（限${imMeta.fileLimit}）`,
+        '- 当用户要求发送/查看文件时，必须使用 `send_to_chat` 真正发送文件，不要只读取内容',
       ].join('\n')
     }
 
@@ -464,8 +462,8 @@ export class PromptBuilder {
     sections.push([
       '## 技能扩展',
       '',
-      '通过 `load_skill` 按需加载额外能力，加载后在整个会话（多轮对话）中持续有效，无需重复加载。',
-      '如果不再需要某技能，可用 `unload_skill` 卸载以释放工具槽位。',
+      '通过 `skill(action="load", skill_id="...")` 按需加载额外能力，加载后在整个会话中持续有效。',
+      '不再需要时 `skill(action="unload", skill_id="...")` 卸载以释放工具槽位。',
       '',
       this.buildSkillsSection(),
     ].join('\n'))
@@ -502,7 +500,7 @@ export class PromptBuilder {
     return [
       '**任务计划**：',
       '- 1-3 步的简单任务：直接执行，不要创建 plan',
-      '- 4+ 步骤且有依赖关系：使用 `create_plan`，执行时用 `update_plan` 更新状态',
+      '- 4+ 步骤且有依赖关系：使用 `plan(action="create")`，执行时用 `plan(action="update")` 更新状态',
       '- 用户说"直接做"/"快速帮我"：不要创建 plan',
     ].join('\n')
   }
@@ -580,7 +578,7 @@ export class PromptBuilder {
 
   private buildWatchGuide(): string {
     return [
-      '**关切**（`load_skill("watch")` + `watch_create`）：',
+      '**关切**（`skill(action="load", skill_id="watch")` + `watch_create`）：',
       '关切 = 到点或触发时**由 AI 自动执行**你设定的任务（如检查服务器、处理邮件、跑脚本），结果可推送到桌面/IM。不是「在日历记一条、到点只提醒」——那种用日程（calendar）。用户说「每天/每周帮我做 X」「到点自动检查 Y」「文件变了执行 Z」时，一般应创建关切。',
       '',
       '当你在任务中发现某件事值得持续关注且需 AI 到时自动执行，用关切。典型：部署了服务 → 建关切监控；用户要求定期检查邮件/日志 → 建对应触发器。下方已列出当前已设置的关切，避免重复创建；修改/删除用 `watch_update` / `watch_toggle` / `watch_delete`。',
@@ -637,7 +635,7 @@ export class PromptBuilder {
     const parts = [
       '## 历史任务',
       '',
-      '对话历史中包含：最近 1 个任务的完整对话，之后 2 个任务的压缩对话（含工具摘要），再之后 3 个任务的精简对话（仅请求和回复）。更早任务仅在下方列出摘要，需要详情用 `recall_task(id)` 或 `deep_recall(id)`。',
+      '对话历史中包含：最近 1 个任务的完整对话，之后 2 个任务的压缩对话（含工具摘要），再之后 3 个任务的精简对话（仅请求和回复）。更早任务仅在下方列出摘要，需要详情用 `recall(id)` 或 `recall(id, detail="full")`。',
       '',
       '**可用任务**：',
       taskIdList,
@@ -658,7 +656,7 @@ export class PromptBuilder {
     if (skills.length === 0) {
       return '暂无可用技能。'
     }
-    return `可用技能：${skills.map(s => `\`${s.id}\`(${s.name})`).join('、')}\n涉及相关领域时先 \`load_skill("技能ID")\` 加载。`
+    return `可用技能：${skills.map(s => `\`${s.id}\`(${s.name})`).join('、')}\n涉及相关领域时先 \`skill(action="load", skill_id="技能ID")\` 加载。`
   }
 }
 

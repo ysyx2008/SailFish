@@ -425,7 +425,7 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('task1')
       expect(prompt).toContain('检查 nginx 状态')
       expect(prompt).toContain('task2')
-      expect(prompt).toContain('recall_task')
+      expect(prompt).toContain('recall')
     })
 
     it('should include task summaries when provided', () => {

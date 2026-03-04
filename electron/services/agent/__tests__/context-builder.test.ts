@@ -191,7 +191,7 @@ describe('buildRecentTasksContext', () => {
     expect(result.stats.totalTasks).toBe(1)
   })
 
-  it('should populate availableTaskIds for recall_task', () => {
+  it('should populate availableTaskIds for recall', () => {
     store.saveTask('task1', 'Task 1', [], 'success', 'Done 1')
     store.saveTask('task2', 'Task 2', [], 'failed', 'Error')
     store.saveTask('task3', 'Task 3', [], 'success', 'Done 3')

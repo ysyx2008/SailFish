@@ -196,7 +196,7 @@ export const DEFAULT_AGENT_CONFIG: AgentConfig = {
 
 /**
  * 任务摘要（L2 层）
- * 包含执行过程中的关键信息，用于语义预加载和 recall_task
+ * 包含执行过程中的关键信息，用于语义预加载和 recall
  */
 export interface TaskDigest {
   commands: string[]              // 执行的关键命令
@@ -225,7 +225,7 @@ export interface TaskMemory {
   // L2: 关键步骤摘要（~500 字符）
   digest: TaskDigest
   
-  // L3: 完整执行步骤（原始数据，用于 digest 提取、deep_recall 等）
+  // L3: 完整执行步骤（原始数据，用于 digest 提取、recall(detail="full") 等）
   fullSteps: AgentStep[]
   
   // 完整 API 对话记录（可选，用于 Level 0 上下文注入）
@@ -316,7 +316,7 @@ export interface ContextBuildResult {
     usedTokens: number
     budget: number
   }
-  // 可用任务 ID 列表（用于 recall_task）
+  // 可用任务 ID 列表（用于 recall）
   availableTaskIds: Array<{ id: string; summary: string }>
 }
 

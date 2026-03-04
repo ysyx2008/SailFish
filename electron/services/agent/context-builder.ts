@@ -52,7 +52,7 @@ export interface ContextBuildResult {
   recentTaskMessages: AiMessage[]
   // Level 3-4 的任务，作为摘要/总结写入系统提示
   taskSummarySection: string
-  // 所有可用任务的ID列表（用于 recall_task 工具）
+  // 所有可用任务的ID列表（用于 recall 工具）
   availableTaskIds: Array<{ id: string; summary: string }>
   // 统计信息
   stats: {

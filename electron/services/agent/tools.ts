@@ -31,77 +31,38 @@ interface ToolDefinitionWithMeta extends ToolDefinition {
 }
 
 /**
- * 动态构建 load_skill 工具定义
- * 从技能注册表获取可用技能列表
+ * 动态构建 skill 工具定义（合并 load_skill + unload_skill）
  */
-function buildLoadSkillTool(): ToolDefinition {
+function buildSkillTool(): ToolDefinition {
   const disabledIds = new Set(getConfigService().get('disabledBuiltinSkills') || [])
   const skills = getSkillsSummary().filter(s => !disabledIds.has(s.id))
   const skillsList = skills.length > 0
     ? skills.map(s => `- **${s.id}**: ${s.name} - ${s.description}`).join('\n')
     : '- 暂无可用技能'
+  const skillIds = skills.map(s => `"${s.id}"`).join(', ') || '暂无'
 
   return {
     type: 'function',
     function: {
-      name: 'load_skill',
-      description: `加载技能模块以获得额外能力。技能是一组相关工具的集合，按需加载可以避免工具过多。
+      name: 'skill',
+      description: `加载或卸载技能模块。技能是一组相关工具的集合，按需加载。加载后在整个会话中持续有效，无需重复加载。不再需要时卸载以释放工具槽位。
 
 **可用技能**：
-${skillsList}
-
-**使用方式**：
-1. 需要特定能力时，先加载对应技能
-2. 加载成功后，该技能的工具变为可用
-3. 技能在当前会话中持续有效（跨多轮对话），无需重复加载
-
-**注意**：如果上下文较长且不再需要某技能，可用 unload_skill 卸载以释放工具槽位。`,
+${skillsList}`,
       parameters: {
         type: 'object',
         properties: {
+          action: {
+            type: 'string',
+            enum: ['load', 'unload'],
+            description: '操作类型：load（加载）或 unload（卸载）'
+          },
           skill_id: {
             type: 'string',
-            description: `技能 ID，可选值: ${skills.map(s => `"${s.id}"`).join(', ') || '暂无'}`
+            description: `技能 ID，可选值: ${skillIds}`
           }
         },
-        required: ['skill_id']
-      }
-    }
-  }
-}
-
-/**
- * 动态构建 unload_skill 工具定义
- * 卸载已加载的技能，释放工具槽位
- */
-function buildUnloadSkillTool(): ToolDefinition {
-  const disabledIds = new Set(getConfigService().get('disabledBuiltinSkills') || [])
-  const skills = getSkillsSummary().filter(s => !disabledIds.has(s.id))
-
-  return {
-    type: 'function',
-    function: {
-      name: 'unload_skill',
-      description: `卸载已加载的技能模块，释放工具槽位。
-
-**使用场景**：
-- 当前任务不再需要某技能的功能
-- 上下文较长，需要减少可用工具数量以优化响应
-- 切换到不同类型的任务前清理不相关的技能
-
-**注意**：
-- 卸载后，该技能的工具将不再可用
-- 如果后续需要，可以重新加载（load_skill）
-- 技能的连接状态（如日历账户连接）会在卸载时清理`,
-      parameters: {
-        type: 'object',
-        properties: {
-          skill_id: {
-            type: 'string',
-            description: `要卸载的技能 ID，可选值: ${skills.map(s => `"${s.id}"`).join(', ') || '暂无'}`
-          }
-        },
-        required: ['skill_id']
+        required: ['action', 'skill_id']
       }
     }
   }
@@ -140,8 +101,8 @@ ${skillsList}
 2. 调用此工具获取技能的完整指导内容
 3. 按照技能中的指导执行任务
 
-**与 load_skill 的区别**：
-- load_skill: 加载系统内置技能模块，提供额外的工具函数
+**与 skill 工具的区别**：
+- skill(action="load"): 加载系统内置技能模块，提供额外的工具函数
 - load_user_skill: 加载用户自定义的操作指南，是知识/流程类内容`,
       parameters: {
         type: 'object',
@@ -583,166 +544,76 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
         }
       }
     },
-    // ==================== Plan/Todo 工具 ====================
+    // ==================== Plan 工具（合并 create/update/clear） ====================
     {
       type: 'function',
       function: {
-        name: 'create_plan',
-        description: `创建任务执行计划，向用户展示清晰的执行步骤和进度。
+        name: 'plan',
+        description: `管理任务执行计划。4+ 步骤且有依赖关系时使用，简单任务不需要。
 
-**何时使用**：
-- 任务涉及 4 个以上步骤，且步骤间有依赖关系
-- 多系统/多服务联动操作（如部署、迁移）
-- 用户要求"帮我规划"或需要了解整体进度
-
-**何时不需要**：
-- 单个查询或 1-3 步的简单操作
-- 用户说"直接做"/"快速帮我"
-
-创建计划后，使用 update_plan 更新每个步骤的状态。`,
+**action**：
+- create: 创建计划（需 title + steps）
+- update: 更新步骤状态（需 step_index + status）
+- clear: 归档计划（可选 reason）`,
         parameters: {
           type: 'object',
           properties: {
-            title: {
+            action: {
               type: 'string',
-              description: '计划标题，简短描述任务目标（如"服务器性能诊断"、"部署 Node.js 应用"）'
+              enum: ['create', 'update', 'clear'],
+              description: '操作类型'
             },
+            title: { type: 'string', description: 'create: 计划标题' },
             steps: {
               type: 'array',
               items: {
                 type: 'object',
                 properties: {
-                  title: { 
-                    type: 'string', 
-                    description: '步骤标题，简洁明了（如"检查系统负载"、"安装依赖"）' 
-                  },
-                  description: { 
-                    type: 'string', 
-                    description: '步骤详细说明（可选，说明这一步要做什么）' 
-                  }
+                  title: { type: 'string', description: '步骤标题' },
+                  description: { type: 'string', description: '步骤说明（可选）' }
                 },
                 required: ['title']
               },
-              description: '计划步骤列表，按需拆分，粒度适中即可'
-            }
-          },
-          required: ['title', 'steps']
-        }
-      }
-    },
-    {
-      type: 'function',
-      function: {
-        name: 'update_plan',
-        description: `更新计划步骤状态。在执行每个步骤前后调用，让用户实时了解进度。
-
-**使用流程**：
-1. 开始步骤前：update_plan(step_index, "in_progress")
-2. 步骤完成后：update_plan(step_index, "completed", "结果说明")
-3. 步骤失败时：update_plan(step_index, "failed", "失败原因")
-4. 跳过步骤时：update_plan(step_index, "skipped", "跳过原因")`,
-        parameters: {
-          type: 'object',
-          properties: {
-            step_index: {
-              type: 'number',
-              description: '步骤索引（从 0 开始）'
+              description: 'create: 步骤列表'
             },
+            step_index: { type: 'number', description: 'update: 步骤索引（从 0 开始）' },
             status: {
               type: 'string',
               enum: ['pending', 'in_progress', 'completed', 'failed', 'skipped'],
-              description: '步骤状态：pending（等待）、in_progress（执行中）、completed（完成）、failed（失败）、skipped（跳过）'
+              description: 'update: 步骤状态'
             },
-            result: {
-              type: 'string',
-              description: '步骤结果说明（可选，如"负载正常: 0.52"、"发现 3 个错误"）'
-            }
+            result: { type: 'string', description: 'update: 步骤结果说明（可选）' },
+            reason: { type: 'string', description: 'clear: 归档原因（可选）' }
           },
-          required: ['step_index', 'status']
+          required: ['action']
         }
       }
     },
-    {
-      type: 'function',
-      function: {
-        name: 'clear_plan',
-        description: `归档当前计划。将计划及其执行情况保存到历史记录中，用户可随时查看。
-
-**使用场景**：
-- 计划执行完毕后需要开始新任务
-- 计划执行失败后需要重新规划
-- 用户要求放弃当前计划
-- 任务目标发生变化需要制定新计划
-
-归档后计划会保存在执行步骤中，用户可以点击查看详情。调用此工具后可以立即创建新计划。`,
-        parameters: {
-          type: 'object',
-          properties: {
-            reason: {
-              type: 'string',
-              description: '归档计划的原因（可选，会显示在归档记录中）'
-            }
-          }
-        }
-      }
-    },
-    buildLoadSkillTool(),
-    buildUnloadSkillTool(),
+    buildSkillTool(),
     buildLoadUserSkillTool(),
-    // ==================== 任务记忆工具 ====================
+    // ==================== 任务记忆工具（合并 recall_task/deep_recall） ====================
     {
       type: 'function',
       function: {
-        name: 'recall_task',
-        description: `回忆之前任务的关键信息摘要。返回执行的命令、涉及的路径、服务、错误和关键发现等。
+        name: 'recall',
+        description: `回忆之前任务的信息。默认返回摘要（命令、路径、错误、关键发现），设 detail="full" 获取完整执行步骤。
 
-**使用场景**：
-- 需要了解之前某个任务做了什么
-- 需要查看之前执行过的命令
-- 需要知道之前发现的问题或配置
-
-上下文中的"任务历史"列表显示了所有可回忆的任务 ID。
-
-**返回信息**：
-- commands: 执行的关键命令
-- paths: 涉及的文件路径
-- services: 涉及的服务名
-- errors: 遇到的错误
-- keyFindings: 关键发现`,
+上下文中的"任务历史"列表显示了所有可回忆的任务 ID。`,
         parameters: {
           type: 'object',
           properties: {
             task_id: {
               type: 'string',
-              description: '任务 ID（从上下文中的任务历史列表获取）'
-            }
-          },
-          required: ['task_id']
-        }
-      }
-    },
-    {
-      type: 'function',
-      function: {
-        name: 'deep_recall',
-        description: `深度回忆：获取某个任务的完整原始执行步骤。当需要查看命令的完整输出、配置文件的完整内容、详细的执行过程时使用。
-
-**使用场景**：
-- 需要查看某个命令的完整输出（不只是摘要）
-- 需要详细分析之前的执行过程
-- recall_task 返回的摘要信息不够详细
-
-**注意**：返回内容可能较长，请根据需要指定具体步骤索引。`,
-        parameters: {
-          type: 'object',
-          properties: {
-            task_id: {
+              description: '任务 ID'
+            },
+            detail: {
               type: 'string',
-              description: '任务 ID（从上下文中的任务历史列表获取）'
+              enum: ['summary', 'full'],
+              description: '详细程度，默认 summary'
             },
             step_index: {
               type: 'number',
-              description: '可选，指定步骤索引（从 0 开始）。不指定则返回所有步骤的简要信息'
+              description: 'detail=full 时可指定步骤索引（从 0 开始）'
             }
           },
           required: ['task_id']
@@ -754,7 +625,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       type: 'function',
       function: {
         name: 'search_history',
-        description: `搜索历史对话记录。当你需要回顾之前跨会话的交互内容时使用（recall_task 只能查当前会话内的任务）。
+        description: `搜索历史对话记录。当你需要回顾之前跨会话的交互内容时使用（recall 只能查当前会话内的任务）。
 
 **输出级别**：
 - summary（默认）：任务描述 + 最终结果，适合快速浏览定位
@@ -850,67 +721,25 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
     filteredTools.push({
       type: 'function',
       function: {
-        name: 'send_file_to_chat',
-        description: `发送本地文件到当前${imMeta.name}聊天。将机器上的文件通过${imMeta.name}机器人发送给用户。
+        name: 'send_to_chat',
+        description: `发送本地文件或图片到当前${imMeta.name}聊天。图片会内联显示，其他文件作为附件发送。
 
-**使用场景**：
-- 用户要求你把某个文件发过来
-- 任务执行后需要将生成的文件（日志、报告、截图等）发给用户
-- 发送配置文件、脚本等需要用户查看的文件
-
-**限制**：
-- 文件大小不超过 ${imMeta.fileLimit}
-- 不限文件格式
-- 一次只能发送一个文件，多个文件需多次调用
-
-**注意**：
-- 先确认文件存在且路径正确
-- 超大文件建议先压缩再发送
-- **发送图片请使用 send_image_to_chat**，效果更好（内联显示）`,
+**限制**：文件 ≤${imMeta.fileLimit}，图片 ≤${imMeta.imageLimit}，一次一个文件。`,
         parameters: {
           type: 'object',
           properties: {
             file_path: {
               type: 'string',
-              description: '要发送的文件的绝对路径'
+              description: '文件的绝对路径'
+            },
+            type: {
+              type: 'string',
+              enum: ['file', 'image'],
+              description: '发送类型：image（图片，内联显示）或 file（文件，附件形式）。默认 file'
             },
             file_name: {
               type: 'string',
-              description: '可选，自定义文件名（默认使用原始文件名）。用于给文件一个更友好的名称'
-            }
-          },
-          required: ['file_path']
-        }
-      }
-    })
-
-    filteredTools.push({
-      type: 'function',
-      function: {
-        name: 'send_image_to_chat',
-        description: `发送图片到当前${imMeta.name}聊天，图片会在聊天中内联显示。
-
-**使用场景**：
-- 用户要求查看某张图片
-- 任务生成了截图、图表、图片等需要展示给用户
-- 需要向用户展示可视化结果
-
-**支持的图片格式**：jpg/jpeg、png、gif、bmp、webp 等常见格式
-
-**限制**：
-- 图片大小不超过 ${imMeta.imageLimit}
-- 一次只能发送一张图片
-
-**注意**：
-- 直接传文件路径即可，**不需要先 read_file**
-- 先确认文件存在且路径正确
-- 非图片文件请使用 send_file_to_chat`,
-        parameters: {
-          type: 'object',
-          properties: {
-            file_path: {
-              type: 'string',
-              description: '要发送的图片文件的绝对路径'
+              description: 'type=file 时可选，自定义文件名'
             }
           },
           required: ['file_path']

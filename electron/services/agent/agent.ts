@@ -1480,8 +1480,10 @@ export abstract class Agent {
     'check_terminal_status',
     'search_knowledge',
     'get_knowledge_doc',
+    'recall',
     'recall_task',
     'deep_recall',
+    'skill',
     'load_skill',
     'load_user_skill'
   ])
