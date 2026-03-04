@@ -214,9 +214,9 @@ function formatMessageForApi(msg: AiMessage, stripImages = false): Record<string
     if (msg.content) {
       parts.push({ type: 'text', text: msg.content })
     }
-    // 图片部分
+    // 图片部分（指定 high detail 确保文字清晰可读）
     for (const imageUrl of msg.images) {
-      parts.push({ type: 'image_url', image_url: { url: imageUrl } })
+      parts.push({ type: 'image_url', image_url: { url: imageUrl, detail: 'high' } })
     }
     return {
       role: msg.role,

@@ -63,9 +63,7 @@ export function isVisionModel(modelName: string, modelType?: AiModelType): boole
 // 限制配置
 const IMAGE_LIMITS = {
   MAX_COUNT: 5,           // 最多同时上传 5 张图片
-  MAX_SIZE_MB: 10,        // 单张图片最大 10MB（base64 编码后会更大）
-  MAX_DIMENSION: 2048,    // 图片最大尺寸（自动缩小）
-  QUALITY: 0.85           // JPEG 压缩质量
+  MAX_SIZE_MB: 5,         // 单张图片最大 5MB（兼容 Anthropic 等 API 的请求体限制）
 }
 
 export interface PendingImage {
@@ -78,57 +76,17 @@ export interface PendingImage {
 }
 
 /**
- * 将 File 对象转为 base64 data URL
- * 如果图片尺寸过大，会自动缩放
+ * 将 File 对象转为 base64 data URL（不做缩放，保留原始质量）
+ * AI API 会自行处理图片尺寸，客户端预压缩只会损失质量
  */
 async function fileToDataUrl(file: File): Promise<{ dataUrl: string; width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => {
       const dataUrl = reader.result as string
-      
-      // 创建 Image 对象获取尺寸并可能缩放
       const img = new Image()
-      img.onload = () => {
-        const { width, height } = img
-        
-        // 如果尺寸在限制内，直接使用原始 data URL
-        if (width <= IMAGE_LIMITS.MAX_DIMENSION && height <= IMAGE_LIMITS.MAX_DIMENSION) {
-          resolve({ dataUrl, width, height })
-          return
-        }
-        
-        // 需要缩放
-        const scale = Math.min(
-          IMAGE_LIMITS.MAX_DIMENSION / width,
-          IMAGE_LIMITS.MAX_DIMENSION / height
-        )
-        const newWidth = Math.round(width * scale)
-        const newHeight = Math.round(height * scale)
-        
-        const canvas = document.createElement('canvas')
-        canvas.width = newWidth
-        canvas.height = newHeight
-        const ctx = canvas.getContext('2d')
-        if (!ctx) {
-          resolve({ dataUrl, width, height })
-          return
-        }
-        
-        ctx.drawImage(img, 0, 0, newWidth, newHeight)
-        
-        // 使用 JPEG 格式压缩（除非是 PNG 且需要透明通道）
-        const isPng = file.type === 'image/png'
-        const outputType = isPng ? 'image/png' : 'image/jpeg'
-        const quality = isPng ? undefined : IMAGE_LIMITS.QUALITY
-        const resizedDataUrl = canvas.toDataURL(outputType, quality)
-        
-        resolve({ dataUrl: resizedDataUrl, width: newWidth, height: newHeight })
-      }
-      img.onerror = () => {
-        // 无法作为图片加载，直接使用原始 data URL
-        resolve({ dataUrl, width: 0, height: 0 })
-      }
+      img.onload = () => resolve({ dataUrl, width: img.width, height: img.height })
+      img.onerror = () => resolve({ dataUrl, width: 0, height: 0 })
       img.src = dataUrl
     }
     reader.onerror = () => reject(new Error('Failed to read file'))
