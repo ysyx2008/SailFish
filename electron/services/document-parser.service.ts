@@ -289,15 +289,14 @@ export class DocumentParserService {
   /**
    * 解析 PDF 文件
    */
-  private async parsePdf(filePath: string, result: ParsedDocument, _opts: Required<ParseOptions>): Promise<void> {
+  private async parsePdf(filePath: string, result: ParsedDocument, opts: Required<ParseOptions>): Promise<void> {
     if (!this.PDFParser) {
       throw new Error('PDF 解析库未安装，请运行: npm install pdf2json')
     }
 
-    return new Promise((resolve, reject) => {
-      const pdfParser = new this.PDFParser!(null, true)  // null = no password, true = return raw text
-      
-      // 设置超时（30秒）
+    // 1) pdf2json 提取文本
+    const pdfData = await new Promise<{ Pages: Array<{ Texts: Array<{ R: Array<{ T: string }> }> }> }>((resolve, reject) => {
+      const pdfParser = new this.PDFParser!(null, true)
       const timeout = setTimeout(() => {
         reject(new Error('PDF 解析超时，文件可能过大或格式不支持'))
       }, 30000)
@@ -308,70 +307,120 @@ export class DocumentParserService {
         reject(new Error(`PDF 解析错误: ${message}`))
       })
       
-      pdfParser.on('pdfParser_dataReady', async (pdfData: { Pages: Array<{ Texts: Array<{ R: Array<{ T: string }> }> }> }) => {
+      pdfParser.on('pdfParser_dataReady', (data: { Pages: Array<{ Texts: Array<{ R: Array<{ T: string }> }> }> }) => {
         clearTimeout(timeout)
-        try {
-          // 提取所有文本
-          const textContent: string[] = []
-          let pageCount = 0
-          
-          if (pdfData.Pages) {
-            pageCount = pdfData.Pages.length
-            for (const page of pdfData.Pages) {
-              const pageTexts: string[] = []
-              if (page.Texts) {
-                for (const text of page.Texts) {
-                  if (text.R) {
-                    for (const r of text.R) {
-                      if (r.T) {
-                        // 解码 URL 编码的文本
-                        try {
-                          pageTexts.push(decodeURIComponent(r.T))
-                        } catch {
-                          // 如果解码失败，使用原始文本
-                          pageTexts.push(r.T)
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-              textContent.push(pageTexts.join(' '))
-            }
-          }
-          
-          result.content = textContent.join('\n\n').trim()
-          result.pageCount = pageCount
-          
-          // 检查是否成功提取到内容
-          if (!result.content || result.content.length === 0) {
-            if (pageCount > 0) {
-              // 扫描件/图片型 PDF：预渲染前 5 页，页数少的可直接处理
-              const PREVIEW_PAGES = 5
-              const pagesToRender = Array.from({ length: Math.min(pageCount, PREVIEW_PAGES) }, (_, i) => i + 1)
-              try {
-                const renderResult = await this.renderPdfPages(filePath, pagesToRender)
-                result.images = renderResult.images
-                result.totalPages = renderResult.totalPages
-                result.error = undefined
-                log.info(`Scanned PDF detected: ${pageCount} pages, rendered ${renderResult.images.length} preview pages`)
-              } catch (renderErr) {
-                log.warn('Failed to render scanned PDF page:', renderErr)
-                result.error = `PDF 共 ${pageCount} 页，但未能提取到文本内容。该文件可能是扫描件或图片型 PDF。`
-              }
-            } else {
-              result.error = 'PDF 文件为空或格式不支持'
-            }
-          }
-          
-          resolve()
-        } catch (e) {
-          reject(new Error(`PDF 文本提取失败: ${e instanceof Error ? e.message : '未知错误'}`))
-        }
+        resolve(data)
       })
       
       pdfParser.loadPDF(filePath)
     })
+
+    // 提取文本内容
+    const textContent: string[] = []
+    let pageCount = 0
+    
+    if (pdfData.Pages) {
+      pageCount = pdfData.Pages.length
+      for (const page of pdfData.Pages) {
+        const pageTexts: string[] = []
+        if (page.Texts) {
+          for (const text of page.Texts) {
+            if (text.R) {
+              for (const r of text.R) {
+                if (r.T) {
+                  try {
+                    pageTexts.push(decodeURIComponent(r.T))
+                  } catch {
+                    pageTexts.push(r.T)
+                  }
+                }
+              }
+            }
+          }
+        }
+        textContent.push(pageTexts.join(' '))
+      }
+    }
+    
+    result.content = textContent.join('\n\n').trim()
+    result.pageCount = pageCount
+
+    const PREVIEW_PAGES = 5
+    const hasText = result.content.length > 0
+
+    // 2) 无文本 → 扫描件，渲染前 N 页
+    if (!hasText && pageCount > 0) {
+      const pagesToRender = Array.from({ length: Math.min(pageCount, PREVIEW_PAGES) }, (_, i) => i + 1)
+      try {
+        const renderResult = await this.renderPdfPages(filePath, pagesToRender)
+        result.images = renderResult.images
+        result.totalPages = renderResult.totalPages
+        result.error = undefined
+        log.info(`Scanned PDF detected: ${pageCount} pages, rendered ${renderResult.images.length} preview pages`)
+      } catch (renderErr) {
+        log.warn('Failed to render scanned PDF page:', renderErr)
+        result.error = `PDF 共 ${pageCount} 页，但未能提取到文本内容。该文件可能是扫描件或图片型 PDF。`
+      }
+      return
+    }
+
+    if (!hasText && pageCount === 0) {
+      result.error = 'PDF 文件为空或格式不支持'
+      return
+    }
+
+    // 3) 有文本 + 有视觉模型 → 检测是否含图片，有则额外渲染前 N 页
+    if (hasText && opts.extractImages && pageCount > 0) {
+      try {
+        const hasImages = await this.pdfHasImages(filePath, pageCount)
+        if (hasImages) {
+          const pagesToRender = Array.from({ length: Math.min(pageCount, PREVIEW_PAGES) }, (_, i) => i + 1)
+          const renderResult = await this.renderPdfPages(filePath, pagesToRender)
+          result.images = renderResult.images
+          result.totalPages = renderResult.totalPages
+          log.info(`Mixed PDF detected: ${pageCount} pages, has images, rendered ${renderResult.images.length} preview pages`)
+        } else {
+          log.info(`Pure text PDF: ${pageCount} pages, no images detected`)
+        }
+      } catch (detectErr) {
+        log.warn('Failed to detect/render PDF images, using text only:', detectErr)
+      }
+    }
+  }
+
+  /**
+   * 扫描 PDF 全部页面，检测是否包含图片操作（OPS.paintImageXObject 等）
+   * 遇到第一个图片操作即提前退出，纯文本 PDF 需扫全部页
+   */
+  private async pdfHasImages(filePath: string, pageCount: number): Promise<boolean> {
+    if (!this.pdfjsLib) {
+      this.pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
+    }
+    const OPS = this.pdfjsLib.OPS
+    const IMAGE_OPS = new Set([OPS.paintImageXObject, OPS.paintImageMaskXObject, OPS.paintInlineImageXObject])
+
+    const data = new Uint8Array(await fs.promises.readFile(filePath))
+    const doc = await this.pdfjsLib.getDocument({
+      data,
+      useSystemFonts: true,
+      isEvalSupported: false,
+    }).promise
+
+    try {
+      for (let i = 1; i <= pageCount; i++) {
+        const page = await doc.getPage(i)
+        const ops = await page.getOperatorList()
+        for (const fn of ops.fnArray) {
+          if (IMAGE_OPS.has(fn)) {
+            log.info(`PDF image detected on page ${i}/${pageCount}`)
+            return true
+          }
+        }
+      }
+      return false
+    } finally {
+      doc.destroy()
+    }
   }
 
   /**
