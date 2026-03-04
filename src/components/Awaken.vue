@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, toRaw } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore, type AgentMbtiType } from '../stores/config'
 import {
@@ -218,7 +218,7 @@ function startEditing() {
     priority: w.priority,
     outputType: w.output.type,
     skills: w.skills?.join(', ') || '',
-    triggers: structuredClone(w.triggers),
+    triggers: JSON.parse(JSON.stringify(toRaw(w.triggers))),
   }
   editing.value = true
 }
