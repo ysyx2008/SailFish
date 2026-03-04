@@ -125,7 +125,7 @@ onUnmounted(() => {
           :title="t('ai.switchModel')"
         >
           <option v-for="profile in aiProfiles" :key="profile.id" :value="profile.id">
-            {{ profile.name }} ({{ profile.model }})
+            {{ profile.name }} ({{ profile.model }}){{ profile.modelType === 'vision' ? ` [${t('aiSettings.modelTypeVision')}]` : '' }}
           </option>
         </select>
         <button class="btn-icon" @click="clearMessages" :title="t('common.clear')">
