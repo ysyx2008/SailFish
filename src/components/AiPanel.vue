@@ -215,7 +215,13 @@ const {
   },
   {
     getAttachments: () => uploadedDocs.value
-      .map(d => ({ filename: d.filename, fileSize: d.fileSize, fileType: d.fileType })),
+      .map(d => ({
+        filename: d.filename,
+        fileSize: d.fileSize,
+        fileType: d.fileType,
+        totalPages: d.totalPages || d.pageCount,
+        previewPages: d.images?.length
+      })),
     clearAttachments: clearUploadedDocs
   }
 )
@@ -1356,6 +1362,16 @@ onUnmounted(() => {
                       @click="openImagePreview(imgUrl)"
                     />
                   </div>
+                  <!-- PDF 预览页数提示 -->
+                  <template v-if="group.attachments">
+                    <div 
+                      v-for="hint in group.attachments.filter(a => a.totalPages && a.previewPages && a.totalPages > a.previewPages)"
+                      :key="hint.filename"
+                      class="image-preview-hint"
+                    >
+                      仅预览前 {{ hint.previewPages }} 页（共 {{ hint.totalPages }} 页）
+                    </div>
+                  </template>
                   <!-- 用户消息附带的文件 -->
                   <div v-if="group.attachments && group.attachments.length > 0" class="message-attachments">
                     <span 
@@ -5087,6 +5103,13 @@ onUnmounted(() => {
   cursor: pointer;
   border: 1px solid var(--border-color);
   transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.image-preview-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  opacity: 0.8;
 }
 
 .message-image:hover {

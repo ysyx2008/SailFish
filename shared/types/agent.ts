@@ -54,6 +54,10 @@ export interface AttachmentInfo {
   filename: string
   fileSize: number
   fileType: string
+  /** PDF/文档总页数 */
+  totalPages?: number
+  /** 已渲染为预览图片的页数 */
+  previewPages?: number
 }
 
 export interface AgentStep {

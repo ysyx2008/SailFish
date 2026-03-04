@@ -983,13 +983,17 @@ interface Window {
         maxFileSize?: number
         maxTextLength?: number
         extractMetadata?: boolean
+        extractImages?: boolean
       }) => Promise<{
         filename: string
+        filePath?: string
         fileType: string
         content: string
         fileSize: number
         parseTime: number
         pageCount?: number
+        totalPages?: number
+        images?: string[]
         metadata?: Record<string, string>
         error?: string
       }>
@@ -1002,13 +1006,17 @@ interface Window {
         maxFileSize?: number
         maxTextLength?: number
         extractMetadata?: boolean
+        extractImages?: boolean
       }) => Promise<Array<{
         filename: string
+        filePath?: string
         fileType: string
         content: string
         fileSize: number
         parseTime: number
         pageCount?: number
+        totalPages?: number
+        images?: string[]
         metadata?: Record<string, string>
         error?: string
       }>>
