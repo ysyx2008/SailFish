@@ -36,19 +36,16 @@ interface ToolDefinitionWithMeta extends ToolDefinition {
 function buildSkillTool(): ToolDefinition {
   const disabledIds = new Set(getConfigService().get('disabledBuiltinSkills') || [])
   const skills = getSkillsSummary().filter(s => !disabledIds.has(s.id))
-  const skillsList = skills.length > 0
-    ? skills.map(s => `- **${s.id}**: ${s.name} - ${s.description}`).join('\n')
-    : '- 暂无可用技能'
+  const skillsCompact = skills.length > 0
+    ? skills.map(s => `${s.id}(${s.name})`).join('、')
+    : '暂无'
   const skillIds = skills.map(s => `"${s.id}"`).join(', ') || '暂无'
 
   return {
     type: 'function',
     function: {
       name: 'skill',
-      description: `加载或卸载技能模块。技能是一组相关工具的集合，按需加载。加载后在整个会话中持续有效，无需重复加载。不再需要时卸载以释放工具槽位。
-
-**可用技能**：
-${skillsList}`,
+      description: `加载或卸载技能模块。加载后会话内持续有效。涉及相关领域时先加载再执行。\n\n可用技能：${skillsCompact}`,
       parameters: {
         type: 'object',
         properties: {

@@ -8,7 +8,6 @@
  */
 import type { AgentContext, HostProfileServiceInterface, ExecutionMode } from './types'
 import type { AgentMbtiType } from '../config.service'
-import { getSkillsSummary } from './skills/registry'
 import { getUserSkillService } from '../user-skill.service'
 import { getWorkspacePath } from './tools/file'
 
@@ -417,35 +416,16 @@ export class PromptBuilder {
   }
 
   private buildToolConstraints(): string {
-    const sections: string[] = []
-
     if (this.isSshTerminal) {
-      sections.push([
+      return [
         '# SSH 终端约束',
         '',
         '- `read_file`、`edit_file`、`write_local_file` **不可用**（只能操作本地文件）',
         '- 读取远程文件用 `cat`/`head`/`tail`，写入用 `write_remote_file` 或 `echo`/`cat <<EOF`',
         '- 终端状态需根据屏幕内容自行判断（看提示符、Password:、进度等）',
-      ].join('\n'))
-    } else {
-      sections.push([
-        '# 工具使用提示',
-        '',
-        '- **按文件名搜索时优先用 `file_search`**（基于系统索引，毫秒级响应，比通过 execute_command 执行 find/locate 快得多）；`file_search` 只搜文件名不搜内容，需搜文件内容时请用 execute_command 执行 grep',
-        '- `write_remote_file` 不可用（仅 SSH 终端可用）',
-      ].join('\n'))
+      ].join('\n')
     }
-
-    sections.push([
-      '# 技能扩展',
-      '',
-      '通过 `skill(action="load", skill_id="...")` 按需加载额外能力，加载后在整个会话中持续有效。',
-      '不再需要时 `skill(action="unload", skill_id="...")` 卸载以释放工具槽位。',
-      '',
-      this.buildSkillsSection(),
-    ].join('\n'))
-
-    return sections.join('\n\n')
+    return '# 工具提示\n\n- 按文件名搜索优先用 `file_search`（毫秒级），搜内容用 grep'
   }
 
   // ==================== 私有方法：核心规则及子方法 ====================
@@ -545,7 +525,7 @@ export class PromptBuilder {
   }
 
   private buildWatchGuide(): string {
-    return '**关切**（加载 watch 技能后使用）：到点或触发时由 AI 自动执行任务并推送结果。与日程区别：关切 = AI 自动执行，日程 = 只提醒。"每天帮我做X"/"文件变了执行Z" → 关切。已有关切见下方列表，避免重复创建。'
+    return '**关切**：关切 = AI 自动执行，日程 = 只提醒。"每天帮我做X"/"文件变了执行Z" → 关切。'
   }
 
   private buildDocumentRule(): string {
@@ -605,13 +585,6 @@ export class PromptBuilder {
     return parts.join('\n')
   }
 
-  private buildSkillsSection(): string {
-    const skills = getSkillsSummary()
-    if (skills.length === 0) {
-      return '暂无可用技能。'
-    }
-    return `可用技能：${skills.map(s => `\`${s.id}\`(${s.name})`).join('、')}\n涉及相关领域时先 \`skill(action="load", skill_id="技能ID")\` 加载。`
-  }
 }
 
 // ==================== 向后兼容的导出函数 ====================
