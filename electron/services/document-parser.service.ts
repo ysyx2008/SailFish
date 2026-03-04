@@ -383,12 +383,18 @@ export class DocumentParserService {
     }
 
     if (opts.extractImages) {
-      // 一次 convertToHtml 同时提取文本、图片、表格，避免重复解析
       await this.parseDocxWithImages(filePath, result)
     } else {
-      const docxResult = await this.mammoth.extractRawText({ path: filePath })
-      result.content = docxResult.value
-      this.collectDocxWarnings(docxResult.messages, result)
+      // convertToHtml 保留表格等结构信息，LLM 能直接理解语义 HTML
+      try {
+        const htmlResult = await this.mammoth.convertToHtml({ path: filePath })
+        result.content = this.cleanMammothHtml(htmlResult.value)
+        this.collectDocxWarnings(htmlResult.messages, result)
+      } catch {
+        const docxResult = await this.mammoth.extractRawText({ path: filePath })
+        result.content = docxResult.value
+        this.collectDocxWarnings(docxResult.messages, result)
+      }
     }
   }
 
@@ -419,16 +425,7 @@ export class DocumentParserService {
         )
       })
 
-      // 从 HTML 提取纯文本（去标签）
-      result.content = htmlResult.value
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/\s+/g, ' ')
-        .trim()
+      result.content = this.cleanMammothHtml(htmlResult.value)
 
       this.collectDocxWarnings(htmlResult.messages, result)
 
@@ -448,6 +445,16 @@ export class DocumentParserService {
       result.content = docxResult.value
       this.collectDocxWarnings(docxResult.messages, result)
     }
+  }
+
+  /**
+   * 清理 mammoth 输出的 HTML：移除空 img 占位符，保留语义结构供 LLM 阅读
+   */
+  private cleanMammothHtml(html: string): string {
+    return html
+      .replace(/<img[^>]*src\s*=\s*["']\s*["'][^>]*\/?>/g, '') // 移除 src 为空的 img（图片提取后的占位符）
+      .replace(/<p>\s*<\/p>/g, '') // 移除空段落
+      .trim()
   }
 
   private collectDocxWarnings(messages: Array<{ type: string; message: string }> | undefined, result: ParsedDocument): void {
