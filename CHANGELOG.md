@@ -2,7 +2,31 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.12.2 (2026-03-04) (Latest)
+## v10.13.0 (2026-03-04) (Latest)
+
+Introduced hybrid multimodal routing for automatic vision model switching, and significantly enhanced document parsing with PDF rendering, Word image extraction, and HTML-to-Markdown conversion.
+
+### New Features
+- 🧠 **Hybrid Multimodal Routing**: Main model automatically routes to its associated vision model when images are detected in the conversation, no manual switching needed
+- 📄 **PDF Page Rendering**: Added PDF rendering capability for scanned PDFs — pre-renders first 5 pages and detects image-heavy pages for visual AI analysis
+- 🖼️ **Word Image Extraction**: Document parser now extracts embedded images from Word (.docx) files with structured HTML output
+- 🔄 **HTML-to-Markdown Conversion**: Document parsing pipeline now converts extracted HTML to clean Markdown for better AI consumption
+
+### Improvements
+- 📎 **Document Upload Image Separation**: Uploaded documents now separate preview images from full-resolution images for optimized processing
+- 📊 **PDF Attachment Metadata**: PDF attachments now show page count and preview page count in attachment info
+- 🐛 **AI Debug Console Images**: AI Debug Console now displays image content info instead of hiding it completely
+- 💬 **Toast Reply History**: Desktop proactive notification replies now carry conversation history so the Agent remembers prior context
+- 🏗️ **Unified Proactive Context Store**: Consolidated proactive context storage path, removing duplicate mechanism in IMService
+- 👁️ **Unified Vision Capability Check**: Moved `hasVisionCapability` logic to backend ConfigService, removing fragile regex matching from frontend
+
+### Bug Fixes
+- 🔧 Fixed ParsedDocument not saving file path, causing Agent to search the entire filesystem
+- 🔧 Fixed image mapping info missing, causing incorrect page numbers in document references
+- 🔧 Fixed vision model attempting to use `read_file` on images instead of analyzing them directly
+- 🔧 Fixed image uploads being pre-compressed — now sends original images with `detail:high` for better AI analysis
+
+## v10.12.2 (2026-03-04)
 
 Improved document upload handling, added Watch editing support, and fixed multiple Scheduler-to-Watch migration issues.
 
