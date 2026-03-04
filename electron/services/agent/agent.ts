@@ -979,6 +979,9 @@ export abstract class Agent {
     if (run.context.proactiveContext) {
       enhancedMessage = run.context.proactiveContext.trim() + '\n\n' + enhancedMessage
     }
+    if (run.context.documentContext) {
+      enhancedMessage = enhancedMessage + '\n\n' + run.context.documentContext
+    }
     const userMsg: AiMessage = { role: 'user', content: enhancedMessage }
     if (run.context.images && run.context.images.length > 0) {
       userMsg.images = run.context.images

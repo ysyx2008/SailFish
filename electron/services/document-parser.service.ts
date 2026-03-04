@@ -621,31 +621,27 @@ export class DocumentParserService {
 
     const parts: string[] = []
     
-    parts.push('=== 用户上传的参考文档 ===\n')
-    parts.push('【重要说明】以下是用户**本次上传**的参考文档，代表用户当前需要你参考的最新资料。请以这些文档内容为准进行回答，无需使用工具读取这些文档。\n\n')
+    parts.push('<sf_uploaded_docs>\n')
     
     for (let i = 0; i < docs.length; i++) {
       const doc = docs[i]
       
       if (doc.error) {
-        parts.push(`[文档 ${i + 1}: ${doc.filename}]\n⚠️ 解析失败: ${doc.error}\n`)
+        parts.push(`<sf_doc name="${doc.filename}" error="${doc.error}" />\n`)
         continue
       }
       
-      parts.push(`[文档 ${i + 1}: ${doc.filename}]`)
-      if (doc.pageCount) {
-        parts.push(`(共 ${doc.pageCount} 页)`)
-      }
-      parts.push('\n')
+      const attrs = doc.pageCount ? ` pages="${doc.pageCount}"` : ''
+      parts.push(`<sf_doc name="${doc.filename}"${attrs}>\n`)
       parts.push(doc.content)
-      parts.push('\n')
+      parts.push('\n</sf_doc>\n')
       
       if (i < docs.length - 1) {
-        parts.push('\n---\n\n')
+        parts.push('\n')
       }
     }
     
-    parts.push('\n=== 文档内容结束 ===\n')
+    parts.push('</sf_uploaded_docs>')
     
     return parts.join('')
   }

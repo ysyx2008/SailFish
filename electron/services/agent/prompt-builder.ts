@@ -198,7 +198,6 @@ export class PromptBuilder {
       this.buildWorkflowSection(),
       this.buildToolConstraints(),
       this.buildCoreRules(),
-      this.buildDocumentContext(),
       this.buildKnowledgeContext(),
       getUserSkillService().buildSkillsSummary(),
       this.buildTaskMemorySection(),
@@ -591,9 +590,7 @@ export class PromptBuilder {
   private buildDocumentRule(): string {
     if (!this.context.documentContext) return ''
     return [
-      '**【重要】关于用户上传的文档**：用户已上传文档，文档**完整内容**已经包含在本对话的上下文末尾（标记为"用户上传的参考文档"）。',
-      '- **直接使用上下文中的文档内容**，不需要也不应该使用 read_file 工具读取',
-      '- 文档内容就在下方，你可以直接引用和分析',
+      '**【重要】关于用户上传的文档**：用户已上传文档，文档完整内容在用户消息的 `<sf_uploaded_docs>` 标签内，直接使用即可，一般不需要用 read_file 读取。',
     ].join('\n')
   }
 
@@ -612,11 +609,6 @@ export class PromptBuilder {
       '**知识库工具**：用户有知识库，你可以使用 `search_knowledge` 工具搜索用户保存的文档和笔记。',
       '- **搜索结果已包含文档内容片段，直接使用即可，不要用 read_file 读取**',
     ].join('\n')
-  }
-
-  private buildDocumentContext(): string {
-    if (!this.context.documentContext) return ''
-    return this.context.documentContext
   }
 
   private buildKnowledgeContext(): string {
