@@ -2,7 +2,30 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.12.1 (2026-03-01) (Latest)
+## v10.12.2 (2026-03-04) (Latest)
+
+Improved document upload handling, added Watch editing support, and fixed multiple Scheduler-to-Watch migration issues.
+
+### New Features
+- 📎 **Uploaded Files Display**: User messages now show the list of uploaded files with attachment metadata
+- ✏️ **Watch Editing Panel**: Watch detail panel now supports direct editing, allowing users to fine-tune Watch configurations
+
+### Improvements
+- 📄 **Document Upload Refactor**: Switched to XML format for document context injection, simplifying how uploaded documents are referenced by the Agent
+- 🌐 **Skill i18n**: Built-in skill names and descriptions now support Chinese/English switching
+- 🐟 **Brand Update**: Updated GitHub repository references and Matrix Easter egg ASCII art to use "SailFish" branding
+- 📸 **Updated Screenshots**: Added new screenshots showcasing AI Assistant, Skill Market, and Remote Agent features
+
+### Bug Fixes
+- 🔧 Fixed Scheduler→Watch migration failing after packaging due to dynamic import issues (switched to static import)
+- 🔧 Fixed Scheduler→Watch migration not clearing old task data and stopping the deprecated Scheduler
+- 🔧 Fixed Watch wakeup selecting the wrong IM platform when multiple platforms are connected simultaneously
+- 🔧 Fixed Watch edit button not responding due to `structuredClone` unable to clone Vue Proxy objects
+- 🔧 Fixed attachment label styling — removed filename truncation and improved color readability
+- 🔧 Fixed malformed tool call arguments causing tasks to silently end instead of auto-retrying
+- 🔧 Fixed type definitions and test assertions to match refactored document upload logic
+
+## v10.12.1 (2026-03-01)
 
 Refreshed app branding with a new logo across all platforms, and added an assistant avatar in standalone mode.
 
