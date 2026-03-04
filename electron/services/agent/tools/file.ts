@@ -9,6 +9,7 @@ import { t } from '../i18n'
 import { getTerminalStateService } from '../../terminal-state.service'
 import { getFileSearchService } from '../../file-search.service'
 import { getDocumentParserService } from '../../document-parser.service'
+import { getConfigService } from '../../config.service'
 import { categorizeError, getErrorRecoverySuggestion, truncateFromEnd, formatFileSize } from './utils'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
 import { VISION_IMAGE_EXTENSIONS, IMAGE_MIME_TYPES } from './types'
@@ -229,6 +230,27 @@ function readImageFile(
 /**
  * 读取文档文件
  */
+/**
+ * 判断当前 Agent 是否具备视觉模型能力
+ * - 当前模型本身是视觉/多模态模型 → 直接具备，不需要开关
+ * - 当前模型是纯文本模型 → 需要 autoVisionModel 开启 + 配置了 visionProfileId
+ */
+function hasVisionCapability(): boolean {
+  try {
+    const configService = getConfigService()
+    const profiles = configService.getAiProfiles()
+    const activeId = configService.getActiveAiProfile()
+    const profile = profiles.find(p => p.id === activeId)
+    if (!profile) return false
+    if (profile.modelType === 'vision') return true
+    if (!configService.get('autoVisionModel')) return false
+    const visionId = profile.visionProfileId
+    return !!(visionId && visionId !== activeId && profiles.some(p => p.id === visionId))
+  } catch {
+    return false
+  }
+}
+
 async function readDocumentFile(
   filePath: string,
   fileSize: number,
@@ -239,6 +261,7 @@ async function readDocumentFile(
   
   try {
     const documentParser = getDocumentParserService()
+    const extractImages = hasVisionCapability()
     
     const result = await documentParser.parseDocument({
       name: fileName,
@@ -246,13 +269,16 @@ async function readDocumentFile(
       size: fileSize
     }, {
       maxFileSize: 10 * 1024 * 1024,
-      maxTextLength: 100000
+      maxTextLength: 100000,
+      extractImages
     })
-    
-    // 扫描件 PDF：有图片但无文本内容
-    if (result.images && result.images.length > 0) {
-      // 自动加载 PDF 技能，让 AI 可以用 pdf_view_page 查看更多页面
-      if (executor.skillSession) {
+
+    const hasContent = result.content && result.content.length > 0
+    const hasImages = result.images && result.images.length > 0
+
+    // 1) 扫描件 PDF：无文本，仅图片
+    if (!hasContent && hasImages) {
+      if (ext === '.pdf' && executor.skillSession) {
         try {
           await executor.skillSession.loadSkill('pdf')
         } catch (_) { /* skill already loaded or unavailable */ }
@@ -276,6 +302,7 @@ async function readDocumentFile(
       return { success: true, output, images: result.images }
     }
 
+    // 2) 解析失败
     if (result.error) {
       executor.addStep({
         type: 'tool_result',
@@ -286,6 +313,7 @@ async function readDocumentFile(
       return { success: false, output: '', error: result.error }
     }
 
+    // 3) 有文本（可能也有图片：图文混排 PDF / Word 含图）
     const docInfo: string[] = []
     docInfo.push(`📄 ${fileName}`)
     docInfo.push(`${ext.toUpperCase().slice(1)} ${t('file.document_parsed')}`)
@@ -293,15 +321,26 @@ async function readDocumentFile(
       docInfo.push(`${t('file.page_count')}: ${result.pageCount}`)
     }
     docInfo.push(`${t('file.content_length')}: ${result.content.length.toLocaleString()} ${t('file.chars')}`)
+    if (hasImages) {
+      docInfo.push(`${t('file.images_extracted')}: ${result.images!.length}`)
+    }
+
+    // 图文混排 PDF：加载 pdf 技能以支持查看更多页
+    if (hasImages && ext === '.pdf' && executor.skillSession) {
+      try {
+        await executor.skillSession.loadSkill('pdf')
+      } catch (_) { /* skill already loaded or unavailable */ }
+    }
 
     executor.addStep({
       type: 'tool_result',
       content: `${t('file.read_success')}: ${docInfo.join(', ')}`,
       toolName: 'read_file',
-      toolResult: truncateFromEnd(result.content, 500)
+      toolResult: truncateFromEnd(result.content, 500),
+      images: hasImages ? result.images : undefined
     })
 
-    return { success: true, output: result.content }
+    return { success: true, output: result.content, images: hasImages ? result.images : undefined }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : t('file.parse_failed')
     executor.addStep({

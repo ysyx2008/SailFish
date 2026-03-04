@@ -18,12 +18,17 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
   const terminalStore = useTerminalStore()
   const configStore = useConfigStore()
 
-  /** 当前是否具备视觉模型能力（用于决定是否提取文档图片） */
+  /**
+   * 当前是否具备视觉模型能力（用于决定是否提取文档图片）
+   * - 当前模型本身是视觉/多模态模型 → 直接具备，不需要 autoVisionModel 开关
+   * - 当前模型是纯文本模型 → 需要 autoVisionModel 开启 + 配置了 visionProfileId
+   */
   const hasVisionCapability = computed(() => {
-    if (!configStore.autoVisionModel) return false
     const profile = configStore.activeAiProfile
     if (!profile) return false
-    return isVisionModel(profile.model, profile.modelType) || !!profile.visionProfileId
+    if (isVisionModel(profile.model, profile.modelType)) return true
+    if (!configStore.autoVisionModel) return false
+    return !!profile.visionProfileId
   })
   
   // 上传中状态（全局状态，因为同一时间只能上传一次）
