@@ -2959,13 +2959,8 @@ ipcMain.handle('hostProfile:probeSsh', async (_event, sshId: string, hostId: str
 // 选择文件对话框
 ipcMain.handle('document:selectFiles', async () => {
   const result = await dialog.showOpenDialog({
-    title: '选择文档',
+    title: '选择文件',
     filters: [
-      { name: '支持的文档', extensions: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'txt', 'md', 'markdown', 'json', 'xml', 'csv', 'html', 'htm'] },
-      { name: 'PDF 文档', extensions: ['pdf'] },
-      { name: 'Word 文档', extensions: ['docx', 'doc'] },
-      { name: 'Excel 表格', extensions: ['xlsx', 'xls'] },
-      { name: '文本文件', extensions: ['txt', 'md', 'markdown'] },
       { name: '所有文件', extensions: ['*'] }
     ],
     properties: ['openFile', 'multiSelections']

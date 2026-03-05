@@ -9,9 +9,6 @@ import { useTerminalStore, type ParsedDocument } from '../stores/terminal'
 // 重新导出类型供外部使用
 export type { ParsedDocument }
 
-// 支持的文件扩展名
-const SUPPORTED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.md', '.markdown', '.json', '.xml', '.csv', '.html', '.htm']
-
 export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef<string | null>) {
   const terminalStore = useTerminalStore()
 
@@ -29,12 +26,6 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     if (!currentTabId.value) return []
     return terminalStore.getUploadedDocs(currentTabId.value)
   })
-
-  // 检查文件是否支持
-  const isSupportedFile = (filename: string): boolean => {
-    const ext = filename.toLowerCase().slice(filename.lastIndexOf('.'))
-    return SUPPORTED_EXTENSIONS.includes(ext)
-  }
 
   // 选择并上传文档（替换模式：新文档替换旧文档）
   const selectAndUploadDocs = async (hostId?: string) => {
@@ -77,32 +68,24 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     }
   }
 
-  // 处理拖放的文件（替换模式）
-  // 返回不支持的文件名列表，供调用方决定如何提示用户
-  const handleDroppedFiles = async (files: FileList | File[], hostId?: string): Promise<string[]> => {
-    if (isUploadingDocs.value || !currentTabId.value) return []
+  // 处理拖放的文件
+  const handleDroppedFiles = async (files: FileList | File[], hostId?: string) => {
+    if (isUploadingDocs.value || !currentTabId.value) return
     
     const tabId = currentTabId.value
     
-    // 过滤支持的文件并构造文件信息对象
     const fileInfos: Array<{ name: string; path: string; size: number; mimeType?: string }> = []
-    const unsupportedFiles: string[] = []
     for (const file of files) {
-      // 使用 Electron webUtils API 获取文件路径（Electron 24+ 推荐方式）
+      if (file.type.startsWith('image/')) continue
+      
       let filePath: string | undefined
       try {
         filePath = window.electronAPI?.fileUtils?.getPathForFile(file)
       } catch (e) {
-        // 降级：尝试使用旧的 path 属性
         filePath = (file as File & { path?: string }).path
       }
       
-      if (file.type.startsWith('image/')) continue
-      
-      if (!isSupportedFile(file.name) || !filePath) {
-        unsupportedFiles.push(file.name)
-        continue
-      }
+      if (!filePath) continue
       
       fileInfos.push({
         name: file.name,
@@ -112,9 +95,7 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
       })
     }
     
-    if (fileInfos.length === 0) {
-      return unsupportedFiles
-    }
+    if (fileInfos.length === 0) return
     
     try {
       isUploadingDocs.value = true
@@ -122,10 +103,8 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
       const documentAPI = (window.electronAPI as { document: typeof window.electronAPI.document }).document
       const parsedDocs = await documentAPI.parseMultiple(fileInfos)
       
-      // 追加模式：新上传的文档追加到现有列表
       terminalStore.addUploadedDocs(tabId, parsedDocs)
       
-      // 显示解析结果摘要
       const successCount = parsedDocs.filter((d: ParsedDocument) => !d.error).length
       const errorCount = parsedDocs.filter((d: ParsedDocument) => d.error).length
       
@@ -133,7 +112,6 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
         console.warn(`文档解析: ${successCount} 成功, ${errorCount} 失败`)
       }
       
-      // 自动保存到知识库（如果启用）
       if (successCount > 0) {
         autoSaveToKnowledgeIfEnabled(parsedDocs, hostId)
       }
@@ -142,8 +120,6 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     } finally {
       isUploadingDocs.value = false
     }
-    
-    return unsupportedFiles
   }
 
   // 移除已上传的文档
@@ -166,8 +142,9 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
   }
 
   // 获取文档上下文（用于发送给 AI）
+  // 有内容的文档注入全文，仅元数据的文档注入路径等信息让 Agent 自行处理
   const getDocumentContext = async (): Promise<string> => {
-    const validDocs = uploadedDocs.value.filter(d => !d.error && d.content)
+    const validDocs = uploadedDocs.value.filter(d => !d.error)
     if (validDocs.length === 0) return ''
     
     // 将 Vue Proxy 对象转换为普通对象，避免 IPC 序列化错误

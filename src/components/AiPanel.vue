@@ -67,7 +67,7 @@ const selectAttachment = () => {
   input.type = 'file'
   input.multiple = true
   // 同时接受图片和文档
-  input.accept = 'image/png,image/jpeg,image/gif,image/webp,image/bmp,.pdf,.doc,.docx,.xls,.xlsx,.txt,.md,.markdown,.json,.xml,.csv,.html,.htm'
+  input.accept = ''
   input.onchange = async () => {
     if (!input.files || input.files.length === 0) return
     const imageFiles: File[] = []
@@ -85,10 +85,7 @@ const selectAttachment = () => {
     }
     // 文档走 useDocumentUpload
     if (docFiles.length > 0) {
-      const unsupported = await handleDroppedFiles(docFiles)
-      if (unsupported.length > 0) {
-        toast.warning(t('ai.unsupportedFileType', { files: unsupported.join(', ') }))
-      }
+      await handleDroppedFiles(docFiles)
     }
   }
   input.click()
@@ -942,13 +939,7 @@ const handleDrop = async (e: DragEvent) => {
     const imageCount = await handleDroppedImages(files)
     // 剩余的非图片文件交给文档处理
     if (imageCount < files.length) {
-      const unsupported = await handleDroppedFiles(files)
-      if (unsupported.length > 0) {
-        const display = unsupported.length > 3
-          ? `${unsupported.slice(0, 3).join(', ')} 等 ${unsupported.length} 个文件`
-          : unsupported.join(', ')
-        toast.warning(t('ai.unsupportedFileType', { files: display }))
-      }
+      await handleDroppedFiles(files)
     }
   }
 }

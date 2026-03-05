@@ -214,48 +214,44 @@ export class DocumentParserService {
     }
 
     try {
-      // 检查文件大小
-      if (file.size > opts.maxFileSize) {
-        throw new Error(`文件大小 ${this.formatFileSize(file.size)} 超过限制 ${this.formatFileSize(opts.maxFileSize)}`)
-      }
-
-      // 检查文件是否存在
       if (!fs.existsSync(file.path)) {
         throw new Error(`文件不存在: ${file.path}`)
       }
 
-      // 根据文件类型选择解析方法
       switch (fileType) {
         case 'pdf':
-          await this.parsePdf(file.path, result, opts)
-          break
         case 'docx':
-          await this.parseDocx(file.path, result, opts)
-          break
         case 'doc':
-          await this.parseDoc(file.path, result, opts)
-          break
         case 'xlsx':
         case 'xls':
-          await this.parseExcel(file.path, result, opts)
-          break
         case 'txt':
         case 'md':
         case 'json':
         case 'xml':
         case 'html':
+        case 'csv': {
+          if (file.size > opts.maxFileSize) {
+            throw new Error(`文件大小 ${this.formatFileSize(file.size)} 超过限制 ${this.formatFileSize(opts.maxFileSize)}`)
+          }
+          if (fileType === 'pdf') await this.parsePdf(file.path, result, opts)
+          else if (fileType === 'docx') await this.parseDocx(file.path, result, opts)
+          else if (fileType === 'doc') await this.parseDoc(file.path, result, opts)
+          else if (fileType === 'xlsx' || fileType === 'xls') await this.parseExcel(file.path, result, opts)
+          else if (fileType === 'csv') await this.parseCsv(file.path, result, opts)
+          else await this.parseTextFile(file.path, result, opts)
+          break
+        }
+        default: {
+          if (this.isLikelyBinary(file.path)) {
+            result.content = ''
+            break
+          }
+          if (file.size > opts.maxFileSize) {
+            throw new Error(`文件大小 ${this.formatFileSize(file.size)} 超过限制 ${this.formatFileSize(opts.maxFileSize)}`)
+          }
           await this.parseTextFile(file.path, result, opts)
           break
-        case 'csv':
-          await this.parseCsv(file.path, result, opts)
-          break
-        default:
-          // 尝试作为文本解析
-          try {
-            await this.parseTextFile(file.path, result, opts)
-          } catch {
-            result.error = `不支持的文件类型: ${fileType}`
-          }
+        }
       }
 
       // 截断过长的内容
@@ -725,6 +721,29 @@ export class DocumentParserService {
   }
 
   /**
+   * 读取文件头部字节，通过 null byte 检测判断是否为二进制文件（与 git 同一策略）
+   */
+  private isLikelyBinary(filePath: string): boolean {
+    try {
+      const fd = fs.openSync(filePath, 'r')
+      try {
+        const stats = fs.fstatSync(fd)
+        if (stats.size < 4) return false
+        const buf = Buffer.alloc(Math.min(8000, stats.size))
+        const bytesRead = fs.readSync(fd, buf, 0, buf.length, 0)
+        for (let i = 0; i < bytesRead; i++) {
+          if (buf[i] === 0) return true
+        }
+        return false
+      } finally {
+        fs.closeSync(fd)
+      }
+    } catch {
+      return true
+    }
+  }
+
+  /**
    * 解析文本文件
    */
   private async parseTextFile(filePath: string, result: ParsedDocument, _opts: Required<ParseOptions>): Promise<void> {
@@ -854,9 +873,15 @@ export class DocumentParserService {
       
       const pathAttr = doc.filePath ? ` path="${doc.filePath}"` : ''
       const pagesAttr = doc.pageCount ? ` pages="${doc.pageCount}"` : ''
-      parts.push(`<sf_doc name="${doc.filename}"${pathAttr}${pagesAttr}>\n`)
-      parts.push(doc.content)
-      parts.push('\n</sf_doc>\n')
+      
+      if (!doc.content && doc.filePath) {
+        const sizeAttr = doc.fileSize ? ` size="${this.formatFileSize(doc.fileSize)}"` : ''
+        parts.push(`<sf_doc name="${doc.filename}"${pathAttr}${sizeAttr} mode="metadata" />\n`)
+      } else {
+        parts.push(`<sf_doc name="${doc.filename}"${pathAttr}${pagesAttr}>\n`)
+        parts.push(doc.content)
+        parts.push('\n</sf_doc>\n')
+      }
       
       if (i < docs.length - 1) {
         parts.push('\n')
