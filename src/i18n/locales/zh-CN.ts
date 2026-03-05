@@ -394,7 +394,7 @@ export default {
     confirmDeleteProfile: '确定要删除此 AI 配置吗？',
     confirmNoApiKey: '您没有填写 API Key。\n\n大多数 API 服务需要提供 Key 才能正常使用（本地部署的 Ollama 等除外）。\n\n确定要继续保存吗？',
     modelType: '模型类型',
-    modelTypeGeneral: '通用',
+    modelTypeGeneral: '纯文本',
     modelTypeVision: '视觉',
     modelTypeHint: '视觉模型支持图片理解',
     visionProfile: '关联视觉模型',

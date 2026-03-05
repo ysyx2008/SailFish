@@ -76,6 +76,16 @@ const visionProfileOptions = computed(() => {
   )
 })
 
+const contextLengthInK = computed({
+  get: () => {
+    const v = formData.value.contextLength
+    return v ? Math.round(v / 1000) : undefined
+  },
+  set: (val: number | undefined) => {
+    formData.value.contextLength = val ? val * 1000 : undefined
+  }
+})
+
 const openNewProfile = () => {
   resetForm()
   showForm.value = true
@@ -296,104 +306,110 @@ const openKeyUrl = (url: string) => {
         </div>
       </div>
 
-      <!-- 添加/编辑表单 -->
-      <div v-if="showForm" class="profile-form">
+    </template>
 
-        <div class="form-header">
-          <h4>{{ editingProfile ? t('aiSettings.editProfile') : t('aiSettings.addProfile') }}</h4>
-          <button class="btn-icon" @click="showForm = false" :title="t('common.close')">
-            <X :size="16" />
-          </button>
-        </div>
-
-        <!-- 快速模板 -->
-        <div class="templates" v-if="!editingProfile">
-          <span class="template-label">{{ t('setup.aiConfig.quickTemplates') }}</span>
-          <button
-            v-for="template in templates"
-            :key="template.name"
-            class="template-btn"
-            @click="applyTemplate(template)"
-          >
-            {{ template.name }}
-          </button>
-        </div>
-
-        <div class="form-body">
-          <div class="form-group">
-            <label class="form-label">{{ t('aiSettings.profileName') }} *</label>
-            <input v-model="formData.name" type="text" class="input" :placeholder="t('aiSettings.profileNamePlaceholder')" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">{{ t('aiSettings.apiUrl') }} *</label>
-            <input v-model="formData.apiUrl" type="text" class="input" :placeholder="t('aiSettings.apiUrlPlaceholder')" />
-          </div>
-          <div class="form-group">
-            <div class="form-label-row">
-              <label class="form-label">{{ t('aiSettings.apiKey') }}</label>
-              <button
-                v-if="currentKeyUrl"
-                class="get-key-btn"
-                @click="openKeyUrl(currentKeyUrl)"
-                :title="t('aiSettings.getApiKey')"
-              >
-                <ExternalLink :size="12" />
-                <span>{{ t('aiSettings.getApiKey') }}</span>
+    <!-- 添加/编辑表单弹窗 -->
+    <Teleport to="body">
+      <Transition name="profile-modal">
+        <div v-if="showForm" class="profile-modal-overlay" @click.self="showForm = false">
+          <div class="profile-modal">
+            <div class="form-header">
+              <h4>{{ editingProfile ? t('aiSettings.editProfile') : t('aiSettings.addProfile') }}</h4>
+              <button class="btn-icon" @click="showForm = false" :title="t('common.close')">
+                <X :size="16" />
               </button>
             </div>
-            <input v-model="formData.apiKey" type="password" class="input" :placeholder="t('aiSettings.apiKeyPlaceholder')" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">{{ t('aiSettings.model') }} *</label>
-            <input v-model="formData.model" type="text" class="input" :placeholder="t('aiSettings.modelPlaceholder')" />
-          </div>
-          <div class="form-row">
-            <div class="form-group flex-1">
-              <label class="form-label">{{ t('aiSettings.contextLength') }}（{{ t('aiSettings.contextLengthHint') }}）</label>
-              <input v-model.number="formData.contextLength" type="number" class="input" placeholder="128000" min="1" max="2000000" />
-              <span class="form-hint">DeepSeek(64K)、GPT-4o(128K)、Claude(200K)、Gemini(1M)</span>
+
+            <!-- 快速模板 -->
+            <div class="templates" v-if="!editingProfile">
+              <span class="template-label">{{ t('setup.aiConfig.quickTemplates') }}</span>
+              <button
+                v-for="template in templates"
+                :key="template.name"
+                class="template-btn"
+                @click="applyTemplate(template)"
+              >
+                {{ template.name }}
+              </button>
             </div>
-            <div class="form-group flex-1">
-              <label class="form-label">{{ t('aiSettings.maxOutputTokens') }}（{{ t('aiSettings.maxOutputTokensHint') }}）</label>
-              <input v-model.number="formData.maxOutputTokens" type="number" class="input" placeholder="8192" min="1" max="128000" />
-              <span class="form-hint">DeepSeek(8K)、GPT-4o(16K)、Claude(8K)、Qwen(8K)</span>
+
+            <div class="form-body">
+              <div class="form-group">
+                <label class="form-label">{{ t('aiSettings.profileName') }} *</label>
+                <input v-model="formData.name" type="text" class="input" :placeholder="t('aiSettings.profileNamePlaceholder')" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">{{ t('aiSettings.apiUrl') }} *</label>
+                <input v-model="formData.apiUrl" type="text" class="input" :placeholder="t('aiSettings.apiUrlPlaceholder')" />
+              </div>
+              <div class="form-group">
+                <div class="form-label-row">
+                  <label class="form-label">{{ t('aiSettings.apiKey') }}</label>
+                  <button
+                    v-if="currentKeyUrl"
+                    class="get-key-btn"
+                    @click="openKeyUrl(currentKeyUrl)"
+                    :title="t('aiSettings.getApiKey')"
+                  >
+                    <ExternalLink :size="12" />
+                    <span>{{ t('aiSettings.getApiKey') }}</span>
+                  </button>
+                </div>
+                <input v-model="formData.apiKey" type="password" class="input" :placeholder="t('aiSettings.apiKeyPlaceholder')" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">{{ t('aiSettings.model') }} *</label>
+                <input v-model="formData.model" type="text" class="input" :placeholder="t('aiSettings.modelPlaceholder')" />
+              </div>
+              <div class="form-row">
+                <div class="form-group flex-1">
+                  <label class="form-label">{{ t('aiSettings.contextLength') }}（K）</label>
+                  <input v-model.number="contextLengthInK" type="number" class="input" placeholder="128" min="1" max="2000" />
+                  <span class="form-hint">DeepSeek(64)、GPT-4o(128)、Claude(200)、Gemini(1000)</span>
+                </div>
+                <div class="form-group flex-1">
+                  <label class="form-label">{{ t('aiSettings.maxOutputTokens') }}（{{ t('aiSettings.maxOutputTokensHint') }}）</label>
+                  <input v-model.number="formData.maxOutputTokens" type="number" class="input" placeholder="8192" min="1" max="128000" />
+                  <span class="form-hint">DeepSeek(8K)、GPT-4o(16K)、Claude(8K)、Qwen(8K)</span>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">{{ t('aiSettings.proxy') }}</label>
+                <input v-model="formData.proxy" type="text" class="input" :placeholder="t('aiSettings.proxyPlaceholder')" />
+              </div>
+              <div class="form-row">
+                <div class="form-group flex-1">
+                  <label class="form-label">{{ t('aiSettings.modelType') }}</label>
+                  <select v-model="formData.modelType" class="input">
+                    <option value="general">{{ t('aiSettings.modelTypeGeneral') }}</option>
+                    <option value="vision">{{ t('aiSettings.modelTypeVision') }}</option>
+                  </select>
+                  <span class="form-hint">{{ t('aiSettings.modelTypeHint') }}</span>
+                </div>
+                <div class="form-group flex-1" v-if="formData.modelType !== 'vision'">
+                  <label class="form-label">{{ t('aiSettings.visionProfile') }}</label>
+                  <select v-model="formData.visionProfileId" class="input">
+                    <option :value="undefined">{{ t('aiSettings.visionProfileNone') }}</option>
+                    <option
+                      v-for="vp in visionProfileOptions"
+                      :key="vp.id"
+                      :value="vp.id"
+                    >
+                      {{ vp.name }} ({{ vp.model }})
+                    </option>
+                  </select>
+                  <span class="form-hint">{{ t('aiSettings.visionProfileHint') }}</span>
+                </div>
+              </div>
             </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">{{ t('aiSettings.proxy') }}</label>
-            <input v-model="formData.proxy" type="text" class="input" :placeholder="t('aiSettings.proxyPlaceholder')" />
-          </div>
-          <div class="form-row">
-            <div class="form-group flex-1">
-              <label class="form-label">{{ t('aiSettings.modelType') }}</label>
-              <select v-model="formData.modelType" class="input">
-                <option value="general">{{ t('aiSettings.modelTypeGeneral') }}</option>
-                <option value="vision">{{ t('aiSettings.modelTypeVision') }}</option>
-              </select>
-              <span class="form-hint">{{ t('aiSettings.modelTypeHint') }}</span>
-            </div>
-            <div class="form-group flex-1" v-if="formData.modelType !== 'vision'">
-              <label class="form-label">{{ t('aiSettings.visionProfile') }}</label>
-              <select v-model="formData.visionProfileId" class="input">
-                <option :value="undefined">{{ t('aiSettings.visionProfileNone') }}</option>
-                <option
-                  v-for="vp in visionProfileOptions"
-                  :key="vp.id"
-                  :value="vp.id"
-                >
-                  {{ vp.name }} ({{ vp.model }})
-                </option>
-              </select>
-              <span class="form-hint">{{ t('aiSettings.visionProfileHint') }}</span>
+            <div class="form-footer">
+              <button class="btn" @click="showForm = false">{{ t('common.cancel') }}</button>
+              <button class="btn btn-primary" @click="saveProfile">{{ t('common.save') }}</button>
             </div>
           </div>
         </div>
-        <div class="form-footer">
-          <button class="btn" @click="showForm = false">{{ t('common.cancel') }}</button>
-          <button class="btn btn-primary" @click="saveProfile">{{ t('common.save') }}</button>
-        </div>
-      </div>
-    </template>
+      </Transition>
+    </Teleport>
 
     <!-- 自动使用视觉模型 -->
     <div v-if="!isSteamBuild" class="settings-section">
@@ -581,11 +597,60 @@ const openKeyUrl = (url: string) => {
   margin-top: 8px;
 }
 
-/* 表单 */
-.profile-form {
-  background: var(--bg-tertiary);
-  border-radius: 8px;
+/* 弹窗 */
+.profile-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+}
+
+.profile-modal {
+  width: 90%;
+  max-width: 560px;
+  max-height: 85vh;
+  background: var(--bg-primary);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-color);
   overflow: hidden;
+}
+
+.profile-modal .form-body {
+  overflow-y: auto;
+}
+
+/* 弹窗动画 */
+.profile-modal-enter-active,
+.profile-modal-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.profile-modal-enter-active .profile-modal,
+.profile-modal-leave-active .profile-modal {
+  transition: transform 0.2s ease;
+}
+
+.profile-modal-enter-from,
+.profile-modal-leave-to {
+  opacity: 0;
+}
+
+.profile-modal-enter-from .profile-modal {
+  transform: scale(0.95) translateY(10px);
+}
+
+.profile-modal-leave-to .profile-modal {
+  transform: scale(0.95) translateY(10px);
 }
 
 .form-header {
