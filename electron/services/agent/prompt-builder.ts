@@ -362,9 +362,7 @@ export class PromptBuilder {
     })
 
     return [
-      '# 相关历史（自动检索）',
-      '',
-      '以下是与当前任务可能相关的过往交互，供参考：',
+      '# 与当前任务可能相关的过往对话（依据向量检索）',
       '',
       ...items,
     ].join('\n')
@@ -471,9 +469,9 @@ export class PromptBuilder {
 
   private buildWorkspaceRule(): string {
     return `# 私有工作空间：\`${getWorkspacePath()}\` 是你的私有数据目录，读写无需用户确认。
-- **TODO.md**：用户待办事项（含创建日期、截止时间、完成状态），是用户日程的补充。定期唤醒时会自动读取并提醒用户。"帮我记着/提醒我" → 写 TODO；"你自己去执行" → 创建关切。已完成的定期清理。
-- **CONTACTS.md**：联系人信息（姓名 + 角色/联系方式），遇到新联系人时主动补充。
-- 以上文件按需创建，内容必须精炼以节约 tokens。`
+- **TODO.md**：用来提醒用户的待办事项清单（含创建日期、截止时间、状态）。"帮我记着" → 写 TODO；"你去执行" → 创建关切。
+- **CONTACTS.md**：联系人（姓名 + 角色/联系方式），遇到新联系人时主动补充。
+- 按需创建，内容精炼。`
   }
 
   private buildExecutionGuide(): string {
