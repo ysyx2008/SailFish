@@ -469,7 +469,7 @@ export class PromptBuilder {
 
   private buildWorkspaceRule(): string {
     return `# 私有工作空间：\`${getWorkspacePath()}\` 是你的私有数据目录，读写无需用户确认。
-- **TODO.md**：用来提醒用户的待办事项清单（含创建日期、截止时间、状态）。"帮我记着" → 写 TODO；"你去执行" → 创建关切。
+- **TODO.md**：待办事项（含日期、状态），用于提醒用户。
 - **CONTACTS.md**：联系人（姓名 + 角色/联系方式），遇到新联系人时主动补充。
 - 按需创建，内容精炼。`
   }
@@ -511,7 +511,7 @@ export class PromptBuilder {
   }
 
   private buildWatchGuide(): string {
-    return '**关切**：关切 = AI 自动执行的任务。"每天帮我做X"/"文件变了执行Z" → 关切。'
+    return '**关切 vs TODO**："每天帮我检查/执行X" → 关切（AI 自动执行）；"提醒我做X"/"帮我记着" → TODO（只提醒）。'
   }
 
   private buildDocumentRule(): string {
