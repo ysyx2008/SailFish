@@ -190,12 +190,12 @@ export class PromptBuilder {
       this.buildBondSection(),
       this.buildUserRulesSection(),
       this.buildHostEnvironment(),
+      this.buildWorkspaceRule(),
       this.buildKnowledgeDocSection(),
       this.buildConversationHistorySection(),
       this.buildRemoteChannelContext(),
       this.buildWatchListSection(),
-      this.buildWorkflowSection(),
-      this.buildToolConstraints(),
+      this.buildSshToolConstraints(),
       this.buildCoreRules(),
       this.buildKnowledgeContext(),
       getUserSkillService().buildSkillsSummary(),
@@ -248,7 +248,7 @@ export class PromptBuilder {
     return [
       '# 运行环境',
       '',
-      '你运行在 ReAct 循环中，工具调用会追加到上下文（有容量上限，见末尾"上下文状态"）。',
+      '你运行在 ReAct 循环中，工具调用会追加到上下文（有容量上限）。',
       '',
       '**记忆层次**：当前对话 → 任务记忆（`recall`）→ 压缩归档（`recall_compressed`）',
       '',
@@ -270,7 +270,7 @@ export class PromptBuilder {
   // ==================== 私有方法：顶层 Section ====================
 
   private buildLanguageRule(): string {
-    return '**CRITICAL RULE: You MUST respond in the SAME language the user uses. If user writes in English, reply in English. If user writes in Japanese, reply in Japanese. If user writes in Chinese, reply in Chinese.**'
+    return '**CRITICAL RULE: You MUST respond in the SAME language the user uses**'
   }
 
   private buildIdentitySection(): string {
@@ -321,7 +321,7 @@ export class PromptBuilder {
   private buildUserRulesSection(): string {
     const rules = this.aiRules?.trim()
     if (!rules) return ''
-    return `# 用户自定义规则（重要！必须遵守）\n\n${rules}`
+    return `# 用户自定义规则（必须遵守）\n\n${rules}`
   }
 
   private buildHostEnvironment(): string {
@@ -343,7 +343,7 @@ export class PromptBuilder {
       lines.push(`- 已安装工具: ${profile.installedTools.join(', ')}`)
     }
 
-    return `# 主机环境\n\n${lines.join('\n')}`
+    return `# 主机环境（命令必须匹配）\n\n${lines.join('\n')}`
   }
 
   private buildKnowledgeDocSection(): string {
@@ -404,43 +404,28 @@ export class PromptBuilder {
     return `# 已有关切\n\n${trimmed}\n\n创建新关切前先检查是否已有相同功能的。`
   }
 
-  private buildWorkflowSection(): string {
+  private buildSshToolConstraints(): string {
+    if (!this.isSshTerminal) return ''
     return [
-      '# 工作方式',
+      '# SSH 终端约束',
       '',
-      '- **调用工具前**：用 1 句话说明你要做什么',
-      '- **工具执行后**：用通俗语言解释结果和发现',
-      '- **关键操作后**：主动验证结果，不假设成功',
-      '- **遇到问题时**：动态调整策略，而非机械重试',
+      '- `read_file`、`edit_file`、`write_local_file` **不可用**（只能操作本地文件）',
+      '- 读取远程文件用 `cat`/`head`/`tail`，写入用 `write_remote_file` 或 `echo`/`cat <<EOF`',
+      '- 终端状态需根据屏幕内容自行判断（看提示符、Password:、进度等）',
     ].join('\n')
-  }
-
-  private buildToolConstraints(): string {
-    if (this.isSshTerminal) {
-      return [
-        '# SSH 终端约束',
-        '',
-        '- `read_file`、`edit_file`、`write_local_file` **不可用**（只能操作本地文件）',
-        '- 读取远程文件用 `cat`/`head`/`tail`，写入用 `write_remote_file` 或 `echo`/`cat <<EOF`',
-        '- 终端状态需根据屏幕内容自行判断（看提示符、Password:、进度等）',
-      ].join('\n')
-    }
-    return '# 工具提示\n\n- 按文件名搜索优先用 `file_search`（毫秒级），搜内容用 grep'
   }
 
   // ==================== 私有方法：核心规则及子方法 ====================
 
   private buildCoreRules(): string {
     const rules = [
-      `**环境**：${this.osType} / ${this.shellType}，命令必须匹配此环境`,
       '**输出风格**：用自然对话语言，**禁止**使用「分析阶段」「步骤1」等机械化标签',
       this.buildPlanRule(),
       this.buildSafetyRules(),
       `**禁止的命令**：vim/vi/nano/emacs（用 \`${this.writeFileTool}\`）、tmux/screen、mc/ranger`,
       this.buildFileSearchRule(),
       this.buildLongContentRule(),
-      '**临时文件清理**：任务过程中创建的所有临时文件（脚本、配置、中间产物等），使用完毕后一般应当及时清除，不要在系统中留下垃圾',
-      this.buildWorkspaceRule(),
+      '**临时文件清理**：任务过程中创建的所有临时文件，使用完毕后及时清除',
       this.buildExecutionGuide(),
       this.buildSshStatusRule(),
       this.buildBehaviorRules(),
@@ -456,8 +441,8 @@ export class PromptBuilder {
   private buildPlanRule(): string {
     return [
       '**任务计划**：',
-      '- 1-3 步的简单任务：直接执行，不要创建 plan',
-      '- 4+ 步骤且有依赖关系：使用 `plan(action="create")`，执行时用 `plan(action="update")` 更新状态',
+      '- 简单任务：直接执行，不要创建 plan',
+      '- 复杂任务且步骤间存在依赖关系：使用 `plan(action="create")`，执行时用 `plan(action="update")` 更新状态',
       '- 用户说"直接做"/"快速帮我"：不要创建 plan',
     ].join('\n')
   }
@@ -472,7 +457,8 @@ export class PromptBuilder {
   }
 
   private buildFileSearchRule(): string {
-    return ''
+    if (this.isSshTerminal) return ''
+    return '**文件搜索**：按文件名搜索优先用 `file_search`（毫秒级），搜内容用 grep'
   }
 
   private buildLongContentRule(): string {
@@ -484,10 +470,10 @@ export class PromptBuilder {
   }
 
   private buildWorkspaceRule(): string {
-    return `**私有工作空间**：\`${getWorkspacePath()}\` 是你的私有数据目录，读写无需用户确认。
-- **TODO.md**：待办事项（含创建日期、截止时间、完成状态）。定期唤醒时自动读取并提醒用户。"帮我记着/提醒我" → 写 TODO；"你自己去执行" → 创建关切。已完成的定期清理。
+    return `# 私有工作空间：\`${getWorkspacePath()}\` 是你的私有数据目录，读写无需用户确认。
+- **TODO.md**：用户待办事项（含创建日期、截止时间、完成状态），是用户日程的补充。定期唤醒时会自动读取并提醒用户。"帮我记着/提醒我" → 写 TODO；"你自己去执行" → 创建关切。已完成的定期清理。
 - **CONTACTS.md**：联系人信息（姓名 + 角色/联系方式），遇到新联系人时主动补充。
-- 以上文件按需创建，内容精炼以节约 tokens。`
+- 以上文件按需创建，内容必须精炼以节约 tokens。`
   }
 
   private buildExecutionGuide(): string {
@@ -518,6 +504,8 @@ export class PromptBuilder {
   private buildBehaviorRules(): string {
     return [
       '**行为准则**：',
+      '- 调用工具前简要说明意图，执行后用通俗语言解释结果',
+      '- 关键操作后主动验证，遇到问题调整策略而非机械重试',
       '- 只做用户明确要求的事，做不到就说做不到',
       '- 讨论/咨询时回答问题即可，不必执行工具',
       '- 需要确认时**必须用 `ask_user`**，不要只在消息里问然后等回复',
@@ -525,13 +513,13 @@ export class PromptBuilder {
   }
 
   private buildWatchGuide(): string {
-    return '**关切**：关切 = AI 自动执行，日程 = 只提醒。"每天帮我做X"/"文件变了执行Z" → 关切。'
+    return '**关切**：关切 = AI 自动执行的任务。"每天帮我做X"/"文件变了执行Z" → 关切。'
   }
 
   private buildDocumentRule(): string {
     if (!this.context.documentContext) return ''
     return [
-      '**【重要】关于用户上传的文档**：用户已上传文档，文档完整内容在用户消息的 `<sf_uploaded_docs>` 标签内，直接使用即可，一般不需要用 read_file 读取。',
+      '**用户上传了文档**：文档完整内容在用户消息的 `<sf_uploaded_docs>` 标签内。',
     ].join('\n')
   }
 
