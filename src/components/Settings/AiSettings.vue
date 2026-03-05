@@ -370,7 +370,7 @@ const openKeyUrl = (url: string) => {
                 <div class="form-group flex-1">
                   <label class="form-label">{{ t('aiSettings.maxOutputTokens') }}（{{ t('aiSettings.maxOutputTokensHint') }}）</label>
                   <input v-model.number="formData.maxOutputTokens" type="number" class="input" placeholder="8192" min="1" max="128000" />
-                  <span class="form-hint">DeepSeek(8K)、GPT-4o(16K)、Claude(8K)、Qwen(8K)</span>
+                  <span class="form-hint">{{ t('aiSettings.maxOutputTokensTip') }}</span>
                 </div>
               </div>
               <div class="form-group">
