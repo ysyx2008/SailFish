@@ -10,7 +10,7 @@ import { useTerminalStore, type ParsedDocument } from '../stores/terminal'
 export type { ParsedDocument }
 
 // 支持的文件扩展名
-const SUPPORTED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.md', '.json', '.xml', '.csv', '.html', '.htm']
+const SUPPORTED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.md', '.markdown', '.json', '.xml', '.csv', '.html', '.htm']
 
 export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef<string | null>) {
   const terminalStore = useTerminalStore()

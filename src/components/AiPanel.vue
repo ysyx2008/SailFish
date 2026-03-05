@@ -67,7 +67,7 @@ const selectAttachment = () => {
   input.type = 'file'
   input.multiple = true
   // 同时接受图片和文档
-  input.accept = 'image/png,image/jpeg,image/gif,image/webp,image/bmp,.pdf,.doc,.docx,.txt,.md,.json,.xml,.csv,.html,.htm,.xls,.xlsx'
+  input.accept = 'image/png,image/jpeg,image/gif,image/webp,image/bmp,.pdf,.doc,.docx,.xls,.xlsx,.txt,.md,.markdown,.json,.xml,.csv,.html,.htm'
   input.onchange = async () => {
     if (!input.files || input.files.length === 0) return
     const imageFiles: File[] = []
