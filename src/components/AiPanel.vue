@@ -85,7 +85,10 @@ const selectAttachment = () => {
     }
     // 文档走 useDocumentUpload
     if (docFiles.length > 0) {
-      await handleDroppedFiles(docFiles)
+      const unsupported = await handleDroppedFiles(docFiles)
+      if (unsupported.length > 0) {
+        toast.warning(t('ai.unsupportedFileType', { files: unsupported.join(', ') }))
+      }
     }
   }
   input.click()
@@ -939,7 +942,13 @@ const handleDrop = async (e: DragEvent) => {
     const imageCount = await handleDroppedImages(files)
     // 剩余的非图片文件交给文档处理
     if (imageCount < files.length) {
-      await handleDroppedFiles(files)
+      const unsupported = await handleDroppedFiles(files)
+      if (unsupported.length > 0) {
+        const display = unsupported.length > 3
+          ? `${unsupported.slice(0, 3).join(', ')} 等 ${unsupported.length} 个文件`
+          : unsupported.join(', ')
+        toast.warning(t('ai.unsupportedFileType', { files: display }))
+      }
     }
   }
 }

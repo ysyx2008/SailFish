@@ -2961,9 +2961,10 @@ ipcMain.handle('document:selectFiles', async () => {
   const result = await dialog.showOpenDialog({
     title: '选择文档',
     filters: [
-      { name: '支持的文档', extensions: ['pdf', 'docx', 'doc', 'txt', 'md', 'json', 'xml', 'html', 'csv'] },
+      { name: '支持的文档', extensions: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'txt', 'md', 'json', 'xml', 'html', 'csv'] },
       { name: 'PDF 文档', extensions: ['pdf'] },
       { name: 'Word 文档', extensions: ['docx', 'doc'] },
+      { name: 'Excel 表格', extensions: ['xlsx', 'xls'] },
       { name: '文本文件', extensions: ['txt', 'md'] },
       { name: '所有文件', extensions: ['*'] }
     ],

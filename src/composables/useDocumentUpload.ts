@@ -10,7 +10,7 @@ import { useTerminalStore, type ParsedDocument } from '../stores/terminal'
 export type { ParsedDocument }
 
 // 支持的文件扩展名
-const SUPPORTED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt', '.md', '.json', '.xml', '.csv', '.html', '.htm']
+const SUPPORTED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.md', '.json', '.xml', '.csv', '.html', '.htm']
 
 export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef<string | null>) {
   const terminalStore = useTerminalStore()
@@ -78,13 +78,15 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
   }
 
   // 处理拖放的文件（替换模式）
-  const handleDroppedFiles = async (files: FileList | File[], hostId?: string) => {
-    if (isUploadingDocs.value || !currentTabId.value) return
+  // 返回不支持的文件名列表，供调用方决定如何提示用户
+  const handleDroppedFiles = async (files: FileList | File[], hostId?: string): Promise<string[]> => {
+    if (isUploadingDocs.value || !currentTabId.value) return []
     
     const tabId = currentTabId.value
     
     // 过滤支持的文件并构造文件信息对象
     const fileInfos: Array<{ name: string; path: string; size: number; mimeType?: string }> = []
+    const unsupportedFiles: string[] = []
     for (const file of files) {
       // 使用 Electron webUtils API 获取文件路径（Electron 24+ 推荐方式）
       let filePath: string | undefined
@@ -95,21 +97,23 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
         filePath = (file as File & { path?: string }).path
       }
       
-      const isSupported = isSupportedFile(file.name)
+      if (file.type.startsWith('image/')) continue
       
-      if (isSupported && filePath) {
-        fileInfos.push({
-          name: file.name,
-          path: filePath,
-          size: file.size,
-          mimeType: file.type || undefined
-        })
+      if (!isSupportedFile(file.name) || !filePath) {
+        unsupportedFiles.push(file.name)
+        continue
       }
+      
+      fileInfos.push({
+        name: file.name,
+        path: filePath,
+        size: file.size,
+        mimeType: file.type || undefined
+      })
     }
     
     if (fileInfos.length === 0) {
-      console.warn('没有支持的文件类型')
-      return
+      return unsupportedFiles
     }
     
     try {
@@ -138,6 +142,8 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     } finally {
       isUploadingDocs.value = false
     }
+    
+    return unsupportedFiles
   }
 
   // 移除已上传的文档
