@@ -5,6 +5,7 @@
  */
 import { ref, computed, type Ref, type ComputedRef } from 'vue'
 import { useTerminalStore, type ParsedDocument } from '../stores/terminal'
+import { SUPPORTED_IMAGE_TYPES } from './useImageUpload'
 
 // 重新导出类型供外部使用
 export type { ParsedDocument }
@@ -76,7 +77,7 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     
     const fileInfos: Array<{ name: string; path: string; size: number; mimeType?: string }> = []
     for (const file of files) {
-      if (file.type.startsWith('image/')) continue
+      if (SUPPORTED_IMAGE_TYPES.includes(file.type)) continue
       
       let filePath: string | undefined
       try {

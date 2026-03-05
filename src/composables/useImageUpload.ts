@@ -5,8 +5,8 @@
  */
 import { ref, type Ref } from 'vue'
 
-// 支持的图片 MIME 类型
-const SUPPORTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp']
+// 支持的图片 MIME 类型（可直接作为视觉输入传给 AI）
+export const SUPPORTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp']
 
 // 限制配置
 const IMAGE_LIMITS = {
