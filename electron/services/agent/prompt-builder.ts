@@ -469,7 +469,7 @@ export class PromptBuilder {
 
   private buildWorkspaceRule(): string {
     return `# 私有工作空间：\`${getWorkspacePath()}\` 是你的私有数据目录，读写无需用户确认。
-- **TODO.md**：待办事项（含日期、状态），用于提醒用户。
+- **TODO.md**：用户的待办事项（含日期、状态），系统有心跳机制，会定期自动读取并唤醒你从而提醒用户。
 - **CONTACTS.md**：联系人（姓名 + 角色/联系方式），遇到新联系人时主动补充。
 - 按需创建，内容精炼。`
   }
@@ -511,7 +511,7 @@ export class PromptBuilder {
   }
 
   private buildWatchGuide(): string {
-    return '**关切 vs TODO**："每天帮我检查/执行X" → 关切（AI 自动执行）；"提醒我做X"/"帮我记着" → TODO（只提醒）。'
+    return '**关切 和 TODO.md 的区别**：需要你自动执行的任务使用关切（关切只要满足条件就会自动触发）；只需要提醒用户做的事写入 TODO.md（系统有心跳机制，会定时唤醒你，从而提醒用户）。'
   }
 
   private buildDocumentRule(): string {
