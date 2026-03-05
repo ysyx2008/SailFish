@@ -512,6 +512,158 @@ describe('DocumentParserService', () => {
     })
   })
 
+  describe('parseDocument - unknown 类型智能分流', () => {
+    it('未知扩展名的文本文件应自动读取内容', async () => {
+      const tempDir = os.tmpdir()
+      const tempFile = path.join(tempDir, `test-${crypto.randomUUID()}.py`)
+      fs.writeFileSync(tempFile, 'print("hello world")\n')
+
+      try {
+        const result = await service.parseDocument({
+          name: 'script.py',
+          path: tempFile,
+          size: fs.statSync(tempFile).size
+        })
+        expect(result.error).toBeUndefined()
+        expect(result.fileType).toBe('unknown')
+        expect(result.content).toContain('print("hello world")')
+      } finally {
+        fs.unlinkSync(tempFile)
+      }
+    })
+
+    it('二进制文件应返回空内容（元数据模式）', async () => {
+      const tempDir = os.tmpdir()
+      const tempFile = path.join(tempDir, `test-${crypto.randomUUID()}.bin`)
+      const buf = Buffer.alloc(256)
+      for (let i = 0; i < 256; i++) buf[i] = i
+      fs.writeFileSync(tempFile, buf)
+
+      try {
+        const result = await service.parseDocument({
+          name: 'data.bin',
+          path: tempFile,
+          size: fs.statSync(tempFile).size
+        })
+        expect(result.error).toBeUndefined()
+        expect(result.content).toBe('')
+        expect(result.filePath).toBe(tempFile)
+      } finally {
+        fs.unlinkSync(tempFile)
+      }
+    })
+
+    it('小于 4 字节的文件应作为文本处理', async () => {
+      const tempDir = os.tmpdir()
+      const tempFile = path.join(tempDir, `test-${crypto.randomUUID()}.dat`)
+      fs.writeFileSync(tempFile, 'hi')
+
+      try {
+        const result = await service.parseDocument({
+          name: 'tiny.dat',
+          path: tempFile,
+          size: fs.statSync(tempFile).size
+        })
+        expect(result.error).toBeUndefined()
+        expect(result.content).toBe('hi')
+      } finally {
+        fs.unlinkSync(tempFile)
+      }
+    })
+
+    it('unknown 类型超大文件不应报错，应走元数据模式', async () => {
+      const tempDir = os.tmpdir()
+      const tempFile = path.join(tempDir, `test-${crypto.randomUUID()}.zip`)
+      // 写一个含 null byte 的小文件，但声称 size 很大
+      const buf = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00])
+      fs.writeFileSync(tempFile, buf)
+
+      try {
+        const result = await service.parseDocument({
+          name: 'archive.zip',
+          path: tempFile,
+          size: 999_999_999
+        })
+        expect(result.error).toBeUndefined()
+        expect(result.content).toBe('')
+      } finally {
+        fs.unlinkSync(tempFile)
+      }
+    })
+
+    it('已知类型超大文件应报错', async () => {
+      const tempDir = os.tmpdir()
+      const tempFile = path.join(tempDir, `test-${crypto.randomUUID()}.txt`)
+      fs.writeFileSync(tempFile, 'x')
+
+      try {
+        const result = await service.parseDocument(
+          { name: 'big.txt', path: tempFile, size: 999_999_999 },
+          { maxFileSize: 50 }
+        )
+        expect(result.error).toContain('超过限制')
+      } finally {
+        fs.unlinkSync(tempFile)
+      }
+    })
+  })
+
+  describe('formatAsContext', () => {
+    it('有内容的文档应包含 path 和内容', () => {
+      const result = service.formatAsContext([{
+        filename: 'test.py',
+        filePath: '/home/user/test.py',
+        fileType: 'unknown',
+        content: 'print("hello")',
+        fileSize: 15,
+        parseTime: 0
+      }])
+      expect(result).toContain('path="/home/user/test.py"')
+      expect(result).toContain('print("hello")')
+      expect(result).not.toContain('mode="metadata"')
+    })
+
+    it('无内容的文档应输出元数据模式', () => {
+      const result = service.formatAsContext([{
+        filename: 'data.zip',
+        filePath: '/home/user/data.zip',
+        fileType: 'unknown',
+        content: '',
+        fileSize: 1024 * 1024 * 15,
+        parseTime: 0
+      }])
+      expect(result).toContain('mode="metadata"')
+      expect(result).toContain('path="/home/user/data.zip"')
+      expect(result).toContain('name="data.zip"')
+      expect(result).toContain('size=')
+    })
+
+    it('错误文档应包含 error 属性', () => {
+      const result = service.formatAsContext([{
+        filename: 'broken.pdf',
+        filePath: '/home/user/broken.pdf',
+        fileType: 'pdf',
+        content: '',
+        fileSize: 100,
+        parseTime: 0,
+        error: '解析失败'
+      }])
+      expect(result).toContain('error="解析失败"')
+      expect(result).toContain('path="/home/user/broken.pdf"')
+    })
+
+    it('混合文档应正确区分三种模式', () => {
+      const result = service.formatAsContext([
+        { filename: 'readme.md', filePath: '/a/readme.md', fileType: 'md', content: '# Hello', fileSize: 7, parseTime: 0 },
+        { filename: 'app.exe', filePath: '/a/app.exe', fileType: 'unknown', content: '', fileSize: 5000, parseTime: 0 },
+        { filename: 'bad.pdf', filePath: '/a/bad.pdf', fileType: 'pdf', content: '', fileSize: 100, parseTime: 0, error: '损坏' },
+      ])
+      expect(result).toContain('# Hello')
+      expect(result).toContain('mode="metadata"')
+      expect(result).toContain('error="损坏"')
+    })
+  })
+
   describe('renderPdfPages - 参数校验', () => {
     it('文件不存在时应抛出错误', async () => {
       await expect(
