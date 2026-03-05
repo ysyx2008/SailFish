@@ -847,12 +847,14 @@ export class DocumentParserService {
       const doc = docs[i]
       
       if (doc.error) {
-        parts.push(`<sf_doc name="${doc.filename}" error="${doc.error}" />\n`)
+        const errPath = doc.filePath ? ` path="${doc.filePath}"` : ''
+        parts.push(`<sf_doc name="${doc.filename}"${errPath} error="${doc.error}" />\n`)
         continue
       }
       
-      const attrs = doc.pageCount ? ` pages="${doc.pageCount}"` : ''
-      parts.push(`<sf_doc name="${doc.filename}"${attrs}>\n`)
+      const pathAttr = doc.filePath ? ` path="${doc.filePath}"` : ''
+      const pagesAttr = doc.pageCount ? ` pages="${doc.pageCount}"` : ''
+      parts.push(`<sf_doc name="${doc.filename}"${pathAttr}${pagesAttr}>\n`)
       parts.push(doc.content)
       parts.push('\n</sf_doc>\n')
       
