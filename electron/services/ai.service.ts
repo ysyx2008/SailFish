@@ -25,7 +25,7 @@ const AI_RETRY = {
   SERVER_ERROR_MAX_RETRIES: 2, // 5xx 服务端错误最大重试次数
   SERVER_ERROR_BASE_DELAY: 3000, // 5xx 基础退避：3 秒
   // 可重试的网络错误码
-  RETRYABLE_ERRORS: ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED', 'EPIPE', 'EAI_AGAIN'],
+  RETRYABLE_ERRORS: ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED', 'EPIPE', 'EAI_AGAIN', 'socket hang up'],
   // 可重试的 HTTP 状态码（服务端临时错误）
   RETRYABLE_STATUS_CODES: [500, 502, 503, 529] as readonly number[]
 }
@@ -42,6 +42,9 @@ function isRetryableError(errorMessage: string): boolean {
 const NET_ERROR_CODES = ['ENOTFOUND', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'EAI_AGAIN'] as const
 
 function translateNetworkError(errMessage: string): string {
+  if (errMessage.includes('socket hang up')) {
+    return t('error.net_socket_hang_up')
+  }
   // 从 err.message（如 "getaddrinfo ENOTFOUND api.deepseek.com"）中提取错误码和主机名
   for (const code of NET_ERROR_CODES) {
     if (errMessage.includes(code)) {
@@ -1418,8 +1421,10 @@ export class AiService {
         res.on('error', (err) => {
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
           log.error(`Request failed: model=${profile.model}, duration=${elapsed}s, error=${err.message}`)
-          getAiDebugService().logResponseError(reqId, err.message)
-          complete(() => onError(t('error.request_error', { message: translateNetworkError(err.message) })))
+          if (!content && !tryRetry(err.message, doRequest)) {
+            getAiDebugService().logResponseError(reqId, err.message)
+            complete(() => onError(t('error.request_error', { message: translateNetworkError(err.message) })))
+          }
         })
       })
 
@@ -1434,8 +1439,8 @@ export class AiService {
       })
 
       req.on('error', (err) => {
-        // 如果是中止导致的错误，不报错
-        if (err.message === 'aborted' || err.message.includes('socket hang up')) {
+        // 只有用户主动中止时才静默处理（socket hang up 也可能是网络断开，不能一律吞掉）
+        if (abortController.signal.aborted) {
           getAiDebugService().logResponseDone(reqId, { finishReason: 'aborted' })
           complete(() => onDone({
             content: undefined,
@@ -1445,7 +1450,7 @@ export class AiService {
           return
         }
         if (tryVisionFallback(err.message)) return
-        // 尝试重试网络错误
+        // 尝试重试网络错误（包括 socket hang up）
         if (!tryRetry(err.message, doRequest)) {
           getAiDebugService().logResponseError(reqId, err.message)
           complete(() => onError(t('error.request_error', { message: translateNetworkError(err.message) })))
