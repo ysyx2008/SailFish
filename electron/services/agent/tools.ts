@@ -156,7 +156,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       type: 'function',
       function: {
         name: 'read_file',
-        description: `读取本地文件。支持文本、PDF、Word(.doc/.docx)、图片(jpg/png/gif/bmp/webp，自动注入视觉上下文)。大文件先用 info_only 查信息，再按行范围读取。仅本地文件，SSH 远程请用命令行。`,
+        description: `读取本地文件。支持文本、PDF、Word(.doc/.docx)、图片(jpg/png/gif/bmp/webp/ico，自动注入视觉上下文)。自动检测二进制文件。大文件先用 info_only 查信息，再按行范围读取。仅本地文件，SSH 远程请用命令行。`,
         parameters: {
           type: 'object',
           properties: {

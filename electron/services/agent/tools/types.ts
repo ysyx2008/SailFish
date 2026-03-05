@@ -76,7 +76,7 @@ export interface ToolExecutorConfig {
   getActiveProfileId?: () => string | undefined
 }
 
-/** 常见图片扩展名（AI Vision 模型可处理的格式） */
+/** 常见图片扩展名（AI Vision 模型可直接处理的格式） */
 export const VISION_IMAGE_EXTENSIONS = new Set([
   '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'
 ])
@@ -90,6 +90,9 @@ export const IMAGE_MIME_TYPES: Record<string, string> = {
   '.bmp': 'image/bmp',
   '.webp': 'image/webp'
 }
+
+/** 需要转换后才能发给 Vision 模型的图片格式 */
+export const CONVERTIBLE_IMAGE_EXTENSIONS = new Set(['.ico'])
 
 // 重新导出常用类型
 export type { AgentConfig, AgentStep, ToolResult, RiskLevel, AgentPlan }

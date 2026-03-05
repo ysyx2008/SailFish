@@ -281,6 +281,11 @@ const translations = {
     'file.image_readable': '可读取',
     'file.image_readable_yes': '是（read_file 读取后可视觉分析）',
     'file.image_readable_no': '否（超过 {max}MB 限制）',
+    'file.image_converted_output': '{format} 图片 {name} ({size}, {width}x{height}) 已转换为 PNG 并读取。文件路径: {path}',
+    'file.ico_sizes': '包含尺寸',
+    'file.ico_bmp_only': 'ICO 文件 {name} ({size}) 包含 {sizes} 尺寸的图标，但图标数据为 BMP 格式，无法直接预览。可使用 sips（macOS）或 convert（ImageMagick）命令转换为 PNG 后查看。',
+    'file.binary_file_detected': '二进制文件 {name} ({size})，扩展名: {ext}。无法作为文本读取，请使用对应的命令行工具处理（如 file、xxd、hexdump 查看内容，或 sips/convert 处理图片）。',
+    'file.is_binary': '二进制文件，无法作为文本读取',
 
     // Excel 操作
     'excel.action_required': '需要指定操作类型（read/write/modify）',
@@ -1242,6 +1247,11 @@ Please output the summary in the following format:
     'file.image_readable': 'Readable',
     'file.image_readable_yes': 'Yes (read_file will inject into visual context for AI analysis)',
     'file.image_readable_no': 'No (exceeds {max}MB limit)',
+    'file.image_converted_output': '{format} image {name} ({size}, {width}x{height}) converted to PNG and read. File path: {path}',
+    'file.ico_sizes': 'Sizes',
+    'file.ico_bmp_only': 'ICO file {name} ({size}) contains icons at {sizes}, but image data is in BMP format and cannot be previewed directly. Use sips (macOS) or convert (ImageMagick) to convert to PNG.',
+    'file.binary_file_detected': 'Binary file {name} ({size}), extension: {ext}. Cannot read as text. Use appropriate CLI tools (file, xxd, hexdump to inspect, or sips/convert for images).',
+    'file.is_binary': 'Binary file, cannot read as text',
 
     // Excel operations
     'excel.action_required': 'Action type required (read/write/modify)',

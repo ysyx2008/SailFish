@@ -12,7 +12,7 @@ import { getDocumentParserService } from '../../document-parser.service'
 import { getConfigService } from '../../config.service'
 import { categorizeError, getErrorRecoverySuggestion, truncateFromEnd, formatFileSize } from './utils'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
-import { VISION_IMAGE_EXTENSIONS, IMAGE_MIME_TYPES } from './types'
+import { VISION_IMAGE_EXTENSIONS, IMAGE_MIME_TYPES, CONVERTIBLE_IMAGE_EXTENSIONS } from './types'
 
 /**
  * 获取 Agent workspace 目录路径
@@ -235,6 +235,190 @@ function hasVisionCapability(): boolean {
   }
 }
 
+/**
+ * 从 ICO 文件中提取最大尺寸的 PNG 图片
+ * ICO 格式: 6 字节头(reserved + type + count) + N * 16 字节目录项 + 图片数据
+ */
+function extractIcoLargestPng(filePath: string): { png: Buffer; width: number; height: number } | null {
+  const buf = fs.readFileSync(filePath)
+  if (buf.length < 6) return null
+
+  const type = buf.readUInt16LE(2)
+  if (type !== 1 && type !== 2) return null // 1=ICO, 2=CUR
+  const count = buf.readUInt16LE(4)
+  if (count === 0 || count > 256) return null
+
+  let bestIdx = -1
+  let bestPixels = 0
+  let bestDataSize = 0
+
+  for (let i = 0; i < count; i++) {
+    const off = 6 + i * 16
+    if (off + 16 > buf.length) break
+    const w = buf[off] || 256 // 0 means 256
+    const h = buf[off + 1] || 256
+    const dataSize = buf.readUInt32LE(off + 8)
+    const pixels = w * h
+    if (pixels > bestPixels || (pixels === bestPixels && dataSize > bestDataSize)) {
+      bestIdx = i
+      bestPixels = pixels
+      bestDataSize = dataSize
+    }
+  }
+
+  if (bestIdx < 0) return null
+
+  const entry = 6 + bestIdx * 16
+  const w = buf[entry] || 256
+  const h = buf[entry + 1] || 256
+  const dataSize = buf.readUInt32LE(entry + 8)
+  const dataOffset = buf.readUInt32LE(entry + 12)
+  if (dataSize === 0 || dataOffset + dataSize > buf.length) return null
+
+  const imageData = buf.subarray(dataOffset, dataOffset + dataSize)
+
+  const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+  if (imageData.length >= 8 && imageData.subarray(0, 8).equals(PNG_MAGIC)) {
+    return { png: Buffer.from(imageData), width: w, height: h }
+  }
+
+  // BMP data — 目前不转换，返回 null
+  return null
+}
+
+/**
+ * 获取 ICO 文件中所有图标的尺寸信息（用于描述无法提取 PNG 的情况）
+ */
+function describeIcoEntries(filePath: string): string | null {
+  try {
+    const buf = fs.readFileSync(filePath)
+    if (buf.length < 6) return null
+    const type = buf.readUInt16LE(2)
+    if (type !== 1 && type !== 2) return null
+    const count = buf.readUInt16LE(4)
+    if (count === 0 || count > 256) return null
+
+    const sizes: string[] = []
+    for (let i = 0; i < count; i++) {
+      const off = 6 + i * 16
+      if (off + 16 > buf.length) break
+      const w = buf[off] || 256
+      const h = buf[off + 1] || 256
+      sizes.push(`${w}x${h}`)
+    }
+    return sizes.join(', ')
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 读取需要转换的图片格式（如 ICO），提取为 PNG 后走视觉通道
+ */
+function readConvertibleImage(
+  filePath: string,
+  fileSize: number,
+  executor: ToolExecutorConfig
+): ToolResult {
+  const ext = path.extname(filePath).toLowerCase()
+  const fileName = path.basename(filePath)
+
+  if (fileSize > MAX_IMAGE_SIZE) {
+    const sizeMB = (fileSize / (1024 * 1024)).toFixed(1)
+    const errorMsg = t('file.image_too_large', { size: sizeMB })
+    executor.addStep({
+      type: 'tool_result',
+      content: `${t('file.read_failed')}: ${errorMsg}`,
+      toolName: 'read_file',
+      toolResult: errorMsg
+    })
+    return { success: false, output: '', error: errorMsg }
+  }
+
+  try {
+    if (ext === '.ico') {
+      const result = extractIcoLargestPng(filePath)
+      if (result) {
+        const base64 = result.png.toString('base64')
+        const dataUrl = `data:image/png;base64,${base64}`
+        const sizeDisplay = formatFileSize(fileSize)
+
+        executor.addStep({
+          type: 'tool_result',
+          content: t('file.image_read_success', { name: fileName, size: sizeDisplay }),
+          toolName: 'read_file',
+          toolResult: `${fileName} (${sizeDisplay}, ${result.width}x${result.height})`,
+          images: [dataUrl]
+        })
+
+        return {
+          success: true,
+          output: t('file.image_converted_output', {
+            name: fileName, size: sizeDisplay, path: filePath,
+            format: 'ICO', width: result.width, height: result.height
+          }),
+          images: [dataUrl]
+        }
+      }
+
+      // PNG 提取失败（BMP 格式），返回描述信息
+      const sizes = describeIcoEntries(filePath)
+      const sizeDisplay = formatFileSize(fileSize)
+      const desc = t('file.ico_bmp_only', { name: fileName, size: sizeDisplay, sizes: sizes || 'unknown' })
+      executor.addStep({
+        type: 'tool_result',
+        content: desc,
+        toolName: 'read_file',
+        toolResult: desc
+      })
+      return { success: true, output: desc }
+    }
+
+    return { success: false, output: '', error: t('file.unsupported_format') }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : t('file.read_error')
+    executor.addStep({
+      type: 'tool_result',
+      content: `${t('file.read_failed')}: ${errorMsg}`,
+      toolName: 'read_file',
+      toolResult: errorMsg
+    })
+    return { success: false, output: '', error: errorMsg }
+  }
+}
+
+/**
+ * 通过头部 null byte 检测判断是否为二进制文件（与 git 同一策略）
+ * 额外识别 UTF-16/UTF-32 BOM 避免误判 Unicode 文本为二进制
+ */
+function isLikelyBinary(filePath: string): boolean {
+  try {
+    const fd = fs.openSync(filePath, 'r')
+    try {
+      const stats = fs.fstatSync(fd)
+      if (stats.size < 4) return false
+      const buf = Buffer.alloc(Math.min(8000, stats.size))
+      const bytesRead = fs.readSync(fd, buf, 0, buf.length, 0)
+      if (bytesRead >= 2) {
+        // UTF-16 LE BOM: FF FE / UTF-16 BE BOM: FE FF / UTF-8 BOM: EF BB BF
+        if ((buf[0] === 0xFF && buf[1] === 0xFE) ||
+            (buf[0] === 0xFE && buf[1] === 0xFF) ||
+            (bytesRead >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF)) {
+          return false
+        }
+      }
+      for (let i = 0; i < bytesRead; i++) {
+        if (buf[i] === 0) return true
+      }
+      return false
+    } finally {
+      fs.closeSync(fd)
+    }
+  } catch {
+    return true
+  }
+}
+
 async function readDocumentFile(
   filePath: string,
   fileSize: number,
@@ -404,7 +588,51 @@ export async function readFile(
       return readImageFile(filePath, fileSize, executor)
     }
 
+    // 需要转换的图片格式（如 ICO），提取内嵌 PNG 后走视觉通道
+    {
+      const ext = path.extname(filePath).toLowerCase()
+      if (CONVERTIBLE_IMAGE_EXTENSIONS.has(ext)) {
+        if (infoOnly) {
+          const sizes = ext === '.ico' ? describeIcoEntries(filePath) : null
+          const info = `## ${t('file.info_header')}
+- **${t('file.info_path')}**: ${filePath}
+- **${t('file.info_size')}**: ${t('file.info_size_value', { sizeMB, sizeBytes: fileSize.toLocaleString() })}
+- **${t('file.image_type')}**: ${ext.slice(1).toUpperCase()}${sizes ? `\n- **${t('file.ico_sizes')}**: ${sizes}` : ''}
+- **${t('file.image_readable')}**: ${t('file.image_readable_yes')}`
+
+          executor.addStep({
+            type: 'tool_result',
+            content: `${t('file.file_info')}: ${sizeMB} MB, ${t('file.image_type_short')}`,
+            toolName: 'read_file',
+            toolResult: info
+          })
+          return { success: true, output: info }
+        }
+        return readConvertibleImage(filePath, fileSize, executor)
+      }
+    }
+
+    // 提前检测二进制，供 infoOnly 和文本读取路径共用
+    const detectedBinary = isLikelyBinary(filePath)
+
     if (infoOnly) {
+      if (detectedBinary) {
+        const ext = path.extname(filePath).toLowerCase()
+        const info = `## ${t('file.info_header')}
+- **${t('file.info_path')}**: ${filePath}
+- **${t('file.info_size')}**: ${t('file.info_size_value', { sizeMB, sizeBytes: fileSize.toLocaleString() })}
+- **${t('file.image_type')}**: ${ext.slice(1).toUpperCase() || 'unknown'}
+- **${t('file.is_binary')}**`
+
+        executor.addStep({
+          type: 'tool_result',
+          content: `${t('file.file_info')}: ${sizeMB} MB, ${t('file.is_binary')}`,
+          toolName: 'read_file',
+          toolResult: info
+        })
+        return { success: true, output: info }
+      }
+
       let totalLines = 0
       let sampleContent = ''
       let estimated = false
@@ -449,6 +677,21 @@ ${sampleContent ? `### ${t('file.info_preview')}\n\`\`\`\n${sampleContent}\n\`\`
         toolResult: info
       })
       return { success: true, output: info }
+    }
+
+    // 二进制文件检测：防止把二进制数据当文本读给 AI
+    if (detectedBinary) {
+      const ext = path.extname(filePath).toLowerCase()
+      const sizeDisplay = formatFileSize(fileSize)
+      const fileName = path.basename(filePath)
+      const errorMsg = t('file.binary_file_detected', { name: fileName, size: sizeDisplay, ext: ext || 'unknown' })
+      executor.addStep({
+        type: 'tool_result',
+        content: `${t('file.read_failed')}: ${t('file.is_binary')}`,
+        toolName: 'read_file',
+        toolResult: errorMsg
+      })
+      return { success: false, output: '', error: errorMsg }
     }
 
     let content = ''
