@@ -48,6 +48,15 @@ const updateStatus = ref<UpdateStatusInfo>({ status: 'idle' })
 const showUnlockAnimation = ref(false)
 const showBadgeWithAnimation = ref(false)
 const aboutContentRef = ref<HTMLElement | null>(null)
+const qqGroupCopied = ref(false)
+
+const copyQQGroup = async () => {
+  try {
+    await navigator.clipboard.writeText('1078041072')
+    qqGroupCopied.value = true
+    setTimeout(() => { qqGroupCopied.value = false }, 2000)
+  } catch { /* ignore */ }
+}
 
 // 平台检测 - macOS 上隐藏自动更新功能（签名问题）
 const isMac = computed(() => navigator.platform.toLowerCase().includes('mac'))
@@ -615,6 +624,9 @@ const onQrImageError = (event: Event) => {
             <div class="about-links">
               <a href="http://www.sfterm.com/" target="_blank" class="about-link">{{ t('about.website') }}</a>
               <a href="mailto:nuoyan_cfan@163.com" class="about-link">{{ t('about.contact') }}</a>
+              <a class="about-link" @click="copyQQGroup" :title="'QQ: 1078041072'">
+                {{ qqGroupCopied ? t('about.qqGroupCopied') : t('about.qqGroup') }}
+              </a>
               <a href="http://www.gnu.org/licenses/agpl-3.0.html" target="_blank" class="about-link">{{ t('about.license') }}</a>
             </div>
             

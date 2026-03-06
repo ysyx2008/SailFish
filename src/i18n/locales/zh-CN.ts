@@ -330,6 +330,8 @@ export default {
     title: '旗鱼',
     description: 'AI 驱动的智能助手',
     contact: '联系我们',
+    qqGroup: 'QQ 交流群',
+    qqGroupCopied: '群号已复制',
     license: '开源协议',
     website: '官方网站',
     copyright: '© 2026 旗鱼',

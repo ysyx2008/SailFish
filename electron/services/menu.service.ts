@@ -8,7 +8,7 @@
  * - 多语言支持
  */
 
-import { Menu, MenuItemConstructorOptions, shell, BrowserWindow, app } from 'electron'
+import { Menu, MenuItemConstructorOptions, shell, clipboard, BrowserWindow, app } from 'electron'
 import { type KeyboardShortcuts, DEFAULT_KEYBOARD_SHORTCUTS } from './config.service'
 
 // 菜单翻译
@@ -71,6 +71,7 @@ const menuI18n = {
     documentation: '文档',
     reportIssue: '报告问题',
     github: 'GitHub',
+    qqGroup: 'QQ 交流群 (1078041072)',
     website: '官方网站'
   },
   'en-US': {
@@ -131,6 +132,7 @@ const menuI18n = {
     documentation: 'Documentation',
     reportIssue: 'Report Issue',
     github: 'GitHub',
+    qqGroup: 'QQ Group (1078041072)',
     website: 'Website'
   }
 }
@@ -476,6 +478,10 @@ export class MenuService {
       {
         label: this.t('github'),
         click: () => shell.openExternal('https://github.com/ysyx2008/SailFish')
+      },
+      {
+        label: this.t('qqGroup'),
+        click: () => clipboard.writeText('1078041072')
       },
       {
         label: this.t('website'),

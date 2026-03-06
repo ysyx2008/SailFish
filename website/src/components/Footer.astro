@@ -60,6 +60,7 @@ const currentYear = new Date().getFullYear();
           {t.footer.links.github}
         </a>
         <a href="https://github.com/ysyx2008/SailFish/issues" target="_blank" rel="noopener">{t.footer.links.issues}</a>
+        <a href="#" class="qq-group-link" data-group="1078041072" title="1078041072">{t.footer.links.qqGroup}</a>
         <a href="https://github.com/ysyx2008/SailFish/blob/main/LICENSE" target="_blank" rel="noopener">{t.footer.links.license}</a>
       </div>
       
@@ -69,6 +70,17 @@ const currentYear = new Date().getFullYear();
     </div>
   </div>
 </footer>
+
+<script>
+  document.querySelector('.qq-group-link')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    const original = el.textContent ?? '';
+    await navigator.clipboard.writeText(el.dataset.group!);
+    el.textContent = document.documentElement.lang === 'zh' ? '群号已复制!' : 'Copied!';
+    setTimeout(() => { el.textContent = original; }, 2000);
+  });
+</script>
 
 <style>
   .footer {

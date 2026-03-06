@@ -330,6 +330,8 @@ export default {
     title: 'SailFish',
     description: 'AI-powered smart assistant',
     contact: 'Contact Us',
+    qqGroup: 'QQ Group',
+    qqGroupCopied: 'Group number copied',
     license: 'License',
     website: 'Website',
     copyright: '© 2026 SailFish',
