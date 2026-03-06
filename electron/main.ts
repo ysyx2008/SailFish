@@ -290,6 +290,7 @@ import { getSensorService } from './services/sensor'
 import { getBondService } from './services/bond.service'
 import type { CreateWatchParams } from './services/watch/types'
 import { getWebChatService } from './services/web-chat.service'
+import { getMigrationRunner, createBackup } from './migrations'
 import { getGatewayService, type GatewayConfig } from './services/gateway.service'
 import { getIMService } from './services/im/im.service'
 import type { DingTalkConfig, FeishuConfig, SlackConfig, TelegramConfig, WeComConfig } from './services/im/types'
@@ -341,6 +342,12 @@ const aiService = new AiService()
 const configService = new ConfigService()
 setConfigServiceInstance(configService)
 initLogging(configService.getLogLevel())
+// Early phase migrations（仅需 ConfigService）
+getMigrationRunner().run('early', {
+  configService,
+  userDataPath: app.getPath('userData'),
+}).catch(err => log.error('Early migration failed:', err))
+
 const xshellImportService = new XshellImportService()
 const hostProfileService = new HostProfileService()
 const mcpService = new McpService()
@@ -437,9 +444,6 @@ async function initKnowledgeService(): Promise<void> {
       
       await knowledgeService.initialize()
       
-      // 迁移旧的主机 notes 到知识库
-      await migrateHostNotesToKnowledge()
-      
       // 预热 embedding 推理（后台执行，不阻塞）
       // ONNX 模型第一次推理需要 JIT 编译，会比较慢
       // 提前预热可以加速首次 Agent 对话响应
@@ -457,44 +461,6 @@ async function initKnowledgeService(): Promise<void> {
     // 通知前端知识库已就绪
     mainWindow?.webContents.send('knowledge:ready')
     log.info('知识库服务初始化完成')
-  }
-}
-
-// 迁移旧的主机 notes 到知识库
-async function migrateHostNotesToKnowledge(): Promise<void> {
-  if (!knowledgeService) return
-  
-  const fs = await import('fs')
-  const path = await import('path')
-  
-  // 检查是否已迁移（使用标记文件）
-  const userDataPath = app.getPath('userData')
-  const migrationFlagPath = path.join(userDataPath, 'host-notes-migrated.flag')
-  
-  if (fs.existsSync(migrationFlagPath)) {
-    return  // 已迁移过，跳过
-  }
-  
-  try {
-    const profiles = hostProfileService.getAllProfiles()
-    for (const profile of profiles) {
-      if (profile.notes && profile.notes.length > 0) {
-        const migrated = await knowledgeService.migrateNotesToKnowledge(
-          profile.hostId, 
-          profile.notes
-        )
-        
-        // 迁移完成后清空旧的 notes（但保留其他档案信息）
-        if (migrated > 0) {
-          hostProfileService.updateProfile(profile.hostId, { notes: [] })
-        }
-      }
-    }
-    
-    // 创建迁移标记文件
-    fs.writeFileSync(migrationFlagPath, new Date().toISOString(), 'utf-8')
-  } catch (e) {
-    log.error('迁移主机 notes 失败:', e)
   }
 }
 
@@ -584,7 +550,7 @@ function setupWindowServices() {
 
   const lang = configService?.getLanguage() || 'zh-CN'
   menuService.setLanguage(lang)
-  const shortcuts = configService?.get('keyboardShortcuts')
+  const shortcuts = configService?.getKeyboardShortcuts()
   if (shortcuts) {
     menuService.setShortcuts(shortcuts)
   }
@@ -936,22 +902,19 @@ app.whenReady().then(async () => {
         log.error('Watch 服务启动失败:', e)
       })
 
-      // 从旧版定时任务迁移数据到关切系统
+      // Services phase migrations（需要后端服务就绪）
       try {
-        const migration = watchService.migrateFromScheduler(getSchedulerStore())
-        if (migration.migrated > 0) {
-          log.info(`定时任务迁移完成: ${migration.migrated} 个迁移, ${migration.skipped} 个跳过`)
-        }
-        if (migration.errors.length > 0) {
-          log.warn('迁移警告:', migration.errors)
-        }
-        // 迁移后如果 Scheduler 已无任务，停止 Scheduler 服务
-        if (schedulerService.getTasks().length === 0) {
-          schedulerService.stop()
-          log.info('Scheduler 无剩余任务，已停止')
-        }
+        await getMigrationRunner().run('services', {
+          configService,
+          userDataPath: app.getPath('userData'),
+          hostProfileService,
+          knowledgeService,
+          watchService,
+          schedulerStore: getSchedulerStore(),
+          schedulerService,
+        })
       } catch (e) {
-        log.error('定时任务迁移失败:', e)
+        log.error('Services migration failed:', e)
       }
 
       const awakened = configService.get('agentAwakened') as boolean ?? false
@@ -1688,6 +1651,10 @@ ipcMain.handle('updater:downloadUpdate', async () => {
 // 安装更新并重启
 ipcMain.handle('updater:quitAndInstall', async () => {
   try {
+    // 安装前备份用户数据
+    const version = app.getVersion()
+    createBackup(app.getPath('userData'), `pre-update-v${version}`)
+
     autoUpdater.quitAndInstall(false, true)
     return { success: true }
   } catch (error) {

@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { v4 as uuidv4 } from 'uuid'
 import { setLocale, type LocaleType } from '../i18n'
 import { type UiThemeName } from '../themes/ui-themes'
 import { setLogLevel as setFrontendLogLevel, type LogLevel } from '../utils/logger'
@@ -363,9 +362,6 @@ export const useConfigStore = defineStore('config', () => {
       // 加载会话分组
       const groups = await window.electronAPI.config.getSessionGroups()
       sessionGroups.value = groups || []
-
-      // 数据迁移：将旧的 group 字符串转换为 SessionGroup
-      await migrateGroupStringsToEntities()
 
       // 加载主题
       const theme = await window.electronAPI.config.getTheme()
@@ -883,49 +879,6 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   // ==================== 数据迁移 ====================
-
-  /**
-   * 将旧的 group 字符串迁移为 SessionGroup 实体
-   * 只在首次加载时执行一次
-   */
-  async function migrateGroupStringsToEntities(): Promise<void> {
-    // 收集所有使用旧 group 字段但没有 groupId 的会话
-    const sessionsToMigrate = sshSessions.value.filter(s => s.group && !s.groupId)
-    if (sessionsToMigrate.length === 0) return
-
-    // 收集所有唯一的分组名称
-    const groupNames = new Set(sessionsToMigrate.map(s => s.group!))
-
-    // 为每个分组名称创建 SessionGroup（如果不存在）
-    let groupsChanged = false
-    for (const name of groupNames) {
-      if (!sessionGroups.value.find(g => g.name === name)) {
-        sessionGroups.value.push({
-          id: uuidv4(),
-          name
-        })
-        groupsChanged = true
-      }
-    }
-
-    // 更新会话的 groupId
-    let sessionsChanged = false
-    for (const session of sessionsToMigrate) {
-      const group = sessionGroups.value.find(g => g.name === session.group)
-      if (group) {
-        session.groupId = group.id
-        sessionsChanged = true
-      }
-    }
-
-    // 保存更改
-    if (groupsChanged) {
-      await saveSessionGroups()
-    }
-    if (sessionsChanged) {
-      await saveSshSessions()
-    }
-  }
 
   return {
     // 状态

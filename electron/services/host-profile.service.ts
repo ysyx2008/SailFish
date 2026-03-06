@@ -5,6 +5,7 @@ import { app } from 'electron'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { createLogger } from '../utils/logger'
+import { normalizeHostProfile } from '../utils/normalize'
 
 const log = createLogger('HostProfile')
 
@@ -118,7 +119,7 @@ export class HostProfileService {
       for (const file of files) {
         const filePath = path.join(this.profilesDir, file)
         const content = fs.readFileSync(filePath, 'utf-8')
-        const profile = JSON.parse(content) as HostProfile
+        const profile = normalizeHostProfile(JSON.parse(content))
         this.profiles.set(profile.hostId, profile)
       }
     } catch (e) {

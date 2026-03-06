@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
 import { createLogger } from '../utils/logger'
+import { normalizeAgentRecord } from '../utils/normalize'
 
 const log = createLogger('History')
 
@@ -156,6 +157,10 @@ export class HistoryService {
     return []
   }
 
+  private readAgentRecords(filePath: string): AgentRecord[] {
+    return this.readJsonFile<AgentRecord>(filePath).map(normalizeAgentRecord)
+  }
+
   /**
    * 写入 JSON 文件
    */
@@ -229,7 +234,7 @@ export class HistoryService {
   saveAgentRecord(record: AgentRecord): void {
     const dateStr = this.getDateString(record.timestamp)
     const filePath = this.getAgentFilePath(dateStr)
-    const records = this.readJsonFile<AgentRecord>(filePath)
+    const records = this.readAgentRecords(filePath)
     
     // 查找是否存在相同 id 的记录
     const existingIndex = records.findIndex(r => r.id === record.id)
@@ -257,7 +262,7 @@ export class HistoryService {
       if (endDate && dateStr > endDate) continue
 
       const filePath = path.join(this.agentDir, file)
-      records.push(...this.readJsonFile<AgentRecord>(filePath))
+      records.push(...this.readAgentRecords(filePath))
     }
 
     return records.sort((a, b) => a.timestamp - b.timestamp)
@@ -270,7 +275,7 @@ export class HistoryService {
     const files = fs.readdirSync(this.agentDir).filter(f => f.endsWith('.json')).sort().reverse()
     for (const file of files) {
       const filePath = path.join(this.agentDir, file)
-      const records = this.readJsonFile<AgentRecord>(filePath)
+      const records = this.readAgentRecords(filePath)
       const found = records.find(r => r.id === id)
       if (found) return found
     }
@@ -307,7 +312,7 @@ export class HistoryService {
 
     for (const file of files) {
       const filePath = path.join(this.agentDir, file)
-      const records = this.readJsonFile<AgentRecord>(filePath)
+      const records = this.readAgentRecords(filePath)
       for (let i = records.length - 1; i >= 0; i--) {
         const r = records[i]
         const ts = r.timestamp || 0

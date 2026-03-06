@@ -4,6 +4,7 @@ import type { ExecutionMode } from '@shared/types'
 import type { KnowledgeSettings } from './knowledge/types'
 import { DEFAULT_KNOWLEDGE_SETTINGS } from './knowledge/types'
 import { createLogger, type LogLevel } from '../utils/logger'
+import { normalizeTerminalSettings, normalizeKeyboardShortcuts } from '../utils/normalize'
 
 const log = createLogger('Config')
 
@@ -66,6 +67,8 @@ export interface TerminalSettings {
   cursorBlink: boolean
   cursorStyle: 'block' | 'underline' | 'bar'
   scrollback: number
+  localEncoding?: string
+  commandHighlight?: boolean
 }
 
 // MCP 服务器配置
@@ -208,6 +211,7 @@ interface StoreSchema {
   bondLastCalculatedAt: number         // 上次计算时间
   keyboardShortcuts: KeyboardShortcuts  // 自定义快捷键
   autoVisionModel: boolean  // 自动使用视觉模型：遇到图片时自动切换到关联的视觉模型
+  schemaVersion: number  // 数据 schema 版本号，用于迁移框架追踪已执行的 migration
 }
 
 const defaultConfig: StoreSchema = {
@@ -279,7 +283,8 @@ const defaultConfig: StoreSchema = {
   bondMilestones: [],
   bondLastCalculatedAt: 0,
   keyboardShortcuts: { ...DEFAULT_KEYBOARD_SHORTCUTS },
-  autoVisionModel: true
+  autoVisionModel: true,
+  schemaVersion: 0
 }
 
 export class ConfigService {
@@ -335,6 +340,16 @@ export class ConfigService {
    */
   getAll(): StoreSchema {
     return this.store.store
+  }
+
+  // ==================== Schema Version ====================
+
+  getSchemaVersion(): number {
+    return this.store.get('schemaVersion') ?? 0
+  }
+
+  setSchemaVersion(version: number): void {
+    this.store.set('schemaVersion', version)
   }
 
   // ==================== AI 配置 ====================
@@ -541,7 +556,8 @@ export class ConfigService {
    * 获取终端设置
    */
   getTerminalSettings(): TerminalSettings {
-    return this.store.get('terminalSettings') || defaultConfig.terminalSettings
+    const raw = this.store.get('terminalSettings') || defaultConfig.terminalSettings
+    return normalizeTerminalSettings(raw as Record<string, unknown>)
   }
 
   /**
@@ -859,6 +875,17 @@ export class ConfigService {
   setAgentName(name: string): void {
     const safeName = (name || '').trim().substring(0, 20)
     this.store.set('agentName', safeName)
+  }
+
+  // ==================== 快捷键 ====================
+
+  getKeyboardShortcuts(): KeyboardShortcuts {
+    const raw = this.store.get('keyboardShortcuts') || {}
+    return normalizeKeyboardShortcuts(raw as Record<string, unknown>, DEFAULT_KEYBOARD_SHORTCUTS)
+  }
+
+  setKeyboardShortcuts(shortcuts: KeyboardShortcuts): void {
+    this.store.set('keyboardShortcuts', shortcuts)
   }
 
   // ==================== 日志级别 ====================

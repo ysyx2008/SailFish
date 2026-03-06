@@ -4,6 +4,7 @@
  */
 import Store from 'electron-store'
 import { createLogger } from '../../utils/logger'
+import { normalizeWatchDefinition } from '../../utils/normalize'
 import type {
   WatchDefinition,
   WatchRunRecord,
@@ -43,7 +44,8 @@ export class WatchStore {
   // ==================== Watch CRUD ====================
 
   getAll(): WatchDefinition[] {
-    return this.store.get('watches') || []
+    const raw = this.store.get('watches') || []
+    return raw.map(normalizeWatchDefinition)
   }
 
   get(id: string): WatchDefinition | undefined {
