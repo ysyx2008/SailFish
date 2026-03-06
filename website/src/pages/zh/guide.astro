@@ -1,0 +1,16 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Header from '../../components/Header.astro';
+import Guide from '../../components/Guide.astro';
+import Footer from '../../components/Footer.astro';
+
+const lang = 'zh';
+---
+
+<Layout title="使用指南 - 旗鱼" lang={lang}>
+  <Header lang={lang} />
+  <main>
+    <Guide lang={lang} />
+  </main>
+  <Footer lang={lang} />
+</Layout>
