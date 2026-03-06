@@ -8,34 +8,80 @@ interface Props {
 
 const { lang = defaultLanguage } = Astro.props;
 const t = useTranslations(lang);
-const v = t.guide.visionRouting;
+const g = t.guide;
 ---
 
 <section class="guide-section">
   <div class="container">
-    <h1 class="section-title">{t.guide.title}</h1>
-    <p class="section-subtitle">{t.guide.subtitle}</p>
+    <h1 class="section-title">{g.title}</h1>
+    <p class="section-subtitle">{g.subtitle}</p>
 
     <div class="guide-layout">
       <!-- 侧边目录 -->
       <nav class="guide-toc">
-        <h3 class="toc-title">{t.guide.toc}</h3>
+        <h3 class="toc-title">{g.toc}</h3>
         <ul class="toc-list">
-          <li><a href="#vision-routing" class="toc-link active">{v.title}</a></li>
+          <li><a href="#api-config" class="toc-link">{g.apiConfig.title}</a></li>
+          <li><a href="#vision-routing" class="toc-link">{g.visionRouting.title}</a></li>
+          <li><a href="#watch" class="toc-link">{g.watch.title}</a></li>
+          <li><a href="#im-access" class="toc-link">{g.imAccess.title}</a></li>
+          <li><a href="#word-skill" class="toc-link">{g.wordSkill.title}</a></li>
+          <li><a href="#email-skill" class="toc-link">{g.emailSkill.title}</a></li>
+          <li><a href="#calendar-skill" class="toc-link">{g.calendarSkill.title}</a></li>
         </ul>
       </nav>
 
       <!-- 文档正文 -->
       <article class="guide-content">
-        <section id="vision-routing" class="guide-article">
-          <h2 class="article-title">{v.title}</h2>
-          <p class="article-intro">{v.intro}</p>
 
-          <!-- 工作原理 -->
-          <h3>{v.howItWorks}</h3>
-          <p>{v.howItWorksDesc}</p>
+        {/* ==================== API 配置入门 ==================== */}
+        <section id="api-config" class="guide-article">
+          <h2 class="article-title">{g.apiConfig.title}</h2>
+          <p class="article-intro">{g.apiConfig.intro}</p>
+
+          <h3>{g.apiConfig.providers}</h3>
+          <p>{g.apiConfig.providersDesc}</p>
+          <div class="provider-grid">
+            {g.apiConfig.providerList.map(p => (
+              <div class="provider-card">
+                <div class="provider-name">{p.name}</div>
+                <div class="provider-desc">{p.desc}</div>
+                <div class="provider-models">{p.models}</div>
+              </div>
+            ))}
+          </div>
+          <p class="note-text">{g.apiConfig.moreProviders}</p>
+
+          <h3>{g.apiConfig.setup}</h3>
+          <ol class="setup-steps">
+            {g.apiConfig.setupSteps.map(step => <li>{step}</li>)}
+          </ol>
+
+          <h3>{g.apiConfig.fields}</h3>
+          <div class="field-table">
+            {g.apiConfig.fieldList.map(f => (
+              <div class="field-row">
+                <span class="field-name">{f.field}</span>
+                <span class="field-desc">{f.desc}</span>
+              </div>
+            ))}
+          </div>
+
+          <h3>{g.apiConfig.tips}</h3>
+          <ul class="tips-list">
+            {g.apiConfig.tipsList.map(tip => <li>{tip}</li>)}
+          </ul>
+        </section>
+
+        {/* ==================== 混合多模态 ==================== */}
+        <section id="vision-routing" class="guide-article">
+          <h2 class="article-title">{g.visionRouting.title}</h2>
+          <p class="article-intro">{g.visionRouting.intro}</p>
+
+          <h3>{g.visionRouting.howItWorks}</h3>
+          <p>{g.visionRouting.howItWorksDesc}</p>
           <div class="flow-steps">
-            {v.flowSteps.map((step, i) => (
+            {g.visionRouting.flowSteps.map((step, i) => (
               <div class="flow-step">
                 <span class="flow-step-num">{i + 1}</span>
                 <span class="flow-step-text">{step}</span>
@@ -43,38 +89,233 @@ const v = t.guide.visionRouting;
             ))}
           </div>
 
-          <!-- 配置方法 -->
-          <h3>{v.setup}</h3>
+          <h3>{g.visionRouting.setup}</h3>
           <ol class="setup-steps">
-            {v.setupSteps.map(step => (
-              <li>{step}</li>
-            ))}
+            {g.visionRouting.setupSteps.map(step => <li>{step}</li>)}
           </ol>
 
-          <!-- 使用场景 -->
-          <h3>{v.example}</h3>
-          <p>{v.exampleDesc}</p>
+          <h3>{g.visionRouting.example}</h3>
+          <p>{g.visionRouting.exampleDesc}</p>
           <div class="example-scenarios">
-            {v.exampleScenarios.map(scenario => (
+            {g.visionRouting.exampleScenarios.map(s => (
               <div class="scenario">
-                <div class="scenario-input">{scenario.input}</div>
-                <div class="scenario-result">{scenario.result}</div>
+                <div class="scenario-input">{s.input}</div>
+                <div class="scenario-result">{s.result}</div>
               </div>
             ))}
           </div>
 
-          <!-- 使用建议 -->
-          <h3>{v.tips}</h3>
+          <h3>{g.visionRouting.tips}</h3>
           <ul class="tips-list">
-            {v.tipsList.map(tip => (
-              <li>{tip}</li>
-            ))}
+            {g.visionRouting.tipsList.map(tip => <li>{tip}</li>)}
           </ul>
         </section>
+
+        {/* ==================== 觉醒模式 ==================== */}
+        <section id="watch" class="guide-article">
+          <h2 class="article-title">{g.watch.title}</h2>
+          <p class="article-intro">{g.watch.intro}</p>
+
+          <h3>{g.watch.concept}</h3>
+          <div class="concept-list">
+            {g.watch.conceptItems.map(item => (
+              <div class="concept-item">
+                <span class="concept-term">{item.term}</span>
+                <span class="concept-desc">{item.desc}</span>
+              </div>
+            ))}
+          </div>
+
+          <h3>{g.watch.triggers}</h3>
+          <div class="trigger-grid">
+            {g.watch.triggerList.map(tr => (
+              <div class="trigger-card">
+                <div class="trigger-type">{tr.type}</div>
+                <div class="trigger-desc">{tr.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <h3>{g.watch.templates}</h3>
+          <p>{g.watch.templatesDesc}</p>
+          <div class="template-grid">
+            {g.watch.templateList.map(tpl => (
+              <div class="template-card">
+                <div class="template-name">{tpl.name}</div>
+                <div class="template-desc">{tpl.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <h3>{g.watch.howToUse}</h3>
+          <p>{g.watch.howToUseDesc}</p>
+          <div class="how-to-items">
+            {g.watch.howToUseItems.map(item => (
+              <div class="how-to-item">
+                <span class="how-to-way">{item.way}</span>
+                <span class="how-to-desc">{item.desc}</span>
+              </div>
+            ))}
+          </div>
+
+          <h3>{g.watch.tips}</h3>
+          <ul class="tips-list">
+            {g.watch.tipsList.map(tip => <li>{tip}</li>)}
+          </ul>
+        </section>
+
+        {/* ==================== 多通道远程访问 ==================== */}
+        <section id="im-access" class="guide-article">
+          <h2 class="article-title">{g.imAccess.title}</h2>
+          <p class="article-intro">{g.imAccess.intro}</p>
+
+          <h3>{g.imAccess.platforms}</h3>
+          <div class="platform-grid">
+            {g.imAccess.platformList.map(p => (
+              <div class="platform-card">
+                <div class="platform-name">{p.name}</div>
+                <div class="platform-config">{p.config}</div>
+                <div class="platform-note">{p.note}</div>
+              </div>
+            ))}
+          </div>
+
+          <h3>{g.imAccess.setup}</h3>
+          <ol class="setup-steps">
+            {g.imAccess.setupSteps.map(step => <li>{step}</li>)}
+          </ol>
+
+          <h3>{g.imAccess.webAccess}</h3>
+          <p>{g.imAccess.webAccessDesc}</p>
+          <ol class="setup-steps">
+            {g.imAccess.webAccessSteps.map(step => <li>{step}</li>)}
+          </ol>
+
+          <h3>{g.imAccess.capabilities}</h3>
+          <ul class="capability-list">
+            {g.imAccess.capabilityList.map(cap => <li>{cap}</li>)}
+          </ul>
+
+          <h3>{g.imAccess.tips}</h3>
+          <ul class="tips-list">
+            {g.imAccess.tipsList.map(tip => <li>{tip}</li>)}
+          </ul>
+        </section>
+
+        {/* ==================== Word 文档生成 ==================== */}
+        <section id="word-skill" class="guide-article">
+          <h2 class="article-title">{g.wordSkill.title}</h2>
+          <p class="article-intro">{g.wordSkill.intro}</p>
+
+          <h3>{g.wordSkill.capabilities}</h3>
+          <div class="capability-grid">
+            {g.wordSkill.capabilityList.map(c => (
+              <div class="cap-card">
+                <div class="cap-name">{c.cap}</div>
+                <div class="cap-desc">{c.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <h3>{g.wordSkill.styles}</h3>
+          <div class="style-grid">
+            {g.wordSkill.styleList.map(s => (
+              <div class="style-card">
+                <div class="style-name">{s.name}</div>
+                <div class="style-desc">{s.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <h3>{g.wordSkill.examples}</h3>
+          <ul class="example-list">
+            {g.wordSkill.exampleList.map(ex => <li>{ex}</li>)}
+          </ul>
+        </section>
+
+        {/* ==================== 邮箱管理 ==================== */}
+        <section id="email-skill" class="guide-article">
+          <h2 class="article-title">{g.emailSkill.title}</h2>
+          <p class="article-intro">{g.emailSkill.intro}</p>
+
+          <h3>{g.emailSkill.capabilities}</h3>
+          <ul class="capability-list">
+            {g.emailSkill.capabilityList.map(cap => <li>{cap}</li>)}
+          </ul>
+
+          <h3>{g.emailSkill.providers}</h3>
+          <div class="provider-table">
+            {g.emailSkill.providerList.map(p => (
+              <div class="provider-row">
+                <span class="provider-row-name">{p.name}</span>
+                <span class="provider-row-server">{p.server}</span>
+              </div>
+            ))}
+          </div>
+
+          <h3>{g.emailSkill.setup}</h3>
+          <ol class="setup-steps">
+            {g.emailSkill.setupSteps.map(step => <li>{step}</li>)}
+          </ol>
+
+          <h3>{g.emailSkill.examples}</h3>
+          <ul class="example-list">
+            {g.emailSkill.exampleList.map(ex => <li>{ex}</li>)}
+          </ul>
+        </section>
+
+        {/* ==================== 日历与待办 ==================== */}
+        <section id="calendar-skill" class="guide-article">
+          <h2 class="article-title">{g.calendarSkill.title}</h2>
+          <p class="article-intro">{g.calendarSkill.intro}</p>
+
+          <h3>{g.calendarSkill.capabilities}</h3>
+          <ul class="capability-list">
+            {g.calendarSkill.capabilityList.map(cap => <li>{cap}</li>)}
+          </ul>
+
+          <h3>{g.calendarSkill.providers}</h3>
+          <div class="calendar-providers">
+            {g.calendarSkill.providerList.map(p => (
+              <div class="cal-provider">
+                <span class="cal-provider-name">{p.name}</span>
+                {p.note && <span class="cal-provider-note">{p.note}</span>}
+              </div>
+            ))}
+          </div>
+
+          <h3>{g.calendarSkill.setup}</h3>
+          <ol class="setup-steps">
+            {g.calendarSkill.setupSteps.map(step => <li>{step}</li>)}
+          </ol>
+
+          <h3>{g.calendarSkill.examples}</h3>
+          <ul class="example-list">
+            {g.calendarSkill.exampleList.map(ex => <li>{ex}</li>)}
+          </ul>
+        </section>
+
       </article>
     </div>
   </div>
 </section>
+
+<script>
+  const tocLinks = document.querySelectorAll('.toc-link');
+  const articles = document.querySelectorAll('.guide-article');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        tocLinks.forEach(link => link.classList.remove('active'));
+        const activeLink = document.querySelector(`.toc-link[href="#${entry.target.id}"]`);
+        activeLink?.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-80px 0px -60% 0px' });
+
+  articles.forEach(article => observer.observe(article));
+</script>
 
 <style>
   .guide-section {
@@ -95,6 +336,8 @@ const v = t.guide.visionRouting;
     position: sticky;
     top: 100px;
     align-self: start;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
   }
 
   .toc-title {
@@ -112,96 +355,102 @@ const v = t.guide.visionRouting;
     padding-left: 16px;
   }
 
-  .toc-list li {
-    margin-bottom: 8px;
-  }
+  .toc-list li { margin-bottom: 6px; }
 
   .toc-link {
     display: block;
-    font-size: 14px;
+    font-size: 13px;
     color: var(--color-text-secondary);
     padding: 4px 0;
     transition: color 0.2s;
+    line-height: 1.4;
   }
 
-  .toc-link:hover,
-  .toc-link.active {
+  .toc-link:hover, .toc-link.active {
     color: var(--color-accent-primary);
   }
 
-  .toc-link.active {
-    font-weight: 500;
-  }
+  .toc-link.active { font-weight: 500; }
 
   /* 文档正文 */
-  .guide-content {
-    min-width: 0;
-  }
+  .guide-content { min-width: 0; }
 
   .guide-article {
     line-height: 1.8;
+    padding-bottom: 48px;
+    margin-bottom: 48px;
+    border-bottom: 1px solid var(--color-border);
+    scroll-margin-top: 90px;
+  }
+
+  .guide-article:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
   }
 
   .article-title {
-    font-size: 28px;
+    font-size: 26px;
     font-weight: 700;
     color: var(--color-text-primary);
-    margin-bottom: 20px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--color-border);
+    margin-bottom: 16px;
   }
 
   .article-intro {
-    font-size: 16px;
+    font-size: 15px;
     color: var(--color-text-secondary);
-    margin-bottom: 36px;
+    margin-bottom: 32px;
     line-height: 1.8;
   }
 
   .guide-article h3 {
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 600;
     color: var(--color-text-primary);
-    margin: 36px 0 16px;
+    margin: 32px 0 14px;
   }
 
   .guide-article p {
     color: var(--color-text-secondary);
-    margin-bottom: 16px;
+    font-size: 14px;
+    margin-bottom: 14px;
+  }
+
+  .note-text {
+    font-size: 13px !important;
+    color: var(--color-text-muted) !important;
+    font-style: italic;
   }
 
   /* 流程步骤 */
   .flow-steps {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    margin: 20px 0 32px;
+    gap: 10px;
+    margin: 16px 0 28px;
   }
 
   .flow-step {
     display: flex;
     align-items: center;
     gap: 14px;
-    padding: 14px 18px;
+    padding: 12px 16px;
     background: var(--color-bg-card);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     transition: border-color 0.2s;
   }
 
-  .flow-step:hover {
-    border-color: var(--color-border-hover);
-  }
+  .flow-step:hover { border-color: var(--color-border-hover); }
 
   .flow-step-num {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 26px;
+    height: 26px;
     background: var(--gradient-primary);
     color: white;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
     border-radius: 50%;
     flex-shrink: 0;
@@ -214,15 +463,15 @@ const v = t.guide.visionRouting;
 
   /* 配置步骤 */
   .setup-steps {
-    margin: 16px 0 32px;
+    margin: 12px 0 28px;
     padding-left: 20px;
   }
 
   .setup-steps li {
     color: var(--color-text-secondary);
-    font-size: 15px;
-    margin-bottom: 12px;
-    padding-left: 8px;
+    font-size: 14px;
+    margin-bottom: 10px;
+    padding-left: 6px;
   }
 
   .setup-steps li::marker {
@@ -230,18 +479,17 @@ const v = t.guide.visionRouting;
     font-weight: 600;
   }
 
-  /* 使用场景 */
+  /* 场景示例 */
   .example-scenarios {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    margin: 20px 0 32px;
+    gap: 10px;
+    margin: 16px 0 28px;
   }
 
   .scenario {
     display: flex;
     align-items: center;
-    gap: 0;
     background: var(--color-bg-card);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
@@ -250,15 +498,14 @@ const v = t.guide.visionRouting;
 
   .scenario-input {
     flex: 1;
-    padding: 14px 18px;
-    font-size: 14px;
+    padding: 12px 16px;
+    font-size: 13px;
     color: var(--color-text-secondary);
-    font-family: var(--font-sans);
   }
 
   .scenario-result {
-    padding: 14px 18px;
-    font-size: 14px;
+    padding: 12px 16px;
+    font-size: 13px;
     font-weight: 500;
     color: var(--color-accent-primary);
     background: rgba(6, 182, 212, 0.05);
@@ -266,21 +513,346 @@ const v = t.guide.visionRouting;
     white-space: nowrap;
   }
 
-  /* 使用建议 */
-  .tips-list {
-    margin: 16px 0 32px;
+  /* 提示列表 */
+  .tips-list, .capability-list, .example-list {
+    margin: 12px 0 28px;
     padding-left: 20px;
   }
 
-  .tips-list li {
+  .tips-list li, .capability-list li, .example-list li {
     color: var(--color-text-secondary);
-    font-size: 15px;
-    margin-bottom: 12px;
-    padding-left: 8px;
+    font-size: 14px;
+    margin-bottom: 10px;
+    padding-left: 6px;
   }
 
-  .tips-list li::marker {
+  .tips-list li::marker, .capability-list li::marker { color: var(--color-accent-primary); }
+  .example-list li::marker { color: var(--color-text-muted); }
+  .example-list { list-style-type: '"'; }
+  .example-list li { padding-left: 8px; }
+
+  /* 服务商网格 */
+  .provider-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin: 16px 0 20px;
+  }
+
+  .provider-card {
+    padding: 16px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    transition: border-color 0.2s;
+  }
+
+  .provider-card:hover { border-color: var(--color-border-hover); }
+
+  .provider-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 4px;
+  }
+
+  .provider-desc {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    margin-bottom: 8px;
+  }
+
+  .provider-models {
+    font-size: 12px;
     color: var(--color-accent-primary);
+    font-family: var(--font-mono);
+  }
+
+  /* 字段表 */
+  .field-table {
+    margin: 16px 0 28px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .field-row {
+    display: flex;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 13px;
+  }
+
+  .field-row:last-child { border-bottom: none; }
+
+  .field-name {
+    width: 140px;
+    flex-shrink: 0;
+    font-weight: 500;
+    color: var(--color-text-primary);
+  }
+
+  .field-desc { color: var(--color-text-secondary); }
+
+  /* 概念列表 */
+  .concept-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 16px 0 28px;
+  }
+
+  .concept-item {
+    display: flex;
+    gap: 14px;
+    padding: 12px 16px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+
+  .concept-term {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-accent-primary);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .concept-desc {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+  }
+
+  /* 触发器网格 */
+  .trigger-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+    margin: 16px 0 28px;
+  }
+
+  .trigger-card {
+    padding: 14px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+
+  .trigger-type {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 4px;
+  }
+
+  .trigger-desc {
+    font-size: 12px;
+    color: var(--color-text-muted);
+  }
+
+  /* 模板网格 */
+  .template-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 10px;
+    margin: 16px 0 28px;
+  }
+
+  .template-card {
+    padding: 14px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+
+  .template-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 4px;
+  }
+
+  .template-desc {
+    font-size: 12px;
+    color: var(--color-text-muted);
+  }
+
+  /* 使用方式 */
+  .how-to-items {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 16px 0 28px;
+  }
+
+  .how-to-item {
+    display: flex;
+    gap: 14px;
+    padding: 14px 16px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+
+  .how-to-way {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-accent-primary);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .how-to-desc {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+  }
+
+  /* 平台网格 */
+  .platform-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin: 16px 0 28px;
+  }
+
+  .platform-card {
+    padding: 14px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+
+  .platform-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 4px;
+  }
+
+  .platform-config {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    margin-bottom: 4px;
+  }
+
+  .platform-note {
+    font-size: 11px;
+    color: var(--color-text-muted);
+  }
+
+  /* 能力网格 */
+  .capability-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin: 16px 0 28px;
+  }
+
+  .cap-card {
+    padding: 14px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+
+  .cap-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 4px;
+  }
+
+  .cap-desc {
+    font-size: 12px;
+    color: var(--color-text-muted);
+  }
+
+  /* 样式网格 */
+  .style-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin: 16px 0 28px;
+  }
+
+  .style-card {
+    padding: 14px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+
+  .style-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-accent-primary);
+    margin-bottom: 4px;
+    font-family: var(--font-mono);
+  }
+
+  .style-desc {
+    font-size: 12px;
+    color: var(--color-text-muted);
+  }
+
+  /* 服务商表 */
+  .provider-table {
+    margin: 16px 0 28px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .provider-row {
+    display: flex;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 13px;
+  }
+
+  .provider-row:last-child { border-bottom: none; }
+
+  .provider-row-name {
+    width: 120px;
+    flex-shrink: 0;
+    font-weight: 500;
+    color: var(--color-text-primary);
+  }
+
+  .provider-row-server {
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  /* 日历服务商 */
+  .calendar-providers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 16px 0 28px;
+  }
+
+  .cal-provider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+
+  .cal-provider-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--color-text-primary);
+  }
+
+  .cal-provider-note {
+    font-size: 11px;
+    color: var(--color-text-muted);
   }
 
   /* 响应式 */
@@ -292,27 +864,24 @@ const v = t.guide.visionRouting;
 
     .guide-toc {
       position: static;
-      padding: 16px;
+      padding: 14px;
       background: var(--color-bg-card);
       border: 1px solid var(--color-border);
       border-radius: var(--radius-md);
+      max-height: none;
     }
 
     .toc-list {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px 16px;
+      gap: 4px 14px;
       border-left: none;
       padding-left: 0;
     }
 
-    .toc-list li {
-      margin-bottom: 0;
-    }
+    .toc-list li { margin-bottom: 0; }
 
-    .article-title {
-      font-size: 22px;
-    }
+    .article-title { font-size: 20px; }
 
     .scenario {
       flex-direction: column;
@@ -324,5 +893,17 @@ const v = t.guide.visionRouting;
       width: 100%;
       white-space: normal;
     }
+
+    .provider-grid,
+    .trigger-grid,
+    .template-grid,
+    .platform-grid,
+    .capability-grid,
+    .style-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .field-row { flex-direction: column; gap: 2px; }
+    .field-name { width: auto; }
   }
 </style>
