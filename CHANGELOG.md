@@ -2,7 +2,28 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.13.0 (2026-03-04) (Latest)
+## v10.13.1 (2026-03-06) (Latest)
+
+Significantly reduced token overhead through prompt and tool description optimization, added auto-update mirror support and data migration framework for smoother upgrades.
+
+### Improvements
+- ⚡ **Massive Token Optimization**: Restructured system prompts, merged and streamlined tool descriptions, and compressed skill/watch summaries — substantially reducing per-request token costs
+- 🔄 **Auto-Update Mirror**: Added Alibaba Cloud OSS as an alternative update source with automatic speed testing and manual switching option
+- 🏗️ **Data Migration Framework**: Introduced versioned migration system with normalize layer to ensure smooth upgrades for existing users
+- 📎 **Unrestricted File Upload**: Removed file format restrictions — now supports uploading any file type
+- 🏷️ **Vision Model Indicator**: Model selector dropdown now shows which models support vision capabilities
+- 🖼️ **ICO Image Support**: `read_file` tool now handles ICO format with improved binary file detection
+- ⚙️ **Model Config Dialog**: AI model configuration moved to a dialog form for better UX
+
+### Bug Fixes
+- 🔧 Fixed rare image formats being skipped by both processing pipelines simultaneously
+- 🔧 Fixed network error retry insufficiency causing Agent to prematurely conclude tasks
+- 🔧 Centralized Watch vs TODO judgment rules to prevent accidental Watch creation
+- 🔧 Aligned frontend supported file format list with backend `detectFileType`
+- 🔧 Included file path in AI context for uploaded documents
+- 🔧 Added Excel format support and drag-drop failure toast to frontend file upload
+
+## v10.13.0 (2026-03-04)
 
 Introduced hybrid multimodal routing for automatic vision model switching, and significantly enhanced document parsing with PDF rendering, Word image extraction, and HTML-to-Markdown conversion.
 

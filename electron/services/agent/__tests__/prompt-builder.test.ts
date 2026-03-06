@@ -205,7 +205,7 @@ describe('PromptBuilder', () => {
       })
       const prompt = builder.build()
 
-      expect(prompt).toContain('## 你的灵魂（重要！）')
+      expect(prompt).toContain('# 你的灵魂（重要！）')
       expect(prompt).toContain('先结论后细节')
     })
 
@@ -218,10 +218,10 @@ describe('PromptBuilder', () => {
       })
       const prompt = builder.build()
 
-      expect(prompt).toContain('## 你的灵魂（重要！）')
+      expect(prompt).toContain('# 你的灵魂（重要！）')
       expect(prompt).toContain('保持直接风格')
-      expect(prompt).toContain('### 风格参考（MBTI）')
-      expect(prompt).not.toContain('## 你的风格（重要！）')
+      expect(prompt).toContain('## 风格参考（MBTI）')
+      expect(prompt).not.toContain('# 你的风格（重要！）\n')
     })
 
     it('should use MBTI as primary when no personality text', () => {
@@ -232,8 +232,8 @@ describe('PromptBuilder', () => {
       })
       const prompt = builder.build()
 
-      expect(prompt).toContain('## 你的风格（重要！）')
-      expect(prompt).not.toContain('## 你的灵魂（重要！）')
+      expect(prompt).toContain('# 你的风格（重要！）')
+      expect(prompt).not.toContain('# 你的灵魂（重要！）')
     })
   })
 
@@ -279,7 +279,7 @@ describe('PromptBuilder', () => {
       const prompt = builder.build()
       
       expect(prompt).toContain('相关文档内容：这是测试内容')
-      expect(prompt).toContain('你有知识库')
+      expect(prompt).toContain('知识库')
       expect(prompt).toContain('search_knowledge')
     })
 
@@ -292,7 +292,7 @@ describe('PromptBuilder', () => {
       })
       const prompt = builder.build()
       
-      expect(prompt).toContain('知识库工具')
+      expect(prompt).toContain('知识库')
       expect(prompt).toContain('search_knowledge')
     })
 
@@ -304,8 +304,7 @@ describe('PromptBuilder', () => {
       })
       const prompt = builder.build()
       
-      expect(prompt).not.toContain('你有知识库')
-      expect(prompt).not.toContain('知识库工具')
+      expect(prompt).not.toContain('search_knowledge')
     })
   })
 
@@ -317,7 +316,7 @@ describe('PromptBuilder', () => {
       const builder = new PromptBuilder({ context })
       const prompt = builder.build()
       
-      expect(prompt).toContain('用户上传的文档')
+      expect(prompt).toContain('用户上传了文档')
       expect(prompt).toContain('sf_uploaded_docs')
     })
 
@@ -326,7 +325,7 @@ describe('PromptBuilder', () => {
       const builder = new PromptBuilder({ context })
       const prompt = builder.build()
       
-      expect(prompt).not.toContain('用户上传的文档')
+      expect(prompt).not.toContain('用户上传了文档')
     })
   })
 
@@ -404,7 +403,7 @@ describe('PromptBuilder', () => {
       })
       const prompt = builder.build()
       
-      expect(prompt).toContain('相关历史')
+      expect(prompt).toContain('过往对话')
       expect(prompt).toContain('检查 MySQL 状态')
     })
   })
@@ -493,9 +492,9 @@ describe('PromptBuilder', () => {
       const builder = new PromptBuilder({ context })
       const prompt = builder.build()
       
-      expect(prompt).toContain('工作方式')
+      expect(prompt).toContain('行为准则')
       expect(prompt).toContain('调用工具前')
-      expect(prompt).toContain('工具执行后')
+      expect(prompt).toContain('执行后')
     })
 
     it('should require responding in user language', () => {
@@ -504,8 +503,7 @@ describe('PromptBuilder', () => {
       const prompt = builder.build()
       
       expect(prompt).toContain('SAME language')
-      expect(prompt).toContain('English')
-      expect(prompt).toContain('Chinese')
+      expect(prompt).toContain('MUST respond')
     })
   })
 })
@@ -607,7 +605,7 @@ describe('Conversation History in Prompt', () => {
       })
       const prompt = builder.build()
 
-      expect(prompt).toContain('相关历史')
+      expect(prompt).toContain('过往对话')
       expect(prompt).toContain('部署前端到生产环境')
       expect(prompt).toContain('部署成功')
       expect(prompt).toContain('✓')
@@ -639,7 +637,7 @@ describe('Conversation History in Prompt', () => {
       })
       const prompt = builder.build()
 
-      expect(prompt).not.toContain('相关历史')
+      expect(prompt).not.toContain('过往对话')
     })
   })
 })
