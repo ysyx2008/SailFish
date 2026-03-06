@@ -332,7 +332,7 @@ export default {
     contact: '联系我们',
     license: '开源协议',
     website: '官方网站',
-    copyright: '© 2024 旗鱼',
+    copyright: '© 2026 旗鱼',
     // 更新检测
     checkUpdate: '检查更新',
     checkingUpdate: '正在检查更新...',

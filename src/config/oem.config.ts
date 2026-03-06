@@ -28,7 +28,7 @@ export const oemConfig: OemConfig = {
     name: { zh: '旗鱼', en: 'SailFish' },
     logo: '/assets/logo.png',
     version: '',  // 留空使用 package.json 版本
-    copyright: { zh: '© 2024 旗鱼', en: '© 2024 SailFish' }
+    copyright: { zh: '© 2026 旗鱼', en: '© 2026 SailFish' }
   },
   features: {
     showSponsor: true  // 赞助功能开关
@@ -49,7 +49,7 @@ export const oemConfig: OemConfig = {
  *     name: { zh: '旗鱼', en: 'SailFish' },
  *     logo: '/assets/logo.png',
  *     version: '',
- *     copyright: { zh: '© 2024 旗鱼', en: '© 2024 SailFish' }
+ *     copyright: { zh: '© 2026 旗鱼', en: '© 2026 SailFish' }
  *   },
  *   features: {
  *     showSponsor: false  // Steam 版隐藏赞助功能

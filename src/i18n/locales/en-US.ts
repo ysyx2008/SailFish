@@ -332,7 +332,7 @@ export default {
     contact: 'Contact Us',
     license: 'License',
     website: 'Website',
-    copyright: '© 2024 SailFish',
+    copyright: '© 2026 SailFish',
     // Update check
     checkUpdate: 'Check for Updates',
     checkingUpdate: 'Checking for updates...',
