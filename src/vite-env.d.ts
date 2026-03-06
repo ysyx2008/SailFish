@@ -35,6 +35,21 @@ type WatchHistoryRecord = import('@shared/types').WatchHistoryRecord
 type BondMetrics = import('@shared/types').BondMetrics
 type BondTrustLevel = import('@shared/types').BondTrustLevel
 
+// 更新状态类型
+type UpdateSource = 'github' | 'oss'
+interface UpdateStatusInfo {
+  status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
+  info?: { version?: string; releaseNotes?: string; releaseDate?: string }
+  progress?: { percent: number; bytesPerSecond: number; total: number; transferred: number }
+  error?: string
+  sources?: {
+    current: UpdateSource
+    recommended: UpdateSource
+    latency: Record<UpdateSource, number>
+    labels: Record<UpdateSource, { zh: string; en: string }>
+  }
+}
+
 // MCP 相关类型
 interface McpServerConfig {
   id: string
@@ -119,14 +134,15 @@ interface Window {
     updater: {
       checkForUpdates: () => Promise<{
         success: boolean
-        updateInfo?: {
-          version: string
-          releaseNotes?: string
-          releaseDate?: string
-        }
+        updateInfo?: { version: string; releaseNotes?: string; releaseDate?: string }
         error?: string
       }>
-      downloadUpdate: () => Promise<{
+      downloadUpdate: (source?: 'github' | 'oss') => Promise<{
+        success: boolean
+        source?: 'github' | 'oss'
+        error?: string
+      }>
+      setSource: (source: 'github' | 'oss') => Promise<{
         success: boolean
         error?: string
       }>
@@ -134,36 +150,8 @@ interface Window {
         success: boolean
         error?: string
       }>
-      getStatus: () => Promise<{
-        status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
-        info?: {
-          version?: string
-          releaseNotes?: string
-          releaseDate?: string
-        }
-        progress?: {
-          percent: number
-          bytesPerSecond: number
-          total: number
-          transferred: number
-        }
-        error?: string
-      }>
-      onStatusChanged: (callback: (status: {
-        status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
-        info?: {
-          version?: string
-          releaseNotes?: string
-          releaseDate?: string
-        }
-        progress?: {
-          percent: number
-          bytesPerSecond: number
-          total: number
-          transferred: number
-        }
-        error?: string
-      }) => void) => () => void
+      getStatus: () => Promise<UpdateStatusInfo>
+      onStatusChanged: (callback: (status: UpdateStatusInfo) => void) => () => void
     }
     pty: {
       create: (options?: {

@@ -343,6 +343,9 @@ export default {
     installAndRestart: 'Install and Restart',
     upToDate: 'You are up to date',
     updateError: 'Failed to check for updates',
+    downloadSource: 'Download Source',
+    sourceRecommended: 'Best',
+    sourceUnreachable: 'N/A',
     // Sponsor support
     supportTitle: 'Support the Author',
     supportDescription: 'If you find this software helpful, consider buying me a coffee ☕',

@@ -343,6 +343,9 @@ export default {
     installAndRestart: '安装并重启',
     upToDate: '当前已是最新版本',
     updateError: '检查更新失败',
+    downloadSource: '下载源',
+    sourceRecommended: '推荐',
+    sourceUnreachable: '不可达',
     // 赞助支持
     supportTitle: '支持作者',
     supportDescription: '如果旗鱼让你的工作更高效，欢迎请作者喝杯咖啡 ☕',

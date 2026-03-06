@@ -1,5 +1,19 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
+// 更新状态类型
+export interface UpdateStatus {
+  status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
+  info?: { version?: string; releaseNotes?: string; releaseDate?: string }
+  progress?: { percent: number; bytesPerSecond: number; total: number; transferred: number }
+  error?: string
+  sources?: {
+    current: 'github' | 'oss'
+    recommended: 'github' | 'oss'
+    latency: Record<'github' | 'oss', number>
+    labels: Record<'github' | 'oss', { zh: string; en: string }>
+  }
+}
+
 // 类型定义
 export interface PtyOptions {
   cols?: number
@@ -364,63 +378,32 @@ const electronAPI = {
 
   // 自动更新
   updater: {
-    // 检查更新
     checkForUpdates: () => ipcRenderer.invoke('updater:checkForUpdates') as Promise<{
       success: boolean
-      updateInfo?: {
-        version: string
-        releaseNotes?: string
-        releaseDate?: string
-      }
+      updateInfo?: { version: string; releaseNotes?: string; releaseDate?: string }
       error?: string
     }>,
 
-    // 下载更新
-    downloadUpdate: () => ipcRenderer.invoke('updater:downloadUpdate') as Promise<{
+    downloadUpdate: (source?: 'github' | 'oss') => ipcRenderer.invoke('updater:downloadUpdate', source) as Promise<{
+      success: boolean
+      source?: 'github' | 'oss'
+      error?: string
+    }>,
+
+    setSource: (source: 'github' | 'oss') => ipcRenderer.invoke('updater:setSource', source) as Promise<{
       success: boolean
       error?: string
     }>,
 
-    // 安装更新并重启
     quitAndInstall: () => ipcRenderer.invoke('updater:quitAndInstall') as Promise<{
       success: boolean
       error?: string
     }>,
 
-    // 获取当前更新状态
-    getStatus: () => ipcRenderer.invoke('updater:getStatus') as Promise<{
-      status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
-      info?: {
-        version?: string
-        releaseNotes?: string
-        releaseDate?: string
-      }
-      progress?: {
-        percent: number
-        bytesPerSecond: number
-        total: number
-        transferred: number
-      }
-      error?: string
-    }>,
+    getStatus: () => ipcRenderer.invoke('updater:getStatus') as Promise<UpdateStatus>,
 
-    // 监听更新状态变化
-    onStatusChanged: (callback: (status: {
-      status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
-      info?: {
-        version?: string
-        releaseNotes?: string
-        releaseDate?: string
-      }
-      progress?: {
-        percent: number
-        bytesPerSecond: number
-        total: number
-        transferred: number
-      }
-      error?: string
-    }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, status: Parameters<typeof callback>[0]) => callback(status)
+    onStatusChanged: (callback: (status: UpdateStatus) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => callback(status)
       ipcRenderer.on('updater:status-changed', handler)
       return () => {
         ipcRenderer.removeListener('updater:status-changed', handler)

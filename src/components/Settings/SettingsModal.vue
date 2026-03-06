@@ -44,21 +44,7 @@ const appVersion = ref<string>('')
 const showConfirmDialog = ref(false)
 
 // 更新相关状态
-const updateStatus = ref<{
-  status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
-  info?: {
-    version?: string
-    releaseNotes?: string
-    releaseDate?: string
-  }
-  progress?: {
-    percent: number
-    bytesPerSecond: number
-    total: number
-    transferred: number
-  }
-  error?: string
-}>({ status: 'idle' })
+const updateStatus = ref<UpdateStatusInfo>({ status: 'idle' })
 const showUnlockAnimation = ref(false)
 const showBadgeWithAnimation = ref(false)
 const aboutContentRef = ref<HTMLElement | null>(null)
@@ -262,12 +248,31 @@ const checkForUpdates = async () => {
   }
 }
 
-// 下载更新
+// 下载更新（使用当前选中的源）
 const downloadUpdate = async () => {
-  const result = await window.electronAPI.updater.downloadUpdate()
+  const source = updateStatus.value.sources?.current
+  const result = await window.electronAPI.updater.downloadUpdate(source)
   if (!result.success && result.error) {
     updateStatus.value = { status: 'error', error: result.error }
   }
+}
+
+// 切换下载源
+const switchSource = async (source: UpdateSource) => {
+  await window.electronAPI.updater.setSource(source)
+}
+
+// 获取源的显示标签
+const sourceLabel = (source: UpdateSource): string => {
+  const labels = updateStatus.value.sources?.labels?.[source]
+  if (!labels) return source
+  return getLocale() === 'zh-CN' ? labels.zh : labels.en
+}
+
+// 格式化延迟
+const formatLatency = (ms: number): string => {
+  if (ms === Infinity || ms >= 5000) return t('about.sourceUnreachable')
+  return `${ms}ms`
 }
 
 // 安装更新并重启
@@ -544,6 +549,23 @@ const onQrImageError = (event: Event) => {
                 <div class="update-info">
                   <span class="update-icon">🎉</span>
                   <span>{{ t('about.newVersionAvailable', { version: updateStatus.info?.version }) }}</span>
+                </div>
+                <!-- 下载源选择 -->
+                <div v-if="updateStatus.sources" class="source-selector">
+                  <span class="source-label">{{ t('about.downloadSource') }}</span>
+                  <div class="source-options">
+                    <button
+                      v-for="src in (['github', 'oss'] as const)"
+                      :key="src"
+                      class="source-option"
+                      :class="{ active: updateStatus.sources.current === src, recommended: updateStatus.sources.recommended === src }"
+                      @click="switchSource(src)"
+                    >
+                      <span class="source-name">{{ sourceLabel(src) }}</span>
+                      <span class="source-latency">{{ formatLatency(updateStatus.sources.latency[src]) }}</span>
+                      <span v-if="updateStatus.sources.recommended === src" class="source-badge">{{ t('about.sourceRecommended') }}</span>
+                    </button>
+                  </div>
                 </div>
                 <button class="btn btn-primary update-btn" @click="downloadUpdate">
                   ⬇️ {{ t('about.downloadUpdate') }}
@@ -969,6 +991,72 @@ const onQrImageError = (event: Event) => {
 .update-hint.error {
   color: #f44336;
   background: rgba(244, 67, 54, 0.1);
+}
+
+.source-selector {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.source-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.source-options {
+  display: flex;
+  gap: 8px;
+}
+
+.source-option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border-color);
+  background: var(--bg-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.source-option:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-secondary);
+}
+
+.source-option.active {
+  border-color: var(--accent-primary);
+  background: rgba(var(--accent-primary-rgb, 59, 130, 246), 0.08);
+  box-shadow: 0 0 0 1px var(--accent-primary);
+}
+
+.source-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.source-latency {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.source-badge {
+  position: absolute;
+  top: -8px;
+  right: -4px;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--accent-primary);
+  color: #fff;
+  white-space: nowrap;
 }
 
 .description {

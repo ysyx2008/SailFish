@@ -218,15 +218,24 @@ jobs:
           OSSUTIL=/tmp/ossutil/ossutil64
           BUCKET=oss://sfterm-download
           
+          # 官网下载用（固定文件名，不带版本号）
           # Windows
           $OSSUTIL cp artifacts/windows-release/SailFish-Setup-${VERSION}.exe ${BUCKET}/SailFish-Setup.exe -f
-          
           # macOS
           $OSSUTIL cp artifacts/macos-release/SailFish-${VERSION}-arm64.dmg ${BUCKET}/SailFish-arm64.dmg -f
           $OSSUTIL cp artifacts/macos-release/SailFish-${VERSION}.dmg ${BUCKET}/SailFish-x64.dmg -f
-          
           # Linux
           $OSSUTIL cp artifacts/linux-release/SailFish-${VERSION}.AppImage ${BUCKET}/SailFish.AppImage -f
           $OSSUTIL cp artifacts/linux-release/SFTerm_${VERSION}_amd64.deb ${BUCKET}/SailFish.deb -f
+          
+          # electron-updater 自动更新用（版本化文件 + 元数据 yml）
+          # Windows
+          $OSSUTIL cp artifacts/windows-release/latest.yml ${BUCKET}/releases/latest.yml -f
+          $OSSUTIL cp artifacts/windows-release/SailFish-Setup-${VERSION}.exe ${BUCKET}/releases/SailFish-Setup-${VERSION}.exe -f
+          # Linux
+          if [ -f artifacts/linux-release/latest-linux.yml ]; then
+            $OSSUTIL cp artifacts/linux-release/latest-linux.yml ${BUCKET}/releases/latest-linux.yml -f
+            $OSSUTIL cp artifacts/linux-release/SailFish-${VERSION}.AppImage ${BUCKET}/releases/SailFish-${VERSION}.AppImage -f
+          fi
           
           echo "✅ All files uploaded to OSS successfully!"

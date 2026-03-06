@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, shell, dialog, session, Tray, Menu, nativeImage, powerMonitor } from 'electron'
-import { autoUpdater } from 'electron-updater'
+import { autoUpdater, type GenericServerOptions, type GithubOptions } from 'electron-updater'
 import path, { join } from 'path'
 import * as fs from 'fs'
 
@@ -1525,8 +1525,88 @@ ipcMain.handle('window:forceQuit', async () => {
 // ==================== 自动更新 ====================
 
 // 配置自动更新
-autoUpdater.autoDownload = false  // 禁用自动下载，由用户手动触发
+autoUpdater.autoDownload = false
 autoUpdater.autoInstallOnAppQuit = true
+
+// 更新源定义
+type UpdateSource = 'github' | 'oss'
+
+const GITHUB_FEED: GithubOptions = {
+  provider: 'github',
+  owner: 'ysyx2008',
+  repo: 'SailFish',
+}
+
+const OSS_FEED: GenericServerOptions = {
+  provider: 'generic',
+  url: 'https://sfterm-download.oss-cn-wuhan-lr.aliyuncs.com/releases/',
+  channel: 'latest',
+}
+
+const UPDATE_SOURCE_LABELS: Record<UpdateSource, { zh: string; en: string }> = {
+  github: { zh: 'GitHub（国际）', en: 'GitHub (Global)' },
+  oss: { zh: '阿里云（国内加速）', en: 'Alibaba Cloud (China)' },
+}
+
+const CHINA_TIMEZONES = new Set([
+  'Asia/Shanghai', 'Asia/Chongqing', 'Asia/Urumqi', 'Asia/Harbin',
+  'Asia/Hong_Kong', 'Asia/Macau',
+])
+
+function isLikelyChinaTimezone(): boolean {
+  try {
+    return CHINA_TIMEZONES.has(Intl.DateTimeFormat().resolvedOptions().timeZone)
+  } catch {
+    return false
+  }
+}
+
+async function measureLatency(url: string, timeoutMs = 5000): Promise<number> {
+  const { net } = await import('electron')
+  return new Promise<number>((resolve) => {
+    const start = Date.now()
+    const request = net.request({ url, method: 'HEAD' })
+    const timer = setTimeout(() => { request.abort(); resolve(Infinity) }, timeoutMs)
+    request.on('response', () => { clearTimeout(timer); resolve(Date.now() - start) })
+    request.on('error', () => { clearTimeout(timer); resolve(Infinity) })
+    request.end()
+  })
+}
+
+const LATENCY_FILE = process.platform === 'darwin' ? 'latest-mac.yml'
+  : process.platform === 'win32' ? 'latest.yml'
+  : 'latest-linux.yml'
+
+async function selectFastestSource(): Promise<{ recommended: UpdateSource; latency: Record<UpdateSource, number> }> {
+  const [githubLatency, ossLatency] = await Promise.all([
+    measureLatency(`https://github.com/ysyx2008/SailFish/releases/latest/download/${LATENCY_FILE}`),
+    measureLatency(`https://sfterm-download.oss-cn-wuhan-lr.aliyuncs.com/releases/${LATENCY_FILE}`),
+  ])
+
+  log.info(`AutoUpdater: 测速 — GitHub: ${githubLatency}ms, OSS: ${ossLatency}ms`)
+
+  const latency: Record<UpdateSource, number> = { github: githubLatency, oss: ossLatency }
+
+  if (ossLatency === Infinity && githubLatency === Infinity) {
+    return { recommended: isLikelyChinaTimezone() ? 'oss' : 'github', latency }
+  }
+  if (ossLatency === Infinity) return { recommended: 'github', latency }
+  if (githubLatency === Infinity) return { recommended: 'oss', latency }
+
+  const recommended: UpdateSource = ossLatency < githubLatency * 0.8 ? 'oss'
+    : githubLatency < ossLatency * 0.8 ? 'github'
+    : isLikelyChinaTimezone() ? 'oss' : 'github'
+
+  return { recommended, latency }
+}
+
+function applyUpdateSource(source: UpdateSource) {
+  autoUpdater.setFeedURL(source === 'oss' ? OSS_FEED : GITHUB_FEED)
+  log.info(`AutoUpdater: 使用更新源: ${source}`)
+}
+
+let currentUpdateSource: UpdateSource = 'github'
+let lastSpeedTestResult: { recommended: UpdateSource; latency: Record<UpdateSource, number> } | null = null
 
 // 更新状态
 let updateStatus: {
@@ -1543,6 +1623,12 @@ let updateStatus: {
     transferred: number
   }
   error?: string
+  sources?: {
+    current: UpdateSource
+    recommended: UpdateSource
+    latency: Record<UpdateSource, number>
+    labels: Record<UpdateSource, { zh: string; en: string }>
+  }
 } = { status: 'idle' }
 
 // 自动更新事件处理
@@ -1560,7 +1646,15 @@ autoUpdater.on('update-available', (info) => {
       version: info.version,
       releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined,
       releaseDate: info.releaseDate
-    }
+    },
+    ...(lastSpeedTestResult && {
+      sources: {
+        current: currentUpdateSource,
+        recommended: lastSpeedTestResult.recommended,
+        latency: lastSpeedTestResult.latency,
+        labels: UPDATE_SOURCE_LABELS,
+      }
+    })
   }
   mainWindow?.webContents.send('updater:status-changed', updateStatus)
 })
@@ -1607,23 +1701,27 @@ autoUpdater.on('error', (error) => {
   mainWindow?.webContents.send('updater:status-changed', updateStatus)
 })
 
-// 检查更新
+// 检查更新（含测速选源）
 ipcMain.handle('updater:checkForUpdates', async () => {
   try {
-    // 开发模式下模拟检查更新
     if (!app.isPackaged) {
       log.info('AutoUpdater: 开发模式，模拟检查更新')
       updateStatus = { status: 'checking' }
       mainWindow?.webContents.send('updater:status-changed', updateStatus)
-      
-      // 模拟延迟
       await new Promise(resolve => setTimeout(resolve, 1500))
-      
       updateStatus = { status: 'not-available' }
       mainWindow?.webContents.send('updater:status-changed', updateStatus)
       return { success: true, status: updateStatus }
     }
-    
+
+    updateStatus = { status: 'checking' }
+    mainWindow?.webContents.send('updater:status-changed', updateStatus)
+
+    const speedResult = await selectFastestSource()
+    lastSpeedTestResult = speedResult
+    currentUpdateSource = speedResult.recommended
+    applyUpdateSource(currentUpdateSource)
+
     const result = await autoUpdater.checkForUpdates()
     return { success: true, updateInfo: result?.updateInfo }
   } catch (error) {
@@ -1632,16 +1730,48 @@ ipcMain.handle('updater:checkForUpdates', async () => {
   }
 })
 
-// 下载更新
-ipcMain.handle('updater:downloadUpdate', async () => {
+// 切换更新源（用户手动选择）
+ipcMain.handle('updater:setSource', async (_event, source: UpdateSource) => {
+  if (source !== 'github' && source !== 'oss') return { success: false, error: 'Invalid source' }
+  currentUpdateSource = source
+  applyUpdateSource(source)
+  if (updateStatus.sources) {
+    updateStatus.sources.current = source
+    mainWindow?.webContents.send('updater:status-changed', updateStatus)
+  }
+  return { success: true }
+})
+
+// 下载更新（支持指定源，失败自动回退到另一个源）
+ipcMain.handle('updater:downloadUpdate', async (_event, preferredSource?: UpdateSource) => {
   try {
     if (!app.isPackaged) {
       log.info('AutoUpdater: 开发模式，模拟下载更新')
       return { success: false, error: '开发模式不支持下载更新' }
     }
-    
-    await autoUpdater.downloadUpdate()
-    return { success: true }
+
+    if (preferredSource && (preferredSource === 'github' || preferredSource === 'oss')) {
+      currentUpdateSource = preferredSource
+      applyUpdateSource(preferredSource)
+    }
+
+    try {
+      await autoUpdater.downloadUpdate()
+      return { success: true, source: currentUpdateSource }
+    } catch (primaryError) {
+      const fallback: UpdateSource = currentUpdateSource === 'oss' ? 'github' : 'oss'
+      log.warn(`AutoUpdater: ${currentUpdateSource} 下载失败，回退到 ${fallback}:`, primaryError)
+      currentUpdateSource = fallback
+      applyUpdateSource(fallback)
+
+      if (updateStatus.sources) {
+        updateStatus.sources.current = fallback
+        mainWindow?.webContents.send('updater:status-changed', updateStatus)
+      }
+
+      await autoUpdater.downloadUpdate()
+      return { success: true, source: fallback }
+    }
   } catch (error) {
     log.error('AutoUpdater: 下载更新失败:', error)
     return { success: false, error: error instanceof Error ? error.message : '下载更新失败' }
