@@ -805,6 +805,9 @@ const electronAPI = {
     getSetupCompleted: () => ipcRenderer.invoke('config:getSetupCompleted') as Promise<boolean>,
     setSetupCompleted: (completed: boolean) => ipcRenderer.invoke('config:setSetupCompleted', completed),
 
+    // Agent 诞生引导
+    getAgentOnboardingCompleted: () => ipcRenderer.invoke('config:getAgentOnboardingCompleted') as Promise<boolean>,
+
     // 语言设置
     getLanguage: () => ipcRenderer.invoke('config:getLanguage') as Promise<string>,
     setLanguage: (language: string) => ipcRenderer.invoke('config:setLanguage', language),

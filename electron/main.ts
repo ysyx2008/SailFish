@@ -1913,6 +1913,11 @@ ipcMain.handle('config:setSetupCompleted', async (_event, completed: boolean) =>
   configService.setSetupCompleted(completed)
 })
 
+// Agent 诞生引导
+ipcMain.handle('config:getAgentOnboardingCompleted', async () => {
+  return configService.getAgentOnboardingCompleted()
+})
+
 // 语言设置
 ipcMain.handle('config:getLanguage', async () => {
   return configService.getLanguage()

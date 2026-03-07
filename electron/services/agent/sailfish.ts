@@ -32,6 +32,7 @@ export class SailFish extends Agent {
   readonly ptyId?: string
   
   private _terminalSkillLoaded = false
+  private _personalitySkillLoaded = false
   
   constructor(services: AgentServices, ptyId?: string) {
     super(services)
@@ -48,6 +49,16 @@ export class SailFish extends Agent {
       session.loadSkill('terminal').catch(err => {
         log.error('Failed to auto-load terminal skill:', err)
       })
+    }
+    // 诞生引导时自动加载 personality 技能
+    if (this.currentRun && !this._personalitySkillLoaded) {
+      const isOnboarding = !(this.services.configService?.getAgentOnboardingCompleted() ?? true)
+      if (isOnboarding) {
+        this._personalitySkillLoaded = true
+        session.loadSkill('personality').catch(err => {
+          log.error('Failed to auto-load personality skill for onboarding:', err)
+        })
+      }
     }
     return session
   }
@@ -123,6 +134,7 @@ export class SailFish extends Agent {
       availableTaskIds: options.availableTaskIds,
       watchListSummary: options.watchListSummary,
       bondContext: options.bondContext,
+      isOnboarding: options.isOnboarding,
     }).build()
   }
   

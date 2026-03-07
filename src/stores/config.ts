@@ -302,6 +302,9 @@ export const useConfigStore = defineStore('config', () => {
   // 首次设置向导
   const setupCompleted = ref<boolean>(false)
 
+  // Agent 诞生引导
+  const agentOnboardingCompleted = ref<boolean>(false)
+
   // 语言设置
   const language = ref<LocaleType>('zh-CN')
 
@@ -382,6 +385,10 @@ export const useConfigStore = defineStore('config', () => {
       // 加载首次设置状态
       const completed = await window.electronAPI.config.getSetupCompleted()
       setupCompleted.value = completed || false
+
+      // 加载 Agent 引导状态
+      const onboarded = await window.electronAPI.config.getAgentOnboardingCompleted()
+      agentOnboardingCompleted.value = onboarded || false
 
       // 加载语言设置
       const lang = await window.electronAPI.config.getLanguage()
@@ -895,6 +902,7 @@ export const useConfigStore = defineStore('config', () => {
     agentDebugMode,
     autoVisionModel,
     setupCompleted,
+    agentOnboardingCompleted,
     language,
     isSponsor,
     sessionSortBy,

@@ -10,6 +10,7 @@ import type { AgentContext, HostProfileServiceInterface, ExecutionMode } from '.
 import type { AgentMbtiType } from '../config.service'
 import { getUserSkillService } from '../user-skill.service'
 import { getWorkspacePath } from './tools/file'
+import { t } from './i18n'
 
 /**
  * MBTI 风格描述映射
@@ -119,6 +120,8 @@ export interface BuildSystemPromptOptions {
   watchListSummary?: string
   /** 羁绊上下文（注入提示词，影响对话语气） */
   bondContext?: string
+  /** 是否为诞生引导对话（首次使用） */
+  isOnboarding?: boolean
 }
 
 /**
@@ -146,6 +149,7 @@ export class PromptBuilder {
   private readonly executionMode?: ExecutionMode
   private readonly watchListSummary?: string
   private readonly bondContext?: string
+  private readonly isOnboarding: boolean
 
   private osType = ''
   private shellType = ''
@@ -170,6 +174,7 @@ export class PromptBuilder {
     this.executionMode = options.executionMode
     this.watchListSummary = options.watchListSummary
     this.bondContext = options.bondContext
+    this.isOnboarding = options.isOnboarding ?? false
   }
 
   // ==================== 公开方法 ====================
@@ -183,11 +188,19 @@ export class PromptBuilder {
   build(): string {
     this.computeDerivedState()
 
-    return [
+    const sections = [
       this.buildLanguageRule(),
       this.buildIdentitySection(),
-      this.buildPersonalitySection(),
-      this.buildBondSection(),
+    ]
+
+    if (this.isOnboarding) {
+      sections.push(this.buildOnboardingSection())
+    } else {
+      sections.push(this.buildPersonalitySection())
+      sections.push(this.buildBondSection())
+    }
+
+    sections.push(
       this.buildUserRulesSection(),
       this.buildHostEnvironment(),
       this.buildWorkspaceRule(),
@@ -200,7 +213,9 @@ export class PromptBuilder {
       this.buildKnowledgeContext(),
       getUserSkillService().buildSkillsSummary(),
       this.buildTaskMemorySection(),
-    ].filter(Boolean).join('\n\n')
+    )
+
+    return sections.filter(Boolean).join('\n\n')
   }
 
   // ==================== 静态方法（便捷访问） ====================
@@ -286,7 +301,9 @@ export class PromptBuilder {
       hour12: false
     })
     const cwdLine = this.context.cwd
-      ? `当前工作目录：${this.context.cwd}（系统实时获取，无需执行 pwd 验证）`
+      ? this.isAssistant
+        ? `命令默认执行目录：${this.context.cwd}`
+        : `当前工作目录：${this.context.cwd}（系统实时获取，无需执行 pwd 验证）`
       : '当前工作目录：未成功获取'
 
     return [
@@ -312,6 +329,10 @@ export class PromptBuilder {
     return ''
   }
 
+  private buildOnboardingSection(): string {
+    return t('onboarding.system_prompt')
+  }
+
   private buildBondSection(): string {
     const bond = this.bondContext?.trim()
     if (!bond) return ''
@@ -325,6 +346,14 @@ export class PromptBuilder {
   }
 
   private buildHostEnvironment(): string {
+    if (this.isAssistant) {
+      const lines: string[] = [
+        `- 操作系统: ${this.osType}`,
+        `- Shell: ${this.shellType}`,
+      ]
+      return `# 运行环境\n\n${lines.join('\n')}`
+    }
+
     const lines: string[] = [
       `- **终端类型**: ${this.isSshTerminal ? '🌐 SSH 远程终端' : '💻 本地终端'}`
     ]
@@ -420,7 +449,9 @@ export class PromptBuilder {
       '**输出风格**：用自然对话语言，**禁止**使用「分析阶段」「步骤1」等机械化标签',
       this.buildPlanRule(),
       this.buildSafetyRules(),
-      `**禁止的命令**：vim/vi/nano/emacs（用 \`${this.writeFileTool}\`）、tmux/screen、mc/ranger`,
+      this.isAssistant
+        ? `**禁止的命令**：vim/vi/nano/emacs（用 \`${this.writeFileTool}\`）`
+        : `**禁止的命令**：vim/vi/nano/emacs（用 \`${this.writeFileTool}\`）、tmux/screen、mc/ranger`,
       this.buildFileSearchRule(),
       this.buildLongContentRule(),
       '**临时文件清理**：任务过程中创建的所有临时文件，使用完毕后及时清除',
@@ -460,11 +491,14 @@ export class PromptBuilder {
   }
 
   private buildLongContentRule(): string {
-    return [
+    const lines = [
       '**长内容处理**：',
       `- 超过 200 字符禁止用 echo/printf，用 \`${this.writeFileTool}\` 写入 /tmp 再执行`,
-      '- 长文本分析结果直接在对话中回复，不要发送到终端',
-    ].join('\n')
+    ]
+    if (!this.isAssistant) {
+      lines.push('- 长文本分析结果直接在对话中回复，不要发送到终端')
+    }
+    return lines.join('\n')
   }
 
   private buildWorkspaceRule(): string {

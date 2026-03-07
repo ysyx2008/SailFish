@@ -25,6 +25,7 @@ export interface AgentTaskGroup {
   finalResult?: string
   isCurrentTask: boolean
   isProactive?: boolean
+  isOnboarding?: boolean
 }
 
 export function useAgentMode(
@@ -326,14 +327,16 @@ export function useAgentMode(
     for (const step of allSteps) {
       if (step.type === 'user_task') {
         const isProactive = step.content === '__proactive__'
+        const isOnboarding = step.content === '__onboarding__'
         currentGroup = {
           id: step.id,
-          userTask: isProactive ? '' : step.content,
+          userTask: (isProactive || isOnboarding) ? '' : step.content,
           images: step.images,
           attachments: step.attachments,
           steps: [],
           isCurrentTask: false,
-          isProactive
+          isProactive,
+          isOnboarding,
         }
         groups.push(currentGroup)
       } else if (step.type === 'final_result') {

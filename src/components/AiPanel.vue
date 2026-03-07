@@ -798,6 +798,22 @@ watch(
   { immediate: true }
 )
 
+// 诞生引导：首次使用时 Agent 自动发起对话
+let onboardingTriggered = false
+watch(
+  [isMounted, () => configStore.agentOnboardingCompleted],
+  async ([mounted, completed]) => {
+    if (!mounted || completed || onboardingTriggered) return
+    onboardingTriggered = true
+    // 确保 AI 配置已就绪（SetupWizard 完成后才会到这里）
+    if (!configStore.hasAiConfig) return
+    inputText.value = '__onboarding__'
+    await nextTick()
+    runAgent()
+  },
+  { immediate: true }
+)
+
 // ==================== 诊断和分析（通过 Agent 执行） ====================
 
 // 诊断错误（通过 Agent 执行）
@@ -1345,8 +1361,8 @@ onUnmounted(() => {
 
             <!-- 普通任务：用户任务 + 步骤 + 最终结果 -->
             <template v-else>
-            <!-- 用户任务 -->
-            <div class="message user">
+            <!-- 用户任务（诞生引导时隐藏用户气泡，Agent 先说话） -->
+            <div v-if="!group.isOnboarding" class="message user">
               <div class="message-wrapper">
                 <div class="message-content">
                   <span>{{ group.userTask }}</span>

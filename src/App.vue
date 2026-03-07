@@ -522,8 +522,9 @@ const backFromSmartPatrol = () => {
 // 完成引导向导
 const onSetupComplete = async () => {
   showSetupWizard.value = false
-  // 向导完成后初始化应用
+  // 向导完成后初始化应用并打开 AI 面板（触发诞生对话）
   await initializeApp()
+  showAiPanel.value = true
 }
 
 // 切换侧边栏

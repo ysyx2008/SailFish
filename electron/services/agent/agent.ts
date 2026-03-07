@@ -650,6 +650,17 @@ export abstract class Agent {
     
     this.accumulateSessionData(run, status, result)
     this.saveSessionToHistory()
+
+    // 诞生引导完成判定：personality_craft 被成功调用即视为引导完成
+    if (!(this.services.configService?.getAgentOnboardingCompleted())) {
+      const craftCalled = run.steps.some(s =>
+        s.type === 'tool_call' && s.toolName === 'personality_craft'
+      )
+      if (craftCalled) {
+        this.services.configService?.setAgentOnboardingCompleted(true)
+        log.info('Agent onboarding completed — personality_craft was called')
+      }
+    }
     
     // L2: 异步更新知识文档（唤醒 run 跳过，避免短问候污染知识文档）
     this.updateContextKnowledgeAsync(run, result).catch(err => {
@@ -950,6 +961,9 @@ export abstract class Agent {
       log.warn('Watch list for prompt error:', e)
     }
 
+    // 判断是否为诞生引导
+    const isOnboarding = !(this.services.configService?.getAgentOnboardingCompleted() ?? true)
+
     // 构建系统提示
     const promptOptions: PromptOptions = {
       mbtiType: this.services.configService?.getAgentMbti() ?? undefined,
@@ -963,7 +977,8 @@ export abstract class Agent {
       relatedTaskDigests,
       availableTaskIds,
       watchListSummary: watchListSummary || undefined,
-      bondContext: this.resolveBondContext()
+      bondContext: this.resolveBondContext(),
+      isOnboarding,
     }
     
     const systemPrompt = this.buildSystemPrompt(run.context, promptOptions)

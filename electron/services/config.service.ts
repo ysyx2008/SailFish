@@ -161,6 +161,7 @@ interface StoreSchema {
   agentDebugMode: boolean
   knowledgeSettings: KnowledgeSettings
   setupCompleted: boolean
+  agentOnboardingCompleted: boolean
   language: LocaleType
   sponsorStatus: boolean
   sessionSortBy: SessionSortBy
@@ -237,6 +238,7 @@ const defaultConfig: StoreSchema = {
   agentDebugMode: false,
   knowledgeSettings: DEFAULT_KNOWLEDGE_SETTINGS,
   setupCompleted: false,
+  agentOnboardingCompleted: false,
   language: 'zh-CN',
   sponsorStatus: false,
   sessionSortBy: 'custom',
@@ -706,6 +708,16 @@ export class ConfigService {
    */
   setSetupCompleted(completed: boolean): void {
     this.store.set('setupCompleted', completed)
+  }
+
+  // ==================== Agent 诞生引导 ====================
+
+  getAgentOnboardingCompleted(): boolean {
+    return this.store.get('agentOnboardingCompleted') || false
+  }
+
+  setAgentOnboardingCompleted(completed: boolean): void {
+    this.store.set('agentOnboardingCompleted', completed)
   }
 
   // ==================== 语言设置 ====================

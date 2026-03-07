@@ -499,6 +499,8 @@ interface Window {
       // 首次设置向导
       getSetupCompleted: () => Promise<boolean>
       setSetupCompleted: (completed: boolean) => Promise<void>
+      // Agent 诞生引导
+      getAgentOnboardingCompleted: () => Promise<boolean>
       // 语言设置
       getLanguage: () => Promise<string>
       setLanguage: (language: string) => Promise<void>

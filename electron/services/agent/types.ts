@@ -388,6 +388,8 @@ export interface PromptOptions {
   watchListSummary?: string
   /** 羁绊上下文（注入提示词，影响对话语气） */
   bondContext?: string
+  /** 是否为诞生引导对话（首次使用） */
+  isOnboarding?: boolean
 }
 
 /**
