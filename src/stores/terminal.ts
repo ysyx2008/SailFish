@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
 import stripAnsiLib from 'strip-ansi'
 import i18n from '../i18n'
@@ -476,9 +476,12 @@ export const useTerminalStore = defineStore('terminal', () => {
     const agentId = options?.agentId || `assistant-${id}`
     const t = i18n.global.t
     
+    const configStore = useConfigStore()
+    const defaultTitle = configStore.agentName || t('tabs.assistant', '助手')
+
     const tab: TerminalTab = {
       id,
-      title: options?.title || t('tabs.assistant', '助手'),
+      title: options?.title || defaultTitle,
       type: 'assistant',
       agentId,
       isConnected: true,
@@ -502,6 +505,20 @@ export const useTerminalStore = defineStore('terminal', () => {
       }
     }
     return id
+  }
+
+  // 当助手名字变更时，同步更新非远程助手标签页的标题
+  {
+    const configStore = useConfigStore()
+    watch(() => configStore.agentName, (newName) => {
+      const t = i18n.global.t
+      const title = newName || t('tabs.assistant', '助手')
+      for (const tab of tabs.value) {
+        if (tab.type === 'assistant' && !tab.isRemote) {
+          tab.title = title
+        }
+      }
+    })
   }
 
   /**
