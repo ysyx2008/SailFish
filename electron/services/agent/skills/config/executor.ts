@@ -45,6 +45,7 @@ const CONFIG_REGISTRY: ConfigMeta[] = [
 
   // Agent
   { key: 'agentMbti', label: 'Agent 性格', category: 'agent', type: 'string', options: ['INTJ', 'INTP', 'ENTJ', 'ENTP', 'INFJ', 'INFP', 'ENFJ', 'ENFP', 'ISTJ', 'ISFJ', 'ESTJ', 'ESFJ', 'ISTP', 'ISFP', 'ESTP', 'ESFP'] },
+  { key: 'agentOnboardingCompleted', label: '新用户引导已完成', category: 'agent', type: 'boolean' },
   { key: 'agentDebugMode', label: '调试模式', category: 'agent', type: 'boolean' },
   { key: 'logLevel', label: '日志级别', category: 'agent', type: 'string', options: ['debug', 'info', 'warn', 'error', 'silent'] },
   { key: 'aiRules', label: '自定义 AI 规则', category: 'agent', type: 'string' },
