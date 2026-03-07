@@ -374,8 +374,6 @@ export interface PromptOptions {
   contextKnowledgeDoc?: string
   /** 用户自定义 AI 规则 */
   aiRules?: string
-  /** 用户自定义个性定义（优先级高于 MBTI） */
-  personalityText?: string
   /** AI 名字 */
   agentName?: string
   /** 任务历史摘要 */

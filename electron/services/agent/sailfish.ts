@@ -127,7 +127,6 @@ export class SailFish extends Agent {
       conversationHistory: options.conversationHistory,
       contextKnowledgeDoc: options.contextKnowledgeDoc,
       aiRules: options.aiRules,
-      personalityText: options.personalityText,
       agentName: options.agentName,
       taskSummaries: options.taskSummaries,
       relatedTaskDigests: options.relatedTaskDigests,

@@ -144,8 +144,6 @@ export interface BuildSystemPromptOptions {
   contextKnowledgeDoc?: string
   /** 用户自定义的 AI 规则 */
   aiRules?: string
-  /** 用户自定义个性定义（优先级高于 MBTI） */
-  personalityText?: string
   /** AI 名字（用户自定义，默认旗鱼） */
   agentName?: string
   /** 任务历史总结列表（L1 层） */
@@ -183,7 +181,6 @@ export class PromptBuilder {
   private readonly conversationHistory?: Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }>
   private readonly contextKnowledgeDoc?: string
   private readonly aiRules?: string
-  private readonly personalityText?: string
   private readonly agentName?: string
   private readonly taskSummaries?: string
   private readonly relatedTaskDigests?: string
@@ -209,7 +206,6 @@ export class PromptBuilder {
     this.conversationHistory = options.conversationHistory
     this.contextKnowledgeDoc = options.contextKnowledgeDoc
     this.aiRules = options.aiRules
-    this.personalityText = options.personalityText
     this.agentName = options.agentName
     this.taskSummaries = options.taskSummaries
     this.relatedTaskDigests = options.relatedTaskDigests
@@ -365,7 +361,7 @@ export class PromptBuilder {
 
   private buildSoulSection(): string {
     const mbtiStyle = PromptBuilder.getMbtiStylePrompt(this.mbtiType ?? null)
-    const soul = readSoulFile() || this.personalityText?.trim() || ''
+    const soul = readSoulFile()
 
     if (soul && mbtiStyle) {
       return `# 你的灵魂（重要！）\n\n${soul}\n\n## 风格参考（MBTI）\n\n${mbtiStyle}`
@@ -655,7 +651,6 @@ export function buildSystemPrompt(
   conversationHistory?: Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }>,
   executionMode?: ExecutionMode,
   aiRules?: string,
-  personalityText?: string,
   taskSummaries?: string,
   relatedTaskDigests?: string,
   availableTaskIds?: Array<{ id: string; summary: string }>,
@@ -674,7 +669,6 @@ export function buildSystemPrompt(
     contextKnowledgeDoc,
     executionMode,
     aiRules,
-    personalityText,
     agentName,
     taskSummaries,
     relatedTaskDigests,

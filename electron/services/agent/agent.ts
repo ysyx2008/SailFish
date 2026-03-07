@@ -1030,7 +1030,6 @@ export abstract class Agent {
       conversationHistory: conversationHistory.length > 0 ? conversationHistory : undefined,
       contextKnowledgeDoc,
       aiRules: this.services.configService?.getAiRules() ?? '',
-      personalityText: this.services.configService?.getAgentPersonalityText() ?? '',
       agentName: this.services.configService?.getAgentName() ?? '',
       taskSummaries,
       relatedTaskDigests,
