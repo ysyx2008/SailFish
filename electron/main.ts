@@ -2057,13 +2057,31 @@ ipcMain.handle('config:setAiRules', async (_event, rules: string) => {
   configService.setAiRules(rules)
 })
 
-// Agent 个性描述
+// Agent 个性描述（legacy，保留兼容）
 ipcMain.handle('config:getAgentPersonalityText', async () => {
   return configService.getAgentPersonalityText()
 })
 
 ipcMain.handle('config:setAgentPersonalityText', async (_event, text: string) => {
   configService.setAgentPersonalityText(text)
+})
+
+// Agent 身份文件（IDENTITY.md / SOUL.md / USER.md）
+ipcMain.handle('agent:readIdentityFile', async (_event, filename: string) => {
+  const { readIdentityFile, readSoulFile, readUserFile } = await import('./services/agent/prompt-builder')
+  switch (filename) {
+    case 'IDENTITY.md': return readIdentityFile()
+    case 'SOUL.md': return readSoulFile()
+    case 'USER.md': return readUserFile()
+    default: return ''
+  }
+})
+
+ipcMain.handle('agent:writeIdentityFile', async (_event, filename: string, content: string) => {
+  const { getWorkspacePath } = await import('./services/agent/tools/file')
+  const workspace = getWorkspacePath()
+  fs.mkdirSync(workspace, { recursive: true })
+  fs.writeFileSync(path.join(workspace, filename), content, 'utf-8')
 })
 
 // AI 名字

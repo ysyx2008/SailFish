@@ -5,7 +5,7 @@ import { useConfigStore, type AgentMbtiType } from '../stores/config'
 import {
   X, Play, Trash2, Eye, RefreshCw, History,
   Clock, Heart, Globe, Zap, FolderOpen, Calendar, Mail,
-  LayoutTemplate, Plus, Sparkles, Brain, Pencil
+  LayoutTemplate, Plus, Sparkles, Brain, Pencil, Fingerprint, UserRound
 } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -32,16 +32,23 @@ interface WatchTemplateInfo {
 
 // ==================== Navigation ====================
 
-type NavTab = 'watches' | 'templates' | 'sensors' | 'history' | 'personality' | 'mbti'
-const VALID_TABS: NavTab[] = ['watches', 'templates', 'sensors', 'history', 'personality', 'mbti']
+type NavTab = 'watches' | 'templates' | 'sensors' | 'history' | 'personality' | 'identity' | 'userProfile' | 'mbti'
+const VALID_TABS: NavTab[] = ['watches', 'templates', 'sensors', 'history', 'personality', 'identity', 'userProfile', 'mbti']
 const activeTab = ref<NavTab>(
   props.initialTab && VALID_TABS.includes(props.initialTab as NavTab) ? props.initialTab as NavTab : 'watches'
 )
 
 function switchTab(tab: NavTab, onSwitch?: () => void) {
-  if (activeTab.value === 'personality' && tab !== 'personality' && personalityDirty.value) {
-    if (!confirm(t('awaken.personalityUnsavedConfirm'))) return
-    resetPersonalityText()
+  const dirtyChecks: Array<{ from: NavTab; dirty: boolean; reset: () => void }> = [
+    { from: 'personality', dirty: personalityDirty.value, reset: resetPersonalityText },
+    { from: 'identity', dirty: identityDirty.value, reset: resetIdentityText },
+    { from: 'userProfile', dirty: userProfileDirty.value, reset: resetUserProfileText },
+  ]
+  for (const check of dirtyChecks) {
+    if (activeTab.value === check.from && tab !== check.from && check.dirty) {
+      if (!confirm(t('awaken.personalityUnsavedConfirm'))) return
+      check.reset()
+    }
   }
   activeTab.value = tab
   onSwitch?.()
@@ -68,8 +75,20 @@ const personalityText = ref('')
 const personalityOriginal = ref('')
 const personalitySaving = ref(false)
 const personalityError = ref('')
-const PERSONALITY_MAX_LENGTH = 1000
+const FILE_MAX_LENGTH = 1000
 const personalityDirty = computed(() => personalityText.value !== personalityOriginal.value)
+
+const identityText = ref('')
+const identityOriginal = ref('')
+const identitySaving = ref(false)
+const identityError = ref('')
+const identityDirty = computed(() => identityText.value !== identityOriginal.value)
+
+const userProfileText = ref('')
+const userProfileOriginal = ref('')
+const userProfileSaving = ref(false)
+const userProfileError = ref('')
+const userProfileDirty = computed(() => userProfileText.value !== userProfileOriginal.value)
 
 // ==================== Utilities ====================
 
@@ -472,8 +491,9 @@ const setMbti = async (mbti: AgentMbtiType) => {
   await configStore.setAgentMbti(mbti)
 }
 
-function loadPersonalitySettings() {
-  personalityText.value = configStore.agentPersonalityText || ''
+async function loadPersonalitySettings() {
+  const soul = await window.electronAPI.config.readIdentityFile('SOUL.md')
+  personalityText.value = soul || ''
   personalityOriginal.value = personalityText.value
   agentNameInput.value = configStore.agentName || ''
 }
@@ -489,14 +509,14 @@ async function savePersonalityText() {
   personalitySaving.value = true
   personalityError.value = ''
   try {
-    const safeText = personalityText.value.length > PERSONALITY_MAX_LENGTH
-      ? personalityText.value.substring(0, PERSONALITY_MAX_LENGTH)
+    const safeText = personalityText.value.length > FILE_MAX_LENGTH
+      ? personalityText.value.substring(0, FILE_MAX_LENGTH)
       : personalityText.value
-    await configStore.setAgentPersonalityText(safeText)
+    await window.electronAPI.config.writeIdentityFile('SOUL.md', safeText)
     personalityText.value = safeText
     personalityOriginal.value = safeText
   } catch (e) {
-    console.error('保存个性补充失败:', e)
+    console.error('保存灵魂定义失败:', e)
     personalityError.value = t('awaken.personalitySaveFailed')
   } finally {
     personalitySaving.value = false
@@ -506,6 +526,64 @@ async function savePersonalityText() {
 function resetPersonalityText() {
   personalityText.value = personalityOriginal.value
   personalityError.value = ''
+}
+
+async function loadIdentityText() {
+  identityText.value = await window.electronAPI.config.readIdentityFile('IDENTITY.md') || ''
+  identityOriginal.value = identityText.value
+}
+
+async function saveIdentityText() {
+  if (!identityDirty.value) return
+  identitySaving.value = true
+  identityError.value = ''
+  try {
+    const safeText = identityText.value.length > FILE_MAX_LENGTH
+      ? identityText.value.substring(0, FILE_MAX_LENGTH)
+      : identityText.value
+    await window.electronAPI.config.writeIdentityFile('IDENTITY.md', safeText)
+    identityText.value = safeText
+    identityOriginal.value = safeText
+  } catch (e) {
+    console.error('保存身份描述失败:', e)
+    identityError.value = t('awaken.personalitySaveFailed')
+  } finally {
+    identitySaving.value = false
+  }
+}
+
+function resetIdentityText() {
+  identityText.value = identityOriginal.value
+  identityError.value = ''
+}
+
+async function loadUserProfileText() {
+  userProfileText.value = await window.electronAPI.config.readIdentityFile('USER.md') || ''
+  userProfileOriginal.value = userProfileText.value
+}
+
+async function saveUserProfileText() {
+  if (!userProfileDirty.value) return
+  userProfileSaving.value = true
+  userProfileError.value = ''
+  try {
+    const safeText = userProfileText.value.length > FILE_MAX_LENGTH
+      ? userProfileText.value.substring(0, FILE_MAX_LENGTH)
+      : userProfileText.value
+    await window.electronAPI.config.writeIdentityFile('USER.md', safeText)
+    userProfileText.value = safeText
+    userProfileOriginal.value = safeText
+  } catch (e) {
+    console.error('保存用户画像失败:', e)
+    userProfileError.value = t('awaken.personalitySaveFailed')
+  } finally {
+    userProfileSaving.value = false
+  }
+}
+
+function resetUserProfileText() {
+  userProfileText.value = userProfileOriginal.value
+  userProfileError.value = ''
 }
 
 function requestClose() {
@@ -530,6 +608,8 @@ onMounted(async () => {
   document.addEventListener('keydown', handleKeydown, true)
   await Promise.all([loadWatchData().catch(() => {}), loadAwakenSettings()])
   loadPersonalitySettings()
+  loadIdentityText()
+  loadUserProfileText()
   loadTemplates()
   refreshTimer = setInterval(loadWatchData, 5 * 60 * 1000)
 
@@ -661,9 +741,17 @@ onUnmounted(() => {
         <nav class="panel-nav">
           <div class="nav-group">
             <div class="nav-group-label">{{ t('awaken.navCharacter') }}</div>
+            <button class="nav-item" :class="{ active: activeTab === 'identity' }" @click="switchTab('identity')">
+              <Fingerprint :size="16" />
+              <span>{{ t('awaken.identityNav') }}</span>
+            </button>
             <button class="nav-item" :class="{ active: activeTab === 'personality' }" @click="switchTab('personality')">
               <Sparkles :size="16" />
               <span>{{ t('awaken.personalityNav') }}</span>
+            </button>
+            <button class="nav-item" :class="{ active: activeTab === 'userProfile' }" @click="switchTab('userProfile')">
+              <UserRound :size="16" />
+              <span>{{ t('awaken.userProfileNav') }}</span>
             </button>
             <button class="nav-item" :class="{ active: activeTab === 'mbti' }" @click="switchTab('mbti')">
               <Brain :size="16" />
@@ -701,14 +789,14 @@ onUnmounted(() => {
         <!-- Content Area -->
         <div class="panel-content">
 
-          <!-- ===================== 个性 ===================== -->
-          <template v-if="activeTab === 'personality'">
+          <!-- ===================== 身份 (IDENTITY.md) ===================== -->
+          <template v-if="activeTab === 'identity'">
             <div class="content-page personality-page">
               <div class="personality-content">
                 <div class="personality-header">
-                  <h3>{{ t('awaken.personalityTitle') }}</h3>
+                  <h3>{{ t('awaken.identityTitle') }}</h3>
                 </div>
-                <p class="personality-hint">{{ t('awaken.personalityHint') }}</p>
+                <p class="personality-hint">{{ t('awaken.identityHint') }}</p>
                 <div class="personality-name-row">
                   <label class="personality-name-label">{{ t('awaken.nameLabel') }}</label>
                   <input
@@ -722,14 +810,45 @@ onUnmounted(() => {
                   />
                 </div>
                 <textarea
-                  v-model="personalityText"
+                  v-model="identityText"
                   class="personality-textarea"
-                  :placeholder="t('awaken.personalityPlaceholder')"
-                  :maxlength="PERSONALITY_MAX_LENGTH"
+                  :placeholder="t('awaken.identityPlaceholder')"
+                  :maxlength="FILE_MAX_LENGTH"
                   spellcheck="false"
                 />
                 <div class="personality-footer">
-                  <span class="personality-length">{{ personalityText.length }}/{{ PERSONALITY_MAX_LENGTH }} {{ t('awaken.personalityChars') }}</span>
+                  <span class="personality-length">{{ identityText.length }}/{{ FILE_MAX_LENGTH }} {{ t('awaken.personalityChars') }}</span>
+                  <div class="personality-buttons">
+                    <button class="btn btn-sm" @click="resetIdentityText" :disabled="!identityDirty || identitySaving">
+                      {{ t('common.reset') }}
+                    </button>
+                    <button class="btn btn-primary btn-sm" @click="saveIdentityText" :disabled="!identityDirty || identitySaving">
+                      {{ identitySaving ? t('common.saving') : t('common.save') }}
+                    </button>
+                  </div>
+                </div>
+                <div v-if="identityError" class="personality-error">{{ identityError }}</div>
+              </div>
+            </div>
+          </template>
+
+          <!-- ===================== 灵魂 (SOUL.md) ===================== -->
+          <template v-if="activeTab === 'personality'">
+            <div class="content-page personality-page">
+              <div class="personality-content">
+                <div class="personality-header">
+                  <h3>{{ t('awaken.personalityTitle') }}</h3>
+                </div>
+                <p class="personality-hint">{{ t('awaken.personalityHint') }}</p>
+                <textarea
+                  v-model="personalityText"
+                  class="personality-textarea"
+                  :placeholder="t('awaken.personalityPlaceholder')"
+                  :maxlength="FILE_MAX_LENGTH"
+                  spellcheck="false"
+                />
+                <div class="personality-footer">
+                  <span class="personality-length">{{ personalityText.length }}/{{ FILE_MAX_LENGTH }} {{ t('awaken.personalityChars') }}</span>
                   <div class="personality-buttons">
                     <button class="btn btn-sm" @click="resetPersonalityText" :disabled="!personalityDirty || personalitySaving">
                       {{ t('common.reset') }}
@@ -740,6 +859,37 @@ onUnmounted(() => {
                   </div>
                 </div>
                 <div v-if="personalityError" class="personality-error">{{ personalityError }}</div>
+              </div>
+            </div>
+          </template>
+
+          <!-- ===================== 用户画像 (USER.md) ===================== -->
+          <template v-if="activeTab === 'userProfile'">
+            <div class="content-page personality-page">
+              <div class="personality-content">
+                <div class="personality-header">
+                  <h3>{{ t('awaken.userProfileTitle') }}</h3>
+                </div>
+                <p class="personality-hint">{{ t('awaken.userProfileHint') }}</p>
+                <textarea
+                  v-model="userProfileText"
+                  class="personality-textarea"
+                  :placeholder="t('awaken.userProfilePlaceholder')"
+                  :maxlength="FILE_MAX_LENGTH"
+                  spellcheck="false"
+                />
+                <div class="personality-footer">
+                  <span class="personality-length">{{ userProfileText.length }}/{{ FILE_MAX_LENGTH }} {{ t('awaken.personalityChars') }}</span>
+                  <div class="personality-buttons">
+                    <button class="btn btn-sm" @click="resetUserProfileText" :disabled="!userProfileDirty || userProfileSaving">
+                      {{ t('common.reset') }}
+                    </button>
+                    <button class="btn btn-primary btn-sm" @click="saveUserProfileText" :disabled="!userProfileDirty || userProfileSaving">
+                      {{ userProfileSaving ? t('common.saving') : t('common.save') }}
+                    </button>
+                  </div>
+                </div>
+                <div v-if="userProfileError" class="personality-error">{{ userProfileError }}</div>
               </div>
             </div>
           </template>

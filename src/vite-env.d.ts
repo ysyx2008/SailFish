@@ -546,9 +546,12 @@ interface Window {
       // AI Rules
       getAiRules: () => Promise<string>
       setAiRules: (rules: string) => Promise<void>
-      // Agent 个性描述
+      // Agent 个性描述（legacy）
       getAgentPersonalityText: () => Promise<string>
       setAgentPersonalityText: (text: string) => Promise<void>
+      // Agent 身份文件（IDENTITY.md / SOUL.md / USER.md）
+      readIdentityFile: (filename: string) => Promise<string>
+      writeIdentityFile: (filename: string, content: string) => Promise<void>
       // AI 名字
       getAgentName: () => Promise<string>
       setAgentName: (name: string) => Promise<void>

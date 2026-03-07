@@ -837,9 +837,12 @@ const electronAPI = {
     // AI Rules
     getAiRules: () => ipcRenderer.invoke('config:getAiRules') as Promise<string>,
     setAiRules: (rules: string) => ipcRenderer.invoke('config:setAiRules', rules),
-    // Agent 个性描述
+    // Agent 个性描述（legacy）
     getAgentPersonalityText: () => ipcRenderer.invoke('config:getAgentPersonalityText') as Promise<string>,
     setAgentPersonalityText: (text: string) => ipcRenderer.invoke('config:setAgentPersonalityText', text),
+    // Agent 身份文件（IDENTITY.md / SOUL.md / USER.md）
+    readIdentityFile: (filename: string) => ipcRenderer.invoke('agent:readIdentityFile', filename) as Promise<string>,
+    writeIdentityFile: (filename: string, content: string) => ipcRenderer.invoke('agent:writeIdentityFile', filename, content) as Promise<void>,
     // AI 名字
     getAgentName: () => ipcRenderer.invoke('config:getAgentName') as Promise<string>,
     setAgentName: (name: string) => ipcRenderer.invoke('config:setAgentName', name),
