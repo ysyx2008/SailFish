@@ -761,9 +761,6 @@ onUnmounted(() => {
               <span>{{ t('watch.watches') }}</span>
               <span v-if="userWatches.length" class="nav-badge">{{ userWatches.length }}</span>
             </button>
-          </div>
-          <div class="nav-group">
-            <div class="nav-group-label">{{ t('watch.navTools') }}</div>
             <button class="nav-item" :class="{ active: activeTab === 'templates' }" @click="switchTab('templates', loadTemplates)">
               <LayoutTemplate :size="16" />
               <span>{{ t('watch.templates') }}</span>
