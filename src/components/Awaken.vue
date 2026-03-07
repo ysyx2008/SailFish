@@ -5,7 +5,7 @@ import { useConfigStore, type AgentMbtiType } from '../stores/config'
 import {
   X, Play, Trash2, Eye, RefreshCw, History,
   Clock, Heart, Globe, Zap, FolderOpen, Calendar, Mail,
-  LayoutTemplate, Plus, Sparkles, Brain, Pencil, Fingerprint, UserRound
+  LayoutTemplate, Plus, Sparkles, Pencil, Fingerprint, UserRound
 } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -32,8 +32,8 @@ interface WatchTemplateInfo {
 
 // ==================== Navigation ====================
 
-type NavTab = 'watches' | 'templates' | 'sensors' | 'history' | 'personality' | 'identity' | 'userProfile' | 'mbti'
-const VALID_TABS: NavTab[] = ['watches', 'templates', 'sensors', 'history', 'personality', 'identity', 'userProfile', 'mbti']
+type NavTab = 'watches' | 'templates' | 'sensors' | 'history' | 'personality' | 'identity' | 'userProfile'
+const VALID_TABS: NavTab[] = ['watches', 'templates', 'sensors', 'history', 'personality', 'identity', 'userProfile']
 const activeTab = ref<NavTab>(
   props.initialTab && VALID_TABS.includes(props.initialTab as NavTab) ? props.initialTab as NavTab : 'watches'
 )
@@ -753,10 +753,6 @@ onUnmounted(() => {
               <UserRound :size="16" />
               <span>{{ t('awaken.userProfileNav') }}</span>
             </button>
-            <button class="nav-item" :class="{ active: activeTab === 'mbti' }" @click="switchTab('mbti')">
-              <Brain :size="16" />
-              <span>{{ t('awaken.mbtiNav') }}</span>
-            </button>
           </div>
           <div class="nav-group">
             <div class="nav-group-label">{{ t('watch.navAutomation') }}</div>
@@ -834,7 +830,7 @@ onUnmounted(() => {
 
           <!-- ===================== 灵魂 (SOUL.md) ===================== -->
           <template v-if="activeTab === 'personality'">
-            <div class="content-page personality-page">
+            <div class="content-page personality-page soul-page">
               <div class="personality-content">
                 <div class="personality-header">
                   <h3>{{ t('awaken.personalityTitle') }}</h3>
@@ -859,6 +855,28 @@ onUnmounted(() => {
                   </div>
                 </div>
                 <div v-if="personalityError" class="personality-error">{{ personalityError }}</div>
+
+                <div class="mbti-section">
+                  <div class="personality-header">
+                    <h3>{{ t('aiSettings.agentPersonality') }}</h3>
+                    <button v-if="currentMbti" class="btn btn-sm" @click="setMbti(null)">{{ t('common.reset') }}</button>
+                  </div>
+                  <p class="personality-hint">{{ t('aiSettings.agentPersonalityDesc') }}</p>
+                  <div class="mbti-grid">
+                    <div
+                      v-for="item in mbtiTypes"
+                      :key="item.type"
+                      class="mbti-card"
+                      :class="{ active: currentMbti === item.type }"
+                      @click="setMbti(item.type)"
+                    >
+                      <div class="mbti-type">{{ item.type }}</div>
+                      <div class="mbti-name">{{ item.name }}</div>
+                      <div class="mbti-desc">{{ item.desc }}</div>
+                      <div class="mbti-group">{{ item.group }}</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </template>
@@ -890,33 +908,6 @@ onUnmounted(() => {
                   </div>
                 </div>
                 <div v-if="userProfileError" class="personality-error">{{ userProfileError }}</div>
-              </div>
-            </div>
-          </template>
-
-          <!-- ===================== MBTI ===================== -->
-          <template v-if="activeTab === 'mbti'">
-            <div class="content-page mbti-page">
-              <div class="mbti-content">
-                <div class="mbti-header">
-                  <h3>{{ t('aiSettings.agentPersonality') }}</h3>
-                  <button v-if="currentMbti" class="btn btn-sm" @click="setMbti(null)">{{ t('common.reset') }}</button>
-                </div>
-                <span class="personality-note">{{ t('aiSettings.agentPersonalityDesc') }}</span>
-                <div class="mbti-grid">
-                  <div
-                    v-for="item in mbtiTypes"
-                    :key="item.type"
-                    class="mbti-card"
-                    :class="{ active: currentMbti === item.type }"
-                    @click="setMbti(item.type)"
-                  >
-                    <div class="mbti-type">{{ item.type }}</div>
-                    <div class="mbti-name">{{ item.name }}</div>
-                    <div class="mbti-desc">{{ item.desc }}</div>
-                    <div class="mbti-group">{{ item.group }}</div>
-                  </div>
-                </div>
               </div>
             </div>
           </template>
@@ -1579,12 +1570,22 @@ onUnmounted(() => {
   height: 100%;
 }
 
+.content-page.personality-page.soul-page {
+  overflow-y: auto;
+  height: auto;
+}
+
+.soul-page .personality-textarea {
+  flex: none;
+  height: 240px;
+}
+
 .personality-content {
   display: flex;
   flex-direction: column;
   padding: 20px 24px;
-  gap: 12px;
   height: 100%;
+  gap: 12px;
 }
 
 .personality-name-row {
@@ -1621,6 +1622,7 @@ onUnmounted(() => {
 .personality-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
 }
 
 .personality-header h3 {
@@ -1683,27 +1685,13 @@ onUnmounted(() => {
   color: #ef4444;
 }
 
-.mbti-page {
-  overflow-y: auto;
-}
-
-.mbti-content {
+.mbti-section {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 20px 24px;
-}
-
-.mbti-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.mbti-header h3 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
 }
 
 .mbti-grid {
