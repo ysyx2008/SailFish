@@ -1,22 +1,39 @@
 /**
  * 个性定义技能 - 执行器
- * 读取、预览和写入 Agent 个性配置
+ * 读取、预览和写入 Agent 身份文件（IDENTITY.md）
  */
 
+import * as fs from 'fs'
+import * as path from 'path'
 import { getConfigService } from '../../../config.service'
-import { getMbtiStylePrompt } from '../../prompt-builder'
+import { getMbtiStylePrompt, readIdentityFile } from '../../prompt-builder'
 import { t } from '../../i18n'
 import { notifyFrontendConfigChanged } from '../config/executor'
+import { getWorkspacePath } from '../../tools/file'
+import { createLogger } from '../../../../utils/logger'
 import type { ToolResult, ToolExecutorConfig, AgentConfig } from '../../tools/types'
 import type { AgentMbtiType } from '@shared/types'
 
-const PERSONALITY_MAX_LENGTH = 1000
+const log = createLogger('PersonalityExecutor')
+const IDENTITY_FILENAME = 'IDENTITY.md'
 const VALID_MBTI_TYPES = new Set([
   'INTJ', 'INTP', 'ENTJ', 'ENTP',
   'INFJ', 'INFP', 'ENFJ', 'ENFP',
   'ISTJ', 'ISFJ', 'ESTJ', 'ESFJ',
   'ISTP', 'ISFP', 'ESTP', 'ESFP'
 ])
+
+function writeIdentityFile(content: string): boolean {
+  try {
+    const workspace = getWorkspacePath()
+    fs.mkdirSync(workspace, { recursive: true })
+    fs.writeFileSync(path.join(workspace, IDENTITY_FILENAME), content, 'utf-8')
+    return true
+  } catch (err) {
+    log.error('Failed to write IDENTITY.md:', err)
+    return false
+  }
+}
 
 export async function executePersonalityTool(
   toolName: string,
@@ -40,7 +57,7 @@ export async function executePersonalityTool(
 
 function getPersonality(executor: ToolExecutorConfig): ToolResult {
   const config = getConfigService()
-  const personalityText = config.getAgentPersonalityText() || ''
+  const identityContent = readIdentityFile()
   const mbti = config.getAgentMbti() || null
   const name = config.getAgentName() || ''
 
@@ -63,10 +80,10 @@ function getPersonality(executor: ToolExecutorConfig): ToolResult {
     sections.push(`### MBTI 类型\n${t('personality.not_set')}`)
   }
 
-  if (personalityText) {
-    sections.push(`### 个性定义（${personalityText.length}/${PERSONALITY_MAX_LENGTH} 字符）\n${personalityText}`)
+  if (identityContent) {
+    sections.push(`### 身份描述（IDENTITY.md）\n${identityContent}`)
   } else {
-    sections.push(`### 个性定义\n${t('personality.using_default')}`)
+    sections.push(`### 身份描述\n${t('personality.using_default')}`)
   }
 
   const output = `## 当前个性配置\n\n${sections.join('\n\n')}`
@@ -93,13 +110,6 @@ function craftPersonality(
     return { success: false, output: '', error: t('personality.text_empty') }
   }
 
-  if (personalityText.length > PERSONALITY_MAX_LENGTH) {
-    return {
-      success: false, output: '',
-      error: t('personality.text_too_long', { current: personalityText.length, max: PERSONALITY_MAX_LENGTH })
-    }
-  }
-
   if (mbti && !VALID_MBTI_TYPES.has(mbti)) {
     return { success: false, output: '', error: t('personality.invalid_mbti', { mbti }) }
   }
@@ -115,8 +125,11 @@ function craftPersonality(
   const config = getConfigService()
   const changes: string[] = []
 
+  const fileWritten = writeIdentityFile(personalityText)
   config.setAgentPersonalityText(personalityText)
-  changes.push(`个性定义（${personalityText.length} 字符）`)
+  changes.push(fileWritten
+    ? `IDENTITY.md（${personalityText.length} 字符）`
+    : `个性定义（${personalityText.length} 字符，IDENTITY.md 写入失败，已存入配置）`)
 
   if (name !== undefined) {
     config.setAgentName(name)
@@ -186,7 +199,7 @@ function previewPersonality(
     '',
     '---',
     '',
-    `> 字符数: ${personalityText.length}/${PERSONALITY_MAX_LENGTH}`,
+    `> 字符数: ${personalityText.length}`,
     `> ${t('personality.confirm_hint')}`,
   ].join('\n')
 

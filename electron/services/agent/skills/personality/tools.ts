@@ -23,27 +23,22 @@ export const personalityTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'personality_craft',
-      description: `通过引导式对话生成并写入 Agent 个性定义。
+      description: `写入 Agent 身份描述到 IDENTITY.md 文件。
 
 **使用流程**:
 1. 先调用 personality_get 读取当前状态
 2. 与用户对话，了解他们期望的沟通风格、价值观、态度和禁忌
-3. 生成结构化个性文本，用 personality_preview 预览
+3. 生成身份描述文本，用 personality_preview 预览
 4. 用户确认后再调用本工具正式写入
 
-**个性文本格式建议**（不强制，但推荐结构化）:
-- 沟通风格：直接/委婉、详细/简洁、正式/随意等
-- 价值观：效率优先/质量优先、保守/创新等
-- 态度：是否敢于质疑、遇到分歧怎么处理
-- 禁忌：哪些事情绝对不做
-
-写入后立即生效，下一轮对话将使用新个性。`,
+身份描述写入 IDENTITY.md，无长度限制，支持 Markdown 格式。
+写入后立即生效，下一轮对话将使用新身份。`,
       parameters: {
         type: 'object',
         properties: {
           personality_text: {
             type: 'string',
-            description: '个性定义文本（Markdown 格式，最多 1000 字符）'
+            description: '身份描述文本（Markdown 格式，无长度限制），将写入 IDENTITY.md'
           },
           name: {
             type: 'string',

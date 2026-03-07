@@ -6,11 +6,33 @@
  * - 不带前导/尾部空行，空行由 build() 的 join('\n\n') 统一控制
  * - 条件判断在方法内部完成，不在模板字符串里做三元表达式
  */
+import * as fs from 'fs'
+import * as path from 'path'
 import type { AgentContext, HostProfileServiceInterface, ExecutionMode } from './types'
 import type { AgentMbtiType } from '../config.service'
 import { getUserSkillService } from '../user-skill.service'
 import { getWorkspacePath } from './tools/file'
+import { createLogger } from '../../utils/logger'
 import { t } from './i18n'
+
+const log = createLogger('PromptBuilder')
+const IDENTITY_FILENAME = 'IDENTITY.md'
+
+/**
+ * 从 agent-workspace/IDENTITY.md 读取 Agent 身份描述
+ * 文件不存在返回空字符串，其他 I/O 错误记日志后返回空字符串
+ */
+export function readIdentityFile(): string {
+  try {
+    const filePath = path.join(getWorkspacePath(), IDENTITY_FILENAME)
+    return fs.readFileSync(filePath, 'utf-8').trim()
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      log.warn('Failed to read IDENTITY.md:', err)
+    }
+    return ''
+  }
+}
 
 /**
  * MBTI 风格描述映射
@@ -319,13 +341,13 @@ export class PromptBuilder {
 
   private buildPersonalitySection(): string {
     const mbtiStyle = PromptBuilder.getMbtiStylePrompt(this.mbtiType ?? null)
-    const personality = this.personalityText?.trim()
+    const soul = readIdentityFile() || this.personalityText?.trim() || ''
 
-    if (personality && mbtiStyle) {
-      return `# 你的灵魂（重要！）\n\n${personality}\n\n## 风格参考（MBTI）\n\n${mbtiStyle}`
+    if (soul && mbtiStyle) {
+      return `# 你的灵魂（重要！）\n\n${soul}\n\n## 风格参考（MBTI）\n\n${mbtiStyle}`
     }
-    if (personality) {
-      return `# 你的灵魂（重要！）\n\n${personality}`
+    if (soul) {
+      return `# 你的灵魂（重要！）\n\n${soul}`
     }
     if (mbtiStyle) {
       return `# 你的风格（重要！）\n\n${mbtiStyle}`
