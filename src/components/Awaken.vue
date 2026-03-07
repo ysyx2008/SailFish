@@ -2097,13 +2097,13 @@ onUnmounted(() => {
 /* ==================== Sensors ==================== */
 
 .sensor-grid {
-  display: flex; flex-wrap: wrap; gap: 12px; padding: 16px 24px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); grid-auto-rows: 1fr; gap: 12px; padding: 16px 24px;
 }
 
 .sensor-card {
   display: flex; align-items: flex-start; gap: 12px;
   padding: 14px 16px; border-radius: 8px; border: 1px solid var(--border-color);
-  min-width: 240px; flex: 1; max-width: 400px;
+  min-height: 88px;
 }
 .sensor-indicator { width: 10px; height: 10px; border-radius: 50%; background: #6c757d; flex-shrink: 0; margin-top: 4px; }
 .sensor-indicator.active { background: #28a745; box-shadow: 0 0 6px rgba(40, 167, 69, 0.4); }
