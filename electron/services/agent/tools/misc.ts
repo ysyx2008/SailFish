@@ -842,7 +842,7 @@ export async function executeSkillTool(
     return executeSkillCreatorTool(toolName, ptyId, args, toolCallId, config, executor)
   }
 
-  if (toolName.startsWith('personality_')) {
+  if (toolName.startsWith('personality_') || toolName === 'soul_craft' || toolName === 'user_craft') {
     return executePersonalityTool(toolName, ptyId, args, toolCallId, config, executor)
   }
 
