@@ -1,8 +1,9 @@
 /**
  * 任务记忆工具
- * 包括：回忆任务摘要、深度回忆任务详情、搜索历史对话
+ * 包括：回忆任务摘要、深度回忆任务详情、搜索历史对话（关键字 + 语义）
  */
 import { t } from '../i18n'
+import { getKnowledgeService } from '../../knowledge'
 import { truncateFromEnd } from './utils'
 import type { ToolExecutorConfig, ToolResult } from './types'
 
@@ -328,8 +329,135 @@ export function deepRecall(
 
 /**
  * 搜索历史对话记录（跨会话）
+ * 支持两种模式：keyword（关键字匹配）和 semantic（向量语义搜索）
  */
 export async function searchHistory(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const mode = args.mode === 'semantic' ? 'semantic' : 'keyword'
+
+  if (mode === 'semantic') {
+    return searchHistorySemantic(args, executor)
+  }
+  return searchHistoryKeyword(args, executor)
+}
+
+/**
+ * 语义搜索历史对话（通过向量检索）
+ */
+async function searchHistorySemantic(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const query = typeof args.keyword === 'string' ? args.keyword.slice(0, 500).trim() : ''
+  const limitRaw = typeof args.limit === 'number' ? args.limit : 10
+  const limit = Math.min(Math.max(1, limitRaw), 30)
+  const detail = args.detail === 'full' ? 'full' : 'summary'
+
+  if (!query) {
+    return { success: false, output: '', error: 'semantic 模式需要提供 keyword 作为语义查询' }
+  }
+
+  executor.addStep({
+    type: 'tool_call',
+    content: `语义搜索历史对话: "${query}" (${detail})`,
+    toolName: 'search_history',
+    toolArgs: args,
+    riskLevel: 'safe'
+  })
+
+  const knowledgeService = getKnowledgeService()
+  if (!knowledgeService || !knowledgeService.isEnabled()) {
+    // 语义搜索不可用时自动回退到关键字搜索
+    executor.addStep({
+      type: 'tool_result',
+      content: '知识库未启用，回退到关键字搜索',
+      toolName: 'search_history'
+    })
+    return searchHistoryKeyword({ ...args, mode: 'keyword' }, executor)
+  }
+
+  try {
+    const hostId = executor.getHostId()
+    const results = await knowledgeService.searchConversations(query, hostId, limit)
+
+    if (results.length === 0) {
+      // 语义搜索无结果时尝试关键字搜索兜底
+      const keywordResult = await searchHistoryKeyword({ ...args, mode: 'keyword' }, executor)
+      if (keywordResult.success && keywordResult.output) {
+        return keywordResult
+      }
+      executor.addStep({
+        type: 'tool_result',
+        content: `未找到与"${query}"语义相关的历史记录`,
+        toolName: 'search_history'
+      })
+      return { success: true, output: `未找到与"${query}"语义相关的历史记录` }
+    }
+
+    const formatted = results.map((r, i) => {
+      const date = new Date(r.timestamp || 0).toLocaleString('zh-CN')
+      const statusIcon = r.status === 'success' ? '✅' : r.status === 'failed' ? '❌' : '⚠️'
+      const relevancePercent = r.relevance != null ? ` (${(r.relevance * 100).toFixed(0)}% 相关)` : ''
+
+      const lines = [
+        `### ${i + 1}. ${statusIcon} ${date}${relevancePercent}`,
+        `**任务**: ${r.userRequest}`,
+        `**结果**: ${r.finalResult || '(无结果)'}`
+      ]
+
+      if (detail === 'full' && executor.historyService) {
+        const fullRecord = executor.historyService.searchAgentRecordsAdvanced({
+          keyword: r.userRequest.slice(0, 50),
+          limit: 1
+        }).records[0]
+        if (fullRecord?.steps?.length > 0) {
+          lines.push('', '**工具调用**:')
+          const toolSteps = fullRecord.steps.filter(s => s.type === 'tool_call' && s.toolName)
+          for (const step of toolSteps) {
+            let entry = `- \`${step.toolName}\``
+            if (step.toolArgs?.command) {
+              const cmd = String(step.toolArgs.command)
+              entry += `: ${cmd.length > 80 ? cmd.substring(0, 80) + '...' : cmd}`
+            }
+            lines.push(entry)
+          }
+        }
+      }
+
+      return lines.join('\n')
+    }).join('\n\n')
+
+    const output = `语义搜索找到 ${results.length} 条相关历史记录：\n\n${formatted}`
+
+    const displayOutput = output.length > 500
+      ? truncateFromEnd(output, 500)
+      : output
+
+    executor.addStep({
+      type: 'tool_result',
+      content: `语义搜索找到 ${results.length} 条历史记录 (${detail})`,
+      toolName: 'search_history',
+      toolResult: displayOutput
+    })
+
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : '语义搜索失败'
+    executor.addStep({
+      type: 'tool_result',
+      content: `语义搜索失败: ${errorMsg}，回退到关键字搜索`,
+      toolName: 'search_history'
+    })
+    return searchHistoryKeyword({ ...args, mode: 'keyword' }, executor)
+  }
+}
+
+/**
+ * 关键字搜索历史对话记录（跨会话）
+ */
+async function searchHistoryKeyword(
   args: Record<string, unknown>,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {

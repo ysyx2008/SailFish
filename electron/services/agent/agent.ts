@@ -666,6 +666,11 @@ export abstract class Agent {
     this.updateContextKnowledgeAsync(run, result).catch(err => {
       log.error('知识文档更新失败:', err)
     })
+
+    // L3: 异步索引对话到向量库（供跨会话语义检索）
+    this.indexConversationAsync(run, 'success', result).catch(err => {
+      log.warn('对话向量索引失败:', err)
+    })
     
     // 触发完成回调
     this.callbacks?.onComplete?.(run.id, result, run.pendingUserMessages)
@@ -859,6 +864,34 @@ export abstract class Agent {
       commandRecords
     })
   }
+
+  /**
+   * L3: 将对话摘要异步索引到向量库，供跨会话语义检索
+   */
+  private async indexConversationAsync(
+    run: AgentRun,
+    status: 'success' | 'failed' | 'aborted',
+    result?: string
+  ): Promise<void> {
+    if (!run.originalUserRequest?.trim()) return
+
+    // 唤醒 run 跳过（"你好"之类的短问候不值得索引）
+    if (run.context.wakeup) return
+
+    const knowledgeService = getKnowledgeService()
+    if (!knowledgeService || !knowledgeService.isEnabled()) return
+
+    const hostId = run.context.hostId || 'personal'
+
+    await knowledgeService.indexConversation({
+      taskId: run.id,
+      hostId,
+      userRequest: run.originalUserRequest,
+      finalResult: result || '',
+      status,
+      timestamp: Date.now()
+    })
+  }
   
   /**
    * 清理运行资源
@@ -907,6 +940,11 @@ export abstract class Agent {
     this.accumulateSessionData(run, 'failed', errorMessage)
     this.saveSessionToHistory()
     
+    // L3: 异步索引失败的对话（失败经验同样有检索价值）
+    this.indexConversationAsync(run, 'failed', errorMessage).catch(err => {
+      log.warn('对话向量索引失败:', err)
+    })
+
     this.callbacks?.onError?.(run.id, errorMessage)
   }
   
@@ -952,6 +990,26 @@ export abstract class Agent {
       log.warn('ContextKnowledge load error:', e)
     }
 
+    // L3 auto-recall: 语义检索相关的历史对话，注入提示词
+    let conversationHistory: Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }> = []
+    try {
+      const ks = getKnowledgeService()
+      if (ks && ks.isEnabled() && message.trim().length >= 5) {
+        const results = await ks.searchConversations(message, run.context.hostId, 3)
+        if (results.length > 0) {
+          conversationHistory = results.map(r => ({
+            userRequest: r.userRequest,
+            finalResult: r.finalResult,
+            status: r.status,
+            timestamp: r.timestamp,
+            relevance: r.relevance ?? 0
+          }))
+        }
+      }
+    } catch (e) {
+      log.warn('L3 auto-recall error:', e)
+    }
+
     // 关切列表摘要（注入提示词，供 Agent 知晓已有关切）
     let watchListSummary = ''
     try {
@@ -969,6 +1027,7 @@ export abstract class Agent {
       mbtiType: this.services.configService?.getAgentMbti() ?? undefined,
       knowledgeContext: knowledgeResult.context,
       knowledgeEnabled: knowledgeResult.enabled,
+      conversationHistory: conversationHistory.length > 0 ? conversationHistory : undefined,
       contextKnowledgeDoc,
       aiRules: this.services.configService?.getAiRules() ?? '',
       personalityText: this.services.configService?.getAgentPersonalityText() ?? '',

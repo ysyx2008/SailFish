@@ -1654,6 +1654,56 @@ export class KnowledgeService extends EventEmitter {
       return []
     }
   }
+
+  /**
+   * 批量回填历史对话到向量索引。
+   * 在后台逐条索引已有的 AgentRecord，跳过已索引的记录（通过 contentHash 去重）。
+   */
+  async backfillConversationIndex(
+    records: Array<{
+      id: string
+      userTask?: string
+      finalResult?: string
+      status?: string
+      timestamp: number
+      hostId?: string
+    }>
+  ): Promise<{ indexed: number; skipped: number; failed: number }> {
+    let indexed = 0
+    let skipped = 0
+    let failed = 0
+
+    for (const record of records) {
+      if (!record.userTask?.trim()) {
+        skipped++
+        continue
+      }
+
+      try {
+        const docId = await this.indexConversation({
+          taskId: record.id,
+          hostId: record.hostId || 'personal',
+          userRequest: record.userTask,
+          finalResult: record.finalResult || '',
+          status: record.status === 'completed' ? 'success'
+            : record.status === 'failed' ? 'failed'
+            : 'aborted',
+          timestamp: record.timestamp
+        })
+
+        if (docId) {
+          indexed++
+        } else {
+          skipped++
+        }
+      } catch {
+        failed++
+      }
+    }
+
+    log.info(`对话索引回填完成: indexed=${indexed}, skipped=${skipped}, failed=${failed}`)
+    return { indexed, skipped, failed }
+  }
 }
 
 // 导出单例

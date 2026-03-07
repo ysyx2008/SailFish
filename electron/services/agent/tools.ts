@@ -456,11 +456,16 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       type: 'function',
       function: {
         name: 'search_history',
-        description: `搜索跨会话的历史对话记录（recall 只查当前会话）。keyword/start_date/end_date 至少提供一个。detail: summary（默认）仅任务和结果，full 含工具调用记录。`,
+        description: `搜索跨会话的历史对话记录（recall 只查当前会话）。支持两种模式：keyword（关键字匹配，默认）和 semantic（语义搜索，用自然语言描述要找什么）。keyword 模式需提供 keyword/start_date/end_date 至少一个；semantic 模式需提供 keyword 作为语义查询。detail: summary（默认）仅任务和结果，full 含工具调用记录。`,
         parameters: {
           type: 'object',
           properties: {
-            keyword: { type: 'string', description: '搜索关键字' },
+            keyword: { type: 'string', description: '搜索关键字或语义查询（semantic 模式下用自然语言描述）' },
+            mode: {
+              type: 'string',
+              enum: ['keyword', 'semantic'],
+              description: '搜索模式：keyword=关键字匹配（默认），semantic=向量语义搜索'
+            },
             start_date: { type: 'string', description: '开始时间（YYYY-MM-DD 或 YYYY-MM-DD HH:mm）' },
             end_date: { type: 'string', description: '结束时间' },
             detail: {

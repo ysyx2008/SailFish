@@ -451,6 +451,11 @@ async function initKnowledgeService(): Promise<void> {
         // 忽略预热错误（可能知识库为空）
       })
       log.info('Embedding 预热推理已启动')
+
+      // L3 对话索引回填（后台执行，不阻塞启动）
+      backfillConversationIndexAsync(knowledgeService).catch(err => {
+        log.warn('对话索引回填失败:', err)
+      })
     }
   } catch (e) {
     log.error('Failed to initialize KnowledgeService:', e)
@@ -462,6 +467,45 @@ async function initKnowledgeService(): Promise<void> {
     mainWindow?.webContents.send('knowledge:ready')
     log.info('知识库服务初始化完成')
   }
+}
+
+/**
+ * L3 对话索引后台回填：将已有的历史 AgentRecord 索引到向量库
+ * 只在首次启用时运行（通过标记文件判断，避免重复执行）
+ */
+async function backfillConversationIndexAsync(ks: KnowledgeService): Promise<void> {
+  const { app } = await import('electron')
+  const fs = await import('fs')
+  const pathModule = await import('path')
+  const markerPath = pathModule.join(app.getPath('userData'), 'knowledge', '.conversation-index-backfilled')
+
+  if (fs.existsSync(markerPath)) return
+
+  const records = historyService.getAgentRecords()
+  if (records.length === 0) {
+    fs.mkdirSync(pathModule.dirname(markerPath), { recursive: true })
+    fs.writeFileSync(markerPath, new Date().toISOString(), 'utf-8')
+    return
+  }
+
+  log.info(`开始对话索引回填: ${records.length} 条历史记录`)
+
+  const result = await ks.backfillConversationIndex(
+    records.map(r => ({
+      id: r.id,
+      userTask: r.userTask,
+      finalResult: r.finalResult,
+      status: r.status,
+      timestamp: r.timestamp,
+      hostId: undefined
+    }))
+  )
+
+  // 回填完成后写入标记文件
+  fs.mkdirSync(pathModule.dirname(markerPath), { recursive: true })
+  fs.writeFileSync(markerPath, new Date().toISOString(), 'utf-8')
+
+  log.info(`对话索引回填完成: indexed=${result.indexed}, skipped=${result.skipped}, failed=${result.failed}`)
 }
 
 // MCP 服务事件转发
