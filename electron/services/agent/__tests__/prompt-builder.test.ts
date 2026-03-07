@@ -238,33 +238,44 @@ describe('PromptBuilder', () => {
   })
 
   describe('SSH terminal', () => {
-    it('should include SSH constraints for SSH terminal', () => {
+    it('should show SSH terminal type in host environment', () => {
       const context = createMockContext({ terminalType: 'ssh' })
       const builder = new PromptBuilder({ context })
       const prompt = builder.build()
       
-      expect(prompt).toContain('SSH 终端约束')
-      expect(prompt).toContain('write_remote_file')
       expect(prompt).toContain('🌐 SSH 远程终端')
     })
 
-    it('should include SSH status judgment tips', () => {
-      const context = createMockContext({ terminalType: 'ssh' })
-      const builder = new PromptBuilder({ context })
-      const prompt = builder.build()
-      
-      expect(prompt).toContain('SSH 终端状态判断')
-      expect(prompt).toContain('Password:')
-      expect(prompt).toContain('--More--')
-    })
-
-    it('should not include SSH constraints for local terminal', () => {
+    it('should not include SSH label for local terminal', () => {
       const context = createMockContext({ terminalType: 'local' })
       const builder = new PromptBuilder({ context })
       const prompt = builder.build()
       
-      expect(prompt).not.toContain('SSH 终端约束')
+      expect(prompt).not.toContain('SSH')
       expect(prompt).toContain('💻 本地终端')
+    })
+  })
+
+  describe('skills content', () => {
+    it('should include skills content when provided', () => {
+      const context = createMockContext()
+      const builder = new PromptBuilder({
+        context,
+        skillsContent: '**禁止的命令**：vim/vi/nano/emacs'
+      })
+      const prompt = builder.build()
+
+      expect(prompt).toContain('技能文档')
+      expect(prompt).toContain('禁止的命令')
+      expect(prompt).toContain('vim')
+    })
+
+    it('should not include skills content section when empty', () => {
+      const context = createMockContext()
+      const builder = new PromptBuilder({ context })
+      const prompt = builder.build()
+
+      expect(prompt).not.toContain('技能文档')
     })
   })
 
@@ -476,15 +487,14 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('密码')
     })
 
-    it('should include forbidden commands', () => {
+    it('should not include terminal-specific rules (moved to terminal skill)', () => {
       const context = createMockContext()
       const builder = new PromptBuilder({ context })
       const prompt = builder.build()
       
-      expect(prompt).toContain('禁止的命令')
-      expect(prompt).toContain('vim')
-      expect(prompt).toContain('nano')
-      expect(prompt).toContain('tmux')
+      expect(prompt).not.toContain('禁止的命令')
+      expect(prompt).not.toContain('tmux')
+      expect(prompt).not.toContain('长耗时命令')
     })
 
     it('should include work style guidelines', () => {

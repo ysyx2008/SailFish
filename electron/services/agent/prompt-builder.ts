@@ -122,6 +122,8 @@ export interface BuildSystemPromptOptions {
   bondContext?: string
   /** 是否为诞生引导对话（首次使用） */
   isOnboarding?: boolean
+  /** 已加载技能的文档内容（Markdown，技能加载时自动注入） */
+  skillsContent?: string
 }
 
 /**
@@ -150,6 +152,7 @@ export class PromptBuilder {
   private readonly watchListSummary?: string
   private readonly bondContext?: string
   private readonly isOnboarding: boolean
+  private readonly skillsContent?: string
 
   private osType = ''
   private shellType = ''
@@ -175,6 +178,7 @@ export class PromptBuilder {
     this.watchListSummary = options.watchListSummary
     this.bondContext = options.bondContext
     this.isOnboarding = options.isOnboarding ?? false
+    this.skillsContent = options.skillsContent
   }
 
   // ==================== 公开方法 ====================
@@ -208,7 +212,7 @@ export class PromptBuilder {
       this.buildConversationHistorySection(),
       this.buildRemoteChannelContext(),
       this.buildWatchListSection(),
-      this.buildSshToolConstraints(),
+      this.buildSkillsContentSection(),
       this.buildCoreRules(),
       this.buildKnowledgeContext(),
       getUserSkillService().buildSkillsSummary(),
@@ -431,15 +435,10 @@ export class PromptBuilder {
     return `# 已有关切\n\n${trimmed}\n\n创建新关切前先检查是否已有相同功能的。`
   }
 
-  private buildSshToolConstraints(): string {
-    if (!this.isSshTerminal) return ''
-    return [
-      '# SSH 终端约束',
-      '',
-      '- `read_file`、`edit_file`、`write_local_file` **不可用**（只能操作本地文件）',
-      '- 读取远程文件用 `cat`/`head`/`tail`，写入用 `write_remote_file` 或 `echo`/`cat <<EOF`',
-      '- 终端状态需根据屏幕内容自行判断（看提示符、Password:、进度等）',
-    ].join('\n')
+  private buildSkillsContentSection(): string {
+    const content = this.skillsContent?.trim()
+    if (!content) return ''
+    return `# 技能文档\n\n${content}`
   }
 
   // ==================== 私有方法：核心规则及子方法 ====================
@@ -449,14 +448,10 @@ export class PromptBuilder {
       '**输出风格**：用自然对话语言，**禁止**使用「分析阶段」「步骤1」等机械化标签',
       this.buildPlanRule(),
       this.buildSafetyRules(),
-      this.isAssistant
-        ? `**禁止的命令**：vim/vi/nano/emacs（用 \`${this.writeFileTool}\`）`
-        : `**禁止的命令**：vim/vi/nano/emacs（用 \`${this.writeFileTool}\`）、tmux/screen、mc/ranger`,
+      this.isAssistant ? `**禁止的命令**：vim/vi/nano/emacs（用 \`${this.writeFileTool}\`）` : '',
       this.buildFileSearchRule(),
-      this.buildLongContentRule(),
       '**临时文件清理**：任务过程中创建的所有临时文件，使用完毕后及时清除',
       this.buildExecutionGuide(),
-      this.buildSshStatusRule(),
       this.buildBehaviorRules(),
       this.buildWatchGuide(),
       this.buildDocumentRule(),
@@ -490,17 +485,6 @@ export class PromptBuilder {
     return '**文件搜索**：按文件名搜索优先用 `file_search`（毫秒级），搜内容用 grep'
   }
 
-  private buildLongContentRule(): string {
-    const lines = [
-      '**长内容处理**：',
-      `- 超过 200 字符禁止用 echo/printf，用 \`${this.writeFileTool}\` 写入 /tmp 再执行`,
-    ]
-    if (!this.isAssistant) {
-      lines.push('- 长文本分析结果直接在对话中回复，不要发送到终端')
-    }
-    return lines.join('\n')
-  }
-
   private buildWorkspaceRule(): string {
     return `# 私有工作空间：\`${getWorkspacePath()}\` 是你的私有数据目录，读写无需用户确认。
 - **TODO.md**：用户的待办事项（含日期、状态），系统有心跳机制，会定期自动读取并唤醒你从而提醒用户。
@@ -509,27 +493,10 @@ export class PromptBuilder {
   }
 
   private buildExecutionGuide(): string {
-    if (this.isAssistant) {
-      return [
-        '**命令执行**：短命令直接 `exec`，长命令加 `timeout`（默认 60s，最大 600s）。超时 ≠ 失败。',
-        '- **并行长任务**：`exec("cmd > /tmp/out.log 2>&1 & echo $!", timeout=5)` 获取 PID → 独立 exec 轮询 `sleep N && tail -20 /tmp/out.log && ps -p PID || echo done` → `kill PID` 终止',
-      ].join('\n')
-    }
-
+    if (!this.isAssistant) return ''
     return [
-      '**长耗时命令**：执行 → `wait` 等待 → `check_terminal_status` 确认，超时不代表失败',
-      '- 等待时可以说点有趣的话，比如："去喝杯咖啡☕马上回来"、"编译中，先摸会儿鱼🐟"、"让子弹飞一会儿🎬"',
-    ].join('\n')
-  }
-
-  private buildSshStatusRule(): string {
-    if (!this.isSshTerminal) return ''
-    return [
-      '**SSH 终端状态判断**（根据屏幕内容）：',
-      '- 看到 `$` 或 `#` 提示符 → 可执行新命令',
-      '- 看到 `Password:` → 暂停，让用户输入',
-      '- 看到 `(y/n)` → 根据情况回复或询问用户',
-      '- 看到 `--More--` 或 `(END)` → 发送 `q` 退出',
+      '**命令执行**：短命令直接 `exec`，长命令加 `timeout`（默认 60s，最大 600s）。超时 ≠ 失败。',
+      '- **并行长任务**：`exec("cmd > /tmp/out.log 2>&1 & echo $!", timeout=5)` 获取 PID → 独立 exec 轮询 `sleep N && tail -20 /tmp/out.log && ps -p PID || echo done` → `kill PID` 终止',
     ].join('\n')
   }
 

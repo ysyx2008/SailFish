@@ -17,6 +17,8 @@ export interface Skill {
   description: string
   /** 该技能提供的工具列表 */
   tools: ToolDefinition[]
+  /** 技能文档（Markdown），加载时注入上下文（同用户技能的 SKILL.md） */
+  content?: string
   /** 初始化函数（可选，用于动态 import 依赖库） */
   init?: () => Promise<void>
   /** 清理函数（可选，用于关闭未保存的文件等资源） */

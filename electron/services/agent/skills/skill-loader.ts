@@ -131,6 +131,20 @@ export class SkillSession implements SkillSessionManager {
   }
 
   /**
+   * 获取已加载技能的文档内容（用于注入系统提示词）
+   */
+  getLoadedSkillsContent(): string {
+    const parts: string[] = []
+    for (const skillId of this.loadedSkills.keys()) {
+      const skill = getSkill(skillId)
+      if (skill?.content) {
+        parts.push(skill.content)
+      }
+    }
+    return parts.join('\n\n')
+  }
+
+  /**
    * 获取技能的状态数据
    */
   getSkillData<T = unknown>(skillId: string): T | undefined {

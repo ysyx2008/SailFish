@@ -135,6 +135,7 @@ export class SailFish extends Agent {
       watchListSummary: options.watchListSummary,
       bondContext: options.bondContext,
       isOnboarding: options.isOnboarding,
+      skillsContent: this.getSkillSession().getLoadedSkillsContent(),
     }).build()
   }
   

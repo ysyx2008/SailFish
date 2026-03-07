@@ -16,6 +16,7 @@ import { executeSkillCreatorTool } from '../skills/skill-creator/executor'
 import { executePersonalityTool } from '../skills/personality/executor'
 import { executePdfTool } from '../skills/pdf/executor'
 import { getUserSkillService } from '../../user-skill.service'
+import { getSkill } from '../skills/registry'
 import { addProactiveContext } from '../proactive-store'
 import { getConfigService } from '../../config.service'
 import { formatRemainingTime, formatTotalTime, truncateFromEnd } from './utils'
@@ -515,15 +516,18 @@ export async function loadSkillTool(
   if (result.success) {
     const skillName = result.skillName || skillId
     const toolsList = result.toolsAdded?.join(', ') || ''
+    const skill = getSkill(skillId)
+    const skillContent = skill?.content || ''
     const simpleOutput = t('skill.loaded_simple', { name: skillName })
-    const detailOutput = t('skill.loaded', { name: skillName, tools: toolsList })
+    const detailOutput = skillContent
+      ? `## ${skillName}\n\n${skillContent}`
+      : t('skill.loaded', { name: skillName, tools: toolsList })
     
     executor.addStep({
       type: 'tool_result',
       content: simpleOutput,
       toolName: 'load_skill',
-      // 仅调试模式下显示工具列表（不重复技能名）
-      toolResult: config.debugMode && toolsList ? toolsList : undefined
+      toolResult: skillContent || (config.debugMode && toolsList ? toolsList : undefined)
     })
     
     return { success: true, output: detailOutput }
