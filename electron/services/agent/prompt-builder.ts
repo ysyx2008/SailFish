@@ -17,21 +17,39 @@ import { t } from './i18n'
 
 const log = createLogger('PromptBuilder')
 const IDENTITY_FILENAME = 'IDENTITY.md'
+const SOUL_FILENAME = 'SOUL.md'
 
-/**
- * 从 agent-workspace/IDENTITY.md 读取 Agent 身份描述
- * 文件不存在返回空字符串，其他 I/O 错误记日志后返回空字符串
- */
-export function readIdentityFile(): string {
+function readWorkspaceFile(filename: string): string {
   try {
-    const filePath = path.join(getWorkspacePath(), IDENTITY_FILENAME)
+    const filePath = path.join(getWorkspacePath(), filename)
     return fs.readFileSync(filePath, 'utf-8').trim()
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-      log.warn('Failed to read IDENTITY.md:', err)
+      log.warn(`Failed to read ${filename}:`, err)
     }
     return ''
   }
+}
+
+/**
+ * 从 agent-workspace/IDENTITY.md 读取 Agent 身份描述
+ */
+export function readIdentityFile(): string {
+  return readWorkspaceFile(IDENTITY_FILENAME)
+}
+
+/**
+ * 从 agent-workspace/SOUL.md 读取 Agent 行为灵魂
+ */
+export function readSoulFile(): string {
+  return readWorkspaceFile(SOUL_FILENAME)
+}
+
+/**
+ * 从 agent-workspace/USER.md 读取用户画像
+ */
+export function readUserFile(): string {
+  return readWorkspaceFile('USER.md')
 }
 
 /**
@@ -217,12 +235,13 @@ export class PromptBuilder {
     const sections = [
       this.buildLanguageRule(),
       this.buildIdentitySection(),
+      this.buildUserProfileSection(),
     ]
 
     if (this.isOnboarding) {
       sections.push(this.buildOnboardingSection())
     } else {
-      sections.push(this.buildPersonalitySection())
+      sections.push(this.buildSoulSection())
       sections.push(this.buildBondSection())
     }
 
@@ -332,16 +351,21 @@ export class PromptBuilder {
         : `当前工作目录：${this.context.cwd}（系统实时获取，无需执行 pwd 验证）`
       : '当前工作目录：未成功获取'
 
-    return [
+    const identity = readIdentityFile()
+    const lines = [
       `你是${displayName}，一个能帮助用户完成各类任务的智能助手。`,
       `当前时间：${currentTime}`,
       cwdLine,
-    ].join('\n')
+    ]
+    if (identity) {
+      lines.push('', identity)
+    }
+    return lines.join('\n')
   }
 
-  private buildPersonalitySection(): string {
+  private buildSoulSection(): string {
     const mbtiStyle = PromptBuilder.getMbtiStylePrompt(this.mbtiType ?? null)
-    const soul = readIdentityFile() || this.personalityText?.trim() || ''
+    const soul = readSoulFile() || this.personalityText?.trim() || ''
 
     if (soul && mbtiStyle) {
       return `# 你的灵魂（重要！）\n\n${soul}\n\n## 风格参考（MBTI）\n\n${mbtiStyle}`
@@ -357,6 +381,12 @@ export class PromptBuilder {
 
   private buildOnboardingSection(): string {
     return t('onboarding.system_prompt')
+  }
+
+  private buildUserProfileSection(): string {
+    const user = readUserFile()
+    if (!user) return ''
+    return `# 关于用户\n\n${user}`
   }
 
   private buildBondSection(): string {

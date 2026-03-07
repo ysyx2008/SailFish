@@ -573,6 +573,14 @@ const translations = {
     'personality.not_set': '未设置',
     'personality.using_default': '未设置（当前使用默认风格）',
     'personality.confirm_hint': '确认无误后，请使用 `personality_craft` 正式写入。',
+    'personality.soul_empty': '行为灵魂文本不能为空',
+    'personality.soul_too_long': '行为灵魂文本过长（{current} 字符），最多 {max} 字符',
+    'personality.soul_writing': '写入行为灵魂',
+    'personality.soul_written': '行为灵魂已更新，下一轮对话将使用新灵魂',
+    'personality.user_empty': '用户画像文本不能为空',
+    'personality.user_too_long': '用户画像文本过长（{current} 字符），最多 {max} 字符',
+    'personality.user_writing': '写入用户画像',
+    'personality.user_written': '用户画像已更新，下一轮对话将使用新画像',
 
     // 诞生引导
     'onboarding.system_prompt': `## 诞生对话（首次相遇）
@@ -591,11 +599,11 @@ const translations = {
 ### 节奏
 不急，但也别拖。2-3 轮对话足够了。如果用户很直接（一句话给了所有信息），一轮也完全可以。
 
-### 保存——写下自己是谁
-当你觉得聊得差不多了：
-1. 用 \`personality_craft\` 写下你的身份描述（\`personality_text\` 参数）——用你自己的话，描述"我是一个怎样的助手"。这段文字会保存到你的 IDENTITY.md 文件中，作为你的身份备忘，以后每次对话都会读取。Markdown 格式，无长度限制，想写多少写多少。同时通过 \`name\` 参数设定你的名字。
-2. 用 \`remember_info\` 把了解到的用户信息（称呼、职业、使用场景等）写入知识库，这样你以后都能记住。
-   - **注意**：用户信息属于个人知识，请在 info 的开头加上 \`[context:personal]\` 前缀，确保写入个人知识文档而非当前主机文档。例如：\`remember_info({ info: "[context:personal] 用户叫老余，后端开发..." })\`
+### 保存——写下彼此是谁
+当你觉得聊得差不多了，用以下三个工具记录这次对话的成果：
+1. \`personality_craft\`：写下你的身份描述（\`personality_text\`，最多 1000 字符）——用你自己的话，描述"我是一个怎样的助手"。保存到 IDENTITY.md。同时通过 \`name\` 参数设定你的名字。
+2. \`user_craft\`：写下你了解到的用户信息（\`user_text\`，最多 1000 字符）——称呼、职业、使用场景、沟通偏好等。保存到 USER.md。
+3. \`soul_craft\`（可选）：如果对话中自然聊到了相处方式、行为边界、禁忌等，写入 SOUL.md。首次对话不一定需要，以后随着默契加深再补充也行。
 
 ### 结束
 保存完后自然收尾，像朋友聊完了互相认识的部分，自然转入"那有什么我可以帮你的吗？"不需要说"引导完成"之类的话。
@@ -1567,6 +1575,14 @@ Please output the summary in the following format:
     'personality.not_set': 'Not set',
     'personality.using_default': 'Not set (using default style)',
     'personality.confirm_hint': 'When confirmed, use `personality_craft` to save.',
+    'personality.soul_empty': 'Soul text cannot be empty',
+    'personality.soul_too_long': 'Soul text too long ({current} characters), max {max} characters',
+    'personality.soul_writing': 'Writing soul',
+    'personality.soul_written': 'Soul updated, next conversation will use the new soul',
+    'personality.user_empty': 'User profile text cannot be empty',
+    'personality.user_too_long': 'User profile text too long ({current} characters), max {max} characters',
+    'personality.user_writing': 'Writing user profile',
+    'personality.user_written': 'User profile updated, next conversation will use the new profile',
 
     // Onboarding
     'onboarding.system_prompt': `## Birth Conversation (First Meeting)
@@ -1585,11 +1601,11 @@ Like two people meeting for the first time, curious about each other, chatting n
 ### Pacing
 Don't rush, but don't drag either. 2-3 rounds of conversation is enough. If the user is direct and gives everything in one message, one round is perfectly fine.
 
-### Saving — Write down who you are
-When you feel you've chatted enough:
-1. Use \`personality_craft\` to write your identity description (\`personality_text\` parameter) — in your own words, describe "what kind of assistant I am". This will be saved to your IDENTITY.md file as your identity memo, read before every future conversation. Markdown format, no length limit, write as much as you want. Also set your name via the \`name\` parameter.
-2. Use \`remember_info\` to save user info (name, profession, use cases, etc.) to the knowledge base, so you'll always remember.
-   - **Note**: User info is personal knowledge. Prefix your info with \`[context:personal]\` to ensure it's saved to the personal knowledge doc rather than the current host doc. For example: \`remember_info({ info: "[context:personal] User goes by Lao Yu, backend developer..." })\`
+### Saving — Write down who you both are
+When you feel you've chatted enough, use these three tools to record what you've learned:
+1. \`personality_craft\`: Write your identity description (\`personality_text\`, max 1000 characters) — in your own words, describe "what kind of assistant I am". Saved to IDENTITY.md. Also set your name via the \`name\` parameter.
+2. \`user_craft\`: Write what you've learned about the user (\`user_text\`, max 1000 characters) — name, profession, use cases, communication preferences, etc. Saved to USER.md.
+3. \`soul_craft\` (optional): If the conversation naturally touched on how you should interact, behavioral boundaries, taboos, etc., write it to SOUL.md. Not necessarily needed on first meeting — can be added later as rapport deepens.
 
 ### Wrapping up
 After saving, wrap up naturally — like friends who've finished getting to know each other, naturally transitioning to "So, what can I help you with?" Don't say things like "onboarding complete".
