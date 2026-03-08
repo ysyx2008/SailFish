@@ -621,6 +621,73 @@ const translations = {
     'pdf.render_failed_detail': 'PDF 页面渲染失败: {error}',
     'pdf.scanned_pdf_detected': '📄 {name} 是扫描版 PDF（共 {totalPages} 页），首页已作为图片附上。如需查看更多页面，请使用 pdf_view_page 工具，路径: {path}',
 
+    // 飞书技能
+    'feishu.resource_bitable': '多维表格',
+    'feishu.resource_doc': '云文档',
+    'feishu.resource_sheet': '电子表格',
+    'feishu.resource_calendar': '日历',
+    'feishu.resource_task': '任务',
+    'feishu.resource_drive': '云空间',
+    'feishu.action_create': '创建',
+    'feishu.action_update': '修改',
+    'feishu.action_delete': '删除',
+    'feishu.action_upload': '上传',
+    'feishu.reading': '读取飞书{resource}{hint}',
+    'feishu.writing': '{action}飞书{resource}',
+    'feishu.unknown_tool': '未知的飞书工具: {name}',
+    'feishu.missing_resource': '缺少 resource 参数',
+    'feishu.missing_resource_or_action': '缺少 resource 或 action 参数',
+    'feishu.unsupported_resource': '不支持的资源类型: {resource}',
+    'feishu.credentials_missing': '飞书 App ID 和 App Secret 未配置，请在设置 → 消息通知 → 飞书中配置',
+    'feishu.bitable_app_token_required': 'bitable 资源需要 app_token 参数（可从多维表格 URL 获取）',
+    'feishu.bitable_write_required': 'bitable 写入需要 app_token 和 table_id 参数',
+    'feishu.bitable_fields_required': 'bitable {action} 需要 data.fields，如 {{"姓名": "张三"}}',
+    'feishu.bitable_record_id_required': 'bitable update 需要 record_id 参数',
+    'feishu.bitable_record_ids_required': 'bitable delete 需要 record_id 或 record_ids',
+    'feishu.sheet_id_required': 'sheet 资源需要 spreadsheet_id（从表格 URL 获取）',
+    'feishu.sheet_write_required': 'sheet update 需要 spreadsheet_id 和 sheet_id',
+    'feishu.sheet_values_required': 'sheet update 需要 data.values（二维数组）',
+    'feishu.doc_id_required': 'doc {action} 需要 document_id',
+    'feishu.doc_content_required': 'doc update 需要 data.content',
+    'feishu.calendar_id_required': 'calendar 操作需要 calendar_id',
+    'feishu.calendar_data_required': 'calendar create 需要 data（含 summary, start_time, end_time）',
+    'feishu.event_id_required': 'calendar {action} 需要 event_id',
+    'feishu.task_summary_required': 'task create 需要 data.summary（任务标题）',
+    'feishu.task_id_required': 'task {action} 需要 task_id',
+    'feishu.task_data_required': 'task update 需要 data',
+    'feishu.drive_file_path_required': 'drive upload 需要 file_path（本地文件路径）',
+    'feishu.drive_file_not_found': '文件不存在: {path}',
+    'feishu.drive_file_token_required': 'drive delete 需要 file_token',
+    'feishu.drive_rename_required': 'drive update 需要 file_token 和 data.name',
+    'feishu.unsupported_action': '{resource} 不支持 action: {action}',
+    'feishu.query_empty': '查询结果为空',
+    'feishu.no_data': '（空）',
+    'feishu.skill_name': '飞书工作台',
+    'feishu.skill_description': '读写飞书云端资源：多维表格、云文档、电子表格、日历、任务、云空间。需要先在设置中配置飞书应用凭证。',
+    'feishu.skill_content': `## 飞书技能使用指南
+
+你可以通过 feishu_read 和 feishu_write 两个工具操作飞书的云端资源。
+
+### 权限说明
+所有 API 调用使用「设置 → 消息通知 → 飞书」中配置的应用凭证。用户需要在飞书开发者后台为该应用开通对应的 API 权限：
+- 多维表格：bitable:app / bitable:record
+- 云文档：docx:document / docx:document:readonly
+- 电子表格：sheets:spreadsheet
+- 日历：calendar:calendar / calendar:calendar:readonly
+- 任务：task:task / task:task:readonly
+- 云空间：drive:drive / drive:file
+
+### 常用 ID 获取方式
+- **多维表格 app_token**: 从 URL 获取，如 \`https://xxx.feishu.cn/base/XxxYyyZzz\` 中 \`XxxYyyZzz\` 即为 app_token
+- **电子表格 spreadsheet_id**: 从 URL 获取，如 \`https://xxx.feishu.cn/sheets/XxxYyyZzz\`
+- **云文档 document_id**: 从 URL 获取，如 \`https://xxx.feishu.cn/docx/XxxYyyZzz\`
+- **云空间 folder_token**: 从 URL 获取，文件夹页面 URL 中的 token
+
+### 使用模式
+1. 先用 feishu_read 了解资源结构（如列出表格、工作表、日历），再做具体操作
+2. 写入操作（feishu_write）都会实际修改飞书数据，请根据用户意图谨慎操作
+3. 分页查询：结果中如有 page_token，可在下次调用时传入以获取后续数据`,
+
     // 技能系统
     'skill.id_required': '技能 ID 不能为空',
     'skill.session_not_initialized': '技能会话未初始化',
@@ -1623,6 +1690,73 @@ After saving, wrap up naturally — like friends who've finished getting to know
     'pdf.render_failed': 'PDF page rendering failed',
     'pdf.render_failed_detail': 'PDF page rendering failed: {error}',
     'pdf.scanned_pdf_detected': '📄 {name} is a scanned PDF ({totalPages} pages). First page attached as image. Use pdf_view_page tool for more pages, path: {path}',
+
+    // Feishu skill
+    'feishu.resource_bitable': 'Bitable',
+    'feishu.resource_doc': 'Doc',
+    'feishu.resource_sheet': 'Sheet',
+    'feishu.resource_calendar': 'Calendar',
+    'feishu.resource_task': 'Task',
+    'feishu.resource_drive': 'Drive',
+    'feishu.action_create': 'Create',
+    'feishu.action_update': 'Update',
+    'feishu.action_delete': 'Delete',
+    'feishu.action_upload': 'Upload',
+    'feishu.reading': 'Reading Feishu {resource}{hint}',
+    'feishu.writing': '{action} Feishu {resource}',
+    'feishu.unknown_tool': 'Unknown Feishu tool: {name}',
+    'feishu.missing_resource': 'Missing resource parameter',
+    'feishu.missing_resource_or_action': 'Missing resource or action parameter',
+    'feishu.unsupported_resource': 'Unsupported resource type: {resource}',
+    'feishu.credentials_missing': 'Feishu App ID and App Secret not configured. Set them in Settings → Notifications → Feishu',
+    'feishu.bitable_app_token_required': 'bitable resource requires app_token parameter (from Bitable URL)',
+    'feishu.bitable_write_required': 'bitable write requires app_token and table_id parameters',
+    'feishu.bitable_fields_required': 'bitable {action} requires data.fields, e.g. {{"name": "John"}}',
+    'feishu.bitable_record_id_required': 'bitable update requires record_id parameter',
+    'feishu.bitable_record_ids_required': 'bitable delete requires record_id or record_ids',
+    'feishu.sheet_id_required': 'sheet resource requires spreadsheet_id (from Sheet URL)',
+    'feishu.sheet_write_required': 'sheet update requires spreadsheet_id and sheet_id',
+    'feishu.sheet_values_required': 'sheet update requires data.values (2D array)',
+    'feishu.doc_id_required': 'doc {action} requires document_id',
+    'feishu.doc_content_required': 'doc update requires data.content',
+    'feishu.calendar_id_required': 'calendar operation requires calendar_id',
+    'feishu.calendar_data_required': 'calendar create requires data (with summary, start_time, end_time)',
+    'feishu.event_id_required': 'calendar {action} requires event_id',
+    'feishu.task_summary_required': 'task create requires data.summary (task title)',
+    'feishu.task_id_required': 'task {action} requires task_id',
+    'feishu.task_data_required': 'task update requires data',
+    'feishu.drive_file_path_required': 'drive upload requires file_path (local file path)',
+    'feishu.drive_file_not_found': 'File not found: {path}',
+    'feishu.drive_file_token_required': 'drive delete requires file_token',
+    'feishu.drive_rename_required': 'drive update requires file_token and data.name',
+    'feishu.unsupported_action': '{resource} does not support action: {action}',
+    'feishu.query_empty': 'Query returned empty results',
+    'feishu.no_data': '(empty)',
+    'feishu.skill_name': 'Feishu Workspace',
+    'feishu.skill_description': 'Read/write Feishu cloud resources: Bitable, Docs, Sheets, Calendar, Tasks, Drive. Requires Feishu app credentials in settings.',
+    'feishu.skill_content': `## Feishu Skill Guide
+
+You can operate Feishu cloud resources through the feishu_read and feishu_write tools.
+
+### Permissions
+All API calls use the app credentials configured in "Settings → Notifications → Feishu". The user needs to enable corresponding API permissions in the Feishu Developer Console:
+- Bitable: bitable:app / bitable:record
+- Docs: docx:document / docx:document:readonly
+- Sheets: sheets:spreadsheet
+- Calendar: calendar:calendar / calendar:calendar:readonly
+- Tasks: task:task / task:task:readonly
+- Drive: drive:drive / drive:file
+
+### Getting IDs
+- **Bitable app_token**: From URL, e.g. \`https://xxx.feishu.cn/base/XxxYyyZzz\` → \`XxxYyyZzz\` is the app_token
+- **Sheet spreadsheet_id**: From URL, e.g. \`https://xxx.feishu.cn/sheets/XxxYyyZzz\`
+- **Doc document_id**: From URL, e.g. \`https://xxx.feishu.cn/docx/XxxYyyZzz\`
+- **Drive folder_token**: From URL, the token in the folder page URL
+
+### Usage Pattern
+1. Use feishu_read first to understand resource structure (list tables, worksheets, calendars), then perform specific operations
+2. Write operations (feishu_write) will actually modify Feishu data — proceed carefully based on user intent
+3. Pagination: If results contain page_token, pass it in the next call to get more data`,
 
     // Skill system
     'skill.id_required': 'Skill ID required',

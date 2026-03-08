@@ -114,6 +114,18 @@ export class FeishuAdapter implements IMAdapter {
       }
     })
 
+    // 注册卡片交互回调（用于确认/拒绝按钮）
+    eventDispatcher.register({
+      'card.action.trigger': async (data: any) => {
+        try {
+          this.handleCardAction(data)
+        } catch (err) {
+          log.error('Error handling card action:', err)
+        }
+        return { toast: { type: 'info', content: '' } }
+      }
+    })
+
     this.wsClient = new lark.WSClient({
       appId: this.config.appId,
       appSecret: this.config.appSecret,
@@ -415,6 +427,105 @@ export class FeishuAdapter implements IMAdapter {
         msg_type: msgType,
       }
     })
+  }
+
+  /**
+   * 发送带确认/拒绝按钮的交互卡片
+   * 用户点击按钮后通过 card.action.trigger 事件回调，自动触发确认/拒绝
+   */
+  async sendConfirmCard(replyContext: any, toolName: string, toolArgs: string, riskLevel: string): Promise<void> {
+    if (!this.client) throw new Error('[Feishu] Client not initialized')
+
+    const riskEmoji = riskLevel === 'dangerous' ? '🔴' : '🟡'
+    const riskColor = riskLevel === 'dangerous' ? 'red' : 'orange'
+
+    const card = {
+      config: { wide_screen_mode: true },
+      header: {
+        template: riskColor,
+        title: { content: `${riskEmoji} 操作确认`, tag: 'plain_text' },
+      },
+      elements: [
+        {
+          tag: 'markdown',
+          content: `**工具**: ${toolName}\n**风险**: ${riskLevel}\n\n\`\`\`\n${toolArgs.length > 800 ? toolArgs.substring(0, 800) + '\n...（已截断）' : toolArgs}\n\`\`\``,
+        },
+        {
+          tag: 'action',
+          actions: [
+            {
+              tag: 'button',
+              text: { tag: 'plain_text', content: '✅ 确认执行' },
+              type: 'primary',
+              value: { action: 'confirm', chatId: replyContext.chatId, chatType: replyContext.chatType || 'p2p' },
+            },
+            {
+              tag: 'button',
+              text: { tag: 'plain_text', content: '❌ 拒绝' },
+              type: 'danger',
+              value: { action: 'reject', chatId: replyContext.chatId, chatType: replyContext.chatType || 'p2p' },
+            },
+          ],
+        },
+      ],
+    }
+
+    await this.client.im.message.create({
+      params: { receive_id_type: 'chat_id' },
+      data: {
+        receive_id: replyContext.chatId,
+        content: JSON.stringify(card),
+        msg_type: 'interactive',
+      },
+    })
+  }
+
+  /**
+   * 处理卡片按钮点击回调
+   * 将按钮动作转化为标准消息，复用已有的确认/拒绝流程
+   */
+  private handleCardAction(data: any): void {
+    const action = data?.action
+    if (!action?.value) {
+      log.debug('Card action: no value, ignoring')
+      return
+    }
+
+    const { action: actionType, chatId, chatType: rawChatType } = action.value
+    if (!actionType || !chatId) {
+      log.debug('Card action: missing actionType or chatId')
+      return
+    }
+
+    const operator = data?.operator
+    const userId = operator?.open_id
+    if (!userId) {
+      log.warn('Card action: operator.open_id missing, ignoring')
+      return
+    }
+
+    log.info(`Card action: ${actionType} from ${userId} in ${chatId}`)
+
+    const isP2p = rawChatType === 'p2p'
+    const text = actionType === 'confirm' ? '确认' : '拒绝'
+
+    const replyContext = {
+      chatId,
+      openId: userId,
+      chatType: rawChatType || 'p2p',
+    }
+
+    const msg: IMIncomingMessage = {
+      platform: 'feishu',
+      userId,
+      userName: userId,
+      text,
+      chatType: isP2p ? 'single' : 'group',
+      chatId,
+      replyContext,
+    }
+
+    this.onMessage?.(msg)
   }
 
   /**

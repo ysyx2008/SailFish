@@ -15,6 +15,7 @@ import { executeConfigTool } from '../skills/config/executor'
 import { executeSkillCreatorTool } from '../skills/skill-creator/executor'
 import { executePersonalityTool } from '../skills/personality/executor'
 import { executePdfTool } from '../skills/pdf/executor'
+import { executeFeishuTool } from '../skills/feishu/executor'
 import { getUserSkillService } from '../../user-skill.service'
 import { getSkill } from '../skills/registry'
 import { addProactiveContext } from '../proactive-store'
@@ -846,6 +847,10 @@ export async function executeSkillTool(
 
   if (toolName.startsWith('pdf_')) {
     return executePdfTool(toolName, ptyId, args, toolCallId, config, executor)
+  }
+
+  if (toolName.startsWith('feishu_')) {
+    return executeFeishuTool(toolName, ptyId, args, toolCallId, config, executor)
   }
 
   return { success: false, output: '', error: t('error.unknown_tool', { name: toolName }) }

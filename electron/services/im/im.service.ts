@@ -865,22 +865,32 @@ export class IMService {
             } else {
               textBuffer = ''
             }
-            const riskEmoji = confirmation.riskLevel === 'dangerous' ? '🔴' : '🟡'
             const argsText = JSON.stringify(confirmation.toolArgs, null, 2)
               .substring(0, 500)
             try {
-              await adapter.sendMarkdown(replyContext, t('im.need_confirm'), [
-                t('im.need_confirm_title', { riskEmoji }),
-                '',
-                t('im.need_confirm_tool', { toolName: confirmation.toolName }),
-                t('im.need_confirm_risk', { riskLevel: confirmation.riskLevel }),
-                t('im.need_confirm_args'),
-                '```',
-                argsText,
-                '```',
-                '',
-                t('im.need_confirm_action'),
-              ].join('\n'))
+              // 优先使用交互卡片（带按钮），回退到纯 Markdown
+              if (adapter.sendConfirmCard) {
+                await adapter.sendConfirmCard(
+                  replyContext,
+                  confirmation.toolName,
+                  argsText,
+                  confirmation.riskLevel
+                )
+              } else {
+                const riskEmoji = confirmation.riskLevel === 'dangerous' ? '🔴' : '🟡'
+                await adapter.sendMarkdown(replyContext, t('im.need_confirm'), [
+                  t('im.need_confirm_title', { riskEmoji }),
+                  '',
+                  t('im.need_confirm_tool', { toolName: confirmation.toolName }),
+                  t('im.need_confirm_risk', { riskLevel: confirmation.riskLevel }),
+                  t('im.need_confirm_args'),
+                  '```',
+                  argsText,
+                  '```',
+                  '',
+                  t('im.need_confirm_action'),
+                ].join('\n'))
+              }
             } catch { /* ignore */ }
           }
           enqueueSend(sendConfirm)

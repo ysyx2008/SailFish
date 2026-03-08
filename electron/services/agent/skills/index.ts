@@ -23,4 +23,5 @@ import './skill-creator'
 import './terminal'
 import './personality'
 import './pdf'
+import './feishu'
 

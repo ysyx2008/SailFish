@@ -110,6 +110,9 @@ export interface IMAdapter {
   /** 发送文件消息 */
   sendFile(replyContext: any, filePath: string, fileName?: string): Promise<void>
 
+  /** 发送带确认按钮的交互卡片（可选，仅部分平台支持） */
+  sendConfirmCard?(replyContext: any, toolName: string, toolArgs: string, riskLevel: string): Promise<void>
+
   /** 消息到达回调 */
   onMessage: ((msg: IMIncomingMessage) => void) | null
   /** 连接状态变化回调 */
