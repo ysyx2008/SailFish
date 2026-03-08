@@ -497,7 +497,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
             },
             title: {
               type: 'string',
-              description: '消息标题（可选，指定后以卡片形式发送）'
+              description: '消息标题（可选，一般为你的名字，指定后以卡片形式发送）'
             }
           },
           required: ['message']
