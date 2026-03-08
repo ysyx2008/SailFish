@@ -7,13 +7,15 @@ import { createLogger } from '../../../../utils/logger'
 
 const log = createLogger('ConfigExecutor')
 import { getConfigService } from '../../../config.service'
-import type { IMService } from '../../../im/im.service'
+import { getIMService, type IMService } from '../../../im/im.service'
 import {
   getEmailCredential, setEmailCredential, deleteEmailCredential,
   getCalendarCredential, setCalendarCredential, deleteCalendarCredential
 } from '../../../credential.service'
 import { BrowserWindow } from 'electron'
 import type { ToolResult, ToolExecutorConfig, AgentConfig } from '../../tools/types'
+import { getServerConfig as getEmailServerConfig } from '../email/session'
+import { getServerConfig as getCalendarServerConfig } from '../calendar/session'
 
 // ==================== 配置项元数据 ====================
 
@@ -327,7 +329,6 @@ async function connectIM(args: Record<string, unknown>): Promise<ToolResult> {
   }
 
   try {
-    const { getIMService } = await import('../../../im/im.service')
     const imService = getIMService()
     const imConfig = def.buildConfig(config)
     const result = await def.start(imService, imConfig)
@@ -384,8 +385,7 @@ async function verifySingleEmail(account: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let client: any = null
   try {
-    const { getServerConfig } = await import('../email/session')
-    const serverConfig = getServerConfig(account.provider || 'gmail', {
+    const serverConfig = getEmailServerConfig(account.provider || 'gmail', {
       imapHost: account.imapHost,
       imapPort: account.imapPort
     })
@@ -446,8 +446,7 @@ async function verifySingleCalendar(account: {
   }
 
   try {
-    const { getServerConfig } = await import('../calendar/session')
-    const serverConfig = getServerConfig(account.provider, account.serverUrl)
+    const serverConfig = getCalendarServerConfig(account.provider, account.serverUrl)
     const serverUrl = serverConfig.serverUrl
 
     const tsdav = await import('tsdav')

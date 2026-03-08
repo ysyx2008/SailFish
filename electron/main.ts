@@ -257,7 +257,7 @@ fixPathAsync()
 import { PtyService } from './services/pty.service'
 import { SshService } from './services/ssh.service'
 import { AiService } from './services/ai.service'
-import { ConfigService, McpServerConfig, setConfigServiceInstance } from './services/config.service'
+import { ConfigService, McpServerConfig, setConfigServiceInstance, DEFAULT_KEYBOARD_SHORTCUTS } from './services/config.service'
 import { initLogging, setLogLevel as setBackendLogLevel, getLogDir, createLogger } from './utils/logger'
 import { XshellImportService } from './services/xshell-import.service'
 import { AgentService, AgentStep, AgentContext } from './services/agent'
@@ -294,6 +294,16 @@ import { getMigrationRunner, createBackup } from './migrations'
 import { getGatewayService, type GatewayConfig } from './services/gateway.service'
 import { getIMService } from './services/im/im.service'
 import type { DingTalkConfig, FeishuConfig, SlackConfig, TelegramConfig, WeComConfig } from './services/im/types'
+import { getWorkspacePath } from './services/agent/tools/file'
+import { getContextKnowledgeService } from './services/knowledge/context-knowledge'
+import {
+  getEmailCredential, setEmailCredential, deleteEmailCredential,
+  getCalendarCredential, setCalendarCredential, deleteCalendarCredential
+} from './services/credential.service'
+import { getServerConfig } from './services/agent/skills/email/session'
+import { setEmailAccounts } from './services/agent/skills/email/executor'
+import { setCalendarAccounts } from './services/agent/skills/calendar/executor'
+import { readIdentityFile, readSoulFile, readUserFile } from './services/agent/prompt-builder'
 
 // 禁用 GPU 加速可能导致的问题（可选）
 // app.disableHardwareAcceleration()
@@ -975,8 +985,6 @@ app.whenReady().then(async () => {
           id: string; email: string; provider: string; imapHost?: string; imapPort?: number; rejectUnauthorized?: boolean
         }>
         if (emailAccounts.length > 0) {
-          const { getServerConfig } = await import('./services/agent/skills/email/session')
-          const { getEmailCredential } = await import('./services/credential.service')
           const sensorAccounts = emailAccounts.map(a => {
             const server = getServerConfig(a.provider, { imapHost: a.imapHost, imapPort: a.imapPort })
             return { accountId: a.id, email: a.email, provider: a.provider, imapHost: server.imapHost, imapPort: server.imapPort, rejectUnauthorized: a.rejectUnauthorized }
@@ -993,7 +1001,6 @@ app.whenReady().then(async () => {
           id: string; name: string; provider: string; username: string; serverUrl?: string
         }>
         if (calendarAccounts.length > 0) {
-          const { getCalendarCredential } = await import('./services/credential.service')
           const sensorAccounts = calendarAccounts.map(a => ({
             accountId: a.id, name: a.name, provider: a.provider, username: a.username, serverUrl: a.serverUrl
           }))
@@ -1980,7 +1987,7 @@ ipcMain.handle('config:setLanguage', async (_event, language: string) => {
 // 快捷键变更时重建菜单
 ipcMain.handle('config:setKeyboardShortcuts', async (_event, shortcuts: import('./services/config.service').KeyboardShortcuts) => {
   if (!shortcuts || typeof shortcuts !== 'object') return
-  const { DEFAULT_KEYBOARD_SHORTCUTS: defaults } = await import('./services/config.service')
+  const defaults = DEFAULT_KEYBOARD_SHORTCUTS
   const validKeys = Object.keys(defaults) as (keyof typeof defaults)[]
   const sanitized: Record<string, string> = {}
   for (const key of validKeys) {
@@ -2068,7 +2075,6 @@ ipcMain.handle('config:setAgentPersonalityText', async (_event, text: string) =>
 
 // Agent 身份文件（IDENTITY.md / SOUL.md / USER.md）
 ipcMain.handle('agent:readIdentityFile', async (_event, filename: string) => {
-  const { readIdentityFile, readSoulFile, readUserFile } = await import('./services/agent/prompt-builder')
   switch (filename) {
     case 'IDENTITY.md': return readIdentityFile()
     case 'SOUL.md': return readSoulFile()
@@ -2078,7 +2084,6 @@ ipcMain.handle('agent:readIdentityFile', async (_event, filename: string) => {
 })
 
 ipcMain.handle('agent:writeIdentityFile', async (_event, filename: string, content: string) => {
-  const { getWorkspacePath } = await import('./services/agent/tools/file')
   const workspace = getWorkspacePath()
   fs.mkdirSync(workspace, { recursive: true })
   fs.writeFileSync(path.join(workspace, filename), content, 'utf-8')
@@ -4241,7 +4246,6 @@ ipcMain.handle('knowledge:switchModel', async (_event, modelId: ModelTier) => {
 
 ipcMain.handle('contextKnowledge:list', async () => {
   try {
-    const { getContextKnowledgeService } = await import('./services/knowledge/context-knowledge')
     const service = getContextKnowledgeService()
     const ids = service.listContextIds()
     const items = ids.map(id => ({
@@ -4256,7 +4260,6 @@ ipcMain.handle('contextKnowledge:list', async () => {
 
 ipcMain.handle('contextKnowledge:get', async (_event, contextId: string) => {
   try {
-    const { getContextKnowledgeService } = await import('./services/knowledge/context-knowledge')
     return { success: true, content: getContextKnowledgeService().getDocument(contextId) }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : '获取文档失败', content: '' }
@@ -4265,7 +4268,6 @@ ipcMain.handle('contextKnowledge:get', async (_event, contextId: string) => {
 
 ipcMain.handle('contextKnowledge:set', async (_event, contextId: string, content: string) => {
   try {
-    const { getContextKnowledgeService } = await import('./services/knowledge/context-knowledge')
     getContextKnowledgeService().setDocument(contextId, content)
     return { success: true }
   } catch (error) {
@@ -4275,7 +4277,6 @@ ipcMain.handle('contextKnowledge:set', async (_event, contextId: string, content
 
 ipcMain.handle('contextKnowledge:delete', async (_event, contextId: string) => {
   try {
-    const { getContextKnowledgeService } = await import('./services/knowledge/context-knowledge')
     getContextKnowledgeService().deleteDocument(contextId)
     return { success: true }
   } catch (error) {
@@ -4287,13 +4288,11 @@ ipcMain.handle('contextKnowledge:delete', async (_event, contextId: string) => {
 
 // 设置邮箱凭据
 ipcMain.handle('email:setCredential', async (_event, accountId: string, credential: string) => {
-  const { setEmailCredential } = await import('./services/credential.service')
   await setEmailCredential(accountId, credential)
 })
 
 // 删除邮箱凭据
 ipcMain.handle('email:deleteCredential', async (_event, accountId: string) => {
-  const { deleteEmailCredential } = await import('./services/credential.service')
   return await deleteEmailCredential(accountId)
 })
 
@@ -4311,13 +4310,10 @@ ipcMain.handle('email:syncAccounts', async (_event, accounts: Array<{
   smtpSecure?: boolean
   rejectUnauthorized?: boolean
 }>) => {
-  const { setEmailAccounts } = await import('./services/agent/skills/email/executor')
   setEmailAccounts(accounts)
 
   // 同步到 EmailSensor（利用 email skill 的 getServerConfig 填充 IMAP host/port）
   try {
-    const { getServerConfig } = await import('./services/agent/skills/email/session')
-    const { getEmailCredential } = await import('./services/credential.service')
 
     const sensorAccounts = accounts.map(a => {
       const server = getServerConfig(a.provider, {
@@ -4355,7 +4351,6 @@ ipcMain.handle('email:testConnection', async (_event, config: {
   rejectUnauthorized?: boolean
 }) => {
   try {
-    const { getServerConfig } = await import('./services/agent/skills/email/session')
     const serverConfig = getServerConfig(config.provider || 'gmail', {
       imapHost: config.imapHost,
       imapPort: config.imapPort
@@ -4404,13 +4399,11 @@ ipcMain.handle('email:verifyAccount', async (_event, account: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let client: any = null
   try {
-    const { getEmailCredential } = await import('./services/credential.service')
     const password = await getEmailCredential(account.id)
     if (!password) {
       return { success: false, message: '未找到保存的凭据，请重新编辑账户并输入密码' }
     }
 
-    const { getServerConfig } = await import('./services/agent/skills/email/session')
     const serverConfig = getServerConfig(account.provider || 'gmail', {
       imapHost: account.imapHost,
       imapPort: account.imapPort
@@ -4447,13 +4440,11 @@ ipcMain.handle('email:verifyAccount', async (_event, account: {
 
 // 设置日历凭据
 ipcMain.handle('calendar:setCredential', async (_event, accountId: string, credential: string) => {
-  const { setCalendarCredential } = await import('./services/credential.service')
   await setCalendarCredential(accountId, credential)
 })
 
 // 删除日历凭据
 ipcMain.handle('calendar:deleteCredential', async (_event, accountId: string) => {
-  const { deleteCalendarCredential } = await import('./services/credential.service')
   return await deleteCalendarCredential(accountId)
 })
 
@@ -4465,14 +4456,11 @@ ipcMain.handle('calendar:syncAccounts', async (_event, accounts: Array<{
   username: string
   serverUrl?: string
 }>) => {
-  const { setCalendarAccounts } = await import('./services/agent/skills/calendar/executor')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setCalendarAccounts(accounts as any)
 
   // 同步到 CalendarSensor
   try {
-    const { getCalendarCredential } = await import('./services/credential.service')
-
     const sensorAccounts = accounts.map(a => ({
       accountId: a.id,
       name: a.name,
@@ -4539,7 +4527,6 @@ ipcMain.handle('calendar:verifyAccount', async (_event, account: {
   }
 
   try {
-    const { getCalendarCredential } = await import('./services/credential.service')
     const password = await getCalendarCredential(account.id)
     if (!password) {
       return { success: false, message: '未找到保存的凭据，请重新编辑账户并输入密码' }

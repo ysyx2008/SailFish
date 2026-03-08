@@ -18,6 +18,7 @@ import { executePdfTool } from '../skills/pdf/executor'
 import { getUserSkillService } from '../../user-skill.service'
 import { getSkill } from '../skills/registry'
 import { addProactiveContext } from '../proactive-store'
+import { getIMService } from '../../im/im.service'
 import { getConfigService } from '../../config.service'
 import { formatRemainingTime, formatTotalTime, truncateFromEnd } from './utils'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
@@ -259,7 +260,6 @@ export async function sendFileToChat(
     return { success: false, output: '', error: t('im.tool_file_path_required') }
   }
 
-  const { getIMService } = await import('../../im/im.service')
   const imService = getIMService()
 
   if (!imService.hasActiveSession()) {
@@ -344,7 +344,6 @@ export async function sendImageToChat(
     return { success: false, output: '', error: t('im.tool_unsupported_image_format', { ext }) }
   }
 
-  const { getIMService } = await import('../../im/im.service')
   const imService = getIMService()
 
   if (!imService.hasActiveSession()) {
@@ -702,7 +701,6 @@ export async function messageUser(
 
   // 尝试通过 IM 渠道发送
   try {
-    const { getIMService } = await import('../../im/im.service')
     const imService = getIMService()
     const lastContact = imService.getLastContact()
 

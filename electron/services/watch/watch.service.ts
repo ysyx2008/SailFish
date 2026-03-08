@@ -14,6 +14,7 @@ import type { BrowserWindow } from 'electron'
 import { Notification } from 'electron'
 import { createLogger } from '../../utils/logger'
 import { getWorkspacePath } from '../agent/tools/file'
+import { getIMService } from '../im/im.service'
 import type {
   WatchDefinition,
   CreateWatchParams,
@@ -967,7 +968,6 @@ export class WatchService {
   /** 尝试通过 IM 发送通知，返回是否成功 */
   private async sendIMNotification(watch: WatchDefinition, result: WatchExecutionResult): Promise<boolean> {
     try {
-      const { getIMService } = await import('../im/im.service')
       const imService = getIMService()
 
       const title = result.success ? `✓ ${watch.name}` : `✗ ${watch.name}`

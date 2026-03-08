@@ -27,6 +27,8 @@ import * as crypto from 'crypto'
 import type { ExecutionMode } from '@shared/types'
 import { WebChatService, VISIBLE_STEP_TYPES } from './web-chat.service'
 import { createLogger } from '../utils/logger'
+import { getWatchStore } from './watch/store'
+import { getEventBus } from './sensor/event-bus'
 
 const log = createLogger('Gateway')
 
@@ -281,7 +283,6 @@ export class GatewayService {
     const clientIp = (req.socket.remoteAddress || '').split(',')[0].trim()
 
     try {
-      const { getWatchStore } = await import('./watch/store')
       const store = getWatchStore()
       const watch = store.getWebhookWatch(token)
 
@@ -292,7 +293,6 @@ export class GatewayService {
       }
 
       // 产生事件投入事件总线
-      const { getEventBus } = await import('./sensor/event-bus')
       const eventBus = getEventBus()
 
       eventBus.emit({
