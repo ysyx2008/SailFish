@@ -888,9 +888,9 @@ let dragStartY = 0
 let dragStartTranslateX = 0
 let dragStartTranslateY = 0
 
-// 当前预览在 allPreviewImages 中的位置
-const previewGroupIdx = ref(0)
-const previewImageIdx = ref(0)
+// 当前预览在 allPreviewImages 中的位置，-1 表示不在对话图片列表中（如待发送的图片）
+const previewGroupIdx = ref(-1)
+const previewImageIdx = ref(-1)
 
 interface PreviewImageGroup {
   groupId: string
@@ -922,7 +922,8 @@ const resetPreviewTransform = () => {
 const openImagePreview = (url: string) => {
   previewImageUrl.value = url
   resetPreviewTransform()
-  // 定位到对应的 group/image 索引
+  previewGroupIdx.value = -1
+  previewImageIdx.value = -1
   for (let gi = 0; gi < allPreviewImages.value.length; gi++) {
     const imgIdx = allPreviewImages.value[gi].images.indexOf(url)
     if (imgIdx !== -1) {
@@ -956,7 +957,7 @@ const canGoRight = computed(() => {
   return g ? previewImageIdx.value < g.images.length - 1 : false
 })
 const canGoUp = computed(() => previewGroupIdx.value > 0)
-const canGoDown = computed(() => previewGroupIdx.value < allPreviewImages.value.length - 1)
+const canGoDown = computed(() => previewGroupIdx.value >= 0 && previewGroupIdx.value < allPreviewImages.value.length - 1)
 
 const goLeft = () => canGoLeft.value && navigatePreview(previewGroupIdx.value, previewImageIdx.value - 1)
 const goRight = () => canGoRight.value && navigatePreview(previewGroupIdx.value, previewImageIdx.value + 1)
@@ -1754,7 +1755,7 @@ onUnmounted(() => {
             :key="img.id" 
             class="image-preview-item"
           >
-            <img :src="img.dataUrl" :alt="img.name" class="image-thumbnail" />
+            <img :src="img.dataUrl" :alt="img.name" class="image-thumbnail" @click="openImagePreview(img.dataUrl)" />
             <button class="image-remove-btn" @click="removeImage(img.id)" :title="t('ai.removeImage')">
               <X :size="12" />
             </button>
@@ -5191,6 +5192,7 @@ onUnmounted(() => {
   height: 100%;
   object-fit: cover;
   display: block;
+  cursor: pointer;
 }
 
 .image-remove-btn {
