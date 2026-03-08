@@ -1073,6 +1073,12 @@ export default {
       confirmLoadHistory: '当前会话已有对话记录，加载历史将覆盖现有内容。确定要继续吗？',
       historyLoaded: '已加载历史对话，可以继续提问'
     },
+    imagePreview: {
+      prevImage: '上一张 (←)',
+      nextImage: '下一张 (→)',
+      prevConversation: '上一条对话的图片 (↑)',
+      nextConversation: '下一条对话的图片 (↓)',
+    },
     toolNames: {
       execute_command: '执行命令',
       exec: '运行命令',

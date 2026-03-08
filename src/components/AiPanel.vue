@@ -6,7 +6,7 @@
  */
 import { ref, computed, watch, inject, onMounted, onUnmounted, toRef, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Upload, Trash2, X, HelpCircle, ChevronDown, Plus, Square, ArrowUp, Check, Mic, MicOff, Loader2 } from 'lucide-vue-next'
+import { Upload, Trash2, X, HelpCircle, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Plus, Square, ArrowUp, Check, Mic, MicOff, Loader2 } from 'lucide-vue-next'
 import { useConfigStore } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
 import AgentPlanView from './AgentPlanView.vue'
@@ -877,7 +877,7 @@ const handleDragLeave = (e: DragEvent) => {
   }
 }
 
-// ==================== 图片预览（支持缩放和拖拽） ====================
+// ==================== 图片预览（支持缩放、拖拽、键盘导航） ====================
 const previewImageUrl = ref<string | null>(null)
 const previewScale = ref(1)
 const previewTranslateX = ref(0)
@@ -888,16 +888,86 @@ let dragStartY = 0
 let dragStartTranslateX = 0
 let dragStartTranslateY = 0
 
-const openImagePreview = (url: string) => {
-  previewImageUrl.value = url
+// 当前预览在 allPreviewImages 中的位置
+const previewGroupIdx = ref(0)
+const previewImageIdx = ref(0)
+
+interface PreviewImageGroup {
+  groupId: string
+  images: string[]
+}
+
+// 收集所有对话中的图片，按任务分组（用户图片 + 步骤图片合并到同一组）
+const allPreviewImages = computed((): PreviewImageGroup[] => {
+  const result: PreviewImageGroup[] = []
+  for (const group of agentTaskGroups.value) {
+    const images: string[] = []
+    if (group.images?.length) images.push(...group.images)
+    for (const step of group.steps) {
+      if (step.images?.length) images.push(...step.images)
+    }
+    if (images.length > 0) {
+      result.push({ groupId: group.id, images })
+    }
+  }
+  return result
+})
+
+const resetPreviewTransform = () => {
   previewScale.value = 1
   previewTranslateX.value = 0
   previewTranslateY.value = 0
 }
+
+const openImagePreview = (url: string) => {
+  previewImageUrl.value = url
+  resetPreviewTransform()
+  // 定位到对应的 group/image 索引
+  for (let gi = 0; gi < allPreviewImages.value.length; gi++) {
+    const imgIdx = allPreviewImages.value[gi].images.indexOf(url)
+    if (imgIdx !== -1) {
+      previewGroupIdx.value = gi
+      previewImageIdx.value = imgIdx
+      return
+    }
+  }
+}
+
 const closeImagePreview = () => {
   previewImageUrl.value = null
   isDraggingImage.value = false
 }
+
+const navigatePreview = (groupIdx: number, imageIdx: number) => {
+  const groups = allPreviewImages.value
+  if (groupIdx < 0 || groupIdx >= groups.length) return
+  const group = groups[groupIdx]
+  if (imageIdx < 0 || imageIdx >= group.images.length) return
+  previewGroupIdx.value = groupIdx
+  previewImageIdx.value = imageIdx
+  previewImageUrl.value = group.images[imageIdx]
+  resetPreviewTransform()
+}
+
+// 同组内左右切换
+const canGoLeft = computed(() => previewImageIdx.value > 0)
+const canGoRight = computed(() => {
+  const g = allPreviewImages.value[previewGroupIdx.value]
+  return g ? previewImageIdx.value < g.images.length - 1 : false
+})
+const canGoUp = computed(() => previewGroupIdx.value > 0)
+const canGoDown = computed(() => previewGroupIdx.value < allPreviewImages.value.length - 1)
+
+const goLeft = () => canGoLeft.value && navigatePreview(previewGroupIdx.value, previewImageIdx.value - 1)
+const goRight = () => canGoRight.value && navigatePreview(previewGroupIdx.value, previewImageIdx.value + 1)
+const goUp = () => {
+  if (!canGoUp.value) return
+  const prevGroup = allPreviewImages.value[previewGroupIdx.value - 1]
+  navigatePreview(previewGroupIdx.value - 1, prevGroup.images.length - 1)
+}
+const goDown = () => canGoDown.value && navigatePreview(previewGroupIdx.value + 1, 0)
+
+const currentGroupImageCount = computed(() => allPreviewImages.value[previewGroupIdx.value]?.images.length ?? 0)
 
 // 滚轮缩放
 const handlePreviewWheel = (e: WheelEvent) => {
@@ -908,15 +978,11 @@ const handlePreviewWheel = (e: WheelEvent) => {
 }
 
 // 双击重置
-const handlePreviewDblClick = () => {
-  previewScale.value = 1
-  previewTranslateX.value = 0
-  previewTranslateY.value = 0
-}
+const handlePreviewDblClick = () => resetPreviewTransform()
 
 // 拖拽平移
 const handlePreviewMouseDown = (e: MouseEvent) => {
-  if (e.button !== 0) return // 仅左键
+  if (e.button !== 0) return
   e.preventDefault()
   isDraggingImage.value = true
   dragStartX = e.clientX
@@ -963,11 +1029,38 @@ const handleDrop = async (e: DragEvent) => {
 // ==================== 键盘事件处理 ====================
 
 const handleKeyDown = (e: KeyboardEvent) => {
+  // 图片预览模式下的键盘操作
+  if (previewImageUrl.value) {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      if (previewScale.value !== 1 || previewTranslateX.value !== 0 || previewTranslateY.value !== 0) {
+        resetPreviewTransform()
+      } else {
+        closeImagePreview()
+      }
+      return
+    }
+    // 缩放状态下方向键用于平移，未缩放时用于图片导航
+    if (previewScale.value !== 1) {
+      const PAN_STEP = 50
+      if (e.key === 'ArrowLeft') { e.preventDefault(); previewTranslateX.value += PAN_STEP; return }
+      if (e.key === 'ArrowRight') { e.preventDefault(); previewTranslateX.value -= PAN_STEP; return }
+      if (e.key === 'ArrowUp') { e.preventDefault(); previewTranslateY.value += PAN_STEP; return }
+      if (e.key === 'ArrowDown') { e.preventDefault(); previewTranslateY.value -= PAN_STEP; return }
+    } else {
+      if (e.key === 'ArrowLeft') { e.preventDefault(); goLeft(); return }
+      if (e.key === 'ArrowRight') { e.preventDefault(); goRight(); return }
+      if (e.key === 'ArrowUp') { e.preventDefault(); goUp(); return }
+      if (e.key === 'ArrowDown') { e.preventDefault(); goDown(); return }
+    }
+    return
+  }
   // ESC 键关闭弹窗
   if (e.key === 'Escape') {
     if (showHistoryModal.value) {
       e.preventDefault()
-      e.stopImmediatePropagation() // 阻止事件传播，防止同时关闭其他弹窗
+      e.stopImmediatePropagation()
       closeHistoryModal()
     }
   }
@@ -1797,13 +1890,30 @@ onUnmounted(() => {
         </div>
       </div>
     </template>
-    <!-- 图片预览弹窗（支持缩放拖拽） -->
+    <!-- 图片预览弹窗（支持缩放拖拽、键盘导航） -->
     <div 
       v-if="previewImageUrl" 
       class="image-preview-modal" 
       @click="closeImagePreview"
       @wheel.prevent="handlePreviewWheel"
     >
+      <!-- 上方导航箭头：历史对话 -->
+      <button v-if="canGoUp" class="image-preview-nav nav-up" @click.stop="goUp" :title="t('ai.imagePreview.prevConversation')">
+        <ChevronUp :size="24" />
+      </button>
+      <!-- 左侧导航箭头：同组前一张 -->
+      <button v-if="canGoLeft" class="image-preview-nav nav-left" @click.stop="goLeft" :title="t('ai.imagePreview.prevImage')">
+        <ChevronLeft :size="24" />
+      </button>
+      <!-- 右侧导航箭头：同组后一张 -->
+      <button v-if="canGoRight" class="image-preview-nav nav-right" @click.stop="goRight" :title="t('ai.imagePreview.nextImage')">
+        <ChevronRight :size="24" />
+      </button>
+      <!-- 下方导航箭头：后续对话 -->
+      <button v-if="canGoDown" class="image-preview-nav nav-down" @click.stop="goDown" :title="t('ai.imagePreview.nextConversation')">
+        <ChevronDown :size="24" />
+      </button>
+
       <div class="image-preview-modal-content" @click.stop>
         <button class="image-preview-close" @click="closeImagePreview">
           <X :size="20" />
@@ -1817,9 +1927,14 @@ onUnmounted(() => {
           @dblclick="handlePreviewDblClick"
           draggable="false"
         />
-        <!-- 缩放比例指示 -->
-        <div v-if="previewScale !== 1" class="image-preview-zoom-badge">
-          {{ Math.round(previewScale * 100) }}%
+        <!-- 底部信息栏：图片位置 + 缩放比例 -->
+        <div class="image-preview-info-bar">
+          <span v-if="currentGroupImageCount > 1" class="image-preview-counter">
+            {{ previewImageIdx + 1 }} / {{ currentGroupImageCount }}
+          </span>
+          <span v-if="previewScale !== 1" class="image-preview-zoom-badge">
+            {{ Math.round(previewScale * 100) }}%
+          </span>
         </div>
       </div>
     </div>
@@ -5227,19 +5342,75 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.3);
 }
 
-.image-preview-zoom-badge {
+/* 底部信息栏 */
+.image-preview-info-bar {
   position: absolute;
   bottom: 12px;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+
+.image-preview-counter,
+.image-preview-zoom-badge {
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
   padding: 4px 12px;
   border-radius: 12px;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-  pointer-events: none;
   backdrop-filter: blur(4px);
+  white-space: nowrap;
+}
+
+/* 导航箭头按钮 */
+.image-preview-nav {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  z-index: 10001;
+  backdrop-filter: blur(4px);
+}
+
+.image-preview-nav:hover {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.nav-left {
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.nav-right {
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.nav-up {
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.nav-down {
+  bottom: 56px;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 </style>

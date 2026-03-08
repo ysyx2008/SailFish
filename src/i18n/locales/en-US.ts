@@ -1073,6 +1073,12 @@ export default {
       confirmLoadHistory: 'Current session has existing conversations. Loading history will overwrite them. Continue?',
       historyLoaded: 'History loaded, you can continue the conversation'
     },
+    imagePreview: {
+      prevImage: 'Previous image (←)',
+      nextImage: 'Next image (→)',
+      prevConversation: 'Images from previous conversation (↑)',
+      nextConversation: 'Images from next conversation (↓)',
+    },
     toolNames: {
       execute_command: 'Execute Command',
       exec: 'Run Command',
