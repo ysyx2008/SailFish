@@ -931,10 +931,10 @@ export abstract class Agent {
       run.taskMessageLog
     )
     
-    // 添加 final_result 步骤（错误时也统一由后端生成）
+    // 添加 final_result 步骤（错误时也统一由后端生成，❌ 前缀供前端区分成功/失败）
     this.addStep({
       type: 'final_result',
-      content: errorMessage
+      content: `❌ ${errorMessage}`
     })
     
     this.accumulateSessionData(run, 'failed', errorMessage)

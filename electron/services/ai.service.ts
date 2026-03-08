@@ -1107,9 +1107,8 @@ export class AiService {
       }
     }
 
-    // 重置状态以便重试
+    // 重置状态以便重试（不重置 isCompleted，由 tryRetry/doRequest 管理）
     const resetForRetry = () => {
-      isCompleted = false
       clearTimeout(totalTimeoutId)
       clearTimeout(idleTimeoutId)
       content = ''
@@ -1167,6 +1166,8 @@ export class AiService {
 
     // 尝试重试的辅助函数
     const tryRetry = (errorMsg: string, doRequest: () => void): boolean => {
+      // 已有重试在等待或请求已完成，跳过（防止 res/req 同时 emit error 导致重复重试）
+      if (isCompleted) return true
       if (retryCount < AI_RETRY.MAX_RETRIES && isRetryableError(errorMsg)) {
         retryCount++
         const retryMsg = `⚠️ 网络错误，正在重试 (${retryCount}/${AI_RETRY.MAX_RETRIES})...`
@@ -1174,12 +1175,17 @@ export class AiService {
         getAiDebugService().logResponseError(reqId, `${errorMsg} - 准备重试 ${retryCount}/${AI_RETRY.MAX_RETRIES}`)
         resetForRetry()
         setTimeout(doRequest, AI_RETRY.RETRY_DELAY)
+        // 阻止旧请求的其他错误处理器调用 complete()
+        isCompleted = true
         return true
       }
       return false
     }
 
     const doRequest = () => {
+    // 每次（重）试开始时允许 complete() 回调
+    isCompleted = false
+
     try {
       const url = new URL(profile.apiUrl)
       const isHttps = url.protocol === 'https:'
@@ -1247,6 +1253,7 @@ export class AiService {
               getAiDebugService().logResponseError(reqId, `429 Rate Limited - retry ${rateLimitRetryCount}/${AI_RETRY.RATE_LIMIT_MAX_RETRIES} in ${retryAfterSec}s`)
               resetForRetry()
               setTimeout(doRequest, retryAfterMs)
+              isCompleted = true
             } else if (parsed.code === 'context_length_exceeded') {
               complete(() => onError(t('error.context_length_exceeded')))
             } else if (res.statusCode && AI_RETRY.RETRYABLE_STATUS_CODES.includes(res.statusCode) && serverErrorRetryCount < AI_RETRY.SERVER_ERROR_MAX_RETRIES) {
@@ -1258,6 +1265,7 @@ export class AiService {
               getAiDebugService().logResponseError(reqId, `${res.statusCode} Server Error - retry ${serverErrorRetryCount}/${AI_RETRY.SERVER_ERROR_MAX_RETRIES} in ${delaySec}s`)
               resetForRetry()
               setTimeout(doRequest, delay)
+              isCompleted = true
             } else if (tryVisionFallback(parsed.message)) {
               // 已降级重试
             } else {
@@ -1421,7 +1429,7 @@ export class AiService {
         res.on('error', (err) => {
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
           log.error(`Request failed: model=${profile.model}, duration=${elapsed}s, error=${err.message}`)
-          if (!content && !tryRetry(err.message, doRequest)) {
+          if (!tryRetry(err.message, doRequest)) {
             getAiDebugService().logResponseError(reqId, err.message)
             complete(() => onError(t('error.request_error', { message: translateNetworkError(err.message) })))
           }
