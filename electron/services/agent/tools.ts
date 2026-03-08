@@ -487,7 +487,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       type: 'function',
       function: {
         name: 'talk_to_user',
-        description: `主动向用户发送消息（应用内或 IM）。你主动说话的唯一方式，只在确实有话要说时调用。`,
+        description: `向用户发送 IM 消息或应用内推送通知。用于主动触达用户（如关切触发、唤醒、定时提醒、后台任务完成通知等）。`,
         parameters: {
           type: 'object',
           properties: {
