@@ -1481,18 +1481,27 @@ export abstract class Agent {
             this.removeStep(toolProgressStepId)
             toolProgressStepCreated = false
           }
-          if (streamContent && streamStepCreated) {
+          let finalContent = streamContent.replace(/<details open>/g, '<details>')
+          if (finalContent.includes('<details>') && !finalContent.includes('</details>')) {
+            finalContent += '\n\n</blockquote>\n</details>'
+          }
+          // 当模型产生了推理+回复且没有工具调用时（即这是最终回复），
+          // 将步骤内容重建为仅包含推理部分。回复内容会由 finalizeRun 作为 final_result 展示，
+          // 避免执行步骤中的 message 和 final_result 重复显示同一段回复。
+          if (result.reasoning_content?.trim() && result.content && !result.tool_calls?.length) {
+            finalContent = `🤔 **${t('ai.thinking')}**\n\n> ${result.reasoning_content.replace(/\n/g, '\n> ')}`
+          }
+          if (finalContent && streamStepCreated) {
             this.updateStep(streamStepId, {
               type: 'message',
-              content: streamContent,
+              content: finalContent,
               isStreaming: false
             })
-          } else if (!streamStepCreated && streamContent) {
-            // 如果没有创建过步骤但有内容，创建一个
+          } else if (!streamStepCreated && finalContent) {
             this.addStep({
               id: streamStepId,
               type: 'message',
-              content: streamContent,
+              content: finalContent,
               isStreaming: false
             })
           }

@@ -928,6 +928,7 @@ const translations = {
     // AI 思考
     'ai.thinking': '思考中...',
     'ai.thinking_with_emoji': '🤔 **思考中...**\n\n> ',
+    'ai.thinking_process': '思考过程',
     'ai.preparing': '正在准备...',
 
     // IM 模块
@@ -1930,6 +1931,7 @@ After saving, wrap up naturally — like friends who've finished getting to know
     // AI thinking
     'ai.thinking': 'Thinking...',
     'ai.thinking_with_emoji': '🤔 **Thinking...**\n\n> ',
+    'ai.thinking_process': 'Thinking Process',
     'ai.preparing': 'Preparing...',
 
     // IM module

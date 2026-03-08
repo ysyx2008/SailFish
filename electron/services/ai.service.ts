@@ -1321,7 +1321,10 @@ export class AiService {
               if (reason) finishReason = reason
 
               if (isDone) {
-                const finalContent = content || (reasoningContent ? `🤔 **思考过程**\n\n> ${reasoningContent.replace(/\n/g, '\n> ')}` : undefined)
+                if (hasReasoningOutput && !hasContentOutput) {
+                  onChunk('\n\n</blockquote>\n</details>')
+                }
+                const finalContent = content || (reasoningContent ? `<details>\n<summary>🤔 <strong>${t('ai.thinking_process')}</strong></summary>\n\n<blockquote>\n\n${reasoningContent}\n\n</blockquote>\n</details>` : undefined)
                 complete(() => onDone({
                   content: finalContent,
                   tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
@@ -1334,17 +1337,17 @@ export class AiService {
               if (delta?.reasoning_content) {
                 if (!hasReasoningOutput) {
                   hasReasoningOutput = true
-                  onChunk(t('ai.thinking_with_emoji'))
+                  onChunk(`<details open>\n<summary>🤔 <strong>${t('ai.thinking_process')}</strong></summary>\n\n<blockquote>\n\n`)
                 }
                 reasoningContent += delta.reasoning_content
-                onChunk(delta.reasoning_content.replace(/\n/g, '\n> '))
+                onChunk(delta.reasoning_content)
                 getAiDebugService().logResponseChunk(reqId, `[THINKING] ${delta.reasoning_content}`)
               }
 
               if (delta?.content) {
                 if (hasReasoningOutput && !hasContentOutput) {
                   hasContentOutput = true
-                  onChunk('\n\n---\n\n**回复：** ')
+                  onChunk('\n\n</blockquote>\n</details>\n\n')
                 }
                 content += delta.content
                 onChunk(delta.content)
@@ -1354,7 +1357,7 @@ export class AiService {
               if (delta?.tool_calls) {
                 if (hasReasoningOutput && !hasContentOutput) {
                   hasContentOutput = true
-                  onChunk('\n\n')
+                  onChunk('\n\n</blockquote>\n</details>\n\n')
                 }
                 for (const tc of delta.tool_calls) {
                   const index = tc.index ?? 0
@@ -1397,7 +1400,10 @@ export class AiService {
           }
 
           // 如果有思考内容但没有最终内容，把思考内容作为最终内容
-          const finalContent = content || (reasoningContent ? `🤔 **思考过程**\n\n> ${reasoningContent.replace(/\n/g, '\n> ')}` : undefined)
+          if (hasReasoningOutput && !hasContentOutput) {
+            onChunk('\n\n</blockquote>\n</details>')
+          }
+          const finalContent = content || (reasoningContent ? `<details>\n<summary>🤔 <strong>${t('ai.thinking_process')}</strong></summary>\n\n<blockquote>\n\n${reasoningContent}\n\n</blockquote>\n</details>` : undefined)
 
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
           const toolNames = toolCalls.map(tc => tc.function.name).join(', ')
@@ -1477,7 +1483,10 @@ export class AiService {
         if (validToolCalls.length < filteredCount) {
           log.info(`Abort: filtered ${filteredCount - validToolCalls.length}/${filteredCount} incomplete tool_calls`)
         }
-        const finalContent = content || (reasoningContent ? `🤔 **思考过程**\n\n> ${reasoningContent.replace(/\n/g, '\n> ')}` : undefined)
+        if (hasReasoningOutput && !hasContentOutput) {
+          onChunk('\n\n</blockquote>\n</details>')
+        }
+        const finalContent = content || (reasoningContent ? `<details>\n<summary>🤔 <strong>${t('ai.thinking_process')}</strong></summary>\n\n<blockquote>\n\n${reasoningContent}\n\n</blockquote>\n</details>` : undefined)
         complete(() => onDone({
           content: finalContent,
           tool_calls: validToolCalls.length > 0 ? validToolCalls : undefined,

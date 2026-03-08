@@ -362,11 +362,17 @@ export function useAgentMode(
     }
     
     // 去除步骤中与 finalResult 重复的最后一个 message
+    // 后端已在 callAiWithStreaming 的 onDone 中将推理模型的步骤内容重建为仅含推理，
+    // 此处作为兜底：精确匹配（非推理模型）+ endsWith 匹配（推理模型兜底）
     for (const group of groups) {
       if (group.finalResult && group.steps.length > 0) {
         const lastStep = group.steps[group.steps.length - 1]
-        if (lastStep.type === 'message' && lastStep.content === group.finalResult) {
-          group.steps = group.steps.slice(0, -1)
+        if (lastStep.type === 'message') {
+          if (lastStep.content === group.finalResult) {
+            group.steps = group.steps.slice(0, -1)
+          } else if (group.finalResult.length >= 20 && lastStep.content.endsWith(group.finalResult)) { // 20 字符阈值避免短文本误匹配
+            group.steps = group.steps.slice(0, -1)
+          }
         }
       }
     }
