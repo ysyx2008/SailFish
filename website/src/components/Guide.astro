@@ -28,6 +28,7 @@ const g = t.guide;
           <li><a href="#word-skill" class="toc-link">{g.wordSkill.title}</a></li>
           <li><a href="#email-skill" class="toc-link">{g.emailSkill.title}</a></li>
           <li><a href="#calendar-skill" class="toc-link">{g.calendarSkill.title}</a></li>
+          <li><a href="#feishu-skill" class="toc-link">{g.feishuSkill.title}</a></li>
         </ul>
       </nav>
 
@@ -292,6 +293,49 @@ const g = t.guide;
           <h3>{g.calendarSkill.examples}</h3>
           <ul class="example-list">
             {g.calendarSkill.exampleList.map(ex => <li>{ex}</li>)}
+          </ul>
+        </section>
+
+        {/* ==================== 飞书集成 ==================== */}
+        <section id="feishu-skill" class="guide-article">
+          <h2 class="article-title">{g.feishuSkill.title}</h2>
+          <p class="article-intro">{g.feishuSkill.intro}</p>
+
+          <h3>{g.feishuSkill.capabilities}</h3>
+          <div class="capability-grid">
+            {g.feishuSkill.capabilityList.map(c => (
+              <div class="cap-card">
+                <div class="cap-name">{c.cap}</div>
+                <div class="cap-desc">{c.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <h3>{g.feishuSkill.oauth}</h3>
+          <p>{g.feishuSkill.oauthDesc}</p>
+          <div class="concept-list">
+            {g.feishuSkill.oauthModes.map(item => (
+              <div class="concept-item">
+                <span class="concept-term">{item.mode}</span>
+                <span class="concept-desc">{item.desc}</span>
+              </div>
+            ))}
+          </div>
+          <p class="note-text">{g.feishuSkill.oauthTip}</p>
+
+          <h3>{g.feishuSkill.setup}</h3>
+          <ol class="setup-steps">
+            {g.feishuSkill.setupSteps.map(step => <li>{step}</li>)}
+          </ol>
+
+          <h3>{g.feishuSkill.examples}</h3>
+          <ul class="example-list">
+            {g.feishuSkill.exampleList.map(ex => <li>{ex}</li>)}
+          </ul>
+
+          <h3>{g.feishuSkill.tips}</h3>
+          <ul class="tips-list">
+            {g.feishuSkill.tipsList.map(tip => <li>{tip}</li>)}
           </ul>
         </section>
 
