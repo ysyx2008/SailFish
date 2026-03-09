@@ -11,7 +11,7 @@ import { t } from '../../i18n'
 import type { ToolResult, AgentConfig } from '../../types'
 import type { ToolExecutorConfig } from '../../tool-executor'
 import type { FeishuReadArgs, FeishuWriteArgs, FeishuResource } from './types'
-import { getClient, extractApiError, closeSession } from './session'
+import { getClient, extractApiError, closeSession, getRequestOptions } from './session'
 
 const log = createLogger('FeishuExecutor')
 
@@ -135,6 +135,7 @@ async function feishuWrite(
 
 async function readBitable(client: any, args: FeishuReadArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
   const { app_token, table_id, view_id, filter, sort, limit, page_token } = args
+  const opts = await getRequestOptions()
 
   if (!app_token) {
     return { success: false, output: '', error: t('feishu.bitable_app_token_required') }
@@ -145,7 +146,7 @@ async function readBitable(client: any, args: FeishuReadArgs, executor: ToolExec
     const resp = await client.bitable.appTable.list({
       path: { app_token },
       params: { page_size: limit || 50, page_token },
-    })
+    }, opts)
     const items = resp?.data?.items || []
     const lines = items.map((tb: any) => `- **${tb.name}** (table_id: \`${tb.table_id}\`)`)
     let output = `## ${resourceLabel('bitable')} tables\n\n${lines.join('\n') || t('feishu.no_data')}`
@@ -170,7 +171,7 @@ async function readBitable(client: any, args: FeishuReadArgs, executor: ToolExec
   const resp = await client.bitable.appTableRecord.list({
     path: { app_token, table_id },
     params,
-  })
+  }, opts)
 
   const records = resp?.data?.items || []
   const total = resp?.data?.total || records.length
@@ -207,6 +208,7 @@ async function writeBitable(
   client: any, args: FeishuWriteArgs, toolCallId: string, executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   const { action, app_token, table_id, record_id, record_ids, data } = args
+  const opts = await getRequestOptions()
 
   if (!app_token || !table_id) {
     return { success: false, output: '', error: t('feishu.bitable_write_required') }
@@ -219,7 +221,7 @@ async function writeBitable(
     const resp = await client.bitable.appTableRecord.create({
       path: { app_token, table_id },
       data: { fields: data.fields },
-    })
+    }, opts)
     const rid = resp?.data?.record?.record_id || '(unknown)'
     const output = `Record created, record_id: ${rid}`
     addWriteStep(executor, 'feishu_write', output, output)
@@ -236,7 +238,7 @@ async function writeBitable(
     await client.bitable.appTableRecord.update({
       path: { app_token, table_id, record_id },
       data: { fields: data.fields },
-    })
+    }, opts)
     const output = `Record ${record_id} updated`
     addWriteStep(executor, 'feishu_write', output, output)
     return { success: true, output }
@@ -250,7 +252,7 @@ async function writeBitable(
     await client.bitable.appTableRecord.batchDelete({
       path: { app_token, table_id },
       data: { records: ids },
-    })
+    }, opts)
     const output = `Deleted ${ids.length} record(s)`
     addWriteStep(executor, 'feishu_write', output, output)
     return { success: true, output }
@@ -265,9 +267,9 @@ async function writeBitable(
 
 async function readDoc(client: any, args: FeishuReadArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
   const { document_id } = args
+  const opts = await getRequestOptions()
 
   if (!document_id) {
-    // 列出最近文档（通过 drive 搜索）
     const resp = await client.drive.file.list({
       params: {
         folder_token: '',
@@ -275,7 +277,7 @@ async function readDoc(client: any, args: FeishuReadArgs, executor: ToolExecutor
         order_by: 'EditedTime',
         direction: 'DESC',
       },
-    })
+    }, opts)
     const files = resp?.data?.files || []
     const docs = files.filter((f: any) => f.type === 'docx' || f.type === 'doc')
     const lines = docs.map((f: any) =>
@@ -286,11 +288,10 @@ async function readDoc(client: any, args: FeishuReadArgs, executor: ToolExecutor
     return { success: true, output }
   }
 
-  // 获取文档内容（纯文本）
   const resp = await client.docx.documentBlock.list({
     path: { document_id },
     params: { page_size: 500 },
-  })
+  }, opts)
   const blocks = resp?.data?.items || []
   const textParts: string[] = []
   for (const block of blocks) {
@@ -306,12 +307,13 @@ async function writeDoc(
   client: any, args: FeishuWriteArgs, toolCallId: string, executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   const { action, document_id, data } = args
+  const opts = await getRequestOptions()
 
   if (action === 'create') {
     const title = (data?.title as string) || 'Untitled'
     const resp = await client.docx.document.create({
       data: { title, folder_token: (data?.folder_token as string) || '' },
-    })
+    }, opts)
     const docId = resp?.data?.document?.document_id
     const output = `Doc created: ${title} (document_id: ${docId})`
     addWriteStep(executor, 'feishu_write', output, output)
@@ -319,7 +321,7 @@ async function writeDoc(
     // 如果提供了 content，追加到文档
     if (data?.content && docId) {
       try {
-        await appendDocContent(client, docId, data.content as string)
+        await appendDocContent(client, docId, data.content as string, opts)
       } catch (err) {
         log.warn('Failed to append content to new doc:', extractApiError(err))
       }
@@ -334,7 +336,7 @@ async function writeDoc(
     if (!data?.content) {
       return { success: false, output: '', error: t('feishu.doc_content_required') }
     }
-    await appendDocContent(client, document_id, data.content as string)
+    await appendDocContent(client, document_id, data.content as string, opts)
     const output = `Doc ${document_id} content appended`
     addWriteStep(executor, 'feishu_write', output, output)
     return { success: true, output }
@@ -347,7 +349,7 @@ async function writeDoc(
     await client.drive.file.delete({
       path: { file_token: document_id },
       params: { type: 'docx' },
-    })
+    }, opts)
     const output = `Doc ${document_id} deleted`
     addWriteStep(executor, 'feishu_write', output, output)
     return { success: true, output }
@@ -362,6 +364,7 @@ async function writeDoc(
 
 async function readSheet(client: any, args: FeishuReadArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
   const { spreadsheet_id, sheet_id, range } = args
+  const opts = await getRequestOptions()
 
   if (!spreadsheet_id) {
     return { success: false, output: '', error: t('feishu.sheet_id_required') }
@@ -371,7 +374,7 @@ async function readSheet(client: any, args: FeishuReadArgs, executor: ToolExecut
   if (!sheet_id) {
     const resp = await client.sheets.spreadsheetSheet.query({
       path: { spreadsheet_token: spreadsheet_id },
-    })
+    }, opts)
     const sheets = resp?.data?.sheets || []
     const lines = sheets.map((s: any) =>
       `- **${s.title}** (sheet_id: \`${s.sheet_id}\`, ${s.row_count} rows × ${s.column_count} cols)`
@@ -381,12 +384,11 @@ async function readSheet(client: any, args: FeishuReadArgs, executor: ToolExecut
     return { success: true, output }
   }
 
-  // 读取数据（使用 v2 接口，最稳定）
   const fullRange = range ? `${sheet_id}!${range}` : sheet_id
   const valResp = await client.request({
     method: 'GET',
     url: `/open-apis/sheets/v2/spreadsheets/${spreadsheet_id}/values/${encodeURIComponent(fullRange)}`,
-  })
+  }, opts)
   const valueRange = valResp?.data?.valueRange || valResp?.data
   const values = valueRange?.values || []
 
@@ -417,13 +419,14 @@ async function writeSheet(
   client: any, args: FeishuWriteArgs, toolCallId: string, executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   const { action, spreadsheet_id, sheet_id, range, data } = args
+  const opts = await getRequestOptions()
 
   if (action === 'create') {
     const title = (data?.title as string) || 'Untitled'
     const folderToken = (data?.folder_token as string) || ''
     const resp = await client.sheets.spreadsheet.create({
       data: { title, folder_token: folderToken },
-    })
+    }, opts)
     const token = resp?.data?.spreadsheet?.spreadsheet_token
     const output = `Sheet created: ${title} (spreadsheet_id: ${token})`
     addWriteStep(executor, 'feishu_write', output, output)
@@ -447,7 +450,7 @@ async function writeSheet(
           values: data.values,
         },
       },
-    })
+    }, opts)
     const rows = (data.values as any[][]).length
     const output = `Written ${rows} row(s) to ${fullRange}`
     addWriteStep(executor, 'feishu_write', output, output)
@@ -463,12 +466,12 @@ async function writeSheet(
 
 async function readCalendar(client: any, args: FeishuReadArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
   const { calendar_id, event_id, start_date, end_date, limit, page_token } = args
+  const opts = await getRequestOptions()
 
-  // 不传 calendar_id → 列出日历
   if (!calendar_id) {
     const resp = await client.calendar.calendar.list({
       params: { page_size: limit || 50, page_token },
-    })
+    }, opts)
     const calendars = resp?.data?.calendar_list || []
     const lines = calendars.map((c: any) =>
       `- **${c.summary || '(untitled)'}** (calendar_id: \`${c.calendar_id}\`, type: ${c.type}, role: ${c.role})`
@@ -478,11 +481,10 @@ async function readCalendar(client: any, args: FeishuReadArgs, executor: ToolExe
     return { success: true, output }
   }
 
-  // 传了 event_id → 获取日程详情
   if (event_id) {
     const resp = await client.calendar.calendarEvent.get({
       path: { calendar_id, event_id },
-    })
+    }, opts)
     const event = resp?.data?.event
     if (!event) {
       return { success: false, output: '', error: `Event ${event_id} not found` }
@@ -506,7 +508,7 @@ async function readCalendar(client: any, args: FeishuReadArgs, executor: ToolExe
       page_size: Math.min(limit || 50, 100),
       page_token,
     },
-  })
+  }, opts)
   const events = resp?.data?.items || []
   const lines = events.map((e: any) => {
     const start = formatFeishuTime(e.start_time)
@@ -523,6 +525,7 @@ async function writeCalendar(
   client: any, args: FeishuWriteArgs, toolCallId: string, executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   const { action, calendar_id, event_id, data } = args
+  const opts = await getRequestOptions()
 
   if (!calendar_id) {
     // create 时如果没传 calendar_id，用主日历
@@ -548,7 +551,7 @@ async function writeCalendar(
     const resp = await client.calendar.calendarEvent.create({
       path: { calendar_id: calId },
       data: eventData,
-    })
+    }, opts)
     const eid = resp?.data?.event?.event_id
     const output = `Event created: ${eventData.summary} (event_id: ${eid})`
     addWriteStep(executor, 'feishu_write', output, output)
@@ -572,7 +575,7 @@ async function writeCalendar(
     await client.calendar.calendarEvent.patch({
       path: { calendar_id: calId, event_id },
       data: eventData,
-    })
+    }, opts)
     const output = `Event ${event_id} updated`
     addWriteStep(executor, 'feishu_write', output, output)
     return { success: true, output }
@@ -584,7 +587,7 @@ async function writeCalendar(
     }
     await client.calendar.calendarEvent.delete({
       path: { calendar_id: calId, event_id },
-    })
+    }, opts)
     const output = `Event ${event_id} deleted`
     addWriteStep(executor, 'feishu_write', output, output)
     return { success: true, output }
@@ -599,11 +602,12 @@ async function writeCalendar(
 
 async function readTask(client: any, args: FeishuReadArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
   const { task_id, limit, page_token } = args
+  const opts = await getRequestOptions()
 
   if (task_id) {
     const resp = await client.task.task.get({
       path: { task_id },
-    })
+    }, opts)
     const task = resp?.data?.task
     if (!task) {
       return { success: false, output: '', error: `Task ${task_id} not found` }
@@ -613,13 +617,12 @@ async function readTask(client: any, args: FeishuReadArgs, executor: ToolExecuto
     return { success: true, output }
   }
 
-  // 列出任务
   const resp = await client.task.task.list({
     params: {
       page_size: Math.min(limit || 20, 100),
       page_token,
     },
-  })
+  }, opts)
   const tasks = resp?.data?.items || []
   const lines = tasks.map((tk: any) => {
     const status = tk.completed_at ? '✅' : '⬜'
@@ -638,6 +641,7 @@ async function writeTask(
   client: any, args: FeishuWriteArgs, toolCallId: string, executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   const { action, task_id, data } = args
+  const opts = await getRequestOptions()
 
   if (action === 'create') {
     if (!data?.summary) {
@@ -655,7 +659,7 @@ async function writeTask(
 
     const resp = await client.task.task.create({
       data: taskData,
-    })
+    }, opts)
     const tid = resp?.data?.task?.task_id
     const output = `Task created: ${data.summary} (task_id: ${tid})`
     addWriteStep(executor, 'feishu_write', output, output)
@@ -679,7 +683,7 @@ async function writeTask(
     await client.task.task.patch({
       path: { task_id },
       data: taskData,
-    })
+    }, opts)
     const output = `Task ${task_id} updated`
     addWriteStep(executor, 'feishu_write', output, output)
     return { success: true, output }
@@ -691,7 +695,7 @@ async function writeTask(
     }
     await client.task.task.delete({
       path: { task_id },
-    })
+    }, opts)
     const output = `Task ${task_id} deleted`
     addWriteStep(executor, 'feishu_write', output, output)
     return { success: true, output }
@@ -706,12 +710,12 @@ async function writeTask(
 
 async function readDrive(client: any, args: FeishuReadArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
   const { folder_token, file_token, limit, page_token } = args
+  const opts = await getRequestOptions()
 
-  // 获取文件元信息
   if (file_token) {
     const resp = await client.drive.file.get({
       path: { file_token },
-    })
+    }, opts)
     const file = resp?.data?.file
     if (!file) {
       return { success: false, output: '', error: `File ${file_token} not found` }
@@ -721,7 +725,6 @@ async function readDrive(client: any, args: FeishuReadArgs, executor: ToolExecut
     return { success: true, output }
   }
 
-  // 列出文件夹内容
   const resp = await client.drive.file.list({
     params: {
       folder_token: folder_token || '',
@@ -730,7 +733,7 @@ async function readDrive(client: any, args: FeishuReadArgs, executor: ToolExecut
       order_by: 'EditedTime',
       direction: 'DESC',
     },
-  })
+  }, opts)
   const files = resp?.data?.files || []
   const lines = files.map((f: any) => {
     const icon = f.type === 'folder' ? '📁' : '📄'
@@ -748,16 +751,16 @@ async function writeDrive(
   client: any, args: FeishuWriteArgs, toolCallId: string, executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   const { action, file_token, folder_token, parent_token, data, file_path, file_name } = args
+  const opts = await getRequestOptions()
 
   if (action === 'create') {
-    // 创建文件夹
     const name = (data?.name as string) || 'New Folder'
     const resp = await client.drive.file.createFolder({
       data: {
         name,
         folder_token: parent_token || folder_token || '',
       },
-    })
+    }, opts)
     const token = resp?.data?.token
     const output = `Folder created: ${name} (token: ${token})`
     addWriteStep(executor, 'feishu_write', output, output)
@@ -786,7 +789,7 @@ async function writeDrive(
           size: stat.size,
           file: fileStream,
         },
-      })
+      }, opts)
       const fToken = resp?.data?.file_token
       const output = `File uploaded: ${uploadName} (${formatFileSize(stat.size)}, token: ${fToken})`
       addWriteStep(executor, 'feishu_write', output, output)
@@ -803,7 +806,7 @@ async function writeDrive(
     await client.drive.file.delete({
       path: { file_token },
       params: { type: 'file' },
-    })
+    }, opts)
     const output = `File ${file_token} deleted`
     addWriteStep(executor, 'feishu_write', output, output)
     return { success: true, output }
@@ -818,7 +821,7 @@ async function writeDrive(
       method: 'POST',
       url: `/open-apis/drive/v1/files/${file_token}/rename`,
       data: { name: data.name },
-    })
+    }, opts)
     const output = `File ${file_token} renamed to: ${data.name}`
     addWriteStep(executor, 'feishu_write', output, output)
     return { success: true, output }
@@ -882,7 +885,7 @@ function extractBlockText(block: any): string {
   return ''
 }
 
-async function appendDocContent(client: any, documentId: string, content: string): Promise<void> {
+async function appendDocContent(client: any, documentId: string, content: string, opts?: any): Promise<void> {
   await client.docx.documentBlockChildren.create({
     path: { document_id: documentId, block_id: documentId },
     data: {
@@ -896,7 +899,7 @@ async function appendDocContent(client: any, documentId: string, content: string
       }],
       index: -1,
     },
-  })
+  }, opts)
 }
 
 function buildFeishuTime(timeStr: string): any {

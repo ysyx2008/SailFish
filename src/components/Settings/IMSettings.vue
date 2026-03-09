@@ -52,6 +52,10 @@ const fsAppSecret = ref('')
 const fsConnected = ref(false)
 const fsConnecting = ref(false)
 const fsError = ref('')
+// 飞书 OAuth
+const fsOAuthAuthorized = ref(false)
+const fsOAuthUser = ref('')
+const fsOAuthLoading = ref(false)
 // Slack
 const slBotToken = ref('')
 const slAppToken = ref('')
@@ -145,6 +149,12 @@ async function loadIMSettings() {
     wcAutoConnect.value = config.wecom?.autoConnect || false
     executionMode.value = config.executionMode || 'relaxed'
     sendProcessMessages.value = config.sendProcessMessages !== false
+
+    try {
+      const oauthStatus = await window.electronAPI.feishuOAuth.getOAuthStatus()
+      fsOAuthAuthorized.value = oauthStatus.authorized
+      fsOAuthUser.value = oauthStatus.userName || ''
+    } catch { /* ignore */ }
   } catch {
     // ignore
   }
@@ -207,6 +217,39 @@ async function toggleFeishu() {
     } finally {
       fsConnecting.value = false
     }
+  }
+}
+
+async function startFeishuOAuth() {
+  fsError.value = ''
+  fsOAuthLoading.value = true
+  try {
+    const result = await window.electronAPI.feishuOAuth.startOAuth()
+    if (result.authorized) {
+      fsOAuthAuthorized.value = true
+      fsOAuthUser.value = result.userName || ''
+    } else if ((result as any).error) {
+      fsError.value = (result as any).error
+    }
+  } catch (e: any) {
+    if (!e.message?.includes('cancelled')) {
+      fsError.value = e.message
+    }
+  } finally {
+    fsOAuthLoading.value = false
+  }
+}
+
+async function revokeFeishuOAuth() {
+  fsOAuthLoading.value = true
+  try {
+    await window.electronAPI.feishuOAuth.revokeOAuth()
+    fsOAuthAuthorized.value = false
+    fsOAuthUser.value = ''
+  } catch (e: any) {
+    fsError.value = e.message
+  } finally {
+    fsOAuthLoading.value = false
   }
 }
 
@@ -507,6 +550,26 @@ function cancelFreeMode() {
               class="input-field"
               placeholder="App Secret"
             />
+          </div>
+
+          <div class="oauth-section">
+            <div class="oauth-header">{{ t('settings.im.feishuOAuthTitle') }}</div>
+            <p class="oauth-hint">{{ t('settings.im.feishuOAuthHint') }}</p>
+            <div v-if="fsOAuthAuthorized" class="oauth-status">
+              <span class="oauth-authorized">✓ {{ t('settings.im.feishuOAuthAuthorizedAs', { name: fsOAuthUser }) }}</span>
+              <button
+                class="btn btn-sm btn-outline-danger"
+                :disabled="fsOAuthLoading"
+                @click="revokeFeishuOAuth"
+              >{{ t('settings.im.feishuOAuthRevoke') }}</button>
+            </div>
+            <div v-else class="oauth-status">
+              <button
+                class="btn btn-sm btn-primary"
+                :disabled="fsOAuthLoading || !fsAppId || !fsAppSecret"
+                @click="startFeishuOAuth"
+              >{{ fsOAuthLoading ? t('settings.im.feishuOAuthAuthorizing') : t('settings.im.feishuOAuthAuthorize') }}</button>
+            </div>
           </div>
 
           <div v-if="fsError" class="error-msg">{{ fsError }}</div>
@@ -1014,6 +1077,36 @@ function cancelFreeMode() {
 }
 
 /* 错误提示 */
+.oauth-section {
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  border-radius: 6px;
+  background: var(--bg-secondary, rgba(255, 255, 255, 0.03));
+}
+.oauth-header {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text-primary, #e6edf3);
+}
+.oauth-hint {
+  font-size: 12px;
+  color: var(--text-secondary, #8b949e);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+.oauth-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.oauth-authorized {
+  font-size: 12px;
+  color: var(--success-color, #3fb950);
+  flex: 1;
+}
+
 .error-msg {
   color: var(--danger-color, #f85149);
   font-size: 12px;

@@ -2669,6 +2669,36 @@ ipcMain.handle('im:stopFeishu', async () => {
   return { success: true }
 })
 
+// ==================== 飞书 OAuth 用户授权 ====================
+
+ipcMain.handle('feishu:startOAuth', async () => {
+  try {
+    const { startFeishuOAuth } = await import('./services/agent/skills/feishu/oauth')
+    return await startFeishuOAuth()
+  } catch (err: any) {
+    return { authorized: false, error: err.message || String(err) }
+  }
+})
+
+ipcMain.handle('feishu:revokeOAuth', async () => {
+  try {
+    const { revokeFeishuOAuth } = await import('./services/agent/skills/feishu/oauth')
+    await revokeFeishuOAuth()
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message || String(err) }
+  }
+})
+
+ipcMain.handle('feishu:getOAuthStatus', async () => {
+  try {
+    const { getFeishuOAuthStatus } = await import('./services/agent/skills/feishu/oauth')
+    return await getFeishuOAuthStatus()
+  } catch {
+    return { authorized: false }
+  }
+})
+
 ipcMain.handle('im:startSlack', async (_event, config: SlackConfig) => {
   configService.set('imSlackBotToken', config.botToken)
   configService.set('imSlackAppToken', config.appToken)

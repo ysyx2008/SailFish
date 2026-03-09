@@ -2841,6 +2841,15 @@ const electronAPI = {
         ipcRenderer.removeListener('im:connectionChange', handler)
       }
     }
+  },
+
+  feishuOAuth: {
+    startOAuth: () =>
+      ipcRenderer.invoke('feishu:startOAuth') as Promise<{ authorized: boolean; userName?: string; openId?: string; error?: string }>,
+    revokeOAuth: () =>
+      ipcRenderer.invoke('feishu:revokeOAuth') as Promise<{ success: boolean; error?: string }>,
+    getOAuthStatus: () =>
+      ipcRenderer.invoke('feishu:getOAuthStatus') as Promise<{ authorized: boolean; userName?: string; openId?: string; expiresAt?: number }>,
   }
 }
 
