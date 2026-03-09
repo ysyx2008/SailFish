@@ -645,6 +645,9 @@ async function writeTask(
     }
     const taskData: any = {
       summary: data.summary,
+      origin: {
+        platform_i18n_name: 'SailFish',
+      },
     }
     if (data.description) taskData.description = data.description
     if (data.due) taskData.due = data.due
@@ -880,16 +883,8 @@ function extractBlockText(block: any): string {
 }
 
 async function appendDocContent(client: any, documentId: string, content: string): Promise<void> {
-  // 获取文档最后一个 block 的 index
-  const blockResp = await client.docx.documentBlock.list({
-    path: { document_id: documentId },
-    params: { page_size: 1 },
-  })
-  const docBlockId = documentId
-
-  // 在文档末尾添加文本 block
-  await client.docx.documentBlock.childrenBatchCreate({
-    path: { document_id: documentId, block_id: docBlockId },
+  await client.docx.documentBlockChildren.create({
+    path: { document_id: documentId, block_id: documentId },
     data: {
       children: [{
         block_type: 2,
@@ -899,6 +894,7 @@ async function appendDocContent(client: any, documentId: string, content: string
           }],
         },
       }],
+      index: -1,
     },
   })
 }
