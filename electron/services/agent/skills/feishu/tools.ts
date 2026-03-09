@@ -65,7 +65,7 @@ export const feishuTools: ToolDefinition[] = [
 
 | resource   | create           | update              | delete          | upload          |
 |------------|-----------------|---------------------|-----------------|-----------------|
-| bitable    | 新增记录(s)      | 修改记录             | 删除记录(s)      | —               |
+| bitable    | 新建表格/新增记录 | 修改记录             | 删除记录(s)      | —               |
 | doc        | 创建文档         | 追加/替换内容         | 删除文档         | —               |
 | sheet      | 创建电子表格      | 写入单元格           | —               | —               |
 | calendar   | 创建日程         | 修改日程             | 删除日程         | —               |
@@ -73,7 +73,8 @@ export const feishuTools: ToolDefinition[] = [
 | drive      | 创建文件夹       | 重命名              | 删除文件         | 上传文件         |
 
 **data 参数**内容因 resource+action 而异，例：
-- bitable create: data.fields = {"姓名": "张三", "年龄": 28}
+- bitable create (新表格，不传 app_token): data = {name: "表格名称"}
+- bitable create (新记录，需 app_token + table_id): data.fields = {"姓名": "张三", "年龄": 28}
 - doc create: data = {title: "标题", content: "Markdown 内容"}
 - calendar create: data = {summary: "会议", start_time: "2025-01-15T09:00:00+08:00", end_time: "..."}
 - task create: data = {summary: "任务标题", due: {timestamp: "1700000000"}}

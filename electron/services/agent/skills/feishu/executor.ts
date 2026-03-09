@@ -210,6 +210,22 @@ async function writeBitable(
   const { action, app_token, table_id, record_id, record_ids, data } = args
   const opts = await getRequestOptions()
 
+  if (action === 'create' && !app_token) {
+    const name = String(data?.name || 'Untitled Bitable')
+    const createData: any = { name }
+    if (args.folder_token) createData.folder_token = args.folder_token
+    const resp = await client.bitable.app.create({ data: createData }, opts)
+    const appToken = resp?.data?.app?.app_token || ''
+    const appUrl = resp?.data?.app?.url || ''
+    const output = [
+      t('feishu.bitable_app_created', { name }),
+      `app_token: \`${appToken}\``,
+      appUrl ? `URL: ${appUrl}` : '',
+    ].filter(Boolean).join('\n')
+    addWriteStep(executor, 'feishu_write', output, output)
+    return { success: true, output }
+  }
+
   if (!app_token || !table_id) {
     return { success: false, output: '', error: t('feishu.bitable_write_required') }
   }
