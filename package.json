@@ -40,7 +40,8 @@
     "build:steam:linux": "cross-env VITE_STEAM_BUILD=true vite build && electron-builder --linux --dir --config electron-builder-steam.yml --publish never",
     "build:steam:current": "cross-env VITE_STEAM_BUILD=true vite build && electron-builder --dir --config electron-builder-steam.yml --publish never",
     "cli": "node electron/cli/main.js",
-    "sft": "node electron/cli/main.js"
+    "sft": "node electron/cli/main.js",
+    "cq": "npx tsx scripts/code-query.ts"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.22.3",
@@ -111,6 +112,7 @@
     "eslint-plugin-vue": "^9.22.0",
     "patch-package": "^8.0.1",
     "prettier": "^3.2.5",
+    "ts-morph": "^27.0.2",
     "tsx": "^4.21.0",
     "typescript": "^5.4.2",
     "vite": "^5.1.6",

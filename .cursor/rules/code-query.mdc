@@ -1,0 +1,26 @@
+---
+description: 使用 code-query 工具查询代码结构（类层次、方法签名、引用、依赖等），替代手动读源码
+alwaysApply: true
+---
+
+# 代码结构查询
+
+项目提供 `npx tsx scripts/code-query.ts` 工具，可按需查询 TypeScript 代码结构，比读源码更快更准。
+
+## 可用命令
+
+```
+npx tsx scripts/code-query.ts hierarchy <ClassName>         # 类继承链
+npx tsx scripts/code-query.ts methods <ClassName>           # 类的方法和属性
+npx tsx scripts/code-query.ts outline <file>                # 文件结构概览
+npx tsx scripts/code-query.ts deps <file>                   # import 依赖
+npx tsx scripts/code-query.ts refs <Symbol> [--files-only]  # 符号引用
+npx tsx scripts/code-query.ts exports <file>                # 文件导出
+npx tsx scripts/code-query.ts interfaces <file|Name>        # 接口/类型定义
+```
+
+## 何时使用
+
+- 需要了解类层次或某个类有哪些方法时，用 `hierarchy`/`methods` 替代手动读长文件
+- 需要评估改动影响范围时，用 `refs` 查找所有引用方
+- 需要了解模块依赖关系时，用 `deps`
