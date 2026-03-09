@@ -20,13 +20,18 @@ vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>()
   return {
     ...actual,
-    existsSync: vi.fn().mockReturnValue(true), // 返回 true 避免创建目录
+    existsSync: vi.fn().mockReturnValue(true),
     readFileSync: vi.fn().mockReturnValue(''),
     writeFileSync: vi.fn(),
     mkdirSync: vi.fn(),
     readdirSync: vi.fn().mockReturnValue([])
   }
 })
+
+// Mock im.service 打断 agent.ts → tools/misc → im.service → agent/index → sailfish → agent.ts 循环依赖
+vi.mock('../../im/im.service', () => ({
+  getIMService: vi.fn().mockReturnValue(null)
+}))
 
 import { Agent } from '../agent'
 import type { ToolDefinition, AiMessage } from '../../ai.service'
@@ -105,7 +110,8 @@ function createMockConfigService() {
     getAgentName: vi.fn().mockReturnValue(''),
     getLanguage: vi.fn().mockReturnValue('zh-CN'),
     getAiProfiles: vi.fn().mockReturnValue([{ id: 'test', contextLength: 128000 }]),
-    getActiveAiProfile: vi.fn().mockReturnValue('test')
+    getActiveAiProfile: vi.fn().mockReturnValue('test'),
+    getAgentOnboardingCompleted: vi.fn().mockReturnValue(true)
   }
 }
 
