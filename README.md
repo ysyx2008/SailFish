@@ -48,12 +48,14 @@
 | Feature | Description |
 |---------|-------------|
 | 🤖 **AI Agent** | Describe tasks, Agent plans and executes automatically |
+| 🧬 **Identity System** | Agent personality driven by IDENTITY.md, SOUL.md, USER.md — deep personalization with birth conversation on first launch |
 | 🌅 **Awaken Mode** | AI becomes a proactive assistant — personality-driven conversations, background monitoring, push notifications |
 | 🧠 **Watch & Sensors** | Heartbeat, file-watch, calendar, and email sensors trigger automated workflows with stateful context |
 | 🌐 **Remote Agent** | Access your Agent from anywhere — Web UI, DingTalk, Feishu, WeCom, Slack, or Telegram |
+| 🐦 **Feishu (Lark)** | Read/write Bitable, Docs, Sheets, Calendar, Tasks, Drive; OAuth lets Agent operate on behalf of the user |
 | 🖥️ **SSH/SFTP** | Full remote connection and file management |
 | 📁 **File Manager** | Dual-pane file manager for local & remote |
-| 📚 **Knowledge Base** | Local RAG, completely offline |
+| 📚 **Knowledge Base** | Local RAG with L3 conversation vector search for long-term memory, completely offline |
 | 🔌 **MCP Extension** | Connect external tools via Model Context Protocol |
 | 🗄️ **Database** | Natural language SQL execution and analysis |
 | 🛒 **Skill Market** | Browse, install, and share community Agent skills with one click |

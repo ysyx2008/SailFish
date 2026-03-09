@@ -61,13 +61,13 @@ export const translations = {
         },
         {
           title: '丰富的 Agent 技能',
-          description: '开箱即用的技能扩展：浏览器自动化、邮件收发、日程管理、Excel/Word 样式主题处理，让 AI 的能力远不止命令行。觉醒模式下 AI 主动监控、推送通知。',
-          highlights: ['觉醒模式 & 传感器', '邮件 / 日程管理', 'Excel / Word 处理'],
+          description: '开箱即用的技能扩展：飞书多维表格/云文档读写（OAuth 授权）、浏览器自动化、邮件收发、日程管理、Excel/Word 处理，让 AI 的能力远不止命令行。觉醒模式下 AI 主动监控、推送通知。',
+          highlights: ['飞书 Bitable / 云文档', '邮件 / 日程管理', 'Excel / Word 处理'],
         },
         {
           title: '本地知识库',
-          description: '导入文档构建离线 RAG 系统，自动记忆主机配置与历史操作。所有数据本地存储，完全离线运行。',
-          highlights: ['离线 Embedding', '主机画像记忆', '文档问答'],
+          description: '导入文档构建离线 RAG 系统，自动记忆主机配置与历史操作。L3 对话向量检索实现跨会话长期记忆。所有数据本地存储，完全离线运行。',
+          highlights: ['离线 Embedding', '跨会话长期记忆', '文档问答'],
         },
         {
           title: 'MCP 生态扩展',
@@ -575,13 +575,13 @@ export const translations = {
         },
         {
           title: 'Rich Agent Skills',
-          description: 'Out-of-the-box skill extensions: browser automation, email management, calendar scheduling, Excel/Word style themes — AI capabilities far beyond the command line. In Awaken mode, AI proactively monitors and pushes notifications.',
-          highlights: ['Awaken Mode & Sensors', 'Email / Calendar', 'Excel / Word Processing'],
+          description: 'Out-of-the-box skill extensions: Feishu Bitable/Docs read-write (OAuth), browser automation, email management, calendar scheduling, Excel/Word processing — AI capabilities far beyond the command line. In Awaken mode, AI proactively monitors and pushes notifications.',
+          highlights: ['Feishu Bitable / Docs', 'Email / Calendar', 'Excel / Word Processing'],
         },
         {
           title: 'Local Knowledge Base',
-          description: 'Import documents to build an offline RAG system. Automatically remembers host configurations and operation history. All data stored locally, fully offline.',
-          highlights: ['Offline Embedding', 'Host Profile Memory', 'Document Q&A'],
+          description: 'Import documents to build an offline RAG system. Automatically remembers host configurations and operation history. L3 conversation vector search enables long-term memory across sessions. All data stored locally, fully offline.',
+          highlights: ['Offline Embedding', 'Long-term Memory', 'Document Q&A'],
         },
         {
           title: 'MCP Ecosystem',

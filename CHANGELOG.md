@@ -2,7 +2,37 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.13.1 (2026-03-06) (Latest)
+## v10.14.0 (2026-03-09) (Latest)
+
+Full Feishu (Lark) integration with OAuth user authorization, a new three-file identity system for deeper Agent personalization, and L3 conversation vector search for long-term memory recall.
+
+### New Features
+- 🐦 **Feishu (Lark) Skill**: Full integration with Feishu — read/write Bitable, Docs, Sheets, Calendar, Tasks, and Drive; create new Bitable apps; supports OAuth user authorization so the Agent can operate on behalf of the user
+- 🧬 **Three-File Identity System**: Agent personality now driven by three workspace files — `IDENTITY.md` (who am I), `SOUL.md` (how I behave), and `USER.md` (about the user) — replacing the old config string approach
+- 🧠 **L3 Conversation Vector Search**: Historical conversations are now vectorized and auto-recalled via semantic search, enabling long-term memory across sessions
+- 🎂 **Birth Conversation**: On first launch, the Agent initiates an introductory conversation to get to know the user
+- 💭 **Thinking Process Folding**: Reasoning model thought process streams open during generation and auto-collapses when complete
+- 🖼️ **Image Preview Enhancements**: Pending images in the input box are now clickable for preview; image viewer supports ESC to close and arrow key navigation
+- 📝 **Custom Assistant Tab Title**: Assistant tabs now display the user-customized Agent name
+- 📚 **Website Usage Guides**: Added 7 usage guide articles to the website
+- 💬 **QQ Group Entry**: Menu and settings now include a QQ community group shortcut
+
+### Improvements
+- 🔧 Unified dynamic imports to static imports, eliminating Vite build warnings
+- 🔧 Migrated terminal-specific prompts into the terminal skill content block
+- 🔧 Merged MBTI settings into the Soul tab with improved layout
+- 🔧 Sensor cards now use CSS Grid layout for consistent sizing
+- 🔧 Awakening page redesigned to showcase the three-file identity system
+
+### Bug Fixes
+- 🔧 Fixed reasoning model deduplication logic overwriting `<details>` collapsible formatting
+- 🔧 Fixed network error retry race condition and task failure status display
+- 🔧 Fixed `talk_to_user` tool description to prevent models from calling it during normal conversation
+- 🔧 Fixed missing `tool_result` steps after skill tool execution
+- 🔧 Fixed Feishu OAuth endpoint upgrade and added scope declaration to resolve Unauthorized errors
+- 🔧 Fixed `soul_craft`/`user_craft` tool routing and config whitelist gaps
+
+## v10.13.1 (2026-03-06)
 
 Significantly reduced token overhead through prompt and tool description optimization, added auto-update mirror support and data migration framework for smoother upgrades.
 
