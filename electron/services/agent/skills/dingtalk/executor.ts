@@ -134,12 +134,13 @@ async function dingtalkWrite(
 // ========================================================================
 
 async function readCalendar(args: DingTalkReadArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
-  const { clientId, clientSecret } = getCredentials()
   const { union_id, calendar_id, event_id, start_date, end_date, limit } = args
 
   if (!union_id) {
     return { success: false, output: '', error: t('dingtalk.union_id_required' as any, { resource: 'calendar' }) }
   }
+
+  const { clientId, clientSecret } = getCredentials()
 
   // 获取日程详情
   if (event_id && calendar_id) {
@@ -198,7 +199,6 @@ async function readCalendar(args: DingTalkReadArgs, executor: ToolExecutorConfig
 }
 
 async function writeCalendar(args: DingTalkWriteArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
-  const { clientId, clientSecret } = getCredentials()
   const { action, union_id, calendar_id, event_id, data } = args
 
   if (!union_id) {
@@ -207,39 +207,45 @@ async function writeCalendar(args: DingTalkWriteArgs, executor: ToolExecutorConf
 
   const calId = calendar_id || 'primary'
 
+  // 参数校验（凭证检查之前）
+  if (action === 'create' && !data) {
+    return { success: false, output: '', error: t('dingtalk.calendar_data_required' as any) }
+  }
+  if ((action === 'update' || action === 'delete') && !event_id) {
+    return { success: false, output: '', error: t('dingtalk.event_id_required' as any, { action }) }
+  }
+  if (action === 'update' && !data) {
+    return { success: false, output: '', error: t('dingtalk.calendar_data_required' as any) }
+  }
+
   if (action === 'create') {
-    if (!data) {
-      return { success: false, output: '', error: t('dingtalk.calendar_data_required' as any) }
-    }
-
     const eventData: any = {
-      summary: (data.summary as string) || (data.title as string) || '新建日程',
+      summary: (data!.summary as string) || (data!.title as string) || '新建日程',
     }
-
-    // 处理时间：支持 ISO 8601 格式
-    if (data.start) {
-      eventData.start = typeof data.start === 'object' ? data.start : { dateTime: toISO(data.start as string) }
-    } else if (data.start_time) {
-      eventData.start = { dateTime: toISO(data.start_time as string) }
+    if (data!.start) {
+      eventData.start = typeof data!.start === 'object' ? data!.start : { dateTime: toISO(data!.start as string) }
+    } else if (data!.start_time) {
+      eventData.start = { dateTime: toISO(data!.start_time as string) }
     }
-    if (data.end) {
-      eventData.end = typeof data.end === 'object' ? data.end : { dateTime: toISO(data.end as string) }
-    } else if (data.end_time) {
-      eventData.end = { dateTime: toISO(data.end_time as string) }
+    if (data!.end) {
+      eventData.end = typeof data!.end === 'object' ? data!.end : { dateTime: toISO(data!.end as string) }
+    } else if (data!.end_time) {
+      eventData.end = { dateTime: toISO(data!.end_time as string) }
     }
-
     if (!eventData.start || !eventData.end) {
       return { success: false, output: '', error: t('dingtalk.calendar_time_required' as any) }
     }
 
-    if (data.description) eventData.description = data.description
-    if (data.location) eventData.location = { displayName: data.location }
-    if (data.attendees && Array.isArray(data.attendees)) {
-      eventData.attendees = (data.attendees as any[]).map(a =>
+    const { clientId, clientSecret } = getCredentials()
+
+    if (data!.description) eventData.description = data!.description
+    if (data!.location) eventData.location = { displayName: data!.location }
+    if (data!.attendees && Array.isArray(data!.attendees)) {
+      eventData.attendees = (data!.attendees as any[]).map(a =>
         typeof a === 'string' ? { id: a, isOptional: false } : a
       )
     }
-    if (data.is_all_day) eventData.isAllDay = data.is_all_day
+    if (data!.is_all_day) eventData.isAllDay = data!.is_all_day
 
     const resp = await api(clientId, clientSecret, 'POST',
       `/v1.0/calendar/users/${union_id}/calendars/${calId}/events`, eventData)
@@ -250,28 +256,23 @@ async function writeCalendar(args: DingTalkWriteArgs, executor: ToolExecutorConf
     return { success: true, output }
   }
 
-  if (action === 'update') {
-    if (!event_id) {
-      return { success: false, output: '', error: t('dingtalk.event_id_required' as any, { action: 'update' }) }
-    }
-    if (!data) {
-      return { success: false, output: '', error: t('dingtalk.calendar_data_required' as any) }
-    }
+  const { clientId, clientSecret } = getCredentials()
 
+  if (action === 'update') {
     const eventData: any = {}
-    if (data.summary || data.title) eventData.summary = data.summary || data.title
-    if (data.description) eventData.description = data.description
-    if (data.start) {
-      eventData.start = typeof data.start === 'object' ? data.start : { dateTime: toISO(data.start as string) }
-    } else if (data.start_time) {
-      eventData.start = { dateTime: toISO(data.start_time as string) }
+    if (data!.summary || data!.title) eventData.summary = data!.summary || data!.title
+    if (data!.description) eventData.description = data!.description
+    if (data!.start) {
+      eventData.start = typeof data!.start === 'object' ? data!.start : { dateTime: toISO(data!.start as string) }
+    } else if (data!.start_time) {
+      eventData.start = { dateTime: toISO(data!.start_time as string) }
     }
-    if (data.end) {
-      eventData.end = typeof data.end === 'object' ? data.end : { dateTime: toISO(data.end as string) }
-    } else if (data.end_time) {
-      eventData.end = { dateTime: toISO(data.end_time as string) }
+    if (data!.end) {
+      eventData.end = typeof data!.end === 'object' ? data!.end : { dateTime: toISO(data!.end as string) }
+    } else if (data!.end_time) {
+      eventData.end = { dateTime: toISO(data!.end_time as string) }
     }
-    if (data.location) eventData.location = { displayName: data.location }
+    if (data!.location) eventData.location = { displayName: data!.location }
 
     await api(clientId, clientSecret, 'PUT',
       `/v1.0/calendar/users/${union_id}/calendars/${calId}/events/${event_id}`, eventData)
@@ -281,9 +282,6 @@ async function writeCalendar(args: DingTalkWriteArgs, executor: ToolExecutorConf
   }
 
   if (action === 'delete') {
-    if (!event_id) {
-      return { success: false, output: '', error: t('dingtalk.event_id_required' as any, { action: 'delete' }) }
-    }
     await api(clientId, clientSecret, 'DELETE',
       `/v1.0/calendar/users/${union_id}/calendars/${calId}/events/${event_id}`)
     const output = `日程 ${event_id} 已删除`
@@ -299,12 +297,13 @@ async function writeCalendar(args: DingTalkWriteArgs, executor: ToolExecutorConf
 // ========================================================================
 
 async function readTodo(args: DingTalkReadArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
-  const { clientId, clientSecret } = getCredentials()
   const { union_id, task_id, is_done, limit, cursor } = args
 
   if (!union_id) {
     return { success: false, output: '', error: t('dingtalk.union_id_required' as any, { resource: 'todo' }) }
   }
+
+  const { clientId, clientSecret } = getCredentials()
 
   // 获取待办详情
   if (task_id) {
@@ -347,55 +346,55 @@ async function readTodo(args: DingTalkReadArgs, executor: ToolExecutorConfig): P
 }
 
 async function writeTodo(args: DingTalkWriteArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
-  const { clientId, clientSecret } = getCredentials()
   const { action, union_id, task_id, data } = args
 
   if (!union_id) {
     return { success: false, output: '', error: t('dingtalk.union_id_required' as any, { resource: 'todo' }) }
   }
 
-  if (action === 'create') {
-    if (!data?.subject) {
-      return { success: false, output: '', error: t('dingtalk.todo_subject_required' as any) }
-    }
+  if (action === 'create' && !data?.subject) {
+    return { success: false, output: '', error: t('dingtalk.todo_subject_required' as any) }
+  }
+  if ((action === 'update' || action === 'delete') && !task_id) {
+    return { success: false, output: '', error: t('dingtalk.task_id_required' as any, { action }) }
+  }
+  if (action === 'update' && !data) {
+    return { success: false, output: '', error: t('dingtalk.todo_data_required' as any) }
+  }
 
+  const { clientId, clientSecret } = getCredentials()
+
+  if (action === 'create') {
     const todoData: any = {
-      subject: data.subject,
+      subject: data!.subject,
       creatorId: union_id,
     }
-    if (data.description) todoData.description = data.description
-    if (data.due_time) todoData.dueTime = Number(data.due_time)
-    if (data.priority) todoData.priority = data.priority
-    if (data.executor_ids && Array.isArray(data.executor_ids)) {
-      todoData.executorIds = data.executor_ids
+    if (data!.description) todoData.description = data!.description
+    if (data!.due_time) todoData.dueTime = Number(data!.due_time)
+    if (data!.priority) todoData.priority = data!.priority
+    if (data!.executor_ids && Array.isArray(data!.executor_ids)) {
+      todoData.executorIds = data!.executor_ids
     }
-    if (data.participant_ids && Array.isArray(data.participant_ids)) {
-      todoData.participantIds = data.participant_ids
+    if (data!.participant_ids && Array.isArray(data!.participant_ids)) {
+      todoData.participantIds = data!.participant_ids
     }
 
     const resp = await api(clientId, clientSecret, 'POST',
       `/v1.0/todo/users/${union_id}/tasks`, todoData)
     const tid = resp?.id || resp?.taskId || '(unknown)'
-    const output = `待办已创建: ${data.subject} (task_id: ${tid})`
+    const output = `待办已创建: ${data!.subject} (task_id: ${tid})`
     addWriteStep(executor, 'dingtalk_write', output, output)
     return { success: true, output }
   }
 
   if (action === 'update') {
-    if (!task_id) {
-      return { success: false, output: '', error: t('dingtalk.task_id_required' as any, { action: 'update' }) }
-    }
-    if (!data) {
-      return { success: false, output: '', error: t('dingtalk.todo_data_required' as any) }
-    }
-
     const todoData: any = {}
-    if (data.subject) todoData.subject = data.subject
-    if (data.description) todoData.description = data.description
-    if (data.due_time) todoData.dueTime = Number(data.due_time)
-    if (data.done !== undefined) todoData.done = data.done
-    if (data.executor_ids) todoData.executorIds = data.executor_ids
-    if (data.participant_ids) todoData.participantIds = data.participant_ids
+    if (data!.subject) todoData.subject = data!.subject
+    if (data!.description) todoData.description = data!.description
+    if (data!.due_time) todoData.dueTime = Number(data!.due_time)
+    if (data!.done !== undefined) todoData.done = data!.done
+    if (data!.executor_ids) todoData.executorIds = data!.executor_ids
+    if (data!.participant_ids) todoData.participantIds = data!.participant_ids
 
     await api(clientId, clientSecret, 'PUT',
       `/v1.0/todo/users/${union_id}/tasks/${task_id}`, todoData)
@@ -405,9 +404,6 @@ async function writeTodo(args: DingTalkWriteArgs, executor: ToolExecutorConfig):
   }
 
   if (action === 'delete') {
-    if (!task_id) {
-      return { success: false, output: '', error: t('dingtalk.task_id_required' as any, { action: 'delete' }) }
-    }
     await api(clientId, clientSecret, 'DELETE',
       `/v1.0/todo/users/${union_id}/tasks/${task_id}`)
     const output = `待办 ${task_id} 已删除`
@@ -423,12 +419,13 @@ async function writeTodo(args: DingTalkWriteArgs, executor: ToolExecutorConfig):
 // ========================================================================
 
 async function readAttendance(args: DingTalkReadArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
-  const { clientId, clientSecret } = getCredentials()
   const { userid, start_date, end_date, limit, cursor } = args
 
   if (!userid) {
     return { success: false, output: '', error: t('dingtalk.attendance_userid_required' as any) }
   }
+
+  const { clientId, clientSecret } = getCredentials()
 
   const userIds = userid.includes(',') ? userid.split(',').map(s => s.trim()) : [userid]
 
@@ -537,8 +534,13 @@ async function readContact(args: DingTalkReadArgs, executor: ToolExecutorConfig)
 // ========================================================================
 
 async function readApproval(args: DingTalkReadArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
-  const { clientId, clientSecret } = getCredentials()
   const { process_instance_id, process_code, start_date, end_date, limit, cursor } = args
+
+  if (!process_instance_id && !process_code) {
+    return { success: false, output: '', error: t('dingtalk.process_code_required' as any) }
+  }
+
+  const { clientId, clientSecret } = getCredentials()
 
   // 获取审批实例详情
   if (process_instance_id) {
@@ -552,11 +554,6 @@ async function readApproval(args: DingTalkReadArgs, executor: ToolExecutorConfig
     const output = formatApprovalDetail(info, process_instance_id)
     addReadStep(executor, 'dingtalk_read', `📋 审批 ${process_instance_id.substring(0, 12)}...`, output)
     return { success: true, output }
-  }
-
-  // 列出审批实例 ID
-  if (!process_code) {
-    return { success: false, output: '', error: t('dingtalk.process_code_required' as any) }
   }
 
   const now = new Date()
@@ -615,7 +612,6 @@ async function readApproval(args: DingTalkReadArgs, executor: ToolExecutorConfig
 }
 
 async function writeApproval(args: DingTalkWriteArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
-  const { clientId, clientSecret } = getCredentials()
   const { action, process_code, data } = args
 
   if (action !== 'create') {
@@ -631,6 +627,8 @@ async function writeApproval(args: DingTalkWriteArgs, executor: ToolExecutorConf
   if (!originatorUserId) {
     return { success: false, output: '', error: t('dingtalk.approval_originator_required' as any) }
   }
+
+  const { clientId, clientSecret } = getCredentials()
 
   const body: any = {
     process_code: code,
