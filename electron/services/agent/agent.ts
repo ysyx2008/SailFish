@@ -1447,13 +1447,7 @@ export abstract class Agent {
               this.removeStep(run.initialStepId)
               run.initialStepId = undefined
             }
-            // 新一轮推理开始时，移除前一轮的纯思考步骤避免连续出现多个"思考过程"
-            if (streamContent.startsWith('<details') && run.steps.length > 0) {
-              const prev = run.steps[run.steps.length - 1]
-              if (prev.type === 'message' && prev.content.trimEnd().endsWith('</details>') && prev.content.trimStart().startsWith('<details')) {
-                this.removeStep(prev.id)
-              }
-            }
+            // 立即创建步骤，确保 timestamp 在工具结果之前
             this.addStep({
               id: streamStepId,
               type: 'message',
