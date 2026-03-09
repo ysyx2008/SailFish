@@ -244,12 +244,25 @@ async function writeCalendar(args: WeComWriteArgs, executor: ToolExecutorConfig)
     if (data.summary || data.title) schedule.summary = data.summary || data.title
     if (data.start_time || data.start) schedule.start_time = parseToUnixTs((data.start_time || data.start) as string)
     if (data.end_time || data.end) schedule.end_time = parseToUnixTs((data.end_time || data.end) as string)
-    if (data.description) schedule.description = data.description
-    if (data.location) schedule.location = data.location
+    if (data.description !== undefined) schedule.description = data.description
+    if (data.location !== undefined) schedule.location = data.location
 
     if (data.attendees) {
       const attendees = data.attendees as string[]
       schedule.attendees = attendees.map(uid => ({ userid: uid }))
+    }
+
+    if (!schedule.start_time || !schedule.end_time) {
+      try {
+        const current = await apiPost(corpId, corpSecret, '/oa/schedule/get', { schedule_id_list: [event_id] })
+        const existing = current?.schedule_list?.[0]
+        if (existing) {
+          if (!schedule.start_time) schedule.start_time = existing.start_time
+          if (!schedule.end_time) schedule.end_time = existing.end_time
+        }
+      } catch {
+        return { success: false, output: '', error: 'calendar update 需要 start_time 和 end_time（企微 API 强制要求），且无法自动获取当前日程信息，请手动传入' }
+      }
     }
 
     await apiPost(corpId, corpSecret, '/oa/schedule/update', { schedule })
