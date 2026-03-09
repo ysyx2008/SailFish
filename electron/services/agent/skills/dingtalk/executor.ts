@@ -322,7 +322,7 @@ async function readTodo(args: DingTalkReadArgs, executor: ToolExecutorConfig): P
   if (is_done !== undefined) body.isDone = is_done
 
   const resp = await api(clientId, clientSecret, 'POST',
-    `/v1.0/todo/users/${union_id}/tasks/query`, body)
+    `/v1.0/todo/users/${union_id}/org/tasks/query`, body)
   const tasks = resp?.todoCards || resp?.items || []
 
   if (tasks.length === 0) {
