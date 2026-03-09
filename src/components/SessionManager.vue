@@ -33,7 +33,7 @@ const collapsedGroups = ref<Set<string>>(new Set())
 // ==================== Composables ====================
 const { groupedSessions } = useSessionList(searchText)
 const {
-  draggingSession, dragOverGroupName, dragOverSessionId, dragOverPosition,
+  dragOverGroupName, dragOverSessionId, dragOverPosition,
   draggingGroupName, dragOverTargetGroupName,
   handleDragStart, handleGroupDragStart, handleDragEnd,
   handleDragOverGroup, handleDragOverSession, handleDragLeaveGroup,

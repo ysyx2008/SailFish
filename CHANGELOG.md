@@ -2,7 +2,18 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.15.0 (2026-03-09) (Latest)
+## v10.15.1 (2026-03-09) (Latest)
+
+This patch release streamlines session management with a leaner UI structure and smoother editing performance on Windows, while improving compatibility with vLLM's message validation behavior.
+
+### Improvements
+- ⚡ **Session Manager Refactor**: Extracted reusable composables and consolidated duplicate CSS, reducing `SessionManager` complexity and improving maintainability
+- 🪟 **Smoother Windows Editing**: Moved the session edit modal into a dedicated child component to fix input lag on Windows
+
+### Bug Fixes
+- 🔧 **vLLM Compatibility**: Adjusted AI message validation to work with vLLM inference engine request format
+
+## v10.15.0 (2026-03-09)
 
 Deep enterprise IM integration — DingTalk and WeCom (Enterprise WeChat) skills bring calendar, approval, attendance, contacts, and more directly into Agent workflows.
 
