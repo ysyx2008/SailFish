@@ -22,6 +22,7 @@ export const wecomTools: ToolDefinition[] = [
 | contact    | 通讯录       | userid→用户详情; department_id→部门成员列表; 都不传→部门列表      |
 | drive      | 微盘/云盘    | spaceid+fileid→文件详情; spaceid→文件列表; 都不传→空间列表       |
 | document   | 文档         | *docid (必填)→获取文档基本信息和内容                            |
+| meeting    | 会议         | *meetingid (必填)→获取会议详情                                 |
 
 通用参数：limit（数量限制）、cursor（翻页游标）、sort_type（drive排序: 1名字升/2降 3大小升/4降 5时间升/6降）。`,
       parameters: {
@@ -29,7 +30,7 @@ export const wecomTools: ToolDefinition[] = [
         properties: {
           resource: {
             type: 'string',
-            enum: ['calendar', 'approval', 'checkin', 'contact', 'drive', 'document'],
+            enum: ['calendar', 'approval', 'checkin', 'contact', 'drive', 'document', 'meeting'],
             description: '资源类型'
           },
           calendar_id: { type: 'string', description: '日历 ID（从创建日程的返回值或日程详情中获取）' },
@@ -46,6 +47,7 @@ export const wecomTools: ToolDefinition[] = [
           fatherid: { type: 'string', description: '父目录 ID（不传则用 spaceid 作为根目录）' },
           sort_type: { type: 'number', description: '微盘文件排序（1:名字升序 2:名字降序 3:大小升序 4:大小降序 5:修改时间升序 6:修改时间降序）' },
           docid: { type: 'string', description: '文档 ID（wedoc 文档标识）' },
+          meetingid: { type: 'string', description: '会议 ID' },
           limit: { type: 'number', description: '返回数量限制（默认 20）' },
           cursor: { type: 'number', description: '翻页游标（从上次结果获取）' }
         },
@@ -67,6 +69,7 @@ export const wecomTools: ToolDefinition[] = [
 | approval   | 提交审批申请             | —                   | —               |
 | drive      | 创建文件夹/文档/表格     | 重命名文件           | 删除文件         |
 | document   | 创建文档                | 重命名文档           | 删除文档         |
+| meeting    | 创建预约会议             | 修改会议             | 取消会议         |
 
 **data 参数**（*=必填）：
 
@@ -80,14 +83,17 @@ export const wecomTools: ToolDefinition[] = [
 **document create**: *doc_name, *doc_type (3:文档 4:表格), spaceid+fatherid (可选，指定存放位置), admin_users (管理员 userid[])
 **document update** (需 docid): *new_name (新文档名)
 **document delete** (需 docid): 无需 data
+**meeting create**: *admin_userid, *title, *start_time (ISO 8601), *duration (秒，最小300), attendees (userid[]), description, location, password
+**meeting update** (需 meetingid): title, start_time+duration (需同时传), description, location, attendees
+**meeting delete** (需 meetingid): 无需 data（取消会议）
 
-注意：calendar update 时 start_time/end_time 是企微 API 的强制要求。如不知原始时间，先用 wecom_read calendar + event_id 查询。`,
+注意：calendar update 时 start_time/end_time 是企微 API 的强制要求。meeting update 修改时间时 start_time 和 duration 必须同时传。`,
       parameters: {
         type: 'object',
         properties: {
           resource: {
             type: 'string',
-            enum: ['calendar', 'approval', 'drive', 'document'],
+            enum: ['calendar', 'approval', 'drive', 'document', 'meeting'],
             description: '资源类型'
           },
           action: {
@@ -102,6 +108,7 @@ export const wecomTools: ToolDefinition[] = [
           fileid: { type: 'string', description: '文件 ID（update/delete 时必填）' },
           fatherid: { type: 'string', description: '父目录 ID（创建文件时的目标目录）' },
           docid: { type: 'string', description: '文档 ID（update/delete 文档时必填）' },
+          meetingid: { type: 'string', description: '会议 ID（update/delete 时必填）' },
           data: { type: 'object', description: '写入的数据内容（JSON，结构见上方说明）' }
         },
         required: ['resource', 'action']

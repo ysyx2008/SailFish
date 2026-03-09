@@ -718,10 +718,16 @@ const translations = {
     'wecom.doc_docid_required_for': 'document {action} 需要 docid（文档 ID）',
     'wecom.doc_name_required': 'document create 需要 data.doc_name（文档名称）',
     'wecom.rename_new_name_required': '{resource} 重命名需要提供 data.new_name（新名称）',
+    'wecom.meeting_id_required': 'meeting 读取需要 meetingid（会议 ID）',
+    'wecom.meeting_id_required_for': 'meeting {action} 需要 meetingid（会议 ID）',
+    'wecom.meeting_admin_required': 'meeting create 需要 data.admin_userid（会议管理员企微 ID）',
+    'wecom.meeting_title_required': 'meeting create 需要 data.title（会议标题）',
+    'wecom.meeting_time_required': 'meeting create 需要 data.start_time（开始时间）和 data.duration（时长秒数，最小300）',
     'wecom.resource_drive': '微盘/云盘',
     'wecom.resource_document': '文档',
+    'wecom.resource_meeting': '会议',
     'wecom.skill_name': '企业微信工作台',
-    'wecom.skill_description': '读写企业微信资源：日历日程、审批、考勤打卡、通讯录、微盘云盘、文档。需要先在设置中配置企业微信应用凭证。',
+    'wecom.skill_description': '读写企业微信资源：日历日程、审批、考勤打卡、通讯录、微盘云盘、文档、会议。需要先在设置中配置企业微信应用凭证。',
     'wecom.skill_content': `## 企业微信技能使用指南
 
 你可以通过 wecom_read 和 wecom_write 两个工具操作企业微信的资源。
@@ -734,6 +740,7 @@ const translations = {
 - 通讯录：通讯录读取权限
 - 微盘/云盘：微盘接口
 - 文档：文档接口
+- 会议：会议接口
 
 ### 常用操作
 1. **查看日程**：先用 wecom_read calendar 传入 calendar_id 查询，或直接创建日程
@@ -742,12 +749,14 @@ const translations = {
 4. **查通讯录**：wecom_read contact 查部门/成员信息
 5. **管理文件**：wecom_read drive 查看空间和文件；wecom_write drive 创建/重命名/删除文件
 6. **管理文档**：wecom_read document + docid 查看文档信息；wecom_write document 创建/重命名/删除文档
+7. **管理会议**：wecom_read meeting + meetingid 查看会议详情；wecom_write meeting 创建/修改/取消会议
 
 ### 注意事项
 - 企微日程时间使用 ISO 8601 格式（如 2025-06-15T09:00:00+08:00）或 Unix 时间戳
 - 审批提交需要知道申请人的 userid，可先通过通讯录查询
 - 考勤查询需要指定 userid，不支持无参查询
-- 微盘操作需要先获取 spaceid（空间ID），然后才能操作空间内的文件`,
+- 微盘操作需要先获取 spaceid（空间ID），然后才能操作空间内的文件
+- 创建会议需要 admin_userid（管理员），时长最小 300 秒（5分钟）`,
 
     // DingTalk skill
     'dingtalk.resource_calendar': '日历日程',
@@ -1909,10 +1918,16 @@ All API calls use the app credentials configured in "Settings → Messaging → 
     'wecom.doc_docid_required_for': 'document {action} requires docid (document ID)',
     'wecom.doc_name_required': 'document create requires data.doc_name (document name)',
     'wecom.rename_new_name_required': '{resource} rename requires data.new_name (new name)',
+    'wecom.meeting_id_required': 'meeting read requires meetingid (meeting ID)',
+    'wecom.meeting_id_required_for': 'meeting {action} requires meetingid (meeting ID)',
+    'wecom.meeting_admin_required': 'meeting create requires data.admin_userid (meeting admin WeCom ID)',
+    'wecom.meeting_title_required': 'meeting create requires data.title (meeting title)',
+    'wecom.meeting_time_required': 'meeting create requires data.start_time and data.duration (duration in seconds, min 300)',
     'wecom.resource_drive': 'WeDrive',
     'wecom.resource_document': 'Document',
+    'wecom.resource_meeting': 'Meeting',
     'wecom.skill_name': 'WeCom Workspace',
-    'wecom.skill_description': 'Read/write WeCom resources: Calendar, Approval, Attendance, Contacts, WeDrive, Documents. Requires WeCom app credentials in settings.',
+    'wecom.skill_description': 'Read/write WeCom resources: Calendar, Approval, Attendance, Contacts, WeDrive, Documents, Meeting. Requires WeCom app credentials in settings.',
     'wecom.skill_content': `## WeCom Skill Guide
 
 Use wecom_read and wecom_write tools to operate WeCom resources.
@@ -1925,6 +1940,7 @@ All API calls use the app credentials (Corp ID + Corp Secret) from "Settings →
 - Contacts: Contact read permission
 - WeDrive: WeDrive API
 - Documents: WeDoc API
+- Meeting: Meeting API
 
 ### Common Operations
 1. **View schedules**: Use wecom_read calendar with calendar_id, or create schedules directly
@@ -1933,12 +1949,14 @@ All API calls use the app credentials (Corp ID + Corp Secret) from "Settings →
 4. **Look up contacts**: wecom_read contact for departments/members
 5. **Manage files**: wecom_read drive to list spaces/files; wecom_write drive to create/rename/delete files
 6. **Manage docs**: wecom_read document + docid for doc info; wecom_write document to create/rename/delete docs
+7. **Manage meetings**: wecom_read meeting + meetingid for details; wecom_write meeting to create/update/cancel
 
 ### Notes
 - Schedule times use ISO 8601 format (e.g. 2025-06-15T09:00:00+08:00) or Unix timestamps
 - Approval submission requires the applicant's userid — look up via contacts first
 - Attendance queries require specific userid, no parameterless queries supported
-- WeDrive operations require a spaceid first — use wecom_read drive to list available spaces`,
+- WeDrive operations require a spaceid first — use wecom_read drive to list available spaces
+- Meeting creation requires admin_userid; minimum duration is 300 seconds (5 minutes)`,
 
     // DingTalk skill
     'dingtalk.resource_calendar': 'Calendar',

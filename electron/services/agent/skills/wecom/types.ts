@@ -2,7 +2,7 @@
  * 企业微信技能类型定义
  */
 
-export type WeComResource = 'calendar' | 'approval' | 'checkin' | 'contact' | 'drive' | 'document'
+export type WeComResource = 'calendar' | 'approval' | 'checkin' | 'contact' | 'drive' | 'document' | 'meeting'
 
 export type WeComWriteAction = 'create' | 'update' | 'delete'
 
@@ -28,6 +28,8 @@ export interface WeComReadArgs {
   sort_type?: number
   // document
   docid?: string
+  // meeting
+  meetingid?: string
   // common
   limit?: number
   cursor?: number
@@ -48,6 +50,8 @@ export interface WeComWriteArgs {
   fatherid?: string
   // document
   docid?: string
+  // meeting
+  meetingid?: string
   // payload
   data?: Record<string, unknown>
 }

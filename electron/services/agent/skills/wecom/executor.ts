@@ -82,6 +82,7 @@ async function wecomRead(args: WeComReadArgs, executor: ToolExecutorConfig): Pro
     contact: () => readContact(args, executor),
     drive: () => readDrive(args, executor),
     document: () => readDocument(args, executor),
+    meeting: () => readMeeting(args, executor),
   }
 
   const handler = handlers[resource]
@@ -117,6 +118,7 @@ async function wecomWrite(
     approval: () => writeApproval(args, executor),
     drive: () => writeDrive(args, executor),
     document: () => writeDocument(args, executor),
+    meeting: () => writeMeeting(args, executor),
   }
 
   const handler = handlers[resource]
@@ -746,6 +748,115 @@ async function writeDocument(args: WeComWriteArgs, executor: ToolExecutorConfig)
 }
 
 // ========================================================================
+//  Meeting（会议）
+// ========================================================================
+
+async function readMeeting(args: WeComReadArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
+  const { meetingid } = args
+
+  if (!meetingid) {
+    return { success: false, output: '', error: t('wecom.meeting_id_required' as any) }
+  }
+
+  const { corpId, corpSecret } = getCredentials()
+  const resp = await apiPost(corpId, corpSecret, '/meeting/get_info', { meetingid })
+  if (!resp.meetingid) resp.meetingid = meetingid
+
+  const output = formatMeetingDetail(resp)
+  addReadStep(executor, 'wecom_read', `🎥 ${resp.title || meetingid}`, output)
+  return { success: true, output }
+}
+
+async function writeMeeting(args: WeComWriteArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
+  const { corpId, corpSecret, agentId } = getCredentials()
+  const { action, meetingid, data } = args
+
+  if (action === 'create') {
+    const adminUserid = (data?.admin_userid as string) || (data?.userid as string)
+    if (!adminUserid) {
+      return { success: false, output: '', error: t('wecom.meeting_admin_required' as any) }
+    }
+    const title = (data?.title as string) || (data?.summary as string)
+    if (!title) {
+      return { success: false, output: '', error: t('wecom.meeting_title_required' as any) }
+    }
+    const startTime = data?.start_time as string | number | undefined
+    const duration = data?.duration as number | undefined
+    if (!startTime || !duration) {
+      return { success: false, output: '', error: t('wecom.meeting_time_required' as any) }
+    }
+
+    const meetingStart = typeof startTime === 'number' ? startTime : parseToUnixTs(startTime as string)
+    if (!meetingStart) {
+      return { success: false, output: '', error: t('wecom.meeting_time_required' as any) }
+    }
+
+    const body: any = {
+      admin_userid: adminUserid,
+      title,
+      meeting_start: meetingStart,
+      meeting_duration: Math.max(Number(duration), 300),
+    }
+    if (data?.description) body.description = data.description
+    if (data?.location) body.location = data.location
+    if (data?.password) body.settings = { ...body.settings, password: String(data.password) }
+    if (agentId) body.agentid = agentId
+
+    const userids: string[] = data?.attendees && Array.isArray(data.attendees) ? [...data.attendees] : []
+    if (!userids.includes(adminUserid)) userids.push(adminUserid)
+    body.attendees = { userid: userids }
+
+    const resp = await apiPost(corpId, corpSecret, '/meeting/create', body)
+    const mid = resp?.meetingid || '(unknown)'
+    const output = `会议已创建: ${title} (meetingid: ${mid})`
+    addWriteStep(executor, 'wecom_write', output, output)
+    return { success: true, output }
+  }
+
+  if (action === 'update') {
+    if (!meetingid) {
+      return { success: false, output: '', error: t('wecom.meeting_id_required_for' as any, { action: 'update' }) }
+    }
+    if (!data) {
+      return { success: false, output: '', error: '会议修改需要 data 参数' }
+    }
+
+    const body: any = { meetingid }
+    if (data.title || data.summary) body.title = data.title || data.summary
+    if (data.description !== undefined) body.description = data.description
+    if (data.location !== undefined) body.location = data.location
+    if (data.start_time && data.duration) {
+      const ts = typeof data.start_time === 'number' ? data.start_time : parseToUnixTs(data.start_time as string)
+      if (ts) {
+        body.meeting_start = ts
+        body.meeting_duration = Math.max(Number(data.duration), 300)
+      }
+    }
+    if (data.attendees && Array.isArray(data.attendees)) {
+      body.attendees = { userid: data.attendees }
+    }
+    if (data.password) body.settings = { ...body.settings, password: String(data.password) }
+
+    await apiPost(corpId, corpSecret, '/meeting/update', body)
+    const output = `会议 ${meetingid} 已更新`
+    addWriteStep(executor, 'wecom_write', output, output)
+    return { success: true, output }
+  }
+
+  if (action === 'delete') {
+    if (!meetingid) {
+      return { success: false, output: '', error: t('wecom.meeting_id_required_for' as any, { action: 'cancel' }) }
+    }
+    await apiPost(corpId, corpSecret, '/meeting/cancel', { meetingid })
+    const output = `会议 ${meetingid} 已取消`
+    addWriteStep(executor, 'wecom_write', output, output)
+    return { success: true, output }
+  }
+
+  return { success: false, output: '', error: t('wecom.unsupported_action' as any, { resource: 'meeting', action }) }
+}
+
+// ========================================================================
 //  辅助函数
 // ========================================================================
 
@@ -882,6 +993,39 @@ function formatUserDetail(user: any): string {
     const statusMap: Record<number, string> = { 1: '已激活', 2: '已禁用', 4: '未激活', 5: '退出企业' }
     parts.push(`**状态**: ${statusMap[user.status] || `状态${user.status}`}`)
   }
+  return parts.join('\n')
+}
+
+const MEETING_STATUS_LABELS: Record<number, string> = {
+  1: '⏳ 待开始',
+  2: '🟢 进行中',
+  3: '✅ 已结束',
+  4: '❌ 已取消',
+  5: '⏰ 已过期',
+}
+
+function formatMeetingDetail(info: any): string {
+  const parts: string[] = [`## ${info.title || '(未命名会议)'}`]
+  parts.push(`**会议 ID**: \`${info.meetingid || '(unknown)'}\``)
+  if (info.status) parts.push(`**状态**: ${MEETING_STATUS_LABELS[info.status] || `状态${info.status}`}`)
+  if (info.admin_userid) parts.push(`**管理员**: ${info.admin_userid}`)
+  if (info.meeting_start) parts.push(`**开始时间**: ${formatTs(info.meeting_start)}`)
+  if (info.meeting_duration) {
+    const mins = Math.round(info.meeting_duration / 60)
+    parts.push(`**时长**: ${mins >= 60 ? `${Math.floor(mins / 60)}小时${mins % 60 ? mins % 60 + '分钟' : ''}` : `${mins}分钟`}`)
+  }
+  if (info.description) parts.push(`**描述**: ${info.description}`)
+  if (info.location) parts.push(`**地点**: ${info.location}`)
+
+  const members = info.attendees?.member
+  if (Array.isArray(members) && members.length > 0) {
+    const list = members.map((m: any) => {
+      const status = m.status === 1 ? '✅' : '⬜'
+      return `${status} ${m.userid}`
+    })
+    parts.push(`\n**参与者** (${members.length}):\n${list.join(', ')}`)
+  }
+
   return parts.join('\n')
 }
 
