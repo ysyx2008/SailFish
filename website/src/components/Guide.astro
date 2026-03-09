@@ -29,6 +29,7 @@ const g = t.guide;
           <li><a href="#email-skill" class="toc-link">{g.emailSkill.title}</a></li>
           <li><a href="#calendar-skill" class="toc-link">{g.calendarSkill.title}</a></li>
           <li><a href="#feishu-skill" class="toc-link">{g.feishuSkill.title}</a></li>
+          <li><a href="#dingtalk-skill" class="toc-link">{g.dingtalkSkill.title}</a></li>
           <li><a href="#wecom-skill" class="toc-link">{g.wecomSkill.title}</a></li>
         </ul>
       </nav>
@@ -348,6 +349,48 @@ const g = t.guide;
           <h3>{g.feishuSkill.tips}</h3>
           <ul class="tips-list">
             {g.feishuSkill.tipsList.map(tip => <li>{tip}</li>)}
+          </ul>
+        </section>
+
+        {/* ==================== 钉钉集成 ==================== */}
+        <section id="dingtalk-skill" class="guide-article">
+          <h2 class="article-title">{g.dingtalkSkill.title}</h2>
+          <p class="article-intro">{g.dingtalkSkill.intro}</p>
+
+          <h3>{g.dingtalkSkill.capabilities}</h3>
+          <div class="capability-grid">
+            {g.dingtalkSkill.capabilityList.map(c => (
+              <div class="cap-card">
+                <div class="cap-name">{c.cap}</div>
+                <div class="cap-desc">{c.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <h3>{g.dingtalkSkill.permissions}</h3>
+          <p>{g.dingtalkSkill.permissionsDesc}</p>
+          <div class="field-table">
+            {g.dingtalkSkill.permissionList.map(p => (
+              <div class="field-row">
+                <span class="field-name">{p.perm}</span>
+                <span class="field-desc"><code>{p.scope}</code> — {p.note}</span>
+              </div>
+            ))}
+          </div>
+
+          <h3>{g.dingtalkSkill.setup}</h3>
+          <ol class="setup-steps">
+            {g.dingtalkSkill.setupSteps.map(step => <li>{step}</li>)}
+          </ol>
+
+          <h3>{g.dingtalkSkill.examples}</h3>
+          <ul class="example-list">
+            {g.dingtalkSkill.exampleList.map(ex => <li>{ex}</li>)}
+          </ul>
+
+          <h3>{g.dingtalkSkill.tips}</h3>
+          <ul class="tips-list">
+            {g.dingtalkSkill.tipsList.map(tip => <li>{tip}</li>)}
           </ul>
         </section>
 

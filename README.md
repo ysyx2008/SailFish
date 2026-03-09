@@ -53,6 +53,8 @@
 | 🧠 **Watch & Sensors** | Heartbeat, file-watch, calendar, and email sensors trigger automated workflows with stateful context |
 | 🌐 **Remote Agent** | Access your Agent from anywhere — Web UI, DingTalk, Feishu, WeCom, Slack, or Telegram |
 | 🐦 **Feishu (Lark)** | Read/write Bitable, Docs, Sheets, Calendar, Tasks, Drive; OAuth lets Agent operate on behalf of the user |
+| 📌 **DingTalk** | Calendar events, to-do tasks, attendance records, contacts, and approval workflows |
+| 💼 **WeCom** | Calendar management, approval processes, check-in records, and contact directory |
 | 🖥️ **SSH/SFTP** | Full remote connection and file management |
 | 📁 **File Manager** | Dual-pane file manager for local & remote |
 | 📚 **Knowledge Base** | Local RAG with L3 conversation vector search for long-term memory, completely offline |

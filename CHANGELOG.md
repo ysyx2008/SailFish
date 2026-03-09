@@ -2,7 +2,22 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.14.0 (2026-03-09) (Latest)
+## v10.15.0 (2026-03-09) (Latest)
+
+Deep enterprise IM integration — DingTalk and WeCom (Enterprise WeChat) skills bring calendar, approval, attendance, contacts, and more directly into Agent workflows.
+
+### New Features
+- 📌 **DingTalk Skill**: Full DingTalk integration — calendar events, to-do lists, attendance records, contact directory, and approval workflows, all accessible via Agent tools
+- 💼 **WeCom (Enterprise WeChat) Skill**: Full WeCom integration — calendar management, approval processes, check-in records, and contact directory operations
+
+### Improvements
+- 📖 Updated IM documentation with detailed Feishu, DingTalk, and WeCom deep integration guides
+
+### Bug Fixes
+- 🔧 Fixed DingTalk todo list query API path
+- 🔧 Fixed DingTalk parameter validation to run before credential check, improving error messages
+
+## v10.14.0 (2026-03-09)
 
 Full Feishu (Lark) integration with OAuth user authorization, a new three-file identity system for deeper Agent personalization, and L3 conversation vector search for long-term memory recall.
 
