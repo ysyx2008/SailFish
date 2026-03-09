@@ -735,6 +735,66 @@ const translations = {
 - 审批提交需要知道申请人的 userid，可先通过通讯录查询
 - 考勤查询需要指定 userid，不支持无参查询`,
 
+    // DingTalk skill
+    'dingtalk.resource_calendar': '日历日程',
+    'dingtalk.resource_todo': '待办任务',
+    'dingtalk.resource_attendance': '考勤打卡',
+    'dingtalk.resource_contact': '通讯录',
+    'dingtalk.resource_approval': '审批流程',
+    'dingtalk.action_create': '创建',
+    'dingtalk.action_update': '修改',
+    'dingtalk.action_delete': '删除',
+    'dingtalk.reading': '读取钉钉{resource}{hint}',
+    'dingtalk.writing': '{action}钉钉{resource}',
+    'dingtalk.unknown_tool': '未知的钉钉工具: {name}',
+    'dingtalk.missing_resource': '缺少 resource 参数',
+    'dingtalk.missing_resource_or_action': '缺少 resource 或 action 参数',
+    'dingtalk.unsupported_resource': '不支持的资源类型: {resource}',
+    'dingtalk.unsupported_action': '{resource} 不支持 action: {action}',
+    'dingtalk.credentials_missing': '钉钉 AppKey 和 AppSecret 未配置，请在设置 → 消息通知 → 钉钉中配置',
+    'dingtalk.union_id_required': '{resource} 操作需要 union_id 参数（通过 contact 资源查询用户信息获取）',
+    'dingtalk.calendar_data_required': 'calendar create 需要 data（含 summary, start, end）',
+    'dingtalk.calendar_time_required': 'calendar create 需要 start 和 end 时间（ISO 8601 格式）',
+    'dingtalk.event_id_required': 'calendar {action} 需要 event_id',
+    'dingtalk.todo_subject_required': 'todo create 需要 data.subject（待办标题）',
+    'dingtalk.task_id_required': 'todo {action} 需要 task_id',
+    'dingtalk.todo_data_required': 'todo update 需要 data',
+    'dingtalk.attendance_userid_required': 'attendance 需要 userid 参数（钉钉用户 ID，多人逗号分隔）',
+    'dingtalk.process_code_required': 'approval 查询需要 process_code（审批模板编码）或 process_instance_id（实例ID）',
+    'dingtalk.approval_originator_required': 'approval create 需要 data.originator_user_id（发起人钉钉 userid）',
+    'dingtalk.skill_name': '钉钉工作台',
+    'dingtalk.skill_description': '读写钉钉资源：日历日程、待办任务、考勤打卡、通讯录、审批流程。需要先在设置中配置钉钉应用凭证。',
+    'dingtalk.skill_content': `## 钉钉技能使用指南
+
+你可以通过 dingtalk_read 和 dingtalk_write 两个工具操作钉钉的云端资源。
+
+### 权限说明
+所有 API 调用使用「设置 → 消息通知 → 钉钉」中配置的应用凭证（AppKey + AppSecret）。用户需要在钉钉开发者后台为该应用开通对应的 API 权限：
+- 日历日程：日历读写权限
+- 待办任务：待办任务读写权限
+- 考勤打卡：考勤打卡读取权限
+- 通讯录：通讯录只读权限
+- 审批流程：审批流程读写权限
+
+### union_id 获取方式
+日历和待办操作需要用户的 union_id。获取方式：
+1. 先用 dingtalk_read contact + userid 查询用户信息
+2. 返回结果中包含 unionid 字段
+3. 将 unionid 传入 union_id 参数
+
+### 常用操作
+1. **查看日程**：先获取 union_id，再用 dingtalk_read calendar + union_id + calendar_id:"primary" 查询
+2. **创建待办**：dingtalk_write todo create + union_id + data.subject
+3. **查看考勤**：dingtalk_read attendance + userid + 日期范围
+4. **查通讯录**：dingtalk_read contact 查部门/成员信息（含 unionid）
+5. **查审批**：dingtalk_read approval + process_code 查审批列表
+
+### 注意事项
+- 日程时间使用 ISO 8601 格式（如 2025-06-15T09:00:00+08:00）
+- 待办截止时间使用毫秒级时间戳
+- 考勤和审批操作使用 userid，日历和待办使用 union_id
+- 审批提交需要 process_code（在钉钉管理后台获取）和发起人 userid`,
+
     // 技能系统
     'skill.id_required': '技能 ID 不能为空',
     'skill.session_not_initialized': '技能会话未初始化',
@@ -1851,6 +1911,66 @@ All API calls use the app credentials (Corp ID + Corp Secret) from "Settings →
 - Schedule times use ISO 8601 format (e.g. 2025-06-15T09:00:00+08:00) or Unix timestamps
 - Approval submission requires the applicant's userid — look up via contacts first
 - Attendance queries require specific userid, no parameterless queries supported`,
+
+    // DingTalk skill
+    'dingtalk.resource_calendar': 'Calendar',
+    'dingtalk.resource_todo': 'Todo',
+    'dingtalk.resource_attendance': 'Attendance',
+    'dingtalk.resource_contact': 'Contact',
+    'dingtalk.resource_approval': 'Approval',
+    'dingtalk.action_create': 'Create',
+    'dingtalk.action_update': 'Update',
+    'dingtalk.action_delete': 'Delete',
+    'dingtalk.reading': 'Reading DingTalk {resource}{hint}',
+    'dingtalk.writing': '{action} DingTalk {resource}',
+    'dingtalk.unknown_tool': 'Unknown DingTalk tool: {name}',
+    'dingtalk.missing_resource': 'Missing resource parameter',
+    'dingtalk.missing_resource_or_action': 'Missing resource or action parameter',
+    'dingtalk.unsupported_resource': 'Unsupported resource type: {resource}',
+    'dingtalk.unsupported_action': '{resource} does not support action: {action}',
+    'dingtalk.credentials_missing': 'DingTalk AppKey and AppSecret not configured. Set them in Settings → Notifications → DingTalk',
+    'dingtalk.union_id_required': '{resource} operation requires union_id parameter (obtain via contact resource user lookup)',
+    'dingtalk.calendar_data_required': 'calendar create requires data (with summary, start, end)',
+    'dingtalk.calendar_time_required': 'calendar create requires start and end time (ISO 8601 format)',
+    'dingtalk.event_id_required': 'calendar {action} requires event_id',
+    'dingtalk.todo_subject_required': 'todo create requires data.subject (task title)',
+    'dingtalk.task_id_required': 'todo {action} requires task_id',
+    'dingtalk.todo_data_required': 'todo update requires data',
+    'dingtalk.attendance_userid_required': 'attendance requires userid parameter (DingTalk user ID, comma-separated for multiple)',
+    'dingtalk.process_code_required': 'approval query requires process_code (template code) or process_instance_id',
+    'dingtalk.approval_originator_required': 'approval create requires data.originator_user_id (initiator DingTalk userid)',
+    'dingtalk.skill_name': 'DingTalk Workspace',
+    'dingtalk.skill_description': 'Read/write DingTalk resources: Calendar, Todo, Attendance, Contacts, Approval. Requires DingTalk app credentials in settings.',
+    'dingtalk.skill_content': `## DingTalk Skill Guide
+
+Use dingtalk_read and dingtalk_write tools to operate DingTalk cloud resources.
+
+### Permissions
+All API calls use the app credentials (AppKey + AppSecret) from "Settings → Notifications → DingTalk". The app needs these API permissions in DingTalk Developer Console:
+- Calendar: Calendar read/write
+- Todo: Todo task read/write
+- Attendance: Attendance read
+- Contacts: Contact read
+- Approval: Workflow read/write
+
+### Getting union_id
+Calendar and Todo operations require the user's union_id:
+1. Use dingtalk_read contact + userid to look up user info
+2. The result includes a unionid field
+3. Pass unionid as the union_id parameter
+
+### Common Operations
+1. **View calendar**: Get union_id first, then dingtalk_read calendar + union_id + calendar_id:"primary"
+2. **Create todo**: dingtalk_write todo create + union_id + data.subject
+3. **Check attendance**: dingtalk_read attendance + userid + date range
+4. **Look up contacts**: dingtalk_read contact for departments/members (includes unionid)
+5. **View approvals**: dingtalk_read approval + process_code
+
+### Notes
+- Calendar times use ISO 8601 format (e.g. 2025-06-15T09:00:00+08:00)
+- Todo due times use millisecond timestamps
+- Attendance and approval use userid; calendar and todo use union_id
+- Approval submission requires process_code (from DingTalk admin console) and originator userid`,
 
     // Skill system
     'skill.id_required': 'Skill ID required',

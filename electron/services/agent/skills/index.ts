@@ -25,4 +25,5 @@ import './personality'
 import './pdf'
 import './feishu'
 import './wecom'
+import './dingtalk'
 
