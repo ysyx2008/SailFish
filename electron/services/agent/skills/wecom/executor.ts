@@ -80,6 +80,8 @@ async function wecomRead(args: WeComReadArgs, executor: ToolExecutorConfig): Pro
     approval: () => readApproval(args, executor),
     checkin: () => readCheckin(args, executor),
     contact: () => readContact(args, executor),
+    drive: () => readDrive(args, executor),
+    document: () => readDocument(args, executor),
   }
 
   const handler = handlers[resource]
@@ -113,6 +115,8 @@ async function wecomWrite(
   const handlers: Record<string, () => Promise<ToolResult>> = {
     calendar: () => writeCalendar(args, executor),
     approval: () => writeApproval(args, executor),
+    drive: () => writeDrive(args, executor),
+    document: () => writeDocument(args, executor),
   }
 
   const handler = handlers[resource]
@@ -513,6 +517,235 @@ async function readContact(args: WeComReadArgs, executor: ToolExecutorConfig): P
 }
 
 // ========================================================================
+//  Drive（微盘/云盘）
+// ========================================================================
+
+async function readDrive(args: WeComReadArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
+  const { corpId, corpSecret } = getCredentials()
+  const { spaceid, fileid, fatherid, sort_type, limit, cursor } = args
+
+  // 获取单个文件详情
+  if (fileid) {
+    const resp = await apiPost(corpId, corpSecret, '/wedrive/file_info', {
+      fileid,
+    })
+    const info = resp?.file_info
+    if (!info) {
+      return { success: false, output: '', error: `文件 ${fileid} 不存在或无权访问` }
+    }
+    const output = formatFileDetail(info)
+    addReadStep(executor, 'wecom_read', `📁 ${info.file_name || fileid}`, output)
+    return { success: true, output }
+  }
+
+  // 列出空间下的文件
+  if (spaceid) {
+    const resp = await apiPost(corpId, corpSecret, '/wedrive/file_list', {
+      spaceid,
+      fatherid: fatherid || spaceid,
+      sort_type: sort_type || 6,
+      start: cursor || 0,
+      limit: Math.min(limit || 50, 1000),
+    })
+    const items = resp?.file_list?.item || []
+
+    if (items.length === 0) {
+      const output = '该目录下无文件'
+      addReadStep(executor, 'wecom_read', output, output)
+      return { success: true, output }
+    }
+
+    const lines = items.map((f: any) => {
+      const typeLabel = FILE_TYPE_LABELS[f.file_type] || `类型${f.file_type}`
+      const size = f.file_type === 1 ? '' : ` | ${formatFileSize(f.file_size)}`
+      const time = f.mtime ? formatTs(f.mtime) : ''
+      return `- ${typeLabel} **${f.file_name}** (fileid: \`${f.fileid}\`${size}${time ? ` | ${time}` : ''})`
+    })
+
+    let output = `## 文件列表 (${items.length})\n\n${lines.join('\n')}`
+    if (resp?.has_more) {
+      output += `\n\n> 还有更多，设置 cursor: ${resp.next_start} 查看下一页`
+    }
+    addReadStep(executor, 'wecom_read', `📂 ${items.length} 个文件`, output)
+    return { success: true, output }
+  }
+
+  // 列出空间列表
+  const resp = await apiPost(corpId, corpSecret, '/wedrive/space_list', {})
+  const spaces = resp?.space_list || []
+
+  if (spaces.length === 0) {
+    const output = '无可访问的微盘空间。需要在企微管理后台为应用开通"微盘"权限。'
+    addReadStep(executor, 'wecom_read', output, output)
+    return { success: true, output }
+  }
+
+  const lines = spaces.map((s: any) =>
+    `- **${s.space_name || '(未命名)'}** (spaceid: \`${s.spaceid}\` | ${formatFileSize(s.space_used || 0)} / ${formatFileSize(s.space_total || 0)})`
+  )
+  const output = `## 微盘空间列表 (${spaces.length})\n\n${lines.join('\n')}\n\n> 传入 spaceid 可查看空间下的文件列表`
+  addReadStep(executor, 'wecom_read', `💾 ${spaces.length} 个空间`, output)
+  return { success: true, output }
+}
+
+async function writeDrive(args: WeComWriteArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
+  const { corpId, corpSecret } = getCredentials()
+  const { action, spaceid, fileid, fatherid, data } = args
+
+  if (action === 'create') {
+    if (!spaceid) {
+      return { success: false, output: '', error: t('wecom.drive_spaceid_required' as any) }
+    }
+    const fileName = (data?.file_name as string) || (data?.name as string)
+    if (!fileName) {
+      return { success: false, output: '', error: t('wecom.drive_filename_required' as any) }
+    }
+
+    const fileType = (data?.file_type as number) || 1
+    const resp = await apiPost(corpId, corpSecret, '/wedrive/file_create', {
+      spaceid,
+      fatherid: fatherid || spaceid,
+      file_type: fileType,
+      file_name: fileName,
+    })
+
+    const fid = resp?.fileid || '(unknown)'
+    const typeLabel = FILE_TYPE_LABELS[fileType] || '文件'
+    const output = `${typeLabel}已创建: ${fileName} (fileid: ${fid})`
+    addWriteStep(executor, 'wecom_write', output, output)
+    return { success: true, output }
+  }
+
+  if (action === 'update') {
+    if (!fileid) {
+      return { success: false, output: '', error: t('wecom.drive_fileid_required' as any, { action: 'update' }) }
+    }
+    const newName = (data?.new_name as string) || (data?.file_name as string)
+    if (!newName) {
+      return { success: false, output: '', error: t('wecom.rename_new_name_required' as any, { resource: 'drive' }) }
+    }
+
+    await apiPost(corpId, corpSecret, '/wedrive/file_rename', {
+      fileid,
+      new_name: newName,
+    })
+    const output = `文件 ${fileid} 已重命名为: ${newName}`
+    addWriteStep(executor, 'wecom_write', output, output)
+    return { success: true, output }
+  }
+
+  if (action === 'delete') {
+    if (!fileid) {
+      return { success: false, output: '', error: t('wecom.drive_fileid_required' as any, { action: 'delete' }) }
+    }
+    await apiPost(corpId, corpSecret, '/wedrive/file_delete', {
+      fileid: [fileid],
+    })
+    const output = `文件 ${fileid} 已删除`
+    addWriteStep(executor, 'wecom_write', output, output)
+    return { success: true, output }
+  }
+
+  return { success: false, output: '', error: t('wecom.unsupported_action' as any, { resource: 'drive', action }) }
+}
+
+// ========================================================================
+//  Document（文档）
+// ========================================================================
+
+async function readDocument(args: WeComReadArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
+  const { corpId, corpSecret } = getCredentials()
+  const { docid } = args
+
+  if (!docid) {
+    return { success: false, output: '', error: t('wecom.doc_docid_required' as any) }
+  }
+
+  const resp = await apiPost(corpId, corpSecret, '/wedoc/get_doc_base_info', { docid })
+
+  const info = resp?.doc_base_info || resp
+  const docName = info?.doc_name || '(未命名)'
+  const docType = info?.doc_type === 3 ? '文档' : info?.doc_type === 4 ? '表格' : `类型${info?.doc_type || '未知'}`
+  const createTime = info?.create_time ? formatTs(info.create_time) : '-'
+  const modifyTime = info?.modify_time ? formatTs(info.modify_time) : '-'
+
+  const parts: string[] = [`## ${docName}`]
+  parts.push(`**文档 ID**: \`${docid}\``)
+  parts.push(`**类型**: ${docType}`)
+  parts.push(`**创建时间**: ${createTime}`)
+  parts.push(`**修改时间**: ${modifyTime}`)
+  if (info?.url) parts.push(`**链接**: ${info.url}`)
+
+  const output = parts.join('\n')
+  addReadStep(executor, 'wecom_read', `📄 ${docName}`, output)
+  return { success: true, output }
+}
+
+async function writeDocument(args: WeComWriteArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
+  const { corpId, corpSecret } = getCredentials()
+  const { action, docid, spaceid, fatherid, data } = args
+
+  if (action === 'create') {
+    const docName = (data?.doc_name as string) || (data?.name as string)
+    if (!docName) {
+      return { success: false, output: '', error: t('wecom.doc_name_required' as any) }
+    }
+    const docType = (data?.doc_type as number) || 3
+
+    const body: any = {
+      doc_name: docName,
+      doc_type: docType,
+    }
+    if (spaceid) body.spaceid = spaceid
+    if (fatherid) body.fatherid = fatherid
+    if (data?.admin_users && Array.isArray(data.admin_users)) {
+      body.admin_users = data.admin_users
+    }
+
+    const resp = await apiPost(corpId, corpSecret, '/wedoc/create_doc', body)
+    const newDocId = resp?.docid || '(unknown)'
+    const url = resp?.url || ''
+    const typeLabel = docType === 4 ? '表格' : '文档'
+    let output = `${typeLabel}已创建: ${docName} (docid: ${newDocId})`
+    if (url) output += `\n链接: ${url}`
+    addWriteStep(executor, 'wecom_write', output, output)
+    return { success: true, output }
+  }
+
+  if (action === 'update') {
+    if (!docid) {
+      return { success: false, output: '', error: t('wecom.doc_docid_required_for' as any, { action: 'update' }) }
+    }
+    const newName = (data?.new_name as string) || (data?.doc_name as string)
+    if (!newName) {
+      return { success: false, output: '', error: t('wecom.rename_new_name_required' as any, { resource: 'document' }) }
+    }
+
+    await apiPost(corpId, corpSecret, '/wedoc/rename_doc', {
+      docid,
+      new_name: newName,
+    })
+    const output = `文档 ${docid} 已重命名为: ${newName}`
+    addWriteStep(executor, 'wecom_write', output, output)
+    return { success: true, output }
+  }
+
+  if (action === 'delete') {
+    if (!docid) {
+      return { success: false, output: '', error: t('wecom.doc_docid_required_for' as any, { action: 'delete' }) }
+    }
+    await apiPost(corpId, corpSecret, '/wedoc/del_doc', {
+      docid: [docid],
+    })
+    const output = `文档 ${docid} 已删除`
+    addWriteStep(executor, 'wecom_write', output, output)
+    return { success: true, output }
+  }
+
+  return { success: false, output: '', error: t('wecom.unsupported_action' as any, { resource: 'document', action }) }
+}
+
+// ========================================================================
 //  辅助函数
 // ========================================================================
 
@@ -649,6 +882,36 @@ function formatUserDetail(user: any): string {
     const statusMap: Record<number, string> = { 1: '已激活', 2: '已禁用', 4: '未激活', 5: '退出企业' }
     parts.push(`**状态**: ${statusMap[user.status] || `状态${user.status}`}`)
   }
+  return parts.join('\n')
+}
+
+const FILE_TYPE_LABELS: Record<number, string> = {
+  1: '📁',
+  2: '📄',
+  3: '📝',
+  4: '📊',
+  5: '📋',
+  6: '📽️',
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+}
+
+function formatFileDetail(info: any): string {
+  const typeLabel = { 1: '文件夹', 2: '文件', 3: '文档', 4: '表格', 5: '收集表', 6: '幻灯片' }[info.file_type as number] || `类型${info.file_type}`
+  const parts: string[] = [`## ${info.file_name || '(未命名)'}`]
+  parts.push(`**文件 ID**: \`${info.fileid}\``)
+  parts.push(`**类型**: ${typeLabel}`)
+  if (info.file_type !== 1) parts.push(`**大小**: ${formatFileSize(info.file_size || 0)}`)
+  if (info.ctime) parts.push(`**创建时间**: ${formatTs(info.ctime)}`)
+  if (info.mtime) parts.push(`**修改时间**: ${formatTs(info.mtime)}`)
+  if (info.spaceid) parts.push(`**空间 ID**: \`${info.spaceid}\``)
+  if (info.fatherid) parts.push(`**父目录 ID**: \`${info.fatherid}\``)
+  if (info.url) parts.push(`**链接**: ${info.url}`)
   return parts.join('\n')
 }
 

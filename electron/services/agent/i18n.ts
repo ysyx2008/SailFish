@@ -711,8 +711,17 @@ const translations = {
     'wecom.approval_template_required': 'approval create 需要 template_id（审批模板 ID）',
     'wecom.approval_creator_required': 'approval create 需要 data.creator_userid（申请人企微 ID）',
     'wecom.checkin_userid_required': 'checkin 需要 userid 参数（企微用户 ID，多人用逗号分隔）',
+    'wecom.drive_spaceid_required': 'drive create 需要 spaceid（微盘空间 ID）',
+    'wecom.drive_filename_required': 'drive create 需要 data.file_name（文件/文件夹名称）',
+    'wecom.drive_fileid_required': 'drive {action} 需要 fileid（文件 ID）',
+    'wecom.doc_docid_required': 'document 读取需要 docid（文档 ID）',
+    'wecom.doc_docid_required_for': 'document {action} 需要 docid（文档 ID）',
+    'wecom.doc_name_required': 'document create 需要 data.doc_name（文档名称）',
+    'wecom.rename_new_name_required': '{resource} 重命名需要提供 data.new_name（新名称）',
+    'wecom.resource_drive': '微盘/云盘',
+    'wecom.resource_document': '文档',
     'wecom.skill_name': '企业微信工作台',
-    'wecom.skill_description': '读写企业微信资源：日历日程、审批、考勤打卡、通讯录。需要先在设置中配置企业微信应用凭证。',
+    'wecom.skill_description': '读写企业微信资源：日历日程、审批、考勤打卡、通讯录、微盘云盘、文档。需要先在设置中配置企业微信应用凭证。',
     'wecom.skill_content': `## 企业微信技能使用指南
 
 你可以通过 wecom_read 和 wecom_write 两个工具操作企业微信的资源。
@@ -723,17 +732,22 @@ const translations = {
 - 审批：OA 审批接口
 - 考勤打卡：打卡接口
 - 通讯录：通讯录读取权限
+- 微盘/云盘：微盘接口
+- 文档：文档接口
 
 ### 常用操作
 1. **查看日程**：先用 wecom_read calendar 传入 calendar_id 查询，或直接创建日程
 2. **提交审批**：先用 wecom_read approval + template_id 查看模板结构，再用 wecom_write approval create 提交
 3. **查看考勤**：wecom_read checkin + userid + 日期范围
 4. **查通讯录**：wecom_read contact 查部门/成员信息
+5. **管理文件**：wecom_read drive 查看空间和文件；wecom_write drive 创建/重命名/删除文件
+6. **管理文档**：wecom_read document + docid 查看文档信息；wecom_write document 创建/重命名/删除文档
 
 ### 注意事项
 - 企微日程时间使用 ISO 8601 格式（如 2025-06-15T09:00:00+08:00）或 Unix 时间戳
 - 审批提交需要知道申请人的 userid，可先通过通讯录查询
-- 考勤查询需要指定 userid，不支持无参查询`,
+- 考勤查询需要指定 userid，不支持无参查询
+- 微盘操作需要先获取 spaceid（空间ID），然后才能操作空间内的文件`,
 
     // DingTalk skill
     'dingtalk.resource_calendar': '日历日程',
@@ -1888,8 +1902,17 @@ All API calls use the app credentials configured in "Settings → Messaging → 
     'wecom.approval_template_required': 'approval create requires template_id (approval template ID)',
     'wecom.approval_creator_required': 'approval create requires data.creator_userid (applicant WeCom ID)',
     'wecom.checkin_userid_required': 'checkin requires userid parameter (WeCom user ID, comma-separated for multiple)',
+    'wecom.drive_spaceid_required': 'drive create requires spaceid (WeDrive space ID)',
+    'wecom.drive_filename_required': 'drive create requires data.file_name (file/folder name)',
+    'wecom.drive_fileid_required': 'drive {action} requires fileid (file ID)',
+    'wecom.doc_docid_required': 'document read requires docid (document ID)',
+    'wecom.doc_docid_required_for': 'document {action} requires docid (document ID)',
+    'wecom.doc_name_required': 'document create requires data.doc_name (document name)',
+    'wecom.rename_new_name_required': '{resource} rename requires data.new_name (new name)',
+    'wecom.resource_drive': 'WeDrive',
+    'wecom.resource_document': 'Document',
     'wecom.skill_name': 'WeCom Workspace',
-    'wecom.skill_description': 'Read/write WeCom resources: Calendar, Approval, Attendance, Contacts. Requires WeCom app credentials in settings.',
+    'wecom.skill_description': 'Read/write WeCom resources: Calendar, Approval, Attendance, Contacts, WeDrive, Documents. Requires WeCom app credentials in settings.',
     'wecom.skill_content': `## WeCom Skill Guide
 
 Use wecom_read and wecom_write tools to operate WeCom resources.
@@ -1900,17 +1923,22 @@ All API calls use the app credentials (Corp ID + Corp Secret) from "Settings →
 - Approval: OA Approval API
 - Attendance: Checkin API
 - Contacts: Contact read permission
+- WeDrive: WeDrive API
+- Documents: WeDoc API
 
 ### Common Operations
 1. **View schedules**: Use wecom_read calendar with calendar_id, or create schedules directly
 2. **Submit approval**: Use wecom_read approval + template_id to check template structure, then wecom_write approval create
 3. **Check attendance**: wecom_read checkin + userid + date range
 4. **Look up contacts**: wecom_read contact for departments/members
+5. **Manage files**: wecom_read drive to list spaces/files; wecom_write drive to create/rename/delete files
+6. **Manage docs**: wecom_read document + docid for doc info; wecom_write document to create/rename/delete docs
 
 ### Notes
 - Schedule times use ISO 8601 format (e.g. 2025-06-15T09:00:00+08:00) or Unix timestamps
 - Approval submission requires the applicant's userid — look up via contacts first
-- Attendance queries require specific userid, no parameterless queries supported`,
+- Attendance queries require specific userid, no parameterless queries supported
+- WeDrive operations require a spaceid first — use wecom_read drive to list available spaces`,
 
     // DingTalk skill
     'dingtalk.resource_calendar': 'Calendar',
