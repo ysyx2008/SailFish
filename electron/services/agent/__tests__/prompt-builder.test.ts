@@ -28,6 +28,7 @@ vi.mock('fs', async (importOriginal) => {
   }
 })
 
+import * as fs from 'fs'
 import { 
   PromptBuilder, 
   getMbtiStylePrompt, 
@@ -198,23 +199,28 @@ describe('PromptBuilder', () => {
     })
 
     it('should include personality as primary section when provided', () => {
-      const context = createMockContext()
-      const builder = new PromptBuilder({
-        context,
-        personalityText: '回答要先结论后细节，少客套'
+      vi.mocked(fs.readFileSync).mockImplementation((p: any) => {
+        if (typeof p === 'string' && p.includes('SOUL.md')) return '回答要先结论后细节，少客套'
+        return ''
       })
+      const context = createMockContext()
+      const builder = new PromptBuilder({ context })
       const prompt = builder.build()
 
       expect(prompt).toContain('# 你的灵魂（重要！）')
       expect(prompt).toContain('先结论后细节')
+      vi.mocked(fs.readFileSync).mockReturnValue('' as any)
     })
 
     it('should nest MBTI under personality when both provided', () => {
+      vi.mocked(fs.readFileSync).mockImplementation((p: any) => {
+        if (typeof p === 'string' && p.includes('SOUL.md')) return '保持直接风格'
+        return ''
+      })
       const context = createMockContext()
       const builder = new PromptBuilder({
         context,
         mbtiType: 'INTJ',
-        personalityText: '保持直接风格'
       })
       const prompt = builder.build()
 
@@ -222,6 +228,7 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('保持直接风格')
       expect(prompt).toContain('## 风格参考（MBTI）')
       expect(prompt).not.toContain('# 你的风格（重要！）\n')
+      vi.mocked(fs.readFileSync).mockReturnValue('' as any)
     })
 
     it('should use MBTI as primary when no personality text', () => {
@@ -548,7 +555,6 @@ describe('buildSystemPrompt (backward compatible)', () => {
       }],
       'strict',
       '用户规则',
-      '个性补充',
       '任务摘要',
       '相关任务',
       [{ id: 'task1', summary: '测试任务' }]
@@ -558,7 +564,6 @@ describe('buildSystemPrompt (backward compatible)', () => {
     expect(prompt).toContain('知识库内容')
     expect(prompt).toContain('记忆1')
     expect(prompt).toContain('用户规则')
-    expect(prompt).toContain('个性补充')
     expect(prompt).toContain('任务摘要')
     expect(prompt).toContain('task1')
   })

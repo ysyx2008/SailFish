@@ -2038,5 +2038,11 @@ interface Window {
       sendNotification: (text: string, options?: { markdown?: boolean; title?: string }) => Promise<{ success: boolean; platform?: string; error?: string }>
       onConnectionChange: (callback: (data: { platform: string; connected: boolean }) => void) => () => void
     }
+
+    feishuOAuth: {
+      startOAuth: () => Promise<{ authorized: boolean; userName?: string; openId?: string; error?: string }>
+      revokeOAuth: () => Promise<{ success: boolean; error?: string }>
+      getOAuthStatus: () => Promise<{ authorized: boolean; userName?: string; openId?: string; expiresAt?: number }>
+    }
   }
 }
