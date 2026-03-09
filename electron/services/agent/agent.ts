@@ -1646,6 +1646,7 @@ export abstract class Agent {
     run.currentToolName = `${toolCalls.length} tools`
     
     const batchStartTime = Date.now()
+    const stepCountBefore = run.steps.length
     const parallelPromises = toolCalls.map(async (toolCall) => {
       // 检查 abort 状态
       if (run.aborted) {
@@ -1673,7 +1674,6 @@ export abstract class Agent {
         )
         return { toolCall, result, toolArgs }
       } catch (error) {
-        // 捕获异常，确保单个工具失败不影响其他并行工具
         return { 
           toolCall, 
           result: { 
@@ -1694,6 +1694,7 @@ export abstract class Agent {
 
     // 按原始顺序处理结果
     for (const { toolCall, result, toolArgs } of results) {
+      this.ensureToolResultStep(run, stepCountBefore, toolCall.function.name, result)
       this.processToolResult(run, toolCall, result, toolArgs)
     }
   }
@@ -1716,6 +1717,7 @@ export abstract class Agent {
     const toolName = toolCall.function.name
     this.setExecutionPhase(run, toolName)
     
+    const stepCountBefore = run.steps.length
     const toolStartTime = Date.now()
     let result: ToolResult
     try {
@@ -1741,6 +1743,7 @@ export abstract class Agent {
       log.warn(`Tool failed: ${toolName}, ${toolElapsed}ms, error=${(result.error || '').slice(0, 200)}`)
     }
     
+    this.ensureToolResultStep(run, stepCountBefore, toolName, result)
     this.processToolResult(run, toolCall, result, toolArgs)
   }
   
@@ -1789,6 +1792,42 @@ export abstract class Agent {
     }
   }
   
+  /**
+   * 确保工具执行后有 tool_result 步骤（内置工具自己添加，技能工具可能缺失）
+   *
+   * 顺序执行时 stepCountBefore 精确对应单次调用，无需匹配 toolName；
+   * 并行执行时可并行的工具全部已自行添加结果步骤，本方法为空操作。
+   */
+  private ensureToolResultStep(
+    run: AgentRun,
+    stepCountBefore: number,
+    toolName: string,
+    result: ToolResult
+  ): void {
+    const newSteps = run.steps.slice(stepCountBefore)
+    if (newSteps.some(s => s.type === 'tool_result' || s.type === 'error')) return
+
+    if (!result.success) {
+      const errorMsg = result.error || t('agent.unknown_error')
+      this.addStep({
+        type: 'tool_result',
+        content: `❌ ${toolName}`,
+        toolName,
+        toolResult: errorMsg
+      })
+    } else if (result.output) {
+      const preview = result.output.length > 200
+        ? result.output.slice(0, 200) + '…'
+        : result.output
+      this.addStep({
+        type: 'tool_result',
+        content: `✅ ${toolName}`,
+        toolName,
+        toolResult: preview
+      })
+    }
+  }
+
   /**
    * 创建工具执行器配置
    */
