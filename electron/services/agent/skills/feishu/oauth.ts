@@ -13,11 +13,27 @@ const log = createLogger('FeishuOAuth')
 
 const CREDENTIAL_KEY = 'feishu:user_oauth'
 const REDIRECT_URI = 'http://localhost:19286/oauth/feishu/callback'
-const AUTH_URL = 'https://open.feishu.cn/open-apis/authen/v1/index'
+const AUTH_URL = 'https://open.feishu.cn/open-apis/authen/v1/authorize'
 const TOKEN_URL = 'https://open.feishu.cn/open-apis/authen/v2/oauth/token'
 const REFRESH_URL = 'https://open.feishu.cn/open-apis/authen/v2/oauth/token'
 const USER_INFO_URL = 'https://open.feishu.cn/open-apis/authen/v1/user_info'
 const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000
+
+const OAUTH_SCOPES = [
+  'bitable:app',
+  'bitable:app:readonly',
+  'docx:document',
+  'docx:document:readonly',
+  'sheets:spreadsheet',
+  'sheets:spreadsheet:readonly',
+  'drive:drive',
+  'drive:drive:readonly',
+  'calendar:calendar',
+  'calendar:calendar:readonly',
+  'task:task',
+  'task:task:readonly',
+  'contact:user.base:readonly',
+].join(' ')
 
 export interface FeishuOAuthToken {
   accessToken: string
@@ -77,6 +93,7 @@ export async function startFeishuOAuth(): Promise<FeishuOAuthStatus> {
   const authParams = new URLSearchParams({
     app_id: appId,
     redirect_uri: REDIRECT_URI,
+    scope: OAUTH_SCOPES,
     state,
   })
 
