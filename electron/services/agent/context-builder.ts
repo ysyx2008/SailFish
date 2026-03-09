@@ -333,14 +333,13 @@ function getCompressedMessages(task: TaskMemory): AiMessage[] {
     }
   }
   
-  // 构建 assistant 回复
   let fullAssistantContent = ''
   if (toolSummaries.length > 0) {
     fullAssistantContent = `**执行摘要:**\n${toolSummaries.join('\n')}\n\n`
   }
   fullAssistantContent += assistantContent
   
-  messages.push({ role: 'assistant', content: fullAssistantContent })
+  messages.push({ role: 'assistant', content: fullAssistantContent || task.summary || '[no response]' })
   
   return messages
 }
@@ -351,7 +350,6 @@ function getCompressedMessages(task: TaskMemory): AiMessage[] {
 function getSimplifiedMessages(task: TaskMemory): AiMessage[] {
   const finalReply = extractFinalReply(task.fullSteps)
   
-  // 添加状态标记
   let statusNote = ''
   if (task.status === 'aborted') {
     statusNote = '\n\n[任务已被用户中止]'
@@ -359,9 +357,10 @@ function getSimplifiedMessages(task: TaskMemory): AiMessage[] {
     statusNote = '\n\n[任务执行失败]'
   }
   
+  const assistantContent = finalReply + statusNote || task.summary || '[no response]'
   return [
     { role: 'user', content: task.userRequest },
-    { role: 'assistant', content: finalReply + statusNote }
+    { role: 'assistant', content: assistantContent }
   ]
 }
 

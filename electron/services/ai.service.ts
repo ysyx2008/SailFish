@@ -64,11 +64,21 @@ function translateNetworkError(errMessage: string): string {
  */
 function parseApiError(rawBody: string): { message: string; code?: string } {
   try {
-    const parsed = JSON.parse(rawBody) as { error?: { message?: string; code?: string; type?: string } }
+    const parsed = JSON.parse(rawBody)
     if (parsed?.error) {
-      return {
-        message: parsed.error.message || rawBody,
-        code: parsed.error.code || parsed.error.type
+      // OpenAI 格式: {"error": {"message":"...", "type":"...", "code":"..."}}
+      if (typeof parsed.error === 'object') {
+        return {
+          message: parsed.error.message || rawBody,
+          code: parsed.error.code || parsed.error.type
+        }
+      }
+      // vLLM/SGLang 格式: {"error":"...", "error_type":"..."}
+      if (typeof parsed.error === 'string') {
+        return {
+          message: parsed.error,
+          code: parsed.error_type || undefined
+        }
       }
     }
   } catch {
@@ -195,7 +205,7 @@ function formatMessageForApi(msg: AiMessage, stripImages = false): Record<string
   if (msg.role === 'tool') {
     return {
       role: 'tool' as const,
-      content: msg.content,
+      content: msg.content || '[no output]',
       tool_call_id: msg.tool_call_id
     }
   }
@@ -226,9 +236,11 @@ function formatMessageForApi(msg: AiMessage, stripImages = false): Record<string
       content: parts
     }
   }
+  // vLLM 等推理引擎拒绝空 content，纯 assistant 文本消息也需保护
+  const content = msg.content || (msg.role === 'assistant' ? '[no response]' : ' ')
   return {
     role: msg.role,
-    content: msg.content
+    content
   }
 }
 
