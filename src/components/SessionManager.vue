@@ -1,39 +1,20 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Plus, Monitor, FolderPlus, Download, FileText, Folder, ListFilter, FileEdit, AlignLeft, AlignRight, Clock, Terminal, GripVertical, ChevronDown, ExternalLink, Settings, Play, Pencil, Trash2, X } from 'lucide-vue-next'
-import { useConfigStore, type SshSession, type SessionGroup, type JumpHostConfig, type SshEncoding, type SessionSortBy } from '../stores/config'
+import { Plus, Monitor, FolderPlus, Download, FileText, Folder, ListFilter, FileEdit, AlignLeft, AlignRight, Clock, Terminal, GripVertical, ChevronDown, ExternalLink, Settings, Play, Pencil, Trash2 } from 'lucide-vue-next'
+import { useConfigStore, type SshSession, type SessionGroup, type JumpHostConfig, type SessionSortBy } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
 import { v4 as uuidv4 } from 'uuid'
+import SessionEditDialog from './SessionEditDialog.vue'
+import GroupEditDialog from './GroupEditDialog.vue'
 
 const { t } = useI18n()
 const configStore = useConfigStore()
 const terminalStore = useTerminalStore()
 
-// 可用的编码选项（与后端保持一致）
-const encodingOptions: SshEncoding[] = [
-  'utf-8',
-  'gbk',
-  'gb2312',
-  'gb18030',
-  'big5',
-  'shift_jis',
-  'euc-jp',
-  'euc-kr',
-  'iso-8859-1',
-  'iso-8859-15',
-  'windows-1252',
-  'koi8-r',
-  'windows-1251'
-]
-
 // 分组编辑弹窗
 const showGroupEditor = ref(false)
 const editingGroup = ref<SessionGroup | null>(null)
-const groupFormData = ref<Partial<SessionGroup & { jumpHost?: Partial<JumpHostConfig> }>>({
-  name: '',
-  jumpHost: undefined
-})
 
 const emit = defineEmits<{
   openSftp: [session: SshSession]
@@ -44,21 +25,11 @@ const showNewSession = ref(false)
 const showNewMenu = ref(false)
 const showImportMenu = ref(false)
 const showSortMenu = ref(false)
-const nameInputRef = ref<HTMLInputElement | null>(null)
 
-// ESC 关闭弹窗
+// ESC 关闭菜单
 const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
-    // 按优先级关闭弹窗，并阻止其他监听器被调用
-    if (showNewSession.value) {
-      e.stopImmediatePropagation()
-      showNewSession.value = false
-      resetForm()
-    } else if (showGroupEditor.value) {
-      e.stopImmediatePropagation()
-      showGroupEditor.value = false
-      resetGroupForm()
-    } else if (showImportMenu.value) {
+    if (showImportMenu.value) {
       e.stopImmediatePropagation()
       showImportMenu.value = false
     } else if (showNewMenu.value) {
@@ -82,15 +53,6 @@ const handleClickOutside = (e: MouseEvent) => {
   }
 }
 
-// 监听弹窗状态，添加/移除键盘事件
-watch(showNewSession, (isOpen) => {
-  if (isOpen) {
-    document.addEventListener('keydown', handleKeydown)
-  } else {
-    document.removeEventListener('keydown', handleKeydown)
-  }
-})
-
 // 监听新建菜单状态
 watch(showNewMenu, (isOpen) => {
   if (isOpen) {
@@ -98,6 +60,7 @@ watch(showNewMenu, (isOpen) => {
     document.addEventListener('keydown', handleKeydown)
   } else if (!showImportMenu.value) {
     document.removeEventListener('click', handleClickOutside)
+    document.removeEventListener('keydown', handleKeydown)
   }
 })
 
@@ -108,6 +71,7 @@ watch(showImportMenu, (isOpen) => {
     document.addEventListener('keydown', handleKeydown)
   } else if (!showNewMenu.value && !showSortMenu.value) {
     document.removeEventListener('click', handleClickOutside)
+    document.removeEventListener('keydown', handleKeydown)
   }
 })
 
@@ -117,20 +81,6 @@ watch(showSortMenu, (isOpen) => {
     document.addEventListener('click', handleClickOutside)
   } else if (!showNewMenu.value && !showImportMenu.value) {
     document.removeEventListener('click', handleClickOutside)
-  }
-})
-
-// 分组编辑弹窗名称输入框引用
-const groupNameInputRef = ref<HTMLInputElement | null>(null)
-
-// 监听分组编辑弹窗状态
-watch(showGroupEditor, async (isOpen) => {
-  if (isOpen) {
-    document.addEventListener('keydown', handleKeydown)
-    await nextTick()
-    groupNameInputRef.value?.focus()
-  } else {
-    document.removeEventListener('keydown', handleKeydown)
   }
 })
 
@@ -471,20 +421,6 @@ const handleSortChange = async (sortBy: SessionSortBy) => {
   showSortMenu.value = false
 }
 
-// 表单数据
-const formData = ref<Partial<SshSession>>({
-  name: '',
-  host: '',
-  port: 22,
-  username: 'root',
-  authType: 'password',
-  password: '',
-  privateKeyPath: '',
-  passphrase: '',
-  groupId: '',
-  encoding: 'utf-8'
-})
-
 // 过滤后的会话列表
 const filteredSessions = computed(() => {
   const text = searchText.value.toLowerCase()
@@ -612,77 +548,43 @@ const groupedSessions = computed(() => {
   return orderedGroups
 })
 
-// 重置表单
-const resetForm = () => {
-  formData.value = {
-    name: '',
-    host: '',
-    port: 22,
-    username: 'root',
-    authType: 'password',
-    password: '',
-    privateKeyPath: '',
-    passphrase: '',
-    groupId: '',
-    encoding: 'utf-8'
-  }
-  editingSession.value = null
-}
-
 // 打开新建会话
-const openNewSession = async () => {
-  resetForm()
+const openNewSession = () => {
+  editingSession.value = null
   showNewSession.value = true
-  await nextTick()
-  nameInputRef.value?.focus()
 }
 
 // 打开编辑会话
-const openEditSession = async (session: SshSession) => {
+const openEditSession = (session: SshSession) => {
   editingSession.value = session
-  formData.value = { ...session }
   showNewSession.value = true
-  await nextTick()
-  nameInputRef.value?.focus()
 }
 
-// 保存会话
-const saveSession = async () => {
-  // 验证必填字段，给出具体提示
-  if (!formData.value.name?.trim()) {
-    alert(t('session.validation.nameRequired'))
-    return
-  }
-  if (!formData.value.host?.trim()) {
-    alert(t('session.validation.hostRequired'))
-    return
-  }
-  if (!formData.value.username?.trim()) {
-    alert(t('session.validation.usernameRequired'))
-    return
-  }
-
+// 保存会话（从子组件接收数据）
+const handleSaveSession = async (formData: Partial<SshSession>) => {
   try {
     if (editingSession.value) {
-      // 更新
       await configStore.updateSshSession({
         ...editingSession.value,
-        ...formData.value
+        ...formData
       } as SshSession)
     } else {
-      // 新建
       await configStore.addSshSession({
         id: uuidv4(),
-        ...formData.value
+        ...formData
       } as SshSession)
     }
-
     showNewSession.value = false
-    resetForm()
+    editingSession.value = null
   } catch (error) {
     console.error('保存会话失败:', error)
     alert(t('session.validation.saveFailed'))
   }
+}
+
+const closeSessionDialog = () => {
+  showNewSession.value = false
+  editingSession.value = null
 }
 
 // 删除会话
@@ -796,10 +698,6 @@ const handleImportResult = async (importResult: { success: boolean; sessions: an
 // 新建分组
 const openNewGroup = () => {
   editingGroup.value = null
-  groupFormData.value = {
-    name: '',
-    jumpHost: undefined
-  }
   showGroupEditor.value = true
 }
 
@@ -807,66 +705,19 @@ const openNewGroup = () => {
 const openGroupEditor = (groupName: string) => {
   const groupData = groupedSessions.value[groupName]
   if (groupData?.group) {
-    // 编辑已有分组
     editingGroup.value = groupData.group
-    groupFormData.value = {
-      name: groupData.group.name,
-      jumpHost: groupData.group.jumpHost ? { ...groupData.group.jumpHost } : undefined
-    }
   } else {
-    // 创建新分组
     editingGroup.value = null
-    groupFormData.value = {
-      name: groupName === t('session.defaultGroup') ? '' : groupName,
-      jumpHost: undefined
-    }
   }
   showGroupEditor.value = true
 }
 
-// 重置分组表单
-const resetGroupForm = () => {
-  groupFormData.value = {
-    name: '',
-    jumpHost: undefined
-  }
-  editingGroup.value = null
-}
-
-// 启用/禁用跳板机
-const toggleJumpHost = (enabled: boolean) => {
-  if (enabled) {
-    groupFormData.value.jumpHost = {
-      host: '',
-      port: 22,
-      username: '',
-      authType: 'password'
-    }
-  } else {
-    groupFormData.value.jumpHost = undefined
-  }
-}
-
-// 保存分组
-const saveGroup = async () => {
-  if (!groupFormData.value.name) {
-    alert(t('session.pleaseInputGroupName'))
-    return
-  }
-
-  // 验证跳板机配置
-  if (groupFormData.value.jumpHost) {
-    const jh = groupFormData.value.jumpHost
-    if (!jh.host || !jh.username) {
-      alert(t('session.pleaseInputJumpHostInfo'))
-      return
-    }
-  }
-
+// 保存分组（从子组件接收数据）
+const handleSaveGroup = async (data: { name: string; jumpHost?: JumpHostConfig }) => {
   const groupData: SessionGroup = {
     id: editingGroup.value?.id || uuidv4(),
-    name: groupFormData.value.name,
-    jumpHost: groupFormData.value.jumpHost as JumpHostConfig | undefined
+    name: data.name,
+    jumpHost: data.jumpHost
   }
 
   if (editingGroup.value) {
@@ -874,9 +725,8 @@ const saveGroup = async () => {
   } else {
     await configStore.addSessionGroup(groupData)
     
-    // 更新使用旧 group 字段的会话，让它们使用新的 groupId
     const sessionsToUpdate = configStore.sshSessions.filter(
-      s => s.group === groupFormData.value.name && !s.groupId
+      s => s.group === data.name && !s.groupId
     )
     for (const session of sessionsToUpdate) {
       await configStore.updateSshSession({
@@ -887,19 +737,21 @@ const saveGroup = async () => {
   }
 
   showGroupEditor.value = false
-  resetGroupForm()
+  editingGroup.value = null
 }
 
-// 删除分组
-const deleteGroup = async (groupName: string) => {
-  const groupData = groupedSessions.value[groupName]
-  if (!groupData?.group) return
-  
-  if (confirm(t('session.confirmDeleteGroupNamed', { name: groupName }))) {
-    await configStore.deleteSessionGroup(groupData.group.id)
+// 删除分组（从子组件接收）
+const handleDeleteGroup = async (group: SessionGroup) => {
+  if (confirm(t('session.confirmDeleteGroupNamed', { name: group.name }))) {
+    await configStore.deleteSessionGroup(group.id)
     showGroupEditor.value = false
-    resetGroupForm()
+    editingGroup.value = null
   }
+}
+
+const closeGroupDialog = () => {
+  showGroupEditor.value = false
+  editingGroup.value = null
 }
 </script>
 
@@ -1094,158 +946,22 @@ const deleteGroup = async (groupName: string) => {
       </div>
     </div>
 
-    <!-- 新建/编辑会话弹窗 -->
-    <div v-if="showNewSession" class="modal-overlay" @click.self="showNewSession = false">
-      <div class="modal session-modal">
-        <div class="modal-header">
-          <h3>{{ editingSession ? t('session.editHost') : t('session.newHost') }}</h3>
-          <button class="btn-icon" @click="showNewSession = false" :title="t('common.close')">
-            <X :size="16" />
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label class="form-label">{{ t('session.form.name') }} *</label>
-            <input ref="nameInputRef" v-model="formData.name" type="text" class="input" :placeholder="t('session.form.sessionNamePlaceholder')" />
-          </div>
-          <div class="form-row">
-            <div class="form-group" style="flex: 2">
-              <label class="form-label">{{ t('session.form.host') }} *</label>
-              <input v-model="formData.host" type="text" class="input" :placeholder="t('session.form.hostPlaceholder')" />
-            </div>
-            <div class="form-group" style="flex: 1">
-              <label class="form-label">{{ t('session.form.port') }}</label>
-              <input v-model.number="formData.port" type="number" class="input" />
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">{{ t('session.form.username') }} *</label>
-            <input v-model="formData.username" type="text" class="input" :placeholder="t('session.form.usernamePlaceholder')" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">{{ t('session.form.authType') }}</label>
-            <select v-model="formData.authType" class="select">
-              <option value="password">{{ t('session.form.authPassword') }}</option>
-              <option value="privateKey">{{ t('session.form.authKey') }}</option>
-            </select>
-          </div>
-          <div v-if="formData.authType === 'password'" class="form-group">
-            <label class="form-label">{{ t('session.form.password') }}</label>
-            <input v-model="formData.password" type="password" class="input" />
-          </div>
-          <template v-else>
-            <div class="form-group">
-              <label class="form-label">{{ t('session.form.privateKeyPath') }}</label>
-              <input v-model="formData.privateKeyPath" type="text" class="input" :placeholder="t('session.form.privateKeyPathPlaceholder')" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">{{ t('session.form.passphraseOptional') }}</label>
-              <input v-model="formData.passphrase" type="password" class="input" />
-            </div>
-          </template>
-          <div class="form-group">
-            <label class="form-label">{{ t('session.form.group') }}</label>
-            <select v-model="formData.groupId" class="select">
-              <option value="">{{ t('session.defaultGroup') }}</option>
-              <option v-for="group in configStore.sessionGroups" :key="group.id" :value="group.id">
-                {{ group.name }}
-                <template v-if="group.jumpHost"> ({{ t('session.form.jumpHost') }}: {{ group.jumpHost.host }})</template>
-              </option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">{{ t('session.form.encoding') }}</label>
-            <select v-model="formData.encoding" class="select">
-              <option v-for="enc in encodingOptions" :key="enc" :value="enc">
-                {{ t(`session.form.encodings.${enc}`) }}
-              </option>
-            </select>
-            <span class="form-hint">{{ t('session.form.encodingHint') }}</span>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn" @click="showNewSession = false">{{ t('common.cancel') }}</button>
-          <button class="btn btn-primary" @click="saveSession">{{ t('common.save') }}</button>
-        </div>
-      </div>
-    </div>
+    <!-- 新建/编辑会话弹窗（独立子组件，避免输入时触发父组件重渲染） -->
+    <SessionEditDialog
+      v-if="showNewSession"
+      :session="editingSession"
+      @save="handleSaveSession"
+      @close="closeSessionDialog"
+    />
 
-    <!-- 分组编辑弹窗 -->
-    <div v-if="showGroupEditor" class="modal-overlay" @click.self="showGroupEditor = false">
-      <div class="modal session-modal">
-        <div class="modal-header">
-          <h3>{{ editingGroup ? t('session.editGroup') : (groupFormData.name ? t('session.configGroup') : t('session.newGroup')) }}</h3>
-          <button class="btn-icon" @click="showGroupEditor = false" :title="t('common.close')">
-            <X :size="16" />
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label class="form-label">{{ t('session.form.groupName') }} *</label>
-            <input ref="groupNameInputRef" v-model="groupFormData.name" type="text" class="input" :placeholder="t('session.form.groupNamePlaceholder')" />
-          </div>
-          
-          <!-- 跳板机配置 -->
-          <div class="form-section">
-            <div class="form-section-header">
-              <label class="checkbox-label">
-                <input 
-                  type="checkbox" 
-                  :checked="!!groupFormData.jumpHost"
-                  @change="toggleJumpHost(($event.target as HTMLInputElement).checked)"
-                />
-                <span>{{ t('session.form.jumpHostEnable') }}</span>
-              </label>
-              <span class="form-section-hint">{{ t('session.form.jumpHostHint') }}</span>
-            </div>
-            
-            <template v-if="groupFormData.jumpHost">
-              <div class="form-row">
-                <div class="form-group" style="flex: 2">
-                  <label class="form-label">{{ t('session.form.jumpHostHost') }} *</label>
-                  <input v-model="groupFormData.jumpHost.host" type="text" class="input" :placeholder="t('session.form.hostPlaceholder')" />
-                </div>
-                <div class="form-group" style="flex: 1">
-                  <label class="form-label">{{ t('session.form.port') }}</label>
-                  <input v-model.number="groupFormData.jumpHost.port" type="number" class="input" />
-                </div>
-              </div>
-              <div class="form-group">
-                <label class="form-label">{{ t('session.form.username') }} *</label>
-                <input v-model="groupFormData.jumpHost.username" type="text" class="input" :placeholder="t('session.form.usernamePlaceholder')" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">{{ t('session.form.authType') }}</label>
-                <select v-model="groupFormData.jumpHost.authType" class="select">
-                  <option value="password">{{ t('session.form.authPassword') }}</option>
-                  <option value="privateKey">{{ t('session.form.authKey') }}</option>
-                </select>
-              </div>
-              <div v-if="groupFormData.jumpHost.authType === 'password'" class="form-group">
-                <label class="form-label">{{ t('session.form.password') }}</label>
-                <input v-model="groupFormData.jumpHost.password" type="password" class="input" />
-              </div>
-              <template v-else>
-                <div class="form-group">
-                  <label class="form-label">{{ t('session.form.privateKeyPath') }}</label>
-                  <input v-model="groupFormData.jumpHost.privateKeyPath" type="text" class="input" :placeholder="t('session.form.privateKeyPathPlaceholder')" />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">{{ t('session.form.passphraseOptional') }}</label>
-                  <input v-model="groupFormData.jumpHost.passphrase" type="password" class="input" />
-                </div>
-              </template>
-            </template>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button v-if="editingGroup" class="btn btn-danger" @click="deleteGroup(editingGroup.name)">{{ t('session.deleteGroup') }}</button>
-          <div style="flex: 1"></div>
-          <button class="btn" @click="showGroupEditor = false">{{ t('common.cancel') }}</button>
-          <button class="btn btn-primary" @click="saveGroup">{{ t('common.save') }}</button>
-        </div>
-      </div>
-    </div>
+    <!-- 分组编辑弹窗（独立子组件） -->
+    <GroupEditDialog
+      v-if="showGroupEditor"
+      :group="editingGroup"
+      @save="handleSaveGroup"
+      @delete="handleDeleteGroup"
+      @close="closeGroupDialog"
+    />
   </div>
 </template>
 
@@ -1682,109 +1398,5 @@ const deleteGroup = async (groupName: string) => {
   margin-top: 8px;
 }
 
-/* 弹窗 */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal {
-  width: 420px;
-  max-height: 80vh;
-  background: var(--bg-secondary);
-  border-radius: 12px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.modal-header h3 {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.modal-body {
-  padding: 20px;
-  max-height: 60vh;
-  overflow-y: auto;
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 16px 20px;
-  border-top: 1px solid var(--border-color);
-}
-
-.form-row {
-  display: flex;
-  gap: 12px;
-}
-
-.form-hint {
-  display: block;
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 4px;
-}
-
-/* 分组编辑弹窗样式 */
-.form-section {
-  margin-top: 16px;
-  padding: 12px;
-  background: var(--bg-tertiary);
-  border-radius: 8px;
-}
-
-.form-section-header {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 12px;
-}
-
-.form-section-hint {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-left: 22px;
-}
-
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
-.checkbox-label input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
-  cursor: pointer;
-}
-
-.btn-danger {
-  background: #e53e3e;
-  color: white;
-}
-
-.btn-danger:hover {
-  background: #c53030;
-}
 </style>
 
