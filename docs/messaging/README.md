@@ -48,7 +48,7 @@ Choose your platform and follow its setup guide:
 
 ## Connect in SailFish
 
-1. Open SailFish, go to **Settings** → **Remote Access**
+1. Open SailFish, go to **Settings** → **Messaging**
 2. In the **Messaging Integration** section, expand the card for your platform (Slack / Telegram / DingTalk / Feishu / WeCom)
 3. Enter the credentials obtained from the setup guide above:
    - **Slack**: Bot Token (xoxb-...) + App-Level Token (xapp-...)

@@ -41,4 +41,4 @@ In the app details page under **Credentials & Basic Info**, copy:
 
 ## Next Steps
 
-In SailFish, go to **Settings** → **Remote Access**, expand the **DingTalk** card, and enter **ClientID** and **ClientSecret**. Then click **Connect**. See [Connect in SailFish](./README.md#connect-in-sailfish) for full usage and FAQ.
+In SailFish, go to **Settings** → **Messaging**, expand the **DingTalk** card, and enter **ClientID** and **ClientSecret**. Then click **Connect**. See [Connect in SailFish](./README.md#connect-in-sailfish) for full usage and FAQ.

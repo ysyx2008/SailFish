@@ -77,7 +77,7 @@ Go to **OAuth & Permissions** in the left menu, and add the following **Bot Toke
 
 ## Next Steps
 
-In SailFish, go to **Settings** → **Remote Access**, expand the **Slack** card, and enter:
+In SailFish, go to **Settings** → **Messaging**, expand the **Slack** card, and enter:
 
 - **Bot User OAuth Token** (xoxb-...)
 - **App-Level Token** (xapp-...)

@@ -36,4 +36,4 @@ If you want to use the bot in group chats:
 
 ## Next Steps
 
-In SailFish, go to **Settings** → **Remote Access**, expand the **Telegram** card, enter the **Bot Token**, and click **Connect**. See [Connect in SailFish](./README.md#connect-in-sailfish) for full usage and FAQ.
+In SailFish, go to **Settings** → **Messaging**, expand the **Telegram** card, enter the **Bot Token**, and click **Connect**. See [Connect in SailFish](./README.md#connect-in-sailfish) for full usage and FAQ.

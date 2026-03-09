@@ -196,7 +196,7 @@ Go to **Permission Management** in the left menu, search for and enable these pe
 
 Feishu requires an active long connection before allowing event subscription configuration. So you need to **connect from SailFish first**:
 
-1. Open SailFish, go to **Settings** → **Remote Access**
+1. Open SailFish, go to **Settings** → **Messaging**
 2. Expand the **Feishu** card, enter the App ID and App Secret from Step 2
 3. Click **Connect** and wait for the status to show ✅ **Connected**
 
@@ -219,8 +219,8 @@ Feishu requires an active long connection before allowing event subscription con
 
 ## Connect in SailFish
 
-1. Open SailFish, go to **Settings** → **Remote Access**
-2. In the **Messaging Integration** section, expand the card for your platform (Slack / Telegram / DingTalk / Feishu)
+1. Open SailFish, go to **Settings** → **Messaging**
+2. Expand the card for your platform (Slack / Telegram / DingTalk / Feishu)
 3. Enter the credentials obtained above:
    - Slack: Bot Token (xoxb-...) + App-Level Token (xapp-...)
    - Telegram: Bot Token

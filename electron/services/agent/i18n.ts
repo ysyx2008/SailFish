@@ -638,7 +638,7 @@ const translations = {
     'feishu.missing_resource': '缺少 resource 参数',
     'feishu.missing_resource_or_action': '缺少 resource 或 action 参数',
     'feishu.unsupported_resource': '不支持的资源类型: {resource}',
-    'feishu.credentials_missing': '飞书 App ID 和 App Secret 未配置，请在设置 → 消息通知 → 飞书中配置',
+    'feishu.credentials_missing': '飞书 App ID 和 App Secret 未配置，请在设置 → 即时通讯 → 飞书中配置',
     'feishu.bitable_app_token_required': 'bitable 资源需要 app_token 参数（可从多维表格 URL 获取）',
     'feishu.bitable_app_created': '多维表格「{name}」创建成功',
     'feishu.bitable_write_required': 'bitable 记录操作需要 app_token 和 table_id 参数',
@@ -670,7 +670,7 @@ const translations = {
 你可以通过 feishu_read 和 feishu_write 两个工具操作飞书的云端资源。
 
 ### 权限说明
-所有 API 调用使用「设置 → 消息通知 → 飞书」中配置的应用凭证。用户需要在飞书开发者后台为该应用开通对应的 API 权限：
+所有 API 调用使用「设置 → 即时通讯 → 飞书」中配置的应用凭证。用户需要在飞书开发者后台为该应用开通对应的 API 权限：
 - 多维表格：bitable:app / bitable:record
 - 云文档：docx:document / docx:document:readonly
 - 电子表格：sheets:spreadsheet
@@ -704,7 +704,7 @@ const translations = {
     'wecom.missing_resource_or_action': '缺少 resource 或 action 参数',
     'wecom.unsupported_resource': '不支持的资源类型: {resource}',
     'wecom.unsupported_action': '{resource} 不支持 action: {action}',
-    'wecom.credentials_missing': '企业微信 Corp ID 和 Corp Secret 未配置，请在设置 → 消息通知 → 企业微信中配置',
+    'wecom.credentials_missing': '企业微信 Corp ID 和 Corp Secret 未配置，请在设置 → 即时通讯 → 企业微信中配置',
     'wecom.calendar_data_required': 'calendar create 需要 data（含 summary, start_time, end_time）',
     'wecom.calendar_time_required': 'calendar create 需要 start_time 和 end_time（ISO 8601 或 Unix 时间戳）',
     'wecom.event_id_required': 'calendar {action} 需要 event_id（即 schedule_id）',
@@ -718,7 +718,7 @@ const translations = {
 你可以通过 wecom_read 和 wecom_write 两个工具操作企业微信的资源。
 
 ### 权限说明
-所有 API 调用使用「设置 → 消息通知 → 企业微信」中配置的应用凭证（Corp ID + Corp Secret）。用户需要在企业微信管理后台为该自建应用开通对应的 API 权限：
+所有 API 调用使用「设置 → 即时通讯 → 企业微信」中配置的应用凭证（Corp ID + Corp Secret）。用户需要在企业微信管理后台为该自建应用开通对应的 API 权限：
 - 日历日程：OA 日历接口
 - 审批：OA 审批接口
 - 考勤打卡：打卡接口
@@ -751,7 +751,7 @@ const translations = {
     'dingtalk.missing_resource_or_action': '缺少 resource 或 action 参数',
     'dingtalk.unsupported_resource': '不支持的资源类型: {resource}',
     'dingtalk.unsupported_action': '{resource} 不支持 action: {action}',
-    'dingtalk.credentials_missing': '钉钉 AppKey 和 AppSecret 未配置，请在设置 → 消息通知 → 钉钉中配置',
+    'dingtalk.credentials_missing': '钉钉 AppKey 和 AppSecret 未配置，请在设置 → 即时通讯 → 钉钉中配置',
     'dingtalk.union_id_required': '{resource} 操作需要 union_id 参数（通过 contact 资源查询用户信息获取）',
     'dingtalk.calendar_data_required': 'calendar create 需要 data（含 summary, start, end）',
     'dingtalk.calendar_time_required': 'calendar create 需要 start 和 end 时间（ISO 8601 格式）',
@@ -769,7 +769,7 @@ const translations = {
 你可以通过 dingtalk_read 和 dingtalk_write 两个工具操作钉钉的云端资源。
 
 ### 权限说明
-所有 API 调用使用「设置 → 消息通知 → 钉钉」中配置的应用凭证（AppKey + AppSecret）。用户需要在钉钉开发者后台为该应用开通对应的 API 权限：
+所有 API 调用使用「设置 → 即时通讯 → 钉钉」中配置的应用凭证（AppKey + AppSecret）。用户需要在钉钉开发者后台为该应用开通对应的 API 权限：
 - 日历日程：日历读写权限
 - 待办任务：待办任务读写权限
 - 考勤打卡：考勤打卡读取权限
@@ -1815,7 +1815,7 @@ After saving, wrap up naturally — like friends who've finished getting to know
     'feishu.missing_resource': 'Missing resource parameter',
     'feishu.missing_resource_or_action': 'Missing resource or action parameter',
     'feishu.unsupported_resource': 'Unsupported resource type: {resource}',
-    'feishu.credentials_missing': 'Feishu App ID and App Secret not configured. Set them in Settings → Notifications → Feishu',
+    'feishu.credentials_missing': 'Feishu App ID and App Secret not configured. Set them in Settings → Messaging → Feishu',
     'feishu.bitable_app_token_required': 'bitable resource requires app_token parameter (from Bitable URL)',
     'feishu.bitable_app_created': 'Bitable "{name}" created',
     'feishu.bitable_write_required': 'bitable record operations require app_token and table_id parameters',
@@ -1847,7 +1847,7 @@ After saving, wrap up naturally — like friends who've finished getting to know
 You can operate Feishu cloud resources through the feishu_read and feishu_write tools.
 
 ### Permissions
-All API calls use the app credentials configured in "Settings → Notifications → Feishu". The user needs to enable corresponding API permissions in the Feishu Developer Console:
+All API calls use the app credentials configured in "Settings → Messaging → Feishu". The user needs to enable corresponding API permissions in the Feishu Developer Console:
 - Bitable: bitable:app / bitable:record
 - Docs: docx:document / docx:document:readonly
 - Sheets: sheets:spreadsheet
@@ -1881,7 +1881,7 @@ All API calls use the app credentials configured in "Settings → Notifications 
     'wecom.missing_resource_or_action': 'Missing resource or action parameter',
     'wecom.unsupported_resource': 'Unsupported resource type: {resource}',
     'wecom.unsupported_action': '{resource} does not support action: {action}',
-    'wecom.credentials_missing': 'WeCom Corp ID and Corp Secret not configured. Set them in Settings → Notifications → WeCom',
+    'wecom.credentials_missing': 'WeCom Corp ID and Corp Secret not configured. Set them in Settings → Messaging → WeCom',
     'wecom.calendar_data_required': 'calendar create requires data (with summary, start_time, end_time)',
     'wecom.calendar_time_required': 'calendar create requires start_time and end_time (ISO 8601 or Unix timestamp)',
     'wecom.event_id_required': 'calendar {action} requires event_id (schedule_id)',
@@ -1895,7 +1895,7 @@ All API calls use the app credentials configured in "Settings → Notifications 
 Use wecom_read and wecom_write tools to operate WeCom resources.
 
 ### Permissions
-All API calls use the app credentials (Corp ID + Corp Secret) from "Settings → Notifications → WeCom". The app needs these API permissions in WeCom admin console:
+All API calls use the app credentials (Corp ID + Corp Secret) from "Settings → Messaging → WeCom". The app needs these API permissions in WeCom admin console:
 - Calendar: OA Calendar API
 - Approval: OA Approval API
 - Attendance: Checkin API
@@ -1928,7 +1928,7 @@ All API calls use the app credentials (Corp ID + Corp Secret) from "Settings →
     'dingtalk.missing_resource_or_action': 'Missing resource or action parameter',
     'dingtalk.unsupported_resource': 'Unsupported resource type: {resource}',
     'dingtalk.unsupported_action': '{resource} does not support action: {action}',
-    'dingtalk.credentials_missing': 'DingTalk AppKey and AppSecret not configured. Set them in Settings → Notifications → DingTalk',
+    'dingtalk.credentials_missing': 'DingTalk AppKey and AppSecret not configured. Set them in Settings → Messaging → DingTalk',
     'dingtalk.union_id_required': '{resource} operation requires union_id parameter (obtain via contact resource user lookup)',
     'dingtalk.calendar_data_required': 'calendar create requires data (with summary, start, end)',
     'dingtalk.calendar_time_required': 'calendar create requires start and end time (ISO 8601 format)',
@@ -1946,7 +1946,7 @@ All API calls use the app credentials (Corp ID + Corp Secret) from "Settings →
 Use dingtalk_read and dingtalk_write tools to operate DingTalk cloud resources.
 
 ### Permissions
-All API calls use the app credentials (AppKey + AppSecret) from "Settings → Notifications → DingTalk". The app needs these API permissions in DingTalk Developer Console:
+All API calls use the app credentials (AppKey + AppSecret) from "Settings → Messaging → DingTalk". The app needs these API permissions in DingTalk Developer Console:
 - Calendar: Calendar read/write
 - Todo: Todo task read/write
 - Attendance: Attendance read

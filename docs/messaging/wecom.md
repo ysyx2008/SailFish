@@ -44,7 +44,7 @@ Go to **My Enterprise** (我的企业) → **Enterprise Information** (企业信
 
 ## Step 4: Enter Credentials in SailFish
 
-1. Open SailFish, go to **Settings** → **Remote Access**
+1. Open SailFish, go to **Settings** → **Messaging**
 2. Expand the **WeCom** card
 3. Enter:
    - **Corp ID** (from Step 2)
@@ -79,6 +79,23 @@ WeCom will send a GET request to verify the URL. SailFish will respond using you
 ## Next Steps
 
 Keep SailFish running and connected. Optional: check **Auto-connect on startup**. See [Connect in SailFish](./README.md#connect-in-sailfish) and [Usage](./README.md#usage) for full details.
+
+### Deep Integration (WeCom Skill) Permissions
+
+If you want the Agent to not only send/receive messages but also manage WeCom contacts, calendar, approvals, and attendance data, you need to enable additional permissions.
+
+WeCom OA-related APIs require authorization in specific **system apps** within the admin console — enter each system app and add your self-built app to the "Apps allowed to call API" list:
+
+| Feature | Authorization Path | Notes |
+|---------|-------------------|-------|
+| Contacts | Admin Console → Contacts → Organization → API Permissions | Usually enabled by default |
+| Calendar | Admin Console → App Management → Calendar → Apps allowed to call API → **Edit** | May need to enable "Calendar" in App Management first |
+| Approval | Admin Console → App Management → Approval → Apps allowed to call API → **Edit** | Enables querying approval records and submitting requests |
+| Attendance | Admin Console → App Management → Check-in → Apps allowed to call API → **Edit** | Enables querying member check-in data |
+
+Additionally, API calls require your public egress IP to be added to **"Trusted Enterprise IPs"** in the self-built app details (check your IP with `curl ifconfig.me`). The callback URL must be configured first (Steps 3-5) before adding trusted IPs.
+
+---
 
 ### File Sending
 

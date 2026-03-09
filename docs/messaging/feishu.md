@@ -32,7 +32,9 @@ In the app details page under **Credentials & Basic Info**, copy:
 
 ## Step 4: Enable Permissions
 
-Go to **Permission Management** in the left menu, search for and enable these permissions:
+Go to **Permission Management** in the left menu, search for and enable the permissions below.
+
+### IM Messaging Permissions (Required)
 
 | Permission | Description |
 |------------|-------------|
@@ -41,13 +43,41 @@ Go to **Permission Management** in the left menu, search for and enable these pe
 | `im:message:readonly` | Read DM and group messages |
 | `im:resource` | Access and upload images/files (for file sending) |
 
+### Deep Integration Permissions (Optional — required when using the Feishu skill)
+
+If you want the Agent to operate on Feishu data such as Bitable, Docs, Calendar, etc. (not just send/receive messages), enable these additional permissions. Each permission typically has both read (`:readonly`) and write variants — enable as needed:
+
+| Permission | Description |
+|------------|-------------|
+| `bitable:app` / `bitable:app:readonly` | Bitable: create apps, read/write records, manage fields and views |
+| `docx:document` / `docx:document:readonly` | Docs: read and edit Feishu document content |
+| `sheets:spreadsheet` / `sheets:spreadsheet:readonly` | Sheets: read and write cell data |
+| `drive:drive` / `drive:drive:readonly` | Drive: browse folders and files, upload and download |
+| `calendar:calendar` / `calendar:calendar:readonly` | Calendar: view and manage events |
+| `task:task` / `task:task:readonly` | Tasks: view and manage todo tasks |
+| `contact:user.base:readonly` | Contacts: read basic user info (read-only) |
+
+> These permissions only take effect after you publish an app version (Step 8).
+
 ---
 
-## Step 5: Connect SailFish First
+## Step 5: Configure Security Settings (Required for OAuth)
+
+If you want the Agent to act as your personal Feishu identity (OAuth user authorization), add a redirect URL:
+
+1. Go to **Security Settings** in the left menu
+2. Add this **Redirect URL**: `http://localhost:19286/oauth/feishu/callback`
+3. Save
+
+> If you only use the app identity (default mode), you can skip this step.
+
+---
+
+## Step 6: Connect SailFish First
 
 Feishu requires an active long connection before allowing event subscription configuration. So you need to **connect from SailFish first**:
 
-1. Open SailFish, go to **Settings** → **Remote Access**
+1. Open SailFish, go to **Settings** → **Messaging**
 2. Expand the **Feishu** card, enter the App ID and App Secret from Step 2
 3. Click **Connect** and wait for the status to show ✅ **Connected**
 
@@ -55,7 +85,7 @@ Feishu requires an active long connection before allowing event subscription con
 
 ---
 
-## Step 6: Configure Event Subscription (Long Connection Mode)
+## Step 7: Configure Event Subscription (Long Connection Mode)
 
 1. Go to **Events & Callbacks** → **Event Configuration** in the left menu
 2. Select **Use long connection to receive events** as the subscription method, then click **Save** (SailFish is already connected, so the platform won't report errors)
@@ -64,11 +94,13 @@ Feishu requires an active long connection before allowing event subscription con
 
 ---
 
-## Step 7: Publish the App
+## Step 8: Publish the App
 
 1. Go to **Version Management & Release**
 2. Create a version and submit
 3. Internal review is usually fast; the app takes effect after approval
+
+> **Important**: Permissions from Step 4 only take effect after the app is published. If you add new permissions later, you'll need to create and publish a new version.
 
 ---
 
@@ -78,7 +110,7 @@ Your Feishu app is ready. Keep SailFish connected; optional: check **Auto-connec
 
 ### FAQ: "App Has No Active Long Connection"
 
-This is expected. You must connect from SailFish first (Step 5) to establish a WebSocket long connection before the Feishu platform allows saving the long connection subscription configuration.
+This is expected. You must connect from SailFish first (Step 6) to establish a WebSocket long connection before the Feishu platform allows saving the long connection subscription configuration.
 
 ### File Sending
 
