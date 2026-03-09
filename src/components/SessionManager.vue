@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Plus, Monitor, FolderPlus, Download, FileText, Folder, ListFilter, FileEdit, AlignLeft, AlignRight, Clock, Terminal, GripVertical, ChevronDown, ExternalLink, Settings, Play, Pencil, Trash2 } from 'lucide-vue-next'
 import { useConfigStore, type SshSession, type SessionGroup, type JumpHostConfig, type SessionSortBy } from '../stores/config'
@@ -7,572 +7,96 @@ import { useTerminalStore } from '../stores/terminal'
 import { v4 as uuidv4 } from 'uuid'
 import SessionEditDialog from './SessionEditDialog.vue'
 import GroupEditDialog from './GroupEditDialog.vue'
+import { useSessionList } from '../composables/useSessionList'
+import { useSessionDragDrop } from '../composables/useSessionDragDrop'
 
 const { t } = useI18n()
 const configStore = useConfigStore()
 const terminalStore = useTerminalStore()
-
-// 分组编辑弹窗
-const showGroupEditor = ref(false)
-const editingGroup = ref<SessionGroup | null>(null)
 
 const emit = defineEmits<{
   openSftp: [session: SshSession]
   openFileManagerWindow: [session: SshSession]
 }>()
 
+// ==================== UI 状态 ====================
 const showNewSession = ref(false)
+const showGroupEditor = ref(false)
 const showNewMenu = ref(false)
 const showImportMenu = ref(false)
 const showSortMenu = ref(false)
+const editingSession = ref<SshSession | null>(null)
+const editingGroup = ref<SessionGroup | null>(null)
+const searchText = ref('')
+const collapsedGroups = ref<Set<string>>(new Set())
 
-// ESC 关闭菜单
+// ==================== Composables ====================
+const { groupedSessions } = useSessionList(searchText)
+const {
+  draggingSession, dragOverGroupName, dragOverSessionId, dragOverPosition,
+  draggingGroupName, dragOverTargetGroupName,
+  handleDragStart, handleGroupDragStart, handleDragEnd,
+  handleDragOverGroup, handleDragOverSession, handleDragLeaveGroup,
+  handleDragOverGroupHeader, handleDropToGroupHeader,
+  handleDropToSession, handleDropToGroup,
+} = useSessionDragDrop(groupedSessions, collapsedGroups)
+
+// ==================== 菜单键盘/点击 ====================
 const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
-    if (showImportMenu.value) {
-      e.stopImmediatePropagation()
-      showImportMenu.value = false
-    } else if (showNewMenu.value) {
-      e.stopImmediatePropagation()
-      showNewMenu.value = false
-    }
+    if (showImportMenu.value) { e.stopImmediatePropagation(); showImportMenu.value = false }
+    else if (showNewMenu.value) { e.stopImmediatePropagation(); showNewMenu.value = false }
   }
 }
 
-// 点击外部关闭菜单
 const handleClickOutside = (e: MouseEvent) => {
   const target = e.target as HTMLElement
-  if (!target.closest('.import-dropdown')) {
-    showImportMenu.value = false
-  }
-  if (!target.closest('.new-dropdown')) {
-    showNewMenu.value = false
-  }
-  if (!target.closest('.sort-dropdown')) {
-    showSortMenu.value = false
-  }
+  if (!target.closest('.import-dropdown')) showImportMenu.value = false
+  if (!target.closest('.new-dropdown')) showNewMenu.value = false
+  if (!target.closest('.sort-dropdown')) showSortMenu.value = false
 }
 
-// 监听新建菜单状态
 watch(showNewMenu, (isOpen) => {
-  if (isOpen) {
-    document.addEventListener('click', handleClickOutside)
-    document.addEventListener('keydown', handleKeydown)
-  } else if (!showImportMenu.value) {
-    document.removeEventListener('click', handleClickOutside)
-    document.removeEventListener('keydown', handleKeydown)
-  }
+  if (isOpen) { document.addEventListener('click', handleClickOutside); document.addEventListener('keydown', handleKeydown) }
+  else if (!showImportMenu.value) { document.removeEventListener('click', handleClickOutside); document.removeEventListener('keydown', handleKeydown) }
 })
 
-// 监听导入菜单状态
 watch(showImportMenu, (isOpen) => {
-  if (isOpen) {
-    document.addEventListener('click', handleClickOutside)
-    document.addEventListener('keydown', handleKeydown)
-  } else if (!showNewMenu.value && !showSortMenu.value) {
-    document.removeEventListener('click', handleClickOutside)
-    document.removeEventListener('keydown', handleKeydown)
-  }
+  if (isOpen) { document.addEventListener('click', handleClickOutside); document.addEventListener('keydown', handleKeydown) }
+  else if (!showNewMenu.value && !showSortMenu.value) { document.removeEventListener('click', handleClickOutside); document.removeEventListener('keydown', handleKeydown) }
 })
 
-// 监听排序菜单状态
 watch(showSortMenu, (isOpen) => {
-  if (isOpen) {
-    document.addEventListener('click', handleClickOutside)
-  } else if (!showNewMenu.value && !showImportMenu.value) {
-    document.removeEventListener('click', handleClickOutside)
-  }
+  if (isOpen) document.addEventListener('click', handleClickOutside)
+  else if (!showNewMenu.value && !showImportMenu.value) document.removeEventListener('click', handleClickOutside)
 })
 
-// 监听菜单导入 Xshell 事件
-const handleMenuImportXshell = () => {
-  showImportMenu.value = true
-}
+const handleMenuImportXshell = () => { showImportMenu.value = true }
 
-onMounted(() => {
-  window.addEventListener('menu:import-xshell', handleMenuImportXshell)
-})
-
+onMounted(() => { window.addEventListener('menu:import-xshell', handleMenuImportXshell) })
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown)
   document.removeEventListener('click', handleClickOutside)
   window.removeEventListener('menu:import-xshell', handleMenuImportXshell)
 })
-const editingSession = ref<SshSession | null>(null)
-const searchText = ref('')
 
 // ==================== 分组折叠 ====================
-const collapsedGroups = ref<Set<string>>(new Set())
-const savedCollapsedState = ref<Set<string> | null>(null)  // 拖拽前保存的折叠状态
-
-// 切换分组折叠状态
 const toggleGroupCollapse = (groupName: string) => {
-  if (collapsedGroups.value.has(groupName)) {
-    collapsedGroups.value.delete(groupName)
-  } else {
-    collapsedGroups.value.add(groupName)
-  }
+  if (collapsedGroups.value.has(groupName)) collapsedGroups.value.delete(groupName)
+  else collapsedGroups.value.add(groupName)
 }
 
-// ==================== 拖拽相关 ====================
-const draggingSession = ref<SshSession | null>(null)
-const dragOverGroupName = ref<string | null>(null)
-const dragOverSessionId = ref<string | null>(null)
-const dragOverPosition = ref<'before' | 'after'>('before')  // 拖放位置：目标前面或后面
-const draggingGroupName = ref<string | null>(null)  // 使用分组名称而非对象
-const dragOverTargetGroupName = ref<string | null>(null)
+// ==================== 会话操作 ====================
+const openNewSession = () => { editingSession.value = null; showNewSession.value = true }
+const openEditSession = (session: SshSession) => { editingSession.value = session; showNewSession.value = true }
+const closeSessionDialog = () => { showNewSession.value = false; editingSession.value = null }
 
-// 拖拽开始 - 主机
-const handleDragStart = (session: SshSession, event: DragEvent) => {
-  draggingSession.value = session
-  draggingGroupName.value = null
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', session.id)
-    event.dataTransfer.setData('application/x-session', 'true')
-  }
-  // 添加拖拽样式
-  const target = event.target as HTMLElement
-  setTimeout(() => {
-    target.classList.add('dragging')
-  }, 0)
-}
-
-// 拖拽开始 - 分组（支持默认分组）
-const handleGroupDragStart = (groupName: string, event: DragEvent) => {
-  draggingGroupName.value = groupName
-  draggingSession.value = null
-  
-  // 保存当前折叠状态并折叠所有分组
-  savedCollapsedState.value = new Set(collapsedGroups.value)
-  const allGroupNames = Object.keys(groupedSessions.value)
-  allGroupNames.forEach(name => {
-    collapsedGroups.value.add(name)
-  })
-  
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', groupName)
-    event.dataTransfer.setData('application/x-group', 'true')
-  }
-  const target = event.target as HTMLElement
-  setTimeout(() => {
-    target.classList.add('dragging')
-  }, 0)
-}
-
-// 拖拽结束
-const handleDragEnd = (event: DragEvent) => {
-  // 恢复折叠状态
-  if (savedCollapsedState.value !== null) {
-    collapsedGroups.value = new Set(savedCollapsedState.value)
-    savedCollapsedState.value = null
-  }
-  
-  draggingSession.value = null
-  draggingGroupName.value = null
-  dragOverGroupName.value = null
-  dragOverSessionId.value = null
-  dragOverTargetGroupName.value = null
-  const target = event.target as HTMLElement
-  target.classList.remove('dragging')
-}
-
-// 拖拽经过分组
-const handleDragOverGroup = (groupName: string, event: DragEvent) => {
-  event.preventDefault()
-  if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = 'move'
-  }
-  dragOverGroupName.value = groupName
-}
-
-// 拖拽经过主机（用于组内排序）
-const handleDragOverSession = (sessionId: string, event: DragEvent) => {
-  event.preventDefault()
-  event.stopPropagation()
-  if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = 'move'
-  }
-  dragOverSessionId.value = sessionId
-  
-  // 检测鼠标在元素上的位置，判断是插入到前面还是后面
-  const target = event.currentTarget as HTMLElement
-  const rect = target.getBoundingClientRect()
-  const mouseY = event.clientY
-  const threshold = rect.top + rect.height / 2
-  dragOverPosition.value = mouseY < threshold ? 'before' : 'after'
-}
-
-// 拖拽离开分组
-const handleDragLeaveGroup = () => {
-  dragOverGroupName.value = null
-}
-
-// 拖拽经过分组标题（用于分组排序或会话拖入分组）
-const handleDragOverGroupHeader = (targetGroupName: string, event: DragEvent) => {
-  event.preventDefault()
-  if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = 'move'
-  }
-  
-  // 如果正在拖动分组
-  if (draggingGroupName.value) {
-    event.stopPropagation()
-    dragOverTargetGroupName.value = targetGroupName
-  } else if (draggingSession.value) {
-    // 如果正在拖动会话，设置分组的拖放效果
-    dragOverGroupName.value = targetGroupName
-  }
-}
-
-// 放置到分组标题（分组排序）
-const handleDropToGroupHeader = async (targetGroupName: string, event: DragEvent) => {
-  event.preventDefault()
-  dragOverTargetGroupName.value = null
-  
-  // 如果正在拖动会话（而不是分组），让事件冒泡到父元素处理
-  if (!draggingGroupName.value) {
-    // 手动调用 handleDropToGroup 来处理会话拖放到分组标题的情况
-    if (draggingSession.value) {
-      await handleDropToGroup(targetGroupName, event)
-    }
-    return
-  }
-  
-  event.stopPropagation()
-  
-  if (draggingGroupName.value === targetGroupName) {
-    draggingGroupName.value = null
-    return
-  }
-  
-  const defaultGroupName = t('session.defaultGroup')
-  const defaultGroupOrder = configStore.defaultGroupSortOrder
-  
-  // 构建包含默认分组的完整分组列表
-  type SortItem = { name: string; order: number; group: SessionGroup | null }
-  const sortItems: SortItem[] = []
-  
-  // 添加已定义的分组
-  const sortedGroupList = [...configStore.sessionGroups].sort((a, b) => 
-    (a.sortOrder ?? Infinity) - (b.sortOrder ?? Infinity)
-  )
-  sortedGroupList.forEach(g => {
-    sortItems.push({ name: g.name, order: g.sortOrder ?? Infinity, group: g })
-  })
-  
-  // 始终添加默认分组（无论是否有会话）
-  sortItems.push({ 
-    name: defaultGroupName, 
-    order: defaultGroupOrder === -1 ? Infinity : defaultGroupOrder, 
-    group: null 
-  })
-  
-  // 按 order 排序
-  sortItems.sort((a, b) => a.order - b.order)
-  
-  const dragIndex = sortItems.findIndex(item => item.name === draggingGroupName.value)
-  const dropIndex = sortItems.findIndex(item => item.name === targetGroupName)
-  
-  if (dragIndex === -1 || dropIndex === -1) {
-    draggingGroupName.value = null
-    return
-  }
-  
-  // 移动分组
-  const [movedItem] = sortItems.splice(dragIndex, 1)
-  sortItems.splice(dropIndex, 0, movedItem)
-  
-  // 更新所有分组的 sortOrder
-  const updates: { id: string; sortOrder: number }[] = []
-  let newDefaultGroupOrder = -1
-  
-  sortItems.forEach((item, index) => {
-    if (item.group) {
-      updates.push({ id: item.group.id, sortOrder: index })
-    } else if (item.name === defaultGroupName) {
-      newDefaultGroupOrder = index
-    }
-  })
-  
-  // 更新有实体的分组
-  if (updates.length > 0) {
-    await configStore.updateGroupsSortOrder(updates)
-  }
-  
-  // 更新默认分组的排序位置
-  if (newDefaultGroupOrder !== configStore.defaultGroupSortOrder) {
-    await configStore.setDefaultGroupSortOrder(newDefaultGroupOrder)
-  }
-  
-  draggingGroupName.value = null
-}
-
-// 放置到主机位置（组内排序或跨分组拖放到指定位置）
-const handleDropToSession = async (targetSessionId: string, groupName: string, event: DragEvent) => {
-  event.preventDefault()
-  event.stopPropagation()
-  dragOverSessionId.value = null
-  dragOverGroupName.value = null
-  
-  if (!draggingSession.value || draggingSession.value.id === targetSessionId) {
-    return
-  }
-  
-  // 只有在自定义排序模式下才支持拖拽排序
-  if (configStore.sessionSortBy !== 'custom') {
-    await configStore.setSessionSortBy('custom')
-  }
-  
-  const groupData = groupedSessions.value[groupName]
-  if (!groupData) return
-  
-  const targetGroupId = groupData.group?.id
-  const sourceGroupId = draggingSession.value.groupId
-  const isCrossGroup = sourceGroupId !== targetGroupId
-  const draggedSessionId = draggingSession.value.id
-  
-  // 获取目标分组中的会话（不包含被拖动的会话）
-  const targetGroupSessions = configStore.sshSessions.filter(s => {
-    if (s.id === draggedSessionId) return false // 排除被拖动的会话
-    const gId = s.groupId
-    return gId === targetGroupId || (!gId && !targetGroupId)
-  })
-  
-  // 按 sortOrder 排序
-  const sortedSessions = [...targetGroupSessions].sort((a, b) => 
-    (a.sortOrder ?? Infinity) - (b.sortOrder ?? Infinity)
-  )
-  
-  // 找到目标位置
-  const dropIndex = sortedSessions.findIndex(s => s.id === targetSessionId)
-  if (dropIndex === -1) return
-  
-  // 根据鼠标位置决定插入到目标的前面还是后面
-  const insertIndex = dragOverPosition.value === 'before' ? dropIndex : dropIndex + 1
-  
-  // 在目标位置插入被拖动会话的 ID（用于计算 sortOrder）
-  const newOrder: string[] = sortedSessions.map(s => s.id)
-  newOrder.splice(insertIndex, 0, draggedSessionId)
-  
-  // 更新被拖动会话的分组（如果是跨分组）
-  if (isCrossGroup) {
-    await configStore.updateSshSession({
-      ...draggingSession.value,
-      groupId: targetGroupId,
-      group: undefined,
-      sortOrder: dropIndex // 临时设置，后面会被覆盖
-    })
-  }
-  
-  // 更新所有会话的 sortOrder
-  const updates: { id: string; sortOrder: number }[] = newOrder.map((id, index) => ({
-    id,
-    sortOrder: index
-  }))
-  
-  await configStore.updateSessionsSortOrder(updates)
-}
-
-// 放置到分组
-const handleDropToGroup = async (groupName: string, event: DragEvent) => {
-  event.preventDefault()
-  dragOverGroupName.value = null
-  
-  // 如果是分组拖拽，忽略
-  if (draggingGroupName.value) return
-  
-  if (!draggingSession.value) return
-  
-  const session = draggingSession.value
-  const groupData = groupedSessions.value[groupName]
-  
-  // 获取目标分组的 ID
-  let targetGroupId: string | undefined = undefined
-  if (groupData?.group) {
-    targetGroupId = groupData.group.id
-  }
-  
-  // 如果分组没有变化，不需要更新
-  const currentGroupId = session.groupId || undefined
-  if (currentGroupId === targetGroupId) {
-    draggingSession.value = null
-    return
-  }
-  
-  // 更新主机的分组，并设置为最后一个
-  const targetGroupSessions = configStore.sshSessions.filter(s => s.groupId === targetGroupId)
-  const maxOrder = Math.max(...targetGroupSessions.map(s => s.sortOrder ?? 0), -1)
-  
-  await configStore.updateSshSession({
-    ...session,
-    groupId: targetGroupId,
-    group: undefined,
-    sortOrder: maxOrder + 1
-  })
-  
-  draggingSession.value = null
-}
-
-// 切换排序方式
-const handleSortChange = async (sortBy: SessionSortBy) => {
-  await configStore.setSessionSortBy(sortBy)
-  showSortMenu.value = false
-}
-
-// 过滤后的会话列表
-const filteredSessions = computed(() => {
-  const text = searchText.value.toLowerCase()
-  if (!text) return configStore.sshSessions
-  return configStore.sshSessions.filter(
-    s =>
-      s.name.toLowerCase().includes(text) ||
-      s.host.toLowerCase().includes(text) ||
-      s.username.toLowerCase().includes(text)
-  )
-})
-
-// 对会话进行排序
-const sortSessions = (sessions: SshSession[]): SshSession[] => {
-  const sortBy = configStore.sessionSortBy
-  const sorted = [...sessions]
-  
-  switch (sortBy) {
-    case 'name':
-      sorted.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
-      break
-    case 'name-desc':
-      sorted.sort((a, b) => b.name.localeCompare(a.name, 'zh-CN'))
-      break
-    case 'lastUsed':
-      sorted.sort((a, b) => (b.lastUsedAt || 0) - (a.lastUsedAt || 0))
-      break
-    case 'custom':
-    default:
-      sorted.sort((a, b) => (a.sortOrder ?? Infinity) - (b.sortOrder ?? Infinity))
-      break
-  }
-  
-  return sorted
-}
-
-// 排序后的分组列表（包含默认分组）
-const sortedGroups = computed(() => {
-  const defaultGroupName = t('session.defaultGroup')
-  const defaultGroupOrder = configStore.defaultGroupSortOrder
-  
-  // 获取所有分组并排序
-  const groups = [...configStore.sessionGroups].sort((a, b) => 
-    (a.sortOrder ?? Infinity) - (b.sortOrder ?? Infinity)
-  )
-  
-  // 构建包含默认分组位置信息的结果
-  return { groups, defaultGroupName, defaultGroupOrder }
-})
-
-// 按组分类的会话
-const groupedSessions = computed(() => {
-  const groups: Record<string, { group: SessionGroup | null; sessions: SshSession[] }> = {}
-  const { groups: sortedGroupList, defaultGroupName, defaultGroupOrder } = sortedGroups.value
-  
-  // 先添加所有已定义的分组（按排序顺序）
-  sortedGroupList.forEach(group => {
-    groups[group.name] = { group, sessions: [] }
-  })
-  
-  // 始终添加默认分组（即使为空）
-  if (!groups[defaultGroupName]) {
-    groups[defaultGroupName] = { group: null, sessions: [] }
-  }
-  
-  filteredSessions.value.forEach(session => {
-    // 优先使用 groupId，否则使用旧的 group 字段
-    let groupName = defaultGroupName
-    let groupEntity: SessionGroup | null = null
-    
-    if (session.groupId) {
-      const found = configStore.sessionGroups.find(g => g.id === session.groupId)
-      if (found) {
-        groupName = found.name
-        groupEntity = found
-      }
-    } else if (session.group) {
-      groupName = session.group
-      // 尝试查找对应的分组实体
-      groupEntity = configStore.sessionGroups.find(g => g.name === session.group) || null
-    }
-    
-    if (!groups[groupName]) {
-      groups[groupName] = { group: groupEntity, sessions: [] }
-    }
-    groups[groupName].sessions.push(session)
-  })
-  
-  // 对每个分组内的会话进行排序
-  for (const groupName of Object.keys(groups)) {
-    groups[groupName].sessions = sortSessions(groups[groupName].sessions)
-  }
-  
-  // 构建排序项数组（分组名称 + 排序值）
-  type SortItem = { name: string; order: number }
-  const sortItems: SortItem[] = []
-  
-  sortedGroupList.forEach(group => {
-    if (groups[group.name]) {
-      sortItems.push({ name: group.name, order: group.sortOrder ?? Infinity })
-    }
-  })
-  
-  // 始终添加默认分组
-  sortItems.push({ name: defaultGroupName, order: defaultGroupOrder === -1 ? Infinity : defaultGroupOrder })
-  
-  // 添加其他未定义的分组
-  Object.keys(groups).forEach(groupName => {
-    if (!sortItems.find(item => item.name === groupName)) {
-      sortItems.push({ name: groupName, order: Infinity })
-    }
-  })
-  
-  // 按 order 排序
-  sortItems.sort((a, b) => a.order - b.order)
-  
-  // 返回有序的分组对象
-  const orderedGroups: typeof groups = {}
-  sortItems.forEach(item => {
-    if (groups[item.name]) {
-      orderedGroups[item.name] = groups[item.name]
-    }
-  })
-  
-  return orderedGroups
-})
-
-// 打开新建会话
-const openNewSession = () => {
-  editingSession.value = null
-  showNewSession.value = true
-}
-
-// 打开编辑会话
-const openEditSession = (session: SshSession) => {
-  editingSession.value = session
-  showNewSession.value = true
-}
-
-// 保存会话（从子组件接收数据）
 const handleSaveSession = async (formData: Partial<SshSession>) => {
   try {
     if (editingSession.value) {
-      await configStore.updateSshSession({
-        ...editingSession.value,
-        ...formData
-      } as SshSession)
+      await configStore.updateSshSession({ ...editingSession.value, ...formData } as SshSession)
     } else {
-      await configStore.addSshSession({
-        id: uuidv4(),
-        ...formData
-      } as SshSession)
+      await configStore.addSshSession({ id: uuidv4(), ...formData } as SshSession)
     }
     showNewSession.value = false
     editingSession.value = null
@@ -582,110 +106,73 @@ const handleSaveSession = async (formData: Partial<SshSession>) => {
   }
 }
 
-const closeSessionDialog = () => {
-  showNewSession.value = false
-  editingSession.value = null
-}
-
-// 删除会话
 const deleteSession = async (session: SshSession) => {
   if (confirm(t('session.confirmDeleteHost', { name: session.name }))) {
     await configStore.deleteSshSession(session.id)
   }
 }
 
-// 连接会话
 const connectSession = async (session: SshSession) => {
-  // 更新最近使用时间
   await configStore.updateSessionLastUsed(session.id)
-  
-  // 获取有效的跳板机配置
   const jumpHost = configStore.getEffectiveJumpHost(session)
-  
   await terminalStore.createTab('ssh', {
-    host: session.host,
-    port: session.port,
-    username: session.username,
-    password: session.password,
-    privateKeyPath: session.privateKeyPath,  // 私钥文件路径
-    passphrase: session.passphrase,  // 私钥密码
-    jumpHost,  // 传递跳板机配置
-    encoding: session.encoding || 'utf-8',  // 传递编码配置
-    sessionId: session.id  // 传递会话 ID（用于重连）
+    host: session.host, port: session.port,
+    username: session.username, password: session.password,
+    privateKeyPath: session.privateKeyPath, passphrase: session.passphrase,
+    jumpHost, encoding: session.encoding || 'utf-8', sessionId: session.id
   })
 }
 
-// 打开 SFTP 文件管理（模态框）- 保留以供未来使用
-const _openSftp = (session: SshSession) => {
-  emit('openSftp', session)
-}
-void _openSftp // 避免未使用警告
+const _openSftp = (session: SshSession) => { emit('openSftp', session) }
+void _openSftp
 
-// 打开独立文件管理器窗口（XFTP 风格双栏）
 const openFileManagerWindow = async (session: SshSession) => {
   await window.electronAPI.fileManager.open({
     sessionId: session.id,
     sftpConfig: {
-      host: session.host,
-      port: session.port,
-      username: session.username,
-      password: session.password,
-      privateKeyPath: session.privateKeyPath,
-      passphrase: session.passphrase
+      host: session.host, port: session.port,
+      username: session.username, password: session.password,
+      privateKeyPath: session.privateKeyPath, passphrase: session.passphrase
     }
   })
 }
 
-// 创建本地终端
-const createLocalTerminal = () => {
-  terminalStore.createTab('local')
+const createLocalTerminal = () => { terminalStore.createTab('local') }
+
+const handleSortChange = async (sortBy: SessionSortBy) => {
+  await configStore.setSessionSortBy(sortBy)
+  showSortMenu.value = false
 }
 
-// 导入 Xshell 会话文件
+// ==================== 导入 ====================
 const importXshellFiles = async () => {
   showImportMenu.value = false
   const result = await window.electronAPI.xshell.selectFiles()
   if (result.canceled) return
-  
-  const importResult = await window.electronAPI.xshell.importFiles(result.filePaths)
-  await handleImportResult(importResult)
+  await handleImportResult(await window.electronAPI.xshell.importFiles(result.filePaths))
 }
 
-// 导入 Xshell 会话目录
 const importXshellDirectory = async () => {
   showImportMenu.value = false
   const result = await window.electronAPI.xshell.selectDirectory()
   if (result.canceled) return
-  
-  const importResult = await window.electronAPI.xshell.importDirectory(result.dirPath)
-  await handleImportResult(importResult)
+  await handleImportResult(await window.electronAPI.xshell.importDirectory(result.dirPath))
 }
 
-// 处理导入结果
 const handleImportResult = async (importResult: { success: boolean; sessions: any[]; errors: string[] }) => {
   if (!importResult.success && importResult.sessions.length === 0) {
     alert(`${t('session.importFailed')}：${importResult.errors.join('\n')}`)
     return
   }
-  
-  // 将导入的会话添加到列表
   let importedCount = 0
   for (const session of importResult.sessions) {
     await configStore.addSshSession({
-      id: uuidv4(),
-      name: session.name,
-      host: session.host,
-      port: session.port,
-      username: session.username,
-      authType: session.privateKeyPath ? 'privateKey' : 'password',
-      password: session.password,
-      privateKeyPath: session.privateKeyPath,
-      group: session.group
+      id: uuidv4(), name: session.name, host: session.host, port: session.port,
+      username: session.username, authType: session.privateKeyPath ? 'privateKey' : 'password',
+      password: session.password, privateKeyPath: session.privateKeyPath, group: session.group
     })
     importedCount++
   }
-  
-  // 显示结果
   let message = t('session.importSuccess', { count: importedCount })
   if (importResult.errors.length > 0) {
     message += `\n\n${t('session.importPartialFailed')}\n${importResult.errors.join('\n')}`
@@ -694,53 +181,29 @@ const handleImportResult = async (importResult: { success: boolean; sessions: an
 }
 
 // ==================== 分组管理 ====================
+const openNewGroup = () => { editingGroup.value = null; showGroupEditor.value = true }
 
-// 新建分组
-const openNewGroup = () => {
-  editingGroup.value = null
-  showGroupEditor.value = true
-}
-
-// 打开分组编辑弹窗
 const openGroupEditor = (groupName: string) => {
   const groupData = groupedSessions.value[groupName]
-  if (groupData?.group) {
-    editingGroup.value = groupData.group
-  } else {
-    editingGroup.value = null
-  }
+  editingGroup.value = groupData?.group ?? null
   showGroupEditor.value = true
 }
 
-// 保存分组（从子组件接收数据）
 const handleSaveGroup = async (data: { name: string; jumpHost?: JumpHostConfig }) => {
-  const groupData: SessionGroup = {
-    id: editingGroup.value?.id || uuidv4(),
-    name: data.name,
-    jumpHost: data.jumpHost
-  }
-
+  const groupData: SessionGroup = { id: editingGroup.value?.id || uuidv4(), name: data.name, jumpHost: data.jumpHost }
   if (editingGroup.value) {
     await configStore.updateSessionGroup(groupData)
   } else {
     await configStore.addSessionGroup(groupData)
-    
-    const sessionsToUpdate = configStore.sshSessions.filter(
-      s => s.group === data.name && !s.groupId
-    )
+    const sessionsToUpdate = configStore.sshSessions.filter(s => s.group === data.name && !s.groupId)
     for (const session of sessionsToUpdate) {
-      await configStore.updateSshSession({
-        ...session,
-        groupId: groupData.id
-      })
+      await configStore.updateSshSession({ ...session, groupId: groupData.id })
     }
   }
-
   showGroupEditor.value = false
   editingGroup.value = null
 }
 
-// 删除分组（从子组件接收）
 const handleDeleteGroup = async (group: SessionGroup) => {
   if (confirm(t('session.confirmDeleteGroupNamed', { name: group.name }))) {
     await configStore.deleteSessionGroup(group.id)
@@ -749,10 +212,7 @@ const handleDeleteGroup = async (group: SessionGroup) => {
   }
 }
 
-const closeGroupDialog = () => {
-  showGroupEditor.value = false
-  editingGroup.value = null
-}
+const closeGroupDialog = () => { showGroupEditor.value = false; editingGroup.value = null }
 </script>
 
 <template>
@@ -765,72 +225,56 @@ const closeGroupDialog = () => {
         class="input search-input"
         :placeholder="t('session.searchPlaceholder')"
       />
-      <div class="new-dropdown">
+      <div class="new-dropdown toolbar-dropdown">
         <button class="btn btn-primary btn-sm" @click="showNewMenu = !showNewMenu">
           <Plus :size="14" />
           {{ t('common.new') }}
         </button>
-        <div v-if="showNewMenu" class="new-menu" @click.stop>
-          <button class="new-menu-item" @click="openNewSession(); showNewMenu = false">
+        <div v-if="showNewMenu" class="dropdown-menu dropdown-left" @click.stop>
+          <button class="dropdown-item" @click="openNewSession(); showNewMenu = false">
             <Monitor :size="14" />
             {{ t('session.newHost') }}
           </button>
-          <button class="new-menu-item" @click="openNewGroup(); showNewMenu = false">
+          <button class="dropdown-item" @click="openNewGroup(); showNewMenu = false">
             <FolderPlus :size="14" />
             {{ t('session.newGroup') }}
           </button>
         </div>
       </div>
-      <div class="import-dropdown">
+      <div class="import-dropdown toolbar-dropdown">
         <button class="btn btn-sm" @click="showImportMenu = !showImportMenu">
           <Download :size="14" />
           {{ t('common.import') }}
         </button>
-        <div v-if="showImportMenu" class="import-menu" @click.stop>
-          <button class="import-menu-item" @click="importXshellFiles">
+        <div v-if="showImportMenu" class="dropdown-menu dropdown-right" @click.stop>
+          <button class="dropdown-item" @click="importXshellFiles">
             <FileText :size="14" />
             {{ t('session.importXshellFiles') }}
           </button>
-          <button class="import-menu-item" @click="importXshellDirectory">
+          <button class="dropdown-item" @click="importXshellDirectory">
             <Folder :size="14" />
             {{ t('session.importXshellDir') }}
           </button>
         </div>
       </div>
-      <div class="sort-dropdown">
+      <div class="sort-dropdown toolbar-dropdown">
         <button class="btn btn-sm btn-icon-only" @click="showSortMenu = !showSortMenu" :title="t('session.sort.title')">
           <ListFilter :size="14" />
         </button>
-        <div v-if="showSortMenu" class="sort-menu" @click.stop>
-          <button 
-            class="sort-menu-item" 
-            :class="{ active: configStore.sessionSortBy === 'custom' }"
-            @click="handleSortChange('custom')"
-          >
+        <div v-if="showSortMenu" class="dropdown-menu dropdown-right" @click.stop>
+          <button class="dropdown-item" :class="{ active: configStore.sessionSortBy === 'custom' }" @click="handleSortChange('custom')">
             <FileEdit :size="14" />
             {{ t('session.sort.custom') }}
           </button>
-          <button 
-            class="sort-menu-item"
-            :class="{ active: configStore.sessionSortBy === 'name' }"
-            @click="handleSortChange('name')"
-          >
+          <button class="dropdown-item" :class="{ active: configStore.sessionSortBy === 'name' }" @click="handleSortChange('name')">
             <AlignLeft :size="14" />
             {{ t('session.sort.nameAsc') }}
           </button>
-          <button 
-            class="sort-menu-item"
-            :class="{ active: configStore.sessionSortBy === 'name-desc' }"
-            @click="handleSortChange('name-desc')"
-          >
+          <button class="dropdown-item" :class="{ active: configStore.sessionSortBy === 'name-desc' }" @click="handleSortChange('name-desc')">
             <AlignRight :size="14" />
             {{ t('session.sort.nameDesc') }}
           </button>
-          <button 
-            class="sort-menu-item"
-            :class="{ active: configStore.sessionSortBy === 'lastUsed' }"
-            @click="handleSortChange('lastUsed')"
-          >
+          <button class="dropdown-item" :class="{ active: configStore.sessionSortBy === 'lastUsed' }" @click="handleSortChange('lastUsed')">
             <Clock :size="14" />
             {{ t('session.sort.lastUsed') }}
           </button>
@@ -862,11 +306,8 @@ const closeGroupDialog = () => {
           @drop="handleDropToGroup(groupName as string, $event)"
         >
           <div 
-            class="group-header" 
-            :class="{ 
-              'draggable': true,
-              'drag-over': dragOverTargetGroupName === groupName 
-            }"
+            class="group-header draggable"
+            :class="{ 'drag-over': dragOverTargetGroupName === groupName }"
             draggable="true"
             @dragstart="handleGroupDragStart(groupName as string, $event)"
             @dragend="handleDragEnd"
@@ -888,7 +329,7 @@ const closeGroupDialog = () => {
               </span>
             </div>
             <div class="group-header-right">
-              <button class="btn-icon btn-xs" @click.stop="openGroupEditor(groupName)" :title="t('session.editGroup')">
+              <button class="btn-icon btn-xs" @click.stop="openGroupEditor(groupName as string)" :title="t('session.editGroup')">
                 <Settings :size="12" />
               </button>
             </div>
@@ -946,7 +387,6 @@ const closeGroupDialog = () => {
       </div>
     </div>
 
-    <!-- 新建/编辑会话弹窗（独立子组件，避免输入时触发父组件重渲染） -->
     <SessionEditDialog
       v-if="showNewSession"
       :session="editingSession"
@@ -954,7 +394,6 @@ const closeGroupDialog = () => {
       @close="closeSessionDialog"
     />
 
-    <!-- 分组编辑弹窗（独立子组件） -->
     <GroupEditDialog
       v-if="showGroupEditor"
       :group="editingGroup"
@@ -972,6 +411,7 @@ const closeGroupDialog = () => {
   height: 100%;
 }
 
+/* ==================== 工具栏 ==================== */
 .session-toolbar {
   display: flex;
   gap: 8px;
@@ -985,22 +425,20 @@ const closeGroupDialog = () => {
   box-sizing: border-box;
 }
 
-/* 工具栏按钮统一样式 */
 .session-toolbar .btn {
   height: 32px;
   min-width: fit-content;
   white-space: nowrap;
 }
 
-/* 新建下拉菜单 */
-.new-dropdown {
+/* ==================== 通用下拉菜单 ==================== */
+.toolbar-dropdown {
   position: relative;
 }
 
-.new-menu {
+.dropdown-menu {
   position: absolute;
   top: 100%;
-  left: 0;
   margin-top: 4px;
   min-width: 140px;
   background: var(--bg-secondary);
@@ -1011,7 +449,10 @@ const closeGroupDialog = () => {
   overflow: hidden;
 }
 
-.new-menu-item {
+.dropdown-left { left: 0; }
+.dropdown-right { right: 0; }
+
+.dropdown-item {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1026,59 +467,21 @@ const closeGroupDialog = () => {
   transition: background 0.15s ease;
 }
 
-.new-menu-item:hover {
+.dropdown-item:hover {
   background: var(--bg-surface);
 }
 
-.new-menu-item svg {
+.dropdown-item svg {
   color: var(--text-muted);
 }
 
-/* 导入下拉菜单 */
-.import-dropdown {
-  position: relative;
+.dropdown-item.active {
+  color: var(--accent-primary);
+  background: rgba(var(--accent-primary-rgb, 66, 153, 225), 0.1);
 }
 
-.import-menu {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 4px;
-  min-width: 180px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 100;
-  overflow: hidden;
-}
-
-.import-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 12px;
-  font-size: 13px;
-  color: var(--text-primary);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.15s ease;
-}
-
-.import-menu-item:hover {
-  background: var(--bg-surface);
-}
-
-.import-menu-item svg {
-  color: var(--text-muted);
-}
-
-/* 排序下拉菜单 */
-.sort-dropdown {
-  position: relative;
+.dropdown-item.active svg {
+  color: var(--accent-primary);
 }
 
 .btn-icon-only {
@@ -1086,52 +489,7 @@ const closeGroupDialog = () => {
   min-width: 32px;
 }
 
-.sort-menu {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 4px;
-  min-width: 140px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 100;
-  overflow: hidden;
-}
-
-.sort-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 12px;
-  font-size: 13px;
-  color: var(--text-primary);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.15s ease;
-}
-
-.sort-menu-item:hover {
-  background: var(--bg-surface);
-}
-
-.sort-menu-item.active {
-  color: var(--accent-primary);
-  background: rgba(var(--accent-primary-rgb, 66, 153, 225), 0.1);
-}
-
-.sort-menu-item svg {
-  color: var(--text-muted);
-}
-
-.sort-menu-item.active svg {
-  color: var(--accent-primary);
-}
-
+/* ==================== 快速操作 ==================== */
 .quick-connect {
   padding: 12px;
   border-bottom: 1px solid var(--border-color);
@@ -1157,6 +515,7 @@ const closeGroupDialog = () => {
   color: var(--text-primary);
 }
 
+/* ==================== 会话列表 ==================== */
 .session-list {
   flex: 1;
   overflow-y: auto;
@@ -1171,13 +530,8 @@ const closeGroupDialog = () => {
   transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
-.session-group.is-empty {
-  margin-bottom: 4px;
-}
-
-.session-group.is-empty .group-sessions {
-  min-height: 4px;
-}
+.session-group.is-empty { margin-bottom: 4px; }
+.session-group.is-empty .group-sessions { min-height: 4px; }
 
 .session-group.drag-over {
   border-color: var(--accent-primary);
@@ -1185,6 +539,7 @@ const closeGroupDialog = () => {
   min-height: 40px;
 }
 
+/* ==================== 分组头 ==================== */
 .group-header {
   display: flex;
   align-items: center;
@@ -1198,13 +553,8 @@ const closeGroupDialog = () => {
   position: relative;
 }
 
-.group-header.draggable {
-  cursor: grab;
-}
-
-.group-header.draggable:active {
-  cursor: grabbing;
-}
+.group-header.draggable { cursor: grab; }
+.group-header.draggable:active { cursor: grabbing; }
 
 .group-header.drag-over {
   background: rgba(var(--accent-primary-rgb, 66, 153, 225), 0.15);
@@ -1213,9 +563,7 @@ const closeGroupDialog = () => {
 .group-header.drag-over::after {
   content: '';
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -2px;
+  left: 0; right: 0; bottom: -2px;
   height: 2px;
   background: var(--accent-primary);
   border-radius: 1px;
@@ -1228,9 +576,7 @@ const closeGroupDialog = () => {
   flex-shrink: 0;
 }
 
-.group-header:hover .drag-handle {
-  opacity: 0.5;
-}
+.group-header:hover .drag-handle { opacity: 0.5; }
 
 .collapse-icon {
   color: var(--text-muted);
@@ -1238,13 +584,7 @@ const closeGroupDialog = () => {
   flex-shrink: 0;
 }
 
-.collapse-icon.collapsed {
-  transform: rotate(-90deg);
-}
-
-.group-sessions {
-  /* 会话列表容器 */
-}
+.collapse-icon.collapsed { transform: rotate(-90deg); }
 
 .group-header-left {
   display: flex;
@@ -1253,9 +593,7 @@ const closeGroupDialog = () => {
   cursor: pointer;
 }
 
-.group-name {
-  font-weight: 500;
-}
+.group-name { font-weight: 500; }
 
 .group-header-right {
   display: flex;
@@ -1283,9 +621,7 @@ const closeGroupDialog = () => {
   border-radius: 4px;
 }
 
-.jump-host-badge svg {
-  opacity: 0.8;
-}
+.jump-host-badge svg { opacity: 0.8; }
 
 .btn-xs {
   padding: 2px 4px;
@@ -1293,14 +629,10 @@ const closeGroupDialog = () => {
   transition: opacity 0.2s ease;
 }
 
-.group-header:hover .btn-xs {
-  opacity: 0.6;
-}
+.group-header:hover .btn-xs { opacity: 0.6; }
+.btn-xs:hover { opacity: 1 !important; }
 
-.btn-xs:hover {
-  opacity: 1 !important;
-}
-
+/* ==================== 会话项 ==================== */
 .session-item {
   display: flex;
   align-items: center;
@@ -1313,53 +645,29 @@ const closeGroupDialog = () => {
   transition: all 0.2s ease;
 }
 
-.session-item:hover {
-  background: var(--bg-surface);
-}
-
-.session-item:active {
-  cursor: grabbing;
-}
-
-.session-item.dragging {
-  opacity: 0.5;
-}
+.session-item:hover { background: var(--bg-surface); }
+.session-item:active { cursor: grabbing; }
+.session-item.dragging { opacity: 0.5; }
 
 .session-item.drag-over-before,
-.session-item.drag-over-after {
-  position: relative;
-}
+.session-item.drag-over-after { position: relative; }
 
-.session-item.drag-over-before::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: -2px;
-  height: 2px;
-  background: var(--accent-primary);
-  border-radius: 1px;
-}
-
+.session-item.drag-over-before::before,
 .session-item.drag-over-after::after {
   content: '';
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -2px;
+  left: 0; right: 0;
   height: 2px;
   background: var(--accent-primary);
   border-radius: 1px;
 }
 
-.session-icon {
-  color: var(--accent-primary);
-}
+.session-item.drag-over-before::before { top: -2px; }
+.session-item.drag-over-after::after { bottom: -2px; }
 
-.session-info {
-  flex: 1;
-  min-width: 0;
-}
+.session-icon { color: var(--accent-primary); }
+
+.session-info { flex: 1; min-width: 0; }
 
 .session-name {
   font-size: 13px;
@@ -1383,10 +691,9 @@ const closeGroupDialog = () => {
   transition: opacity 0.2s ease;
 }
 
-.session-item:hover .session-actions {
-  opacity: 1;
-}
+.session-item:hover .session-actions { opacity: 1; }
 
+/* ==================== 空状态 ==================== */
 .empty-sessions {
   padding: 40px 20px;
   text-align: center;
@@ -1397,6 +704,4 @@ const closeGroupDialog = () => {
   font-size: 12px;
   margin-top: 8px;
 }
-
 </style>
-
