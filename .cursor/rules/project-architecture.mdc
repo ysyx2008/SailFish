@@ -69,7 +69,7 @@ SailFish/
 │       │   ├── tool-executor.ts # 工具执行器
 │       │   ├── tools.ts         # 工具定义（Function Calling）
 │       │   ├── tools/           # 工具实现（command/file/knowledge/plan/memory/terminal/context/exec）
-│       │   ├── skills/          # 技能系统（excel/email/browser/word/watch/scheduler/calendar/terminal/skill-creator/feishu/personality/pdf）
+│       │   ├── skills/          # 技能系统（excel/email/browser/word/watch/scheduler/calendar/terminal/skill-creator/feishu/wecom/personality/pdf）
 │       │   ├── prompt-builder.ts # 系统提示构建
 │       │   ├── context-builder.ts # 上下文管理（L1 任务历史压缩）
 │       │   ├── task-memory.ts   # 任务记忆存储（L1）

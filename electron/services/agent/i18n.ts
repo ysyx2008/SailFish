@@ -689,6 +689,52 @@ const translations = {
 2. 写入操作（feishu_write）都会实际修改飞书数据，请根据用户意图谨慎操作
 3. 分页查询：结果中如有 page_token，可在下次调用时传入以获取后续数据`,
 
+    // 企业微信技能
+    'wecom.resource_calendar': '日历日程',
+    'wecom.resource_approval': '审批',
+    'wecom.resource_checkin': '考勤打卡',
+    'wecom.resource_contact': '通讯录',
+    'wecom.action_create': '创建',
+    'wecom.action_update': '修改',
+    'wecom.action_delete': '删除',
+    'wecom.reading': '读取企业微信{resource}{hint}',
+    'wecom.writing': '{action}企业微信{resource}',
+    'wecom.unknown_tool': '未知的企业微信工具: {name}',
+    'wecom.missing_resource': '缺少 resource 参数',
+    'wecom.missing_resource_or_action': '缺少 resource 或 action 参数',
+    'wecom.unsupported_resource': '不支持的资源类型: {resource}',
+    'wecom.unsupported_action': '{resource} 不支持 action: {action}',
+    'wecom.credentials_missing': '企业微信 Corp ID 和 Corp Secret 未配置，请在设置 → 消息通知 → 企业微信中配置',
+    'wecom.calendar_data_required': 'calendar create 需要 data（含 summary, start_time, end_time）',
+    'wecom.calendar_time_required': 'calendar create 需要 start_time 和 end_time（ISO 8601 或 Unix 时间戳）',
+    'wecom.event_id_required': 'calendar {action} 需要 event_id（即 schedule_id）',
+    'wecom.approval_template_required': 'approval create 需要 template_id（审批模板 ID）',
+    'wecom.approval_creator_required': 'approval create 需要 data.creator_userid（申请人企微 ID）',
+    'wecom.checkin_userid_required': 'checkin 需要 userid 参数（企微用户 ID，多人用逗号分隔）',
+    'wecom.skill_name': '企业微信工作台',
+    'wecom.skill_description': '读写企业微信资源：日历日程、审批、考勤打卡、通讯录。需要先在设置中配置企业微信应用凭证。',
+    'wecom.skill_content': `## 企业微信技能使用指南
+
+你可以通过 wecom_read 和 wecom_write 两个工具操作企业微信的资源。
+
+### 权限说明
+所有 API 调用使用「设置 → 消息通知 → 企业微信」中配置的应用凭证（Corp ID + Corp Secret）。用户需要在企业微信管理后台为该自建应用开通对应的 API 权限：
+- 日历日程：OA 日历接口
+- 审批：OA 审批接口
+- 考勤打卡：打卡接口
+- 通讯录：通讯录读取权限
+
+### 常用操作
+1. **查看日程**：先用 wecom_read calendar 传入 calendar_id 查询，或直接创建日程
+2. **提交审批**：先用 wecom_read approval + template_id 查看模板结构，再用 wecom_write approval create 提交
+3. **查看考勤**：wecom_read checkin + userid + 日期范围
+4. **查通讯录**：wecom_read contact 查部门/成员信息
+
+### 注意事项
+- 企微日程时间使用 ISO 8601 格式（如 2025-06-15T09:00:00+08:00）或 Unix 时间戳
+- 审批提交需要知道申请人的 userid，可先通过通讯录查询
+- 考勤查询需要指定 userid，不支持无参查询`,
+
     // 技能系统
     'skill.id_required': '技能 ID 不能为空',
     'skill.session_not_initialized': '技能会话未初始化',
@@ -1759,6 +1805,52 @@ All API calls use the app credentials configured in "Settings → Notifications 
 1. Use feishu_read first to understand resource structure (list tables, worksheets, calendars), then perform specific operations
 2. Write operations (feishu_write) will actually modify Feishu data — proceed carefully based on user intent
 3. Pagination: If results contain page_token, pass it in the next call to get more data`,
+
+    // WeCom skill
+    'wecom.resource_calendar': 'Calendar',
+    'wecom.resource_approval': 'Approval',
+    'wecom.resource_checkin': 'Attendance',
+    'wecom.resource_contact': 'Contact',
+    'wecom.action_create': 'Create',
+    'wecom.action_update': 'Update',
+    'wecom.action_delete': 'Delete',
+    'wecom.reading': 'Reading WeCom {resource}{hint}',
+    'wecom.writing': '{action} WeCom {resource}',
+    'wecom.unknown_tool': 'Unknown WeCom tool: {name}',
+    'wecom.missing_resource': 'Missing resource parameter',
+    'wecom.missing_resource_or_action': 'Missing resource or action parameter',
+    'wecom.unsupported_resource': 'Unsupported resource type: {resource}',
+    'wecom.unsupported_action': '{resource} does not support action: {action}',
+    'wecom.credentials_missing': 'WeCom Corp ID and Corp Secret not configured. Set them in Settings → Notifications → WeCom',
+    'wecom.calendar_data_required': 'calendar create requires data (with summary, start_time, end_time)',
+    'wecom.calendar_time_required': 'calendar create requires start_time and end_time (ISO 8601 or Unix timestamp)',
+    'wecom.event_id_required': 'calendar {action} requires event_id (schedule_id)',
+    'wecom.approval_template_required': 'approval create requires template_id (approval template ID)',
+    'wecom.approval_creator_required': 'approval create requires data.creator_userid (applicant WeCom ID)',
+    'wecom.checkin_userid_required': 'checkin requires userid parameter (WeCom user ID, comma-separated for multiple)',
+    'wecom.skill_name': 'WeCom Workspace',
+    'wecom.skill_description': 'Read/write WeCom resources: Calendar, Approval, Attendance, Contacts. Requires WeCom app credentials in settings.',
+    'wecom.skill_content': `## WeCom Skill Guide
+
+Use wecom_read and wecom_write tools to operate WeCom resources.
+
+### Permissions
+All API calls use the app credentials (Corp ID + Corp Secret) from "Settings → Notifications → WeCom". The app needs these API permissions in WeCom admin console:
+- Calendar: OA Calendar API
+- Approval: OA Approval API
+- Attendance: Checkin API
+- Contacts: Contact read permission
+
+### Common Operations
+1. **View schedules**: Use wecom_read calendar with calendar_id, or create schedules directly
+2. **Submit approval**: Use wecom_read approval + template_id to check template structure, then wecom_write approval create
+3. **Check attendance**: wecom_read checkin + userid + date range
+4. **Look up contacts**: wecom_read contact for departments/members
+
+### Notes
+- Schedule times use ISO 8601 format (e.g. 2025-06-15T09:00:00+08:00) or Unix timestamps
+- Approval submission requires the applicant's userid — look up via contacts first
+- Attendance queries require specific userid, no parameterless queries supported`,
 
     // Skill system
     'skill.id_required': 'Skill ID required',
