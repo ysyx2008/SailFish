@@ -555,7 +555,7 @@ export const translations = {
       },
       dingtalkSkill: {
         title: '钉钉集成',
-        intro: '旗鱼对接钉钉开放平台 API，让 Agent 直接操作钉钉的日历日程、待办任务、考勤打卡、通讯录和审批流程。通过「设置 → 即时通讯 → 钉钉」中配置的 ClientID/ClientSecret 统一鉴权，无需额外登录。',
+        intro: '旗鱼对接钉钉开放平台 API，让 Agent 直接操作钉钉的日历日程、待办任务、考勤打卡、通讯录、审批流程、多维表格、钉盘和知识库。通过「设置 → 即时通讯 → 钉钉」中配置的 ClientID/ClientSecret 统一鉴权，无需额外登录。',
         capabilities: '能力概览',
         capabilityList: [
           { cap: '日历日程', desc: '查询、创建、修改和删除日历事件，AI 帮你管理钉钉日程' },
@@ -563,6 +563,9 @@ export const translations = {
           { cap: '考勤打卡', desc: '查询指定成员的打卡记录，支持按日期范围筛选' },
           { cap: '通讯录', desc: '查询部门列表、部门成员和用户详情，了解组织架构' },
           { cap: '审批流程', desc: '查询审批实例列表和详情，发起新的审批申请' },
+          { cap: '多维表格', desc: '查询和操作多维表格（Bitable）数据，管理表格记录' },
+          { cap: '钉盘', desc: '浏览钉盘空间和文件夹，上传和下载文件' },
+          { cap: '知识库', desc: '查询知识库节点和内容，检索企业知识' },
         ],
         permissions: '需要开通的权限',
         permissionsDesc: '在钉钉开放平台的应用详情 → 「权限管理」中搜索并开通以下权限：',
@@ -602,13 +605,16 @@ export const translations = {
       },
       wecomSkill: {
         title: '企业微信集成',
-        intro: '旗鱼对接企业微信自建应用 API，让 Agent 直接操作企业微信的通讯录、日程、审批和考勤打卡。通过「设置 → 即时通讯 → 企业微信」中配置的应用凭证统一鉴权，无需额外登录。',
+        intro: '旗鱼对接企业微信自建应用 API，让 Agent 直接操作企业微信的通讯录、日程、审批、考勤打卡、会议、微盘和文档。通过「设置 → 即时通讯 → 企业微信」中配置的应用凭证统一鉴权，无需额外登录。',
         capabilities: '能力概览',
         capabilityList: [
           { cap: '通讯录', desc: '查询部门列表、部门成员和用户详情，快速了解组织架构' },
           { cap: '日历日程', desc: '查询、创建、修改和删除日程，AI 帮你管理企微日历' },
           { cap: '审批', desc: '查询审批记录和模板详情、以指定身份提交审批申请' },
           { cap: '考勤打卡', desc: '查询指定成员的打卡记录，按时间范围筛选' },
+          { cap: '会议', desc: '创建和管理线上会议，查询会议详情和参与人' },
+          { cap: '微盘', desc: '浏览微盘空间和文件夹，管理企业云端文件' },
+          { cap: '文档', desc: '创建和管理在线文档，查询文档内容' },
         ],
         permissions: '需要开通的权限',
         permissionsDesc: '企业微信的 OA 类接口需要在管理后台的「系统应用」中分别授权。以下每一项都需要进入对应的系统应用，将你的自建应用添加到「可调用接口的应用」列表中：',
@@ -1225,7 +1231,7 @@ export const translations = {
       },
       dingtalkSkill: {
         title: 'DingTalk Integration',
-        intro: 'SailFish integrates with DingTalk Open Platform APIs, enabling your Agent to directly manage calendar events, to-do tasks, attendance records, contacts, and approval workflows. Authentication uses the ClientID/ClientSecret configured in Settings → Messaging → DingTalk — no extra login required.',
+        intro: 'SailFish integrates with DingTalk Open Platform APIs, enabling your Agent to directly manage calendar events, to-do tasks, attendance records, contacts, approval workflows, Bitable, DingDisk, and Wiki. Authentication uses the ClientID/ClientSecret configured in Settings → Messaging → DingTalk — no extra login required.',
         capabilities: 'Capabilities',
         capabilityList: [
           { cap: 'Calendar', desc: 'Query, create, update, and delete calendar events — AI manages your DingTalk schedule' },
@@ -1233,6 +1239,9 @@ export const translations = {
           { cap: 'Attendance', desc: 'Query check-in records for specified members, filter by date range' },
           { cap: 'Contacts', desc: 'Query department lists, department members, and user details to understand your org structure' },
           { cap: 'Approval', desc: 'Query approval instance lists and details, initiate new approval requests' },
+          { cap: 'Bitable', desc: 'Query and manage multi-dimensional table data and records' },
+          { cap: 'DingDisk', desc: 'Browse DingDisk spaces and folders, upload and download files' },
+          { cap: 'Wiki', desc: 'Query knowledge base nodes and content, search enterprise knowledge' },
         ],
         permissions: 'Required Permissions',
         permissionsDesc: 'In your DingTalk app details → "Permission Management", search for and enable the following permissions:',
@@ -1272,13 +1281,16 @@ export const translations = {
       },
       wecomSkill: {
         title: 'WeCom Integration',
-        intro: 'SailFish integrates with WeCom (企业微信) self-built app APIs, enabling your Agent to directly manage contacts, calendar events, approvals, and attendance check-ins. Authentication uses the app credentials configured in Settings → Messaging → WeCom — no extra login required.',
+        intro: 'SailFish integrates with WeCom (企业微信) self-built app APIs, enabling your Agent to directly manage contacts, calendar events, approvals, attendance check-ins, meetings, WeDrive, and documents. Authentication uses the app credentials configured in Settings → Messaging → WeCom — no extra login required.',
         capabilities: 'Capabilities',
         capabilityList: [
           { cap: 'Contacts', desc: 'Query department lists, department members, and user details to understand your org structure' },
           { cap: 'Calendar', desc: 'Query, create, update, and delete schedule events — AI manages your WeCom calendar' },
           { cap: 'Approval', desc: 'Query approval records and template details, submit approval requests on behalf of users' },
           { cap: 'Attendance', desc: 'Query check-in records for specified members, filter by date range' },
+          { cap: 'Meeting', desc: 'Create and manage online meetings, query meeting details and participants' },
+          { cap: 'WeDrive', desc: 'Browse WeDrive spaces and folders, manage enterprise cloud files' },
+          { cap: 'Documents', desc: 'Create and manage online documents, query document content' },
         ],
         permissions: 'Required Permissions',
         permissionsDesc: 'WeCom OA-related APIs require authorization in specific system apps within the admin console. For each item below, enter the corresponding system app and add your self-built app to the "Apps allowed to call API" list:',

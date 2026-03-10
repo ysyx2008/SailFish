@@ -2,7 +2,22 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.15.1 (2026-03-09) (Latest)
+## v10.16.0 (2026-03-10) (Latest)
+
+Expanded enterprise IM capabilities with new DingTalk and WeCom resources, and added Markdown-to-Office document generation.
+
+### New Features
+- 📄 **Markdown to Office**: Agent can now generate Word and Excel documents directly from local Markdown files
+- 📌 **DingTalk Expanded Resources**: Added Bitable (multi-dimensional tables), Drive (DingDisk), and Wiki (knowledge base) resource support for DingTalk skill
+- 💼 **WeCom Meeting**: Added meeting management resource support for WeCom skill
+- 📂 **WeCom Drive & Docs**: Added WeDrive (cloud storage) and Document resource support for WeCom skill
+
+### Bug Fixes
+- 🔧 Fixed exec tool and `systemInfo.shell` cross-platform compatibility for Windows and Linux
+- 🔧 Fixed model selection popup accidentally closing on stray clicks in Settings
+- 🔧 Hidden L3 conversation records from Knowledge UI to reduce clutter
+
+## v10.15.1 (2026-03-09)
 
 This patch release streamlines session management with a leaner UI structure and smoother editing performance on Windows, while improving compatibility with vLLM's message validation behavior.
 
