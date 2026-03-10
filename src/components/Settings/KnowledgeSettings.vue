@@ -85,7 +85,7 @@ const exporting = ref(false)
 const importing = ref(false)
 
 const kbDocuments = computed(() => {
-  return documents.value.filter(doc => doc.fileType !== 'host-memory')
+  return documents.value.filter(doc => doc.fileType !== 'host-memory' && doc.fileType !== 'conversation')
 })
 
 const filteredDocuments = computed(() => {

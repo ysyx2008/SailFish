@@ -56,9 +56,9 @@ const clearing = ref(false)
 const exporting = ref(false)
 const importing = ref(false)
 
-// 知识库文档（排除旧的 host-memory 类型）
+// 知识库文档（排除 host-memory 和 conversation 类型，后者为 L3 对话记录，仅供检索用）
 const kbDocuments = computed(() => {
-  return documents.value.filter(doc => doc.fileType !== 'host-memory')
+  return documents.value.filter(doc => doc.fileType !== 'host-memory' && doc.fileType !== 'conversation')
 })
 
 const filteredDocuments = computed(() => {

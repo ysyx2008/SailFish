@@ -412,8 +412,7 @@ export function useMentions(
         await loadKnowledgeDocs()
       }
       const knowledge = knowledgeDocs.value
-        // 过滤掉主机记忆文档（tags 包含 'host-memory'）
-        .filter(d => !d.tags?.includes('host-memory'))
+        .filter(d => !d.tags?.includes('host-memory') && !d.tags?.includes('conversation'))
         .filter(d => !query || d.filename.toLowerCase().includes(query.toLowerCase()))
         .map(d => ({
           type: 'docs' as MentionType,
