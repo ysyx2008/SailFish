@@ -311,7 +311,7 @@ const openKeyUrl = (url: string) => {
     <!-- 添加/编辑表单弹窗 -->
     <Teleport to="body">
       <Transition name="profile-modal">
-        <div v-if="showForm" class="profile-modal-overlay" @click.self="showForm = false">
+        <div v-if="showForm" class="profile-modal-overlay">
           <div class="profile-modal">
             <div class="form-header">
               <h4>{{ editingProfile ? t('aiSettings.editProfile') : t('aiSettings.addProfile') }}</h4>
