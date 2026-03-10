@@ -764,6 +764,9 @@ const translations = {
     'dingtalk.resource_attendance': '考勤打卡',
     'dingtalk.resource_contact': '通讯录',
     'dingtalk.resource_approval': '审批流程',
+    'dingtalk.resource_bitable': '多维表格',
+    'dingtalk.resource_drive': '钉盘',
+    'dingtalk.resource_wiki': '知识库',
     'dingtalk.action_create': '创建',
     'dingtalk.action_update': '修改',
     'dingtalk.action_delete': '删除',
@@ -785,8 +788,16 @@ const translations = {
     'dingtalk.attendance_userid_required': 'attendance 需要 userid 参数（钉钉用户 ID，多人逗号分隔）',
     'dingtalk.process_code_required': 'approval 查询需要 process_code（审批模板编码）或 process_instance_id（实例ID）',
     'dingtalk.approval_originator_required': 'approval create 需要 data.originator_user_id（发起人钉钉 userid）',
+    'dingtalk.base_id_required': 'bitable 操作需要 base_id 参数（多维表格 ID）',
+    'dingtalk.bitable_base_sheet_required': 'bitable 写入需要 base_id 和 sheet_id 参数',
+    'dingtalk.bitable_data_required': 'bitable create 需要 data（含 fields 或 records）',
+    'dingtalk.bitable_update_requires': 'bitable update 需要 record_id 和 data 参数',
+    'dingtalk.bitable_delete_requires': 'bitable delete 需要 record_ids 数组或 record_id',
+    'dingtalk.drive_space_required': 'drive 写入需要 space_id 参数',
+    'dingtalk.drive_file_id_required': 'drive delete 需要 file_id 参数',
+    'dingtalk.wiki_workspace_required': 'wiki create 需要 workspace_id 参数',
     'dingtalk.skill_name': '钉钉工作台',
-    'dingtalk.skill_description': '读写钉钉资源：日历日程、待办任务、考勤打卡、通讯录、审批流程。需要先在设置中配置钉钉应用凭证。',
+    'dingtalk.skill_description': '读写钉钉资源：日历日程、待办任务、考勤打卡、通讯录、审批流程、多维表格、钉盘、知识库。需要先在设置中配置钉钉应用凭证。',
     'dingtalk.skill_content': `## 钉钉技能使用指南
 
 你可以通过 dingtalk_read 和 dingtalk_write 两个工具操作钉钉的云端资源。
@@ -798,9 +809,12 @@ const translations = {
 - 考勤打卡：考勤打卡读取权限
 - 通讯录：通讯录只读权限
 - 审批流程：审批流程读写权限
+- 多维表格：multidim_table:read / multidim_table:write
+- 钉盘：钉盘应用文件读权限
+- 知识库：知识库读权限 / 知识库节点读权限 / 知识库文档写权限
 
 ### union_id 获取方式
-日历和待办操作需要用户的 union_id。获取方式：
+日历、待办、多维表格、钉盘、知识库操作需要用户的 union_id。获取方式：
 1. 先用 dingtalk_read contact + userid 查询用户信息
 2. 返回结果中包含 unionid 字段
 3. 将 unionid 传入 union_id 参数
@@ -811,12 +825,17 @@ const translations = {
 3. **查看考勤**：dingtalk_read attendance + userid + 日期范围
 4. **查通讯录**：dingtalk_read contact 查部门/成员信息（含 unionid）
 5. **查审批**：dingtalk_read approval + process_code 查审批列表
+6. **多维表格**：dingtalk_read bitable + union_id + base_id [+ sheet_id [+ record_id]]，逐层深入
+7. **查看钉盘**：dingtalk_read drive + union_id [+ space_id + parent_id] 浏览文件
+8. **查看知识库**：dingtalk_read wiki + union_id [+ workspace_id [+ node_id]] 浏览文档
 
 ### 注意事项
 - 日程时间使用 ISO 8601 格式（如 2025-06-15T09:00:00+08:00）
 - 待办截止时间使用毫秒级时间戳
-- 考勤和审批操作使用 userid，日历和待办使用 union_id
-- 审批提交需要 process_code（在钉钉管理后台获取）和发起人 userid`,
+- 考勤和审批操作使用 userid，其余使用 union_id
+- 审批提交需要 process_code（在钉钉管理后台获取）和发起人 userid
+- 多维表格需要钉钉专业版或专属版
+- 多维表格筛选使用 JSON 格式 filter 参数`,
 
     // 技能系统
     'skill.id_required': '技能 ID 不能为空',
@@ -1964,6 +1983,9 @@ All API calls use the app credentials (Corp ID + Corp Secret) from "Settings →
     'dingtalk.resource_attendance': 'Attendance',
     'dingtalk.resource_contact': 'Contact',
     'dingtalk.resource_approval': 'Approval',
+    'dingtalk.resource_bitable': 'Bitable',
+    'dingtalk.resource_drive': 'Drive',
+    'dingtalk.resource_wiki': 'Wiki',
     'dingtalk.action_create': 'Create',
     'dingtalk.action_update': 'Update',
     'dingtalk.action_delete': 'Delete',
@@ -1985,8 +2007,16 @@ All API calls use the app credentials (Corp ID + Corp Secret) from "Settings →
     'dingtalk.attendance_userid_required': 'attendance requires userid parameter (DingTalk user ID, comma-separated for multiple)',
     'dingtalk.process_code_required': 'approval query requires process_code (template code) or process_instance_id',
     'dingtalk.approval_originator_required': 'approval create requires data.originator_user_id (initiator DingTalk userid)',
+    'dingtalk.base_id_required': 'bitable operation requires base_id parameter (multidim table ID)',
+    'dingtalk.bitable_base_sheet_required': 'bitable write requires base_id and sheet_id parameters',
+    'dingtalk.bitable_data_required': 'bitable create requires data (with fields or records)',
+    'dingtalk.bitable_update_requires': 'bitable update requires record_id and data parameters',
+    'dingtalk.bitable_delete_requires': 'bitable delete requires record_ids array or record_id',
+    'dingtalk.drive_space_required': 'drive write requires space_id parameter',
+    'dingtalk.drive_file_id_required': 'drive delete requires file_id parameter',
+    'dingtalk.wiki_workspace_required': 'wiki create requires workspace_id parameter',
     'dingtalk.skill_name': 'DingTalk Workspace',
-    'dingtalk.skill_description': 'Read/write DingTalk resources: Calendar, Todo, Attendance, Contacts, Approval. Requires DingTalk app credentials in settings.',
+    'dingtalk.skill_description': 'Read/write DingTalk resources: Calendar, Todo, Attendance, Contacts, Approval, Bitable, Drive, Wiki. Requires DingTalk app credentials in settings.',
     'dingtalk.skill_content': `## DingTalk Skill Guide
 
 Use dingtalk_read and dingtalk_write tools to operate DingTalk cloud resources.
@@ -1998,9 +2028,12 @@ All API calls use the app credentials (AppKey + AppSecret) from "Settings → Me
 - Attendance: Attendance read
 - Contacts: Contact read
 - Approval: Workflow read/write
+- Bitable: multidim_table:read / multidim_table:write
+- Drive: DingDisk file read permission
+- Wiki: Wiki read / Wiki node read / Wiki doc write
 
 ### Getting union_id
-Calendar and Todo operations require the user's union_id:
+Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
 1. Use dingtalk_read contact + userid to look up user info
 2. The result includes a unionid field
 3. Pass unionid as the union_id parameter
@@ -2011,12 +2044,17 @@ Calendar and Todo operations require the user's union_id:
 3. **Check attendance**: dingtalk_read attendance + userid + date range
 4. **Look up contacts**: dingtalk_read contact for departments/members (includes unionid)
 5. **View approvals**: dingtalk_read approval + process_code
+6. **Bitable**: dingtalk_read bitable + union_id + base_id [+ sheet_id [+ record_id]] for progressive drill-down
+7. **Drive files**: dingtalk_read drive + union_id [+ space_id + parent_id] to browse files
+8. **Wiki docs**: dingtalk_read wiki + union_id [+ workspace_id [+ node_id]] to browse docs
 
 ### Notes
 - Calendar times use ISO 8601 format (e.g. 2025-06-15T09:00:00+08:00)
 - Todo due times use millisecond timestamps
-- Attendance and approval use userid; calendar and todo use union_id
-- Approval submission requires process_code (from DingTalk admin console) and originator userid`,
+- Attendance and approval use userid; all others use union_id
+- Approval submission requires process_code (from DingTalk admin console) and originator userid
+- Bitable requires DingTalk Professional or Exclusive edition
+- Bitable filter uses JSON format with conditions`,
 
     // Skill system
     'skill.id_required': 'Skill ID required',

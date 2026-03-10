@@ -13,6 +13,9 @@
 | attendance | 查询打卡记录 | — (只读) | 旧 API | `/attendance/list` |
 | contact    | 查询部门列表、成员详情、部门成员 | — (只读) | 旧 API | `/topapi/v2/department/*`, `/topapi/v2/user/*` |
 | approval   | 查询审批实例列表、实例详情 | 发起审批申请 | 旧 API | `/topapi/processinstance/*` |
+| bitable    | 列出数据表、字段、记录列表、记录详情 | 新增/更新/删除记录 | 新 API v1.0 | `/v1.0/notable/bases/{baseId}/sheets/...` |
+| drive      | 列出空间、文件列表 | 创建文件夹/删除文件 | 新 API v1.0 | `/v1.0/drive/spaces/{spaceId}/...` |
+| wiki       | 列出知识库、节点列表、搜索 | 创建文档 | 新 API v1.0/v2.0 | `/v2.0/wiki/...`, `/v1.0/doc/workspaces/...` |
 
 ## 工具
 
@@ -48,3 +51,20 @@
 - 考勤查询必须指定 `userid`，不支持无参查询
 - 审批实例列表需要 `process_code`（审批模板编码）
 - 日程时间使用 ISO 8601 格式，待办截止时间使用毫秒级时间戳
+- 多维表格（bitable）需要钉钉专业版或专属版
+- 多维表格的 `operatorId` 就是 `union_id`
+- 钉盘文件列表需要 `unionId` 作为 query 参数
+- 知识库列表使用 v2.0 API (`/v2.0/wiki/workspaces`)，文档创建使用 v1.0 API (`/v1.0/doc/workspaces/`)
+
+## 所需权限
+
+| 资源 | 权限标识 |
+|------|---------|
+| calendar | 日历读写权限 |
+| todo | 待办任务读写权限 |
+| attendance | 考勤打卡读取权限 |
+| contact | 通讯录只读权限 |
+| approval | 审批流程读写权限 |
+| bitable | multidim_table:read, multidim_table:write |
+| drive | 钉盘应用文件读权限 |
+| wiki | 知识库读权限, 知识库节点读权限, 知识库文档写权限 |

@@ -86,6 +86,9 @@ async function dingtalkRead(args: DingTalkReadArgs, executor: ToolExecutorConfig
     attendance: () => readAttendance(args, executor),
     contact: () => readContact(args, executor),
     approval: () => readApproval(args, executor),
+    bitable: () => readBitable(args, executor),
+    drive: () => readDrive(args, executor),
+    wiki: () => readWiki(args, executor),
   }
 
   const handler = handlers[resource]
@@ -120,6 +123,9 @@ async function dingtalkWrite(
     calendar: () => writeCalendar(args, executor),
     todo: () => writeTodo(args, executor),
     approval: () => writeApproval(args, executor),
+    bitable: () => writeBitable(args, executor),
+    drive: () => writeDrive(args, executor),
+    wiki: () => writeWiki(args, executor),
   }
 
   const handler = handlers[resource]
@@ -648,6 +654,451 @@ async function writeApproval(args: DingTalkWriteArgs, executor: ToolExecutorConf
 }
 
 // ========================================================================
+//  Bitable（多维表格）— 新 API v1.0 /notable
+// ========================================================================
+
+async function readBitable(args: DingTalkReadArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
+  const { union_id, base_id, sheet_id, record_id, filter, limit, cursor } = args
+
+  if (!union_id) {
+    return { success: false, output: '', error: t('dingtalk.union_id_required' as any, { resource: 'bitable' }) }
+  }
+  if (!base_id) {
+    return { success: false, output: '', error: t('dingtalk.base_id_required' as any) }
+  }
+
+  const { clientId, clientSecret } = getCredentials()
+  const opParam = `operatorId=${encodeURIComponent(union_id)}`
+
+  // 获取单条记录
+  if (record_id && sheet_id) {
+    const resp = await api(clientId, clientSecret, 'GET',
+      `/v1.0/notable/bases/${base_id}/sheets/${encodeURIComponent(sheet_id)}/records/${record_id}?${opParam}`)
+    const output = formatBitableRecord(resp)
+    addReadStep(executor, 'dingtalk_read', `📊 记录 ${record_id}`, output)
+    return { success: true, output }
+  }
+
+  // 列出记录
+  if (sheet_id) {
+    const params = new URLSearchParams({ operatorId: union_id })
+    params.set('maxResults', String(Math.max(1, Math.min(limit || 20, 100))))
+    if (cursor) params.set('nextToken', String(cursor))
+    if (filter) {
+      try {
+        const filterObj = JSON.parse(filter)
+        params.set('filter', JSON.stringify(filterObj))
+      } catch {
+        return { success: false, output: '', error: 'filter 参数必须是有效的 JSON 字符串，格式: {"combination":"and","conditions":[{"field":"字段名","operator":"equal","value":["值"]}]}' }
+      }
+    }
+
+    const resp = await api(clientId, clientSecret, 'GET',
+      `/v1.0/notable/bases/${base_id}/sheets/${encodeURIComponent(sheet_id)}/records?${params.toString()}`)
+    const records = resp?.records || []
+
+    if (records.length === 0) {
+      // try to get fields info for context
+      let fieldsInfo = ''
+      try {
+        const fieldsResp = await api(clientId, clientSecret, 'GET',
+          `/v1.0/notable/bases/${base_id}/sheets/${encodeURIComponent(sheet_id)}/fields?${opParam}`)
+        const fields = fieldsResp?.fields || []
+        if (fields.length > 0) {
+          fieldsInfo = `\n\n### 字段结构\n${fields.map((f: any) => `- **${f.name}** (${f.type})`).join('\n')}`
+        }
+      } catch { /* ignore */ }
+
+      const output = `无记录${filter ? '（当前筛选条件下）' : ''}${fieldsInfo}`
+      addReadStep(executor, 'dingtalk_read', output, output)
+      return { success: true, output }
+    }
+
+    const lines = records.map((r: any, i: number) => {
+      const fields = r.fields || {}
+      const preview = Object.entries(fields).slice(0, 5)
+        .map(([k, v]) => `${k}: ${formatFieldValue(v)}`).join(' | ')
+      return `${i + 1}. \`${r.recordId || r.id || '-'}\` — ${preview}`
+    })
+
+    let output = `## 多维表格记录 (${records.length} 条)\n\n${lines.join('\n')}`
+    if (resp?.nextToken) {
+      output += `\n\n> 还有更多，设置 cursor: \`${resp.nextToken}\` 查看下一页`
+    }
+    addReadStep(executor, 'dingtalk_read', `📊 ${records.length} 条记录`, output)
+    return { success: true, output }
+  }
+
+  // 不传 sheet_id → 列出数据表
+  const resp = await api(clientId, clientSecret, 'GET',
+    `/v1.0/notable/bases/${base_id}/sheets?${opParam}`)
+  const sheets = resp?.sheets || resp?.value || []
+
+  if (!Array.isArray(sheets) || sheets.length === 0) {
+    const output = '该多维表格中无数据表'
+    addReadStep(executor, 'dingtalk_read', output, output)
+    return { success: true, output }
+  }
+
+  const lines = sheets.map((s: any) =>
+    `- **${s.name || '(无名)'}** (sheet_id: \`${s.id || s.sheetId || '-'}\`)`
+  )
+  const output = `## 数据表列表 (${sheets.length})\n\n${lines.join('\n')}\n\n> 提示：传入 sheet_id 可查看该表的记录`
+  addReadStep(executor, 'dingtalk_read', `📊 ${sheets.length} 个数据表`, output)
+  return { success: true, output }
+}
+
+async function writeBitable(args: DingTalkWriteArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
+  const { action, union_id, base_id, sheet_id, record_id, record_ids, data } = args
+
+  if (!union_id) {
+    return { success: false, output: '', error: t('dingtalk.union_id_required' as any, { resource: 'bitable' }) }
+  }
+  if (!base_id || !sheet_id) {
+    return { success: false, output: '', error: t('dingtalk.bitable_base_sheet_required' as any) }
+  }
+
+  const { clientId, clientSecret } = getCredentials()
+  const opParam = `operatorId=${encodeURIComponent(union_id)}`
+  const sheetPath = `/v1.0/notable/bases/${base_id}/sheets/${encodeURIComponent(sheet_id)}/records`
+
+  if (action === 'create') {
+    if (!data) {
+      return { success: false, output: '', error: t('dingtalk.bitable_data_required' as any) }
+    }
+
+    const rawRecords = data.records
+      ? (data.records as any[]).slice(0, 100)
+      : [{ fields: data.fields || data }]
+    const records = rawRecords
+
+    const resp = await api(clientId, clientSecret, 'POST',
+      `${sheetPath}?${opParam}`, { records })
+
+    const created = resp?.records || []
+    const ids = created.map((r: any) => r.recordId || r.id).filter(Boolean)
+    const output = `已新增 ${created.length || records.length} 条记录${ids.length ? ` (IDs: ${ids.join(', ')})` : ''}`
+    addWriteStep(executor, 'dingtalk_write', output, output)
+    return { success: true, output }
+  }
+
+  if (action === 'update') {
+    if (!record_id || !data) {
+      return { success: false, output: '', error: t('dingtalk.bitable_update_requires' as any) }
+    }
+
+    const records = [{ recordId: record_id, fields: data.fields || data }]
+    await api(clientId, clientSecret, 'PUT',
+      `${sheetPath}?${opParam}`, { records })
+
+    const output = `记录 ${record_id} 已更新`
+    addWriteStep(executor, 'dingtalk_write', output, output)
+    return { success: true, output }
+  }
+
+  if (action === 'delete') {
+    const ids = record_ids || (record_id ? [record_id] : null)
+    if (!ids || ids.length === 0) {
+      return { success: false, output: '', error: t('dingtalk.bitable_delete_requires' as any) }
+    }
+
+    await api(clientId, clientSecret, 'DELETE',
+      `${sheetPath}?${opParam}`, { recordIds: ids })
+
+    const output = `已删除 ${ids.length} 条记录`
+    addWriteStep(executor, 'dingtalk_write', output, output)
+    return { success: true, output }
+  }
+
+  return { success: false, output: '', error: t('dingtalk.unsupported_action' as any, { resource: 'bitable', action }) }
+}
+
+// ========================================================================
+//  Drive（钉盘/云盘）— 新 API v1.0
+// ========================================================================
+
+async function readDrive(args: DingTalkReadArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
+  const { union_id, space_id, file_id, parent_id, limit, cursor } = args
+
+  if (!union_id) {
+    return { success: false, output: '', error: t('dingtalk.union_id_required' as any, { resource: 'drive' }) }
+  }
+
+  const { clientId, clientSecret } = getCredentials()
+
+  // 列出空间
+  if (!space_id) {
+    const params = new URLSearchParams({ unionId: union_id, maxResults: String(limit || 20) })
+    if (cursor) params.set('nextToken', String(cursor))
+
+    const resp = await api(clientId, clientSecret, 'GET',
+      `/v1.0/drive/spaces?${params.toString()}`)
+    const spaces = resp?.spaces || []
+
+    if (spaces.length === 0) {
+      const output = '未找到钉盘空间。请确认已开通钉盘应用文件读权限。'
+      addReadStep(executor, 'dingtalk_read', output, output)
+      return { success: true, output }
+    }
+
+    const lines = spaces.map((s: any) =>
+      `- **${s.spaceName || s.name || '(无名)'}** (space_id: \`${s.spaceId || s.id}\`, 类型: ${formatSpaceType(s.spaceType)})`
+    )
+    let output = `## 钉盘空间列表 (${spaces.length})\n\n${lines.join('\n')}`
+    if (resp?.nextToken) {
+      output += `\n\n> 还有更多，设置 cursor: \`${resp.nextToken}\` 查看下一页`
+    }
+    addReadStep(executor, 'dingtalk_read', `📁 ${spaces.length} 个空间`, output)
+    return { success: true, output }
+  }
+
+  // 列出文件
+  const params = new URLSearchParams({
+    unionId: union_id,
+    maxResults: String(Math.min(limit || 50, 100)),
+  })
+  if (parent_id) params.set('parentId', parent_id)
+  if (cursor) params.set('nextToken', String(cursor))
+
+  const resp = await api(clientId, clientSecret, 'GET',
+    `/v1.0/drive/spaces/${space_id}/files?${params.toString()}`)
+  const files = resp?.files || []
+
+  if (files.length === 0) {
+    const output = '该目录下无文件'
+    addReadStep(executor, 'dingtalk_read', output, output)
+    return { success: true, output }
+  }
+
+  const lines = files.map((f: any) => {
+    const icon = f.fileType === 'folder' ? '📁' : '📄'
+    const size = f.fileSize ? ` (${formatFileSize(f.fileSize)})` : ''
+    const modified = f.modifyTime ? ` | ${new Date(f.modifyTime).toLocaleString()}` : ''
+    return `- ${icon} **${f.fileName}** | file_id: \`${f.fileId}\`${size}${modified}`
+  })
+
+  let output = `## 文件列表 (${files.length})\n\n${lines.join('\n')}`
+  if (resp?.nextToken) {
+    output += `\n\n> 还有更多，设置 cursor: \`${resp.nextToken}\` 查看下一页`
+  }
+  addReadStep(executor, 'dingtalk_read', `📁 ${files.length} 个文件`, output)
+  return { success: true, output }
+}
+
+async function writeDrive(args: DingTalkWriteArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
+  const { action, union_id, space_id, file_id, parent_id, data } = args
+
+  if (!union_id) {
+    return { success: false, output: '', error: t('dingtalk.union_id_required' as any, { resource: 'drive' }) }
+  }
+  if (!space_id) {
+    return { success: false, output: '', error: t('dingtalk.drive_space_required' as any) }
+  }
+
+  const { clientId, clientSecret } = getCredentials()
+
+  if (action === 'create') {
+    const fileName = (data?.fileName as string) || (data?.name as string) || '新建文件夹'
+    const pid = parent_id || (data?.parentId as string) || '0'
+
+    const body: Record<string, unknown> = {
+      parentId: pid,
+      fileType: 'folder',
+      fileName,
+      unionId: union_id,
+    }
+
+    const resp = await api(clientId, clientSecret, 'POST',
+      `/v1.0/drive/spaces/${space_id}/files`, body)
+
+    const fid = resp?.fileId || resp?.id || '(unknown)'
+    const output = `文件夹已创建: ${fileName} (file_id: ${fid})`
+    addWriteStep(executor, 'dingtalk_write', output, output)
+    return { success: true, output }
+  }
+
+  if (action === 'delete') {
+    const fid = file_id || (data?.fileId as string)
+    if (!fid) {
+      return { success: false, output: '', error: t('dingtalk.drive_file_id_required' as any) }
+    }
+
+    await api(clientId, clientSecret, 'DELETE',
+      `/v1.0/drive/spaces/${space_id}/files/${fid}?unionId=${encodeURIComponent(union_id)}`)
+
+    const output = `文件 ${fid} 已删除`
+    addWriteStep(executor, 'dingtalk_write', output, output)
+    return { success: true, output }
+  }
+
+  return { success: false, output: '', error: t('dingtalk.unsupported_action' as any, { resource: 'drive', action }) }
+}
+
+// ========================================================================
+//  Wiki（知识库）— 新 API v2.0
+// ========================================================================
+
+async function readWiki(args: DingTalkReadArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
+  const { union_id, workspace_id, node_id, keyword, limit, cursor } = args
+
+  if (!union_id) {
+    return { success: false, output: '', error: t('dingtalk.union_id_required' as any, { resource: 'wiki' }) }
+  }
+
+  const { clientId, clientSecret } = getCredentials()
+
+  // 搜索知识库
+  if (keyword) {
+    const params = new URLSearchParams({
+      keyword,
+      operatorId: union_id,
+      maxResults: String(Math.min(limit || 20, 50)),
+    })
+    if (cursor) params.set('nextToken', String(cursor))
+
+    const resp = await api(clientId, clientSecret, 'GET',
+      `/v1.0/doc/search?${params.toString()}`)
+    const items = resp?.items || resp?.dentryList || []
+
+    if (items.length === 0) {
+      const output = `搜索 "${keyword}" 无结果`
+      addReadStep(executor, 'dingtalk_read', output, output)
+      return { success: true, output }
+    }
+
+    const lines = items.map((item: any) => {
+      const icon = item.type === 'FOLDER' ? '📁' : '📄'
+      return `- ${icon} **${item.name || item.title || '(无标题)'}** | node_id: \`${item.nodeId || item.dentryUuid || '-'}\` | workspace: \`${item.workspaceId || item.spaceUuid || '-'}\``
+    })
+    let output = `## 搜索结果: "${keyword}" (${items.length})\n\n${lines.join('\n')}`
+    if (resp?.nextToken) {
+      output += `\n\n> 还有更多，设置 cursor: \`${resp.nextToken}\` 查看下一页`
+    }
+    addReadStep(executor, 'dingtalk_read', `🔍 ${items.length} 个结果`, output)
+    return { success: true, output }
+  }
+
+  // 列出知识库
+  if (!workspace_id) {
+    const params = new URLSearchParams({
+      operatorId: union_id,
+      maxResults: String(Math.min(limit || 30, 30)),
+    })
+    if (cursor) params.set('nextToken', String(cursor))
+
+    const resp = await api(clientId, clientSecret, 'GET',
+      `/v2.0/wiki/workspaces?${params.toString()}`)
+    const workspaces = resp?.workspaces || []
+
+    if (workspaces.length === 0) {
+      const output = '未找到知识库。请确认已开通知识库读权限。'
+      addReadStep(executor, 'dingtalk_read', output, output)
+      return { success: true, output }
+    }
+
+    const lines = workspaces.map((w: any) =>
+      `- **${w.name || '(无名)'}** (workspace_id: \`${w.workspaceId || w.spaceUuid}\`, root_node: \`${w.rootNodeId || '-'}\`)`
+    )
+    let output = `## 知识库列表 (${workspaces.length})\n\n${lines.join('\n')}\n\n> 提示：传入 workspace_id 查看知识库内容；传入 node_id 查看子节点`
+    if (resp?.nextToken) {
+      output += `\n\n> 还有更多，设置 cursor: \`${resp.nextToken}\` 查看下一页`
+    }
+    addReadStep(executor, 'dingtalk_read', `📚 ${workspaces.length} 个知识库`, output)
+    return { success: true, output }
+  }
+
+  // 列出节点（传 workspace_id 时先获取 rootNodeId，再列子节点）
+  let parentNode = node_id
+  if (!parentNode) {
+    try {
+      const wsResp = await api(clientId, clientSecret, 'GET',
+        `/v2.0/wiki/workspaces/${workspace_id}?operatorId=${encodeURIComponent(union_id)}`)
+      parentNode = wsResp?.rootNodeId
+    } catch (e: any) {
+      const msg = extractApiError(e)
+      return { success: false, output: '', error: `获取知识库信息失败: ${msg}` }
+    }
+
+    if (!parentNode) {
+      return { success: false, output: '', error: '无法获取知识库根节点（rootNodeId 为空）。请直接传入 node_id 参数。' }
+    }
+  }
+
+  const params = new URLSearchParams({
+    parentNodeId: parentNode,
+    operatorId: union_id,
+    maxResults: String(Math.min(limit || 50, 50)),
+  })
+  if (cursor) params.set('nextToken', String(cursor))
+
+  const resp = await api(clientId, clientSecret, 'GET',
+    `/v2.0/wiki/nodes?${params.toString()}`)
+  const nodes = resp?.nodes || (resp?.node ? [resp.node] : [])
+
+  if (nodes.length === 0) {
+    const output = '该节点下无子节点'
+    addReadStep(executor, 'dingtalk_read', output, output)
+    return { success: true, output }
+  }
+
+  const lines = nodes.map((n: any) => {
+    const icon = n.type === 'FOLDER' ? '📁' : '📄'
+    const category = n.category ? ` [${n.category}]` : ''
+    const hasChildren = n.hasChildren ? ' ▶' : ''
+    return `- ${icon} **${n.name || '(无名)'}**${category}${hasChildren} | node_id: \`${n.nodeId}\`${n.url ? ` | [打开](${n.url})` : ''}`
+  })
+
+  let output = `## 知识库节点 (${nodes.length})\n\n${lines.join('\n')}`
+  if (resp?.nextToken) {
+    output += `\n\n> 还有更多，设置 cursor: \`${resp.nextToken}\` 查看下一页`
+  }
+  addReadStep(executor, 'dingtalk_read', `📚 ${nodes.length} 个节点`, output)
+  return { success: true, output }
+}
+
+async function writeWiki(args: DingTalkWriteArgs, executor: ToolExecutorConfig): Promise<ToolResult> {
+  const { action, union_id, workspace_id, node_id, data } = args
+
+  if (!union_id) {
+    return { success: false, output: '', error: t('dingtalk.union_id_required' as any, { resource: 'wiki' }) }
+  }
+
+  if (action !== 'create') {
+    return { success: false, output: '', error: t('dingtalk.unsupported_action' as any, { resource: 'wiki', action }) }
+  }
+
+  if (!workspace_id) {
+    return { success: false, output: '', error: t('dingtalk.wiki_workspace_required' as any) }
+  }
+
+  const { clientId, clientSecret } = getCredentials()
+
+  const name = (data?.name as string) || (data?.title as string) || '新建文档'
+  const validDocTypes = ['alidoc', 'alidoc_sheet']
+  const docType = (data?.docType as string) || 'alidoc'
+  if (!validDocTypes.includes(docType)) {
+    return { success: false, output: '', error: `无效的 docType: ${docType}，支持: ${validDocTypes.join(', ')}` }
+  }
+  const parentNodeId = node_id || undefined
+
+  const body: Record<string, unknown> = {
+    name,
+    docType,
+    operatorId: union_id,
+  }
+  if (parentNodeId) body.parentNodeId = parentNodeId
+
+  const resp = await api(clientId, clientSecret, 'POST',
+    `/v1.0/doc/workspaces/${workspace_id}/docs`, body)
+
+  const nodeId = resp?.nodeId || resp?.dentryUuid || '(unknown)'
+  const url = resp?.url || ''
+  const output = `文档已创建: ${name} (node_id: ${nodeId})${url ? `\n打开: ${url}` : ''}`
+  addWriteStep(executor, 'dingtalk_write', output, output)
+  return { success: true, output }
+}
+
+// ========================================================================
 //  辅助函数
 // ========================================================================
 
@@ -793,6 +1244,46 @@ function formatApprovalDetail(info: any, instanceId: string): string {
   }
 
   return parts.join('\n')
+}
+
+function formatBitableRecord(record: any): string {
+  const fields = record?.fields || {}
+  const parts: string[] = [`## 记录 ${record?.recordId || record?.id || '(unknown)'}`]
+  for (const [key, value] of Object.entries(fields)) {
+    parts.push(`- **${key}**: ${formatFieldValue(value)}`)
+  }
+  return parts.join('\n')
+}
+
+function formatFieldValue(value: any): string {
+  if (value === null || value === undefined) return '(空)'
+  if (Array.isArray(value)) {
+    return value.map(v => {
+      if (typeof v === 'object' && v !== null) return v.text || v.name || v.title || JSON.stringify(v)
+      return String(v)
+    }).join(', ')
+  }
+  if (typeof value === 'object') {
+    if (value.text) return value.text
+    if (value.name) return value.name
+    return JSON.stringify(value)
+  }
+  return String(value)
+}
+
+function formatSpaceType(type: any): string {
+  const map: Record<string, string> = {
+    '0': '企业空间', '1': '个人空间', '2': '群空间',
+    org: '企业空间', personal: '个人空间', group: '群空间',
+  }
+  return map[String(type)] || String(type || '未知')
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)}KB`
+  if (bytes < 1073741824) return `${(bytes / 1048576).toFixed(1)}MB`
+  return `${(bytes / 1073741824).toFixed(1)}GB`
 }
 
 /**
