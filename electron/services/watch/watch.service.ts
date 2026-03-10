@@ -13,6 +13,7 @@ import * as path from 'path'
 import type { BrowserWindow } from 'electron'
 import { Notification } from 'electron'
 import { createLogger } from '../../utils/logger'
+import { getDefaultShell } from '../../utils/platform'
 import { getWorkspacePath } from '../agent/tools/file'
 import { getIMService } from '../im/im.service'
 import type {
@@ -513,7 +514,7 @@ export class WatchService {
     try {
       const context: AgentContext = {
         terminalOutput: [],
-        systemInfo: { os: process.platform, shell: process.env.SHELL || '/bin/bash' },
+        systemInfo: { os: process.platform, shell: getDefaultShell() },
         terminalType: 'assistant',
         ...(wakeupMode ? { wakeup: true } : {})
       }
@@ -572,7 +573,7 @@ export class WatchService {
       const context: AgentContext = {
         ptyId,
         terminalOutput: [],
-        systemInfo: { os: process.platform, shell: process.env.SHELL || '/bin/bash' },
+        systemInfo: { os: process.platform, shell: getDefaultShell() },
         terminalType: watch.execution.type === 'ssh' ? 'ssh' : 'local'
       }
 

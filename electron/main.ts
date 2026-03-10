@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell, dialog, session, Tray, Menu, native
 import { autoUpdater, type GenericServerOptions, type GithubOptions } from 'electron-updater'
 import path, { join } from 'path'
 import * as fs from 'fs'
+import { getDefaultShell } from './utils/platform'
 
 // 开发模式下禁用硬件加速，避免热重载时 GPU 进程崩溃
 // 这个调用必须在 app.whenReady() 之前
@@ -2869,7 +2870,7 @@ function initOrchestratorService() {
         terminalOutput: [],  // Worker 启动时输出为空，实际输出会在运行时获取
         systemInfo: { 
           os: type === 'local' ? process.platform : 'linux', 
-          shell: type === 'local' ? (process.env.SHELL || 'bash') : 'bash' 
+          shell: type === 'local' ? getDefaultShell() : 'bash' 
         },
         terminalType: type
       }

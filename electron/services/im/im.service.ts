@@ -13,6 +13,7 @@
  */
 
 import type { ExecutionMode } from '@shared/types'
+import { getDefaultShell } from '../../utils/platform'
 import { getEventBus } from '../sensor/event-bus'
 import type {
   IMServiceConfig,
@@ -785,7 +786,7 @@ export class IMService {
     try {
       const context = {
         terminalOutput: [] as string[],
-        systemInfo: { os: process.platform, shell: process.env.SHELL || '/bin/bash' },
+        systemInfo: { os: process.platform, shell: getDefaultShell() },
         terminalType: 'assistant' as const,
         remoteChannel: msg.platform as any
       }

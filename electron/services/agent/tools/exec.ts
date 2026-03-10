@@ -11,6 +11,7 @@ import { exec } from 'child_process'
 import { t } from '../i18n'
 import { assessCommandRisk, analyzeCommand } from '../risk-assessor'
 import { truncateFromEnd } from './utils'
+import { getDefaultShell } from '../../../utils/platform'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
 
 const DEFAULT_TIMEOUT = 60_000
@@ -115,7 +116,7 @@ export async function executeCommandDirect(
   }
 
   return new Promise<ToolResult>((resolve) => {
-    exec(command, { cwd, timeout, maxBuffer: MAX_BUFFER, shell: '/bin/bash' }, (error, stdout, stderr) => {
+    exec(command, { cwd, timeout, maxBuffer: MAX_BUFFER, shell: getDefaultShell() }, (error, stdout, stderr) => {
       const combined = [stdout, stderr].filter(Boolean).join('\n').trim()
       const exitCode = error?.code ?? (error ? 1 : 0)
 
