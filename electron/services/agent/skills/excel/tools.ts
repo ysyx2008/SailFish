@@ -125,6 +125,11 @@ export const excelTools: ToolDefinition[] = [
       name: 'excel_from_markdown',
       description: `从 Markdown 内容直接生成 Excel 文件（快速模式，无需 open/modify/save 流程）。
 
+**输入方式**：
+- 直接传入 markdown：适合动态生成表格内容后立刻转 Excel
+- 传入 markdown_path：适合直接把本地 .md 文件里的表格转成 Excel，不必重新生成全文
+- markdown 和 markdown_path 二选一，不能同时传
+
 **Markdown 格式要求**：
 - 使用标准 Markdown 表格语法
 - 第一行为表头，自动加粗
@@ -163,6 +168,10 @@ export const excelTools: ToolDefinition[] = [
             type: 'string',
             description: 'Markdown 内容（包含表格）'
           },
+          markdown_path: {
+            type: 'string',
+            description: '本地 Markdown 文件路径（.md/.markdown/.txt 等文本文件），绝对路径或相对于当前目录'
+          },
           sheet_name: {
             type: 'string',
             description: '当 Markdown 中只有一个表格且无标题时使用的 Sheet 名（默认 "Sheet1"）'
@@ -172,7 +181,7 @@ export const excelTools: ToolDefinition[] = [
             description: '样式主题名称：simple（默认，蓝色表头）、business（商务蓝，交替行色）、dark（深色表头）、colorful（绿色，交替行色）、minimal（极简）、finance（深蓝财务风），或自定义样式名'
           }
         },
-        required: ['path', 'markdown']
+        required: ['path']
       }
     }
   },

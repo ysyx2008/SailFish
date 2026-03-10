@@ -667,17 +667,48 @@ async function excelFromMarkdown(
   if (!args.path) {
     return { success: false, output: '', error: t('error.file_path_required') }
   }
-  if (!args.markdown) {
-    return { success: false, output: '', error: t('excel.markdown_required') }
+  const markdownArg = typeof args.markdown === 'string' && args.markdown.trim()
+    ? args.markdown
+    : undefined
+  const markdownPathArg = typeof args.markdown_path === 'string' && args.markdown_path.trim()
+    ? args.markdown_path.trim()
+    : undefined
+
+  if (!markdownArg && !markdownPathArg) {
+    return { success: false, output: '', error: t('excel.markdown_input_required') }
+  }
+  if (markdownArg && markdownPathArg) {
+    return { success: false, output: '', error: t('excel.markdown_input_conflict') }
   }
 
   let filePath = resolvePath(ptyId, args.path as string)
-  const markdown = args.markdown as string
   const defaultSheetName = (args.sheet_name as string) || 'Sheet1'
   const styleName = args.style as string | undefined
 
   if (!filePath.toLowerCase().endsWith('.xlsx')) {
     filePath += '.xlsx'
+  }
+
+  let markdown = markdownArg
+  if (markdownPathArg) {
+    const markdownPath = resolvePath(ptyId, markdownPathArg)
+    if (!fs.existsSync(markdownPath)) {
+      return { success: false, output: '', error: t('error.file_not_found', { path: markdownPath }) }
+    }
+
+    try {
+      markdown = fs.readFileSync(markdownPath, 'utf-8')
+      if (!markdown.trim()) {
+        return { success: false, output: '', error: t('excel.markdown_empty', { path: markdownPath }) }
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : t('excel.from_md_failed')
+      return {
+        success: false,
+        output: '',
+        error: t('excel.markdown_read_failed', { path: markdownPath, detail })
+      }
+    }
   }
 
   // 解析 Markdown 表格

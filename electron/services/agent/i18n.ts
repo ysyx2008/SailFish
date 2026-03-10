@@ -328,6 +328,10 @@ const translations = {
     'excel.closed': '已关闭 Excel 文件: {path}',
     'excel.closed_discarded': '已关闭 Excel 文件: {path}（未保存的修改已丢弃）',
     'excel.markdown_required': '请提供 Markdown 内容',
+    'excel.markdown_input_required': '请提供 markdown 或 markdown_path',
+    'excel.markdown_input_conflict': 'markdown 和 markdown_path 不能同时传入',
+    'excel.markdown_empty': 'Markdown 文件内容为空: {path}',
+    'excel.markdown_read_failed': '读取 Markdown 文件失败: {path}\n{detail}',
     'excel.no_tables_found': 'Markdown 中未找到任何表格',
     'excel.confirm_from_md': '确认从 Markdown 生成 Excel 文件: {path}（{sheets} 个 Sheet）',
     'excel.created_from_md': '已从 Markdown 生成 Excel 文件: {path}（{sheets} 个 Sheet）',
@@ -369,6 +373,10 @@ const translations = {
     'word.closed_discarded': '已关闭 Word 文档: {path}（未保存的修改已丢弃）',
     // 快速模式
     'word.markdown_required': '请提供 Markdown 内容',
+    'word.markdown_input_required': '请提供 markdown 或 markdown_path',
+    'word.markdown_input_conflict': 'markdown 和 markdown_path 不能同时传入',
+    'word.markdown_empty': 'Markdown 文件内容为空: {path}',
+    'word.markdown_read_failed': '读取 Markdown 文件失败: {path}\n{detail}',
     'word.confirm_create_from_md': '确认创建 Word 文档: {path}',
     'word.created_from_md': '已创建 Word 文档: {path}（样式: {style}）',
     // 样式管理
@@ -1547,6 +1555,10 @@ Please output the summary in the following format:
     'excel.closed': 'Closed Excel file: {path}',
     'excel.closed_discarded': 'Closed Excel file: {path} (unsaved changes discarded)',
     'excel.markdown_required': 'Please provide Markdown content',
+    'excel.markdown_input_required': 'Please provide markdown or markdown_path',
+    'excel.markdown_input_conflict': 'markdown and markdown_path cannot be provided together',
+    'excel.markdown_empty': 'Markdown file is empty: {path}',
+    'excel.markdown_read_failed': 'Failed to read Markdown file: {path}\n{detail}',
     'excel.no_tables_found': 'No tables found in Markdown content',
     'excel.confirm_from_md': 'Confirm generating Excel file from Markdown: {path} ({sheets} sheets)',
     'excel.created_from_md': 'Generated Excel file from Markdown: {path} ({sheets} sheets)',
@@ -1588,6 +1600,10 @@ Please output the summary in the following format:
     'word.closed_discarded': 'Closed Word document: {path} (unsaved changes discarded)',
     // Quick mode
     'word.markdown_required': 'Please provide Markdown content',
+    'word.markdown_input_required': 'Please provide markdown or markdown_path',
+    'word.markdown_input_conflict': 'markdown and markdown_path cannot be provided together',
+    'word.markdown_empty': 'Markdown file is empty: {path}',
+    'word.markdown_read_failed': 'Failed to read Markdown file: {path}\n{detail}',
     'word.confirm_create_from_md': 'Confirm creating Word document: {path}',
     'word.created_from_md': 'Created Word document: {path} (style: {style})',
     // Style management

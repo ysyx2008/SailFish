@@ -1857,12 +1857,21 @@ async function wordFromMarkdown(
   if (!args.path) {
     return { success: false, output: '', error: t('error.file_path_required') }
   }
-  if (!args.markdown) {
-    return { success: false, output: '', error: t('word.markdown_required') }
+  const markdownArg = typeof args.markdown === 'string' && args.markdown.trim()
+    ? args.markdown
+    : undefined
+  const markdownPathArg = typeof args.markdown_path === 'string' && args.markdown_path.trim()
+    ? args.markdown_path.trim()
+    : undefined
+
+  if (!markdownArg && !markdownPathArg) {
+    return { success: false, output: '', error: t('word.markdown_input_required') }
   }
-  
+  if (markdownArg && markdownPathArg) {
+    return { success: false, output: '', error: t('word.markdown_input_conflict') }
+  }
+
   let filePath = resolvePath(ptyId, args.path as string)
-  const markdown = args.markdown as string
   const styleName = args.style as string | undefined
   
   // 确保文件扩展名为 .docx
@@ -1907,6 +1916,29 @@ async function wordFromMarkdown(
   }
 
   try {
+    let markdown = markdownArg
+
+    if (markdownPathArg) {
+      const markdownPath = resolvePath(ptyId, markdownPathArg)
+      if (!fs.existsSync(markdownPath)) {
+        return { success: false, output: '', error: t('error.file_not_found', { path: markdownPath }) }
+      }
+
+      try {
+        markdown = fs.readFileSync(markdownPath, 'utf-8')
+        if (!markdown.trim()) {
+          return { success: false, output: '', error: t('word.markdown_empty', { path: markdownPath }) }
+        }
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : t('word.create_failed')
+        return {
+          success: false,
+          output: '',
+          error: t('word.markdown_read_failed', { path: markdownPath, detail })
+        }
+      }
+    }
+
     // 如果文件正在会话中编辑，检查是否有未保存修改
     if (isSessionOpen(filePath)) {
       const session = getSession(filePath)
@@ -1927,6 +1959,9 @@ async function wordFromMarkdown(
     }
 
     // 转换 Markdown 为 docx
+    if (!markdown) {
+      return { success: false, output: '', error: t('word.markdown_input_required') }
+    }
     const buffer = await markdownToDocx(markdown, styleConfig)
     
     // 确保目录存在
