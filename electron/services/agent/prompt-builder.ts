@@ -530,7 +530,7 @@ export class PromptBuilder {
 
   private buildFileSearchRule(): string {
     if (this.isSshTerminal) return ''
-    return '**文件搜索**：按文件名搜索优先用 `file_search`（毫秒级），搜内容用 grep'
+    return '**文件搜索**：按文件名搜索优先用 `file_search`（基于系统索引，毫秒级全盘搜索，比 find/locate 更快更全），搜内容用 grep'
   }
 
   private buildWorkspaceRule(): string {

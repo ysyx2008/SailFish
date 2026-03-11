@@ -618,15 +618,20 @@ export async function readFile(
     if (infoOnly) {
       if (detectedBinary) {
         const ext = path.extname(filePath).toLowerCase()
+        const isDoc = isDocumentType(filePath)
+        const isPdf = ext === '.pdf'
+        const hint = isDoc
+          ? t(isPdf && hasVisionCapability() ? 'file.doc_info_only_hint_pdf' : 'file.doc_info_only_hint', { path: filePath })
+          : `- **${t('file.is_binary')}**`
         const info = `## ${t('file.info_header')}
 - **${t('file.info_path')}**: ${filePath}
 - **${t('file.info_size')}**: ${t('file.info_size_value', { sizeMB, sizeBytes: fileSize.toLocaleString() })}
 - **${t('file.image_type')}**: ${ext.slice(1).toUpperCase() || 'unknown'}
-- **${t('file.is_binary')}**`
+${hint}`
 
         executor.addStep({
           type: 'tool_result',
-          content: `${t('file.file_info')}: ${sizeMB} MB, ${t('file.is_binary')}`,
+          content: `${t('file.file_info')}: ${sizeMB} MB, ${isDoc ? ext.slice(1).toUpperCase() : t('file.is_binary')}`,
           toolName: 'read_file',
           toolResult: info
         })

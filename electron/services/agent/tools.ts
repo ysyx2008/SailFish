@@ -37,7 +37,7 @@ function buildSkillTool(): ToolDefinition {
   const disabledIds = new Set(getConfigService().get('disabledBuiltinSkills') || [])
   const skills = getSkillsSummary().filter(s => !disabledIds.has(s.id))
   const skillsCompact = skills.length > 0
-    ? skills.map(s => `${s.id}(${s.name})`).join('、')
+    ? skills.map(s => `- ${s.id}: ${s.description}`).join('\n')
     : '暂无'
   const skillIds = skills.map(s => `"${s.id}"`).join(', ') || '暂无'
 

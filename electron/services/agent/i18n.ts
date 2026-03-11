@@ -286,6 +286,8 @@ const translations = {
     'file.ico_bmp_only': 'ICO 文件 {name} ({size}) 包含 {sizes} 尺寸的图标，但图标数据为 BMP 格式，无法直接预览。可使用 sips（macOS）或 convert（ImageMagick）命令转换为 PNG 后查看。',
     'file.binary_file_detected': '二进制文件 {name} ({size})，扩展名: {ext}。无法作为文本读取，请使用对应的命令行工具处理（如 file、xxd、hexdump 查看内容，或 sips/convert 处理图片）。',
     'file.is_binary': '二进制文件，无法作为文本读取',
+    'file.doc_info_only_hint': '- 这是文档文件，可用 `read_file`（不带 info_only）读取内容。路径: {path}',
+    'file.doc_info_only_hint_pdf': '- 这是文档文件，可用 `read_file`（不带 info_only）读取内容。如果是扫描版 PDF，可加载 pdf 技能后用 `pdf_view_page` 逐页查看。路径: {path}',
 
     // Excel 操作
     'excel.action_required': '需要指定操作类型（read/write/modify）',
@@ -1516,6 +1518,8 @@ Please output the summary in the following format:
     'file.ico_bmp_only': 'ICO file {name} ({size}) contains icons at {sizes}, but image data is in BMP format and cannot be previewed directly. Use sips (macOS) or convert (ImageMagick) to convert to PNG.',
     'file.binary_file_detected': 'Binary file {name} ({size}), extension: {ext}. Cannot read as text. Use appropriate CLI tools (file, xxd, hexdump to inspect, or sips/convert for images).',
     'file.is_binary': 'Binary file, cannot read as text',
+    'file.doc_info_only_hint': '- This is a document file. Use `read_file` (without info_only) to read content. Path: {path}',
+    'file.doc_info_only_hint_pdf': '- This is a document file. Use `read_file` (without info_only) to read content. For scanned PDFs, load the pdf skill and use `pdf_view_page` to view pages. Path: {path}',
 
     // Excel operations
     'excel.action_required': 'Action type required (read/write/modify)',
