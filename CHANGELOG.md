@@ -2,7 +2,7 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.17.0 (2026-03-11) (Latest)
+## v10.18.0 (2026-03-11) (Latest)
 
 Better AI provider compatibility — users can now choose API format per profile, MiniMax models are supported out of the box, and Feishu IM gets interactive card-based user prompts.
 
