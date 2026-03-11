@@ -154,6 +154,40 @@ function formatToolNotification(toolName: string, toolArgs?: Record<string, unkn
   return `${icon} ${label}${detail}`
 }
 
+/**
+ * 将 AI 输出中的 HTML 思考块（<details>/<blockquote>）转为 IM 友好的 > 引用格式
+ * 桌面端用 HTML 折叠面板展示思考过程，但 IM 平台（飞书/钉钉等）不支持这些 HTML 标签
+ */
+function formatContentForIM(content: string): string {
+  let result = content.replace(/\r\n/g, '\n')
+
+  // 1) 完整 <details> 块：提取 summary 和引用内容
+  result = result.replace(
+    /<details\b[^>]*>\s*<summary\b[^>]*>([\s\S]*?)<\/summary>\s*<blockquote\b[^>]*>\s*([\s\S]*?)\s*<\/blockquote>\s*<\/details>/g,
+    (_m, summary: string, body: string) => {
+      const title = summary.replace(/<[^>]+>/g, '').trim()
+      if (!title) return ''
+      const quoted = body.trim().split('\n').map((l: string) => `> ${l}`).join('\n')
+      return `**${title}**\n\n${quoted}`
+    }
+  )
+
+  // 2) 未闭合的 <details> 块（流式中途 flush）
+  result = result.replace(
+    /<details\b[^>]*>\s*<summary\b[^>]*>([\s\S]*?)<\/summary>\s*(?:<blockquote\b[^>]*>\s*)?([\s\S]*)$/,
+    (_m, summary: string, body: string) => {
+      const title = summary.replace(/<[^>]+>/g, '').trim()
+      if (!title) return ''
+      const cleaned = body.replace(/<\/?(blockquote|details)\b[^>]*>/g, '').trim()
+      if (!cleaned) return `**${title}**`
+      const quoted = cleaned.split('\n').map((l: string) => `> ${l}`).join('\n')
+      return `**${title}**\n\n${quoted}`
+    }
+  )
+
+  return result
+}
+
 export class IMService {
   private static readonly CONTACT_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
 
@@ -770,7 +804,7 @@ export class IMService {
     const flushTextBuffer = async () => {
       if (textBuffer) {
         hasSentText = true
-        const text = textBuffer
+        const text = formatContentForIM(textBuffer)
         textBuffer = ''
         lastFlushedContent = text
         try {
@@ -912,7 +946,7 @@ export class IMService {
             }
             const resultText = result?.trim() || ''
             if (resultText && resultText !== lastFlushedContent.trim()) {
-              try { await adapter.sendMarkdown(replyContext, '旗鱼', result) } catch { /* ignore */ }
+              try { await adapter.sendMarkdown(replyContext, '旗鱼', formatContentForIM(result)) } catch { /* ignore */ }
             } else if (!hasSentText) {
               try { await adapter.sendText(replyContext, t('im.task_complete')) } catch { /* ignore */ }
             }
