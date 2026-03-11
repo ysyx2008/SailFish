@@ -2,7 +2,25 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.16.0 (2026-03-10) (Latest)
+## v10.17.0 (2026-03-11) (Latest)
+
+Better AI provider compatibility — users can now choose API format per profile, MiniMax models are supported out of the box, and Feishu IM gets interactive card-based user prompts.
+
+### New Features
+- 🔌 **API Format Selection**: Users can now choose the API format (Auto / OpenAI / Anthropic) per AI profile, enabling compatibility with more inference backends
+- 🤖 **MiniMax Model Template**: Added built-in MiniMax model default template for quick setup
+- 💬 **Feishu Interactive Cards**: `ask_user` options in Feishu IM are now displayed as interactive card buttons instead of plain text
+
+### Improvements
+- 🔍 Improved Agent file search and document processing guidance prompts
+- 📖 Added Feishu `card.action.trigger` callback subscription setup steps to documentation
+
+### Bug Fixes
+- 🔧 Fixed IM platform thinking process indistinguishable from main text — now rendered as quote format
+- 🔧 Fixed `<details>` block nesting issue when thinking process encountered network retries
+- 🔧 Removed `parallel_tool_calls` parameter and updated Zhipu template to GLM-5
+
+## v10.16.0 (2026-03-10)
 
 Expanded enterprise IM capabilities with new DingTalk and WeCom resources, and added Markdown-to-Office document generation.
 
