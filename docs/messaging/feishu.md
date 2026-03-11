@@ -85,12 +85,23 @@ Feishu requires an active long connection before allowing event subscription con
 
 ---
 
-## Step 7: Configure Event Subscription (Long Connection Mode)
+## Step 7: Configure Event & Callback Subscriptions (Long Connection Mode)
+
+### 7a. Event Subscription
 
 1. Go to **Events & Callbacks** → **Event Configuration** in the left menu
 2. Select **Use long connection to receive events** as the subscription method, then click **Save** (SailFish is already connected, so the platform won't report errors)
 3. After saving, click **Add Event** and add:
    - **im.message.receive_v1** (receive messages)
+
+### 7b. Callback Subscription
+
+1. On the **Events & Callbacks** page, switch to **Callback Configuration**
+2. Select **Use long connection to receive callbacks** as the subscription method, then click **Save**
+3. Click **Add Callback** and add:
+   - **card.action.trigger** (card action callback)
+
+> Callback subscription is configured **separately** from event subscription. Without this, buttons on confirmation cards and option cards sent by the Agent will not respond to clicks.
 
 ---
 
