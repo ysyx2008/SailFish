@@ -1547,7 +1547,23 @@ export abstract class Agent {
             })
           }
         },
-        run.id // requestId
+        run.id, // requestId
+        // onRetry - 重试时重置流状态，避免 reasoning 块重复
+        () => {
+          log.info('AI request retrying, resetting stream state')
+          streamContent = ''
+          pendingUpdate = false
+          lastContentUpdate = 0
+          lastToolProgressUpdate = 0
+          if (streamStepCreated) {
+            this.removeStep(streamStepId)
+            streamStepCreated = false
+          }
+          if (toolProgressStepCreated) {
+            this.removeStep(toolProgressStepId)
+            toolProgressStepCreated = false
+          }
+        }
       )
     })
   }

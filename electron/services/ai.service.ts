@@ -1052,7 +1052,8 @@ export class AiService {
     onError: (error: string) => void,
     profileId?: string,
     onToolCallProgress?: (toolName: string, argsLength: number) => void,  // 工具调用参数生成进度
-    requestId?: string  // 用于支持中止请求
+    requestId?: string,  // 用于支持中止请求
+    onRetry?: () => void  // 重试前通知调用方重置流状态（避免 reasoning 块重复）
   ): Promise<void> {
     const profile = await this.getCurrentProfile(profileId)
     if (!profile) {
@@ -1134,6 +1135,7 @@ export class AiService {
     const resetForRetry = () => {
       clearTimeout(totalTimeoutId)
       clearTimeout(idleTimeoutId)
+      onRetry?.()
       content = ''
       reasoningContent = ''
       toolCalls = []
@@ -1144,9 +1146,12 @@ export class AiService {
     }
 
     // 关闭未闭合的 reasoning <details> 块（重试前调用，避免嵌套）
+    // 当提供了 onRetry 时跳过 onChunk，因为调用方会整体重置流内容
     const closeOpenReasoningBlock = () => {
       if (hasReasoningOutput && !hasContentOutput) {
-        onChunk('\n\n</blockquote>\n</details>\n\n')
+        if (!onRetry) {
+          onChunk('\n\n</blockquote>\n</details>\n\n')
+        }
         hasReasoningOutput = false
       }
     }
@@ -1189,6 +1194,7 @@ export class AiService {
         log.warn(`Model ${profile.model} may not support images (error: ${errorMsg}), retrying without images`)
         stripImages = true
         requestBody = rebuildRequestBody()
+        closeOpenReasoningBlock()
         resetForRetry()
         doRequest()
         return true
@@ -1203,7 +1209,9 @@ export class AiService {
       if (retryCount < AI_RETRY.MAX_RETRIES && isRetryableError(errorMsg)) {
         retryCount++
         closeOpenReasoningBlock()
-        onChunk(`⚠️ ${t('error.network_retry', { attempt: String(retryCount), max: String(AI_RETRY.MAX_RETRIES) })}\n`)
+        if (!onRetry) {
+          onChunk(`⚠️ ${t('error.network_retry', { attempt: String(retryCount), max: String(AI_RETRY.MAX_RETRIES) })}\n`)
+        }
         getAiDebugService().logResponseError(reqId, `${errorMsg} - 准备重试 ${retryCount}/${AI_RETRY.MAX_RETRIES}`)
         resetForRetry()
         setTimeout(doRequest, AI_RETRY.RETRY_DELAY)
@@ -1279,7 +1287,9 @@ export class AiService {
               const retryAfterSec = (retryAfterMs / 1000).toFixed(0)
               log.warn(`Rate limited (429), retrying in ${retryAfterSec}s (${rateLimitRetryCount}/${AI_RETRY.RATE_LIMIT_MAX_RETRIES})`)
               closeOpenReasoningBlock()
-              onChunk(`⚠️ ${t('error.rate_limited', { seconds: retryAfterSec, attempt: String(rateLimitRetryCount), max: String(AI_RETRY.RATE_LIMIT_MAX_RETRIES) })}\n`)
+              if (!onRetry) {
+                onChunk(`⚠️ ${t('error.rate_limited', { seconds: retryAfterSec, attempt: String(rateLimitRetryCount), max: String(AI_RETRY.RATE_LIMIT_MAX_RETRIES) })}\n`)
+              }
               getAiDebugService().logResponseError(reqId, `429 Rate Limited - retry ${rateLimitRetryCount}/${AI_RETRY.RATE_LIMIT_MAX_RETRIES} in ${retryAfterSec}s`)
               resetForRetry()
               setTimeout(doRequest, retryAfterMs)
@@ -1292,7 +1302,9 @@ export class AiService {
               const delaySec = (delay / 1000).toFixed(0)
               log.warn(`Server error (${res.statusCode}), retrying in ${delaySec}s (${serverErrorRetryCount}/${AI_RETRY.SERVER_ERROR_MAX_RETRIES})`)
               closeOpenReasoningBlock()
-              onChunk(`⚠️ ${t('error.server_error_retry', { status: String(res.statusCode), seconds: delaySec, attempt: String(serverErrorRetryCount), max: String(AI_RETRY.SERVER_ERROR_MAX_RETRIES) })}\n`)
+              if (!onRetry) {
+                onChunk(`⚠️ ${t('error.server_error_retry', { status: String(res.statusCode), seconds: delaySec, attempt: String(serverErrorRetryCount), max: String(AI_RETRY.SERVER_ERROR_MAX_RETRIES) })}\n`)
+              }
               getAiDebugService().logResponseError(reqId, `${res.statusCode} Server Error - retry ${serverErrorRetryCount}/${AI_RETRY.SERVER_ERROR_MAX_RETRIES} in ${delaySec}s`)
               resetForRetry()
               setTimeout(doRequest, delay)
