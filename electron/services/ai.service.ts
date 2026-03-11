@@ -153,6 +153,7 @@ export interface AiProfile {
   maxOutputTokens?: number  // 单次回复最大输出 token 数，默认 8192
   modelType?: import('./config.service').AiModelType  // 模型类型，默认 general
   visionProfileId?: string  // 关联的视觉模型 Profile ID（仅 general 类型有效）
+  apiFormat?: import('./config.service').ApiFormat  // API 协议格式，默认 auto
 }
 
 /**
@@ -246,17 +247,25 @@ function formatMessageForApi(msg: AiMessage, stripImages = false): Record<string
 
 // === Anthropic Native API Adapter ===
 
-function isAnthropicNativeApi(apiUrl: string): boolean {
+function isAnthropicApi(profile: { apiUrl: string; apiFormat?: string }): boolean {
+  const format = profile.apiFormat || 'auto'
+  if (format === 'openai') return false
+  if (format === 'anthropic') return true
+  // auto: 根据 URL 自动检测
   try {
-    const url = new URL(apiUrl)
-    return url.hostname === 'api.anthropic.com' && !apiUrl.includes('/chat/completions')
+    if (profile.apiUrl.includes('/chat/completions')) return false
+    const url = new URL(profile.apiUrl)
+    if (url.hostname === 'api.anthropic.com') return true
+    if (url.pathname.startsWith('/anthropic')) return true
+    return false
   } catch {
+    log.warn(`Invalid API URL for format detection: ${profile.apiUrl}`)
     return false
   }
 }
 
 function getRequestHeaders(profile: AiProfile): Record<string, string> {
-  if (isAnthropicNativeApi(profile.apiUrl)) {
+  if (isAnthropicApi(profile)) {
     return {
       'Content-Type': 'application/json',
       'x-api-key': profile.apiKey,
@@ -658,7 +667,7 @@ export class AiService {
             complete(() => {
               try {
                 let parsed = JSON.parse(data)
-                if (isAnthropicNativeApi(profile.apiUrl)) {
+                if (isAnthropicApi(profile)) {
                   parsed = convertFromAnthropicResponse(parsed)
                 }
                 resolve(parsed)
@@ -690,7 +699,7 @@ export class AiService {
         })
       }
 
-      const finalBody = isAnthropicNativeApi(profile.apiUrl) ? convertToAnthropicBody(body as Record<string, unknown>) : body
+      const finalBody = isAnthropicApi(profile) ? convertToAnthropicBody(body as Record<string, unknown>) : body
       req.write(JSON.stringify(finalBody))
       req.end()
     })
@@ -715,7 +724,7 @@ export class AiService {
       return
     }
 
-    const isAnthropic = isAnthropicNativeApi(profile.apiUrl)
+    const isAnthropic = isAnthropicApi(profile)
     const streamStartTime = Date.now()
     log.info(`ChatStream request: model=${profile.model}, messages=${messages.length}`)
 
@@ -1052,7 +1061,7 @@ export class AiService {
       return
     }
 
-    const isAnthropic = isAnthropicNativeApi(profile.apiUrl)
+    const isAnthropic = isAnthropicApi(profile)
 
     // 创建 AbortController，使用 requestId 或生成一个唯一 ID
     const reqId = requestId || `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`

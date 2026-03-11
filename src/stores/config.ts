@@ -35,8 +35,9 @@ export const DEFAULT_KEYBOARD_SHORTCUTS: KeyboardShortcuts = {
   voiceInput: 'Control',
 }
 
-// 与 electron/services/config.service.ts 中的 AiModelType 保持同步
+// 与 electron/services/config.service.ts 中的类型保持同步
 export type AiModelType = 'general' | 'vision'
+export type ApiFormat = 'auto' | 'openai' | 'anthropic'
 
 export interface AiProfile {
   id: string
@@ -49,6 +50,7 @@ export interface AiProfile {
   maxOutputTokens?: number  // 单次回复最大输出 token 数，默认 8192
   modelType?: AiModelType        // 模型类型，默认 general
   visionProfileId?: string       // 关联的视觉模型 Profile ID（仅 general 类型有效）
+  apiFormat?: ApiFormat           // API 协议格式，默认 auto
 }
 
 // 跳板机配置

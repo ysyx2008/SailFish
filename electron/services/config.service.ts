@@ -11,6 +11,9 @@ const log = createLogger('Config')
 // AI 模型类型
 export type AiModelType = 'general' | 'vision'
 
+// API 协议格式
+export type ApiFormat = 'auto' | 'openai' | 'anthropic'
+
 export interface AiProfile {
   id: string
   name: string
@@ -21,6 +24,7 @@ export interface AiProfile {
   contextLength?: number  // 模型上下文长度（tokens），默认 128000
   modelType?: AiModelType        // 模型类型，默认 general
   visionProfileId?: string       // 关联的视觉模型 Profile ID（仅 general 类型有效）
+  apiFormat?: ApiFormat           // API 协议格式，默认 auto（自动检测）
 }
 
 // 跳板机配置

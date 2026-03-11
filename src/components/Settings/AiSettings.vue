@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Plus, Pencil, Trash2, X, ExternalLink, Eye } from 'lucide-vue-next'
-import { useConfigStore, type AiProfile, type AiModelType } from '../../stores/config'
+import { useConfigStore, type AiProfile, type AiModelType, type ApiFormat } from '../../stores/config'
 import { v4 as uuidv4 } from 'uuid'
 
 const { t } = useI18n()
@@ -48,7 +48,8 @@ const formData = ref<Partial<AiProfile>>({
   contextLength: 128000,
   maxOutputTokens: undefined,
   modelType: 'general' as AiModelType,
-  visionProfileId: undefined
+  visionProfileId: undefined,
+  apiFormat: 'auto' as ApiFormat
 })
 
 const profiles = computed(() => configStore.aiProfiles)
@@ -64,7 +65,8 @@ const resetForm = () => {
     contextLength: 128000,
     maxOutputTokens: undefined,
     modelType: 'general' as AiModelType,
-    visionProfileId: undefined
+    visionProfileId: undefined,
+    apiFormat: 'auto' as ApiFormat
   }
   editingProfile.value = null
 }
@@ -399,6 +401,15 @@ const openKeyUrl = (url: string) => {
                     </option>
                   </select>
                   <span class="form-hint">{{ t('aiSettings.visionProfileHint') }}</span>
+                </div>
+                <div class="form-group flex-1">
+                  <label class="form-label">{{ t('aiSettings.apiFormat') }}</label>
+                  <select v-model="formData.apiFormat" class="input">
+                    <option value="auto">{{ t('aiSettings.apiFormatAuto') }}</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="anthropic">Anthropic</option>
+                  </select>
+                  <span class="form-hint">{{ t('aiSettings.apiFormatHint') }}</span>
                 </div>
               </div>
             </div>
