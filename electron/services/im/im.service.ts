@@ -828,16 +828,21 @@ export class IMService {
               }
               const question = step.toolArgs.question || step.content || ''
               const options = step.toolArgs.options as string[] | undefined
-              const lines = [t('im.need_reply'), '', question]
-              if (options && options.length > 0) {
-                lines.push('')
-                options.forEach((opt: string, i: number) => { lines.push(`${i + 1}. ${opt}`) })
-                lines.push('', t('im.need_reply_select'))
-              } else {
-                lines.push('', t('im.need_reply_input'))
-              }
+              const allowMultiple = step.toolArgs.allow_multiple as boolean | undefined
               try {
-                await adapter.sendMarkdown(replyContext, t('im.need_reply_title'), lines.join('\n'))
+                if (options && options.length > 0 && adapter.sendAskCard) {
+                  await adapter.sendAskCard(replyContext, question, options, !!allowMultiple)
+                } else {
+                  const lines = [t('im.need_reply'), '', question]
+                  if (options && options.length > 0) {
+                    lines.push('')
+                    options.forEach((opt: string, i: number) => { lines.push(`${i + 1}. ${opt}`) })
+                    lines.push('', t('im.need_reply_select'))
+                  } else {
+                    lines.push('', t('im.need_reply_input'))
+                  }
+                  await adapter.sendMarkdown(replyContext, t('im.need_reply_title'), lines.join('\n'))
+                }
               } catch { /* ignore */ }
             }
             enqueueSend(sendAsk)

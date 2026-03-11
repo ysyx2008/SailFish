@@ -114,15 +114,15 @@ export class FeishuAdapter implements IMAdapter {
       }
     })
 
-    // 注册卡片交互回调（用于确认/拒绝按钮）
+    // 注册卡片交互回调（确认/拒绝、ask_user 选项按钮、多选表单提交）
     eventDispatcher.register({
       'card.action.trigger': async (data: any) => {
         try {
-          this.handleCardAction(data)
+          return this.handleCardAction(data) ?? { toast: { type: 'info', content: '' } }
         } catch (err) {
           log.error('Error handling card action:', err)
+          return { toast: { type: 'info', content: '' } }
         }
-        return { toast: { type: 'info', content: '' } }
       }
     })
 
@@ -481,33 +481,145 @@ export class FeishuAdapter implements IMAdapter {
   }
 
   /**
-   * 处理卡片按钮点击回调
-   * 将按钮动作转化为标准消息，复用已有的确认/拒绝流程
+   * 发送 ask_user 选项卡片
+   * - 单选：按钮列表，点击即提交
+   * - 多选：表单容器 + multi_select_static 下拉 + 确认按钮，提交时回传所有选中值
    */
-  private handleCardAction(data: any): void {
+  async sendAskCard(replyContext: any, question: string, options: string[], allowMultiple?: boolean): Promise<void> {
+    if (!this.client) throw new Error('[Feishu] Client not initialized')
+
+    const MAX_BUTTON_TEXT = 20
+    const header = {
+      template: 'blue',
+      title: { content: t('im.need_reply_title').substring(0, 50), tag: 'plain_text' },
+    }
+    const questionEl = { tag: 'markdown', content: this.truncateText(question) }
+
+    let elements: any[]
+
+    if (allowMultiple) {
+      const selectOptions = options.map((opt, i) => ({
+        text: { tag: 'plain_text', content: opt.length > 50 ? opt.substring(0, 49) + '…' : opt },
+        value: String(i + 1),
+      }))
+      elements = [
+        questionEl,
+        {
+          tag: 'form',
+          name: 'ask_multi_form',
+          elements: [
+            {
+              tag: 'multi_select_static',
+              name: 'selected_options',
+              placeholder: { tag: 'plain_text', content: t('im.need_reply_multi_placeholder') },
+              options: selectOptions,
+            },
+            {
+              tag: 'button',
+              text: { tag: 'plain_text', content: t('im.need_reply_multi_submit') },
+              type: 'primary',
+              action_type: 'form_submit',
+              name: 'submit_btn',
+              value: {
+                action: 'ask_multi_option',
+                chatId: replyContext.chatId,
+                chatType: replyContext.chatType || 'p2p',
+              },
+            },
+          ],
+        },
+        {
+          tag: 'note',
+          elements: [{ tag: 'plain_text', content: t('im.need_reply_multi_hint') }],
+        },
+      ]
+    } else {
+      const buttons = options.map((opt, i) => ({
+        tag: 'button',
+        text: {
+          tag: 'plain_text',
+          content: opt.length > MAX_BUTTON_TEXT ? opt.substring(0, MAX_BUTTON_TEXT - 1) + '…' : opt,
+        },
+        type: 'default',
+        value: {
+          action: 'ask_option',
+          option: String(i + 1),
+          chatId: replyContext.chatId,
+          chatType: replyContext.chatType || 'p2p',
+        },
+      }))
+      elements = [
+        questionEl,
+        { tag: 'action', actions: buttons },
+        { tag: 'note', elements: [{ tag: 'plain_text', content: t('im.need_reply_select') }] },
+      ]
+    }
+
+    const card = {
+      config: { wide_screen_mode: true },
+      header,
+      elements,
+    }
+
+    await this.client.im.message.create({
+      params: { receive_id_type: 'chat_id' },
+      data: {
+        receive_id: replyContext.chatId,
+        content: JSON.stringify(card),
+        msg_type: 'interactive',
+      },
+    })
+  }
+
+  /**
+   * 处理卡片按钮点击回调
+   * 将按钮动作转化为标准消息，复用已有的确认/拒绝、ask_user 选项流程
+   * 返回 toast 对象供飞书客户端显示（null 表示静默）
+   */
+  private handleCardAction(data: any): { toast: { type: string; content: string } } | null {
     const action = data?.action
     if (!action?.value) {
       log.debug('Card action: no value, ignoring')
-      return
+      return null
     }
 
-    const { action: actionType, chatId, chatType: rawChatType } = action.value
+    const { action: actionType, chatType: rawChatType } = action.value
+    // chatId 优先从 value 取，form_submit 场景 value 可能不传，fallback 到 open_chat_id
+    const chatId = action.value.chatId || data?.open_chat_id
     if (!actionType || !chatId) {
       log.debug('Card action: missing actionType or chatId')
-      return
+      return null
     }
 
     const operator = data?.operator
     const userId = operator?.open_id
     if (!userId) {
       log.warn('Card action: operator.open_id missing, ignoring')
-      return
+      return null
     }
 
     log.info(`Card action: ${actionType} from ${userId} in ${chatId}`)
 
-    const isP2p = rawChatType === 'p2p'
-    const text = actionType === 'confirm' ? '确认' : '拒绝'
+    const isP2p = (rawChatType || 'p2p') === 'p2p'
+
+    let text: string
+    if (actionType === 'ask_option') {
+      if (!action.value.option) {
+        log.warn('Card action: ask_option missing option value')
+        return null
+      }
+      text = action.value.option
+    } else if (actionType === 'ask_multi_option') {
+      const formValue = action.form_value
+      const selected: string[] = formValue?.selected_options
+      if (!Array.isArray(selected) || selected.length === 0) {
+        log.warn('Card action: ask_multi_option with empty selection')
+        return { toast: { type: 'warning', content: t('im.need_reply_multi_placeholder') } }
+      }
+      text = JSON.stringify(selected)
+    } else {
+      text = actionType === 'confirm' ? '确认' : '拒绝'
+    }
 
     const replyContext = {
       chatId,
@@ -526,6 +638,7 @@ export class FeishuAdapter implements IMAdapter {
     }
 
     this.onMessage?.(msg)
+    return null
   }
 
   /**
