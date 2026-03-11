@@ -94,6 +94,17 @@ const allAiTemplates = [
     isCustom: false
   },
   {
+    name: 'MiniMax',
+    apiUrl: 'https://api.minimaxi.com/v1/chat/completions',
+    model: 'MiniMax-M2.5',
+    descKey: 'aiSettings.templates.minimax',
+    keyUrl: 'https://platform.minimaxi.com/user-center/basic-information/interface-key',
+    contextLength: 204800,
+    isLocal: false,
+    needsApiKey: true,
+    isCustom: false
+  },
+  {
     name: 'OpenAI',
     apiUrl: 'https://api.openai.com/v1/chat/completions',
     model: 'gpt-4o-mini',

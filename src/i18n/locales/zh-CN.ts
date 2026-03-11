@@ -451,6 +451,7 @@ export default {
       doubao: '字节跳动豆包大模型，火山引擎提供服务',
       zhipu: '智谱 GLM 大模型，支持 GLM-5 及 GLM-4 系列',
       kimi: 'Moonshot Kimi，支持超长上下文',
+      minimax: 'MiniMax 海螺大模型，高性价比，支持超长上下文',
       claude: 'Anthropic Claude，推理能力强，支持 200K 上下文',
       gemini: 'Google Gemini，支持超长上下文（100 万 token）',
       grok: 'xAI Grok，实时信息与推理能力兼备',

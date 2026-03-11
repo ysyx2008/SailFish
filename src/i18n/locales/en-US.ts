@@ -451,6 +451,7 @@ export default {
       doubao: 'ByteDance Doubao, powered by Volcengine',
       zhipu: 'Zhipu GLM, supports GLM-5 and GLM-4 series',
       kimi: 'Moonshot Kimi, supports extra-long context',
+      minimax: 'MiniMax LLM, cost-effective with long context support',
       claude: 'Anthropic Claude, strong reasoning, 200K context',
       gemini: 'Google Gemini, supports ultra-long context (1M tokens)',
       grok: 'xAI Grok, real-time info with strong reasoning',
