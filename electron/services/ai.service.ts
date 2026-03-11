@@ -1116,6 +1116,9 @@ export class AiService {
     let reasoningContent = ''  // 用于收集 think 模型的思考内容
     let toolCalls: ToolCall[] = []
     let finishReason: string | undefined
+    // reasoning 输出状态（需跨重试可见，以便重试前关闭未闭合的 <details> 块）
+    let hasReasoningOutput = false
+    let hasContentOutput = false
 
     const complete = (fn: () => void) => {
       if (!isCompleted) {
@@ -1136,6 +1139,16 @@ export class AiService {
       toolCalls = []
       finishReason = undefined
       req = undefined
+      hasReasoningOutput = false
+      hasContentOutput = false
+    }
+
+    // 关闭未闭合的 reasoning <details> 块（重试前调用，避免嵌套）
+    const closeOpenReasoningBlock = () => {
+      if (hasReasoningOutput && !hasContentOutput) {
+        onChunk('\n\n</blockquote>\n</details>\n\n')
+        hasReasoningOutput = false
+      }
     }
 
     const resetIdleTimeout = () => {
@@ -1189,8 +1202,8 @@ export class AiService {
       if (isCompleted) return true
       if (retryCount < AI_RETRY.MAX_RETRIES && isRetryableError(errorMsg)) {
         retryCount++
-        const retryMsg = `⚠️ 网络错误，正在重试 (${retryCount}/${AI_RETRY.MAX_RETRIES})...`
-        onChunk(retryMsg + '\n')
+        closeOpenReasoningBlock()
+        onChunk(`⚠️ ${t('error.network_retry', { attempt: String(retryCount), max: String(AI_RETRY.MAX_RETRIES) })}\n`)
         getAiDebugService().logResponseError(reqId, `${errorMsg} - 准备重试 ${retryCount}/${AI_RETRY.MAX_RETRIES}`)
         resetForRetry()
         setTimeout(doRequest, AI_RETRY.RETRY_DELAY)
@@ -1230,9 +1243,6 @@ export class AiService {
         }
       }, AI_TIMEOUT.TOTAL)
 
-      let hasReasoningOutput = false
-      let hasContentOutput = false
-
       req = httpModule.request(options, (res) => {
         // 开始接收响应，启动空闲超时
         resetIdleTimeout()
@@ -1268,6 +1278,7 @@ export class AiService {
               }
               const retryAfterSec = (retryAfterMs / 1000).toFixed(0)
               log.warn(`Rate limited (429), retrying in ${retryAfterSec}s (${rateLimitRetryCount}/${AI_RETRY.RATE_LIMIT_MAX_RETRIES})`)
+              closeOpenReasoningBlock()
               onChunk(`⚠️ ${t('error.rate_limited', { seconds: retryAfterSec, attempt: String(rateLimitRetryCount), max: String(AI_RETRY.RATE_LIMIT_MAX_RETRIES) })}\n`)
               getAiDebugService().logResponseError(reqId, `429 Rate Limited - retry ${rateLimitRetryCount}/${AI_RETRY.RATE_LIMIT_MAX_RETRIES} in ${retryAfterSec}s`)
               resetForRetry()
@@ -1280,6 +1291,7 @@ export class AiService {
               const delay = AI_RETRY.SERVER_ERROR_BASE_DELAY * Math.pow(2, serverErrorRetryCount - 1)
               const delaySec = (delay / 1000).toFixed(0)
               log.warn(`Server error (${res.statusCode}), retrying in ${delaySec}s (${serverErrorRetryCount}/${AI_RETRY.SERVER_ERROR_MAX_RETRIES})`)
+              closeOpenReasoningBlock()
               onChunk(`⚠️ ${t('error.server_error_retry', { status: String(res.statusCode), seconds: delaySec, attempt: String(serverErrorRetryCount), max: String(AI_RETRY.SERVER_ERROR_MAX_RETRIES) })}\n`)
               getAiDebugService().logResponseError(reqId, `${res.statusCode} Server Error - retry ${serverErrorRetryCount}/${AI_RETRY.SERVER_ERROR_MAX_RETRIES} in ${delaySec}s`)
               resetForRetry()
