@@ -74,10 +74,10 @@ const allAiTemplates = [
   {
     name: 'Zhipu',
     apiUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-    model: 'glm-4-plus',
+    model: 'glm-5',
     descKey: 'aiSettings.templates.zhipu',
     keyUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
-    contextLength: 128000,
+    contextLength: 200000,
     isLocal: false,
     needsApiKey: true,
     isCustom: false

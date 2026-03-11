@@ -449,7 +449,7 @@ export default {
       qwen: 'Alibaba Qwen, fast access in China',
       deepseek: 'DeepSeek LLM, cost-effective',
       doubao: 'ByteDance Doubao, powered by Volcengine',
-      zhipu: 'Zhipu GLM, supports GLM-4 series',
+      zhipu: 'Zhipu GLM, supports GLM-5 and GLM-4 series',
       kimi: 'Moonshot Kimi, supports extra-long context',
       claude: 'Anthropic Claude, strong reasoning, 200K context',
       gemini: 'Google Gemini, supports ultra-long context (1M tokens)',

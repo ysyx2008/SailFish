@@ -967,7 +967,6 @@ export class AiService {
         messages: fmtMessages,
         tools: tools.length > 0 ? tools : undefined,
         tool_choice: tools.length > 0 ? 'auto' : undefined,
-        parallel_tool_calls: tools.length > 0 ? true : undefined,
         temperature: 0.7,
         max_tokens: profile.maxOutputTokens || 8192
       }
@@ -1162,7 +1161,6 @@ export class AiService {
         messages: fmtMsgs,
         tools: tools.length > 0 ? tools : undefined,
         tool_choice: tools.length > 0 ? 'auto' : undefined,
-        parallel_tool_calls: tools.length > 0 ? true : undefined,
         temperature: 0.7,
         max_tokens: profile.maxOutputTokens || 8192,
         stream: true

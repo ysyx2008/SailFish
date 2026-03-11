@@ -167,7 +167,7 @@ const allTemplates = [
   {
     name: 'Zhipu',
     apiUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-    model: 'glm-4-plus',
+    model: 'glm-5',
     keyUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
     isLocal: false
   },

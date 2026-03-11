@@ -449,7 +449,7 @@ export default {
       qwen: '阿里云通义千问，国内访问速度快',
       deepseek: 'DeepSeek 大模型，性价比高',
       doubao: '字节跳动豆包大模型，火山引擎提供服务',
-      zhipu: '智谱 GLM 大模型，支持 GLM-4 系列',
+      zhipu: '智谱 GLM 大模型，支持 GLM-5 及 GLM-4 系列',
       kimi: 'Moonshot Kimi，支持超长上下文',
       claude: 'Anthropic Claude，推理能力强，支持 200K 上下文',
       gemini: 'Google Gemini，支持超长上下文（100 万 token）',
