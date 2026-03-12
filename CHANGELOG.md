@@ -2,7 +2,15 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.19.2 (2026-03-12) (Latest)
+## v10.19.3 (2026-03-12) (Latest)
+
+Improved diagnosis for Windows speech recognition failures — when the native module can't load, the real OS-level error (e.g. missing VC++ Runtime or DLL dependency) is now captured and shown instead of the generic "Could not find sherpa-onnx-node" message.
+
+### Bug Fixes
+- 🔧 **Speech engine diagnostic fallback**: Worker now bypasses addon.js's silent error swallowing via direct `process.dlopen`, exposing the actual system error on Windows machines where loading fails
+- 🔧 Worker sets `PATH`/`LD_LIBRARY_PATH` itself as a second safety net in case parent env propagation fails
+
+## v10.19.2 (2026-03-12)
 
 Fix speech recognition failing on Windows and Linux in packaged builds with robust three-layer native module loading.
 
