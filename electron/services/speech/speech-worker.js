@@ -5,6 +5,19 @@
 /* eslint-env node */
 
 const fs = require('fs')
+const os = require('os')
+const path = require('path')
+const Module = require('module')
+
+// ── 启动时设置动态库搜索路径（belt-and-suspenders，父进程已通过 env 设置，此处二次保障） ──
+const sherpaLibDir = process.env.SHERPA_LIB_DIR
+if (sherpaLibDir) {
+  if (os.platform() === 'win32') {
+    process.env.PATH = sherpaLibDir + path.delimiter + (process.env.PATH || '')
+  } else if (os.platform() === 'linux') {
+    process.env.LD_LIBRARY_PATH = sherpaLibDir + path.delimiter + (process.env.LD_LIBRARY_PATH || '')
+  }
+}
 
 // 从 parentPort 接收消息
 process.parentPort.on('message', async (e) => {
@@ -31,10 +44,79 @@ process.parentPort.on('message', async (e) => {
 
 // 识别器实例
 let recognizer = null
-let punctuator = null  // 标点恢复器
+let punctuator = null
 let isInitialized = false
 let modelPath = null
 let punctModelPath = null
+
+/**
+ * 尝试用 process.dlopen 直接加载 .node 文件，绕过 addon.js 的静默错误
+ * 成功时返回 native addon exports，失败时抛出携带真实系统错误的异常
+ */
+function loadNativeAddon(nodeFilePath) {
+  const m = { exports: {} }
+  process.dlopen(m, nodeFilePath)
+  return m.exports
+}
+
+/**
+ * 加载 sherpa-onnx-node 模块（多级回退）
+ *
+ * 1. require('sherpa-onnx-node') — 标准方式
+ * 2. require(SHERPA_MODULE_PATH)  — 绝对路径回退（跳过 NODE_PATH 问题）
+ * 3. dlopen(SHERPA_NODE_FILE) + 手动加载 JS wrapper — 最后手段，捕获真实 DLL 错误
+ */
+function loadSherpa() {
+  // ── 第一级：标准 require ──
+  try {
+    return require('sherpa-onnx-node')
+  } catch (err) {
+    console.warn('[SpeechWorker] Standard require failed:', err.message)
+  }
+
+  // ── 第二级：绝对路径 require ──
+  const modulePath = process.env.SHERPA_MODULE_PATH
+  if (modulePath) {
+    try {
+      console.log('[SpeechWorker] Trying absolute path:', modulePath)
+      return require(modulePath)
+    } catch (err) {
+      console.warn('[SpeechWorker] Absolute path require failed:', err.message)
+    }
+  }
+
+  // ── 第三级：直接 dlopen .node 文件 + 手动组装 ──
+  const nodeFile = process.env.SHERPA_NODE_FILE
+  if (!nodeFile) {
+    throw new Error('SHERPA_NODE_FILE env not set, cannot attempt direct load')
+  }
+
+  if (!fs.existsSync(nodeFile)) {
+    throw new Error(`Native addon not found: ${nodeFile}`)
+  }
+
+  console.log('[SpeechWorker] Attempting direct dlopen:', nodeFile)
+  // process.dlopen 会抛出包含真实系统错误的异常，例如：
+  // - "The specified module could not be found" (缺少依赖 DLL)
+  // - "A dynamic link library initialization routine failed" (VC++ Runtime 缺失)
+  const addon = loadNativeAddon(nodeFile)
+
+  // dlopen 成功，手动加载 JS wrapper 层
+  if (!modulePath) {
+    throw new Error('SHERPA_MODULE_PATH env not set, cannot load JS wrappers')
+  }
+  const wrapperDir = modulePath
+  const nonStreamAsr = require(path.join(wrapperDir, 'non-streaming-asr.js'))
+  const punct = require(path.join(wrapperDir, 'punctuation.js'))
+
+  return {
+    OfflineRecognizer: nonStreamAsr.OfflineRecognizer,
+    OfflinePunctuation: punct.OfflinePunctuation,
+    readWave: addon.readWave,
+    writeWave: addon.writeWave,
+    version: addon.version,
+  }
+}
 
 /**
  * 初始化识别器
@@ -48,7 +130,7 @@ async function handleInitialize(data, id) {
   try {
     modelPath = data.modelPath
     const tokensPath = data.tokensPath
-    punctModelPath = data.punctModelPath  // 标点模型路径（可选）
+    punctModelPath = data.punctModelPath
 
     console.log('[SpeechWorker] Initializing with model:', modelPath)
 
@@ -56,21 +138,8 @@ async function handleInitialize(data, id) {
       throw new Error(`Model file not found: ${modelPath}`)
     }
 
-    // 加载 sherpa-onnx-node（utilityProcess 中 asar 路径可能导致常规 require 失败，用绝对路径回退）
-    let sherpa
-    try {
-      sherpa = require('sherpa-onnx-node')
-    } catch (err) {
-      const modulePath = process.env.SHERPA_MODULE_PATH
-      if (modulePath) {
-        console.log('[SpeechWorker] Normal require failed, trying absolute path:', modulePath)
-        sherpa = require(modulePath)
-      } else {
-        throw err
-      }
-    }
+    const sherpa = loadSherpa()
 
-    // 创建离线识别器配置
     const config = {
       featConfig: {
         sampleRate: 16000,
@@ -89,10 +158,8 @@ async function handleInitialize(data, id) {
       maxActivePaths: 4,
     }
 
-    // 创建离线识别器
     recognizer = new sherpa.OfflineRecognizer(config)
 
-    // 初始化标点恢复器（如果模型存在）
     if (punctModelPath && fs.existsSync(punctModelPath)) {
       console.log('[SpeechWorker] Initializing punctuation model:', punctModelPath)
       try {
@@ -138,30 +205,22 @@ async function handleTranscribe(data, id) {
 
     console.log(`[SpeechWorker] Transcribing ${samples.length} samples at ${sampleRate}Hz`)
 
-    // 创建离线流
     const stream = recognizer.createStream()
-
-    // 接受音频数据 - API 需要对象 { samples, sampleRate }
     stream.acceptWaveform({ samples, sampleRate })
-
-    // 解码
     recognizer.decode(stream)
 
-    // 获取结果
     const result = recognizer.getResult(stream)
     let text = result.text?.trim() || ''
 
     console.log(`[SpeechWorker] Raw result: "${text}"`)
 
-    // 添加标点（如果启用且有标点恢复器）
     if (addPunctuation && punctuator && text) {
       try {
-        const punctuatedText = punctuator.addPunct(text)  // API 是 addPunct 不是 addPunctuation
+        const punctuatedText = punctuator.addPunct(text)
         console.log(`[SpeechWorker] With punctuation: "${punctuatedText}"`)
         text = punctuatedText
       } catch (punctError) {
         console.warn('[SpeechWorker] Punctuation failed:', punctError.message)
-        // 标点失败时使用原始文本
       }
     }
 
@@ -182,9 +241,6 @@ function handleGetStatus(id) {
   })
 }
 
-/**
- * 发送成功响应
- */
 function sendSuccess(id, result) {
   process.parentPort.postMessage({
     id,
@@ -193,9 +249,6 @@ function sendSuccess(id, result) {
   })
 }
 
-/**
- * 发送错误响应
- */
 function sendError(id, error) {
   process.parentPort.postMessage({
     id,
@@ -204,4 +257,4 @@ function sendError(id, error) {
   })
 }
 
-console.log('[SpeechWorker] Started')
+console.log('[SpeechWorker] Started, platform:', os.platform(), os.arch())

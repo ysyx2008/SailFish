@@ -145,9 +145,13 @@ function startWorker(): void {
   // 2) SHERPA_MODULE_PATH — worker 加载模块的绝对路径后备
   env.SHERPA_MODULE_PATH = path.join(unpackedNM, 'sherpa-onnx-node')
 
-  log.info('Worker env: NODE_PATH=%s, SHERPA_MODULE_PATH=%s', env.NODE_PATH, env.SHERPA_MODULE_PATH)
+  // 3) SHERPA_LIB_DIR / SHERPA_NODE_FILE — worker 直接加载 .node 的精确路径
+  env.SHERPA_LIB_DIR = sherpaLib
+  env.SHERPA_NODE_FILE = path.join(sherpaLib, 'sherpa-onnx.node')
 
-  // 3) 平台对应的动态库搜索路径，确保 .node 加载时能找到依赖的原生库
+  log.info('Worker env: NODE_PATH=%s, SHERPA_LIB_DIR=%s, SHERPA_NODE_FILE=%s', env.NODE_PATH, env.SHERPA_LIB_DIR, env.SHERPA_NODE_FILE)
+
+  // 4) 平台对应的动态库搜索路径，确保 .node 加载时能找到依赖的原生库
   if (fs.existsSync(sherpaLib)) {
     if (process.platform === 'darwin') {
       env.DYLD_LIBRARY_PATH = env.DYLD_LIBRARY_PATH
