@@ -87,6 +87,8 @@ export async function executeTool(
     return { success: false, output: '', error: t('error.tool_param_parse_failed') }
   }
 
+  const id = ptyId ?? ''
+
   // 根据工具类型执行
   switch (name) {
     case 'execute_command':
@@ -119,35 +121,20 @@ export async function executeTool(
       return sendInput(requiredPtyId, args, config, executor)
     }
 
-    case 'read_file': {
-      const requiredPtyId = requirePtyId(ptyId, name)
-      if (typeof requiredPtyId !== 'string') return requiredPtyId
-      return await readFile(requiredPtyId, args, config, executor)
-    }
+    case 'read_file':
+      return await readFile(id, args, config, executor)
 
-    case 'file_search': {
-      const requiredPtyId = requirePtyId(ptyId, name)
-      if (typeof requiredPtyId !== 'string') return requiredPtyId
-      return await fileSearch(requiredPtyId, args, config, executor)
-    }
+    case 'file_search':
+      return await fileSearch(id, args, config, executor)
 
-    case 'edit_file': {
-      const requiredPtyId = requirePtyId(ptyId, name)
-      if (typeof requiredPtyId !== 'string') return requiredPtyId
-      return editFile(requiredPtyId, args, toolCall.id, config, executor)
-    }
+    case 'edit_file':
+      return editFile(id, args, toolCall.id, config, executor)
 
-    case 'write_local_file': {
-      const requiredPtyId = requirePtyId(ptyId, name)
-      if (typeof requiredPtyId !== 'string') return requiredPtyId
-      return writeLocalFile(requiredPtyId, args, toolCall.id, config, executor)
-    }
+    case 'write_local_file':
+      return writeLocalFile(id, args, toolCall.id, config, executor)
 
-    case 'write_remote_file': {
-      const requiredPtyId = requirePtyId(ptyId, name)
-      if (typeof requiredPtyId !== 'string') return requiredPtyId
-      return writeRemoteFile(requiredPtyId, args, toolCall.id, config, executor)
-    }
+    case 'write_remote_file':
+      return writeRemoteFile(id, args, toolCall.id, config, executor)
 
     case 'remember_info':
       return await rememberInfo(args, config, executor)
@@ -191,16 +178,10 @@ export async function executeTool(
 
     case 'recall':
       return dispatchRecall(args, executor, ptyId)
-    case 'recall_task': {
-      const requiredPtyId = requirePtyId(ptyId, name)
-      if (typeof requiredPtyId !== 'string') return requiredPtyId
-      return recallTask(args, executor, requiredPtyId)
-    }
-    case 'deep_recall': {
-      const requiredPtyId = requirePtyId(ptyId, name)
-      if (typeof requiredPtyId !== 'string') return requiredPtyId
-      return deepRecall(args, executor, requiredPtyId)
-    }
+    case 'recall_task':
+      return recallTask(args, executor, id)
+    case 'deep_recall':
+      return deepRecall(args, executor, id)
 
     case 'compress_context':
       return compressContext(args, executor)
