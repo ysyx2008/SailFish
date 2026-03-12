@@ -776,15 +776,22 @@ watch(() => terminalStore.pendingAiText, (text) => {
 
 // 监听定时任务 / 远程任务：当有 pendingSchedulerTask 时自动执行
 // 触发时机：tab 切换到当前实例、或新的 pending task 被写入当前 tab
+// 需要等待终端就绪（ptyId 已分配），否则 runAgent 会因 context.ptyId 为空而静默退出
 const isMounted = ref(false)
 watch(
-  [() => terminalStore.activeTabId, () => terminalStore.pendingSchedulerTasks[currentTabId.value], isMounted],
-  ([_tabId, pendingTask, mounted]) => {
+  [
+    () => terminalStore.activeTabId,
+    () => terminalStore.pendingSchedulerTasks[currentTabId.value],
+    isMounted,
+    () => terminalStore.tabs.find(t => t.id === currentTabId.value)?.ptyId,
+  ],
+  ([_tabId, pendingTask, mounted, ptyId]) => {
     if (!mounted || !pendingTask) return
+    const tab = terminalStore.tabs.find(t => t.id === currentTabId.value)
+    if (!tab?.ptyId && tab?.type !== 'assistant') return
     const task = terminalStore.consumePendingSchedulerTask(currentTabId.value)
     if (task) {
       console.log(`[AiPanel] 检测到待执行任务，自动执行: ${task.substring(0, 50)}...`)
-      // 自动任务执行前刷新 AI Profile，确保使用用户最新选择的模型
       const latestProfileId = configStore.activeAiProfileId
       if (latestProfileId) {
         activeProfileId.value = latestProfileId
