@@ -1,6 +1,6 @@
 {
   "name": "SFTerm",
-  "version": "10.18.1",
+  "version": "10.19.0",
   "description": "旗鱼 - AI 驱动的智能助手",
   "main": "dist-electron/main.js",
   "scripts": {
