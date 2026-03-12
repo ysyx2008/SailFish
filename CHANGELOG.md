@@ -2,7 +2,14 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.19.0 (2026-03-12) (Latest)
+## v10.19.1 (2026-03-12) (Latest)
+
+Fix speech recognition failing on Windows and Linux due to missing native library path configuration.
+
+### Bug Fixes
+- 🔧 Fixed speech recognition failing on Windows/Linux — `getSherpaLibPath` was hardcoded to macOS, and the worker process was missing `PATH` (Windows) / `LD_LIBRARY_PATH` (Linux) setup for sherpa-onnx native DLLs
+
+## v10.19.0 (2026-03-12)
 
 WeCom IM adapter migrated to WebSocket persistent connection mode for better reliability. Also includes fixes for Agent tool guards and UI race conditions.
 

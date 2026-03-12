@@ -2,7 +2,14 @@
 
 本文件记录旗鱼（SailFish）的所有重要更新。
 
-## v10.19.0 (2026-03-12)（最新版本）
+## v10.19.1 (2026-03-12)（最新版本）
+
+修复 Windows 和 Linux 上语音识别功能因原生库路径配置缺失而无法使用的问题。
+
+### 问题修复
+- 🔧 修复 Windows/Linux 语音识别失败——`getSherpaLibPath` 原先硬编码为 macOS 路径，且 Worker 进程缺少 Windows `PATH` / Linux `LD_LIBRARY_PATH` 的设置，导致 sherpa-onnx 原生库无法加载
+
+## v10.19.0 (2026-03-12)
 
 企业微信 IM 适配器迁移至 WebSocket 长连接模式，提升消息投递可靠性。同时修复 Agent 工具守卫和 UI 竞态条件等问题。
 
