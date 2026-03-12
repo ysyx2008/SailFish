@@ -2,7 +2,16 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.18.0 (2026-03-11) (Latest)
+## v10.18.1 (2026-03-12) (Latest)
+
+Stability patch fixing MCP tool routing, terminal tool guard, and repeated thinking display on retries.
+
+### Bug Fixes
+- 🔧 Fixed MCP tool calls being incorrectly routed through `skillSession`, causing "unknown tool" errors
+- 🔧 Fixed Agent terminal tools crashing when invoked without an active PTY session
+- 🔧 Fixed thinking process being duplicated in display when `think` model retried requests
+
+## v10.18.0 (2026-03-11)
 
 Better AI provider compatibility — users can now choose API format per profile, MiniMax models are supported out of the box, and Feishu IM gets interactive card-based user prompts.
 
