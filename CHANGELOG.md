@@ -2,7 +2,19 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.18.1 (2026-03-12) (Latest)
+## v10.19.0 (2026-03-12) (Latest)
+
+WeCom IM adapter migrated to WebSocket persistent connection mode for better reliability. Also includes fixes for Agent tool guards and UI race conditions.
+
+### New Features
+- 🔌 **WeCom WebSocket Mode**: WeCom (企业微信) IM adapter migrated from HTTP callback to WebSocket persistent connection, simplifying deployment (no public callback URL needed) and improving message delivery reliability
+
+### Bug Fixes
+- 🔧 Relaxed `ptyId` guards for file and memory tools, allowing them to work without an active terminal session
+- 🔧 Fixed skill tools failing when invoked without a terminal session context
+- 🔧 Fixed race condition where auto-triggered tasks (e.g. "AI help me configure") would not fire due to timing issues
+
+## v10.18.1 (2026-03-12)
 
 Stability patch fixing MCP tool routing, terminal tool guard, and repeated thinking display on retries.
 

@@ -130,7 +130,7 @@ const loadIMData = async () => {
     feishu: !!(config.feishu.appId && config.feishu.appSecret),
     slack: !!(config.slack.botToken && config.slack.appToken),
     telegram: !!config.telegram.botToken,
-    wecom: !!(config.wecom.corpId && config.wecom.corpSecret && config.wecom.agentId && config.wecom.token && config.wecom.encodingAESKey),
+    wecom: !!(config.wecom.botId && config.wecom.secret),
   }
 
   const autoConnectCheck: Record<IMPlatform, boolean> = {
@@ -196,9 +196,7 @@ const connectIM = async (channel: IMChannelState) => {
         break
       case 'wecom':
         result = await window.electronAPI.im.startWeCom({
-          enabled: true, corpId: config.wecom.corpId, corpSecret: config.wecom.corpSecret,
-          agentId: config.wecom.agentId, token: config.wecom.token,
-          encodingAESKey: config.wecom.encodingAESKey, callbackPort: config.wecom.callbackPort
+          enabled: true, botId: config.wecom.botId, secret: config.wecom.secret,
         })
         break
       default:

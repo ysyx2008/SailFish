@@ -785,7 +785,7 @@ watch(
     isMounted,
     () => terminalStore.tabs.find(t => t.id === currentTabId.value)?.ptyId,
   ],
-  ([_tabId, pendingTask, mounted, ptyId]) => {
+  ([_tabId, pendingTask, mounted, _ptyId]) => {
     if (!mounted || !pendingTask) return
     const tab = terminalStore.tabs.find(t => t.id === currentTabId.value)
     if (!tab?.ptyId && tab?.type !== 'assistant') return
