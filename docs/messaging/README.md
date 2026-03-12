@@ -26,7 +26,7 @@ User sends a message in chat
   Reply sent back via API
 ```
 
-- **Most platforms need no public server**: Slack, Telegram, DingTalk, and Feishu use WebSocket or long polling initiated from the client—no need to expose ports or configure a domain. **WeCom** uses HTTP callback and requires a publicly accessible callback URL (e.g. via a tunnel).
+- **No public server needed**: All platforms use WebSocket or long polling initiated from the client — no need to expose ports or configure a domain.
 - **Messages processed locally**: All AI inference and tool calls run on your machine.
 - **Independent of Gateway**: Messaging integration does not depend on the remote access (Gateway) service and can be used standalone.
 
@@ -55,7 +55,7 @@ Choose your platform and follow its setup guide:
    - **Telegram**: Bot Token
    - **DingTalk**: ClientID + ClientSecret
    - **Feishu**: App ID + App Secret
-   - **WeCom**: Corp ID, Corp Secret, Agent ID, Callback Token, EncodingAESKey, Callback Port
+   - **WeCom**: Bot ID + Secret
 4. Click **Connect** and wait for the status to show ✅ **Connected**
 5. Optional: Check **Auto-connect on startup** so SailFish reconnects automatically next time
 
@@ -112,7 +112,7 @@ Messaging platforms have message length limits. When Agent replies are too long,
 
 - **Slack**: "Sending messages to this app has been turned off" → see [Slack Setup Step 5](./slack.md#step-5-enable-app-home-messaging)
 - **Feishu**: "App has no active long connection" → see [Feishu Setup Step 5](./feishu.md#step-5-connect-sailfish-first)
-- **WeCom**: Callback URL not receiving messages → see [WeCom Setup](./wecom.md#faq-callback-not-receiving-messages) (ensure URL is publicly accessible)
+- **WeCom**: Connection failed → Verify BotID and Secret are correct, and confirm API long-connection mode is enabled in the admin console
 
 ### Credential Security
 

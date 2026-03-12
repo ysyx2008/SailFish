@@ -361,7 +361,7 @@ export const translations = {
         platformList: [
           { name: '钉钉', config: '填入 AppKey 和 AppSecret', note: '在钉钉开放平台创建自建应用' },
           { name: '飞书', config: '填入 App ID 和 App Secret', note: '在飞书开放平台创建应用' },
-          { name: '企业微信', config: '填入 CorpID、Secret、AgentID 等', note: '需配置回调 URL，需公网可访问' },
+          { name: '企业微信', config: '填入 BotID 和 Secret', note: '在企业微信客户端工作台创建智能机器人，开启长连接模式' },
           { name: 'Slack', config: '填入 Bot Token 和 App Token', note: '通过 Slack API 创建 App' },
           { name: 'Telegram', config: '填入 Bot Token', note: '通过 @BotFather 创建 Bot' },
           { name: 'Web 远程', config: '启用网关服务即可', note: '浏览器直接访问，支持流式输出' },
@@ -392,8 +392,7 @@ export const translations = {
         ],
         tips: '使用建议',
         tipsList: [
-          '钉钉、飞书、Slack、Telegram 使用 WebSocket 连接，无需暴露公网端口',
-          '企业微信需要 HTTP 回调，必须有公网可访问的地址（可用内网穿透）',
+          '所有平台均使用 WebSocket 长连接，无需暴露公网端口',
           '执行模式建议设为 relaxed（危险操作需确认），避免 free 模式下的误操作',
           '关闭「发送过程消息」可以减少 IM 消息量，只接收最终结果',
         ],
@@ -605,7 +604,7 @@ export const translations = {
       },
       wecomSkill: {
         title: '企业微信集成',
-        intro: '旗鱼对接企业微信自建应用 API，让 Agent 直接操作企业微信的通讯录、日程、审批、考勤打卡、会议、微盘和文档。通过「设置 → 即时通讯 → 企业微信」中配置的应用凭证统一鉴权，无需额外登录。',
+        intro: '旗鱼对接企业微信 API，让 Agent 直接操作企业微信的通讯录、日程、审批、考勤打卡、会议、微盘和文档。技能使用独立的企业 API 凭证（CorpID / Secret / AgentID）鉴权，与 IM 机器人的长连接凭证分开配置。',
         capabilities: '能力概览',
         capabilityList: [
           { cap: '通讯录', desc: '查询部门列表、部门成员和用户详情，快速了解组织架构' },
@@ -629,16 +628,15 @@ export const translations = {
         ipWhitelistSteps: [
           '在自建应用详情页 → 「企业可信 IP」中添加你的公网出口 IP',
           '如果没有公网 IP，可通过 cloudflared 等隧道工具临时获取',
-          '添加可信 IP 前需要先完成回调 URL 的配置（见下方配置步骤）',
+          '可通过 curl ifconfig.me 查询你的公网出口 IP',
         ],
         setup: '配置步骤',
         setupSteps: [
           '在企业微信管理后台（work.weixin.qq.com）创建自建应用',
           '获取 Corp ID（企业信息页）、Agent ID 和 Secret（应用详情页）',
-          '在应用的「接收消息」中配置回调 URL、Token 和 EncodingAESKey（需公网可达的地址）',
           '在「企业可信 IP」中添加你的公网出口 IP（可通过 curl ifconfig.me 查询）',
           '按上方「需要开通的权限」表格，依次进入各系统应用授权',
-          '打开旗鱼 设置 → 即时通讯 → 企业微信，填入 Corp ID、Secret、Agent ID 等信息并连接',
+          '打开旗鱼 设置 → 即时通讯 → 企业微信，在「企业 API 凭证」中填入 Corp ID、Secret、Agent ID',
         ],
         examples: '使用示例',
         exampleList: [
@@ -1037,7 +1035,7 @@ export const translations = {
         platformList: [
           { name: 'DingTalk', config: 'Enter AppKey and AppSecret', note: 'Create an internal app on DingTalk Open Platform' },
           { name: 'Feishu', config: 'Enter App ID and App Secret', note: 'Create an app on Feishu Open Platform' },
-          { name: 'WeCom', config: 'Enter CorpID, Secret, AgentID, etc.', note: 'Requires callback URL accessible from public internet' },
+          { name: 'WeCom', config: 'Enter BotID and Secret', note: 'Create an AI bot in WeCom client Workbench, enable long-connection mode' },
           { name: 'Slack', config: 'Enter Bot Token and App Token', note: 'Create an App via Slack API' },
           { name: 'Telegram', config: 'Enter Bot Token', note: 'Create a Bot via @BotFather' },
           { name: 'Web Remote', config: 'Enable the Gateway service', note: 'Access from any browser, supports streaming output' },
@@ -1068,8 +1066,7 @@ export const translations = {
         ],
         tips: 'Tips',
         tipsList: [
-          'DingTalk, Feishu, Slack, and Telegram use WebSocket — no need to expose public ports',
-          'WeCom requires HTTP callbacks and a publicly accessible address (use a tunnel if needed)',
+          'All platforms use WebSocket — no need to expose public ports',
           'Set execution mode to "relaxed" (confirm risky ops) to avoid accidental operations in "free" mode',
           'Disable "Send process messages" to reduce IM message volume and only receive final results',
         ],
@@ -1281,7 +1278,7 @@ export const translations = {
       },
       wecomSkill: {
         title: 'WeCom Integration',
-        intro: 'SailFish integrates with WeCom (企业微信) self-built app APIs, enabling your Agent to directly manage contacts, calendar events, approvals, attendance check-ins, meetings, WeDrive, and documents. Authentication uses the app credentials configured in Settings → Messaging → WeCom — no extra login required.',
+        intro: 'SailFish integrates with WeCom self-built app APIs, enabling your Agent to directly manage contacts, calendar events, approvals, attendance check-ins, meetings, WeDrive, and documents. The skill uses separate enterprise API credentials (CorpID / Secret / AgentID), independent from the IM bot long-connection credentials.',
         capabilities: 'Capabilities',
         capabilityList: [
           { cap: 'Contacts', desc: 'Query department lists, department members, and user details to understand your org structure' },
@@ -1305,16 +1302,15 @@ export const translations = {
         ipWhitelistSteps: [
           'In the self-built app details → "Trusted Enterprise IPs", add your public egress IP',
           'If you don\'t have a public IP, use a tunneling tool like cloudflared temporarily',
-          'The callback URL must be configured before adding trusted IPs (see setup steps below)',
+          'You can find your public IP by running: curl ifconfig.me',
         ],
         setup: 'Setup Steps',
         setupSteps: [
           'Create a self-built app in the WeCom admin console (work.weixin.qq.com)',
           'Get the Corp ID (from enterprise info), Agent ID and Secret (from app details)',
-          'Configure the callback URL, Token, and EncodingAESKey in the app\'s "Receive Messages" settings (requires a publicly accessible URL)',
           'Add your public egress IP in "Trusted Enterprise IPs" (check with: curl ifconfig.me)',
           'Follow the "Required Permissions" table above to authorize each system app',
-          'Open SailFish Settings → Messaging → WeCom, enter Corp ID, Secret, Agent ID, etc. and connect',
+          'Open SailFish Settings → Messaging → WeCom, enter Corp ID, Secret, and Agent ID under "Enterprise API Credentials"',
         ],
         examples: 'Usage Examples',
         exampleList: [

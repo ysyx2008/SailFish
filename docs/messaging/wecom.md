@@ -10,8 +10,8 @@ For an overview of messaging integration, see [Messaging Integration Guide](./RE
 
 ## Step 1: Create an AI Bot
 
-1. Log in to [WeCom Admin Console](https://work.weixin.qq.com/) (work.weixin.qq.com)
-2. Go to **App Management** → **Bots** → **Create AI Bot**
+1. Open the **WeCom client** (desktop or mobile)
+2. Go to **Workbench** → **AI Bot** → **Create Bot**
 3. Fill in the bot name and description, then create
 
 ---
