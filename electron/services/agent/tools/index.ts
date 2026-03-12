@@ -51,6 +51,18 @@ export {
 
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
 
+function requirePtyId(ptyId: string | undefined, toolName: string): string | ToolResult {
+  if (ptyId) {
+    return ptyId
+  }
+
+  return {
+    success: false,
+    output: '',
+    error: `工具 ${toolName} 需要绑定终端会话`
+  }
+}
+
 /**
  * 执行工具调用 - 主入口函数
  */
@@ -83,32 +95,59 @@ export async function executeTool(
     case 'exec':
       return executeCommandDirect(args, toolCall.id, config, executor)
 
-    case 'get_terminal_context':
-      return await getTerminalContext(ptyId, args, executor)
+    case 'get_terminal_context': {
+      const requiredPtyId = requirePtyId(ptyId, name)
+      if (typeof requiredPtyId !== 'string') return requiredPtyId
+      return await getTerminalContext(requiredPtyId, args, executor)
+    }
 
-    case 'check_terminal_status':
-      return checkTerminalStatus(ptyId, config, executor)
+    case 'check_terminal_status': {
+      const requiredPtyId = requirePtyId(ptyId, name)
+      if (typeof requiredPtyId !== 'string') return requiredPtyId
+      return checkTerminalStatus(requiredPtyId, config, executor)
+    }
 
-    case 'send_control_key':
-      return sendControlKey(ptyId, args, config, executor)
+    case 'send_control_key': {
+      const requiredPtyId = requirePtyId(ptyId, name)
+      if (typeof requiredPtyId !== 'string') return requiredPtyId
+      return sendControlKey(requiredPtyId, args, config, executor)
+    }
 
-    case 'send_input':
-      return sendInput(ptyId, args, config, executor)
+    case 'send_input': {
+      const requiredPtyId = requirePtyId(ptyId, name)
+      if (typeof requiredPtyId !== 'string') return requiredPtyId
+      return sendInput(requiredPtyId, args, config, executor)
+    }
 
-    case 'read_file':
-      return await readFile(ptyId, args, config, executor)
+    case 'read_file': {
+      const requiredPtyId = requirePtyId(ptyId, name)
+      if (typeof requiredPtyId !== 'string') return requiredPtyId
+      return await readFile(requiredPtyId, args, config, executor)
+    }
 
-    case 'file_search':
-      return await fileSearch(ptyId, args, config, executor)
+    case 'file_search': {
+      const requiredPtyId = requirePtyId(ptyId, name)
+      if (typeof requiredPtyId !== 'string') return requiredPtyId
+      return await fileSearch(requiredPtyId, args, config, executor)
+    }
 
-    case 'edit_file':
-      return editFile(ptyId, args, toolCall.id, config, executor)
+    case 'edit_file': {
+      const requiredPtyId = requirePtyId(ptyId, name)
+      if (typeof requiredPtyId !== 'string') return requiredPtyId
+      return editFile(requiredPtyId, args, toolCall.id, config, executor)
+    }
 
-    case 'write_local_file':
-      return writeLocalFile(ptyId, args, toolCall.id, config, executor)
+    case 'write_local_file': {
+      const requiredPtyId = requirePtyId(ptyId, name)
+      if (typeof requiredPtyId !== 'string') return requiredPtyId
+      return writeLocalFile(requiredPtyId, args, toolCall.id, config, executor)
+    }
 
-    case 'write_remote_file':
-      return writeRemoteFile(ptyId, args, toolCall.id, config, executor)
+    case 'write_remote_file': {
+      const requiredPtyId = requirePtyId(ptyId, name)
+      if (typeof requiredPtyId !== 'string') return requiredPtyId
+      return writeRemoteFile(requiredPtyId, args, toolCall.id, config, executor)
+    }
 
     case 'remember_info':
       return await rememberInfo(args, config, executor)
@@ -152,10 +191,16 @@ export async function executeTool(
 
     case 'recall':
       return dispatchRecall(args, executor, ptyId)
-    case 'recall_task':
-      return recallTask(args, executor, ptyId)
-    case 'deep_recall':
-      return deepRecall(args, executor, ptyId)
+    case 'recall_task': {
+      const requiredPtyId = requirePtyId(ptyId, name)
+      if (typeof requiredPtyId !== 'string') return requiredPtyId
+      return recallTask(args, executor, requiredPtyId)
+    }
+    case 'deep_recall': {
+      const requiredPtyId = requirePtyId(ptyId, name)
+      if (typeof requiredPtyId !== 'string') return requiredPtyId
+      return deepRecall(args, executor, requiredPtyId)
+    }
 
     case 'compress_context':
       return compressContext(args, executor)
@@ -187,7 +232,9 @@ export async function executeTool(
         const skillTools = executor.skillSession.getAvailableTools()
         const skillTool = skillTools.find(t => t.function.name === name)
         if (skillTool) {
-          return await executeSkillTool(name, ptyId, args, toolCall.id, config, executor)
+          const requiredPtyId = requirePtyId(ptyId, name)
+          if (typeof requiredPtyId !== 'string') return requiredPtyId
+          return await executeSkillTool(name, requiredPtyId, args, toolCall.id, config, executor)
         }
       }
 
