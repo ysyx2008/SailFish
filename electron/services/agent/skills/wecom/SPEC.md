@@ -33,7 +33,7 @@
 
 ## 凭证
 
-复用 IM 配置中的企业微信凭证（`imWeComCorpId` / `imWeComCorpSecret` / `imWeComAgentId`），无需额外配置。
+使用企业微信企业 API 凭证（`imWeComCorpId` / `imWeComCorpSecret` / `imWeComAgentId`），与 IM 机器人的长连接凭证（`imWeComBotId` / `imWeComSecret`）独立。两者是不同的认证体系：企业 API 用于访问 OA/通讯录/微盘等资源，长连接用于机器人消息收发。
 
 ## 依赖
 

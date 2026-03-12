@@ -2802,7 +2802,7 @@ const electronAPI = {
       ipcRenderer.invoke('im:startTelegram', config) as Promise<{ success: boolean; error?: string }>,
     stopTelegram: () =>
       ipcRenderer.invoke('im:stopTelegram') as Promise<{ success: boolean }>,
-    startWeCom: (config: { enabled: boolean; corpId: string; corpSecret: string; agentId: number; token: string; encodingAESKey: string; callbackPort: number }) =>
+    startWeCom: (config: { enabled: boolean; botId: string; secret: string }) =>
       ipcRenderer.invoke('im:startWeCom', config) as Promise<{ success: boolean; error?: string }>,
     stopWeCom: () =>
       ipcRenderer.invoke('im:stopWeCom') as Promise<{ success: boolean }>,
@@ -2820,7 +2820,7 @@ const electronAPI = {
         feishu: { appId: string; appSecret: string; autoConnect: boolean }
         slack: { botToken: string; appToken: string; autoConnect: boolean }
         telegram: { botToken: string; autoConnect: boolean }
-        wecom: { corpId: string; corpSecret: string; agentId: number; token: string; encodingAESKey: string; callbackPort: number; autoConnect: boolean }
+        wecom: { botId: string; secret: string; autoConnect: boolean }
         executionMode: ExecutionMode
         sendProcessMessages: boolean
       }>,

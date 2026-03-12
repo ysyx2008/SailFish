@@ -1112,14 +1112,10 @@ app.whenReady().then(async () => {
       }
     }
     if (configService.get('imWeComAutoConnect')) {
-      const wcCorpId = (configService.get('imWeComCorpId') as string) || ''
-      const wcCorpSecret = (configService.get('imWeComCorpSecret') as string) || ''
-      const wcAgentId = (configService.get('imWeComAgentId') as number) || 0
-      const wcToken = (configService.get('imWeComToken') as string) || ''
-      const wcEncodingAESKey = (configService.get('imWeComEncodingAESKey') as string) || ''
-      const wcCallbackPort = (configService.get('imWeComCallbackPort') as number) || 3722
-      if (wcCorpId && wcCorpSecret && wcAgentId && wcToken && wcEncodingAESKey) {
-        imService.startWeCom({ enabled: true, corpId: wcCorpId, corpSecret: wcCorpSecret, agentId: wcAgentId, token: wcToken, encodingAESKey: wcEncodingAESKey, callbackPort: wcCallbackPort }).then(result => {
+      const wcBotId = (configService.get('imWeComBotId') as string) || ''
+      const wcSecret = (configService.get('imWeComSecret') as string) || ''
+      if (wcBotId && wcSecret) {
+        imService.startWeCom({ enabled: true, botId: wcBotId, secret: wcSecret }).then(result => {
           if (result.success) {
             log.info('IM: WeCom auto-connect started')
           } else {
@@ -2722,12 +2718,8 @@ ipcMain.handle('im:stopTelegram', async () => {
 })
 
 ipcMain.handle('im:startWeCom', async (_event, config: WeComConfig) => {
-  configService.set('imWeComCorpId', config.corpId)
-  configService.set('imWeComCorpSecret', config.corpSecret)
-  configService.set('imWeComAgentId', config.agentId)
-  configService.set('imWeComToken', config.token)
-  configService.set('imWeComEncodingAESKey', config.encodingAESKey)
-  configService.set('imWeComCallbackPort', config.callbackPort)
+  configService.set('imWeComBotId', config.botId)
+  configService.set('imWeComSecret', config.secret)
   return await imService.startWeCom(config)
 })
 
@@ -2762,12 +2754,8 @@ ipcMain.handle('im:getConfig', async () => {
       autoConnect: configService.get('imTelegramAutoConnect') || false,
     },
     wecom: {
-      corpId: (configService.get('imWeComCorpId') as string) || '',
-      corpSecret: (configService.get('imWeComCorpSecret') as string) || '',
-      agentId: (configService.get('imWeComAgentId') as number) || 0,
-      token: (configService.get('imWeComToken') as string) || '',
-      encodingAESKey: (configService.get('imWeComEncodingAESKey') as string) || '',
-      callbackPort: (configService.get('imWeComCallbackPort') as number) || 3722,
+      botId: (configService.get('imWeComBotId') as string) || '',
+      secret: (configService.get('imWeComSecret') as string) || '',
       autoConnect: configService.get('imWeComAutoConnect') || false,
     },
     executionMode: (configService.get('imExecutionMode') as string) || 'relaxed',

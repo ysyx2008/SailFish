@@ -202,7 +202,7 @@ export class IMService {
     feishu: { enabled: false, appId: '', appSecret: '' },
     slack: { enabled: false, botToken: '', appToken: '' },
     telegram: { enabled: false, botToken: '' },
-    wecom: { enabled: false, corpId: '', corpSecret: '', agentId: 0, token: '', encodingAESKey: '', callbackPort: 3722 },
+    wecom: { enabled: false, botId: '', secret: '' },
     executionMode: 'relaxed',
     sessionTimeoutMinutes: 60,
     sendProcessMessages: true,
@@ -501,11 +501,8 @@ export class IMService {
   // ==================== 企业微信管理 ====================
 
   async startWeCom(config: WeComConfig): Promise<{ success: boolean; error?: string }> {
-    if (!config.corpId || !config.corpSecret || !config.agentId) {
-      return { success: false, error: 'Corp ID, Corp Secret and Agent ID are required' }
-    }
-    if (!config.token || !config.encodingAESKey) {
-      return { success: false, error: 'Token and EncodingAESKey are required for callback verification' }
+    if (!config.botId || !config.secret) {
+      return { success: false, error: 'Bot ID and Secret are required' }
     }
 
     try {

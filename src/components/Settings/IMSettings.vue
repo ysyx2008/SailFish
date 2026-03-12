@@ -68,12 +68,8 @@ const tgConnected = ref(false)
 const tgConnecting = ref(false)
 const tgError = ref('')
 // 企业微信
-const wcCorpId = ref('')
-const wcCorpSecret = ref('')
-const wcAgentId = ref(0)
-const wcToken = ref('')
-const wcEncodingAESKey = ref('')
-const wcCallbackPort = ref(3722)
+const wcBotId = ref('')
+const wcSecret = ref('')
 const wcConnected = ref(false)
 const wcConnecting = ref(false)
 const wcError = ref('')
@@ -140,12 +136,8 @@ async function loadIMSettings() {
     slAutoConnect.value = config.slack?.autoConnect || false
     tgBotToken.value = config.telegram?.botToken || ''
     tgAutoConnect.value = config.telegram?.autoConnect || false
-    wcCorpId.value = config.wecom?.corpId || ''
-    wcCorpSecret.value = config.wecom?.corpSecret || ''
-    wcAgentId.value = config.wecom?.agentId || 0
-    wcToken.value = config.wecom?.token || ''
-    wcEncodingAESKey.value = config.wecom?.encodingAESKey || ''
-    wcCallbackPort.value = config.wecom?.callbackPort || 3722
+    wcBotId.value = config.wecom?.botId || ''
+    wcSecret.value = config.wecom?.secret || ''
     wcAutoConnect.value = config.wecom?.autoConnect || false
     executionMode.value = config.executionMode || 'relaxed'
     sendProcessMessages.value = config.sendProcessMessages !== false
@@ -350,24 +342,16 @@ async function toggleWeCom() {
     await window.electronAPI.im.stopWeCom()
     wcConnected.value = false
   } else {
-    if (!wcCorpId.value || !wcCorpSecret.value || !wcAgentId.value) {
-      wcError.value = 'Corp ID, Corp Secret and Agent ID are required'
-      return
-    }
-    if (!wcToken.value || !wcEncodingAESKey.value) {
-      wcError.value = 'Token and EncodingAESKey are required'
+    if (!wcBotId.value || !wcSecret.value) {
+      wcError.value = 'Bot ID and Secret are required'
       return
     }
     wcConnecting.value = true
     try {
       const result = await window.electronAPI.im.startWeCom({
         enabled: true,
-        corpId: wcCorpId.value,
-        corpSecret: wcCorpSecret.value,
-        agentId: wcAgentId.value,
-        token: wcToken.value,
-        encodingAESKey: wcEncodingAESKey.value,
-        callbackPort: wcCallbackPort.value || 3722
+        botId: wcBotId.value,
+        secret: wcSecret.value,
       })
       if (result.success) {
         wcConnected.value = true
@@ -730,7 +714,6 @@ function cancelFreeMode() {
       <div class="im-platform-card" :class="{ expanded: wecomExpanded, connected: wcConnected }">
         <button class="im-platform-header" @click="wecomExpanded = !wecomExpanded">
           <span class="im-platform-name">{{ t('settings.im.wecom') }}</span>
-          <span class="beta-badge" :title="t('settings.im.betaTooltip')">{{ t('settings.im.betaBadge') }}</span>
           <span class="im-status-indicator" :class="{ connected: wcConnected, connecting: wcConnecting }">
             <span class="indicator-dot"></span>
             {{ wcConnecting ? t('settings.im.connecting') : (wcConnected ? t('settings.im.connected') : t('settings.im.disconnected')) }}
@@ -751,68 +734,27 @@ function cancelFreeMode() {
               <li>{{ t('settings.im.wecomStep1') }}</li>
               <li>{{ t('settings.im.wecomStep2') }}</li>
               <li>{{ t('settings.im.wecomStep3') }}</li>
-              <li>{{ t('settings.im.wecomStep4') }}</li>
             </ol>
           </div>
 
           <div class="form-group">
-            <label class="form-label">{{ t('settings.im.wecomCorpId') }}</label>
+            <label class="form-label">{{ t('settings.im.wecomBotId') }}</label>
             <input
-              v-model="wcCorpId"
+              v-model="wcBotId"
               type="text"
               :disabled="wcConnected"
               class="input-field"
-              placeholder="Corp ID"
+              placeholder="Bot ID"
             />
           </div>
           <div class="form-group">
-            <label class="form-label">{{ t('settings.im.wecomCorpSecret') }}</label>
+            <label class="form-label">{{ t('settings.im.wecomSecret') }}</label>
             <input
-              v-model="wcCorpSecret"
+              v-model="wcSecret"
               type="password"
               :disabled="wcConnected"
               class="input-field"
-              placeholder="Corp Secret"
-            />
-          </div>
-          <div class="form-group">
-            <label class="form-label">{{ t('settings.im.wecomAgentId') }}</label>
-            <input
-              v-model.number="wcAgentId"
-              type="number"
-              :disabled="wcConnected"
-              class="input-field"
-              placeholder="Agent ID"
-            />
-          </div>
-          <div class="form-group">
-            <label class="form-label">{{ t('settings.im.wecomToken') }}</label>
-            <input
-              v-model="wcToken"
-              type="password"
-              :disabled="wcConnected"
-              class="input-field"
-              placeholder="Token"
-            />
-          </div>
-          <div class="form-group">
-            <label class="form-label">{{ t('settings.im.wecomEncodingAESKey') }}</label>
-            <input
-              v-model="wcEncodingAESKey"
-              type="password"
-              :disabled="wcConnected"
-              class="input-field"
-              placeholder="EncodingAESKey"
-            />
-          </div>
-          <div class="form-group">
-            <label class="form-label">{{ t('settings.im.wecomCallbackPort') }}</label>
-            <input
-              v-model.number="wcCallbackPort"
-              type="number"
-              :disabled="wcConnected"
-              class="input-field"
-              placeholder="3722"
+              placeholder="Secret"
             />
           </div>
 

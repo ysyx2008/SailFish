@@ -31,12 +31,8 @@ export interface TelegramConfig {
 
 export interface WeComConfig {
   enabled: boolean
-  corpId: string        // 企业 ID
-  corpSecret: string    // 应用 Secret
-  agentId: number       // 应用 AgentId
-  token: string         // 回调 Token
-  encodingAESKey: string // 回调加密密钥
-  callbackPort: number  // 本地回调服务端口，默认 3722
+  botId: string         // 智能机器人 BotID（长连接模式）
+  secret: string        // 长连接专用密钥
 }
 
 export interface IMServiceConfig {

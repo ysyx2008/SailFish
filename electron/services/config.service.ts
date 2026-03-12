@@ -185,12 +185,11 @@ interface StoreSchema {
   imFeishuAppId: string           // 飞书 App ID
   imFeishuAppSecret: string       // 飞书 App Secret
   imWeComAutoConnect: boolean     // 企业微信自动连接
-  imWeComCorpId: string           // 企业微信 Corp ID
-  imWeComCorpSecret: string       // 企业微信 Corp Secret
-  imWeComAgentId: number          // 企业微信 Agent ID
-  imWeComToken: string            // 企业微信回调 Token
-  imWeComEncodingAESKey: string   // 企业微信回调加密密钥
-  imWeComCallbackPort: number     // 企业微信回调端口
+  imWeComBotId: string            // 企业微信 Bot ID（长连接模式）
+  imWeComSecret: string           // 企业微信长连接密钥
+  imWeComCorpId: string           // 企业微信 Corp ID（企业 API，wecom skill 使用）
+  imWeComCorpSecret: string       // 企业微信 Corp Secret（企业 API，wecom skill 使用）
+  imWeComAgentId: number          // 企业微信 Agent ID（企业 API，wecom skill 使用）
   imSlackAutoConnect: boolean     // Slack 自动连接
   imSlackBotToken: string         // Slack Bot Token (xoxb-...)
   imSlackAppToken: string         // Slack App-Level Token (xapp-...)
@@ -261,12 +260,11 @@ const defaultConfig: StoreSchema = {
   imFeishuAppId: '',
   imFeishuAppSecret: '',
   imWeComAutoConnect: false,
+  imWeComBotId: '',
+  imWeComSecret: '',
   imWeComCorpId: '',
   imWeComCorpSecret: '',
   imWeComAgentId: 0,
-  imWeComToken: '',
-  imWeComEncodingAESKey: '',
-  imWeComCallbackPort: 3722,
   imSlackAutoConnect: false,
   imSlackBotToken: '',
   imSlackAppToken: '',

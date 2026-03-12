@@ -69,12 +69,8 @@ const CONFIG_REGISTRY: ConfigMeta[] = [
   { key: 'imTelegramBotToken', label: 'Telegram Bot Token', category: 'im', type: 'string' },
   // IM - WeCom
   { key: 'imWeComAutoConnect', label: '企业微信自动连接', category: 'im', type: 'boolean' },
-  { key: 'imWeComCorpId', label: '企业微信 Corp ID', category: 'im', type: 'string' },
-  { key: 'imWeComCorpSecret', label: '企业微信 Corp Secret', category: 'im', type: 'string' },
-  { key: 'imWeComAgentId', label: '企业微信 Agent ID', category: 'im', type: 'number' },
-  { key: 'imWeComToken', label: '企业微信回调 Token', category: 'im', type: 'string' },
-  { key: 'imWeComEncodingAESKey', label: '企业微信回调加密密钥', category: 'im', type: 'string' },
-  { key: 'imWeComCallbackPort', label: '企业微信回调端口', category: 'im', type: 'number' },
+  { key: 'imWeComBotId', label: '企业微信 Bot ID', category: 'im', type: 'string' },
+  { key: 'imWeComSecret', label: '企业微信长连接密钥', category: 'im', type: 'string' },
   // IM - 通用
   { key: 'imExecutionMode', label: 'IM Agent 执行模式', category: 'im', type: 'string', options: ['strict', 'relaxed', 'free'] },
 
@@ -298,16 +294,12 @@ const IM_PLATFORMS: Record<string, IMPlatformDef> = {
   },
   wecom: {
     label: '企业微信',
-    credKeys: ['imWeComCorpId', 'imWeComCorpSecret', 'imWeComAgentId', 'imWeComToken', 'imWeComEncodingAESKey'],
+    credKeys: ['imWeComBotId', 'imWeComSecret'],
     autoConnectKey: 'imWeComAutoConnect',
     buildConfig: (c) => ({
       enabled: true,
-      corpId: c.get('imWeComCorpId'),
-      corpSecret: c.get('imWeComCorpSecret'),
-      agentId: c.get('imWeComAgentId'),
-      token: c.get('imWeComToken'),
-      encodingAESKey: c.get('imWeComEncodingAESKey'),
-      callbackPort: c.get('imWeComCallbackPort') || 3722,
+      botId: c.get('imWeComBotId'),
+      secret: c.get('imWeComSecret'),
     }),
     start: (im, cfg) => im.startWeCom(cfg),
   },

@@ -909,8 +909,6 @@ async function agentRun(args: string[]): Promise<void> {
 const SUPPORTED_IM_PLATFORMS = ['dingtalk', 'feishu', 'slack', 'telegram', 'wecom'] as const
 type IMPlatformName = typeof SUPPORTED_IM_PLATFORMS[number]
 
-const WECOM_DEFAULT_CALLBACK_PORT = 3722
-
 type StoreKey = Parameters<ReturnType<typeof getConfig>['get']>[0]
 
 interface IMPlatformMeta {
@@ -945,9 +943,8 @@ const IM_PLATFORMS: Record<IMPlatformName, IMPlatformMeta> = {
   },
   wecom: {
     label: 'WeCom (企业微信)',
-    configKeys: { corpId: 'imWeComCorpId', corpSecret: 'imWeComCorpSecret', agentId: 'imWeComAgentId', token: 'imWeComToken', encodingAESKey: 'imWeComEncodingAESKey', callbackPort: 'imWeComCallbackPort' },
+    configKeys: { botId: 'imWeComBotId', secret: 'imWeComSecret' },
     autoKey: 'imWeComAutoConnect',
-    optionalFields: ['callbackPort'],
   },
 }
 
@@ -1050,12 +1047,7 @@ function createIMAdapter(platform: IMPlatformName, creds: Record<string, any>) {
     }
     case 'wecom': {
       const { WeComAdapter } = require('../services/im/wecom-adapter')
-      return new WeComAdapter({
-        corpId: creds.corpId, corpSecret: creds.corpSecret,
-        agentId: Number(creds.agentId) || 0,
-        token: creds.token, encodingAESKey: creds.encodingAESKey,
-        callbackPort: Number(creds.callbackPort) || WECOM_DEFAULT_CALLBACK_PORT,
-      })
+      return new WeComAdapter({ botId: creds.botId, secret: creds.secret })
     }
   }
 }

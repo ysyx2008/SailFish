@@ -2014,7 +2014,7 @@ interface Window {
       stopSlack: () => Promise<{ success: boolean }>
       startTelegram: (config: { enabled: boolean; botToken: string }) => Promise<{ success: boolean; error?: string }>
       stopTelegram: () => Promise<{ success: boolean }>
-      startWeCom: (config: { enabled: boolean; corpId: string; corpSecret: string; agentId: number; token: string; encodingAESKey: string; callbackPort: number }) => Promise<{ success: boolean; error?: string }>
+      startWeCom: (config: { enabled: boolean; botId: string; secret: string }) => Promise<{ success: boolean; error?: string }>
       stopWeCom: () => Promise<{ success: boolean }>
       getStatus: () => Promise<{
         dingtalk: { enabled: boolean; connected: boolean }
@@ -2028,7 +2028,7 @@ interface Window {
         feishu: { appId: string; appSecret: string; autoConnect: boolean }
         slack: { botToken: string; appToken: string; autoConnect: boolean }
         telegram: { botToken: string; autoConnect: boolean }
-        wecom: { corpId: string; corpSecret: string; agentId: number; token: string; encodingAESKey: string; callbackPort: number; autoConnect: boolean }
+        wecom: { botId: string; secret: string; autoConnect: boolean }
         executionMode: ExecutionMode
         sendProcessMessages: boolean
       }>
