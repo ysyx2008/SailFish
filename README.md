@@ -118,6 +118,12 @@ SailFish supports OpenAI-compatible APIs. Configure in Settings:
 - Qwen qwen-plus / qwen-max
 - Gemini, Grok, Mistral, Doubao, Zhipu GLM, Kimi (presets included)
 
+## 🏗️ Architecture
+
+<p align="center">
+  <img src="./docs/architecture.png" width="800" alt="SailFish Architecture">
+</p>
+
 ## 📖 Documentation
 
 - [Agent Architecture](./docs/agent-architecture.md)

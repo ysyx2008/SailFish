@@ -118,6 +118,12 @@ npm run build:linux  # Linux
 - Claude 4.5 Sonnet（支持 Anthropic 原生 API）
 - Gemini、Grok、Mistral、豆包、智谱 GLM、Kimi（内置预设模板）
 
+## 🏗️ 系统架构
+
+<p align="center">
+  <img src="./docs/architecture.png" width="800" alt="旗鱼系统架构">
+</p>
+
 ## 📖 文档
 
 - [Agent 架构](./docs/agent-architecture.md)
