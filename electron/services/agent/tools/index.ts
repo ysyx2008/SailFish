@@ -174,6 +174,14 @@ export async function executeTool(
       return sendImageToChat(args, executor)
 
     default:
+      // MCP 工具有明确的 mcp_ 前缀，优先路由，避免被 skillSession 误认为技能工具
+      if (name.startsWith('mcp_')) {
+        if (executor.mcpService) {
+          return executeMcpTool(name, args, toolCall.id, executor)
+        }
+        return { success: false, output: '', error: t('error.mcp_not_initialized') }
+      }
+
       // 检查是否是技能工具调用
       if (executor.skillSession) {
         const skillTools = executor.skillSession.getAvailableTools()
@@ -182,11 +190,7 @@ export async function executeTool(
           return await executeSkillTool(name, ptyId, args, toolCall.id, config, executor)
         }
       }
-      
-      // 检查是否是 MCP 工具调用
-      if (name.startsWith('mcp_') && executor.mcpService) {
-        return executeMcpTool(name, args, toolCall.id, executor)
-      }
+
       return { success: false, output: '', error: t('error.unknown_tool', { name }) }
   }
 }
