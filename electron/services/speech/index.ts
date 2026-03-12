@@ -50,14 +50,20 @@ export function isPunctModelAvailable(): boolean {
 }
 
 /**
- * 获取 sherpa-onnx 库目录（用于设置 DYLD_LIBRARY_PATH）
+ * 获取 sherpa-onnx 平台原生库目录（用于设置动态库搜索路径）
  */
 function getSherpaLibPath(): string {
   const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
+  const platformPkg: Record<string, string> = {
+    darwin: `sherpa-onnx-darwin-${arch}`,
+    win32: `sherpa-onnx-win-${arch}`,
+    linux: `sherpa-onnx-linux-${arch}`,
+  }
+  const pkg = platformPkg[process.platform] || `sherpa-onnx-${process.platform}-${arch}`
   if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', `sherpa-onnx-darwin-${arch}`)
+    return path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', pkg)
   } else {
-    return path.join(process.cwd(), 'node_modules', `sherpa-onnx-darwin-${arch}`)
+    return path.join(process.cwd(), 'node_modules', pkg)
   }
 }
 
@@ -122,14 +128,28 @@ function startWorker(): void {
     return
   }
 
-  // 设置环境变量
+  // 设置平台对应的动态库搜索路径，确保 utilityProcess 能找到 sherpa-onnx 依赖的原生库
   const env = { ...process.env }
-  if (process.platform === 'darwin') {
-    const sherpaLib = getSherpaLibPath()
-    env.DYLD_LIBRARY_PATH = env.DYLD_LIBRARY_PATH
-      ? `${sherpaLib}:${env.DYLD_LIBRARY_PATH}`
-      : sherpaLib
-    log.info('DYLD_LIBRARY_PATH:', env.DYLD_LIBRARY_PATH)
+  const sherpaLib = getSherpaLibPath()
+  if (fs.existsSync(sherpaLib)) {
+    if (process.platform === 'darwin') {
+      env.DYLD_LIBRARY_PATH = env.DYLD_LIBRARY_PATH
+        ? `${sherpaLib}:${env.DYLD_LIBRARY_PATH}`
+        : sherpaLib
+      log.info('DYLD_LIBRARY_PATH:', env.DYLD_LIBRARY_PATH)
+    } else if (process.platform === 'win32') {
+      env.PATH = env.PATH
+        ? `${sherpaLib};${env.PATH}`
+        : sherpaLib
+      log.info('PATH prepended:', sherpaLib)
+    } else if (process.platform === 'linux') {
+      env.LD_LIBRARY_PATH = env.LD_LIBRARY_PATH
+        ? `${sherpaLib}:${env.LD_LIBRARY_PATH}`
+        : sherpaLib
+      log.info('LD_LIBRARY_PATH:', env.LD_LIBRARY_PATH)
+    }
+  } else {
+    log.warn('Sherpa-onnx native lib directory not found:', sherpaLib)
   }
 
   worker = utilityProcess.fork(workerPath, [], {
