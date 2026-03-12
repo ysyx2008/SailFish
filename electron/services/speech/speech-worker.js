@@ -56,8 +56,19 @@ async function handleInitialize(data, id) {
       throw new Error(`Model file not found: ${modelPath}`)
     }
 
-    // 加载 sherpa-onnx-node
-    const sherpa = require('sherpa-onnx-node')
+    // 加载 sherpa-onnx-node（utilityProcess 中 asar 路径可能导致常规 require 失败，用绝对路径回退）
+    let sherpa
+    try {
+      sherpa = require('sherpa-onnx-node')
+    } catch (err) {
+      const modulePath = process.env.SHERPA_MODULE_PATH
+      if (modulePath) {
+        console.log('[SpeechWorker] Normal require failed, trying absolute path:', modulePath)
+        sherpa = require(modulePath)
+      } else {
+        throw err
+      }
+    }
 
     // 创建离线识别器配置
     const config = {

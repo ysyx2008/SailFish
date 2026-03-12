@@ -50,6 +50,17 @@ export function isPunctModelAvailable(): boolean {
 }
 
 /**
+ * 获取 unpacked 的 node_modules 绝对路径
+ */
+function getUnpackedNodeModules(): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules')
+  } else {
+    return path.join(process.cwd(), 'node_modules')
+  }
+}
+
+/**
  * 获取 sherpa-onnx 平台原生库目录（用于设置动态库搜索路径）
  */
 function getSherpaLibPath(): string {
@@ -60,11 +71,7 @@ function getSherpaLibPath(): string {
     linux: `sherpa-onnx-linux-${arch}`,
   }
   const pkg = platformPkg[process.platform] || `sherpa-onnx-${process.platform}-${arch}`
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', pkg)
-  } else {
-    return path.join(process.cwd(), 'node_modules', pkg)
-  }
+  return path.join(getUnpackedNodeModules(), pkg)
 }
 
 /**
@@ -128,9 +135,19 @@ function startWorker(): void {
     return
   }
 
-  // 设置平台对应的动态库搜索路径，确保 utilityProcess 能找到 sherpa-onnx 依赖的原生库
   const env = { ...process.env }
+  const unpackedNM = getUnpackedNodeModules()
   const sherpaLib = getSherpaLibPath()
+
+  // 1) NODE_PATH — 确保 utilityProcess 的 require 能找到 unpacked 的 node_modules
+  env.NODE_PATH = unpackedNM
+
+  // 2) SHERPA_MODULE_PATH — worker 加载模块的绝对路径后备
+  env.SHERPA_MODULE_PATH = path.join(unpackedNM, 'sherpa-onnx-node')
+
+  log.info('Worker env: NODE_PATH=%s, SHERPA_MODULE_PATH=%s', env.NODE_PATH, env.SHERPA_MODULE_PATH)
+
+  // 3) 平台对应的动态库搜索路径，确保 .node 加载时能找到依赖的原生库
   if (fs.existsSync(sherpaLib)) {
     if (process.platform === 'darwin') {
       env.DYLD_LIBRARY_PATH = env.DYLD_LIBRARY_PATH
