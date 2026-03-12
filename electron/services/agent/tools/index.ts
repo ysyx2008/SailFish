@@ -232,9 +232,7 @@ export async function executeTool(
         const skillTools = executor.skillSession.getAvailableTools()
         const skillTool = skillTools.find(t => t.function.name === name)
         if (skillTool) {
-          const requiredPtyId = requirePtyId(ptyId, name)
-          if (typeof requiredPtyId !== 'string') return requiredPtyId
-          return await executeSkillTool(name, requiredPtyId, args, toolCall.id, config, executor)
+          return await executeSkillTool(name, ptyId, args, toolCall.id, config, executor)
         }
       }
 

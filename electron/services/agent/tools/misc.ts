@@ -805,62 +805,64 @@ export async function messageUser(
  */
 export async function executeSkillTool(
   toolName: string,
-  ptyId: string,
+  ptyId: string | undefined,
   args: Record<string, unknown>,
   toolCallId: string,
   config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
+  const id = ptyId ?? ''
+
   if (toolName.startsWith('excel_')) {
-    return executeExcelTool(toolName, ptyId, args, toolCallId, config, executor)
+    return executeExcelTool(toolName, id, args, toolCallId, config, executor)
   }
 
   if (toolName.startsWith('email_')) {
-    return executeEmailTool(toolName, ptyId, args, toolCallId, config, executor)
+    return executeEmailTool(toolName, id, args, toolCallId, config, executor)
   }
 
   if (toolName.startsWith('browser_')) {
-    return executeBrowserTool(toolName, ptyId, args, toolCallId, config, executor)
+    return executeBrowserTool(toolName, id, args, toolCallId, config, executor)
   }
 
   if (toolName.startsWith('word_')) {
-    return executeWordTool(toolName, ptyId, args, toolCallId, config, executor)
+    return executeWordTool(toolName, id, args, toolCallId, config, executor)
   }
 
   if (toolName.startsWith('calendar_') || toolName.startsWith('todo_')) {
-    return executeCalendarTool(toolName, ptyId, args, toolCallId, config, executor)
+    return executeCalendarTool(toolName, id, args, toolCallId, config, executor)
   }
 
   if (toolName.startsWith('watch_')) {
-    return executeWatchTool(toolName, ptyId, args, toolCallId, config, executor)
+    return executeWatchTool(toolName, id, args, toolCallId, config, executor)
   }
 
   if (toolName.startsWith('config_') || toolName === 'im_connect') {
-    return executeConfigTool(toolName, ptyId, args, toolCallId, config, executor)
+    return executeConfigTool(toolName, id, args, toolCallId, config, executor)
   }
 
   if (toolName.startsWith('skill_')) {
-    return executeSkillCreatorTool(toolName, ptyId, args, toolCallId, config, executor)
+    return executeSkillCreatorTool(toolName, id, args, toolCallId, config, executor)
   }
 
   if (toolName.startsWith('personality_') || toolName === 'soul_craft' || toolName === 'user_craft') {
-    return executePersonalityTool(toolName, ptyId, args, toolCallId, config, executor)
+    return executePersonalityTool(toolName, id, args, toolCallId, config, executor)
   }
 
   if (toolName.startsWith('pdf_')) {
-    return executePdfTool(toolName, ptyId, args, toolCallId, config, executor)
+    return executePdfTool(toolName, id, args, toolCallId, config, executor)
   }
 
   if (toolName.startsWith('feishu_')) {
-    return executeFeishuTool(toolName, ptyId, args, toolCallId, config, executor)
+    return executeFeishuTool(toolName, id, args, toolCallId, config, executor)
   }
 
   if (toolName.startsWith('wecom_')) {
-    return executeWeComTool(toolName, ptyId, args, toolCallId, config, executor)
+    return executeWeComTool(toolName, id, args, toolCallId, config, executor)
   }
 
   if (toolName.startsWith('dingtalk_')) {
-    return executeDingTalkTool(toolName, ptyId, args, toolCallId, config, executor)
+    return executeDingTalkTool(toolName, id, args, toolCallId, config, executor)
   }
 
   return { success: false, output: '', error: t('error.unknown_tool', { name: toolName }) }
