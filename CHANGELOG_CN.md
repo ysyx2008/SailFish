@@ -2,12 +2,19 @@
 
 本文件记录旗鱼（SailFish）的所有重要更新。
 
-## v10.19.1 (2026-03-12)（最新版本）
+## v10.19.2 (2026-03-12)（最新版本）
 
-修复 Windows 和 Linux 上语音识别功能因原生库路径配置缺失而无法使用的问题。
+以三层防御机制彻底修复 Windows/Linux 打包版本中语音识别原生模块加载失败的问题。
 
 ### 问题修复
-- 🔧 修复 Windows/Linux 语音识别失败——`getSherpaLibPath` 原先硬编码为 macOS 路径，且 Worker 进程缺少 Windows `PATH` / Linux `LD_LIBRARY_PATH` 的设置，导致 sherpa-onnx 原生库无法加载
+- 🔧 修复 Windows/Linux 语音识别失败——为 `utilityProcess` 增加 `NODE_PATH` 和绝对路径回退机制解决 asar 路径下模块解析失败，同时设置平台对应的动态库搜索路径（Windows `PATH` / Linux `LD_LIBRARY_PATH`）
+
+## v10.19.1 (2026-03-12)
+
+修复非 macOS 平台语音识别原生库路径配置。
+
+### 问题修复
+- 🔧 修复 `getSherpaLibPath` 硬编码为 macOS 路径，新增 Windows `PATH` / Linux `LD_LIBRARY_PATH` 设置
 
 ## v10.19.0 (2026-03-12)
 

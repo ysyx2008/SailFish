@@ -2,12 +2,19 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.19.1 (2026-03-12) (Latest)
+## v10.19.2 (2026-03-12) (Latest)
 
-Fix speech recognition failing on Windows and Linux due to missing native library path configuration.
+Fix speech recognition failing on Windows and Linux in packaged builds with robust three-layer native module loading.
 
 ### Bug Fixes
-- 🔧 Fixed speech recognition failing on Windows/Linux — `getSherpaLibPath` was hardcoded to macOS, and the worker process was missing `PATH` (Windows) / `LD_LIBRARY_PATH` (Linux) setup for sherpa-onnx native DLLs
+- 🔧 Fixed speech recognition failing on Windows/Linux — added `NODE_PATH` and absolute-path fallback for `utilityProcess` module resolution, plus platform-specific DLL search paths (`PATH` on Windows, `LD_LIBRARY_PATH` on Linux)
+
+## v10.19.1 (2026-03-12)
+
+Fix speech recognition native library path configuration for non-macOS platforms.
+
+### Bug Fixes
+- 🔧 Fixed `getSherpaLibPath` hardcoded to macOS, added `PATH` (Windows) / `LD_LIBRARY_PATH` (Linux) setup for sherpa-onnx native DLLs
 
 ## v10.19.0 (2026-03-12)
 
