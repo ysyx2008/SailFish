@@ -1,4 +1,4 @@
-name: Deploy Website to GitHub Pages
+name: Deploy Website
 
 on:
   # Push 触发：当 website/** 目录有变化并推送到 main、master 或 feature/Website 分支时
@@ -50,7 +50,7 @@ jobs:
         with:
           path: ./website/dist
 
-  deploy:
+  deploy-github-pages:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -60,3 +60,33 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  deploy-oss:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+          path: .
+
+      - name: Extract artifact
+        run: |
+          mkdir -p dist
+          tar -xf artifact.tar -C dist
+
+      - name: Setup aliyun ossutil
+        run: |
+          curl -o ossutil64 https://gosspublic.alicdn.com/ossutil/1.7.18/ossutil-v1.7.18-linux-amd64.zip
+          unzip -j ossutil64 -d /tmp/ossutil
+          chmod +x /tmp/ossutil/ossutil64
+          /tmp/ossutil/ossutil64 config -e oss-cn-wuhan-lr.aliyuncs.com -i ${{ secrets.OSS_ACCESS_KEY_ID }} -k ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+
+      - name: Upload website to OSS
+        run: |
+          OSSUTIL=/tmp/ossutil/ossutil64
+          BUCKET=oss://sfterm-download
+
+          $OSSUTIL cp dist/ ${BUCKET}/ -r -f
+          echo "✅ Website deployed to OSS!"
