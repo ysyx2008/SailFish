@@ -17,6 +17,7 @@ import {
   WidthType,
   BorderStyle,
   AlignmentType,
+  ShadingType,
   convertInchesToTwip,
   ImageRun,
   PageBreak,
@@ -28,7 +29,8 @@ import {
   Bookmark,
   CommentRangeStart,
   CommentRangeEnd,
-  CommentReference
+  CommentReference,
+  FootnoteReferenceRun
 } from 'docx'
 import type { ToolResult, AgentConfig } from '../../types'
 import type { ToolExecutorConfig } from '../../tool-executor'
@@ -54,6 +56,7 @@ import {
   PRESET_STYLES,
   extractStyleFromTemplate,
   getStyleExtractionPrompt,
+  resolvePageConfig,
   type WordStyleConfig
 } from './styles'
 import {
@@ -745,11 +748,12 @@ async function wordAdd(
   const imagePath = args.image_path as string | undefined
   const imageWidth = args.image_width as number | undefined
   const imageHeight = args.image_height as number | undefined
-  // 超链接/书签/批注参数
+  // 超链接/书签/批注/脚注参数
   const url = args.url as string | undefined
   const bookmarkName = args.bookmark_name as string | undefined
   const commentText = args.comment_text as string | undefined
   const commentAuthor = args.comment_author as string | undefined
+  const footnoteText = args.footnote_text as string | undefined
 
   const session = getSession(filePath)
   if (!session) {
@@ -867,6 +871,21 @@ async function wordAdd(
         commentText,
         commentAuthor: commentAuthor || '批注者',
         style 
+      }
+      break
+
+    case 'footnote':
+      if (!content) {
+        return { success: false, output: '', error: '段落内容必填' }
+      }
+      if (!footnoteText) {
+        return { success: false, output: '', error: '脚注内容必填' }
+      }
+      sectionContent = {
+        type: 'footnote',
+        content,
+        footnoteText,
+        style
       }
       break
       
@@ -1433,6 +1452,11 @@ function sectionsToMarkdown(sections: SectionContent[]): string {
         index++
         break
 
+      case 'footnote':
+        parts.push(`[${index}] ${section.content} [^脚注: ${section.footnoteText}]`)
+        index++
+        break
+
       default:
         if (section.content) {
           parts.push(`[${index}] ${section.content}`)
@@ -1450,7 +1474,9 @@ function sectionsToMarkdown(sections: SectionContent[]): string {
  */
 function buildDocument(sections: SectionContent[], pageSettings?: PageSettings, documentSettings?: DocumentSettings): Document {
   const children: (Paragraph | Table | TableOfContents)[] = []
-  let commentId = 1  // 批注ID计数器
+  let commentId = 1
+  let footnoteId = 1
+  const footnotes: Record<number, { children: Paragraph[] }> = {}
   
   for (const section of sections) {
     switch (section.type) {
@@ -1518,6 +1544,16 @@ function buildDocument(sections: SectionContent[], pageSettings?: PageSettings, 
           ))
         }
         break
+
+      case 'footnote':
+        if (section.footnoteText) {
+          const currentId = footnoteId++
+          footnotes[currentId] = {
+            children: [new Paragraph({ children: [new TextRun(section.footnoteText)] })]
+          }
+          children.push(createFootnoteParagraph(section.content, currentId, section.style))
+        }
+        break
     }
   }
   
@@ -1563,6 +1599,11 @@ function buildDocument(sections: SectionContent[], pageSettings?: PageSettings, 
       children: children.length > 0 ? children : [new Paragraph({ children: [] })]
     }]
   }
+
+  // 脚注定义
+  if (Object.keys(footnotes).length > 0) {
+    docConfig.footnotes = footnotes
+  }
   
   // 启用修订追踪
   if (documentSettings?.trackRevisions) {
@@ -1572,6 +1613,15 @@ function buildDocument(sections: SectionContent[], pageSettings?: PageSettings, 
   }
   
   return new Document(docConfig)
+}
+
+/**
+ * 从文件扩展名推断图片类型（Claude 最佳实践：ImageRun requires type）
+ */
+function detectImageType(filePath: string): 'png' | 'jpg' | 'jpeg' | 'gif' | 'bmp' | 'svg' {
+  const ext = path.extname(filePath).toLowerCase().replace('.', '')
+  const validTypes = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'svg'] as const
+  return (validTypes.includes(ext as typeof validTypes[number]) ? ext : 'png') as typeof validTypes[number]
 }
 
 /**
@@ -1585,10 +1635,9 @@ function createImageParagraph(
 ): Paragraph {
   const imageData = fs.readFileSync(imagePath)
   
-  // 默认宽度 400 像素，保持比例
   const imgWidth = width || 400
-  const imgHeight = height || imgWidth * 0.75  // 默认 4:3 比例
-  
+  const imgHeight = height || imgWidth * 0.75
+
   return new Paragraph({
     alignment: getAlignment(style?.align),
     children: [
@@ -1598,7 +1647,7 @@ function createImageParagraph(
           width: imgWidth,
           height: imgHeight
         },
-        type: 'png'  // 自动检测实际格式
+        type: detectImageType(imagePath)
       })
     ]
   })
@@ -1687,6 +1736,35 @@ function createCommentParagraph(
       }),
       new CommentRangeEnd(commentId),
       new CommentReference(commentId)
+    ]
+  })
+}
+
+/**
+ * 创建带脚注的段落
+ */
+function createFootnoteParagraph(
+  text: string,
+  footnoteId: number,
+  style?: ParagraphStyle
+): Paragraph {
+  const indent = calcIndent(style?.indent)
+  
+  return new Paragraph({
+    alignment: getAlignment(style?.align),
+    indent: indent !== undefined ? { firstLine: indent } : undefined,
+    children: [
+      new TextRun({
+        text,
+        font: style?.font,
+        size: style?.size ? style.size * 2 : undefined,
+        bold: style?.bold,
+        italics: style?.italic,
+        underline: style?.underline ? {} : undefined,
+        color: style?.color,
+        highlight: style?.highlight as any
+      }),
+      new FootnoteReferenceRun(footnoteId)
     ]
   })
 }
@@ -1807,26 +1885,39 @@ function createBulletPoint(text: string, style?: ParagraphStyle): Paragraph {
 
 /**
  * 创建表格
+ * 使用 DXA 单位 + 双重宽度（columnWidths + cell width），兼容 WPS 和 Google Docs
  */
 function createTable(rows: string[][]): Table {
+  const pageResolved = resolvePageConfig()
+  const tableWidthDxa = pageResolved.contentWidth
+  const colCount = rows[0]?.length || 1
+  const colWidthDxa = Math.floor(tableWidthDxa / colCount)
+  const columnWidths = Array(colCount).fill(colWidthDxa)
+  columnWidths[colCount - 1] = tableWidthDxa - colWidthDxa * (colCount - 1)
+
+  const border = { style: BorderStyle.SINGLE, size: 4, color: 'D9D9D9' }
+  const cellBorders = { top: border, bottom: border, left: border, right: border }
+  const cellMargins = { top: 30, bottom: 30, left: 80, right: 80 }
+
   return new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
+    width: { size: tableWidthDxa, type: WidthType.DXA },
+    columnWidths,
     rows: rows.map((row, rowIndex) => 
       new TableRow({
-        children: row.map(cell => 
+        tableHeader: rowIndex === 0,
+        children: row.map((cell, colIdx) => 
           new TableCell({
+            width: { size: columnWidths[colIdx] ?? colWidthDxa, type: WidthType.DXA },
             children: [new Paragraph({ 
               children: [new TextRun({ 
                 text: cell,
-                bold: rowIndex === 0 // 表头加粗
-              })] 
+                bold: rowIndex === 0
+              })],
+              spacing: { before: 0, after: 0, line: 240 }
             })],
-            borders: {
-              top: { style: BorderStyle.SINGLE, size: 1 },
-              bottom: { style: BorderStyle.SINGLE, size: 1 },
-              left: { style: BorderStyle.SINGLE, size: 1 },
-              right: { style: BorderStyle.SINGLE, size: 1 }
-            }
+            borders: cellBorders,
+            margins: cellMargins,
+            shading: rowIndex === 0 ? { type: ShadingType.CLEAR, fill: 'F2F2F2', color: 'auto' } : undefined
           })
         )
       })
@@ -1873,6 +1964,7 @@ async function wordFromMarkdown(
 
   let filePath = resolvePath(ptyId, args.path as string)
   const styleName = args.style as string | undefined
+  const pageSize = args.page_size as 'a4' | 'letter' | undefined
   
   // 确保文件扩展名为 .docx
   if (!filePath.toLowerCase().endsWith('.docx')) {
@@ -1893,6 +1985,17 @@ async function wordFromMarkdown(
   // 检查是否是自定义样式
   if (styleName && customStyles.has(styleName)) {
     styleConfig = customStyles.get(styleName)
+  }
+
+  // 如果指定了 page_size，将其注入到样式配置中
+  if (pageSize && typeof styleConfig === 'object' && styleConfig?.config) {
+    styleConfig = {
+      ...styleConfig,
+      config: {
+        ...styleConfig.config,
+        page: { size: pageSize, ...(styleConfig.config.page || {}) }
+      }
+    }
   }
 
   // 需要用户确认

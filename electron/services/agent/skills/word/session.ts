@@ -58,7 +58,7 @@ interface WordSession {
 
 /** 段落内容 */
 export interface SectionContent {
-  type: 'paragraph' | 'heading' | 'list' | 'table' | 'image' | 'page_break' | 'toc' | 'hyperlink' | 'bookmark' | 'comment'
+  type: 'paragraph' | 'heading' | 'list' | 'table' | 'image' | 'page_break' | 'toc' | 'hyperlink' | 'bookmark' | 'comment' | 'footnote'
   content: string
   level?: number  // 标题级别 1-6
   style?: {
@@ -90,6 +90,8 @@ export interface SectionContent {
   commentText?: string
   /** 评论作者（仅 type=comment 时使用） */
   commentAuthor?: string
+  /** 脚注内容（仅 type=footnote 时使用） */
+  footnoteText?: string
 }
 
 // 打开的文档 Map<filePath, WordSession>

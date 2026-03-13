@@ -82,6 +82,60 @@ export interface NumberingRule {
 }
 
 /**
+ * 页面配置
+ * 纸张大小使用 DXA 单位（1440 DXA = 1 inch = 25.4mm）
+ */
+export interface PageConfig {
+  /** 纸张大小：a4（默认）、letter */
+  size?: 'a4' | 'letter'
+  /** 自定义宽度（DXA），设置后覆盖 size */
+  width?: number
+  /** 自定义高度（DXA），设置后覆盖 size */
+  height?: number
+  /** 上页边距（DXA，默认 1440 = 1 inch） */
+  marginTop?: number
+  /** 下页边距（DXA） */
+  marginBottom?: number
+  /** 左页边距（DXA） */
+  marginLeft?: number
+  /** 右页边距（DXA） */
+  marginRight?: number
+}
+
+/** A4 纸张尺寸（DXA） */
+export const PAGE_A4 = { width: 11906, height: 16838 }
+/** US Letter 纸张尺寸（DXA） */
+export const PAGE_LETTER = { width: 12240, height: 15840 }
+/** 默认页边距 1 inch = 1440 DXA */
+const DEFAULT_MARGIN = 1440
+/** GB/T 9704 公文页边距（mm → DXA：1mm ≈ 56.7 DXA） */
+const OFFICIAL_MARGINS = {
+  top: Math.round(37 * 56.7),    // 37mm
+  bottom: Math.round(35 * 56.7), // 35mm
+  left: Math.round(28 * 56.7),   // 28mm
+  right: Math.round(26 * 56.7)   // 26mm
+}
+
+/**
+ * 根据页面配置计算实际尺寸
+ */
+export function resolvePageConfig(page?: PageConfig): {
+  width: number; height: number
+  marginTop: number; marginBottom: number; marginLeft: number; marginRight: number
+  contentWidth: number
+} {
+  const sizeMap = { a4: PAGE_A4, letter: PAGE_LETTER }
+  const base = (page?.size && sizeMap[page.size]) || PAGE_A4
+  const width = page?.width || base.width
+  const height = page?.height || base.height
+  const marginTop = page?.marginTop ?? DEFAULT_MARGIN
+  const marginBottom = page?.marginBottom ?? DEFAULT_MARGIN
+  const marginLeft = page?.marginLeft ?? DEFAULT_MARGIN
+  const marginRight = page?.marginRight ?? DEFAULT_MARGIN
+  return { width, height, marginTop, marginBottom, marginLeft, marginRight, contentWidth: width - marginLeft - marginRight }
+}
+
+/**
  * 样式配置接口
  */
 export interface WordStyleConfig {
@@ -95,6 +149,8 @@ export interface WordStyleConfig {
   isDefault?: boolean
   /** 样式配置 */
   config: {
+    /** 页面配置（纸张大小、页边距） */
+    page?: PageConfig
     /** 正文字体（中文/东亚字体） */
     font?: string
     /** 西文字体（阿拉伯数字和英文），如 'Times New Roman' */
@@ -314,46 +370,26 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
     name: '公文格式',
     sourceType: 'preset',
     config: {
+      page: { size: 'a4', ...OFFICIAL_MARGINS },
       font: '仿宋',
-      fontAscii: 'Times New Roman',  // 阿拉伯数字和英文
-      fontSize: 16,  // 三号字
-      lineSpacingFixed: 28.5,  // 固定行距 27-30 磅
+      fontAscii: 'Times New Roman',
+      fontSize: 16,
+      lineSpacingFixed: 28.5,
       firstLineIndent: true,
       firstLineIndentChars: 2,
       headings: {
-        // 公文标题：二号小标宋体，居中
         1: { font: '小标宋体', size: 22, bold: false, align: 'center' },
-        // 一级标题：三号黑体
         2: { font: '黑体', size: 16, bold: false },
-        // 二级标题：三号楷体，加粗
         3: { font: '楷体', size: 16, bold: true },
-        // 三级标题：三号仿宋，加粗
         4: { font: '仿宋', size: 16, bold: true },
-        // 四级标题：三号仿宋
         5: { font: '仿宋', size: 16, bold: false },
         6: { font: '仿宋', size: 16, bold: false }
       },
       numberingRules: [
-        // 一级编号：一、二、三、... 与正文同字体，不加粗，顶格
-        {
-          pattern: '^[一二三四五六七八九十]+、',
-          style: { font: '仿宋', size: 16, bold: false, indent: 0 }
-        },
-        // 二级编号：（一）（二）... 与正文同字体，不加粗，顶格
-        {
-          pattern: '^（[一二三四五六七八九十]+）',
-          style: { font: '仿宋', size: 16, bold: false, indent: 0 }
-        },
-        // 三级编号：1. 2. 3. ... 与正文同字体，不加粗，顶格
-        {
-          pattern: '^\\d+[.．]',
-          style: { font: '仿宋', size: 16, bold: false, indent: 0 }
-        },
-        // 四级编号：（1）（2）... 与正文同字体，不加粗，顶格
-        {
-          pattern: '^（\\d+）',
-          style: { font: '仿宋', size: 16, bold: false, indent: 0 }
-        }
+        { pattern: '^[一二三四五六七八九十]+、', style: { font: '仿宋', size: 16, bold: false, indent: 0 } },
+        { pattern: '^（[一二三四五六七八九十]+）', style: { font: '仿宋', size: 16, bold: false, indent: 0 } },
+        { pattern: '^\\d+[.．]', style: { font: '仿宋', size: 16, bold: false, indent: 0 } },
+        { pattern: '^（\\d+）', style: { font: '仿宋', size: 16, bold: false, indent: 0 } }
       ],
       table: {
         headerBackground: 'F2F2F2',
@@ -374,46 +410,26 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
     name: '证券公文',
     sourceType: 'preset',
     config: {
+      page: { size: 'a4', ...OFFICIAL_MARGINS },
       font: '仿宋_GB2312',
-      fontAscii: 'Times New Roman',  // 阿拉伯数字和英文使用 Times New Roman
-      fontSize: 16,  // 三号字
-      lineSpacingFixed: 28.5,  // 固定行距 27-30 磅（取中间值）
+      fontAscii: 'Times New Roman',
+      fontSize: 16,
+      lineSpacingFixed: 28.5,
       firstLineIndent: true,
       firstLineIndentChars: 2,
       headings: {
-        // 公文标题：二号方正小标宋简体，居中
         1: { font: '方正小标宋简体', size: 22, bold: false, align: 'center' },
-        // 一级标题：三号黑体
         2: { font: '黑体', size: 16, bold: false },
-        // 二级标题：三号楷体_GB2312，加粗
         3: { font: '楷体_GB2312', size: 16, bold: true },
-        // 三级标题：三号仿宋_GB2312，加粗
         4: { font: '仿宋_GB2312', size: 16, bold: true },
-        // 四级标题：三号仿宋_GB2312
         5: { font: '仿宋_GB2312', size: 16, bold: false },
         6: { font: '仿宋_GB2312', size: 16, bold: false }
       },
       numberingRules: [
-        // 一级编号：一、二、三、... 与正文同字体，不加粗，顶格
-        {
-          pattern: '^[一二三四五六七八九十]+、',
-          style: { font: '仿宋_GB2312', size: 16, bold: false, indent: 0 }
-        },
-        // 二级编号：（一）（二）... 与正文同字体，不加粗，顶格
-        {
-          pattern: '^（[一二三四五六七八九十]+）',
-          style: { font: '仿宋_GB2312', size: 16, bold: false, indent: 0 }
-        },
-        // 三级编号：1. 2. 3. ... 与正文同字体，不加粗，顶格
-        {
-          pattern: '^\\d+[.．]',
-          style: { font: '仿宋_GB2312', size: 16, bold: false, indent: 0 }
-        },
-        // 四级编号：（1）（2）... 与正文同字体，不加粗，顶格
-        {
-          pattern: '^（\\d+）',
-          style: { font: '仿宋_GB2312', size: 16, bold: false, indent: 0 }
-        }
+        { pattern: '^[一二三四五六七八九十]+、', style: { font: '仿宋_GB2312', size: 16, bold: false, indent: 0 } },
+        { pattern: '^（[一二三四五六七八九十]+）', style: { font: '仿宋_GB2312', size: 16, bold: false, indent: 0 } },
+        { pattern: '^\\d+[.．]', style: { font: '仿宋_GB2312', size: 16, bold: false, indent: 0 } },
+        { pattern: '^（\\d+）', style: { font: '仿宋_GB2312', size: 16, bold: false, indent: 0 } }
       ],
       table: {
         headerBackground: 'F2F2F2',
@@ -427,6 +443,49 @@ export const PRESET_STYLES: Record<string, WordStyleConfig> = {
       },
       codeBlock: { font: 'Courier New', fontSize: 10, background: 'F5F5F5' },
       blockquote: { borderColor: '999999', italic: true, color: '333333' }
+    }
+  },
+  // 会议纪要（中国企业常用格式）
+  meeting: {
+    name: '会议纪要',
+    sourceType: 'preset',
+    config: {
+      page: { size: 'a4', ...OFFICIAL_MARGINS },
+      font: '仿宋',
+      fontAscii: 'Times New Roman',
+      fontSize: 16,
+      lineSpacingFixed: 28.5,
+      firstLineIndent: true,
+      firstLineIndentChars: 2,
+      headings: {
+        // 纪要标题：二号小标宋体，居中
+        1: { font: '小标宋体', size: 22, bold: false, align: 'center' },
+        // 议题标题：三号黑体
+        2: { font: '黑体', size: 16, bold: false },
+        // 子议题：三号楷体加粗
+        3: { font: '楷体', size: 16, bold: true },
+        4: { font: '仿宋', size: 16, bold: true },
+        5: { font: '仿宋', size: 16, bold: false },
+        6: { font: '仿宋', size: 16, bold: false }
+      },
+      numberingRules: [
+        { pattern: '^[一二三四五六七八九十]+、', style: { font: '黑体', size: 16, bold: false, indent: 0 } },
+        { pattern: '^（[一二三四五六七八九十]+）', style: { font: '楷体', size: 16, bold: true, indent: 0 } },
+        { pattern: '^\\d+[.．]', style: { font: '仿宋', size: 16, bold: true, indent: 0 } },
+        { pattern: '^（\\d+）', style: { font: '仿宋', size: 16, bold: false, indent: 0 } }
+      ],
+      table: {
+        headerBackground: 'E7E6E6',
+        headerBold: true,
+        headerAlign: 'center',
+        borderColor: '000000',
+        borderSize: 4,
+        font: '仿宋',
+        fontAscii: 'Times New Roman',
+        fontSize: 12
+      },
+      codeBlock: { font: 'Courier New', fontSize: 10, background: 'F5F5F5' },
+      blockquote: { borderColor: '999999', italic: false, color: '333333' }
     }
   }
 }
@@ -687,12 +746,25 @@ export async function markdownToDocx(
   // 转换为 docx 元素
   const children = tokensToDocxElements(tokens, styleConfig, ctx)
   
-  // 创建文档（包含文档级别的样式定义 + 有序列表编号定义）
+  // 解析页面配置
+  const pageResolved = resolvePageConfig(styleConfig.config.page)
+
+  // 创建文档（包含文档级别的样式定义 + 有序列表编号定义 + 页面配置）
   const doc = new Document({
     styles: buildDocumentStyles(styleConfig),
     numbering: ctx.numberingConfigs.length > 0 ? { config: ctx.numberingConfigs } : undefined,
     sections: [{
-      properties: {},
+      properties: {
+        page: {
+          size: { width: pageResolved.width, height: pageResolved.height },
+          margin: {
+            top: pageResolved.marginTop,
+            bottom: pageResolved.marginBottom,
+            left: pageResolved.marginLeft,
+            right: pageResolved.marginRight
+          }
+        }
+      },
       children: children.length > 0 ? children : [new Paragraph({ children: [] })]
     }]
   })
@@ -1118,25 +1190,23 @@ const DEFAULT_CELL_MARGINS = {
 
 /**
  * 创建表格
- * 从主题配置读取表头底色、交替行色、边框、字体等，生成风格统一的表格
+ * 使用 DXA 单位设置表格宽度（WidthType.PERCENTAGE 在 WPS 和 Google Docs 中渲染异常）
+ * 同时设置 columnWidths 和单元格 width 双重宽度（Claude 最佳实践：Tables need dual widths）
  */
 function createTable(token: Tokens.Table, style: WordStyleConfig): Table {
   const rows: TableRow[] = []
   const config = style.config
   const tc = config.table || {}
 
-  // 表格字号：优先用主题配置，否则取正文字号的 75%
   const tableFontSize = tc.fontSize
     ?? (config.fontSize ? Math.max(Math.round(config.fontSize * 0.75), 9) : 10.5)
   const tableFontSizeHalf = tableFontSize * 2
 
-  // 表格字体：优先用主题配置，否则继承正文
   const tableFont = buildFontConfig(
     tc.font || config.font,
     tc.fontAscii || config.fontAscii
   )
 
-  // 边框
   const border = {
     style: BorderStyle.SINGLE,
     size: tc.borderSize ?? 4,
@@ -1144,24 +1214,29 @@ function createTable(token: Tokens.Table, style: WordStyleConfig): Table {
   }
   const cellBorders = { top: border, bottom: border, left: border, right: border }
 
-  // 内边距
   const cellMargins = tc.cellPadding
     ? { top: tc.cellPadding.top ?? 30, bottom: tc.cellPadding.bottom ?? 30, left: tc.cellPadding.left ?? 80, right: tc.cellPadding.right ?? 80 }
     : DEFAULT_CELL_MARGINS
 
-  // 表格单元格内段落行距：使用单倍行距，避免继承文档级固定行距导致单元格过高
   const tableCellSpacing = { before: 0, after: 0, line: 240 }
 
-  // 表头配置
   const headerBold = tc.headerBold !== false
   const headerBg = tc.headerBackground || 'F2F2F2'
   const headerTextColor = tc.headerTextColor
   const headerAlignDefault = tc.headerAlign || 'center'
-
-  // 交替行色
   const altColors = tc.alternatingColors
 
-  // 表头行
+  // 计算表格宽度（DXA）：使用页面内容宽度
+  const pageResolved = resolvePageConfig(config.page)
+  const tableWidthDxa = pageResolved.contentWidth
+
+  // 计算列数和每列等宽（DXA）
+  const colCount = token.header?.length || (token.rows[0]?.length ?? 1)
+  const colWidthDxa = Math.floor(tableWidthDxa / colCount)
+  const columnWidths = Array(colCount).fill(colWidthDxa)
+  // 将余数分配给最后一列
+  columnWidths[colCount - 1] = tableWidthDxa - colWidthDxa * (colCount - 1)
+
   if (token.header && token.header.length > 0) {
     rows.push(new TableRow({
       tableHeader: true,
@@ -1182,6 +1257,7 @@ function createTable(token: Tokens.Table, style: WordStyleConfig): Table {
           : getAlignment(headerAlignDefault)
 
         return new TableCell({
+          width: { size: columnWidths[colIdx], type: WidthType.DXA },
           children: [new Paragraph({ children, alignment, spacing: tableCellSpacing })],
           borders: cellBorders,
           verticalAlign: VerticalAlignTable.CENTER,
@@ -1192,11 +1268,9 @@ function createTable(token: Tokens.Table, style: WordStyleConfig): Table {
     }))
   }
 
-  // 数据行
   for (let rowIdx = 0; rowIdx < token.rows.length; rowIdx++) {
     const row = token.rows[rowIdx]
 
-    // 交替行底色
     const rowShading = altColors
       ? { type: ShadingType.CLEAR as const, fill: altColors[rowIdx % 2], color: 'auto' as const }
       : undefined
@@ -1213,6 +1287,7 @@ function createTable(token: Tokens.Table, style: WordStyleConfig): Table {
           : AlignmentType.LEFT
 
         return new TableCell({
+          width: { size: columnWidths[colIdx] ?? colWidthDxa, type: WidthType.DXA },
           children: [new Paragraph({ children, alignment, spacing: tableCellSpacing })],
           borders: cellBorders,
           verticalAlign: VerticalAlignTable.CENTER,
@@ -1224,7 +1299,8 @@ function createTable(token: Tokens.Table, style: WordStyleConfig): Table {
   }
 
   return new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
+    width: { size: tableWidthDxa, type: WidthType.DXA },
+    columnWidths,
     rows
   })
 }
