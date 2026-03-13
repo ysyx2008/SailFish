@@ -14,9 +14,10 @@ export type {
   AgentPlan,
   AgentStep,
   PendingConfirmation,
+  AttachmentInfo,
 } from '@shared/types'
 
-import type { TerminalType, ExecutionMode, RemoteChannel, PendingConfirmation, AgentStep, AgentPlan } from '@shared/types'
+import type { TerminalType, ExecutionMode, RemoteChannel, PendingConfirmation, AgentStep, AgentPlan, AttachmentInfo } from '@shared/types'
 
 // Agent 配置
 export interface AgentConfig {
@@ -114,6 +115,12 @@ export interface AllowedToolKey {
   argsHash: string  // 关键参数的哈希值（如文件路径）
 }
 
+// 用户补充消息（Agent 运行中追加的对话）
+export interface PendingUserMessage {
+  message: string
+  attachments?: AttachmentInfo[]
+}
+
 // Agent 运行状态
 export interface AgentRun {
   id: string
@@ -125,7 +132,7 @@ export interface AgentRun {
   isRunning: boolean
   aborted: boolean
   pendingConfirmation?: PendingConfirmationInternal
-  pendingUserMessages: string[]
+  pendingUserMessages: PendingUserMessage[]
   config: AgentConfig
   context: AgentContext  // 运行上下文
   // 实时终端输出缓冲区（Agent 运行期间收集）

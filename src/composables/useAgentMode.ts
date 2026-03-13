@@ -411,6 +411,9 @@ export function useAgentMode(
     if (isAgentRunning.value && agentKey) {
       inputText.value = ''
       
+      // 获取附件元信息（发送成功后再清空）
+      const supplementAttachments = attachmentCallbacks?.getAttachments() || []
+      
       const hasWaitingAsk = agentTaskGroups.value.some(group => 
         group.isCurrentTask && group.steps.some(step => 
           step.type === 'asking' && step.toolResult?.includes('⏳')
@@ -421,7 +424,15 @@ export function useAgentMode(
         pendingSupplements.value.push(message)
       }
       
-      await window.electronAPI.agent.addMessage(agentKey, message)
+      const success = await window.electronAPI.agent.addMessage(
+        agentKey,
+        message,
+        supplementAttachments.length > 0 ? supplementAttachments : undefined
+      )
+      
+      if (success && supplementAttachments.length > 0) {
+        attachmentCallbacks?.clearAttachments()
+      }
       return
     }
 

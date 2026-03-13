@@ -319,9 +319,9 @@ export class AgentService {
   /**
    * 添加用户消息
    */
-  addUserMessage(ptyId: string, message: string): boolean {
+  addUserMessage(ptyId: string, message: string, attachments?: import('@shared/types').AttachmentInfo[]): boolean {
     const agent = this.getAgent(ptyId)
-    return agent?.addUserMessage(message) ?? false
+    return agent?.addUserMessage(message, attachments) ?? false
   }
   
   /**

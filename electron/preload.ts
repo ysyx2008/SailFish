@@ -912,8 +912,8 @@ const electronAPI = {
       ipcRenderer.invoke('agent:updateConfig', ptyId, config) as Promise<boolean>,
 
     // 添加用户补充消息（Agent 执行过程中，使用 ptyId）
-    addMessage: (ptyId: string, message: string) =>
-      ipcRenderer.invoke('agent:addMessage', ptyId, message) as Promise<boolean>,
+    addMessage: (ptyId: string, message: string, attachments?: import('@shared/types').AttachmentInfo[]) =>
+      ipcRenderer.invoke('agent:addMessage', ptyId, message, attachments) as Promise<boolean>,
 
     // 获取执行阶段状态（用于智能打断判断，使用 ptyId）
     getExecutionPhase: (ptyId: string) =>

@@ -1596,6 +1596,16 @@ onUnmounted(() => {
                         <div v-else class="step-text">
                           {{ step.content }}
                         </div>
+                        <div v-if="step.type === 'user_supplement' && step.attachments && step.attachments.length > 0" class="message-attachments">
+                          <span
+                            v-for="(file, fileIdx) in step.attachments"
+                            :key="fileIdx"
+                            class="attachment-chip"
+                          >
+                            <span class="attachment-name">📎 {{ file.filename }}</span>
+                            <span class="attachment-size">{{ formatFileSize(file.fileSize) }}</span>
+                          </span>
+                        </div>
                         <div v-if="step.toolResult && step.toolResult !== '已拒绝' && step.toolResult !== step.content && step.type !== 'asking'" class="step-result">
                           <pre>{{ step.toolResult }}</pre>
                         </div>

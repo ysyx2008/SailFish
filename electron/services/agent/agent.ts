@@ -257,12 +257,12 @@ export abstract class Agent {
   /**
    * 添加用户补充消息
    */
-  addUserMessage(message: string): boolean {
+  addUserMessage(message: string, attachments?: import('@shared/types').AttachmentInfo[]): boolean {
     if (!this.currentRun || !this.currentRun.isRunning) {
       return false
     }
     
-    this.currentRun.pendingUserMessages.push(message)
+    this.currentRun.pendingUserMessages.push({ message, attachments: attachments?.length ? attachments : undefined })
     
     // 如果 Agent 正在等待（AI 思考中），中断当前请求让它处理新消息
     if (this.currentRun.executionPhase === 'thinking' && this.currentRun.requestId) {
@@ -673,7 +673,7 @@ export abstract class Agent {
     })
     
     // 触发完成回调
-    this.callbacks?.onComplete?.(run.id, result, run.pendingUserMessages)
+    this.callbacks?.onComplete?.(run.id, result, run.pendingUserMessages.map(m => m.message))
   }
   
   // ==================== 会话持久化 ====================
@@ -1863,8 +1863,8 @@ export abstract class Agent {
       isAborted: () => run.aborted,
       getHostId: () => run.context.hostId,
       hasPendingUserMessage: () => run.pendingUserMessages.length > 0,
-      peekPendingUserMessage: () => run.pendingUserMessages[0],
-      consumePendingUserMessage: () => run.pendingUserMessages.shift(),
+      peekPendingUserMessage: () => run.pendingUserMessages[0]?.message,
+      consumePendingUserMessage: () => run.pendingUserMessages.shift()?.message,
       getRealtimeTerminalOutput: () => [...run.realtimeOutputBuffer],
       getCurrentPlan: () => this.currentPlan,
       setCurrentPlan: (plan) => {
@@ -1959,14 +1959,15 @@ export abstract class Agent {
   protected processPendingUserMessages(run: AgentRun): void {
     if (run.pendingUserMessages.length === 0) return
     
-    for (const msg of run.pendingUserMessages) {
+    for (const pending of run.pendingUserMessages) {
       this.addStep({
         type: 'user_supplement',
-        content: msg
+        content: pending.message,
+        attachments: pending.attachments
       })
     }
     
-    const supplementMsg = run.pendingUserMessages.join('\n')
+    const supplementMsg = run.pendingUserMessages.map(m => m.message).join('\n')
     const userSupplementMsg: AiMessage = { role: 'user', content: supplementMsg }
     run.messages.push(userSupplementMsg)
     run.taskMessageLog.push({ ...userSupplementMsg })
