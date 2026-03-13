@@ -257,12 +257,17 @@ export abstract class Agent {
   /**
    * 添加用户补充消息
    */
-  addUserMessage(message: string, attachments?: import('@shared/types').AttachmentInfo[]): boolean {
+  addUserMessage(message: string, attachments?: import('@shared/types').AttachmentInfo[], documentContext?: string, images?: string[]): boolean {
     if (!this.currentRun || !this.currentRun.isRunning) {
       return false
     }
     
-    this.currentRun.pendingUserMessages.push({ message, attachments: attachments?.length ? attachments : undefined })
+    this.currentRun.pendingUserMessages.push({
+      message,
+      attachments: attachments?.length ? attachments : undefined,
+      documentContext: documentContext || undefined,
+      images: images?.length ? images : undefined
+    })
     
     // 如果 Agent 正在等待（AI 思考中），中断当前请求让它处理新消息
     if (this.currentRun.executionPhase === 'thinking' && this.currentRun.requestId) {
@@ -1959,18 +1964,37 @@ export abstract class Agent {
   protected processPendingUserMessages(run: AgentRun): void {
     if (run.pendingUserMessages.length === 0) return
     
+    // 收集所有 pending 消息的文本、文档内容、图片
+    let combinedText = ''
+    const allImages: string[] = []
+    
     for (const pending of run.pendingUserMessages) {
       this.addStep({
         type: 'user_supplement',
         content: pending.message,
-        attachments: pending.attachments
+        attachments: pending.attachments,
+        images: pending.images
       })
+      
+      let msgPart = pending.message
+      if (pending.documentContext) {
+        msgPart += '\n\n' + pending.documentContext
+      }
+      if (pending.images?.length) {
+        const imageCount = pending.images.length
+        log.info(`Supplement images: ${imageCount} image(s)`)
+        msgPart += `\n\n[${t('agent.images_attached', { count: imageCount })}]`
+        allImages.push(...pending.images)
+      }
+      combinedText += (combinedText ? '\n' : '') + msgPart
     }
     
-    const supplementMsg = run.pendingUserMessages.map(m => m.message).join('\n')
-    const userSupplementMsg: AiMessage = { role: 'user', content: supplementMsg }
+    const userSupplementMsg: AiMessage = { role: 'user', content: combinedText }
+    if (allImages.length > 0) {
+      userSupplementMsg.images = allImages
+    }
     run.messages.push(userSupplementMsg)
-    run.taskMessageLog.push({ ...userSupplementMsg })
+    run.taskMessageLog.push({ role: 'user', content: combinedText })
     
     // 如果有计划，提示 AI
     if (this.currentPlan && this.currentPlan.steps.some(s => s.status === 'pending')) {

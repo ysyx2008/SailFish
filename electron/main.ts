@@ -2501,8 +2501,8 @@ ipcMain.handle('agent:updateConfig', async (_event, ptyId: string, config: { exe
 })
 
 // 添加用户补充消息（Agent 执行过程中，改用 ptyId）
-ipcMain.handle('agent:addMessage', async (_event, ptyId: string, message: string, attachments?: import('@shared/types').AttachmentInfo[]) => {
-  return agentService.addUserMessage(ptyId, message, attachments)
+ipcMain.handle('agent:addMessage', async (_event, ptyId: string, message: string, attachments?: import('@shared/types').AttachmentInfo[], documentContext?: string, images?: string[]) => {
+  return agentService.addUserMessage(ptyId, message, attachments, documentContext, images)
 })
 
 // 运行独立助手 Agent（无终端绑定）

@@ -119,6 +119,8 @@ export interface AllowedToolKey {
 export interface PendingUserMessage {
   message: string
   attachments?: AttachmentInfo[]
+  documentContext?: string
+  images?: string[]
 }
 
 // Agent 运行状态

@@ -411,8 +411,10 @@ export function useAgentMode(
     if (isAgentRunning.value && agentKey) {
       inputText.value = ''
       
-      // 获取附件元信息（发送成功后再清空）
+      // 收集附件元信息、文档内容、图片（与新任务路径对齐）
       const supplementAttachments = attachmentCallbacks?.getAttachments() || []
+      const documentContext = await getDocumentContext()
+      const images = imageCallbacks?.getImages() || []
       
       const hasWaitingAsk = agentTaskGroups.value.some(group => 
         group.isCurrentTask && group.steps.some(step => 
@@ -427,11 +429,14 @@ export function useAgentMode(
       const success = await window.electronAPI.agent.addMessage(
         agentKey,
         message,
-        supplementAttachments.length > 0 ? supplementAttachments : undefined
+        supplementAttachments.length > 0 ? supplementAttachments : undefined,
+        documentContext || undefined,
+        images.length > 0 ? images : undefined
       )
       
-      if (success && supplementAttachments.length > 0) {
-        attachmentCallbacks?.clearAttachments()
+      if (success) {
+        if (supplementAttachments.length > 0) attachmentCallbacks?.clearAttachments()
+        if (images.length > 0) imageCallbacks?.clearImages()
       }
       return
     }
