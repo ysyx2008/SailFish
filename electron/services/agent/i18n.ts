@@ -270,6 +270,7 @@ const translations = {
     'file.created': '创建',
     'file.edit': '编辑文件',
     'file.edit_success': '文件编辑成功: {path}',
+    'file.edit_success_all': '文件编辑成功（替换 {count} 处）: {path}',
     'file.edit_failed': '文件编辑失败',
     'file.unsupported_format': '不支持的图片格式',
     'file.read_error': '读取文件失败',
@@ -1092,8 +1093,9 @@ const translations = {
     'error.file_not_exists': '文件不存在: {path}',
     'error.old_text_not_found': '在文件中未找到要替换的文本',
     'error.old_text_multiple_matches': '找到 {count} 处匹配，old_text 必须在文件中唯一匹配',
-    'hint.old_text_not_found': '请检查 old_text 是否与文件内容完全匹配（包括空白字符和换行）。建议先用 read_file 查看文件内容。',
-    'hint.old_text_multiple_matches': '请提供更多上下文（如包含前后几行）使 old_text 在文件中唯一匹配。',
+    'hint.old_text_not_found': '请检查 old_text 是否与文件内容完全匹配（包括空白字符和换行）。建议先用 read_file 查看文件内容，从输出中精确复制。',
+    'hint.old_text_multiple_matches': '请提供更多上下文（如包含前后几行）使 old_text 在文件中唯一匹配，或使用 replace_all=true。',
+    'hint.closest_match': '文件中最相似的内容',
 
     // 记忆错误
     'error.info_required': '信息不能为空',
@@ -1503,6 +1505,7 @@ Please output the summary in the following format:
     'file.created': 'Created',
     'file.edit': 'Edit file',
     'file.edit_success': 'File edited successfully: {path}',
+    'file.edit_success_all': 'File edited successfully ({count} replacements): {path}',
     'file.edit_failed': 'File edit failed',
     'file.unsupported_format': 'Unsupported image format',
     'file.read_error': 'Failed to read file',
@@ -2325,8 +2328,9 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
     'error.file_not_exists': 'File not found: {path}',
     'error.old_text_not_found': 'Text to replace not found in file',
     'error.old_text_multiple_matches': 'Found {count} matches, old_text must match exactly once in file',
-    'hint.old_text_not_found': 'Please check if old_text exactly matches file content (including whitespace and newlines). Consider using read_file to view file content first.',
-    'hint.old_text_multiple_matches': 'Please provide more context (e.g. include surrounding lines) to make old_text unique in the file.',
+    'hint.old_text_not_found': 'Please check if old_text exactly matches file content (including whitespace and newlines). Use read_file first and copy from its output.',
+    'hint.old_text_multiple_matches': 'Please provide more context (e.g. include surrounding lines) to make old_text unique in the file, or use replace_all=true.',
+    'hint.closest_match': 'Most similar content in file',
 
     // Memory errors
     'error.info_required': 'Info cannot be empty',

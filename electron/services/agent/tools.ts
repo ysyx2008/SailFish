@@ -182,7 +182,7 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
       type: 'function',
       function: {
         name: 'edit_file',
-        description: `查找替换修改本地文件（修改首选工具）。old_text 必须在文件中唯一匹配，匹配多处时提供更多上下文使其唯一。创建新文件请用 write_local_file。`,
+        description: `查找替换修改本地文件（修改首选工具）。使用前必须先 read_file 查看文件，old_text 必须从 read_file 输出中精确复制（不含行号前缀）。old_text 必须在文件中唯一匹配，匹配多处时提供更多上下文使其唯一。创建新文件请用 write_local_file。`,
         parameters: {
           type: 'object',
           properties: {
@@ -197,6 +197,10 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
             new_text: {
               type: 'string',
               description: '替换后的新文本'
+            },
+            replace_all: {
+              type: 'boolean',
+              description: '替换所有匹配（默认 false，仅替换唯一匹配）'
             }
           },
           required: ['path', 'old_text', 'new_text']

@@ -498,6 +498,7 @@ export class PromptBuilder {
       this.buildSafetyRules(),
       this.isAssistant ? `**禁止的命令**：vim/vi/nano/emacs（用 \`${this.writeFileTool}\`）` : '',
       this.buildFileSearchRule(),
+      '**文件编辑**：使用 `edit_file` 前必须先 `read_file` 查看目标文件，old_text 从输出中精确复制（去掉行号前缀）。read_file 输出带行号（格式 `行号|内容`），也可用 `write_local_file(mode="replace_lines")` 按行号范围替换。',
       '**临时文件清理**：任务过程中创建的所有临时文件，使用完毕后及时清除',
       this.buildExecutionGuide(),
       this.buildBehaviorRules(),

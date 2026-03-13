@@ -151,6 +151,229 @@ export async function fileSearch(
 }
 
 /**
+ * 为文本内容添加行号前缀，帮助 AI 精确定位和引用
+ * 格式: "   1|line content"（行号右对齐，宽度根据总行数自适应）
+ */
+function addLineNumbers(content: string, startLine: number = 1): string {
+  const lines = content.split('\n')
+  const maxLineNum = startLine + lines.length - 1
+  const width = Math.max(4, String(maxLineNum).length)
+  return lines.map((line, i) => {
+    const num = String(startLine + i).padStart(width)
+    return `${num}|${line}`
+  }).join('\n')
+}
+
+const CLOSEST_MATCH_THRESHOLD = 0.3
+const MAX_CLOSEST_SEARCH_LINES = 2000
+
+interface EditMatchResult {
+  found: boolean
+  count: number
+  /** 是否通过规范化容错匹配到的 */
+  normalized?: boolean
+  /** 容错匹配时的原始文件位置 */
+  originalStart?: number
+  originalEnd?: number
+  /** 未找到时，最接近的上下文片段（帮助 AI 重试） */
+  closestContext?: string
+}
+
+/**
+ * 多层容错匹配，逐层放宽条件：
+ * Tier 1: 精确匹配
+ * Tier 2: 换行符规范化（CRLF → LF）
+ * Tier 3: 尾部空白容错（每行 trimEnd）
+ */
+function findEditMatch(fileContent: string, oldText: string): EditMatchResult {
+  if (oldText.length === 0) {
+    return { found: false, count: 0 }
+  }
+
+  // Tier 1: 精确匹配
+  const count = fileContent.split(oldText).length - 1
+  if (count > 0) {
+    return { found: true, count }
+  }
+
+  // Tier 2: 换行符规范化
+  const normalizedFile = fileContent.replace(/\r\n/g, '\n')
+  const normalizedOld = oldText.replace(/\r\n/g, '\n')
+  if (normalizedFile !== fileContent || normalizedOld !== oldText) {
+    const idx = normalizedFile.indexOf(normalizedOld)
+    if (idx !== -1) {
+      const normalizedCount = normalizedFile.split(normalizedOld).length - 1
+      const posMap = buildPositionMap(fileContent)
+      const originalStart = posMap[idx]
+      const originalEnd = idx + normalizedOld.length < posMap.length
+        ? posMap[idx + normalizedOld.length]
+        : fileContent.length
+      return { found: true, count: normalizedCount, normalized: true, originalStart, originalEnd }
+    }
+  }
+
+  // Tier 3: 尾部空白容错
+  const trimTrailing = (s: string) => s.split('\n').map(l => l.trimEnd()).join('\n')
+  const fileTrimmed = trimTrailing(normalizedFile)
+  const oldTrimmed = trimTrailing(normalizedOld)
+  if (fileTrimmed !== normalizedFile || oldTrimmed !== normalizedOld) {
+    const idx = fileTrimmed.indexOf(oldTrimmed)
+    if (idx !== -1) {
+      const trimmedCount = fileTrimmed.split(oldTrimmed).length - 1
+      const posMap = buildPositionMap(fileContent)
+      const trimToNormMap = buildTrimToNormMap(normalizedFile, fileTrimmed)
+      const normStart = trimToNormMap[idx]
+      const normEnd = idx + oldTrimmed.length < trimToNormMap.length
+        ? trimToNormMap[idx + oldTrimmed.length]
+        : normalizedFile.length
+      const originalStart = posMap[normStart]
+      const originalEnd = normEnd < posMap.length ? posMap[normEnd] : fileContent.length
+      return { found: true, count: trimmedCount, normalized: true, originalStart, originalEnd }
+    }
+  }
+
+  const closestContext = findClosestContext(fileContent, oldText)
+  return { found: false, count: 0, closestContext }
+}
+
+/**
+ * 构建 normalized→original 位置映射表。
+ * posMap[ni] = 对应的 original 字符索引。
+ * 规范化操作：CRLF → LF（\r\n 变 \n，original 多消耗 1 字符）
+ */
+function buildPositionMap(original: string): number[] {
+  const map: number[] = []
+  let oi = 0
+  for (let i = 0; oi <= original.length; i++) {
+    map.push(oi)
+    if (oi < original.length && original[oi] === '\r' && original[oi + 1] === '\n') {
+      oi += 2
+    } else {
+      oi++
+    }
+  }
+  return map
+}
+
+/**
+ * 构建 trimmed→normalized 位置映射表。
+ * 尾部空白被移除时，trimmed 索引可能对应到 normalized 的不同位置。
+ */
+function buildTrimToNormMap(normalized: string, trimmed: string): number[] {
+  const map: number[] = []
+  let ni = 0
+  for (let ti = 0; ti < trimmed.length; ti++) {
+    // 跳过 normalized 中被 trim 掉的尾部空白（\n 之前的空白）
+    while (ni < normalized.length && normalized[ni] !== trimmed[ti]) {
+      ni++
+    }
+    map.push(ni)
+    ni++
+  }
+  map.push(ni)
+  return map
+}
+
+/**
+ * 保持原文件换行符风格：如果原文使用 CRLF，将 newText 中的 LF 转为 CRLF
+ */
+function preserveNewlineStyle(newText: string, fileContent: string): string {
+  if (!fileContent.includes('\r\n')) return newText
+  return newText.replace(/(?<!\r)\n/g, '\r\n')
+}
+
+/**
+ * replaceAll 的规范化版本：逐个找到并替换所有匹配
+ */
+function replaceAllNormalized(fileContent: string, oldText: string, newText: string): string {
+  // 先尝试精确匹配 replaceAll
+  if (fileContent.includes(oldText)) {
+    return fileContent.split(oldText).join(newText)
+  }
+
+  const normalizedOld = oldText.replace(/\r\n/g, '\n')
+  const trimTrailing = (s: string) => s.split('\n').map(l => l.trimEnd()).join('\n')
+  const oldTrimmed = trimTrailing(normalizedOld)
+  const normalizedFile = fileContent.replace(/\r\n/g, '\n')
+  const fileTrimmed = trimTrailing(normalizedFile)
+
+  const posMap = buildPositionMap(fileContent)
+  const trimToNormMap = buildTrimToNormMap(normalizedFile, fileTrimmed)
+
+  const styledNewText = preserveNewlineStyle(newText, fileContent)
+  const parts: string[] = []
+  let lastEnd = 0
+
+  let searchFrom = 0
+  while (true) {
+    const idx = fileTrimmed.indexOf(oldTrimmed, searchFrom)
+    if (idx === -1) break
+    const normStart = trimToNormMap[idx]
+    const normEnd = idx + oldTrimmed.length < trimToNormMap.length
+      ? trimToNormMap[idx + oldTrimmed.length]
+      : normalizedFile.length
+    const origStart = posMap[normStart]
+    const origEnd = normEnd < posMap.length ? posMap[normEnd] : fileContent.length
+    parts.push(fileContent.substring(lastEnd, origStart))
+    parts.push(styledNewText)
+    lastEnd = origEnd
+    searchFrom = idx + oldTrimmed.length
+  }
+  parts.push(fileContent.substring(lastEnd))
+  return parts.join('')
+}
+
+/**
+ * 找到文件中与 oldText 最相似的片段，返回上下文帮助 AI 重试。
+ * 使用逐行滑动窗口 + 行级 Jaccard 相似度。
+ */
+function findClosestContext(fileContent: string, oldText: string): string | undefined {
+  const oldLines = oldText.split('\n').map(l => l.trim()).filter(Boolean)
+  if (oldLines.length === 0) return undefined
+
+  const fileLines = fileContent.split('\n')
+  if (fileLines.length === 0) return undefined
+
+  const windowSize = Math.min(oldLines.length, fileLines.length)
+  const searchLimit = Math.min(fileLines.length, MAX_CLOSEST_SEARCH_LINES)
+  const oldSet = new Set(oldLines)
+
+  let bestScore = 0
+  let bestStart = 0
+
+  for (let i = 0; i <= searchLimit - windowSize; i++) {
+    const windowLines = fileLines.slice(i, i + windowSize).map(l => l.trim()).filter(Boolean)
+    const windowSet = new Set(windowLines)
+
+    let intersection = 0
+    for (const l of oldSet) {
+      if (windowSet.has(l)) intersection++
+    }
+    const union = oldSet.size + windowSet.size - intersection
+    const score = union > 0 ? intersection / union : 0
+
+    if (score > bestScore) {
+      bestScore = score
+      bestStart = i
+    }
+  }
+
+  if (bestScore < CLOSEST_MATCH_THRESHOLD) return undefined
+
+  const contextStart = Math.max(0, bestStart - 1)
+  const contextEnd = Math.min(fileLines.length, bestStart + windowSize + 1)
+  const contextLines = fileLines.slice(contextStart, contextEnd)
+  const maxNum = contextEnd
+  const numWidth = Math.max(4, String(maxNum).length)
+  const numbered = contextLines.map((line, i) => {
+    const lineNum = String(contextStart + i + 1).padStart(numWidth)
+    return `${lineNum}|${line}`
+  }).join('\n')
+
+  return numbered
+}
+
+/**
  * 检测是否为文档类型
  */
 function isDocumentType(filePath: string): boolean {
@@ -771,14 +994,19 @@ ${sampleContent ? `### ${t('file.info_preview')}\n\`\`\`\n${sampleContent}\n\`\`
       readInfo.push(t('file.actual_read', { lines: actualLines.length, chars: content.length.toLocaleString() }))
     }
 
+    const lineOffset = startLine !== undefined ? Math.max(1, startLine)
+      : tailLines !== undefined && totalLines !== undefined ? totalLines - actualLines.length + 1
+      : 1
+    const numberedContent = addLineNumbers(content, lineOffset)
+
     executor.addStep({
       type: 'tool_result',
       content: `${t('file.read_success')}: ${readInfo.join(', ')}`,
       toolName: 'read_file',
-      toolResult: truncateFromEnd(content, 500)
+      toolResult: truncateFromEnd(numberedContent, 500)
     })
     
-    return { success: true, output: content }
+    return { success: true, output: numberedContent }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '读取失败'
     const errorCategory = categorizeError(errorMsg)
@@ -807,6 +1035,7 @@ export async function editFile(
   let filePath = args.path as string
   const oldText = args.old_text as string
   const newText = args.new_text as string
+  const replaceAll = args.replace_all === true
 
   if (!filePath) {
     return { success: false, output: '', error: t('error.file_path_required') }
@@ -842,7 +1071,8 @@ export async function editFile(
     toolArgs: { 
       path: filePath, 
       old_text: oldTextPreview,
-      new_text: newTextPreview
+      new_text: newTextPreview,
+      ...(replaceAll && { replace_all: true })
     },
     riskLevel: inWorkspace ? 'safe' : 'moderate'
   })
@@ -861,21 +1091,26 @@ export async function editFile(
 
   try {
     const fileContent = fs.readFileSync(filePath, 'utf-8')
-    const occurrences = fileContent.split(oldText).length - 1
 
-    if (occurrences === 0) {
+    // 多层容错匹配
+    const match = findEditMatch(fileContent, oldText)
+
+    if (!match.found) {
       const errorMsg = t('error.old_text_not_found')
+      const hint = match.closestContext
+        ? `${t('hint.old_text_not_found')}\n\n${t('hint.closest_match')}:\n${match.closestContext}`
+        : t('hint.old_text_not_found')
       executor.addStep({
         type: 'tool_result',
         content: `${t('file.edit_failed')}: ${errorMsg}`,
         toolName: 'edit_file',
-        toolResult: `${errorMsg}\n\n${t('hint.old_text_not_found')}`
+        toolResult: `${errorMsg}\n\n${hint}`
       })
-      return { success: false, output: '', error: errorMsg }
+      return { success: false, output: '', error: `${errorMsg}\n\n${hint}` }
     }
 
-    if (occurrences > 1) {
-      const errorMsg = t('error.old_text_multiple_matches', { count: occurrences })
+    if (match.count > 1 && !replaceAll) {
+      const errorMsg = t('error.old_text_multiple_matches', { count: match.count })
       executor.addStep({
         type: 'tool_result',
         content: `${t('file.edit_failed')}: ${errorMsg}`,
@@ -885,10 +1120,27 @@ export async function editFile(
       return { success: false, output: '', error: errorMsg }
     }
 
-    const newContent = fileContent.replace(oldText, newText)
+    let newContent: string
+    if (match.normalized) {
+      const styledNewText = preserveNewlineStyle(newText, fileContent)
+      if (replaceAll) {
+        newContent = replaceAllNormalized(fileContent, oldText, newText)
+      } else {
+        newContent = fileContent.substring(0, match.originalStart!) +
+          styledNewText +
+          fileContent.substring(match.originalEnd!)
+      }
+    } else {
+      newContent = replaceAll
+        ? fileContent.split(oldText).join(newText)
+        : fileContent.replace(oldText, newText)
+    }
+
     fs.writeFileSync(filePath, newContent, 'utf-8')
 
-    const resultMsg = t('file.edit_success', { path: filePath })
+    const resultMsg = replaceAll && match.count > 1
+      ? t('file.edit_success_all', { path: filePath, count: match.count })
+      : t('file.edit_success', { path: filePath })
     executor.addStep({
       type: 'tool_result',
       content: resultMsg,
