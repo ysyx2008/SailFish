@@ -45,6 +45,7 @@ function syncSkillsPlugin() {
 export default defineConfig({
   site: 'https://www.sfterm.com',
   base: '/',
+  trailingSlash: 'always',
   build: {
     assets: 'assets'
   },

@@ -28,13 +28,13 @@ const prefix = lang === 'zh' ? '/zh/docs/' : '/docs/';
 
 <nav class="docs-prev-next">
   {prevSlug ? (
-    <a href={`${prefix}${prevSlug}`} class="pn-link pn-prev">
+    <a href={`${prefix}${prevSlug}/`} class="pn-link pn-prev">
       <span class="pn-dir">{lang === 'zh' ? '上一篇' : 'Previous'}</span>
       <span class="pn-title">{findLabel(prevSlug)}</span>
     </a>
   ) : <div />}
   {nextSlug ? (
-    <a href={`${prefix}${nextSlug}`} class="pn-link pn-next">
+    <a href={`${prefix}${nextSlug}/`} class="pn-link pn-next">
       <span class="pn-dir">{lang === 'zh' ? '下一篇' : 'Next'}</span>
       <span class="pn-title">{findLabel(nextSlug)}</span>
     </a>

@@ -12,10 +12,10 @@ const alternateLang = getAlternateLang(lang);
 const alternateUrl = getAlternateUrl(Astro.url, alternateLang);
 
 const homeUrl = lang === 'zh' ? '/zh/' : '/';
-const skillsUrl = lang === 'zh' ? '/zh/skills' : '/skills';
-const docsUrl = lang === 'zh' ? '/zh/docs/getting-started/what-is-sailfish' : '/docs/getting-started/what-is-sailfish';
-const dataPrivacyUrl = lang === 'zh' ? '/zh/data-privacy' : '/data-privacy';
-const changelogUrl = lang === 'zh' ? '/zh/changelog' : '/changelog';
+const skillsUrl = lang === 'zh' ? '/zh/skills/' : '/skills/';
+const docsUrl = lang === 'zh' ? '/zh/docs/getting-started/what-is-sailfish/' : '/docs/getting-started/what-is-sailfish/';
+const dataPrivacyUrl = lang === 'zh' ? '/zh/data-privacy/' : '/data-privacy/';
+const changelogUrl = lang === 'zh' ? '/zh/changelog/' : '/changelog/';
 
 // 检查是否在首页（用于决定锚点链接的行为）
 const currentPath = Astro.url.pathname;
