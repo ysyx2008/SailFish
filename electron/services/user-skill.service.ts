@@ -29,6 +29,12 @@ export interface UserSkill {
   filePath: string
   /** 最后修改时间 */
   lastModified: number
+  /** 技能来源 */
+  source?: 'sailfish' | 'clawhub'
+  /** 作者 */
+  author?: string
+  /** 权限声明 */
+  permissions?: string[]
 }
 
 /**
@@ -39,6 +45,9 @@ interface SkillFrontmatter {
   description?: string
   version?: string
   enabled?: boolean
+  author?: string
+  source?: string
+  permissions?: string[]
 }
 
 /**
@@ -81,36 +90,44 @@ export class UserSkillService {
 
   /**
    * 解析 YAML frontmatter
-   * 格式: ---\nkey: value\n---
+   * 格式: ---\nkey: value\n--- (支持 YAML 列表)
    */
   private parseFrontmatter(content: string): { frontmatter: SkillFrontmatter; body: string } {
-    // 支持有内容或无内容的情况
     const frontmatterRegex = /^---\s*\n([\s\S]*?)\n---\s*(?:\n([\s\S]*))?$/
     const match = content.match(frontmatterRegex)
 
     if (!match) {
-      // 没有 frontmatter，整个内容作为 body
       return { frontmatter: {}, body: content }
     }
 
     const yamlStr = match[1]
-    const body = match[2] || '' // 可能没有 body
+    const body = match[2] || ''
 
-    // 简单的 YAML 解析（只支持 key: value 格式）
     const frontmatter: SkillFrontmatter = {}
     const lines = yamlStr.split('\n')
 
+    let currentKey = ''
+
     for (const line of lines) {
+      // YAML 列表项（  - value）
+      const listItemMatch = line.match(/^\s+-\s+(.+)$/)
+      if (listItemMatch && currentKey === 'permissions') {
+        if (!frontmatter.permissions) frontmatter.permissions = []
+        frontmatter.permissions.push(listItemMatch[1].trim())
+        continue
+      }
+
       const colonIndex = line.indexOf(':')
-      if (colonIndex > 0) {
+      if (colonIndex > 0 && !line.startsWith(' ') && !line.startsWith('\t')) {
         const key = line.substring(0, colonIndex).trim().toLowerCase()
         let value = line.substring(colonIndex + 1).trim()
-        
-        // 移除引号
+
         if ((value.startsWith('"') && value.endsWith('"')) ||
             (value.startsWith("'") && value.endsWith("'"))) {
           value = value.slice(1, -1)
         }
+
+        currentKey = key
 
         switch (key) {
           case 'name':
@@ -124,6 +141,19 @@ export class UserSkillService {
             break
           case 'enabled':
             frontmatter.enabled = value.toLowerCase() !== 'false'
+            break
+          case 'author':
+            frontmatter.author = value
+            break
+          case 'source':
+            frontmatter.source = value
+            break
+          case 'permissions':
+            // 内联列表 permissions: [network, shell]
+            if (value.startsWith('[') && value.endsWith(']')) {
+              frontmatter.permissions = value.slice(1, -1).split(',').map(s => s.trim()).filter(Boolean)
+            }
+            // 否则等待后续 - item 行
             break
         }
       }
@@ -188,16 +218,36 @@ export class UserSkillService {
       const stats = fs.statSync(filePath)
       const { frontmatter, body } = this.parseFrontmatter(content)
 
-      return {
+      const skill: UserSkill = {
         id,
         name: frontmatter.name || id,
         description: frontmatter.description || '',
         version: frontmatter.version,
-        enabled: frontmatter.enabled !== false, // 默认启用
+        enabled: frontmatter.enabled !== false,
         content: body.trim(),
         filePath,
-        lastModified: stats.mtimeMs
+        lastModified: stats.mtimeMs,
+        author: frontmatter.author,
+        permissions: frontmatter.permissions,
       }
+
+      // 检查 clawhub.meta.json 获取来源信息
+      const dir = path.dirname(filePath)
+      const metaPath = path.join(dir, 'clawhub.meta.json')
+      if (fs.existsSync(metaPath)) {
+        try {
+          const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
+          skill.source = 'clawhub'
+          if (meta.author && !skill.author) skill.author = meta.author
+          if (meta.permissions && !skill.permissions) skill.permissions = meta.permissions
+        } catch {
+          // ignore meta parse errors
+        }
+      } else if (frontmatter.source === 'clawhub') {
+        skill.source = 'clawhub'
+      }
+
+      return skill
     } catch (error) {
       log.error(`Error parsing skill file ${filePath}:`, error)
       return null

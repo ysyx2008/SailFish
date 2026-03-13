@@ -273,7 +273,7 @@ import { LocalFsService } from './services/local-fs.service'
 import { McpService } from './services/mcp.service'
 import { getUserSkillService, UserSkill } from './services/user-skill.service'
 import { getBuiltinSkillsForSettings } from './services/agent/skills/registry'
-import { getSkillMarketService, type MarketSkillItem, type SkillOperationResult, type SkillRegistry } from './services/skill-market.service'
+import { getSkillMarketService, scanSkillContent, type MarketSkill, type MarketSkillItem, type SkillOperationResult, type SkillRegistry, type SkillPreviewResult, type SkillSource } from './services/skill-market.service'
 import { getKnowledgeService, KnowledgeService } from './services/knowledge'
 import type { KnowledgeSettings, SearchOptions, AddDocumentOptions, ModelTier } from './services/knowledge/types'
 import {
@@ -3959,6 +3959,14 @@ ipcMain.handle('skillMarket:setRegistryUrl', async (_event, url: string): Promis
 
 ipcMain.handle('skillMarket:fetchRegistry', async (_event, force?: boolean): Promise<SkillRegistry> => {
   return getMarketService().fetchRegistry(force)
+})
+
+ipcMain.handle('skillMarket:preview', async (_event, skillId: string, source: SkillSource): Promise<SkillPreviewResult> => {
+  return getMarketService().previewSkill(skillId, source)
+})
+
+ipcMain.handle('skillMarket:searchClawHub', async (_event, query: string): Promise<MarketSkill[]> => {
+  return getMarketService().searchClawHub(query)
 })
 
 // ==================== 知识库相关 ====================

@@ -57,6 +57,7 @@
     "@xterm/addon-web-links": "^0.11.0",
     "@xterm/addon-webgl": "^0.18.0",
     "@xterm/xterm": "^5.5.0",
+    "adm-zip": "^0.5.16",
     "apache-arrow": "^18.1.0",
     "cron-parser": "^5.5.0",
     "dingtalk-stream": "^2.1.4",
@@ -95,6 +96,7 @@
   "devDependencies": {
     "@electron/rebuild": "^3.7.2",
     "@rushstack/eslint-patch": "^1.7.2",
+    "@types/adm-zip": "^0.5.7",
     "@types/mailparser": "^3.4.6",
     "@types/node": "^20.11.24",
     "@types/nodemailer": "^7.0.4",

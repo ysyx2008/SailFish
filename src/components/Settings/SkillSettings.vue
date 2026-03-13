@@ -25,6 +25,9 @@ interface UserSkill {
   content: string
   filePath: string
   lastModified: number
+  source?: 'sailfish' | 'clawhub'
+  author?: string
+  permissions?: string[]
 }
 
 interface MarketSkillItem {
@@ -33,9 +36,11 @@ interface MarketSkillItem {
   description: string
   version: string
   author: string
+  source?: 'sailfish' | 'clawhub'
   category?: string
   tags?: string[]
   featured?: boolean
+  permissions?: string[]
   installed: boolean
   installedVersion?: string
   hasUpdate: boolean
@@ -482,6 +487,7 @@ watch(() => props.pendingInstallSkillId, (newId) => {
               <div class="skill-name">
                 {{ skill.name }}
                 <span class="skill-version" v-if="skill.version">v{{ skill.version }}</span>
+                <span v-if="skill.source === 'clawhub'" class="source-badge clawhub">ClawHub</span>
               </div>
               <div class="skill-desc" v-if="skill.description" :title="skill.description">{{ skill.description }}</div>
             </div>
@@ -654,6 +660,7 @@ enabled: true
                 <div class="market-item-header">
                   <span class="skill-name">{{ skill.name }}</span>
                   <span class="skill-version">v{{ skill.version }}</span>
+                  <span v-if="skill.source === 'clawhub'" class="source-badge clawhub">ClawHub</span>
                   <span v-if="skill.hasUpdate" class="update-badge">{{ t('skillSettings.updateAvailable') }}</span>
                 </div>
                 <div class="skill-desc" v-if="skill.description" :title="skill.description">{{ skill.description }}</div>
@@ -661,6 +668,9 @@ enabled: true
                   <span class="meta-item">{{ t('skillSettings.by') }} {{ skill.author }}</span>
                   <span v-if="skill.category" class="meta-item tag">{{ skill.category }}</span>
                   <span v-for="tag in (skill.tags || []).slice(0, 3)" :key="tag" class="meta-item tag">{{ tag }}</span>
+                  <span v-if="skill.permissions?.length" class="meta-item tag permissions-tag" :title="skill.permissions.join(', ')">
+                    {{ skill.permissions.length }} {{ t('skillSettings.permissions', '权限') }}
+                  </span>
                 </div>
               </div>
               <div class="market-item-actions" @click.stop>
@@ -698,6 +708,17 @@ enabled: true
             </div>
           </div>
         </template>
+      </div>
+
+      <!-- ClawHub 引导 -->
+      <div class="clawhub-section">
+        <div class="clawhub-header">
+          <span class="clawhub-icon">🦞</span>
+          <h5>{{ t('skillSettings.clawhubTitle') }}</h5>
+        </div>
+        <p class="clawhub-desc">{{ t('skillSettings.clawhubDesc') }}</p>
+        <div class="clawhub-example">{{ t('skillSettings.clawhubExample') }}</div>
+        <p class="clawhub-safety">{{ t('skillSettings.clawhubSafety') }}</p>
       </div>
 
       <!-- Registry URL -->
@@ -1168,6 +1189,22 @@ enabled: true
   font-weight: 500;
 }
 
+.source-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.source-badge.clawhub {
+  background: var(--accent-purple, #8b5cf6);
+  color: #fff;
+}
+
+.permissions-tag {
+  color: var(--text-tertiary, #999);
+}
+
 .market-item-meta {
   display: flex;
   align-items: center;
@@ -1198,6 +1235,55 @@ enabled: true
   font-size: 12px;
   color: var(--accent-green);
   font-weight: 500;
+}
+
+/* ClawHub 引导区域 */
+.clawhub-section {
+  margin-top: 20px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: var(--bg-secondary, #f5f5f5);
+  border: 1px solid var(--border-color);
+}
+
+.clawhub-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.clawhub-header h5 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.clawhub-icon {
+  font-size: 16px;
+}
+
+.clawhub-desc {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  margin: 0 0 8px 0;
+  line-height: 1.5;
+}
+
+.clawhub-example {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--accent-purple, #8b5cf6);
+  padding: 6px 10px;
+  background: var(--bg-tertiary, #eee);
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.clawhub-safety {
+  font-size: 11px;
+  color: var(--text-muted, #999);
+  margin: 0;
 }
 
 /* Registry 区域 */

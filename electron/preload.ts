@@ -1770,7 +1770,13 @@ const electronAPI = {
       ipcRenderer.invoke('skillMarket:setRegistryUrl', url) as Promise<void>,
 
     fetchRegistry: (force?: boolean) =>
-      ipcRenderer.invoke('skillMarket:fetchRegistry', force) as Promise<any>
+      ipcRenderer.invoke('skillMarket:fetchRegistry', force) as Promise<any>,
+
+    preview: (skillId: string, source: string) =>
+      ipcRenderer.invoke('skillMarket:preview', skillId, source) as Promise<any>,
+
+    searchClawHub: (query: string) =>
+      ipcRenderer.invoke('skillMarket:searchClawHub', query) as Promise<any[]>,
   },
 
   // 知识库操作
