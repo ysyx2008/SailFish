@@ -1,31 +1,27 @@
 ---
-description: 后端代码修改后，必须通过 CLI 测试验证功能正确性
-alwaysApply: true
+name: cli-testing
+description: 后端代码修改后，通过 CLI 测试验证功能正确性。使用场景：修改了 electron/services/ 下的代码需要测试、准备提交代码前跑回归、用户要求"跑测试"/"验证一下"。
 ---
 
-# CLI 测试规范
+# CLI 测试
 
 项目提供了 CLI 模式（`npm run sft`），可在纯 Node.js 下运行所有后端服务。
 修改后端代码后，必须利用 CLI 验证功能正确性，不能只靠"能编译"就认为没问题。
 
-## 何时测试
+## 何时使用本技能
 
-| 场景 | 操作 |
-|------|------|
-| 修改了 `electron/services/` 下的任何服务 | 必须运行相关 CLI 命令验证 |
-| 修改了多个服务或做了较大重构 | 运行完整测试套件 |
-| 提交代码前 | 至少运行 `bash electron/cli/test-cli.sh --no-ai` |
+- 修改了 `electron/services/` 下的任何服务
+- 准备提交代码前
+- 用户要求"跑测试"、"验证"、"测一下"
 
-## 怎么测试
-
-### 1. 完整回归测试（推荐，提交前必跑）
+## 完整回归测试（提交前必跑）
 
 ```bash
 bash electron/cli/test-cli.sh --no-ai    # 无需 AI API Key，~10秒
 bash electron/cli/test-cli.sh            # 有 API Key 时跑全量
 ```
 
-### 2. 针对性验证（改了哪个服务就测哪个）
+## 针对性验证（改了哪个服务就测哪个）
 
 | 改动范围 | 验证命令 |
 |----------|---------|
@@ -47,7 +43,7 @@ bash electron/cli/test-cli.sh            # 有 API Key 时跑全量
 
 > `sft` 即 `npm run sft --`，直接用 `node electron/cli/main.js` 也行。
 
-### 3. 新增服务或命令时
+## 新增服务或命令时
 
 1. 在 `electron/cli/index.ts` 中添加对应的 CLI 命令
 2. 在 `test-cli.sh` 中添加对应的测试用例（包括正常场景和错误场景）

@@ -15,8 +15,8 @@ alwaysApply: true
 
 ## 改动完成后必须做
 
-1. **跑测试**：至少跑 `bash electron/cli/test-cli.sh --no-ai`，涉及具体服务的跑对应 CLI 命令（见 cli-testing.mdc）
-2. **代码审查**：用 `claude -p` 审查 diff，发现问题自行修复（见 claude-review.mdc）
+1. **跑测试**：至少跑 `bash electron/cli/test-cli.sh --no-ai`，涉及具体服务的用 cli-testing 技能查对应命令
+2. **代码审查**：用 claude-review 技能进行审查，发现问题自行修复
 3. **变更摘要**：改动完成后给用户简明总结 — 改了哪些文件、做了什么、有什么需要注意的
 4. **架构文档同步**：新增服务或重大重构后更新 project-architecture.mdc
 

@@ -1,11 +1,16 @@
 ---
-description: 完成新功能开发或较大修改后，使用本机 Claude CLI 进行代码审查
-alwaysApply: true
+name: claude-review
+description: 完成新功能开发或较大修改后，使用本机 Claude CLI 进行代码审查。使用场景：用户要求"review"/"审查"/"检查代码"、完成较大功能开发后。
 ---
 
 # Claude CLI Code Review
 
 当完成新功能开发或较大规模的代码修改后，使用本机已安装的 `claude` CLI 对改动进行一次代码审查。
+
+## 何时使用本技能
+
+- 完成新功能开发或较大规模的代码修改后
+- 用户要求 "review"、"审查"、"检查一下代码"
 
 ## 流程
 

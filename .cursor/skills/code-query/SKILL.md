@@ -1,6 +1,6 @@
 ---
-description: 使用 code-query 工具查询代码结构（类层次、方法签名、引用、依赖等），替代手动读源码
-alwaysApply: true
+name: code-query
+description: 使用 ts-morph 静态分析工具查询代码结构（类层次、方法签名、引用、依赖等），替代手动读源码。使用场景：需要了解类的方法/属性、继承链、符号引用、文件结构、依赖关系时。
 ---
 
 # 代码结构查询（优先于 Read/Grep）
