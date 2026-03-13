@@ -3,7 +3,7 @@ name: Deploy Website
 on:
   # Push 触发：当 website/** 目录有变化并推送到 main、master 或 feature/Website 分支时
   push:
-    branches: [main, master, feature/Website]
+    branches: [main, master, develop, feature/Website]
     paths:
       - 'website/**'
   # 通过 workflow_dispatch 手动触发
