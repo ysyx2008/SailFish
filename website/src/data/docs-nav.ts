@@ -46,6 +46,7 @@ export function getDocsNav(lang: 'zh' | 'en'): NavGroup[] {
           { slug: 'ai-advanced/knowledge-base', label: '知识库' },
           { slug: 'ai-advanced/mcp-extensions', label: 'MCP 扩展' },
           { slug: 'ai-advanced/skill-system', label: '技能系统' },
+          { slug: 'ai-advanced/advanced-recipes', label: '进阶实战' },
         ],
       },
       {
@@ -121,6 +122,7 @@ export function getDocsNav(lang: 'zh' | 'en'): NavGroup[] {
         { slug: 'ai-advanced/knowledge-base', label: 'Knowledge Base' },
         { slug: 'ai-advanced/mcp-extensions', label: 'MCP Extensions' },
         { slug: 'ai-advanced/skill-system', label: 'Skill System' },
+        { slug: 'ai-advanced/advanced-recipes', label: 'Advanced Recipes' },
       ],
     },
     {
