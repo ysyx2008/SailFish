@@ -164,10 +164,10 @@ function addLineNumbers(content: string, startLine: number = 1): string {
   }).join('\n')
 }
 
-const CLOSEST_MATCH_THRESHOLD = 0.3
-const MAX_CLOSEST_SEARCH_LINES = 2000
+export const CLOSEST_MATCH_THRESHOLD = 0.3
+export const MAX_CLOSEST_SEARCH_LINES = 2000
 
-interface EditMatchResult {
+export interface EditMatchResult {
   found: boolean
   count: number
   /** 是否通过规范化容错匹配到的 */
@@ -185,7 +185,7 @@ interface EditMatchResult {
  * Tier 2: 换行符规范化（CRLF → LF）
  * Tier 3: 尾部空白容错（每行 trimEnd）
  */
-function findEditMatch(fileContent: string, oldText: string): EditMatchResult {
+export function findEditMatch(fileContent: string, oldText: string): EditMatchResult {
   if (oldText.length === 0) {
     return { found: false, count: 0 }
   }
@@ -277,7 +277,7 @@ function buildTrimToNormMap(normalized: string, trimmed: string): number[] {
 /**
  * 保持原文件换行符风格：如果原文使用 CRLF，将 newText 中的 LF 转为 CRLF
  */
-function preserveNewlineStyle(newText: string, fileContent: string): string {
+export function preserveNewlineStyle(newText: string, fileContent: string): string {
   if (!fileContent.includes('\r\n')) return newText
   return newText.replace(/(?<!\r)\n/g, '\r\n')
 }
@@ -285,7 +285,7 @@ function preserveNewlineStyle(newText: string, fileContent: string): string {
 /**
  * replaceAll 的规范化版本：逐个找到并替换所有匹配
  */
-function replaceAllNormalized(fileContent: string, oldText: string, newText: string): string {
+export function replaceAllNormalized(fileContent: string, oldText: string, newText: string): string {
   // 先尝试精确匹配 replaceAll
   if (fileContent.includes(oldText)) {
     return fileContent.split(oldText).join(newText)
