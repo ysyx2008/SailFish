@@ -2,7 +2,23 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.19.3 (2026-03-12) (Latest)
+## v10.20.0 (2026-03-14) (Latest)
+
+Introduces the ClawHub community skill marketplace, major enhancements to file editing reliability and Office document skills, plus attachment support in supplement messages.
+
+### New Features
+- 🏪 **ClawHub Skill Marketplace**: Integrated ClawHub community skill market for discovering, previewing, and installing community-contributed skills
+- ✏️ **Smarter File Editing**: `edit_file` tool now supports line number targeting, fuzzy matching, and `replace_all` mode for more reliable code modifications
+- 📎 **Supplement Message Attachments**: Attachments in supplement messages during Agent execution are now properly injected into the AI conversation
+- 📊 **Excel Skill Enhancements**: New `analyze` tool for spreadsheet analysis, plus 8 new modify operations for richer data manipulation
+- 📝 **Word Skill Improvements**: Optimized with DXA table support, page configuration, and Chinese market presets
+
+### Bug Fixes
+- 🔧 Fixed Excel parsing showing `[object Object]` for certain cell values
+- 🔧 Fixed supplement message attachments not being injected into AI conversation
+- 🔧 Lowered risk level for file create/append/insert operations to `safe`
+
+## v10.19.3 (2026-03-12)
 
 Improved diagnosis for Windows speech recognition failures — when the native module can't load, the real OS-level error (e.g. missing VC++ Runtime or DLL dependency) is now captured and shown instead of the generic "Could not find sherpa-onnx-node" message.
 
