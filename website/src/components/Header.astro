@@ -33,19 +33,8 @@ const isHomePage = currentPath === '/' || currentPath === '/zh/' || currentPath 
     
     <nav class="nav">
       <a href={isHomePage ? '#features' : `${homeUrl}#features`} class="nav-link">{t.nav.features}</a>
-      <a href={skillsUrl} class="nav-link">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-          <path d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/>
-        </svg>
-        {t.nav.skills}
-      </a>
-      <a href={docsUrl} class="nav-link">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-          <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-        </svg>
-        {t.nav.guide}
-      </a>
-      <a href={isHomePage ? '#download' : `${homeUrl}#download`} class="nav-link">{t.nav.download}</a>
+      <a href={skillsUrl} class="nav-link">{t.nav.skills}</a>
+      <a href={docsUrl} class="nav-link">{t.nav.guide}</a>
       <a href={changelogUrl} class="nav-link">{t.nav.changelog}</a>
       <a href="https://github.com/ysyx2008/SailFish" target="_blank" rel="noopener" class="nav-link">
         <svg class="icon-github" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
