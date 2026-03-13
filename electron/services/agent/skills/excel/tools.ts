@@ -247,6 +247,137 @@ export const excelTools: ToolDefinition[] = [
           delete_sheet: {
             type: 'string',
             description: '要删除的 Sheet 名称'
+          },
+          merge_cells: {
+            type: 'string',
+            description: '合并单元格范围（如 "A1:C1"）。合并后左上角单元格的值保留。'
+          },
+          unmerge_cells: {
+            type: 'string',
+            description: '取消合并单元格范围（如 "A1:C1"）'
+          },
+          insert_rows: {
+            type: 'object',
+            description: '插入空行。格式：{"at": 行号, "count": 行数}。在指定行号位置之前插入，现有行下移。',
+            properties: {
+              at: { type: 'number', description: '插入位置（行号，1-based）' },
+              count: { type: 'number', description: '插入行数（默认 1）' }
+            },
+            required: ['at']
+          },
+          delete_rows: {
+            type: 'object',
+            description: '删除行。格式：{"from": 起始行号, "to": 结束行号}。删除 from 到 to（含）之间的所有行。',
+            properties: {
+              from: { type: 'number', description: '起始行号（1-based）' },
+              to: { type: 'number', description: '结束行号（1-based，含）' }
+            },
+            required: ['from', 'to']
+          },
+          sort: {
+            type: 'object',
+            description: `对指定范围的数据按某列排序。
+格式：{"range": "A1:D100", "column": "B", "order": "asc"}
+- range：排序的数据范围（含表头则会自动跳过第一行）
+- column：排序依据的列字母
+- order：asc 升序 / desc 降序（默认 asc）
+- has_header：范围的第一行是否为表头（默认 true，表头行不参与排序）`,
+            properties: {
+              range: { type: 'string', description: '排序范围（如 "A1:D100"）' },
+              column: { type: 'string', description: '排序列字母（如 "B"）' },
+              order: { type: 'string', description: 'asc 升序 / desc 降序' },
+              has_header: { type: 'boolean', description: '第一行是否为表头（默认 true）' }
+            },
+            required: ['range', 'column']
+          },
+          auto_filter: {
+            type: 'string',
+            description: '设置自动筛选。传入范围如 "A1:F1"，Excel 打开后可在表头使用下拉筛选。传 "remove" 则移除已有筛选。'
+          },
+          data_validation: {
+            type: 'object',
+            description: `为单元格设置数据验证规则（下拉列表、数值范围等）。
+格式：{"cells": "B2:B100", "type": "list", "values": ["进行中","已完成","已取消"]}
+
+**type 类型**：
+- list：下拉列表，values 为选项数组
+- number：数值范围，min/max 指定上下限
+- decimal：小数范围
+- textLength：文本长度限制
+- custom：自定义公式，formula 指定验证公式`,
+            properties: {
+              cells: { type: 'string', description: '应用验证的单元格范围' },
+              type: { type: 'string', description: '验证类型：list / number / decimal / textLength / custom' },
+              values: { type: 'array', items: { type: 'string' }, description: '下拉列表选项（type=list 时必填）' },
+              min: { type: 'number', description: '最小值（type=number/decimal/textLength 时）' },
+              max: { type: 'number', description: '最大值' },
+              formula: { type: 'string', description: '自定义验证公式（type=custom 时）' },
+              prompt: { type: 'string', description: '输入提示信息' },
+              error_message: { type: 'string', description: '验证失败时的错误消息' }
+            },
+            required: ['cells', 'type']
+          },
+          conditional_format: {
+            type: 'object',
+            description: `为单元格范围添加条件格式规则。
+
+**规则类型**：
+- highlight：高亮满足条件的单元格
+  operator: greaterThan / lessThan / between / equal / notEqual / containsText
+  value: 比较值（between 时用 [min, max]）
+- colorScale：双色/三色渐变（自动按数值范围着色）
+- dataBar：数据条（在单元格内显示填充条）
+- duplicates：高亮重复值
+- topN：高亮前 N 名 / 后 N 名
+
+**示例**：{"range":"B2:B100","type":"highlight","operator":"lessThan","value":0,"style":{"color":"FF0000","bold":true}}`,
+            properties: {
+              range: { type: 'string', description: '应用条件格式的范围' },
+              type: { type: 'string', description: '规则类型：highlight / colorScale / dataBar / duplicates / topN' },
+              operator: { type: 'string', description: 'highlight 的比较运算符' },
+              value: { description: '比较值' },
+              style: { type: 'object', description: '匹配时的样式 {background, color, bold, italic}' },
+              priority: { type: 'number', description: '规则优先级（数字越小优先级越高）' }
+            },
+            required: ['range', 'type']
+          }
+        },
+        required: ['path']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'excel_analyze',
+      description: `分析已打开的 Excel 工作簿，发现问题并生成统计摘要。适用于模型审计、数据质量检查、错误排查。
+
+**分析项目**：
+1. **错误检测**：找出所有含错误值的单元格（#REF!、#VALUE!、#NAME?、#DIV/0!、#NULL!、#N/A）
+2. **公式审计**：公式数量、硬编码数量、公式占比；标记可能需要公式但用了硬编码的位置
+3. **数据摘要**：各列数据类型分布、空值率、数值列的统计信息（最小值/最大值/平均值）
+4. **重复检测**：标记完全重复的行
+5. **结构问题**：空行、空列、不规则行（列数不一致）
+
+**典型使用场景**：
+- "检查这个模型有没有公式错误"
+- "审计这个财务表的数据质量"
+- "找出所有错误单元格"`,
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: '已打开的文件路径'
+          },
+          sheet: {
+            type: 'string',
+            description: 'Sheet 名称（可选，不指定则分析所有 Sheet）'
+          },
+          checks: {
+            type: 'array',
+            items: { type: 'string' },
+            description: '要执行的检查项（可选，默认全部）：errors、formulas、summary、duplicates、structure'
           }
         },
         required: ['path']

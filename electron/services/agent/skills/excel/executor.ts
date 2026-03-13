@@ -187,6 +187,8 @@ export async function executeExcelTool(
       return await excelClose(ptyId, args, executor)
     case 'excel_from_markdown':
       return await excelFromMarkdown(ptyId, args, toolCallId, config, executor)
+    case 'excel_analyze':
+      return await excelAnalyze(ptyId, args, executor)
     case 'excel_create_style':
       return await excelCreateStyle(args, executor)
     case 'excel_edit_style':
@@ -509,6 +511,113 @@ async function excelModify(
     markDirty(filePath)
   }
 
+  // 合并单元格
+  const mergeCells = args.merge_cells as string | undefined
+  if (mergeCells && sheetName) {
+    const worksheet = workbook.getWorksheet(sheetName)
+    if (worksheet) {
+      worksheet.mergeCells(mergeCells)
+      results.push(`已合并单元格 ${mergeCells}`)
+      markDirty(filePath)
+    }
+  }
+
+  // 取消合并单元格
+  const unmergeCells = args.unmerge_cells as string | undefined
+  if (unmergeCells && sheetName) {
+    const worksheet = workbook.getWorksheet(sheetName)
+    if (worksheet) {
+      worksheet.unMergeCells(unmergeCells)
+      results.push(`已取消合并 ${unmergeCells}`)
+      markDirty(filePath)
+    }
+  }
+
+  // 插入行
+  const insertRows = args.insert_rows as { at: number; count?: number } | undefined
+  if (insertRows && sheetName) {
+    const worksheet = workbook.getWorksheet(sheetName)
+    if (worksheet) {
+      const count = insertRows.count || 1
+      worksheet.spliceRows(insertRows.at, 0, ...Array.from({ length: count }, () => []))
+      results.push(`在第 ${insertRows.at} 行前插入了 ${count} 行`)
+      markDirty(filePath)
+    }
+  }
+
+  // 删除行
+  const deleteRows = args.delete_rows as { from: number; to: number } | undefined
+  if (deleteRows && sheetName) {
+    const worksheet = workbook.getWorksheet(sheetName)
+    if (worksheet) {
+      if (deleteRows.from < 1 || deleteRows.to < deleteRows.from) {
+        return { success: false, output: '', error: `删除行失败：无效的范围 ${deleteRows.from}-${deleteRows.to}` }
+      }
+      const count = deleteRows.to - deleteRows.from + 1
+      worksheet.spliceRows(deleteRows.from, count)
+      results.push(`删除了第 ${deleteRows.from}-${deleteRows.to} 行（共 ${count} 行）`)
+      markDirty(filePath)
+    }
+  }
+
+  // 排序
+  const sortArgs = args.sort as { range: string; column: string; order?: string; has_header?: boolean } | undefined
+  if (sortArgs && sheetName) {
+    const worksheet = workbook.getWorksheet(sheetName)
+    if (worksheet) {
+      const sortResult = applySortToRange(worksheet, sortArgs)
+      results.push(sortResult)
+      markDirty(filePath)
+    }
+  }
+
+  // 自动筛选
+  const autoFilter = args.auto_filter as string | undefined
+  if (autoFilter && sheetName) {
+    const worksheet = workbook.getWorksheet(sheetName)
+    if (worksheet) {
+      if (autoFilter === 'remove') {
+        // exceljs 接受 null 来移除 autoFilter
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(worksheet as any).autoFilter = null
+        results.push('已移除自动筛选')
+      } else {
+        worksheet.autoFilter = autoFilter
+        results.push(`已设置自动筛选：${autoFilter}`)
+      }
+      markDirty(filePath)
+    }
+  }
+
+  // 数据验证
+  const dataValidation = args.data_validation as {
+    cells: string; type: string; values?: string[]
+    min?: number; max?: number; formula?: string
+    prompt?: string; error_message?: string
+  } | undefined
+  if (dataValidation && sheetName) {
+    const worksheet = workbook.getWorksheet(sheetName)
+    if (worksheet) {
+      const dvResult = applyDataValidation(worksheet, dataValidation)
+      results.push(dvResult)
+      markDirty(filePath)
+    }
+  }
+
+  // 条件格式
+  const conditionalFormat = args.conditional_format as {
+    range: string; type: string; operator?: string
+    value?: unknown; style?: Record<string, unknown>; priority?: number
+  } | undefined
+  if (conditionalFormat && sheetName) {
+    const worksheet = workbook.getWorksheet(sheetName)
+    if (worksheet) {
+      const cfResult = applyConditionalFormat(worksheet, conditionalFormat)
+      results.push(cfResult)
+      markDirty(filePath)
+    }
+  }
+
   if (results.length === 0) {
     return { success: false, output: '', error: t('excel.no_operation') }
   }
@@ -826,6 +935,382 @@ async function excelFromMarkdown(
   }
 }
 
+// ============ 工作簿分析 ============
+
+type AnalysisCheck = 'errors' | 'formulas' | 'summary' | 'duplicates' | 'structure'
+const ALL_CHECKS: AnalysisCheck[] = ['errors', 'formulas', 'summary', 'duplicates', 'structure']
+
+async function excelAnalyze(
+  ptyId: string,
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  if (!args.path) {
+    return { success: false, output: '', error: t('error.file_path_required') }
+  }
+
+  const filePath = resolvePath(ptyId, args.path as string)
+  const sheetName = args.sheet as string | undefined
+  const checks = (args.checks as string[] | undefined)?.filter(c => ALL_CHECKS.includes(c as AnalysisCheck)) as AnalysisCheck[] || ALL_CHECKS
+
+  const session = getSession(filePath)
+  if (!session) {
+    return { success: false, output: '', error: t('excel.not_open', { path: filePath }) }
+  }
+
+  const workbook = session.workbook
+  const worksheets = sheetName
+    ? [workbook.getWorksheet(sheetName)].filter(Boolean) as import('exceljs').Worksheet[]
+    : workbook.worksheets
+
+  if (worksheets.length === 0) {
+    return { success: false, output: '', error: sheetName ? t('excel.sheet_not_found', { name: sheetName }) : 'No worksheets found' }
+  }
+
+  const sections: string[] = [`## 工作簿分析报告\n\n文件：${path.basename(filePath)}\n`]
+  let totalIssues = 0
+
+  for (const ws of worksheets) {
+    sections.push(`### Sheet: ${ws.name} (${ws.rowCount} 行 × ${ws.columnCount} 列)\n`)
+
+    try {
+
+    if (checks.includes('errors')) {
+      const errorCells = findErrorCells(ws)
+      if (errorCells.length > 0) {
+        totalIssues += errorCells.length
+        sections.push(`#### 🔴 错误单元格 (${errorCells.length} 个)\n`)
+        const displayErrors = errorCells.slice(0, 50)
+        sections.push('| 单元格 | 错误类型 | 公式 |')
+        sections.push('|--------|----------|------|')
+        for (const e of displayErrors) {
+          sections.push(`| ${e.ref} | ${e.errorType} | ${e.formula || '-'} |`)
+        }
+        if (errorCells.length > 50) {
+          sections.push(`\n... 还有 ${errorCells.length - 50} 个错误`)
+        }
+        sections.push('')
+      } else {
+        sections.push('#### ✅ 未发现错误单元格\n')
+      }
+    }
+
+    if (checks.includes('formulas')) {
+      const formulaStats = analyzeFormulas(ws)
+      sections.push('#### 📊 公式分析\n')
+      sections.push(`- 公式单元格：${formulaStats.formulaCount} 个`)
+      sections.push(`- 硬编码值：${formulaStats.hardcodedCount} 个`)
+      sections.push(`- 空单元格：${formulaStats.emptyCount} 个`)
+      if (formulaStats.totalNonEmpty > 0) {
+        sections.push(`- 公式占比：${(formulaStats.formulaCount / formulaStats.totalNonEmpty * 100).toFixed(1)}%`)
+      }
+      if (formulaStats.uniqueFormulas.length > 0) {
+        sections.push(`- 常见公式模式 (前 10)：`)
+        for (const f of formulaStats.uniqueFormulas.slice(0, 10)) {
+          sections.push(`  - \`${f.pattern}\` × ${f.count}`)
+        }
+      }
+      sections.push('')
+    }
+
+    if (checks.includes('summary')) {
+      const dataSummary = analyzeDataSummary(ws)
+      if (dataSummary.columns.length > 0) {
+        sections.push('#### 📋 数据摘要\n')
+        sections.push('| 列 | 数据类型 | 非空 | 空值率 | 最小值 | 最大值 | 平均值 |')
+        sections.push('|-----|---------|------|--------|--------|--------|--------|')
+        for (const col of dataSummary.columns.slice(0, 30)) {
+          const emptyRate = col.totalRows > 0 ? ((col.emptyCount / col.totalRows) * 100).toFixed(0) + '%' : '-'
+          sections.push(`| ${col.letter}: ${col.header} | ${col.dominantType} | ${col.nonEmptyCount} | ${emptyRate} | ${col.min ?? '-'} | ${col.max ?? '-'} | ${col.avg ?? '-'} |`)
+        }
+        sections.push('')
+      }
+    }
+
+    if (checks.includes('duplicates')) {
+      const dupes = findDuplicateRows(ws)
+      if (dupes.length > 0) {
+        totalIssues += dupes.length
+        sections.push(`#### ⚠️ 重复行 (${dupes.length} 组)\n`)
+        const displayDupes = dupes.slice(0, 20)
+        for (const d of displayDupes) {
+          sections.push(`- 行 ${d.rows.join(', ')}：\`${d.preview}\``)
+        }
+        if (dupes.length > 20) {
+          sections.push(`\n... 还有 ${dupes.length - 20} 组重复`)
+        }
+        sections.push('')
+      } else {
+        sections.push('#### ✅ 未发现重复行\n')
+      }
+    }
+
+    if (checks.includes('structure')) {
+      const structIssues = analyzeStructure(ws)
+      if (structIssues.length > 0) {
+        totalIssues += structIssues.length
+        sections.push(`#### ⚠️ 结构问题 (${structIssues.length} 个)\n`)
+        for (const issue of structIssues.slice(0, 20)) {
+          sections.push(`- ${issue}`)
+        }
+        sections.push('')
+      } else {
+        sections.push('#### ✅ 结构正常\n')
+      }
+    }
+
+    } catch (e) {
+      sections.push(`\n⚠️ 分析 Sheet "${ws.name}" 时出错：${e instanceof Error ? e.message : String(e)}\n`)
+    }
+  }
+
+  sections.push(`---\n**总计问题数**：${totalIssues}`)
+
+  const output = sections.join('\n')
+
+  executor.addStep({
+    type: 'tool_result',
+    content: `分析完成：${worksheets.length} 个 Sheet，发现 ${totalIssues} 个问题`,
+    toolName: 'excel_analyze',
+    toolResult: truncateFromEnd(output, 800)
+  })
+
+  return { success: true, output }
+}
+
+interface ErrorCellInfo {
+  ref: string
+  errorType: string
+  formula?: string
+}
+
+function findErrorCells(ws: import('exceljs').Worksheet): ErrorCellInfo[] {
+  const errors: ErrorCellInfo[] = []
+  ws.eachRow({ includeEmpty: false }, (row, rowNum) => {
+    row.eachCell({ includeEmpty: false }, (cell, colNum) => {
+      const val = cell.value
+      if (val && typeof val === 'object') {
+        const obj = val as Record<string, unknown>
+        if ('error' in obj) {
+          errors.push({
+            ref: `${numberToColumnLetter(colNum)}${rowNum}`,
+            errorType: String(obj.error),
+            formula: 'formula' in obj ? String(obj.formula) : undefined
+          })
+        }
+        if ('result' in obj && typeof obj.result === 'object' && obj.result !== null && 'error' in (obj.result as Record<string, unknown>)) {
+          errors.push({
+            ref: `${numberToColumnLetter(colNum)}${rowNum}`,
+            errorType: String((obj.result as Record<string, unknown>).error),
+            formula: 'formula' in obj ? String(obj.formula) : undefined
+          })
+        }
+      }
+    })
+  })
+  return errors
+}
+
+interface FormulaStats {
+  formulaCount: number
+  hardcodedCount: number
+  emptyCount: number
+  totalNonEmpty: number
+  uniqueFormulas: { pattern: string; count: number }[]
+}
+
+function analyzeFormulas(ws: import('exceljs').Worksheet): FormulaStats {
+  let formulaCount = 0
+  let hardcodedCount = 0
+  let emptyCount = 0
+  const formulaPatterns = new Map<string, number>()
+
+  ws.eachRow({ includeEmpty: true }, (row) => {
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      const val = cell.value
+      if (val === null || val === undefined || val === '') {
+        emptyCount++
+        return
+      }
+      if (typeof val === 'object' && val !== null && 'formula' in (val as Record<string, unknown>)) {
+        formulaCount++
+        const formula = String((val as Record<string, unknown>).formula)
+        const pattern = formula.replace(/[A-Z]+\d+/g, '_REF_').replace(/\d+/g, 'N')
+        formulaPatterns.set(pattern, (formulaPatterns.get(pattern) || 0) + 1)
+      } else {
+        hardcodedCount++
+      }
+    })
+  })
+
+  const uniqueFormulas = Array.from(formulaPatterns.entries())
+    .map(([pattern, count]) => ({ pattern, count }))
+    .sort((a, b) => b.count - a.count)
+
+  return {
+    formulaCount,
+    hardcodedCount,
+    emptyCount,
+    totalNonEmpty: formulaCount + hardcodedCount,
+    uniqueFormulas
+  }
+}
+
+interface ColumnSummary {
+  letter: string
+  header: string
+  dominantType: string
+  totalRows: number
+  nonEmptyCount: number
+  emptyCount: number
+  min?: string
+  max?: string
+  avg?: string
+}
+
+function analyzeDataSummary(ws: import('exceljs').Worksheet): { columns: ColumnSummary[] } {
+  const columns: ColumnSummary[] = []
+  if (ws.rowCount < 1 || ws.columnCount < 1) return { columns }
+
+  const headerRow = ws.getRow(1)
+
+  for (let c = 1; c <= Math.min(ws.columnCount, 30); c++) {
+    const header = formatCellValue(headerRow.getCell(c).value)
+    const typeCounts = new Map<string, number>()
+    let nonEmpty = 0
+    let empty = 0
+    const numericValues: number[] = []
+
+    for (let r = 2; r <= ws.rowCount; r++) {
+      const cell = ws.getRow(r).getCell(c)
+      const val = cell.value
+      if (val === null || val === undefined || val === '') {
+        empty++
+        continue
+      }
+      nonEmpty++
+      const cellType = typeof val === 'number' ? 'number'
+        : typeof val === 'boolean' ? 'boolean'
+        : (val instanceof Date) ? 'date'
+        : (typeof val === 'object' && 'formula' in (val as Record<string, unknown>)) ? 'formula'
+        : 'text'
+      typeCounts.set(cellType, (typeCounts.get(cellType) || 0) + 1)
+
+      if (typeof val === 'number') {
+        numericValues.push(val)
+      } else if (typeof val === 'object' && val !== null && 'result' in (val as Record<string, unknown>)) {
+        const result = (val as Record<string, unknown>).result
+        if (typeof result === 'number') numericValues.push(result)
+      }
+    }
+
+    let dominantType = '-'
+    let maxCount = 0
+    for (const [type, count] of typeCounts) {
+      if (count > maxCount) { dominantType = type; maxCount = count }
+    }
+
+    const col: ColumnSummary = {
+      letter: numberToColumnLetter(c),
+      header: header.slice(0, 20) || `(col ${c})`,
+      dominantType,
+      totalRows: ws.rowCount - 1,
+      nonEmptyCount: nonEmpty,
+      emptyCount: empty
+    }
+
+    if (numericValues.length > 0) {
+      col.min = Math.min(...numericValues).toFixed(2)
+      col.max = Math.max(...numericValues).toFixed(2)
+      col.avg = (numericValues.reduce((a, b) => a + b, 0) / numericValues.length).toFixed(2)
+    }
+
+    columns.push(col)
+  }
+
+  return { columns }
+}
+
+function findDuplicateRows(ws: import('exceljs').Worksheet): { rows: number[]; preview: string }[] {
+  const rowHashes = new Map<string, { rows: number[]; display: string }>()
+
+  ws.eachRow({ includeEmpty: false }, (row, rowNum) => {
+    if (rowNum === 1) return
+    const values: string[] = []
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      values.push(formatCellValue(cell.value))
+    })
+    const hash = JSON.stringify(values)
+    const display = values.join(' | ')
+    if (!rowHashes.has(hash)) rowHashes.set(hash, { rows: [], display })
+    rowHashes.get(hash)!.rows.push(rowNum)
+  })
+
+  return Array.from(rowHashes.values())
+    .filter(entry => entry.rows.length > 1)
+    .map(entry => ({
+      rows: entry.rows,
+      preview: entry.display.length > 80 ? entry.display.slice(0, 80) + '...' : entry.display
+    }))
+}
+
+function analyzeStructure(ws: import('exceljs').Worksheet): string[] {
+  const issues: string[] = []
+  if (ws.rowCount === 0) {
+    issues.push('Sheet 为空')
+    return issues
+  }
+
+  const headerColCount = ws.getRow(1).cellCount
+
+  // 空行检测（数据区域中间的空行）
+  let lastNonEmptyRow = 0
+  const emptyRowsInMiddle: number[] = []
+  ws.eachRow({ includeEmpty: true }, (row, rowNum) => {
+    let hasValue = false
+    row.eachCell({ includeEmpty: false }, () => { hasValue = true })
+    if (hasValue) {
+      if (lastNonEmptyRow > 0 && rowNum - lastNonEmptyRow > 1) {
+        for (let r = lastNonEmptyRow + 1; r < rowNum; r++) {
+          emptyRowsInMiddle.push(r)
+        }
+      }
+      lastNonEmptyRow = rowNum
+    }
+  })
+  if (emptyRowsInMiddle.length > 0 && emptyRowsInMiddle.length <= 10) {
+    issues.push(`数据中间有空行：${emptyRowsInMiddle.join(', ')}`)
+  } else if (emptyRowsInMiddle.length > 10) {
+    issues.push(`数据中间有 ${emptyRowsInMiddle.length} 个空行`)
+  }
+
+  // 不规则行检测
+  const irregularRows: number[] = []
+  ws.eachRow({ includeEmpty: false }, (row, rowNum) => {
+    if (rowNum === 1) return
+    if (row.cellCount !== headerColCount && row.cellCount > 0 && headerColCount > 0) {
+      irregularRows.push(rowNum)
+    }
+  })
+  if (irregularRows.length > 0 && irregularRows.length <= 10) {
+    issues.push(`列数不一致的行（表头 ${headerColCount} 列）：行 ${irregularRows.join(', ')}`)
+  } else if (irregularRows.length > 10) {
+    issues.push(`${irregularRows.length} 行的列数与表头 (${headerColCount} 列) 不一致`)
+  }
+
+  return issues
+}
+
+function numberToColumnLetter(num: number): string {
+  let result = ''
+  while (num > 0) {
+    num--
+    result = String.fromCharCode(65 + (num % 26)) + result
+    num = Math.floor(num / 26)
+  }
+  return result
+}
+
 // ============ Markdown 解析 ============
 
 interface ParsedSheet {
@@ -960,6 +1445,282 @@ function parseSmartValue(value: string): string | number | boolean {
 }
 
 // ============ 辅助函数 ============
+
+/**
+ * 对指定范围的数据排序
+ */
+function applySortToRange(
+  worksheet: import('exceljs').Worksheet,
+  args: { range: string; column: string; order?: string; has_header?: boolean }
+): string {
+  const rangeMatch = args.range.match(/([A-Z]+)(\d+):([A-Z]+)(\d+)/i)
+  if (!rangeMatch) return '排序失败：无效的范围格式'
+
+  const startCol = columnLetterToNumber(rangeMatch[1])
+  const startRow = parseInt(rangeMatch[2])
+  const endCol = columnLetterToNumber(rangeMatch[3])
+  const endRow = parseInt(rangeMatch[4])
+  const sortColNum = columnLetterToNumber(args.column)
+  if (sortColNum < startCol || sortColNum > endCol) {
+    return `排序失败：排序列 ${args.column} 不在范围 ${args.range} 内`
+  }
+  const ascending = args.order !== 'desc'
+  const hasHeader = args.has_header !== false
+
+  const dataStartRow = hasHeader ? startRow + 1 : startRow
+
+  // 收集所有行数据
+  const rows: { sortVal: unknown; rowData: unknown[][] }[] = []
+  for (let r = dataStartRow; r <= endRow; r++) {
+    const row = worksheet.getRow(r)
+    const rowData: unknown[][] = []
+    for (let c = startCol; c <= endCol; c++) {
+      const cell = row.getCell(c)
+      rowData.push([cell.value, cell.style ? JSON.parse(JSON.stringify(cell.style)) : {}])
+    }
+    const sortCell = row.getCell(sortColNum)
+    let sortVal = sortCell.value
+    if (typeof sortVal === 'object' && sortVal !== null) {
+      const obj = sortVal as Record<string, unknown>
+      if ('result' in obj) sortVal = obj.result
+      else if ('text' in obj) sortVal = obj.text
+    }
+    rows.push({ sortVal, rowData })
+  }
+
+  // 排序
+  rows.sort((a, b) => {
+    const va = a.sortVal
+    const vb = b.sortVal
+    if (va === null || va === undefined) return 1
+    if (vb === null || vb === undefined) return -1
+    if (typeof va === 'number' && typeof vb === 'number') {
+      return ascending ? va - vb : vb - va
+    }
+    const sa = String(va)
+    const sb = String(vb)
+    return ascending ? sa.localeCompare(sb) : sb.localeCompare(sa)
+  })
+
+  // 回写排序后的数据
+  for (let i = 0; i < rows.length; i++) {
+    const r = dataStartRow + i
+    const row = worksheet.getRow(r)
+    for (let j = 0; j < rows[i].rowData.length; j++) {
+      const c = startCol + j
+      const cell = row.getCell(c)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      cell.value = rows[i].rowData[j][0] as any
+      if (rows[i].rowData[j][1]) {
+        Object.assign(cell, { style: rows[i].rowData[j][1] })
+      }
+    }
+  }
+
+  return `已按列 ${args.column} ${ascending ? '升序' : '降序'}排序（${rows.length} 行数据）`
+}
+
+/**
+ * 应用数据验证规则
+ */
+function applyDataValidation(
+  worksheet: import('exceljs').Worksheet,
+  args: {
+    cells: string; type: string; values?: string[]
+    min?: number; max?: number; formula?: string
+    prompt?: string; error_message?: string
+  }
+): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const validation: any = { showErrorMessage: true }
+
+  if (args.error_message) validation.error = args.error_message
+  if (args.prompt) {
+    validation.showInputMessage = true
+    validation.promptTitle = '输入提示'
+    validation.prompt = args.prompt
+  }
+
+  switch (args.type) {
+    case 'list':
+      if (!args.values || args.values.length === 0) return '数据验证失败：list 类型需要 values 参数'
+      validation.type = 'list'
+      validation.allowBlank = true
+      validation.formulae = [`"${args.values.map(v => v.replace(/"/g, '""')).join(',')}"`]
+      break
+    case 'number':
+    case 'decimal':
+      validation.type = args.type === 'number' ? 'whole' : 'decimal'
+      validation.allowBlank = true
+      if (args.min !== undefined && args.max !== undefined) {
+        validation.operator = 'between'
+        validation.formulae = [args.min, args.max]
+      } else if (args.min !== undefined) {
+        validation.operator = 'greaterThanOrEqual'
+        validation.formulae = [args.min]
+      } else if (args.max !== undefined) {
+        validation.operator = 'lessThanOrEqual'
+        validation.formulae = [args.max]
+      }
+      break
+    case 'textLength':
+      validation.type = 'textLength'
+      validation.allowBlank = true
+      if (args.min !== undefined && args.max !== undefined) {
+        validation.operator = 'between'
+        validation.formulae = [args.min, args.max]
+      } else if (args.max !== undefined) {
+        validation.operator = 'lessThanOrEqual'
+        validation.formulae = [args.max]
+      }
+      break
+    case 'custom':
+      if (!args.formula) return '数据验证失败：custom 类型需要 formula 参数'
+      validation.type = 'custom'
+      validation.formulae = [args.formula]
+      break
+    default:
+      return `数据验证失败：不支持的类型 "${args.type}"`
+  }
+
+  // 应用到范围内的每个单元格
+  const rangeMatch = args.cells.match(/([A-Z]+)(\d+):([A-Z]+)(\d+)/i)
+  if (rangeMatch) {
+    const sc = columnLetterToNumber(rangeMatch[1])
+    const sr = parseInt(rangeMatch[2])
+    const ec = columnLetterToNumber(rangeMatch[3])
+    const er = parseInt(rangeMatch[4])
+    for (let r = sr; r <= er; r++) {
+      for (let c = sc; c <= ec; c++) {
+        worksheet.getRow(r).getCell(c).dataValidation = validation
+      }
+    }
+    return `已为 ${args.cells} 设置数据验证（${args.type}）`
+  }
+
+  // 单个单元格
+  worksheet.getCell(args.cells).dataValidation = validation
+  return `已为 ${args.cells} 设置数据验证（${args.type}）`
+}
+
+/**
+ * 应用条件格式
+ */
+function applyConditionalFormat(
+  worksheet: import('exceljs').Worksheet,
+  args: {
+    range: string; type: string; operator?: string
+    value?: unknown; style?: Record<string, unknown>; priority?: number
+  }
+): string {
+  const rules = worksheet.conditionalFormattings.getRules(args.range)
+
+  switch (args.type) {
+    case 'highlight': {
+      if (!args.operator) return '条件格式失败：highlight 类型需要 operator 参数'
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rule: any = {
+        type: 'cellIs',
+        operator: args.operator,
+        priority: args.priority || (rules.length + 1),
+        style: buildConditionalStyle(args.style)
+      }
+      if (args.operator === 'between' && Array.isArray(args.value)) {
+        rule.formulae = args.value.map(v => typeof v === 'string' ? v : Number(v))
+      } else if (args.operator === 'containsText') {
+        rule.type = 'containsText'
+        rule.operator = 'containsText'
+        rule.text = String(args.value)
+      } else if (args.value !== undefined) {
+        rule.formulae = [typeof args.value === 'string' ? args.value : Number(args.value)]
+      }
+      worksheet.conditionalFormattings.addRules(args.range, [rule])
+      return `已为 ${args.range} 添加条件格式（${args.operator}）`
+    }
+    case 'colorScale': {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rule: any = {
+        type: 'colorScale',
+        priority: args.priority || (rules.length + 1),
+        cfvo: [
+          { type: 'min' },
+          { type: 'max' }
+        ],
+        color: [
+          { argb: 'FFF8696B' },
+          { argb: 'FF63BE7B' }
+        ]
+      }
+      worksheet.conditionalFormattings.addRules(args.range, [rule])
+      return `已为 ${args.range} 添加色阶条件格式`
+    }
+    case 'dataBar': {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rule: any = {
+        type: 'dataBar',
+        priority: args.priority || (rules.length + 1),
+        minLength: 0,
+        maxLength: 100,
+        cfvo: [
+          { type: 'min' },
+          { type: 'max' }
+        ],
+        color: { argb: 'FF638EC6' }
+      }
+      worksheet.conditionalFormattings.addRules(args.range, [rule])
+      return `已为 ${args.range} 添加数据条条件格式`
+    }
+    case 'duplicates': {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rule: any = {
+        type: 'expression',
+        priority: args.priority || (rules.length + 1),
+        formulae: [`COUNTIF(${args.range},${args.range.split(':')[0]})>1`],
+        style: buildConditionalStyle(args.style || { background: 'FFC7CE', color: '9C0006' })
+      }
+      worksheet.conditionalFormattings.addRules(args.range, [rule])
+      return `已为 ${args.range} 添加重复值高亮`
+    }
+    case 'topN': {
+      const n = typeof args.value === 'number' ? args.value : 10
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rule: any = {
+        type: 'top10',
+        priority: args.priority || (rules.length + 1),
+        rank: n,
+        percent: false,
+        bottom: false,
+        style: buildConditionalStyle(args.style || { background: 'C6EFCE', color: '006100' })
+      }
+      worksheet.conditionalFormattings.addRules(args.range, [rule])
+      return `已为 ${args.range} 添加 Top ${n} 条件格式`
+    }
+    default:
+      return `条件格式失败：不支持的类型 "${args.type}"`
+  }
+}
+
+function buildConditionalStyle(style?: Record<string, unknown>): Partial<import('exceljs').Style> {
+  if (!style) return {}
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result: any = {}
+
+  if (style.background) {
+    result.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      bgColor: { argb: `FF${String(style.background).replace(/^#/, '')}` }
+    }
+  }
+
+  const fontProps: Record<string, unknown> = {}
+  if (style.color) fontProps.color = { argb: `FF${String(style.color).replace(/^#/, '')}` }
+  if (style.bold) fontProps.bold = true
+  if (style.italic) fontProps.italic = true
+  if (Object.keys(fontProps).length > 0) result.font = fontProps
+
+  return result
+}
 
 /**
  * 解析引用并应用样式到对应单元格
