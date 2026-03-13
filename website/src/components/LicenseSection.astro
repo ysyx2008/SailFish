@@ -1,0 +1,151 @@
+---
+import { useTranslations, type Lang } from '../i18n/utils';
+import { defaultLanguage } from '../i18n/translations';
+
+interface Props {
+  lang?: Lang;
+}
+
+const { lang = defaultLanguage } = Astro.props;
+const t = useTranslations(lang);
+---
+
+<section class="license-section fade-in">
+  <div class="container">
+    <h3 class="license-title">{t.footer.licenseTitle}</h3>
+    <div class="license-grid">
+      <div class="license-card">
+        <div class="license-badge open-source">{t.footer.openSource.badge}</div>
+        <h4>{t.footer.openSource.title}</h4>
+        <p>{t.footer.openSource.description}</p>
+        <ul>
+          {t.footer.openSource.items.map(item => (
+            <li>{item}</li>
+          ))}
+        </ul>
+        <p class="license-note">{t.footer.openSource.note}</p>
+      </div>
+      <div class="license-card">
+        <div class="license-badge commercial">{t.footer.commercial.badge}</div>
+        <h4>{t.footer.commercial.title}</h4>
+        <p>{t.footer.commercial.description}</p>
+        <ul>
+          {t.footer.commercial.items.map(item => (
+            <li>{item}</li>
+          ))}
+        </ul>
+        <a href="mailto:nuoyan_cfan@163.com" class="license-contact">{t.footer.commercial.contact}</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .license-section {
+    padding: 80px 0 40px;
+    background: var(--color-bg-secondary);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .license-title {
+    font-size: 24px;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 32px;
+    color: var(--color-text-primary);
+  }
+
+  .license-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .license-card {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 28px;
+  }
+
+  .license-badge {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin-bottom: 16px;
+  }
+
+  .license-badge.open-source {
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+  }
+
+  .license-badge.commercial {
+    background: rgba(139, 92, 246, 0.1);
+    color: #8b5cf6;
+    border: 1px solid rgba(139, 92, 246, 0.2);
+  }
+
+  .license-card h4 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 12px;
+  }
+
+  .license-card p {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    margin-bottom: 12px;
+  }
+
+  .license-card ul {
+    list-style: none;
+    margin-bottom: 16px;
+  }
+
+  .license-card li {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    padding: 6px 0;
+    padding-left: 20px;
+    position: relative;
+  }
+
+  .license-card li::before {
+    content: '✓';
+    position: absolute;
+    left: 0;
+    color: var(--color-accent-primary);
+  }
+
+  .license-note {
+    font-size: 12px !important;
+    color: var(--color-text-muted) !important;
+    padding-top: 12px;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .license-contact {
+    display: inline-block;
+    font-size: 14px;
+    color: var(--color-accent-primary);
+    font-weight: 500;
+    margin-top: 8px;
+  }
+
+  .license-contact:hover {
+    color: var(--color-accent-secondary);
+  }
+
+  @media (max-width: 768px) {
+    .license-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
