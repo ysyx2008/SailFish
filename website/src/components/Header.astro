@@ -13,7 +13,7 @@ const alternateUrl = getAlternateUrl(Astro.url, alternateLang);
 
 const homeUrl = lang === 'zh' ? '/zh/' : '/';
 const skillsUrl = lang === 'zh' ? '/zh/skills' : '/skills';
-const guideUrl = lang === 'zh' ? '/zh/guide' : '/guide';
+const docsUrl = lang === 'zh' ? '/zh/docs/getting-started/what-is-sailfish' : '/docs/getting-started/what-is-sailfish';
 const changelogUrl = lang === 'zh' ? '/zh/changelog' : '/changelog';
 
 // 检查是否在首页（用于决定锚点链接的行为）
@@ -39,7 +39,7 @@ const isHomePage = currentPath === '/' || currentPath === '/zh/' || currentPath 
         </svg>
         {t.nav.skills}
       </a>
-      <a href={guideUrl} class="nav-link">
+      <a href={docsUrl} class="nav-link">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
           <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
         </svg>

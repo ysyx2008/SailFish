@@ -1,0 +1,88 @@
+---
+import { getDocsNav, getFlatNavSlugs } from '../../data/docs-nav';
+import type { Lang } from '../../i18n/utils';
+
+interface Props {
+  lang: Lang;
+  currentSlug: string;
+}
+
+const { lang, currentSlug } = Astro.props;
+const flatSlugs = getFlatNavSlugs(lang as 'zh' | 'en');
+const navGroups = getDocsNav(lang as 'zh' | 'en');
+
+const currentIndex = flatSlugs.indexOf(currentSlug);
+const prevSlug = currentIndex > 0 ? flatSlugs[currentIndex - 1] : null;
+const nextSlug = currentIndex < flatSlugs.length - 1 ? flatSlugs[currentIndex + 1] : null;
+
+function findLabel(slug: string): string {
+  for (const group of navGroups) {
+    const item = group.items.find(i => i.slug === slug);
+    if (item) return item.label;
+  }
+  return slug;
+}
+
+const prefix = lang === 'zh' ? '/zh/docs/' : '/docs/';
+---
+
+<nav class="docs-prev-next">
+  {prevSlug ? (
+    <a href={`${prefix}${prevSlug}`} class="pn-link pn-prev">
+      <span class="pn-dir">{lang === 'zh' ? '上一篇' : 'Previous'}</span>
+      <span class="pn-title">{findLabel(prevSlug)}</span>
+    </a>
+  ) : <div />}
+  {nextSlug ? (
+    <a href={`${prefix}${nextSlug}`} class="pn-link pn-next">
+      <span class="pn-dir">{lang === 'zh' ? '下一篇' : 'Next'}</span>
+      <span class="pn-title">{findLabel(nextSlug)}</span>
+    </a>
+  ) : <div />}
+</nav>
+
+<style>
+  .docs-prev-next {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 56px;
+    padding-top: 32px;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .pn-link {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 16px 20px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    transition: all 0.2s ease;
+    min-width: 0;
+    max-width: 48%;
+  }
+
+  .pn-link:hover {
+    border-color: var(--color-border-hover);
+    background: var(--color-bg-card);
+  }
+
+  .pn-prev { align-items: flex-start; }
+  .pn-next { align-items: flex-end; margin-left: auto; }
+
+  .pn-dir {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    font-weight: 500;
+  }
+
+  .pn-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-accent-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+</style>
