@@ -7,7 +7,7 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const Module = require('module')
+const _Module = require('module') // eslint-disable-line no-unused-vars
 
 // ── 启动时设置动态库搜索路径（belt-and-suspenders，父进程已通过 env 设置，此处二次保障） ──
 const sherpaLibDir = process.env.SHERPA_LIB_DIR

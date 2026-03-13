@@ -305,7 +305,7 @@ export function replaceAllNormalized(fileContent: string, oldText: string, newTe
   let lastEnd = 0
 
   let searchFrom = 0
-  while (true) {
+  for (;;) {
     const idx = fileTrimmed.indexOf(oldTrimmed, searchFrom)
     if (idx === -1) break
     const normStart = trimToNormMap[idx]

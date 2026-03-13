@@ -109,7 +109,7 @@ const SENSITIVE_PATHS = [
   '.env', 'credentials', 'id_rsa', 'id_ed25519',
 ]
 
-const ZERO_WIDTH_RE = /[\u200B\u200C\u200D\uFEFF\u2060\u2061\u2062\u2063\u2064]/
+const ZERO_WIDTH_RE = /\u200B|\u200C|\u200D|\uFEFF|\u2060|\u2061|\u2062|\u2063|\u2064/
 const RTL_OVERRIDE_RE = /[\u202A\u202B\u202C\u202D\u202E\u2066\u2067\u2068\u2069]/
 const HTML_COMMENT_RE = /<!--[\s\S]*?-->/g
 
@@ -538,14 +538,12 @@ export class SkillMarketService {
    */
   async previewSkill(skillId: string, source: SkillSource = 'sailfish'): Promise<SkillPreviewResult> {
     try {
-      let skill: MarketSkill | undefined
-
       if (source === 'clawhub') {
         return this.previewClawHubSkill(skillId)
       }
 
       const registry = await this.fetchRegistry()
-      skill = registry.skills.find(s => s.id === skillId)
+      const skill = registry.skills.find(s => s.id === skillId)
       if (!skill) {
         return { success: false, error: `Skill "${skillId}" not found in registry` }
       }
