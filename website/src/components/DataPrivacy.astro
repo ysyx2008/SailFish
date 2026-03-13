@@ -1,0 +1,530 @@
+---
+import { useTranslations, type Lang } from '../i18n/utils';
+import { defaultLanguage } from '../i18n/translations';
+
+interface Props {
+  lang?: Lang;
+}
+
+const { lang = defaultLanguage } = Astro.props;
+const t = useTranslations(lang);
+const dp = t.dataPrivacy;
+---
+
+<section class="dp-section">
+  <div class="container">
+    <h1 class="section-title">{dp.title}</h1>
+    <p class="section-subtitle">{dp.subtitle}</p>
+
+    <div class="dp-content">
+      <!-- Why it matters -->
+      <div class="dp-callout warning">
+        <div class="callout-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+            <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <div>
+          <strong>{dp.whyTitle}</strong>
+          <p>{dp.whyDesc}</p>
+          <ul>
+            {dp.whyItems.map(item => <li>{item}</li>)}
+          </ul>
+        </div>
+      </div>
+
+      <!-- International providers -->
+      <h2>{dp.internationalTitle}</h2>
+      <p class="section-note">{dp.internationalNote}</p>
+      <div class="provider-cards">
+        {dp.internationalProviders.map(p => (
+          <div class="provider-card safe">
+            <div class="provider-header">
+              <span class="provider-name">{p.name}</span>
+              <span class="badge safe">{dp.badgeSafe}</span>
+            </div>
+            <div class="provider-detail"><span class="label">{dp.labelTraining}</span> {p.training}</div>
+            <div class="provider-detail"><span class="label">{dp.labelRetention}</span> {p.retention}</div>
+            <div class="provider-detail"><span class="label">{dp.labelEncryption}</span> {p.encryption}</div>
+            <div class="provider-detail"><span class="label">{dp.labelZeroRetention}</span> {p.zeroRetention}</div>
+            <div class="provider-detail"><span class="label">{dp.labelOwnership}</span> {p.ownership}</div>
+            {p.note && <p class="provider-note">{p.note}</p>}
+            <a href={p.policyUrl} target="_blank" rel="noopener" class="policy-link">{dp.viewPolicy} →</a>
+          </div>
+        ))}
+      </div>
+
+      <!-- China providers -->
+      <h2>{dp.chinaTitle}</h2>
+      <p class="section-note">{dp.chinaNote}</p>
+      <div class="provider-cards">
+        {dp.chinaProviders.map(p => (
+          <div class:list={['provider-card', p.level]}>
+            <div class="provider-header">
+              <span class="provider-name">{p.name}</span>
+              <span class:list={['badge', p.level]}>{p.badge}</span>
+            </div>
+            <div class="provider-detail"><span class="label">{dp.labelTraining}</span> {p.training}</div>
+            <div class="provider-detail"><span class="label">{dp.labelOptout}</span> {p.optout}</div>
+            {p.note && <p class="provider-note">{p.note}</p>}
+            <a href={p.policyUrl} target="_blank" rel="noopener" class="policy-link">{dp.viewPolicy} →</a>
+          </div>
+        ))}
+      </div>
+
+      <!-- Safety ranking -->
+      <h2>{dp.rankingTitle}</h2>
+      <div class="ranking-bar">
+        <div class="ranking-label-left">{dp.rankingSafe}</div>
+        <div class="ranking-items">
+          {dp.rankingItems.map(item => (
+            <span class:list={['ranking-item', item.level]}>{item.name}</span>
+          ))}
+        </div>
+        <div class="ranking-label-right">{dp.rankingCaution}</div>
+      </div>
+
+      <!-- Legal -->
+      <h2>{dp.legalTitle}</h2>
+      <div class="legal-grid">
+        {dp.legalItems.map(item => (
+          <div class="legal-card">
+            <h3>{item.region}</h3>
+            {item.laws.map(law => (
+              <div class="legal-law">
+                <div class="law-name">{law.name}</div>
+                <ul>
+                  {law.points.map(p => <li>{p}</li>)}
+                </ul>
+              </div>
+            ))}
+            {item.note && <p class="legal-note">{item.note}</p>}
+          </div>
+        ))}
+      </div>
+
+      <!-- Recommendations -->
+      <h2>{dp.recTitle}</h2>
+      <div class="rec-grid">
+        {dp.recItems.map(item => (
+          <div class="rec-card">
+            <div class="rec-scenario">{item.scenario}</div>
+            <div class="rec-arrow">→</div>
+            <div class="rec-solution">{item.solution}</div>
+          </div>
+        ))}
+      </div>
+
+      <!-- Tips -->
+      <h2>{dp.tipsTitle}</h2>
+      <ol class="tips-list">
+        {dp.tips.map(tip => <li>{tip}</li>)}
+      </ol>
+
+      <p class="dp-disclaimer">{dp.disclaimer}</p>
+    </div>
+  </div>
+</section>
+
+<style>
+  .dp-section {
+    padding: calc(var(--spacing-section) + 60px) 0 var(--spacing-section);
+    min-height: 100vh;
+  }
+
+  .dp-content {
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  .dp-content h2 {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin-top: 48px;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .dp-content h2:first-of-type {
+    margin-top: 32px;
+  }
+
+  .section-note {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    line-height: 1.7;
+    margin-bottom: 16px;
+  }
+
+  /* Callout */
+  .dp-callout {
+    display: flex;
+    gap: 14px;
+    padding: 20px 24px;
+    border-radius: var(--radius-md);
+    margin-bottom: 8px;
+  }
+
+  .dp-callout.warning {
+    background: rgba(234, 179, 8, 0.06);
+    border: 1px solid rgba(234, 179, 8, 0.25);
+  }
+
+  .callout-icon {
+    flex-shrink: 0;
+    color: #eab308;
+    margin-top: 2px;
+  }
+
+  .dp-callout strong {
+    color: var(--color-text-primary);
+    font-size: 15px;
+  }
+
+  .dp-callout p {
+    color: var(--color-text-secondary);
+    font-size: 14px;
+    line-height: 1.7;
+    margin: 6px 0 10px;
+  }
+
+  .dp-callout ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .dp-callout li {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    background: rgba(234, 179, 8, 0.08);
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1px solid rgba(234, 179, 8, 0.15);
+  }
+
+  /* Provider cards */
+  .provider-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+
+  @media (max-width: 900px) {
+    .provider-cards {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  .provider-card {
+    padding: 20px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-secondary);
+    transition: border-color 0.2s;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .provider-card:hover {
+    border-color: var(--color-border-hover);
+  }
+
+  .provider-card.safe {
+    border-left: 3px solid #22c55e;
+  }
+
+  .provider-card.caution {
+    border-left: 3px solid #eab308;
+  }
+
+  .provider-card.vague {
+    border-left: 3px solid #94a3b8;
+  }
+
+  .provider-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+
+  .provider-name {
+    font-weight: 600;
+    font-size: 16px;
+    color: var(--color-text-primary);
+  }
+
+  .badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+
+  .badge.safe {
+    background: rgba(34, 197, 94, 0.12);
+    color: #22c55e;
+  }
+
+  .badge.caution {
+    background: rgba(234, 179, 8, 0.12);
+    color: #eab308;
+  }
+
+  .badge.vague {
+    background: rgba(148, 163, 184, 0.12);
+    color: #94a3b8;
+  }
+
+  .provider-detail {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    line-height: 1.9;
+  }
+
+  .provider-detail .label {
+    color: var(--color-text-muted);
+    margin-right: 4px;
+  }
+
+  .provider-note {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    margin: 10px 0 0;
+    line-height: 1.6;
+    font-style: italic;
+  }
+
+  .policy-link {
+    display: inline-block;
+    margin-top: auto;
+    padding-top: 12px;
+    font-size: 12px;
+    color: var(--color-accent-primary);
+  }
+
+  .policy-link:hover {
+    color: var(--color-accent-secondary);
+  }
+
+  /* Ranking bar */
+  .ranking-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 24px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-secondary);
+    overflow-x: auto;
+    margin-top: 12px;
+  }
+
+  .ranking-label-left {
+    font-size: 12px;
+    font-weight: 600;
+    color: #22c55e;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .ranking-label-right {
+    font-size: 12px;
+    font-weight: 600;
+    color: #f97316;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .ranking-items {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .ranking-item {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 16px;
+    white-space: nowrap;
+    border: 1px solid;
+  }
+
+  .ranking-item.safe {
+    background: rgba(34, 197, 94, 0.08);
+    border-color: rgba(34, 197, 94, 0.25);
+    color: #22c55e;
+  }
+
+  .ranking-item.caution {
+    background: rgba(234, 179, 8, 0.08);
+    border-color: rgba(234, 179, 8, 0.25);
+    color: #eab308;
+  }
+
+  .ranking-item.vague {
+    background: rgba(148, 163, 184, 0.08);
+    border-color: rgba(148, 163, 184, 0.25);
+    color: #94a3b8;
+  }
+
+  /* Legal */
+  .legal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+
+  .legal-card {
+    padding: 20px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-secondary);
+  }
+
+  .legal-card h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--color-accent-primary);
+    margin: 0 0 16px;
+  }
+
+  .legal-law {
+    margin-bottom: 12px;
+  }
+
+  .legal-law:last-child {
+    margin-bottom: 0;
+  }
+
+  .law-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 4px;
+  }
+
+  .legal-card ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .legal-card li {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    line-height: 1.8;
+    padding-left: 14px;
+    position: relative;
+  }
+
+  .legal-card li::before {
+    content: '·';
+    position: absolute;
+    left: 0;
+    color: var(--color-accent-primary);
+    font-weight: 700;
+  }
+
+  .legal-note {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    margin: 12px 0 0;
+    padding-top: 10px;
+    border-top: 1px solid var(--color-border);
+    line-height: 1.6;
+    font-style: italic;
+  }
+
+  /* Recommendations */
+  .rec-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .rec-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-secondary);
+  }
+
+  .rec-scenario {
+    font-size: 13px;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .rec-arrow {
+    font-size: 13px;
+    color: var(--color-text-muted);
+    opacity: 0.4;
+    flex-shrink: 0;
+  }
+
+  .rec-solution {
+    font-size: 14px;
+    color: var(--color-text-primary);
+    font-weight: 500;
+  }
+
+  /* Tips */
+  .tips-list {
+    padding-left: 20px;
+    margin: 0;
+  }
+
+  .tips-list li {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    line-height: 1.9;
+    margin-bottom: 4px;
+  }
+
+  .tips-list li::marker {
+    color: var(--color-accent-primary);
+    font-weight: 600;
+  }
+
+  .dp-disclaimer {
+    margin-top: 40px;
+    font-size: 13px;
+    color: var(--color-text-muted);
+    text-align: center;
+  }
+
+  @media (max-width: 768px) {
+    .provider-cards,
+    .legal-grid,
+    .rec-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .ranking-bar {
+      flex-wrap: wrap;
+    }
+
+    .ranking-items {
+      flex-wrap: wrap;
+    }
+
+    .rec-card {
+      flex-wrap: wrap;
+      gap: 4px 12px;
+    }
+  }
+</style>

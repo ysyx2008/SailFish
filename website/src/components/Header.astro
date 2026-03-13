@@ -14,6 +14,7 @@ const alternateUrl = getAlternateUrl(Astro.url, alternateLang);
 const homeUrl = lang === 'zh' ? '/zh/' : '/';
 const skillsUrl = lang === 'zh' ? '/zh/skills' : '/skills';
 const docsUrl = lang === 'zh' ? '/zh/docs/getting-started/what-is-sailfish' : '/docs/getting-started/what-is-sailfish';
+const dataPrivacyUrl = lang === 'zh' ? '/zh/data-privacy' : '/data-privacy';
 const changelogUrl = lang === 'zh' ? '/zh/changelog' : '/changelog';
 
 // 检查是否在首页（用于决定锚点链接的行为）
@@ -35,6 +36,7 @@ const isHomePage = currentPath === '/' || currentPath === '/zh/' || currentPath 
       <a href={isHomePage ? '#features' : `${homeUrl}#features`} class="nav-link">{t.nav.features}</a>
       <a href={skillsUrl} class="nav-link">{t.nav.skills}</a>
       <a href={docsUrl} class="nav-link">{t.nav.guide}</a>
+      <a href={dataPrivacyUrl} class="nav-link">{t.nav.dataPrivacy}</a>
       <a href={changelogUrl} class="nav-link">{t.nav.changelog}</a>
       <a href="https://github.com/ysyx2008/SailFish" target="_blank" rel="noopener" class="nav-link">
         <svg class="icon-github" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
