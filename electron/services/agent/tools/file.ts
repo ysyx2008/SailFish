@@ -3,6 +3,7 @@
  * 包括：文件搜索、读取文件、编辑文件、写入本地文件、写入远程文件
  */
 import * as fs from 'fs'
+import * as os from 'os'
 import * as path from 'path'
 import { app } from 'electron'
 import { t } from '../i18n'
@@ -13,6 +14,12 @@ import { getConfigService } from '../../config.service'
 import { categorizeError, getErrorRecoverySuggestion, truncateFromEnd, formatFileSize } from './utils'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
 import { VISION_IMAGE_EXTENSIONS, IMAGE_MIME_TYPES, CONVERTIBLE_IMAGE_EXTENSIONS } from './types'
+
+function expandTilde(filePath: string): string {
+  if (filePath === '~') return os.homedir()
+  if (filePath.startsWith('~/')) return path.join(os.homedir(), filePath.slice(2))
+  return filePath
+}
 
 /**
  * 获取 Agent workspace 目录路径
@@ -79,7 +86,7 @@ export async function fileSearch(
   }
 
   const query = args.query as string
-  const searchPath = args.path as string | undefined
+  const searchPath = args.path ? expandTilde(args.path as string) : undefined
   const type = args.type as 'file' | 'dir' | 'all' | undefined
   const limit = args.limit as number | undefined
 
@@ -753,7 +760,7 @@ export async function readFile(
   config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
-  let filePath = args.path as string
+  let filePath = expandTilde(args.path as string)
   if (!filePath) {
     return { success: false, output: '', error: t('error.file_path_required') }
   }
@@ -1032,7 +1039,7 @@ export async function editFile(
   config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
-  let filePath = args.path as string
+  let filePath = expandTilde(args.path as string)
   const oldText = args.old_text as string
   const newText = args.new_text as string
   const replaceAll = args.replace_all === true
@@ -1173,7 +1180,7 @@ export async function writeLocalFile(
   config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
-  let filePath = args.path as string
+  let filePath = expandTilde(args.path as string)
   const content = args.content as string | undefined
   const mode = (args.mode as string) || 'create'
   const insertAtLine = args.insert_at_line as number | undefined
