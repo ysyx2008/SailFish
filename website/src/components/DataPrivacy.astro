@@ -72,16 +72,32 @@ const dp = t.dataPrivacy;
         ))}
       </div>
 
+      <!-- Other risks -->
+      <h2>{dp.risksTitle}</h2>
+      <p class="section-note">{dp.risksNote}</p>
+      <div class="risks-grid">
+        {dp.risks.map(r => (
+          <div class="risk-item">
+            <div class="risk-name">{r.name}</div>
+            <div class="risk-desc">{r.desc}</div>
+          </div>
+        ))}
+      </div>
+
       <!-- Safety ranking -->
       <h2>{dp.rankingTitle}</h2>
-      <div class="ranking-bar">
-        <div class="ranking-label-left">{dp.rankingSafe}</div>
-        <div class="ranking-items">
-          {dp.rankingItems.map(item => (
-            <span class:list={['ranking-item', item.level]}>{item.name}</span>
-          ))}
-        </div>
-        <div class="ranking-label-right">{dp.rankingCaution}</div>
+      <div class="ranking-tiers">
+        {dp.rankingTiers.map(tier => (
+          <div class:list={['ranking-tier', tier.level]}>
+            <div class="tier-label">{tier.label}</div>
+            <div class="tier-desc">{tier.desc}</div>
+            <div class="tier-items">
+              {tier.items.map(name => (
+                <span class="tier-item">{name}</span>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
 
       <!-- Legal -->
@@ -314,67 +330,109 @@ const dp = t.dataPrivacy;
     color: var(--color-accent-secondary);
   }
 
-  /* Ranking bar */
-  .ranking-bar {
-    display: flex;
-    align-items: center;
+  /* Risks grid */
+  .risks-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
     gap: 12px;
-    padding: 20px 24px;
+  }
+
+  .risk-item {
+    padding: 14px 18px;
     border-radius: var(--radius-md);
     border: 1px solid var(--color-border);
     background: var(--color-bg-secondary);
-    overflow-x: auto;
+  }
+
+  .risk-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 4px;
+  }
+
+  .risk-desc {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    line-height: 1.6;
+  }
+
+  /* Ranking tiers */
+  .ranking-tiers {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     margin-top: 12px;
   }
 
-  .ranking-label-left {
-    font-size: 12px;
-    font-weight: 600;
-    color: #22c55e;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  .ranking-label-right {
-    font-size: 12px;
-    font-weight: 600;
-    color: #f97316;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  .ranking-items {
+  .ranking-tier {
     display: flex;
     align-items: center;
-    gap: 6px;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .ranking-item {
-    font-size: 12px;
-    padding: 4px 10px;
-    border-radius: 16px;
-    white-space: nowrap;
+    gap: 16px;
+    padding: 12px 20px;
+    border-radius: var(--radius-md);
     border: 1px solid;
   }
 
-  .ranking-item.safe {
-    background: rgba(34, 197, 94, 0.08);
+  .ranking-tier.safe {
     border-color: rgba(34, 197, 94, 0.25);
-    color: #22c55e;
+    background: rgba(34, 197, 94, 0.04);
   }
 
-  .ranking-item.caution {
-    background: rgba(234, 179, 8, 0.08);
+  .ranking-tier.caution {
     border-color: rgba(234, 179, 8, 0.25);
-    color: #eab308;
+    background: rgba(234, 179, 8, 0.04);
   }
 
-  .ranking-item.vague {
-    background: rgba(148, 163, 184, 0.08);
-    border-color: rgba(148, 163, 184, 0.25);
+  .ranking-tier.vague {
+    border-color: rgba(148, 163, 184, 0.2);
+    background: rgba(148, 163, 184, 0.03);
+  }
+
+  .tier-label {
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-width: 56px;
+  }
+
+  .ranking-tier.safe .tier-label { color: #22c55e; }
+  .ranking-tier.caution .tier-label { color: #eab308; }
+  .ranking-tier.vague .tier-label { color: #94a3b8; }
+
+  .tier-desc {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+    min-width: 140px;
+  }
+
+  .tier-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .tier-item {
+    font-size: 13px;
+    padding: 2px 10px;
+    border-radius: 4px;
+  }
+
+  .ranking-tier.safe .tier-item {
+    color: #22c55e;
+    background: rgba(34, 197, 94, 0.10);
+  }
+
+  .ranking-tier.caution .tier-item {
+    color: #eab308;
+    background: rgba(234, 179, 8, 0.10);
+  }
+
+  .ranking-tier.vague .tier-item {
     color: #94a3b8;
+    background: rgba(148, 163, 184, 0.10);
   }
 
   /* Legal */
@@ -507,19 +565,27 @@ const dp = t.dataPrivacy;
     text-align: center;
   }
 
+  @media (max-width: 900px) {
+    .risks-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
   @media (max-width: 768px) {
     .provider-cards,
     .legal-grid,
-    .rec-grid {
+    .rec-grid,
+    .risks-grid {
       grid-template-columns: 1fr;
     }
 
-    .ranking-bar {
+    .ranking-tier {
       flex-wrap: wrap;
+      gap: 8px;
     }
 
-    .ranking-items {
-      flex-wrap: wrap;
+    .tier-desc {
+      min-width: unset;
     }
 
     .rec-card {
