@@ -156,6 +156,7 @@ function main() {
       log(`  git push`);
       log(`  git push origin v${version}`);
     }
+    cleanupState();
     process.exit(1);
   } finally {
     cleanupState();
