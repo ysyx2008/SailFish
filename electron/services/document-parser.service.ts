@@ -660,19 +660,20 @@ export class DocumentParserService {
           if (cell.value === null || cell.value === undefined) {
             cellValue = ''
           } else if (typeof cell.value === 'object') {
-            // 处理富文本、公式结果等
             if ('result' in cell.value) {
-              // 公式单元格，获取计算结果
               cellValue = String(cell.value.result ?? '')
             } else if ('richText' in cell.value) {
-              // 富文本
               cellValue = (cell.value.richText as Array<{ text: string }>)
                 .map(rt => rt.text)
                 .join('')
             } else if (cell.value instanceof Date) {
               cellValue = cell.value.toLocaleDateString()
+            } else if ('text' in cell.value) {
+              cellValue = String((cell.value as { text: string }).text)
+            } else if ('error' in cell.value) {
+              cellValue = String((cell.value as { error: string }).error)
             } else {
-              cellValue = String(cell.value)
+              try { cellValue = JSON.stringify(cell.value) } catch { cellValue = '' }
             }
           } else {
             cellValue = String(cell.value)
