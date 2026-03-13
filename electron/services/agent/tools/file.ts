@@ -1266,6 +1266,7 @@ export async function writeLocalFile(
   const fileExists = fs.existsSync(filePath)
   const inWorkspace = isInWorkspace(filePath)
   const isDangerousOverwrite = mode === 'overwrite' && fileExists && !inWorkspace
+  const isSafeWrite = mode === 'create' || mode === 'append' || mode === 'insert'
 
   executor.addStep({
     type: 'tool_call',
@@ -1281,10 +1282,10 @@ export async function writeLocalFile(
       ...(pattern !== undefined && { pattern }),
       ...(replacement !== undefined && { replacement })
     },
-    riskLevel: inWorkspace ? 'safe' : (isDangerousOverwrite ? 'dangerous' : 'moderate')
+    riskLevel: (inWorkspace || isSafeWrite) ? 'safe' : (isDangerousOverwrite ? 'dangerous' : 'moderate')
   })
 
-  if (!inWorkspace && (isDangerousOverwrite || config.executionMode === 'strict')) {
+  if (!inWorkspace && !isSafeWrite && (isDangerousOverwrite || config.executionMode === 'strict')) {
     const approved = await executor.waitForConfirmation(
       toolCallId, 
       'write_local_file', 
