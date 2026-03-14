@@ -76,7 +76,12 @@ const historyDetailFinalResult = ref('')
 const historyPromptExpanded = ref(false)
 
 const HIDDEN_STEP_TYPES = new Set(['user_task', 'streaming', 'waiting', 'waiting_password', 'confirm'])
-const filteredSteps = computed(() => historyDetailSteps.value.filter(s => !HIDDEN_STEP_TYPES.has(s.type)))
+const filteredSteps = computed(() => {
+  const steps = historyDetailSteps.value.filter(s => !HIDDEN_STEP_TYPES.has(s.type))
+  const finalResult = steps.find(s => s.type === 'final_result')
+  if (!finalResult) return steps
+  return steps.filter(s => s.type === 'final_result' || s.content !== finalResult.content)
+})
 
 const templates = ref<WatchTemplateInfo[]>([])
 const selectedTemplateCategory = ref<string>('all')
