@@ -167,6 +167,12 @@ const getStepIcon = (type: string): string => {
   return map[type] || '•'
 }
 
+const formatToolResult = (result: string): string | null => {
+  if (!result) return null
+  const match = /<content>([\s\S]*?)<\/content>/.exec(result)
+  return match ? match[1].trim() : result
+}
+
 // ==================== Data Loading ====================
 
 const loadWatchData = async () => {
@@ -1371,7 +1377,7 @@ onUnmounted(() => {
                           <div class="step-content">
                             <div class="step-text">{{ step.content }}</div>
                             <div v-if="step.toolResult && step.toolResult !== step.content" class="step-tool-result">
-                              <pre>{{ step.toolResult }}</pre>
+                              <pre>{{ formatToolResult(step.toolResult) }}</pre>
                             </div>
                           </div>
                         </div>
