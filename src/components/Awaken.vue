@@ -73,6 +73,45 @@ const historyDetailSteps = ref<Array<{ id: string; type: string; content: string
 const historyDetailLoading = ref(false)
 const historyDetailUserTask = ref('')
 const historyDetailFinalResult = ref('')
+const historyPromptExpanded = ref(false)
+
+interface ToolGroup { toolName: string; args: string; result: string; timestamp: number }
+interface ConversationItem { type: 'thinking' | 'tool' | 'message' | 'error'; content: string; timestamp: number; tools?: ToolGroup[] }
+
+const historyConversation = computed<ConversationItem[]>(() => {
+  const items: ConversationItem[] = []
+  const steps = historyDetailSteps.value
+  let i = 0
+  while (i < steps.length) {
+    const s = steps[i]
+    if (s.type === 'user_task' || s.type === 'final_result' || s.type === 'streaming' || s.type === 'waiting') { i++; continue }
+
+    if (s.type === 'thinking' && s.content) {
+      items.push({ type: 'thinking', content: s.content, timestamp: s.timestamp })
+    } else if (s.type === 'tool_call') {
+      const toolGroup: ToolGroup[] = []
+      while (i < steps.length && steps[i].type === 'tool_call') {
+        const call = steps[i]
+        const resultStep = (i + 1 < steps.length && steps[i + 1].type === 'tool_result') ? steps[++i] : null
+        toolGroup.push({
+          toolName: call.toolName || 'unknown',
+          args: call.content || '',
+          result: resultStep?.toolResult || resultStep?.content || '',
+          timestamp: call.timestamp
+        })
+        i++
+      }
+      if (toolGroup.length) items.push({ type: 'tool', content: '', timestamp: toolGroup[0].timestamp, tools: toolGroup })
+      continue
+    } else if (s.type === 'message' && s.content) {
+      items.push({ type: 'message', content: s.content, timestamp: s.timestamp })
+    } else if (s.type === 'error' && s.content) {
+      items.push({ type: 'error', content: s.content, timestamp: s.timestamp })
+    }
+    i++
+  }
+  return items
+})
 
 const templates = ref<WatchTemplateInfo[]>([])
 const selectedTemplateCategory = ref<string>('all')
@@ -335,6 +374,7 @@ const clearWatchHistory = async () => {
 }
 
 const viewHistoryDetail = async (record: WatchHistoryRecord) => {
+  historyPromptExpanded.value = false
   if (!record.agentSessionId) {
     selectedHistoryRecord.value = record
     historyDetailSteps.value = []
@@ -1336,39 +1376,66 @@ onUnmounted(() => {
                   </div>
 
                   <template v-else>
-                    <!-- 任务提示词 -->
-                    <div v-if="historyDetailUserTask" class="history-detail-task">
-                      <div class="detail-section-label">{{ t('watch.prompt') }}</div>
-                      <div>{{ historyDetailUserTask }}</div>
+                    <!-- 最终结果（放最上面，先看结论） -->
+                    <div v-if="historyDetailFinalResult" class="history-detail-final">
+                      {{ historyDetailFinalResult }}
                     </div>
 
                     <!-- 有完整步骤记录 -->
-                    <template v-if="historyDetailSteps.length > 0">
-                      <div class="detail-section-label" style="padding: 12px 0 6px;">{{ t('watch.viewConversation') }}</div>
-                      <div class="live-steps history-steps">
-                        <div
-                          v-for="step in historyDetailSteps"
-                          :key="step.id"
-                          class="live-step"
-                          :class="[step.type, step.type === 'thinking' ? 'step-thinking' : '']"
-                        >
-                          <span class="live-step-icon">{{ getStepIcon(step.type) }}</span>
-                          <div class="live-step-content">
-                            <div v-if="step.type === 'tool_call' && step.toolName" class="live-step-tool">
-                              {{ step.toolName }}{{ step.content ? ': ' + step.content : '' }}
-                            </div>
-                            <div v-else-if="step.content" class="live-step-text">{{ step.content }}</div>
-                            <div v-if="step.toolResult && step.toolResult !== step.content" class="live-step-result">
-                              <pre>{{ step.toolResult }}</pre>
-                            </div>
-                          </div>
-                          <span v-if="step.timestamp" class="step-time">{{ formatDate(step.timestamp) }}</span>
+                    <template v-if="historyConversation.length > 0">
+                      <!-- 任务提示词（默认折叠） -->
+                      <div v-if="historyDetailUserTask" class="history-prompt-section">
+                        <div class="prompt-toggle" @click="historyPromptExpanded = !historyPromptExpanded">
+                          <span class="prompt-toggle-icon">{{ historyPromptExpanded ? '▼' : '▶' }}</span>
+                          <span class="detail-section-label" style="margin-bottom: 0;">{{ t('watch.prompt') }}</span>
+                        </div>
+                        <div v-if="historyPromptExpanded" class="history-detail-task">
+                          {{ historyDetailUserTask }}
                         </div>
                       </div>
 
-                      <!-- 最终结果 -->
-                      <div v-if="historyDetailFinalResult" class="history-detail-final">
-                        {{ historyDetailFinalResult }}
+                      <!-- 对话流程 -->
+                      <div class="detail-section-label" style="padding: 8px 0 6px;">{{ t('watch.viewConversation') }}</div>
+                      <div class="conversation-flow">
+                        <template v-for="(item, idx) in historyConversation" :key="idx">
+                          <!-- 思考 -->
+                          <div v-if="item.type === 'thinking'" class="conv-item conv-thinking">
+                            <span class="conv-icon">🤔</span>
+                            <div class="conv-body">
+                              <div class="conv-text-clamp">{{ item.content }}</div>
+                            </div>
+                            <span class="conv-time">{{ formatDate(item.timestamp) }}</span>
+                          </div>
+
+                          <!-- 工具调用组 -->
+                          <div v-else-if="item.type === 'tool'" class="conv-item conv-tool-group">
+                            <div v-for="(tool, ti) in item.tools" :key="ti" class="conv-tool">
+                              <div class="conv-tool-header">
+                                <span class="conv-icon">🔧</span>
+                                <span class="conv-tool-name">{{ tool.toolName }}</span>
+                                <span v-if="tool.args" class="conv-tool-args">{{ tool.args }}</span>
+                                <span class="conv-time">{{ formatDate(tool.timestamp) }}</span>
+                              </div>
+                              <div v-if="tool.result" class="conv-tool-result">
+                                <pre>{{ tool.result }}</pre>
+                              </div>
+                            </div>
+                          </div>
+
+                          <!-- 消息 -->
+                          <div v-else-if="item.type === 'message'" class="conv-item conv-message">
+                            <span class="conv-icon">💬</span>
+                            <div class="conv-body">{{ item.content }}</div>
+                            <span class="conv-time">{{ formatDate(item.timestamp) }}</span>
+                          </div>
+
+                          <!-- 错误 -->
+                          <div v-else-if="item.type === 'error'" class="conv-item conv-error">
+                            <span class="conv-icon">❌</span>
+                            <div class="conv-body">{{ item.content }}</div>
+                            <span class="conv-time">{{ formatDate(item.timestamp) }}</span>
+                          </div>
+                        </template>
                       </div>
                     </template>
 
@@ -2280,14 +2347,39 @@ onUnmounted(() => {
 
 .history-detail-meta { color: var(--text-muted); font-size: 12px; margin-left: auto; }
 .history-detail-content { flex: 1; overflow-y: auto; padding: 0 24px 24px; }
-.history-detail-task { padding: 12px 16px; background: var(--bg-primary, rgba(0,0,0,0.15)); border-radius: 8px; margin-bottom: 12px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
-.history-detail-final { padding: 12px 16px; background: rgba(40, 167, 69, 0.08); border: 1px solid rgba(40, 167, 69, 0.2); border-radius: 8px; margin-top: 12px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
-.history-steps { max-height: none; padding: 0; }
+.history-detail-final { padding: 12px 16px; background: rgba(40, 167, 69, 0.08); border: 1px solid rgba(40, 167, 69, 0.2); border-radius: 8px; margin-bottom: 12px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
 .history-fallback-output { padding: 12px 16px; background: var(--bg-primary, rgba(0,0,0,0.15)); border-radius: 8px; font-size: 13px; line-height: 1.6; }
 .fallback-text { white-space: pre-wrap; word-break: break-word; }
 .history-legacy-hint { padding: 8px 0; font-size: 11px; color: var(--text-muted); opacity: 0.7; }
 .detail-section-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
 .step-time { flex-shrink: 0; font-size: 10px; color: var(--text-muted); opacity: 0.6; }
+
+/* Prompt section (collapsible) */
+.history-prompt-section { margin-bottom: 8px; }
+.prompt-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 6px 0; user-select: none; }
+.prompt-toggle:hover .detail-section-label { color: var(--text-primary); }
+.prompt-toggle-icon { font-size: 10px; color: var(--text-muted); width: 12px; }
+.history-detail-task { padding: 12px 16px; background: var(--bg-primary, rgba(0,0,0,0.15)); border-radius: 8px; margin-top: 4px; margin-bottom: 8px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; color: var(--text-secondary); }
+
+/* Conversation flow */
+.conversation-flow { display: flex; flex-direction: column; gap: 6px; }
+.conv-item { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.5; padding: 8px 12px; border-radius: 6px; }
+.conv-icon { flex-shrink: 0; font-size: 13px; width: 20px; text-align: center; }
+.conv-body { flex: 1; min-width: 0; word-break: break-word; white-space: pre-wrap; }
+.conv-time { flex-shrink: 0; font-size: 10px; color: var(--text-muted); opacity: 0.6; }
+
+.conv-thinking { background: rgba(59, 130, 246, 0.06); border-left: 3px solid rgba(59, 130, 246, 0.3); }
+.conv-text-clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; color: var(--text-secondary); }
+.conv-message { background: var(--bg-primary, rgba(0,0,0,0.1)); }
+.conv-error { background: rgba(220, 53, 69, 0.08); border-left: 3px solid rgba(220, 53, 69, 0.4); color: #dc3545; }
+
+.conv-tool-group { display: flex; flex-direction: column; gap: 4px; padding: 0; }
+.conv-tool { border-radius: 6px; overflow: hidden; border: 1px solid var(--border-color, rgba(255,255,255,0.06)); }
+.conv-tool-header { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--bg-primary, rgba(0,0,0,0.15)); font-size: 12px; }
+.conv-tool-name { font-weight: 600; color: var(--accent-primary); }
+.conv-tool-args { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 11px; }
+.conv-tool-result { padding: 8px 12px; font-size: 11px; background: var(--bg-primary, rgba(0,0,0,0.08)); max-height: 200px; overflow-y: auto; }
+.conv-tool-result pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
 
 /* ==================== Edit Form ==================== */
 
