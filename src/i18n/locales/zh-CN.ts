@@ -2079,7 +2079,6 @@ export default {
     today: '今天',
     yesterday: '昨天',
     loadMore: '加载更多',
-    loading: '加载中…',
 
     // 新触发器类型
     triggerFileChange: '文件变化',

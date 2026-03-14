@@ -2,7 +2,28 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v10.20.0 (2026-03-14) (Latest)
+## v10.20.1 (2026-03-14) (Latest)
+
+Overhauls the Watch awaken history UI with date grouping, pagination, and full conversation detail view, plus several reliability fixes for Agent file tools and sensor startup.
+
+### New Features
+- 🔔 **Awaken History Details**: Watch execution history now supports viewing full conversation details including tool calls and results
+
+### Improvements
+- 📅 **Awaken History Date Grouping**: Awaken history entries are now grouped by date with smart watch name hiding and paginated loading
+- 🎨 **Awaken History UI Overhaul**: Renamed to "Awaken History", trigger events promoted to primary column, execution details redesigned in flat AiPanel style
+- 📋 **Execution Detail Enhancement**: Watch execution history details now show full `tool_result` content instead of summaries
+
+### Bug Fixes
+- 🔧 Fixed `app_lifecycle` sensor events not triggering due to EmailSensor IDLE blocking `sensorService.start()`
+- 🔧 Fixed watch notification results showing raw XML wrapper instead of clean content
+- 🔧 Fixed duplicate steps appearing in watch execution history alongside `final_result`
+- 🔧 Fixed `read_file` producing garbled Chinese characters when reading non-UTF-8 encoded files
+- 🔧 Fixed file tools creating incorrect directories when paths contain `~` (tilde not expanded)
+- 🔧 Fixed wakeup greeting being sent repeatedly
+- 🔧 Fixed AI debug log timestamps using UTC instead of local timezone
+
+## v10.20.0 (2026-03-14)
 
 Introduces the ClawHub community skill marketplace, major enhancements to file editing reliability and Office document skills, plus attachment support in supplement messages.
 

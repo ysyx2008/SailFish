@@ -2071,7 +2071,6 @@ export default {
     today: 'Today',
     yesterday: 'Yesterday',
     loadMore: 'Load More',
-    loading: 'Loading…',
 
     triggerFileChange: 'File Change',
     triggerCalendar: 'Calendar',
