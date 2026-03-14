@@ -126,11 +126,28 @@ const getTriggerLabel = (trigger: WatchTrigger): string => {
   }
 }
 
+const getTriggerTypeLabel = (type: string): string => {
+  const map: Record<string, string> = {
+    cron: t('watch.triggerCron'),
+    interval: t('watch.triggerInterval'),
+    heartbeat: t('watch.triggerHeartbeat'),
+    webhook: 'Webhook',
+    manual: t('watch.triggerManual'),
+    file_change: t('watch.triggerFileChange'),
+    calendar: t('watch.triggerCalendar'),
+    email: t('watch.triggerEmail'),
+    im_connected: t('watch.triggerImConnected'),
+    app_lifecycle: t('watch.triggerAppLifecycle'),
+  }
+  return map[type] || type
+}
+
 const getTriggerIcon = (type: WatchTriggerType | string) => {
   const map: Record<string, any> = {
     cron: Clock, interval: RefreshCw, heartbeat: Heart,
     webhook: Globe, manual: Zap,
-    file_change: FolderOpen, calendar: Calendar, email: Mail
+    file_change: FolderOpen, calendar: Calendar, email: Mail,
+    im_connected: Globe, app_lifecycle: Zap,
   }
   return map[type] || Zap
 }
@@ -1410,8 +1427,8 @@ onUnmounted(() => {
                 <div v-if="watchHistory.length > 0" class="history-table">
                   <div v-for="h in watchHistory" :key="h.id" class="history-row" :class="{ clickable: !!h.agentSessionId }" @click="viewHistoryDetail(h)">
                     <span class="history-status-icon" :class="getStatusClass(h.status)">{{ getStatusIcon(h.status) }}</span>
-                    <span class="history-name">{{ h.watchName }}</span>
-                    <span class="history-trigger"><component :is="getTriggerIcon(h.triggerType as WatchTriggerType)" :size="10" /> {{ h.triggerType }}</span>
+                    <span class="history-trigger-primary"><component :is="getTriggerIcon(h.triggerType as WatchTriggerType)" :size="12" /> {{ getTriggerTypeLabel(h.triggerType) }}</span>
+                    <span class="history-name-secondary">{{ h.watchName }}</span>
                     <span class="history-time">{{ formatFullDate(h.at) }}</span>
                     <span class="history-duration">{{ formatDuration(h.duration) }}</span>
                     <span v-if="h.agentSessionId" class="history-detail-indicator">
@@ -2283,8 +2300,8 @@ onUnmounted(() => {
 .history-row.clickable { cursor: pointer; }
 
 .history-status-icon { min-width: 20px; text-align: center; font-size: 13px; }
-.history-name { flex: 1; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.history-trigger { display: flex; align-items: center; gap: 3px; color: var(--text-muted); min-width: 80px; }
+.history-trigger-primary { display: flex; align-items: center; gap: 4px; font-weight: 500; min-width: 100px; }
+.history-name-secondary { flex: 1; color: var(--text-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-time { color: var(--text-muted); min-width: 150px; }
 .history-duration { color: var(--text-muted); min-width: 60px; text-align: right; }
 .history-detail-indicator { color: var(--text-muted); opacity: 0; transition: opacity 0.15s; }

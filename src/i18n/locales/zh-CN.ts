@@ -1972,7 +1972,7 @@ export default {
     navTools: '工具',
     navRecords: '记录',
     schedulerTab: '定时任务',
-    executionHistory: '执行历史',
+    executionHistory: '唤醒历史',
     newWatch: '新建关切',
     createWatch: '创建关切',
     editWatch: '编辑关切',
@@ -2081,6 +2081,8 @@ export default {
     triggerFileChange: '文件变化',
     triggerCalendar: '日历事件',
     triggerEmail: '新邮件',
+    triggerImConnected: 'IM 连接',
+    triggerAppLifecycle: '应用事件',
 
     // 文件变化触发器
     filePathsLabel: '监控路径',

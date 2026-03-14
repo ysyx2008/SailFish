@@ -1972,7 +1972,7 @@ export default {
     navTools: 'Tools',
     navRecords: 'Records',
     schedulerTab: 'Scheduled Tasks',
-    executionHistory: 'Execution History',
+    executionHistory: 'Awaken History',
     newWatch: 'New Watch',
     createWatch: 'Create Watch',
     editWatch: 'Edit Watch',
@@ -2072,6 +2072,8 @@ export default {
     triggerFileChange: 'File Change',
     triggerCalendar: 'Calendar',
     triggerEmail: 'New Email',
+    triggerImConnected: 'IM Connected',
+    triggerAppLifecycle: 'App Lifecycle',
 
     filePathsLabel: 'Watch Paths',
     filePathsPlaceholder: 'File or directory paths, comma-separated',
