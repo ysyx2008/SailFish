@@ -2067,7 +2067,11 @@ export default {
     updatedAt: 'Updated',
 
     confirmDelete: 'Delete "{name}"?',
-    confirmClearHistory: 'Clear all execution history?',
+    confirmClearHistory: 'Clear all awaken history?',
+    today: 'Today',
+    yesterday: 'Yesterday',
+    loadMore: 'Load More',
+    loading: 'Loading…',
 
     triggerFileChange: 'File Change',
     triggerCalendar: 'Calendar',

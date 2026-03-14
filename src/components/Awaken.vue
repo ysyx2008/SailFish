@@ -58,6 +58,9 @@ function switchTab(tab: NavTab, onSwitch?: () => void) {
 
 const watches = ref<WatchDefinition[]>([])
 const watchHistory = ref<WatchHistoryRecord[]>([])
+const historyPageSize = 50
+const historyHasMore = ref(false)
+const historyLoadingMore = ref(false)
 const loading = ref(true)
 const selectedWatch = ref<WatchDefinition | null>(null)
 const runningWatches = ref<Set<string>>(new Set())
@@ -110,7 +113,51 @@ const userProfileDirty = computed(() => userProfileText.value !== userProfileOri
 
 const formatDate = (ts: number) => new Date(ts).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 const formatFullDate = (ts: number) => new Date(ts).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+const formatTime = (ts: number) => new Date(ts).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 const formatDuration = (ms: number) => ms < 1000 ? `${ms}ms` : ms < 60000 ? `${(ms / 1000).toFixed(1)}s` : `${(ms / 60000).toFixed(1)}m`
+
+const getDateKey = (ts: number): string => {
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const formatDateLabel = (dateKey: string): string => {
+  const today = getDateKey(Date.now())
+  const yesterday = getDateKey(Date.now() - 86400000)
+  if (dateKey === today) return t('watch.today')
+  if (dateKey === yesterday) return t('watch.yesterday')
+  return dateKey
+}
+
+const hasMultipleWatchNames = computed(() => {
+  const names = new Set(watchHistory.value.map(h => h.watchName))
+  return names.size > 1
+})
+
+const groupedHistory = computed(() => {
+  const groups: Array<{ dateKey: string; label: string; records: WatchHistoryRecord[] }> = []
+  let currentKey = ''
+  for (const h of watchHistory.value) {
+    const key = getDateKey(h.at)
+    if (key !== currentKey) {
+      currentKey = key
+      groups.push({ dateKey: key, label: formatDateLabel(key), records: [] })
+    }
+    groups[groups.length - 1].records.push(h)
+  }
+  return groups
+})
+
+const loadMoreHistory = async () => {
+  historyLoadingMore.value = true
+  try {
+    const all = await window.electronAPI.watch.getHistory(undefined, watchHistory.value.length + historyPageSize)
+    historyHasMore.value = all.length > watchHistory.value.length + historyPageSize - 1
+    watchHistory.value = all
+  } finally {
+    historyLoadingMore.value = false
+  }
+}
 
 const getTriggerLabel = (trigger: WatchTrigger): string => {
   switch (trigger.type) {
@@ -196,7 +243,9 @@ const loadWatchData = async () => {
   loading.value = true
   try {
     watches.value = await window.electronAPI.watch.getAll()
-    watchHistory.value = await window.electronAPI.watch.getHistory(undefined, 50)
+    const history = await window.electronAPI.watch.getHistory(undefined, historyPageSize + 1)
+    historyHasMore.value = history.length > historyPageSize
+    watchHistory.value = historyHasMore.value ? history.slice(0, historyPageSize) : history
     const running = await window.electronAPI.watch.getRunning()
     runningWatches.value = new Set(running)
   } catch (e) {
@@ -1425,15 +1474,24 @@ onUnmounted(() => {
                 </div>
 
                 <div v-if="watchHistory.length > 0" class="history-table">
-                  <div v-for="h in watchHistory" :key="h.id" class="history-row" :class="{ clickable: !!h.agentSessionId }" @click="viewHistoryDetail(h)">
-                    <span class="history-status-icon" :class="getStatusClass(h.status)">{{ getStatusIcon(h.status) }}</span>
-                    <span class="history-trigger-primary"><component :is="getTriggerIcon(h.triggerType as WatchTriggerType)" :size="12" /> {{ getTriggerTypeLabel(h.triggerType) }}</span>
-                    <span class="history-name-secondary">{{ h.watchName }}</span>
-                    <span class="history-time">{{ formatFullDate(h.at) }}</span>
-                    <span class="history-duration">{{ formatDuration(h.duration) }}</span>
-                    <span v-if="h.agentSessionId" class="history-detail-indicator">
-                      <Eye :size="12" />
-                    </span>
+                  <template v-for="group in groupedHistory" :key="group.dateKey">
+                    <div class="history-date-header">{{ group.label }}</div>
+                    <div v-for="h in group.records" :key="h.id" class="history-row" :class="{ clickable: !!h.agentSessionId }" @click="viewHistoryDetail(h)">
+                      <span class="history-status-icon" :class="getStatusClass(h.status)">{{ getStatusIcon(h.status) }}</span>
+                      <span class="history-trigger-primary"><component :is="getTriggerIcon(h.triggerType as WatchTriggerType)" :size="12" /> {{ getTriggerTypeLabel(h.triggerType) }}</span>
+                      <span v-if="hasMultipleWatchNames" class="history-name-secondary">{{ h.watchName }}</span>
+                      <span class="history-spacer"></span>
+                      <span class="history-time">{{ formatTime(h.at) }}</span>
+                      <span class="history-duration">{{ formatDuration(h.duration) }}</span>
+                      <span v-if="h.agentSessionId" class="history-detail-indicator">
+                        <Eye :size="12" />
+                      </span>
+                    </div>
+                  </template>
+                  <div v-if="historyHasMore" class="history-load-more">
+                    <button class="btn btn-sm" @click="loadMoreHistory" :disabled="historyLoadingMore">
+                      {{ historyLoadingMore ? t('watch.loading') : t('watch.loadMore') }}
+                    </button>
                   </div>
                 </div>
 
@@ -2290,22 +2348,31 @@ onUnmounted(() => {
 
 /* ==================== History ==================== */
 
-.history-table { display: flex; flex-direction: column; gap: 2px; padding: 12px 24px; flex: 1; overflow-y: auto; }
+.history-table { display: flex; flex-direction: column; gap: 1px; padding: 8px 24px; flex: 1; overflow-y: auto; }
+
+.history-date-header {
+  font-size: 11px; font-weight: 600; color: var(--text-muted);
+  padding: 12px 12px 4px; letter-spacing: 0.3px;
+  position: sticky; top: 0; background: var(--bg-secondary, var(--bg-primary)); z-index: 1;
+}
+.history-date-header:first-child { padding-top: 4px; }
 
 .history-row {
-  display: flex; align-items: center; gap: 12px;
-  padding: 8px 12px; border-radius: 6px; font-size: 12px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 12px; border-radius: 6px; font-size: 12px;
 }
 .history-row:hover { background: var(--bg-hover); }
 .history-row.clickable { cursor: pointer; }
 
-.history-status-icon { min-width: 20px; text-align: center; font-size: 13px; }
-.history-trigger-primary { display: flex; align-items: center; gap: 4px; font-weight: 500; min-width: 100px; }
-.history-name-secondary { flex: 1; color: var(--text-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.history-time { color: var(--text-muted); min-width: 150px; }
-.history-duration { color: var(--text-muted); min-width: 60px; text-align: right; }
+.history-status-icon { min-width: 18px; text-align: center; font-size: 13px; }
+.history-trigger-primary { display: flex; align-items: center; gap: 4px; font-weight: 500; min-width: 80px; }
+.history-name-secondary { color: var(--text-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }
+.history-spacer { flex: 1; }
+.history-time { color: var(--text-muted); min-width: 70px; text-align: right; }
+.history-duration { color: var(--text-muted); min-width: 50px; text-align: right; }
 .history-detail-indicator { color: var(--text-muted); opacity: 0; transition: opacity 0.15s; }
 .history-row:hover .history-detail-indicator { opacity: 0.7; }
+.history-load-more { display: flex; justify-content: center; padding: 12px 0; }
 
 .history-detail-meta { color: var(--text-muted); font-size: 12px; margin-left: auto; }
 .history-detail-content { flex: 1; overflow-y: auto; padding: 0 24px 24px; }

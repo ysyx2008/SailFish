@@ -2075,7 +2075,11 @@ export default {
 
     // 确认
     confirmDelete: '确定要删除 "{name}" 吗？',
-    confirmClearHistory: '确定要清除所有执行历史吗？',
+    confirmClearHistory: '确定要清除所有唤醒历史吗？',
+    today: '今天',
+    yesterday: '昨天',
+    loadMore: '加载更多',
+    loading: '加载中…',
 
     // 新触发器类型
     triggerFileChange: '文件变化',
