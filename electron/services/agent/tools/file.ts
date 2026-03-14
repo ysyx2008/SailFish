@@ -11,6 +11,7 @@ import { getTerminalStateService } from '../../terminal-state.service'
 import { getFileSearchService } from '../../file-search.service'
 import { getDocumentParserService } from '../../document-parser.service'
 import { getConfigService } from '../../config.service'
+import iconv from 'iconv-lite'
 import { categorizeError, getErrorRecoverySuggestion, truncateFromEnd, formatFileSize } from './utils'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
 import { VISION_IMAGE_EXTENSIONS, IMAGE_MIME_TYPES, CONVERTIBLE_IMAGE_EXTENSIONS } from './types'
@@ -19,6 +20,92 @@ function expandTilde(filePath: string): string {
   if (filePath === '~') return os.homedir()
   if (filePath.startsWith('~/')) return path.join(os.homedir(), filePath.slice(2))
   return filePath
+}
+
+/**
+ * 验证 Buffer 是否为合法 UTF-8 编码。
+ * allowTruncatedEnd: 允许末尾的不完整多字节序列（用于部分读取的 buffer）
+ */
+function isValidUtf8(buf: Buffer, allowTruncatedEnd = false): boolean {
+  let i = 0
+  while (i < buf.length) {
+    const byte = buf[i]
+    let continuationBytes: number
+
+    if (byte <= 0x7F) {
+      i++
+      continue
+    } else if ((byte & 0xE0) === 0xC0) {
+      if (byte < 0xC2) return false
+      continuationBytes = 1
+    } else if ((byte & 0xF0) === 0xE0) {
+      continuationBytes = 2
+    } else if ((byte & 0xF8) === 0xF0) {
+      if (byte > 0xF4) return false
+      continuationBytes = 3
+    } else {
+      return false
+    }
+
+    if (i + continuationBytes >= buf.length) {
+      return allowTruncatedEnd
+    }
+
+    for (let j = 1; j <= continuationBytes; j++) {
+      if ((buf[i + j] & 0xC0) !== 0x80) return false
+    }
+
+    i += 1 + continuationBytes
+  }
+  return true
+}
+
+/**
+ * 检测 Buffer 编码：BOM → UTF-8 验证 → 回退 GB18030
+ */
+function detectEncoding(buf: Buffer, allowTruncatedEnd = false): string {
+  if (buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) return 'utf-8'
+  if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) return 'utf-16le'
+  if (buf.length >= 2 && buf[0] === 0xFE && buf[1] === 0xFF) return 'utf-16be'
+  if (isValidUtf8(buf, allowTruncatedEnd)) return 'utf-8'
+  return 'gb18030'
+}
+
+/**
+ * 按检测到的编码解码 Buffer，返回内容和编码名
+ */
+function decodeBuffer(buf: Buffer, allowTruncatedEnd = false): { content: string, encoding: string } {
+  const encoding = detectEncoding(buf, allowTruncatedEnd)
+  if (encoding === 'utf-8') {
+    const start = (buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) ? 3 : 0
+    return { content: buf.toString('utf-8', start), encoding }
+  }
+  return { content: iconv.decode(buf, encoding), encoding }
+}
+
+/**
+ * 读取文本文件，自动检测编码（UTF-8 / GBK / GB18030 / UTF-16 等）
+ */
+function readTextFileSync(filePath: string): string {
+  return decodeBuffer(fs.readFileSync(filePath)).content
+}
+
+/**
+ * 读取文本文件并返回编码信息，用于编辑后以原编码写回
+ */
+function readTextFileWithEncoding(filePath: string): { content: string, encoding: string } {
+  return decodeBuffer(fs.readFileSync(filePath))
+}
+
+/**
+ * 以指定编码写入文件。UTF-8 用 Node 原生，其他编码用 iconv-lite
+ */
+function writeTextFileSync(filePath: string, content: string, encoding: string): void {
+  if (encoding === 'utf-8') {
+    fs.writeFileSync(filePath, content, 'utf-8')
+  } else {
+    fs.writeFileSync(filePath, iconv.encode(content, encoding))
+  }
 }
 
 /**
@@ -874,7 +961,7 @@ ${hint}`
       
       try {
         if (fileSize <= 10 * 1024 * 1024) {
-          const fullContent = fs.readFileSync(filePath, 'utf-8')
+          const fullContent = readTextFileSync(filePath)
           const lines = fullContent.split('\n')
           totalLines = lines.length
           sampleContent = lines.slice(0, 10).join('\n')
@@ -885,7 +972,7 @@ ${hint}`
           fs.readSync(fd, buffer, 0, sampleSize, 0)
           fs.closeSync(fd)
           
-          const sample = buffer.toString('utf-8')
+          const sample = decodeBuffer(buffer, true).content
           const sampleLines = sample.split('\n')
           const avgLineLength = sample.length / sampleLines.length
           totalLines = Math.floor(fileSize / avgLineLength)
@@ -941,7 +1028,7 @@ ${sampleContent ? `### ${t('file.info_preview')}\n\`\`\`\n${sampleContent}\n\`\`
     }
 
     if (startLine !== undefined || endLine !== undefined) {
-      const fullContent = fs.readFileSync(filePath, 'utf-8')
+      const fullContent = readTextFileSync(filePath)
       const allLines = fullContent.split('\n')
       totalLines = allLines.length
       const start = startLine !== undefined ? Math.max(1, startLine) - 1 : 0
@@ -950,14 +1037,14 @@ ${sampleContent ? `### ${t('file.info_preview')}\n\`\`\`\n${sampleContent}\n\`\`
       content = actualLines.join('\n')
       isPartialRead = actualLines.length < allLines.length
     } else if (maxLines !== undefined) {
-      const fullContent = fs.readFileSync(filePath, 'utf-8')
+      const fullContent = readTextFileSync(filePath)
       const allLines = fullContent.split('\n')
       totalLines = allLines.length
       actualLines = allLines.slice(0, maxLines)
       content = actualLines.join('\n')
       isPartialRead = actualLines.length < allLines.length
     } else if (tailLines !== undefined) {
-      const fullContent = fs.readFileSync(filePath, 'utf-8')
+      const fullContent = readTextFileSync(filePath)
       const allLines = fullContent.split('\n')
       totalLines = allLines.length
       actualLines = allLines.slice(-tailLines)
@@ -975,7 +1062,7 @@ ${sampleContent ? `### ${t('file.info_preview')}\n\`\`\`\n${sampleContent}\n\`\`
         })
         return { success: false, output: '', error: errorMsg }
       }
-      content = fs.readFileSync(filePath, 'utf-8')
+      content = readTextFileSync(filePath)
       actualLines = content.split('\n')
     }
 
@@ -1097,7 +1184,7 @@ export async function editFile(
   }
 
   try {
-    const fileContent = fs.readFileSync(filePath, 'utf-8')
+    const { content: fileContent, encoding: fileEncoding } = readTextFileWithEncoding(filePath)
 
     // 多层容错匹配
     const match = findEditMatch(fileContent, oldText)
@@ -1143,7 +1230,7 @@ export async function editFile(
         : fileContent.replace(oldText, newText)
     }
 
-    fs.writeFileSync(filePath, newContent, 'utf-8')
+    writeTextFileSync(filePath, newContent, fileEncoding)
 
     const resultMsg = replaceAll && match.count > 1
       ? t('file.edit_success_all', { path: filePath, count: match.count })
@@ -1350,7 +1437,16 @@ export async function writeLocalFile(
         break
       }
       case 'append': {
-        fs.appendFileSync(filePath, content!, 'utf-8')
+        if (fileExistsNow) {
+          const appendEncoding = detectEncoding(fs.readFileSync(filePath))
+          if (appendEncoding === 'utf-8') {
+            fs.appendFileSync(filePath, content!, 'utf-8')
+          } else {
+            fs.appendFileSync(filePath, iconv.encode(content!, appendEncoding))
+          }
+        } else {
+          fs.writeFileSync(filePath, content!, 'utf-8')
+        }
         resultMsg = `${t('file.result_appended')}: ${filePath}`
         break
       }
@@ -1364,11 +1460,12 @@ export async function writeLocalFile(
           })
           return { success: false, output: '', error: errorMsg }
         }
-        const lines = fs.readFileSync(filePath, 'utf-8').split('\n')
+        const { content: insertFileContent, encoding: insertEncoding } = readTextFileWithEncoding(filePath)
+        const lines = insertFileContent.split('\n')
         const insertIndex = Math.min(insertAtLine! - 1, lines.length)
         const contentLines = content!.split('\n')
         lines.splice(insertIndex, 0, ...contentLines)
-        fs.writeFileSync(filePath, lines.join('\n'), 'utf-8')
+        writeTextFileSync(filePath, lines.join('\n'), insertEncoding)
         resultMsg = `${t('file.result_inserted', { line: insertAtLine!, count: contentLines.length })}: ${filePath}`
         break
       }
@@ -1382,8 +1479,9 @@ export async function writeLocalFile(
           })
           return { success: false, output: '', error: errorMsg }
         }
-        const lines = fs.readFileSync(filePath, 'utf-8').split('\n')
-        const totalLines = lines.length
+        const { content: replaceFileContent, encoding: replaceEncoding } = readTextFileWithEncoding(filePath)
+        const rlLines = replaceFileContent.split('\n')
+        const totalLines = rlLines.length
         if (startLine! > totalLines) {
           const errorMsg = t('error.start_line_exceeds_total', { start: startLine!, total: totalLines })
           executor.addStep({
@@ -1396,8 +1494,8 @@ export async function writeLocalFile(
         const actualEndLine = Math.min(endLine!, totalLines)
         const deleteCount = actualEndLine - startLine! + 1
         const contentLines = content!.split('\n')
-        lines.splice(startLine! - 1, deleteCount, ...contentLines)
-        fs.writeFileSync(filePath, lines.join('\n'), 'utf-8')
+        rlLines.splice(startLine! - 1, deleteCount, ...contentLines)
+        writeTextFileSync(filePath, rlLines.join('\n'), replaceEncoding)
         resultMsg = `${t('file.result_replaced_lines', { start: startLine!, end: actualEndLine, deleteCount, newCount: contentLines.length })}: ${filePath}`
         break
       }
@@ -1411,19 +1509,19 @@ export async function writeLocalFile(
           })
           return { success: false, output: '', error: errorMsg }
         }
-        const fileContent = fs.readFileSync(filePath, 'utf-8')
+        const { content: regexFileContent, encoding: regexEncoding } = readTextFileWithEncoding(filePath)
         let regex: RegExp
         try {
           regex = new RegExp(pattern!, replaceAll ? 'g' : '')
         } catch {
           return { success: false, output: '', error: t('error.invalid_regex_pattern', { pattern: pattern! }) }
         }
-        const matches = fileContent.match(regex)
+        const matches = regexFileContent.match(regex)
         if (!matches || matches.length === 0) {
           return { success: false, output: '', error: t('error.regex_no_match', { pattern: pattern! }) }
         }
-        const newContent = fileContent.replace(regex, replacement!)
-        fs.writeFileSync(filePath, newContent, 'utf-8')
+        const newContent = regexFileContent.replace(regex, replacement!)
+        writeTextFileSync(filePath, newContent, regexEncoding)
         resultMsg = `${t('file.result_regex_replaced', { count: matches.length })}: ${filePath}`
         break
       }
