@@ -384,6 +384,8 @@ export class WatchService {
       ? true
       : (isDesktop && WatchService.AUTO_TRIGGER_TYPES.has(event.type) && !event.payload?.fromManualCheck)
 
+    const agentSessionId = `watch_${watch.id}_${Date.now()}`
+
     let ptyId: string | null = null
     let result: WatchExecutionResult
 
@@ -404,7 +406,7 @@ export class WatchService {
         }
         this.runningWatches.set(watch.id, { watchId: watch.id, ptyId: null, startTime })
         // 唤醒 Watch：发送 agent:step（内心独白），但不发送 agent:complete/error（不影响主聊天）
-        result = await this.executeWithAssistantAgent(watch, enhancedPrompt, isSilent, isWakeup)
+        result = await this.executeWithAssistantAgent(watch, enhancedPrompt, isSilent, isWakeup, agentSessionId)
       } else {
         // 其他输出类型：创建 PTY 执行
         if (watch.execution.type === 'local') {
@@ -424,7 +426,7 @@ export class WatchService {
           watchId: watch.id, ptyId, watchName: watch.name,
           prompt: enhancedPrompt, triggerType: event.type, executionType: watch.execution.type
         })
-        result = await this.executeWithPtyAgent(watch, enhancedPrompt, ptyId)
+        result = await this.executeWithPtyAgent(watch, enhancedPrompt, ptyId, agentSessionId)
       }
     } catch (error) {
       result = {
@@ -442,7 +444,7 @@ export class WatchService {
       }
     }
 
-    this.recordExecution(watch, event, result)
+    this.recordExecution(watch, event, result, agentSessionId)
 
     await this.deliverOutput(watch, result, isSilent)
 
@@ -467,7 +469,8 @@ export class WatchService {
     watch: WatchDefinition,
     prompt: string,
     silent: boolean = false,
-    wakeupMode: boolean = false
+    wakeupMode: boolean = false,
+    agentSessionId?: string
   ): Promise<WatchExecutionResult> {
     if (!this.config?.agentService) {
       return { success: false, output: '', error: 'Agent service not available', duration: 0 }
@@ -478,6 +481,9 @@ export class WatchService {
     const mainWindow = this.config.mainWindow
     let hasError = false
     let errorMessage = ''
+
+    // 每次 Watch 执行使用独立 session，保留工作记忆但分开存储步骤
+    this.config.agentService.startNewSession(agentId)
 
     // 唤醒模式：始终发送 agent:step（Awaken 面板内心独白），但不发送 complete/error
     // 普通模式：silent 时不发送任何 IPC，非 silent 时全部发送
@@ -516,7 +522,8 @@ export class WatchService {
         terminalOutput: [],
         systemInfo: { os: process.platform, shell: getDefaultShell() },
         terminalType: 'assistant',
-        ...(wakeupMode ? { wakeup: true, sessionId: '__wakeup__' } : {})
+        sessionId: agentSessionId,
+        ...(wakeupMode ? { wakeup: true } : {})
       }
 
       const timeoutMs = (watch.execution.timeout ?? DEFAULT_TIMEOUT_SECONDS) * 1000
@@ -554,7 +561,8 @@ export class WatchService {
   private async executeWithPtyAgent(
     watch: WatchDefinition,
     prompt: string,
-    ptyId: string | null
+    ptyId: string | null,
+    agentSessionId?: string
   ): Promise<WatchExecutionResult> {
     if (!this.config?.agentService) {
       return { success: false, output: '', error: 'Agent service not available', duration: 0 }
@@ -574,7 +582,8 @@ export class WatchService {
         ptyId,
         terminalOutput: [],
         systemInfo: { os: process.platform, shell: getDefaultShell() },
-        terminalType: watch.execution.type === 'ssh' ? 'ssh' : 'local'
+        terminalType: watch.execution.type === 'ssh' ? 'ssh' : 'local',
+        sessionId: agentSessionId
       }
 
       const callbacks: AgentCallbacks = {
@@ -989,7 +998,7 @@ export class WatchService {
 
   // ==================== 记录执行 ====================
 
-  private recordExecution(watch: WatchDefinition, event: SensorEvent, result: WatchExecutionResult): void {
+  private recordExecution(watch: WatchDefinition, event: SensorEvent, result: WatchExecutionResult, agentSessionId?: string): void {
     let status: WatchRunStatus = 'completed'
     if (result.skipped) status = 'skipped'
     else if (!result.success) status = 'failed'
@@ -1001,7 +1010,8 @@ export class WatchService {
       triggerType: event.type,
       output: result.output.substring(0, MAX_OUTPUT_LENGTH),
       error: result.error,
-      skipReason: result.skipReason
+      skipReason: result.skipReason,
+      agentSessionId
     }
 
     this.store.updateLastRun(watch.id, runRecord)

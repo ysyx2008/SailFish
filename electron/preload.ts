@@ -1139,6 +1139,10 @@ const electronAPI = {
     getAgentRecords: (startDate?: string, endDate?: string) => 
       ipcRenderer.invoke('history:getAgentRecords', startDate, endDate),
 
+    // 按 ID 获取单条 Agent 记录
+    getAgentRecordById: (id: string) =>
+      ipcRenderer.invoke('history:getAgentRecordById', id),
+
     // 获取数据目录路径
     getDataPath: () => ipcRenderer.invoke('history:getDataPath') as Promise<string>,
 

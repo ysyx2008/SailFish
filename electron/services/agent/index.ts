@@ -331,6 +331,14 @@ export class AgentService {
     const agent = this.getAgent(ptyId)
     agent?.resetSession()
   }
+
+  /**
+   * 开始新的持久化会话（保留工作记忆，仅重置 session 追踪）
+   */
+  startNewSession(agentId: string): void {
+    const agent = this.getAgent(agentId)
+    agent?.startNewSession()
+  }
   
   /**
    * 更新配置

@@ -2064,6 +2064,10 @@ export default {
     statusLabel: '状态',
     timeLabel: '时间',
     errorLabel: '错误',
+    viewConversation: '对话详情',
+    noConversationRecord: '该执行没有对话记录',
+    loadingConversation: '加载中...',
+    backToHistory: '返回列表',
     createdAt: '创建于',
     updatedAt: '更新于',
 

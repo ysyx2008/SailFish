@@ -2927,6 +2927,11 @@ ipcMain.handle('history:getAgentRecords', async (_event, startDate?: string, end
   return historyService.getAgentRecords(startDate, endDate)
 })
 
+// 按 ID 获取单条 Agent 记录（用于 Watch 执行详情查看）
+ipcMain.handle('history:getAgentRecordById', async (_event, id: string) => {
+  return historyService.getAgentRecordById(id)
+})
+
 // 获取数据目录路径
 ipcMain.handle('history:getDataPath', async () => {
   return historyService.getDataPath()

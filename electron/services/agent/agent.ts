@@ -813,6 +813,18 @@ export abstract class Agent {
     this.taskMemory.clear()
   }
 
+  /**
+   * 开始新的持久化会话（下次 run 时使用新 sessionId 创建独立 AgentRecord）
+   * 与 resetSession 不同：保留 TaskMemory（工作记忆），仅重置 session 追踪
+   * 用途：Watch 每次执行需要独立的历史记录，但 Agent 需要记住之前做过什么
+   */
+  startNewSession(): void {
+    this._sessionId = undefined
+    this._sessionStartTime = undefined
+    this._sessionSteps = []
+    this._sessionMessages = []
+  }
+
   
   /**
    * L2: 异步更新知识文档

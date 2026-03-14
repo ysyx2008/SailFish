@@ -175,6 +175,7 @@ export interface WatchRunRecord {
   output?: string
   error?: string
   skipReason?: string
+  agentSessionId?: string
 }
 
 export interface WatchHistoryRecord extends WatchRunRecord {

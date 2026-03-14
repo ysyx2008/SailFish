@@ -707,6 +707,15 @@ interface Window {
         status: 'completed' | 'failed' | 'aborted'
         duration: number
       }>>
+      getAgentRecordById: (id: string) => Promise<{
+        id: string
+        timestamp: number
+        userTask: string
+        steps: AgentStep[]
+        finalResult?: string
+        status: 'completed' | 'failed' | 'aborted'
+        duration: number
+      } | undefined>
       getStorageStats: () => Promise<{
         chatFiles: number
         agentFiles: number

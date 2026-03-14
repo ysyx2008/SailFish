@@ -2057,6 +2057,10 @@ export default {
     statusLabel: 'Status',
     timeLabel: 'Time',
     errorLabel: 'Error',
+    viewConversation: 'Conversation Details',
+    noConversationRecord: 'No conversation record for this execution',
+    loadingConversation: 'Loading...',
+    backToHistory: 'Back to List',
     createdAt: 'Created',
     updatedAt: 'Updated',
 

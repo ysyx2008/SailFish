@@ -67,6 +67,13 @@ const WATCH_AGENT_ID = '__watch__'
 const liveExecutionWatchId = ref<string | null>(null)
 const liveSteps = ref<Array<{ id: string; type: string; content: string; toolName?: string; toolResult?: string }>>([])
 
+// 执行历史详情查看
+const selectedHistoryRecord = ref<WatchHistoryRecord | null>(null)
+const historyDetailSteps = ref<Array<{ id: string; type: string; content: string; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: string; riskLevel?: string; timestamp: number }>>([])
+const historyDetailLoading = ref(false)
+const historyDetailUserTask = ref('')
+const historyDetailFinalResult = ref('')
+
 const templates = ref<WatchTemplateInfo[]>([])
 const selectedTemplateCategory = ref<string>('all')
 const sensorStatus = ref<Array<{ id: string; name: string; running: boolean; details?: Record<string, any> }>>([])
@@ -324,6 +331,41 @@ const clearWatchHistory = async () => {
   if (!confirm(t('watch.confirmClearHistory'))) return
   await window.electronAPI.watch.clearHistory()
   watchHistory.value = []
+  selectedHistoryRecord.value = null
+}
+
+const viewHistoryDetail = async (record: WatchHistoryRecord) => {
+  if (!record.agentSessionId) {
+    selectedHistoryRecord.value = record
+    historyDetailSteps.value = []
+    historyDetailUserTask.value = ''
+    historyDetailFinalResult.value = ''
+    return
+  }
+
+  selectedHistoryRecord.value = record
+  historyDetailLoading.value = true
+  historyDetailSteps.value = []
+  historyDetailUserTask.value = ''
+  historyDetailFinalResult.value = ''
+
+  try {
+    const agentRecord = await window.electronAPI.history.getAgentRecordById(record.agentSessionId)
+    if (agentRecord) {
+      historyDetailSteps.value = agentRecord.steps || []
+      historyDetailUserTask.value = agentRecord.userTask || ''
+      historyDetailFinalResult.value = agentRecord.finalResult || ''
+    }
+  } catch (e) {
+    console.error('Failed to load agent record:', e)
+  } finally {
+    historyDetailLoading.value = false
+  }
+}
+
+const closeHistoryDetail = () => {
+  selectedHistoryRecord.value = null
+  historyDetailSteps.value = []
 }
 
 const useTemplate = async (tpl: WatchTemplateInfo) => {
@@ -1271,27 +1313,98 @@ onUnmounted(() => {
           <!-- ===================== 执行历史 ===================== -->
           <template v-if="activeTab === 'history'">
             <div class="content-page">
-              <div class="page-toolbar">
-                <span class="page-title">{{ t('watch.executionHistory') }}</span>
-                <div class="toolbar-right">
-                  <button class="btn btn-sm btn-danger" @click="clearWatchHistory" :disabled="watchHistory.length === 0"><Trash2 :size="14" /> {{ t('watch.clearHistory') }}</button>
+              <!-- 历史详情视图 -->
+              <template v-if="selectedHistoryRecord">
+                <div class="page-toolbar">
+                  <button class="btn btn-sm" @click="closeHistoryDetail" style="gap: 4px;">
+                    ← {{ t('watch.backToHistory') }}
+                  </button>
+                  <span class="page-title" style="margin-left: 8px;">
+                    <span :class="getStatusClass(selectedHistoryRecord.status)">{{ getStatusIcon(selectedHistoryRecord.status) }}</span>
+                    {{ selectedHistoryRecord.watchName }}
+                  </span>
+                  <span class="history-detail-meta">
+                    {{ formatFullDate(selectedHistoryRecord.at) }} · {{ formatDuration(selectedHistoryRecord.duration) }}
+                  </span>
                 </div>
-              </div>
 
-              <div v-if="watchHistory.length > 0" class="history-table">
-                <div v-for="h in watchHistory" :key="h.id" class="history-row">
-                  <span class="history-status-icon" :class="getStatusClass(h.status)">{{ getStatusIcon(h.status) }}</span>
-                  <span class="history-name">{{ h.watchName }}</span>
-                  <span class="history-trigger"><component :is="getTriggerIcon(h.triggerType as WatchTriggerType)" :size="10" /> {{ h.triggerType }}</span>
-                  <span class="history-time">{{ formatFullDate(h.at) }}</span>
-                  <span class="history-duration">{{ formatDuration(h.duration) }}</span>
+                <div class="history-detail-content">
+                  <!-- 任务摘要 -->
+                  <div v-if="historyDetailUserTask" class="history-detail-task">
+                    <strong>{{ historyDetailUserTask }}</strong>
+                  </div>
+
+                  <!-- 加载中 -->
+                  <div v-if="historyDetailLoading" class="empty-state" style="padding: 40px 20px;">
+                    <RefreshCw :size="24" class="spinning empty-icon" />
+                    <p>{{ t('watch.loadingConversation') }}</p>
+                  </div>
+
+                  <!-- 无记录 -->
+                  <div v-else-if="historyDetailSteps.length === 0 && !selectedHistoryRecord.agentSessionId" class="empty-state" style="padding: 40px 20px;">
+                    <History :size="24" class="empty-icon" />
+                    <p>{{ t('watch.noConversationRecord') }}</p>
+                    <div v-if="selectedHistoryRecord.output" class="history-fallback-output">
+                      <pre>{{ selectedHistoryRecord.output }}</pre>
+                    </div>
+                  </div>
+
+                  <!-- 步骤列表 -->
+                  <div v-else-if="historyDetailSteps.length > 0" class="live-steps history-steps">
+                    <div
+                      v-for="step in historyDetailSteps"
+                      :key="step.id"
+                      class="live-step"
+                      :class="[step.type, step.type === 'thinking' ? 'step-thinking' : '']"
+                    >
+                      <span class="live-step-icon">{{ getStepIcon(step.type) }}</span>
+                      <div class="live-step-content">
+                        <div v-if="step.type === 'tool_call' && step.toolName" class="live-step-tool">
+                          {{ step.toolName }}{{ step.content ? ': ' + step.content : '' }}
+                        </div>
+                        <div v-else-if="step.content" class="live-step-text">{{ step.content }}</div>
+                        <div v-if="step.toolResult && step.toolResult !== step.content" class="live-step-result">
+                          <pre>{{ step.toolResult }}</pre>
+                        </div>
+                      </div>
+                      <span v-if="step.timestamp" class="step-time">{{ formatDate(step.timestamp) }}</span>
+                    </div>
+                  </div>
+
+                  <!-- 最终结果 -->
+                  <div v-if="historyDetailFinalResult" class="history-detail-final">
+                    {{ historyDetailFinalResult }}
+                  </div>
                 </div>
-              </div>
+              </template>
 
-              <div v-if="watchHistory.length === 0" class="empty-state" style="padding: 60px 20px;">
-                <History :size="40" class="empty-icon" />
-                <p>{{ t('watch.noHistory') }}</p>
-              </div>
+              <!-- 历史列表视图 -->
+              <template v-else>
+                <div class="page-toolbar">
+                  <span class="page-title">{{ t('watch.executionHistory') }}</span>
+                  <div class="toolbar-right">
+                    <button class="btn btn-sm btn-danger" @click="clearWatchHistory" :disabled="watchHistory.length === 0"><Trash2 :size="14" /> {{ t('watch.clearHistory') }}</button>
+                  </div>
+                </div>
+
+                <div v-if="watchHistory.length > 0" class="history-table">
+                  <div v-for="h in watchHistory" :key="h.id" class="history-row" :class="{ clickable: !!h.agentSessionId }" @click="viewHistoryDetail(h)">
+                    <span class="history-status-icon" :class="getStatusClass(h.status)">{{ getStatusIcon(h.status) }}</span>
+                    <span class="history-name">{{ h.watchName }}</span>
+                    <span class="history-trigger"><component :is="getTriggerIcon(h.triggerType as WatchTriggerType)" :size="10" /> {{ h.triggerType }}</span>
+                    <span class="history-time">{{ formatFullDate(h.at) }}</span>
+                    <span class="history-duration">{{ formatDuration(h.duration) }}</span>
+                    <span v-if="h.agentSessionId" class="history-detail-indicator">
+                      <Eye :size="12" />
+                    </span>
+                  </div>
+                </div>
+
+                <div v-if="watchHistory.length === 0" class="empty-state" style="padding: 60px 20px;">
+                  <History :size="40" class="empty-icon" />
+                  <p>{{ t('watch.noHistory') }}</p>
+                </div>
+              </template>
             </div>
           </template>
         </div>
@@ -2147,12 +2260,24 @@ onUnmounted(() => {
   padding: 8px 12px; border-radius: 6px; font-size: 12px;
 }
 .history-row:hover { background: var(--bg-hover); }
+.history-row.clickable { cursor: pointer; }
 
 .history-status-icon { min-width: 20px; text-align: center; font-size: 13px; }
 .history-name { flex: 1; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-trigger { display: flex; align-items: center; gap: 3px; color: var(--text-muted); min-width: 80px; }
 .history-time { color: var(--text-muted); min-width: 150px; }
 .history-duration { color: var(--text-muted); min-width: 60px; text-align: right; }
+.history-detail-indicator { color: var(--text-muted); opacity: 0; transition: opacity 0.15s; }
+.history-row:hover .history-detail-indicator { opacity: 0.7; }
+
+.history-detail-meta { color: var(--text-muted); font-size: 12px; margin-left: auto; }
+.history-detail-content { flex: 1; overflow-y: auto; padding: 0 24px 24px; }
+.history-detail-task { padding: 12px 16px; background: var(--bg-primary, rgba(0,0,0,0.15)); border-radius: 8px; margin-bottom: 12px; font-size: 13px; line-height: 1.5; }
+.history-detail-final { padding: 12px 16px; background: rgba(40, 167, 69, 0.08); border: 1px solid rgba(40, 167, 69, 0.2); border-radius: 8px; margin-top: 12px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+.history-steps { max-height: none; padding: 0; }
+.history-fallback-output { margin-top: 12px; padding: 12px; background: var(--bg-primary, rgba(0,0,0,0.15)); border-radius: 6px; font-size: 12px; }
+.history-fallback-output pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.step-time { flex-shrink: 0; font-size: 10px; color: var(--text-muted); opacity: 0.6; }
 
 /* ==================== Edit Form ==================== */
 
