@@ -75,43 +75,8 @@ const historyDetailUserTask = ref('')
 const historyDetailFinalResult = ref('')
 const historyPromptExpanded = ref(false)
 
-interface ToolGroup { toolName: string; args: string; result: string; timestamp: number }
-interface ConversationItem { type: 'thinking' | 'tool' | 'message' | 'error'; content: string; timestamp: number; tools?: ToolGroup[] }
-
-const historyConversation = computed<ConversationItem[]>(() => {
-  const items: ConversationItem[] = []
-  const steps = historyDetailSteps.value
-  let i = 0
-  while (i < steps.length) {
-    const s = steps[i]
-    if (s.type === 'user_task' || s.type === 'final_result' || s.type === 'streaming' || s.type === 'waiting') { i++; continue }
-
-    if (s.type === 'thinking' && s.content) {
-      items.push({ type: 'thinking', content: s.content, timestamp: s.timestamp })
-    } else if (s.type === 'tool_call') {
-      const toolGroup: ToolGroup[] = []
-      while (i < steps.length && steps[i].type === 'tool_call') {
-        const call = steps[i]
-        const resultStep = (i + 1 < steps.length && steps[i + 1].type === 'tool_result') ? steps[++i] : null
-        toolGroup.push({
-          toolName: call.toolName || 'unknown',
-          args: call.content || '',
-          result: resultStep?.toolResult || resultStep?.content || '',
-          timestamp: call.timestamp
-        })
-        i++
-      }
-      if (toolGroup.length) items.push({ type: 'tool', content: '', timestamp: toolGroup[0].timestamp, tools: toolGroup })
-      continue
-    } else if (s.type === 'message' && s.content) {
-      items.push({ type: 'message', content: s.content, timestamp: s.timestamp })
-    } else if (s.type === 'error' && s.content) {
-      items.push({ type: 'error', content: s.content, timestamp: s.timestamp })
-    }
-    i++
-  }
-  return items
-})
+const HIDDEN_STEP_TYPES = new Set(['user_task', 'streaming', 'waiting', 'waiting_password', 'confirm'])
+const filteredSteps = computed(() => historyDetailSteps.value.filter(s => !HIDDEN_STEP_TYPES.has(s.type)))
 
 const templates = ref<WatchTemplateInfo[]>([])
 const selectedTemplateCategory = ref<string>('all')
@@ -1376,14 +1341,9 @@ onUnmounted(() => {
                   </div>
 
                   <template v-else>
-                    <!-- 最终结果（放最上面，先看结论） -->
-                    <div v-if="historyDetailFinalResult" class="history-detail-final">
-                      {{ historyDetailFinalResult }}
-                    </div>
-
-                    <!-- 有完整步骤记录 -->
-                    <template v-if="historyConversation.length > 0">
-                      <!-- 任务提示词（默认折叠） -->
+                    <!-- 有完整步骤记录：与 AI 面板相同的平铺渲染 -->
+                    <template v-if="filteredSteps.length > 0">
+                      <!-- 任务指令（默认折叠） -->
                       <div v-if="historyDetailUserTask" class="history-prompt-section">
                         <div class="prompt-toggle" @click="historyPromptExpanded = !historyPromptExpanded">
                           <span class="prompt-toggle-icon">{{ historyPromptExpanded ? '▼' : '▶' }}</span>
@@ -1394,48 +1354,19 @@ onUnmounted(() => {
                         </div>
                       </div>
 
-                      <!-- 对话流程 -->
-                      <div class="detail-section-label" style="padding: 8px 0 6px;">{{ t('watch.viewConversation') }}</div>
-                      <div class="conversation-flow">
-                        <template v-for="(item, idx) in historyConversation" :key="idx">
-                          <!-- 思考 -->
-                          <div v-if="item.type === 'thinking'" class="conv-item conv-thinking">
-                            <span class="conv-icon">🤔</span>
-                            <div class="conv-body">
-                              <div class="conv-text-clamp">{{ item.content }}</div>
-                            </div>
-                            <span class="conv-time">{{ formatDate(item.timestamp) }}</span>
+                      <!-- 步骤列表（与 AiPanel 相同风格） -->
+                      <div class="history-steps-list">
+                        <div
+                          v-for="step in filteredSteps"
+                          :key="step.id"
+                          class="agent-step-inline"
+                          :class="[step.type]"
+                        >
+                          <span class="step-icon">{{ getStepIcon(step.type) }}</span>
+                          <div class="step-content">
+                            <div class="step-text">{{ step.content }}</div>
                           </div>
-
-                          <!-- 工具调用组 -->
-                          <div v-else-if="item.type === 'tool'" class="conv-item conv-tool-group">
-                            <div v-for="(tool, ti) in item.tools" :key="ti" class="conv-tool">
-                              <div class="conv-tool-header">
-                                <span class="conv-icon">🔧</span>
-                                <span class="conv-tool-name">{{ tool.toolName }}</span>
-                                <span v-if="tool.args" class="conv-tool-args">{{ tool.args }}</span>
-                                <span class="conv-time">{{ formatDate(tool.timestamp) }}</span>
-                              </div>
-                              <div v-if="tool.result" class="conv-tool-result">
-                                <pre>{{ tool.result }}</pre>
-                              </div>
-                            </div>
-                          </div>
-
-                          <!-- 消息 -->
-                          <div v-else-if="item.type === 'message'" class="conv-item conv-message">
-                            <span class="conv-icon">💬</span>
-                            <div class="conv-body">{{ item.content }}</div>
-                            <span class="conv-time">{{ formatDate(item.timestamp) }}</span>
-                          </div>
-
-                          <!-- 错误 -->
-                          <div v-else-if="item.type === 'error'" class="conv-item conv-error">
-                            <span class="conv-icon">❌</span>
-                            <div class="conv-body">{{ item.content }}</div>
-                            <span class="conv-time">{{ formatDate(item.timestamp) }}</span>
-                          </div>
-                        </template>
+                        </div>
                       </div>
                     </template>
 
@@ -2347,12 +2278,10 @@ onUnmounted(() => {
 
 .history-detail-meta { color: var(--text-muted); font-size: 12px; margin-left: auto; }
 .history-detail-content { flex: 1; overflow-y: auto; padding: 0 24px 24px; }
-.history-detail-final { padding: 12px 16px; background: rgba(40, 167, 69, 0.08); border: 1px solid rgba(40, 167, 69, 0.2); border-radius: 8px; margin-bottom: 12px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
 .history-fallback-output { padding: 12px 16px; background: var(--bg-primary, rgba(0,0,0,0.15)); border-radius: 8px; font-size: 13px; line-height: 1.6; }
 .fallback-text { white-space: pre-wrap; word-break: break-word; }
 .history-legacy-hint { padding: 8px 0; font-size: 11px; color: var(--text-muted); opacity: 0.7; }
 .detail-section-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-.step-time { flex-shrink: 0; font-size: 10px; color: var(--text-muted); opacity: 0.6; }
 
 /* Prompt section (collapsible) */
 .history-prompt-section { margin-bottom: 8px; }
@@ -2361,25 +2290,22 @@ onUnmounted(() => {
 .prompt-toggle-icon { font-size: 10px; color: var(--text-muted); width: 12px; }
 .history-detail-task { padding: 12px 16px; background: var(--bg-primary, rgba(0,0,0,0.15)); border-radius: 8px; margin-top: 4px; margin-bottom: 8px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; color: var(--text-secondary); }
 
-/* Conversation flow */
-.conversation-flow { display: flex; flex-direction: column; gap: 6px; }
-.conv-item { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.5; padding: 8px 12px; border-radius: 6px; }
-.conv-icon { flex-shrink: 0; font-size: 13px; width: 20px; text-align: center; }
-.conv-body { flex: 1; min-width: 0; word-break: break-word; white-space: pre-wrap; }
-.conv-time { flex-shrink: 0; font-size: 10px; color: var(--text-muted); opacity: 0.6; }
-
-.conv-thinking { background: rgba(59, 130, 246, 0.06); border-left: 3px solid rgba(59, 130, 246, 0.3); }
-.conv-text-clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; color: var(--text-secondary); }
-.conv-message { background: var(--bg-primary, rgba(0,0,0,0.1)); }
-.conv-error { background: rgba(220, 53, 69, 0.08); border-left: 3px solid rgba(220, 53, 69, 0.4); color: #dc3545; }
-
-.conv-tool-group { display: flex; flex-direction: column; gap: 4px; padding: 0; }
-.conv-tool { border-radius: 6px; overflow: hidden; border: 1px solid var(--border-color, rgba(255,255,255,0.06)); }
-.conv-tool-header { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--bg-primary, rgba(0,0,0,0.15)); font-size: 12px; }
-.conv-tool-name { font-weight: 600; color: var(--accent-primary); }
-.conv-tool-args { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 11px; }
-.conv-tool-result { padding: 8px 12px; font-size: 11px; background: var(--bg-primary, rgba(0,0,0,0.08)); max-height: 200px; overflow-y: auto; }
-.conv-tool-result pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+/* Steps list (same style as AiPanel) */
+.history-steps-list { padding: 4px 0; }
+.history-steps-list .agent-step-inline { display: flex; gap: 8px; padding: 8px 0; font-size: 12px; color: var(--text-secondary); border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+.history-steps-list .agent-step-inline:last-child { border-bottom: none; }
+.history-steps-list .step-icon { flex-shrink: 0; font-size: 14px; }
+.history-steps-list .step-content { flex: 1; min-width: 0; }
+.history-steps-list .step-text { word-break: break-word; line-height: 1.5; white-space: pre-wrap; }
+.history-steps-list .agent-step-inline.thinking { color: rgba(110, 231, 183, 0.75); }
+.history-steps-list .agent-step-inline.tool_call { color: var(--accent-primary); }
+.history-steps-list .agent-step-inline.tool_call .step-text { color: var(--text-primary); }
+.history-steps-list .agent-step-inline.tool_result { color: var(--text-secondary); }
+.history-steps-list .agent-step-inline.tool_result .step-text { font-size: 11px; max-height: 120px; overflow-y: auto; background: var(--bg-primary, rgba(0,0,0,0.1)); padding: 6px 8px; border-radius: 4px; }
+.history-steps-list .agent-step-inline.error { color: var(--accent-error, #f44336); }
+.history-steps-list .agent-step-inline.message { color: var(--text-primary); }
+.history-steps-list .agent-step-inline.final_result { color: var(--text-primary); }
+.history-steps-list .agent-step-inline.final_result .step-text { background: rgba(40, 167, 69, 0.08); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(40, 167, 69, 0.2); }
 
 /* ==================== Edit Form ==================== */
 
