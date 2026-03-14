@@ -779,10 +779,17 @@ export async function messageUser(
 
   if (deliveredVia.length > 0) {
     addProactiveContext(companionAgentId, message, title)
-    const output = t('im.tool_notification_sent', { platform: deliveredVia.join(', ') })
+    const channels = deliveredVia.join(', ')
+    const timeStr = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    const truncatedMsg = message.length > 200 ? message.substring(0, 200) + '...' : message
+    const output = `<notification_delivered>
+<time>${timeStr}</time>
+<channels>${channels}</channels>
+<content>${truncatedMsg}</content>
+</notification_delivered>`
     executor.addStep({
       type: 'tool_result',
-      content: t('im.tool_notification_sent_step', { platform: deliveredVia.join(', ') }),
+      content: t('im.tool_notification_sent_step', { platform: channels }),
       toolName: 'talk_to_user',
       toolResult: output
     })

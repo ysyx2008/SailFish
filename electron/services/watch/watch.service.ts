@@ -516,7 +516,7 @@ export class WatchService {
         terminalOutput: [],
         systemInfo: { os: process.platform, shell: getDefaultShell() },
         terminalType: 'assistant',
-        ...(wakeupMode ? { wakeup: true } : {})
+        ...(wakeupMode ? { wakeup: true, sessionId: '__wakeup__' } : {})
       }
 
       const timeoutMs = (watch.execution.timeout ?? DEFAULT_TIMEOUT_SECONDS) * 1000
