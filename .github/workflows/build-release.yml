@@ -239,3 +239,14 @@ jobs:
           fi
           
           echo "✅ All files uploaded to OSS successfully!"
+
+  # Release 发布后触发 Cloudflare Pages 重新构建官网（确保版本号更新）
+  trigger-cloudflare:
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Trigger Cloudflare Pages deploy
+        run: |
+          curl -s -X POST "${{ secrets.CLOUDFLARE_DEPLOY_HOOK_URL }}"
+          echo "✅ Cloudflare Pages deploy triggered!"
