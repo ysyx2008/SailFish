@@ -243,7 +243,9 @@ export class EmailSensor implements Sensor {
       conn.reconnectDelay = INITIAL_RECONNECT_DELAY_MS
 
       log.info(`Connected to ${conn.account.email}`)
-      await this.startIdleLoop(conn)
+      this.startIdleLoop(conn).catch(err => {
+        log.error(`${conn.account.email}: IDLE loop failed:`, err)
+      })
     } catch (err) {
       log.error(`${conn.account.email}: Failed to connect:`, err)
       conn.connected = false

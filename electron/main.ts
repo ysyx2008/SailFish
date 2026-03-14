@@ -1016,9 +1016,6 @@ app.whenReady().then(async () => {
         heartbeatEnabled: awakened,
         heartbeatIntervalMinutes: heartbeatInterval
       }).then(async () => {
-        sensorService.appLifecycle.notifyAppStarted()
-        bondService.recalculate()
-
         // 安全保障：如果觉醒模式开启但心跳未启动，强制启动
         if (awakened && !sensorService.heartbeat.running) {
           log.warn('觉醒模式已开启但心跳未启动，强制启动心跳')
@@ -1028,6 +1025,11 @@ app.whenReady().then(async () => {
       }).catch(e => {
         log.error('Sensor 服务启动失败:', e)
       })
+
+      // AppLifecycleSensor.start() 是同步的，在 sensorService.start() 的 for 循环中已完成
+      // 不能放在 .then() 里，因为 EmailSensor 的 IDLE 循环会阻塞 Promise.allSettled
+      sensorService.appLifecycle.notifyAppStarted()
+      bondService.recalculate()
 
       // 觉醒模式：确保内置「唤醒」关切存在
       if (awakened) {
