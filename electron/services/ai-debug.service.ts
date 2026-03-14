@@ -57,6 +57,25 @@ export interface AiLogEntry {
   }
 }
 
+function formatLocalTime(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const ms = String(date.getMilliseconds()).padStart(3, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}-${ms}`
+}
+
+function formatLocalISO(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const ms = String(date.getMilliseconds()).padStart(3, '0')
+  const offset = -date.getTimezoneOffset()
+  const sign = offset >= 0 ? '+' : '-'
+  const absOffset = Math.abs(offset)
+  const tzH = pad(Math.floor(absOffset / 60))
+  const tzM = pad(absOffset % 60)
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${ms}${sign}${tzH}:${tzM}`
+}
+
 class AiDebugService extends EventEmitter {
   private debugWindow: BrowserWindow | null = null
   private logs: AiLogEntry[] = []
@@ -89,13 +108,14 @@ class AiDebugService extends EventEmitter {
   private createLogFile(): void {
     try {
       const logDir = this.getLogDir()
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      const now = new Date()
+      const timestamp = formatLocalTime(now)
       this.logFilePath = path.join(logDir, `ai-debug-${timestamp}.log`)
       this.logFileStream = fs.createWriteStream(this.logFilePath, { flags: 'a' })
       
       // 写入日志文件头
       this.logFileStream.write(`# AI Debug Log\n`)
-      this.logFileStream.write(`# Started: ${new Date().toISOString()}\n`)
+      this.logFileStream.write(`# Started: ${formatLocalISO(now)}\n`)
       this.logFileStream.write(`# ================================\n\n`)
       
       console.log(`[AI Debug] Log file created: ${this.logFilePath}`)
@@ -110,7 +130,7 @@ class AiDebugService extends EventEmitter {
   private closeLogFile(): void {
     if (this.logFileStream) {
       this.logFileStream.write(`\n# ================================\n`)
-      this.logFileStream.write(`# Ended: ${new Date().toISOString()}\n`)
+      this.logFileStream.write(`# Ended: ${formatLocalISO(new Date())}\n`)
       this.logFileStream.end()
       this.logFileStream = null
     }
@@ -123,7 +143,7 @@ class AiDebugService extends EventEmitter {
     if (!this.logFileStream) return
 
     try {
-      const time = new Date(entry.timestamp).toISOString()
+      const time = formatLocalISO(new Date(entry.timestamp))
       let line = `[${time}] [${entry.type.toUpperCase()}] `
       
       switch (entry.type) {
@@ -238,7 +258,7 @@ class AiDebugService extends EventEmitter {
     ipcMain.handle('aiDebug:exportLogs', async (_event, filePath: string) => {
       try {
         const content = this.logs.map(entry => {
-          const time = new Date(entry.timestamp).toISOString()
+          const time = formatLocalISO(new Date(entry.timestamp))
           return `[${time}] [${entry.type}] ${JSON.stringify(entry.data)}`
         }).join('\n')
         fs.writeFileSync(filePath, content, 'utf-8')
