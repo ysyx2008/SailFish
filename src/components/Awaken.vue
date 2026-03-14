@@ -1365,6 +1365,9 @@ onUnmounted(() => {
                           <span class="step-icon">{{ getStepIcon(step.type) }}</span>
                           <div class="step-content">
                             <div class="step-text">{{ step.content }}</div>
+                            <div v-if="step.toolResult && step.toolResult !== step.content" class="step-tool-result">
+                              <pre>{{ step.toolResult }}</pre>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -2302,6 +2305,8 @@ onUnmounted(() => {
 .history-steps-list .agent-step-inline.tool_call .step-text { color: var(--text-primary); }
 .history-steps-list .agent-step-inline.tool_result { color: var(--text-secondary); }
 .history-steps-list .agent-step-inline.tool_result .step-text { font-size: 11px; max-height: 120px; overflow-y: auto; background: var(--bg-primary, rgba(0,0,0,0.1)); padding: 6px 8px; border-radius: 4px; }
+.step-tool-result { margin-top: 4px; font-size: 11px; max-height: 150px; overflow-y: auto; background: var(--bg-primary, rgba(0,0,0,0.1)); padding: 6px 8px; border-radius: 4px; color: var(--text-secondary); }
+.step-tool-result pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
 .history-steps-list .agent-step-inline.error { color: var(--accent-error, #f44336); }
 .history-steps-list .agent-step-inline.message { color: var(--text-primary); }
 .history-steps-list .agent-step-inline.final_result { color: var(--text-primary); }
