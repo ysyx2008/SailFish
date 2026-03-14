@@ -1329,52 +1329,60 @@ onUnmounted(() => {
                 </div>
 
                 <div class="history-detail-content">
-                  <!-- 任务摘要 -->
-                  <div v-if="historyDetailUserTask" class="history-detail-task">
-                    <strong>{{ historyDetailUserTask }}</strong>
-                  </div>
-
                   <!-- 加载中 -->
                   <div v-if="historyDetailLoading" class="empty-state" style="padding: 40px 20px;">
                     <RefreshCw :size="24" class="spinning empty-icon" />
                     <p>{{ t('watch.loadingConversation') }}</p>
                   </div>
 
-                  <!-- 无记录 -->
-                  <div v-else-if="historyDetailSteps.length === 0 && !selectedHistoryRecord.agentSessionId" class="empty-state" style="padding: 40px 20px;">
-                    <History :size="24" class="empty-icon" />
-                    <p>{{ t('watch.noConversationRecord') }}</p>
-                    <div v-if="selectedHistoryRecord.output" class="history-fallback-output">
-                      <pre>{{ selectedHistoryRecord.output }}</pre>
+                  <template v-else>
+                    <!-- 任务提示词 -->
+                    <div v-if="historyDetailUserTask" class="history-detail-task">
+                      <div class="detail-section-label">{{ t('watch.prompt') }}</div>
+                      <div>{{ historyDetailUserTask }}</div>
                     </div>
-                  </div>
 
-                  <!-- 步骤列表 -->
-                  <div v-else-if="historyDetailSteps.length > 0" class="live-steps history-steps">
-                    <div
-                      v-for="step in historyDetailSteps"
-                      :key="step.id"
-                      class="live-step"
-                      :class="[step.type, step.type === 'thinking' ? 'step-thinking' : '']"
-                    >
-                      <span class="live-step-icon">{{ getStepIcon(step.type) }}</span>
-                      <div class="live-step-content">
-                        <div v-if="step.type === 'tool_call' && step.toolName" class="live-step-tool">
-                          {{ step.toolName }}{{ step.content ? ': ' + step.content : '' }}
-                        </div>
-                        <div v-else-if="step.content" class="live-step-text">{{ step.content }}</div>
-                        <div v-if="step.toolResult && step.toolResult !== step.content" class="live-step-result">
-                          <pre>{{ step.toolResult }}</pre>
+                    <!-- 有完整步骤记录 -->
+                    <template v-if="historyDetailSteps.length > 0">
+                      <div class="detail-section-label" style="padding: 12px 0 6px;">{{ t('watch.viewConversation') }}</div>
+                      <div class="live-steps history-steps">
+                        <div
+                          v-for="step in historyDetailSteps"
+                          :key="step.id"
+                          class="live-step"
+                          :class="[step.type, step.type === 'thinking' ? 'step-thinking' : '']"
+                        >
+                          <span class="live-step-icon">{{ getStepIcon(step.type) }}</span>
+                          <div class="live-step-content">
+                            <div v-if="step.type === 'tool_call' && step.toolName" class="live-step-tool">
+                              {{ step.toolName }}{{ step.content ? ': ' + step.content : '' }}
+                            </div>
+                            <div v-else-if="step.content" class="live-step-text">{{ step.content }}</div>
+                            <div v-if="step.toolResult && step.toolResult !== step.content" class="live-step-result">
+                              <pre>{{ step.toolResult }}</pre>
+                            </div>
+                          </div>
+                          <span v-if="step.timestamp" class="step-time">{{ formatDate(step.timestamp) }}</span>
                         </div>
                       </div>
-                      <span v-if="step.timestamp" class="step-time">{{ formatDate(step.timestamp) }}</span>
-                    </div>
-                  </div>
 
-                  <!-- 最终结果 -->
-                  <div v-if="historyDetailFinalResult" class="history-detail-final">
-                    {{ historyDetailFinalResult }}
-                  </div>
+                      <!-- 最终结果 -->
+                      <div v-if="historyDetailFinalResult" class="history-detail-final">
+                        {{ historyDetailFinalResult }}
+                      </div>
+                    </template>
+
+                    <!-- 无完整步骤：回退显示 output -->
+                    <template v-else>
+                      <div v-if="selectedHistoryRecord.output" class="history-fallback-output">
+                        <div class="detail-section-label">{{ t('watch.outputLabel') }}</div>
+                        <div class="fallback-text">{{ selectedHistoryRecord.output }}</div>
+                      </div>
+                      <div v-if="!selectedHistoryRecord.agentSessionId" class="history-legacy-hint">
+                        {{ t('watch.legacyRecordHint') }}
+                      </div>
+                    </template>
+                  </template>
                 </div>
               </template>
 
@@ -2272,11 +2280,13 @@ onUnmounted(() => {
 
 .history-detail-meta { color: var(--text-muted); font-size: 12px; margin-left: auto; }
 .history-detail-content { flex: 1; overflow-y: auto; padding: 0 24px 24px; }
-.history-detail-task { padding: 12px 16px; background: var(--bg-primary, rgba(0,0,0,0.15)); border-radius: 8px; margin-bottom: 12px; font-size: 13px; line-height: 1.5; }
+.history-detail-task { padding: 12px 16px; background: var(--bg-primary, rgba(0,0,0,0.15)); border-radius: 8px; margin-bottom: 12px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
 .history-detail-final { padding: 12px 16px; background: rgba(40, 167, 69, 0.08); border: 1px solid rgba(40, 167, 69, 0.2); border-radius: 8px; margin-top: 12px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
 .history-steps { max-height: none; padding: 0; }
-.history-fallback-output { margin-top: 12px; padding: 12px; background: var(--bg-primary, rgba(0,0,0,0.15)); border-radius: 6px; font-size: 12px; }
-.history-fallback-output pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.history-fallback-output { padding: 12px 16px; background: var(--bg-primary, rgba(0,0,0,0.15)); border-radius: 8px; font-size: 13px; line-height: 1.6; }
+.fallback-text { white-space: pre-wrap; word-break: break-word; }
+.history-legacy-hint { padding: 8px 0; font-size: 11px; color: var(--text-muted); opacity: 0.7; }
+.detail-section-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
 .step-time { flex-shrink: 0; font-size: 10px; color: var(--text-muted); opacity: 0.6; }
 
 /* ==================== Edit Form ==================== */

@@ -2068,6 +2068,8 @@ export default {
     noConversationRecord: '该执行没有对话记录',
     loadingConversation: '加载中...',
     backToHistory: '返回列表',
+    outputLabel: 'AI 输出',
+    legacyRecordHint: '此记录产生于更新之前，仅包含输出摘要。新的执行记录将包含完整对话详情。',
     createdAt: '创建于',
     updatedAt: '更新于',
 

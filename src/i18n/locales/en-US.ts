@@ -2061,6 +2061,8 @@ export default {
     noConversationRecord: 'No conversation record for this execution',
     loadingConversation: 'Loading...',
     backToHistory: 'Back to List',
+    outputLabel: 'AI Output',
+    legacyRecordHint: 'This record was created before the update and only contains an output summary. New executions will include full conversation details.',
     createdAt: 'Created',
     updatedAt: 'Updated',
 
