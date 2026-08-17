@@ -1301,6 +1301,172 @@ async function agentRun(args: string[]): Promise<void> {
   }
 }
 
+// ==================== Companion（联络） ====================
+
+async function promptYesNo(question: string): Promise<boolean> {
+  if (!process.stdin.isTTY) {
+    console.log('   无 TTY：已拒绝（加 --mode free 或 --free 可自动批准）')
+    return false
+  }
+  const readline = await import('readline')
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    const answer = await new Promise<string>((resolve) => {
+      rl.question(`${question} [y/N] `, resolve)
+    })
+    return /^y(es)?$/i.test(answer.trim())
+  } finally {
+    rl.close()
+  }
+}
+
+/**
+ * 以联络（__companion__）身份对话：`sailfish companion "消息"`。
+ *
+ * 用途：无头回归联络专属能力（manage_tasks 任务管理只对 __companion__ 注册）。
+ * 联络经 manage_tasks create 创建的任务在 CLI 无窗口下由后端直驱执行；
+ * 本命令在联络回复后继续「值班」：轮询受管任务，待确认的交互式转达
+ * （真实走一遍转述制 confirm 链路），全部跑完才退出。
+ */
+async function companionChat(args: string[]): Promise<void> {
+  const { positional, flags } = parseArgs(args)
+  const message = positional.join(' ')
+  if (!message) {
+    console.error(`Usage: ${cliName()} companion <消息> [--mode <strict|relaxed|free>] [--free] [--task-wait <秒>]`)
+    process.exit(1)
+  }
+
+  applyEnvOverrides()
+
+  const { PtyService } = require('../services/pty.service')
+  const { AgentService } = require('../services/agent')
+  const { McpService } = require('../services/mcp.service')
+  const { COMPANION_AGENT_KEY } = require('@shared/types')
+
+  const config = getConfig()
+  const ai = getAi()
+  const pty = new PtyService()
+  const hostProfile = getHostProfile()
+  const mcp = new McpService()
+  const { SshService } = require('../services/ssh.service')
+  const ssh = new SshService()
+
+  const agent = new AgentService(ai, pty, hostProfile, mcp, config, ssh)
+  agent.setHistoryService(getHistory())
+
+  const modeRaw = String(flags.mode || (flags.free ? 'free' : 'relaxed'))
+  const mode = ['strict', 'relaxed', 'free'].includes(modeRaw) ? modeRaw : 'relaxed'
+  // 任务值班上限：防止任务长挂导致 CLI 永不退出
+  const taskWaitSec = Math.max(0, Number(flags['task-wait'] ?? 600) || 0)
+
+  const stepPrefix = (type: string) =>
+    type === 'thinking' ? '💭' : type === 'tool_call' ? '🔧' :
+    type === 'tool_result' ? '📋' : type === 'message' ? '💬' : '  '
+
+  const callbacks = {
+    onStep: (_agentId: string, step: any) => {
+      // 流式中间态不打（CLI 只看落定的步骤）；final_result 与末尾 message 重复，跳过
+      if (step.isStreaming) return
+      if (step.type === 'final_result' || step.type === 'user_task') return
+      const content = (step.content || '').substring(0, 300)
+      console.log(`${stepPrefix(step.type)} [${step.type}] ${content}`)
+      if (step.toolName) console.log(`   Tool: ${step.toolName}`)
+    },
+    onNeedConfirm: (confirmation: any) => {
+      console.log(`\n⚠️  联络自身操作需确认: ${confirmation.toolName} (risk: ${confirmation.riskLevel})`)
+      void (async () => {
+        if (mode === 'free') {
+          console.log('   自动批准（--mode free / --free）')
+          agent.confirmToolCall(COMPANION_AGENT_KEY, confirmation.toolCallId, true)
+          return
+        }
+        const ok = await promptYesNo('   批准该操作？')
+        agent.confirmToolCall(COMPANION_AGENT_KEY, confirmation.toolCallId, ok)
+        console.log(ok ? '   已批准' : '   已拒绝')
+      })().catch(err => console.error('   确认处理异常:', err))
+    },
+    onError: (_agentId: string, error: string) => {
+      console.error(`\n✗ 联络执行出错: ${error}`)
+    }
+  }
+
+  console.log(`联络对话: "${message}"`)
+  console.log(`执行模式: ${mode}\n`)
+
+  try {
+    const result = await agent.runAssistant(
+      COMPANION_AGENT_KEY,
+      message,
+      {
+        terminalOutput: [],
+        systemInfo: { os: getLocalOS(), shell: getDefaultShell() },
+        terminalType: 'assistant' as const
+      },
+      { executionMode: mode as 'strict' | 'relaxed' | 'free' },
+      undefined,
+      callbacks
+    )
+    console.log('\n=== 联络回复 ===')
+    console.log(result)
+  } catch (error: any) {
+    console.error('\n联络执行失败:', error.message || error)
+  }
+
+  // 任务值班：联络可能已通过 manage_tasks 创建后台任务（CLI 无窗口 → 后端直驱）。
+  // 待确认的任务在这里交互式转达；全部空闲（或超时）才退出。
+  const supervisor = agent.getTaskSupervisor()
+  const deadline = Date.now() + taskWaitSec * 1000
+  const handledConfirmations = new Set<string>()
+  let announcedWait = false
+  let idleRounds = 0
+  while (Date.now() < deadline) {
+    let busy = 0
+    for (const task of supervisor.listSupervisedTasks()) {
+      const pending = task.pendingConfirmation
+      if (pending && !handledConfirmations.has(pending.toolCallId)) {
+        handledConfirmations.add(pending.toolCallId)
+        console.log(`\n⏳ 任务「${task.title}」请求确认：${pending.toolName}（${pending.riskLevel}）`)
+        console.log(`   ${pending.argsPreview}`)
+        const ok = mode === 'free' ? true : await promptYesNo('   批准该操作？')
+        if (mode === 'free') console.log('   自动批准（--mode free）')
+        // 传达结果可能是 stale（等待期间任务已被停止/确认已失效），如实呈现
+        const relay = supervisor.confirmTask(task.agentKey, pending.toolCallId, ok)
+        if (!relay.ok) {
+          console.log(`   传达失败（${relay.reason ?? 'unknown'}）——任务侧可能已自行结束`)
+        } else {
+          console.log(ok ? '   已批准' : '   已拒绝')
+        }
+      }
+      if (task.isRunning || task.pendingConfirmation) busy++
+    }
+    // 起步宽限：任务经后端直驱异步启动，首轮轮询可能尚未注册；
+    // 连续两轮空闲才判定「没有任务」，避免联络一回复完 CLI 就退
+    if (busy === 0) {
+      idleRounds++
+      if (idleRounds >= 2) break
+    } else {
+      idleRounds = 0
+    }
+    if (!announcedWait) {
+      announcedWait = true
+      console.log(`\n… 后台任务执行中，值班等待（上限 ${taskWaitSec}s，--task-wait 可调）`)
+    }
+    await new Promise(r => setTimeout(r, 2000))
+  }
+  const remaining = supervisor.listSupervisedTasks().filter((t: any) => t.isRunning)
+  if (remaining.length > 0) {
+    console.log(`\n⚠️ 值班超时，仍有 ${remaining.length} 个任务在跑（进程退出后任务中断）：`)
+    for (const t of remaining) {
+      console.log(`   - 「${t.title}」(${t.agentKey}) phase=${t.phase ?? '-'} steps=${t.stepCount}`)
+    }
+  }
+  // 进程将退出：立即冲刷挂起的复命事件并等投递落盘（防抖挂起/异步投递未完成都会丢）
+  await supervisor.flushPendingEvents()
+
+  // 关掉 keep-alive 连接池，否则 Node 事件循环还会挂十几秒
+  ai.dispose()
+}
+
 // ==================== IM Commands ====================
 
 const SUPPORTED_IM_PLATFORMS = ['dingtalk', 'feishu', 'slack', 'telegram', 'wecom'] as const
@@ -1814,6 +1980,7 @@ SailFish CLI v${version}
   history list|stats
   watch list|history|templates
   knowledge search|list|stats
+  companion <消息>           以联络身份对话（含任务管理；联络建的任务由 CLI 值班到跑完）
   --help / -h / help
   --version / -v
 
@@ -1823,6 +1990,7 @@ SailFish CLI v${version}
   --mode <strict|relaxed|free>  执行模式（默认 relaxed）
   --free                     等同 --mode free（危险：跳过确认）
   --task / -t <text>         显式任务文本
+  --task-wait <秒>           companion 命令专用：后台任务值班上限（默认 600；0 = 不值班）
 
 替我审批（默认关；只对交互式任务生效）:
   ${cliName()} config:set autoApprovalReview true
@@ -1845,6 +2013,7 @@ SailFish CLI v${version}
   ${cliName()} --sandbox "装机命令试跑，别动真数据" --free
   ${cliName()} models
   ${cliName()} agent:run "重启本机 nginx" --mode free
+  ${cliName()} companion "帮我建个任务：统计 docs 下 markdown 数量" --task-wait 300
 `)
 }
 
@@ -1889,6 +2058,11 @@ function resolveCliInvocation(args: string[]): { command: string; cmdArgs: strin
 
   if (head === 'models') {
     return { command: 'ai:models', cmdArgs: positional.slice(1) }
+  }
+  if (head === 'companion') {
+    // 从原始 args 截取以保留 flags（--mode 等）
+    const idx = args.indexOf(head)
+    return { command: 'companion:chat', cmdArgs: idx >= 0 ? args.slice(idx + 1) : positional.slice(1) }
   }
   if (head === 'history') {
     const sub = positional[1]
@@ -2052,6 +2226,7 @@ async function runCli(): Promise<void> {
       case 'ai:models':      await aiModels(); break
 
       case 'agent:run':      await agentRun(cmdArgs); break
+      case 'companion:chat': await companionChat(cmdArgs); break
 
       case 'knowledge:search':  await knowledgeSearch(cmdArgs); break
       case 'knowledge:list':    await knowledgeList(); break

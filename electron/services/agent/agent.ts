@@ -173,7 +173,7 @@ export abstract class Agent {
   profileId?: string
 
   /** Agent 实例的逻辑 ID（用于路由 proactive message 等场景） */
-  private _agentId?: string
+  protected _agentId?: string
 
   /** 这场 run 里的伙计花名册（仅主人持有） */
   private _subAgentRoster?: SubAgentRoster
@@ -1400,6 +1400,47 @@ export abstract class Agent {
   }
 
   /**
+   * 待确认信息（供 TaskSupervisor 枚举/转述）。
+   * 剥离 resolve 回调与 run 内部引用，可安全跨边界传递/序列化。
+   */
+  getPendingConfirmationInfo(): {
+    toolCallId: string
+    toolName: string
+    riskLevel: RiskLevel
+    displayName?: string
+    argsPreview: string
+  } | undefined {
+    const pending = this.currentRun?.pendingConfirmation
+    if (!pending) return undefined
+    let argsPreview = ''
+    try {
+      argsPreview = JSON.stringify(pending.toolArgs).slice(0, 300)
+    } catch { /* 参数不可序列化时留空 */ }
+    return {
+      toolCallId: pending.toolCallId,
+      toolName: pending.toolName,
+      riskLevel: pending.riskLevel,
+      displayName: pending.displayName,
+      argsPreview,
+    }
+  }
+
+  /**
+   * 会话展示标题（LLM/手动标题；未设置时由调用方回退首条用户任务）。
+   */
+  getConversationTitle(): string | undefined {
+    return this._conversation?.title
+  }
+
+  /**
+   * 会话 steps 只读快照（供 TaskSupervisor 生成一行摘要）。
+   * 调用方负责截断——禁止把全量 transcript 注入其它 Agent 的 LLM 上下文（隔离红线）。
+   */
+  getSessionStepsSnapshot(): readonly AgentStep[] {
+    return this._sessionSteps
+  }
+
+  /**
    * 解决安全输入请求（前端弹框用户完成输入后调用）。
    * @param requestId 请求 ID
    * @param saved true=用户已保存 key，false=用户取消
@@ -1907,6 +1948,16 @@ export abstract class Agent {
       ...(m.documentContext ? { documentContext: m.documentContext } : {}),
       ...(m.workbenchContext ? { workbenchContext: m.workbenchContext } : {}),
     })), { aborted: run.aborted })
+
+    // 任务监督回流：任务完成/被停止 → 联络线复命（防抖聚合；supervisor 内部按 kind 过滤）
+    try {
+      this.services.taskSupervisor?.handleRunFinished(this._agentId, {
+        status: run.aborted ? 'aborted' : 'success',
+        summary: result ?? '',
+      })
+    } catch (err) {
+      log.warn('taskSupervisor 完成回流失败:', err)
+    }
   }
   
   // ==================== 会话持久化 ====================
@@ -2450,6 +2501,16 @@ export abstract class Agent {
     }
 
     this.callbacks?.onError?.(run.id, errorMessage, { aborted: run.aborted })
+
+    // 任务监督回流：任务失败 → 联络线复命（防抖聚合；supervisor 内部按 kind 过滤）
+    try {
+      this.services.taskSupervisor?.handleRunFinished(this._agentId, {
+        status: 'failed',
+        summary: errorMessage,
+      })
+    } catch (err) {
+      log.warn('taskSupervisor 失败回流失败:', err)
+    }
   }
   
   // ==================== 受保护方法：上下文构建 ====================
@@ -5038,6 +5099,7 @@ export abstract class Agent {
         if (!run.hostOperations) run.hostOperations = new Map()
         if (meta?.toolCallId) run.hostOperations.set(meta.toolCallId, hostId)
       },
+      taskSupervisor: this.services.taskSupervisor,
     }
   }
   
@@ -5364,6 +5426,18 @@ export abstract class Agent {
       )
       this.callbacks?.onNeedConfirm?.(confirmation)
       shown = true
+
+      // 任务监督回流：任务 Agent 的确认请求转述到联络线（转述制——联络只传达用户决定）。
+      // supervisor 内部按会话 kind 过滤（仅 task 冒泡），失败不影响确认等待本身。
+      try {
+        let argsPreview = ''
+        try { argsPreview = JSON.stringify(toolArgs).slice(0, 300) } catch { /* 忽略不可序列化参数 */ }
+        this.services.taskSupervisor?.handleNeedsConfirmation(this._agentId, {
+          toolCallId, toolName, riskLevel, displayName, reasons, argsPreview,
+        })
+      } catch (err) {
+        log.warn('[confirm] taskSupervisor 回流失败:', err)
+      }
     })
   }
 

@@ -296,6 +296,7 @@ export default {
     taskFailed: '任务失败',
     taskAborted: '任务中止',
     taskAbortedMessage: '⚠️ 用户中止了执行',
+    taskStartFailed: '⚠️ 任务启动失败：{error}',
     fork: {
       action: '另开一聊',
       extractTaskAction: '从这里创建任务',

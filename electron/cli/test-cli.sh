@@ -159,6 +159,12 @@ echo -e "${CYAN}[1/12] 基础命令${NC}"
 assert_contains "--help 显示帮助信息"        "用法:" \
   $CLI --help
 
+assert_contains "--help 含联络命令"          "companion" \
+  $CLI --help
+
+assert_fails    "companion 缺少消息应报错"   \
+  $CLI companion
+
 assert_contains "--version 返回版本号"       "." \
   $CLI --version
 

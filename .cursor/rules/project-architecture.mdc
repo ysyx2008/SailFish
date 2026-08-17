@@ -77,6 +77,7 @@ SailFish/
 │       │   ├── skills/          # 技能包（见下方「AI Agent 架构」）
 │       │   ├── orchestrator.ts  # 多 Agent 编排
 │       │   ├── streaming-tool-executor.ts  # 流式工具并行执行
+│       │   ├── task-supervisor.ts # 联络任务监督（manage_tasks 交办—复命闭环，见 agent/SPEC.md）
 │       │   └── risk-assessor.ts # 命令风险分级
 │       ├── watch/               # 关切（Watch）系统
 │       │   ├── watch.service.ts # 核心服务（触发、事件分发、pre-check）
@@ -199,6 +200,7 @@ Agent 有四种存在方式，对应四类**互斥**的会话（`kind`）。把�
 - **工具系统**：内置工具 + 技能系统（按需加载）+ MCP 工具 + 插件工具
 - **三种终端模式**：`local` / `ssh` / `assistant`，见下方独立章节
 - **并行子 Agent**：`dispatch_agents` 工具分派轻量子任务并行执行，同步/异步双模式、prompt cache 优化；伙计不分类型，能用哪些工具看 `ToolMeta.allowedForSubAgent`，标了 `inheritToSubAgents` 的技能连同状态（深拷贝）一起带给伙计。仅 local 和 assistant 模式可用（子 Agent 只能操作本地文件系统和执行本地命令）
+- **联络任务管理（交办—复命，2026-08-07）**：联络 Agent 专属 `manage_tasks` 工具（定义由联络工作台 `@sailfish/workbench-companion/agent-tools` 贡献，不进 agent 通用注册表）——查看/创建（仅无终端助手形态）/停止任务、转达用户对危险确认的批准/拒绝；任务的待确认与完成/失败事件经 proactive 通道确定性回流联络线（完成事件防抖合并）。信任模型为转述制：联络永不自行批准，唯一例外是用户创建任务时显式声明「全自动」。详见 `agent/SPEC.md`
 - **风险评估**：safe / moderate / dangerous / blocked 四级
 - **执行模式**：strict（全确认）/ relaxed（危险确认）/ free（全自动）。输入框把「替我审批」列成第四档（选它等于宽松，再加先替你看；默认关）：本来要问用户的确认，可先交给独立评审员对照用户原话决定是否替他放行，见 `agent/SPEC.md`
 - **Agent Workspace**：`{userData}/agent-workspace/`，Agent 私有数据目录，文件读写自动跳过确认

@@ -4522,6 +4522,24 @@ ipcMain.handle('agent:addMessage', async (_event, ptyId: string, message: string
   return agentService.addUserMessage(ptyId, message, attachments, documentContext, images, workbenchContext, silent)
 })
 
+// 后台助手会话快照：联络交办的任务 tab 以 activate:false 创建、AiPanel 未挂载期间
+// agent:step 事件无人接收；用户从「最近对话」侧栏打开 tab 时，前端由此回填
+// 步骤 / 运行态 / 会话 ID（续聊必须带 sessionId，否则后端会另开 session 断链）。
+ipcMain.handle('agent:getSessionSnapshot', async (_event, agentId: string) => {
+  const { agentService } = await rt()
+  const agent = agentService.getAgent(agentId)
+  if (!agent) return null
+  const steps = agent.getSessionStepsSnapshot()
+    .map(step => serializeAgentStepForIpc(step))
+    .filter((s): s is NonNullable<typeof s> => !!s)
+  const status = agent.getRunStatus()
+  return {
+    steps,
+    isRunning: status?.isRunning ?? false,
+    sessionId: agent.getSessionId()
+  }
+})
+
 // 运行独立助手 Agent（无终端绑定）
 // 注意：事件中使用前端传入的 agentId（如 assistant-<uuid>），而非后端 run.id，
 // 因为独立助手没有 ptyId，前端依赖 agentId 匹配事件到正确的标签页。

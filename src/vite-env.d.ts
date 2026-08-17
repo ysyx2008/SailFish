@@ -689,6 +689,11 @@ interface Window {
         },
         profileId?: string
       ) => Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>
+      getSessionSnapshot: (agentId: string) => Promise<{
+        steps: AgentStep[]
+        isRunning: boolean
+        sessionId?: string
+      } | null>
       abort: (ptyId: string) => Promise<boolean>
       compactContext: (params: {
         agentKey: string
@@ -780,6 +785,7 @@ interface Window {
       onSkillsChanged: (callback: (data: { agentId: string; skills: Array<{ id: string; name: string; description?: string; unavailable?: boolean }> }) => void) => () => void
       onStep: (callback: (data: { agentId: string; ptyId?: string; step: AgentStep }) => void) => () => void
       onRunning: (callback: (data: { agentId: string; ptyId?: string; userTask: string }) => void) => () => void
+      onTaskCreated: (callback: (data: { agentId: string; title: string; brief: string; fullAuto: boolean }) => void) => () => void
       onStepRemoved: (callback: (data: { agentId: string; ptyId?: string; stepId: string }) => void) => () => void
       onContextBar: (callback: (data: { agentId: string; ptyId?: string; contextBar: import('@shared/types').AgentContextBar }) => void) => () => void
       onModelFailover: (callback: (data: {
@@ -2574,7 +2580,7 @@ interface Window {
       onTaskStarted?: (callback: (data: { watchId: string; ptyId?: string; watchName?: string; executionType?: string }) => void) => () => void
       onTaskCompleted?: (callback: (data: { watchId: string; result?: { success: boolean; skipped?: boolean; error?: string } }) => void) => () => void
       onEnsureTab: (callback: (data: { agentId: string }) => void) => () => void
-      onProactiveMessage: (callback: (data: { agentId: string; message: string; watchName: string }) => void) => () => void
+      onProactiveMessage: (callback: (data: { agentId: string; message: string; watchName: string; mirrorOnly?: boolean }) => void) => () => void
       onActivateMessage?: (callback: (data: { agentId: string }) => void) => () => void
     }
     sensor: {

@@ -1,0 +1,391 @@
+/**
+ * task-supervisor.ts 单元测试
+ * 覆盖交办—复命闭环：查询（list/inspect）、操作（confirm/stop/create）、
+ * 确认冒泡（转述制）、复命防抖聚合、事件源 kind 过滤（防循环）
+ */
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+
+// deliverProactiveMessage 涉及 IM/系统通知/历史落盘，单测只断言调用参数
+vi.mock('../proactive-deliver', () => ({
+  deliverProactiveMessage: vi.fn().mockResolvedValue({ deliveredVia: ['app'], failedChannels: [] })
+}))
+
+import { TaskSupervisor, type TaskSupervisorHost } from '../task-supervisor'
+import { deliverProactiveMessage } from '../proactive-deliver'
+import { consumeProactiveContext, addProactiveContext } from '../proactive-store'
+import type { SailFish } from '../sailfish'
+
+const COMPANION = '__companion__'
+
+const mockDeliver = vi.mocked(deliverProactiveMessage)
+
+interface MockAgentOptions {
+  isRunning?: boolean
+  phase?: string
+  stepCount?: number
+  title?: string
+  firstUserTask?: string
+  pendingConfirmation?: {
+    toolCallId: string
+    toolName: string
+    riskLevel: 'dangerous'
+    displayName?: string
+    argsPreview: string
+  }
+}
+
+function makeMockAgent(opts: MockAgentOptions = {}): SailFish {
+  return {
+    getRunStatus: vi.fn().mockReturnValue({
+      isRunning: opts.isRunning ?? false,
+      phase: opts.phase,
+      currentToolName: undefined,
+      stepCount: opts.stepCount ?? 0
+    }),
+    getPendingConfirmationInfo: vi.fn().mockReturnValue(opts.pendingConfirmation),
+    getConversationTitle: vi.fn().mockReturnValue(opts.title),
+    getSessionStepsSnapshot: vi.fn().mockReturnValue(
+      opts.firstUserTask
+        ? [{ id: 's1', type: 'user_task', content: opts.firstUserTask, timestamp: Date.now() }]
+        : []
+    ),
+    getTerminalType: vi.fn().mockReturnValue('assistant')
+  } as unknown as SailFish
+}
+
+function makeHost(entries: Array<[string, SailFish]>, overrides: Partial<TaskSupervisorHost> = {}): TaskSupervisorHost & {
+  confirmToolCall: ReturnType<typeof vi.fn>
+  abort: ReturnType<typeof vi.fn>
+  runAssistant: ReturnType<typeof vi.fn>
+} {
+  const map = new Map(entries)
+  return {
+    getAllAgentEntries: vi.fn(() => Array.from(map.entries()).map(([agentKey, agent]) => ({ agentKey, agent }))),
+    getAgent: vi.fn((key: string) => map.get(key)),
+    confirmToolCall: vi.fn().mockReturnValue(true),
+    abort: vi.fn().mockReturnValue(true),
+    runAssistant: vi.fn().mockResolvedValue('done'),
+    getHistoryService: vi.fn().mockReturnValue(undefined),
+    getConfigService: vi.fn().mockReturnValue(undefined),
+    ...overrides
+  } as TaskSupervisorHost & {
+    confirmToolCall: ReturnType<typeof vi.fn>
+    abort: ReturnType<typeof vi.fn>
+    runAssistant: ReturnType<typeof vi.fn>
+  }
+}
+
+describe('TaskSupervisor', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    // 清空联络线暂存上下文，避免用例间串味
+    consumeProactiveContext(COMPANION)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    consumeProactiveContext(COMPANION)
+  })
+
+  // ==================== 查询 ====================
+
+  describe('listSupervisedTasks', () => {
+    it('仅枚举 kind=task 的会话，排除 companion/watch/wakeup', () => {
+      const host = makeHost([
+        ['tab-aaa', makeMockAgent({ title: '任务A' })],
+        [COMPANION, makeMockAgent({ title: '联络' })],
+        ['__watch__:w1', makeMockAgent({ title: '关切' })],
+        ['__wakeup__', makeMockAgent({ title: '唤醒' })]
+      ])
+      const supervisor = new TaskSupervisor(host)
+      const list = supervisor.listSupervisedTasks()
+      expect(list.map(t => t.agentKey)).toEqual(['tab-aaa'])
+    })
+
+    it('待确认 > 运行中 > 空闲 排序', () => {
+      const host = makeHost([
+        ['tab-idle', makeMockAgent({ title: '空闲' })],
+        ['tab-running', makeMockAgent({ title: '运行', isRunning: true })],
+        ['tab-confirm', makeMockAgent({
+          title: '确认',
+          pendingConfirmation: { toolCallId: 'c1', toolName: 'exec', riskLevel: 'dangerous', argsPreview: '{}' }
+        })]
+      ])
+      const supervisor = new TaskSupervisor(host)
+      const list = supervisor.listSupervisedTasks()
+      expect(list.map(t => t.agentKey)).toEqual(['tab-confirm', 'tab-running', 'tab-idle'])
+    })
+
+    it('单个任务状态异常不拖垮整个列表（跳过并继续）', () => {
+      const broken = {
+        getRunStatus: vi.fn(() => { throw new Error('agent disposing') }),
+        getPendingConfirmationInfo: vi.fn(),
+        getConversationTitle: vi.fn(),
+        getSessionStepsSnapshot: vi.fn().mockReturnValue([]),
+        getTerminalType: vi.fn()
+      } as unknown as SailFish
+      const host = makeHost([
+        ['tab-broken', broken],
+        ['tab-ok', makeMockAgent({ title: '正常任务' })]
+      ])
+      const supervisor = new TaskSupervisor(host)
+      const list = supervisor.listSupervisedTasks()
+      expect(list.map(t => t.agentKey)).toEqual(['tab-ok'])
+    })
+  })
+
+  describe('inspectTask', () => {
+    it('非 task 会话返回 undefined', () => {
+      const host = makeHost([[COMPANION, makeMockAgent({ title: '联络' })]])
+      const supervisor = new TaskSupervisor(host)
+      expect(supervisor.inspectTask(COMPANION)).toBeUndefined()
+    })
+
+    it('返回近况摘要，标题取自定义标题优先', () => {
+      const host = makeHost([['tab-x', makeMockAgent({ title: '写周报', firstUserTask: '帮我写一份很长很长的周报' })]])
+      const supervisor = new TaskSupervisor(host)
+      const detail = supervisor.inspectTask('tab-x')
+      expect(detail?.title).toBe('写周报')
+      expect(detail?.recentSteps).toHaveLength(1)
+    })
+  })
+
+  // ==================== T5：确认冒泡（转述制） ====================
+
+  describe('确认冒泡', () => {
+    const confirmEvent = {
+      toolCallId: 'call-123',
+      toolName: 'exec',
+      riskLevel: 'dangerous' as const,
+      displayName: '执行命令',
+      argsPreview: '{"command":"rm -rf /tmp/x"}'
+    }
+
+    it('任务挂起确认 → 联络线暂存上下文含 toolCallId 且立即投递 notice', () => {
+      const host = makeHost([['tab-t1', makeMockAgent({ title: '部署服务' })]])
+      const supervisor = new TaskSupervisor(host)
+
+      supervisor.handleNeedsConfirmation('tab-t1', confirmEvent)
+
+      const ctx = consumeProactiveContext(COMPANION)
+      expect(ctx).toContain('call-123')
+      expect(ctx).toContain('tab-t1')
+      expect(ctx).toContain('部署服务')
+      expect(mockDeliver).toHaveBeenCalledTimes(1)
+      expect(mockDeliver.mock.calls[0][0]).toContain('部署服务')
+    })
+
+    it('联络 confirm → 传达给任务的 confirmToolCall', () => {
+      const host = makeHost([['tab-t1', makeMockAgent({ title: '部署服务' })]])
+      const supervisor = new TaskSupervisor(host)
+
+      const result = supervisor.confirmTask('tab-t1', 'call-123', true)
+
+      expect(result).toEqual({ ok: true, title: '部署服务' })
+      expect(host.confirmToolCall).toHaveBeenCalledWith('tab-t1', 'call-123', true)
+    })
+
+    it('迟到的 confirm（任务侧已处理）→ 返回「已处理」', () => {
+      const host = makeHost([['tab-t1', makeMockAgent({ title: '部署服务' })],])
+      host.confirmToolCall.mockReturnValue(false)
+      const supervisor = new TaskSupervisor(host)
+
+      const result = supervisor.confirmTask('tab-t1', 'call-123', false)
+
+      expect(result.ok).toBe(false)
+      expect(result.reason).toBe('confirmation_stale')
+    })
+
+    it('confirm 目标不是 task 会话 → 拒绝且不触达 host', () => {
+      const host = makeHost([[COMPANION, makeMockAgent({ title: '联络' })]])
+      const supervisor = new TaskSupervisor(host)
+
+      const result = supervisor.confirmTask(COMPANION, 'call-x', true)
+
+      expect(result).toEqual({ ok: false, reason: 'task_not_found' })
+      expect(host.confirmToolCall).not.toHaveBeenCalled()
+    })
+
+    it('联络/watch/wakeup 自身的确认请求不回流（防循环）', () => {
+      const host = makeHost([
+        [COMPANION, makeMockAgent({ title: '联络' })],
+        ['__watch__:w1', makeMockAgent({ title: '关切' })]
+      ])
+      const supervisor = new TaskSupervisor(host)
+
+      supervisor.handleNeedsConfirmation(COMPANION, confirmEvent)
+      supervisor.handleNeedsConfirmation('__watch__:w1', confirmEvent)
+      supervisor.handleNeedsConfirmation(undefined, confirmEvent)
+
+      expect(consumeProactiveContext(COMPANION)).toBeUndefined()
+      expect(mockDeliver).not.toHaveBeenCalled()
+    })
+
+    it('多个待确认按到达顺序追加，后到的不覆盖先到的', () => {
+      const host = makeHost([
+        ['tab-t1', makeMockAgent({ title: '任务一' })],
+        ['tab-t2', makeMockAgent({ title: '任务二' })]
+      ])
+      const supervisor = new TaskSupervisor(host)
+
+      supervisor.handleNeedsConfirmation('tab-t1', { ...confirmEvent, toolCallId: 'call-1' })
+      supervisor.handleNeedsConfirmation('tab-t2', { ...confirmEvent, toolCallId: 'call-2' })
+
+      const ctx = consumeProactiveContext(COMPANION)
+      expect(ctx).toContain('call-1')
+      expect(ctx).toContain('call-2')
+    })
+  })
+
+  // ==================== T6：复命闭环 ====================
+
+  describe('复命闭环', () => {
+    it('任务完成 → 防抖后联络线收到复命 notice + 暂存上下文', () => {
+      vi.useFakeTimers()
+      const host = makeHost([['tab-t1', makeMockAgent({ title: '整理日志' })]])
+      const supervisor = new TaskSupervisor(host)
+
+      supervisor.handleRunFinished('tab-t1', { status: 'success', summary: '整理完成，共 3 个文件' })
+      expect(mockDeliver).not.toHaveBeenCalled() // 防抖窗口内未投递
+
+      vi.advanceTimersByTime(5000)
+
+      expect(mockDeliver).toHaveBeenCalledTimes(1)
+      expect(mockDeliver.mock.calls[0][0]).toContain('整理日志')
+      expect(mockDeliver.mock.calls[0][0]).toContain('整理完成')
+      const ctx = consumeProactiveContext(COMPANION)
+      expect(ctx).toContain('tab-t1')
+      expect(ctx).toContain('整理日志')
+    })
+
+    it('短时间多条完成/失败事件合并为一条复命', () => {
+      vi.useFakeTimers()
+      const host = makeHost([
+        ['tab-t1', makeMockAgent({ title: '任务一' })],
+        ['tab-t2', makeMockAgent({ title: '任务二' })]
+      ])
+      const supervisor = new TaskSupervisor(host)
+
+      supervisor.handleRunFinished('tab-t1', { status: 'success', summary: '完成一' })
+      vi.advanceTimersByTime(1000)
+      supervisor.handleRunFinished('tab-t2', { status: 'failed', summary: '失败二' })
+      vi.advanceTimersByTime(5000)
+
+      expect(mockDeliver).toHaveBeenCalledTimes(1)
+      const notice = mockDeliver.mock.calls[0][0]
+      expect(notice).toContain('任务一')
+      expect(notice).toContain('任务二')
+    })
+
+    it('联络自身完成不冒泡；watch/wakeup 不冒泡', () => {
+      vi.useFakeTimers()
+      const host = makeHost([[COMPANION, makeMockAgent({ title: '联络' })]])
+      const supervisor = new TaskSupervisor(host)
+
+      supervisor.handleRunFinished(COMPANION, { status: 'success', summary: '联络回复完毕' })
+      supervisor.handleRunFinished('__wakeup__', { status: 'success', summary: '心跳' })
+      supervisor.handleRunFinished(undefined, { status: 'success', summary: '无属主' })
+      vi.advanceTimersByTime(10000)
+
+      expect(mockDeliver).not.toHaveBeenCalled()
+      expect(consumeProactiveContext(COMPANION)).toBeUndefined()
+    })
+  })
+
+  // ==================== 操作 ====================
+
+  describe('stopTask', () => {
+    it('停止执行中的任务 → 调用 host.abort', () => {
+      const host = makeHost([['tab-t1', makeMockAgent({ title: '长跑任务', isRunning: true })]])
+      const supervisor = new TaskSupervisor(host)
+
+      const result = supervisor.stopTask('tab-t1')
+
+      expect(result).toEqual({ ok: true, title: '长跑任务' })
+      expect(host.abort).toHaveBeenCalledWith('tab-t1')
+    })
+
+    it('任务不存在 → task_not_found', () => {
+      const host = makeHost([])
+      const supervisor = new TaskSupervisor(host)
+      expect(supervisor.stopTask('nope').reason).toBe('task_not_found')
+    })
+  })
+
+  describe('createTask', () => {
+    it('无前端窗口（CLI）→ 后端直驱 runAssistant', async () => {
+      const host = makeHost([])
+      const supervisor = new TaskSupervisor(host)
+
+      const { agentKey } = await supervisor.createTask({ title: '查日志', brief: '查一下昨天的错误日志', fullAuto: true })
+
+      expect(agentKey).toMatch(/^assistant-/)
+      expect(host.runAssistant).toHaveBeenCalledTimes(1)
+      const [agentId, message, context, config] = host.runAssistant.mock.calls[0]
+      expect(agentId).toBe(agentKey)
+      expect(message).toBe('查一下昨天的错误日志')
+      expect(context.terminalType).toBe('assistant')
+      expect(config.executionMode).toBe('free')
+    })
+
+    it('非全自动任务默认 relaxed 模式', async () => {
+      const host = makeHost([])
+      const supervisor = new TaskSupervisor(host)
+
+      await supervisor.createTask({ title: '问个问题', brief: '简述项目结构' })
+
+      const [, , , config] = host.runAssistant.mock.calls[0]
+      expect(config.executionMode).toBe('relaxed')
+    })
+  })
+
+  describe('flushPendingEvents', () => {
+    it('立即冲刷挂起的复命，不等防抖窗口', async () => {
+      vi.useFakeTimers()
+      const host = makeHost([['tab-t1', makeMockAgent({ title: '整理日志' })]])
+      const supervisor = new TaskSupervisor(host)
+
+      supervisor.handleRunFinished('tab-t1', { status: 'success', summary: '整理完成' })
+      expect(mockDeliver).not.toHaveBeenCalled()
+
+      const flush = supervisor.flushPendingEvents()
+      await vi.advanceTimersByTimeAsync(100)
+      await flush
+
+      expect(mockDeliver).toHaveBeenCalledTimes(1)
+      expect(mockDeliver.mock.calls[0][0]).toContain('整理日志')
+      expect(mockDeliver.mock.calls[0][2] ?? mockDeliver.mock.calls[0][1]).toMatchObject({ alwaysPersist: true })
+    })
+
+    it('空缓冲冲刷不投递', async () => {
+      vi.useFakeTimers()
+      const host = makeHost([])
+      const supervisor = new TaskSupervisor(host)
+
+      const flush = supervisor.flushPendingEvents()
+      await vi.advanceTimersByTimeAsync(100)
+      await flush
+
+      expect(mockDeliver).not.toHaveBeenCalled()
+    })
+  })
+
+  // ==================== proactive-store 追加语义 ====================
+
+  describe('appendProactiveContext（复命与确认共用暂存）', () => {
+    it('暂存上下文可追加且 consume 后清空', () => {
+      addProactiveContext(COMPANION, '第一条', '标题一')
+      // 通过 supervisor 事件再追加一条
+      const host = makeHost([['tab-t1', makeMockAgent({ title: '任务一' })]])
+      const supervisor = new TaskSupervisor(host)
+      supervisor.handleNeedsConfirmation('tab-t1', {
+        toolCallId: 'call-9', toolName: 'exec', riskLevel: 'dangerous', argsPreview: '{}'
+      })
+
+      const ctx = consumeProactiveContext(COMPANION)
+      expect(ctx).toContain('第一条')
+      expect(ctx).toContain('call-9')
+      expect(consumeProactiveContext(COMPANION)).toBeUndefined()
+    })
+  })
+})

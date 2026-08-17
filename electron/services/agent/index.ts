@@ -29,6 +29,7 @@ import type {
 } from './types'
 import type { VisibleConversationSkill } from '@shared/types'
 import { SailFish } from './sailfish'
+import { TaskSupervisor } from './task-supervisor'
 import { ConversationStore, ConversationManager, Companion, Conversation } from '../conversation'
 import { assessCommandRisk, analyzeCommand } from './risk-assessor'
 import type { CommandHandlingInfo } from './risk-assessor'
@@ -119,7 +120,10 @@ export class AgentService {
       mcpService,
       configService
     }
-    
+
+    // 任务监督（联络任务管理）：注入 services，供 Agent 基类事件挂钩与 manage_tasks 工具使用
+    this.services.taskSupervisor = new TaskSupervisor(this)
+
     // 初始化 i18n
     if (configService) {
       setI18nConfigService(configService)
@@ -255,6 +259,29 @@ export class AgentService {
    */
   getAgent(ptyId: string): SailFish | undefined {
     return this.agents.get(ptyId)
+  }
+
+  /**
+   * 枚举全部 in-memory Agent 实例（供 TaskSupervisor 枚举受管任务；
+   * kind 过滤与排序决策在 supervisor 侧）。
+   */
+  getAllAgentEntries(): Array<{ agentKey: string; agent: SailFish }> {
+    return Array.from(this.agents.entries()).map(([agentKey, agent]) => ({ agentKey, agent }))
+  }
+
+  /** 供 TaskSupervisor 持久化联络线事件（proactive_notice 记录） */
+  getHistoryService(): import('../history.service').HistoryService | undefined {
+    return this.services.historyService
+  }
+
+  /** 供 TaskSupervisor 读取运行配置（如 CLI 直驱任务的 debugMode） */
+  getConfigService(): ConfigService | undefined {
+    return this.services.configService
+  }
+
+  /** 任务监督门面（构造时必然就绪）；CLI 等宿主用于轮询受管任务状态 / 转达确认 */
+  getTaskSupervisor(): import('./task-supervisor').TaskSupervisor {
+    return this.services.taskSupervisor!
   }
 
   /**

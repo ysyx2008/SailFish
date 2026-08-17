@@ -29,7 +29,7 @@ import { coalescePendingHandoff, decideFollowUpDrain, mergePendingIntoQueue, opt
 
 const log = createLogger('Agent')
 
-function getLocalSystemInfo() {
+export function getLocalSystemInfo() {
   const platform = navigator.platform.toLowerCase()
   if (platform.includes('win')) {
     return { os: 'windows', shell: 'powershell', description: '' }
@@ -2647,12 +2647,47 @@ export function useAgentMode(
     }
   }
 
+  // 后台助手会话回填：联络交办的任务 tab 以 activate:false 创建，AiPanel 首次激活才挂载
+  // ——挂载前的 agent:step 无人接收。用户从侧栏点开 tab 时，从后端会话快照回填缺失步骤，
+  // 并同步运行态与 sessionId（续聊必须带上，否则后端会另开 session 断链）。
+  // 与 await 期间流入的 live step 按 id 去重合并（snapshot 是更旧的前缀，prepend 缺失部分）。
+  const restoreBackgroundSessionIfNeeded = async () => {
+    const tab = currentTab.value
+    if (!tab || tab.type !== 'assistant' || tab.isRemote) return
+    if (!tab.agentId || tab.agentId === COMPANION_TAB_AGENT_ID) return
+    try {
+      const snapshot = await window.electronAPI.agent.getSessionSnapshot(tab.agentId)
+      if (!snapshot) return
+      const current = agentState.value?.steps ?? []
+      const existingIds = new Set(current.map(s => s.id))
+      const missing = snapshot.steps.filter(s => !existingIds.has(s.id))
+      if (missing.length > 0) {
+        const liveTab = terminalStore.tabs.find(t => t.id === currentTabId.value)
+        if (liveTab?.agentState) {
+          liveTab.agentState = { ...liveTab.agentState, steps: [...missing, ...liveTab.agentState.steps] }
+        }
+      }
+      if (snapshot.isRunning && agentState.value && !agentState.value.isRunning) {
+        terminalStore.setAgentRunning(currentTabId.value, true, tab.agentId)
+      }
+      if (snapshot.sessionId && agentState.value && !agentState.value.sessionId) {
+        const liveTab = terminalStore.tabs.find(t => t.id === currentTabId.value)
+        if (liveTab?.agentState) {
+          liveTab.agentState = { ...liveTab.agentState, sessionId: snapshot.sessionId }
+        }
+      }
+    } catch (err) {
+      log.warn('[Task] 回填后台会话失败:', err)
+    }
+  }
+
   // 生命周期
   onMounted(() => {
     setupAgentListeners()
     loadRecentHistory()
     loadRemoteExecutionMode()
     void restoreCompanionHistoryIfNeeded()
+    void restoreBackgroundSessionIfNeeded()
     cleanupHistorySearchMatch = window.electronAPI.history.onSearchMatch((payload) => {
       if (!isCurrentSearchRequest(historyModalSearchRequestId(historySearchRequestId.value), payload.requestId)) return
       appendHistorySearchHit(payload.summary)

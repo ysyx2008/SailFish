@@ -8,6 +8,7 @@ import { initWorkbenchHandler, disposeWorkbenchHandler } from './services/workbe
 import { useConfigStore, type SshSession } from './stores/config'
 import TerminalTabView from './components/TerminalTabView.vue'
 import { resolveWorkbenchRenderer, resolveWorkbenchKind, isWorkbenchAvailable } from './workbench/registry'
+import { getLocalSystemInfo } from './composables/useAgentMode'
 import { bootstrapWorkbenchCapabilities } from './workbench/bootstrap'
 import { isOemFeatureEnabled } from '@shared/oem-features'
 import SessionManager from './components/SessionManager.vue'
@@ -487,6 +488,7 @@ let cleanupInstallSkill: (() => void) | null = null
 let cleanupWatchEnsureTab: (() => void) | null = null
 let cleanupWatchProactiveMessage: (() => void) | null = null
 let cleanupWatchActivateMessage: (() => void) | null = null
+let cleanupAgentTaskCreated: (() => void) | null = null
 let cleanupAgentRunning: (() => void) | null = null
 let cleanupAgentCompleteForProactive: (() => void) | null = null
 let cleanupAgentErrorForTabAttention: (() => void) | null = null
@@ -802,6 +804,42 @@ onMounted(async () => {
     }
   })
 
+  // 联络交办任务：后端 TaskSupervisor 通知建本地助手 tab（Hub 模型：后台建 tab 进
+  // 「最近对话」侧栏，不抢占当前视图），随后直接经 runStandalone 启动——tab 未激活时
+  // AiPanel 未挂载，不能走 pendingSchedulerTask 的挂载触发路径；步骤/确认卡/完成事件
+  // 经标准 agent:* IPC 按 agentId 流入该 tab，用户从侧栏点开即可查看。
+  cleanupAgentTaskCreated = window.electronAPI.agent.onTaskCreated((data) => {
+    log.debug(`[TaskSupervisor] onTaskCreated: agentId=${data.agentId}, title="${data.title}", fullAuto=${data.fullAuto}`)
+    const existingTab = terminalStore.tabs.find(tab => tab.agentId === data.agentId)
+    if (existingTab) return
+    const tabId = terminalStore.createAssistantTab({
+      agentId: data.agentId,
+      title: data.title,
+      isRemote: false,
+      activate: false
+    })
+    terminalStore.markAssistantSkipOnboarding(tabId)
+    void window.electronAPI.agent.runStandalone(
+      data.agentId,
+      data.brief,
+      { terminalOutput: [], systemInfo: getLocalSystemInfo(), terminalType: 'assistant' },
+      data.fullAuto ? { executionMode: 'free' } : undefined
+    ).then(res => {
+      if (!res?.success) {
+        log.warn(`[TaskSupervisor] 交办任务启动失败 (${data.agentId}): ${res?.error ?? 'unknown'}`)
+        // tab 已建但不会有任何步骤流入，落一条错误步骤避免用户点开后面对空对话
+        terminalStore.addAgentStep(tabId, {
+          id: `supervised-start-error-${Date.now()}`,
+          type: 'error',
+          content: t('ai.taskStartFailed', { error: res?.error ?? 'unknown' }),
+          timestamp: Date.now()
+        })
+      }
+    }).catch(err => {
+      log.warn(`[TaskSupervisor] 交办任务启动异常 (${data.agentId}):`, err)
+    })
+  })
+
   // Watch desktop 输出：确保助手 tab 存在，后续 steps 通过标准 agent:step 事件流入
   cleanupWatchEnsureTab = window.electronAPI.watch.onEnsureTab((data) => {
     // 联络常驻 tab 已在 initializeApp 时创建，直接复用
@@ -998,6 +1036,17 @@ onMounted(async () => {
     // 优先精确匹配 agentId，回退到 companion tab（IM 对话镜像）
     const tab = terminalStore.tabs.find(t => t.agentId === data.agentId)
       || terminalStore.tabs.find(t => t.agentId === COMPANION_TAB_AGENT_ID)
+
+    // 联络自己 talk_to_user 的镜像：内容已在其会话工具卡片里，只 toast 引导查看，
+    // 不注入步骤、不排队——否则 Agent 忙时排队的消息会在运行结束后再冒一次（回声）。
+    if (data.mirrorOnly) {
+      toast.proactive(preview, () => {
+        const t = terminalStore.tabs.find(t => t.agentId === data.agentId)
+          || terminalStore.tabs.find(t => t.agentId === COMPANION_TAB_AGENT_ID)
+        if (t) navigateToAgentTab(t)
+      })
+      return
+    }
 
     if (tab) {
       const tabId = tab.id
@@ -1620,6 +1669,7 @@ onUnmounted(() => {
   cleanupWatchEnsureTab?.()
   cleanupWatchProactiveMessage?.()
   cleanupWatchActivateMessage?.()
+  cleanupAgentTaskCreated?.()
   cleanupAgentRunning?.()
   cleanupAgentCompleteForProactive?.()
   cleanupAgentNeedConfirmGlobal?.()

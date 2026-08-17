@@ -387,6 +387,11 @@ export interface AgentServices {
   /** 会话生命周期 / kind 策略接缝（按 kind 决策回种、会话查询委托）。随 historyService 装配。 */
   conversationManager?: import('../conversation').ConversationManager
   pluginRegistry?: import('../plugin/registry').PluginRegistry
+  /**
+   * 任务监督门面（联络任务管理：事件回流联络线 + manage_tasks 工具支撑）。
+   * AgentService 构造时注入；基类仅依赖其接口，不关心具体实现。
+   */
+  taskSupervisor?: import('./task-supervisor').TaskSupervisor
 }
 
 /**

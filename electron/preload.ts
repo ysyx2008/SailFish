@@ -947,6 +947,14 @@ const electronAPI = {
       profileId?: string
     ) => ipcRenderer.invoke('agent:runStandalone', { agentId, message, context, config, profileId }) as Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>,
 
+    // 后台助手会话快照：联络交办的任务 tab 未激活期间 AiPanel 未挂载（agent:step 无人接收），
+    // 用户从侧栏打开 tab 时由此回填步骤 / 运行态 / 会话 ID（保证续聊同一条 session）
+    getSessionSnapshot: (agentId: string) => ipcRenderer.invoke('agent:getSessionSnapshot', agentId) as Promise<{
+      steps: AgentStep[]
+      isRunning: boolean
+      sessionId?: string
+    } | null>,
+
     // 中止 Agent（使用 ptyId 或 agentId）
     abort: (ptyId: string) => ipcRenderer.invoke('agent:abort', ptyId) as Promise<boolean>,
 
@@ -1104,6 +1112,15 @@ const electronAPI = {
       ipcRenderer.on('agent:running', handler)
       return () => {
         ipcRenderer.removeListener('agent:running', handler)
+      }
+    },
+
+    // 监听联络交办任务创建（后端 TaskSupervisor 通知前端建 tab 并自动执行）
+    onTaskCreated: (callback: (data: { agentId: string; title: string; brief: string; fullAuto: boolean }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { agentId: string; title: string; brief: string; fullAuto: boolean }) => callback(data)
+      ipcRenderer.on('agent:taskCreated', handler)
+      return () => {
+        ipcRenderer.removeListener('agent:taskCreated', handler)
       }
     },
 
@@ -3542,12 +3559,17 @@ const electronAPI = {
       ipcRenderer.on('watch:ensureTab', handler)
       return () => { ipcRenderer.removeListener('watch:ensureTab', handler) }
     },
-    onProactiveMessage: (callback: (data: { agentId: string; message: string; watchName: string }) => void) => {
+    onProactiveMessage: (callback: (data: { agentId: string; message: string; watchName: string; mirrorOnly?: boolean }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
         if (data && typeof data === 'object') {
-          const { agentId, message, watchName } = data as Record<string, unknown>
+          const { agentId, message, watchName, mirrorOnly } = data as Record<string, unknown>
           if (typeof agentId === 'string' && typeof message === 'string') {
-            callback({ agentId, message, watchName: typeof watchName === 'string' ? watchName : '' })
+            callback({
+              agentId,
+              message,
+              watchName: typeof watchName === 'string' ? watchName : '',
+              ...(mirrorOnly === true ? { mirrorOnly: true } : {})
+            })
           }
         }
       }

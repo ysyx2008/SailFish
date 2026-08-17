@@ -295,6 +295,7 @@ export default {
     taskFailed: 'Task Failed',
     taskAborted: 'Task Aborted',
     taskAbortedMessage: '⚠️ User aborted execution',
+    taskStartFailed: '⚠️ Failed to start task: {error}',
     fork: {
       action: 'Branch off',
       extractTaskAction: 'Create task from here',
