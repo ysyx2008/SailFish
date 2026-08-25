@@ -207,6 +207,12 @@ export interface ToolExecutorConfig {
   noteHostOperation?: (hostId: string, meta?: { toolCallId?: string }) => void
   /** 任务监督门面（manage_tasks 工具使用；仅联络 Agent 注册该工具） */
   taskSupervisor?: import('../task-supervisor').TaskSupervisor
+  /** 当前会话是否允许挂目标 */
+  supportsGoal?: () => boolean
+  getGoal?: () => import('../goal/goal-contract').GoalContract | undefined
+  setGoal?: (goal: import('../goal/goal-contract').GoalContract) => void
+  persistGoal?: () => void
+  notifyGoalChanged?: () => void
 }
 
 /** 常见图片扩展名（AI Vision 模型可直接处理的格式） */

@@ -32,6 +32,7 @@ import type {
 import { inferConversationKind, filterPersistableSteps, isApprovalMode, isAssignedBy } from '@shared/types'
 import type { AiMessage } from '../ai.service'
 import { TaskMemoryStore, type LookupToolMeta } from '../agent/task-memory'
+import { GoalContract } from '../agent/goal/goal-contract'
 import { splitMessagesIntoTasks, splitStepsIntoTasks, stepRecordToStep, chunkStepsByUserTask, chunkStepsForCompanionExtract, restoreSpokenRepliesMissingFromMessages } from './messages'
 
 function lastTaskStatus(
@@ -163,6 +164,9 @@ export class Conversation {
   /** 这场任务是谁派的。建时定下、不再变；没有 = 用户自己开的（或记下出身之前的老记录） */
   private _assignedBy?: AssignedBy
 
+  /** 任务会话上的目标契约；非任务或不支持时保持空 */
+  private _goal?: GoalContract
+
   // ===== token 账 =====
   private _tokenUsage?: TokenUsage
   private _lastPromptTokens?: number
@@ -285,6 +289,7 @@ export class Conversation {
     if (record.titleLocked) this._titleLocked = true
     this.adoptApproval(record.approval)
     this.adoptAssignedBy(record.assignedBy)
+    this._goal = GoalContract.fromJSON(record.goal) ?? undefined
   }
 
   /** 从记录接回审批方式：已经定了的不覆盖 */
@@ -350,7 +355,8 @@ export class Conversation {
       ...(opts?.loadedSkills ? { loadedSkills: [...opts.loadedSkills] } : {}),
       ...(opts?.userDismissedSkills?.length ? { userDismissedSkills: [...opts.userDismissedSkills] } : {}),
       ...this.workingContextField(),
-      ...this.compressedArchivesField()
+      ...this.compressedArchivesField(),
+      ...(this._goal ? { goal: this._goal.snapshot() } : {})
     }
   }
 
@@ -405,7 +411,8 @@ export class Conversation {
       ...(run.loadedSkills ? { loadedSkills: [...run.loadedSkills] } : {}),
       ...(run.userDismissedSkills?.length ? { userDismissedSkills: [...run.userDismissedSkills] } : {}),
       ...this.workingContextField(),
-      ...this.compressedArchivesField()
+      ...this.compressedArchivesField(),
+      ...(this._goal ? { goal: this._goal.snapshot() } : {})
     }
   }
 
@@ -910,7 +917,8 @@ export class Conversation {
       ...(Array.isArray(source.userDismissedSkills) ? { userDismissedSkills: [...source.userDismissedSkills] } : {}),
       ...(Array.isArray(source.compressedArchives) ? {
         compressedArchives: source.compressedArchives.map(a => JSON.parse(JSON.stringify(a)))
-      } : {})
+      } : {}),
+      ...(forkedGoalSnapshot(source.goal) ? { goal: forkedGoalSnapshot(source.goal) } : {})
     }
   }
 
@@ -1226,6 +1234,22 @@ export class Conversation {
     return true
   }
 
+  /** 当前目标契约（可变对象，调用方通过其方法改状态） */
+  get goal(): GoalContract | undefined {
+    return this._goal
+  }
+
+  setGoal(goal: GoalContract): void {
+    this._goal = goal
+    this._dirty = true
+  }
+
+  clearGoal(): void {
+    if (!this._goal) return
+    this._goal = undefined
+    this._dirty = true
+  }
+
   /** 会话内用户完整轮次（user_task，不含中途追加） */
   get userTaskCount(): number {
     return this._steps.filter(s => s.type === 'user_task').length
@@ -1415,4 +1439,11 @@ export class Conversation {
     }
     return merged
   }
+}
+
+function forkedGoalSnapshot(raw: AgentRecord['goal']): ReturnType<GoalContract['snapshot']> | undefined {
+  const goal = GoalContract.fromJSON(raw)
+  if (!goal) return undefined
+  goal.deferContinuation()
+  return goal.snapshot()
 }

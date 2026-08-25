@@ -30,6 +30,7 @@ import type {
   TerminalType,
   ExecutionMode,
   AgentExecutionPhase,
+  AgentRunOutcome,
   PendingConfirmationInternal,
   PendingSecureInputInternal,
   PendingUserMessage,
@@ -57,7 +58,10 @@ import {
   type AssignedBy,
   type AutoReviewTrail,
   type VisibleConversationSkill,
+  type GoalContract as GoalSnapshot,
 } from '@shared/types'
+import { classifyGoalError, agentSupportsGoal } from './goal/goal-runtime'
+import { buildGoalSystemSection } from './goal/goal-prompts'
 import { estimateTextTokens } from './token-estimate'
 import { runUntilIdle } from './run-until-idle'
 import { SubAgentRoster } from './sub-agent-roster'
@@ -382,6 +386,14 @@ export abstract class Agent {
 
   /** 是否正在从 HistoryService 恢复（防止并发竞态） */
   private _isRestoring = false
+
+  private _lastRunOutcome: AgentRunOutcome | null = null
+  private _holdComplete = false
+  private _heldComplete?: { runId: string; result: string; pending: Array<string | import('./types').PendingUserHandoff>; aborted?: boolean }
+  private _onGoalChanged?: (goal: GoalSnapshot | undefined) => void
+  private _runStartedAt = 0
+  private _goalContinuationThisRun = false
+  private _lastContext?: AgentContext
 
   // ===== 会话状态委托视图：唯一真相源是 _conversation，以下 getter 只读转发 =====
   /** 会话 ID */
@@ -1791,10 +1803,16 @@ export abstract class Agent {
       commandRiskPolicy: this.commandRiskPolicy,
     }
     
+    const displayMessage = options?.goalContinuation ? t('goal.continuation_turn') : message
+    this._runStartedAt = Date.now()
+    this._lastRunOutcome = null
+    this._goalContinuationThisRun = options?.goalContinuation === true
+    this._lastContext = context
+
     const run: AgentRun = {
       id: runId,
       ptyId: context.ptyId,
-      originalUserRequest: message,  // 保存原始用户请求，避免被历史消息覆盖
+      originalUserRequest: displayMessage,
       messages: [],
       steps: [],
       isRunning: true,
@@ -1886,7 +1904,7 @@ export abstract class Agent {
     // 开跑先于第一句上墙：界面没开着这场时据此先认领出来，第一句才有地方落
     this.callbacks?.onStart?.(
       this._agentId ?? run.id,
-      run.internalNotice ? '' : message,
+      run.internalNotice ? '' : displayMessage,
       this._conversation
         ? {
             sessionId: this._conversation.id,
@@ -1903,10 +1921,10 @@ export abstract class Agent {
     if (!run.internalNotice) {
       this.addStep({
         type: 'user_task',
-        content: message,
-        images: context.previewImages || context.images,
-        docPreviewImages: context.docPreviewImages?.length ? context.docPreviewImages : undefined,
-        attachments: context.attachments
+        content: displayMessage,
+        images: options?.goalContinuation ? undefined : context.previewImages || context.images,
+        docPreviewImages: options?.goalContinuation ? undefined : (context.docPreviewImages?.length ? context.docPreviewImages : undefined),
+        attachments: options?.goalContinuation ? undefined : context.attachments
       })
     } else if (run.noticeKind === 'task_receipt') {
       this.addStep({ type: 'task_receipt', content: run.noticeDisplay ?? message })
@@ -2188,6 +2206,15 @@ export abstract class Agent {
     }
 
     const status = run.aborted ? 'aborted' : 'success'
+    const classified = classifyGoalError('')
+    this._lastRunOutcome = {
+      aborted: run.aborted,
+      failed: false,
+      usageLimited: classified.usageLimited,
+      unretryable: classified.unretryable,
+      tokenDelta: run.tokenUsage?.total_tokens ?? 0,
+      durationSeconds: Math.max(0, Math.round((Date.now() - this._runStartedAt) / 1000)),
+    }
 
     // 提交本次 run 到会话聚合根：补最终回复 → 存工作记忆 → 刷新 cache 前缀 → 累积 transcript / token
     this._conversation?.commitRun({
@@ -2231,8 +2258,7 @@ export abstract class Agent {
       })
     }
 
-    // 触发完成回调
-    this.callbacks?.onComplete?.(run.id, result, run.pendingUserMessages.filter(m => !m.backgroundNotice).map(m => ({
+    const pendingHandoff = run.pendingUserMessages.filter(m => !m.backgroundNotice).map(m => ({
       message: m.message,
       ...(m.images?.length ? { images: m.images } : {}),
       ...(m.previewImages ? { previewImages: m.previewImages } : {}),
@@ -2240,7 +2266,12 @@ export abstract class Agent {
       ...(m.attachments?.length ? { attachments: m.attachments } : {}),
       ...(m.documentContext ? { documentContext: m.documentContext } : {}),
       ...(m.workbenchContext ? { workbenchContext: m.workbenchContext } : {}),
-    })), { aborted: run.aborted })
+    }))
+    if (this._holdComplete) {
+      this._heldComplete = { runId: run.id, result, pending: pendingHandoff, aborted: run.aborted }
+    } else {
+      this.callbacks?.onComplete?.(run.id, result, pendingHandoff, { aborted: run.aborted })
+    }
 
     // 任务监督回流：任务完成/被停止 → 联络线复命（防抖聚合；伙计不回流）
     // 这场正在被删掉：不再报「已停止」，删除本身的结果就是答复
@@ -2334,6 +2365,86 @@ export abstract class Agent {
    */
   getSessionId(): string | undefined {
     return this._sessionId
+  }
+
+  getConversationKind(): import('@shared/types').ConversationKind | undefined {
+    return this._conversation?.kind
+  }
+
+  getGoal(): import('./goal/goal-contract').GoalContract | undefined {
+    return this._conversation?.goal
+  }
+
+  setGoal(goal: import('./goal/goal-contract').GoalContract): void {
+    this._conversation?.setGoal(goal)
+  }
+
+  clearGoal(): void {
+    this._conversation?.clearGoal()
+  }
+
+  persistConversation(): void {
+    this.saveSessionToHistory()
+  }
+
+  ensureConversation(opts: {
+    terminalType: TerminalType
+    sessionId?: string
+    sshHost?: string
+    record?: AgentRecord
+  }): Conversation {
+    if (this._conversation) return this._conversation
+    if (opts.record) {
+      this._conversation = Conversation.fromRecord(opts.record, { taskMemory: this.taskMemory })
+      return this._conversation
+    }
+    this._conversation = Conversation.create(
+      { agentKey: this._agentId ?? '', terminalType: opts.terminalType },
+      { id: opts.sessionId, sshHost: opts.sshHost },
+      { taskMemory: this.taskMemory }
+    )
+    return this._conversation
+  }
+
+  getLastRunOutcome(): AgentRunOutcome | null {
+    return this._lastRunOutcome
+  }
+
+  recordFailedOutcome(errorMessage: string): void {
+    const classified = classifyGoalError(errorMessage)
+    this._lastRunOutcome = {
+      aborted: false,
+      failed: true,
+      usageLimited: classified.usageLimited,
+      unretryable: classified.unretryable,
+      tokenDelta: 0,
+      durationSeconds: 0,
+    }
+  }
+
+  setHoldComplete(hold: boolean): void {
+    this._holdComplete = hold
+    if (!hold && this._heldComplete) {
+      const held = this._heldComplete
+      this._heldComplete = undefined
+      this.callbacks?.onComplete?.(held.runId, held.result, held.pending, { aborted: held.aborted })
+    }
+  }
+
+  setGoalChangedListener(listener?: (goal: GoalSnapshot | undefined) => void): void {
+    this._onGoalChanged = listener
+  }
+
+  notifyGoalChanged(): void {
+    this._onGoalChanged?.(this._conversation?.goal?.snapshot())
+  }
+
+  supportsGoal(): boolean {
+    return agentSupportsGoal(this._agentId ?? '', this._conversation?.kind)
+  }
+
+  getLastContext(): AgentContext | undefined {
+    return this._lastContext
   }
 
   /**
@@ -2789,6 +2900,16 @@ export abstract class Agent {
       })
     }
 
+    const classified = classifyGoalError(errorMessage)
+    this._lastRunOutcome = {
+      aborted: run.aborted,
+      failed: true,
+      usageLimited: classified.usageLimited,
+      unretryable: classified.unretryable,
+      tokenDelta: run.tokenUsage?.total_tokens ?? 0,
+      durationSeconds: Math.max(0, Math.round((Date.now() - this._runStartedAt) / 1000)),
+    }
+
     this.callbacks?.onError?.(run.id, errorMessage, { aborted: run.aborted })
 
     // 任务监督回流：任务失败 → 联络线复命（防抖聚合；伙计不回流）
@@ -2878,8 +2999,10 @@ export abstract class Agent {
 
         await cwdReady
         const userMsg = await this.buildUserMessage(run, message, !run.internalNotice)
+        this.markContinuationMessage(userMsg)
         run.messages.push(userMsg)
         run.taskMessageLog.push({ ...userMsg })
+        this.injectGoalReminder(run)
 
         log.info(`[Cache] Reusing ${this._previousRunMessages.length} messages (~${prevTokens} tokens, ${Math.round(prevTokens / contextLength * 100)}% of context)${this._conversation?.hasHandoff() ? ' [handoff]' : ''}`)
         return
@@ -3009,6 +3132,7 @@ export abstract class Agent {
       watchListSummary: watchListSummary || undefined,
       bondContext: this.resolveBondContext(),
       isOnboarding,
+      goal: this._conversation?.goal?.snapshot(),
     }
     
     const systemPrompt = this.buildSystemPrompt(run.context, promptOptions)
@@ -3031,8 +3155,15 @@ export abstract class Agent {
     }
 
     const userMsg = await this.buildUserMessage(run, message, false)
+    this.markContinuationMessage(userMsg)
     run.messages.push(userMsg)
     run.taskMessageLog.push({ ...userMsg })
+  }
+
+  private markContinuationMessage(userMsg: AiMessage): void {
+    if (this._goalContinuationThisRun) {
+      userMsg._systemInjected = true
+    }
   }
 
   private buildSubAgentOpening(run: AgentRun, message: string): void {
@@ -3083,6 +3214,21 @@ export abstract class Agent {
     } catch (error) {
       log.debug('Browser bridge section refresh skipped:', error)
     }
+  }
+
+  private injectGoalReminder(run: AgentRun): void {
+    if (this._goalContinuationThisRun) return
+    const goal = this._conversation?.goal
+    if (!goal || goal.status !== 'active') return
+    const reminder = buildGoalSystemSection(goal.snapshot())
+    if (!reminder) return
+    const injected: AiMessage = {
+      role: 'user',
+      content: reminder,
+      _systemInjected: true,
+    }
+    run.messages.push(injected)
+    run.taskMessageLog.push({ ...injected })
   }
 
   /**
@@ -5695,6 +5841,17 @@ export abstract class Agent {
         this.ensureTerminalSkill(run).catch(e => log.warn('Terminal skill load failed:', e))
       },
       getCurrentPtyId: () => run.ptyId,
+      supportsGoal: () => this.supportsGoal(),
+      getGoal: () => this._conversation?.goal,
+      setGoal: (goal) => {
+        this._conversation?.setGoal(goal)
+      },
+      persistGoal: () => {
+        this.saveSessionToHistory()
+      },
+      notifyGoalChanged: () => {
+        this.notifyGoalChanged()
+      },
       getToolOutputBudget: (currentTokensOverride?: number) => {
         const contextLength = this._contextWindow.getContextLength()
         // 锚点 + 本轮新增：同一批工具连续写入时，只看上轮锚点会让每个工具

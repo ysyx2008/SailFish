@@ -1,10 +1,11 @@
 export interface SlashCommandDef {
-  id: 'compact'
+  id: 'compact' | 'goal'
   names: string[]
 }
 
 export const SLASH_COMMANDS: SlashCommandDef[] = [
-  { id: 'compact', names: ['compact', '压缩'] }
+  { id: 'compact', names: ['compact', '压缩'] },
+  { id: 'goal', names: ['goal'] }
 ]
 
 export interface ParsedSlash {

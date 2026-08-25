@@ -13,6 +13,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { Conversation } from '../conversation'
+import { GoalContract } from '../../agent/goal/goal-contract'
 import type { AgentRecord, AgentStep } from '@shared/types'
 import type { AiMessage } from '../../ai.service'
 
@@ -635,5 +636,53 @@ describe('Conversation 聚合根（领域模型）', () => {
     expect(conv.taskMemory.getTask('compact_1')?.userRequest).toBe('压缩上下文')
     expect(conv.getCachePrefix()).toEqual(handoff)
     expect(conv.messages.some(m => m.role === 'user' && m.content === '压缩上下文')).toBe(true)
+  })
+
+  it('toRecord / fromRecord：目标跟着会话走', () => {
+    const conv = Conversation.create({ agentKey: 'tab-g', terminalType: 'local' }, { id: 'sess_g' })
+    const started = GoalContract.start('把测试跑绿', { tokenBudget: 800, now: 1 })
+    if ('error' in started) throw new Error(started.error)
+    conv.setGoal(started)
+    conv.commitRun({
+      runId: 'r1',
+      userRequest: '开始',
+      steps: [userStep('开始'), finalStep('好')],
+      taskMessageLog: [{ role: 'user', content: '开始' }],
+      runMessages: [{ role: 'user', content: '开始' }],
+      taskStatus: 'success',
+      result: '好',
+    })
+
+    const record = conv.toRecord()!
+    expect(record.goal?.objective).toBe('把测试跑绿')
+    expect(record.goal?.tokenBudget).toBe(800)
+
+    const restored = Conversation.fromRecord(record)
+    expect(restored.goal?.goalId).toBe(started.goalId)
+    expect(restored.goal?.status).toBe('active')
+    expect(restored.toRecord()?.goal?.tokensUsed).toBe(0)
+  })
+
+  it('fork：继承目标但带续跑延迟', () => {
+    const conv = Conversation.create({ agentKey: 'tab-gf', terminalType: 'local' }, { id: 'sess_gf' })
+    const started = GoalContract.start('迁完鉴权', { now: 1 })
+    if ('error' in started) throw new Error(started.error)
+    conv.setGoal(started)
+    conv.commitRun({
+      runId: 'r1',
+      userRequest: '迁',
+      steps: [userStep('迁'), finalStep('进行中')],
+      taskMessageLog: [{ role: 'user', content: '迁' }],
+      runMessages: [{ role: 'user', content: '迁' }],
+      taskStatus: 'success',
+      result: '进行中',
+    })
+
+    const forked = Conversation.forkFromRecord(conv.toRecord()!, 'sess_fork')
+    expect(forked).toBeTruthy()
+    expect(forked!.conversation.goal?.goalId).toBe(started.goalId)
+    expect(forked!.conversation.goal?.continuationDeferred).toBe(true)
+    expect(forked!.conversation.goal?.canContinue()).toBe(false)
+    expect(forked!.record.goal?.continuationDeferred).toBe(true)
   })
 })

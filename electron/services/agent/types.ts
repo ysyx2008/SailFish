@@ -452,6 +452,8 @@ export interface RunOptions {
   noticeDisplay?: string
   /** 这一轮是联络开的头。补进正在跑的那一轮时不起作用 */
   ledBy?: AssignedBy
+  /** 空闲续跑：气泡用短提示，正文给模型；不是用户刚说的话 */
+  goalContinuation?: boolean
 }
 
 /**
@@ -463,6 +465,15 @@ export interface HostMemoryEntry {
   createdAt: number
   volatility?: 'stable' | 'moderate' | 'volatile'
   source?: string
+}
+
+export interface AgentRunOutcome {
+  aborted: boolean
+  failed: boolean
+  usageLimited: boolean
+  unretryable: boolean
+  tokenDelta: number
+  durationSeconds: number
 }
 
 export interface PromptOptions {
@@ -494,6 +505,8 @@ export interface PromptOptions {
   bondContext?: string
   /** 是否为诞生引导对话（首次使用） */
   isOnboarding?: boolean
+  /** 当前任务目标（有则注入完成审计说明） */
+  goal?: import('@shared/types').GoalContract
 }
 
 /**

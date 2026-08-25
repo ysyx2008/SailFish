@@ -4581,6 +4581,62 @@ ipcMain.handle('agent:getVisibleSkills', async (_event, agentKey: string) => {
   return agentService.getVisibleSkills(agentKey)
 })
 
+let goalUpdatesWired = false
+async function wireGoalUpdates() {
+  if (goalUpdatesWired) return
+  const { agentService } = await rt()
+  agentService.onGoalUpdated((payload) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('goal:updated', payload)
+    }
+  })
+  goalUpdatesWired = true
+}
+
+ipcMain.handle('goal:get', async (_event, agentKey: string, sessionId?: string) => {
+  await wireGoalUpdates()
+  const { agentService } = await rt()
+  return agentService.getGoal(agentKey, sessionId) ?? null
+})
+
+ipcMain.handle('goal:set', async (_event, input: {
+  agentKey: string
+  objective: string
+  terminalType: TerminalType
+  sessionId?: string
+  sshHost?: string
+  tokenBudget?: number
+  replace?: boolean
+}) => {
+  await wireGoalUpdates()
+  const { agentService } = await rt()
+  return agentService.setGoal(input)
+})
+
+ipcMain.handle('goal:pause', async (_event, agentKey: string) => {
+  await wireGoalUpdates()
+  const { agentService } = await rt()
+  return agentService.pauseGoal(agentKey)
+})
+
+ipcMain.handle('goal:resume', async (_event, input: { agentKey: string; profileId?: string }) => {
+  await wireGoalUpdates()
+  const { agentService } = await rt()
+  return agentService.resumeGoal(input)
+})
+
+ipcMain.handle('goal:clear', async (_event, agentKey: string) => {
+  await wireGoalUpdates()
+  const { agentService } = await rt()
+  return agentService.clearGoal(agentKey)
+})
+
+ipcMain.handle('goal:edit', async (_event, agentKey: string, objective: string) => {
+  await wireGoalUpdates()
+  const { agentService } = await rt()
+  return agentService.editGoal(agentKey, objective)
+})
+
 ipcMain.handle('agent:fork', async (_event, opts: {
   sourceAgentKey: string
   newAgentId: string

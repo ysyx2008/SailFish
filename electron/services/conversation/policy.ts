@@ -99,17 +99,24 @@ export interface ConversationPolicy {
    * - watch/wakeup=false：秘书自己在后台跑，没有用户的话可认。
    */
   skillNotesOnUserMessage: boolean
+
+  /**
+   * 是否允许挂「会自己推进的目标」。
+   * - task=true：任务是交办、有终点，目标契约跟这场会话走。
+   * - companion/watch/wakeup=false：闲聊不该自己开工；关切/唤醒故意不连续记。
+   */
+  supportsGoal: boolean
 }
 
 /**
  * 四类会话的行为策略。
  *
- * | kind      | accumulates | seedFromHistoryOnColdStart | visibleInList | historyTree | perWatchContinuity | autoApprovalReview | autoReviewEarlierWordsWithinMs | restoreSkillsOnReopen | skillNotesOnUserMessage |
- * |-----------|-------------|----------------------------|---------------|-------------|--------------------|--------------------|--------------------------------|-----------------------|-------------------------|
- * | task      | true        | false                      | true          | main        | false              | true               | null（整场）                    | true                  | true                    |
- * | companion | true        | true                       | true          | main        | false              | true               | 24h                            | false                 | true                    |
- * | watch     | false       | false                      | false         | watch       | false（预留）       | false              | null                           | false                 | false                   |
- * | wakeup    | false       | true                       | false         | watch       | false（预留）       | false              | null                           | false                 | false                   |
+ * | kind      | accumulates | seedFromHistoryOnColdStart | visibleInList | historyTree | perWatchContinuity | autoApprovalReview | autoReviewEarlierWordsWithinMs | restoreSkillsOnReopen | skillNotesOnUserMessage | supportsGoal |
+ * |-----------|-------------|----------------------------|---------------|-------------|--------------------|--------------------|--------------------------------|-----------------------|-------------------------|--------------|
+ * | task      | true        | false                      | true          | main        | false              | true               | null（整场）                    | true                  | true                    | true         |
+ * | companion | true        | true                       | true          | main        | false              | true               | 24h                            | false                 | true                    | false        |
+ * | watch     | false       | false                      | false         | watch       | false（预留）       | false              | null                           | false                 | false                   | false        |
+ * | wakeup    | false       | true                       | false         | watch       | false（预留）       | false              | null                           | false                 | false                   | false        |
  *
  * 注：wakeup 从 watch 中独立出来——关切是用户配置的一次性任务（prompt 自带指令，逐次失忆，
  * 避免 A 关切串味到 B），wakeup 是 Agent 自主循环（需要历史记忆辅助决策「该不该主动找人、
@@ -127,7 +134,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     autoApprovalReview: true,
     autoReviewEarlierWordsWithinMs: null,
     restoreSkillsOnReopen: true,
-    skillNotesOnUserMessage: true
+    skillNotesOnUserMessage: true,
+    supportsGoal: true
   },
   companion: {
     accumulates: true,
@@ -138,7 +146,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     autoApprovalReview: true,
     autoReviewEarlierWordsWithinMs: DAY_MS,
     restoreSkillsOnReopen: false,
-    skillNotesOnUserMessage: true
+    skillNotesOnUserMessage: true,
+    supportsGoal: false
   },
   watch: {
     accumulates: false,
@@ -149,7 +158,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     autoApprovalReview: false,
     autoReviewEarlierWordsWithinMs: null,
     restoreSkillsOnReopen: false,
-    skillNotesOnUserMessage: false
+    skillNotesOnUserMessage: false,
+    supportsGoal: false
   },
   wakeup: {
     accumulates: false,
@@ -160,7 +170,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     autoApprovalReview: false,
     autoReviewEarlierWordsWithinMs: null,
     restoreSkillsOnReopen: false,
-    skillNotesOnUserMessage: false
+    skillNotesOnUserMessage: false,
+    supportsGoal: false
   }
 }
 

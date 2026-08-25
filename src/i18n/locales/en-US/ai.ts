@@ -876,6 +876,39 @@ export default {
     moreItems: '{count} more items, type to filter'
   },
 
+  slash: {
+    selectCommand: 'Choose a command',
+    helpDesc: 'List available slash commands',
+    goalDesc: 'Attach a self-advancing goal to this task',
+    goalHint: '/goal what you want done',
+  },
+
+  goal: {
+    onlyTask: 'Goals only work in a task conversation. Start a task first.',
+    noneHint: 'This task has no goal yet. Type /goal and what you want done.',
+    statusLine: '{status} · {tokens} tokens · {objective}',
+    paused: 'Goal paused',
+    resumed: 'Goal resumed',
+    cleared: 'Goal cleared',
+    edited: 'Goal updated',
+    editNeedText: 'Editing needs new text, e.g. /goal edit get the tests green',
+    replaceConfirm: 'This task already has an unfinished goal. Replace it?',
+    setFailed: 'Could not set the goal',
+    actionFailed: 'That did not work',
+    pause: 'Pause',
+    resume: 'Resume',
+    clear: 'Clear',
+    clearConfirm: 'Clear this goal? Idle continuation will stop too.',
+    status: {
+      active: 'Active',
+      paused: 'Paused',
+      blocked: 'Stuck',
+      usage_limited: 'Usage limited',
+      budget_limited: 'Budget used up',
+      achieved: 'Achieved',
+    },
+  },
+
 
   // Knowledge Base
   knowledge: {

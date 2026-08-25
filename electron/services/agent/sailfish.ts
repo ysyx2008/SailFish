@@ -110,7 +110,8 @@ export class SailFish extends Agent {
       remoteChannel,
       includeContextTools: this.contextManagementEnabled,
       mcpToolSession: this.getMcpToolSession(),
-      unattended
+      unattended,
+      supportsGoal: this.supportsGoal()
     }, this.services.pluginRegistry)
 
     // 联络专属工具由联络工作台贡献（manage_tasks 任务管理），不进 agent 通用注册表
@@ -179,6 +180,7 @@ export class SailFish extends Agent {
       watchListSummary: options.watchListSummary,
       bondContext: options.bondContext,
       isOnboarding: options.isOnboarding,
+      goal: options.goal,
       skillsContent: [this.getSkillSession().getLoadedSkillsContent(), this.getLoadedUserSkillsContent()]
         .filter(Boolean)
         .join('\n\n'),

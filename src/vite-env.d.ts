@@ -801,6 +801,23 @@ interface Window {
       resolveSecureInput: (params: { ptyId: string; requestId: string; value?: string; cancelled?: boolean }) => Promise<boolean>
       onNeedSecureInput: (callback: (data: { agentId: string; requestId: string; prompt: string; skillId: string; envName: string; isUpdate?: boolean; ptyId?: string }) => void) => () => void
     }
+    goal: {
+      get: (agentKey: string, sessionId?: string) => Promise<import('@shared/types').GoalContract | null>
+      set: (input: {
+        agentKey: string
+        objective: string
+        terminalType: TerminalType
+        sessionId?: string
+        sshHost?: string
+        tokenBudget?: number
+        replace?: boolean
+      }) => Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>
+      pause: (agentKey: string) => Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>
+      resume: (input: { agentKey: string; profileId?: string }) => Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>
+      clear: (agentKey: string) => Promise<{ ok: true } | { ok: false; error: string }>
+      edit: (agentKey: string, objective: string) => Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>
+      onUpdated: (callback: (data: { agentKey: string; goal?: import('@shared/types').GoalContract }) => void) => () => void
+    }
     allowlist: {
       getBuiltInRules: () => Promise<{
         argvCommands: Array<{

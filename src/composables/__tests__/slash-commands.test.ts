@@ -23,7 +23,7 @@ describe('parseLeadingSlash', () => {
 
 describe('matchSlashCommands', () => {
   it('打 / 列出全部，打前缀能筛到 compact', () => {
-    expect(matchSlashCommands('').map(c => c.id)).toEqual(['compact'])
+    expect(matchSlashCommands('').map(c => c.id)).toEqual(['compact', 'goal'])
     expect(matchSlashCommands('c').map(c => c.id)).toEqual(['compact'])
     expect(matchSlashCommands('压').map(c => c.id)).toEqual(['compact'])
     expect(matchSlashCommands('zzz')).toEqual([])

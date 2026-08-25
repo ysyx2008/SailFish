@@ -409,6 +409,8 @@ export interface GetAgentToolsOptions {
   unattended?: boolean
   /** MCP 渐进披露会话（defer 时提供已 load 子集） */
   mcpToolSession?: McpToolSession
+  /** 当前会话是否允许挂目标（仅任务会话） */
+  supportsGoal?: boolean
 }
 
 /**
@@ -458,6 +460,74 @@ const PANE_TOOL_DESC: Record<AgentMode | 'unspecified', PaneToolDescriptions> = 
  * @param options 可选配置，如终端类型
  * @param pluginRegistry 可选的插件注册表，用于加载插件工具
  */
+function getGoalTools(): ToolDefinition[] {
+  return [
+    {
+      type: 'function',
+      function: {
+        name: 'get_goal',
+        description: '查看当前任务是否挂了目标，以及目标正文、状态和用量。',
+        parameters: { type: 'object', properties: {} }
+      },
+      _meta: {
+        streamDisplay: { titleKey: 'goal.tool_get' }
+      }
+    } as ToolDefinitionWithMeta,
+    {
+      type: 'function',
+      function: {
+        name: 'create_goal',
+        description: `给当前任务挂一个会自己推进的目标。只有用户明确要求时才能调用。已有未完成目标时不要覆盖。
+若看不出怎样才算做完，先问清楚再创建。`,
+        parameters: {
+          type: 'object',
+          properties: {
+            objective: {
+              type: 'string',
+              description: '目标正文，要写得能验收'
+            },
+            token_budget: {
+              type: 'number',
+              description: '可选的 token 预算。用户没说就不要填。'
+            }
+          },
+          required: ['objective']
+        }
+      },
+      _meta: {
+        streamDisplay: { titleKey: 'goal.tool_create', titleField: 'objective' }
+      }
+    } as ToolDefinitionWithMeta,
+    {
+      type: 'function',
+      function: {
+        name: 'update_goal',
+        description: `更新当前目标的终态。只能标成 complete 或 blocked。
+- complete：目标里每条要求都能在这场对话里指出证据。没有证据不许报完成。
+- blocked：同一处障碍连续三轮都过不去。难、慢、不确定、还没做完，都不算。`,
+        parameters: {
+          type: 'object',
+          properties: {
+            status: {
+              type: 'string',
+              enum: ['complete', 'blocked'],
+              description: 'complete=达成，blocked=停滞'
+            },
+            reason: {
+              type: 'string',
+              description: '标停滞时必填：卡在哪、已经试过什么'
+            }
+          },
+          required: ['status']
+        }
+      },
+      _meta: {
+        streamDisplay: { titleKey: 'goal.tool_update', titleField: 'status' }
+      }
+    } as ToolDefinitionWithMeta,
+  ]
+}
+
 export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOptions, pluginRegistry?: PluginRegistry): ToolDefinition[] {
   // 本机命令（child_process.spawn）。可见性由 _meta.supportedModes 决定：本地终端眼前已是本机窗，不另给。
   // 终端窗里的命令由 terminal 技能的 execute_command 提供。
@@ -987,6 +1057,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
         allowedForSubAgent: false,
       }
     } as ToolDefinitionWithMeta,
+    ...(options?.supportsGoal ? getGoalTools() : []),
     // ==================== Plan 工具（合并 create/update/clear） ====================
     {
       type: 'function',

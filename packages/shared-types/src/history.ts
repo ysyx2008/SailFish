@@ -2,7 +2,7 @@
  * 历史记录共享类型定义
  */
 
-import type { ConversationKind, TerminalType, TokenUsage } from './agent'
+import type { ConversationKind, GoalContract, TerminalType, TokenUsage } from './agent'
 
 export interface AgentStepRecord {
   id: string
@@ -125,6 +125,8 @@ export interface AgentRecord {
     summary: string
     timestamp: number
   }>
+  /** 任务会话上的目标契约。缺省（老记录 / 非任务）视为没有目标。 */
+  goal?: GoalContract
 }
 
 /** 输入区胶囊用的技能快照（不含外部工具包） */

@@ -3352,6 +3352,11 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
         :clear-tab-error="clearTabError"
         :consume-workbench-context="props.consumeWorkbenchContext"
         :overlay="peek"
+        :supports-goal="!isCompanionTab"
+        :goal-agent-key="isStandaloneAssistant ? (terminalStore.tabs.find(t => t.id === currentTabId)?.agentId || currentTabId) : currentTabId"
+        :terminal-type="terminalStore.tabs.find(t => t.id === currentTabId)?.type || 'assistant'"
+        :session-id="terminalStore.tabs.find(t => t.id === currentTabId)?.agentState?.sessionId"
+        :ssh-host="terminalStore.tabs.find(t => t.id === currentTabId)?.sshConfig?.host"
       >
         <template #footer-left>
           <AiProfileSelect

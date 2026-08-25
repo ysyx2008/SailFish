@@ -1221,6 +1221,35 @@ const electronAPI = {
     }
   },
 
+  goal: {
+    get: (agentKey: string, sessionId?: string) =>
+      ipcRenderer.invoke('goal:get', agentKey, sessionId) as Promise<import('@shared/types').GoalContract | null>,
+    set: (input: {
+      agentKey: string
+      objective: string
+      terminalType: import('@shared/types').TerminalType
+      sessionId?: string
+      sshHost?: string
+      tokenBudget?: number
+      replace?: boolean
+    }) => ipcRenderer.invoke('goal:set', input) as Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>,
+    pause: (agentKey: string) =>
+      ipcRenderer.invoke('goal:pause', agentKey) as Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>,
+    resume: (input: { agentKey: string; profileId?: string }) =>
+      ipcRenderer.invoke('goal:resume', input) as Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>,
+    clear: (agentKey: string) =>
+      ipcRenderer.invoke('goal:clear', agentKey) as Promise<{ ok: true } | { ok: false; error: string }>,
+    edit: (agentKey: string, objective: string) =>
+      ipcRenderer.invoke('goal:edit', agentKey, objective) as Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>,
+    onUpdated: (callback: (data: { agentKey: string; goal?: import('@shared/types').GoalContract }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { agentKey: string; goal?: import('@shared/types').GoalContract }) => callback(data)
+      ipcRenderer.on('goal:updated', handler)
+      return () => {
+        ipcRenderer.removeListener('goal:updated', handler)
+      }
+    }
+  },
+
   allowlist: {
     // NOTE: 返回类型须与 built-in-rules-view.ts 的 BuiltInRulesView 保持同步；
     // preload 不能直接 import main 进程模块，故在此手写镜像。

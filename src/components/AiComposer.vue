@@ -14,6 +14,7 @@ import {
   type SlashCommandDef
 } from '../composables/slash-commands'
 import { decorateShortcut, formatAccelerator, resolveComposerChord } from '../utils/shortcut'
+import GoalPill from './GoalPill.vue'
 import { toast } from '../composables/useToast'
 import { useComposerQuoteStore } from '../stores/composer-quote'
 import { useConversationSkillsStore, type ConversationSkillChip } from '../stores/conversation-skills'
@@ -21,7 +22,7 @@ import { useConfigStore } from '../stores/config'
 import type { ComposerQuoteSnippet } from '../stores/composer-quote'
 import type { ParsedDocument } from '../stores/terminal'
 import type { ParsingDocument } from '../composables/useDocumentUpload'
-import type { ContextCompositionId, ContextCompositionNode } from '@shared/types'
+import type { ContextCompositionId, ContextCompositionNode, TerminalType } from '@shared/types'
 import HoverTipOverlay from './HoverTipOverlay.vue'
 import ComposerEditor from './ComposerEditor.vue'
 import ComposerFileChip from './ComposerFileChip.vue'
@@ -121,6 +122,11 @@ const props = defineProps<{
     | { ok: true; freedTokens: number }
     | { ok: false; reason: 'running' | 'empty' | 'failed' }
   >
+  supportsGoal?: boolean
+  goalAgentKey?: string
+  terminalType?: TerminalType
+  sessionId?: string
+  sshHost?: string
   /** 嵌入欢迎页等非面板场景：去掉顶部分割线，使用独立圆角容器 */
   embedded?: boolean
   /** 文档铺满：同一套输入，换成浮在文档上的薄胶囊 */
@@ -986,6 +992,16 @@ const runSlashCommand = async (def: SlashCommandDef, hint?: string) => {
   }
 }
 
+const {
+  showMenu: showSlashMenu,
+  suggestions: slashSuggestions,
+  selectedIndex: slashSelectedIndex,
+  refreshMenu: refreshSlashMenu,
+  applySuggestion: applySlashSuggestion,
+  handleKeyDown: handleSlashKeyDown,
+  tryHandle: tryHandleSlash,
+} = useSlashCommands(inputText)
+
 const focusInput = () => {
   mentionInputEl.value?.focus()
 }
@@ -1806,6 +1822,11 @@ const handleSendClick = (event: MouseEvent) => {
       'composer-root-overlay-filled': overlay && hasComposerAttachments
     }"
   >
+  <GoalPill
+    v-if="supportsGoal"
+    :agent-key="goalAgentKey || currentTabId"
+    :session-id="sessionId"
+  />
   <div
     v-if="followUpItems.length > 0"
     class="follow-up-queue"
@@ -1935,7 +1956,7 @@ const handleSendClick = (event: MouseEvent) => {
       @mouseenter="slashSelectedIndex = index"
     >
       <span class="slash-hint-name">/{{ primarySlashName(cmd) }}</span>
-      <span class="slash-hint-desc">{{ t('ai.slashCompactDesc') }}</span>
+      <span class="slash-hint-desc">{{ t(cmd.id === 'goal' ? 'slash.goalDesc' : 'ai.slashCompactDesc') }}</span>
       <span class="slash-hint-key">{{ t('ai.slashHintKey', { shortcut: decorateShortcut(sendShortcut, t('ai.hintSlashSend')) }) }}</span>
     </button>
   </div>

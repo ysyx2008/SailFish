@@ -1468,6 +1468,12 @@ export function useAgentMode(
       return
     }
 
+    if (compactSlash?.def.id === 'goal') {
+      if (!queued) inputText.value = ''
+      await handleGoalSlash(compactSlash.hint)
+      return
+    }
+
     const startTime = Date.now()
 
     // 并发软上限检查：超过 MAX_CONCURRENT_AGENTS 时提示用户，但不强制阻止
@@ -1728,6 +1734,87 @@ export function useAgentMode(
     } catch {
       return false
     }
+  }
+
+  const handleGoalSlash = async (hint: string): Promise<void> => {
+    const agentKey = getAgentKey()
+    const tab = currentTab.value
+    if (!agentKey || !tab || tab.agentId === COMPANION_TAB_AGENT_ID) {
+      toast.warning(t('goal.onlyTask'))
+      return
+    }
+    const action = {
+      agentKey,
+      sessionId: agentState.value?.sessionId,
+      terminalType: tab.type,
+      sshHost: tab.sshConfig?.host,
+    }
+    const [verb, ...tail] = hint.trim() ? hint.trim().split(/\s+/) : []
+    const rest = tail.join(' ').trim()
+    if (!verb) {
+      const current = await window.electronAPI.goal.get(agentKey, action.sessionId)
+      toast.info(current ? t('goal.statusLine', {
+        status: t(`goal.status.${current.status}`),
+        tokens: current.tokenBudget !== undefined ? `${current.tokensUsed}/${current.tokenBudget}` : String(current.tokensUsed),
+        objective: current.objective,
+      }) : t('goal.noneHint'))
+      return
+    }
+    if (verb === 'pause') {
+      const result = await window.electronAPI.goal.pause(agentKey)
+      toast[result.ok ? 'success' : 'error'](result.ok ? t('goal.paused') : t('goal.actionFailed'))
+      return
+    }
+    if (verb === 'resume') {
+      const result = await window.electronAPI.goal.resume({ agentKey, profileId: configStore.activeAiProfileId })
+      toast[result.ok ? 'success' : 'error'](result.ok ? t('goal.resumed') : t('goal.actionFailed'))
+      return
+    }
+    if (verb === 'clear') {
+      const ok = await showConfirm({
+        title: t('goal.clear'),
+        message: t('goal.clearConfirm'),
+        type: 'danger',
+        confirmText: t('goal.clear'),
+        cancelText: t('common.cancel'),
+      })
+      if (!ok) return
+      const result = await window.electronAPI.goal.clear(agentKey)
+      toast[result.ok ? 'success' : 'error'](result.ok ? t('goal.cleared') : t('goal.actionFailed'))
+      return
+    }
+    if (verb === 'edit') {
+      if (!rest) {
+        toast.warning(t('goal.editNeedText'))
+        return
+      }
+      const result = await window.electronAPI.goal.edit(agentKey, rest)
+      toast[result.ok ? 'success' : 'error'](result.ok ? t('goal.edited') : t('goal.actionFailed'))
+      return
+    }
+
+    const objective = hint.trim()
+    const existing = await window.electronAPI.goal.get(agentKey, action.sessionId)
+    let replace = false
+    if (existing && existing.status !== 'achieved' && existing.status !== 'budget_limited') {
+      replace = await showConfirm({
+        title: t('slash.goalDesc'),
+        message: t('goal.replaceConfirm'),
+        confirmText: t('common.confirm'),
+        cancelText: t('common.cancel'),
+      })
+      if (!replace) return
+    }
+    const result = await window.electronAPI.goal.set({
+      ...action,
+      objective,
+      replace,
+    })
+    if (!result.ok) {
+      toast.error(t('goal.setFailed'))
+      return
+    }
+    await runAgent(objective)
   }
 
   const compactContext = async (hint?: string): Promise<

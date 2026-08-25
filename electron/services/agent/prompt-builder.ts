@@ -19,6 +19,7 @@ import { getBrowserBridgeService } from '../browser-bridge/browser-bridge.servic
 import { wrapCompositionSection } from './context-composition'
 import { t } from './i18n'
 import { formatRecalledConversations, type RecalledConversation } from '../knowledge/conversation-index'
+import { buildGoalSystemSection } from './goal/goal-prompts'
 
 const log = createLogger('PromptBuilder')
 const IDENTITY_FILENAME = 'IDENTITY.md'
@@ -329,6 +330,8 @@ export interface BuildSystemPromptOptions {
   proactiveCompact?: ProactiveCompactStyle
   /** 内置技能是否开着；不传按开着算 */
   isSkillEnabled?: (skillId: string) => boolean
+  /** 当前任务目标（有则注入完成审计说明） */
+  goal?: import('@shared/types').GoalContract
 }
 
 /**
@@ -362,6 +365,7 @@ export class PromptBuilder {
   private readonly mcpServerCatalog?: string
   private readonly proactiveCompact: ProactiveCompactStyle
   private readonly isSkillEnabled: (skillId: string) => boolean
+  private readonly goal?: import('@shared/types').GoalContract
 
   private osType = ''
   private shellType = ''
@@ -392,6 +396,7 @@ export class PromptBuilder {
     this.mcpServerCatalog = options.mcpServerCatalog
     this.proactiveCompact = normalizeProactiveCompact(options.proactiveCompact)
     this.isSkillEnabled = options.isSkillEnabled ?? (() => true)
+    this.goal = options.goal
   }
 
   // ==================== 公开方法 ====================
@@ -453,6 +458,7 @@ export class PromptBuilder {
       w('skills', this.buildSkillsContentSection()),
       w('knowledge', this.buildKnowledgeContext()),
       w('knowledge', this.buildTaskMemorySection()),
+      w('environment', this.buildGoalSection()),
       // [缓存优化] 动态内容（当前时间、token 用量）已禁用。
       // AI 需要时间时可通过执行 date 命令获取；上下文压力由 85% 警告消息兜底。
       // 如需恢复：取消注释下面两行，并取消 agent.ts updateContextPressure 中的系统提示词注入。
@@ -824,6 +830,11 @@ export class PromptBuilder {
     const trimmed = this.watchListSummary?.trim()
     if (!trimmed) return ''
     return `# 已有关切\n\n${trimmed}\n\n创建新关切前先检查是否已有相同功能的。`
+  }
+
+  private buildGoalSection(): string {
+    if (!this.goal) return ''
+    return buildGoalSystemSection(this.goal)
   }
 
   private buildBrowserBridgeSection(): string {
