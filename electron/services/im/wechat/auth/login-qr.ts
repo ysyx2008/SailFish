@@ -265,7 +265,7 @@ export async function waitForWeixinLogin(opts: {
   apiBaseUrl: string;
   botType?: string;
 }): Promise<WeixinQrWaitResult> {
-  const activeLogin = activeLogins.get(opts.sessionKey);
+  let activeLogin = activeLogins.get(opts.sessionKey);
 
   if (!activeLogin) {
     logger.warn(`waitForWeixinLogin: no active login sessionKey=${opts.sessionKey}`);

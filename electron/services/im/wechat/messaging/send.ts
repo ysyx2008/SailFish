@@ -1,7 +1,7 @@
 type ReplyPayload = { text?: string };
 
 import { sendMessage as sendMessageApi } from "../api/api.js";
-import type { SendMessageResult, WeixinApiOptions } from "../api/api.js";
+import type { WeixinApiOptions } from "../api/api.js";
 import { logger } from "../util/logger.js";
 import { generateId } from "../util/random.js";
 import type { MessageItem, SendMessageReq } from "../api/types.js";
@@ -14,14 +14,6 @@ type WeixinMessageSendOptions = WeixinApiOptions & {
   contextToken?: string;
   runId?: string;
 };
-
-export type WeixinSendResult = { messageId: string; softFailed?: boolean };
-
-function toSendResult(clientId: string, apiResult: SendMessageResult): WeixinSendResult {
-  return apiResult.softFailed
-    ? { messageId: clientId, softFailed: true }
-    : { messageId: clientId };
-}
 
 function generateClientId(): string {
   return generateId("openclaw-weixin");
@@ -78,7 +70,7 @@ export async function sendMessageWeixin(params: {
   to: string;
   text: string;
   opts: WeixinMessageSendOptions;
-}): Promise<WeixinSendResult> {
+}): Promise<{ messageId: string }> {
   const { to, text, opts } = params;
   if (!opts.contextToken) {
     logger.warn(`sendMessageWeixin: contextToken missing for to=${to}, sending without context`);
@@ -92,17 +84,17 @@ export async function sendMessageWeixin(params: {
     clientId,
   });
   try {
-    const apiResult = await sendMessageApi({
+    await sendMessageApi({
       baseUrl: opts.baseUrl,
       token: opts.token,
       timeoutMs: opts.timeoutMs,
       body: req,
     });
-    return toSendResult(clientId, apiResult);
   } catch (err) {
     logger.error(`sendMessageWeixin: failed to=${to} clientId=${clientId} err=${String(err)}`);
     throw err;
   }
+  return { messageId: clientId };
 }
 
 /** Send a single structured MessageItem downstream. */
@@ -112,7 +104,7 @@ export async function sendMessageItemWeixin(params: {
   opts: WeixinMessageSendOptions;
   clientId?: string;
   label?: string;
-}): Promise<WeixinSendResult> {
+}): Promise<{ messageId: string }> {
   const { to, item, opts } = params;
   if (!opts.contextToken) {
     logger.warn(`sendMessageItemWeixin: contextToken missing for to=${to}, sending without context`);
@@ -131,19 +123,19 @@ export async function sendMessageItemWeixin(params: {
     },
   };
   try {
-    const apiResult = await sendMessageApi({
+    await sendMessageApi({
       baseUrl: opts.baseUrl,
       token: opts.token,
       timeoutMs: opts.timeoutMs,
       body: req,
     });
-    return toSendResult(clientId, apiResult);
   } catch (err) {
     logger.error(
       `${params.label ?? "sendMessageItemWeixin"}: failed to=${to} clientId=${clientId} err=${String(err)}`,
     );
     throw err;
   }
+  return { messageId: clientId };
 }
 
 /**
@@ -156,7 +148,7 @@ async function sendMediaItems(params: {
   mediaItem: MessageItem;
   opts: WeixinMessageSendOptions;
   label: string;
-}): Promise<WeixinSendResult> {
+}): Promise<{ messageId: string }> {
   const { to, text, mediaItem, opts, label } = params;
   const runId = opts.runId;
 
@@ -167,7 +159,6 @@ async function sendMediaItems(params: {
   items.push(mediaItem);
 
   let lastClientId = "";
-  let softFailed = false;
   for (const item of items) {
     lastClientId = generateClientId();
     const req: SendMessageReq = {
@@ -183,13 +174,12 @@ async function sendMediaItems(params: {
       },
     };
     try {
-      const apiResult = await sendMessageApi({
+      await sendMessageApi({
         baseUrl: opts.baseUrl,
         token: opts.token,
         timeoutMs: opts.timeoutMs,
         body: req,
       });
-      if (apiResult.softFailed) softFailed = true;
     } catch (err) {
       logger.error(
         `${label}: failed to=${to} clientId=${lastClientId} err=${String(err)}`,
@@ -198,10 +188,8 @@ async function sendMediaItems(params: {
     }
   }
 
-  if (!softFailed) {
-    logger.info(`${label}: success to=${to} clientId=${lastClientId}`);
-  }
-  return toSendResult(lastClientId, { softFailed: softFailed || undefined });
+  logger.info(`${label}: success to=${to} clientId=${lastClientId}`);
+  return { messageId: lastClientId };
 }
 
 /**
@@ -218,7 +206,7 @@ export async function sendImageMessageWeixin(params: {
   text: string;
   uploaded: UploadedFileInfo;
   opts: WeixinMessageSendOptions;
-}): Promise<WeixinSendResult> {
+}): Promise<{ messageId: string }> {
   const { to, text, uploaded, opts } = params;
   if (!opts.contextToken) {
     logger.warn(`sendImageMessageWeixin: contextToken missing for to=${to}, sending without context`);
@@ -252,7 +240,7 @@ export async function sendVideoMessageWeixin(params: {
   text: string;
   uploaded: UploadedFileInfo;
   opts: WeixinMessageSendOptions;
-}): Promise<WeixinSendResult> {
+}): Promise<{ messageId: string }> {
   const { to, text, uploaded, opts } = params;
   if (!opts.contextToken) {
     logger.warn(`sendVideoMessageWeixin: contextToken missing for to=${to}, sending without context`);
@@ -284,7 +272,7 @@ export async function sendFileMessageWeixin(params: {
   fileName: string;
   uploaded: UploadedFileInfo;
   opts: WeixinMessageSendOptions;
-}): Promise<WeixinSendResult> {
+}): Promise<{ messageId: string }> {
   const { to, text, fileName, uploaded, opts } = params;
   if (!opts.contextToken) {
     logger.warn(`sendFileMessageWeixin: contextToken missing for to=${to}, sending without context`);

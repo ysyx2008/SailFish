@@ -102,10 +102,6 @@ async function uploadMediaToCdn(params: {
     throw new Error(`${label}: getUploadUrl returned no upload URL`);
   }
 
-  logger.debug(
-    `${label}: getUploadUrl hasFullUrl=${Boolean(uploadFullUrl)} hasParam=${Boolean(uploadParam)}`,
-  );
-
   const { downloadParam: downloadEncryptedQueryParam } = await uploadBufferToCdn({
     buf: plaintext,
     uploadFullUrl: uploadFullUrl || undefined,

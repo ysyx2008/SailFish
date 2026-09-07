@@ -225,8 +225,6 @@ export interface SendMessageReq {
 
 export interface SendMessageResp {
   ret?: number;
-  /** 个别接口用 errcode，与 ret 同属服务端业务码 */
-  errcode?: number;
   errmsg?: string;
 }
 

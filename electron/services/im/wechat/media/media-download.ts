@@ -34,7 +34,7 @@ export async function downloadMediaFromItem(
     label: string;
   },
 ): Promise<WeixinInboundMediaOpts> {
-  const { cdnBaseUrl, saveMedia, errLog, label } = deps;
+  const { cdnBaseUrl, saveMedia, log, errLog, label } = deps;
   const result: WeixinInboundMediaOpts = {};
 
   if (item.type === MessageItemType.IMAGE) {
