@@ -16,7 +16,7 @@
 |---------|------|-----------|
 | `setDependencies(deps: GatewayDependencies): void` | 注入 WebChatService 等依赖（禁止无注入调用） | `main.ts` |
 | `setMainWindow(win): void` | 设置主窗口引用，用于桌面通知推送 | `main.ts` |
-| `registerPluginRoutes(routes): void` | 注册插件自定义 HTTP 路由 | `main.ts`（插件加载阶段） |
+| `registerPluginRoutes(routes): void` | 注册插件自定义 HTTP 路由（整体替换语义；插件禁用/卸载后由 main.ts 用过滤后的快照重新同步，被移除插件的路由立即 404） | `main.ts`（插件加载/启停/装卸阶段） |
 | `async start(config: GatewayConfig): Promise<{success, error?}>` | 启动 HTTP 服务器，全局最长可调用一次 | `main.ts` |
 | `async stop(): Promise<void>` | 优雅关闭 HTTP 服务器 | `main.ts` |
 | `getConfig(): GatewayConfig` | 返回当前网关配置 | `cli/index.ts` |

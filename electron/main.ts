@@ -676,6 +676,7 @@ const localFsService = new LocalFsService()
 
 // 插件系统（配置读取，loadAll 仍在 backend init）
 import { createPluginRegistry } from './services/plugin/registry'
+import { PluginRuntimeSync } from './services/plugin/runtime-sync'
 const pluginRegistry = createPluginRegistry({
   enabled: configService.get('pluginsEnabled'),
   allow: configService.get('pluginsAllow'),
@@ -684,6 +685,65 @@ const pluginRegistry = createPluginRegistry({
   entries: configService.get('pluginsEntries'),
   userDataPath: app.getPath('userData')
 })
+
+// 插件注册物到外部服务（Ai/Gateway/TTS/IM）的装配与撤销。
+// registry 不直接依赖这些服务（装配方向归 main.ts），这里注入真实实现。
+let ttsModulePromise: Promise<typeof import('./services/tts')> | null = null
+function loadTts(): Promise<typeof import('./services/tts')> {
+  if (!ttsModulePromise) ttsModulePromise = import('./services/tts')
+  return ttsModulePromise
+}
+
+const pluginRuntimeSync = new PluginRuntimeSync({
+  setPluginProviders: (providers) => aiService.setPluginProviders(providers),
+  registerPluginRoutes: async (routes) => {
+    if (gatewayService) {
+      gatewayService.registerPluginRoutes(routes)
+    } else if (routes.length > 0) {
+      // 与安装路径旧行为一致：有路由要装配且 Gateway 尚未创建时才拉起远程栈
+      const { gateway } = await ensureRemoteSessionStack()
+      gateway.registerPluginRoutes(routes)
+    }
+  },
+  registerTtsProvider: async (provider) => {
+    ;(await loadTts()).registerProvider(provider)
+  },
+  removeTtsProvider: async (id) => {
+    ;(await loadTts()).removeProvider(id)
+  },
+  isBuiltinTtsProvider: async (id) => {
+    return (await loadTts()).isBuiltinProvider(id)
+  },
+  registerImAdapter: (adapter) => {
+    // IM 服务未初始化时返回 false：不纳入跟踪，后续 enable 同步会重新装配
+    if (!imService) return false
+    return imService.registerAdapter(adapter)
+  },
+  unregisterImAdapter: async (adapter) => {
+    // 与注册侧对称：IM 服务未初始化时 adapter 从未真正注册过，直接跳过，
+    // 不能为了撤销去拉起整个远程栈（尤其退出路径）
+    if (!imService) return
+    await imService.unregisterAdapter(adapter)
+  },
+  getChannelConfig: (channelId) => {
+    return configService.get('pluginsEntries')?.[channelId]?.config || {}
+  }
+})
+
+/**
+ * 把插件 registry 当前快照同步到各外部服务。
+ * enable/disable/install/uninstall 后都必须调用：空快照同样同步，
+ * 否则禁用最后一个插件时服务里的旧快照不会被清空。
+ * 返回失败段列表（空数组 = 全部成功），段落失败的明细已由 sync 内部记录日志。
+ */
+async function syncPluginRuntimeServices(context?: string): Promise<string[]> {
+  try {
+    return await pluginRuntimeSync.sync(pluginRegistry, context)
+  } catch (e) {
+    log.error('插件运行时同步失败:', e)
+    return ['sync-error']
+  }
+}
 
 const bondService = getBondService()
 
@@ -1202,6 +1262,18 @@ let cleanupPromise: Promise<void> | null = null
 async function cleanupAllServices(): Promise<void> {
   if (cleanupPromise) return cleanupPromise
   cleanupPromise = (async () => {
+  // 插件收尾：先停 IM adapter（阻断新消息进入），再触发各插件 onUnload
+  // （enabled 与 disabled 的插件都要调，register() 在加载时已执行过，资源需要对称释放）
+  try {
+    await pluginRuntimeSync.dispose()
+  } catch (e) {
+    log.warn('插件 IM adapter 收尾失败:', e)
+  }
+  try {
+    await pluginRegistry.shutdown()
+  } catch (e) {
+    log.warn('插件 onUnload 收尾失败:', e)
+  }
   if (watchService) watchService.stop()
   if (sensorService) await sensorService.stop().catch(() => {})
   if (schedulerService) schedulerService.stop()
@@ -1897,33 +1969,8 @@ app.whenReady().then(async () => {
     sendStartupProgress('plugins')
     try {
       await pluginRegistry.loadAll()
-      // 注册插件 provider 到 AI 服务
-      const pluginProviders = pluginRegistry.getAllProviders()
-      if (pluginProviders.length > 0) {
-        aiService.setPluginProviders(pluginProviders)
-      }
-      // 注册插件 TTS provider
-      const pluginTtsProviders = pluginRegistry.getAllTtsProviders()
-      if (pluginTtsProviders.length > 0) {
-        const tts = await import('./services/tts')
-        for (const p of pluginTtsProviders) tts.registerProvider(p)
-      }
-      // 注册插件 HTTP 路由到 Gateway
-      const pluginRoutes = pluginRegistry.getAllHttpRoutes()
-      if (pluginRoutes.length > 0 && gatewayService) {
-        gatewayService.registerPluginRoutes(pluginRoutes)
-      }
-      // 注册插件 IM channels
-      const pluginChannels = pluginRegistry.getAllChannels()
-      if (pluginChannels.length > 0 && imService) {
-        try {
-          for (const channel of pluginChannels) {
-            const pluginConfig = configService.get('pluginsEntries')?.[channel.id]?.config || {}
-            const adapter = channel.createAdapter(pluginConfig)
-            imService!.registerAdapter(adapter)
-          }
-        } catch { /* IM service may not be available */ }
-      }
+      // 把 provider/TTS/route/IM channel 装配到各外部服务（空快照同样同步）
+      await syncPluginRuntimeServices('startup')
       log.info('插件系统初始化完成')
     } catch (e) {
       log.error('插件系统初始化失败:', e)
@@ -6259,7 +6306,8 @@ ipcMain.handle('mcp:disconnectAll', async () => {
 
 // ==================== 插件系统相关 ====================
 
-import { installPlugin, uninstallPlugin, updatePlugin } from './services/plugin/installer'
+import { installPlugin, uninstallPlugin, updatePlugin, resolveInstalledPluginDir, readPackageNameFromDir, isNpmInstalledPluginDir, packageNameMatchesDir } from './services/plugin/installer'
+import { loadManifest } from './services/plugin/loader'
 
 ipcMain.handle('plugin:list', async () => {
   return pluginRegistry.listAll()
@@ -6268,6 +6316,8 @@ ipcMain.handle('plugin:list', async () => {
 ipcMain.handle('plugin:enable', async (_event, id: string) => {
   const success = pluginRegistry.enablePlugin(id)
   if (success) {
+    // 装配此前未注入外部服务的注册物（provider/TTS/route/IM channel）
+    await syncPluginRuntimeServices(`plugin:enable ${id}`)
     const entries = configService.get('pluginsEntries') || {}
     entries[id] = { ...entries[id], enabled: true }
     configService.set('pluginsEntries', entries)
@@ -6278,6 +6328,8 @@ ipcMain.handle('plugin:enable', async (_event, id: string) => {
 ipcMain.handle('plugin:disable', async (_event, id: string) => {
   const success = pluginRegistry.disablePlugin(id)
   if (success) {
+    // 立即撤销已注入外部服务的注册物，完成本会话内的安全边界收缩
+    await syncPluginRuntimeServices(`plugin:disable ${id}`)
     const entries = configService.get('pluginsEntries') || {}
     entries[id] = { ...entries[id], enabled: false }
     configService.set('pluginsEntries', entries)
@@ -6289,24 +6341,72 @@ ipcMain.handle('plugin:install', async (_event, spec: string) => {
   const result = await installPlugin(spec, app.getPath('userData'))
   if (result.success) {
     await pluginRegistry.loadAll()
-    const providers = pluginRegistry.getAllProviders()
-    if (providers.length > 0) aiService.setPluginProviders(providers)
-    const routes = pluginRegistry.getAllHttpRoutes()
-    if (routes.length > 0) {
-      const { gateway } = await ensureRemoteSessionStack()
-      gateway.registerPluginRoutes(routes)
-    }
-    const ttsPs = pluginRegistry.getAllTtsProviders()
-    if (ttsPs.length > 0) {
-      const tts = await import('./services/tts')
-      for (const p of ttsPs) tts.registerProvider(p)
-    }
+    await syncPluginRuntimeServices(`plugin:install ${spec}`)
   }
   return result
 })
 
-ipcMain.handle('plugin:uninstall', async (_event, packageName: string) => {
-  return uninstallPlugin(packageName, app.getPath('userData'))
+/**
+ * 运行时卸载：撤销外部注册物 -> 调用 onUnload。
+ * npm uninstall 只负责文件包管理，不能代替运行时卸载；撤销失败不回滚、不阻塞，
+ * 但破坏性操作前必须把「能力可能仍残留」显式记录下来。
+ */
+async function runtimeUnloadPlugin(pluginId: string): Promise<void> {
+  pluginRegistry.disablePlugin(pluginId)
+  const syncFailures = await syncPluginRuntimeServices(`plugin:uninstall ${pluginId}`)
+  if (syncFailures.length > 0) {
+    log.warn(
+      `插件 "${pluginId}" 存在未完全撤销的注册物（${syncFailures.join(', ')}），仍将继续删除安装包；` +
+      `若删除成功，重启后将不再加载`
+    )
+  }
+  const unload = await pluginRegistry.unloadPlugin(pluginId)
+  if (!unload.success) {
+    log.warn(`插件 "${pluginId}" 运行时卸载未完全成功: ${unload.error}`)
+  }
+}
+
+ipcMain.handle('plugin:uninstall', async (_event, pluginId: string) => {
+  const userDataPath = app.getPath('userData')
+  // 渲染层（插件列表）传的是 manifest id；manifest id 与 npm 包名没有相等契约
+  // （scoped 包、改名包），npm 包名必须从插件目录 package.json 解析
+  let packageName = pluginId
+
+  const loaded = pluginRegistry.get(pluginId)
+  if (loaded) {
+    if (!isNpmInstalledPluginDir(loaded.rootDir, userDataPath)) {
+      // 手动放置的插件不归 npm 管：运行时已可加载，但文件删除只能手动（见 plugin-dev-guide）
+      return { success: false, error: `手动安装的插件请直接删除其目录（${loaded.rootDir}）后重启` }
+    }
+    packageName = readPackageNameFromDir(loaded.rootDir) ?? pluginId
+    // 一致性校验早退：package.json 的 name 必须回环解析到同一目录，
+    // 防止被篡改/不规范的 name 把 npm uninstall 指向其他包（此时不动运行时、不动文件）
+    if (!packageNameMatchesDir(packageName, loaded.rootDir, userDataPath)) {
+      log.error(`插件 "${pluginId}" 目录 package.json 的 name "${packageName}" 与实际目录不一致，拒绝 npm 卸载`)
+      return { success: false, error: `插件目录 package.json 的 name（${packageName}）与实际目录不一致，已拒绝卸载，请检查插件目录` }
+    }
+    await runtimeUnloadPlugin(pluginId)
+  } else {
+    // 未加载（安装失败/被 allow 拒绝）：兼容按 npm 包名调用的路径，尝试定位并运行时卸载
+    const pluginDir = resolveInstalledPluginDir(pluginId, userDataPath)
+    if (pluginDir) {
+      const manifest = loadManifest(pluginDir)
+      const byManifest = manifest ? pluginRegistry.get(manifest.id) : undefined
+      if (manifest && byManifest && byManifest.rootDir === pluginDir) {
+        packageName = readPackageNameFromDir(pluginDir) ?? pluginId
+        if (!packageNameMatchesDir(packageName, pluginDir, userDataPath)) {
+          log.error(`插件 "${manifest.id}" 目录 package.json 的 name "${packageName}" 与实际目录不一致，拒绝 npm 卸载`)
+          return { success: false, error: `插件目录 package.json 的 name（${packageName}）与实际目录不一致，已拒绝卸载，请检查插件目录` }
+        }
+        await runtimeUnloadPlugin(manifest.id)
+      } else if (byManifest) {
+        log.warn(
+          `插件 "${manifest?.id}" 存在多个来源（registry: ${byManifest.rootDir}, npm: ${pluginDir}），跳过运行时卸载`
+        )
+      }
+    }
+  }
+  return uninstallPlugin(packageName, userDataPath)
 })
 
 ipcMain.handle('plugin:update', async (_event, packageName: string) => {
