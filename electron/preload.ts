@@ -2203,8 +2203,8 @@ const electronAPI = {
       ipcRenderer.invoke('plugin:disable', id) as Promise<boolean>,
     install: (spec: string) =>
       ipcRenderer.invoke('plugin:install', spec) as Promise<{ success: boolean; pluginId?: string; error?: string }>,
-    uninstall: (packageName: string) =>
-      ipcRenderer.invoke('plugin:uninstall', packageName) as Promise<{ success: boolean; error?: string }>,
+    uninstall: (pluginId: string) =>
+      ipcRenderer.invoke('plugin:uninstall', pluginId) as Promise<{ success: boolean; error?: string }>,
     update: (packageName: string) =>
       ipcRenderer.invoke('plugin:update', packageName) as Promise<{ success: boolean; error?: string }>,
     getConfig: (id: string) =>
