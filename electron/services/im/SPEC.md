@@ -52,7 +52,8 @@
 | `setExecutionMode(mode: ExecutionMode): void` | 设置 Agent 执行模式（strict/relaxed/free） |
 | `setSendProcessMessages(enabled: boolean): void` | 是否将 Agent 中间过程消息推送到 IM |
 | `setSendThinkingProcess(enabled: boolean): void` | 是否推送 Agent reasoning content（思考过程） |
-| `registerAdapter(adapter: IMAdapter): void` | 注册自定义适配器（插件扩展点） |
+| `registerAdapter(adapter: IMAdapter): boolean` | 注册自定义适配器（插件扩展点）；同一 platform 只允许一个，冲突时拒绝后来者并返回 false。事务式：回调绑定全部成功后才写入注册表，绑定抛错（冻结/只读属性/throwing setter）时抛出且不留下占用 platform 的实例 |
+| `async unregisterAdapter(adapter: IMAdapter): Promise<void>` | 撤销插件适配器：移除注册、切断入站回调并 stop；仅当当前注册实例与传入实例一致时生效。回调解绑失败只记录日志，不阻止 stop() |
 
 ### 钉钉
 

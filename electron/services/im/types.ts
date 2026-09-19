@@ -133,7 +133,7 @@ export interface IMAdapter {
 
   /** 启动连接 */
   start(): Promise<void>
-  /** 停止连接 */
+  /** 停止连接。必须幂等可重入，且容忍在 start() 未完成或已失败时被调用（超时回滚与晚到完成监护可能先后调用两次） */
   stop(): Promise<void>
   /** 是否已连接 */
   isConnected(): boolean

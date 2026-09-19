@@ -2213,17 +2213,58 @@ export class IMService {
   }
 
   /**
-   * 注册插件提供的 IM adapter
+   * 注册插件提供的 IM adapter。
+   * 同一 platform 只允许一个 adapter：冲突时拒绝后来者并返回 false，
+   * 否则后者会遮蔽前者、令前者失去唯一的管理引用而无法停止。
+   * 事务式注册：回调绑定（对插件对象赋值，冻结/只读属性/throwing setter 会抛错）
+   * 全部成功后才写入注册表——失败时不留下占用 platform 的未跟踪实例。
    */
-  registerAdapter(adapter: IMAdapter): void {
-    this.pluginAdapters.set(adapter.platform, adapter)
-    adapter.onMessage = (msg) => this.handleIncomingMessage(msg)
-    adapter.onConnectionChange = (connected) => {
-      if (connected) {
-        log.info(`Plugin IM adapter "${adapter.platform}" connected`)
-      }
+  registerAdapter(adapter: IMAdapter): boolean {
+    if (this.pluginAdapters.has(adapter.platform)) {
+      log.error(`Plugin IM adapter platform "${adapter.platform}" already registered, rejecting duplicate`)
+      return false
     }
+    try {
+      adapter.onMessage = (msg) => this.handleIncomingMessage(msg)
+      adapter.onConnectionChange = (connected) => {
+        if (connected) {
+          log.info(`Plugin IM adapter "${adapter.platform}" connected`)
+        }
+      }
+    } catch (err) {
+      // 尽力解绑已写入的回调（异常对象上解绑同样可能抛错）
+      try { adapter.onMessage = null } catch { /* best effort */ }
+      try { adapter.onConnectionChange = null } catch { /* best effort */ }
+      log.error(`Plugin IM adapter "${adapter.platform}" failed to bind callbacks:`, err)
+      throw err
+    }
+    this.pluginAdapters.set(adapter.platform, adapter)
     log.info(`Plugin IM adapter registered: ${adapter.platform}`)
+    return true
+  }
+
+  /**
+   * 撤销插件 IM adapter：移除注册并停止连接。
+   * 只在当前注册的实例与传入实例一致时生效，避免误删后来者占用同一 platform 的 adapter。
+   */
+  async unregisterAdapter(adapter: IMAdapter): Promise<void> {
+    const current = this.pluginAdapters.get(adapter.platform)
+    if (current !== adapter) return
+
+    this.pluginAdapters.delete(adapter.platform)
+    // 立即切断入站消息：即使插件 stop() 挂起，已撤销的 adapter 也不再处理消息。
+    // 解绑赋值对注册后自我变异的 adapter 也可能抛错，不能让它跳过 stop()
+    try {
+      adapter.onMessage = null
+    } catch (err) {
+      log.error(`Plugin IM adapter "${adapter.platform}" failed to unbind onMessage:`, err)
+    }
+    try {
+      await adapter.stop()
+    } catch (err) {
+      log.error(`Plugin IM adapter "${adapter.platform}" failed to stop:`, err)
+    }
+    log.info(`Plugin IM adapter unregistered: ${adapter.platform}`)
   }
 
   private loadPersistedContacts(): void {
