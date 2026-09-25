@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createRequire } from 'module'
+import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 
@@ -11,6 +13,7 @@ function loadHelper() {
   return require(helperPath) as {
     applyLocalWasmPaths: (env: any) => void
     ensureOnnxRuntimeBackend: () => 'native' | 'wasm'
+    withSiblingExternalData: (model: unknown, options?: any) => any
     installOnnxNodeWebAlias: () => void
     isOnnxRuntimeNodeRequest: (request: string) => boolean
     resetOrtNativeForTest: () => void
@@ -71,6 +74,31 @@ describe('ort-native', () => {
     expect(paths.mjs?.startsWith('file:')).toBe(true)
     expect(paths.wasm?.startsWith('file:')).toBe(true)
     expect(paths.mjs?.includes('https:')).toBe(false)
+  })
+
+  it('transformers 没挂上 WASM 配置时，补上同一份本地路径，不因此失败', () => {
+    const helper = loadHelper()
+    const fakeEnv: { backends?: { onnx?: { wasm?: { wasmPaths?: { mjs?: string } } } } } = {}
+    helper.applyLocalWasmPaths(fakeEnv)
+    const paths = fakeEnv.backends?.onnx?.wasm?.wasmPaths
+    expect(paths?.mjs?.startsWith('file:')).toBe(true)
+    expect(paths?.mjs?.includes('https:')).toBe(false)
+    expect((fakeEnv as { useWasmCache?: boolean }).useWasmCache).toBe(false)
+  })
+
+  it('模型旁边有权重文件时，会话创建会带上这份数据', () => {
+    const helper = loadHelper()
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ort-ext-'))
+    const model = path.join(dir, 'model_quantized.onnx')
+    fs.writeFileSync(model, 'onnx')
+    fs.writeFileSync(model + '_data', Buffer.from([1, 2, 3, 4]))
+    const options = helper.withSiblingExternalData(model, { executionProviders: ['cpu'] })
+    expect(options.executionProviders).toEqual(['cpu'])
+    expect(options.externalData).toHaveLength(1)
+    expect(options.externalData[0].path).toBe('model_quantized.onnx_data')
+    expect(Array.from(options.externalData[0].data)).toEqual([1, 2, 3, 4])
+    expect(helper.withSiblingExternalData(model + '.missing', {})).toEqual({})
+    fs.rmSync(dir, { recursive: true, force: true })
   })
 
   it('第二次调用不会重复探测', () => {

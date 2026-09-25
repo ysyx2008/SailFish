@@ -92,13 +92,13 @@ function installOnnxNodeWebAlias() {
     }
     return originalLoad.call(this, request, parent, isMain)
   }
+
+  // 在 import transformers 之前就把本地路径写进真正被会话读取的那份配置。
+  // 有的运行时不会把这份配置抄到 transformers.env 上，导入之后再改就来不及。
+  applyLocalWasmPaths(null)
 }
 
-/**
- * transformers 在 Node 里会把 wasmPaths 指到 jsDelivr，Node 不能 import https。
- * 必须在 import('@huggingface/transformers') 之后改回本地文件。
- */
-function applyLocalWasmPaths(transformersEnv) {
+function localWasmFileUrls() {
   const webMain = webMainPath || resolvePkg('onnxruntime-web')
   if (!webMain) {
     throw new Error('onnxruntime-web 不可用，无法设置本地 WASM 路径')
@@ -109,13 +109,76 @@ function applyLocalWasmPaths(transformersEnv) {
   if (!fs.existsSync(mjs) || !fs.existsSync(wasm)) {
     throw new Error(`本地 WASM 文件缺失: ${mjs}`)
   }
-  const wasmEnv = transformersEnv?.backends?.onnx?.wasm
-  if (!wasmEnv) {
-    throw new Error('transformers 未提供 WASM 配置，无法改回本地路径')
-  }
-  wasmEnv.wasmPaths = {
+  return {
     mjs: pathToFileURL(mjs).href,
     wasm: pathToFileURL(wasm).href,
+  }
+}
+
+/**
+ * transformers 在 Node 里会把 wasmPaths 指到 jsDelivr，Node 不能 import https。
+ * 路径必须写在 onnxruntime-web 自己的 env 上（会话实际读的那份）。
+ * transformers.env 上若没有这份配置，就把同一份挂过去，而不是因此失败。
+ */
+function applyLocalWasmPaths(transformersEnv) {
+  const webMain = webMainPath || resolvePkg('onnxruntime-web')
+  if (!webMain) {
+    throw new Error('onnxruntime-web 不可用，无法设置本地 WASM 路径')
+  }
+  const web = require(webMain)
+  const liveWasm = web?.env?.wasm
+  if (!liveWasm) {
+    throw new Error('onnxruntime-web 未提供 WASM 配置，无法改回本地路径')
+  }
+  const wasmPaths = localWasmFileUrls()
+  liveWasm.wasmPaths = wasmPaths
+  installWasmExternalDataLoader(web)
+
+  if (!transformersEnv) return
+  // 预加载会用 fetch 去读 file: 地址，Node 做不到，失败也只是警告。
+  // 真正加载走上面写好的本地路径，不需要这一步。
+  transformersEnv.useWasmCache = false
+  if (!transformersEnv.backends) transformersEnv.backends = {}
+  if (!transformersEnv.backends.onnx) transformersEnv.backends.onnx = {}
+  const copied = transformersEnv.backends.onnx.wasm
+  if (!copied) {
+    transformersEnv.backends.onnx.wasm = liveWasm
+  } else if (copied !== liveWasm) {
+    copied.wasmPaths = wasmPaths
+  }
+}
+
+/**
+ * 原生库会按路径自己去读旁边的权重文件。WASM 只吃内存，不会读磁盘，
+ * 所以要在创建会话时把同目录的 `.onnx_data` 一并交进去。
+ */
+function installWasmExternalDataLoader(web) {
+  const Session = web?.InferenceSession
+  if (!Session || typeof Session.create !== 'function' || Session.create.__sailfishExternalData) {
+    return
+  }
+  const original = Session.create.bind(Session)
+  const patched = async function (model, options, ...rest) {
+    return original(model, withSiblingExternalData(model, options), ...rest)
+  }
+  patched.__sailfishExternalData = true
+  Session.create = patched
+}
+
+function withSiblingExternalData(model, options) {
+  if (typeof model !== 'string') return options
+  const dataPath = model + '_data'
+  if (!fs.existsSync(dataPath)) return options
+  const name = path.basename(dataPath)
+  const already = Array.isArray(options?.externalData) && options.externalData.some((item) => {
+    if (typeof item === 'string') return path.basename(item) === name
+    return item && item.path === name
+  })
+  if (already) return options
+  const data = new Uint8Array(fs.readFileSync(dataPath))
+  return {
+    ...options,
+    externalData: [...(options?.externalData || []), { path: name, data }],
   }
 }
 
@@ -133,6 +196,7 @@ function resetOrtNativeForTest() {
 module.exports = {
   applyLocalWasmPaths,
   ensureOnnxRuntimeBackend,
+  withSiblingExternalData,
   installOnnxNodeWebAlias,
   isOnnxRuntimeNodeRequest,
   lastNativeError: () => lastNativeError,
