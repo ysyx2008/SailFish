@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { X } from 'lucide-vue-next'
+import { ChevronDown, X } from 'lucide-vue-next'
 import { useConfigStore, type SshSession, type SshEncoding, type JumpHostConfig } from '../stores/config'
 import { showAlert } from '../composables/useConfirm'
 
@@ -27,6 +27,40 @@ const encodingOptions: SshEncoding[] = [
 ]
 
 const nameInputRef = ref<HTMLInputElement | null>(null)
+const encodingAnchor = ref<HTMLButtonElement | null>(null)
+const encodingMenuOpen = ref(false)
+const encodingMenuStyle = ref<Record<string, string>>({})
+
+const placeEncodingMenu = () => {
+  const el = encodingAnchor.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const menuHeight = Math.min(280, encodingOptions.length * 34 + 8)
+  const spaceBelow = window.innerHeight - rect.bottom
+  const openUp = spaceBelow < menuHeight && rect.top > spaceBelow
+  encodingMenuStyle.value = {
+    left: `${rect.left}px`,
+    width: `${rect.width}px`,
+    maxHeight: '280px',
+    top: openUp
+      ? `${Math.max(8, rect.top - menuHeight - 4)}px`
+      : `${rect.bottom + 4}px`,
+  }
+}
+
+const toggleEncodingMenu = () => {
+  encodingMenuOpen.value = !encodingMenuOpen.value
+  if (encodingMenuOpen.value) nextTick(placeEncodingMenu)
+}
+
+const pickEncoding = (enc: SshEncoding) => {
+  formData.value.encoding = enc
+  encodingMenuOpen.value = false
+}
+
+const closeEncodingMenu = () => {
+  encodingMenuOpen.value = false
+}
 
 type JumpHostMode = 'inherit' | 'custom' | 'disabled'
 const jumpHostMode = ref<JumpHostMode>('inherit')
@@ -98,20 +132,35 @@ const onJumpHostModeChange = (mode: JumpHostMode) => {
 }
 
 const handleKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'Escape') {
-    e.preventDefault()
-    e.stopPropagation()
-    e.stopImmediatePropagation()
-    emit('close')
+  if (e.key !== 'Escape') return
+  e.preventDefault()
+  e.stopPropagation()
+  e.stopImmediatePropagation()
+  if (encodingMenuOpen.value) {
+    closeEncodingMenu()
+    return
   }
+  emit('close')
+}
+
+const onPointerDown = (e: MouseEvent) => {
+  if (!encodingMenuOpen.value) return
+  const target = e.target as Node | null
+  if (encodingAnchor.value?.contains(target)) return
+  if (target instanceof Element && target.closest('.encoding-menu')) return
+  closeEncodingMenu()
 }
 
 onMounted(() => {
   document.addEventListener('keydown', handleKeydown, true)
+  document.addEventListener('mousedown', onPointerDown, true)
+  window.addEventListener('resize', closeEncodingMenu)
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown, true)
+  document.removeEventListener('mousedown', onPointerDown, true)
+  window.removeEventListener('resize', closeEncodingMenu)
 })
 
 const saveSession = async () => {
@@ -156,7 +205,7 @@ const saveSession = async () => {
           <X :size="16" />
         </button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body" @scroll="closeEncodingMenu">
         <div class="form-group">
           <label class="form-label">{{ t('session.form.name') }} *</label>
           <input ref="nameInputRef" v-model="formData.name" type="text" class="input" :placeholder="t('session.form.sessionNamePlaceholder')" />
@@ -267,11 +316,16 @@ const saveSession = async () => {
 
         <div class="form-group">
           <label class="form-label">{{ t('session.form.encoding') }}</label>
-          <select v-model="formData.encoding" class="select">
-            <option v-for="enc in encodingOptions" :key="enc" :value="enc">
-              {{ t(`session.form.encodings.${enc}`) }}
-            </option>
-          </select>
+          <button
+            ref="encodingAnchor"
+            type="button"
+            class="select encoding-trigger"
+            :aria-expanded="encodingMenuOpen"
+            @click="toggleEncodingMenu"
+          >
+            <span>{{ t(`session.form.encodings.${formData.encoding || 'utf-8'}`) }}</span>
+            <ChevronDown :size="14" class="encoding-chevron" :class="{ open: encodingMenuOpen }" />
+          </button>
           <span class="form-hint">{{ t('session.form.encodingHint') }}</span>
         </div>
       </div>
@@ -280,6 +334,23 @@ const saveSession = async () => {
         <button class="btn btn-primary" @click="saveSession">{{ t('common.save') }}</button>
       </div>
     </div>
+  </div>
+  <div
+    v-if="encodingMenuOpen"
+    class="encoding-menu"
+    :style="encodingMenuStyle"
+    @mousedown.stop
+  >
+    <button
+      v-for="enc in encodingOptions"
+      :key="enc"
+      type="button"
+      class="encoding-option"
+      :class="{ active: (formData.encoding || 'utf-8') === enc }"
+      @click="pickEncoding(enc)"
+    >
+      {{ t(`session.form.encodings.${enc}`) }}
+    </button>
   </div>
   </Teleport>
 </template>
@@ -348,6 +419,56 @@ const saveSession = async () => {
   padding: 12px;
   background: var(--bg-tertiary);
   border-radius: 8px;
+}
+
+.encoding-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+}
+
+.encoding-chevron {
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: transform 0.15s ease;
+}
+
+.encoding-chevron.open {
+  transform: rotate(180deg);
+}
+
+.encoding-menu {
+  position: fixed;
+  z-index: 1100;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+}
+
+.encoding-option {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.encoding-option:hover {
+  background: var(--bg-hover);
+}
+
+.encoding-option.active {
+  color: var(--accent-primary);
 }
 
 </style>
