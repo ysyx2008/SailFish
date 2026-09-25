@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronDown, X } from 'lucide-vue-next'
+import { X } from 'lucide-vue-next'
 import { useConfigStore, type SshSession, type SshEncoding, type JumpHostConfig } from '../stores/config'
 import { showAlert } from '../composables/useConfirm'
+import AppSelect from './common/AppSelect.vue'
 
 const { t } = useI18n()
 const configStore = useConfigStore()
@@ -27,40 +28,31 @@ const encodingOptions: SshEncoding[] = [
 ]
 
 const nameInputRef = ref<HTMLInputElement | null>(null)
-const encodingAnchor = ref<HTMLButtonElement | null>(null)
-const encodingMenuOpen = ref(false)
-const encodingMenuStyle = ref<Record<string, string>>({})
 
-const placeEncodingMenu = () => {
-  const el = encodingAnchor.value
-  if (!el) return
-  const rect = el.getBoundingClientRect()
-  const menuHeight = Math.min(280, encodingOptions.length * 34 + 8)
-  const spaceBelow = window.innerHeight - rect.bottom
-  const openUp = spaceBelow < menuHeight && rect.top > spaceBelow
-  encodingMenuStyle.value = {
-    left: `${rect.left}px`,
-    width: `${rect.width}px`,
-    maxHeight: '280px',
-    top: openUp
-      ? `${Math.max(8, rect.top - menuHeight - 4)}px`
-      : `${rect.bottom + 4}px`,
-  }
-}
+const authOptions = computed(() => [
+  { value: 'password', label: t('session.form.authPassword') },
+  { value: 'privateKey', label: t('session.form.authKey') },
+])
 
-const toggleEncodingMenu = () => {
-  encodingMenuOpen.value = !encodingMenuOpen.value
-  if (encodingMenuOpen.value) nextTick(placeEncodingMenu)
-}
+const groupOptions = computed(() => [
+  { value: '', label: t('session.defaultGroup') },
+  ...configStore.sessionGroups.map(group => ({
+    value: group.id,
+    label: group.jumpHost
+      ? `${group.name} (${t('session.form.jumpHost')}: ${group.jumpHost.host})`
+      : group.name,
+  })),
+])
 
-const pickEncoding = (enc: SshEncoding) => {
-  formData.value.encoding = enc
-  encodingMenuOpen.value = false
-}
+const jumpHostModeOptions = computed(() => [
+  { value: 'inherit', label: t('session.form.jumpHostInherit') },
+  { value: 'custom', label: t('session.form.jumpHostCustom') },
+  { value: 'disabled', label: t('session.form.jumpHostDisable') },
+])
 
-const closeEncodingMenu = () => {
-  encodingMenuOpen.value = false
-}
+const encodingSelectOptions = computed(() =>
+  encodingOptions.map(enc => ({ value: enc, label: t(`session.form.encodings.${enc}`) }))
+)
 
 type JumpHostMode = 'inherit' | 'custom' | 'disabled'
 const jumpHostMode = ref<JumpHostMode>('inherit')
@@ -132,35 +124,20 @@ const onJumpHostModeChange = (mode: JumpHostMode) => {
 }
 
 const handleKeydown = (e: KeyboardEvent) => {
-  if (e.key !== 'Escape') return
-  e.preventDefault()
-  e.stopPropagation()
-  e.stopImmediatePropagation()
-  if (encodingMenuOpen.value) {
-    closeEncodingMenu()
-    return
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    e.stopPropagation()
+    e.stopImmediatePropagation()
+    emit('close')
   }
-  emit('close')
-}
-
-const onPointerDown = (e: MouseEvent) => {
-  if (!encodingMenuOpen.value) return
-  const target = e.target as Node | null
-  if (encodingAnchor.value?.contains(target)) return
-  if (target instanceof Element && target.closest('.encoding-menu')) return
-  closeEncodingMenu()
 }
 
 onMounted(() => {
   document.addEventListener('keydown', handleKeydown, true)
-  document.addEventListener('mousedown', onPointerDown, true)
-  window.addEventListener('resize', closeEncodingMenu)
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown, true)
-  document.removeEventListener('mousedown', onPointerDown, true)
-  window.removeEventListener('resize', closeEncodingMenu)
 })
 
 const saveSession = async () => {
@@ -205,7 +182,7 @@ const saveSession = async () => {
           <X :size="16" />
         </button>
       </div>
-      <div class="modal-body" @scroll="closeEncodingMenu">
+      <div class="modal-body">
         <div class="form-group">
           <label class="form-label">{{ t('session.form.name') }} *</label>
           <input ref="nameInputRef" v-model="formData.name" type="text" class="input" :placeholder="t('session.form.sessionNamePlaceholder')" />
@@ -226,10 +203,13 @@ const saveSession = async () => {
         </div>
         <div class="form-group">
           <label class="form-label">{{ t('session.form.authType') }}</label>
-          <select v-model="formData.authType" class="select">
-            <option value="password">{{ t('session.form.authPassword') }}</option>
-            <option value="privateKey">{{ t('session.form.authKey') }}</option>
-          </select>
+          <AppSelect
+            :model-value="formData.authType || 'password'"
+            :options="authOptions"
+            size="field"
+            block
+            @update:model-value="formData.authType = $event as 'password' | 'privateKey'"
+          />
         </div>
         <div v-if="formData.authType === 'password'" class="form-group">
           <label class="form-label">{{ t('session.form.password') }}</label>
@@ -247,23 +227,25 @@ const saveSession = async () => {
         </template>
         <div class="form-group">
           <label class="form-label">{{ t('session.form.group') }}</label>
-          <select v-model="formData.groupId" class="select">
-            <option value="">{{ t('session.defaultGroup') }}</option>
-            <option v-for="group in configStore.sessionGroups" :key="group.id" :value="group.id">
-              {{ group.name }}
-              <template v-if="group.jumpHost"> ({{ t('session.form.jumpHost') }}: {{ group.jumpHost.host }})</template>
-            </option>
-          </select>
+          <AppSelect
+            :model-value="formData.groupId || ''"
+            :options="groupOptions"
+            size="field"
+            block
+            @update:model-value="formData.groupId = $event"
+          />
         </div>
         <!-- 跳板机配置 -->
         <div class="form-section">
           <div class="form-group" style="margin-bottom: 0">
             <label class="form-label">{{ t('session.form.jumpHost') }}</label>
-            <select :value="jumpHostMode" @change="onJumpHostModeChange(($event.target as HTMLSelectElement).value as JumpHostMode)" class="select">
-              <option value="inherit">{{ t('session.form.jumpHostInherit') }}</option>
-              <option value="custom">{{ t('session.form.jumpHostCustom') }}</option>
-              <option value="disabled">{{ t('session.form.jumpHostDisable') }}</option>
-            </select>
+            <AppSelect
+              :model-value="jumpHostMode"
+              :options="jumpHostModeOptions"
+              size="field"
+              block
+              @update:model-value="onJumpHostModeChange($event as JumpHostMode)"
+            />
             <span v-if="jumpHostMode === 'inherit' && inheritedJumpHost" class="form-hint">
               {{ t('session.form.jumpHostInheritInfo', { group: inheritedJumpHost.groupName, host: inheritedJumpHost.host + ':' + inheritedJumpHost.port }) }}
             </span>
@@ -292,10 +274,13 @@ const saveSession = async () => {
             </div>
             <div class="form-group">
               <label class="form-label">{{ t('session.form.authType') }}</label>
-              <select v-model="jumpHostForm.authType" class="select">
-                <option value="password">{{ t('session.form.authPassword') }}</option>
-                <option value="privateKey">{{ t('session.form.authKey') }}</option>
-              </select>
+              <AppSelect
+                :model-value="jumpHostForm.authType || 'password'"
+                :options="authOptions"
+                size="field"
+                block
+                @update:model-value="jumpHostForm.authType = $event as 'password' | 'privateKey'"
+              />
             </div>
             <div v-if="jumpHostForm.authType === 'password'" class="form-group">
               <label class="form-label">{{ t('session.form.password') }}</label>
@@ -316,16 +301,13 @@ const saveSession = async () => {
 
         <div class="form-group">
           <label class="form-label">{{ t('session.form.encoding') }}</label>
-          <button
-            ref="encodingAnchor"
-            type="button"
-            class="select encoding-trigger"
-            :aria-expanded="encodingMenuOpen"
-            @click="toggleEncodingMenu"
-          >
-            <span>{{ t(`session.form.encodings.${formData.encoding || 'utf-8'}`) }}</span>
-            <ChevronDown :size="14" class="encoding-chevron" :class="{ open: encodingMenuOpen }" />
-          </button>
+          <AppSelect
+            :model-value="formData.encoding || 'utf-8'"
+            :options="encodingSelectOptions"
+            size="field"
+            block
+            @update:model-value="formData.encoding = $event as SshEncoding"
+          />
           <span class="form-hint">{{ t('session.form.encodingHint') }}</span>
         </div>
       </div>
@@ -334,23 +316,6 @@ const saveSession = async () => {
         <button class="btn btn-primary" @click="saveSession">{{ t('common.save') }}</button>
       </div>
     </div>
-  </div>
-  <div
-    v-if="encodingMenuOpen"
-    class="encoding-menu"
-    :style="encodingMenuStyle"
-    @mousedown.stop
-  >
-    <button
-      v-for="enc in encodingOptions"
-      :key="enc"
-      type="button"
-      class="encoding-option"
-      :class="{ active: (formData.encoding || 'utf-8') === enc }"
-      @click="pickEncoding(enc)"
-    >
-      {{ t(`session.form.encodings.${enc}`) }}
-    </button>
   </div>
   </Teleport>
 </template>
@@ -421,54 +386,5 @@ const saveSession = async () => {
   border-radius: 8px;
 }
 
-.encoding-trigger {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  text-align: left;
-}
-
-.encoding-chevron {
-  flex-shrink: 0;
-  opacity: 0.7;
-  transition: transform 0.15s ease;
-}
-
-.encoding-chevron.open {
-  transform: rotate(180deg);
-}
-
-.encoding-menu {
-  position: fixed;
-  z-index: 1100;
-  overflow-y: auto;
-  padding: 4px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
-}
-
-.encoding-option {
-  display: block;
-  width: 100%;
-  padding: 7px 10px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-primary);
-  font: inherit;
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.encoding-option:hover {
-  background: var(--bg-hover);
-}
-
-.encoding-option.active {
-  color: var(--accent-primary);
-}
 
 </style>

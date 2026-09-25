@@ -5,6 +5,7 @@ import { ExternalLink, Play, RotateCcw, Upload, Volume2 } from 'lucide-vue-next'
 import { useConfigStore } from '../../stores/config'
 import { applyMasterCueEnabled, clampCueVolume, CUE_SOUND_KINDS, CUE_VOLUME_MAX, CUE_VOLUME_STEP, type CueSoundKind } from '@shared/types'
 import { playCueSound } from '../../composables/useCueSound'
+import AppSelect from '../common/AppSelect.vue'
 import { WEB_SEARCH_PROVIDERS, webSearchKeyFromModelProfiles, type WebSearchProviderId } from '@shared/types'
 import {
   useSpeechPackInstall,
@@ -243,6 +244,13 @@ const ttsIsCustom = computed(() => ttsPresetId.value === 'custom')
 const ttsInternationalPresets = computed(() => ttsPresets.filter(p => p.group === 'international'))
 const ttsDomesticPresets = computed(() => ttsPresets.filter(p => p.group === 'domestic'))
 const ttsOtherPresets = computed(() => ttsPresets.filter(p => p.group === 'other'))
+const ttsPresetOptions = computed(() => [
+  ...ttsInternationalPresets.value.map(p => ({ value: p.id, label: p.name, group: t('settings.tts.groupInternational') })),
+  ...ttsDomesticPresets.value.map(p => ({ value: p.id, label: p.name, group: t('settings.tts.groupDomestic') })),
+  ...ttsOtherPresets.value.map(p => ({ value: p.id, label: p.name, group: t('settings.tts.groupOther') })),
+])
+const ttsModelOptions = computed(() => ttsSelectedPreset.value.models.map(m => ({ value: m, label: m })))
+const ttsVoiceOptions = computed(() => ttsSelectedPreset.value.voices.map(v => ({ value: v.id, label: v.name })))
 
 const ttsDirty = computed(() => {
   const s = configStore.ttsSettings
@@ -381,6 +389,9 @@ const webSearchSaved = ref(false)
 let webSearchInitializing = true
 
 const webSearchProviderList = WEB_SEARCH_PROVIDERS
+const webSearchProviderOptions = computed(() =>
+  webSearchProviderList.map(p => ({ value: p.id, label: p.name }))
+)
 const webSearchSelectedProvider = computed(() =>
   WEB_SEARCH_PROVIDERS.find(p => p.id === webSearchProviderId.value)
 )
@@ -567,17 +578,7 @@ function openWebSearchKeyUrl() {
         <div class="tts-form-fields">
           <div class="form-group">
             <label class="form-label">{{ t('settings.tts.provider') }}</label>
-            <select v-model="ttsPresetId" class="input">
-              <optgroup :label="t('settings.tts.groupInternational')">
-                <option v-for="p in ttsInternationalPresets" :key="p.id" :value="p.id">{{ p.name }}</option>
-              </optgroup>
-              <optgroup :label="t('settings.tts.groupDomestic')">
-                <option v-for="p in ttsDomesticPresets" :key="p.id" :value="p.id">{{ p.name }}</option>
-              </optgroup>
-              <optgroup :label="t('settings.tts.groupOther')">
-                <option v-for="p in ttsOtherPresets" :key="p.id" :value="p.id">{{ p.name }}</option>
-              </optgroup>
-            </select>
+            <AppSelect v-model="ttsPresetId" :options="ttsPresetOptions" size="field" block />
           </div>
 
           <div v-if="ttsIsCustom" class="form-group">
@@ -604,16 +605,12 @@ function openWebSearchKeyUrl() {
           <div class="form-row">
             <div class="form-group flex-1">
               <label class="form-label">{{ ttsSelectedPreset.modelLabel || t('settings.tts.model') }}</label>
-              <select v-if="ttsSelectedPreset.models.length > 0" v-model="ttsModel" class="input">
-                <option v-for="m in ttsSelectedPreset.models" :key="m" :value="m">{{ m }}</option>
-              </select>
+              <AppSelect v-if="ttsModelOptions.length > 0" v-model="ttsModel" :options="ttsModelOptions" size="field" block />
               <input v-else v-model="ttsModel" type="text" class="input" :placeholder="ttsSelectedPreset.modelPlaceholder || t('settings.tts.modelPlaceholder')" />
             </div>
             <div class="form-group flex-1">
               <label class="form-label">{{ t('settings.tts.voice') }}</label>
-              <select v-if="ttsSelectedPreset.voices.length > 0" v-model="ttsVoice" class="input">
-                <option v-for="v in ttsSelectedPreset.voices" :key="v.id" :value="v.id">{{ v.name }}</option>
-              </select>
+              <AppSelect v-if="ttsVoiceOptions.length > 0" v-model="ttsVoice" :options="ttsVoiceOptions" size="field" block />
               <input v-else v-model="ttsVoice" type="text" class="input" :placeholder="t('settings.tts.voicePlaceholder')" />
             </div>
           </div>
@@ -760,11 +757,7 @@ function openWebSearchKeyUrl() {
         <div class="websearch-form-fields">
           <div class="form-group">
             <label class="form-label">{{ t('settings.webSearch.provider') }}</label>
-            <select v-model="webSearchProviderId" class="input">
-              <option v-for="p in webSearchProviderList" :key="p.id" :value="p.id">
-                {{ p.name }}
-              </option>
-            </select>
+            <AppSelect v-model="webSearchProviderId" :options="webSearchProviderOptions" size="field" block />
             <span class="form-hint">{{ t(`settings.webSearch.providers.${webSearchProviderId}`) }}</span>
           </div>
 
@@ -790,16 +783,14 @@ function openWebSearchKeyUrl() {
             class="form-group"
           >
             <label class="form-label">{{ t(`settings.webSearch.fields.${field.key}`) }}</label>
-            <select
+            <AppSelect
               v-if="field.options?.length"
-              class="input"
-              :value="getWebSearchExtra(field.key) || field.defaultValue || ''"
-              @change="setWebSearchExtra(field.key, ($event.target as HTMLSelectElement).value)"
-            >
-              <option v-for="opt in field.options" :key="opt.value" :value="opt.value">
-                {{ t(`settings.webSearch.options.${opt.value}`) }}
-              </option>
-            </select>
+              size="field"
+              block
+              :model-value="getWebSearchExtra(field.key) || field.defaultValue || ''"
+              :options="field.options.map(opt => ({ value: opt.value, label: t(`settings.webSearch.options.${opt.value}`) }))"
+              @update:model-value="setWebSearchExtra(field.key, $event)"
+            />
             <input
               v-else
               :value="getWebSearchExtra(field.key)"

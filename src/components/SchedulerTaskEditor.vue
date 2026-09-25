@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { X, Clock, Server, Terminal, MessageSquare } from 'lucide-vue-next'
 import { showAlert } from '../composables/useConfirm'
+import AppSelect from './common/AppSelect.vue'
 
 const { t } = useI18n()
 
@@ -400,11 +401,16 @@ watch(() => props.task, () => {
                   class="form-input interval-value"
                   min="1"
                 />
-                <select v-model="intervalUnit" class="form-select">
-                  <option value="m">{{ t('scheduler.minutes') }}</option>
-                  <option value="h">{{ t('scheduler.hours') }}</option>
-                  <option value="d">{{ t('scheduler.days') }}</option>
-                </select>
+                <AppSelect
+                  :model-value="intervalUnit"
+                  size="compact"
+                  :options="[
+                    { value: 'm', label: t('scheduler.minutes') },
+                    { value: 'h', label: t('scheduler.hours') },
+                    { value: 'd', label: t('scheduler.days') },
+                  ]"
+                  @update:model-value="intervalUnit = $event as 'm' | 'h' | 'd'"
+                />
               </div>
             </div>
           </template>
@@ -467,12 +473,19 @@ watch(() => props.task, () => {
           <template v-if="targetType === 'ssh'">
             <div class="form-row">
               <label class="form-label">SSH {{ t('scheduler.session') }} *</label>
-              <select v-model="sshSessionId" class="form-select">
-                <option value="">{{ t('scheduler.selectSshSession') }}</option>
-                <option v-for="session in sshSessions" :key="session.id" :value="session.id">
-                  {{ session.name }} ({{ session.username }}@{{ session.host }})
-                </option>
-              </select>
+              <AppSelect
+                :model-value="sshSessionId"
+                size="field"
+                block
+                :options="[
+                  { value: '', label: t('scheduler.selectSshSession') },
+                  ...sshSessions.map(session => ({
+                    value: session.id,
+                    label: `${session.name} (${session.username}@${session.host})`,
+                  })),
+                ]"
+                @update:model-value="sshSessionId = $event"
+              />
             </div>
           </template>
         </div>

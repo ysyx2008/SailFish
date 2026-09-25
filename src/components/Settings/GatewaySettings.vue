@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Copy, ExternalLink, ScrollText } from 'lucide-vue-next'
+import AppSelect from '../common/AppSelect.vue'
 
 const { t } = useI18n()
 
@@ -199,10 +200,16 @@ async function copyToClipboard(text: string, label: string) {
         </div>
         <div class="form-group flex-1">
           <label class="form-label">{{ t('settings.gateway.host') }}</label>
-          <select v-model="host" :disabled="isRunning" class="input-field">
-            <option value="0.0.0.0">0.0.0.0 ({{ t('settings.gateway.allInterfaces') }})</option>
-            <option value="127.0.0.1">127.0.0.1 ({{ t('settings.gateway.localhostOnly') }})</option>
-          </select>
+          <AppSelect
+            v-model="host"
+            :disabled="isRunning"
+            size="field"
+            block
+            :options="[
+              { value: '0.0.0.0', label: `0.0.0.0 (${t('settings.gateway.allInterfaces')})` },
+              { value: '127.0.0.1', label: `127.0.0.1 (${t('settings.gateway.localhostOnly')})` },
+            ]"
+          />
         </div>
       </div>
 

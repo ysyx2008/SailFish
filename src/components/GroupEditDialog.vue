@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { X } from 'lucide-vue-next'
 import type { SessionGroup, JumpHostConfig } from '../stores/config'
 import { showAlert } from '../composables/useConfirm'
+import AppSelect from './common/AppSelect.vue'
 
 const { t } = useI18n()
 
@@ -146,10 +147,16 @@ const deleteGroup = () => {
             </div>
             <div class="form-group">
               <label class="form-label">{{ t('session.form.authType') }}</label>
-              <select v-model="formData.jumpHost.authType" class="select">
-                <option value="password">{{ t('session.form.authPassword') }}</option>
-                <option value="privateKey">{{ t('session.form.authKey') }}</option>
-              </select>
+              <AppSelect
+                :model-value="formData.jumpHost?.authType || 'password'"
+                size="field"
+                block
+                :options="[
+                  { value: 'password', label: t('session.form.authPassword') },
+                  { value: 'privateKey', label: t('session.form.authKey') },
+                ]"
+                @update:model-value="formData.jumpHost.authType = $event as 'password' | 'privateKey'"
+              />
             </div>
             <div v-if="formData.jumpHost.authType === 'password'" class="form-group">
               <label class="form-label">{{ t('session.form.password') }}</label>

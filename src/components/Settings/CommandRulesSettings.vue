@@ -11,6 +11,7 @@ import { useI18n } from 'vue-i18n'
 import { Trash2, RefreshCw, Search, ShieldAlert, FolderLock, HardDrive, Terminal, Plus } from 'lucide-vue-next'
 import type { RiskLevel } from '@shared/types/agent'
 import { SettingsPage, SettingRow, SettingToggle, SettingHelp } from './kit'
+import AppSelect from '../common/AppSelect.vue'
 import { useRiskPolicy, DEFAULT_POLICY } from './composables/useRiskPolicy'
 import { useRiskLevelLabels } from './composables/useRiskLevelLabels'
 import { useUnsavedGuard } from './composables/useUnsavedGuard'
@@ -267,9 +268,12 @@ onMounted(() => {
               :placeholder="t('settings.security.userCommandRules.cmdPlaceholder')"
               @keyup.enter="addUserCommandRule"
             />
-            <select v-model="newUserRuleLevel" class="input-field user-rule-level">
-              <option v-for="lvl in USER_RULE_LEVELS" :key="lvl" :value="lvl">{{ riskLabel(lvl) }}</option>
-            </select>
+            <AppSelect
+              :model-value="newUserRuleLevel"
+              size="compact"
+              :options="USER_RULE_LEVELS.map(lvl => ({ value: lvl, label: riskLabel(lvl) }))"
+              @update:model-value="newUserRuleLevel = $event as RiskLevel"
+            />
             <label class="user-rule-writes">
               <input v-model="newUserRuleWrites" type="checkbox" />
               <span>{{ t('settings.security.userCommandRules.writesLabel') }}</span>

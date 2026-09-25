@@ -8,6 +8,7 @@ import type { FetchedAiModel } from '@shared/types'
 import { AI_TEMPLATES, RECOMMENDED_MIN_CONTEXT } from '../../config/ai-templates'
 import { v4 as uuidv4 } from 'uuid'
 import { SettingsPage, SettingsGroup, SettingRow, SettingToggle } from './kit'
+import AppSelect from '../common/AppSelect.vue'
 
 const { t, locale } = useI18n()
 
@@ -74,6 +75,19 @@ const visionProfileOptions = computed(() => {
     p.modelType === 'vision' && p.id !== editingProfile.value?.id
   )
 })
+const modelTypeOptions = computed(() => [
+  { value: 'general', label: t('aiSettings.modelTypeGeneral') },
+  { value: 'vision', label: t('aiSettings.modelTypeVision') },
+])
+const visionSelectOptions = computed(() => [
+  { value: '', label: t('aiSettings.visionProfileNone') },
+  ...visionProfileOptions.value.map(vp => ({ value: vp.id, label: `${vp.name} (${vp.model})` })),
+])
+const apiFormatOptions = computed(() => [
+  { value: 'auto', label: t('aiSettings.apiFormatAuto') },
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'anthropic', label: 'Anthropic' },
+])
 
 const contextLengthInK = computed({
   get: () => {
@@ -584,33 +598,35 @@ const openKeyUrl = (url: string) => {
               <div class="form-row">
                 <div class="form-group flex-1">
                   <label class="form-label">{{ t('aiSettings.modelType') }}</label>
-                  <select v-model="formData.modelType" class="input">
-                    <option value="general">{{ t('aiSettings.modelTypeGeneral') }}</option>
-                    <option value="vision">{{ t('aiSettings.modelTypeVision') }}</option>
-                  </select>
+                  <AppSelect
+                    :model-value="formData.modelType || 'general'"
+                    :options="modelTypeOptions"
+                    size="field"
+                    block
+                    @update:model-value="formData.modelType = $event as AiModelType"
+                  />
                   <span class="form-hint">{{ t('aiSettings.modelTypeHint') }}</span>
                 </div>
                 <div class="form-group flex-1" v-if="formData.modelType !== 'vision'">
                   <label class="form-label">{{ t('aiSettings.visionProfile') }}</label>
-                  <select v-model="formData.visionProfileId" class="input">
-                    <option :value="undefined">{{ t('aiSettings.visionProfileNone') }}</option>
-                    <option
-                      v-for="vp in visionProfileOptions"
-                      :key="vp.id"
-                      :value="vp.id"
-                    >
-                      {{ vp.name }} ({{ vp.model }})
-                    </option>
-                  </select>
+                  <AppSelect
+                    :model-value="formData.visionProfileId || ''"
+                    :options="visionSelectOptions"
+                    size="field"
+                    block
+                    @update:model-value="formData.visionProfileId = $event || undefined"
+                  />
                   <span class="form-hint">{{ t('aiSettings.visionProfileHint') }}</span>
                 </div>
                 <div class="form-group flex-1">
                   <label class="form-label">{{ t('aiSettings.apiFormat') }}</label>
-                  <select v-model="formData.apiFormat" class="input">
-                    <option value="auto">{{ t('aiSettings.apiFormatAuto') }}</option>
-                    <option value="openai">OpenAI</option>
-                    <option value="anthropic">Anthropic</option>
-                  </select>
+                  <AppSelect
+                    :model-value="formData.apiFormat || 'auto'"
+                    :options="apiFormatOptions"
+                    size="field"
+                    block
+                    @update:model-value="formData.apiFormat = $event as ApiFormat"
+                  />
                   <span class="form-hint">{{ t('aiSettings.apiFormatHint') }}</span>
                 </div>
               </div>

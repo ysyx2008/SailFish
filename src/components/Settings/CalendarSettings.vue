@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { Plus, Pencil, Trash2, X, Calendar, CheckCircle, AlertCircle, ShieldCheck, Loader2 } from 'lucide-vue-next'
 import { useConfigStore, type CalendarAccount, type CalendarProvider, type AccountTestStatus, CALENDAR_PROVIDER_CONFIGS } from '../../stores/config'
 import { showConfirm, showAlert } from '../../composables/useConfirm'
+import AppSelect from '../common/AppSelect.vue'
 import { v4 as uuidv4 } from 'uuid'
 
 const { t } = useI18n()
@@ -379,11 +380,13 @@ const formatRelativeTime = (timestamp?: number): string => {
           <!-- 服务商选择 -->
           <div class="form-group">
             <label>{{ t('calendarSettings.provider') }}</label>
-            <select v-model="formData.provider" @change="onProviderChange">
-              <option v-for="option in providerOptions" :key="option.value" :value="option.value">
-                {{ option.icon }} {{ option.label }}
-              </option>
-            </select>
+            <AppSelect
+              :model-value="formData.provider || ''"
+              :options="providerOptions.map(option => ({ value: option.value, label: `${option.icon} ${option.label}` }))"
+              size="field"
+              block
+              @update:model-value="formData.provider = $event as CalendarProvider; onProviderChange()"
+            />
           </div>
 
           <!-- 自定义服务器配置 -->

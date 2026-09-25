@@ -17,6 +17,7 @@ import cronstrue from 'cronstrue/i18n'
 import WatchOverviewPanel from './WatchOverviewPanel.vue'
 import WatchHistoryDetailView from './WatchHistoryDetailView.vue'
 import { showConfirm, showAlert } from '../../composables/useConfirm'
+import AppSelect from '../common/AppSelect.vue'
 
 const { t } = useI18n()
 const configStore = useConfigStore()
@@ -1061,21 +1062,33 @@ onUnmounted(() => {
                     <div class="edit-row">
                       <div class="edit-section edit-section-half">
                         <label class="edit-label">{{ t('watch.priority') }}</label>
-                        <select v-model="editForm.priority" class="edit-select">
-                          <option value="high">{{ t('watch.priorityHigh') }}</option>
-                          <option value="normal">{{ t('watch.priorityNormal') }}</option>
-                          <option value="low">{{ t('watch.priorityLow') }}</option>
-                        </select>
+                        <AppSelect
+                          :model-value="editForm.priority"
+                          size="field"
+                          block
+                          :options="[
+                            { value: 'high', label: t('watch.priorityHigh') },
+                            { value: 'normal', label: t('watch.priorityNormal') },
+                            { value: 'low', label: t('watch.priorityLow') },
+                          ]"
+                          @update:model-value="editForm.priority = $event as 'high' | 'normal' | 'low'"
+                        />
                       </div>
                       <div class="edit-section edit-section-half">
                         <label class="edit-label">{{ t('watch.outputType') }}</label>
-                        <select v-model="editForm.outputType" class="edit-select">
-                          <option value="desktop">{{ t('watch.outputDesktop') }}</option>
-                          <option value="im">{{ t('watch.outputIM') }}</option>
-                          <option value="notification">{{ t('watch.outputNotification') }}</option>
-                          <option value="log">{{ t('watch.outputLog') }}</option>
-                          <option value="silent">{{ t('watch.outputSilent') }}</option>
-                        </select>
+                        <AppSelect
+                          :model-value="editForm.outputType"
+                          size="field"
+                          block
+                          :options="[
+                            { value: 'desktop', label: t('watch.outputDesktop') },
+                            { value: 'im', label: t('watch.outputIM') },
+                            { value: 'notification', label: t('watch.outputNotification') },
+                            { value: 'log', label: t('watch.outputLog') },
+                            { value: 'silent', label: t('watch.outputSilent') },
+                          ]"
+                          @update:model-value="editForm.outputType = $event as 'desktop' | 'im' | 'notification' | 'log' | 'silent'"
+                        />
                       </div>
                     </div>
                     <div class="edit-section">

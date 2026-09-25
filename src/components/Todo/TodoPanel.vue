@@ -18,6 +18,7 @@ import type { TodoItem, TodoPriority, TodoSource, TodoStatus } from '@sailfish/s
 import { useTerminalStore, COMPANION_TAB_AGENT_ID } from '../../stores/terminal'
 import { toast } from '../../composables/useToast'
 import type { UrgencyTier } from './urgency'
+import AppSelect from '../common/AppSelect.vue'
 import TodoRowHoverTip from './TodoRowHoverTip.vue'
 import TodoMenu from './TodoMenu.vue'
 import TodoDatePicker from './TodoDatePicker.vue'
@@ -1135,18 +1136,26 @@ onUnmounted(() => {
         <div class="field-row">
           <label class="field">
             <span class="field-label">{{ t('todoPanel.fieldStatus') }}</span>
-            <select v-model="draft.status" class="field-select">
-              <option v-for="s in STATUSES" :key="s" :value="s">{{ statusLabel(s) }}</option>
-            </select>
+            <AppSelect
+              :model-value="draft.status"
+              size="field"
+              block
+              :options="STATUSES.map(s => ({ value: s, label: statusLabel(s) }))"
+              @update:model-value="draft.status = $event as TodoStatus"
+            />
           </label>
           <label class="field">
             <span class="field-label">{{ t('todoPanel.fieldPriority') }}</span>
-            <select v-model="draft.priority" class="field-select">
-              <option value="">{{ t('todoPanel.priority.normal') }}</option>
-              <option v-for="p in PRIORITIES.filter(x => x !== 'normal')" :key="p" :value="p">
-                {{ priorityLabel(p) }}
-              </option>
-            </select>
+            <AppSelect
+              :model-value="draft.priority && draft.priority !== 'normal' ? draft.priority : ''"
+              size="field"
+              block
+              :options="[
+                { value: '', label: t('todoPanel.priority.normal') },
+                ...PRIORITIES.filter(x => x !== 'normal').map(p => ({ value: p, label: priorityLabel(p) })),
+              ]"
+              @update:model-value="draft.priority = $event as TodoPriority | ''"
+            />
           </label>
         </div>
 
