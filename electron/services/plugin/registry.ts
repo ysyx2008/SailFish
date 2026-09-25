@@ -11,6 +11,7 @@ import type { ToolDefinition } from '../ai.service'
 import type {
   LoadedPlugin,
   PluginEntryConfig,
+  PluginUnloadResult,
   ProviderRegistration,
   ChannelRegistration,
   TtsProviderRegistration,
@@ -26,6 +27,9 @@ const log = createLogger('PluginRegistry')
 /** 工具名前缀，类似 MCP 的 mcp_ */
 const TOOL_PREFIX = 'plugin_'
 
+/** 单插件清理动作（onUnload 等）的等待预算：插件挂起时不能阻塞卸载/退出流程 */
+const PLUGIN_CLEANUP_BUDGET_MS = 3000
+
 export interface PluginRegistryConfig {
   enabled: boolean
   allow?: string[]
@@ -39,6 +43,9 @@ export class PluginRegistry {
   private plugins = new Map<string, LoadedPlugin>()
   /** 插件工具名 -> (pluginId, 原始 toolName) 的映射 */
   private toolNameMap = new Map<string, { pluginId: string; originalName: string }>()
+  /** 已调用过 onUnload 的加载实例：同一生命周期最多一次。按 LoadedPlugin（而非 entry 对象）
+   *  标记——entry 来自模块导出，require/import 缓存会让重装后的新生命周期拿到同一 entry 对象 */
+  private unloadedPlugins = new WeakSet<LoadedPlugin>()
   readonly hookBus = new HookBus()
   private config: PluginRegistryConfig
 
@@ -230,6 +237,30 @@ export class PluginRegistry {
     return routes
   }
 
+  /** 带插件归属的 TTS provider 快照（禁用/卸载时按 owner 撤销的依据） */
+  getEnabledTtsProvidersWithOwner(): Array<{ pluginId: string; provider: TtsProviderRegistration }> {
+    const result: Array<{ pluginId: string; provider: TtsProviderRegistration }> = []
+    for (const plugin of this.plugins.values()) {
+      if (!plugin.enabled) continue
+      for (const provider of plugin.ttsProviders) {
+        result.push({ pluginId: plugin.manifest.id, provider })
+      }
+    }
+    return result
+  }
+
+  /** 带插件归属的 channel 快照（禁用/卸载时按 owner 撤销 adapter 的依据） */
+  getEnabledChannelsWithOwner(): Array<{ pluginId: string; channel: ChannelRegistration }> {
+    const result: Array<{ pluginId: string; channel: ChannelRegistration }> = []
+    for (const plugin of this.plugins.values()) {
+      if (!plugin.enabled) continue
+      for (const channel of plugin.channels) {
+        result.push({ pluginId: plugin.manifest.id, channel })
+      }
+    }
+    return result
+  }
+
   // ==================== 插件管理 ====================
 
   get(id: string): LoadedPlugin | undefined {
@@ -263,6 +294,91 @@ export class PluginRegistry {
     this.deactivatePlugin(plugin)
     log.info(`Plugin "${id}" disabled`)
     return true
+  }
+
+  /**
+   * 运行时卸载插件：移除注册物并调用 onUnload（同一加载实例最多一次；重装/重载视为新实例）。
+   *
+   * 外部服务（AiService/Gateway/TTS/IM）的撤销由调用方在调用本方法前完成，
+   * 以保证「先撤销外部注册物，再让插件清理自身资源」的顺序。
+   * onUnload 抛错或超过清理预算（3s）时插件仍会从 registry 移除，
+   * 但结果标记为失败并携带错误信息，npm 卸载等后续流程不被阻塞。
+   */
+  async unloadPlugin(id: string): Promise<PluginUnloadResult> {
+    const plugin = this.plugins.get(id)
+    if (!plugin) {
+      return { success: false, error: `plugin "${id}" is not loaded` }
+    }
+
+    if (plugin.enabled) {
+      plugin.enabled = false
+      this.deactivatePlugin(plugin)
+    }
+    this.plugins.delete(id)
+
+    const entry = plugin.entry
+    if (entry?.onUnload && !this.unloadedPlugins.has(plugin)) {
+      this.unloadedPlugins.add(plugin)
+      let finished = false
+      try {
+        await this.withCleanupBudget(
+          Promise.resolve(entry.onUnload()).then(() => { finished = true }),
+          `Plugin "${id}" onUnload`
+        )
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err)
+        log.error(`Plugin "${id}" onUnload failed:`, err)
+        return { success: false, error: errorMsg }
+      }
+      if (!finished) {
+        log.error(`Plugin "${id}" onUnload timed out after ${PLUGIN_CLEANUP_BUDGET_MS}ms, continuing without it`)
+        return { success: false, error: `onUnload timed out after ${PLUGIN_CLEANUP_BUDGET_MS}ms` }
+      }
+    }
+
+    log.info(`Plugin "${id}" unloaded`)
+    return { success: true }
+  }
+
+  /**
+   * 退出时的收尾：对所有已加载插件（含已禁用）调用 onUnload，各最多一次。
+   * 单个插件清理失败或超时只记录日志，不影响其他插件，也不能阻塞应用退出。
+   */
+  async shutdown(): Promise<void> {
+    for (const plugin of this.plugins.values()) {
+      const entry = plugin.entry
+      if (!entry?.onUnload || this.unloadedPlugins.has(plugin)) continue
+      this.unloadedPlugins.add(plugin)
+      try {
+        await this.withCleanupBudget(
+          Promise.resolve(entry.onUnload()),
+          `Plugin "${plugin.manifest.id}" onUnload during shutdown`
+        )
+      } catch (err) {
+        log.error(`Plugin "${plugin.manifest.id}" onUnload failed during shutdown:`, err)
+      }
+    }
+  }
+
+  /** 单插件清理预算：超时放行（插件清理继续在后台进行），不阻塞卸载/退出流程 */
+  private withCleanupBudget(task: Promise<unknown>, label: string, ms = PLUGIN_CLEANUP_BUDGET_MS): Promise<unknown> {
+    const taskPromise = Promise.resolve(task)
+    // 超时放行后任务仍可能 late-reject，挂 no-op catch 防 unhandled rejection
+    taskPromise.catch(() => { /* race 已由超时方胜出，迟到失败只留在日志语义里 */ })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    return Promise.race([
+      taskPromise,
+      new Promise<undefined>(resolve => {
+        timer = setTimeout(() => {
+          log.warn(`${label} timed out after ${ms}ms, continuing`)
+          resolve(undefined)
+        }, ms)
+        // 清理预算的定时器不阻止进程结束
+        ;(timer as unknown as { unref?: () => void }).unref?.()
+      })
+    ]).finally(() => {
+      if (timer) clearTimeout(timer)
+    })
   }
 
   updateConfig(config: Partial<PluginRegistryConfig>): void {

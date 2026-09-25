@@ -496,3 +496,54 @@ describe('IMService sendFileToChannel / getChannelSendTargets', () => {
     expect(adapter.sendFile).not.toHaveBeenCalled()
   })
 })
+
+describe('IMService 插件 adapter 注册事务性', () => {
+  function makePluginAdapter(platform: string) {
+    return {
+      platform,
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      isConnected: () => false,
+      sendText: vi.fn().mockResolvedValue(undefined),
+      sendMarkdown: vi.fn().mockResolvedValue(undefined)
+    }
+  }
+
+  it('回调绑定失败（冻结对象）：抛错且不占用 platform，同 platform 可立即再次注册', () => {
+    const service = new IMService() as any
+    const frozen = Object.freeze(makePluginAdapter('plug-frozen'))
+
+    expect(() => service.registerAdapter(frozen)).toThrow()
+
+    // 注册失败不留孤儿：platform 未被占用，正常 adapter 可立即注册
+    const normal = makePluginAdapter('plug-frozen')
+    expect(service.registerAdapter(normal)).toBe(true)
+    expect(service.pluginAdapters.get('plug-frozen')).toBe(normal)
+  })
+
+  it('部分绑定失败（onConnectionChange 只读）：抛错、已绑定的 onMessage 被尽力解绑、platform 可重注册', () => {
+    const service = new IMService() as any
+    const partial = makePluginAdapter('plug-readonly') as any
+    Object.defineProperty(partial, 'onConnectionChange', { get: () => undefined, configurable: false })
+
+    expect(() => service.registerAdapter(partial)).toThrow()
+    // onMessage 已成功绑定，失败分支尽力解绑
+    expect(partial.onMessage).toBeNull()
+
+    const normal = makePluginAdapter('plug-readonly')
+    expect(service.registerAdapter(normal)).toBe(true)
+  })
+
+  it('unregisterAdapter：回调解绑抛错（注册后自我变异）不阻止 stop 与移除', async () => {
+    const service = new IMService() as any
+    const adapter = makePluginAdapter('plug-mutant') as any
+    expect(service.registerAdapter(adapter)).toBe(true)
+
+    // 注册成功后把 onMessage 换成只读属性，模拟自我变异的插件对象
+    Object.defineProperty(adapter, 'onMessage', { get: () => undefined, configurable: false })
+
+    await expect(service.unregisterAdapter(adapter)).resolves.toBeUndefined()
+    expect(adapter.stop).toHaveBeenCalledTimes(1)
+    expect(service.pluginAdapters.has('plug-mutant')).toBe(false)
+  })
+})
