@@ -296,6 +296,17 @@ const saveSession = async () => {
                 <input v-model="jumpHostForm.passphrase" type="password" class="input" />
               </div>
             </template>
+            <div class="form-group jump-server-option">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  :checked="jumpHostForm.product === 'jumpserver'"
+                  @change="jumpHostForm.product = ($event.target as HTMLInputElement).checked ? 'jumpserver' : undefined"
+                />
+                <span>{{ t('session.form.jumpHostIsJumpServer') }}</span>
+              </label>
+              <span class="form-hint">{{ t('session.form.jumpHostIsJumpServerHint') }}</span>
+            </div>
           </template>
         </div>
 
@@ -374,9 +385,52 @@ const saveSession = async () => {
 
 .form-hint {
   display: block;
-  font-size: 11px;
+  font-size: var(--fs-meta);
   color: var(--text-muted);
-  margin-top: 4px;
+  margin-top: var(--sp-1);
+}
+
+.jump-server-option {
+  margin-bottom: 0;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-family);
+  font-size: var(--fs-label);
+  font-weight: 400;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  flex-shrink: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: var(--bg-primary);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"]:checked {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.checkbox-label input[type="checkbox"]:checked::after {
+  content: '';
+  width: 3px;
+  height: 7px;
+  border: solid var(--accent-contrast);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg) translate(-0.5px, -1px);
 }
 
 .form-section {

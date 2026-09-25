@@ -95,6 +95,8 @@ export default {
       jumpHostInheritInfo: '将使用分组「{group}」的跳板机 {host}',
       jumpHostNoInherit: '当前分组未配置跳板机，将直连',
       jumpHostCustomHint: '支持 JumpServer 等堡垒机，端口通常为 2222',
+      jumpHostIsJumpServer: '这是 JumpServer',
+      jumpHostIsJumpServerHint: '勾选后，跳板机不允许端口转发时会改走堡垒机菜单',
       encoding: '字符编码',
       encodingHint: '远程服务器使用的字符编码，默认 UTF-8',
       encodings: {

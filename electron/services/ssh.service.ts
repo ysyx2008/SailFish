@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import * as fs from 'fs'
 import stripAnsi from 'strip-ansi'
 import * as iconv from 'iconv-lite'
-import type { JumpHostConfig, SshConfig, SshEncoding } from '@shared/types'
+import { isTcpForwardingRefused, JUMP_FORWARDING_REFUSED_MESSAGE, type JumpHostConfig, type SshConfig, type SshEncoding } from '@shared/types'
 import { getUnixProbeCommands } from './host-profile.service'
 import { getSshErrorMessage } from './ssh-error'
 import { SshConnectAttempt, SshConnectCancelledError, forceCloseClient } from './ssh-connect-attempt'
@@ -325,17 +325,19 @@ export class SshService {
           config.port,
           async (err, stream) => {
             if (err) {
-              const isForwardingDisabled = err.message.includes('port forwarding') ||
-                err.message.includes('administratively prohibited')
-
-              if (isForwardingDisabled) {
-                log.warn(`Port forwarding not supported, falling back to JumpServer direct shell mode`)
+              if (isTcpForwardingRefused(err)) {
                 jumpClient.end()
-                try {
-                  const result = await this.connectViaJumpServerShell(id, config, attempt)
-                  resolve(result)
-                } catch (shellErr) {
-                  reject(shellErr)
+                if (jumpHost.product === 'jumpserver') {
+                  log.warn(`Port forwarding not supported, falling back to JumpServer direct shell mode`)
+                  try {
+                    const result = await this.connectViaJumpServerShell(id, config, attempt)
+                    resolve(result)
+                  } catch (shellErr) {
+                    reject(shellErr)
+                  }
+                } else {
+                  log.warn(`Port forwarding refused by jump host ${jumpHost.host}: ${err.message}`)
+                  reject(new Error(`${JUMP_FORWARDING_REFUSED_MESSAGE}（${err.message}）`))
                 }
                 return
               }

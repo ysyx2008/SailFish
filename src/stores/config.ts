@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import type { AiModelType, AiProfile, ApiFormat, JumpHostConfig, ProactiveCompactStyle, SessionSortBy, SshEncoding, SystemColorScheme, UiThemeMode } from '@shared/types'
+import { jumpHostFromGroup, type AiModelType, type AiProfile, type ApiFormat, type JumpHostConfig, type ProactiveCompactStyle, type SessionSortBy, type SshEncoding, type SystemColorScheme, type UiThemeMode } from '@shared/types'
 import { clampUiZoomFactor, DEFAULT_CUE_SOUND_SETTINGS, DEFAULT_PROACTIVE_COMPACT, DEFAULT_UI_THEME, DEFAULT_UI_THEME_MODE, normalizeCueSoundSettings, normalizeProactiveCompact, resolveEffectiveUiTheme, UI_ZOOM_DEFAULT } from '@shared/types'
 import { setLocale, type LocaleType } from '../i18n'
 import { uiThemes, type UiThemeName } from '../themes/ui-themes'
@@ -513,7 +513,14 @@ export const useConfigStore = defineStore('config', () => {
       aiProfiles.value = profiles || []
       activeAiProfileId.value = activeId || ''
       sshSessions.value = sessions || []
-      sessionGroups.value = groups || []
+      sessionGroups.value = (groups || []).map(group => {
+        if (!group.jumpHost) return group
+        const marked = jumpHostFromGroup(group.name, group.jumpHost)
+        return marked === group.jumpHost ? group : { ...group, jumpHost: marked }
+      })
+      if (sessionGroups.value.some((group, i) => group !== (groups || [])[i])) {
+        void saveSessionGroups()
+      }
       currentTheme.value = theme || 'one-dark'
       uiTheme.value = uiThemeValue || DEFAULT_UI_THEME
       uiThemeMode.value = themeMode || DEFAULT_UI_THEME_MODE
@@ -808,7 +815,7 @@ export const useConfigStore = defineStore('config', () => {
     // 继承分组的跳板机
     if (session.groupId) {
       const group = sessionGroups.value.find(g => g.id === session.groupId)
-      return group?.jumpHost
+      return group?.jumpHost ? jumpHostFromGroup(group.name, group.jumpHost) : undefined
     }
     return undefined
   }

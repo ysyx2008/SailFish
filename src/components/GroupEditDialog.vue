@@ -172,6 +172,17 @@ const deleteGroup = () => {
                 <input v-model="formData.jumpHost.passphrase" type="password" class="input" />
               </div>
             </template>
+            <div class="form-group jump-server-option">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  :checked="formData.jumpHost.product === 'jumpserver'"
+                  @change="formData.jumpHost.product = ($event.target as HTMLInputElement).checked ? 'jumpserver' : undefined"
+                />
+                <span>{{ t('session.form.jumpHostIsJumpServer') }}</span>
+              </label>
+              <span class="form-hint">{{ t('session.form.jumpHostIsJumpServerHint') }}</span>
+            </div>
           </template>
         </div>
       </div>
@@ -272,6 +283,49 @@ const deleteGroup = () => {
   width: 14px;
   height: 14px;
   cursor: pointer;
+}
+
+.jump-server-option {
+  margin-bottom: 0;
+}
+
+.jump-server-option .checkbox-label {
+  font-family: var(--font-family);
+  font-size: var(--fs-label);
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.jump-server-option .checkbox-label input[type="checkbox"] {
+  appearance: none;
+  margin: 0;
+  flex-shrink: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: var(--bg-primary);
+  display: grid;
+  place-items: center;
+}
+
+.jump-server-option .checkbox-label input[type="checkbox"]:checked {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.jump-server-option .checkbox-label input[type="checkbox"]:checked::after {
+  content: '';
+  width: 3px;
+  height: 7px;
+  border: solid var(--accent-contrast);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg) translate(-0.5px, -1px);
+}
+
+.form-hint {
+  display: block;
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+  margin-top: var(--sp-1);
 }
 
 .btn-danger {

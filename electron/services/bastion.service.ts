@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { Agent } from 'undici'
 import type { BastionConfig, BastionSyncResult } from '@shared/types'
-import type { ConfigService, SshSession, SessionGroup, JumpHostConfig } from './config.service'
+import type { ConfigService, SshSession, SessionGroup } from './config.service'
 import { createLogger } from '../utils/logger'
 
 // 复用一个不校验证书的 dispatcher（仅在用户显式开启 ignoreSsl 时使用）
@@ -106,8 +106,9 @@ export class BastionService {
           port: config.jumpHostPort || 2222,
           username: config.username,
           authType: 'password',
-          password: config.password
-        } as JumpHostConfig
+          password: config.password,
+          product: 'jumpserver'
+        }
       }
 
       const groupSessions = sessions.filter(s => s.groupId === group!.id)

@@ -10,7 +10,11 @@
 /** 主机列表排序方式 */
 export type SessionSortBy = 'custom' | 'name' | 'name-desc' | 'lastUsed'
 
-/** 跳板机配置（对外 IPC + 前端表单共用） */
+/**
+ * 跳板机配置（对外 IPC + 前端表单共用）
+ *
+ * `product: 'jumpserver'` 只由堡垒机同步写入。普通 Linux 跳板没有这个标记。
+ */
 export interface JumpHostConfig {
   host: string
   port: number
@@ -19,6 +23,35 @@ export interface JumpHostConfig {
   password?: string
   privateKeyPath?: string
   passphrase?: string
+  product?: 'jumpserver'
+}
+
+/** 堡垒机同步创建的分组标题前缀，用来认出尚未带 product 标记的旧数据 */
+export const JUMPSERVER_SYNC_GROUP_PREFIX = 'JumpServer ('
+
+/** 继承分组跳板机时，把堡垒机同步分组标成 JumpServer，避免和手填的 Linux 跳板混在一起 */
+export function jumpHostFromGroup(groupName: string, jumpHost: JumpHostConfig): JumpHostConfig {
+  if (jumpHost.product === 'jumpserver' || groupName.startsWith(JUMPSERVER_SYNC_GROUP_PREFIX)) {
+    return jumpHost.product === 'jumpserver' ? jumpHost : { ...jumpHost, product: 'jumpserver' }
+  }
+  return jumpHost
+}
+
+/** 跳板机拒绝端口转发时给用户看的说明 */
+export const JUMP_FORWARDING_REFUSED_MESSAGE =
+  '这台跳板机不允许端口转发，旗鱼无法经它连到目标机器。若是普通 Linux 跳板，请允许端口转发；若是 JumpServer，请在跳板机配置里勾选「这是 JumpServer」。'
+
+/** SSH 通道打开失败原因：管理员禁止（RFC 4254，ssh2 放在 err.reason） */
+const SSH_OPEN_ADMINISTRATIVELY_PROHIBITED = 1
+
+/**
+ * 跳板机拒绝端口转发。优先看 ssh2 的 reason，原文匹配只作兜底。
+ */
+export function isTcpForwardingRefused(error: string | { message?: string; reason?: unknown }): boolean {
+  if (typeof error !== 'string' && error.reason === SSH_OPEN_ADMINISTRATIVELY_PROHIBITED) return true
+  const message = typeof error === 'string' ? error : (error.message || '')
+  const text = message.toLowerCase()
+  return text.includes('port forwarding') || text.includes('administratively prohibited')
 }
 
 /** 创建本地 PTY 时的可选参数 */

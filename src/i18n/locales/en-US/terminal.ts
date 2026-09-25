@@ -95,6 +95,8 @@ export default {
       jumpHostInheritInfo: 'Will use jump host {host} from group "{group}"',
       jumpHostNoInherit: 'No jump host configured in current group, will connect directly',
       jumpHostCustomHint: 'Compatible with JumpServer and other bastion hosts (port usually 2222)',
+      jumpHostIsJumpServer: 'This is JumpServer',
+      jumpHostIsJumpServerHint: 'When checked, a jump host that disallows port forwarding opens the bastion menu instead',
       encoding: 'Character Encoding',
       encodingHint: 'Character encoding used by remote server, default UTF-8',
       encodings: {
