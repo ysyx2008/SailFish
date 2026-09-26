@@ -18,7 +18,6 @@ import { buildBrowserBridgePromptSection } from '../browser-bridge/prompt-sectio
 import { getBrowserBridgeService } from '../browser-bridge/browser-bridge.service'
 import { wrapCompositionSection } from './context-composition'
 import { t } from './i18n'
-import { MAX_WAIT_SECONDS } from './background-watch'
 
 const log = createLogger('PromptBuilder')
 const IDENTITY_FILENAME = 'IDENTITY.md'
@@ -865,7 +864,6 @@ export class PromptBuilder {
       '**文件编辑**：使用 `edit_file` 前必须先 `read_file` 查看目标文件，old_text 从输出中精确复制（去掉行号前缀）。read_file 输出带行号（格式 `行号|内容`），也可用 `write_text_file(mode="replace_lines")` 按行号范围替换。',
       this.buildWindowsPathRule(),
       '**临时文件清理**：任务过程中创建的所有临时文件，使用完毕后及时清除',
-      this.buildExecutionGuide(),
       this.buildParallelAgentRule(),
       this.buildBehaviorRules(),
       this.buildWatchGuide(),
@@ -951,14 +949,6 @@ export class PromptBuilder {
 - **IDENTITY.md / SOUL.md**：个性与行为准则。
 - **templates/**：Office 模板，只读复用；新建模板也放到 \`${scratch}/\`。
 - 按需创建，内容精炼。`
-  }
-
-  private buildExecutionGuide(): string {
-    if (!this.isAssistant) return ''
-    return [
-      `**命令执行**：命令直接 \`exec\`，\`wait_seconds\` 是先等多久（默认 60s，最大 ${MAX_WAIT_SECONDS}s），没跑完就转后台、不算失败，这一轮会盯到它结束。`,
-      '- **并行长任务**：分别 `exec`，转后台后用 `await_exec(task_id)` 看进度；要停用 `await_exec(task_id, stop: true)`，别自己 `kill`',
-    ].join('\n')
   }
 
   private buildBehaviorRules(): string {
