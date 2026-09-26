@@ -702,10 +702,14 @@ export class AgentService {
       agent.updateConfig(config)
     }
     
-    // 将 CWD 刷新延迟到 user_task 步骤发出之后，避免阻塞用户消息上墙
+    // 将 CWD 刷新延迟到 user_task 步骤发出之后，避免阻塞用户消息上墙。
+    // 第一个参数是 agentKey（tabId），不是终端；目录要问眼前那扇窗。
     const terminalStateService = getTerminalStateService()
+    const targetPtyId = context.ptyId || ptyId
     const cwdResolver = async () => {
-      const cwd = await terminalStateService.refreshCwd(ptyId, 'initial')
+      const cwd = await terminalStateService.refreshCwd(targetPtyId, 'initial')
+      // 远程窗的 ~ 就是远端家目录，不能换成本机主目录
+      if (context.terminalType === 'ssh') return cwd || '~'
       return (cwd && cwd !== '~') ? cwd : os.homedir()
     }
     

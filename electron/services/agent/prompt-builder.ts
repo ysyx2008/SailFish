@@ -85,6 +85,11 @@ export function buildLoadedSkillsThisTurnHint(skills: LoadedSkillRosterItem[]): 
   return `这场对话当前开着的技能：${current}。以这一行为准，不要用上一轮的回答。`
 }
 
+/** 续聊沿用开场环境说明时，目录变了在新消息里补的那一句 */
+export function buildCwdChangedHint(cwd: string): string {
+  return `当前工作目录已变为：${cwd}`
+}
+
 export function buildSkillsContentSectionText(content?: string): string {
   const trimmed = content?.trim()
   if (!trimmed) return ''

@@ -276,9 +276,9 @@ describe('executeCommandDirect — 不传目录时在哪跑', () => {
     expect(out).toContain(fs.realpathSync(os.homedir()))
   })
 
-  itPosix('本地终端形态不宣称默认目录，落到本机主目录', async () => {
+  itPosix('本地终端页：在眼前那扇窗的目录跑', async () => {
     const out = await pwdWith(executorWith({ terminalType: 'local', cwd: announced }))
-    expect(out).toContain(fs.realpathSync(os.homedir()))
+    expect(out).toContain(announced)
   })
 
   itPosix('宣称的目录已不存在：不报错，落到本机主目录', async () => {

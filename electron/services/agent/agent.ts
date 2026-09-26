@@ -77,6 +77,7 @@ import { formatWatchListForPrompt } from './skills/watch/executor'
 import {
   buildLoadedSkillsRosterSection,
   buildLoadedSkillsThisTurnHint,
+  buildCwdChangedHint,
   buildSkillsContentSectionText,
   patchLoadedSkillsSectionsInSystemPrompt,
 } from './prompt-builder'
@@ -226,6 +227,8 @@ export abstract class Agent {
   private readonly _backgroundWatches = new BackgroundWatchList()
   /** 按停时停掉的后台工作留下的交代，下一句用户开口时带给模型 */
   private _stoppedNotes: Array<() => string> = []
+  /** 最近一次报给模型的当前目录，连同当时的会话；会话换了（分叉、恢复、重置）就不再作数 */
+  private _announcedCwd?: { conversation: Conversation | undefined; cwd: string | undefined }
   
   /** 依赖服务 */
   protected services: AgentServices
@@ -905,7 +908,7 @@ export abstract class Agent {
           })
         : Promise.resolve()
 
-      await Promise.all([cwdPromise, this.buildContext(run, message)])
+      await Promise.all([cwdPromise, this.buildContext(run, message, cwdPromise)])
       this._loopOpen = true
       let result: string
       try {
@@ -2365,11 +2368,13 @@ export abstract class Agent {
   /**
    * 构建执行上下文
    */
-  protected async buildContext(run: AgentRun, message: string): Promise<void> {
+  /** @param cwdReady 当前目录解析完成；组 system prompt 前必须等它，否则运行环境里的目录会缺 */
+  protected async buildContext(run: AgentRun, message: string, cwdReady: Promise<void> = Promise.resolve()): Promise<void> {
     // 逐任务状态清零（如「主动压缩压不动」的判定）——ContextWindowManager 跨 run 复用
     this._contextWindow.resetForNewRun()
 
     if (this._isSubAgent && this._seedMessages.length > 0) {
+      await cwdReady
       this.buildSubAgentOpening(run, message)
       return
     }
@@ -2417,6 +2422,7 @@ export abstract class Agent {
           lastPrevMsg._cacheBreakpoint = true
         }
 
+        await cwdReady
         const userMsg = await this.buildUserMessage(run, message, !run.internalNotice)
         run.messages.push(userMsg)
         run.taskMessageLog.push({ ...userMsg })
@@ -2521,7 +2527,7 @@ export abstract class Agent {
     }
 
     // 等待两个异步操作同时完成
-    const [knowledgeResult, conversationHistory] = await Promise.all([knowledgeResultPromise, recallPromise])
+    const [knowledgeResult, conversationHistory] = await Promise.all([knowledgeResultPromise, recallPromise, cwdReady])
 
     const isOnboarding = !(this.services.configService?.getAgentOnboardingCompleted() ?? true)
 
@@ -2543,6 +2549,7 @@ export abstract class Agent {
     }
     
     const systemPrompt = this.buildSystemPrompt(run.context, promptOptions)
+    this.recordAnnouncedCwd(run)
     // 量下本轮规模，供下一轮预算分配（打破「预算→摘要→system prompt→预算」的循环）
     this._contextWindow.recordSystemPromptTokens(systemPrompt, this.systemPromptScope(run.context))
     run.messages.push({ role: 'system', content: systemPrompt })
@@ -2562,6 +2569,7 @@ export abstract class Agent {
     const systemPrompt = this.buildSystemPrompt(run.context, {
       aiRules: this.services.configService?.getAiRules() ?? '',
     })
+    this.recordAnnouncedCwd(run)
     this._contextWindow.recordSystemPromptTokens(systemPrompt, this.systemPromptScope(run.context))
     const userBody = Agent.formatTimestamp() + Agent.formatWorkbenchTag(run.context.terminalType) + message
     const seed = this._seedMessages
@@ -2611,6 +2619,20 @@ export abstract class Agent {
    * 组装增强后的用户消息
    * @param injectKnowledge cache-reuse 路径下，知识检索结果不在 system prompt 中，需注入到 user 消息
    */
+  private recordAnnouncedCwd(run: AgentRun): void {
+    this._announcedCwd = { conversation: this._conversation, cwd: run.context.cwd }
+  }
+
+  /** 确定模型已知道这个目录才不补；目录变了或说不准（前缀不是这场里组的、上次没取到）都补一句 */
+  private takeCwdChangedHint(run: AgentRun): string | undefined {
+    const cwd = run.context.cwd
+    if (!cwd) return undefined
+    const known = this._announcedCwd?.conversation === this._conversation ? this._announcedCwd?.cwd : undefined
+    if (cwd === known) return undefined
+    this.recordAnnouncedCwd(run)
+    return buildCwdChangedHint(cwd)
+  }
+
   private async buildUserMessage(run: AgentRun, message: string, injectKnowledge: boolean): Promise<AiMessage> {
     const userBody = this.enhanceUserMessage(message, run.context.terminalType)
 
@@ -2638,6 +2660,8 @@ export abstract class Agent {
     if (this._stoppedNotes.length > 0) {
       systemContextParts.push(...this._stoppedNotes.splice(0).map(note => note()))
     }
+    const cwdChanged = this.takeCwdChangedHint(run)
+    if (cwdChanged) systemContextParts.push(cwdChanged)
     systemContextParts.push(buildLoadedSkillsThisTurnHint(this.getLoadedSkillsRoster()))
     const hasImages = !!(run.context.images && run.context.images.length > 0)
     const visionAvailable = this.currentProfileHasVision()
@@ -5199,7 +5223,7 @@ export abstract class Agent {
       signal: run.abortController?.signal,
       inspector: buildInspectorDeps({
         execute: (command, cwd, timeoutMs) => executor.execute(command, cwd, timeoutMs),
-        localCwd: ssh ? undefined : run.context.cwd,
+        localCwd: ssh || run.context.terminalType === 'ssh' ? undefined : run.context.cwd,
         remote: ssh && sftp && inspectPtyId ? { sftp, ssh, ptyId: inspectPtyId } : undefined,
       }),
     })

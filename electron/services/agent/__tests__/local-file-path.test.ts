@@ -88,9 +88,13 @@ describe('announcedLocalCwd', () => {
     expect(announcedLocalCwd(ctx({ cwd: dir }))).toBe(dir)
   })
 
-  it('本地 / 远程终端形态不宣称', () => {
+  it('本地终端页报的是眼前窗的本机目录，算数', () => {
     const dir = fs.realpathSync(os.tmpdir())
-    expect(announcedLocalCwd(ctx({ terminalType: 'local', cwd: dir }))).toBeUndefined()
+    expect(announcedLocalCwd(ctx({ terminalType: 'local', cwd: dir }))).toBe(dir)
+  })
+
+  it('远程终端页报的是远端目录，不当成本机目录', () => {
+    const dir = fs.realpathSync(os.tmpdir())
     expect(announcedLocalCwd(ctx({ terminalType: 'ssh', cwd: dir }))).toBeUndefined()
   })
 

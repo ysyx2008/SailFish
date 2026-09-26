@@ -187,12 +187,12 @@ export function expandTilde(filePath: string): string {
 }
 
 /**
- * 助手形态的提示词会宣称「命令默认执行目录」，本机命令和本机文件工具都要兑现它。
- * 前提：助手形态的 cwd 一定是本机目录（远程窗坐在助手里也不改它）；本地/远程终端形态不宣称。
+ * 提示词里报给模型的当前目录（助手形态是默认执行目录，本地终端页是眼前那扇窗的目录），
+ * 本机命令和本机文件工具都要兑现它。远程终端页报的是远端目录，不能当成本机目录。
  * 目录已不存在时不算数。
  */
 export function announcedLocalCwd(context?: AgentContext): string | undefined {
-  if (!context || context.terminalType !== 'assistant' || !context.cwd) return undefined
+  if (!context || context.terminalType === 'ssh' || !context.cwd) return undefined
   const cwd = expandTilde(context.cwd)
   if (!path.isAbsolute(cwd)) return undefined
   try {
