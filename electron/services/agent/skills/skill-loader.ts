@@ -3,8 +3,9 @@
  * 管理技能的动态加载和会话状态
  */
 
-import type { SkillState, SkillLoadResult, SkillSessionManager } from './types'
+import type { Skill, SkillData, SkillState, SkillLoadResult, SkillSessionManager, SkillToolCall } from './types'
 import type { ToolDefinition } from '../tools'
+import type { ToolResult } from '../tools/types'
 import { getSkill, getSkillsSummary } from './registry'
 import { createLogger } from '../../../utils/logger'
 
@@ -173,6 +174,63 @@ export class SkillSession implements SkillSessionManager {
     if (state) {
       state.data = { ...state.data, ...data }
     }
+  }
+
+  private loadedSkillDefs(): Array<{ skill: Skill; state: SkillState }> {
+    const defs: Array<{ skill: Skill; state: SkillState }> = []
+    for (const state of this.loadedSkills.values()) {
+      const skill = getSkill(state.skillId)
+      if (skill) defs.push({ skill, state })
+    }
+    return defs
+  }
+
+  private dataOf(state: SkillState): SkillData {
+    if (!state.data) state.data = {}
+    return state.data
+  }
+
+  /** 装着的技能里第一个给出工作目录的为准；都没给返回 undefined */
+  getWorkingDirectory(): string | undefined {
+    for (const { skill, state } of this.loadedSkillDefs()) {
+      const dir = skill.workingDirectory?.(this.dataOf(state))
+      if (dir) return dir
+    }
+    return undefined
+  }
+
+  /** 每轮开始通知装着的技能；某份技能出错只记日志，不挡这一轮 */
+  async notifyRunStart(opts: { isSubAgent: boolean }): Promise<void> {
+    for (const { skill, state } of this.loadedSkillDefs()) {
+      if (!skill.onRunStart) continue
+      try {
+        await skill.onRunStart({ data: this.dataOf(state), isSubAgent: opts.isSubAgent })
+      } catch (error) {
+        log.error(`onRunStart failed for skill "${skill.id}":`, error)
+      }
+    }
+  }
+
+  /** 按加载顺序一层层包住这次工具调用，先加载的在最外层 */
+  async runToolCall(
+    call: SkillToolCall,
+    execute: () => Promise<ToolResult>,
+    resolveLocalPath: (rawPath: string) => string
+  ): Promise<ToolResult> {
+    const wrappers = this.loadedSkillDefs().filter(({ skill }) => skill.wrapToolCall)
+    const invoke = (index: number): Promise<ToolResult> => {
+      if (index >= wrappers.length) return execute()
+      const { skill, state } = wrappers[index]
+      return skill.wrapToolCall!(call, () => invoke(index + 1), { data: this.dataOf(state), resolveLocalPath })
+    }
+    return invoke(0)
+  }
+
+  /** 要带给伙计的技能及其状态（浅拷贝，伙计改自己的不回写主人） */
+  getInheritableSkills(): Array<{ skillId: string; data: SkillData }> {
+    return this.loadedSkillDefs()
+      .filter(({ skill }) => skill.inheritToSubAgents)
+      .map(({ skill, state }) => ({ skillId: skill.id, data: { ...this.dataOf(state) } }))
   }
 
   /**

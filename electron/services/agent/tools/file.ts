@@ -187,6 +187,7 @@ export function expandTilde(filePath: string): string {
 }
 
 /**
+/**
  * 提示词里报给模型的当前目录（助手形态是默认执行目录，本地终端页是眼前那扇窗的目录），
  * 本机命令和本机文件工具都要兑现它。远程终端页报的是远端目录，不能当成本机目录。
  * 目录已不存在时不算数。
@@ -203,17 +204,18 @@ export function announcedLocalCwd(context?: AgentContext): string | undefined {
 }
 
 /**
- * 本机文件工具的相对路径基准：本机终端的当前目录 → 助手宣称的默认目录 → 用户主目录。
- * 绝不拿远程 cwd 往本机上拼。
+ * 本机文件工具的相对路径基准：技能给的工作目录（编程技能打开的项目）→ 本机终端的当前目录
+ * → 助手宣称的默认目录 → 用户主目录。绝不拿远程 cwd 往本机上拼。
  */
 export function resolveLocalFilePath(
   rawPath: string,
   terminal?: { type?: 'local' | 'ssh'; cwd?: string } | null,
   announcedCwd?: string,
+  workingDirectory?: string,
 ): string {
   const expanded = expandTilde(rawPath.trim())
   if (!expanded || path.isAbsolute(expanded)) return expanded
-  const base = localFileCwd(terminal) ?? announcedCwd ?? os.homedir()
+  const base = workingDirectory ?? localFileCwd(terminal) ?? announcedCwd ?? os.homedir()
   return path.resolve(base, expanded)
 }
 
@@ -225,11 +227,13 @@ function localFileCwd(terminal?: { type?: 'local' | 'ssh'; cwd?: string } | null
   return undefined
 }
 
-function resolveToolLocalPath(rawPath: unknown, ptyId: string, executor: ToolExecutorConfig): string {
+/** 本机文件工具按这一次执行的上下文解析路径 */
+export function resolveToolLocalPath(rawPath: unknown, ptyId: string, executor: ToolExecutorConfig): string {
   return resolveLocalFilePath(
     String(rawPath ?? ''),
     getTerminalStateService().getState(ptyId),
     announcedLocalCwd(executor.getAgentContext?.()),
+    executor.skillSession?.getWorkingDirectory(),
   )
 }
 

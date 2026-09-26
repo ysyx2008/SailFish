@@ -131,6 +131,7 @@ export class SailFish extends Agent {
     child.setAgentId(`${this.getConversationAgentId()}:sub:${name}`)
     child.markAsSubAgent()
     child.bindConfirmationHost(this, name)
+    child.inheritSkills(this.getSkillSession().getInheritableSkills())
     child.updateConfig({
       executionMode: this.executionMode,
       commandTimeout: this.commandTimeout,

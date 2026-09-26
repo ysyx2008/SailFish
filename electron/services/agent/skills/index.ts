@@ -3,7 +3,7 @@
  */
 
 // 导出类型
-export type { Skill, SkillState, SkillLoadResult, SkillSessionManager } from './types'
+export type { Skill, SkillState, SkillLoadResult, SkillSessionManager, SkillData, SkillToolCall, SkillToolCallContext, SkillRunStartContext } from './types'
 
 // 导出注册表
 export { registerSkill, getSkill, getAllSkills, getSkillsSummary, hasSkill, isSystemManagedSkill } from './registry'

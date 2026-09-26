@@ -4,6 +4,26 @@
  */
 
 import type { ToolDefinition } from '../tools'
+import type { ToolResult } from '../tools/types'
+
+/** 技能在这场对话里的状态数据（跨轮保留，同一份引用，钩子可以直接改） */
+export type SkillData = Record<string, unknown>
+
+export interface SkillToolCall {
+  name: string
+  args: Record<string, unknown>
+}
+
+export interface SkillToolCallContext {
+  data: SkillData
+  /** 按本机文件工具同一套规则把路径解析成绝对路径 */
+  resolveLocalPath: (rawPath: string) => string
+}
+
+export interface SkillRunStartContext {
+  data: SkillData
+  isSubAgent: boolean
+}
 
 /**
  * 技能定义接口
@@ -30,6 +50,18 @@ export interface Skill {
   init?: () => Promise<void>
   /** 清理函数（可选）。主人标识只关这场对话的资源，不能拆掉别的对话还在用的窗口 */
   cleanup?: (ownerId?: string) => Promise<void>
+  /** 装着时，本机文件的相对路径和本机命令的默认目录以它为准（如编程技能打开的项目） */
+  workingDirectory?: (data: SkillData) => string | undefined
+  /** 装着时每轮开始调用一次 */
+  onRunStart?: (ctx: SkillRunStartContext) => Promise<void>
+  /** 装着时包住每一次工具调用：可以在前后插手，必须调用 proceed 才会真的执行 */
+  wrapToolCall?: (
+    call: SkillToolCall,
+    proceed: () => Promise<ToolResult>,
+    ctx: SkillToolCallContext
+  ) => Promise<ToolResult>
+  /** 派出去的伙计连同状态数据一起带上这份技能 */
+  inheritToSubAgents?: boolean
 }
 
 /**

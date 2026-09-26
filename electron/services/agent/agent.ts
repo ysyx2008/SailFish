@@ -91,6 +91,7 @@ import { AutoApprovalReviewer, buildInspectorDeps, resolveInspectPtyId, type Aut
 import { resolveSubAgentBlockDangerous } from './command-audit/fail-closed-policy'
 import { CommandExecutorService } from '../command-executor.service'
 import { createSkillSession, SkillSession, getSkill, isSystemManagedSkill, TERMINAL_SKILL_ID, BuiltinSkillEnablement } from './skills'
+import type { SkillData } from './skills'
 import { McpToolSession, parseMcpSkillId, toMcpSkillId } from './mcp-tool-session'
 import { getUserSkillService, parseUserSkillId, toUserSkillId } from '../user-skill.service'
 import { getAiDebugService } from '../ai-debug.service'
@@ -280,6 +281,7 @@ export abstract class Agent {
    * 数组：按这份清单替换（含空数组 = 当时没装着）。
    */
   private _pendingRestoreSkillIds?: string[]
+  private _inheritedSkills?: Array<{ skillId: string; data: SkillData }>
 
   /** 这场对话还该挂着的技能（含现在已经关掉或没有了的），开口装完后仍留着给人看 */
   private _rememberedSkillIds?: string[]
@@ -896,6 +898,26 @@ export abstract class Agent {
     }
   }
 
+  /** 伙计出生时记下主人要带给它的技能及状态，第一轮开始前装上 */
+  inheritSkills(skills: Array<{ skillId: string; data: SkillData }>): void {
+    this._inheritedSkills = skills.length > 0 ? skills : undefined
+  }
+
+  private async applyInheritedSkills(): Promise<void> {
+    const pending = this._inheritedSkills
+    if (!pending) return
+    this._inheritedSkills = undefined
+    const session = this.getSkillSession()
+    for (const { skillId, data } of pending) {
+      const result = await session.loadSkill(skillId)
+      if (result.success) {
+        session.setSkillData(skillId, data)
+      } else {
+        log.warn(`Failed to inherit skill "${skillId}": ${result.error}`)
+      }
+    }
+  }
+
   /** MCP 渐进披露会话（跨 Run；resetSession / cleanup 清空） */
   protected getMcpToolSession(): McpToolSession {
     if (!this._mcpToolSession) {
@@ -953,6 +975,8 @@ export abstract class Agent {
       // 历史恢复带出的技能清单要在组上下文 / 取工具表之前装上，否则模型会看见旧工具名却没有对应工具
       await this.applyRestoredSkills()
       await this.ensureTerminalSkill(run)
+      await this.applyInheritedSkills()
+      await this.getSkillSession().notifyRunStart({ isSubAgent: this.isSubAgent() })
 
       // CWD 刷新与上下文构建互不依赖，并行执行以缩短「正在准备...」阶段
       const cwdPromise = options?.cwdResolver

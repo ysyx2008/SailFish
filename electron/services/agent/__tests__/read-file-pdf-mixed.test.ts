@@ -49,7 +49,7 @@ function makeExecutor(skillSession?: { loadSkill: ReturnType<typeof vi.fn> }): T
     setCurrentPlan: vi.fn(),
     getTaskMemory: vi.fn(),
     getToolOutputBudget: () => ({ maxChars: 50_000, maxLines: 2000, critical: false, usagePercent: 10 }),
-    skillSession
+    skillSession: skillSession && { getWorkingDirectory: () => undefined, ...skillSession }
   } as unknown as ToolExecutorConfig
 }
 

@@ -18,7 +18,7 @@ import { normalizeToolArgs } from './utils'
 import { executeCommand } from './command'
 import { executeCommandDirect, awaitExec } from './exec'
 import { getTerminalContext, checkTerminalStatus, sendControlKey, sendInput } from './terminal'
-import { fileSearch, readFile, editFile, writeTextFile, writeRemoteTextFile } from './file'
+import { fileSearch, readFile, editFile, writeTextFile, writeRemoteTextFile, resolveToolLocalPath } from './file'
 import { sftpPut, sftpGet } from './sftp'
 import { searchKnowledge, getKnowledgeDoc } from './knowledge'
 import { createPlan, updatePlan, clearPlan, dispatchPlan } from './plan'
@@ -132,6 +132,20 @@ export async function executeTool(
 
   notePaneHostOperationIfNeeded(name, args, ptyId, executor, toolCall.id)
 
+  const dispatch = () => dispatchTool(name, args, ptyId, toolCall, config, executor)
+  const session = executor.skillSession
+  if (!session) return dispatch()
+  return session.runToolCall({ name, args }, dispatch, raw => resolveToolLocalPath(raw, ptyId ?? '', executor))
+}
+
+async function dispatchTool(
+  name: string,
+  args: Record<string, unknown>,
+  ptyId: string | undefined,
+  toolCall: ToolCall,
+  config: AgentConfig,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
   const id = ptyId ?? ''
 
   // 根据工具类型执行
