@@ -338,6 +338,8 @@ export default {
     foldAgentProcessHint: '读文件、跑命令这类过程收成一行，对你说的话和正在做的事照常显示。',
     showConversationSkillChips: '显示技能胶囊',
     showConversationSkillChipsDesc: '在输入框上方显示这场对话正在使用的技能。',
+    showSessionTokenUsage: '显示 token 消耗',
+    showSessionTokenUsageDesc: '在输入框下方显示这场对话累计用了多少 token，悬停看输入、输出和速度。',
     proactiveCompact: '主动压缩上下文',
     proactiveCompactDesc: '每次压缩上下文可以大幅减少 token 用量，但会破坏这次缓存命中。',
     proactiveCompactMore: '较多',

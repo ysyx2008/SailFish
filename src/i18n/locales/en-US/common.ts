@@ -338,6 +338,8 @@ export default {
     foldAgentProcessHint: 'Collapse file reads, commands, and other background work into one line. Replies and the current action stay visible.',
     showConversationSkillChips: 'Show skill chips',
     showConversationSkillChipsDesc: 'Show skills in use for this conversation above the input.',
+    showSessionTokenUsage: 'Show token usage',
+    showSessionTokenUsageDesc: 'Show how many tokens this conversation has used below the input. Hover for input, output and speed.',
     proactiveCompact: 'Proactive context compact',
     proactiveCompactDesc: 'Each compact can cut token use a lot, but it breaks the current cache hit.',
     proactiveCompactMore: 'More',

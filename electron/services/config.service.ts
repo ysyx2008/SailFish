@@ -254,6 +254,8 @@ interface StoreSchema {
   autoApprovalReview: boolean
   /** 任务审批档：严格 / 宽松 / 自由。新开一场任务沿用上次选的 */
   executionMode: ExecutionMode
+  /** 输入框底栏显示这场对话累计消耗的 token（默认关） */
+  showSessionTokenUsage: boolean
   schemaVersion: number  // 数据 schema 版本号，用于迁移框架追踪已执行的 migration
   // 堡垒机（JumpServer）集成
   bastionUrl: string              // JumpServer 地址
@@ -377,6 +379,7 @@ const defaultConfig: StoreSchema = {
   proactiveCompact: DEFAULT_PROACTIVE_COMPACT,
   autoApprovalReview: false,
   executionMode: 'relaxed',
+  showSessionTokenUsage: false,
   schemaVersion: 0,
   bastionUrl: '',
   bastionUsername: '',

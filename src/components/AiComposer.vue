@@ -1414,6 +1414,7 @@ watch(
 onBeforeUnmount(() => cancelAnimationFrame(consumedAnimRaf))
 
 const consumedTokenLabel = computed(() => {
+  if (!configStore.showSessionTokenUsage) return ''
   if (displayedConsumed.value <= 0) return ''
   return formatLiveTokens(displayedConsumed.value)
 })

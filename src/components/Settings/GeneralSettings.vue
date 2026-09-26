@@ -196,6 +196,17 @@ const onProactiveCompactChange = (value: string) => {
           @update:model-value="configStore.setShowConversationSkillChips"
         />
       </SettingRow>
+
+      <SettingRow
+        clickable
+        :label="t('general.showSessionTokenUsage')"
+        :desc="t('general.showSessionTokenUsageDesc')"
+      >
+        <SettingToggle
+          :model-value="configStore.showSessionTokenUsage"
+          @update:model-value="configStore.setShowSessionTokenUsage"
+        />
+      </SettingRow>
     </SettingsGroup>
 
     <SettingsGroup :title="t('general.conversation')">

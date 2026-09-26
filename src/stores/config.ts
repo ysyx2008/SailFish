@@ -409,6 +409,8 @@ export const useConfigStore = defineStore('config', () => {
 
   // 输入区是否显示这场对话开着的技能胶囊（关掉只藏界面）
   const showConversationSkillChips = ref<boolean>(true)
+  // 输入框底栏显示累计消耗（默认关，关掉只藏界面）
+  const showSessionTokenUsage = ref<boolean>(false)
 
   // 整窗界面缩放（1 = 100%），和菜单放大/缩小同一套
   const uiZoomFactor = ref<number>(UI_ZOOM_DEFAULT)
@@ -472,6 +474,7 @@ export const useConfigStore = defineStore('config', () => {
         themeMode, sysScheme, savedPinnedConversationIds, savedConversationDisplayTitles,
         savedFoldAgentProcess, savedFoldProcessInviteCount, savedShowConversationSkillChips,
         savedUiZoomFactor, savedProactiveCompact, savedAutoApprovalReview, savedExecutionMode,
+        savedShowSessionTokenUsage,
       ] = await Promise.all([
         window.electronAPI.config.getAiProfiles(),
         window.electronAPI.config.getActiveAiProfile(),
@@ -513,6 +516,7 @@ export const useConfigStore = defineStore('config', () => {
         window.electronAPI.config.get('proactiveCompact'),
         window.electronAPI.config.get('autoApprovalReview') as Promise<boolean | undefined>,
         window.electronAPI.config.get('executionMode') as Promise<ExecutionMode | undefined>,
+        window.electronAPI.config.get('showSessionTokenUsage') as Promise<boolean | undefined>,
       ])
 
       // 批量赋值
@@ -564,6 +568,7 @@ export const useConfigStore = defineStore('config', () => {
       foldAgentProcessChoice.value = typeof savedFoldAgentProcess === 'boolean' ? savedFoldAgentProcess : undefined
       foldProcessInviteCount.value = savedFoldProcessInviteCount ?? 0
       showConversationSkillChips.value = savedShowConversationSkillChips ?? true
+      showSessionTokenUsage.value = savedShowSessionTokenUsage === true
       uiZoomFactor.value = clampUiZoomFactor(savedUiZoomFactor ?? UI_ZOOM_DEFAULT)
       proactiveCompact.value = normalizeProactiveCompact(savedProactiveCompact)
       autoApprovalReview.value = savedAutoApprovalReview === true
@@ -905,6 +910,11 @@ export const useConfigStore = defineStore('config', () => {
   async function setShowConversationSkillChips(enabled: boolean): Promise<void> {
     showConversationSkillChips.value = enabled
     await window.electronAPI.config.set('showConversationSkillChips', enabled)
+  }
+
+  async function setShowSessionTokenUsage(enabled: boolean): Promise<void> {
+    showSessionTokenUsage.value = enabled
+    await window.electronAPI.config.set('showSessionTokenUsage', enabled)
   }
 
   async function setUiZoomFactor(factor: number): Promise<void> {
@@ -1319,6 +1329,8 @@ export const useConfigStore = defineStore('config', () => {
     markFoldProcessInvited,
     showConversationSkillChips,
     setShowConversationSkillChips,
+    showSessionTokenUsage,
+    setShowSessionTokenUsage,
     uiZoomFactor,
     setUiZoomFactor,
     setupCompleted,
