@@ -31,20 +31,44 @@ import { expandTilde, announcedLocalCwd } from './file'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
 import { MAX_WAIT_SECONDS, type BackgroundWatch } from '../background-watch'
 
+const COMMAND_LABEL_MAX = 30
+
+/** 卡片上指明是哪条命令：只取第一行开头一小截，认得出就够 */
+function commandLabel(command: string): string {
+  const lines = command.trim().split('\n')
+  const first = Array.from(lines[0].trim())
+  if (first.length === 0) return t('exec.this_command')
+  if (first.length <= COMMAND_LABEL_MAX && lines.length === 1) return first.join('')
+  return `${first.slice(0, COMMAND_LABEL_MAX).join('')}…`
+}
+
 /**
- * 等后台任务时给用户看的一行：任务编号 + 已运行多久。
+ * 等后台命令时给用户看的一行：命令开头 + 已运行多久。
  * @internal 导出仅为单元测试
  */
-export function formatAwaitingTitle(taskId: string, elapsed: string): string {
-  return t('exec.awaiting', { taskId, elapsed })
+export function formatAwaitingTitle(command: string, elapsed: string): string {
+  return t('exec.awaiting', { command: commandLabel(command), elapsed })
+}
+
+/**
+ * await_exec 参数还在流式到达时的预卡片：按编号去后台命令表里认出是哪条命令。
+ * 认不出（编号还没传完、命令早已清理）就不指名，编号本身不给人看。
+ */
+export function describeAwaitExecCall(args: Record<string, unknown>): string {
+  const taskId = typeof args.task_id === 'string' ? args.task_id : ''
+  const task = taskId ? getExecManager().get(taskId) : undefined
+  const command = task ? commandLabel(task.command) : ''
+  if (isTrue(args.stop)) return t('exec.stopping', { command: command || t('exec.this_command') })
+  if (isTrue(args.service)) return t('exec.marking_service', { command: command || t('exec.this_command') })
+  return command ? `${t('exec.awaiting_short')} ${command}` : t('exec.awaiting_short')
 }
 
 function elapsedSince(startedAt: number): string {
   return formatTotalTime(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)))
 }
 
-function awaitingContent(taskId: string, startedAt: number): string {
-  return `⏳ ${formatAwaitingTitle(taskId, elapsedSince(startedAt))}`
+function awaitingContent(task: BackgroundExecTask): string {
+  return `⏳ ${formatAwaitingTitle(task.command, elapsedSince(task.startedAt))}`
 }
 
 function userSpoke(executor: ToolExecutorConfig): boolean {
@@ -142,15 +166,14 @@ class CommandWatch implements BackgroundWatch {
 
   holdStarted(): void {
     if (this.holdStep || this.phase !== 'owed' || this.task.status !== 'running') return
-    const startedAt = this.task.startedAt
     const step = this.executor.addStep({
       type: 'tool_call',
-      content: awaitingContent(this.key, startedAt),
+      content: awaitingContent(this.task),
       toolName: 'await_exec',
       toolArgs: { task_id: this.key },
     })
     const ticker = setInterval(() => {
-      this.executor.updateStep(step.id, { content: awaitingContent(this.key, startedAt) })
+      this.executor.updateStep(step.id, { content: awaitingContent(this.task) })
     }, 1000)
     this.holdStep = { id: step.id, ticker }
   }
@@ -159,9 +182,7 @@ class CommandWatch implements BackgroundWatch {
     if (!this.closeHoldStep()) return
     const snap = getExecManager().snapshot(this.task)
     if (snap.status === 'running') {
-      const short = checkpoint
-        ? t('exec.checkpoint_short', { taskId: this.key })
-        : t('exec.yielded_short', { taskId: this.key })
+      const short = checkpoint ? t('exec.checkpoint_short') : t('exec.yielded_short')
       this.executor.addStep({ type: 'tool_result', content: `⏳ ${short}`, toolName: 'await_exec', toolResult: short })
       return
     }
@@ -474,9 +495,7 @@ export async function executeCommandDirect(
     ? t('exec.yielded', { taskId: snap.taskId, pid, elapsed: runningSeconds(task) })
     : t('exec.backgrounded', { taskId: snap.taskId, pid, waited: effectiveWait, max: maxSeconds })
   const header = `${status}\n${followUpHint(task)}`
-  const short = reason === 'user_message'
-    ? t('exec.yielded_short', { taskId: snap.taskId })
-    : t('exec.backgrounded_short', { taskId: snap.taskId })
+  const short = reason === 'user_message' ? t('exec.yielded_short') : t('exec.backgrounded_short')
   executor.addStep({
     type: 'tool_result',
     content: `⏳ ${short}`,
@@ -538,18 +557,15 @@ export async function awaitExec(
     if (!pattern && args.wait_seconds === undefined) return markedServiceResult(task, executor)
   }
 
-  const snap0 = manager.snapshot(task)
   const step = executor.addStep({
     type: 'tool_call',
-    content: awaitingContent(taskId, snap0.startedAt),
+    content: awaitingContent(task),
     toolName: 'await_exec',
     toolArgs: { task_id: taskId },
   })
 
   const ticker = setInterval(() => {
-    executor.updateStep(step.id, {
-      content: awaitingContent(taskId, snap0.startedAt),
-    })
+    executor.updateStep(step.id, { content: awaitingContent(task) })
   }, 1000)
 
   const watch = watchCommand(task, executor)
@@ -619,10 +635,10 @@ export async function awaitExec(
   const header = `${status}\n${followUpHint(task)}`
 
   const short = reason === 'user_message'
-    ? t('exec.yielded_short', { taskId })
+    ? t('exec.yielded_short')
     : reason === 'pattern'
-      ? t('exec.pattern_matched_short', { taskId })
-      : t('exec.still_running_short', { taskId })
+      ? t('exec.pattern_matched_short')
+      : t('exec.still_running_short')
 
   executor.addStep({
     type: 'tool_result',
@@ -647,7 +663,7 @@ async function stopOwnCommand(task: BackgroundExecTask, executor: ToolExecutorCo
   executor.findBackgroundWatch?.(task.taskId)?.release()
   executor.addStep({
     type: 'tool_call',
-    content: `⏹️ ${t('exec.stopping', { taskId: task.taskId })}`,
+    content: `⏹️ ${t('exec.stopping', { command: commandLabel(task.command) })}`,
     toolName: 'await_exec',
     toolArgs: { task_id: task.taskId, stop: true },
   })
@@ -659,7 +675,7 @@ async function stopOwnCommand(task: BackgroundExecTask, executor: ToolExecutorCo
     ? t('exec.stop_pending', { taskId: task.taskId })
     : t('exec.task_done', { taskId: task.taskId, status: snap.status, exitCode: String(snap.exitCode ?? (snap.signal ? 1 : 0)) })
   const output = await formatTaskOutput(snap.output, executor)
-  const short = snap.status === 'running' ? header : t('exec.stopped_short')
+  const short = snap.status === 'running' ? t('exec.stop_pending_short') : t('exec.stopped_short')
   executor.addStep({ type: 'tool_result', content: `⏹️ ${short}`, toolName: 'await_exec', toolResult: `${header}\n${output}` })
   return { success: true, output: `${header}\n${output}`, isRunning: snap.status === 'running' }
 }
@@ -667,10 +683,10 @@ async function stopOwnCommand(task: BackgroundExecTask, executor: ToolExecutorCo
 async function markedServiceResult(task: BackgroundExecTask, executor: ToolExecutorConfig): Promise<ToolResult> {
   const snap = getExecManager().snapshot(task)
   const pid = String(snap.pid ?? 'unknown')
-  const short = t('exec.marked_service_short', { taskId: task.taskId })
+  const short = t('exec.marked_service_short')
   executor.addStep({
     type: 'tool_call',
-    content: short,
+    content: t('exec.marking_service', { command: commandLabel(task.command) }),
     toolName: 'await_exec',
     toolArgs: { task_id: task.taskId, service: true },
   })
