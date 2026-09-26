@@ -309,7 +309,7 @@ Agent 的记忆分三层，模拟人类记忆的衰减梯度，三层协同在�
 - **平台**：macOS (universal)、Windows (NSIS)
 - **自动更新**：GitHub Releases + electron-updater（国内 OSS 镜像与差分/blockmap 策略见 `docs/auto-update-oss.md`）
 - **ripgrep**：`npm run download:ripgrep`（各 build 脚本已前置）按目标平台/架构下载到 `resources/ripgrep/<os>-<arch>/`（不进 git），electron-builder `extraResources` 按 `${os}-${arch}` 取；mac universal 两份各打一次后自动 lipo 合并
-- **tree-sitter**：`web-tree-sitter` + `tree-sitter-wasms` 为 devDependencies，JS 打进主进程产物，十种语言的 wasm 由 vite 插件拷进 `dist-electron/tree-sitter/`（随 asar，运行时读成字节加载，不必解包）
+- **tree-sitter**：`web-tree-sitter` + `tree-sitter-wasms` 为 devDependencies，JS 打进主进程产物，十七种语言的 wasm 由 vite 插件拷进 `dist-electron/tree-sitter/`（随 asar，运行时读成字节加载，不必解包）。`tree-sitter-wasms` 里个别语法会调用底座不提供的函数（解析到那一处才崩），这类改用官方新版放在 `resources/tree-sitter/`；加语言前先对照 wasm 导入函数，并拿真实文件扫一遍
 - **模型**：构建前需 `npm run download:models` 下载嵌入模型；语音包用 `npm run build:speech-pack` 另打，上传 OSS / GitHub `speech-pack-v*` Release
 
 ## 常用命令

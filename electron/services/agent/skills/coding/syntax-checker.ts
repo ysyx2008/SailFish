@@ -5,7 +5,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { Parser, Language, type Node } from 'web-tree-sitter'
-import { BUNDLED_WASM_DIR, GRAMMAR_BY_EXTENSION } from './grammars'
+import { BUNDLED_WASM_DIR, GRAMMAR_BY_EXTENSION, grammarSourceDir } from './grammars'
 import { appPath } from './app-path'
 
 /** 超过这么大的文件不查（主线程解析，大文件会卡） */
@@ -109,7 +109,7 @@ export class SyntaxChecker {
 
 /**
  * 找 wasm：打包后在主进程产物目录（构建时拷过去，只带要用的几种语法）；
- * 开发态 / 命令行直接读 node_modules。
+ * 开发态 / 命令行直接读仓库里的源位置。
  */
 export class WasmLocator {
   runtime(): string {
@@ -123,19 +123,17 @@ export class WasmLocator {
     const file = `tree-sitter-${name}.wasm`
     return this.find([
       path.join(BUNDLED_WASM_DIR, file),
-      path.join('node_modules', 'tree-sitter-wasms', 'out', file),
+      path.join(grammarSourceDir(name), file),
     ])
   }
 
+  /** 只在应用自己的目录里找；不看当前目录——命令行下那是用户的项目 */
   private find(relatives: string[]): string {
-    const roots = [...new Set([__dirname, appPath(), process.cwd()].filter((p): p is string => Boolean(p)))]
-    for (const rel of relatives) {
-      for (const root of roots) {
-        const candidate = path.join(root, rel)
-        if (fs.existsSync(candidate)) return candidate
-      }
-    }
-    throw new Error(`tree-sitter wasm not found: ${relatives[relatives.length - 1]}`)
+    const roots = [...new Set([__dirname, appPath()].filter((p): p is string => Boolean(p)))]
+    const candidates = relatives.flatMap(rel => roots.map(root => path.join(root, rel)))
+    const found = candidates.find(candidate => fs.existsSync(candidate))
+    if (found) return found
+    throw new Error(`tree-sitter wasm not found, tried: ${candidates.join(', ')}`)
   }
 }
 

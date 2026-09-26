@@ -5,7 +5,7 @@ import renderer from 'vite-plugin-electron-renderer'
 import { resolve } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import type { ChildProcess } from 'node:child_process'
-import { BUNDLED_GRAMMARS, BUNDLED_WASM_DIR } from './electron/services/agent/skills/coding/grammars'
+import { BUNDLED_GRAMMARS, BUNDLED_WASM_DIR, grammarSourceDir } from './electron/services/agent/skills/coding/grammars'
 
 /**
  * OEM 可选配置：有 shared/oem.config.ts 则打包进覆盖配置，没有则用 oem-defaults。
@@ -79,7 +79,7 @@ function copyTreeSitterWasm() {
       const files: Array<[string, string]> = [
         [resolve(__dirname, 'node_modules/web-tree-sitter/tree-sitter.wasm'), 'tree-sitter.wasm'],
         ...BUNDLED_GRAMMARS.map((name): [string, string] => [
-          resolve(__dirname, `node_modules/tree-sitter-wasms/out/tree-sitter-${name}.wasm`),
+          resolve(__dirname, grammarSourceDir(name), `tree-sitter-${name}.wasm`),
           `tree-sitter-${name}.wasm`,
         ]),
       ]

@@ -5,7 +5,8 @@ import * as path from 'path'
 
 vi.mock('electron', () => ({ app: { getAppPath: () => process.cwd(), getPath: () => os.tmpdir() } }))
 
-import { SyntaxChecker } from '../syntax-checker'
+import { SyntaxChecker, WasmLocator } from '../syntax-checker'
+import { BUNDLED_GRAMMARS } from '../grammars'
 import { SyntaxGuard } from '../syntax-guard'
 
 const checker = new SyntaxChecker()
@@ -21,11 +22,49 @@ const VALID: Record<string, string> = {
   'a.c': '#include <stdio.h>\nint main(void) { printf("hi\\n"); return 0; }\n',
   'a.cpp': '#include <vector>\nauto f() { std::vector<int> v{1, 2}; return v; }\n',
   'a.rs': 'fn main() {\n    let v: Vec<i32> = (0..3).collect();\n    println!("{:?}", v);\n}\n',
+  'a.lua': 'local function f(t)\n  for k, v in pairs(t) do print(k, v) end\n  return #t\nend\n',
+  'a.php': '<h1><?= $title ?></h1>\n<?php\nfunction f(?int $x): int { return $x ?? 0; }\n',
+  'a.sh': 'set -e\ncase "$1" in\n  a*) echo "$\'a\\tb\'" ;;\nesac\necho {a,b}{1..3} ${x##*/}\ncat <<EOF\nhi $USER\nEOF\n',
+  'a.yaml': 'services:\n  web:\n    image: "nginx:1.27"\n    ports: [ "80:80" ]\n    command: >\n      run --fast\n',
+  'a.json': '{\n  // tsconfig 这类允许注释\n  "a": [1, 2, { "b": null }]\n}\n',
+  'a.html': '<!doctype html>\n<html><body><p class="x">hi<br></p></body></html>\n',
+  'a.css': '@keyframes spin {\n  0%, 100% { transform: rotate(0); }\n}\n.a:hover > .b { color: var(--c, red); }\n',
 }
+
+const BROKEN: Record<string, string> = {
+  'a.lua': 'function f()\n  return 1\n',
+  'a.php': '<?php\nfunction f($x) {\n  return $x +;\n}\n',
+  'a.sh': 'if true; then\n  echo hi\n',
+  'a.yaml': 'a: [1, 2\nb: 3\n',
+  'a.json': '{"a": 1,, "b": 2}\n',
+  'a.html': '<div class="a>\n<p>x</p>\n</div>\n',
+  'a.css': 'a { color: red;\nb { color: blue; }\n',
+}
+
+describe('打包的语法 wasm', () => {
+  // 缺的函数不会在加载时报错，解析到调用它的那一处才崩，所以样例代码测不全，要直接对照导入表
+  const JS_PROVIDED = new Set(['abort'])
+  const ONLY_ON_INTERNAL_FAILURE = new Set(['__assert_fail'])
+
+  it.each(BUNDLED_GRAMMARS)('%s 只调用底座提供的函数', async (name) => {
+    const locator = new WasmLocator()
+    const runtime = new WebAssembly.Module(fs.readFileSync(locator.runtime()))
+    const provided = new Set(WebAssembly.Module.exports(runtime).map(e => e.name))
+    const grammar = new WebAssembly.Module(fs.readFileSync(locator.grammar(name)))
+    const missing = WebAssembly.Module.imports(grammar)
+      .filter(i => i.kind === 'function' && !provided.has(i.name) && !JS_PROVIDED.has(i.name) && !ONLY_ON_INTERNAL_FAILURE.has(i.name))
+      .map(i => i.name)
+    expect(missing).toEqual([])
+  })
+})
 
 describe('SyntaxChecker', () => {
   it.each(Object.entries(VALID))('%s 正常代码不报错', async (file, code) => {
     expect(await checker.findIssues(file, code)).toEqual([])
+  })
+
+  it.each(Object.entries(BROKEN))('%s 写坏了能查出来', async (file, code) => {
+    expect((await checker.findIssues(file, code))?.length).toBeGreaterThan(0)
   })
 
   it('认不出的语言不查', async () => {

@@ -12,7 +12,7 @@
 - 初版像 Claude Code：靠搜索、读、改、跑命令。**不做**类浏览器 / 结构索引、专门的自检工具、专门的 git 工具、改动对比界面。
 - git 用现有跑命令；推送、丢活类命令该问人——那是命令审计的事，另记在想法本，不在本方案里修。
 - 改完自动查语法：只报这次改动**新引入**的语法错误，不拦修改，只提示「可能有」。
-- 搜索程序（约 6MB）直接打进安装包；语法解析器（约 17MB）也直接打包。
+- 搜索程序（约 6MB）直接打进安装包；语法解析器（约 17MB，后来加到十七种约 19MB）也直接打包。
 - 第一版只做本机项目。
 
 ## 2. 新增工具（前缀 `code_`，走现有技能工具路由）
@@ -61,7 +61,8 @@
 ### 4.2 语法解析器
 
 - 依赖 `web-tree-sitter@0.25.10` + `tree-sitter-wasms@0.1.13`（CodeGraph 1.2.0 同款组合，已验证兼容）。
-- 只带十种：JavaScript、TypeScript、TSX、Python、Go、Java、C#、C、C++、Rust（约 16MB）+ 底座约 1MB。其他扩展名不查。
+- 初版只带十种：JavaScript、TypeScript、TSX、Python、Go、Java、C#、C、C++、Rust（约 16MB）+ 底座约 1MB。其他扩展名不查。
+- 2026-09-26 补：加上 PHP、Lua、Shell、YAML、JSON、HTML、CSS，共十七种（约 18MB）。实测发现 `tree-sitter-wasms` 里的 yaml 要 C++ 运行库、bash 要 `isalpha`——底座 0.25 都不提供，且缺的函数是懒桩，解析到那一处才崩（bash 碰到 `case` 就崩），写坏例子测不出来；css 把 `@keyframes` 里的 `0%, 100%` 认错。这三种改用官方新版 wasm 放进 `resources/tree-sitter/`（来源、校验和见该目录 `VERSION`），`grammars.ts` 的 `grammarSourceDir` 是每种语法来源的唯一出处，运行时查找和 vite 拷贝都读它。检验方法：对照每个 wasm 的导入函数与底座实际提供的函数，另拿仓库里 130 个真实文件扫误报（0 个）。
 - 两个包都是 devDependencies：`web-tree-sitter` 的 JS 由 vite 打进主进程产物；wasm 由 vite 插件按 `grammars.ts` 的表拷进 `dist-electron/tree-sitter/`（随 asar 走）。运行时自己读成字节再交给 `Parser.init({ wasmBinary })` / `Language.load(bytes)`，所以不必解包出 asar。开发态 / 命令行直接读 `node_modules`。已用同配置的 rollup 单独打包实测可加载。
 - 解析在主进程做：单文件毫秒级，只在改完那一下跑；大于 512KB 的文件跳过（改前改后各解析一遍，512KB 约 0.1 秒）。若实测卡主线程再挪 utilityProcess。
 - 只报「改后有、改前没有」的错误（按错误节点附近的文本比较，不按行号——行号会随改动整体偏移）。

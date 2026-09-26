@@ -1,0 +1,21 @@
+Grammars here replace the tree-sitter-wasms builds, which call C/C++ runtime
+functions that web-tree-sitter 0.25 no longer provides (the parser crashes the
+moment such a function is reached, e.g. bash on `case`), or misparse modern syntax.
+
+tree-sitter-yaml.wasm
+  source: npm @tree-sitter-grammars/tree-sitter-yaml@0.7.1
+  sha256: e752dc21c3591df9b45692fe417d101f45d1828c28c44d79005f4066dc7e4e91
+  license: MIT (LICENSE-yaml)
+  why: old build needs the C++ runtime
+
+tree-sitter-bash.wasm
+  source: npm tree-sitter-bash@0.25.1
+  sha256: 8292919c88a0f7d3fb31d0cd0253ca5a9531bc1ede82b0537f2c63dd8abe6a7a
+  license: MIT (LICENSE-bash)
+  why: old build needs isalpha
+
+tree-sitter-css.wasm
+  source: npm tree-sitter-css@0.25.0
+  sha256: 8a23977fe271357cce6f254ef88c9bebf3854602d8046605aef6a45c02135c59
+  license: MIT (LICENSE-css)
+  why: old build misreports `0%, 100% { ... }` inside @keyframes
