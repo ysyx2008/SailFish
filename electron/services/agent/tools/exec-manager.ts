@@ -120,6 +120,8 @@ interface InternalTask {
   service?: boolean
   /** 哪个 Agent 起的：只有它自己能叫停 */
   owner?: string
+  /** 起命令时附的一句人话说明，只给进度卡片看 */
+  description?: string
 }
 
 export type WaitReason = 'done' | 'pattern' | 'timeout' | 'aborted' | 'user_message'
@@ -133,6 +135,8 @@ export interface SpawnOptions {
   env?: Record<string, string>
   /** 哪个 Agent 起的 */
   owner?: string
+  /** 一句人话说明 */
+  description?: string
 }
 
 export interface WaitOptions {
@@ -209,6 +213,7 @@ class BackgroundExecManager {
       cwd: opts.cwd,
       maxSeconds: opts.maxSeconds,
       owner: opts.owner,
+      description: opts.description,
     })
   }
 
@@ -218,6 +223,7 @@ class BackgroundExecManager {
     cwd?: string
     maxSeconds: number
     owner?: string
+    description?: string
   }): InternalTask {
     const taskId = `exec-${this.nextId++}`
     const { child, command, maxSeconds } = opts
@@ -234,6 +240,7 @@ class BackgroundExecManager {
       signal: null,
       waiters: new Set(),
       owner: opts.owner,
+      description: opts.description,
     }
 
     const onData = (chunk: Buffer) => {

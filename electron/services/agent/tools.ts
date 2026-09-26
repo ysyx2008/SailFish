@@ -502,6 +502,10 @@ ${execWaitAndUsage}`
                 type: 'string',
                 description: '要执行的 shell 命令'
               },
+              description: {
+                type: 'string',
+                description: '这条命令是干什么的，十来个字的人话（如「构建前端」「同步订单表」），显示在进度卡片上给用户看'
+              },
               cwd: {
                 type: 'string',
                 description: '本机工作目录（可选）'

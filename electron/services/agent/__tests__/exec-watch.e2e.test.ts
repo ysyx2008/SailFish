@@ -121,7 +121,8 @@ function makeServices(responder: (call: { index: number; messages: Msg[] }) => L
       getActiveAiProfile: vi.fn().mockReturnValue('test'),
       getAgentOnboardingCompleted: vi.fn().mockReturnValue(true),
       hasVisionCapability: vi.fn().mockReturnValue(true),
-      getCommandRiskPolicy: vi.fn().mockReturnValue(undefined)
+      getCommandRiskPolicy: vi.fn().mockReturnValue(undefined),
+      isAutoApprovalReviewEnabled: vi.fn().mockReturnValue(false)
     } as any,
     hostProfileService: {
       generateHostContext: vi.fn().mockReturnValue(''),
@@ -444,6 +445,50 @@ describe('等命令不卡人：插话先回答、有终点的盯到底、常驻�
     expect(steps.some(s => s.type === 'tool_result' && String(s.content).includes('已停止'))).toBe(true)
     await sleep(3500)
     expect(groupAlive(pid!)).toBe(false)
+  }, 15000)
+
+  itPosix('附了人话说明：等待卡写说明，执行命令那张卡仍是完整命令', async () => {
+    const command = 'echo a; sleep 2; echo b'
+    const services = makeServices(({ index, messages }) => {
+      if (index === 0) {
+        return { content: '跑一下', tool_calls: [tc('exec', { command, description: '跑个小脚本', wait_seconds: 1 })] }
+      }
+      if (lastUserText(messages).includes('已经结束')) return { content: '跑完了' }
+      return { content: '先放后台' }
+    })
+    const agent = newAgent(services, 'e2e-exec-description')
+    const steps: AgentStep[] = []
+    await agent.run('跑个脚本', ctx(), {
+      callbacks: { onStep: (_id, step) => { steps.push({ ...step }) } }
+    })
+    const calls = steps.filter(s => s.type === 'tool_call')
+    expect(calls.some(s => s.toolName === 'exec' && String(s.content).includes(command))).toBe(true)
+    const waits = calls.filter(s => s.toolName === 'await_exec')
+    expect(waits.length).toBeGreaterThan(0)
+    expect(waits.every(s => String(s.content).includes('跑个小脚本'))).toBe(true)
+    expect(waits.some(s => String(s.content).includes('exec-'))).toBe(false)
+  }, 15000)
+
+  itPosix('风险确认只拿到完整命令，看不到人话说明', async () => {
+    const command = `rm -rf ${path.join(os.tmpdir(), `sft-desc-confirm-${process.pid}`)}`
+    const services = makeServices(({ index }) => {
+      if (index === 0) {
+        return { tool_calls: [tc('exec', { command, description: '清理旧构建' })] }
+      }
+      return { content: '好，不删了' }
+    })
+    const agent = newAgent(services, 'e2e-exec-description-confirm')
+    agent.updateConfig({ executionMode: 'strict' })
+    const asked: Array<Record<string, unknown>> = []
+    await agent.run('清理一下', ctx(), {
+      callbacks: {
+        onNeedConfirm: (confirmation) => {
+          asked.push(confirmation.toolArgs)
+          agent.confirmToolCall(confirmation.toolCallId, false)
+        }
+      }
+    })
+    expect(asked).toEqual([{ command }])
   }, 15000)
 
   itPosix('只能叫停这场对话自己起的命令，别的对话起的停不了', async () => {

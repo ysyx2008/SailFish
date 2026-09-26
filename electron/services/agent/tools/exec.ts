@@ -31,23 +31,37 @@ import { expandTilde, announcedLocalCwd } from './file'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
 import { MAX_WAIT_SECONDS, type BackgroundWatch } from '../background-watch'
 
-const COMMAND_LABEL_MAX = 30
+const LABEL_MAX = 30
 
-/** 卡片上指明是哪条命令：只取第一行开头一小截，认得出就够 */
-function commandLabel(command: string): string {
-  const lines = command.trim().split('\n')
+/** 只取第一行开头一小截，认得出就够 */
+function clipLine(text: string): string {
+  const lines = text.trim().split('\n')
   const first = Array.from(lines[0].trim())
-  if (first.length === 0) return t('exec.this_command')
-  if (first.length <= COMMAND_LABEL_MAX && lines.length === 1) return first.join('')
-  return `${first.slice(0, COMMAND_LABEL_MAX).join('')}…`
+  if (first.length <= LABEL_MAX && lines.length === 1) return first.join('')
+  return `${first.slice(0, LABEL_MAX).join('')}…`
+}
+
+type LabeledCommand = { command: string; description?: string }
+
+/** 卡片上指明是哪条命令：优先它附的人话说明，没附就用命令开头 */
+function commandLabel(task: LabeledCommand): string {
+  return (task.description && clipLine(task.description))
+    || clipLine(task.command)
+    || t('exec.this_command')
+}
+
+function normalizeDescription(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined
+  const text = raw.replace(/\s+/g, ' ').trim()
+  return text ? clipLine(text) : undefined
 }
 
 /**
- * 等后台命令时给用户看的一行：命令开头 + 已运行多久。
+ * 等后台命令时给用户看的一行：哪条命令 + 已运行多久。
  * @internal 导出仅为单元测试
  */
-export function formatAwaitingTitle(command: string, elapsed: string): string {
-  return t('exec.awaiting', { command: commandLabel(command), elapsed })
+export function formatAwaitingTitle(task: LabeledCommand, elapsed: string): string {
+  return t('exec.awaiting', { command: commandLabel(task), elapsed })
 }
 
 /**
@@ -57,10 +71,10 @@ export function formatAwaitingTitle(command: string, elapsed: string): string {
 export function describeAwaitExecCall(args: Record<string, unknown>): string {
   const taskId = typeof args.task_id === 'string' ? args.task_id : ''
   const task = taskId ? getExecManager().get(taskId) : undefined
-  const command = task ? commandLabel(task.command) : ''
-  if (isTrue(args.stop)) return t('exec.stopping', { command: command || t('exec.this_command') })
-  if (isTrue(args.service)) return t('exec.marking_service', { command: command || t('exec.this_command') })
-  return command ? `${t('exec.awaiting_short')} ${command}` : t('exec.awaiting_short')
+  const label = task ? commandLabel(task) : ''
+  if (isTrue(args.stop)) return t('exec.stopping', { command: label || t('exec.this_command') })
+  if (isTrue(args.service)) return t('exec.marking_service', { command: label || t('exec.this_command') })
+  return label ? `${t('exec.awaiting_short')} ${label}` : t('exec.awaiting_short')
 }
 
 function elapsedSince(startedAt: number): string {
@@ -68,7 +82,7 @@ function elapsedSince(startedAt: number): string {
 }
 
 function awaitingContent(task: BackgroundExecTask): string {
-  return `⏳ ${formatAwaitingTitle(task.command, elapsedSince(task.startedAt))}`
+  return `⏳ ${formatAwaitingTitle(task, elapsedSince(task.startedAt))}`
 }
 
 function userSpoke(executor: ToolExecutorConfig): boolean {
@@ -424,7 +438,7 @@ export async function executeCommandDirect(
   }
 
   const manager = getExecManager()
-  const task = manager.spawn({ command, cwd, maxSeconds, env: skillEnv, owner: executor.agentId })
+  const task = manager.spawn({ command, cwd, maxSeconds, env: skillEnv, owner: executor.agentId, description: normalizeDescription(args.description) })
   if (isTrue(args.service)) manager.markService(task)
   const watch = watchCommand(task, executor)
 
@@ -663,7 +677,7 @@ async function stopOwnCommand(task: BackgroundExecTask, executor: ToolExecutorCo
   executor.findBackgroundWatch?.(task.taskId)?.release()
   executor.addStep({
     type: 'tool_call',
-    content: `⏹️ ${t('exec.stopping', { command: commandLabel(task.command) })}`,
+    content: `⏹️ ${t('exec.stopping', { command: commandLabel(task) })}`,
     toolName: 'await_exec',
     toolArgs: { task_id: task.taskId, stop: true },
   })
@@ -686,7 +700,7 @@ async function markedServiceResult(task: BackgroundExecTask, executor: ToolExecu
   const short = t('exec.marked_service_short')
   executor.addStep({
     type: 'tool_call',
-    content: t('exec.marking_service', { command: commandLabel(task.command) }),
+    content: t('exec.marking_service', { command: commandLabel(task) }),
     toolName: 'await_exec',
     toolArgs: { task_id: task.taskId, service: true },
   })
