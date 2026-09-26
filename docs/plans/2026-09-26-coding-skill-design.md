@@ -34,7 +34,7 @@
 | 默认关闭 | `Skill.defaultEnabled?: false`；配置加 `enabledOptInSkills: string[]`。新建 `BuiltinSkillEnablement`（skills/ 下）统一回答「这个内置技能开着吗」，替换现在散在 `tools.ts` / `misc.ts` / `agent.ts` / `main.ts` 的 `disabledBuiltinSkills` 判断 |
 | 工作目录 | `Skill.workingDirectory?(state)`；`SkillSession.getWorkingDirectory()`。`resolveLocalFilePath` 加可选基准参数，`file.ts` 调用点和 `exec` 默认 cwd 用它 |
 | 每轮开始 | `Skill.onRunStart?(ctx)`；Agent 每次 run 开始时对已加载技能调用（给检查点拍快照） |
-| 工具结果补充 | `Skill.augmentToolResult?(name, args, result, ctx)`；`executeTool` 拿到结果后交给已加载技能补充（语法检查） |
+| 包住工具调用 | `Skill.wrapToolCall?(call, proceed, ctx)`；`executeTool` 把分派包进已加载技能的中间件链（先加载的在外层）。语法检查要在改前读一次原文、改后再比，单纯的「结果补充」拿不到改前内容，所以做成包裹式 |
 | 子 agent 继承 | `Skill.inheritToSubAgents?: true`；`spawnChild` 时把主人已加载的这类技能连同状态数据一起装给伙计 |
 
 技能状态（项目根、检查点列表）放 `SkillSession.setSkillData('coding', …)`。重开对话时技能会自动装回，但状态不持久化：工具发现没打开项目，就提示先 `code_open_project`（模型从历史里知道路径）。

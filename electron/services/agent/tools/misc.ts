@@ -17,6 +17,7 @@ import { executeConfigTool } from '../skills/config/executor'
 import { executeSkillCreatorTool } from '../skills/skill-creator/executor'
 import { executePersonalityTool } from '../skills/personality/executor'
 import { executePdfTool } from '../skills/pdf/executor'
+import { executeCodingTool } from '../skills/coding/executor'
 import { executeChartTool } from '../skills/chart/executor'
 import { executePptTool } from '../skills/ppt/executor'
 import { executeFeishuTool } from '../skills/feishu/executor'
@@ -1439,6 +1440,10 @@ export async function executeSkillTool(
 
   if (toolName.startsWith('dingtalk_')) {
     return executeDingTalkTool(toolName, id, args, toolCallId, config, executor)
+  }
+
+  if (toolName.startsWith('code_')) {
+    return executeCodingTool(toolName, id, args, toolCallId, config, executor)
   }
 
   return { success: false, output: '', error: t('error.unknown_tool', { name: toolName }) }
