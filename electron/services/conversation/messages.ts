@@ -105,6 +105,8 @@ export function stepRecordToStep(s: AgentStepRecord): AgentStep {
     webSearchResults: s.webSearchResults,
     success: s.success,
     askingStatus: s.askingStatus,
+    askingAnswer: s.askingAnswer,
+    autoReview: s.autoReview,
     subAgents: s.subAgents,
     canvasData: s.canvasData,
     hugeOutput: s.hugeOutput,

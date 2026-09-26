@@ -1620,6 +1620,25 @@ const translations = {
     'exec.pattern_matched_short': '命中 pattern (task_id={taskId})',
     'exec.still_running': '⏳ 任务仍在跑 [task_id={taskId}, pid={pid}, 已等 {waited}s]，可继续 await_exec 或 exec("kill {pid}") 停止',
     'exec.still_running_short': '仍在运行 (task_id={taskId})',
+    // 替我审批
+    'autoReview.reviewing': '正在替你看：{action}',
+    'autoReview.cancelled': '任务已停，没评完：{action}',
+    'autoReview.approved': '替你放行：{action}',
+    'autoReview.handed_over': '替你看过，交给你定：{action}',
+    'autoReview.scores': '风险{risk} · {authorization}',
+    'autoReview.reason.not_approved': '评审员认为这一步该由你拍板。',
+    'autoReview.reason.failed': '评审没能给出结论（超时、出错或看不懂），交给你。',
+    'autoReview.reason.too_large': '你的原话或这一步的内容太长，评审员装不下，没有评，交给你。',
+    'autoReview.reason.circuit_open': '这一轮已连着几次没放行，后面的确认都直接问你。',
+    'autoReview.reason.user_spoke': '评审期间你又说了话，交给你定。',
+    'autoReview.risk.low': '低',
+    'autoReview.risk.medium': '中',
+    'autoReview.risk.high': '高',
+    'autoReview.risk.critical': '致命',
+    'autoReview.auth.high': '你明确说过要做',
+    'autoReview.auth.medium': '你的话实质上授权了',
+    'autoReview.auth.low': '你的话授权不足',
+    'autoReview.auth.unknown': '看不出你授权过',
   },
   'en-US': {
     // Tool names
@@ -3231,6 +3250,25 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
     'exec.pattern_matched_short': 'Pattern matched (task_id={taskId})',
     'exec.still_running': '⏳ Task still running [task_id={taskId}, pid={pid}, waited {waited}s], can continue await_exec or exec("kill {pid}") to stop',
     'exec.still_running_short': 'Still running (task_id={taskId})',
+    // Auto-approval review
+    'autoReview.reviewing': 'Reviewing for you: {action}',
+    'autoReview.cancelled': 'Task stopped before the review finished: {action}',
+    'autoReview.approved': 'Approved for you: {action}',
+    'autoReview.handed_over': 'Reviewed, left to you: {action}',
+    'autoReview.scores': 'Risk {risk} · {authorization}',
+    'autoReview.reason.not_approved': 'The reviewer thinks this one is your call.',
+    'autoReview.reason.failed': 'The review reached no verdict (timeout, error or unreadable output); over to you.',
+    'autoReview.reason.too_large': 'Your messages or this action are too long for the reviewer; not reviewed, over to you.',
+    'autoReview.reason.circuit_open': 'Several in a row were not approved this turn; the rest will ask you directly.',
+    'autoReview.reason.user_spoke': 'You said something during the review; over to you.',
+    'autoReview.risk.low': 'low',
+    'autoReview.risk.medium': 'medium',
+    'autoReview.risk.high': 'high',
+    'autoReview.risk.critical': 'critical',
+    'autoReview.auth.high': 'you explicitly asked for it',
+    'autoReview.auth.medium': 'your words effectively authorize it',
+    'autoReview.auth.low': 'your words do not quite authorize it',
+    'autoReview.auth.unknown': 'no sign you authorized it',
   }
 } as const
 
@@ -3248,7 +3286,7 @@ export function setConfigService(service: ConfigService): void {
 /**
  * 获取当前语言
  */
-function getLocale(): 'zh-CN' | 'en-US' {
+export function getLocale(): 'zh-CN' | 'en-US' {
   if (configService) {
     const locale = configService.getLanguage()
     return locale === 'en-US' ? 'en-US' : 'zh-CN'

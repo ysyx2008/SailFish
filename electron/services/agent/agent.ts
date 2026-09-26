@@ -8,7 +8,7 @@
  * - SailFish（子类）：工具列表管理、系统提示构建、可选终端能力
  */
 
-import type { AiMessage, ToolCall, ChatWithToolsResult, ToolDefinition, RetryInfo, AiModelFailoverNotice } from '../ai.service'
+import type { AiMessage, ToolCall, ChatWithToolsResult, ToolDefinition, RetryInfo, AiModelFailoverNotice, TokenUsageInfo } from '../ai.service'
 import { StreamingToolExecutor } from './streaming-tool-executor'
 import type { AgentRecord } from '../history.service'
 import type {
@@ -47,13 +47,13 @@ import {
   splitMessagesIntoTasks as splitMessagesIntoTasksShared,
   splitStepsIntoTasks as splitStepsIntoTasksShared
 } from '../conversation/messages'
-import { inferConversationKind, type VisibleConversationSkill } from '@shared/types'
+import { inferConversationKind, type AutoReviewTrail, type VisibleConversationSkill } from '@shared/types'
 import { estimateTextTokens } from './token-estimate'
 import { runUntilIdle } from './run-until-idle'
 import { SubAgentRoster } from './sub-agent-roster'
 import { isOemFeatureEnabled } from '@shared/oem-features'
 import { getBondService } from '../bond.service'
-import type { ToolExecutorConfig, ToolResult } from './tools/types'
+import type { ConfirmationOptions, ToolExecutorConfig, ToolResult } from './tools/types'
 import { executeTool } from './tools/index'
 import { stripToolMeta } from './tools'
 import { measureContextComposition } from './context-composition'
@@ -84,7 +84,9 @@ import { consumeProactiveContext } from './proactive-store'
 import { applyParallelShare, computeToolOutputBudget } from './tool-output-budget'
 import { collapseRepeatedToolOutputs, reduceRepeatedToolOutput } from './repeated-tool-output'
 import { SUMMARY_MAX_OUTPUT_TOKENS } from '../ai-request-budget'
-import { t, type TranslationKey } from './i18n'
+import { t, getLocale, type TranslationKey } from './i18n'
+import { AutoApprovalReviewer, buildInspectorDeps, resolveInspectPtyId, type AutoReviewResult } from './auto-review'
+import { CommandExecutorService } from '../command-executor.service'
 import { createSkillSession, SkillSession, getSkill } from './skills'
 import { McpToolSession, parseMcpSkillId, toMcpSkillId } from './mcp-tool-session'
 import { getUserSkillService, parseUserSkillId, toUserSkillId } from '../user-skill.service'
@@ -164,6 +166,9 @@ export abstract class Agent {
 
   /** 伙计：关掉落盘 / 侧栏 / L2 / L3 / 诞生引导 */
   private _isSubAgent = false
+
+  /** 替我审批的评审员：第一次需要时才建，跟着这个 Agent 实例走 */
+  private _autoReviewer?: AutoApprovalReviewer
 
   /** 伙计开局：清洗后的父对话，第一次 run 用完即清空 */
   private _seedMessages: AiMessage[] = []
@@ -2037,6 +2042,7 @@ export abstract class Agent {
     this._loadedUserSkillIds.clear()
     this._skillsMutatedByUser = false
     this._skillsChangedHook?.()
+    this._autoReviewer?.reset()
   }
 
   /**
@@ -4250,7 +4256,7 @@ export abstract class Agent {
       if (decision.requireApproval) {
         // 插件显式要求审批：始终弹窗，不受 executionMode 覆盖（开发者门禁 ≠ Agent 自评估风险）
         const approved = await toolExecutorConfig.waitForConfirmation(
-          toolCall.id, toolName, toolArgs, 'dangerous'
+          toolCall.id, toolName, toolArgs, 'dangerous', undefined, undefined, undefined, { humanOnly: true }
         )
         if (!approved) {
           return { result: { success: false, output: '', error: t('error.operation_aborted') }, toolArgs }
@@ -4652,14 +4658,14 @@ export abstract class Agent {
       pluginRegistry: this.services.pluginRegistry,
       addStep: (step) => this.addStep(step),
       updateStep: (stepId, updates) => this.updateStep(stepId, updates),
-      waitForConfirmation: async (toolCallId, toolName, toolArgs, riskLevel, displayName, reasons, trustCommandOffer) => {
+      waitForConfirmation: async (toolCallId, toolName, toolArgs, riskLevel, displayName, reasons, trustCommandOffer, opts) => {
         // 「本次允许」：Agent 实例内存白名单（跨 Run，关 tab / 重启清空）
         const candidates = buildAllowlistKeyCandidates(toolName, toolArgs)
         if (candidates.some(k => this.allowedTools.has(k))) {
           return true
         }
         const result = await this.waitForConfirmation(
-          run, toolCallId, toolName, toolArgs, riskLevel, displayName, reasons, trustCommandOffer,
+          run, toolCallId, toolName, toolArgs, riskLevel, displayName, reasons, trustCommandOffer, opts,
         )
         return result.approved
       },
@@ -4909,7 +4915,7 @@ export abstract class Agent {
    * 无应答通道时按"未批准"返回，理由同 requestSecureInput：没有超时兜底，
    * 缺了结论就是永久挂起。
    */
-  protected waitForConfirmation(
+  protected async waitForConfirmation(
     run: AgentRun,
     toolCallId: string, 
     toolName: string, 
@@ -4918,18 +4924,32 @@ export abstract class Agent {
     displayName?: string,
     reasons?: string[],
     trustCommandOffer?: PendingConfirmationInternal['trustCommandOffer'],
+    opts?: ConfirmationOptions,
   ): Promise<{ approved: boolean; modifiedArgs?: Record<string, unknown> }> {
     if (this._isSubAgent) {
       if (riskLevel === 'dangerous' || riskLevel === 'blocked') {
         log.warn(`Sub-agent auto-rejected ${riskLevel} operation: ${toolName}`)
-        return Promise.resolve({ approved: false })
+        return { approved: false }
       }
-      return Promise.resolve({ approved: true })
+      return { approved: true }
     }
     if (!this.callbacks?.onNeedConfirm) {
       log.warn(`No confirmation channel available (tool=${toolName}, risk=${riskLevel}); treating as not approved`)
-      return Promise.resolve({ approved: false })
+      return { approved: false }
     }
+
+    let autoReview: AutoReviewTrail | undefined
+    if (this.canAutoReview(run, riskLevel, opts)) {
+      try {
+        const review = await this.runAutoReview(run, toolName, toolArgs, riskLevel, displayName, reasons)
+        if (review.kind === 'approved') return { approved: true }
+        if (review.kind === 'cancelled' || run.aborted) return { approved: false }
+        autoReview = review.trail
+      } catch (e) {
+        log.warn(`[auto-review] handed over after local error: ${e instanceof Error ? e.message : String(e)}`)
+      }
+    }
+
     return new Promise((resolve) => {
       const confirmation: PendingConfirmationInternal = {
         agentId: run.id,
@@ -4940,6 +4960,7 @@ export abstract class Agent {
         displayName,
         reasons,
         trustCommandOffer,
+        ...(autoReview ? { autoReview } : {}),
         resolve: (approved, modifiedArgs) => {
           run.pendingConfirmation = undefined
           run.executionPhase = 'thinking'
@@ -4954,6 +4975,145 @@ export abstract class Agent {
       )
       this.callbacks?.onNeedConfirm?.(confirmation)
     })
+  }
+
+  // ==================== 替我审批 ====================
+
+  /**
+   * 只有「有人当场兜底」时才评：用户打开了开关、这类会话允许、有人坐在桌面或交互式命令行前。
+   * 插件显式要求审批的一律只问人；硬墙本不进确认，这里再挡一道。
+   */
+  private canAutoReview(run: AgentRun, riskLevel: RiskLevel, opts?: ConfirmationOptions): boolean {
+    if (opts?.humanOnly || riskLevel === 'blocked') return false
+    if (!this.services.configService?.isAutoApprovalReviewEnabled()) return false
+    if (!conversationPolicy(inferConversationKind(this._agentId)).autoApprovalReview) return false
+    if (run.context.unattended) return false
+    const channel = run.context.remoteChannel
+    return !channel || channel === 'desktop'
+  }
+
+  private getAutoReviewer(): AutoApprovalReviewer {
+    if (!this._autoReviewer) {
+      const aiService = this.services.aiService
+      this._autoReviewer = new AutoApprovalReviewer({
+        chat: (messages, tools, profileId, signal, options) =>
+          aiService.chatWithTools(messages, tools, profileId, signal, options),
+      })
+    }
+    return this._autoReviewer
+  }
+
+  private async runAutoReview(
+    run: AgentRun,
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+    riskLevel: RiskLevel,
+    displayName?: string,
+    reasons?: string[],
+  ): Promise<{ kind: 'approved' } | { kind: 'cancelled' } | { kind: 'handed_over'; trail: AutoReviewTrail }> {
+    const reviewer = this.getAutoReviewer()
+    const action = this.describeActionForTrail(toolName, toolArgs, displayName)
+    const step = this.addStep({
+      type: 'auto_review',
+      content: t('autoReview.reviewing', { action }),
+      toolName,
+      toolArgs,
+      riskLevel,
+      isStreaming: true,
+    })
+    const inspectPtyId = resolveInspectPtyId(toolArgs, run.ptyId)
+    const ssh = inspectPtyId ? this.services.sshService?.getConfig(inspectPtyId) ?? null : null
+    const sftp = this.services.sftpService
+    const executor = new CommandExecutorService()
+    let result: AutoReviewResult
+    try {
+    result = await reviewer.review({
+      runId: run.id,
+      sessionId: this.getSessionId() ?? run.id,
+      locale: getLocale(),
+      toolName,
+      toolArgs,
+      displayName,
+      riskLevel,
+      reasons,
+      getSteps: () => run.steps,
+      getMessages: () => run.messages,
+      aiRules: this.services.configService?.getAiRules() ?? '',
+      environment: {
+        terminalType: run.context.terminalType,
+        sshHost: ssh?.host ?? run.context.sshHost,
+        cwd: run.context.cwd,
+        os: run.context.systemInfo?.os,
+      },
+      profileId: this.profileId || this.services.configService?.getActiveAiProfile() || undefined,
+      signal: run.abortController?.signal,
+      inspector: buildInspectorDeps({
+        execute: (command, cwd, timeoutMs) => executor.execute(command, cwd, timeoutMs),
+        localCwd: ssh ? undefined : run.context.cwd,
+        remote: ssh && sftp && inspectPtyId ? { sftp, ssh, ptyId: inspectPtyId } : undefined,
+      }),
+    })
+    if (result.usage) this.addSideUsage(run, result.usage)
+    if (result.kind === 'cancelled') {
+      this.updateStep(step.id, { content: t('autoReview.cancelled', { action }), isStreaming: false })
+      return { kind: 'cancelled' }
+    }
+
+    const trail: AutoReviewTrail = result.kind === 'approved'
+      ? { outcome: 'approved', risk: result.assessment.risk, authorization: result.assessment.authorization, rationale: result.assessment.rationale }
+      : {
+          outcome: 'handed_over',
+          reason: result.reason,
+          ...(result.assessment
+            ? { risk: result.assessment.risk, authorization: result.assessment.authorization, rationale: result.assessment.rationale }
+            : {}),
+        }
+    this.updateStep(step.id, { content: this.formatAutoReviewTrail(trail, action), autoReview: trail, isStreaming: false })
+    log.info(`[auto-review] ${trail.outcome}${trail.reason ? `(${trail.reason})` : ''} tool=${toolName} risk=${trail.risk ?? '-'} auth=${trail.authorization ?? '-'}`)
+    return result.kind === 'approved' ? { kind: 'approved' } : { kind: 'handed_over', trail }
+    } catch (e) {
+      const trail: AutoReviewTrail = { outcome: 'handed_over', reason: 'failed' }
+      this.updateStep(step.id, { content: this.formatAutoReviewTrail(trail, action), autoReview: trail, isStreaming: false })
+      log.warn(`[auto-review] local error, handing over: ${e instanceof Error ? e.message : String(e)}`)
+      return { kind: 'handed_over', trail }
+    }
+  }
+
+  private describeActionForTrail(toolName: string, toolArgs: Record<string, unknown>, displayName?: string): string {
+    const summaryField = getMetaByName(this.getAvailableTools(), toolName)?.argRole?.summaryLine
+    const summary = summaryField && typeof toolArgs[summaryField] === 'string' ? toolArgs[summaryField] as string : undefined
+    const name = displayName ?? toolName
+    if (!summary) return name
+    const oneLine = summary.replace(/`/g, "'").replace(/\s*\n\s*/g, ' ')
+    return `${name} \`${oneLine.length > 200 ? `${oneLine.slice(0, 200)}…` : oneLine}\``
+  }
+
+  private formatAutoReviewTrail(trail: AutoReviewTrail, action: string): string {
+    const lines = [t(trail.outcome === 'approved' ? 'autoReview.approved' : 'autoReview.handed_over', { action })]
+    if (trail.reason && trail.reason !== 'not_approved') lines.push(t(`autoReview.reason.${trail.reason}` as TranslationKey))
+    if (trail.risk && trail.authorization) {
+      lines.push(t('autoReview.scores', {
+        risk: t(`autoReview.risk.${trail.risk}` as TranslationKey),
+        authorization: t(`autoReview.auth.${trail.authorization}` as TranslationKey),
+      }))
+    }
+    if (trail.rationale) lines.push(`> ${trail.rationale.replace(/\n+/g, ' ')}`)
+    return lines.join('\n\n')
+  }
+
+  /** 评审员花的 token 记进这场任务的账，不碰上下文水位。 */
+  private addSideUsage(run: AgentRun, usage: TokenUsageInfo): void {
+    if (!run.tokenUsage) run.tokenUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+    run.tokenUsage.prompt_tokens += usage.prompt_tokens
+    run.tokenUsage.completion_tokens += usage.completion_tokens
+    run.tokenUsage.total_tokens += usage.total_tokens
+    if (usage.cache_hit_tokens !== undefined) {
+      run.tokenUsage.cache_hit_tokens = (run.tokenUsage.cache_hit_tokens || 0) + usage.cache_hit_tokens
+    }
+    if (usage.cache_miss_tokens !== undefined) {
+      run.tokenUsage.cache_miss_tokens = (run.tokenUsage.cache_miss_tokens || 0) + usage.cache_miss_tokens
+    }
+    this.addConsumedUsage(usage)
   }
   
   /**

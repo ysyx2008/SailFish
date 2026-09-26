@@ -276,13 +276,15 @@ export async function askUser(
       }
     }
 
+    const userChosen = finalResponse
     if (!finalResponse && defaultValue) {
       finalResponse = defaultValue
     }
 
     executor.updateStep(step.id, {
       toolResult: t('ask.received', { response: finalResponse || t('ask.empty') }),
-      askingStatus: 'received'
+      askingStatus: 'received',
+      ...(userChosen ? { askingAnswer: userChosen } : {})
     })
 
     return {

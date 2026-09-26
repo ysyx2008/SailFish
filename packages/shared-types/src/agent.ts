@@ -399,7 +399,7 @@ export interface EChartsStepPayload {
 
 export interface AgentStep {
   id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'waiting_input' | 'plan_created' | 'plan_updated' | 'plan_archived' | 'user_task' | 'final_result' | 'proactive_notice'
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'waiting_input' | 'plan_created' | 'plan_updated' | 'plan_archived' | 'user_task' | 'final_result' | 'proactive_notice' | 'auto_review'
   content: string
   images?: string[]
   /**
@@ -458,6 +458,13 @@ export interface AgentStep {
    * 旧记录可能缺失：任务已不在跑则当作已经结束。
    */
   askingStatus?: AskingStatus
+  /**
+   * asking 步骤：用户亲手输入或点选的回答（不含超时/空回复时补上的默认值）。
+   * 「替我审批」只把这类回答当作用户的原话。
+   */
+  askingAnswer?: string
+  /** auto_review 步骤：替我审批这一次的结论 */
+  autoReview?: AutoReviewTrail
   /**
    * 此步骤是否对应"被用户拒绝执行"。仅由工具层在拒绝场景显式标记。
    * UI 用此字段（而不是 content 关键词）渲染"灰色 + 半透明"的拒绝样式，
@@ -587,6 +594,35 @@ export interface PendingSecureInput {
   isUpdate?: boolean
 }
 
+// ==================== 替我审批 ====================
+
+/** 评审员给这一步定的风险分 */
+export const AUTO_REVIEW_RISK_SCORES = ['low', 'medium', 'high', 'critical'] as const
+export type AutoReviewRiskScore = (typeof AUTO_REVIEW_RISK_SCORES)[number]
+
+/** 评审员判断用户原话对这一步的授权程度 */
+export const AUTO_REVIEW_AUTHORIZATION_SCORES = ['high', 'medium', 'low', 'unknown'] as const
+export type AutoReviewAuthorizationScore = (typeof AUTO_REVIEW_AUTHORIZATION_SCORES)[number]
+
+/**
+ * 没有替用户放行、交回用户确认的原因：
+ * - not_approved：评审员看过，认为该问用户
+ * - failed：超时、出错或评审结论看不懂
+ * - too_large：用户原话或这一步参数太长，放不下就不评
+ * - circuit_open：这一轮已连着几次没放行，后面直接问用户
+ * - user_spoke：评审期间用户又说了话，重评后仍在变，交给用户
+ */
+export type AutoReviewHandOverReason = 'not_approved' | 'failed' | 'too_large' | 'circuit_open' | 'user_spoke'
+
+/** 一次替我审批的留痕（写进 auto_review 步骤，也随确认卡带给用户） */
+export interface AutoReviewTrail {
+  outcome: 'approved' | 'handed_over'
+  reason?: AutoReviewHandOverReason
+  risk?: AutoReviewRiskScore
+  authorization?: AutoReviewAuthorizationScore
+  rationale?: string
+}
+
 /**
  * 待确认的工具调用（IPC 安全版本，不含 resolve 回调）
  * 后端通过 PendingConfirmationInternal 扩展 resolve 字段
@@ -622,4 +658,6 @@ export interface PendingConfirmation {
     writesTo: boolean
     baseLevel: 'moderate'
   }
+  /** 替我审批评审过但没有放行时带上：为什么交回用户 */
+  autoReview?: AutoReviewTrail
 }

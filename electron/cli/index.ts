@@ -1025,7 +1025,8 @@ async function agentRun(args: string[]): Promise<void> {
   }
   const stepPrefix = (type: string) =>
     type === 'thinking' ? '💭' : type === 'tool_call' ? '🔧' :
-    type === 'tool_result' ? '📋' : type === 'message' ? '💬' : '  '
+    type === 'tool_result' ? '📋' : type === 'message' ? '💬' :
+    type === 'auto_review' ? '✅' : '  '
 
   /**
    * stdin 单飞：同一时刻只允许一个读取者。
@@ -1203,6 +1204,12 @@ async function agentRun(args: string[]): Promise<void> {
     onNeedConfirm: (confirmation: any) => {
       console.log(`\n⚠️  Confirmation needed: ${confirmation.toolName} (risk: ${confirmation.riskLevel})`)
       console.log(`   Args: ${JSON.stringify(confirmation.toolArgs).substring(0, 200)}`)
+      if (confirmation.autoReview) {
+        const note = confirmation.autoReview.rationale
+          || confirmation.autoReview.reason
+          || 'handed over'
+        console.log(`   Reviewer: ${note}`)
+      }
       void (async () => {
         if (mode === 'free') {
           console.log('   Auto-approved (--mode free / --free)')
@@ -1814,6 +1821,9 @@ SailFish CLI v${version}
   --mode <strict|relaxed|free>  执行模式（默认 relaxed）
   --free                     等同 --mode free（危险：跳过确认）
   --task / -t <text>         显式任务文本
+
+替我审批（默认关；只对交互式任务生效）:
+  ${cliName()} config:set autoApprovalReview true
 
 环境变量:
   SFT_API_URL / SFT_API_KEY / SFT_MODEL

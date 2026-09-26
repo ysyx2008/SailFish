@@ -172,6 +172,8 @@ function hasHandedOverPayload(step: ProcessStepLike): boolean {
 
 /** 除了"说了话"，还有别的理由留在外面吗 */
 function pinnedBesidesSpeech(step: ProcessStepLike): boolean {
+  // 替我审批是过程：放过的收进去点开能翻到；没放过的由确认卡自己站在外面
+  if (step.type === 'auto_review') return false
   if (PINNED_STEP_TYPES.has(step.type)) return true
   if (step.riskLevel === 'dangerous' || step.riskLevel === 'blocked') return true
   if (step.toolName && PINNED_TOOLS.has(step.toolName)) return true

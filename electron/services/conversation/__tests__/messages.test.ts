@@ -139,4 +139,19 @@ describe('messages.stepRecordToStep', () => {
     expect(step.success).toBe(true)
     expect(step.toolName).toBe('shell')
   })
+
+  it('透传提问回答和替我审批留痕', () => {
+    const rec = {
+      id: 's2',
+      type: 'auto_review',
+      content: '替你放行',
+      timestamp: 1,
+      askingStatus: 'received',
+      askingAnswer: '确定删',
+      autoReview: { outcome: 'approved', risk: 'high', authorization: 'high', rationale: '你说了' },
+    } as any
+    const step = stepRecordToStep(rec)
+    expect(step.askingAnswer).toBe('确定删')
+    expect(step.autoReview).toEqual(rec.autoReview)
+  })
 })

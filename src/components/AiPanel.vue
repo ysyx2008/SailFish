@@ -17,6 +17,7 @@ import AgentPlanView from './AgentPlanView.vue'
 import AiComposer from './AiComposer.vue'
 import DropOverlay from './DropOverlay.vue'
 import AiProfileSelect from './AiProfileSelect.vue'
+import ApprovalModeSelect from './ApprovalModeSelect.vue'
 import ThinkingBlock from './ThinkingBlock.vue'
 import ProcessTurnFold from './ProcessTurnFold.vue'
 import { createReusableTemplate } from '../utils/reusable-template'
@@ -1009,6 +1010,12 @@ const formatConfirmArgs = (confirm: typeof pendingConfirm.value) => {
   return JSON.stringify(args, null, 2)
 }
 
+const autoReviewHandOverText = (reason?: string) => {
+  const key = reason ? `ai.autoReviewReason.${reason}` : 'ai.autoReviewHandedOver'
+  const translated = t(key)
+  return translated !== key ? translated : t('ai.autoReviewHandedOver')
+}
+
 // 邮件发送确认卡片的结构化预览
 const formatEmailConfirmArgs = (args: Record<string, unknown>): string => {
   const lines: string[] = []
@@ -1056,25 +1063,39 @@ const requestFreeMode = () => {
   showFreeModeConfirm.value = true
 }
 
+type ApprovalUiState = 'strict' | 'relaxed' | 'autoReview' | 'free'
+
+const approvalUiState = computed<ApprovalUiState>(() => {
+  if (executionMode.value === 'free') return 'free'
+  if (configStore.autoApprovalReview) return 'autoReview'
+  return executionMode.value === 'strict' ? 'strict' : 'relaxed'
+})
+
+const applyApprovalUiState = (next: ApprovalUiState) => {
+  if (next === approvalUiState.value) return
+  if (next === 'free') {
+    requestFreeMode()
+    return
+  }
+  if (next === 'autoReview') {
+    executionMode.value = 'relaxed'
+    void configStore.setAutoApprovalReview(true)
+    return
+  }
+  void configStore.setAutoApprovalReview(false)
+  executionMode.value = next
+}
+
 // 确认启用自由模式
 const confirmEnableFreeMode = () => {
   executionMode.value = 'free'
+  void configStore.setAutoApprovalReview(false)
   showFreeModeConfirm.value = false
 }
 
 // 取消启用自由模式
 const cancelFreeMode = () => {
   showFreeModeConfirm.value = false
-}
-
-// 切换到严格模式
-const switchToStrictMode = () => {
-  executionMode.value = 'strict'
-}
-
-// 切换到宽松模式
-const switchToRelaxedMode = () => {
-  executionMode.value = 'relaxed'
 }
 
 // 点击中的选项（用于即时视觉反馈，单选时使用）
@@ -2450,33 +2471,10 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
       <div v-if="!peek" class="system-info-bar">
         <!-- Agent 模式设置 -->
         <div class="agent-settings">
-          <!-- 执行模式选择器（三选一：严格/宽松/自由） -->
-          <div class="execution-mode-selector">
-            <button 
-              class="mode-option mode-option-strict" 
-              :class="{ active: executionMode === 'strict' }"
-              @click="switchToStrictMode"
-              :title="t('ai.strictModeTitle')"
-            >
-              {{ t('ai.strict') }}
-            </button>
-            <button 
-              class="mode-option" 
-              :class="{ active: executionMode === 'relaxed' }"
-              @click="switchToRelaxedMode"
-              :title="t('ai.relaxedModeTitle')"
-            >
-              {{ t('ai.relaxed') }}
-            </button>
-            <button 
-              class="mode-option mode-option-free" 
-              :class="{ active: executionMode === 'free' }"
-              @click="executionMode === 'free' ? switchToStrictMode() : requestFreeMode()"
-              :title="t('ai.freeModeTitle')"
-            >
-              {{ t('ai.free') }}
-            </button>
-          </div>
+          <ApprovalModeSelect
+            :model-value="approvalUiState"
+            @update:model-value="applyApprovalUiState"
+          />
         </div>
         <div v-if="currentSystemInfo" class="system-info-left host-info-trigger">
           <span class="system-icon">💻</span>
@@ -2940,6 +2938,11 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                     <ul class="confirm-reasons-list">
                       <li v-for="(reason, idx) in pendingConfirm.reasons" :key="idx">{{ reason }}</li>
                     </ul>
+                  </div>
+                  <div v-if="pendingConfirm.autoReview" class="confirm-auto-review">
+                    <div class="confirm-auto-review-title">{{ t('ai.autoReviewNote') }}</div>
+                    <p v-if="pendingConfirm.autoReview.rationale" class="confirm-auto-review-rationale">{{ pendingConfirm.autoReview.rationale }}</p>
+                    <p v-else class="confirm-auto-review-rationale">{{ autoReviewHandOverText(pendingConfirm.autoReview.reason) }}</p>
                   </div>
                 </div>
                 <div class="confirm-actions-inline">
@@ -4443,67 +4446,6 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
   transform: translateX(14px);
 }
 
-/* 执行模式选择器 */
-.execution-mode-selector {
-  display: flex;
-  align-items: center;
-  box-sizing: border-box;
-  height: 22px;
-  gap: 2px;
-  background: var(--bg-tertiary);
-  border-radius: 6px;
-  padding: 1px;
-  border: 1px solid var(--border-color);
-  flex-shrink: 0;
-}
-
-.mode-option {
-  display: inline-flex;
-  align-items: center;
-  height: 100%;
-  padding: 0 8px;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1;
-  color: var(--text-secondary);
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-}
-
-.mode-option:hover {
-  background: var(--bg-surface);
-  color: var(--text-primary);
-}
-
-.mode-option.active {
-  background: var(--accent-primary);
-  color: #fff;
-}
-
-/* 严格模式按钮 —— 产品级活力绿（守护/安全），跨主题固定，与自由模式红对称 */
-.mode-option-strict.active {
-  background: var(--brand-vital);
-  color: #fff;
-}
-
-.mode-option-strict:hover:not(.active) {
-  background: rgba(var(--brand-vital-rgb), 0.15);
-  color: var(--brand-vital);
-}
-
-/* 自由模式按钮 —— 产品级警戒红，跨主题固定 */
-.mode-option-free.active {
-  background: var(--brand-alert);
-}
-
-.mode-option-free:hover:not(.active) {
-  background: rgba(var(--brand-alert-rgb), 0.15);
-  color: var(--brand-alert);
-}
 
 /* 自由模式确认对话框 */
 .free-mode-confirm-overlay {
@@ -5209,6 +5151,20 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
 }
 
 .agent-step-inline.waiting .step-icon {
+  color: var(--color-info);
+  line-height: 1;
+}
+
+.agent-step-inline.auto_review {
+  background: rgba(var(--color-info-rgb), 0.08);
+  border-left: 3px solid var(--color-info);
+  padding: 8px 10px;
+  margin-left: -2px;
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+
+.agent-step-inline.auto_review .step-icon {
   color: var(--color-info);
   line-height: 1;
 }
@@ -5932,6 +5888,31 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
   margin-bottom: 2px;
 }
 
+.confirm-auto-review {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-left: 3px solid rgba(96, 165, 250, 0.7);
+  border-radius: 4px;
+}
+
+.confirm-auto-review-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(147, 197, 253, 0.95);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.confirm-auto-review-rationale {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
 .confirm-actions-inline {
   display: flex;
   gap: 10px;
@@ -5994,6 +5975,19 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
 }
 
 [data-color-scheme="light"] .confirm-reasons-list {
+  color: var(--text-secondary);
+}
+
+[data-color-scheme="light"] .confirm-auto-review {
+  background: rgba(var(--color-info-rgb), 0.08);
+  border-left-color: rgba(var(--color-info-rgb), 0.55);
+}
+
+[data-color-scheme="light"] .confirm-auto-review-title {
+  color: var(--color-info);
+}
+
+[data-color-scheme="light"] .confirm-auto-review-rationale {
   color: var(--text-secondary);
 }
 

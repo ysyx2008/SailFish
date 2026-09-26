@@ -67,17 +67,25 @@ export interface ConversationPolicy {
    * Watch 配置层（watchId 维度），不在这张 kind 级表上扩展。
    */
   perWatchContinuity: boolean
+
+  /**
+   * 用户打开「替我审批」后，本来要问用户的那一下能否先交给独立评审员。
+   * - task=true：用户坐在桌面前支使 AI 做事，没放行还能当场交回给他。
+   * - companion=false：联络跨渠道汇流，这一刻未必有人在桌面前看确认卡。
+   * - watch/wakeup=false：后台执行，没有人当场兜底。
+   */
+  autoApprovalReview: boolean
 }
 
 /**
  * 四类会话的行为策略。
  *
- * | kind      | accumulates | seedFromHistoryOnColdStart | visibleInList | historyTree | perWatchContinuity |
- * |-----------|-------------|----------------------------|---------------|-------------|--------------------|
- * | task      | true        | false                      | true          | main        | false              |
- * | companion | true        | true                       | true          | main        | false              |
- * | watch     | false       | false                      | false         | watch       | false（预留）       |
- * | wakeup    | false       | true                       | false         | watch       | false（预留）       |
+ * | kind      | accumulates | seedFromHistoryOnColdStart | visibleInList | historyTree | perWatchContinuity | autoApprovalReview |
+ * |-----------|-------------|----------------------------|---------------|-------------|--------------------|--------------------|
+ * | task      | true        | false                      | true          | main        | false              | true               |
+ * | companion | true        | true                       | true          | main        | false              | false              |
+ * | watch     | false       | false                      | false         | watch       | false（预留）       | false              |
+ * | wakeup    | false       | true                       | false         | watch       | false（预留）       | false              |
  *
  * 注：wakeup 从 watch 中独立出来——关切是用户配置的一次性任务（prompt 自带指令，逐次失忆，
  * 避免 A 关切串味到 B），wakeup 是 Agent 自主循环（需要历史记忆辅助决策「该不该主动找人、
@@ -89,28 +97,32 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     seedFromHistoryOnColdStart: false,
     visibleInList: true,
     historyTree: 'main',
-    perWatchContinuity: false
+    perWatchContinuity: false,
+    autoApprovalReview: true
   },
   companion: {
     accumulates: true,
     seedFromHistoryOnColdStart: true,
     visibleInList: true,
     historyTree: 'main',
-    perWatchContinuity: false
+    perWatchContinuity: false,
+    autoApprovalReview: false
   },
   watch: {
     accumulates: false,
     seedFromHistoryOnColdStart: false,
     visibleInList: false,
     historyTree: 'watch',
-    perWatchContinuity: false
+    perWatchContinuity: false,
+    autoApprovalReview: false
   },
   wakeup: {
     accumulates: false,
     seedFromHistoryOnColdStart: true,
     visibleInList: false,
     historyTree: 'watch',
-    perWatchContinuity: false
+    perWatchContinuity: false,
+    autoApprovalReview: false
   }
 }
 

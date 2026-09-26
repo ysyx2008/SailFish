@@ -14,7 +14,8 @@ describe('CONVERSATION_POLICY 策略表', () => {
       seedFromHistoryOnColdStart: false,
       visibleInList: true,
       historyTree: 'main',
-      perWatchContinuity: false
+      perWatchContinuity: false,
+      autoApprovalReview: true,
     })
   })
 
@@ -41,6 +42,13 @@ describe('CONVERSATION_POLICY 策略表', () => {
     expect(p.seedFromHistoryOnColdStart).toBe(true) // 唤醒需要看用户最近活动做决策
     expect(p.visibleInList).toBe(false)
     expect(p.historyTree).toBe('watch') // 与 watch 同源，共用 watch 树
+  })
+
+  it('替我审批只给任务：联络、关切、唤醒这一刻未必有人在桌面前兜底', () => {
+    expect(conversationPolicy('task').autoApprovalReview).toBe(true)
+    expect(conversationPolicy('companion').autoApprovalReview).toBe(false)
+    expect(conversationPolicy('watch').autoApprovalReview).toBe(false)
+    expect(conversationPolicy('wakeup').autoApprovalReview).toBe(false)
   })
 
   it('perWatchContinuity 预留钩子：当前所有 kind 一律 false（维持现状逐次失忆）', () => {

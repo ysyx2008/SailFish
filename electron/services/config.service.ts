@@ -250,6 +250,8 @@ interface StoreSchema {
   autoFailoverModel: boolean  // 自动切换可用模型：当前模型重试仍失败时从列表第一个开始换（只改这场对话）
   /** 它有多主动地把已经用不上的过程先交接掉 */
   proactiveCompact: ProactiveCompactStyle
+  /** 替我审批：任务里本来要问用户的确认，先交给独立评审员看（默认关） */
+  autoApprovalReview: boolean
   schemaVersion: number  // 数据 schema 版本号，用于迁移框架追踪已执行的 migration
   // 堡垒机（JumpServer）集成
   bastionUrl: string              // JumpServer 地址
@@ -371,6 +373,7 @@ const defaultConfig: StoreSchema = {
   autoVisionModel: true,
   autoFailoverModel: true,
   proactiveCompact: DEFAULT_PROACTIVE_COMPACT,
+  autoApprovalReview: false,
   schemaVersion: 0,
   bastionUrl: '',
   bastionUsername: '',
@@ -1170,6 +1173,11 @@ export class ConfigService {
 
   getProactiveCompact(): ProactiveCompactStyle {
     return normalizeProactiveCompact(this.store.get('proactiveCompact'))
+  }
+
+  /** 只有明确打开才算开：旧数据缺字段、类型不对都当关 */
+  isAutoApprovalReviewEnabled(): boolean {
+    return this.store.get('autoApprovalReview') === true
   }
 
   /**

@@ -31,6 +31,13 @@ export const PATH_PARAM_NAMES = new Set([
 /**
  * 工具执行器配置
  */
+export interface ConfirmationOptions {
+  /**
+   * 只能由人批准：插件显式要求审批属于开发者门禁，「替我审批」不代批。
+   */
+  humanOnly?: boolean
+}
+
 export interface ToolExecutorConfig {
   /** Agent 实例的逻辑 ID（用于 talk_to_user 等工具路由 proactive message） */
   agentId?: string
@@ -56,7 +63,8 @@ export interface ToolExecutorConfig {
     /** 触发该风险等级的具体原因（人类可读，已按 locale 国际化）。仅命令类工具有值 */
     reasons?: string[],
     /** 未知命令可加入用户规则库的要约 */
-    trustCommandOffer?: import('@shared/types').PendingConfirmation['trustCommandOffer']
+    trustCommandOffer?: import('@shared/types').PendingConfirmation['trustCommandOffer'],
+    opts?: ConfirmationOptions
   ) => Promise<boolean>
   /**
    * 请求安全输入框（如技能 API Key）。

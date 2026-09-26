@@ -31,6 +31,10 @@ export interface AgentStepRecord {
   success?: boolean
   /** 向用户提问这道题的结果。仅 asking 步骤使用；旧记录可能缺失 */
   askingStatus?: import('./agent').AskingStatus
+  /** asking 步骤：用户亲手输入或点选的回答（不含超时默认值） */
+  askingAnswer?: string
+  /** auto_review 步骤：替我审批这一次的结论 */
+  autoReview?: import('./agent').AutoReviewTrail
   /** 并行子 Agent 卡片组（dispatch_agents 工具专用） */
   subAgents?: import('./agent').SubAgentResult[]
   /** Canvas 预览数据（仅 UI / Artifact 面板消费，不发给 AI；历史重开时重放） */

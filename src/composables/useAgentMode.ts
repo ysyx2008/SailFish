@@ -2038,6 +2038,7 @@ export function useAgentMode(
       case 'plan_created': return '📋'
       case 'plan_updated': return '📋'
       case 'plan_archived': return '📦'
+      case 'auto_review': return '✅'
       default: return '•'
     }
   }

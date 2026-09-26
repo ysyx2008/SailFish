@@ -71,6 +71,21 @@ describe('isPinnedProcessStep', () => {
     expect(isPinnedProcessStep(thinkingMessage('m2', '只是在想'))).toBe(false)
   })
 
+  it('takes auto-review inside — already approved is process, not something you need to act on', () => {
+    expect(isPinnedProcessStep(step({
+      id: 'r1',
+      type: 'auto_review',
+      toolName: 'exec',
+      riskLevel: 'dangerous',
+    }))).toBe(false)
+    expect(isPinnedProcessStep(step({
+      id: 'r2',
+      type: 'auto_review',
+      toolName: 'write_text_file',
+      riskLevel: 'moderate',
+    }))).toBe(false)
+  })
+
   it('takes a mid-task tool failure inside — trying three times and succeeding is still success', () => {
     expect(isPinnedProcessStep(step({ id: 'a', type: 'tool_call', toolName: 'read_file', success: false }))).toBe(false)
   })
@@ -150,6 +165,19 @@ describe('countActions / extractProgressLine', () => {
 })
 
 describe('foldProcessSteps', () => {
+  it('folds auto-review into the process — the confirm card is what stays out if it did not approve', () => {
+    const steps = [
+      thinkingMessage('m1', '先对一下你刚说的'),
+      step({ id: 'r1', type: 'auto_review', toolName: 'exec', riskLevel: 'dangerous' }),
+      step({ id: 't1', type: 'tool_call', toolName: 'exec', riskLevel: 'dangerous' }),
+    ]
+    const segs = foldProcessSteps(steps, { enabled: true })
+    expect(segs.map(s => s.kind)).toEqual(['fold', 'open'])
+    if (segs[0].kind !== 'fold') throw new Error('expected fold')
+    expect(segs[0].fold.stepIds).toEqual(['m1', 'r1'])
+    expect(segs[1].kind === 'open' && segs[1].steps.map(ref => ref.step.id)).toEqual(['t1'])
+  })
+
   it('folds even a one-step task — the shape never changes', () => {
     const steps = [step({ id: 't1', type: 'tool_call', toolName: 'execute_command' })]
     const segs = foldProcessSteps(steps, { enabled: true })
