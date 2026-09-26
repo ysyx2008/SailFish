@@ -26,7 +26,7 @@ vi.mock('../../user-skill.service', () => ({
 }))
 
 import '../skills'
-import { getSkill, getSkillsSummary, getBuiltinSkillsForSettings, TERMINAL_SKILL_ID } from '../skills'
+import { getSkill, getSkillsSummary, BuiltinSkillEnablement, TERMINAL_SKILL_ID } from '../skills'
 import { createSkillSession } from '../skills/skill-loader'
 import { loadSkillTool, unloadSkillTool } from '../tools/misc'
 import { getAgentTools } from '../tools'
@@ -52,7 +52,7 @@ describe('「终端」技能由系统管', () => {
 
   it('不进模型能挑的技能目录，也不进设置页和 @ 列表', () => {
     expect(getSkillsSummary().some(s => s.id === TERMINAL_SKILL_ID)).toBe(false)
-    expect(getBuiltinSkillsForSettings([]).some(s => s.id === TERMINAL_SKILL_ID)).toBe(false)
+    expect(new BuiltinSkillEnablement(undefined).listForSettings().some(s => s.id === TERMINAL_SKILL_ID)).toBe(false)
     const skillTool = getAgentTools(undefined, { mode: 'assistant' }).find(t => t.function.name === 'skill')!
     expect(skillTool.function.description).not.toMatch(/- terminal:/)
     expect(JSON.stringify(skillTool.function.parameters)).not.toContain('"terminal"')

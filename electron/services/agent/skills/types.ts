@@ -17,6 +17,8 @@ export interface Skill {
   description: string
   /** 该技能提供的工具列表 */
   tools: ToolDefinition[]
+  /** false = 默认关着，用户在设置里打开后才进目录、才装得上（高级能力，如编程） */
+  defaultEnabled?: boolean
   /** 技能文档（Markdown），加载时注入上下文（同用户技能的 SKILL.md） */
   content?: string
   /**

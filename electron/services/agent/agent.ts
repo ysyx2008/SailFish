@@ -90,7 +90,7 @@ import { t, getLocale, type TranslationKey } from './i18n'
 import { AutoApprovalReviewer, buildInspectorDeps, resolveInspectPtyId, type AutoReviewResult } from './auto-review'
 import { resolveSubAgentBlockDangerous } from './command-audit/fail-closed-policy'
 import { CommandExecutorService } from '../command-executor.service'
-import { createSkillSession, SkillSession, getSkill, isSystemManagedSkill, TERMINAL_SKILL_ID } from './skills'
+import { createSkillSession, SkillSession, getSkill, isSystemManagedSkill, TERMINAL_SKILL_ID, BuiltinSkillEnablement } from './skills'
 import { McpToolSession, parseMcpSkillId, toMcpSkillId } from './mcp-tool-session'
 import { getUserSkillService, parseUserSkillId, toUserSkillId } from '../user-skill.service'
 import { getAiDebugService } from '../ai-debug.service'
@@ -713,11 +713,7 @@ export abstract class Agent {
       const skill = getUserSkillService().getSkill(userId)
       return !!skill?.enabled
     }
-    if (!getSkill(id)) return false
-    if (isSystemManagedSkill(id)) return true
-    const disabled = this.services.configService?.get?.('disabledBuiltinSkills')
-    const disabledSet = new Set(Array.isArray(disabled) ? disabled.filter((item): item is string => typeof item === 'string') : [])
-    return !disabledSet.has(id)
+    return new BuiltinSkillEnablement(this.services.configService).isEnabled(id)
   }
 
   private rememberSkillId(skillId: string): void {
@@ -750,8 +746,7 @@ export abstract class Agent {
    */
   async preloadSkills(skillIds: string[]): Promise<void> {
     if (!skillIds.length) return
-    const disabled = this.services.configService?.get?.('disabledBuiltinSkills')
-    const disabledSet = new Set(Array.isArray(disabled) ? disabled.filter((id): id is string => typeof id === 'string') : [])
+    const enablement = new BuiltinSkillEnablement(this.services.configService)
     for (const skillId of skillIds) {
       if (parseMcpSkillId(skillId)) {
         await this.preloadMcpSkill(skillId)
@@ -769,7 +764,7 @@ export abstract class Agent {
         }
         continue
       }
-      if (disabledSet.has(skillId) && !isSystemManagedSkill(skillId)) {
+      if (getSkill(skillId) && !enablement.isEnabled(skillId)) {
         log.warn(`Skip restoring disabled skill "${skillId}"`)
         continue
       }

@@ -57,19 +57,6 @@ export function getSkillsSummary(): { id: string; name: string; description: str
 }
 
 /**
- * 获取内置技能列表（用于设置页展示）
- */
-export function getBuiltinSkillsForSettings(disabledIds: string[]): { id: string; name: string; description: string; enabled: boolean }[] {
-  const disabledSet = new Set(disabledIds)
-  return selectableSkills().map(skill => ({
-    id: skill.id,
-    name: skill.name,
-    description: skill.description,
-    enabled: !disabledSet.has(skill.id)
-  }))
-}
-
-/**
  * 检查技能是否存在
  */
 export function hasSkill(skillId: string): boolean {

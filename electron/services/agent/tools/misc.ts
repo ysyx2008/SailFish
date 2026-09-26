@@ -25,6 +25,7 @@ import { executeDingTalkTool } from '../skills/dingtalk/executor'
 import { getUserSkillService, parseUserSkillId, toUserSkillId } from '../../user-skill.service'
 import { getSkillEnvMap, mapSkillEnvToDeclaredCase } from '../../credential.service'
 import { getSkill, isSystemManagedSkill } from '../skills/registry'
+import { BuiltinSkillEnablement } from '../skills/enablement'
 import { addProactiveContext } from '../proactive-store'
 import { getIMService } from '../../im/im.service'
 import { getConfigService } from '../../config.service'
@@ -865,8 +866,7 @@ export async function loadSkillTool(
     return { success: false, output: '', error: t('skill.system_managed_load', { id: skillId }) }
   }
 
-  const disabledSkills = getConfigService().get('disabledBuiltinSkills') || []
-  if (disabledSkills.includes(skillId)) {
+  if (getSkill(skillId) && !new BuiltinSkillEnablement(getConfigService()).isEnabled(skillId)) {
     return { success: false, output: '', error: `Skill "${skillId}" is disabled` }
   }
 

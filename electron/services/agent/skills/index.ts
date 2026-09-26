@@ -6,8 +6,9 @@
 export type { Skill, SkillState, SkillLoadResult, SkillSessionManager } from './types'
 
 // 导出注册表
-export { registerSkill, getSkill, getAllSkills, getSkillsSummary, getBuiltinSkillsForSettings, hasSkill, isSystemManagedSkill } from './registry'
+export { registerSkill, getSkill, getAllSkills, getSkillsSummary, hasSkill, isSystemManagedSkill } from './registry'
 export { TERMINAL_SKILL_ID } from './terminal'
+export { BuiltinSkillEnablement } from './enablement'
 
 // 导出加载器
 export { SkillSession, createSkillSession } from './skill-loader'

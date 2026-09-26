@@ -6,7 +6,7 @@ import type { McpService } from '../mcp.service'
 import type { PluginRegistry } from '../plugin/registry'
 import type { McpToolSession } from './mcp-tool-session'
 import { toMcpSkillId } from '../mcp-progressive-constants'
-import { getSkillsSummary } from './skills/registry'
+import { BuiltinSkillEnablement } from './skills/enablement'
 import { getUserSkillService } from '../user-skill.service'
 import { getConfigService } from '../config.service'
 import { isConfigured as isWebSearchConfigured } from '../web-search/index'
@@ -240,8 +240,7 @@ function dispatchAgentsCharCount(args: Record<string, unknown>): number {
  * 动态构建 skill 工具定义（合并 load_skill + unload_skill；目录含已连接 MCP）
  */
 function buildSkillTool(mcpService?: McpService): ToolDefinitionWithMeta {
-  const disabledIds = new Set(getConfigService().get('disabledBuiltinSkills') || [])
-  const skills = getSkillsSummary().filter(s => !disabledIds.has(s.id))
+  const skills = new BuiltinSkillEnablement(getConfigService()).enabledSkills()
   const userSkills = getUserSkillService().getEnabledSkills()
   const catalogLines = [
     ...skills.map(s => `- ${s.id}: ${s.description}`),

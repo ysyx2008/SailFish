@@ -389,7 +389,7 @@ import { LocalFsService } from './services/local-fs.service'
 import { registerArtifactPreviewScheme, initArtifactPreviewService } from './services/artifact-preview.service'
 import { McpService } from './services/mcp.service'
 import { getUserSkillService, UserSkill } from './services/user-skill.service'
-import { getBuiltinSkillsForSettings } from './services/agent/skills/registry'
+import { BuiltinSkillEnablement } from './services/agent/skills/enablement'
 import { getSkillMarketService, type MarketSkill, type MarketSkillItem, type SkillOperationResult, type SkillRegistry, type SkillPreviewResult, type SkillSource } from './services/skill-market.service'
 import { getKnowledgeService, KnowledgeService } from './services/knowledge'
 import type { KnowledgeSettings, SearchOptions, AddDocumentOptions, ModelTier } from './services/knowledge/types'
@@ -6464,20 +6464,13 @@ ipcMain.handle('browserBridge:openExtensionGuide', async (_event, browser: Brows
 // ==================== 内置技能相关 ====================
 
 ipcMain.handle('builtinSkill:list', async () => {
-  const disabledIds = configService.get('disabledBuiltinSkills') || []
-  return getBuiltinSkillsForSettings(disabledIds)
+  return new BuiltinSkillEnablement(configService).listForSettings()
 })
 
 ipcMain.handle('builtinSkill:toggle', async (_event, skillId: string, enabled: boolean) => {
   if (!skillId || typeof skillId !== 'string') return false
   try {
-    const disabledIds = new Set(configService.get('disabledBuiltinSkills') || [])
-    if (enabled) {
-      disabledIds.delete(skillId)
-    } else {
-      disabledIds.add(skillId)
-    }
-    configService.set('disabledBuiltinSkills', Array.from(disabledIds))
+    new BuiltinSkillEnablement(configService).setEnabled(skillId, enabled)
     return true
   } catch (error) {
     log.error('Failed to toggle builtin skill:', error)

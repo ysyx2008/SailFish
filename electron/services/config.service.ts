@@ -232,6 +232,8 @@ interface StoreSchema {
   logLevel: LogLevel  // 日志级别
   skillMarketRegistryUrl: string  // 技能市场 registry URL
   disabledBuiltinSkills: string[] // 被禁用的内置技能 ID 列表
+  /** 默认关着、用户在设置里打开了的内置技能 ID（如编程） */
+  enabledOptInSkills: string[]
   /** 输入区是否显示这场对话开着的技能胶囊；关掉只藏界面，技能仍装着 */
   showConversationSkillChips: boolean
   /** 单份记忆（L2 知识文档）最大字符数 */
@@ -364,6 +366,7 @@ const defaultConfig: StoreSchema = {
   logLevel: 'warn',
   skillMarketRegistryUrl: '',
   disabledBuiltinSkills: [],
+  enabledOptInSkills: [],
   showConversationSkillChips: true,
   contextKnowledgeMaxChars: DEFAULT_CONTEXT_KNOWLEDGE_MAX_CHARS,
   agentAwakened: true,
