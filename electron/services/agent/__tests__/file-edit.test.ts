@@ -7,6 +7,7 @@ import {
   findEditMatch,
   replaceAllNormalized,
   preserveNewlineStyle,
+  applyTextEdit,
 } from '../tools/file'
 
 // ==================== findEditMatch ====================
@@ -112,5 +113,36 @@ describe('preserveNewlineStyle', () => {
   it('does not double-convert existing CRLF', () => {
     const result = preserveNewlineStyle('a\r\nb', 'x\r\ny\r\n')
     expect(result).toBe('a\r\nb')
+  })
+})
+
+describe('applyTextEdit', () => {
+  it('单处替换给出原文行号', () => {
+    const result = applyTextEdit('a\nb\nc\n', 'b\nc', 'B\nC', false)
+    expect(result).toEqual({ ok: true, content: 'a\nB\nC\n', count: 1, lines: { start: 2, end: 3 } })
+  })
+
+  it('新文本里的 $& 等字符原样写入', () => {
+    const result = applyTextEdit('price = x\n', 'x', "'$&$1'", false)
+    expect(result.ok && result.content).toBe("price = '$&$1'\n")
+  })
+
+  it('多处匹配且没要求全替换时拒绝', () => {
+    expect(applyTextEdit('x x', 'x', 'y', false)).toEqual({ ok: false, reason: 'multiple', count: 2 })
+  })
+
+  it('全替换多处时不给行号', () => {
+    expect(applyTextEdit('x x', 'x', 'y', true)).toEqual({ ok: true, content: 'y y', count: 2 })
+  })
+
+  it('容错匹配时保留原文件的 CRLF', () => {
+    const result = applyTextEdit('a\r\nb\r\n', 'a\nb', 'A\nB', false)
+    expect(result.ok && result.content).toBe('A\r\nB\r\n')
+  })
+
+  it('找不到时带回最接近的片段', () => {
+    const result = applyTextEdit('function foo() {\n  return 1\n}\n', 'function foo() {\n  return 2\n}', 'x', false)
+    expect(result.ok).toBe(false)
+    expect(!result.ok && result.reason).toBe('not_found')
   })
 })

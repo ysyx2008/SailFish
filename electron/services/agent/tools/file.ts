@@ -887,6 +887,46 @@ export function replaceAllNormalized(fileContent: string, oldText: string, newTe
   return parts.join('')
 }
 
+export type TextEditOutcome =
+  | {
+    ok: true
+    content: string
+    /** 替换了几处 */
+    count: number
+    /** 单处替换时在原文里的行号范围；replace_all 多处时不给 */
+    lines?: { start: number; end: number }
+  }
+  | { ok: false; reason: 'not_found'; closestContext?: string }
+  | { ok: false; reason: 'multiple'; count: number }
+
+/** 在内存里做一次查找替换（容错匹配、保留换行风格）；不碰磁盘 */
+export function applyTextEdit(content: string, oldText: string, newText: string, replaceAll: boolean): TextEditOutcome {
+  const match = findEditMatch(content, oldText)
+  if (!match.found) return { ok: false, reason: 'not_found', closestContext: match.closestContext }
+  if (match.count > 1 && !replaceAll) return { ok: false, reason: 'multiple', count: match.count }
+
+  if (replaceAll) {
+    const replaced = match.normalized
+      ? replaceAllNormalized(content, oldText, newText)
+      : content.split(oldText).join(newText)
+    if (match.count > 1) return { ok: true, content: replaced, count: match.count }
+  }
+
+  // normalized=true 时 Tier 2/3 必填 originalStart/End；防御性兜底以应对未来新 Tier 漏赋值
+  const hasOriginalRange = match.normalized
+    && typeof match.originalStart === 'number'
+    && typeof match.originalEnd === 'number'
+  const start = hasOriginalRange ? match.originalStart! : content.indexOf(oldText)
+  const end = hasOriginalRange ? match.originalEnd! : start + oldText.length
+  const replacement = match.normalized ? preserveNewlineStyle(newText, content) : newText
+  return {
+    ok: true,
+    content: content.substring(0, start) + replacement + content.substring(end),
+    count: 1,
+    lines: computeLineRange(content, start, end),
+  }
+}
+
 /**
  * 找到文件中与 oldText 最相似的片段，返回上下文帮助 AI 重试。
  * 使用逐行滑动窗口 + 行级 Jaccard 相似度。
@@ -1737,13 +1777,12 @@ export async function editFile(
   try {
     const { content: fileContent, encoding: fileEncoding } = readTextFileWithEncoding(filePath)
 
-    // 多层容错匹配
-    const match = findEditMatch(fileContent, oldText)
+    const edit = applyTextEdit(fileContent, oldText, newText, replaceAll)
 
-    if (!match.found) {
+    if (!edit.ok && edit.reason === 'not_found') {
       const errorMsg = t('error.old_text_not_found')
-      const hint = match.closestContext
-        ? `${t('hint.old_text_not_found')}\n\n${t('hint.closest_match')}:\n${match.closestContext}`
+      const hint = edit.closestContext
+        ? `${t('hint.old_text_not_found')}\n\n${t('hint.closest_match')}:\n${edit.closestContext}`
         : t('hint.old_text_not_found')
       executor.addStep({
         type: 'tool_result',
@@ -1754,8 +1793,8 @@ export async function editFile(
       return { success: false, output: '', error: `${errorMsg}\n\n${hint}` }
     }
 
-    if (match.count > 1 && !replaceAll) {
-      const errorMsg = t('error.old_text_multiple_matches', { count: match.count })
+    if (!edit.ok) {
+      const errorMsg = t('error.old_text_multiple_matches', { count: edit.count })
       executor.addStep({
         type: 'tool_result',
         content: `${t('file.edit_failed')}: ${errorMsg}`,
@@ -1765,55 +1804,23 @@ export async function editFile(
       return { success: false, output: '', error: errorMsg }
     }
 
-    // 计算行号范围用于卡片标题：
-    // - 单点替换：使用 oldText 在原文件中的精确切片（normalized 容错时优先 originalStart/End，缺失时回退 indexOf）
-    // - replace_all 多处：仅展示「替换 N 处」，不逐一列出行号
-    let editRangeLabel = ''
-    if (replaceAll && match.count > 1) {
-      editRangeLabel = t('file.range_replace_count', { count: match.count })
-    } else {
-      // normalized=true 时 Tier 2/3 必填 originalStart/End；防御性兜底以应对未来新 Tier 漏赋值
-      const hasOriginalRange = match.normalized
-        && typeof match.originalStart === 'number'
-        && typeof match.originalEnd === 'number'
-      const startOff = hasOriginalRange ? match.originalStart! : fileContent.indexOf(oldText)
-      const endOff = hasOriginalRange ? match.originalEnd! : startOff + oldText.length
-      if (startOff >= 0) {
-        const { start, end } = computeLineRange(fileContent, startOff, endOff)
-        editRangeLabel = t('file.range_lines', { start, end })
-      }
-    }
-    if (editRangeLabel) {
-      // 范围标签放在动作词后，路径始终在末尾——前端文件路径正则才能干净地识别 path 并使其可点击
-      executor.updateStep(callStep.id, {
-        content: `${t('file.edit')} (${editRangeLabel}): ${editDisplayPath}`
-      })
-    }
+    // 卡片标题：单点替换标行号；replace_all 多处只标「替换 N 处」
+    const editRangeLabel = edit.lines
+      ? t('file.range_lines', { start: edit.lines.start, end: edit.lines.end })
+      : t('file.range_replace_count', { count: edit.count })
+    // 范围标签放在动作词后，路径始终在末尾——前端文件路径正则才能干净地识别 path 并使其可点击
+    executor.updateStep(callStep.id, {
+      content: `${t('file.edit')} (${editRangeLabel}): ${editDisplayPath}`
+    })
 
-    let newContent: string
-    if (match.normalized) {
-      const styledNewText = preserveNewlineStyle(newText, fileContent)
-      if (replaceAll) {
-        newContent = replaceAllNormalized(fileContent, oldText, newText)
-      } else {
-        newContent = fileContent.substring(0, match.originalStart!) +
-          styledNewText +
-          fileContent.substring(match.originalEnd!)
-      }
-    } else {
-      newContent = replaceAll
-        ? fileContent.split(oldText).join(newText)
-        : fileContent.replace(oldText, newText)
-    }
-
-    writeTextFileSync(filePath, newContent, fileEncoding)
+    writeTextFileSync(filePath, edit.content, fileEncoding)
 
     // tool_result 文案：路径必须放最末尾以保证前端路径识别正则可点击；UI 用短路径，output 给 AI 用绝对路径。
     // 单次替换才追加行号；多处替换的 _all_short 文案已含 count，不再追加范围标签。
-    const isMultiReplace = replaceAll && match.count > 1
+    const isMultiReplace = replaceAll && edit.count > 1
     const buildContent = (p: string): string => {
       const head = isMultiReplace
-        ? t('file.edit_success_all_short', { count: match.count })
+        ? t('file.edit_success_all_short', { count: edit.count })
         : t('file.edit_success_short')
       const headWithRange = !isMultiReplace && editRangeLabel ? `${head} (${editRangeLabel})` : head
       return `${headWithRange}: ${p}`
@@ -1828,7 +1835,7 @@ export async function editFile(
 
     // output 给 AI 看：保留含路径的旧文案，路径用绝对路径（避免 cwd 漂移时定位失败）
     const outputForAi = isMultiReplace
-      ? t('file.edit_success_all', { path: filePath, count: match.count })
+      ? t('file.edit_success_all', { path: filePath, count: edit.count })
       : t('file.edit_success', { path: filePath })
     return { success: true, output: await appendPanelDirtyNotice(outputForAi, filePath, previewCanvas, executor) }
   } catch (error) {
