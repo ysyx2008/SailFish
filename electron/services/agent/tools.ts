@@ -470,12 +470,13 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
   const execWaitAndUsage = `**等待与转后台**：
 - wait_seconds 内结束 → 返回完整结果
 - 超过 wait_seconds 仍在跑 → 自动转后台，返回 task_id 和 pid
-- 想接着等结果用 await_exec(task_id)；想杀就 exec("kill <pid>")
+- 想接着等结果用 await_exec(task_id)；想杀就 exec("kill <pid>")。macOS/Linux 上每条命令自成一组，用 exec("kill -- -<pid>") 连它带出来的子进程一起停
 
 **典型用法**：
 - 短命令（ls/grep/cat...）：直接 exec，默认 wait 60s 足够
 - 启动长任务（构建/部署/服务）：exec("npm run build", wait_seconds: 5) 立刻转后台，去做别的，回头 await_exec
-- 启动后想看到关键日志：先 exec 转后台拿 task_id，再 await_exec(task_id, pattern: "Listening on")`
+- 启动后想看到关键日志：先 exec 转后台拿 task_id，再 await_exec(task_id, pattern: "Listening on")
+- 等待途中用户发来新消息：这次等待立刻结束，命令继续跑。先回应用户，答完就收住，不必自己再等；这一轮会接着盯它，结束时结果会送回来。要看进度或等某句输出，仍用 await_exec`
   const execDescriptionForParent = `${execIntro}
 
 **安全规则（命中标为 dangerous，strict/relaxed 需确认；free 放行）**：

@@ -17,6 +17,7 @@ import type {
 import type { SkillSession } from '../skills'
 import type { McpToolSession } from '../mcp-tool-session'
 import type { TaskMemoryStore } from '../task-memory'
+import type { BackgroundWatch } from '../background-watch'
 
 // 错误分类
 export type ErrorCategory = 'transient' | 'permission' | 'not_found' | 'timeout' | 'fatal'
@@ -82,6 +83,16 @@ export interface ToolExecutorConfig {
   getAbortSignal?: () => AbortSignal | undefined
   getHostId: () => string | undefined
   hasPendingUserMessage: () => boolean
+  /** 用户本人插的话（不含后台悄悄塞进对话的通知）。等命令时据此让路。 */
+  hasPendingUserSpeech?: () => boolean
+  /**
+   * 一条后台命令结束、当时没人在等：把事实送回这场对话。
+   * 这场还开着就排进去；已经闲下来就接着开口，不上一条用户气泡。
+   */
+  deliverBackgroundNotice?: (text: string) => void
+  /** 登记这场对话正在等 / 答应接着盯的后台工作：欠着结果时这一轮不收工，按停时一起停 */
+  trackBackgroundWatch?: (watch: BackgroundWatch) => void
+  findBackgroundWatch?: (key: string) => BackgroundWatch | undefined
   peekPendingUserMessage: () => string | undefined
   consumePendingUserMessage: () => string | undefined
   getRealtimeTerminalOutput: () => string[]

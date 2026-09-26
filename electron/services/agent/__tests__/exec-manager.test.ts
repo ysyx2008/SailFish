@@ -6,7 +6,7 @@
  * 注：测试直接 spawn shell 命令（echo / sleep / yes），需要 POSIX 环境。
  * Windows CI 上某些 case 会被 skip。
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { getExecManager, type BackgroundExecTask } from '../tools/exec-manager'
 
 const isWin = process.platform === 'win32'
@@ -116,7 +116,7 @@ describe('BackgroundExecManager', () => {
         waitSeconds: 10,
         isAborted: () => aborted,
       })
-      setTimeout(() => { aborted = true }, 1200)  // > 1s 因为 abortChecker 是 1s 轮询
+      setTimeout(() => { aborted = true }, 400)
       const reason = await waitPromise
       expect(reason).toBe('aborted')
       // 任务仍在运行（abort 不杀任务）
@@ -142,6 +142,37 @@ describe('BackgroundExecManager', () => {
       await mgr.wait({ task, waitSeconds: 5 })
       const ok = mgr.kill(task.taskId)
       expect(ok).toBe(false)
+    })
+  })
+
+  describe('用户按停', () => {
+    const groupAlive = (pid: number): boolean => {
+      try { process.kill(-pid, 0); return true } catch { return false }
+    }
+
+    itPosix('先像 Ctrl+C 喊停让命令收拾，不理的子进程到点整组强制结束；停掉的不再送回', async () => {
+      const task = mgr.spawn({
+        command: "trap 'echo cleaned; exit 3' INT; sleep 30 & wait",
+        maxSeconds: 60,
+      })
+      await new Promise(r => setTimeout(r, 200))
+      const listener = vi.fn()
+      mgr.armFinishReport(task, listener)
+      const pid = task.child.pid!
+      expect(mgr.stop(task, 400)).toBe(true)
+      await mgr.wait({ task, waitSeconds: 5 })
+      expect(mgr.snapshot(task).output).toContain('cleaned')
+      // shell 已退，后台 sleep 不理 Ctrl+C，组还在
+      expect(groupAlive(pid)).toBe(true)
+      await new Promise(r => setTimeout(r, 700))
+      expect(groupAlive(pid)).toBe(false)
+      expect(listener).not.toHaveBeenCalled()
+    })
+
+    itPosix('已结束的任务 stop 返回 false', async () => {
+      const task = mgr.spawn({ command: 'echo done', maxSeconds: 10 })
+      await mgr.wait({ task, waitSeconds: 5 })
+      expect(mgr.stop(task, 100)).toBe(false)
     })
   })
 
@@ -266,6 +297,46 @@ describe('BackgroundExecManager', () => {
       const s2 = mgr.snapshot(task).output
       expect(s1).toBe(s2)
       expect(s1).toContain('cached')
+    })
+  })
+
+  describe('wait — 用户插话', () => {
+    itPosix('shouldYield 触发 → user_message，任务继续跑', async () => {
+      const task = mgr.spawn({ command: 'sleep 3', maxSeconds: 10 })
+      let yieldNow = false
+      const waitPromise = mgr.wait({
+        task,
+        waitSeconds: 10,
+        shouldYield: () => yieldNow,
+      })
+      setTimeout(() => { yieldNow = true }, 300)
+      const reason = await waitPromise
+      expect(reason).toBe('user_message')
+      expect(mgr.snapshot(task).status).toBe('running')
+      mgr.kill(task.taskId, 'SIGKILL')
+    })
+  })
+
+  describe('结束送回', () => {
+    itPosix('挂上送回且没人在等 → 进程结束后调用', async () => {
+      const task = mgr.spawn({ command: 'echo finished-report', maxSeconds: 10 })
+      const snap = await new Promise<ReturnType<typeof mgr.snapshot>>((resolve) => {
+        mgr.armFinishReport(task, resolve)
+      })
+      expect(snap.status).toBe('completed')
+      expect(snap.output).toContain('finished-report')
+      expect(mgr.isFinishReportConsumed(task)).toBe(false)
+    })
+
+    itPosix('有人等到结束 → 不再送回', async () => {
+      const task = mgr.spawn({ command: 'sleep 0.4', maxSeconds: 10 })
+      let called = false
+      mgr.armFinishReport(task, () => { called = true })
+      const reason = await mgr.wait({ task, waitSeconds: 5 })
+      expect(reason).toBe('done')
+      await new Promise(r => setTimeout(r, 50))
+      expect(called).toBe(false)
+      expect(mgr.isFinishReportConsumed(task)).toBe(true)
     })
   })
 

@@ -127,6 +127,8 @@ export interface PendingUserMessage {
   workbenchContext?: import('@shared/types').WorkbenchContext
   /** 伙计敲门：注入对话但不上墙为 user_supplement */
   silent?: boolean
+  /** 后台命令结束的通知：给模型看，不上墙，也不要在收场时当成用户的下一句排进队列 */
+  backgroundNotice?: boolean
 }
 
 // Agent 运行状态
@@ -203,6 +205,8 @@ export interface AgentRun {
    * 只记在内存里，不进对话历史、不改会话形态。
    */
   hostOperations?: Map<string, string>
+  /** 这场不是用户开口，是把后台结果送回来。不上用户气泡，也不当新的一轮标题。 */
+  internalNotice?: boolean
   /**
    * 工具执行期间记录 toolCallId → tool_call 步骤 ID 的映射。
    * 工具结束后，Agent 使用它反向把 ToolResult.success 回填到 tool_call 步骤上，
@@ -391,6 +395,8 @@ export interface RunOptions {
   callbacks?: AgentCallbacks
   /** 延迟解析 CWD（在 user_task 步骤发出后再执行，避免阻塞消息上墙） */
   cwdResolver?: () => Promise<string>
+  /** 不是用户开口：不上用户气泡，结果送回后接着说 */
+  internalNotice?: boolean
 }
 
 /**

@@ -81,6 +81,7 @@ import {
   patchLoadedSkillsSectionsInSystemPrompt,
 } from './prompt-builder'
 import { consumeProactiveContext } from './proactive-store'
+import { BackgroundWatchList } from './background-watch'
 import { applyParallelShare, computeToolOutputBudget } from './tool-output-budget'
 import { collapseRepeatedToolOutputs, reduceRepeatedToolOutput } from './repeated-tool-output'
 import { SUMMARY_MAX_OUTPUT_TOKENS } from '../ai-request-budget'
@@ -212,6 +213,19 @@ export abstract class Agent {
 
   /** run() 尚未进入 initializeRun 时收到的用户补充（前端已显示 isRunning） */
   private preRunUserMessages: PendingUserMessage[] = []
+
+  /** 主循环还在收消息。为真时后台结果排进这场；为假且已经闲下来，再开一轮接着说。 */
+  private _loopOpen = false
+  /** 用户按停之后，不要把后台结果送回来把这场重新打开。下一句用户开口时清掉。 */
+  private _dropBackgroundNotices = false
+  private _deferredNotices: string[] = []
+  private _flushingNotices = false
+  /** 上一场的运行环境，用来在闲下来之后把结果送回同一场对话。 */
+  private _resumeContext?: AgentContext
+  /** 这场正在等、或答应接着盯的后台工作：欠着结果时这一轮不收工 */
+  private readonly _backgroundWatches = new BackgroundWatchList()
+  /** 按停时停掉的后台工作留下的交代，下一句用户开口时带给模型 */
+  private _stoppedNotes: Array<() => string> = []
   
   /** 依赖服务 */
   protected services: AgentServices
@@ -860,6 +874,8 @@ export abstract class Agent {
     if (this.currentRun?.isRunning) {
       throw new Error('Agent is already running')
     }
+    // 用户自己又开口了，之后的后台结果可以再送回来
+    this._dropBackgroundNotices = false
     
     // 这场对话用哪个模型：显式传入优先；否则联络沿用界面上已选的。
     // 从没选过就保持空，下游回落到设置里当时的默认——微信进线不能写死、也不能盖掉界面选择。
@@ -890,17 +906,20 @@ export abstract class Agent {
         : Promise.resolve()
 
       await Promise.all([cwdPromise, this.buildContext(run, message)])
-      const result = await runUntilIdle({
-        executeLoop: () => this.executeLoop(run),
-        hasPendingMessages: () => run.pendingUserMessages.length > 0,
-        hasLiveChildren: () => this._subAgentRoster?.hasLive() ?? false,
-        waitForChildrenOrKnock: () => {
-          const signal = run.abortController?.signal
-          if (!this._subAgentRoster || !signal) return Promise.resolve()
-          return this._subAgentRoster.waitForKnock(signal)
-        },
-        isAborted: () => run.aborted,
-      })
+      this._loopOpen = true
+      let result: string
+      try {
+        result = await runUntilIdle({
+          executeLoop: () => this.executeLoop(run),
+          hasPendingMessages: () => run.pendingUserMessages.length > 0,
+          hasLiveChildren: () =>
+            (this._subAgentRoster?.hasLive() ?? false) || this._backgroundWatches.hasPending(),
+          waitForChildrenOrKnock: () => this.waitWhileHeld(run),
+          isAborted: () => run.aborted,
+        })
+      } finally {
+        this._loopOpen = false
+      }
       this.finalizeRun(run, result)
       const elapsed = ((Date.now() - taskStartTime) / 1000).toFixed(1)
       log.info(`Task completed: runId=${run.id}, duration=${elapsed}s, steps=${run.steps.length}`)
@@ -912,6 +931,7 @@ export abstract class Agent {
       throw error
     } finally {
       this.cleanupRun(run)
+      queueMicrotask(() => this.flushDeferredNotices())
     }
   }
   
@@ -928,6 +948,9 @@ export abstract class Agent {
     
     this.currentRun.aborted = true
     this.currentRun.isRunning = false
+    this._dropBackgroundNotices = true
+    this._deferredNotices = []
+    this._stoppedNotes.push(...this._backgroundWatches.stopAll())
     this.currentRun.abortController?.abort()
     this.currentStreamingExecutor?.abort()
     this._subAgentRoster?.abortAll()
@@ -1201,6 +1224,8 @@ export abstract class Agent {
     if (this.currentRun.executionPhase === 'thinking' && this.currentRun.requestId) {
       this.services.aiService.abort(this.currentRun.requestId)
     }
+    // 闲下来在等后台工作或伙计：马上叫醒先回这句
+    this.wakeHold()
     
     return true
   }
@@ -1340,6 +1365,11 @@ export abstract class Agent {
       this.cleanupRun(this.currentRun)
       this.currentRun = undefined
     }
+    this._resumeContext = undefined
+    this._deferredNotices = []
+    this._backgroundWatches.clear()
+    this._stoppedNotes = []
+    this._dropBackgroundNotices = true
     
     // 清理技能会话
     if (this._skillSession) {
@@ -1387,10 +1417,19 @@ export abstract class Agent {
       executionPhase: 'thinking',
       skillSession: this.getSkillSession(),  // 使用 Agent 级别的技能会话，跨 Run 持久化
       taskMessageLog: [],
-      hostOperations: new Map()
+      hostOperations: new Map(),
+      internalNotice: options?.internalNotice === true,
     }
     
     this.currentRun = run
+    this._resumeContext = {
+      ...context,
+      images: undefined,
+      previewImages: undefined,
+      attachments: undefined,
+      documentContext: undefined,
+      terminalOutput: [],
+    }
     if (!this._isSubAgent) {
       this._subAgentRoster = new SubAgentRoster()
     }
@@ -1446,15 +1485,18 @@ export abstract class Agent {
       }
     }
 
-    // 先推送 user_task 步骤，让用户消息立即上墙，再做耗时的初始化
-    this.addStep({
-      type: 'user_task',
-      content: message,
-      images: context.previewImages || context.images,
-      attachments: context.attachments
-    })
+    // 先推送 user_task 步骤，让用户消息立即上墙，再做耗时的初始化。
+    // 后台结果送回不是用户开口，不上这条气泡。
+    if (!run.internalNotice) {
+      this.addStep({
+        type: 'user_task',
+        content: message,
+        images: context.previewImages || context.images,
+        attachments: context.attachments
+      })
+    }
 
-    this.callbacks?.onStart?.(this._agentId ?? run.id, message)
+    this.callbacks?.onStart?.(this._agentId ?? run.id, run.internalNotice ? '' : message)
 
     // 准备阶段用户补充：run() IPC 往返期间缓冲的消息，紧跟 user_task 上墙
     if (this.preRunUserMessages.length > 0) {
@@ -1766,7 +1808,7 @@ export abstract class Agent {
     }
 
     // 触发完成回调
-    this.callbacks?.onComplete?.(run.id, result, run.pendingUserMessages.map(m => ({
+    this.callbacks?.onComplete?.(run.id, result, run.pendingUserMessages.filter(m => !m.backgroundNotice).map(m => ({
       message: m.message,
       ...(m.images?.length ? { images: m.images } : {}),
       ...(m.attachments?.length ? { attachments: m.attachments } : {}),
@@ -2205,6 +2247,7 @@ export abstract class Agent {
     status: 'success' | 'failed' | 'aborted',
     result?: string
   ): Promise<void> {
+    if (run.internalNotice) return
     if (!run.originalUserRequest?.trim()) return
 
     // 唤醒 run 跳过（"你好"之类的短问候不值得索引）
@@ -2374,7 +2417,7 @@ export abstract class Agent {
           lastPrevMsg._cacheBreakpoint = true
         }
 
-        const userMsg = await this.buildUserMessage(run, message, true)
+        const userMsg = await this.buildUserMessage(run, message, !run.internalNotice)
         run.messages.push(userMsg)
         run.taskMessageLog.push({ ...userMsg })
 
@@ -2394,10 +2437,14 @@ export abstract class Agent {
       terminalType: run.context.terminalType,
       hostId: run.context.hostId,
     })
-    const knowledgeResultPromise = this.loadKnowledgeContextWithTimeout(message, sessionHostId)
+    const knowledgeResultPromise = run.internalNotice
+      ? Promise.resolve({ context: '', enabled: false, conversationHistory: [] as KnowledgeContextResult['conversationHistory'] })
+      : this.loadKnowledgeContextWithTimeout(message, sessionHostId)
 
     const L3_RECALL_TIMEOUT_MS = 2000
-    const recallPromise: Promise<Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }>> = (() => {
+    const recallPromise: Promise<Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }>> = run.internalNotice
+      ? Promise.resolve([])
+      : (() => {
       const ks = getKnowledgeService()
       if (!ks || !ks.isEnabled() || message.trim().length < 5) return Promise.resolve([])
       const searchPromise = ks.searchConversations(message, sessionHostId, 3)
@@ -2588,6 +2635,9 @@ export abstract class Agent {
     if (proactiveCtx?.trim()) {
       systemContextParts.push(proactiveCtx.trim())
     }
+    if (this._stoppedNotes.length > 0) {
+      systemContextParts.push(...this._stoppedNotes.splice(0).map(note => note()))
+    }
     systemContextParts.push(buildLoadedSkillsThisTurnHint(this.getLoadedSkillsRoster()))
     const hasImages = !!(run.context.images && run.context.images.length > 0)
     const visionAvailable = this.currentProfileHasVision()
@@ -2620,7 +2670,11 @@ export abstract class Agent {
       imageNote: imageNote || undefined,
     })
 
-    const userMsg: AiMessage = { role: 'user', content: enhancedMessage }
+    const userMsg: AiMessage = {
+      role: 'user',
+      content: enhancedMessage,
+      ...(run.internalNotice ? { _systemInjected: true as const } : {}),
+    }
     if (hasImages && visionAvailable) {
       userMsg.images = run.context.images
     }
@@ -4636,6 +4690,55 @@ export abstract class Agent {
     return this.getAvailableTools()
   }
 
+  /**
+   * 后台命令结束、当时没人在等：把事实送回这场。
+   * 还在干活就排进当前这场；已经闲下来就接着开口，不上用户气泡。
+   * 用户按停之后不送，避免把已经停掉的这场重新打开。
+   */
+  deliverBackgroundNotice(text: string): void {
+    const trimmed = text.trim()
+    if (!trimmed) return
+    if (this._dropBackgroundNotices) return
+
+    const run = this.currentRun
+    if (this._loopOpen && run?.isRunning && !run.aborted) {
+      run.pendingUserMessages.push({ message: trimmed, silent: true, backgroundNotice: true })
+      if (run.executionPhase === 'thinking' && run.requestId) {
+        this.services.aiService.abort(run.requestId)
+      }
+      this.wakeHold()
+      return
+    }
+
+    this._deferredNotices.push(trimmed)
+    this.flushDeferredNotices()
+  }
+
+  private flushDeferredNotices(): void {
+    if (this._dropBackgroundNotices) {
+      this._deferredNotices = []
+      return
+    }
+    if (this._loopOpen || this.currentRun?.isRunning || this._flushingNotices) return
+    if (this._deferredNotices.length === 0) return
+    const ctx = this._resumeContext
+    if (!ctx || !this.callbacks) {
+      this._deferredNotices = []
+      return
+    }
+    const text = this._deferredNotices.splice(0).join('\n\n')
+    this._flushingNotices = true
+    void this.run(text, ctx, { internalNotice: true }).catch(err => {
+      log.warn('Background notice failed:', err)
+      if (this.currentRun?.isRunning) {
+        this.currentRun.pendingUserMessages.push({ message: text, silent: true, backgroundNotice: true })
+      }
+    }).finally(() => {
+      this._flushingNotices = false
+      if (this._deferredNotices.length > 0) this.flushDeferredNotices()
+    })
+  }
+
   protected injectSubAgentKnock(message: string): void {
     const run = this.currentRun
     if (!run?.isRunning) return
@@ -4643,7 +4746,30 @@ export abstract class Agent {
     if (run.executionPhase === 'thinking' && run.requestId) {
       this.services.aiService.abort(run.requestId)
     }
+    this.wakeHold()
+  }
+
+  /** 叫醒闲下来在等伙计或后台工作的这一轮 */
+  private wakeHold(): void {
     this._subAgentRoster?.wake()
+    this._backgroundWatches.wake()
+  }
+
+  /**
+   * 这一轮答完了，但还有伙计没回来、或答应接着盯的后台工作没了结：
+   * 闲着等，直到有人敲门、结果送到、用户说话或按停。
+   */
+  private async waitWhileHeld(run: AgentRun): Promise<void> {
+    const signal = run.abortController?.signal
+    if (!signal) return
+    const waits: Promise<void>[] = [this._backgroundWatches.waitForWake(signal)]
+    if (this._subAgentRoster?.hasLive()) waits.push(this._subAgentRoster.waitForKnock(signal))
+    this._backgroundWatches.beginHold()
+    try {
+      await Promise.race(waits)
+    } finally {
+      this._backgroundWatches.endHold()
+    }
   }
 
   protected createToolExecutorConfig(run: AgentRun): ToolExecutorConfig {
@@ -4686,6 +4812,10 @@ export abstract class Agent {
         hostId: run.context.hostId,
       }),
       hasPendingUserMessage: () => run.pendingUserMessages.length > 0,
+      hasPendingUserSpeech: () => run.pendingUserMessages.some(p => !p.silent && !p.backgroundNotice),
+      deliverBackgroundNotice: (text) => this.deliverBackgroundNotice(text),
+      trackBackgroundWatch: (watch) => this._backgroundWatches.add(watch),
+      findBackgroundWatch: (key) => this._backgroundWatches.get(key),
       peekPendingUserMessage: () => run.pendingUserMessages[0]?.message,
       consumePendingUserMessage: () => run.pendingUserMessages.shift()?.message,
       getRealtimeTerminalOutput: () => [...run.realtimeOutputBuffer],

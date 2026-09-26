@@ -11,6 +11,7 @@
  * - 单个任务输出 ring buffer 上限 1MB（超过截断旧数据）
  * - 任务完成 5 分钟后自动清理（给 Agent 充分时间 await）
  * - max_seconds 到达后 SIGKILL，防止 Agent 启了死循环忘了它
+ * - 停一条命令要连它带出来的子进程一起停：POSIX 下每条命令自成进程组，信号发给整组
  */
 import { spawn, ChildProcess } from 'child_process'
 import { decodeBuffer } from '../../../utils/encoding'
@@ -105,9 +106,20 @@ interface InternalTask {
   cleanupTimer?: NodeJS.Timeout
   /** 等待者通知列表（数据到达 / 任务结束时触发） */
   waiters: Set<() => void>
+  /**
+   * 用户插话打断了等待：进程结束且没有人在等时，把结果送回那场对话。
+   * 有人用 wait 拿到了结束，则 consume，不再另送。
+   */
+  finishListener?: (snap: BackgroundExecTaskSnapshot) => void
+  finishConsumed?: boolean
+  /** 结果已交给 listener、正在整理送回，还没 consume */
+  finishReporting?: boolean
+  reportTimer?: NodeJS.Timeout
+  /** 用户按停后，收拾时间到了强制结束 */
+  stopTimer?: NodeJS.Timeout
 }
 
-export type WaitReason = 'done' | 'pattern' | 'timeout' | 'aborted'
+export type WaitReason = 'done' | 'pattern' | 'timeout' | 'aborted' | 'user_message'
 
 export interface SpawnOptions {
   command: string
@@ -124,8 +136,46 @@ export interface WaitOptions {
   waitSeconds: number
   /** 命中即返回的正则 */
   pattern?: RegExp
-  /** 外部取消信号（每秒检查一次） */
+  /** 外部取消信号（约 200ms 检查一次） */
   isAborted?: () => boolean
+  /** 用户插了话：马上结束这次等待，进程继续跑 */
+  shouldYield?: () => boolean
+}
+
+/** 用户插话要尽快让路，不能跟以前的 1 秒轮询一样慢 */
+const WAIT_POLL_MS = 200
+/** 用户按停：先像 Ctrl+C 那样喊停，给命令这么久收拾，再强制结束 */
+const STOP_GRACE_MS = 3000
+
+const IS_WINDOWS = process.platform === 'win32'
+
+/**
+ * 给命令和它带出来的子进程发信号。
+ * POSIX：命令以独立进程组启动，发给整组；组已不在时退回只发给 shell。
+ * Windows：没有进程组信号，强制结束时用 taskkill 连子进程一起结束。
+ */
+function signalTree(child: ChildProcess, signal: NodeJS.Signals): boolean {
+  const pid = child.pid
+  if (!pid) return false
+  if (IS_WINDOWS) {
+    if (signal === 'SIGKILL') {
+      try {
+        spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+          .on('error', () => { try { child.kill('SIGKILL') } catch { /* ignore */ } })
+      } catch {
+        try { child.kill('SIGKILL') } catch { /* ignore */ }
+      }
+      return true
+    }
+    try { child.kill(signal) } catch { /* ignore */ }
+    return true
+  }
+  try {
+    process.kill(-pid, signal)
+  } catch {
+    try { child.kill(signal) } catch { /* 进程可能已结束 */ }
+  }
+  return true
 }
 
 class BackgroundExecManager {
@@ -144,6 +194,8 @@ class BackgroundExecManager {
     const child = spawn(resolved.path, getShellSpawnArgs(resolved.kind, opts.command), {
       cwd: opts.cwd,
       env: spawnEnv,
+      // 自成进程组，停的时候才能连子进程一起停；Windows 上 detached 会弹新控制台，不用
+      detached: !IS_WINDOWS,
     })
 
     return this.startTask({
@@ -197,6 +249,7 @@ class BackgroundExecManager {
       }
       this.notifyWaiters(task)
       this.scheduleCleanup(task)
+      this.scheduleFinishReport(task)
     })
 
     child.on('error', (err) => {
@@ -208,12 +261,13 @@ class BackgroundExecManager {
       }
       this.notifyWaiters(task)
       this.scheduleCleanup(task)
+      this.scheduleFinishReport(task)
     })
 
     task.killTimer = setTimeout(() => {
       if (task.status === 'running') {
         log.info(`exec ${taskId} hit max_seconds (${maxSeconds}s), sending SIGKILL`)
-        try { child.kill('SIGKILL') } catch { /* 进程可能已结束 */ }
+        signalTree(child, 'SIGKILL')
       }
     }, maxSeconds * 1000)
 
@@ -236,14 +290,24 @@ class BackgroundExecManager {
    * 防止灾难性回溯 + 限制最坏匹配时间——即使 LLM 给了不太好的 regex 也不会卡死。
    */
   async wait(opts: WaitOptions): Promise<WaitReason> {
-    const { task, waitSeconds, pattern, isAborted } = opts
+    const { task, waitSeconds, pattern, isAborted, shouldYield } = opts
 
     const matchPattern = (): boolean =>
       pattern ? pattern.test(task.buffer.tailString(PATTERN_SCAN_TAIL_BYTES)) : false
 
-    if (task.status !== 'running') return 'done'
+    const claimDone = (): WaitReason => {
+      // 有人接到了结束：别再另送一遍结果
+      this.consumeFinishReport(task)
+      return 'done'
+    }
+
+    if (task.status !== 'running') return claimDone()
     if (matchPattern()) return 'pattern'
-    if (isAborted?.()) return 'aborted'
+    if (isAborted?.()) {
+      this.consumeFinishReport(task)
+      return 'aborted'
+    }
+    if (shouldYield?.()) return 'user_message'
 
     return new Promise<WaitReason>((resolve) => {
       let settled = false
@@ -252,7 +316,8 @@ class BackgroundExecManager {
         settled = true
         task.waiters.delete(notify)
         clearTimeout(timer)
-        if (abortChecker) clearInterval(abortChecker)
+        if (poll) clearInterval(poll)
+        if (reason === 'done' || reason === 'aborted') this.consumeFinishReport(task)
         resolve(reason)
       }
       const notify = () => {
@@ -261,9 +326,12 @@ class BackgroundExecManager {
       }
       task.waiters.add(notify)
       const timer = setTimeout(() => settle('timeout'), waitSeconds * 1000)
-      // 取消信号无事件源，秒级轮询足够（Agent abort 不要求毫秒级响应）
-      const abortChecker: NodeJS.Timeout | undefined = isAborted
-        ? setInterval(() => { if (isAborted()) settle('aborted') }, 1000)
+      // 取消和用户插话都没有事件源，短轮询。插话要比一秒更快让开对话。
+      const poll: NodeJS.Timeout | undefined = (isAborted || shouldYield)
+        ? setInterval(() => {
+            if (isAborted?.()) return settle('aborted')
+            if (shouldYield?.()) return settle('user_message')
+          }, WAIT_POLL_MS)
         : undefined
 
       // TOCTOU 二次检查：进程可能在「立即检查」与「task.waiters.add」之间退出，
@@ -271,22 +339,90 @@ class BackgroundExecManager {
       // 会一直等到 timer 超时。这里再检查一次状态/pattern，把这个边界关掉。
       if (task.status !== 'running') return settle('done')
       if (matchPattern()) return settle('pattern')
+      if (isAborted?.()) return settle('aborted')
+      if (shouldYield?.()) return settle('user_message')
     })
   }
 
   /**
-   * 主动杀掉运行中的任务。返回是否实际发出信号。
-   * 只供 Agent abort 流程内部使用——日常 kill 让 Agent 通过 `exec("kill <pid>")` 完成。
+   * 用户打断了等待。进程稍后结束、且没有人再用 wait 拿到结束时，调用 listener。
+   * 再次调用会换掉上一个 listener（仍是同一条「结束了要送回」）。
+   */
+  armFinishReport(task: InternalTask, listener: (snap: BackgroundExecTaskSnapshot) => void): void {
+    if (task.status !== 'running') return
+    task.finishConsumed = false
+    task.finishReporting = false
+    task.finishListener = listener
+  }
+
+  /** 有人已经拿到结束，或这场被停掉：不要再把结果送回来。 */
+  consumeFinishReport(task: InternalTask): void {
+    task.finishConsumed = true
+    task.finishListener = undefined
+    if (task.reportTimer) {
+      clearTimeout(task.reportTimer)
+      task.reportTimer = undefined
+    }
+  }
+
+  isFinishReportConsumed(task: InternalTask): boolean {
+    return task.finishConsumed === true
+  }
+
+  /** 还欠那场对话一个结果：已登记送回、还没送也没人接到、任务还没被清理。 */
+  isFinishReportPending(task: InternalTask): boolean {
+    return (!!task.finishListener || task.finishReporting === true)
+      && task.finishConsumed !== true
+      && this.tasks.get(task.taskId) === task
+  }
+
+  private scheduleFinishReport(task: InternalTask): void {
+    if (task.finishConsumed || !task.finishListener) return
+    if (task.reportTimer) clearTimeout(task.reportTimer)
+    // 宏任务：让正在 wait 的调用方先在微任务里 consume，避免和「等到了结束」各送一遍
+    task.reportTimer = setTimeout(() => {
+      task.reportTimer = undefined
+      if (!this.tasks.has(task.taskId)) return
+      if (task.finishConsumed || !task.finishListener) return
+      const listener = task.finishListener
+      task.finishListener = undefined
+      task.finishReporting = true
+      listener(this.snapshot(task))
+    }, 0)
+  }
+
+  /**
+   * 立刻给运行中的任务（连同子进程）发信号。返回是否实际发出信号。
+   * 日常 kill 让 Agent 通过 `exec("kill <pid>")` 完成。
    */
   kill(taskId: string, signal: NodeJS.Signals = 'SIGTERM'): boolean {
     const task = this.tasks.get(taskId)
     if (!task || task.status !== 'running') return false
-    try {
-      task.child.kill(signal)
+    return signalTree(task.child, signal)
+  }
+
+  /**
+   * 用户按停：先像 Ctrl+C 那样喊停，收拾时间到了再强制结束整组。
+   * 停掉的不再送回结果。返回是否确实在跑、发出了停止。
+   */
+  stop(task: InternalTask, graceMs: number = STOP_GRACE_MS): boolean {
+    this.consumeFinishReport(task)
+    if (task.status !== 'running') return false
+    log.info(`exec ${task.taskId} stopped by user (pid=${task.child.pid})`)
+    if (IS_WINDOWS) {
+      // 没有 Ctrl+C 式的信号；shell 一退父子链就断，taskkill /T 找不到子进程，只能趁现在整树结束
+      signalTree(task.child, 'SIGKILL')
       return true
-    } catch {
-      return false
     }
+    signalTree(task.child, 'SIGINT')
+    if (task.stopTimer) clearTimeout(task.stopTimer)
+    // shell 先退了，组里可能还有不理 Ctrl+C 的子进程，到点照样整组强制结束
+    task.stopTimer = setTimeout(() => {
+      task.stopTimer = undefined
+      signalTree(task.child, 'SIGKILL')
+    }, graceMs)
+    task.stopTimer.unref?.()
+    return true
   }
 
   list(): BackgroundExecTaskSnapshot[] {
@@ -317,7 +453,11 @@ class BackgroundExecManager {
     for (const task of this.tasks.values()) {
       if (task.killTimer) clearTimeout(task.killTimer)
       if (task.cleanupTimer) clearTimeout(task.cleanupTimer)
-      try { task.child.kill('SIGKILL') } catch { /* ignore */ }
+      if (task.reportTimer) clearTimeout(task.reportTimer)
+      if (task.stopTimer) clearTimeout(task.stopTimer)
+      task.finishListener = undefined
+      task.finishConsumed = true
+      signalTree(task.child, 'SIGKILL')
     }
     this.tasks.clear()
     this.nextId = 1
@@ -344,9 +484,7 @@ class BackgroundExecManager {
    */
   killAllOnShutdown(): void {
     for (const task of this.tasks.values()) {
-      if (task.status === 'running') {
-        try { task.child.kill('SIGTERM') } catch { /* ignore */ }
-      }
+      if (task.status === 'running') signalTree(task.child, 'SIGTERM')
     }
   }
 }

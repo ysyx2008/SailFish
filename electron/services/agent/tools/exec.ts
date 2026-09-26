@@ -9,6 +9,8 @@
  * 同步 vs 后台：
  * - wait_seconds 内结束 → 返回完整结果（同传统 exec 行为）
  * - 仍在跑且 wait_seconds < max_seconds → 转后台，返回 task_id 让 Agent 后续 await_exec
+ * - 等待途中用户插话 → 立刻结束这次等待，命令继续跑；这一轮答完接着盯，结束时结果送回这场对话
+ * - 用户按停 → 正在等 / 正在盯的那条一起停掉（先喊停，再强制），并给下一轮留交代
  *
  * 进程托管见 exec-manager.ts。
  */
@@ -20,11 +22,12 @@ import { resolveCommandToolConfirmation } from '../allowlist/resolve-command-con
 import { truncateFromEnd, EXEC_MAX_COMMAND_LENGTH, formatTotalTime } from './utils'
 import { rejectOversizedCommand } from './command-persist'
 import { externalizeToolOutput, externalizeFailedError } from '../tool-output-externalize'
-import { getExecManager, MAX_PATTERN_LENGTH, type WaitReason } from './exec-manager'
+import { getExecManager, MAX_PATTERN_LENGTH, type BackgroundExecTask, type BackgroundExecTaskSnapshot, type WaitReason } from './exec-manager'
 import { getSkillEnvMap, mapSkillEnvToDeclaredCase } from '../../../services/credential.service'
 import { getUserSkillService } from '../../../services/user-skill.service'
 import { expandTilde } from './file'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
+import type { BackgroundWatch } from '../background-watch'
 
 /**
  * 等后台任务时给用户看的一行：任务编号 + 已运行多久。
@@ -40,6 +43,228 @@ function elapsedSince(startedAt: number): string {
 
 function awaitingContent(taskId: string, startedAt: number): string {
   return `⏳ ${formatAwaitingTitle(taskId, elapsedSince(startedAt))}`
+}
+
+function userSpoke(executor: ToolExecutorConfig): boolean {
+  return executor.hasPendingUserSpeech?.() ?? false
+}
+
+/**
+ * 这次等待是被用户打断的，进程还在跑：结束时若没人接到，把结果送回这场对话。
+ */
+function armUnattendedReport(
+  task: BackgroundExecTask,
+  executor: ToolExecutorConfig,
+): void {
+  const manager = getExecManager()
+  manager.armFinishReport(task, (snap) => {
+    void deliverUnattendedReport(task, snap, executor)
+  })
+}
+
+async function deliverUnattendedReport(
+  task: BackgroundExecTask,
+  snap: BackgroundExecTaskSnapshot,
+  executor: ToolExecutorConfig,
+): Promise<void> {
+  const manager = getExecManager()
+  if (manager.isFinishReportConsumed(task)) return
+  let output: string
+  try {
+    output = await formatTaskOutput(snap.output, executor)
+  } catch (err) {
+    output = err instanceof Error ? err.message : String(err)
+  }
+  if (manager.isFinishReportConsumed(task)) return
+  manager.consumeFinishReport(task)
+  if (!executor.deliverBackgroundNotice) return
+  const exitCode = snap.exitCode ?? (snap.signal ? 1 : 0)
+  const command = snap.command.length > 180 ? `${snap.command.slice(0, 180)}…` : snap.command
+  executor.deliverBackgroundNotice(`${t('exec.finished_unattended', {
+    taskId: snap.taskId,
+    status: snap.status,
+    exitCode: String(exitCode),
+    command,
+  })}\n${output}`)
+}
+
+const STOPPED_NOTE_OUTPUT_MAX = 1500
+
+/**
+ * 这场对话正在等、或答应接着盯的一条命令。
+ * - waiting：工具正在等它，按停就停掉它
+ * - owed：用户插话打断过，还在跑，结束时结果要送回这场；这一轮闲下来专门等它
+ * - released：不再盯（等到了结束，或模型自己放去后台不管）
+ */
+class CommandWatch implements BackgroundWatch {
+  readonly key: string
+  private phase: 'waiting' | 'owed' | 'released' = 'waiting'
+  private holdStep?: { id: string; ticker: NodeJS.Timeout }
+  private stopped = false
+  /** 模型原本打算等到什么时候。插话不延长它，到点仍在跑就当作转后台 */
+  private deadline = 0
+  private deadlineTimer?: NodeJS.Timeout
+
+  constructor(
+    private readonly task: BackgroundExecTask,
+    private executor: ToolExecutorConfig,
+  ) {
+    this.key = task.taskId
+  }
+
+  get active(): boolean {
+    return this.phase !== 'released'
+  }
+
+  get stoppedByUser(): boolean {
+    return this.stopped
+  }
+
+  /** 开始一次等待。已经欠着的沿用原来的期限，换成当前这一轮来送结果 */
+  beginWait(executor: ToolExecutorConfig, waitSeconds: number): void {
+    this.executor = executor
+    if (this.phase === 'waiting') this.deadline = Date.now() + waitSeconds * 1000
+  }
+
+  isPending(): boolean {
+    if (this.phase === 'waiting') return this.task.status === 'running'
+    if (this.phase === 'owed') return getExecManager().isFinishReportPending(this.task)
+    return false
+  }
+
+  /** 一次等待结束了：用户打断且还在跑 → 欠着；否则工具自己等的这次就了结 */
+  settle(reason: WaitReason | undefined): void {
+    if (this.phase === 'released') return
+    const interrupted = reason === 'user_message'
+      || ((reason === 'timeout' || reason === 'pattern') && userSpoke(this.executor))
+    if (interrupted && this.task.status === 'running' && this.phase === 'waiting') {
+      this.owe()
+      return
+    }
+    // 已经欠着的，不因为模型自己看了一眼进度就不管了
+    if (this.phase === 'waiting') this.phase = 'released'
+  }
+
+  private owe(): void {
+    this.phase = 'owed'
+    armUnattendedReport(this.task, this.executor)
+    this.deadlineTimer = setTimeout(() => this.expire(), Math.max(0, this.deadline - Date.now()))
+    this.deadlineTimer.unref?.()
+  }
+
+  /** 到了原本要等的时间仍在跑：当作转后台告诉它，这一轮不再为它挂着，结束也不再送回 */
+  private expire(): void {
+    this.deadlineTimer = undefined
+    if (this.phase !== 'owed' || this.task.status !== 'running') return
+    this.phase = 'released'
+    const manager = getExecManager()
+    manager.consumeFinishReport(this.task)
+    const snap = manager.snapshot(this.task)
+    if (this.closeHoldStep()) {
+      const short = t('exec.backgrounded_short', { taskId: this.key })
+      this.executor.addStep({ type: 'tool_result', content: `⏳ ${short}`, toolName: 'await_exec', toolResult: short })
+    }
+    this.executor.deliverBackgroundNotice?.(t('exec.watch_expired', {
+      taskId: this.key,
+      pid: String(snap.pid ?? 'unknown'),
+      command: shortCommand(snap.command),
+      output: truncateFromEnd(snap.output.trim(), STOPPED_NOTE_OUTPUT_MAX),
+    }))
+  }
+
+  release(): void {
+    this.phase = 'released'
+    this.closeHoldStep()
+    this.clearDeadline()
+  }
+
+  holdStarted(): void {
+    if (this.holdStep || this.phase !== 'owed' || this.task.status !== 'running') return
+    const startedAt = this.task.startedAt
+    const step = this.executor.addStep({
+      type: 'tool_call',
+      content: awaitingContent(this.key, startedAt),
+      toolName: 'await_exec',
+      toolArgs: { task_id: this.key },
+    })
+    const ticker = setInterval(() => {
+      this.executor.updateStep(step.id, { content: awaitingContent(this.key, startedAt) })
+    }, 1000)
+    this.holdStep = { id: step.id, ticker }
+  }
+
+  holdEnded(): void {
+    if (!this.closeHoldStep()) return
+    const snap = getExecManager().snapshot(this.task)
+    if (snap.status === 'running') {
+      const short = t('exec.yielded_short', { taskId: this.key })
+      this.executor.addStep({ type: 'tool_result', content: `⏳ ${short}`, toolName: 'await_exec', toolResult: short })
+      return
+    }
+    const exitCode = snap.exitCode ?? (snap.signal ? 1 : 0)
+    const done = `${t('status.command_complete')} (${snap.status}, exit: ${exitCode})`
+    this.executor.addStep({ type: 'tool_result', content: done, toolName: 'await_exec', toolResult: done })
+  }
+
+  stop(): (() => string) | undefined {
+    if (this.phase === 'released') return undefined
+    this.phase = 'released'
+    this.clearDeadline()
+    const hadHold = this.closeHoldStep()
+    const manager = getExecManager()
+    if (!manager.stop(this.task)) return undefined
+    this.stopped = true
+    if (hadHold) {
+      const short = t('exec.stopped_short')
+      this.executor.addStep({ type: 'tool_result', content: `⏹️ ${short}`, toolName: 'await_exec', toolResult: short })
+    }
+    const task = this.task
+    return () => {
+      const snap = manager.snapshot(task)
+      return t('exec.stopped_note', {
+        taskId: snap.taskId,
+        command: shortCommand(snap.command),
+        output: truncateFromEnd(snap.output.trim(), STOPPED_NOTE_OUTPUT_MAX),
+      })
+    }
+  }
+
+  private clearDeadline(): void {
+    if (this.deadlineTimer) clearTimeout(this.deadlineTimer)
+    this.deadlineTimer = undefined
+  }
+
+  private closeHoldStep(): boolean {
+    if (!this.holdStep) return false
+    clearInterval(this.holdStep.ticker)
+    this.holdStep = undefined
+    return true
+  }
+}
+
+function shortCommand(command: string): string {
+  return command.length > 180 ? `${command.slice(0, 180)}…` : command
+}
+
+/** 登记这次要等的命令；已经欠着结果的沿用原来那一份 */
+function watchCommand(task: BackgroundExecTask, executor: ToolExecutorConfig, waitSeconds: number): CommandWatch {
+  const existing = executor.findBackgroundWatch?.(task.taskId)
+  const watch = existing instanceof CommandWatch && existing.active
+    ? existing
+    : new CommandWatch(task, executor)
+  if (watch !== existing) executor.trackBackgroundWatch?.(watch)
+  watch.beginWait(executor, waitSeconds)
+  return watch
+}
+
+async function waitWatched(watch: CommandWatch, wait: () => Promise<WaitReason>): Promise<WaitReason> {
+  let reason: WaitReason | undefined
+  try {
+    reason = await wait()
+    return reason
+  } finally {
+    watch.settle(reason)
+  }
 }
 
 const DEFAULT_WAIT_SECONDS = 60
@@ -194,21 +419,23 @@ export async function executeCommandDirect(
 
   const manager = getExecManager()
   const task = manager.spawn({ command, cwd, maxSeconds, env: skillEnv })
+  const watch = watchCommand(task, executor, effectiveWait)
 
-  const reason = await manager.wait({
+  const reason = await waitWatched(watch, () => manager.wait({
     task,
     waitSeconds: effectiveWait,
     isAborted: () => executor.isAborted(),
-  })
+    shouldYield: () => userSpoke(executor),
+  }))
 
   const snap = manager.snapshot(task)
 
-  // ============= abort：直接返回，但任务继续在后台跑 =============
+  // ============= abort：用户按停，正在等的这条已随之停掉 =============
   if (reason === 'aborted') {
     const output = await formatTaskOutput(snap.output, executor)
     executor.addStep({
       type: 'tool_result',
-      content: `⏹️ ${t('status.user_rejected')}`,
+      content: `⏹️ ${watch.stoppedByUser ? t('exec.stopped_short') : t('status.user_rejected')}`,
       toolName: 'exec',
       toolResult: output
     })
@@ -254,17 +481,25 @@ export async function executeCommandDirect(
     }
   }
 
-  // ============= 任务仍在跑 → 转后台 =============
+  // ============= 任务仍在跑 → 转后台，或用户插话先让路 =============
   const output = await formatTaskOutput(snap.output, executor)
-  const header = t('exec.backgrounded', {
-    taskId: snap.taskId,
-    pid: String(snap.pid ?? 'unknown'),
-    waited: effectiveWait,
-    max: maxSeconds,
-  })
+  const header = reason === 'user_message'
+    ? t('exec.yielded', {
+        taskId: snap.taskId,
+        pid: String(snap.pid ?? 'unknown'),
+      })
+    : t('exec.backgrounded', {
+        taskId: snap.taskId,
+        pid: String(snap.pid ?? 'unknown'),
+        waited: effectiveWait,
+        max: maxSeconds,
+      })
+  const short = reason === 'user_message'
+    ? t('exec.yielded_short', { taskId: snap.taskId })
+    : t('exec.backgrounded_short', { taskId: snap.taskId })
   executor.addStep({
     type: 'tool_result',
-    content: `⏳ ${t('exec.backgrounded_short', { taskId: snap.taskId })}`,
+    content: `⏳ ${short}`,
     toolName: 'exec',
     toolResult: `${header}\n${output}`
   })
@@ -329,14 +564,16 @@ export async function awaitExec(
     })
   }, 1000)
 
+  const watch = watchCommand(task, executor, waitSeconds)
   let reason: WaitReason
   try {
-    reason = await manager.wait({
+    reason = await waitWatched(watch, () => manager.wait({
       task,
       waitSeconds,
       pattern,
       isAborted: () => executor.isAborted(),
-    })
+      shouldYield: () => userSpoke(executor),
+    }))
   } finally {
     clearInterval(ticker)
   }
@@ -347,7 +584,7 @@ export async function awaitExec(
   if (reason === 'aborted') {
     executor.addStep({
       type: 'tool_result',
-      content: `⏹️ ${t('status.user_rejected')}`,
+      content: `⏹️ ${watch.stoppedByUser ? t('exec.stopped_short') : t('status.user_rejected')}`,
       toolName: 'await_exec',
       toolResult: output
     })
@@ -384,14 +621,22 @@ export async function awaitExec(
     }
   }
 
-  // pattern 命中 或 timeout：仍在跑
-  const header = reason === 'pattern'
-    ? t('exec.pattern_matched', { taskId, pid: String(snap.pid ?? 'unknown') })
-    : t('exec.still_running', { taskId, pid: String(snap.pid ?? 'unknown'), waited: waitSeconds })
+  // pattern 命中、timeout，或用户插话：仍在跑
+  const header = reason === 'user_message'
+    ? t('exec.yielded', { taskId, pid: String(snap.pid ?? 'unknown') })
+    : reason === 'pattern'
+      ? t('exec.pattern_matched', { taskId, pid: String(snap.pid ?? 'unknown') })
+      : t('exec.still_running', { taskId, pid: String(snap.pid ?? 'unknown'), waited: waitSeconds })
+
+  const short = reason === 'user_message'
+    ? t('exec.yielded_short', { taskId })
+    : reason === 'pattern'
+      ? t('exec.pattern_matched_short', { taskId })
+      : t('exec.still_running_short', { taskId })
 
   executor.addStep({
     type: 'tool_result',
-    content: `⏳ ${reason === 'pattern' ? t('exec.pattern_matched_short', { taskId }) : t('exec.still_running_short', { taskId })}`,
+    content: `⏳ ${short}`,
     toolName: 'await_exec',
     toolResult: `${header}\n${output}`
   })
