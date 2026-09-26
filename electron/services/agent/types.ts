@@ -49,6 +49,8 @@ export interface AgentConfig {
  */
 export interface PendingConfirmationInternal extends PendingConfirmation {
   resolve: (approved: boolean, modifiedArgs?: Record<string, unknown>) => void
+  /** 这张卡是伙计的。本次允许只对主人自己的操作生效，不借给伙计换个目录再用。 */
+  fromWorker?: boolean
 }
 
 /**
@@ -263,6 +265,8 @@ export interface AgentCallbacks {
   /** 会话级上下文栏快照（与 step 解耦；token/cache/拟用模型） */
   onContextBar?: (agentId: string, contextBar: AgentContextBar) => void
   onNeedConfirm?: (confirmation: PendingConfirmationInternal) => void
+  /** 确认卡片该收掉了（伙计被打断、这场停了），不必等用户点 */
+  onConfirmDismissed?: () => void
   /** 需要安全输入框时触发（如技能 API Key）。前端弹框，值直接写入加密存储，不经过 LLM。 */
   onNeedSecureInput?: (request: PendingSecureInputInternal) => void
   onComplete?: (agentId: string, result: string, pendingUserMessages?: Array<string | PendingUserHandoff>, extra?: { aborted?: boolean }) => void

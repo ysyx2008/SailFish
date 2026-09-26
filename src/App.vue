@@ -491,6 +491,7 @@ let cleanupAgentRunning: (() => void) | null = null
 let cleanupAgentCompleteForProactive: (() => void) | null = null
 let cleanupAgentErrorForTabAttention: (() => void) | null = null
 let cleanupAgentNeedConfirmGlobal: (() => void) | null = null
+let cleanupAgentConfirmResolvedGlobal: (() => void) | null = null
 let cleanupFullScreenChange: (() => void) | null = null
 
 
@@ -916,6 +917,12 @@ onMounted(async () => {
     terminalStore.setAgentPendingConfirm(tabId, data)
     const tab = terminalStore.tabs.find(t => t.id === tabId)
     notifyAgentConfirmCue([data.agentId, data.ptyId, tab?.agentId])
+  })
+
+  cleanupAgentConfirmResolvedGlobal = window.electronAPI.agent.onConfirmResolved((data) => {
+    const tabId = resolveAgentEventTabId(data)
+    if (!tabId) return
+    terminalStore.setAgentPendingConfirm(tabId, undefined)
   })
 
   // 全局监听 agent 完成事件：刷新延迟的 proactive + 后台 tab 标签栏提醒（microtask 晚于各 AiPanel 同步逻辑，可配合 skip）
@@ -1614,6 +1621,7 @@ onUnmounted(() => {
   cleanupAgentRunning?.()
   cleanupAgentCompleteForProactive?.()
   cleanupAgentNeedConfirmGlobal?.()
+  cleanupAgentConfirmResolvedGlobal?.()
   cleanupAgentErrorForTabAttention?.()
   cleanupFullScreenChange?.()
   if (recallSidebarAnimTimer) clearTimeout(recallSidebarAnimTimer)

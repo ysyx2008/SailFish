@@ -4189,6 +4189,11 @@ ipcMain.handle('agent:run', async (event, { ptyId, message, context, config, pro
         body: buildConfirmNotifBody(confirmation.toolName, confirmation.toolArgs, confirmation.displayName)
       })
     },
+    onConfirmDismissed: () => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('agent:confirmResolved', { agentId: ptyId, ptyId })
+      }
+    },
     onNeedSecureInput: (request: import('./services/agent/types').PendingSecureInputInternal) => {
       if (!event.sender.isDestroyed()) {
         // 只发送可序列化的字段，不包含 resolve 函数
@@ -4544,6 +4549,11 @@ ipcMain.handle('agent:runStandalone', async (event, { agentId, message, context,
         title: `${riskEmoji2}${t('notification.confirmRequired', { appName: getAppName() })}`,
         body: buildConfirmNotifBody(confirmation.toolName, confirmation.toolArgs, confirmation.displayName)
       })
+    },
+    onConfirmDismissed: () => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('agent:confirmResolved', { agentId, ptyId: agentId })
+      }
     },
     onNeedSecureInput: (request: import('./services/agent/types').PendingSecureInputInternal) => {
       if (!event.sender.isDestroyed()) {

@@ -977,7 +977,7 @@ export class ConfigService {
       relaxedConfirmModerate: policy.relaxedConfirmModerate === true,
       outsideWritesUpgrade: policy.outsideWritesUpgrade === true,
       extraFreeDirs: dirs,
-      subAgentBlockDangerous: policy.subAgentBlockDangerous !== false,
+      subAgentBlockDangerous: policy.subAgentBlockDangerous === true,
     })
   }
 

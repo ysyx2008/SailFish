@@ -57,11 +57,13 @@ describe('伙计工具面', () => {
     expect(names).not.toContain('recall_compressed')
   })
 
-  it('伙计看到的 exec 说明是拦住，不是确认或自由放行', () => {
+  it('伙计看到的 exec 说明跟这场同一道门，硬墙仍拦住', () => {
     const child = filterSubAgentTools(getAgentTools(undefined, { mode: 'assistant' }))
     const exec = child.find(t => t.function.name === 'exec')
+    expect(exec?.function.description).toContain('同一道门')
     expect(exec?.function.description).toContain('一律拦住')
-    expect(exec?.function.description).toContain('不会问人签字')
+    expect(exec?.function.description).toContain('硬墙')
+    expect(exec?.function.description).not.toContain('不会问人签字')
     expect(exec?.function.description).not.toContain('free 放行')
     expect(exec?.function.description).not.toContain('需确认')
   })

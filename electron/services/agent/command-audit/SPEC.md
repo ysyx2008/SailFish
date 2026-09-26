@@ -153,7 +153,7 @@ Fail-Closed 的「只认绝对路径」才是可靠不变量。
 - `relaxedConfirmModerate`：宽松模式是否也确认 moderate（默认 false）
 - `outsideWritesUpgrade`：工作区外 safe 写是否升 moderate（默认 false）
 - `extraFreeDirs`：额外自由区绝对路径列表
-- `subAgentBlockDangerous`：子 Agent 是否拦 dangerous（默认 true）
+- `subAgentBlockDangerous`：额外禁止伙计做高风险（默认不禁止；不禁止时跟主人同一道门。硬墙仍拦）
 
 用户可在「设置 → 安全与权限 → 风险策略」修改；`AuditContext` 经 `auditContextFromConfig` 注入。
 

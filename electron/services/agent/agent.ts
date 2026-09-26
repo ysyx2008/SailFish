@@ -88,6 +88,7 @@ import { collapseRepeatedToolOutputs, reduceRepeatedToolOutput } from './repeate
 import { SUMMARY_MAX_OUTPUT_TOKENS } from '../ai-request-budget'
 import { t, getLocale, type TranslationKey } from './i18n'
 import { AutoApprovalReviewer, buildInspectorDeps, resolveInspectPtyId, type AutoReviewResult } from './auto-review'
+import { resolveSubAgentBlockDangerous } from './command-audit/fail-closed-policy'
 import { CommandExecutorService } from '../command-executor.service'
 import { createSkillSession, SkillSession, getSkill, isSystemManagedSkill, TERMINAL_SKILL_ID } from './skills'
 import { McpToolSession, parseMcpSkillId, toMcpSkillId } from './mcp-tool-session'
@@ -133,6 +134,15 @@ function deduplicateThinkingBlocks(html: string): string {
   return result.trim() ? result : html
 }
 
+/** 伙计在本机干活：评审按这个地点看，不借主人眼前的远程窗 */
+interface WorkerConfirmPlace {
+  cwd?: string
+  os?: string
+  signal?: AbortSignal
+  /** 卡片和放行记录上能认出是哪一个 */
+  label?: string
+}
+
 /**
  * Agent 抽象基类
  *
@@ -168,6 +178,13 @@ export abstract class Agent {
 
   /** 伙计：关掉落盘 / 侧栏 / L2 / L3 / 诞生引导 */
   private _isSubAgent = false
+
+  /** 伙计的确认交给主人这场：问你和替你放行都留在正在看的这场 */
+  private _confirmationHost?: Agent
+  /** 卡片上能认出是哪一个伙计 */
+  private _workerLabel?: string
+  /** 这场同时只问一件：几个伙计和主人自己的确认排着来 */
+  private _confirmTail: Promise<void> = Promise.resolve()
 
   /** 替我审批的评审员：第一次需要时才建，跟着这个 Agent 实例走 */
   private _autoReviewer?: AutoApprovalReviewer
@@ -418,6 +435,14 @@ export abstract class Agent {
 
   isSubAgent(): boolean {
     return this._isSubAgent
+  }
+
+  /**
+   * 伙计要问人时，走主人这场的确认。授权认主人这场里用户说过的话。
+   */
+  bindConfirmationHost(host: Agent, label: string): void {
+    this._confirmationHost = host
+    this._workerLabel = label
   }
 
   seedOpeningMessages(messages: AiMessage[]): void {
@@ -1331,7 +1356,7 @@ export abstract class Agent {
 
     if (!approved) {
       for (const key of keys) this.allowedTools.delete(key)
-    } else if (alwaysAllow) {
+    } else if (alwaysAllow && !pending.fromWorker) {
       for (const key of keys) this.allowedTools.add(key)
     }
     pending.resolve(approved, modifiedArgs)
@@ -5141,31 +5166,117 @@ export abstract class Agent {
     opts?: ConfirmationOptions,
   ): Promise<{ approved: boolean; modifiedArgs?: Record<string, unknown> }> {
     if (this._isSubAgent) {
-      if (riskLevel === 'dangerous' || riskLevel === 'blocked') {
-        log.warn(`Sub-agent auto-rejected ${riskLevel} operation: ${toolName}`)
+      const blockDangerous = resolveSubAgentBlockDangerous(
+        this.services.configService?.getCommandRiskPolicy() ?? this.commandRiskPolicy,
+      )
+      if (riskLevel === 'blocked' || (riskLevel === 'dangerous' && blockDangerous)) {
+        log.warn(`Sub-agent rejected ${riskLevel} operation without asking: ${toolName}`)
         return { approved: false }
       }
-      return { approved: true }
+      const host = this._confirmationHost
+      if (!host) {
+        log.warn(`Sub-agent has no confirmation host (tool=${toolName}, risk=${riskLevel}); treating as not approved`)
+        return { approved: false }
+      }
+      const who = this._workerLabel
+      const shown = who && displayName ? `${who}：${displayName}` : displayName
+      const workerReasons = who
+        ? [t('dispatch.confirm_by', { name: who }), ...(reasons ?? [])]
+        : reasons
+      return host.confirmForWorker(
+        toolCallId, toolName, toolArgs, riskLevel, shown, workerReasons, trustCommandOffer, opts,
+        {
+          cwd: run.context.cwd,
+          os: run.context.systemInfo?.os,
+          signal: run.abortController?.signal,
+          label: who,
+        },
+      )
     }
     if (!this.callbacks?.onNeedConfirm) {
       log.warn(`No confirmation channel available (tool=${toolName}, risk=${riskLevel}); treating as not approved`)
       return { approved: false }
     }
+    return this.enqueueConfirm(() => {
+      if (run.aborted) return Promise.resolve({ approved: false })
+      return this.settleConfirmation(run, toolCallId, toolName, toolArgs, riskLevel, displayName, reasons, trustCommandOffer, opts)
+    })
+  }
 
+  /**
+   * 伙计的确认排进主人这场。评审看的是这场里用户说过的话，问你也出现在这场。
+   */
+  protected confirmForWorker(
+    toolCallId: string,
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+    riskLevel: RiskLevel,
+    displayName?: string,
+    reasons?: string[],
+    trustCommandOffer?: PendingConfirmationInternal['trustCommandOffer'],
+    opts?: ConfirmationOptions,
+    place?: WorkerConfirmPlace,
+  ): Promise<{ approved: boolean; modifiedArgs?: Record<string, unknown> }> {
+    const run = this.currentRun
+    if (!run || run.aborted || !this.callbacks?.onNeedConfirm) {
+      log.warn(`No parent confirmation channel (tool=${toolName}, risk=${riskLevel}); treating as not approved`)
+      return Promise.resolve({ approved: false })
+    }
+    return this.enqueueConfirm(() => {
+      if (run.aborted || place?.signal?.aborted) return Promise.resolve({ approved: false })
+      return this.settleConfirmation(
+        run, toolCallId, toolName, toolArgs, riskLevel, displayName, reasons, trustCommandOffer, opts, place,
+      )
+    })
+  }
+
+  /** 几个确认排成一队，前一个有了结论才问下一个。失败也不把后面的卡住。 */
+  private enqueueConfirm<T>(work: () => Promise<T>): Promise<T> {
+    const run = this._confirmTail.then(work, work)
+    this._confirmTail = run.then(() => undefined, () => undefined)
+    return run
+  }
+
+  private async settleConfirmation(
+    run: AgentRun,
+    toolCallId: string,
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+    riskLevel: RiskLevel,
+    displayName?: string,
+    reasons?: string[],
+    trustCommandOffer?: PendingConfirmationInternal['trustCommandOffer'],
+    opts?: ConfirmationOptions,
+    place?: WorkerConfirmPlace,
+  ): Promise<{ approved: boolean; modifiedArgs?: Record<string, unknown> }> {
     let autoReview: AutoReviewTrail | undefined
     if (this.canAutoReview(run, riskLevel, opts)) {
       try {
-        const review = await this.runAutoReview(run, toolName, toolArgs, riskLevel, displayName, reasons)
+        const review = await this.runAutoReview(run, toolName, toolArgs, riskLevel, displayName, reasons, place)
         if (review.kind === 'approved') return { approved: true }
-        if (review.kind === 'cancelled' || run.aborted) return { approved: false }
+        if (review.kind === 'cancelled' || run.aborted || place?.signal?.aborted) return { approved: false }
         autoReview = review.trail
       } catch (e) {
         log.warn(`[auto-review] handed over after local error: ${e instanceof Error ? e.message : String(e)}`)
       }
     }
+    if (run.aborted || place?.signal?.aborted) return { approved: false }
 
     return new Promise((resolve) => {
-      const confirmation: PendingConfirmationInternal = {
+      let settled = false
+      let shown = false
+      let confirmation: PendingConfirmationInternal | undefined
+      const finish = (approved: boolean, modifiedArgs?: Record<string, unknown>) => {
+        if (settled) return
+        settled = true
+        place?.signal?.removeEventListener('abort', onAbort)
+        if (confirmation && run.pendingConfirmation === confirmation) run.pendingConfirmation = undefined
+        if (!place) run.executionPhase = 'thinking'
+        if (shown) this.callbacks?.onConfirmDismissed?.()
+        resolve({ approved, modifiedArgs })
+      }
+      const onAbort = () => finish(false)
+      confirmation = {
         agentId: run.id,
         toolCallId,
         toolName,
@@ -5174,20 +5285,25 @@ export abstract class Agent {
         displayName,
         reasons,
         trustCommandOffer,
+        ...(place ? { fromWorker: true } : {}),
         ...(autoReview ? { autoReview } : {}),
-        resolve: (approved, modifiedArgs) => {
-          run.pendingConfirmation = undefined
-          run.executionPhase = 'thinking'
-          resolve({ approved, modifiedArgs })
-        }
+        resolve: (approved, modifiedArgs) => finish(approved, modifiedArgs),
       }
-      
+
       run.pendingConfirmation = confirmation
-      run.executionPhase = 'confirming'
+      if (!place) run.executionPhase = 'confirming'
+      if (place?.signal) {
+        if (place.signal.aborted) {
+          finish(false)
+          return
+        }
+        place.signal.addEventListener('abort', onAbort, { once: true })
+      }
       log.info(
         `[confirm] waiting (agent=${this._agentId ?? 'unknown'}, run=${run.id}, tool=${toolName}, toolCallId=${toolCallId}, risk=${riskLevel})`
       )
       this.callbacks?.onNeedConfirm?.(confirmation)
+      shown = true
     })
   }
 
@@ -5224,9 +5340,15 @@ export abstract class Agent {
     riskLevel: RiskLevel,
     displayName?: string,
     reasons?: string[],
+    place?: WorkerConfirmPlace,
   ): Promise<{ kind: 'approved' } | { kind: 'cancelled' } | { kind: 'handed_over'; trail: AutoReviewTrail }> {
     const reviewer = this.getAutoReviewer()
-    const action = this.describeActionForTrail(toolName, toolArgs, displayName)
+    const described = this.describeActionForTrail(toolName, toolArgs, displayName)
+    const action = place?.label && described.startsWith(`${place.label}：`)
+      ? described
+      : place?.label
+        ? `${place.label}：${described}`
+        : described
     const step = this.addStep({
       type: 'auto_review',
       content: t('autoReview.reviewing', { action }),
@@ -5235,10 +5357,15 @@ export abstract class Agent {
       riskLevel,
       isStreaming: true,
     })
-    const inspectPtyId = resolveInspectPtyId(toolArgs, run.ptyId)
+    const forWorker = !!place
+    const inspectPtyId = forWorker ? undefined : resolveInspectPtyId(toolArgs, run.ptyId)
     const ssh = inspectPtyId ? this.services.sshService?.getConfig(inspectPtyId) ?? null : null
     const sftp = this.services.sftpService
     const executor = new CommandExecutorService()
+    const parentSignal = run.abortController?.signal
+    const reviewSignal = parentSignal && place?.signal
+      ? AbortSignal.any([parentSignal, place.signal])
+      : place?.signal ?? parentSignal
     let result: AutoReviewResult
     try {
     result = await reviewer.review({
@@ -5253,18 +5380,20 @@ export abstract class Agent {
       getSteps: () => run.steps,
       getMessages: () => run.messages,
       aiRules: this.services.configService?.getAiRules() ?? '',
-      environment: {
-        terminalType: run.context.terminalType,
-        sshHost: ssh?.host ?? run.context.sshHost,
-        cwd: run.context.cwd,
-        os: run.context.systemInfo?.os,
-      },
+      environment: forWorker
+        ? { terminalType: 'assistant', cwd: place?.cwd, os: place?.os }
+        : {
+            terminalType: run.context.terminalType,
+            sshHost: ssh?.host ?? run.context.sshHost,
+            cwd: run.context.cwd,
+            os: run.context.systemInfo?.os,
+          },
       profileId: this.profileId || this.services.configService?.getActiveAiProfile() || undefined,
-      signal: run.abortController?.signal,
+      signal: reviewSignal,
       inspector: buildInspectorDeps({
         execute: (command, cwd, timeoutMs) => executor.execute(command, cwd, timeoutMs),
-        localCwd: ssh || run.context.terminalType === 'ssh' ? undefined : run.context.cwd,
-        remote: ssh && sftp && inspectPtyId ? { sftp, ssh, ptyId: inspectPtyId } : undefined,
+        localCwd: forWorker ? place?.cwd : (ssh || run.context.terminalType === 'ssh' ? undefined : run.context.cwd),
+        remote: forWorker ? undefined : (ssh && sftp && inspectPtyId ? { sftp, ssh, ptyId: inspectPtyId } : undefined),
       }),
     })
     if (result.usage) this.addSideUsage(run, result.usage)

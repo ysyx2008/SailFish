@@ -141,9 +141,9 @@ export interface CommandRiskPolicy {
    */
   extraFreeDirs: string[]
   /**
-   * 子 Agent 是否自动阻止 dangerous（默认 true）。
-   * false 时仅阻止 blocked；dangerous 仍可由主确认策略处理（子 Agent 本身无确认 UI，
-   * 故 false 等于允许子 Agent 执行 dangerous——仅高信任场景开启）。
+   * 额外禁止伙计做高风险操作（默认关）。
+   * 关掉时，高风险跟主人这场同一道门：该问就问、替我审批先看、自由模式直接做。
+   * 硬墙（blocked）无论开不开都直接拦。
    */
   subAgentBlockDangerous: boolean
 }
@@ -164,7 +164,7 @@ export const DEFAULT_COMMAND_RISK_POLICY: CommandRiskPolicy = {
   relaxedConfirmModerate: false,
   outsideWritesUpgrade: false,
   extraFreeDirs: [],
-  subAgentBlockDangerous: true,
+  subAgentBlockDangerous: false,
 }
 
 /** API 调用的 token 用量（由 LLM provider 返回的精确值） */

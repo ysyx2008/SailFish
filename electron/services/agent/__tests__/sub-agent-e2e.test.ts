@@ -13,6 +13,7 @@ import type { AgentContext, AgentServices, AgentStep } from '../types'
 
 let tmpDir: string
 let fixtureFile: string
+const victims: string[] = []
 
 const FIXTURE = 'NGINX_LISTEN_8848'
 
@@ -42,6 +43,7 @@ vi.mock('../../knowledge', () => ({
 import { SailFish } from '../sailfish'
 import { HistoryService } from '../../history.service'
 import { AgentService } from '../index'
+import { assessCommandRisk } from '../risk-assessor'
 
 type LlmResponse = {
   content?: string
@@ -49,6 +51,9 @@ type LlmResponse = {
 }
 
 let llmCalls: Array<{ tools: string[]; messages: unknown[] }> = []
+let reviewPrompts: string[] = []
+/** 替我审批的脚本：看准了才放行，用来确认评审读的是主人这场里用户的话 */
+let reviewSeesUserWords: ((text: string) => boolean) | null = null
 
 function toolNames(tools: ToolDefinition[]): string[] {
   return tools.map(t => t.function.name)
@@ -88,6 +93,15 @@ function makeServices(responder: (args: {
   return {
     aiService: {
       chat: vi.fn().mockResolvedValue(''),
+      chatWithTools: vi.fn(async (messages: Array<{ content?: unknown }>) => {
+        const text = messages.map(m => String(m.content ?? '')).join('\n')
+        reviewPrompts.push(text)
+        const allow = reviewSeesUserWords?.(text) === true
+        const content = allow
+          ? '{"risk_level":"high","user_authorization":"high","outcome":"allow","rationale":"用户在这场里明确交代了删这份草稿"}'
+          : '{"risk_level":"high","user_authorization":"unknown","outcome":"ask_user","rationale":"看不出用户授权"}'
+        return { content, tool_calls: [] }
+      }),
       chatWithToolsStream: vi.fn(async (
         messages: Array<{ role?: string; content?: unknown; tool_calls?: unknown }>,
         tools: ToolDefinition[],
@@ -139,7 +153,8 @@ function makeServices(responder: (args: {
       getActiveAiProfile: vi.fn().mockReturnValue('test'),
       getAgentOnboardingCompleted: vi.fn().mockReturnValue(true),
       hasVisionCapability: vi.fn().mockReturnValue(true),
-      getCommandRiskPolicy: vi.fn().mockReturnValue(undefined)
+      getCommandRiskPolicy: vi.fn().mockReturnValue(undefined),
+      isAutoApprovalReviewEnabled: vi.fn().mockReturnValue(false)
     } as any,
     hostProfileService: {
       generateHostContext: vi.fn().mockReturnValue(''),
@@ -165,6 +180,14 @@ function ctx(): AgentContext {
   }
 }
 
+/** 家目录里的一份草稿：删它算高风险，但真删了也只删这份测试文件 */
+function makeVictim(label: string): string {
+  const file = path.join(os.homedir(), `.sailfish-e2e-${label}-${process.pid}-${Date.now()}`)
+  fs.writeFileSync(file, 'draft\n', 'utf-8')
+  victims.push(file)
+  return file
+}
+
 function tc(name: string, args: Record<string, unknown>, id = `tc-${name}`): NonNullable<LlmResponse['tool_calls']>[0] {
   return {
     id,
@@ -179,9 +202,13 @@ describe('子智能体端到端（真实 SailFish.run）', () => {
     fixtureFile = path.join(tmpDir, 'nginx.conf')
     fs.writeFileSync(fixtureFile, `listen ${FIXTURE};\n`, 'utf-8')
     llmCalls = []
+    reviewPrompts = []
+    reviewSeesUserWords = null
+    for (const file of victims.splice(0)) fs.rmSync(file, { force: true })
   })
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true })
+    for (const file of victims.splice(0)) fs.rmSync(file, { force: true })
   })
 
   it('派出后主人先收不了工；伙计读真文件敲门；不进最近对话', async () => {
@@ -773,37 +800,263 @@ describe('子智能体端到端（真实 SailFish.run）', () => {
     expect(result).toContain(BLOCKED)
   })
 
-  it('伙计跑高危命令会被拦，敲门里带着原命令', async () => {
-    const DANGER = 'rm -rf /etc'
-    const services = makeServices(({ isChild, childIndex, parentIndex, messages }) => {
+  it('宽松模式：伙计删家目录草稿要问这场，点头后文件真的没了', async () => {
+    const victim = makeVictim('ask')
+    const command = `rm -f "${victim}"`
+    expect(await assessCommandRisk(command)).toBe('dangerous')
+
+    const asked: Array<{ toolName?: string; reasons?: string[]; toolArgs?: Record<string, unknown> }> = []
+    const services = makeServices(({ isChild, messages }) => {
       if (isChild) {
-        if (childIndex === 0) return { tool_calls: [tc('exec', { command: DANGER })] }
-        return { content: '高危被拦，交给主人' }
+        const done = (messages as Array<{ role?: string }>).some(m => m.role === 'tool')
+        if (!done) return { tool_calls: [tc('exec', { command }, 'rm-ask')] }
+        return { content: '草稿删掉了' }
       }
-      if (parentIndex === 0) {
+      const text = allMessageText(messages as Array<{ content?: unknown }>)
+      const alreadyDispatched = (messages as Array<{ tool_calls?: unknown }>).some(m => m.tool_calls)
+      if (!alreadyDispatched && !text.includes('草稿删掉了')) {
         return {
           tool_calls: [tc('dispatch_agents', {
-            tasks: [{ name: '莽汉', description: '乱删', prompt: `去执行 ${DANGER}`, fork_turns: 'none' }]
+            tasks: [{ name: '甲', description: '删草稿', prompt: '把那份草稿删掉', fork_turns: 'none' }]
           })]
         }
       }
-      const text = lastUserText(messages as Array<{ role?: string; content?: string }>)
-      if (text.includes('莽汉') || text.includes('拦') || text.includes(DANGER)) {
-        return { content: `主人知道被拦了：${DANGER}` }
-      }
+      if (text.includes('草稿删掉了')) return { content: '主人知道草稿已经删了' }
       return { content: '先等他们' }
     })
     attachHistory(services, new HistoryService())
     const parent = new SailFish(services)
-    parent.setAgentId('e2e-danger')
+    parent.setAgentId('e2e-ask')
+    parent.updateConfig({ executionMode: 'relaxed' })
+
+    const result = await parent.run('删掉桌上这份草稿', ctx(), {
+      callbacks: {
+        onNeedConfirm: (c) => {
+          asked.push({ toolName: c.toolName, reasons: c.reasons, toolArgs: c.toolArgs })
+          c.resolve(true)
+        },
+      },
+    })
+
+    expect(asked).toHaveLength(1)
+    expect(asked[0].toolName).toBe('exec')
+    expect(asked[0].reasons?.join('\n')).toContain('甲')
+    expect(JSON.stringify(asked[0].toolArgs)).toContain(victim)
+    expect(fs.existsSync(victim)).toBe(false)
+    expect(result).toContain('草稿已经删了')
+  })
+
+  it('宽松模式：这场拒绝后，草稿还在', async () => {
+    const victim = makeVictim('reject')
+    const command = `rm -f "${victim}"`
+    const services = makeServices(({ isChild, messages }) => {
+      if (isChild) {
+        const done = (messages as Array<{ role?: string }>).some(m => m.role === 'tool')
+        if (!done) return { tool_calls: [tc('exec', { command }, 'rm-no')] }
+        return { content: '没删成' }
+      }
+      const text = allMessageText(messages as Array<{ content?: unknown }>)
+      if (!text.includes('没删成') && !(messages as Array<{ tool_calls?: unknown }>).some(m => m.tool_calls)) {
+        return {
+          tool_calls: [tc('dispatch_agents', {
+            tasks: [{ name: '甲', description: '删草稿', prompt: '把那份草稿删掉', fork_turns: 'none' }]
+          })]
+        }
+      }
+      if (text.includes('没删成')) return { content: '主人知道没删' }
+      return { content: '先等他们' }
+    })
+    attachHistory(services, new HistoryService())
+    const parent = new SailFish(services)
+    parent.setAgentId('e2e-reject')
+    parent.updateConfig({ executionMode: 'relaxed' })
+
+    const result = await parent.run('先别删', ctx(), {
+      callbacks: { onNeedConfirm: (c) => c.resolve(false) },
+    })
+
+    expect(fs.existsSync(victim)).toBe(true)
+    expect(result).toContain('没删')
+  })
+
+  it('自由模式：同一条高风险删除不再问，文件直接没了', async () => {
+    const victim = makeVictim('free')
+    const command = `rm -f "${victim}"`
+    let asked = false
+    const services = makeServices(({ isChild, messages }) => {
+      if (isChild) {
+        const done = (messages as Array<{ role?: string }>).some(m => m.role === 'tool')
+        if (!done) return { tool_calls: [tc('exec', { command }, 'rm-free')] }
+        return { content: '自由模式删掉了' }
+      }
+      const text = allMessageText(messages as Array<{ content?: unknown }>)
+      if (!text.includes('自由模式删掉了') && !(messages as Array<{ tool_calls?: unknown }>).some(m => m.tool_calls)) {
+        return {
+          tool_calls: [tc('dispatch_agents', {
+            tasks: [{ name: '甲', description: '删草稿', prompt: '把那份草稿删掉', fork_turns: 'none' }]
+          })]
+        }
+      }
+      if (text.includes('自由模式删掉了')) return { content: '主人知道自由模式删了' }
+      return { content: '先等他们' }
+    })
+    attachHistory(services, new HistoryService())
+    const parent = new SailFish(services)
+    parent.setAgentId('e2e-free')
     parent.updateConfig({ executionMode: 'free' })
 
-    const result = await parent.run('让伙计去删系统目录', ctx())
+    const result = await parent.run('删掉这份草稿', ctx(), {
+      callbacks: { onNeedConfirm: () => { asked = true } },
+    })
+
+    expect(asked).toBe(false)
+    expect(fs.existsSync(victim)).toBe(false)
+    expect(result).toContain('自由模式删了')
+  })
+
+  it('开了替我审批：用这场里你的话看准了就自己删，不问你', async () => {
+    const victim = makeVictim('review')
+    const command = `rm -f "${victim}"`
+    const userTask = '删掉桌上这份叫草稿的文件'
+    reviewSeesUserWords = (text) => text.includes(userTask)
+    let asked = false
+    const services = makeServices(({ isChild, messages }) => {
+      if (isChild) {
+        const done = (messages as Array<{ role?: string }>).some(m => m.role === 'tool')
+        if (!done) return { tool_calls: [tc('exec', { command }, 'rm-review')] }
+        return { content: '评审放行后删掉了' }
+      }
+      const text = allMessageText(messages as Array<{ content?: unknown }>)
+      if (!text.includes('评审放行后删掉了') && !(messages as Array<{ tool_calls?: unknown }>).some(m => m.tool_calls)) {
+        return {
+          tool_calls: [tc('dispatch_agents', {
+            tasks: [{ name: '甲', description: '删草稿', prompt: '把那个文件删掉', fork_turns: 'none' }]
+          })]
+        }
+      }
+      if (text.includes('评审放行后删掉了')) return { content: '主人知道评审放行了' }
+      return { content: '先等他们' }
+    })
+    ;(services.configService as { isAutoApprovalReviewEnabled: ReturnType<typeof vi.fn> })
+      .isAutoApprovalReviewEnabled.mockReturnValue(true)
+    attachHistory(services, new HistoryService())
+    const parent = new SailFish(services)
+    parent.setAgentId('e2e-review')
+    parent.updateConfig({ executionMode: 'relaxed' })
+
+    const result = await parent.run(userTask, ctx(), {
+      callbacks: { onNeedConfirm: () => { asked = true } },
+    })
+
+    expect(reviewPrompts.some(p => p.includes(userTask))).toBe(true)
+    expect(reviewPrompts.some(p => p.includes('把那个文件删掉') && !p.includes(userTask))).toBe(false)
+    expect(asked).toBe(false)
+    expect(fs.existsSync(victim)).toBe(false)
+    expect(result).toContain('评审放行了')
+  })
+
+  it('额外禁止开着：高风险直接拦，不问，文件还在', async () => {
+    const victim = makeVictim('ban')
+    const command = `rm -f "${victim}"`
+    let asked = false
+    const services = makeServices(({ isChild, messages }) => {
+      if (isChild) {
+        const done = (messages as Array<{ role?: string }>).some(m => m.role === 'tool')
+        if (!done) return { tool_calls: [tc('exec', { command }, 'rm-ban')] }
+        return { content: '被额外禁止拦住了' }
+      }
+      const text = allMessageText(messages as Array<{ content?: unknown }>)
+      if (!text.includes('被额外禁止拦住了') && !(messages as Array<{ tool_calls?: unknown }>).some(m => m.tool_calls)) {
+        return {
+          tool_calls: [tc('dispatch_agents', {
+            tasks: [{ name: '甲', description: '删草稿', prompt: '把那份草稿删掉', fork_turns: 'none' }]
+          })]
+        }
+      }
+      if (text.includes('被额外禁止拦住了')) return { content: '主人知道被额外禁止拦住了' }
+      return { content: '先等他们' }
+    })
+    ;(services.configService as { getCommandRiskPolicy: ReturnType<typeof vi.fn> })
+      .getCommandRiskPolicy.mockReturnValue({ subAgentBlockDangerous: true })
+    attachHistory(services, new HistoryService())
+    const parent = new SailFish(services)
+    parent.setAgentId('e2e-ban')
+    parent.updateConfig({
+      executionMode: 'relaxed',
+      commandRiskPolicy: { subAgentBlockDangerous: true } as never,
+    })
+
+    const result = await parent.run('删掉这份草稿', ctx(), {
+      callbacks: { onNeedConfirm: () => { asked = true } },
+    })
+
     const toolOutputs = llmCalls
       .flatMap(c => c.messages as Array<{ role?: string; content?: string }>)
       .map(m => String(m.content || ''))
       .join('\n')
-    expect(toolOutputs).toContain(`原命令：${DANGER}`)
-    expect(result).toContain(DANGER)
+    expect(asked).toBe(false)
+    expect(fs.existsSync(victim)).toBe(true)
+    expect(toolOutputs).toContain(`原命令：${command}`)
+    expect(result).toContain('额外禁止')
+  })
+
+  it('两个伙计同时要删，这场一次只问一件，两份都点头后才都没了', async () => {
+    const fileA = makeVictim('queue-a')
+    const fileB = makeVictim('queue-b')
+    const cmdA = `rm -f "${fileA}"`
+    const cmdB = `rm -f "${fileB}"`
+    const seen: string[] = []
+    let overlapped = false
+    const services = makeServices(({ isChild, childIndex, messages }) => {
+      if (isChild) {
+        const done = (messages as Array<{ role?: string }>).some(m => m.role === 'tool')
+        if (!done) {
+          const command = childIndex === 0 ? cmdA : cmdB
+          return { tool_calls: [tc('exec', { command }, `rm-${childIndex}`)] }
+        }
+        const blob = JSON.stringify(messages)
+        return { content: blob.includes(fileA) ? '甲删好了' : '乙删好了' }
+      }
+      const text = allMessageText(messages as Array<{ content?: unknown }>)
+      if (!text.includes('甲删好了') && !(messages as Array<{ tool_calls?: unknown }>).some(m => m.tool_calls)) {
+        return {
+          tool_calls: [tc('dispatch_agents', {
+            tasks: [
+              { name: '甲', description: '删甲', prompt: '删甲的草稿', fork_turns: 'none' },
+              { name: '乙', description: '删乙', prompt: '删乙的草稿', fork_turns: 'none' },
+            ]
+          })]
+        }
+      }
+      if (text.includes('甲删好了') && text.includes('乙删好了')) return { content: '两份都删了' }
+      return { content: '先等他们' }
+    })
+    attachHistory(services, new HistoryService())
+    const parent = new SailFish(services)
+    parent.setAgentId('e2e-queue')
+    parent.updateConfig({ executionMode: 'relaxed' })
+
+    const result = await parent.run('两份草稿都删掉', ctx(), {
+      callbacks: {
+        onNeedConfirm: (c) => {
+          seen.push(String(c.toolArgs?.command ?? ''))
+          if (seen.length === 1) {
+            setTimeout(() => {
+              overlapped = seen.length !== 1
+              c.resolve(true)
+            }, 400)
+          } else {
+            c.resolve(true)
+          }
+        },
+      },
+    })
+
+    expect(overlapped).toBe(false)
+    expect(seen).toHaveLength(2)
+    expect(seen[0]).not.toBe(seen[1])
+    expect(fs.existsSync(fileA)).toBe(false)
+    expect(fs.existsSync(fileB)).toBe(false)
+    expect(result).toContain('两份都删了')
   })
 })

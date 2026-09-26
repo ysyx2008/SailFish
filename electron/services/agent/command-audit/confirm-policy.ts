@@ -73,8 +73,9 @@ export function commandNeedsConfirm(
 }
 
 /**
- * 子 Agent 模式：默认阻止 dangerous/blocked。
- * 若 policy.subAgentBlockDangerous=false，仅阻止 blocked。
+ * 伙计：硬墙一律拦。
+ * 只有策略明确额外禁止高风险时，才把 dangerous 也拦住、不问人。
+ * 否则 dangerous 交给主人这场的确认，跟主人同一档。
  */
 export function isSubAgentBlocked(
   assessment: CommandRiskAssessment,

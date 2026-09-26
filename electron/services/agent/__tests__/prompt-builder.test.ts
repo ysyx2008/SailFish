@@ -985,7 +985,7 @@ describe('上下文开销', () => {
 })
 
 describe('伙计自己的工作契约', () => {
-  it('写明高危不走签字、写删只认 scratch 绝对路径', () => {
+  it('写明硬墙不确认、高风险跟这场同一道门、写删只认 scratch 绝对路径', () => {
     const prompt = PromptBuilder.buildSubAgentSystemPrompt({
       context: createMockContext({ terminalType: 'assistant' }),
     })
@@ -994,7 +994,8 @@ describe('伙计自己的工作契约', () => {
     expect(prompt).toContain('只认绝对路径')
     expect(prompt).toContain('scratch')
     expect(prompt).toContain('桌面等正式目录')
-    expect(prompt).toContain('不会弹确认')
+    expect(prompt).toContain('同一道门')
+    expect(prompt).not.toContain('不会弹确认')
     expect(prompt).toContain('只做交代给你的那一件')
     expect(prompt).toContain('不要接手整场')
     expect(prompt).toContain('做完清理现场')

@@ -788,7 +788,7 @@ interface Window {
         notice: { fromId: string; fromName: string; usedId: string; usedName: string }
       }) => void) => () => void
       onNeedConfirm: (callback: (data: PendingConfirmation & { ptyId?: string }) => void) => () => void
-      onConfirmResolved: (callback: (data: { agentId: string }) => void) => () => void
+      onConfirmResolved: (callback: (data: { agentId: string; ptyId?: string }) => void) => () => void
       onComplete: (callback: (data: { agentId: string; ptyId?: string; result: string; pendingUserMessages?: Array<string | import('@shared/types').PendingUserHandoff>; aborted?: boolean }) => void) => () => void
       onError: (callback: (data: { agentId: string; ptyId?: string; error: string; aborted?: boolean }) => void) => () => void
       resolveSecureInput: (params: { ptyId: string; requestId: string; value?: string; cancelled?: boolean }) => Promise<boolean>

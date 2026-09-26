@@ -1160,7 +1160,7 @@ const electronAPI = {
     },
 
     // 监听确认已被其他渠道处理（如 IM 端确认后通知桌面清除确认框）
-    onConfirmResolved: (callback: (data: { agentId: string }) => void) => {
+    onConfirmResolved: (callback: (data: { agentId: string; ptyId?: string }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: { agentId: string }) => callback(data)
       ipcRenderer.on('agent:confirmResolved', handler)
       return () => {

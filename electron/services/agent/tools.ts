@@ -463,12 +463,9 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
   // 本机命令（child_process.spawn）。可见性由 _meta.supportedModes 决定：本地终端眼前已是本机窗，不另给。
   // 终端窗里的命令由 terminal 技能的 execute_command 提供。
   const execIntro = `【在本机执行 Shell 命令】通过本机 shell 执行命令字符串，支持管道/&&/重定向/脚本内联。不支持交互式命令(vim/nano/tmux)。`
-  const execDangerousExamples = `- 解释器内联代码（node -e / python -c / bash -c / zsh -c / perl -e / ruby -e / php -r 等）会被标记为危险
-  —— 这类代码无法静态审计，真正高风险场景请切严格模式
-- 包装器/调度器（sudo / env / docker / ssh / make / npx 等）会被标记为危险
-  —— 这些 cmd 会转手执行别的命令，违反"直接调用"的不变量
-- 如需运行脚本，直接用 exec 跑脚本文件：exec("node script.js")、exec("python a.py")
-- find -exec / -delete、tar --to-command、git rebase --exec 等结构性 flag 会被标记为危险`
+  const execDangerousExamples = `- 解释器内联（node -e / python -c / bash -c / zsh -c / perl -e / ruby -e / php -r）、包装器与调度器（sudo / env / docker / ssh / make / npx）、find -exec / -delete、tar --to-command、git rebase --exec：转手执行的内容无法静态看清。宽松模式把它们标成中风险，默认不问。要让它们也问，用严格模式，或在设置里打开「宽松模式下要求确认中风险命令」
+- 外层若能拆开，里层仍是高风险命令（如 rm）时，按里层问，不会因为套了 bash -c / sudo 就变成不问
+- 跑脚本请直接执行脚本文件：exec("node script.js")、exec("python a.py")`
   const execWaitAndUsage = `**等待与转后台**：
 - wait_seconds 内结束返回完整结果；没结束就转后台（返回 task_id），这一轮会盯到它结束、结果自动送回，不用专门再等
 - 常驻命令（服务、监听）设 service: true，否则这一轮会一直等它
@@ -476,16 +473,17 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
 - 启动服务示例：exec("npm run dev", wait_seconds: 5, service: true)，再 await_exec(task_id, pattern: "Listening on") 确认`
   const execDescriptionForParent = `${execIntro}
 
-**安全规则（命中标为 dangerous，strict/relaxed 需确认；free 放行）**：
+**安全规则（宽松只问高风险；严格会问；自由模式不问）**：
 ${execDangerousExamples}
 
 ${execWaitAndUsage}`
   const execDescriptionForSubAgent = `${execIntro}
 
-**安全规则（伙计没有签字通道）**：
-- 命中 dangerous 或 blocked 一律拦住，不会问人签字。这是系统限制，不是暂时失败
+**安全规则（跟这场任务同一道门）**：
+- 命中 dangerous：跟主人这场的执行档一样。该问就问在主人这场里（开了替我审批会先看用户在这场说过的话）；自由模式直接做。不要自己换命令绕过
+- 命中 blocked 一律拦住，不会问人。这是硬墙，不是暂时失败
 - scratch 及系统临时目录里，用绝对路径的普通写删可以直接做
-- 相对路径、先 cd 再删、桌面等正式目录的删除一律被拦
+- 相对路径、先 cd 再删、桌面等正式目录的删除算高风险，走上面同一道门，不会当成免确认
 ${execDangerousExamples}
 
 ${execWaitAndUsage}`

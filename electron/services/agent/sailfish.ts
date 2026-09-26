@@ -130,6 +130,7 @@ export class SailFish extends Agent {
     const child = new SailFish(this.services)
     child.setAgentId(`${this.getConversationAgentId()}:sub:${name}`)
     child.markAsSubAgent()
+    child.bindConfirmationHost(this, name)
     child.updateConfig({
       executionMode: this.executionMode,
       commandTimeout: this.commandTimeout,

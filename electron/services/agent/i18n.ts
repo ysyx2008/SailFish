@@ -1607,6 +1607,7 @@ const translations = {
     'dispatch.interrupt_ok': '已打断 {name}',
     'dispatch.tool_denied': '此工具仅主人可用',
     'dispatch.command_blocked': '高危命令被拦下了，原命令：{command}',
+    'dispatch.confirm_by': '这是伙计「{name}」要做的',
 
     // exec 后台任务（assistant 模式 exec/await_exec 工具）
     'exec.task_id_required': '必须提供 task_id',
@@ -3258,6 +3259,7 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
     'dispatch.interrupt_ok': 'Interrupted {name}',
     'dispatch.tool_denied': 'This tool is only available to the parent agent',
     'dispatch.command_blocked': 'Dangerous command was blocked. Original command: {command}',
+    'dispatch.confirm_by': 'Helper “{name}” wants to do this',
 
     // exec background tasks (assistant mode exec/await_exec tools)
     'exec.task_id_required': 'task_id is required',

@@ -91,8 +91,15 @@ describe('commandNeedsConfirm', () => {
 })
 
 describe('isSubAgentBlocked', () => {
-  it('sub-agent 阻止 dangerous', () => {
-    expect(isSubAgentBlocked(assessment('dangerous'))).toBe(true)
+  it('默认不拦 dangerous，硬墙仍拦', () => {
+    expect(isSubAgentBlocked(assessment('dangerous'))).toBe(false)
+    expect(isSubAgentBlocked(assessment('blocked'))).toBe(true)
+  })
+
+  it('显式额外禁止时拦 dangerous', () => {
+    expect(isSubAgentBlocked(assessment('dangerous'), {
+      subAgentBlockDangerous: true,
+    } as any)).toBe(true)
   })
 
   it('sub-agent 阻止 blocked', () => {

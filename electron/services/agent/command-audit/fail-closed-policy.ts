@@ -63,7 +63,7 @@ export function resolveExtraFreeDirs(ctx?: AuditContext): string[] {
   return Array.isArray(dirs) ? dirs.filter(d => typeof d === 'string' && d.trim()) : []
 }
 
-/** 子 Agent 是否阻止 dangerous */
+/** 是否额外禁止伙计做高风险。没写这一项时跟默认走（默认不禁止）。 */
 export function resolveSubAgentBlockDangerous(policy?: CommandRiskPolicy | null): boolean {
-  return (policy ?? DEFAULT_COMMAND_RISK_POLICY).subAgentBlockDangerous !== false
+  return (policy?.subAgentBlockDangerous ?? DEFAULT_COMMAND_RISK_POLICY.subAgentBlockDangerous) === true
 }
