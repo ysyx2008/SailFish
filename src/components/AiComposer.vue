@@ -1412,7 +1412,27 @@ watch(
   { immediate: true }
 )
 
-onBeforeUnmount(() => cancelAnimationFrame(consumedAnimRaf))
+interface ConsumedTokenLine {
+  label: string
+  value: string
+  note?: string
+  color: string
+}
+
+interface ConsumedBreakdown {
+  totalText: string
+  bar: { key: string; tokens: number; color: string }[]
+  input: ConsumedTokenLine
+  cache?: ConsumedTokenLine
+  miss?: ConsumedTokenLine
+  output: ConsumedTokenLine
+  rate?: { label: string; value: string }
+}
+
+const USAGE_COLOR_INPUT = '#60a5fa'
+const USAGE_COLOR_CACHE = '#2dd4bf'
+const USAGE_COLOR_MISS = '#94a3b8'
+const USAGE_COLOR_OUTPUT = '#f472b6'
 
 const consumedTokenLabel = computed(() => {
   if (!configStore.showSessionTokenUsage) return ''
@@ -1426,34 +1446,143 @@ const { rateKind: outputRateKind, rateText: outputRateText } = useOutputTokenRat
   () => props.currentTabId,
 )
 
-const consumedTokenTitle = computed(() => {
+function usageShare(part: number, whole: number): string | undefined {
+  if (whole <= 0) return undefined
+  return t('ai.sessionConsumedCacheShare', { pct: Math.round((part / whole) * 100) })
+}
+
+const consumedBreakdown = computed((): ConsumedBreakdown | null => {
   const stats = props.contextStats
-  if (!stats.consumedTokens || stats.consumedTokens <= 0) return ''
-  const prompt = (stats.consumedPromptTokens ?? 0).toLocaleString()
-  const completion = (stats.consumedCompletionTokens ?? 0).toLocaleString()
-  const parts = [
-    stats.consumedCacheHitTokens !== undefined
-      ? t('ai.sessionConsumedInCached', { n: prompt, cached: stats.consumedCacheHitTokens.toLocaleString() })
-      : t('ai.sessionConsumedIn', { n: prompt }),
-    t('ai.sessionConsumedOut', { n: completion }),
-  ]
+  if (!stats.consumedTokens || stats.consumedTokens <= 0) return null
+  const promptN = stats.consumedPromptTokens ?? 0
+  const completionN = stats.consumedCompletionTokens ?? 0
+  const hit = stats.consumedCacheHitTokens
+  const splitCache = hit !== undefined && promptN > 0 && hit <= promptN
+  const missN = splitCache ? promptN - hit : 0
+  const bar: ConsumedBreakdown['bar'] = []
+  if (splitCache) {
+    if (hit > 0) bar.push({ key: 'cache', tokens: hit, color: USAGE_COLOR_CACHE })
+    if (missN > 0) bar.push({ key: 'miss', tokens: missN, color: USAGE_COLOR_MISS })
+  } else if (promptN > 0) {
+    bar.push({ key: 'input', tokens: promptN, color: USAGE_COLOR_INPUT })
+  }
+  if (completionN > 0) bar.push({ key: 'output', tokens: completionN, color: USAGE_COLOR_OUTPUT })
+
+  const breakdown: ConsumedBreakdown = {
+    totalText: `${t('ai.sessionConsumedTotal')} ${(promptN + completionN).toLocaleString()}`,
+    bar,
+    input: {
+      label: t('ai.sessionConsumedIn'),
+      value: promptN.toLocaleString(),
+      color: USAGE_COLOR_INPUT,
+    },
+    output: {
+      label: t('ai.sessionConsumedOut'),
+      value: completionN.toLocaleString(),
+      color: USAGE_COLOR_OUTPUT,
+    },
+  }
+  if (splitCache) {
+    breakdown.cache = {
+      label: t('ai.sessionConsumedCache'),
+      value: hit.toLocaleString(),
+      note: usageShare(hit, promptN),
+      color: USAGE_COLOR_CACHE,
+    }
+    breakdown.miss = {
+      label: t('ai.sessionConsumedCacheMiss'),
+      value: missN.toLocaleString(),
+      note: usageShare(missN, promptN),
+      color: USAGE_COLOR_MISS,
+    }
+  }
   if (outputRateText.value) {
-    parts.push(outputRateKind.value === 'avg'
-      ? t('ai.sessionConsumedAvgRate', { rate: outputRateText.value })
-      : t('ai.sessionConsumedRate', { rate: outputRateText.value }))
+    breakdown.rate = {
+      label: outputRateKind.value === 'avg'
+        ? t('ai.sessionConsumedRateAvg')
+        : t('ai.sessionConsumedRateLive'),
+      value: t('ai.sessionConsumedRate', { rate: outputRateText.value }),
+    }
   }
-  return parts.join(' · ')
+  return breakdown
 })
 
-const { hoverTip: consumedHoverTip, showTip: showConsumedTip, hideTip: hideConsumedTip } = useHoverTip({
-  placement: 'top',
-  delayMs: 200,
+const consumedTokenLines = computed(() => {
+  const breakdown = consumedBreakdown.value
+  if (!breakdown) return []
+  const lines: { label: string; value: string; note?: string }[] = [breakdown.input]
+  if (breakdown.cache) lines.push(breakdown.cache)
+  if (breakdown.miss) lines.push(breakdown.miss)
+  lines.push(breakdown.output)
+  if (breakdown.rate) lines.push(breakdown.rate)
+  return lines
 })
 
-watch(consumedTokenTitle, (text) => {
-  if (consumedHoverTip.value && text) {
-    consumedHoverTip.value = { ...consumedHoverTip.value, text }
+const consumedTokenTitle = computed(() =>
+  consumedTokenLines.value
+    .map(line => [line.label, line.value, line.note].filter(Boolean).join(' '))
+    .join(' · ')
+)
+
+const showConsumedDetail = ref(false)
+const consumedTipStyle = ref<Record<string, string>>({})
+const consumedTipEl = ref<HTMLElement | null>(null)
+let consumedTipAnchor: HTMLElement | null = null
+let consumedTipTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearConsumedTipTimer() {
+  if (consumedTipTimer) {
+    clearTimeout(consumedTipTimer)
+    consumedTipTimer = null
   }
+}
+
+function placeConsumedTip(anchor: HTMLElement) {
+  const rect = anchor.getBoundingClientRect()
+  const margin = 8
+  let x = rect.left + rect.width / 2
+  const y = rect.top - 6
+  consumedTipStyle.value = { left: `${x}px`, top: `${y}px` }
+  nextTick(() => {
+    const node = consumedTipEl.value
+    if (!node || !showConsumedDetail.value) return
+    const box = node.getBoundingClientRect()
+    let dx = 0
+    if (box.left < margin) dx = margin - box.left
+    else if (box.right > window.innerWidth - margin) dx = window.innerWidth - margin - box.right
+    if (dx) consumedTipStyle.value = { left: `${x + dx}px`, top: `${y}px` }
+  })
+}
+
+function showConsumedDetailTip(event: MouseEvent) {
+  const anchor = event.currentTarget as HTMLElement | null
+  if (!anchor || consumedTokenLines.value.length === 0) return
+  consumedTipAnchor = anchor
+  clearConsumedTipTimer()
+  consumedTipTimer = setTimeout(() => {
+    consumedTipTimer = null
+    showConsumedDetail.value = true
+    placeConsumedTip(anchor)
+  }, 200)
+}
+
+function hideConsumedDetailTip() {
+  clearConsumedTipTimer()
+  showConsumedDetail.value = false
+  consumedTipAnchor = null
+}
+
+watch(consumedTokenLines, (lines) => {
+  if (!lines.length) {
+    hideConsumedDetailTip()
+    return
+  }
+  if (showConsumedDetail.value && consumedTipAnchor) placeConsumedTip(consumedTipAnchor)
+})
+
+onBeforeUnmount(() => {
+  cancelAnimationFrame(consumedAnimRaf)
+  clearConsumedTipTimer()
 })
 
 /** 面板快捷指令当场发送：不改输入框里已有的字，选区仍走 consumeWorkbenchContext */
@@ -1977,8 +2106,8 @@ const handleSendClick = (event: MouseEvent) => {
             v-if="consumedTokenLabel"
             class="session-token-chip"
             :aria-label="consumedTokenTitle"
-            @mouseenter="showConsumedTip($event, consumedTokenTitle, 'top')"
-            @mouseleave="hideConsumedTip"
+            @mouseenter="showConsumedDetailTip"
+            @mouseleave="hideConsumedDetailTip"
           >{{ consumedTokenLabel }}</span>
         </div>
         <div class="input-footer-right">
@@ -2113,7 +2242,67 @@ const handleSendClick = (event: MouseEvent) => {
     </div>
   </div>
   </div>
-  <HoverTipOverlay :tip="consumedHoverTip" />
+  <Teleport to="body">
+    <div
+      v-if="showConsumedDetail && consumedBreakdown"
+      ref="consumedTipEl"
+      class="context-mini-tip is-detail session-token-tip"
+      role="tooltip"
+      :style="consumedTipStyle"
+    >
+      <div class="ctx-usage-simple">
+        <span class="ctx-usage-simple-line">{{ consumedBreakdown.totalText }}</span>
+      </div>
+      <div v-if="consumedBreakdown.bar.length" class="ctx-usage-segments">
+        <div
+          v-for="part in consumedBreakdown.bar"
+          :key="part.key"
+          class="ctx-usage-seg"
+          :style="{ flexGrow: part.tokens, flexBasis: '0px', background: part.color }"
+        ></div>
+      </div>
+      <ul class="ctx-usage-list">
+        <li class="ctx-usage-item">
+          <div class="ctx-usage-row">
+            <span
+              class="ctx-usage-swatch"
+              :class="{ 'session-token-swatch-group': !!consumedBreakdown.cache }"
+              :style="consumedBreakdown.cache ? undefined : { background: consumedBreakdown.input.color }"
+            ></span>
+            <span class="ctx-usage-name">{{ consumedBreakdown.input.label }}</span>
+            <span class="ctx-usage-pct-col">{{ consumedBreakdown.input.value }}</span>
+            <span class="session-token-share"></span>
+          </div>
+          <ul v-if="consumedBreakdown.cache" class="ctx-usage-children">
+            <li class="ctx-usage-row child">
+              <span class="ctx-usage-swatch" :style="{ background: consumedBreakdown.cache.color }"></span>
+              <span class="ctx-usage-name">{{ consumedBreakdown.cache.label }}</span>
+              <span class="ctx-usage-pct-col">{{ consumedBreakdown.cache.value }}</span>
+              <span class="session-token-share">{{ consumedBreakdown.cache.note }}</span>
+            </li>
+            <li v-if="consumedBreakdown.miss" class="ctx-usage-row child">
+              <span class="ctx-usage-swatch" :style="{ background: consumedBreakdown.miss.color }"></span>
+              <span class="ctx-usage-name">{{ consumedBreakdown.miss.label }}</span>
+              <span class="ctx-usage-pct-col">{{ consumedBreakdown.miss.value }}</span>
+              <span class="session-token-share">{{ consumedBreakdown.miss.note }}</span>
+            </li>
+          </ul>
+        </li>
+        <li class="ctx-usage-item">
+          <div class="ctx-usage-row">
+            <span class="ctx-usage-swatch" :style="{ background: consumedBreakdown.output.color }"></span>
+            <span class="ctx-usage-name">{{ consumedBreakdown.output.label }}</span>
+            <span class="ctx-usage-pct-col">{{ consumedBreakdown.output.value }}</span>
+            <span class="session-token-share"></span>
+          </div>
+        </li>
+      </ul>
+      <div v-if="consumedBreakdown.rate" class="session-token-rate">
+        <span>{{ consumedBreakdown.rate.label }}</span>
+        <span>{{ consumedBreakdown.rate.value }}</span>
+      </div>
+    </div>
+  </Teleport>
   <HoverTipOverlay :tip="skillChipHoverTip" />
 </template>
 
@@ -3345,6 +3534,59 @@ const handleSendClick = (event: MouseEvent) => {
   cursor: help;
   user-select: none;
   white-space: nowrap;
+}
+
+.session-token-tip {
+  position: fixed;
+  z-index: 10050;
+  transform: translate(-50%, -100%);
+  min-width: 240px;
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  pointer-events: none;
+}
+
+.session-token-tip .ctx-usage-row,
+.session-token-tip .ctx-usage-row.child {
+  grid-template-columns: 8px minmax(4.5em, 1fr) auto 3.2em;
+}
+
+.session-token-tip .ctx-usage-row.child {
+  grid-template-columns: 6px minmax(4.5em, 1fr) auto 3.2em;
+}
+
+.session-token-tip .ctx-usage-pct-col {
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.session-token-tip .ctx-usage-row.child .ctx-usage-pct-col {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+.session-token-swatch-group {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border-color);
+}
+
+.session-token-share {
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.session-token-rate {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .input-footer-right {
