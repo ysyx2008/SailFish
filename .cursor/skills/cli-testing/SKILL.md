@@ -43,6 +43,10 @@ bash electron/cli/test-cli.sh            # 有 API Key 时跑全量
 | watch/ 目录 | `sailfish watch:list && sailfish watch:history && sailfish watch:templates && sailfish watch:state` |
 | sensor/ 目录 | `sailfish sensor:status && sailfish sensor:heartbeat` |
 
+## 替我审批评审员（真模型评测）
+
+只在改了评审员的规则说明、裁决表、它看的证据，或换评审模型时跑（花真 token，别的改动不跑）：`node scripts/eval-auto-review.cjs [--profile=模型] [场景名片段]`。「必须交给用户」的放行一条即失败；新发现的漏判先补成场景再修。
+
 > 优先用 `npm run sailfish --` 或 `node electron/cli/main.js`（开发态默认沙箱）。PATH 里的 `sailfish` 若来自正式装机，会写桌面真实数据，须加 `--sandbox`。`npm run sft` 仍为别名。
 
 ## 新增服务或命令时
