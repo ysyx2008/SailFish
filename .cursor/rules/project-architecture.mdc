@@ -198,7 +198,7 @@ Agent 有四种存在方式，对应四类**互斥**的会话（`kind`）。把�
 - **ReAct 循环**：思考 → 工具调用 → 观察结果 → 循环
 - **工具系统**：内置工具 + 技能系统（按需加载）+ MCP 工具 + 插件工具
 - **三种终端模式**：`local` / `ssh` / `assistant`，见下方独立章节
-- **并行子 Agent**：`dispatch_agents` 工具分派轻量子任务并行执行，支持 Agent 类型系统（explore/edit/research）、同步/异步双模式、prompt cache 优化。仅 local 和 assistant 模式可用（子 Agent 只能操作本地文件系统和执行本地命令）
+- **并行子 Agent**：`dispatch_agents` 工具分派轻量子任务并行执行，同步/异步双模式、prompt cache 优化；伙计不分类型，能用哪些工具看 `ToolMeta.allowedForSubAgent`，标了 `inheritToSubAgents` 的技能连同状态（深拷贝）一起带给伙计。仅 local 和 assistant 模式可用（子 Agent 只能操作本地文件系统和执行本地命令）
 - **风险评估**：safe / moderate / dangerous / blocked 四级
 - **执行模式**：strict（全确认）/ relaxed（危险确认）/ free（全自动）。输入框把「替我审批」列成第四档（选它等于宽松，再加先替你看；默认关）：本来要问用户的确认，可先交给独立评审员对照用户原话决定是否替他放行，见 `agent/SPEC.md`
 - **Agent Workspace**：`{userData}/agent-workspace/`，Agent 私有数据目录，文件读写自动跳过确认
@@ -206,7 +206,8 @@ Agent 有四种存在方式，对应四类**互斥**的会话（`kind`）。把�
 - **会话持久化**：Agent 实例按 `agentKey` 复用，会话状态跨多次 run 累积；后端是唯一数据源，增量检查点防丢失，支持跨会话恢复。细节见 `agent/SPEC.md`
 - **会话领域模型（OOP 重构中）**：`electron/services/conversation/`——把原本散在 `Agent` 上的 `_session*` 一族状态收进 **`Conversation` 聚合根**（唯一真相源：transcript `messages`+`steps`，派生投影 taskMemory/cachePrefix，token 账；身份 `id/kind/createdAt` 与形态 `terminalType/sshHost` 不可变）。三类会话 `kind`（task/companion/watch）的行为差异由 **`CONVERSATION_POLICY` 数据驱动策略表**表达（不散布 `if (kind===…)`），`ConversationManager` 读表决策（如冷启动是否回种 sessionId）+ 委托 `ConversationStore` 查询/落盘。注意 `seedFromHistoryOnColdStart` 对 companion+watch 均为 true（== 旧 `_persistentNamedAgent`，持久命名 Agent）。详见 `docs/conversation-refactor-design.md`
 - **Agent ↔ Tab ↔ 窗格 模型**（v2，2026-05-02）：一个 tab = 一个 Agent + N 个终端窗格。Agent 实例由 tab 拥有（`agentKey = tabId`，终端 Agent；助手 Agent 用前端 UUID）。窗格关闭、SSH 断开、分屏切换都不影响 Agent 实例存活——Agent 与底层 PTY/SSH 生命周期完全解耦，仅在用户关闭 tab 时由前端 `closeTab` 显式触发 `cleanupAgent`。Agent 类自身不持有 ptyId 字段，每次 run 通过 `context.ptyId` 知道当前操作哪个窗格。
-- **技能系统**：`agent/skills/` 下为按需加载的技能包，如 excel / email / browser / word / pdf / chart / calendar / todo（本地秘书待办 → `TODO.json`）/ terminal / watch / personality / skill-creator / 以及 IM 渠道（feishu / wecom / dingtalk）等，通过 `skill` 工具触发
+- **技能系统**：`agent/skills/` 下为按需加载的技能包，如 excel / email / browser / word / pdf / chart / calendar / todo（本地秘书待办 → `TODO.json`）/ terminal / watch / personality / skill-creator / 以及 IM 渠道（feishu / wecom / dingtalk）等，通过 `skill` 工具触发。内置技能开关统一由 `skills/enablement.ts` 回答：大多默认开（关掉进 `disabledBuiltinSkills`），`defaultEnabled: false` 的默认关（打开进 `enabledOptInSkills`）。技能可挂通用钩子：给出工作目录（本机文件相对路径与 `exec` 默认 cwd 以它为准）、每轮开始、包住每次工具调用（先加载的在外层，出错不连累工具）、随伙计继承
+- **编程技能**（`skills/coding/`，默认关，见其 SPEC）：打开本机项目、ripgrep 搜索、一次改多处、改后 tree-sitter 语法检查（只报新引入的错误）、每轮检查点 + 撤回。检查点是 `{userData}/coding/checkpoints/<项目路径哈希>/` 下的影子 git 仓库（`--git-dir` + `--work-tree`），从不读写项目自己的 `.git`
 - **浏览器助手（Browser Bridge）**：`resources/browser-bridge/` + `electron/services/browser-bridge/` — Chrome/Edge/Firefox 扩展 + Native Host，复用用户已打开浏览器标签与登录态；数据目录随 `userData`（可自定义），host 通过 `$HOME/.sailfish-browser-bridge.json` 指针定位；Agent 使用 `browser_launch { attach: true }`；设置 → 集成 → 浏览器助手
 - **详细设计**：`electron/services/agent/SPEC.md`
 
@@ -307,6 +308,8 @@ Agent 的记忆分三层，模拟人类记忆的衰减梯度，三层协同在�
 - **构建**：`npm run build`（Vite build → electron-builder）
 - **平台**：macOS (universal)、Windows (NSIS)
 - **自动更新**：GitHub Releases + electron-updater（国内 OSS 镜像与差分/blockmap 策略见 `docs/auto-update-oss.md`）
+- **ripgrep**：`npm run download:ripgrep`（各 build 脚本已前置）按目标平台/架构下载到 `resources/ripgrep/<os>-<arch>/`（不进 git），electron-builder `extraResources` 按 `${os}-${arch}` 取；mac universal 两份各打一次后自动 lipo 合并
+- **tree-sitter**：`web-tree-sitter` + `tree-sitter-wasms` 为 devDependencies，JS 打进主进程产物，十种语言的 wasm 由 vite 插件拷进 `dist-electron/tree-sitter/`（随 asar，运行时读成字节加载，不必解包）
 - **模型**：构建前需 `npm run download:models` 下载嵌入模型；语音包用 `npm run build:speech-pack` 另打，上传 OSS / GitHub `speech-pack-v*` Release
 
 ## 常用命令
