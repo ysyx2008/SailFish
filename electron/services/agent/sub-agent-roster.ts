@@ -143,6 +143,7 @@ export class SubAgentRoster {
       }
       const done = () => {
         signal.removeEventListener('abort', done)
+        this.waiters = this.waiters.filter(w => w !== done)
         resolve()
       }
       this.waiters.push(done)

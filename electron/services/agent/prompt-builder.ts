@@ -18,6 +18,7 @@ import { buildBrowserBridgePromptSection } from '../browser-bridge/prompt-sectio
 import { getBrowserBridgeService } from '../browser-bridge/browser-bridge.service'
 import { wrapCompositionSection } from './context-composition'
 import { t } from './i18n'
+import { MAX_WAIT_SECONDS } from './background-watch'
 
 const log = createLogger('PromptBuilder')
 const IDENTITY_FILENAME = 'IDENTITY.md'
@@ -950,8 +951,8 @@ export class PromptBuilder {
   private buildExecutionGuide(): string {
     if (!this.isAssistant) return ''
     return [
-      '**命令执行**：短命令直接 `exec`，长命令加 `timeout`（默认 60s，最大 600s）。超时 ≠ 失败。',
-      '- **并行长任务**：`exec("cmd > /tmp/out.log 2>&1 & echo $!", timeout=5)` 获取 PID → 独立 exec 轮询 `sleep N && tail -20 /tmp/out.log && ps -p PID || echo done` → `kill PID` 终止',
+      `**命令执行**：命令直接 \`exec\`，\`wait_seconds\` 是先等多久（默认 60s，最大 ${MAX_WAIT_SECONDS}s），没跑完就转后台、不算失败，这一轮会盯到它结束。`,
+      '- **并行长任务**：分别 `exec`，转后台后用 `await_exec(task_id)` 看进度；要停用 `await_exec(task_id, stop: true)`，别自己 `kill`',
     ].join('\n')
   }
 

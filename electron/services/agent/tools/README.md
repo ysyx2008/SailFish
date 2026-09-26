@@ -33,7 +33,7 @@ tools/
 
 ### 轻量命令执行 (exec.ts + exec-manager.ts，仅 assistant 模式)
 - `exec` - 基于 child_process.spawn 的命令执行；wait_seconds 内未结束自动转后台返回 task_id
-- `await_exec` - 等待已转后台的任务结束、命中 pattern、或返回最新进度
+- `await_exec` - 等待已转后台的任务结束、命中 pattern、返回最新进度，或叫停自己起的命令
 - `BackgroundExecManager` - 后台任务管理器（exec-manager.ts）：进程托管、ring buffer、5 分钟自动清理、max_seconds 安全网
 
 ### 网页抓取 (web-fetch.ts → ../../web-fetch.service)

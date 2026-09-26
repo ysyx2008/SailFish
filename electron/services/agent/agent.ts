@@ -81,7 +81,7 @@ import {
   patchLoadedSkillsSectionsInSystemPrompt,
 } from './prompt-builder'
 import { consumeProactiveContext } from './proactive-store'
-import { BackgroundWatchList } from './background-watch'
+import { BackgroundWatchList, HOLD_CHECKPOINT_MS, type HoldWake } from './background-watch'
 import { applyParallelShare, computeToolOutputBudget } from './tool-output-budget'
 import { collapseRepeatedToolOutputs, reduceRepeatedToolOutput } from './repeated-tool-output'
 import { SUMMARY_MAX_OUTPUT_TOKENS } from '../ai-request-budget'
@@ -4758,18 +4758,31 @@ export abstract class Agent {
   /**
    * 这一轮答完了，但还有伙计没回来、或答应接着盯的后台工作没了结：
    * 闲着等，直到有人敲门、结果送到、用户说话或按停。
+   * 盯后台工作等久了，叫醒它看一眼进度。
    */
   private async waitWhileHeld(run: AgentRun): Promise<void> {
-    const signal = run.abortController?.signal
-    if (!signal) return
-    const waits: Promise<void>[] = [this._backgroundWatches.waitForWake(signal)]
-    if (this._subAgentRoster?.hasLive()) waits.push(this._subAgentRoster.waitForKnock(signal))
-    this._backgroundWatches.beginHold()
-    try {
-      await Promise.race(waits)
-    } finally {
-      this._backgroundWatches.endHold()
+    const runSignal = run.abortController?.signal
+    if (!runSignal || runSignal.aborted) return
+    const hold = new AbortController()
+    const endHoldEarly = () => hold.abort()
+    runSignal.addEventListener('abort', endHoldEarly, { once: true })
+    const checkpointMs = this._backgroundWatches.hasPending() ? HOLD_CHECKPOINT_MS : undefined
+    const waits: Promise<HoldWake>[] = [this._backgroundWatches.waitForWake(hold.signal, checkpointMs)]
+    if (this._subAgentRoster?.hasLive()) {
+      waits.push(this._subAgentRoster.waitForKnock(hold.signal).then(() => 'woken' as const))
     }
+    this._backgroundWatches.beginHold()
+    let wake: HoldWake = 'woken'
+    try {
+      wake = await Promise.race(waits)
+    } finally {
+      hold.abort()
+      runSignal.removeEventListener('abort', endHoldEarly)
+      this._backgroundWatches.endHold(wake === 'checkpoint')
+    }
+    if (wake !== 'checkpoint' || runSignal.aborted) return
+    const notes = this._backgroundWatches.checkpointNotes()
+    if (notes.length > 0) this.deliverBackgroundNotice(notes.join('\n\n'))
   }
 
   protected createToolExecutorConfig(run: AgentRun): ToolExecutorConfig {

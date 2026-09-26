@@ -13,6 +13,7 @@ import { isConfigured as isWebSearchConfigured } from '../web-search/index'
 import { jinaAvailable as isJinaReaderAvailable } from '../web-fetch.service'
 import type { AgentExecutionPhase } from './types'
 import { t } from './i18n'
+import { MAX_WAIT_SECONDS } from './background-watch'
 import { getStreamPlaceholder } from './tool-metadata'
 import { resolveContextAction } from './tools/context'
 
@@ -469,14 +470,16 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
 - find -exec / -delete、tar --to-command、git rebase --exec 等结构性 flag 会被标记为危险`
   const execWaitAndUsage = `**等待与转后台**：
 - wait_seconds 内结束 → 返回完整结果
-- 超过 wait_seconds 仍在跑 → 自动转后台，返回 task_id 和 pid
-- 想接着等结果用 await_exec(task_id)；想杀就 exec("kill <pid>")。macOS/Linux 上每条命令自成一组，用 exec("kill -- -<pid>") 连它带出来的子进程一起停
+- 超过 wait_seconds 仍在跑 → 自动转后台，返回 task_id 和 pid，你可以先去做别的
+- 有终点的命令转后台后仍有人盯：你这一轮收尾时它还没结束，这一轮会接着等它，结束时结果送回来，不用为了不丢结果专门再等。等久了每隔几分钟会叫醒你看一眼最新输出，由你判断接着等、放手还是停掉
+- 等的时候不卡用户：用户发来新消息，这次等待立刻结束、命令继续跑。先回应用户，答完就收住，不必自己再等
+- 常驻命令（服务、监听这类不会自己结束的）启动时设 service: true：转后台后不盯、结束也不回报，否则这一轮会一直挂着等它
+- 想马上拿到最新输出或等某句日志用 await_exec(task_id)；想停用 await_exec(task_id, stop: true)，连它带出来的子进程一起停
 
 **典型用法**：
 - 短命令（ls/grep/cat...）：直接 exec，默认 wait 60s 足够
-- 启动长任务（构建/部署/服务）：exec("npm run build", wait_seconds: 5) 立刻转后台，去做别的，回头 await_exec
-- 启动后想看到关键日志：先 exec 转后台拿 task_id，再 await_exec(task_id, pattern: "Listening on")
-- 等待途中用户发来新消息：这次等待立刻结束，命令继续跑。先回应用户，答完就收住，不必自己再等；这一轮会接着盯它，结束时结果会送回来。要看进度或等某句输出，仍用 await_exec`
+- 构建/测试/脚本：直接 exec 等；想边等边做别的就把 wait_seconds 设短，收尾时会接着等
+- 启动服务：exec("npm run dev", wait_seconds: 5, service: true)，再 await_exec(task_id, pattern: "Listening on") 确认起来了`
   const execDescriptionForParent = `${execIntro}
 
 **安全规则（命中标为 dangerous，strict/relaxed 需确认；free 放行）**：
@@ -511,11 +514,15 @@ ${execWaitAndUsage}`
               },
               wait_seconds: {
                 type: 'number',
-                description: '同步等待秒数（默认 60，最大 600）。命令在此时间内结束就返回完整结果，否则转后台返回 task_id'
+                description: `同步等待秒数（默认 60，最大 ${MAX_WAIT_SECONDS}）。命令在此时间内结束就返回完整结果，否则转后台返回 task_id`
               },
               max_seconds: {
                 type: 'number',
                 description: '命令最长允许运行时间（默认 3600 即 1 小时，最大 86400 即 24 小时）。到点会被 SIGKILL，防止僵尸进程'
+              },
+              service: {
+                type: 'boolean',
+                description: '常驻命令（开着的服务、监听，不会自己结束）设为 true：转后台后不盯、结束也不回报。脚本、构建、测试这类有终点的不要设'
               },
               skill_id: {
                 type: 'string',
@@ -538,17 +545,20 @@ ${execWaitAndUsage}`
         type: 'function',
         function: {
           name: 'await_exec',
-          description: `等待 exec 转后台的任务结束、命中关键输出、或返回最新进度。
+          description: `等待 exec 转后台的任务结束、命中关键输出、或返回最新进度；也用来停掉它。
 
 **典型用法**：
 - 等任务结束：await_exec(task_id, wait_seconds: 60)
 - 等关键日志：await_exec(task_id, pattern: "Listening on \\\\d+")  → 命中即返回
 - 查看当前进度：await_exec(task_id, wait_seconds: 1)  → 1 秒后返回最新输出
+- 停掉：await_exec(task_id, stop: true)  → 像 Ctrl+C 那样先喊停，不退再强制，连子进程一起；只能停这场对话自己起的命令
 
 **返回**：
 - 任务已结束：output 全量 + exit_code
-- pattern 命中 或 wait 超时仍在跑：返回最近 8KB 输出，isRunning=true，可继续 await
-- 任务不存在（task_id 错误或已超过 5 分钟自动清理）：报错`,
+- pattern 命中 或 wait 超时仍在跑：返回最近 8KB 输出，isRunning=true。有终点的命令这一轮会盯到底，收尾时没结束就接着等、结束后结果送回来，不必反复 await
+- 任务不存在（task_id 错误或已超过 5 分钟自动清理）：报错
+
+**常驻命令**：启动时忘了标 service 的服务/监听，用 await_exec(task_id, service: true) 改标成常驻，之后不盯、结束也不回报`,
           parameters: {
             type: 'object',
             properties: {
@@ -558,11 +568,19 @@ ${execWaitAndUsage}`
               },
               wait_seconds: {
                 type: 'number',
-                description: '最长等待秒数（默认 30，最大 600）。期间任务结束 / pattern 命中即提前返回'
+                description: `最长等待秒数（默认 30，最大 ${MAX_WAIT_SECONDS}）。期间任务结束 / pattern 命中即提前返回`
               },
               pattern: {
                 type: 'string',
                 description: '可选正则（JS 语法，多行模式）。一旦命中立即返回，便于"等服务启动"等场景。如 "Listening on" 或 "error:"'
+              },
+              service: {
+                type: 'boolean',
+                description: '启动时忘了标的常驻命令，设为 true 改标成常驻：之后不盯、结束也不回报'
+              },
+              stop: {
+                type: 'boolean',
+                description: '设为 true 停掉这条命令（连子进程一起），停完告诉用户停了什么、为什么'
               }
             },
             required: ['task_id']

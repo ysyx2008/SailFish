@@ -3,8 +3,7 @@
  *
  * 用于支持 exec 工具的"超时转后台"语义。使用 child_process.spawn 启动命令，
  * 挂载 stdout/stderr 监听器持续累积输出到 ring buffer。Agent 后续可以通过
- * await_exec 工具按 task_id 拉取最新输出、等待 pattern 匹配，或主动 kill
- * （`exec("kill <pid>")`）。
+ * await_exec 工具按 task_id 拉取最新输出、等待 pattern 匹配，或叫停自己起的命令。
  *
  * 关键约束：
  * - 仅供 exec 工具使用（无 PTY 会话），不支持交互式命令
@@ -107,7 +106,7 @@ interface InternalTask {
   /** 等待者通知列表（数据到达 / 任务结束时触发） */
   waiters: Set<() => void>
   /**
-   * 用户插话打断了等待：进程结束且没有人在等时，把结果送回那场对话。
+   * 等待结束时命令还在跑、那场对话要盯到底：进程结束且没有人在等时，把结果送回那场对话。
    * 有人用 wait 拿到了结束，则 consume，不再另送。
    */
   finishListener?: (snap: BackgroundExecTaskSnapshot) => void
@@ -117,6 +116,10 @@ interface InternalTask {
   reportTimer?: NodeJS.Timeout
   /** 用户按停后，收拾时间到了强制结束 */
   stopTimer?: NodeJS.Timeout
+  /** 常驻命令（服务、监听）：本来就不会自己结束，不盯、结束也不回报 */
+  service?: boolean
+  /** 哪个 Agent 起的：只有它自己能叫停 */
+  owner?: string
 }
 
 export type WaitReason = 'done' | 'pattern' | 'timeout' | 'aborted' | 'user_message'
@@ -128,6 +131,8 @@ export interface SpawnOptions {
   maxSeconds: number
   /** 额外注入的环境变量（合并到 process.env，用于技能 API Key 等敏感配置） */
   env?: Record<string, string>
+  /** 哪个 Agent 起的 */
+  owner?: string
 }
 
 export interface WaitOptions {
@@ -203,6 +208,7 @@ class BackgroundExecManager {
       child,
       cwd: opts.cwd,
       maxSeconds: opts.maxSeconds,
+      owner: opts.owner,
     })
   }
 
@@ -211,6 +217,7 @@ class BackgroundExecManager {
     child: ChildProcess
     cwd?: string
     maxSeconds: number
+    owner?: string
   }): InternalTask {
     const taskId = `exec-${this.nextId++}`
     const { child, command, maxSeconds } = opts
@@ -226,6 +233,7 @@ class BackgroundExecManager {
       exitCode: null,
       signal: null,
       waiters: new Set(),
+      owner: opts.owner,
     }
 
     const onData = (chunk: Buffer) => {
@@ -345,7 +353,7 @@ class BackgroundExecManager {
   }
 
   /**
-   * 用户打断了等待。进程稍后结束、且没有人再用 wait 拿到结束时，调用 listener。
+   * 等待结束时命令还在跑。进程稍后结束、且没有人再用 wait 拿到结束时，调用 listener。
    * 再次调用会换掉上一个 listener（仍是同一条「结束了要送回」）。
    */
   armFinishReport(task: InternalTask, listener: (snap: BackgroundExecTaskSnapshot) => void): void {
@@ -376,6 +384,12 @@ class BackgroundExecManager {
       && this.tasks.get(task.taskId) === task
   }
 
+  /** 标成常驻：之后不盯、结束也不回报 */
+  markService(task: InternalTask): void {
+    task.service = true
+    this.consumeFinishReport(task)
+  }
+
   private scheduleFinishReport(task: InternalTask): void {
     if (task.finishConsumed || !task.finishListener) return
     if (task.reportTimer) clearTimeout(task.reportTimer)
@@ -393,7 +407,7 @@ class BackgroundExecManager {
 
   /**
    * 立刻给运行中的任务（连同子进程）发信号。返回是否实际发出信号。
-   * 日常 kill 让 Agent 通过 `exec("kill <pid>")` 完成。
+   * 正常停命令走 stop（先喊停、不退再强制）。
    */
   kill(taskId: string, signal: NodeJS.Signals = 'SIGTERM'): boolean {
     const task = this.tasks.get(taskId)
@@ -402,13 +416,13 @@ class BackgroundExecManager {
   }
 
   /**
-   * 用户按停：先像 Ctrl+C 那样喊停，收拾时间到了再强制结束整组。
+   * 用户按停、或 Agent 叫停自己起的命令：先像 Ctrl+C 那样喊停，收拾时间到了再强制结束整组。
    * 停掉的不再送回结果。返回是否确实在跑、发出了停止。
    */
   stop(task: InternalTask, graceMs: number = STOP_GRACE_MS): boolean {
     this.consumeFinishReport(task)
     if (task.status !== 'running') return false
-    log.info(`exec ${task.taskId} stopped by user (pid=${task.child.pid})`)
+    log.info(`exec ${task.taskId} stopped (pid=${task.child.pid})`)
     if (IS_WINDOWS) {
       // 没有 Ctrl+C 式的信号；shell 一退父子链就断，taskkill /T 找不到子进程，只能趁现在整树结束
       signalTree(task.child, 'SIGKILL')
