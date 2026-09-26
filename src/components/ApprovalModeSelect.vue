@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, ChevronDown, HelpCircle, X } from 'lucide-vue-next'
+import { Check, ChevronDown } from 'lucide-vue-next'
 
 type ApprovalUiState = 'strict' | 'relaxed' | 'autoReview' | 'free'
 
@@ -18,13 +18,9 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 const isOpen = ref(false)
-const tipOpen = ref(false)
 const triggerRef = ref<HTMLButtonElement | null>(null)
-const tipTriggerRef = ref<HTMLButtonElement | null>(null)
 const menuRef = ref<HTMLDivElement | null>(null)
-const tipRef = ref<HTMLDivElement | null>(null)
 const menuStyle = ref<Record<string, string>>({})
-const tipStyle = ref<Record<string, string>>({})
 
 const triggerLabel = computed(() => t(`ai.approvalMode.${props.modelValue}.label`))
 const triggerTitle = computed(() => t(`ai.approvalMode.${props.modelValue}.desc`))
@@ -60,43 +56,19 @@ const updateMenuPosition = () => {
   menuStyle.value = placePanel(trigger, menu, 260)
 }
 
-const updateTipPosition = () => {
-  const trigger = tipTriggerRef.value ?? triggerRef.value
-  const tip = tipRef.value
-  if (!trigger || !tip) return
-  tipStyle.value = placePanel(trigger, tip, 300)
-}
-
 const closeMenu = () => {
   isOpen.value = false
 }
 
-const closeTip = () => {
-  tipOpen.value = false
-}
-
 const openMenu = async () => {
-  closeTip()
   isOpen.value = true
   await nextTick()
   requestAnimationFrame(updateMenuPosition)
 }
 
-const openTip = async () => {
-  closeMenu()
-  tipOpen.value = true
-  await nextTick()
-  requestAnimationFrame(updateTipPosition)
-}
-
 const toggleMenu = () => {
   if (isOpen.value) closeMenu()
   else void openMenu()
-}
-
-const toggleTip = () => {
-  if (tipOpen.value) closeTip()
-  else void openTip()
 }
 
 const selectState = (state: ApprovalUiState) => {
@@ -113,20 +85,10 @@ const handleDocumentClick = (event: MouseEvent) => {
       closeMenu()
     }
   }
-  if (tipOpen.value) {
-    if (!tipTriggerRef.value?.contains(target) && !tipRef.value?.contains(target)) {
-      closeTip()
-    }
-  }
 }
 
 const handleDocumentKeydown = (event: KeyboardEvent) => {
   if (event.key !== 'Escape') return
-  if (tipOpen.value) {
-    event.preventDefault()
-    closeTip()
-    return
-  }
   if (isOpen.value) {
     event.preventDefault()
     closeMenu()
@@ -143,16 +105,6 @@ watch(isOpen, (open) => {
   window.removeEventListener('scroll', updateMenuPosition, true)
 })
 
-watch(tipOpen, (open) => {
-  if (open) {
-    window.addEventListener('resize', updateTipPosition)
-    window.addEventListener('scroll', updateTipPosition, true)
-    return
-  }
-  window.removeEventListener('resize', updateTipPosition)
-  window.removeEventListener('scroll', updateTipPosition, true)
-})
-
 onMounted(() => {
   document.addEventListener('click', handleDocumentClick)
   document.addEventListener('keydown', handleDocumentKeydown)
@@ -163,13 +115,11 @@ onUnmounted(() => {
   document.removeEventListener('keydown', handleDocumentKeydown)
   window.removeEventListener('resize', updateMenuPosition)
   window.removeEventListener('scroll', updateMenuPosition, true)
-  window.removeEventListener('resize', updateTipPosition)
-  window.removeEventListener('scroll', updateTipPosition, true)
 })
 </script>
 
 <template>
-  <div class="approval-mode-select" :class="{ open: isOpen, 'tip-open': tipOpen }">
+  <div class="approval-mode-select" :class="{ open: isOpen }">
     <button
       ref="triggerRef"
       type="button"
@@ -183,18 +133,6 @@ onUnmounted(() => {
     >
       <span class="approval-mode-label">{{ triggerLabel }}</span>
       <ChevronDown :size="12" class="approval-mode-chevron" />
-    </button>
-    <button
-      ref="tipTriggerRef"
-      type="button"
-      class="approval-mode-help"
-      :class="{ open: tipOpen }"
-      :aria-expanded="tipOpen"
-      :aria-label="t('ai.approvalMode.tipAria')"
-      :title="t('ai.approvalMode.tipAria')"
-      @click.stop="toggleTip"
-    >
-      <HelpCircle :size="13" />
     </button>
 
     <Teleport to="body">
@@ -221,38 +159,13 @@ onUnmounted(() => {
           <Check v-if="state === modelValue" :size="14" class="approval-mode-check" />
           <span v-else class="approval-mode-check-placeholder" aria-hidden="true" />
           <span class="approval-mode-item-text">
-            <span class="approval-mode-item-label">{{ t(`ai.approvalMode.${state}.label`) }}</span>
+            <span class="approval-mode-item-title">
+              <span class="approval-mode-item-label">{{ t(`ai.approvalMode.${state}.label`) }}</span>
+              <span v-if="state === 'autoReview'" class="approval-mode-recommended">{{ t('ai.askingRecommended') }}</span>
+            </span>
             <span class="approval-mode-item-desc">{{ t(`ai.approvalMode.${state}.desc`) }}</span>
           </span>
         </button>
-      </div>
-    </Teleport>
-
-    <Teleport to="body">
-      <div
-        v-if="tipOpen"
-        ref="tipRef"
-        class="approval-mode-tip"
-        :style="tipStyle"
-        role="dialog"
-        :aria-label="t('ai.approvalMode.tipTitle')"
-        @click.stop
-      >
-        <header class="approval-mode-tip-head">
-          <span class="approval-mode-tip-title">{{ t('ai.approvalMode.tipTitle') }}</span>
-          <button type="button" class="approval-mode-tip-close" :aria-label="t('common.close')" @click="closeTip">
-            <X :size="14" />
-          </button>
-        </header>
-        <div class="approval-mode-tip-body">
-          <p>{{ t('ai.approvalMode.tipIntro') }}</p>
-          <dl>
-            <div v-for="state in STATES" :key="state" class="approval-mode-tip-row">
-              <dt>{{ t(`ai.approvalMode.${state}.label`) }}</dt>
-              <dd>{{ t(`ai.approvalMode.${state}.tip`) }}</dd>
-            </div>
-          </dl>
-        </div>
       </div>
     </Teleport>
   </div>
@@ -272,19 +185,20 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
   box-sizing: border-box;
-  height: 22px;
-  padding: 0 8px;
-  font-size: 11px;
+  height: var(--workbench-header-select-height, 22px);
+  padding: 2px 6px;
+  font-size: var(--workbench-header-select-font-size, 12px);
   font-weight: 500;
   font-family: inherit;
   line-height: 1;
   color: var(--text-secondary);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
   cursor: pointer;
   outline: none;
   white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .approval-mode-trigger:hover,
@@ -293,22 +207,8 @@ onUnmounted(() => {
   background: var(--bg-surface);
 }
 
-.approval-mode-trigger.state-strict {
-  color: var(--brand-vital);
-  border-color: color-mix(in srgb, var(--brand-vital) 45%, var(--border-color));
-  background: color-mix(in srgb, var(--brand-vital) 12%, var(--bg-tertiary));
-}
-
-.approval-mode-trigger.state-autoReview {
-  color: var(--accent-primary);
-  border-color: color-mix(in srgb, var(--accent-primary) 45%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-primary) 12%, var(--bg-tertiary));
-}
-
 .approval-mode-trigger.state-free {
   color: var(--brand-alert);
-  border-color: color-mix(in srgb, var(--brand-alert) 45%, var(--border-color));
-  background: color-mix(in srgb, var(--brand-alert) 12%, var(--bg-tertiary));
 }
 
 .approval-mode-label {
@@ -323,26 +223,6 @@ onUnmounted(() => {
 
 .approval-mode-select.open .approval-mode-chevron {
   transform: rotate(180deg);
-}
-
-.approval-mode-help {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  color: var(--text-secondary);
-  background: transparent;
-  border: none;
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.approval-mode-help:hover,
-.approval-mode-help.open {
-  color: var(--accent-primary);
-  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
 }
 </style>
 
@@ -417,10 +297,23 @@ onUnmounted(() => {
   gap: 2px;
 }
 
+.approval-mode-item-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .approval-mode-item-label {
   font-size: 12px;
   font-weight: 600;
   line-height: 1.35;
+}
+
+.approval-mode-recommended {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-primary);
 }
 
 .approval-mode-item-desc {
@@ -436,78 +329,5 @@ onUnmounted(() => {
   font-size: 11px;
   line-height: 1.45;
   color: var(--text-secondary);
-}
-
-.approval-mode-tip {
-  position: fixed;
-  z-index: 10000;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
-}
-
-.approval-mode-tip-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.approval-mode-tip-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.approval-mode-tip-close {
-  display: inline-flex;
-  padding: 2px;
-  color: var(--text-secondary);
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.approval-mode-tip-close:hover {
-  color: var(--text-primary);
-  background: var(--bg-tertiary);
-}
-
-.approval-mode-tip-body {
-  padding: 12px;
-  overflow-y: auto;
-  font-size: 12px;
-  line-height: 1.55;
-  color: var(--text-secondary);
-}
-
-.approval-mode-tip-body p {
-  margin: 0 0 10px;
-}
-
-.approval-mode-tip-body dl {
-  margin: 0;
-}
-
-.approval-mode-tip-row + .approval-mode-tip-row {
-  margin-top: 10px;
-}
-
-.approval-mode-tip-row dt {
-  margin: 0 0 2px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.approval-mode-tip-row dd {
-  margin: 0;
 }
 </style>

@@ -30,28 +30,22 @@ export default {
     autoReviewToggleTitle: 'When something would ask you, an independent reviewer checks it against your own words first. It can only approve — if unclear, it still asks you.',
     approvalMode: {
       menuLabel: 'What happens now',
-      tipAria: 'What these options mean',
-      tipTitle: 'What happens now',
       tipIntro: 'Some actions need your approval before the secretary proceeds. Pick one option to decide when you are asked, and who looks first.',
       strict: {
-        label: 'Ask every step',
-        desc: 'Every action waits for you',
-        tip: 'Every action pauses for your OK. Use this when you want to watch each step.',
+        label: 'Strict',
+        desc: 'Every action requires your confirmation',
       },
       relaxed: {
-        label: 'Ask if risky',
+        label: 'Relaxed',
         desc: 'Safe actions run; dangerous ones ask you',
-        tip: 'Safe actions run on their own. Dangerous ones — deleting files, changing the system — ask you first. Good for everyday use.',
       },
       autoReview: {
         label: 'Approve for me',
         desc: 'Risky actions are checked against your own words first; if unclear, it still asks you',
-        tip: 'Same as “Ask if risky”, but dangerous actions are checked against your own words first. If they match, it approves for you; if unclear, it still asks. It can only approve — it never refuses for you.',
       },
       free: {
-        label: 'Never ask',
-        desc: 'Everything runs automatically, including dangerous actions',
-        tip: 'Everything runs automatically, including dangerous actions. Risky — only when you fully trust it.',
+        label: 'Free',
+        desc: 'Everything runs automatically, with no confirmation',
       },
     },
     freeModeConfirmTitle: 'Enable Free Mode',
