@@ -2433,9 +2433,9 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
         </div>
       </div>
 
-      <!-- 系统环境信息 -->
-      <div v-if="!peek && currentSystemInfo" class="system-info-bar">
-        <div class="system-info-left host-info-trigger">
+      <!-- 顶栏兼窗口拖动条；助手页没有主机信息时也要留着 -->
+      <div v-if="!peek" class="system-info-bar">
+        <div v-if="currentSystemInfo" class="system-info-left host-info-trigger">
           <span class="system-icon">💻</span>
           <span class="system-text">
             {{ currentSystemInfo.os === 'windows' ? 'Windows' : currentSystemInfo.os === 'macos' ? 'macOS' : 'Linux' }}
@@ -3227,7 +3227,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
         <template #footer-left>
           <AiProfileSelect
             v-if="aiProfiles.length > 0"
-            compact
+            embedded
             :profiles="aiProfiles"
             :model-value="activeAiProfile?.id || ''"
             @update:model-value="changeAiProfile"
