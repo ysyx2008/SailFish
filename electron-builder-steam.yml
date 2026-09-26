@@ -61,6 +61,13 @@ extraResources:
     to: "browser-bridge"
     filter:
       - "**/*"
+  # 编程技能的搜索程序（scripts/download-ripgrep.js 按目标架构备好；mac universal 时两份同路径会被合成一份）
+  - from: "resources/ripgrep/${os}-${arch}"
+    to: "ripgrep"
+    filter:
+      - "rg"
+      - "rg.exe"
+      - "LICENSE-MIT"
   # 不包含 embedding 模型、语音模型
 win:
   icon: resources/icon.ico

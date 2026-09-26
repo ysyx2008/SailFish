@@ -60,3 +60,6 @@ resources/vc_redist.x64.exe
 docs/openclaw-comparison.md
 dist-electron-types/
 scripts/.release-state.json
+
+# 编程技能搜索程序（scripts/download-ripgrep.js 下载）
+resources/ripgrep/
