@@ -13,7 +13,7 @@ export const codingTools: ToolDefinitionWithMeta[] = [
     type: 'function',
     function: {
       name: 'code_open_project',
-      description: `打开本机项目目录，开始这场编程。之后本机文件工具（read_file / edit_file / write_text_file 等）的相对路径、exec 的默认工作目录都以项目根为准。
+      description: `打开本机项目目录，开始这场编程。之后本机文件工具（read_file / edit_file / write_text_file 等）的相对路径、exec 的默认工作目录都以项目根为准；终端窗格里的命令（execute_command）不受影响。
 
 返回：目录骨架（已跳过忽略的文件）、git 分支与未提交改动、识别到的项目类型与可用命令、项目里写给 AI 的开发约定。
 换项目时再调一次。`,
@@ -39,7 +39,7 @@ export const codingTools: ToolDefinitionWithMeta[] = [
 - glob 按文件名筛（如 "*.ts"、"src/**/*.{vue,ts}"），type 按语言筛（如 ts、py、rust、go、java）
 - output：content（默认，命中的行，可带上下文）/ files（只看哪些文件命中，最近改过的在前）/ count（每个文件命中数）
 - 结果有上限，超了会说明
-要跑 grep / find 时用它，不要用 exec。`,
+要跑 grep / find 时用它，不要自己跑命令。`,
       parameters: {
         type: 'object',
         properties: {
@@ -148,11 +148,11 @@ export const codingSkillContent = `# 编程
 
 你拿起了编程工具。按这个节奏干活：
 
-1. **先打开项目**：\`code_open_project\` 指定项目根目录。之后相对路径、exec 的默认目录都落在项目根。打开时返回的开发约定要遵守；子目录里另有 AGENTS.md 之类的说明时，进那个目录干活前先读。
-2. **找**：按内容用 \`code_search\`，按文件名 / 模式用 \`code_find_files\`。不要用 exec 跑 grep、find、ls -R。
+1. **先打开项目**：\`code_open_project\` 指定项目根目录。之后本机文件工具的相对路径、exec 的默认目录都落在项目根（终端窗格里的命令除外）。打开时返回的开发约定要遵守；子目录里另有 AGENTS.md 之类的说明时，进那个目录干活前先读。
+2. **找**：按内容用 \`code_search\`，按文件名 / 模式用 \`code_find_files\`。不要自己跑 grep、find、ls -R。
 3. **读**：\`read_file\`，大文件分段读。改哪里就先读哪里，别凭记忆改。
 4. **改**：改一处用 \`edit_file\`；同一个文件要改好几处，用 \`code_multi_edit\` 一次改完；新文件用 \`write_text_file\`。只改任务需要的地方，不顺手重排、重命名、改格式。改完如果结果里提示「可能多了语法错误」，先读那几行确认，是真错就立刻修。
-5. **验**：用 exec 跑打开项目时列出的检查 / 测试命令。没跑过不要说「改好了」；跑不了就说明为什么。
+5. **验**：跑打开项目时列出的检查 / 测试命令。有 exec 就用 exec，默认就在项目根；只能在终端窗格里跑（execute_command）时，窗格的目录不会跟着项目变，先 cd 到项目根。看退出码判断成败。没跑过不要说「改好了」；跑不了就说明为什么。
 
 ## 撤回
 
@@ -160,7 +160,7 @@ export const codingSkillContent = `# 编程
 
 ## git
 
-检查、提交都用 exec 跑 git。
+查看、提交都直接跑 git 命令（exec 或终端窗格）。
 - 可以查看状态和差异、提交自己的改动、新建分支。
 - 推送、强推、丢弃改动（checkout -- / restore / reset --hard / clean）、删分支、改写历史之前，先问用户。
 - 工作区里原本就有、不是你改的未提交改动：不要提交、不要清理、不要覆盖。
