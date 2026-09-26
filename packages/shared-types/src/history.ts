@@ -125,6 +125,8 @@ export interface VisibleConversationSkill {
   description?: string
   /** 这场里用过，但现在已经关掉或没有了 */
   unavailable?: boolean
+  /** 由系统按处境装卸（如「终端」）：处境还在时胶囊点不掉 */
+  systemManaged?: boolean
 }
 
 /**

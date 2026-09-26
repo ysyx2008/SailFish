@@ -176,6 +176,7 @@ export default {
     conversationSkillAdd: 'Add a skill',
     conversationSkillRemove: 'Turn off this skill',
     conversationSkillUnavailableTip: 'Used in this conversation, but it is turned off or no longer available',
+    conversationSkillLockedTip: 'The terminal is still open, so this cannot be removed. Close the terminal window first.',
     quoteSnippetChipRange: '{label} · L{start}-{end} · {count} chars',
     quoteSnippetChipPreview: '{label} · Preview · {count} chars',
     quoteSnippetChipTerminal: '{label} · Terminal · {count} chars',

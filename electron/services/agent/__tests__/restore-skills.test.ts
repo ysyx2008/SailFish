@@ -115,7 +115,6 @@ function createServices(overrides?: Partial<AgentServices>): AgentServices {
 
 function ctx(overrides?: Partial<AgentContext>): AgentContext {
   return {
-    ptyId: 'test-pty',
     terminalOutput: [],
     systemInfo: { os: 'darwin', shell: '/bin/zsh' },
     terminalType: 'assistant',

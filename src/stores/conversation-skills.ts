@@ -12,6 +12,7 @@ export interface ConversationSkillChip {
   name: string
   description?: string
   unavailable?: boolean
+  systemManaged?: boolean
 }
 
 function isMcpSkillId(id: string): boolean {
@@ -73,6 +74,14 @@ export const useConversationSkillsStore = defineStore('conversationSkills', () =
 
   function justAddedIds(tabId: string): string[] {
     return justAddedByTabId.value[tabId] ?? []
+  }
+
+  /** 系统按处境装的技能（「终端」）：这场还开着终端窗时点不掉 */
+  function canRemove(tabId: string, chip: ConversationSkillChip): boolean {
+    if (!chip.systemManaged) return true
+    const terminalStore = useTerminalStore()
+    const tab = terminalStore.tabs.find(t => t.id === tabId)
+    return !tab || terminalStore.getAllTabPtyIds(tab).length === 0
   }
 
   function applySnapshot(tabId: string, skills: ConversationSkillChip[], animateNew: boolean): void {
@@ -239,6 +248,7 @@ export const useConversationSkillsStore = defineStore('conversationSkills', () =
     finishWelcomeHydration,
     pin,
     unpin,
+    canRemove,
     sync,
     startListening,
     stopListening

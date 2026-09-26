@@ -16,7 +16,7 @@ import {
 import { decorateShortcut, formatAccelerator, resolveComposerChord } from '../utils/shortcut'
 import { toast } from '../composables/useToast'
 import { useComposerQuoteStore } from '../stores/composer-quote'
-import { useConversationSkillsStore } from '../stores/conversation-skills'
+import { useConversationSkillsStore, type ConversationSkillChip } from '../stores/conversation-skills'
 import { useConfigStore } from '../stores/config'
 import type { ComposerQuoteSnippet } from '../stores/composer-quote'
 import type { ParsedDocument } from '../stores/terminal'
@@ -354,8 +354,9 @@ function skillChipInsertStyle(id: string): Record<string, string> | undefined {
   return { '--skill-insert-delay': `${i * 72}ms` }
 }
 
-function skillChipTitle(s: { id: string; name: string; description?: string; unavailable?: boolean }): string {
+function skillChipTitle(s: ConversationSkillChip): string {
   if (s.unavailable) return t('ai.conversationSkillUnavailableTip')
+  if (!conversationSkills.canRemove(props.currentTabId, s)) return t('ai.conversationSkillLockedTip')
   if (!s.id.startsWith('user:')) {
     const key = `skillSettings.builtinSkillDescs.${s.id}`
     if (te(key)) return String(t(key))
@@ -370,7 +371,7 @@ const { hoverTip: skillChipHoverTip, showTip: showSkillChipTip, hideTip: hideSki
   wrap: true
 })
 
-function onSkillChipHover(e: MouseEvent, s: { id: string; name: string; description?: string; unavailable?: boolean }) {
+function onSkillChipHover(e: MouseEvent, s: ConversationSkillChip) {
   if (skillChipsDragging.value) return
   showSkillChipTip(e, skillChipTitle(s))
 }
@@ -1937,14 +1938,21 @@ const handleSendClick = (event: MouseEvent) => {
               class="composer-skill-chip"
               :class="{
                 'is-new': justAddedSkillIds.includes(s.id),
-                'is-unavailable': s.unavailable
+                'is-unavailable': s.unavailable,
+                'is-locked': !conversationSkills.canRemove(props.currentTabId, s)
               }"
               :style="skillChipInsertStyle(s.id)"
               :data-skill-id="s.id"
               @mouseenter="onSkillChipHover($event, s)"
               @mouseleave="hideSkillChipTip"
             >
-              <button type="button" class="composer-skill-chip-remove" @click="removeSkillChip(s.id)" :title="t('ai.conversationSkillRemove')">
+              <button
+                v-if="conversationSkills.canRemove(props.currentTabId, s)"
+                type="button"
+                class="composer-skill-chip-remove"
+                @click="removeSkillChip(s.id)"
+                :title="t('ai.conversationSkillRemove')"
+              >
                 <X :size="11" />
               </button>
               <span class="composer-skill-chip-label">{{ s.name }}</span>
@@ -3003,6 +3011,10 @@ const handleSendClick = (event: MouseEvent) => {
   .composer-skill-chips.is-empowering .composer-skill-chips-mark::after {
     animation: none;
   }
+}
+
+.composer-skill-chip.is-locked {
+  padding-left: 7px;
 }
 
 .composer-skill-chip-label {

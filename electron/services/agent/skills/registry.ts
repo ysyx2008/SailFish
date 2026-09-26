@@ -36,11 +36,20 @@ export function getAllSkills(): Skill[] {
   return Array.from(skillRegistry.values())
 }
 
+/** 能让人或模型挑选的技能（排除由系统按处境装卸的） */
+function selectableSkills(): Skill[] {
+  return Array.from(skillRegistry.values()).filter(skill => !skill.systemManaged)
+}
+
+export function isSystemManagedSkill(skillId: string): boolean {
+  return skillRegistry.get(skillId)?.systemManaged === true
+}
+
 /**
  * 获取技能列表摘要（用于显示给 AI）
  */
 export function getSkillsSummary(): { id: string; name: string; description: string }[] {
-  return Array.from(skillRegistry.values()).map(skill => ({
+  return selectableSkills().map(skill => ({
     id: skill.id,
     name: skill.name,
     description: skill.description
@@ -52,7 +61,7 @@ export function getSkillsSummary(): { id: string; name: string; description: str
  */
 export function getBuiltinSkillsForSettings(disabledIds: string[]): { id: string; name: string; description: string; enabled: boolean }[] {
   const disabledSet = new Set(disabledIds)
-  return Array.from(skillRegistry.values()).map(skill => ({
+  return selectableSkills().map(skill => ({
     id: skill.id,
     name: skill.name,
     description: skill.description,

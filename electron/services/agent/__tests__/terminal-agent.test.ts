@@ -269,8 +269,9 @@ describe('SailFish', () => {
       const tools = agent.getAvailableTools()
       
       expect(toolNames(tools)).toContain('exec')
-      // 助手可换到真终端台：assistant 模式同样注入终端工具（execute_command）
-      expect(toolNames(tools)).toContain('execute_command')
+      // 助手没开终端不带终端工具，开窗入口一直在
+      expect(toolNames(tools)).not.toContain('execute_command')
+      expect(toolNames(tools)).toContain('manage_pane')
     })
   })
 

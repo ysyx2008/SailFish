@@ -24,7 +24,7 @@ import { executeWeComTool } from '../skills/wecom/executor'
 import { executeDingTalkTool } from '../skills/dingtalk/executor'
 import { getUserSkillService, parseUserSkillId, toUserSkillId } from '../../user-skill.service'
 import { getSkillEnvMap, mapSkillEnvToDeclaredCase } from '../../credential.service'
-import { getSkill } from '../skills/registry'
+import { getSkill, isSystemManagedSkill } from '../skills/registry'
 import { addProactiveContext } from '../proactive-store'
 import { getIMService } from '../../im/im.service'
 import { getConfigService } from '../../config.service'
@@ -861,6 +861,10 @@ export async function loadSkillTool(
     return { success: false, output: '', error: t('skill.session_not_initialized') }
   }
 
+  if (isSystemManagedSkill(skillId)) {
+    return { success: false, output: '', error: t('skill.system_managed_load', { id: skillId }) }
+  }
+
   const disabledSkills = getConfigService().get('disabledBuiltinSkills') || []
   if (disabledSkills.includes(skillId)) {
     return { success: false, output: '', error: `Skill "${skillId}" is disabled` }
@@ -948,6 +952,10 @@ export async function unloadSkillTool(
       toolResult: output
     })
     return { success: true, output }
+  }
+
+  if (isSystemManagedSkill(skillId) && executor.getCurrentPtyId?.()) {
+    return { success: false, output: '', error: t('skill.system_managed_unload_seated', { id: skillId }) }
   }
 
   executor.addStep({

@@ -180,12 +180,13 @@ describe('manage_pane action=ensure_connected', () => {
 })
 
 describe('getAgentTools assistant hosted terminal', () => {
-  it('exposes manage_pane open and execute_command in assistant mode', () => {
+  it('assistant mode keeps manage_pane open; terminal tools come with the terminal skill', () => {
     const tools = getAgentTools(undefined, { mode: 'assistant' })
     const names = tools.map(t => t.function.name)
     expect(names).toContain('manage_pane')
     expect(names).toContain('list_ssh_sessions')
-    expect(names).toContain('execute_command')
+    expect(names).not.toContain('execute_command')
+    expect(names).not.toContain('check_terminal_status')
     const manage = tools.find(t => t.function.name === 'manage_pane')!
     const action = (manage.function.parameters as unknown as { properties: { action: { enum: string[] } } }).properties.action
     expect(action.enum).toContain('open')

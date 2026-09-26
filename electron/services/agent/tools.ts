@@ -1361,8 +1361,7 @@ ${sshUsageDesc}
 
   if (options?.mode === 'assistant') {
     filteredTools.push(...(ASSISTANT_WORKBENCH_AGENT_TOOLS as unknown as ToolDefinitionWithMeta[]))
-    // 助手可换到真终端：同一轮里可能先 open 再 execute_command，工具须始终在
-    filteredTools.push(...(getAllTerminalTools() as ToolDefinitionWithMeta[]))
+    // 终端工具组随「终端」技能装上：这场有了终端才有，开窗入口 manage_pane 一直在
   }
 
   // 终端工作台（local / ssh）：注入 PTY 终端工具（execute_command 等）

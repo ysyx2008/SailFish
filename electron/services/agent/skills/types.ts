@@ -19,6 +19,11 @@ export interface Skill {
   tools: ToolDefinition[]
   /** 技能文档（Markdown），加载时注入上下文（同用户技能的 SKILL.md） */
   content?: string
+  /**
+   * 由系统按处境装卸：不进技能目录、设置页和 @ 列表，人和模型都不能手动装上。
+   * 界面胶囊照常显示。
+   */
+  systemManaged?: boolean
   /** 初始化函数（可选，用于动态 import 依赖库） */
   init?: () => Promise<void>
   /** 清理函数（可选）。主人标识只关这场对话的资源，不能拆掉别的对话还在用的窗口 */

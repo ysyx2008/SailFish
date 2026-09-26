@@ -89,7 +89,7 @@ import { SUMMARY_MAX_OUTPUT_TOKENS } from '../ai-request-budget'
 import { t, getLocale, type TranslationKey } from './i18n'
 import { AutoApprovalReviewer, buildInspectorDeps, resolveInspectPtyId, type AutoReviewResult } from './auto-review'
 import { CommandExecutorService } from '../command-executor.service'
-import { createSkillSession, SkillSession, getSkill } from './skills'
+import { createSkillSession, SkillSession, getSkill, isSystemManagedSkill, TERMINAL_SKILL_ID } from './skills'
 import { McpToolSession, parseMcpSkillId, toMcpSkillId } from './mcp-tool-session'
 import { getUserSkillService, parseUserSkillId, toUserSkillId } from '../user-skill.service'
 import { getAiDebugService } from '../ai-debug.service'
@@ -471,6 +471,9 @@ export abstract class Agent {
     if (parseMcpSkillId(skillId)) {
       return { ok: false, error: 'mcp_not_supported' }
     }
+    if (isSystemManagedSkill(skillId)) {
+      return { ok: false, error: 'system_managed' }
+    }
     this._skillsMutatedByUser = true
     for (const id of this.skillIdAliases(skillId)) {
       this._userDismissedSkills.delete(id)
@@ -506,6 +509,9 @@ export abstract class Agent {
    * 但秘书自己再装上的允许。
    */
   async unpinSkill(skillId: string): Promise<void> {
+    if (isSystemManagedSkill(skillId) && this.currentRun?.isRunning && this.runHasTerminal(this.currentRun)) {
+      return
+    }
     this._skillsMutatedByUser = true
     const aliases = this.skillIdAliases(skillId)
     const dismissed = new Set(aliases)
@@ -546,7 +552,8 @@ export abstract class Agent {
       visible.push({
         id,
         ...this.resolveVisibleSkillMeta(id),
-        ...(this.isConversationSkillAvailable(id) ? {} : { unavailable: true })
+        ...(this.isConversationSkillAvailable(id) ? {} : { unavailable: true }),
+        ...(isSystemManagedSkill(id) ? { systemManaged: true } : {})
       })
     }
     return visible
@@ -591,6 +598,32 @@ export abstract class Agent {
     this.rememberSkillId(skillId)
     this.persistSkillStateIfPossible()
     this._skillsChangedHook?.()
+  }
+
+  /** 这一轮此刻有看得见的终端窗 */
+  private runHasTerminal(run: AgentRun): boolean {
+    return Boolean(run.ptyId) || (run.context.panes?.length ?? 0) > 0
+  }
+
+  /**
+   * 独立助手这场有了终端：装上「终端」技能，整场不撤。
+   * 终端页一直直接带着终端工具，不走技能；伙计不碰终端窗。
+   * 开窗本身就是要用，不看用户之前点掉过的记录。
+   */
+  private async ensureTerminalSkill(run: AgentRun): Promise<void> {
+    const terminalType = run.context.terminalType
+    if (terminalType === 'local' || terminalType === 'ssh') return
+    if (this.isSubAgent() || !this.runHasTerminal(run)) return
+    const session = this.getSkillSession()
+    if (session.getLoadedSkills().includes(TERMINAL_SKILL_ID)) return
+    const result = await session.loadSkill(TERMINAL_SKILL_ID)
+    if (!result.success) {
+      log.warn(`Failed to load terminal skill: ${result.error}`)
+      return
+    }
+    this.markBuiltinSkillLoaded(TERMINAL_SKILL_ID)
+    // 一轮中途开的窗：工具下一步就在，技能说明也得这一轮就到
+    this.refreshLoadedSkillsSectionsInMessages(run.messages)
   }
 
   isUserSkillLoaded(skillId: string): boolean {
@@ -656,6 +689,7 @@ export abstract class Agent {
       return !!skill?.enabled
     }
     if (!getSkill(id)) return false
+    if (isSystemManagedSkill(id)) return true
     const disabled = this.services.configService?.get?.('disabledBuiltinSkills')
     const disabledSet = new Set(Array.isArray(disabled) ? disabled.filter((item): item is string => typeof item === 'string') : [])
     return !disabledSet.has(id)
@@ -710,7 +744,7 @@ export abstract class Agent {
         }
         continue
       }
-      if (disabledSet.has(skillId)) {
+      if (disabledSet.has(skillId) && !isSystemManagedSkill(skillId)) {
         log.warn(`Skip restoring disabled skill "${skillId}"`)
         continue
       }
@@ -898,6 +932,7 @@ export abstract class Agent {
     try {
       // 历史恢复带出的技能清单要在组上下文 / 取工具表之前装上，否则模型会看见旧工具名却没有对应工具
       await this.applyRestoredSkills()
+      await this.ensureTerminalSkill(run)
 
       // CWD 刷新与上下文构建互不依赖，并行执行以缩短「正在准备...」阶段
       const cwdPromise = options?.cwdResolver
@@ -4901,7 +4936,12 @@ export abstract class Agent {
       getAgentContext: () => run.context,
       getAiRules: () => this.services.configService?.getAiRules() ?? '',
       setCurrentPtyId: (ptyId: string) => {
+        if (!ptyId) {
+          this.clearCurrentPtyId(run)
+          return
+        }
         this.remapCurrentPtyId(run.ptyId, ptyId)
+        this.ensureTerminalSkill(run).catch(e => log.warn('Terminal skill load failed:', e))
       },
       getCurrentPtyId: () => run.ptyId,
       getToolOutputBudget: (currentTokensOverride?: number) => {
@@ -5381,6 +5421,18 @@ export abstract class Agent {
     this.setupOutputListener(run)
     log.info(`Agent currentPtyId switched: ${before || oldPtyId || '?'} → ${newPtyId}`)
     return true
+  }
+
+  /** 最后一扇窗关了：这一轮不再有默认操作的窗 */
+  private clearCurrentPtyId(run: AgentRun): void {
+    if (!run.ptyId && !run.context.panes?.length) return
+    run.outputUnsubscribe?.()
+    run.outputUnsubscribe = undefined
+    log.info(`Agent currentPtyId cleared: ${run.ptyId || '?'} (last pane closed)`)
+    run.ptyId = undefined
+    run.context.ptyId = undefined
+    run.context.panes = undefined
+    run.context.activePaneId = undefined
   }
 
   /**
