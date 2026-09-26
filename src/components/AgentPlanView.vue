@@ -100,20 +100,19 @@ const handleToggle = () => {
       :class="{ 'failed': hasFailed }"
     ></div>
 
-    <!-- 紧凑模式 -->
+    <!-- 紧凑模式：宽够就一行；放不下时标题一行、进度一行 -->
     <div v-if="compact" class="plan-compact" @click="handleToggle">
-      <div class="compact-left">
+      <div class="compact-title">
         <span class="plan-icon">📋</span>
         <span class="plan-title-text">{{ plan.title }}</span>
-        <span class="compact-separator">·</span>
+      </div>
+      <div class="compact-status">
         <span v-if="currentStep" class="current-step-hint">
           <span class="current-step-spinner"></span>
-          {{ currentStep.title }}
+          <span class="current-step-label">{{ currentStep.title }}</span>
         </span>
         <span v-else-if="isAllCompleted" class="completed-hint">✓ 已完成</span>
         <span v-else-if="hasFailed" class="failed-hint">✗ 执行失败</span>
-      </div>
-      <div class="compact-right">
         <span class="progress-text">{{ completedCount }}/{{ plan.steps.length }}</span>
         <span class="expand-icon">▼</span>
       </div>
@@ -210,28 +209,41 @@ const handleToggle = () => {
 /* ==================== 紧凑模式样式 ==================== */
 .plan-compact {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
   align-items: center;
+  column-gap: 12px;
+  row-gap: 6px;
   cursor: pointer;
-  gap: 12px;
 }
 
 .plan-compact:hover {
   opacity: 0.9;
 }
 
-.compact-left {
+/* 标题按内容占宽，不把字挤成竖排；整行放不下时进度换到下一行 */
+.compact-title {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
+  flex: 0 1 auto;
+  max-width: 100%;
+  min-width: min(100%, max-content);
 }
 
-.compact-separator {
-  color: var(--text-muted);
-  opacity: 0.5;
+.compact-title .plan-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  max-width: 100%;
+  min-width: min(100%, max-content);
 }
 
 .current-step-hint {
@@ -240,9 +252,16 @@ const handleToggle = () => {
   gap: 6px;
   color: var(--color-info);
   font-size: 13px;
-  white-space: nowrap;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.current-step-label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .current-step-spinner {
@@ -265,11 +284,15 @@ const handleToggle = () => {
   font-size: 13px;
 }
 
-.compact-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.compact-status .progress-text,
+.compact-status .expand-icon,
+.compact-status .completed-hint,
+.compact-status .failed-hint {
   flex-shrink: 0;
+}
+
+.compact-status .progress-text {
+  margin-left: auto;
 }
 
 /* 顶部进度条 - 紧凑模式 */
@@ -346,6 +369,7 @@ const handleToggle = () => {
 
 .plan-icon {
   font-size: 16px;
+  flex-shrink: 0;
 }
 
 .plan-title-text {
