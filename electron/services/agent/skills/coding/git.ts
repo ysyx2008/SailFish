@@ -2,7 +2,7 @@
  * 编程技能 - git 命令行调用
  * 只给技能自己用（看项目状态、影子仓库检查点）；模型要跑 git 走 exec。
  */
-import { execFile } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import * as fs from 'fs'
 import * as path from 'path'
 
@@ -69,6 +69,48 @@ export class GitCli {
           })
         },
       )
+    })
+  }
+
+  /** 边读边找：输出可能很大（不整份攒进内存），找到符合的一行就停 */
+  static async findLine(
+    args: string[],
+    matches: (line: string) => boolean,
+    opts: GitRunOptions = {},
+  ): Promise<{ found: boolean; code: number; timedOut: boolean }> {
+    const git = await GitCli.locate()
+    if (!git) return { found: false, code: -1, timedOut: false }
+    return new Promise(resolve => {
+      const child = spawn(git, args, {
+        cwd: opts.cwd,
+        env: { ...inheritedEnv(), GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', ...opts.env },
+        stdio: ['ignore', 'pipe', 'ignore'],
+        windowsHide: true,
+      })
+      let found = false
+      let timedOut = false
+      let rest = ''
+      const timer = setTimeout(() => {
+        timedOut = true
+        child.kill()
+      }, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+      child.stdout.setEncoding('utf8')
+      child.stdout.on('data', (chunk: string) => {
+        if (found) return
+        const lines = (rest + chunk).split('\n')
+        rest = lines.pop() ?? ''
+        if (lines.some(matches)) {
+          found = true
+          child.kill()
+        }
+      })
+      const finish = (code: number) => {
+        clearTimeout(timer)
+        if (!found && rest && matches(rest)) found = true
+        resolve({ found, code, timedOut: timedOut && !found })
+      }
+      child.on('error', () => finish(-1))
+      child.on('close', code => finish(code ?? -1))
     })
   }
 }

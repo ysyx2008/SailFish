@@ -329,6 +329,7 @@ function confirmArgs(plan: RestorePlan): Record<string, unknown> {
     delete_files: plan.removed.slice(0, CONFIRM_FILE_LIMIT),
     total_restore: plan.restored.length,
     total_delete: plan.removed.length,
+    ...(plan.largeFiles.length > 0 ? { untouched_large_files: plan.largeFiles.slice(0, CONFIRM_FILE_LIMIT) } : {}),
   }
 }
 
@@ -344,19 +345,24 @@ function formatRestore(plan: RestorePlan, failedRemovals: string[]): string {
   if (plan.removed.length > 0) sections.push(`${t('coding.rewind_removed_files')}\n${listPaths(plan.removed)}`)
   if (failedRemovals.length > 0) sections.push(`${t('coding.rewind_remove_failed')}\n${listPaths(failedRemovals)}`)
   if (plan.skippedNested.length > 0) sections.push(t('coding.rewind_nested', { paths: plan.skippedNested.join(', ') }))
+  if (plan.largeFiles.length > 0) sections.push(`${t('coding.rewind_large')}\n${listPaths(plan.largeFiles)}`)
   sections.push(t('coding.rewind_saved', { id: shortId(plan.saved) }))
   return sections.join('\n\n')
 }
 
 function formatCheckpointStatus(result: TakeResult): string {
-  const body = result.ok
-    ? t('coding.ov_checkpoint_ready')
-    : result.reason === 'unavailable'
+  if (!result.ok) {
+    const body = result.reason === 'unavailable'
       ? t('coding.ov_checkpoint_unavailable')
       : result.reason === 'timeout'
         ? t('coding.ov_checkpoint_timeout')
         : t('coding.ov_checkpoint_failed', { error: result.detail })
-  return `${t('coding.ov_checkpoint')}\n${body}`
+    return `${t('coding.ov_checkpoint')}\n${body}`
+  }
+  const lines = [t('coding.ov_checkpoint'), t('coding.ov_checkpoint_ready')]
+  if (result.restarted) lines.push(t('coding.checkpoint_restarted'))
+  if (result.largeFiles.length > 0) lines.push(`${t('coding.ov_checkpoint_large')}\n${listPaths(result.largeFiles)}`)
+  return lines.join('\n')
 }
 
 function checkpointErrorMessage(e: CheckpointError): string {
@@ -364,6 +370,9 @@ function checkpointErrorMessage(e: CheckpointError): string {
     case 'snapshot_failed': return t('coding.rewind_snapshot_failed', { error: e.message })
     case 'not_found': return t('coding.rewind_not_found', { id: e.message })
     case 'no_target': return t('coding.rewind_no_target')
+    case 'incomplete': return t('coding.rewind_incomplete', { id: e.message.slice(0, 10) })
+    case 'unverifiable': return t('coding.rewind_unverifiable', { id: e.message.slice(0, 10) })
+    case 'restarted': return t('coding.rewind_restarted')
     default: return e.saved
       ? t('coding.rewind_failed_midway', { error: e.message, id: shortId(e.saved) })
       : t('coding.rewind_failed', { error: e.message })

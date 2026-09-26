@@ -43,14 +43,14 @@ export class CodingState {
     return this.checkpointIds().includes(id)
   }
 
-  /** 这一轮没留住检查点：下一次工具结果里转告模型 */
-  setMissedNote(note: string): void {
-    this.data.missedNote = note
+  /** 这一轮留检查点时要告诉模型的事（没留住、旧的作废了、有大文件没进去）：下一次工具结果里转告 */
+  setCheckpointNote(note: string): void {
+    this.data.checkpointNote = note
   }
 
-  takeMissedNote(): string | undefined {
-    const note = typeof this.data.missedNote === 'string' ? this.data.missedNote : undefined
-    if (note) delete this.data.missedNote
+  takeCheckpointNote(): string | undefined {
+    const note = typeof this.data.checkpointNote === 'string' ? this.data.checkpointNote : undefined
+    if (note) delete this.data.checkpointNote
     return note
   }
 
