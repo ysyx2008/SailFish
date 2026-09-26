@@ -1853,6 +1853,120 @@ export async function editFile(
   }
 }
 
+interface MultiEditItem {
+  oldText: string
+  newText: string
+  replaceAll: boolean
+}
+
+function parseMultiEditItems(raw: unknown): MultiEditItem[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const items: MultiEditItem[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') return undefined
+    const { old_text: oldText, new_text: newText, replace_all: replaceAll } = item as Record<string, unknown>
+    if (typeof oldText !== 'string' || typeof newText !== 'string') return undefined
+    items.push({ oldText, newText, replaceAll: replaceAll === true })
+  }
+  return items
+}
+
+/**
+ * 同一个本地文件里按顺序做多处查找替换：全部对得上才落盘，任何一处对不上整次不改。
+ * 拦截、确认、界面显示与 edit_file 同一套。
+ */
+export async function multiEditFile(
+  ptyId: string,
+  args: Record<string, unknown>,
+  toolCallId: string,
+  config: AgentConfig,
+  executor: ToolExecutorConfig,
+  toolName: string,
+): Promise<ToolResult> {
+  const filePath = resolveToolLocalPath(String(args.path ?? ''), ptyId, executor)
+  if (!filePath) {
+    return { success: false, output: '', error: t('error.file_path_required') }
+  }
+  const items = parseMultiEditItems(args.edits)
+  if (!items) {
+    return { success: false, output: '', error: t('error.edits_required') }
+  }
+  {
+    const blocked = blockIfUserDataForbidden(filePath, toolName, executor)
+    if (blocked) return blocked
+  }
+  if (!fs.existsSync(filePath)) {
+    return { success: false, output: '', error: t('error.file_not_exists', { path: filePath }) }
+  }
+
+  const displayPath = formatDisplayPath(filePath, ptyId)
+  const riskLevel = assessFileWriteRisk(filePath, 'replace_lines', {
+    fileExists: true,
+    extraFreeDirs: extraFreeDirsFromConfig(config),
+  })
+  {
+    const blocked = blockIfHardBlockedWrite(filePath, toolName, riskLevel, executor)
+    if (blocked) return blocked
+  }
+  executor.addStep({
+    type: 'tool_call',
+    content: `${t('file.multi_edit', { count: items.length })}: ${displayPath}`,
+    toolName,
+    toolArgs: { path: filePath, edits: items.length },
+    riskLevel
+  })
+
+  if (riskNeedsConfirm(riskLevel, config.executionMode, config.commandRiskPolicy)) {
+    const approved = await executor.waitForConfirmation(toolCallId, toolName, args, riskLevel)
+    if (!approved) {
+      return { success: false, output: '', error: t('file.user_rejected_write') }
+    }
+  }
+
+  const failStep = (message: string): ToolResult => {
+    executor.addStep({
+      type: 'tool_result',
+      content: `${t('file.edit_failed')}: ${message.split('\n')[0]}`,
+      toolName,
+      toolResult: message
+    })
+    return { success: false, output: '', error: message }
+  }
+
+  try {
+    const { content: original, encoding } = readTextFileWithEncoding(filePath)
+    let content = original
+    for (const [i, item] of items.entries()) {
+      const edit = applyTextEdit(content, item.oldText, item.newText, item.replaceAll)
+      if (!edit.ok && edit.reason === 'not_found') {
+        const closest = edit.closestContext ? `\n\n${t('hint.closest_match')}:\n${edit.closestContext}` : ''
+        return failStep(`${t('file.multi_edit_item_not_found', { index: i + 1 })}${closest}`)
+      }
+      if (!edit.ok) {
+        return failStep(t('file.multi_edit_item_multiple', { index: i + 1, count: edit.count }))
+      }
+      content = edit.content
+    }
+
+    writeTextFileSync(filePath, content, encoding)
+
+    const previewCanvas = previewCanvasDataForPath(filePath)
+    executor.addStep({
+      type: 'tool_result',
+      content: `${t('file.multi_edit_success_short', { count: items.length })}: ${displayPath}`,
+      toolName,
+      ...(previewCanvas && { canvasData: previewCanvas })
+    })
+    const outputForAi = t('file.multi_edit_success', { count: items.length, path: filePath })
+    return { success: true, output: await appendPanelDirtyNotice(outputForAi, filePath, previewCanvas, executor) }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : t('file.edit_failed')
+    const suggestion = getErrorRecoverySuggestion(errorMsg, categorizeError(errorMsg))
+    failStep(`${errorMsg}\n\n💡 ${suggestion}`)
+    return { success: false, output: '', error: t('error.recovery_hint', { error: errorMsg, suggestion }) }
+  }
+}
+
 /**
  * 写入本地文件
  */

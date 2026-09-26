@@ -83,6 +83,41 @@ pattern 例："*.test.ts"（任意层级）、"src/**/*.vue"、"**/Dockerfile"�
       streamDisplay: { titleKey: 'coding.tool_find_files', titleField: 'pattern' },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'code_multi_edit',
+      description: `在同一个本地文件里一次做多处查找替换。按顺序应用：后一处看到的是前面几处改完之后的内容。
+全部对得上才写入；任何一处找不到或匹配多处，整次不改，并说明是第几处。
+每处的 old_text 规则同 edit_file：先 read_file，从输出里精确复制，要在文件里唯一（或给这一处设 replace_all）。
+新文件用 write_text_file。`,
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '本地文件路径（绝对路径，或相对项目根）' },
+          edits: {
+            type: 'array',
+            description: '按顺序应用的修改',
+            items: {
+              type: 'object',
+              properties: {
+                old_text: { type: 'string', description: '要替换的原文，须与文件内容完全一致' },
+                new_text: { type: 'string', description: '替换后的文本' },
+                replace_all: { type: 'boolean', description: '替换这段原文的所有出现（默认 false）' },
+              },
+              required: ['old_text', 'new_text'],
+            },
+          },
+        },
+        required: ['path', 'edits'],
+      },
+    },
+    _meta: {
+      phase: 'writing_file',
+      idempotencyKey: ['path'],
+      streamDisplay: { titleKey: 'coding.tool_multi_edit', titleField: 'path' },
+    },
+  },
 ]
 
 export const codingSkillContent = `# 编程
@@ -92,7 +127,7 @@ export const codingSkillContent = `# 编程
 1. **先打开项目**：\`code_open_project\` 指定项目根目录。之后相对路径、exec 的默认目录都落在项目根。打开时返回的开发约定要遵守；子目录里另有 AGENTS.md 之类的说明时，进那个目录干活前先读。
 2. **找**：按内容用 \`code_search\`，按文件名 / 模式用 \`code_find_files\`。不要用 exec 跑 grep、find、ls -R。
 3. **读**：\`read_file\`，大文件分段读。改哪里就先读哪里，别凭记忆改。
-4. **改**：改一处用 \`edit_file\`，新文件用 \`write_text_file\`。只改任务需要的地方，不顺手重排、重命名、改格式。
+4. **改**：改一处用 \`edit_file\`；同一个文件要改好几处，用 \`code_multi_edit\` 一次改完；新文件用 \`write_text_file\`。只改任务需要的地方，不顺手重排、重命名、改格式。
 5. **验**：用 exec 跑打开项目时列出的检查 / 测试命令。没跑过不要说「改好了」；跑不了就说明为什么。
 
 ## git

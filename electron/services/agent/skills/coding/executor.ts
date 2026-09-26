@@ -3,7 +3,7 @@
  */
 import * as path from 'path'
 import type { AgentConfig, ToolExecutorConfig, ToolResult } from '../../tools/types'
-import { resolveToolLocalPath } from '../../tools/file'
+import { multiEditFile, resolveToolLocalPath } from '../../tools/file'
 import { t } from '../../i18n'
 import { createLogger } from '../../../../utils/logger'
 import { CodingProject, ProjectOpenError, type ProjectOverview, type TreeEntry, type ProjectOpenErrorCode } from './project'
@@ -29,8 +29,8 @@ export async function executeCodingTool(
   toolName: string,
   ptyId: string,
   args: Record<string, unknown>,
-  _toolCallId: string,
-  _config: AgentConfig,
+  toolCallId: string,
+  config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   try {
@@ -41,6 +41,8 @@ export async function executeCodingTool(
         return await search(args, executor)
       case 'code_find_files':
         return await findFiles(args, executor)
+      case 'code_multi_edit':
+        return await multiEditFile(ptyId, args, toolCallId, config, executor, toolName)
       default:
         return fail(t('coding.unknown_tool', { name: toolName }))
     }
