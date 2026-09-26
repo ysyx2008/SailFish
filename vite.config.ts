@@ -5,6 +5,7 @@ import renderer from 'vite-plugin-electron-renderer'
 import { resolve } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import type { ChildProcess } from 'node:child_process'
+import { BUNDLED_GRAMMARS, BUNDLED_WASM_DIR } from './electron/services/agent/skills/coding/grammars'
 
 /**
  * OEM 可选配置：有 shared/oem.config.ts 则打包进覆盖配置，没有则用 oem-defaults。
@@ -65,6 +66,29 @@ function copyShellAstWasm() {
         copyFileSync(srcPath, destPath)
         console.log('[copy-shell-ast-wasm] Copied shell-ast.wasm to dist-electron')
       }
+    },
+  }
+}
+
+// 编程技能改后语法检查：tree-sitter 底座 + 用到的语法 wasm（整包三十多种，只带表里那几种）
+function copyTreeSitterWasm() {
+  return {
+    name: 'copy-tree-sitter-wasm',
+    closeBundle() {
+      const destDir = resolve(__dirname, 'dist-electron', BUNDLED_WASM_DIR)
+      const files: Array<[string, string]> = [
+        [resolve(__dirname, 'node_modules/web-tree-sitter/tree-sitter.wasm'), 'tree-sitter.wasm'],
+        ...BUNDLED_GRAMMARS.map((name): [string, string] => [
+          resolve(__dirname, `node_modules/tree-sitter-wasms/out/tree-sitter-${name}.wasm`),
+          `tree-sitter-${name}.wasm`,
+        ]),
+      ]
+      mkdirSync(destDir, { recursive: true })
+      for (const [src, name] of files) {
+        if (!existsSync(src)) throw new Error(`[copy-tree-sitter-wasm] missing ${src}`)
+        copyFileSync(src, resolve(destDir, name))
+      }
+      console.log(`[copy-tree-sitter-wasm] Copied ${files.length} wasm files to dist-electron/${BUNDLED_WASM_DIR}`)
     },
   }
 }
@@ -317,7 +341,7 @@ export default defineConfig({
           esbuild: {
             charset: 'utf8'
           },
-          plugins: [optionalOemConfig(), copyJiebaWasm(), copyShellAstWasm(), copyPwshExtractScript(), copySpeechWorker(), copyPdfWorker(), copyEmbeddingWorker(), copyLanceDBWorker()]
+          plugins: [optionalOemConfig(), copyJiebaWasm(), copyShellAstWasm(), copyTreeSitterWasm(), copyPwshExtractScript(), copySpeechWorker(), copyPdfWorker(), copyEmbeddingWorker(), copyLanceDBWorker()]
         }
       },
       {

@@ -158,6 +158,7 @@
     "eslint-plugin-vue": "^9.22.0",
     "patch-package": "^8.0.1",
     "prettier": "^3.2.5",
+    "tree-sitter-wasms": "0.1.13",
     "ts-morph": "^27.0.2",
     "tsx": "^4.21.0",
     "typescript": "^5.4.2",
@@ -165,7 +166,8 @@
     "vite-plugin-electron": "^0.29.1",
     "vite-plugin-electron-renderer": "^0.14.7",
     "vitest": "^4.1.11",
-    "vue-tsc": "^2.0.6"
+    "vue-tsc": "^2.0.6",
+    "web-tree-sitter": "0.25.10"
   },
   "overrides": {
     "protobufjs": "^7.6.5",

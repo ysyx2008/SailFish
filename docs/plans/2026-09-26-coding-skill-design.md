@@ -62,7 +62,7 @@
 
 - 依赖 `web-tree-sitter@0.25.10` + `tree-sitter-wasms@0.1.13`（CodeGraph 1.2.0 同款组合，已验证兼容）。
 - 只带十种：JavaScript、TypeScript、TSX、Python、Go、Java、C#、C、C++、Rust（约 16MB）+ 底座约 1MB。其他扩展名不查。
-- wasm 放 asar 外（`extraResources` 或 `asarUnpack`），开发态直接读 `node_modules`。
+- 两个包都是 devDependencies：`web-tree-sitter` 的 JS 由 vite 打进主进程产物；wasm 由 vite 插件按 `grammars.ts` 的表拷进 `dist-electron/tree-sitter/`（随 asar 走）。运行时自己读成字节再交给 `Parser.init({ wasmBinary })` / `Language.load(bytes)`，所以不必解包出 asar。开发态 / 命令行直接读 `node_modules`。已用同配置的 rollup 单独打包实测可加载。
 - 解析在主进程做：单文件毫秒级，只在改完那一下跑；大于 1MB 的文件跳过。若实测卡主线程再挪 utilityProcess。
 - 只报「改后有、改前没有」的错误（按错误节点附近的文本比较，不按行号——行号会随改动整体偏移）。
 
