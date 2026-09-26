@@ -219,6 +219,14 @@ describe('替我审批 · 评审员', () => {
     }
   })
 
+  it('想到一半被截断、没写出结论，交回用户并注明截断', async () => {
+    const chat = vi.fn<AutoReviewChat>(async () => ({ content: undefined, finish_reason: 'length' }))
+    const reviewer = new AutoApprovalReviewer({ chat })
+    const r = await reviewer.review(makeRequest(baseSteps(), baseMessages()))
+    expect(r).toMatchObject({ kind: 'handed_over', reason: 'failed', detail: 'truncated' })
+    expect(chat.mock.calls[0][4]?.maxOutputTokens).toBeUndefined()
+  })
+
   it('任务被停时不算没放行，直接取消', async () => {
     const ac = new AbortController()
     const reviewer = new AutoApprovalReviewer({ chat: () => new Promise<ChatWithToolsResult>(() => {}) })

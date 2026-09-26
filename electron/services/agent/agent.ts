@@ -5076,7 +5076,8 @@ export abstract class Agent {
             : {}),
         }
     this.updateStep(step.id, { content: this.formatAutoReviewTrail(trail, action), autoReview: trail, isStreaming: false })
-    log.info(`[auto-review] ${trail.outcome}${trail.reason ? `(${trail.reason})` : ''} tool=${toolName} risk=${trail.risk ?? '-'} auth=${trail.authorization ?? '-'}`)
+    const detail = result.kind === 'handed_over' && result.detail ? ` detail=${result.detail}` : ''
+    log.info(`[auto-review] ${trail.outcome}${trail.reason ? `(${trail.reason})` : ''} tool=${toolName} risk=${trail.risk ?? '-'} auth=${trail.authorization ?? '-'}${detail}`)
     return result.kind === 'approved' ? { kind: 'approved' } : { kind: 'handed_over', trail }
     } catch (e) {
       const trail: AutoReviewTrail = { outcome: 'handed_over', reason: 'failed' }

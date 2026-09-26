@@ -82,8 +82,6 @@ export const ACTION_BUDGET_CHARS = 16_000
 const FIRST_PROCESS_BUDGET_CHARS = 12_000
 const DELTA_PROCESS_BUDGET_CHARS = 8_000
 const SESSION_BUDGET_CHARS = 60_000
-const MAX_OUTPUT_TOKENS = 1500
-
 class ReviewCancelled extends Error {}
 
 function addUsage(total: TokenUsageInfo | undefined, u: TokenUsageInfo | undefined): TokenUsageInfo | undefined {
@@ -258,6 +256,7 @@ export class AutoApprovalReviewer {
     const exchange: AiMessage[] = [newUser]
     let usage: TokenUsageInfo | undefined
     let finalText: string | undefined
+    let truncated = false
     try {
       const system: AiMessage = { role: 'system', content: buildReviewerPolicy(session.locale) }
       const history = withCacheBreakpoint(session.messages)
@@ -269,13 +268,15 @@ export class AutoApprovalReviewer {
           INSPECTOR_TOOLS,
           req.profileId,
           controller.signal,
-          { toolChoice: lastRound ? 'none' : 'auto', maxOutputTokens: MAX_OUTPUT_TOKENS },
+          // 输出上限跟模型配置走：推理型模型的思考也算在里面，压小了难判的那一步会想到一半被截断
+          { toolChoice: lastRound ? 'none' : 'auto' },
         ), controller.signal)
         usage = addUsage(usage, res.usage)
         if (res.aborted) throw new ReviewCancelled()
         const calls = res.tool_calls ?? []
         if (calls.length === 0 || lastRound) {
           finalText = res.content
+          truncated = res.finish_reason === 'length'
           exchange.push({ role: 'assistant', content: res.content ?? '' })
           break
         }
@@ -309,7 +310,7 @@ export class AutoApprovalReviewer {
 
     const parsed = parseAssessment(finalText)
     if (!parsed) {
-      return { kind: 'handed_over', reason: 'failed', detail: 'unreadable', usage }
+      return { kind: 'handed_over', reason: 'failed', detail: truncated ? 'truncated' : 'unreadable', usage }
     }
     const assessment = effectiveAssessment(parsed, req.riskLevel)
     if (!assessmentApproves(assessment)) {

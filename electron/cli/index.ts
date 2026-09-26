@@ -12,6 +12,7 @@ import { generateConversationTitle } from '../services/conversation/title-genera
 import { createLogger, initLogging } from '../utils/logger'
 import { getDefaultShell, getLocalOS } from '../utils/platform'
 import { clampAskUserTimeout } from '@shared/types/agent'
+import { t, type TranslationKey } from '../services/agent/i18n'
 
 const log = createLogger('CLI')
 
@@ -1205,8 +1206,9 @@ async function agentRun(args: string[]): Promise<void> {
       console.log(`\n⚠️  Confirmation needed: ${confirmation.toolName} (risk: ${confirmation.riskLevel})`)
       console.log(`   Args: ${JSON.stringify(confirmation.toolArgs).substring(0, 200)}`)
       if (confirmation.autoReview) {
-        const note = confirmation.autoReview.rationale
-          || confirmation.autoReview.reason
+        const { rationale, reason } = confirmation.autoReview
+        const note = rationale
+          || (reason ? t(`autoReview.reason.${reason}` as TranslationKey) : '')
           || 'handed over'
         console.log(`   Reviewer: ${note}`)
       }
