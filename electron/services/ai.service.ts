@@ -896,6 +896,25 @@ function extractCacheStats(rawUsage: Record<string, unknown>): { cache_hit_token
   return candidates.find(c => c.cache_hit_tokens > 0 || c.cache_miss_tokens > 0) || candidates[0]
 }
 
+interface AnthropicInputUsage {
+  input_tokens: number
+  cache_hit_tokens?: number
+  cache_miss_tokens?: number
+}
+
+/**
+ * Anthropic 的 input_tokens 不含缓存读写（cache_read / cache_creation 另报、需相加），
+ * 折成与 OpenAI 系同口径的总输入：cache_hit 是总输入的子集，miss = 总输入 − hit。
+ */
+function normalizeAnthropicInput(rawUsage: Record<string, unknown>): AnthropicInputUsage {
+  const uncached = typeof rawUsage.input_tokens === 'number' ? rawUsage.input_tokens : 0
+  const read = typeof rawUsage.cache_read_input_tokens === 'number' ? rawUsage.cache_read_input_tokens : undefined
+  const write = typeof rawUsage.cache_creation_input_tokens === 'number' ? rawUsage.cache_creation_input_tokens : undefined
+  const input = uncached + (read ?? 0) + (write ?? 0)
+  if (read === undefined && write === undefined) return { input_tokens: input }
+  return { input_tokens: input, cache_hit_tokens: read ?? 0, cache_miss_tokens: input - (read ?? 0) }
+}
+
 // === Anthropic Native API Adapter ===
 
 function isAnthropicApi(profile: { apiUrl: string; apiFormat?: string }): boolean {
@@ -1153,12 +1172,12 @@ function convertFromAnthropicResponse(resp: Record<string, unknown>): Record<str
     : stopReason === 'max_tokens' ? 'length' : 'stop'
 
   const rawUsage = resp.usage as Record<string, unknown> | undefined
-  const usage = rawUsage ? {
-    prompt_tokens: (rawUsage.input_tokens as number) ?? 0,
-    completion_tokens: (rawUsage.output_tokens as number) ?? 0,
-    total_tokens: ((rawUsage.input_tokens as number) ?? 0) + ((rawUsage.output_tokens as number) ?? 0),
-    ...extractCacheStats(rawUsage)
-  } : undefined
+  let usage: TokenUsageInfo | undefined
+  if (rawUsage) {
+    const { input_tokens, ...cacheStats } = normalizeAnthropicInput(rawUsage)
+    const completion = typeof rawUsage.output_tokens === 'number' ? rawUsage.output_tokens : 0
+    usage = { prompt_tokens: input_tokens, completion_tokens: completion, total_tokens: input_tokens + completion, ...cacheStats }
+  }
 
   return { choices: [{ message, finish_reason: finishReason }], usage }
 }
@@ -1169,8 +1188,7 @@ interface AnthropicStreamDelta {
   tool_calls?: Array<{ index: number; id?: string; function?: { name?: string; arguments?: string } }>
   finish_reason?: string
   done?: boolean
-  usage?: { input_tokens?: number; output_tokens?: number }
-  rawUsage?: Record<string, unknown>
+  usage?: Partial<AnthropicInputUsage> & { output_tokens?: number }
 }
 
 function parseAnthropicStreamEvent(data: string): AnthropicStreamDelta | null {
@@ -1207,19 +1225,24 @@ function parseAnthropicStreamEvent(data: string): AnthropicStreamDelta | null {
       case 'message_start': {
         const msg = json.message as Record<string, unknown>
         const u = msg?.usage as Record<string, unknown> | undefined
-        if (u?.input_tokens) return { usage: { input_tokens: u.input_tokens as number }, rawUsage: u }
-        return null
+        if (!u) return null
+        const input = normalizeAnthropicInput(u)
+        return input.input_tokens > 0 ? { usage: input } : null
       }
       case 'message_delta': {
         const d = json.delta as Record<string, unknown>
         const sr = d?.stop_reason as string
-        const u = json.usage as Record<string, number> | undefined
+        const u = json.usage as Record<string, unknown> | undefined
         const result: AnthropicStreamDelta = {}
         if (sr) {
           result.finish_reason = sr === 'tool_use' ? 'tool_calls' : sr === 'max_tokens' ? 'length' : 'stop'
         }
-        if (u?.output_tokens) {
-          result.usage = { output_tokens: u.output_tokens }
+        if (u) {
+          const input = normalizeAnthropicInput(u)
+          const output = typeof u.output_tokens === 'number' ? u.output_tokens : 0
+          if (input.input_tokens > 0 || output > 0) {
+            result.usage = { ...(input.input_tokens > 0 ? input : {}), ...(output > 0 ? { output_tokens: output } : {}) }
+          }
         }
         return (result.finish_reason || result.usage) ? result : null
       }
@@ -2656,11 +2679,8 @@ export class AiService {
                   if (event.usage.input_tokens) streamUsage.prompt_tokens = event.usage.input_tokens
                   if (event.usage.output_tokens) streamUsage.completion_tokens = event.usage.output_tokens
                   streamUsage.total_tokens = streamUsage.prompt_tokens + streamUsage.completion_tokens
-                  if (event.rawUsage) {
-                    const cacheStats = extractCacheStats(event.rawUsage)
-                    if (cacheStats.cache_hit_tokens !== undefined) streamUsage.cache_hit_tokens = cacheStats.cache_hit_tokens
-                    if (cacheStats.cache_miss_tokens !== undefined) streamUsage.cache_miss_tokens = cacheStats.cache_miss_tokens
-                  }
+                  if (event.usage.cache_hit_tokens !== undefined) streamUsage.cache_hit_tokens = event.usage.cache_hit_tokens
+                  if (event.usage.cache_miss_tokens !== undefined) streamUsage.cache_miss_tokens = event.usage.cache_miss_tokens
                 }
               } else {
                 if (data === '[DONE]') {

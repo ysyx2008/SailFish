@@ -37,6 +37,7 @@ interface ContextStats {
   consumedTokens?: number
   consumedPromptTokens?: number
   consumedCompletionTokens?: number
+  consumedCacheHitTokens?: number
 }
 
 interface PendingImage {
@@ -1430,13 +1431,18 @@ const consumedTokenTitle = computed(() => {
   if (!stats.consumedTokens || stats.consumedTokens <= 0) return ''
   const prompt = (stats.consumedPromptTokens ?? 0).toLocaleString()
   const completion = (stats.consumedCompletionTokens ?? 0).toLocaleString()
-  if (outputRateText.value && outputRateKind.value === 'avg') {
-    return t('ai.sessionConsumedTitleWithAvgRate', { prompt, completion, rate: outputRateText.value })
-  }
+  const parts = [
+    stats.consumedCacheHitTokens !== undefined
+      ? t('ai.sessionConsumedInCached', { n: prompt, cached: stats.consumedCacheHitTokens.toLocaleString() })
+      : t('ai.sessionConsumedIn', { n: prompt }),
+    t('ai.sessionConsumedOut', { n: completion }),
+  ]
   if (outputRateText.value) {
-    return t('ai.sessionConsumedTitleWithRate', { prompt, completion, rate: outputRateText.value })
+    parts.push(outputRateKind.value === 'avg'
+      ? t('ai.sessionConsumedAvgRate', { rate: outputRateText.value })
+      : t('ai.sessionConsumedRate', { rate: outputRateText.value }))
   }
-  return t('ai.sessionConsumedTitle', { prompt, completion })
+  return parts.join(' · ')
 })
 
 const { hoverTip: consumedHoverTip, showTip: showConsumedTip, hideTip: hideConsumedTip } = useHoverTip({

@@ -3256,10 +3256,13 @@ export abstract class Agent {
     this._pendingUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
   }
 
-  private addConsumedUsage(usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }): void {
+  private addConsumedUsage(usage: TokenUsage): void {
     this._consumedUsage.prompt_tokens += usage.prompt_tokens
     this._consumedUsage.completion_tokens += usage.completion_tokens
     this._consumedUsage.total_tokens += usage.total_tokens
+    if (usage.cache_hit_tokens !== undefined) {
+      this._consumedUsage.cache_hit_tokens = (this._consumedUsage.cache_hit_tokens ?? 0) + usage.cache_hit_tokens
+    }
   }
 
   /**
@@ -3289,7 +3292,7 @@ export abstract class Agent {
   }
 
   /** 精确 usage 入账并清掉估算；没有精确值则把估算折算进去，避免中断后数字回退。 */
-  private commitPendingUsage(usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }): void {
+  private commitPendingUsage(usage?: TokenUsage): void {
     if (usage) {
       this.addConsumedUsage(usage)
     } else if (this._pendingUsage.total_tokens > 0) {
@@ -3303,6 +3306,7 @@ export abstract class Agent {
       prompt_tokens: this._consumedUsage.prompt_tokens + this._pendingUsage.prompt_tokens,
       completion_tokens: this._consumedUsage.completion_tokens + this._pendingUsage.completion_tokens,
       total_tokens: this._consumedUsage.total_tokens + this._pendingUsage.total_tokens,
+      cache_hit_tokens: this._consumedUsage.cache_hit_tokens,
     }
   }
 
@@ -3317,10 +3321,13 @@ export abstract class Agent {
       bar.consumedTokens = used.total_tokens
       bar.consumedPromptTokens = used.prompt_tokens
       bar.consumedCompletionTokens = used.completion_tokens
+      if (used.cache_hit_tokens !== undefined) bar.consumedCacheHitTokens = used.cache_hit_tokens
+      else delete bar.consumedCacheHitTokens
     } else {
       delete bar.consumedTokens
       delete bar.consumedPromptTokens
       delete bar.consumedCompletionTokens
+      delete bar.consumedCacheHitTokens
     }
   }
 

@@ -34,6 +34,7 @@ export interface ContextStatsResult {
   consumedTokens?: number
   consumedPromptTokens?: number
   consumedCompletionTokens?: number
+  consumedCacheHitTokens?: number
 }
 
 export function useContextStats(
@@ -76,6 +77,7 @@ export function useContextStats(
       consumedTokens: bar?.consumedTokens,
       consumedPromptTokens: bar?.consumedPromptTokens,
       consumedCompletionTokens: bar?.consumedCompletionTokens,
+      consumedCacheHitTokens: bar?.consumedCacheHitTokens,
     }
   })
 

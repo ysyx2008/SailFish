@@ -557,6 +557,8 @@ export interface AgentContextBar {
   consumedTokens?: number
   consumedPromptTokens?: number
   consumedCompletionTokens?: number
+  /** 输入里缓存命中的部分；服务商不报就没有这个字段 */
+  consumedCacheHitTokens?: number
 }
 
 /** 从步骤流倒查最近一次带 contextTokens 的统计（历史加载 / 无 live 推送时回退） */
