@@ -3,6 +3,8 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as fs from 'fs'
+import * as os from 'os'
+import * as path from 'path'
 
 // vi.mock 的 factory 会被提升到文件顶部，不能引用外部变量；
 // 用 vi.hoisted 让临时目录在 hoist 阶段就能算出来
@@ -31,6 +33,7 @@ import {
 import { executeCommandDirect } from '../tools/exec'
 import { getExecManager } from '../tools/exec-manager'
 import type { AgentConfig, ToolExecutorConfig } from '../tools/types'
+import type { AgentContext } from '../types'
 
 /** 与 exec.ts 中 OUTPUT_TRUNCATE 保持一致 */
 const EXEC_OUTPUT_TRUNCATE = 16_384
@@ -222,5 +225,64 @@ describe('executeCommandDirect — 输出截断集成', () => {
     const saved = fs.readFileSync(match![0], 'utf-8')
     expect(saved).toContain('line-0\n')
     expect(saved).toContain(`line-${lineCount - 1}`)
+  })
+})
+
+describe('executeCommandDirect — 不传目录时在哪跑', () => {
+  let announced: string
+
+  beforeEach(() => {
+    getExecManager()._resetForTest()
+    announced = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'sf-exec-cwd-')))
+  })
+
+  afterEach(() => {
+    getExecManager()._resetForTest()
+    fs.rmSync(announced, { recursive: true, force: true })
+  })
+
+  function executorWith(context: Partial<AgentContext>): ToolExecutorConfig {
+    return {
+      ...createMinimalExecutor(),
+      getAgentContext: () => ({
+        terminalOutput: [],
+        systemInfo: { os: 'macos', shell: 'zsh' },
+        terminalType: 'assistant',
+        ...context,
+      }) as AgentContext,
+    }
+  }
+
+  async function pwdWith(executor: ToolExecutorConfig, args: Record<string, unknown> = {}): Promise<string> {
+    const result = await executeCommandDirect({ command: 'pwd', ...args }, 'tc-pwd', freeModeConfig, executor)
+    expect(result.success).toBe(true)
+    return result.output
+  }
+
+  itPosix('助手形态：在提示词宣称的默认目录跑', async () => {
+    expect(await pwdWith(executorWith({ cwd: announced }))).toContain(announced)
+  })
+
+  itPosix('显式传的目录优先', async () => {
+    const other = fs.realpathSync(os.tmpdir())
+    const out = await pwdWith(executorWith({ cwd: announced }), { cwd: other })
+    expect(out).toContain(other)
+    expect(out).not.toContain(announced)
+  })
+
+  itPosix('远程形态的目录不当成本机目录，落到本机主目录', async () => {
+    const out = await pwdWith(executorWith({ terminalType: 'ssh', cwd: announced }))
+    expect(out).not.toContain(announced)
+    expect(out).toContain(fs.realpathSync(os.homedir()))
+  })
+
+  itPosix('本地终端形态不宣称默认目录，落到本机主目录', async () => {
+    const out = await pwdWith(executorWith({ terminalType: 'local', cwd: announced }))
+    expect(out).toContain(fs.realpathSync(os.homedir()))
+  })
+
+  itPosix('宣称的目录已不存在：不报错，落到本机主目录', async () => {
+    fs.rmSync(announced, { recursive: true, force: true })
+    expect(await pwdWith(executorWith({ cwd: announced }))).toContain(fs.realpathSync(os.homedir()))
   })
 })

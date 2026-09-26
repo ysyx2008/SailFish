@@ -27,7 +27,9 @@ vi.mock('../../config.service', () => ({
   getConfigService: () => ({ get: () => undefined })
 }))
 
-import { resolveLocalFilePath } from '../tools/file'
+import fs from 'fs'
+import { resolveLocalFilePath, announcedLocalCwd } from '../tools/file'
+import type { AgentContext } from '../types'
 import { getAgentTools, type ToolDefinitionWithMeta } from '../tools'
 
 describe('resolveLocalFilePath', () => {
@@ -57,6 +59,48 @@ describe('resolveLocalFilePath', () => {
   it('没有本机终端时相对路径落到本机主目录', () => {
     expect(resolveLocalFilePath('notes.md', null)).toBe(path.join(os.homedir(), 'notes.md'))
     expect(resolveLocalFilePath('notes.md', undefined)).toBe(path.join(os.homedir(), 'notes.md'))
+  })
+
+  it('没有本机终端但助手宣称了默认目录：跟宣称的目录走', () => {
+    const announced = path.join(os.tmpdir(), 'sailfish-announced')
+    expect(resolveLocalFilePath('notes.md', null, announced)).toBe(path.join(announced, 'notes.md'))
+    expect(resolveLocalFilePath('notes.md', { type: 'ssh', cwd: '/home/ubuntu' }, announced))
+      .toBe(path.join(announced, 'notes.md'))
+  })
+
+  it('本机终端的当前目录优先于宣称的目录', () => {
+    const localCwd = path.join(os.tmpdir(), 'sailfish-local-cwd')
+    expect(resolveLocalFilePath('notes.md', { type: 'local', cwd: localCwd }, os.homedir()))
+      .toBe(path.join(localCwd, 'notes.md'))
+  })
+})
+
+describe('announcedLocalCwd', () => {
+  const ctx = (patch: Partial<AgentContext>): AgentContext => ({
+    terminalOutput: [],
+    systemInfo: { os: 'macos', shell: 'zsh' },
+    terminalType: 'assistant',
+    ...patch,
+  })
+
+  it('助手形态、目录存在：就是它', () => {
+    const dir = fs.realpathSync(os.tmpdir())
+    expect(announcedLocalCwd(ctx({ cwd: dir }))).toBe(dir)
+  })
+
+  it('本地 / 远程终端形态不宣称', () => {
+    const dir = fs.realpathSync(os.tmpdir())
+    expect(announcedLocalCwd(ctx({ terminalType: 'local', cwd: dir }))).toBeUndefined()
+    expect(announcedLocalCwd(ctx({ terminalType: 'ssh', cwd: dir }))).toBeUndefined()
+  })
+
+  it('不存在、是文件、或不是绝对路径都不算', () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sf-announced-')), 'f.txt')
+    fs.writeFileSync(file, 'x')
+    expect(announcedLocalCwd(ctx({ cwd: path.join(os.tmpdir(), 'no-such-dir-sailfish') }))).toBeUndefined()
+    expect(announcedLocalCwd(ctx({ cwd: file }))).toBeUndefined()
+    expect(announcedLocalCwd(ctx({ cwd: 'relative/dir' }))).toBeUndefined()
+    fs.rmSync(path.dirname(file), { recursive: true, force: true })
   })
 })
 

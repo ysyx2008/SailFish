@@ -3,8 +3,11 @@
  * 伙计用真正的 Agent 循环，花名册活在这场 run 里。
  */
 import * as fs from 'fs'
+import * as os from 'os'
 import * as path from 'path'
 import type { ToolDefinition } from '../../ai.service'
+import type { AgentContext } from '../types'
+import { getDefaultShell, getLocalOS } from '../../../utils/platform'
 import { getMetaByName } from '../tool-metadata'
 import type { ChildSnapshot, RosterSpawnDeps } from '../sub-agent-roster'
 import { parseForkTurns, sanitizeParentMessages, type ForkTurns } from '../sanitize-parent-messages'
@@ -43,6 +46,32 @@ function buildArtifactDir(): string {
 /** 伙计工具清单：按元数据过滤，不再分 read/write */
 export function getSubAgentTools(_ignored?: string): ToolDefinition[] {
   return filterSubAgentTools(getAgentTools(undefined, { mode: 'assistant' }))
+}
+
+/**
+ * 伙计的运行上下文：不管主人从哪里派出，伙计都没有窗、在本机干活。
+ * 主人眼前的窗格、远程主机的系统与目录都不带过去；其余字段照旧带。
+ * AgentContext 新增与窗格或远程主机相关的字段时，必须在这里剥掉。
+ */
+export function toSubAgentContext(parent: AgentContext): AgentContext {
+  const {
+    ptyId: _ptyId,
+    panes: _panes,
+    activePaneId: _activePaneId,
+    mode: _mode,
+    sshHost: _sshHost,
+    workbenchPrompt: _workbenchPrompt,
+    ...rest
+  } = parent
+  return {
+    ...rest,
+    terminalType: 'assistant',
+    terminalOutput: [],
+    systemInfo: { os: getLocalOS(), shell: getDefaultShell() },
+    hostId: 'local',
+    cwd: parent.terminalType === 'ssh' ? os.homedir() : (parent.cwd || os.homedir()),
+    unattended: true,
+  }
 }
 
 function formatKnock(child: ChildSnapshot): string {
@@ -87,10 +116,7 @@ function spawnDeps(
   return {
     createChild,
     getParentMessages: () => executor.getParentMessages?.() ?? [],
-    getParentContext: () => {
-      const ctx = executor.getAgentContext?.() ?? agentContext
-      return { ...ctx, unattended: true }
-    },
+    getParentContext: () => toSubAgentContext(executor.getAgentContext?.() ?? agentContext),
     knock: (message) => executor.knockParent?.(message),
     onProgress: (children) => {
       const visible = ownedNames

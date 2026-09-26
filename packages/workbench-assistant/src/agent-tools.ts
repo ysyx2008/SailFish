@@ -24,6 +24,7 @@ export const ASSISTANT_WORKBENCH_AGENT_TOOLS = [
     _meta: {
       supportedModes: ['assistant'],
       parallelizable: true,
+      allowedForSubAgent: false,
       streamDisplay: { titleKey: 'workbench.list_artifacts' }
     }
   },
@@ -69,6 +70,7 @@ path 建议传绝对路径（相对路径按当前工作目录解析）。`,
     },
     _meta: {
       supportedModes: ['assistant'],
+      allowedForSubAgent: false,
       streamDisplay: { titleKey: 'workbench.manage_artifacts' }
     }
   }

@@ -14,6 +14,7 @@
  *
  * 进程托管见 exec-manager.ts。
  */
+import * as os from 'os'
 import { t } from '../i18n'
 import { assessCommandRiskDetailed, analyzeCommand } from '../risk-assessor'
 import { auditContextFromConfig } from '../audit-context-from-config'
@@ -25,7 +26,7 @@ import { externalizeToolOutput, externalizeFailedError } from '../tool-output-ex
 import { getExecManager, MAX_PATTERN_LENGTH, type BackgroundExecTask, type BackgroundExecTaskSnapshot, type WaitReason } from './exec-manager'
 import { getSkillEnvMap, mapSkillEnvToDeclaredCase } from '../../../services/credential.service'
 import { getUserSkillService } from '../../../services/user-skill.service'
-import { expandTilde } from './file'
+import { expandTilde, announcedLocalCwd } from './file'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
 import type { BackgroundWatch } from '../background-watch'
 
@@ -397,7 +398,7 @@ export async function executeCommandDirect(
   }
 
   const rawCwd = typeof args.cwd === 'string' ? args.cwd.trim() : ''
-  const cwd = rawCwd ? expandTilde(rawCwd) : undefined
+  const cwd = rawCwd ? expandTilde(rawCwd) : (announcedLocalCwd(executor.getAgentContext?.()) ?? os.homedir())
   const skillId = (args.skill_id as string) || undefined
   const waitSeconds = clampNumber(args.wait_seconds, DEFAULT_WAIT_SECONDS, 1, MAX_WAIT_SECONDS)
   const maxSeconds = clampNumber(args.max_seconds, DEFAULT_MAX_SECONDS, 1, MAX_MAX_SECONDS)

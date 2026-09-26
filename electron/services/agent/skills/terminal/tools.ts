@@ -61,6 +61,7 @@ export const ptyExecuteCommandTool: ToolDefinitionWithMeta = {
   _meta: {
     idempotencyKey: ['command'],
     hostScope: 'pane',
+    allowedForSubAgent: false,
     // 历史摘要中"主命令"是 command 字段（task-memory.extractDigest 用得到）
     argRole: { summaryLine: 'command' },
     // 流式预卡片：标题 + command 字段；命令文本本身在流式增长，不加字符数尾缀
@@ -96,7 +97,7 @@ export const terminalOnlyTools: ToolDefinition[] = [
         }
       }
     },
-    _meta: { parallelizable: true }
+    _meta: { parallelizable: true, allowedForSubAgent: false }
   } as ToolDefinitionWithMeta,
   {
     type: 'function',
@@ -117,7 +118,7 @@ export const terminalOnlyTools: ToolDefinition[] = [
         }
       }
     },
-    _meta: { parallelizable: true }
+    _meta: { parallelizable: true, allowedForSubAgent: false }
   } as ToolDefinitionWithMeta,
   {
     type: 'function',
@@ -140,7 +141,7 @@ export const terminalOnlyTools: ToolDefinition[] = [
         required: ['key']
       }
     },
-    _meta: { supportedModes: ['local', 'ssh'], hostScope: 'pane' }
+    _meta: { supportedModes: ['local', 'ssh'], hostScope: 'pane', allowedForSubAgent: false }
   } as ToolDefinitionWithMeta,
   {
     type: 'function',
@@ -174,7 +175,7 @@ export const terminalOnlyTools: ToolDefinition[] = [
         required: ['text']
       }
     },
-    _meta: { supportedModes: ['local', 'ssh'], hostScope: 'pane' }
+    _meta: { supportedModes: ['local', 'ssh'], hostScope: 'pane', allowedForSubAgent: false }
   } as ToolDefinitionWithMeta,
   {
     type: 'function',

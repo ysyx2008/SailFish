@@ -15,6 +15,7 @@ import { decodeBuffer, detectEncoding } from '../../../utils/encoding'
 import { createLogger } from '../../../utils/logger'
 import { categorizeError, getErrorRecoverySuggestion, truncateFromEnd, truncateSandwichWithNotice, formatFileSize } from './utils'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
+import type { AgentContext } from '../types'
 import type { ToolOutputBudget } from '../tool-output-budget'
 import type { CanvasData } from '@shared/types'
 import { VISION_IMAGE_EXTENSIONS, IMAGE_MIME_TYPES, CONVERTIBLE_IMAGE_EXTENSIONS } from './types'
@@ -186,25 +187,50 @@ export function expandTilde(filePath: string): string {
 }
 
 /**
- * 本机文件工具的相对路径基准：只认本机终端的当前目录。
- * 远程窗格 / 没有本机终端时落到用户主目录，绝不拿远程 cwd 往本机上拼。
+ * 助手形态的提示词会宣称「命令默认执行目录」，本机命令和本机文件工具都要兑现它。
+ * 前提：助手形态的 cwd 一定是本机目录（远程窗坐在助手里也不改它）；本地/远程终端形态不宣称。
+ * 目录已不存在时不算数。
+ */
+export function announcedLocalCwd(context?: AgentContext): string | undefined {
+  if (!context || context.terminalType !== 'assistant' || !context.cwd) return undefined
+  const cwd = expandTilde(context.cwd)
+  if (!path.isAbsolute(cwd)) return undefined
+  try {
+    return fs.statSync(cwd).isDirectory() ? cwd : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * 本机文件工具的相对路径基准：本机终端的当前目录 → 助手宣称的默认目录 → 用户主目录。
+ * 绝不拿远程 cwd 往本机上拼。
  */
 export function resolveLocalFilePath(
   rawPath: string,
   terminal?: { type?: 'local' | 'ssh'; cwd?: string } | null,
+  announcedCwd?: string,
 ): string {
   const expanded = expandTilde(rawPath.trim())
   if (!expanded || path.isAbsolute(expanded)) return expanded
-  const base = localFileCwd(terminal)
+  const base = localFileCwd(terminal) ?? announcedCwd ?? os.homedir()
   return path.resolve(base, expanded)
 }
 
-function localFileCwd(terminal?: { type?: 'local' | 'ssh'; cwd?: string } | null): string {
+function localFileCwd(terminal?: { type?: 'local' | 'ssh'; cwd?: string } | null): string | undefined {
   if (terminal?.type === 'local' && terminal.cwd) {
     const cwd = expandTilde(terminal.cwd)
-    return path.isAbsolute(cwd) ? cwd : os.homedir()
+    return path.isAbsolute(cwd) ? cwd : undefined
   }
-  return os.homedir()
+  return undefined
+}
+
+function resolveToolLocalPath(rawPath: unknown, ptyId: string, executor: ToolExecutorConfig): string {
+  return resolveLocalFilePath(
+    String(rawPath ?? ''),
+    getTerminalStateService().getState(ptyId),
+    announcedLocalCwd(executor.getAgentContext?.()),
+  )
 }
 
 /**
@@ -598,7 +624,7 @@ export async function fileSearch(
 ): Promise<ToolResult> {
   const query = args.query as string
   const searchPath = args.path
-    ? resolveLocalFilePath(args.path as string, getTerminalStateService().getState(ptyId))
+    ? resolveToolLocalPath(args.path, ptyId, executor)
     : undefined
   const type = args.type as 'file' | 'dir' | 'all' | undefined
   const limit = args.limit as number | undefined
@@ -1322,7 +1348,7 @@ export async function readFile(
   config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
-  const filePath = resolveLocalFilePath(String(args.path ?? ''), getTerminalStateService().getState(ptyId))
+  const filePath = resolveToolLocalPath(args.path, ptyId, executor)
   if (!filePath) {
     return { success: false, output: '', error: t('error.file_path_required') }
   }
@@ -1638,7 +1664,7 @@ export async function editFile(
   config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
-  const filePath = resolveLocalFilePath(String(args.path ?? ''), getTerminalStateService().getState(ptyId))
+  const filePath = resolveToolLocalPath(args.path, ptyId, executor)
   const oldText = args.old_text as string
   const newText = args.new_text as string
   const replaceAll = args.replace_all === true
@@ -1826,7 +1852,7 @@ export async function writeTextFile(
   config: AgentConfig,
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
-  let filePath = resolveLocalFilePath(String(args.path ?? ''), getTerminalStateService().getState(ptyId))
+  let filePath = resolveToolLocalPath(args.path, ptyId, executor)
   const content = args.content as string | undefined
   const mode = args.mode as string | undefined
   const insertAtLine = args.insert_at_line as number | undefined
