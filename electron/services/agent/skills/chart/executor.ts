@@ -187,10 +187,10 @@ async function generateChart(
   // svg 模式投递活图：sanitize 把 tagFormatter 标记过的 function 转成 marker，前端 reify
   // 还原。build* 出来的 option 完全在掌控之下（K 线 formatVolume 是唯一 function，已经 tag），
   // sanitize 后必然 IPC 安全，不再需要 isIpcSafeForChart 兜底。
-  let echartsPayload: { option: unknown; width: number; height: number; registeredMaps?: ChartMapId[] } | undefined
+  let echartsPayload: { option: Record<string, unknown>; width: number; height: number; registeredMaps?: ChartMapId[] } | undefined
   if (format === 'svg') {
     echartsPayload = {
-      option: sanitizeOptionForIpc(option),
+      option: sanitizeOptionForIpc(option) as Record<string, unknown>,
       width: size.width,
       height: size.height,
       ...(mapIds.length > 0 ? { registeredMaps: mapIds } : {})

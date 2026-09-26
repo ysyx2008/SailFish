@@ -9,6 +9,7 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
+import type { BrowserWindow } from 'electron'
 import { createLogger } from '../utils/logger'
 import {
   createMigrationProgressWindow,
@@ -112,7 +113,7 @@ export const migrationV5: Migration = {
     }
 
     log.info(`发现 ${legacyFiles.length} 个旧格式 Agent 日文件，开始拆分迁移`)
-    let progressWin = await createMigrationProgressWindow(PROGRESS_OPTS)
+    let progressWin: BrowserWindow | null = await createMigrationProgressWindow(PROGRESS_OPTS)
 
     try {
       const result = await migrateLegacyAgentDayFiles(userDataPath, async (pct, label) => {

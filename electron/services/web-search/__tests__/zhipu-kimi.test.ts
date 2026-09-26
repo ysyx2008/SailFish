@@ -3,7 +3,7 @@ import { ZhipuProvider } from '../providers/zhipu'
 import { KimiProvider } from '../providers/kimi'
 
 function mockFetch(body: unknown, status = 200) {
-  const fn = vi.fn(async () => new Response(
+  const fn = vi.fn(async (_url: string, _init?: RequestInit) => new Response(
     typeof body === 'string' ? body : JSON.stringify(body),
     { status, headers: { 'Content-Type': 'application/json' } },
   ))
@@ -12,7 +12,7 @@ function mockFetch(body: unknown, status = 200) {
 }
 
 function sentBody(fn: ReturnType<typeof mockFetch>): Record<string, unknown> {
-  const init = fn.mock.calls[0]?.[1] as RequestInit
+  const init = fn.mock.calls[0]?.[1] as unknown as RequestInit
   return JSON.parse(String(init.body)) as Record<string, unknown>
 }
 

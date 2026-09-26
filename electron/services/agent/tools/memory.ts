@@ -137,7 +137,7 @@ function listRecallables(
 export function recallTask(
   args: Record<string, unknown>,
   executor: ToolExecutorConfig,
-  _ptyId: string
+  _ptyId: string | undefined
 ): ToolResult {
   const taskId = args.task_id as string
   const memoryStore = executor.getTaskMemory()
@@ -262,7 +262,7 @@ export function recallTask(
 export function deepRecall(
   args: Record<string, unknown>,
   executor: ToolExecutorConfig,
-  _ptyId: string
+  _ptyId: string | undefined
 ): ToolResult {
   const taskId = args.task_id as string
   const stepIndex = args.step_index as number | undefined
@@ -390,7 +390,7 @@ export function deepRecall(
     // 记录工具结果
     executor.addStep({
       type: 'tool_result',
-      content: t('memory.step_recalled', { taskId, stepIndex }),
+      content: t('memory.step_recalled', { taskId, stepIndex: stepIndex ?? 0 }),
       toolName: 'deep_recall',
       toolResult: output
     })

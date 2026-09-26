@@ -69,11 +69,13 @@ async function todoList(
   if (typeof args.priority === 'string' && args.priority) {
     items = items.filter(t => t.priority === args.priority)
   }
-  if (typeof args.due_before === 'string' && args.due_before) {
-    items = items.filter(t => t.dueDate && t.dueDate <= args.due_before)
+  const dueBefore = typeof args.due_before === 'string' ? args.due_before : ''
+  if (dueBefore) {
+    items = items.filter(t => t.dueDate && t.dueDate <= dueBefore)
   }
-  if (typeof args.due_after === 'string' && args.due_after) {
-    items = items.filter(t => t.dueDate && t.dueDate >= args.due_after)
+  const dueAfter = typeof args.due_after === 'string' ? args.due_after : ''
+  if (dueAfter) {
+    items = items.filter(t => t.dueDate && t.dueDate >= dueAfter)
   }
   if (typeof args.tag === 'string' && args.tag) {
     items = items.filter(t => t.tags?.includes(args.tag as string))

@@ -271,7 +271,9 @@ function headingLevelFromName(name: string): number | undefined {
   return undefined
 }
 
-function resolvedToHeadingEntry(r: ResolvedParagraphStyle): WordStyleConfig['config']['headings'][number] {
+type HeadingStyleEntry = NonNullable<WordStyleConfig['config']['headings']>[number]
+
+function resolvedToHeadingEntry(r: ResolvedParagraphStyle): HeadingStyleEntry {
   return {
     font: r.font,
     fontAscii: r.fontAscii,

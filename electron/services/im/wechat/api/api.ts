@@ -269,7 +269,7 @@ export function classifyFetchError(err: unknown): {
     return { type: "timeout", description: "request timeout" };
   }
 
-  const cause = (err as NodeJS.ErrnoException)?.cause;
+  const cause = (err as { cause?: unknown } | null)?.cause;
   const causeCode = (cause as any)?.code ?? "";
   const causeStr = String(cause ?? err ?? "") + " " + String(causeCode);
   const matchedCode = causeCode || (typeof cause === "string" ? cause : "");
@@ -511,6 +511,7 @@ export type SendMessageResult = { softFailed?: boolean };
 export function isWeixinSoftSendFailure(resp: {
   ret?: number;
   errcode?: number;
+  errmsg?: string;
 }): boolean {
   return resp.ret === -2 || resp.errcode === -2;
 }

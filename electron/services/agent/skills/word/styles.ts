@@ -584,7 +584,7 @@ function createImageRunOrFallback(
   return new ImageRun({
     data: buffer,
     transformation: { width: finalWidth, height: finalHeight },
-    type
+    type: type === 'jpeg' ? 'jpg' : type
   })
 }
 
@@ -2108,7 +2108,7 @@ function createTable(token: Tokens.Table, style: WordStyleConfig, ctx?: DocxBuil
     const row = token.rows[rowIdx]
 
     const rowShading = altColors
-      ? { type: ShadingType.CLEAR as const, fill: altColors[rowIdx % 2], color: 'auto' as const }
+      ? { type: ShadingType.CLEAR, fill: altColors[rowIdx % 2], color: 'auto' }
       : undefined
 
     rows.push(new TableRow({

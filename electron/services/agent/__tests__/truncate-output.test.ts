@@ -70,7 +70,7 @@ const freeModeConfig: AgentConfig = {
   commandTimeout: 30_000,
   aiProfileId: 'test',
   language: 'zh-CN',
-} as AgentConfig
+} as unknown as AgentConfig
 
 describe('truncateFromEndDetailed', () => {
   it('短文本不截断', () => {

@@ -473,9 +473,10 @@ export class SchedulerService {
 
       // 设置回调收集执行步骤，并发送到前端显示
       const callbacks: AgentCallbacks = {
-        onStepAdded: (step: AgentStep) => {
-          steps.push(step)
-          // 收集最终消息
+        onStep: (_agentId, step) => {
+          const index = steps.findIndex(s => s.id === step.id)
+          if (index >= 0) steps[index] = step
+          else steps.push(step)
           if (step.type === 'message') {
             finalOutput += step.content + '\n'
           }
@@ -483,28 +484,12 @@ export class SchedulerService {
             hasError = true
             errorMessage = step.content
           }
-          // 发送步骤到前端显示
           if (this.config?.mainWindow && !this.config.mainWindow.isDestroyed()) {
             const serializedStep = JSON.parse(JSON.stringify(step))
-            this.config.mainWindow.webContents.send('agent:step', { 
-              agentId: `scheduler-${task.id}`, 
-              ptyId, 
-              step: serializedStep 
-            })
-          }
-        },
-        onStepUpdated: (step: AgentStep) => {
-          const index = steps.findIndex(s => s.id === step.id)
-          if (index >= 0) {
-            steps[index] = step
-          }
-          // 发送步骤更新到前端
-          if (this.config?.mainWindow && !this.config.mainWindow.isDestroyed()) {
-            const serializedStep = JSON.parse(JSON.stringify(step))
-            this.config.mainWindow.webContents.send('agent:step', { 
-              agentId: `scheduler-${task.id}`, 
-              ptyId, 
-              step: serializedStep 
+            this.config.mainWindow.webContents.send('agent:step', {
+              agentId: `scheduler-${task.id}`,
+              ptyId,
+              step: serializedStep
             })
           }
         }

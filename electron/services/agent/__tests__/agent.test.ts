@@ -365,7 +365,7 @@ describe('Agent', () => {
 
       agent.addUserMessage('prep supplement')
 
-      const aiService = agent.exposeServices().aiService as ReturnType<typeof createMockAiService>
+      const aiService = agent.exposeServices().aiService as unknown as ReturnType<typeof createMockAiService>
       aiService.chatWithToolsStream.mockImplementation(
         (_messages, _tools, onChunk, _onToolCall, onDone) => {
           onChunk('Done')
@@ -969,7 +969,7 @@ describe('Agent run method', () => {
 
     it('keeps the liaison-selected model when WeChat comes in without an explicit profile', async () => {
       completeImmediately()
-      const config = mockServices.configService as { getActiveAiProfile: ReturnType<typeof vi.fn> }
+      const config = mockServices.configService as unknown as { getActiveAiProfile: ReturnType<typeof vi.fn> }
       config.getActiveAiProfile.mockReturnValue('local-8081')
       agent.setAgentId('__companion__')
       agent.updateConfig({ profileId: 'deepseek-v4-flash' })
@@ -984,7 +984,7 @@ describe('Agent run method', () => {
 
     it('does not pin the default when liaison has never selected a model', async () => {
       completeImmediately()
-      const config = mockServices.configService as { getActiveAiProfile: ReturnType<typeof vi.fn> }
+      const config = mockServices.configService as unknown as { getActiveAiProfile: ReturnType<typeof vi.fn> }
       config.getActiveAiProfile.mockReturnValue('local-8081')
       agent.setAgentId('__companion__')
 
@@ -998,7 +998,7 @@ describe('Agent run method', () => {
 
     it('wakeup still follows the default model when none is passed', async () => {
       completeImmediately()
-      const config = mockServices.configService as { getActiveAiProfile: ReturnType<typeof vi.fn> }
+      const config = mockServices.configService as unknown as { getActiveAiProfile: ReturnType<typeof vi.fn> }
       config.getActiveAiProfile.mockReturnValue('local-8081')
       agent.setAgentId('__wakeup__')
       agent.updateConfig({ profileId: 'deepseek-v4-flash' })
@@ -2001,7 +2001,7 @@ describe('Agent step callbacks', () => {
     
     // 检查是否有 message 类型的步骤
     const messageCalls = onStep.mock.calls.filter(
-      (call: [string, AgentStep]) => call[1].type === 'message'
+      (call) => call[1]?.type === 'message'
     )
     expect(messageCalls.length).toBeGreaterThan(0)
   })
@@ -2013,8 +2013,7 @@ describe('Agent SkillSession persistence', () => {
   let agent: TestAgent
 
   beforeEach(() => {
-    const mockAiService = createMockAiService()
-    const services = createMockServices(mockAiService)
+    const services = createMockServices()
     agent = new TestAgent(services)
   })
 

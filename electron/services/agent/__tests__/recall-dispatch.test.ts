@@ -63,7 +63,7 @@ describe('dispatchRecall', () => {
 
   it('这场什么都没有时列出空，不当失败', () => {
     const result = dispatchRecall({}, makeExecutor({
-      getTaskMemory: () => ({ getSummaries: () => [] }),
+      getTaskMemory: () => ({ getSummaries: () => [] } as never),
       getCompressedArchives: () => []
     }), undefined)
     expect(result.success).toBe(true)
@@ -80,7 +80,7 @@ describe('dispatchRecall', () => {
         getSummaries: () => [],
         getDigest,
         getFullSteps: () => []
-      })
+      } as never)
     }), undefined)
     expect(getDigest).toHaveBeenCalledWith('t1')
     expect(result.success).toBe(true)
@@ -95,7 +95,7 @@ describe('dispatchRecall', () => {
         getSummaries: () => [],
         getDigest: () => null,
         getFullSteps
-      })
+      } as never)
     }), undefined)
     expect(getFullSteps).toHaveBeenCalledWith('t1', undefined)
     expect(result.success).toBe(true)

@@ -4180,7 +4180,7 @@ export abstract class Agent {
       const orderedPreExecuted = toolCalls.flatMap((toolCall) => {
         if (!preExecutedIds.has(toolCall.id)) return []
         const completed = preExecuted.find(r => r.toolCall.id === toolCall.id)
-        return completed ? [{ toolCall, ...completed }] : []
+        return completed ? [{ ...completed, toolCall }] : []
       })
       const collapsedPreExecuted = collapseRepeatedToolOutputs(
         run.messages,

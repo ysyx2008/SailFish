@@ -27,6 +27,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { copyDirectoryWithProgress, CopyCanceledError } from './dir-copy'
 import {
+  RESTORE_OLD_DIRNAME,
   RESTORE_STAGING_DIRNAME,
   extractBackupToStaging,
   recoverInterruptedRestore,

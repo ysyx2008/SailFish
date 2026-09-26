@@ -86,18 +86,18 @@ describe('browser-bridge protocol', () => {
   })
 
   it('supportsProtocolV1 checks protocol field', () => {
-    expect(supportsProtocolV1({ extension: 'x', version: '1.1.0', protocol: BROWSER_BRIDGE_PROTOCOL_VERSION })).toBe(true)
-    expect(supportsProtocolV1({ extension: 'x', version: '1.0.6' })).toBe(false)
+    expect(supportsProtocolV1({ version: '1.1.0', protocol: BROWSER_BRIDGE_PROTOCOL_VERSION })).toBe(true)
+    expect(supportsProtocolV1({ version: '1.0.6' })).toBe(false)
   })
 
   it('extensionSupportsGotoNewTab checks capabilities or version', async () => {
     const { extensionSupportsGotoNewTab, extensionSupportsTabsManage } = await import('../protocol')
     expect(
-      extensionSupportsGotoNewTab({ extension: 'x', version: '1.1.0', capabilities: ['goto_new_tab'] }),
+      extensionSupportsGotoNewTab({ version: '1.1.0', capabilities: ['goto_new_tab'] }),
     ).toBe(true)
-    expect(extensionSupportsGotoNewTab({ extension: 'x', version: '1.1.2' })).toBe(true)
-    expect(extensionSupportsGotoNewTab({ extension: 'x', version: '1.1.1' })).toBe(false)
-    expect(extensionSupportsTabsManage({ extension: 'x', version: '1.2.0' })).toBe(true)
-    expect(extensionSupportsTabsManage({ extension: 'x', version: '1.1.2', capabilities: ['tabs_manage'] })).toBe(true)
+    expect(extensionSupportsGotoNewTab({ version: '1.1.2' })).toBe(true)
+    expect(extensionSupportsGotoNewTab({ version: '1.1.1' })).toBe(false)
+    expect(extensionSupportsTabsManage({ version: '1.2.0' })).toBe(true)
+    expect(extensionSupportsTabsManage({ version: '1.1.2', capabilities: ['tabs_manage'] })).toBe(true)
   })
 })

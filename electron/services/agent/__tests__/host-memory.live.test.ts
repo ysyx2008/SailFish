@@ -77,6 +77,9 @@ import { UnifiedTerminalService } from '../../unified-terminal.service'
 
 class LiveMemoryAgent extends Agent {
   lastSystemPrompt = ''
+  protected getAgentId(): string {
+    return 'live-memory'
+  }
   getAvailableTools(): ToolDefinition[] {
     return [ptyExecuteCommandTool]
   }
@@ -203,6 +206,7 @@ describe.skipIf(!hostReachable)('真机 192.168.230.130 主机记忆', () => {
   it('能在这台上跑命令，并认出 yushen@192.168.230.130', async () => {
     const result = await unified.executeInTerminal(sshId, `echo ${TOKEN_REMOTE}; hostname`, 15_000)
     expect(result.status).toBe('completed')
+    if (result.status !== 'completed') return
     expect(result.output).toContain(TOKEN_REMOTE)
     expect(result.output).toContain('ubuntu20045')
     expect(resolveHostIdForPty(sshId, {

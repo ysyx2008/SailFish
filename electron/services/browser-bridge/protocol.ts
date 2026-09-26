@@ -132,7 +132,7 @@ export type BrowserBridgeCapabilityProbe = {
 export function extensionSupportsTabsManage(ping: BrowserBridgeCapabilityProbe): boolean {
   if (!ping) return false
   if (ping.capabilities?.includes(BROWSER_BRIDGE_CAPABILITY_TABS_MANAGE)) return true
-  return compareSemver(ping.version, BROWSER_BRIDGE_TABS_MANAGE_MIN_VERSION) >= 0
+  return compareSemver(ping.version ?? '0.0.0', BROWSER_BRIDGE_TABS_MANAGE_MIN_VERSION) >= 0
 }
 
 /** 扩展是否支持 goto 默认新开标签页（tabs_manage 已包含；旧版 1.1.2 单独推断） */
@@ -140,7 +140,7 @@ export function extensionSupportsGotoNewTab(ping: BrowserBridgeCapabilityProbe):
   if (extensionSupportsTabsManage(ping)) return true
   if (!ping) return false
   if (ping.capabilities?.includes(BROWSER_BRIDGE_CAPABILITY_GOTO_NEW_TAB)) return true
-  return compareSemver(ping.version, BROWSER_BRIDGE_GOTO_NEW_TAB_MIN_VERSION) >= 0
+  return compareSemver(ping.version ?? '0.0.0', BROWSER_BRIDGE_GOTO_NEW_TAB_MIN_VERSION) >= 0
 }
 
 /** protocol v1：扩展只传 HTML 原语，正文提取在桌面端 */

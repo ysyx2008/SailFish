@@ -23,7 +23,8 @@ import type {
   CreateWatchParams,
   WatchTrigger,
   WatchRunRecord,
-  WatchRunStatus
+  WatchRunStatus,
+  WatchHistoryRecord
 } from './types'
 
 const log = createLogger('WatchService')
@@ -298,7 +299,7 @@ export class WatchService {
    * 普通关切流水：以 history/watch 索引为真相源，速览账按 session 合并补齐摘要字段。
    * 解决分桶前心跳挤掉速览后「正文树有、速览没有」的残缺列表。
    */
-  private getUserWatchHistoryFromAgentTree(watchId: string, limit: number) {
+  private getUserWatchHistoryFromAgentTree(watchId: string, limit: number): WatchHistoryRecord[] {
     const fromStore = this.store.getHistory(watchId, limit)
     const hs = this.config?.historyService
     if (!hs?.listWatchExecutionSummaries) {
@@ -334,7 +335,7 @@ export class WatchService {
         triggerType: 'unknown',
         agentSessionId: e.id,
         output: ''
-      }
+      } as unknown as WatchHistoryRecord
     })
   }
 

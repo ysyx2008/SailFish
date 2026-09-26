@@ -171,7 +171,10 @@ export class SchedulerStore {
   /**
    * 更新任务
    */
-  updateTask(id: string, updates: Partial<Omit<ScheduledTask, 'id' | 'createdAt'>>): ScheduledTask | null {
+  updateTask(
+    id: string,
+    updates: Partial<Omit<ScheduledTask, 'id' | 'createdAt' | 'options'>> & { options?: Partial<TaskOptions> }
+  ): ScheduledTask | null {
     const tasks = this.getTasks()
     const index = tasks.findIndex(t => t.id === id)
     
@@ -182,6 +185,10 @@ export class SchedulerStore {
     const updatedTask: ScheduledTask = {
       ...tasks[index],
       ...updates,
+      options: {
+        ...tasks[index].options,
+        ...updates.options
+      },
       updatedAt: Date.now()
     }
     

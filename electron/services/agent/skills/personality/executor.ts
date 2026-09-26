@@ -12,7 +12,7 @@ import { notifyFrontendConfigChanged } from '../config/executor'
 import { getWorkspacePath } from '../../tools/file'
 import { createLogger } from '../../../../utils/logger'
 import type { ToolResult, ToolExecutorConfig, AgentConfig } from '../../tools/types'
-import type { AgentMbtiType } from '@shared/types'
+import type { AgentMbtiType } from '../../../config.service'
 
 const log = createLogger('PersonalityExecutor')
 const IDENTITY_FILENAME = 'IDENTITY.md'

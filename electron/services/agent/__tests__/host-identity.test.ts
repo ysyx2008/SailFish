@@ -156,7 +156,7 @@ describe('notePaneHostOperationIfNeeded', () => {
         { type: 'function', function: { name: 'hands_on', parameters: { type: 'object', properties: {} } }, _meta: { hostScope: 'pane' } },
         { type: 'function', function: { name: 'just_look', parameters: { type: 'object', properties: {} } } },
       ],
-      noteHostOperation: (hostId, meta) => noted.push({ hostId, toolCallId: meta?.toolCallId }),
+      noteHostOperation: (hostId: string, meta?: { toolCallId?: string }) => noted.push({ hostId, toolCallId: meta?.toolCallId }),
     } as unknown as ToolExecutorConfig
   }
 

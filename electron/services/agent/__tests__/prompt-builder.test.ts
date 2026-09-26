@@ -931,7 +931,7 @@ describe('Edge cases', () => {
           firefox: 'sailfish-browser-bridge@yushen.dev',
         },
       }),
-    } as ReturnType<typeof getBrowserBridgeService>)
+    } as unknown as ReturnType<typeof getBrowserBridgeService>)
 
     const prompt = new PromptBuilder({ context: createMockContext() }).build()
     expect(prompt).toContain('# 浏览器助手')

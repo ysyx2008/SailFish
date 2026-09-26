@@ -19,7 +19,7 @@ vi.mock('../../im/im.service', () => ({
 }))
 
 vi.mock('../../user-skill.service', () => {
-  const skills: Record<string, { id: string; name: string; enabled: boolean; content: string }> = {
+  const skills: Record<string, { id: string; name: string; enabled: boolean; content: string; description?: string }> = {
     'my-skill': { id: 'my-skill', name: '我的技能', enabled: true, description: '自定义技能简介', content: '自定义技能正文' }
   }
   return {
@@ -54,6 +54,9 @@ class TestAgent extends Agent {
   }
   exposeLoadedSkills() {
     return this.getSkillSession().getLoadedSkills()
+  }
+  exposeSkillSession() {
+    return this.getSkillSession()
   }
   exposeMcpServers() {
     return this.getMcpToolSession().getLoadedServerIds()
@@ -104,7 +107,7 @@ function createServices(overrides?: Partial<AgentServices>): AgentServices {
   }
   if (!services.conversationManager) {
     services.conversationManager = new ConversationManager(
-      new ConversationStore((services.historyService as { getAgentRecordStore: () => unknown }).getAgentRecordStore())
+      new ConversationStore((services.historyService as unknown as { getAgentRecordStore: () => never }).getAgentRecordStore())
     )
   }
   return services
@@ -358,7 +361,7 @@ describe('重开对话恢复技能', () => {
   it('秘书 load_skill 新装上的内置技能排在末尾', async () => {
     const agent = new TestAgent(createServices())
     await agent.pinSkill('excel')
-    await agent.getSkillSession().loadSkill('calendar')
+    await agent.exposeSkillSession().loadSkill('calendar')
     agent.markBuiltinSkillLoaded('calendar')
     expect(agent.exposeVisibleSkills().map(s => s.id)).toEqual(['excel', 'calendar'])
   })
@@ -369,7 +372,7 @@ describe('重开对话恢复技能', () => {
     await agent.pinSkill('calendar')
     expect(agent.exposeVisibleSkills().map(s => s.id)).toEqual(['excel', 'calendar'])
 
-    await agent.getSkillSession().loadSkill('config')
+    await agent.exposeSkillSession().loadSkill('config')
     await agent.pinSkill('config')
     expect(agent.exposeVisibleSkills().map(s => s.id)).toEqual(['excel', 'calendar', 'config'])
   })
@@ -408,7 +411,7 @@ describe('重开对话恢复技能', () => {
     await agent.unpinSkill(configSkill.id)
     expect(agent.isSkillDismissed(configSkill.id)).toBe(true)
 
-    const result = await agent.getSkillSession().loadSkill(configSkill.id)
+    const result = await agent.exposeSkillSession().loadSkill(configSkill.id)
     expect(result.success).toBe(true)
     agent.markBuiltinSkillLoaded(configSkill.id)
 
@@ -449,23 +452,23 @@ describe('重开对话恢复技能', () => {
 
   it('秘书卸掉用户技能后，重开也不会再装回来', async () => {
     const sessionId = 'sess_secretary_unload_user'
-    let latest: { loadedSkills?: string[] } | null = null
+    const saved: { latest: { loadedSkills?: string[] } | null } = { latest: null }
     const historyService = {
-      getAgentRecordById: vi.fn().mockImplementation(() => latest),
-      saveAgentRecord: vi.fn((record: { loadedSkills?: string[] }) => { latest = record }),
+      getAgentRecordById: vi.fn().mockImplementation(() => saved.latest),
+      saveAgentRecord: vi.fn((record: { loadedSkills?: string[] }) => { saved.latest = record }),
       getAgentRecordStore: vi.fn(function (this: unknown) { return this })
     }
     const agent = new TestAgent(createServices({ historyService: historyService as never }))
     await agent.run('先开一场', ctx({ sessionId }))
     await agent.pinSkill('user:my-skill')
-    expect(latest?.loadedSkills).toEqual(expect.arrayContaining(['user:my-skill']))
+    expect(saved.latest?.loadedSkills).toEqual(expect.arrayContaining(['user:my-skill']))
 
     agent.markSkillUnloaded('user:my-skill')
-    expect(latest?.loadedSkills ?? []).not.toContain('user:my-skill')
+    expect(saved.latest?.loadedSkills ?? []).not.toContain('user:my-skill')
 
     const agent2 = new TestAgent(createServices({
       historyService: {
-        getAgentRecordById: vi.fn().mockReturnValue(latest),
+        getAgentRecordById: vi.fn().mockReturnValue(saved.latest),
         saveAgentRecord: vi.fn(),
         getAgentRecordStore: vi.fn(function (this: unknown) { return this })
       } as never

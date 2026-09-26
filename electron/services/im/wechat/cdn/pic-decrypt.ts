@@ -11,7 +11,7 @@ async function fetchCdnBytes(url: string, label: string): Promise<Buffer> {
     res = await fetch(url);
   } catch (err) {
     const cause =
-      (err as NodeJS.ErrnoException).cause ?? (err as NodeJS.ErrnoException).code ?? "(no cause)";
+      (err as { cause?: unknown; code?: string }).cause ?? (err as { code?: string }).code ?? "(no cause)";
     logger.error(
       `${label}: fetch network error url=${url} err=${String(err)} cause=${String(cause)}`,
     );

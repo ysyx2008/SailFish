@@ -312,7 +312,7 @@ describe('renderExcelWorkbookPreviewHtml + ExcelJS', () => {
     ws.getCell('B2').value = 2
     ws.getCell('C2').value = 3
 
-    const html = renderExcelWorkbookPreviewHtml(wb.worksheets)
+    const html = renderExcelWorkbookPreviewHtml(wb.worksheets as unknown as readonly PreviewWorksheet[])
     expect(html).toContain('colspan="3"')
     expect(html).toContain('>标题<')
     const dataRow = html.match(/<td class="row-header">1<\/td>(.*?)<\/tr>/)?.[1] ?? ''
@@ -329,7 +329,7 @@ describe('renderExcelWorkbookPreviewHtml + ExcelJS', () => {
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } }
     cell.alignment = { horizontal: 'center' }
 
-    const html = renderExcelWorkbookPreviewHtml(wb.worksheets)
+    const html = renderExcelWorkbookPreviewHtml(wb.worksheets as unknown as readonly PreviewWorksheet[])
     expect(html).toContain("font-family:'微软雅黑'")
     expect(html).toContain('font-size:16pt')
     expect(html).toContain('font-weight:700')
@@ -351,7 +351,7 @@ describe('renderExcelWorkbookPreviewHtml + ExcelJS', () => {
     const loaded = new ExcelJS.Workbook()
     await loaded.xlsx.load(buf)
 
-    const html = renderExcelWorkbookPreviewHtml(loaded.worksheets)
+    const html = renderExcelWorkbookPreviewHtml(loaded.worksheets as unknown as readonly PreviewWorksheet[])
     expect(html).toContain('font-weight:700')
     expect(html).toContain('color:#FFFFFF')
     expect(html).toContain('background-color:#2B579A')
@@ -370,7 +370,7 @@ describe('renderExcelWorkbookPreviewHtml + ExcelJS', () => {
     const buf = await wb.xlsx.writeBuffer()
     const loaded = new ExcelJS.Workbook()
     await loaded.xlsx.load(buf)
-    const html = renderExcelWorkbookPreviewHtml(loaded.worksheets)
+    const html = renderExcelWorkbookPreviewHtml(loaded.worksheets as unknown as readonly PreviewWorksheet[])
     const body = html.match(/data-r="4" data-c="2"[^>]*style="([^"]*)"/)?.[1] ?? ''
     expect(body).not.toContain('color:#FFFFFF')
     if (body.includes('color:')) expect(body).toContain('color:#000000')
@@ -394,7 +394,7 @@ describe('renderExcelWorkbookPreviewHtml + ExcelJS', () => {
     const buf = await wb.xlsx.writeBuffer()
     const loaded = new ExcelJS.Workbook()
     await loaded.xlsx.load(buf)
-    const html = renderExcelWorkbookPreviewHtml(loaded.worksheets)
+    const html = renderExcelWorkbookPreviewHtml(loaded.worksheets as unknown as readonly PreviewWorksheet[])
     expect(html).toContain('>=SUM(销售明细!G2:G16)<')
     expect(html).toContain('>=COUNT(销售明细!G2:G16)<')
     expect(html).toContain('>97100<')

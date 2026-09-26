@@ -19,6 +19,7 @@ vi.mock('electron', () => ({
 
 import { ensureAgentWorkspaceDirs, getScratchPath } from '../../tools/file'
 import { assessCommandRisk, assessCommandRiskDetailed } from '../../risk-assessor'
+import { DEFAULT_COMMAND_RISK_POLICY } from '@shared/types'
 
 describe('assessCommandRisk shell AST', () => {
   beforeEach(async () => {
@@ -263,6 +264,7 @@ describe('assessCommandRisk shell AST', () => {
     const d = await assessCommandRiskDetailed('mystery_tool --help', {
       executionMode: 'strict',
       riskPolicy: {
+        ...DEFAULT_COMMAND_RISK_POLICY,
         strictParseFail: 'dangerous',
         strictUnknownCmd: 'blocked',
         relaxedParseFail: 'moderate',

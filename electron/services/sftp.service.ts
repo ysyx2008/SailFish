@@ -295,7 +295,7 @@ export class SftpService extends EventEmitter {
     this.emit('transfer-start', { ...progress })
 
     try {
-      await sftp.put(localPath, remotePath, {
+      await sftp.fastPut(localPath, remotePath, {
         step: (transferred: number, _chunk: number, total: number) => {
           // 检查是否已取消
           if (this.isTransferCancelled(transferId)) {
@@ -382,7 +382,7 @@ export class SftpService extends EventEmitter {
         fs.mkdirSync(localDir, { recursive: true })
       }
 
-      await sftp.get(remotePath, localPath, {
+      await sftp.fastGet(remotePath, localPath, {
         step: (transferred: number, _chunk: number, total: number) => {
           // 检查是否已取消
           if (this.isTransferCancelled(transferId)) {

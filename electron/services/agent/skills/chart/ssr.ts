@@ -35,6 +35,8 @@ interface EChartsLike {
     renderToSVGString(): string
     dispose(): void
   }
+  registerMap(mapName: string, geoJson: object, specialAreas?: Record<string, unknown>): void
+  getMap?(mapName: string): unknown
 }
 
 let echartsModule: EChartsLike | null = null

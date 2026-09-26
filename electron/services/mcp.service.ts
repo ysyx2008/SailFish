@@ -135,7 +135,10 @@ export class McpService extends EventEmitter {
         }
 
         // 合并环境变量
-        const mergedEnv = { ...process.env, ...config.env }
+        const mergedEnv: Record<string, string> = {}
+        for (const [key, value] of Object.entries({ ...process.env, ...config.env })) {
+          if (typeof value === 'string') mergedEnv[key] = value
+        }
         
         log.info(`Starting ${config.name} with command: ${config.command}`)
         log.info(`Args: ${JSON.stringify(config.args)}`)
@@ -170,12 +173,6 @@ export class McpService extends EventEmitter {
       const client = new Client({
         name: app.getName(),
         version: app.getVersion()
-      }, {
-        capabilities: {
-          tools: {},
-          resources: {},
-          prompts: {}
-        }
       })
 
       // 连接到服务器
@@ -632,11 +629,10 @@ export class McpService extends EventEmitter {
 
       // 提取文本内容
       let content = ''
-      if (result.content) {
-        for (const item of result.content) {
-          if (item.type === 'text') {
-            content += item.text
-          }
+      const blocks = Array.isArray(result.content) ? result.content : []
+      for (const item of blocks) {
+        if (item && typeof item === 'object' && 'type' in item && item.type === 'text' && 'text' in item && typeof item.text === 'string') {
+          content += item.text
         }
       }
 

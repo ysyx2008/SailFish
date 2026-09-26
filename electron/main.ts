@@ -3317,7 +3317,9 @@ ipcMain.handle('config:set', async (_event, key: string, value: unknown) => {
     return
   }
   if (key === 'uiZoomFactor') {
-    commitUiZoomFactor(value)
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      commitUiZoomFactor(value)
+    }
     return
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

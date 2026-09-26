@@ -32,7 +32,7 @@ describe('normalizeAskOptions', () => {
 
 describe('askUser 推荐选项', () => {
   const makeExecutor = () => ({
-    addStep: vi.fn(() => ({ id: 'ask-1' })),
+    addStep: vi.fn((_step: { toolArgs: { options?: unknown; default_value?: unknown } }) => ({ id: 'ask-1' })),
     updateStep: vi.fn(),
     isAborted: () => true,
     hasPendingUserMessage: () => false,
@@ -43,8 +43,8 @@ describe('askUser 推荐选项', () => {
     const executor = makeExecutor()
     await askUser({ question: '你怎么看？' }, executor as never)
     expect(executor.addStep).toHaveBeenCalled()
-    expect(executor.addStep.mock.calls[0][0].toolArgs.options).toEqual([])
-    expect(executor.addStep.mock.calls[0][0].toolArgs.default_value).toBeUndefined()
+    expect(executor.addStep.mock.calls[0]![0].toolArgs.options).toEqual([])
+    expect(executor.addStep.mock.calls[0]![0].toolArgs.default_value).toBeUndefined()
   })
 
   it('只有一个选项时不真正提问', async () => {
@@ -65,8 +65,8 @@ describe('askUser 推荐选项', () => {
       executor as never
     )
     expect(executor.addStep).toHaveBeenCalled()
-    expect(executor.addStep.mock.calls[0][0].toolArgs.options).toEqual(['甲', '乙'])
-    expect(executor.addStep.mock.calls[0][0].toolArgs.default_value).toBeUndefined()
+    expect(executor.addStep.mock.calls[0]![0].toolArgs.options).toEqual(['甲', '乙'])
+    expect(executor.addStep.mock.calls[0]![0].toolArgs.default_value).toBeUndefined()
   })
 
   it('更倾向的不在选项里时当作没标，照样提问', async () => {
@@ -76,8 +76,8 @@ describe('askUser 推荐选项', () => {
       executor as never
     )
     expect(executor.addStep).toHaveBeenCalled()
-    expect(executor.addStep.mock.calls[0][0].toolArgs.options).toEqual(['甲', '乙'])
-    expect(executor.addStep.mock.calls[0][0].toolArgs.default_value).toBeUndefined()
+    expect(executor.addStep.mock.calls[0]![0].toolArgs.options).toEqual(['甲', '乙'])
+    expect(executor.addStep.mock.calls[0]![0].toolArgs.default_value).toBeUndefined()
   })
 
   it('标了更倾向的那一项时排在最前', async () => {
@@ -87,8 +87,8 @@ describe('askUser 推荐选项', () => {
       executor as never
     )
     expect(executor.addStep).toHaveBeenCalled()
-    expect(executor.addStep.mock.calls[0][0].toolArgs.options).toEqual(['乙', '甲'])
-    expect(executor.addStep.mock.calls[0][0].toolArgs.default_value).toBe('乙')
+    expect(executor.addStep.mock.calls[0]![0].toolArgs.options).toEqual(['乙', '甲'])
+    expect(executor.addStep.mock.calls[0]![0].toolArgs.default_value).toBe('乙')
   })
 })
 

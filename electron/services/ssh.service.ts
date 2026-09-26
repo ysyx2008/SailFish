@@ -1,4 +1,5 @@
 import { Client, ClientChannel } from 'ssh2'
+import type { Readable } from 'node:stream'
 import { v4 as uuidv4 } from 'uuid'
 import * as fs from 'fs'
 import stripAnsi from 'strip-ansi'
@@ -22,7 +23,7 @@ export interface TerminalStatus {
   shellPid?: number
   foregroundPid?: number
   foregroundProcess?: string
-  stateDescription?: string
+  stateDescription: string
 }
 
 interface SshInstance {
@@ -113,7 +114,7 @@ export class SshService {
   private async directConnect(
     id: string,
     config: SshConfig,
-    sock?: NodeJS.ReadableStream,
+    sock?: Readable,
     attempt?: SshConnectAttempt
   ): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -153,7 +154,7 @@ export class SshService {
         passphrase?: string
         readyTimeout: number
         keepaliveInterval: number
-        sock?: NodeJS.ReadableStream
+        sock?: Readable
       } = {
         host: config.host,
         port: config.port,
@@ -349,7 +350,7 @@ export class SshService {
             }
 
             try {
-              await this.directConnect(id, config, stream as unknown as NodeJS.ReadableStream, attempt)
+              await this.directConnect(id, config, stream, attempt)
 
               const instance = this.instances.get(id)
               if (instance) {

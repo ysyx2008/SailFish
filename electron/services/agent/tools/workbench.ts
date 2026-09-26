@@ -32,10 +32,11 @@ function expandTilde(filePath: string): string {
   return filePath
 }
 
-function resolveLocalPath(rawPath: string, ptyId: string): string {
+function resolveLocalPath(rawPath: string, ptyId?: string): string {
   let p = expandTilde(rawPath.trim())
   if (!path.isAbsolute(p)) {
-    p = path.resolve(getTerminalStateService().getCwd(ptyId), p)
+    const cwd = expandTilde(ptyId ? getTerminalStateService().getCwd(ptyId) : '~')
+    p = path.resolve(cwd, p)
   }
   return p
 }
@@ -79,7 +80,7 @@ export async function listWorkbenchArtifactsTool(executor: ToolExecutorConfig): 
 export async function manageWorkbenchArtifactsTool(
   executor: ToolExecutorConfig,
   args: Record<string, unknown>,
-  ptyId: string
+  ptyId?: string
 ): Promise<ToolResult> {
   const action = String(args.action || '').trim()
   const rawPath = typeof args.path === 'string' ? args.path : ''

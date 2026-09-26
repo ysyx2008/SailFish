@@ -351,9 +351,11 @@ describe('替我审批 · 评审员', () => {
   })
 
   it('可以先核查再下结论；核查轮数到顶后禁止再调工具', async () => {
+    let inspection = 0
     const chat = vi.fn<AutoReviewChat>(async (_m, _t, _p, _s, opts) => {
       if (opts?.toolChoice === 'none') return reply(verdictJson('medium', 'high', 'allow'))
-      return reply('', { tool_calls: [{ id: `c${chat.mock.calls.length}`, type: 'function', function: { name: 'inspect_local', arguments: '{"command":"ls /tmp/build"}' } }] })
+      inspection += 1
+      return reply('', { tool_calls: [{ id: `c${inspection}`, type: 'function', function: { name: 'inspect_local', arguments: '{"command":"ls /tmp/build"}' } }] })
     })
     const run = vi.fn(async () => ({ output: 'a b c', exitCode: 0, timedOut: false }))
     const reviewer = new AutoApprovalReviewer({ chat, maxInspections: 2 })

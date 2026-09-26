@@ -7,7 +7,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { createWriteStream } from 'fs'
-import { ZipArchive } from 'archiver'
+import { ZipArchive, type ZipEntryData } from 'archiver'
 import yauzl from 'yauzl'
 import { app } from 'electron'
 import { collectFilesAsync, CopyCanceledError, type CopyProgress } from './dir-copy'
@@ -318,7 +318,7 @@ export async function exportUserData(opts: ExportUserDataOptions): Promise<{ fil
           name: zipName,
           // 已压缩/大文件直存，显著缩短备份时间（体积接近）
           store: shouldStoreEntry(zipName),
-        })
+        } as ZipEntryData)
         if (i % 64 === 0) await yieldToEventLoop()
       }
       if (abortIfCanceled()) throw new CopyCanceledError()

@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, type Plugin, type ViteDevServer } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import electron from 'vite-plugin-electron'
 import renderer from 'vite-plugin-electron-renderer'
@@ -176,7 +176,7 @@ function copyEmbeddingWorker() {
 function copyChartMaps() {
   return {
     name: 'copy-chart-maps',
-    configureServer(server) {
+    configureServer(server: ViteDevServer) {
       const src = resolve(__dirname, 'resources/chart-maps')
       const dest = resolve(__dirname, 'public/chart-maps')
       if (!existsSync(src)) return

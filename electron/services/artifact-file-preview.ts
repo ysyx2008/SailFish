@@ -5,7 +5,7 @@
 import * as fs from 'fs'
 import type { CanvasRendererType } from '@shared/types'
 import { createLogger } from '../utils/logger'
-import { renderExcelWorkbookPreviewHtml } from './agent/skills/excel/preview-html'
+import { renderExcelWorkbookPreviewHtml, type PreviewWorksheet } from './agent/skills/excel/preview-html'
 import { enrichHtmlFonts } from './agent/skills/word/preview-fonts'
 
 const log = createLogger('ArtifactFilePreview')
@@ -29,7 +29,7 @@ async function previewXlsxHtml(filePath: string): Promise<string> {
   const ExcelJS = await import('exceljs')
   const workbook = new ExcelJS.Workbook()
   await workbook.xlsx.readFile(filePath)
-  return renderExcelWorkbookPreviewHtml(workbook.worksheets)
+  return renderExcelWorkbookPreviewHtml(workbook.worksheets as unknown as readonly PreviewWorksheet[])
 }
 
 /** 按 renderer 从磁盘文件重建产出物 preview content */

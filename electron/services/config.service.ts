@@ -204,6 +204,10 @@ interface StoreSchema {
   imFeishuAutoConnect: boolean    // 飞书自动连接
   imFeishuAppId: string           // 飞书 App ID
   imFeishuAppSecret: string       // 飞书 App Secret
+  /** 飞书用户授权后的展示名，设置页之外的持久提示 */
+  feishuOAuthUser?: string
+  /** 飞书用户授权后的 open_id */
+  feishuOAuthOpenId?: string
   imWeComAutoConnect: boolean     // 企业微信自动连接
   imWeComBotId: string            // 企业微信 Bot ID（长连接模式）
   imWeComSecret: string           // 企业微信长连接密钥

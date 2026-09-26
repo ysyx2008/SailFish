@@ -26,7 +26,9 @@
     "electron/**/*.ts",
     "shared/**/*.ts",
     "packages/shared-types/src/**/*.ts",
-    "packages/workbench-assistant/src/agent-tools.ts"
+    "packages/workbench-assistant/src/agent-tools.ts",
+    "src/utils/process-fold.ts",
+    "src/utils/thinking-block.ts"
   ]
 }
 

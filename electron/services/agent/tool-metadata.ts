@@ -19,7 +19,7 @@
  */
 import type { ToolDefinition } from '../ai.service'
 import type { ToolDefinitionWithMeta, ToolMeta, ToolStreamDisplay } from './tools'
-import { t } from './i18n'
+import { t, type TranslationKey } from './i18n'
 
 /**
  * 流式预创建卡片中"path 还没流到"时的占位符。
@@ -56,8 +56,9 @@ export function buildStreamProgressSuffix(parsed: Record<string, unknown>, field
 function resolveTitleKey(
   titleKey: NonNullable<ToolStreamDisplay['titleKey']>,
   args: Record<string, unknown>
-): string {
-  return typeof titleKey === 'function' ? titleKey(args) : titleKey
+): TranslationKey {
+  // titleKey 由各工具声明，运行时就是翻译表里的键；动态函数返回的也是键名
+  return (typeof titleKey === 'function' ? titleKey(args) : titleKey) as TranslationKey
 }
 
 /**

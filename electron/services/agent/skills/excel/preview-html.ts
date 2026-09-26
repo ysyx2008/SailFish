@@ -455,14 +455,15 @@ export function renderExcelWorkbookPreviewHtml(
   worksheets: readonly PreviewWorksheet[],
   options?: { activeSheet?: string; highlights?: PreviewHighlights }
 ): string {
-  if (worksheets.length === 0) return '<div class="sheet-empty">这份工作簿是空的</div>'
+  const sheets = worksheets
+  if (sheets.length === 0) return '<div class="sheet-empty">这份工作簿是空的</div>'
 
-  const activeName = options?.activeSheet && worksheets.some(ws => ws.name === options.activeSheet)
+  const activeName = options?.activeSheet && sheets.some(ws => ws.name === options.activeSheet)
     ? options.activeSheet
-    : worksheets[0].name
+    : sheets[0].name
 
   const parts: string[] = []
-  for (const ws of worksheets) {
+  for (const ws of sheets) {
     const isActive = ws.name === activeName
     const hiddenAttr = isActive ? '' : ' hidden'
     const sheetHighlights = isActive ? options?.highlights : undefined
@@ -473,8 +474,8 @@ export function renderExcelWorkbookPreviewHtml(
     parts.push('</div>')
   }
 
-  if (worksheets.length > 1) {
-    const tabs = worksheets.map(ws => {
+  if (sheets.length > 1) {
+    const tabs = sheets.map(ws => {
       const isActive = ws.name === activeName
       return `<span class="sheet-tab${isActive ? ' active' : ''}" data-sheet="${escapePreviewHtml(ws.name)}">${escapePreviewHtml(ws.name)}</span>`
     }).join('')

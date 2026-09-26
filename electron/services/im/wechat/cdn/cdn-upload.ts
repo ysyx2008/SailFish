@@ -63,7 +63,7 @@ export async function uploadBufferToCdn(params: {
       const res = await fetch(cdnUrl, {
         method: "POST",
         headers: { "Content-Type": "application/octet-stream" },
-        body: ciphertext,
+        body: Uint8Array.from(ciphertext),
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (res.status >= 400 && res.status < 500) {
@@ -96,7 +96,7 @@ export async function uploadBufferToCdn(params: {
       lastError = err;
       if (err instanceof Error && err.message.includes("client error")) throw err;
       const cause =
-        (err as NodeJS.ErrnoException).cause ?? (err as NodeJS.ErrnoException).code ?? "";
+        (err as { cause?: unknown; code?: string }).cause ?? (err as { code?: string }).code ?? "";
       const timedOut = err instanceof Error && err.name === "TimeoutError";
       if (attempt < UPLOAD_MAX_RETRIES) {
         logger.error(

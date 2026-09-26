@@ -191,6 +191,7 @@ describe('Registration API 契约', () => {
         list.push(handler)
         collected.hooks.push({ event })
       },
+      registerTtsProvider() {},
       registerHttpRoute(method, path) {
         plugin.httpRoutes.push({ pluginId: manifest.id, method: method.toUpperCase(), path, handler: () => {} })
         collected.routes.push({ method: method.toUpperCase(), path })
@@ -578,7 +579,7 @@ describe('插件生命周期契约', () => {
       providers: [] as ProviderRegistration[],
       channels: [] as ChannelRegistration[],
       hooks: new Map(),
-      httpRoutes: [],
+      httpRoutes: [] as import('../types').HttpRouteEntry[],
       enabled
     }
     ;(registry as any).plugins.set(id, plugin)

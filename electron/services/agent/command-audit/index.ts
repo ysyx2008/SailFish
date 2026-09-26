@@ -26,7 +26,7 @@ export { assessShellRisk, shellNeedsConfirm } from './assess-shell'
 
 export { ensureShellAstReady, parseShellCommand } from './parser'
 
-export { extractAuditedCalls, extractWriteRedirects } from './extract-calls'
+export { extractAuditedCalls } from './extract-calls'
 
 export { extractPwshAuditedCalls, ensurePwshAstReady } from './extract-pwsh-calls'
 

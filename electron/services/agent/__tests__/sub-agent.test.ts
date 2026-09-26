@@ -96,12 +96,12 @@ function createExecutor(
   return {
     agentId: 'parent',
     terminalService: { getTerminalOutput: () => [], write: () => {}, getTerminalType: () => 'local' } as any,
-    addStep: (partial) => {
+    addStep: (partial: Partial<AgentStep>) => {
       const step = { ...partial, id: `s-${++n}`, timestamp: Date.now() } as AgentStep
       steps.push(step)
       return step
     },
-    updateStep: (id, updates) => {
+    updateStep: (id: string, updates: Partial<AgentStep>) => {
       const step = steps.find(s => s.id === id)
       if (step) Object.assign(step, updates)
     },
@@ -124,7 +124,7 @@ function createExecutor(
       { role: 'assistant' as const, content: '', tool_calls: [{ id: '1', type: 'function' as const, function: { name: 'dispatch_agents', arguments: '{}' } }] },
     ],
     knockParent: () => {},
-    createChildAgent: (name) => typeof child === 'function' ? child(name) : child,
+    createChildAgent: (name: string) => typeof child === 'function' ? child(name) : child,
     _steps: steps,
   } as any
 }
@@ -282,7 +282,7 @@ describe('dispatch_agents 异步派出', () => {
 
     await roster.waitUntil(undefined, new AbortController().signal)
 
-    const steps = (executor as { _steps: AgentStep[] })._steps
+    const steps = (executor as unknown as { _steps: AgentStep[] })._steps
     const cards = steps.filter(s => s.toolName === 'dispatch_agents')
     expect(cards).toHaveLength(2)
     expect(cards[0].subAgents?.map(a => a.name)).toEqual(['海外'])

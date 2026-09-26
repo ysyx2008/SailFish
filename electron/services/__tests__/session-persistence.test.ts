@@ -203,7 +203,7 @@ describe('session-persistence incremental checkpoint', () => {
       messages: [{ role: 'user', content: 'hi' }],
       status: 'completed',
       duration: 999,
-      tokenUsage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
+      tokenUsage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
     })
     saveSessionRecord(agentDir, r2)
 
@@ -212,7 +212,7 @@ describe('session-persistence incremental checkpoint', () => {
 
     const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf-8'))
     expect(meta.duration).toBe(999)
-    expect(meta.tokenUsage.totalTokens).toBe(30)
+    expect(meta.tokenUsage.total_tokens).toBe(30)
   })
 
   it('updateSessionTitle 只改 meta.json', () => {

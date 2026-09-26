@@ -31,7 +31,7 @@ import {
 } from './styles'
 import { mergeXlsxFile } from './template-merge'
 import { formatCellValue, validateExpectedOriginals } from './cell-value'
-import { renderExcelWorkbookPreviewHtml, type PreviewHighlights } from './preview-html'
+import { renderExcelWorkbookPreviewHtml, type PreviewHighlights, type PreviewWorksheet } from './preview-html'
 import { buildReadRangeMarkdownTable } from './read-markdown'
 import { app } from 'electron'
 import { getKnowledgeService } from '../../../knowledge'
@@ -173,7 +173,7 @@ function resolveStyle(styleName?: string): ExcelStyleConfig {
 function generateExcelPreviewHtml(filePath: string, activeSheet?: string, highlights?: PreviewHighlights): string {
   const session = getSession(filePath)
   if (!session) return ''
-  return renderExcelWorkbookPreviewHtml(session.workbook.worksheets, { activeSheet, highlights })
+  return renderExcelWorkbookPreviewHtml(session.workbook.worksheets as unknown as readonly PreviewWorksheet[], { activeSheet, highlights })
 }
 
 /** 实时预览仍带 content；历史按 filePath 重建，避免大表 HTML 撑爆记录。 */
@@ -1023,6 +1023,10 @@ async function excelFromMarkdown(
     }
   }
 
+  if (typeof markdown !== 'string') {
+    return { success: false, output: '', error: t('excel.markdown_input_required') }
+  }
+
   // 解析 Markdown 表格
   const sheets = parseMarkdownTables(markdown, defaultSheetName)
   if (sheets.length === 0) {
@@ -1315,13 +1319,18 @@ interface ErrorCellInfo {
   formula?: string
 }
 
+/** exceljs 单元格值是一组没有字符串索引签名的对象，读 formula / result / error 前先看成普通字典 */
+function cellValueRecord(value: object): Record<string, unknown> {
+  return value as unknown as Record<string, unknown>
+}
+
 function findErrorCells(ws: import('exceljs').Worksheet): ErrorCellInfo[] {
   const errors: ErrorCellInfo[] = []
   ws.eachRow({ includeEmpty: false }, (row, rowNum) => {
     row.eachCell({ includeEmpty: false }, (cell, colNum) => {
       const val = cell.value
       if (val && typeof val === 'object') {
-        const obj = val as Record<string, unknown>
+        const obj = cellValueRecord(val)
         if ('error' in obj) {
           errors.push({
             ref: `${numberToColumnLetter(colNum)}${rowNum}`,
@@ -1363,9 +1372,9 @@ function analyzeFormulas(ws: import('exceljs').Worksheet): FormulaStats {
         emptyCount++
         return
       }
-      if (typeof val === 'object' && val !== null && 'formula' in (val as Record<string, unknown>)) {
+      if (typeof val === 'object' && val !== null && 'formula' in cellValueRecord(val)) {
         formulaCount++
-        const formula = String((val as Record<string, unknown>).formula)
+        const formula = String(cellValueRecord(val).formula)
         const pattern = formula.replace(/[A-Z]+\d+/g, '_REF_').replace(/\d+/g, 'N')
         formulaPatterns.set(pattern, (formulaPatterns.get(pattern) || 0) + 1)
       } else {
@@ -1423,14 +1432,14 @@ function analyzeDataSummary(ws: import('exceljs').Worksheet): { columns: ColumnS
       const cellType = typeof val === 'number' ? 'number'
         : typeof val === 'boolean' ? 'boolean'
         : (val instanceof Date) ? 'date'
-        : (typeof val === 'object' && 'formula' in (val as Record<string, unknown>)) ? 'formula'
+        : (typeof val === 'object' && val !== null && 'formula' in cellValueRecord(val)) ? 'formula'
         : 'text'
       typeCounts.set(cellType, (typeCounts.get(cellType) || 0) + 1)
 
       if (typeof val === 'number') {
         numericValues.push(val)
-      } else if (typeof val === 'object' && val !== null && 'result' in (val as Record<string, unknown>)) {
-        const result = (val as Record<string, unknown>).result
+      } else if (typeof val === 'object' && val !== null && 'result' in cellValueRecord(val)) {
+        const result = cellValueRecord(val).result
         if (typeof result === 'number') numericValues.push(result)
       }
     }
@@ -1712,9 +1721,9 @@ function applySortToRange(
     const sortCell = row.getCell(sortColNum)
     let sortVal = sortCell.value
     if (typeof sortVal === 'object' && sortVal !== null) {
-      const obj = sortVal as Record<string, unknown>
-      if ('result' in obj) sortVal = obj.result
-      else if ('text' in obj) sortVal = obj.text
+      const obj = cellValueRecord(sortVal)
+      if ('result' in obj) sortVal = obj.result as typeof sortVal
+      else if ('text' in obj) sortVal = obj.text as typeof sortVal
     }
     rows.push({ sortVal, rowData })
   }
@@ -2146,8 +2155,9 @@ function formatCellStyle(cell: import('exceljs').Cell): string {
   }
 
   // 对齐
-  if (cell.alignment?.horizontal && cell.alignment.horizontal !== 'general') {
-    parts.push(`align:${cell.alignment.horizontal}`)
+  const horizontalAlign = cell.alignment?.horizontal as string | undefined
+  if (horizontalAlign && horizontalAlign !== 'general') {
+    parts.push(`align:${horizontalAlign}`)
   }
 
   // 数字格式

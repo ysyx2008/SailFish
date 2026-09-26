@@ -469,7 +469,8 @@ export interface AiMessage {
 }
 
 interface ToolParameterSchema {
-  type: string
+  /** 省略时表示值可以是任意 JSON（配置项、比较值等） */
+  type?: string
   description?: string
   enum?: string[]
   items?: ToolParameterSchema
@@ -2248,11 +2249,13 @@ export class AiService {
     onModelFailover?: (notice: AiModelFailoverNotice) => void,
     streamOptions?: ChatStreamOptions,
   ): Promise<void> {
-    let profile = this.getCurrentProfile(profileId)
-    if (!profile) {
+    const initialProfile = this.getCurrentProfile(profileId)
+    if (!initialProfile) {
       onError(t('error.ai_no_config'))
       return
     }
+    // 闭包里会改写当前档（故障转移），标注成非空，避免每次读取都被当成可能为 null
+    let profile: AiProfile = initialProfile
 
     let isAnthropic = isAnthropicApi(profile)
     const triedFailoverIds = new Set<string>([profile.id])
@@ -2277,9 +2280,9 @@ export class AiService {
       model: profile.model,
       messages: messages.map(m => ({
         role: m.role,
-        content: streamOptions?.truncateDebugMessages
+        content: (streamOptions?.truncateDebugMessages
           ? truncateBenchDebugContent(m.content)
-          : m.content,
+          : m.content) ?? '',
         tool_call_id: m.tool_call_id,
         tool_calls: m.tool_calls,
         reasoning_content: m.reasoning_content,

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { runUntilIdle } from '../run-until-idle'
 import { SubAgentRoster, allocateChildName, type ChildAgentHandle } from '../sub-agent-roster'
 import type { AgentContext } from '../types'
+import type { AiMessage } from '../../ai.service'
 
 const context: AgentContext = {
   terminalOutput: [],
@@ -103,12 +104,12 @@ describe('runUntilIdle', () => {
       [{ description: '慢任务', prompt: '慢慢做' }],
       {
         createChild: () => child,
-        getParentMessages: () => [],
+        getParentMessages: () => [] as AiMessage[],
         getParentContext: () => context,
         knock: () => {},
         onProgress: () => {},
         isParentAborted: () => false,
-        sanitize: () => [],
+        sanitize: () => [] as AiMessage[],
         formatKnock: () => 'knock',
       }
     )
@@ -129,12 +130,12 @@ describe('interrupt', () => {
       [{ name: 'alice', description: '慢任务', prompt: '慢慢做' }],
       {
         createChild: () => child,
-        getParentMessages: () => [],
+        getParentMessages: () => [] as AiMessage[],
         getParentContext: () => context,
         knock: (message) => knocks.push(message),
         onProgress: () => {},
         isParentAborted: () => false,
-        sanitize: () => [],
+        sanitize: () => [] as AiMessage[],
         formatKnock: (snap) => `knock:${snap.name}:${snap.status}`,
       }
     )
@@ -151,12 +152,12 @@ describe('waitUntil', () => {
   function spawnDeps(roster: SubAgentRoster, createChild: () => ChildAgentHandle) {
     return {
       createChild,
-      getParentMessages: () => [] as const,
+      getParentMessages: () => [] as AiMessage[],
       getParentContext: () => context,
       knock: () => {},
       onProgress: () => {},
       isParentAborted: () => false,
-      sanitize: () => [] as const,
+      sanitize: () => [] as AiMessage[],
       formatKnock: () => 'knock',
     }
   }

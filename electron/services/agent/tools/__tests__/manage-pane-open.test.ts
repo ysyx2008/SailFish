@@ -187,7 +187,7 @@ describe('getAgentTools assistant hosted terminal', () => {
     expect(names).toContain('list_ssh_sessions')
     expect(names).toContain('execute_command')
     const manage = tools.find(t => t.function.name === 'manage_pane')!
-    const action = (manage.function.parameters as { properties: { action: { enum: string[] } } }).properties.action
+    const action = (manage.function.parameters as unknown as { properties: { action: { enum: string[] } } }).properties.action
     expect(action.enum).toContain('open')
   })
 })

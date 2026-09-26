@@ -155,7 +155,6 @@ export class OrchestratorService {
       username: session.username,
       group: session.group,
       groupId: session.groupId,
-      tags: session.tags
     }))
   }
   

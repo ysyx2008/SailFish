@@ -57,7 +57,7 @@ describe('buildBrowserBridgePromptSection', () => {
         install: {
           chromiumExtensionPath: '/tmp/ext',
           firefoxExtensionPath: '/tmp/ff',
-          nativeHostPath: '/tmp/host.json',
+          nativeHostManifestPath: '/tmp/host.json',
           registeredBrowsers: ['chrome'],
           errors: [],
         },
@@ -76,7 +76,7 @@ describe('patchBrowserBridgeSectionInSystemPrompt', () => {
     install: {
       chromiumExtensionPath: '/tmp/ext',
       firefoxExtensionPath: '/tmp/ff',
-      nativeHostPath: '/tmp/host.json',
+      nativeHostManifestPath: '/tmp/host.json',
       registeredBrowsers: ['chrome'],
       errors: [],
     },

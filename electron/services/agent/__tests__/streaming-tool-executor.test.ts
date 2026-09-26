@@ -19,7 +19,7 @@ function createRun(): AgentRun {
     steps: [],
     aborted: false,
     context: {},
-  } as AgentRun
+  } as unknown as AgentRun
 }
 
 describe('StreamingToolExecutor parallelShare', () => {

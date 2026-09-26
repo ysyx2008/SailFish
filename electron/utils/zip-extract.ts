@@ -67,7 +67,9 @@ export function extractZipBuffer(zipBuffer: Buffer, destDir: string): ZipExtract
   fs.mkdirSync(destDir, { recursive: true })
 
   for (const entry of zip.getEntries()) {
-    const entryName = decodeZipEntryName(entry.rawEntryName, entry.header.flags_efs)
+    // ZIP 规范 bit 11：文件名使用 UTF-8。类型定义没暴露 flags_efs，用 flags 位判断
+    const utf8Name = (entry.header.flags & 0x800) !== 0
+    const entryName = decodeZipEntryName(entry.rawEntryName, utf8Name)
     const targetPath = resolveSafeExtractPath(destDir, entryName)
 
     if (entry.isDirectory) {
