@@ -4,7 +4,8 @@ import * as os from 'os'
 import * as path from 'path'
 import { execFileSync } from 'child_process'
 
-vi.mock('electron', () => ({ app: { getAppPath: () => process.cwd(), getPath: () => os.tmpdir() } }))
+const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'coding-project-ud-'))
+vi.mock('electron', () => ({ app: { getAppPath: () => process.cwd(), getPath: () => userData } }))
 
 import { CodingProject, ProjectOpenError } from '../project'
 import { Ripgrep } from '../ripgrep'
@@ -48,6 +49,7 @@ beforeAll(() => {
 
 afterAll(() => {
   fs.rmSync(root, { recursive: true, force: true })
+  fs.rmSync(userData, { recursive: true, force: true })
 })
 
 describe('CodingProject', () => {

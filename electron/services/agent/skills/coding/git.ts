@@ -54,7 +54,7 @@ export class GitCli {
         args,
         {
           cwd: opts.cwd,
-          env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', ...opts.env },
+          env: { ...inheritedEnv(), GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', ...opts.env },
           timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
           maxBuffer: 16 * 1024 * 1024,
           windowsHide: true,
@@ -71,6 +71,15 @@ export class GitCli {
       )
     })
   }
+}
+
+/** 去掉继承来的 GIT_*（GIT_DIR / GIT_INDEX_FILE 之类会把操作引到别的仓库） */
+function inheritedEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {}
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!key.toUpperCase().startsWith('GIT_')) env[key] = value
+  }
+  return env
 }
 
 function findOnPath(name: string): string | undefined {

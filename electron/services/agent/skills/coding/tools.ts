@@ -118,6 +118,30 @@ pattern 例："*.test.ts"（任意层级）、"src/**/*.vue"、"**/Dockerfile"�
       streamDisplay: { titleKey: 'coding.tool_multi_edit', titleField: 'path' },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'code_rewind',
+      description: `把项目退回之前的检查点。打开项目时、之后每轮开始时都会自动给项目留一个检查点（存在旗鱼自己的数据目录，不碰项目的 git）。
+- action=list：列出最近的检查点，新的在前，标出是不是这场对话留的、之后改了几个文件
+- action=restore：退回。给 checkpoint 就退到那一个；不给就退到最近一个和现在内容不一样的轮次检查点（通常就是「上一轮开始前」；已经被退回撤掉的不算，所以连撤几次会一步步往前退）
+退回会把改过、删掉的文件改回去，把后来新建的删掉（用命令改的也算）；项目忽略的文件和嵌套仓库不动。退回前先把当前状态也留一个检查点，退错了可以再 restore 它。
+只在用户要求撤销时用；要撤销哪一轮拿不准时先 list。`,
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['list', 'restore'], description: 'list 看检查点；restore 退回' },
+          checkpoint: { type: 'string', description: 'restore 时要退到的检查点编号（list 里的那串）；不给就退到上一轮开始前' },
+        },
+        required: ['action'],
+      },
+    },
+    _meta: {
+      allowedForSubAgent: false,
+      parallelizable: false,
+      streamDisplay: { titleKey: 'coding.tool_rewind', titleField: 'action' },
+    },
+  },
 ]
 
 export const codingSkillContent = `# 编程
@@ -129,6 +153,10 @@ export const codingSkillContent = `# 编程
 3. **读**：\`read_file\`，大文件分段读。改哪里就先读哪里，别凭记忆改。
 4. **改**：改一处用 \`edit_file\`；同一个文件要改好几处，用 \`code_multi_edit\` 一次改完；新文件用 \`write_text_file\`。只改任务需要的地方，不顺手重排、重命名、改格式。改完如果结果里提示「可能多了语法错误」，先读那几行确认，是真错就立刻修。
 5. **验**：用 exec 跑打开项目时列出的检查 / 测试命令。没跑过不要说「改好了」；跑不了就说明为什么。
+
+## 撤回
+
+每轮开始前会自动给项目留检查点。用户说「刚才那轮撤掉 / 改回去」时用 \`code_rewind\`，不要自己用 git checkout 或手工改回。退回后告诉用户退到了哪个时候、动了哪些文件。
 
 ## git
 
