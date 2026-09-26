@@ -30,7 +30,7 @@ export default {
     autoReviewToggleTitle: 'When something would ask you, an independent reviewer checks it against your own words first. It can only approve — if unclear, it still asks you.',
     approvalMode: {
       menuLabel: 'What happens now',
-      tipIntro: 'Some actions need your approval before the secretary proceeds. Pick one option to decide when you are asked, and who looks first.',
+      tipIntro: 'Some actions need your approval first. Pick one option to decide when you are asked, and who looks first.',
       strict: {
         label: 'Strict',
         desc: 'Every action requires your confirmation',

@@ -200,7 +200,7 @@ Agent 有四种存在方式，对应四类**互斥**的会话（`kind`）。把�
 - **三种终端模式**：`local` / `ssh` / `assistant`，见下方独立章节
 - **并行子 Agent**：`dispatch_agents` 工具分派轻量子任务并行执行，支持 Agent 类型系统（explore/edit/research）、同步/异步双模式、prompt cache 优化。仅 local 和 assistant 模式可用（子 Agent 只能操作本地文件系统和执行本地命令）
 - **风险评估**：safe / moderate / dangerous / blocked 四级
-- **执行模式**：strict（全确认）/ relaxed（危险确认）/ free（全自动）。任务栏把「替我审批」列成第四档（选它等于宽松，再加先替你看；默认关）：本来要问用户的确认，可先交给独立评审员对照用户原话决定是否替他放行，见 `agent/SPEC.md`
+- **执行模式**：strict（全确认）/ relaxed（危险确认）/ free（全自动）。输入框把「替我审批」列成第四档（选它等于宽松，再加先替你看；默认关）：本来要问用户的确认，可先交给独立评审员对照用户原话决定是否替他放行，见 `agent/SPEC.md`
 - **Agent Workspace**：`{userData}/agent-workspace/`，Agent 私有数据目录，文件读写自动跳过确认
 - **三级记忆**：L1 任务记忆 / L2 知识文档 / L3 对话记录，见下方独立章节
 - **会话持久化**：Agent 实例按 `agentKey` 复用，会话状态跨多次 run 累积；后端是唯一数据源，增量检查点防丢失，支持跨会话恢复。细节见 `agent/SPEC.md`

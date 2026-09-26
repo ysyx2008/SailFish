@@ -2433,16 +2433,9 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
         </div>
       </div>
 
-      <!-- 系统环境信息 + Agent 设置 -->
-      <div v-if="!peek" class="system-info-bar">
-        <!-- Agent 模式设置 -->
-        <div class="agent-settings">
-          <ApprovalModeSelect
-            :model-value="approvalUiState"
-            @update:model-value="applyApprovalUiState"
-          />
-        </div>
-        <div v-if="currentSystemInfo" class="system-info-left host-info-trigger">
+      <!-- 系统环境信息 -->
+      <div v-if="!peek && currentSystemInfo" class="system-info-bar">
+        <div class="system-info-left host-info-trigger">
           <span class="system-icon">💻</span>
           <span class="system-text">
             {{ currentSystemInfo.os === 'windows' ? 'Windows' : currentSystemInfo.os === 'macos' ? 'macOS' : 'Linux' }}
@@ -3238,6 +3231,12 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
             :profiles="aiProfiles"
             :model-value="activeAiProfile?.id || ''"
             @update:model-value="changeAiProfile"
+          />
+        </template>
+        <template #footer-right>
+          <ApprovalModeSelect
+            :model-value="approvalUiState"
+            @update:model-value="applyApprovalUiState"
           />
         </template>
       </AiComposer>
@@ -4358,15 +4357,6 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
 }
 
 /* ==================== Agent 模式样式 ==================== */
-
-/* Agent 设置区域 */
-.agent-settings {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: nowrap;
-  flex-shrink: 0;
-}
 
 /* 严格模式开关 */
 .strict-mode-toggle {

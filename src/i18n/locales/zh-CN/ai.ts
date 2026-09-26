@@ -30,7 +30,7 @@ export default {
     autoReviewToggleTitle: '本来要问你的那一下，先让独立评审员对照你说过的话看。只能替你放行，没把握还是问你。',
     approvalMode: {
       menuLabel: '现在会怎样',
-      tipIntro: '秘书动手前，有的操作要你批准。这里选一档，决定什么时候问你、谁先看。',
+      tipIntro: '有的操作动手前要你批准。选一档，决定什么时候问你、谁先看。',
       strict: {
         label: '严格',
         desc: '每个操作都要你确认',
