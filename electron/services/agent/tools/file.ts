@@ -917,6 +917,7 @@ export function applyTextEdit(content: string, oldText: string, newText: string,
     && typeof match.originalStart === 'number'
     && typeof match.originalEnd === 'number'
   const start = hasOriginalRange ? match.originalStart! : content.indexOf(oldText)
+  if (start < 0) return { ok: false, reason: 'not_found', closestContext: match.closestContext }
   const end = hasOriginalRange ? match.originalEnd! : start + oldText.length
   const replacement = match.normalized ? preserveNewlineStyle(newText, content) : newText
   return {

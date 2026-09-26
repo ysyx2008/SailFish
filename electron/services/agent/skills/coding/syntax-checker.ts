@@ -4,12 +4,13 @@
  */
 import * as fs from 'fs'
 import * as path from 'path'
-import { app } from 'electron'
 import { Parser, Language, type Node } from 'web-tree-sitter'
 import { BUNDLED_WASM_DIR, GRAMMAR_BY_EXTENSION } from './grammars'
+import { appPath } from './app-path'
 
 /** 超过这么大的文件不查（主线程解析，大文件会卡） */
-const MAX_FILE_BYTES = 1_000_000
+/** 解析在主进程同步跑，改前改后各一遍；512KB 约 0.1 秒 */
+const MAX_FILE_BYTES = 512 * 1024
 const MAX_ISSUES_PER_PARSE = 50
 const SNIPPET_MAX_CHARS = 120
 
@@ -127,7 +128,7 @@ export class WasmLocator {
   }
 
   private find(relatives: string[]): string {
-    const roots = [...new Set([__dirname, app.getAppPath(), process.cwd()])]
+    const roots = [...new Set([__dirname, appPath(), process.cwd()].filter((p): p is string => Boolean(p)))]
     for (const rel of relatives) {
       for (const root of roots) {
         const candidate = path.join(root, rel)

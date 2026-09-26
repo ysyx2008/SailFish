@@ -5,7 +5,7 @@
 import { spawn } from 'child_process'
 import * as fs from 'fs'
 import * as path from 'path'
-import { app } from 'electron'
+import { appPath } from './app-path'
 
 const BINARY_NAME = process.platform === 'win32' ? 'rg.exe' : 'rg'
 const BUILDER_OS: Partial<Record<NodeJS.Platform, string>> = { darwin: 'mac', win32: 'win', linux: 'linux' }
@@ -117,7 +117,7 @@ export class Ripgrep {
     if (process.resourcesPath) list.push(path.join(process.resourcesPath, 'ripgrep', BINARY_NAME))
     const osDir = BUILDER_OS[process.platform]
     if (osDir) {
-      const roots = new Set([app.getAppPath(), process.cwd()])
+      const roots = new Set([appPath(), process.cwd()].filter((p): p is string => Boolean(p)))
       for (const root of roots) {
         list.push(path.join(root, 'resources', 'ripgrep', `${osDir}-${process.arch}`, BINARY_NAME))
       }

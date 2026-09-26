@@ -65,7 +65,8 @@ export class BuiltinSkillEnablement {
   setEnabled(skillId: string, enabled: boolean): void {
     const store = this.config as SkillEnablementConfigStore
     const skill = getSkill(skillId)
-    const key = skill && isOptInSkill(skill) ? OPT_IN_KEY : DISABLED_KEY
+    if (!skill) return
+    const key = isOptInSkill(skill) ? OPT_IN_KEY : DISABLED_KEY
     const ids = readIdSet(store, key)
     const listed = key === OPT_IN_KEY ? enabled : !enabled
     if (listed) ids.add(skillId)

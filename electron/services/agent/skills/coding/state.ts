@@ -1,6 +1,5 @@
 /**
  * 编程技能 - 这场对话里的状态（放在技能会话的状态数据里，不落盘）
- * 伙计拿到的是浅拷贝：这里改数组一律换新数组，不原地改，免得写回主人那份。
  */
 import type { SkillData } from '../types'
 import type { ToolExecutorConfig } from '../../tools/types'
@@ -14,14 +13,22 @@ export class CodingState {
     return new CodingState(executor.skillSession?.getSkillData<SkillData>(CODING_SKILL_ID) ?? {})
   }
 
-  /** 换了项目才清空这场的检查点记录；重开同一个项目接着记 */
+  /**
+   * 换了项目才清空这场的检查点记录；重开同一个项目接着记。
+   * 原地改同一份数据，不换对象：这一轮还没拍完的检查点认的是这份数据。
+   */
   static setRoot(executor: ToolExecutorConfig, root: string): CodingState {
     const session = executor.skillSession
     const current = session?.getSkillData<SkillData>(CODING_SKILL_ID)
-    if (current && current.root === root) return new CodingState(current)
-    const data: SkillData = { root }
-    session?.setSkillData(CODING_SKILL_ID, data)
-    return new CodingState(session?.getSkillData<SkillData>(CODING_SKILL_ID) ?? data)
+    if (current) {
+      if (current.root !== root) {
+        for (const key of Object.keys(current)) delete current[key]
+        current.root = root
+      }
+      return new CodingState(current)
+    }
+    session?.setSkillData(CODING_SKILL_ID, { root })
+    return new CodingState(session?.getSkillData<SkillData>(CODING_SKILL_ID) ?? { root })
   }
 
   get root(): string | undefined {

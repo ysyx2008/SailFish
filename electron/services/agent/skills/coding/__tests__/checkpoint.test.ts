@@ -120,25 +120,47 @@ describe.skipIf(!hasGit)('CheckpointStore', () => {
     const done = await cp.applyRestore(await cp.prepareRestore())
     expect(read('src/a.ts')).toBe('export const a = 1\n')
 
-    await cp.applyRestore(await cp.prepareRestore(done.saved.id.slice(0, 10)))
+    await cp.applyRestore(await cp.prepareRestore(done.plan.saved.id.slice(0, 10)))
     expect(read('src/a.ts')).toBe('changed\n')
   })
 
-  it('准备好之后项目又变了：按新状态重算，新改的内容也留成检查点', async () => {
+  it('准备好之后项目又变了：先不动手，交回按新状态重算的计划', async () => {
     const cp = store()
     await cp.snapshot('turn')
     write('src/a.ts', 'agent edit\n')
     await cp.snapshot('turn')
     const plan = await cp.prepareRestore()
+    expect(plan.removed).toEqual([])
 
     write('src/user.ts', 'user wrote this while the dialog was open\n')
-    const done = await cp.applyRestore(plan)
-    expect(done.saved.id).not.toBe(plan.saved.id)
-    expect(done.removed).toContain('src/user.ts')
-    expect(read('src/user.ts')).toBeUndefined()
+    const first = await cp.applyRestore(plan)
+    expect(first.applied).toBe(false)
+    expect(first.plan.saved.id).not.toBe(plan.saved.id)
+    expect(first.plan.removed).toEqual(['src/user.ts'])
+    expect(read('src/a.ts')).toBe('agent edit\n')
+    expect(read('src/user.ts')).toBeDefined()
 
-    await cp.applyRestore(await cp.prepareRestore(done.saved.id))
-    expect(read('src/user.ts')).toBe('user wrote this while the dialog was open\n')
+    const second = await cp.applyRestore(first.plan)
+    expect(second.applied).toBe(true)
+    expect(read('src/a.ts')).toBe('export const a = 1\n')
+    expect(read('src/user.ts')).toBeUndefined()
+  })
+
+  it('两次检查点之间用户自己提交过：退回只动工作区文件，项目的 .git 一字不动', async () => {
+    const cp = store()
+    await cp.snapshot('turn')
+    write('src/a.ts', 'committed by user\n')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'user commit')
+    await cp.snapshot('turn')
+    const before = userGitFingerprint()
+
+    const plan = await cp.prepareRestore()
+    expect([...plan.restored, ...plan.removed].some(p => p.split('/')[0] === '.git')).toBe(false)
+    expect(plan.restored).toEqual(['src/a.ts'])
+    await cp.applyRestore(plan)
+    expect(read('src/a.ts')).toBe('export const a = 1\n')
+    expect(userGitFingerprint()).toBe(before)
   })
 
   it('嵌套仓库不深入也不删', async () => {
@@ -213,6 +235,33 @@ describe.skipIf(!hasGit)('code_rewind 端到端', () => {
     expect(read('src/a.ts')).toBe('export const a = 1\n')
     expect(read('scripts/gen.sh')).toBeUndefined()
     expect(userGitFingerprint()).toBe(before)
+  })
+
+  it('确认框开着时项目又变了：按新清单再问一次，不拿旧的同意删新文件', async () => {
+    const { session, call, waitForConfirmation } = setup('relaxed')
+    await session.loadSkill('coding')
+    await call('code_open_project', { path: root })
+    write('src/a.ts', 'changed\n')
+    await session.notifyRunStart({ isSubAgent: false })
+    waitForConfirmation.mockImplementationOnce(async () => {
+      write('src/late.ts', 'written while the dialog was open\n')
+      return true
+    })
+    const result = await call('code_rewind', { action: 'restore' })
+    expect(result.success).toBe(true)
+    expect(waitForConfirmation).toHaveBeenCalledTimes(2)
+    expect((waitForConfirmation.mock.calls[0][2] as { delete_files: string[] }).delete_files).toEqual([])
+    expect((waitForConfirmation.mock.calls[1][2] as { delete_files: string[] }).delete_files).toEqual(['src/late.ts'])
+    expect(read('src/late.ts')).toBeUndefined()
+  })
+
+  it('搜索不能越出项目', async () => {
+    const { session, call } = setup('free')
+    await session.loadSkill('coding')
+    await call('code_open_project', { path: root })
+    const result = await call('code_search', { pattern: 'x', path: '../..' })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('不在项目里')
   })
 
   it('用户不同意就不退', async () => {

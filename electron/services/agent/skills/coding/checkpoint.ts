@@ -31,10 +31,15 @@ export interface RestorePlan {
   skippedNested: string[]
 }
 
+export type RestoreOutcome =
+  | { applied: true; plan: RestorePlan; failedRemovals: string[] }
+  | { applied: false; plan: RestorePlan }
+
 export type CheckpointErrorCode = 'snapshot_failed' | 'not_found' | 'no_target' | 'failed'
 
 export class CheckpointError extends Error {
-  constructor(readonly code: CheckpointErrorCode, message: string) {
+  /** saved：出错时已经给退回前的状态留好的检查点 */
+  constructor(readonly code: CheckpointErrorCode, message: string, readonly saved?: Checkpoint) {
     super(message)
     this.name = 'CheckpointError'
   }
@@ -47,6 +52,7 @@ const PARTIAL_ADD_EXIT = 1
 const KINDS: readonly CheckpointKind[] = ['open', 'turn', 'before_restore']
 const COMMIT_ID = /^[0-9a-f]{4,40}$/i
 const DEFAULT_TARGET_SCAN = 200
+const LOCK_SETTLE_MS = 1000
 
 export class CheckpointStore {
   /** 同一影子仓库的操作排队，免得两场对话同时拍快照抢索引锁 */
@@ -92,15 +98,23 @@ export class CheckpointStore {
     })
   }
 
-  /** 退回第二步。准备之后（比如等用户确认时）项目又变了，就再留一个检查点、按新状态重算 */
-  applyRestore(plan: RestorePlan): Promise<RestorePlan> {
+  /**
+   * 退回第二步。准备之后（比如确认框开着时用户自己改了文件）项目又变了就不动手：
+   * 给新状态留一个检查点，交回按新状态重算的计划，由调用方重新确认。
+   */
+  applyRestore(plan: RestorePlan): Promise<RestoreOutcome> {
     return this.exclusive(async () => {
       const snap = await this.snapshotUnlocked('before_restore', plan.saved)
       if (!snap.ok) throw new CheckpointError('snapshot_failed', snap.detail)
-      const final = snap.checkpoint.id === plan.saved.id ? plan : await this.plan(plan.target, snap.checkpoint)
-      for (const rel of final.removed) await this.removeFile(rel)
-      if (final.restored.length > 0) await this.checkoutPaths(final.target.id, final.restored)
-      return final
+      if (snap.checkpoint.id !== plan.saved.id) {
+        return { applied: false, plan: await this.plan(plan.target, snap.checkpoint) }
+      }
+      const failedRemovals: string[] = []
+      for (const rel of plan.removed) {
+        if (!(await this.removeFile(rel))) failedRemovals.push(rel)
+      }
+      if (plan.restored.length > 0) await this.checkoutPaths(plan.target.id, plan.restored, plan.saved)
+      return { applied: true, plan, failedRemovals }
     })
   }
 
@@ -110,6 +124,7 @@ export class CheckpointStore {
     const diff = await this.git(['diff', '--raw', '-z', '--no-renames', '--no-ext-diff', target.id, saved.id])
     if (diff.code !== 0) throw new CheckpointError('failed', diff.stderr.trim())
     for (const entry of parseRawDiff(diff.stdout)) {
+      if (isProjectGitPath(entry.path)) continue
       if (entry.oldMode === GITLINK_MODE || entry.newMode === GITLINK_MODE) plan.skippedNested.push(entry.path)
       else if (entry.status === 'A') plan.removed.push(entry.path)
       else plan.restored.push(entry.path)
@@ -182,36 +197,48 @@ export class CheckpointStore {
     return undefined
   }
 
-  /** 超时被杀时 git 可能留下索引锁，不清掉下一轮就全失败 */
+  /**
+   * 超时被杀时 git 一般会自己清掉索引锁；万一没清掉，下一轮就全失败。
+   * 先等它退干净再清，免得和还没退出的进程抢着写索引。
+   */
   private async abandon(): Promise<SnapshotResult> {
+    await new Promise(resolve => setTimeout(resolve, LOCK_SETTLE_MS))
     await fs.promises.rm(path.join(this.gitDir, 'index.lock'), { force: true })
     return { ok: false, reason: 'timeout', detail: `${SNAPSHOT_TIMEOUT_MS / 1000}s` }
   }
 
-  private async checkoutPaths(commit: string, paths: string[]): Promise<void> {
+  private async checkoutPaths(commit: string, paths: string[], saved: Checkpoint): Promise<void> {
     const listFile = path.join(this.gitDir, 'sailfish-restore-paths')
     await fs.promises.writeFile(listFile, paths.join('\0'))
     try {
       const res = await this.git(['checkout', commit, `--pathspec-from-file=${listFile}`, '--pathspec-file-nul'])
-      if (res.code !== 0) throw new CheckpointError('failed', res.stderr.trim())
+      if (res.code !== 0) throw new CheckpointError('failed', res.stderr.trim(), saved)
     } finally {
       await fs.promises.rm(listFile, { force: true })
     }
   }
 
-  private async removeFile(rel: string): Promise<void> {
+  /** 删不掉返回 false。按真实路径判断，不顺着符号链接删到项目外面去 */
+  private async removeFile(rel: string): Promise<boolean> {
     const abs = path.resolve(this.root, rel)
-    if (!isInside(this.root, abs)) return
-    await fs.promises.rm(abs, { force: true })
+    try {
+      const realRoot = await fs.promises.realpath(this.root)
+      const realParent = await fs.promises.realpath(path.dirname(abs))
+      if (realParent !== realRoot && !isInside(realRoot, realParent)) return false
+      await fs.promises.rm(abs, { force: true })
+    } catch (e) {
+      return (e as NodeJS.ErrnoException).code === 'ENOENT'
+    }
     let dir = path.dirname(abs)
     while (dir !== this.root && isInside(this.root, dir)) {
       try {
         await fs.promises.rmdir(dir)
       } catch {
-        return
+        break
       }
       dir = path.dirname(dir)
     }
+    return true
   }
 
   private git(args: string[], timeoutMs = SNAPSHOT_TIMEOUT_MS): Promise<GitRunResult> {
@@ -279,6 +306,11 @@ function parseRawDiff(stdout: string): RawDiffEntry[] {
     out.push({ oldMode: meta[0], newMode: meta[1], status: meta[4].charAt(0), path: parts[i + 1] })
   }
   return out
+}
+
+/** git 不会把项目自己的 .git 收进快照；这里再挡一道，退回时绝不碰它 */
+function isProjectGitPath(rel: string): boolean {
+  return rel.split('/')[0].toLowerCase() === '.git'
 }
 
 function isInside(root: string, target: string): boolean {

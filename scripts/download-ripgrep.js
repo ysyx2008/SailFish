@@ -30,7 +30,7 @@ const TARGETS = {
 
 function defaultTargets() {
   if (process.platform === 'darwin') return ['mac-x64', 'mac-arm64']
-  if (process.platform === 'win32') return ['win-x64']
+  if (process.platform === 'win32') return [process.arch === 'arm64' ? 'win-arm64' : 'win-x64']
   return [`linux-${process.arch}`]
 }
 

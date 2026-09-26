@@ -24,6 +24,7 @@ const LINE_MAX_CHARS = 300
 const CHECKPOINT_LIST_LIMIT = 20
 const CONFIRM_FILE_LIMIT = 20
 const RESTORE_FILE_LIMIT = 30
+const MAX_RESTORE_ATTEMPTS = 3
 
 const KIND_KEYS: Record<CheckpointKind, 'coding.rewind_kind_open' | 'coding.rewind_kind_turn' | 'coding.rewind_kind_before_restore'> = {
   open: 'coding.rewind_kind_open',
@@ -64,6 +65,7 @@ export async function executeCodingTool(
     if (e instanceof RipgrepNotFoundError) return fail(t('coding.rg_not_found'))
     if (e instanceof RipgrepError) return fail(t('coding.search_error', { error: e.message }))
     if (e instanceof CheckpointError) return fail(checkpointErrorMessage(e))
+    if (e instanceof OutsideProjectError) return fail(t('coding.path_outside', { path: e.message }))
     log.error(`coding tool failed: ${toolName}`, e)
     return fail(e instanceof Error ? e.message : String(e))
   }
@@ -290,27 +292,32 @@ async function restoreCheckpoint(
     riskLevel: 'dangerous',
   })
 
-  const plan = await store.prepareRestore(ref)
+  let plan = await store.prepareRestore(ref)
   state.recordCheckpoint(plan.saved.id)
-  if (plan.target.tree === plan.saved.tree) {
-    return { success: true, output: t('coding.rewind_nothing', { time: formatTime(plan.target.createdAt) }) }
-  }
+  const needConfirm = riskNeedsConfirm('dangerous', config.executionMode, config.commandRiskPolicy)
 
-  if (riskNeedsConfirm('dangerous', config.executionMode, config.commandRiskPolicy)) {
-    const approved = await executor.waitForConfirmation(toolCallId, 'code_rewind', confirmArgs(plan), 'dangerous')
-    if (!approved) return fail(t('coding.rewind_rejected'))
+  for (let attempt = 0; ; attempt++) {
+    if (plan.target.tree === plan.saved.tree) {
+      return { success: true, output: t('coding.rewind_nothing', { time: formatTime(plan.target.createdAt) }) }
+    }
+    if (needConfirm && !(await executor.waitForConfirmation(toolCallId, 'code_rewind', confirmArgs(plan), 'dangerous'))) {
+      return fail(t('coding.rewind_rejected'))
+    }
+    const outcome = await store.applyRestore(plan)
+    if (outcome.applied) {
+      const output = formatRestore(outcome.plan, outcome.failedRemovals)
+      executor.addStep({
+        type: 'tool_result',
+        content: t('coding.step_rewound', { time: formatTime(plan.target.createdAt) }),
+        toolName: 'code_rewind',
+        toolResult: output,
+      })
+      return { success: true, output }
+    }
+    plan = outcome.plan
+    state.recordCheckpoint(plan.saved.id)
+    if (attempt + 1 >= MAX_RESTORE_ATTEMPTS) return fail(t('coding.rewind_keeps_changing'))
   }
-
-  const done = await store.applyRestore(plan)
-  if (done.saved.id !== plan.saved.id) state.recordCheckpoint(done.saved.id)
-  const output = formatRestore(done)
-  executor.addStep({
-    type: 'tool_result',
-    content: t('coding.step_rewound', { time: formatTime(done.target.createdAt) }),
-    toolName: 'code_rewind',
-    toolResult: output,
-  })
-  return { success: true, output }
 }
 
 function confirmArgs(plan: RestorePlan): Record<string, unknown> {
@@ -325,7 +332,7 @@ function confirmArgs(plan: RestorePlan): Record<string, unknown> {
   }
 }
 
-function formatRestore(plan: RestorePlan): string {
+function formatRestore(plan: RestorePlan, failedRemovals: string[]): string {
   const sections = [t('coding.rewind_done', {
     time: formatTime(plan.target.createdAt),
     kind: t(KIND_KEYS[plan.target.kind]),
@@ -335,6 +342,7 @@ function formatRestore(plan: RestorePlan): string {
   })]
   if (plan.restored.length > 0) sections.push(`${t('coding.rewind_restored_files')}\n${listPaths(plan.restored)}`)
   if (plan.removed.length > 0) sections.push(`${t('coding.rewind_removed_files')}\n${listPaths(plan.removed)}`)
+  if (failedRemovals.length > 0) sections.push(`${t('coding.rewind_remove_failed')}\n${listPaths(failedRemovals)}`)
   if (plan.skippedNested.length > 0) sections.push(t('coding.rewind_nested', { paths: plan.skippedNested.join(', ') }))
   sections.push(t('coding.rewind_saved', { id: shortId(plan.saved) }))
   return sections.join('\n\n')
@@ -356,7 +364,9 @@ function checkpointErrorMessage(e: CheckpointError): string {
     case 'snapshot_failed': return t('coding.rewind_snapshot_failed', { error: e.message })
     case 'not_found': return t('coding.rewind_not_found', { id: e.message })
     case 'no_target': return t('coding.rewind_no_target')
-    default: return t('coding.rewind_failed', { error: e.message })
+    default: return e.saved
+      ? t('coding.rewind_failed_midway', { error: e.message, id: shortId(e.saved) })
+      : t('coding.rewind_failed', { error: e.message })
   }
 }
 
@@ -377,13 +387,17 @@ function formatTime(ms: number): string {
   return d.toDateString() === new Date().toDateString() ? clock : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${clock}`
 }
 
+class OutsideProjectError extends Error {}
+
 function filtersFrom(root: string, args: Record<string, unknown>): RipgrepFilters {
   const sub = stringArg(args.path)
+  const rel = sub ? path.relative(root, path.resolve(root, sub)) : ''
+  if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) throw new OutsideProjectError(sub)
   const glob = stringArg(args.glob)
   const fileType = stringArg(args.type)
   return {
     cwd: root,
-    paths: sub ? [path.relative(root, path.resolve(root, sub)) || '.'] : undefined,
+    paths: sub ? [rel || '.'] : undefined,
     globs: glob ? [glob] : undefined,
     fileType: fileType || undefined,
   }

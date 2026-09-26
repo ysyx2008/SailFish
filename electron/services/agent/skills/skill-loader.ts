@@ -211,26 +211,36 @@ export class SkillSession implements SkillSessionManager {
     }
   }
 
-  /** 按加载顺序一层层包住这次工具调用，先加载的在最外层 */
+  /**
+   * 按加载顺序一层层包住这次工具调用，先加载的在最外层。
+   * 某层出错只记日志：还没放行就跳过这层接着执行，已经放行就用里层的结果——工具绝不因此执行两遍。
+   */
   async runToolCall(
     call: SkillToolCall,
     execute: () => Promise<ToolResult>,
     resolveLocalPath: (rawPath: string) => string
   ): Promise<ToolResult> {
     const wrappers = this.loadedSkillDefs().filter(({ skill }) => skill.wrapToolCall)
-    const invoke = (index: number): Promise<ToolResult> => {
+    const invoke = async (index: number): Promise<ToolResult> => {
       if (index >= wrappers.length) return execute()
       const { skill, state } = wrappers[index]
-      return skill.wrapToolCall!(call, () => invoke(index + 1), { data: this.dataOf(state), resolveLocalPath })
+      let inner: Promise<ToolResult> | undefined
+      const proceed = () => (inner ??= invoke(index + 1))
+      try {
+        return await skill.wrapToolCall!(call, proceed, { data: this.dataOf(state), resolveLocalPath })
+      } catch (error) {
+        log.error(`wrapToolCall failed for skill "${skill.id}" (${call.name}):`, error)
+        return proceed()
+      }
     }
     return invoke(0)
   }
 
-  /** 要带给伙计的技能及其状态（浅拷贝，伙计改自己的不回写主人） */
+  /** 要带给伙计的技能及其状态（深拷贝，伙计改自己的不回写主人；拷不了的退回浅拷贝） */
   getInheritableSkills(): Array<{ skillId: string; data: SkillData }> {
     return this.loadedSkillDefs()
       .filter(({ skill }) => skill.inheritToSubAgents)
-      .map(({ skill, state }) => ({ skillId: skill.id, data: { ...this.dataOf(state) } }))
+      .map(({ skill, state }) => ({ skillId: skill.id, data: copyForSubAgent(this.dataOf(state)) }))
   }
 
   /**
@@ -261,6 +271,14 @@ export class SkillSession implements SkillSessionManager {
 /**
  * 创建新的技能会话
  */
+function copyForSubAgent(data: SkillData): SkillData {
+  try {
+    return structuredClone(data)
+  } catch {
+    return { ...data }
+  }
+}
+
 export function createSkillSession(coreTools: ToolDefinition[], ownerId?: string): SkillSession {
   return new SkillSession(coreTools, ownerId)
 }

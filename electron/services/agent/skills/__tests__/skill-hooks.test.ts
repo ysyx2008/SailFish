@@ -78,6 +78,42 @@ describe('技能钩子', () => {
     expect(result.output).toBe('raw+outer')
   })
 
+  it('包装层出错不连累工具：放行前出错就跳过这层，放行后出错用里层结果，工具只执行一次', async () => {
+    registerSkill({
+      id: 'hook-throw-before',
+      name: 'throw-before',
+      description: '',
+      tools: [],
+      async wrapToolCall() { throw new Error('before') },
+    })
+    registerSkill({
+      id: 'hook-throw-after',
+      name: 'throw-after',
+      description: '',
+      tools: [],
+      async wrapToolCall(_call, proceed) {
+        await proceed()
+        throw new Error('after')
+      },
+    })
+    const session = createSkillSession([])
+    await session.loadSkill('hook-throw-before')
+    await session.loadSkill('hook-throw-after')
+    const execute = vi.fn(async (): Promise<ToolResult> => ({ success: true, output: 'raw' }))
+    const result = await session.runToolCall({ name: 'x', args: {} }, execute, p => p)
+    expect(execute).toHaveBeenCalledTimes(1)
+    expect(result.output).toBe('raw')
+  })
+
+  it('伙计改了嵌套的状态也不回写主人', async () => {
+    const parent = createSkillSession([])
+    await parent.loadSkill('hook-outer')
+    parent.setSkillData('hook-outer', { ids: ['a'] })
+    const [{ data }] = parent.getInheritableSkills()
+    ;(data.ids as string[]).push('b')
+    expect(parent.getSkillData<{ ids: string[] }>('hook-outer')?.ids).toEqual(['a'])
+  })
+
   it('每轮开始通知所有装着的技能，一份出错不影响别的', async () => {
     const session = createSkillSession([])
     await session.loadSkill('hook-inner')
