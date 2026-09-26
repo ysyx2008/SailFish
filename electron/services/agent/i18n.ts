@@ -1636,6 +1636,7 @@ const translations = {
     'exec.checkpoint_no_output': '（还没有任何输出）',
     'exec.stopping': '停掉 {command}',
     'exec.this_command': '这条命令',
+    'exec.executing_described': '执行命令（{description}）',
     'exec.stop_pending': '已经喊停并强制结束 [task_id={taskId}]，进程还没退干净，稍后用 await_exec 确认',
     'exec.stop_pending_short': '已强制结束，进程还没退干净',
     'exec.stop_not_owner': '{taskId} 不是这场对话起的命令，不能叫停',
@@ -3286,6 +3287,7 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
     'exec.checkpoint_no_output': '(no output yet)',
     'exec.stopping': 'Stopping {command}',
     'exec.this_command': 'this command',
+    'exec.executing_described': 'Executing ({description})',
     'exec.stop_pending': 'Stop and force-kill sent [task_id={taskId}], but the process has not exited yet; check again with await_exec shortly',
     'exec.stop_pending_short': 'Force-killed; the process has not exited yet',
     'exec.stop_not_owner': '{taskId} was not started by this conversation and cannot be stopped from here',
@@ -3352,9 +3354,8 @@ export function t(key: TranslationKey, params?: Record<string, string | number>)
   
   // 替换参数
   if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      text = text.replace(`{${k}}`, String(v))
-    }
+    text = text.replace(/\{(\w+)\}/g, (placeholder, k: string) =>
+      Object.prototype.hasOwnProperty.call(params, k) ? String(params[k]) : placeholder)
   }
   
   return text

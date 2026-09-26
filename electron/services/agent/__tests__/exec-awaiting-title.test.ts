@@ -50,6 +50,16 @@ describe('formatAwaitingTitle', () => {
     expect(text).not.toContain('more output here')
   })
 
+  it('命令里的 $\' $& 原样显示，不被当成替换符号', () => {
+    expect(formatAwaitingTitle({ command: "echo $'x' $&" }, '3秒')).toContain("echo $'x' $&")
+  })
+
+  it('说明里带占位符样子的字，不会顶掉卡片自己的时长', () => {
+    const text = formatAwaitingTitle({ command: 'x', description: '跑 {elapsed} 那条' }, '3秒')
+    expect(text).toContain('跑 {elapsed} 那条')
+    expect(text).toContain('已运行 3秒')
+  })
+
   it('多行命令只取第一行', () => {
     const text = formatAwaitingTitle({ command: 'cd /tmp\n./build.sh --all' }, '1分钟')
     expect(text).toContain('cd /tmp…')

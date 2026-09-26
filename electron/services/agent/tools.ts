@@ -16,7 +16,7 @@ import { t } from './i18n'
 import { MAX_WAIT_SECONDS } from './background-watch'
 import { getStreamPlaceholder } from './tool-metadata'
 import { resolveContextAction } from './tools/context'
-import { describeAwaitExecCall } from './tools/exec'
+import { describeAwaitExecCall, describeExecCall } from './tools/exec'
 
 // 重新导出 ToolDefinition 类型供技能模块使用
 export type { ToolDefinition }
@@ -534,7 +534,7 @@ ${execWaitAndUsage}`
           supportedModes: ['assistant', 'ssh'],
           idempotencyKey: ['command'],
           argRole: { summaryLine: 'command' },
-          streamDisplay: { titleKey: 'status.executing', titleField: 'command' },
+          streamDisplay: { customRender: describeExecCall },
           descriptionForSubAgent: execDescriptionForSubAgent
         }
       }

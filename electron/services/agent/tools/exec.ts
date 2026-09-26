@@ -30,6 +30,7 @@ import { getUserSkillService } from '../../../services/user-skill.service'
 import { expandTilde, announcedLocalCwd } from './file'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
 import { MAX_WAIT_SECONDS, type BackgroundWatch } from '../background-watch'
+import { getStreamPlaceholder } from '../tool-metadata'
 
 const LABEL_MAX = 30
 
@@ -54,6 +55,14 @@ function normalizeDescription(raw: unknown): string | undefined {
   if (typeof raw !== 'string') return undefined
   const text = raw.replace(/\s+/g, ' ').trim()
   return text ? clipLine(text) : undefined
+}
+
+/** 执行命令那张卡：流式预卡和执行器落卡共用，完整命令一字不差 */
+export function describeExecCall(args: Record<string, unknown>): string {
+  const description = normalizeDescription(args.description)
+  const title = description ? t('exec.executing_described', { description }) : t('status.executing')
+  const command = typeof args.command === 'string' ? args.command : getStreamPlaceholder()
+  return `${title}: ${command}`
 }
 
 /**
@@ -383,10 +392,11 @@ export async function executeCommandDirect(
   }
 
   const needConfirm = commandNeedsConfirm(assessment, config.executionMode, config.commandRiskPolicy)
+  const description = normalizeDescription(args.description)
 
   executor.addStep({
     type: 'tool_call',
-    content: `${t('status.executing')}: ${command}`,
+    content: describeExecCall(args),
     toolName: 'exec',
     toolArgs: { command },
     riskLevel
@@ -438,7 +448,7 @@ export async function executeCommandDirect(
   }
 
   const manager = getExecManager()
-  const task = manager.spawn({ command, cwd, maxSeconds, env: skillEnv, owner: executor.agentId, description: normalizeDescription(args.description) })
+  const task = manager.spawn({ command, cwd, maxSeconds, env: skillEnv, owner: executor.agentId, description })
   if (isTrue(args.service)) manager.markService(task)
   const watch = watchCommand(task, executor)
 

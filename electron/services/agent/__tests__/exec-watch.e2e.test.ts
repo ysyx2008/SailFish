@@ -447,8 +447,8 @@ describe('等命令不卡人：插话先回答、有终点的盯到底、常驻�
     expect(groupAlive(pid!)).toBe(false)
   }, 15000)
 
-  itPosix('附了人话说明：等待卡写说明，执行命令那张卡仍是完整命令', async () => {
-    const command = 'echo a; sleep 2; echo b'
+  itPosix('附了人话说明：执行命令那张卡说明和完整命令都在，等待卡用同一句说明', async () => {
+    const command = "echo $'a'; sleep 2; echo \"$&b\""
     const services = makeServices(({ index, messages }) => {
       if (index === 0) {
         return { content: '跑一下', tool_calls: [tc('exec', { command, description: '跑个小脚本', wait_seconds: 1 })] }
@@ -462,7 +462,9 @@ describe('等命令不卡人：插话先回答、有终点的盯到底、常驻�
       callbacks: { onStep: (_id, step) => { steps.push({ ...step }) } }
     })
     const calls = steps.filter(s => s.type === 'tool_call')
-    expect(calls.some(s => s.toolName === 'exec' && String(s.content).includes(command))).toBe(true)
+    const execCard = calls.find(s => s.toolName === 'exec')
+    expect(String(execCard?.content)).toContain('跑个小脚本')
+    expect(String(execCard?.content).endsWith(`: ${command}`)).toBe(true)
     const waits = calls.filter(s => s.toolName === 'await_exec')
     expect(waits.length).toBeGreaterThan(0)
     expect(waits.every(s => String(s.content).includes('跑个小脚本'))).toBe(true)

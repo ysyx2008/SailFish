@@ -92,6 +92,14 @@ describe('buildPreToolCallDisplay', () => {
       expect(out).toBe('执行命令: npm test')
     })
 
+    it('exec 附了人话说明时，预卡和执行器落卡一样带上说明', () => {
+      const out = buildPreToolCallDisplay(
+        'exec',
+        '{"command": "npm run build", "description": "构建前端"}'
+      )
+      expect(out).toBe('执行命令（构建前端）: npm run build')
+    })
+
     it('shell 命令不追加字符数尾缀（命令本身在流，用户能感知）', () => {
       // 即使 command 很长，也不应该出现 "· N 字符" 尾缀
       const longCmd = 'echo ' + 'a'.repeat(500)
