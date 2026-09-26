@@ -1975,6 +1975,7 @@ const handleSendClick = (event: MouseEvent) => {
           >{{ consumedTokenLabel }}</span>
         </div>
         <div class="input-footer-right">
+          <slot name="footer-right" />
           <button
             v-if="voiceInputEnabled && (!isLoading || isAgentRunning)"
             class="voice-btn"

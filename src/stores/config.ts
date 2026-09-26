@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import { jumpHostFromGroup, type AiModelType, type AiProfile, type ApiFormat, type JumpHostConfig, type ProactiveCompactStyle, type SessionSortBy, type SshEncoding, type SystemColorScheme, type UiThemeMode } from '@shared/types'
+import { jumpHostFromGroup, type AiModelType, type AiProfile, type ApiFormat, type ExecutionMode, type JumpHostConfig, type ProactiveCompactStyle, type SessionSortBy, type SshEncoding, type SystemColorScheme, type UiThemeMode } from '@shared/types'
 import { clampUiZoomFactor, DEFAULT_CUE_SOUND_SETTINGS, DEFAULT_PROACTIVE_COMPACT, DEFAULT_UI_THEME, DEFAULT_UI_THEME_MODE, normalizeCueSoundSettings, normalizeProactiveCompact, resolveEffectiveUiTheme, UI_ZOOM_DEFAULT } from '@shared/types'
 import { setLocale, type LocaleType } from '../i18n'
 import { uiThemes, type UiThemeName } from '../themes/ui-themes'
@@ -420,6 +420,8 @@ export const useConfigStore = defineStore('config', () => {
   const proactiveCompact = ref<ProactiveCompactStyle>(DEFAULT_PROACTIVE_COMPACT)
   /** 替我审批：默认关；只有明确打开才算开 */
   const autoApprovalReview = ref<boolean>(false)
+  /** 新开一场任务沿用的审批档 */
+  const executionMode = ref<ExecutionMode>('relaxed')
   // 收起过程的表态：undefined = 还没表态，摊开且有资格被邀请一次
   const foldAgentProcessChoice = ref<boolean | undefined>(undefined)
   /** 生效值。唯一真相是用户的表态——没表态就摊开，不在这里兜第二个默认 */
@@ -469,7 +471,7 @@ export const useConfigStore = defineStore('config', () => {
         accounts, savedShortcuts, savedAutoVision, savedAutoFailover, calAccounts, savedTtsSettings, savedCueSoundSettings, savedWebSearchSettings,
         themeMode, sysScheme, savedPinnedConversationIds, savedConversationDisplayTitles,
         savedFoldAgentProcess, savedFoldProcessInviteCount, savedShowConversationSkillChips,
-        savedUiZoomFactor, savedProactiveCompact, savedAutoApprovalReview,
+        savedUiZoomFactor, savedProactiveCompact, savedAutoApprovalReview, savedExecutionMode,
       ] = await Promise.all([
         window.electronAPI.config.getAiProfiles(),
         window.electronAPI.config.getActiveAiProfile(),
@@ -510,6 +512,7 @@ export const useConfigStore = defineStore('config', () => {
         window.electronAPI.config.get('uiZoomFactor') as Promise<number | undefined>,
         window.electronAPI.config.get('proactiveCompact'),
         window.electronAPI.config.get('autoApprovalReview') as Promise<boolean | undefined>,
+        window.electronAPI.config.get('executionMode') as Promise<ExecutionMode | undefined>,
       ])
 
       // 批量赋值
@@ -564,6 +567,8 @@ export const useConfigStore = defineStore('config', () => {
       uiZoomFactor.value = clampUiZoomFactor(savedUiZoomFactor ?? UI_ZOOM_DEFAULT)
       proactiveCompact.value = normalizeProactiveCompact(savedProactiveCompact)
       autoApprovalReview.value = savedAutoApprovalReview === true
+      executionMode.value =
+        savedExecutionMode === 'strict' || savedExecutionMode === 'free' ? savedExecutionMode : 'relaxed'
       calendarAccounts.value = calAccounts || []
       if (savedTtsSettings && typeof savedTtsSettings === 'object') {
         ttsSettings.value = { ...ttsSettings.value, ...savedTtsSettings }
@@ -883,6 +888,12 @@ export const useConfigStore = defineStore('config', () => {
   async function setAutoApprovalReview(enabled: boolean): Promise<void> {
     autoApprovalReview.value = enabled
     await window.electronAPI.config.set('autoApprovalReview', enabled)
+  }
+
+  async function setExecutionMode(mode: ExecutionMode): Promise<void> {
+    const next = mode === 'strict' || mode === 'free' ? mode : 'relaxed'
+    executionMode.value = next
+    await window.electronAPI.config.set('executionMode', next)
   }
 
   /** 用户表态（设置页开关、或长任务邀请里的两个按钮）。落盘即视为表过态，从此不再邀请 */
@@ -1299,6 +1310,8 @@ export const useConfigStore = defineStore('config', () => {
     setProactiveCompact,
     autoApprovalReview,
     setAutoApprovalReview,
+    executionMode,
+    setExecutionMode,
     foldAgentProcess,
     foldAgentProcessUndecided,
     foldProcessInviteCount,

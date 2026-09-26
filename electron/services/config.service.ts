@@ -252,6 +252,8 @@ interface StoreSchema {
   proactiveCompact: ProactiveCompactStyle
   /** 替我审批：任务里本来要问用户的确认，先交给独立评审员看（默认关） */
   autoApprovalReview: boolean
+  /** 任务审批档：严格 / 宽松 / 自由。新开一场任务沿用上次选的 */
+  executionMode: ExecutionMode
   schemaVersion: number  // 数据 schema 版本号，用于迁移框架追踪已执行的 migration
   // 堡垒机（JumpServer）集成
   bastionUrl: string              // JumpServer 地址
@@ -374,6 +376,7 @@ const defaultConfig: StoreSchema = {
   autoFailoverModel: true,
   proactiveCompact: DEFAULT_PROACTIVE_COMPACT,
   autoApprovalReview: false,
+  executionMode: 'relaxed',
   schemaVersion: 0,
   bastionUrl: '',
   bastionUsername: '',

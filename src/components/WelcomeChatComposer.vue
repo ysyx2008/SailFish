@@ -7,6 +7,8 @@ import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from '
 import { useI18n } from 'vue-i18n'
 import AiComposer from './AiComposer.vue'
 import AiProfileSelect from './AiProfileSelect.vue'
+import ApprovalModeSelect from './ApprovalModeSelect.vue'
+import { useApprovalUiState } from '../composables/useApprovalUiState'
 import { useConfigStore } from '../stores/config'
 import { useTerminalStore } from '../stores/terminal'
 import { WELCOME_COMPOSER_TAB_ID } from '../constants/welcome-composer'
@@ -26,6 +28,13 @@ const { t } = useI18n()
 const configStore = useConfigStore()
 const terminalStore = useTerminalStore()
 const showSettings = inject<() => void>('showSettings')
+const {
+  approvalUiState,
+  applyApprovalUiState,
+  showFreeModeConfirm,
+  confirmEnableFreeMode,
+  cancelFreeMode,
+} = useApprovalUiState()
 const openAppSettings = inject<(tab?: string, section?: string) => void>('openAppSettings')
 
 const composerTabId = ref(WELCOME_COMPOSER_TAB_ID)
@@ -307,6 +316,21 @@ watch(previewImageUrl, (url) => {
   }
 })
 
+const handleFreeModeKeyDown = (event: KeyboardEvent) => {
+  if (!showFreeModeConfirm.value || event.key !== 'Escape') return
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  cancelFreeMode()
+}
+
+watch(showFreeModeConfirm, (open) => {
+  if (open) {
+    document.addEventListener('keydown', handleFreeModeKeyDown, true)
+    return
+  }
+  document.removeEventListener('keydown', handleFreeModeKeyDown, true)
+})
+
 /** 发送成功后跳过 onUnmounted 草稿回写（避免与 clearWelcomeComposerDraft 竞态） */
 let skipDraftPersist = false
 
@@ -382,6 +406,7 @@ onUnmounted(() => {
   isMounted.value = false
   if (!skipDraftPersist) persistWelcomeComposerDraft()
   document.removeEventListener('keydown', handlePreviewKeyDown, true)
+  document.removeEventListener('keydown', handleFreeModeKeyDown, true)
   document.removeEventListener('keydown', handlePTTKeyDown, true)
   document.removeEventListener('keyup', handlePTTKeyUp, true)
   window.removeEventListener('blur', handlePTTWindowBlur)
@@ -444,7 +469,39 @@ onUnmounted(() => {
           @update:model-value="configStore.setActiveAiProfile"
         />
       </template>
+      <template #footer-right>
+        <ApprovalModeSelect
+          :model-value="approvalUiState"
+          @update:model-value="applyApprovalUiState"
+        />
+      </template>
     </AiComposer>
+    <Teleport to="body">
+      <div v-if="showFreeModeConfirm" class="free-mode-confirm-overlay" @click.self="cancelFreeMode">
+        <div class="free-mode-confirm-dialog">
+          <div class="confirm-dialog-header">
+            <span class="confirm-dialog-icon">⚠️</span>
+            <span class="confirm-dialog-title">{{ t('ai.freeModeConfirmTitle') }}</span>
+          </div>
+          <div class="confirm-dialog-content">
+            <p>{{ t('ai.freeModeConfirmDesc') }}</p>
+            <ul class="confirm-dialog-warnings">
+              <li>{{ t('ai.freeModeWarning1') }}</li>
+              <li>{{ t('ai.freeModeWarning2') }}</li>
+              <li>{{ t('ai.freeModeWarning3') }}</li>
+            </ul>
+          </div>
+          <div class="confirm-dialog-actions">
+            <button class="btn btn-sm btn-outline" @click="cancelFreeMode">
+              {{ t('common.no') }}
+            </button>
+            <button class="btn btn-sm btn-danger" @click="confirmEnableFreeMode">
+              {{ t('common.yes') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
     <!-- Teleport 到 body：父级 welcome-chat-composer 的 transform 动画会创建层叠上下文，
          导致 position:fixed 预览被限制在 composer 区域内，无法盖住下方快速启动卡片 -->
     <Teleport to="body">
@@ -510,5 +567,79 @@ onUnmounted(() => {
   max-height: 85vh;
   object-fit: contain;
   border-radius: 8px;
+}
+
+.free-mode-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+}
+
+.free-mode-confirm-dialog {
+  width: 100%;
+  max-width: 400px;
+  padding: 20px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.confirm-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.confirm-dialog-icon {
+  font-size: 24px;
+}
+
+.confirm-dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--brand-alert);
+}
+
+.confirm-dialog-content {
+  margin-bottom: 20px;
+}
+
+.confirm-dialog-content p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.confirm-dialog-warnings {
+  margin: 12px 0;
+  padding-left: 20px;
+}
+
+.confirm-dialog-warnings li {
+  margin: 6px 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--brand-alert);
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
 }
 </style>

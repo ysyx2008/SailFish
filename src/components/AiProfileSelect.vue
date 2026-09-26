@@ -46,6 +46,12 @@ const formatProfileLabel = (profile: AiProfile): string => {
 
 const triggerLabel = computed(() => {
   if (!activeProfile.value) return t('ai.switchModel')
+  if (props.embedded) return activeProfile.value.name
+  return formatProfileLabel(activeProfile.value)
+})
+
+const triggerTitle = computed(() => {
+  if (!activeProfile.value) return t('ai.switchModel')
   return formatProfileLabel(activeProfile.value)
 })
 
@@ -164,7 +170,7 @@ onUnmounted(() => {
       type="button"
       class="ai-profile-select-trigger"
       :disabled="disabled || profiles.length === 0"
-      :title="t('ai.switchModel')"
+      :title="triggerTitle"
       :aria-expanded="isOpen"
       aria-haspopup="listbox"
       @click.stop="toggleMenu"
@@ -257,7 +263,7 @@ onUnmounted(() => {
 }
 
 .ai-profile-select.embedded .ai-profile-select-label {
-  max-width: 200px;
+  max-width: 112px;
 }
 
 .ai-profile-select-chevron {

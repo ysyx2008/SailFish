@@ -18,6 +18,7 @@ import AiComposer from './AiComposer.vue'
 import DropOverlay from './DropOverlay.vue'
 import AiProfileSelect from './AiProfileSelect.vue'
 import ApprovalModeSelect from './ApprovalModeSelect.vue'
+import { useApprovalUiState } from '../composables/useApprovalUiState'
 import ThinkingBlock from './ThinkingBlock.vue'
 import ProcessTurnFold from './ProcessTurnFold.vue'
 import { createReusableTemplate } from '../utils/reusable-template'
@@ -1055,48 +1056,13 @@ const formatEmailConfirmArgs = (args: Record<string, unknown>): string => {
 }
 
 
-// 自由模式二次确认弹窗状态
-const showFreeModeConfirm = ref(false)
-
-// 请求启用自由模式（显示是否确认弹窗）
-const requestFreeMode = () => {
-  showFreeModeConfirm.value = true
-}
-
-type ApprovalUiState = 'strict' | 'relaxed' | 'autoReview' | 'free'
-
-const approvalUiState = computed<ApprovalUiState>(() => {
-  if (executionMode.value === 'free') return 'free'
-  if (configStore.autoApprovalReview) return 'autoReview'
-  return executionMode.value === 'strict' ? 'strict' : 'relaxed'
-})
-
-const applyApprovalUiState = (next: ApprovalUiState) => {
-  if (next === approvalUiState.value) return
-  if (next === 'free') {
-    requestFreeMode()
-    return
-  }
-  if (next === 'autoReview') {
-    executionMode.value = 'relaxed'
-    void configStore.setAutoApprovalReview(true)
-    return
-  }
-  void configStore.setAutoApprovalReview(false)
-  executionMode.value = next
-}
-
-// 确认启用自由模式
-const confirmEnableFreeMode = () => {
-  executionMode.value = 'free'
-  void configStore.setAutoApprovalReview(false)
-  showFreeModeConfirm.value = false
-}
-
-// 取消启用自由模式
-const cancelFreeMode = () => {
-  showFreeModeConfirm.value = false
-}
+const {
+  approvalUiState,
+  applyApprovalUiState,
+  showFreeModeConfirm,
+  confirmEnableFreeMode,
+  cancelFreeMode,
+} = useApprovalUiState(executionMode)
 
 // 点击中的选项（用于即时视觉反馈，单选时使用）
 const clickingOption = ref<string | null>(null)
