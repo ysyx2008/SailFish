@@ -163,7 +163,7 @@ const translations = {
 请写下你判断之后会用到、且无法从上面保留的内容里推知的信息。指向文件或资源的路径必须原样保留，不得改写或简化。全文控制在 {budget} 字以内。
 
 这一步只写小结，不执行任何操作，因此直接输出正文即可。`,
-    'agent.compress_summary_user_hint': '用户补充，写小结时请看见：{hint}',
+    'agent.compress_summary_user_hint': '写小结时请看见：{hint}',
     'agent.compact_in_progress': '正在压缩上下文',
     'agent.compact_tool_step': '压缩上下文',
     'agent.images_attached': '[系统：用户在本消息中附带了 {count} 张图片，图片已通过多模态格式发送给视觉模型，无需使用 read_file 读取。{paths}如果你确实看到了图像内容，请直接分析；如果你看到的是空白/无法理解的内容，请如实告知用户图片未送达，不要凭上下文猜测图片内容。]',
@@ -176,11 +176,10 @@ const translations = {
 
     // 上下文管理工具
     'context_tool.compress_success': '上下文已压缩。压缩前: ~{before} tokens, 压缩后: ~{after} tokens, 释放: ~{freed} tokens。归档 ID: {archiveId}（可通过 recall(archive_id) 找回原始内容）',
-    'context_tool.compress_nothing': '没有可压缩的消息（当前任务消息数不足）',
+    'context_tool.compress_nothing': '没有可压缩的内容（更早的对话和当前这一轮都已经很短）',
     'context_tool.unknown_action': '未知操作：{action}。可用 check（查看用量）或 compress（压缩）。',
     'context_tool.unknown_step': '上下文',
-    'context_tool.compress_need_summary': '压缩需要提供 summary：写给未来的自己的交接小结（任务目标、进度、关键结论、下一步）。',
-    'context_tool.compress_step': '压缩上下文（保留最近 {keepRecent} 组消息）',
+    'context_tool.compress_step': '压缩上下文',
     'context_tool.check_step': '查询上下文用量',
     'context_tool.check_result': '已用约 {used} / {total} tokens（{percent}%），剩余约 {remaining}。',
     'context_tool.recall_list': '可用的压缩归档：',
@@ -1815,7 +1814,7 @@ Everything else will be out of your sight after archiving — intermediate tool 
 Write down what you judge you will need later and cannot infer from what is preserved above. Paths to files or resources must be preserved verbatim, never rewritten or shortened. Keep the whole summary within {budget} characters.
 
 This step only writes the summary and performs no action, so just output the text.`,
-    'agent.compress_summary_user_hint': 'User note — take this into account when writing the summary: {hint}',
+    'agent.compress_summary_user_hint': 'Take this into account when writing the summary: {hint}',
     'agent.compact_in_progress': 'Compressing context',
     'agent.compact_tool_step': 'Compress context',
     'agent.images_attached': '[System: User attached {count} image(s) in this message. The images have been sent to the vision model in multimodal format — no need to use read_file. {paths}If you can actually see the image content, analyze it directly. If you see only blank/unintelligible content, tell the user honestly that the image did not reach you. Do NOT guess the image content from context.]',
@@ -1828,11 +1827,10 @@ This step only writes the summary and performs no action, so just output the tex
 
     // Context management tools
     'context_tool.compress_success': 'Context compressed. Before: ~{before} tokens, After: ~{after} tokens, Freed: ~{freed} tokens. Archive ID: {archiveId} (use recall(archive_id) to retrieve original content)',
-    'context_tool.compress_nothing': 'No messages to compress (insufficient task messages)',
+    'context_tool.compress_nothing': 'Nothing to compress (earlier turns and the current one are already short)',
     'context_tool.unknown_action': 'Unknown action: {action}. Use check (inspect usage) or compress.',
     'context_tool.unknown_step': 'Context',
-    'context_tool.compress_need_summary': 'compress requires summary: a handover note to your future self (goal, progress, key conclusions, next step).',
-    'context_tool.compress_step': 'Compress context (keeping recent {keepRecent} message groups)',
+    'context_tool.compress_step': 'Compress context',
     'context_tool.check_step': 'Check context usage',
     'context_tool.check_result': 'About {used} / {total} tokens used ({percent}%), roughly {remaining} left.',
     'context_tool.recall_list': 'Available compressed archives:',

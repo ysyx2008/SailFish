@@ -121,12 +121,13 @@ export interface ToolExecutorConfig {
   /** 当前上下文用量（context 工具使用）。剩余量含本轮新增，属估算 */
   getContextUsage?: () => { used: number; total: number; remaining: number }
   // 上下文管理（context 压缩 / recall 取回归档）
-  compressCurrentContext?: (summary: string, keepRecent: number) => {
+  /** 和人按压缩同一套交接。hint 是要重点留下的补充，不是交接正文。 */
+  compressCurrentContext?: (hint?: string) => Promise<{
     beforeTokens: number
     afterTokens: number
     freedTokens: number
     archiveId: string
-  } | null
+  } | null>
   getCompressedArchives?: () => Array<{ id: string; summary: string; messageCount: number; timestamp: number }>
   getCompressedArchive?: (archiveId: string) => import('../../ai.service').AiMessage[] | null
   // 历史记录服务（search_history 工具使用）

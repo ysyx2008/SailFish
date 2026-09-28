@@ -157,32 +157,12 @@ export function resolveContextAction(args: Record<string, unknown>): 'check' | '
  * context：查看用量或压缩较早过程。
  * check 只报数，不附带「该压缩了」「还很宽裕」之类的判断——怎么应对由模型自己定。
  */
-export function dispatchContext(
+export async function dispatchContext(
   args: Record<string, unknown>,
   executor: ToolExecutorConfig
-): ToolResult {
+): Promise<ToolResult> {
   const resolved = resolveContextAction(args)
-  if (resolved === 'compress') {
-    const summary = typeof args.summary === 'string' ? args.summary.trim() : ''
-    if (!summary) {
-      const error = t('context_tool.compress_need_summary')
-      executor.addStep({
-        type: 'tool_call',
-        content: t('agent.compact_tool_step'),
-        toolName: 'context',
-        toolArgs: args,
-        riskLevel: 'safe'
-      })
-      executor.addStep({
-        type: 'tool_result',
-        content: error,
-        toolName: 'context',
-        toolResult: error
-      })
-      return { success: false, output: '', error }
-    }
-    return compressContext(args, executor)
-  }
+  if (resolved === 'compress') return compressContext(args, executor)
   if (resolved === 'check') {
     return checkContext(executor)
   }
@@ -247,22 +227,17 @@ export function checkContext(executor: ToolExecutorConfig): ToolResult {
 }
 
 /**
- * compress_context: 压缩当前对话中较早的工具调用和结果
+ * 和人按「压缩上下文」同一套交接。summary 只是要重点留下的补充，正文由交接自己写。
  */
-export function compressContext(
+export async function compressContext(
   args: Record<string, unknown>,
   executor: ToolExecutorConfig
-): ToolResult {
-  const summary = args.summary as string
-  const keepRecent = (args.keep_recent as number) || 4
-
-  if (!summary) {
-    return { success: false, output: '', error: 'Parameter "summary" is required' }
-  }
+): Promise<ToolResult> {
+  const hint = typeof args.summary === 'string' ? args.summary.trim() : ''
 
   executor.addStep({
     type: 'tool_call',
-    content: t('context_tool.compress_step', { keepRecent }),
+    content: t('agent.compact_tool_step'),
     toolName: 'context',
     toolArgs: args,
     riskLevel: 'safe'
@@ -279,7 +254,7 @@ export function compressContext(
     return { success: false, output: '', error }
   }
 
-  const result = executor.compressCurrentContext(summary, keepRecent)
+  const result = await executor.compressCurrentContext(hint || undefined)
 
   if (!result) {
     const msg = t('context_tool.compress_nothing')

@@ -5,7 +5,7 @@
  * 直接 `new ContextWindowManager(mockDeps)`,无需构造 Agent——这正是抽出的可测性收益。
  */
 import { describe, it, expect, vi } from 'vitest'
-import { ContextWindowManager, nextCompressedArchiveId, type ContextWindowDeps } from '../context-window'
+import { ContextWindowManager, nextCompressedArchiveId, peelOpenToolTurn, type ContextWindowDeps } from '../context-window'
 import type { AiMessage, ToolCall } from '../../ai.service'
 import type { AgentRun } from '../types'
 import type { AiProfile } from '@shared/types'
@@ -1283,5 +1283,45 @@ describe('ContextWindowManager.userCompress', () => {
       user('现在几点'),
       asst('下午两点')
     ]))).toBe(true)
+  })
+
+  it('这一轮还没开始，更早的大段也收得掉', async () => {
+    const m = new ContextWindowManager(makeDeps())
+    const bulk = '磁盘明细-' + 'x'.repeat(8000)
+    const run = makeRun([
+      user('查磁盘'),
+      asst('', [tc('c1', 'exec')]), tool('c1', bulk),
+      asst('根分区 80%'),
+      user('压缩一下')
+    ])
+    const result = await m.userCompress(run)
+    expect(result).not.toBeNull()
+    expect(result!.freedTokens).toBeGreaterThan(0)
+    expect(JSON.stringify(run.compressedArchives)).toContain('磁盘明细-')
+    const contents = run.messages.map(msg => String(msg.content))
+    expect(contents).toContain('查磁盘')
+    expect(contents).toContain('根分区 80%')
+    expect(contents).toContain('压缩一下')
+    expect(contents.some(c => c.includes('磁盘明细-'))).toBe(false)
+  })
+})
+
+describe('peelOpenToolTurn', () => {
+  it('结果还没写回的工具调用先摘下来，齐了就不动', () => {
+    const open = [
+      user('压缩一下'),
+      asst('', [tc('c9', 'context')])
+    ]
+    const tail = peelOpenToolTurn(open)
+    expect(open).toEqual([user('压缩一下')])
+    expect(tail).toEqual([asst('', [tc('c9', 'context')])])
+
+    const done = [
+      user('压缩一下'),
+      asst('', [tc('c9', 'context')]),
+      tool('c9', '已压缩')
+    ]
+    expect(peelOpenToolTurn(done)).toEqual([])
+    expect(done).toHaveLength(3)
   })
 })

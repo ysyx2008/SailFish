@@ -248,12 +248,12 @@ export async function executeTool(
       return deepRecall(args, executor, id)
 
     case 'context':
-      return dispatchContext(args, executor)
+      return await dispatchContext(args, executor)
     // 旧名：清单里已不再出现，模型一般走不到；留下以免手工/旧记录误调。
     case 'check_context':
       return checkContext(executor)
     case 'compress_context':
-      return compressContext(args, executor)
+      return await compressContext(args, executor)
     case 'recall_compressed':
       return recallCompressed(args, executor)
 

@@ -18,6 +18,33 @@ import { resolveRequestBudget } from '../ai-request-budget'
 const log = createLogger('ContextWindow')
 
 /**
+ * 正在执行的工具回合先摘下来，避免交接把「还没写回结果的那条工具调用」一起收走。
+ * 工具结果都齐了，或末尾不是未完成的工具调用，则不动。返回被摘下的尾部（可能为空）。
+ */
+export function peelOpenToolTurn(messages: AiMessage[]): AiMessage[] {
+  let assistantIdx = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+      assistantIdx = i
+      break
+    }
+    if (msg.role === 'user' || msg.role === 'assistant') return []
+  }
+  if (assistantIdx === -1) return []
+
+  const pending = new Set(messages[assistantIdx].tool_calls!.map(call => call.id))
+  for (let i = assistantIdx + 1; i < messages.length; i++) {
+    const msg = messages[i]
+    if (msg.role === 'tool' && msg.tool_call_id && pending.has(msg.tool_call_id)) {
+      pending.delete(msg.tool_call_id)
+    }
+  }
+  if (pending.size === 0) return []
+  return messages.splice(assistantIdx)
+}
+
+/**
  * 首轮尚无实测时 system prompt 的缺省估值。实测（26 个技能、无用户规则）约 4K，
  * 取整数量级即可——第二轮起就被真实值替换。
  */
@@ -580,8 +607,8 @@ export class ContextWindowManager {
   }
 
   /**
-   * 压缩当前任务的对话上下文:将早期的 assistant + tool 消息归档,替换为 AI 提供的摘要。
-   * 一组 = assistant 消息 + 对应的 tool result;从后往前保留 keepRecent 组。
+   * 把已写好的小结套进给定范围。人按压缩和它自己压都不走这里，
+   * 它们走 userCompress（同一套交接）。
    */
   compress(run: AgentRun, summary: string, keepRecent: number): CompressResult | null {
     return this.doCompress(run, summary, keepRecent, this.findCompressibleRange(run, keepRecent))

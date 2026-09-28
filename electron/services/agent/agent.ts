@@ -39,7 +39,7 @@ import { DEFAULT_AGENT_CONFIG } from './types'
 import { TaskMemoryStore } from './task-memory'
 import { Conversation, conversationPolicy } from '../conversation'
 import { generateConversationTitle, shouldRefreshConversationTitle } from '../conversation/title-generator'
-import { ContextWindowManager } from './context-window'
+import { ContextWindowManager, peelOpenToolTurn } from './context-window'
 import { beginUserCompactTurn, cancelUserCompactTurn, failUserCompactTurn, finishUserCompactTurn } from './tools/context'
 import { SUMMARY_OUTPUT_BUDGET_CHARS } from './compression-summary'
 import { resolveBudgetProfileId, shouldSkipCachePathForVision } from './vision-routing'
@@ -4931,13 +4931,25 @@ export abstract class Agent {
         return { used, total, remaining: Math.max(0, total - used) }
       },
       // 上下文管理
-      compressCurrentContext: (summary: string, keepRecent: number) => {
-        const result = this._contextWindow.compress(run, summary, keepRecent)
-        if (result) {
-          this._conversation?.setWorkingContext(run.messages)
-          this._conversation?.adoptCompressedArchives(run.compressedArchives)
+      compressCurrentContext: async (hint?: string) => {
+        // 和人按「压缩上下文」同一套交接。先摘掉还没写回结果的工具调用，
+        // 免得交接把这一轮进行中的调用收走，结果写回来时对不上。
+        const tail = peelOpenToolTurn(run.messages)
+        const trimmed = hint?.trim()
+        let result: Awaited<ReturnType<ContextWindowManager['userCompress']>> = null
+        try {
+          result = await this._contextWindow.userCompress(
+            run,
+            trimmed ? { userHint: trimmed } : undefined
+          )
+          return result
+        } finally {
+          if (tail.length > 0) run.messages.push(...tail)
+          if (result) {
+            this._conversation?.setWorkingContext(run.messages)
+            this._conversation?.adoptCompressedArchives(run.compressedArchives)
+          }
         }
-        return result
       },
       getCompressedArchives: () => {
         const archives = run.compressedArchives?.length
