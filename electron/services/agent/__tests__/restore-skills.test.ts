@@ -289,6 +289,50 @@ describe('重开对话恢复技能', () => {
     )
   })
 
+  it('联络重开不按历史清单恢复技能', async () => {
+    const sessionId = 'sess_companion'
+    const historyService = {
+      getAgentRecordById: vi.fn().mockReturnValue(priorRecord(sessionId, {
+        kind: 'companion',
+        agentKey: '__companion__',
+        loadedSkills: [configSkill.id],
+        userDismissedSkills: ['excel']
+      })),
+      saveAgentRecord: vi.fn(),
+      getRecentAgentRecords: vi.fn().mockReturnValue([]),
+      getRecentRecordsByAgentKey: vi.fn().mockReturnValue([]),
+      getAgentRecordStore: vi.fn(function (this: unknown) { return this })
+    }
+    const services = createServices({ historyService: historyService as never })
+    const agent = new TestAgent(services)
+    agent.setAgentId('__companion__')
+
+    await agent.run('今天怎么样', ctx({ sessionId, sessionStartTime: Date.now() - 5000 }))
+
+    expect(agent.exposeLoadedSkills()).toEqual([])
+    expect(agent.exposeVisibleSkills()).toEqual([])
+  })
+
+  it('联络这一趟装上的技能仍记在记录里', async () => {
+    const saved: Array<{ loadedSkills?: string[] }> = []
+    const historyService = {
+      getAgentRecordById: vi.fn(),
+      saveAgentRecord: vi.fn((record: { loadedSkills?: string[] }) => { saved.push(record) }),
+      getRecentAgentRecords: vi.fn().mockReturnValue([]),
+      getRecentRecordsByAgentKey: vi.fn().mockReturnValue([]),
+      getAgentRecordStore: vi.fn(function (this: unknown) { return this })
+    }
+    const services = createServices({ historyService: historyService as never })
+    const agent = new TestAgent(services)
+    agent.setAgentId('__companion__')
+    await agent.preloadSkills([configSkill.id])
+
+    await agent.run('帮我记一下', ctx({ sessionId: 'sess_companion_live' }))
+
+    expect(saved.some(r => r.loadedSkills?.includes(configSkill.id))).toBe(true)
+    expect(agent.exposeLoadedSkills()).toContain(configSkill.id)
+  })
+
   it('关切会话不按历史清单恢复技能', async () => {
     const sessionId = 'sess_watch'
     const historyService = {

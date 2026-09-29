@@ -16,6 +16,7 @@ describe('CONVERSATION_POLICY 策略表', () => {
       historyTree: 'main',
       perWatchContinuity: false,
       autoApprovalReview: true,
+      restoreSkillsOnReopen: true,
     })
   })
 
@@ -42,6 +43,13 @@ describe('CONVERSATION_POLICY 策略表', () => {
     expect(p.seedFromHistoryOnColdStart).toBe(true) // 唤醒需要看用户最近活动做决策
     expect(p.visibleInList).toBe(false)
     expect(p.historyTree).toBe('watch') // 与 watch 同源，共用 watch 树
+  })
+
+  it('重开时只有任务带回当时的技能；联络、关切、唤醒不按历史清单恢复', () => {
+    expect(conversationPolicy('task').restoreSkillsOnReopen).toBe(true)
+    expect(conversationPolicy('companion').restoreSkillsOnReopen).toBe(false)
+    expect(conversationPolicy('watch').restoreSkillsOnReopen).toBe(false)
+    expect(conversationPolicy('wakeup').restoreSkillsOnReopen).toBe(false)
   })
 
   it('替我审批给任务和联络：关切、唤醒是后台执行，没有人当场兜底', () => {

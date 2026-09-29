@@ -3241,6 +3241,9 @@ export const useTerminalStore = defineStore('terminal', () => {
     tabId: string,
     record: { loadedSkills?: string[]; userDismissedSkills?: string[] }
   ): void {
+    // 联络关掉再开不带回上次的技能。这一趟里点上的留在内存里，不要用历史清单盖掉。
+    const tab = tabs.value.find(t => t.id === tabId)
+    if (tab?.agentId === COMPANION_TAB_AGENT_ID) return
     void import('./conversation-skills').then(({ useConversationSkillsStore }) => {
       const skillsStore = useConversationSkillsStore()
       if (Array.isArray(record.loadedSkills)) {

@@ -75,17 +75,26 @@ export interface ConversationPolicy {
    * - watch/wakeup=false：后台执行，没有人当场兜底。
    */
   autoApprovalReview: boolean
+
+  /**
+   * 重开时是否按记录里的技能清单再装上。
+   * - task=true：接着同一场活做，当时的工具还得在，否则它记得用过、手头却没有。
+   * - companion=false：联络是长期关系，不是一场任务。关掉再开不带回上次为某件事装的技能；
+   *   这一趟里装上的仍留在内存里，也会写进记录——从联络做成任务时还要能带走。
+   * - watch/wakeup=false：自己预装需要的技能，不按历史清单恢复。
+   */
+  restoreSkillsOnReopen: boolean
 }
 
 /**
  * 四类会话的行为策略。
  *
- * | kind      | accumulates | seedFromHistoryOnColdStart | visibleInList | historyTree | perWatchContinuity | autoApprovalReview |
- * |-----------|-------------|----------------------------|---------------|-------------|--------------------|--------------------|
- * | task      | true        | false                      | true          | main        | false              | true               |
- * | companion | true        | true                       | true          | main        | false              | true               |
- * | watch     | false       | false                      | false         | watch       | false（预留）       | false              |
- * | wakeup    | false       | true                       | false         | watch       | false（预留）       | false              |
+ * | kind      | accumulates | seedFromHistoryOnColdStart | visibleInList | historyTree | perWatchContinuity | autoApprovalReview | restoreSkillsOnReopen |
+ * |-----------|-------------|----------------------------|---------------|-------------|--------------------|--------------------|-----------------------|
+ * | task      | true        | false                      | true          | main        | false              | true               | true                  |
+ * | companion | true        | true                       | true          | main        | false              | true               | false                 |
+ * | watch     | false       | false                      | false         | watch       | false（预留）       | false              | false                 |
+ * | wakeup    | false       | true                       | false         | watch       | false（预留）       | false              | false                 |
  *
  * 注：wakeup 从 watch 中独立出来——关切是用户配置的一次性任务（prompt 自带指令，逐次失忆，
  * 避免 A 关切串味到 B），wakeup 是 Agent 自主循环（需要历史记忆辅助决策「该不该主动找人、
@@ -98,7 +107,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     visibleInList: true,
     historyTree: 'main',
     perWatchContinuity: false,
-    autoApprovalReview: true
+    autoApprovalReview: true,
+    restoreSkillsOnReopen: true
   },
   companion: {
     accumulates: true,
@@ -106,7 +116,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     visibleInList: true,
     historyTree: 'main',
     perWatchContinuity: false,
-    autoApprovalReview: true
+    autoApprovalReview: true,
+    restoreSkillsOnReopen: false
   },
   watch: {
     accumulates: false,
@@ -114,7 +125,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     visibleInList: false,
     historyTree: 'watch',
     perWatchContinuity: false,
-    autoApprovalReview: false
+    autoApprovalReview: false,
+    restoreSkillsOnReopen: false
   },
   wakeup: {
     accumulates: false,
@@ -122,7 +134,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     visibleInList: false,
     historyTree: 'watch',
     perWatchContinuity: false,
-    autoApprovalReview: false
+    autoApprovalReview: false,
+    restoreSkillsOnReopen: false
   }
 }
 

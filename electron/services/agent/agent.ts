@@ -1709,9 +1709,9 @@ export abstract class Agent {
     this._conversation?.restoreWorkingContext(record.workingContext as AiMessage[] | undefined)
     this._conversation?.adoptCompressedArchives(record.compressedArchives as AgentRun['compressedArchives'])
 
-    // 关切 / 唤醒自己预装技能，不按历史清单恢复。
-    const kind = record.kind ?? inferConversationKind(record.agentKey)
-    if (kind === 'watch' || kind === 'wakeup') return
+    // 任务重开才按清单把技能装回来。联络关掉再开不带上次的；关切 / 唤醒自己预装。
+    const kind = record.kind ?? inferConversationKind(record.agentKey ?? this._agentId)
+    if (!conversationPolicy(kind).restoreSkillsOnReopen) return
     // 重开后、开口前用户已经点过胶囊：以当场决定为准，不要用盘上旧清单盖回去。
     if (this._skillsMutatedByUser) return
     if (Array.isArray(record.userDismissedSkills)) {
