@@ -20,12 +20,19 @@ set -uo pipefail
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CLI="node ${PROJECT_ROOT}/electron/cli/main.js"
 
+# 退出时（含中途 Ctrl-C）清掉登记过的临时目录
+TMP_DIRS=()
+cleanup_tmp_dirs() {
+  for dir in ${TMP_DIRS[@]+"${TMP_DIRS[@]}"}; do rm -rf "$dir"; done
+}
+trap cleanup_tmp_dirs EXIT
+
 # 回归测试强制沙箱：忽略外部环境里的 SFT_DATA_DIR，避免误写桌面
 # 需要复现某份数据时：SFT_TEST_ALLOW_SHARED_DATA=1 bash test-cli.sh
 if [[ "${SFT_TEST_ALLOW_SHARED_DATA:-}" != "1" ]]; then
   SFT_DATA_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sft-cli-test-XXXXXX")"
   export SFT_DATA_DIR
-  trap 'rm -rf "$SFT_DATA_DIR"' EXIT
+  TMP_DIRS+=("$SFT_DATA_DIR")
 fi
 
 PASS=0
@@ -230,6 +237,7 @@ assert_contains "knowledge:stats 返回 JSON"   "documentCount" \
 if [[ "$MODE" != "quick" ]]; then
   # 创建测试文档（macOS 的 mktemp 不替换后缀前的 X，放进随机目录里免得和上次残留撞名）
   TEST_DOC_DIR=$(mktemp -d "${TMPDIR:-/tmp}/sft-test-doc-XXXXXX")
+  TMP_DIRS+=("$TEST_DOC_DIR")
   TEST_DOC="$TEST_DOC_DIR/kubernetes.md"
   echo "这是一份关于 Kubernetes 容器编排部署的技术文档，用于 SailFish CLI 自动化测试。" > "$TEST_DOC"
 
@@ -243,7 +251,6 @@ if [[ "$MODE" != "quick" ]]; then
   assert_contains "knowledge:search 语义搜索" "Kubernetes" \
     $CLI knowledge:search "容器编排"
 
-  rm -rf "$TEST_DOC_DIR"
 else
   skip_test "knowledge:add 添加文档"
   skip_test "knowledge:list 返回表格"
