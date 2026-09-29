@@ -44,9 +44,9 @@ describe('CONVERSATION_POLICY 策略表', () => {
     expect(p.historyTree).toBe('watch') // 与 watch 同源，共用 watch 树
   })
 
-  it('替我审批只给任务：联络、关切、唤醒这一刻未必有人在桌面前兜底', () => {
+  it('替我审批给任务和联络：关切、唤醒是后台执行，没有人当场兜底', () => {
     expect(conversationPolicy('task').autoApprovalReview).toBe(true)
-    expect(conversationPolicy('companion').autoApprovalReview).toBe(false)
+    expect(conversationPolicy('companion').autoApprovalReview).toBe(true)
     expect(conversationPolicy('watch').autoApprovalReview).toBe(false)
     expect(conversationPolicy('wakeup').autoApprovalReview).toBe(false)
   })

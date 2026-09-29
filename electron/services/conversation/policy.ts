@@ -71,7 +71,7 @@ export interface ConversationPolicy {
   /**
    * 用户打开「替我审批」后，本来要问用户的那一下能否先交给独立评审员。
    * - task=true：用户坐在桌面前支使 AI 做事，没放行还能当场交回给他。
-   * - companion=false：联络跨渠道汇流，这一刻未必有人在桌面前看确认卡。
+   * - companion=true：不论桌面、网页还是 IM 发来，都是用户本人在场，交回时在他发消息的地方问。
    * - watch/wakeup=false：后台执行，没有人当场兜底。
    */
   autoApprovalReview: boolean
@@ -83,7 +83,7 @@ export interface ConversationPolicy {
  * | kind      | accumulates | seedFromHistoryOnColdStart | visibleInList | historyTree | perWatchContinuity | autoApprovalReview |
  * |-----------|-------------|----------------------------|---------------|-------------|--------------------|--------------------|
  * | task      | true        | false                      | true          | main        | false              | true               |
- * | companion | true        | true                       | true          | main        | false              | false              |
+ * | companion | true        | true                       | true          | main        | false              | true               |
  * | watch     | false       | false                      | false         | watch       | false（预留）       | false              |
  * | wakeup    | false       | true                       | false         | watch       | false（预留）       | false              |
  *
@@ -106,7 +106,7 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     visibleInList: true,
     historyTree: 'main',
     perWatchContinuity: false,
-    autoApprovalReview: false
+    autoApprovalReview: true
   },
   watch: {
     accumulates: false,

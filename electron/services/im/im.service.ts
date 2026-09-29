@@ -12,7 +12,7 @@
  *                          callbacks 聚合文本 ──→ Adapter.sendMarkdown()
  */
 
-import type { AttachmentInfo, ExecutionMode, RemoteChannel } from '@shared/types'
+import type { AttachmentInfo, AutoReviewTrail, ExecutionMode, RemoteChannel } from '@shared/types'
 import { COMPANION_AGENT_KEY } from '@shared/types'
 import { getDefaultShell, getLocalOS } from '../../utils/platform'
 import { getEventBus } from '../sensor/event-bus'
@@ -498,6 +498,22 @@ export function formatToolFailureNotification(step: {
   const firstLine = raw.split('\n')[0]?.replace(/^(?:\u274c|\u26a0\uFE0F?|\uD83D\uDEAB)+\s*/u, '').trim() ?? ''
   const detail = firstLine ? `：${truncate(firstLine, 120)}` : ''
   return `❌ ${label} 失败${detail}`
+}
+
+/**
+ * 替我审批放行了的那一行：沿用 Agent 已经写好的放行说明，与桌面一致。
+ * 还在评、交回给人、被取消的都不发——交回时另有确认消息。
+ */
+export function formatAutoReviewApprovedNotification(step: {
+  type?: string
+  isStreaming?: boolean
+  content?: string
+  autoReview?: AutoReviewTrail
+}): string | null {
+  if (step.type !== 'auto_review' || step.isStreaming) return null
+  if (step.autoReview?.outcome !== 'approved') return null
+  const text = step.content?.trim()
+  return text ? `🛡️ ${text}` : null
 }
 
 /** 进程通知去重键：同工具+同 path 只通知一次（避免分段 write 刷屏） */
@@ -1647,6 +1663,22 @@ export class IMService {
               } catch { /* ignore */ }
             }
             enqueueSend(sendAsk)
+          } else if (step.type === 'auto_review') {
+            const notice = formatAutoReviewApprovedNotification(step)
+            const reviewKey = `auto_review:${step.id}`
+            if (!notice || notifiedToolCalls.has(reviewKey)) return
+            notifiedToolCalls.add(reviewKey)
+            const sendApproved = async () => {
+              if (sendMessages) await flushTextBuffer()
+              await flushOutboundProgress()
+              try {
+                await adapter.sendText(replyContext, notice)
+              } catch (err) {
+                log.error('Failed to send auto-review notice:', err)
+                await notifyWechatSendFailure(err)
+              }
+            }
+            enqueueAfterMessage(sendApproved)
           } else if (step.type === 'tool_call' && step.toolName) {
             if (IM_SKIP_PROCESS_NOTIFY_TOOLS.has(step.toolName)) return
             if (!sendToolProgress) return

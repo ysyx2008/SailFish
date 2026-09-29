@@ -955,6 +955,93 @@ describe('子智能体端到端（真实 SailFish.run）', () => {
     expect(result).toContain('评审放行了')
   })
 
+  function makeCompanionDeleteServices(command: string, doneText: string): AgentServices {
+    const services = makeServices(({ isChild, messages }) => {
+      if (isChild) return { content: '不该派人' }
+      const done = (messages as Array<{ role?: string }>).some(m => m.role === 'tool')
+      if (!done) return { tool_calls: [tc('exec', { command }, 'rm-companion')] }
+      return { content: doneText }
+    })
+    ;(services.configService as unknown as { isAutoApprovalReviewEnabled: ReturnType<typeof vi.fn> })
+      .isAutoApprovalReviewEnabled.mockReturnValue(true)
+    attachHistory(services, new HistoryService())
+    return services
+  }
+
+  it('联络在桌面上开了替我审批：评审员看准了就自己删，不问你', async () => {
+    const victim = makeVictim('companion-review')
+    const userTask = '删掉家目录里那份测试草稿'
+    reviewSeesUserWords = (text) => text.includes(userTask)
+    let asked = false
+    const services = makeCompanionDeleteServices(`rm -f "${victim}"`, '联络这边删掉了')
+    const agent = new SailFish(services)
+    agent.setAgentId('__companion__')
+    agent.updateConfig({ executionMode: 'relaxed' })
+
+    const result = await agent.run(userTask, { ...ctx(), remoteChannel: 'desktop' }, {
+      callbacks: { onNeedConfirm: () => { asked = true } },
+    })
+
+    expect(reviewPrompts.some(p => p.includes(userTask))).toBe(true)
+    expect(asked).toBe(false)
+    expect(fs.existsSync(victim)).toBe(false)
+    expect(result).toContain('联络这边删掉了')
+  })
+
+  it('联络从飞书进来的那一轮：也是你本人，评审员看准了就自己删', async () => {
+    const victim = makeVictim('companion-im')
+    const userTask = '删掉家目录里那份测试草稿'
+    reviewSeesUserWords = (text) => text.includes(userTask)
+    let asked = false
+    const services = makeCompanionDeleteServices(`rm -f "${victim}"`, '飞书这边删掉了')
+    const agent = new SailFish(services)
+    agent.setAgentId('__companion__')
+    agent.updateConfig({ executionMode: 'relaxed' })
+
+    const { formatAutoReviewApprovedNotification } =
+      await vi.importActual<typeof import('../../im/im.service')>('../../im/im.service')
+    const imNotices: string[] = []
+    const result = await agent.run(userTask, { ...ctx(), remoteChannel: 'feishu' }, {
+      callbacks: {
+        onNeedConfirm: () => { asked = true },
+        onStep: (_id, step) => {
+          const notice = formatAutoReviewApprovedNotification(step)
+          if (notice) imNotices.push(notice)
+        },
+      },
+    })
+
+    expect(reviewPrompts.some(p => p.includes(userTask))).toBe(true)
+    expect(asked).toBe(false)
+    expect(fs.existsSync(victim)).toBe(false)
+    expect(result).toContain('飞书这边删掉了')
+    expect(imNotices).toHaveLength(1)
+    expect(imNotices[0]).toContain(victim)
+  })
+
+  it('联络从飞书进来、评审员看不准：交回来问你，你不同意文件就留着', async () => {
+    const victim = makeVictim('companion-im-ask')
+    reviewSeesUserWords = () => false
+    let asked = false
+    const services = makeCompanionDeleteServices(`rm -f "${victim}"`, '你没同意，文件留着')
+    const agent = new SailFish(services)
+    agent.setAgentId('__companion__')
+    agent.updateConfig({ executionMode: 'relaxed' })
+
+    await agent.run('收拾一下家目录', { ...ctx(), remoteChannel: 'feishu' }, {
+      callbacks: {
+        onNeedConfirm: (confirmation) => {
+          asked = true
+          confirmation.resolve?.(false)
+        },
+      },
+    })
+
+    expect(reviewPrompts.length).toBeGreaterThan(0)
+    expect(asked).toBe(true)
+    expect(fs.existsSync(victim)).toBe(true)
+  })
+
   it('额外禁止开着：高风险直接拦，不问，文件还在', async () => {
     const victim = makeVictim('ban')
     const command = `rm -f "${victim}"`

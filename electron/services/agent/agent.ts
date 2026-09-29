@@ -5322,16 +5322,15 @@ export abstract class Agent {
   // ==================== 替我审批 ====================
 
   /**
-   * 只有「有人当场兜底」时才评：用户打开了开关、这类会话允许、有人坐在桌面或交互式命令行前。
+   * 只有「有人当场兜底」时才评：用户打开了开关、这类会话允许、这一轮有人能当场回答
+   * （桌面、交互式命令行、网页或 IM 都算，交回时在他发消息的地方问）。
    * 插件显式要求审批的一律只问人；硬墙本不进确认，这里再挡一道。
    */
   private canAutoReview(run: AgentRun, riskLevel: RiskLevel, opts?: ConfirmationOptions): boolean {
     if (opts?.humanOnly || riskLevel === 'blocked') return false
     if (!this.services.configService?.isAutoApprovalReviewEnabled()) return false
     if (!conversationPolicy(inferConversationKind(this._agentId)).autoApprovalReview) return false
-    if (run.context.unattended) return false
-    const channel = run.context.remoteChannel
-    return !channel || channel === 'desktop'
+    return !run.context.unattended
   }
 
   private getAutoReviewer(): AutoApprovalReviewer {

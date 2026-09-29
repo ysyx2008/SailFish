@@ -30,6 +30,7 @@ import {
   type IMLastContact,
   isImDeliveryToolFailure,
   formatImDeliveryToolFailure,
+  formatAutoReviewApprovedNotification,
   IM_SKIP_PROCESS_NOTIFY_TOOLS,
   prepareImAgentMedia,
 } from '../im/im.service'
@@ -494,5 +495,93 @@ describe('IMService sendFileToChannel / getChannelSendTargets', () => {
     expect(result.success).toBe(false)
     expect(result.error).toBe('No conversation on this channel yet')
     expect(adapter.sendFile).not.toHaveBeenCalled()
+  })
+})
+
+describe('替我审批放行了，IM 里也留一行', () => {
+  const approvedStep = {
+    id: 'review-1',
+    type: 'auto_review',
+    content: '替你放行：执行命令 `rm -f ~/draft.txt`\n风险高 · 明确授权过\n> 用户刚说了删这份草稿',
+    isStreaming: false,
+    autoReview: { outcome: 'approved' as const, risk: 'high' as const, authorization: 'high' as const, rationale: '用户刚说了删这份草稿' },
+  }
+
+  it('只在放行定稿时出一行，还在评、交回给人都不出', () => {
+    expect(formatAutoReviewApprovedNotification(approvedStep)).toBe(`🛡️ ${approvedStep.content}`)
+    expect(formatAutoReviewApprovedNotification({ ...approvedStep, isStreaming: true, autoReview: undefined })).toBeNull()
+    expect(formatAutoReviewApprovedNotification({
+      ...approvedStep,
+      autoReview: { outcome: 'handed_over', reason: 'not_approved' },
+    })).toBeNull()
+    expect(formatAutoReviewApprovedNotification({ ...approvedStep, type: 'tool_call' })).toBeNull()
+  })
+
+  it.each(['final', 'messages', 'all'] as const)('IM 设成 %s 时，这一轮放行的那一行都发出去，且只发一次', async (processMode) => {
+    const service = new IMService() as any
+    service.config.processMode = processMode
+    const adapter = createAdapter(true)
+    const runAssistant = vi.fn(async (_agentId, _message, _context, _config, _profileId, callbacks) => {
+      callbacks.onStep('run-1', { id: 'review-1', type: 'auto_review', content: '正在替你看：执行命令', isStreaming: true })
+      callbacks.onStep('run-1', approvedStep)
+      callbacks.onStep('run-1', approvedStep)
+      callbacks.onStep('run-1', {
+        id: 'review-2',
+        type: 'auto_review',
+        content: '交给你定：执行命令 `rm -rf ~/work`',
+        isStreaming: false,
+        autoReview: { outcome: 'handed_over', reason: 'not_approved' },
+      })
+      callbacks.onComplete('run-1', '删好了')
+    })
+    service.deps = { agentService: { runAssistant }, mainWindow: null }
+
+    await service.runAgentTask(adapter, { chatId: 'feishu-chat' }, {
+      platform: 'feishu',
+      text: '删掉家目录那份草稿',
+      userId: 'user-1',
+      userName: 'me',
+      chatId: 'feishu-chat',
+      chatType: 'single',
+      replyContext: { chatId: 'feishu-chat' },
+    }, { images: [], previewImages: [], attachments: [], consumedPaths: new Set() })
+    await vi.waitFor(() => expect(adapter.sendMarkdown).toHaveBeenCalled())
+
+    const texts = adapter.sendText.mock.calls.map(c => String(c[1]))
+    expect(texts.filter(s => s.includes('替你放行'))).toEqual([`🛡️ ${approvedStep.content}`])
+    expect(texts.some(s => s.includes('交给你定'))).toBe(false)
+    expect(texts.some(s => s.includes('正在替你看'))).toBe(false)
+  })
+
+  it('放行时它的话还在往外出：先发完那段话，再发放行那一行', async () => {
+    const service = new IMService() as any
+    service.config.processMode = 'messages'
+    const adapter = createAdapter(true)
+    const runAssistant = vi.fn(async (_agentId, _message, _context, _config, _profileId, callbacks) => {
+      callbacks.onStep('run-1', { id: 'msg-1', type: 'message', content: '我来删', isStreaming: true })
+      callbacks.onStep('run-1', approvedStep)
+      callbacks.onStep('run-1', { id: 'msg-1', type: 'message', content: '我来删掉那份草稿。', isStreaming: false })
+      callbacks.onComplete('run-1', '删好了')
+    })
+    service.deps = { agentService: { runAssistant }, mainWindow: null }
+
+    await service.runAgentTask(adapter, { chatId: 'feishu-chat' }, {
+      platform: 'feishu',
+      text: '删掉家目录那份草稿',
+      userId: 'user-1',
+      userName: 'me',
+      chatId: 'feishu-chat',
+      chatType: 'single',
+      replyContext: { chatId: 'feishu-chat' },
+    }, { images: [], previewImages: [], attachments: [], consumedPaths: new Set() })
+    await vi.waitFor(() => expect(adapter.sendMarkdown).toHaveBeenCalledTimes(2))
+
+    const bodyCall = adapter.sendMarkdown.mock.calls.findIndex(c => c[2] === '我来删掉那份草稿。')
+    const noticeCall = adapter.sendText.mock.calls.findIndex(c => String(c[1]).includes('替你放行'))
+    expect(bodyCall).toBeGreaterThanOrEqual(0)
+    expect(noticeCall).toBeGreaterThanOrEqual(0)
+    expect(adapter.sendMarkdown.mock.invocationCallOrder[bodyCall])
+      .toBeLessThan(adapter.sendText.mock.invocationCallOrder[noticeCall])
+    expect(adapter.sendMarkdown.mock.calls.some(c => c[2] === '我来删')).toBe(false)
   })
 })
