@@ -402,7 +402,6 @@ export async function executeCommandDirect(
     riskLevel
   })
 
-  let userApproved = false
   if (needConfirm) {
     const confirm = await resolveCommandToolConfirmation(
       'exec',
@@ -423,7 +422,6 @@ export async function executeCommandDirect(
       })
       return confirm.result
     }
-    userApproved = confirm.userApproved
   }
 
   const rawCwd = typeof args.cwd === 'string' ? args.cwd.trim() : ''
@@ -480,11 +478,7 @@ export async function executeCommandDirect(
 
   // ============= 任务在 wait_seconds 内结束 =============
   if (reason === 'done') {
-    // userApproved 前缀在截断前拼接，让预算计算覆盖完整输出
-    const rawOutput = userApproved
-      ? `[${t('status.user_approved')}]\n${snap.output}`
-      : snap.output
-    const output = await formatTaskOutput(rawOutput, executor)
+    const output = await formatTaskOutput(snap.output, executor)
     const exitCode = snap.exitCode ?? (snap.signal ? 1 : 0)
     executor.addStep({
       type: 'tool_result',

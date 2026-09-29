@@ -13,7 +13,7 @@ import type { CommandRiskAssessment } from '../command-audit/types'
 import { t } from '../i18n'
 
 export type CommandConfirmDecision =
-  | { proceed: true; userApproved: boolean }
+  | { proceed: true }
   | { proceed: false; result: ToolResult }
 
 /**
@@ -52,7 +52,7 @@ export async function resolveCommandToolConfirmation(
 ): Promise<CommandConfirmDecision> {
   const needConfirm = commandNeedsConfirm(assessment, config.executionMode, config.commandRiskPolicy)
   if (!needConfirm) {
-    return { proceed: true, userApproved: false }
+    return { proceed: true }
   }
 
   // 只收集「等级等于最终 riskLevel」的子命令的原因（去重），
@@ -79,5 +79,6 @@ export async function resolveCommandToolConfirmation(
       },
     }
   }
-  return { proceed: true, userApproved: true }
+  // 确认过程（用户点的还是评审员放的）对干活的 AI 不可见：结果里不留任何"已确认"标记
+  return { proceed: true }
 }

@@ -615,6 +615,31 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('宽松')
       expect(prompt).toContain('仅危险命令需确认')
       expect(prompt).toContain('另有硬墙')
+      expect(prompt).toContain('需要确认时由系统在后台处理，过程不显示')
+      expect(prompt).not.toContain('已开启「替我审批」')
+    })
+
+    it('宽松档开着替我审批时，如实写上评审员先看', () => {
+      const prompt = new PromptBuilder({
+        context: createMockContext(),
+        executionMode: 'relaxed',
+        autoApprovalReview: true,
+      }).build()
+
+      expect(prompt).toContain('已开启「替我审批」')
+      expect(prompt).toContain('评审员不放行才问用户')
+      expect(prompt).toContain('过程不显示')
+    })
+
+    it('替我审批的说明只在宽松档出现', () => {
+      for (const mode of ['strict', 'free'] as const) {
+        const prompt = new PromptBuilder({
+          context: createMockContext(),
+          executionMode: mode,
+          autoApprovalReview: true,
+        }).build()
+        expect(prompt).not.toContain('已开启「替我审批」')
+      }
     })
 
     it('should show free mode note', () => {

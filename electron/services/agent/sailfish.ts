@@ -155,6 +155,7 @@ export class SailFish extends Agent {
       context,
       hostProfileService: this.services.hostProfileService,
       executionMode: this.executionMode,
+      autoApprovalReview: this.autoReviewApplies(context.unattended),
       mbtiType: options.mbtiType ?? null,
       knowledgeContext: options.knowledgeContext,
       knowledgeEnabled: options.knowledgeEnabled,

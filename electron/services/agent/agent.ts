@@ -5328,9 +5328,15 @@ export abstract class Agent {
    */
   private canAutoReview(run: AgentRun, riskLevel: RiskLevel, opts?: ConfirmationOptions): boolean {
     if (opts?.humanOnly || riskLevel === 'blocked') return false
-    if (!this.services.configService?.isAutoApprovalReviewEnabled()) return false
+    return this.autoReviewApplies(run.context.unattended)
+  }
+
+  /** 这场会话的确认，是否会先交给评审员（开关开着、这类会话允许、这一轮有人兜底） */
+  protected autoReviewApplies(unattended?: boolean): boolean {
+    // 写系统提示词时也会问到这里，配置服务只是部分实现（测试替身、CLI 精简环境）时按"没开"处理
+    if (!this.services.configService?.isAutoApprovalReviewEnabled?.()) return false
     if (!conversationPolicy(inferConversationKind(this._agentId)).autoApprovalReview) return false
-    return !run.context.unattended
+    return !unattended
   }
 
   private getAutoReviewer(): AutoApprovalReviewer {

@@ -104,6 +104,7 @@ describe('独立助手的「终端」技能（真终端端到端）', () => {
       unifiedTerminalService: terminals,
       configService: {
         get: vi.fn((key: string) => (key === 'disabledBuiltinSkills' ? disabledBuiltinSkills : undefined)),
+        isAutoApprovalReviewEnabled: vi.fn().mockReturnValue(false),
         getAgentMbti: vi.fn().mockReturnValue(null),
         getAiRules: vi.fn().mockReturnValue(''),
         getAgentPersonalityText: vi.fn().mockReturnValue(''),

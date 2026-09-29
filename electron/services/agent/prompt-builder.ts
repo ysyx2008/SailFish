@@ -309,6 +309,8 @@ export interface BuildSystemPromptOptions {
   availableTaskIds?: Array<{ id: string; summary: string }>
   /** 执行模式 */
   executionMode?: ExecutionMode
+  /** 本场需要确认时是否先交给评审员（「替我审批」），仅宽松档下有意义 */
+  autoApprovalReview?: boolean
   /** 当前已设置的关切列表摘要（注入提示词，供 Agent 知晓避免重复创建） */
   watchListSummary?: string
   /** 羁绊上下文（注入提示词，影响对话语气） */
@@ -347,6 +349,7 @@ export class PromptBuilder {
   private readonly relatedTaskDigests?: string
   private readonly availableTaskIds?: Array<{ id: string; summary: string }>
   private readonly executionMode?: ExecutionMode
+  private readonly autoApprovalReview: boolean
   private readonly watchListSummary?: string
   private readonly bondContext?: string
   private readonly isOnboarding: boolean
@@ -375,6 +378,7 @@ export class PromptBuilder {
     this.relatedTaskDigests = options.relatedTaskDigests
     this.availableTaskIds = options.availableTaskIds
     this.executionMode = options.executionMode
+    this.autoApprovalReview = options.autoApprovalReview === true
     this.watchListSummary = options.watchListSummary
     this.bondContext = options.bondContext
     this.isOnboarding = options.isOnboarding ?? false
@@ -1029,11 +1033,15 @@ export class PromptBuilder {
 
   private buildExecutionModeNote(): string {
     const hardWall = '另有硬墙：删除或覆写根目录与引导分区、格式化根目录或引导分区或 Windows 系统盘、改动凭据等会直接导致严重破坏的命令，在任何模式下都会被系统直接拒绝执行，并且不会向用户确认（不排除存在误报可能）。'
+    const confirmNote = '需要确认时由系统在后台处理，过程不显示。'
     if (this.executionMode === 'strict') {
-      return `**当前模式**：严格 - 所有命令需用户确认，有疑问主动提问。${hardWall}`
+      return `**当前模式**：严格 - 所有命令需用户确认，有疑问主动提问。${confirmNote}${hardWall}`
     }
     if (this.executionMode === 'relaxed') {
-      return `**当前模式**：宽松 - 仅危险命令需确认。${hardWall}`
+      if (this.autoApprovalReview) {
+        return `**当前模式**：宽松 - 仅危险命令需确认。已开启「替我审批」：需要确认时，先由独立评审员对照用户说过的话决定是否放行；评审员不放行才问用户。过程不显示。${hardWall}`
+      }
+      return `**当前模式**：宽松 - 仅危险命令需确认。${confirmNote}${hardWall}`
     }
     return `**当前模式**：自由 - 自动执行，尽量不打断用户。${hardWall}`
   }

@@ -182,8 +182,6 @@ export async function executeCommand(
     riskLevel
   })
 
-  let userApproved = false
-  
   if (needConfirm) {
     const confirm = await resolveCommandToolConfirmation(
       'execute_command',
@@ -204,7 +202,6 @@ export async function executeCommand(
       })
       return confirm.result
     }
-    userApproved = confirm.userApproved
   }
 
   // 策略3: 限时执行
@@ -383,9 +380,7 @@ export async function executeCommand(
     // 按上下文预算处理输出：超预算全文落盘换指针。
     // 落盘失败必须就地消化——命令已成功，若抛给外层 catch 会把终端状态错误覆盖成 failed，
     // 还会让 AI 误以为命令没执行（对非幂等命令可能重复执行）
-    const rawOutput = userApproved
-      ? `[${t('status.user_approved')}]\n${result.output}`
-      : result.output
+    const rawOutput = result.output
     let output: string
     try {
       output = await applyCommandOutputBudget(rawOutput, executor)
