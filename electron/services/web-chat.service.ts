@@ -223,6 +223,12 @@ export class WebChatService {
           stepId,
         })
       },
+      onContextBar: (_runId: string, contextBar: import('@shared/types').AgentContextBar) => {
+        this.sendToDesktop('agent:contextBar', {
+          agentId: WebChatService.DESKTOP_AGENT_ID,
+          contextBar: JSON.parse(JSON.stringify(contextBar)),
+        })
+      },
       onNeedConfirm: (confirmation: any) => {
         this.sendToDesktop('agent:needConfirm', {
           agentId: WebChatService.DESKTOP_AGENT_ID,

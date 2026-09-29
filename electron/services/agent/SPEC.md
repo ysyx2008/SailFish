@@ -843,6 +843,7 @@ Companion 语义是「一条跨重启、多渠道汇流的连续关系线」，�
 - System 二级依赖 PromptBuilder 写入的 section 标记（发 API 前 strip）；无标记时 system 仅一级。
 - 图片单独成叶子，避免淹没对话正文占比。
 - 仅 live `AgentContextBar.composition` 推送，不写入历史 step 落盘。
+- **联络里不分渠道**：消息从微信、钉钉等 IM 或网页远程进来时，桌面联络的用量条、Cache 比例和「组成详情」按钮必须与桌面自己发消息时一致，不能出现「条子在、详情按钮缺」的半截状态。
 
 否则会出现：按 DeepSeek 1000K 复用 ~260K 前缀 → 实际打到豆包 256K → `exceed max message tokens`。
 

@@ -1791,6 +1791,16 @@ export class IMService {
           }
         },
 
+        // 同步到桌面 companion tab：用量条的组成明细只走这条通道，缺了详情按钮就不出现
+        onContextBar: (_runId: string, contextBar: import('@shared/types').AgentContextBar) => {
+          if (mainWindow && !mainWindow.webContents.isDestroyed()) {
+            mainWindow.webContents.send('agent:contextBar', {
+              agentId,
+              contextBar: JSON.parse(JSON.stringify(contextBar)),
+            })
+          }
+        },
+
         onNeedConfirm: (confirmation: any) => {
           // 同步到桌面 companion tab（与 onStep/onComplete/onError 对齐）
           if (mainWindow && !mainWindow.webContents.isDestroyed()) {
