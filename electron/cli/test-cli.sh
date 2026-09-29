@@ -228,8 +228,9 @@ assert_contains "knowledge:stats 返回 JSON"   "documentCount" \
 
 # 添加文档→搜索命中→验证
 if [[ "$MODE" != "quick" ]]; then
-  # 创建测试文档
-  TEST_DOC=$(mktemp /tmp/sft-test-XXXXXX.md)
+  # 创建测试文档（macOS 的 mktemp 不替换后缀前的 X，放进随机目录里免得和上次残留撞名）
+  TEST_DOC_DIR=$(mktemp -d "${TMPDIR:-/tmp}/sft-test-doc-XXXXXX")
+  TEST_DOC="$TEST_DOC_DIR/kubernetes.md"
   echo "这是一份关于 Kubernetes 容器编排部署的技术文档，用于 SailFish CLI 自动化测试。" > "$TEST_DOC"
 
   run_test "knowledge:add 添加测试文档"      $CLI knowledge:add "$TEST_DOC"
@@ -242,7 +243,7 @@ if [[ "$MODE" != "quick" ]]; then
   assert_contains "knowledge:search 语义搜索" "Kubernetes" \
     $CLI knowledge:search "容器编排"
 
-  rm -f "$TEST_DOC"
+  rm -rf "$TEST_DOC_DIR"
 else
   skip_test "knowledge:add 添加文档"
   skip_test "knowledge:list 返回表格"
