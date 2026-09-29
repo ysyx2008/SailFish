@@ -8,6 +8,7 @@
 @.cursor/rules/project-architecture.mdc
 @.cursor/rules/spec-driven.mdc
 @.cursor/rules/agent-oop-boundary.mdc
+@.cursor/rules/agent-prompt-principles.mdc
 
 ## 补充规则
 
