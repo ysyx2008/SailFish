@@ -74,6 +74,8 @@ export interface AuditedCall {
   source: 'bash' | 'zsh' | 'sh' | 'powershell'
   /** 存在 $VAR / $(...) 等无法静态解析的路径参数 */
   dynamicPaths?: boolean
+  /** 出现过 `--`（其后都不是选项）。bash 解析时 `--` 本身不进 flags / paths；PowerShell 留在 flags 里 */
+  endOfOptions?: boolean
 }
 
 /**

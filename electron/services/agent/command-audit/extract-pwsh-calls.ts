@@ -83,15 +83,18 @@ function runPwshExtract(command: string): Promise<PwshExtractResult> {
 }
 
 function toAuditedCall(raw: PwshExtractCall): AuditedCall {
+  const flags = raw.flags ?? []
   return {
     cmd: raw.cmd,
-    flags: raw.flags ?? [],
+    flags,
     args: raw.args ?? [],
     paths: raw.paths ?? [],
     redirects: raw.redirects ?? [],
     raw: raw.raw,
     source: 'powershell',
     dynamicPaths: raw.dynamicPaths || undefined,
+    // PowerShell 这边 `--` 作为一个 flag 留下，看不出位置
+    endOfOptions: flags.includes('--') || undefined,
   }
 }
 

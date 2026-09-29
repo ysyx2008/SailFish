@@ -98,6 +98,12 @@ async function resolvedArgs(args: UnwrappedCall['args']): Promise<{ strings: str
   return { strings, hasDynamic }
 }
 
+/** 解析时 `--` 被吃掉、不进 flags / args，只能回原始词里看 */
+async function hasEndOfOptions(node: CallExprNode): Promise<boolean> {
+  const { wordToLit } = await getShellAstModule()
+  return node.args.slice(1).some(word => wordToLit(word) === '--')
+}
+
 /** 可执行 -c 内联脚本的解释器（bash -c / sudo bash -c 等） */
 const SCRIPT_SHELL_CMDS = new Set([
   'bash', 'sh', 'zsh', 'dash', 'ksh', 'mksh', 'fish',
@@ -138,6 +144,7 @@ function unwrappedToAuditedCall(
   source: AuditedCall['source'],
   redirects: AuditedRedirect[],
   resolved: { strings: string[]; hasDynamic: boolean },
+  endOfOptions = false,
 ): AuditedCall {
   if (u.kind === 'wrapped-opaque') {
     return {
@@ -181,6 +188,7 @@ function unwrappedToAuditedCall(
     raw,
     source,
     dynamicPaths: hasDynamic || undefined,
+    endOfOptions: endOfOptions || undefined,
   }
 }
 
@@ -240,7 +248,8 @@ async function collectFromCallExpr(
   }
 
   const resolved = await resolvedArgs(u.args)
-  out.push(unwrappedToAuditedCall(u, raw, source, redirects, resolved))
+  const endOfOptions = await hasEndOfOptions(u.kind === 'wrapped' ? u.innerRaw : u.raw)
+  out.push(unwrappedToAuditedCall(u, raw, source, redirects, resolved, endOfOptions))
 }
 
 /** 从 shell 字符串提取全部可审计子命令（unwrap wrapper + 递归 -c 脚本） */

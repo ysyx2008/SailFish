@@ -10,6 +10,7 @@ import { getArgvCommandRule } from './resolve-argv-rule'
 import { adjustRiskByPathZones } from './workspace-guard'
 import { maxRisk } from './risk-level'
 import { checkIndirectionGuard } from './indirection-guard'
+import { assessSubcommandRisk } from './subcommand-risk'
 import { resolveFailClosedLevel, resolveOutsideWritesUpgrade, resolveExtraFreeDirs } from './fail-closed-policy'
 
 function collectWritePaths(call: AuditedCall, extraPaths: string[]): string[] {
@@ -150,7 +151,9 @@ export function assessAuditedCall(
   const writePaths = rule.writesTo
     ? [...call.paths, ...redirectPaths, ...extraWritePaths]
     : [...redirectPaths, ...extraWritePaths]
-  const commandLevel = assessCommandFlags(rule, call.flags)
+  const flagLevel = assessCommandFlags(rule, call.flags)
+  const subcommandRisk = assessSubcommandRisk(call)
+  const commandLevel = subcommandRisk ? maxRisk(flagLevel, subcommandRisk.level) : flagLevel
   const reasons: string[] = []
 
   if (rule.baseLevel === 'blocked') {
@@ -159,7 +162,9 @@ export function assessAuditedCall(
     reasons.push(t('risk.reason.dangerous_cmd', { cmd: call.cmd }))
   }
 
-  if (commandLevel === 'moderate' && rule.baseLevel === 'safe') {
+  if (subcommandRisk) {
+    reasons.push(subcommandRisk.reason)
+  } else if (commandLevel === 'moderate' && rule.baseLevel === 'safe') {
     reasons.push(t('risk.reason.unknown_flag'))
   }
 
@@ -182,8 +187,10 @@ export function assessAuditedCall(
   if (commandLevel === 'blocked' || pathAdjust.level === 'blocked') {
     level = 'blocked'
   } else if (writes && writePaths.length > 0) {
-    // free 区可降级为 safe；outside 等 moderate 不覆盖 rm 等命令级 dangerous
-    level = pathAdjust.level === 'safe'
+    // free 区可降级为 safe；outside 等 moderate 不覆盖 rm 等命令级 dangerous。
+    // 高危命令只把输出重定向进 free 区（`> /dev/null`）不降级：危险在命令本身，不在写的那个文件
+    const keepCommandRisk = !rule.writesTo && commandLevel === 'dangerous'
+    level = pathAdjust.level === 'safe' && !keepCommandRisk
       ? 'safe'
       : maxRisk(commandLevel, pathAdjust.level)
   } else {
