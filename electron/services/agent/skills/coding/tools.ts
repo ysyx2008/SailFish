@@ -2,6 +2,7 @@
  * 编程技能 - 工具定义与说明书
  */
 import type { ToolDefinitionWithMeta } from '../../tools'
+import { GRAMMAR_BY_EXTENSION } from './grammars'
 
 const readOnlyMeta = {
   parallelizable: true,
@@ -144,6 +145,10 @@ pattern 例："*.test.ts"（任意层级）、"src/**/*.vue"、"**/Dockerfile"�
   },
 ]
 
+function checkedExtensions(): string {
+  return Object.keys(GRAMMAR_BY_EXTENSION).sort().join(' ')
+}
+
 export const codingSkillContent = `# 编程
 
 你拿起了编程工具。按这个节奏干活：
@@ -151,7 +156,7 @@ export const codingSkillContent = `# 编程
 1. **先打开项目**：\`code_open_project\` 指定项目根目录。之后本机文件工具的相对路径、exec 的默认目录都落在项目根（终端窗格里的命令除外）。打开时返回的开发约定要遵守；子目录里另有 AGENTS.md 之类的说明时，进那个目录干活前先读。
 2. **找**：按内容用 \`code_search\`，按文件名 / 模式用 \`code_find_files\`。不要自己跑 grep、find、ls -R。
 3. **读**：\`read_file\`，大文件分段读。改哪里就先读哪里，别凭记忆改。
-4. **改**：改一处用 \`edit_file\`；同一个文件要改好几处，用 \`code_multi_edit\` 一次改完；新文件用 \`write_text_file\`。只改任务需要的地方，不顺手重排、重命名、改格式。改完如果结果里提示「可能多了语法错误」，先读那几行确认，是真错就立刻修。
+4. **改**：改一处用 \`edit_file\`；同一个文件要改好几处，用 \`code_multi_edit\` 一次改完；新文件用 \`write_text_file\`。只改任务需要的地方，不顺手重排、重命名、改格式。用这三个工具写完（改和新建都算）会自动查语法，只查这些扩展名的文件：${checkedExtensions()}；别的文件、用命令改或生成的文件不查，没有提示不代表没错。结果里提示「可能多了语法错误」时，先读那几行确认，是真错就立刻修。
 5. **验**：跑打开项目时列出的检查 / 测试命令。有 exec 就用 exec，默认就在项目根；只能在终端窗格里跑（execute_command）时，窗格的目录不会跟着项目变，先 cd 到项目根。看退出码判断成败。没跑过不要说「改好了」；跑不了就说明为什么。
 
 ## 撤回
