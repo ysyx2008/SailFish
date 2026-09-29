@@ -501,19 +501,23 @@ export function formatToolFailureNotification(step: {
 }
 
 /**
- * 替我审批放行了的那一行：沿用 Agent 已经写好的放行说明，与桌面一致。
- * 还在评、交回给人、被取消的都不发——交回时另有确认消息。
+ * 替我审批在 IM 里发的那一行：直接用桌面对话里的那句
+ * （正在替你看 / 替你放行 / 替你看过，交给你定）。
+ * 交给你定时补一句怎么回，因为 IM 上没有桌面那个按钮。
  */
-export function formatAutoReviewApprovedNotification(step: {
+export function formatAutoReviewImNotice(step: {
   type?: string
   isStreaming?: boolean
   content?: string
   autoReview?: AutoReviewTrail
 }): string | null {
-  if (step.type !== 'auto_review' || step.isStreaming) return null
-  if (step.autoReview?.outcome !== 'approved') return null
+  if (step.type !== 'auto_review') return null
   const text = step.content?.trim()
-  return text ? `🛡️ ${text}` : null
+  if (!text) return null
+  if (step.autoReview?.outcome === 'handed_over') {
+    return `${text}\n\n${t('im.need_confirm_action')}`
+  }
+  return text
 }
 
 /** 进程通知去重键：同工具+同 path 只通知一次（避免分段 write 刷屏） */
@@ -1664,8 +1668,8 @@ export class IMService {
             }
             enqueueSend(sendAsk)
           } else if (step.type === 'auto_review') {
-            const notice = formatAutoReviewApprovedNotification(step)
-            const reviewKey = `auto_review:${step.id}`
+            const notice = formatAutoReviewImNotice(step)
+            const reviewKey = `auto_review:${step.id}:${notice}`
             if (!notice || notifiedToolCalls.has(reviewKey)) return
             notifiedToolCalls.add(reviewKey)
             const sendApproved = async () => {
@@ -1813,6 +1817,9 @@ export class IMService {
               displayName: confirmation.displayName
             })
           }
+
+          // 替我审批这一下，对话里已经有「正在替你看 / 交给你定」，不再发确认卡
+          if (confirmation.autoReview) return
 
           const sendConfirm = async () => {
             if (sendMessages) {

@@ -30,7 +30,7 @@ import {
   type IMLastContact,
   isImDeliveryToolFailure,
   formatImDeliveryToolFailure,
-  formatAutoReviewApprovedNotification,
+  formatAutoReviewImNotice,
   IM_SKIP_PROCESS_NOTIFY_TOOLS,
   prepareImAgentMedia,
 } from '../im/im.service'
@@ -498,7 +498,7 @@ describe('IMService sendFileToChannel / getChannelSendTargets', () => {
   })
 })
 
-describe('替我审批放行了，IM 里也留一行', () => {
+describe('替我审批在 IM 里只发桌面那一行，不发确认卡', () => {
   const approvedStep = {
     id: 'review-1',
     type: 'auto_review',
@@ -507,17 +507,20 @@ describe('替我审批放行了，IM 里也留一行', () => {
     autoReview: { outcome: 'approved' as const, risk: 'high' as const, authorization: 'high' as const, rationale: '用户刚说了删这份草稿' },
   }
 
-  it('只在放行定稿时出一行，还在评、交回给人都不出', () => {
-    expect(formatAutoReviewApprovedNotification(approvedStep)).toBe(`🛡️ ${approvedStep.content}`)
-    expect(formatAutoReviewApprovedNotification({ ...approvedStep, isStreaming: true, autoReview: undefined })).toBeNull()
-    expect(formatAutoReviewApprovedNotification({
+  it('正在看、放行、交给你定都用桌面那句原话；交给你定时补上怎么回', () => {
+    expect(formatAutoReviewImNotice({
+      ...approvedStep, isStreaming: true, autoReview: undefined, content: '正在替你看：执行命令',
+    })).toBe('正在替你看：执行命令')
+    expect(formatAutoReviewImNotice(approvedStep)).toBe(approvedStep.content)
+    expect(formatAutoReviewImNotice({
       ...approvedStep,
+      content: '替你看过，交给你定：执行命令',
       autoReview: { outcome: 'handed_over', reason: 'not_approved' },
-    })).toBeNull()
-    expect(formatAutoReviewApprovedNotification({ ...approvedStep, type: 'tool_call' })).toBeNull()
+    })).toBe('替你看过，交给你定：执行命令\n\nim.need_confirm_action')
+    expect(formatAutoReviewImNotice({ ...approvedStep, type: 'tool_call' })).toBeNull()
   })
 
-  it.each(['final', 'messages', 'all'] as const)('IM 设成 %s 时，这一轮放行的那一行都发出去，且只发一次', async (processMode) => {
+  it.each(['final', 'messages', 'all'] as const)('IM 设成 %s 时，正在看和结论都发出去，同一句不重复，也不发确认卡', async (processMode) => {
     const service = new IMService() as any
     service.config.processMode = processMode
     const adapter = createAdapter(true)
@@ -528,8 +531,15 @@ describe('替我审批放行了，IM 里也留一行', () => {
       callbacks.onStep('run-1', {
         id: 'review-2',
         type: 'auto_review',
-        content: '交给你定：执行命令 `rm -rf ~/work`',
+        content: '替你看过，交给你定：执行命令 `rm -rf ~/work`',
         isStreaming: false,
+        autoReview: { outcome: 'handed_over', reason: 'not_approved' },
+      })
+      callbacks.onNeedConfirm({
+        toolCallId: 'call-1',
+        toolName: 'exec',
+        toolArgs: { command: 'rm -rf ~/work' },
+        riskLevel: 'dangerous',
         autoReview: { outcome: 'handed_over', reason: 'not_approved' },
       })
       callbacks.onComplete('run-1', '删好了')
@@ -548,9 +558,13 @@ describe('替我审批放行了，IM 里也留一行', () => {
     await vi.waitFor(() => expect(adapter.sendMarkdown).toHaveBeenCalled())
 
     const texts = adapter.sendText.mock.calls.map(c => String(c[1]))
-    expect(texts.filter(s => s.includes('替你放行'))).toEqual([`🛡️ ${approvedStep.content}`])
-    expect(texts.some(s => s.includes('交给你定'))).toBe(false)
-    expect(texts.some(s => s.includes('正在替你看'))).toBe(false)
+    expect(texts.filter(s => s.includes('正在替你看'))).toEqual(['正在替你看：执行命令'])
+    expect(texts.filter(s => s.includes('替你放行'))).toEqual([approvedStep.content])
+    expect(texts.filter(s => s.includes('交给你定'))).toEqual([
+      '替你看过，交给你定：执行命令 `rm -rf ~/work`\n\nim.need_confirm_action',
+    ])
+    const cards = adapter.sendMarkdown.mock.calls.map(c => String(c[1]))
+    expect(cards.some(title => title.includes('need_confirm'))).toBe(false)
   })
 
   it('放行时它的话还在往外出：先发完那段话，再发放行那一行', async () => {

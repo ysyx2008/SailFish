@@ -998,14 +998,14 @@ describe('子智能体端到端（真实 SailFish.run）', () => {
     agent.setAgentId('__companion__')
     agent.updateConfig({ executionMode: 'relaxed' })
 
-    const { formatAutoReviewApprovedNotification } =
+    const { formatAutoReviewImNotice } =
       await vi.importActual<typeof import('../../im/im.service')>('../../im/im.service')
     const imNotices: string[] = []
     const result = await agent.run(userTask, { ...ctx(), remoteChannel: 'feishu' }, {
       callbacks: {
         onNeedConfirm: () => { asked = true },
         onStep: (_id, step) => {
-          const notice = formatAutoReviewApprovedNotification(step)
+          const notice = formatAutoReviewImNotice(step)
           if (notice) imNotices.push(notice)
         },
       },
@@ -1015,8 +1015,8 @@ describe('子智能体端到端（真实 SailFish.run）', () => {
     expect(asked).toBe(false)
     expect(fs.existsSync(victim)).toBe(false)
     expect(result).toContain('飞书这边删掉了')
-    expect(imNotices).toHaveLength(1)
-    expect(imNotices[0]).toContain(victim)
+    expect(imNotices.some(n => n.startsWith('正在替你看') && n.includes(victim))).toBe(true)
+    expect(imNotices.some(n => n.includes('替你放行') && n.includes(victim))).toBe(true)
   })
 
   it('联络从飞书进来、评审员看不准：交回来问你，你不同意文件就留着', async () => {
