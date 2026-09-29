@@ -438,27 +438,34 @@ function handlePaneDragEnd() {
   box-sizing: border-box;
 }
 
-/* 连接名标签：浮在终端内容之上（不占布局高度，不挤掉终端一行），
-   点击穿透到终端以免抢掉"点窗格切焦点" */
+/* 连接名标签：浮在终端内容之上（不占布局高度，不挤掉终端一行）。
+   平时半透明，底下的字还能看见；鼠标进入这一格才变成实心。
+   用文字色作底、背景色作字，避免和窗格底色混成一块。
+   点击穿透到终端，以免挡住点选；拖拽分屏时才自己接收鼠标。 */
 .pane-connection-label {
   position: absolute;
-  top: 3px;
+  top: 4px;
   left: 50%;
   transform: translateX(-50%);
   max-width: 70%;
   padding: 1px 8px;
-  border-radius: 9px;
-  background: rgba(0, 0, 0, 0.42);
-  color: rgba(255, 255, 255, 0.72);
+  border-radius: 4px;
+  background: var(--text-primary);
+  color: var(--bg-primary);
   font-size: 11px;
+  font-weight: 500;
   line-height: 16px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
-  opacity: 0.62;
-  transition: opacity 0.15s ease, color 0.15s ease;
+  opacity: 0.45;
+  transition: opacity 0.15s ease;
   z-index: 6;
+}
+
+.split-pane.terminal:hover .pane-connection-label {
+  opacity: 1;
 }
 
 .pane-connection-label.is-handle {
@@ -510,11 +517,6 @@ function handlePaneDragEnd() {
   right: 0;
   bottom: 0;
   height: 40%;
-}
-
-.split-pane.terminal:hover .pane-connection-label {
-  opacity: 1;
-  color: rgba(255, 255, 255, 0.95);
 }
 
 /* 关闭按钮（默认隐藏，hover 时显示）*/
