@@ -393,6 +393,137 @@ describe('PromptBuilder', () => {
       expect(next).toContain('当前没有开着的技能')
       expect(next).not.toContain('Excel')
     })
+
+    // 技能文档正文自己带一级标题（如用户技能「# 打印助手」）时，反复刷新不能越刷越多。
+    describe('技能文档正文自带一级标题', () => {
+      const DOC = '# 打印助手\n\n在本机打印文件。\n\n## 一、打印机环境\n\n队列 EPSON_L6170'
+      const roster = [{ id: 'user:printer-helper', name: '打印助手' }]
+      const copies = (text: string) => text.split('# 打印助手\n').length - 1
+
+      const buildWith = (overrides: { knowledgeContext?: string } = {}) =>
+        new PromptBuilder({
+          context: createMockContext(),
+          loadedSkillsRoster: roster,
+          skillsContent: DOC,
+          knowledgeEnabled: !!overrides.knowledgeContext,
+          knowledgeContext: overrides.knowledgeContext,
+        }).build()
+
+      it('用同样的输入刷新任意多次，文档始终只有一份，且与新建出来的提示词逐字一致', () => {
+        const built = buildWith()
+        let prompt = built
+        for (let i = 0; i < 5; i++) {
+          prompt = patchLoadedSkillsSectionsInSystemPrompt(
+            prompt,
+            buildLoadedSkillsRosterSection(roster),
+            buildSkillsContentSectionText(DOC),
+          )
+        }
+        expect(copies(prompt)).toBe(1)
+        expect(prompt).toBe(built)
+      })
+
+      it('技能文档后面还有别的段（知识召回等）时，刷新不吞掉它们', () => {
+        const built = buildWith({ knowledgeContext: '召回片段：nginx 监听 8080' })
+        expect(built).toContain('召回片段：nginx 监听 8080')
+        const patched = patchLoadedSkillsSectionsInSystemPrompt(
+          built,
+          buildLoadedSkillsRosterSection(roster),
+          buildSkillsContentSectionText(DOC),
+        )
+        expect(patched).toBe(built)
+      })
+
+      it('技能被关掉后，文档整份撤走，后面的段落还在', () => {
+        const built = buildWith({ knowledgeContext: '召回片段：nginx 监听 8080' })
+        const patched = patchLoadedSkillsSectionsInSystemPrompt(
+          built,
+          buildLoadedSkillsRosterSection([]),
+          '',
+        )
+        expect(patched).toContain('当前没有开着的技能')
+        expect(patched).not.toContain('# 打印助手')
+        expect(patched).not.toContain(SKILLS_CONTENT_HEADING)
+        expect(patched).toContain('召回片段：nginx 监听 8080')
+      })
+
+      it('已被旧版补丁重复污染的提示词，下次刷新时自动去重', () => {
+        const clean = buildWith({ knowledgeContext: '召回片段：nginx 监听 8080' })
+        // 还原线上现场：清单被写成「没有开着」，文档在其后残留了多份，技能文档标题与归因标记都丢了
+        const anchor = clean.indexOf(LOADED_SKILLS_ROSTER_HEADING)
+        const tailAt = clean.indexOf('<!--sf-ctx:knowledge-->', anchor)
+        const polluted =
+          clean.slice(0, anchor) +
+          buildLoadedSkillsRosterSection([]) +
+          Array.from({ length: 23 }, () => `\n\n${DOC}`).join('') +
+          '\n\n' +
+          clean.slice(tailAt)
+        expect(copies(polluted)).toBe(23)
+
+        const healed = patchLoadedSkillsSectionsInSystemPrompt(
+          polluted,
+          buildLoadedSkillsRosterSection(roster),
+          buildSkillsContentSectionText(DOC),
+        )
+        expect(healed).toBe(clean)
+      })
+
+      it('用户自定义规则里恰好写了同名标题，刷新不会把起点带偏、吞掉中间的段落', () => {
+        const spoofed = new PromptBuilder({
+          context: createMockContext(),
+          aiRules: `记一下：\n${LOADED_SKILLS_ROSTER_HEADING}\n这只是我的笔记`,
+          loadedSkillsRoster: roster,
+          skillsContent: DOC,
+        }).build()
+        const patched = patchLoadedSkillsSectionsInSystemPrompt(
+          spoofed,
+          buildLoadedSkillsRosterSection(roster),
+          buildSkillsContentSectionText(DOC),
+        )
+        expect(patched).toBe(spoofed)
+        expect(patched).toContain('# 核心规则')
+        expect(patched).toContain('这只是我的笔记')
+      })
+
+      it('技能文档正文里带着内部标记前缀，也不会被当成段落边界而叠加', () => {
+        const trickyDoc = `${DOC}\n\n示例：<!--sf-ctx:knowledge--> 之后还有内容`
+        const built = new PromptBuilder({
+          context: createMockContext(),
+          loadedSkillsRoster: roster,
+          skillsContent: trickyDoc,
+        }).build()
+        let prompt = built
+        for (let i = 0; i < 3; i++) {
+          prompt = patchLoadedSkillsSectionsInSystemPrompt(
+            prompt,
+            buildLoadedSkillsRosterSection(roster),
+            buildSkillsContentSectionText(trickyDoc),
+          )
+        }
+        expect(copies(prompt)).toBe(1)
+        expect(prompt).toBe(built)
+      })
+
+      it('已污染且技能已关掉时，也能清空残留的文档', () => {
+        const clean = buildWith({ knowledgeContext: '召回片段：nginx 监听 8080' })
+        const anchor = clean.indexOf(LOADED_SKILLS_ROSTER_HEADING)
+        const tailAt = clean.indexOf('<!--sf-ctx:knowledge-->', anchor)
+        const polluted =
+          clean.slice(0, anchor) +
+          buildLoadedSkillsRosterSection([]) +
+          Array.from({ length: 23 }, () => `\n\n${DOC}`).join('') +
+          '\n\n' +
+          clean.slice(tailAt)
+
+        const healed = patchLoadedSkillsSectionsInSystemPrompt(
+          polluted,
+          buildLoadedSkillsRosterSection([]),
+          '',
+        )
+        expect(copies(healed)).toBe(0)
+        expect(healed).toContain('召回片段：nginx 监听 8080')
+      })
+    })
   })
 
   describe('knowledge context', () => {

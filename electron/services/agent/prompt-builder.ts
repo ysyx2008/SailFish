@@ -48,12 +48,48 @@ export interface LoadedSkillRosterItem {
   name: string
 }
 
-function findMarkdownSectionBounds(content: string, heading: string): { start: number; end: number } | null {
-  const start = content.indexOf(heading)
+const COMPOSITION_MARKER_PREFIX = '<!--sf-ctx:'
+const SKILLS_MARKER = `${COMPOSITION_MARKER_PREFIX}skills-->`
+
+/**
+ * 「开着的技能」清单 + 技能文档 这一整块在系统提示里的范围。
+ *
+ * 不能靠「下一个以 `# ` 开头的标题」判断一节到哪结束：技能文档正文自己就有一级标题，
+ * 会把边界截在文档中间，旧文档留下、新文档再插一份，每刷新一次就多一份。
+ * 各 section 之间由归因标记分隔，所以这一块到「下一个不属于技能的归因标记」为止；
+ * 后面没有别的段就到结尾（历史上被污染的提示词正是这个形状：残留文档后面什么标记都没有，
+ * 只有这样才能一并收拾干净）。块内属于技能的标记和标题一并算在内，整块重写。
+ *
+ * 起点优先认「归因标记 + 标题」这个内部产物；提示词里其它位置（用户规则、知识文档等用户原文）
+ * 即使出现同名标题也不会把起点带偏。只有标记丢失的旧提示词才退回按标题原文找。
+ */
+function findLoadedSkillsBlock(content: string): { start: number; end: number } | null {
+  const anchoredAt = (heading: string): number => {
+    const at = content.indexOf(`${SKILLS_MARKER}\n${heading}`)
+    return at === -1 ? -1 : at + SKILLS_MARKER.length + 1
+  }
+  const earliest = (positions: number[]): number => {
+    const found = positions.filter(p => p !== -1)
+    return found.length > 0 ? Math.min(...found) : -1
+  }
+  const anchored = earliest([anchoredAt(LOADED_SKILLS_ROSTER_HEADING), anchoredAt(SKILLS_CONTENT_HEADING)])
+  const start = anchored !== -1
+    ? anchored
+    : earliest([content.indexOf(LOADED_SKILLS_ROSTER_HEADING), content.indexOf(SKILLS_CONTENT_HEADING)])
   if (start === -1) return null
-  const rest = content.slice(start + heading.length)
-  const nextMatch = rest.match(/\n\n# /)
-  const end = nextMatch?.index !== undefined ? start + heading.length + nextMatch.index : content.length
+
+  let end = content.length
+  let cursor = start
+  while (true) {
+    const markerAt = content.indexOf(COMPOSITION_MARKER_PREFIX, cursor)
+    if (markerAt === -1) break
+    if (!content.startsWith(SKILLS_MARKER, markerAt)) {
+      end = markerAt
+      break
+    }
+    cursor = markerAt + SKILLS_MARKER.length
+  }
+  while (end > start && /\s/.test(content[end - 1])) end--
   return { start, end }
 }
 
@@ -90,7 +126,8 @@ export function buildCwdChangedHint(cwd: string): string {
 }
 
 export function buildSkillsContentSectionText(content?: string): string {
-  const trimmed = content?.trim()
+  // 技能文档是用户可自写的 markdown：正文里若带着归因标记前缀，会被误认成段落边界，先转义掉
+  const trimmed = content?.trim().split(COMPOSITION_MARKER_PREFIX).join('<!-- sf-ctx:')
   if (!trimmed) return ''
   return `${SKILLS_CONTENT_HEADING}\n\n${trimmed}`
 }
@@ -98,43 +135,24 @@ export function buildSkillsContentSectionText(content?: string): string {
 /**
  * 在已有 system prompt 中替换/插入「开着的技能」清单和技能文档。
  * 用于 prompt cache 复用时刷新，而不重建整段 system prompt。
+ *
+ * 入参 rosterSection / skillsContentSection 是不带归因标记的原文（同 build*Section 的返回值）：
+ * 已有块时沿用块前面那个标记，无块时才自己包标记——调用方不要预先包，否则会出现双标记。
  */
 export function patchLoadedSkillsSectionsInSystemPrompt(
   systemPrompt: string,
   rosterSection: string,
   skillsContentSection: string,
 ): string {
-  let next = systemPrompt
-  const rosterBounds = findMarkdownSectionBounds(next, LOADED_SKILLS_ROSTER_HEADING)
-  if (rosterBounds) {
-    next = next.slice(0, rosterBounds.start) + rosterSection + next.slice(rosterBounds.end)
-  } else {
-    const skillsBounds = findMarkdownSectionBounds(next, SKILLS_CONTENT_HEADING)
-    if (skillsBounds) {
-      next = next.slice(0, skillsBounds.start) + rosterSection + '\n\n' + next.slice(skillsBounds.start)
-    } else {
-      next = `${next}\n\n${rosterSection}`
-    }
+  const contentPart = wrapCompositionSection('skills', skillsContentSection)
+  const bounds = findLoadedSkillsBlock(systemPrompt)
+  if (!bounds) {
+    const appended = [wrapCompositionSection('skills', rosterSection), contentPart].filter(Boolean)
+    return `${systemPrompt}\n\n${appended.join('\n\n')}`
   }
-
-  const contentBounds = findMarkdownSectionBounds(next, SKILLS_CONTENT_HEADING)
-  if (contentBounds) {
-    if (!skillsContentSection) {
-      let start = contentBounds.start
-      if (start >= 2 && next.slice(start - 2, start) === '\n\n') start -= 2
-      next = next.slice(0, start) + next.slice(contentBounds.end)
-    } else {
-      next = next.slice(0, contentBounds.start) + skillsContentSection + next.slice(contentBounds.end)
-    }
-  } else if (skillsContentSection) {
-    const rosterAfter = findMarkdownSectionBounds(next, LOADED_SKILLS_ROSTER_HEADING)
-    if (rosterAfter) {
-      next = next.slice(0, rosterAfter.end) + '\n\n' + skillsContentSection + next.slice(rosterAfter.end)
-    } else {
-      next = `${next}\n\n${skillsContentSection}`
-    }
-  }
-  return next
+  // 整块按 build() 的排法重写：清单 + 技能文档。已被旧版补丁重复污染的提示词也在这里一并收拾干净。
+  const block = contentPart ? `${rosterSection}\n\n${contentPart}` : rosterSection
+  return systemPrompt.slice(0, bounds.start) + block + systemPrompt.slice(bounds.end)
 }
 const HEARTBEAT_FILENAME = 'HEARTBEAT.md'
 
