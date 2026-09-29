@@ -325,7 +325,7 @@ export type SubAgentTypeName = 'read' | 'write'
 /** 子 Agent 任务描述（dispatch_agents 工具参数） */
 export interface SubAgentTask {
   id: string
-  /** 这场任务里招呼他的名字 */
+  /** 这场任务里招呼他的名字，要能反映出他在干什么 */
   name?: string
   description: string
   prompt: string
@@ -353,7 +353,7 @@ export interface WebSearchResultItem {
 /** 子 Agent 执行结果（通过 AgentStep.subAgents 推送进度） */
 export interface SubAgentResult {
   id: string
-  /** 这场任务里招呼他的名字 */
+  /** 这场任务里招呼他的名字，要能反映出他在干什么 */
   name?: string
   description: string
   /** 主 Agent 下达的具体任务指令 */

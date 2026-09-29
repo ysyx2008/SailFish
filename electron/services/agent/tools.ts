@@ -1077,7 +1077,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
               items: {
                 type: 'object',
                 properties: {
-                  name: { type: 'string', description: '招呼他的短名字（可选，不填则从 description 生成）' },
+                  name: { type: 'string', description: '能反映出他在干什么的短名字，让用户一眼看懂（如「读 nginx 配置」）。不要用人名、编号或跟任务无关的代号。可选，不填则从任务简述生成' },
                   description: { type: 'string', description: '任务简述（一句话，用于进度展示）' },
                   prompt: { type: 'string', description: '详细任务指令' },
                   fork_turns: {
