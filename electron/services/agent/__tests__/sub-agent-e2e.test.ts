@@ -937,7 +937,7 @@ describe('子智能体端到端（真实 SailFish.run）', () => {
       if (text.includes('评审放行后删掉了')) return { content: '主人知道评审放行了' }
       return { content: '先等他们' }
     })
-    ;(services.configService as { isAutoApprovalReviewEnabled: ReturnType<typeof vi.fn> })
+    ;(services.configService as unknown as { isAutoApprovalReviewEnabled: ReturnType<typeof vi.fn> })
       .isAutoApprovalReviewEnabled.mockReturnValue(true)
     attachHistory(services, new HistoryService())
     const parent = new SailFish(services)
@@ -1063,7 +1063,7 @@ describe('子智能体端到端（真实 SailFish.run）', () => {
       if (text.includes('被额外禁止拦住了')) return { content: '主人知道被额外禁止拦住了' }
       return { content: '先等他们' }
     })
-    ;(services.configService as { getCommandRiskPolicy: ReturnType<typeof vi.fn> })
+    ;(services.configService as unknown as { getCommandRiskPolicy: ReturnType<typeof vi.fn> })
       .getCommandRiskPolicy.mockReturnValue({ subAgentBlockDangerous: true })
     attachHistory(services, new HistoryService())
     const parent = new SailFish(services)

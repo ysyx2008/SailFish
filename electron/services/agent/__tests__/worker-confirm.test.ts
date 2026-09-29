@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Agent } from '../agent'
-import type { AgentContext, AgentRun, AgentServices, PromptOptions } from '../types'
+import { DEFAULT_AGENT_CONFIG, type AgentContext, type AgentRun, type AgentServices, type PromptOptions } from '../types'
 import type { ToolDefinition } from '../../ai.service'
 import type { RiskLevel } from '@shared/types/agent'
 
@@ -25,18 +25,25 @@ class GateAgent extends Agent {
 function runOf(id: string): AgentRun {
   return {
     id,
+    originalUserRequest: '删掉旧日志',
     aborted: false,
+    isRunning: true,
     executionPhase: 'thinking',
     steps: [{ id: 'u1', type: 'user_task', content: '删掉旧日志', timestamp: 1 }],
     messages: [],
+    taskMessageLog: [],
+    pendingUserMessages: [],
+    realtimeOutputBuffer: [],
+    config: { ...DEFAULT_AGENT_CONFIG },
     context: {
       terminalType: 'assistant',
+      terminalOutput: [],
       cwd: '/home/me',
       unattended: true,
       systemInfo: { os: 'darwin', shell: 'zsh' },
     },
     abortController: new AbortController(),
-  } as AgentRun
+  }
 }
 
 describe('伙计的确认走主人这场', () => {

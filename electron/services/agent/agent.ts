@@ -5209,7 +5209,7 @@ export abstract class Agent {
       log.warn(`No confirmation channel available (tool=${toolName}, risk=${riskLevel}); treating as not approved`)
       return { approved: false }
     }
-    return this.enqueueConfirm(() => {
+    return this.enqueueConfirm<{ approved: boolean; modifiedArgs?: Record<string, unknown> }>(() => {
       if (run.aborted) return Promise.resolve({ approved: false })
       return this.settleConfirmation(run, toolCallId, toolName, toolArgs, riskLevel, displayName, reasons, trustCommandOffer, opts)
     })
