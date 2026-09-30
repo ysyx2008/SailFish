@@ -1,6 +1,6 @@
 # 联络（Companion）工作台 SPEC
 
-> Last verified: 2026-07-03
+> Last verified: 2026-10-01
 > 范围：`src/workbench/companion/` + 渲染组件 `src/components/workbench/CompanionWorkbench.vue`。
 > 工作台体系通用规则见 `src/workbench/SPEC.md`；联络的产品定位见 `.cursor/rules/project-architecture.mdc`「任务 / 联络 双入口模型」。
 
@@ -29,6 +29,15 @@ AI 也能主动找人（`talk_to_user` / Watch 通知）。它不是「专注产
 | `descriptor.ts` | 声明 `kind='companion'` / renderer，注册到体系 |
 | `prompt.ts` | Agent prompt 片段归属地；当前无界面能力 → `undefined` |
 | `CompanionWorkbench.vue` | 渲染器（在 `src/components/workbench/`），仅渲染全宽 `AiPanel` |
+
+## 对话时间
+
+联络是一条连续的线，旁边没有「每场对话的日期」可以看。打开之后要能分辨这段话是什么时候说的。
+
+- 在说出口的话前面标时间，居中、灰色、小号，样子像「昨天 20:11」。
+- 开头第一句会标。后面相邻两句隔了不到五分钟，不再重复标。
+- 标的是说给对方听的：你发的、秘书说的、秘书主动找来的。中间在干活、在想，不单独标时间。
+- 任务对话不加。任务列表里已经有最后沟通日期。
 
 ## 四、注意事项
 

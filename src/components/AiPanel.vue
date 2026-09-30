@@ -24,6 +24,7 @@ import ProcessTurnFold from './ProcessTurnFold.vue'
 import { createReusableTemplate } from '../utils/reusable-template'
 import { buildPeekProcessView, countPeekNeedsYou, lastSpokenBody, resolveFocusPeek, resolvePeekOverlay } from '../utils/focus-peek'
 import { describeLiveProcess, type ProcessFoldView } from '../utils/process-fold'
+import { chatTimeParts } from '../utils/chat-time-marker'
 import { formatProcessFoldCaption, type ProcessFoldSay } from '../utils/process-fold-label'
 import ToolCallContent from './ToolCallContent.vue'
 import ImageContextMenu from './ImageContextMenu.vue'
@@ -410,6 +411,30 @@ const handleScrollForGroupMenu = () => closeGroupMenu()
 
 const askClock = ref(Date.now())
 let askClockTimer: ReturnType<typeof setInterval> | null = null
+const chatTimeNow = ref(Date.now())
+let chatTimeTimer: ReturnType<typeof setInterval> | null = null
+
+function formatChatTimeMarker(ts?: number): string {
+  if (typeof ts !== 'number') return ''
+  const parts = chatTimeParts(ts, chatTimeNow.value)
+  if (parts.kind === 'clock') return parts.time
+  if (parts.kind === 'yesterday') return t('ai.chatTime.yesterday', { time: parts.time })
+  if (parts.kind === 'weekday') {
+    return t('ai.chatTime.weekday', {
+      day: t(`ai.chatTime.day.${parts.weekday}`),
+      time: parts.time,
+    })
+  }
+  if (parts.year != null) {
+    return t('ai.chatTime.otherYear', {
+      year: parts.year,
+      month: parts.month,
+      day: parts.day,
+      time: parts.time,
+    })
+  }
+  return t('ai.chatTime.sameYear', { month: parts.month, day: parts.day, time: parts.time })
+}
 
 onMounted(() => {
   document.addEventListener('mousedown', handleGlobalClickForGroupMenu)
@@ -417,12 +442,14 @@ onMounted(() => {
   // 监听虚拟滚动容器的 scroll 事件（capture 阶段，覆盖各种内部滚动场景）
   document.addEventListener('scroll', handleScrollForGroupMenu, true)
   askClockTimer = setInterval(() => { askClock.value = Date.now() }, 1000)
+  chatTimeTimer = setInterval(() => { chatTimeNow.value = Date.now() }, 60_000)
 })
 onUnmounted(() => {
   document.removeEventListener('mousedown', handleGlobalClickForGroupMenu)
   window.removeEventListener('resize', closeGroupMenu)
   document.removeEventListener('scroll', handleScrollForGroupMenu, true)
   if (askClockTimer) clearInterval(askClockTimer)
+  if (chatTimeTimer) clearInterval(chatTimeTimer)
 })
 
 // 识别 createRun 一开始插入的 startup 占位步骤（type='thinking' + isStreaming=true）。
@@ -2975,8 +3002,11 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
           >
             <template #default="{ item, index }">
               <div :key="item.id" :data-index="index">
+              <div v-if="item.type === 'time_marker'" class="chat-time-marker">
+                {{ formatChatTimeMarker(item.timestamp) }}
+              </div>
               <!-- 主动消息（talk_to_user）— 历史格式 user_task __proactive__ + final_result -->
-              <div v-if="item.type === 'proactive_message'" class="message assistant">
+              <div v-else-if="item.type === 'proactive_message'" class="message assistant">
                 <div class="message-wrapper">
                   <div class="message-content markdown-content" v-html="renderMarkdown(item.group!.finalResult!)"></div>
                   <div v-if="canShowGroupMenu(item.group)" class="agent-final-footer agent-final-footer--proactive">
@@ -4197,6 +4227,15 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
 
 .context-bar-fill.danger {
   background: var(--color-error);
+}
+
+.chat-time-marker {
+  padding: 6px 0 14px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+  user-select: none;
 }
 
 .message {

@@ -291,6 +291,21 @@ export default {
       titleSuffix: '分支',
       failed: '另开一聊失败：会话数据为空或服务不可用'
     },
+    chatTime: {
+      yesterday: '昨天 {time}',
+      weekday: '{day} {time}',
+      sameYear: '{month}月{day}日 {time}',
+      otherYear: '{year}年{month}月{day}日 {time}',
+      day: {
+        0: '星期日',
+        1: '星期一',
+        2: '星期二',
+        3: '星期三',
+        4: '星期四',
+        5: '星期五',
+        6: '星期六',
+      },
+    },
     processFold: {
       sep: '，',
       read: '读了 {n} 个文件',

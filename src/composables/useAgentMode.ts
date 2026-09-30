@@ -18,6 +18,7 @@ import { useTts } from './useTts'
 import { shouldShowToolResultStep } from '../utils/tool-display'
 import { foldProcessSteps, type ProcessFoldView, type ProcessStepRef, type StepPart } from '../utils/process-fold'
 import { findTaskCompleteFooterIndex, groupAgentSteps, groupNeedsProcessCompleteFooter } from '../utils/agent-task-groups'
+import { withChatTimeMarkers } from '../utils/chat-time-marker'
 import { estimateMessageStepVirtualSize } from '../utils/thinking-block'
 import { resolveWorkbenchAgentPrompt, resolveWorkbenchKind } from '../workbench'
 import { showConfirm, showAlert } from './useConfirm'
@@ -108,7 +109,9 @@ export interface FollowUpQueueViewItem {
 
 export interface VirtualItem {
   id: string
-  type: 'user_task' | 'step' | 'final_result' | 'proactive_message' | 'proactive_notice' | 'confirm' | 'waiting_input' | 'folded_turn'
+  type: 'user_task' | 'step' | 'final_result' | 'proactive_message' | 'proactive_notice' | 'confirm' | 'waiting_input' | 'folded_turn' | 'time_marker'
+  /** 联络时间标记对应的时刻 */
+  timestamp?: number
   group?: AgentTaskGroup
   step?: AgentStep
   fold?: ProcessFoldView
@@ -1204,7 +1207,10 @@ export function useAgentMode(
       items.push({ id: '__secure_input__', type: 'waiting_input', size: 220 })
     }
 
-    return items
+    const tab = currentTab.value
+    const companion = tab?.type === 'assistant' && tab.agentId === COMPANION_TAB_AGENT_ID
+    if (!companion) return items
+    return withChatTimeMarkers(items, agentState.value?.steps || [])
   })
 
   // 运行 Agent 或发送补充消息
