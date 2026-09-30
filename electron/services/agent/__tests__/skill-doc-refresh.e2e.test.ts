@@ -80,7 +80,7 @@ function docCopies(system: string): number {
 
 describe('技能文档刷新（联络会话端到端）', () => {
   let history: HistoryService
-  let calls: Call[] = []
+  const calls: Call[] = []
 
   function makeServices() {
     return {

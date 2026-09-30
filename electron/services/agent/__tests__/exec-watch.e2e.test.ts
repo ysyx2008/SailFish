@@ -360,7 +360,6 @@ describe('等命令不卡人：插话先回答、有终点的盯到底、常驻�
   }, 15000)
 
   itPosix('工具还在等时按停：正在等的那条也一起停', async () => {
-    let pid: number | undefined
     const services = makeServices(({ index }) => {
       if (index === 0) {
         return { tool_calls: [tc('exec', { command: 'echo $$; sleep 30', wait_seconds: 30 })] }
@@ -370,8 +369,7 @@ describe('等命令不卡人：插话先回答、有终点的盯到底、常驻�
     const agent = newAgent(services, 'e2e-exec-stop-waiting')
     const runPromise = agent.run('跑个长命令', ctx())
     await sleep(500)
-    const running = getExecManager().list().find(t => t.status === 'running')
-    pid = running?.pid
+    const pid = getExecManager().list().find(t => t.status === 'running')?.pid
     expect(pid).toBeTruthy()
     agent.abort()
     await runPromise.catch(() => undefined)

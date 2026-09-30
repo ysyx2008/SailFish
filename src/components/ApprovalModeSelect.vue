@@ -2,8 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Check, ChevronDown } from 'lucide-vue-next'
-
-type ApprovalUiState = 'strict' | 'relaxed' | 'autoReview' | 'free'
+import type { ApprovalUiState } from '../composables/useApprovalUiState'
 
 const STATES: ApprovalUiState[] = ['strict', 'relaxed', 'autoReview', 'free']
 

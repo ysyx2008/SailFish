@@ -80,14 +80,14 @@ function findLoadedSkillsBlock(content: string): { start: number; end: number } 
 
   let end = content.length
   let cursor = start
-  while (true) {
-    const markerAt = content.indexOf(COMPOSITION_MARKER_PREFIX, cursor)
-    if (markerAt === -1) break
+  let markerAt = content.indexOf(COMPOSITION_MARKER_PREFIX, cursor)
+  while (markerAt !== -1) {
     if (!content.startsWith(SKILLS_MARKER, markerAt)) {
       end = markerAt
       break
     }
     cursor = markerAt + SKILLS_MARKER.length
+    markerAt = content.indexOf(COMPOSITION_MARKER_PREFIX, cursor)
   }
   while (end > start && /\s/.test(content[end - 1])) end--
   return { start, end }

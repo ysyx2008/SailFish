@@ -5296,18 +5296,19 @@ export abstract class Agent {
     return new Promise((resolve) => {
       let settled = false
       let shown = false
-      let confirmation: PendingConfirmationInternal | undefined
+      const pending: { confirmation?: PendingConfirmationInternal } = {}
       const finish = (approved: boolean, modifiedArgs?: Record<string, unknown>) => {
         if (settled) return
         settled = true
         place?.signal?.removeEventListener('abort', onAbort)
+        const confirmation = pending.confirmation
         if (confirmation && run.pendingConfirmation === confirmation) run.pendingConfirmation = undefined
         if (!place) run.executionPhase = 'thinking'
         if (shown) this.callbacks?.onConfirmDismissed?.()
         resolve({ approved, modifiedArgs })
       }
       const onAbort = () => finish(false)
-      confirmation = {
+      const confirmation: PendingConfirmationInternal = {
         agentId: run.id,
         toolCallId,
         toolName,
@@ -5320,6 +5321,7 @@ export abstract class Agent {
         ...(autoReview ? { autoReview } : {}),
         resolve: (approved, modifiedArgs) => finish(approved, modifiedArgs),
       }
+      pending.confirmation = confirmation
 
       run.pendingConfirmation = confirmation
       if (!place) run.executionPhase = 'confirming'
