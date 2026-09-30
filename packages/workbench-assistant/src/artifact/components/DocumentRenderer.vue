@@ -442,6 +442,8 @@ onUnmounted(() => {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  /* 占位始终留着。滚动条一出现就挤窄可用宽度，纸张按这个宽度缩放，卡在临界宽度时会来回跳 */
+  scrollbar-gutter: stable;
   padding: 20px 16px;
 }
 
