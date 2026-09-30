@@ -23,6 +23,7 @@ import {
   type PlannedAction,
   type ProcessCursor,
   type ReviewEnvironment,
+  type UserWord,
 } from './evidence'
 import { INSPECTOR_TOOLS, runInspection, type InspectorDeps } from './inspector'
 
@@ -52,6 +53,8 @@ export interface AutoReviewRequest {
   reasons?: string[]
   /** 每次调用都重新取：评审途中用户补的话要能看见 */
   getSteps: () => readonly AgentStep[]
+  /** 这场对话里更早几轮的步骤；往回看多远由调用方按会话类别定 */
+  getEarlierSteps?: () => readonly AgentStep[]
   getMessages: () => readonly AiMessage[]
   aiRules: string
   environment: ReviewEnvironment
@@ -185,6 +188,7 @@ export class AutoApprovalReviewer {
     }
 
     let usage: TokenUsageInfo | undefined
+    // 只数这一轮：早先几轮的范围会随时间滑动，数进来会把「窗口外掉了一句」当成用户又说了话
     for (let attempt = 0; attempt < 2; attempt++) {
       const wordsBefore = collectUserWords(req.getSteps()).length
       const result = await this.reviewOnce(req)
@@ -211,7 +215,7 @@ export class AutoApprovalReviewer {
   private async reviewOnce(req: AutoReviewRequest): Promise<AutoReviewResult> {
     const steps = req.getSteps()
     const messages = req.getMessages()
-    const words = collectUserWords(steps)
+    const words = collectUserWords(steps, req.getEarlierSteps?.() ?? [])
     if (userWordsChars(words) > USER_WORDS_BUDGET_CHARS) {
       return { kind: 'handed_over', reason: 'too_large', detail: 'user_words' }
     }
@@ -228,7 +232,7 @@ export class AutoApprovalReviewer {
       return { kind: 'handed_over', reason: 'too_large', detail: 'action' }
     }
 
-    const session = this.prepareSession(req, messages)
+    const session = this.prepareSession(req, messages, words)
     const isFirst = session.messages.length === 0
     const newWords = words.filter(w => !session.seenUserWordIds.has(w.id))
     const processFrom = isFirst ? 0 : session.cursor.count
@@ -319,15 +323,24 @@ export class AutoApprovalReviewer {
     return { kind: 'approved', assessment, usage }
   }
 
-  /** 换了会话、说明书语言或规则变了、干活那边被压缩改写、自己这条线太长，都从头来。 */
-  private prepareSession(req: AutoReviewRequest, messages: readonly AiMessage[]): ReviewSession {
+  /**
+   * 换了会话、说明书语言或规则变了、干活那边被压缩改写、自己这条线太长，都从头来。
+   * 早先给过的原话已经不在范围里（联络只往回看一段时间）也从头来：给过的话会一直留在这条线上。
+   */
+  private prepareSession(
+    req: AutoReviewRequest,
+    messages: readonly AiMessage[],
+    words: readonly UserWord[],
+  ): ReviewSession {
     const s = this.session
+    const inScope = new Set(words.map(w => w.id))
     const stale = !s
       || s.key !== req.sessionId
       || s.locale !== req.locale
       || s.aiRules !== req.aiRules
       || !cursorStillValid(messages, s.cursor)
       || s.chars > SESSION_BUDGET_CHARS
+      || [...s.seenUserWordIds].some(id => !inScope.has(id))
     if (!stale) return s!
     this.session = {
       key: req.sessionId,

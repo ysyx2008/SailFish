@@ -8,7 +8,7 @@ vi.mock('electron', () => ({
 import type { AgentStep } from '@shared/types'
 import type { AiMessage, ChatWithToolsResult } from '../../ai.service'
 import { parseAssessment, tableAllows, assessmentApproves, effectiveAssessment } from '../auto-review/verdict'
-import { collectUserWords, cursorAt, cursorStillValid, formatProcess } from '../auto-review/evidence'
+import { collectUserWords, cursorAt, cursorStillValid, formatProcess, formatUserWords } from '../auto-review/evidence'
 import { runInspection, checkReadOnlyCommand, type InspectorDeps } from '../auto-review/inspector'
 import { getWorkspacePath } from '../workspace-paths'
 import {
@@ -113,6 +113,20 @@ describe('替我审批 · 证据', () => {
       ['g', 'supplement', '顺便把 dist 也清了'],
     ])
     expect(words[1].question).toBe('确定删除吗？')
+  })
+
+  it('这场更早几轮的话也收，排在前面并标明；同一步两边都有算这一轮的', () => {
+    const earlier = [
+      step({ id: 'e1', type: 'user_task', content: '深度测试你的编程技能' }),
+      step({ id: 'e2', type: 'message', content: '好的' }),
+      step({ id: 'c1', type: 'user_task', content: '继续' }),
+    ]
+    const current = [step({ id: 'c1', type: 'user_task', content: '继续' })]
+    const words = collectUserWords(current, earlier)
+    expect(words.map(w => [w.id, !!w.earlier])).toEqual([['e1', true], ['c1', false]])
+    const text = formatUserWords(words)
+    expect(text).toContain('（之前几轮）用户发起任务：深度测试你的编程技能')
+    expect(text).toContain('- 用户发起任务：继续')
   })
 
   it('干活那边被压缩改写后，游标失效', () => {
@@ -244,6 +258,45 @@ describe('替我审批 · 评审员', () => {
     expect(chat).toHaveBeenCalledTimes(3)
     await reviewer.review(makeRequest(baseSteps(), baseMessages(), { runId: 'run-2' }))
     expect(chat).toHaveBeenCalledTimes(4)
+  })
+
+  it('重开后只说「继续」：评审员看得见这场更早几轮的原始要求', async () => {
+    const chat = vi.fn<AutoReviewChat>(async () => reply(verdictJson('medium', 'high', 'allow')))
+    const reviewer = new AutoApprovalReviewer({ chat })
+    const current = [step({ id: 'c1', type: 'user_task', content: '继续' })]
+    const earlier = [step({ id: 'e1', type: 'user_task', content: '把 /tmp/build 删掉重建' })]
+    await reviewer.review(makeRequest(current, baseMessages(), { getEarlierSteps: () => earlier }))
+    const content = chat.mock.calls[0][0][1].content
+    expect(content).toContain('（之前几轮）用户发起任务：把 /tmp/build 删掉重建')
+    expect(content).toContain('用户发起任务：继续')
+  })
+
+  it('早先给过的原话滑出范围后，评审员这条线从头来，不再带着那句话', async () => {
+    const chat = vi.fn<AutoReviewChat>(async () => reply(verdictJson('medium', 'high', 'allow')))
+    const reviewer = new AutoApprovalReviewer({ chat })
+    const current = [step({ id: 'c1', type: 'user_task', content: '继续' })]
+    const messages = baseMessages()
+    let earlier = [step({ id: 'e1', type: 'user_task', content: '把 /tmp/build 删掉重建' })]
+    const req = makeRequest(current, messages, { getEarlierSteps: () => earlier })
+    await reviewer.review(req)
+    expect(chat.mock.calls[0][0][1].content).toContain('把 /tmp/build 删掉重建')
+
+    earlier = []
+    messages.push({ role: 'tool', tool_call_id: 't1', content: '已删除' })
+    await reviewer.review(req)
+    const second = chat.mock.calls[1][0]
+    expect(second).toHaveLength(2)
+    expect(second.map(m => m.content).join('\n')).not.toContain('把 /tmp/build 删掉重建')
+  })
+
+  it('更早几轮的话也算进长度上限，装不下直接交回', async () => {
+    const chat = vi.fn<AutoReviewChat>()
+    const reviewer = new AutoApprovalReviewer({ chat })
+    const earlier = [step({ id: 'e1', type: 'user_task', content: 'x'.repeat(USER_WORDS_BUDGET_CHARS) })]
+    const current = [step({ id: 'c1', type: 'user_task', content: '继续' })]
+    const r = await reviewer.review(makeRequest(current, baseMessages(), { getEarlierSteps: () => earlier }))
+    expect(r).toMatchObject({ kind: 'handed_over', reason: 'too_large' })
+    expect(chat).not.toHaveBeenCalled()
   })
 
   it('原话太长不评、不截断，直接交回', async () => {

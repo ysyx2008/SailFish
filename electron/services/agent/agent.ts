@@ -5414,6 +5414,7 @@ export abstract class Agent {
       riskLevel,
       reasons,
       getSteps: () => run.steps,
+      getEarlierSteps: () => this.earlierStepsForAutoReview(),
       getMessages: () => run.messages,
       aiRules: this.services.configService?.getAiRules() ?? '',
       environment: forWorker
@@ -5457,6 +5458,15 @@ export abstract class Agent {
       log.warn(`[auto-review] local error, handing over: ${e instanceof Error ? e.message : String(e)}`)
       return { kind: 'handed_over', trail }
     }
+  }
+
+  /** 这场对话里更早几轮的步骤（含重开时从历史装回的）；往回看多远按会话类别定。 */
+  private earlierStepsForAutoReview(): readonly AgentStep[] {
+    const within = conversationPolicy(inferConversationKind(this._agentId)).autoReviewEarlierWordsWithinMs
+    const steps = this._sessionSteps
+    if (within === null) return steps
+    const since = Date.now() - within
+    return steps.filter(s => s.timestamp >= since)
   }
 
   private describeActionForTrail(toolName: string, toolArgs: Record<string, unknown>, displayName?: string): string {

@@ -77,6 +77,14 @@ export interface ConversationPolicy {
   autoApprovalReview: boolean
 
   /**
+   * 替我审批认用户早先几轮的话时，往回看多远（毫秒）；null = 整场对话。这一轮说的总在内。
+   * - task=null：一场任务就是一件事，中断重开后只说「继续」，最初的要求仍然算数。
+   * - companion=24 小时：联络是一条长期不断的线，全算进去很快装不下，也会拿很久以前的话当授权。
+   * - watch/wakeup=null：不走评审，用不上。
+   */
+  autoReviewEarlierWordsWithinMs: number | null
+
+  /**
    * 重开时是否按记录里的技能清单再装上。
    * - task=true：接着同一场活做，当时的工具还得在，否则它记得用过、手头却没有。
    * - companion=false：联络是长期关系，不是一场任务。关掉再开不带回上次为某件事装的技能；
@@ -89,17 +97,19 @@ export interface ConversationPolicy {
 /**
  * 四类会话的行为策略。
  *
- * | kind      | accumulates | seedFromHistoryOnColdStart | visibleInList | historyTree | perWatchContinuity | autoApprovalReview | restoreSkillsOnReopen |
- * |-----------|-------------|----------------------------|---------------|-------------|--------------------|--------------------|-----------------------|
- * | task      | true        | false                      | true          | main        | false              | true               | true                  |
- * | companion | true        | true                       | true          | main        | false              | true               | false                 |
- * | watch     | false       | false                      | false         | watch       | false（预留）       | false              | false                 |
- * | wakeup    | false       | true                       | false         | watch       | false（预留）       | false              | false                 |
+ * | kind      | accumulates | seedFromHistoryOnColdStart | visibleInList | historyTree | perWatchContinuity | autoApprovalReview | autoReviewEarlierWordsWithinMs | restoreSkillsOnReopen |
+ * |-----------|-------------|----------------------------|---------------|-------------|--------------------|--------------------|--------------------------------|-----------------------|
+ * | task      | true        | false                      | true          | main        | false              | true               | null（整场）                    | true                  |
+ * | companion | true        | true                       | true          | main        | false              | true               | 24h                            | false                 |
+ * | watch     | false       | false                      | false         | watch       | false（预留）       | false              | null                           | false                 |
+ * | wakeup    | false       | true                       | false         | watch       | false（预留）       | false              | null                           | false                 |
  *
  * 注：wakeup 从 watch 中独立出来——关切是用户配置的一次性任务（prompt 自带指令，逐次失忆，
  * 避免 A 关切串味到 B），wakeup 是 Agent 自主循环（需要历史记忆辅助决策「该不该主动找人、
  * 上次说过什么避免重复通知」）。两者共用 watch 历史树但 agentKey 分离：`__watch__` vs `__wakeup__`。
  */
+const DAY_MS = 24 * 60 * 60 * 1000
+
 export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> = {
   task: {
     accumulates: true,
@@ -108,6 +118,7 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     historyTree: 'main',
     perWatchContinuity: false,
     autoApprovalReview: true,
+    autoReviewEarlierWordsWithinMs: null,
     restoreSkillsOnReopen: true
   },
   companion: {
@@ -117,6 +128,7 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     historyTree: 'main',
     perWatchContinuity: false,
     autoApprovalReview: true,
+    autoReviewEarlierWordsWithinMs: DAY_MS,
     restoreSkillsOnReopen: false
   },
   watch: {
@@ -126,6 +138,7 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     historyTree: 'watch',
     perWatchContinuity: false,
     autoApprovalReview: false,
+    autoReviewEarlierWordsWithinMs: null,
     restoreSkillsOnReopen: false
   },
   wakeup: {
@@ -135,6 +148,7 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     historyTree: 'watch',
     perWatchContinuity: false,
     autoApprovalReview: false,
+    autoReviewEarlierWordsWithinMs: null,
     restoreSkillsOnReopen: false
   }
 }

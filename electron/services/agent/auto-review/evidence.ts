@@ -2,8 +2,8 @@
  * 评审员看到的材料。
  *
  * 分三块，信任度不同：
- * - 原话：只取用户亲手输入的——发起任务、中途补充、对提问的回答。取自界面步骤而不是
- *   发给模型的用户消息：后者会拼进上传文档、选区、系统提示等不是用户说的东西。
+ * - 原话：只取用户亲手输入的——发起任务、中途补充、对提问的回答，包括这场对话里更早几轮的。
+ *   取自界面步骤而不是发给模型的用户消息：后者会拼进上传文档、选区、系统提示等不是用户说的东西。
  * - 过程：干活那边最近的对话、工具调用与结果，只算线索。
  * - 这一条动作：要批准的是什么、在哪台机器上、旗鱼自己的命令审计怎么说。
  */
@@ -17,11 +17,26 @@ export interface UserWord {
   /** 仅 answer：助手问的那句（线索，不算授权） */
   question?: string
   attachments?: string[]
+  /** 这场对话里更早几轮说的（不是这一轮） */
+  earlier?: boolean
 }
 
 const PROACTIVE_TASK_MARKER = '__proactive__'
 
-export function collectUserWords(steps: readonly AgentStep[]): UserWord[] {
+/**
+ * steps 是这一轮的步骤；earlierSteps 是这场对话里更早几轮的（往回看多远由调用方定）。
+ * 更早的排在前面并标明，同一步两边都有时算这一轮的。
+ */
+export function collectUserWords(steps: readonly AgentStep[], earlierSteps: readonly AgentStep[] = []): UserWord[] {
+  const current = wordsFrom(steps)
+  const currentIds = new Set(current.map(w => w.id))
+  const earlier = wordsFrom(earlierSteps)
+    .filter(w => !currentIds.has(w.id))
+    .map(w => ({ ...w, earlier: true }))
+  return [...earlier, ...current]
+}
+
+function wordsFrom(steps: readonly AgentStep[]): UserWord[] {
   const seen = new Set<string>()
   const words: UserWord[] = []
   for (const s of steps) {
@@ -51,13 +66,14 @@ export function formatUserWords(words: readonly UserWord[]): string {
   return words
     .map(w => {
       const attach = w.attachments?.length ? `\n（附件，仅文件名，内容不在此：${w.attachments.join('、')}）` : ''
+      const when = w.earlier ? '（之前几轮）' : ''
       switch (w.kind) {
         case 'task':
-          return `- 用户发起任务：${w.text}${attach}`
+          return `- ${when}用户发起任务：${w.text}${attach}`
         case 'supplement':
-          return `- 用户中途补充：${w.text}${attach}`
+          return `- ${when}用户中途补充：${w.text}${attach}`
         case 'answer':
-          return `- 助手提问（线索）：${w.question ?? ''}\n  用户回答：${w.text}`
+          return `- ${when}助手提问（线索）：${w.question ?? ''}\n  用户回答：${w.text}`
       }
     })
     .join('\n')

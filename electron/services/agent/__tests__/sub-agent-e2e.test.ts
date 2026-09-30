@@ -1019,6 +1019,97 @@ describe('子智能体端到端（真实 SailFish.run）', () => {
     expect(imNotices.some(n => n.includes('替你放行') && n.includes(victim))).toBe(true)
   })
 
+  /** 第一轮只交代不动手；关掉重开（新实例按会话编号从历史装回）后说「继续」才删 */
+  function makeResumeDeleteServices(command: string, doneText: string): AgentServices {
+    const services = makeServices(({ isChild, messages }) => {
+      if (isChild) return { content: '不该派人' }
+      const msgs = messages as Array<{ role?: string; content?: string }>
+      if (!lastUserText(msgs).includes('继续')) return { content: '好的，稍后动手' }
+      const done = msgs.some(m => m.role === 'tool')
+      if (!done) return { tool_calls: [tc('exec', { command }, 'rm-resume')] }
+      return { content: doneText }
+    })
+    ;(services.configService as unknown as { isAutoApprovalReviewEnabled: ReturnType<typeof vi.fn> })
+      .isAutoApprovalReviewEnabled.mockReturnValue(true)
+    attachHistory(services, new HistoryService())
+    return services
+  }
+
+  async function resumeAndContinue(services: AgentServices, agentId: string, userTask: string, onNeedConfirm: (c: { resolve: (ok: boolean) => void }) => void) {
+    const first = new SailFish(services)
+    first.setAgentId(agentId)
+    first.updateConfig({ executionMode: 'relaxed' })
+    await first.run(userTask, ctx())
+    const sessionId = first.getSessionId()
+    expect(sessionId).toBeTruthy()
+
+    const reopened = new SailFish(services)
+    reopened.setAgentId(agentId)
+    reopened.updateConfig({ executionMode: 'relaxed' })
+    return reopened.run('继续', { ...ctx(), sessionId }, { callbacks: { onNeedConfirm } })
+  }
+
+  it('任务中途关掉重开、只说「继续」：评审员认最初的要求，看准了自己删', async () => {
+    const victim = makeVictim('resume-task')
+    const userTask = '删掉家目录里那份测试草稿'
+    reviewSeesUserWords = (text) => text.includes(`（之前几轮）用户发起任务：${userTask}`)
+    let asked = false
+    const services = makeResumeDeleteServices(`rm -f "${victim}"`, '重开后接着删掉了')
+
+    const result = await resumeAndContinue(services, 'e2e-resume', userTask, () => { asked = true })
+
+    expect(reviewPrompts.some(p => p.includes('用户发起任务：继续'))).toBe(true)
+    expect(asked).toBe(false)
+    expect(fs.existsSync(victim)).toBe(false)
+    expect(result).toContain('重开后接着删掉了')
+  })
+
+  it('联络隔了一天多再说「继续」：更早的话不算数，交回来问你', async () => {
+    const victim = makeVictim('resume-companion')
+    const userTask = '删掉家目录里那份测试草稿'
+    reviewSeesUserWords = (text) => text.includes(userTask)
+    let asked = false
+    const services = makeResumeDeleteServices(`rm -f "${victim}"`, '你没同意，文件留着')
+
+    const first = new SailFish(services)
+    first.setAgentId('__companion__')
+    first.updateConfig({ executionMode: 'relaxed' })
+    await first.run(userTask, ctx())
+    const sessionId = first.getSessionId()
+
+    const realNow = Date.now.bind(Date)
+    const later = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + 25 * 60 * 60 * 1000)
+    try {
+      const reopened = new SailFish(services)
+      reopened.setAgentId('__companion__')
+      reopened.updateConfig({ executionMode: 'relaxed' })
+      await reopened.run('继续', { ...ctx(), sessionId }, {
+        callbacks: { onNeedConfirm: (c) => { asked = true; c.resolve?.(false) } },
+      })
+    } finally {
+      later.mockRestore()
+    }
+
+    expect(reviewPrompts.length).toBeGreaterThan(0)
+    expect(reviewPrompts.some(p => p.includes(userTask))).toBe(false)
+    expect(asked).toBe(true)
+    expect(fs.existsSync(victim)).toBe(true)
+  })
+
+  it('联络一天之内再说「继续」：前面的话算数', async () => {
+    const victim = makeVictim('resume-companion-fresh')
+    const userTask = '删掉家目录里那份测试草稿'
+    reviewSeesUserWords = (text) => text.includes(`（之前几轮）用户发起任务：${userTask}`)
+    let asked = false
+    const services = makeResumeDeleteServices(`rm -f "${victim}"`, '联络接着删掉了')
+
+    const result = await resumeAndContinue(services, '__companion__', userTask, () => { asked = true })
+
+    expect(asked).toBe(false)
+    expect(fs.existsSync(victim)).toBe(false)
+    expect(result).toContain('联络接着删掉了')
+  })
+
   it('联络从飞书进来、评审员看不准：交回来问你，你不同意文件就留着', async () => {
     const victim = makeVictim('companion-im-ask')
     reviewSeesUserWords = () => false

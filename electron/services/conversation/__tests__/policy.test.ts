@@ -16,8 +16,14 @@ describe('CONVERSATION_POLICY 策略表', () => {
       historyTree: 'main',
       perWatchContinuity: false,
       autoApprovalReview: true,
+      autoReviewEarlierWordsWithinMs: null,
       restoreSkillsOnReopen: true,
     })
+  })
+
+  it('替我审批认早先的话：任务看整场，联络只往回看 24 小时', () => {
+    expect(conversationPolicy('task').autoReviewEarlierWordsWithinMs).toBeNull()
+    expect(conversationPolicy('companion').autoReviewEarlierWordsWithinMs).toBe(24 * 60 * 60 * 1000)
   })
 
   it('companion：累积、冷启动回种（长期关系线）、进列表、主树', () => {
