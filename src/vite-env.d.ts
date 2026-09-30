@@ -988,6 +988,7 @@ interface Window {
         path?: string
         files?: number
         totalBytes?: number
+        skippedUnreadable?: number
         error?: string
       }>
       cancel: () => Promise<{ ok: boolean }>

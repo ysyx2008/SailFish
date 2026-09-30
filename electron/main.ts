@@ -5418,7 +5418,13 @@ ipcMain.handle('dataBackup:export', async () => {
           })
         },
       })
-      return { success: true, path: exportPath, files: stats.files, totalBytes: stats.totalBytes }
+      return {
+        success: true,
+        path: exportPath,
+        files: stats.files,
+        totalBytes: stats.totalBytes,
+        skippedUnreadable: stats.skippedUnreadable,
+      }
     } catch (e) {
       if (e instanceof CopyCanceledError) {
         return { success: false, canceled: true, cancelReason: 'export' as const }

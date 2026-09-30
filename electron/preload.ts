@@ -1590,6 +1590,7 @@ const electronAPI = {
       path?: string
       files?: number
       totalBytes?: number
+      skippedUnreadable?: number
       error?: string
     }>,
     cancel: () => ipcRenderer.invoke('dataBackup:cancel') as Promise<{ ok: boolean }>,

@@ -12,6 +12,9 @@ import yauzl from 'yauzl'
 import { app } from 'electron'
 import { collectFilesAsync, CopyCanceledError, type CopyProgress } from './dir-copy'
 import { resolveSafeExtractPath } from './zip-extract'
+import { createLogger } from './logger'
+
+const log = createLogger('DataBackup')
 
 export const BACKUP_MARKER_FILENAME = 'sfterm-backup.json'
 export const BACKUP_ARCHIVE_SUFFIX = '.zip'
@@ -98,6 +101,52 @@ function normalizeArchiveEntryPath(p: string): string {
 function shouldSkipBackupPath(relPath: string): boolean {
   const parts = normalizeArchiveEntryPath(relPath).split('/').filter(Boolean)
   return parts.some((part) => SKIP_ON_BACKUP.has(part))
+}
+
+/** Playwright 持久化浏览器配置所在目录（相对 userData） */
+const BROWSER_PROFILE_DIR = 'browser-profiles'
+
+/**
+ * 浏览器自己会再生的运行时目录。备份时经常被占用（EBUSY），
+ * 打进去体积也大，恢复后用不上。
+ * 只认 browser-profiles 下面的，避免误伤用户数据里同名文件夹。
+ */
+const BROWSER_VOLATILE_DIRS = new Set([
+  'Cache',
+  'Code Cache',
+  'GPUCache',
+  'DawnGraphiteCache',
+  'DawnWebGPUCache',
+  'ShaderCache',
+  'GrShaderCache',
+  'GraphiteDawnCache',
+  'cache2',
+  'startupCache',
+  'Crashpad',
+  'BrowserMetrics',
+  'component_crx_cache',
+  'extensions_crx_cache',
+])
+
+/** 配置目录根上的锁文件，浏览器开着时读不了 */
+const BROWSER_VOLATILE_FILES = new Set([
+  'LOCK',
+  'lockfile',
+])
+
+function isVolatileBrowserBackupPath(relPath: string): boolean {
+  const parts = normalizeArchiveEntryPath(relPath).split('/').filter(Boolean)
+  if (parts[0] !== BROWSER_PROFILE_DIR) return false
+  if (parts.some((part) => BROWSER_VOLATILE_DIRS.has(part))) return true
+  const base = parts[parts.length - 1]
+  return base ? BROWSER_VOLATILE_FILES.has(base) : false
+}
+
+/** 文件正被占用、没权限、或扫描之后消失：跳过这一份，不让整包失败 */
+function isSkippableReadError(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException)?.code
+  return code === 'EBUSY' || code === 'EPERM' || code === 'EACCES'
+    || code === 'EAGAIN' || code === 'ENOENT' || code === 'UNKNOWN'
 }
 
 export function isBackupArchivePath(filePath: string): boolean {
@@ -200,7 +249,12 @@ export interface ExportUserDataOptions {
  * 进度按 archiver 实际读入/压缩的字节（progress 事件），不是入队速度。
  * 先写到 `*.sft-partial`，成功后再 rename 到目标——取消时只删半成品，不毁掉已有备份。
  */
-export async function exportUserData(opts: ExportUserDataOptions): Promise<{ files: number; totalBytes: number }> {
+export async function exportUserData(opts: ExportUserDataOptions): Promise<{
+  files: number
+  totalBytes: number
+  /** 扫描时能看见、打包时读不了（多半正被占用）而跳过的文件数。不含主动不打的浏览器缓存。 */
+  skippedUnreadable: number
+}> {
   const { source, target, onProgress, shouldCancel } = opts
   fs.mkdirSync(path.dirname(target), { recursive: true })
 
@@ -248,12 +302,14 @@ export async function exportUserData(opts: ExportUserDataOptions): Promise<{ fil
 
     const { files, totalBytes } = await collectFilesAsync(source, {
       skipNames: [...SKIP_ON_BACKUP, BACKUP_MARKER_FILENAME],
+      shouldSkipRel: isVolatileBrowserBackupPath,
       shouldCancel,
     })
 
     const marker = createBackupMarker(source)
     const markerBuf = Buffer.from(JSON.stringify(marker, null, 2), 'utf-8')
     const grandTotal = totalBytes > 0 ? totalBytes : markerBuf.length
+    let excludedBytes = 0
 
     let lastTick = 0
     let currentFile = ''
@@ -262,13 +318,14 @@ export async function exportUserData(opts: ExportUserDataOptions): Promise<{ fil
       const now = Date.now()
       if (!force && now - lastTick < 80) return
       lastTick = now
-      const capped = Math.min(Math.max(0, bytes), grandTotal)
+      const effectiveTotal = Math.max(markerBuf.length, grandTotal - excludedBytes)
+      const capped = Math.min(Math.max(0, bytes), effectiveTotal)
       const pct = force
         ? 100
-        : grandTotal > 0
-          ? Math.min(99, Math.floor((capped / grandTotal) * 100))
+        : effectiveTotal > 0
+          ? Math.min(99, Math.floor((capped / effectiveTotal) * 100))
           : 0
-      await onProgress({ pct, file, bytes: capped, totalBytes: grandTotal })
+      await onProgress({ pct, file, bytes: capped, totalBytes: effectiveTotal })
       await yieldToEventLoop()
     }
 
@@ -281,6 +338,8 @@ export async function exportUserData(opts: ExportUserDataOptions): Promise<{ fil
     const canceled = new Promise<never>((_, reject) => {
       rejectCanceled = reject
     })
+    // 打包先失败时，收尾 abort 仍会拒绝这个 promise；没人再等它，不能变成未处理拒绝
+    void canceled.then(() => {}, () => {})
 
     const abortIfCanceled = (): boolean => {
       if (!shouldCancel?.()) return false
@@ -309,11 +368,28 @@ export async function exportUserData(opts: ExportUserDataOptions): Promise<{ fil
     archive.pipe(output)
     archive.append(markerBuf, { name: BACKUP_MARKER_FILENAME })
 
+    const skippedUnreadable: string[] = []
+    const probe = Buffer.alloc(1)
+
     const pack = (async () => {
       for (let i = 0; i < files.length; i++) {
         if (abortIfCanceled()) throw new CopyCanceledError()
         const file = files[i]
         const zipName = normalizeArchiveEntryPath(file.rel)
+        try {
+          // 占用常常要真正 read 才暴露（日志里是 EBUSY ... read），只 open 探不到
+          const fh = await fs.promises.open(file.abs, 'r')
+          try {
+            await fh.read(probe, 0, 1, 0)
+          } finally {
+            await fh.close()
+          }
+        } catch (e) {
+          if (!isSkippableReadError(e)) throw e
+          skippedUnreadable.push(zipName)
+          excludedBytes += file.size
+          continue
+        }
         archive!.file(file.abs, {
           name: zipName,
           // 已压缩/大文件直存，显著缩短备份时间（体积接近）
@@ -326,6 +402,8 @@ export async function exportUserData(opts: ExportUserDataOptions): Promise<{ fil
       await closed
     })()
 
+    // race 若先因取消结束，pack 稍后的流错误不能变成未处理拒绝
+    void pack.then(() => {}, () => {})
     await Promise.race([pack, canceled])
 
     if (shouldCancel?.()) throw new CopyCanceledError()
@@ -338,8 +416,18 @@ export async function exportUserData(opts: ExportUserDataOptions): Promise<{ fil
     output = null
     archive = null
 
-    await emit('', grandTotal, true)
-    return { files: files.length + 1, totalBytes: grandTotal }
+    if (skippedUnreadable.length > 0) {
+      const sample = skippedUnreadable.slice(0, 8).join(', ')
+      log.warn(`完整备份跳过 ${skippedUnreadable.length} 个无法读取的文件: ${sample}`)
+    }
+
+    const packedBytes = Math.max(0, grandTotal - excludedBytes)
+    await emit('', packedBytes, true)
+    return {
+      files: files.length - skippedUnreadable.length + 1,
+      totalBytes: packedBytes,
+      skippedUnreadable: skippedUnreadable.length,
+    }
   } catch (e) {
     await cleanupPartial()
     if (e instanceof CopyCanceledError) throw e

@@ -265,4 +265,61 @@ describe('data-backup', () => {
     expect(methods['small.txt']).toBe(8)
     expect(methods['big.json']).toBe(8)
   })
+
+  it('浏览器缓存不进包，同名的用户目录仍在；读不了的文件跳过且压缩包仍生成', async () => {
+    const src = path.join(tmpRoot, 'userdata-skip')
+    const dst = path.join(tmpRoot, 'skip.zip')
+    const cache = path.join(src, 'browser-profiles', '_default_', 'Default', 'Cache', 'Cache_Data')
+    fs.mkdirSync(cache, { recursive: true })
+    fs.writeFileSync(path.join(cache, 'f_000026'), 'cache-bytes')
+    fs.writeFileSync(path.join(src, 'browser-profiles', '_default_', 'Default', 'Cookies'), 'cookie-jar')
+    fs.writeFileSync(path.join(src, 'browser-profiles', '_default_', 'LOCK'), 'lock')
+    const userCache = path.join(src, 'notes', 'Cache')
+    fs.mkdirSync(userCache, { recursive: true })
+    fs.writeFileSync(path.join(userCache, 'keep.txt'), 'keep-me')
+    fs.writeFileSync(path.join(src, 'ok.txt'), 'ok')
+    const locked = path.join(src, 'locked.bin')
+    fs.writeFileSync(locked, 'secret')
+    fs.chmodSync(locked, 0o000)
+    try {
+      let readable = true
+      try {
+        const fh = await fs.promises.open(locked, 'r')
+        await fh.close()
+      } catch {
+        readable = false
+      }
+
+      const stats = await exportUserData({ source: src, target: dst })
+      expect(fs.existsSync(dst)).toBe(true)
+
+      const yauzl = await import('yauzl')
+      const names = await new Promise<string[]>((resolve, reject) => {
+        yauzl.default.open(dst, { lazyEntries: true }, (err, zip) => {
+          if (err || !zip) return reject(err ?? new Error('open failed'))
+          const list: string[] = []
+          zip.on('error', reject)
+          zip.on('end', () => resolve(list))
+          zip.on('entry', (entry) => {
+            list.push(entry.fileName.replace(/\\/g, '/'))
+            zip.readEntry()
+          })
+          zip.readEntry()
+        })
+      })
+
+      expect(names).toContain('ok.txt')
+      expect(names).toContain('notes/Cache/keep.txt')
+      expect(names).toContain('browser-profiles/_default_/Default/Cookies')
+      expect(names.some((n) => n.includes('Cache_Data') || n.endsWith('f_000026'))).toBe(false)
+      expect(names).not.toContain('browser-profiles/_default_/LOCK')
+
+      if (!readable) {
+        expect(names).not.toContain('locked.bin')
+        expect(stats.skippedUnreadable).toBe(1)
+      }
+    } finally {
+      fs.chmodSync(locked, 0o644)
+    }
+  })
 })

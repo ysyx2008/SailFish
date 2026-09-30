@@ -46,6 +46,11 @@ export interface CollectFilesOptions {
   skipNames?: string[]
   /** 按绝对路径跳过（目录则跳过整棵子树） */
   skipAbsPaths?: string[]
+  /**
+   * 按相对路径跳过。目录命中则整棵子树不再进入。
+   * rel 与 `path.relative` 一致（Windows 上为反斜杠）。
+   */
+  shouldSkipRel?: (rel: string) => boolean
   shouldCancel?: () => boolean
 }
 
@@ -59,6 +64,7 @@ export function collectFiles(
 ): { files: FileEntry[]; totalBytes: number } {
   const skipNames = new Set(options.skipNames ?? [])
   const skipAbs = (options.skipAbsPaths ?? []).map((p) => path.resolve(p))
+  const skipRel = options.shouldSkipRel
   const files: FileEntry[] = []
   let totalBytes = 0
   const root = path.resolve(source)
@@ -80,6 +86,8 @@ export function collectFiles(
       if (entry.isSymbolicLink()) continue
       const abs = path.join(dir, entry.name)
       if (shouldSkipAbs(abs)) continue
+      const rel = path.relative(root, abs)
+      if (skipRel?.(rel)) continue
       if (entry.isDirectory()) {
         walk(abs)
       } else if (entry.isFile()) {
@@ -89,7 +97,7 @@ export function collectFiles(
         } catch {
           /* ignore */
         }
-        files.push({ abs, rel: path.relative(root, abs), size })
+        files.push({ abs, rel, size })
         totalBytes += size
       }
     }
@@ -106,6 +114,7 @@ export async function collectFilesAsync(
 ): Promise<{ files: FileEntry[]; totalBytes: number }> {
   const skipNames = new Set(options.skipNames ?? [])
   const skipAbs = (options.skipAbsPaths ?? []).map((p) => path.resolve(p))
+  const skipRel = options.shouldSkipRel
   const files: FileEntry[] = []
   let totalBytes = 0
   const root = path.resolve(source)
@@ -136,6 +145,8 @@ export async function collectFilesAsync(
       if (entry.isSymbolicLink()) continue
       const abs = path.join(dir, entry.name)
       if (shouldSkipAbs(abs)) continue
+      const rel = path.relative(root, abs)
+      if (skipRel?.(rel)) continue
       if (entry.isDirectory()) {
         await walk(abs)
       } else if (entry.isFile()) {
@@ -145,7 +156,7 @@ export async function collectFilesAsync(
         } catch {
           /* ignore */
         }
-        files.push({ abs, rel: path.relative(root, abs), size })
+        files.push({ abs, rel, size })
         totalBytes += size
       }
     }

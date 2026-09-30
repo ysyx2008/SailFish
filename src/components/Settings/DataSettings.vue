@@ -455,7 +455,10 @@ const startFullBackup = async () => {
         showMessage('success', t('dataSettings.backupCanceled'))
       }
     } else if (result.success) {
-      showMessage('success', t('dataSettings.backupOk', { path: result.path || '' }))
+      const pathText = result.path || ''
+      showMessage('success', result.skippedUnreadable
+        ? t('dataSettings.backupOkPartial', { path: pathText, count: result.skippedUnreadable })
+        : t('dataSettings.backupOk', { path: pathText }))
     } else {
       showMessage('error', formatBackupError(result.error))
     }
