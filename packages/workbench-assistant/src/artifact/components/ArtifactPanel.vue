@@ -1368,8 +1368,9 @@ defineExpose({ minimizePanel })
   border-left: none;
 }
 
+/* 铺满后这排贴着窗口右沿。36px 只够清单按钮，Windows 三个窗口按钮还要另让开，否则会盖住保存/打开 */
 .canvas-panel.is-focus .canvas-header {
-  padding-right: 36px;
+  padding-right: calc(max(8px, var(--shell-inset-right, 0px)) + 36px);
 }
 
 .canvas-focus-spacer {
