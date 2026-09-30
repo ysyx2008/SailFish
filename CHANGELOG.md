@@ -2,7 +2,37 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v11.12.0 (2026-09-23) (Latest)
+## v11.13.0 (2026-09-30) (Latest)
+
+> New “Approve for me” mode, which interrupts you far less often. New built-in Coding skill, for advanced users to enable themselves. Many smaller improvements.
+
+### New Features
+- 🎯 **Approve for me**: Dangerous actions are checked against what you said in this conversation. A match is approved for you; anything that does not match still asks. You can choose it on the task bar and the home input, and the choice is remembered. Reach uses the same path on the desktop, the web, and instant messaging. After you reopen a conversation and say “continue,” the original request still counts. Instant messaging keeps a single line of explanation
+- 🎯 **Coding skill** (off by default): Open a local project, search by content, find files by name, and edit several places in one file. If an edit does not match, none of it is applied. After an edit, syntax is checked and only errors introduced this time are reported, across seventeen common languages. Each turn keeps a checkpoint you can roll back. Checkpoints leave the project’s own version history untouched, are kept for seven days, and skip files that are too large. If the project changes after you confirm, you are asked again. Search is included with the app
+- 🎯 **A note with each command**: A command can carry a short explanation. Progress shows the explanation first, then the command. Commands that will finish are watched until they do. Long-running services are marked and left alone, and a long watch checks in on its own. If you send a message in the middle, it is answered first and watching resumes; if you stop, the command stops too
+- 🎯 **Usage hidden by default**: Token use under the input stays hidden until you turn it on in Settings. Hovering shows how much of the prompt was served from cache. The figures sit on separate lines so they stay readable
+
+### Improvements
+- ⚡ **Dispatched assistants are easier to tell apart**: The name shows what each one is doing. They leave the terminal you are looking at alone and work on this machine. High-risk actions go through the same approval as this conversation
+- ⚡ **Terminal ability appears when there is a terminal**: An independent assistant gains terminal-related ability only after it has a terminal
+- ⚡ **Reopening Reach starts cleaner**: Skills from the previous session are not loaded automatically. When an instant-message or web remote session comes in, the context bar on desktop Reach updates with it
+- ⚡ **Context is compacted the same way**: Compacting started by the assistant and compacting you start by hand put the earlier text away the same way
+- ⚡ **The window is easier to drag**: The assistant top bar stays in place so the window can be dragged; model names in the conversation use a short form. When the plan bar is too narrow, the title and the progress wrap onto two lines. Host names on split panes stay faint until the pointer enters the pane
+
+### Bug Fixes
+- 🐛 **A full backup no longer fails because the browser cache is in use**
+- 🐛 **Word preview no longer resizes back and forth at the width where the scrollbar appears**
+- 🐛 **When a document fills the window, it leaves room for the Windows window buttons**, so Save and Open stay visible
+- 🐛 **Git actions that would discard work ask first, even in relaxed mode**
+- 🐛 **When a jump host does not allow port forwarding, the reason is explained**, instead of appearing connected
+- 🐛 **Semantic search can finish loading without a GPU**, and no longer quits during startup
+- 🐛 **The task-complete mark stays at the end of this conversation**, rather than under something said in the middle
+- 🐛 **After you approve, the result no longer adds an “Approved” mark**
+- 🐛 **Replacement text is written as given**; a `$&` in it is no longer treated as a replacement token
+- 🐛 **Dropdowns on Windows can be used normally**, and no longer draw outside the window as a black block
+- 🐛 **When a skill description already has a title, it is no longer repeated on every turn**
+
+## v11.12.0 (2026-09-23)
 
 > Web search can use Zhipu or Kimi, and you can ask the assistant to switch. A benchmark compares models and machines on the same set of tasks.
 

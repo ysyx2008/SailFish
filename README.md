@@ -78,7 +78,8 @@ The window is three columns: new chat, Reach, Terminal, and recent conversations
 | 📁 **File Manager** | Dual-pane local and remote files, drag-and-drop transfer |
 | 🌐 **Browser Bridge** | Control the Chrome / Edge / Firefox you already have open — logins preserved |
 | 📦 **Artifacts** | WYSIWYG Markdown, live HTML/URL preview, screenshot follow-ups, send to phone; Word / Excel / PDF / WPS open in place |
-| 🛡️ **Safety** | Command risk levels; dangerous steps ask first; strict / relaxed / free execution modes |
+| 💻 **Coding** | Edit a local project, check syntax, and roll back by turn; off by default, for advanced users to enable |
+| 🛡️ **Safety** | Command risk levels; dangerous steps ask first; strict / relaxed / free, or “Approve for me” |
 
 ### Secretary work
 
