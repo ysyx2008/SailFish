@@ -2,7 +2,17 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v11.13.0 (2026-09-30) (Latest)
+## v11.13.1 (2026-10-02) (Latest)
+
+> Reach shows when something was said, and turns close together are not stamped again. Compacting context in Reach works.
+
+### Improvements
+- ⚡ **Reach shows when something was said**: You can tell when a stretch of the conversation happened, in the form “Yesterday 20:11”. The first turn is stamped; two turns less than five minutes apart are not stamped again. Stamps apply to what you said, what the secretary said, and when the secretary reached out. Work in progress and thinking are not stamped on their own. Task conversations are unchanged, since the list already has a date
+
+### Bug Fixes
+- 🐛 **Context can be compacted in Reach**, and is no longer treated as empty
+
+## v11.13.0 (2026-09-30)
 
 > New “Approve for me” mode, which interrupts you far less often. New built-in Coding skill, for advanced users to enable themselves. Many smaller improvements.
 
