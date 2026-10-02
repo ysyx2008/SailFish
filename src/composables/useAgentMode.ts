@@ -1671,7 +1671,10 @@ export function useAgentMode(
     const agentKey = getAgentKey()
     const tab = currentTab.value
     const tabId = currentTabId.value
-    if (!agentKey || !tab || !tabId || tab.isRemote) return { ok: false, reason: 'empty' }
+    // 联络页也标了 isRemote（为了不进普通助手列表），但它是本机这场对话，要能压。
+    // 真正的远程 Gateway 页没有本地上下文，仍然直接说没什么可压。
+    const companion = tab?.agentId === COMPANION_TAB_AGENT_ID
+    if (!agentKey || !tab || !tabId || (tab.isRemote && !companion)) return { ok: false, reason: 'empty' }
     if (isAgentRunning.value) return { ok: false, reason: 'running' }
     const extra = hint?.trim()
     const title = extra
