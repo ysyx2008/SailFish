@@ -67,6 +67,16 @@ function fetchBuffer(url, maxRedirects = 5) {
   })
 }
 
+/**
+ * 官方 .sha256 有两种写法。
+ * Unix 是「哈希 文件名」；Windows 的 certutil 第一行以 SHA256 开头，哈希在下一行。
+ */
+function readExpectedSha256(shaText) {
+  const match = shaText.toString('utf8').match(/\b[a-fA-F0-9]{64}\b/)
+  if (!match) throw new Error('校验文件里没有 SHA256')
+  return match[0].toLowerCase()
+}
+
 function extract(archive, destDir) {
   if (archive.endsWith('.zip') && process.platform === 'linux') {
     execFileSync('unzip', ['-q', archive, '-d', destDir], { stdio: 'inherit' })
@@ -94,7 +104,7 @@ async function downloadTarget(target) {
   console.log(`[download-ripgrep] ${target} ← ${url}`)
 
   const [archive, shaText] = await Promise.all([fetchBuffer(url), fetchBuffer(`${url}.sha256`)])
-  const expected = shaText.toString('utf8').trim().split(/\s+/)[0].toLowerCase()
+  const expected = readExpectedSha256(shaText)
   const actual = crypto.createHash('sha256').update(archive).digest('hex')
   if (expected !== actual) {
     throw new Error(`${target} 校验失败：期望 ${expected}，实际 ${actual}`)
