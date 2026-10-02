@@ -63,7 +63,7 @@
     "@huggingface/transformers": "^4.2.0",
     "@lancedb/lancedb": "^0.22.3",
     "@langchain/textsplitters": "^1.0.1",
-    "@larksuiteoapi/node-sdk": "^1.59.0",
+    "@larksuiteoapi/node-sdk": "^1.74.0",
     "@milkdown/crepe": "^7.22.0",
     "@milkdown/kit": "^7.22.0",
     "@modelcontextprotocol/sdk": "^1.24.3",
