@@ -74,7 +74,9 @@ export async function manageTasks(
         if (!result.ok) {
           const msg = result.reason === 'task_not_found'
             ? t('taskmgr.task_not_found', { taskId })
-            : t('taskmgr.confirm_stale')
+            : result.reason === 'settled'
+              ? t('taskmgr.settled', { title: result.title ?? taskId })
+              : t('taskmgr.confirm_stale')
           return finish(fail(msg), t('taskmgr.action.confirm'))
         }
         const decision = t(args.approve ? 'taskmgr.approve' : 'taskmgr.reject')
@@ -91,7 +93,9 @@ export async function manageTasks(
         if (!result.ok) {
           const msg = result.reason === 'task_not_found'
             ? t('taskmgr.task_not_found', { taskId })
-            : t('taskmgr.not_running', { title: result.title ?? taskId })
+            : result.reason === 'settled'
+              ? t('taskmgr.settled', { title: result.title ?? taskId })
+              : t('taskmgr.not_running', { title: result.title ?? taskId })
           return finish(fail(msg), t('taskmgr.action.stop'))
         }
         log.info(`联络停止任务: ${taskId}`)
@@ -119,6 +123,9 @@ function fail(error: string): ToolResult {
 function statusLabel(info: SupervisedTaskInfo): string {
   if (info.pendingConfirmation) return t('taskmgr.status_pending')
   if (info.isRunning) return t('taskmgr.status_running')
+  if (info.settled === 'failed') return t('taskmgr.status_failed')
+  if (info.settled === 'aborted') return t('taskmgr.status_aborted')
+  if (info.settled === 'completed') return t('taskmgr.status_completed')
   return t('taskmgr.status_idle')
 }
 
@@ -136,7 +143,7 @@ function formatTaskLine(index: number, info: SupervisedTaskInfo): string {
     }))
   } else if (info.isRunning) {
     parts.push(t('taskmgr.line_running', { tool: info.currentToolName || '-', steps: info.stepCount }))
-  } else {
+  } else if (!info.settled) {
     parts.push(t('taskmgr.line_idle', { steps: info.stepCount }))
   }
   parts.push(`task_id=${info.agentKey}`)

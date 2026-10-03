@@ -13,10 +13,12 @@
  * 任务对话内容不进联络上下文。
  *
  * 事件源过滤：仅 kind=task 的会话冒泡；companion/watch/wakeup 自身不回流（防循环）。
+ * 任务分出去的帮手（身份键里的 :sub:）也不是任务，不进列表、不回流。
+ * 内存里已经没有的任务，从历史索引补最近若干条已结束的摘要。
  */
 import os from 'os'
 import { v4 as uuidv4 } from 'uuid'
-import { COMPANION_AGENT_KEY, inferConversationKind, type RiskLevel, type TerminalType, type AgentStep } from '@shared/types'
+import { COMPANION_AGENT_KEY, inferConversationKind, type RiskLevel, type TerminalType } from '@shared/types'
 import { createLogger } from '../../utils/logger'
 import { appendProactiveContext } from './proactive-store'
 import { deliverProactiveMessage } from './proactive-deliver'
@@ -32,6 +34,14 @@ const COMPANION_AGENT_ID = COMPANION_AGENT_KEY
 
 /** 完成/失败事件的防抖窗口：短时间多事件合并成一条复命通知，不刷屏 */
 const FINISH_DEBOUNCE_MS = 5000
+
+/** 内存里已经没有的任务，列表最多再补这么多条（按最近活跃，同一任务只留最新一条） */
+const SETTLED_TASK_LIMIT = 20
+
+/** 受管任务：kind=task，且不是任务分出去的帮手 */
+function isManagedTaskKey(agentKey: string | undefined): agentKey is string {
+  return !!agentKey && !agentKey.includes(':sub:') && inferConversationKind(agentKey) === 'task'
+}
 
 /** 任务确认请求事件载荷（Agent 基类挂钩传入；不含 resolve，可安全跨边界） */
 export interface TaskNeedsConfirmationEvent {
@@ -60,6 +70,8 @@ export interface SupervisedTaskInfo {
   phase?: string
   currentToolName?: string
   stepCount: number
+  /** 已不在内存里、只能从历史看见时的结局。正在跑或还加载着的任务没有这个字段 */
+  settled?: 'completed' | 'failed' | 'aborted'
   pendingConfirmation?: {
     toolCallId: string
     toolName: string
@@ -102,6 +114,8 @@ export interface TaskSupervisorHost {
   ): Promise<string>
   getHistoryService(): HistoryService | undefined
   getConfigService(): ConfigService | undefined
+  /** 创建任务实例并锁住交办标题；autoReview 为真时这场走替我审批 */
+  prepareAssignedTask(agentId: string, title: string, autoReview: boolean): void
 }
 
 export class TaskSupervisor {
@@ -115,12 +129,13 @@ export class TaskSupervisor {
 
   // ==================== 查询 ====================
 
-  /** 枚举当前受管任务（仅 kind=task；待确认 > 运行中 > 空闲） */
+  /** 枚举受管任务（待确认 > 运行中 > 空闲 > 已从历史找回的结束任务） */
   listSupervisedTasks(): SupervisedTaskInfo[] {
-    const rank = (t: SupervisedTaskInfo) => t.pendingConfirmation ? 0 : t.isRunning ? 1 : 2
+    const rank = (t: SupervisedTaskInfo) =>
+      t.pendingConfirmation ? 0 : t.isRunning ? 1 : t.settled ? 3 : 2
     const tasks: SupervisedTaskInfo[] = []
     for (const { agentKey, agent } of this.host.getAllAgentEntries()) {
-      if (inferConversationKind(agentKey) !== 'task') continue
+      if (!isManagedTaskKey(agentKey)) continue
       try {
         tasks.push(this.buildTaskInfo(agentKey, agent))
       } catch (err) {
@@ -128,26 +143,41 @@ export class TaskSupervisor {
         log.warn(`枚举任务 ${agentKey} 失败，已跳过:`, err)
       }
     }
+    const liveKeys = new Set(tasks.map(t => t.agentKey))
+    try {
+      tasks.push(...this.recentSettledTasks(liveKeys))
+    } catch (err) {
+      log.warn('从历史补任务列表失败:', err)
+    }
     return tasks.sort((a, b) => rank(a) - rank(b))
   }
 
-  /** 单个任务近况：状态 + 最近步骤一行摘要（不出完整 transcript） */
+  /** 单个任务近况：内存里有就看内存；没有则从历史读最近步骤摘要 */
   inspectTask(agentKey: string, maxSteps = 8): SupervisedTaskDetail | undefined {
+    if (!isManagedTaskKey(agentKey)) return undefined
     const agent = this.host.getAgent(agentKey)
-    if (!agent || inferConversationKind(agentKey) !== 'task') return undefined
-
-    const steps = agent.getSessionStepsSnapshot()
-    const recentSteps = steps.slice(-Math.max(1, maxSteps)).map(s => this.summarizeStep(s))
-    return { ...this.buildTaskInfo(agentKey, agent), recentSteps }
+    if (agent) {
+      const steps = agent.getSessionStepsSnapshot()
+      const recentSteps = steps.slice(-Math.max(1, maxSteps)).map(s => this.summarizeStep(s))
+      return { ...this.buildTaskInfo(agentKey, agent), recentSteps }
+    }
+    try {
+      return this.inspectSettledTask(agentKey, maxSteps)
+    } catch (err) {
+      log.warn(`从历史查看任务 ${agentKey} 失败:`, err)
+      return undefined
+    }
   }
 
   // ==================== 操作 ====================
 
   /** 传达用户对危险确认的批准/拒绝（转述制：本方法只传达，不生成决定） */
   confirmTask(agentKey: string, toolCallId: string, approved: boolean): { ok: boolean; reason?: string; title?: string } {
+    if (!isManagedTaskKey(agentKey)) return { ok: false, reason: 'task_not_found' }
     const agent = this.host.getAgent(agentKey)
-    if (!agent || inferConversationKind(agentKey) !== 'task') {
-      return { ok: false, reason: 'task_not_found' }
+    if (!agent) {
+      const title = this.settledTitle(agentKey)
+      return title ? { ok: false, reason: 'settled', title } : { ok: false, reason: 'task_not_found' }
     }
     const title = this.resolveTaskTitle(agentKey)
     const delivered = this.host.confirmToolCall(agentKey, toolCallId, approved)
@@ -156,9 +186,11 @@ export class TaskSupervisor {
 
   /** 停止执行中的任务（不关 tab、不销毁会话；abort 幂等） */
   stopTask(agentKey: string): { ok: boolean; reason?: string; title?: string } {
+    if (!isManagedTaskKey(agentKey)) return { ok: false, reason: 'task_not_found' }
     const agent = this.host.getAgent(agentKey)
-    if (!agent || inferConversationKind(agentKey) !== 'task') {
-      return { ok: false, reason: 'task_not_found' }
+    if (!agent) {
+      const title = this.settledTitle(agentKey)
+      return title ? { ok: false, reason: 'settled', title } : { ok: false, reason: 'task_not_found' }
     }
     const title = this.resolveTaskTitle(agentKey)
     const stopped = this.host.abort(agentKey)
@@ -173,6 +205,7 @@ export class TaskSupervisor {
    */
   async createTask(opts: CreateTaskOptions): Promise<{ agentKey: string }> {
     const agentId = `assistant-${uuidv4()}`
+    this.host.prepareAssignedTask(agentId, opts.title, opts.fullAuto !== true)
     const payload = {
       agentId,
       title: opts.title,
@@ -215,7 +248,7 @@ export class TaskSupervisor {
    */
   handleNeedsConfirmation(agentKey: string | undefined, event: TaskNeedsConfirmationEvent): void {
     try {
-      if (!agentKey || inferConversationKind(agentKey) !== 'task') return
+      if (!isManagedTaskKey(agentKey)) return
       const title = this.resolveTaskTitle(agentKey)
 
       appendProactiveContext(COMPANION_AGENT_ID, [
@@ -264,7 +297,7 @@ export class TaskSupervisor {
    */
   handleRunFinished(agentKey: string | undefined, event: TaskRunFinishedEvent): void {
     try {
-      if (!agentKey || inferConversationKind(agentKey) !== 'task') return
+      if (!isManagedTaskKey(agentKey)) return
       this.finishBuffer.push({
         ...event,
         summary: this.truncate(event.summary, 200),
@@ -281,6 +314,59 @@ export class TaskSupervisor {
   }
 
   // ==================== 内部 ====================
+
+  /** 内存里没有、历史里还在的最近任务（同一 agentKey 只留最新一条） */
+  private recentSettledTasks(liveKeys: Set<string>): SupervisedTaskInfo[] {
+    const history = this.host.getHistoryService()
+    if (!history) return []
+    const seen = new Set<string>()
+    const settled: SupervisedTaskInfo[] = []
+    for (const summary of history.listAgentHistorySummaries(true)) {
+      const agentKey = summary.agentKey
+      if (!agentKey || liveKeys.has(agentKey) || seen.has(agentKey)) continue
+      if (!isManagedTaskKey(agentKey)) continue
+      seen.add(agentKey)
+      settled.push({
+        agentKey,
+        title: this.titleFromHistory(summary.title, summary.userTask, agentKey),
+        terminalType: summary.terminalType,
+        isRunning: false,
+        stepCount: 0,
+        settled: summary.status,
+      })
+      if (settled.length >= SETTLED_TASK_LIMIT) break
+    }
+    return settled
+  }
+
+  private inspectSettledTask(agentKey: string, maxSteps: number): SupervisedTaskDetail | undefined {
+    const record = this.host.getHistoryService()?.getLatestRecordByAgentKey(agentKey)
+    if (!record || record.agentKey !== agentKey || !isManagedTaskKey(record.agentKey)) return undefined
+    const steps = record.steps ?? []
+    return {
+      agentKey,
+      title: this.titleFromHistory(record.title, record.userTask, agentKey),
+      terminalType: record.terminalType,
+      isRunning: false,
+      stepCount: steps.length,
+      settled: record.status,
+      recentSteps: steps.slice(-Math.max(1, maxSteps)).map(s => this.summarizeStep(s)),
+    }
+  }
+
+  private settledTitle(agentKey: string): string | undefined {
+    const record = this.host.getHistoryService()?.getLatestRecordByAgentKey(agentKey)
+    if (!record || record.agentKey !== agentKey) return undefined
+    return this.titleFromHistory(record.title, record.userTask, agentKey)
+  }
+
+  private titleFromHistory(title: string | undefined, userTask: string, agentKey: string): string {
+    const custom = title?.trim()
+    if (custom) return custom
+    const brief = userTask.replace(/\s+/g, ' ').trim()
+    if (brief) return this.truncate(brief, 60)
+    return agentKey.length > 16 ? `${agentKey.slice(0, 16)}…` : agentKey
+  }
 
   private async flushFinishEvents(): Promise<void> {
     this.finishFlushTimer = null
@@ -343,7 +429,7 @@ export class TaskSupervisor {
     return agentKey.length > 16 ? `${agentKey.slice(0, 16)}…` : agentKey
   }
 
-  private summarizeStep(step: AgentStep): string {
+  private summarizeStep(step: { timestamp: number; type: string; toolName?: string; content?: string }): string {
     const time = new Date(step.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
     const namePart = step.toolName ? ` ${step.toolName}` : ''
     const content = this.truncate((step.content || '').replace(/\s+/g, ' ').trim(), 160)

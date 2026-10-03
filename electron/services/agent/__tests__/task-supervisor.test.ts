@@ -57,6 +57,7 @@ function makeHost(entries: Array<[string, SailFish]>, overrides: Partial<TaskSup
   confirmToolCall: ReturnType<typeof vi.fn>
   abort: ReturnType<typeof vi.fn>
   runAssistant: ReturnType<typeof vi.fn>
+  prepareAssignedTask: ReturnType<typeof vi.fn>
 } {
   const map = new Map(entries)
   return {
@@ -65,6 +66,7 @@ function makeHost(entries: Array<[string, SailFish]>, overrides: Partial<TaskSup
     confirmToolCall: vi.fn().mockReturnValue(true),
     abort: vi.fn().mockReturnValue(true),
     runAssistant: vi.fn().mockResolvedValue('done'),
+    prepareAssignedTask: vi.fn(),
     getHistoryService: vi.fn().mockReturnValue(undefined),
     getConfigService: vi.fn().mockReturnValue(undefined),
     ...overrides
@@ -72,6 +74,7 @@ function makeHost(entries: Array<[string, SailFish]>, overrides: Partial<TaskSup
     confirmToolCall: ReturnType<typeof vi.fn>
     abort: ReturnType<typeof vi.fn>
     runAssistant: ReturnType<typeof vi.fn>
+    prepareAssignedTask: ReturnType<typeof vi.fn>
   }
 }
 
@@ -90,12 +93,13 @@ describe('TaskSupervisor', () => {
   // ==================== 查询 ====================
 
   describe('listSupervisedTasks', () => {
-    it('仅枚举 kind=task 的会话，排除 companion/watch/wakeup', () => {
+    it('仅枚举 kind=task 的会话，排除 companion/watch/wakeup 和任务的帮手', () => {
       const host = makeHost([
         ['tab-aaa', makeMockAgent({ title: '任务A' })],
         [COMPANION, makeMockAgent({ title: '联络' })],
         ['__watch__:w1', makeMockAgent({ title: '关切' })],
-        ['__wakeup__', makeMockAgent({ title: '唤醒' })]
+        ['__wakeup__', makeMockAgent({ title: '唤醒' })],
+        ['tab-aaa:sub:explore', makeMockAgent({ title: '帮手' })]
       ])
       const supervisor = new TaskSupervisor(host)
       const list = supervisor.listSupervisedTasks()
@@ -147,6 +151,71 @@ describe('TaskSupervisor', () => {
       const detail = supervisor.inspectTask('tab-x')
       expect(detail?.title).toBe('写周报')
       expect(detail?.recentSteps).toHaveLength(1)
+    })
+  })
+
+  describe('历史找回', () => {
+    const summary = {
+      id: 'session_old',
+      timestamp: 1,
+      duration: 10,
+      userTask: '查昨天的错误日志，写一份摘要',
+      title: '查日志',
+      terminalType: 'assistant' as const,
+      agentKey: 'assistant-old',
+      status: 'completed' as const,
+    }
+
+    function historyHost(extraEntries: Array<[string, SailFish]> = []) {
+      return makeHost(extraEntries, {
+        getHistoryService: vi.fn().mockReturnValue({
+          listAgentHistorySummaries: vi.fn().mockReturnValue([
+            summary,
+            { ...summary, id: 'session_older', timestamp: 0 },
+            { ...summary, id: 'session_sub', agentKey: 'assistant-old:sub:explore', title: '帮手' },
+            { ...summary, id: 'session_live', agentKey: 'tab-live', title: '还在' },
+          ]),
+          getLatestRecordByAgentKey: vi.fn((key: string) => {
+            if (key !== 'assistant-old') return undefined
+            return {
+              ...summary,
+              steps: [
+                { id: 's1', type: 'user_task', content: '查昨天的错误日志', timestamp: 1 },
+                { id: 's2', type: 'final_result', content: '没有新的错误', timestamp: 2 },
+              ],
+            }
+          }),
+        }),
+      })
+    }
+
+    it('内存里没有的任务从历史补进列表，同一任务不重复，帮手不进', () => {
+      const host = historyHost([['tab-live', makeMockAgent({ title: '还在内存里' })]])
+      const list = new TaskSupervisor(host).listSupervisedTasks()
+      expect(list.map(t => t.agentKey)).toEqual(['tab-live', 'assistant-old'])
+      expect(list[1]?.settled).toBe('completed')
+      expect(list[1]?.title).toBe('查日志')
+    })
+
+    it('内存里没有时，inspect 从历史读近况', () => {
+      const detail = new TaskSupervisor(historyHost()).inspectTask('assistant-old')
+      expect(detail?.title).toBe('查日志')
+      expect(detail?.settled).toBe('completed')
+      expect(detail?.stepCount).toBe(2)
+      expect(detail?.recentSteps.some(line => line.includes('没有新的错误'))).toBe(true)
+    })
+
+    it('已经结束的任务不能再批准或停止', () => {
+      const host = historyHost()
+      const supervisor = new TaskSupervisor(host)
+      expect(supervisor.confirmTask('assistant-old', 'call-1', true)).toMatchObject({
+        ok: false, reason: 'settled', title: '查日志',
+      })
+      expect(host.confirmToolCall).not.toHaveBeenCalled()
+      expect(supervisor.stopTask('assistant-old')).toMatchObject({
+        ok: false, reason: 'settled', title: '查日志',
+      })
+      expect(host.abort).not.toHaveBeenCalled()
     })
   })
 
@@ -216,6 +285,7 @@ describe('TaskSupervisor', () => {
       supervisor.handleNeedsConfirmation(COMPANION, confirmEvent)
       supervisor.handleNeedsConfirmation('__watch__:w1', confirmEvent)
       supervisor.handleNeedsConfirmation(undefined, confirmEvent)
+      supervisor.handleNeedsConfirmation('tab-t1:sub:explore', confirmEvent)
 
       expect(consumeProactiveContext(COMPANION)).toBeUndefined()
       expect(mockDeliver).not.toHaveBeenCalled()
@@ -285,6 +355,7 @@ describe('TaskSupervisor', () => {
       supervisor.handleRunFinished(COMPANION, { status: 'success', summary: '联络回复完毕' })
       supervisor.handleRunFinished('__wakeup__', { status: 'success', summary: '心跳' })
       supervisor.handleRunFinished(undefined, { status: 'success', summary: '无属主' })
+      supervisor.handleRunFinished('tab-t1:sub:explore', { status: 'success', summary: '帮手做完了' })
       vi.advanceTimersByTime(10000)
 
       expect(mockDeliver).not.toHaveBeenCalled()
@@ -320,6 +391,7 @@ describe('TaskSupervisor', () => {
       const { agentKey } = await supervisor.createTask({ title: '查日志', brief: '查一下昨天的错误日志', fullAuto: true })
 
       expect(agentKey).toMatch(/^assistant-/)
+      expect(host.prepareAssignedTask).toHaveBeenCalledWith(agentKey, '查日志', false)
       expect(host.runAssistant).toHaveBeenCalledTimes(1)
       const [agentId, message, context, config] = host.runAssistant.mock.calls[0]
       expect(agentId).toBe(agentKey)
@@ -336,6 +408,7 @@ describe('TaskSupervisor', () => {
 
       const [, , , config] = host.runAssistant.mock.calls[0]
       expect(config.executionMode).toBe('relaxed')
+      expect(host.prepareAssignedTask).toHaveBeenCalledWith(expect.stringMatching(/^assistant-/), '问个问题', true)
     })
   })
 

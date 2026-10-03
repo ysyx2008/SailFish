@@ -178,6 +178,12 @@ export abstract class Agent {
   /** 这场 run 里的伙计花名册（仅主人持有） */
   private _subAgentRoster?: SubAgentRoster
 
+  /** 交办标题：会话聚合根建好之前先记在这里 */
+  private _armedTitle?: string
+
+  /** 这场任务的确认先走替我审批，不看全局开关 */
+  private _preferAutoReview = false
+
   /** 伙计：关掉落盘 / 侧栏 / L2 / L3 / 诞生引导 */
   private _isSubAgent = false
 
@@ -1429,7 +1435,28 @@ export abstract class Agent {
    * 会话展示标题（LLM/手动标题；未设置时由调用方回退首条用户任务）。
    */
   getConversationTitle(): string | undefined {
-    return this._conversation?.title
+    return this._conversation?.title || this._armedTitle
+  }
+
+  /**
+   * 交办时定下的标题。会话还没建好时先记着，建好后锁住，自动起标题不再覆盖。
+   */
+  armLockedTitle(title: string): void {
+    const trimmed = title.trim()
+    if (!trimmed) return
+    this._armedTitle = trimmed
+    this._conversation?.setTitle(trimmed, { locked: true })
+  }
+
+  /** 新建会话时把交办标题锁上；已有会话不在这里改（避免盖掉后来的手改） */
+  private applyArmedTitle(): void {
+    if (!this._armedTitle || !this._conversation) return
+    this._conversation.setTitle(this._armedTitle, { locked: true })
+  }
+
+  /** 联络交办且未声明全自动：危险操作先交给评审员，看不准再问用户 */
+  preferAutoReview(): void {
+    this._preferAutoReview = true
   }
 
   /**
@@ -1615,6 +1642,7 @@ export abstract class Agent {
           { taskMemory: this.taskMemory }
         )
       }
+      this.applyArmedTitle()
       }
     }
 
@@ -1949,14 +1977,16 @@ export abstract class Agent {
       ...(m.workbenchContext ? { workbenchContext: m.workbenchContext } : {}),
     })), { aborted: run.aborted })
 
-    // 任务监督回流：任务完成/被停止 → 联络线复命（防抖聚合；supervisor 内部按 kind 过滤）
-    try {
-      this.services.taskSupervisor?.handleRunFinished(this._agentId, {
-        status: run.aborted ? 'aborted' : 'success',
-        summary: result ?? '',
-      })
-    } catch (err) {
-      log.warn('taskSupervisor 完成回流失败:', err)
+    // 任务监督回流：任务完成/被停止 → 联络线复命（防抖聚合；伙计不回流）
+    if (!this._isSubAgent) {
+      try {
+        this.services.taskSupervisor?.handleRunFinished(this._agentId, {
+          status: run.aborted ? 'aborted' : 'success',
+          summary: result ?? '',
+        })
+      } catch (err) {
+        log.warn('taskSupervisor 完成回流失败:', err)
+      }
     }
   }
   
@@ -2502,14 +2532,16 @@ export abstract class Agent {
 
     this.callbacks?.onError?.(run.id, errorMessage, { aborted: run.aborted })
 
-    // 任务监督回流：任务失败 → 联络线复命（防抖聚合；supervisor 内部按 kind 过滤）
-    try {
-      this.services.taskSupervisor?.handleRunFinished(this._agentId, {
-        status: 'failed',
-        summary: errorMessage,
-      })
-    } catch (err) {
-      log.warn('taskSupervisor 失败回流失败:', err)
+    // 任务监督回流：任务失败 → 联络线复命（防抖聚合；伙计不回流）
+    if (!this._isSubAgent) {
+      try {
+        this.services.taskSupervisor?.handleRunFinished(this._agentId, {
+          status: 'failed',
+          summary: errorMessage,
+        })
+      } catch (err) {
+        log.warn('taskSupervisor 失败回流失败:', err)
+      }
     }
   }
   
@@ -5427,16 +5459,17 @@ export abstract class Agent {
       this.callbacks?.onNeedConfirm?.(confirmation)
       shown = true
 
-      // 任务监督回流：任务 Agent 的确认请求转述到联络线（转述制——联络只传达用户决定）。
-      // supervisor 内部按会话 kind 过滤（仅 task 冒泡），失败不影响确认等待本身。
-      try {
-        let argsPreview = ''
-        try { argsPreview = JSON.stringify(toolArgs).slice(0, 300) } catch { /* 忽略不可序列化参数 */ }
-        this.services.taskSupervisor?.handleNeedsConfirmation(this._agentId, {
-          toolCallId, toolName, riskLevel, displayName, reasons, argsPreview,
-        })
-      } catch (err) {
-        log.warn('[confirm] taskSupervisor 回流失败:', err)
+      // 任务监督回流：任务的确认请求转述到联络线（伙计的确认留在主人这场，不另报一条任务）
+      if (!this._isSubAgent) {
+        try {
+          let argsPreview = ''
+          try { argsPreview = JSON.stringify(toolArgs).slice(0, 300) } catch { /* 忽略不可序列化参数 */ }
+          this.services.taskSupervisor?.handleNeedsConfirmation(this._agentId, {
+            toolCallId, toolName, riskLevel, displayName, reasons, argsPreview,
+          })
+        } catch (err) {
+          log.warn('[confirm] taskSupervisor 回流失败:', err)
+        }
       }
     })
   }
@@ -5456,9 +5489,12 @@ export abstract class Agent {
   /** 这场会话的确认，是否会先交给评审员（开关开着、这类会话允许、这一轮有人兜底） */
   protected autoReviewApplies(unattended?: boolean): boolean {
     // 写系统提示词时也会问到这里，配置服务只是部分实现（测试替身、CLI 精简环境）时按"没开"处理
-    if (!this.services.configService?.isAutoApprovalReviewEnabled?.()) return false
+    if (unattended) return false
     if (!conversationPolicy(inferConversationKind(this._agentId)).autoApprovalReview) return false
-    return !unattended
+    // 联络交办的任务默认走替我审批，不跟全局开关（全局默认是关的）
+    if (this._preferAutoReview) return true
+    if (!this.services.configService?.isAutoApprovalReviewEnabled?.()) return false
+    return true
   }
 
   private getAutoReviewer(): AutoApprovalReviewer {

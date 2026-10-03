@@ -274,6 +274,13 @@ export class AgentService {
     return this.services.historyService
   }
 
+  /** 供 TaskSupervisor 在开跑前锁住交办标题；未全自动时这场走替我审批 */
+  prepareAssignedTask(agentId: string, title: string, autoReview: boolean): void {
+    const agent = this.createAssistantAgent(agentId)
+    agent.armLockedTitle(title)
+    if (autoReview) agent.preferAutoReview()
+  }
+
   /** 供 TaskSupervisor 读取运行配置（如 CLI 直驱任务的 debugMode） */
   getConfigService(): ConfigService | undefined {
     return this.services.configService

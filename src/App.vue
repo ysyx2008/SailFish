@@ -823,7 +823,7 @@ onMounted(async () => {
       data.agentId,
       data.brief,
       { terminalOutput: [], systemInfo: getLocalSystemInfo(), terminalType: 'assistant' },
-      data.fullAuto ? { executionMode: 'free' } : undefined
+      data.fullAuto ? { executionMode: 'free' } : { executionMode: 'relaxed' }
     ).then(res => {
       if (!res?.success) {
         log.warn(`[TaskSupervisor] 交办任务启动失败 (${data.agentId}): ${res?.error ?? 'unknown'}`)
