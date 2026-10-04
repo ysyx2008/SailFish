@@ -1218,6 +1218,7 @@ SSH 断线：ensure_connected 或依赖用时懒重连（结果会告知，不�
         // streaming-tool-executor 只看工具名：合并后整体不可并行（list 失去并行是可接受代价）
         parallelizable: false,
         allowedForSubAgent: false,
+        streamDisplay: { titleKey: 'tool.manage_pane' },
       }
     } as ToolDefinitionWithMeta,
     {
@@ -1241,6 +1242,7 @@ ${sshUsageDesc}
         supportedModes: ['local', 'ssh', 'assistant'],
         parallelizable: true,
         allowedForSubAgent: false,
+        streamDisplay: { titleKey: 'tool.list_ssh_sessions' },
       }
     } as ToolDefinitionWithMeta,
 

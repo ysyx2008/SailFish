@@ -697,6 +697,8 @@ export default {
       compress_context: '压缩上下文',
       recall_compressed: '回忆压缩内容',
       manage_memory: '管理记忆',
+      manage_pane: '管理窗格',
+      list_ssh_sessions: '查看远程会话',
       skill: '加载技能',
       load_user_skill: '加载用户技能',
       // Excel 技能

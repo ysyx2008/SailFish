@@ -696,6 +696,8 @@ export default {
       compress_context: 'Compress Context',
       recall_compressed: 'Recall Compressed',
       manage_memory: 'Manage Memory',
+      manage_pane: 'Manage Panes',
+      list_ssh_sessions: 'List Remote Sessions',
       skill: 'Load Skill',
       load_user_skill: 'Load User Skill',
       // Excel skill
