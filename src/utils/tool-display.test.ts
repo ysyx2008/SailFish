@@ -178,10 +178,22 @@ describe('shouldShowToolResultStep', () => {
   })
 
   describe('ALWAYS_SHOW_RESULT_TOOLS：少数 tool_result 仍需独立展示', () => {
-    it('dispatch_agents 的 tool_result 在非调试模式下展示', () => {
+    it('dispatch_agents 的成功回执平时不展示，调试模式和失败仍展示', () => {
       expect(
         shouldShowToolResultStep(
           { type: 'tool_result', toolName: 'dispatch_agents', success: true },
+          false
+        )
+      ).toBe(false)
+      expect(
+        shouldShowToolResultStep(
+          { type: 'tool_result', toolName: 'dispatch_agents', success: true },
+          true
+        )
+      ).toBe(true)
+      expect(
+        shouldShowToolResultStep(
+          { type: 'tool_result', toolName: 'dispatch_agents', success: false },
           false
         )
       ).toBe(true)
@@ -197,7 +209,7 @@ describe('shouldShowToolResultStep', () => {
     })
 
     it('集合内容和文档约定一致', () => {
-      expect(ALWAYS_SHOW_RESULT_TOOLS.has('dispatch_agents')).toBe(true)
+      expect(ALWAYS_SHOW_RESULT_TOOLS.has('dispatch_agents')).toBe(false)
       expect(ALWAYS_SHOW_RESULT_TOOLS.has('talk_to_user')).toBe(true)
       expect(ALWAYS_SHOW_RESULT_TOOLS.has('remember_info')).toBe(false)
     })

@@ -34,8 +34,6 @@ export const TOOLS_WITH_DEDICATED_STEP_TYPE = new Set<string>([
 
 /** 成功时 tool_result 仍需独立展示——content 含 tool_call 无法承载的用户必看信息 */
 export const ALWAYS_SHOW_RESULT_TOOLS = new Set<string>([
-  // 子 Agent / 计划 / 用户互动（多数有专用 step type，这里列出是为完备）
-  'dispatch_agents',
   // 主动消息（talk_to_user 的 tool_result 携带实际发送正文，用户需始终可见）
   'talk_to_user',
   'send_file_to_chat',
