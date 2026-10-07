@@ -78,6 +78,14 @@ export interface IMServiceConfig {
 
 export type IMPlatform = 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom' | 'wechat' | (string & {})
 
+/** 内置渠道占用的 platform。插件适配器不能再用这些名字，否则入站会进内置渠道、两边抢同一条连接。 */
+export const BUILTIN_IM_PLATFORMS = ['dingtalk', 'feishu', 'slack', 'telegram', 'wecom', 'wechat'] as const
+export type BuiltinImPlatform = typeof BUILTIN_IM_PLATFORMS[number]
+
+export function isBuiltinImPlatform(platform: string): platform is BuiltinImPlatform {
+  return (BUILTIN_IM_PLATFORMS as readonly string[]).includes(platform)
+}
+
 /**
  * IM 接收消息中的附件（图片、语音、视频、文件）
  * 由适配器下载到本地临时目录后生成

@@ -747,6 +747,29 @@ describe('RuntimeSync 撤销契约', () => {
     expect(calls.imUnregistered).toEqual(['shared-plat', 'shared-plat'])
   })
 
+  it('占用内置渠道名的 IM channel 不装配，后续同步不再重试', async () => {
+    const registry = makeRegistry(
+      makePlugin('p1', { channels: [{ channelId: 'ch-tg', platform: 'telegram' }] })
+    )
+    const { deps, calls } = makeSyncDeps()
+    const sync = new PluginRuntimeSync(deps)
+
+    expect(await sync.sync(registry)).toEqual([])
+    expect(calls.imRegistered).toEqual([])
+    expect(calls.channelConfigs).toHaveLength(1)
+
+    expect(await sync.sync(registry)).toEqual([])
+    expect(calls.imRegistered).toEqual([])
+    expect(calls.channelConfigs).toHaveLength(1)
+
+    registry.disablePlugin('p1')
+    await sync.sync(registry)
+    registry.enablePlugin('p1')
+    expect(await sync.sync(registry)).toEqual([])
+    expect(calls.channelConfigs).toHaveLength(2)
+    expect(calls.imRegistered).toEqual([])
+  })
+
   it('禁用路径上 adapter stop 挂起按预算放行：sync 不被卡死、串行链可继续', async () => {
     vi.useFakeTimers()
     try {

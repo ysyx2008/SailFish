@@ -14,7 +14,7 @@
  * 注入真实实现，契约测试注入假实现。
  */
 
-import type { IMAdapter } from '../im/types'
+import { isBuiltinImPlatform, type IMAdapter } from '../im/types'
 import type { PluginRegistry } from './registry'
 import type { ChannelRegistration, HttpRouteEntry, ProviderRegistration, TtsProviderRegistration } from './types'
 import { createLogger } from '../../utils/logger'
@@ -54,6 +54,11 @@ export class PluginRuntimeSync {
    * 冲突解除（platform 被释放）后自动接管。
    */
   private pluginAdapters = new Map<string, Map<string, IMAdapter>>()
+  /**
+   * 占用了内置渠道名的 channel：拒绝后不再重试。
+   * 插件停用或卸载时清掉，下次启用再试一次（代码没变的话仍会拒绝）。
+   */
+  private reservedImChannels = new Set<string>()
   /** 串行化链：快速连续 enable/disable/install 时不允许两个 sync 交错应用快照 */
   private syncChain: Promise<void> = Promise.resolve()
 
@@ -227,6 +232,7 @@ export class PluginRuntimeSync {
         }
       }
       this.pluginAdapters.delete(pluginId)
+      this.clearReservedImChannels(pluginId)
     }
 
     // 装配：启用的 channel 中尚未成功装配的（首次装配或此前被拒/失败的重试）
@@ -239,9 +245,19 @@ export class PluginRuntimeSync {
       }
       for (const channel of channels) {
         if (tracked.has(channel.id)) continue
+        const reservedKey = this.reservedImKey(pluginId, channel.id)
+        if (this.reservedImChannels.has(reservedKey)) continue
         try {
           const config = this.deps.getChannelConfig(channel.id)
           const adapter = channel.createAdapter(config)
+          if (isBuiltinImPlatform(adapter.platform)) {
+            this.reservedImChannels.add(reservedKey)
+            log.error(
+              `IM channel "${channel.id}" of plugin "${pluginId}": platform "${adapter.platform}" ` +
+              `is a builtin channel name, not retrying`
+            )
+            continue
+          }
           if (!this.deps.registerImAdapter(adapter)) {
             log.error(
               `IM channel "${channel.id}" of plugin "${pluginId}": platform "${adapter.platform}" rejected ` +
@@ -321,6 +337,17 @@ export class PluginRuntimeSync {
       () => { /* 晚到失败：实例从未变活跃，无需处理 */ }
     )
     return false
+  }
+
+  private reservedImKey(pluginId: string, channelId: string): string {
+    return `${pluginId}\0${channelId}`
+  }
+
+  private clearReservedImChannels(pluginId: string): void {
+    const prefix = `${pluginId}\0`
+    for (const key of this.reservedImChannels) {
+      if (key.startsWith(prefix)) this.reservedImChannels.delete(key)
+    }
   }
 
   /** 单个清理动作的预算：超时放行（插件 stop 继续在后台进行），不阻塞禁用/卸载/退出 */

@@ -612,6 +612,17 @@ describe('IMService 插件 adapter 注册事务性', () => {
     }
   }
 
+  it('内置渠道名不能被插件占用，内置适配器仍按原样取回', () => {
+    const service = new IMService() as any
+    const builtin = makePluginAdapter('telegram')
+    service.telegramAdapter = builtin
+
+    const plugin = makePluginAdapter('telegram')
+    expect(service.registerAdapter(plugin)).toBe(false)
+    expect(service.pluginAdapters.has('telegram')).toBe(false)
+    expect(service.getAdapter('telegram')).toBe(builtin)
+  })
+
   it('回调绑定失败（冻结对象）：抛错且不占用 platform，同 platform 可立即再次注册', () => {
     const service = new IMService() as any
     const frozen = Object.freeze(makePluginAdapter('plug-frozen'))

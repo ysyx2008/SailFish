@@ -6478,16 +6478,29 @@ ipcMain.handle('plugin:install', async (_event, spec: string) => {
  */
 async function runtimeUnloadPlugin(pluginId: string): Promise<void> {
   pluginRegistry.disablePlugin(pluginId)
+  // 先记成关闭。删包失败时文件还在，重启也不能再自动打开。
+  const entries = configService.get('pluginsEntries') || {}
+  entries[pluginId] = { ...entries[pluginId], enabled: false }
+  configService.set('pluginsEntries', entries)
+  pluginRegistry.updateConfig({ entries })
+
   const syncFailures = await syncPluginRuntimeServices(`plugin:uninstall ${pluginId}`)
   if (syncFailures.length > 0) {
     log.warn(
       `插件 "${pluginId}" 存在未完全撤销的注册物（${syncFailures.join(', ')}），仍将继续删除安装包；` +
-      `若删除成功，重启后将不再加载`
+      `重启后保持关闭`
     )
   }
   const unload = await pluginRegistry.unloadPlugin(pluginId)
   if (!unload.success) {
     log.warn(`插件 "${pluginId}" 运行时卸载未完全成功: ${unload.error}`)
+  }
+  // 上面这次同步和摘掉 registry 之间，插件可能又被打开并重新挂上。再同步一次，快照里已经没有它。
+  const afterUnload = await syncPluginRuntimeServices(`plugin:uninstall ${pluginId} after-unload`)
+  if (afterUnload.length > 0) {
+    log.warn(
+      `插件 "${pluginId}" 卸载后仍有未撤销的注册物（${afterUnload.join(', ')}），重启后保持关闭`
+    )
   }
 }
 

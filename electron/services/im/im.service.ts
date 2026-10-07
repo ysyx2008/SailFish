@@ -32,7 +32,7 @@ import type {
   IMChannelSendTarget,
   IMProcessMode
 } from './types'
-import { CONFIRM_KEYWORDS, REJECT_KEYWORDS, IM_TEXT_MAX_LENGTH } from './types'
+import { CONFIRM_KEYWORDS, REJECT_KEYWORDS, IM_TEXT_MAX_LENGTH, isBuiltinImPlatform, type BuiltinImPlatform } from './types'
 import { DingTalkAdapter } from './dingtalk-adapter'
 import { FeishuAdapter } from './feishu-adapter'
 import { SlackAdapter } from './slack-adapter'
@@ -2251,13 +2251,19 @@ export class IMService {
     return text
   }
 
+  private builtinAdapters(): Record<BuiltinImPlatform, IMAdapter | null> {
+    return {
+      dingtalk: this.dingtalkAdapter,
+      feishu: this.feishuAdapter,
+      slack: this.slackAdapter,
+      telegram: this.telegramAdapter,
+      wecom: this.wecomAdapter,
+      wechat: this.wechatAdapter,
+    }
+  }
+
   private getAdapter(platform: IMPlatform): IMAdapter | null {
-    if (platform === 'dingtalk') return this.dingtalkAdapter
-    if (platform === 'feishu') return this.feishuAdapter
-    if (platform === 'slack') return this.slackAdapter
-    if (platform === 'telegram') return this.telegramAdapter
-    if (platform === 'wecom') return this.wecomAdapter
-    if (platform === 'wechat') return this.wechatAdapter
+    if (isBuiltinImPlatform(platform)) return this.builtinAdapters()[platform]
     return this.pluginAdapters.get(platform) ?? null
   }
 
@@ -2269,6 +2275,10 @@ export class IMService {
    * 全部成功后才写入注册表——失败时不留下占用 platform 的未跟踪实例。
    */
   registerAdapter(adapter: IMAdapter): boolean {
+    if (isBuiltinImPlatform(adapter.platform)) {
+      log.error(`Plugin IM adapter platform "${adapter.platform}" is reserved for a builtin channel, rejecting`)
+      return false
+    }
     if (this.pluginAdapters.has(adapter.platform)) {
       log.error(`Plugin IM adapter platform "${adapter.platform}" already registered, rejecting duplicate`)
       return false
