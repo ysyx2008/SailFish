@@ -211,10 +211,21 @@ function collectClosure(nmRoot, entries, boundary) {
       if (resolved) addDir(dep, resolved)
     }
 
-    // 物理嵌套（transformers/node_modules/sharp）必须单独纳入
+    // 物理嵌套的直接依赖必须单独纳入（例如 transformers/node_modules/sharp）。
+    // 父包没声明的嵌套包是别的依赖自己的子树：onnxruntime 的 global-agent 只在安装脚本里用，
+    // 它的 matcher / serialize-error 不在 worker 热路径上，不能因为嵌在旁边就被要求解包。
+    const declared = new Set([
+      ...Object.keys(pkg.dependencies || {}),
+      ...Object.keys(pkg.optionalDependencies || {}),
+      ...Object.keys(pkg.peerDependencies || {}),
+    ])
     const nestedNm = path.join(dir, 'node_modules')
     if (exists(nestedNm)) {
       for (const nested of listImmediatePackages(nestedNm)) {
+        if (!declared.has(nested.name)) continue
+        if (ALLOW_MISSING.has(nested.name) || PLATFORM_OPTIONAL_RE.test(nested.name) || nested.name.startsWith('@types/')) {
+          continue
+        }
         addDir(nested.name, nested.dir)
       }
     }
