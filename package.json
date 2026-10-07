@@ -97,7 +97,7 @@
     "electron-updater": "^6.8.9",
     "exceljs": "^4.4.0",
     "https-proxy-agent": "^7.0.4",
-    "iconv-lite": "^0.7.0",
+    "iconv-lite": "^0.7.3",
     "imapflow": "^1.4.2",
     "jieba-wasm": "^2.4.0",
     "jsdom": "^29.1.1",
