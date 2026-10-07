@@ -163,11 +163,22 @@ function hasThinkingPart(step: ProcessStepLike): boolean {
   return !!parsed(step).thinking?.reasoning.trim()
 }
 
-/** 图——交给你看的东西。搜索结果、子任务进度不算，那是过程。 */
+/** 图——交给你看的东西。搜索结果不算，那是过程。伙计另算，不走这里。 */
 function hasHandedOverPayload(step: ProcessStepLike): boolean {
   if (step.images && step.images.length > 0) return true
   if (step.echartsOption) return true
   return false
+}
+
+/**
+ * 派出伙计、再交代，连同他们本人，都留在外面。
+ * 话里会提到他们；人要是收起来，话还在、人不见了。
+ * 「派出」那一下也得跟着留在外面——只把人拎出去、把这一下收进折叠行，
+ * 那一行还会再报一遍有人在并行，看起来像又多出一个伙计。
+ */
+function hasColleagues(step: ProcessStepLike): boolean {
+  if (step.toolName === 'dispatch_agents' || step.toolName === 'followup_agent') return true
+  return Array.isArray(step.subAgents) && step.subAgents.length > 0
 }
 
 /** 除了"说了话"，还有别的理由留在外面吗 */
@@ -178,6 +189,7 @@ function pinnedBesidesSpeech(step: ProcessStepLike): boolean {
   if (step.riskLevel === 'dangerous' || step.riskLevel === 'blocked') return true
   if (step.toolName && PINNED_TOOLS.has(step.toolName)) return true
   if (hasHandedOverPayload(step)) return true
+  if (hasColleagues(step)) return true
   return false
 }
 
@@ -186,8 +198,9 @@ function pinnedBesidesSpeech(step: ProcessStepLike): boolean {
  * **它说给你听的话也一律留在原处**——折叠行因此永远落在这段过程原来的位置，
  * 展开与否，读到的顺序都和它当时干活的顺序一样。
  *
- * 刻意不在此列的：过程中某次工具失败、正在跑的工具、还在流的思考、搜索结果、子任务进度——
+ * 刻意不在此列的：过程中某次工具失败、正在跑的工具、还在流的思考、搜索结果——
  * 这些全是过程，收进那一行里，跑着的时候由那一行代为播报。
+ * 伙计不在此列：派出和人一起留在外面，不收进这一行。
  */
 export function isPinnedProcessStep(step: ProcessStepLike): boolean {
   return pinnedBesidesSpeech(step) || !!messageBody(step)

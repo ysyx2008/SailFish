@@ -95,19 +95,37 @@ describe('isPinnedProcessStep', () => {
     expect(isPinnedProcessStep(step({ id: 'b', type: 'thinking', isStreaming: true }))).toBe(false)
   })
 
-  it('takes search results and sub-task progress inside — those are process, not something it hands you', () => {
+  it('takes search results inside — those are process, not something it hands you', () => {
     expect(isPinnedProcessStep(step({
       id: 's',
       type: 'tool_result',
       toolName: 'web_search',
       webSearchResults: [{ title: 'x' }],
     }))).toBe(false)
+  })
+
+  it('leaves colleagues outside, including the act of sending them', () => {
     expect(isPinnedProcessStep(step({
       id: 'd',
       type: 'tool_call',
       toolName: 'dispatch_agents',
       subAgents: [{ id: 'sa1', status: 'running' }],
-    }))).toBe(false)
+    }))).toBe(true)
+    expect(isPinnedProcessStep(step({
+      id: 'd0',
+      type: 'tool_call',
+      toolName: 'dispatch_agents',
+    }))).toBe(true)
+    expect(isPinnedProcessStep(step({
+      id: 'f',
+      type: 'tool_call',
+      toolName: 'followup_agent',
+    }))).toBe(true)
+    expect(isPinnedProcessStep(step({
+      id: 'r',
+      type: 'tool_result',
+      toolName: 'dispatch_agents',
+    }))).toBe(true)
   })
 })
 
@@ -287,7 +305,7 @@ describe('foldProcessSteps', () => {
     expect(segs[0].steps.map(ref => ref.part)).toEqual(['full'])
   })
 
-  it('folds search results and sub-task progress with the rest of the work', () => {
+  it('folds search results, and leaves the dispatch itself outside with the people', () => {
     const steps = [
       thinkingMessage('m1', '先搜再分派'),
       step({ id: 't1', type: 'tool_call', toolName: 'web_search' }),
@@ -305,11 +323,14 @@ describe('foldProcessSteps', () => {
       }),
     ]
     const segs = foldProcessSteps(steps, { enabled: true })
-    expect(segs.map(s => s.kind)).toEqual(['fold'])
+    expect(segs.map(s => s.kind)).toEqual(['fold', 'open'])
+    expect(segs[1].kind === 'open' && segs[1].steps.map(ref => ref.step.id)).toEqual(['d1'])
     expect(readingOrder(segs)).toEqual(steps.map(s => s.id))
+    if (segs[0].kind !== 'fold') throw new Error('expected fold')
+    expect(segs[0].fold.liveColleagueCount).toBeUndefined()
   })
 
-  it('keeps the fold live while colleagues are still running even after dispatch returned', () => {
+  it('does not leave a colleague count inside the fold once the people are outside', () => {
     const steps = [
       thinkingMessage('m1', '先派人'),
       step({
@@ -324,8 +345,10 @@ describe('foldProcessSteps', () => {
       }),
     ]
     const segs = foldProcessSteps(steps, { enabled: true })
-    expect(segs[0].kind === 'fold' && segs[0].fold.live).toBe(true)
-    expect(segs[0].kind === 'fold' && segs[0].fold.liveColleagueCount).toBe(2)
+    expect(segs.map(s => s.kind)).toEqual(['fold', 'open'])
+    expect(segs[0].kind === 'fold' && segs[0].fold.live).toBe(false)
+    expect(segs[0].kind === 'fold' && segs[0].fold.liveColleagueCount).toBeUndefined()
+    expect(segs[1].kind === 'open' && segs[1].steps[0].step.id).toBe('d1')
   })
 
   it('marks the stretch in flight as live and says what it is busy with', () => {
