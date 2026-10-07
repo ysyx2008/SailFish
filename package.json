@@ -66,7 +66,7 @@
     "@larksuiteoapi/node-sdk": "^1.59.0",
     "@milkdown/crepe": "^7.22.2",
     "@milkdown/kit": "^7.22.2",
-    "@modelcontextprotocol/sdk": "^1.24.3",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "@mozilla/readability": "^0.6.0",
     "@napi-rs/canvas": "^0.1.95",
     "@questi0nm4rk/shell-ast": "^0.8.0",
