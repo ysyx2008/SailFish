@@ -51,12 +51,24 @@ export function registerBuiltinProviders(): void {
 }
 
 /**
+ * 内置 TTS provider id 集合。
+ * 插件 provider 与内置 provider 共用同一个池，插件不得占用这些 id，
+ * 撤销逻辑也凭此避免按裸 id 误删内置 provider。
+ * 新增内置 provider 时必须同步维护此列表（与 registerBuiltinProviders 保持一致）。
+ */
+const BUILTIN_TTS_PROVIDER_IDS = ['openai-compat', 'volcengine-tts', 'dashscope-tts']
+
+export function isBuiltinProvider(id: string): boolean {
+  return BUILTIN_TTS_PROVIDER_IDS.includes(id)
+}
+
+/**
  * 注册 provider（插件或内置）
  */
 export function registerProvider(provider: TtsProvider): void {
   if (providers.has(provider.id)) {
     log.warn(`TTS provider "${provider.id}" already registered, overwriting`)
-    providers.get(provider.id)?.dispose?.()
+    safeDispose(providers.get(provider.id))
   }
   providers.set(provider.id, provider)
   log.info(`TTS provider registered: ${provider.id} (${provider.name})`)
@@ -68,9 +80,19 @@ export function registerProvider(provider: TtsProvider): void {
 export function removeProvider(id: string): void {
   const provider = providers.get(id)
   if (provider) {
-    provider.dispose?.()
+    safeDispose(provider)
     providers.delete(id)
     log.info(`TTS provider removed: ${id}`)
+  }
+}
+
+/** dispose 不影响注册/撤销流程本身（插件的 dispose 抛错只记录） */
+function safeDispose(provider: TtsProvider | undefined): void {
+  if (!provider?.dispose) return
+  try {
+    provider.dispose()
+  } catch (err) {
+    log.error(`TTS provider "${provider.id}" dispose failed:`, err)
   }
 }
 

@@ -64,6 +64,65 @@ export async function installPlugin(spec: string, userDataPath: string): Promise
 }
 
 /**
+ * 精确定位某个包名对应的已安装插件目录（含 manifest 才算插件目录）。
+ * 支持普通包名和 scoped 包名（"@scope/name"）。
+ * 找不到（未安装或不是插件包）返回 null。
+ */
+export function resolveInstalledPluginDir(packageName: string, userDataPath: string): string | null {
+  if (!packageName || typeof packageName !== 'string') return null
+  // win32 下 path.join 会把反斜杠当分隔符归一化，穿越检测必须同时按两种分隔符切分
+  const segments = packageName.split(/[\\/]/).filter(s => s.length > 0 && s !== '.')
+  if (segments.some(s => s === '..')) return null
+
+  const pluginDir = path.join(userDataPath, 'plugins', 'node_modules', ...segments)
+  if (fs.existsSync(path.join(pluginDir, 'openclaw.plugin.json'))) {
+    return pluginDir
+  }
+  return null
+}
+
+/**
+ * 读取插件目录 package.json 的 name 字段（npm uninstall 的真实包名）。
+ * manifest id 与 npm 包名没有相等契约（scoped 包、改名包），卸载时必须以这里解析的为准。
+ * 目录无 package.json 或解析失败返回 null。
+ */
+export function readPackageNameFromDir(pluginDir: string): string | null {
+  try {
+    const pkgPath = path.join(pluginDir, 'package.json')
+    if (!fs.existsSync(pkgPath)) return null
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { name?: unknown }
+    if (typeof pkg.name === 'string' && pkg.name.length > 0) return pkg.name
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 判断插件目录是否位于 npm 安装区（{userData}/plugins/node_modules 之下）。
+ * 手动放置在 plugins/ 根目录的插件不归 npm 管，不能通过 npm uninstall 卸载。
+ */
+export function isNpmInstalledPluginDir(pluginDir: string, userDataPath: string): boolean {
+  const nodeModulesDir = path.join(userDataPath, 'plugins', 'node_modules')
+  const rel = path.relative(nodeModulesDir, pluginDir)
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)
+}
+
+/**
+ * 校验 package.json 读出的包名确实对应给定插件目录（回环解析）。
+ * 防止被篡改/不规范的 package.json 把 npm uninstall 指向同一 plugins 项目中的其他包。
+ * win32 路径大小写不敏感比较，POSIX 严格比较。
+ */
+export function packageNameMatchesDir(packageName: string, pluginDir: string, userDataPath: string): boolean {
+  const resolved = resolveInstalledPluginDir(packageName, userDataPath)
+  if (!resolved) return false
+  if (process.platform === 'win32') {
+    return resolved.toLowerCase() === pluginDir.toLowerCase()
+  }
+  return resolved === pluginDir
+}
+
+/**
  * 卸载插件
  */
 export async function uninstallPlugin(packageName: string, userDataPath: string): Promise<InstallResult> {

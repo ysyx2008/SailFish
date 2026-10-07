@@ -48,6 +48,30 @@ api.registerHttpRoute(method: string, path: string, handler: RouteHandler): void
 
 `registerHttpRoute` 的路径会被强制约束在 `/api/plugins/{pluginId}/` 命名空间内（相对路径自动加前缀）；核心 API 保留路径（`/api/chat`、`/api/auth`、`/api/health`、`/hooks`、`/chat` 及子路径）和其他插件的命名空间一律拒绝注册。同一 method + path 只允许一个 owner，冲突时保留先注册者并记录错误。
 
+### 生命周期与撤销契约
+
+插件注册物装配到外部服务（AiService provider、Gateway route、TTS provider、IM channel）后，生命周期操作必须立即反映到这些服务，不要求重启：
+
+| 操作 | 工具/Hook | provider/route/TTS/IM channel | `onUnload()` |
+|------|-----------|-------------------------------|--------------|
+| enable | 生效 | 装配 | 不调用 |
+| disable | 移除 | 当前会话内立即撤销 | 不调用 |
+| uninstall | 移除 | 先撤销，再执行 npm uninstall | 调用（同一加载实例最多一次） |
+| 应用退出 | — | IM adapter 停止 | 所有已加载插件（含禁用）各调用一次 |
+
+关键约束：
+
+- 禁用/卸载的撤销是会话内**立即尽力执行**：providers/routes/tts/im 各段独立容错（一段失败不影响其他段）。失败段列表的准确含义：段级异常 + IM 段内**装配失败**（createAdapter / registerAdapter / start 抛错或超时）；platform 冲突拒绝不计入（既定争用状态，自动重试）；撤销侧 stop 类清理失败仅记录日志不计入。失败段带操作上下文（操作类型 + 插件 id）合并记录错误日志；禁用靠持久化 enabled=false、卸载靠包删除，重启后均不再激活；
+- uninstall 在运行时撤销存在失败段时仍会继续删除安装包（撤销失败不回滚、不阻塞；残留为内存对象，保留文件也无法补救清理），破坏性操作前在日志中显式警告；「重启后不再加载」的保证以 npm 删除成功为前提；
+- **uninstall IPC 以 pluginId 为参数**（渲染层插件列表的 manifest id）；npm 包名由主进程从插件根目录 package.json 解析（manifest id 与包名没有相等契约，scoped/改名包由此正确处理），且包名必须**回环解析回同一插件目录**（防止被篡改/不规范的 name 把 npm uninstall 指向其他包，校验失败早退：不动运行时、不动文件）；registry 未命中时兼容按包名调用。手动放置（非 `plugins/node_modules` 下）的插件返回结构化失败——文件删除只能手动，见 `docs/plugin-dev-guide.md`；
+- 禁用最后一个插件时，外部服务的空快照同样要同步（否则旧快照残留）；
+- 插件 TTS provider 与内置 provider 共池：插件不得占用内置 id（装配时跳过并告警），撤销只按 owner 删除插件自己的注册；
+- IM adapter 同一 platform 只允许一个注册，后来者拒绝并记录（避免遮蔽前者、令其失去管理引用而无法停止）；被拒的 channel 在后续同步事件（enable/disable/install/uninstall）中自动重试，platform 释放后自动接管。装配语义为 `createAdapter → registerAdapter → start()`（注册是事务式的：回调绑定全部成功后才生效，绑定抛错不留下占用 platform 的未跟踪实例；3s 预算；start 失败/超时回滚注册并不入跟踪，下次同步重试；**超时后晚到完成的 start 由监护逻辑立即 stop 该实例**，不产生任何地方都不再持有引用的活动连接），撤销语义为移除注册、立即切断入站回调并调用 `stop()`——契约遵从的插件获得完整 start/stop 生命周期。插件实现的 `stop()` 必须幂等可重入，且容忍在 `start()` 未完成或已失败时被调用：超时回滚与晚到完成监护可能先后调用两次（第一次作用于未完成的 start，多为 no-op；第二次拆除晚建立的资源）；
+- 插件清理动作（`onUnload`、adapter `start()`/`stop()`）有 3 秒预算：挂起时放行后续流程，`onUnload` 超时随 `PluginUnloadResult.error` 返回失败但插件仍被移除；
+- `onUnload()` 抛错被记录，并随 registry 层的运行时卸载结果（`PluginUnloadResult.error`）返回；npm 卸载的返回结果不受影响（当前 uninstall IPC 对 onUnload 失败只记录日志）。错误不回滚卸载、不影响其他插件；
+- `onUnload()` 的「最多一次」以**加载实例**为单位：不重启重新安装/重新加载会产生新的加载实例，其 `onUnload()` 会被再次调用（插件实现应按"每个生命周期清理一次"的语义编写清理逻辑）；
+- uninstall 的 npm 文件删除不能代替运行时卸载，顺序是「撤销注册物 → onUnload → npm uninstall」。
+
 ### ToolRegistration 签名
 
 ```typescript

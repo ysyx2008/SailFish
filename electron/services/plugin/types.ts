@@ -203,6 +203,13 @@ export interface PluginEntry {
   onUnload?(): void | Promise<void>
 }
 
+/** 运行时卸载结果。插件不在 registry 中视为失败并携带原因 */
+export interface PluginUnloadResult {
+  success: boolean
+  /** onUnload 抛错时的错误信息，或插件未加载的原因 */
+  error?: string
+}
+
 // ==================== Loaded Plugin ====================
 
 /** 已加载的插件运行时信息 */
