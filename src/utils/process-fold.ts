@@ -187,8 +187,8 @@ function hasColleagues(step: ProcessStepLike): boolean {
 
 /** 除了"说了话"，还有别的理由留在外面吗 */
 function pinnedBesidesSpeech(step: ProcessStepLike): boolean {
-  // 替我审批是过程：放过的收进去点开能翻到；没放过的由确认卡自己站在外面
-  if (step.type === 'auto_review') return false
+  // 放过的收进去，点开能翻到。没放过的留在外面：上面写着为什么交给你，拍板时要能看见
+  if (step.type === 'auto_review') return step.autoReview?.outcome === 'handed_over'
   if (PINNED_STEP_TYPES.has(step.type)) return true
   if (step.riskLevel === 'dangerous' || step.riskLevel === 'blocked') return true
   if (step.toolName && PINNED_TOOLS.has(step.toolName)) return true
@@ -204,6 +204,7 @@ function pinnedBesidesSpeech(step: ProcessStepLike): boolean {
  *
  * 刻意不在此列的：过程中某次工具失败、正在跑的工具、还在流的思考、搜索结果——
  * 这些全是过程，收进那一行里，跑着的时候由那一行代为播报。
+ * 替你放行了的说明也收进去；没放过、交回你的那一行不在此列，要和确认卡一起留在外面。
  * 伙计不在此列：派出和人一起留在外面，不收进这一行。
  */
 export function isPinnedProcessStep(step: ProcessStepLike): boolean {

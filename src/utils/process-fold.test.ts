@@ -84,6 +84,18 @@ describe('isPinnedProcessStep', () => {
       toolName: 'write_text_file',
       riskLevel: 'moderate',
     }))).toBe(false)
+    expect(isPinnedProcessStep(step({
+      id: 'r3',
+      type: 'auto_review',
+      toolName: 'exec',
+      autoReview: { outcome: 'approved' },
+    }))).toBe(false)
+    expect(isPinnedProcessStep(step({
+      id: 'r4',
+      type: 'auto_review',
+      toolName: 'exec',
+      autoReview: { outcome: 'handed_over' },
+    }))).toBe(true)
   })
 
   it('takes a mid-task tool failure inside — trying three times and succeeding is still success', () => {
@@ -255,9 +267,8 @@ describe('foldProcessSteps', () => {
       }),
     ]
     const segs = foldProcessSteps(steps, { enabled: true })
-    expect(segs.map(s => s.kind)).toEqual(['open', 'fold'])
-    expect(segs[0].kind === 'open' && segs[0].steps.map(ref => ref.step.id)).toEqual(['t1'])
-    expect(segs[1].kind === 'fold' && segs[1].fold.stepIds).toEqual(['r1'])
+    expect(segs.map(s => s.kind)).toEqual(['open'])
+    expect(segs[0].kind === 'open' && segs[0].steps.map(ref => ref.step.id)).toEqual(['t1', 'r1'])
   })
 
   it('keeps a dangerous action outside when you allowed it yourself', () => {
@@ -313,8 +324,8 @@ describe('foldProcessSteps', () => {
     const segs = foldProcessSteps(steps, { enabled: true })
     expect(segs.map(s => s.kind)).toEqual(['fold', 'open', 'fold'])
     expect(segs[0].kind === 'fold' && segs[0].fold.stepIds).toEqual(['t1'])
-    expect(segs[1].kind === 'open' && segs[1].steps.map(ref => ref.step.id)).toEqual(['t2'])
-    expect(segs[2].kind === 'fold' && segs[2].fold.stepIds).toEqual(['r2', 'r1'])
+    expect(segs[1].kind === 'open' && segs[1].steps.map(ref => ref.step.id)).toEqual(['t2', 'r2'])
+    expect(segs[2].kind === 'fold' && segs[2].fold.stepIds).toEqual(['r1'])
   })
 
   it('folds even a one-step task — the shape never changes', () => {
