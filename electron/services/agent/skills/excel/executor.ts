@@ -10,6 +10,7 @@ import type { ToolExecutorConfig } from '../../tool-executor'
 import { t } from '../../i18n'
 import { getTerminalStateService } from '../../../terminal-state.service'
 import { isAutoApproveWorkspacePath } from '../../tools/file'
+import { documentConversationId, snapshotOfficeFileBeforeOverwrite } from '../office-file-backup'
 import { riskNeedsConfirm } from '../../command-audit/confirm-policy'
 import {
   isSessionOpen,
@@ -892,22 +893,7 @@ async function excelSave(
   }
 
   try {
-    // 创建备份（带本地时间戳，重名时自动加序号）
-    if (fs.existsSync(filePath)) {
-      const now = new Date()
-      const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`
-      const ext = path.extname(filePath)
-      const baseName = filePath.slice(0, -ext.length)
-      
-      // 查找不重名的备份路径
-      let backupPath = `${baseName}_${timestamp}${ext}.bak`
-      let counter = 2
-      while (fs.existsSync(backupPath)) {
-        backupPath = `${baseName}_${timestamp}_${counter}${ext}.bak`
-        counter++
-      }
-      fs.copyFileSync(filePath, backupPath)
-    }
+    snapshotOfficeFileBeforeOverwrite(filePath, documentConversationId(executor))
 
     await session.workbook.xlsx.writeFile(filePath)
     session.dirty = false
@@ -1078,21 +1064,6 @@ async function excelFromMarkdown(
       closeSession(filePath, false)
     }
 
-    // 已存在文件则备份
-    if (fs.existsSync(filePath)) {
-      const now = new Date()
-      const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`
-      const ext = path.extname(filePath)
-      const baseName = filePath.slice(0, -ext.length)
-      let backupPath = `${baseName}_${timestamp}${ext}.bak`
-      let counter = 2
-      while (fs.existsSync(backupPath)) {
-        backupPath = `${baseName}_${timestamp}_${counter}${ext}.bak`
-        counter++
-      }
-      fs.copyFileSync(filePath, backupPath)
-    }
-
     const ExcelJS = await import('exceljs')
     const workbook = new ExcelJS.Workbook()
     workbook.calcProperties = { fullCalcOnLoad: true }
@@ -1137,6 +1108,7 @@ async function excelFromMarkdown(
       fs.mkdirSync(dir, { recursive: true })
     }
 
+    snapshotOfficeFileBeforeOverwrite(filePath, documentConversationId(executor))
     await workbook.xlsx.writeFile(filePath)
 
     const output = t('excel.created_from_md', { path: filePath, sheets: sheets.length }) + '\n\n' + sheetSummaries.join('\n')
@@ -2512,6 +2484,7 @@ async function excelMergeTemplate(
   }
 
   try {
+    snapshotOfficeFileBeforeOverwrite(outputPath, documentConversationId(executor))
     const result = await mergeXlsxFile(templatePath, outputPath, data, { onMissing, sheet })
 
     if (onMissing === 'error' && result.missing.length > 0) {

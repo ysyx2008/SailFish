@@ -447,6 +447,15 @@ export abstract class Agent {
     this._workerLabel = label
   }
 
+  /** 文档备份算在哪一场。伙计跟主人这场，一直走到最外层。 */
+  private documentConversationId(): string | undefined {
+    if (this._isSubAgent && this._confirmationHost) {
+      return this._confirmationHost.documentConversationId()
+    }
+    const id = this.getSessionId()?.trim()
+    return id ? id : undefined
+  }
+
   seedOpeningMessages(messages: AiMessage[]): void {
     this._seedMessages = messages
   }
@@ -4893,6 +4902,7 @@ export abstract class Agent {
       agentId: this.getConversationAgentId(),
       isSubAgent: this._isSubAgent,
       getSessionId: () => this.getSessionId(),
+      getDocumentConversationId: () => this.documentConversationId(),
       terminalService: this.services.unifiedTerminalService || this.services.ptyService as any,
       hostProfileService: this.services.hostProfileService,
       mcpService: this.services.mcpService,

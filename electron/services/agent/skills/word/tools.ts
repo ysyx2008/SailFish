@@ -373,11 +373,9 @@ word_delete_paragraph({
     type: 'function',
     function: {
       name: 'word_save',
-      description: `保存已打开的 Word 文档的修改。
+      description: `保存已打开的 Word 文档的修改。保存后会话仍然保持，可以继续操作。
 
-**注意**：
-- 保存前会自动创建备份（带时间戳）
-- 保存后会话仍然保持，可以继续操作`,
+覆盖本场对话开始前已存在的文件时，程序会在旁边留下一份原文件（原名加 .bak）。本场新建的不留。同一场里再次保存不会再留。`,
       parameters: {
         type: 'object',
         properties: {
@@ -499,7 +497,7 @@ word_delete_paragraph({
     function: {
       name: 'word_from_markdown',
       description: `【推荐】从 Markdown 快速生成或重写 Word 文档。一次调用完成整个文档，效率远高于逐段 word_add。
-如果目标文件已存在，会自动备份后覆盖——可用于"读取→修改→重写"的编辑场景。
+目标文件已存在时会覆盖，可用于读取后整篇重写。若它在本场对话开始前就存在，程序会先在旁边留下一份原文件（原名加 .bak）；本场新建的，或本场已经留过的，不再多留。
 
 **输入方式**：
 - 直接传入 markdown：适合动态生成内容后立刻转 Word

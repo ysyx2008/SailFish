@@ -44,6 +44,11 @@ export interface ToolExecutorConfig {
   agentId?: string
   /** 当前会话 id（todo_create 自动记对话出处） */
   getSessionId?: () => string | undefined
+  /**
+   * 文档备份归属的那场用户对话。
+   * 伙计跟主人这场，不跟自己的临时会话，避免把「动手前」那份备份盖成改过的稿。
+   */
+  getDocumentConversationId?: () => string | undefined
   /** 是否为子 Agent 执行上下文（dispatch_agents 派生的子任务）。硬墙直接拦；高风险跟主人这场同一道门 */
   isSubAgent?: boolean
   /** 统一终端服务（支持 PTY 和 SSH） */

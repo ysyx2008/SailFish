@@ -38,6 +38,7 @@ import type { ToolExecutorConfig } from '../../tool-executor'
 import { t } from '../../i18n'
 import { getTerminalStateService } from '../../../terminal-state.service'
 import { isAutoApproveWorkspacePath } from '../../tools/file'
+import { documentConversationId, snapshotOfficeFileBeforeOverwrite } from '../office-file-backup'
 import { riskNeedsConfirm } from '../../command-audit/confirm-policy'
 import {
   isSessionOpen,
@@ -1664,15 +1665,7 @@ async function wordSave(
   }
 
   try {
-    // 创建备份（仅当原文件存在且尚无备份时）
-    if (fs.existsSync(filePath)) {
-      const ext = path.extname(filePath)
-      const baseName = filePath.slice(0, -ext.length)
-      const backupPath = `${baseName}${ext}.bak`
-      if (!fs.existsSync(backupPath)) {
-        fs.copyFileSync(filePath, backupPath)
-      }
-    }
+    snapshotOfficeFileBeforeOverwrite(filePath, documentConversationId(executor))
 
     if (session.zip && session.documentXml) {
       // XML 编辑模式：直接写回修改后的 XML
@@ -2657,16 +2650,6 @@ async function wordFromMarkdown(
       closeSession(filePath, false)
     }
 
-    // 如果文件已存在，创建备份
-    if (fs.existsSync(filePath)) {
-      const ext = path.extname(filePath)
-      const baseName = filePath.slice(0, -ext.length)
-      const backupPath = `${baseName}${ext}.bak`
-      if (!fs.existsSync(backupPath)) {
-        fs.copyFileSync(filePath, backupPath)
-      }
-    }
-
     // 转换 Markdown 为 docx
     if (!markdown) {
       return { success: false, output: '', error: t('word.markdown_input_required') }
@@ -2683,7 +2666,7 @@ async function wordFromMarkdown(
       fs.mkdirSync(dir, { recursive: true })
     }
     
-    // 写入文件
+    snapshotOfficeFileBeforeOverwrite(filePath, documentConversationId(executor))
     fs.writeFileSync(filePath, buffer)
 
     const styleInfo = typeof styleConfig === 'string' 
@@ -3234,6 +3217,7 @@ async function wordExportPdf(
       // 自动保存
       const doc = session.document
       const buffer = await Packer.toBuffer(doc)
+      snapshotOfficeFileBeforeOverwrite(resolvedDocxPath, documentConversationId(executor))
       fs.writeFileSync(resolvedDocxPath, buffer)
       markSaved(resolvedDocxPath)
     }
@@ -3348,6 +3332,7 @@ async function wordMergeTemplate(
   }
 
   try {
+    snapshotOfficeFileBeforeOverwrite(outputPath, documentConversationId(executor))
     const result = await mergeDocxFile(templatePath, outputPath, data, { onMissing })
 
     // 严格模式：缺失字段报错

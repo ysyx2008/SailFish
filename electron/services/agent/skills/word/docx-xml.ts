@@ -27,7 +27,7 @@ export async function readDocx(filePath: string): Promise<{ zip: JSZip; document
 
 /**
  * 将修改后的 document.xml 写回 docx 文件
- * 注意：备份由调用方（wordSave）统一管理
+ * 覆盖已有文件前的备份由调用方在写入前处理
  */
 export async function writeDocx(filePath: string, zip: JSZip, documentXml: string): Promise<void> {
   // 更新 document.xml

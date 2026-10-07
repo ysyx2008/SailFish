@@ -79,11 +79,9 @@ export const excelTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'excel_save',
-      description: `保存已打开的 Excel 文件的修改。
+      description: `保存已打开的 Excel 文件的修改。保存后会话仍然保持，可以继续操作。
 
-**注意**：
-- 保存前会自动创建备份（带时间戳）
-- 保存后会话仍然保持，可以继续操作`,
+覆盖本场对话开始前已存在的文件时，程序会在旁边留下一份原文件（原名加 .bak）。本场新建的不留。同一场里再次保存不会再留。`,
       parameters: {
         type: 'object',
         properties: {
@@ -158,7 +156,7 @@ export const excelTools: ToolDefinition[] = [
 - 自动调整列宽
 - 表头加粗 + 底色 + 边框
 - 数字自动识别（不会变成文本）
-- 文件已存在时自动备份`,
+- 文件已存在时会覆盖。本场对话开始前就有的文件，程序会先留下一份原文件（原名加 .bak）；本场新建或已经留过的，不再多留`,
       parameters: {
         type: 'object',
         properties: {
