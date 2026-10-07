@@ -35,6 +35,29 @@ export function ensureInitialized(): void {
 }
 
 /**
+ * 内置 TTS provider 类：注册与内置 id 判定的唯一来源。
+ * 新增内置 provider 只需在这里加一项，注册和 id 保护同时生效。
+ */
+const BUILTIN_TTS_PROVIDER_CLASSES: ReadonlyArray<new () => TtsProvider> = [
+  OpenAICompatTtsProvider,
+  VolcengineTtsProvider,
+  DashScopeTtsProvider
+]
+
+/**
+ * 内置 TTS provider id 集合。
+ * 插件 provider 与内置 provider 共用同一个池，插件不得占用这些 id，
+ * 撤销逻辑也凭此避免按裸 id 误删内置 provider。
+ * 在模块加载时即从 provider 类算出，不依赖 registerBuiltinProviders() 是否已执行：
+ * 内置注册由 ensureInitialized() 懒触发，可能晚于插件装配（届时集合为空会让保护失效）。
+ */
+const BUILTIN_TTS_PROVIDER_IDS = new Set(BUILTIN_TTS_PROVIDER_CLASSES.map((P) => new P().id))
+
+export function isBuiltinProvider(id: string): boolean {
+  return BUILTIN_TTS_PROVIDER_IDS.has(id)
+}
+
+/**
  * 注册内置 provider
  */
 export function registerBuiltinProviders(): void {
@@ -43,23 +66,11 @@ export function registerBuiltinProviders(): void {
   setVolcengineSettingsGetter(getter)
   setDashScopeSettingsGetter(getter)
 
-  for (const P of [OpenAICompatTtsProvider, VolcengineTtsProvider, DashScopeTtsProvider]) {
+  for (const P of BUILTIN_TTS_PROVIDER_CLASSES) {
     const provider = new P()
     registerProvider(provider)
   }
   log.info(`Builtin TTS providers registered: ${providers.size}`)
-}
-
-/**
- * 内置 TTS provider id 集合。
- * 插件 provider 与内置 provider 共用同一个池，插件不得占用这些 id，
- * 撤销逻辑也凭此避免按裸 id 误删内置 provider。
- * 新增内置 provider 时必须同步维护此列表（与 registerBuiltinProviders 保持一致）。
- */
-const BUILTIN_TTS_PROVIDER_IDS = ['openai-compat', 'volcengine-tts', 'dashscope-tts']
-
-export function isBuiltinProvider(id: string): boolean {
-  return BUILTIN_TTS_PROVIDER_IDS.includes(id)
 }
 
 /**
