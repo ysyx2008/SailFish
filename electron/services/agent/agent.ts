@@ -5283,7 +5283,7 @@ export abstract class Agent {
     let autoReview: AutoReviewTrail | undefined
     if (this.canAutoReview(run, riskLevel, opts)) {
       try {
-        const review = await this.runAutoReview(run, toolName, toolArgs, riskLevel, displayName, reasons, place)
+        const review = await this.runAutoReview(run, toolName, toolArgs, riskLevel, displayName, reasons, toolCallId, place)
         if (review.kind === 'approved') return { approved: true }
         if (review.kind === 'cancelled' || run.aborted || place?.signal?.aborted) return { approved: false }
         autoReview = review.trail
@@ -5378,6 +5378,7 @@ export abstract class Agent {
     riskLevel: RiskLevel,
     displayName?: string,
     reasons?: string[],
+    toolCallId?: string,
     place?: WorkerConfirmPlace,
   ): Promise<{ kind: 'approved' } | { kind: 'cancelled' } | { kind: 'handed_over'; trail: AutoReviewTrail }> {
     const reviewer = this.getAutoReviewer()
@@ -5392,6 +5393,7 @@ export abstract class Agent {
       content: t('autoReview.reviewing', { action }),
       toolName,
       toolArgs,
+      toolCallId,
       riskLevel,
       isStreaming: true,
     })

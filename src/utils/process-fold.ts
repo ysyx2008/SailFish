@@ -92,6 +92,10 @@ export interface ProcessStepLike {
   echartsOption?: unknown
   webSearchResults?: unknown[]
   subAgents?: unknown[]
+  /** 同一次工具调用的编号，用来把「替你放行」和它放行的那一步对上 */
+  toolCallId?: string
+  /** 替我审批的结论。没有结论且还在看，也算还没交回你 */
+  autoReview?: { outcome?: 'approved' | 'handed_over' }
 }
 
 /**
@@ -223,9 +227,56 @@ function toStepRefs<T extends ProcessStepLike>(steps: ReadonlyArray<T>): Process
   return refs
 }
 
-function isPinnedRef(ref: ProcessStepRef): boolean {
+function isPinnedRef(ref: ProcessStepRef, releasedByReview: ReadonlySet<string>): boolean {
   if (ref.part === 'thinking') return false
+  // 替你放行过（或还在看）的那一步，风险再高也是过程，不单独留在外面
+  if (releasedByReview.has(ref.step.id)) return false
   return isPinnedProcessStep(ref.step)
+}
+
+/**
+ * 本来要你确认的那一步，若替你放行了、或还在看，就不要因为它风险高而留在外面。
+ * 交回你拍板的不在此列——那一步仍留在外面，跟确认卡在一起。
+ * 你自己点允许的没有放行记录，同样留在外面。
+ *
+ * 对得上优先用同一次调用的编号；老记录没有编号时，按出现顺序把放行记录配给
+ * 它前面还没配上的同名高风险动作。
+ */
+function stepsReleasedByAutoReview(steps: ReadonlyArray<ProcessStepLike>): Set<string> {
+  const released = new Set<string>()
+  const byCallId = new Map<string, string>()
+  const queue = new Map<string, string[]>()
+
+  const take = (review: ProcessStepLike): string | undefined => {
+    if (review.toolCallId) {
+      const id = byCallId.get(review.toolCallId)
+      if (id) {
+        const waiting = queue.get(review.toolName ?? '')
+        if (waiting) {
+          const index = waiting.indexOf(id)
+          if (index >= 0) waiting.splice(index, 1)
+        }
+        return id
+      }
+    }
+    return queue.get(review.toolName ?? '')?.shift()
+  }
+
+  for (const step of steps) {
+    if (step.type === 'tool_call' && step.riskLevel === 'dangerous') {
+      if (step.toolCallId) byCallId.set(step.toolCallId, step.id)
+      const name = step.toolName ?? ''
+      const waiting = queue.get(name) ?? []
+      waiting.push(step.id)
+      queue.set(name, waiting)
+      continue
+    }
+    if (step.type !== 'auto_review') continue
+    const matched = take(step)
+    if (!matched || step.autoReview?.outcome === 'handed_over') continue
+    released.add(matched)
+  }
+  return released
 }
 
 function liveColleagueCountOf(step: ProcessStepLike): number {
@@ -402,9 +453,10 @@ export function foldProcessSteps<T extends ProcessStepLike>(
     return [{ kind: 'open', steps: steps.map(step => ({ step, part: 'full' as const })) }]
   }
 
+  const releasedByReview = stepsReleasedByAutoReview(steps)
   const runs: { pinned: boolean; refs: ProcessStepRef<T>[] }[] = []
   for (const ref of toStepRefs(steps)) {
-    const pinned = isPinnedRef(ref)
+    const pinned = isPinnedRef(ref, releasedByReview)
     const last = runs[runs.length - 1]
     if (last && last.pinned === pinned) last.refs.push(ref)
     else runs.push({ pinned, refs: [ref] })

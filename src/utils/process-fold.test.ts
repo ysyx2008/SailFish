@@ -196,6 +196,127 @@ describe('foldProcessSteps', () => {
     expect(segs[1].kind === 'open' && segs[1].steps.map(ref => ref.step.id)).toEqual(['t1'])
   })
 
+  it('folds the action itself once auto-review has let it through', () => {
+    const steps = [
+      thinkingMessage('m1', '按你说的覆盖那份稿'),
+      step({
+        id: 't1',
+        type: 'tool_call',
+        toolName: 'word_from_markdown',
+        riskLevel: 'dangerous',
+        toolCallId: 'c1',
+      }),
+      step({
+        id: 'r1',
+        type: 'auto_review',
+        toolName: 'word_from_markdown',
+        toolCallId: 'c1',
+        autoReview: { outcome: 'approved' },
+      }),
+      step({ id: 't2', type: 'tool_call', toolName: 'read_file' }),
+    ]
+    const segs = foldProcessSteps(steps, { enabled: true })
+    expect(segs.map(s => s.kind)).toEqual(['fold'])
+    if (segs[0].kind !== 'fold') throw new Error('expected fold')
+    expect(segs[0].fold.stepIds).toEqual(['m1', 't1', 'r1', 't2'])
+    expect(segs[0].fold.counts).toEqual({ write: 1, read: 1 })
+  })
+
+  it('folds an approved command even when the old record has no call id', () => {
+    const steps = [
+      step({ id: 't1', type: 'tool_call', toolName: 'exec', riskLevel: 'dangerous' }),
+      step({
+        id: 'r1',
+        type: 'auto_review',
+        toolName: 'exec',
+        autoReview: { outcome: 'approved' },
+      }),
+    ]
+    const segs = foldProcessSteps(steps, { enabled: true })
+    expect(segs.map(s => s.kind)).toEqual(['fold'])
+    expect(readingOrder(segs)).toEqual(['t1', 'r1'])
+  })
+
+  it('keeps the action outside while it is still waiting on you', () => {
+    const steps = [
+      step({
+        id: 't1',
+        type: 'tool_call',
+        toolName: 'exec',
+        riskLevel: 'dangerous',
+        toolCallId: 'c1',
+      }),
+      step({
+        id: 'r1',
+        type: 'auto_review',
+        toolName: 'exec',
+        toolCallId: 'c1',
+        autoReview: { outcome: 'handed_over' },
+      }),
+    ]
+    const segs = foldProcessSteps(steps, { enabled: true })
+    expect(segs.map(s => s.kind)).toEqual(['open', 'fold'])
+    expect(segs[0].kind === 'open' && segs[0].steps.map(ref => ref.step.id)).toEqual(['t1'])
+    expect(segs[1].kind === 'fold' && segs[1].fold.stepIds).toEqual(['r1'])
+  })
+
+  it('keeps a dangerous action outside when you allowed it yourself', () => {
+    const steps = [
+      step({ id: 't1', type: 'tool_call', toolName: 'exec', riskLevel: 'dangerous' }),
+    ]
+    const segs = foldProcessSteps(steps, { enabled: true })
+    expect(segs.map(s => s.kind)).toEqual(['open'])
+  })
+
+  it('holds the action inside while auto-review is still looking', () => {
+    const steps = [
+      step({
+        id: 't1',
+        type: 'tool_call',
+        toolName: 'exec',
+        riskLevel: 'dangerous',
+        toolCallId: 'c1',
+        success: undefined,
+      }),
+      step({
+        id: 'r1',
+        type: 'auto_review',
+        toolName: 'exec',
+        toolCallId: 'c1',
+        isStreaming: true,
+      }),
+    ]
+    const segs = foldProcessSteps(steps, { enabled: true })
+    expect(segs.map(s => s.kind)).toEqual(['fold'])
+    expect(segs[0].kind === 'fold' && segs[0].fold.live).toBe(true)
+  })
+
+  it('pairs two risky calls with the review that actually covered each one', () => {
+    const steps = [
+      step({ id: 't1', type: 'tool_call', toolName: 'exec', riskLevel: 'dangerous', toolCallId: 'c1' }),
+      step({ id: 't2', type: 'tool_call', toolName: 'exec', riskLevel: 'dangerous', toolCallId: 'c2' }),
+      step({
+        id: 'r2',
+        type: 'auto_review',
+        toolName: 'exec',
+        toolCallId: 'c2',
+        autoReview: { outcome: 'handed_over' },
+      }),
+      step({
+        id: 'r1',
+        type: 'auto_review',
+        toolName: 'exec',
+        toolCallId: 'c1',
+        autoReview: { outcome: 'approved' },
+      }),
+    ]
+    const segs = foldProcessSteps(steps, { enabled: true })
+    expect(segs.map(s => s.kind)).toEqual(['fold', 'open', 'fold'])
+    expect(segs[0].kind === 'fold' && segs[0].fold.stepIds).toEqual(['t1'])
+    expect(segs[1].kind === 'open' && segs[1].steps.map(ref => ref.step.id)).toEqual(['t2'])
+    expect(segs[2].kind === 'fold' && segs[2].fold.stepIds).toEqual(['r2', 'r1'])
+  })
+
   it('folds even a one-step task — the shape never changes', () => {
     const steps = [step({ id: 't1', type: 'tool_call', toolName: 'execute_command' })]
     const segs = foldProcessSteps(steps, { enabled: true })
