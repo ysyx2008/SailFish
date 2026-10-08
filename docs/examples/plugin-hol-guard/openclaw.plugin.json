@@ -1,0 +1,8 @@
+{
+  "id": "hol-guard",
+  "name": "HOL Guard",
+  "description": "Checks SailFish command execution with HOL Guard before the tool runs.",
+  "version": "0.1.0",
+  "configSchema": {},
+  "enabledByDefault": true
+}
