@@ -3,6 +3,7 @@ import { HttpsProxyAgent } from 'https-proxy-agent'
 import { SocksProxyAgent } from 'socks-proxy-agent'
 import * as https from 'https'
 import * as http from 'http'
+import { StringDecoder } from 'string_decoder'
 import { t } from './agent/i18n'
 import { stripCompositionMarkers } from './agent/context-composition'
 import { getAiDebugService } from './ai-debug.service'
@@ -22,6 +23,40 @@ import {
 export type { AiModelFailoverNotice } from './ai-model-failover'
 
 const log = createLogger('AI')
+
+/**
+ * 按块拼接 HTTP 响应正文。
+ * 汉字等字符占多个字节，块边界可能落在字中间；直接 toString 会把没到齐的字节换成 U+FFFD。
+ * 这里把半个字留到下一块再解码。只接受原始字节：字符串会绕过这段缓冲，把半个字留在错误的位置。
+ */
+export function createUtf8ChunkDecoder(): {
+  push(chunk: Buffer): string
+  end(): string
+} {
+  const decoder = new StringDecoder('utf8')
+  return {
+    push(chunk) {
+      return decoder.write(chunk)
+    },
+    end() {
+      return decoder.end()
+    },
+  }
+}
+
+/**
+ * 把一块字节并进尚未换行的残行，取出已经成行的部分。
+ * 半个字留在解码器里，不写进残行。流结束时不补残行：换行是单字节，被扣住的只能是没写完的最后一行。
+ */
+export function pushUtf8Lines(
+  decoder: ReturnType<typeof createUtf8ChunkDecoder>,
+  pending: string,
+  chunk: Buffer,
+): { pending: string; lines: string[] } {
+  const parts = (pending + decoder.push(chunk)).split('\n')
+  const rest = parts.pop() ?? ''
+  return { pending: rest, lines: parts }
+}
 
 // AI 请求超时配置（毫秒）
 const AI_TIMEOUT = {
@@ -1544,9 +1579,11 @@ export class AiService {
         }
 
         const req = httpModule.request(options, (res) => {
+          const utf8 = createUtf8ChunkDecoder()
           let data = ''
-          res.on('data', (chunk) => { data += chunk })
+          res.on('data', (chunk: Buffer) => { data += utf8.push(chunk) })
           res.on('end', () => {
+            data += utf8.end()
             const statusCode = res.statusCode ?? 0
             const contentType = res.headers['content-type'] ?? ''
 
@@ -1643,6 +1680,7 @@ export class AiService {
       }, AI_TIMEOUT.TOTAL)
 
       const req = httpModule.request(options, (res) => {
+        const utf8 = createUtf8ChunkDecoder()
         let data = ''
         
         // 设置 socket 空闲超时
@@ -1652,10 +1690,11 @@ export class AiService {
           complete(() => reject(toApiRequestError(new Error('ETIMEDOUT'))))
         })
 
-        res.on('data', (chunk) => {
-          data += chunk
+        res.on('data', (chunk: Buffer) => {
+          data += utf8.push(chunk)
         })
         res.on('end', () => {
+          data += utf8.end()
           if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
             complete(() => {
               try {
@@ -1903,12 +1942,14 @@ export class AiService {
         resetIdleTimeout()
 
         if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+          const utf8 = createUtf8ChunkDecoder()
           let errorData = ''
-          res.on('data', (chunk) => { 
-            errorData += chunk
+          res.on('data', (chunk: Buffer) => { 
+            errorData += utf8.push(chunk)
             resetIdleTimeout()
           })
           res.on('end', () => {
+            errorData += utf8.end()
             const parsed = parseApiError(errorData)
             if (isContextLengthApiFailure(parsed.code, parsed.message)) {
               complete(() => onError(t('error.context_length_exceeded')))
@@ -1933,18 +1974,17 @@ export class AiService {
           return
         }
 
+        const utf8 = createUtf8ChunkDecoder()
         let buffer = ''
 
         res.on('data', (chunk: Buffer) => {
           // 收到数据，重置空闲超时
           resetIdleTimeout()
 
-          buffer += chunk.toString()
-          const lines = buffer.split('\n')
-          // 保留最后一个可能不完整的行
-          buffer = lines.pop() || ''
+          const next = pushUtf8Lines(utf8, buffer, chunk)
+          buffer = next.pending
 
-          for (const line of lines) {
+          for (const line of next.lines) {
             const trimmedLine = line.trim()
             if (!trimmedLine) continue
 
@@ -2553,12 +2593,14 @@ export class AiService {
 
         // 处理 HTTP 错误
         if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+          const utf8 = createUtf8ChunkDecoder()
           let errorData = ''
-          res.on('data', (chunk) => { 
-            errorData += chunk
+          res.on('data', (chunk: Buffer) => { 
+            errorData += utf8.push(chunk)
             resetIdleTimeout()
           })
           res.on('end', () => {
+            errorData += utf8.end()
             if (isStale()) return
             if (settled || abortController.signal.aborted) {
               complete(() => onDone({
@@ -2645,6 +2687,7 @@ export class AiService {
           return
         }
 
+        const utf8 = createUtf8ChunkDecoder()
         let buffer = ''
 
         res.on('data', (chunk: Buffer) => {
@@ -2657,11 +2700,10 @@ export class AiService {
             return
           }
 
-          buffer += chunk.toString()
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
+          const next = pushUtf8Lines(utf8, buffer, chunk)
+          buffer = next.pending
 
-          for (const line of lines) {
+          for (const line of next.lines) {
             if (abortController.signal.aborted || isCompleted) return
             if (line.startsWith('data: ')) {
               const data = line.slice(6).trim()
