@@ -10,7 +10,7 @@ import type { ToolExecutorConfig } from '../../tool-executor'
 import { t } from '../../i18n'
 import { getTerminalStateService } from '../../../terminal-state.service'
 import { isAutoApproveWorkspacePath } from '../../tools/file'
-import { documentConversationId, snapshotOfficeFileBeforeOverwrite } from '../office-file-backup'
+import { documentConversationId, officeFileCreatedInConversation, snapshotOfficeFileBeforeOverwrite } from '../office-file-backup'
 import { riskNeedsConfirm } from '../../command-audit/confirm-policy'
 import {
   isSessionOpen,
@@ -865,8 +865,9 @@ async function excelSave(
 
   const fileExists = fs.existsSync(filePath)
   const inWorkspace = isAutoApproveWorkspacePath(filePath)
-  // 对齐 write_text_file：工作区外覆盖已有文件视为 dangerous；工作区 / 新建为 safe
-  const isDangerousOverwrite = fileExists && !inWorkspace
+  // 工作区外覆盖已有文件为高风险；工作区、新建、本场自己建的再覆盖为低风险
+  const createdHere = officeFileCreatedInConversation(filePath, documentConversationId(executor))
+  const isDangerousOverwrite = fileExists && !inWorkspace && !createdHere
   const riskLevel = isDangerousOverwrite ? 'dangerous' : 'safe'
 
   executor.addStep({
@@ -1024,7 +1025,9 @@ async function excelFromMarkdown(
 
   const fileExists = fs.existsSync(filePath)
   const inWorkspace = isAutoApproveWorkspacePath(filePath)
-  const isDangerousOverwrite = fileExists && !inWorkspace
+  // 工作区外覆盖已有文件为高风险；工作区、新建、本场自己建的再覆盖为低风险
+  const createdHere = officeFileCreatedInConversation(filePath, documentConversationId(executor))
+  const isDangerousOverwrite = fileExists && !inWorkspace && !createdHere
   const riskLevel = isDangerousOverwrite ? 'dangerous' : 'safe'
 
   // tool_call 卡片的 content 与 buildPreToolCallDisplay('excel_from_markdown') 共享同一前缀

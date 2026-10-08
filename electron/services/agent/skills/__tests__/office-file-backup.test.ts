@@ -5,6 +5,7 @@ import * as path from 'path'
 import {
   forgetOfficeBackupMemoryForTest,
   officeBackupPath,
+  officeFileCreatedInConversation,
   resetOfficeBackupStateForTest,
   setOfficeBackupStateDirForTest,
   snapshotOfficeFileBeforeOverwrite,
@@ -88,5 +89,20 @@ describe('snapshotOfficeFileBeforeOverwrite', () => {
     snapshotOfficeFileBeforeOverwrite(fp, undefined)
 
     expect(fs.readFileSync(officeBackupPath(fp), 'utf-8')).toBe('原来的')
+  })
+
+  it('只把本场新建的文件记成自己的，开始前已有的不算', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sft-office-bak-'))
+    const created = file('新建.docx')
+    const existing = file('原来.docx')
+    fs.writeFileSync(existing, '原来的')
+
+    snapshotOfficeFileBeforeOverwrite(created, 'conv-1')
+    snapshotOfficeFileBeforeOverwrite(existing, 'conv-1')
+
+    expect(officeFileCreatedInConversation(created, 'conv-1')).toBe(true)
+    expect(officeFileCreatedInConversation(existing, 'conv-1')).toBe(false)
+    expect(officeFileCreatedInConversation(created, 'conv-2')).toBe(false)
+    expect(officeFileCreatedInConversation(created, undefined)).toBe(false)
   })
 })

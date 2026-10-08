@@ -106,6 +106,19 @@ export function documentConversationId(executor: ExecutorConversationSource): st
 }
 
 /**
+ * 这场对话里、文件还不存在时记下来的路径。
+ * 之后再覆盖按低风险，与新建相同。对不上这场、或这场开始前就有的文件，返回 false。
+ */
+export function officeFileCreatedInConversation(
+  filePath: string,
+  conversationId: string | undefined
+): boolean {
+  const id = conversationId?.trim()
+  if (!id) return false
+  return stateFor(id).created.has(normalize(filePath))
+}
+
+/**
  * 在覆盖写入之前调用。
  * 文件还不存在时记为本场新建，调用方随后创建它。
  * 没有对话 id 时不改已有的 .bak，避免把别的对话留下的原件盖掉。
