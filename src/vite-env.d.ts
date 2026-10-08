@@ -786,6 +786,15 @@ interface Window {
       onStep: (callback: (data: { agentId: string; ptyId?: string; step: AgentStep }) => void) => () => void
       onRunning: (callback: (data: { agentId: string; ptyId?: string; userTask: string }) => void) => () => void
       onTaskCreated: (callback: (data: { agentId: string; title: string; brief: string; fullAuto: boolean }) => void) => () => void
+      onTaskContinue: (callback: (data: {
+        agentId: string
+        message: string
+        title: string
+        terminalType: 'local' | 'ssh' | 'assistant'
+        sessionId?: string
+        sessionStartTime?: number
+        sshHost?: string
+      }) => void) => () => void
       onStepRemoved: (callback: (data: { agentId: string; ptyId?: string; stepId: string }) => void) => () => void
       onContextBar: (callback: (data: { agentId: string; ptyId?: string; contextBar: import('@shared/types').AgentContextBar }) => void) => () => void
       onModelFailover: (callback: (data: {

@@ -102,6 +102,22 @@ export async function manageTasks(
         return finish(ok(t('taskmgr.stopped', { title: result.title ?? taskId })), t('taskmgr.action.stop'))
       }
 
+      case 'instruct': {
+        const message = typeof args.message === 'string' ? args.message.trim() : ''
+        if (!taskId) return finish(fail(t('taskmgr.missing_param', { param: 'task_id' })), t('taskmgr.action.instruct'))
+        if (!message) return finish(fail(t('taskmgr.missing_param', { param: 'message' })), t('taskmgr.action.instruct'))
+        const result = await supervisor.instructTask(taskId, message)
+        if (!result.ok) {
+          const msg = result.reason === 'terminal_closed'
+            ? t('taskmgr.terminal_closed', { title: result.title ?? taskId })
+            : t('taskmgr.task_not_found', { taskId })
+          return finish(fail(msg), t('taskmgr.action.instruct'))
+        }
+        log.info(`联络再交代: task=${taskId}, delivered=${result.delivered}`)
+        const key = result.delivered === 'now' ? 'taskmgr.instruct_now' : 'taskmgr.instruct_next'
+        return finish(ok(t(key, { title: result.title ?? taskId })), t('taskmgr.action.instruct'))
+      }
+
       default:
         return finish(fail(t('taskmgr.unknown_action', { action: action || '(empty)' })), t('taskmgr.step'))
     }

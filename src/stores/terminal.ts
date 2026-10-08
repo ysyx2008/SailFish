@@ -651,7 +651,8 @@ export const useTerminalStore = defineStore('terminal', () => {
       sessionId?: string  // SSH 会话 ID（用于重连）
     },
     shell?: string,
-    pendingTask?: string
+    pendingTask?: string,
+    reopen?: { id: string; activate?: boolean; title?: string }
   ): Promise<string> {
     if (type === 'local' && !isWorkbenchAvailable('local')) {
       throw new Error('Local terminal workbench is disabled by OEM features')
@@ -659,7 +660,10 @@ export const useTerminalStore = defineStore('terminal', () => {
     if (type === 'ssh' && !isWorkbenchAvailable('ssh')) {
       throw new Error('SSH terminal workbench is disabled by OEM features')
     }
-    const id = uuidv4()
+    if (reopen?.id && tabs.value.some(t => t.id === reopen.id)) {
+      return reopen.id
+    }
+    const id = reopen?.id || uuidv4()
     
     // 生成唯一标题
     const t = i18n.global.t
@@ -678,6 +682,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     } else {
       title = t('tabs.sshTerminal')
     }
+    if (reopen?.title) title = reopen.title
     
     const tab: TerminalTab = {
       id,
@@ -700,9 +705,11 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
 
     tabs.value.push(tab)
-    activeTabId.value = id
-    lastTerminalTabId.value = id
-    terminalPlaceActive.value = false
+    if (reopen?.activate !== false) {
+      activeTabId.value = id
+      lastTerminalTabId.value = id
+      terminalPlaceActive.value = false
+    }
 
     if (pendingTask) {
       pendingSchedulerTasks.value[id] = pendingTask

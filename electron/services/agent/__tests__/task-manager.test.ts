@@ -20,6 +20,7 @@ function makeSupervisor(overrides: Partial<TaskSupervisor> = {}): TaskSupervisor
     createTask: vi.fn().mockResolvedValue({ agentKey: 'assistant-new' }),
     confirmTask: vi.fn().mockReturnValue({ ok: true, title: '部署服务' }),
     stopTask: vi.fn().mockReturnValue({ ok: true, title: '长跑任务' }),
+    instructTask: vi.fn().mockResolvedValue({ ok: true, title: '查日志', delivered: 'next' }),
     ...overrides,
   } as unknown as TaskSupervisor
 }
@@ -108,5 +109,17 @@ describe('manage_tasks', () => {
     const supervisor = makeSupervisor()
     const result = await manageTasks({ action: 'explode' }, makeExecutor(supervisor))
     expect(result.success).toBe(false)
+  })
+
+  it('instruct 把这一句交给监督器', async () => {
+    const supervisor = makeSupervisor()
+    const missing = await manageTasks({ action: 'instruct', task_id: 'tab-1' }, makeExecutor(supervisor))
+    expect(missing.success).toBe(false)
+    const result = await manageTasks(
+      { action: 'instruct', task_id: 'tab-1', message: '再补一段' },
+      makeExecutor(supervisor)
+    )
+    expect(result.success).toBe(true)
+    expect(supervisor.instructTask).toHaveBeenCalledWith('tab-1', '再补一段')
   })
 })

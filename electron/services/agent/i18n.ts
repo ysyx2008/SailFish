@@ -1678,7 +1678,7 @@ const translations = {
     // 任务管理（manage_tasks，仅联络 Agent）
     'taskmgr.step': '任务管理',
     'taskmgr.not_available': '任务管理能力不可用',
-    'taskmgr.unknown_action': '未知的 action：{action}，支持 list / inspect / create / confirm / stop',
+    'taskmgr.unknown_action': '未知的 action：{action}，支持 list / inspect / create / instruct / confirm / stop',
     'taskmgr.missing_param': '缺少参数：{param}',
     'taskmgr.task_not_found': '未找到任务：{taskId}。先用 list 查看当前任务的 task_id。',
     'taskmgr.settled': '任务「{title}」已经结束，不在运行，没法再传达确认或让它停。',
@@ -1687,6 +1687,7 @@ const translations = {
     'taskmgr.action.create': '创建任务',
     'taskmgr.action.confirm': '传达确认决定',
     'taskmgr.action.stop': '停止任务',
+    'taskmgr.action.instruct': '再交代',
     'taskmgr.list_empty': '当前没有任务。',
     'taskmgr.list_header': '当前任务（{count} 个，待确认优先）：',
     'taskmgr.status_pending': '等待确认',
@@ -1712,6 +1713,9 @@ const translations = {
     'taskmgr.confirm_stale': '该确认已不存在（可能用户已在任务卡片上处理，或任务已继续）。可用 list 查看最新状态。',
     'taskmgr.stopped': '已停止任务「{title}」。',
     'taskmgr.not_running': '任务「{title}」当前未在运行。',
+    'taskmgr.instruct_now': '已把这句交给正在进行的任务「{title}」，它会当场接着做。',
+    'taskmgr.instruct_next': '已让任务「{title}」接着做这句，仍是原来那场。',
+    'taskmgr.terminal_closed': '任务「{title}」是远程终端里的那场，窗口已经不在了，没法重新连上再交代。打开那个终端后再说。',
 
     // 编程技能
     'coding.tool_open_project': '打开项目',
@@ -3477,7 +3481,7 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
     // Task management (manage_tasks, companion only)
     'taskmgr.step': 'Manage tasks',
     'taskmgr.not_available': 'Task management is not available',
-    'taskmgr.unknown_action': 'Unknown action: {action}. Supported: list / inspect / create / confirm / stop',
+    'taskmgr.unknown_action': 'Unknown action: {action}. Supported: list / inspect / create / instruct / confirm / stop',
     'taskmgr.missing_param': 'Missing parameter: {param}',
     'taskmgr.task_not_found': 'Task not found: {taskId}. Use list to get current task_ids.',
     'taskmgr.settled': 'Task "{title}" has already finished and is not running, so it cannot be confirmed or stopped.',
@@ -3486,6 +3490,7 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
     'taskmgr.action.create': 'Create task',
     'taskmgr.action.confirm': 'Relay confirmation',
     'taskmgr.action.stop': 'Stop task',
+    'taskmgr.action.instruct': 'Add an instruction',
     'taskmgr.list_empty': 'No tasks right now.',
     'taskmgr.list_header': 'Current tasks ({count}, pending confirmation first):',
     'taskmgr.status_pending': 'awaiting confirmation',
@@ -3511,6 +3516,9 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
     'taskmgr.confirm_stale': 'That confirmation no longer exists (the user may have handled it on the task card, or the task moved on). Use list for the latest state.',
     'taskmgr.stopped': 'Task "{title}" stopped.',
     'taskmgr.not_running': 'Task "{title}" is not running.',
+    'taskmgr.instruct_now': 'Sent this to the running task "{title}". It will pick it up right away.',
+    'taskmgr.instruct_next': 'Task "{title}" will continue with this, still the same task.',
+    'taskmgr.terminal_closed': 'Task "{title}" was on a remote terminal whose window is gone, so it cannot be reconnected for another instruction. Open that terminal and say it again.',
 
     // Coding skill
     'coding.tool_open_project': 'Open project',

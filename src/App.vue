@@ -489,6 +489,7 @@ let cleanupWatchEnsureTab: (() => void) | null = null
 let cleanupWatchProactiveMessage: (() => void) | null = null
 let cleanupWatchActivateMessage: (() => void) | null = null
 let cleanupAgentTaskCreated: (() => void) | null = null
+let cleanupAgentTaskContinue: (() => void) | null = null
 let cleanupAgentRunning: (() => void) | null = null
 let cleanupAgentCompleteForProactive: (() => void) | null = null
 let cleanupAgentErrorForTabAttention: (() => void) | null = null
@@ -838,6 +839,78 @@ onMounted(async () => {
     }).catch(err => {
       log.warn(`[TaskSupervisor] 交办任务启动异常 (${data.agentId}):`, err)
     })
+  })
+
+  // 联络再交代：原来那场接着做。窗口还在就往那场送；助手或本机终端窗口不在就接回来。
+  cleanupAgentTaskContinue = window.electronAPI.agent.onTaskContinue(async (data) => {
+    log.debug(`[TaskSupervisor] onTaskContinue: agentId=${data.agentId}, terminalType=${data.terminalType}`)
+    let tab = terminalStore.tabs.find(t => t.agentId === data.agentId || t.id === data.agentId)
+    const alreadyOpen = !!tab
+    if (!tab && data.terminalType === 'assistant') {
+      const tabId = terminalStore.createAssistantTab({
+        agentId: data.agentId,
+        title: data.title,
+        isRemote: false,
+        activate: false
+      })
+      terminalStore.markAssistantSkipOnboarding(tabId)
+      tab = terminalStore.tabs.find(t => t.id === tabId)
+    }
+    if (!tab && data.terminalType === 'local') {
+      try {
+        const tabId = await terminalStore.createTab('local', undefined, undefined, undefined, {
+          id: data.agentId,
+          activate: false,
+          title: data.title
+        })
+        tab = terminalStore.tabs.find(t => t.id === tabId)
+      } catch (err) {
+        log.warn(`[TaskSupervisor] 接回本机终端失败 (${data.agentId}):`, err)
+        return
+      }
+    }
+    if (!tab) {
+      log.warn(`[TaskSupervisor] 没有可接着做的窗口 (${data.agentId}, ${data.terminalType})`)
+      return
+    }
+    if (!tab.agentState) {
+      tab.agentState = { isRunning: false, steps: [], agentId: tab.agentId || tab.id }
+    }
+    if (data.sessionId) tab.agentState.sessionId = data.sessionId
+    if (data.sessionStartTime) tab.agentState.sessionStartTime = data.sessionStartTime
+    if (data.title) tab.agentState.title = data.title
+    const runConfig = alreadyOpen ? undefined : { executionMode: configStore.executionMode }
+    const session = {
+      ...(data.sessionId ? { sessionId: data.sessionId } : {}),
+      ...(data.sessionStartTime ? { sessionStartTime: data.sessionStartTime } : {}),
+    }
+    if (tab.type === 'assistant' && tab.agentId) {
+      void window.electronAPI.agent.runStandalone(
+        tab.agentId,
+        data.message,
+        {
+          terminalOutput: [],
+          systemInfo: getLocalSystemInfo(),
+          terminalType: 'assistant',
+          ...session,
+        },
+        runConfig
+      ).catch(err => log.warn(`[TaskSupervisor] 助手接着做失败 (${data.agentId}):`, err))
+      return
+    }
+    void window.electronAPI.agent.run(
+      tab.id,
+      data.message,
+      {
+        ptyId: tab.ptyId,
+        terminalOutput: [],
+        systemInfo: tab.systemInfo ?? getLocalSystemInfo(),
+        terminalType: tab.type === 'ssh' ? 'ssh' : 'local',
+        ...(data.sshHost ? { sshHost: data.sshHost } : {}),
+        ...session,
+      },
+      runConfig
+    ).catch(err => log.warn(`[TaskSupervisor] 终端接着做失败 (${data.agentId}):`, err))
   })
 
   // Watch desktop 输出：确保助手 tab 存在，后续 steps 通过标准 agent:step 事件流入
@@ -1670,6 +1743,7 @@ onUnmounted(() => {
   cleanupWatchProactiveMessage?.()
   cleanupWatchActivateMessage?.()
   cleanupAgentTaskCreated?.()
+  cleanupAgentTaskContinue?.()
   cleanupAgentRunning?.()
   cleanupAgentCompleteForProactive?.()
   cleanupAgentNeedConfirmGlobal?.()

@@ -12,7 +12,7 @@ export const COMPANION_WORKBENCH_AGENT_TOOLS = [
     type: 'function',
     function: {
       name: MANAGE_TASKS,
-      description: `【任务管理】查看和管理任务 Agent（查看列表/近况、创建、停止、传达确认决定）。
+      description: `【任务管理】查看和管理任务 Agent（查看列表/近况、创建、再交代、停止、传达确认决定）。管的是这台电脑上的所有任务，不限联络自己交办的。
 
 action 说明：
 - list：列出当前所有任务的摘要（标题、状态、待确认详情、task_id）。
@@ -22,17 +22,21 @@ action 说明：
   用户还在这条对话里。确认和复命会由系统自动回到这条线。
   未设置 full_auto 时，危险操作先由独立评审员对照这场任务里交代的话决定放不放，看不准再问用户。
   full_auto=true 表示全自动执行（危险操作也不再逐条确认）——**仅当用户明确说"全自动/不用问我/直接跑"时才可设置**。
+- instruct：往一场已经存在的任务里再交代一句。需要 task_id 和 message。
+  它还在跑时，这句当场送进那场，按新的话接着做，也算这场里交代过的话。
+  这场已经停了，或只在最近的历史里：仍是原来那场，接着做，不另开。
+  message 只给那场看，不要引用联络里的其他对话。远程终端那场如果窗口已经不在，送不进去。
 - confirm：把用户对危险操作的批准/拒绝传达给正在等待确认的任务。需要 task_id 和 tool_call_id（从确认通知或 list 输出中获取），approve=true 批准 / false 拒绝。
   **只传达用户的明确决定，绝不自行批准。**
 - stop：停止执行中的任务（不删除会话）。需要 task_id。仅在用户明确要求停止时使用。
 
-典型流程：用户要求做事 → create 创建任务 → 任务完成或需要确认时系统会通知 → 用户表态后用 confirm 传达。`,
+典型流程：用户要求做事 → create 创建任务，或对已有任务 instruct 再交代 → 任务完成或需要确认时系统会通知 → 用户表态后用 confirm 传达。`,
       parameters: {
         type: 'object',
         properties: {
           action: {
             type: 'string',
-            enum: ['list', 'inspect', 'create', 'confirm', 'stop'],
+            enum: ['list', 'inspect', 'create', 'instruct', 'confirm', 'stop'],
             description: '要执行的操作'
           },
           task_id: {
@@ -58,6 +62,10 @@ action 说明：
           full_auto: {
             type: 'boolean',
             description: 'create 专用：全自动执行（仅用户显式声明时才为 true）'
+          },
+          message: {
+            type: 'string',
+            description: 'instruct 专用：再交代的这一句（只给这场任务看）'
           }
         },
         required: ['action']

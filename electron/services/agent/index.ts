@@ -668,6 +668,24 @@ export class AgentService {
     })
   }
 
+  /**
+   * 同一场接着做下一句。新实例沿用设置里的执行档，不把默认的严格档盖上去。
+   */
+  async continueTask(agentKey: string, message: string, context: AgentContext): Promise<string> {
+    const existed = this.hasAgent(agentKey)
+    if (!existed) {
+      const agent = this.getOrCreateAgent(agentKey)
+      const mode = this.services.configService?.get('executionMode')
+      if (mode === 'strict' || mode === 'relaxed' || mode === 'free') {
+        agent.updateConfig({ executionMode: mode })
+      }
+    }
+    return this.run(agentKey, message, {
+      ...context,
+      cwd: context.cwd || (context.terminalType === 'ssh' ? '~' : os.homedir()),
+    })
+  }
+
   // ==================== 生命周期管理 ====================
 
   /**

@@ -3,7 +3,7 @@
  *
  * 联络（companion）作为任务 Agent 的总管（Supervisor 模式）：
  * - 查询：枚举任务列表 / 查看单个任务近况（manage_tasks 工具的 list/inspect）
- * - 操作：创建任务、停止任务、传达用户对危险确认的批准/拒绝（create/stop/confirm）
+ * - 操作：创建任务、停止任务、再交代、传达用户对危险确认的批准/拒绝（create/stop/instruct/confirm）
  * - 回流：任务 Agent 的待确认 / 完成 / 失败 / 停止事件 → 联络线（proactive 通道）
  *
  * 信任模型（转述制）：联络永不自行批准危险操作——只把确认请求转述给用户，
@@ -104,6 +104,10 @@ export interface TaskSupervisorHost {
   getAgent(agentKey: string): SailFish | undefined
   confirmToolCall(agentKey: string, toolCallId: string, approved: boolean): boolean
   abort(agentKey: string): boolean
+  /** 往正在跑的任务里送一句补充（当场听见） */
+  addUserMessage(agentKey: string, message: string): boolean
+  /** 同一场接着做：空闲或已从历史找回时开下一轮 */
+  continueTask(agentKey: string, message: string, context: AgentContext): Promise<string>
   runAssistant(
     agentId: string,
     userMessage: string,
@@ -195,6 +199,69 @@ export class TaskSupervisor {
     const title = this.resolveTaskTitle(agentKey)
     const stopped = this.host.abort(agentKey)
     return stopped ? { ok: true, title } : { ok: false, reason: 'not_running', title }
+  }
+
+  /**
+   * 往一场已经存在的任务里再交代一句。
+   * 还在跑：当场送进去。已经停了，或只剩历史：仍是原来那场，接着做。
+   * 远程终端窗口已经不在时送不进去。
+   */
+  async instructTask(agentKey: string, message: string): Promise<{
+    ok: boolean
+    reason?: 'task_not_found' | 'terminal_closed'
+    title?: string
+    delivered?: 'now' | 'next'
+  }> {
+    const text = message.trim()
+    if (!text || !isManagedTaskKey(agentKey)) return { ok: false, reason: 'task_not_found' }
+
+    const agent = this.host.getAgent(agentKey)
+    const record = this.historyRecord(agentKey)
+    if (!agent && !record) return { ok: false, reason: 'task_not_found' }
+
+    const title = agent
+      ? this.resolveTaskTitle(agentKey)
+      : this.titleFromHistory(record?.title, record?.userTask ?? '', agentKey)
+    if (agent?.getRunStatus()?.isRunning) {
+      const delivered = this.host.addUserMessage(agentKey, text)
+      return delivered
+        ? { ok: true, title, delivered: 'now' }
+        : { ok: false, reason: 'task_not_found', title }
+    }
+
+    const terminalType = agent?.getTerminalType() || record?.terminalType || 'assistant'
+    if (!agent && terminalType === 'ssh') {
+      return { ok: false, reason: 'terminal_closed', title }
+    }
+
+    const sessionId = agent?.getSessionId() || record?.id
+    const context: AgentContext = {
+      terminalOutput: [],
+      systemInfo: { os: getLocalOS(), shell: getDefaultShell() },
+      terminalType,
+      cwd: terminalType === 'ssh' ? '~' : os.homedir(),
+      remoteChannel: 'desktop',
+      ...(sessionId ? { sessionId } : {}),
+      ...(record?.timestamp ? { sessionStartTime: record.timestamp } : {}),
+      ...(record?.sshHost ? { sshHost: record.sshHost } : {}),
+    }
+
+    if (this.notifyFrontendTaskContinue({
+      agentId: agentKey,
+      message: text,
+      title,
+      terminalType,
+      sessionId,
+      sessionStartTime: record?.timestamp,
+      sshHost: record?.sshHost,
+    })) {
+      return { ok: true, title, delivered: 'next' }
+    }
+
+    this.host.continueTask(agentKey, text, context).catch(err => {
+      log.error(`再交代失败 (${agentKey}):`, err)
+    })
+    return { ok: true, title, delivered: 'next' }
   }
 
   /**
@@ -447,16 +514,39 @@ export class TaskSupervisor {
     brief: string
     fullAuto: boolean
   }): boolean {
+    return this.sendToFrontend('agent:taskCreated', payload)
+  }
+
+  /** 通知前端在原来那场上接着做；无窗口时由调用方直驱 */
+  private notifyFrontendTaskContinue(payload: {
+    agentId: string
+    message: string
+    title: string
+    terminalType: TerminalType
+    sessionId?: string
+    sessionStartTime?: number
+    sshHost?: string
+  }): boolean {
+    return this.sendToFrontend('agent:taskContinue', payload)
+  }
+
+  private sendToFrontend(channel: string, payload: unknown): boolean {
     try {
       const electron = require('electron')
       const win = electron.BrowserWindow?.getAllWindows?.()?.[0]
       if (win && !win.isDestroyed()) {
-        win.webContents.send('agent:taskCreated', payload)
+        win.webContents.send(channel, payload)
         return true
       }
     } catch (e) {
-      log.debug('notifyFrontendTaskCreated 不可用（CLI 或无窗口）:', e)
+      log.debug(`${channel} 不可用（CLI 或无窗口）:`, e)
     }
     return false
+  }
+
+  private historyRecord(agentKey: string) {
+    const record = this.host.getHistoryService()?.getLatestRecordByAgentKey(agentKey)
+    if (!record || record.agentKey !== agentKey || !isManagedTaskKey(record.agentKey)) return undefined
+    return record
   }
 }

@@ -2653,10 +2653,12 @@ export function useAgentMode(
   // 与 await 期间流入的 live step 按 id 去重合并（snapshot 是更旧的前缀，prepend 缺失部分）。
   const restoreBackgroundSessionIfNeeded = async () => {
     const tab = currentTab.value
-    if (!tab || tab.type !== 'assistant' || tab.isRemote) return
-    if (!tab.agentId || tab.agentId === COMPANION_TAB_AGENT_ID) return
+    if (!tab || tab.isRemote) return
+    const agentKey = tab.type === 'assistant' ? tab.agentId : tab.id
+    if (!agentKey || agentKey === COMPANION_TAB_AGENT_ID) return
+    if (tab.type !== 'assistant' && tab.type !== 'local' && tab.type !== 'ssh') return
     try {
-      const snapshot = await window.electronAPI.agent.getSessionSnapshot(tab.agentId)
+      const snapshot = await window.electronAPI.agent.getSessionSnapshot(agentKey)
       if (!snapshot) return
       const current = agentState.value?.steps ?? []
       const existingIds = new Set(current.map(s => s.id))
@@ -2668,7 +2670,7 @@ export function useAgentMode(
         }
       }
       if (snapshot.isRunning && agentState.value && !agentState.value.isRunning) {
-        terminalStore.setAgentRunning(currentTabId.value, true, tab.agentId)
+        terminalStore.setAgentRunning(currentTabId.value, true, agentKey)
       }
       if (snapshot.sessionId && agentState.value && !agentState.value.sessionId) {
         const liveTab = terminalStore.tabs.find(t => t.id === currentTabId.value)

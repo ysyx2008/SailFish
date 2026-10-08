@@ -1124,6 +1124,30 @@ const electronAPI = {
       }
     },
 
+    onTaskContinue: (callback: (data: {
+      agentId: string
+      message: string
+      title: string
+      terminalType: 'local' | 'ssh' | 'assistant'
+      sessionId?: string
+      sessionStartTime?: number
+      sshHost?: string
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: {
+        agentId: string
+        message: string
+        title: string
+        terminalType: 'local' | 'ssh' | 'assistant'
+        sessionId?: string
+        sessionStartTime?: number
+        sshHost?: string
+      }) => callback(data)
+      ipcRenderer.on('agent:taskContinue', handler)
+      return () => {
+        ipcRenderer.removeListener('agent:taskContinue', handler)
+      }
+    },
+
     // 监听 Agent 步骤移除（后端撤销了临时步骤，前端同步清除）
     onStepRemoved: (callback: (data: { agentId: string; ptyId?: string; stepId: string }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: { agentId: string; ptyId?: string; stepId: string }) => callback(data)
