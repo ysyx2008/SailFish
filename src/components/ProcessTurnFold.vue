@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ChevronRight } from 'lucide-vue-next'
 import { type ProcessFoldView } from '../utils/process-fold'
@@ -129,6 +129,46 @@ const elapsed = computed(() => {
   if (!sec) return t('ai.processFold.minutes', { n: min })
   return t('ai.processFold.minutesSeconds', { m: min, s: sec })
 })
+
+// 收起时不绘制里面的步骤。展开仍先放进 0 高度再撑开；收起立即卸掉，不做收起动画。
+// 已经展开着被重新挂上（滚出再滚回）时直接开着，不再重播撑开。
+const contentMounted = ref(props.expanded === true)
+const drawerOpen = ref(props.expanded === true)
+const drawerInstant = ref(false)
+let openGen = 0
+let openFrame = 0
+
+onUnmounted(() => {
+  if (openFrame) cancelAnimationFrame(openFrame)
+})
+
+watch(() => props.expanded === true, (open) => {
+  const gen = ++openGen
+  if (openFrame) {
+    cancelAnimationFrame(openFrame)
+    openFrame = 0
+  }
+  if (!open) {
+    drawerInstant.value = true
+    drawerOpen.value = false
+    contentMounted.value = false
+    void nextTick(() => {
+      if (gen === openGen) drawerInstant.value = false
+    })
+    return
+  }
+  drawerInstant.value = false
+  contentMounted.value = true
+  drawerOpen.value = false
+  void nextTick(() => {
+    if (gen !== openGen || props.expanded !== true) return
+    openFrame = requestAnimationFrame(() => {
+      openFrame = 0
+      if (gen !== openGen || props.expanded !== true) return
+      drawerOpen.value = true
+    })
+  })
+})
 </script>
 
 <template>
@@ -151,10 +191,10 @@ const elapsed = computed(() => {
       </span>
     </div>
 
-    <!-- 0fr → 1fr：不必预知内容高度就能平滑撑开 -->
-    <div class="process-fold__drawer" :class="{ open: expanded }">
+    <!-- 收起不挂步骤。点开后先以 0 高度挂上，下一帧再撑到内容高 -->
+    <div class="process-fold__drawer" :class="{ open: drawerOpen, instant: drawerInstant }">
       <div class="process-fold__drawer-inner">
-        <div class="process-fold__steps">
+        <div v-if="contentMounted" class="process-fold__steps">
           <slot />
         </div>
       </div>
@@ -269,6 +309,10 @@ const elapsed = computed(() => {
   display: grid;
   grid-template-rows: 0fr;
   transition: grid-template-rows 0.22s ease;
+}
+
+.process-fold__drawer.instant {
+  transition: none;
 }
 
 .process-fold__drawer.open {
