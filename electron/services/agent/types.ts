@@ -131,7 +131,7 @@ export interface PendingUserMessage {
   silent?: boolean
   /** 后台命令结束的通知：给模型看，不上墙，也不要在收场时当成用户的下一句排进队列 */
   backgroundNotice?: boolean
-  /** 这条里的字已经用来答过题。消息仍要交给模型，不能再拿去答下一题。 */
+  /** 这条已经用来结束过一次等待。消息仍要交给模型，不能再结束下一次等待。 */
   consumedAsReply?: boolean
 }
 

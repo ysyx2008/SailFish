@@ -18,6 +18,7 @@ import type { SkillSession } from '../skills'
 import type { McpToolSession } from '../mcp-tool-session'
 import type { TaskMemoryStore } from '../task-memory'
 import type { BackgroundWatch } from '../background-watch'
+import type { QueuedReplyTake } from '../pending-user-reply'
 
 // 错误分类
 export type ErrorCategory = 'transient' | 'permission' | 'not_found' | 'timeout' | 'fatal'
@@ -101,12 +102,12 @@ export interface ToolExecutorConfig {
   peekPendingUserMessage: () => string | undefined
   consumePendingUserMessage: () => string | undefined
   /**
-   * 题还开着时，抄出一条写了字的用来结题。
-   * 输入框来的整条仍留在队列里，作为追加消息交给模型。
-   * 没写字的不算回答。点选项是静默的，只结题、不留成追加消息。
-   * 没有这样的回答时返回 undefined。
+   * 题还开着时，看有没有能结束等待的。
+   * 点选项返回 answer，只结题、不留成追加消息。
+   * 输入框来的返回 message：整条仍留在队列里，作为追加消息交给模型。
+   * 没开口时返回 undefined。
    */
-  consumePendingUserReply?: () => string | undefined
+  consumePendingUserReply?: () => QueuedReplyTake | undefined
   getRealtimeTerminalOutput: () => string[]
   // Plan/Todo 功能
   getCurrentPlan: () => AgentPlan | undefined

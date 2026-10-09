@@ -4948,7 +4948,7 @@ export abstract class Agent {
       consumePendingUserReply: () => {
         const taken = takeQueuedUserReply(run.pendingUserMessages)
         run.pendingUserMessages = taken.queue
-        return taken.reply
+        return taken.take
       },
       getRealtimeTerminalOutput: () => [...run.realtimeOutputBuffer],
       getCurrentPlan: () => this.currentPlan,

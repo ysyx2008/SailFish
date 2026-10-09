@@ -1,6 +1,6 @@
 /**
- * 题开着时从输入框发图、再写字：图不算回答，字用来结题，字和图都还在，下一轮模型能看见。
- * 点选项只结题，不另冒一条消息。
+ * 题开着时从输入框发图或写字：等待停下来，内容原样进下一轮，不写成用户回复。
+ * 点选项仍是直接作答，不另冒一条消息。
  * 真实 SailFish.run() + 脚本化模型。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
@@ -157,7 +157,7 @@ function askCall() {
   }
 }
 
-describe('题开着时输入框发图和写字', () => {
+describe('题开着时输入框发来的由模型自己看', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-ask-reply-e2e-'))
   })
@@ -165,12 +165,12 @@ describe('题开着时输入框发图和写字', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('只发图不算回答，也不选推荐项；之后写的字结题，字和图都进下一轮', async () => {
+  it('只发图就结束等待，不选推荐项，图在下一轮', async () => {
     const calls: Msg[][] = []
     const services = makeServices(({ messages }) => {
       calls.push(messages)
       if (calls.length === 1) return askCall()
-      return { content: '收到，按你写的再调一版' }
+      return { content: '看到这张了' }
     })
     const agent = newAgent(services, 'e2e-ask-image')
     const steps: AgentStep[] = []
@@ -179,34 +179,53 @@ describe('题开着时输入框发图和写字', () => {
     })
 
     await waitFor(() => latestAsking(steps)?.askingStatus === 'waiting')
-    expect(calls).toHaveLength(1)
-
     agent.addUserMessage('', undefined, undefined, [IMG])
-
-    // 提问每 2 秒看一次队列。等到下一轮看过，仍不该结题，也不该再叫模型。
-    await sleep(2500)
-    expect(agent.isRunning()).toBe(true)
-    expect(calls).toHaveLength(1)
-    expect(latestAsking(steps)?.askingStatus).toBe('waiting')
-    expect(steps.some(s => s.type === 'user_supplement' && s.images?.includes(IMG))).toBe(true)
-
-    agent.addUserMessage('再调一版')
     const result = await runPromise
 
-    expect(result).toContain('再调一版')
+    expect(result).toContain('看到这张了')
     expect(calls).toHaveLength(2)
     expect(latestAsking(steps)?.askingStatus).toBe('received')
-    expect(latestAsking(steps)?.askingAnswer).toBe('再调一版')
+    expect(latestAsking(steps)?.askingAnswer).toBeUndefined()
 
     const seen = calls[1]
     const toolText = textOf(seen, 'tool')
-    expect(toolText).toContain('用户回复：再调一版')
+    expect(toolText).toContain('没有点选项')
     expect(toolText).not.toContain('使用默认值')
+    expect(toolText).not.toContain('用户回复')
+    expect(seen.some(m => m.role === 'user' && m.images?.includes(IMG))).toBe(true)
+    expect(steps.some(s => s.type === 'user_supplement' && s.images?.includes(IMG))).toBe(true)
+  }, 20000)
 
-    const supplement = seen.filter(m => m.role === 'user' && m.images?.includes(IMG))
+  it('写了字也只是一条消息，不写成用户回复', async () => {
+    const calls: Msg[][] = []
+    const services = makeServices(({ messages }) => {
+      calls.push(messages)
+      if (calls.length === 1) return askCall()
+      return { content: '收到，按你写的再调一版' }
+    })
+    const agent = newAgent(services, 'e2e-ask-text')
+    const steps: AgentStep[] = []
+    const runPromise = agent.run('看看这张形象照', ctx(), {
+      callbacks: { onStep: (_id, step) => { steps.push({ ...step }) } }
+    })
+
+    await waitFor(() => latestAsking(steps)?.askingStatus === 'waiting')
+    agent.addUserMessage('再调一版', undefined, undefined, [IMG])
+    const result = await runPromise
+
+    expect(result).toContain('再调一版')
+    expect(latestAsking(steps)?.askingStatus).toBe('received')
+    expect(latestAsking(steps)?.askingAnswer).toBeUndefined()
+    expect(latestAsking(steps)?.toolResult).not.toContain('再调一版')
+
+    const seen = calls[1]
+    const toolText = textOf(seen, 'tool')
+    expect(toolText).toContain('没有点选项')
+    expect(toolText).not.toContain('用户回复：再调一版')
+    expect(toolText).not.toContain('使用默认值')
+    const supplement = seen.filter(m => m.role === 'user' && String(m.content).includes('再调一版'))
     expect(supplement).toHaveLength(1)
-    expect(String(supplement[0].content)).toContain('再调一版')
-    expect(steps.filter(s => s.type === 'user_supplement').map(s => s.content)).toEqual(['', '再调一版'])
+    expect(supplement[0].images).toContain(IMG)
   }, 20000)
 
   it('点选项只结题，不另冒一条消息', async () => {

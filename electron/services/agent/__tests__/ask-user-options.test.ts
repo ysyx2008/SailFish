@@ -80,50 +80,43 @@ describe('askUser 推荐选项', () => {
     expect(executor.addStep.mock.calls[0]![0].toolArgs.default_value).toBeUndefined()
   })
 
-  it('只发了图、没写字时不算回答，不会马上选上推荐项', async () => {
-    vi.useFakeTimers()
-    try {
-      const executor = {
-        addStep: vi.fn(() => ({ id: 'ask-1' })),
-        updateStep: vi.fn(),
-        isAborted: () => false,
-        hasPendingUserMessage: () => true,
-        consumePendingUserMessage: () => '',
-        consumePendingUserReply: () => undefined as string | undefined,
-      }
-      let settled = false
-      const pending = askUser(
-        {
-          question: '可以吗？',
-          options: ['就用这张', '再调一版'],
-          default_value: '就用这张',
-          timeout: 2,
-        },
-        executor as never,
-      ).then(result => {
-        settled = true
-        return result
-      })
-      await vi.advanceTimersByTimeAsync(0)
-      expect(settled).toBe(false)
-      await vi.advanceTimersByTimeAsync(2500)
-      const result = await pending
-      expect(settled).toBe(true)
-      expect(result.success).toBe(true)
-      expect(result.output).toContain('就用这张')
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('自己打的字才是回答，不改成推荐项', async () => {
+  it('输入框发来消息就结束等待，不选推荐项，也不写成用户回复', async () => {
     const executor = {
       addStep: vi.fn(() => ({ id: 'ask-1' })),
       updateStep: vi.fn(),
       isAborted: () => false,
       hasPendingUserMessage: () => true,
       consumePendingUserMessage: () => '',
-      consumePendingUserReply: () => '再调一版',
+      consumePendingUserReply: () => ({ kind: 'message' as const }),
+    }
+    const result = await askUser(
+      {
+        question: '可以吗？',
+        options: ['就用这张', '再调一版'],
+        default_value: '就用这张',
+        timeout: 30,
+      },
+      executor as never,
+    )
+    expect(result.success).toBe(true)
+    expect(result.output).toContain('没有点选项')
+    expect(result.output).not.toContain('使用默认值')
+    expect(result.output).not.toContain('用户回复')
+    expect(executor.updateStep).toHaveBeenCalledWith('ask-1', expect.objectContaining({
+      askingStatus: 'received',
+      toolResult: '已从输入框发来消息',
+    }))
+    expect(executor.updateStep.mock.calls[0]?.[1]).not.toHaveProperty('askingAnswer')
+  })
+
+  it('点选项仍写成用户回复，不改成别的项', async () => {
+    const executor = {
+      addStep: vi.fn(() => ({ id: 'ask-1' })),
+      updateStep: vi.fn(),
+      isAborted: () => false,
+      hasPendingUserMessage: () => true,
+      consumePendingUserMessage: () => '',
+      consumePendingUserReply: () => ({ kind: 'answer' as const, text: '再调一版' }),
     }
     const result = await askUser(
       {
@@ -134,7 +127,7 @@ describe('askUser 推荐选项', () => {
       executor as never,
     )
     expect(result.success).toBe(true)
-    expect(result.output).toContain('再调一版')
+    expect(result.output).toContain('用户回复：再调一版')
     expect(result.output).not.toContain('就用这张')
   })
 

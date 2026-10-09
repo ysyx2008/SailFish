@@ -232,9 +232,23 @@ export async function askUser(
 
     const reply = executor.consumePendingUserReply
       ? executor.consumePendingUserReply()
-      : (executor.hasPendingUserMessage() ? executor.consumePendingUserMessage() : undefined)
-    if (reply !== undefined) {
-      userResponse = reply
+      : undefined
+    if (reply?.kind === 'message') {
+      executor.updateStep(step.id, {
+        toolResult: t('ask.composer_arrived'),
+        askingStatus: 'received'
+      })
+      return {
+        success: true,
+        output: t('ask.composer_message')
+      }
+    }
+    if (reply?.kind === 'answer') {
+      userResponse = reply.text
+      break
+    }
+    if (!executor.consumePendingUserReply && executor.hasPendingUserMessage()) {
+      userResponse = executor.consumePendingUserMessage()
       break
     }
 
