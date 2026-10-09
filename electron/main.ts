@@ -5389,24 +5389,91 @@ ipcMain.handle('history:getTokenUsageStats', async () => {
 
 // ==================== 完整数据备份 / 恢复 ====================
 
-let dataBackupCancelRequested = false
-let dataBackupRunning = false
+type DataBackupPhase = 'idle' | 'preparing' | 'running'
 
-function sendDataBackupProgress(payload: {
+interface DataBackupProgress {
   pct: number
   file: string
   bytes: number
   totalBytes: number
-}): void {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('dataBackup:progress', payload)
+}
+
+interface DataBackupOutcome {
+  id: number
+  success: boolean
+  canceled?: boolean
+  cancelReason?: 'dialog' | 'overwrite' | 'export'
+  path?: string
+  files?: number
+  totalBytes?: number
+  skippedUnreadable?: number
+  error?: string
+}
+
+let dataBackupCancelRequested = false
+let dataBackupPhase: DataBackupPhase = 'idle'
+let dataBackupEpoch = 0
+let dataBackupProgress: DataBackupProgress | null = null
+/** 面板关掉时没人收结果；留到数据页再打开补一次提示，界面确认后清掉 */
+let dataBackupPendingOutcome: DataBackupOutcome | null = null
+let dataBackupOutcomeSeq = 0
+
+function dataBackupSnapshot(): {
+  epoch: number
+  phase: DataBackupPhase
+  progress: DataBackupProgress | null
+  pendingOutcome: DataBackupOutcome | null
+} {
+  return {
+    epoch: dataBackupEpoch,
+    phase: dataBackupPhase,
+    progress: dataBackupPhase === 'running' ? dataBackupProgress : null,
+    pendingOutcome: dataBackupPendingOutcome,
   }
 }
 
+function emitDataBackupState(): void {
+  dataBackupEpoch++
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('dataBackup:state', dataBackupSnapshot())
+  }
+}
+
+function sendDataBackupProgress(payload: DataBackupProgress): void {
+  // 打包结束前后，压缩库还可能再甩来一次进度；这时再推，会把已经收起的进度条又打开
+  if (dataBackupPhase !== 'running') return
+  dataBackupProgress = payload
+  dataBackupEpoch++
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('dataBackup:progress', { epoch: dataBackupEpoch, ...payload })
+  }
+}
+
+function publishDataBackupOutcome(outcome: Omit<DataBackupOutcome, 'id'>): DataBackupOutcome {
+  const published: DataBackupOutcome = { id: ++dataBackupOutcomeSeq, ...outcome }
+  dataBackupPendingOutcome = published
+  dataBackupPhase = 'idle'
+  dataBackupProgress = null
+  dataBackupCancelRequested = false
+  emitDataBackupState()
+  return published
+}
+
+ipcMain.handle('dataBackup:status', () => dataBackupSnapshot())
+
+ipcMain.handle('dataBackup:ackOutcome', (_event, id: unknown) => {
+  if (typeof id === 'number' && dataBackupPendingOutcome?.id === id) {
+    dataBackupPendingOutcome = null
+  }
+  return { ok: true }
+})
+
 ipcMain.handle('dataBackup:export', async () => {
-  if (dataBackupRunning) {
+  if (dataBackupPhase !== 'idle') {
     return { success: false, error: 'busy' }
   }
+  dataBackupPhase = 'preparing'
+  emitDataBackupState()
   try {
     if (!mainWindow) {
       return { success: false, error: t('error.windowNotReady') }
@@ -5447,8 +5514,11 @@ ipcMain.handle('dataBackup:export', async () => {
       }
     }
 
-    dataBackupRunning = true
+    dataBackupPhase = 'running'
     dataBackupCancelRequested = false
+    dataBackupProgress = null
+    dataBackupPendingOutcome = null
+    emitDataBackupState()
     // 选路完成，通知前端进入打包态（显示进度与取消）
     sendDataBackupProgress({ pct: 0, file: '', bytes: 0, totalBytes: 0 })
     const source = app.getPath('userData')
@@ -5466,32 +5536,35 @@ ipcMain.handle('dataBackup:export', async () => {
           })
         },
       })
-      return {
+      return publishDataBackupOutcome({
         success: true,
         path: exportPath,
         files: stats.files,
         totalBytes: stats.totalBytes,
         skippedUnreadable: stats.skippedUnreadable,
-      }
+      })
     } catch (e) {
       if (e instanceof CopyCanceledError) {
-        return { success: false, canceled: true, cancelReason: 'export' as const }
+        return publishDataBackupOutcome({ success: false, canceled: true, cancelReason: 'export' })
       }
       throw e
-    } finally {
-      dataBackupRunning = false
-      dataBackupCancelRequested = false
     }
   } catch (error) {
-    dataBackupRunning = false
-    dataBackupCancelRequested = false
     log.error('完整备份失败:', error)
+    if (dataBackupPhase === 'running') {
+      return publishDataBackupOutcome({ success: false, error: errMsg(error, 'error.exportFailed') })
+    }
     return { success: false, error: errMsg(error, 'error.exportFailed') }
+  } finally {
+    if (dataBackupPhase === 'preparing') {
+      dataBackupPhase = 'idle'
+      emitDataBackupState()
+    }
   }
 })
 
 ipcMain.handle('dataBackup:cancel', async () => {
-  if (dataBackupRunning) {
+  if (dataBackupPhase === 'running') {
     dataBackupCancelRequested = true
   }
   return { ok: true }

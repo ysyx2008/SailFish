@@ -413,6 +413,30 @@ const backupProgress = ref<{
   totalBytes: number
 } | null>(null)
 let cleanupBackupProgress: (() => void) | null = null
+let cleanupBackupState: (() => void) | null = null
+/** 页面拆掉后，进行中的那次备份仍会返回；别再用拆掉的页面改界面 */
+let backupAlive = true
+/** 已应用到界面的状态序号；旧事件（面板重开前发出的）不能把进度盖回去 */
+let appliedBackupEpoch = 0
+const seenBackupOutcomeIds = new Set<number>()
+let backupStartLocked = false
+
+type BackupOutcome = {
+  id: number
+  success: boolean
+  canceled?: boolean
+  cancelReason?: 'dialog' | 'overwrite' | 'export'
+  path?: string
+  skippedUnreadable?: number
+  error?: string
+}
+
+type BackupActivity = {
+  epoch: number
+  phase: 'idle' | 'preparing' | 'running'
+  progress: { pct: number; file: string; bytes: number; totalBytes: number } | null
+  pendingOutcome: BackupOutcome | null
+}
 
 const formatBackupError = (code?: string): string => {
   switch (code) {
@@ -429,46 +453,98 @@ const formatBackupError = (code?: string): string => {
   }
 }
 
-const startFullBackup = async () => {
-  if (!window.electronAPI.dataBackup || isExporting.value) return
-  try {
-    const running = await window.electronAPI.dataDir.hasRunningAgents()
-    if (running && !(await showConfirm({
-      type: 'warning',
-      title: t('common.confirm'),
-      message: t('dataSettings.backupConfirmRunning'),
-    }))) return
-  } catch { /* ignore */ }
-
-  // 选路径阶段：只锁按钮，不显示进度/取消（取消应走系统对话框）
-  isExporting.value = true
-  backupProgress.value = null
-  cleanupBackupProgress?.()
-  cleanupBackupProgress = window.electronAPI.dataBackup.onProgress((p) => {
-    backupProgress.value = p
-  })
-  try {
-    const result = await window.electronAPI.dataBackup.export()
-    if (result.canceled) {
-      // 仅打包中取消才提示；关对话框/拒绝覆盖保持安静
-      if (result.cancelReason === 'export') {
-        showMessage('success', t('dataSettings.backupCanceled'))
-      }
-    } else if (result.success) {
-      const pathText = result.path || ''
-      showMessage('success', result.skippedUnreadable
-        ? t('dataSettings.backupOkPartial', { path: pathText, count: result.skippedUnreadable })
-        : t('dataSettings.backupOk', { path: pathText }))
-    } else {
-      showMessage('error', formatBackupError(result.error))
+const presentBackupOutcome = (outcome: BackupOutcome) => {
+  if (seenBackupOutcomeIds.has(outcome.id)) return
+  seenBackupOutcomeIds.add(outcome.id)
+  void window.electronAPI.dataBackup.ackOutcome(outcome.id)
+  if (outcome.canceled) {
+    if (outcome.cancelReason === 'export') {
+      showMessage('success', t('dataSettings.backupCanceled'))
     }
+    return
+  }
+  if (outcome.success) {
+    const pathText = outcome.path || ''
+    showMessage('success', outcome.skippedUnreadable
+      ? t('dataSettings.backupOkPartial', { path: pathText, count: outcome.skippedUnreadable })
+      : t('dataSettings.backupOk', { path: pathText }))
+    return
+  }
+  showMessage('error', formatBackupError(outcome.error))
+}
+
+/** 进度条归进度事件和状态事件共管；序号更旧的一律丢掉 */
+const applyBackupProgress = (p: { epoch: number; pct: number; file: string; bytes: number; totalBytes: number }) => {
+  if (!backupAlive || p.epoch < appliedBackupEpoch) return
+  appliedBackupEpoch = p.epoch
+  backupProgress.value = { pct: p.pct, file: p.file, bytes: p.bytes, totalBytes: p.totalBytes }
+  isExporting.value = true
+}
+
+const applyBackupState = (state: BackupActivity) => {
+  if (!backupAlive) return
+  // 结果和进度序号分开：旧快照不能把界面打回去，但没看过的结果仍要补一次
+  if (state.pendingOutcome) presentBackupOutcome(state.pendingOutcome)
+  if (state.epoch < appliedBackupEpoch) return
+  appliedBackupEpoch = state.epoch
+  if (state.phase === 'running') {
+    isExporting.value = true
+    backupProgress.value = state.progress ?? { pct: 0, file: '', bytes: 0, totalBytes: 0 }
+  } else if (state.phase === 'preparing') {
+    isExporting.value = true
+    backupProgress.value = null
+  } else {
+    isExporting.value = false
+    backupProgress.value = null
+  }
+}
+
+const syncBackupStatus = async () => {
+  if (!backupAlive || !window.electronAPI.dataBackup) return
+  try {
+    applyBackupState(await window.electronAPI.dataBackup.status())
+  } catch { /* 接不回进度时不打断数据页 */ }
+}
+
+const startFullBackup = async () => {
+  if (!window.electronAPI.dataBackup || isExporting.value || backupProgress.value || backupStartLocked) return
+  backupStartLocked = true
+  try {
+    try {
+      const running = await window.electronAPI.dataDir.hasRunningAgents()
+      if (running && !(await showConfirm({
+        type: 'warning',
+        title: t('common.confirm'),
+        message: t('dataSettings.backupConfirmRunning'),
+      }))) return
+    } catch { /* ignore */ }
+
+    // 页面关掉也继续打这次包；进度由重新打开的数据页接上
+    if (backupAlive) isExporting.value = true
+    const result = await window.electronAPI.dataBackup.export()
+    if (!backupAlive) return
+    if (result.canceled && result.cancelReason !== 'export') {
+      if (!backupProgress.value) isExporting.value = false
+      return
+    }
+    if (result.error === 'busy') {
+      await syncBackupStatus()
+      return
+    }
+    if (result.id != null) {
+      if (!seenBackupOutcomeIds.has(result.id)) await syncBackupStatus()
+      return
+    }
+    isExporting.value = false
+    backupProgress.value = null
+    if (!result.success) showMessage('error', formatBackupError(result.error))
   } catch (e) {
+    if (!backupAlive) return
+    isExporting.value = false
+    backupProgress.value = null
     showMessage('error', `${t('dataSettings.backupFailed')}: ${e}`)
   } finally {
-    cleanupBackupProgress?.()
-    cleanupBackupProgress = null
-    backupProgress.value = null
-    isExporting.value = false
+    backupStartLocked = false
   }
 }
 
@@ -587,18 +663,31 @@ watch(showHistoryViewer, async (isOpen) => {
 })
 
 onMounted(() => {
+  backupAlive = true
   loadStorageStats()
   loadTokenUsageStats()
   loadDataDirInfo()
   loadScratchConfig()
   loadShellCliStatus()
+  if (window.electronAPI.dataBackup) {
+    cleanupBackupProgress = window.electronAPI.dataBackup.onProgress((p) => {
+      applyBackupProgress(p)
+    })
+    cleanupBackupState = window.electronAPI.dataBackup.onState((s) => {
+      applyBackupState(s)
+    })
+    void syncBackupStatus()
+  }
   document.addEventListener('keydown', handleKeydown, true)
 })
 
 onUnmounted(() => {
+  backupAlive = false
   document.removeEventListener('keydown', handleKeydown, true)
   cleanupBackupProgress?.()
   cleanupBackupProgress = null
+  cleanupBackupState?.()
+  cleanupBackupState = null
 })
 </script>
 

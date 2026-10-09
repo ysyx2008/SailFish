@@ -1592,20 +1592,42 @@ const electronAPI = {
       totalBytes?: number
       skippedUnreadable?: number
       error?: string
+      /** 真正开打之后才有；界面用它避免结果提示重复 */
+      id?: number
     }>,
     cancel: () => ipcRenderer.invoke('dataBackup:cancel') as Promise<{ ok: boolean }>,
+    /** 面板重开时接回进行中的备份，或补上一次没看到的结果 */
+    status: () => ipcRenderer.invoke('dataBackup:status') as Promise<{
+      epoch: number
+      phase: 'idle' | 'preparing' | 'running'
+      progress: { pct: number; file: string; bytes: number; totalBytes: number } | null
+      pendingOutcome: {
+        id: number
+        success: boolean
+        canceled?: boolean
+        cancelReason?: 'dialog' | 'overwrite' | 'export'
+        path?: string
+        files?: number
+        totalBytes?: number
+        skippedUnreadable?: number
+        error?: string
+      } | null
+    }>,
+    ackOutcome: (id: number) => ipcRenderer.invoke('dataBackup:ackOutcome', id) as Promise<{ ok: boolean }>,
     requestRestore: () => ipcRenderer.invoke('dataBackup:requestRestore') as Promise<{
       success: boolean
       canceled?: boolean
       error?: string
     }>,
     onProgress: (callback: (data: {
+      epoch: number
       pct: number
       file: string
       bytes: number
       totalBytes: number
     }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: {
+        epoch: number
         pct: number
         file: string
         bytes: number
@@ -1613,6 +1635,41 @@ const electronAPI = {
       }) => callback(data)
       ipcRenderer.on('dataBackup:progress', handler)
       return () => { ipcRenderer.removeListener('dataBackup:progress', handler) }
+    },
+    onState: (callback: (data: {
+      epoch: number
+      phase: 'idle' | 'preparing' | 'running'
+      progress: { pct: number; file: string; bytes: number; totalBytes: number } | null
+      pendingOutcome: {
+        id: number
+        success: boolean
+        canceled?: boolean
+        cancelReason?: 'dialog' | 'overwrite' | 'export'
+        path?: string
+        files?: number
+        totalBytes?: number
+        skippedUnreadable?: number
+        error?: string
+      } | null
+    }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: {
+        epoch: number
+        phase: 'idle' | 'preparing' | 'running'
+        progress: { pct: number; file: string; bytes: number; totalBytes: number } | null
+        pendingOutcome: {
+          id: number
+          success: boolean
+          canceled?: boolean
+          cancelReason?: 'dialog' | 'overwrite' | 'export'
+          path?: string
+          files?: number
+          totalBytes?: number
+          skippedUnreadable?: number
+          error?: string
+        } | null
+      }) => callback(data)
+      ipcRenderer.on('dataBackup:state', handler)
+      return () => { ipcRenderer.removeListener('dataBackup:state', handler) }
     },
   },
 

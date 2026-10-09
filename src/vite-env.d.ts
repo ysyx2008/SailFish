@@ -990,14 +990,49 @@ interface Window {
         totalBytes?: number
         skippedUnreadable?: number
         error?: string
+        id?: number
       }>
       cancel: () => Promise<{ ok: boolean }>
+      status: () => Promise<{
+        epoch: number
+        phase: 'idle' | 'preparing' | 'running'
+        progress: { pct: number; file: string; bytes: number; totalBytes: number } | null
+        pendingOutcome: {
+          id: number
+          success: boolean
+          canceled?: boolean
+          cancelReason?: 'dialog' | 'overwrite' | 'export'
+          path?: string
+          files?: number
+          totalBytes?: number
+          skippedUnreadable?: number
+          error?: string
+        } | null
+      }>
+      ackOutcome: (id: number) => Promise<{ ok: boolean }>
       requestRestore: () => Promise<{ success: boolean; canceled?: boolean; error?: string }>
       onProgress: (callback: (data: {
+        epoch: number
         pct: number
         file: string
         bytes: number
         totalBytes: number
+      }) => void) => () => void
+      onState: (callback: (data: {
+        epoch: number
+        phase: 'idle' | 'preparing' | 'running'
+        progress: { pct: number; file: string; bytes: number; totalBytes: number } | null
+        pendingOutcome: {
+          id: number
+          success: boolean
+          canceled?: boolean
+          cancelReason?: 'dialog' | 'overwrite' | 'export'
+          path?: string
+          files?: number
+          totalBytes?: number
+          skippedUnreadable?: number
+          error?: string
+        } | null
       }) => void) => () => void
     }
     shellCli: {
