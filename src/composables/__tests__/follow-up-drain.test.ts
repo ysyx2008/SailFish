@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   coalescePendingHandoff,
   decideFollowUpDrain,
+  turnFailureAlreadyVisible,
   mergePendingIntoQueue,
   optimisticPlaceholderConfirmedBy,
   type OptimisticStepLike,
@@ -22,6 +23,31 @@ describe('decideFollowUpDrain', () => {
     expect(decideFollowUpDrain({ ...idle, headEditing: true })).toBe('stop')
     expect(decideFollowUpDrain({ ...idle, tabAlive: false })).toBe('stop')
     expect(decideFollowUpDrain({ ...idle, hasQueued: false })).toBe('stop')
+  })
+})
+
+describe('turnFailureAlreadyVisible', () => {
+  it('更早那场的收场不能把这一轮的失败藏掉', () => {
+    expect(turnFailureAlreadyVisible([
+      { id: 'old_user', type: 'user_task' },
+      { id: 'old_final', type: 'final_result' },
+      { id: 'new_user', type: 'user_task' },
+    ], 'new_user')).toBe(false)
+  })
+
+  it('这一轮自己已经收场就不用再补', () => {
+    expect(turnFailureAlreadyVisible([
+      { id: 'old_final', type: 'final_result' },
+      { id: 'new_user', type: 'user_task' },
+      { id: 'new_final', type: 'final_result' },
+    ], 'new_user')).toBe(true)
+  })
+
+  it('临时气泡已经被正式步骤换掉时不再补一张', () => {
+    expect(turnFailureAlreadyVisible([
+      { id: 'old_final', type: 'final_result' },
+      { id: 'real_user', type: 'user_task' },
+    ], 'missing_optimistic')).toBe(true)
   })
 })
 

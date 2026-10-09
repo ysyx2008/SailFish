@@ -25,7 +25,7 @@ import { showConfirm, showAlert } from './useConfirm'
 import { toast } from './useToast'
 import { resolveExactSlash } from './slash-commands'
 import { formatAccelerator } from '../utils/shortcut'
-import { coalescePendingHandoff, decideFollowUpDrain, mergePendingIntoQueue, optimisticPlaceholderConfirmedBy } from './follow-up-drain'
+import { coalescePendingHandoff, decideFollowUpDrain, mergePendingIntoQueue, optimisticPlaceholderConfirmedBy, turnFailureAlreadyVisible } from './follow-up-drain'
 
 const log = createLogger('Agent')
 
@@ -577,9 +577,9 @@ export function useAgentMode(
   // （scrollHeight 因宽度变化而变，与用户滚动意图无关），updateScrollPosition 应跳过状态更新。
   const isInContainerReflow = () => Date.now() < containerReflowGuardUntil
 
-  /** Agent run 结束收口：清运行态 */
-  const finalizeAgentRunWithScrollSettle = (tabId: string) => {
-    terminalStore.finalizeAgentRunState(tabId)
+  /** Agent run 结束收口：清运行态。releaseHeldRun 只给面板自己这轮收回来时用。 */
+  const finalizeAgentRunWithScrollSettle = (tabId: string, releaseHeldRun = false) => {
+    terminalStore.finalizeAgentRunState(tabId, releaseHeldRun)
   }
 
   /** 用户主动上滚离开底部：清除跟底粘性与 grace 窗口，避免流式 chunk 继续拽底 */
@@ -1445,6 +1445,16 @@ export function useAgentMode(
     }
     // getDocumentContext 依赖 uploadedDocs，须在其完成后再 clearAttachments
 
+    // 排队项先确认后台已经空出来。还占着就放回队列，不要先上墙再停住。
+    if (queued) {
+      const busyKey = getAgentKey()
+      if (busyKey && await isBackendRunActive(busyKey)) {
+        putBackQueued()
+        scheduleNextFollowUp(tabId, 400)
+        return
+      }
+    }
+
     // 立即进入运行态 + 乐观 user_task，用户消息与「正在准备...」零等待上墙
     // 上一轮的收尾若晚到，不能把这一轮的「正在跑」清掉，否则排队会以为又空了再开一条。
     const epoch = ++agentRunEpoch
@@ -1457,8 +1467,10 @@ export function useAgentMode(
       ? currentTab.value?.agentId
       : tabId
     terminalStore.setAgentRunning(tabId, true, stableAgentKey, message)
+    terminalStore.setPanelRunOpen(tabId, true)
+    const optimisticUserStepId = `__optimistic_user_task_${startTime}`
     terminalStore.addAgentStep(tabId, {
-      id: `__optimistic_user_task_${startTime}`,
+      id: optimisticUserStepId,
       type: 'user_task',
       content: message,
       images: previewImages.length > 0 ? previewImages : undefined,
@@ -1499,6 +1511,19 @@ export function useAgentMode(
 
     // 异步上下文在 UI 反馈之后并行获取，不阻塞首屏。
     // 放进同一段收尾里：这里失败也要把「正在跑」清掉，否则排队会一直等下去。
+    let requeueBecauseBusy = false
+    const showTurnFailure = (content: string) => {
+      const steps = agentState.value?.steps || []
+      if (!turnFailureAlreadyVisible(steps, optimisticUserStepId)) {
+        terminalStore.addAgentStep(tabId, {
+          id: `final_result_${Date.now()}`,
+          type: 'final_result',
+          content,
+          timestamp: Date.now()
+        })
+      }
+      terminalStore.setAgentFinalResult(tabId, content)
+    }
     try {
       const [hostId, documentContext] = await Promise.all([
         getHostIdByTabId(tabId),
@@ -1573,44 +1598,51 @@ export function useAgentMode(
           activeProfileId.value || undefined
         )
       }
-      // 后端已通过 onStep 推送 final_result，这里只需设置 finalResult 状态
+      // 后端已通过 onStep 推送 final_result。没推送时补一条，只看这一轮，避免被更早的收场挡住。
       if (!result.success) {
-        const finalContent = result.aborted
-          ? t('ai.taskAbortedMessage')
-          : t('ai.agentExecutionFailed', { error: result.error })
-        terminalStore.setAgentFinalResult(tabId, finalContent)
+        const busyKey = getAgentKey()
+        if (queued && busyKey && await isBackendRunActive(busyKey)) {
+          requeueBecauseBusy = true
+          putBackQueued()
+        } else {
+          const finalContent = result.aborted
+            ? t('ai.taskAbortedMessage')
+            : t('ai.agentExecutionFailed', { error: result.error })
+          showTurnFailure(finalContent)
+        }
       } else if (result.result) {
         terminalStore.setAgentFinalResult(tabId, result.result)
       }
     } catch (error) {
       log.error('Agent 运行失败:', error)
       const raw = error instanceof Error ? error.message : String(error || '')
-      // IPC 序列化失败等不应把脏堆栈甩给用户（对齐 AiSettings testConnectionFailed）
-      const isIpcNoise =
-        raw.includes('Error invoking remote method') ||
-        (raw.includes('SyntaxError') && raw.includes('is not valid JSON'))
-      const errorMessage = isIpcNoise ? t('ai.agentIpcFailed') : (raw || t('ai.unknownError'))
-      const finalContent = t('ai.agentRunError', { error: errorMessage })
-      
-      // IPC 层面的错误（如连接断开），后端可能没来得及推送 final_result
-      // 检查后端是否已推送过 final_result，避免重复
-      const currentSteps = agentState.value?.steps || []
-      if (!currentSteps.some(s => s.type === 'final_result')) {
-        terminalStore.addAgentStep(tabId, {
-          id: `final_result_${Date.now()}`,
-          type: 'final_result',
-          content: finalContent,
-          timestamp: Date.now()
-        })
+      const busyKey = getAgentKey()
+      if (queued && busyKey && await isBackendRunActive(busyKey)) {
+        requeueBecauseBusy = true
+        putBackQueued()
+      } else {
+        // IPC 序列化失败等不应把脏堆栈甩给用户（对齐 AiSettings testConnectionFailed）
+        const isIpcNoise =
+          raw.includes('Error invoking remote method') ||
+          (raw.includes('SyntaxError') && raw.includes('is not valid JSON'))
+        const errorMessage = isIpcNoise ? t('ai.agentIpcFailed') : (raw || t('ai.unknownError'))
+        showTurnFailure(t('ai.agentRunError', { error: errorMessage }))
       }
-      terminalStore.setAgentFinalResult(tabId, finalContent)
     } finally {
       // 上一轮的收尾若晚于下一轮开工，不能清掉下一轮的运行态
       if (epoch === agentRunEpoch) {
-        // 只固化这一轮自己的临时任务。别的临时消息还在等它自己的正式步骤，不能改掉编号。
-        terminalStore.commitOptimisticAgentSteps(tabId, `__optimistic_user_task_${startTime}`)
-        finalizeAgentRunWithScrollSettle(tabId)
+        if (requeueBecauseBusy) {
+          terminalStore.removeOptimisticAgentSteps(tabId, [optimisticUserStepId])
+        } else {
+          // 只固化这一轮自己的临时任务。别的临时消息还在等它自己的正式步骤，不能改掉编号。
+          terminalStore.commitOptimisticAgentSteps(tabId, optimisticUserStepId)
+        }
+        finalizeAgentRunWithScrollSettle(tabId, true)
       }
+    }
+
+    if (requeueBecauseBusy && epoch === agentRunEpoch) {
+      scheduleNextFollowUp(tabId, 400)
     }
 
     if (epoch === agentRunEpoch) {
@@ -1659,6 +1691,16 @@ export function useAgentMode(
       const phase = await window.electronAPI.agent.getExecutionPhase(key)
       const name = typeof phase === 'string' ? phase : phase?.phase
       return !!name && name !== 'idle'
+    } catch {
+      return false
+    }
+  }
+
+  /** 上一轮的 run 对象还在，但已经收场时阶段不会回到空闲；这里只看它是不是还在跑。 */
+  const isBackendRunActive = async (key: string): Promise<boolean> => {
+    try {
+      const status = await window.electronAPI.agent.getStatus(key) as { isRunning?: boolean } | undefined
+      return status?.isRunning === true
     } catch {
       return false
     }
@@ -1731,6 +1773,7 @@ export function useAgentMode(
   }
 
   let followUpDrainTimer: ReturnType<typeof setTimeout> | null = null
+  let followUpDrainInFlight = false
   /** 后开的一轮序号更大。先结束的那一轮不能把后一轮的「正在跑」清掉。 */
   let agentRunEpoch = 0
 
@@ -1741,14 +1784,10 @@ export function useAgentMode(
     }
   }
 
-  /** 当前 run 结束后按顺序开下一件。延后取出，以便关 tab / 手动删掉 / 插入当前对话能拦住。 */
-  const scheduleNextFollowUp = (tabId: string): boolean => {
-    if (followUpDrainTimer || followUpQueue.value.length === 0) return false
-    // 队首正在编辑：等改完再开；不跳过它去跑后面的
-    if (followUpQueue.value[0]?.editing) return false
-    terminalStore.requestAgentCompleteTabAttentionSkip(tabId)
-    followUpDrainTimer = setTimeout(() => {
-      followUpDrainTimer = null
+  const drainFollowUp = async (tabId: string) => {
+    followUpDrainInFlight = true
+    let retryInMs: number | null = null
+    try {
       const next = followUpQueue.value[0]
       const decision = decideFollowUpDrain({
         hasQueued: !!next,
@@ -1762,13 +1801,35 @@ export function useAgentMode(
         return
       }
       if (decision !== 'start' || !next) return
+      const key = getAgentKey()
+      if (key && await isBackendRunActive(key)) {
+        log.warn('排队的下一条先不开：上一轮在后台还没结束')
+        retryInMs = 400
+        return
+      }
+      if (isAgentRunning.value || followUpQueue.value[0]?.id !== next.id) return
       if (!takeFollowUp(next.id)) return
       log.info('任务结束，启动排队中的下一条:', next.message)
       void runAgent(next.message, {
         workbenchContext: next.workbenchContext,
         queuedPayload: next
       })
-    }, 100)
+    } finally {
+      followUpDrainInFlight = false
+      if (retryInMs != null) scheduleNextFollowUp(tabId, retryInMs)
+    }
+  }
+
+  /** 当前 run 结束后按顺序开下一件。延后取出，以便关 tab / 手动删掉 / 插入当前对话能拦住。 */
+  const scheduleNextFollowUp = (tabId: string, delayMs = 100): boolean => {
+    if (followUpDrainTimer || followUpDrainInFlight || followUpQueue.value.length === 0) return false
+    // 队首正在编辑：等改完再开；不跳过它去跑后面的
+    if (followUpQueue.value[0]?.editing) return false
+    terminalStore.requestAgentCompleteTabAttentionSkip(tabId)
+    followUpDrainTimer = setTimeout(() => {
+      followUpDrainTimer = null
+      void drainFollowUp(tabId)
+    }, delayMs)
     return true
   }
 

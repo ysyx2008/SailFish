@@ -960,6 +960,7 @@ onMounted(async () => {
         terminalStore.conversationSurface
       )
       if (isVisible) return
+      if (terminalStore.getAgentState(foundTabId)?.panelRunOpen) return
       if (data.pendingUserMessages && data.pendingUserMessages.length > 0) return
       if (terminalStore.consumeAgentCompleteTabAttentionSkip(foundTabId)) return
       terminalStore.setAgentCompletedUnseen(foundTabId, true)
@@ -983,6 +984,7 @@ onMounted(async () => {
         terminalStore.conversationSurface
       )
       if (isVisible) return
+      if (terminalStore.getAgentState(foundTabId)?.panelRunOpen) return
       terminalStore.setAgentCompletedUnseen(foundTabId, true)
     })
   })

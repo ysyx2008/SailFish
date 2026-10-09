@@ -121,6 +121,11 @@ export interface AgentState {
    * （initializeRun 触发 restoreFromHistory，in-memory 状态就齐了）。
    */
   loadedFromHistory?: boolean
+  /**
+   * 面板这次发出去的轮次还没收回来。
+   * 这段时间里晚到的「上一轮结束」不能把正在跑清掉。
+   */
+  panelRunOpen?: boolean
 }
 
 // 上传的文档类型（与 electron/services/document-parser.service.ts 同步）
@@ -2930,15 +2935,26 @@ export const useTerminalStore = defineStore('terminal', () => {
     tab.agentState.pendingSecureInput = request
   }
 
+  function setPanelRunOpen(tabId: string, open: boolean): void {
+    const tab = tabs.value.find(t => t.id === tabId)
+    if (!tab?.agentState || tab.agentState.panelRunOpen === open) return
+    tab.agentState = { ...tab.agentState, panelRunOpen: open }
+    tabs.value = [...tabs.value]
+  }
+
   /**
    * Agent run 结束后的 UI 状态收口（App 全局 complete/error 兜底调用）。
    * 清除 isRunning / 待确认 / 流式标记，避免 tab 与历史侧栏长期卡在「运行中/思考中」。
+   * @param releaseHeldRun 面板自己这轮收回来了，可以清掉「还开着」。
+   * 完成事件不带这个标记：面板这轮还开着时直接留下，避免晚到的上一轮结束把下一句停掉。
    */
-  function finalizeAgentRunState(tabId: string): void {
+  function finalizeAgentRunState(tabId: string, releaseHeldRun = false): void {
     const tabIndex = tabs.value.findIndex(t => t.id === tabId)
     if (tabIndex === -1 || !tabs.value[tabIndex].agentState) return
 
     const tab = tabs.value[tabIndex]
+    if (tab.agentState!.panelRunOpen && !releaseHeldRun) return
+
     const steps = tab.agentState!.steps.map(s =>
       s.isStreaming ? { ...s, isStreaming: false } : s
     )
@@ -2946,6 +2962,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     tab.agentState = {
       ...tab.agentState!,
       isRunning: false,
+      panelRunOpen: false,
       pendingConfirm: undefined,
       pendingSecureInput: undefined,
       steps,
@@ -4070,6 +4087,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     findTabIdByPtyId,
     getAgentState,
     setAgentRunning,
+    setPanelRunOpen,
     setAgentSession,
     setAgentSessionTitle,
     setAgentId,

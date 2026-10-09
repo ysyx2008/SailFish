@@ -3,6 +3,20 @@ import type { AttachmentInfo, PendingUserHandoff, WorkbenchContext } from '@shar
 /** start：马上开下一轮。wait：还在忙，先留在队列里，空闲后再开。stop：这拍不动（空队列 / 正在改 / 页已关）。 */
 export type FollowUpDrainDecision = 'start' | 'wait' | 'stop'
 
+/**
+ * 这一轮的失败还要不要再补一张卡片。
+ * 临时气泡还在、它后面又没有收场，才要补——更早那场的收场不算。
+ * 临时气泡已经被正式步骤换掉时，这场由那边收场，这里不再补。
+ */
+export function turnFailureAlreadyVisible(
+  steps: ReadonlyArray<{ id: string; type: string }>,
+  userStepId: string,
+): boolean {
+  const start = steps.findIndex(step => step.id === userStepId)
+  if (start < 0) return true
+  return steps.slice(start + 1).some(step => step.type === 'final_result')
+}
+
 export function decideFollowUpDrain(input: {
   hasQueued: boolean
   headEditing: boolean
