@@ -56,7 +56,7 @@ describe('buildUserImageNote', () => {
   it('只留路径时说明图像内容没有送进来', () => {
     const note = buildPathOnlyImageNote(['/tmp/big.jpg'])
     expect(note).toContain('/tmp/big.jpg')
-    expect(note).toContain('没有直接送进来')
+    expect(note).toContain('未随消息送入')
     expect(note).not.toContain('read_file')
   })
 
