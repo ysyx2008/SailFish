@@ -99,6 +99,7 @@ import { createLogger } from '../../utils/logger'
 import { isAbortError } from '../../utils/abort'
 import { toSendableVisionImageUrl } from '../../utils/vision-image'
 import { assembleUserMessageContent, formatSelectionScopeBody, wrapSystemContext } from './message-envelope'
+import { takeQueuedUserReply } from './pending-user-reply'
 import { buildUserImageNote, collectImageAttachmentPaths } from './image-note'
 import { notifyFrontendConfigChanged } from './skills/config/executor'
 import { getBrowserBridgeService } from '../browser-bridge/browser-bridge.service'
@@ -4944,6 +4945,11 @@ export abstract class Agent {
       findBackgroundWatch: (key) => this._backgroundWatches.get(key),
       peekPendingUserMessage: () => run.pendingUserMessages[0]?.message,
       consumePendingUserMessage: () => run.pendingUserMessages.shift()?.message,
+      consumePendingUserReply: () => {
+        const taken = takeQueuedUserReply(run.pendingUserMessages)
+        run.pendingUserMessages = taken.queue
+        return taken.reply
+      },
       getRealtimeTerminalOutput: () => [...run.realtimeOutputBuffer],
       getCurrentPlan: () => this.currentPlan,
       setCurrentPlan: (plan) => {

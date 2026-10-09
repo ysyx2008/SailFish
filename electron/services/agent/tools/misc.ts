@@ -230,8 +230,11 @@ export async function askUser(
       return { success: false, output: '', error: t('error.operation_aborted') }
     }
 
-    if (executor.hasPendingUserMessage()) {
-      userResponse = executor.consumePendingUserMessage()
+    const reply = executor.consumePendingUserReply
+      ? executor.consumePendingUserReply()
+      : (executor.hasPendingUserMessage() ? executor.consumePendingUserMessage() : undefined)
+    if (reply !== undefined) {
+      userResponse = reply
       break
     }
 
