@@ -47,6 +47,12 @@ describe('pasted-image', () => {
     expect(parseImageDataUrl('data:image/png,not-base64%ZZ')).toBeNull()
   })
 
+  it('默认超过直接看的上限就拒绝，显式放宽后才能留下更大的原图', () => {
+    expect(() => savePastedImage(PNG_1X1, 'a.png', 10)).toThrow(/too large/)
+    const kept = savePastedImage(PNG_1X1, 'a.png', 1024)
+    expect(fs.existsSync(kept)).toBe(true)
+  })
+
   it('savePastedImage 落到历史目录且不进 scratch', () => {
     const filePath = savePastedImage(PNG_1X1)
     const pastedDir = getPastedImageDir()

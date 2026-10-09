@@ -5,15 +5,142 @@
  * 没有磁盘路径的图落到历史目录，带上路径发给 Agent。
  */
 import { ref, type Ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { AttachmentInfo } from '@shared/types'
+import { toast } from './useToast'
+import { showConfirm } from './useConfirm'
 
 // 支持的图片 MIME 类型（可直接作为视觉输入传给 AI）
 export const SUPPORTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp']
 
-// 限制配置
+// 单张发给视觉接口的原始字节上限。超过的先缩小，不直接丢掉。
 const IMAGE_LIMITS = {
-  MAX_COUNT: 5,           // 最多同时上传 5 张图片
-  MAX_SIZE_MB: 5,         // 单张图片最大 5MB（兼容 Anthropic 等 API 的请求体限制）
+  MAX_COUNT: 5,
+  MAX_SIZE_MB: 5,
+}
+
+const IMAGE_MAX_BYTES = IMAGE_LIMITS.MAX_SIZE_MB * 1024 * 1024
+/** 超过这个体积不解码、也不把剪贴板原图整份读进内存 */
+const IMAGE_DECODE_MAX_BYTES = 50 * 1024 * 1024
+const IMAGE_KEEP_MAX_BYTES = IMAGE_DECODE_MAX_BYTES
+const IMAGE_DECODE_MAX_PIXELS = 40_000_000
+const SHRINK_QUALITIES = [0.85, 0.7, 0.55]
+
+export interface ShrinkPass {
+  maxEdge: number
+  quality: number
+}
+
+/**
+ * 超过上限时的缩小顺序：长边先收到 2560（视觉看图够用），
+ * 同一边长先降画质，仍放不下再缩小，不低于 800。
+ */
+export function buildShrinkPasses(width: number, height: number): ShrinkPass[] {
+  const long = Math.max(1, Math.round(width), Math.round(height))
+  const edges: number[] = []
+  let edge = Math.min(long, 2560)
+  for (let i = 0; i < 4; i++) {
+    const next = Math.round(edge)
+    if (edges.length > 0 && next === edges[edges.length - 1]) break
+    edges.push(next)
+    if (next <= 800) break
+    edge = Math.max(800, Math.round(next * 0.75))
+  }
+  return edges.flatMap((maxEdge) => SHRINK_QUALITIES.map((quality) => ({ maxEdge, quality })))
+}
+
+function formatImageSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))}KB`
+  const mb = bytes / (1024 * 1024)
+  return `${mb >= 10 ? mb.toFixed(0) : mb.toFixed(1)}MB`
+}
+
+interface FittedImage {
+  dataUrl: string
+  width: number
+  height: number
+  size: number
+}
+
+function drawToEdge(bitmap: ImageBitmap, maxEdge: number): HTMLCanvasElement {
+  const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height, 1))
+  const width = Math.max(1, Math.round(bitmap.width * scale))
+  const height = Math.max(1, Math.round(bitmap.height * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('canvas unavailable')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, width, height)
+  ctx.drawImage(bitmap, 0, 0, width, height)
+  return canvas
+}
+
+function jpegDisplayName(name: string): string {
+  const slash = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'))
+  const base = slash >= 0 ? name.slice(slash + 1) : name
+  const dot = base.lastIndexOf('.')
+  const stem = (dot > 0 ? base.slice(0, dot) : base).trim()
+  return `${stem || 'pasted-image'}.jpg`
+}
+
+function canvasToJpegBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) reject(new Error('jpeg encode failed'))
+      else resolve(blob)
+    }, 'image/jpeg', quality)
+  })
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error ?? new Error('read blob failed'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+type ShrinkOutcome =
+  | { ok: true; image: FittedImage }
+  | { ok: false; reason: 'too-large' | 'unreadable' }
+
+/** 把位图压到上限以内。超大、读不出、压完仍超限，原因分开返回。 */
+async function shrinkToByteLimit(source: Blob, maxBytes: number): Promise<ShrinkOutcome> {
+  if (source.size > IMAGE_DECODE_MAX_BYTES) return { ok: false, reason: 'too-large' }
+  if (typeof createImageBitmap !== 'function') return { ok: false, reason: 'unreadable' }
+  let bitmap: ImageBitmap
+  try {
+    bitmap = await createImageBitmap(source, { imageOrientation: 'from-image' })
+  } catch {
+    return { ok: false, reason: 'unreadable' }
+  }
+  try {
+    if (bitmap.width < 1 || bitmap.height < 1) return { ok: false, reason: 'unreadable' }
+    if (bitmap.width * bitmap.height > IMAGE_DECODE_MAX_PIXELS) return { ok: false, reason: 'too-large' }
+    for (const pass of buildShrinkPasses(bitmap.width, bitmap.height)) {
+      const canvas = drawToEdge(bitmap, pass.maxEdge)
+      const blob = await canvasToJpegBlob(canvas, pass.quality)
+      if (blob.size <= maxBytes && blob.size > 0) {
+        return {
+          ok: true,
+          image: {
+            dataUrl: await blobToDataUrl(blob),
+            width: canvas.width,
+            height: canvas.height,
+            size: blob.size,
+          },
+        }
+      }
+    }
+    return { ok: false, reason: 'too-large' }
+  } catch {
+    return { ok: false, reason: 'unreadable' }
+  } finally {
+    bitmap.close()
+  }
 }
 
 export interface PendingImage {
@@ -27,6 +154,8 @@ export interface PendingImage {
   filePath?: string
   /** 路径是这次粘贴落盘的，点掉未发送的预览时应删掉 */
   savedByApp?: boolean
+  /** 只留原文件路径，图像内容不送去看 */
+  pathOnly?: boolean
 }
 
 /**
@@ -66,16 +195,26 @@ function tryGetLocalPath(file: File): string | undefined {
   return legacy && legacy.trim() ? legacy : undefined
 }
 
+function readFileAsDataUrl(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read file'))
+    reader.readAsDataURL(file)
+  })
+}
+
 async function persistIfNeeded(
   dataUrl: string,
   name: string,
   existingPath?: string,
+  maxBytes?: number,
 ): Promise<{ filePath?: string; savedByApp: boolean }> {
   if (existingPath) return { filePath: existingPath, savedByApp: false }
   const api = window.electronAPI?.workspace?.savePastedImage
   if (!api) return { savedByApp: false }
   try {
-    const res = await api(dataUrl, name)
+    const res = await api(dataUrl, name, maxBytes)
     if (res.success && res.filePath) return { filePath: res.filePath, savedByApp: true }
     console.warn('persist pasted image failed', res.error)
     return { savedByApp: false }
@@ -108,61 +247,218 @@ export function pendingImageToAttachment(img: PendingImage): AttachmentInfo | nu
     filePath: img.filePath,
     fileSize: img.size,
     fileType: ext,
+    ...(img.pathOnly ? { imagePathOnly: true } : {}),
   }
 }
 
 export function useImageUpload() {
+  const { t } = useI18n()
   // 待发送的图片列表
   const pendingImages: Ref<PendingImage[]> = ref([])
   
   // 是否正在处理图片
   const isProcessingImage = ref(false)
-  
-  /**
-   * 添加图片文件
-   */
-  const addImageFile = async (file: File): Promise<boolean> => {
-    // 检查是否为支持的图片类型
-    if (!isSupportedImage(file)) {
-      console.warn(`不支持的图片类型: ${file.type}`)
-      return false
+  let processingDepth = 0
+
+  const beginProcessing = () => {
+    processingDepth += 1
+    isProcessingImage.value = true
+  }
+
+  const endProcessing = () => {
+    processingDepth = Math.max(0, processingDepth - 1)
+    isProcessingImage.value = processingDepth > 0
+  }
+
+  interface ImagePutResult {
+    ok: boolean
+    pathOnly?: boolean
+    /** 缩小前的字节数；没缩则为空 */
+    shrunkFrom?: number
+    reason?: 'count' | 'too-large' | 'unreadable' | 'unsupported' | 'shrink-fallback'
+  }
+
+  const nextImageId = () => `img_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
+
+  /** 一次粘贴/拖入/选择只提示一轮 */
+  const announce = (results: ImagePutResult[]) => {
+    const shrunkCount = results.filter((result) => result.ok && result.shrunkFrom).length
+    if (shrunkCount === 1) toast.info(t('ai.composerImageShrunk'))
+    else if (shrunkCount > 1) toast.info(t('ai.composerImageShrunkMany', { count: shrunkCount }))
+    if (results.some((result) => result.ok && result.pathOnly && result.reason !== 'shrink-fallback')) {
+      toast.info(t('ai.composerImagePathKept'))
     }
-    
-    // 检查数量限制
+    if (results.some((result) => result.reason === 'shrink-fallback')) {
+      toast.warning(t('ai.composerImageShrinkFallback'), 4000)
+    }
+    if (results.some((result) => result.reason === 'count')) {
+      toast.warning(t('ai.composerImageCountLimit', { count: IMAGE_LIMITS.MAX_COUNT }), 4000)
+    }
+    if (results.some((result) => result.reason === 'too-large')) {
+      toast.warning(t('ai.composerImageTooLarge'), 4000)
+    }
+    if (results.some((result) => result.reason === 'unreadable')) {
+      toast.warning(t('ai.composerImageUnreadable'), 4000)
+    }
+  }
+
+  const askShrink = async (files: File[]): Promise<boolean> => {
+    if (files.length === 0) return false
+    const one = files.length === 1
+    return showConfirm({
+      title: t('ai.composerImageShrinkAskTitle'),
+      message: one
+        ? t('ai.composerImageShrinkAsk', {
+            name: files[0].name || t('ai.composerImageUnnamed'),
+            size: formatImageSize(files[0].size),
+          })
+        : t('ai.composerImageShrinkAskMany', { count: files.length }),
+      confirmText: t('ai.composerImageShrinkConfirm'),
+      cancelText: t('ai.composerImageShrinkDecline'),
+    })
+  }
+
+  /** 不缩小：本机图用原路径；剪贴板没有原文件的，原样另存后再给路径。 */
+  const putPathOnly = async (file: File): Promise<ImagePutResult> => {
     if (pendingImages.value.length >= IMAGE_LIMITS.MAX_COUNT) {
-      console.warn(`图片数量已达上限 (${IMAGE_LIMITS.MAX_COUNT})`)
-      return false
+      return { ok: false, reason: 'count' }
     }
-    
-    // 检查文件大小
-    if (file.size > IMAGE_LIMITS.MAX_SIZE_MB * 1024 * 1024) {
-      console.warn(`图片文件过大: ${(file.size / 1024 / 1024).toFixed(1)}MB，上限 ${IMAGE_LIMITS.MAX_SIZE_MB}MB`)
-      return false
-    }
-    
-    try {
-      isProcessingImage.value = true
-      const { dataUrl, width, height } = await fileToDataUrl(file)
-      const saved = await persistIfNeeded(dataUrl, file.name || 'pasted-image', tryGetLocalPath(file))
-      
+    const localPath = tryGetLocalPath(file)
+    if (localPath) {
       pendingImages.value.push({
-        id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        dataUrl,
+        id: nextImageId(),
+        dataUrl: '',
         name: file.name || 'pasted-image',
         size: file.size,
-        width,
-        height,
+        filePath: localPath,
+        savedByApp: false,
+        pathOnly: true,
+      })
+      return { ok: true, pathOnly: true }
+    }
+    if (file.size > IMAGE_KEEP_MAX_BYTES) return { ok: false, reason: 'too-large' }
+    beginProcessing()
+    try {
+      const dataUrl = await readFileAsDataUrl(file)
+      const saved = await persistIfNeeded(dataUrl, file.name || 'pasted-image', undefined, IMAGE_KEEP_MAX_BYTES)
+      if (!saved.filePath) return { ok: false, reason: 'unreadable' }
+      pendingImages.value.push({
+        id: nextImageId(),
+        dataUrl: '',
+        name: file.name || 'pasted-image',
+        size: file.size,
+        filePath: saved.filePath,
+        savedByApp: true,
+        pathOnly: true,
+      })
+      return { ok: true, pathOnly: true }
+    } catch (error) {
+      console.error('留下原图失败:', error)
+      return { ok: false, reason: 'unreadable' }
+    } finally {
+      endProcessing()
+    }
+  }
+
+  /**
+   * 另存一份缩小的新文件。不写回原路径。
+   * 缩小不了时由调用方改留原文件。
+   */
+  const putShrunkCopy = async (file: File): Promise<ImagePutResult> => {
+    if (pendingImages.value.length >= IMAGE_LIMITS.MAX_COUNT) {
+      return { ok: false, reason: 'count' }
+    }
+    if (file.size > IMAGE_DECODE_MAX_BYTES) return { ok: false, reason: 'shrink-fallback' }
+    beginProcessing()
+    try {
+      const fitted = await shrinkToByteLimit(file, IMAGE_MAX_BYTES)
+      if (!fitted.ok) return { ok: false, reason: fitted.reason === 'unreadable' ? 'unreadable' : 'shrink-fallback' }
+      const name = jpegDisplayName(file.name || 'pasted-image')
+      const saved = await persistIfNeeded(fitted.image.dataUrl, name)
+      if (!saved.filePath) return { ok: false, reason: 'unreadable' }
+      pendingImages.value.push({
+        id: nextImageId(),
+        dataUrl: fitted.image.dataUrl,
+        name,
+        size: fitted.image.size,
+        width: fitted.image.width,
+        height: fitted.image.height,
         filePath: saved.filePath,
         savedByApp: saved.savedByApp,
       })
-      
-      return true
+      return { ok: true, shrunkFrom: file.size }
+    } catch (error) {
+      console.error('缩小图片失败:', error)
+      return { ok: false, reason: 'unreadable' }
+    } finally {
+      endProcessing()
+    }
+  }
+
+  const putUnderLimit = async (file: File): Promise<ImagePutResult> => {
+    if (!isSupportedImage(file)) {
+      console.warn(`不支持的图片类型: ${file.type}`)
+      return { ok: false, reason: 'unsupported' }
+    }
+    if (pendingImages.value.length >= IMAGE_LIMITS.MAX_COUNT) {
+      return { ok: false, reason: 'count' }
+    }
+    beginProcessing()
+    try {
+      const read = await fileToDataUrl(file)
+      const localPath = tryGetLocalPath(file)
+      const name = file.name || 'pasted-image'
+      const saved = await persistIfNeeded(read.dataUrl, name, localPath)
+      pendingImages.value.push({
+        id: nextImageId(),
+        dataUrl: read.dataUrl,
+        name,
+        size: file.size,
+        width: read.width,
+        height: read.height,
+        filePath: saved.filePath,
+        savedByApp: saved.savedByApp,
+      })
+      return { ok: true }
     } catch (error) {
       console.error('处理图片失败:', error)
-      return false
+      return { ok: false, reason: 'unreadable' }
     } finally {
-      isProcessingImage.value = false
+      endProcessing()
     }
+  }
+
+  const ingestImageFiles = async (files: File[]): Promise<number> => {
+    const supported = files.filter(isSupportedImage)
+    const results: ImagePutResult[] = []
+    const large = supported.filter((file) => file.size > IMAGE_MAX_BYTES)
+    const small = supported.filter((file) => file.size <= IMAGE_MAX_BYTES)
+    for (const file of small) results.push(await putUnderLimit(file))
+    if (large.length > 0 && pendingImages.value.length >= IMAGE_LIMITS.MAX_COUNT) {
+      results.push({ ok: false, reason: 'count' })
+    } else if (large.length > 0) {
+      const shrink = await askShrink(large)
+      for (const file of large) {
+        if (!shrink) {
+          results.push(await putPathOnly(file))
+          continue
+        }
+        const shrunk = await putShrunkCopy(file)
+        if (shrunk.ok || shrunk.reason === 'count') {
+          results.push(shrunk)
+          continue
+        }
+        const kept = await putPathOnly(file)
+        results.push(kept.ok ? { ...kept, reason: 'shrink-fallback' } : kept)
+      }
+    }
+    announce(results)
+    return results.filter((result) => result.ok).length
+  }
+
+  const addImageFile = async (file: File): Promise<boolean> => {
+    const added = await ingestImageFiles([file])
+    return added > 0
   }
   
   /**
@@ -176,42 +472,98 @@ export function useImageUpload() {
     filePath?: string,
   ): Promise<boolean> => {
     if (pendingImages.value.length >= IMAGE_LIMITS.MAX_COUNT) {
-      console.warn(`图片数量已达上限 (${IMAGE_LIMITS.MAX_COUNT})`)
+      announce([{ ok: false, reason: 'count' }])
       return false
     }
-    // dataUrl 形态：data:image/png;base64,xxxx —— 体积约为原始二进制的 4/3
-    const approxSize = Math.floor(dataUrl.length * 0.75)
-    if (approxSize > IMAGE_LIMITS.MAX_SIZE_MB * 1024 * 1024) {
-      console.warn(`图片过大: 约 ${(approxSize / 1024 / 1024).toFixed(1)}MB，上限 ${IMAGE_LIMITS.MAX_SIZE_MB}MB`)
+    const approx = Math.floor(dataUrl.length * 0.75)
+    if (approx <= IMAGE_MAX_BYTES) {
+      const saved = await persistIfNeeded(dataUrl, name, filePath)
+      pendingImages.value.push({
+        id: nextImageId(),
+        dataUrl,
+        name,
+        size: approx,
+        width,
+        height,
+        filePath: saved.filePath,
+        savedByApp: saved.savedByApp,
+      })
+      return true
+    }
+
+    let blob: Blob
+    try {
+      blob = await fetch(dataUrl).then((res) => res.blob())
+    } catch (error) {
+      console.error('处理图片失败:', error)
+      announce([{ ok: false, reason: 'unreadable' }])
       return false
     }
-    const saved = await persistIfNeeded(dataUrl, name, filePath)
-    pendingImages.value.push({
-      id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-      dataUrl,
-      name,
-      size: approxSize,
-      width,
-      height,
-      filePath: saved.filePath,
-      savedByApp: saved.savedByApp,
-    })
-    return true
+    if (blob.size <= IMAGE_MAX_BYTES) {
+      const saved = await persistIfNeeded(dataUrl, name, filePath)
+      pendingImages.value.push({
+        id: nextImageId(),
+        dataUrl,
+        name,
+        size: blob.size,
+        width,
+        height,
+        filePath: saved.filePath,
+        savedByApp: saved.savedByApp,
+      })
+      return true
+    }
+
+    const file = new File([blob], name || 'pasted-image', { type: blob.type || 'image/png' })
+    const shrink = await askShrink([file])
+    if (!shrink) {
+      if (filePath) {
+        pendingImages.value.push({
+          id: nextImageId(),
+          dataUrl: '',
+          name,
+          size: blob.size,
+          filePath,
+          savedByApp: false,
+          pathOnly: true,
+        })
+        announce([{ ok: true, pathOnly: true }])
+        return true
+      }
+      const kept = await putPathOnly(file)
+      announce([kept])
+      return kept.ok
+    }
+
+    const shrunk = await putShrunkCopy(file)
+    if (shrunk.ok) {
+      announce([shrunk])
+      return true
+    }
+    if (shrunk.reason === 'shrink-fallback') {
+      if (filePath) {
+        pendingImages.value.push({
+          id: nextImageId(),
+          dataUrl: '',
+          name,
+          size: blob.size,
+          filePath,
+          savedByApp: false,
+          pathOnly: true,
+        })
+        announce([{ ok: true, pathOnly: true, reason: 'shrink-fallback' }])
+        return true
+      }
+      const kept = await putPathOnly(file)
+      announce([kept.ok ? { ...kept, reason: 'shrink-fallback' } : kept])
+      return kept.ok
+    }
+    announce([shrunk])
+    return false
   }
 
-  /**
-   * 处理拖拽的文件中的图片
-   * 返回处理的图片数量
-   */
   const handleDroppedImages = async (files: FileList | File[]): Promise<number> => {
-    let count = 0
-    for (const file of files) {
-      if (isSupportedImage(file)) {
-        const added = await addImageFile(file)
-        if (added) count++
-      }
-    }
-    return count
+    return ingestImageFiles(Array.from(files))
   }
   
   /**
@@ -266,7 +618,23 @@ export function useImageUpload() {
    * 获取所有待发送图片的 data URL 列表
    */
   const getImageDataUrls = (): string[] => {
-    return pendingImages.value.map(img => img.dataUrl)
+    return pendingImages.value
+      .filter((img) => !img.pathOnly && !!img.dataUrl)
+      .map((img) => img.dataUrl)
+  }
+
+  const hasVisionImages = (): boolean => {
+    return pendingImages.value.some((img) => !img.pathOnly && !!img.dataUrl)
+  }
+
+  /** 模型不能看图时丢掉要送去看的那些，只留路径的原文件还在 */
+  const dropVisionImages = () => {
+    const kept: PendingImage[] = []
+    for (const img of pendingImages.value) {
+      if (img.pathOnly) kept.push(img)
+      else discardSavedPastedImage(img)
+    }
+    pendingImages.value = kept
   }
   
   /**
@@ -292,11 +660,8 @@ export function useImageUpload() {
     input.accept = SUPPORTED_IMAGE_TYPES.join(',')
     input.multiple = true
     input.onchange = async () => {
-      if (input.files) {
-        for (const file of input.files) {
-          await addImageFile(file)
-        }
-      }
+      if (!input.files) return
+      await ingestImageFiles(Array.from(input.files))
     }
     input.click()
   }
@@ -315,6 +680,8 @@ export function useImageUpload() {
     getImageAttachments,
     getImageDataUrls,
     hasImages,
+    hasVisionImages,
+    dropVisionImages,
     canAddMore,
     selectImages,
     IMAGE_LIMITS

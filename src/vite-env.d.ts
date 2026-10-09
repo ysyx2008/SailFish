@@ -1925,7 +1925,7 @@ interface Window {
       getPathForFile: (file: File) => string
     }
     workspace: {
-      savePastedImage: (dataUrl: string, suggestedName?: string) => Promise<{
+      savePastedImage: (dataUrl: string, suggestedName?: string, maxBytes?: number) => Promise<{
         success: boolean
         filePath?: string
         error?: string

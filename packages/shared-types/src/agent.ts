@@ -236,6 +236,8 @@ export interface AttachmentInfo {
   totalPages?: number
   /** 已渲染为预览图片的页数 */
   previewPages?: number
+  /** 图像内容没有随消息送去看，只有路径 */
+  imagePathOnly?: boolean
 }
 
 /** 分屏窗格信息（用于多屏感知 system prompt 注入） */

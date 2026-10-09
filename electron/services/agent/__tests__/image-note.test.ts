@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { updateLocale } from '../i18n'
-import { buildUserImageNote, collectImageAttachmentPaths } from '../image-note'
+import { buildPathOnlyImageNote, buildUserImageNote, collectImageAttachmentPaths, collectPathOnlyImagePaths } from '../image-note'
 
 beforeAll(() => {
   updateLocale('zh-CN')
@@ -18,6 +18,15 @@ describe('collectImageAttachmentPaths', () => {
   it('空附件返回空数组', () => {
     expect(collectImageAttachmentPaths()).toEqual([])
     expect(collectImageAttachmentPaths([])).toEqual([])
+  })
+
+  it('只留路径的图不算已经送去看的图', () => {
+    const attachments = [
+      { filename: 'small.png', filePath: '/tmp/small.png', fileSize: 10, fileType: 'png' },
+      { filename: 'big.jpg', filePath: '/tmp/big.jpg', fileSize: 20, fileType: 'jpg', imagePathOnly: true },
+    ]
+    expect(collectImageAttachmentPaths(attachments)).toEqual(['/tmp/small.png'])
+    expect(collectPathOnlyImagePaths(attachments)).toEqual(['/tmp/big.jpg'])
   })
 
   it('fileType 不像图但路径是图时仍收录', () => {
@@ -42,6 +51,13 @@ describe('buildUserImageNote', () => {
     const note = buildUserImageNote({ count: 2, paths: [], visionAvailable: true })
     expect(note).toContain('2')
     expect(note).not.toContain('磁盘路径')
+  })
+
+  it('只留路径时说明图像内容没有送进来', () => {
+    const note = buildPathOnlyImageNote(['/tmp/big.jpg'])
+    expect(note).toContain('/tmp/big.jpg')
+    expect(note).toContain('没有直接送进来')
+    expect(note).not.toContain('read_file')
   })
 
   it('无视觉能力时仍告知路径', () => {

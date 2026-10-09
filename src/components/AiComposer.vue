@@ -44,6 +44,8 @@ interface PendingImage {
   id: string
   name: string
   dataUrl: string
+  size?: number
+  pathOnly?: boolean
 }
 
 interface UploadedDoc {
@@ -1880,8 +1882,17 @@ const handleSendClick = (event: MouseEvent) => {
     </Teleport>
 
     <div v-if="pendingImages.length > 0" class="image-preview-strip">
-      <div v-for="img in pendingImages" :key="img.id" class="image-preview-item">
-        <img :src="img.dataUrl" :alt="img.name" class="image-thumbnail" @click="openImagePreview(img.dataUrl)" />
+      <div
+        v-for="img in pendingImages"
+        :key="img.id"
+        class="image-preview-item"
+        :class="{ 'is-path-only': img.pathOnly }"
+      >
+        <div v-if="img.pathOnly" class="image-path-only" :title="img.name">
+          <span class="image-path-only-name">{{ img.name }}</span>
+          <span v-if="img.size" class="image-path-only-size">{{ formatFileSize(img.size) }}</span>
+        </div>
+        <img v-else :src="img.dataUrl" :alt="img.name" class="image-thumbnail" @click="openImagePreview(img.dataUrl)" />
         <button class="image-remove-btn" @click="removeImage(img.id)" :title="t('ai.removeImage')">
           <X :size="12" />
         </button>
@@ -4111,6 +4122,37 @@ const handleSendClick = (event: MouseEvent) => {
   overflow: hidden;
   border: 1px solid var(--border-color);
   background: var(--bg-surface);
+}
+
+.image-preview-item.is-path-only {
+  width: 108px;
+}
+
+.image-path-only {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px;
+  box-sizing: border-box;
+}
+
+.image-path-only-name {
+  font-size: 10px;
+  line-height: 1.25;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-all;
+  color: var(--text-primary);
+}
+
+.image-path-only-size {
+  font-size: 10px;
+  color: var(--text-muted);
 }
 
 .image-thumbnail {

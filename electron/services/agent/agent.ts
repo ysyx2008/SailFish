@@ -100,7 +100,7 @@ import { isAbortError } from '../../utils/abort'
 import { toSendableVisionImageUrl } from '../../utils/vision-image'
 import { assembleUserMessageContent, formatSelectionScopeBody, wrapSystemContext } from './message-envelope'
 import { takeQueuedUserReply } from './pending-user-reply'
-import { buildUserImageNote, collectImageAttachmentPaths } from './image-note'
+import { buildPathOnlyImageNote, buildUserImageNote, collectImageAttachmentPaths, collectPathOnlyImagePaths } from './image-note'
 import { notifyFrontendConfigChanged } from './skills/config/executor'
 import { getBrowserBridgeService } from '../browser-bridge/browser-bridge.service'
 import { patchBrowserBridgeSectionInSystemPrompt } from '../browser-bridge/prompt-section'
@@ -2754,20 +2754,26 @@ export abstract class Agent {
     systemContextParts.push(buildLoadedSkillsThisTurnHint(this.getLoadedSkillsRoster()))
     const hasImages = !!(run.context.images && run.context.images.length > 0)
     const visionAvailable = this.currentProfileHasVision()
+    const visionPaths = collectImageAttachmentPaths(run.context.attachments)
+    const pathOnlyPaths = collectPathOnlyImagePaths(run.context.attachments)
     let imageNote = ''
     if (hasImages) {
       const imageCount = run.context.images!.length
       const totalSize = run.context.images!.reduce((sum, img) => sum + img.length, 0)
-      const imagePaths = collectImageAttachmentPaths(run.context.attachments)
-      log.info(`User images: ${imageCount} image(s), total base64 size: ${(totalSize / 1024).toFixed(0)}KB, vision=${visionAvailable}, paths=${imagePaths.length}`)
+      log.info(`User images: ${imageCount} image(s), total base64 size: ${(totalSize / 1024).toFixed(0)}KB, vision=${visionAvailable}, paths=${visionPaths.length}`)
       if (!visionAvailable) {
         log.warn(`Dropping ${imageCount} user image(s) due to no vision capability on current profile`)
       }
       imageNote = buildUserImageNote({
         count: imageCount,
-        paths: imagePaths,
+        paths: visionPaths,
         visionAvailable,
       })
+    }
+    if (pathOnlyPaths.length > 0) {
+      log.info(`User path-only images: ${pathOnlyPaths.length}`)
+      const pathNote = buildPathOnlyImageNote(pathOnlyPaths)
+      imageNote = imageNote ? `${imageNote}\n${pathNote}` : pathNote
     }
 
     const selectionScopeBody = run.context.workbenchContext?.selectionScope
@@ -5107,10 +5113,11 @@ export abstract class Agent {
     for (const pending of run.pendingUserMessages) {
       const userBody = Agent.formatTimestamp() + Agent.formatWorkbenchTag(run.context.terminalType) + pending.message
       let imageNote = ''
+      const pendingVisionPaths = collectImageAttachmentPaths(pending.attachments)
+      const pendingPathOnly = collectPathOnlyImagePaths(pending.attachments)
       if (pending.images?.length) {
         const imageCount = pending.images.length
-        const imagePaths = collectImageAttachmentPaths(pending.attachments)
-        log.info(`Supplement images: ${imageCount} image(s), vision=${visionAvailable}, paths=${imagePaths.length}`)
+        log.info(`Supplement images: ${imageCount} image(s), vision=${visionAvailable}, paths=${pendingVisionPaths.length}`)
         if (visionAvailable) {
           allImages.push(...pending.images)
         } else {
@@ -5118,9 +5125,13 @@ export abstract class Agent {
         }
         imageNote = buildUserImageNote({
           count: imageCount,
-          paths: imagePaths,
+          paths: pendingVisionPaths,
           visionAvailable,
         })
+      }
+      if (pendingPathOnly.length > 0) {
+        const pathNote = buildPathOnlyImageNote(pendingPathOnly)
+        imageNote = imageNote ? `${imageNote}\n${pathNote}` : pathNote
       }
       const selectionScopeBody = pending.workbenchContext?.selectionScope
         ? formatSelectionScopeBody(pending.workbenchContext.selectionScope)

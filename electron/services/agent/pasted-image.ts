@@ -17,8 +17,10 @@ const MIME_EXT: Record<string, string> = {
 
 const GENERIC_STEM = /^(image|img|photo|picture|screenshot|pasted-image|blob|untitled)(-\d+)?$/i
 
-/** 与前端图片上限对齐；IPC 入口也按这个拦 */
+/** 直接拿去看的单张上限。原样留下的图可以更大，由调用方单独放宽。 */
 export const MAX_PASTED_IMAGE_BYTES = 5 * 1024 * 1024
+/** 原样另存时的体积上限，避免一次塞进过大的内容 */
+export const MAX_KEPT_PASTED_IMAGE_BYTES = 50 * 1024 * 1024
 
 export function getPastedImageDir(): string {
   return path.join(app.getPath('userData'), 'history', 'images', 'pasted')
@@ -58,10 +60,15 @@ function sanitizeStem(name: string): string {
  * 将 data URL 写入历史图片目录，返回绝对路径。
  * 已有真实路径的调用方不应走这里。
  */
-export function savePastedImage(dataUrl: string, suggestedName?: string): string {
+export function savePastedImage(
+  dataUrl: string,
+  suggestedName?: string,
+  maxBytes = MAX_PASTED_IMAGE_BYTES,
+): string {
   const parsed = parseImageDataUrl(dataUrl)
   if (!parsed) throw new Error('invalid image data url')
-  if (parsed.buffer.length > MAX_PASTED_IMAGE_BYTES) throw new Error('image too large')
+  const limit = Math.min(Math.max(1, maxBytes), MAX_KEPT_PASTED_IMAGE_BYTES)
+  if (parsed.buffer.length > limit) throw new Error('image too large')
   const ext = MIME_EXT[parsed.mime]
   const dir = getPastedImageDir()
   fs.mkdirSync(dir, { recursive: true })

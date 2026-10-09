@@ -3648,7 +3648,7 @@ ipcMain.handle('config:setAgentPersonalityText', async (_event, text: string) =>
 })
 
 // Agent 身份文件（IDENTITY.md / SOUL.md / USER.md / HEARTBEAT.md）
-ipcMain.handle('workspace:savePastedImage', async (_event, dataUrl: string, suggestedName?: string) => {
+ipcMain.handle('workspace:savePastedImage', async (_event, dataUrl: string, suggestedName?: string, maxBytes?: number) => {
   try {
     if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) {
       return { success: false, error: 'invalid data url' }
@@ -3656,6 +3656,7 @@ ipcMain.handle('workspace:savePastedImage', async (_event, dataUrl: string, sugg
     const filePath = savePastedImage(
       dataUrl,
       typeof suggestedName === 'string' ? suggestedName : undefined,
+      typeof maxBytes === 'number' ? maxBytes : undefined,
     )
     return { success: true, filePath }
   } catch (error) {

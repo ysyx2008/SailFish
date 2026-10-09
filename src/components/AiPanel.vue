@@ -575,6 +575,8 @@ const {
   getImageAttachments,
   ensurePendingImagePaths,
   hasImages,
+  hasVisionImages,
+  dropVisionImages,
   loadPendingImages,
   addImageDataUrl
 } = useImageUpload()
@@ -1220,7 +1222,7 @@ const checkVisionSupport = async () => {
 }
 
 // 监听图片列表变化，有新图片时检测视觉支持
-watch(() => pendingImages.value.length, (newLen, oldLen) => {
+watch(() => pendingImages.value.filter(img => !img.pathOnly && !!img.dataUrl).length, (newLen, oldLen) => {
   if (newLen > oldLen) {
     checkVisionSupport()
   }
@@ -1236,7 +1238,7 @@ watch(() => pendingImages.value.length, (newLen, oldLen) => {
  * - 仍然发送：继续走 runAgent，后端会自动剥图并注入提示，让 AI 主动告知用户「我没看到图」
  */
 const guardVisionBeforeSend = async (): Promise<boolean> => {
-  if (!hasImages()) return true
+  if (!hasVisionImages()) return true
   const hasVision = await window.electronAPI.config.hasVisionCapability()
   if (hasVision) return true
 
@@ -1256,7 +1258,7 @@ const guardVisionBeforeSend = async (): Promise<boolean> => {
   // 用户确认"仍然发送"——按钮文案承诺了"不带图"，所以这里立刻清掉 pendingImages，
   // 避免几 MB 的 base64 仍走渲染→主进程 IPC（后端虽然会兜底剥图，但传输已经发生了）。
   if (proceed) {
-    discardImages()
+    dropVisionImages()
     toast.info(t('ai.visionGuardImagesDropped'))
   }
   return proceed
@@ -1438,10 +1440,7 @@ function analyzeText(text: string) {
  */
 async function addComposerImage(image: { dataUrl: string; name: string; width?: number; height?: number; filePath?: string }) {
   const added = await addImageDataUrl(image.dataUrl, image.name, image.width ?? 0, image.height ?? 0, image.filePath)
-  if (!added) {
-    toast.error(t('ai.composerImageLimit'))
-    return
-  }
+  if (!added) return
   nextTick(() => composerRef.value?.focusInput())
 }
 

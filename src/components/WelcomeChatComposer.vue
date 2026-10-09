@@ -58,10 +58,11 @@ const {
   handleDroppedImages,
   removeImage,
   clearImages,
-  discardImages,
   loadPendingImages,
   ensurePendingImagePaths,
-  hasImages
+  hasImages,
+  hasVisionImages,
+  dropVisionImages
 } = useImageUpload()
 
 const isAttaching = computed(() => isUploadingDocs.value || isProcessingImage.value)
@@ -261,12 +262,12 @@ const checkVisionSupport = async () => {
   }
 }
 
-watch(() => pendingImages.value.length, (newLen, oldLen) => {
+watch(() => pendingImages.value.filter(img => !img.pathOnly && !!img.dataUrl).length, (newLen, oldLen) => {
   if (newLen > oldLen) void checkVisionSupport()
 })
 
 const guardVisionBeforeSend = async (): Promise<boolean> => {
-  if (!hasImages()) return true
+  if (!hasVisionImages()) return true
   const hasVision = await window.electronAPI.config.hasVisionCapability()
   if (hasVision) return true
 
@@ -281,7 +282,7 @@ const guardVisionBeforeSend = async (): Promise<boolean> => {
     onNeutral: () => showSettings?.()
   })
   if (proceed) {
-    discardImages()
+    dropVisionImages()
     toast.info(t('ai.visionGuardImagesDropped'))
   }
   return proceed

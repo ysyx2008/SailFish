@@ -3559,8 +3559,8 @@ const electronAPI = {
   },
 
   workspace: {
-    savePastedImage: (dataUrl: string, suggestedName?: string) =>
-      ipcRenderer.invoke('workspace:savePastedImage', dataUrl, suggestedName) as Promise<{
+    savePastedImage: (dataUrl: string, suggestedName?: string, maxBytes?: number) =>
+      ipcRenderer.invoke('workspace:savePastedImage', dataUrl, suggestedName, maxBytes) as Promise<{
         success: boolean
         filePath?: string
         error?: string
