@@ -1,8 +1,8 @@
 /**
  * 联络工作台贡献给 Agent 的专属工具（仅 __companion__ 注册，见 sailfish.getAvailableTools）。
  *
- * 信任模型（转述制）：confirm 只把用户的明确决定传达给任务 Agent，工具描述里
- * 写死「绝不自行批准」；create 的 full_auto 仅接受用户显式声明。
+ * 信任模型（转述制）：confirm 只把用户的决定传达给任务 Agent；
+ * create 的 full_auto 只在用户明确声明时使用。
  */
 
 export const MANAGE_TASKS = 'manage_tasks'
@@ -12,25 +12,14 @@ export const COMPANION_WORKBENCH_AGENT_TOOLS = [
     type: 'function',
     function: {
       name: MANAGE_TASKS,
-      description: `【任务管理】查看和管理任务 Agent（查看列表/近况、创建、再交代、停止、传达确认决定）。管的是这台电脑上的所有任务，不限联络自己交办的。
+      description: `管理这台电脑上所有的任务，不限联络自己创建的。
 
-action 说明：
-- list：列出当前所有任务的摘要（标题、状态、待确认详情、task_id）。
-- inspect：查看单个任务的最近步骤摘要。需要 task_id。
-- create：创建新任务（无终端助手形态）。需要 title（一句话任务标题）和 brief（任务简报：目标、要求、必要上下文，将作为任务收到的指令）。
-  brief 是任务 Agent 唯一可见的上下文——写清要做什么、做到什么程度算完成；**不要在 brief 里引用 manage_tasks 或联络线里的对话**（任务侧没有这个工具，也看不到你的对话），任务管理由你负责。
-  用户还在这条对话里。确认和复命会由系统自动回到这条线。
-  未设置 full_auto 时，危险操作先由独立评审员对照这场任务里交代的话决定放不放，看不准再问用户。
-  full_auto=true 表示全自动执行（危险操作也不再逐条确认）——**仅当用户明确说"全自动/不用问我/直接跑"时才可设置**。
-- instruct：往一场已经存在的任务里再交代一句。需要 task_id 和 message。
-  它还在跑时，这句当场送进那场，按新的话接着做，也算这场里交代过的话。
-  这场已经停了，或只在最近的历史里：仍是原来那场，接着做，不另开。
-  message 只给那场看，不要引用联络里的其他对话。远程终端那场如果窗口已经不在，送不进去。
-- confirm：把用户对危险操作的批准/拒绝传达给正在等待确认的任务。需要 task_id 和 tool_call_id（从确认通知或 list 输出中获取），approve=true 批准 / false 拒绝。
-  **只传达用户的明确决定，绝不自行批准。**
-- stop：停止执行中的任务（不删除会话）。需要 task_id。仅在用户明确要求停止时使用。
-
-典型流程：用户要求做事 → create 创建任务，或对已有任务 instruct 再交代 → 任务完成或需要确认时系统会通知 → 用户表态后用 confirm 传达。`,
+- list：任务摘要（标题、状态、待确认详情、task_id），结束不久的任务也在里面。
+- inspect：某个任务最近的步骤摘要。需要 task_id。
+- create：新开一场无终端的助手任务。需要 title（一句话标题）和 brief（目标、要求、必要上下文）。任务只看得到 brief，看不到这条对话，也没有这个工具。确认和做完的结果会回到这条线。没设 full_auto 时，要用户确认的操作先由独立评审员对照任务里交代过的话判断，看不准才问用户；full_auto=true 时不再询问用户，只在用户明确这样说过时使用。
+- instruct：往已有任务里再交代一句。需要 task_id 和 message。任务在跑时当场送进；已经停了或只在历史里时，仍是原来那场接着做。message 只有那场任务看得到。远程终端的窗口已经关掉时送不进去。
+- confirm：把用户对待确认操作的批准或拒绝传到任务。需要 task_id、tool_call_id（确认通知和 list 里都有）、approve。批不批由用户决定。
+- stop：停止正在执行的任务，会话保留。需要 task_id。`,
       parameters: {
         type: 'object',
         properties: {
@@ -41,7 +30,7 @@ action 说明：
           },
           task_id: {
             type: 'string',
-            description: '目标任务 ID（inspect/confirm/stop 必填，从 list 输出获取）'
+            description: '目标任务 ID（inspect/instruct/confirm/stop 必填，list 里有）'
           },
           tool_call_id: {
             type: 'string',

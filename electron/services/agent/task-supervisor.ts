@@ -22,6 +22,7 @@ import { COMPANION_AGENT_KEY, inferConversationKind, type RiskLevel, type Termin
 import { createLogger } from '../../utils/logger'
 import { appendProactiveContext } from './proactive-store'
 import { deliverProactiveMessage } from './proactive-deliver'
+import { t } from './i18n'
 import { getDefaultShell, getLocalOS } from '../../utils/platform'
 import type { HistoryService } from '../history.service'
 import type { ConfigService } from '../config.service'
@@ -318,20 +319,23 @@ export class TaskSupervisor {
       if (!isManagedTaskKey(agentKey)) return
       const title = this.resolveTaskTitle(agentKey)
 
-      appendProactiveContext(COMPANION_AGENT_ID, [
-        `[任务确认请求] 任务「${title}」(task_id=${agentKey}) 正在等待危险操作确认：`,
-        `- 工具：${event.toolName}${event.displayName ? `（${event.displayName}）` : ''}`,
-        `- 风险等级：${event.riskLevel}`,
-        `- 参数：${event.argsPreview}`,
-        `- tool_call_id：${event.toolCallId}`,
-        `用户若回复批准或拒绝，用 manage_tasks(action="confirm", task_id="${agentKey}", tool_call_id="${event.toolCallId}", approve=true/false) 传达。`,
-        `联络不得自行批准；不确定指哪个任务时先 manage_tasks(action="list") 核对。`,
-      ].join('\n'), '任务确认请求')
+      appendProactiveContext(COMPANION_AGENT_ID, t('taskmgr.ctx.confirm', {
+        title,
+        taskId: agentKey,
+        tool: `${event.toolName}${event.displayName ? `（${event.displayName}）` : ''}`,
+        risk: event.riskLevel,
+        args: event.argsPreview,
+        toolCallId: event.toolCallId,
+      }), t('taskmgr.notice.confirm_title'))
 
-      const actionLabel = event.displayName || event.toolName
-      const notice = `⏳ 任务「${title}」请求确认：${actionLabel}（${event.riskLevel}）\n${event.argsPreview}\n回复"批准"或"拒绝"即可。`
+      const notice = `⏳ ${t('taskmgr.notice.confirm', {
+        title,
+        action: event.displayName || event.toolName,
+        risk: t(`taskmgr.risk.${event.riskLevel}`),
+        args: event.argsPreview,
+      })}`
       void deliverProactiveMessage(notice, {
-        title: '任务确认',
+        title: t('taskmgr.notice.confirm_title'),
         historyService: this.host.getHistoryService(),
       }).catch(err => log.warn('任务确认回流投递失败:', err))
     } catch (err) {
@@ -441,23 +445,37 @@ export class TaskSupervisor {
     if (events.length === 0) return
 
     const statusIcon = { success: '✅', failed: '❌', aborted: '⏹' } as const
-    const statusText = { success: '完成', failed: '失败', aborted: '已停止' } as const
-    const lines = events.map(e =>
-      `- ${statusIcon[e.status]} 「${e.taskTitle}」${statusText[e.status]}：${e.summary || '（无输出）'}`
-    )
-    const contextLines = events.map(e =>
-      `- 「${e.taskTitle}」(task_id=${e.agentKey}) ${statusText[e.status]}：${e.summary || '（无输出）'}`
-    )
+    const statusText = {
+      success: t('taskmgr.status_completed'),
+      failed: t('taskmgr.status_failed'),
+      aborted: t('taskmgr.status_aborted'),
+    } as const
+    const summaryOf = (e: { summary?: string }) => e.summary || t('taskmgr.notice.no_output')
+    const lines = events.map(e => t('taskmgr.notice.finish_line', {
+      icon: statusIcon[e.status], title: e.taskTitle, status: statusText[e.status], summary: summaryOf(e),
+    }))
+    const contextLines = events.map(e => t('taskmgr.ctx.finish_line', {
+      title: e.taskTitle, taskId: e.agentKey, status: statusText[e.status], summary: summaryOf(e),
+    }))
 
-    appendProactiveContext(COMPANION_AGENT_ID, `[任务复命]\n${contextLines.join('\n')}`, '任务复命')
+    appendProactiveContext(
+      COMPANION_AGENT_ID,
+      `${t('taskmgr.ctx.finish_header')}\n${contextLines.join('\n')}`,
+      t('taskmgr.notice.report_title'),
+    )
 
     const notice = events.length === 1
-      ? `${statusIcon[events[0].status]} 任务「${events[0].taskTitle}」${statusText[events[0].status]}：${events[0].summary || '（无输出）'}`
-      : `任务进展通报（${events.length} 项）：\n${lines.join('\n')}`
+      ? t('taskmgr.notice.finish_one', {
+          icon: statusIcon[events[0].status],
+          title: events[0].taskTitle,
+          status: statusText[events[0].status],
+          summary: summaryOf(events[0]),
+        })
+      : t('taskmgr.notice.finish_many', { count: events.length, lines: lines.join('\n') })
     // alwaysPersist：复命是数据事件不是尽力通知——CLI 无窗口/IM 时 deliveredVia 为空，
     // 联络历史记录是它唯一留下的痕迹（下次联络运行冷启动恢复可见）
     await deliverProactiveMessage(notice, {
-      title: '任务复命',
+      title: t('taskmgr.notice.report_title'),
       historyService: this.host.getHistoryService(),
       alwaysPersist: true,
     }).catch(err => log.warn('任务复命投递失败:', err))
