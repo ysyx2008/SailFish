@@ -1074,7 +1074,7 @@ Companion 语义是「一条跨重启、多渠道汇流的连续关系线」，�
 - **失败案例（commit `9607c2a8`）**：往 footer 里塞了一个高 22px 的 fork 菜单按钮，按钮 v-if 受 `isAgentRunning` 控制——Agent 跑完那一刻按钮整批出现，所有完成 group 的 footer 同时从 17 跳到 22，虚拟列表监测到全部 item size 变化触发整列重排
 - **修复（commit `274a2386`）**：min-height 锁底，按钮在/不在 footer 高度恒定
 - **回归保护**：未来在 footer 加新元素时高度必须 ≤ 22px；要超过 22px 必须同步把 min-height 抬高到新最大值，并且新元素也不能是基于运行时状态条件渲染的
-- **首次入场动画**：footer 第一次显示时（`group.id` 不在 `animatedFooters` Set 中）附加 `agent-final-footer--first-show` class 触发 `agent-final-footer-enter` keyframes（opacity 0→1 + translateY 6→0，320ms iOS spring）；`@animationend` 回调把 `group.id` 写入 Set，后续虚拟滚动 unmount/mount 时 class 不再附加，**绝不会重播动画**——避免"翻历史时一路 footer 滑入闪烁"的回归。动画只用 opacity + transform 这种 compositor 层属性，不影响 box height，不破坏 item size 恒定不变量
+- **不要单独浮入**：完成那一行出现时，跟前面的字同一个速度被顶上去。不要再给它加一段更慢的淡入或上移，否则收尾会顿一下，和前面的输出对不上。
 
 ### 流式输出跟底跟随（UX 承诺）
 

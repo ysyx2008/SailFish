@@ -317,34 +317,6 @@ const isLoadedFromHistory = computed(() => {
   return !!tab?.agentState?.loadedFromHistory
 })
 
-// 任务完成尾注首次出现时给一次性 fade-in 动画。
-//
-// 问题：footer 是 `v-if` 控制，且外层用虚拟滚动，footer 滚出
-// 视区后会被 unmount，滚回时 remount——如果 CSS 入场动画无条件挂在 .agent-final-footer
-// 上，每次 remount 都会重播，造成"翻历史一路滑入闪烁"。
-//
-// 方案：用 Set 记录"已经播过入场动画的 group id"，class 只在 Set 不包含该 group 时
-// 附加 → 第一次出现时播动画 → animationend 写入 Set → 之后无论怎么 remount 都不再
-// 附加 class 也就不再播放。
-//
-// 历史冷加载：会话打开时尾注已在最终态，不应再播「完成瞬间」的淡入；渲染时写入 Set
-// 并跳过 first-show，续聊后 remount 也不会误播。
-const animatedFooters = new Set<string>()
-
-const isFooterFirstShow = (groupId: string | undefined): boolean => {
-  if (!groupId) return false
-  if (animatedFooters.has(groupId)) return false
-  if (isLoadedFromHistory.value) {
-    animatedFooters.add(groupId)
-    return false
-  }
-  return true
-}
-
-const markFooterAnimated = (groupId: string | undefined) => {
-  if (groupId) animatedFooters.add(groupId)
-}
-
 // 正在 fork 的 group ID 集合：防止用户连续点击同一个按钮创建多个 fork tab
 const forkingGroupIds = ref<Set<string>>(new Set())
 
@@ -2659,14 +2631,10 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                       <!-- 任务完成尾注：长在这一场的最后一格上。这一格若是说过的话，尾注就在这句话下面；
                            后头还有干活，标记跟到那些后面，不浮在半截。任务完成那一刻从这一格末尾
                            "长出"几像素，不引起独立 item 出现/消失，避免列表重排跳动。
-                           agent-final-footer--first-show 仅在该 group 第一次显示尾注时附加，触发一次性
-                           fade-in 动画；animationend 后 markFooterAnimated 写入 Set，后续虚拟滚动 remount
-                           不再附加 class，避免动画重播闪烁 -->
+                           不再单独浮入：跟前面的字一样，由跟底滚动带走。 -->
                       <div
                         v-if="item.part !== 'thinking' && shouldShowTaskCompleteFooter(item)"
                         class="agent-final-footer"
-                        :class="{ 'agent-final-footer--first-show': isFooterFirstShow(item.group?.id) }"
-                        @animationend="markFooterAnimated(item.group?.id)"
                       >
                         <span class="agent-final-footer-icon">✓</span>
                         <span>{{ getTaskCompleteFooterLabel(item.group?.id) }}</span>
@@ -2885,8 +2853,6 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                     <div
                       v-if="item.step!.type !== 'message' && item.part !== 'thinking' && shouldShowTaskCompleteFooter(item)"
                       class="agent-final-footer"
-                      :class="{ 'agent-final-footer--first-show': isFooterFirstShow(item.group?.id) }"
-                      @animationend="markFooterAnimated(item.group?.id)"
                     >
                       <span class="agent-final-footer-icon">✓</span>
                       <span>{{ getTaskCompleteFooterLabel(item.group?.id) }}</span>
@@ -3089,8 +3055,6 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                 <div
                   v-if="shouldShowTaskCompleteFooter(item)"
                   class="agent-final-footer"
-                  :class="{ 'agent-final-footer--first-show': isFooterFirstShow(item.group?.id) }"
-                  @animationend="markFooterAnimated(item.group?.id)"
                 >
                   <span class="agent-final-footer-icon">✓</span>
                   <span>{{ getTaskCompleteFooterLabel(item.group?.id) }}</span>
@@ -4739,17 +4703,13 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
   padding: 0;
 }
 
-/* 成功完成的静默尾注：在最终消息下方轻轻浮出一行，不再用整张绿色卡片。
-   入场动画通过 agent-final-footer--first-show 一次性附加（仅 live 完成；历史冷加载跳过），
-   animationend 后由 JS 把该 group id 加入 animatedFooters Set，class 不再附加 →
-   后续虚拟滚动 unmount/mount 不会重播动画，避免"翻历史一路滑入闪烁"的回归。
+/* 成功完成的静默尾注：长在最终消息下面，不再用整张绿色卡片。
+   不单独浮入。它长出来的那一点高度跟前面的字一样，由跟底滚动带走。
 
    ⚠️ UX 不变量：footer 的虚拟列表 item size 必须恒定，与 footer 内
       任何子元素的存在与否无关。min-height 锁到当前最大子元素（22×22 操作
       按钮）高度。详见 electron/services/agent/SPEC.md §"任务完成尾注尺寸恒定"
-      改动前必读，否则会重新引入 4dad4969 修复过的"任务完成时整屏上下闪烁"。
-      入场动画用 opacity + translateY（compositor 层属性），不影响 box height，
-      不破坏 item size 恒定不变量。 */
+      改动前必读，否则会重新引入 4dad4969 修复过的"任务完成时整屏上下闪烁"。 */
 .agent-final-footer {
   display: flex;
   align-items: center;
@@ -4759,21 +4719,6 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
   min-height: 22px;
   font-size: 11px;
   color: var(--text-muted);
-}
-
-.agent-final-footer--first-show {
-  animation: agent-final-footer-enter 320ms cubic-bezier(0.32, 0.72, 0, 1) both;
-}
-
-@keyframes agent-final-footer-enter {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .agent-final-footer-icon {
