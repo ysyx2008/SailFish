@@ -1273,6 +1273,10 @@ export async function messageUser(
       toolName: 'talk_to_user',
       toolResult: displayContent,
     })
+    // 闲着时收到任务回执另起的那一轮：送到用户手里的这句记成对他说的话，界面照主动消息画
+    if (executor.inReceiptTurn) {
+      executor.addStep({ type: 'proactive_notice', content: displayContent })
+    }
     return { success: true, output }
   } else {
     const failedInfo = failedChannels.length > 0

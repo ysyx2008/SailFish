@@ -43,6 +43,8 @@ export interface ConfirmationOptions {
 export interface ToolExecutorConfig {
   /** Agent 实例的逻辑 ID（用于 talk_to_user 等工具路由 proactive message） */
   agentId?: string
+  /** 这一轮是闲着时收到任务回执另起的一轮：用户不在对话里 */
+  inReceiptTurn?: boolean
   /** 当前会话 id（todo_create 自动记对话出处） */
   getSessionId?: () => string | undefined
   /**

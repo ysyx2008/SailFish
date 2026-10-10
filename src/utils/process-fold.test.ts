@@ -540,22 +540,33 @@ describe('foldProcessSteps', () => {
     ])
   })
 
-  it('at the desk only what goes out to the user and what needs the user stays open', () => {
+  it('at the desk the whole turn folds into one leading row; what it said to the user follows', () => {
     const steps = [
       step({ id: 'r', type: 'task_receipt', content: '任务回执' }),
       thinkingMessage('m1', '看看结果', '任务做完了，我去告诉用户'),
       step({ id: 'say', type: 'tool_call', toolName: 'talk_to_user' }),
+      step({ id: 'said', type: 'proactive_notice', content: '算好了：391' }),
+      step({ id: 'sent', type: 'tool_result', toolName: 'talk_to_user' }),
       step({ id: 'm2', type: 'message', content: '已转告' }),
     ]
 
     const segments = foldProcessSteps(steps, { enabled: true, desk: true })
 
-    expect(segments.map(seg => seg.kind)).toEqual(['fold', 'open', 'fold'])
+    expect(segments.map(seg => seg.kind)).toEqual(['fold', 'open'])
     expect(segments[0].kind === 'fold' && segments[0].fold.desk).toBe(true)
-    expect(segments[0].steps.map(ref => ref.step.id)).toEqual(['r', 'm1'])
+    expect(segments[0].steps.map(ref => ref.step.id)).toEqual(['r', 'm1', 'say', 'sent', 'm2'])
     expect(segments[0].steps.every(ref => ref.part === 'full')).toBe(true)
-    expect(segments[1].steps.map(ref => ref.step.id)).toEqual(['say'])
-    expect(segments[2].steps.map(ref => ref.step.id)).toEqual(['m2'])
+    expect(segments[1].steps.map(ref => ref.step.id)).toEqual(['said'])
+  })
+
+  it('at the desk what needs the user still stays open', () => {
+    const segments = foldProcessSteps([
+      step({ id: 'r', type: 'task_receipt', content: '任务回执' }),
+      step({ id: 'ask', type: 'asking', content: '要批准吗？' }),
+    ], { enabled: true, desk: true })
+
+    expect(segments.map(seg => seg.kind)).toEqual(['fold', 'open'])
+    expect(segments[1].steps.map(ref => ref.step.id)).toEqual(['ask'])
   })
 })
 

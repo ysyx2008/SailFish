@@ -1355,7 +1355,8 @@ async function companionChat(args: string[]): Promise<void> {
     onStep: (_agentId: string, step: any) => {
       // 流式中间态不打（CLI 只看落定的步骤）；final_result 与末尾 message 重复，跳过
       if (step.isStreaming) return
-      if (step.type === 'final_result' || step.type === 'user_task') return
+      // 对用户说的话已经在 talk_to_user 那一步打印过
+      if (step.type === 'final_result' || step.type === 'user_task' || step.type === 'proactive_notice') return
       if (step.type === 'task_receipt') {
         receiptTurn = true
         console.log(`\n📨 联络收到任务回执：\n${step.content}`)

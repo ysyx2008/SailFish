@@ -5227,6 +5227,7 @@ export abstract class Agent {
     return {
       agentId: this.getConversationAgentId(),
       isSubAgent: this._isSubAgent,
+      inReceiptTurn: run.internalNotice && run.noticeKind === 'task_receipt',
       getSessionId: () => this.getSessionId(),
       getDocumentConversationId: () => this.documentConversationId(),
       terminalService: this.services.unifiedTerminalService || this.services.ptyService as any,
