@@ -1,6 +1,6 @@
 # 联络派出去的活，回执只交给联络（秘书模型）
 
-> 2026-10-10 · 未完成
+> 2026-10-10 · 已完成
 >
 > 设计目标见 `electron/services/agent/SPEC.md`「联络任务管理」成功标准 4–7 及对应取舍；CLI 部分见 `electron/cli/SPEC.md`「任务值班」。
 
@@ -82,11 +82,21 @@
 
 ## 任务拆解
 
-- [ ] 1. **归属贯通**（A）。验收：单测——`createTask` / `instructTask` 开的那一轮 `ledBy=companion`；界面 `say` 开的没有；补话不改归属；事件带上 `ledBy`。
-- [ ] 2. **回执**（B + C）。验收：单测——用户开头的三类事件什么都不送；联络开头的不调 `deliverProactiveMessage`、不写纸条，改调 `deliverCompanionReceipt`，结束 5 秒合并、确认 / 提问立即并带上缓冲；`deliverTaskReceipt` 在跑插入、空着另起 `internalNotice` 轮并写 `task_receipt` 步骤、用传入回调、不受按停影响。
-- [ ] 3. **联络页渲染**（D）。验收：前端单测——`task_receipt` 起回执组；`desk` 折叠只留 `talk_to_user`；`typecheck:src`。
-- [ ] 4. **CLI 值班**（E）。验收：`sailfish companion` 真跑：派任务 → 回执叫醒联络 → 打印它对用户说的话。
-- [ ] 5. **回归 + 审查 + 文档**：vitest 全量、`test-cli.sh --no-ai`、两个 typecheck、claude-review；`docs/ideas.md`；本文件改 `done-`。
+- [x] 1. **归属贯通**（A）。验收：单测——`createTask` / `instructTask` 开的那一轮 `ledBy=companion`；界面 `say` 开的没有；补话不改归属；事件带上 `ledBy`。
+- [x] 2. **回执**（B + C）。验收：单测——用户开头的三类事件什么都不送；联络开头的不调 `deliverProactiveMessage`、不写纸条，改调 `deliverCompanionReceipt`，结束 5 秒合并、确认 / 提问立即并带上缓冲；`deliverTaskReceipt` 在跑插入、空着另起 `internalNotice` 轮并写 `task_receipt` 步骤、用传入回调、不受按停影响。
+- [x] 3. **联络页渲染**（D）。验收：前端单测——`task_receipt` 起回执组；`desk` 折叠只留 `talk_to_user`；`typecheck:src`。
+- [x] 4. **CLI 值班**（E）。验收：`sailfish companion` 真跑：派任务 → 回执叫醒联络 → 打印它对用户说的话。
+- [x] 5. **回归 + 审查 + 文档**：vitest 全量、`test-cli.sh --no-ai`、两个 typecheck、claude-review；`docs/ideas.md`；本文件改 `done-`。
+
+实际提交：1+2 合为 `d9240df7`（归属与回执同改一组文件，分开反而要写一版马上就丢的中间代码）；3 = `d5f9b535`；4 = `ab95421d`；审查后修正 = `5085bde6`。
+
+与方案的出入：
+
+- 回执和后台结果共用同一道「另起一轮」的门，避免两边同时开跑撞在一起；回执另起一轮时环境接着联络上一轮（渠道、会话），只有回调换成宿主界面。
+- 这一轮收场时还没送进对话的回执挪回队列，等闲下来另起一轮，不丢。
+- 回执另起的一轮不清「用户按停过」的标记（原来每次开跑都清）。
+- 命令行 `--free` 下联络交办的任务一律全自动（任务监督加了宿主级开关），兑现 CLI SPEC「`--mode free` 下任务本就不问」。
+- 命令行没有窗口也没有 IM，`talk_to_user` 会报「没有 IM 联系记录」；CLI 照样把那句打印出来。桌面上有窗口即算送达。
 
 ## 风险与待观察
 
