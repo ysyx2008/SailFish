@@ -988,8 +988,8 @@ export abstract class Agent {
     if (this.currentRun?.isRunning) {
       throw new Error('Agent is already running')
     }
-    // 用户自己又开口了，之后的后台结果可以再送回来
-    this._dropBackgroundNotices = false
+    // 用户自己又开口了，之后的后台结果可以再送回来（回执另起的一轮不算用户开口）
+    if (!options?.internalNotice) this._dropBackgroundNotices = false
     
     // 这场对话用哪个模型：显式传入优先；否则联络沿用界面上已选的。
     // 从没选过就保持空，下游回落到设置里当时的默认——微信进线不能写死、也不能盖掉界面选择。

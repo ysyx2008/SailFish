@@ -1287,13 +1287,24 @@ async function promptYesNo(question: string): Promise<boolean> {
   }
 }
 
+async function promptLine(question: string): Promise<string> {
+  if (!process.stdin.isTTY) return ''
+  const readline = await import('readline')
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    return (await new Promise<string>((resolve) => rl.question(question, resolve))).trim()
+  } finally {
+    rl.close()
+  }
+}
+
 /**
  * 以联络（__companion__）身份对话：`sailfish companion "消息"`。
  *
  * 用途：无头回归联络专属能力（manage_tasks 任务管理只对 __companion__ 注册）。
  * 联络经 manage_tasks 建的 / 交代的任务与桌面同一条路在后端跑（没有窗口只是没人认领到侧栏）；
- * 本命令在联络回复后继续「值班」：轮询受管任务，待确认的交互式转达
- * （真实走一遍转述制 confirm 链路），全部跑完才退出。
+ * 本命令在联络回复后继续「值班」：任务的回执和桌面一样只交给联络，联络对用户说的话打印出来，
+ * 用户的回答作为对联络说的话送回去（与微信上同一条秘书转述）。任务和联络都闲下来才退出。
  */
 async function companionChat(args: string[]): Promise<void> {
   const { positional, flags } = parseArgs(args)
@@ -1330,14 +1341,38 @@ async function companionChat(args: string[]): Promise<void> {
     type === 'thinking' ? '💭' : type === 'tool_call' ? '🔧' :
     type === 'tool_result' ? '📋' : type === 'message' ? '💬' : '  '
 
+  // 联络这一轮是不是在处理回执、有没有对用户开口：处理完回执且开过口，才读一句用户的回答
+  let receiptTurn = false
+  let spokeToUser = false
+  let awaitingReply = false
+  const spokenToolCalls = new Set<string>()
+
   const callbacks = {
+    onStart: () => {
+      receiptTurn = false
+      spokeToUser = false
+    },
     onStep: (_agentId: string, step: any) => {
       // 流式中间态不打（CLI 只看落定的步骤）；final_result 与末尾 message 重复，跳过
       if (step.isStreaming) return
       if (step.type === 'final_result' || step.type === 'user_task') return
+      if (step.type === 'task_receipt') {
+        receiptTurn = true
+        console.log(`\n📨 联络收到任务回执：\n${step.content}`)
+        return
+      }
+      if (step.type === 'tool_call' && step.toolName === 'talk_to_user' && !spokenToolCalls.has(step.id)) {
+        spokenToolCalls.add(step.id)
+        spokeToUser = true
+        console.log(`\n🗣  联络对你说：${step.toolArgs?.message ?? step.content}`)
+        return
+      }
       const content = (step.content || '').substring(0, 300)
       console.log(`${stepPrefix(step.type)} [${step.type}] ${content}`)
       if (step.toolName) console.log(`   Tool: ${step.toolName}`)
+    },
+    onComplete: () => {
+      if (receiptTurn && spokeToUser) awaitingReply = true
     },
     onNeedConfirm: (confirmation: any) => {
       console.log(`\n⚠️  联络自身操作需确认: ${confirmation.toolName} (risk: ${confirmation.riskLevel})`)
@@ -1357,6 +1392,14 @@ async function companionChat(args: string[]): Promise<void> {
     }
   }
 
+  // 回执叫醒联络另起的一轮也用这套回调（与桌面推联络页同一个口子）
+  agent.setUiCallbacksFactory((key: string) => key === COMPANION_AGENT_KEY ? callbacks : undefined)
+  const companionContext = () => ({
+    terminalOutput: [],
+    systemInfo: { os: getLocalOS(), shell: getDefaultShell() },
+    terminalType: 'assistant' as const,
+  })
+
   console.log(`联络对话: "${message}"`)
   console.log(`执行模式: ${mode}\n`)
 
@@ -1364,11 +1407,7 @@ async function companionChat(args: string[]): Promise<void> {
     const result = await agent.runAssistant(
       COMPANION_AGENT_KEY,
       message,
-      {
-        terminalOutput: [],
-        systemInfo: { os: getLocalOS(), shell: getDefaultShell() },
-        terminalType: 'assistant' as const
-      },
+      companionContext(),
       { executionMode: mode as 'strict' | 'relaxed' | 'free' },
       undefined,
       callbacks
@@ -1380,35 +1419,28 @@ async function companionChat(args: string[]): Promise<void> {
   }
 
   // 任务值班：联络可能已通过 manage_tasks 创建或交代了任务，它们在后台跑。
-  // 待确认的任务在这里交互式转达；全部空闲（或超时）才退出。
+  // 回执交给联络；联络对用户开过口就读一句回答送回联络。任务和联络都闲下来（或超时）才退出。
   const supervisor = agent.getTaskSupervisor()
+  const companion = agent.createAssistantAgent(COMPANION_AGENT_KEY)
   const deadline = Date.now() + taskWaitSec * 1000
-  const handledConfirmations = new Set<string>()
   let announcedWait = false
   let idleRounds = 0
   while (Date.now() < deadline) {
-    let busy = 0
-    for (const task of supervisor.listSupervisedTasks()) {
-      const pending = task.pendingConfirmation
-      if (pending && !handledConfirmations.has(pending.toolCallId)) {
-        handledConfirmations.add(pending.toolCallId)
-        console.log(`\n⏳ 任务「${task.title}」请求确认：${pending.toolName}（${pending.riskLevel}）`)
-        console.log(`   ${pending.argsPreview}`)
-        const ok = mode === 'free' ? true : await promptYesNo('   批准该操作？')
-        if (mode === 'free') console.log('   自动批准（--mode free）')
-        // 传达结果可能是 stale（等待期间任务已被停止/确认已失效），如实呈现
-        const relay = supervisor.confirmTask(task.agentKey, pending.toolCallId, ok)
-        if (!relay.ok) {
-          console.log(`   传达失败（${relay.reason ?? 'unknown'}）——任务侧可能已自行结束`)
-        } else {
-          console.log(ok ? '   已批准' : '   已拒绝')
-        }
+    if (awaitingReply) {
+      awaitingReply = false
+      const reply = await promptLine('\n你对联络说（直接回车跳过）：')
+      if (reply) {
+        agent.say(COMPANION_AGENT_KEY, reply, companionContext(), { surface: 'assistant' })
+          .catch((err: any) => console.error('\n联络执行失败:', err?.message || err))
       }
-      if (task.isRunning || task.pendingConfirmation) busy++
     }
-    // 起步宽限：任务经后端直驱异步启动，首轮轮询可能尚未注册；
-    // 连续两轮空闲才判定「没有任务」，避免联络一回复完 CLI 就退
-    if (busy === 0) {
+    const tasksBusy = supervisor.listSupervisedTasks().some((t: any) => t.isRunning || t.pendingConfirmation)
+    if (!tasksBusy && !companion.isRunning()) {
+      // 任务都停了：回执不等防抖，立刻交给联络
+      await supervisor.flushPendingEvents()
+    }
+    // 起步宽限：任务和回执那一轮都是异步开跑，连续两轮都闲才判定没事了
+    if (!tasksBusy && !companion.isRunning() && !awaitingReply) {
       idleRounds++
       if (idleRounds >= 2) break
     } else {
@@ -1427,8 +1459,12 @@ async function companionChat(args: string[]): Promise<void> {
       console.log(`   - 「${t.title}」(${t.agentKey}) phase=${t.phase ?? '-'} steps=${t.stepCount}`)
     }
   }
-  // 进程将退出：立即冲刷挂起的复命事件并等投递落盘（防抖挂起/异步投递未完成都会丢）
+  // 进程将退出：防抖窗口里的回执立刻交给联络，等它处理完落进记录（最多再等一分钟）
   await supervisor.flushPendingEvents()
+  const settleDeadline = Date.now() + 60_000
+  while (companion.isRunning() && Date.now() < settleDeadline) {
+    await new Promise(r => setTimeout(r, 500))
+  }
 
   // 关掉 keep-alive 连接池，否则 Node 事件循环还会挂十几秒
   ai.dispose()
