@@ -664,31 +664,20 @@ interface Window {
     }
     // Agent 操作（OOP 重构后统一使用 ptyId）
     agent: {
-      run: (
-        ptyId: string,
-        message: string,
-        /** 终端模式必须指明操作哪个窗格 */
-        context: AgentContext & { ptyId: string },
-        config?: {
-          enabled?: boolean
-          maxSteps?: number
-          commandTimeout?: number
-          autoExecuteSafe?: boolean
-          autoExecuteModerate?: boolean
-          executionMode?: ExecutionMode
-        },
-        profileId?: string
-      ) => Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>
-      runStandalone: (
-        agentId: string,
-        message: string,
-        context: AgentContext,
+      /** 往一场对话里说一句：正在跑就补进这一轮，否则开新一轮；返回实际发生了哪种 */
+      say: (params: {
+        /** 终端形态 = tabId；助手形态 = tab.agentId */
+        agentKey: string
+        surface: 'assistant' | 'terminal'
+        message: string
+        /** 终端形态要指明操作哪个窗格（ptyId） */
+        context: AgentContext
         config?: {
           executionMode?: ExecutionMode
           commandTimeout?: number
-        },
+        }
         profileId?: string
-      ) => Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>
+      }) => Promise<import('@shared/types').SayResult>
       getSessionSnapshot: (agentId: string) => Promise<{
         steps: AgentStep[]
         isRunning: boolean

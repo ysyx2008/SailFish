@@ -1335,24 +1335,25 @@ export function useAgentMode(
       void scrollToBottom()
 
       let documentContext = ''
-      let success = false
       try {
         documentContext = await getDocumentContext()
-        success = await appendToCurrentConversation({
-          message,
-          attachments: supplementAttachments.length > 0 ? supplementAttachments : undefined,
-          documentContext: documentContext || undefined,
-          images: images.length > 0 ? images : undefined,
-          workbenchContext: options?.workbenchContext
-        })
       } catch (err) {
-        log.warn('插入补充消息失败:', err)
+        log.warn('读取附件文档失败:', err)
       }
+      // 这句话连同图和附件已经取走：送到了就在对话里，没送到就整份排到下一轮，输入框都不再留
+      if (supplementAttachments.length > 0 || parsedDocs.length > 0) attachmentCallbacks?.clearAttachments()
+      if (images.length > 0) imageCallbacks?.clearImages()
 
-      if (success) {
-        if (supplementAttachments.length > 0 || parsedDocs.length > 0) attachmentCallbacks?.clearAttachments()
-        if (images.length > 0) imageCallbacks?.clearImages()
-      } else {
+      const success = await sayAsSupplement(tabId, {
+        message,
+        attachments: supplementAttachments,
+        documentContext,
+        images,
+        previewImages,
+        workbenchContext: options?.workbenchContext
+      })
+
+      if (!success) {
         // 已经上墙的这句话不能悄悄拿掉。插不进当前这场，就排到下一轮，图一起带走。
         followUpQueue.value = [{
           id: `followup_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -1364,8 +1365,6 @@ export function useAgentMode(
           documentContext: documentContext || undefined,
           workbenchContext: options?.workbenchContext,
         }, ...followUpQueue.value]
-        if (supplementAttachments.length > 0 || parsedDocs.length > 0) attachmentCallbacks?.clearAttachments()
-        if (images.length > 0) imageCallbacks?.clearImages()
         log.warn('这句话没插进当前这场，已留在对话里并排到下一轮')
         if (!isAgentRunning.value) scheduleNextFollowUp(tabId)
       }
@@ -1401,28 +1400,9 @@ export function useAgentMode(
       tts.startNewTask()
     }
 
-    // 获取 Agent 上下文。助手会话必须自报形态——漏了它，落盘的会话形态会被兜底成「本地终端」，
-    // 之后再也分不清这条对话到底来自终端还是助手
-    const hostedContext = isAssistantMode ? terminalStore.getAgentContext(tabId) : null
-    const hostedPtyId = currentTab.value && isAssistantMode
-      ? terminalStore.getActivePtyId(currentTab.value)
-      : undefined
-    const context = isAssistantMode
-      ? {
-          mode: (hostedContext?.mode === 'split' && (hostedContext.panes?.length ?? 0) > 1)
-            ? 'split' as const
-            : 'single' as const,
-          terminalOutput: hostedContext?.terminalOutput ?? [],
-          systemInfo: hostedContext?.systemInfo ?? getLocalSystemInfo(),
-          terminalType: 'assistant' as const,
-          ...(hostedPtyId ? { ptyId: hostedPtyId } : {}),
-          ...(hostedContext && 'panes' in hostedContext && hostedContext.panes
-            ? { panes: hostedContext.panes, activePaneId: hostedContext.activePaneId }
-            : {}),
-        }
-      : terminalStore.getAgentContext(tabId)
+    const target = resolveSayTarget(tabId)
     // 终端还在连接、甚至连不上时可以没有可用窗格——对话照样开跑，不能把字悄悄扔掉
-    if (!isAssistantMode && !context) {
+    if (!target || !target.hasWindowContext) {
       log.error('无法获取终端上下文')
       putBackQueued()
       return
@@ -1512,6 +1492,7 @@ export function useAgentMode(
     // 异步上下文在 UI 反馈之后并行获取，不阻塞首屏。
     // 放进同一段收尾里：这里失败也要把「正在跑」清掉，否则排队会一直等下去。
     let requeueBecauseBusy = false
+    let supplementedInstead = false
     const showTurnFailure = (content: string) => {
       const steps = agentState.value?.steps || []
       if (!turnFailureAlreadyVisible(steps, optimisticUserStepId)) {
@@ -1541,65 +1522,18 @@ export function useAgentMode(
         log.warn('主机探测失败:', e)
       })
 
-      // 根据模式选择 API
-      let result: { success: boolean; result?: string; error?: string; aborted?: boolean }
-
-      // workbenchPrompt 对所有工作台类型都需要注入（local/ssh/assistant 各有专属 prompt；
-      // companion 当前无）。先经 resolveWorkbenchKind 把 tab 映射成工作台类型再解析。
-      const workbenchPrompt = currentTab.value
-        ? resolveWorkbenchAgentPrompt(resolveWorkbenchKind(currentTab.value), currentTab.value)
-        : undefined
-
-      if (isAssistantMode && currentTab.value?.agentId) {
-        // 两个分支的判断条件不同，类型上收不窄，这里显式认回助手形状（终端分支同理）
-        const assistantContext = context as AgentContext
-        result = await window.electronAPI.agent.runStandalone(
-          currentTab.value.agentId,
-          message,
-          {
-            ...assistantContext,
-            hostId,
-            documentContext,
-            images: images.length > 0 ? images : undefined,
-            previewImages: previewImages.length < images.length ? previewImages : undefined,
-            attachments: attachments.length > 0 ? attachments : undefined,
-            remoteChannel: currentTab.value.remoteChannel,
-            sessionId: agentState.value?.sessionId,
-            sessionStartTime: agentState.value?.sessionStartTime,
-            ...(workbenchPrompt ? { workbenchPrompt } : {}),
-            ...(options?.workbenchContext ? { workbenchContext: options.workbenchContext } : {})
-          },
-          { executionMode: executionMode.value, commandTimeout: commandTimeout.value * 1000 },
-          activeProfileId.value || undefined
-        )
-      } else {
-        // 走到这里必是终端模式（上方已 return 掉拿不到终端上下文的情况），
-        // 但两个分支的判断条件不同，类型上收不窄，这里显式认回终端形状
-        const terminalContext = context as NonNullable<ReturnType<typeof terminalStore.getAgentContext>>
-        // agentKey = tabId（Agent 索引主键），context.ptyId = 当前激活窗格 ptyId（Agent 操作目标）。
-        // 这两个不再耦合：Agent 实例归 tab 所有，跨多个窗格的生命周期。
-        result = await window.electronAPI.agent.run(
-          tabId,
-          message,
-          {
-            ...terminalContext,
-            hostId,
-            sshHost: currentTab.value?.sshConfig?.host,
-            documentContext,
-            images: images.length > 0 ? images : undefined,
-            previewImages: previewImages.length < images.length ? previewImages : undefined,
-            attachments: attachments.length > 0 ? attachments : undefined,
-            sessionId: agentState.value?.sessionId,
-            sessionStartTime: agentState.value?.sessionStartTime,
-            ...(workbenchPrompt ? { workbenchPrompt } : {}),
-            ...(options?.workbenchContext ? { workbenchContext: options.workbenchContext } : {})
-          },
-          { executionMode: executionMode.value, commandTimeout: commandTimeout.value * 1000 },
-          activeProfileId.value || undefined
-        )
-      }
-      // 后端已通过 onStep 推送 final_result。没推送时补一条，只看这一轮，避免被更早的收场挡住。
-      if (!result.success) {
+      const result = await sayToConversation(target, message, {
+        hostId,
+        documentContext,
+        images,
+        previewImages,
+        attachments,
+        workbenchContext: options?.workbenchContext,
+      })
+      // 那场其实还在跑（别处刚让它动起来）：这句已补进当前一轮，正式步骤会自己上墙，运行态由那一轮收尾
+      if (result.success && result.outcome === 'supplemented') {
+        supplementedInstead = true
+      } else if (!result.success) {
         const busyKey = getAgentKey()
         if (queued && busyKey && await isBackendRunActive(busyKey)) {
           requeueBecauseBusy = true
@@ -1630,7 +1564,9 @@ export function useAgentMode(
       }
     } finally {
       // 上一轮的收尾若晚于下一轮开工，不能清掉下一轮的运行态
-      if (epoch === agentRunEpoch) {
+      if (epoch === agentRunEpoch && supplementedInstead) {
+        terminalStore.removeOptimisticAgentSteps(tabId, [optimisticUserStepId])
+      } else if (epoch === agentRunEpoch) {
         if (requeueBecauseBusy) {
           terminalStore.removeOptimisticAgentSteps(tabId, [optimisticUserStepId])
         } else {
@@ -1741,13 +1677,127 @@ export function useAgentMode(
     }
   }
 
+  /** 这句话在界面上按「补进当前这场」显示，还是按「开新一轮」显示。只管显示，实际怎样由那场对话决定。 */
   const checkInjectIntoCurrentRun = async (): Promise<boolean> => {
     if (isAgentRunning.value) return true
     const key = getAgentKey()
-    return currentTab.value?.agentId === COMPANION_TAB_AGENT_ID
-      && !!key
-      && agentTaskGroups.value.some(group => group.isCurrentTask)
-      && await isBackendAgentBusy(key)
+    if (!key) return false
+    // 联络常驻线：界面旗标可能落后于后端（IM 已开工、桌面 isRunning 还没置上）
+    if (currentTab.value?.agentId === COMPANION_TAB_AGENT_ID) {
+      return agentTaskGroups.value.some(group => group.isCurrentTask) && await isBackendAgentBusy(key)
+    }
+    // 别处（联络替你交代、另一个界面）已经让这场跑起来了
+    return isBackendRunActive(key)
+  }
+
+  /**
+   * 这场对话说话要带的东西：哪场（agentKey）、什么形态、只有窗口才知道的上下文。
+   * 助手会话必须自报形态——漏了它，落盘的会话形态会被兜底成「本地终端」。
+   * 终端拿不到可用窗格时 hasWindowContext=false，只带形态（补话照样能送到）。
+   */
+  const resolveSayTarget = (tabId: string): {
+    agentKey: string
+    surface: 'assistant' | 'terminal'
+    context: AgentContext
+    hasWindowContext: boolean
+  } | undefined => {
+    const tab = currentTab.value
+    if (!tab) return undefined
+    if (tab.type === 'assistant') {
+      if (!tab.agentId) return undefined
+      const hosted = terminalStore.getAgentContext(tabId)
+      const hostedPtyId = terminalStore.getActivePtyId(tab)
+      return {
+        agentKey: tab.agentId,
+        surface: 'assistant',
+        hasWindowContext: true,
+        context: {
+          mode: (hosted?.mode === 'split' && (hosted.panes?.length ?? 0) > 1) ? 'split' : 'single',
+          terminalOutput: hosted?.terminalOutput ?? [],
+          systemInfo: hosted?.systemInfo ?? getLocalSystemInfo(),
+          terminalType: 'assistant',
+          ...(hostedPtyId ? { ptyId: hostedPtyId } : {}),
+          ...(hosted && 'panes' in hosted && hosted.panes
+            ? { panes: hosted.panes, activePaneId: hosted.activePaneId }
+            : {}),
+        },
+      }
+    }
+    // agentKey = tabId（Agent 索引主键），context.ptyId = 当前激活窗格（Agent 操作目标），两者不耦合
+    const terminalContext = terminalStore.getAgentContext(tabId)
+    return {
+      agentKey: tabId,
+      surface: 'terminal',
+      hasWindowContext: !!terminalContext,
+      context: terminalContext ?? { terminalOutput: [], systemInfo: getLocalSystemInfo(), terminalType: tab.type },
+    }
+  }
+
+  /** 往这场对话里说一句。补进当前一轮还是开新一轮由那场决定，返回实际发生的那种。 */
+  const sayToConversation = (
+    target: NonNullable<ReturnType<typeof resolveSayTarget>>,
+    message: string,
+    input: {
+      hostId?: string
+      documentContext?: string
+      images?: string[]
+      previewImages?: string[]
+      attachments?: AttachmentInfo[]
+      workbenchContext?: WorkbenchContext
+    }
+  ) => {
+    const tab = currentTab.value
+    const images = input.images ?? []
+    const previewImages = input.previewImages ?? images
+    // workbenchPrompt 对所有工作台类型都需要注入（local/ssh/assistant 各有专属 prompt；companion 当前无）
+    const workbenchPrompt = tab ? resolveWorkbenchAgentPrompt(resolveWorkbenchKind(tab), tab) : undefined
+    return window.electronAPI.agent.say({
+      agentKey: target.agentKey,
+      surface: target.surface,
+      message,
+      context: {
+        ...target.context,
+        hostId: input.hostId,
+        ...(target.surface === 'assistant'
+          ? { remoteChannel: tab?.remoteChannel }
+          : { sshHost: tab?.sshConfig?.host }),
+        documentContext: input.documentContext,
+        images: images.length > 0 ? images : undefined,
+        previewImages: previewImages.length < images.length ? previewImages : undefined,
+        attachments: input.attachments?.length ? input.attachments : undefined,
+        sessionId: agentState.value?.sessionId,
+        sessionStartTime: agentState.value?.sessionStartTime,
+        ...(workbenchPrompt ? { workbenchPrompt } : {}),
+        ...(input.workbenchContext ? { workbenchContext: input.workbenchContext } : {}),
+      },
+      config: { executionMode: executionMode.value, commandTimeout: commandTimeout.value * 1000 },
+      profileId: activeProfileId.value || undefined,
+    })
+  }
+
+  /**
+   * 界面已按补话显示的一句送进这场；送到后端就返回 true，没送出去（IPC 本身出错）才返回 false 交由调用方排回。
+   * 后端回失败（补话本身不会失败）是那一轮开了却报错或被中止：这句已被那一轮接走、错误已显示在对话里，排回去会重跑。
+   */
+  const sayAsSupplement = async (tabId: string, payload: {
+    message: string
+    attachments?: AttachmentInfo[]
+    documentContext?: string
+    images?: string[]
+    previewImages?: string[]
+    workbenchContext?: WorkbenchContext
+  }): Promise<boolean> => {
+    const target = resolveSayTarget(tabId)
+    if (!target) return false
+    try {
+      const hostId = await getHostIdByTabId(tabId)
+      const result = await sayToConversation(target, payload.message, { hostId, ...payload })
+      if (!result.success) log.warn('补话落成了新一轮且未成功:', result.error)
+      return true
+    } catch (err) {
+      log.warn('插入补充消息失败:', err)
+      return false
+    }
   }
 
   /** 追加进当前这场还在跑的对话；不中止任务、不另起一轮。 */
@@ -1863,12 +1913,13 @@ export function useAgentMode(
       return
     }
 
-    if (isAgentRunning.value) {
-      const success = await appendToCurrentConversation({
+    if (isAgentRunning.value && currentTabId.value) {
+      const success = await sayAsSupplement(currentTabId.value, {
         message: item.message,
         attachments: item.attachments,
         documentContext: item.documentContext,
         images: item.images,
+        previewImages: item.previewImages,
         workbenchContext: item.workbenchContext
       })
       if (!success) restoreFollowUp(item, index)

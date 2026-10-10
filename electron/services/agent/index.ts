@@ -754,23 +754,57 @@ export class AgentService {
       agent.updateConfig(config)
     }
     
-    // 将 CWD 刷新延迟到 user_task 步骤发出之后，避免阻塞用户消息上墙。
-    // 第一个参数是 agentKey（tabId），不是终端；目录要问眼前那扇窗。
+    return agent.run(userMessage, context, {
+      profileId,
+      workerOptions,
+      callbacks,
+      cwdResolver: this.terminalCwdResolver(ptyId, context)
+    })
+  }
+
+  /**
+   * 往一场对话里说一句：找到（没有就建）这场的实例，交给它自己决定补进当前一轮还是开新一轮。
+   * 助手形态没有终端，目录用主目录兜底；终端形态开跑后再问眼前那扇窗的目录。
+   */
+  async say(
+    agentKey: string,
+    message: string,
+    context: AgentContext,
+    opts: {
+      surface: 'assistant' | 'terminal'
+      config?: Partial<AgentConfig>
+      profileId?: string
+      callbacks?: AgentCallbacks
+    }
+  ): Promise<{ outcome: 'supplemented' } | { outcome: 'ran'; result: string }> {
+    if (opts.surface === 'assistant') {
+      return this.createAssistantAgent(agentKey).say(
+        message,
+        { ...context, cwd: context.cwd || os.homedir() },
+        { config: opts.config, profileId: opts.profileId, callbacks: opts.callbacks }
+      )
+    }
+    return this.getOrCreateAgent(agentKey).say(message, context, {
+      config: opts.config,
+      profileId: opts.profileId,
+      callbacks: opts.callbacks,
+      cwdResolver: this.terminalCwdResolver(agentKey, context),
+    })
+  }
+
+  /**
+   * 终端形态的目录：延迟到 user_task 上墙之后再刷新，避免阻塞用户消息。
+   * agentKey 是 tabId，不是终端；目录要问眼前那扇窗。
+   */
+  private terminalCwdResolver(agentKey: string, context: AgentContext): () => Promise<string> {
     const terminalStateService = getTerminalStateService()
-    const targetPtyId = context.ptyId || ptyId
-    const cwdResolver = async () => {
+    const targetPtyId = context.ptyId || agentKey
+    return async () => {
       const cwd = await terminalStateService.refreshCwd(targetPtyId, 'initial')
       // 远程窗的 ~ 就是远端家目录，不能换成本机主目录
       if (context.terminalType === 'ssh') return cwd || '~'
       return (cwd && cwd !== '~') ? cwd : os.homedir()
     }
-    
-    return agent.run(userMessage, context, {
-      profileId,
-      workerOptions,
-      callbacks,
-      cwdResolver
-    })
   }
   
   /**

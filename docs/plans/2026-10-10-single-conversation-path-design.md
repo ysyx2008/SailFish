@@ -43,9 +43,9 @@
 
 重构（行为不变）：
 
-- [ ] **R1 后端单一入口**：`Agent.say` 内含「补话 / 开新一轮」判断与 sessionId 铸造，`AgentService` 负责找到 / 复活实例后转交；`runAgent` 改为收集输入后调它，按返回值更新界面；`agent:run` / `runStandalone` / `addUserMessage` IPC 保留为薄封装或内部改走 `say`。
-  验收：单测覆盖三种分支；CLI 回归；桌面手测——新对话、运行中补话、排队续发、`/compact`、助手 tab、本机终端 tab、远程终端 tab
-- [ ] **R2 首个标题挪到后端**：新任务会话第一句由后端触发起标题，前端只接收。
+- [x] **R1 后端单一入口**（代码已提交，桌面手测待做）：`Agent.say` 内含「补话 / 开新一轮」判断，`AgentService.say` 按形态（助手 / 终端）找到 / 复活实例后转交；`agent:run` / `agent:runStandalone` 两个 IPC 合并为 `agent:say`，回调构造收成 `createRendererAgentCallbacks` 一份；`runAgent` 的界面「在跑」判断只决定显示，`say` 回 `supplemented` 时撤掉乐观的 user_task；`App.vue` 联络建任务 / 再交代暂时也调 `say`（R3 再换掉）。`agent:addUserMessage` 只剩 ask_user 的静默回复在用。sessionId 铸造挪到 R2，与首个标题一起搬。
+  验收：单测覆盖补话 / 补话不改执行档 / 开新一轮；CLI 回归；桌面手测——新对话、运行中补话、排队续发、`/compact`、助手 tab、本机终端 tab、远程终端 tab
+- [ ] **R2 sessionId 与首个标题挪到后端**：新任务会话由后端铸 sessionId、第一句由后端触发起标题，前端只接收。
   验收：新对话侧栏标题照常出现；联络、引导会话不受影响
 - [ ] **R3 界面认领**：统一的「某场开跑 / 补话」事件 + 前端按形态建 / 接回 tab；先让联络的建任务与再交代改走它（替换 `App.vue` 两段专用处理）。
   验收：桌面手测——联络建任务立刻出现在侧栏；对开着 / 关着的那场再交代，话立刻出现在那场

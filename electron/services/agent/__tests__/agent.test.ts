@@ -442,6 +442,53 @@ describe('Agent', () => {
     })
   })
 
+  // ==================== 说一句：补进当前一轮还是开新一轮 ====================
+
+  describe('say', () => {
+    it('正在跑时补进当前一轮，立即返回，不开新一轮', async () => {
+      agent.injectCurrentRun({
+        id: 'run-1',
+        isRunning: true,
+        executionPhase: 'executing_command',
+        pendingUserMessages: [],
+        steps: [],
+      })
+
+      const said = await agent.say('顺便看下日志', createMockContext({ images: ['data:image/png;base64,AA'] }))
+
+      expect(said).toEqual({ outcome: 'supplemented' })
+      const run = agent.exposeCurrentRun()!
+      expect(run.steps.map(s => s.type)).toEqual(['user_supplement'])
+      expect(run.pendingUserMessages[0].message).toBe('顺便看下日志')
+      expect(run.pendingUserMessages[0].images).toEqual(['data:image/png;base64,AA'])
+    })
+
+    it('补话时不改执行档', async () => {
+      agent.injectCurrentRun({ id: 'run-1', isRunning: true, pendingUserMessages: [], steps: [] })
+      const before = agent.executionMode
+
+      await agent.say('补一句', createMockContext(), { config: { executionMode: before === 'free' ? 'strict' : 'free' } })
+
+      expect(agent.executionMode).toBe(before)
+    })
+
+    it('空闲时开新一轮并带上执行档，返回这一轮的结果', async () => {
+      const aiService = agent.exposeServices().aiService as unknown as ReturnType<typeof createMockAiService>
+      aiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+          onChunk('好了')
+          onDone({ content: '好了', tool_calls: undefined })
+          return Promise.resolve()
+        }
+      )
+
+      const said = await agent.say('做件事', createMockContext(), { config: { executionMode: 'free' } })
+
+      expect(said).toEqual({ outcome: 'ran', result: '好了' })
+      expect(agent.executionMode).toBe('free')
+    })
+  })
+
   // ==================== 工具确认 ====================
 
   describe('confirmToolCall', () => {

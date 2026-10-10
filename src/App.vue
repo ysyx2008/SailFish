@@ -820,12 +820,13 @@ onMounted(async () => {
       activate: false
     })
     terminalStore.markAssistantSkipOnboarding(tabId)
-    void window.electronAPI.agent.runStandalone(
-      data.agentId,
-      data.brief,
-      { terminalOutput: [], systemInfo: getLocalSystemInfo(), terminalType: 'assistant' },
-      data.fullAuto ? { executionMode: 'free' } : { executionMode: 'relaxed' }
-    ).then(res => {
+    void window.electronAPI.agent.say({
+      agentKey: data.agentId,
+      surface: 'assistant',
+      message: data.brief,
+      context: { terminalOutput: [], systemInfo: getLocalSystemInfo(), terminalType: 'assistant' },
+      config: data.fullAuto ? { executionMode: 'free' } : { executionMode: 'relaxed' },
+    }).then(res => {
       if (!res?.success) {
         log.warn(`[TaskSupervisor] 交办任务启动失败 (${data.agentId}): ${res?.error ?? 'unknown'}`)
         // tab 已建但不会有任何步骤流入，落一条错误步骤避免用户点开后面对空对话
@@ -885,23 +886,25 @@ onMounted(async () => {
       ...(data.sessionStartTime ? { sessionStartTime: data.sessionStartTime } : {}),
     }
     if (tab.type === 'assistant' && tab.agentId) {
-      void window.electronAPI.agent.runStandalone(
-        tab.agentId,
-        data.message,
-        {
+      void window.electronAPI.agent.say({
+        agentKey: tab.agentId,
+        surface: 'assistant',
+        message: data.message,
+        context: {
           terminalOutput: [],
           systemInfo: getLocalSystemInfo(),
           terminalType: 'assistant',
           ...session,
         },
-        runConfig
-      ).catch(err => log.warn(`[TaskSupervisor] 助手接着做失败 (${data.agentId}):`, err))
+        config: runConfig,
+      }).catch(err => log.warn(`[TaskSupervisor] 助手接着做失败 (${data.agentId}):`, err))
       return
     }
-    void window.electronAPI.agent.run(
-      tab.id,
-      data.message,
-      {
+    void window.electronAPI.agent.say({
+      agentKey: tab.id,
+      surface: 'terminal',
+      message: data.message,
+      context: {
         ptyId: tab.ptyId,
         terminalOutput: [],
         systemInfo: tab.systemInfo ?? getLocalSystemInfo(),
@@ -909,8 +912,8 @@ onMounted(async () => {
         ...(data.sshHost ? { sshHost: data.sshHost } : {}),
         ...session,
       },
-      runConfig
-    ).catch(err => log.warn(`[TaskSupervisor] 终端接着做失败 (${data.agentId}):`, err))
+      config: runConfig,
+    }).catch(err => log.warn(`[TaskSupervisor] 终端接着做失败 (${data.agentId}):`, err))
   })
 
   // Watch desktop 输出：确保助手 tab 存在，后续 steps 通过标准 agent:step 事件流入

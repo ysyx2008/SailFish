@@ -436,7 +436,7 @@ describe('TaskSupervisor', () => {
 
       expect(mockDeliver).toHaveBeenCalledTimes(1)
       expect(mockDeliver.mock.calls[0][0]).toContain('整理日志')
-      expect(mockDeliver.mock.calls[0][2] ?? mockDeliver.mock.calls[0][1]).toMatchObject({ alwaysPersist: true })
+      expect(mockDeliver.mock.calls[0][1]).toMatchObject({ alwaysPersist: true })
     })
 
     it('空缓冲冲刷不投递', async () => {

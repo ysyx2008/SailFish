@@ -77,6 +77,15 @@ export type RemoteChannel = 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' 
 
 export type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
 
+/** 往一场对话里说一句之后实际发生了什么：补进了正在跑的那一轮，或开了新一轮并跑完 */
+export type SayOutcome = 'supplemented' | 'ran'
+
+/** 往一场对话里说一句的结果（界面按它显示，不自己猜）；失败时不知道走到了哪一步，故不带 outcome */
+export type SayResult =
+  | { success: true; outcome: 'supplemented' }
+  | { success: true; outcome: 'ran'; result: string }
+  | { success: false; error: string; aborted: boolean }
+
 /** 向用户提问这道题的结果。说明文字不是状态。 */
 export type AskingStatus = 'waiting' | 'received' | 'timeout' | 'cancelled'
 

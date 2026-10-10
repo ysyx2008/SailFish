@@ -1280,6 +1280,24 @@ export abstract class Agent {
   }
   
   /**
+   * 往这场对话里说一句：正在跑就补进这一轮，否则开新一轮跑完。
+   * 补话立即返回；开新一轮时返回这一轮的结果，失败或被中止照常抛出。
+   */
+  async say(
+    message: string,
+    context: AgentContext,
+    options?: RunOptions & { config?: Partial<AgentConfig> }
+  ): Promise<{ outcome: 'supplemented' } | { outcome: 'ran'; result: string }> {
+    if (this.currentRun?.isRunning) {
+      this.addUserMessage(message, context.attachments, context.documentContext, context.images, context.workbenchContext)
+      return { outcome: 'supplemented' }
+    }
+    if (options?.config) this.updateConfig(options.config)
+    const result = await this.run(message, context, options)
+    return { outcome: 'ran', result }
+  }
+
+  /**
    * 添加用户补充消息
    */
   addUserMessage(

@@ -37,9 +37,8 @@
   ├─ [仅新 session + 非联络] history.generateConversationTitle(sessionId, message)
   │   // fire-and-forget：LLM 短标题写入 conversationDisplayTitles，不阻塞 Agent
   │
-  ├─ IPC 调用（await）
-  │   ├─ 助手模式：agent.runStandalone(agentId, ...)
-  │   └─ 终端模式：agent.run(tabId, ...)
+  ├─ IPC 调用（await）：对这场对话「说一句」
+  │   // 补进当前一轮还是开新一轮由后端那场对话自己决定；回「补进去了」时撤掉乐观的新一轮显示
   │
   │   （后端异步推送步骤，前端通过 IPC 监听器接收，见第三节）
   │
@@ -180,6 +179,6 @@ AiPanel（新 tab）watch hubFocusedAssistantTabId 或 active：
 ## 八、注意事项
 
 - **不要在 useAgentMode 外部直接调用 `runAgent`**：应通过 AiPanel 暴露的接口（如 `submitMessage`）触发，保证 Tab 上下文、滚动、handoff 等逻辑完整执行。
-- **终端 tab 与助手 tab 走不同 IPC**：终端用 `agent.run(tabId, ...)`，助手用 `agent.runStandalone(agentId, ...)`，两者后端 Agent 键也不同（tabId vs agentId UUID）。
+- **终端 tab 与助手 tab 走同一个入口，只是形态不同**：两者后端 Agent 键不同（tabId vs agentId UUID）；界面上的「在跑」只决定怎么显示，不决定发给后端的是补话还是新一轮。
 - **clearAgentState 保留 steps**：新任务开始时调用 `clearAgentState(tabId, true)`，`true` 表示保留历史步骤，实现多轮对话的步骤累积显示。
 - **联络 tab 挂载时恢复历史**：已经恢复过、或正在跑任务则不动。否则拉合并视图上墙。挂载期间已经灌进的现场提醒接到历史后面，同文短时间窗去重，不因为已经有提醒就放弃整段历史。合并逻辑的真相源在后端联络关系线，前端不再自拼。

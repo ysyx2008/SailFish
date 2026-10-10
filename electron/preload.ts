@@ -929,23 +929,15 @@ const electronAPI = {
 
   // Agent 操作
   agent: {
-    // 运行 Agent
-    run: (
-      ptyId: string,
-      message: string,
-      context: AgentContext,
-      config?: AgentConfig,
+    // 往一场对话里说一句：正在跑就补进这一轮，否则开新一轮（由那场对话决定，返回实际发生了哪种）
+    say: (params: {
+      agentKey: string
+      surface: 'assistant' | 'terminal'
+      message: string
+      context: AgentContext
+      config?: Partial<AgentConfig>
       profileId?: string
-    ) => ipcRenderer.invoke('agent:run', { ptyId, message, context, config, profileId }) as Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>,
-
-    // 运行独立助手 Agent（无终端绑定）
-    runStandalone: (
-      agentId: string,
-      message: string,
-      context: AgentContext,
-      config?: AgentConfig,
-      profileId?: string
-    ) => ipcRenderer.invoke('agent:runStandalone', { agentId, message, context, config, profileId }) as Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>,
+    }) => ipcRenderer.invoke('agent:say', params) as Promise<import('@shared/types').SayResult>,
 
     // 后台助手会话快照：联络交办的任务 tab 未激活期间 AiPanel 未挂载（agent:step 无人接收），
     // 用户从侧栏打开 tab 时由此回填步骤 / 运行态 / 会话 ID（保证续聊同一条 session）
