@@ -69,7 +69,7 @@ import {
   buildAllowlistKeyCandidates,
 } from './allowlist'
 import { buildTaskHistoryContext, type TaskHistoryOptions } from './context-builder'
-import { getKnowledgeService } from '../knowledge'
+import { getKnowledgeService, type RecallingConversation } from '../knowledge'
 import { getContextKnowledgeService } from '../knowledge/context-knowledge'
 import {
   sessionKnowledgeHostId,
@@ -2797,12 +2797,12 @@ export abstract class Agent {
       : this.loadKnowledgeContextWithTimeout(message, sessionHostId)
 
     const L3_RECALL_TIMEOUT_MS = 2000
-    const recallPromise: Promise<Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }>> = run.internalNotice
+    const recallPromise: Promise<KnowledgeContextResult['conversationHistory']> = run.internalNotice
       ? Promise.resolve([])
       : (() => {
       const ks = getKnowledgeService()
       if (!ks || !ks.isEnabled() || message.trim().length < 5) return Promise.resolve([])
-      const searchPromise = ks.searchConversations(message, sessionHostId, 3)
+      const searchPromise = ks.searchConversations(message, sessionHostId, 3, this.recallingConversation())
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('L3 recall timeout')), L3_RECALL_TIMEOUT_MS)
       )
@@ -2812,7 +2812,8 @@ export abstract class Agent {
           finalResult: r.finalResult,
           status: r.status,
           timestamp: r.timestamp,
-          relevance: r.relevance ?? 0
+          relevance: r.relevance ?? 0,
+          sameSession: r.sameSession,
         })))
         .catch(e => {
           log.warn('L3 auto-recall error:', e)
@@ -3093,6 +3094,12 @@ export abstract class Agent {
     })
   }
 
+  /** 召回过往对话时用来分辨「这场早些时候 / 另一场」 */
+  private recallingConversation(): RecallingConversation | undefined {
+    const conv = this._conversation
+    return conv ? { id: conv.id, startedAt: conv.createdAt } : undefined
+  }
+
   /**
    * 加载知识库上下文
    */
@@ -3104,7 +3111,7 @@ export abstract class Agent {
       const knowledgeService = getKnowledgeService()
       if (knowledgeService && knowledgeService.isEnabled()) {
         enabled = true
-        context = await knowledgeService.buildContext(message, { hostId })
+        context = await knowledgeService.buildContext(message, { hostId, recallingConversation: this.recallingConversation() })
       }
     } catch (e) {
       log.warn('Knowledge service error:', e)
@@ -3172,6 +3179,7 @@ export abstract class Agent {
             if (!hasExecutedAnyTool) {
               // 从未执行过工具
               if (run.pendingUserMessages.length > 0) {
+                this.retainInterruptedReply(run, lastResponse)
                 continue
               }
               
@@ -3193,6 +3201,7 @@ export abstract class Agent {
             
             // 已执行过工具，检查是否有待处理的消息
             if (run.pendingUserMessages.length > 0) {
+              this.retainInterruptedReply(run, lastResponse)
               continue
             }
             
@@ -4190,6 +4199,10 @@ export abstract class Agent {
             this.publishConsumedLive()
           }
           unsubProfileFallback()
+          // 打断时服务端收尾可能没带上正文，屏幕上已经吐出的字以本地流为准补回
+          if (result.aborted && !result.content?.trim() && finalContent.trim()) {
+            result.content = finalContent
+          }
           resolve(result)
         },
         // onError
@@ -5437,6 +5450,21 @@ export abstract class Agent {
     this.callbacks?.onStepRemoved?.(this.currentRun.id, stepId)
   }
   
+  /**
+   * 插话要接着说时，先把这一轮已经生成、还没写进对话的回复留下。
+   * 按停止收尾不走这里：那次回复由收尾补进记录，这里再写就会存两遍。
+   */
+  private retainInterruptedReply(run: AgentRun, response: ChatWithToolsResult | null): void {
+    const content = response?.content
+    if (!content?.trim()) return
+    const assistantMsg: AiMessage = { role: 'assistant', content }
+    if (response?.reasoning_content !== undefined) {
+      assistantMsg.reasoning_content = response.reasoning_content
+    }
+    run.messages.push(assistantMsg)
+    run.taskMessageLog.push({ ...assistantMsg })
+  }
+
   /**
    * 处理待处理的用户消息（运行中追加的 addUserMessage）
    */

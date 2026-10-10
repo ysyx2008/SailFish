@@ -1126,6 +1126,110 @@ describe('Agent run method', () => {
     })
   })
 
+  describe('interrupt keeps the partial reply', () => {
+    function streamScript(
+      turns: Array<(onChunk: (chunk: string) => void, onDone: (result: Record<string, unknown>) => void) => void>
+    ) {
+      const seen: Array<Array<{ role: string; content?: string; reasoning_content?: string }>> = []
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (messages: Array<{ role: string; content?: string; reasoning_content?: string }>, _tools, onChunk, _onToolCall, onDone) => {
+          seen.push(messages.map(m => ({
+            role: m.role,
+            content: m.content,
+            reasoning_content: m.reasoning_content
+          })))
+          const turn = turns[seen.length - 1]
+          if (!turn) throw new Error(`unexpected model call #${seen.length}`)
+          turn(onChunk, onDone)
+          return Promise.resolve()
+        }
+      )
+      return seen
+    }
+
+    it('puts the interrupted reply before the user supplement on the next request', async () => {
+      const partial = '收到，来一次真正的深度测试'
+      const seen = streamScript([
+        (onChunk, onDone) => {
+          onChunk(partial)
+          agent.addUserMessage('算了不做了')
+          onDone({ content: partial, aborted: true, reasoning_content: '想了想' })
+        },
+        (_onChunk, onDone) => {
+          onDone({ content: '停在这' })
+        }
+      ])
+
+      await agent.run('深度测试下', createMockContext())
+
+      expect(seen).toHaveLength(2)
+      const second = seen[1]
+      const assistantIdx = second.findIndex(m => m.role === 'assistant' && m.content === partial)
+      const userIdx = second.findIndex(m => m.role === 'user' && (m.content || '').includes('算了不做了'))
+      expect(assistantIdx).toBeGreaterThanOrEqual(0)
+      expect(userIdx).toBeGreaterThan(assistantIdx)
+      expect(second[assistantIdx].reasoning_content).toBe('想了想')
+    })
+
+    it('keeps streamed text when the abort result omits content', async () => {
+      const partial = '派 5 个伙计并行开工'
+      const seen = streamScript([
+        (onChunk, onDone) => {
+          onChunk(partial)
+          agent.addUserMessage('算了不做了')
+          onDone({ aborted: true })
+        },
+        (_onChunk, onDone) => {
+          onDone({ content: '停在这' })
+        }
+      ])
+
+      await agent.run('深度测试下', createMockContext())
+
+      const second = seen[1]
+      const assistantIdx = second.findIndex(m => m.role === 'assistant' && (m.content || '').includes(partial))
+      const userIdx = second.findIndex(m => m.role === 'user' && (m.content || '').includes('算了不做了'))
+      expect(assistantIdx).toBeGreaterThanOrEqual(0)
+      expect(userIdx).toBeGreaterThan(assistantIdx)
+    })
+
+    it('does not insert an empty assistant message when nothing was said', async () => {
+      const seen = streamScript([
+        (_onChunk, onDone) => {
+          agent.addUserMessage('算了不做了')
+          onDone({ aborted: true })
+        },
+        (_onChunk, onDone) => {
+          onDone({ content: '停在这' })
+        }
+      ])
+
+      await agent.run('深度测试下', createMockContext())
+
+      const second = seen[1]
+      const supplementAt = second.findIndex(m => m.role === 'user' && (m.content || '').includes('算了不做了'))
+      expect(supplementAt).toBeGreaterThanOrEqual(0)
+      expect(second.slice(0, supplementAt).some(m => m.role === 'assistant')).toBe(false)
+    })
+
+    it('does not store the reply twice when the user stops instead of speaking', async () => {
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+          onChunk('半截')
+          agent.abort()
+          onDone({ content: '半截', aborted: true })
+          return Promise.resolve()
+        }
+      )
+
+      await agent.run('深度测试下', createMockContext())
+
+      const tasks = agent.exposeTaskMemory().getTasksInOrder()
+      const assistants = (tasks[0]?.messages || []).filter(m => m.role === 'assistant' && m.content === '半截')
+      expect(assistants).toHaveLength(1)
+    })
+  })
+
   describe('companion / wakeup profile binding', () => {
     const completeImmediately = () => {
       mockAiService.chatWithToolsStream.mockImplementation(

@@ -536,6 +536,31 @@ export interface ToolCall {
   }
 }
 
+function isCompleteToolCall(tc: ToolCall): boolean {
+  if (!tc?.id || !tc.function?.name || !tc.function.arguments) return false
+  try {
+    JSON.parse(tc.function.arguments)
+    return true
+  } catch (e) {
+    if (e instanceof SyntaxError) return false
+    throw e
+  }
+}
+
+/**
+ * 参数还没写完的调用：留下已经写出的名字和参数，并标明没有执行。
+ * 参数已是合法 JSON 的不在这里——那些会按原样执行。
+ */
+export function describeUnfinishedToolCalls(toolCalls: ToolCall[]): string {
+  const notes: string[] = []
+  for (const tc of toolCalls) {
+    if (!tc || isCompleteToolCall(tc)) continue
+    const detail = [tc.function?.name, tc.function?.arguments].filter(s => !!s).join('\n')
+    notes.push(detail ? `${t('agent.unfinished_tool_call')}\n${detail}` : t('agent.unfinished_tool_call'))
+  }
+  return notes.join('\n\n')
+}
+
 export interface TokenUsageInfo {
   prompt_tokens: number
   completion_tokens: number
@@ -2967,23 +2992,22 @@ export class AiService {
         }
       })
 
-      // 支持中止请求
+      // 支持中止请求。先把已经生成的正文和没写完的调用交出去，再拆连接。
+      // 拆连接会同步或紧接着触发 error；若先 destroy，错误回调会抢先以空正文收尾，已经说出的话就丢了。
       abortController.signal.addEventListener('abort', () => {
-        req?.destroy()
-        const filteredCount = toolCalls.length
-        const validToolCalls = toolCalls.filter(tc => {
-          if (!tc.id || !tc.function.name || !tc.function.arguments) return false
-          try { JSON.parse(tc.function.arguments); return true }
-          catch (e) { if (e instanceof SyntaxError) return false; throw e }
-        })
-        if (validToolCalls.length < filteredCount) {
-          log.info(`Abort: filtered ${filteredCount - validToolCalls.length}/${filteredCount} incomplete tool_calls`)
+        const validToolCalls = toolCalls.filter(isCompleteToolCall)
+        if (validToolCalls.length < toolCalls.length) {
+          log.info(`Abort: filtered ${toolCalls.length - validToolCalls.length}/${toolCalls.length} incomplete tool_calls`)
         }
         if (!isCompleted && hasReasoningOutput && !hasContentOutput) {
           onChunk('\n\n</blockquote>\n</details>')
         }
         const hasValidTools = validToolCalls.length > 0
-        const finalContent = content || (!hasValidTools && reasoningContent ? `<details>\n<summary>🤔 <strong>${t('ai.thinking_process')}</strong></summary>\n\n<blockquote>\n\n${reasoningContent}\n\n</blockquote>\n</details>` : undefined)
+        const unfinishedNote = describeUnfinishedToolCalls(toolCalls)
+        let finalContent = content || (!hasValidTools && reasoningContent ? `<details>\n<summary>🤔 <strong>${t('ai.thinking_process')}</strong></summary>\n\n<blockquote>\n\n${reasoningContent}\n\n</blockquote>\n</details>` : undefined)
+        if (unfinishedNote) {
+          finalContent = finalContent ? `${finalContent}\n\n${unfinishedNote}` : unfinishedNote
+        }
         complete(() => onDone({
           content: finalContent,
           tool_calls: hasValidTools ? validToolCalls : undefined,
@@ -2991,6 +3015,7 @@ export class AiService {
           reasoning_content: hasReasoningOutput ? reasoningContent : undefined,
           aborted: true
         }))
+        req?.destroy()
       })
 
       const toolStreamBody = isAnthropic ? convertToAnthropicBody(requestBody as Record<string, unknown>) : requestBody
