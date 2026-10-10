@@ -4186,8 +4186,8 @@ function createRendererAgentCallbacks(
       if (serializedStep) send('agent:step', { step: serializedStep })
       mirror?.onAgentStep(step)
     },
-    onStart: (_runId: string, userTask: string) => {
-      send('agent:running', { userTask })
+    onStart: (_runId, userTask, session) => {
+      send('agent:running', { userTask, ...session })
     },
     onStepRemoved: (_runId: string, stepId: string) => {
       send('agent:stepRemoved', { stepId })
@@ -5040,19 +5040,6 @@ ipcMain.handle(
     const exported = await exportJsonlLineToFile(resolved, sourceLine, result.filePath)
     return { success: true, bytes: exported.bytes, path: result.filePath }
   },
-)
-
-/** 任务侧栏：用户首条消息后异步生成短标题（不阻塞 Agent） */
-ipcMain.handle(
-  'history:generateConversationTitle',
-  async (_event, sessionId: string, userMessage: string, profileId?: string) => {
-    const { generateConversationTitle } = await import('./services/conversation/title-generator')
-    const { agentService } = await rt()
-    return generateConversationTitle(
-      { aiService, configService, historyService, agentService },
-      { sessionId, userMessage, profileId }
-    )
-  }
 )
 
 /** 手动 / 程序设置会话展示标题（写入会话自身，非 config 旁路） */

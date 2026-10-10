@@ -29,13 +29,8 @@
   │
   ├─ clearAgentState(tabId, keepSteps=true)    // 清理上一次 run 的瞬态状态（pendingConfirm 等），保留 steps
   │
-  ├─ setAgentSession(tabId, sessionId, startTime)  // 首次 run：生成 session_${startTime} 作为会话 ID
-  │   （多轮对话复用：sessionId 已存在时跳过）
-  │
   ├─ setAgentRunning(tabId, true, agentKey, message)   // 标记运行中 + 记录 userTask
-  │
-  ├─ [仅新 session + 非联络] history.generateConversationTitle(sessionId, message)
-  │   // fire-and-forget：LLM 短标题写入 conversationDisplayTitles，不阻塞 Agent
+  │   // 新会话的会话号由后端起：开跑事件带回会话号，界面据此认领；第一句的侧栏标题也由后端起，界面只接收
   │
   ├─ IPC 调用（await）：对这场对话「说一句」
   │   // 补进当前一轮还是开新一轮由后端那场对话自己决定；回「补进去了」时撤掉乐观的新一轮显示
@@ -151,7 +146,7 @@ AiPanel（新 tab）watch hubFocusedAssistantTabId 或 active：
 - **欢迎页邀请**：未 `agentOnboardingShown` / 未完成时，Composer 上方展示「初次见面，认识一下？」；用户点「认识一下」→ `createAssistantTab` + `focusHubConversation`（不 skip），AiPanel 在 `tabActive` 且非联络时自动 `runAgent('__onboarding__')`。
 - **稍后再说** / 欢迎页直接发真任务：`markAgentOnboardingShown`，不再提示。
 - Setup 完成后**不**自动跳进任务；联络 tab 永不自动触发 onboarding。
-- 侧栏标题固定为 `ai.onboardingConversationTitle`（「认识一下」），不展示 `__onboarding__`。
+- 侧栏标题固定为「认识一下」（后端在第一句时写入），不展示 `__onboarding__`。
 
 ---
 

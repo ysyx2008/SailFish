@@ -1099,8 +1099,8 @@ const electronAPI = {
     },
 
     // 监听 Agent 开始运行（IM/WebChat 等外部入口触发时同步桌面 tab isRunning）
-    onRunning: (callback: (data: { agentId: string; ptyId?: string; userTask: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { agentId: string; ptyId?: string; userTask: string }) => callback(data)
+    onRunning: (callback: (data: { agentId: string; ptyId?: string; userTask: string; sessionId?: string; sessionStartTime?: number }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { agentId: string; ptyId?: string; userTask: string; sessionId?: string; sessionStartTime?: number }) => callback(data)
       ipcRenderer.on('agent:running', handler)
       return () => {
         ipcRenderer.removeListener('agent:running', handler)
@@ -1499,9 +1499,6 @@ const electronAPI = {
       }>,
 
     /** 任务侧栏短标题：首条消息后异步生成，失败返回 null */
-    generateConversationTitle: (sessionId: string, userMessage: string, profileId?: string) =>
-      ipcRenderer.invoke('history:generateConversationTitle', sessionId, userMessage, profileId) as Promise<string | null>,
-
     /** 设置会话展示标题（写入会话记录，非 config overlay） */
     setConversationTitle: (sessionId: string, title: string, options?: { locked?: boolean }) =>
       ipcRenderer.invoke('history:setConversationTitle', sessionId, title, options) as Promise<boolean>,

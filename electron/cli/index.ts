@@ -8,7 +8,7 @@ import { ConfigService, setConfigServiceInstance } from '../services/config.serv
 import { AiService } from '../services/ai.service'
 import { HistoryService } from '../services/history.service'
 import { HostProfileService } from '../services/host-profile.service'
-import { generateConversationTitle } from '../services/conversation/title-generator'
+import type { ExecutionMode } from '../services/agent/types'
 import { createLogger, initLogging } from '../utils/logger'
 import { getDefaultShell, getLocalOS } from '../utils/platform'
 import { clampAskUserTimeout } from '@shared/types/agent'
@@ -977,29 +977,6 @@ async function agentRun(args: string[]): Promise<void> {
   // Once a step reaches "printed", all subsequent onStep calls for it are skipped.
   let inlineMode = false
   const printedSteps = new Set<string>()
-  let titleGenerationStarted = false
-  let titlePromise: Promise<string | null> = Promise.resolve(null)
-
-  const maybeStartTitleGeneration = () => {
-    if (titleGenerationStarted) return
-    const live = agent.getAgent(ptyId)
-    const sessionId = live?.getSessionId()
-    if (!sessionId || !task.trim()) return
-    titleGenerationStarted = true
-    titlePromise = generateConversationTitle(
-      { aiService: ai, configService: config, historyService: history, agentService: agent },
-      { sessionId, userMessage: task.trim() }
-    )
-      .then((title) => {
-        if (title) console.log(`\n📌 Session title: ${title}`)
-        return title
-      })
-      .catch((err) => {
-        log.warn('generateConversationTitle failed:', err)
-        return null
-      })
-  }
-  
   const cols = () => process.stdout.columns || 80
   const truncateToWidth = (str: string, maxWidth: number): string => {
     let width = 0
@@ -1131,12 +1108,7 @@ async function agentRun(args: string[]): Promise<void> {
   }
 
   const callbacks = {
-    onStart: () => {
-      // initializeRun 已建会话；与桌面一样首条即异步生成标题，不阻塞 Agent
-      maybeStartTitleGeneration()
-    },
     onStep: (_agentId: string, step: any) => {
-      maybeStartTitleGeneration()
       if (printedSteps.has(step.id)) return
       
       const isStreaming = step.isStreaming === true
@@ -1258,25 +1230,20 @@ async function agentRun(args: string[]): Promise<void> {
   console.log(`Execution mode: ${mode}\n`)
 
   try {
-    const result = await agent.run(
-      ptyId,
-      task,
-      context,
-      { executionMode: mode },
-      undefined,
-      undefined,
-      callbacks
-    )
+    const said = await agent.say(ptyId, task, context, {
+      surface: 'terminal',
+      config: { executionMode: mode as ExecutionMode },
+      callbacks,
+    })
     console.log('\n=== Result ===')
-    console.log(result)
+    console.log(said.outcome === 'ran' ? said.result : '')
 
-    // 标题异步生成，落盘前稍等（避免进程退出时请求还在飞）
-    try {
-      await Promise.race([
-        titlePromise,
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 30_000)),
-      ])
-    } catch { /* already logged */ }
+    // 标题由后端在第一句时起，退出前稍等它写完（避免进程退出时请求还在飞）
+    const title = await Promise.race([
+      agent.getAgent(ptyId)?.waitForInitialTitle() ?? Promise.resolve(null),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 30_000)),
+    ])
+    if (title) console.log(`\n📌 Session title: ${title}`)
 
     const sessionId = agent.getAgent(ptyId)?.getSessionId()
     if (sessionId) {

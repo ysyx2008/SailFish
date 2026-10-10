@@ -261,8 +261,8 @@ export interface HostProfileServiceInterface {
 // Agent 事件回调
 export interface AgentCallbacks {
   onStep?: (agentId: string, step: AgentStep) => void
-  /** run 开始（user_task 步骤已发出后），供 IM/WebChat 等外部入口同步桌面 tab 的 isRunning */
-  onStart?: (agentId: string, userTask: string) => void
+  /** run 开始（user_task 步骤已发出后），供各界面同步 isRunning；session 是这一轮所在的会话（新会话由后端起号） */
+  onStart?: (agentId: string, userTask: string, session?: { sessionId: string; sessionStartTime: number }) => void
   onStepRemoved?: (agentId: string, stepId: string) => void
   /** 会话级上下文栏快照（与 step 解耦；token/cache/拟用模型） */
   onContextBar?: (agentId: string, contextBar: AgentContextBar) => void

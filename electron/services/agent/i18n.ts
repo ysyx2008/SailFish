@@ -1677,6 +1677,7 @@ const translations = {
 
     // 任务管理（manage_tasks，仅联络 Agent）
     'taskmgr.step': '任务管理',
+    'conversation.onboarding_title': '认识一下',
     'taskmgr.not_available': '任务管理能力不可用',
     'taskmgr.unknown_action': '未知的 action：{action}，支持 list / inspect / create / instruct / confirm / stop',
     'taskmgr.missing_param': '缺少参数：{param}',
@@ -3494,6 +3495,7 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
 
     // Task management (manage_tasks, companion only)
     'taskmgr.step': 'Manage tasks',
+    'conversation.onboarding_title': 'Nice to meet you',
     'taskmgr.not_available': 'Task management is not available',
     'taskmgr.unknown_action': 'Unknown action: {action}. Supported: list / inspect / create / instruct / confirm / stop',
     'taskmgr.missing_param': 'Missing parameter: {param}',

@@ -117,7 +117,7 @@ function isPlaceholderUserMessage(userMessage: string): boolean {
   return userMessage.startsWith('__') && userMessage.endsWith('__')
 }
 
-function broadcastConversationTitle(sessionId: string, title: string): void {
+export function broadcastConversationTitle(sessionId: string, title: string): void {
   try {
     // CLI / 单测没有真实窗口时静默
     const electron = require('electron') as { BrowserWindow?: { getAllWindows: () => Array<{ isDestroyed: () => boolean; webContents: { send: (ch: string, data: unknown) => void } }> } }

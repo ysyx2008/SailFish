@@ -773,7 +773,8 @@ interface Window {
       getVisibleSkills: (agentKey: string) => Promise<Array<{ id: string; name: string; description?: string; unavailable?: boolean }>>
       onSkillsChanged: (callback: (data: { agentId: string; skills: Array<{ id: string; name: string; description?: string; unavailable?: boolean }> }) => void) => () => void
       onStep: (callback: (data: { agentId: string; ptyId?: string; step: AgentStep }) => void) => () => void
-      onRunning: (callback: (data: { agentId: string; ptyId?: string; userTask: string }) => void) => () => void
+      /** sessionId：这一轮所在的会话（新会话由后端起号，界面据此认领） */
+      onRunning: (callback: (data: { agentId: string; ptyId?: string; userTask: string; sessionId?: string; sessionStartTime?: number }) => void) => () => void
       onTaskCreated: (callback: (data: { agentId: string; title: string; brief: string; fullAuto: boolean }) => void) => () => void
       onTaskContinue: (callback: (data: {
         agentId: string
@@ -900,8 +901,6 @@ interface Window {
         sshHost?: string
         status: 'completed' | 'failed' | 'aborted'
       }>>
-      /** 任务侧栏短标题：首条消息后异步生成，失败返回 null */
-      generateConversationTitle: (sessionId: string, userMessage: string, profileId?: string) => Promise<string | null>
       /** 设置会话展示标题（写入会话记录） */
       setConversationTitle: (sessionId: string, title: string, options?: { locked?: boolean }) => Promise<boolean>
       onConversationTitle: (callback: (payload: { sessionId: string; title: string }) => void) => () => void

@@ -2027,7 +2027,7 @@ describe('Agent step callbacks', () => {
     await agent.run('Hello task', context)
 
     expect(onStart).toHaveBeenCalledOnce()
-    expect(onStart).toHaveBeenCalledWith(expect.any(String), 'Hello task')
+    expect(onStart).toHaveBeenCalledWith(expect.any(String), 'Hello task', expect.objectContaining({ sessionId: expect.any(String) }))
   })
 
   it('should call onStep for message step', async () => {
@@ -2094,5 +2094,71 @@ describe('Agent SkillSession persistence', () => {
     
     // currentRun 应该被清理
     expect(agent.exposeCurrentRun()).toBeUndefined()
+  })
+})
+
+// ==================== 新会话：后端起号、第一句起标题 ====================
+
+describe('新任务会话的第一句', () => {
+  function setup(existingRecord?: Record<string, unknown>) {
+    const history = {
+      getAgentRecordById: vi.fn().mockReturnValue(existingRecord),
+      saveAgentRecord: vi.fn(),
+      updateConversationTitle: vi.fn().mockReturnValue(true),
+      getAgentRecordStore: vi.fn(() => history),
+    }
+    const services = createMockServices({ historyService: history as any })
+    const ai = services.aiService as any
+    ai.chat = vi.fn().mockResolvedValue('整理日志')
+    ai.chatWithToolsStream.mockImplementation((_m: any, _t: any, onChunk: any, _c: any, onDone: any) => {
+      onChunk('好了')
+      onDone({ content: '好了', tool_calls: undefined })
+      return Promise.resolve()
+    })
+    const titleCalls = () => ai.chat.mock.calls.filter((c: any[]) => String(c[0]?.[0]?.content).includes('会话短标题'))
+    return { agent: new TestAgent(services), history, ai, titleCalls }
+  }
+
+  it('没带会话号时后端起号，开跑时告诉界面，并起侧栏标题', async () => {
+    const { agent, history, titleCalls } = setup()
+    const onStart = vi.fn()
+
+    await agent.run('帮我整理一下日志', createMockContext(), { callbacks: { onStart } })
+
+    const session = onStart.mock.calls[0][2]
+    expect(session.sessionId).toMatch(/^session_/)
+    expect(session.sessionStartTime).toEqual(expect.any(Number))
+    await expect(agent.waitForInitialTitle()).resolves.toBe('整理日志')
+    expect(titleCalls()).toHaveLength(1)
+    expect(history.updateConversationTitle).toHaveBeenCalledWith(session.sessionId, '整理日志')
+  })
+
+  it('接着已有会话说不再起首个标题', async () => {
+    const sessionId = 'session_old'
+    const { agent, titleCalls } = setup({
+      id: sessionId,
+      timestamp: Date.now() - 5000,
+      terminalId: 'test-pty',
+      terminalType: 'local',
+      userTask: '之前的事',
+      steps: [{ id: 'ut1', type: 'user_task', content: '之前的事', timestamp: Date.now() - 5000 }],
+      messages: [{ role: 'user', content: '之前的事' }],
+      duration: 1000,
+      status: 'completed',
+    })
+
+    await agent.run('接着做', createMockContext({ sessionId, sessionStartTime: Date.now() - 5000 }))
+
+    await expect(agent.waitForInitialTitle()).resolves.toBeNull()
+    expect(titleCalls()).toHaveLength(0)
+  })
+
+  it('引导会话用固定标题，不问模型', async () => {
+    const { agent, history, titleCalls } = setup()
+
+    await agent.run('__onboarding__', createMockContext())
+
+    expect(titleCalls()).toHaveLength(0)
+    expect(history.updateConversationTitle).toHaveBeenCalledWith(expect.stringMatching(/^session_/), '认识一下')
   })
 })

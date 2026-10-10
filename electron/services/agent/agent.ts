@@ -38,7 +38,7 @@ import type {
 import { DEFAULT_AGENT_CONFIG } from './types'
 import { TaskMemoryStore } from './task-memory'
 import { Conversation, conversationPolicy } from '../conversation'
-import { generateConversationTitle, shouldRefreshConversationTitle } from '../conversation/title-generator'
+import { broadcastConversationTitle, generateConversationTitle, shouldRefreshConversationTitle } from '../conversation/title-generator'
 import { ContextWindowManager, peelOpenToolTurn } from './context-window'
 import { beginUserCompactTurn, cancelUserCompactTurn, failUserCompactTurn, finishUserCompactTurn } from './tools/context'
 import { SUMMARY_OUTPUT_BUDGET_CHARS } from './compression-summary'
@@ -180,6 +180,9 @@ export abstract class Agent {
 
   /** 交办标题：会话聚合根建好之前先记在这里 */
   private _armedTitle?: string
+
+  /** 第一句起的侧栏标题（后台进行中） */
+  private _initialTitle?: Promise<string | null>
 
   /** 这场任务的确认先走替我审批，不看全局开关 */
   private _preferAutoReview = false
@@ -1675,7 +1678,11 @@ export abstract class Agent {
       })
     }
 
-    this.callbacks?.onStart?.(this._agentId ?? run.id, run.internalNotice ? '' : message)
+    this.callbacks?.onStart?.(
+      this._agentId ?? run.id,
+      run.internalNotice ? '' : message,
+      this._conversation ? { sessionId: this._conversation.id, sessionStartTime: this._conversation.createdAt } : undefined
+    )
 
     // 准备阶段用户补充：run() IPC 往返期间缓冲的消息，紧跟 user_task 上墙
     if (this.preRunUserMessages.length > 0) {
@@ -1718,6 +1725,7 @@ export abstract class Agent {
     // 续聊还会用只有新消息的残本盖掉旧记录。之后每轮工具调用仍会再写检查点。
     this.seedCompressedArchives(run)
     this.saveCheckpoint(run)
+    this.scheduleInitialTitle(run, message)
 
     // 历史恢复后发布会话级上下文栏：上轮 API 确认的 token/cache + 本轮拟用 model/limit。
     // 与占位 step 解耦——流式接替 / 重试删 step 不会打空状态栏。用法仍只在 onDone 更新为确认值。
@@ -2111,17 +2119,7 @@ export abstract class Agent {
 
     const sessionId = conv.id
     void generateConversationTitle(
-      {
-        aiService: this.services.aiService,
-        configService,
-        historyService,
-        agentService: {
-          setConversationTitleBySessionId: (id, title) => {
-            if (id === conv.id) conv.setTitle(title)
-            return historyService.updateConversationTitle(id, title)
-          },
-        },
-      },
+      this.titleGeneratorDeps(conv, configService, historyService),
       {
         sessionId,
         mode: 'refresh',
@@ -2132,6 +2130,56 @@ export abstract class Agent {
     ).catch(err => {
       log.warn('Refresh conversation title failed:', err)
     })
+  }
+
+  /**
+   * 新任务会话的第一句：后台起侧栏短标题，不阻塞 run。引导会话用固定标题。
+   * 不论这句从哪个界面来都在这里起，界面只接收结果。
+   */
+  private scheduleInitialTitle(run: AgentRun, message: string): void {
+    const conv = this._conversation
+    const historyService = this.services.historyService
+    const configService = this.services.configService
+    if (this._isSubAgent || run.workerOptions || run.internalNotice) return
+    if (!conv || !historyService || !configService) return
+    if (conv.kind !== 'task' || conv.title || conv.titleLocked || conv.userTaskCount > 0) return
+
+    if (message.trim() === '__onboarding__') {
+      const title = t('conversation.onboarding_title')
+      conv.setTitle(title)
+      if (historyService.updateConversationTitle(conv.id, title)) broadcastConversationTitle(conv.id, title)
+      return
+    }
+    this._initialTitle = generateConversationTitle(
+      this.titleGeneratorDeps(conv, configService, historyService),
+      { sessionId: conv.id, userMessage: message, profileId: this.profileId }
+    ).catch(err => {
+      log.warn('Initial conversation title failed:', err)
+      return null
+    })
+  }
+
+  /** 第一句起的标题（没在起返回 null）；CLI 退出前等它写完 */
+  waitForInitialTitle(): Promise<string | null> {
+    return this._initialTitle ?? Promise.resolve(null)
+  }
+
+  private titleGeneratorDeps(
+    conv: Conversation,
+    configService: NonNullable<AgentServices['configService']>,
+    historyService: NonNullable<AgentServices['historyService']>
+  ): import('../conversation/title-generator').GenerateConversationTitleDeps {
+    return {
+      aiService: this.services.aiService,
+      configService,
+      historyService,
+      agentService: {
+        setConversationTitleBySessionId: (id, title) => {
+          if (id === conv.id) conv.setTitle(title)
+          return historyService.updateConversationTitle(id, title)
+        },
+      },
+    }
   }
 
   /**

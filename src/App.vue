@@ -1018,9 +1018,14 @@ onMounted(async () => {
   }
 
   // IM/WebChat 等外部入口触发 companion run 时同步桌面 tab isRunning
-  cleanupAgentRunning = window.electronAPI.agent.onRunning?.((data: { agentId: string; ptyId?: string; userTask: string }) => {
+  cleanupAgentRunning = window.electronAPI.agent.onRunning?.((data) => {
     const tabId = resolveAgentEventTabId(data)
     if (!tabId) return
+    // 会话号以后端为准：新会话由后端起号，这里认领
+    const current = terminalStore.tabs.find(t => t.id === tabId)?.agentState?.sessionId
+    if (data.sessionId && data.sessionStartTime && current !== data.sessionId) {
+      terminalStore.setAgentSession(tabId, data.sessionId, data.sessionStartTime)
+    }
     terminalStore.setAgentRunning(tabId, true, data.agentId, data.userTask)
   }) || null
 
