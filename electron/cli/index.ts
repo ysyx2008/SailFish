@@ -1291,7 +1291,7 @@ async function promptYesNo(question: string): Promise<boolean> {
  * 以联络（__companion__）身份对话：`sailfish companion "消息"`。
  *
  * 用途：无头回归联络专属能力（manage_tasks 任务管理只对 __companion__ 注册）。
- * 联络经 manage_tasks create 创建的任务在 CLI 无窗口下由后端直驱执行；
+ * 联络经 manage_tasks 建的 / 交代的任务与桌面同一条路在后端跑（没有窗口只是没人认领到侧栏）；
  * 本命令在联络回复后继续「值班」：轮询受管任务，待确认的交互式转达
  * （真实走一遍转述制 confirm 链路），全部跑完才退出。
  */
@@ -1379,7 +1379,7 @@ async function companionChat(args: string[]): Promise<void> {
     console.error('\n联络执行失败:', error.message || error)
   }
 
-  // 任务值班：联络可能已通过 manage_tasks 创建后台任务（CLI 无窗口 → 后端直驱）。
+  // 任务值班：联络可能已通过 manage_tasks 创建或交代了任务，它们在后台跑。
   // 待确认的任务在这里交互式转达；全部空闲（或超时）才退出。
   const supervisor = agent.getTaskSupervisor()
   const deadline = Date.now() + taskWaitSec * 1000

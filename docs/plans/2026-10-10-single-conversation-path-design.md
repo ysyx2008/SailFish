@@ -47,8 +47,8 @@
   验收：单测覆盖补话 / 补话不改执行档 / 开新一轮；CLI 回归；桌面手测——新对话、运行中补话、排队续发、`/compact`、助手 tab、本机终端 tab、远程终端 tab
 - [x] **R2 sessionId 与首个标题挪到后端**：新任务会话由后端铸 sessionId、第一句由后端触发起标题，前端只接收。（`onStart` 带回 `{sessionId, sessionStartTime}`，`App.vue` 全局 `onRunning` 认领；`Agent.scheduleInitialTitle` 在初次检查点后起标题，引导会话写固定标题；删掉 `history:generateConversationTitle` IPC；CLI 改走 `say` 并等 `waitForInitialTitle`）
   验收：新对话侧栏标题照常出现；联络、引导会话不受影响
-- [ ] **R3 界面认领**：统一的「某场开跑 / 补话」事件 + 前端按形态建 / 接回 tab；先让联络的建任务与再交代改走它（替换 `App.vue` 两段专用处理）。
-  验收：桌面手测——联络建任务立刻出现在侧栏；对开着 / 关着的那场再交代，话立刻出现在那场
+- [x] **R3 界面认领**（与 F2 的「create / instruct 改调 `say`、删专用通道」合并做了）：统一的「某场开跑 / 补话」事件 + 前端按形态建 / 接回 tab；先让联络的建任务与再交代改走它（替换 `App.vue` 两段专用处理）。（`onStart` 的会话信息加 `terminalType` / `title`，且先于 `user_task` 发出；`AgentService.say` 没带回调时用宿主给的界面回调工厂，联络发起的过程照样推到界面；前端 `terminalStore.claimConversation` 认领任务会话，本机终端重开后经 `agent:adoptPane` 把窗交给这一轮；`Agent.withKnownPane` 让别处说话接着用上一轮的窗格；删掉 `agent:taskCreated` / `agent:taskContinue`、`notifyFrontend*`、`AgentService.continueTask`。CLI 端到端：建任务 → 新进程再交代，同一场两轮、标题不变）
+  验收：桌面手测——联络建任务立刻出现在侧栏；对开着 / 关着的那场再交代，话立刻出现在那场。已知：关着的那场被接回时侧栏条目只显示这一轮起的过程（之前的历史点开历史记录看），与改动前一致
 
 功能：
 

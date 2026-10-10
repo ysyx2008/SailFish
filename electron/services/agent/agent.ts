@@ -1300,6 +1300,15 @@ export abstract class Agent {
     return { outcome: 'ran', result }
   }
 
+  /** 说话的一方不知道窗口在哪（不是从那扇窗里说的）：接着用这场上一轮的窗格，那扇窗已经没了就不用 */
+  withKnownPane(context: AgentContext): AgentContext {
+    const lastPtyId = this._resumeContext?.ptyId
+    if (context.ptyId || !lastPtyId) return context
+    const terminals = this.services.unifiedTerminalService || this.services.ptyService
+    if (!terminals?.hasInstance?.(lastPtyId)) return context
+    return { ...context, ptyId: lastPtyId }
+  }
+
   /**
    * 添加用户补充消息
    */
@@ -1667,6 +1676,20 @@ export abstract class Agent {
       }
     }
 
+    // 开跑先于第一句上墙：界面没开着这场时据此先认领出来，第一句才有地方落
+    this.callbacks?.onStart?.(
+      this._agentId ?? run.id,
+      run.internalNotice ? '' : message,
+      this._conversation
+        ? {
+            sessionId: this._conversation.id,
+            sessionStartTime: this._conversation.createdAt,
+            terminalType: this._conversation.terminalType,
+            ...(this._conversation.title ? { title: this._conversation.title } : {}),
+          }
+        : undefined
+    )
+
     // 先推送 user_task 步骤，让用户消息立即上墙，再做耗时的初始化。
     // 后台结果送回不是用户开口，不上这条气泡。
     if (!run.internalNotice) {
@@ -1677,12 +1700,6 @@ export abstract class Agent {
         attachments: context.attachments
       })
     }
-
-    this.callbacks?.onStart?.(
-      this._agentId ?? run.id,
-      run.internalNotice ? '' : message,
-      this._conversation ? { sessionId: this._conversation.id, sessionStartTime: this._conversation.createdAt } : undefined
-    )
 
     // 准备阶段用户补充：run() IPC 往返期间缓冲的消息，紧跟 user_task 上墙
     if (this.preRunUserMessages.length > 0) {
@@ -5767,6 +5784,16 @@ export abstract class Agent {
     return `${prefix}_${Date.now()}_${++this.idCounter}`
   }
   
+  /**
+   * 这一轮开跑时还没有窗（别处发起、界面随后才把这场接回来）：界面开好的窗归这一轮用。
+   * 已经有窗就不动。
+   */
+  adoptPane(ptyId: string): boolean {
+    const run = this.currentRun
+    if (!run?.isRunning || !ptyId || run.ptyId) return false
+    return this.remapCurrentPtyId(undefined, ptyId)
+  }
+
   /**
    * 把当前 run 的默认操作窗格从 oldPtyId 切到 newPtyId，并重绑输出监听。
    *

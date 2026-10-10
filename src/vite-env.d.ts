@@ -706,6 +706,7 @@ interface Window {
       cleanup: (ptyId: string) => Promise<void>
       /** 终端重连后同步运行中 Agent 的默认操作 ptyId（agentKey=tabId） */
       remapPtyId: (agentKey: string, oldPtyId: string, newPtyId: string) => Promise<boolean>
+      adoptPane: (agentKey: string, ptyId: string) => Promise<boolean>
       fork: (opts: {
         sourceAgentKey: string
         newAgentId: string
@@ -773,18 +774,8 @@ interface Window {
       getVisibleSkills: (agentKey: string) => Promise<Array<{ id: string; name: string; description?: string; unavailable?: boolean }>>
       onSkillsChanged: (callback: (data: { agentId: string; skills: Array<{ id: string; name: string; description?: string; unavailable?: boolean }> }) => void) => () => void
       onStep: (callback: (data: { agentId: string; ptyId?: string; step: AgentStep }) => void) => () => void
-      /** sessionId：这一轮所在的会话（新会话由后端起号，界面据此认领） */
-      onRunning: (callback: (data: { agentId: string; ptyId?: string; userTask: string; sessionId?: string; sessionStartTime?: number }) => void) => () => void
-      onTaskCreated: (callback: (data: { agentId: string; title: string; brief: string; fullAuto: boolean }) => void) => () => void
-      onTaskContinue: (callback: (data: {
-        agentId: string
-        message: string
-        title: string
-        terminalType: 'local' | 'ssh' | 'assistant'
-        sessionId?: string
-        sessionStartTime?: number
-        sshHost?: string
-      }) => void) => () => void
+      /** 带会话信息时：这一轮所在的会话（新会话由后端起号；没开着的界面据此认领） */
+      onRunning: (callback: (data: import('@shared/types').AgentRunningEvent) => void) => () => void
       onStepRemoved: (callback: (data: { agentId: string; ptyId?: string; stepId: string }) => void) => () => void
       onContextBar: (callback: (data: { agentId: string; ptyId?: string; contextBar: import('@shared/types').AgentContextBar }) => void) => () => void
       onModelFailover: (callback: (data: {

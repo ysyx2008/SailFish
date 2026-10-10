@@ -77,6 +77,21 @@ export type RemoteChannel = 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' 
 
 export type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
 
+/** 一轮开跑时所在会话的样子：界面据此认领（没开着的就按形态建出来） */
+export interface AgentRunSessionInfo {
+  sessionId: string
+  sessionStartTime: number
+  terminalType: TerminalType
+  title?: string
+}
+
+/** 某场开跑（含别处发起的）推给界面的事件；IM / Web 远程入口不带会话信息 */
+export type AgentRunningEvent = {
+  agentId: string
+  ptyId?: string
+  userTask: string
+} & Partial<AgentRunSessionInfo>
+
 /** 往一场对话里说一句之后实际发生了什么：补进了正在跑的那一轮，或开了新一轮并跑完 */
 export type SayOutcome = 'supplemented' | 'ran'
 

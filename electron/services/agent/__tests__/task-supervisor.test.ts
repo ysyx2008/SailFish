@@ -59,9 +59,7 @@ function makeMockAgent(opts: MockAgentOptions = {}): SailFish {
 function makeHost(entries: Array<[string, SailFish]>, overrides: Partial<TaskSupervisorHost> = {}): TaskSupervisorHost & {
   confirmToolCall: ReturnType<typeof vi.fn>
   abort: ReturnType<typeof vi.fn>
-  runAssistant: ReturnType<typeof vi.fn>
-  addUserMessage: ReturnType<typeof vi.fn>
-  continueTask: ReturnType<typeof vi.fn>
+  say: ReturnType<typeof vi.fn>
   prepareAssignedTask: ReturnType<typeof vi.fn>
 } {
   const map = new Map(entries)
@@ -70,9 +68,7 @@ function makeHost(entries: Array<[string, SailFish]>, overrides: Partial<TaskSup
     getAgent: vi.fn((key: string) => map.get(key)),
     confirmToolCall: vi.fn().mockReturnValue(true),
     abort: vi.fn().mockReturnValue(true),
-    runAssistant: vi.fn().mockResolvedValue('done'),
-    addUserMessage: vi.fn().mockReturnValue(true),
-    continueTask: vi.fn().mockResolvedValue('done'),
+    say: vi.fn().mockResolvedValue({ outcome: 'ran', result: 'done' }),
     prepareAssignedTask: vi.fn(),
     getHistoryService: vi.fn().mockReturnValue(undefined),
     getConfigService: vi.fn().mockReturnValue(undefined),
@@ -80,9 +76,7 @@ function makeHost(entries: Array<[string, SailFish]>, overrides: Partial<TaskSup
   } as TaskSupervisorHost & {
     confirmToolCall: ReturnType<typeof vi.fn>
     abort: ReturnType<typeof vi.fn>
-    runAssistant: ReturnType<typeof vi.fn>
-    addUserMessage: ReturnType<typeof vi.fn>
-    continueTask: ReturnType<typeof vi.fn>
+    say: ReturnType<typeof vi.fn>
     prepareAssignedTask: ReturnType<typeof vi.fn>
   }
 }
@@ -393,7 +387,7 @@ describe('TaskSupervisor', () => {
   })
 
   describe('createTask', () => {
-    it('无前端窗口（CLI）→ 后端直驱 runAssistant', async () => {
+    it('新开一场助手对话，把简报作为第一句说进去（与界面同一入口）', async () => {
       const host = makeHost([])
       const supervisor = new TaskSupervisor(host)
 
@@ -401,22 +395,21 @@ describe('TaskSupervisor', () => {
 
       expect(agentKey).toMatch(/^assistant-/)
       expect(host.prepareAssignedTask).toHaveBeenCalledWith(agentKey, '查日志', false)
-      expect(host.runAssistant).toHaveBeenCalledTimes(1)
-      const [agentId, message, context, config] = host.runAssistant.mock.calls[0]
+      expect(host.say).toHaveBeenCalledTimes(1)
+      const [agentId, message, context, opts] = host.say.mock.calls[0]
       expect(agentId).toBe(agentKey)
       expect(message).toBe('查一下昨天的错误日志')
       expect(context.terminalType).toBe('assistant')
-      expect(config.executionMode).toBe('free')
+      expect(opts.surface).toBe('assistant')
+      expect(opts.config.executionMode).toBe('free')
     })
 
-    it('非全自动任务默认 relaxed 模式', async () => {
+    it('没说全自动：这场走替我审批', async () => {
       const host = makeHost([])
       const supervisor = new TaskSupervisor(host)
 
       await supervisor.createTask({ title: '问个问题', brief: '简述项目结构' })
 
-      const [, , , config] = host.runAssistant.mock.calls[0]
-      expect(config.executionMode).toBe('relaxed')
       expect(host.prepareAssignedTask).toHaveBeenCalledWith(expect.stringMatching(/^assistant-/), '问个问题', true)
     })
   })
@@ -486,12 +479,16 @@ describe('TaskSupervisor', () => {
       }
     }
 
-    it('正在跑的任务当场收下这一句', async () => {
-      const host = makeHost([['tab-live', makeMockAgent({ title: '查日志', isRunning: true, sessionId: 'session_live' })]])
+    it('正在跑的任务：说进那场，回报当场听见；不改它的运行设置', async () => {
+      const host = makeHost([['tab-live', makeMockAgent({ title: '查日志', isRunning: true, sessionId: 'session_live', terminalType: 'local' })]])
       const result = await new TaskSupervisor(host).instructTask('tab-live', '  再看一下今天的 ')
       expect(result).toEqual({ ok: true, title: '查日志', delivered: 'now' })
-      expect(host.addUserMessage).toHaveBeenCalledWith('tab-live', '再看一下今天的')
-      expect(host.continueTask).not.toHaveBeenCalled()
+      expect(host.say).toHaveBeenCalledWith(
+        'tab-live',
+        '再看一下今天的',
+        expect.objectContaining({ terminalType: 'local', sessionId: 'session_live' }),
+        { surface: 'terminal', config: undefined }
+      )
     })
 
     it('还在内存里但已经停了，接着原来那场', async () => {
@@ -499,11 +496,11 @@ describe('TaskSupervisor', () => {
       const result = await new TaskSupervisor(host).instructTask('tab-idle', '把结论写短一点')
       expect(result.ok).toBe(true)
       expect(result.delivered).toBe('next')
-      expect(host.addUserMessage).not.toHaveBeenCalled()
-      expect(host.continueTask).toHaveBeenCalledWith(
+      expect(host.say).toHaveBeenCalledWith(
         'tab-idle',
         '把结论写短一点',
-        expect.objectContaining({ terminalType: 'local', sessionId: 'session_idle' })
+        expect.objectContaining({ terminalType: 'local', sessionId: 'session_idle' }),
+        { surface: 'terminal', config: undefined }
       )
     })
 
@@ -516,10 +513,11 @@ describe('TaskSupervisor', () => {
       })
       const result = await new TaskSupervisor(host).instructTask('assistant-old', '再补一段')
       expect(result).toMatchObject({ ok: true, title: '查日志', delivered: 'next' })
-      expect(host.continueTask).toHaveBeenCalledWith(
+      expect(host.say).toHaveBeenCalledWith(
         'assistant-old',
         '再补一段',
-        expect.objectContaining({ terminalType: 'assistant', sessionId: 'session_old', sessionStartTime: 10 })
+        expect.objectContaining({ terminalType: 'assistant', sessionId: 'session_old', sessionStartTime: 10 }),
+        expect.objectContaining({ surface: 'assistant', config: expect.objectContaining({ enabled: true }) })
       )
     })
 
@@ -532,10 +530,11 @@ describe('TaskSupervisor', () => {
       })
       const result = await new TaskSupervisor(host).instructTask('tab-local', '再跑一次')
       expect(result.ok).toBe(true)
-      expect(host.continueTask).toHaveBeenCalledWith(
+      expect(host.say).toHaveBeenCalledWith(
         'tab-local',
         '再跑一次',
-        expect.objectContaining({ terminalType: 'local', sessionId: 'session_old' })
+        expect.objectContaining({ terminalType: 'local', sessionId: 'session_old' }),
+        expect.objectContaining({ surface: 'terminal' })
       )
     })
 
@@ -548,16 +547,14 @@ describe('TaskSupervisor', () => {
       })
       const result = await new TaskSupervisor(host).instructTask('tab-ssh', '再看一眼')
       expect(result).toEqual({ ok: false, reason: 'terminal_closed', title: '远端' })
-      expect(host.continueTask).not.toHaveBeenCalled()
-      expect(host.addUserMessage).not.toHaveBeenCalled()
+      expect(host.say).not.toHaveBeenCalled()
     })
 
     it('帮手和空话不送', async () => {
       const host = makeHost([['tab-live:sub:explore', makeMockAgent({ title: '帮手', isRunning: true })]])
       expect(await new TaskSupervisor(host).instructTask('tab-live:sub:explore', '去做')).toEqual({ ok: false, reason: 'task_not_found' })
       expect(await new TaskSupervisor(host).instructTask('tab-live', '   ')).toEqual({ ok: false, reason: 'task_not_found' })
-      expect(host.addUserMessage).not.toHaveBeenCalled()
-      expect(host.continueTask).not.toHaveBeenCalled()
+      expect(host.say).not.toHaveBeenCalled()
     })
   })
 })

@@ -16,9 +16,8 @@
  * 任务分出去的帮手（身份键里的 :sub:）也不是任务，不进列表、不回流。
  * 内存里已经没有的任务，从历史索引补最近若干条已结束的摘要。
  */
-import os from 'os'
 import { v4 as uuidv4 } from 'uuid'
-import { COMPANION_AGENT_KEY, inferConversationKind, type RiskLevel, type TerminalType } from '@shared/types'
+import { COMPANION_AGENT_KEY, inferConversationKind, type ExecutionMode, type RiskLevel, type TerminalType } from '@shared/types'
 import { createLogger } from '../../utils/logger'
 import { appendProactiveContext } from './proactive-store'
 import { deliverProactiveMessage } from './proactive-deliver'
@@ -26,7 +25,7 @@ import { t } from './i18n'
 import { getDefaultShell, getLocalOS } from '../../utils/platform'
 import type { HistoryService } from '../history.service'
 import type { ConfigService } from '../config.service'
-import type { AgentContext, AgentConfig, AgentCallbacks } from './types'
+import type { AgentContext, AgentConfig } from './types'
 import type { SailFish } from './sailfish'
 
 const log = createLogger('TaskSupervisor')
@@ -105,18 +104,13 @@ export interface TaskSupervisorHost {
   getAgent(agentKey: string): SailFish | undefined
   confirmToolCall(agentKey: string, toolCallId: string, approved: boolean): boolean
   abort(agentKey: string): boolean
-  /** 往正在跑的任务里送一句补充（当场听见） */
-  addUserMessage(agentKey: string, message: string): boolean
-  /** 同一场接着做：空闲或已从历史找回时开下一轮 */
-  continueTask(agentKey: string, message: string, context: AgentContext): Promise<string>
-  runAssistant(
-    agentId: string,
-    userMessage: string,
+  /** 往一场对话里说一句——与用户在界面上说话是同一个入口：在跑就补进去，否则开新一轮 */
+  say(
+    agentKey: string,
+    message: string,
     context: AgentContext,
-    config?: Partial<AgentConfig>,
-    profileId?: string,
-    callbacks?: AgentCallbacks
-  ): Promise<string>
+    opts: { surface: 'assistant' | 'terminal'; config?: Partial<AgentConfig> }
+  ): Promise<unknown>
   getHistoryService(): HistoryService | undefined
   getConfigService(): ConfigService | undefined
   /** 创建任务实例并锁住交办标题；autoReview 为真时这场走替我审批 */
@@ -223,86 +217,40 @@ export class TaskSupervisor {
     const title = agent
       ? this.resolveTaskTitle(agentKey)
       : this.titleFromHistory(record?.title, record?.userTask ?? '', agentKey)
-    if (agent?.getRunStatus()?.isRunning) {
-      const delivered = this.host.addUserMessage(agentKey, text)
-      return delivered
-        ? { ok: true, title, delivered: 'now' }
-        : { ok: false, reason: 'task_not_found', title }
-    }
-
     const terminalType = agent?.getTerminalType() || record?.terminalType || 'assistant'
     if (!agent && terminalType === 'ssh') {
       return { ok: false, reason: 'terminal_closed', title }
     }
 
+    // 只用来回报「当场听见 / 下一轮」，补话还是开新一轮由那场对话自己决定
+    const delivered = agent?.getRunStatus()?.isRunning ? 'now' : 'next'
     const sessionId = agent?.getSessionId() || record?.id
     const context: AgentContext = {
-      terminalOutput: [],
-      systemInfo: { os: getLocalOS(), shell: getDefaultShell() },
-      terminalType,
-      cwd: terminalType === 'ssh' ? '~' : os.homedir(),
-      remoteChannel: 'desktop',
+      ...this.contextWithoutWindow(terminalType),
       ...(sessionId ? { sessionId } : {}),
       ...(record?.timestamp ? { sessionStartTime: record.timestamp } : {}),
       ...(record?.sshHost ? { sshHost: record.sshHost } : {}),
     }
-
-    if (this.notifyFrontendTaskContinue({
-      agentId: agentKey,
-      message: text,
-      title,
-      terminalType,
-      sessionId,
-      sessionStartTime: record?.timestamp,
-      sshHost: record?.sshHost,
-    })) {
-      return { ok: true, title, delivered: 'next' }
-    }
-
-    this.host.continueTask(agentKey, text, context).catch(err => {
+    this.host.say(agentKey, text, context, {
+      surface: terminalType === 'assistant' ? 'assistant' : 'terminal',
+      config: agent ? undefined : this.runConfig(this.settingsExecutionMode()),
+    }).catch(err => {
       log.error(`再交代失败 (${agentKey}):`, err)
     })
-    return { ok: true, title, delivered: 'next' }
+    return { ok: true, title, delivered }
   }
 
   /**
-   * 创建任务（一期仅无终端助手形态）。
-   *
-   * 桌面：发 IPC 给前端建 tab 并自动执行（复用标准 runAgent 路径，确认卡/渲染全一致）。
-   * CLI / 无窗口：后端直驱 runAssistant（无 UI 回调，历史照落盘，事件照回流）。
+   * 创建任务（一期仅无终端助手形态）：新开一场助手对话，把简报作为第一句说进去。
+   * 和用户在界面上新开一场是同一个入口；打开着的界面会把这场认领到侧栏。
    */
   async createTask(opts: CreateTaskOptions): Promise<{ agentKey: string }> {
     const agentId = `assistant-${uuidv4()}`
     this.host.prepareAssignedTask(agentId, opts.title, opts.fullAuto !== true)
-    const payload = {
-      agentId,
-      title: opts.title,
-      brief: opts.brief,
-      fullAuto: opts.fullAuto === true,
-    }
-
-    if (this.notifyFrontendTaskCreated(payload)) {
-      return { agentKey: agentId }
-    }
-
-    // 无前端窗口（CLI）：后端直驱
-    const context: AgentContext = {
-      terminalOutput: [],
-      systemInfo: { os: getLocalOS(), shell: getDefaultShell() },
-      terminalType: 'assistant',
-      cwd: os.homedir(),
-      remoteChannel: 'desktop',
-    }
-    const config: Partial<AgentConfig> = {
-      enabled: true,
-      maxSteps: 0,
-      commandTimeout: 30000,
-      autoExecuteSafe: true,
-      autoExecuteModerate: true,
-      executionMode: opts.fullAuto ? 'free' : 'relaxed',
-      debugMode: this.host.getConfigService()?.getAgentDebugMode() ?? false,
-    }
-    this.host.runAssistant(agentId, opts.brief, context, config).catch(err => {
+    this.host.say(agentId, opts.brief, this.contextWithoutWindow('assistant'), {
+      surface: 'assistant',
+      config: this.runConfig(opts.fullAuto ? 'free' : 'relaxed'),
+    }).catch(err => {
       log.error(`任务执行失败 (${agentId}):`, err)
     })
     return { agentKey: agentId }
@@ -525,41 +473,33 @@ export class TaskSupervisor {
     return text.length > max ? `${text.slice(0, max)}…` : text
   }
 
-  /** 通知前端建 tab 并自动执行；返回是否有窗口可送达（CLI 无窗口返回 false） */
-  private notifyFrontendTaskCreated(payload: {
-    agentId: string
-    title: string
-    brief: string
-    fullAuto: boolean
-  }): boolean {
-    return this.sendToFrontend('agent:taskCreated', payload)
-  }
-
-  /** 通知前端在原来那场上接着做；无窗口时由调用方直驱 */
-  private notifyFrontendTaskContinue(payload: {
-    agentId: string
-    message: string
-    title: string
-    terminalType: TerminalType
-    sessionId?: string
-    sessionStartTime?: number
-    sshHost?: string
-  }): boolean {
-    return this.sendToFrontend('agent:taskContinue', payload)
-  }
-
-  private sendToFrontend(channel: string, payload: unknown): boolean {
-    try {
-      const electron = require('electron')
-      const win = electron.BrowserWindow?.getAllWindows?.()?.[0]
-      if (win && !win.isDestroyed()) {
-        win.webContents.send(channel, payload)
-        return true
-      }
-    } catch (e) {
-      log.debug(`${channel} 不可用（CLI 或无窗口）:`, e)
+  /** 不是从哪扇窗里说的：只知道本机环境，目录由那场对话开跑时自己定 */
+  private contextWithoutWindow(terminalType: TerminalType): AgentContext {
+    return {
+      terminalOutput: [],
+      systemInfo: { os: getLocalOS(), shell: getDefaultShell() },
+      terminalType,
+      remoteChannel: 'desktop',
     }
-    return false
+  }
+
+  /** 设置里的执行档；新实例沿用它，不把默认的严格档盖上去 */
+  private settingsExecutionMode(): ExecutionMode | undefined {
+    const mode = this.host.getConfigService()?.get('executionMode')
+    return mode === 'strict' || mode === 'relaxed' || mode === 'free' ? mode : undefined
+  }
+
+  /** 新开一轮时的运行设置 */
+  private runConfig(executionMode?: ExecutionMode): Partial<AgentConfig> {
+    return {
+      ...(executionMode ? { executionMode } : {}),
+      enabled: true,
+      maxSteps: 0,
+      commandTimeout: 30000,
+      autoExecuteSafe: true,
+      autoExecuteModerate: true,
+      debugMode: this.host.getConfigService()?.getAgentDebugMode() ?? false,
+    }
   }
 
   private historyRecord(agentKey: string) {

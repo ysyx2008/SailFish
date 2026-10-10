@@ -84,8 +84,8 @@ export type {
   PendingConfirmation,
 } from '@shared/types'
 
-import type { TerminalType, AgentStep, AgentContextBar, PendingConfirmation, RemoteChannel, AttachmentInfo, AgentRecord } from '@shared/types'
-import { COMPANION_AGENT_KEY, deriveContextBarFromSteps } from '@shared/types'
+import type { TerminalType, AgentStep, AgentContextBar, PendingConfirmation, RemoteChannel, AttachmentInfo, AgentRecord, AgentRunningEvent } from '@shared/types'
+import { COMPANION_AGENT_KEY, deriveContextBarFromSteps, inferConversationKind } from '@shared/types'
 import { isWorkbenchAvailable } from '../workbench/registry'
 
 export type {
@@ -2708,6 +2708,55 @@ export const useTerminalStore = defineStore('terminal', () => {
   }
 
   /**
+   * 别处让某场任务开跑（联络替用户交代等），界面上还没开着它：按形态认领出来，不抢当前视图。
+   * 助手 → 侧栏一条；本机终端 → 用同一 id 重开，开好的窗交给这一轮；远程终端不在就不建。
+   * 联络 / 关切 / 唤醒各有自己的落点，不在这里认领。
+   * @returns 认领出的 tabId；不该认领时 undefined
+   */
+  function claimConversation(data: AgentRunningEvent): string | undefined {
+    if (!data.terminalType || !data.sessionId || !data.sessionStartTime) return undefined
+    if (inferConversationKind(data.agentId) !== 'task') return undefined
+    // 本机终端这一轮离不开窗：开不出来就停掉，不让它对着空气跑（停下会照常回报给联络）
+    const stopUnwindowedRun = (reason: unknown) => {
+      log.warn(`claimConversation: 接不住这场，停掉这一轮 (${data.agentId}):`, reason)
+      void window.electronAPI.agent.abort(data.agentId)
+    }
+    let tabId: string
+    if (data.terminalType === 'assistant') {
+      try {
+        tabId = createAssistantTab({ agentId: data.agentId, title: data.title, isRemote: false, activate: false })
+      } catch (err) {
+        // 助手这一轮不靠窗也能做完，结果照样进历史并回报
+        log.warn(`claimConversation: 侧栏接不住助手会话 (${data.agentId}):`, err)
+        return undefined
+      }
+      markAssistantSkipOnboarding(tabId)
+    } else if (data.terminalType === 'local') {
+      if (!isWorkbenchAvailable('local')) {
+        stopUnwindowedRun('本机终端工作台未开放')
+        return undefined
+      }
+      // 建 tab 是同步的，窗要等 PTY 起来；这一轮的步骤先落进 tab，窗好了再交给它
+      tabId = data.agentId
+      void createTab('local', undefined, undefined, undefined, { id: tabId, activate: false, title: data.title })
+        .then(async () => {
+          const ptyId = tabs.value.find(t => t.id === tabId)?.ptyId
+          if (!ptyId) return stopUnwindowedRun('终端没有起来')
+          await window.electronAPI.agent.adoptPane(data.agentId, ptyId)
+        })
+        .catch(stopUnwindowedRun)
+    } else {
+      return undefined
+    }
+    setAgentSession(tabId, data.sessionId, data.sessionStartTime)
+    if (data.title) {
+      const tab = tabs.value.find(t => t.id === tabId)
+      if (tab?.agentState) tab.agentState.title = data.title
+    }
+    return tabId
+  }
+
+  /**
    * 设置 Agent 会话 ID 和开始时间（用于会话级保存）
    */
   function setAgentSession(tabId: string, sessionId: string, sessionStartTime: number): void {
@@ -4091,6 +4140,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     requestTerminalAiPanelReveal,
     // Agent 状态管理
     findTabIdByAgentId,
+    claimConversation,
     findTabIdByPtyId,
     getAgentState,
     setAgentRunning,

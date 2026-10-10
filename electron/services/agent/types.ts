@@ -22,13 +22,14 @@ export type {
   TokenUsage,
   CommandRiskPolicy,
   AgentPaneInfo,
+  AgentRunSessionInfo,
 } from '@shared/types'
 
 // 本文件内部也要用（AgentRun.context），故单独 import 一份
 import type { AgentContext } from '@shared/types'
 export type { AgentContext }
 
-import type { ExecutionMode, PendingConfirmation, PendingSecureInput, AgentStep, AgentContextBar, AgentPlan, AttachmentInfo, TokenUsage, CommandRiskPolicy, PendingUserHandoff } from '@shared/types'
+import type { ExecutionMode, PendingConfirmation, PendingSecureInput, AgentStep, AgentContextBar, AgentPlan, AttachmentInfo, TokenUsage, CommandRiskPolicy, PendingUserHandoff, AgentRunSessionInfo } from '@shared/types'
 
 // Agent 配置
 export interface AgentConfig {
@@ -262,7 +263,7 @@ export interface HostProfileServiceInterface {
 export interface AgentCallbacks {
   onStep?: (agentId: string, step: AgentStep) => void
   /** run 开始（user_task 步骤已发出后），供各界面同步 isRunning；session 是这一轮所在的会话（新会话由后端起号） */
-  onStart?: (agentId: string, userTask: string, session?: { sessionId: string; sessionStartTime: number }) => void
+  onStart?: (agentId: string, userTask: string, session?: AgentRunSessionInfo) => void
   onStepRemoved?: (agentId: string, stepId: string) => void
   /** 会话级上下文栏快照（与 step 解耦；token/cache/拟用模型） */
   onContextBar?: (agentId: string, contextBar: AgentContextBar) => void

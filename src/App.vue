@@ -8,7 +8,6 @@ import { initWorkbenchHandler, disposeWorkbenchHandler } from './services/workbe
 import { useConfigStore, type SshSession } from './stores/config'
 import TerminalTabView from './components/TerminalTabView.vue'
 import { resolveWorkbenchRenderer, resolveWorkbenchKind, isWorkbenchAvailable } from './workbench/registry'
-import { getLocalSystemInfo } from './composables/useAgentMode'
 import { bootstrapWorkbenchCapabilities } from './workbench/bootstrap'
 import { isOemFeatureEnabled } from '@shared/oem-features'
 import SessionManager from './components/SessionManager.vue'
@@ -488,8 +487,6 @@ let cleanupInstallSkill: (() => void) | null = null
 let cleanupWatchEnsureTab: (() => void) | null = null
 let cleanupWatchProactiveMessage: (() => void) | null = null
 let cleanupWatchActivateMessage: (() => void) | null = null
-let cleanupAgentTaskCreated: (() => void) | null = null
-let cleanupAgentTaskContinue: (() => void) | null = null
 let cleanupAgentRunning: (() => void) | null = null
 let cleanupAgentCompleteForProactive: (() => void) | null = null
 let cleanupAgentErrorForTabAttention: (() => void) | null = null
@@ -805,117 +802,6 @@ onMounted(async () => {
     }
   })
 
-  // 联络交办任务：后端 TaskSupervisor 通知建本地助手 tab（Hub 模型：后台建 tab 进
-  // 「最近对话」侧栏，不抢占当前视图），随后直接经 runStandalone 启动——tab 未激活时
-  // AiPanel 未挂载，不能走 pendingSchedulerTask 的挂载触发路径；步骤/确认卡/完成事件
-  // 经标准 agent:* IPC 按 agentId 流入该 tab，用户从侧栏点开即可查看。
-  cleanupAgentTaskCreated = window.electronAPI.agent.onTaskCreated((data) => {
-    log.debug(`[TaskSupervisor] onTaskCreated: agentId=${data.agentId}, title="${data.title}", fullAuto=${data.fullAuto}`)
-    const existingTab = terminalStore.tabs.find(tab => tab.agentId === data.agentId)
-    if (existingTab) return
-    const tabId = terminalStore.createAssistantTab({
-      agentId: data.agentId,
-      title: data.title,
-      isRemote: false,
-      activate: false
-    })
-    terminalStore.markAssistantSkipOnboarding(tabId)
-    void window.electronAPI.agent.say({
-      agentKey: data.agentId,
-      surface: 'assistant',
-      message: data.brief,
-      context: { terminalOutput: [], systemInfo: getLocalSystemInfo(), terminalType: 'assistant' },
-      config: data.fullAuto ? { executionMode: 'free' } : { executionMode: 'relaxed' },
-    }).then(res => {
-      if (!res?.success) {
-        log.warn(`[TaskSupervisor] 交办任务启动失败 (${data.agentId}): ${res?.error ?? 'unknown'}`)
-        // tab 已建但不会有任何步骤流入，落一条错误步骤避免用户点开后面对空对话
-        terminalStore.addAgentStep(tabId, {
-          id: `supervised-start-error-${Date.now()}`,
-          type: 'error',
-          content: t('ai.taskStartFailed', { error: res?.error ?? 'unknown' }),
-          timestamp: Date.now()
-        })
-      }
-    }).catch(err => {
-      log.warn(`[TaskSupervisor] 交办任务启动异常 (${data.agentId}):`, err)
-    })
-  })
-
-  // 联络再交代：原来那场接着做。窗口还在就往那场送；助手或本机终端窗口不在就接回来。
-  cleanupAgentTaskContinue = window.electronAPI.agent.onTaskContinue(async (data) => {
-    log.debug(`[TaskSupervisor] onTaskContinue: agentId=${data.agentId}, terminalType=${data.terminalType}`)
-    let tab = terminalStore.tabs.find(t => t.agentId === data.agentId || t.id === data.agentId)
-    const alreadyOpen = !!tab
-    if (!tab && data.terminalType === 'assistant') {
-      const tabId = terminalStore.createAssistantTab({
-        agentId: data.agentId,
-        title: data.title,
-        isRemote: false,
-        activate: false
-      })
-      terminalStore.markAssistantSkipOnboarding(tabId)
-      tab = terminalStore.tabs.find(t => t.id === tabId)
-    }
-    if (!tab && data.terminalType === 'local') {
-      try {
-        const tabId = await terminalStore.createTab('local', undefined, undefined, undefined, {
-          id: data.agentId,
-          activate: false,
-          title: data.title
-        })
-        tab = terminalStore.tabs.find(t => t.id === tabId)
-      } catch (err) {
-        log.warn(`[TaskSupervisor] 接回本机终端失败 (${data.agentId}):`, err)
-        return
-      }
-    }
-    if (!tab) {
-      log.warn(`[TaskSupervisor] 没有可接着做的窗口 (${data.agentId}, ${data.terminalType})`)
-      return
-    }
-    if (!tab.agentState) {
-      tab.agentState = { isRunning: false, steps: [], agentId: tab.agentId || tab.id }
-    }
-    if (data.sessionId) tab.agentState.sessionId = data.sessionId
-    if (data.sessionStartTime) tab.agentState.sessionStartTime = data.sessionStartTime
-    if (data.title) tab.agentState.title = data.title
-    const runConfig = alreadyOpen ? undefined : { executionMode: configStore.executionMode }
-    const session = {
-      ...(data.sessionId ? { sessionId: data.sessionId } : {}),
-      ...(data.sessionStartTime ? { sessionStartTime: data.sessionStartTime } : {}),
-    }
-    if (tab.type === 'assistant' && tab.agentId) {
-      void window.electronAPI.agent.say({
-        agentKey: tab.agentId,
-        surface: 'assistant',
-        message: data.message,
-        context: {
-          terminalOutput: [],
-          systemInfo: getLocalSystemInfo(),
-          terminalType: 'assistant',
-          ...session,
-        },
-        config: runConfig,
-      }).catch(err => log.warn(`[TaskSupervisor] 助手接着做失败 (${data.agentId}):`, err))
-      return
-    }
-    void window.electronAPI.agent.say({
-      agentKey: tab.id,
-      surface: 'terminal',
-      message: data.message,
-      context: {
-        ptyId: tab.ptyId,
-        terminalOutput: [],
-        systemInfo: tab.systemInfo ?? getLocalSystemInfo(),
-        terminalType: tab.type === 'ssh' ? 'ssh' : 'local',
-        ...(data.sshHost ? { sshHost: data.sshHost } : {}),
-        ...session,
-      },
-      config: runConfig,
-    }).catch(err => log.warn(`[TaskSupervisor] 终端接着做失败 (${data.agentId}):`, err))
-  })
-
   // Watch desktop 输出：确保助手 tab 存在，后续 steps 通过标准 agent:step 事件流入
   cleanupWatchEnsureTab = window.electronAPI.watch.onEnsureTab((data) => {
     // 联络常驻 tab 已在 initializeApp 时创建，直接复用
@@ -1017,9 +903,9 @@ onMounted(async () => {
     return terminalStore.findTabIdByAgentId(data.agentId)
   }
 
-  // IM/WebChat 等外部入口触发 companion run 时同步桌面 tab isRunning
+  // 任何来源让某场开跑都同步到界面：开着的 tab 标为运行中；没开着的任务按形态认领出来
   cleanupAgentRunning = window.electronAPI.agent.onRunning?.((data) => {
-    const tabId = resolveAgentEventTabId(data)
+    const tabId = resolveAgentEventTabId(data) ?? terminalStore.claimConversation(data)
     if (!tabId) return
     // 会话号以后端为准：新会话由后端起号，这里认领
     const current = terminalStore.tabs.find(t => t.id === tabId)?.agentState?.sessionId
@@ -1750,8 +1636,6 @@ onUnmounted(() => {
   cleanupWatchEnsureTab?.()
   cleanupWatchProactiveMessage?.()
   cleanupWatchActivateMessage?.()
-  cleanupAgentTaskCreated?.()
-  cleanupAgentTaskContinue?.()
   cleanupAgentRunning?.()
   cleanupAgentCompleteForProactive?.()
   cleanupAgentNeedConfirmGlobal?.()

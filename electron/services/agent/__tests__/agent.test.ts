@@ -487,6 +487,37 @@ describe('Agent', () => {
       expect(said).toEqual({ outcome: 'ran', result: '好了' })
       expect(agent.executionMode).toBe('free')
     })
+
+    it('说话的一方不知道窗口：接着用这场上一轮的窗格；知道就用它说的', async () => {
+      const aiService = agent.exposeServices().aiService as unknown as ReturnType<typeof createMockAiService>
+      aiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+          onDone({ content: 'ok', tool_calls: undefined })
+          return Promise.resolve()
+        }
+      )
+      expect(agent.withKnownPane(createMockContext({ ptyId: undefined })).ptyId).toBeUndefined()
+
+      await agent.run('先做一件', createMockContext({ ptyId: 'pty-a' }))
+
+      const pty = agent.exposeServices().ptyService as unknown as { hasInstance: ReturnType<typeof vi.fn> }
+      pty.hasInstance = vi.fn().mockReturnValue(true)
+      expect(agent.withKnownPane(createMockContext({ ptyId: undefined })).ptyId).toBe('pty-a')
+      expect(agent.withKnownPane(createMockContext({ ptyId: 'pty-b' })).ptyId).toBe('pty-b')
+
+      pty.hasInstance.mockReturnValue(false)
+      expect(agent.withKnownPane(createMockContext({ ptyId: undefined })).ptyId).toBeUndefined()
+    })
+  })
+
+  describe('adoptPane', () => {
+    it('这一轮还没有窗时用界面刚开的窗；已经有窗不动', () => {
+      agent.injectCurrentRun({ id: 'run-1', isRunning: true, pendingUserMessages: [], steps: [], context: createMockContext({ ptyId: undefined }) })
+      expect(agent.adoptPane('pty-new')).toBe(true)
+      expect(agent.exposeCurrentRun()!.ptyId).toBe('pty-new')
+      expect(agent.adoptPane('pty-other')).toBe(false)
+      expect(agent.exposeCurrentRun()!.ptyId).toBe('pty-new')
+    })
   })
 
   // ==================== 工具确认 ====================
@@ -2010,8 +2041,10 @@ describe('Agent step callbacks', () => {
     expect(stepTypes[1]).toBe('thinking')
   })
 
-  it('should call onStart after user_task step is emitted', async () => {
-    const onStart = vi.fn()
+  it('开跑先于第一句上墙，并带上会话的形态（界面据此认领）', async () => {
+    const order: string[] = []
+    const onStart = vi.fn(() => { order.push('start') })
+    const onStep = vi.fn((_id: string, step: { type: string }) => { order.push(step.type) })
 
     mockAiService.chatWithToolsStream.mockImplementation(
       (_messages, _tools, onChunk, _onToolCall, onDone) => {
@@ -2021,13 +2054,18 @@ describe('Agent step callbacks', () => {
       }
     )
 
-    agent.setCallbacks({ onStart })
+    agent.setCallbacks({ onStart, onStep })
 
     const context = createMockContext()
     await agent.run('Hello task', context)
 
     expect(onStart).toHaveBeenCalledOnce()
-    expect(onStart).toHaveBeenCalledWith(expect.any(String), 'Hello task', expect.objectContaining({ sessionId: expect.any(String) }))
+    expect(onStart).toHaveBeenCalledWith(
+      expect.any(String),
+      'Hello task',
+      expect.objectContaining({ sessionId: expect.any(String), terminalType: context.terminalType })
+    )
+    expect(order.indexOf('start')).toBeLessThan(order.indexOf('user_task'))
   })
 
   it('should call onStep for message step', async () => {

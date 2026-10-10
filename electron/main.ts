@@ -759,6 +759,10 @@ function agentRuntimeDeps(): AgentRuntimeDeps {
     historyService,
     pluginRegistry,
     appStartTime: APP_START_TIME,
+    uiCallbacksFor: (agentKey) =>
+      mainWindow && !mainWindow.isDestroyed()
+        ? createRendererAgentCallbacks(mainWindow.webContents, agentKey)
+        : undefined,
   }
 }
 
@@ -4503,6 +4507,11 @@ ipcMain.handle('agent:updateConfig', async (_event, ptyId: string, config: { exe
 ipcMain.handle('agent:remapPtyId', async (_event, agentKey: string, oldPtyId: string, newPtyId: string) => {
   const { agentService } = await rt()
   return agentService.remapPtyId(agentKey, oldPtyId, newPtyId)
+})
+
+ipcMain.handle('agent:adoptPane', async (_event, agentKey: string, ptyId: string) => {
+  const { agentService } = await rt()
+  return agentService.adoptPane(agentKey, ptyId)
 })
 
 ipcMain.handle('agent:addMessage', async (_event, ptyId: string, message: string, attachments?: AttachmentInfo[], documentContext?: string, images?: string[], workbenchContext?: import('@shared/types').WorkbenchContext, silent?: boolean) => {

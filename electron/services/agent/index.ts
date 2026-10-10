@@ -92,6 +92,9 @@ export class AgentService {
   /** 默认回调 */
   private defaultCallbacks: AgentCallbacks = {}
 
+  /** 不是从某个界面发起的一句（联络替用户说的等）：过程照样推给打开着的界面 */
+  private uiCallbacksFor?: (agentKey: string) => AgentCallbacks | undefined
+
   private skillsChangedListeners: Array<(agentKey: string, skills: VisibleConversationSkill[]) => void> = []
 
   constructor(
@@ -668,24 +671,6 @@ export class AgentService {
     })
   }
 
-  /**
-   * 同一场接着做下一句。新实例沿用设置里的执行档，不把默认的严格档盖上去。
-   */
-  async continueTask(agentKey: string, message: string, context: AgentContext): Promise<string> {
-    const existed = this.hasAgent(agentKey)
-    if (!existed) {
-      const agent = this.getOrCreateAgent(agentKey)
-      const mode = this.services.configService?.get('executionMode')
-      if (mode === 'strict' || mode === 'relaxed' || mode === 'free') {
-        agent.updateConfig({ executionMode: mode })
-      }
-    }
-    return this.run(agentKey, message, {
-      ...context,
-      cwd: context.cwd || (context.terminalType === 'ssh' ? '~' : os.homedir()),
-    })
-  }
-
   // ==================== 生命周期管理 ====================
 
   /**
@@ -777,19 +762,29 @@ export class AgentService {
       callbacks?: AgentCallbacks
     }
   ): Promise<{ outcome: 'supplemented' } | { outcome: 'ran'; result: string }> {
+    const callbacks = opts.callbacks ?? this.uiCallbacksFor?.(agentKey)
     if (opts.surface === 'assistant') {
-      return this.createAssistantAgent(agentKey).say(
+      const agent = this.createAssistantAgent(agentKey)
+      const ctx = agent.withKnownPane(context)
+      return agent.say(
         message,
-        { ...context, cwd: context.cwd || os.homedir() },
-        { config: opts.config, profileId: opts.profileId, callbacks: opts.callbacks }
+        { ...ctx, cwd: ctx.cwd || os.homedir() },
+        { config: opts.config, profileId: opts.profileId, callbacks }
       )
     }
-    return this.getOrCreateAgent(agentKey).say(message, context, {
+    const agent = this.getOrCreateAgent(agentKey)
+    const ctx = agent.withKnownPane(context)
+    return agent.say(message, ctx, {
       config: opts.config,
       profileId: opts.profileId,
-      callbacks: opts.callbacks,
-      cwdResolver: this.terminalCwdResolver(agentKey, context),
+      callbacks,
+      cwdResolver: this.terminalCwdResolver(agentKey, ctx),
     })
+  }
+
+  /** 宿主提供：给某场对话造一份推到界面的回调（没有窗口时返回 undefined） */
+  setUiCallbacksFactory(factory: ((agentKey: string) => AgentCallbacks | undefined) | undefined): void {
+    this.uiCallbacksFor = factory
   }
 
   /**
@@ -945,6 +940,11 @@ export class AgentService {
     const agent = this.getAgent(agentKey)
     if (!agent) return false
     return agent.remapPtyId(oldPtyId, newPtyId)
+  }
+
+  /** 界面把别处开跑的一场接回来、刚给它开了窗：没有窗的这一轮就用它 */
+  adoptPane(agentKey: string, ptyId: string): boolean {
+    return this.getAgent(agentKey)?.adoptPane(ptyId) ?? false
   }
 
   /**

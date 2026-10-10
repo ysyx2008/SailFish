@@ -260,7 +260,7 @@ export interface UserSkill {
 }
 
 // Agent 相关类型（从共享类型导入）
-import type { ExecutionMode, RemoteChannel, AgentStep, PendingConfirmation, IMProcessMode, AgentContext } from '@shared/types'
+import type { ExecutionMode, RemoteChannel, AgentStep, PendingConfirmation, IMProcessMode, AgentContext, AgentRunningEvent } from '@shared/types'
 export type { ExecutionMode, RemoteChannel, RiskLevel, AgentStep, PendingConfirmation, IMProcessMode, AgentContext } from '@shared/types'
 
 export interface AgentConfig {
@@ -1063,6 +1063,8 @@ const electronAPI = {
     /** 终端重连后同步运行中 Agent 的默认操作 ptyId（agentKey=tabId） */
     remapPtyId: (agentKey: string, oldPtyId: string, newPtyId: string) =>
       ipcRenderer.invoke('agent:remapPtyId', agentKey, oldPtyId, newPtyId) as Promise<boolean>,
+    adoptPane: (agentKey: string, ptyId: string) =>
+      ipcRenderer.invoke('agent:adoptPane', agentKey, ptyId) as Promise<boolean>,
 
     // 更新 Agent 配置（如执行模式、超时时间、模型配置，使用 ptyId）
     updateConfig: (ptyId: string, config: { executionMode?: ExecutionMode; commandTimeout?: number; profileId?: string }) =>
@@ -1099,44 +1101,11 @@ const electronAPI = {
     },
 
     // 监听 Agent 开始运行（IM/WebChat 等外部入口触发时同步桌面 tab isRunning）
-    onRunning: (callback: (data: { agentId: string; ptyId?: string; userTask: string; sessionId?: string; sessionStartTime?: number }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { agentId: string; ptyId?: string; userTask: string; sessionId?: string; sessionStartTime?: number }) => callback(data)
+    onRunning: (callback: (data: AgentRunningEvent) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: AgentRunningEvent) => callback(data)
       ipcRenderer.on('agent:running', handler)
       return () => {
         ipcRenderer.removeListener('agent:running', handler)
-      }
-    },
-
-    // 监听联络交办任务创建（后端 TaskSupervisor 通知前端建 tab 并自动执行）
-    onTaskCreated: (callback: (data: { agentId: string; title: string; brief: string; fullAuto: boolean }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { agentId: string; title: string; brief: string; fullAuto: boolean }) => callback(data)
-      ipcRenderer.on('agent:taskCreated', handler)
-      return () => {
-        ipcRenderer.removeListener('agent:taskCreated', handler)
-      }
-    },
-
-    onTaskContinue: (callback: (data: {
-      agentId: string
-      message: string
-      title: string
-      terminalType: 'local' | 'ssh' | 'assistant'
-      sessionId?: string
-      sessionStartTime?: number
-      sshHost?: string
-    }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: {
-        agentId: string
-        message: string
-        title: string
-        terminalType: 'local' | 'ssh' | 'assistant'
-        sessionId?: string
-        sessionStartTime?: number
-        sshHost?: string
-      }) => callback(data)
-      ipcRenderer.on('agent:taskContinue', handler)
-      return () => {
-        ipcRenderer.removeListener('agent:taskContinue', handler)
       }
     },
 

@@ -16,6 +16,7 @@ import type { PtyService } from './pty.service'
 import type { SshService } from './ssh.service'
 import type { SftpService } from './sftp.service'
 import type { AgentService } from './agent'
+import type { AgentCallbacks } from './agent/types'
 import type { PluginRegistry } from './plugin/registry' // PluginRegistry class
 import type {
   CwdChangeEvent,
@@ -35,6 +36,8 @@ export interface AgentRuntimeDeps {
   historyService: HistoryService
   pluginRegistry: PluginRegistry
   appStartTime: number
+  /** 别处发起的一句（联络替用户说的等）推到界面用的回调；没有窗口时返回 undefined */
+  uiCallbacksFor?: (agentKey: string) => AgentCallbacks | undefined
 }
 
 export interface AgentRuntime {
@@ -141,6 +144,7 @@ async function loadAgentRuntime(deps: AgentRuntimeDeps): Promise<AgentRuntime> {
     sshService
   )
   agentService.setHistoryService(deps.historyService)
+  agentService.setUiCallbacksFactory(deps.uiCallbacksFor)
   agentService.setSftpService(sftpService)
   agentService.setPluginRegistry(deps.pluginRegistry)
 
