@@ -130,6 +130,8 @@ export interface ProcessFoldView {
   durationMs?: number
   /** 整条收进来的步骤（只有半截思考进来的不算，那条步骤本人还在外面） */
   stepIds: string[]
+  /** 这一截是它关起门来处理回执，连它说的话也收着 */
+  desk?: boolean
 }
 
 export type ProcessSegment<T = ProcessStepLike> =
@@ -228,11 +230,11 @@ function toStepRefs<T extends ProcessStepLike>(steps: ReadonlyArray<T>): Process
   return refs
 }
 
-function isPinnedRef(ref: ProcessStepRef, releasedByReview: ReadonlySet<string>): boolean {
+function isPinnedRef(ref: ProcessStepRef, releasedByReview: ReadonlySet<string>, desk: boolean): boolean {
   if (ref.part === 'thinking') return false
   // 替你放行过（或还在看）的那一步，风险再高也是过程，不单独留在外面
   if (releasedByReview.has(ref.step.id)) return false
-  return isPinnedProcessStep(ref.step)
+  return desk ? pinnedBesidesSpeech(ref.step) : isPinnedProcessStep(ref.step)
 }
 
 /**
@@ -405,7 +407,7 @@ function pendingAction(steps: ReadonlyArray<ProcessStepLike>): ActionKind | unde
  * 下一步的创建时间就是这一截的收尾时刻，段内只有一步时也才有耗时可言。
  * 后面没有步骤了（任务就此结束）只能退回最后一步的开始时间，会少算最后一步自己跑了多久。
  */
-function toFold(refs: ProcessStepRef[], nextStepAt?: number, hasSuccessor = false): ProcessFoldView {
+function toFold(refs: ProcessStepRef[], nextStepAt?: number, hasSuccessor = false, desk = false): ProcessFoldView {
   const steps = refs.map(ref => ref.step)
   const last = steps[steps.length - 1]
   const colleagueCount = steps.reduce((n, step) => n + liveColleagueCountOf(step), 0)
@@ -436,6 +438,7 @@ function toFold(refs: ProcessStepRef[], nextStepAt?: number, hasSuccessor = fals
     durationMs: !live && elapsed >= MIN_SHOWN_DURATION_MS ? elapsed : undefined,
     // 只有半截思考进来的不算收了这条步骤——它本人还在外面，找它就该找外面那条
     stepIds: refs.filter(ref => ref.part === 'full').map(ref => ref.step.id),
+    ...(desk ? { desk: true } : {}),
   }
 }
 
@@ -444,20 +447,25 @@ function toFold(refs: ProcessStepRef[], nextStepAt?: number, hasSuccessor = fals
  *
  * 收是从头收到尾——不是做完才收，而是压根没展开过，所以任务跑着的时候
  * 只有那一行在动，做完也不会有十几行忽然塌成一行的突变。
+ *
+ * `desk`：它关起门来处理回执的那一轮，用户没在对话。它说的话也是过程，一起收着；
+ * 留在外面的只有对外发出去的和要用户动手的。
  */
 export function foldProcessSteps<T extends ProcessStepLike>(
   steps: ReadonlyArray<T>,
-  opts: { enabled: boolean },
+  opts: { enabled: boolean; desk?: boolean },
 ): ProcessSegment<T>[] {
   if (steps.length === 0) return []
   if (!opts.enabled) {
     return [{ kind: 'open', steps: steps.map(step => ({ step, part: 'full' as const })) }]
   }
 
+  const desk = opts.desk === true
   const releasedByReview = stepsReleasedByAutoReview(steps)
   const runs: { pinned: boolean; refs: ProcessStepRef<T>[] }[] = []
-  for (const ref of toStepRefs(steps)) {
-    const pinned = isPinnedRef(ref, releasedByReview)
+  const refs = desk ? steps.map(step => ({ step, part: 'full' as const })) : toStepRefs(steps)
+  for (const ref of refs) {
+    const pinned = isPinnedRef(ref, releasedByReview, desk)
     const last = runs[runs.length - 1]
     if (last && last.pinned === pinned) last.refs.push(ref)
     else runs.push({ pinned, refs: [ref] })
@@ -467,6 +475,6 @@ export function foldProcessSteps<T extends ProcessStepLike>(
     if (run.pinned) return { kind: 'open' as const, steps: run.refs }
     const next = runs[i + 1]
     const nextStepAt = next?.refs[0]?.step.timestamp
-    return { kind: 'fold' as const, fold: toFold(run.refs, nextStepAt, next !== undefined), steps: run.refs }
+    return { kind: 'fold' as const, fold: toFold(run.refs, nextStepAt, next !== undefined, desk), steps: run.refs }
   })
 }

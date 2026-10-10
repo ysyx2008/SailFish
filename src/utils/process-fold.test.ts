@@ -539,6 +539,24 @@ describe('foldProcessSteps', () => {
       { kind: 'open', steps: steps.map(step => ({ step, part: 'full' })) },
     ])
   })
+
+  it('at the desk only what goes out to the user and what needs the user stays open', () => {
+    const steps = [
+      step({ id: 'r', type: 'task_receipt', content: '任务回执' }),
+      thinkingMessage('m1', '看看结果', '任务做完了，我去告诉用户'),
+      step({ id: 'say', type: 'tool_call', toolName: 'talk_to_user' }),
+      step({ id: 'm2', type: 'message', content: '已转告' }),
+    ]
+
+    const segments = foldProcessSteps(steps, { enabled: true, desk: true })
+
+    expect(segments.map(seg => seg.kind)).toEqual(['fold', 'open', 'fold'])
+    expect(segments[0].kind === 'fold' && segments[0].fold.desk).toBe(true)
+    expect(segments[0].steps.map(ref => ref.step.id)).toEqual(['r', 'm1'])
+    expect(segments[0].steps.every(ref => ref.part === 'full')).toBe(true)
+    expect(segments[1].steps.map(ref => ref.step.id)).toEqual(['say'])
+    expect(segments[2].steps.map(ref => ref.step.id)).toEqual(['m2'])
+  })
 })
 
 describe('describeLiveProcess', () => {

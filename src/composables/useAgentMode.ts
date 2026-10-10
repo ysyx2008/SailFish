@@ -84,6 +84,7 @@ export interface AgentTaskGroup {
   isCurrentTask: boolean
   isProactive?: boolean
   isOnboarding?: boolean
+  isReceipt?: boolean
 }
 
 export interface FollowUpQueueItem {
@@ -1132,16 +1133,19 @@ export function useAgentMode(
         continue
       }
 
-      if (!group.isOnboarding) {
+      if (!group.isOnboarding && !group.isReceipt) {
         items.push({ id: `user_${group.id}`, type: 'user_task', group, size: 60 })
       }
 
       const debugMode = configStore.agentDebugMode
-      const foldEnabled = !debugMode && configStore.foldAgentProcess && approvalTarget.current.value !== 'strict'
+      // 回执那一轮用户不在对话里：不看折叠设置，整轮收着（调试时照常摊开）
+      const foldEnabled = !debugMode && (
+        group.isReceipt || (configStore.foldAgentProcess && approvalTarget.current.value !== 'strict')
+      )
       const emitProcessSteps = (processSteps: AgentStep[]) => {
         if (processSteps.length === 0) return
         const visibleSteps = processSteps.filter(s => shouldShowToolResultStep(s, debugMode))
-        const segments = foldProcessSteps(visibleSteps, { enabled: foldEnabled })
+        const segments = foldProcessSteps(visibleSteps, { enabled: foldEnabled, desk: group.isReceipt })
 
         let emittedFirst = false
         const toStepItem = (ref: ProcessStepRef<AgentStep>, isFirst: boolean): VirtualItem => {
@@ -1182,18 +1186,24 @@ export function useAgentMode(
         }
       }
 
-      emitProcessSteps(group.steps)
-
-      // 后端 initial thinking step 到达前，在步骤流末尾补虚拟「正在准备...」（左侧 ThinkingBlock）
-      if (shouldInjectPreparingStep(group)) {
+      const injectPreparing = shouldInjectPreparingStep(group)
+      const makePreparingStep = (): AgentStep => {
         const userTaskStep = agentState.value?.steps.find(s => s.id === group.id)
-        const preparingStep: AgentStep = {
+        return {
           id: `__preparing_${group.id}`,
           type: 'thinking',
           content: t('ai.preparing'),
           isStreaming: true,
           timestamp: userTaskStep?.timestamp ?? Date.now(),
         }
+      }
+
+      // 回执那一轮的「正在准备」收在那一行里，让那一行先转起来
+      emitProcessSteps(group.isReceipt && injectPreparing ? [...group.steps, makePreparingStep()] : group.steps)
+
+      // 后端 initial thinking step 到达前，在步骤流末尾补虚拟「正在准备...」（左侧 ThinkingBlock）
+      if (injectPreparing && !group.isReceipt) {
+        const preparingStep = makePreparingStep()
         const hasPriorAgentStep = group.steps.some(s => s.type !== 'user_supplement')
         items.push({
           id: preparingStep.id,
@@ -1219,7 +1229,7 @@ export function useAgentMode(
 
       emitProcessSteps(group.afterEndSteps)
 
-      if (groupNeedsProcessCompleteFooter(group)) {
+      if (!group.isReceipt && groupNeedsProcessCompleteFooter(group)) {
         const footerIndex = findTaskCompleteFooterIndex(items, group.id)
         if (footerIndex >= 0) {
           const item = items[footerIndex]
@@ -2165,6 +2175,7 @@ export function useAgentMode(
       case 'plan_updated': return '📋'
       case 'plan_archived': return '📦'
       case 'auto_review': return '✅'
+      case 'task_receipt': return '📨'
       default: return '•'
     }
   }

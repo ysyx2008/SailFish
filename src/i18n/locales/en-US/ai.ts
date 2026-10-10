@@ -328,6 +328,7 @@ export default {
       other: 'Did {n} steps',
       working: 'Working',
       thought: 'Thought it over',
+      receipt: 'Handled task receipts',
       thinking: 'Thinking',
       seconds: '{n}s',
       minutes: '{n}m',

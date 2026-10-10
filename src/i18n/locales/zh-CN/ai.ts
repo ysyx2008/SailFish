@@ -329,6 +329,7 @@ export default {
       other: '做了 {n} 步',
       working: '在忙',
       thought: '想了想',
+      receipt: '处理了任务回执',
       thinking: '在想',
       seconds: '{n} 秒',
       minutes: '{n} 分',

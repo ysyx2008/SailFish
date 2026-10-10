@@ -56,6 +56,34 @@ describe('groupAgentSteps', () => {
     expect(groups[0].userTask).toBe('先做完')
     expect(groups[0].afterEndSteps).toHaveLength(1)
   })
+
+  it('a receipt arriving while idle starts its own turn that nobody asked for', () => {
+    const { groups } = groupAgentSteps([
+      step({ type: 'user_task', content: '帮我订会议室' }),
+      step({ type: 'final_result', content: '交给任务了' }),
+      step({ id: 'r', type: 'task_receipt', content: '任务回执：已完成' }),
+      step({ id: 'say', type: 'tool_call', content: '告诉用户', toolName: 'talk_to_user' }),
+      step({ type: 'final_result', content: '已转告' }),
+    ])
+
+    expect(groups).toHaveLength(2)
+    expect(groups[1].isReceipt).toBe(true)
+    expect(groups[1].userTask).toBe('')
+    expect(groups[1].steps.map(s => s.id)).toEqual(['r', 'say'])
+    expect(groups[1].finalResult).toBe('已转告')
+  })
+
+  it('a receipt taken in mid-turn stays inside that turn', () => {
+    const { groups } = groupAgentSteps([
+      step({ type: 'user_task', content: '帮我订会议室' }),
+      step({ id: 'r', type: 'task_receipt', content: '任务回执：已完成' }),
+      step({ type: 'message', content: '订好了' }),
+    ])
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0].isReceipt).toBeUndefined()
+    expect(groups[0].steps[0].id).toBe('r')
+  })
 })
 
 describe('groupNeedsProcessCompleteFooter', () => {

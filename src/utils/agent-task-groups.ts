@@ -15,6 +15,8 @@ export interface AgentTaskGroupDraft {
   finalResult?: string
   isProactive?: boolean
   isOnboarding?: boolean
+  /** 闲着时收到任务回执另起的一轮：不是用户开的口 */
+  isReceipt?: boolean
 }
 
 const AFTER_END_STEP_TYPES = new Set(['tool_call', 'tool_result', 'thinking'])
@@ -81,6 +83,17 @@ export function groupAgentSteps(allSteps: readonly AgentStep[]): {
       }
     } else if (step.type === 'user_supplement' && !currentGroup) {
       leadingSupplements.push(step)
+    } else if (step.type === 'task_receipt' && !currentGroup) {
+      currentGroup = {
+        id: step.id,
+        index: groups.length,
+        userTask: '',
+        steps: [...leadingSupplements, step],
+        afterEndSteps: [],
+        isReceipt: true,
+      }
+      leadingSupplements = []
+      groups.push(currentGroup)
     } else if (step.type === 'proactive_notice') {
       if (currentGroup) {
         currentGroup.steps.push(step)
