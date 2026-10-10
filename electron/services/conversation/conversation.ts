@@ -596,12 +596,14 @@ export class Conversation {
       }
       return ut.content
     }
-    // 仅 proactive_notice 的独立段（与前端 isProactive group 对应）
+    // 没有用户开口的段：独立主动消息（前端 isProactive group）或回执那一轮（isReceipt group）
     const notice = chunk.find(s => s.type === 'proactive_notice')
-    if (notice?.content) {
-      const text = notice.content.trim()
-      return text.length > 80 ? text.slice(0, 80) + '…' : text
-    }
+    // 回执那一轮没送出话时，拿它写下的正文或回执本身
+    const fallback = chunk[0]?.type === 'task_receipt'
+      ? chunk.find(s => s.type === 'message' && s.content?.trim()) ?? chunk[0]
+      : undefined
+    const text = (notice?.content || fallback?.content || '').trim()
+    if (text) return text.length > 80 ? text.slice(0, 80) + '…' : text
     return ''
   }
 
@@ -677,7 +679,7 @@ export class Conversation {
       const ut = chunk.find(s => s.type === 'user_task')
       return (
         ut?.content === '__proactive__' ||
-        (!ut && chunk.some(s => s.type === 'proactive_notice'))
+        (!ut && chunk.some(s => s.type === 'proactive_notice' || s.type === 'task_receipt'))
       )
     }
 
