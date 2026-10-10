@@ -9,7 +9,9 @@ import { useTerminalStore, COMPANION_TAB_AGENT_ID } from '../stores/terminal'
 import { useConfigStore } from '../stores/config'
 import { resolveConversationDisplayTitle } from '../utils/conversation-title'
 import { applySearchMatch, isCurrentSearchRequest } from '../utils/history-search-stream'
-import type { ExecutionMode, AttachmentInfo, AgentRecord, AgentHistorySummary, WorkbenchContext } from '@shared/types'
+import type { ExecutionMode, AttachmentInfo, AgentRecord, AgentHistorySummary, WorkbenchContext, ApprovalMode } from '@shared/types'
+import { approvalFromSettings, executionModeOfApproval } from '@shared/types'
+import { useDefaultApproval, type ApprovalTarget } from './useApprovalUiState'
 import type { AgentStep, AgentState, ParsedDocument } from '../stores/terminal'
 import type { MessageScrollerHandle } from '../types/message-scroller'
 import { createLogger } from '../utils/logger'
@@ -1017,6 +1019,34 @@ export function useAgentMode(
     await Promise.all(promises)
   })
 
+  // 下拉框显示和修改的是眼前这场的审批方式；远程会话（网页 / IM 接入）与联络页（同样标了 isRemote，
+  // 多渠道汇成一条线）仍按渠道自己的执行档
+  const defaultApproval = useDefaultApproval()
+  const approvalTarget: ApprovalTarget = {
+    current: computed<ApprovalMode>(() => {
+      if (currentTab.value?.isRemote) return approvalFromSettings(executionMode.value, configStore.autoApprovalReview)
+      return agentState.value?.approval ?? defaultApproval.current.value
+    }),
+    commit: (next) => {
+      const tab = currentTab.value
+      if (!tab) return
+      if (tab.isRemote) {
+        executionMode.value = executionModeOfApproval(next)
+        defaultApproval.commit(next)
+        return
+      }
+      terminalStore.setAgentApproval(currentTabId.value, next)
+      const key = getAgentKey()
+      if (key) {
+        window.electronAPI.agent.setApproval(key, next, tab.type === 'assistant' ? 'assistant' : 'terminal')
+          .catch(err => log.warn('同步审批方式失败:', err))
+      }
+    },
+  }
+
+  /** 眼前这场按哪一档问（替我审批按宽松档） */
+  const effectiveExecutionMode = computed<ExecutionMode>(() => executionModeOfApproval(approvalTarget.current.value))
+
   // 监听超时设置变化
   watch(commandTimeout, async (newValue) => {
     const key = getAgentKey()
@@ -1107,7 +1137,7 @@ export function useAgentMode(
       }
 
       const debugMode = configStore.agentDebugMode
-      const foldEnabled = !debugMode && configStore.foldAgentProcess && executionMode.value !== 'strict'
+      const foldEnabled = !debugMode && configStore.foldAgentProcess && approvalTarget.current.value !== 'strict'
       const emitProcessSteps = (processSteps: AgentStep[]) => {
         if (processSteps.length === 0) return
         const visibleSteps = processSteps.filter(s => shouldShowToolResultStep(s, debugMode))
@@ -1737,7 +1767,11 @@ export function useAgentMode(
         ...(workbenchPrompt ? { workbenchPrompt } : {}),
         ...(input.workbenchContext ? { workbenchContext: input.workbenchContext } : {}),
       },
-      config: { executionMode: executionMode.value, commandTimeout: commandTimeout.value * 1000 },
+      // 审批方式记在那场对话上；远程会话按渠道自己的执行档
+      config: {
+        ...(tab?.isRemote ? { executionMode: executionMode.value } : {}),
+        commandTimeout: commandTimeout.value * 1000,
+      },
       profileId: activeProfileId.value || undefined,
     })
   }
@@ -2690,6 +2724,9 @@ export function useAgentMode(
       if (snapshot.isRunning && agentState.value && !agentState.value.isRunning) {
         terminalStore.setAgentRunning(currentTabId.value, true, agentKey)
       }
+      if (snapshot.approval && !agentState.value?.approval) {
+        terminalStore.setAgentApproval(currentTabId.value, snapshot.approval)
+      }
       if (snapshot.sessionId && agentState.value && !agentState.value.sessionId) {
         const liveTab = terminalStore.tabs.find(t => t.id === currentTabId.value)
         if (liveTab?.agentState) {
@@ -2748,6 +2785,8 @@ export function useAgentMode(
     stopGeneration,
     // Agent 执行
     executionMode,
+    approvalTarget,
+    effectiveExecutionMode,
     commandTimeout,
     activeProfileId,
     collapsedTaskIds,

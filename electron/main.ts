@@ -12,7 +12,7 @@ import { requestLocalNetworkAccess } from './utils/local-network-permission'
 import { isAbortError } from './utils/abort'
 import { createTerminalDataCoalescer } from './utils/terminal-data-coalescer'
 import type { AttachmentInfo, DocumentParseProgress, UiThemeMode, UiThemeName, WebSearchSettings, IMProcessMode, SayResult } from '@shared/types'
-import { clampUiZoomFactor, stepUiZoomFactor, UI_ZOOM_DEFAULT } from '@shared/types'
+import { clampUiZoomFactor, isApprovalMode, stepUiZoomFactor, UI_ZOOM_DEFAULT } from '@shared/types'
 import { getAppTitle as buildAppTitle, getBrandName } from '@shared/brand'
 import { isOemFeatureEnabled } from '@shared/oem-features'
 import { startCrashReporter, initCrashDiagnostics, recordMainProcessError, getCrashRecorder, markCleanExit } from './services/diagnostics/collector'
@@ -4533,8 +4533,17 @@ ipcMain.handle('agent:getSessionSnapshot', async (_event, agentId: string) => {
   return {
     steps,
     isRunning: status?.isRunning ?? false,
-    sessionId: agent.getSessionId()
+    sessionId: agent.getSessionId(),
+    approval: agent.getApproval()
   }
+})
+
+/** 界面下拉框改眼前这场的审批方式（只改这一场） */
+ipcMain.handle('agent:setApproval', async (_event, agentKey: string, approval: unknown, surface: 'assistant' | 'terminal') => {
+  if (!agentKey || !isApprovalMode(approval)) return false
+  const { agentService } = await rt()
+  agentService.setApproval(agentKey, approval, surface === 'assistant' ? 'assistant' : 'terminal')
+  return true
 })
 
 // ==================== Gateway 远程访问 ====================

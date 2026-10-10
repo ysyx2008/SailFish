@@ -84,7 +84,7 @@ export type {
   PendingConfirmation,
 } from '@shared/types'
 
-import type { TerminalType, AgentStep, AgentContextBar, PendingConfirmation, RemoteChannel, AttachmentInfo, AgentRecord, AgentRunningEvent } from '@shared/types'
+import type { TerminalType, AgentStep, AgentContextBar, PendingConfirmation, RemoteChannel, AttachmentInfo, AgentRecord, AgentRunningEvent, ApprovalMode } from '@shared/types'
 import { COMPANION_AGENT_KEY, deriveContextBarFromSteps, inferConversationKind } from '@shared/types'
 import { isWorkbenchAvailable } from '../workbench/registry'
 
@@ -104,6 +104,8 @@ export interface AgentState {
   userTask?: string      // 首条 user_task / 历史 record.userTask（侧栏无 title 时的回退）
   /** 侧栏展示标题（LLM 生成或用户重命名）；缺省时 UI 回退 userTask */
   title?: string
+  /** 这场对话自己的审批方式；缺省时按起步值显示 */
+  approval?: ApprovalMode
   steps: AgentStep[]
   /**
    * 会话级上下文栏快照（后端 onContextBar 推送）。
@@ -2756,6 +2758,13 @@ export const useTerminalStore = defineStore('terminal', () => {
     return tabId
   }
 
+  /** 记下这场对话的审批方式（界面显示用；后端那场由调用方另行通知） */
+  function setAgentApproval(tabId: string, approval: ApprovalMode): void {
+    const tab = tabs.value.find(t => t.id === tabId)
+    if (!tab) return
+    tab.agentState = { ...(tab.agentState ?? { isRunning: false, steps: [] }), approval }
+  }
+
   /**
    * 设置 Agent 会话 ID 和开始时间（用于会话级保存）
    */
@@ -3056,6 +3065,7 @@ export const useTerminalStore = defineStore('terminal', () => {
         title: preserveSession ? tab.agentState?.title : undefined,
         steps: preserveSession ? (tab.agentState?.steps || []) : [],
         contextBar: preserveSession ? tab.agentState?.contextBar : undefined,
+        approval: preserveSession ? tab.agentState?.approval : undefined,
       }
     }
   }
@@ -3233,6 +3243,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     artifacts?: import('@shared/types').CanvasArtifact[]
     loadedSkills?: string[]
     userDismissedSkills?: string[]
+    approval?: ApprovalMode
   }): void {
     const tab = tabs.value.find(t => t.id === tabId)
     if (!tab) return
@@ -3284,6 +3295,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       sessionStartTime: record.timestamp,
       userTask: record.userTask,
       ...(record.title?.trim() ? { title: record.title.trim() } : {}),
+      ...(record.approval ? { approval: record.approval } : {}),
       steps: steps,
       contextBar: deriveContextBarFromSteps(steps),
       loadedFromHistory: true
@@ -4141,6 +4153,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     // Agent 状态管理
     findTabIdByAgentId,
     claimConversation,
+    setAgentApproval,
     findTabIdByPtyId,
     getAgentState,
     setAgentRunning,

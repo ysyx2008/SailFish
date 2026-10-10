@@ -682,7 +682,10 @@ interface Window {
         steps: AgentStep[]
         isRunning: boolean
         sessionId?: string
+        approval?: import('@shared/types').ApprovalMode
       } | null>
+      /** 改眼前这场对话的审批方式（只改这一场） */
+      setApproval: (agentKey: string, approval: import('@shared/types').ApprovalMode, surface: 'assistant' | 'terminal') => Promise<boolean>
       abort: (ptyId: string) => Promise<boolean>
       compactContext: (params: {
         agentKey: string

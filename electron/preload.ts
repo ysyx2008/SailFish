@@ -945,7 +945,12 @@ const electronAPI = {
       steps: AgentStep[]
       isRunning: boolean
       sessionId?: string
+      approval?: import('@shared/types').ApprovalMode
     } | null>,
+
+    // 改眼前这场对话的审批方式（只改这一场；实例不在时先记着，开跑时交给会话）
+    setApproval: (agentKey: string, approval: import('@shared/types').ApprovalMode, surface: 'assistant' | 'terminal') =>
+      ipcRenderer.invoke('agent:setApproval', agentKey, approval, surface) as Promise<boolean>,
 
     // 中止 Agent（使用 ptyId 或 agentId）
     abort: (ptyId: string) => ipcRenderer.invoke('agent:abort', ptyId) as Promise<boolean>,

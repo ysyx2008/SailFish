@@ -394,23 +394,24 @@ describe('TaskSupervisor', () => {
       const { agentKey } = await supervisor.createTask({ title: '查日志', brief: '查一下昨天的错误日志', fullAuto: true })
 
       expect(agentKey).toMatch(/^assistant-/)
-      expect(host.prepareAssignedTask).toHaveBeenCalledWith(agentKey, '查日志', false)
+      expect(host.prepareAssignedTask).toHaveBeenCalledWith(agentKey, '查日志', 'free')
       expect(host.say).toHaveBeenCalledTimes(1)
       const [agentId, message, context, opts] = host.say.mock.calls[0]
       expect(agentId).toBe(agentKey)
       expect(message).toBe('查一下昨天的错误日志')
       expect(context.terminalType).toBe('assistant')
       expect(opts.surface).toBe('assistant')
-      expect(opts.config.executionMode).toBe('free')
+      // 审批方式记在那场对话上，不随每一轮传执行档
+      expect(opts.config.executionMode).toBeUndefined()
     })
 
-    it('没说全自动：这场走替我审批', async () => {
+    it('没说全自动：那场的审批方式是替我审批', async () => {
       const host = makeHost([])
       const supervisor = new TaskSupervisor(host)
 
       await supervisor.createTask({ title: '问个问题', brief: '简述项目结构' })
 
-      expect(host.prepareAssignedTask).toHaveBeenCalledWith(expect.stringMatching(/^assistant-/), '问个问题', true)
+      expect(host.prepareAssignedTask).toHaveBeenCalledWith(expect.stringMatching(/^assistant-/), '问个问题', 'autoReview')
     })
   })
 

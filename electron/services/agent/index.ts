@@ -27,7 +27,7 @@ import type {
   CompactContextResult,
   TerminalType,
 } from './types'
-import type { VisibleConversationSkill } from '@shared/types'
+import type { ApprovalMode, VisibleConversationSkill } from '@shared/types'
 import { SailFish } from './sailfish'
 import { TaskSupervisor } from './task-supervisor'
 import { ConversationStore, ConversationManager, Companion, Conversation } from '../conversation'
@@ -277,11 +277,19 @@ export class AgentService {
     return this.services.historyService
   }
 
-  /** 供 TaskSupervisor 在开跑前锁住交办标题；未全自动时这场走替我审批 */
-  prepareAssignedTask(agentId: string, title: string, autoReview: boolean): void {
+  /** 供 TaskSupervisor 在开跑前锁住交办标题、定下这场的审批方式 */
+  prepareAssignedTask(agentId: string, title: string, approval: ApprovalMode): void {
     const agent = this.createAssistantAgent(agentId)
     agent.armLockedTitle(title)
-    if (autoReview) agent.preferAutoReview()
+    agent.setApproval(approval)
+  }
+
+  /**
+   * 改某场对话的审批方式（界面下拉框）。实例还不在就按形态建出来先记着，开跑时交给会话。
+   */
+  setApproval(agentKey: string, approval: ApprovalMode, surface: 'assistant' | 'terminal'): void {
+    const agent = surface === 'assistant' ? this.createAssistantAgent(agentKey) : this.getOrCreateAgent(agentKey)
+    agent.setApproval(approval)
   }
 
   /** 供 TaskSupervisor 读取运行配置（如 CLI 直驱任务的 debugMode） */

@@ -47,7 +47,14 @@ import {
   splitMessagesIntoTasks as splitMessagesIntoTasksShared,
   splitStepsIntoTasks as splitStepsIntoTasksShared
 } from '../conversation/messages'
-import { inferConversationKind, type AutoReviewTrail, type VisibleConversationSkill } from '@shared/types'
+import {
+  approvalFromSettings,
+  executionModeOfApproval,
+  inferConversationKind,
+  type ApprovalMode,
+  type AutoReviewTrail,
+  type VisibleConversationSkill,
+} from '@shared/types'
 import { estimateTextTokens } from './token-estimate'
 import { runUntilIdle } from './run-until-idle'
 import { SubAgentRoster } from './sub-agent-roster'
@@ -184,8 +191,14 @@ export abstract class Agent {
   /** 第一句起的侧栏标题（后台进行中） */
   private _initialTitle?: Promise<string | null>
 
-  /** 这场任务的确认先走替我审批，不看全局开关 */
-  private _preferAutoReview = false
+  /** 审批方式：会话还没建好时先记在这里，建好后交给会话 */
+  private _armedApproval?: ApprovalMode
+
+  /** 调用方给下一轮指定的执行档（IM / 网页 / 关切 / 命令行等渠道自己的设定），开跑时用掉 */
+  private _runModeOverride?: ExecutionMode
+
+  /** 这一轮按渠道自己的设定问（替我审批也跟全局开关），不看会话记下的 */
+  private _runFollowsChannel = false
 
   /** 伙计：关掉落盘 / 侧栏 / L2 / L3 / 诞生引导 */
   private _isSubAgent = false
@@ -1254,6 +1267,7 @@ export abstract class Agent {
   updateConfig(config: Partial<AgentConfig> & { profileId?: string }): void {
     if (config.executionMode !== undefined) {
       this.executionMode = config.executionMode
+      if (!this.currentRun?.isRunning) this._runModeOverride = config.executionMode
     }
     if (config.commandTimeout !== undefined) {
       this.commandTimeout = config.commandTimeout
@@ -1484,9 +1498,63 @@ export abstract class Agent {
     this._conversation.setTitle(this._armedTitle, { locked: true })
   }
 
-  /** 联络交办且未声明全自动：危险操作先交给评审员，看不准再问用户 */
-  preferAutoReview(): void {
-    this._preferAutoReview = true
+  /**
+   * 这场对话的审批方式：会话已定的为准；会话还没建好时是先记下的那个。
+   * 都没有时 undefined（界面按起步值显示）。
+   */
+  getApproval(): ApprovalMode | undefined {
+    return this._conversation?.approval ?? this._armedApproval
+  }
+
+  /**
+   * 改这场对话的审批方式，正在跑的这一轮立即按新方式问。
+   * 会话还没建好时先记着，建好时交给它；已建好的落盘。
+   */
+  setApproval(approval: ApprovalMode): void {
+    const mode = executionModeOfApproval(approval)
+    this.executionMode = mode
+    if (this.currentRun) this.currentRun.config.executionMode = mode
+    this._runFollowsChannel = false
+    const conv = this._conversation
+    if (!conv) {
+      this._armedApproval = approval
+      return
+    }
+    if (conv.setApproval(approval)) {
+      this.services.historyService?.updateConversationApproval(conv.id, approval)
+    }
+  }
+
+  /** 新开的对话按起步值（设置里的执行档 + 替我审批开关） */
+  private defaultApproval(): ApprovalMode {
+    const configService = this.services.configService
+    const mode = configService?.get?.('executionMode')
+    return approvalFromSettings(
+      mode === 'strict' || mode === 'relaxed' || mode === 'free' ? mode : this.executionMode,
+      configService?.isAutoApprovalReviewEnabled?.() === true
+    )
+  }
+
+  /**
+   * 开跑时定下这一轮怎么问：会话没有审批方式就补上（先记下的 → 起步值）；
+   * 调用方这一轮指定了执行档（各渠道自己的设定）就整轮按渠道的来（含替我审批开关），
+   * 不改会话记下的；否则按会话的。
+   */
+  private applyApprovalForRun(run: AgentRun): void {
+    const override = this._runModeOverride
+    this._runModeOverride = undefined
+    this._runFollowsChannel = override !== undefined
+    const conv = this._conversation
+    if (conv && !this._isSubAgent) {
+      const armed = this._armedApproval
+      this._armedApproval = undefined
+      if (armed) conv.setApproval(armed)
+      else if (!conv.approval) conv.setApproval(this.defaultApproval())
+    }
+    const approval = conv?.approval
+    const mode = override ?? (approval ? executionModeOfApproval(approval) : this.executionMode)
+    this.executionMode = mode
+    run.config.executionMode = mode
   }
 
   /**
@@ -1737,6 +1805,9 @@ export abstract class Agent {
       }
     }
 
+    // 接回的会话带着自己的审批方式，所以在恢复之后定
+    this.applyApprovalForRun(run)
+
     // 历史恢复之后再落盘：第一条用户消息确定即进历史，侧栏立刻能看到，崩溃也不丢整段对话。
     // 必须在 restore 之后写——否则会把自己刚写下的检查点再读回来（工作记忆重复），
     // 续聊还会用只有新消息的残本盖掉旧记录。之后每轮工具调用仍会再写检查点。
@@ -1849,6 +1920,7 @@ export abstract class Agent {
     this._conversation?.setRestoredTranscript(record.messages as AiMessage[] | undefined, record.steps)
     this._conversation?.restoreWorkingContext(record.workingContext as AiMessage[] | undefined)
     this._conversation?.adoptCompressedArchives(record.compressedArchives as AgentRun['compressedArchives'])
+    this._conversation?.adoptApproval(record.approval)
 
     // 任务重开才按清单把技能装回来。联络关掉再开不带上次的；关切 / 唤醒自己预装。
     const kind = record.kind ?? inferConversationKind(record.agentKey ?? this._agentId)
@@ -2325,6 +2397,7 @@ export abstract class Agent {
     // 置空会话聚合根（身份/transcript/cache/token 随之全部失效），并清空 Agent 持有的工作记忆。
     // 下一次 run 会以全新 session 重建会话。
     this._conversation = undefined
+    this._armedApproval = undefined
     this._lastStatsProfileId = undefined
     this._contextBar = {}
     this.resetConsumedUsage()
@@ -2353,6 +2426,7 @@ export abstract class Agent {
     // 仅置空会话聚合根（下次 run 建新 session 记录）；**不**清 taskMemory——
     // 下次 run 创建新会话时注入同一个（保留的）store，维持「跨 session 记忆」语义。
     this._conversation = undefined
+    this._armedApproval = undefined
     this._lastStatsProfileId = undefined
     this._contextBar = {}
     this.resetConsumedUsage()
@@ -5574,10 +5648,9 @@ export abstract class Agent {
     // 写系统提示词时也会问到这里，配置服务只是部分实现（测试替身、CLI 精简环境）时按"没开"处理
     if (unattended) return false
     if (!conversationPolicy(inferConversationKind(this._agentId)).autoApprovalReview) return false
-    // 联络交办的任务默认走替我审批，不跟全局开关（全局默认是关的）
-    if (this._preferAutoReview) return true
-    if (!this.services.configService?.isAutoApprovalReviewEnabled?.()) return false
-    return true
+    const approval = this._runFollowsChannel ? undefined : this.getApproval()
+    if (approval) return approval === 'autoReview'
+    return this.services.configService?.isAutoApprovalReviewEnabled?.() === true
   }
 
   private getAutoReviewer(): AutoApprovalReviewer {

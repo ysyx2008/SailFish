@@ -17,7 +17,7 @@
  * 内存里已经没有的任务，从历史索引补最近若干条已结束的摘要。
  */
 import { v4 as uuidv4 } from 'uuid'
-import { COMPANION_AGENT_KEY, inferConversationKind, type ExecutionMode, type RiskLevel, type TerminalType } from '@shared/types'
+import { COMPANION_AGENT_KEY, inferConversationKind, type ApprovalMode, type RiskLevel, type TerminalType } from '@shared/types'
 import { createLogger } from '../../utils/logger'
 import { appendProactiveContext } from './proactive-store'
 import { deliverProactiveMessage } from './proactive-deliver'
@@ -113,8 +113,8 @@ export interface TaskSupervisorHost {
   ): Promise<unknown>
   getHistoryService(): HistoryService | undefined
   getConfigService(): ConfigService | undefined
-  /** 创建任务实例并锁住交办标题；autoReview 为真时这场走替我审批 */
-  prepareAssignedTask(agentId: string, title: string, autoReview: boolean): void
+  /** 创建任务实例，锁住交办标题，定下这场的审批方式 */
+  prepareAssignedTask(agentId: string, title: string, approval: ApprovalMode): void
 }
 
 export class TaskSupervisor {
@@ -233,7 +233,7 @@ export class TaskSupervisor {
     }
     this.host.say(agentKey, text, context, {
       surface: terminalType === 'assistant' ? 'assistant' : 'terminal',
-      config: agent ? undefined : this.runConfig(this.settingsExecutionMode()),
+      config: agent ? undefined : this.runConfig(),
     }).catch(err => {
       log.error(`再交代失败 (${agentKey}):`, err)
     })
@@ -246,10 +246,11 @@ export class TaskSupervisor {
    */
   async createTask(opts: CreateTaskOptions): Promise<{ agentKey: string }> {
     const agentId = `assistant-${uuidv4()}`
-    this.host.prepareAssignedTask(agentId, opts.title, opts.fullAuto !== true)
+    // 等于用户在那场里选：没说全自动就是替我审批；只管这一场，不改起步值
+    this.host.prepareAssignedTask(agentId, opts.title, opts.fullAuto ? 'free' : 'autoReview')
     this.host.say(agentId, opts.brief, this.contextWithoutWindow('assistant'), {
       surface: 'assistant',
-      config: this.runConfig(opts.fullAuto ? 'free' : 'relaxed'),
+      config: this.runConfig(),
     }).catch(err => {
       log.error(`任务执行失败 (${agentId}):`, err)
     })
@@ -483,16 +484,9 @@ export class TaskSupervisor {
     }
   }
 
-  /** 设置里的执行档；新实例沿用它，不把默认的严格档盖上去 */
-  private settingsExecutionMode(): ExecutionMode | undefined {
-    const mode = this.host.getConfigService()?.get('executionMode')
-    return mode === 'strict' || mode === 'relaxed' || mode === 'free' ? mode : undefined
-  }
-
-  /** 新开一轮时的运行设置 */
-  private runConfig(executionMode?: ExecutionMode): Partial<AgentConfig> {
+  /** 新开一轮时的运行设置。审批方式不在这里：它是那场对话自己的 */
+  private runConfig(): Partial<AgentConfig> {
     return {
-      ...(executionMode ? { executionMode } : {}),
       enabled: true,
       maxSteps: 0,
       commandTimeout: 30000,

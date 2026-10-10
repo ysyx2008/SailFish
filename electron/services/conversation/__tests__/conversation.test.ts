@@ -64,6 +64,25 @@ describe('Conversation 聚合根（领域模型）', () => {
     expect(conv.kind).toBe('task')
   })
 
+  it('审批方式是会话自己的：随记录往返，接回时已定的不被覆盖', () => {
+    const base: AgentRecord = {
+      id: 'sess_a', timestamp: Date.now(), terminalId: '', agentKey: 'tab-1',
+      terminalType: 'assistant', userTask: 'hi', steps: [],
+      messages: [{ role: 'user', content: 'hi' }], duration: 0, status: 'completed'
+    } as AgentRecord
+    expect(Conversation.fromRecord(base).approval).toBeUndefined()
+
+    const conv = Conversation.fromRecord({ ...base, approval: 'autoReview' })
+    expect(conv.approval).toBe('autoReview')
+    expect(conv.setApproval('autoReview')).toBe(false)
+    expect(conv.setApproval('free')).toBe(true)
+    conv.adoptApproval('strict')
+    expect(conv.approval).toBe('free')
+
+    const saved = conv.toCheckpointRecord({ steps: [userStep('hi')], taskMessageLog: [] })
+    expect(saved?.approval).toBe('free')
+  })
+
   it('fromRecord：缺 kind 的老记录按 agentKey 推断', () => {
     const record: AgentRecord = {
       id: 'sess_legacy', timestamp: Date.now(), terminalId: '', agentKey: '__companion__',

@@ -201,6 +201,11 @@ export class HistoryService {
     return this.agentRecordStore.updateTitle(id, title, opts)
   }
 
+  /** 仅更新一场对话的审批方式（委派 AgentRecordStore.updateApproval）。 */
+  updateConversationApproval(id: string, approval: import('@shared/types').ApprovalMode): boolean {
+    return this.agentRecordStore.updateApproval(id, approval)
+  }
+
   /** 保存（或更新）产出物面板清单到指定记录（委派 store）。 */
   saveArtifacts(recordId: string, artifacts: import('@shared/types').CanvasArtifact[]): void {
     this.agentRecordStore.saveArtifacts(recordId, artifacts)

@@ -2200,3 +2200,115 @@ describe('新任务会话的第一句', () => {
     expect(history.updateConversationTitle).toHaveBeenCalledWith(expect.stringMatching(/^session_/), '认识一下')
   })
 })
+
+// ==================== 每场对话自己的审批方式 ====================
+
+describe('每场对话自己的审批方式', () => {
+  function setup(opts: { record?: Record<string, unknown>; executionMode?: string; review?: boolean } = {}) {
+    const history = {
+      getAgentRecordById: vi.fn().mockReturnValue(opts.record),
+      saveAgentRecord: vi.fn(),
+      updateConversationTitle: vi.fn().mockReturnValue(true),
+      updateConversationApproval: vi.fn().mockReturnValue(true),
+      getAgentRecordStore: vi.fn(() => history),
+    }
+    const config = createMockConfigService() as any
+    config.get = vi.fn((key: string) => key === 'executionMode' ? (opts.executionMode ?? 'relaxed') : undefined)
+    config.isAutoApprovalReviewEnabled = vi.fn().mockReturnValue(opts.review === true)
+    const services = createMockServices({ historyService: history as any, configService: config })
+    const ai = services.aiService as any
+    ai.chat = vi.fn().mockResolvedValue('标题')
+    ai.chatWithToolsStream.mockImplementation((_m: any, _t: any, _onChunk: any, _c: any, onDone: any) => {
+      onDone({ content: '好了', tool_calls: undefined })
+      return Promise.resolve()
+    })
+    return { agent: new TestAgent(services), history }
+  }
+  const reviewApplies = (agent: TestAgent) => (agent as any).autoReviewApplies(false) as boolean
+
+  it('新对话按起步值起步，并记进这场', async () => {
+    const { agent, history } = setup({ executionMode: 'relaxed', review: true })
+    await agent.run('做件事', createMockContext())
+
+    expect(agent.getApproval()).toBe('autoReview')
+    expect(agent.executionMode).toBe('relaxed')
+    expect(reviewApplies(agent)).toBe(true)
+    expect(history.saveAgentRecord.mock.calls.at(-1)?.[0].approval).toBe('autoReview')
+  })
+
+  it('开跑前定下的交给新会话，不看起步值', async () => {
+    const { agent } = setup({ executionMode: 'strict' })
+    agent.setApproval('free')
+    await agent.run('做件事', createMockContext())
+
+    expect(agent.getApproval()).toBe('free')
+    expect(agent.executionMode).toBe('free')
+  })
+
+  it('接回的会话用它记下的方式', async () => {
+    const record = {
+      id: 'session_old', timestamp: 1, terminalId: '', agentKey: 'tab-1', terminalType: 'local',
+      userTask: 'x', steps: [], duration: 1, status: 'completed', approval: 'strict',
+      messages: [{ role: 'user', content: 'x' }, { role: 'assistant', content: 'y' }],
+    }
+    const { agent } = setup({ record, executionMode: 'free' })
+    await agent.run('接着做', createMockContext({ sessionId: 'session_old', sessionStartTime: 1 }))
+
+    expect(agent.getApproval()).toBe('strict')
+    expect(agent.executionMode).toBe('strict')
+  })
+
+  it('跑着的时候改：这一轮立即按新方式问，并落盘', async () => {
+    const { agent, history } = setup({ review: true })
+    await agent.run('先做一件', createMockContext())
+    agent.injectCurrentRun({ id: 'r', isRunning: true, pendingUserMessages: [], steps: [], config: { executionMode: 'relaxed' } })
+
+    agent.setApproval('strict')
+
+    expect(agent.exposeCurrentRun()!.config.executionMode).toBe('strict')
+    expect(history.updateConversationApproval).toHaveBeenCalledWith(expect.stringMatching(/^session_/), 'strict')
+    expect(reviewApplies(agent)).toBe(false)
+  })
+
+  it('渠道给某一轮指定执行档时按它跑，不改这场记下的方式', async () => {
+    const { agent } = setup({ executionMode: 'relaxed', review: true })
+    await agent.run('先做一件', createMockContext())
+
+    agent.updateConfig({ executionMode: 'free' })
+    await agent.run('再做一件', createMockContext())
+    expect(agent.executionMode).toBe('free')
+    expect(agent.getApproval()).toBe('autoReview')
+
+    await agent.run('第三件', createMockContext())
+    expect(agent.executionMode).toBe('relaxed')
+  })
+
+  it('渠道发起的第一轮：这场记下的是起步值，替我审批那一轮跟全局开关', async () => {
+    const { agent } = setup({ executionMode: 'strict', review: false })
+    agent.updateConfig({ executionMode: 'relaxed' })
+    await agent.run('IM 来的一句', createMockContext())
+
+    expect(agent.executionMode).toBe('relaxed')
+    expect(agent.getApproval()).toBe('strict')
+    expect(reviewApplies(agent)).toBe(false)
+  })
+
+  it('这场记的是替我审批，渠道那一轮不跟着它', async () => {
+    const { agent } = setup({ review: false })
+    agent.setApproval('autoReview')
+    await agent.run('桌面上一句', createMockContext())
+    expect(reviewApplies(agent)).toBe(true)
+
+    agent.updateConfig({ executionMode: 'relaxed' })
+    await agent.run('IM 来的一句', createMockContext())
+    expect(reviewApplies(agent)).toBe(false)
+    expect(agent.getApproval()).toBe('autoReview')
+  })
+
+  it('换成全新一场时，之前先记下的不带过去', () => {
+    const { agent } = setup()
+    agent.setApproval('free')
+    agent.startNewSession()
+    expect(agent.getApproval()).toBeUndefined()
+  })
+})

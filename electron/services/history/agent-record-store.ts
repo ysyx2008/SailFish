@@ -34,6 +34,7 @@ import {
   readSessionRecord,
   readSessionRecordAsync,
   saveSessionRecord,
+  updateSessionApproval,
   updateSessionTitle,
   type ReadSessionOptions,
 } from './session-persistence'
@@ -47,6 +48,7 @@ import {
   type TerminalType,
   type AgentRecord,
   type AgentHistorySummary,
+  type ApprovalMode,
   type TokenUsage
 } from '@shared/types'
 
@@ -502,6 +504,22 @@ export class AgentRecordStore {
       saveSessionRecord(store.dir, record)
     }
     this.updateIndexEntryFor(store, record)
+    return true
+  }
+
+  /**
+   * 仅更新一场对话的审批方式。记录还没落盘时返回 false（会话里记着，首次保存时一起写下）。
+   */
+  updateApproval(id: string, approval: ApprovalMode): boolean {
+    const record = id ? this.getAgentRecordById(id) : undefined
+    if (!record) return false
+    if (record.approval === approval) return true
+    record.approval = approval
+    const store = this.storeForRecord(record)
+    // 目录格式：只改 meta.json；旧 .json 则走 save 并迁入目录格式
+    if (!updateSessionApproval(store.dir, getDateString(record.timestamp), id, approval)) {
+      saveSessionRecord(store.dir, record)
+    }
     return true
   }
 

@@ -16,7 +16,8 @@
  */
 import * as fs from 'fs'
 import * as path from 'path'
-import type { AgentRecord, AgentStepRecord } from '@shared/types'
+import type { AgentRecord, AgentStepRecord, ApprovalMode } from '@shared/types'
+import { isApprovalMode } from '@shared/types'
 import {
   forEachBoundedJsonlLineAsync,
   forEachBoundedJsonlLineSync,
@@ -53,6 +54,7 @@ export interface SessionMeta {
   userTask: string
   title?: string
   titleLocked?: boolean
+  approval?: AgentRecord['approval']
   finalResult?: string
   duration: number
   status: AgentRecord['status']
@@ -84,8 +86,10 @@ function messagesPath(dir: string): string {
   return path.join(dir, 'messages.jsonl')
 }
 
+/** 整份重写元数据时，不让不带这几项的记录把已记下的标题锁、审批方式抹掉 */
 function mergeTitleLock(meta: SessionMeta, existing: SessionMeta | null): SessionMeta {
   if (existing?.titleLocked) meta.titleLocked = true
+  if (!meta.approval && existing?.approval) meta.approval = existing.approval
   return meta
 }
 
@@ -107,6 +111,7 @@ function recordToMeta(record: AgentRecord, stepCount: number, messageCount: numb
   }
   if (record.title?.trim()) meta.title = record.title.trim()
   if (record.titleLocked) meta.titleLocked = true
+  if (record.approval) meta.approval = record.approval
   if (record.tokenUsage) meta.tokenUsage = record.tokenUsage
   if (record.artifacts) meta.artifacts = record.artifacts
   if (Array.isArray(record.loadedSkills)) meta.loadedSkills = [...record.loadedSkills]
@@ -132,6 +137,7 @@ function metaToRecord(meta: SessionMeta, steps: AgentStepRecord[], messages: Age
     userTask: meta.userTask,
     title: meta.title,
     titleLocked: meta.titleLocked,
+    ...(isApprovalMode(meta.approval) ? { approval: meta.approval } : {}),
     steps,
     messages,
     finalResult: meta.finalResult,
@@ -448,6 +454,23 @@ export function updateSessionTitle(
   if (meta.title === trimmed && (!lock || meta.titleLocked)) return true
   meta.title = trimmed
   if (lock) meta.titleLocked = true
+  writeMeta(dir, meta)
+  return true
+}
+
+/** 仅更新审批方式（只改 meta.json）。目录不存在则返回 false。 */
+export function updateSessionApproval(
+  agentDir: string,
+  dateStr: string,
+  recordId: string,
+  approval: ApprovalMode
+): boolean {
+  const dir = sessionDir(agentDir, dateStr, recordId)
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return false
+  const meta = readMeta(dir)
+  if (!meta) return false
+  if (meta.approval === approval) return true
+  meta.approval = approval
   writeMeta(dir, meta)
   return true
 }

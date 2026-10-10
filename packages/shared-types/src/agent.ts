@@ -58,6 +58,28 @@ export function inferConversationKind(agentKey?: string): ConversationKind {
 /** Agent 执行模式：strict=所有命令需确认，relaxed=仅危险命令需确认，free=全自动 */
 export type ExecutionMode = 'strict' | 'relaxed' | 'free'
 
+/**
+ * 一场对话的审批方式（输入框下拉框的四档）：严格 / 宽松 / 替我审批 / 全自动。
+ * 替我审批 = 宽松档，本来要问用户的先交给评审员对照用户原话决定。
+ */
+export type ApprovalMode = 'strict' | 'relaxed' | 'autoReview' | 'free'
+
+export function isApprovalMode(value: unknown): value is ApprovalMode {
+  return value === 'strict' || value === 'relaxed' || value === 'autoReview' || value === 'free'
+}
+
+/** 由执行档 + 「替我审批」开关得到审批方式（全自动下开关不起作用） */
+export function approvalFromSettings(mode: ExecutionMode, autoReview: boolean): ApprovalMode {
+  if (mode === 'free') return 'free'
+  if (autoReview) return 'autoReview'
+  return mode
+}
+
+/** 审批方式对应的执行档（替我审批按宽松档问） */
+export function executionModeOfApproval(approval: ApprovalMode): ExecutionMode {
+  return approval === 'autoReview' ? 'relaxed' : approval
+}
+
 /** 它有多主动地把已经用不上的过程先交接掉 */
 export const PROACTIVE_COMPACT_STYLES = ['more', 'balanced', 'less', 'off'] as const
 export type ProactiveCompactStyle = (typeof PROACTIVE_COMPACT_STYLES)[number]

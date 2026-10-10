@@ -2,16 +2,16 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Check, ChevronDown } from 'lucide-vue-next'
-import type { ApprovalUiState } from '../composables/useApprovalUiState'
+import type { ApprovalMode } from '@shared/types'
 
-const STATES: ApprovalUiState[] = ['strict', 'relaxed', 'autoReview', 'free']
+const STATES: ApprovalMode[] = ['strict', 'relaxed', 'autoReview', 'free']
 
 const props = defineProps<{
-  modelValue: ApprovalUiState
+  modelValue: ApprovalMode
 }>()
 
 const emit = defineEmits<{
-  'update:modelValue': [state: ApprovalUiState]
+  'update:modelValue': [state: ApprovalMode]
 }>()
 
 const { t } = useI18n()
@@ -70,7 +70,7 @@ const toggleMenu = () => {
   else void openMenu()
 }
 
-const selectState = (state: ApprovalUiState) => {
+const selectState = (state: ApprovalMode) => {
   if (state !== props.modelValue) {
     emit('update:modelValue', state)
   }

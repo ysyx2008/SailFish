@@ -658,7 +658,8 @@ const {
   ensureElementVisibleInViewport,
   stopGeneration,
   // Agent 执行
-  executionMode,
+  approvalTarget,
+  effectiveExecutionMode,
   activeProfileId,
   agentState,
   isAgentRunning,
@@ -1063,7 +1064,7 @@ const {
   showFreeModeConfirm,
   confirmEnableFreeMode,
   cancelFreeMode,
-} = useApprovalUiState(executionMode)
+} = useApprovalUiState(approvalTarget)
 
 // 点击中的选项（用于即时视觉反馈，单选时使用）
 const clickingOption = ref<string | null>(null)
@@ -2373,9 +2374,9 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
   <div 
     class="ai-panel"
     :class="{
-      'mode-strict': executionMode === 'strict',
-      'mode-relaxed': executionMode === 'relaxed',
-      'mode-free': executionMode === 'free',
+      'mode-strict': effectiveExecutionMode === 'strict',
+      'mode-relaxed': effectiveExecutionMode === 'relaxed',
+      'mode-free': effectiveExecutionMode === 'free',
       'is-peek': peek,
       'is-peek-needs-you': peek && peekNeedsYou
     }"
@@ -2536,7 +2537,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
               :is-standalone-assistant="isStandaloneAssistant"
               :is-companion-tab="isCompanionTab"
               :tab-active="tabActive"
-              :execution-mode="executionMode"
+              :execution-mode="effectiveExecutionMode"
               :recent-history="recentHistory"
               :is-loading-history="isLoadingHistory"
               :format-history-time="formatHistoryTime"
