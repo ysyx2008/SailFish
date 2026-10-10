@@ -77,6 +77,7 @@ SailFish/
 │       │   ├── skills/          # 技能包（见下方「AI Agent 架构」）
 │       │   ├── orchestrator.ts  # 多 Agent 编排
 │       │   ├── streaming-tool-executor.ts  # 流式工具并行执行
+│       │   ├── task-supervisor.ts # 联络任务监督（manage_tasks 交办—复命闭环，见 agent/SPEC.md）
 │       │   └── risk-assessor.ts # 命令风险分级
 │       ├── watch/               # 关切（Watch）系统
 │       │   ├── watch.service.ts # 核心服务（触发、事件分发、pre-check）
@@ -179,6 +180,7 @@ Agent 有四种存在方式，对应四类**互斥**的会话（`kind`）。把�
 - 前端通过 `preload.ts` 暴露的 API 调用后端服务
 - `main.ts` 中注册所有 IPC handler，大多是对服务方法的薄封装
 - 远程 Web 会话由 WebChatService 后端直驱 Agent 执行，前端仅渲染；SSE 实时推送到 Web 客户端
+- **对话只有一个入口（2026-10-10）**：往一场对话里说一句统一走 `agent:say` → `AgentService.say` → `Agent.say`（在跑就补话，否则开新一轮）；会话号与首个标题由后端起。桌面、CLI、联络（`TaskSupervisor` 建任务 / 再交代）都调它，界面只收输入和渲染。没带回调的调用由宿主注入的界面回调工厂推送过程；`onStart` 带会话形态与标题且先于第一句发出，`App.vue` 全局 `onRunning` 经 `terminalStore.claimConversation` 认领界面上没开着的任务会话（本机终端重开后 `agent:adoptPane` 交窗）。详见 `docs/plans/done-2026-10-10-single-conversation-path-design.md`
 
 ### CLI 模式（纯 Node.js 运行后端）
 - **入口**：`electron/cli/main.js`（纯 JS）
@@ -199,8 +201,9 @@ Agent 有四种存在方式，对应四类**互斥**的会话（`kind`）。把�
 - **工具系统**：内置工具 + 技能系统（按需加载）+ MCP 工具 + 插件工具
 - **三种终端模式**：`local` / `ssh` / `assistant`，见下方独立章节
 - **并行子 Agent**：`dispatch_agents` 工具分派轻量子任务并行执行，同步/异步双模式、prompt cache 优化；伙计不分类型，能用哪些工具看 `ToolMeta.allowedForSubAgent`，标了 `inheritToSubAgents` 的技能连同状态（深拷贝）一起带给伙计。仅 local 和 assistant 模式可用（子 Agent 只能操作本地文件系统和执行本地命令）
+- **联络任务管理（交办—复命，2026-08-07）**：联络 Agent 专属 `manage_tasks` 工具（定义由联络工作台 `@sailfish/workbench-companion/agent-tools` 贡献，不进 agent 通用注册表）——查看/创建（仅无终端助手形态）/停止任务、转达用户对危险确认的批准/拒绝；秘书模型（2026-10-10）：联络开头的那一轮，结束/待确认/向用户提问都以回执交给联络自己（走联络收后台结果的同一条路：在跑就插进这一轮，空着就另起一轮不上用户气泡；结束事件防抖合并），由联络决定是否经 `talk_to_user` 告诉用户；用户自己开头的那一轮不往联络送任何东西，不再推卡片。信任模型为转述制：联络永不自行批准，唯一例外是用户创建任务时显式声明「全自动」（否则那场定为替我审批）。建任务 / 再交代走与界面同一个说话入口，`TaskSupervisor` 只读视图 + 事件回流，不另开前端通道。详见 `agent/SPEC.md`
 - **风险评估**：safe / moderate / dangerous / blocked 四级
-- **执行模式**：strict（全确认）/ relaxed（危险确认）/ free（全自动）。输入框把「替我审批」列成第四档（选它等于宽松，再加先替你看；默认关）：本来要问用户的确认，可先交给独立评审员对照用户原话决定是否替他放行，见 `agent/SPEC.md`
+- **执行模式**：strict（全确认）/ relaxed（危险确认）/ free（全自动）。输入框把「替我审批」列成第四档（选它等于宽松，再加先替你看；默认关）：本来要问用户的确认，可先交给独立评审员对照用户原话决定是否替他放行，见 `agent/SPEC.md`。**审批方式归每场对话**（2026-10-10，`ApprovalMode` 四档记在 `Conversation` 上并落盘）：设置里的执行档 + 替我审批开关只是新会话的起步值；输入框下拉框改眼前这场（`agent:setApproval`）；IM / 网页 / 关切 / CLI 显式传执行档时那一轮按渠道的来，不改会话记下的；伙计不参与
 - **Agent Workspace**：`{userData}/agent-workspace/`，Agent 私有数据目录，文件读写自动跳过确认
 - **三级记忆**：L1 任务记忆 / L2 知识文档 / L3 对话记录，见下方独立章节
 - **会话持久化**：Agent 实例按 `agentKey` 复用，会话状态跨多次 run 累积；后端是唯一数据源，增量检查点防丢失，支持跨会话恢复。细节见 `agent/SPEC.md`

@@ -27,8 +27,10 @@ import type {
   CompactContextResult,
   TerminalType,
 } from './types'
-import type { VisibleConversationSkill } from '@shared/types'
+import { COMPANION_AGENT_KEY, type ApprovalMode, type VisibleConversationSkill } from '@shared/types'
+import { getDefaultShell, getLocalOS } from '../../utils/platform'
 import { SailFish } from './sailfish'
+import { TaskSupervisor } from './task-supervisor'
 import { ConversationStore, ConversationManager, Companion, Conversation } from '../conversation'
 import { assessCommandRisk, analyzeCommand } from './risk-assessor'
 import type { CommandHandlingInfo } from './risk-assessor'
@@ -91,6 +93,9 @@ export class AgentService {
   /** 默认回调 */
   private defaultCallbacks: AgentCallbacks = {}
 
+  /** 不是从某个界面发起的一句（联络替用户说的等）：过程照样推给打开着的界面 */
+  private uiCallbacksFor?: (agentKey: string) => AgentCallbacks | undefined
+
   private skillsChangedListeners: Array<(agentKey: string, skills: VisibleConversationSkill[]) => void> = []
 
   constructor(
@@ -119,7 +124,10 @@ export class AgentService {
       mcpService,
       configService
     }
-    
+
+    // 任务监督（联络任务管理）：注入 services，供 Agent 基类事件挂钩与 manage_tasks 工具使用
+    this.services.taskSupervisor = new TaskSupervisor(this)
+
     // 初始化 i18n
     if (configService) {
       setI18nConfigService(configService)
@@ -255,6 +263,44 @@ export class AgentService {
    */
   getAgent(ptyId: string): SailFish | undefined {
     return this.agents.get(ptyId)
+  }
+
+  /**
+   * 枚举全部 in-memory Agent 实例（供 TaskSupervisor 枚举受管任务；
+   * kind 过滤与排序决策在 supervisor 侧）。
+   */
+  getAllAgentEntries(): Array<{ agentKey: string; agent: SailFish }> {
+    return Array.from(this.agents.entries()).map(([agentKey, agent]) => ({ agentKey, agent }))
+  }
+
+  /** 供 TaskSupervisor 持久化联络线事件（proactive_notice 记录） */
+  getHistoryService(): import('../history.service').HistoryService | undefined {
+    return this.services.historyService
+  }
+
+  /** 供 TaskSupervisor 在开跑前锁住交办标题、定下这场的审批方式 */
+  prepareAssignedTask(agentId: string, title: string, approval: ApprovalMode): void {
+    const agent = this.createAssistantAgent(agentId)
+    agent.armLockedTitle(title)
+    agent.setApproval(approval)
+  }
+
+  /**
+   * 改某场对话的审批方式（界面下拉框）。实例还不在就按形态建出来先记着，开跑时交给会话。
+   */
+  setApproval(agentKey: string, approval: ApprovalMode, surface: 'assistant' | 'terminal'): void {
+    const agent = surface === 'assistant' ? this.createAssistantAgent(agentKey) : this.getOrCreateAgent(agentKey)
+    agent.setApproval(approval)
+  }
+
+  /** 供 TaskSupervisor 读取运行配置（如 CLI 直驱任务的 debugMode） */
+  getConfigService(): ConfigService | undefined {
+    return this.services.configService
+  }
+
+  /** 任务监督门面（构造时必然就绪）；CLI 等宿主用于轮询受管任务状态 / 转达确认 */
+  getTaskSupervisor(): import('./task-supervisor').TaskSupervisor {
+    return this.services.taskSupervisor!
   }
 
   /**
@@ -702,23 +748,90 @@ export class AgentService {
       agent.updateConfig(config)
     }
     
-    // 将 CWD 刷新延迟到 user_task 步骤发出之后，避免阻塞用户消息上墙。
-    // 第一个参数是 agentKey（tabId），不是终端；目录要问眼前那扇窗。
+    return agent.run(userMessage, context, {
+      profileId,
+      workerOptions,
+      callbacks,
+      cwdResolver: this.terminalCwdResolver(ptyId, context)
+    })
+  }
+
+  /**
+   * 往一场对话里说一句：找到（没有就建）这场的实例，交给它自己决定补进当前一轮还是开新一轮。
+   * 助手形态没有终端，目录用主目录兜底；终端形态开跑后再问眼前那扇窗的目录。
+   */
+  async say(
+    agentKey: string,
+    message: string,
+    context: AgentContext,
+    opts: {
+      surface: 'assistant' | 'terminal'
+      config?: Partial<AgentConfig>
+      profileId?: string
+      callbacks?: AgentCallbacks
+      /** 联络经任务管理开的头。只在开新一轮时记下 */
+      ledBy?: 'companion'
+    }
+  ): Promise<{ outcome: 'supplemented' } | { outcome: 'ran'; result: string }> {
+    const callbacks = opts.callbacks ?? this.uiCallbacksFor?.(agentKey)
+    const ledBy = opts.ledBy ? { ledBy: opts.ledBy } : {}
+    if (opts.surface === 'assistant') {
+      const agent = this.createAssistantAgent(agentKey)
+      const ctx = agent.withKnownPane(context)
+      return agent.say(
+        message,
+        { ...ctx, cwd: ctx.cwd || os.homedir() },
+        { config: opts.config, profileId: opts.profileId, callbacks, ...ledBy }
+      )
+    }
+    const agent = this.getOrCreateAgent(agentKey)
+    const ctx = agent.withKnownPane(context)
+    return agent.say(message, ctx, {
+      config: opts.config,
+      profileId: opts.profileId,
+      callbacks,
+      cwdResolver: this.terminalCwdResolver(agentKey, ctx),
+      ...ledBy,
+    })
+  }
+
+  /**
+   * 联络派出去的活回来了：把回执交给联络自己。
+   * 另起一轮时过程推给宿主界面，不沿用上一轮留下的回调（可能是某个 IM 渠道的，会把过程直接发出去）；
+   * 环境接着联络上一轮的（渠道、会话），从没跑过才用本机助手兜底。
+   */
+  deliverCompanionReceipt(text: string): void {
+    const companion = this.createAssistantAgent(COMPANION_AGENT_KEY)
+    companion.deliverTaskReceipt(text, {
+      callbacks: this.uiCallbacksFor?.(COMPANION_AGENT_KEY),
+      fallbackContext: {
+        terminalOutput: [],
+        systemInfo: { os: getLocalOS(), shell: getDefaultShell() },
+        terminalType: 'assistant',
+        remoteChannel: 'desktop',
+        cwd: os.homedir(),
+      },
+    })
+  }
+
+  /** 宿主提供：给某场对话造一份推到界面的回调（没有窗口时返回 undefined） */
+  setUiCallbacksFactory(factory: ((agentKey: string) => AgentCallbacks | undefined) | undefined): void {
+    this.uiCallbacksFor = factory
+  }
+
+  /**
+   * 终端形态的目录：延迟到 user_task 上墙之后再刷新，避免阻塞用户消息。
+   * agentKey 是 tabId，不是终端；目录要问眼前那扇窗。
+   */
+  private terminalCwdResolver(agentKey: string, context: AgentContext): () => Promise<string> {
     const terminalStateService = getTerminalStateService()
-    const targetPtyId = context.ptyId || ptyId
-    const cwdResolver = async () => {
+    const targetPtyId = context.ptyId || agentKey
+    return async () => {
       const cwd = await terminalStateService.refreshCwd(targetPtyId, 'initial')
       // 远程窗的 ~ 就是远端家目录，不能换成本机主目录
       if (context.terminalType === 'ssh') return cwd || '~'
       return (cwd && cwd !== '~') ? cwd : os.homedir()
     }
-    
-    return agent.run(userMessage, context, {
-      profileId,
-      workerOptions,
-      callbacks,
-      cwdResolver
-    })
   }
   
   /**
@@ -859,6 +972,11 @@ export class AgentService {
     const agent = this.getAgent(agentKey)
     if (!agent) return false
     return agent.remapPtyId(oldPtyId, newPtyId)
+  }
+
+  /** 界面把别处开跑的一场接回来、刚给它开了窗：没有窗的这一轮就用它 */
+  adoptPane(agentKey: string, ptyId: string): boolean {
+    return this.getAgent(agentKey)?.adoptPane(ptyId) ?? false
   }
 
   /**

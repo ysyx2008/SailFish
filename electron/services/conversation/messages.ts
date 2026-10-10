@@ -182,6 +182,7 @@ export function chunkStepsByUserTask(steps: AgentStep[]): AgentStep[][] {
  * - 任务已结束后的 `proactive_notice`（当前段已有 final_result，或尚无 user_task）单独成段
  *   （前端此时会建独立 isProactive group，id = notice step.id）
  * - 进行中任务内的 notice 仍留在当前段
+ * - 没有进行中的一段时，`task_receipt` 开新段（前端建 isReceipt group），段里的 notice 留在段内
  *
  * 若仍用 {@link chunkStepsByUserTask}，结束后的 notice 会被并进上一段 user_task，
  * 用户点主动消息时锚点会错绑到上一句用户话，截止点随之滑偏。
@@ -196,17 +197,23 @@ export function chunkStepsForCompanionExtract(steps: AgentStep[]): AgentStep[][]
     }
   }
 
+  const inActiveTurn = () =>
+    (current[0]?.type === 'user_task' || current[0]?.type === 'task_receipt') &&
+    !current.some(x => x.type === 'final_result')
+
   for (const s of steps) {
     if (s.type === 'user_task') {
       flush()
       current.push(s)
       continue
     }
+    if (s.type === 'task_receipt' && !inActiveTurn()) {
+      flush()
+      current.push(s)
+      continue
+    }
     if (s.type === 'proactive_notice') {
-      const inActiveUserTask =
-        current.some(x => x.type === 'user_task') &&
-        !current.some(x => x.type === 'final_result')
-      if (inActiveUserTask) {
+      if (inActiveTurn()) {
         current.push(s)
       } else {
         flush()

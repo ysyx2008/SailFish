@@ -8,7 +8,7 @@ import { ConfigService, setConfigServiceInstance } from '../services/config.serv
 import { AiService } from '../services/ai.service'
 import { HistoryService } from '../services/history.service'
 import { HostProfileService } from '../services/host-profile.service'
-import { generateConversationTitle } from '../services/conversation/title-generator'
+import type { ExecutionMode } from '../services/agent/types'
 import { createLogger, initLogging } from '../utils/logger'
 import { getDefaultShell, getLocalOS } from '../utils/platform'
 import { clampAskUserTimeout } from '@shared/types/agent'
@@ -977,29 +977,6 @@ async function agentRun(args: string[]): Promise<void> {
   // Once a step reaches "printed", all subsequent onStep calls for it are skipped.
   let inlineMode = false
   const printedSteps = new Set<string>()
-  let titleGenerationStarted = false
-  let titlePromise: Promise<string | null> = Promise.resolve(null)
-
-  const maybeStartTitleGeneration = () => {
-    if (titleGenerationStarted) return
-    const live = agent.getAgent(ptyId)
-    const sessionId = live?.getSessionId()
-    if (!sessionId || !task.trim()) return
-    titleGenerationStarted = true
-    titlePromise = generateConversationTitle(
-      { aiService: ai, configService: config, historyService: history, agentService: agent },
-      { sessionId, userMessage: task.trim() }
-    )
-      .then((title) => {
-        if (title) console.log(`\n📌 Session title: ${title}`)
-        return title
-      })
-      .catch((err) => {
-        log.warn('generateConversationTitle failed:', err)
-        return null
-      })
-  }
-  
   const cols = () => process.stdout.columns || 80
   const truncateToWidth = (str: string, maxWidth: number): string => {
     let width = 0
@@ -1131,12 +1108,7 @@ async function agentRun(args: string[]): Promise<void> {
   }
 
   const callbacks = {
-    onStart: () => {
-      // initializeRun 已建会话；与桌面一样首条即异步生成标题，不阻塞 Agent
-      maybeStartTitleGeneration()
-    },
     onStep: (_agentId: string, step: any) => {
-      maybeStartTitleGeneration()
       if (printedSteps.has(step.id)) return
       
       const isStreaming = step.isStreaming === true
@@ -1258,25 +1230,20 @@ async function agentRun(args: string[]): Promise<void> {
   console.log(`Execution mode: ${mode}\n`)
 
   try {
-    const result = await agent.run(
-      ptyId,
-      task,
-      context,
-      { executionMode: mode },
-      undefined,
-      undefined,
-      callbacks
-    )
+    const said = await agent.say(ptyId, task, context, {
+      surface: 'terminal',
+      config: { executionMode: mode as ExecutionMode },
+      callbacks,
+    })
     console.log('\n=== Result ===')
-    console.log(result)
+    console.log(said.outcome === 'ran' ? said.result : '')
 
-    // 标题异步生成，落盘前稍等（避免进程退出时请求还在飞）
-    try {
-      await Promise.race([
-        titlePromise,
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 30_000)),
-      ])
-    } catch { /* already logged */ }
+    // 标题由后端在第一句时起，退出前稍等它写完（避免进程退出时请求还在飞）
+    const title = await Promise.race([
+      agent.getAgent(ptyId)?.waitForInitialTitle() ?? Promise.resolve(null),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 30_000)),
+    ])
+    if (title) console.log(`\n📌 Session title: ${title}`)
 
     const sessionId = agent.getAgent(ptyId)?.getSessionId()
     if (sessionId) {
@@ -1299,6 +1266,210 @@ async function agentRun(args: string[]): Promise<void> {
     // 关掉 keep-alive 连接池，否则 Node 事件循环还会挂十几秒
     ai.dispose()
   }
+}
+
+// ==================== Companion（联络） ====================
+
+async function promptYesNo(question: string): Promise<boolean> {
+  if (!process.stdin.isTTY) {
+    console.log('   无 TTY：已拒绝（加 --mode free 或 --free 可自动批准）')
+    return false
+  }
+  const readline = await import('readline')
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    const answer = await new Promise<string>((resolve) => {
+      rl.question(`${question} [y/N] `, resolve)
+    })
+    return /^y(es)?$/i.test(answer.trim())
+  } finally {
+    rl.close()
+  }
+}
+
+async function promptLine(question: string): Promise<string> {
+  if (!process.stdin.isTTY) return ''
+  const readline = await import('readline')
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    return (await new Promise<string>((resolve) => rl.question(question, resolve))).trim()
+  } finally {
+    rl.close()
+  }
+}
+
+/**
+ * 以联络（__companion__）身份对话：`sailfish companion "消息"`。
+ *
+ * 用途：无头回归联络专属能力（manage_tasks 任务管理只对 __companion__ 注册）。
+ * 联络经 manage_tasks 建的 / 交代的任务与桌面同一条路在后端跑（没有窗口只是没人认领到侧栏）；
+ * 本命令在联络回复后继续「值班」：任务的回执和桌面一样只交给联络，联络对用户说的话打印出来，
+ * 用户的回答作为对联络说的话送回去（与微信上同一条秘书转述）。任务和联络都闲下来才退出。
+ */
+async function companionChat(args: string[]): Promise<void> {
+  const { positional, flags } = parseArgs(args)
+  const message = positional.join(' ')
+  if (!message) {
+    console.error(`Usage: ${cliName()} companion <消息> [--mode <strict|relaxed|free>] [--free] [--task-wait <秒>]`)
+    process.exit(1)
+  }
+
+  applyEnvOverrides()
+
+  const { PtyService } = require('../services/pty.service')
+  const { AgentService } = require('../services/agent')
+  const { McpService } = require('../services/mcp.service')
+  const { COMPANION_AGENT_KEY } = require('@shared/types')
+
+  const config = getConfig()
+  const ai = getAi()
+  const pty = new PtyService()
+  const hostProfile = getHostProfile()
+  const mcp = new McpService()
+  const { SshService } = require('../services/ssh.service')
+  const ssh = new SshService()
+
+  const agent = new AgentService(ai, pty, hostProfile, mcp, config, ssh)
+  agent.setHistoryService(getHistory())
+
+  const modeRaw = String(flags.mode || (flags.free ? 'free' : 'relaxed'))
+  const mode = ['strict', 'relaxed', 'free'].includes(modeRaw) ? modeRaw : 'relaxed'
+  // 任务值班上限：防止任务长挂导致 CLI 永不退出
+  const taskWaitSec = Math.max(0, Number(flags['task-wait'] ?? 600) || 0)
+
+  const stepPrefix = (type: string) =>
+    type === 'thinking' ? '💭' : type === 'tool_call' ? '🔧' :
+    type === 'tool_result' ? '📋' : type === 'message' ? '💬' : '  '
+
+  // 联络这一轮是不是在处理回执、有没有对用户开口：处理完回执且开过口，才读一句用户的回答
+  let receiptTurn = false
+  let spokeToUser = false
+  let awaitingReply = false
+  const spokenToolCalls = new Set<string>()
+
+  const callbacks = {
+    onStart: () => {
+      receiptTurn = false
+      spokeToUser = false
+    },
+    onStep: (_agentId: string, step: any) => {
+      // 流式中间态不打（CLI 只看落定的步骤）；final_result 与末尾 message 重复，跳过
+      if (step.isStreaming) return
+      // 对用户说的话已经在 talk_to_user 那一步打印过
+      if (step.type === 'final_result' || step.type === 'user_task' || step.type === 'proactive_notice') return
+      if (step.type === 'task_receipt') {
+        receiptTurn = true
+        console.log(`\n📨 联络收到任务回执：\n${step.content}`)
+        return
+      }
+      if (step.type === 'tool_call' && step.toolName === 'talk_to_user' && !spokenToolCalls.has(step.id)) {
+        spokenToolCalls.add(step.id)
+        spokeToUser = true
+        console.log(`\n🗣  联络对你说：${step.toolArgs?.message ?? step.content}`)
+        return
+      }
+      const content = (step.content || '').substring(0, 300)
+      console.log(`${stepPrefix(step.type)} [${step.type}] ${content}`)
+      if (step.toolName) console.log(`   Tool: ${step.toolName}`)
+    },
+    onComplete: () => {
+      if (receiptTurn && spokeToUser) awaitingReply = true
+    },
+    onNeedConfirm: (confirmation: any) => {
+      console.log(`\n⚠️  联络自身操作需确认: ${confirmation.toolName} (risk: ${confirmation.riskLevel})`)
+      void (async () => {
+        if (mode === 'free') {
+          console.log('   自动批准（--mode free / --free）')
+          agent.confirmToolCall(COMPANION_AGENT_KEY, confirmation.toolCallId, true)
+          return
+        }
+        const ok = await promptYesNo('   批准该操作？')
+        agent.confirmToolCall(COMPANION_AGENT_KEY, confirmation.toolCallId, ok)
+        console.log(ok ? '   已批准' : '   已拒绝')
+      })().catch(err => console.error('   确认处理异常:', err))
+    },
+    onError: (_agentId: string, error: string) => {
+      console.error(`\n✗ 联络执行出错: ${error}`)
+    }
+  }
+
+  // 回执叫醒联络另起的一轮也用这套回调（与桌面推联络页同一个口子）
+  agent.setUiCallbacksFactory((key: string) => key === COMPANION_AGENT_KEY ? callbacks : undefined)
+  const supervisor = agent.getTaskSupervisor()
+  supervisor.setFullAutoForAssignedTasks(mode === 'free')
+  const companionContext = () => ({
+    terminalOutput: [],
+    systemInfo: { os: getLocalOS(), shell: getDefaultShell() },
+    terminalType: 'assistant' as const,
+  })
+
+  console.log(`联络对话: "${message}"`)
+  console.log(`执行模式: ${mode}\n`)
+
+  try {
+    const result = await agent.runAssistant(
+      COMPANION_AGENT_KEY,
+      message,
+      companionContext(),
+      { executionMode: mode as 'strict' | 'relaxed' | 'free' },
+      undefined,
+      callbacks
+    )
+    console.log('\n=== 联络回复 ===')
+    console.log(result)
+  } catch (error: any) {
+    console.error('\n联络执行失败:', error.message || error)
+  }
+
+  // 任务值班：联络可能已通过 manage_tasks 创建或交代了任务，它们在后台跑。
+  // 回执交给联络；联络对用户开过口就读一句回答送回联络。任务和联络都闲下来（或超时）才退出。
+  const companion = agent.createAssistantAgent(COMPANION_AGENT_KEY)
+  const deadline = Date.now() + taskWaitSec * 1000
+  let announcedWait = false
+  let idleRounds = 0
+  while (Date.now() < deadline) {
+    if (awaitingReply) {
+      awaitingReply = false
+      const reply = await promptLine('\n你对联络说（直接回车跳过）：')
+      if (reply) {
+        agent.say(COMPANION_AGENT_KEY, reply, companionContext(), { surface: 'assistant' })
+          .catch((err: any) => console.error('\n联络执行失败:', err?.message || err))
+      }
+    }
+    const tasksBusy = supervisor.listSupervisedTasks().some((t: any) => t.isRunning || t.pendingConfirmation)
+    if (!tasksBusy && !companion.isRunning()) {
+      // 任务都停了：回执不等防抖，立刻交给联络
+      await supervisor.flushPendingEvents()
+    }
+    // 起步宽限：任务和回执那一轮都是异步开跑，连续两轮都闲才判定没事了
+    if (!tasksBusy && !companion.isRunning() && !awaitingReply) {
+      idleRounds++
+      if (idleRounds >= 2) break
+    } else {
+      idleRounds = 0
+    }
+    if (!announcedWait && tasksBusy) {
+      announcedWait = true
+      console.log(`\n… 后台任务执行中，值班等待（上限 ${taskWaitSec}s，--task-wait 可调）`)
+    }
+    await new Promise(r => setTimeout(r, 2000))
+  }
+  const remaining = supervisor.listSupervisedTasks().filter((t: any) => t.isRunning)
+  if (remaining.length > 0) {
+    console.log(`\n⚠️ 值班超时，仍有 ${remaining.length} 个任务在跑（进程退出后任务中断）：`)
+    for (const t of remaining) {
+      console.log(`   - 「${t.title}」(${t.agentKey}) phase=${t.phase ?? '-'} steps=${t.stepCount}`)
+    }
+  }
+  // 进程将退出：防抖窗口里的回执立刻交给联络，等它处理完落进记录（最多再等一分钟）
+  await supervisor.flushPendingEvents()
+  const settleDeadline = Date.now() + 60_000
+  while (companion.isRunning() && Date.now() < settleDeadline) {
+    await new Promise(r => setTimeout(r, 500))
+  }
+
+  // 关掉 keep-alive 连接池，否则 Node 事件循环还会挂十几秒
+  ai.dispose()
 }
 
 // ==================== IM Commands ====================
@@ -1814,6 +1985,7 @@ SailFish CLI v${version}
   history list|stats
   watch list|history|templates
   knowledge search|list|stats
+  companion <消息>           以联络身份对话（含任务管理；联络建的任务由 CLI 值班到跑完）
   --help / -h / help
   --version / -v
 
@@ -1823,6 +1995,7 @@ SailFish CLI v${version}
   --mode <strict|relaxed|free>  执行模式（默认 relaxed）
   --free                     等同 --mode free（危险：跳过确认）
   --task / -t <text>         显式任务文本
+  --task-wait <秒>           companion 命令专用：后台任务值班上限（默认 600；0 = 不值班）
 
 替我审批（默认关；只对交互式任务生效）:
   ${cliName()} config:set autoApprovalReview true
@@ -1845,6 +2018,7 @@ SailFish CLI v${version}
   ${cliName()} --sandbox "装机命令试跑，别动真数据" --free
   ${cliName()} models
   ${cliName()} agent:run "重启本机 nginx" --mode free
+  ${cliName()} companion "帮我建个任务：统计 docs 下 markdown 数量" --task-wait 300
 `)
 }
 
@@ -1889,6 +2063,11 @@ function resolveCliInvocation(args: string[]): { command: string; cmdArgs: strin
 
   if (head === 'models') {
     return { command: 'ai:models', cmdArgs: positional.slice(1) }
+  }
+  if (head === 'companion') {
+    // 从原始 args 截取以保留 flags（--mode 等）
+    const idx = args.indexOf(head)
+    return { command: 'companion:chat', cmdArgs: idx >= 0 ? args.slice(idx + 1) : positional.slice(1) }
   }
   if (head === 'history') {
     const sub = positional[1]
@@ -2052,6 +2231,7 @@ async function runCli(): Promise<void> {
       case 'ai:models':      await aiModels(); break
 
       case 'agent:run':      await agentRun(cmdArgs); break
+      case 'companion:chat': await companionChat(cmdArgs); break
 
       case 'knowledge:search':  await knowledgeSearch(cmdArgs); break
       case 'knowledge:list':    await knowledgeList(); break

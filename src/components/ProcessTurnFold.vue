@@ -104,6 +104,7 @@ const actionLine = computed(() => processFoldActionLine(props.fold.counts, foldS
 /** 跑着时说它在忙什么，做完说做了什么；没动手只想了想就照实说 */
 const caption = computed(() => {
   if (!props.fold.live) {
+    if (props.fold.desk) return { label: t('ai.processFold.receipt'), trailing: actionLine.value }
     const idle = props.fold.thinkingOnly ? foldSay.value.thought : foldSay.value.working
     return { label: actionLine.value || idle, trailing: '' }
   }

@@ -43,6 +43,8 @@ export interface ConfirmationOptions {
 export interface ToolExecutorConfig {
   /** Agent 实例的逻辑 ID（用于 talk_to_user 等工具路由 proactive message） */
   agentId?: string
+  /** 这一轮是闲着时收到任务回执另起的一轮：用户不在对话里 */
+  inReceiptTurn?: boolean
   /** 当前会话 id（todo_create 自动记对话出处） */
   getSessionId?: () => string | undefined
   /**
@@ -201,6 +203,8 @@ export interface ToolExecutorConfig {
    * 由会动手的工具经 hostScope 元数据触发，不按工具名分支。
    */
   noteHostOperation?: (hostId: string, meta?: { toolCallId?: string }) => void
+  /** 任务监督门面（manage_tasks 工具使用；仅联络 Agent 注册该工具） */
+  taskSupervisor?: import('../task-supervisor').TaskSupervisor
 }
 
 /** 常见图片扩展名（AI Vision 模型可直接处理的格式） */

@@ -130,6 +130,8 @@ export interface ProcessFoldView {
   durationMs?: number
   /** 整条收进来的步骤（只有半截思考进来的不算，那条步骤本人还在外面） */
   stepIds: string[]
+  /** 这一截是它关起门来处理回执：整轮收成一行，只有送到用户手里的话和要用户处理的留在外面 */
+  desk?: boolean
 }
 
 export type ProcessSegment<T = ProcessStepLike> =
@@ -405,7 +407,7 @@ function pendingAction(steps: ReadonlyArray<ProcessStepLike>): ActionKind | unde
  * 下一步的创建时间就是这一截的收尾时刻，段内只有一步时也才有耗时可言。
  * 后面没有步骤了（任务就此结束）只能退回最后一步的开始时间，会少算最后一步自己跑了多久。
  */
-function toFold(refs: ProcessStepRef[], nextStepAt?: number, hasSuccessor = false): ProcessFoldView {
+function toFold(refs: ProcessStepRef[], nextStepAt?: number, hasSuccessor = false, desk = false): ProcessFoldView {
   const steps = refs.map(ref => ref.step)
   const last = steps[steps.length - 1]
   const colleagueCount = steps.reduce((n, step) => n + liveColleagueCountOf(step), 0)
@@ -436,6 +438,7 @@ function toFold(refs: ProcessStepRef[], nextStepAt?: number, hasSuccessor = fals
     durationMs: !live && elapsed >= MIN_SHOWN_DURATION_MS ? elapsed : undefined,
     // 只有半截思考进来的不算收了这条步骤——它本人还在外面，找它就该找外面那条
     stepIds: refs.filter(ref => ref.part === 'full').map(ref => ref.step.id),
+    ...(desk ? { desk: true } : {}),
   }
 }
 
@@ -444,15 +447,18 @@ function toFold(refs: ProcessStepRef[], nextStepAt?: number, hasSuccessor = fals
  *
  * 收是从头收到尾——不是做完才收，而是压根没展开过，所以任务跑着的时候
  * 只有那一行在动，做完也不会有十几行忽然塌成一行的突变。
+ *
+ * `desk`：它关起门来处理回执的那一轮，用户没在对话，见 {@link foldDeskTurn}。
  */
 export function foldProcessSteps<T extends ProcessStepLike>(
   steps: ReadonlyArray<T>,
-  opts: { enabled: boolean },
+  opts: { enabled: boolean; desk?: boolean },
 ): ProcessSegment<T>[] {
   if (steps.length === 0) return []
   if (!opts.enabled) {
     return [{ kind: 'open', steps: steps.map(step => ({ step, part: 'full' as const })) }]
   }
+  if (opts.desk) return foldDeskTurn(steps)
 
   const releasedByReview = stepsReleasedByAutoReview(steps)
   const runs: { pinned: boolean; refs: ProcessStepRef<T>[] }[] = []
@@ -469,4 +475,25 @@ export function foldProcessSteps<T extends ProcessStepLike>(
     const nextStepAt = next?.refs[0]?.step.timestamp
     return { kind: 'fold' as const, fold: toFold(run.refs, nextStepAt, next !== undefined), steps: run.refs }
   })
+}
+
+/**
+ * 关起门处理回执的那一轮：整轮的过程收成开头一行，它对用户说的话和要用户动手的跟在后面。
+ * 它写的文字、发消息的工具卡片都是过程——送到用户手里的那句另有一条「对你说的话」。
+ */
+function foldDeskTurn<T extends ProcessStepLike>(steps: ReadonlyArray<T>): ProcessSegment<T>[] {
+  const releasedByReview = stepsReleasedByAutoReview(steps)
+  const folded: ProcessStepRef<T>[] = []
+  const open: ProcessStepRef<T>[] = []
+  for (const step of steps) {
+    const ref = { step, part: 'full' as const }
+    const pinned = !releasedByReview.has(step.id)
+      && !(step.toolName && PINNED_TOOLS.has(step.toolName))
+      && pinnedBesidesSpeech(step)
+    ;(pinned ? open : folded).push(ref)
+  }
+  const segments: ProcessSegment<T>[] = []
+  if (folded.length > 0) segments.push({ kind: 'fold', fold: toFold(folded, undefined, false, true), steps: folded })
+  if (open.length > 0) segments.push({ kind: 'open', steps: open })
+  return segments
 }

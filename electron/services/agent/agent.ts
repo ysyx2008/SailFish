@@ -38,7 +38,7 @@ import type {
 import { DEFAULT_AGENT_CONFIG } from './types'
 import { TaskMemoryStore } from './task-memory'
 import { Conversation, conversationPolicy } from '../conversation'
-import { generateConversationTitle, shouldRefreshConversationTitle } from '../conversation/title-generator'
+import { broadcastConversationTitle, generateConversationTitle, shouldRefreshConversationTitle } from '../conversation/title-generator'
 import { ContextWindowManager, peelOpenToolTurn } from './context-window'
 import { beginUserCompactTurn, cancelUserCompactTurn, failUserCompactTurn, finishUserCompactTurn } from './tools/context'
 import { SUMMARY_OUTPUT_BUDGET_CHARS } from './compression-summary'
@@ -47,7 +47,14 @@ import {
   splitMessagesIntoTasks as splitMessagesIntoTasksShared,
   splitStepsIntoTasks as splitStepsIntoTasksShared
 } from '../conversation/messages'
-import { inferConversationKind, type AutoReviewTrail, type VisibleConversationSkill } from '@shared/types'
+import {
+  approvalFromSettings,
+  executionModeOfApproval,
+  inferConversationKind,
+  type ApprovalMode,
+  type AutoReviewTrail,
+  type VisibleConversationSkill,
+} from '@shared/types'
 import { estimateTextTokens } from './token-estimate'
 import { runUntilIdle } from './run-until-idle'
 import { SubAgentRoster } from './sub-agent-roster'
@@ -173,10 +180,25 @@ export abstract class Agent {
   profileId?: string
 
   /** Agent 实例的逻辑 ID（用于路由 proactive message 等场景） */
-  private _agentId?: string
+  protected _agentId?: string
 
   /** 这场 run 里的伙计花名册（仅主人持有） */
   private _subAgentRoster?: SubAgentRoster
+
+  /** 交办标题：会话聚合根建好之前先记在这里 */
+  private _armedTitle?: string
+
+  /** 第一句起的侧栏标题（后台进行中） */
+  private _initialTitle?: Promise<string | null>
+
+  /** 审批方式：会话还没建好时先记在这里，建好后交给会话 */
+  private _armedApproval?: ApprovalMode
+
+  /** 调用方给下一轮指定的执行档（IM / 网页 / 关切 / 命令行等渠道自己的设定），开跑时用掉 */
+  private _runModeOverride?: ExecutionMode
+
+  /** 这一轮按渠道自己的设定问（替我审批也跟全局开关），不看会话记下的 */
+  private _runFollowsChannel = false
 
   /** 伙计：关掉落盘 / 侧栏 / L2 / L3 / 诞生引导 */
   private _isSubAgent = false
@@ -239,6 +261,9 @@ export abstract class Agent {
   /** 用户按停之后，不要把后台结果送回来把这场重新打开。下一句用户开口时清掉。 */
   private _dropBackgroundNotices = false
   private _deferredNotices: string[] = []
+  /** 派出去的任务交回来的回执，等这场闲下来另起一轮 */
+  private _deferredReceipts: string[] = []
+  private _receiptRunOptions?: { callbacks?: AgentCallbacks; fallbackContext: AgentContext }
   private _flushingNotices = false
   /** 上一场的运行环境，用来在闲下来之后把结果送回同一场对话。 */
   private _resumeContext?: AgentContext
@@ -963,8 +988,8 @@ export abstract class Agent {
     if (this.currentRun?.isRunning) {
       throw new Error('Agent is already running')
     }
-    // 用户自己又开口了，之后的后台结果可以再送回来
-    this._dropBackgroundNotices = false
+    // 用户自己又开口了，之后的后台结果可以再送回来（回执另起的一轮不算用户开口）
+    if (!options?.internalNotice) this._dropBackgroundNotices = false
     
     // 这场对话用哪个模型：显式传入优先；否则联络沿用界面上已选的。
     // 从没选过就保持空，下游回落到设置里当时的默认——微信进线不能写死、也不能盖掉界面选择。
@@ -1022,6 +1047,7 @@ export abstract class Agent {
       log.error(`Task failed: runId=${run.id}, duration=${elapsed}s, error=${error instanceof Error ? error.message : error}`)
       throw error
     } finally {
+      this.reclaimUnreadReceipts(run)
       this.cleanupRun(run)
       queueMicrotask(() => this.flushDeferredNotices())
     }
@@ -1245,6 +1271,7 @@ export abstract class Agent {
   updateConfig(config: Partial<AgentConfig> & { profileId?: string }): void {
     if (config.executionMode !== undefined) {
       this.executionMode = config.executionMode
+      if (!this.currentRun?.isRunning) this._runModeOverride = config.executionMode
     }
     if (config.commandTimeout !== undefined) {
       this.commandTimeout = config.commandTimeout
@@ -1273,6 +1300,33 @@ export abstract class Agent {
     }
   }
   
+  /**
+   * 往这场对话里说一句：正在跑就补进这一轮，否则开新一轮跑完。
+   * 补话立即返回；开新一轮时返回这一轮的结果，失败或被中止照常抛出。
+   */
+  async say(
+    message: string,
+    context: AgentContext,
+    options?: RunOptions & { config?: Partial<AgentConfig> }
+  ): Promise<{ outcome: 'supplemented' } | { outcome: 'ran'; result: string }> {
+    if (this.currentRun?.isRunning) {
+      this.addUserMessage(message, context.attachments, context.documentContext, context.images, context.workbenchContext)
+      return { outcome: 'supplemented' }
+    }
+    if (options?.config) this.updateConfig(options.config)
+    const result = await this.run(message, context, options)
+    return { outcome: 'ran', result }
+  }
+
+  /** 说话的一方不知道窗口在哪（不是从那扇窗里说的）：接着用这场上一轮的窗格，那扇窗已经没了就不用 */
+  withKnownPane(context: AgentContext): AgentContext {
+    const lastPtyId = this._resumeContext?.ptyId
+    if (context.ptyId || !lastPtyId) return context
+    const terminals = this.services.unifiedTerminalService || this.services.ptyService
+    if (!terminals?.hasInstance?.(lastPtyId)) return context
+    return { ...context, ptyId: lastPtyId }
+  }
+
   /**
    * 添加用户补充消息
    */
@@ -1400,6 +1454,122 @@ export abstract class Agent {
   }
 
   /**
+   * 待确认信息（供 TaskSupervisor 枚举/转述）。
+   * 剥离 resolve 回调与 run 内部引用，可安全跨边界传递/序列化。
+   */
+  getPendingConfirmationInfo(): {
+    toolCallId: string
+    toolName: string
+    riskLevel: RiskLevel
+    displayName?: string
+    argsPreview: string
+  } | undefined {
+    const pending = this.currentRun?.pendingConfirmation
+    if (!pending) return undefined
+    let argsPreview = ''
+    try {
+      argsPreview = JSON.stringify(pending.toolArgs).slice(0, 300)
+    } catch { /* 参数不可序列化时留空 */ }
+    return {
+      toolCallId: pending.toolCallId,
+      toolName: pending.toolName,
+      riskLevel: pending.riskLevel,
+      displayName: pending.displayName,
+      argsPreview,
+    }
+  }
+
+  /**
+   * 会话展示标题（LLM/手动标题；未设置时由调用方回退首条用户任务）。
+   */
+  getConversationTitle(): string | undefined {
+    return this._conversation?.title || this._armedTitle
+  }
+
+  /**
+   * 交办时定下的标题。会话还没建好时先记着，建好后锁住，自动起标题不再覆盖。
+   */
+  armLockedTitle(title: string): void {
+    const trimmed = title.trim()
+    if (!trimmed) return
+    this._armedTitle = trimmed
+    this._conversation?.setTitle(trimmed, { locked: true })
+  }
+
+  /** 新建会话时把交办标题锁上；已有会话不在这里改（避免盖掉后来的手改） */
+  private applyArmedTitle(): void {
+    if (!this._armedTitle || !this._conversation) return
+    this._conversation.setTitle(this._armedTitle, { locked: true })
+  }
+
+  /**
+   * 这场对话的审批方式：会话已定的为准；会话还没建好时是先记下的那个。
+   * 都没有时 undefined（界面按起步值显示）。
+   */
+  getApproval(): ApprovalMode | undefined {
+    return this._conversation?.approval ?? this._armedApproval
+  }
+
+  /**
+   * 改这场对话的审批方式，正在跑的这一轮立即按新方式问。
+   * 会话还没建好时先记着，建好时交给它；已建好的落盘。
+   */
+  setApproval(approval: ApprovalMode): void {
+    const mode = executionModeOfApproval(approval)
+    this.executionMode = mode
+    if (this.currentRun) this.currentRun.config.executionMode = mode
+    this._runFollowsChannel = false
+    const conv = this._conversation
+    if (!conv) {
+      this._armedApproval = approval
+      return
+    }
+    if (conv.setApproval(approval)) {
+      this.services.historyService?.updateConversationApproval(conv.id, approval)
+    }
+  }
+
+  /** 新开的对话按起步值（设置里的执行档 + 替我审批开关） */
+  private defaultApproval(): ApprovalMode {
+    const configService = this.services.configService
+    const mode = configService?.get?.('executionMode')
+    return approvalFromSettings(
+      mode === 'strict' || mode === 'relaxed' || mode === 'free' ? mode : this.executionMode,
+      configService?.isAutoApprovalReviewEnabled?.() === true
+    )
+  }
+
+  /**
+   * 开跑时定下这一轮怎么问：会话没有审批方式就补上（先记下的 → 起步值）；
+   * 调用方这一轮指定了执行档（各渠道自己的设定）就整轮按渠道的来（含替我审批开关），
+   * 不改会话记下的；否则按会话的。
+   */
+  private applyApprovalForRun(run: AgentRun): void {
+    const override = this._runModeOverride
+    this._runModeOverride = undefined
+    this._runFollowsChannel = override !== undefined
+    const conv = this._conversation
+    if (conv && !this._isSubAgent) {
+      const armed = this._armedApproval
+      this._armedApproval = undefined
+      if (armed) conv.setApproval(armed)
+      else if (!conv.approval) conv.setApproval(this.defaultApproval())
+    }
+    const approval = conv?.approval
+    const mode = override ?? (approval ? executionModeOfApproval(approval) : this.executionMode)
+    this.executionMode = mode
+    run.config.executionMode = mode
+  }
+
+  /**
+   * 会话 steps 只读快照（供 TaskSupervisor 生成一行摘要）。
+   * 调用方负责截断——禁止把全量 transcript 注入其它 Agent 的 LLM 上下文（隔离红线）。
+   */
+  getSessionStepsSnapshot(): readonly AgentStep[] {
+    return this._sessionSteps
+  }
+
+  /**
    * 解决安全输入请求（前端弹框用户完成输入后调用）。
    * @param requestId 请求 ID
    * @param saved true=用户已保存 key，false=用户取消
@@ -1511,6 +1681,8 @@ export abstract class Agent {
       taskMessageLog: [],
       hostOperations: new Map(),
       internalNotice: options?.internalNotice === true,
+      ...(options?.internalNotice && options.noticeKind ? { noticeKind: options.noticeKind } : {}),
+      ...(options?.ledBy ? { ledBy: options.ledBy } : {}),
     }
     
     this.currentRun = run
@@ -1574,8 +1746,23 @@ export abstract class Agent {
           { taskMemory: this.taskMemory }
         )
       }
+      this.applyArmedTitle()
       }
     }
+
+    // 开跑先于第一句上墙：界面没开着这场时据此先认领出来，第一句才有地方落
+    this.callbacks?.onStart?.(
+      this._agentId ?? run.id,
+      run.internalNotice ? '' : message,
+      this._conversation
+        ? {
+            sessionId: this._conversation.id,
+            sessionStartTime: this._conversation.createdAt,
+            terminalType: this._conversation.terminalType,
+            ...(this._conversation.title ? { title: this._conversation.title } : {}),
+          }
+        : undefined
+    )
 
     // 先推送 user_task 步骤，让用户消息立即上墙，再做耗时的初始化。
     // 后台结果送回不是用户开口，不上这条气泡。
@@ -1586,9 +1773,9 @@ export abstract class Agent {
         images: context.previewImages || context.images,
         attachments: context.attachments
       })
+    } else if (run.noticeKind === 'task_receipt') {
+      this.addStep({ type: 'task_receipt', content: message })
     }
-
-    this.callbacks?.onStart?.(this._agentId ?? run.id, run.internalNotice ? '' : message)
 
     // 准备阶段用户补充：run() IPC 往返期间缓冲的消息，紧跟 user_task 上墙
     if (this.preRunUserMessages.length > 0) {
@@ -1626,11 +1813,15 @@ export abstract class Agent {
       }
     }
 
+    // 接回的会话带着自己的审批方式，所以在恢复之后定
+    this.applyApprovalForRun(run)
+
     // 历史恢复之后再落盘：第一条用户消息确定即进历史，侧栏立刻能看到，崩溃也不丢整段对话。
     // 必须在 restore 之后写——否则会把自己刚写下的检查点再读回来（工作记忆重复），
     // 续聊还会用只有新消息的残本盖掉旧记录。之后每轮工具调用仍会再写检查点。
     this.seedCompressedArchives(run)
     this.saveCheckpoint(run)
+    this.scheduleInitialTitle(run, message)
 
     // 历史恢复后发布会话级上下文栏：上轮 API 确认的 token/cache + 本轮拟用 model/limit。
     // 与占位 step 解耦——流式接替 / 重试删 step 不会打空状态栏。用法仍只在 onDone 更新为确认值。
@@ -1737,6 +1928,7 @@ export abstract class Agent {
     this._conversation?.setRestoredTranscript(record.messages as AiMessage[] | undefined, record.steps)
     this._conversation?.restoreWorkingContext(record.workingContext as AiMessage[] | undefined)
     this._conversation?.adoptCompressedArchives(record.compressedArchives as AgentRun['compressedArchives'])
+    this._conversation?.adoptApproval(record.approval)
 
     // 任务重开才按清单把技能装回来。联络关掉再开不带上次的；关切 / 唤醒自己预装。
     const kind = record.kind ?? inferConversationKind(record.agentKey ?? this._agentId)
@@ -1907,6 +2099,19 @@ export abstract class Agent {
       ...(m.documentContext ? { documentContext: m.documentContext } : {}),
       ...(m.workbenchContext ? { workbenchContext: m.workbenchContext } : {}),
     })), { aborted: run.aborted })
+
+    // 任务监督回流：任务完成/被停止 → 联络线复命（防抖聚合；伙计不回流）
+    if (!this._isSubAgent) {
+      try {
+        this.services.taskSupervisor?.handleRunFinished(this._agentId, {
+          status: run.aborted ? 'aborted' : 'success',
+          summary: result ?? '',
+          ledBy: run.ledBy,
+        })
+      } catch (err) {
+        log.warn('taskSupervisor 完成回流失败:', err)
+      }
+    }
   }
   
   // ==================== 会话持久化 ====================
@@ -2012,17 +2217,7 @@ export abstract class Agent {
 
     const sessionId = conv.id
     void generateConversationTitle(
-      {
-        aiService: this.services.aiService,
-        configService,
-        historyService,
-        agentService: {
-          setConversationTitleBySessionId: (id, title) => {
-            if (id === conv.id) conv.setTitle(title)
-            return historyService.updateConversationTitle(id, title)
-          },
-        },
-      },
+      this.titleGeneratorDeps(conv, configService, historyService),
       {
         sessionId,
         mode: 'refresh',
@@ -2033,6 +2228,56 @@ export abstract class Agent {
     ).catch(err => {
       log.warn('Refresh conversation title failed:', err)
     })
+  }
+
+  /**
+   * 新任务会话的第一句：后台起侧栏短标题，不阻塞 run。引导会话用固定标题。
+   * 不论这句从哪个界面来都在这里起，界面只接收结果。
+   */
+  private scheduleInitialTitle(run: AgentRun, message: string): void {
+    const conv = this._conversation
+    const historyService = this.services.historyService
+    const configService = this.services.configService
+    if (this._isSubAgent || run.workerOptions || run.internalNotice) return
+    if (!conv || !historyService || !configService) return
+    if (conv.kind !== 'task' || conv.title || conv.titleLocked || conv.userTaskCount > 0) return
+
+    if (message.trim() === '__onboarding__') {
+      const title = t('conversation.onboarding_title')
+      conv.setTitle(title)
+      if (historyService.updateConversationTitle(conv.id, title)) broadcastConversationTitle(conv.id, title)
+      return
+    }
+    this._initialTitle = generateConversationTitle(
+      this.titleGeneratorDeps(conv, configService, historyService),
+      { sessionId: conv.id, userMessage: message, profileId: this.profileId }
+    ).catch(err => {
+      log.warn('Initial conversation title failed:', err)
+      return null
+    })
+  }
+
+  /** 第一句起的标题（没在起返回 null）；CLI 退出前等它写完 */
+  waitForInitialTitle(): Promise<string | null> {
+    return this._initialTitle ?? Promise.resolve(null)
+  }
+
+  private titleGeneratorDeps(
+    conv: Conversation,
+    configService: NonNullable<AgentServices['configService']>,
+    historyService: NonNullable<AgentServices['historyService']>
+  ): import('../conversation/title-generator').GenerateConversationTitleDeps {
+    return {
+      aiService: this.services.aiService,
+      configService,
+      historyService,
+      agentService: {
+        setConversationTitleBySessionId: (id, title) => {
+          if (id === conv.id) conv.setTitle(title)
+          return historyService.updateConversationTitle(id, title)
+        },
+      },
+    }
   }
 
   /**
@@ -2161,6 +2406,7 @@ export abstract class Agent {
     // 置空会话聚合根（身份/transcript/cache/token 随之全部失效），并清空 Agent 持有的工作记忆。
     // 下一次 run 会以全新 session 重建会话。
     this._conversation = undefined
+    this._armedApproval = undefined
     this._lastStatsProfileId = undefined
     this._contextBar = {}
     this.resetConsumedUsage()
@@ -2189,6 +2435,7 @@ export abstract class Agent {
     // 仅置空会话聚合根（下次 run 建新 session 记录）；**不**清 taskMemory——
     // 下次 run 创建新会话时注入同一个（保留的）store，维持「跨 session 记忆」语义。
     this._conversation = undefined
+    this._armedApproval = undefined
     this._lastStatsProfileId = undefined
     this._contextBar = {}
     this.resetConsumedUsage()
@@ -2450,6 +2697,19 @@ export abstract class Agent {
     }
 
     this.callbacks?.onError?.(run.id, errorMessage, { aborted: run.aborted })
+
+    // 任务监督回流：任务失败 → 联络线复命（防抖聚合；伙计不回流）
+    if (!this._isSubAgent) {
+      try {
+        this.services.taskSupervisor?.handleRunFinished(this._agentId, {
+          status: 'failed',
+          summary: errorMessage,
+          ledBy: run.ledBy,
+        })
+      } catch (err) {
+        log.warn('taskSupervisor 失败回流失败:', err)
+      }
+    }
   }
   
   // ==================== 受保护方法：上下文构建 ====================
@@ -4833,12 +5093,49 @@ export abstract class Agent {
     this.flushDeferredNotices()
   }
 
-  private flushDeferredNotices(): void {
-    if (this._dropBackgroundNotices) {
-      this._deferredNotices = []
+  /**
+   * 派出去的任务回来了：回执送进这场。时机和后台结果一样——还在干活就排进当前这场，
+   * 闲下来就另起一轮、不上用户气泡。
+   * 与后台结果不同：用户按停过也照送（回执必须有人处理）；另起一轮时用调用方给的回调和兜底环境。
+   */
+  deliverTaskReceipt(
+    text: string,
+    opts: { callbacks?: AgentCallbacks; fallbackContext: AgentContext }
+  ): void {
+    const trimmed = text.trim()
+    if (!trimmed) return
+
+    this._receiptRunOptions = opts
+    const run = this.currentRun
+    if (this._loopOpen && run?.isRunning && !run.aborted) {
+      run.pendingUserMessages.push({ message: trimmed, silent: true, backgroundNotice: true, taskReceipt: true })
+      if (run.executionPhase === 'thinking' && run.requestId) {
+        this.services.aiService.abort(run.requestId)
+      }
+      this.wakeHold()
       return
     }
+
+    this._deferredReceipts.push(trimmed)
+    this.flushDeferredNotices()
+  }
+
+  /** 这一轮收场时还没送进对话的回执，挪回等候队列，等闲下来另起一轮 */
+  private reclaimUnreadReceipts(run: AgentRun): void {
+    const unread = run.pendingUserMessages.filter(m => m.taskReceipt)
+    if (unread.length === 0) return
+    run.pendingUserMessages = run.pendingUserMessages.filter(m => !m.taskReceipt)
+    this._deferredReceipts.push(...unread.map(m => m.message))
+  }
+
+  /** 闲下来以后把排着的回执或后台结果另起一轮送回。两者共用一道门，同一时刻只起一轮 */
+  private flushDeferredNotices(): void {
+    if (this._dropBackgroundNotices) this._deferredNotices = []
     if (this._loopOpen || this.currentRun?.isRunning || this._flushingNotices) return
+    if (this._deferredReceipts.length > 0) {
+      this.flushDeferredReceipts()
+      return
+    }
     if (this._deferredNotices.length === 0) return
     const ctx = this._resumeContext
     if (!ctx || !this.callbacks) {
@@ -4854,7 +5151,29 @@ export abstract class Agent {
       }
     }).finally(() => {
       this._flushingNotices = false
-      if (this._deferredNotices.length > 0) this.flushDeferredNotices()
+      this.flushDeferredNotices()
+    })
+  }
+
+  private flushDeferredReceipts(): void {
+    const opts = this._receiptRunOptions
+    const ctx = this._resumeContext ?? opts?.fallbackContext
+    if (!ctx) {
+      this._deferredReceipts = []
+      return
+    }
+    const text = this._deferredReceipts.splice(0).join('\n\n')
+    this._flushingNotices = true
+    void this.run(text, ctx, {
+      internalNotice: true,
+      noticeKind: 'task_receipt',
+      ...(opts?.callbacks ? { callbacks: opts.callbacks } : {}),
+    }).catch(err => {
+      // 不重排：模型不可用时重排会一直空转。回执已随这一轮落进记录
+      log.warn('Task receipt run failed:', err)
+    }).finally(() => {
+      this._flushingNotices = false
+      this.flushDeferredNotices()
     })
   }
 
@@ -4908,6 +5227,7 @@ export abstract class Agent {
     return {
       agentId: this.getConversationAgentId(),
       isSubAgent: this._isSubAgent,
+      inReceiptTurn: run.internalNotice && run.noticeKind === 'task_receipt',
       getSessionId: () => this.getSessionId(),
       getDocumentConversationId: () => this.documentConversationId(),
       terminalService: this.services.unifiedTerminalService || this.services.ptyService as any,
@@ -5038,6 +5358,7 @@ export abstract class Agent {
         if (!run.hostOperations) run.hostOperations = new Map()
         if (meta?.toolCallId) run.hostOperations.set(meta.toolCallId, hostId)
       },
+      taskSupervisor: this.services.taskSupervisor,
     }
   }
   
@@ -5057,8 +5378,24 @@ export abstract class Agent {
     
     this.currentRun?.steps.push(fullStep)
     this.callbacks?.onStep?.(this.currentRun?.id || '', fullStep)
+    if (fullStep.type === 'asking' && !this._isSubAgent) this.reportAskingToSupervisor(fullStep)
     
     return fullStep
+  }
+
+  /** 任务这一轮向用户提问：交给任务监督，由它决定要不要转给联络（伙计的提问留在主人这场） */
+  private reportAskingToSupervisor(step: AgentStep): void {
+    try {
+      const rawOptions = (step.toolArgs as { options?: unknown } | undefined)?.options
+      const options = Array.isArray(rawOptions) ? rawOptions.filter((o): o is string => typeof o === 'string') : []
+      this.services.taskSupervisor?.handleAsking(this._agentId, {
+        question: step.content,
+        options,
+        ledBy: this.currentRun?.ledBy,
+      })
+    } catch (err) {
+      log.warn('[ask] taskSupervisor 回流失败:', err)
+    }
   }
   
   /**
@@ -5111,6 +5448,7 @@ export abstract class Agent {
     const visionAvailable = this.currentProfileHasVision()
 
     for (const pending of run.pendingUserMessages) {
+      if (pending.taskReceipt) this.addStep({ type: 'task_receipt', content: pending.message })
       const userBody = Agent.formatTimestamp() + Agent.formatWorkbenchTag(run.context.terminalType) + pending.message
       let imageNote = ''
       const pendingVisionPaths = collectImageAttachmentPaths(pending.attachments)
@@ -5364,6 +5702,19 @@ export abstract class Agent {
       )
       this.callbacks?.onNeedConfirm?.(confirmation)
       shown = true
+
+      // 任务监督回流：任务的确认请求转述到联络线（伙计的确认留在主人这场，不另报一条任务）
+      if (!this._isSubAgent) {
+        try {
+          let argsPreview = ''
+          try { argsPreview = JSON.stringify(toolArgs).slice(0, 300) } catch { /* 忽略不可序列化参数 */ }
+          this.services.taskSupervisor?.handleNeedsConfirmation(this._agentId, {
+            toolCallId, toolName, riskLevel, displayName, reasons, argsPreview, ledBy: run.ledBy,
+          })
+        } catch (err) {
+          log.warn('[confirm] taskSupervisor 回流失败:', err)
+        }
+      }
     })
   }
 
@@ -5382,9 +5733,11 @@ export abstract class Agent {
   /** 这场会话的确认，是否会先交给评审员（开关开着、这类会话允许、这一轮有人兜底） */
   protected autoReviewApplies(unattended?: boolean): boolean {
     // 写系统提示词时也会问到这里，配置服务只是部分实现（测试替身、CLI 精简环境）时按"没开"处理
-    if (!this.services.configService?.isAutoApprovalReviewEnabled?.()) return false
+    if (unattended) return false
     if (!conversationPolicy(inferConversationKind(this._agentId)).autoApprovalReview) return false
-    return !unattended
+    const approval = this._runFollowsChannel ? undefined : this.getApproval()
+    if (approval) return approval === 'autoReview'
+    return this.services.configService?.isAutoApprovalReviewEnabled?.() === true
   }
 
   private getAutoReviewer(): AutoApprovalReviewer {
@@ -5591,6 +5944,16 @@ export abstract class Agent {
     return `${prefix}_${Date.now()}_${++this.idCounter}`
   }
   
+  /**
+   * 这一轮开跑时还没有窗（别处发起、界面随后才把这场接回来）：界面开好的窗归这一轮用。
+   * 已经有窗就不动。
+   */
+  adoptPane(ptyId: string): boolean {
+    const run = this.currentRun
+    if (!run?.isRunning || !ptyId || run.ptyId) return false
+    return this.remapCurrentPtyId(undefined, ptyId)
+  }
+
   /**
    * 把当前 run 的默认操作窗格从 oldPtyId 切到 newPtyId，并重绑输出监听。
    *

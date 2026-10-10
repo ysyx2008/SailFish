@@ -84,8 +84,8 @@ export type {
   PendingConfirmation,
 } from '@shared/types'
 
-import type { TerminalType, AgentStep, AgentContextBar, PendingConfirmation, RemoteChannel, AttachmentInfo, AgentRecord } from '@shared/types'
-import { COMPANION_AGENT_KEY, deriveContextBarFromSteps } from '@shared/types'
+import type { TerminalType, AgentStep, AgentContextBar, PendingConfirmation, RemoteChannel, AttachmentInfo, AgentRecord, AgentRunningEvent, ApprovalMode } from '@shared/types'
+import { COMPANION_AGENT_KEY, deriveContextBarFromSteps, inferConversationKind } from '@shared/types'
 import { isWorkbenchAvailable } from '../workbench/registry'
 
 export type {
@@ -104,6 +104,8 @@ export interface AgentState {
   userTask?: string      // 首条 user_task / 历史 record.userTask（侧栏无 title 时的回退）
   /** 侧栏展示标题（LLM 生成或用户重命名）；缺省时 UI 回退 userTask */
   title?: string
+  /** 这场对话自己的审批方式；缺省时按起步值显示 */
+  approval?: ApprovalMode
   steps: AgentStep[]
   /**
    * 会话级上下文栏快照（后端 onContextBar 推送）。
@@ -651,7 +653,8 @@ export const useTerminalStore = defineStore('terminal', () => {
       sessionId?: string  // SSH 会话 ID（用于重连）
     },
     shell?: string,
-    pendingTask?: string
+    pendingTask?: string,
+    reopen?: { id: string; activate?: boolean; title?: string }
   ): Promise<string> {
     if (type === 'local' && !isWorkbenchAvailable('local')) {
       throw new Error('Local terminal workbench is disabled by OEM features')
@@ -659,7 +662,10 @@ export const useTerminalStore = defineStore('terminal', () => {
     if (type === 'ssh' && !isWorkbenchAvailable('ssh')) {
       throw new Error('SSH terminal workbench is disabled by OEM features')
     }
-    const id = uuidv4()
+    if (reopen?.id && tabs.value.some(t => t.id === reopen.id)) {
+      return reopen.id
+    }
+    const id = reopen?.id || uuidv4()
     
     // 生成唯一标题
     const t = i18n.global.t
@@ -678,6 +684,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     } else {
       title = t('tabs.sshTerminal')
     }
+    if (reopen?.title) title = reopen.title
     
     const tab: TerminalTab = {
       id,
@@ -700,9 +707,11 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
 
     tabs.value.push(tab)
-    activeTabId.value = id
-    lastTerminalTabId.value = id
-    terminalPlaceActive.value = false
+    if (reopen?.activate !== false) {
+      activeTabId.value = id
+      lastTerminalTabId.value = id
+      terminalPlaceActive.value = false
+    }
 
     if (pendingTask) {
       pendingSchedulerTasks.value[id] = pendingTask
@@ -2701,6 +2710,62 @@ export const useTerminalStore = defineStore('terminal', () => {
   }
 
   /**
+   * 别处让某场任务开跑（联络替用户交代等），界面上还没开着它：按形态认领出来，不抢当前视图。
+   * 助手 → 侧栏一条；本机终端 → 用同一 id 重开，开好的窗交给这一轮；远程终端不在就不建。
+   * 联络 / 关切 / 唤醒各有自己的落点，不在这里认领。
+   * @returns 认领出的 tabId；不该认领时 undefined
+   */
+  function claimConversation(data: AgentRunningEvent): string | undefined {
+    if (!data.terminalType || !data.sessionId || !data.sessionStartTime) return undefined
+    if (inferConversationKind(data.agentId) !== 'task') return undefined
+    // 本机终端这一轮离不开窗：开不出来就停掉，不让它对着空气跑（停下会照常回报给联络）
+    const stopUnwindowedRun = (reason: unknown) => {
+      log.warn(`claimConversation: 接不住这场，停掉这一轮 (${data.agentId}):`, reason)
+      void window.electronAPI.agent.abort(data.agentId)
+    }
+    let tabId: string
+    if (data.terminalType === 'assistant') {
+      try {
+        tabId = createAssistantTab({ agentId: data.agentId, title: data.title, isRemote: false, activate: false })
+      } catch (err) {
+        // 助手这一轮不靠窗也能做完，结果照样进历史并回报
+        log.warn(`claimConversation: 侧栏接不住助手会话 (${data.agentId}):`, err)
+        return undefined
+      }
+      markAssistantSkipOnboarding(tabId)
+    } else if (data.terminalType === 'local') {
+      if (!isWorkbenchAvailable('local')) {
+        stopUnwindowedRun('本机终端工作台未开放')
+        return undefined
+      }
+      // 建 tab 是同步的，窗要等 PTY 起来；这一轮的步骤先落进 tab，窗好了再交给它
+      tabId = data.agentId
+      void createTab('local', undefined, undefined, undefined, { id: tabId, activate: false, title: data.title })
+        .then(async () => {
+          const ptyId = tabs.value.find(t => t.id === tabId)?.ptyId
+          if (!ptyId) return stopUnwindowedRun('终端没有起来')
+          await window.electronAPI.agent.adoptPane(data.agentId, ptyId)
+        })
+        .catch(stopUnwindowedRun)
+    } else {
+      return undefined
+    }
+    setAgentSession(tabId, data.sessionId, data.sessionStartTime)
+    if (data.title) {
+      const tab = tabs.value.find(t => t.id === tabId)
+      if (tab?.agentState) tab.agentState.title = data.title
+    }
+    return tabId
+  }
+
+  /** 记下这场对话的审批方式（界面显示用；后端那场由调用方另行通知） */
+  function setAgentApproval(tabId: string, approval: ApprovalMode): void {
+    const tab = tabs.value.find(t => t.id === tabId)
+    if (!tab) return
+    tab.agentState = { ...(tab.agentState ?? { isRunning: false, steps: [] }), approval }
+  }
+
+  /**
    * 设置 Agent 会话 ID 和开始时间（用于会话级保存）
    */
   function setAgentSession(tabId: string, sessionId: string, sessionStartTime: number): void {
@@ -3000,6 +3065,7 @@ export const useTerminalStore = defineStore('terminal', () => {
         title: preserveSession ? tab.agentState?.title : undefined,
         steps: preserveSession ? (tab.agentState?.steps || []) : [],
         contextBar: preserveSession ? tab.agentState?.contextBar : undefined,
+        approval: preserveSession ? tab.agentState?.approval : undefined,
       }
     }
   }
@@ -3177,6 +3243,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     artifacts?: import('@shared/types').CanvasArtifact[]
     loadedSkills?: string[]
     userDismissedSkills?: string[]
+    approval?: ApprovalMode
   }): void {
     const tab = tabs.value.find(t => t.id === tabId)
     if (!tab) return
@@ -3228,6 +3295,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       sessionStartTime: record.timestamp,
       userTask: record.userTask,
       ...(record.title?.trim() ? { title: record.title.trim() } : {}),
+      ...(record.approval ? { approval: record.approval } : {}),
       steps: steps,
       contextBar: deriveContextBarFromSteps(steps),
       loadedFromHistory: true
@@ -4084,6 +4152,8 @@ export const useTerminalStore = defineStore('terminal', () => {
     requestTerminalAiPanelReveal,
     // Agent 状态管理
     findTabIdByAgentId,
+    claimConversation,
+    setAgentApproval,
     findTabIdByPtyId,
     getAgentState,
     setAgentRunning,

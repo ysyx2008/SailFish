@@ -67,6 +67,8 @@ export interface AgentRecord {
    * 缺省（老记录）视为未手改，仍可自动更新。
    */
   titleLocked?: boolean
+  /** 这场对话自己的审批方式。缺省（老记录）按打开时的起步值算 */
+  approval?: import('./agent').ApprovalMode
   steps: AgentStepRecord[]
   messages?: Array<{
     role: string

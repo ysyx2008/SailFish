@@ -18,6 +18,8 @@ import { getAgentTools, filterUnattendedTools, filterSubAgentTools, AgentMode } 
 import type { ToolExecutorConfig } from './tools/types'
 import type { AgentRun } from './types'
 import type { ChildAgentHandle } from './sub-agent-roster'
+import { COMPANION_WORKBENCH_AGENT_TOOLS } from '@sailfish/workbench-companion/agent-tools'
+import { COMPANION_AGENT_KEY } from '@shared/types'
 import { PromptBuilder } from './prompt-builder'
 import type { SkillSession } from './skills'
 import { createLogger } from '../../utils/logger'
@@ -110,6 +112,12 @@ export class SailFish extends Agent {
       mcpToolSession: this.getMcpToolSession(),
       unattended
     }, this.services.pluginRegistry)
+
+    // 联络专属工具由联络工作台贡献（manage_tasks 任务管理），不进 agent 通用注册表
+    if (this._agentId === COMPANION_AGENT_KEY) {
+      baseTools.push(...(COMPANION_WORKBENCH_AGENT_TOOLS as unknown as ToolDefinition[]))
+    }
+
 
     if (this.currentRun?.skillSession) {
       this.currentRun.skillSession.updateCoreTools(baseTools)

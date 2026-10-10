@@ -58,6 +58,28 @@ export function inferConversationKind(agentKey?: string): ConversationKind {
 /** Agent 执行模式：strict=所有命令需确认，relaxed=仅危险命令需确认，free=全自动 */
 export type ExecutionMode = 'strict' | 'relaxed' | 'free'
 
+/**
+ * 一场对话的审批方式（输入框下拉框的四档）：严格 / 宽松 / 替我审批 / 全自动。
+ * 替我审批 = 宽松档，本来要问用户的先交给评审员对照用户原话决定。
+ */
+export type ApprovalMode = 'strict' | 'relaxed' | 'autoReview' | 'free'
+
+export function isApprovalMode(value: unknown): value is ApprovalMode {
+  return value === 'strict' || value === 'relaxed' || value === 'autoReview' || value === 'free'
+}
+
+/** 由执行档 + 「替我审批」开关得到审批方式（全自动下开关不起作用） */
+export function approvalFromSettings(mode: ExecutionMode, autoReview: boolean): ApprovalMode {
+  if (mode === 'free') return 'free'
+  if (autoReview) return 'autoReview'
+  return mode
+}
+
+/** 审批方式对应的执行档（替我审批按宽松档问） */
+export function executionModeOfApproval(approval: ApprovalMode): ExecutionMode {
+  return approval === 'autoReview' ? 'relaxed' : approval
+}
+
 /** 它有多主动地把已经用不上的过程先交接掉 */
 export const PROACTIVE_COMPACT_STYLES = ['more', 'balanced', 'less', 'off'] as const
 export type ProactiveCompactStyle = (typeof PROACTIVE_COMPACT_STYLES)[number]
@@ -76,6 +98,30 @@ export type ConfirmStrategy = 'cautious' | 'batch' | 'free'
 export type RemoteChannel = 'desktop' | 'web' | 'dingtalk' | 'feishu' | 'slack' | 'telegram' | 'wecom' | 'wechat'
 
 export type RiskLevel = 'safe' | 'moderate' | 'dangerous' | 'blocked'
+
+/** 一轮开跑时所在会话的样子：界面据此认领（没开着的就按形态建出来） */
+export interface AgentRunSessionInfo {
+  sessionId: string
+  sessionStartTime: number
+  terminalType: TerminalType
+  title?: string
+}
+
+/** 某场开跑（含别处发起的）推给界面的事件；IM / Web 远程入口不带会话信息 */
+export type AgentRunningEvent = {
+  agentId: string
+  ptyId?: string
+  userTask: string
+} & Partial<AgentRunSessionInfo>
+
+/** 往一场对话里说一句之后实际发生了什么：补进了正在跑的那一轮，或开了新一轮并跑完 */
+export type SayOutcome = 'supplemented' | 'ran'
+
+/** 往一场对话里说一句的结果（界面按它显示，不自己猜）；失败时不知道走到了哪一步，故不带 outcome */
+export type SayResult =
+  | { success: true; outcome: 'supplemented' }
+  | { success: true; outcome: 'ran'; result: string }
+  | { success: false; error: string; aborted: boolean }
 
 /** 向用户提问这道题的结果。说明文字不是状态。 */
 export type AskingStatus = 'waiting' | 'received' | 'timeout' | 'cancelled'
@@ -401,7 +447,7 @@ export interface EChartsStepPayload {
 
 export interface AgentStep {
   id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'waiting_input' | 'plan_created' | 'plan_updated' | 'plan_archived' | 'user_task' | 'final_result' | 'proactive_notice' | 'auto_review'
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'waiting_input' | 'plan_created' | 'plan_updated' | 'plan_archived' | 'user_task' | 'final_result' | 'proactive_notice' | 'auto_review' | 'task_receipt'
   content: string
   images?: string[]
   /**

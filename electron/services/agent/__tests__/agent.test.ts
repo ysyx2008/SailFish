@@ -442,6 +442,175 @@ describe('Agent', () => {
     })
   })
 
+  // ==================== 联络开头的那一轮与任务回执 ====================
+
+  describe('这一轮由谁开头 / 任务回执', () => {
+    function withSupervisor() {
+      const taskSupervisor = { handleRunFinished: vi.fn(), handleNeedsConfirmation: vi.fn(), handleAsking: vi.fn() }
+      const services = createMockServices({ taskSupervisor: taskSupervisor as never })
+      const a = new TestAgent(services)
+      const aiService = services.aiService as unknown as ReturnType<typeof createMockAiService>
+      aiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+          onChunk('收到')
+          onDone({ content: '收到', tool_calls: undefined })
+          return Promise.resolve()
+        }
+      )
+      return { a, taskSupervisor }
+    }
+
+    it('联络开的头：这一轮做完的事件带上归属；界面开的头没有', async () => {
+      const { a, taskSupervisor } = withSupervisor()
+
+      await a.say('查一下', createMockContext(), { ledBy: 'companion' })
+      expect(taskSupervisor.handleRunFinished.mock.calls[0][1]).toMatchObject({ status: 'success', ledBy: 'companion' })
+
+      await a.say('再看看', createMockContext())
+      expect(taskSupervisor.handleRunFinished.mock.calls[1][1].ledBy).toBeUndefined()
+    })
+
+    it('补进正在跑的那一轮不改归属', async () => {
+      const { a } = withSupervisor()
+      a.injectCurrentRun({ id: 'run-1', isRunning: true, pendingUserMessages: [], steps: [] })
+
+      await a.say('补一句', createMockContext(), { ledBy: 'companion' })
+
+      expect(a.exposeCurrentRun()!.ledBy).toBeUndefined()
+    })
+
+    it('向用户提问：带上问题、选项和这一轮的归属交给任务监督', () => {
+      const { a, taskSupervisor } = withSupervisor()
+      a.injectCurrentRun({ id: 'run-1', isRunning: true, pendingUserMessages: [], steps: [], ledBy: 'companion' })
+
+      a.testAddStep({ type: 'asking', content: '订哪间？', toolArgs: { question: '订哪间？', options: ['A', 'B'] } })
+
+      expect(taskSupervisor.handleAsking).toHaveBeenCalledWith(undefined, {
+        question: '订哪间？', options: ['A', 'B'], ledBy: 'companion',
+      })
+    })
+
+    it('正在回复时回执送进这一轮，收进对话时上墙为回执步骤', () => {
+      const { a } = withSupervisor()
+      a.injectCurrentRun({ id: 'run-1', isRunning: true, pendingUserMessages: [], steps: [], messages: [], taskMessageLog: [], context: createMockContext() })
+      ;(a as unknown as { _loopOpen: boolean })._loopOpen = true
+
+      a.deliverTaskReceipt('任务回执：做完了', { fallbackContext: createMockContext() })
+
+      const run = a.exposeCurrentRun()!
+      expect(run.pendingUserMessages).toEqual([
+        expect.objectContaining({ message: '任务回执：做完了', silent: true, taskReceipt: true }),
+      ])
+      ;(a as unknown as { processPendingUserMessages(r: unknown): void }).processPendingUserMessages(run)
+      expect(run.steps.map(s => s.type)).toEqual(['task_receipt'])
+    })
+
+    it('闲着时另起一轮：开头是回执步骤、没有用户气泡，用调用方给的回调；用户按停过也照送', async () => {
+      const { a } = withSupervisor()
+      ;(a as unknown as { _dropBackgroundNotices: boolean })._dropBackgroundNotices = true
+      const steps: AgentStep[] = []
+      const onComplete = vi.fn()
+      const callbacks: AgentCallbacks = { onStep: (_id, step) => steps.push(step), onComplete }
+
+      a.deliverTaskReceipt('任务回执：做完了', { callbacks, fallbackContext: createMockContext({ terminalType: 'assistant' }) })
+
+      await vi.waitFor(() => expect(onComplete).toHaveBeenCalled())
+      expect(steps[0].type).toBe('task_receipt')
+      expect(steps.some(s => s.type === 'user_task')).toBe(false)
+    })
+
+    it('这一轮收场时没来得及收的回执，挪回去等下一轮', () => {
+      const { a } = withSupervisor()
+      const run = { pendingUserMessages: [
+        { message: '回执一', silent: true, backgroundNotice: true, taskReceipt: true },
+        { message: '后台结果', silent: true, backgroundNotice: true },
+      ] }
+
+      ;(a as unknown as { reclaimUnreadReceipts(r: unknown): void }).reclaimUnreadReceipts(run)
+
+      expect(run.pendingUserMessages.map(m => m.message)).toEqual(['后台结果'])
+      expect((a as unknown as { _deferredReceipts: string[] })._deferredReceipts).toEqual(['回执一'])
+    })
+  })
+
+  // ==================== 说一句：补进当前一轮还是开新一轮 ====================
+
+  describe('say', () => {
+    it('正在跑时补进当前一轮，立即返回，不开新一轮', async () => {
+      agent.injectCurrentRun({
+        id: 'run-1',
+        isRunning: true,
+        executionPhase: 'executing_command',
+        pendingUserMessages: [],
+        steps: [],
+      })
+
+      const said = await agent.say('顺便看下日志', createMockContext({ images: ['data:image/png;base64,AA'] }))
+
+      expect(said).toEqual({ outcome: 'supplemented' })
+      const run = agent.exposeCurrentRun()!
+      expect(run.steps.map(s => s.type)).toEqual(['user_supplement'])
+      expect(run.pendingUserMessages[0].message).toBe('顺便看下日志')
+      expect(run.pendingUserMessages[0].images).toEqual(['data:image/png;base64,AA'])
+    })
+
+    it('补话时不改执行档', async () => {
+      agent.injectCurrentRun({ id: 'run-1', isRunning: true, pendingUserMessages: [], steps: [] })
+      const before = agent.executionMode
+
+      await agent.say('补一句', createMockContext(), { config: { executionMode: before === 'free' ? 'strict' : 'free' } })
+
+      expect(agent.executionMode).toBe(before)
+    })
+
+    it('空闲时开新一轮并带上执行档，返回这一轮的结果', async () => {
+      const aiService = agent.exposeServices().aiService as unknown as ReturnType<typeof createMockAiService>
+      aiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+          onChunk('好了')
+          onDone({ content: '好了', tool_calls: undefined })
+          return Promise.resolve()
+        }
+      )
+
+      const said = await agent.say('做件事', createMockContext(), { config: { executionMode: 'free' } })
+
+      expect(said).toEqual({ outcome: 'ran', result: '好了' })
+      expect(agent.executionMode).toBe('free')
+    })
+
+    it('说话的一方不知道窗口：接着用这场上一轮的窗格；知道就用它说的', async () => {
+      const aiService = agent.exposeServices().aiService as unknown as ReturnType<typeof createMockAiService>
+      aiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+          onDone({ content: 'ok', tool_calls: undefined })
+          return Promise.resolve()
+        }
+      )
+      expect(agent.withKnownPane(createMockContext({ ptyId: undefined })).ptyId).toBeUndefined()
+
+      await agent.run('先做一件', createMockContext({ ptyId: 'pty-a' }))
+
+      const pty = agent.exposeServices().ptyService as unknown as { hasInstance: ReturnType<typeof vi.fn> }
+      pty.hasInstance = vi.fn().mockReturnValue(true)
+      expect(agent.withKnownPane(createMockContext({ ptyId: undefined })).ptyId).toBe('pty-a')
+      expect(agent.withKnownPane(createMockContext({ ptyId: 'pty-b' })).ptyId).toBe('pty-b')
+
+      pty.hasInstance.mockReturnValue(false)
+      expect(agent.withKnownPane(createMockContext({ ptyId: undefined })).ptyId).toBeUndefined()
+    })
+  })
+
+  describe('adoptPane', () => {
+    it('这一轮还没有窗时用界面刚开的窗；已经有窗不动', () => {
+      agent.injectCurrentRun({ id: 'run-1', isRunning: true, pendingUserMessages: [], steps: [], context: createMockContext({ ptyId: undefined }) })
+      expect(agent.adoptPane('pty-new')).toBe(true)
+      expect(agent.exposeCurrentRun()!.ptyId).toBe('pty-new')
+      expect(agent.adoptPane('pty-other')).toBe(false)
+      expect(agent.exposeCurrentRun()!.ptyId).toBe('pty-new')
+    })
+  })
+
   // ==================== 工具确认 ====================
 
   describe('confirmToolCall', () => {
@@ -1963,8 +2132,10 @@ describe('Agent step callbacks', () => {
     expect(stepTypes[1]).toBe('thinking')
   })
 
-  it('should call onStart after user_task step is emitted', async () => {
-    const onStart = vi.fn()
+  it('开跑先于第一句上墙，并带上会话的形态（界面据此认领）', async () => {
+    const order: string[] = []
+    const onStart = vi.fn(() => { order.push('start') })
+    const onStep = vi.fn((_id: string, step: { type: string }) => { order.push(step.type) })
 
     mockAiService.chatWithToolsStream.mockImplementation(
       (_messages, _tools, onChunk, _onToolCall, onDone) => {
@@ -1974,13 +2145,18 @@ describe('Agent step callbacks', () => {
       }
     )
 
-    agent.setCallbacks({ onStart })
+    agent.setCallbacks({ onStart, onStep })
 
     const context = createMockContext()
     await agent.run('Hello task', context)
 
     expect(onStart).toHaveBeenCalledOnce()
-    expect(onStart).toHaveBeenCalledWith(expect.any(String), 'Hello task')
+    expect(onStart).toHaveBeenCalledWith(
+      expect.any(String),
+      'Hello task',
+      expect.objectContaining({ sessionId: expect.any(String), terminalType: context.terminalType })
+    )
+    expect(order.indexOf('start')).toBeLessThan(order.indexOf('user_task'))
   })
 
   it('should call onStep for message step', async () => {
@@ -2047,5 +2223,183 @@ describe('Agent SkillSession persistence', () => {
     
     // currentRun 应该被清理
     expect(agent.exposeCurrentRun()).toBeUndefined()
+  })
+})
+
+// ==================== 新会话：后端起号、第一句起标题 ====================
+
+describe('新任务会话的第一句', () => {
+  function setup(existingRecord?: Record<string, unknown>) {
+    const history = {
+      getAgentRecordById: vi.fn().mockReturnValue(existingRecord),
+      saveAgentRecord: vi.fn(),
+      updateConversationTitle: vi.fn().mockReturnValue(true),
+      getAgentRecordStore: vi.fn(() => history),
+    }
+    const services = createMockServices({ historyService: history as any })
+    const ai = services.aiService as any
+    ai.chat = vi.fn().mockResolvedValue('整理日志')
+    ai.chatWithToolsStream.mockImplementation((_m: any, _t: any, onChunk: any, _c: any, onDone: any) => {
+      onChunk('好了')
+      onDone({ content: '好了', tool_calls: undefined })
+      return Promise.resolve()
+    })
+    const titleCalls = () => ai.chat.mock.calls.filter((c: any[]) => String(c[0]?.[0]?.content).includes('会话短标题'))
+    return { agent: new TestAgent(services), history, ai, titleCalls }
+  }
+
+  it('没带会话号时后端起号，开跑时告诉界面，并起侧栏标题', async () => {
+    const { agent, history, titleCalls } = setup()
+    const onStart = vi.fn()
+
+    await agent.run('帮我整理一下日志', createMockContext(), { callbacks: { onStart } })
+
+    const session = onStart.mock.calls[0][2]
+    expect(session.sessionId).toMatch(/^session_/)
+    expect(session.sessionStartTime).toEqual(expect.any(Number))
+    await expect(agent.waitForInitialTitle()).resolves.toBe('整理日志')
+    expect(titleCalls()).toHaveLength(1)
+    expect(history.updateConversationTitle).toHaveBeenCalledWith(session.sessionId, '整理日志')
+  })
+
+  it('接着已有会话说不再起首个标题', async () => {
+    const sessionId = 'session_old'
+    const { agent, titleCalls } = setup({
+      id: sessionId,
+      timestamp: Date.now() - 5000,
+      terminalId: 'test-pty',
+      terminalType: 'local',
+      userTask: '之前的事',
+      steps: [{ id: 'ut1', type: 'user_task', content: '之前的事', timestamp: Date.now() - 5000 }],
+      messages: [{ role: 'user', content: '之前的事' }],
+      duration: 1000,
+      status: 'completed',
+    })
+
+    await agent.run('接着做', createMockContext({ sessionId, sessionStartTime: Date.now() - 5000 }))
+
+    await expect(agent.waitForInitialTitle()).resolves.toBeNull()
+    expect(titleCalls()).toHaveLength(0)
+  })
+
+  it('引导会话用固定标题，不问模型', async () => {
+    const { agent, history, titleCalls } = setup()
+
+    await agent.run('__onboarding__', createMockContext())
+
+    expect(titleCalls()).toHaveLength(0)
+    expect(history.updateConversationTitle).toHaveBeenCalledWith(expect.stringMatching(/^session_/), '认识一下')
+  })
+})
+
+// ==================== 每场对话自己的审批方式 ====================
+
+describe('每场对话自己的审批方式', () => {
+  function setup(opts: { record?: Record<string, unknown>; executionMode?: string; review?: boolean } = {}) {
+    const history = {
+      getAgentRecordById: vi.fn().mockReturnValue(opts.record),
+      saveAgentRecord: vi.fn(),
+      updateConversationTitle: vi.fn().mockReturnValue(true),
+      updateConversationApproval: vi.fn().mockReturnValue(true),
+      getAgentRecordStore: vi.fn(() => history),
+    }
+    const config = createMockConfigService() as any
+    config.get = vi.fn((key: string) => key === 'executionMode' ? (opts.executionMode ?? 'relaxed') : undefined)
+    config.isAutoApprovalReviewEnabled = vi.fn().mockReturnValue(opts.review === true)
+    const services = createMockServices({ historyService: history as any, configService: config })
+    const ai = services.aiService as any
+    ai.chat = vi.fn().mockResolvedValue('标题')
+    ai.chatWithToolsStream.mockImplementation((_m: any, _t: any, _onChunk: any, _c: any, onDone: any) => {
+      onDone({ content: '好了', tool_calls: undefined })
+      return Promise.resolve()
+    })
+    return { agent: new TestAgent(services), history }
+  }
+  const reviewApplies = (agent: TestAgent) => (agent as any).autoReviewApplies(false) as boolean
+
+  it('新对话按起步值起步，并记进这场', async () => {
+    const { agent, history } = setup({ executionMode: 'relaxed', review: true })
+    await agent.run('做件事', createMockContext())
+
+    expect(agent.getApproval()).toBe('autoReview')
+    expect(agent.executionMode).toBe('relaxed')
+    expect(reviewApplies(agent)).toBe(true)
+    expect(history.saveAgentRecord.mock.calls.at(-1)?.[0].approval).toBe('autoReview')
+  })
+
+  it('开跑前定下的交给新会话，不看起步值', async () => {
+    const { agent } = setup({ executionMode: 'strict' })
+    agent.setApproval('free')
+    await agent.run('做件事', createMockContext())
+
+    expect(agent.getApproval()).toBe('free')
+    expect(agent.executionMode).toBe('free')
+  })
+
+  it('接回的会话用它记下的方式', async () => {
+    const record = {
+      id: 'session_old', timestamp: 1, terminalId: '', agentKey: 'tab-1', terminalType: 'local',
+      userTask: 'x', steps: [], duration: 1, status: 'completed', approval: 'strict',
+      messages: [{ role: 'user', content: 'x' }, { role: 'assistant', content: 'y' }],
+    }
+    const { agent } = setup({ record, executionMode: 'free' })
+    await agent.run('接着做', createMockContext({ sessionId: 'session_old', sessionStartTime: 1 }))
+
+    expect(agent.getApproval()).toBe('strict')
+    expect(agent.executionMode).toBe('strict')
+  })
+
+  it('跑着的时候改：这一轮立即按新方式问，并落盘', async () => {
+    const { agent, history } = setup({ review: true })
+    await agent.run('先做一件', createMockContext())
+    agent.injectCurrentRun({ id: 'r', isRunning: true, pendingUserMessages: [], steps: [], config: { executionMode: 'relaxed' } })
+
+    agent.setApproval('strict')
+
+    expect(agent.exposeCurrentRun()!.config.executionMode).toBe('strict')
+    expect(history.updateConversationApproval).toHaveBeenCalledWith(expect.stringMatching(/^session_/), 'strict')
+    expect(reviewApplies(agent)).toBe(false)
+  })
+
+  it('渠道给某一轮指定执行档时按它跑，不改这场记下的方式', async () => {
+    const { agent } = setup({ executionMode: 'relaxed', review: true })
+    await agent.run('先做一件', createMockContext())
+
+    agent.updateConfig({ executionMode: 'free' })
+    await agent.run('再做一件', createMockContext())
+    expect(agent.executionMode).toBe('free')
+    expect(agent.getApproval()).toBe('autoReview')
+
+    await agent.run('第三件', createMockContext())
+    expect(agent.executionMode).toBe('relaxed')
+  })
+
+  it('渠道发起的第一轮：这场记下的是起步值，替我审批那一轮跟全局开关', async () => {
+    const { agent } = setup({ executionMode: 'strict', review: false })
+    agent.updateConfig({ executionMode: 'relaxed' })
+    await agent.run('IM 来的一句', createMockContext())
+
+    expect(agent.executionMode).toBe('relaxed')
+    expect(agent.getApproval()).toBe('strict')
+    expect(reviewApplies(agent)).toBe(false)
+  })
+
+  it('这场记的是替我审批，渠道那一轮不跟着它', async () => {
+    const { agent } = setup({ review: false })
+    agent.setApproval('autoReview')
+    await agent.run('桌面上一句', createMockContext())
+    expect(reviewApplies(agent)).toBe(true)
+
+    agent.updateConfig({ executionMode: 'relaxed' })
+    await agent.run('IM 来的一句', createMockContext())
+    expect(reviewApplies(agent)).toBe(false)
+    expect(agent.getApproval()).toBe('autoReview')
+  })
+
+  it('换成全新一场时，之前先记下的不带过去', () => {
+    const { agent } = setup()
+    agent.setApproval('free')
+    agent.startNewSession()
+    expect(agent.getApproval()).toBeUndefined()
   })
 })

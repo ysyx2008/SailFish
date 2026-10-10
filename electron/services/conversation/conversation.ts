@@ -25,9 +25,10 @@ import type {
   AgentStep,
   TokenUsage,
   TerminalType,
-  ConversationKind
+  ConversationKind,
+  ApprovalMode
 } from '@shared/types'
-import { inferConversationKind, filterPersistableSteps } from '@shared/types'
+import { inferConversationKind, filterPersistableSteps, isApprovalMode } from '@shared/types'
 import type { AiMessage } from '../ai.service'
 import { TaskMemoryStore, type LookupToolMeta } from '../agent/task-memory'
 import { splitMessagesIntoTasks, splitStepsIntoTasks, stepRecordToStep, chunkStepsByUserTask, chunkStepsForCompanionExtract } from './messages'
@@ -128,6 +129,8 @@ export class Conversation {
   private _title?: string
   /** 用户亲手改过标题后为 true，自动生成不再覆盖 */
   private _titleLocked = false
+  /** 这场对话自己的审批方式；老记录没有，开跑时按起步值补上 */
+  private _approval?: ApprovalMode
 
   // ===== token 账 =====
   private _tokenUsage?: TokenUsage
@@ -242,6 +245,12 @@ export class Conversation {
     const title = record.title?.trim()
     if (title) this._title = title
     if (record.titleLocked) this._titleLocked = true
+    this.adoptApproval(record.approval)
+  }
+
+  /** 从记录接回审批方式：已经定了的不覆盖 */
+  adoptApproval(approval?: ApprovalMode): void {
+    if (!this._approval && isApprovalMode(approval)) this._approval = approval
   }
 
   /**
@@ -291,6 +300,7 @@ export class Conversation {
       userTask: firstUserTask.content,
       ...(this._title ? { title: this._title } : {}),
       ...(this._titleLocked ? { titleLocked: true } : {}),
+      ...(this._approval ? { approval: this._approval } : {}),
       steps: serializableSteps,
       messages: this._messages.map(m => JSON.parse(JSON.stringify(m))),
       finalResult: lastFinalResult?.content,
@@ -345,6 +355,7 @@ export class Conversation {
       userTask: firstUserTask.content,
       ...(this._title ? { title: this._title } : {}),
       ...(this._titleLocked ? { titleLocked: true } : {}),
+      ...(this._approval ? { approval: this._approval } : {}),
       steps: mergedSteps.map(s => Conversation.stepToStepRecord(s)),
       messages: mergedMessages.map(m => JSON.parse(JSON.stringify(m))),
       duration: Date.now() - this.createdAt,
@@ -585,12 +596,14 @@ export class Conversation {
       }
       return ut.content
     }
-    // 仅 proactive_notice 的独立段（与前端 isProactive group 对应）
+    // 没有用户开口的段：独立主动消息（前端 isProactive group）或回执那一轮（isReceipt group）
     const notice = chunk.find(s => s.type === 'proactive_notice')
-    if (notice?.content) {
-      const text = notice.content.trim()
-      return text.length > 80 ? text.slice(0, 80) + '…' : text
-    }
+    // 回执那一轮没送出话时，拿它写下的正文或回执本身
+    const fallback = chunk[0]?.type === 'task_receipt'
+      ? chunk.find(s => s.type === 'message' && s.content?.trim()) ?? chunk[0]
+      : undefined
+    const text = (notice?.content || fallback?.content || '').trim()
+    if (text) return text.length > 80 ? text.slice(0, 80) + '…' : text
     return ''
   }
 
@@ -666,7 +679,7 @@ export class Conversation {
       const ut = chunk.find(s => s.type === 'user_task')
       return (
         ut?.content === '__proactive__' ||
-        (!ut && chunk.some(s => s.type === 'proactive_notice'))
+        (!ut && chunk.some(s => s.type === 'proactive_notice' || s.type === 'task_receipt'))
       )
     }
 
@@ -1067,6 +1080,18 @@ export class Conversation {
   /** 用户亲手改过标题后为 true */
   get titleLocked(): boolean {
     return this._titleLocked
+  }
+
+  get approval(): ApprovalMode | undefined {
+    return this._approval
+  }
+
+  /** 改这场的审批方式。未变化时返回 false（调用方据此跳过写盘） */
+  setApproval(approval: ApprovalMode): boolean {
+    if (this._approval === approval) return false
+    this._approval = approval
+    this._dirty = true
+    return true
   }
 
   /** 会话内用户完整轮次（user_task，不含中途追加） */

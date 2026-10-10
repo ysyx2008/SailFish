@@ -10,6 +10,7 @@ import {
   readSessionRecord,
   readSessionRecordAsync,
   saveSessionRecord,
+  updateSessionApproval,
   updateSessionTitle,
 } from '../history/session-persistence'
 import { getAgentRecordPath } from '../history/agent-storage'
@@ -231,6 +232,27 @@ describe('session-persistence incremental checkpoint', () => {
 
     const loaded = readSessionRecord(agentDir, dateStr, record.id)
     expect(loaded?.title).toBe('新标题')
+  })
+
+  it('审批方式随记录往返；单独改只动 meta.json；老记录没有就是没有', () => {
+    const dateStr = '2026-07-13'
+    saveSessionRecord(agentDir, makeRecord({ id: 'old', steps: [makeStep('s0')] }))
+    expect(readSessionRecord(agentDir, dateStr, 'old')?.approval).toBeUndefined()
+
+    const record = makeRecord({ steps: [makeStep('s1')], approval: 'autoReview' })
+    saveSessionRecord(agentDir, record)
+    expect(readSessionRecord(agentDir, dateStr, record.id)?.approval).toBe('autoReview')
+
+    const dir = getSessionDirPath(agentDir, dateStr, record.id)
+    const stepsBefore = fs.readFileSync(path.join(dir, 'steps.jsonl'), 'utf-8')
+    expect(updateSessionApproval(agentDir, dateStr, record.id, 'free')).toBe(true)
+    expect(fs.readFileSync(path.join(dir, 'steps.jsonl'), 'utf-8')).toBe(stepsBefore)
+    expect(readSessionRecord(agentDir, dateStr, record.id)?.approval).toBe('free')
+    expect(updateSessionApproval(agentDir, dateStr, 'missing', 'free')).toBe(false)
+
+    // 不带审批方式的整份重写不抹掉已记下的
+    saveSessionRecord(agentDir, { ...record, approval: undefined })
+    expect(readSessionRecord(agentDir, dateStr, record.id)?.approval).toBe('free')
   })
 
   it('读旧 .json 后 save 迁入目录并删除单体文件', () => {

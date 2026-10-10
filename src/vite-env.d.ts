@@ -664,31 +664,28 @@ interface Window {
     }
     // Agent 操作（OOP 重构后统一使用 ptyId）
     agent: {
-      run: (
-        ptyId: string,
-        message: string,
-        /** 终端模式必须指明操作哪个窗格 */
-        context: AgentContext & { ptyId: string },
-        config?: {
-          enabled?: boolean
-          maxSteps?: number
-          commandTimeout?: number
-          autoExecuteSafe?: boolean
-          autoExecuteModerate?: boolean
-          executionMode?: ExecutionMode
-        },
-        profileId?: string
-      ) => Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>
-      runStandalone: (
-        agentId: string,
-        message: string,
-        context: AgentContext,
+      /** 往一场对话里说一句：正在跑就补进这一轮，否则开新一轮；返回实际发生了哪种 */
+      say: (params: {
+        /** 终端形态 = tabId；助手形态 = tab.agentId */
+        agentKey: string
+        surface: 'assistant' | 'terminal'
+        message: string
+        /** 终端形态要指明操作哪个窗格（ptyId） */
+        context: AgentContext
         config?: {
           executionMode?: ExecutionMode
           commandTimeout?: number
-        },
+        }
         profileId?: string
-      ) => Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>
+      }) => Promise<import('@shared/types').SayResult>
+      getSessionSnapshot: (agentId: string) => Promise<{
+        steps: AgentStep[]
+        isRunning: boolean
+        sessionId?: string
+        approval?: import('@shared/types').ApprovalMode
+      } | null>
+      /** 改眼前这场对话的审批方式（只改这一场） */
+      setApproval: (agentKey: string, approval: import('@shared/types').ApprovalMode, surface: 'assistant' | 'terminal') => Promise<boolean>
       abort: (ptyId: string) => Promise<boolean>
       compactContext: (params: {
         agentKey: string
@@ -712,6 +709,7 @@ interface Window {
       cleanup: (ptyId: string) => Promise<void>
       /** 终端重连后同步运行中 Agent 的默认操作 ptyId（agentKey=tabId） */
       remapPtyId: (agentKey: string, oldPtyId: string, newPtyId: string) => Promise<boolean>
+      adoptPane: (agentKey: string, ptyId: string) => Promise<boolean>
       fork: (opts: {
         sourceAgentKey: string
         newAgentId: string
@@ -779,7 +777,8 @@ interface Window {
       getVisibleSkills: (agentKey: string) => Promise<Array<{ id: string; name: string; description?: string; unavailable?: boolean }>>
       onSkillsChanged: (callback: (data: { agentId: string; skills: Array<{ id: string; name: string; description?: string; unavailable?: boolean }> }) => void) => () => void
       onStep: (callback: (data: { agentId: string; ptyId?: string; step: AgentStep }) => void) => () => void
-      onRunning: (callback: (data: { agentId: string; ptyId?: string; userTask: string }) => void) => () => void
+      /** 带会话信息时：这一轮所在的会话（新会话由后端起号；没开着的界面据此认领） */
+      onRunning: (callback: (data: import('@shared/types').AgentRunningEvent) => void) => () => void
       onStepRemoved: (callback: (data: { agentId: string; ptyId?: string; stepId: string }) => void) => () => void
       onContextBar: (callback: (data: { agentId: string; ptyId?: string; contextBar: import('@shared/types').AgentContextBar }) => void) => () => void
       onModelFailover: (callback: (data: {
@@ -896,8 +895,6 @@ interface Window {
         sshHost?: string
         status: 'completed' | 'failed' | 'aborted'
       }>>
-      /** 任务侧栏短标题：首条消息后异步生成，失败返回 null */
-      generateConversationTitle: (sessionId: string, userMessage: string, profileId?: string) => Promise<string | null>
       /** 设置会话展示标题（写入会话记录） */
       setConversationTitle: (sessionId: string, title: string, options?: { locked?: boolean }) => Promise<boolean>
       onConversationTitle: (callback: (payload: { sessionId: string; title: string }) => void) => () => void
@@ -2574,7 +2571,7 @@ interface Window {
       onTaskStarted?: (callback: (data: { watchId: string; ptyId?: string; watchName?: string; executionType?: string }) => void) => () => void
       onTaskCompleted?: (callback: (data: { watchId: string; result?: { success: boolean; skipped?: boolean; error?: string } }) => void) => () => void
       onEnsureTab: (callback: (data: { agentId: string }) => void) => () => void
-      onProactiveMessage: (callback: (data: { agentId: string; message: string; watchName: string }) => void) => () => void
+      onProactiveMessage: (callback: (data: { agentId: string; message: string; watchName: string; mirrorOnly?: boolean }) => void) => () => void
       onActivateMessage?: (callback: (data: { agentId: string }) => void) => () => void
     }
     sensor: {

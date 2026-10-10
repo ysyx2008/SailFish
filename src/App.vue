@@ -903,10 +903,15 @@ onMounted(async () => {
     return terminalStore.findTabIdByAgentId(data.agentId)
   }
 
-  // IM/WebChat 等外部入口触发 companion run 时同步桌面 tab isRunning
-  cleanupAgentRunning = window.electronAPI.agent.onRunning?.((data: { agentId: string; ptyId?: string; userTask: string }) => {
-    const tabId = resolveAgentEventTabId(data)
+  // 任何来源让某场开跑都同步到界面：开着的 tab 标为运行中；没开着的任务按形态认领出来
+  cleanupAgentRunning = window.electronAPI.agent.onRunning?.((data) => {
+    const tabId = resolveAgentEventTabId(data) ?? terminalStore.claimConversation(data)
     if (!tabId) return
+    // 会话号以后端为准：新会话由后端起号，这里认领
+    const current = terminalStore.tabs.find(t => t.id === tabId)?.agentState?.sessionId
+    if (data.sessionId && data.sessionStartTime && current !== data.sessionId) {
+      terminalStore.setAgentSession(tabId, data.sessionId, data.sessionStartTime)
+    }
     terminalStore.setAgentRunning(tabId, true, data.agentId, data.userTask)
   }) || null
 
@@ -998,6 +1003,17 @@ onMounted(async () => {
     // 优先精确匹配 agentId，回退到 companion tab（IM 对话镜像）
     const tab = terminalStore.tabs.find(t => t.agentId === data.agentId)
       || terminalStore.tabs.find(t => t.agentId === COMPANION_TAB_AGENT_ID)
+
+    // 联络自己 talk_to_user 的镜像：内容已在其会话工具卡片里，只 toast 引导查看，
+    // 不注入步骤、不排队——否则 Agent 忙时排队的消息会在运行结束后再冒一次（回声）。
+    if (data.mirrorOnly) {
+      toast.proactive(preview, () => {
+        const t = terminalStore.tabs.find(t => t.agentId === data.agentId)
+          || terminalStore.tabs.find(t => t.agentId === COMPANION_TAB_AGENT_ID)
+        if (t) navigateToAgentTab(t)
+      })
+      return
+    }
 
     if (tab) {
       const tabId = tab.id

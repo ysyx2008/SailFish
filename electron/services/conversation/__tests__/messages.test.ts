@@ -12,8 +12,10 @@ import {
   splitMessagesIntoTasks,
   splitStepsIntoTasks,
   chunkStepsByUserTask,
+  chunkStepsForCompanionExtract,
   stepRecordToStep
 } from '../messages'
+import type { AgentStep } from '@shared/types'
 
 const idByIndex = (i: number) => `t_${i}`
 
@@ -114,6 +116,28 @@ describe('messages.chunkStepsByUserTask', () => {
 
   it('空输入返回空数组', () => {
     expect(chunkStepsByUserTask([])).toEqual([])
+  })
+})
+
+describe('messages.chunkStepsForCompanionExtract', () => {
+  const step = (id: string, type: AgentStep['type']): AgentStep => ({ id, type, content: id, timestamp: 0 })
+  const ids = (chunks: AgentStep[][]) => chunks.map(c => c.map(s => s.id))
+
+  it('结束后的回执那一轮单独成段，它送出的那句话留在段内', () => {
+    const chunks = chunkStepsForCompanionExtract([
+      step('u1', 'user_task'), step('f1', 'final_result'),
+      step('r', 'task_receipt'), step('call', 'tool_call'), step('said', 'proactive_notice'), step('fr', 'final_result'),
+      step('n', 'proactive_notice'),
+      step('u2', 'user_task'),
+    ])
+    expect(ids(chunks)).toEqual([['u1', 'f1'], ['r', 'call', 'said', 'fr'], ['n'], ['u2']])
+  })
+
+  it('进行中的一轮里插进来的回执不另起段', () => {
+    const chunks = chunkStepsForCompanionExtract([
+      step('u1', 'user_task'), step('r', 'task_receipt'), step('f1', 'final_result'),
+    ])
+    expect(ids(chunks)).toEqual([['u1', 'r', 'f1']])
   })
 })
 

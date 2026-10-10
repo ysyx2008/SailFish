@@ -27,7 +27,8 @@ import { getUserSkillService, parseUserSkillId, toUserSkillId } from '../../user
 import { getSkillEnvMap, mapSkillEnvToDeclaredCase } from '../../credential.service'
 import { getSkill, isSystemManagedSkill } from '../skills/registry'
 import { BuiltinSkillEnablement } from '../skills/enablement'
-import { addProactiveContext } from '../proactive-store'
+import { appendProactiveContext } from '../proactive-store'
+import { deliverProactiveMessage } from '../proactive-deliver'
 import { getIMService } from '../../im/im.service'
 import { getConfigService } from '../../config.service'
 import { formatRemainingTime, formatTotalTime, truncateFromEnd } from './utils'
@@ -1216,135 +1217,42 @@ export async function messageUser(
     riskLevel: 'safe',
   })
 
-  const deliveredVia: string[] = []
-  const failedChannels: { platform: string; error: string }[] = []
   // 与 AgentService.COMPANION_AGENT_ID 保持一致（不直接 import 以避免循环依赖）
   const companionAgentId = '__companion__'
 
-  // 尝试通过 IM 渠道发送
-  try {
-    const imService = getIMService()
-    const lastContact = imService.getLastContact()
+  // 投递核心走共用管道（与任务事件回流同一通道）：IM + 应用内 + 系统通知 + 持久化。
+  // 联络自己调用时标记 fromCompanion——工具卡片已在联络会话中，应用内回投/历史另存
+  // 都会变成回声重复（运行结束后又冒出一条相同消息）。
+  const { deliveredVia, failedChannels, imError } = await deliverProactiveMessage(message, {
+    title,
+    historyService: executor.historyService,
+    fromCompanion: executor.agentId === companionAgentId,
+  })
 
-    if (lastContact) {
-      const result = await imService.sendNotification(message, {
-        markdown: !!title,
-        title,
-      })
-      if (result.failedPlatforms?.length) {
-        for (const f of result.failedPlatforms) {
-          failedChannels.push(f)
-        }
-      }
-      if (result.success) {
-        deliveredVia.push(result.platform || 'IM')
-        if (result.failedPlatforms?.length) {
-          const failedNames = result.failedPlatforms.map(f => f.platform).join(', ')
-          executor.addStep({
-            type: 'tool_result',
-            content: t('im.tool_im_fallback_success', { failed: failedNames, succeeded: result.platform! }),
-            toolName: 'talk_to_user',
-            toolResult: result.failedPlatforms.map(f => `${f.platform}: ${f.error}`).join('; ')
-          })
-        }
-      } else if (result.error) {
-        const failedInfo = result.failedPlatforms?.map(f => `${f.platform}: ${f.error}`).join('; ') || result.error
-        executor.addStep({
-          type: 'tool_result',
-          content: t('im.tool_im_delivery_failed', { platform: result.failedPlatforms?.map(f => f.platform).join(', ') || 'IM', error: result.error }),
-          toolName: 'talk_to_user',
-          toolResult: failedInfo
-        })
-      }
-    }
-  } catch (e) {
-    log.debug('messageUser: IM delivery unavailable:', e)
-  }
-
-  // 应用内：发送待展示消息（不创建标签页，用户点击通知后才展开）
-  let windowFocused = false
-  try {
-    const electron = require('electron')
-    const windows = electron.BrowserWindow?.getAllWindows?.()
-    if (windows?.length > 0) {
-      const mainWindow = windows[0]
-      if (!mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('watch:proactive-message', {
-          agentId: companionAgentId,
-          message,
-          watchName: title || ''
-        })
-        deliveredVia.push('app')
-        windowFocused = mainWindow.isFocused()
-      }
-    }
-  } catch (e) {
-    log.debug('messageUser: app delivery failed:', e)
-  }
-
-  // 窗口不存在或没有焦点时，发系统通知；点击通知时激活应用并展开对话
-  if (!windowFocused) {
-    try {
-      const electron = require('electron')
-      const { Notification } = electron
-      if (Notification.isSupported()) {
-        const notification = new Notification({
-          title: title || 'SailFish',
-          body: message.length > 200 ? message.substring(0, 200) + '...' : message
-        })
-        notification.on('click', () => {
-          const windows = electron.BrowserWindow?.getAllWindows?.()
-          if (windows?.length > 0) {
-            const win = windows[0]
-            if (!win.isDestroyed()) {
-              win.show()
-              win.focus()
-              if (process.platform === 'win32') {
-                win.webContents.focus()
-              }
-              win.webContents.send('watch:activate-message', { agentId: companionAgentId })
-            }
-          }
-        })
-        notification.show()
-      }
-    } catch (e) {
-      log.debug('messageUser: system notification failed:', e)
-    }
+  // IM 部分失败 / 整体失败的步骤反馈
+  const imSucceededPlatform = deliveredVia.find(v => v !== 'app')
+  if (imSucceededPlatform && failedChannels.length > 0) {
+    const failedNames = failedChannels.map(f => f.platform).join(', ')
+    executor.addStep({
+      type: 'tool_result',
+      content: t('im.tool_im_fallback_success', { failed: failedNames, succeeded: imSucceededPlatform }),
+      toolName: 'talk_to_user',
+      toolResult: failedChannels.map(f => `${f.platform}: ${f.error}`).join('; ')
+    })
+  } else if (!imSucceededPlatform && imError) {
+    executor.addStep({
+      type: 'tool_result',
+      content: t('im.tool_im_delivery_failed', { platform: failedChannels.map(f => f.platform).join(', ') || 'IM', error: imError }),
+      toolName: 'talk_to_user',
+      toolResult: imError
+    })
   }
 
   if (deliveredVia.length > 0) {
-    addProactiveContext(companionAgentId, message, title)
-
-    // 将主动消息持久化到 __companion__ 历史：重启后 restoreCompanionHistoryIfNeeded
-    // 从 history.getRecentByAgentKey('__companion__') 恢复时才能看到这条消息。
-    // 不依赖 companion Agent 是否正在运行，直接写一条最小 AgentRecord。
-    if (executor.historyService) {
-      try {
-        const ts = Date.now()
-        const uid = `proactive-${ts}-${Math.random().toString(36).slice(2, 8)}`
-        executor.historyService.saveAgentRecord({
-          id: `${uid}-session`,
-          timestamp: ts,
-          terminalId: '',
-          agentKey: companionAgentId,
-          terminalType: 'assistant',
-          userTask: '__proactive__',
-          steps: [
-            { id: `${uid}-notice`, type: 'proactive_notice', content: message, timestamp: ts },
-          ],
-          finalResult: message,
-          duration: 0,
-          status: 'completed',
-        })
-        // 失效 Watch 10s 联络上下文缓存，否则连触发（里程碑 + 上线）会重复 talk_to_user
-        try {
-          const { getWatchService } = require('../../watch/watch.service')
-          getWatchService().invalidateCompanionContextCache()
-        } catch { /* watch 未初始化时跳过 */ }
-      } catch (e) {
-        log.debug('messageUser: 保存主动消息历史失败:', e)
-      }
+    // 追加语义：不得覆盖任务监督挂起的确认上下文（B1——并发下 SET 会丢 toolCallId）。
+    // 联络自己发的消息不暂存——内容已在联络自身会话上下文里，再暂存会在用户回复时重复注入。
+    if (executor.agentId !== companionAgentId) {
+      appendProactiveContext(companionAgentId, message, title)
     }
 
     const channels = deliveredVia.join(', ')
@@ -1365,6 +1273,10 @@ export async function messageUser(
       toolName: 'talk_to_user',
       toolResult: displayContent,
     })
+    // 闲着时收到任务回执另起的那一轮：送到用户手里的这句记成对他说的话，界面照主动消息画
+    if (executor.inReceiptTurn) {
+      executor.addStep({ type: 'proactive_notice', content: displayContent })
+    }
     return { success: true, output }
   } else {
     const failedInfo = failedChannels.length > 0

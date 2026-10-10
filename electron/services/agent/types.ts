@@ -22,13 +22,14 @@ export type {
   TokenUsage,
   CommandRiskPolicy,
   AgentPaneInfo,
+  AgentRunSessionInfo,
 } from '@shared/types'
 
 // 本文件内部也要用（AgentRun.context），故单独 import 一份
 import type { AgentContext } from '@shared/types'
 export type { AgentContext }
 
-import type { ExecutionMode, PendingConfirmation, PendingSecureInput, AgentStep, AgentContextBar, AgentPlan, AttachmentInfo, TokenUsage, CommandRiskPolicy, PendingUserHandoff } from '@shared/types'
+import type { ExecutionMode, PendingConfirmation, PendingSecureInput, AgentStep, AgentContextBar, AgentPlan, AttachmentInfo, TokenUsage, CommandRiskPolicy, PendingUserHandoff, AgentRunSessionInfo } from '@shared/types'
 
 // Agent 配置
 export interface AgentConfig {
@@ -131,6 +132,8 @@ export interface PendingUserMessage {
   silent?: boolean
   /** 后台命令结束的通知：给模型看，不上墙，也不要在收场时当成用户的下一句排进队列 */
   backgroundNotice?: boolean
+  /** 派出去的任务交回的回执：上墙为回执步骤；这一轮没来得及收，收场后另起一轮送回 */
+  taskReceipt?: boolean
   /** 这条已经用来结束过一次等待。消息仍要交给模型，不能再结束下一次等待。 */
   consumedAsReply?: boolean
 }
@@ -211,6 +214,10 @@ export interface AgentRun {
   hostOperations?: Map<string, string>
   /** 这场不是用户开口，是把后台结果送回来。不上用户气泡，也不当新的一轮标题。 */
   internalNotice?: boolean
+  /** 送回来的是任务回执：开头写一条回执步骤 */
+  noticeKind?: 'task_receipt'
+  /** 这一轮是联络开的头（经任务管理新建或再交代）。没有 = 用户开的头 */
+  ledBy?: 'companion'
   /**
    * 工具执行期间记录 toolCallId → tool_call 步骤 ID 的映射。
    * 工具结束后，Agent 使用它反向把 ToolResult.success 回填到 tool_call 步骤上，
@@ -261,8 +268,8 @@ export interface HostProfileServiceInterface {
 // Agent 事件回调
 export interface AgentCallbacks {
   onStep?: (agentId: string, step: AgentStep) => void
-  /** run 开始（user_task 步骤已发出后），供 IM/WebChat 等外部入口同步桌面 tab 的 isRunning */
-  onStart?: (agentId: string, userTask: string) => void
+  /** run 开始（user_task 步骤已发出后），供各界面同步 isRunning；session 是这一轮所在的会话（新会话由后端起号） */
+  onStart?: (agentId: string, userTask: string, session?: AgentRunSessionInfo) => void
   onStepRemoved?: (agentId: string, stepId: string) => void
   /** 会话级上下文栏快照（与 step 解耦；token/cache/拟用模型） */
   onContextBar?: (agentId: string, contextBar: AgentContextBar) => void
@@ -387,6 +394,11 @@ export interface AgentServices {
   /** 会话生命周期 / kind 策略接缝（按 kind 决策回种、会话查询委托）。随 historyService 装配。 */
   conversationManager?: import('../conversation').ConversationManager
   pluginRegistry?: import('../plugin/registry').PluginRegistry
+  /**
+   * 任务监督门面（联络任务管理：事件回流联络线 + manage_tasks 工具支撑）。
+   * AgentService 构造时注入；基类仅依赖其接口，不关心具体实现。
+   */
+  taskSupervisor?: import('./task-supervisor').TaskSupervisor
 }
 
 /**
@@ -403,6 +415,10 @@ export interface RunOptions {
   cwdResolver?: () => Promise<string>
   /** 不是用户开口：不上用户气泡，结果送回后接着说 */
   internalNotice?: boolean
+  /** 送回来的是任务回执 */
+  noticeKind?: 'task_receipt'
+  /** 这一轮是联络开的头。补进正在跑的那一轮时不起作用 */
+  ledBy?: 'companion'
 }
 
 /**

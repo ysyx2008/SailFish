@@ -260,7 +260,7 @@ export interface UserSkill {
 }
 
 // Agent 相关类型（从共享类型导入）
-import type { ExecutionMode, RemoteChannel, AgentStep, PendingConfirmation, IMProcessMode, AgentContext } from '@shared/types'
+import type { ExecutionMode, RemoteChannel, AgentStep, PendingConfirmation, IMProcessMode, AgentContext, AgentRunningEvent } from '@shared/types'
 export type { ExecutionMode, RemoteChannel, RiskLevel, AgentStep, PendingConfirmation, IMProcessMode, AgentContext } from '@shared/types'
 
 export interface AgentConfig {
@@ -929,23 +929,28 @@ const electronAPI = {
 
   // Agent 操作
   agent: {
-    // 运行 Agent
-    run: (
-      ptyId: string,
-      message: string,
-      context: AgentContext,
-      config?: AgentConfig,
+    // 往一场对话里说一句：正在跑就补进这一轮，否则开新一轮（由那场对话决定，返回实际发生了哪种）
+    say: (params: {
+      agentKey: string
+      surface: 'assistant' | 'terminal'
+      message: string
+      context: AgentContext
+      config?: Partial<AgentConfig>
       profileId?: string
-    ) => ipcRenderer.invoke('agent:run', { ptyId, message, context, config, profileId }) as Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>,
+    }) => ipcRenderer.invoke('agent:say', params) as Promise<import('@shared/types').SayResult>,
 
-    // 运行独立助手 Agent（无终端绑定）
-    runStandalone: (
-      agentId: string,
-      message: string,
-      context: AgentContext,
-      config?: AgentConfig,
-      profileId?: string
-    ) => ipcRenderer.invoke('agent:runStandalone', { agentId, message, context, config, profileId }) as Promise<{ success: boolean; result?: string; error?: string; aborted?: boolean }>,
+    // 后台助手会话快照：联络交办的任务 tab 未激活期间 AiPanel 未挂载（agent:step 无人接收），
+    // 用户从侧栏打开 tab 时由此回填步骤 / 运行态 / 会话 ID（保证续聊同一条 session）
+    getSessionSnapshot: (agentId: string) => ipcRenderer.invoke('agent:getSessionSnapshot', agentId) as Promise<{
+      steps: AgentStep[]
+      isRunning: boolean
+      sessionId?: string
+      approval?: import('@shared/types').ApprovalMode
+    } | null>,
+
+    // 改眼前这场对话的审批方式（只改这一场；实例不在时先记着，开跑时交给会话）
+    setApproval: (agentKey: string, approval: import('@shared/types').ApprovalMode, surface: 'assistant' | 'terminal') =>
+      ipcRenderer.invoke('agent:setApproval', agentKey, approval, surface) as Promise<boolean>,
 
     // 中止 Agent（使用 ptyId 或 agentId）
     abort: (ptyId: string) => ipcRenderer.invoke('agent:abort', ptyId) as Promise<boolean>,
@@ -1063,6 +1068,8 @@ const electronAPI = {
     /** 终端重连后同步运行中 Agent 的默认操作 ptyId（agentKey=tabId） */
     remapPtyId: (agentKey: string, oldPtyId: string, newPtyId: string) =>
       ipcRenderer.invoke('agent:remapPtyId', agentKey, oldPtyId, newPtyId) as Promise<boolean>,
+    adoptPane: (agentKey: string, ptyId: string) =>
+      ipcRenderer.invoke('agent:adoptPane', agentKey, ptyId) as Promise<boolean>,
 
     // 更新 Agent 配置（如执行模式、超时时间、模型配置，使用 ptyId）
     updateConfig: (ptyId: string, config: { executionMode?: ExecutionMode; commandTimeout?: number; profileId?: string }) =>
@@ -1099,8 +1106,8 @@ const electronAPI = {
     },
 
     // 监听 Agent 开始运行（IM/WebChat 等外部入口触发时同步桌面 tab isRunning）
-    onRunning: (callback: (data: { agentId: string; ptyId?: string; userTask: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { agentId: string; ptyId?: string; userTask: string }) => callback(data)
+    onRunning: (callback: (data: AgentRunningEvent) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: AgentRunningEvent) => callback(data)
       ipcRenderer.on('agent:running', handler)
       return () => {
         ipcRenderer.removeListener('agent:running', handler)
@@ -1466,9 +1473,6 @@ const electronAPI = {
       }>,
 
     /** 任务侧栏短标题：首条消息后异步生成，失败返回 null */
-    generateConversationTitle: (sessionId: string, userMessage: string, profileId?: string) =>
-      ipcRenderer.invoke('history:generateConversationTitle', sessionId, userMessage, profileId) as Promise<string | null>,
-
     /** 设置会话展示标题（写入会话记录，非 config overlay） */
     setConversationTitle: (sessionId: string, title: string, options?: { locked?: boolean }) =>
       ipcRenderer.invoke('history:setConversationTitle', sessionId, title, options) as Promise<boolean>,
@@ -3542,12 +3546,17 @@ const electronAPI = {
       ipcRenderer.on('watch:ensureTab', handler)
       return () => { ipcRenderer.removeListener('watch:ensureTab', handler) }
     },
-    onProactiveMessage: (callback: (data: { agentId: string; message: string; watchName: string }) => void) => {
+    onProactiveMessage: (callback: (data: { agentId: string; message: string; watchName: string; mirrorOnly?: boolean }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
         if (data && typeof data === 'object') {
-          const { agentId, message, watchName } = data as Record<string, unknown>
+          const { agentId, message, watchName, mirrorOnly } = data as Record<string, unknown>
           if (typeof agentId === 'string' && typeof message === 'string') {
-            callback({ agentId, message, watchName: typeof watchName === 'string' ? watchName : '' })
+            callback({
+              agentId,
+              message,
+              watchName: typeof watchName === 'string' ? watchName : '',
+              ...(mirrorOnly === true ? { mirrorOnly: true } : {})
+            })
           }
         }
       }

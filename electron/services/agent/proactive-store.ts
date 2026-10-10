@@ -27,6 +27,26 @@ export function addProactiveContext(agentId: string, message: string, title?: st
 }
 
 /**
+ * 追加主动消息上下文（不覆盖未过期的既有内容）。
+ *
+ * 任务事件回流（TaskSupervisor）使用：多个任务事件在短窗口内连续到达时，
+ * 覆盖语义会让后到的完成通知冲掉先到的待确认上下文，导致用户回复"批准"时
+ * 联络丢失 toolCallId。追加语义保证暂存的是"全部待办事项"的聚合。
+ */
+export function appendProactiveContext(agentId: string, message: string, title?: string): void {
+  const existing = store.get(agentId)
+  if (existing && Date.now() - existing.timestamp <= MAX_AGE_MS) {
+    store.set(agentId, {
+      message: `${existing.message}\n${message}`,
+      title: title ?? existing.title,
+      timestamp: Date.now()
+    })
+  } else {
+    store.set(agentId, { message, title, timestamp: Date.now() })
+  }
+}
+
+/**
  * 消费并清除主动消息上下文（一次性读取）
  * 返回格式化后的上下文字符串，过期则返回 undefined
  */

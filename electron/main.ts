@@ -11,8 +11,8 @@ import { getDefaultShell } from './utils/platform'
 import { requestLocalNetworkAccess } from './utils/local-network-permission'
 import { isAbortError } from './utils/abort'
 import { createTerminalDataCoalescer } from './utils/terminal-data-coalescer'
-import type { AttachmentInfo, DocumentParseProgress, UiThemeMode, UiThemeName, WebSearchSettings, IMProcessMode } from '@shared/types'
-import { clampUiZoomFactor, stepUiZoomFactor, UI_ZOOM_DEFAULT } from '@shared/types'
+import type { AttachmentInfo, DocumentParseProgress, UiThemeMode, UiThemeName, WebSearchSettings, IMProcessMode, SayResult } from '@shared/types'
+import { clampUiZoomFactor, isApprovalMode, stepUiZoomFactor, UI_ZOOM_DEFAULT } from '@shared/types'
 import { getAppTitle as buildAppTitle, getBrandName } from '@shared/brand'
 import { isOemFeatureEnabled } from '@shared/oem-features'
 import { startCrashReporter, initCrashDiagnostics, recordMainProcessError, getCrashRecorder, markCleanExit } from './services/diagnostics/collector'
@@ -378,7 +378,7 @@ import { initLogging, setLogLevel as setBackendLogLevel, getLogDir, createLogger
 import { serializeAgentStepForIpc } from './utils/agent-step-ipc'
 import { toSafeErrorMessage } from './utils/safe-error-message'
 import { XshellImportService } from './services/xshell-import.service'
-import type { AgentStep, AgentContext, PendingUserHandoff } from './services/agent/types'
+import type { AgentStep, AgentContext, AgentCallbacks, PendingUserHandoff } from './services/agent/types'
 import type { PendingConfirmation, ExecutionMode } from './services/agent/types'
 import type { OrchestratorConfig } from './services/agent/orchestrator-types'
 import { HistoryService, AgentRecord } from './services/history.service'
@@ -759,6 +759,10 @@ function agentRuntimeDeps(): AgentRuntimeDeps {
     historyService,
     pluginRegistry,
     appStartTime: APP_START_TIME,
+    uiCallbacksFor: (agentKey) =>
+      mainWindow && !mainWindow.isDestroyed()
+        ? createRendererAgentCallbacks(mainWindow.webContents, agentKey)
+        : undefined,
   }
 }
 
@@ -4161,140 +4165,128 @@ function buildConfirmNotifBody(
   return toolName
 }
 
-// 运行 Agent
-ipcMain.handle('agent:run', async (event, { ptyId, message, context, config, profileId }: {
-  ptyId: string  // 实际语义为 agentKey（终端 Agent = tabId）；字段名保留以兼容现有 IPC 协议。
-  message: string
-  context: AgentContext
-  config?: object
-  profileId?: string
-}) => {
-  await ensureSkillsChangedBridge()
-  // 从持久化配置读取 debugMode，合并到运行时配置
-  const debugMode = configService.getAgentDebugMode()
-  const fullConfig = { ...config, debugMode }
+/** 远程 Web 会话那场的镜像：桌面上跑的同时把过程推给 Web 端 */
+interface RemoteRunMirror {
+  onAgentStep(step: AgentStep): void
+  onAgentComplete(result: string): void
+  onAgentError(error: string): void
+}
 
-  // 创建回调函数，将 Agent 事件转发到渲染进程
-  // 使用 JSON.parse(JSON.stringify()) 确保对象可序列化
-  // 回调中的 ptyId 字段实际上是 agentKey（tabId），前端用它路由事件到对应 tab
-  // 注意：回调作为参数传入 run()，每个 run 独立，解决多终端并发时回调覆盖问题
-  const callbacks = {
-    onStep: (agentId: string, step: AgentStep) => {
-      if (!event.sender.isDestroyed()) {
-        const serializedStep = serializeAgentStepForIpc(step)
-        if (serializedStep) {
-          event.sender.send('agent:step', { agentId, ptyId, step: serializedStep })
-        }
-      }
+/**
+ * 把一轮 Agent 的事件转发到发起它的渲染进程（每轮独立，多场并发不互相覆盖）。
+ * agentId / ptyId 都填这场对话的 agentKey，前端按它路由到对应 tab；对象经 JSON 往返保证可序列化。
+ */
+function createRendererAgentCallbacks(
+  sender: Electron.WebContents,
+  agentKey: string,
+  mirror?: RemoteRunMirror
+): AgentCallbacks {
+  const send = (channel: string, payload: Record<string, unknown>) => {
+    if (!sender.isDestroyed()) sender.send(channel, { agentId: agentKey, ptyId: agentKey, ...payload })
+  }
+  return {
+    onStep: (_runId: string, step: AgentStep) => {
+      const serializedStep = serializeAgentStepForIpc(step)
+      if (serializedStep) send('agent:step', { step: serializedStep })
+      mirror?.onAgentStep(step)
     },
-    onStart: (_agentId: string, userTask: string) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:running', { agentId: ptyId, ptyId, userTask })
-      }
+    onStart: (_runId, userTask, session) => {
+      send('agent:running', { userTask, ...session })
     },
-    onStepRemoved: (agentId: string, stepId: string) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:stepRemoved', { agentId, ptyId, stepId })
-      }
+    onStepRemoved: (_runId: string, stepId: string) => {
+      send('agent:stepRemoved', { stepId })
     },
-    onContextBar: (agentId: string, contextBar: import('@shared/types').AgentContextBar) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:contextBar', {
-          agentId,
-          ptyId,
-          contextBar: JSON.parse(JSON.stringify(contextBar)),
-        })
-      }
+    onContextBar: (_runId: string, contextBar: import('@shared/types').AgentContextBar) => {
+      send('agent:contextBar', { contextBar: JSON.parse(JSON.stringify(contextBar)) })
     },
-    onModelFailover: (agentId: string, notice: import('./services/ai.service').AiModelFailoverNotice) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:modelFailover', {
-          agentId,
-          ptyId,
-          notice: JSON.parse(JSON.stringify(notice)),
-        })
-      }
+    onModelFailover: (_runId: string, notice: import('./services/ai.service').AiModelFailoverNotice) => {
+      send('agent:modelFailover', { notice: JSON.parse(JSON.stringify(notice)) })
     },
     onNeedConfirm: (confirmation: PendingConfirmation) => {
-      if (!event.sender.isDestroyed()) {
-        // 只发送可序列化的字段，不包含 resolve 函数
-        // agentId 用 tab agentKey（ptyId），便于前端多 tab 精确路由；勿用 confirmation.agentId（run.id）
-        event.sender.send('agent:needConfirm', {
-          agentId: ptyId,
-          ptyId,
-          toolCallId: confirmation.toolCallId,
-          toolName: confirmation.toolName,
-          toolArgs: JSON.parse(JSON.stringify(confirmation.toolArgs)),
-          riskLevel: confirmation.riskLevel,
-          displayName: confirmation.displayName,
-          reasons: confirmation.reasons
-        })
-      }
+      // 只发送可序列化的字段，不包含 resolve 函数
+      send('agent:needConfirm', {
+        toolCallId: confirmation.toolCallId,
+        toolName: confirmation.toolName,
+        toolArgs: JSON.parse(JSON.stringify(confirmation.toolArgs)),
+        riskLevel: confirmation.riskLevel,
+        displayName: confirmation.displayName,
+        reasons: confirmation.reasons
+      })
       // 任务栏/Dock 提醒 + 系统通知（仅在窗口不在前台时触发）
-      const riskEmoji1 = confirmation.riskLevel === 'dangerous' ? '⚠️ ' : ''
+      const riskEmoji = confirmation.riskLevel === 'dangerous' ? '⚠️ ' : ''
       attentionService.request({
-        title: `${riskEmoji1}${t('notification.confirmRequired', { appName: getAppName() })}`,
+        title: `${riskEmoji}${t('notification.confirmRequired', { appName: getAppName() })}`,
         body: buildConfirmNotifBody(confirmation.toolName, confirmation.toolArgs, confirmation.displayName)
       })
     },
     onConfirmDismissed: () => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:confirmResolved', { agentId: ptyId, ptyId })
-      }
+      send('agent:confirmResolved', {})
     },
     onNeedSecureInput: (request: import('./services/agent/types').PendingSecureInputInternal) => {
-      if (!event.sender.isDestroyed()) {
-        // 只发送可序列化的字段，不包含 resolve 函数
-        event.sender.send('agent:needSecureInput', {
-          agentId: request.agentId,
-          ptyId,
-          requestId: request.requestId,
-          skillId: request.skillId,
-          envName: request.envName,
-          prompt: request.prompt,
-          isUpdate: request.isUpdate
-        })
-      }
+      send('agent:needSecureInput', {
+        requestId: request.requestId,
+        skillId: request.skillId,
+        envName: request.envName,
+        prompt: request.prompt,
+        isUpdate: request.isUpdate
+      })
       attentionService.request({
         title: t('notification.apiKeyRequired', { appName: getAppName() }),
         body: t('notification.skillEnvBody', { envName: request.envName })
       })
     },
-    onComplete: (agentId: string, result: string, pendingUserMessages?: Array<string | PendingUserHandoff>, extra?: { aborted?: boolean }) => {
+    onComplete: (_runId: string, result: string, pendingUserMessages?: Array<string | PendingUserHandoff>, extra?: { aborted?: boolean }) => {
       const newBondMilestones = sensorService?.appLifecycle.notifyConversationCompleted()
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:complete', {
-          agentId,
-          ptyId,
-          result,
-          pendingUserMessages,
-          aborted: extra?.aborted === true,
-          newBondMilestones,
-          bondMetrics: bondService.calculate(),
-        })
-      }
-      attentionService.request()
+      send('agent:complete', {
+        result,
+        pendingUserMessages,
+        aborted: extra?.aborted === true,
+        newBondMilestones,
+        bondMetrics: bondService.calculate(),
+      })
+      mirror?.onAgentComplete(result)
+      // 远程会话由 Web 端用户在用，桌面用户没参与，不应打扰
+      if (!mirror) attentionService.request()
     },
-    onError: (agentId: string, error: string, extra?: { aborted?: boolean }) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:error', { agentId, ptyId, error: toSafeErrorMessage(error), aborted: extra?.aborted === true })
-      }
-      attentionService.request()
+    onError: (_runId: string, error: string, extra?: { aborted?: boolean }) => {
+      const safe = toSafeErrorMessage(error)
+      send('agent:error', { error: safe, aborted: extra?.aborted === true })
+      mirror?.onAgentError(safe)
+      if (!mirror) attentionService.request()
     }
   }
+}
+
+// 往一场对话里说一句：正在跑就补进这一轮，否则开新一轮——由那场对话自己决定，界面按返回结果显示
+ipcMain.handle('agent:say', async (event, { agentKey, surface, message, context, config, profileId }: {
+  /** 终端形态 = tabId；助手形态 = 前端的 agentId */
+  agentKey: string
+  surface: 'assistant' | 'terminal'
+  message: string
+  context: AgentContext
+  config?: Partial<import('./services/agent/types').AgentConfig>
+  profileId?: string
+}): Promise<SayResult> => {
+  await ensureSkillsChangedBridge()
+  const fullConfig = { ...config, debugMode: configService.getAgentDebugMode() }
+  const { agentService } = await rt()
+  let mirror: RemoteRunMirror | undefined
+  if (surface === 'assistant') {
+    const { webChat } = await ensureRemoteSessionStack()
+    if (agentKey === webChat.getAgentId()) mirror = webChat
+  }
+  const callbacks = createRendererAgentCallbacks(event.sender, agentKey, mirror)
 
   try {
-    const { agentService } = await rt()
-    const result = await agentService.run(ptyId, message, context, fullConfig, profileId, undefined, callbacks)
-    return { success: true, result }
+    const said = await agentService.say(agentKey, message, context, { surface, config: fullConfig, profileId, callbacks })
+    return said.outcome === 'supplemented'
+      ? { success: true, outcome: 'supplemented' }
+      : { success: true, outcome: 'ran', result: said.result }
   } catch (error) {
     const raw = error instanceof Error ? error.message : 'Unknown error'
-    const isAborted = raw === 'User aborted Agent execution'
-    return { 
-      success: false, 
-      error: toSafeErrorMessage(raw),
-      aborted: isAborted
-    }
+    const safe = toSafeErrorMessage(raw)
+    mirror?.onAgentError(safe)
+    return { success: false, error: safe, aborted: raw === 'User aborted Agent execution' }
   }
 })
 
@@ -4517,150 +4509,41 @@ ipcMain.handle('agent:remapPtyId', async (_event, agentKey: string, oldPtyId: st
   return agentService.remapPtyId(agentKey, oldPtyId, newPtyId)
 })
 
+ipcMain.handle('agent:adoptPane', async (_event, agentKey: string, ptyId: string) => {
+  const { agentService } = await rt()
+  return agentService.adoptPane(agentKey, ptyId)
+})
+
 ipcMain.handle('agent:addMessage', async (_event, ptyId: string, message: string, attachments?: AttachmentInfo[], documentContext?: string, images?: string[], workbenchContext?: import('@shared/types').WorkbenchContext, silent?: boolean) => {
   const { agentService } = await rt()
   return agentService.addUserMessage(ptyId, message, attachments, documentContext, images, workbenchContext, silent)
 })
 
-// 运行独立助手 Agent（无终端绑定）
-// 注意：事件中使用前端传入的 agentId（如 assistant-<uuid>），而非后端 run.id，
-// 因为独立助手没有 ptyId，前端依赖 agentId 匹配事件到正确的标签页。
-ipcMain.handle('agent:runStandalone', async (event, { agentId, message, context, config, profileId }: {
-  agentId: string
-  message: string
-  context: AgentContext
-  config?: object
-  profileId?: string
-}) => {
-  await ensureSkillsChangedBridge()
-  const debugMode = configService.getAgentDebugMode()
-  const fullConfig = { ...config, debugMode }
-
+// 后台助手会话快照：联络交办的任务 tab 以 activate:false 创建、AiPanel 未挂载期间
+// agent:step 事件无人接收；用户从「最近对话」侧栏打开 tab 时，前端由此回填
+// 步骤 / 运行态 / 会话 ID（续聊必须带 sessionId，否则后端会另开 session 断链）。
+ipcMain.handle('agent:getSessionSnapshot', async (_event, agentId: string) => {
   const { agentService } = await rt()
-  const { webChat: wcs } = await ensureRemoteSessionStack()
-  const isRemote = agentId === wcs.getAgentId()
-
-  const callbacks = {
-    onStep: (_runId: string, step: AgentStep) => {
-      if (!event.sender.isDestroyed()) {
-        const serializedStep = serializeAgentStepForIpc(step)
-        if (serializedStep) {
-          event.sender.send('agent:step', { agentId, ptyId: agentId, step: serializedStep })
-        }
-      }
-      if (isRemote) wcs.onAgentStep(step)
-    },
-    onStart: (_runId: string, userTask: string) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:running', { agentId, ptyId: agentId, userTask })
-      }
-    },
-    onStepRemoved: (_runId: string, stepId: string) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:stepRemoved', { agentId, ptyId: agentId, stepId })
-      }
-    },
-    onContextBar: (_runId: string, contextBar: import('@shared/types').AgentContextBar) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:contextBar', {
-          agentId,
-          ptyId: agentId,
-          contextBar: JSON.parse(JSON.stringify(contextBar)),
-        })
-      }
-    },
-    onModelFailover: (_runId: string, notice: import('./services/ai.service').AiModelFailoverNotice) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:modelFailover', {
-          agentId,
-          ptyId: agentId,
-          notice: JSON.parse(JSON.stringify(notice)),
-        })
-      }
-    },
-    onNeedConfirm: (confirmation: PendingConfirmation) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:needConfirm', {
-          agentId,
-          ptyId: agentId,
-          toolCallId: confirmation.toolCallId,
-          toolName: confirmation.toolName,
-          toolArgs: JSON.parse(JSON.stringify(confirmation.toolArgs)),
-          riskLevel: confirmation.riskLevel,
-          displayName: confirmation.displayName,
-          reasons: confirmation.reasons
-        })
-      }
-      // 任务栏/Dock 提醒 + 系统通知（仅在窗口不在前台时触发）
-      const riskEmoji2 = confirmation.riskLevel === 'dangerous' ? '⚠️ ' : ''
-      attentionService.request({
-        title: `${riskEmoji2}${t('notification.confirmRequired', { appName: getAppName() })}`,
-        body: buildConfirmNotifBody(confirmation.toolName, confirmation.toolArgs, confirmation.displayName)
-      })
-    },
-    onConfirmDismissed: () => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:confirmResolved', { agentId, ptyId: agentId })
-      }
-    },
-    onNeedSecureInput: (request: import('./services/agent/types').PendingSecureInputInternal) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:needSecureInput', {
-          agentId,
-          ptyId: agentId,
-          requestId: request.requestId,
-          skillId: request.skillId,
-          envName: request.envName,
-          prompt: request.prompt,
-          isUpdate: request.isUpdate
-        })
-      }
-      attentionService.request({
-        title: t('notification.apiKeyRequired', { appName: getAppName() }),
-        body: t('notification.skillEnvBody', { envName: request.envName })
-      })
-    },
-    onComplete: (_runId: string, result: string, pendingUserMessages?: Array<string | PendingUserHandoff>, extra?: { aborted?: boolean }) => {
-      const newBondMilestones = sensorService?.appLifecycle.notifyConversationCompleted()
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:complete', {
-          agentId,
-          ptyId: agentId,
-          result,
-          pendingUserMessages,
-          aborted: extra?.aborted === true,
-          newBondMilestones,
-          bondMetrics: bondService.calculate(),
-        })
-      }
-      if (isRemote) wcs.onAgentComplete(result)
-      // 远程会话由 Web 端用户在用，桌面用户没参与，不应打扰
-      if (!isRemote) attentionService.request()
-    },
-    onError: (_runId: string, error: string, extra?: { aborted?: boolean }) => {
-      const safe = toSafeErrorMessage(error)
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('agent:error', { agentId, ptyId: agentId, error: safe, aborted: extra?.aborted === true })
-      }
-      if (isRemote) wcs.onAgentError(safe)
-      if (!isRemote) attentionService.request()
-    }
+  const agent = agentService.getAgent(agentId)
+  if (!agent) return null
+  const steps = agent.getSessionStepsSnapshot()
+    .map(step => serializeAgentStepForIpc(step))
+    .filter((s): s is NonNullable<typeof s> => !!s)
+  const status = agent.getRunStatus()
+  return {
+    steps,
+    isRunning: status?.isRunning ?? false,
+    sessionId: agent.getSessionId(),
+    approval: agent.getApproval()
   }
+})
 
-  try {
-    const result = await agentService.runAssistant(agentId, message, context, fullConfig, profileId, callbacks)
-    return { success: true, result }
-  } catch (error) {
-    const raw = error instanceof Error ? error.message : 'Unknown error'
-    const isAborted = raw === 'User aborted Agent execution'
-    const safe = toSafeErrorMessage(raw)
-    if (isRemote) wcs.onAgentError(safe)
-    return {
-      success: false,
-      error: safe,
-      aborted: isAborted
-    }
-  }
+/** 界面下拉框改眼前这场的审批方式（只改这一场） */
+ipcMain.handle('agent:setApproval', async (_event, agentKey: string, approval: unknown, surface: 'assistant' | 'terminal') => {
+  if (!agentKey || !isApprovalMode(approval)) return false
+  const { agentService } = await rt()
+  agentService.setApproval(agentKey, approval, surface === 'assistant' ? 'assistant' : 'terminal')
+  return true
 })
 
 // ==================== Gateway 远程访问 ====================
@@ -5175,19 +5058,6 @@ ipcMain.handle(
     const exported = await exportJsonlLineToFile(resolved, sourceLine, result.filePath)
     return { success: true, bytes: exported.bytes, path: result.filePath }
   },
-)
-
-/** 任务侧栏：用户首条消息后异步生成短标题（不阻塞 Agent） */
-ipcMain.handle(
-  'history:generateConversationTitle',
-  async (_event, sessionId: string, userMessage: string, profileId?: string) => {
-    const { generateConversationTitle } = await import('./services/conversation/title-generator')
-    const { agentService } = await rt()
-    return generateConversationTitle(
-      { aiService, configService, historyService, agentService },
-      { sessionId, userMessage, profileId }
-    )
-  }
 )
 
 /** 手动 / 程序设置会话展示标题（写入会话自身，非 config 旁路） */
