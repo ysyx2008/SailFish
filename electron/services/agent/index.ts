@@ -797,7 +797,8 @@ export class AgentService {
 
   /**
    * 联络派出去的活回来了：把回执交给联络自己。
-   * 另起一轮时用宿主给联络的界面回调，不沿用它上一轮留下的那套（可能是某个 IM 渠道的）。
+   * 另起一轮时过程推给宿主界面，不沿用上一轮留下的回调（可能是某个 IM 渠道的，会把过程直接发出去）；
+   * 环境接着联络上一轮的（渠道、会话），从没跑过才用本机助手兜底。
    */
   deliverCompanionReceipt(text: string): void {
     const companion = this.createAssistantAgent(COMPANION_AGENT_KEY)

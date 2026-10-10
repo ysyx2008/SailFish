@@ -57,9 +57,10 @@ export async function manageTasks(
       case 'create': {
         if (!title) return finish(fail(t('taskmgr.missing_param', { param: 'title' })), t('taskmgr.action.create'))
         if (!brief) return finish(fail(t('taskmgr.missing_param', { param: 'brief' })), t('taskmgr.action.create'))
-        const { agentKey } = await supervisor.createTask({ title, brief, fullAuto })
-        log.info(`联络创建任务: 「${title}」(${agentKey}, fullAuto=${fullAuto})`)
-        const mode = t(fullAuto ? 'taskmgr.mode_free' : 'taskmgr.mode_relaxed')
+        const created = await supervisor.createTask({ title, brief, fullAuto })
+        const agentKey = created.agentKey
+        log.info(`联络创建任务: 「${title}」(${agentKey}, fullAuto=${created.fullAuto})`)
+        const mode = t(created.fullAuto ? 'taskmgr.mode_free' : 'taskmgr.mode_relaxed')
         return finish(
           ok(t('taskmgr.created', { title, taskId: agentKey, mode })),
           t('taskmgr.action.create')

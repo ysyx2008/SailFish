@@ -447,6 +447,17 @@ describe('TaskSupervisor', () => {
 
       expect(host.prepareAssignedTask).toHaveBeenCalledWith(expect.stringMatching(/^assistant-/), '问个问题', 'autoReview')
     })
+
+    it('宿主整体全自动时，交办的任务也全自动', async () => {
+      const host = makeHost([])
+      const supervisor = new TaskSupervisor(host)
+      supervisor.setFullAutoForAssignedTasks(true)
+
+      const created = await supervisor.createTask({ title: '问个问题', brief: '简述项目结构' })
+
+      expect(created.fullAuto).toBe(true)
+      expect(host.prepareAssignedTask).toHaveBeenCalledWith(created.agentKey, '问个问题', 'free')
+    })
   })
 
   describe('flushPendingEvents', () => {

@@ -1394,6 +1394,8 @@ async function companionChat(args: string[]): Promise<void> {
 
   // 回执叫醒联络另起的一轮也用这套回调（与桌面推联络页同一个口子）
   agent.setUiCallbacksFactory((key: string) => key === COMPANION_AGENT_KEY ? callbacks : undefined)
+  const supervisor = agent.getTaskSupervisor()
+  supervisor.setFullAutoForAssignedTasks(mode === 'free')
   const companionContext = () => ({
     terminalOutput: [],
     systemInfo: { os: getLocalOS(), shell: getDefaultShell() },
@@ -1420,7 +1422,6 @@ async function companionChat(args: string[]): Promise<void> {
 
   // 任务值班：联络可能已通过 manage_tasks 创建或交代了任务，它们在后台跑。
   // 回执交给联络；联络对用户开过口就读一句回答送回联络。任务和联络都闲下来（或超时）才退出。
-  const supervisor = agent.getTaskSupervisor()
   const companion = agent.createAssistantAgent(COMPANION_AGENT_KEY)
   const deadline = Date.now() + taskWaitSec * 1000
   let announcedWait = false
@@ -1446,7 +1447,7 @@ async function companionChat(args: string[]): Promise<void> {
     } else {
       idleRounds = 0
     }
-    if (!announcedWait) {
+    if (!announcedWait && tasksBusy) {
       announcedWait = true
       console.log(`\n… 后台任务执行中，值班等待（上限 ${taskWaitSec}s，--task-wait 可调）`)
     }

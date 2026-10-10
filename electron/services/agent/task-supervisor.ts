@@ -136,9 +136,15 @@ export class TaskSupervisor {
   /** 已排成回执行、还在防抖窗口里的完成事件 */
   private finishBuffer: string[] = []
   private finishFlushTimer: NodeJS.Timeout | null = null
+  /** 宿主整体全自动（命令行 --free）：交办的任务也不问 */
+  private fullAutoAssigned = false
 
   constructor(host: TaskSupervisorHost) {
     this.host = host
+  }
+
+  setFullAutoForAssignedTasks(on: boolean): void {
+    this.fullAutoAssigned = on
   }
 
   // ==================== 查询 ====================
@@ -260,10 +266,11 @@ export class TaskSupervisor {
    * 创建任务（一期仅无终端助手形态）：新开一场助手对话，把简报作为第一句说进去。
    * 和用户在界面上新开一场是同一个入口；打开着的界面会把这场认领到侧栏。
    */
-  async createTask(opts: CreateTaskOptions): Promise<{ agentKey: string }> {
+  async createTask(opts: CreateTaskOptions): Promise<{ agentKey: string; fullAuto: boolean }> {
     const agentId = `assistant-${uuidv4()}`
+    const fullAuto = opts.fullAuto === true || this.fullAutoAssigned
     // 等于用户在那场里选：没说全自动就是替我审批；只管这一场，不改起步值
-    this.host.prepareAssignedTask(agentId, opts.title, opts.fullAuto ? 'free' : 'autoReview')
+    this.host.prepareAssignedTask(agentId, opts.title, fullAuto ? 'free' : 'autoReview')
     this.host.say(agentId, opts.brief, this.contextWithoutWindow('assistant'), {
       surface: 'assistant',
       config: this.runConfig(),
@@ -271,7 +278,7 @@ export class TaskSupervisor {
     }).catch(err => {
       log.error(`任务执行失败 (${agentId}):`, err)
     })
-    return { agentKey: agentId }
+    return { agentKey: agentId, fullAuto }
   }
 
   // ==================== 回执（Agent 基类挂钩调用） ====================

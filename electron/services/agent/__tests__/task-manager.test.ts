@@ -17,7 +17,7 @@ function makeSupervisor(overrides: Partial<TaskSupervisor> = {}): TaskSupervisor
   return {
     listSupervisedTasks: vi.fn().mockReturnValue([]),
     inspectTask: vi.fn().mockReturnValue(undefined),
-    createTask: vi.fn().mockResolvedValue({ agentKey: 'assistant-new' }),
+    createTask: vi.fn().mockResolvedValue({ agentKey: 'assistant-new', fullAuto: false }),
     confirmTask: vi.fn().mockReturnValue({ ok: true, title: '部署服务' }),
     stopTask: vi.fn().mockReturnValue({ ok: true, title: '长跑任务' }),
     instructTask: vi.fn().mockResolvedValue({ ok: true, title: '查日志', delivered: 'next' }),
