@@ -18,6 +18,7 @@ import { buildBrowserBridgePromptSection } from '../browser-bridge/prompt-sectio
 import { getBrowserBridgeService } from '../browser-bridge/browser-bridge.service'
 import { wrapCompositionSection } from './context-composition'
 import { t } from './i18n'
+import { formatRecalledConversations, type RecalledConversation } from '../knowledge/conversation-index'
 
 const log = createLogger('PromptBuilder')
 const IDENTITY_FILENAME = 'IDENTITY.md'
@@ -294,7 +295,7 @@ export interface BuildSystemPromptOptions {
   knowledgeContext?: string
   knowledgeEnabled?: boolean
   /** 从历史对话中语义检索的相关对话 */
-  conversationHistory?: Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }>
+  conversationHistory?: RecalledConversation[]
   /** L2 知识文档（结构化 Markdown，整份注入） */
   contextKnowledgeDoc?: string
   /** 用户自定义的 AI 规则 */
@@ -341,7 +342,7 @@ export class PromptBuilder {
   private readonly mbtiType?: AgentMbtiType
   private readonly knowledgeContext?: string
   private readonly knowledgeEnabled?: boolean
-  private readonly conversationHistory?: Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }>
+  private readonly conversationHistory?: RecalledConversation[]
   private readonly contextKnowledgeDoc?: string
   private readonly aiRules?: string
   private readonly agentName?: string
@@ -458,21 +459,6 @@ export class PromptBuilder {
   }
 
   // ==================== 静态方法（便捷访问） ====================
-
-  /**
-   * 格式化时间距离
-   */
-  static formatTimeAgo(timestamp: number): string {
-    const now = Date.now()
-    const ageMs = now - timestamp
-    const ageHours = ageMs / (1000 * 60 * 60)
-    const ageDays = ageHours / 24
-
-    if (ageHours < 1) return '刚刚'
-    if (ageHours < 24) return `${Math.floor(ageHours)}小时前`
-    if (ageDays < 30) return `${Math.floor(ageDays)}天前`
-    return `${Math.floor(ageDays / 30)}个月前`
-  }
 
   /**
    * 获取 MBTI 风格提示
@@ -775,17 +761,10 @@ export class PromptBuilder {
   private buildConversationHistorySection(): string {
     if (!this.conversationHistory || this.conversationHistory.length === 0) return ''
 
-    const items = this.conversationHistory.map(conv => {
-      const timeAgo = PromptBuilder.formatTimeAgo(conv.timestamp)
-      const statusIcon = conv.status === 'success' ? '✓' : conv.status === 'failed' ? '✗' : '⊘'
-      const result = conv.finalResult ? ` → ${conv.finalResult}` : ''
-      return `- [${timeAgo}] ${statusIcon} "${conv.userRequest}"${result}`
-    })
-
     return [
-      '# 与当前任务可能相关的过往对话（依据向量检索）',
+      '# 过往对话',
       '',
-      ...items,
+      formatRecalledConversations(this.conversationHistory),
     ].join('\n')
   }
 
@@ -1117,7 +1096,7 @@ export function buildSystemPrompt(
   mbtiType?: AgentMbtiType,
   knowledgeContext?: string,
   knowledgeEnabled?: boolean,
-  conversationHistory?: Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }>,
+  conversationHistory?: RecalledConversation[],
   executionMode?: ExecutionMode,
   aiRules?: string,
   taskSummaries?: string,

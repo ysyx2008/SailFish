@@ -49,7 +49,14 @@ import {
 
 import { createLogger } from '../../utils/logger'
 import { wrapKnowledgeRefs } from '../agent/message-envelope'
-import { conversationSessionTag, isConversationDocForSession } from './conversation-index'
+import {
+  conversationSessionTag,
+  formatRecalledConversations,
+  isConversationDocForSession,
+  toRecalledConversation,
+  type RecalledConversation,
+  type RecallingConversation,
+} from './conversation-index'
 
 import type { AiService } from '../ai.service'
 import type { McpService } from '../mcp.service'
@@ -91,13 +98,8 @@ export interface ConversationIndexEntry {
 }
 
 /** 对话检索结果 */
-export interface ConversationSearchResult {
+export interface ConversationSearchResult extends RecalledConversation {
   taskId: string
-  userRequest: string
-  finalResult: string
-  status: string
-  timestamp: number
-  relevance: number
 }
 
 /**
@@ -1328,7 +1330,13 @@ export class KnowledgeService extends EventEmitter {
    */
   async buildContext(
     query: string, 
-    options?: { hostId?: string; maxTokens?: number }
+    options?: {
+      hostId?: string
+      maxTokens?: number
+      recallingConversation?: RecallingConversation
+      /** false：过往对话另有入口给出，这里只给文档 */
+      includeConversations?: boolean
+    }
   ): Promise<string> {
     // 使用较高的相似度阈值，确保召回的内容确实相关
     const results = await this.search(query, {
@@ -1350,13 +1358,24 @@ export class KnowledgeService extends EventEmitter {
     }
 
     const parts: string[] = []
+    const conversations: RecalledConversation[] = []
     
     for (const result of relevantResults) {
+      const doc = result.docId ? this.documentsIndex.get(result.docId) : undefined
+      if (doc?.fileType === 'conversation') {
+        if (options?.includeConversations !== false) {
+          conversations.push(toRecalledConversation(doc, result.content, result.score, options?.recallingConversation))
+        }
+        continue
+      }
       parts.push(`### ${result.metadata.filename}`)
       // 清理内容中的特殊字符
       parts.push(this.sanitizeText(result.content))
       parts.push('')
     }
+
+    const recalled = formatRecalledConversations(conversations)
+    if (recalled) parts.push(recalled)
 
     return wrapKnowledgeRefs(parts.join('\n'))
   }
@@ -2398,7 +2417,8 @@ export class KnowledgeService extends EventEmitter {
   async searchConversations(
     query: string,
     hostId?: string,
-    limit: number = 5
+    limit: number = 5,
+    recallingConversation?: RecallingConversation
   ): Promise<ConversationSearchResult[]> {
     try {
       if (!this.isInitialized) {
@@ -2428,19 +2448,9 @@ export class KnowledgeService extends EventEmitter {
         const doc = this.documentsIndex.get(r.docId)
         if (!doc || doc.fileType !== 'conversation') continue
 
-        const lines = r.content.split('\n')
-        const userRequest = lines[0] || ''
-        const finalResult = lines.slice(1).join('\n')
-
         conversationResults.push({
           taskId: doc.filename.replace(`conv_${doc.hostId}_`, ''),
-          userRequest,
-          finalResult: finalResult.length > 200
-            ? finalResult.substring(0, 200) + '...'
-            : finalResult,
-          status: doc.source || 'unknown',
-          timestamp: doc.createdAt,
-          relevance: r.score
+          ...toRecalledConversation(doc, r.content, r.score, recallingConversation),
         })
       }
 
@@ -2519,7 +2529,13 @@ export function getKnowledgeService(
 
 // 导出类型和子模块
 export * from './types'
-export { conversationSessionTag, isConversationDocForSession } from './conversation-index'
+export {
+  conversationSessionTag,
+  isConversationDocForSession,
+  formatRecalledConversations,
+  type RecalledConversation,
+  type RecallingConversation,
+} from './conversation-index'
 export { getModelManager } from './model-manager'
 export { getEmbeddingService } from './embedding'
 export { getVectorStorage } from './storage'

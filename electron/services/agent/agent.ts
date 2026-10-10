@@ -2792,16 +2792,18 @@ export abstract class Agent {
       terminalType: run.context.terminalType,
       hostId: run.context.hostId,
     })
+    // 过往对话有专门一节时，知识库这边只给文档，同一条不出现两遍
+    const recallsConversationsSeparately = message.trim().length >= 5
     const knowledgeResultPromise = run.internalNotice
       ? Promise.resolve({ context: '', enabled: false, conversationHistory: [] as KnowledgeContextResult['conversationHistory'] })
-      : this.loadKnowledgeContextWithTimeout(message, sessionHostId)
+      : this.loadKnowledgeContextWithTimeout(message, sessionHostId, !recallsConversationsSeparately)
 
     const L3_RECALL_TIMEOUT_MS = 2000
     const recallPromise: Promise<KnowledgeContextResult['conversationHistory']> = run.internalNotice
       ? Promise.resolve([])
       : (() => {
       const ks = getKnowledgeService()
-      if (!ks || !ks.isEnabled() || message.trim().length < 5) return Promise.resolve([])
+      if (!ks || !ks.isEnabled() || !recallsConversationsSeparately) return Promise.resolve([])
       const searchPromise = ks.searchConversations(message, sessionHostId, 3, this.recallingConversation())
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('L3 recall timeout')), L3_RECALL_TIMEOUT_MS)
@@ -3067,8 +3069,9 @@ export abstract class Agent {
   private loadKnowledgeContextWithTimeout(
     message: string,
     hostId?: string,
-    timeoutMs = Agent.L2_KNOWLEDGE_TIMEOUT_MS
+    includeConversations = true
   ): Promise<KnowledgeContextResult> {
+    const timeoutMs = Agent.L2_KNOWLEDGE_TIMEOUT_MS
     return new Promise(resolve => {
       let settled = false
       const timer = setTimeout(() => {
@@ -3077,7 +3080,7 @@ export abstract class Agent {
         log.warn(`L2 knowledge context timeout (${timeoutMs}ms), skipping recall`)
         resolve({ context: '', enabled: false, conversationHistory: [] })
       }, timeoutMs)
-      this.loadKnowledgeContext(message, hostId)
+      this.loadKnowledgeContext(message, hostId, includeConversations)
         .then(result => {
           if (settled) return
           settled = true
@@ -3103,7 +3106,7 @@ export abstract class Agent {
   /**
    * 加载知识库上下文
    */
-  protected async loadKnowledgeContext(message: string, hostId?: string): Promise<KnowledgeContextResult> {
+  protected async loadKnowledgeContext(message: string, hostId?: string, includeConversations = true): Promise<KnowledgeContextResult> {
     let context = ''
     let enabled = false
     
@@ -3111,7 +3114,11 @@ export abstract class Agent {
       const knowledgeService = getKnowledgeService()
       if (knowledgeService && knowledgeService.isEnabled()) {
         enabled = true
-        context = await knowledgeService.buildContext(message, { hostId, recallingConversation: this.recallingConversation() })
+        context = await knowledgeService.buildContext(message, {
+          hostId,
+          recallingConversation: this.recallingConversation(),
+          includeConversations,
+        })
       }
     } catch (e) {
       log.warn('Knowledge service error:', e)

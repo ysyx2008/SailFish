@@ -57,6 +57,7 @@ import {
   LOADED_SKILLS_ROSTER_HEADING,
   SKILLS_CONTENT_HEADING,
 } from '../prompt-builder'
+import { RECALLED_CONVERSATIONS_INTRO } from '../../knowledge/conversation-index'
 import type { AgentContext, HostProfileServiceInterface } from '../types'
 import { normalizeProactiveCompact } from '@shared/types'
 
@@ -886,28 +887,6 @@ describe('buildSystemPrompt (backward compatible)', () => {
 // ==================== 对话历史检索测试 ====================
 
 describe('Conversation History in Prompt', () => {
-  describe('formatTimeAgo', () => {
-    it('should show "刚刚" for recent timestamps (< 1 hour)', () => {
-      const result = PromptBuilder.formatTimeAgo(Date.now() - 30 * 60 * 1000)
-      expect(result).toBe('刚刚')
-    })
-
-    it('should show hours for timestamps < 24 hours', () => {
-      const result = PromptBuilder.formatTimeAgo(Date.now() - 5 * 60 * 60 * 1000)
-      expect(result).toBe('5小时前')
-    })
-
-    it('should show days for timestamps < 30 days', () => {
-      const result = PromptBuilder.formatTimeAgo(Date.now() - 3 * 24 * 60 * 60 * 1000)
-      expect(result).toBe('3天前')
-    })
-
-    it('should show months for timestamps >= 30 days', () => {
-      const result = PromptBuilder.formatTimeAgo(Date.now() - 65 * 24 * 60 * 60 * 1000)
-      expect(result).toBe('2个月前')
-    })
-  })
-
   describe('conversation history in prompt', () => {
     it('should include conversation history section', () => {
       const context = createMockContext()
@@ -917,19 +896,20 @@ describe('Conversation History in Prompt', () => {
           userRequest: '部署前端到生产环境',
           finalResult: '部署成功',
           status: 'success',
-          timestamp: Date.now() - 3 * 24 * 60 * 60 * 1000,
-          relevance: 0.85
+          timestamp: new Date(2026, 3, 25, 11, 37).getTime(),
+          relevance: 0.85,
+          sameSession: false,
         }]
       })
       const prompt = builder.build()
 
-      expect(prompt).toContain('过往对话')
-      expect(prompt).toContain('部署前端到生产环境')
-      expect(prompt).toContain('部署成功')
-      expect(prompt).toContain('✓')
+      expect(prompt).toContain(RECALLED_CONVERSATIONS_INTRO)
+      expect(prompt).toContain('### 过往对话 · 2026-04-25 11:37 · 另一场对话\n')
+      expect(prompt).toContain('当时用户说：部署前端到生产环境')
+      expect(prompt).toContain('当时的结果：部署成功')
     })
 
-    it('should show failed status icon', () => {
+    it('should label failed status and earlier turns of this conversation', () => {
       const context = createMockContext()
       const builder = new PromptBuilder({
         context,
@@ -938,13 +918,14 @@ describe('Conversation History in Prompt', () => {
           finalResult: '排查失败',
           status: 'failed',
           timestamp: Date.now(),
-          relevance: 0.7
+          relevance: 0.7,
+          sameSession: true,
         }]
       })
       const prompt = builder.build()
 
-      expect(prompt).toContain('✗')
-      expect(prompt).toContain('nginx 排错')
+      expect(prompt).toMatch(/### 过往对话 · [\d-]+ [\d:]+ · 这场对话早些时候 · 失败/)
+      expect(prompt).toContain('当时用户说：nginx 排错')
     })
 
     it('should not include section when conversation history is empty', () => {

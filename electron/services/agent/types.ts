@@ -440,7 +440,7 @@ export interface PromptOptions {
   /** 知识库是否启用 */
   knowledgeEnabled?: boolean
   /** 从历史对话中语义检索的相关对话 */
-  conversationHistory?: Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }>
+  conversationHistory?: import('../knowledge/conversation-index').RecalledConversation[]
   /** L2 知识文档内容 */
   contextKnowledgeDoc?: string
   /** 用户自定义 AI 规则 */
@@ -469,7 +469,7 @@ export interface PromptOptions {
 export interface KnowledgeContextResult {
   context: string
   enabled: boolean
-  conversationHistory: Array<{ userRequest: string; finalResult: string; status: string; timestamp: number; relevance: number }>
+  conversationHistory: import('../knowledge/conversation-index').RecalledConversation[]
 }
 
 /**
