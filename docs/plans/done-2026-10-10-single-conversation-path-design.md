@@ -1,6 +1,6 @@
 # 对话操作只有一条路：界面只是界面，联络复用同一套（2026-10-10）
 
-未完成
+已完成（2026-10-10；本地分支 `feat/companion-task-supervisor`，待桌面手测）
 
 设计目标见 `electron/services/conversation/SPEC.md`「对话怎么动只有一种做法」「审批方式是每场对话自己的」，以及 `electron/services/agent/SPEC.md` 联络任务管理「联络动手和用户动手是同一回事」。
 
@@ -52,8 +52,9 @@
 
 功能：
 
-- [ ] **F1 每场对话自己的审批方式**：会话字段 + 落盘往返；下拉框读写眼前这场（起始界面仍改起步值）；Agent 读会话的设定；前端不再每次 run 传执行档。
+- [x] **F1 每场对话自己的审批方式**：会话字段 + 落盘往返；下拉框读写眼前这场（起始界面仍改起步值）；Agent 读会话的设定；前端不再每次 run 传执行档。
   验收：单测（往返、旧记录按起步值）；桌面手测——两场设不同方式互不影响、重启后各自还在
-- [ ] **F2 联络全面改走同一套**：create / instruct 改调 `say`，审批方式作为会话设定传入；删掉专用通道与私有开关；CLI `companion` 去掉直驱特例。
+  （做成：`ApprovalMode` 记在 `Conversation` 上，检查点与 meta.json 都带，整份重写不抹掉已记下的；`agent:setApproval` 改眼前这场，实例不在时先记着；渠道经 `updateConfig` 给的执行档只管那一轮，替我审批那一轮跟全局开关；联络页与网页 / IM 远程会话的下拉框仍改渠道设定。CLI 端到端：联络建的任务记下替我审批、跑宽松；全自动任务新进程再交代仍跑全自动；`--mode free` 直接跑的那场记起步值、那一轮全自动）
+- [x] **F2 联络全面改走同一套**（create / instruct 改调 `say`、删专用通道已并进 R3；审批方式作为会话设定传入、删私有开关并进 F1；无窗口直驱的特例随 R3 一并删掉，CLI `companion` 的值班循环不用改；「转达确认」这一步本轮没再跑端到端，留给桌面手测）：create / instruct 改调 `say`，审批方式作为会话设定传入；删掉专用通道与私有开关；CLI `companion` 去掉直驱特例。
   验收：task-supervisor / task-manager 单测改写；CLI 端到端（建任务 → 新进程再交代 → 转达确认）；桌面端到端（建任务后打开那场，下拉框显示替我审批 / 全自动）
-- [ ] **收尾**：`project-architecture.mdc` 相关段落、`docs/ideas.md`、本文件改名 `done-`
+- [x] **收尾**：`project-architecture.mdc` 相关段落、`docs/ideas.md`、本文件改名 `done-`
