@@ -27,7 +27,8 @@ import type {
   CompactContextResult,
   TerminalType,
 } from './types'
-import type { ApprovalMode, VisibleConversationSkill } from '@shared/types'
+import { COMPANION_AGENT_KEY, type ApprovalMode, type VisibleConversationSkill } from '@shared/types'
+import { getDefaultShell, getLocalOS } from '../../utils/platform'
 import { SailFish } from './sailfish'
 import { TaskSupervisor } from './task-supervisor'
 import { ConversationStore, ConversationManager, Companion, Conversation } from '../conversation'
@@ -768,16 +769,19 @@ export class AgentService {
       config?: Partial<AgentConfig>
       profileId?: string
       callbacks?: AgentCallbacks
+      /** 联络经任务管理开的头。只在开新一轮时记下 */
+      ledBy?: 'companion'
     }
   ): Promise<{ outcome: 'supplemented' } | { outcome: 'ran'; result: string }> {
     const callbacks = opts.callbacks ?? this.uiCallbacksFor?.(agentKey)
+    const ledBy = opts.ledBy ? { ledBy: opts.ledBy } : {}
     if (opts.surface === 'assistant') {
       const agent = this.createAssistantAgent(agentKey)
       const ctx = agent.withKnownPane(context)
       return agent.say(
         message,
         { ...ctx, cwd: ctx.cwd || os.homedir() },
-        { config: opts.config, profileId: opts.profileId, callbacks }
+        { config: opts.config, profileId: opts.profileId, callbacks, ...ledBy }
       )
     }
     const agent = this.getOrCreateAgent(agentKey)
@@ -787,6 +791,25 @@ export class AgentService {
       profileId: opts.profileId,
       callbacks,
       cwdResolver: this.terminalCwdResolver(agentKey, ctx),
+      ...ledBy,
+    })
+  }
+
+  /**
+   * 联络派出去的活回来了：把回执交给联络自己。
+   * 另起一轮时用宿主给联络的界面回调，不沿用它上一轮留下的那套（可能是某个 IM 渠道的）。
+   */
+  deliverCompanionReceipt(text: string): void {
+    const companion = this.createAssistantAgent(COMPANION_AGENT_KEY)
+    companion.deliverTaskReceipt(text, {
+      callbacks: this.uiCallbacksFor?.(COMPANION_AGENT_KEY),
+      fallbackContext: {
+        terminalOutput: [],
+        systemInfo: { os: getLocalOS(), shell: getDefaultShell() },
+        terminalType: 'assistant',
+        remoteChannel: 'desktop',
+        cwd: os.homedir(),
+      },
     })
   }
 

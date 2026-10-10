@@ -132,6 +132,8 @@ export interface PendingUserMessage {
   silent?: boolean
   /** 后台命令结束的通知：给模型看，不上墙，也不要在收场时当成用户的下一句排进队列 */
   backgroundNotice?: boolean
+  /** 派出去的任务交回的回执：上墙为回执步骤；这一轮没来得及收，收场后另起一轮送回 */
+  taskReceipt?: boolean
   /** 这条已经用来结束过一次等待。消息仍要交给模型，不能再结束下一次等待。 */
   consumedAsReply?: boolean
 }
@@ -212,6 +214,10 @@ export interface AgentRun {
   hostOperations?: Map<string, string>
   /** 这场不是用户开口，是把后台结果送回来。不上用户气泡，也不当新的一轮标题。 */
   internalNotice?: boolean
+  /** 送回来的是任务回执：开头写一条回执步骤 */
+  noticeKind?: 'task_receipt'
+  /** 这一轮是联络开的头（经任务管理新建或再交代）。没有 = 用户开的头 */
+  ledBy?: 'companion'
   /**
    * 工具执行期间记录 toolCallId → tool_call 步骤 ID 的映射。
    * 工具结束后，Agent 使用它反向把 ToolResult.success 回填到 tool_call 步骤上，
@@ -409,6 +415,10 @@ export interface RunOptions {
   cwdResolver?: () => Promise<string>
   /** 不是用户开口：不上用户气泡，结果送回后接着说 */
   internalNotice?: boolean
+  /** 送回来的是任务回执 */
+  noticeKind?: 'task_receipt'
+  /** 这一轮是联络开的头。补进正在跑的那一轮时不起作用 */
+  ledBy?: 'companion'
 }
 
 /**

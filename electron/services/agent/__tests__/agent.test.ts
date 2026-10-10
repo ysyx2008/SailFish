@@ -442,6 +442,97 @@ describe('Agent', () => {
     })
   })
 
+  // ==================== 联络开头的那一轮与任务回执 ====================
+
+  describe('这一轮由谁开头 / 任务回执', () => {
+    function withSupervisor() {
+      const taskSupervisor = { handleRunFinished: vi.fn(), handleNeedsConfirmation: vi.fn(), handleAsking: vi.fn() }
+      const services = createMockServices({ taskSupervisor: taskSupervisor as never })
+      const a = new TestAgent(services)
+      const aiService = services.aiService as unknown as ReturnType<typeof createMockAiService>
+      aiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+          onChunk('收到')
+          onDone({ content: '收到', tool_calls: undefined })
+          return Promise.resolve()
+        }
+      )
+      return { a, taskSupervisor }
+    }
+
+    it('联络开的头：这一轮做完的事件带上归属；界面开的头没有', async () => {
+      const { a, taskSupervisor } = withSupervisor()
+
+      await a.say('查一下', createMockContext(), { ledBy: 'companion' })
+      expect(taskSupervisor.handleRunFinished.mock.calls[0][1]).toMatchObject({ status: 'success', ledBy: 'companion' })
+
+      await a.say('再看看', createMockContext())
+      expect(taskSupervisor.handleRunFinished.mock.calls[1][1].ledBy).toBeUndefined()
+    })
+
+    it('补进正在跑的那一轮不改归属', async () => {
+      const { a } = withSupervisor()
+      a.injectCurrentRun({ id: 'run-1', isRunning: true, pendingUserMessages: [], steps: [] })
+
+      await a.say('补一句', createMockContext(), { ledBy: 'companion' })
+
+      expect(a.exposeCurrentRun()!.ledBy).toBeUndefined()
+    })
+
+    it('向用户提问：带上问题、选项和这一轮的归属交给任务监督', () => {
+      const { a, taskSupervisor } = withSupervisor()
+      a.injectCurrentRun({ id: 'run-1', isRunning: true, pendingUserMessages: [], steps: [], ledBy: 'companion' })
+
+      a.testAddStep({ type: 'asking', content: '订哪间？', toolArgs: { question: '订哪间？', options: ['A', 'B'] } })
+
+      expect(taskSupervisor.handleAsking).toHaveBeenCalledWith(undefined, {
+        question: '订哪间？', options: ['A', 'B'], ledBy: 'companion',
+      })
+    })
+
+    it('正在回复时回执送进这一轮，收进对话时上墙为回执步骤', () => {
+      const { a } = withSupervisor()
+      a.injectCurrentRun({ id: 'run-1', isRunning: true, pendingUserMessages: [], steps: [], messages: [], taskMessageLog: [], context: createMockContext() })
+      ;(a as unknown as { _loopOpen: boolean })._loopOpen = true
+
+      a.deliverTaskReceipt('任务回执：做完了', { fallbackContext: createMockContext() })
+
+      const run = a.exposeCurrentRun()!
+      expect(run.pendingUserMessages).toEqual([
+        expect.objectContaining({ message: '任务回执：做完了', silent: true, taskReceipt: true }),
+      ])
+      ;(a as unknown as { processPendingUserMessages(r: unknown): void }).processPendingUserMessages(run)
+      expect(run.steps.map(s => s.type)).toEqual(['task_receipt'])
+    })
+
+    it('闲着时另起一轮：开头是回执步骤、没有用户气泡，用调用方给的回调；用户按停过也照送', async () => {
+      const { a } = withSupervisor()
+      ;(a as unknown as { _dropBackgroundNotices: boolean })._dropBackgroundNotices = true
+      const steps: AgentStep[] = []
+      const onComplete = vi.fn()
+      const callbacks: AgentCallbacks = { onStep: (_id, step) => steps.push(step), onComplete }
+
+      a.deliverTaskReceipt('任务回执：做完了', { callbacks, fallbackContext: createMockContext({ terminalType: 'assistant' }) })
+
+      await vi.waitFor(() => expect(onComplete).toHaveBeenCalled())
+      expect(steps[0].type).toBe('task_receipt')
+      expect(steps.some(s => s.type === 'user_task')).toBe(false)
+    })
+
+    it('这一轮收场时没来得及收的回执，挪回去等下一轮', () => {
+      const { a } = withSupervisor()
+      const run = { pendingUserMessages: [
+        { message: '回执一', silent: true, backgroundNotice: true, taskReceipt: true },
+        { message: '后台结果', silent: true, backgroundNotice: true },
+      ] }
+
+      ;(a as unknown as { reclaimUnreadReceipts(r: unknown): void }).reclaimUnreadReceipts(run)
+
+      expect(run.pendingUserMessages.map(m => m.message)).toEqual(['后台结果'])
+      expect((a as unknown as { _deferredReceipts: string[] })._deferredReceipts).toEqual(['回执一'])
+    })
+  })
+
   // ==================== 说一句：补进当前一轮还是开新一轮 ====================
 
   describe('say', () => {

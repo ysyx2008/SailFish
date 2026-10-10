@@ -261,6 +261,9 @@ export abstract class Agent {
   /** 用户按停之后，不要把后台结果送回来把这场重新打开。下一句用户开口时清掉。 */
   private _dropBackgroundNotices = false
   private _deferredNotices: string[] = []
+  /** 派出去的任务交回来的回执，等这场闲下来另起一轮 */
+  private _deferredReceipts: string[] = []
+  private _receiptRunOptions?: { callbacks?: AgentCallbacks; fallbackContext: AgentContext }
   private _flushingNotices = false
   /** 上一场的运行环境，用来在闲下来之后把结果送回同一场对话。 */
   private _resumeContext?: AgentContext
@@ -1044,6 +1047,7 @@ export abstract class Agent {
       log.error(`Task failed: runId=${run.id}, duration=${elapsed}s, error=${error instanceof Error ? error.message : error}`)
       throw error
     } finally {
+      this.reclaimUnreadReceipts(run)
       this.cleanupRun(run)
       queueMicrotask(() => this.flushDeferredNotices())
     }
@@ -1677,6 +1681,8 @@ export abstract class Agent {
       taskMessageLog: [],
       hostOperations: new Map(),
       internalNotice: options?.internalNotice === true,
+      ...(options?.internalNotice && options.noticeKind ? { noticeKind: options.noticeKind } : {}),
+      ...(options?.ledBy ? { ledBy: options.ledBy } : {}),
     }
     
     this.currentRun = run
@@ -1767,6 +1773,8 @@ export abstract class Agent {
         images: context.previewImages || context.images,
         attachments: context.attachments
       })
+    } else if (run.noticeKind === 'task_receipt') {
+      this.addStep({ type: 'task_receipt', content: message })
     }
 
     // 准备阶段用户补充：run() IPC 往返期间缓冲的消息，紧跟 user_task 上墙
@@ -2098,6 +2106,7 @@ export abstract class Agent {
         this.services.taskSupervisor?.handleRunFinished(this._agentId, {
           status: run.aborted ? 'aborted' : 'success',
           summary: result ?? '',
+          ledBy: run.ledBy,
         })
       } catch (err) {
         log.warn('taskSupervisor 完成回流失败:', err)
@@ -2695,6 +2704,7 @@ export abstract class Agent {
         this.services.taskSupervisor?.handleRunFinished(this._agentId, {
           status: 'failed',
           summary: errorMessage,
+          ledBy: run.ledBy,
         })
       } catch (err) {
         log.warn('taskSupervisor 失败回流失败:', err)
@@ -5083,12 +5093,49 @@ export abstract class Agent {
     this.flushDeferredNotices()
   }
 
-  private flushDeferredNotices(): void {
-    if (this._dropBackgroundNotices) {
-      this._deferredNotices = []
+  /**
+   * 派出去的任务回来了：回执送进这场。时机和后台结果一样——还在干活就排进当前这场，
+   * 闲下来就另起一轮、不上用户气泡。
+   * 与后台结果不同：用户按停过也照送（回执必须有人处理）；另起一轮时用调用方给的回调和兜底环境。
+   */
+  deliverTaskReceipt(
+    text: string,
+    opts: { callbacks?: AgentCallbacks; fallbackContext: AgentContext }
+  ): void {
+    const trimmed = text.trim()
+    if (!trimmed) return
+
+    this._receiptRunOptions = opts
+    const run = this.currentRun
+    if (this._loopOpen && run?.isRunning && !run.aborted) {
+      run.pendingUserMessages.push({ message: trimmed, silent: true, backgroundNotice: true, taskReceipt: true })
+      if (run.executionPhase === 'thinking' && run.requestId) {
+        this.services.aiService.abort(run.requestId)
+      }
+      this.wakeHold()
       return
     }
+
+    this._deferredReceipts.push(trimmed)
+    this.flushDeferredNotices()
+  }
+
+  /** 这一轮收场时还没送进对话的回执，挪回等候队列，等闲下来另起一轮 */
+  private reclaimUnreadReceipts(run: AgentRun): void {
+    const unread = run.pendingUserMessages.filter(m => m.taskReceipt)
+    if (unread.length === 0) return
+    run.pendingUserMessages = run.pendingUserMessages.filter(m => !m.taskReceipt)
+    this._deferredReceipts.push(...unread.map(m => m.message))
+  }
+
+  /** 闲下来以后把排着的回执或后台结果另起一轮送回。两者共用一道门，同一时刻只起一轮 */
+  private flushDeferredNotices(): void {
+    if (this._dropBackgroundNotices) this._deferredNotices = []
     if (this._loopOpen || this.currentRun?.isRunning || this._flushingNotices) return
+    if (this._deferredReceipts.length > 0) {
+      this.flushDeferredReceipts()
+      return
+    }
     if (this._deferredNotices.length === 0) return
     const ctx = this._resumeContext
     if (!ctx || !this.callbacks) {
@@ -5104,7 +5151,29 @@ export abstract class Agent {
       }
     }).finally(() => {
       this._flushingNotices = false
-      if (this._deferredNotices.length > 0) this.flushDeferredNotices()
+      this.flushDeferredNotices()
+    })
+  }
+
+  private flushDeferredReceipts(): void {
+    const opts = this._receiptRunOptions
+    const ctx = this._resumeContext ?? opts?.fallbackContext
+    if (!ctx) {
+      this._deferredReceipts = []
+      return
+    }
+    const text = this._deferredReceipts.splice(0).join('\n\n')
+    this._flushingNotices = true
+    void this.run(text, ctx, {
+      internalNotice: true,
+      noticeKind: 'task_receipt',
+      ...(opts?.callbacks ? { callbacks: opts.callbacks } : {}),
+    }).catch(err => {
+      // 不重排：模型不可用时重排会一直空转。回执已随这一轮落进记录
+      log.warn('Task receipt run failed:', err)
+    }).finally(() => {
+      this._flushingNotices = false
+      this.flushDeferredNotices()
     })
   }
 
@@ -5308,8 +5377,24 @@ export abstract class Agent {
     
     this.currentRun?.steps.push(fullStep)
     this.callbacks?.onStep?.(this.currentRun?.id || '', fullStep)
+    if (fullStep.type === 'asking' && !this._isSubAgent) this.reportAskingToSupervisor(fullStep)
     
     return fullStep
+  }
+
+  /** 任务这一轮向用户提问：交给任务监督，由它决定要不要转给联络（伙计的提问留在主人这场） */
+  private reportAskingToSupervisor(step: AgentStep): void {
+    try {
+      const rawOptions = (step.toolArgs as { options?: unknown } | undefined)?.options
+      const options = Array.isArray(rawOptions) ? rawOptions.filter((o): o is string => typeof o === 'string') : []
+      this.services.taskSupervisor?.handleAsking(this._agentId, {
+        question: step.content,
+        options,
+        ledBy: this.currentRun?.ledBy,
+      })
+    } catch (err) {
+      log.warn('[ask] taskSupervisor 回流失败:', err)
+    }
   }
   
   /**
@@ -5362,6 +5447,7 @@ export abstract class Agent {
     const visionAvailable = this.currentProfileHasVision()
 
     for (const pending of run.pendingUserMessages) {
+      if (pending.taskReceipt) this.addStep({ type: 'task_receipt', content: pending.message })
       const userBody = Agent.formatTimestamp() + Agent.formatWorkbenchTag(run.context.terminalType) + pending.message
       let imageNote = ''
       const pendingVisionPaths = collectImageAttachmentPaths(pending.attachments)
@@ -5622,7 +5708,7 @@ export abstract class Agent {
           let argsPreview = ''
           try { argsPreview = JSON.stringify(toolArgs).slice(0, 300) } catch { /* 忽略不可序列化参数 */ }
           this.services.taskSupervisor?.handleNeedsConfirmation(this._agentId, {
-            toolCallId, toolName, riskLevel, displayName, reasons, argsPreview,
+            toolCallId, toolName, riskLevel, displayName, reasons, argsPreview, ledBy: run.ledBy,
           })
         } catch (err) {
           log.warn('[confirm] taskSupervisor 回流失败:', err)

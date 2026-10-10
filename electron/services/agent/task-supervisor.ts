@@ -4,7 +4,8 @@
  * 联络（companion）作为任务 Agent 的总管（Supervisor 模式）：
  * - 查询：枚举任务列表 / 查看单个任务近况（manage_tasks 工具的 list/inspect）
  * - 操作：创建任务、停止任务、再交代、传达用户对危险确认的批准/拒绝（create/stop/instruct/confirm）
- * - 回流：任务 Agent 的待确认 / 完成 / 失败 / 停止事件 → 联络线（proactive 通道）
+ * - 回执：联络开头的那一轮（新建或再交代）做完 / 失败 / 被停 / 要确认 / 向用户提问 → 只交给联络。
+ *   用户自己开头的那一轮什么都不送。
  *
  * 信任模型（转述制）：联络永不自行批准危险操作——只把确认请求转述给用户，
  * 再把用户的决定传达给任务。唯一例外是用户创建任务时显式声明「全自动」。
@@ -17,10 +18,8 @@
  * 内存里已经没有的任务，从历史索引补最近若干条已结束的摘要。
  */
 import { v4 as uuidv4 } from 'uuid'
-import { COMPANION_AGENT_KEY, inferConversationKind, type ApprovalMode, type RiskLevel, type TerminalType } from '@shared/types'
+import { inferConversationKind, type ApprovalMode, type RiskLevel, type TerminalType } from '@shared/types'
 import { createLogger } from '../../utils/logger'
-import { appendProactiveContext } from './proactive-store'
-import { deliverProactiveMessage } from './proactive-deliver'
 import { t } from './i18n'
 import { getDefaultShell, getLocalOS } from '../../utils/platform'
 import type { HistoryService } from '../history.service'
@@ -30,10 +29,14 @@ import type { SailFish } from './sailfish'
 
 const log = createLogger('TaskSupervisor')
 
-const COMPANION_AGENT_ID = COMPANION_AGENT_KEY
-
-/** 完成/失败事件的防抖窗口：短时间多事件合并成一条复命通知，不刷屏 */
+/** 完成/失败事件的防抖窗口：短时间多条合并成一份回执，联络少起几轮 */
 const FINISH_DEBOUNCE_MS = 5000
+
+/** 回执里结果概要的长度上限（联络只拿摘要，任务对话不进联络上下文） */
+const RECEIPT_SUMMARY_MAX = 500
+
+/** 谁开的这一轮：联络经任务管理开的头才有回执 */
+type LedBy = 'companion' | undefined
 
 /** 内存里已经没有的任务，列表最多再补这么多条（按最近活跃，同一任务只留最新一条） */
 const SETTLED_TASK_LIMIT = 20
@@ -52,6 +55,7 @@ export interface TaskNeedsConfirmationEvent {
   reasons?: string[]
   /** 工具参数预览（已截断） */
   argsPreview: string
+  ledBy?: LedBy
 }
 
 /** 任务运行结束事件载荷 */
@@ -59,6 +63,14 @@ export interface TaskRunFinishedEvent {
   status: 'success' | 'failed' | 'aborted'
   /** 结果或错误概要（已截断） */
   summary: string
+  ledBy?: LedBy
+}
+
+/** 任务这一轮向用户提问 */
+export interface TaskAskingEvent {
+  question: string
+  options: string[]
+  ledBy?: LedBy
 }
 
 /** 任务摘要（manage_tasks list 的单项） */
@@ -109,8 +121,10 @@ export interface TaskSupervisorHost {
     agentKey: string,
     message: string,
     context: AgentContext,
-    opts: { surface: 'assistant' | 'terminal'; config?: Partial<AgentConfig> }
+    opts: { surface: 'assistant' | 'terminal'; config?: Partial<AgentConfig>; ledBy?: 'companion' }
   ): Promise<unknown>
+  /** 把回执交给联络：它正在回复就送进这一轮，否则另起一轮 */
+  deliverCompanionReceipt(text: string): void
   getHistoryService(): HistoryService | undefined
   getConfigService(): ConfigService | undefined
   /** 创建任务实例，锁住交办标题，定下这场的审批方式 */
@@ -119,7 +133,8 @@ export interface TaskSupervisorHost {
 
 export class TaskSupervisor {
   private host: TaskSupervisorHost
-  private finishBuffer: Array<TaskRunFinishedEvent & { agentKey: string; taskTitle: string }> = []
+  /** 已排成回执行、还在防抖窗口里的完成事件 */
+  private finishBuffer: string[] = []
   private finishFlushTimer: NodeJS.Timeout | null = null
 
   constructor(host: TaskSupervisorHost) {
@@ -234,6 +249,7 @@ export class TaskSupervisor {
     this.host.say(agentKey, text, context, {
       surface: terminalType === 'assistant' ? 'assistant' : 'terminal',
       config: agent ? undefined : this.runConfig(),
+      ledBy: 'companion',
     }).catch(err => {
       log.error(`再交代失败 (${agentKey}):`, err)
     })
@@ -251,81 +267,83 @@ export class TaskSupervisor {
     this.host.say(agentId, opts.brief, this.contextWithoutWindow('assistant'), {
       surface: 'assistant',
       config: this.runConfig(),
+      ledBy: 'companion',
     }).catch(err => {
       log.error(`任务执行失败 (${agentId}):`, err)
     })
     return { agentKey: agentId }
   }
 
-  // ==================== 事件回流（Agent 基类挂钩调用） ====================
+  // ==================== 回执（Agent 基类挂钩调用） ====================
 
   /**
-   * 任务的危险确认请求 → 立即回流联络线（转述制第二入口）。
-   * 暂存上下文含全部 ID，用户回复"批准/拒绝"时联络凭此调 manage_tasks confirm。
+   * 任务的危险确认请求。联络开头的那一轮：连同防抖窗口里攒着的完成事件，立刻交给联络转述。
+   * 回执里带全部 ID，用户答复后联络凭此调 manage_tasks confirm。
    */
   handleNeedsConfirmation(agentKey: string | undefined, event: TaskNeedsConfirmationEvent): void {
     try {
-      if (!isManagedTaskKey(agentKey)) return
-      const title = this.resolveTaskTitle(agentKey)
-
-      appendProactiveContext(COMPANION_AGENT_ID, t('taskmgr.ctx.confirm', {
-        title,
+      if (!isManagedTaskKey(agentKey) || event.ledBy !== 'companion') return
+      this.deliverNow(t('taskmgr.receipt.confirm_line', {
+        title: this.resolveTaskTitle(agentKey),
         taskId: agentKey,
         tool: `${event.toolName}${event.displayName ? `（${event.displayName}）` : ''}`,
-        risk: event.riskLevel,
-        args: event.argsPreview,
-        toolCallId: event.toolCallId,
-      }), t('taskmgr.notice.confirm_title'))
-
-      const notice = `⏳ ${t('taskmgr.notice.confirm', {
-        title,
-        action: event.displayName || event.toolName,
         risk: t(`taskmgr.risk.${event.riskLevel}`),
         args: event.argsPreview,
-      })}`
-      void deliverProactiveMessage(notice, {
-        title: t('taskmgr.notice.confirm_title'),
-        historyService: this.host.getHistoryService(),
-      }).catch(err => log.warn('任务确认回流投递失败:', err))
+        toolCallId: event.toolCallId,
+      }))
     } catch (err) {
       log.warn('handleNeedsConfirmation 失败:', err)
     }
   }
 
+  /** 任务向用户提问。联络开头的那一轮：立刻交给联络转述，用户的答复由联络经 instruct 送回 */
+  handleAsking(agentKey: string | undefined, event: TaskAskingEvent): void {
+    try {
+      if (!isManagedTaskKey(agentKey) || event.ledBy !== 'companion') return
+      const options = event.options.length > 0
+        ? t('taskmgr.receipt.ask_options', { options: event.options.join(' / ') })
+        : ''
+      this.deliverNow(t('taskmgr.receipt.ask_line', {
+        title: this.resolveTaskTitle(agentKey),
+        taskId: agentKey,
+        question: this.truncate(event.question.replace(/\s+/g, ' ').trim(), RECEIPT_SUMMARY_MAX),
+      }) + options)
+    } catch (err) {
+      log.warn('handleAsking 失败:', err)
+    }
+  }
+
   /**
-   * 立即冲刷挂起的完成/失败事件（跳过防抖窗口），并等待投递落盘完成。
-   * 供进程退出前调用（CLI 跑完即退，防抖挂起/异步投递未完成都会丢复命）；
+   * 立即冲刷防抖窗口里的完成事件。供进程退出前调用（CLI 跑完即退，挂起的防抖会丢回执）；
    * 桌面常驻进程无需调用。
    *
    * 收尾竞态：任务 finalize 先置 isRunning=false、末尾才发完成事件，调用方观察到
    * 「全部空闲」时事件可能还在路上。因此冲刷后让出事件循环再复查一次，兜底晚到事件。
    */
   async flushPendingEvents(): Promise<void> {
-    // 两轮：首轮冲刷（若有）后让出一拍，第二轮兜底 finalize 收尾窗口晚到的事件
     for (let round = 0; round < 2; round++) {
-      if (this.finishFlushTimer) {
-        clearTimeout(this.finishFlushTimer)
-        this.finishFlushTimer = null
-      }
-      if (this.finishBuffer.length > 0) await this.flushFinishEvents()
+      this.flushFinishEvents()
       if (round === 0) await new Promise(resolve => setTimeout(resolve, 100))
     }
   }
 
-  /**
-   * 任务完成/失败/停止 → 防抖聚合后回流联络线复命（多条合并，不刷屏）。
-   */
+  /** 任务完成 / 失败 / 被停。联络开头的那一轮：防抖合并后交给联络 */
   handleRunFinished(agentKey: string | undefined, event: TaskRunFinishedEvent): void {
     try {
-      if (!isManagedTaskKey(agentKey)) return
-      this.finishBuffer.push({
-        ...event,
-        summary: this.truncate(event.summary, 200),
-        agentKey,
-        taskTitle: this.resolveTaskTitle(agentKey),
-      })
+      if (!isManagedTaskKey(agentKey) || event.ledBy !== 'companion') return
+      const statusText = {
+        success: t('taskmgr.status_completed'),
+        failed: t('taskmgr.status_failed'),
+        aborted: t('taskmgr.status_aborted'),
+      } as const
+      this.finishBuffer.push(t('taskmgr.receipt.finish_line', {
+        title: this.resolveTaskTitle(agentKey),
+        taskId: agentKey,
+        status: statusText[event.status],
+        summary: this.truncate(event.summary.trim(), RECEIPT_SUMMARY_MAX) || t('taskmgr.receipt.no_output'),
+      }))
       if (this.finishFlushTimer) clearTimeout(this.finishFlushTimer)
-      this.finishFlushTimer = setTimeout(() => void this.flushFinishEvents(), FINISH_DEBOUNCE_MS)
+      this.finishFlushTimer = setTimeout(() => this.flushFinishEvents(), FINISH_DEBOUNCE_MS)
       // 不拖住进程退出（CLI / 应用退出时挂起的防抖不应阻塞）
       this.finishFlushTimer.unref?.()
     } catch (err) {
@@ -334,6 +352,34 @@ export class TaskSupervisor {
   }
 
   // ==================== 内部 ====================
+
+  private flushFinishEvents(): void {
+    if (this.finishFlushTimer) {
+      clearTimeout(this.finishFlushTimer)
+      this.finishFlushTimer = null
+    }
+    if (this.finishBuffer.length === 0) return
+    this.deliverReceipt(this.finishBuffer.splice(0))
+  }
+
+  /** 要用户拿主意的事不等防抖；攒着的完成事件一并带上，免得联络为它们再起一轮 */
+  private deliverNow(line: string): void {
+    if (this.finishFlushTimer) {
+      clearTimeout(this.finishFlushTimer)
+      this.finishFlushTimer = null
+    }
+    this.deliverReceipt([...this.finishBuffer.splice(0), line])
+  }
+
+  private deliverReceipt(lines: string[]): void {
+    try {
+      this.host.deliverCompanionReceipt(
+        [t('taskmgr.receipt.header'), ...lines, t('taskmgr.receipt.footer')].join('\n')
+      )
+    } catch (err) {
+      log.warn('任务回执投递失败:', err)
+    }
+  }
 
   /** 内存里没有、历史里还在的最近任务（同一 agentKey 只留最新一条） */
   private recentSettledTasks(liveKeys: Set<string>): SupervisedTaskInfo[] {
@@ -386,48 +432,6 @@ export class TaskSupervisor {
     const brief = userTask.replace(/\s+/g, ' ').trim()
     if (brief) return this.truncate(brief, 60)
     return agentKey.length > 16 ? `${agentKey.slice(0, 16)}…` : agentKey
-  }
-
-  private async flushFinishEvents(): Promise<void> {
-    this.finishFlushTimer = null
-    const events = this.finishBuffer.splice(0)
-    if (events.length === 0) return
-
-    const statusIcon = { success: '✅', failed: '❌', aborted: '⏹' } as const
-    const statusText = {
-      success: t('taskmgr.status_completed'),
-      failed: t('taskmgr.status_failed'),
-      aborted: t('taskmgr.status_aborted'),
-    } as const
-    const summaryOf = (e: { summary?: string }) => e.summary || t('taskmgr.notice.no_output')
-    const lines = events.map(e => t('taskmgr.notice.finish_line', {
-      icon: statusIcon[e.status], title: e.taskTitle, status: statusText[e.status], summary: summaryOf(e),
-    }))
-    const contextLines = events.map(e => t('taskmgr.ctx.finish_line', {
-      title: e.taskTitle, taskId: e.agentKey, status: statusText[e.status], summary: summaryOf(e),
-    }))
-
-    appendProactiveContext(
-      COMPANION_AGENT_ID,
-      `${t('taskmgr.ctx.finish_header')}\n${contextLines.join('\n')}`,
-      t('taskmgr.notice.report_title'),
-    )
-
-    const notice = events.length === 1
-      ? t('taskmgr.notice.finish_one', {
-          icon: statusIcon[events[0].status],
-          title: events[0].taskTitle,
-          status: statusText[events[0].status],
-          summary: summaryOf(events[0]),
-        })
-      : t('taskmgr.notice.finish_many', { count: events.length, lines: lines.join('\n') })
-    // alwaysPersist：复命是数据事件不是尽力通知——CLI 无窗口/IM 时 deliveredVia 为空，
-    // 联络历史记录是它唯一留下的痕迹（下次联络运行冷启动恢复可见）
-    await deliverProactiveMessage(notice, {
-      title: t('taskmgr.notice.report_title'),
-      historyService: this.host.getHistoryService(),
-      alwaysPersist: true,
-    }).catch(err => log.warn('任务复命投递失败:', err))
   }
 
   private buildTaskInfo(agentKey: string, agent: SailFish): SupervisedTaskInfo {

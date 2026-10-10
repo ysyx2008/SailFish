@@ -447,7 +447,7 @@ export interface EChartsStepPayload {
 
 export interface AgentStep {
   id: string
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'waiting_input' | 'plan_created' | 'plan_updated' | 'plan_archived' | 'user_task' | 'final_result' | 'proactive_notice' | 'auto_review'
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'waiting_input' | 'plan_created' | 'plan_updated' | 'plan_archived' | 'user_task' | 'final_result' | 'proactive_notice' | 'auto_review' | 'task_receipt'
   content: string
   images?: string[]
   /**
