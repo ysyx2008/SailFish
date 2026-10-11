@@ -47,6 +47,8 @@ export interface ToolExecutorConfig {
   inReceiptTurn?: boolean
   /** 当前会话 id（todo_create 自动记对话出处） */
   getSessionId?: () => string | undefined
+  /** 当前这场对话（搜到的过往对话据此分辨「这场早些时候 / 另一场」） */
+  getRecallingConversation?: () => import('../../knowledge/conversation-index').RecallingConversation | undefined
   /**
    * 文档备份归属的那场用户对话。
    * 伙计跟主人这场，不跟自己的临时会话，避免把「动手前」那份备份盖成改过的稿。

@@ -4,6 +4,7 @@
  */
 import { t } from '../i18n'
 import { getKnowledgeService } from '../../knowledge'
+import { formatRecalledConversation } from '../../knowledge/conversation-index'
 import { truncateFromEnd } from './utils'
 import type { ToolExecutorConfig, ToolResult } from './types'
 import { isAbortError } from '../../../utils/abort'
@@ -492,7 +493,7 @@ async function searchHistorySemantic(
 
   try {
     const hostId = executor.getHostId()
-    const results = await knowledgeService.searchConversations(query, hostId, limit)
+    const results = await knowledgeService.searchConversations(query, hostId, limit, executor.getRecallingConversation?.())
 
     if (results.length === 0) {
       // 语义搜索无结果时尝试关键字搜索兜底
@@ -508,16 +509,8 @@ async function searchHistorySemantic(
       return { success: true, output: `未找到与"${query}"语义相关的历史记录` }
     }
 
-    const formatted = (await Promise.all(results.map(async (r, i) => {
-      const date = new Date(r.timestamp || 0).toLocaleString('zh-CN')
-      const statusIcon = r.status === 'success' ? '✅' : r.status === 'failed' ? '❌' : '⚠️'
-      const relevancePercent = r.relevance != null ? ` (${(r.relevance * 100).toFixed(0)}% 相关)` : ''
-
-      const lines = [
-        `### ${i + 1}. ${statusIcon} ${date}${relevancePercent}`,
-        `**任务**: ${r.userRequest}`,
-        `**结果**: ${r.finalResult || '(无结果)'}`
-      ]
+    const formatted = results.map(r => {
+      const lines = [formatRecalledConversation(r)]
 
       if (detail === 'full' && executor.historyService) {
         const fullRecord = executor.historyService.getAgentRecordById(r.taskId, { omitCanvasData: true })
@@ -537,7 +530,7 @@ async function searchHistorySemantic(
       }
 
       return lines.join('\n')
-    }))).join('\n\n')
+    }).join('\n\n')
 
     const output = `语义搜索找到 ${results.length} 条相关历史记录：\n\n${formatted}`
 
@@ -642,13 +635,13 @@ async function searchHistoryKeyword(
 
     const formatted = records.map((r, i) => {
       const date = new Date(r.timestamp || 0).toLocaleString('zh-CN')
-      const statusIcon = r.status === 'completed' ? '✅' : r.status === 'failed' ? '❌' : '⚠️'
+      const statusLabel = r.status === 'failed' ? ' · 失败' : r.status === 'aborted' ? ' · 中止' : ''
       const task = r.userTask || '(无任务描述)'
       const result = r.finalResult
         ? (r.finalResult.length > 300 ? r.finalResult.substring(0, 300) + '...' : r.finalResult)
         : '(无结果)'
 
-      const lines = [`### ${i + 1}. ${statusIcon} ${date}`, `**任务**: ${task}`]
+      const lines = [`### ${i + 1}. ${date}${statusLabel}`, `**任务**: ${task}`]
 
       if (r.steps?.length > 0) {
         const supplements = r.steps.filter(s => s.type === 'user_supplement' && s.content)

@@ -89,4 +89,46 @@ describe('searchHistory semantic detail=full', () => {
     expect(result.output).toContain('写论文')
     expect(result.output).not.toContain('**工具调用**')
   })
+
+  it('写法与自动召回一致：标出是哪场、不标成功、不报排名分', async () => {
+    searchConversations.mockResolvedValue([{
+      taskId: 'old',
+      userRequest: '深度测试你的子智能体能力',
+      finalResult: '操作已中止',
+      status: 'success',
+      timestamp: new Date(2026, 3, 25, 11, 43).getTime(),
+      relevance: 0.0164,
+      sameSession: false,
+    }])
+    const recalling = { id: 'session_now', startedAt: 2_000 }
+    const executor = makeExecutor({ getRecallingConversation: () => recalling })
+
+    const result = await searchHistory({ mode: 'semantic', keyword: '深度测试' }, executor)
+
+    expect(searchConversations).toHaveBeenCalledWith('深度测试', 'personal', 10, recalling)
+    expect(result.output).toContain('### 过往对话 · 2026-04-25 11:43 · 另一场对话\n')
+    expect(result.output).toContain('当时用户说：深度测试你的子智能体能力')
+    expect(result.output).not.toContain('✅')
+    expect(result.output).not.toContain('% 相关')
+  })
+})
+
+describe('searchHistory keyword', () => {
+  it('不标成功，失败、中止用文字标', async () => {
+    const searchAgentRecordsAdvanced = vi.fn().mockResolvedValue({
+      records: [
+        { id: 'a', userTask: '任务甲', finalResult: '好了', status: 'completed', timestamp: 1, steps: [] },
+        { id: 'b', userTask: '任务乙', finalResult: '断了', status: 'aborted', timestamp: 2, steps: [] },
+      ],
+    })
+    const executor = makeExecutor({
+      historyService: { searchAgentRecordsAdvanced } as unknown as ToolExecutorConfig['historyService'],
+    })
+
+    const result = await searchHistory({ keyword: '任务' }, executor)
+
+    expect(result.output).not.toContain('✅')
+    expect(result.output).toMatch(/### 2\. .+ · 中止/)
+    expect(result.output).not.toMatch(/### 1\. .+ · /)
+  })
 })
