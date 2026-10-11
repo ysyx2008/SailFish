@@ -14,7 +14,7 @@ export const COMPANION_WORKBENCH_AGENT_TOOLS = [
       name: MANAGE_TASKS,
       description: `管理这台电脑上所有的任务，不限联络自己创建的。
 
-- list：任务摘要（标题、状态、待确认详情、task_id），结束不久的任务也在里面。
+- list：任务摘要（标题、状态、待确认详情、task_id）。正在跑和待确认的排在最前，其余按最后活跃，已结束的也在里面。每页 20 条，用 page 翻页。给 query 时只列出标题、用户交代的话、结果或对用户说过的话里含这个词的任务，与 search_history 的关键字搜索同一套；给 start_date / end_date 时按任务最后活跃的日期筛（与侧栏分组一致），格式同 search_history。
 - inspect：某个任务最近的步骤摘要。需要 task_id。
 - create：新开一场无终端的助手任务。需要 title（一句话标题）和 brief（目标、要求、必要上下文）。任务只看得到 brief，看不到这条对话，也没有这个工具。由你开头的这一轮，做完、失败、被停、要用户确认、向用户提问，都会以回执交给你，用户不会直接收到：你正在回复就送进这一轮，否则另起一轮。没设 full_auto 时，要用户确认的操作先由独立评审员对照任务里交代过的话判断，看不准才问用户；full_auto=true 时不再询问用户，只在用户明确这样说过时使用。
 - instruct：往已有任务里再交代一句。需要 task_id 和 message。任务在跑时当场送进；已经停了或只在历史里时，仍是原来那场接着做。message 只有那场任务看得到。由你再交代而接着做的这一轮，回执同样交给你；任务正在跑时这句是补进那一轮，回执仍跟着那一轮原来由谁开头。远程终端的窗口已经关掉时送不进去。
@@ -55,6 +55,22 @@ export const COMPANION_WORKBENCH_AGENT_TOOLS = [
           message: {
             type: 'string',
             description: 'instruct 专用：再交代的这一句（只给这场任务看）'
+          },
+          page: {
+            type: 'number',
+            description: 'list 专用：第几页，从 1 开始，默认 1'
+          },
+          query: {
+            type: 'string',
+            description: 'list 专用：关键字'
+          },
+          start_date: {
+            type: 'string',
+            description: 'list 专用：最后活跃不早于这天（YYYY-MM-DD 或 YYYY-MM-DD HH:mm）'
+          },
+          end_date: {
+            type: 'string',
+            description: 'list 专用：最后活跃不晚于这天'
           }
         },
         required: ['action']

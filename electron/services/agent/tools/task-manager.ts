@@ -49,7 +49,7 @@ export async function manageTasks(
   try {
     switch (action) {
       case 'list':
-        return finish(doList(supervisor), t('taskmgr.action.list'))
+        return finish(await doList(supervisor, args), t('taskmgr.action.list'))
 
       case 'inspect':
         return finish(doInspect(supervisor, taskId), t('taskmgr.action.inspect'))
@@ -158,20 +158,30 @@ function formatTaskLine(index: number, info: SupervisedTaskInfo): string {
       toolCallId: info.pendingConfirmation.toolCallId,
       args: info.pendingConfirmation.argsPreview || '-',
     }))
-  } else if (info.isRunning) {
-    parts.push(t('taskmgr.line_running', { tool: info.currentToolName || '-', steps: info.stepCount }))
-  } else if (!info.settled) {
-    parts.push(t('taskmgr.line_idle', { steps: info.stepCount }))
+  } else if (info.isRunning && info.currentToolName) {
+    parts.push(t('taskmgr.line_running', { tool: info.currentToolName }))
   }
   parts.push(`task_id=${info.agentKey}`)
   return parts.join('｜')
 }
 
-function doList(supervisor: TaskSupervisor): ToolResult {
-  const tasks = supervisor.listSupervisedTasks()
-  if (tasks.length === 0) return ok(t('taskmgr.list_empty'))
-  const lines = tasks.map((task, i) => formatTaskLine(i + 1, task))
-  return ok(`${t('taskmgr.list_header', { count: tasks.length })}\n${lines.join('\n')}`)
+async function doList(supervisor: TaskSupervisor, args: Record<string, unknown>): Promise<ToolResult> {
+  const text = (key: string) => (typeof args[key] === 'string' ? (args[key] as string).trim() : '') || undefined
+  const askedPage = Number(args.page)
+  const query = {
+    page: Number.isFinite(askedPage) ? askedPage : undefined,
+    keyword: text('query'),
+    startDate: text('start_date'),
+    endDate: text('end_date'),
+  }
+  const filtering = !!(query.keyword || query.startDate || query.endDate)
+  const { tasks, total, page, pageCount, pageSize } = await supervisor.listTasks(query)
+  if (total === 0) return ok(t(filtering ? 'taskmgr.list_no_match' : 'taskmgr.list_empty'))
+  if (tasks.length === 0) return ok(t('taskmgr.list_page_out', { page, pageCount, total }))
+  const lines = tasks.map((task, i) => formatTaskLine((page - 1) * pageSize + i + 1, task))
+  const out = [t('taskmgr.list_header', { page, pageCount, total }), ...lines]
+  if (page < pageCount) out.push(t('taskmgr.list_next', { next: page + 1 }))
+  return ok(out.join('\n'))
 }
 
 function doInspect(supervisor: TaskSupervisor, taskId: string): ToolResult {

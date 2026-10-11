@@ -15,10 +15,10 @@
  *
  * 事件源过滤：仅 kind=task 的会话冒泡；companion/watch/wakeup 自身不回流（防循环）。
  * 任务分出去的帮手（身份键里的 :sub:）也不是任务，不进列表、不回流。
- * 内存里已经没有的任务，从历史索引补最近若干条已结束的摘要。
+ * 内存里已经没有的任务，从历史索引补已结束的摘要；列表分页，可按关键字 / 最后活跃日期找。
  */
 import { v4 as uuidv4 } from 'uuid'
-import { inferConversationKind, type ApprovalMode, type RiskLevel, type TerminalType } from '@shared/types'
+import { inferConversationKind, type AgentHistorySummary, type ApprovalMode, type RiskLevel, type TerminalType } from '@shared/types'
 import { createLogger } from '../../utils/logger'
 import { t } from './i18n'
 import { getDefaultShell, getLocalOS } from '../../utils/platform'
@@ -38,8 +38,8 @@ const RECEIPT_SUMMARY_MAX = 500
 /** 谁开的这一轮：联络经任务管理开的头才有回执 */
 type LedBy = 'companion' | undefined
 
-/** 内存里已经没有的任务，列表最多再补这么多条（按最近活跃，同一任务只留最新一条） */
-const SETTLED_TASK_LIMIT = 20
+/** 任务列表每页条数 */
+const TASK_PAGE_SIZE = 20
 
 /** 受管任务：kind=task，且不是任务分出去的帮手 */
 function isManagedTaskKey(agentKey: string | undefined): agentKey is string {
@@ -81,7 +81,8 @@ export interface SupervisedTaskInfo {
   isRunning: boolean
   phase?: string
   currentToolName?: string
-  stepCount: number
+  /** 只在看得到这场全部步骤时才有：列表从历史目录补进来的条目不打开正文，不报 */
+  stepCount?: number
   /** 已不在内存里、只能从历史看见时的结局。正在跑或还加载着的任务没有这个字段 */
   settled?: 'completed' | 'failed' | 'aborted'
   pendingConfirmation?: {
@@ -93,8 +94,30 @@ export interface SupervisedTaskInfo {
   }
 }
 
+/** 任务列表的查询条件：都不给时列全部 */
+export interface TaskListQuery {
+  /** 第几页，从 1 开始 */
+  page?: number
+  /** 关键字，范围同历史搜索 */
+  keyword?: string
+  /** 按最后活跃那天筛（与侧栏分组一致），格式同历史搜索 */
+  startDate?: string
+  endDate?: string
+}
+
+/** 任务列表的一页（manage_tasks list 的返回） */
+export interface TaskListPage {
+  tasks: SupervisedTaskInfo[]
+  /** 符合条件的任务总数 */
+  total: number
+  page: number
+  pageCount: number
+  pageSize: number
+}
+
 /** 任务近况（manage_tasks inspect 的返回） */
 export interface SupervisedTaskDetail extends SupervisedTaskInfo {
+  stepCount: number
   /** 最近步骤的一行摘要（已截断），按时间升序 */
   recentSteps: string[]
 }
@@ -149,10 +172,9 @@ export class TaskSupervisor {
 
   // ==================== 查询 ====================
 
-  /** 枚举受管任务（待确认 > 运行中 > 空闲 > 已从历史找回的结束任务） */
-  listSupervisedTasks(): SupervisedTaskInfo[] {
-    const rank = (t: SupervisedTaskInfo) =>
-      t.pendingConfirmation ? 0 : t.isRunning ? 1 : t.settled ? 3 : 2
+  /** 内存里的受管任务（待确认 > 运行中 > 空闲） */
+  listLiveTasks(): SupervisedTaskInfo[] {
+    const rank = (t: SupervisedTaskInfo) => t.pendingConfirmation ? 0 : t.isRunning ? 1 : 2
     const tasks: SupervisedTaskInfo[] = []
     for (const { agentKey, agent } of this.host.getAllAgentEntries()) {
       if (!isManagedTaskKey(agentKey)) continue
@@ -163,13 +185,53 @@ export class TaskSupervisor {
         log.warn(`枚举任务 ${agentKey} 失败，已跳过:`, err)
       }
     }
-    const liveKeys = new Set(tasks.map(t => t.agentKey))
+    return tasks.sort((a, b) => rank(a) - rank(b))
+  }
+
+  /**
+   * 任务列表的一页：内存里的排最前（待确认 > 运行中 > 空闲），其余按最后活跃从历史补，
+   * 同一任务只出现一次。给了关键字或日期时，只留历史搜索命中的那些。
+   */
+  async listTasks(query: TaskListQuery = {}): Promise<TaskListPage> {
+    const live = this.listLiveTasks()
+    const keyword = query.keyword?.trim()
+    const filtering = !!(keyword || query.startDate || query.endDate)
+
+    let summaries: AgentHistorySummary[] = []
     try {
-      tasks.push(...this.recentSettledTasks(liveKeys))
+      summaries = await this.searchHistory({ ...query, keyword }, filtering)
     } catch (err) {
       log.warn('从历史补任务列表失败:', err)
     }
-    return tasks.sort((a, b) => rank(a) - rank(b))
+
+    const liveByKey = new Map(live.map(t => [t.agentKey, t]))
+    const hitKeys = new Set(summaries.map(s => s.agentKey))
+    const head = filtering ? live.filter(t => hitKeys.has(t.agentKey)) : live
+    const seen = new Set(liveByKey.keys())
+    const rest: SupervisedTaskInfo[] = []
+    for (const summary of summaries) {
+      const agentKey = summary.agentKey
+      if (!isManagedTaskKey(agentKey) || seen.has(agentKey)) continue
+      seen.add(agentKey)
+      rest.push({
+        agentKey,
+        title: this.titleFromHistory(summary.title, summary.userTask, agentKey),
+        terminalType: summary.terminalType,
+        isRunning: false,
+        settled: summary.status,
+      })
+    }
+
+    const all = [...head, ...rest]
+    const pageCount = Math.max(1, Math.ceil(all.length / TASK_PAGE_SIZE))
+    const page = Number.isFinite(query.page) ? Math.max(1, Math.floor(query.page!)) : 1
+    return {
+      tasks: all.slice((page - 1) * TASK_PAGE_SIZE, page * TASK_PAGE_SIZE),
+      total: all.length,
+      page,
+      pageCount,
+      pageSize: TASK_PAGE_SIZE,
+    }
   }
 
   /** 单个任务近况：内存里有就看内存；没有则从历史读最近步骤摘要 */
@@ -388,28 +450,18 @@ export class TaskSupervisor {
     }
   }
 
-  /** 内存里没有、历史里还在的最近任务（同一 agentKey 只留最新一条） */
-  private recentSettledTasks(liveKeys: Set<string>): SupervisedTaskInfo[] {
+  /** 历史里的任务会话摘要，按最后活跃从新到旧（同一任务可能有多条，由调用方去重） */
+  private async searchHistory(query: TaskListQuery, filtering: boolean): Promise<AgentHistorySummary[]> {
     const history = this.host.getHistoryService()
     if (!history) return []
-    const seen = new Set<string>()
-    const settled: SupervisedTaskInfo[] = []
-    for (const summary of history.listAgentHistorySummaries(true)) {
-      const agentKey = summary.agentKey
-      if (!agentKey || liveKeys.has(agentKey) || seen.has(agentKey)) continue
-      if (!isManagedTaskKey(agentKey)) continue
-      seen.add(agentKey)
-      settled.push({
-        agentKey,
-        title: this.titleFromHistory(summary.title, summary.userTask, agentKey),
-        terminalType: summary.terminalType,
-        isRunning: false,
-        stepCount: 0,
-        settled: summary.status,
-      })
-      if (settled.length >= SETTLED_TASK_LIMIT) break
-    }
-    return settled
+    if (!filtering) return history.listAgentHistorySummaries(true)
+    return history.searchAgentHistorySummaries({
+      keyword: query.keyword,
+      startDate: query.startDate,
+      endDate: query.endDate,
+      dateBy: 'lastActive',
+      filter: r => isManagedTaskKey(r.agentKey),
+    })
   }
 
   private inspectSettledTask(agentKey: string, maxSteps: number): SupervisedTaskDetail | undefined {
@@ -433,15 +485,15 @@ export class TaskSupervisor {
     return this.titleFromHistory(record.title, record.userTask, agentKey)
   }
 
-  private titleFromHistory(title: string | undefined, userTask: string, agentKey: string): string {
+  private titleFromHistory(title: string | undefined, userTask: string | undefined, agentKey: string): string {
     const custom = title?.trim()
     if (custom) return custom
-    const brief = userTask.replace(/\s+/g, ' ').trim()
+    const brief = (userTask ?? '').replace(/\s+/g, ' ').trim()
     if (brief) return this.truncate(brief, 60)
     return agentKey.length > 16 ? `${agentKey.slice(0, 16)}…` : agentKey
   }
 
-  private buildTaskInfo(agentKey: string, agent: SailFish): SupervisedTaskInfo {
+  private buildTaskInfo(agentKey: string, agent: SailFish): SupervisedTaskInfo & { stepCount: number } {
     const status = agent.getRunStatus()
     const pending = agent.getPendingConfirmationInfo()
     return {

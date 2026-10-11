@@ -1442,7 +1442,7 @@ async function companionChat(args: string[]): Promise<void> {
           .catch((err: any) => console.error('\n联络执行失败:', err?.message || err))
       }
     }
-    const tasksBusy = supervisor.listSupervisedTasks().some((t: any) => t.isRunning || t.pendingConfirmation)
+    const tasksBusy = supervisor.listLiveTasks().some((t: any) => t.isRunning || t.pendingConfirmation)
     if (!tasksBusy && !companion.isRunning()) {
       // 任务都停了：回执不等防抖，立刻交给联络
       await supervisor.flushPendingEvents()
@@ -1460,7 +1460,7 @@ async function companionChat(args: string[]): Promise<void> {
     }
     await new Promise(r => setTimeout(r, 2000))
   }
-  const remaining = supervisor.listSupervisedTasks().filter((t: any) => t.isRunning)
+  const remaining = supervisor.listLiveTasks().filter((t: any) => t.isRunning)
   if (remaining.length > 0) {
     console.log(`\n⚠️ 值班超时，仍有 ${remaining.length} 个任务在跑（进程退出后任务中断）：`)
     for (const t of remaining) {
