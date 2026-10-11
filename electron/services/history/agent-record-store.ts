@@ -109,12 +109,17 @@ export interface SearchAgentRecordsOptions {
   endDate?: string
   /** 与 getRecentAgentRecords 的 filter 一致，在关键字/日期匹配后再过滤 */
   filter?: (r: AgentRecord) => boolean
-  /** 为 true 时仅匹配 userTask（列表标题），不扫 finalResult/steps，适合实时筛选 */
+  /** 为 true 时仅匹配侧栏标题与首句，不扫 finalResult/steps，适合实时筛选 */
   titleOnly?: boolean
   /** 换词 / 再搜 / 关搜索时中断全文扫描；未取消时仍扫完全部候选以给出总命中数 */
   signal?: AbortSignal
   /** 每命中一条（且仍在 limit 内）立刻回调，供 UI 边搜边展示；顺序与结果一致（新→旧） */
   onMatch?: (record: AgentRecord) => void
+  /**
+   * 日期按哪个时间算，结果也按它从新到旧排：
+   * start（默认）= 会话开始；lastActive = 最后活跃（开始 + 时长，与侧栏分组一致）
+   */
+  dateBy?: 'start' | 'lastActive'
 }
 
 export interface SearchAgentRecordsResult {
@@ -123,8 +128,24 @@ export interface SearchAgentRecordsResult {
   hasMore: boolean
 }
 
-/** 全文搜索命中：会话标题、最终结果、用户消息/追加（含附件标题）、主动找人。 */
+function toHistorySummary(e: AgentIndexEntry): AgentHistorySummary {
+  return {
+    id: e.id,
+    timestamp: e.timestamp,
+    duration: e.duration,
+    userTask: e.userTask,
+    title: e.title,
+    terminalType: e.terminalType,
+    agentKey: e.agentKey,
+    sshHost: e.sshHost,
+    terminalId: e.terminalId,
+    status: e.status,
+  }
+}
+
+/** 全文搜索命中：侧栏标题、首句、最终结果、用户消息/追加（含附件标题）、主动找人。 */
 function recordMatchesSearchKeyword(record: AgentRecord, lowerKeyword: string): boolean {
+  if (record.title?.toLowerCase().includes(lowerKeyword)) return true
   if (record.userTask?.toLowerCase().includes(lowerKeyword)) return true
   if (record.finalResult?.toLowerCase().includes(lowerKeyword)) return true
   return record.steps?.some(step => {
@@ -861,18 +882,7 @@ export class AgentRecordStore {
       )
     }
     entries.sort((a, b) => (b.timestamp + b.duration) - (a.timestamp + a.duration))
-    return entries.map(e => ({
-      id: e.id,
-      timestamp: e.timestamp,
-      duration: e.duration,
-      userTask: e.userTask,
-      title: e.title,
-      terminalType: e.terminalType,
-      agentKey: e.agentKey,
-      sshHost: e.sshHost,
-      terminalId: e.terminalId,
-      status: e.status,
-    }))
+    return entries.map(toHistorySummary)
   }
 
   // ==================== 搜索 ====================
@@ -888,7 +898,7 @@ export class AgentRecordStore {
   /**
    * 高级搜索 Agent 历史记录
    * 支持关键字搜索、时间范围过滤，以及 hasMore 提示。
-   * `titleOnly: true` 时仅匹配 userTask，不扫描 finalResult / steps，适合高频实时筛选。
+   * `titleOnly: true` 时仅匹配侧栏标题与首句（userTask），不扫描 finalResult / steps，适合高频实时筛选。
    *
    * 性能：先用内存索引（含 userTask/timestamp 等）筛出候选，再按需异步读取日期文件。
    * - titleOnly：关键字匹配在索引层完成，仅为前 limit 条命中读回完整记录，零全量扫描；
@@ -910,20 +920,7 @@ export class AgentRecordStore {
     const hasKeyword = lowerKeyword.length > 0
     const limit = Math.max(1, options.limit ?? 10)
     const titleOnly = options.titleOnly === true
-    const startTs = this.parseDateBoundary(options.startDate, 'start')
-    const endTs = this.parseDateBoundary(options.endDate, 'end')
-
-    // ── 候选筛选（零文件读）：时间窗 + filter；titleOnly 时关键字匹配也在此完成 ──
-    const candidates = [...this.getIndex()]
-      .sort((a, b) => b.timestamp - a.timestamp) // 最近优先，与旧实现的「最新日期 + 逆序记录」一致
-      .filter(e => {
-        const ts = e.timestamp || 0
-        if (startTs !== undefined && ts < startTs) return false
-        if (endTs !== undefined && ts > endTs) return false
-        if (options.filter && !options.filter(e as unknown as AgentRecord)) return false
-        if (titleOnly && hasKeyword && !e.userTask?.toLowerCase().includes(lowerKeyword)) return false
-        return true
-      })
+    const candidates = this.searchCandidates(options, lowerKeyword)
 
     // titleOnly：候选即命中集合，仅需为展示读回前 limit 条完整记录
     if (titleOnly) {
@@ -959,6 +956,52 @@ export class AgentRecordStore {
       totalMatched,
       hasMore: totalMatched > results.length
     }
+  }
+
+  /**
+   * 与 {@link searchAgentRecordsAdvanced} 同一套候选与匹配，交回**全部**命中的轻量摘要：
+   * 正文读来比对完即丢，命中再多也不攒在内存里。不给关键字和日期时交回全部（经 filter）。
+   */
+  async searchAgentHistorySummaries(
+    options: Omit<SearchAgentRecordsOptions, 'limit' | 'onMatch'>
+  ): Promise<AgentHistorySummary[]> {
+    const lowerKeyword = options.keyword?.trim().toLowerCase() ?? ''
+    const candidates = this.searchCandidates(options, lowerKeyword)
+    if (!lowerKeyword || options.titleOnly) return candidates.map(toHistorySummary)
+
+    const hits: AgentHistorySummary[] = []
+    for (const entry of candidates) {
+      throwIfAborted(options.signal)
+      const r = await this.readAgentRecordFromDiskAsync(entry.dateStr, entry.id, { omitCanvasData: true })
+      if (r && recordMatchesSearchKeyword(r, lowerKeyword)) hits.push(toHistorySummary(entry))
+    }
+    return hits
+  }
+
+  /** 搜索候选（零文件读）：时间窗 + filter；titleOnly 时关键字匹配也在此完成。按 dateBy 那个时间从新到旧 */
+  private searchCandidates(
+    options: Pick<SearchAgentRecordsOptions, 'startDate' | 'endDate' | 'filter' | 'titleOnly' | 'dateBy'>,
+    lowerKeyword: string
+  ): AgentIndexEntry[] {
+    const startTs = this.parseDateBoundary(options.startDate, 'start')
+    const endTs = this.parseDateBoundary(options.endDate, 'end')
+    const at = options.dateBy === 'lastActive'
+      ? (e: AgentIndexEntry) => (e.timestamp || 0) + (e.duration || 0)
+      : (e: AgentIndexEntry) => e.timestamp || 0
+    return [...this.getIndex()]
+      .sort((a, b) => at(b) - at(a))
+      .filter(e => {
+        const ts = at(e)
+        if (startTs !== undefined && ts < startTs) return false
+        if (endTs !== undefined && ts > endTs) return false
+        if (options.filter && !options.filter(e as unknown as AgentRecord)) return false
+        if (
+          options.titleOnly && lowerKeyword &&
+          !e.title?.toLowerCase().includes(lowerKeyword) &&
+          !e.userTask?.toLowerCase().includes(lowerKeyword)
+        ) return false
+        return true
+      })
   }
 
   /**
