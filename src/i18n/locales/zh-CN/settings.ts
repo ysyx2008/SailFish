@@ -1178,7 +1178,7 @@ export default {
     backupRestore: '备份与恢复',
     fullBackup: '完整备份',
     fullRestore: '完整恢复',
-    fullBackupHint: '将整个数据目录打包为 .zip 压缩包（含配置、会话、关切、凭证等）。浏览器缓存不打进包。可能较慢，可随时取消。',
+    fullBackupHint: '将整个数据目录打包为 .zip 压缩包（含配置、会话、关切、凭证等）。浏览器缓存和窗口自己的缓存不打进包。可能较慢，可随时取消。',
     fullRestoreHint: '选择备份压缩包后确认，将替换当前全部数据并重启应用。取消恢复会保留原有数据。',
     backupConfirmRunning: '有任务正在运行，备份可能不完整（未落盘数据会丢失）。仍要继续吗？',
     backupCancel: '取消备份',

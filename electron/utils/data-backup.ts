@@ -103,29 +103,44 @@ function shouldSkipBackupPath(relPath: string): boolean {
   return parts.some((part) => SKIP_ON_BACKUP.has(part))
 }
 
-/** Playwright 持久化浏览器配置所在目录（相对 userData） */
-const BROWSER_PROFILE_DIR = 'browser-profiles'
-
 /**
- * 浏览器自己会再生的运行时目录。备份时经常被占用（EBUSY），
- * 打进去体积也大，恢复后用不上。
- * 只认 browser-profiles 下面的，避免误伤用户数据里同名文件夹。
+ * 这些目录整棵都是 Chromium / 浏览器自己会再生的运行时数据。
+ * 备份时经常被占用，体积也大，恢复后用不上。
  */
-const BROWSER_VOLATILE_DIRS = new Set([
+const VOLATILE_RUNTIME_DIRS = new Set([
   'Cache',
   'Code Cache',
   'GPUCache',
+  'DawnCache',
   'DawnGraphiteCache',
   'DawnWebGPUCache',
   'ShaderCache',
   'GrShaderCache',
   'GraphiteDawnCache',
+  'GPUPersistentCache',
   'cache2',
   'startupCache',
   'Crashpad',
   'BrowserMetrics',
   'component_crx_cache',
   'extensions_crx_cache',
+])
+
+/**
+ * 只出现在浏览器配置 / 分区里面的小写目录名（如 Shared Dictionary/cache）。
+ * 不拿它去匹配数据目录最外层，免得误伤用户自己的文件夹。
+ */
+const NESTED_VOLATILE_DIRS = new Set([
+  'cache',
+])
+
+/**
+ * 相对 userData：整棵子树都按运行时目录跳过。
+ * browser-profiles 是浏览器助手的配置；Partitions 是登录窗和内置浏览器。
+ */
+const RUNTIME_TREE_ROOTS = new Set([
+  'browser-profiles',
+  'Partitions',
 ])
 
 /** 配置目录根上的锁文件，浏览器开着时读不了 */
@@ -136,10 +151,17 @@ const BROWSER_VOLATILE_FILES = new Set([
 
 function isVolatileBrowserBackupPath(relPath: string): boolean {
   const parts = normalizeArchiveEntryPath(relPath).split('/').filter(Boolean)
-  if (parts[0] !== BROWSER_PROFILE_DIR) return false
-  if (parts.some((part) => BROWSER_VOLATILE_DIRS.has(part))) return true
-  const base = parts[parts.length - 1]
-  return base ? BROWSER_VOLATILE_FILES.has(base) : false
+  if (parts.length === 0) return false
+
+  // 浏览器配置和分区：任意深度的运行时目录都跳过
+  if (RUNTIME_TREE_ROOTS.has(parts[0])) {
+    if (parts.some((part) => VOLATILE_RUNTIME_DIRS.has(part) || NESTED_VOLATILE_DIRS.has(part))) return true
+    const base = parts[parts.length - 1]
+    return base ? BROWSER_VOLATILE_FILES.has(base) : false
+  }
+
+  // 数据目录最外层：窗口自己的缓存。更深一层的同名文件夹（用户数据）不动
+  return VOLATILE_RUNTIME_DIRS.has(parts[0])
 }
 
 /** 文件正被占用、没权限、或扫描之后消失：跳过这一份，不让整包失败 */
@@ -252,7 +274,7 @@ export interface ExportUserDataOptions {
 export async function exportUserData(opts: ExportUserDataOptions): Promise<{
   files: number
   totalBytes: number
-  /** 扫描时能看见、打包时读不了（多半正被占用）而跳过的文件数。不含主动不打的浏览器缓存。 */
+  /** 扫描时能看见、打包时读不了（多半正被占用）而跳过的文件数。不含主动不打的缓存。 */
   skippedUnreadable: number
 }> {
   const { source, target, onProgress, shouldCancel } = opts

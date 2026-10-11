@@ -1178,7 +1178,7 @@ export default {
     backupRestore: 'Backup & Restore',
     fullBackup: 'Full Backup',
     fullRestore: 'Full Restore',
-    fullBackupHint: 'Pack the entire data directory into a .zip archive (settings, sessions, watches, credentials, etc.). Browser cache is left out. This may take a while; you can cancel anytime.',
+    fullBackupHint: 'Pack the entire data directory into a .zip archive (settings, sessions, watches, credentials, etc.). Browser cache and the app window\'s own cache are left out. This may take a while; you can cancel anytime.',
     fullRestoreHint: 'Pick a backup archive, then confirm. This replaces all current data and restarts the app. Canceling keeps your existing data.',
     backupConfirmRunning: 'Tasks are still running; the backup may be incomplete. Continue anyway?',
     backupCancel: 'Cancel Backup',
