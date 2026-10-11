@@ -452,13 +452,13 @@ function toFold(refs: ProcessStepRef[], nextStepAt?: number, hasSuccessor = fals
  */
 export function foldProcessSteps<T extends ProcessStepLike>(
   steps: ReadonlyArray<T>,
-  opts: { enabled: boolean; desk?: boolean },
+  opts: { enabled: boolean; desk?: boolean; endedAt?: number },
 ): ProcessSegment<T>[] {
   if (steps.length === 0) return []
   if (!opts.enabled) {
     return [{ kind: 'open', steps: steps.map(step => ({ step, part: 'full' as const })) }]
   }
-  if (opts.desk) return foldDeskTurn(steps)
+  if (opts.desk) return foldDeskTurn(steps, opts.endedAt)
 
   const releasedByReview = stepsReleasedByAutoReview(steps)
   const runs: { pinned: boolean; refs: ProcessStepRef<T>[] }[] = []
@@ -472,8 +472,14 @@ export function foldProcessSteps<T extends ProcessStepLike>(
   return runs.map((run, i) => {
     if (run.pinned) return { kind: 'open' as const, steps: run.refs }
     const next = runs[i + 1]
-    const nextStepAt = next?.refs[0]?.step.timestamp
-    return { kind: 'fold' as const, fold: toFold(run.refs, nextStepAt, next !== undefined), steps: run.refs }
+    // 这场已经收场：最后一截后面不会再有步骤，但不能因此一直转圈计时
+    const closedByEnd = !next && opts.endedAt !== undefined
+    const nextStepAt = next?.refs[0]?.step.timestamp ?? (closedByEnd ? opts.endedAt : undefined)
+    return {
+      kind: 'fold' as const,
+      fold: toFold(run.refs, nextStepAt, next !== undefined || closedByEnd),
+      steps: run.refs,
+    }
   })
 }
 
@@ -481,7 +487,7 @@ export function foldProcessSteps<T extends ProcessStepLike>(
  * 关起门处理回执的那一轮：整轮的过程收成开头一行，它对用户说的话和要用户动手的跟在后面。
  * 它写的文字、发消息的工具卡片都是过程——送到用户手里的那句另有一条「对你说的话」。
  */
-function foldDeskTurn<T extends ProcessStepLike>(steps: ReadonlyArray<T>): ProcessSegment<T>[] {
+function foldDeskTurn<T extends ProcessStepLike>(steps: ReadonlyArray<T>, endedAt?: number): ProcessSegment<T>[] {
   const releasedByReview = stepsReleasedByAutoReview(steps)
   const folded: ProcessStepRef<T>[] = []
   const open: ProcessStepRef<T>[] = []
@@ -493,7 +499,10 @@ function foldDeskTurn<T extends ProcessStepLike>(steps: ReadonlyArray<T>): Proce
     ;(pinned ? open : folded).push(ref)
   }
   const segments: ProcessSegment<T>[] = []
-  if (folded.length > 0) segments.push({ kind: 'fold', fold: toFold(folded, undefined, false, true), steps: folded })
+  if (folded.length > 0) {
+    const closed = endedAt !== undefined
+    segments.push({ kind: 'fold', fold: toFold(folded, closed ? endedAt : undefined, closed, true), steps: folded })
+  }
   if (open.length > 0) segments.push({ kind: 'open', steps: open })
   return segments
 }

@@ -1092,8 +1092,24 @@ export abstract class Agent {
     if (this.currentRun.requestId) {
       this.services.aiService.abort(this.currentRun.requestId)
     }
+
+    // 还没回结果的卡片就停在这里。不收口的话，任务已经结束，界面仍把它当成还在跑，转圈计时停不下来
+    this.closeInterruptedSteps()
     
     return true
+  }
+
+  /** 按停时，把还开着的步骤收成已结束，免得过程行一直转 */
+  private closeInterruptedSteps(): void {
+    const run = this.currentRun
+    if (!run) return
+    for (const step of [...run.steps]) {
+      if (step.type === 'tool_call' && step.success === undefined) {
+        this.updateStep(step.id, { success: false, isStreaming: false })
+      } else if (step.isStreaming) {
+        this.updateStep(step.id, { isStreaming: false })
+      }
+    }
   }
   
   /**

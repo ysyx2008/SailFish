@@ -13,6 +13,8 @@ export interface AgentTaskGroupDraft {
   steps: AgentStep[]
   afterEndSteps: AgentStep[]
   finalResult?: string
+  /** 收场那一步的时间。过程行用它停表，不再一直转到现在 */
+  endedAt?: number
   isProactive?: boolean
   isOnboarding?: boolean
   /** 闲着时收到任务回执另起的一轮：不是用户开的口 */
@@ -79,6 +81,7 @@ export function groupAgentSteps(allSteps: readonly AgentStep[]): {
     } else if (step.type === 'final_result') {
       if (currentGroup) {
         currentGroup.finalResult = step.content
+        currentGroup.endedAt = step.timestamp
         currentGroup = null
       }
     } else if (step.type === 'user_supplement' && !currentGroup) {

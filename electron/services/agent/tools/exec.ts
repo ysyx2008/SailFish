@@ -229,9 +229,19 @@ class CommandWatch implements BackgroundWatch {
   stop(): (() => string) | undefined {
     if (this.phase === 'released') return undefined
     this.phase = 'released'
+    const holdId = this.holdStep?.id
     const hadHold = this.closeHoldStep()
     const manager = getExecManager()
-    if (!manager.stop(this.task)) return undefined
+    const stopped = manager.stop(this.task)
+    if (holdId) {
+      const short = t('exec.stopped_short')
+      this.executor.updateStep(holdId, {
+        success: false,
+        isStreaming: false,
+        content: `⏹️ ${short}`,
+      })
+    }
+    if (!stopped) return undefined
     this.stopped = true
     if (hadHold) {
       const short = t('exec.stopped_short')

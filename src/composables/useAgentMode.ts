@@ -81,6 +81,8 @@ export interface AgentTaskGroup {
   /** 这场已经收场后出现的过程（如人主动压缩），画在收场后面 */
   afterEndSteps: AgentStep[]
   finalResult?: string
+  /** 收场时间。有它时，这场过程行不再转圈计时 */
+  endedAt?: number
   isCurrentTask: boolean
   isProactive?: boolean
   isOnboarding?: boolean
@@ -1145,7 +1147,11 @@ export function useAgentMode(
       const emitProcessSteps = (processSteps: AgentStep[]) => {
         if (processSteps.length === 0) return
         const visibleSteps = processSteps.filter(s => shouldShowToolResultStep(s, debugMode))
-        const segments = foldProcessSteps(visibleSteps, { enabled: foldEnabled, desk: group.isReceipt })
+        const segments = foldProcessSteps(visibleSteps, {
+          enabled: foldEnabled,
+          desk: group.isReceipt,
+          endedAt: group.endedAt,
+        })
 
         let emittedFirst = false
         const toStepItem = (ref: ProcessStepRef<AgentStep>, isFirst: boolean): VirtualItem => {

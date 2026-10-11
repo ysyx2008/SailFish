@@ -354,6 +354,25 @@ describe('foldProcessSteps', () => {
     expect(segs[0].kind === 'fold' && segs[0].fold.durationMs).toBeUndefined()
   })
 
+  it('stops the live clock once the task has ended, even if a command never reported back', () => {
+    const steps = [
+      step({
+        id: 'c1',
+        type: 'tool_call',
+        toolName: 'exec',
+        success: undefined,
+        timestamp: 1_000,
+      }),
+    ]
+    const running = foldProcessSteps(steps, { enabled: true })
+    expect(running[0].kind === 'fold' && running[0].fold.live).toBe(true)
+
+    const ended = foldProcessSteps(steps, { enabled: true, endedAt: 71_000 })
+    if (ended[0].kind !== 'fold') throw new Error('expected fold')
+    expect(ended[0].fold.live).toBe(false)
+    expect(ended[0].fold.durationMs).toBe(70_000)
+  })
+
   it('stops the live clock when the user interrupts a write still in flight', () => {
     const steps = [
       step({

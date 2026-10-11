@@ -17,7 +17,7 @@ describe('groupAgentSteps', () => {
     const { groups } = groupAgentSteps([
       step({ type: 'user_task', content: '说个任务' }),
       step({ type: 'error', content: '上下文超出模型限制' }),
-      step({ type: 'final_result', content: '❌ 任务失败' }),
+      step({ type: 'final_result', content: '❌ 任务失败', timestamp: 9_000 }),
       step({ id: 'compact-user', type: 'user_task', content: '压缩上下文' }),
       step({ id: 'compact-think', type: 'thinking', content: '正在压缩上下文' }),
       step({ id: 'compact-tool', type: 'tool_call', content: '压缩上下文', toolName: 'compress_context' }),
@@ -27,6 +27,7 @@ describe('groupAgentSteps', () => {
     expect(groups).toHaveLength(2)
     expect(groups[0].userTask).toBe('说个任务')
     expect(groups[0].finalResult).toBe('❌ 任务失败')
+    expect(groups[0].endedAt).toBe(9_000)
     expect(groups[0].afterEndSteps).toEqual([])
     expect(groups[1].userTask).toBe('压缩上下文')
     expect(groups[1].steps.map(s => s.id)).toEqual(['compact-think', 'compact-tool'])
