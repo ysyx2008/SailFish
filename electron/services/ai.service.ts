@@ -583,6 +583,8 @@ export interface ChatWithToolsResult {
    * 防止带图毒前缀每轮循环「拒图→剥图→说看不到」（SPEC: 跨模型带图）。
    */
   imagesStripped?: boolean
+  /** 只有思考：没有正文、没有工具调用。此时 content 是拿思考过程包出来给界面看的外壳 */
+  thinkingOnly?: boolean
 }
 
 /** 压测等需要「原样记失败」的调用：关掉自动重试/换模型，并可收紧输出。 */
@@ -2792,6 +2794,7 @@ export class AiService {
                   content: finalContent,
                   tool_calls: hasToolCalls ? toolCalls : undefined,
                   finish_reason: finishReason as ChatWithToolsResult['finish_reason'],
+                  thinkingOnly: !content.trim() && !hasToolCalls && !!reasoningContent.trim(),
                   // 用 hasReasoningOutput 而非字符串非空作为"是否思考模式"标志：
                   // DeepSeek V3.2+ 要求带 tool_calls 的 assistant 在后续请求中回传此字段，
                   // 因此即使思考内容为空字符串也保留，避免被 || 转为 undefined 后丢失
@@ -2919,6 +2922,7 @@ export class AiService {
             content: finalContent,
             tool_calls: hasToolCalls ? toolCalls : undefined,
             finish_reason: finishReason as ChatWithToolsResult['finish_reason'],
+            thinkingOnly: !content.trim() && !hasToolCalls && !!reasoningContent.trim(),
             reasoning_content: hasReasoningOutput ? reasoningContent : undefined,
             usage: streamUsage,
             ...(stripImages ? { imagesStripped: true } : {})
@@ -3012,6 +3016,7 @@ export class AiService {
           content: finalContent,
           tool_calls: hasValidTools ? validToolCalls : undefined,
           finish_reason: 'stop',
+          thinkingOnly: !content.trim() && !hasValidTools && !unfinishedNote && !!reasoningContent.trim(),
           reasoning_content: hasReasoningOutput ? reasoningContent : undefined,
           aborted: true
         }))

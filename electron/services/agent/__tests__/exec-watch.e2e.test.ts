@@ -51,6 +51,8 @@ type Msg = { role?: string; content?: unknown; tool_calls?: unknown }
 type LlmResponse = {
   content?: string
   tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>
+  reasoning_content?: string
+  thinkingOnly?: boolean
 }
 
 const itPosix = process.platform === 'win32' ? it.skip : it
@@ -99,7 +101,7 @@ function makeServices(responder: (call: { index: number; messages: Msg[] }) => L
           }
           const content = r.content ?? ''
           if (content) onChunk(content)
-          onDone({ content, tool_calls: r.tool_calls })
+          onDone({ content, tool_calls: r.tool_calls, reasoning_content: r.reasoning_content, thinkingOnly: r.thinkingOnly })
         } finally {
           inflight.delete(cancel)
         }
@@ -390,7 +392,7 @@ describe('等命令不卡人：插话先回答、有终点的盯到底、常驻�
         timeline.push('reported')
         return { content: '跑完了：fin' }
       }
-      if (last.includes('看一眼再决定')) {
+      if (last.includes('还没结束')) {
         timeline.push('checkpoint')
         seenAtCheckpoint.push(last)
         return { content: '还在跑' }
@@ -421,7 +423,7 @@ describe('等命令不卡人：插话先回答、有终点的盯到底、常驻�
       }
       const last = lastUserText(messages)
       if (pid) return { content: '已停掉那条卡住的命令' }
-      if (last.includes('看一眼再决定')) {
+      if (last.includes('还没结束')) {
         pid = Number(last.match(/pid=(\d+)/)?.[1])
         const taskId = last.match(/task_id=(exec-\d+)/)?.[1]
         return { content: '一直没动静，停掉它', tool_calls: [tc('await_exec', { task_id: taskId, stop: true })] }
@@ -491,6 +493,117 @@ describe('等命令不卡人：插话先回答、有终点的盯到底、常驻�
     expect(asked).toEqual([{ command }])
   }, 15000)
 
+  /** 起一条长命令，等这一轮回去盯着它 */
+  async function startHolding(agent: SailFish, steps: AgentStep[]): Promise<{ runPromise: Promise<string> }> {
+    let holding = false
+    const runPromise = agent.run('统计一下', ctx(), {
+      callbacks: {
+        onStep: (_id, step) => {
+          steps.push({ ...step })
+          if (step.toolName === 'await_exec' && String(step.content).includes('统计大小')) holding = true
+        }
+      }
+    })
+    const started = Date.now()
+    while (!holding && Date.now() - started < 8000) await sleep(50)
+    expect(holding).toBe(true)
+    return { runPromise }
+  }
+
+  const thoughtOnlyReply = (reasoning: string): LlmResponse => ({
+    content: `<details>\n<summary>🤔 <strong>思考过程</strong></summary>\n\n<blockquote>\n\n${reasoning}\n\n</blockquote>\n</details>`,
+    reasoning_content: reasoning,
+    thinkingOnly: true,
+  })
+  const startLong = (): LlmResponse => ({
+    content: '开始统计',
+    tool_calls: [tc('exec', { command: 'echo start; sleep 30', description: '统计大小', wait_seconds: 1 })],
+  })
+
+  itPosix('盯着时你说停、它只想不说：界面上明说没回出话来，命令照旧盯着；再说一句它就停掉', async () => {
+    let phase: 'start' | 'holding' | 'thought' | 'stopped' = 'start'
+    let pid: number | undefined
+    let sawOwnHoldReply = false
+    let sawThoughtShell = false
+    const services = makeServices(({ index, messages }) => {
+      if (index === 0) return startLong()
+      const last = lastUserText(messages)
+      if (phase === 'start') { phase = 'holding'; return { content: '先放着，跑完再说' } }
+      if (phase === 'holding' && last.includes('直接停掉')) {
+        phase = 'thought'
+        return thoughtOnlyReply('用户让我停掉。执行 await_exec(stop=true)。Go.')
+      }
+      if (phase === 'thought' && last.includes('快停')) {
+        sawOwnHoldReply = messages.some(m => m.role === 'assistant' && m.content === '先放着，跑完再说')
+        sawThoughtShell = messages.some(m => m.role === 'assistant' && String(m.content ?? '').includes('<details>'))
+        phase = 'stopped'
+        pid = pidFrom(messages)
+        const taskId = allText(messages).match(/task_id=(exec-\d+)/)?.[1]
+        return { content: '停了', tool_calls: [tc('await_exec', { task_id: taskId, stop: true })] }
+      }
+      return { content: '已经停了' }
+    })
+    const agent = newAgent(services, 'e2e-exec-thinking-only')
+    const steps: AgentStep[] = []
+    const { runPromise } = await startHolding(agent, steps)
+    const task = getExecManager().list().find(t => t.status === 'running')
+    expect(task).toBeTruthy()
+
+    agent.addUserMessage('不要等了，直接停掉')
+    const started = Date.now()
+    while (!steps.some(s => s.type === 'error') && Date.now() - started < 5000) await sleep(50)
+    expect(steps.filter(s => s.type === 'error' && String(s.content).includes('没回出话来'))).toHaveLength(1)
+    // 没让停：命令还在跑，这一轮还在盯
+    expect(getExecManager().get(task!.taskId)?.status).toBe('running')
+    expect(agent.isRunning()).toBe(true)
+
+    agent.addUserMessage('快停')
+    const result = await runPromise
+    // 盯着时回过的话留在它自己的记录里；只有思考的那次不算它说过的话
+    expect(sawOwnHoldReply).toBe(true)
+    expect(sawThoughtShell).toBe(false)
+    expect(result).toContain('已经停了')
+    expect(pid).toBeTruthy()
+    expect(groupAlive(pid!)).toBe(false)
+  }, 20000)
+
+  itPosix('检查点叫醒时只想不说：不提示，接着盯，跑完照样报结果', async () => {
+    checkpoint.ms = 800
+    let checkpoints = 0
+    const services = makeServices(({ index, messages }) => {
+      if (index === 0) {
+        return { content: '开始跑', tool_calls: [tc('exec', { command: 'echo a; sleep 2.5; echo fin', wait_seconds: 1 })] }
+      }
+      const last = lastUserText(messages)
+      if (last.includes('已经结束')) return { content: '跑完了：fin' }
+      if (last.includes('还没结束')) {
+        checkpoints++
+        return thoughtOnlyReply('还在跑，接着等。')
+      }
+      return { content: '先放后台' }
+    })
+    const agent = newAgent(services, 'e2e-exec-thinking-only-checkpoint')
+    const steps: AgentStep[] = []
+    const result = await agent.run('跑个脚本', ctx(), {
+      callbacks: { onStep: (_id, step) => { steps.push({ ...step }) } }
+    })
+    expect(checkpoints).toBeGreaterThanOrEqual(1)
+    expect(steps.some(s => s.type === 'error')).toBe(false)
+    expect(result).toContain('fin')
+  }, 15000)
+
+  it('你说了话、它只想不说就收工：界面上明说没回出话来，不把思考外壳当回复交出去', async () => {
+    const services = makeServices(() => thoughtOnlyReply('想想再说'))
+    const agent = newAgent(services, 'e2e-thinking-only-plain')
+    const steps: AgentStep[] = []
+    const result = await agent.run('在吗', ctx(), {
+      callbacks: { onStep: (_id, step) => { steps.push({ ...step }) } }
+    })
+    expect(result).toBe('')
+    expect(steps.some(s => s.type === 'error' && String(s.content).includes('没回出话来'))).toBe(true)
+    expect(steps.some(s => s.type === 'final_result')).toBe(false)
+  }, 15000)
+
   itPosix('只能叫停这场对话自己起的命令，别的对话起的停不了', async () => {
     const owner = newAgent(makeServices(({ index }) => index === 0
       ? { content: '起个服务', tool_calls: [tc('exec', { command: 'echo up; sleep 20', wait_seconds: 1, service: true })] }
@@ -528,7 +641,7 @@ describe('等命令不卡人：插话先回答、有终点的盯到底、常驻�
       }
       if (marked) return { content: '放手了，服务留着' }
       const last = lastUserText(messages)
-      if (last.includes('看一眼再决定')) {
+      if (last.includes('还没结束')) {
         marked = true
         const taskId = last.match(/task_id=(exec-\d+)/)?.[1]
         return { tool_calls: [tc('await_exec', { task_id: taskId, service: true })] }

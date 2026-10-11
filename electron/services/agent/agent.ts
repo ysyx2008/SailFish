@@ -264,6 +264,10 @@ export abstract class Agent {
   private _loopOpen = false
   /** 用户按停之后，不要把后台结果送回来把这场重新打开。下一句用户开口时清掉。 */
   private _dropBackgroundNotices = false
+  /** 用户说了话，它还没回过一句正文 */
+  private _userAwaitsReply = false
+  /** 这一轮已经回给用户、但还没写进对话的话；接着跑之前补进去 */
+  private _unrecordedReply: AiMessage | null = null
   private _deferredNotices: string[] = []
   /** 派出去的任务交回来的回执，等这场闲下来另起一轮 */
   private _deferredReceipts: string[] = []
@@ -994,6 +998,10 @@ export abstract class Agent {
     }
     // 用户自己又开口了，之后的后台结果可以再送回来（回执另起的一轮不算用户开口）
     if (!options?.internalNotice) this._dropBackgroundNotices = false
+    // 关切、唤醒不进用户会话列表；联络派的任务由联络收回执：都没人在这条线上等它开口
+    this._userAwaitsReply = !options?.internalNotice && !this._isSubAgent && options?.ledBy !== 'companion'
+      && conversationPolicy(inferConversationKind(this._agentId)).visibleInList
+    this._unrecordedReply = null
     
     // 这场对话用哪个模型：显式传入优先；否则联络沿用界面上已选的。
     // 从没选过就保持空，下游回落到设置里当时的默认——微信进线不能写死、也不能盖掉界面选择。
@@ -2082,7 +2090,8 @@ export abstract class Agent {
       taskMessageLog: run.taskMessageLog,
       runMessages: run.messages,
       taskStatus: status,
-      result: result ?? null,
+      // 只想不说时没有回复，不补一条空的进对话
+      result: result?.trim() ? result : null,
       reasoningContent: run.lastAssistantReasoningContent,
       tokenUsage: run.tokenUsage,
       imagesStripped: run.imagesStripped,
@@ -3110,6 +3119,12 @@ export abstract class Agent {
     const MAX_NO_TOOL_RETRIES = 2
     const MAX_TRUNCATION_RETRIES = 3
     const MAX_CONTEXT_OVERFLOW_RETRIES = 1
+
+    if (this._unrecordedReply) {
+      run.messages.push(this._unrecordedReply)
+      run.taskMessageLog.push({ ...this._unrecordedReply })
+      this._unrecordedReply = null
+    }
     
     // 创建工具执行器配置
     const toolExecutorConfig = this.createToolExecutorConfig(run)
@@ -3129,6 +3144,7 @@ export abstract class Agent {
           
           if (stepResult.response) {
             lastResponse = stepResult.response
+            if (lastResponse.content?.trim() && !lastResponse.thinkingOnly) this._userAwaitsReply = false
           }
           
           // 输出被截断时强制继续循环（已在 executeStep 中注入续写提示）
@@ -3136,7 +3152,7 @@ export abstract class Agent {
             truncationRetryCount++
             if (truncationRetryCount >= MAX_TRUNCATION_RETRIES) {
               log.warn('Output repeatedly truncated, giving up continuation')
-              return lastResponse?.content || t('agent.no_response')
+              return this.replyOf(lastResponse) || t('agent.no_response')
             }
             continue
           }
@@ -3151,6 +3167,17 @@ export abstract class Agent {
           
           // 处理无工具调用的情况
           if (!stepResult.hasToolCalls) {
+            // 只有思考、没有正文也没动手：不算它说过的话，界面上那段思考外壳不当回复交出去
+            if (lastResponse?.thinkingOnly && run.pendingUserMessages.length === 0) {
+              if (hasExecutedAnyTool && this.checkPlanProgress(run) === 'continue') continue
+              if (this._userAwaitsReply && !run.aborted) {
+                this._userAwaitsReply = false
+                log.warn('Reply had thinking only (no body, no tool call) while the user was waiting')
+                this.addStep({ type: 'error', content: `⚠️ ${t('agent.reply_no_body')}` })
+              }
+              return ''
+            }
+
             if (!hasExecutedAnyTool) {
               // 从未执行过工具
               if (run.pendingUserMessages.length > 0) {
@@ -3160,7 +3187,7 @@ export abstract class Agent {
               
               if (lastResponse?.content?.trim()) {
                 // 直接返回，让 run() 方法中的 finalizeRun 处理完成回调
-                return lastResponse.content
+                return this.replyOf(lastResponse)
               }
               
               noToolCallRetryCount++
@@ -3187,8 +3214,7 @@ export abstract class Agent {
             }
             
             // 正常结束，直接返回结果
-            const finalResult = lastResponse?.content || t('agent.task_complete')
-            return finalResult
+            return this.replyOf(lastResponse) || t('agent.task_complete')
           }
         }
         
@@ -3254,7 +3280,7 @@ export abstract class Agent {
       return t('error.operation_aborted')
     }
     
-    return lastResponse?.content || t('agent.task_complete')
+    return this.replyOf(lastResponse) || t('agent.task_complete')
   }
   
   /**
@@ -5449,14 +5475,30 @@ export abstract class Agent {
    * 按停止收尾不走这里：那次回复由收尾补进记录，这里再写就会存两遍。
    */
   private retainInterruptedReply(run: AgentRun, response: ChatWithToolsResult | null): void {
+    const assistantMsg = this.spokenReply(response)
+    if (!assistantMsg) return
+    run.messages.push(assistantMsg)
+    run.taskMessageLog.push({ ...assistantMsg })
+  }
+
+  /**
+   * 这一轮交出去的回复。盯着后台命令时这一轮还没完，下次接着跑之前要把这句补进对话；
+   * 真到收尾时由收尾补，不在这里写，免得存两遍。
+   */
+  private replyOf(response: ChatWithToolsResult | null): string {
+    this._unrecordedReply = this.spokenReply(response)
+    return this._unrecordedReply?.content as string ?? ''
+  }
+
+  /** 说出口的话；只有思考时那段给界面看的外壳不算 */
+  private spokenReply(response: ChatWithToolsResult | null): AiMessage | null {
     const content = response?.content
-    if (!content?.trim()) return
+    if (!content?.trim() || response?.thinkingOnly) return null
     const assistantMsg: AiMessage = { role: 'assistant', content }
     if (response?.reasoning_content !== undefined) {
       assistantMsg.reasoning_content = response.reasoning_content
     }
-    run.messages.push(assistantMsg)
-    run.taskMessageLog.push({ ...assistantMsg })
+    return assistantMsg
   }
 
   /**
@@ -5516,6 +5558,7 @@ export abstract class Agent {
     run.taskMessageLog.push({ role: 'user', content: combinedText, _systemInjected: true })
 
     const heardFromUser = run.pendingUserMessages.some(pending => !pending.silent)
+    if (heardFromUser && !this._isSubAgent) this._userAwaitsReply = true
     if (heardFromUser && this.currentPlan && !this.currentPlan.paused && this.currentPlan.steps.some(s => s.status === 'pending')) {
       const planHintMsg: AiMessage = { role: 'user', content: t('agent.user_supplement_with_plan'), _systemInjected: true }
       run.messages.push(planHintMsg)
