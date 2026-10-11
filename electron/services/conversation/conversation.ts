@@ -31,7 +31,7 @@ import type {
 import { inferConversationKind, filterPersistableSteps, isApprovalMode } from '@shared/types'
 import type { AiMessage } from '../ai.service'
 import { TaskMemoryStore, type LookupToolMeta } from '../agent/task-memory'
-import { splitMessagesIntoTasks, splitStepsIntoTasks, stepRecordToStep, chunkStepsByUserTask, chunkStepsForCompanionExtract } from './messages'
+import { splitMessagesIntoTasks, splitStepsIntoTasks, stepRecordToStep, chunkStepsByUserTask, chunkStepsForCompanionExtract, restoreSpokenRepliesMissingFromMessages } from './messages'
 
 function lastTaskStatus(
   record: AgentRecord,
@@ -221,9 +221,12 @@ export class Conversation {
    * 保持空白、从零累积（保留当前行为；是否改为持久化累积是另一项独立决策，不在本次重构内）。
    */
   loadFromRecord(record: AgentRecord): void {
-    if (record.messages && record.messages.length > 0) {
+    const restoredMessages = record.messages?.length
+      ? restoreSpokenRepliesMissingFromMessages(record.messages as AiMessage[], record.steps ?? [])
+      : record.messages
+    if (restoredMessages && restoredMessages.length > 0) {
       const tasks = splitMessagesIntoTasks(
-        record.messages as AiMessage[],
+        restoredMessages,
         () => `restored_${Date.now()}_${this._restoreTaskSeq++}`
       )
       for (let i = 0; i < tasks.length; i++) {
@@ -239,7 +242,7 @@ export class Conversation {
       }
     }
 
-    this.setRestoredTranscript(record.messages as AiMessage[] | undefined, record.steps)
+    this.setRestoredTranscript(restoredMessages as AiMessage[] | undefined, record.steps)
     this.restoreWorkingContext(record.workingContext as AiMessage[] | undefined)
     this.adoptCompressedArchives(record.compressedArchives as typeof this._compressedArchives | undefined)
     const title = record.title?.trim()
@@ -402,6 +405,8 @@ export class Conversation {
     // fork 产物恒为 task（从 task 或 companion 派生出的独立任务会话）
     record.kind = 'task'
     const conversation = Conversation.fromRecord(record)
+    // 重开时补上的半截回复在会话里，落盘和前缀缓存用的是这份 record
+    record.messages = conversation.messages.map(m => JSON.parse(JSON.stringify(m)) as AiMessage)
     return { conversation, record }
   }
 

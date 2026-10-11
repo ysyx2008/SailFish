@@ -64,6 +64,41 @@ describe('Conversation 聚合根（领域模型）', () => {
     expect(conv.kind).toBe('task')
   })
 
+  it('另开一聊时，屏幕上有、记录里没有的半截回复补进给它看的记录，排在插话前面', () => {
+    const partial = '收到，来一次真正的深度测试。派 5 个伙计并行开工，分工如下：'
+    const stopped = '行，那就停在这，不动手了。'
+    const record = {
+      id: 'sess_gap', timestamp: Date.now(), terminalId: '', agentKey: 'tab-1',
+      terminalType: 'assistant', userTask: '深度测试下', duration: 0, status: 'completed',
+      messages: [
+        { role: 'user', content: '<sf_user_message>深度测试下</sf_user_message>' },
+        { role: 'user', content: '<sf_user_message>算了不做了</sf_user_message>', _systemInjected: true },
+        { role: 'assistant', content: stopped }
+      ],
+      steps: [
+        { id: 'u', type: 'user_task', content: '深度测试下', timestamp: 1 },
+        { id: 'm', type: 'message', content: `<details><summary>思考</summary>草稿</details>\n\n${partial}`, timestamp: 2 },
+        { id: 's', type: 'user_supplement', content: '算了不做了', timestamp: 3 },
+        { id: 'a', type: 'message', content: stopped, timestamp: 4 },
+        { id: 'f', type: 'final_result', content: stopped, timestamp: 5 }
+      ]
+    } as AgentRecord
+
+    const forked = Conversation.forkFromRecord(record, 'sess_fork')
+    expect(forked).not.toBeNull()
+    const contents = forked!.record.messages!.map(m => m.content)
+    expect(contents[0]).toContain('深度测试下')
+    expect(contents[1]).toBe(partial)
+    expect(contents[2]).toContain('算了不做了')
+    expect(contents[3]).toBe(stopped)
+    expect(forked!.conversation.messages.map(m => m.content)).toEqual(contents)
+
+    const tasks = forked!.conversation.taskMemory.getTasksInOrder()
+    const remembered = tasks.flatMap(t => t.messages ?? []).map(m => m.content).join('\n')
+    expect(remembered).toContain(partial)
+    expect(remembered.indexOf(partial)).toBeLessThan(remembered.indexOf('算了不做了'))
+  })
+
   it('审批方式是会话自己的：随记录往返，接回时已定的不被覆盖', () => {
     const base: AgentRecord = {
       id: 'sess_a', timestamp: Date.now(), terminalId: '', agentKey: 'tab-1',

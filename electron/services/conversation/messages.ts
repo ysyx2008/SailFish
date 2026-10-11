@@ -13,6 +13,9 @@ import type { AgentStep, AgentStepRecord } from '@shared/types'
 import type { RiskLevel } from '../agent/types'
 import type { AiMessage } from '../ai.service'
 
+/** 短于这长度的互相包含不当成「已经记下」，免得一句短回复盖住另一段没写进去的话。 */
+const SPOKEN_CONTAINMENT_MIN = 12
+
 /**
  * task id 生成策略。`index` = 当前已切出的任务数（即将 push 的这条的下标）。
  * - 实例单调序号方案：`() => `restored_${Date.now()}_${seq++}``（忽略 index）。
@@ -225,4 +228,102 @@ export function chunkStepsForCompanionExtract(steps: AgentStep[]): AgentStep[][]
   }
   flush()
   return chunks
+}
+
+/** 屏幕上的回复去掉思考块，留下说出来的字。没闭合的思考块连同其后一起去掉。 */
+export function spokenReplyText(content: string | undefined): string {
+  if (!content) return ''
+  let text = content.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '')
+  const open = text.search(/<details\b/i)
+  if (open >= 0) text = text.slice(0, open)
+  return text.trim()
+}
+
+function compactSpoken(text: string): string {
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+function spokenAlreadyRecorded(spoken: string, messages: readonly AiMessage[]): boolean {
+  const needle = compactSpoken(spoken)
+  if (!needle) return true
+  for (const msg of messages) {
+    if (msg.role !== 'assistant') continue
+    const recorded = compactSpoken(spokenReplyText(msg.content))
+    if (!recorded) continue
+    if (recorded === needle) return true
+    if (needle.length >= SPOKEN_CONTAINMENT_MIN && recorded.includes(needle)) return true
+    // 步骤里是「思考去掉后的整段回复」，记录里是同一段。短句夹在另一段长回复里不算已经记下。
+    if (recorded.length >= SPOKEN_CONTAINMENT_MIN && needle.includes(recorded) && recorded.length * 2 >= needle.length) return true
+  }
+  return false
+}
+
+/**
+ * 屏幕上有、模型记录里没有的回复，按用户话的先后补回去。
+ * 插话打断若发生在修复之前，半截话只留在步骤里；重开或另开一聊时从这里补进 messages。
+ * 已经记下的不重复补。不插进工具调用和它的结果中间。
+ */
+export function restoreSpokenRepliesMissingFromMessages(
+  messages: readonly AiMessage[],
+  steps: readonly { type: string; content?: string }[]
+): AiMessage[] {
+  if (messages.length === 0 || steps.length === 0) {
+    return messages.map(m => ({ ...m }))
+  }
+
+  const result: AiMessage[] = []
+  let mi = 0
+  let pending = ''
+
+  const flush = () => {
+    const text = pending.trim()
+    pending = ''
+    if (!text) return
+    const next = messages[mi]
+    if (next?.role === 'tool') return
+    const last = result[result.length - 1]
+    if (last?.role === 'assistant' && last.tool_calls?.length && next?.role === 'tool') return
+    if (next?.role === 'assistant' && !next.tool_calls?.length) {
+      result.push({
+        ...next,
+        content: next.content?.trim() ? `${text}\n\n${next.content}` : text
+      })
+      mi++
+      return
+    }
+    result.push({ role: 'assistant', content: text })
+  }
+
+  const copyThrough = (index: number) => {
+    while (mi <= index && mi < messages.length) {
+      result.push({ ...messages[mi++] })
+    }
+  }
+
+  for (const step of steps) {
+    if (step.type === 'user_task' || step.type === 'user_supplement') {
+      const needle = (step.content || '').trim()
+      if (!needle) continue
+      let found = -1
+      for (let j = mi; j < messages.length; j++) {
+        const msg = messages[j]
+        if (msg.role === 'user' && (msg.content || '').includes(needle)) {
+          found = j
+          break
+        }
+      }
+      if (found < 0) continue
+      flush()
+      copyThrough(found)
+      continue
+    }
+    if (step.type !== 'message') continue
+    const body = spokenReplyText(step.content)
+    if (!body || spokenAlreadyRecorded(body, messages)) continue
+    pending = pending ? `${pending}\n\n${body}` : body
+  }
+
+  flush()
+  while (mi < messages.length) result.push({ ...messages[mi++] })
+  return result
 }

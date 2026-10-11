@@ -13,7 +13,8 @@ import {
   splitStepsIntoTasks,
   chunkStepsByUserTask,
   chunkStepsForCompanionExtract,
-  stepRecordToStep
+  stepRecordToStep,
+  restoreSpokenRepliesMissingFromMessages
 } from '../messages'
 import type { AgentStep } from '@shared/types'
 
@@ -177,5 +178,87 @@ describe('messages.stepRecordToStep', () => {
     const step = stepRecordToStep(rec)
     expect(step.askingAnswer).toBe('确定删')
     expect(step.autoReview).toEqual(rec.autoReview)
+  })
+})
+
+describe('messages.restoreSpokenRepliesMissingFromMessages', () => {
+  const partial = '收到，来一次真正的深度测试。派 5 个伙计并行开工，分工如下：'
+  const stopped = '行，那就停在这，不动手了。'
+
+  function interruptedRecord() {
+    const messages: AiMessage[] = [
+      { role: 'user', content: '<sf_user_message>深度测试下</sf_user_message>' },
+      { role: 'user', content: '<sf_user_message>算了不做了</sf_user_message>', _systemInjected: true },
+      { role: 'assistant', content: stopped },
+      { role: 'user', content: '<sf_user_message>等一下，你刚才是打算深度测试什么东西？</sf_user_message>' },
+      { role: 'assistant', content: '那个「5」是从以前的对话里读到的，这场没提过数字。' }
+    ]
+    const steps = [
+      { type: 'user_task', content: '深度测试下' },
+      { type: 'message', content: `<details><summary>思考</summary>\n\n内部草稿\n</details>\n\n${partial}` },
+      { type: 'tool_call', content: '派出 1 个伙计 · 160 字符' },
+      { type: 'user_supplement', content: '算了不做了' },
+      { type: 'message', content: `<details><summary>思考</summary>\n\n再想\n</details>\n\n${stopped}` },
+      { type: 'final_result', content: stopped },
+      { type: 'user_task', content: '等一下，你刚才是打算深度测试什么东西？' },
+      { type: 'message', content: '那个「5」是从以前的对话里读到的，这场没提过数字。' },
+      { type: 'final_result', content: '那个「5」是从以前的对话里读到的，这场没提过数字。' }
+    ]
+    return { messages, steps }
+  }
+
+  it('把屏幕上有、记录里没有的半截回复补到插话前面，思考块不带上', () => {
+    const { messages, steps } = interruptedRecord()
+    const restored = restoreSpokenRepliesMissingFromMessages(messages, steps)
+    expect(restored.map(m => m.role)).toEqual([
+      'user', 'assistant', 'user', 'assistant', 'user', 'assistant'
+    ])
+    expect(restored[1].content).toBe(partial)
+    expect(restored[1].content).not.toContain('内部草稿')
+    expect(restored[2].content).toContain('算了不做了')
+    expect(restored[3].content).toBe(stopped)
+  })
+
+  it('再补一次不重复', () => {
+    const { messages, steps } = interruptedRecord()
+    const once = restoreSpokenRepliesMissingFromMessages(messages, steps)
+    const twice = restoreSpokenRepliesMissingFromMessages(once, steps)
+    expect(twice).toEqual(once)
+  })
+
+  it('回复已经在记录里时不另加一条', () => {
+    const messages: AiMessage[] = [
+      { role: 'user', content: 'Task 1 question' },
+      { role: 'assistant', content: 'Task 1 answer' }
+    ]
+    const steps = [
+      { type: 'user_task', content: 'Task 1 question' },
+      { type: 'message', content: '<details><summary>思考</summary>想</details>\n\nTask 1 answer' },
+      { type: 'final_result', content: 'Task 1 answer' }
+    ]
+    const restored = restoreSpokenRepliesMissingFromMessages(messages, steps)
+    expect(restored.map(m => m.content)).toEqual(['Task 1 question', 'Task 1 answer'])
+  })
+
+  it('不把半截回复插进工具调用和结果中间', () => {
+    const messages: AiMessage[] = [
+      { role: 'user', content: '跑一下' },
+      { role: 'assistant', content: '', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'exec', arguments: '{}' } }] },
+      { role: 'tool', content: 'ok', tool_call_id: 'c1' },
+      { role: 'assistant', content: '跑完了' }
+    ]
+    const steps = [
+      { type: 'user_task', content: '跑一下' },
+      { type: 'message', content: '先看一眼环境' },
+      { type: 'tool_call', content: 'exec' },
+      { type: 'tool_result', content: 'ok' },
+      { type: 'message', content: '跑完了' },
+      { type: 'final_result', content: '跑完了' }
+    ]
+    const restored = restoreSpokenRepliesMissingFromMessages(messages, steps)
+    const toolAt = restored.findIndex(m => m.role === 'tool')
+    expect(restored[toolAt - 1].tool_calls?.[0].id).toBe('c1')
+    expect(restored.map(m => m.role)).toEqual(['user', 'assistant', 'assistant', 'tool', 'assistant'])
+    expect(restored[1].content).toBe('先看一眼环境')
   })
 })
