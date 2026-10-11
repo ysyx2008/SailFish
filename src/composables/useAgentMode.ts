@@ -28,7 +28,7 @@ import { toast } from './useToast'
 import { resolveExactSlash } from './slash-commands'
 import { formatAccelerator } from '../utils/shortcut'
 import { toIpcPlain } from '../utils/ipc-plain'
-import { coalescePendingHandoff, decideFollowUpDrain, mergePendingIntoQueue, optimisticPlaceholderConfirmedBy, turnFailureAlreadyVisible } from './follow-up-drain'
+import { coalescePendingHandoff, decideFollowUpDrain, mergePendingIntoQueue, optimisticPlaceholderConfirmedBy, turnFailureAlreadyVisible, withFailedAtHead, withRetried } from './follow-up-drain'
 
 const log = createLogger('Agent')
 
@@ -105,12 +105,28 @@ export interface FollowUpQueueItem {
   workbenchContext?: WorkbenchContext
   /** 正在输入框里改这条——仍占队列位置，不参与 drain */
   editing?: boolean
+  /** 这条没送到后台。队列停在这里，等用户重试 / 编辑 / 删除 */
+  failed?: { reason: string }
 }
 
 export interface FollowUpQueueViewItem {
   id: string
   message: string
   editing?: boolean
+  failed?: { reason: string }
+}
+
+/** 没送出去、要还给输入框的一句话（文字 + 图片 + 附件） */
+export type HandBackDraft = Pick<
+  FollowUpQueueItem,
+  'message' | 'images' | 'previewImages' | 'pendingImages' | 'attachments' | 'parsedDocs'
+>
+
+/** 发送调用本身出错：话没到后台。已送到后台再失败的走另一条路。 */
+function describeSendFailure(error: unknown, ipcFailedText: string, unknownText: string): string {
+  const raw = error instanceof Error ? error.message : String(error || '')
+  if (raw.includes('Error invoking remote method')) return ipcFailedText
+  return raw || unknownText
 }
 
 export interface VirtualItem {
@@ -151,7 +167,9 @@ export function useAgentMode(
     getParsedDocs?: () => ParsedDocument[]  // 入队/编辑时保留完整文档快照
   },
   scrollerRef?: Ref<MessageScrollerHandle | null>,
-  tabActive?: Ref<boolean | undefined>
+  tabActive?: Ref<boolean | undefined>,
+  /** 普通发送没送达时，把这句话放回输入框（文字接在已有文字前，图和附件追加） */
+  handBackToComposer?: (draft: HandBackDraft) => void
 ) {
   const { t } = useI18n()
   const terminalStore = useTerminalStore()
@@ -183,7 +201,7 @@ export function useAgentMode(
   /** 运行中 ⌘/Ctrl+Enter：等当前任务结束后作为下一件新任务，不插入当前执行 */
   const followUpQueue = ref<FollowUpQueueItem[]>([])
   const followUpQueueView = computed<FollowUpQueueViewItem[]>(() =>
-    followUpQueue.value.map(({ id, message, editing }) => ({ id, message, editing }))
+    followUpQueue.value.map(({ id, message, editing, failed }) => ({ id, message, editing, failed }))
   )
   /** 正在输入框里改的那条排队 id；有值时回车/⌘回车都是保存回原位 */
   const editingFollowUpId = ref<string | null>(null)
@@ -1279,6 +1297,12 @@ export function useAgentMode(
       if (followUpQueue.value.some(entry => entry.id === queued.id)) return
       followUpQueue.value = [queued, ...followUpQueue.value]
     }
+    /** 排队项没送到后台：回到队首并标成没送出去，队列停在这里，不往后开 */
+    const putBackQueuedAsFailed = (reason: string) => {
+      if (!queued) return
+      log.warn('排队的这条没送到后台，队列先停在这里:', reason)
+      followUpQueue.value = withFailedAtHead(followUpQueue.value, queued, reason)
+    }
     // attachments 含已落盘图片元信息，不只是文档
     const hasAttachments = queued
       ? ((queued.parsedDocs?.length ?? 0) > 0 || (queued.attachments?.length ?? 0) > 0)
@@ -1367,6 +1391,7 @@ export function useAgentMode(
       const supplementAttachments = attachmentCallbacks?.getAttachments() || []
       const images = imageCallbacks?.getImages() || []
       const previewImages = imageCallbacks?.getPreviewImages?.() || images
+      const pendingImagesSnapshot = imageCallbacks?.getPendingImages?.() || []
       const optimisticId = `__optimistic_user_supplement_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
       const parsedDocs = attachmentCallbacks?.getParsedDocs?.() || []
 
@@ -1391,7 +1416,7 @@ export function useAgentMode(
       if (supplementAttachments.length > 0 || parsedDocs.length > 0) attachmentCallbacks?.clearAttachments()
       if (images.length > 0) imageCallbacks?.clearImages()
 
-      const success = await sayAsSupplement(tabId, {
+      const said = await sayAsSupplement(tabId, {
         message,
         attachments: supplementAttachments,
         documentContext,
@@ -1400,20 +1425,17 @@ export function useAgentMode(
         workbenchContext: options?.workbenchContext
       })
 
-      if (!success) {
-        // 已经上墙的这句话不能悄悄拿掉。插不进当前这场，就排到下一轮，图一起带走。
-        followUpQueue.value = [{
-          id: `followup_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      if (!said.delivered) {
+        // 后台没收到：对话里不留一句 AI 没听见的话，连同图和附件还给输入框
+        terminalStore.removeOptimisticAgentSteps(tabId, [optimisticId])
+        handBackUndelivered(said.reason, {
           message,
           images: images.length > 0 ? images : undefined,
           previewImages: previewImages.length > 0 ? previewImages : undefined,
+          pendingImages: pendingImagesSnapshot.length > 0 ? pendingImagesSnapshot : undefined,
           attachments: supplementAttachments.length > 0 ? supplementAttachments : undefined,
           parsedDocs: parsedDocs.length > 0 ? parsedDocs.map(doc => ({ ...doc })) : undefined,
-          documentContext: documentContext || undefined,
-          workbenchContext: options?.workbenchContext,
-        }, ...followUpQueue.value]
-        log.warn('这句话没插进当前这场，已留在对话里并排到下一轮')
-        if (!isAgentRunning.value) scheduleNextFollowUp(tabId)
+        })
       }
       return
     }
@@ -1451,7 +1473,9 @@ export function useAgentMode(
     // 终端还在连接、甚至连不上时可以没有可用窗格——对话照样开跑，不能把字悄悄扔掉
     if (!target || !target.hasWindowContext) {
       log.error('无法获取终端上下文')
-      putBackQueued()
+      // 话没送出去：排队项标成没送出去留在队首，普通发送放回输入框（图和附件还在输入框里没动）
+      if (queued) putBackQueuedAsFailed(t('ai.unknownError'))
+      else handBackUndelivered(t('ai.unknownError'), { message })
       return
     }
 
@@ -1467,6 +1491,13 @@ export function useAgentMode(
       : (imageCallbacks?.getPreviewImages?.() || images)
     // 图片路径挂在待发预览上；必须先取附件再清预览，否则路径到不了模型
     const attachments = queued ? (queued.attachments ?? []) : (attachmentCallbacks?.getAttachments() || [])
+    // 没送达时要把输入框原样还回去：清掉之前先留一份待发图片和完整文档的快照
+    const pendingImagesSnapshot = queued
+      ? (queued.pendingImages ?? [])
+      : (imageCallbacks?.getPendingImages?.() || [])
+    const parsedDocsSnapshot = queued
+      ? (queued.parsedDocs ?? [])
+      : (attachmentCallbacks?.getParsedDocs?.() || [])
     if (!queued && images.length > 0) {
       imageCallbacks?.clearImages()
     }
@@ -1507,6 +1538,9 @@ export function useAgentMode(
     // 放进同一段收尾里：这里失败也要把「正在跑」清掉，否则排队会一直等下去。
     let requeueBecauseBusy = false
     let supplementedInstead = false
+    // 发送调用有了回应（哪怕是失败结果）才算送到后台；之前出错都是话没到
+    let delivered = false
+    let undelivered = false
     const showTurnFailure = (content: string) => {
       const steps = agentState.value?.steps || []
       if (!turnFailureAlreadyVisible(steps, optimisticUserStepId)) {
@@ -1544,6 +1578,7 @@ export function useAgentMode(
         attachments,
         workbenchContext: options?.workbenchContext,
       })
+      delivered = true
       // 那场其实还在跑（别处刚让它动起来）：这句已补进当前一轮，正式步骤会自己上墙，运行态由那一轮收尾
       if (result.success && result.outcome === 'supplemented') {
         supplementedInstead = true
@@ -1565,9 +1600,27 @@ export function useAgentMode(
       log.error('Agent 运行失败:', error)
       const raw = error instanceof Error ? error.message : String(error || '')
       const busyKey = getAgentKey()
-      if (queued && busyKey && await isBackendRunActive(busyKey)) {
+      // 话没到后台是真故障，优先于「后台还忙就等一等」——否则会不停自动重试同一条
+      if (delivered && queued && busyKey && await isBackendRunActive(busyKey)) {
         requeueBecauseBusy = true
         putBackQueued()
+      } else if (!delivered) {
+        // 话没到后台：对话里撤掉这句，排队项留在队首等处理，普通发送还给输入框
+        undelivered = true
+        terminalStore.removeOptimisticAgentSteps(tabId, [optimisticUserStepId])
+        const reason = describeSendFailure(error, t('ai.agentIpcFailed'), t('ai.unknownError'))
+        if (queued) {
+          putBackQueuedAsFailed(reason)
+        } else {
+          handBackUndelivered(reason, {
+            message,
+            images: images.length > 0 ? images : undefined,
+            previewImages: previewImages.length > 0 ? previewImages : undefined,
+            pendingImages: pendingImagesSnapshot.length > 0 ? pendingImagesSnapshot : undefined,
+            attachments: attachments.length > 0 ? attachments : undefined,
+            parsedDocs: parsedDocsSnapshot.length > 0 ? parsedDocsSnapshot : undefined,
+          })
+        }
       } else {
         // IPC 序列化失败等不应把脏堆栈甩给用户（对齐 AiSettings testConnectionFailed）
         const isIpcNoise =
@@ -1581,7 +1634,7 @@ export function useAgentMode(
       if (epoch === agentRunEpoch && supplementedInstead) {
         terminalStore.removeOptimisticAgentSteps(tabId, [optimisticUserStepId])
       } else if (epoch === agentRunEpoch) {
-        if (requeueBecauseBusy) {
+        if (requeueBecauseBusy || undelivered) {
           terminalStore.removeOptimisticAgentSteps(tabId, [optimisticUserStepId])
         } else {
           // 只固化这一轮自己的临时任务。别的临时消息还在等它自己的正式步骤，不能改掉编号。
@@ -1618,9 +1671,19 @@ export function useAgentMode(
       editingFollowUpId.value = null
       editingFollowUpSnapshot.value = null
     }
+    const wasFailed = !!followUpQueue.value.find(item => item.id === id)?.failed
     followUpQueue.value = followUpQueue.value.filter(item => item.id !== id)
     const tabId = currentTabId.value
-    if (wasEditing && tabId && !isAgentRunning.value) scheduleNextFollowUp(tabId)
+    if ((wasEditing || wasFailed) && tabId && !isAgentRunning.value) scheduleNextFollowUp(tabId)
+  }
+
+  /** 重试没送出去的那一条：摘掉标记、挪到队首，空闲就马上开；还在忙就等这一轮结束后接着往下走。 */
+  const retryFollowUp = (id: string) => {
+    const item = followUpQueue.value.find(entry => entry.id === id)
+    if (!item?.failed || item.editing) return
+    followUpQueue.value = withRetried(followUpQueue.value, id)
+    const tabId = currentTabId.value
+    if (tabId && !isAgentRunning.value) scheduleNextFollowUp(tabId)
   }
 
   const takeFollowUp = (id: string): FollowUpQueueItem | undefined => {
@@ -1628,12 +1691,6 @@ export function useAgentMode(
     if (!item) return undefined
     followUpQueue.value = followUpQueue.value.filter(entry => entry.id !== id)
     return item
-  }
-
-  const restoreFollowUp = (item: FollowUpQueueItem, index: number) => {
-    const next = [...followUpQueue.value]
-    next.splice(Math.min(Math.max(index, 0), next.length), 0, item)
-    followUpQueue.value = next
   }
 
   const isBackendAgentBusy = async (key: string): Promise<boolean> => {
@@ -1797,8 +1854,8 @@ export function useAgentMode(
   }
 
   /**
-   * 界面已按补话显示的一句送进这场；送到后端就返回 true，没送出去（IPC 本身出错）才返回 false 交由调用方排回。
-   * 后端回失败（补话本身不会失败）是那一轮开了却报错或被中止：这句已被那一轮接走、错误已显示在对话里，排回去会重跑。
+   * 界面已按补话显示的一句送进这场。送到后端就算送达（delivered）；发送调用本身出错才是没送达，带回原因交由调用方还给用户。
+   * 后端回失败（补话本身不会失败）是那一轮开了却报错或被中止：这句已被那一轮接走、错误已显示在对话里，不能再重发。
    */
   const sayAsSupplement = async (tabId: string, payload: {
     message: string
@@ -1807,18 +1864,34 @@ export function useAgentMode(
     images?: string[]
     previewImages?: string[]
     workbenchContext?: WorkbenchContext
-  }): Promise<boolean> => {
+  }): Promise<{ delivered: true } | { delivered: false; reason: string }> => {
     const target = resolveSayTarget(tabId)
-    if (!target) return false
+    if (!target) return { delivered: false, reason: t('ai.unknownError') }
     try {
       const hostId = await getHostIdByTabId(tabId)
       const result = await sayToConversation(target, payload.message, { hostId, ...payload })
       if (!result.success) log.warn('补话落成了新一轮且未成功:', result.error)
-      return true
+      return { delivered: true }
     } catch (err) {
       log.warn('插入补充消息失败:', err)
-      return false
+      return { delivered: false, reason: describeSendFailure(err, t('ai.agentIpcFailed'), t('ai.unknownError')) }
     }
+  }
+
+  /** 普通发送没送达：话还给输入框，提示原因。没有输入框可还时才退到队列最前面标成没送出去。 */
+  const handBackUndelivered = (reason: string, draft: HandBackDraft) => {
+    log.warn('这句话没送到后台:', reason)
+    // 输入框正被拿来改排队项时不能往里放，否则两句话会混在一起存回那条排队项
+    if (handBackToComposer && !editingFollowUpId.value) {
+      handBackToComposer(draft)
+      toast.warning(t('ai.sendNotDelivered', { reason }))
+      return
+    }
+    followUpQueue.value = [{
+      id: `followup_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      ...draft,
+      failed: { reason },
+    }, ...followUpQueue.value]
   }
 
   /** 追加进当前这场还在跑的对话；不中止任务、不另起一轮。 */
@@ -1865,6 +1938,7 @@ export function useAgentMode(
         headEditing: !!next?.editing,
         tabAlive: terminalStore.tabs.some(tab => tab.id === tabId),
         agentRunning: isAgentRunning.value,
+        anyFailed: followUpQueue.value.some(entry => entry.failed),
       })
       // 还在忙就留在队列里。空闲的那一下会再来排，不能这一拍直接扔掉。
       if (decision === 'wait') {
@@ -1896,6 +1970,8 @@ export function useAgentMode(
     if (followUpDrainTimer || followUpDrainInFlight || followUpQueue.value.length === 0) return false
     // 队首正在编辑：等改完再开；不跳过它去跑后面的
     if (followUpQueue.value[0]?.editing) return false
+    // 有一条没送出去：整个队列停住，等用户重试 / 编辑 / 删除
+    if (followUpQueue.value.some(entry => entry.failed)) return false
     terminalStore.requestAgentCompleteTabAttentionSkip(tabId)
     followUpDrainTimer = setTimeout(() => {
       followUpDrainTimer = null
@@ -1935,7 +2011,7 @@ export function useAgentMode(
     }
 
     if (isAgentRunning.value && currentTabId.value) {
-      const success = await sayAsSupplement(currentTabId.value, {
+      const said = await sayAsSupplement(currentTabId.value, {
         message: item.message,
         attachments: item.attachments,
         documentContext: item.documentContext,
@@ -1943,7 +2019,11 @@ export function useAgentMode(
         previewImages: item.previewImages,
         workbenchContext: item.workbenchContext
       })
-      if (!success) restoreFollowUp(item, index)
+      // 没送达：回到原来的位置并标成没送出去，队列停在这里等用户处理
+      if (!said.delivered) {
+        log.warn('排队的这条没送到后台，队列先停在这里:', said.reason)
+        followUpQueue.value = withFailedAtHead(followUpQueue.value, item, said.reason)
+      }
       return
     }
 
@@ -2827,6 +2907,7 @@ export function useAgentMode(
     compactContext,
     abortAgent,
     followUpQueueView,
+    retryFollowUp,
     isEditingFollowUp,
     removeFollowUp,
     insertFollowUp,

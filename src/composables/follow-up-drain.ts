@@ -22,10 +22,34 @@ export function decideFollowUpDrain(input: {
   headEditing: boolean
   tabAlive: boolean
   agentRunning: boolean
+  /** 队列里有没送出去的条目：整个队列停在那里等用户处理，不往下开 */
+  anyFailed?: boolean
 }): FollowUpDrainDecision {
-  if (!input.hasQueued || !input.tabAlive || input.headEditing) return 'stop'
+  if (!input.hasQueued || !input.tabAlive || input.headEditing || input.anyFailed) return 'stop'
   if (input.agentRunning) return 'wait'
   return 'start'
+}
+
+type FailableEntry = { id: string; failed?: { reason: string } }
+
+/** 取出来开跑的这条没送到后台：回到队首并标成没送出去，后面的原样留着。 */
+export function withFailedAtHead<T extends FailableEntry>(queue: T[], item: T, reason: string): T[] {
+  return [{ ...item, failed: { reason } }, ...queue.filter(entry => entry.id !== item.id)]
+}
+
+/** 重试没送出去的那条：摘掉标记、挪到队首。不是失败的条目不动。 */
+export function withRetried<T extends FailableEntry>(queue: T[], id: string): T[] {
+  const item = queue.find(entry => entry.id === id)
+  if (!item?.failed) return queue
+  const { failed: _failed, ...rest } = item
+  return [rest as T, ...queue.filter(entry => entry.id !== id)]
+}
+
+/** 没送出去的话放回输入框：输入框里已有新打的字时，放回的接在前面，不覆盖。 */
+export function mergeHandbackText(existing: string, handback: string): string {
+  if (!existing.trim()) return handback
+  if (!handback.trim()) return existing
+  return `${handback}\n${existing}`
 }
 
 export interface CoalescedPendingFollowUp {

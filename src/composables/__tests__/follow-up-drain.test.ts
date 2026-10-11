@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   coalescePendingHandoff,
   decideFollowUpDrain,
+  mergeHandbackText,
+  withFailedAtHead,
+  withRetried,
   turnFailureAlreadyVisible,
   mergePendingIntoQueue,
   optimisticPlaceholderConfirmedBy,
@@ -23,6 +26,96 @@ describe('decideFollowUpDrain', () => {
     expect(decideFollowUpDrain({ ...idle, headEditing: true })).toBe('stop')
     expect(decideFollowUpDrain({ ...idle, tabAlive: false })).toBe('stop')
     expect(decideFollowUpDrain({ ...idle, hasQueued: false })).toBe('stop')
+  })
+
+  it('队列里有一条没送出去，整个队列停住，不往下开', () => {
+    expect(decideFollowUpDrain({ ...idle, anyFailed: true })).toBe('stop')
+  })
+})
+
+describe('mergeHandbackText', () => {
+  it('输入框是空的，直接放回', () => {
+    expect(mergeHandbackText('', '原话')).toBe('原话')
+    expect(mergeHandbackText('  \n', '原话')).toBe('原话')
+  })
+
+  it('输入框里已有新打的字，放回的接在前面，不覆盖', () => {
+    expect(mergeHandbackText('新打的', '原话')).toBe('原话\n新打的')
+  })
+
+  it('放回的是空话（只有图）时保留输入框原样', () => {
+    expect(mergeHandbackText('新打的', '')).toBe('新打的')
+  })
+})
+
+describe('没送出去的排队项', () => {
+  type Item = { id: string; message: string; failed?: { reason: string } }
+  const queueOf = (...ids: string[]): Item[] => ids.map(id => ({ id, message: `话-${id}` }))
+
+  /** 模拟界面：空闲时按判定一条条取队首发送，发送出错就标成没送出去 */
+  const drainAll = (initial: Item[], send: (item: Item) => void) => {
+    let queue = initial
+    const sent: string[] = []
+    for (let guard = 0; guard < 20; guard++) {
+      const decision = decideFollowUpDrain({
+        hasQueued: queue.length > 0,
+        headEditing: false,
+        tabAlive: true,
+        agentRunning: false,
+        anyFailed: queue.some(item => item.failed),
+      })
+      if (decision !== 'start') break
+      const [head, ...rest] = queue
+      queue = rest
+      try {
+        send(head)
+        sent.push(head.id)
+      } catch (error) {
+        queue = withFailedAtHead(queue, head, (error as Error).message)
+      }
+    }
+    return { queue, sent }
+  }
+
+  it('三条排队、发送一直出错：只试队首一次，三条内容都还在', () => {
+    let attempts = 0
+    const { queue } = drainAll(queueOf('a', 'b', 'c'), () => {
+      attempts++
+      throw new Error('An object could not be cloned.')
+    })
+    expect(attempts).toBe(1)
+    expect(queue.map(item => item.id)).toEqual(['a', 'b', 'c'])
+    expect(queue[0].failed?.reason).toBe('An object could not be cloned.')
+    expect(queue[1].failed).toBeUndefined()
+  })
+
+  it('原因消失后重试，三条按原来的顺序依次发完', () => {
+    const stuck = drainAll(queueOf('a', 'b', 'c'), () => { throw new Error('x') }).queue
+    const { queue, sent } = drainAll(withRetried(stuck, 'a'), () => {})
+    expect(sent).toEqual(['a', 'b', 'c'])
+    expect(queue).toEqual([])
+  })
+
+  it('队首之后的一条失败：重试时挪到队首，其余顺序不变', () => {
+    const queue: Item[] = [
+      { id: 'a', message: 'a' },
+      { id: 'b', message: 'b', failed: { reason: 'x' } },
+      { id: 'c', message: 'c' },
+    ]
+    expect(withRetried(queue, 'b').map(item => item.id)).toEqual(['b', 'a', 'c'])
+    expect(withRetried(queue, 'b')[0].failed).toBeUndefined()
+  })
+
+  it('不是失败的条目，重试什么都不动', () => {
+    const queue = queueOf('a', 'b')
+    expect(withRetried(queue, 'b')).toBe(queue)
+  })
+
+  it('删掉失败的那条后，后面的恢复往下做', () => {
+    const stuck = drainAll(queueOf('a', 'b'), () => { throw new Error('x') }).queue
+    const afterRemove = stuck.filter(item => item.id !== 'a')
+    const { sent } = drainAll(afterRemove, () => {})
+    expect(sent).toEqual(['b'])
   })
 })
 

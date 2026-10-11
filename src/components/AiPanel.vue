@@ -54,7 +54,8 @@ import {
   SPEECH_PACK_NOT_INSTALLED,
   toast
 } from '../composables'
-import type { VirtualItem } from '../composables/useAgentMode'
+import type { VirtualItem, HandBackDraft } from '../composables/useAgentMode'
+import { mergeHandbackText } from '../composables/follow-up-drain'
 import { mermaidSvgToDataUrl } from '../composables/useMarkdown'
 import { showConfirm, showAlert } from '../composables/useConfirm'
 import { planComposerPaste, ingestComposerAttachments } from '../composables/useComposerPaste'
@@ -686,6 +687,7 @@ const {
   cancelEditFollowUp,
   saveEditFollowUp,
   reorderFollowUp,
+  retryFollowUp,
   confirmToolCall,
   confirmTrustCommandAndAllow,
   submitSecureInput,
@@ -749,7 +751,8 @@ const {
     getParsedDocs: () => uploadedDocs.value.map(d => ({ ...d })),
   },
   scrollerRef,
-  tabActive
+  tabActive,
+  handBackToComposer
 )
 
 // 语音识别
@@ -1314,35 +1317,52 @@ const handleBeginEditFollowUp = (id: string) => {
   const item = beginEditFollowUp(id)
   if (!item) return
   composerRef.value?.setText(item.message)
-  const restoreImages = item.pendingImages?.length
-    ? item.pendingImages
-    : (!item.parsedDocs?.length && item.images?.length ? item.images : [])
+  restoreDraftMedia(item, `followup_edit_${item.id}`)
+  nextTick(() => composerRef.value?.focusInput())
+}
+
+/**
+ * 把一句话里的图和文档填回输入框。
+ * append=true 时保留输入框里已有的图和文档（没送出去的话还回来时用），否则整个换成这句的。
+ */
+const restoreDraftMedia = (draft: HandBackDraft, idPrefix: string, append = false) => {
+  const restoreImages = draft.pendingImages?.length
+    ? draft.pendingImages
+    : (!draft.parsedDocs?.length && draft.images?.length ? draft.images : [])
   if (restoreImages.length) {
-    const imageAtts = (item.attachments ?? []).filter((a) => {
+    const imageAtts = (draft.attachments ?? []).filter((a) => {
       const ext = (a.fileType || a.filename.split('.').pop() || '').toLowerCase().replace(/^\./, '')
       return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext)
         || /\.(png|jpe?g|gif|webp|bmp)$/i.test(a.filename)
         || /\.(png|jpe?g|gif|webp|bmp)$/i.test(a.filePath || '')
     })
-    loadPendingImages(restoreImages.map((dataUrl, i) => {
+    const restored = restoreImages.map((dataUrl, i) => {
       const att = imageAtts[i]
       return {
-        id: `followup_edit_${item.id}_${i}`,
+        id: `${idPrefix}_${i}`,
         dataUrl,
         name: att?.filename || `image_${i + 1}`,
         size: att?.fileSize ?? 0,
         filePath: att?.filePath,
         savedByApp: false,
       }
-    }))
-  } else {
+    })
+    loadPendingImages(append ? [...pendingImages.value, ...restored] : restored)
+  } else if (!append) {
     discardImages()
   }
-  if (item.parsedDocs?.length && currentTabId.value) {
-    terminalStore.setUploadedDocs(currentTabId.value, item.parsedDocs.map(d => ({ ...d })))
-  } else {
+  if (draft.parsedDocs?.length && currentTabId.value) {
+    const docs = draft.parsedDocs.map(d => ({ ...d }))
+    terminalStore.setUploadedDocs(currentTabId.value, append ? [...uploadedDocs.value, ...docs] : docs)
+  } else if (!append) {
     clearUploadedDocs()
   }
+}
+
+/** 普通发送没送达：话还给输入框。文字接在已有文字前面，图和文档追加，不覆盖用户这期间新打的。 */
+function handBackToComposer(draft: HandBackDraft) {
+  composerRef.value?.setText(mergeHandbackText(composerRef.value?.getText() ?? '', draft.message))
+  restoreDraftMedia(draft, `handback_${Date.now()}`, true)
   nextTick(() => composerRef.value?.focusInput())
 }
 
@@ -3217,6 +3237,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
         :is-editing-follow-up="isEditingFollowUp"
         :remove-follow-up="removeFollowUp"
         :insert-follow-up="insertFollowUp"
+        :retry-follow-up="retryFollowUp"
         :begin-edit-follow-up="handleBeginEditFollowUp"
         :cancel-edit-follow-up="handleCancelEditFollowUp"
         :reorder-follow-up="reorderFollowUp"

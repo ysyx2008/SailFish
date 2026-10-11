@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useSlots, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRandomPlaceholder } from '../composables/useRandomPlaceholder'
-import { X, Plus, Square, ArrowUp, Check, Mic, MicOff, Loader2, Volume2, ListTree, Pencil, CornerDownLeft, GripVertical, Sparkles } from 'lucide-vue-next'
+import { X, Plus, Square, ArrowUp, Check, Mic, MicOff, Loader2, Volume2, ListTree, Pencil, CornerDownLeft, GripVertical, Sparkles, RotateCcw } from 'lucide-vue-next'
 import { useMentions } from '../composables/useMentions'
 import {
   formatSlashInvocation,
@@ -90,10 +90,11 @@ const props = defineProps<{
   ttsStop: () => void
   submitMessage: (message: string, options?: { workbenchContext?: import('@shared/types').WorkbenchContext; enqueue?: boolean }) => void | Promise<void>
   submitEmptyMessage: () => void | Promise<void>
-  followUpQueue?: { id: string; message: string; editing?: boolean }[]
+  followUpQueue?: { id: string; message: string; editing?: boolean; failed?: { reason: string } }[]
   isEditingFollowUp?: boolean
   removeFollowUp?: (id: string) => void
   insertFollowUp?: (id: string) => void
+  retryFollowUp?: (id: string) => void
   beginEditFollowUp?: (id: string) => void
   cancelEditFollowUp?: () => void
   reorderFollowUp?: (fromIndex: number, toIndex: number) => void
@@ -527,6 +528,7 @@ const sendShortcut = computed(() => formatAccelerator(configStore.keyboardShortc
 const queueShortcut = computed(() => formatAccelerator(configStore.keyboardShortcuts.queueFollowUp))
 
 const followUpItems = computed(() => props.followUpQueue ?? [])
+const followUpQueuePaused = computed(() => followUpItems.value.some(item => item.failed))
 const isEditingFollowUp = computed(() => !!props.isEditingFollowUp)
 
 function composerChord(event: KeyboardEvent): 'queue' | 'send' | null {
@@ -1686,7 +1688,7 @@ const handleSendClick = (event: MouseEvent) => {
     @dragleave="handleFollowUpQueueDragLeave"
   >
     <div class="follow-up-queue-header">
-      {{ t('ai.followUpQueueHeader', { count: followUpItems.length }) }}
+      {{ t(followUpQueuePaused ? 'ai.followUpQueueHeaderPaused' : 'ai.followUpQueueHeader', { count: followUpItems.length }) }}
     </div>
     <div
       v-for="(item, index) in followUpItems"
@@ -1717,8 +1719,24 @@ const handleSendClick = (event: MouseEvent) => {
         v-if="item.editing"
         class="follow-up-row-text follow-up-row-text-editing"
       >{{ t('ai.followUpQueueEditing') }}</span>
-      <span v-else class="follow-up-row-text" :title="item.message">{{ item.message }}</span>
+      <div v-else class="follow-up-row-body">
+        <span class="follow-up-row-text" :title="item.message">{{ item.message }}</span>
+        <span
+          v-if="item.failed"
+          class="follow-up-row-failed"
+          :title="item.failed.reason"
+        >{{ t('ai.followUpQueueFailed', { reason: item.failed.reason }) }}</span>
+      </div>
       <div v-if="!item.editing" class="follow-up-row-actions">
+        <button
+          v-if="item.failed"
+          type="button"
+          class="follow-up-row-icon-btn"
+          :title="t('ai.followUpQueueRetry')"
+          @click="retryFollowUp?.(item.id)"
+        >
+          <RotateCcw :size="12" />
+        </button>
         <button
           type="button"
           class="follow-up-row-icon-btn"
@@ -3170,6 +3188,22 @@ const handleSendClick = (event: MouseEvent) => {
 
 .follow-up-row:active .follow-up-row-grip {
   cursor: grabbing;
+}
+
+.follow-up-row-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 没送出去的原因：一行，过长截断，完整内容在 title 里 */
+.follow-up-row-failed {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .follow-up-row-text {
