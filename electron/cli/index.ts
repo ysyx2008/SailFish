@@ -1245,6 +1245,12 @@ async function agentRun(args: string[]): Promise<void> {
     ])
     if (title) console.log(`\n📌 Session title: ${title}`)
 
+    // 这场没记的记忆收尾时补上，同样等它写完再退出
+    await Promise.race([
+      agent.getAgent(ptyId)?.flushMemory() ?? Promise.resolve(),
+      new Promise<void>((resolve) => { setTimeout(resolve, 60_000).unref() }),
+    ])
+
     const sessionId = agent.getAgent(ptyId)?.getSessionId()
     if (sessionId) {
       const record = history.getAgentRecordById(sessionId)

@@ -76,9 +76,8 @@ class MemoryAgent extends Agent {
     return this.lastSystemPrompt
   }
 
-  updateKnowledge(run: unknown, result?: string) {
-    return (this as unknown as { updateContextKnowledgeAsync: (r: unknown, s?: string) => Promise<void> })
-      .updateContextKnowledgeAsync(run, result)
+  memoryTargets(run: unknown): string[] {
+    return (this as unknown as { memoryTargetsOf: (r: unknown) => string[] }).memoryTargetsOf(run)
   }
 
   wrapExecutor(run: unknown, toolCall: ToolCall) {
@@ -96,31 +95,54 @@ function tc(name: string, args: Record<string, unknown>, id: string): NonNullabl
   return { id, type: 'function', function: { name, arguments: JSON.stringify(args) } }
 }
 
-function knowledgeReply(messages: Array<{ role?: string; content?: unknown }>): string {
-  const prompt = String(messages[0]?.content || '')
-  if (prompt.includes('root@prod')) return '## prod\nnginx 监听 8080\n'
-  if (prompt.includes('ubuntu@box')) return '## box\npython 3.12\n'
-  if (prompt.includes('本机这条连接') || prompt.includes('本地主机')) return '## 本机\n本机是 macOS\n'
-  if (prompt.includes('个人')) return '## 个人\n用户喜欢简洁\n'
-  return 'NO_CHANGE'
+const FACTS: Record<string, string> = {
+  'root@prod': '## prod\nnginx 监听 8080',
+  'ubuntu@box': '## box\npython 3.12',
+  local: '## 本机\n本机是 macOS',
+  personal: '## 个人\n用户喜欢简洁',
+}
+
+type Msg = { role: string; content: string }
+
+/** 记忆更新说明在最后一条；按里面列出的几份逐份交改动 */
+function instructionOf(messages: Msg[]): string {
+  return String(messages[messages.length - 1]?.content || '')
+}
+
+function listedTargets(instruction: string): string[] {
+  return [...instruction.matchAll(/^- (\S+?)：/gm)].map(m => m[1])
+}
+
+function knowledgeReply(messages: Msg[]): { content: string } {
+  const blocks = listedTargets(instructionOf(messages))
+    .filter(id => FACTS[id])
+    .map(id => `<memory id="${id}">\n${FACTS[id]}\n</memory>`)
+  return { content: blocks.length ? blocks.join('\n') : 'NO_CHANGE' }
 }
 
 function makeServices(script: (callIndex: number, messages: unknown[]) => LlmResponse): {
   services: AgentServices
-  chat: ReturnType<typeof vi.fn>
+  chatWithTools: ReturnType<typeof vi.fn>
+  mainRequests: Array<{ messages: Msg[]; tools: Array<{ function: { name: string } }> }>
 } {
   let callIndex = 0
-  const chat = vi.fn(async (messages: Array<{ role?: string; content?: unknown }>) => knowledgeReply(messages))
+  const mainRequests: Array<{ messages: Msg[]; tools: Array<{ function: { name: string } }> }> = []
+  const chatWithTools = vi.fn(async (messages: Msg[]) => knowledgeReply(messages))
   const services: AgentServices = {
     aiService: {
-      chat,
+      chat: vi.fn(async () => 'NO_CHANGE'),
+      chatWithTools,
       chatWithToolsStream: vi.fn(async (
         messages: unknown[],
-        _tools: unknown,
+        tools: unknown,
         onChunk: (s: string) => void,
         _onToolCall: unknown,
         onDone: (r: unknown) => void,
       ) => {
+        mainRequests.push({
+          messages: JSON.parse(JSON.stringify(messages)),
+          tools: tools as Array<{ function: { name: string } }>,
+        })
         const r = script(callIndex++, messages)
         if (r.content) onChunk(r.content)
         onDone({ content: r.content ?? '', tool_calls: r.tool_calls })
@@ -159,7 +181,13 @@ function makeServices(script: (callIndex: number, messages: unknown[]) => LlmRes
       },
     } as any,
   }
-  return { services, chat }
+  return { services, chatWithTools, mainRequests }
+}
+
+/** 开新对话之前会把这场没记的补上——用它触发记忆更新，不等空闲计时 */
+async function runThenWrapUp(agent: MemoryAgent, message: string, ctx: AgentContext) {
+  await agent.run(message, ctx)
+  agent.startNewSession()
 }
 
 function assistantCtx(overrides?: Partial<AgentContext>): AgentContext {
@@ -203,25 +231,77 @@ describe('助手主机记忆端到端', () => {
   })
 
   it('只聊天：只写个人，本机和远程都不动', async () => {
-    const { services, chat } = makeServices(() => ({ content: '好的，记住了，以后简洁回复' }))
+    const { services, chatWithTools } = makeServices(() => ({ content: '好的，记住了，以后简洁回复' }))
     const agent = new MemoryAgent(services)
     agent.updateConfig({ executionMode: 'free' })
 
-    await agent.run('以后请简洁一点', assistantCtx())
+    await runThenWrapUp(agent, '以后请简洁一点', assistantCtx())
     const docs = await waitForDocs(d => Boolean(d.personal))
 
     expect(docs.personal).toContain('用户喜欢简洁')
     expect(docs.local).toBeUndefined()
     expect(docs['root@prod']).toBeUndefined()
-    expect(chat.mock.calls.length).toBe(1)
-    expect(String(chat.mock.calls[0][0][0].content)).toContain('个人')
+    expect(chatWithTools.mock.calls.length).toBe(1)
+    expect(listedTargets(instructionOf(chatWithTools.mock.calls[0][0]))).toEqual(['personal'])
+  })
+
+  it('记忆请求接在完整对话后面：前缀和工具清单与上一轮一致，长内容不截断', async () => {
+    const longAsk = `这段很长的背景你记一下：${'数据口径说明。'.repeat(400)}`
+    const { services, chatWithTools, mainRequests } = makeServices(() => ({ content: '收到' }))
+    const agent = new MemoryAgent(services)
+    agent.updateConfig({ executionMode: 'free' })
+
+    await runThenWrapUp(agent, longAsk, assistantCtx())
+    await waitForDocs(d => Boolean(d.personal))
+
+    const last = mainRequests[mainRequests.length - 1]
+    const [sent, tools] = chatWithTools.mock.calls[0] as [Msg[], Array<{ function: { name: string } }>]
+    const strip = (ms: Msg[]) => ms.map(m => ({ role: m.role, content: m.content }))
+    expect(strip(sent.slice(0, last.messages.length))).toEqual(strip(last.messages))
+    expect(sent[last.messages.length]).toMatchObject({ role: 'assistant', content: '收到' })
+    expect(sent[sent.length - 1].role).toBe('user')
+    expect(tools.map(t => t.function.name)).toEqual(last.tools.map(t => t.function.name))
+    expect(sent.some(m => m.content.includes(longAsk))).toBe(true)
+  })
+
+  it('开头已带的记忆不重附；这场开始后被改过的补上最新版', async () => {
+    ck.setDocument('personal', '## 个人\n用户叫小鱼\n')
+    const first = makeServices(() => ({ content: '嗯' }))
+    const agent = new MemoryAgent(first.services)
+    agent.updateConfig({ executionMode: 'free' })
+    await runThenWrapUp(agent, '你好', assistantCtx())
+    await vi.waitFor(() => expect(first.chatWithTools).toHaveBeenCalledTimes(1))
+    expect(instructionOf(first.chatWithTools.mock.calls[0][0])).not.toContain('<current')
+
+    ck.setDocument('personal', '## 个人\n用户叫小鱼\n')
+    const second = makeServices(() => ({ content: '嗯' }))
+    const agent2 = new MemoryAgent(second.services)
+    agent2.updateConfig({ executionMode: 'free' })
+    await agent2.run('再聊', assistantCtx())
+    ck.setDocument('personal', '## 个人\n用户叫大鱼\n')
+    agent2.startNewSession()
+    await vi.waitFor(() => expect(second.chatWithTools).toHaveBeenCalledTimes(1))
+    const instruction = instructionOf(second.chatWithTools.mock.calls[0][0])
+    expect(instruction).toContain('<current id="personal">')
+    expect(instruction).toContain('用户叫大鱼')
+  })
+
+  it('已有记忆只按段改，没交的段原样留着', async () => {
+    ck.setDocument('personal', '# 用户\n\n## 家庭\n有两个女儿\n\n## 个人\n旧说法\n')
+    const { services } = makeServices(() => ({ content: '好' }))
+    const agent = new MemoryAgent(services)
+    agent.updateConfig({ executionMode: 'free' })
+    await runThenWrapUp(agent, '以后简洁点', assistantCtx())
+    const docs = await waitForDocs(d => d.personal?.includes('用户喜欢简洁'))
+    expect(docs.personal).toContain('## 家庭\n有两个女儿')
+    expect(docs.personal).not.toContain('旧说法')
   })
 
   it('前端误传 hostId=local 的助手，仍然只写个人', async () => {
     const { services } = makeServices(() => ({ content: '记下了' }))
     const agent = new MemoryAgent(services)
     agent.updateConfig({ executionMode: 'free' })
-    await agent.run('记住我喜欢简洁', assistantCtx({ hostId: 'local' }))
+    await runThenWrapUp(agent, '记住我喜欢简洁', assistantCtx({ hostId: 'local' }))
     const docs = await waitForDocs(d => Boolean(d.personal))
     expect(docs.local).toBeUndefined()
     expect(docs.personal).toBeTruthy()
@@ -238,7 +318,7 @@ describe('助手主机记忆端到端', () => {
     const agent = new MemoryAgent(services)
     agent.updateConfig({ executionMode: 'free' })
 
-    await agent.run('在 prod 上确认一下', assistantCtx({ ptyId: 'pty-prod' }))
+    await runThenWrapUp(agent, '在 prod 上确认一下', assistantCtx({ ptyId: 'pty-prod' }))
     const docs = await waitForDocs(d => Boolean(d.personal) && Boolean(d['root@prod']))
 
     expect(docs.personal).toContain('用户喜欢简洁')
@@ -264,7 +344,7 @@ describe('助手主机记忆端到端', () => {
     const agent = new MemoryAgent(services)
     agent.updateConfig({ executionMode: 'free' })
 
-    await agent.run('分别问两台', assistantCtx())
+    await runThenWrapUp(agent, '分别问两台', assistantCtx())
     const docs = await waitForDocs(d => Boolean(d['root@prod']) && Boolean(d['ubuntu@box']) && Boolean(d.personal))
 
     expect(docs['root@prod']).toContain('nginx 监听 8080')
@@ -284,7 +364,7 @@ describe('助手主机记忆端到端', () => {
     const agent = new MemoryAgent(services)
     agent.updateConfig({ executionMode: 'free' })
 
-    await agent.run('开一扇远程窗', assistantCtx({ ptyId: 'pty-prod' }))
+    await runThenWrapUp(agent, '开一扇远程窗', assistantCtx({ ptyId: 'pty-prod' }))
     const docs = await waitForDocs(d => Boolean(d.personal))
 
     expect(docs['root@prod']).toBeUndefined()
@@ -354,7 +434,7 @@ describe('助手主机记忆端到端', () => {
     const agent = new MemoryAgent(services)
     agent.updateConfig({ executionMode: 'free' })
 
-    await agent.run('列一下文件', {
+    await runThenWrapUp(agent, '列一下文件', {
       ptyId: 'pty-local',
       terminalOutput: [],
       systemInfo: { os: 'darwin', shell: '/bin/zsh' },
@@ -367,7 +447,7 @@ describe('助手主机记忆端到端', () => {
     expect(docs.personal).toBeUndefined()
   })
 
-  it('直接走执行器：动手记账后收工，磁盘上只有该台', async () => {
+  it('直接走执行器：动手记账后，能写的是个人和那一台', async () => {
     const { services } = makeServices(() => ({ content: 'x' }))
     const agent = new MemoryAgent(services)
     agent.updateConfig({ executionMode: 'free' })
@@ -400,11 +480,6 @@ describe('助手主机记忆端到端', () => {
 
     expect([...run.hostOperations.entries()]).toEqual([['direct-a', 'root@prod']])
 
-    await agent.updateKnowledge(run, '已确认')
-    const docs = docsOnDisk()
-    expect(docs['root@prod']).toContain('nginx 监听 8080')
-    expect(docs.personal).toContain('用户喜欢简洁')
-    expect(docs.local).toBeUndefined()
-    expect(docs['ubuntu@box']).toBeUndefined()
+    expect(agent.memoryTargets(run)).toEqual(['personal', 'root@prod'])
   })
 })

@@ -8,17 +8,20 @@
  *   - 本地终端: "local"
  *   - SSH 终端: "user@host"
  *   - 无终端模式: "personal"
+ *
+ * 更新：接在刚跑完的那场对话后面问（时机与请求由 Agent 侧负责），
+ * 这里给出更新说明、把回复里的改动按段并回各份文档。
  */
 import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
-import type { AiService } from '../ai.service'
 import { getConfigService } from '../config.service'
 import { createLogger } from '../../utils/logger'
 import {
   DEFAULT_CONTEXT_KNOWLEDGE_MAX_CHARS,
   clampContextKnowledgeMaxChars,
 } from './context-knowledge-budget'
+import { MEMORY_SECTION_DELETE_MARK, mergeMemoryPatch, parseMemoryBlocks } from './memory-patch'
 
 const log = createLogger('ContextKnowledge')
 
@@ -34,13 +37,7 @@ export {
   clampContextKnowledgeMaxChars,
 } from './context-knowledge-budget'
 
-const MIN_VALID_DOC_LENGTH = 10
 const MAX_CONTEXT_ID_LENGTH = 128
-
-interface DocumentUpdateResult {
-  updated: boolean
-  document: string
-}
 
 export class ContextKnowledgeService {
   private storageDir: string
@@ -138,65 +135,76 @@ export class ContextKnowledgeService {
   }
 
   /**
-   * 通过 LLM 更新知识文档
+   * 接在一场对话后面发的记忆更新说明。
    *
-   * 将当前文档 + 任务执行记录（或纯对话内容）交给 LLM，让它决定要不要更新文档。
-   * 如果 LLM 判断没有新信息，返回 { updated: false }。
-   *
-   * - 有工具调用：走 buildUpdatePrompt，基于执行记录提炼
-   * - 纯对话（无工具调用但有 finalResponse）：走 buildConversationUpdatePrompt，
-   *   让 LLM 判断对话中是否有用户明确表达的偏好/配置/约定值得持久化
+   * @param contextIds 这次能写的几份（由调用方按规则定）
+   * @param visibleText 那场对话开头已经带着的文字；某份的最新版本已原样在里面就不再附
    */
-  async updateWithLLM(
-    contextId: string,
-    aiService: AiService,
-    profileId: string | undefined,
-    taskContext: {
-      userRequest: string
-      commandRecords: string[]
-      finalResponse?: string
-    }
-  ): Promise<DocumentUpdateResult> {
-    const currentDoc = this.getDocument(contextId)
-
-    if (taskContext.commandRecords.length === 0) {
-      if (!taskContext.finalResponse) {
-        return { updated: false, document: currentDoc }
+  buildRefreshInstruction(contextIds: readonly string[], visibleText: string): string {
+    const max = this.maxDocChars
+    const targetLines: string[] = []
+    const attached: string[] = []
+    for (const id of contextIds) {
+      const doc = this.getDocument(id)
+      const size = doc.trim() ? `当前 ${doc.length} 字` : '目前为空'
+      targetLines.push(`- ${id}：${this.describeScope(id)}${size}，上限 ${max} 字。`)
+      if (doc.trim() && !visibleText.includes(doc.trim())) {
+        attached.push(`<current id="${id}">\n${doc.trim()}\n</current>`)
       }
-      const prompt = this.buildConversationUpdatePrompt(contextId, currentDoc, taskContext.userRequest, taskContext.finalResponse)
-      return this.callLLMAndApply(contextId, aiService, profileId, prompt, currentDoc)
     }
 
-    const prompt = this.buildUpdatePrompt(contextId, currentDoc, taskContext)
-    return this.callLLMAndApply(contextId, aiService, profileId, prompt, currentDoc)
+    const hasPersonal = contextIds.includes('personal')
+    const hasHost = contextIds.some(id => id !== 'personal')
+    const style = [
+      hasPersonal
+        ? '关于用户本人的那份，按主题分成几段，每段一个标题，段内用连贯的第三人称陈述句写这个人：相关的事实放在同一句或同一段里，不写成「字段：值」的清单；偏好也写成陈述（如「他希望回复简短」），不写成对助手的命令。'
+        : '',
+      hasHost ? '主机的记忆按主题分段，每段一个标题，段内用条目列事实。' : '',
+    ].filter(Boolean).join('')
+
+    return [
+      '（这一步只更新记忆，不执行任何操作，也不回复用户。）',
+      '每份记忆会整篇放进之后对话的开头，就像本场开头的「已知信息」。根据上面这场对话，更新下面这几份：',
+      targetLines.join('\n'),
+      attached.length > 0
+        ? `下面这几份的最新内容不在本场开头（或开头那版之后又改过）：\n\n${attached.join('\n\n')}`
+        : '',
+      '值得记的，是之后的对话里会反复用到的事实。一次性的操作结果、临时状态（占用率、进程号之类）、命令输出原文、操作过程，放进去只会每次占着篇幅。已经记过的不必再写；和现有内容对不上的，以这场对话里新的说法为准，把旧的改掉。拿不准该归哪一份的，不写。',
+      `写法：${style}`,
+      `交法：只交改动了的段落，每份放在 <memory id="…"> 和 </memory> 之间，id 用上面列出的。每段以标题行开头：标题和现有某段一样，就整段替换那一段；不一样，就作为新的一段接在末尾；要删掉一段，写它的标题，下面只写「${MEMORY_SECTION_DELETE_MARK}」。没交的段落、没交的记忆都原样保留。改完超过上限的那一份不会保存。哪份都不用改时，只回复 NO_CHANGE。`,
+    ].filter(Boolean).join('\n\n')
+  }
+
+  /**
+   * 把模型回复里的改动并回各份记忆。
+   * 只认给定的那几份；合并后超过上限、或改动无法落脚的那份不保存。
+   * @returns 实际改动了的 contextId
+   */
+  applyRefreshResponse(response: string, contextIds: readonly string[]): string[] {
+    const updated: string[] = []
+    for (const [id, patch] of parseMemoryBlocks(response)) {
+      if (!contextIds.includes(id)) {
+        log.warn(`记忆更新交来了不在本次范围内的「${id}」，忽略`)
+        continue
+      }
+      const current = this.getDocument(id)
+      const merged = mergeMemoryPatch(current, patch)
+      if (merged === null) {
+        log.warn(`记忆「${id}」的改动没有段落标题，无法并入，忽略`)
+        continue
+      }
+      if (merged.length > this.maxDocChars) {
+        log.warn(`记忆「${id}」改完 ${merged.length} 字，超过上限 ${this.maxDocChars}，这次不保存`)
+        continue
+      }
+      if (merged === current) continue
+      this.setDocument(id, merged)
+      updated.push(id)
+    }
+    return updated
   }
 
   // ==================== 内部方法 ====================
-
-  private async callLLMAndApply(
-    contextId: string,
-    aiService: AiService,
-    profileId: string | undefined,
-    prompt: string,
-    currentDoc: string
-  ): Promise<DocumentUpdateResult> {
-    try {
-      const response = await aiService.chat([
-        { role: 'user', content: prompt }
-      ], profileId)
-
-      const result = this.parseUpdateResponse(response, currentDoc)
-
-      if (result.updated) {
-        this.setDocument(contextId, result.document)
-      }
-
-      return result
-    } catch (error) {
-      log.error('LLM 调用失败:', error)
-      return { updated: false, document: currentDoc }
-    }
-  }
 
   private saveToDisk(safeId: string, content: string): void {
     try {
@@ -209,114 +217,14 @@ export class ContextKnowledgeService {
     }
   }
 
-  private buildUpdatePrompt(
-    contextId: string,
-    currentDoc: string,
-    taskContext: { userRequest: string; commandRecords: string[] }
-  ): string {
-    const contextType = this.describeContextType(contextId)
-    const isNewDoc = !currentDoc
-    const docSection = isNewDoc
-      ? '（尚无知识文档，如有值得记录的信息请创建）'
-      : `\`\`\`markdown\n${currentDoc}\n\`\`\``
-
-    return `你是一个知识文档维护助手。根据以下任务执行记录，判断是否需要更新${contextType}的知识文档。
-
-## 当前知识文档
-${docSection}
-
-## 本次任务
-**用户请求**: ${taskContext.userRequest}
-
-**执行记录**:
-${taskContext.commandRecords.join('\n')}
-
-## 范围
-${this.describeUpdateScope(contextId)}
-
-## 规则
-- 只记录在**未来多次任务中都会用到**的核心事实（系统配置、软件版本、关键路径、服务架构、用户偏好等）
-- 不记录：一次性操作结果、临时状态（CPU/内存占用、PID）、命令输出原文、操作过程描述
-- 如果执行记录中没有值得更新的新信息，直接回复 NO_CHANGE
-- 如果有新信息，输出完整的更新后文档（Markdown 格式，使用分类标题组织）
-- 更新已有信息时直接修改原文（如版本号变了就改版本号），不要追加重复内容
-- 文档总长度控制在 ${this.maxDocChars} 字符以内，超出时删减最不重要的信息
-
-## 输出格式
-如果无需更新，只回复: NO_CHANGE
-如果需要更新，直接输出完整的 Markdown 文档内容（不要用代码块包裹）`
-  }
-
-  private buildConversationUpdatePrompt(
-    contextId: string,
-    currentDoc: string,
-    userRequest: string,
-    finalResponse: string
-  ): string {
-    const contextType = this.describeContextType(contextId)
-    const isNewDoc = !currentDoc
-    const docSection = isNewDoc
-      ? '（尚无知识文档，如有值得记录的信息请创建）'
-      : `\`\`\`markdown\n${currentDoc}\n\`\`\``
-
-    return `你是一个知识文档维护助手。以下是一次纯对话交互，判断其中是否有值得持久化到${contextType}知识文档中的信息。
-
-## 当前知识文档
-${docSection}
-
-## 本次对话
-**用户**: ${userRequest}
-
-**助手**: ${finalResponse}
-
-## 规则
-- 只记录用户明确要求记住的偏好、配置、约定，或对话中揭示的长期有效事实
-- 不记录：一次性问答、临时查询结果、闲聊内容
-- 如果对话中没有值得持久化的新信息，直接回复 NO_CHANGE
-- 如果有新信息，输出完整的更新后文档（Markdown 格式，使用 ## 分类标题组织）
-- 更新已有信息时直接修改原文，不要追加重复内容
-- 文档总长度控制在 ${this.maxDocChars} 字符以内，超出时删减最不重要的信息
-
-## 输出格式
-如果无需更新，只回复: NO_CHANGE
-如果需要更新，直接输出完整的 Markdown 文档内容（不要用代码块包裹）`
-  }
-
-  private describeContextType(contextId: string): string {
-    if (contextId === 'local') return '本地主机'
-    if (contextId === 'personal') return '个人'
-    if (contextId.includes('@') || contextId.includes('_')) return '远程主机'
-    return '当前上下文'
-  }
-
-  private describeUpdateScope(contextId: string): string {
+  private describeScope(contextId: string): string {
     if (contextId === 'personal') {
-      return '这份文档是个人记忆。只记用户偏好、约定和跨机器都成立的事实，不要把某台机器上的配置写进来。'
+      return '关于用户本人：身份与职责、长期在做的事、生活、偏好与约定，以及换哪台机器都成立的事实；某台机器上的配置不放这里。'
     }
     if (contextId === 'local') {
-      return '这份文档属于本机这条连接。只记录本机上的事实。执行记录里已经明显转到别处时，回复 NO_CHANGE。'
+      return '本机这条连接：这台机器的配置、软件版本、关键路径、服务架构等，只放这台机器上的事实。'
     }
-    return `这份文档属于连接 ${contextId}。只记录这条连接上的事实。执行记录里已经明显转到别处（例如又登录了其他机器）时，回复 NO_CHANGE。`
-  }
-
-  private parseUpdateResponse(response: string, currentDoc: string): DocumentUpdateResult {
-    const trimmed = response.trim()
-
-    if (trimmed === 'NO_CHANGE' || trimmed.startsWith('NO_CHANGE')) {
-      return { updated: false, document: currentDoc }
-    }
-
-    let document = trimmed
-    const fenceMatch = trimmed.match(/^```(?:markdown)?\s*\n([\s\S]*?)\n```\s*$/)
-    if (fenceMatch) {
-      document = fenceMatch[1]
-    }
-
-    if (!document || document.length < MIN_VALID_DOC_LENGTH) {
-      return { updated: false, document: currentDoc }
-    }
-
-    return { updated: true, document }
+    return `远程连接 ${contextId}：这台机器的配置、软件版本、关键路径、服务架构等，只放这条连接上的事实；对话里转到别的机器上做的事不算这台的。`
   }
 }
 

@@ -4,7 +4,6 @@ import {
   resolveHostIdForPty,
   resolveKnowledgeUpdateTargets,
   sessionKnowledgeHostId,
-  hostIdForKnowledgeRecord,
   composeKnowledgeDocuments,
   collectOpenPaneHostIds,
   notePaneHostOperationIfNeeded,
@@ -92,24 +91,6 @@ describe('sessionKnowledgeHostId', () => {
   it('终端页沿用这场绑的那台', () => {
     expect(sessionKnowledgeHostId({ terminalType: 'ssh', hostId: 'root@prod' })).toBe('root@prod')
     expect(sessionKnowledgeHostId({ terminalType: 'local', hostId: 'local' })).toBe('local')
-  })
-})
-
-describe('hostIdForKnowledgeRecord', () => {
-  it('动手过的记到那台；没动手的助手记个人、终端页记自己', () => {
-    expect(hostIdForKnowledgeRecord({
-      mappedHostId: 'root@a',
-      sessionHostId: 'personal',
-      terminalType: 'assistant',
-    })).toBe('root@a')
-    expect(hostIdForKnowledgeRecord({
-      sessionHostId: 'personal',
-      terminalType: 'assistant',
-    })).toBe('personal')
-    expect(hostIdForKnowledgeRecord({
-      sessionHostId: 'root@prod',
-      terminalType: 'ssh',
-    })).toBe('root@prod')
   })
 })
 

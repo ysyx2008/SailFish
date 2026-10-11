@@ -70,19 +70,6 @@ export function sessionKnowledgeHostId(input: {
   return input.hostId || 'personal'
 }
 
-/** 一条执行记录该算到哪份记忆上。 */
-export function hostIdForKnowledgeRecord(input: {
-  mappedHostId?: string
-  sessionHostId: string
-  terminalType?: string
-}): string {
-  if (input.mappedHostId) return input.mappedHostId
-  return sessionKnowledgeHostId({
-    terminalType: input.terminalType,
-    hostId: input.sessionHostId,
-  })
-}
-
 export function composeKnowledgeDocuments(
   docs: ReadonlyArray<{ contextId: string; content: string }>
 ): string {

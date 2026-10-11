@@ -72,10 +72,10 @@ import {
 import { buildTaskHistoryContext, type TaskHistoryOptions } from './context-builder'
 import { getKnowledgeService, type RecallingConversation } from '../knowledge'
 import { getContextKnowledgeService } from '../knowledge/context-knowledge'
+import { MemoryRefresher } from './memory-refresh'
 import {
   sessionKnowledgeHostId,
   resolveKnowledgeUpdateTargets,
-  hostIdForKnowledgeRecord,
   composeKnowledgeDocuments,
   collectOpenPaneHostIds,
   uniqueHosts,
@@ -213,6 +213,9 @@ export abstract class Agent {
 
   /** 替我审批的评审员：第一次需要时才建，跟着这个 Agent 实例走 */
   private _autoReviewer?: AutoApprovalReviewer
+
+  /** 记忆更新的时机：第一次需要时才建，伙计没有 */
+  private _memoryRefresher?: MemoryRefresher
 
   /** 伙计开局：清洗后的父对话，第一次 run 用完即清空 */
   private _seedMessages: AiMessage[] = []
@@ -1644,6 +1647,8 @@ export abstract class Agent {
       this.cleanupRun(this.currentRun)
       this.currentRun = undefined
     }
+    void this.flushMemory()
+    this._memoryRefresher?.dispose()
     this._resumeContext = undefined
     this._deferredNotices = []
     this._backgroundWatches.clear()
@@ -1703,6 +1708,7 @@ export abstract class Agent {
     }
     
     this.currentRun = run
+    this._memoryRefresher?.onRunStart()
     this._resumeContext = {
       ...context,
       images: undefined,
@@ -2100,10 +2106,8 @@ export abstract class Agent {
         }
       }
 
-      // L2: 异步更新知识文档（唤醒 run 跳过，避免短问候污染知识文档）
-      this.updateContextKnowledgeAsync(run, result).catch(err => {
-        log.error('知识文档更新失败:', err)
-      })
+      // L2: 记下这一轮，到点了接着这场对话问一次记忆（唤醒 run 跳过）
+      this.noteRunForMemory(run)
 
       // L3: 异步索引对话到向量库（供跨会话语义检索）
       this.indexConversationAsync(run, 'success', result).catch(err => {
@@ -2282,6 +2286,11 @@ export abstract class Agent {
     return this._initialTitle ?? Promise.resolve(null)
   }
 
+  /** 把这场还没记的记忆补上；会话要换掉时调用，CLI 退出前等它写完 */
+  flushMemory(): Promise<void> {
+    return this._memoryRefresher?.flush(this._conversation?.getCachePrefix()) ?? Promise.resolve()
+  }
+
   private titleGeneratorDeps(
     conv: Conversation,
     configService: NonNullable<AgentServices['configService']>,
@@ -2409,6 +2418,9 @@ export abstract class Agent {
    *   跨模式不传，新 Agent 走 cold start
    */
   attachConversation(conversation: Conversation, opts?: { cachePrefix?: AiMessage[] }): void {
+    if (this._conversation && this._conversation !== conversation) {
+      void this.flushMemory()
+    }
     this._conversation = conversation
     this.resetConsumedUsage()
     if (opts?.cachePrefix && opts.cachePrefix.length > 0) {
@@ -2421,6 +2433,7 @@ export abstract class Agent {
    * 重置会话状态（前端"新对话"或终端重连时调用）
    */
   resetSession(): void {
+    void this.flushMemory()
     this.preRunUserMessages = []
     this._suppressSessionSeed = true
     // 置空会话聚合根（身份/transcript/cache/token 随之全部失效），并清空 Agent 持有的工作记忆。
@@ -2451,6 +2464,7 @@ export abstract class Agent {
    * 用途：Watch 每次执行需要独立的历史记录，但 Agent 需要记住之前做过什么
    */
   startNewSession(): void {
+    void this.flushMemory()
     this._suppressSessionSeed = true
     // 仅置空会话聚合根（下次 run 建新 session 记录）；**不**清 taskMemory——
     // 下次 run 创建新会话时注入同一个（保留的）store，维持「跨 session 记忆」语义。
@@ -2474,16 +2488,23 @@ export abstract class Agent {
 
   
   /**
-   * L2: 异步更新知识文档
-   * 收集执行记录（或纯对话内容），交给 LLM 判断是否有值得持久化的新信息
+   * L2：记下这一轮该写哪几份记忆，到点了接着这场对话问一次。
+   * 时机与请求见 MemoryRefresher；唤醒 run 不写记忆。
    */
-  private async updateContextKnowledgeAsync(run: AgentRun, result?: string): Promise<void> {
-    const aiService = this.services.aiService
-    if (!aiService) return
-
-    // 唤醒 run 跳过（短问候不产生值得持久化的信息）
+  private noteRunForMemory(run: AgentRun): void {
     if (run.context.wakeup) return
+    const conv = this._conversation
+    const refresher = this.getMemoryRefresher()
+    if (!conv || !refresher) return
+    refresher.onRunEnd({
+      conversationId: conv.id,
+      prefix: conv.getCachePrefix(),
+      targets: this.memoryTargetsOf(run),
+    })
+  }
 
+  /** 这一轮能写哪几份记忆：只聊天只写个人（终端页写那台），动过手的那台另写 */
+  private memoryTargetsOf(run: AgentRun): string[] {
     const sessionHostId = sessionKnowledgeHostId({
       terminalType: run.context.terminalType,
       hostId: run.context.hostId,
@@ -2493,98 +2514,25 @@ export abstract class Agent {
       sessionHostId,
       operatedHostIds: [...(run.hostOperations?.values() ?? [])],
     })
+    return [...(targets.personal ? ['personal'] : []), ...targets.hostIds]
+  }
 
-    const MAX_ARG_DISPLAY = 200
-    const MAX_RESULT_DISPLAY = 300
-    const MAX_FINAL_RESULT_DISPLAY = 500
-    const ckService = getContextKnowledgeService()
-    const profileId = this.services.configService?.getActiveAiProfile() ?? undefined
-    const finalResponse = result ? result.substring(0, MAX_FINAL_RESULT_DISPLAY) : undefined
-
-    const toolSteps = run.steps.filter(s => s.type === 'tool_call' && s.toolName)
-
-    // 纯对话（无工具调用）：助手只写个人；终端页仍写自己那台
-    if (toolSteps.length === 0) {
-      if (!finalResponse) return
-      const contextIds = targets.personal ? ['personal'] : [sessionHostId]
-      await Promise.all(contextIds.map(contextId =>
-        ckService.updateWithLLM(contextId, aiService, profileId, {
-          userRequest: run.originalUserRequest,
-          commandRecords: [],
-          finalResponse
-        })
-      ))
-      return
-    }
-
-    const recordsByHost = new Map<string, string[]>()
-    const pushRecord = (hostId: string, line: string) => {
-      const list = recordsByHost.get(hostId) ?? []
-      list.push(line)
-      recordsByHost.set(hostId, list)
-    }
-
-    for (const step of run.steps) {
-      const mapped = step.toolCallId
-        ? run.hostOperations?.get(step.toolCallId)
-        : undefined
-      const bucket = hostIdForKnowledgeRecord({
-        mappedHostId: mapped,
-        sessionHostId,
-        terminalType: run.context.terminalType,
+  private getMemoryRefresher(): MemoryRefresher | undefined {
+    if (this._isSubAgent) return undefined
+    const aiService = this.services.aiService
+    if (!aiService?.chatWithTools) return undefined
+    if (!this._memoryRefresher) {
+      this._memoryRefresher = new MemoryRefresher({
+        chatWithTools: (...args) => aiService.chatWithTools(...args),
+        getTools: () => stripToolMeta(this.getAvailableTools()),
+        getProfileId: () => this.resolveContextBudgetProfileId(),
+        measurePrompt: messages => this._contextWindow.estimateCurrentPromptTokens(messages),
+        measureFixed: messages => this._contextWindow.estimateTotalTokens(messages.filter(m => m.role === 'system')),
+        inputLimit: maxOutputTokens => this._contextWindow.getInputLimit(maxOutputTokens),
+        knowledge: getContextKnowledgeService(),
       })
-      if (step.type === 'tool_call' && step.toolName && step.toolArgs) {
-        const argsStr = Object.entries(step.toolArgs)
-          .map(([k, v]) => {
-            let str: string
-            if (typeof v === 'string') {
-              str = v
-            } else {
-              try { str = JSON.stringify(v) ?? String(v) } catch { str = String(v) }
-            }
-            return `${k}=${str.substring(0, MAX_ARG_DISPLAY)}`
-          })
-          .join(', ')
-        pushRecord(bucket, `[${step.toolName}] ${argsStr}`)
-      }
-      if (step.type === 'tool_result' && step.toolName && step.toolResult) {
-        pushRecord(bucket, `  → ${step.toolResult.substring(0, MAX_RESULT_DISPLAY)}`)
-      }
     }
-
-    const jobs: Promise<unknown>[] = []
-
-    if (targets.personal) {
-      const records = [...(recordsByHost.get('personal') ?? [])]
-      if (records.length > 0) {
-        if (finalResponse) records.push(`\n最终结果: ${finalResponse}`)
-        jobs.push(ckService.updateWithLLM('personal', aiService, profileId, {
-          userRequest: run.originalUserRequest,
-          commandRecords: records
-        }))
-      } else if (finalResponse) {
-        jobs.push(ckService.updateWithLLM('personal', aiService, profileId, {
-          userRequest: run.originalUserRequest,
-          commandRecords: [],
-          finalResponse
-        }))
-      }
-    }
-
-    for (const hostId of targets.hostIds) {
-      const records = [...(recordsByHost.get(hostId) ?? [])]
-      if (records.length === 0) continue
-      if (finalResponse && hostId === sessionHostId) {
-        records.push(`\n最终结果: ${finalResponse}`)
-      }
-      jobs.push(ckService.updateWithLLM(hostId, aiService, profileId, {
-        userRequest: run.originalUserRequest,
-        commandRecords: records
-      }))
-    }
-
-    if (jobs.length === 0) return
-    await Promise.all(jobs)
+    return this._memoryRefresher
   }
 
   private hostIdentityDeps() {
@@ -3642,9 +3590,27 @@ export abstract class Agent {
   private async summarizeForCompression(
     opts: { conversation: AiMessage[]; keepRecent: number; userHint?: string }
   ): Promise<string | null> {
+    const original = opts.conversation.slice()
+    try {
+      return await this.requestCompressionSummary(opts)
+    } finally {
+      // 交接以后原文就不在了：拿这份原文问一次记忆。排在小结之后，同一份前缀，两次都接着缓存。
+      // 人在两轮之间点压缩时拼出来的那一轮没有主机身份，只用之前攒下的
+      const run = this.currentRun
+      if (run && !run.context.wakeup && original.length > 0) {
+        const targets = run.hostOperations ? this.memoryTargetsOf(run) : []
+        void this.getMemoryRefresher()?.beforeHandoff(original, targets)
+      }
+    }
+  }
+
+  private async requestCompressionSummary(
+    opts: { conversation: AiMessage[]; keepRecent: number; userHint?: string }
+  ): Promise<string | null> {
     const aiService = this.services.aiService
     if (!aiService?.chatWithTools) return null
     if (opts.conversation.length === 0) return null
+
     // 小结指令作为一条 user 消息追加在当前对话末尾：前缀与上一轮逐字一致，
     // provider 的前缀缓存直接命中（实测 99%）；模型也是在原本语境里写，
     // 不必读一份拍平的转录。这条指令不进 run.messages，只用于这一次调用。
