@@ -15,7 +15,7 @@ function makeExecutor(supervisor: TaskSupervisor): ToolExecutorConfig {
 
 function makeSupervisor(overrides: Partial<TaskSupervisor> = {}): TaskSupervisor {
   return {
-    listSupervisedTasks: vi.fn().mockReturnValue([]),
+    listTasks: vi.fn().mockResolvedValue({ tasks: [], total: 0, page: 1, pageCount: 1, pageSize: 20 }),
     inspectTask: vi.fn().mockReturnValue(undefined),
     createTask: vi.fn().mockResolvedValue({ agentKey: 'assistant-new', fullAuto: false }),
     confirmTask: vi.fn().mockReturnValue({ ok: true, title: '部署服务' }),
@@ -40,7 +40,40 @@ describe('manage_tasks', () => {
     const supervisor = makeSupervisor()
     const result = await manageTasks({ action: 'list' }, makeExecutor(supervisor))
     expect(result.success).toBe(true)
-    expect(supervisor.listSupervisedTasks).toHaveBeenCalled()
+    expect(supervisor.listTasks).toHaveBeenCalled()
+  })
+
+  it('list 把翻页、关键字、日期交给监督器；列表不报步数，后面还有就提示下一页', async () => {
+    const supervisor = makeSupervisor({
+      listTasks: vi.fn().mockResolvedValue({
+        tasks: [
+          { agentKey: 'tab-run', title: '跑着', terminalType: 'assistant', isRunning: true, currentToolName: 'exec', stepCount: 138 },
+          { agentKey: 'assistant-old', title: '查日志', terminalType: 'assistant', isRunning: false, settled: 'completed' },
+        ],
+        total: 22, page: 2, pageCount: 2, pageSize: 20,
+      }),
+    } as Partial<TaskSupervisor>)
+    const result = await manageTasks(
+      { action: 'list', page: 2, query: ' 日志 ', start_date: '2026-10-08' },
+      makeExecutor(supervisor)
+    )
+    expect(supervisor.listTasks).toHaveBeenCalledWith({ page: 2, keyword: '日志', startDate: '2026-10-08', endDate: undefined })
+    expect(result.output).toContain('21. 「跑着」')
+    expect(result.output).not.toContain('138')
+    expect(result.output).not.toContain('page=3')
+  })
+
+  it('list 的页码写成文字也认，乱写就当第 1 页', async () => {
+    const supervisor = makeSupervisor()
+    await manageTasks({ action: 'list', page: '3' }, makeExecutor(supervisor))
+    await manageTasks({ action: 'list', page: 'abc' }, makeExecutor(supervisor))
+    expect(vi.mocked(supervisor.listTasks).mock.calls.map(([q]) => q?.page)).toEqual([3, undefined])
+  })
+
+  it('list 有筛选但没命中时说没有符合条件的', async () => {
+    const supervisor = makeSupervisor()
+    const result = await manageTasks({ action: 'list', query: '不存在' }, makeExecutor(supervisor))
+    expect(result.output).toBe('没有符合条件的任务。')
   })
 
   it('create 缺 title/brief 失败', async () => {

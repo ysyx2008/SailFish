@@ -261,6 +261,13 @@ export class HistoryService {
     return this.agentRecordStore.searchAgentRecordsAdvanced(options)
   }
 
+  /** 同一套搜索，交回全部命中的轻量摘要（委派 store）。 */
+  searchAgentHistorySummaries(
+    options: Omit<SearchAgentRecordsOptions, 'limit' | 'onMatch'>
+  ): Promise<AgentHistorySummary[]> {
+    return this.agentRecordStore.searchAgentHistorySummaries(options)
+  }
+
   /** 从磁盘重建全部索引（主 + watch，委派 store）。 */
   rebuildAgentIndex(): void {
     this.agentRecordStore.rebuildAgentIndex()

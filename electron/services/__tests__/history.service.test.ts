@@ -889,3 +889,40 @@ describe('HistoryService - Canvas content 外化', () => {
     expect(liveCanvas.content).toBe('# 实时内容')
   })
 })
+
+describe('HistoryService - searchAgentHistorySummaries', () => {
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-history-test-'))
+  })
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('关键字也认侧栏标题，命中全部交回摘要', async () => {
+    const svc = new HistoryService()
+    const t = new Date('2026-03-18T10:00:00').getTime()
+    for (let i = 0; i < 12; i++) {
+      svc.saveAgentRecord(makeRecord({ id: `r${i}`, timestamp: t + i * 1000, duration: 1, userTask: '帮我看看', title: `输入法死机 ${i}` }))
+    }
+    svc.saveAgentRecord(makeRecord({ id: 'other', timestamp: t, duration: 1, userTask: '无关', title: '无关' }))
+
+    const hits = await svc.searchAgentHistorySummaries({ keyword: '输入法' })
+    expect(hits).toHaveLength(12)
+    expect(hits[0]?.id).toBe('r11')
+    expect(hits[0]).not.toHaveProperty('steps')
+  })
+
+  it('dateBy=lastActive 按最后活跃那天筛，与侧栏分组一致', async () => {
+    const svc = new HistoryService()
+    const oct1 = new Date('2026-10-01T10:00:00').getTime()
+    const nineDays = 9 * 24 * 3600_000
+    svc.saveAgentRecord(makeRecord({ id: 'long', timestamp: oct1, duration: nineDays, userTask: '一直在做' }))
+    svc.saveAgentRecord(makeRecord({ id: 'short', timestamp: oct1, duration: 1000, userTask: '当天做完' }))
+
+    const byActive = await svc.searchAgentHistorySummaries({ startDate: '2026-10-10', endDate: '2026-10-10', dateBy: 'lastActive' })
+    expect(byActive.map(s => s.id)).toEqual(['long'])
+    const byStart = await svc.searchAgentHistorySummaries({ startDate: '2026-10-10', endDate: '2026-10-10' })
+    expect(byStart).toEqual([])
+  })
+})

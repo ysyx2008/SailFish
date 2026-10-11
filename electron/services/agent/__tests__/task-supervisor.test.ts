@@ -82,7 +82,7 @@ describe('TaskSupervisor', () => {
 
   // ==================== 查询 ====================
 
-  describe('listSupervisedTasks', () => {
+  describe('listLiveTasks', () => {
     it('仅枚举 kind=task 的会话，排除 companion/watch/wakeup 和任务的帮手', () => {
       const host = makeHost([
         ['tab-aaa', makeMockAgent({ title: '任务A' })],
@@ -92,7 +92,7 @@ describe('TaskSupervisor', () => {
         ['tab-aaa:sub:explore', makeMockAgent({ title: '帮手' })]
       ])
       const supervisor = new TaskSupervisor(host)
-      const list = supervisor.listSupervisedTasks()
+      const list = supervisor.listLiveTasks()
       expect(list.map(t => t.agentKey)).toEqual(['tab-aaa'])
     })
 
@@ -106,7 +106,7 @@ describe('TaskSupervisor', () => {
         })]
       ])
       const supervisor = new TaskSupervisor(host)
-      const list = supervisor.listSupervisedTasks()
+      const list = supervisor.listLiveTasks()
       expect(list.map(t => t.agentKey)).toEqual(['tab-confirm', 'tab-running', 'tab-idle'])
     })
 
@@ -123,7 +123,7 @@ describe('TaskSupervisor', () => {
         ['tab-ok', makeMockAgent({ title: '正常任务' })]
       ])
       const supervisor = new TaskSupervisor(host)
-      const list = supervisor.listSupervisedTasks()
+      const list = supervisor.listLiveTasks()
       expect(list.map(t => t.agentKey)).toEqual(['tab-ok'])
     })
   })
@@ -179,12 +179,47 @@ describe('TaskSupervisor', () => {
       })
     }
 
-    it('内存里没有的任务从历史补进列表，同一任务不重复，帮手不进', () => {
+    it('内存里没有的任务从历史补进列表，同一任务不重复，帮手不进，不报步数', async () => {
       const host = historyHost([['tab-live', makeMockAgent({ title: '还在内存里' })]])
-      const list = new TaskSupervisor(host).listSupervisedTasks()
-      expect(list.map(t => t.agentKey)).toEqual(['tab-live', 'assistant-old'])
-      expect(list[1]?.settled).toBe('completed')
-      expect(list[1]?.title).toBe('查日志')
+      const { tasks, total } = await new TaskSupervisor(host).listTasks()
+      expect(tasks.map(t => t.agentKey)).toEqual(['tab-live', 'assistant-old'])
+      expect(total).toBe(2)
+      expect(tasks[1]?.settled).toBe('completed')
+      expect(tasks[1]?.title).toBe('查日志')
+      expect(tasks[1]?.stepCount).toBeUndefined()
+    })
+
+    it('分页：每页 20 条，内存里的排最前', async () => {
+      const many = Array.from({ length: 25 }, (_, i) => ({ ...summary, id: `s${i}`, agentKey: `assistant-${i}` }))
+      const host = makeHost([['tab-live', makeMockAgent({ title: '还在' })]], {
+        getHistoryService: vi.fn().mockReturnValue({ listAgentHistorySummaries: vi.fn().mockReturnValue(many) }),
+      })
+      const supervisor = new TaskSupervisor(host)
+      const first = await supervisor.listTasks()
+      expect(first.tasks).toHaveLength(20)
+      expect(first.tasks[0]?.agentKey).toBe('tab-live')
+      expect(first).toMatchObject({ total: 26, page: 1, pageCount: 2, pageSize: 20 })
+      const second = await supervisor.listTasks({ page: 2 })
+      expect(second.tasks.map(t => t.agentKey)).toEqual(['assistant-19', 'assistant-20', 'assistant-21', 'assistant-22', 'assistant-23', 'assistant-24'])
+      expect((await supervisor.listTasks({ page: 3 })).tasks).toEqual([])
+    })
+
+    it('按关键字或日期找：走历史搜索、日期按最后活跃算，内存里的只留命中的', async () => {
+      const searchAgentHistorySummaries = vi.fn().mockResolvedValue([
+        { ...summary, id: 'hit-live', agentKey: 'tab-live' },
+        summary,
+      ])
+      const host = makeHost([
+        ['tab-live', makeMockAgent({ title: '命中' })],
+        ['tab-other', makeMockAgent({ title: '没命中', isRunning: true })],
+      ], {
+        getHistoryService: vi.fn().mockReturnValue({ searchAgentHistorySummaries }),
+      })
+      const { tasks } = await new TaskSupervisor(host).listTasks({ keyword: ' 日志 ', startDate: '2026-10-08' })
+      expect(tasks.map(t => t.agentKey)).toEqual(['tab-live', 'assistant-old'])
+      expect(searchAgentHistorySummaries).toHaveBeenCalledWith(expect.objectContaining({
+        keyword: '日志', startDate: '2026-10-08', dateBy: 'lastActive',
+      }))
     })
 
     it('内存里没有时，inspect 从历史读近况', () => {
