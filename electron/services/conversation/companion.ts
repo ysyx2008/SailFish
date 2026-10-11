@@ -20,24 +20,10 @@
 import type { AgentRecord } from '@shared/types'
 import type { HistoryService } from '../history.service'
 import { generateSummary, cleanSummarySource } from '../agent/task-memory'
-import { Conversation } from './conversation'
+import { Conversation, type CompanionExtractOptions, type CompanionPickCandidate } from './conversation'
 
-/** companion 抽取新任务的选项 */
-export interface CompanionExtractTaskOptions {
-  /**
-   * 锚点 task 索引（0-based，合并视图位置）。仅作 fallback；优先用 anchorTaskStepId。
-   */
-  anchorTaskIndex?: number
-  /** user_task / proactive_notice step.id（与前端 AgentTaskGroup.id 一致），精确锚定用户点的那一段 */
-  anchorTaskStepId?: string
-  /** userTask 后缀（如「· 分支」） */
-  titleSuffix?: string
-  /**
-   * 前端联络 tab 当前展示的 steps（与屏幕上 group 同源）。
-   * 有则作为截取真相源，避免磁盘合并切段与 UI 分组不一致。
-   */
-  sourceSteps?: import('@shared/types').AgentStepRecord[]
-}
+/** companion 抽取新任务的选项（定义在 Conversation，抽取逻辑所在处） */
+export type CompanionExtractTaskOptions = CompanionExtractOptions
 
 export class Companion {
   /** 合并视图保留多少段「真对话」（非主动提醒）。主动提醒不占这个名额。 */
@@ -90,6 +76,31 @@ export class Companion {
     liveRecord: AgentRecord | null | undefined,
     opts?: CompanionExtractTaskOptions
   ): { conversation: Conversation; record: AgentRecord } | null {
+    const records = this.collectRecordsForExtract(liveRecord, opts)
+    if (!records) return null
+    return Conversation.extractTaskFromRecords(records, newSessionId, opts)
+  }
+
+  /**
+   * 「从这里创建任务」挑选用的候选（锚点之前的各段用户对话，最后一项是锚点）。
+   * 与抽取用同一份汇集结果，保证挑的和带的是同一批。返回 null 表示不必挑选：
+   * 锚点是主动提醒 / 无法解析 / 只有锚点自己一段。
+   */
+  listPickCandidates(
+    liveRecord: AgentRecord | null | undefined,
+    opts?: CompanionExtractTaskOptions
+  ): CompanionPickCandidate[] | null {
+    const records = this.collectRecordsForExtract(liveRecord, opts)
+    if (!records) return null
+    const candidates = Conversation.listCompanionPickCandidates(records, opts)
+    return candidates && candidates.length > 1 ? candidates : null
+  }
+
+  /** 取近期记录并用内存里的最新联络会话覆盖/追加；什么都凑不出来返回 null。 */
+  private collectRecordsForExtract(
+    liveRecord: AgentRecord | null | undefined,
+    opts?: CompanionExtractTaskOptions
+  ): AgentRecord[] | null {
     let records = Companion.selectRecordsForMerge(
       this.historyService.getRecentRecordsByAgentKey(
         this.agentKey,
@@ -107,7 +118,7 @@ export class Companion {
     }
     // 允许仅有前端 sourceSteps（磁盘暂无记录）时仍能抽取
     if (records.length === 0 && !hasSourceSteps) return null
-    return Conversation.extractTaskFromRecords(records, newSessionId, opts)
+    return records
   }
 
   private static isProactiveRecord(record: Pick<AgentRecord, 'userTask'>): boolean {

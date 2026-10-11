@@ -352,6 +352,11 @@ const handleForkFromGroup = async (group: import('../composables').AgentTaskGrou
   if (forkingGroupIds.value.has(group.id)) return
   openGroupMenuId.value = null
   forkingGroupIds.value.add(group.id)
+  // 联络里创建任务要让 AI 先挑相关对话，可能等几秒；给个进度提示，免得看起来像没反应。
+  // 点在主动提醒 / 任务回执上不挑选，不弹
+  const pickingToastId = isCompanionSourceTab.value && !group.isProactive && !group.isReceipt
+    ? toast.show(t('ai.fork.extractTaskPicking'), 'info', 0, false)
+    : undefined
   try {
     const newTabId = await terminalStore.forkToAssistantTab(currentTabId.value, {
       groupIndex: group.index,
@@ -362,6 +367,7 @@ const handleForkFromGroup = async (group: import('../composables').AgentTaskGrou
       await showAlert(t('common.error'), t('ai.fork.failed'))
     }
   } finally {
+    if (pickingToastId) toast.close(pickingToastId)
     forkingGroupIds.value.delete(group.id)
   }
 }

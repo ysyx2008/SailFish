@@ -32,6 +32,7 @@ import { getDefaultShell, getLocalOS } from '../../utils/platform'
 import { SailFish } from './sailfish'
 import { TaskSupervisor } from './task-supervisor'
 import { ConversationStore, ConversationManager, Companion, Conversation } from '../conversation'
+import { CompanionSeedPicker } from '../conversation/companion-seed'
 import { assessCommandRisk, analyzeCommand } from './risk-assessor'
 import type { CommandHandlingInfo } from './risk-assessor'
 import { setConfigService as setI18nConfigService } from './i18n'
@@ -578,10 +579,12 @@ export class AgentService {
       sourceSteps: opts.sourceSteps,
     }
 
+    // 挑选可能要等几秒（模型作答）；挑完再取一次联络最新记录，等待期间新进来的话不丢
+    const pickedTaskStepIds = await this.pickCompanionSegments(forkOpts)
     const forked = this._companion.extractTaskWithLiveOverlay(
       newSessionId,
-      this.getAgent('__companion__')?.toRecordForFork() ?? undefined,
-      forkOpts
+      this.getAgent(COMPANION_AGENT_KEY)?.toRecordForFork() ?? undefined,
+      { ...forkOpts, pickedTaskStepIds }
     )
     if (!forked) {
       log.warn(
@@ -613,6 +616,48 @@ export class AgentService {
       newAgentId: opts.newAgentId,
       sourceUserTask: newRecord.userTask,
       newRecord
+    }
+  }
+
+  /**
+   * 让 AI 从锚点之前的各段用户对话里挑出相关的几段（回的是各段的 id）。
+   * 联络眼前有对话前缀就接在它后面问（吃缓存）；没有就只发各段简述。
+   * 返回 undefined：不必挑 / 挑选失败 / 回复对不上——调用方回退时间窗口。
+   */
+  private async pickCompanionSegments(
+    forkOpts: import('../conversation').CompanionExtractTaskOptions
+  ): Promise<string[] | undefined> {
+    const companionAgent = this.getAgent(COMPANION_AGENT_KEY)
+    const candidates = this._companion?.listPickCandidates(
+      companionAgent?.toRecordForFork() ?? undefined,
+      forkOpts
+    )
+    if (!candidates) return undefined
+
+    const picker = new CompanionSeedPicker(candidates)
+    const instruction = picker.buildInstruction()
+    // 只回几个序号，但不限输出额度：带思考的模型先想再答，限了会只想不答
+    const askOpts = { purpose: 'Companion task pick' }
+    try {
+      const hot = !!companionAgent?.hasConversationPrefix()
+      const reply = hot
+        ? await companionAgent!.askOnConversationPrefix(instruction, askOpts)
+        : (await this.services.aiService?.chatWithTools?.(
+            [{ role: 'user', content: instruction }],
+            [],
+            undefined,
+            undefined
+          ))?.content ?? null
+      const ids = picker.parseReply(reply)
+      if (!ids) {
+        log.warn(`pickCompanionSegments: reply unusable, fall back to time window (hot=${hot})`)
+        return undefined
+      }
+      log.info(`pickCompanionSegments: picked ${ids.length}/${picker.size} segments (hot=${hot})`)
+      return ids
+    } catch (e) {
+      log.warn('pickCompanionSegments failed, fall back to time window:', e)
+      return undefined
     }
   }
 

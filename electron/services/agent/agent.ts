@@ -3633,51 +3633,84 @@ export abstract class Agent {
   private async requestCompressionSummary(
     opts: { conversation: AiMessage[]; keepRecent: number; userHint?: string }
   ): Promise<string | null> {
+    if (opts.conversation.length === 0) return null
+    return this.askAppendedInstruction(
+      opts.conversation,
+      [
+        t('agent.compress_summary_prompt', {
+          budget: SUMMARY_OUTPUT_BUDGET_CHARS,
+          keepRecent: opts.keepRecent
+        }),
+        opts.userHint?.trim() ? t('agent.compress_summary_user_hint', { hint: opts.userHint.trim() }) : ''
+      ].filter(Boolean).join('\n\n'),
+      { maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS, purpose: 'Compaction summary' }
+    )
+  }
+
+  /**
+   * 指令作为一条 user 消息追加在给定对话末尾，调一次非流式 chat，只取文字回答。
+   * 前缀与上一轮逐字一致，provider 的前缀缓存直接命中（实测 99%）；模型也是在原本
+   * 语境里作答，不必读一份拍平的转录。这条指令不进 run.messages，只用于这一次调用。
+   *
+   * tools 照常带上：schema 是前缀的一部分，不带就等于换了前缀、白丢整段缓存。
+   * 指令里需说明这一步不执行操作，模型据此直接回文本（实测缓存 98%）。
+   *
+   * 返回 null：服务不可用 / 估算超出输入预算 / 两次都没拿到正文。
+   */
+  private async askAppendedInstruction(
+    conversation: AiMessage[],
+    instruction: string,
+    opts: { maxOutputTokens?: number; purpose: string }
+  ): Promise<string | null> {
     const aiService = this.services.aiService
     if (!aiService?.chatWithTools) return null
-    if (opts.conversation.length === 0) return null
 
-    // 小结指令作为一条 user 消息追加在当前对话末尾：前缀与上一轮逐字一致，
-    // provider 的前缀缓存直接命中（实测 99%）；模型也是在原本语境里写，
-    // 不必读一份拍平的转录。这条指令不进 run.messages，只用于这一次调用。
-    //
-    // tools 照常带上：schema 是前缀的一部分，不带就等于换了前缀、白丢整段缓存。
-    // 指令末尾已说明这一步只写小结不执行操作，模型据此直接回文本（实测缓存 98%）。
-    const messages: AiMessage[] = [
-      ...opts.conversation,
-      {
-        role: 'user',
-        content: [
-          t('agent.compress_summary_prompt', {
-            budget: SUMMARY_OUTPUT_BUDGET_CHARS,
-            keepRecent: opts.keepRecent
-          }),
-          opts.userHint?.trim() ? t('agent.compress_summary_user_hint', { hint: opts.userHint.trim() }) : ''
-        ].filter(Boolean).join('\n\n')
-      }
-    ]
+    const messages: AiMessage[] = [...conversation, { role: 'user', content: instruction }]
     const tools = stripToolMeta(this.getAvailableTools())
     const profileId = this.resolveContextBudgetProfileId()
-    const summaryInputLimit = this._contextWindow.getInputLimit(SUMMARY_MAX_OUTPUT_TOKENS)
-    if (this._contextWindow.estimateTotalTokens(messages) > summaryInputLimit) {
-      log.warn(`Compaction summary skipped: estimated input exceeds summary budget (${summaryInputLimit})`)
+    const inputLimit = this._contextWindow.getInputLimit(opts.maxOutputTokens)
+    if (this._contextWindow.estimateTotalTokens(messages) > inputLimit) {
+      log.warn(`${opts.purpose} skipped: estimated input exceeds budget (${inputLimit})`)
       return null
     }
 
     const first = await aiService.chatWithTools(messages, tools, profileId, undefined, {
-      maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS
+      ...(opts.maxOutputTokens ? { maxOutputTokens: opts.maxOutputTokens } : {})
     })
     if (first?.content?.trim()) return first.content.trim()
 
     // 模型没写正文、转头去调工具了。再要一次并禁止调用——部分 provider 在
     // tool_choice='none' 下不再把 tools 计入 prompt，这一次拿不到缓存，
-    // 但比压缩落空强。仍不给正文就交给固定模板收场。
-    log.warn('Compaction summary returned no text (model chose tools); retrying with tool calls disabled')
+    // 但比落空强。仍不给正文就交给调用方兜底。
+    log.warn(`${opts.purpose} returned no text (model chose tools); retrying with tool calls disabled`)
     const retry = await aiService.chatWithTools(messages, tools, profileId, undefined, {
       toolChoice: 'none',
-      maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS
+      ...(opts.maxOutputTokens ? { maxOutputTokens: opts.maxOutputTokens } : {})
     })
     return retry?.content?.trim() || null
+  }
+
+  /** 眼前这场对话有没有可接的 cache 前缀（下一轮会沿用的那份） */
+  hasConversationPrefix(): boolean {
+    return !!this._conversation?.getCachePrefix()?.length
+  }
+
+  /**
+   * 在眼前这场对话（cache 前缀）之后追加一句说明，问一次、只取文字回答。
+   * 前缀与下一轮沿用的那份一致，所以能吃到联络刚聊过的缓存。
+   * 没有前缀时返回 null——调用方自行决定改发不带前缀的请求。
+   * 不给 maxOutputTokens 就不限输出额度（带思考的模型先想再答，限了会只想不答）。
+   */
+  async askOnConversationPrefix(
+    instruction: string,
+    opts: { maxOutputTokens?: number; purpose: string }
+  ): Promise<string | null> {
+    const prefix = this._conversation?.getCachePrefix()
+    if (!prefix?.length) return null
+    // 与下一轮 cache 路径一致：去掉旧断点，把断点落在前缀最后一条
+    const conversation = this._conversation!.prepareCachePrefix()
+    conversation[conversation.length - 1]._cacheBreakpoint = true
+    return this.askAppendedInstruction(conversation, instruction, opts)
   }
 
   /** 解析拟用 / 已确认 profile 的展示字段写入 bar（不 publish） */

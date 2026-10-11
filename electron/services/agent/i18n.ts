@@ -167,6 +167,15 @@ const translations = {
 
 这一步只写小结，不执行任何操作，因此直接输出正文即可。`,
     'agent.compress_summary_user_hint': '写小结时请看见：{hint}',
+    'agent.companion_pick_prompt': `用户在联络对话里点了某一段的「从这里创建任务」，要把它开成一个新任务。
+新任务是一场全新的对话：它只知道被选中带进去的各段（每段含完整过程），其余聊过的事它都不知道，漏选相关的段它就缺少做这件事需要的前文，多选无关的段它就背着用不上的内容。第 {anchor} 段一定会带上，它之后的对话不会带进去。
+
+下面按时间列出了第 {anchor} 段及之前的各段，用户点的是第 {anchor} 段：
+{list}
+
+这一步只做选择，不执行任何操作。直接输出被选中的段号，段号之间用英文逗号分隔，不输出其他内容。`,
+    'agent.companion_pick_line': '{n}. [{time}] 用户：{user}',
+    'agent.companion_pick_line_result': '{n}. [{time}] 用户：{user} → 结果：{result}',
     'agent.compact_in_progress': '正在压缩上下文',
     'agent.compact_tool_step': '压缩上下文',
     'agent.images_attached': '[系统：用户在本消息中附带了 {count} 张图片，图片已通过多模态格式发送给视觉模型，无需使用 read_file 读取。{paths}如果你确实看到了图像内容，请直接分析；如果你看到的是空白/无法理解的内容，请如实告知用户图片未送达，不要凭上下文猜测图片内容。]',
@@ -1986,6 +1995,15 @@ Write down what you judge you will need later and cannot infer from what is pres
 
 This step only writes the summary and performs no action, so just output the text.`,
     'agent.compress_summary_user_hint': 'Take this into account when writing the summary: {hint}',
+    'agent.companion_pick_prompt': `The user clicked "Create task from here" on one segment of the companion conversation and wants to turn it into a new task.
+The new task is a brand-new conversation: it only knows the selected segments carried into it (each with its full process) and nothing else that was discussed. Leaving out a relevant segment means it lacks background it needs for this job; carrying an unrelated segment means it lugs around content it has no use for. Segment {anchor} is always carried, and nothing after it is.
+
+Segment {anchor} and the segments before it, in time order. The user clicked segment {anchor}:
+{list}
+
+This step only selects; do not perform any action. Output only the numbers of the selected segments, separated by commas, and nothing else.`,
+    'agent.companion_pick_line': '{n}. [{time}] User: {user}',
+    'agent.companion_pick_line_result': '{n}. [{time}] User: {user} -> Result: {result}',
     'agent.compact_in_progress': 'Compressing context',
     'agent.compact_tool_step': 'Compress context',
     'agent.images_attached': '[System: User attached {count} image(s) in this message. The images have been sent to the vision model in multimodal format — no need to use read_file. {paths}If you can actually see the image content, analyze it directly. If you see only blank/unintelligible content, tell the user honestly that the image did not reach you. Do NOT guess the image content from context.]',

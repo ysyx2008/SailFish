@@ -299,6 +299,7 @@ export default {
     fork: {
       action: '另开一聊',
       extractTaskAction: '从这里创建任务',
+      extractTaskPicking: '正在挑选相关的对话，请稍等几秒…',
       tooltip: '从此处分一个新对话，原对话不受影响',
       titleSuffix: '分支',
       failed: '另开一聊失败：会话数据为空或服务不可用'

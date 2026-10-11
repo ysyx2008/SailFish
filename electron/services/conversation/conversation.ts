@@ -44,6 +44,32 @@ function lastTaskStatus(
   return 'success'
 }
 
+/** 联络「从这里创建任务」的抽取选项 */
+export interface CompanionExtractOptions {
+  /** 锚点 task 索引（0-based，合并视图位置）。仅作 fallback；优先用 anchorTaskStepId。 */
+  anchorTaskIndex?: number
+  /** user_task / proactive_notice step.id（与前端 AgentTaskGroup.id 一致），精确锚定用户点的那一段 */
+  anchorTaskStepId?: string
+  /** userTask 后缀（如「· 分支」） */
+  titleSuffix?: string
+  /** 前端联络 tab 当前展示的 steps（与屏幕分组一致）；有则优先于磁盘合并 */
+  sourceSteps?: AgentStepRecord[]
+  /**
+   * AI 挑选出的相关用户段（以其 user_task step.id 标识）。给了就按挑选带上这些段
+   * （锚点恒带）；不给则走时间窗口老办法。
+   */
+  pickedTaskStepIds?: string[]
+}
+
+/** 挑选候选：一段用户对话的简述素材 */
+export interface CompanionPickCandidate {
+  /** 这段用户话那一步的 id，挑选结果用它回传 */
+  stepId: string
+  timestamp: number
+  userText: string
+  resultText: string
+}
+
 export interface ConversationCreateOptions {
   /** 显式指定会话 id（恢复/漫游续写既有会话）；省略则生成 `session_<ts>` */
   id?: string
@@ -421,6 +447,7 @@ export class Conversation {
    * messages 策略：proactive record（userTask='__proactive__'）没有 API messages；
    * 只拼接真实对话 record 的 messages（按 timestamp 升序），保证 LLM 前缀连贯。
    *
+   * 有 `pickedTaskStepIds`（AI 挑选结果）时按挑选带；否则走时间窗口。
    * 窗口语义（见 `selectCompanionTaskWindow`）：以锚点为基准向前取「同天 + 6h 跨夜连续」的
    * task 集合，最多 cap 段兜底。区别于 task 之间 fork 的 `untilTaskCount` 截止语义——
    * companion 是「升格种子」，带最近这段在聊啥即可，不是整个关系线的追溯。
@@ -428,46 +455,15 @@ export class Conversation {
   static extractTaskFromRecords(
     records: AgentRecord[],
     newSessionId: string,
-    opts?: {
-      anchorTaskIndex?: number
-      anchorTaskStepId?: string
-      titleSuffix?: string
-      /** 前端联络 tab 当前展示的 steps（与屏幕分组一致）；有则优先于磁盘合并 */
-      sourceSteps?: AgentStepRecord[]
-    }
+    opts?: CompanionExtractOptions
   ): { conversation: Conversation; record: AgentRecord } | null {
-    if (!records.length && !(opts?.sourceSteps && opts.sourceSteps.length > 0)) return null
-
-    const ordered = [...records].sort((a, b) => a.timestamp - b.timestamp)
-
-    // 合并 steps：优先用前端传来的展示态（与用户点击的 group 同源）；否则磁盘合并
-    let mergedSteps: AgentStep[]
-    if (opts?.sourceSteps && opts.sourceSteps.length > 0) {
-      mergedSteps = opts.sourceSteps.map(s => stepRecordToStep(s))
-    } else {
-      const seen = new Set<string>()
-      mergedSteps = ordered
-        .flatMap(r => (r.steps ?? []).map(s => stepRecordToStep(s)))
-        .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
-        .filter(s => (s.id && !seen.has(s.id) ? (seen.add(s.id), true) : !s.id))
-    }
-
-    // 合并 messages：只取真实对话 record（非 __proactive__），按 timestamp 升序拼接
-    const realRecords = ordered.filter(r => r.userTask !== '__proactive__')
-    const mergedMessages: AiMessage[] = realRecords
-      .flatMap(r => (r.messages ?? []).map(m => JSON.parse(JSON.stringify(m)) as AiMessage))
-
-    // 切段与前端 agentTaskGroups 对齐（结束后的 proactive_notice 单独成段）
-    const stepChunks = chunkStepsForCompanionExtract(mergedSteps)
-    const messageTasks = splitMessagesIntoTasks(mergedMessages, i => `restored_${Date.now()}_${i}`)
-    // proactive 有 steps、无 API messages → messageTasks 比 stepChunks 短。
-    // 绝不能用 stepChunk 下标直接取 messageTasks[i]，否则锚点会「往后滑」1～N 段
-    //（N = 锚点前的 proactive 数），且随主动消息增减而不稳定。
-    const messagesByChunk = Conversation.alignMessagesToStepChunks(stepChunks, messageTasks)
-    const anchorIndex = Conversation.resolveAnchorChunkIndex(stepChunks, opts)
-    // 锚点无法解析时宁可失败，也不要默默落到最后一条（会把截止点滑到更新的消息）
-    if (anchorIndex < 0 || anchorIndex >= stepChunks.length) return null
-    const selectedIndices = Conversation.selectCompanionTaskWindow(stepChunks, anchorIndex)
+    const prepared = Conversation.prepareCompanionChunks(records, opts)
+    if (!prepared) return null
+    const { ordered, stepChunks, messagesByChunk, anchorIndex } = prepared
+    // 有挑选结果按挑选带；没有（或没挑选）走时间窗口老办法
+    const selectedIndices = opts?.pickedTaskStepIds
+      ? Conversation.selectPickedTaskChunks(stepChunks, anchorIndex, opts.pickedTaskStepIds)
+      : Conversation.selectCompanionTaskWindow(stepChunks, anchorIndex)
 
     const selectedSteps: AgentStep[] = selectedIndices
       .map(i => stepChunks[i] ?? [])
@@ -535,6 +531,87 @@ export class Conversation {
 
     const conversation = Conversation.fromRecord(record)
     return { conversation, record }
+  }
+
+  /**
+   * 联络「从这里创建任务」的候选：锚点那一段之前的所有用户对话（不含主动提醒），按时间升序，
+   * 最后一项恒为锚点本身。锚点是主动提醒、或无法解析时返回 null（调用方不发挑选）。
+   * 每项只给简述所需的两句：用户说了什么、最后落到哪。
+   */
+  static listCompanionPickCandidates(
+    records: AgentRecord[],
+    opts?: CompanionExtractOptions
+  ): CompanionPickCandidate[] | null {
+    const prepared = Conversation.prepareCompanionChunks(records, opts)
+    if (!prepared) return null
+    const { stepChunks, anchorIndex } = prepared
+    if (Conversation.isProactiveChunk(stepChunks[anchorIndex])) return null
+
+    const candidates: CompanionPickCandidate[] = []
+    for (let i = 0; i <= anchorIndex; i++) {
+      const chunk = stepChunks[i]
+      if (!chunk || Conversation.isProactiveChunk(chunk)) continue
+      const userTask = chunk.find(s => s.type === 'user_task')
+      if (!userTask?.id) continue
+      const result = [...chunk].reverse().find(s => s.type === 'final_result')
+      candidates.push({
+        stepId: userTask.id,
+        timestamp: userTask.timestamp ?? chunk[0]?.timestamp ?? 0,
+        userText: userTask.content ?? '',
+        resultText: result?.content ?? ''
+      })
+    }
+    // 锚点自己没有可引用的 id（极老数据）→ 无法保证「终点必带」，不挑选
+    const anchorTaskId = stepChunks[anchorIndex]?.find(s => s.type === 'user_task')?.id
+    if (!anchorTaskId || candidates[candidates.length - 1]?.stepId !== anchorTaskId) return null
+    return candidates
+  }
+
+  /**
+   * 汇集一次抽取共用的基础数据：按时间排好的 records、与前端分组对齐的 step 段、
+   * 每段对应的 API messages、锚点段下标。无法解析锚点时返回 null。
+   */
+  private static prepareCompanionChunks(
+    records: AgentRecord[],
+    opts?: CompanionExtractOptions
+  ): {
+    ordered: AgentRecord[]
+    stepChunks: AgentStep[][]
+    messagesByChunk: AiMessage[][]
+    anchorIndex: number
+  } | null {
+    if (!records.length && !(opts?.sourceSteps && opts.sourceSteps.length > 0)) return null
+
+    const ordered = [...records].sort((a, b) => a.timestamp - b.timestamp)
+
+    // 合并 steps：优先用前端传来的展示态（与用户点击的 group 同源）；否则磁盘合并
+    let mergedSteps: AgentStep[]
+    if (opts?.sourceSteps && opts.sourceSteps.length > 0) {
+      mergedSteps = opts.sourceSteps.map(s => stepRecordToStep(s))
+    } else {
+      const seen = new Set<string>()
+      mergedSteps = ordered
+        .flatMap(r => (r.steps ?? []).map(s => stepRecordToStep(s)))
+        .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
+        .filter(s => (s.id && !seen.has(s.id) ? (seen.add(s.id), true) : !s.id))
+    }
+
+    // 合并 messages：只取真实对话 record（非 __proactive__），按 timestamp 升序拼接
+    const realRecords = ordered.filter(r => r.userTask !== '__proactive__')
+    const mergedMessages: AiMessage[] = realRecords
+      .flatMap(r => (r.messages ?? []).map(m => JSON.parse(JSON.stringify(m)) as AiMessage))
+
+    // 切段与前端 agentTaskGroups 对齐（结束后的 proactive_notice 单独成段）
+    const stepChunks = chunkStepsForCompanionExtract(mergedSteps)
+    const messageTasks = splitMessagesIntoTasks(mergedMessages, i => `restored_${Date.now()}_${i}`)
+    // proactive 有 steps、无 API messages → messageTasks 比 stepChunks 短。
+    // 绝不能用 stepChunk 下标直接取 messageTasks[i]，否则锚点会「往后滑」1～N 段
+    //（N = 锚点前的 proactive 数），且随主动消息增减而不稳定。
+    const messagesByChunk = Conversation.alignMessagesToStepChunks(stepChunks, messageTasks)
+    const anchorIndex = Conversation.resolveAnchorChunkIndex(stepChunks, opts)
+    // 锚点无法解析时宁可失败，也不要默默落到最后一条（会把截止点滑到更新的消息）
+    if (anchorIndex < 0 || anchorIndex >= stepChunks.length) return null
+    return { ordered, stepChunks, messagesByChunk, anchorIndex }
   }
 
   /**
@@ -665,6 +742,39 @@ export class Conversation {
     })
   }
 
+  /** 这一段是不是主动提醒（没有真实用户话） */
+  private static isProactiveChunk(chunk: AgentStep[] | undefined): boolean {
+    if (!chunk) return false
+    const ut = chunk.find(s => s.type === 'user_task')
+    return (
+      ut?.content === '__proactive__' ||
+      (!ut && chunk.some(s => s.type === 'proactive_notice' || s.type === 'task_receipt'))
+    )
+  }
+
+  /**
+   * companion → task 的挑选结果落地：锚点段 + 被挑中的、在锚点之前的用户段（整段进整段出），
+   * 再把紧挨在每个入选段前面的那条主动提醒带上。锚点之后的段一律不带；
+   * 对不上任何段的 id 直接忽略。
+   */
+  private static selectPickedTaskChunks(
+    stepChunks: AgentStep[][],
+    anchorIndex: number,
+    pickedTaskStepIds: string[]
+  ): number[] {
+    const chosen = new Set<number>([anchorIndex])
+    for (const id of pickedTaskStepIds) {
+      const idx = stepChunks.findIndex(chunk => chunk.some(s => s.type === 'user_task' && s.id === id))
+      if (idx >= 0 && idx < anchorIndex && !Conversation.isProactiveChunk(stepChunks[idx])) {
+        chosen.add(idx)
+      }
+    }
+    for (const idx of [...chosen]) {
+      if (idx > 0 && Conversation.isProactiveChunk(stepChunks[idx - 1])) chosen.add(idx - 1)
+    }
+    return [...chosen].sort((a, b) => a - b)
+  }
+
   /**
    * companion → task 的时间窗口选择：以锚点为基准向前取连续 task。
    *
@@ -679,14 +789,7 @@ export class Conversation {
   ): number[] {
     if (stepChunks.length === 0) return []
 
-    const isProactiveChunk = (chunk: AgentStep[] | undefined): boolean => {
-      if (!chunk) return false
-      const ut = chunk.find(s => s.type === 'user_task')
-      return (
-        ut?.content === '__proactive__' ||
-        (!ut && chunk.some(s => s.type === 'proactive_notice' || s.type === 'task_receipt'))
-      )
-    }
+    const isProactiveChunk = Conversation.isProactiveChunk
 
     const anchorChunk = stepChunks[anchorIndex] ?? []
     if (isProactiveChunk(anchorChunk)) {
