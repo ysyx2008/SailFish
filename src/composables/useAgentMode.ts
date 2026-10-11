@@ -27,6 +27,7 @@ import { showConfirm, showAlert } from './useConfirm'
 import { toast } from './useToast'
 import { resolveExactSlash } from './slash-commands'
 import { formatAccelerator } from '../utils/shortcut'
+import { toIpcPlain } from '../utils/ipc-plain'
 import { coalescePendingHandoff, decideFollowUpDrain, mergePendingIntoQueue, optimisticPlaceholderConfirmedBy, turnFailureAlreadyVisible } from './follow-up-drain'
 
 const log = createLogger('Agent')
@@ -1760,8 +1761,11 @@ export function useAgentMode(
     }
   ) => {
     const tab = currentTab.value
-    const images = input.images ?? []
-    const previewImages = input.previewImages ?? images
+    // 排队项是从响应式队列里取出来的代理对象，直接过 IPC 会整句送不出去
+    const images = toIpcPlain(input.images ?? [])
+    const previewImages = input.previewImages ? toIpcPlain(input.previewImages) : images
+    const attachments = toIpcPlain(input.attachments)
+    const workbenchContext = toIpcPlain(input.workbenchContext)
     // workbenchPrompt 对所有工作台类型都需要注入（local/ssh/assistant 各有专属 prompt；companion 当前无）
     const workbenchPrompt = tab ? resolveWorkbenchAgentPrompt(resolveWorkbenchKind(tab), tab) : undefined
     return window.electronAPI.agent.say({
@@ -1777,11 +1781,11 @@ export function useAgentMode(
         documentContext: input.documentContext,
         images: images.length > 0 ? images : undefined,
         previewImages: previewImages.length < images.length ? previewImages : undefined,
-        attachments: input.attachments?.length ? input.attachments : undefined,
+        attachments: attachments?.length ? attachments : undefined,
         sessionId: agentState.value?.sessionId,
         sessionStartTime: agentState.value?.sessionStartTime,
         ...(workbenchPrompt ? { workbenchPrompt } : {}),
-        ...(input.workbenchContext ? { workbenchContext: input.workbenchContext } : {}),
+        ...(workbenchContext ? { workbenchContext } : {}),
       },
       // 审批方式记在那场对话上；远程会话按渠道自己的执行档
       config: {
