@@ -418,6 +418,7 @@ import type { CreateWatchParams } from './services/watch/types'
 import type { WebChatService } from './services/web-chat.service'
 import { getMigrationRunner } from './migrations'
 import { runTodoMdAgentMigrationIfNeeded } from './services/agent/skills/todo/migrate-legacy'
+import { runContactsMdAgentMigrationIfNeeded } from './services/agent/skills/contact/migrate-legacy'
 import { runMcpWhenToUseNoticeIfNeeded } from './services/agent/mcp-when-to-use-notice'
 import {
   addTodoSource,
@@ -2106,9 +2107,15 @@ app.whenReady().then(async () => {
       const crossedV10ThisBoot = schemaBeforeServices < 10 && schemaAfterServices >= 10
 
       // v9 deferred：旧 TODO.md → 联络 companion 征询迁移（contextHint SOP；不阻塞启动）
-      runTodoMdAgentMigrationIfNeeded(agentService).catch(e => {
-        log.error('Deferred TODO.md Agent migration failed:', e)
-      })
+      // v11 接在后面：同一联络，避免两场征询抢会话。待办标记仍 pending 时联系人再让一轮。
+      runTodoMdAgentMigrationIfNeeded(agentService)
+        .catch(e => {
+          log.error('Deferred TODO.md Agent migration failed:', e)
+        })
+        .then(() => runContactsMdAgentMigrationIfNeeded(agentService))
+        .catch(e => {
+          log.error('Deferred CONTACTS.md Agent migration failed:', e)
+        })
 
       // v10 one-shot：缺 whenToUse 的 MCP → 联络通知（无 marker；仅本启跨过 v10 时）
       // 延迟到窗口首次聚焦后触发：启动窗口期弹系统通知会在 Windows 上打坏窗口

@@ -22,6 +22,7 @@ import { migrationV7 } from './v7-im-bastion-and-e1-to-g1'
 import { migrationV8 } from './v8-conversation-titles-to-records'
 import { migrationV9 } from './v9-todo-md-to-json'
 import { migrationV10 } from './v10-mcp-when-to-use-notice'
+import { migrationV11 } from './v11-contacts-md-to-json'
 
 const allMigrations = [
   migrationV1,
@@ -34,6 +35,7 @@ const allMigrations = [
   migrationV8,
   migrationV9,
   migrationV10,
+  migrationV11,
 ]
 
 let _runner: MigrationRunner | null = null

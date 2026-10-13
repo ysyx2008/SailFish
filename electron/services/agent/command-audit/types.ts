@@ -212,6 +212,7 @@ export const PROTECTED_WORKSPACE_FILES = new Set([
   'USER.md',
   'HEARTBEAT.md',
   'CONTACTS.md',
+  'CONTACTS.json',
 ])
 
 /**

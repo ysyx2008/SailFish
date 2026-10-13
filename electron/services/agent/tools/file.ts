@@ -346,7 +346,7 @@ function writeTextFileSync(filePath: string, content: string, encoding: string):
 
 /** workspace 根目录数据文件 — Agent 可维护，免确认 */
 const AUTO_APPROVE_ROOT_FILENAMES = new Set([
-  'CONTACTS.md', 'USER.md', 'HEARTBEAT.md', 'IDENTITY.md', 'SOUL.md',
+  'USER.md', 'HEARTBEAT.md', 'IDENTITY.md', 'SOUL.md',
 ])
 
 /** 启动时确保 workspace 目录结构存在 */

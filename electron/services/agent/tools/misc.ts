@@ -12,6 +12,7 @@ import { executeBrowserTool } from '../skills/browser/executor'
 import { executeWordTool } from '../skills/word/executor'
 import { executeCalendarTool } from '../skills/calendar/executor'
 import { executeTodoTool } from '../skills/todo/executor'
+import { executeContactTool } from '../skills/contact/executor'
 import { executeWatchTool } from '../skills/watch/executor'
 import { executeConfigTool } from '../skills/config/executor'
 import { executeSkillCreatorTool } from '../skills/skill-creator/executor'
@@ -1329,6 +1330,10 @@ export async function executeSkillTool(
 
   if (toolName.startsWith('todo_')) {
     return executeTodoTool(toolName, id, args, toolCallId, config, executor)
+  }
+
+  if (toolName.startsWith('contact_')) {
+    return executeContactTool(toolName, id, args, toolCallId, config, executor)
   }
 
   if (toolName.startsWith('calendar_')) {

@@ -422,6 +422,10 @@ function formatToolNotification(toolName: string, toolArgs?: Record<string, unkn
     if (action) parts.push(action)
     if (args.title) parts.push(truncate(String(args.title)))
     if (parts.length > 0) detail = `  ${parts.join(' · ')}`
+  } else if (toolName.startsWith('contact_')) {
+    const action = toolName.slice('contact_'.length)
+    const subject = args.name || args.query
+    detail = subject ? `  ${action} · ${truncate(String(subject))}` : `  ${action}`
   } else if (toolName === 'wecom_read' || toolName === 'wecom_write') {
     const action = toolName === 'wecom_read' ? 'read' : 'write'
     const parts: string[] = [action]

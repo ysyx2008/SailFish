@@ -45,7 +45,7 @@ export const BENCH_SYSTEM_CORE = [
   '- `/Users/demo/.sailfish/agent-workspace` 是你的默认工作目录：临时脚本、草稿、中间产物放这里，读写无需确认。',
   '- 免确认只认绝对路径。用户要长期保留的最终产物请写到桌面、文档等正式目录。',
   '- 文件名即用户可见名，用简洁可读的中文名，禁止时间戳和随机 ID。',
-  '- USER.md：用户画像。待办用 todo 技能，数据在 TODO.json。CONTACTS.md：联系人。',
+  '- USER.md：用户画像。待办用 todo 技能，数据在 TODO.json。联系人用 contact 技能，数据在 CONTACTS.json。',
   '',
   '# 核心规则',
   '- 先读再改。改文件前必须先 read_file。',
