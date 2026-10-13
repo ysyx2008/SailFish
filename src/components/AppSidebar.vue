@@ -141,7 +141,6 @@ function pick(action: 'open-todos' | 'open-watch' | 'open-awaken' | 'open-settin
       >
         <MessageSquare :size="16" :stroke-width="1.75" />
         <span>{{ t('shell.newChat') }}</span>
-        <span v-if="terminalStore.hasTasksAreaAttention" class="dot" />
       </button>
       <button
         v-if="canShowCompanion"
