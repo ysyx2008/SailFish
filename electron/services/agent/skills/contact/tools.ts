@@ -1,6 +1,6 @@
 /**
  * 本地联系人技能 - 工具定义
- * 认人用：姓名、别名、单位、角色、邮箱 / 电话 / IM。不记往来流水。
+ * 认人用：姓名、别名、单位、角色、邮箱 / 电话 / IM。
  */
 import type { ToolDefinition, ToolDefinitionWithMeta } from '../../tools'
 
@@ -53,7 +53,7 @@ export const contactTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'contact_add',
-      description: `新增本地联系人。自动生成 id / createdAt。姓名或别名与已有联系人重合时不新建，返回已有记录。`,
+      description: `新增本地联系人。姓名或别名与已有联系人重合时不新建，返回已有记录。`,
       parameters: {
         type: 'object',
         properties: {
@@ -70,11 +70,11 @@ export const contactTools: ToolDefinition[] = [
           },
           organization: { type: 'string', description: '单位' },
           role: { type: 'string', description: '角色或和用户的关系' },
-          note: { type: 'string', description: '自由备注，关系与近况写这里' },
+          note: { type: 'string', description: '备注：关系与近况' },
           channels: {
             type: 'array',
             items: channelSchema,
-            description: '邮箱、电话、IM。没有就不要填',
+            description: '邮箱、电话、IM',
           },
         },
         required: ['name'],
@@ -90,7 +90,7 @@ export const contactTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'contact_update',
-      description: `更新已有联系人。createdAt 不可改。
+      description: `更新已有联系人。
 
 空字符串清空 organization / role / note。aliases 传入则整表替换，空数组清空；追加用 add_aliases。channels 同理，追加用 add_channels，按 kind+value 删用 remove_channels。
 改名或改别名后若与别人重合，本次不写入。`,
@@ -168,8 +168,4 @@ export const contactTools: ToolDefinition[] = [
 
 export const contactSkillContent = `## 本地联系人（contact 技能）
 
-数据在工作空间 \`CONTACTS.json\`，勿直接改文件，一律用 \`contact_*\` 工具。
-
-- 每人一条：姓名、别名、是人还是机构、单位、角色、邮箱 / 电话 / IM，外加一段备注（关系与近况）
-- 新增时按姓名和别名查重，重合的不新建
-- 只按用户或材料里出现过的信息填写`
+每人一条：姓名、别名、是人还是机构、单位、角色、邮箱 / 电话 / IM，外加一段备注（关系与近况）。只按用户或材料里出现过的信息填写。`

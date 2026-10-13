@@ -35,23 +35,19 @@ const CONSENT_FALLBACK_NOTICE =
   '发现工作区还有旧版联系人笔记（CONTACTS.md）。要不要现在整理成可以按名字查找的联系人？回复「迁」或「以后再说」即可。'
 
 function buildMigrationSop(workspace: string, markerPath: string): string {
-  return `【联系人迁移 SOP — 内部指令，勿整段念给用户听】
+  return `【联系人迁移 — 内部说明，不必转述给用户】
 
-背景：升级后要把工作区旧版 Markdown 联系人迁到结构化本地联系人（contact 技能 / CONTACTS.json）。程序不会替你解析 Markdown。
+工作区有一份旧版联系人笔记 CONTACTS.md（升级时已另存为 CONTACTS.md.bak）。联系人现在记在 contact 技能里，程序不解析这份笔记。
 工作区：${workspace}
-迁移标记文件：${markerPath}
-（位于工作区 migrations/ 免确认目录；状态字段 status：pending | deferred | skipped | done | failed）
+迁移标记：${markerPath}（在 migrations/ 下，写入免确认；status 取 pending | deferred | skipped | done | failed）
 
-## 本轮（启动征询）— 严格
-1. **唯一动作**：必须调用 **talk_to_user** 工具（不是普通文字收工）。message 用秘书口吻说明发现旧版 CONTACTS.md、想整理成可按名字查找的联系人，并询问要不要现在迁。
-2. 禁止用不带 tool_calls 的纯文本回复结束本轮——那样桌面 toast / IM 都不会发出。
-3. 本轮 **禁止** 任何其它工具：不要 write_text_file / write_file / contact_add / read_file / exec / skill。talk_to_user 发出后立刻结束。
+这一轮：用 talk_to_user 问用户要不要现在把旧笔记整理进联系人，不调用其它工具。用户的回复会回到这场对话。
 
-## 用户之后在联络里回复时（同一会话上下文续跑）
-- **同意迁**：若 contact_* 不可用先 skill 加载 contact；read_file 读 CONTACTS.md（没有则 CONTACTS.md.bak）；用 contact_add 逐条写入。姓名或别名重合时工具会拒绝新建，改用 contact_update 把备注和渠道合并进已有的那条。只填原文里明确写出的邮箱、电话、单位、角色，不要编造。人写成 kind=person，公司/机构写成 kind=org。简称放 aliases。关系与近况放 note，不要拆成往来记录。全部成功后用 write_text_file 把迁移标记写成 status=done（保留 createdAt，补 completedAt；路径见上，免确认）；用日常回复告诉用户迁了几人即可，**不要再 talk_to_user**。
-- **以后再说**：write_text_file 将标记写成 status=deferred（下次启动会再提醒）；简短确认即可。
-- **明确不用迁了**：write_text_file 写成 status=skipped；简短确认即可。
-- **禁止**：exec / shell / 重命名或删除 CONTACTS.md（备份由程序处理）；禁止直接改 CONTACTS.json。`
+用户回复后：
+- 同意：读 CONTACTS.md（不在就读 .bak），用 contact_add / contact_update 逐个记入，公司或机构记成 org。记完把标记写成 status=done（保留 createdAt，补 completedAt）。这时用户就在联络里，直接回复记了几位即可。
+- 以后再说：标记写成 deferred，下次启动会再问。
+- 不用了：标记写成 skipped，以后不再问。
+- CONTACTS.md 的备份和收起由程序处理。`
 }
 
 async function deliverConsentNotice(message: string, title = '联系人迁移'): Promise<void> {
