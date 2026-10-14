@@ -129,11 +129,11 @@ async function contactAdd(args: Record<string, unknown>, executor: ToolExecutorC
     role: typeof args.role === 'string' ? args.role : undefined,
     note: typeof args.note === 'string' ? args.note : undefined,
     channels: parseChannels(args.channels),
-  })
+  }, { confirmedDifferent: args.different_person === true })
 
-  if (outcome.type === 'collision') {
-    const output = `未新建：姓名或别名与下面的已有联系人重合。补充信息可用 contact_update。\n\n${outcome.collisions.map(formatContact).join('\n\n')}`
-    resultStep(executor, 'contact_add', `与已有联系人重合: ${name}`, output)
+  if (outcome.type === 'possibleSame') {
+    const output = `未新建：下面几位的姓名/别名或邮箱/电话与这次一样。是同一个人可用 contact_update 补充；是另一个人，带 different_person: true 再调用 contact_add。\n\n${outcome.candidates.map(formatContact).join('\n\n')}`
+    resultStep(executor, 'contact_add', `可能已有此人: ${name}`, output)
     return { success: true, output }
   }
 
@@ -162,11 +162,6 @@ async function contactUpdate(args: Record<string, unknown>, executor: ToolExecut
   const outcome = await getContactBook().update(id, patch)
 
   if (outcome.type === 'missing') return { success: false, output: '', error: `contact not found: ${id}` }
-  if (outcome.type === 'collision') {
-    const output = `未修改：改后的姓名或别名与下面的其他联系人重合。\n\n${outcome.collisions.map(formatContact).join('\n\n')}`
-    resultStep(executor, 'contact_update', `更新被重合拦住: ${id}`, output)
-    return { success: true, output }
-  }
 
   const output = `已更新联系人：${outcome.contact.name}\nID: ${id}`
   resultStep(executor, 'contact_update', `已更新: ${outcome.contact.name}`, output)

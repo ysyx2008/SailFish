@@ -2553,7 +2553,7 @@ interface Window {
     contact: {
       list: () => Promise<import('@shared/types').Contact[]>
       search: (query: string) => Promise<import('@shared/types').Contact[]>
-      create: (input: import('@shared/types').ContactCreateInput) => Promise<import('@shared/types').ContactAddResult>
+      create: (input: import('@shared/types').ContactCreateInput, options?: import('@shared/types').ContactAddOptions) => Promise<import('@shared/types').ContactAddResult>
       update: (id: string, patch: import('@shared/types').ContactUpdatePatch) => Promise<import('@shared/types').ContactUpdateResult>
       delete: (id: string) => Promise<import('@shared/types').ContactDeleteResult>
       merge: (targetId: string, sourceId: string) => Promise<import('@shared/types').ContactMergeResult>

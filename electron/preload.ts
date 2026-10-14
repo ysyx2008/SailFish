@@ -3487,7 +3487,8 @@ const electronAPI = {
   contact: {
     list: () => ipcRenderer.invoke('contact:list'),
     search: (query: string) => ipcRenderer.invoke('contact:search', query),
-    create: (input: Record<string, unknown>) => ipcRenderer.invoke('contact:create', input),
+    create: (input: Record<string, unknown>, options?: Record<string, unknown>) =>
+      ipcRenderer.invoke('contact:create', input, options),
     update: (id: string, patch: Record<string, unknown>) =>
       ipcRenderer.invoke('contact:update', id, patch),
     delete: (id: string) => ipcRenderer.invoke('contact:delete', id),

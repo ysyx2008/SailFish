@@ -53,7 +53,7 @@ export const contactTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'contact_add',
-      description: `新增本地联系人。姓名或别名与已有联系人重合时不新建，返回已有记录。`,
+      description: `新增本地联系人。同名的人可以有多个。姓名或别名与已有联系人完全一样、或邮箱/电话与已有联系人一样时，本次不新建，返回那几位；确认是另一个人后带 different_person: true 再调用即新建。`,
       parameters: {
         type: 'object',
         properties: {
@@ -76,6 +76,10 @@ export const contactTools: ToolDefinition[] = [
             items: channelSchema,
             description: '邮箱、电话、IM',
           },
+          different_person: {
+            type: 'boolean',
+            description: '已确认不是上次返回的那几位中的任何一位',
+          },
         },
         required: ['name'],
       },
@@ -92,8 +96,7 @@ export const contactTools: ToolDefinition[] = [
       name: 'contact_update',
       description: `更新已有联系人。
 
-空字符串清空 organization / role / note。aliases 传入则整表替换，空数组清空；追加用 add_aliases。channels 同理，追加用 add_channels，按 kind+value 删用 remove_channels。
-改名或改别名后若与别人重合，本次不写入。`,
+空字符串清空 organization / role / note。aliases 传入则整表替换，空数组清空；追加用 add_aliases。channels 同理，追加用 add_channels，按 kind+value 删用 remove_channels。`,
       parameters: {
         type: 'object',
         properties: {

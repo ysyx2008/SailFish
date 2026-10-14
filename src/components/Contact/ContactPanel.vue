@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 本地联系人面板 —— 秘书菜单打开，占主区（与待办同一位置）
- * 列表 + 右侧详情；详情改动自动保存，姓名/简称与别人重合时不保存、就地给出合并
+ * 列表 + 右侧详情；详情改动自动保存。同名允许，新增时已有同名的先给出来，可打开那条或照样新增
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -40,11 +40,12 @@ const query = ref('')
 const searchHitIds = ref<string[] | null>(null)
 const newName = ref('')
 const creating = ref(false)
+/** 新增时已有同名的那几位；输入框改了就作废 */
+const sameNameCandidates = ref<Contact[]>([])
 
 const selectedId = ref<string | null>(null)
 const draft = ref<ContactDraft | null>(null)
 const saving = ref(false)
-const collisions = ref<Contact[]>([])
 /** 详情打开期间秘书改过这条，而用户手上还有没存的改动 */
 const changedElsewhere = ref(false)
 const mergeSourceId = ref('')
@@ -66,10 +67,16 @@ const visibleContacts = computed(() => {
   return sortedContacts.value.filter(c => hits.has(c.id))
 })
 
+/** 同名时靠单位或角色分辨 */
+function contactLabel(contact: Contact): string {
+  const hint = contact.organization || contact.role
+  return hint ? `${contact.name} · ${hint}` : contact.name
+}
+
 const mergeOptions = computed(() =>
   sortedContacts.value
     .filter(c => c.id !== selectedId.value)
-    .map(c => ({ value: c.id, label: c.organization ? `${c.name} · ${c.organization}` : c.name }))
+    .map(c => ({ value: c.id, label: contactLabel(c) }))
 )
 
 function channelKindLabel(kind: ContactChannelKind): string {
@@ -147,18 +154,26 @@ function applyDraft(contact: Contact) {
   baseSnapshot.value = snapshotOf(contact)
   draft.value = draftFrom(contact)
   lastSyncedUpdatedAt = contact.updatedAt
-  collisions.value = []
   changedElsewhere.value = false
 }
 
 async function loadContacts() {
   try {
     contacts.value = await api.list()
+  } catch {
+    toast.error(t('contactPanel.loadFailed'))
+    return
   } finally {
     loading.value = false
   }
   syncSelectionAfterReload()
   if (query.value.trim()) await runSearch()
+}
+
+function cancelPendingSave() {
+  if (!saveTimer) return
+  clearTimeout(saveTimer)
+  saveTimer = null
 }
 
 function syncSelectionAfterReload() {
@@ -169,7 +184,9 @@ function syncSelectionAfterReload() {
     return
   }
   if (saving.value || item.updatedAt === lastSyncedUpdatedAt) return
-  if (draftDirty.value || saveTimer) {
+  if (draftDirty.value) {
+    // 等用户表态：接着改或关掉详情才用他的版本覆盖
+    cancelPendingSave()
     changedElsewhere.value = true
     return
   }
@@ -193,17 +210,16 @@ watch(query, () => {
 
 function selectContact(contact: Contact) {
   if (selectedId.value === contact.id) return
-  flushSave()
+  void flushSave()
   selectedId.value = contact.id
   mergeSourceId.value = ''
   applyDraft(contact)
 }
 
 function closeDetail(flush = true) {
-  if (flush) flushSave()
+  if (flush) void flushSave()
   selectedId.value = null
   draft.value = null
-  collisions.value = []
   changedElsewhere.value = false
   mergeSourceId.value = ''
 }
@@ -214,11 +230,10 @@ watch(draft, () => {
   saveTimer = setTimeout(() => { void persistDraft() }, 500)
 }, { deep: true })
 
-function flushSave() {
-  if (!saveTimer) return
-  clearTimeout(saveTimer)
-  saveTimer = null
-  void persistDraft()
+/** 离开这条（切换、关闭）时：没存的改动立刻存，包括之前存失败或等用户表态的 */
+function flushSave(): Promise<void> {
+  cancelPendingSave()
+  return persistDraft()
 }
 
 async function persistDraft() {
@@ -227,25 +242,30 @@ async function persistDraft() {
   const d = draft.value
   if (!id || !d || !draftDirty.value) return
   if (!d.name.trim()) return
+  const patch = patchFrom(d)
+  const sent = JSON.stringify(patch)
   saving.value = true
   try {
-    const result = await api.update(id, patchFrom(d))
-    if (result.type === 'collision') {
-      if (selectedId.value === id) collisions.value = result.collisions
-      else toast.warning(t('contactPanel.notSavedCollision', { name: d.name.trim(), names: result.collisions.map(c => c.name).join('、') }))
-      return
-    }
+    const result = await api.update(id, patch)
     if (result.type === 'missing') {
-      toast.error(t('contactPanel.goneElsewhere'))
-      closeDetail(false)
+      if (selectedId.value === id) {
+        toast.error(t('contactPanel.goneElsewhere'))
+        closeDetail(false)
+      }
       return
     }
-    collisions.value = []
-    changedElsewhere.value = false
-    lastSyncedUpdatedAt = result.contact.updatedAt
-    baseSnapshot.value = snapshotOf(result.contact)
     const index = contacts.value.findIndex(c => c.id === id)
     if (index >= 0) contacts.value[index] = result.contact
+    if (selectedId.value !== id) return
+    const saved = snapshotOf(result.contact)
+    // 存进去的和发出去的不一样（如重复的联系方式被去掉），且用户这期间没再改：草稿跟上存下来的样子
+    if (saved !== sent && draft.value && JSON.stringify(patchFrom(draft.value)) === sent) {
+      applyDraft(result.contact)
+      return
+    }
+    changedElsewhere.value = false
+    lastSyncedUpdatedAt = result.contact.updatedAt
+    baseSnapshot.value = saved
   } catch {
     toast.error(t('contactPanel.saveFailed'))
   } finally {
@@ -254,34 +274,43 @@ async function persistDraft() {
 }
 
 function discardMyChanges() {
-  if (saveTimer) {
-    clearTimeout(saveTimer)
-    saveTimer = null
-  }
+  cancelPendingSave()
   if (selected.value) applyDraft(selected.value)
 }
 
-async function handleCreate() {
+watch(newName, () => {
+  sameNameCandidates.value = []
+})
+
+async function handleCreate(confirmedDifferent = false) {
   const name = newName.value.trim()
   if (!name || creating.value) return
   creating.value = true
   try {
-    const result = await api.create({ name })
-    newName.value = ''
-    await loadContacts()
-    if (result.type === 'created') {
-      query.value = ''
-      selectContact(result.contact)
-    } else {
-      toast.info(t('contactPanel.alreadyExists', { name: result.collisions[0].name }))
-      const existing = contacts.value.find(c => c.id === result.collisions[0].id)
-      if (existing) selectContact(existing)
+    const result = await api.create({ name }, { confirmedDifferent })
+    if (result.type === 'possibleSame') {
+      sameNameCandidates.value = result.candidates
+      return
     }
+    newName.value = ''
+    query.value = ''
+    searchHitIds.value = null
+    await loadContacts()
+    selectContact(result.contact)
   } catch {
     toast.error(t('contactPanel.createFailed'))
   } finally {
     creating.value = false
   }
+}
+
+function openCandidate(candidate: Contact) {
+  const existing = contacts.value.find(c => c.id === candidate.id)
+  newName.value = ''
+  if (!existing) return
+  query.value = ''
+  searchHitIds.value = null
+  selectContact(existing)
 }
 
 async function handleDelete() {
@@ -295,10 +324,7 @@ async function handleDelete() {
     cancelText: t('contactPanel.cancel'),
   })
   if (!ok) return
-  if (saveTimer) {
-    clearTimeout(saveTimer)
-    saveTimer = null
-  }
+  cancelPendingSave()
   await api.delete(item.id)
   closeDetail(false)
   await loadContacts()
@@ -316,18 +342,13 @@ async function mergeIn(sourceId: string) {
   })
   mergeSourceId.value = ''
   if (!ok) return
-  if (saveTimer) {
-    clearTimeout(saveTimer)
-    saveTimer = null
-  }
+  await flushSave()
   const result = await api.merge(target.id, source.id)
   if (result.type === 'merged') {
     await loadContacts()
     const merged = contacts.value.find(c => c.id === target.id)
     if (merged) applyDraft(merged)
     toast.success(t('contactPanel.merged', { source: source.name }))
-  } else if (result.type === 'collision') {
-    toast.error(t('contactPanel.mergeCollision', { names: result.collisions.map(c => c.name).join('、') }))
   } else {
     await loadContacts()
   }
@@ -365,17 +386,17 @@ function onPanelKeydown(ev: KeyboardEvent) {
   emit('close')
 }
 
-onMounted(async () => {
-  await loadContacts()
+onMounted(() => {
   unsubChanged = api.onChanged(() => { void loadContacts() })
   document.addEventListener('keydown', onPanelKeydown, true)
+  void loadContacts()
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', onPanelKeydown, true)
   unsubChanged?.()
   if (searchTimer) clearTimeout(searchTimer)
-  flushSave()
+  void flushSave()
 })
 </script>
 
@@ -406,7 +427,7 @@ onUnmounted(() => {
               :placeholder="t('contactPanel.searchPlaceholder')"
             />
           </label>
-          <form class="tool-field create-field" @submit.prevent="handleCreate">
+          <form class="tool-field create-field" @submit.prevent="handleCreate()">
             <input
               v-model="newName"
               class="tool-input"
@@ -424,6 +445,21 @@ onUnmounted(() => {
               <Plus v-else :size="16" />
             </button>
           </form>
+        </div>
+        <div v-if="sameNameCandidates.length" class="notice same-name-notice">
+          <span>{{ t('contactPanel.sameNameExists', { name: newName.trim() }) }}</span>
+          <button
+            v-for="candidate in sameNameCandidates"
+            :key="candidate.id"
+            type="button"
+            class="link-btn"
+            @click="openCandidate(candidate)"
+          >
+            {{ contactLabel(candidate) }}
+          </button>
+          <button type="button" class="link-btn strong" :disabled="creating" @click="handleCreate(true)">
+            {{ t('contactPanel.createAnyway') }}
+          </button>
         </div>
       </div>
 
@@ -487,20 +523,6 @@ onUnmounted(() => {
           <input v-model="draft.name" class="field-input" type="text" />
           <span v-if="!draft.name.trim()" class="field-error">{{ t('contactPanel.nameRequired') }}</span>
         </label>
-
-        <div v-if="collisions.length" class="notice warn">
-          <span>{{ t('contactPanel.collision', { names: collisions.map(c => c.name).join('、') }) }}</span>
-          <button
-            v-for="other in collisions"
-            :key="other.id"
-            type="button"
-            class="link-btn"
-            @click="mergeIn(other.id)"
-          >
-            {{ t('contactPanel.mergeThisIn', { name: other.name }) }}
-          </button>
-        </div>
-
         <label class="field">
           <span class="field-label">{{ t('contactPanel.fieldAliases') }}</span>
           <input
@@ -969,11 +991,7 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--text-primary) 4%, transparent);
   border: 1px solid color-mix(in srgb, var(--border-color) 80%, transparent);
 }
-.notice.warn {
-  color: var(--text-primary);
-  background: color-mix(in srgb, var(--brand-alert) 8%, transparent);
-  border-color: color-mix(in srgb, var(--brand-alert) 30%, var(--border-color));
-}
+.same-name-notice { margin-top: 8px; }
 .link-btn {
   display: inline-flex;
   align-items: center;
@@ -985,6 +1003,8 @@ onUnmounted(() => {
   cursor: pointer;
   font-size: 12px;
 }
+.link-btn.strong { font-weight: 600; }
+.link-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .meta-grid {
   margin: 4px 0 0;

@@ -438,7 +438,7 @@ import {
 import { onTodoStoreChanged } from './services/agent/skills/todo/store'
 import { onContactStoreChanged } from './services/agent/skills/contact/store'
 import { getContactBook } from './services/agent/skills/contact/contact-book'
-import type { ContactCreateInput, ContactUpdatePatch } from '@shared/types'
+import type { ContactAddOptions, ContactCreateInput, ContactUpdatePatch } from '@shared/types'
 import type { GatewayConfig } from './services/gateway.service'
 import type { GatewayService } from './services/gateway.service'
 import { BastionService } from './services/bastion.service'
@@ -3912,8 +3912,8 @@ ipcMain.handle('contact:search', async (_event, query: string) => {
   return getContactBook().search(query)
 })
 
-ipcMain.handle('contact:create', async (_event, input: ContactCreateInput) => {
-  return getContactBook().add(input)
+ipcMain.handle('contact:create', async (_event, input: ContactCreateInput, options?: ContactAddOptions) => {
+  return getContactBook().add(input, options)
 })
 
 ipcMain.handle('contact:update', async (_event, id: string, patch: ContactUpdatePatch) => {

@@ -15,7 +15,7 @@ vi.mock('electron', () => ({
 }))
 
 import { ContactBook } from '../contact-book'
-import { getContactStorePath, onContactStoreChanged, resetWriteQueueForTest } from '../store'
+import { onContactStoreChanged, resetWriteQueueForTest } from '../store'
 import { ensureAgentWorkspaceDirs } from '../../../tools/file'
 
 describe('ContactBook', () => {
@@ -34,7 +34,7 @@ describe('ContactBook', () => {
   })
 
   async function addOk(input: Parameters<ContactBook['add']>[0]) {
-    const result = await book.add(input)
+    const result = await book.add(input, { confirmedDifferent: true })
     if (result.type !== 'created') throw new Error('expected created')
     return result.contact
   }
@@ -94,17 +94,37 @@ describe('ContactBook', () => {
     expect(book.list()).toHaveLength(1)
   })
 
-  it('refuses a merge whose names would collide with a third contact', async () => {
-    const a = await addOk({ name: 'A' })
-    await addOk({ name: 'C', aliases: ['共用'] })
-    const b = await addOk({ name: 'B' })
-    const raw = JSON.parse(fs.readFileSync(getContactStorePath(), 'utf-8'))
-    raw.contacts.find((c: { id: string }) => c.id === b.id).aliases = ['共用']
-    fs.writeFileSync(getContactStorePath(), JSON.stringify(raw))
+  it('holds back a same-name add until confirmed as a different person', async () => {
+    const first = await addOk({ name: '王瑜', organization: '国元证券' })
+    const held = await book.add({ name: ' 王瑜 ', organization: '火山引擎' })
+    expect(held.type).toBe('possibleSame')
+    if (held.type !== 'possibleSame') return
+    expect(held.candidates.map(c => c.id)).toEqual([first.id])
+    expect(book.list()).toHaveLength(1)
 
-    const result = await book.merge(a.id, b.id)
-    expect(result.type).toBe('collision')
-    expect(book.list()).toHaveLength(3)
+    const second = await book.add({ name: '王瑜', organization: '火山引擎' }, { confirmedDifferent: true })
+    expect(second.type).toBe('created')
+    expect(book.list()).toHaveLength(2)
+    expect(book.search('王瑜')).toHaveLength(2)
+  })
+
+  it('holds back an add whose email matches someone with another name', async () => {
+    const first = await addOk({ name: '沈义君', channels: [{ kind: 'email', value: 'shen@example.com' }] })
+    const held = await book.add({ name: '老沈', channels: [{ kind: 'email', value: 'SHEN@example.com' }] })
+    if (held.type !== 'possibleSame') throw new Error('expected possibleSame')
+    expect(held.candidates.map(c => c.id)).toEqual([first.id])
+  })
+
+  it('lets a rename or merge leave two contacts with the same name', async () => {
+    const a = await addOk({ name: 'A' })
+    const b = await addOk({ name: 'B' })
+    const c = await addOk({ name: 'C' })
+    const renamed = await book.update(b.id, { name: 'A' })
+    expect(renamed.type).toBe('updated')
+
+    const merged = await book.merge(a.id, c.id)
+    expect(merged.type).toBe('merged')
+    expect(book.list().map(x => x.name).sort()).toEqual(['A', 'A'])
   })
 
   it('notifies listeners only when something was written', async () => {

@@ -60,7 +60,20 @@ describe('contact executor', () => {
       mockExecutor()
     )
     expect(duplicate.output).toContain('未新建')
+    expect(duplicate.output).toContain('different_person')
     expect(loadStore().contacts).toHaveLength(1)
+
+    const namesake = await executeContactTool(
+      'contact_add',
+      '',
+      { name: '沈总', organization: '另一家', different_person: true },
+      'c2b',
+      {} as never,
+      mockExecutor()
+    )
+    expect(namesake.output).toContain('已添加')
+    expect(loadStore().contacts).toHaveLength(2)
+    await executeContactTool('contact_delete', '', { id: loadStore().contacts[1].id }, 'c2c', {} as never, mockExecutor())
 
     const id = loadStore().contacts[0].id
     const updated = await executeContactTool(

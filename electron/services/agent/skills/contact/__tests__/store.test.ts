@@ -17,7 +17,7 @@ vi.mock('electron', () => ({
 import {
   createContact,
   emptyStore,
-  findNameCollisions,
+  findPossibleSamePeople,
   getContactStorePath,
   loadStore,
   mutateStore,
@@ -82,13 +82,38 @@ describe('contact store', () => {
     expect(loadStore().contacts).toEqual([])
   })
 
-  it('name collision is exact after normalize, not a substring', () => {
+  it('possible-same match on names is exact after normalize, not a substring', () => {
     const contacts = [
       createContact({ name: '沈义君', aliases: ['沈总'] }),
     ]
-    expect(findNameCollisions(contacts, '沈总')).toHaveLength(1)
-    expect(findNameCollisions(contacts, '  沈义君 ')).toHaveLength(1)
-    expect(findNameCollisions(contacts, '沈')).toHaveLength(0)
+    expect(findPossibleSamePeople(contacts, { name: '沈总' })).toHaveLength(1)
+    expect(findPossibleSamePeople(contacts, { name: '  沈义君 ' })).toHaveLength(1)
+    expect(findPossibleSamePeople(contacts, { name: '沈' })).toHaveLength(0)
+  })
+
+  it('possible-same match on email or phone, not on IM', () => {
+    const contacts = [
+      createContact({
+        name: '沈义君',
+        channels: [
+          { kind: 'email', value: 'Shen@Example.com' },
+          { kind: 'phone', value: '138-0000-0000' },
+          { kind: 'im', platform: 'wecom', value: 'shen' },
+        ],
+      }),
+    ]
+    expect(findPossibleSamePeople(contacts, {
+      name: '老沈',
+      channels: [{ kind: 'email', value: ' shen@example.com ' }],
+    })).toHaveLength(1)
+    expect(findPossibleSamePeople(contacts, {
+      name: '老沈',
+      channels: [{ kind: 'phone', value: '138 0000 0000' }],
+    })).toHaveLength(1)
+    expect(findPossibleSamePeople(contacts, {
+      name: '老沈',
+      channels: [{ kind: 'im', platform: 'wecom', value: 'shen' }],
+    })).toHaveLength(0)
   })
 
   it('search hits alias, org, and phone with dashes stripped', () => {
@@ -105,18 +130,18 @@ describe('contact store', () => {
     expect(searchContacts(contacts, '没有这个人')).toHaveLength(0)
   })
 
-  it('rejected collision does not rewrite the file', async () => {
+  it('a mutation that changes nothing does not rewrite the file', async () => {
     await mutateStore(store => {
       store.contacts.push(createContact({ name: '王瑜' }))
     })
     const before = fs.readFileSync(getContactStorePath(), 'utf-8')
     const outcome = await mutateStore(store => {
-      const hits = findNameCollisions(store.contacts, '王瑜')
-      if (hits.length) return 'collision'
+      const hits = findPossibleSamePeople(store.contacts, { name: '王瑜' })
+      if (hits.length) return 'possibleSame'
       store.contacts.push(createContact({ name: '王瑜' }))
       return 'created'
     })
-    expect(outcome).toBe('collision')
+    expect(outcome).toBe('possibleSame')
     expect(fs.readFileSync(getContactStorePath(), 'utf-8')).toBe(before)
     expect(emptyStore().contacts).toEqual([])
   })

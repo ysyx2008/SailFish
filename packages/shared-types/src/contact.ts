@@ -66,19 +66,24 @@ export interface ContactUpdatePatch {
   removeChannels?: Array<{ kind: ContactChannelKind, value: string }>
 }
 
-/** 姓名或别名与已有联系人重合时不写入，带回重合的那些 */
-export interface ContactCollision {
-  type: 'collision'
-  collisions: Contact[]
+export interface ContactAddOptions {
+  /** 已确认不是 possibleSame 里的任何一位，照常新建 */
+  confirmedDifferent?: boolean
+}
+
+/** 姓名/别名或邮箱/电话与已有的人一样：没新建，带回这几位等确认 */
+export interface ContactPossibleSame {
+  type: 'possibleSame'
+  candidates: Contact[]
 }
 
 export interface ContactMissing {
   type: 'missing'
 }
 
-export type ContactAddResult = { type: 'created', contact: Contact } | ContactCollision
+export type ContactAddResult = { type: 'created', contact: Contact } | ContactPossibleSame
 
-export type ContactUpdateResult = { type: 'updated', contact: Contact } | ContactMissing | ContactCollision
+export type ContactUpdateResult = { type: 'updated', contact: Contact } | ContactMissing
 
 export type ContactDeleteResult = { type: 'deleted', contact: Contact } | ContactMissing
 
@@ -86,5 +91,4 @@ export type ContactDeleteResult = { type: 'deleted', contact: Contact } | Contac
 export type ContactMergeResult =
   | { type: 'merged', contact: Contact, removed: Contact }
   | ContactMissing
-  | ContactCollision
   | { type: 'same' }

@@ -253,24 +253,31 @@ export async function mutateStore<T>(mutator: (store: ContactStoreData) => T): P
   return next
 }
 
+/** 只有邮箱和电话拿来判「可能是同一个人」；即时通讯的值各平台写法不一 */
+function identifyingChannelKeys(channels: ContactChannel[] | undefined): string[] {
+  return (channels ?? [])
+    .filter(channel => channel.kind === 'email' || channel.kind === 'phone')
+    .map(channel => `${channel.kind}:${normalizeChannelValue(channel.kind, channel.value)}`)
+    .filter(key => !key.endsWith(':'))
+}
+
 /**
- * 姓名或别名与已有联系人的姓名/别名完全重合（规范化后）。
- * 子串不算重合：「沈」不会挡住「沈义君」。
+ * 可能是同一个人：姓名/别名完全一样（规范化后），或邮箱/电话一样。
+ * 子串不算：「沈」不会对上「沈义君」。同名不等于同一个人，交给调用方确认。
  */
-export function findNameCollisions(
+export function findPossibleSamePeople(
   contacts: Contact[],
-  name: string,
-  aliases: string[] = [],
-  excludeId?: string,
+  incoming: Pick<ContactCreateInput, 'name' | 'aliases' | 'channels'>,
 ): Contact[] {
-  const incoming = new Set(
-    [name, ...aliases].map(normalizeContactKey).filter(Boolean)
+  const names = new Set(
+    [incoming.name, ...(incoming.aliases ?? [])].map(normalizeContactKey).filter(Boolean)
   )
-  if (incoming.size === 0) return []
-  return contacts.filter(contact => {
-    if (excludeId && contact.id === excludeId) return false
-    return keysOf(contact).some(key => incoming.has(key))
-  })
+  const channels = new Set(identifyingChannelKeys(incoming.channels))
+  if (names.size === 0 && channels.size === 0) return []
+  return contacts.filter(contact =>
+    keysOf(contact).some(key => names.has(key))
+    || identifyingChannelKeys(contact.channels).some(key => channels.has(key))
+  )
 }
 
 /**
