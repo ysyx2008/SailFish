@@ -1,19 +1,10 @@
 /**
  * 本地联系人技能 - 执行器
  */
-import type { Contact, ContactChannel, ContactChannelKind, ContactKind } from '@sailfish/shared-types'
+import type { Contact, ContactChannel, ContactChannelKind, ContactKind, ContactUpdatePatch } from '@sailfish/shared-types'
 import type { AgentConfig, ToolExecutorConfig, ToolResult } from '../../tools/types'
-import {
-  applyContactUpdate,
-  createContact,
-  findNameCollisions,
-  LEGACY_CONTACTS_MD_HINT,
-  shouldPointToLegacyContactsMd,
-  loadStore,
-  mutateStore,
-  searchContacts,
-  type ContactUpdatePatch,
-} from './store'
+import { LEGACY_CONTACTS_MD_HINT, shouldPointToLegacyContactsMd } from './store'
+import { getContactBook } from './contact-book'
 import { createLogger } from '../../../../utils/logger'
 
 const log = createLogger('ContactExecutor')
@@ -110,7 +101,7 @@ async function contactSearch(args: Record<string, unknown>, executor: ToolExecut
   const query = typeof args.query === 'string' ? args.query.trim() : ''
   if (!query) return { success: false, output: '', error: 'query is required' }
   step(executor, 'contact_search', `查找联系人: ${query}`, { query })
-  const matches = searchContacts(loadStore().contacts, query)
+  const matches = getContactBook().search(query)
   const output = formatList(matches, `联系人「${query}」`)
   resultStep(executor, 'contact_search', `匹配 ${matches.length} 人`, output)
   return { success: true, output }
@@ -118,7 +109,7 @@ async function contactSearch(args: Record<string, unknown>, executor: ToolExecut
 
 async function contactList(args: Record<string, unknown>, executor: ToolExecutorConfig): Promise<ToolResult> {
   step(executor, 'contact_list', '列出联系人', args)
-  const contacts = loadStore().contacts
+  const contacts = getContactBook().list()
   const output = formatList(contacts, '本地联系人')
   resultStep(executor, 'contact_list', `联系人 ${contacts.length} 人`, output)
   return { success: true, output }
@@ -130,20 +121,14 @@ async function contactAdd(args: Record<string, unknown>, executor: ToolExecutorC
   const aliases = parseStringList(args.aliases) ?? []
   step(executor, 'contact_add', `新增联系人: ${name}`, { name })
 
-  const outcome = await mutateStore(store => {
-    const collisions = findNameCollisions(store.contacts, name, aliases)
-    if (collisions.length > 0) return { type: 'collision' as const, collisions }
-    const item = createContact({
-      name,
-      aliases,
-      kind: args.kind as ContactKind | undefined,
-      organization: typeof args.organization === 'string' ? args.organization : undefined,
-      role: typeof args.role === 'string' ? args.role : undefined,
-      note: typeof args.note === 'string' ? args.note : undefined,
-      channels: parseChannels(args.channels),
-    })
-    store.contacts.push(item)
-    return { type: 'created' as const, item }
+  const outcome = await getContactBook().add({
+    name,
+    aliases,
+    kind: args.kind as ContactKind | undefined,
+    organization: typeof args.organization === 'string' ? args.organization : undefined,
+    role: typeof args.role === 'string' ? args.role : undefined,
+    note: typeof args.note === 'string' ? args.note : undefined,
+    channels: parseChannels(args.channels),
   })
 
   if (outcome.type === 'collision') {
@@ -152,8 +137,8 @@ async function contactAdd(args: Record<string, unknown>, executor: ToolExecutorC
     return { success: true, output }
   }
 
-  const output = `已添加联系人：${outcome.item.name}\nID: ${outcome.item.id}`
-  resultStep(executor, 'contact_add', `已添加: ${outcome.item.name}`, output)
+  const output = `已添加联系人：${outcome.contact.name}\nID: ${outcome.contact.id}`
+  resultStep(executor, 'contact_add', `已添加: ${outcome.contact.name}`, output)
   return { success: true, output }
 }
 
@@ -174,25 +159,17 @@ async function contactUpdate(args: Record<string, unknown>, executor: ToolExecut
   if (Array.isArray(args.add_channels)) patch.addChannels = parseChannels(args.add_channels) ?? []
   if (Array.isArray(args.remove_channels)) patch.removeChannels = parseRemoveChannels(args.remove_channels)
 
-  const outcome = await mutateStore(store => {
-    const index = store.contacts.findIndex(item => item.id === id)
-    if (index < 0) return { type: 'missing' as const }
-    const next = applyContactUpdate(store.contacts[index], patch)
-    const collisions = findNameCollisions(store.contacts, next.name, next.aliases ?? [], id)
-    if (collisions.length > 0) return { type: 'collision' as const, name: store.contacts[index].name, collisions }
-    store.contacts[index] = next
-    return { type: 'updated' as const, name: next.name }
-  })
+  const outcome = await getContactBook().update(id, patch)
 
   if (outcome.type === 'missing') return { success: false, output: '', error: `contact not found: ${id}` }
   if (outcome.type === 'collision') {
     const output = `未修改：改后的姓名或别名与下面的其他联系人重合。\n\n${outcome.collisions.map(formatContact).join('\n\n')}`
-    resultStep(executor, 'contact_update', `更新被重合拦住: ${outcome.name}`, output)
+    resultStep(executor, 'contact_update', `更新被重合拦住: ${id}`, output)
     return { success: true, output }
   }
 
-  const output = `已更新联系人：${outcome.name}\nID: ${id}`
-  resultStep(executor, 'contact_update', `已更新: ${outcome.name}`, output)
+  const output = `已更新联系人：${outcome.contact.name}\nID: ${id}`
+  resultStep(executor, 'contact_update', `已更新: ${outcome.contact.name}`, output)
   return { success: true, output }
 }
 
@@ -200,17 +177,10 @@ async function contactDelete(args: Record<string, unknown>, executor: ToolExecut
   const id = typeof args.id === 'string' ? args.id.trim() : ''
   if (!id) return { success: false, output: '', error: 'id is required' }
   step(executor, 'contact_delete', `删除联系人: ${id}`, { id })
-  let removedName = ''
-  const removed = await mutateStore(store => {
-    const index = store.contacts.findIndex(item => item.id === id)
-    if (index < 0) return false
-    removedName = store.contacts[index].name
-    store.contacts.splice(index, 1)
-    return true
-  })
-  if (!removed) return { success: false, output: '', error: `contact not found: ${id}` }
-  const output = `已删除联系人：${removedName}\nID: ${id}`
-  resultStep(executor, 'contact_delete', `已删除: ${removedName}`, output)
+  const outcome = await getContactBook().remove(id)
+  if (outcome.type === 'missing') return { success: false, output: '', error: `contact not found: ${id}` }
+  const output = `已删除联系人：${outcome.contact.name}\nID: ${id}`
+  resultStep(executor, 'contact_delete', `已删除: ${outcome.contact.name}`, output)
   return { success: true, output }
 }
 

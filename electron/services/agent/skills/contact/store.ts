@@ -11,8 +11,10 @@ import type {
   Contact,
   ContactChannel,
   ContactChannelKind,
+  ContactCreateInput,
   ContactKind,
   ContactStoreData,
+  ContactUpdatePatch,
 } from '@sailfish/shared-types'
 import { getWorkspacePath } from '../../tools/file'
 import { createLogger } from '../../../../utils/logger'
@@ -25,6 +27,7 @@ import {
 } from './migration-marker'
 
 export { CONTACTS_FILENAME, LEGACY_CONTACTS_MD } from './migration-marker'
+export type { ContactCreateInput, ContactUpdatePatch } from '@sailfish/shared-types'
 
 const log = createLogger('ContactStore')
 
@@ -268,16 +271,6 @@ export function searchContacts(contacts: Contact[], query: string): Contact[] {
   })
 }
 
-export interface ContactCreateInput {
-  name: string
-  aliases?: string[]
-  kind?: ContactKind
-  organization?: string
-  role?: string
-  note?: string
-  channels?: ContactChannel[]
-}
-
 export function createContact(input: ContactCreateInput): Contact {
   const now = new Date().toISOString()
   const name = input.name.trim()
@@ -300,19 +293,6 @@ export function createContact(input: ContactCreateInput): Contact {
   const channels = normalizeChannels(input.channels)
   if (channels) contact.channels = channels
   return contact
-}
-
-export interface ContactUpdatePatch {
-  name?: string
-  kind?: ContactKind
-  organization?: string | null
-  role?: string | null
-  note?: string | null
-  aliases?: string[] | null
-  addAliases?: string[]
-  channels?: ContactChannel[] | null
-  addChannels?: ContactChannel[]
-  removeChannels?: Array<{ kind: ContactChannelKind, value: string }>
 }
 
 export function applyContactUpdate(item: Contact, patch: ContactUpdatePatch): Contact {

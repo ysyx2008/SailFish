@@ -41,3 +41,50 @@ export interface ContactStoreData {
   contacts: Contact[]
   updatedAt: number
 }
+
+export interface ContactCreateInput {
+  name: string
+  aliases?: string[]
+  kind?: ContactKind
+  organization?: string
+  role?: string
+  note?: string
+  channels?: ContactChannel[]
+}
+
+/** 字符串传空或 null 即清空；add/remove 系列在原有基础上增减 */
+export interface ContactUpdatePatch {
+  name?: string
+  kind?: ContactKind
+  organization?: string | null
+  role?: string | null
+  note?: string | null
+  aliases?: string[] | null
+  addAliases?: string[]
+  channels?: ContactChannel[] | null
+  addChannels?: ContactChannel[]
+  removeChannels?: Array<{ kind: ContactChannelKind, value: string }>
+}
+
+/** 姓名或别名与已有联系人重合时不写入，带回重合的那些 */
+export interface ContactCollision {
+  type: 'collision'
+  collisions: Contact[]
+}
+
+export interface ContactMissing {
+  type: 'missing'
+}
+
+export type ContactAddResult = { type: 'created', contact: Contact } | ContactCollision
+
+export type ContactUpdateResult = { type: 'updated', contact: Contact } | ContactMissing | ContactCollision
+
+export type ContactDeleteResult = { type: 'deleted', contact: Contact } | ContactMissing
+
+/** 把 source 并进 target：target 保留，source 删除 */
+export type ContactMergeResult =
+  | { type: 'merged', contact: Contact, removed: Contact }
+  | ContactMissing
+  | ContactCollision
+  | { type: 'same' }
