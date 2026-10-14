@@ -3908,6 +3908,10 @@ ipcMain.handle('contact:list', async () => {
   return getContactBook().list()
 })
 
+ipcMain.handle('contact:search', async (_event, query: string) => {
+  return getContactBook().search(query)
+})
+
 ipcMain.handle('contact:create', async (_event, input: ContactCreateInput) => {
   return getContactBook().add(input)
 })

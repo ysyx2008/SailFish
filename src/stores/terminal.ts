@@ -360,6 +360,7 @@ export const useTerminalStore = defineStore('terminal', () => {
    */
   const secretaryPanel = ref<SecretaryPanel | null>(null)
   const todosActive = computed(() => secretaryPanel.value === 'todos')
+  const contactsActive = computed(() => secretaryPanel.value === 'contacts')
   // 激活真实 tab 时自动退出面板（覆盖 createTab 等未走 setActiveTab 的路径）
   watch(activeTabId, (id) => {
     if (id) secretaryPanel.value = null
@@ -1633,6 +1634,13 @@ export const useTerminalStore = defineStore('terminal', () => {
     terminalPlaceActive.value = false
   }
 
+  /** 打开联系人面板（与待办同一位置）；保留 Hub 焦点，切回任务区可恢复 */
+  function openContacts(): void {
+    secretaryPanel.value = 'contacts'
+    activeTabId.value = ''
+    terminalPlaceActive.value = false
+  }
+
   /** 关掉秘书面板，不改别的落点（打开巡检等整页时用） */
   function closeSecretaryPanel(): void {
     secretaryPanel.value = null
@@ -1640,8 +1648,8 @@ export const useTerminalStore = defineStore('terminal', () => {
 
   const terminalTabs = computed(() => tabs.value.filter(isLocalOrSshTab))
 
-  const shellPlace = computed<'tasks' | 'companion' | 'terminal' | 'todos'>(() => {
-    if (todosActive.value) return 'todos'
+  const shellPlace = computed<'tasks' | 'companion' | 'terminal' | SecretaryPanel>(() => {
+    if (secretaryPanel.value) return secretaryPanel.value
     const tab = tabs.value.find(t => t.id === activeTabId.value)
     if (tab?.agentId === COMPANION_TAB_AGENT_ID) return 'companion'
     if (tab && isLocalOrSshTab(tab)) return 'terminal'
@@ -4057,6 +4065,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     activeTabId,
     secretaryPanel,
     todosActive,
+    contactsActive,
     activeTab,
     tabCount,
     pendingFocusTabId,
@@ -4100,6 +4109,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     conversationSurface,
     restoreConversationSurface,
     openTodos,
+    openContacts,
     closeSecretaryPanel,
     hubFocusedAssistantTabId,
     hubFocusedTab,

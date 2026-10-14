@@ -466,6 +466,7 @@ export default {
     awakened: '已觉醒',
     notAwakened: '未觉醒',
     todos: '待办',
+    contacts: '联系人',
     watch: '关切',
     awaken: '觉醒',
     settings: '控制面板',

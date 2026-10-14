@@ -8,6 +8,7 @@ import file from './file'
 import setup from './setup'
 import integration from './integration'
 import todo from './todo'
+import contact from './contact'
 
 export default {
   ...common,
@@ -20,4 +21,5 @@ export default {
   ...setup,
   ...integration,
   ...todo,
+  ...contact,
 }

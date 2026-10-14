@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
+  BookUser,
   Eye,
   Heart,
   ListTodo,
@@ -28,6 +29,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'open-todos': []
+  'open-contacts': []
   'open-watch': []
   'open-awaken': []
   /** tab：连接面板里「去设置」指向的具体页（渠道 / MCP / 浏览器助手） */
@@ -120,9 +122,10 @@ function goTerminal() {
   terminalStore.focusTerminalPlace()
 }
 
-function pick(action: 'open-todos' | 'open-watch' | 'open-awaken' | 'open-settings') {
+function pick(action: 'open-todos' | 'open-contacts' | 'open-watch' | 'open-awaken' | 'open-settings') {
   closeMenu()
   if (action === 'open-todos') emit('open-todos')
+  else if (action === 'open-contacts') emit('open-contacts')
   else if (action === 'open-watch') emit('open-watch')
   else if (action === 'open-awaken') emit('open-awaken')
   else emit('open-settings')
@@ -200,6 +203,10 @@ function pick(action: 'open-todos' | 'open-watch' | 'open-awaken' | 'open-settin
           <ListTodo :size="14" />
           <span>{{ t('shell.todos') }}</span>
           <span v-if="overdueCount > 0" class="menu-badge">{{ overdueCount > 99 ? '99+' : overdueCount }}</span>
+        </button>
+        <button type="button" class="menu-item" @click="pick('open-contacts')">
+          <BookUser :size="14" />
+          <span>{{ t('shell.contacts') }}</span>
         </button>
         <button v-if="canShowWatch" type="button" class="menu-item" @click="pick('open-watch')">
           <Eye :size="14" />

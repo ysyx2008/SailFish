@@ -22,6 +22,7 @@ import SetupWizard from './components/SetupWizard.vue'
 import WelcomePage from './components/WelcomePage.vue'
 import SmartPatrolPage from './components/SmartPatrolPage.vue'
 import TodoPanel from './components/Todo/TodoPanel.vue'
+import ContactPanel from './components/Contact/ContactPanel.vue'
 import Toast from './components/common/Toast.vue'
 import UpdateNotifyCard from './components/common/UpdateNotifyCard.vue'
 import ConfirmDialog from './components/common/ConfirmDialog.vue'
@@ -1680,6 +1681,7 @@ onUnmounted(() => {
           <AppSidebar
             :awakened="isAwakened"
             @open-todos="terminalStore.openTodos()"
+            @open-contacts="terminalStore.openContacts()"
             @open-watch="openWatchesFromWelcome"
             @open-awaken="showWatchPanel = false; showAwaken = true"
             @open-connection="openConnectionSettings"
@@ -1753,6 +1755,11 @@ onUnmounted(() => {
         />
         <TodoPanel
           v-if="terminalStore.todosActive"
+          class="main-surface"
+          @close="closeSecretaryPanel"
+        />
+        <ContactPanel
+          v-if="terminalStore.contactsActive"
           class="main-surface"
           @close="closeSecretaryPanel"
         />

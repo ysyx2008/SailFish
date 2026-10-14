@@ -3486,6 +3486,7 @@ const electronAPI = {
   // 本地联系人面板（与 Agent contact_* 共用 CONTACTS.json）
   contact: {
     list: () => ipcRenderer.invoke('contact:list'),
+    search: (query: string) => ipcRenderer.invoke('contact:search', query),
     create: (input: Record<string, unknown>) => ipcRenderer.invoke('contact:create', input),
     update: (id: string, patch: Record<string, unknown>) =>
       ipcRenderer.invoke('contact:update', id, patch),
