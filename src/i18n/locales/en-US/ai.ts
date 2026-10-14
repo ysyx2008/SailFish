@@ -302,7 +302,8 @@ export default {
     fork: {
       action: 'Branch off',
       extractTaskAction: 'Create task from here',
-      extractTaskPicking: 'Picking the related conversation, this may take a few seconds…',
+      extractTaskPicking: 'Picking the related conversation…',
+      extractTaskPickingElapsed: 'Picking the related conversation… waited {seconds}s',
       tooltip: 'Open a new chat from here; the original conversation stays untouched',
       titleSuffix: 'branch',
       failed: 'Branch off failed: no session data or service unavailable'

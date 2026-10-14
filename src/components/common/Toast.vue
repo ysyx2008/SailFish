@@ -38,7 +38,7 @@ function handleAction(e: Event, toast: Toast) {
           v-for="t in toasts"
           :key="t.id"
           class="toast-item"
-          :class="[t.type, { clickable: !!t.onClick }]"
+          :class="[t.type, { clickable: !!t.onClick, 'has-progress': t.progress }]"
           @click="handleClick(t)"
         >
           <span class="toast-icon" :class="getIcon(t.type)">
@@ -66,6 +66,7 @@ function handleAction(e: Event, toast: Toast) {
           >
             <X :size="14" />
           </button>
+          <span v-if="t.progress" class="toast-progress" aria-hidden="true"><span /></span>
         </div>
       </TransitionGroup>
     </div>
@@ -85,10 +86,12 @@ function handleAction(e: Event, toast: Toast) {
 }
 
 .toast-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 12px 16px;
+  overflow: hidden;
   background: var(--bg-secondary);
   border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
@@ -110,6 +113,27 @@ function handleAction(e: Event, toast: Toast) {
 .toast-item.warning { border-left-color: var(--accent-warning); }
 .toast-item.info { border-left-color: var(--accent-primary); }
 .toast-item.proactive { border-left-color: var(--accent-primary); }
+.toast-item.has-progress { padding-bottom: 16px; }
+
+.toast-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: color-mix(in srgb, var(--accent-primary) 18%, transparent);
+}
+.toast-progress > span {
+  display: block;
+  height: 100%;
+  width: 35%;
+  background: var(--accent-primary);
+  animation: toast-progress 1.1s ease-in-out infinite;
+}
+@keyframes toast-progress {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
 
 .toast-icon {
   display: flex;

@@ -10,6 +10,8 @@ export interface Toast {
   closable: boolean
   onClick?: () => void
   action?: string
+  /** 一条一直在走的进度，表示这件事还在进行、总时长未知 */
+  progress?: boolean
 }
 
 const toasts = ref<Toast[]>([])
@@ -22,7 +24,7 @@ export function useToast() {
     type: ToastType = 'info',
     duration: number = 3000,
     closable: boolean = true,
-    options?: { onClick?: () => void; action?: string }
+    options?: { onClick?: () => void; action?: string; progress?: boolean }
   ): string => {
     const id = `toast-${++toastId}`
     const toast: Toast = {
@@ -32,7 +34,8 @@ export function useToast() {
       duration,
       closable,
       onClick: options?.onClick,
-      action: options?.action
+      action: options?.action,
+      progress: options?.progress
     }
     
     toasts.value.push(toast)
@@ -44,6 +47,11 @@ export function useToast() {
     }
     
     return id
+  }
+
+  const update = (id: string, message: string) => {
+    const toast = toasts.value.find(t => t.id === id)
+    if (toast) toast.message = message
   }
 
   const close = (id: string) => {
@@ -72,6 +80,7 @@ export function useToast() {
   return {
     toasts,
     show,
+    update,
     close,
     closeAll,
     success,
@@ -83,9 +92,13 @@ export function useToast() {
 }
 
 export const toast = {
-  show: (message: string, type: ToastType = 'info', duration?: number, closable?: boolean, options?: { onClick?: () => void; action?: string }) => {
+  show: (message: string, type: ToastType = 'info', duration?: number, closable?: boolean, options?: { onClick?: () => void; action?: string; progress?: boolean }) => {
     const { show } = useToast()
     return show(message, type, duration, closable, options)
+  },
+  update: (id: string, message: string) => {
+    const { update } = useToast()
+    update(id, message)
   },
   success: (message: string, duration?: number) => {
     const { success } = useToast()

@@ -353,10 +353,17 @@ const handleForkFromGroup = async (group: import('../composables').AgentTaskGrou
   if (forkingGroupIds.value.has(group.id)) return
   openGroupMenuId.value = null
   forkingGroupIds.value.add(group.id)
-  // 联络里创建任务要让 AI 先挑相关对话，可能等几秒；给个进度提示，免得看起来像没反应。
-  // 点在主动提醒 / 任务回执上不挑选，不弹
+  // 联络里创建任务要让 AI 先挑相关对话，可能要等一会儿。进度条一直在走，
+  // 并显示已经等了多久，好让人知道还在进行。点在主动提醒 / 任务回执上不挑选，不弹。
   const pickingToastId = isCompanionSourceTab.value && !group.isProactive && !group.isReceipt
-    ? toast.show(t('ai.fork.extractTaskPicking'), 'info', 0, false)
+    ? toast.show(t('ai.fork.extractTaskPicking'), 'info', 0, false, { progress: true })
+    : undefined
+  const pickingStartedAt = Date.now()
+  const pickingTimer = pickingToastId
+    ? setInterval(() => {
+        const seconds = Math.floor((Date.now() - pickingStartedAt) / 1000)
+        if (seconds > 0) toast.update(pickingToastId, t('ai.fork.extractTaskPickingElapsed', { seconds }))
+      }, 1000)
     : undefined
   try {
     const newTabId = await terminalStore.forkToAssistantTab(currentTabId.value, {
@@ -368,6 +375,7 @@ const handleForkFromGroup = async (group: import('../composables').AgentTaskGrou
       await showAlert(t('common.error'), t('ai.fork.failed'))
     }
   } finally {
+    if (pickingTimer) clearInterval(pickingTimer)
     if (pickingToastId) toast.close(pickingToastId)
     forkingGroupIds.value.delete(group.id)
   }
