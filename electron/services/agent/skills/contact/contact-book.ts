@@ -7,6 +7,7 @@ import type {
   ContactAddResult,
   ContactCreateInput,
   ContactDeleteResult,
+  ContactMergeResult,
   ContactUpdatePatch,
   ContactUpdateResult,
 } from '@sailfish/shared-types'
@@ -15,6 +16,7 @@ import {
   createContact,
   findNameCollisions,
   loadStore,
+  mergeContactInto,
   mutateStore,
   searchContacts,
 } from './store'
@@ -57,6 +59,22 @@ export class ContactBook {
       if (index < 0) return { type: 'missing' }
       const [contact] = store.contacts.splice(index, 1)
       return { type: 'deleted', contact }
+    })
+  }
+
+  /** 把 sourceId 那条并进 targetId 那条，source 删除 */
+  async merge(targetId: string, sourceId: string): Promise<ContactMergeResult> {
+    if (targetId === sourceId) return { type: 'same' }
+    return mutateStore(store => {
+      const target = store.contacts.find(item => item.id === targetId)
+      const source = store.contacts.find(item => item.id === sourceId)
+      if (!target || !source) return { type: 'missing' }
+      const merged = mergeContactInto(target, source)
+      const others = store.contacts.filter(item => item.id !== sourceId)
+      const collisions = findNameCollisions(others, merged.name, merged.aliases ?? [], targetId)
+      if (collisions.length > 0) return { type: 'collision', collisions }
+      store.contacts = others.map(item => (item.id === targetId ? merged : item))
+      return { type: 'merged', contact: merged, removed: source }
     })
   }
 }

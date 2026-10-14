@@ -38,9 +38,28 @@ export const LEGACY_CONTACTS_MD_HINT =
   '工作空间还有旧版 CONTACTS.md，里面的人尚未整理进来。这里查不到的人，那份笔记里可能有（read_file 可读）。'
 
 let writeQueue: Promise<void> = Promise.resolve()
+const changeListeners = new Set<() => void>()
 
 export function resetWriteQueueForTest(): void {
   writeQueue = Promise.resolve()
+}
+
+/** CONTACTS.json 写盘成功后通知（界面刷新用）；返回取消订阅 */
+export function onContactStoreChanged(listener: () => void): () => void {
+  changeListeners.add(listener)
+  return () => {
+    changeListeners.delete(listener)
+  }
+}
+
+function notifyChanged(): void {
+  for (const listener of changeListeners) {
+    try {
+      listener()
+    } catch (e) {
+      log.warn('Contact store change listener failed:', e)
+    }
+  }
 }
 
 export function getContactStorePath(): string {
@@ -219,7 +238,10 @@ export async function mutateStore<T>(mutator: (store: ContactStoreData) => T): P
     const store = loadStore()
     const before = JSON.stringify(store.contacts)
     const result = mutator(store)
-    if (JSON.stringify(store.contacts) !== before) writeSync(store)
+    if (JSON.stringify(store.contacts) !== before) {
+      writeSync(store)
+      notifyChanged()
+    }
     return result
   })
   writeQueue = next.then(
@@ -356,5 +378,38 @@ export function applyContactUpdate(item: Contact, patch: ContactUpdatePatch): Co
   else delete next.aliases
 
   next.updatedAt = new Date().toISOString()
+  return next
+}
+
+/**
+ * 把 source 并进 target：target 的姓名与类型不变，source 的姓名和别名成为别名，
+ * 联系方式取并集，单位 / 角色 target 空着才补，备注不同就上下拼接，创建时间取早的。
+ */
+export function mergeContactInto(target: Contact, source: Contact): Contact {
+  const next: Contact = {
+    ...target,
+    channels: target.channels?.map(c => ({ ...c })),
+    updatedAt: new Date().toISOString(),
+  }
+  const aliases = normalizeAliases(target.name, [
+    ...(target.aliases ?? []),
+    source.name,
+    ...(source.aliases ?? []),
+  ])
+  if (aliases) next.aliases = aliases
+  else delete next.aliases
+
+  const channels = normalizeChannels([...(target.channels ?? []), ...(source.channels ?? [])])
+  if (channels) next.channels = channels
+  else delete next.channels
+
+  if (!next.organization && source.organization) next.organization = source.organization
+  if (!next.role && source.role) next.role = source.role
+
+  const notes = [target.note, source.note].filter((n): n is string => !!n)
+  const uniqueNotes = notes.filter((n, i) => notes.findIndex(other => other.trim() === n.trim()) === i)
+  if (uniqueNotes.length) next.note = uniqueNotes.join('\n\n')
+
+  if (source.createdAt < target.createdAt) next.createdAt = source.createdAt
   return next
 }
