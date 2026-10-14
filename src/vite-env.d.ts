@@ -2549,6 +2549,16 @@ interface Window {
       onChanged: (callback: () => void) => () => void
     }
 
+    // 本地联系人面板
+    contact: {
+      list: () => Promise<import('@shared/types').Contact[]>
+      create: (input: import('@shared/types').ContactCreateInput) => Promise<import('@shared/types').ContactAddResult>
+      update: (id: string, patch: import('@shared/types').ContactUpdatePatch) => Promise<import('@shared/types').ContactUpdateResult>
+      delete: (id: string) => Promise<import('@shared/types').ContactDeleteResult>
+      merge: (targetId: string, sourceId: string) => Promise<import('@shared/types').ContactMergeResult>
+      onChanged: (callback: () => void) => () => void
+    }
+
     // Watch & Sensor（感知层）
     watch: {
       getAll: () => Promise<WatchDefinition[]>

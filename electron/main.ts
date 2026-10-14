@@ -436,6 +436,9 @@ import {
   type TodoUpdatePatch,
 } from './services/agent/skills/todo/api'
 import { onTodoStoreChanged } from './services/agent/skills/todo/store'
+import { onContactStoreChanged } from './services/agent/skills/contact/store'
+import { getContactBook } from './services/agent/skills/contact/contact-book'
+import type { ContactCreateInput, ContactUpdatePatch } from '@shared/types'
 import type { GatewayConfig } from './services/gateway.service'
 import type { GatewayService } from './services/gateway.service'
 import { BastionService } from './services/bastion.service'
@@ -3883,6 +3886,42 @@ ipcMain.handle('todo:buildHandoffPrompt', async (_event, id: string, kind: 'hand
     minutes,
     locale: getConfigService().getLanguage(),
   })
+})
+
+// ==================== Local Contact IPC（面板；与 Agent contact_* 共用 store）====================
+
+function broadcastContactChanged(): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    try {
+      if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+        win.webContents.send('contact:changed')
+      }
+    } catch (e) {
+      log.warn('contact:changed broadcast failed:', e)
+    }
+  }
+}
+
+onContactStoreChanged(broadcastContactChanged)
+
+ipcMain.handle('contact:list', async () => {
+  return getContactBook().list()
+})
+
+ipcMain.handle('contact:create', async (_event, input: ContactCreateInput) => {
+  return getContactBook().add(input)
+})
+
+ipcMain.handle('contact:update', async (_event, id: string, patch: ContactUpdatePatch) => {
+  return getContactBook().update(id, patch)
+})
+
+ipcMain.handle('contact:delete', async (_event, id: string) => {
+  return getContactBook().remove(id)
+})
+
+ipcMain.handle('contact:merge', async (_event, targetId: string, sourceId: string) => {
+  return getContactBook().merge(targetId, sourceId)
 })
 
 // ==================== Watch & Sensor IPC ====================

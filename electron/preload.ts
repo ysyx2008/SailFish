@@ -3483,6 +3483,22 @@ const electronAPI = {
     },
   },
 
+  // 本地联系人面板（与 Agent contact_* 共用 CONTACTS.json）
+  contact: {
+    list: () => ipcRenderer.invoke('contact:list'),
+    create: (input: Record<string, unknown>) => ipcRenderer.invoke('contact:create', input),
+    update: (id: string, patch: Record<string, unknown>) =>
+      ipcRenderer.invoke('contact:update', id, patch),
+    delete: (id: string) => ipcRenderer.invoke('contact:delete', id),
+    merge: (targetId: string, sourceId: string) =>
+      ipcRenderer.invoke('contact:merge', targetId, sourceId),
+    onChanged: (callback: () => void) => {
+      const handler = () => { callback() }
+      ipcRenderer.on('contact:changed', handler)
+      return () => { ipcRenderer.removeListener('contact:changed', handler) }
+    },
+  },
+
   // Watch & Sensor（感知层）
   watch: {
     getAll: () =>
