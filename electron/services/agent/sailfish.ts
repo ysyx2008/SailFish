@@ -21,7 +21,7 @@ import type { ChildAgentHandle } from './sub-agent-roster'
 import { COMPANION_WORKBENCH_AGENT_TOOLS } from '@sailfish/workbench-companion/agent-tools'
 import { COMPANION_AGENT_KEY } from '@shared/types'
 import { PromptBuilder } from './prompt-builder'
-import type { SkillSession } from './skills'
+import { BuiltinSkillEnablement, type SkillSession } from './skills'
 import { createLogger } from '../../utils/logger'
 
 const log = createLogger('SailfishAgent')
@@ -160,6 +160,7 @@ export class SailFish extends Agent {
         hostProfileService: this.services.hostProfileService,
       })
     }
+    const skillEnablement = new BuiltinSkillEnablement(this.services.configService)
     return new PromptBuilder({
       context,
       hostProfileService: this.services.hostProfileService,
@@ -186,6 +187,7 @@ export class SailFish extends Agent {
         ? this.services.mcpService.getServerCatalogText()
         : undefined,
       proactiveCompact: options.proactiveCompact,
+      isSkillEnabled: id => skillEnablement.isEnabled(id),
     }).build()
   }
   

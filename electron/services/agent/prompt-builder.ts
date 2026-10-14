@@ -326,6 +326,8 @@ export interface BuildSystemPromptOptions {
   mcpServerCatalog?: string
   /** 它有多主动地把已经用不上的过程先交接掉 */
   proactiveCompact?: ProactiveCompactStyle
+  /** 内置技能是否开着；不传按开着算 */
+  isSkillEnabled?: (skillId: string) => boolean
 }
 
 /**
@@ -358,6 +360,7 @@ export class PromptBuilder {
   private readonly loadedSkillsRoster: LoadedSkillRosterItem[]
   private readonly mcpServerCatalog?: string
   private readonly proactiveCompact: ProactiveCompactStyle
+  private readonly isSkillEnabled: (skillId: string) => boolean
 
   private osType = ''
   private shellType = ''
@@ -387,6 +390,7 @@ export class PromptBuilder {
     this.loadedSkillsRoster = options.loadedSkillsRoster ?? []
     this.mcpServerCatalog = options.mcpServerCatalog
     this.proactiveCompact = normalizeProactiveCompact(options.proactiveCompact)
+    this.isSkillEnabled = options.isSkillEnabled ?? (() => true)
   }
 
   // ==================== 公开方法 ====================
@@ -939,15 +943,19 @@ export class PromptBuilder {
 
   private buildWorkspaceRule(): string {
     const scratch = getScratchPath()
+    const todoLine = this.isSkillEnabled('todo')
+      ? '\n- **待办**：用 `todo` 技能（`todo_*`）管理，数据在工作空间 `TODO.json`，勿直接改文件；心跳会注入摘要并提醒你。'
+      : ''
+    const contactLine = this.isSkillEnabled('contact')
+      ? '\n- **联系人**：用 `contact` 技能（`contact_*`）记录和查找，数据在工作空间 `CONTACTS.json`，勿直接改文件。遇到新联系人时记进去。'
+      : ''
     return `# 私有工作空间
 - \`${scratch}\` 是你的**默认工作目录**：临时脚本、草稿、中间产物、下载文件请放这里，读写无需确认。
 - **但免确认只认绝对路径**：在上述目录（及系统临时目录）内写/删时，请直接使用该绝对路径（或以其为前缀）。\`cd 别处 && rm 相对路径\` / 裸相对路径写删会触发确认，无法免确认。
 - scratch/ 下超期文件会在应用启动时自动清理（默认 7 天，用户可在设置里调整或关闭）。
 - 用户要长期保留的最终产物请写到桌面、文档等正式目录。
 - **文件名即用户可见名**：你创建的文件名会直接作为产出物面板标题、发送到手机的文件名展示给用户——必须用简洁可读的名字（如「全部模型榜单.xlsx」），禁止时间戳、随机 ID 等机器后缀；担心覆盖旧文件就用 v2、final 等语义化后缀区分。
-- **USER.md**：用户画像，了解用户后主动补充。
-- **待办**：用 \`todo\` 技能（\`todo_*\`）管理，数据在工作空间 \`TODO.json\`，勿直接改文件；心跳会注入摘要并提醒你。
-- **联系人**：用 \`contact\` 技能（\`contact_*\`）记录和查找，数据在工作空间 \`CONTACTS.json\`，勿直接改文件。遇到新联系人时记进去。
+- **USER.md**：用户画像，了解用户后主动补充。${todoLine}${contactLine}
 - **HEARTBEAT.md**：心跳唤醒指令，系统定期读取。
 - **IDENTITY.md / SOUL.md**：个性与行为准则。
 - **templates/**：Office 模板，只读复用；新建模板也放到 \`${scratch}/\`。
@@ -970,6 +978,7 @@ export class PromptBuilder {
   }
 
   private buildWatchGuide(): string {
+    if (!this.isSkillEnabled('todo')) return ''
     return '**关切 和 本地待办的区别**：需要你自动执行的任务使用关切（关切只要满足条件就会自动触发）；只需要提醒用户做的事用 `todo_create` 记入本地待办（心跳会检查并提醒用户）。日历里的 VTODO 用 `calendar_todo_*`，与本地待办无关。'
   }
 

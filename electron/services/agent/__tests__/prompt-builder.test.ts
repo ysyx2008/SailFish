@@ -170,6 +170,24 @@ describe('PromptBuilder', () => {
       expect(prompt).toContain('zsh')
     })
 
+    it('mentions todo and contact skills only while they are enabled', () => {
+      const context = createMockContext()
+      const all = new PromptBuilder({ context }).build()
+      expect(all).toContain('- **待办**')
+      expect(all).toContain('- **联系人**')
+      expect(all).toContain('**关切 和 本地待办的区别**')
+
+      const off = new PromptBuilder({
+        context,
+        isSkillEnabled: id => id !== 'todo' && id !== 'contact',
+      }).build()
+      expect(off).not.toContain('- **待办**')
+      expect(off).not.toContain('- **联系人**')
+      expect(off).not.toContain('**关切 和 本地待办的区别**')
+      expect(off).toContain('**USER.md**')
+      expect(off).toContain('**HEARTBEAT.md**')
+    })
+
     it('should include current working directory', () => {
       const context = createMockContext({ cwd: '/home/user/project' })
       const builder = new PromptBuilder({ context })
