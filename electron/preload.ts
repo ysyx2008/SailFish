@@ -3501,8 +3501,6 @@ const electronAPI = {
     update: (id: string, patch: Record<string, unknown>) =>
       ipcRenderer.invoke('contact:update', id, patch),
     delete: (id: string) => ipcRenderer.invoke('contact:delete', id),
-    merge: (targetId: string, sourceId: string) =>
-      ipcRenderer.invoke('contact:merge', targetId, sourceId),
     onChanged: (callback: () => void) => {
       const handler = () => { callback() }
       ipcRenderer.on('contact:changed', handler)

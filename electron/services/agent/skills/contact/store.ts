@@ -387,36 +387,3 @@ export function applyContactUpdate(item: Contact, patch: ContactUpdatePatch): Co
   next.updatedAt = new Date().toISOString()
   return next
 }
-
-/**
- * 把 source 并进 target：target 的姓名与类型不变，source 的姓名和别名成为别名，
- * 联系方式取并集，单位 / 角色 target 空着才补，备注不同就上下拼接，创建时间取早的。
- */
-export function mergeContactInto(target: Contact, source: Contact): Contact {
-  const next: Contact = {
-    ...target,
-    channels: target.channels?.map(c => ({ ...c })),
-    updatedAt: new Date().toISOString(),
-  }
-  const aliases = normalizeAliases(target.name, [
-    ...(target.aliases ?? []),
-    source.name,
-    ...(source.aliases ?? []),
-  ])
-  if (aliases) next.aliases = aliases
-  else delete next.aliases
-
-  const channels = normalizeChannels([...(target.channels ?? []), ...(source.channels ?? [])])
-  if (channels) next.channels = channels
-  else delete next.channels
-
-  if (!next.organization && source.organization) next.organization = source.organization
-  if (!next.role && source.role) next.role = source.role
-
-  const notes = [target.note, source.note].filter((n): n is string => !!n)
-  const uniqueNotes = notes.filter((n, i) => notes.findIndex(other => other.trim() === n.trim()) === i)
-  if (uniqueNotes.length) next.note = uniqueNotes.join('\n\n')
-
-  if (source.createdAt < target.createdAt) next.createdAt = source.createdAt
-  return next
-}

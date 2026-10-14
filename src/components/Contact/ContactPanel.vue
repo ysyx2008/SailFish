@@ -48,7 +48,6 @@ const draft = ref<ContactDraft | null>(null)
 const saving = ref(false)
 /** 详情打开期间秘书改过这条，而用户手上还有没存的改动 */
 const changedElsewhere = ref(false)
-const mergeSourceId = ref('')
 
 let lastSyncedUpdatedAt = ''
 let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -72,12 +71,6 @@ function contactLabel(contact: Contact): string {
   const hint = contact.organization || contact.role
   return hint ? `${contact.name} · ${hint}` : contact.name
 }
-
-const mergeOptions = computed(() =>
-  sortedContacts.value
-    .filter(c => c.id !== selectedId.value)
-    .map(c => ({ value: c.id, label: contactLabel(c) }))
-)
 
 function channelKindLabel(kind: ContactChannelKind): string {
   return t(`contactPanel.channelKind.${kind}`)
@@ -212,7 +205,6 @@ function selectContact(contact: Contact) {
   if (selectedId.value === contact.id) return
   void flushSave()
   selectedId.value = contact.id
-  mergeSourceId.value = ''
   applyDraft(contact)
 }
 
@@ -221,7 +213,6 @@ function closeDetail(flush = true) {
   selectedId.value = null
   draft.value = null
   changedElsewhere.value = false
-  mergeSourceId.value = ''
 }
 
 watch(draft, () => {
@@ -328,35 +319,6 @@ async function handleDelete() {
   await api.delete(item.id)
   closeDetail(false)
   await loadContacts()
-}
-
-async function mergeIn(sourceId: string) {
-  const target = selected.value
-  const source = contacts.value.find(c => c.id === sourceId)
-  if (!target || !source) return
-  const ok = await showConfirm({
-    title: t('contactPanel.mergeTitle'),
-    message: t('contactPanel.mergeMessage', { source: source.name, target: target.name }),
-    confirmText: t('contactPanel.mergeConfirm'),
-    cancelText: t('contactPanel.cancel'),
-  })
-  mergeSourceId.value = ''
-  if (!ok) return
-  await flushSave()
-  const result = await api.merge(target.id, source.id)
-  if (result.type === 'merged') {
-    await loadContacts()
-    const merged = contacts.value.find(c => c.id === target.id)
-    if (merged) applyDraft(merged)
-    toast.success(t('contactPanel.merged', { source: source.name }))
-  } else {
-    await loadContacts()
-  }
-}
-
-function onMergePicked(value: string) {
-  mergeSourceId.value = value
-  if (value) void mergeIn(value)
 }
 
 function addChannel() {
@@ -602,18 +564,6 @@ onUnmounted(() => {
             :placeholder="t('contactPanel.notePlaceholder')"
           />
         </label>
-
-        <div v-if="mergeOptions.length" class="field">
-          <span class="field-label">{{ t('contactPanel.mergeLabel') }}</span>
-          <AppSelect
-            :model-value="mergeSourceId"
-            size="field"
-            block
-            :options="[{ value: '', label: t('contactPanel.mergePick') }, ...mergeOptions]"
-            @update:model-value="onMergePicked"
-          />
-          <span class="field-hint">{{ t('contactPanel.mergeHint') }}</span>
-        </div>
 
         <dl class="meta-grid">
           <div class="meta-cell">
@@ -935,10 +885,6 @@ onUnmounted(() => {
 .field-label {
   font-size: 11px;
   font-weight: 550;
-  color: var(--text-muted);
-}
-.field-hint {
-  font-size: 11px;
   color: var(--text-muted);
 }
 .field-error {

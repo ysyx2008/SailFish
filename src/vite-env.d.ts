@@ -2558,7 +2558,6 @@ interface Window {
       create: (input: import('@shared/types').ContactCreateInput, options?: import('@shared/types').ContactAddOptions) => Promise<import('@shared/types').ContactAddResult>
       update: (id: string, patch: import('@shared/types').ContactUpdatePatch) => Promise<import('@shared/types').ContactUpdateResult>
       delete: (id: string) => Promise<import('@shared/types').ContactDeleteResult>
-      merge: (targetId: string, sourceId: string) => Promise<import('@shared/types').ContactMergeResult>
       onChanged: (callback: () => void) => () => void
     }
 

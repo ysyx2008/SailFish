@@ -3924,10 +3924,6 @@ ipcMain.handle('contact:delete', async (_event, id: string) => {
   return getContactBook().remove(id)
 })
 
-ipcMain.handle('contact:merge', async (_event, targetId: string, sourceId: string) => {
-  return getContactBook().merge(targetId, sourceId)
-})
-
 // ==================== Watch & Sensor IPC ====================
 
 ipcMain.handle('watch:getAll', async () => {

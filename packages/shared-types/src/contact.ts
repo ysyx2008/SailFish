@@ -86,9 +86,3 @@ export type ContactAddResult = { type: 'created', contact: Contact } | ContactPo
 export type ContactUpdateResult = { type: 'updated', contact: Contact } | ContactMissing
 
 export type ContactDeleteResult = { type: 'deleted', contact: Contact } | ContactMissing
-
-/** 把 source 并进 target：target 保留，source 删除 */
-export type ContactMergeResult =
-  | { type: 'merged', contact: Contact, removed: Contact }
-  | ContactMissing
-  | { type: 'same' }
