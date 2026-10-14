@@ -18,6 +18,7 @@ describe('CONVERSATION_POLICY 策略表', () => {
       autoApprovalReview: true,
       autoReviewEarlierWordsWithinMs: null,
       restoreSkillsOnReopen: true,
+      skillNotesOnUserMessage: true,
     })
   })
 

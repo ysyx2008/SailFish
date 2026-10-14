@@ -25,6 +25,11 @@ export interface SkillRunStartContext {
   isSubAgent: boolean
 }
 
+export interface UserMessageNoteContext {
+  /** 这场对话眼下要发给模型的内容里，是否已经有这段文字 */
+  alreadyInConversation: (text: string) => boolean
+}
+
 /**
  * 技能定义接口
  */
@@ -62,6 +67,11 @@ export interface Skill {
   ) => Promise<ToolResult>
   /** 派出去的伙计连同状态数据一起带上这份技能 */
   inheritToSubAgents?: boolean
+  /**
+   * 技能开着就会被问（不必装上）：用户说了这句话，有没有要附在旁边给模型看的背景。
+   * 返回空表示没有。只在用户本人说话时问。
+   */
+  noteForUserMessage?: (text: string, ctx: UserMessageNoteContext) => string | undefined
 }
 
 /**

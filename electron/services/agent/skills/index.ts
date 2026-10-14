@@ -3,12 +3,13 @@
  */
 
 // 导出类型
-export type { Skill, SkillState, SkillLoadResult, SkillSessionManager, SkillData, SkillToolCall, SkillToolCallContext, SkillRunStartContext } from './types'
+export type { Skill, SkillState, SkillLoadResult, SkillSessionManager, SkillData, SkillToolCall, SkillToolCallContext, SkillRunStartContext, UserMessageNoteContext } from './types'
 
 // 导出注册表
 export { registerSkill, getSkill, getAllSkills, getSkillsSummary, hasSkill, isSystemManagedSkill } from './registry'
 export { TERMINAL_SKILL_ID } from './terminal'
 export { BuiltinSkillEnablement } from './enablement'
+export { collectUserMessageNotes } from './user-message-notes'
 
 // 导出加载器
 export { SkillSession, createSkillSession } from './skill-loader'

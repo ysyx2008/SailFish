@@ -98,7 +98,7 @@ import { t, getLocale, type TranslationKey } from './i18n'
 import { AutoApprovalReviewer, buildInspectorDeps, resolveInspectPtyId, type AutoReviewResult } from './auto-review'
 import { resolveSubAgentBlockDangerous } from './command-audit/fail-closed-policy'
 import { CommandExecutorService } from '../command-executor.service'
-import { createSkillSession, SkillSession, getSkill, isSystemManagedSkill, TERMINAL_SKILL_ID, BuiltinSkillEnablement } from './skills'
+import { createSkillSession, SkillSession, getSkill, isSystemManagedSkill, TERMINAL_SKILL_ID, BuiltinSkillEnablement, collectUserMessageNotes } from './skills'
 import type { SkillData } from './skills'
 import { McpToolSession, parseMcpSkillId, toMcpSkillId } from './mcp-tool-session'
 import { getUserSkillService, parseUserSkillId, toUserSkillId } from '../user-skill.service'
@@ -2962,6 +2962,23 @@ export abstract class Agent {
     return buildCwdChangedHint(cwd)
   }
 
+  /**
+   * 用户本人说的话：问开着的技能有没有背景要附给模型（技能不必装上）。
+   * @param pendingText 同一批里已经拼好、还没进消息的内容，也算「这场里已有」
+   */
+  private skillNotesForUserWords(run: AgentRun, words: string, pendingText = ''): string[] {
+    if (this._isSubAgent || run.internalNotice || run.context.wakeup) return []
+    const kind = this._conversation?.kind ?? inferConversationKind(this._agentId)
+    if (!conversationPolicy(kind).skillNotesOnUserMessage) return []
+    const alreadyInConversation = (text: string) =>
+      pendingText.includes(text) || run.messages.some(m => typeof m.content === 'string' && m.content.includes(text))
+    return collectUserMessageNotes(
+      new BuiltinSkillEnablement(this.services.configService),
+      words,
+      { alreadyInConversation },
+    )
+  }
+
   private async buildUserMessage(run: AgentRun, message: string, injectKnowledge: boolean): Promise<AiMessage> {
     const userBody = this.enhanceUserMessage(message, run.context.terminalType)
 
@@ -2986,6 +3003,7 @@ export abstract class Agent {
     if (proactiveCtx?.trim()) {
       systemContextParts.push(proactiveCtx.trim())
     }
+    systemContextParts.push(...this.skillNotesForUserWords(run, message))
     if (this._stoppedNotes.length > 0) {
       systemContextParts.push(...this._stoppedNotes.splice(0).map(note => note()))
     }
@@ -5571,7 +5589,9 @@ export abstract class Agent {
       const selectionScopeBody = pending.workbenchContext?.selectionScope
         ? formatSelectionScopeBody(pending.workbenchContext.selectionScope)
         : ''
+      const notes = pending.silent ? [] : this.skillNotesForUserWords(run, pending.message, combinedText)
       const msgPart = assembleUserMessageContent({
+        systemContext: notes.length > 0 ? wrapSystemContext(notes.join('\n\n')) : undefined,
         userMessage: userBody,
         selectionScope: selectionScopeBody || undefined,
         uploadedDocs: pending.documentContext,

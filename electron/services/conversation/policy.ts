@@ -92,17 +92,24 @@ export interface ConversationPolicy {
    * - watch/wakeup=false：自己预装需要的技能，不按历史清单恢复。
    */
   restoreSkillsOnReopen: boolean
+
+  /**
+   * 用户每说一句，开着的技能能否附带一段给模型的背景（如提到的联系人）。
+   * - task/companion=true：用户本人在说话。
+   * - watch/wakeup=false：秘书自己在后台跑，没有用户的话可认。
+   */
+  skillNotesOnUserMessage: boolean
 }
 
 /**
  * 四类会话的行为策略。
  *
- * | kind      | accumulates | seedFromHistoryOnColdStart | visibleInList | historyTree | perWatchContinuity | autoApprovalReview | autoReviewEarlierWordsWithinMs | restoreSkillsOnReopen |
- * |-----------|-------------|----------------------------|---------------|-------------|--------------------|--------------------|--------------------------------|-----------------------|
- * | task      | true        | false                      | true          | main        | false              | true               | null（整场）                    | true                  |
- * | companion | true        | true                       | true          | main        | false              | true               | 24h                            | false                 |
- * | watch     | false       | false                      | false         | watch       | false（预留）       | false              | null                           | false                 |
- * | wakeup    | false       | true                       | false         | watch       | false（预留）       | false              | null                           | false                 |
+ * | kind      | accumulates | seedFromHistoryOnColdStart | visibleInList | historyTree | perWatchContinuity | autoApprovalReview | autoReviewEarlierWordsWithinMs | restoreSkillsOnReopen | skillNotesOnUserMessage |
+ * |-----------|-------------|----------------------------|---------------|-------------|--------------------|--------------------|--------------------------------|-----------------------|-------------------------|
+ * | task      | true        | false                      | true          | main        | false              | true               | null（整场）                    | true                  | true                    |
+ * | companion | true        | true                       | true          | main        | false              | true               | 24h                            | false                 | true                    |
+ * | watch     | false       | false                      | false         | watch       | false（预留）       | false              | null                           | false                 | false                   |
+ * | wakeup    | false       | true                       | false         | watch       | false（预留）       | false              | null                           | false                 | false                   |
  *
  * 注：wakeup 从 watch 中独立出来——关切是用户配置的一次性任务（prompt 自带指令，逐次失忆，
  * 避免 A 关切串味到 B），wakeup 是 Agent 自主循环（需要历史记忆辅助决策「该不该主动找人、
@@ -119,7 +126,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     perWatchContinuity: false,
     autoApprovalReview: true,
     autoReviewEarlierWordsWithinMs: null,
-    restoreSkillsOnReopen: true
+    restoreSkillsOnReopen: true,
+    skillNotesOnUserMessage: true
   },
   companion: {
     accumulates: true,
@@ -129,7 +137,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     perWatchContinuity: false,
     autoApprovalReview: true,
     autoReviewEarlierWordsWithinMs: DAY_MS,
-    restoreSkillsOnReopen: false
+    restoreSkillsOnReopen: false,
+    skillNotesOnUserMessage: true
   },
   watch: {
     accumulates: false,
@@ -139,7 +148,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     perWatchContinuity: false,
     autoApprovalReview: false,
     autoReviewEarlierWordsWithinMs: null,
-    restoreSkillsOnReopen: false
+    restoreSkillsOnReopen: false,
+    skillNotesOnUserMessage: false
   },
   wakeup: {
     accumulates: false,
@@ -149,7 +159,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     perWatchContinuity: false,
     autoApprovalReview: false,
     autoReviewEarlierWordsWithinMs: null,
-    restoreSkillsOnReopen: false
+    restoreSkillsOnReopen: false,
+    skillNotesOnUserMessage: false
   }
 }
 
