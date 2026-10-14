@@ -3666,22 +3666,26 @@ export abstract class Agent {
   }
 
   /**
-   * 指令作为一条 user 消息追加在给定对话末尾，调一次非流式 chat，只取文字回答。
+   * 指令作为一条 user 消息追加在给定对话末尾，问一次、只取文字回答。
    * 前缀与上一轮逐字一致，provider 的前缀缓存直接命中（实测 99%）；模型也是在原本
    * 语境里作答，不必读一份拍平的转录。这条指令不进 run.messages，只用于这一次调用。
    *
    * tools 照常带上：schema 是前缀的一部分，不带就等于换了前缀、白丢整段缓存。
    * 指令里需说明这一步不执行操作，模型据此直接回文本（实测缓存 98%）。
    *
+   * 默认非流式。调用方要看思考过程时改走流式，把思考增量交出去；正文仍只在结束时取。
+   * 只有思考、没有正文时不当作回答（那时 content 是包给界面看的外壳）。
+   *
    * 返回 null：服务不可用 / 估算超出输入预算 / 两次都没拿到正文。
    */
   private async askAppendedInstruction(
     conversation: AiMessage[],
     instruction: string,
-    opts: { maxOutputTokens?: number; purpose: string }
+    opts: { maxOutputTokens?: number; purpose: string; onThinking?: (delta: string) => void }
   ): Promise<string | null> {
     const aiService = this.services.aiService
-    if (!aiService?.chatWithTools) return null
+    const stream = !!(opts.onThinking && aiService?.chatWithToolsCollecting)
+    if (!aiService || (!stream && !aiService.chatWithTools)) return null
 
     const messages: AiMessage[] = [...conversation, { role: 'user', content: instruction }]
     const tools = stripToolMeta(this.getAvailableTools())
@@ -3692,20 +3696,35 @@ export abstract class Agent {
       return null
     }
 
-    const first = await aiService.chatWithTools(messages, tools, profileId, undefined, {
-      ...(opts.maxOutputTokens ? { maxOutputTokens: opts.maxOutputTokens } : {})
-    })
-    if (first?.content?.trim()) return first.content.trim()
+    const ask = (toolChoice?: 'none') => {
+      if (opts.onThinking && aiService.chatWithToolsCollecting) {
+        return aiService.chatWithToolsCollecting(messages, tools, profileId, {
+          maxOutputTokens: opts.maxOutputTokens,
+          toolChoice,
+          onReasoning: opts.onThinking,
+        })
+      }
+      return aiService.chatWithTools(messages, tools, profileId, undefined, {
+        ...(toolChoice ? { toolChoice } : {}),
+        ...(opts.maxOutputTokens ? { maxOutputTokens: opts.maxOutputTokens } : {}),
+      })
+    }
+    const textOf = (result: { content?: string; thinkingOnly?: boolean } | null | undefined): string | null => {
+      if (!result || result.thinkingOnly) return null
+      return result.content?.trim() || null
+    }
+
+    const first = await ask()
+    const firstText = textOf(first)
+    if (firstText) return firstText
+    // 只有思考、没有正文：再问一次也多半还是在想，不为此多等一轮
+    if (first?.thinkingOnly) return null
 
     // 模型没写正文、转头去调工具了。再要一次并禁止调用——部分 provider 在
     // tool_choice='none' 下不再把 tools 计入 prompt，这一次拿不到缓存，
     // 但比落空强。仍不给正文就交给调用方兜底。
     log.warn(`${opts.purpose} returned no text (model chose tools); retrying with tool calls disabled`)
-    const retry = await aiService.chatWithTools(messages, tools, profileId, undefined, {
-      toolChoice: 'none',
-      ...(opts.maxOutputTokens ? { maxOutputTokens: opts.maxOutputTokens } : {})
-    })
-    return retry?.content?.trim() || null
+    return textOf(await ask('none'))
   }
 
   /** 眼前这场对话有没有可接的 cache 前缀（下一轮会沿用的那份） */
@@ -3721,7 +3740,7 @@ export abstract class Agent {
    */
   async askOnConversationPrefix(
     instruction: string,
-    opts: { maxOutputTokens?: number; purpose: string }
+    opts: { maxOutputTokens?: number; purpose: string; onThinking?: (delta: string) => void }
   ): Promise<string | null> {
     const prefix = this._conversation?.getCachePrefix()
     if (!prefix?.length) return null

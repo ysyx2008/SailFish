@@ -12,6 +12,57 @@ import type { CompanionPickCandidate } from './conversation'
 const BRIEF_TEXT_MAX_CHARS = 80
 /** 只接受数字与分隔符的回复；带别的文字一律视为对不上，由调用方回退 */
 const STRICT_ORDINAL_REPLY = /^[\d\s,，、;；]+$/
+/** 等待提示里只留思考过程的末尾这些字 */
+const THINKING_PREVIEW_CHARS = 160
+/** 思考增量交出的间隔；第一次不等 */
+const THINKING_EMIT_INTERVAL_MS = 200
+
+/** 思考过程可能很长，提示里只留最近一段（按字符，不切坏 emoji） */
+export function thinkingPreview(text: string): string {
+  const trimmed = text.replace(/\r/g, '').trimEnd()
+  const chars = Array.from(trimmed)
+  if (chars.length <= THINKING_PREVIEW_CHARS) return trimmed
+  return '…' + chars.slice(-THINKING_PREVIEW_CHARS).join('')
+}
+
+/**
+ * 把思考增量攒一攒再交出去：第一次立刻交，之后大约每 200ms 一次，结束时再交一次。
+ * 交出的是末尾预览，不是全文。
+ */
+export function createThinkingFeed(emit: (preview: string) => void) {
+  let buf = ''
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let last = ''
+  const flush = () => {
+    const preview = thinkingPreview(buf)
+    if (!preview || preview === last) return
+    last = preview
+    emit(preview)
+  }
+  return {
+    push(delta: string) {
+      if (!delta) return
+      buf += delta
+      // 只要末尾预览。缓冲一直涨的话，每拍都把整段拆成字符数组
+      if (buf.length > THINKING_PREVIEW_CHARS * 8) {
+        buf = Array.from(buf).slice(-THINKING_PREVIEW_CHARS * 2).join('')
+      }
+      if (timer) return
+      flush()
+      timer = setTimeout(() => {
+        timer = undefined
+        flush()
+      }, THINKING_EMIT_INTERVAL_MS)
+    },
+    flush() {
+      if (timer) {
+        clearTimeout(timer)
+        timer = undefined
+      }
+      flush()
+    }
+  }
+}
 
 export class CompanionSeedPicker {
   /** 候选上限：取最靠近锚点的这些段，避免简述本身过长 */

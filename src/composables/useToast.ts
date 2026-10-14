@@ -12,6 +12,8 @@ export interface Toast {
   action?: string
   /** 一条一直在走的进度，表示这件事还在进行、总时长未知 */
   progress?: boolean
+  /** 主文案下面的补充，例如正在想的最新几句 */
+  detail?: string
 }
 
 const toasts = ref<Toast[]>([])
@@ -54,6 +56,11 @@ export function useToast() {
     if (toast) toast.message = message
   }
 
+  const updateDetail = (id: string, detail: string) => {
+    const toast = toasts.value.find(t => t.id === id)
+    if (toast) toast.detail = detail
+  }
+
   const close = (id: string) => {
     const index = toasts.value.findIndex(t => t.id === id)
     if (index > -1) {
@@ -81,6 +88,7 @@ export function useToast() {
     toasts,
     show,
     update,
+    updateDetail,
     close,
     closeAll,
     success,
@@ -99,6 +107,10 @@ export const toast = {
   update: (id: string, message: string) => {
     const { update } = useToast()
     update(id, message)
+  },
+  updateDetail: (id: string, detail: string) => {
+    const { updateDetail } = useToast()
+    updateDetail(id, detail)
   },
   success: (message: string, duration?: number) => {
     const { success } = useToast()

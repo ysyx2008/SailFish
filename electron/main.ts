@@ -4537,7 +4537,7 @@ ipcMain.handle('agent:forkTask', async (_event, opts: {
   return await agentService.forkTask(opts)
 })
 
-ipcMain.handle('agent:extractTaskFromCompanion', async (_event, opts: {
+ipcMain.handle('agent:extractTaskFromCompanion', async (event, opts: {
   newAgentId: string
   anchorTaskIndex?: number
   anchorTaskStepId?: string
@@ -4545,7 +4545,13 @@ ipcMain.handle('agent:extractTaskFromCompanion', async (_event, opts: {
   sourceSteps?: import('@shared/types').AgentStepRecord[]
 }) => {
   const { agentService } = await rt()
-  return await agentService.extractTaskFromCompanion(opts)
+  return await agentService.extractTaskFromCompanion(opts, {
+    onThinking: (text) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('agent:extractTaskThinking', { text, anchorTaskStepId: opts.anchorTaskStepId })
+      }
+    }
+  })
 })
 
 ipcMain.handle('agent:updateConfig', async (_event, ptyId: string, config: { executionMode?: ExecutionMode; commandTimeout?: number; profileId?: string }) => {

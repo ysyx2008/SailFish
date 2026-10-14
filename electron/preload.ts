@@ -1062,6 +1062,15 @@ const electronAPI = {
       newRecord: import('@shared/types').AgentRecord
     } | null>,
 
+    /** 创建任务等待时，模型正在想的最新几句 */
+    onExtractTaskThinking: (callback: (data: { text: string; anchorTaskStepId?: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { text: string; anchorTaskStepId?: string }) => callback(data)
+      ipcRenderer.on('agent:extractTaskThinking', handler)
+      return () => {
+        ipcRenderer.removeListener('agent:extractTaskThinking', handler)
+      }
+    },
+
     // 清空指定终端的任务历史记忆（用于"清空对话"功能）
     clearHistory: (ptyId: string) => ipcRenderer.invoke('agent:clearHistory', ptyId) as Promise<void>,
 

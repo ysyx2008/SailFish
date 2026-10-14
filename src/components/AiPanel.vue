@@ -354,7 +354,8 @@ const handleForkFromGroup = async (group: import('../composables').AgentTaskGrou
   openGroupMenuId.value = null
   forkingGroupIds.value.add(group.id)
   // 联络里创建任务要让 AI 先挑相关对话，可能要等一会儿。进度条一直在走，
-  // 并显示已经等了多久，好让人知道还在进行。点在主动提醒 / 任务回执上不挑选，不弹。
+  // 并显示已经等了多久；模型交出思考过程时，底下跟着最新几句。
+  // 点在主动提醒 / 任务回执上不挑选，不弹。
   const pickingToastId = isCompanionSourceTab.value && !group.isProactive && !group.isReceipt
     ? toast.show(t('ai.fork.extractTaskPicking'), 'info', 0, false, { progress: true })
     : undefined
@@ -364,6 +365,13 @@ const handleForkFromGroup = async (group: import('../composables').AgentTaskGrou
         const seconds = Math.floor((Date.now() - pickingStartedAt) / 1000)
         if (seconds > 0) toast.update(pickingToastId, t('ai.fork.extractTaskPickingElapsed', { seconds }))
       }, 1000)
+    : undefined
+  // 模型交出思考过程时，提示底下跟着最新几句。改已等待文案不会清掉这几句。
+  const stopThinking = pickingToastId
+    ? window.electronAPI.agent.onExtractTaskThinking(({ text, anchorTaskStepId }) => {
+        if (anchorTaskStepId && anchorTaskStepId !== group.id) return
+        toast.updateDetail(pickingToastId, text)
+      })
     : undefined
   try {
     const newTabId = await terminalStore.forkToAssistantTab(currentTabId.value, {
@@ -375,6 +383,7 @@ const handleForkFromGroup = async (group: import('../composables').AgentTaskGrou
       await showAlert(t('common.error'), t('ai.fork.failed'))
     }
   } finally {
+    stopThinking?.()
     if (pickingTimer) clearInterval(pickingTimer)
     if (pickingToastId) toast.close(pickingToastId)
     forkingGroupIds.value.delete(group.id)

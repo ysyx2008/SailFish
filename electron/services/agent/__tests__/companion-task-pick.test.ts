@@ -37,7 +37,7 @@ vi.mock('../../im/im.service', () => ({
 import { AgentService } from '../index'
 import { updateLocale } from '../i18n'
 import { Conversation } from '../../conversation'
-import { CompanionSeedPicker } from '../../conversation/companion-seed'
+import { CompanionSeedPicker, createThinkingFeed, thinkingPreview } from '../../conversation/companion-seed'
 import type { CompanionPickCandidate } from '../../conversation/conversation'
 import type { AiMessage } from '../../ai.service'
 import type { AgentRecord, AgentStepRecord } from '@shared/types'
@@ -215,6 +215,45 @@ describe('Conversation 按挑选抽取', () => {
   })
 })
 
+describe('思考过程预览', () => {
+  it('只留末尾一段，不把 emoji 切成半个', () => {
+    expect(thinkingPreview('  短  ')).toBe('  短')
+    const emoji = '🙂'.repeat(200)
+    const preview = thinkingPreview(emoji)
+    expect(preview.startsWith('…')).toBe(true)
+    expect(preview.endsWith('🙂')).toBe(true)
+    expect(Array.from(preview)).toHaveLength(161)
+  })
+
+  it('第一次立刻交出，紧接着的增量先攒着，结束时再交一次', () => {
+    vi.useFakeTimers()
+    try {
+      const seen: string[] = []
+      const feed = createThinkingFeed(text => seen.push(text))
+      feed.push('甲')
+      feed.push('乙')
+      expect(seen).toEqual(['甲'])
+      vi.advanceTimersByTime(200)
+      expect(seen).toEqual(['甲', '甲乙'])
+      feed.push('丙')
+      feed.flush()
+      expect(seen.at(-1)).toBe('甲乙丙')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('想得很长时，提示里仍是末尾几句', () => {
+    const seen: string[] = []
+    const feed = createThinkingFeed(text => seen.push(text))
+    feed.push('头'.repeat(2000))
+    feed.push('尾巴')
+    feed.flush()
+    expect(seen.at(-1)?.startsWith('…')).toBe(true)
+    expect(seen.at(-1)?.endsWith('尾巴')).toBe(true)
+  })
+})
+
 describe('AgentService.extractTaskFromCompanion 的挑选', () => {
   /** 建一个带 historyService 的 service；联络记录由 sourceSteps 提供，磁盘记录为空 */
   function setup(chatWithTools?: ReturnType<typeof vi.fn>) {
@@ -295,6 +334,63 @@ describe('AgentService.extractTaskFromCompanion 的挑选', () => {
     expect(Array.isArray(tools)).toBe(true)
     // 挑了 2 和 3
     expect(saved[0].steps!.filter(s => s.type === 'user_task').map(s => s.content)).toEqual(['聊天气', '发票发给财务'])
+  })
+
+  it('要看思考过程时走流式，接在前缀后问，正文仍按序号解析', async () => {
+    const seen: string[] = []
+    const { service, saved, ai } = setup()
+    ai.chatWithToolsCollecting = vi.fn(async (_messages: unknown, _tools: unknown, _profile: unknown, opts: { onReasoning?: (delta: string) => void }) => {
+      opts.onReasoning?.('先对一下发票。')
+      opts.onReasoning?.('天气那段无关。')
+      return { content: '1,3' }
+    })
+    const companion = (service as any).createAssistantAgent('__companion__')
+    const prefix: AiMessage[] = [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: '查发票' },
+      { role: 'assistant', content: '答查发票' }
+    ]
+    companion.attachConversation(
+      Conversation.create(
+        { agentKey: '__companion__', terminalType: 'assistant' },
+        { id: 'live_think', createdAt: T0 },
+        { taskMemory: companion.taskMemory }
+      ),
+      { cachePrefix: prefix }
+    )
+
+    await service.extractTaskFromCompanion({
+      newAgentId: 'new-think',
+      anchorTaskStepId: 'ut_c',
+      sourceSteps: sourceSteps()
+    }, { onThinking: text => seen.push(text) })
+
+    expect(ai.chatWithToolsCollecting).toHaveBeenCalledTimes(1)
+    expect(ai.chatWithTools).toBeUndefined()
+    const [messages] = ai.chatWithToolsCollecting.mock.calls[0]
+    expect(messages).toHaveLength(prefix.length + 1)
+    expect(messages[prefix.length - 1]._cacheBreakpoint).toBe(true)
+    expect(seen.at(-1)).toContain('天气那段无关')
+    expect(seen.at(-1)).not.toContain('1,3')
+    expect(saved[0].steps!.filter(s => s.type === 'user_task').map(s => s.content)).toEqual(['查发票', '发票发给财务'])
+  })
+
+  it('只有思考、没有序号正文 → 回退时间窗口', async () => {
+    const { service, saved, ai } = setup()
+    ai.chatWithToolsCollecting = vi.fn().mockResolvedValue({
+      content: '<details>先想发票</details>',
+      thinkingOnly: true
+    })
+
+    const result = await service.extractTaskFromCompanion({
+      newAgentId: 'new-think-only',
+      anchorTaskStepId: 'ut_c',
+      sourceSteps: sourceSteps()
+    }, { onThinking: () => {} })
+
+    expect(result).not.toBeNull()
+    expect(saved[0].steps!.filter(s => s.type === 'user_task').map(s => s.content))
+      .toEqual(['查发票', '聊天气', '发票发给财务'])
   })
 
   it('回复对不上序号 → 回退时间窗口（三段都在 6h 内，全带）', async () => {

@@ -598,6 +598,8 @@ export interface ChatStreamOptions {
   onHttpStatus?: (status: number) => void
   /** 压测「必须调工具」轴用；默认 auto */
   toolChoice?: 'auto' | 'none' | 'required'
+  /** 思考过程的增量。只给调用方看，不混进对用户的正文流 */
+  onReasoning?: (delta: string) => void
 }
 
 import type { AiModelType, AiProfile, FetchedAiModel } from '@shared/types'
@@ -2292,6 +2294,46 @@ export class AiService {
   }
 
   /**
+   * 同一次带工具的请求，但走流式，好把思考过程的增量交出去。
+   * 返回的仍是落定后的正文；思考过程不进 content。
+   * 失败或被中止时返回 null。
+   */
+  chatWithToolsCollecting(
+    messages: AiMessage[],
+    tools: ToolDefinition[],
+    profileId?: string,
+    opts?: { maxOutputTokens?: number; toolChoice?: 'auto' | 'none'; onReasoning?: (delta: string) => void }
+  ): Promise<ChatWithToolsResult | null> {
+    return new Promise((resolve) => {
+      let settled = false
+      const finish = (result: ChatWithToolsResult | null) => {
+        if (settled) return
+        settled = true
+        resolve(result)
+      }
+      void this.chatWithToolsStream(
+        messages,
+        tools,
+        () => {},
+        () => {},
+        (result) => finish(result),
+        () => finish(null),
+        profileId,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          maxOutputTokens: opts?.maxOutputTokens,
+          toolChoice: opts?.toolChoice,
+          onReasoning: opts?.onReasoning,
+        }
+      ).catch(() => finish(null))
+    })
+  }
+
+  /**
    * 带工具的聊天（流式）
    * 用于 Agent 模式，支持 function calling 和流式输出
    * 支持 think 模型（如 DeepSeek-R1）的 reasoning_content 字段
@@ -2811,6 +2853,7 @@ export class AiService {
                   onChunk(`<details open>\n<summary>🤔 <strong>${t('ai.thinking_process')}</strong></summary>\n\n<blockquote>\n\n`)
                 }
                 reasoningContent += delta.reasoning_content
+                streamOptions?.onReasoning?.(delta.reasoning_content)
                 onChunk(delta.reasoning_content)
                 getAiDebugService().logResponseChunk(reqId, `[THINKING] ${delta.reasoning_content}`)
               }

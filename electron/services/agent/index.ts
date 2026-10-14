@@ -32,7 +32,7 @@ import { getDefaultShell, getLocalOS } from '../../utils/platform'
 import { SailFish } from './sailfish'
 import { TaskSupervisor } from './task-supervisor'
 import { ConversationStore, ConversationManager, Companion, Conversation } from '../conversation'
-import { CompanionSeedPicker } from '../conversation/companion-seed'
+import { CompanionSeedPicker, createThinkingFeed } from '../conversation/companion-seed'
 import { assessCommandRisk, analyzeCommand } from './risk-assessor'
 import type { CommandHandlingInfo } from './risk-assessor'
 import { setConfigService as setI18nConfigService } from './i18n'
@@ -555,6 +555,9 @@ export class AgentService {
     anchorTaskStepId?: string
     titleSuffix?: string
     sourceSteps?: import('../history.service').AgentRecord['steps']
+  }, hooks?: {
+    /** 挑选时模型正在想的最新几句。不写进新任务 */
+    onThinking?: (preview: string) => void
   }): Promise<{
     newSessionId: string
     newAgentId: string
@@ -580,7 +583,7 @@ export class AgentService {
     }
 
     // 挑选可能要等几秒（模型作答）；挑完再取一次联络最新记录，等待期间新进来的话不丢
-    const pickedTaskStepIds = await this.pickCompanionSegments(forkOpts)
+    const pickedTaskStepIds = await this.pickCompanionSegments(forkOpts, hooks?.onThinking)
     const forked = this._companion.extractTaskWithLiveOverlay(
       newSessionId,
       this.getAgent(COMPANION_AGENT_KEY)?.toRecordForFork() ?? undefined,
@@ -625,7 +628,8 @@ export class AgentService {
    * 返回 undefined：不必挑 / 挑选失败 / 回复对不上——调用方回退时间窗口。
    */
   private async pickCompanionSegments(
-    forkOpts: import('../conversation').CompanionExtractTaskOptions
+    forkOpts: import('../conversation').CompanionExtractTaskOptions,
+    onThinking?: (preview: string) => void
   ): Promise<string[] | undefined> {
     const companionAgent = this.getAgent(COMPANION_AGENT_KEY)
     const candidates = this._companion?.listPickCandidates(
@@ -637,17 +641,13 @@ export class AgentService {
     const picker = new CompanionSeedPicker(candidates)
     const instruction = picker.buildInstruction()
     // 只回几个序号，但不限输出额度：带思考的模型先想再答，限了会只想不答
-    const askOpts = { purpose: 'Companion task pick' }
+    const feed = onThinking ? createThinkingFeed(onThinking) : undefined
+    const askOpts = { purpose: 'Companion task pick', onThinking: feed?.push }
     try {
       const hot = !!companionAgent?.hasConversationPrefix()
       const reply = hot
         ? await companionAgent!.askOnConversationPrefix(instruction, askOpts)
-        : (await this.services.aiService?.chatWithTools?.(
-            [{ role: 'user', content: instruction }],
-            [],
-            undefined,
-            undefined
-          ))?.content ?? null
+        : await this.askPickWithoutPrefix(instruction, feed?.push)
       const ids = picker.parseReply(reply)
       if (!ids) {
         log.warn(`pickCompanionSegments: reply unusable, fall back to time window (hot=${hot})`)
@@ -658,7 +658,24 @@ export class AgentService {
     } catch (e) {
       log.warn('pickCompanionSegments failed, fall back to time window:', e)
       return undefined
+    } finally {
+      feed?.flush()
     }
+  }
+
+  /** 联络眼前没有可接的对话前缀时，只发各段简述。要看思考过程时走流式。 */
+  private async askPickWithoutPrefix(
+    instruction: string,
+    onThinking?: (delta: string) => void
+  ): Promise<string | null> {
+    const ai = this.services.aiService
+    if (!ai) return null
+    const messages: AiMessage[] = [{ role: 'user', content: instruction }]
+    const result = onThinking && ai.chatWithToolsCollecting
+      ? await ai.chatWithToolsCollecting(messages, [], undefined, { onReasoning: onThinking })
+      : await ai.chatWithTools?.(messages, [], undefined, undefined)
+    if (!result || result.thinkingOnly) return null
+    return result.content?.trim() || null
   }
 
   /**

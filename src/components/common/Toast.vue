@@ -38,7 +38,7 @@ function handleAction(e: Event, toast: Toast) {
           v-for="t in toasts"
           :key="t.id"
           class="toast-item"
-          :class="[t.type, { clickable: !!t.onClick, 'has-progress': t.progress }]"
+          :class="[t.type, { clickable: !!t.onClick, 'has-progress': t.progress, 'has-detail': !!t.detail }]"
           @click="handleClick(t)"
         >
           <span class="toast-icon" :class="getIcon(t.type)">
@@ -49,7 +49,10 @@ function handleAction(e: Event, toast: Toast) {
             <Info v-else :size="18" />
           </span>
 
-          <span class="toast-message">{{ t.message }}</span>
+          <span class="toast-copy">
+            <span class="toast-message">{{ t.message }}</span>
+            <span v-if="t.detail" class="toast-detail">{{ t.detail }}</span>
+          </span>
 
           <button
             v-if="t.action && t.onClick"
@@ -114,6 +117,7 @@ function handleAction(e: Event, toast: Toast) {
 .toast-item.info { border-left-color: var(--accent-primary); }
 .toast-item.proactive { border-left-color: var(--accent-primary); }
 .toast-item.has-progress { padding-bottom: 16px; }
+.toast-item.has-detail { align-items: flex-start; }
 
 .toast-progress {
   position: absolute;
@@ -147,13 +151,31 @@ function handleAction(e: Event, toast: Toast) {
 .toast-icon.info { color: var(--accent-primary); }
 .toast-icon.proactive { color: var(--accent-primary); }
 
-.toast-message {
+.toast-copy {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toast-message {
   font-size: 13px;
   color: var(--text-primary);
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.toast-detail {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
