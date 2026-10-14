@@ -11,7 +11,7 @@ export interface ShellNavEntry extends ConversationSurfaceState {
 
 function entryKey(entry: ShellNavEntry): string {
   if (entry.smartPatrol) return 'patrol'
-  if (entry.todosActive) return 'todos'
+  if (entry.secretaryPanel) return `panel:${entry.secretaryPanel}`
   if (entry.activeTabId) return `tab:${entry.activeTabId}`
   if (entry.terminalPlaceActive) return 'terminal-empty'
   if (entry.hubFocusedAssistantTabId) return `hub:${entry.hubFocusedAssistantTabId}`
@@ -20,7 +20,7 @@ function entryKey(entry: ShellNavEntry): string {
 
 /**
  * 主区落点的后退 / 前进。
- * 记录用户走过的会话、待办、终端、巡检；侧栏开合不进栈。
+ * 记录用户走过的会话、秘书面板、终端、巡检；侧栏开合不进栈。
  */
 export function useShellNavigation(smartPatrol: Ref<boolean>) {
   const terminalStore = useTerminalStore()
@@ -34,7 +34,7 @@ export function useShellNavigation(smartPatrol: Ref<boolean>) {
     return {
       activeTabId: surface.activeTabId,
       hubFocusedAssistantTabId: surface.hubFocusedAssistantTabId,
-      todosActive: !!surface.todosActive,
+      secretaryPanel: surface.secretaryPanel ?? null,
       terminalPlaceActive: !!surface.terminalPlaceActive,
       smartPatrol: smartPatrol.value,
     }
@@ -48,7 +48,7 @@ export function useShellNavigation(smartPatrol: Ref<boolean>) {
     if (
       entry.hubFocusedAssistantTabId &&
       !entry.activeTabId &&
-      !entry.todosActive &&
+      !entry.secretaryPanel &&
       !entry.terminalPlaceActive &&
       !terminalStore.tabs.some(t => t.id === entry.hubFocusedAssistantTabId)
     ) {

@@ -319,8 +319,8 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
   // 侧栏 ESC 关闭需让路给上层模态（如主机凭证弹窗），否则会与全局 listener 顺序叠加导致侧栏被误关
   if (event.key === 'Escape' && showSidebar.value) {
     if (document.querySelector('.credential-overlay, .session-modal')) return
-    // 待办面自己分层处理 ESC（菜单 → 详情 → 离开），不要抢先关主机侧栏
-    if (terminalStore.todosActive) return
+    // 秘书面板自己分层处理 ESC（菜单 → 详情 → 离开），不要抢先关主机侧栏
+    if (terminalStore.secretaryPanel) return
     showSidebar.value = false
     return
   }
@@ -454,8 +454,8 @@ const handleCloseShortcut = async () => {
       // 终端 tab、已提升助手 tab、远程助手 tab：只关 tab，不关窗口
       await terminalStore.closeTab(activeTab.id)
     }
-  } else if (terminalStore.todosActive) {
-    // 待办固定面与联络一致：Cmd+W 退回欢迎页，不关窗口
+  } else if (terminalStore.secretaryPanel) {
+    // 秘书面板与联络一致：Cmd+W 退回欢迎页，不关窗口
     terminalStore.goToHome()
   } else if (terminalStore.terminalPlaceActive) {
     // 空终端页：与待办一样退回欢迎页，不关窗口
@@ -1191,25 +1191,25 @@ const showTerminalEmpty = computed(() =>
 const showTerminalTabStrip = computed(() =>
   shellPlace.value === 'terminal' && terminalStore.terminalTabs.length > 0
 )
-// 是否显示欢迎页：任务区且没有任何 surface tab、且非待办/巡检/空终端页
+// 是否显示欢迎页：任务区且没有任何 surface tab、且非秘书面板/巡检/空终端页
 const showWelcomePage = computed(() =>
   !showSmartPatrol.value &&
-  !terminalStore.todosActive &&
+  !terminalStore.secretaryPanel &&
   !showTerminalEmpty.value &&
   !activeSurfaceTabId.value
 )
 /**
- * 主区要不要壳层顶条：欢迎页 / 空终端 / 待办自己没有第一排，需要一条透明区兜住窗口拖拽。
+ * 主区要不要壳层顶条：欢迎页 / 空终端 / 秘书面板自己没有第一排，需要一条透明区兜住窗口拖拽。
  * 终端页 / 助手 / 巡检各栏自己的顶栏贴窗口上沿，窗口按钮浮在第一排右侧，由该排让位。
  */
 const needsShellTop = computed(() =>
   showWelcomePage.value ||
   showTerminalEmpty.value ||
-  terminalStore.todosActive
+  !!terminalStore.secretaryPanel
 )
-/** 主工作区显示某个 tab 工作台（欢迎页 / 智能巡检 / 待办 / 空终端时隐藏，但 tab 组件保持挂载） */
+/** 主工作区显示某个 tab 工作台（欢迎页 / 智能巡检 / 秘书面板 / 空终端时隐藏，但 tab 组件保持挂载） */
 const showTabWorkbench = computed(
-  () => !showSmartPatrol.value && !terminalStore.todosActive && !showWelcomePage.value && !showTerminalEmpty.value
+  () => !showSmartPatrol.value && !terminalStore.secretaryPanel && !showWelcomePage.value && !showTerminalEmpty.value
 )
 // 主导航侧栏：未收起时始终在
 const showRecallSidebar = computed(() => !recallSidebarCollapsed.value)
@@ -1284,7 +1284,7 @@ const openSessionManagerFromWelcome = () => {
 
 // 从欢迎页打开智能巡检
 const openSmartPatrolFromWelcome = () => {
-  terminalStore.todosActive = false
+  terminalStore.closeSecretaryPanel()
   showSmartPatrol.value = true
 }
 
@@ -1335,8 +1335,8 @@ const { canGoBack, canGoForward, goBack, goForward } = useShellNavigation(showSm
 const navBackShortcut = computed(() => formatAccelerator(configStore.keyboardShortcuts.navBack))
 const navForwardShortcut = computed(() => formatAccelerator(configStore.keyboardShortcuts.navForward))
 
-/** 离开待办：回到刚离开的界面；没有历史则回任务区 */
-function closeTodosPanel() {
+/** 离开秘书面板：回到刚离开的界面；没有历史则回任务区 */
+function closeSecretaryPanel() {
   if (canGoBack.value) {
     goBack()
     return
@@ -1747,14 +1747,14 @@ onUnmounted(() => {
           @open-watches="openWatchesFromWelcome"
         />
         <SmartPatrolPage
-          v-if="showSmartPatrol && !terminalStore.todosActive"
+          v-if="showSmartPatrol && !terminalStore.secretaryPanel"
           class="main-surface"
           @back="backFromSmartPatrol"
         />
         <TodoPanel
           v-if="terminalStore.todosActive"
           class="main-surface"
-          @close="closeTodosPanel"
+          @close="closeSecretaryPanel"
         />
         <!-- 有 tab 即挂载工作台；外层原生 div + v-show 控制显隐（component 上 v-show 的 scoped 样式不可靠） -->
         <div

@@ -89,7 +89,7 @@ describe('isAssistantConversationSurfaceVisible', () => {
     expect(isAssistantConversationSurfaceVisible('hub-tab', {
       activeTabId: '',
       hubFocusedAssistantTabId: 'hub-tab',
-      todosActive: true,
+      secretaryPanel: 'todos',
     })).toBe(false)
   })
 

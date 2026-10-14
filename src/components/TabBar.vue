@@ -372,9 +372,9 @@ const tabAttentionTooltip = (tabId: string): string | undefined => {
   return formatAgentAttentionTooltip(terminalStore.getTabAgentUiMeta(tabId), t)
 }
 
-/** 任务区激活：无 TabBar 可见 tab、且非待办面（含欢迎页与 Hub 侧栏焦点会话） */
+/** 任务区激活：无 TabBar 可见 tab、且没开秘书面板（含欢迎页与 Hub 侧栏焦点会话） */
 const isTasksHomeActive = computed(
-  () => !terminalStore.activeTabId && !terminalStore.todosActive
+  () => !terminalStore.activeTabId && !terminalStore.secretaryPanel
 )
 
 const tasksAreaAttentionTooltip = computed(() => {

@@ -42,6 +42,7 @@ import {
   hasHubTasksAreaAttention,
   toHistoryConversationMeta,
   type ConversationSurfaceState,
+  type SecretaryPanel,
   type HistoryConversationMeta,
   type HistoryConversationTabStatus,
   type TabAgentUiMeta,
@@ -354,13 +355,14 @@ export const useTerminalStore = defineStore('terminal', () => {
   const tabs = ref<TerminalTab[]>([])
   const activeTabId = ref<string>('')
   /**
-   * TabBar 固定面：「待办」伪 Tab（非 Agent 会话）。
-   * 与 activeTabId / Hub 焦点互斥——打开待办时清空二者。
+   * 秘书菜单打开的面板（待办等，非 Agent 会话），占主区。
+   * 与 activeTabId 互斥——打开面板时清空它；Hub 焦点保留以便切回。
    */
-  const todosActive = ref(false)
-  // 激活真实 tab 时自动退出待办面（覆盖 createTab 等未走 setActiveTab 的路径）
+  const secretaryPanel = ref<SecretaryPanel | null>(null)
+  const todosActive = computed(() => secretaryPanel.value === 'todos')
+  // 激活真实 tab 时自动退出面板（覆盖 createTab 等未走 setActiveTab 的路径）
   watch(activeTabId, (id) => {
-    if (id) todosActive.value = false
+    if (id) secretaryPanel.value = null
   })
   /**
    * Hub（首页视图）主区当前聚焦的本地助手会话 tab。
@@ -1496,7 +1498,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   function setActiveTab(tabId: string): void {
     const tab = tabs.value.find(t => t.id === tabId)
     if (!tab) return
-    todosActive.value = false
+    secretaryPanel.value = null
     activeTabId.value = tabId
     terminalPlaceActive.value = false
     if (isLocalOrSshTab(tab)) lastTerminalTabId.value = tabId
@@ -1570,7 +1572,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
     tab.lastFocusedAt = Date.now()
     hubFocusedAssistantTabId.value = tabId
-    todosActive.value = false
+    secretaryPanel.value = null
     activeTabId.value = ''
     terminalPlaceActive.value = false
     setAgentCompletedUnseen(tabId, false)
@@ -1600,7 +1602,7 @@ export const useTerminalStore = defineStore('terminal', () => {
 
   /** 回到首页欢迎页（保留已打开的 tab，仅切换视图，并清除 Hub 焦点会话） */
   function goToHome(): void {
-    todosActive.value = false
+    secretaryPanel.value = null
     activeTabId.value = ''
     hubFocusedAssistantTabId.value = ''
     terminalPlaceActive.value = false
@@ -1610,8 +1612,8 @@ export const useTerminalStore = defineStore('terminal', () => {
   function focusTaskArea(): void {
     const leavingTerminalPlace = terminalPlaceActive.value
     terminalPlaceActive.value = false
-    if (!activeTabId.value && !todosActive.value && !leavingTerminalPlace) return
-    todosActive.value = false
+    if (!activeTabId.value && !secretaryPanel.value && !leavingTerminalPlace) return
+    secretaryPanel.value = null
     activeTabId.value = ''
     const hubId = hubFocusedAssistantTabId.value
     if (!hubId) return
@@ -1626,9 +1628,14 @@ export const useTerminalStore = defineStore('terminal', () => {
 
   /** 打开待办固定面（与联络并列的伪 Tab，非 Agent 会话）；保留 Hub 焦点，切回任务区可恢复 */
   function openTodos(): void {
-    todosActive.value = true
+    secretaryPanel.value = 'todos'
     activeTabId.value = ''
     terminalPlaceActive.value = false
+  }
+
+  /** 关掉秘书面板，不改别的落点（打开巡检等整页时用） */
+  function closeSecretaryPanel(): void {
+    secretaryPanel.value = null
   }
 
   const terminalTabs = computed(() => tabs.value.filter(isLocalOrSshTab))
@@ -1646,7 +1653,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   const conversationSurface = computed<ConversationSurfaceState>(() => ({
     activeTabId: activeTabId.value,
     hubFocusedAssistantTabId: hubFocusedAssistantTabId.value,
-    todosActive: todosActive.value,
+    secretaryPanel: secretaryPanel.value,
     terminalPlaceActive: terminalPlaceActive.value,
   }))
 
@@ -1667,13 +1674,13 @@ export const useTerminalStore = defineStore('terminal', () => {
       surface.hubFocusedAssistantTabId &&
       !nextHub &&
       !surface.activeTabId &&
-      !surface.todosActive &&
+      !surface.secretaryPanel &&
       !surface.terminalPlaceActive
     ) {
       return false
     }
 
-    todosActive.value = !!surface.todosActive
+    secretaryPanel.value = surface.secretaryPanel ?? null
     terminalPlaceActive.value = !!surface.terminalPlaceActive && !nextActive
     activeTabId.value = nextActive ? nextActive.id : ''
     hubFocusedAssistantTabId.value = nextHub ? nextHub.id : ''
@@ -1682,7 +1689,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       if (isLocalOrSshTab(nextActive)) lastTerminalTabId.value = nextActive.id
       setAgentCompletedUnseen(nextActive.id, false)
       if (nextActive.type === 'assistant') requestAssistantComposerFocus(nextActive.id)
-    } else if (nextHub && !todosActive.value && !terminalPlaceActive.value) {
+    } else if (nextHub && !secretaryPanel.value && !terminalPlaceActive.value) {
       nextHub.lastFocusedAt = Date.now()
       setAgentCompletedUnseen(nextHub.id, false)
       requestAssistantComposerFocus(nextHub.id)
@@ -1692,7 +1699,7 @@ export const useTerminalStore = defineStore('terminal', () => {
 
   /** 点侧栏「终端」：回到上次本机 / SSH 工作台；一个都没有才进空页 */
   function focusTerminalPlace(): void {
-    todosActive.value = false
+    secretaryPanel.value = null
     const last = lastTerminalTabId.value
       ? tabs.value.find(t => t.id === lastTerminalTabId.value && isLocalOrSshTab(t))
       : undefined
@@ -3965,7 +3972,7 @@ export const useTerminalStore = defineStore('terminal', () => {
 
   /** Hub 任务区入口：用户在其他 Tab / 待办面时，汇总侧栏会话的 attention（完成/待确认） */
   const hasTasksAreaAttention = computed(() =>
-    hasHubTasksAreaAttention(tabs.value, activeTabId.value, COMPANION_TAB_AGENT_ID, todosActive.value)
+    hasHubTasksAreaAttention(tabs.value, activeTabId.value, COMPANION_TAB_AGENT_ID, !!secretaryPanel.value)
   )
 
   const hasTerminalPlaceAttention = computed(() =>
@@ -4048,6 +4055,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   return {
     tabs,
     activeTabId,
+    secretaryPanel,
     todosActive,
     activeTab,
     tabCount,
@@ -4092,6 +4100,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     conversationSurface,
     restoreConversationSurface,
     openTodos,
+    closeSecretaryPanel,
     hubFocusedAssistantTabId,
     hubFocusedTab,
     focusHubConversation,
