@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import type { AiProfile } from '@shared/types'
 import {
   addAiProfileConfig,
+  aiProfileStreamHint,
   deleteAiProfileConfig,
   executeAiProfileAction,
   formatAiProfilesDetail,
@@ -59,6 +60,49 @@ describe('formatAiProfiles', () => {
     const store = makeStore()
     expect(formatAiProfilesSummary(store)).toContain('config_ai_profile')
     expect(formatAiProfilesSummary(store)).not.toMatch(/\[0 项\]/)
+  })
+})
+
+describe('aiProfileStreamHint', () => {
+  const lookup = (id: string) =>
+    id === 'ac525902-c3b4-4da2-8435-1e0675ec1344' ? 'Qwen3.8-Flash-Next' : undefined
+
+  it('update that only names the id shows the stored display name', () => {
+    expect(aiProfileStreamHint({
+      action: 'update',
+      profileId: 'ac525902-c3b4-4da2-8435-1e0675ec1344',
+      modelType: 'vision',
+    }, lookup)).toBe('Qwen3.8-Flash-Next')
+  })
+
+  it('update that renames shows the new name', () => {
+    expect(aiProfileStreamHint({
+      action: 'update',
+      profileId: 'ac525902-c3b4-4da2-8435-1e0675ec1344',
+      name: '新名字',
+    }, lookup)).toBe('新名字')
+  })
+
+  it('delete shows the stored name, not the id', () => {
+    expect(aiProfileStreamHint({
+      action: 'delete',
+      profileId: 'ac525902-c3b4-4da2-8435-1e0675ec1344',
+    }, lookup)).toBe('Qwen3.8-Flash-Next')
+  })
+
+  it('unknown or still-streaming id is omitted', () => {
+    expect(aiProfileStreamHint({
+      action: 'update',
+      profileId: 'ac525902',
+    }, lookup)).toBe('')
+  })
+
+  it('add uses the name being written', () => {
+    expect(aiProfileStreamHint({
+      action: 'add',
+      name: 'DeepSeek',
+      id: 'generated-id',
+    }, lookup)).toBe('DeepSeek')
   })
 })
 

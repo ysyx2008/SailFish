@@ -6,6 +6,7 @@ import {
   executeSshSessionAction,
   formatSshSessionsDetail,
   formatSshSessionsSummary,
+  sshSessionStreamHint,
   updateSshSessionConfig,
   type SshSessionStore,
 } from '../ssh-sessions'
@@ -32,6 +33,47 @@ const sample = (over: Partial<SshSession> = {}): SshSession => ({
   authType: 'password',
   password: 'secret-should-not-leak',
   ...over,
+})
+
+describe('sshSessionStreamHint', () => {
+  const lookup = (id: string) => (id === 's1' ? '公司跳板机' : undefined)
+
+  it('update that only names the id shows the stored name', () => {
+    expect(sshSessionStreamHint({
+      action: 'update',
+      sessionId: 's1',
+      port: 2222,
+    }, lookup)).toBe('公司跳板机')
+  })
+
+  it('update that renames shows the new name', () => {
+    expect(sshSessionStreamHint({
+      action: 'update',
+      sessionId: 's1',
+      name: '新名字',
+    }, lookup)).toBe('新名字')
+  })
+
+  it('delete shows the stored name, not the id', () => {
+    expect(sshSessionStreamHint({
+      action: 'delete',
+      sessionId: 's1',
+    }, lookup)).toBe('公司跳板机')
+  })
+
+  it('add without a name shows the address', () => {
+    expect(sshSessionStreamHint({
+      action: 'add',
+      host: '10.0.0.5',
+    }, lookup)).toBe('10.0.0.5')
+  })
+
+  it('unknown id is omitted', () => {
+    expect(sshSessionStreamHint({
+      action: 'update',
+      sessionId: 'missing',
+    }, lookup)).toBe('')
+  })
 })
 
 describe('formatSshSessions', () => {

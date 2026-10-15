@@ -77,6 +77,27 @@ function argStr(args: Record<string, unknown>, key: string): string {
   return typeof v === 'string' ? v.trim() : ''
 }
 
+/**
+ * 步骤标题里给用户看的那一段。
+ * 改名时用即将写入的名字；只按 id 操作时查出当前名字。
+ * 查不到就不附 id——用户认的是名字。
+ */
+export function aiProfileStreamHint(
+  args: Record<string, unknown>,
+  lookupName: (id: string) => string | undefined,
+): string {
+  const action = typeof args.action === 'string' ? args.action : ''
+  const givenName = argStr(args, 'name')
+  if (givenName && action !== 'delete') return givenName
+
+  const id = argStr(args, 'profileId') || argStr(args, 'id')
+  if (id) {
+    const resolved = lookupName(id)?.trim()
+    if (resolved) return resolved
+  }
+  return action === 'delete' ? givenName : ''
+}
+
 function argNum(args: Record<string, unknown>, key: string): number | undefined {
   const v = args[key]
   if (v === undefined || v === null || v === '') return undefined

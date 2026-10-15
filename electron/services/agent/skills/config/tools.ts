@@ -4,6 +4,19 @@
 
 import type { ToolDefinitionWithMeta } from '../../tools'
 import { t } from '../../i18n'
+import { getConfigService } from '../../../config.service'
+import { aiProfileStreamHint } from './ai-profiles'
+import { sshSessionStreamHint } from './ssh-sessions'
+
+function lookupAiProfileName(id: string): string | undefined {
+  try {
+    const profile = getConfigService().getAiProfiles().find(p => p.id === id)
+    const label = profile?.name?.trim() || profile?.model?.trim()
+    return label || undefined
+  } catch {
+    return undefined
+  }
+}
 
 function formatAiProfileStreamTitle(args: Record<string, unknown>): string {
   const action = typeof args.action === 'string' ? args.action : ''
@@ -14,14 +27,23 @@ function formatAiProfileStreamTitle(args: Record<string, unknown>): string {
       : action === 'delete'
         ? 'config.ai_profile.delete'
         : 'config.ai_profile.manage'
-  const hintKeys = action === 'delete' ? ['profileId', 'id'] : ['name', 'profileId', 'id']
-  const hint = hintKeys.map(k => args[k]).find(v => typeof v === 'string' && v.trim())
+  const hint = aiProfileStreamHint(args, lookupAiProfileName)
   return hint ? `${t(key)}: ${hint}` : t(key)
 }
 
 function formatWebSearchStreamTitle(args: Record<string, unknown>): string {
   const provider = typeof args.provider === 'string' ? args.provider.trim() : ''
   return provider ? `${t('config.web_search.manage')}: ${provider}` : t('config.web_search.manage')
+}
+
+function lookupSshSessionLabel(id: string): string | undefined {
+  try {
+    const session = getConfigService().getSshSessions().find(s => s.id === id)
+    const label = session?.name?.trim() || session?.host?.trim()
+    return label || undefined
+  } catch {
+    return undefined
+  }
 }
 
 function formatSshSessionStreamTitle(args: Record<string, unknown>): string {
@@ -33,8 +55,7 @@ function formatSshSessionStreamTitle(args: Record<string, unknown>): string {
       : action === 'delete'
         ? 'config.ssh_session.delete'
         : 'config.ssh_session.manage'
-  const hintKeys = ['name', 'host', 'sessionId', 'id']
-  const hint = hintKeys.map(k => args[k]).find(v => typeof v === 'string' && v.trim())
+  const hint = sshSessionStreamHint(args, lookupSshSessionLabel)
   return hint ? `${t(key)}: ${hint}` : t(key)
 }
 
