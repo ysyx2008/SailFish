@@ -43,8 +43,6 @@ export interface BenchCaseResult {
   autoHit: boolean
   /** 本轮真实注入的字符数 */
   autoChars: number
-  /** 候选里有期望文档，但整轮召回被分数下限拦掉了 */
-  autoSuppressed: boolean
   /** expectText 是否出现在命中片段里；未标注期望段落时为 null */
   sectionHit: boolean | null
 }
@@ -69,11 +67,21 @@ export interface BenchMetrics {
   sectionAccuracy: number | null
 }
 
+/** 跑这次基线时线上召回用的门槛。改门槛前后对照全靠它，必须随报告存档 */
+export interface BenchRecallParams {
+  autoLimit: number
+  autoSimilarity: number
+  minRrfScore: number
+  /** 主动检索口看前几名 */
+  manualTopN: number
+}
+
 export interface BenchReport {
   name: string
   runAt: string
   /** 换嵌入模型后分数不可比，必须随报告存档 */
   embedding: { mode: string; model: string }
+  recallParams: BenchRecallParams
   corpusCount: number
   /** 参与评测的问题数（不含被否决与未采纳的） */
   caseCount: number

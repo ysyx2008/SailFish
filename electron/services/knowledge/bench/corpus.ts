@@ -9,6 +9,13 @@ import type { DocumentParserService } from '../../document-parser.service'
 import type { KnowledgeService } from '../index'
 import type { BenchCorpusEntry } from './types'
 
+/**
+ * 基线自己入库的语料都打这个标记。
+ * 中途被 Ctrl-C 打断时 finally 来不及跑，语料会留在库里；没有标记的话，
+ * 下次跑会把它当成「用户原本就有的」而永远不敢删。
+ */
+export const BENCH_TAG = '__recall_bench__'
+
 export class BenchCorpus {
   private readonly docIdByEntry = new Map<string, string>()
   private readonly addedDocIds: string[] = []
@@ -49,7 +56,7 @@ export class BenchCorpus {
         this.docIdByEntry.set(entry.id, duplicate.existingDoc.id)
         this.reusedCount++
       } else {
-        const docId = await this.knowledge.addDocument(parsed, {})
+        const docId = await this.knowledge.addDocument(parsed, { tags: [BENCH_TAG] })
         this.docIdByEntry.set(entry.id, docId)
         this.addedDocIds.push(docId)
       }
@@ -74,6 +81,19 @@ export class BenchCorpus {
       if (await this.knowledge.removeDocument(docId)) removed++
     }
     this.addedDocIds.length = 0
+    return removed
+  }
+
+  /** 清掉上次中断（或 --keep）留在库里的基线语料；用户自己的文档不带这个标记，不受影响 */
+  async purgeStale(): Promise<number> {
+    const stale = this.knowledge
+      .getDocuments()
+      .filter(doc => Array.isArray(doc.tags) && doc.tags.includes(BENCH_TAG))
+
+    let removed = 0
+    for (const doc of stale) {
+      if (await this.knowledge.removeDocument(doc.id)) removed++
+    }
     return removed
   }
 }

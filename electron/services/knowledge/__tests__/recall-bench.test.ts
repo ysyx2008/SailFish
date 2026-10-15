@@ -8,7 +8,8 @@ import { describe, it, expect } from 'vitest'
 import { RecallBench } from '../bench/recall-bench'
 import { QuestionSetStore } from '../bench/question-set'
 import { QuestionGenerator } from '../bench/question-generator'
-import type { BenchCaseResult, BenchNoiseResult, BenchQuestionSet } from '../bench/types'
+import { BenchReportFormatter } from '../bench/report'
+import type { BenchCaseResult, BenchNoiseResult, BenchQuestionSet, BenchReport } from '../bench/types'
 
 function caseResult(partial: Partial<BenchCaseResult>): BenchCaseResult {
   return {
@@ -18,8 +19,29 @@ function caseResult(partial: Partial<BenchCaseResult>): BenchCaseResult {
     manualRank: null,
     autoHit: false,
     autoChars: 0,
-    autoSuppressed: false,
     sectionHit: null,
+    ...partial
+  }
+}
+
+function report(partial: Partial<BenchReport>): BenchReport {
+  return {
+    name: 'r',
+    runAt: new Date(0).toISOString(),
+    embedding: { mode: 'local', model: 'auto' },
+    recallParams: { autoLimit: 5, autoSimilarity: 0.6, minRrfScore: 0.02, manualTopN: 5 },
+    corpusCount: 1,
+    caseCount: 1,
+    metrics: {
+      manualTop1: 0,
+      manualTop5: 0,
+      autoHit: 0,
+      autoAvgChars: 0,
+      noiseRecall: 0,
+      sectionAccuracy: null
+    },
+    cases: [],
+    noise: [],
     ...partial
   }
 }
@@ -37,6 +59,14 @@ describe('RecallBench.computeMetrics', () => {
     )
     expect(m.manualTop1).toBeCloseTo(0.5)
     expect(m.manualTop5).toBeCloseTo(0.75)
+  })
+
+  it('top-5 只认前五名：有人把召回条数调大也不会让它静默虚涨', () => {
+    const m = RecallBench.computeMetrics(
+      [caseResult({ manualRank: 5 }), caseResult({ manualRank: 6 })],
+      []
+    )
+    expect(m.manualTop5).toBeCloseTo(0.5)
   })
 
   it('平均篇幅把没命中的轮次也算进去——它代表真实预算占用', () => {
@@ -180,6 +210,33 @@ describe('QuestionGenerator.parseJsonArray', () => {
     const reply = '[{"question":"他说\\"要备份\\"吗","expectText":"第一节"}]'
     const items = QuestionGenerator.parseJsonArray<{ question: string }>(reply)
     expect(items[0].question).toBe('他说"要备份"吗')
+  })
+
+  it('数组后面还跟着含方括号的说明时，不会误判成截断', () => {
+    expect(QuestionGenerator.parseJsonArray('[]\n以上按 [重要性] 排序')).toEqual([])
+    const reply = '[{"question":"a"}]\n备注：见 [第二节]'
+    expect(QuestionGenerator.parseJsonArray(reply)).toHaveLength(1)
+  })
+})
+
+describe('BenchReportFormatter.describeParamChanges', () => {
+  it('门槛没动时不报变化', () => {
+    expect(BenchReportFormatter.describeParamChanges(report({}), report({}))).toEqual([])
+  })
+
+  it('门槛动了要说清动的是哪个数——这正是对比的目的', () => {
+    const after = report({
+      recallParams: { autoLimit: 8, autoSimilarity: 0.45, minRrfScore: 0.02, manualTopN: 5 }
+    })
+    const changes = BenchReportFormatter.describeParamChanges(report({}), after)
+    expect(changes.join(' ')).toContain('0.6 → 0.45')
+    expect(changes.join(' ')).toContain('条数 5 → 8')
+  })
+
+  it('老报告没记门槛时说不知道，不冒充「没变」', () => {
+    const old = report({})
+    delete (old as { recallParams?: unknown }).recallParams
+    expect(BenchReportFormatter.describeParamChanges(old, report({}))[0]).toContain('无法判断')
   })
 })
 

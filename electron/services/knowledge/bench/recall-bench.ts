@@ -24,6 +24,13 @@ import type {
   RunBenchOptions
 } from './types'
 
+/**
+ * 主动检索口看前几名。
+ * 刻意不复用 AUTO_RECALL_LIMIT：那是自动到场的条数，有人把它调到 10 的时候，
+ * 第 6 到 10 名会被算成 top-5 命中，指标就静默虚涨了。
+ */
+const MANUAL_TOP_N = 5
+
 export class RecallBench {
   constructor(
     private readonly knowledge: KnowledgeService,
@@ -37,6 +44,11 @@ export class RecallBench {
     }
 
     const corpus = new BenchCorpus(this.knowledge, this.parser)
+
+    const purged = await corpus.purgeStale()
+    if (purged > 0) {
+      options.onProgress?.(purged, purged, `清掉上次残留的基线语料 ${purged} 份`)
+    }
 
     try {
       await corpus.ensure(
@@ -66,6 +78,12 @@ export class RecallBench {
         name: set.name,
         runAt: new Date().toISOString(),
         embedding: { mode: settings.embeddingMode, model: settings.localModel },
+        recallParams: {
+          autoLimit: AUTO_RECALL_LIMIT,
+          autoSimilarity: AUTO_RECALL_SIMILARITY,
+          minRrfScore: MIN_RRF_SCORE,
+          manualTopN: MANUAL_TOP_N
+        },
         corpusCount: set.corpus.length,
         caseCount: caseResults.length,
         metrics: RecallBench.computeMetrics(caseResults, noise),
@@ -83,17 +101,15 @@ export class RecallBench {
     c: BenchQuestionSet['cases'][number],
     expectedDocId: string
   ): Promise<BenchCaseResult> {
-    // 主动检索口：不设相似度门槛，看期望文档排第几
-    const manual = await this.knowledge.search(c.question, { limit: AUTO_RECALL_LIMIT })
+    // 主动检索口：用默认门槛，看期望文档排第几
+    const manual = await this.knowledge.search(c.question, { limit: MANUAL_TOP_N })
     const manualIndex = manual.findIndex(r => r.docId === expectedDocId)
 
-    // 自动到场口：复刻线上实参，再按分数下限过一遍
+    // 自动到场口：复刻线上那条路的实参
     const autoCandidates = await this.knowledge.search(c.question, {
       limit: AUTO_RECALL_LIMIT,
       similarity: AUTO_RECALL_SIMILARITY
     })
-    const survived = autoCandidates.filter(r => r.score >= MIN_RRF_SCORE)
-    const expectedSurvived = survived.some(r => r.docId === expectedDocId)
     const expectedInCandidates = autoCandidates.some(r => r.docId === expectedDocId)
 
     // 真实注入的那段文本，用来量篇幅占用
@@ -104,9 +120,8 @@ export class RecallBench {
       question: c.question,
       expectDocId: c.expectDocId,
       manualRank: manualIndex >= 0 ? manualIndex + 1 : null,
-      autoHit: expectedSurvived && context.length > 0,
+      autoHit: expectedInCandidates && context.length > 0,
       autoChars: context.length,
-      autoSuppressed: expectedInCandidates && !expectedSurvived,
       sectionHit: c.expectText
         ? RecallBench.hitsSection(manual, expectedDocId, c.expectText)
         : null
@@ -131,7 +146,10 @@ export class RecallBench {
 
     return {
       manualTop1: ratio(cases.filter(c => c.manualRank === 1).length, cases.length),
-      manualTop5: ratio(cases.filter(c => c.manualRank !== null).length, cases.length),
+      manualTop5: ratio(
+        cases.filter(c => c.manualRank !== null && c.manualRank <= MANUAL_TOP_N).length,
+        cases.length
+      ),
       autoHit: ratio(cases.filter(c => c.autoHit).length, cases.length),
       autoAvgChars:
         cases.length === 0

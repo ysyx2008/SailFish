@@ -533,17 +533,26 @@ async function knowledgeBench(args: string[]): Promise<void> {
     onProgress: benchProgress(!flags.json)
   })
 
+  if (flags.json) {
+    printJSON(report)
+  } else {
+    console.log(BenchReportFormatter.toText(report))
+  }
+
+  // 一条都没搜到，最常见的原因是嵌入模型没就绪。这种全 0 的报告不能当基线存档，
+  // 否则日后拿它作对照，什么改动都显得是巨大进步
+  if (report.caseCount > 0 && report.metrics.manualTop5 === 0) {
+    console.error(
+      '\n期望命中的文档在主动检索里全部缺席。通常是嵌入模型没就绪，或问题集与语料不匹配——这种数字不能当基线，已跳过存档。'
+    )
+    process.exit(1)
+  }
+
   if (typeof flags.save === 'string') {
     const savePath = path.resolve(flags.save)
     fs.mkdirSync(path.dirname(savePath), { recursive: true })
     fs.writeFileSync(savePath, JSON.stringify(report, null, 2) + '\n', 'utf-8')
     process.stderr.write(`报告已存档：${savePath}\n`)
-  }
-
-  if (flags.json) {
-    printJSON(report)
-  } else {
-    console.log(BenchReportFormatter.toText(report))
   }
 }
 
@@ -552,8 +561,9 @@ async function knowledgeBenchGen(args: string[]): Promise<void> {
   const fs = require('fs') as typeof import('fs')
   const path = require('path') as typeof import('path')
 
-  if (positional.length === 0) {
-    console.error(`Usage: ${cliName()} knowledge:bench:gen <file-or-dir...> [--out <path>] [--per-doc 8] [--noise 5] [--name <name>]`)
+  if (positional.length === 0 || typeof flags.out !== 'string') {
+    // 不给默认输出路径：忘了 --out 就把仓库自带的问题集覆盖掉，那是没人授权的改动
+    console.error(`Usage: ${cliName()} knowledge:bench:gen <file-or-dir...> --out <path> [--per-doc 8] [--noise 5] [--name <name>] [--profile <id>]`)
     process.exit(1)
   }
 
@@ -594,7 +604,7 @@ async function knowledgeBenchGen(args: string[]): Promise<void> {
     profileId: (flags.profile as string) || undefined
   })
 
-  const outPath = path.resolve((flags.out as string) || defaultQuestionSetPath())
+  const outPath = path.resolve(flags.out as string)
   new QuestionSetStore(outPath).save(set)
 
   console.log(`✓ ${set.cases.length} 条候选问题 + ${set.noiseQuestions.length} 条无关问题 → ${outPath}`)
@@ -2279,12 +2289,20 @@ function resolveCliInvocation(args: string[]): { command: string; cmdArgs: strin
   }
   if (head === 'knowledge') {
     const sub = positional[1]
+    // 从原始 args 截取以保留 flags（--set / --out / --limit 等）；只按 positional 切会把它们全丢掉
+    const tail = (anchor: string, fallbackFrom: number) => {
+      const idx = args.indexOf(anchor)
+      return idx >= 0 ? args.slice(idx + 1) : positional.slice(fallbackFrom)
+    }
     if (sub === 'bench') {
       const third = positional[2]
       if (third === 'gen' || third === 'compare') {
-        return { command: `knowledge:bench:${third}`, cmdArgs: positional.slice(3) }
+        return { command: `knowledge:bench:${third}`, cmdArgs: tail(third, 3) }
       }
-      return { command: 'knowledge:bench', cmdArgs: positional.slice(2) }
+      return { command: 'knowledge:bench', cmdArgs: tail('bench', 2) }
+    }
+    if (sub === 'bench:gen' || sub === 'bench:compare') {
+      return { command: `knowledge:${sub}`, cmdArgs: tail(sub, 2) }
     }
     const map: Record<string, string> = {
       search: 'knowledge:search',
@@ -2292,7 +2310,7 @@ function resolveCliInvocation(args: string[]): { command: string; cmdArgs: strin
       stats: 'knowledge:stats',
     }
     if (sub && map[sub]) {
-      return { command: map[sub], cmdArgs: positional.slice(2) }
+      return { command: map[sub], cmdArgs: tail(sub, 2) }
     }
     console.error(`Usage: ${cliName()} knowledge search|list|stats|bench`)
     return null

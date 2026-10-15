@@ -19,6 +19,9 @@ export class BenchReportFormatter {
       `跑于 ${new Date(report.runAt).toLocaleString()}　嵌入 ${report.embedding.mode}/${report.embedding.model}`
     )
     lines.push(`语料 ${report.corpusCount} 份　问题 ${report.caseCount} 条`)
+    lines.push(
+      `门槛　　　自动到场相似度 ${report.recallParams.autoSimilarity}　条数 ${report.recallParams.autoLimit}　分数下限 ${report.recallParams.minRrfScore}`
+    )
     lines.push('')
     lines.push(`主动检索　top-1 ${pct(m.manualTop1)}　top-5 ${pct(m.manualTop5)}`)
     lines.push(`自动到场　命中 ${pct(m.autoHit)}　平均篇幅 ${m.autoAvgChars} 字/轮`)
@@ -34,8 +37,7 @@ export class BenchReportFormatter {
       lines.push('')
       lines.push(`主动搜得到、自动到场拿不到（${blindSpot.length} 条）：`)
       for (const c of blindSpot) {
-        const note = c.autoSuppressed ? '进了候选但被分数下限拦掉' : `主动搜排第 ${c.manualRank}`
-        lines.push(`  · ${c.question}　${note}`)
+        lines.push(`  · ${c.question}　主动搜排第 ${c.manualRank}`)
       }
     }
 
@@ -75,6 +77,14 @@ export class BenchReportFormatter {
     if (before.caseCount !== after.caseCount) {
       lines.push(`注意：问题数不同（${before.caseCount} → ${after.caseCount}），分数不可直接比`)
     }
+
+    // 门槛变化不是「不可比」，恰恰是对比的目的——所以单独说清动了哪个数
+    const paramChanges = BenchReportFormatter.describeParamChanges(before, after)
+    if (paramChanges.length > 0) {
+      lines.push(`门槛变化：${paramChanges.join('　')}`)
+    } else {
+      lines.push('门槛未变')
+    }
     lines.push('')
 
     const row = (label: string, a: number, b: number, fmt: (v: number) => string) => {
@@ -96,5 +106,25 @@ export class BenchReportFormatter {
     lines.push('')
     lines.push('读法：该来的更多（前三行涨）、不该来的没变多（噪音不涨）、篇幅没失控，才算改好了。')
     return lines.join('\n')
+  }
+
+  /** 老报告没有这一节，当成「不知道」而不是「没变」 */
+  static describeParamChanges(before: BenchReport, after: BenchReport): string[] {
+    const a = before.recallParams
+    const b = after.recallParams
+    if (!a || !b) return ['其中一次没有记录门槛，无法判断']
+
+    const changes: string[] = []
+    if (a.autoSimilarity !== b.autoSimilarity) {
+      changes.push(`自动到场相似度 ${a.autoSimilarity} → ${b.autoSimilarity}`)
+    }
+    if (a.autoLimit !== b.autoLimit) changes.push(`条数 ${a.autoLimit} → ${b.autoLimit}`)
+    if (a.minRrfScore !== b.minRrfScore) {
+      changes.push(`分数下限 ${a.minRrfScore} → ${b.minRrfScore}`)
+    }
+    if (a.manualTopN !== b.manualTopN) {
+      changes.push(`主动检索看前 ${a.manualTopN} → ${b.manualTopN} 名`)
+    }
+    return changes
   }
 }

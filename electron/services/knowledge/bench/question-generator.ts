@@ -204,8 +204,9 @@ export class QuestionGenerator {
       throw new Error(`模型没有返回 JSON 数组：${text.slice(0, 200)}`)
     }
 
-    const end = text.lastIndexOf(']')
-    if (end > start) {
+    // 先按最后一个 ] 当结尾；模型在数组后面又写了含 ] 的说明时，改用第一个 ]
+    for (const end of [text.lastIndexOf(']'), text.indexOf(']', start)]) {
+      if (end <= start) continue
       try {
         const parsed = JSON.parse(text.slice(start, end + 1))
         if (Array.isArray(parsed)) return parsed as T[]
