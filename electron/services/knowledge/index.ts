@@ -1920,6 +1920,17 @@ export class KnowledgeService extends EventEmitter {
     return this.listLibraryDocuments().filter(doc => inFolder(doc.folder || '', folder)).length
   }
 
+  cardAllowance(): { used: number; limit: number } {
+    return { used: this.cardQuota.usedToday(new Date()), limit: CARD_DAILY_LIMIT }
+  }
+
+  /** 把今天剩余的说明额度领完，返回这次领到的份数。 */
+  drainCardAllowance(): number {
+    let taken = 0
+    while (this.cardQuota.take(new Date(), CARD_DAILY_LIMIT)) taken++
+    return taken
+  }
+
   async deleteFolder(raw: string): Promise<number> {
     const folder = normalizeFolder(raw)
     if (!folder) throw new FolderPathError('不能删除根目录')

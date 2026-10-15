@@ -409,6 +409,87 @@ async function knowledgeFolderDelete(args: string[]): Promise<void> {
   console.log(`已删除目录：${folder}（${removed} 份文件）。没有回收站。`)
 }
 
+async function knowledgeContext(args: string[]): Promise<void> {
+  const query = args.join(' ').trim()
+  if (!query) {
+    console.error(`Usage: ${cliName()} knowledge:context <query>`)
+    process.exit(1)
+  }
+  const service = await knowledgeService()
+  const context = await service.buildContext(query, { includeConversations: false })
+  console.log(context || '（没有召回）')
+}
+
+function resolveLibraryDoc(
+  docs: Array<{ id: string; filename: string }>,
+  docId: string,
+): { id: string; filename: string } {
+  const exact = docs.filter(item => item.id === docId)
+  const matches = exact.length > 0 ? exact : docs.filter(item => item.id.startsWith(docId))
+  if (matches.length === 1) return matches[0]
+  if (matches.length === 0) {
+    console.error(`文档不存在: ${docId}`)
+    process.exit(1)
+  }
+  console.error(`「${docId}」对上了多份档案，请写完整编号：`)
+  for (const item of matches) console.error(`${item.id}  ${item.filename}`)
+  process.exit(1)
+}
+
+async function knowledgeCard(args: string[]): Promise<void> {
+  const { positional, flags } = parseArgs(args)
+  const docId = positional[0]
+  const text = typeof flags.text === 'string' ? flags.text : ''
+  if (!docId || !text) {
+    console.error(`Usage: ${cliName()} knowledge:card <docId> --text <说明>`)
+    process.exit(1)
+  }
+  const service = await knowledgeService()
+  await service.initialize()
+  const doc = resolveLibraryDoc(service.listLibraryDocuments(), docId)
+  const ok = await service.updateCardText(doc.id, text)
+  if (!ok) {
+    console.error('说明没写上')
+    process.exit(1)
+  }
+  console.log(`已写说明：${doc.filename}`)
+}
+
+async function knowledgeRemove(args: string[]): Promise<void> {
+  const { positional, flags } = parseArgs(args)
+  const docId = positional[0]
+  if (!docId) {
+    console.error(`Usage: ${cliName()} knowledge:remove <docId> [--yes]`)
+    process.exit(1)
+  }
+  const service = await knowledgeService()
+  await service.initialize()
+  const doc = resolveLibraryDoc(service.listLibraryDocuments(), docId)
+  if (service.libraryDeleteNeedsConfirm(doc.id) && flags.yes !== true) {
+    console.error(`需要确认：${doc.filename} 是用户放入的。没有回收站。确认无误请加 --yes。`)
+    process.exit(1)
+  }
+  const removed = await service.removeDocument(doc.id)
+  if (!removed) {
+    console.error(`文档不存在: ${docId}`)
+    process.exit(1)
+  }
+  console.log(`已删除：${doc.filename}`)
+}
+
+async function knowledgeCardQuota(args: string[]): Promise<void> {
+  const { flags } = parseArgs(args)
+  const service = await knowledgeService()
+  if (flags.drain === true) {
+    const taken = service.drainCardAllowance()
+    const allowance = service.cardAllowance()
+    console.log(`accepted=${taken} limit=${allowance.limit} used=${allowance.used}`)
+    return
+  }
+  const allowance = service.cardAllowance()
+  console.log(`used=${allowance.used} limit=${allowance.limit}`)
+}
+
 async function knowledgeStats(): Promise<void> {
   const { getKnowledgeService } = require('../services/knowledge')
   const config = getConfig()
@@ -2520,6 +2601,10 @@ async function runCli(): Promise<void> {
       case 'knowledge:folder:list': await knowledgeFolderList(); break
       case 'knowledge:folder:rename': await knowledgeFolderRename(cmdArgs); break
       case 'knowledge:folder:delete': await knowledgeFolderDelete(cmdArgs); break
+      case 'knowledge:context': await knowledgeContext(cmdArgs); break
+      case 'knowledge:card': await knowledgeCard(cmdArgs); break
+      case 'knowledge:remove': await knowledgeRemove(cmdArgs); break
+      case 'knowledge:card:quota': await knowledgeCardQuota(cmdArgs); break
       case 'knowledge:add':     await knowledgeAdd(cmdArgs); break
       case 'knowledge:stats':   await knowledgeStats(); break
       case 'knowledge:rebuild': await knowledgeRebuild(cmdArgs); break

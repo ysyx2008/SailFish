@@ -115,6 +115,35 @@ assert_contains() {
   _LAST_OUTPUT="$output"
 }
 
+# 对上一条命令的输出再看一眼，避免同一条重跑
+assert_last_contains() {
+  local label="$1" expected="$2"
+  ((TOTAL++))
+  printf "  %-40s " "${label}"
+  if [[ "${_LAST_OUTPUT:-}" == *"$expected"* ]]; then
+    echo -e "${GREEN}PASS${NC}"
+    ((PASS++))
+  else
+    echo -e "${RED}FAIL${NC} (输出不含 \"$expected\")"
+    FAILED_CMDS+=("${label}: 缺少预期内容 '${expected}'")
+    ((FAIL++))
+  fi
+}
+
+assert_last_excludes() {
+  local label="$1" expected="$2"
+  ((TOTAL++))
+  printf "  %-40s " "${label}"
+  if [[ "${_LAST_OUTPUT:-}" == *"$expected"* ]]; then
+    echo -e "${RED}FAIL${NC} (输出不该含 \"$expected\")"
+    FAILED_CMDS+=("${label}: 含了不该有的 '${expected}'")
+    ((FAIL++))
+  else
+    echo -e "${GREEN}PASS${NC}"
+    ((PASS++))
+  fi
+}
+
 # 断言测试：命令应失败（非零退出）
 assert_fails() {
   local label="$1"; shift
@@ -252,6 +281,11 @@ assert_contains "删掉之后目录不再出现" "（没有目录）" \
 assert_fails "knowledge:folder:create 拒绝往上跳" \
   $CLI knowledge:folder:create "../秘密"
 
+assert_contains "说明额度一天二十份" "accepted=20" \
+  $CLI knowledge:card:quota --drain
+assert_contains "说明额度用尽不再加" "accepted=0" \
+  $CLI knowledge:card:quota --drain
+
 # 添加文档→搜索命中→验证
 if [[ "$MODE" != "quick" ]]; then
   # 创建测试文档（macOS 的 mktemp 不替换后缀前的 X，放进随机目录里免得和上次残留撞名）
@@ -273,9 +307,80 @@ if [[ "$MODE" != "quick" ]]; then
   assert_contains "knowledge:list 显示目录"      "公司制度/差旅" \
     $CLI knowledge:list
 
+  node -e '
+    const fs = require("fs")
+    const file = process.argv[1]
+    const raw = JSON.parse(fs.readFileSync(file, "utf8"))
+    const doc = (raw.documents || []).find(d => d.filename === "leave.md")
+    if (!doc) process.exit(1)
+    delete doc.folder
+    delete doc.addedBy
+    delete doc.cardStatus
+    fs.writeFileSync(file, JSON.stringify(raw, null, 2))
+  ' "$SFT_DATA_DIR/knowledge/documents.json"
+  $CLI knowledge:list >/dev/null
+  run_test "老档案缺字段会补上" node -e '
+    const fs = require("fs")
+    const raw = JSON.parse(fs.readFileSync(process.argv[1], "utf8"))
+    const doc = (raw.documents || []).find(d => d.filename === "leave.md")
+    if (!doc || doc.addedBy !== "user" || doc.cardStatus !== "pending" || doc.folder !== "") {
+      console.error(doc)
+      process.exit(1)
+    }
+  ' "$SFT_DATA_DIR/knowledge/documents.json"
+
+  LEAVE_ID=$(node -e '
+    const fs = require("fs")
+    const raw = JSON.parse(fs.readFileSync(process.argv[1], "utf8"))
+    const doc = (raw.documents || []).find(d => d.filename === "leave.md")
+    if (!doc) process.exit(1)
+    process.stdout.write(doc.id)
+  ' "$SFT_DATA_DIR/knowledge/documents.json")
+  assert_fails "删除用户放入的要先确认" \
+    $CLI knowledge:remove "$LEAVE_ID"
+  node -e '
+    const fs = require("fs")
+    const file = process.argv[1]
+    const raw = JSON.parse(fs.readFileSync(file, "utf8"))
+    const doc = (raw.documents || []).find(d => d.filename === "leave.md")
+    if (!doc) process.exit(1)
+    doc.addedBy = "agent"
+    fs.writeFileSync(file, JSON.stringify(raw, null, 2))
+  ' "$SFT_DATA_DIR/knowledge/documents.json"
+  assert_contains "自己放入的可以直接删" "已删除" \
+    $CLI knowledge:remove "$LEAVE_ID"
+  run_test "删掉之后检索条目也没了" node -e '
+    const fs = require("fs")
+    const raw = fs.readFileSync(process.argv[1], "utf8")
+    if (raw.includes(process.argv[2])) process.exit(1)
+  ' "$SFT_DATA_DIR/knowledge/bm25-index.json" "$LEAVE_ID"
+
   # 用语义相关的词搜索，验证向量检索能力
   assert_contains "knowledge:search 语义搜索" "Kubernetes" \
     $CLI knowledge:search "容器编排"
+
+  K8S_ID=$(node -e '
+    const fs = require("fs")
+    const raw = JSON.parse(fs.readFileSync(process.argv[1], "utf8"))
+    const doc = (raw.documents || []).find(d => d.filename === "kubernetes.md")
+    if (!doc) process.exit(1)
+    process.stdout.write(doc.id)
+  ' "$SFT_DATA_DIR/knowledge/documents.json")
+
+  assert_contains "没写说明时召回退回正文" "kubernetes.md" \
+    $CLI knowledge:context "这是一份关于 Kubernetes 容器编排部署的技术文档"
+  assert_last_excludes "没写说明时不是目录印象" "按相关度从档案室翻到的线索"
+
+  assert_contains "写上检索说明" "已写说明" \
+    $CLI knowledge:card "$K8S_ID" --text "航海图：Kubernetes 容器编排"
+  assert_contains "有说明时召回是目录印象" "按相关度从档案室翻到的线索" \
+    $CLI knowledge:context "这是一份关于 Kubernetes 容器编排部署的技术文档"
+  assert_last_contains "目录印象带上那行说明" "航海图：Kubernetes 容器编排"
+
+  echo '{' > "$SFT_DATA_DIR/knowledge/card-vectors.json"
+  assert_contains "说明向量坏了仍能召回正文" "kubernetes.md" \
+    $CLI knowledge:context "这是一份关于 Kubernetes 容器编排部署的技术文档"
+  assert_last_excludes "说明向量坏了退回正文" "按相关度从档案室翻到的线索"
 
   # 二进制格式必须走解析器。用例一直只用 .md，所以「PDF 入库成字节流还报成功」长期没被发现
   assert_contains "knowledge:add PDF 走解析器"  "type: pdf" \
@@ -319,6 +424,17 @@ else
   skip_test "knowledge:add 放进目录"
   skip_test "knowledge:list 显示目录"
   skip_test "knowledge:search 命中验证"
+  skip_test "没写说明时召回退回正文"
+  skip_test "没写说明时不是目录印象"
+  skip_test "写上检索说明"
+  skip_test "有说明时召回是目录印象"
+  skip_test "目录印象带上那行说明"
+  skip_test "说明向量坏了仍能召回正文"
+  skip_test "说明向量坏了退回正文"
+  skip_test "老档案缺字段会补上"
+  skip_test "删除用户放入的要先确认"
+  skip_test "自己放入的可以直接删"
+  skip_test "删掉之后检索条目也没了"
   skip_test "knowledge:add PDF 走解析器"
   skip_test "knowledge bench 跑出基线"
   skip_test "孤儿残留时仍能入库"
