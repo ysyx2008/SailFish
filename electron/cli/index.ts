@@ -347,6 +347,68 @@ async function knowledgeList(): Promise<void> {
   printTable(rows)
 }
 
+async function knowledgeService() {
+  const { getKnowledgeService } = require('../services/knowledge')
+  const config = getConfig()
+  const ai = getAi()
+  const { McpService } = require('../services/mcp.service')
+  const mcp = new McpService()
+  const service = getKnowledgeService(config, ai, mcp)
+  if (!service) {
+    console.error('Knowledge service not available')
+    process.exit(1)
+  }
+  return service
+}
+
+async function knowledgeFolderCreate(args: string[]): Promise<void> {
+  const { positional } = parseArgs(args)
+  const folder = positional[0]
+  if (!folder) {
+    console.error(`Usage: ${cliName()} knowledge:folder:create <目录>`)
+    process.exit(1)
+  }
+  const service = await knowledgeService()
+  console.log(`已建目录：${service.createFolder(folder)}`)
+}
+
+async function knowledgeFolderList(): Promise<void> {
+  const service = await knowledgeService()
+  const folders = service.listFolders()
+  if (folders.length === 0) {
+    console.log('（没有目录）')
+    return
+  }
+  for (const folder of folders) console.log(folder)
+}
+
+async function knowledgeFolderRename(args: string[]): Promise<void> {
+  const { positional } = parseArgs(args)
+  const from = positional[0]
+  const to = positional[1]
+  if (!from || !to) {
+    console.error(`Usage: ${cliName()} knowledge:folder:rename <原目录> <新目录>`)
+    process.exit(1)
+  }
+  const service = await knowledgeService()
+  const dest = service.renameFolder(from, to)
+  const children = service.listFolders().filter((folder: string) => folder === dest || folder.startsWith(`${dest}/`))
+  console.log(`已改名：${from} → ${dest}`)
+  for (const folder of children) console.log(folder)
+}
+
+async function knowledgeFolderDelete(args: string[]): Promise<void> {
+  const { positional } = parseArgs(args)
+  const folder = positional[0]
+  if (!folder) {
+    console.error(`Usage: ${cliName()} knowledge:folder:delete <目录>`)
+    process.exit(1)
+  }
+  const service = await knowledgeService()
+  const removed = await service.deleteFolder(folder)
+  console.log(`已删除目录：${folder}（${removed} 份文件）。没有回收站。`)
+}
+
 async function knowledgeStats(): Promise<void> {
   const { getKnowledgeService } = require('../services/knowledge')
   const config = getConfig()
@@ -2454,6 +2516,10 @@ async function runCli(): Promise<void> {
 
       case 'knowledge:search':  await knowledgeSearch(cmdArgs); break
       case 'knowledge:list':    await knowledgeList(); break
+      case 'knowledge:folder:create': await knowledgeFolderCreate(cmdArgs); break
+      case 'knowledge:folder:list': await knowledgeFolderList(); break
+      case 'knowledge:folder:rename': await knowledgeFolderRename(cmdArgs); break
+      case 'knowledge:folder:delete': await knowledgeFolderDelete(cmdArgs); break
       case 'knowledge:add':     await knowledgeAdd(cmdArgs); break
       case 'knowledge:stats':   await knowledgeStats(); break
       case 'knowledge:rebuild': await knowledgeRebuild(cmdArgs); break

@@ -239,6 +239,19 @@ echo -e "${CYAN}[5/12] 知识库全流程${NC}"
 assert_contains "knowledge:stats 返回 JSON"   "documentCount" \
   $CLI knowledge:stats
 
+assert_contains "knowledge:folder:create 空目录留下来" "公司制度/差旅" \
+  $CLI knowledge:folder:create "公司制度/差旅"
+assert_contains "knowledge:folder:list 看得到空目录" "公司制度/差旅" \
+  $CLI knowledge:folder:list
+assert_contains "knowledge:folder:rename 下级跟着走" "规章/差旅" \
+  $CLI knowledge:folder:rename "公司制度" "规章"
+assert_contains "knowledge:folder:delete 删掉空目录" "已删除目录" \
+  $CLI knowledge:folder:delete "规章"
+assert_contains "删掉之后目录不再出现" "（没有目录）" \
+  $CLI knowledge:folder:list
+assert_fails "knowledge:folder:create 拒绝往上跳" \
+  $CLI knowledge:folder:create "../秘密"
+
 # 添加文档→搜索命中→验证
 if [[ "$MODE" != "quick" ]]; then
   # 创建测试文档（macOS 的 mktemp 不替换后缀前的 X，放进随机目录里免得和上次残留撞名）

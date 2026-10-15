@@ -1286,6 +1286,11 @@ const translations = {
     'knowledge.adding': '放入档案室: {name}',
     'knowledge.removing': '从档案室删除: {name}',
     'knowledge.confirm_remove': '删除用户放入的文档「{name}」。没有回收站。',
+    'knowledge.creating_folder': '建档案目录 {folder}',
+    'knowledge.moving': '挪到 {folder}: {name}',
+    'knowledge.renaming_folder': '目录改名 {from} → {to}',
+    'knowledge.removing_folder': '删除档案目录 {folder}',
+    'knowledge.confirm_remove_folder': '删除目录「{folder}」，里面有用户放进去的文件。没有回收站。',
 
     // Web 搜索
     'web.search': 'Web 搜索',
@@ -3119,6 +3124,11 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
     'knowledge.adding': 'Add to archive: {name}',
     'knowledge.removing': 'Remove from archive: {name}',
     'knowledge.confirm_remove': 'Delete the document "{name}" the user added. There is no trash.',
+    'knowledge.creating_folder': 'Create archive folder {folder}',
+    'knowledge.moving': 'Move to {folder}: {name}',
+    'knowledge.renaming_folder': 'Rename folder {from} → {to}',
+    'knowledge.removing_folder': 'Delete archive folder {folder}',
+    'knowledge.confirm_remove_folder': 'Delete folder "{folder}". It contains files the user added. There is no trash.',
 
     // Web search
     'web.search': 'Web search',

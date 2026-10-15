@@ -94,6 +94,7 @@ const contextKnowledgeMaxCharsSaving = ref(false)
 
 // 知识库文档
 const documents = ref<KnowledgeDocument[]>([])
+const storedFolders = ref<string[]>([])
 const searchQuery = ref('')
 const browseFolder = ref('')
 const addedByFilter = ref<'all' | 'user' | 'agent'>('all')
@@ -113,7 +114,7 @@ const kbDocuments = computed(() => {
 })
 
 const folders = computed(() => {
-  const set = new Set<string>()
+  const set = new Set<string>(storedFolders.value)
   for (const doc of kbDocuments.value) {
     const folder = doc.folder || ''
     if (!folder) continue
@@ -290,6 +291,7 @@ const loadContextDocs = async () => {
 const loadKnowledgeDocs = async () => {
   try {
     documents.value = await api.knowledge.getDocuments() || []
+    storedFolders.value = await api.knowledge.listFolders() || []
   } catch (error) {
     console.error('加载知识库失败:', error)
   }

@@ -7,10 +7,13 @@ import {
   bestKeywordPerDoc,
   formatCatalog,
   fuseByDocument,
+  folderDeleteNeedsConfirm,
   inFolder,
   normalizeFolder,
+  planFolderRename,
   renderLibraryRecall,
   resolveRecallFolder,
+  visibleFolders,
 } from '../catalog'
 import {
   buildCardPrompt,
@@ -41,6 +44,42 @@ function doc(partial: Partial<KnowledgeDocument> & Pick<KnowledgeDocument, 'id' 
     ...partial,
   }
 }
+
+describe('整理目录', () => {
+  it('空目录留下来，文件所在的位置也会展开成上级', () => {
+    expect(visibleFolders(['公司制度/差旅'], [])).toEqual(['公司制度', '公司制度/差旅'])
+    expect(visibleFolders([], ['规章'])).toEqual(['规章'])
+  })
+
+  it('改名时下级跟着走，不能挪进自己里面，目标有东西就不盖', () => {
+    const docs = [
+      { id: 'a', filename: '办法.pdf', folder: '公司制度/差旅' },
+      { id: 'b', filename: '其他.pdf', folder: '规章' },
+    ]
+    const plan = planFolderRename(['公司制度/差旅'], docs, '公司制度', '内控')
+    expect(plan.updates).toEqual([{ id: 'a', folder: '内控/差旅' }])
+    expect(plan.explicit).toContain('内控/差旅')
+    expect(() => planFolderRename(['公司制度/差旅'], docs, '公司制度', '公司制度/差旅')).toThrow(FolderPathError)
+    expect(() => planFolderRename(['公司制度/差旅'], docs, '公司制度', '规章')).toThrow(/已经有东西/)
+  })
+
+  it('改完会有两份同名文件时不改', () => {
+    const docs = [
+      { id: 'a', filename: '办法.pdf', folder: '公司制度' },
+      { id: 'b', filename: '办法.pdf', folder: '公司制度' },
+    ]
+    expect(() => planFolderRename(['公司制度'], docs, '公司制度', '内控')).toThrow(/同名/)
+  })
+
+  it('目录里有用户放进去的文件才要先问', () => {
+    const docs = [
+      { folder: '公司制度/差旅', addedBy: 'agent' as const },
+      { folder: '公司制度', addedBy: 'user' as const },
+    ]
+    expect(folderDeleteNeedsConfirm(docs, '公司制度')).toBe(true)
+    expect(folderDeleteNeedsConfirm(docs, '公司制度/差旅')).toBe(false)
+  })
+})
 
 describe('档案目录', () => {
   it('目录去掉多余斜杠，拒绝往上跳', () => {

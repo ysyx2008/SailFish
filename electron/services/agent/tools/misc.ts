@@ -24,6 +24,7 @@ import { executePptTool } from '../skills/ppt/executor'
 import { executeFeishuTool } from '../skills/feishu/executor'
 import { executeWeComTool } from '../skills/wecom/executor'
 import { executeDingTalkTool } from '../skills/dingtalk/executor'
+import { executeArchiveTool } from '../skills/archive/executor'
 import { getUserSkillService, parseUserSkillId, toUserSkillId } from '../../user-skill.service'
 import { getSkillEnvMap, mapSkillEnvToDeclaredCase } from '../../credential.service'
 import { getSkill, isSystemManagedSkill } from '../skills/registry'
@@ -1385,6 +1386,10 @@ export async function executeSkillTool(
 
   if (toolName.startsWith('code_')) {
     return executeCodingTool(toolName, id, args, toolCallId, config, executor)
+  }
+
+  if (toolName.startsWith('archive_')) {
+    return executeArchiveTool(toolName, id, args, toolCallId, config, executor)
   }
 
   return { success: false, output: '', error: t('error.unknown_tool', { name: toolName }) }

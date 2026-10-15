@@ -2504,6 +2504,9 @@ const electronAPI = {
         error?: string
       }>,
 
+    listFolders: () =>
+      ipcRenderer.invoke('knowledge:listFolders') as Promise<string[]>,
+
     // 获取所有文档
     getDocuments: () =>
       ipcRenderer.invoke('knowledge:getDocuments') as Promise<Array<{

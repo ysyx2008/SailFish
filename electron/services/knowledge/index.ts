@@ -123,11 +123,16 @@ import {
   capChunkText,
   formatCatalog,
   fuseByDocument,
+  FolderPathError,
+  folderDeleteNeedsConfirm as docsNeedConfirmToDeleteFolder,
   inFolder,
   isLibraryFileType,
   normalizeFolder,
+  normalizeFolderSafe,
+  planFolderRename,
   renderLibraryRecall,
   resolveRecallFolder,
+  visibleFolders,
   type ImpressionDoc,
 } from './catalog'
 import {
@@ -170,6 +175,8 @@ export class KnowledgeService extends EventEmitter {
   private settings: KnowledgeSettings
   private documentsMetaPath: string
   private documentsIndex: Map<string, KnowledgeDocument> = new Map()
+  /** 人建过、或放过文件的目录。文件挪走后还在，直到被删掉 */
+  private explicitFolders: string[] = []
   private cardVectors: CardVectorStore
   private cardQuota: CardQuota
   private cardTimer: ReturnType<typeof setInterval> | null = null
@@ -1069,6 +1076,23 @@ export class KnowledgeService extends EventEmitter {
           }
           this.documentsIndex.set(normalized.id, normalized)
         }
+        const seen = new Set<string>()
+        for (const raw of Array.isArray(data.folders) ? data.folders : []) {
+          const folder = normalizeFolderSafe(raw)
+          if (folder) seen.add(folder)
+        }
+        for (const doc of this.documentsIndex.values()) {
+          if (isLibraryFileType(doc.fileType) && doc.folder && !seen.has(doc.folder)) {
+            seen.add(doc.folder)
+            dirty = true
+          }
+        }
+        const loadedFolders = Array.isArray(data.folders) ? data.folders : []
+        const nextFolders = [...seen]
+        if (loadedFolders.length !== nextFolders.length || loadedFolders.some((folder: unknown, index: number) => folder !== nextFolders[index])) {
+          dirty = true
+        }
+        this.explicitFolders = nextFolders
         if (dirty) this.saveDocumentsIndex()
       }
     } catch (error) {
@@ -1090,7 +1114,8 @@ export class KnowledgeService extends EventEmitter {
       const data = {
         version: 1,
         lastUpdated: Date.now(),
-        documents: Array.from(this.documentsIndex.values())
+        documents: Array.from(this.documentsIndex.values()),
+        folders: this.explicitFolders,
       }
       
       // 先写入临时文件，再重命名，确保原子性
@@ -1235,6 +1260,7 @@ export class KnowledgeService extends EventEmitter {
 
     // 保存文档索引
     this.documentsIndex.set(docId, document)
+    this.rememberFolder(folder)
     this.saveDocumentsIndex()
 
     this.emit('documentAdded', document)
@@ -1747,6 +1773,7 @@ export class KnowledgeService extends EventEmitter {
     if (options?.hostId !== undefined) existing.hostId = options.hostId
     this.applyCard(existing, nextCard)
     this.documentsIndex.set(existing.id, existing)
+    this.rememberFolder(folder)
     this.saveDocumentsIndex()
     try {
       for (const id of oldIds) {
@@ -1837,8 +1864,73 @@ export class KnowledgeService extends EventEmitter {
     doc.folder = next
     doc.updatedAt = Date.now()
     this.documentsIndex.set(docId, doc)
+    this.rememberFolder(next)
     this.saveDocumentsIndex()
     return true
+  }
+
+  listFolders(): string[] {
+    return visibleFolders(
+      this.explicitFolders,
+      this.listLibraryDocuments().map(doc => doc.folder || ''),
+    )
+  }
+
+  createFolder(raw: string): string {
+    const folder = normalizeFolder(raw)
+    if (!folder) throw new FolderPathError('目录不能是空的')
+    this.rememberFolder(folder)
+    this.saveDocumentsIndex()
+    return folder
+  }
+
+  renameFolder(from: string, to: string): string {
+    const source = normalizeFolder(from)
+    if (!source || !this.listFolders().includes(source)) {
+      throw new FolderPathError('没有这个目录')
+    }
+    const docs = this.listLibraryDocuments().map(doc => ({
+      id: doc.id,
+      filename: doc.filename,
+      folder: doc.folder || '',
+    }))
+    const plan = planFolderRename(this.explicitFolders, docs, source, to)
+    const now = Date.now()
+    for (const update of plan.updates) {
+      const doc = this.documentsIndex.get(update.id)
+      if (!doc) continue
+      doc.folder = update.folder
+      doc.updatedAt = now
+    }
+    this.explicitFolders = plan.explicit
+    this.saveDocumentsIndex()
+    return normalizeFolder(to)
+  }
+
+  folderDeleteNeedsConfirm(raw: string): boolean {
+    const folder = normalizeFolder(raw)
+    return docsNeedConfirmToDeleteFolder(
+      this.listLibraryDocuments().map(doc => ({ folder: doc.folder || '', addedBy: doc.addedBy })),
+      folder,
+    )
+  }
+
+  async deleteFolder(raw: string): Promise<number> {
+    const folder = normalizeFolder(raw)
+    if (!folder) throw new FolderPathError('不能删除根目录')
+    if (!this.listFolders().includes(folder)) throw new FolderPathError('没有这个目录')
+    const docs = this.listLibraryDocuments().filter(doc => inFolder(doc.folder || '', folder))
+    for (const doc of docs) {
+      await this.removeDocument(doc.id, false, true)
+    }
+    this.explicitFolders = this.explicitFolders.filter(item => !inFolder(item, folder))
+    this.saveDocumentsIndex()
+    return docs.length
+  }
+
+  private rememberFolder(folder: string): void {
+    if (!folder || this.explicitFolders.includes(folder)) return
+    this.explicitFolders.push(folder)
   }
 
   cardProgress(): { pending: number; generating: number; ready: number; failed: number; stale: number } {
@@ -2133,6 +2225,7 @@ export class KnowledgeService extends EventEmitter {
     await this.bm25Index.clear()
     this.cardVectors.clear()
     this.documentsIndex.clear()
+    this.explicitFolders = []
     const saved = this.saveDocumentsIndex()
     if (!saved) {
       throw new Error('清空知识库后保存索引失败')

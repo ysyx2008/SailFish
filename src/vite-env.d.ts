@@ -1513,6 +1513,7 @@ interface Window {
         context: string
         error?: string
       }>
+      listFolders: () => Promise<string[]>
       getDocuments: () => Promise<Array<{
         id: string
         filename: string

@@ -186,6 +186,88 @@ export function renderLibraryRecall(args: {
   return lines.join('\n').trim()
 }
 
+export function folderPrefixes(folder: string): string[] {
+  if (!folder) return []
+  const parts = folder.split('/')
+  const prefixes: string[] = []
+  let acc = ''
+  for (const part of parts) {
+    acc = acc ? `${acc}/${part}` : part
+    prefixes.push(acc)
+  }
+  return prefixes
+}
+
+/** 显式记下的目录，加上文件所在位置，展开成能看见的整棵树 */
+export function visibleFolders(explicit: string[], docFolders: string[]): string[] {
+  const set = new Set<string>()
+  for (const folder of [...explicit, ...docFolders]) {
+    for (const prefix of folderPrefixes(folder)) set.add(prefix)
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, 'zh'))
+}
+
+export function folderDeleteNeedsConfirm(
+  docs: { folder: string; addedBy?: string }[],
+  folder: string,
+): boolean {
+  return docs.some(doc => inFolder(doc.folder || '', folder) && doc.addedBy !== 'agent')
+}
+
+export interface FolderDocRef {
+  id: string
+  filename: string
+  folder: string
+}
+
+export interface FolderRenamePlan {
+  explicit: string[]
+  updates: { id: string; folder: string }[]
+}
+
+/** 给目录改名。目标处已经有东西，或改完会有两份同名文件，就不改。 */
+export function planFolderRename(
+  explicit: string[],
+  docs: FolderDocRef[],
+  from: string,
+  to: string,
+): FolderRenamePlan {
+  const source = normalizeFolder(from)
+  const dest = normalizeFolder(to)
+  if (!source) throw new FolderPathError('不能给根目录改名')
+  if (!dest) throw new FolderPathError('目标目录不能是根')
+  if (dest === source || dest.startsWith(`${source}/`)) {
+    throw new FolderPathError('不能把目录挪到它自己里面')
+  }
+  const outside = [...explicit, ...docs.map(doc => doc.folder)].filter(folder => folder && !inFolder(folder, source))
+  if (outside.some(folder => folder === dest || folder.startsWith(`${dest}/`))) {
+    throw new FolderPathError('目标目录已经有东西')
+  }
+  const nextDocs = docs.map(doc => {
+    if (doc.folder === source) return { ...doc, folder: dest }
+    if (doc.folder.startsWith(`${source}/`)) {
+      return { ...doc, folder: dest + doc.folder.slice(source.length) }
+    }
+    return doc
+  })
+  const seen = new Set<string>()
+  for (const doc of nextDocs) {
+    const key = `${doc.folder}\0${doc.filename}`
+    if (seen.has(key)) throw new FolderPathError('改名后会有两份同名文件在同一目录')
+    seen.add(key)
+  }
+  const updates = nextDocs
+    .filter((doc, index) => doc.folder !== docs[index].folder)
+    .map(doc => ({ id: doc.id, folder: doc.folder }))
+  const nextExplicit = explicit.map(folder => {
+    if (folder === source) return dest
+    if (folder.startsWith(`${source}/`)) return dest + folder.slice(source.length)
+    return folder
+  })
+  if (!nextExplicit.includes(dest)) nextExplicit.push(dest)
+  return { explicit: [...new Set(nextExplicit)], updates }
+}
+
 export function formatCatalog(docs: ImpressionDoc[], prefix: string, limit = 200): string {
   const rows = docs
     .filter(doc => inFolder(doc.folder, prefix))

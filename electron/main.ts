@@ -6882,6 +6882,10 @@ ipcMain.handle('knowledge:buildContext', async (_event, query: string, options?:
 })
 
 // 获取所有文档
+ipcMain.handle('knowledge:listFolders', async () => {
+  return getKnowledge().listFolders()
+})
+
 ipcMain.handle('knowledge:getDocuments', async () => {
   const docs = getKnowledge().getDocuments()
   // 解密主机记忆内容（用于前端显示）
