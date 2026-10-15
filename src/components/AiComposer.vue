@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useSlots, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRandomPlaceholder } from '../composables/useRandomPlaceholder'
-import { X, Plus, Square, ArrowUp, Check, Mic, MicOff, Loader2, Volume2, ListTree, Pencil, CornerDownLeft, GripVertical, Sparkles, RotateCcw } from 'lucide-vue-next'
+import { X, Plus, Square, ArrowUp, Check, Mic, MicOff, Loader2, Volume2, Pencil, CornerDownLeft, GripVertical, Sparkles, RotateCcw } from 'lucide-vue-next'
 import { useMentions } from '../composables/useMentions'
 import {
   formatSlashInvocation,
@@ -142,9 +142,6 @@ const COMPOSITION_COLORS: Partial<Record<ContextCompositionId, string>> = {
 
 const TOP_LEVEL_IDS: ContextCompositionId[] = ['system', 'tools', 'messages']
 
-/** 组成明细默认收起；普通用户只看用量 + Cache */
-const showCompositionDetail = ref(false)
-
 const topLevelComposition = computed(() => {
   const root = props.contextStats.composition
   if (!root?.children?.length) return []
@@ -174,15 +171,6 @@ function compositionLabel(id: ContextCompositionId): string {
 
 function compositionColor(id: ContextCompositionId): string {
   return COMPOSITION_COLORS[id] || '#94a3b8'
-}
-
-function toggleCompositionDetail() {
-  showCompositionDetail.value = !showCompositionDetail.value
-  nextTick(() => {
-    updateContextTipPosition()
-    // 展开后内容变宽，再量一次居中
-    requestAnimationFrame(() => updateContextTipPosition())
-  })
 }
 
 /** Teleport 到 body，避免被 ai-panel / composer 的 overflow 裁切 */
@@ -237,15 +225,13 @@ function updateContextTipPosition() {
   // 进度条在输入区顶部、面板底部附近：优先向上展开
   const placeAbove = spaceAbove >= 200 || spaceAbove >= spaceBelow
 
-  // 简洁 / 展开组成：都按内容收缩，避免第一行被裁切；上限夹视口
+  // 按内容收缩，避免第一行被裁切；上限夹视口
   let tipWidth: number
   if (contextTipEl.value) {
     const prevWidth = contextTipEl.value.style.width
     contextTipEl.value.style.width = 'max-content'
     tipWidth = Math.min(Math.max(contextTipEl.value.offsetWidth, 120), maxW)
     contextTipEl.value.style.width = prevWidth
-  } else if (showCompositionDetail.value) {
-    tipWidth = Math.min(360, maxW)
   } else {
     tipWidth = Math.min(360, maxW)
   }
@@ -296,12 +282,10 @@ function onContextMiniMove(e: MouseEvent) {
 function openContextTip() {
   clearTipHideTimer()
   clearTipShowTimer()
-  // 弹层已打开时只续命，不重置「查看组成」状态（进度条 ↔ tip 桥接）
+  // 弹层已打开时只续命（进度条 ↔ tip 桥接）
   if (showContextTip.value) return
   tipShowTimer = setTimeout(() => {
     tipShowTimer = null
-    // 每次新打开回到简洁视图
-    showCompositionDetail.value = false
     updateContextTipPosition()
     showContextTip.value = true
     bindTipRepositionListeners()
@@ -315,7 +299,6 @@ function scheduleCloseContextTip() {
   // 进度条与弹层之间有缝隙，稍长延迟便于鼠标移入弹层
   tipHideTimer = setTimeout(() => {
     showContextTip.value = false
-    showCompositionDetail.value = false
     unbindTipRepositionListeners()
     tipHideTimer = null
   }, 280)
@@ -1846,7 +1829,7 @@ const handleSendClick = (event: MouseEvent) => {
         v-if="showContextTip && contextStats.tokenEstimate > 0"
         ref="contextTipEl"
         class="context-mini-tip"
-        :class="{ 'is-detail': showCompositionDetail }"
+        :class="{ 'is-detail': topLevelComposition.length > 0 }"
         :style="contextTipStyle"
         @mouseenter="keepContextTip"
         @mouseleave="scheduleCloseContextTip"
@@ -1856,20 +1839,8 @@ const handleSendClick = (event: MouseEvent) => {
           <span class="ctx-usage-simple-line">
             <template v-if="contextStats.effectiveModel">{{ contextStats.effectiveModel }} · </template>{{ t('ai.context') }}: {{ contextStats.tokenEstimate.toLocaleString() }} / {{ (contextStats.maxTokens / 1000).toFixed(0) }}K ({{ contextStats.percentage }}%)<template v-if="contextStats.cacheHitRate !== undefined"> · Cache {{ contextStats.cacheHitRate }}%</template>
           </span>
-          <button
-            v-if="topLevelComposition.length > 0"
-            type="button"
-            class="ctx-usage-detail-toggle"
-            :class="{ open: showCompositionDetail }"
-            :title="showCompositionDetail ? t('ai.contextUsageHideDetail') : t('ai.contextUsageShowDetail')"
-            :aria-label="showCompositionDetail ? t('ai.contextUsageHideDetail') : t('ai.contextUsageShowDetail')"
-            :aria-expanded="showCompositionDetail"
-            @click.stop="toggleCompositionDetail"
-          >
-            <ListTree :size="11" />
-          </button>
         </div>
-        <div v-if="showCompositionDetail && topLevelComposition.length > 0" class="ctx-usage-detail">
+        <div v-if="topLevelComposition.length > 0" class="ctx-usage-detail">
           <div class="ctx-usage-segments">
             <div
               v-for="node in topLevelComposition"
@@ -2414,30 +2385,6 @@ const handleSendClick = (event: MouseEvent) => {
 .ctx-usage-simple-line {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.ctx-usage-detail-toggle {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  border-radius: 3px;
-  opacity: 0.55;
-}
-
-.ctx-usage-detail-toggle:hover,
-.ctx-usage-detail-toggle.open {
-  color: var(--text-primary);
-  opacity: 1;
-  background: var(--bg-tertiary);
 }
 
 .ctx-usage-detail {

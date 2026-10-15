@@ -227,8 +227,6 @@ export default {
     sessionConsumedRate: '{rate} tokens/s',
     sessionConsumedRateLive: '速度',
     sessionConsumedRateAvg: '均速',
-    contextUsageShowDetail: '查看组成',
-    contextUsageHideDetail: '收起组成',
     slashCompactDesc: '压缩这场对话的上下文，给后面腾地方',
     slashHintKey: 'Tab / 回车补全{shortcut}',
     slashCompacting: '正在压缩上下文',

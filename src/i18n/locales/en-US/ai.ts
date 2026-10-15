@@ -227,8 +227,6 @@ export default {
     sessionConsumedRate: '{rate} tokens/s',
     sessionConsumedRateLive: 'Speed',
     sessionConsumedRateAvg: 'Avg',
-    contextUsageShowDetail: 'Show breakdown',
-    contextUsageHideDetail: 'Hide breakdown',
     slashCompactDesc: 'Compress this conversation to free space',
     slashHintKey: 'Tab / Enter to complete{shortcut}',
     slashCompacting: 'Compressing context',
