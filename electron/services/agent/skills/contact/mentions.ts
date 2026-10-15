@@ -143,9 +143,10 @@ export function findMentionedContacts(contacts: Contact[], text: string): Contac
 }
 
 function channelText(channel: ContactChannel): string {
-  if (channel.kind === 'email') return `邮箱 ${channel.value}`
-  if (channel.kind === 'phone') return `电话 ${channel.value}`
-  return `${channel.platform || '即时通讯'} ${channel.value}`
+  const label = channel.label ? `（${channel.label}）` : ''
+  if (channel.kind === 'email') return `邮箱 ${channel.value}${label}`
+  if (channel.kind === 'phone') return `电话 ${channel.value}${label}`
+  return `${channel.platform || '即时通讯'} ${channel.value}${label}`
 }
 
 function notePreview(note: string): string {
@@ -157,6 +158,7 @@ function notePreview(note: string): string {
 /** 同一个人、信息没变时写出来一字不差，用来判断这场里是否已经带过 */
 export function formatMentionCard(contact: Contact): string {
   const parts = [[contact.kind === 'org' ? '机构' : '人', contact.organization, contact.role].filter(Boolean).join(' · ')]
+  if (contact.address) parts.push(`地址：${contact.address}`)
   if (contact.aliases?.length) parts.push(`简称：${contact.aliases.join('、')}`)
   for (const channel of contact.channels ?? []) parts.push(channelText(channel))
   if (contact.note) parts.push(`备注：${notePreview(contact.note)}`)

@@ -28,6 +28,7 @@ interface ContactDraft {
   kind: ContactKind
   organization: string
   role: string
+  address: string
   note: string
   channels: ChannelDraft[]
 }
@@ -77,7 +78,8 @@ function channelKindLabel(kind: ContactChannelKind): string {
 }
 
 function channelText(channel: ContactChannel): string {
-  return channel.kind === 'im' && channel.platform ? `${channel.platform} ${channel.value}` : channel.value
+  const value = channel.kind === 'im' && channel.platform ? `${channel.platform} ${channel.value}` : channel.value
+  return channel.label ? `${channel.label} ${value}` : value
 }
 
 function rowSubtitle(contact: Contact): string {
@@ -99,6 +101,7 @@ function draftFrom(contact: Contact): ContactDraft {
     kind: contact.kind,
     organization: contact.organization ?? '',
     role: contact.role ?? '',
+    address: contact.address ?? '',
     note: contact.note ?? '',
     channels: (contact.channels ?? []).map(c => ({
       kind: c.kind,
@@ -116,7 +119,7 @@ function patchFrom(d: ContactDraft): ContactUpdatePatch {
     if (!value) continue
     const channel: ContactChannel = { kind: c.kind, value }
     if (c.kind === 'im' && c.platform.trim()) channel.platform = c.platform.trim()
-    if (c.label) channel.label = c.label
+    if (c.label?.trim()) channel.label = c.label.trim()
     channels.push(channel)
   }
   return {
@@ -124,6 +127,7 @@ function patchFrom(d: ContactDraft): ContactUpdatePatch {
     kind: d.kind,
     organization: d.organization.trim(),
     role: d.role.trim(),
+    address: d.address.trim(),
     note: d.note.trim(),
     aliases: d.aliasesText.split(/[,，、;；\n]/).map(s => s.trim()).filter(Boolean),
     channels,
@@ -322,7 +326,7 @@ async function handleDelete() {
 }
 
 function addChannel() {
-  draft.value?.channels.push({ kind: 'email', value: '', platform: '' })
+  draft.value?.channels.push({ kind: 'email', value: '', platform: '', label: '' })
 }
 
 function removeChannel(index: number) {
@@ -519,6 +523,15 @@ onUnmounted(() => {
           <span class="field-label">{{ t('contactPanel.fieldOrganization') }}</span>
           <input v-model="draft.organization" class="field-input" type="text" />
         </label>
+        <label class="field">
+          <span class="field-label">{{ t('contactPanel.fieldAddress') }}</span>
+          <input
+            v-model="draft.address"
+            class="field-input"
+            type="text"
+            :placeholder="t('contactPanel.addressPlaceholder')"
+          />
+        </label>
 
         <div class="field">
           <span class="field-label">{{ t('contactPanel.fieldChannels') }}</span>
@@ -539,7 +552,12 @@ onUnmounted(() => {
               type="text"
               :placeholder="t('contactPanel.platformPlaceholder')"
             />
-            <input v-model="channel.value" class="field-input channel-value" type="text" />
+            <input
+              v-model="channel.label"
+              class="field-input channel-label"
+              type="text"
+              :placeholder="t('contactPanel.channelLabelPlaceholder')"
+            />
             <button
               type="button"
               class="icon-close"
@@ -548,6 +566,7 @@ onUnmounted(() => {
             >
               <X :size="14" />
             </button>
+            <input v-model="channel.value" class="field-input channel-value" type="text" />
           </div>
           <button type="button" class="link-btn add-channel" @click="addChannel">
             <Plus :size="13" />
@@ -753,23 +772,27 @@ onUnmounted(() => {
   list-style: none;
   margin: 0;
   padding: 0;
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-secondary);
-  overflow: hidden;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
 }
 .contact-row {
   position: relative;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 2px;
+  min-width: 0;
+  min-height: 48px;
   padding: 8px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
   cursor: pointer;
   outline: none;
+  overflow: hidden;
   transition: background 0.1s ease;
 }
-.contact-row:last-child { border-bottom: none; }
 .contact-row:hover { background: color-mix(in srgb, var(--text-primary) 3.5%, transparent); }
 .contact-row:focus-visible { background: color-mix(in srgb, var(--text-primary) 5%, transparent); }
 .contact-row.selected { background: color-mix(in srgb, var(--accent-primary) 10%, transparent); }
@@ -789,6 +812,9 @@ onUnmounted(() => {
   min-width: 0;
 }
 .row-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 13px;
   font-weight: 550;
   color: var(--text-primary);
@@ -917,11 +943,14 @@ onUnmounted(() => {
 .channel-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
-.channel-kind { width: 104px; min-width: 0; flex-shrink: 0; }
-.channel-platform { width: 80px; flex-shrink: 0; }
-.channel-value { flex: 1; min-width: 0; }
+.channel-kind { width: 88px; min-width: 0; flex-shrink: 0; }
+.channel-platform { width: 72px; flex-shrink: 0; }
+.channel-label { width: 5.5em; flex-shrink: 0; }
+.channel-row > .icon-close { margin-left: auto; }
+.channel-value { flex: 1 0 100%; }
 .add-channel { align-self: flex-start; }
 
 .notice {

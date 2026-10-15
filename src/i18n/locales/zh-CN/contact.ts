@@ -2,7 +2,7 @@ export default {
   contactPanel: {
     title: '联系人',
     desc: '秘书记下的人和机构。点一条查看和修改，改动自动保存。',
-    searchPlaceholder: '找人：姓名、简称、单位或联系方式',
+    searchPlaceholder: '找人：姓名、简称、单位、地址或联系方式',
     newPlaceholder: '新增联系人，输入姓名',
     add: '添加',
     createFailed: '新增联系人失败',
@@ -27,6 +27,8 @@ export default {
     },
     fieldRole: '角色',
     fieldOrganization: '单位',
+    fieldAddress: '地址',
+    addressPlaceholder: '门牌、办公室，一行即可',
     fieldChannels: '联系方式',
     channelKind: {
       email: '邮箱',
@@ -34,6 +36,7 @@ export default {
       im: '即时通讯',
     },
     platformPlaceholder: '平台',
+    channelLabelPlaceholder: '手机、工作',
     addChannel: '添加联系方式',
     removeChannel: '删除这条联系方式',
     fieldNote: '备注',

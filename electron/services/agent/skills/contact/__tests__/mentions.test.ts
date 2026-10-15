@@ -92,6 +92,15 @@ describe('buildMentionNote', () => {
     expect(note).toContain('- 梁晓东〔联系人 c-liang〕人 · 火山引擎 · 采购负责人；简称：梁总、晓东；邮箱 Liang@Example.com；电话 138 0000 0000')
   })
 
+  it('名片带地址，电话标出手机或工作', () => {
+    const card = formatMentionCard(person('c-cl', '陈龙', {
+      address: '南山区海德三道126号',
+      channels: [{ kind: 'phone', value: '015000675099', label: '手机' }],
+    }))
+    expect(card).toContain('地址：南山区海德三道126号')
+    expect(card).toContain('电话 015000675099（手机）')
+  })
+
   it('长备注截断', () => {
     const chatty = person('c-c', '话痨', { note: '很长'.repeat(100) })
     const card = formatMentionCard(chatty)

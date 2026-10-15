@@ -15,6 +15,7 @@ vi.mock('electron', () => ({
 }))
 
 import {
+  applyContactUpdate,
   createContact,
   emptyStore,
   findPossibleSamePeople,
@@ -128,6 +129,26 @@ describe('contact store', () => {
     expect(searchContacts(contacts, '金融科技部')).toHaveLength(1)
     expect(searchContacts(contacts, '055162201548')).toHaveLength(1)
     expect(searchContacts(contacts, '没有这个人')).toHaveLength(0)
+  })
+
+  it('keeps a one-line address and a channel label, and search finds the address', () => {
+    const created = createContact({
+      name: '陈龙',
+      organization: '卓越后海',
+      address: '  南山区海德三道126号  ',
+      channels: [
+        { kind: 'phone', value: '015000675099', label: '手机' },
+        { kind: 'email', value: 'longchen@example.com', label: ' 工作 ' },
+      ],
+    })
+    expect(created.address).toBe('南山区海德三道126号')
+    expect(created.channels?.[0].label).toBe('手机')
+    expect(created.channels?.[1].label).toBe('工作')
+    expect(searchContacts([created], '海德三道')).toHaveLength(1)
+
+    const cleared = applyContactUpdate(created, { address: '' })
+    expect(cleared.address).toBeUndefined()
+    expect(cleared.organization).toBe('卓越后海')
   })
 
   it('a mutation that changes nothing does not rewrite the file', async () => {

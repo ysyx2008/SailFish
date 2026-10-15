@@ -27,6 +27,8 @@ export interface Contact {
   kind: ContactKind
   organization?: string
   role?: string
+  /** 一行地址，不拆省市区 */
+  address?: string
   channels?: ContactChannel[]
   /** 自由备注：关系、近况，不拆字段 */
   note?: string
@@ -48,6 +50,7 @@ export interface ContactCreateInput {
   kind?: ContactKind
   organization?: string
   role?: string
+  address?: string
   note?: string
   channels?: ContactChannel[]
 }
@@ -58,6 +61,7 @@ export interface ContactUpdatePatch {
   kind?: ContactKind
   organization?: string | null
   role?: string | null
+  address?: string | null
   note?: string | null
   aliases?: string[] | null
   addAliases?: string[]

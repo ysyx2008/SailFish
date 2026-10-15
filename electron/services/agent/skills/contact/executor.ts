@@ -27,6 +27,7 @@ export function formatContact(contact: Contact, options?: { includeId?: boolean 
   if (contact.aliases?.length) parts.push(`  aliases: ${contact.aliases.join('、')}`)
   if (contact.organization) parts.push(`  org: ${contact.organization}`)
   if (contact.role) parts.push(`  role: ${contact.role}`)
+  if (contact.address) parts.push(`  address: ${contact.address}`)
   if (contact.channels?.length) parts.push(`  ${contact.channels.map(formatChannel).join('; ')}`)
   if (contact.note) parts.push(`  note: ${contact.note}`)
   return parts.join('\n')
@@ -144,6 +145,7 @@ async function contactAdd(args: Record<string, unknown>, executor: ToolExecutorC
     kind: args.kind as ContactKind | undefined,
     organization: typeof args.organization === 'string' ? args.organization : undefined,
     role: typeof args.role === 'string' ? args.role : undefined,
+    address: typeof args.address === 'string' ? args.address : undefined,
     note: typeof args.note === 'string' ? args.note : undefined,
     channels: parseChannels(args.channels),
   }, { confirmedDifferent: args.different_person === true })
@@ -174,6 +176,7 @@ async function contactUpdate(args: Record<string, unknown>, executor: ToolExecut
   if (args.kind === 'person' || args.kind === 'org') patch.kind = args.kind
   if (typeof args.organization === 'string') patch.organization = args.organization
   if (typeof args.role === 'string') patch.role = args.role
+  if (typeof args.address === 'string') patch.address = args.address
   if (typeof args.note === 'string') patch.note = args.note
   if (Array.isArray(args.aliases)) patch.aliases = parseStringList(args.aliases) ?? []
   if (Array.isArray(args.add_aliases)) patch.addAliases = parseStringList(args.add_aliases) ?? []

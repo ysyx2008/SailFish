@@ -2,7 +2,7 @@ export default {
   contactPanel: {
     title: 'Contacts',
     desc: 'People and organizations your secretary keeps track of. Click one to view or edit; changes save automatically.',
-    searchPlaceholder: 'Find by name, alias, organization or contact',
+    searchPlaceholder: 'Find by name, alias, organization, address or contact',
     newPlaceholder: 'Add a contact by name…',
     add: 'Add',
     createFailed: 'Failed to add contact',
@@ -27,6 +27,8 @@ export default {
     },
     fieldRole: 'Role',
     fieldOrganization: 'Organization',
+    fieldAddress: 'Address',
+    addressPlaceholder: 'Street or office, one line',
     fieldChannels: 'Contact methods',
     channelKind: {
       email: 'Email',
@@ -34,6 +36,7 @@ export default {
       im: 'Messaging',
     },
     platformPlaceholder: 'Platform',
+    channelLabelPlaceholder: 'Mobile, work',
     addChannel: 'Add contact method',
     removeChannel: 'Remove this contact method',
     fieldNote: 'Notes',

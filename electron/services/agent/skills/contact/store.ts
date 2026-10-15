@@ -192,6 +192,8 @@ export function normalizeStore(raw: unknown): ContactStoreData {
     if (organization) contact.organization = organization
     const role = optionalString(t.role)
     if (role) contact.role = role
+    const address = optionalString(t.address)
+    if (address) contact.address = address
     const note = optionalString(t.note)
     if (note) contact.note = note
     const channels = normalizeChannels(t.channels)
@@ -281,7 +283,7 @@ export function findPossibleSamePeople(
 }
 
 /**
- * 用到才查。命中：姓名/别名互相包含（单字别名不反向包含整句）、单位、角色、渠道值。
+ * 用到才查。命中：姓名/别名互相包含（单字别名不反向包含整句）、单位、角色、地址、渠道值。
  */
 export function searchContacts(contacts: Contact[], query: string): Contact[] {
   const q = normalizeContactKey(query)
@@ -292,6 +294,7 @@ export function searchContacts(contacts: Contact[], query: string): Contact[] {
     if (keys.some(key => key.includes(q) || (key.length >= 2 && q.includes(key)))) return true
     if (contact.organization && normalizeContactKey(contact.organization).includes(q)) return true
     if (contact.role && normalizeContactKey(contact.role).includes(q)) return true
+    if (contact.address && normalizeContactKey(contact.address).includes(q)) return true
     if (contact.channels?.some(channel => {
       const value = normalizeChannelValue(channel.kind, channel.value)
       return value.includes(q) || (channel.kind === 'phone' && phoneQuery.length >= 3 && value.includes(phoneQuery))
@@ -317,6 +320,8 @@ export function createContact(input: ContactCreateInput): Contact {
   if (organization) contact.organization = organization
   const role = input.role?.trim()
   if (role) contact.role = role
+  const address = input.address?.trim()
+  if (address) contact.address = address
   const note = input.note?.trim()
   if (note) contact.note = note
   const channels = normalizeChannels(input.channels)
@@ -340,6 +345,12 @@ export function applyContactUpdate(item: Contact, patch: ContactUpdatePatch): Co
     const value = patch.role.trim()
     if (value) next.role = value
     else delete next.role
+  }
+  if (patch.address === null) delete next.address
+  else if (typeof patch.address === 'string') {
+    const value = patch.address.trim()
+    if (value) next.address = value
+    else delete next.address
   }
   if (patch.note === null) delete next.note
   else if (typeof patch.note === 'string') {
