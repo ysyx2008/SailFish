@@ -78,6 +78,17 @@ function parseRemoveChannels(raw: unknown): Array<{ kind: ContactChannelKind, va
   return list.length ? list : undefined
 }
 
+/** 给人看的是谁，不把编号摊在界面上。同名时带上单位或角色。改名则写成「原来 → 现在」。 */
+function contactStepLabel(id: string, nextName?: string): string {
+  const contact = getContactBook().list().find(item => item.id === id)
+  if (!contact) return id
+  const hint = contact.organization || contact.role
+  const who = hint ? `${contact.name} · ${hint}` : contact.name
+  const renamed = nextName?.trim()
+  if (renamed && renamed !== contact.name) return `${who} → ${renamed}`
+  return who
+}
+
 function step(executor: ToolExecutorConfig, toolName: string, content: string, args: Record<string, unknown>): void {
   executor.addStep({
     type: 'tool_call',
@@ -145,7 +156,8 @@ async function contactAdd(args: Record<string, unknown>, executor: ToolExecutorC
 async function contactUpdate(args: Record<string, unknown>, executor: ToolExecutorConfig): Promise<ToolResult> {
   const id = typeof args.id === 'string' ? args.id.trim() : ''
   if (!id) return { success: false, output: '', error: 'id is required' }
-  step(executor, 'contact_update', `更新联系人: ${id}`, { id })
+  const nextName = typeof args.name === 'string' ? args.name : undefined
+  step(executor, 'contact_update', `更新联系人: ${contactStepLabel(id, nextName)}`, { id })
 
   const patch: ContactUpdatePatch = {}
   if (typeof args.name === 'string' && args.name.trim()) patch.name = args.name
@@ -171,7 +183,7 @@ async function contactUpdate(args: Record<string, unknown>, executor: ToolExecut
 async function contactDelete(args: Record<string, unknown>, executor: ToolExecutorConfig): Promise<ToolResult> {
   const id = typeof args.id === 'string' ? args.id.trim() : ''
   if (!id) return { success: false, output: '', error: 'id is required' }
-  step(executor, 'contact_delete', `删除联系人: ${id}`, { id })
+  step(executor, 'contact_delete', `删除联系人: ${contactStepLabel(id)}`, { id })
   const outcome = await getContactBook().remove(id)
   if (outcome.type === 'missing') return { success: false, output: '', error: `contact not found: ${id}` }
   const output = `已删除联系人：${outcome.contact.name}\nID: ${id}`

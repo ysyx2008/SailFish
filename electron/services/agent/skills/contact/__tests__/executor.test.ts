@@ -19,10 +19,13 @@ import { executeContactTool } from '../executor'
 import { loadStore, resetWriteQueueForTest } from '../store'
 import { ensureAgentWorkspaceDirs } from '../../../tools/file'
 
-function mockExecutor(): ToolExecutorConfig {
+function mockExecutor(steps?: string[]): ToolExecutorConfig {
   return {
     agentId: 'agent-1',
-    addStep: () => ({ id: 's', timestamp: Date.now() }),
+    addStep: (step: { content?: string }) => {
+      if (step.content) steps?.push(step.content)
+      return { id: 's', timestamp: Date.now() }
+    },
     updateStep: () => undefined,
   } as unknown as ToolExecutorConfig
 }
@@ -154,6 +157,35 @@ describe('contact executor', () => {
     )
     expect(updated.output).toContain('已更新')
     expect(loadStore().contacts[0]).toMatchObject({ id, organization: '国元期货' })
+  })
+
+  it('update and delete steps name the person instead of the id', async () => {
+    await executeContactTool(
+      'contact_add',
+      '',
+      { name: '周总', organization: '国元证券' },
+      'c11',
+      {} as never,
+      mockExecutor()
+    )
+    const id = loadStore().contacts[0].id
+    const steps: string[] = []
+    const exec = mockExecutor(steps)
+    await executeContactTool(
+      'contact_update',
+      '',
+      { id, name: '周立军', add_aliases: ['周总'] },
+      'c12',
+      {} as never,
+      exec
+    )
+    expect(steps[0]).toBe('更新联系人: 周总 · 国元证券 → 周立军')
+    expect(steps[0]).not.toContain(id)
+
+    steps.length = 0
+    await executeContactTool('contact_delete', '', { id }, 'c13', {} as never, exec)
+    expect(steps[0]).toBe('删除联系人: 周立军 · 国元证券')
+    expect(steps[0]).not.toContain(id)
   })
 
   it('contact_search finds by alias', async () => {
