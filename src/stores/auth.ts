@@ -5,6 +5,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { isOemFeatureEnabled } from '@shared/oem-features'
 import type { AuthPublicSession, AuthUser } from '@shared/types'
+import { signedInFace } from '../utils/signed-in-face'
 
 export type SsoGateMode = 'hard' | 'soft' | 'none'
 
@@ -18,6 +19,8 @@ export const useAuthStore = defineStore('auth', () => {
 
   const user = computed<AuthUser | null>(() => session.value?.user ?? null)
   const isAuthenticated = computed(() => !!session.value?.user?.sub)
+  /** 开了登录且已经登进来：左下角用这张脸。没开或还没登则是 null，角落仍是旗鱼或秘书。 */
+  const face = computed(() => (enabled.value && isAuthenticated.value) ? signedInFace(user.value) : null)
   /** hard 门控且未登录 → 挡主界面 */
   const blockApp = computed(
     () => enabled.value && gateMode.value === 'hard' && !isAuthenticated.value
@@ -89,6 +92,7 @@ export const useAuthStore = defineStore('auth', () => {
     session,
     user,
     isAuthenticated,
+    face,
     blockApp,
     showSoftEntry,
     loading,

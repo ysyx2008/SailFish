@@ -57,7 +57,7 @@ export const oemConfig = {
 | 值 | 行为 |
 |---|---|
 | `hard` | 未登录全屏挡主界面 |
-| `soft`（默认） | 能进主界面；顶栏有「企业登录」入口 |
+| `soft`（默认） | 能进主界面；还没登录时右上角有「企业登录」 |
 | `none` | 无内置登录 UI（OEM 自己接 `useAuth().login()`） |
 
 ### IdP 侧登记
@@ -73,7 +73,7 @@ export const oemConfig = {
 ## 2. 用户怎么用
 
 1. 打开应用（`features.sso=true` 且配置完整）  
-2. **soft**：点顶栏「企业登录」→ 弹窗到 IdP → 登录成功后显示姓名/邮箱，可再点退出  
+2. **soft**：点右上角「企业登录」→ 弹窗到 IdP → 登录成功后，左下角换成这个人的头像和名字，邮箱在名字下面。点开左下角菜单，最底下可以退出。侧栏收起时，右上角是这个人的名字，点一下退出。  
 3. **hard**：启动即全屏登录页，未登录进不了主界面  
 4. 会话经 `credential.service` 加密落盘；重启会尝试用 refresh_token 恢复  
 
@@ -98,7 +98,7 @@ const {
 // ① 先判断有没有登录（响应式布尔，用 .value）
 if (!isAuthenticated.value) {
   await login()
-  // 或：提示用户去顶栏「企业登录」
+  // 或：提示用户去右上角「企业登录」
 }
 
 // ② 已登录再拿 token 调企业 API
@@ -169,7 +169,7 @@ await fetch('https://api.corp.example/v1/orders', {
 
 - [ ] `features.sso === true`，且 `issuer` / `clientId` / `redirectUri` 齐全  
 - [ ] IdP 回调 URL 与 `redirectUri` 一致  
-- [ ] soft：顶栏能登录 / 退出；hard：未登录挡全屏  
+- [ ] soft：还没登录时右上角能登录；登录后左下角是这个人，菜单里能退出。hard：未登录挡全屏，登录后同样是左下角这个人  
 - [ ] 重启后会话仍在（IdP 发了 refresh_token）  
 - [ ] 岗包 `getAccessToken()` 非空，调企业 API 200  
 - [ ] `enterpriseApiHosts` 命中时 Agent `web_fetch` 带 Bearer；改成公网 URL 不带  

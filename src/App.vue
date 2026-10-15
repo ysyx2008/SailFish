@@ -1310,6 +1310,9 @@ const onSetupComplete = async () => {
   startUpdaterPrompts()
 }
 
+const collapsedFacePictureBroken = ref(false)
+watch(() => authStore.face?.picture, () => { collapsedFacePictureBroken.value = false })
+
 async function onSsoSoftLogin() {
   try {
     await authStore.login()
@@ -1796,25 +1799,30 @@ onUnmounted(() => {
           <PanelRightClose v-if="aiPanelVisible" :size="14" :stroke-width="2" />
           <PanelRightOpen v-else :size="14" :stroke-width="2" />
         </button>
-        <template v-if="authStore.showSoftEntry">
-          <button
-            v-if="!authStore.isAuthenticated"
-            class="btn-icon btn-icon-header sso-soft-btn"
-            :disabled="authStore.loading"
-            :title="t('header.ssoLogin')"
-            @click="onSsoSoftLogin"
-          >
-            {{ t('header.ssoLogin') }}
-          </button>
-          <button
-            v-else-if="recallSidebarCollapsed"
-            class="btn-icon btn-icon-header sso-soft-btn"
-            :title="authStore.user?.email || authStore.user?.name || t('header.ssoLogout')"
-            @click="onSsoSoftLogout"
-          >
-            {{ t('header.ssoLogout') }}
-          </button>
-        </template>
+        <button
+          v-if="authStore.showSoftEntry && !authStore.isAuthenticated"
+          class="btn-icon btn-icon-header sso-soft-btn"
+          :disabled="authStore.loading"
+          :title="t('header.ssoLogin')"
+          @click="onSsoSoftLogin"
+        >
+          {{ t('header.ssoLogin') }}
+        </button>
+        <button
+          v-else-if="authStore.face && recallSidebarCollapsed"
+          class="btn-icon btn-icon-header sso-soft-btn"
+          :title="t('header.ssoLogout')"
+          @click="onSsoSoftLogout"
+        >
+          <img
+            v-if="authStore.face.picture && !collapsedFacePictureBroken"
+            :src="authStore.face.picture"
+            class="sso-soft-avatar"
+            alt=""
+            @error="collapsedFacePictureBroken = true"
+          />
+          {{ authStore.face.name }}
+        </button>
         <!-- Windows 自绘标题栏按钮（最小化 / 最大化 / 关闭）：仅 Win 平台 + 非全屏时显示。
              全屏模态打开时，模态全屏覆盖会自动遮住这三个按钮，模态自带的 X 是唯一可见关闭入口。 -->
         <WindowControls v-if="isWin && !isFullScreen" />
@@ -2364,6 +2372,8 @@ onUnmounted(() => {
 }
 
 .sso-soft-btn {
+  display: inline-flex;
+  align-items: center;
   max-width: 140px;
   padding: 0 10px !important;
   width: auto !important;
@@ -2371,6 +2381,15 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.sso-soft-avatar {
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
 }
 
 .btn-icon.awakened-active {

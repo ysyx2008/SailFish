@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   BookUser,
@@ -55,22 +55,32 @@ const canShowWatch = !isSteamBuild && isOemFeatureEnabled('watch')
 /** 秘书就是这个应用本身；名字的解析口径统一在 resolveAssistantName */
 const secretaryName = computed(() => resolveAssistantName())
 
-const secretaryInitial = computed(() => secretaryName.value.slice(0, 1))
-const secretaryAvatar = computed(() => configStore.agentAvatar?.trim() || '')
+/** 已经用公司账号登录时，这张脸换成员工。没开登录或还没登录，仍是旗鱼或秘书。 */
+const showingEmployee = computed(() => !!authStore.face)
+const pictureBroken = ref(false)
+watch(() => authStore.face?.picture, () => { pictureBroken.value = false })
+
+const faceName = computed(() => showingEmployee.value ? authStore.face!.name : secretaryName.value)
+const faceInitial = computed(() => faceName.value.slice(0, 1))
+const faceAvatar = computed(() => {
+  if (showingEmployee.value) return pictureBroken.value ? '' : authStore.face!.picture
+  return configStore.agentAvatar?.trim() || ''
+})
 
 const appVersion = ref('')
 
 /**
- * 副文案位给低频信息：常态显示版本号，
- * 未觉醒时让位——那是个需要用户去做点什么的状态。
+ * 副文案：登录后是邮箱。还没登录时，常态是版本号，未觉醒时让位。
  */
-const secretarySub = computed(() => {
+const faceSub = computed(() => {
+  if (showingEmployee.value) return authStore.face!.email
   if (canShowAwaken && !props.awakened) return t('shell.notAwakened')
   return appVersion.value ? `v${appVersion.value}` : ''
 })
 
-/** 觉醒状态不再常驻占一行，悬停时仍能确认 */
-const secretaryTitle = computed(() => {
+/** 登录后悬停就是这个人。还没登录时，悬停仍能确认觉醒状态。 */
+const faceTitle = computed(() => {
+  if (showingEmployee.value) return faceName.value
   if (!canShowAwaken) return secretaryName.value
   const state = props.awakened ? t('shell.awakened') : t('shell.notAwakened')
   return `${secretaryName.value} · ${state}`
@@ -175,15 +185,15 @@ function pick(action: 'open-todos' | 'open-contacts' | 'open-watch' | 'open-awak
 
     <div ref="menuRef" class="secretary">
       <div class="secretary-row">
-        <button type="button" class="secretary-btn" :title="secretaryTitle" @click.stop="menuOpen = !menuOpen">
-          <span class="avatar" :class="{ awakened: props.awakened }">
-            <img v-if="secretaryAvatar" :src="secretaryAvatar" class="avatar-img" alt="" />
-            <template v-else>{{ secretaryInitial }}</template>
+        <button type="button" class="secretary-btn" :title="faceTitle" @click.stop="menuOpen = !menuOpen">
+          <span class="avatar" :class="{ awakened: !showingEmployee && props.awakened }">
+            <img v-if="faceAvatar" :src="faceAvatar" class="avatar-img" alt="" @error="pictureBroken = true" />
+            <template v-else>{{ faceInitial }}</template>
             <span v-if="secretaryHasBadge" class="avatar-dot" />
           </span>
           <span class="secretary-meta">
-            <span class="secretary-name">{{ secretaryName }}</span>
-            <span v-if="secretarySub" class="secretary-sub">{{ secretarySub }}</span>
+            <span class="secretary-name">{{ faceName }}</span>
+            <span v-if="faceSub" class="secretary-sub">{{ faceSub }}</span>
           </span>
         </button>
         <!-- 装备位：上面连接、下面技能。点这里先收起秘书菜单，避免浮层叠在一起 -->
@@ -216,13 +226,14 @@ function pick(action: 'open-todos' | 'open-contacts' | 'open-watch' | 'open-awak
         <button v-if="canShowAwaken" type="button" class="menu-item" @click="pick('open-awaken')">
           <Heart :size="14" :fill="props.awakened ? 'currentColor' : 'none'" />
           <span>{{ t('shell.awaken') }}</span>
+          <span v-if="showingEmployee && !props.awakened" class="menu-hint">{{ t('shell.notAwakened') }}</span>
         </button>
         <button type="button" class="menu-item" @click="pick('open-settings')">
           <Settings :size="14" />
           <span>{{ t('shell.settings') }}</span>
         </button>
         <button
-          v-if="authStore.showSoftEntry && authStore.isAuthenticated"
+          v-if="showingEmployee"
           type="button"
           class="menu-item menu-item--danger"
           @click="closeMenu(); emit('logout')"
@@ -387,6 +398,9 @@ function pick(action: 'open-todos' | 'open-contacts' | 'open-watch' | 'open-awak
 .secretary-sub {
   font-size: 11px;
   color: var(--text-tertiary, var(--text-secondary));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .secretary-menu {
@@ -424,6 +438,12 @@ function pick(action: 'open-todos' | 'open-contacts' | 'open-watch' | 'open-awak
 
 .menu-item--danger {
   color: var(--text-secondary);
+}
+
+.menu-hint {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-tertiary, var(--text-secondary));
 }
 
 .menu-badge {
