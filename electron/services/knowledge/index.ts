@@ -1279,6 +1279,8 @@ export class KnowledgeService extends EventEmitter {
       return false
     }
 
+    if (!this.isInitialized) await this.initialize()
+
     // 删除向量记录（传递 forceCompact 参数）
     await this.vectorStorage.removeDocumentChunks(docId, forceCompact)
 

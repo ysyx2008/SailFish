@@ -354,6 +354,17 @@ if [[ "$MODE" != "quick" ]]; then
     const raw = fs.readFileSync(process.argv[1], "utf8")
     if (raw.includes(process.argv[2])) process.exit(1)
   ' "$SFT_DATA_DIR/knowledge/bm25-index.json" "$LEAVE_ID"
+  run_test "删掉之后向量也没了" node --input-type=module -e '
+    import * as lancedb from "@lancedb/lancedb"
+    const q = String.fromCharCode(39)
+    const db = await lancedb.connect(process.argv[1])
+    const names = await db.tableNames()
+    if (!names.includes("knowledge_vectors")) process.exit(1)
+    const table = await db.openTable("knowledge_vectors")
+    const where = "`docId` = " + q + process.argv[2] + q
+    const rows = await table.query().where(where).limit(5).toArray()
+    if (rows.length !== 0) process.exit(1)
+  ' "$SFT_DATA_DIR/knowledge/lancedb" "$LEAVE_ID"
 
   # 用语义相关的词搜索，验证向量检索能力
   assert_contains "knowledge:search 语义搜索" "Kubernetes" \
@@ -435,6 +446,7 @@ else
   skip_test "删除用户放入的要先确认"
   skip_test "自己放入的可以直接删"
   skip_test "删掉之后检索条目也没了"
+  skip_test "删掉之后向量也没了"
   skip_test "knowledge:add PDF 走解析器"
   skip_test "knowledge bench 跑出基线"
   skip_test "孤儿残留时仍能入库"
