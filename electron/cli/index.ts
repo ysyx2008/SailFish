@@ -434,16 +434,39 @@ async function knowledgeAdd(args: string[]): Promise<void> {
   }
   
   await service.initialize()
-  
-  const content = fs.readFileSync(filePath, 'utf-8')
-  const filename = path.basename(filePath)
-  
-  const docId = await service.addDocument(
-    { filename, content, fileType: path.extname(filePath).slice(1) || 'txt' },
-    { hostId: flags.host as string }
+
+  // 与界面入库同一条路：先解析再入库。直接按文本读会把 PDF / Word 的字节流当正文存进去
+  const { getDocumentParserService } = require('../services/document-parser.service')
+  const parsed = await getDocumentParserService().parseDocument({
+    name: path.basename(filePath),
+    path: filePath,
+    size: fs.statSync(filePath).size
+  })
+
+  if (parsed.error) {
+    console.error(`Parse failed: ${parsed.error}`)
+    process.exit(1)
+  }
+  if (parsed.skipped) {
+    console.error(`Skipped: ${parsed.filename} exceeds the parser size limit`)
+    process.exit(1)
+  }
+  if (!parsed.content.trim()) {
+    console.error(`Parse produced no text: ${parsed.filename}`)
+    process.exit(1)
+  }
+
+  const duplicate = service.isDuplicate(parsed.content)
+  if (duplicate.isDuplicate && duplicate.existingDoc) {
+    console.log(`= Already present: ${duplicate.existingDoc.filename} (id: ${duplicate.existingDoc.id})`)
+    return
+  }
+
+  const docId = await service.addDocument(parsed, { hostId: flags.host as string })
+
+  console.log(
+    `✓ Added document: ${parsed.filename} (id: ${docId}, type: ${parsed.fileType}, ${parsed.content.length} chars)`
   )
-  
-  console.log(`✓ Added document: ${filename} (id: ${docId})`)
 }
 
 // ==================== History Commands ====================
