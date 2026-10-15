@@ -199,14 +199,14 @@ function pick(action: 'open-todos' | 'open-contacts' | 'open-watch' | 'open-awak
       </div>
 
       <div v-if="menuOpen" class="secretary-menu" @click.stop>
+        <button type="button" class="menu-item" @click="pick('open-contacts')">
+          <BookUser :size="14" />
+          <span>{{ t('shell.contacts') }}</span>
+        </button>
         <button type="button" class="menu-item" @click="pick('open-todos')">
           <ListTodo :size="14" />
           <span>{{ t('shell.todos') }}</span>
           <span v-if="overdueCount > 0" class="menu-badge">{{ overdueCount > 99 ? '99+' : overdueCount }}</span>
-        </button>
-        <button type="button" class="menu-item" @click="pick('open-contacts')">
-          <BookUser :size="14" />
-          <span>{{ t('shell.contacts') }}</span>
         </button>
         <button v-if="canShowWatch" type="button" class="menu-item" @click="pick('open-watch')">
           <Eye :size="14" />
