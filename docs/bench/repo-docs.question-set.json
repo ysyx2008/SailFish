@@ -1,0 +1,109 @@
+{
+  "name": "仓库文档基线",
+  "createdAt": "2026-10-15T00:00:00.000Z",
+  "corpus": [
+    { "id": "sensor-loop", "file": "../sensor-loop-architecture.md" },
+    { "id": "auto-update", "file": "../auto-update-oss.md" },
+    { "id": "plugin-dev", "file": "../plugin-dev-guide.md" }
+  ],
+  "cases": [
+    {
+      "id": "sensor-loop-q1",
+      "question": "关切是怎么被触发的，靠什么东西去盯着",
+      "expectDocId": "sensor-loop",
+      "expectText": "Sensor",
+      "status": "approved"
+    },
+    {
+      "id": "sensor-loop-q2",
+      "question": "我想让它每天固定时间检查一下，这个条件在哪里配",
+      "expectDocId": "sensor-loop",
+      "expectText": "WatchTrigger",
+      "status": "approved"
+    },
+    {
+      "id": "sensor-loop-q3",
+      "question": "同时来一堆事件会不会乱掉",
+      "expectDocId": "sensor-loop",
+      "expectText": "Event Bus",
+      "status": "approved"
+    },
+    {
+      "id": "sensor-loop-q4",
+      "question": "能不能让它自己判断这次要不要打扰我",
+      "expectDocId": "sensor-loop",
+      "expectText": "preCheck",
+      "status": "approved"
+    },
+    {
+      "id": "sensor-loop-q5",
+      "question": "跑过的记录都存了些什么",
+      "expectDocId": "sensor-loop",
+      "expectText": "WatchExecutionRecord",
+      "status": "approved"
+    },
+    {
+      "id": "auto-update-q1",
+      "question": "国内下载更新太慢了，有没有别的源",
+      "expectDocId": "auto-update",
+      "expectText": "阿里云 OSS",
+      "status": "approved"
+    },
+    {
+      "id": "auto-update-q2",
+      "question": "每次升级是不是都得把整个安装包重新下一遍",
+      "expectDocId": "auto-update",
+      "expectText": "blockmap",
+      "status": "approved"
+    },
+    {
+      "id": "auto-update-q3",
+      "question": "语音识别那个模型是跟软件一起装的吗",
+      "expectDocId": "auto-update",
+      "expectText": "optional/speech",
+      "status": "approved"
+    },
+    {
+      "id": "auto-update-q4",
+      "question": "苹果电脑和 windows 更新的方式一样吗",
+      "expectDocId": "auto-update",
+      "expectText": "平台差异",
+      "status": "approved"
+    },
+    {
+      "id": "plugin-dev-q1",
+      "question": "我想自己做个插件，第一步要建什么",
+      "expectDocId": "plugin-dev",
+      "expectText": "openclaw.plugin.json",
+      "status": "approved"
+    },
+    {
+      "id": "plugin-dev-q2",
+      "question": "插件可以给 AI 加新的工具用吗",
+      "expectDocId": "plugin-dev",
+      "expectText": "registerTool",
+      "status": "approved"
+    },
+    {
+      "id": "plugin-dev-q3",
+      "question": "能不能在它调工具之前插一脚做点检查",
+      "expectDocId": "plugin-dev",
+      "expectText": "registerHook",
+      "status": "approved"
+    },
+    {
+      "id": "plugin-dev-q4",
+      "question": "插件装好以后要怎么才能生效",
+      "expectDocId": "plugin-dev",
+      "expectText": "重启",
+      "status": "approved"
+    }
+  ],
+  "noiseQuestions": [
+    "帮我写一下这周的周报",
+    "明天上海天气怎么样",
+    "把这段英文翻译成中文",
+    "帮我订个明天下午的会议室",
+    "我家猫突然不吃饭了怎么办"
+  ]
+}

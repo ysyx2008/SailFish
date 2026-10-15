@@ -469,6 +469,160 @@ async function knowledgeAdd(args: string[]): Promise<void> {
   )
 }
 
+// ==================== Knowledge Bench Commands ====================
+
+function getKnowledgeForBench(): any {
+  const { getKnowledgeService } = require('../services/knowledge')
+  const { McpService } = require('../services/mcp.service')
+  const service = getKnowledgeService(getConfig(), getAi(), new McpService())
+  if (!service) {
+    console.error('Knowledge service not available')
+    process.exit(1)
+  }
+  return service
+}
+
+/** 仓库自带的中性问题集，换台机器、没有用户数据也能跑 */
+function defaultQuestionSetPath(): string {
+  const path = require('path') as typeof import('path')
+  return path.resolve(__dirname, '../../docs/bench/repo-docs.question-set.json')
+}
+
+function benchProgress(enabled: boolean): ((done: number, total: number, label: string) => void) | undefined {
+  if (!enabled) return undefined
+  // 重定向到文件时 \r 不会覆盖，会把进度摊成一长串，所以只在终端里原地刷新
+  if (!process.stderr.isTTY) {
+    return (done, total) => {
+      if (done === total) process.stderr.write(`已完成 ${total} 项\n`)
+    }
+  }
+  return (done, total, label) => {
+    process.stderr.write(`\r${`[${done}/${total}] ${label}`.padEnd(70).slice(0, 70)}`)
+    if (done === total) process.stderr.write('\n')
+  }
+}
+
+async function knowledgeBench(args: string[]): Promise<void> {
+  const { flags } = parseArgs(args)
+  const fs = require('fs') as typeof import('fs')
+  const path = require('path') as typeof import('path')
+
+  const setPath = path.resolve((flags.set as string) || defaultQuestionSetPath())
+  if (!fs.existsSync(setPath)) {
+    console.error(`Question set not found: ${setPath}`)
+    console.error(`Generate one first: ${cliName()} knowledge:bench:gen <file...> --out <path>`)
+    process.exit(1)
+  }
+
+  const { QuestionSetStore, RecallBench, BenchReportFormatter } = require('../services/knowledge/bench')
+  const { getDocumentParserService } = require('../services/document-parser.service')
+
+  const store = new QuestionSetStore(setPath)
+  const set = store.load()
+
+  const service = getKnowledgeForBench()
+  await service.initialize()
+
+  const bench = new RecallBench(service, getDocumentParserService())
+  const report = await bench.run(set, {
+    baseDir: store.baseDir,
+    includeCandidates: !!flags['include-candidates'],
+    keepCorpus: !!flags.keep,
+    onProgress: benchProgress(!flags.json)
+  })
+
+  if (typeof flags.save === 'string') {
+    const savePath = path.resolve(flags.save)
+    fs.mkdirSync(path.dirname(savePath), { recursive: true })
+    fs.writeFileSync(savePath, JSON.stringify(report, null, 2) + '\n', 'utf-8')
+    process.stderr.write(`报告已存档：${savePath}\n`)
+  }
+
+  if (flags.json) {
+    printJSON(report)
+  } else {
+    console.log(BenchReportFormatter.toText(report))
+  }
+}
+
+async function knowledgeBenchGen(args: string[]): Promise<void> {
+  const { positional, flags } = parseArgs(args)
+  const fs = require('fs') as typeof import('fs')
+  const path = require('path') as typeof import('path')
+
+  if (positional.length === 0) {
+    console.error(`Usage: ${cliName()} knowledge:bench:gen <file-or-dir...> [--out <path>] [--per-doc 8] [--noise 5] [--name <name>]`)
+    process.exit(1)
+  }
+
+  const supported = new Set(['.pdf', '.docx', '.doc', '.txt', '.md', '.mdc', '.json', '.xml', '.html', '.csv', '.xlsx', '.xls'])
+  const files: string[] = []
+  for (const target of positional) {
+    const resolved = path.resolve(target)
+    if (!fs.existsSync(resolved)) {
+      console.error(`Not found: ${resolved}`)
+      process.exit(1)
+    }
+    if (fs.statSync(resolved).isDirectory()) {
+      for (const name of fs.readdirSync(resolved).sort()) {
+        const child = path.join(resolved, name)
+        if (fs.statSync(child).isFile() && supported.has(path.extname(name).toLowerCase())) {
+          files.push(child)
+        }
+      }
+    } else {
+      files.push(resolved)
+    }
+  }
+  if (files.length === 0) {
+    console.error('No supported document found in the given paths')
+    process.exit(1)
+  }
+
+  const { QuestionGenerator, QuestionSetStore } = require('../services/knowledge/bench')
+  const { getDocumentParserService } = require('../services/document-parser.service')
+
+  const generator = new QuestionGenerator(getAi(), getDocumentParserService())
+  process.stderr.write(`出题中：${files.length} 份语料\n`)
+
+  const set = await generator.generate(files, {
+    perDoc: Number(flags['per-doc']) || 8,
+    noiseCount: flags.noise === undefined ? 5 : Number(flags.noise),
+    name: (flags.name as string) || undefined,
+    profileId: (flags.profile as string) || undefined
+  })
+
+  const outPath = path.resolve((flags.out as string) || defaultQuestionSetPath())
+  new QuestionSetStore(outPath).save(set)
+
+  console.log(`✓ ${set.cases.length} 条候选问题 + ${set.noiseQuestions.length} 条无关问题 → ${outPath}`)
+  console.log(`  全部为候选状态。勾选时把要用的那条 status 改成 "approved"，不要的改成 "rejected"。`)
+  console.log(`  想先看看效果：${cliName()} knowledge:bench --set ${outPath} --include-candidates`)
+}
+
+async function knowledgeBenchCompare(args: string[]): Promise<void> {
+  const { positional } = parseArgs(args)
+  const fs = require('fs') as typeof import('fs')
+  const path = require('path') as typeof import('path')
+
+  if (positional.length < 2) {
+    console.error(`Usage: ${cliName()} knowledge:bench:compare <before.json> <after.json>`)
+    process.exit(1)
+  }
+
+  const load = (p: string) => {
+    const resolved = path.resolve(p)
+    if (!fs.existsSync(resolved)) {
+      console.error(`Report not found: ${resolved}`)
+      process.exit(1)
+    }
+    return JSON.parse(fs.readFileSync(resolved, 'utf-8'))
+  }
+
+  const { BenchReportFormatter } = require('../services/knowledge/bench')
+  console.log(BenchReportFormatter.compare(load(positional[0]), load(positional[1])))
+}
+
 // ==================== History Commands ====================
 
 async function historyList(args: string[]): Promise<void> {
@@ -2015,6 +2169,7 @@ ${oemResolved.identity.productName} CLI v${version}
   history list|stats
   watch list|history|templates
   knowledge search|list|stats
+  knowledge bench            跑召回基线（该想起的想起了吗 / 不该来的有没有来 / 占多少篇幅）
   companion <消息>           以联络身份对话（含任务管理；联络建的任务由 CLI 值班到跑完）
   --help / -h / help
   --version / -v
@@ -2122,6 +2277,13 @@ function resolveCliInvocation(args: string[]): { command: string; cmdArgs: strin
   }
   if (head === 'knowledge') {
     const sub = positional[1]
+    if (sub === 'bench') {
+      const third = positional[2]
+      if (third === 'gen' || third === 'compare') {
+        return { command: `knowledge:bench:${third}`, cmdArgs: positional.slice(3) }
+      }
+      return { command: 'knowledge:bench', cmdArgs: positional.slice(2) }
+    }
     const map: Record<string, string> = {
       search: 'knowledge:search',
       list: 'knowledge:list',
@@ -2130,7 +2292,7 @@ function resolveCliInvocation(args: string[]): { command: string; cmdArgs: strin
     if (sub && map[sub]) {
       return { command: map[sub], cmdArgs: positional.slice(2) }
     }
-    console.error(`Usage: ${cliName()} knowledge search|list|stats`)
+    console.error(`Usage: ${cliName()} knowledge search|list|stats|bench`)
     return null
   }
   if (head === 'agent') {
@@ -2269,6 +2431,9 @@ async function runCli(): Promise<void> {
       case 'knowledge:stats':   await knowledgeStats(); break
       case 'knowledge:rebuild': await knowledgeRebuild(cmdArgs); break
       case 'knowledge:repair':  await knowledgeRepair(cmdArgs); break
+      case 'knowledge:bench':   await knowledgeBench(cmdArgs); break
+      case 'knowledge:bench:gen': await knowledgeBenchGen(cmdArgs); break
+      case 'knowledge:bench:compare': await knowledgeBenchCompare(cmdArgs); break
 
       case 'history:list':   await historyList(cmdArgs); break
       case 'history:stats':  await historyStats(); break

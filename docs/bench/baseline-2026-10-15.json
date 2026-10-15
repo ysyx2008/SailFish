@@ -1,0 +1,177 @@
+{
+  "name": "仓库文档基线",
+  "runAt": "2026-10-15T03:04:40.701Z",
+  "embedding": {
+    "mode": "local",
+    "model": "auto"
+  },
+  "corpusCount": 3,
+  "caseCount": 13,
+  "metrics": {
+    "manualTop1": 0.7692307692307693,
+    "manualTop5": 1,
+    "autoHit": 0.15384615384615385,
+    "autoAvgChars": 89,
+    "noiseRecall": 0,
+    "sectionAccuracy": 0.46153846153846156
+  },
+  "cases": [
+    {
+      "caseId": "sensor-loop-q1",
+      "question": "关切是怎么被触发的，靠什么东西去盯着",
+      "expectDocId": "sensor-loop",
+      "manualRank": 1,
+      "autoHit": false,
+      "autoChars": 0,
+      "autoSuppressed": false,
+      "sectionHit": true
+    },
+    {
+      "caseId": "sensor-loop-q2",
+      "question": "我想让它每天固定时间检查一下，这个条件在哪里配",
+      "expectDocId": "sensor-loop",
+      "manualRank": 2,
+      "autoHit": false,
+      "autoChars": 0,
+      "autoSuppressed": false,
+      "sectionHit": false
+    },
+    {
+      "caseId": "sensor-loop-q3",
+      "question": "同时来一堆事件会不会乱掉",
+      "expectDocId": "sensor-loop",
+      "manualRank": 2,
+      "autoHit": false,
+      "autoChars": 0,
+      "autoSuppressed": false,
+      "sectionHit": false
+    },
+    {
+      "caseId": "sensor-loop-q4",
+      "question": "能不能让它自己判断这次要不要打扰我",
+      "expectDocId": "sensor-loop",
+      "manualRank": 1,
+      "autoHit": false,
+      "autoChars": 0,
+      "autoSuppressed": false,
+      "sectionHit": true
+    },
+    {
+      "caseId": "sensor-loop-q5",
+      "question": "跑过的记录都存了些什么",
+      "expectDocId": "sensor-loop",
+      "manualRank": 2,
+      "autoHit": false,
+      "autoChars": 0,
+      "autoSuppressed": false,
+      "sectionHit": false
+    },
+    {
+      "caseId": "auto-update-q1",
+      "question": "国内下载更新太慢了，有没有别的源",
+      "expectDocId": "auto-update",
+      "manualRank": 1,
+      "autoHit": true,
+      "autoChars": 757,
+      "autoSuppressed": false,
+      "sectionHit": true
+    },
+    {
+      "caseId": "auto-update-q2",
+      "question": "每次升级是不是都得把整个安装包重新下一遍",
+      "expectDocId": "auto-update",
+      "manualRank": 1,
+      "autoHit": false,
+      "autoChars": 0,
+      "autoSuppressed": false,
+      "sectionHit": true
+    },
+    {
+      "caseId": "auto-update-q3",
+      "question": "语音识别那个模型是跟软件一起装的吗",
+      "expectDocId": "auto-update",
+      "manualRank": 1,
+      "autoHit": false,
+      "autoChars": 0,
+      "autoSuppressed": false,
+      "sectionHit": true
+    },
+    {
+      "caseId": "auto-update-q4",
+      "question": "苹果电脑和 windows 更新的方式一样吗",
+      "expectDocId": "auto-update",
+      "manualRank": 1,
+      "autoHit": false,
+      "autoChars": 0,
+      "autoSuppressed": false,
+      "sectionHit": false
+    },
+    {
+      "caseId": "plugin-dev-q1",
+      "question": "我想自己做个插件，第一步要建什么",
+      "expectDocId": "plugin-dev",
+      "manualRank": 1,
+      "autoHit": false,
+      "autoChars": 0,
+      "autoSuppressed": false,
+      "sectionHit": false
+    },
+    {
+      "caseId": "plugin-dev-q2",
+      "question": "插件可以给 AI 加新的工具用吗",
+      "expectDocId": "plugin-dev",
+      "manualRank": 1,
+      "autoHit": true,
+      "autoChars": 402,
+      "autoSuppressed": false,
+      "sectionHit": false
+    },
+    {
+      "caseId": "plugin-dev-q3",
+      "question": "能不能在它调工具之前插一脚做点检查",
+      "expectDocId": "plugin-dev",
+      "manualRank": 1,
+      "autoHit": false,
+      "autoChars": 0,
+      "autoSuppressed": false,
+      "sectionHit": false
+    },
+    {
+      "caseId": "plugin-dev-q4",
+      "question": "插件装好以后要怎么才能生效",
+      "expectDocId": "plugin-dev",
+      "manualRank": 1,
+      "autoHit": false,
+      "autoChars": 0,
+      "autoSuppressed": false,
+      "sectionHit": true
+    }
+  ],
+  "noise": [
+    {
+      "question": "帮我写一下这周的周报",
+      "recalled": false,
+      "chars": 0
+    },
+    {
+      "question": "明天上海天气怎么样",
+      "recalled": false,
+      "chars": 0
+    },
+    {
+      "question": "把这段英文翻译成中文",
+      "recalled": false,
+      "chars": 0
+    },
+    {
+      "question": "帮我订个明天下午的会议室",
+      "recalled": false,
+      "chars": 0
+    },
+    {
+      "question": "我家猫突然不吃饭了怎么办",
+      "recalled": false,
+      "chars": 0
+    }
+  ]
+}
