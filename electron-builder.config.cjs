@@ -4,6 +4,7 @@
  */
 'use strict'
 
+const { execFileSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
 const yaml = require('js-yaml')
@@ -115,6 +116,20 @@ for (const item of base.mac?.extraFiles || []) {
 for (const item of base.dmg?.contents || []) {
   if (item?.path === 'resources/dmg/安装说明.txt') item.path = zhGuide
   if (item?.path === 'resources/dmg/Installation Guide.txt') item.path = enGuide
+}
+
+// ssh2 的可选依赖要在自己的安装脚本里生成本机探测结果。打包重编原生模块时不跑那个脚本，文件缺失会让整次打包失败。
+function prepareCpuFeaturesGypi() {
+  const dir = path.join(__dirname, 'node_modules', 'cpu-features')
+  const script = path.join(dir, 'buildcheck.js')
+  if (!fs.existsSync(script)) return
+  const gypi = execFileSync(process.execPath, [script], { cwd: dir, encoding: 'utf8' })
+  fs.writeFileSync(path.join(dir, 'buildcheck.gypi'), gypi)
+}
+
+base.beforeBuild = async () => {
+  prepareCpuFeaturesGypi()
+  return true
 }
 
 module.exports = base
