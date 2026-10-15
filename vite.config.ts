@@ -176,18 +176,24 @@ function copyPdfWorker() {
     name: 'copy-pdf-worker',
     closeBundle() {
       const destDir = resolve(__dirname, 'dist-electron/services')
-      const files = ['pdf-worker.js', 'pdfjs-config.mjs', 'pdf-text-extract.mjs']
+      // pdf-text-extract 运行时 import 的同目录模块都得跟着过去，少一个
+      // 打包版就在解析 PDF 时报找不到模块
+      const files = ['pdf-worker.js', 'pdfjs-config.mjs', 'pdf-text-extract.mjs', 'pdf-layout.mjs']
       if (!existsSync(destDir)) {
         mkdirSync(destDir, { recursive: true })
       }
+      const copied = []
       for (const file of files) {
         const srcPath = resolve(__dirname, 'electron/services', file)
         const destPath = resolve(destDir, file)
         if (existsSync(srcPath)) {
           copyFileSync(srcPath, destPath)
+          copied.push(file)
+        } else {
+          throw new Error(`[copy-pdf-worker] 缺少 ${file}，打包产物会在解析 PDF 时崩`)
         }
       }
-      console.log('[copy-pdf-worker] Copied pdf-worker.js, pdfjs-config.mjs, pdf-text-extract.mjs to dist-electron')
+      console.log(`[copy-pdf-worker] Copied ${copied.join(', ')} to dist-electron`)
     }
   }
 }

@@ -1074,7 +1074,7 @@ describe('DocumentParserService', () => {
         totalPages: 1,
         pdfType: 'TextBased',
         pagesNeedingOcr: [],
-        extractor: 'inspector',
+        extractor: 'layout',
       })
       const renderSpy = vi.spyOn(service as unknown as { renderPdfPages: (...args: unknown[]) => Promise<unknown> }, 'renderPdfPages')
       try {
@@ -1132,7 +1132,7 @@ describe('DocumentParserService', () => {
         totalPages: 78,
         pdfType: 'Mixed',
         pagesNeedingOcr: [3, 4, 5, 6, 7, 8],
-        extractor: 'inspector',
+        extractor: 'layout',
       })
       const renderSpy = vi.spyOn(
         service as unknown as { renderPdfPages: (...args: unknown[]) => Promise<unknown> },

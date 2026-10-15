@@ -122,7 +122,10 @@ interface PdfExtractResult {
   totalPages: number
   pdfType?: PdfExtractType
   pagesNeedingOcr?: number[]
-  extractor?: 'inspector' | 'pdfjs'
+  extractor?: 'layout'
+  classifier?: 'inspector'
+  textLayerMissing?: boolean
+  strippedLines?: number
 }
 
 // 默认选项
@@ -548,11 +551,15 @@ export class DocumentParserService {
     if (parsed.pdfType) {
       result.metadata = { ...result.metadata, pdfType: parsed.pdfType }
     }
-    if (parsed.extractor === 'inspector') {
+    if (parsed.pdfType) {
       const ocrNote = parsed.pagesNeedingOcr?.length
         ? `, ocr-flagged ${parsed.pagesNeedingOcr.join(',')}`
         : ''
-      log.info(`PDF ${parsed.pdfType}: structured extract, ${parsed.totalPages} pages${ocrNote}`)
+      const stripNote = parsed.strippedLines ? `, stripped ${parsed.strippedLines} head/foot lines` : ''
+      const missNote = parsed.textLayerMissing ? ', text layer unreadable' : ''
+      log.info(
+        `PDF ${parsed.pdfType}: layout reflow, ${parsed.totalPages} pages${ocrNote}${stripNote}${missNote}`
+      )
     }
 
     const PREVIEW_PAGES = 5
@@ -563,9 +570,11 @@ export class DocumentParserService {
     )
     const isVisual = pdfType === 'Scanned' || pdfType === 'ImageBased'
     const mixedNeedsOcr = pdfType === 'Mixed' && ocrPages.length > 0
-    const legacyScanned = !pdfType && !hasText && parsed.totalPages > 0
+    // 说有文字层却抽不出字（字体缺编码表这类），和没有类型信息又没文字一样，
+    // 都只能按图看
+    const unreadableText = (!pdfType || parsed.textLayerMissing) && !hasText && parsed.totalPages > 0
 
-    if ((isVisual || mixedNeedsOcr || legacyScanned) && parsed.totalPages > 0) {
+    if ((isVisual || mixedNeedsOcr || unreadableText) && parsed.totalPages > 0) {
       const pagesToRender = (ocrPages.length > 0
         ? ocrPages
         : Array.from({ length: Math.min(parsed.totalPages, PREVIEW_PAGES) }, (_, i) => i + 1)
@@ -587,7 +596,7 @@ export class DocumentParserService {
           result.error = t('doc.scan_pdf_error', { pages: parsed.totalPages })
         }
       }
-      if (isVisual || legacyScanned) return
+      if (isVisual || unreadableText) return
     }
 
     if (!hasText && parsed.totalPages === 0) {
