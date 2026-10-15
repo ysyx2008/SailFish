@@ -546,7 +546,9 @@ async function saveStyleToKnowledge(style: WordStyleConfig): Promise<string | nu
       fileSize: Buffer.from(styleContent).length,
       parseTime: 0
     }, {
-      tags: [WORD_STYLE_TAG, style.name]
+      tags: [WORD_STYLE_TAG, style.name],
+      addedBy: 'agent',
+      folder: '样式',
     })
     
     styleDocIds.set(style.name, docId)

@@ -2,8 +2,14 @@
  * 知识库操作工具
  * 包括：搜索知识库、获取知识库文档
  */
+import * as fs from 'fs'
+import * as path from 'path'
 import { t } from '../i18n'
 import { getKnowledgeService } from '../../knowledge'
+import { getDocumentParserService } from '../../document-parser.service'
+import { FolderPathError } from '../../knowledge/catalog'
+import { setAgentRecallFolder } from '../../knowledge/recall-scope'
+import { isUserDataForbidden } from '../command-audit/userdata-guard'
 import { truncateFromEnd } from './utils'
 import type { ToolExecutorConfig, ToolResult } from './types'
 
@@ -69,7 +75,10 @@ export async function searchKnowledge(
       const content = r.content.length > maxContentLength
         ? r.content.substring(0, maxContentLength) + `\n\n... [内容已截断，完整内容共 ${r.content.length} 字符]`
         : r.content
-      return `### ${i + 1}. ${r.metadata.filename}\n${content}`
+      const stored = knowledgeService.getDocument(r.docId)
+      const folder = stored?.folder
+      const title = folder ? `${folder}/${r.metadata.filename}` : r.metadata.filename
+      return `### ${i + 1}. ${title}\ndoc_id: ${r.docId}\n${content}`
     }).join('\n\n')
 
     const output = `找到 ${results.length} 条相关内容：\n\n${formattedResults}`
@@ -163,6 +172,160 @@ export async function getKnowledgeDoc(
       content: `${t('knowledge.get_doc_failed')}: ${errorMsg}`,
       toolName: 'get_knowledge_doc'
     })
+    return { success: false, output: '', error: errorMsg }
+  }
+}
+
+function requireKnowledge(executor: ToolExecutorConfig, toolName: string): ToolResult | null {
+  const knowledgeService = getKnowledgeService()
+  if (!knowledgeService) {
+    executor.addStep({ type: 'tool_result', content: t('knowledge.not_initialized'), toolName })
+    return { success: false, output: '', error: t('error.knowledge_not_initialized') }
+  }
+  if (!knowledgeService.isEnabled()) {
+    executor.addStep({ type: 'tool_result', content: t('knowledge.not_enabled'), toolName })
+    return { success: false, output: '', error: t('error.knowledge_not_enabled') }
+  }
+  return null
+}
+
+export async function listKnowledge(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const blocked = requireKnowledge(executor, 'list_knowledge')
+  if (blocked) return blocked
+  const folder = typeof args.folder === 'string' ? args.folder : ''
+  executor.addStep({
+    type: 'tool_call',
+    content: folder ? t('knowledge.listing_folder', { folder }) : t('knowledge.listing'),
+    toolName: 'list_knowledge',
+    toolArgs: args,
+    riskLevel: 'safe',
+  })
+  try {
+    const output = getKnowledgeService()!.listCatalog(folder)
+    executor.addStep({ type: 'tool_result', content: output.slice(0, 500), toolName: 'list_knowledge' })
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof FolderPathError
+      ? error.message
+      : (error instanceof Error ? error.message : '列出失败')
+    return { success: false, output: '', error: errorMsg }
+  }
+}
+
+export async function addKnowledge(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const blocked = requireKnowledge(executor, 'add_knowledge')
+  if (blocked) return blocked
+  const filePath = typeof args.path === 'string' ? args.path : ''
+  const folder = typeof args.folder === 'string' ? args.folder : ''
+  if (!filePath) return { success: false, output: '', error: t('error.file_path_required') }
+  executor.addStep({
+    type: 'tool_call',
+    content: t('knowledge.adding', { name: path.basename(filePath) }),
+    toolName: 'add_knowledge',
+    toolArgs: { path: filePath, folder },
+    riskLevel: 'safe',
+  })
+  if (isUserDataForbidden(filePath, undefined, 'read')) {
+    return { success: false, output: '', error: t('file.forbidden_path_error') }
+  }
+  if (!fs.existsSync(filePath)) {
+    return { success: false, output: '', error: t('error.file_not_exists', { path: filePath }) }
+  }
+  try {
+    const parsed = await getDocumentParserService().parseDocument({
+      name: path.basename(filePath),
+      path: filePath,
+      size: fs.statSync(filePath).size,
+    })
+    if (parsed.error) return { success: false, output: '', error: parsed.error }
+    if (parsed.skipped) return { success: false, output: '', error: `${parsed.filename} 超过解析大小限制` }
+    if (!parsed.content.trim()) return { success: false, output: '', error: `${parsed.filename} 没有解析出文字` }
+    const service = getKnowledgeService()!
+    const before = service.isDuplicate(parsed.content)
+    const docId = await service.addDocument(parsed, { folder, addedBy: 'agent' })
+    const doc = service.getDocument(docId)
+    const where = doc?.folder ? `${doc.folder}/${doc.filename}` : (doc?.filename || parsed.filename)
+    const output = before.isDuplicate
+      ? `档案室里已经有同样内容：${where}（doc_id: ${docId}）。正文没有放进这次对话。`
+      : `已放入档案室：${where}（doc_id: ${docId}）。正文没有放进这次对话。`
+    executor.addStep({ type: 'tool_result', content: output, toolName: 'add_knowledge' })
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof FolderPathError
+      ? error.message
+      : (error instanceof Error ? error.message : '放入失败')
+    return { success: false, output: '', error: errorMsg }
+  }
+}
+
+export async function removeKnowledge(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig,
+  toolCallId: string
+): Promise<ToolResult> {
+  const blocked = requireKnowledge(executor, 'remove_knowledge')
+  if (blocked) return blocked
+  const docId = typeof args.doc_id === 'string' ? args.doc_id : ''
+  if (!docId) return { success: false, output: '', error: '缺少 doc_id 参数' }
+  const service = getKnowledgeService()!
+  const doc = service.getDocument(docId)
+  if (!doc || doc.fileType === 'host-memory' || doc.fileType === 'conversation') {
+    return { success: false, output: '', error: `文档不存在: ${docId}` }
+  }
+  const needsConfirm = service.libraryDeleteNeedsConfirm(docId)
+  executor.addStep({
+    type: 'tool_call',
+    content: t('knowledge.removing', { name: doc.filename }),
+    toolName: 'remove_knowledge',
+    toolArgs: args,
+    riskLevel: needsConfirm ? 'dangerous' : 'safe',
+  })
+  if (needsConfirm) {
+    const approved = await executor.waitForConfirmation(
+      toolCallId,
+      'remove_knowledge',
+      args,
+      'dangerous',
+      t('knowledge.confirm_remove', { name: doc.filename })
+    )
+    if (!approved) return { success: false, output: '', error: '用户未同意删除' }
+  }
+  const removed = await service.removeDocument(docId)
+  if (!removed) return { success: false, output: '', error: `文档不存在: ${docId}` }
+  const output = `已从档案室删除：${doc.filename}。没有回收站。`
+  executor.addStep({ type: 'tool_result', content: output, toolName: 'remove_knowledge' })
+  return { success: true, output }
+}
+
+export async function focusKnowledgeFolder(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const folder = typeof args.folder === 'string' ? args.folder : ''
+  if (!executor.agentId) return { success: false, output: '', error: '这场对话没有标识，没法记住范围' }
+  try {
+    const normalized = setAgentRecallFolder(executor.agentId, folder)
+    const output = normalized
+      ? `这场对话之后，自动翻档案只在「${normalized}」及其下级里。`
+      : '这场对话之后，自动翻档案改看整个档案室。'
+    executor.addStep({
+      type: 'tool_call',
+      content: output,
+      toolName: 'focus_knowledge_folder',
+      toolArgs: { folder: normalized },
+      riskLevel: 'safe',
+    })
+    return { success: true, output }
+  } catch (error) {
+    const errorMsg = error instanceof FolderPathError
+      ? error.message
+      : (error instanceof Error ? error.message : '设置范围失败')
     return { success: false, output: '', error: errorMsg }
   }
 }

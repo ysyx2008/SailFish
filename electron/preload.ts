@@ -2443,6 +2443,15 @@ const electronAPI = {
     removeDocument: (docId: string) =>
       ipcRenderer.invoke('knowledge:removeDocument', docId) as Promise<{ success: boolean; error?: string }>,
 
+    updateCard: (docId: string, summary: string) =>
+      ipcRenderer.invoke('knowledge:updateCard', docId, summary) as Promise<{ success: boolean; error?: string }>,
+
+    confirmCard: (docId: string) =>
+      ipcRenderer.invoke('knowledge:confirmCard', docId) as Promise<{ success: boolean; error?: string }>,
+
+    moveDocument: (docId: string, folder: string) =>
+      ipcRenderer.invoke('knowledge:moveDocument', docId, folder) as Promise<{ success: boolean; error?: string }>,
+
     // 批量删除文档
     removeDocuments: (docIds: string[]) =>
       ipcRenderer.invoke('knowledge:removeDocuments', docIds) as Promise<{ success: boolean; deleted?: number; failed?: number; error?: string }>,

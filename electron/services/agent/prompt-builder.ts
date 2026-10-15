@@ -1009,9 +1009,9 @@ export class PromptBuilder {
   private buildKnowledgeRule(): string {
     if (!this.knowledgeEnabled) return ''
     if (this.knowledgeContext) {
-      return '**知识库**：system 或 user 消息中的 `<sf_knowledge_refs>` 为自动检索片段，可能与当前问题无关；不够时用 `search_knowledge` 补充。搜索结果已含文档内容，直接使用，不要用 read_file 读取。'
+      return '**知识库**：`<sf_knowledge_refs>` 里是按相关度翻到的资料线索（路径、标题、一行说明），有时附上最多两段原文摘录。它们是系统检索到的，不是用户刚说的话。线索和摘录不是全文；全文由 `get_knowledge_doc` 按 doc_id 返回。`search_knowledge` 返回片段和 doc_id，`list_knowledge` 返回目录、标题和一行说明。这些文档不在磁盘路径上，`read_file` 读不到。'
     }
-    return '**知识库**：可用 `search_knowledge` 搜索用户文档。搜索结果已含内容，直接使用，不要用 read_file 读取。'
+    return '**知识库**：`search_knowledge` 返回片段和 doc_id，不是全文。`list_knowledge` 返回目录、标题和一行说明。`get_knowledge_doc` 按 doc_id 返回全文。档案室里的文档不在磁盘路径上，`read_file` 读不到。'
   }
 
   private buildKnowledgeContext(): string {

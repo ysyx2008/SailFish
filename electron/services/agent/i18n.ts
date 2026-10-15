@@ -1281,6 +1281,11 @@ const translations = {
     'knowledge.doc_not_found': '文档不存在: {id}',
     'knowledge.doc_retrieved': '已获取文档 {filename} ({chars} 字符)',
     'knowledge.get_doc_failed': '获取文档失败',
+    'knowledge.listing': '查看档案室',
+    'knowledge.listing_folder': '查看档案目录 {folder}',
+    'knowledge.adding': '放入档案室: {name}',
+    'knowledge.removing': '从档案室删除: {name}',
+    'knowledge.confirm_remove': '删除用户放入的文档「{name}」。没有回收站。',
 
     // Web 搜索
     'web.search': 'Web 搜索',
@@ -3109,6 +3114,11 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
     'knowledge.doc_not_found': 'Document not found: {id}',
     'knowledge.doc_retrieved': 'Retrieved document {filename} ({chars} characters)',
     'knowledge.get_doc_failed': 'Failed to get document',
+    'knowledge.listing': 'List the archive',
+    'knowledge.listing_folder': 'List archive folder {folder}',
+    'knowledge.adding': 'Add to archive: {name}',
+    'knowledge.removing': 'Remove from archive: {name}',
+    'knowledge.confirm_remove': 'Delete the document "{name}" the user added. There is no trash.',
 
     // Web search
     'web.search': 'Web search',

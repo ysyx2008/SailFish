@@ -253,6 +253,13 @@ if [[ "$MODE" != "quick" ]]; then
   assert_contains "knowledge:list 返回表格"     "id" \
     $CLI knowledge:list
 
+  FOLDER_DOC="$TEST_DOC_DIR/leave.md"
+  echo "差旅报销超过一千元需要部门负责人审批，附票据后五个工作日内办结。" > "$FOLDER_DOC"
+  assert_contains "knowledge:add 放进目录"       "公司制度/差旅" \
+    $CLI knowledge:add "$FOLDER_DOC" --folder "公司制度/差旅"
+  assert_contains "knowledge:list 显示目录"      "公司制度/差旅" \
+    $CLI knowledge:list
+
   # 用语义相关的词搜索，验证向量检索能力
   assert_contains "knowledge:search 语义搜索" "Kubernetes" \
     $CLI knowledge:search "容器编排"
@@ -296,6 +303,8 @@ if [[ "$MODE" != "quick" ]]; then
 else
   skip_test "knowledge:add 添加文档"
   skip_test "knowledge:list 返回表格"
+  skip_test "knowledge:add 放进目录"
+  skip_test "knowledge:list 显示目录"
   skip_test "knowledge:search 命中验证"
   skip_test "knowledge:add PDF 走解析器"
   skip_test "knowledge bench 跑出基线"

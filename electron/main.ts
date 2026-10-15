@@ -6780,6 +6780,33 @@ ipcMain.handle('knowledge:addDocument', async (_event, doc: ParsedDocument, opti
   }
 })
 
+ipcMain.handle('knowledge:updateCard', async (_event, docId: string, summary: string) => {
+  try {
+    const ok = await getKnowledge().updateCardText(docId, summary)
+    return { success: ok }
+  } catch (error) {
+    return { success: false, error: errMsg(error, 'error.addDocFailed') }
+  }
+})
+
+ipcMain.handle('knowledge:confirmCard', async (_event, docId: string) => {
+  try {
+    const ok = await getKnowledge().confirmCardCurrent(docId)
+    return { success: ok }
+  } catch (error) {
+    return { success: false, error: errMsg(error, 'error.addDocFailed') }
+  }
+})
+
+ipcMain.handle('knowledge:moveDocument', async (_event, docId: string, folder: string) => {
+  try {
+    const ok = await getKnowledge().moveLibraryDocument(docId, folder)
+    return { success: ok, error: ok ? undefined : '同目录下已有同名文档' }
+  } catch (error) {
+    return { success: false, error: errMsg(error, 'error.addDocFailed') }
+  }
+})
+
 // 删除文档
 ipcMain.handle('knowledge:removeDocument', async (_event, docId: string) => {
   try {

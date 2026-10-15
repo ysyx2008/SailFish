@@ -328,7 +328,7 @@ async function knowledgeList(): Promise<void> {
     process.exit(1)
   }
   
-  const docs = service.getDocuments()
+  const docs = service.listLibraryDocuments()
   
   if (docs.length === 0) {
     console.log('Knowledge base is empty.')
@@ -337,11 +337,12 @@ async function knowledgeList(): Promise<void> {
 
   const rows = docs.map((d: any) => ({
     id: d.id.substring(0, 8),
+    folder: d.folder || '',
     filename: d.filename,
+    by: d.addedBy || '',
+    card: d.cardStatus || '',
     type: d.fileType,
-    host: d.hostId || 'global',
     chunks: d.chunkCount,
-    date: new Date(d.createdAt).toLocaleDateString()
   }))
   printTable(rows)
 }
@@ -412,7 +413,7 @@ async function knowledgeAdd(args: string[]): Promise<void> {
   const { positional, flags } = parseArgs(args)
   const filePath = positional[0]
   if (!filePath) {
-    console.error(`Usage: ${cliName()} knowledge:add <file-path> [--host <hostId>]`)
+    console.error(`Usage: ${cliName()} knowledge:add <file-path> [--host <hostId>] [--folder <目录>]`)
     process.exit(1)
   }
   const fs = require('fs') as typeof import('fs')
@@ -464,10 +465,16 @@ async function knowledgeAdd(args: string[]): Promise<void> {
     return
   }
 
-  const docId = await service.addDocument(parsed, { hostId: flags.host as string })
+  const docId = await service.addDocument(parsed, {
+    hostId: flags.host as string,
+    folder: typeof flags.folder === 'string' ? flags.folder : undefined,
+    addedBy: 'user',
+  })
 
+  const placed = service.getDocument(docId)
+  const where = placed?.folder ? `${placed.folder}/${placed.filename}` : parsed.filename
   console.log(
-    `✓ Added document: ${parsed.filename} (id: ${docId}, type: ${parsed.fileType}, ${parsed.content.length} chars)`
+    `✓ Added document: ${where} (id: ${docId}, type: ${parsed.fileType}, ${parsed.content.length} chars)`
   )
 }
 

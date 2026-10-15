@@ -18,6 +18,8 @@ import type {
   TerminalSettings,
   KeyboardShortcuts,
 } from '../services/config.service'
+import type { CardStatus, KnowledgeDocument, LibraryAddedBy } from '../services/knowledge/types'
+import { isLibraryFileType, normalizeFolderSafe } from '../services/knowledge/catalog'
 
 // ==================== HostProfile ====================
 
@@ -115,4 +117,25 @@ export function normalizeKeyboardShortcuts(
     }
   }
   return result as unknown as KeyboardShortcuts
+}
+
+const CARD_STATUSES: readonly CardStatus[] = ['pending', 'generating', 'ready', 'failed', 'stale']
+
+function isCardStatus(value: unknown): value is CardStatus {
+  return typeof value === 'string' && (CARD_STATUSES as readonly string[]).includes(value)
+}
+
+/** 老档案补上目录、谁放的、说明状态。主机记忆和过往对话不补这些。 */
+export function normalizeKnowledgeDocument(raw: KnowledgeDocument): KnowledgeDocument {
+  const tags = Array.isArray(raw.tags) ? raw.tags : []
+  const doc: KnowledgeDocument = { ...raw, tags }
+  if (!isLibraryFileType(doc.fileType)) return doc
+  const addedBy: LibraryAddedBy = doc.addedBy === 'agent' ? 'agent' : 'user'
+  return {
+    ...doc,
+    folder: normalizeFolderSafe(doc.folder),
+    addedBy,
+    cardStatus: isCardStatus(doc.cardStatus) ? doc.cardStatus : 'pending',
+    cardHumanEdited: doc.cardHumanEdited === true,
+  }
 }

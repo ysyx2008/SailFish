@@ -114,7 +114,9 @@ async function saveStyleToKnowledge(style: ExcelStyleConfig): Promise<string | n
       fileSize: Buffer.from(styleContent).length,
       parseTime: 0
     }, {
-      tags: [EXCEL_STYLE_TAG, style.name]
+      tags: [EXCEL_STYLE_TAG, style.name],
+      addedBy: 'agent',
+      folder: '样式',
     })
 
     styleDocIds.set(style.name, docId)

@@ -20,7 +20,7 @@ import { executeCommandDirect, awaitExec } from './exec'
 import { getTerminalContext, checkTerminalStatus, sendControlKey, sendInput } from './terminal'
 import { fileSearch, readFile, editFile, writeTextFile, writeRemoteTextFile, resolveToolLocalPath } from './file'
 import { sftpPut, sftpGet } from './sftp'
-import { searchKnowledge, getKnowledgeDoc } from './knowledge'
+import { searchKnowledge, getKnowledgeDoc, listKnowledge, addKnowledge, removeKnowledge, focusKnowledgeFolder } from './knowledge'
 import { createPlan, updatePlan, clearPlan, dispatchPlan } from './plan'
 import { recallTask, deepRecall, searchHistory, dispatchRecall } from './memory'
 import { checkContext, compressContext, dispatchContext, recallCompressed, manageMemory } from './context'
@@ -220,6 +220,18 @@ async function dispatchTool(
 
     case 'search_knowledge':
       return searchKnowledge(args, executor)
+
+    case 'list_knowledge':
+      return listKnowledge(args, executor)
+
+    case 'add_knowledge':
+      return addKnowledge(args, executor)
+
+    case 'remove_knowledge':
+      return removeKnowledge(args, executor, toolCall.id)
+
+    case 'focus_knowledge_folder':
+      return focusKnowledgeFolder(args, executor)
 
     case 'get_knowledge_doc':
       return getKnowledgeDoc(args, executor)

@@ -30,6 +30,8 @@ interface KnowledgeSettings {
   enableRerank: boolean
   enableHostMemory: boolean
   mcpKnowledgeServerId?: string
+  cardProfileId?: string
+  recallFolder?: string
 }
 
 interface KnowledgeDocument {
@@ -43,6 +45,10 @@ interface KnowledgeDocument {
   createdAt: number
   updatedAt: number
   tags: string[]
+  folder?: string
+  addedBy?: 'user' | 'agent'
+  cardStatus?: 'pending' | 'generating' | 'ready' | 'failed' | 'stale'
+  cardSummary?: string
 }
 
 interface ContextKnowledgeItem {
@@ -61,7 +67,9 @@ const settings = ref<KnowledgeSettings>({
   chunkStrategy: 'paragraph',
   searchTopK: 10,
   enableRerank: true,
-  enableHostMemory: true
+  enableHostMemory: true,
+  cardProfileId: '',
+  recallFolder: '',
 })
 
 const loading = ref(true)
@@ -87,6 +95,12 @@ const contextKnowledgeMaxCharsSaving = ref(false)
 // 知识库文档
 const documents = ref<KnowledgeDocument[]>([])
 const searchQuery = ref('')
+const browseFolder = ref('')
+const addedByFilter = ref<'all' | 'user' | 'agent'>('all')
+const cardDraft = ref('')
+const folderDraft = ref('')
+const cardSaving = ref(false)
+const cardProfiles = ref<{ id: string; name: string }[]>([])
 const selectedDoc = ref<KnowledgeDocument | null>(null)
 const selectedDocIds = ref<Set<string>>(new Set())
 const batchDeleting = ref(false)
@@ -98,12 +112,56 @@ const kbDocuments = computed(() => {
   return documents.value.filter(doc => doc.fileType !== 'host-memory' && doc.fileType !== 'conversation')
 })
 
+const folders = computed(() => {
+  const set = new Set<string>()
+  for (const doc of kbDocuments.value) {
+    const folder = doc.folder || ''
+    if (!folder) continue
+    const parts = folder.split('/')
+    let acc = ''
+    for (const part of parts) {
+      acc = acc ? `${acc}/${part}` : part
+      set.add(acc)
+    }
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, 'zh'))
+})
+
+const cardCounts = computed(() => {
+  const counts = { pending: 0, ready: 0, failed: 0, stale: 0 }
+  for (const doc of kbDocuments.value) {
+    const status = doc.cardStatus || 'pending'
+    if (status === 'generating' || status === 'pending') counts.pending += 1
+    else if (status === 'ready') counts.ready += 1
+    else if (status === 'failed') counts.failed += 1
+    else if (status === 'stale') counts.stale += 1
+  }
+  return counts
+})
+
+const cardProfileOptions = computed(() => [
+  { value: '', label: t('knowledgeManager.cardProfileOff') },
+  ...cardProfiles.value.map(profile => ({ value: profile.id, label: profile.name })),
+])
+
+function inBrowseFolder(folder: string | undefined): boolean {
+  const prefix = browseFolder.value
+  const value = folder || ''
+  if (!prefix) return true
+  return value === prefix || value.startsWith(`${prefix}/`)
+}
+
 const filteredDocuments = computed(() => {
-  const docs = kbDocuments.value
+  const docs = kbDocuments.value.filter(doc => {
+    if (!inBrowseFolder(doc.folder)) return false
+    if (addedByFilter.value !== 'all' && (doc.addedBy || 'user') !== addedByFilter.value) return false
+    return true
+  })
   if (!searchQuery.value) return docs
   const query = searchQuery.value.toLowerCase()
   return docs.filter(doc =>
     doc.filename.toLowerCase().includes(query) ||
+    (doc.folder || '').toLowerCase().includes(query) ||
     doc.tags?.some(tag => tag.toLowerCase().includes(query))
   )
 })
@@ -154,6 +212,13 @@ const loadSettings = async () => {
       settings.value.enabled = true
       await saveSettings()
     }
+    settings.value.cardProfileId = settings.value.cardProfileId || ''
+    settings.value.recallFolder = settings.value.recallFolder || ''
+    const profiles = await api.config.getAiProfiles()
+    cardProfiles.value = (profiles || []).map((profile: { id: string; name?: string }) => ({
+      id: profile.id,
+      name: profile.name || profile.id,
+    }))
     await loadAllData()
   } catch (error) {
     console.error('加载设置失败:', error)
@@ -337,7 +402,59 @@ const toggleSelectAll = () => {
 
 const clearSelection = () => { selectedDocIds.value = new Set() }
 
-const viewDocument = (doc: KnowledgeDocument) => { selectedDoc.value = doc }
+const viewDocument = (doc: KnowledgeDocument) => {
+  selectedDoc.value = doc
+  cardDraft.value = doc.cardSummary || ''
+  folderDraft.value = doc.folder || ''
+}
+
+const saveCard = async () => {
+  if (!selectedDoc.value) return
+  cardSaving.value = true
+  try {
+    const result = await api.knowledge.updateCard(selectedDoc.value.id, cardDraft.value)
+    if (!result?.success) {
+      await showAlert(t('common.error'), t('knowledgeManager.cardSaveFailed'))
+      return
+    }
+    await loadKnowledgeDocs()
+    const fresh = documents.value.find(doc => doc.id === selectedDoc.value?.id)
+    if (fresh) viewDocument(fresh)
+  } finally {
+    cardSaving.value = false
+  }
+}
+
+const confirmCard = async () => {
+  if (!selectedDoc.value) return
+  const result = await api.knowledge.confirmCard(selectedDoc.value.id)
+  if (!result?.success) return
+  await loadKnowledgeDocs()
+  const fresh = documents.value.find(doc => doc.id === selectedDoc.value?.id)
+  if (fresh) viewDocument(fresh)
+}
+
+const moveSelected = async () => {
+  if (!selectedDoc.value) return
+  const result = await api.knowledge.moveDocument(selectedDoc.value.id, folderDraft.value)
+  if (!result?.success) {
+    await showAlert(t('common.error'), result?.error || t('knowledgeManager.moveFailed'))
+    return
+  }
+  await loadKnowledgeDocs()
+  const fresh = documents.value.find(doc => doc.id === selectedDoc.value?.id)
+  if (fresh) viewDocument(fresh)
+}
+
+const onCardProfile = async (profileId: string) => {
+  settings.value.cardProfileId = profileId
+  await saveSettings()
+}
+
+const onRecallFolder = async () => {
+  settings.value.recallFolder = (settings.value.recallFolder || '').trim()
+  await saveSettings()
+}
 
 const deleteDocument = async (doc: KnowledgeDocument) => {
   const confirmed = await showConfirm({
@@ -509,9 +626,30 @@ onUnmounted(() => {
 
               <!-- ===== 知识库 tab ===== -->
               <template v-if="activeTab === 'knowledge'">
+                <div class="folder-bar">
+                  <button type="button" class="folder-chip" :class="{ on: browseFolder === '' }" @click="browseFolder = ''">
+                    {{ t('knowledgeManager.folderAll') }}
+                  </button>
+                  <button
+                    v-for="folder in folders"
+                    :key="folder"
+                    type="button"
+                    class="folder-chip"
+                    :class="{ on: browseFolder === folder }"
+                    @click="browseFolder = folder"
+                  >{{ folder }}</button>
+                </div>
                 <div class="search-bar">
                   <input type="text" v-model="searchQuery" :placeholder="t('knowledgeManager.searchPlaceholder')" class="search-input" />
+                  <select v-model="addedByFilter" class="source-select">
+                    <option value="all">{{ t('knowledgeManager.sourceAll') }}</option>
+                    <option value="user">{{ t('knowledgeManager.sourceUser') }}</option>
+                    <option value="agent">{{ t('knowledgeManager.sourceAgent') }}</option>
+                  </select>
                 </div>
+                <p class="card-progress">
+                  {{ t('knowledgeManager.cardProgress', cardCounts) }}
+                </p>
                 <div class="batch-bar" v-if="filteredDocuments.length > 0">
                   <label class="check-wrap">
                     <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll" />
@@ -535,7 +673,7 @@ onUnmounted(() => {
                     </label>
                     <div class="doc-icon">{{ doc.fileType === 'pdf' ? '📄' : doc.fileType === 'docx' ? '📝' : '📃' }}</div>
                     <div class="doc-info">
-                      <div class="doc-name">{{ doc.filename }}</div>
+                      <div class="doc-name">{{ doc.folder ? `${doc.folder}/` : '' }}{{ doc.filename }}</div>
                       <div class="doc-meta">
                         <span>{{ formatSize(doc.fileSize) }}</span>
                         <span>{{ doc.chunkCount }} {{ t('knowledgeManager.chunk') }}</span>
@@ -609,6 +747,23 @@ onUnmounted(() => {
                   <div class="detail-time">
                     {{ t('knowledgeManager.createdAt') }}：{{ formatDate(selectedDoc.createdAt) }} ·
                     {{ t('knowledgeManager.updatedAt') }}：{{ formatDate(selectedDoc.updatedAt) }}
+                    · {{ selectedDoc.addedBy === 'agent' ? t('knowledgeManager.sourceAgent') : t('knowledgeManager.sourceUser') }}
+                  </div>
+                  <label class="card-label">{{ t('knowledgeManager.cardLabel') }}</label>
+                  <p v-if="selectedDoc.cardStatus === 'stale'" class="card-stale">{{ t('knowledgeManager.cardStale') }}</p>
+                  <textarea v-model="cardDraft" class="card-input" rows="4" :placeholder="t('knowledgeManager.cardPlaceholder')"></textarea>
+                  <div class="editor-actions">
+                    <button class="btn btn-primary btn-sm" @click="saveCard" :disabled="cardSaving">
+                      {{ cardSaving ? t('knowledgeManager.savingMemory') : t('knowledgeManager.saveCard') }}
+                    </button>
+                    <button v-if="selectedDoc.cardStatus === 'stale'" class="btn btn-sm" @click="confirmCard">
+                      {{ t('knowledgeManager.confirmCard') }}
+                    </button>
+                  </div>
+                  <label class="card-label">{{ t('knowledgeManager.folderLabel') }}</label>
+                  <div class="folder-edit">
+                    <input v-model="folderDraft" class="search-input" :placeholder="t('knowledgeManager.folderPlaceholder')" />
+                    <button class="btn btn-sm" @click="moveSelected">{{ t('knowledgeManager.moveFolder') }}</button>
                   </div>
                   <div class="content-preview">
                     {{ selectedDoc.content.slice(0, 2000) }}
@@ -641,6 +796,30 @@ onUnmounted(() => {
             @blur="commitMemoryMaxChars"
           />
           <span class="memory-max-unit">{{ t('knowledgeSettings.memoryMaxCharsUnit') }}</span>
+        </SettingRow>
+      </SettingsGroup>
+
+      <SettingsGroup :title="t('knowledgeSettings.archiveGroup')">
+        <SettingRow
+          :label="t('knowledgeSettings.cardProfile')"
+          :desc="t('knowledgeSettings.cardProfileDesc')"
+        >
+          <SettingSelect
+            :model-value="settings.cardProfileId || ''"
+            :options="cardProfileOptions"
+            @update:model-value="onCardProfile"
+          />
+        </SettingRow>
+        <SettingRow
+          :label="t('knowledgeSettings.recallFolder')"
+          :desc="t('knowledgeSettings.recallFolderDesc')"
+        >
+          <SettingInput
+            v-model="settings.recallFolder"
+            :placeholder="t('knowledgeManager.folderPlaceholder')"
+            @change="onRecallFolder"
+            @blur="onRecallFolder"
+          />
         </SettingRow>
       </SettingsGroup>
 
@@ -844,6 +1023,15 @@ onUnmounted(() => {
 .doc-icon { font-size: 20px; flex-shrink: 0; }
 .doc-info { flex: 1; min-width: 0; }
 .doc-name { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.folder-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.folder-chip { border: 1px solid var(--border-color, #ddd); background: transparent; border-radius: 999px; padding: 2px 8px; font-size: 12px; cursor: pointer; }
+.folder-chip.on { border-color: var(--accent-primary); color: var(--accent-primary); }
+.source-select { margin-left: 8px; font-size: 12px; }
+.card-progress { margin: 6px 0; font-size: 12px; opacity: 0.75; }
+.card-label { display: block; margin: 10px 0 4px; font-size: 12px; }
+.card-stale { color: var(--warning, #b86e00); font-size: 12px; margin: 0 0 6px; }
+.card-input { width: 100%; font-size: 13px; }
+.folder-edit { display: flex; gap: 8px; align-items: center; }
 .doc-meta { display: flex; gap: 6px; font-size: 10px; color: var(--text-muted); margin-top: 1px; }
 .doc-item.active .doc-meta { color: rgba(255, 255, 255, 0.7); }
 

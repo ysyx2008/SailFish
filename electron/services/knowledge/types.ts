@@ -53,6 +53,12 @@ export type DownloadProgressCallback = (
 /** 记忆易变性等级 */
 export type MemoryVolatility = 'stable' | 'moderate' | 'volatile'
 
+/** 谁把这份资料放进档案室的。和观察来源 `source` 不是一回事。 */
+export type LibraryAddedBy = 'user' | 'agent'
+
+/** 检索说明的状态。pending 的集合就是待写队列。 */
+export type CardStatus = 'pending' | 'generating' | 'ready' | 'failed' | 'stale'
+
 /** 知识库文档 */
 export interface KnowledgeDocument {
   id: string
@@ -69,6 +75,17 @@ export interface KnowledgeDocument {
   // 观察日志模型（Observation Ledger）字段
   volatility?: MemoryVolatility  // 易变性：stable(几乎不变) / moderate(偶尔变) / volatile(经常变)
   source?: string                // 观察来源（如 "nginx -T 输出"、"用户告知"）
+  /** 档案目录，空字符串表示根。主机记忆和过往对话没有这个位置 */
+  folder?: string
+  addedBy?: LibraryAddedBy
+  cardStatus?: CardStatus
+  cardSummary?: string
+  /** 写说明时原文的内容哈希。和现在的哈希不同，说明就和原文脱节了 */
+  cardSourceHash?: string
+  cardHumanEdited?: boolean
+  /** 被翻到过、但说明还没好。队列优先写这些 */
+  cardTouchedAt?: number
+  cardError?: string
 }
 
 /** 文档分块 */
@@ -131,6 +148,9 @@ export interface AddDocumentOptions {
   hostId?: string
   tags?: string[]
   chunkOptions?: Partial<ChunkOptions>
+  /** 放进哪个目录。空或不传表示根 */
+  folder?: string
+  addedBy?: LibraryAddedBy
 }
 
 // ==================== 配置相关 ====================
@@ -153,6 +173,10 @@ export interface KnowledgeSettings {
   enableHostMemory: boolean
   // MCP 知识库
   mcpKnowledgeServerId?: string
+  /** 写检索说明用的模型。空着就不自动写 */
+  cardProfileId?: string
+  /** 没在对话里另行指定时，自动翻档案的目录。空着就是全库 */
+  recallFolder?: string
 }
 
 /** 默认配置 */

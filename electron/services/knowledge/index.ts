@@ -111,6 +111,46 @@ export interface ConversationSearchResult extends RecalledConversation {
  * 0.02 表示至少在一个通道排名靠前，或在两个通道都有匹配
  */
 import { MIN_RRF_SCORE, AUTO_RECALL_LIMIT, AUTO_RECALL_SIMILARITY } from './recall-params'
+import {
+  CARD_SIMILARITY,
+  EXCERPT_CHARS,
+  MAX_EXCERPTS,
+  MAX_IMPRESSIONS,
+  MAX_KEYWORD_DOCS,
+  MIN_KEYWORD_SCORE,
+  RECALL_CHAR_BUDGET,
+  bestKeywordPerDoc,
+  capChunkText,
+  formatCatalog,
+  fuseByDocument,
+  inFolder,
+  isLibraryFileType,
+  normalizeFolder,
+  renderLibraryRecall,
+  resolveRecallFolder,
+  type ImpressionDoc,
+} from './catalog'
+import {
+  CARD_DAILY_LIMIT,
+  CARD_TICK_LIMIT,
+  CARD_VECTOR_BACKFILL_PER_TICK,
+  buildCardPrompt,
+  initialCard,
+  isQuietHour,
+  onContentReplaced,
+  onGenerateFail,
+  onGenerateStart,
+  onGenerateSuccess,
+  onHumanConfirm,
+  onHumanEdit,
+  pickNextCard,
+  resumeInterrupted,
+  type CardFields,
+} from './card-policy'
+import { CardVectorStore } from './card-vectors'
+import { CardQuota } from './card-quota'
+import { normalizeKnowledgeDocument } from '../../utils/normalize'
+import type { AiMessage } from '../ai.service'
 
 export { MIN_RRF_SCORE, AUTO_RECALL_LIMIT, AUTO_RECALL_SIMILARITY }
 
@@ -130,6 +170,11 @@ export class KnowledgeService extends EventEmitter {
   private settings: KnowledgeSettings
   private documentsMetaPath: string
   private documentsIndex: Map<string, KnowledgeDocument> = new Map()
+  private cardVectors: CardVectorStore
+  private cardQuota: CardQuota
+  private cardTimer: ReturnType<typeof setInterval> | null = null
+  private cardFirstTick: ReturnType<typeof setTimeout> | null = null
+  private cardTickRunning = false
   private isInitialized: boolean = false
   /**
    * initialize 完整失败后的闩锁，避免 Agent 每次召回都重跑 initialize → 反复 fork Embedding worker。
@@ -173,6 +218,9 @@ export class KnowledgeService extends EventEmitter {
     
     // 文档索引存储路径
     this.documentsMetaPath = path.join(app.getPath('userData'), 'knowledge', 'documents.json')
+    const knowledgeDir = path.dirname(this.documentsMetaPath)
+    this.cardVectors = new CardVectorStore(path.join(knowledgeDir, 'card-vectors.json'))
+    this.cardQuota = new CardQuota(path.join(knowledgeDir, 'card-quota.json'))
     
     // 加载文档索引
     this.loadDocumentsIndex()
@@ -269,6 +317,7 @@ export class KnowledgeService extends EventEmitter {
       this.isInitialized = true
       this.permanentInitError = null
       this.emit('initialized')
+      this.startCardMaintenance()
       
       // 检查是否需要重建索引（有文档但向量库是空的）
       await this.checkAndRebuildIndex()
@@ -1012,9 +1061,15 @@ export class KnowledgeService extends EventEmitter {
     try {
       if (fs.existsSync(this.documentsMetaPath)) {
         const data = JSON.parse(fs.readFileSync(this.documentsMetaPath, 'utf-8'))
+        let dirty = false
         for (const doc of data.documents || []) {
-          this.documentsIndex.set(doc.id, doc)
+          const normalized = normalizeKnowledgeDocument(doc)
+          if (isLibraryFileType(doc.fileType) && (doc.folder === undefined || doc.addedBy === undefined || doc.cardStatus === undefined)) {
+            dirty = true
+          }
+          this.documentsIndex.set(normalized.id, normalized)
         }
+        if (dirty) this.saveDocumentsIndex()
       }
     } catch (error) {
       log.error('Failed to load documents index:', error)
@@ -1090,20 +1145,27 @@ export class KnowledgeService extends EventEmitter {
     doc: ParsedDocument,
     options?: AddDocumentOptions
   ): Promise<string> {
-    // 检查重复
+    const folder = isLibraryFileType(doc.fileType) ? normalizeFolder(options?.folder || '') : ''
     const contentHash = this.computeContentHash(doc.content)
+
+    if (isLibraryFileType(doc.fileType)) {
+      const samePath = this.findLibraryByPath(folder, doc.filename)
+      if (samePath) {
+        if (samePath.contentHash === contentHash) return samePath.id
+        return this.replaceLibraryContent(samePath, doc, options, contentHash, folder)
+      }
+    }
+
     const duplicateCheck = this.isDuplicate(doc.content)
-    
     if (duplicateCheck.isDuplicate && duplicateCheck.existingDoc) {
       log.info(`文档重复，已跳过: ${doc.filename} (与 ${duplicateCheck.existingDoc.filename} 相同)`)
-      // 返回已存在文档的 ID，不重复添加
       return duplicateCheck.existingDoc.id
     }
 
     const docId = uuidv4()
     const now = Date.now()
+    const library = isLibraryFileType(doc.fileType)
 
-    // 创建文档记录
     const document: KnowledgeDocument = {
       id: docId,
       filename: doc.filename,
@@ -1115,7 +1177,14 @@ export class KnowledgeService extends EventEmitter {
       tags: options?.tags || [],
       createdAt: now,
       updatedAt: now,
-      chunkCount: 0
+      chunkCount: 0,
+      ...(library
+        ? {
+            folder,
+            addedBy: options?.addedBy === 'agent' ? 'agent' as const : 'user' as const,
+            ...initialCard(),
+          }
+        : {}),
     }
 
     // 分块
@@ -1189,6 +1258,7 @@ export class KnowledgeService extends EventEmitter {
 
     // 删除 BM25 索引记录
     await this.bm25Index.removeDocumentChunks(docId)
+    this.cardVectors.remove(docId)
 
     // 删除文档索引
     this.documentsIndex.delete(docId)
@@ -1382,37 +1452,211 @@ export class KnowledgeService extends EventEmitter {
    * 只返回高相关性的知识库内容，避免召回不相关内容
    */
   async buildContext(
-    query: string, 
+    query: string,
     options?: {
       hostId?: string
       maxTokens?: number
       recallingConversation?: RecallingConversation
       /** false：过往对话另有入口给出，这里只给文档 */
       includeConversations?: boolean
+      /**
+       * 这场对话的档案范围。undefined 表示用设置里的；
+       * 空字符串表示这场明确要看全库。
+       */
+      pathPrefix?: string
     }
   ): Promise<string> {
-    // 使用较高的相似度阈值，确保召回的内容确实相关
+    if (!this.isInitialized) await this.initialize()
+    const folder = resolveRecallFolder(options?.pathPrefix, this.getSettings().recallFolder)
+    try {
+      if (await this.cardsUsable(folder)) {
+        return await this.buildImpressionContext(query, { ...options, pathPrefix: folder })
+      }
+    } catch (error) {
+      log.warn('目录印象召回失败，改用正文片段:', error)
+    }
+    return this.buildChunkContext(query, { ...options, pathPrefix: folder })
+  }
+
+  private libraryDocs(folder: string): KnowledgeDocument[] {
+    return this.getDocuments().filter(doc =>
+      isLibraryFileType(doc.fileType) && inFolder(doc.folder || '', folder)
+    )
+  }
+
+  private async cardsUsable(folder: string): Promise<boolean> {
+    if (this.cardVectors.isBroken()) return false
+    const ready = this.libraryDocs(folder).filter(doc =>
+      (doc.cardStatus === 'ready' || doc.cardStatus === 'stale') && !!doc.cardSummary
+    )
+    if (ready.length === 0) return false
+    return ready.some(doc => this.cardVectors.has(doc.id))
+  }
+
+  private plainChunk(content: string): string | undefined {
+    if (!isEncrypted(content)) return content
+    try {
+      return decrypt(content)
+    } catch {
+      return undefined
+    }
+  }
+
+  private impressionDoc(doc: KnowledgeDocument): ImpressionDoc {
+    return {
+      id: doc.id,
+      filename: doc.filename,
+      folder: doc.folder || '',
+      cardStatus: doc.cardStatus,
+      cardSummary: doc.cardSummary,
+    }
+  }
+
+  private async buildImpressionContext(
+    query: string,
+    options?: {
+      hostId?: string
+      recallingConversation?: RecallingConversation
+      includeConversations?: boolean
+      pathPrefix?: string
+    }
+  ): Promise<string> {
+    const folder = options?.pathPrefix || ''
+    const scoped = new Map(this.libraryDocs(folder).map(doc => [doc.id, doc]))
+    const embedding = await this.embeddingService.embedSingle(query)
+
+    const cardHits = this.cardVectors.search(embedding, MAX_IMPRESSIONS * 2)
+      .filter(hit => hit.score >= CARD_SIMILARITY && scoped.has(hit.docId))
+      .slice(0, MAX_IMPRESSIONS)
+
+    let keyword: { docId: string; score: number; excerpt: string }[] = []
+    if (this.bm25Index.isReady()) {
+      const raw = await this.bm25Index.search(query, 30, { hostId: options?.hostId })
+      keyword = bestKeywordPerDoc(
+        raw
+          .filter(hit => scoped.has(hit.docId))
+          .map(hit => ({ docId: hit.docId, score: hit.score, excerpt: hit.content })),
+        MIN_KEYWORD_SCORE,
+        MAX_KEYWORD_DOCS
+      )
+    }
+
+    const fused = fuseByDocument(cardHits.map(hit => hit.docId), keyword)
+    const docs = new Map([...scoped.values()].map(doc => [doc.id, this.impressionDoc(doc)]))
+
+    const hybrid = await this.vectorStorage.hybridSearch(query, embedding, {
+      query,
+      limit: AUTO_RECALL_LIMIT,
+      similarity: AUTO_RECALL_SIMILARITY,
+      hostId: options?.hostId,
+    })
+    const excerpts: { docId: string; text: string }[] = []
+    for (const hit of hybrid) {
+      if (!scoped.has(hit.docId) || hit.score < MIN_RRF_SCORE) continue
+      if (!fused.some(row => row.docId === hit.docId)) {
+        fused.push({
+          docId: hit.docId,
+          score: 0,
+          fromCard: false,
+          fromKeyword: true,
+          excerpt: hit.content,
+        })
+      }
+      if (excerpts.length >= MAX_EXCERPTS) continue
+      const plain = this.plainChunk(hit.content)
+      if (!plain) continue
+      excerpts.push({
+        docId: hit.docId,
+        text: capChunkText(this.sanitizeText(plain), EXCERPT_CHARS),
+      })
+    }
+
+    const memoryParts: string[] = []
+    for (const hit of hybrid) {
+      const doc = this.documentsIndex.get(hit.docId)
+      if (doc?.fileType !== 'host-memory' || hit.score < MIN_RRF_SCORE) continue
+      const plain = this.plainChunk(hit.content)
+      if (!plain) continue
+      memoryParts.push(`### ${hit.metadata.filename}`)
+      memoryParts.push(capChunkText(this.sanitizeText(plain), EXCERPT_CHARS))
+      memoryParts.push('')
+    }
+
+    this.noteCardTouches(fused.map(hit => hit.docId))
+
+    const body = renderLibraryRecall({ fused, docs, excerpts })
+    const parts: string[] = []
+    if (body) parts.push(body)
+    if (memoryParts.length > 0) parts.push(memoryParts.join('\n'))
+
+    if (options?.includeConversations !== false) {
+      const conversations = await this.recallConversations(query, embedding, options?.hostId, options?.recallingConversation)
+      const recalled = formatRecalledConversations(conversations)
+      if (recalled) parts.push(recalled)
+    }
+
+    return wrapKnowledgeRefs(parts.join('\n\n'))
+  }
+
+  private async recallConversations(
+    query: string,
+    embedding: number[],
+    hostId: string | undefined,
+    recalling: RecallingConversation | undefined
+  ): Promise<RecalledConversation[]> {
+    const hits = await this.vectorStorage.hybridSearch(query, embedding, {
+      query,
+      limit: AUTO_RECALL_LIMIT,
+      similarity: AUTO_RECALL_SIMILARITY,
+      hostId,
+      tags: ['conversation'],
+    })
+    const conversations: RecalledConversation[] = []
+    for (const hit of hits) {
+      if (hit.score < MIN_RRF_SCORE) continue
+      const doc = this.documentsIndex.get(hit.docId)
+      if (!doc || doc.fileType !== 'conversation') continue
+      conversations.push(toRecalledConversation(doc, hit.content, hit.score, recalling))
+    }
+    return conversations
+  }
+
+  private noteCardTouches(docIds: string[]): void {
+    const now = Date.now()
+    let dirty = false
+    for (const docId of docIds) {
+      const doc = this.documentsIndex.get(docId)
+      if (!doc) continue
+      if (doc.cardStatus !== 'pending' && doc.cardStatus !== 'failed') continue
+      if (doc.cardTouchedAt && now - doc.cardTouchedAt < 60_000) continue
+      doc.cardTouchedAt = now
+      dirty = true
+    }
+    if (dirty) this.saveDocumentsIndex()
+  }
+
+  /** 说明还没就绪时的旧路：正文片段。补上字数上限。 */
+  private async buildChunkContext(
+    query: string,
+    options?: {
+      hostId?: string
+      recallingConversation?: RecallingConversation
+      includeConversations?: boolean
+      pathPrefix?: string
+    }
+  ): Promise<string> {
     const results = await this.search(query, {
       hostId: options?.hostId,
       limit: AUTO_RECALL_LIMIT,
-      similarity: AUTO_RECALL_SIMILARITY  // 提高阈值，过滤低相关性内容
+      similarity: AUTO_RECALL_SIMILARITY,
     })
-
-    if (results.length === 0) {
-      return ''
-    }
-
-    // 二次过滤：确保只保留高相关性结果（search 已做过滤，这里是双重保障）
     const relevantResults = results.filter(r => r.score >= MIN_RRF_SCORE)
-
-    if (relevantResults.length === 0) {
-      log.info('知识库搜索结果相关性不足，跳过召回')
-      return ''
-    }
+    if (relevantResults.length === 0) return ''
 
     const parts: string[] = []
     const conversations: RecalledConversation[] = []
-    
+    let used = 0
+
     for (const result of relevantResults) {
       const doc = result.docId ? this.documentsIndex.get(result.docId) : undefined
       if (doc?.fileType === 'conversation') {
@@ -1421,16 +1665,304 @@ export class KnowledgeService extends EventEmitter {
         }
         continue
       }
-      parts.push(`### ${result.metadata.filename}`)
-      // 清理内容中的特殊字符
-      parts.push(this.sanitizeText(result.content))
+      if (doc && isLibraryFileType(doc.fileType) && !inFolder(doc.folder || '', options?.pathPrefix || '')) {
+        continue
+      }
+      const header = `### ${result.metadata.filename}`
+      const room = RECALL_CHAR_BUDGET - used - header.length - 2
+      if (room < 80) break
+      const text = capChunkText(this.sanitizeText(result.content), Math.min(room, EXCERPT_CHARS))
+      parts.push(header)
+      parts.push(text)
       parts.push('')
+      used += header.length + text.length + 2
     }
 
     const recalled = formatRecalledConversations(conversations)
     if (recalled) parts.push(recalled)
-
+    if (parts.length === 0) return ''
     return wrapKnowledgeRefs(parts.join('\n'))
+  }
+
+  private findLibraryByPath(folder: string, filename: string): KnowledgeDocument | undefined {
+    for (const doc of this.documentsIndex.values()) {
+      if (!isLibraryFileType(doc.fileType)) continue
+      if ((doc.folder || '') === folder && doc.filename === filename) return doc
+    }
+    return undefined
+  }
+
+  private cardOf(doc: KnowledgeDocument): CardFields {
+    return {
+      cardStatus: doc.cardStatus || 'pending',
+      cardSummary: doc.cardSummary,
+      cardSourceHash: doc.cardSourceHash,
+      cardHumanEdited: doc.cardHumanEdited,
+      cardTouchedAt: doc.cardTouchedAt,
+      cardError: doc.cardError,
+    }
+  }
+
+  private applyCard(doc: KnowledgeDocument, fields: CardFields): void {
+    doc.cardStatus = fields.cardStatus
+    doc.cardSummary = fields.cardSummary
+    doc.cardSourceHash = fields.cardSourceHash
+    doc.cardHumanEdited = fields.cardHumanEdited
+    doc.cardTouchedAt = fields.cardTouchedAt
+    doc.cardError = fields.cardError
+  }
+
+  private async replaceLibraryContent(
+    existing: KnowledgeDocument,
+    doc: ParsedDocument,
+    options: AddDocumentOptions | undefined,
+    contentHash: string,
+    folder: string
+  ): Promise<string> {
+    const now = Date.now()
+    const nextCard = onContentReplaced(this.cardOf(existing))
+    if (nextCard.cardStatus === 'pending') this.cardVectors.remove(existing.id)
+
+    const oldRecords = await this.vectorStorage.getRecordsByDocId(existing.id)
+    const oldIds = oldRecords.map(record => record.id)
+    let chunkCount: number
+    try {
+      chunkCount = await this.writeLibraryChunks(existing.id, doc, {
+        ...options,
+        tags: options?.tags ?? existing.tags,
+        hostId: options?.hostId ?? existing.hostId,
+      }, now)
+    } catch (error) {
+      log.warn(`换版写入失败，保留上一版索引: ${existing.filename}`, error)
+      throw error
+    }
+    existing.content = doc.content
+    existing.fileSize = doc.fileSize
+    existing.fileType = doc.fileType
+    existing.contentHash = contentHash
+    existing.folder = folder
+    existing.updatedAt = now
+    existing.chunkCount = chunkCount
+    if (options?.tags) existing.tags = options.tags
+    if (options?.hostId !== undefined) existing.hostId = options.hostId
+    this.applyCard(existing, nextCard)
+    this.documentsIndex.set(existing.id, existing)
+    this.saveDocumentsIndex()
+    try {
+      for (const id of oldIds) {
+        await this.vectorStorage.removeRecord(id)
+        await this.bm25Index.removeDocument(id)
+      }
+      if (oldIds.length > 0) await this.bm25Index.saveIndex()
+    } catch (error) {
+      log.warn(`换版后上一版片段没清干净: ${existing.filename}`, error)
+    }
+    this.emit('documentAdded', existing)
+    return existing.id
+  }
+
+  private async writeLibraryChunks(
+    docId: string,
+    doc: ParsedDocument,
+    options: AddDocumentOptions | undefined,
+    now: number
+  ): Promise<number> {
+    const chunks = this.chunker.chunk(doc.content, docId, {
+      filename: doc.filename,
+      hostId: options?.hostId,
+      tags: options?.tags || [],
+    })
+    if (chunks.length === 0) return 0
+    const embeddings = await this.embeddingService.embed(chunks.map(chunk => chunk.content))
+    const records: VectorRecord[] = chunks.map((chunk, index) => ({
+      id: chunk.id,
+      docId,
+      content: chunk.content,
+      vector: embeddings[index],
+      filename: doc.filename,
+      hostId: options?.hostId || '',
+      tags: (options?.tags || []).join(','),
+      chunkIndex: chunk.chunkIndex,
+      createdAt: now,
+    }))
+    await this.vectorStorage.addRecords(records)
+    await this.bm25Index.addDocuments(records.map(record => ({
+      id: record.id,
+      docId: record.docId,
+      content: record.content,
+      filename: record.filename,
+      hostId: record.hostId,
+      tags: record.tags,
+    })))
+    return chunks.length
+  }
+
+  /** 列出档案（不含主机记忆和过往对话）。只含路径、标题和一行说明。 */
+  listCatalog(folder = ''): string {
+    const prefix = folder ? normalizeFolder(folder) : ''
+    return formatCatalog(this.libraryDocs(prefix).map(doc => this.impressionDoc(doc)), prefix)
+  }
+
+  listLibraryDocuments(): KnowledgeDocument[] {
+    return this.getDocuments().filter(doc => isLibraryFileType(doc.fileType))
+  }
+
+  async updateCardText(docId: string, summary: string): Promise<boolean> {
+    const doc = this.documentsIndex.get(docId)
+    if (!doc || !isLibraryFileType(doc.fileType)) return false
+    const next = onHumanEdit(this.cardOf(doc), summary, doc.contentHash)
+    if (!next.cardSummary) return false
+    this.applyCard(doc, next)
+    this.documentsIndex.set(docId, doc)
+    this.saveDocumentsIndex()
+    await this.embedCardSummary(doc)
+    return true
+  }
+
+  async confirmCardCurrent(docId: string): Promise<boolean> {
+    const doc = this.documentsIndex.get(docId)
+    if (!doc || !isLibraryFileType(doc.fileType) || !doc.cardSummary || !doc.contentHash) return false
+    this.applyCard(doc, onHumanConfirm(this.cardOf(doc), doc.contentHash))
+    this.documentsIndex.set(docId, doc)
+    this.saveDocumentsIndex()
+    return true
+  }
+
+  async moveLibraryDocument(docId: string, folder: string): Promise<boolean> {
+    const doc = this.documentsIndex.get(docId)
+    if (!doc || !isLibraryFileType(doc.fileType)) return false
+    const next = normalizeFolder(folder || '')
+    const clash = this.findLibraryByPath(next, doc.filename)
+    if (clash && clash.id !== doc.id) return false
+    doc.folder = next
+    doc.updatedAt = Date.now()
+    this.documentsIndex.set(docId, doc)
+    this.saveDocumentsIndex()
+    return true
+  }
+
+  cardProgress(): { pending: number; generating: number; ready: number; failed: number; stale: number } {
+    const counts = { pending: 0, generating: 0, ready: 0, failed: 0, stale: 0 }
+    for (const doc of this.listLibraryDocuments()) {
+      const status = doc.cardStatus || 'pending'
+      counts[status] += 1
+    }
+    return counts
+  }
+
+  /**
+   * 秘书删档案。自己放的直接删；用户放的要先征得同意（由调用方完成）。
+   * 返回需要确认时不删。
+   */
+  libraryDeleteNeedsConfirm(docId: string): boolean {
+    const doc = this.documentsIndex.get(docId)
+    if (!doc || !isLibraryFileType(doc.fileType)) return false
+    return doc.addedBy !== 'agent'
+  }
+
+  private async embedCardSummary(doc: KnowledgeDocument): Promise<void> {
+    if (!doc.cardSummary) return
+    if (!this.isInitialized) return
+    try {
+      const vector = await this.embeddingService.embedSingle(doc.cardSummary)
+      this.cardVectors.upsert(doc.id, vector)
+    } catch (error) {
+      log.warn(`检索说明的向量没写上: ${doc.filename}`, error)
+    }
+  }
+
+  private startCardMaintenance(): void {
+    this.resumeCardQueue()
+    if (this.cardTimer) return
+    this.cardFirstTick = setTimeout(() => {
+      void this.runCardTick()
+    }, 60_000)
+    this.cardFirstTick.unref?.()
+    this.cardTimer = setInterval(() => {
+      void this.runCardTick()
+    }, 10 * 60 * 1000)
+    this.cardTimer.unref?.()
+  }
+
+  private resumeCardQueue(): void {
+    let dirty = false
+    for (const doc of this.listLibraryDocuments()) {
+      const next = resumeInterrupted(this.cardOf(doc))
+      if (next.cardStatus === doc.cardStatus) continue
+      this.applyCard(doc, next)
+      dirty = true
+    }
+    if (dirty) this.saveDocumentsIndex()
+  }
+
+  private async runCardTick(): Promise<void> {
+    if (this.cardTickRunning || !this.isInitialized) return
+    const quiet = this.configService.get('watchQuietHours')
+    if (isQuietHour(new Date(), quiet)) return
+    this.cardTickRunning = true
+    try {
+      await this.backfillCardVectors()
+      const profileId = this.getSettings().cardProfileId?.trim()
+      if (!profileId) return
+      const now = new Date()
+      if (this.cardQuota.usedToday(now) >= CARD_DAILY_LIMIT) return
+      const next = pickNextCard(
+        this.listLibraryDocuments().map(doc => ({
+          id: doc.id,
+          cardStatus: doc.cardStatus || 'pending',
+          cardTouchedAt: doc.cardTouchedAt,
+          createdAt: doc.createdAt,
+        })),
+        { remainingToday: CARD_DAILY_LIMIT - this.cardQuota.usedToday(now), remainingThisTick: CARD_TICK_LIMIT }
+      )
+      if (!next) return
+      if (!this.cardQuota.take(now, CARD_DAILY_LIMIT)) return
+      await this.generateOneCard(next.id, profileId)
+    } catch (error) {
+      log.warn('检索说明这一轮没写成:', error)
+    } finally {
+      this.cardTickRunning = false
+    }
+  }
+
+  private async backfillCardVectors(): Promise<void> {
+    let filled = 0
+    for (const doc of this.listLibraryDocuments()) {
+      if (filled >= CARD_VECTOR_BACKFILL_PER_TICK) break
+      if (doc.cardStatus !== 'ready' && doc.cardStatus !== 'stale') continue
+      if (!doc.cardSummary || this.cardVectors.has(doc.id)) continue
+      await this.embedCardSummary(doc)
+      filled++
+    }
+  }
+
+  private async generateOneCard(docId: string, profileId: string): Promise<void> {
+    const doc = this.documentsIndex.get(docId)
+    if (!doc || !isLibraryFileType(doc.fileType)) return
+    const hashAtStart = doc.contentHash || ''
+    this.applyCard(doc, onGenerateStart(this.cardOf(doc)))
+    this.saveDocumentsIndex()
+    try {
+      let plain = doc.content
+      if (isEncrypted(plain)) plain = decrypt(plain)
+      const messages: AiMessage[] = [{
+        role: 'user',
+        content: buildCardPrompt(doc.filename, doc.folder || '', plain),
+      }]
+      const summary = await this.aiService.chat(messages, profileId)
+      const current = this.documentsIndex.get(docId)
+      if (!current) return
+      const next = onGenerateSuccess(this.cardOf(current), summary, hashAtStart, current.contentHash || '')
+      this.applyCard(current, next)
+      this.saveDocumentsIndex()
+      if (next.cardStatus === 'ready') await this.embedCardSummary(current)
+    } catch (error) {
+      const current = this.documentsIndex.get(docId)
+      if (!current) return
+      const message = error instanceof Error ? error.message : String(error)
+      this.applyCard(current, onGenerateFail(this.cardOf(current), message))
+      this.saveDocumentsIndex()
+    }
   }
 
   // ==================== 文档管理 ====================
@@ -1599,6 +2131,7 @@ export class KnowledgeService extends EventEmitter {
   async clear(): Promise<void> {
     await this.vectorStorage.clear()
     await this.bm25Index.clear()
+    this.cardVectors.clear()
     this.documentsIndex.clear()
     const saved = this.saveDocumentsIndex()
     if (!saved) {
@@ -1790,6 +2323,10 @@ export class KnowledgeService extends EventEmitter {
    * 下次 initialize() 时后台异步执行——见 initialize() 中的 scheduleAutoBackup。
    */
   async disposeAsync(timeoutMs: number = 500): Promise<void> {
+    if (this.cardTimer) clearInterval(this.cardTimer)
+    if (this.cardFirstTick) clearTimeout(this.cardFirstTick)
+    this.cardTimer = null
+    this.cardFirstTick = null
     try {
       await Promise.all([
         this.embeddingService.disposeAsync(timeoutMs),

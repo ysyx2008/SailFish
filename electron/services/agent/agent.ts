@@ -71,6 +71,7 @@ import {
 } from './allowlist'
 import { buildTaskHistoryContext, type TaskHistoryOptions } from './context-builder'
 import { getKnowledgeService, type RecallingConversation } from '../knowledge'
+import { getAgentRecallFolder } from '../knowledge/recall-scope'
 import { getContextKnowledgeService } from '../knowledge/context-knowledge'
 import { MemoryRefresher } from './memory-refresh'
 import {
@@ -3113,6 +3114,7 @@ export abstract class Agent {
           hostId,
           recallingConversation: this.recallingConversation(),
           includeConversations,
+          pathPrefix: getAgentRecallFolder(this.getConversationAgentId()),
         })
       }
     } catch (e) {
