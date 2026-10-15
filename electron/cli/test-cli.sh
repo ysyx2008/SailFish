@@ -257,10 +257,29 @@ if [[ "$MODE" != "quick" ]]; then
   assert_contains "knowledge:search 语义搜索" "Kubernetes" \
     $CLI knowledge:search "容器编排"
 
+  # 二进制格式必须走解析器。用例一直只用 .md，所以「PDF 入库成字节流还报成功」长期没被发现
+  assert_contains "knowledge:add PDF 走解析器"  "type: pdf" \
+    $CLI knowledge:add "${PROJECT_ROOT}/electron/cli/__tests__/fixtures/sample.pdf"
+
+  assert_contains "PDF 正文确实入库"            "sample.pdf" \
+    $CLI knowledge:search "Photosynthesis chloroplasts"
+
+  # 召回基线：跑仓库自带的中性语料，顺带验证存档与对比
+  assert_contains "knowledge bench 跑出基线"    "自动到场" \
+    $CLI knowledge:bench
+
+  BENCH_REPORT="$TEST_DOC_DIR/bench-report.json"
+  run_test "knowledge bench --save 存档"        $CLI knowledge:bench --save "$BENCH_REPORT"
+
+  assert_contains "knowledge bench:compare"     "读法" \
+    $CLI knowledge:bench:compare "$BENCH_REPORT" "$BENCH_REPORT"
+
 else
   skip_test "knowledge:add 添加文档"
   skip_test "knowledge:list 返回表格"
   skip_test "knowledge:search 命中验证"
+  skip_test "knowledge:add PDF 走解析器"
+  skip_test "knowledge bench 跑出基线"
 fi
 
 # 搜索不存在的内容

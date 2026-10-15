@@ -306,7 +306,9 @@ async function knowledgeSearch(args: string[]): Promise<void> {
 
   for (const r of results) {
     console.log(`\n${'─'.repeat(60)}`)
-    console.log(`Score: ${r.score.toFixed(4)}  |  Doc: ${r.filename}  |  Host: ${r.hostId || 'global'}`)
+    console.log(
+      `Score: ${r.score.toFixed(4)}  |  Doc: ${r.metadata?.filename || 'unknown'}  |  Host: ${r.metadata?.hostId || 'global'}`
+    )
     console.log(`${'─'.repeat(60)}`)
     console.log(r.content.substring(0, 500))
     if (r.content.length > 500) console.log('...(truncated)')
