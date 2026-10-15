@@ -1,0 +1,170 @@
+{
+  "name": "监管法规基线（带来源语境）",
+  "runAt": "2026-10-15T08:08:09.018Z",
+  "embedding": {
+    "mode": "local",
+    "model": "auto"
+  },
+  "recallParams": {
+    "autoLimit": 5,
+    "autoSimilarity": 0.6,
+    "minRrfScore": 0.02,
+    "manualTopN": 5
+  },
+  "corpusCount": 1,
+  "caseCount": 13,
+  "metrics": {
+    "manualTop1": 1,
+    "manualTop5": 1,
+    "autoHit": 0.7692307692307693,
+    "autoAvgChars": 747,
+    "noiseRecall": 0,
+    "sectionAccuracy": 0.7692307692307693
+  },
+  "cases": [
+    {
+      "caseId": "reg-q1",
+      "question": "证监会的管理办法里，灾难恢复有什么要求",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": true,
+      "autoChars": 1423,
+      "sectionHit": true
+    },
+    {
+      "caseId": "reg-q2",
+      "question": "《证券基金经营机构信息技术管理办法》对客户信息保护是怎么规定的",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": true,
+      "autoChars": 994,
+      "sectionHit": false
+    },
+    {
+      "caseId": "reg-q3",
+      "question": "按证监会的规定，我们公司信息系统备份要达到什么等级",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": true,
+      "autoChars": 834,
+      "sectionHit": true
+    },
+    {
+      "caseId": "reg-q4",
+      "question": "管理办法里首席信息官的任职条件是什么",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": false,
+      "autoChars": 0,
+      "sectionHit": true
+    },
+    {
+      "caseId": "reg-q5",
+      "question": "监管对信息技术应急演练有什么要求",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": true,
+      "autoChars": 947,
+      "sectionHit": true
+    },
+    {
+      "caseId": "reg-q6",
+      "question": "新上线重要信息系统，证监会规定要几个工作日内报备",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": true,
+      "autoChars": 471,
+      "sectionHit": true
+    },
+    {
+      "caseId": "reg-q7",
+      "question": "管理办法里数据分类分级是怎么要求的",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": false,
+      "autoChars": 0,
+      "sectionHit": true
+    },
+    {
+      "caseId": "reg-q8",
+      "question": "证监会规定信息技术审计多久要做一次",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": true,
+      "autoChars": 492,
+      "sectionHit": false
+    },
+    {
+      "caseId": "reg-q9",
+      "question": "管理办法要求重要信息系统具备什么功能",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": true,
+      "autoChars": 1805,
+      "sectionHit": false
+    },
+    {
+      "caseId": "reg-q10",
+      "question": "管理办法里明令禁止哪些行为",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": false,
+      "autoChars": 0,
+      "sectionHit": true
+    },
+    {
+      "caseId": "reg-q11",
+      "question": "按规定信息技术治理委员会要审议哪些事项",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": true,
+      "autoChars": 486,
+      "sectionHit": true
+    },
+    {
+      "caseId": "reg-q12",
+      "question": "管理办法对数据安全的技术防护有哪些要求",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": true,
+      "autoChars": 515,
+      "sectionHit": true
+    },
+    {
+      "caseId": "reg-q13",
+      "question": "证监会对备份系统的处理能力是怎么规定的",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": true,
+      "autoChars": 1746,
+      "sectionHit": true
+    }
+  ],
+  "noise": [
+    {
+      "question": "帮我写个周报",
+      "recalled": false,
+      "chars": 0
+    },
+    {
+      "question": "明天合肥天气怎么样",
+      "recalled": false,
+      "chars": 0
+    },
+    {
+      "question": "帮我把这个 excel 里的重复行删掉",
+      "recalled": false,
+      "chars": 0
+    },
+    {
+      "question": "docker 容器起不来怎么排查",
+      "recalled": false,
+      "chars": 0
+    },
+    {
+      "question": "给我讲个笑话",
+      "recalled": false,
+      "chars": 0
+    }
+  ]
+}

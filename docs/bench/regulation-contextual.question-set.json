@@ -1,0 +1,111 @@
+{
+  "name": "监管法规基线（带来源语境）",
+  "createdAt": "2026-10-15T00:00:00.000Z",
+  "note": "和 regulation.question-set.json 问的是同样十三件事，只把提问改成真实场景下的说法——用户会带上来源（「证监会的管理办法里…」），而不是裸问「灾难恢复有什么要求」。两份并排跑，量的就是语境本身值多少。",
+  "corpus": [
+    {
+      "id": "it-mgmt-rules",
+      "file": "/Users/yushen/Downloads/【179-4号】证券基金经营机构信息技术管理办法.pdf"
+    }
+  ],
+  "cases": [
+    {
+      "id": "reg-q1",
+      "question": "证监会的管理办法里，灾难恢复有什么要求",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "灾难应对能力",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q2",
+      "question": "《证券基金经营机构信息技术管理办法》对客户信息保护是怎么规定的",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "客户信息的安全",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q3",
+      "question": "按证监会的规定，我们公司信息系统备份要达到什么等级",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "数据备份能力应当达到第一级",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q4",
+      "question": "管理办法里首席信息官的任职条件是什么",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "从事信息技术相关工作十年以上",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q5",
+      "question": "监管对信息技术应急演练有什么要求",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "应急演练",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q6",
+      "question": "新上线重要信息系统，证监会规定要几个工作日内报备",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "五个工作日内向中国证监会报送",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q7",
+      "question": "管理办法里数据分类分级是怎么要求的",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "按照重要性和敏感性进行分类分级",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q8",
+      "question": "证监会规定信息技术审计多久要做一次",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "频率不低于每年一次",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q9",
+      "question": "管理办法要求重要信息系统具备什么功能",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "具备可审计功能",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q10",
+      "question": "管理办法里明令禁止哪些行为",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "禁止的其他行为",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q11",
+      "question": "按规定信息技术治理委员会要审议哪些事项",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "信息技术应急预案",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q12",
+      "question": "管理办法对数据安全的技术防护有哪些要求",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "网络隔离、用户认证",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q13",
+      "question": "证监会对备份系统的处理能力是怎么规定的",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "备份系统与生产系统具备同等的处理能力",
+      "status": "approved"
+    }
+  ],
+  "noiseQuestions": [
+    "帮我写个周报",
+    "明天合肥天气怎么样",
+    "帮我把这个 excel 里的重复行删掉",
+    "docker 容器起不来怎么排查",
+    "给我讲个笑话"
+  ]
+}
