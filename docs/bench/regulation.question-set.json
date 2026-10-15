@@ -1,0 +1,111 @@
+{
+  "name": "监管法规基线",
+  "createdAt": "2026-10-15T00:00:00.000Z",
+  "note": "语料是一份公开法规（证监会《证券基金经营机构信息技术管理办法》）的 PDF，文件本身不进仓库，按下面的路径在本机取。前四条问题与 docs/plans/2026-10-15-knowledge-recall-baseline-design.md 里记过旧数字的那几条一致，可直接对照。问题是人写的（不是 AI 出题），锚点取自法规原文。",
+  "corpus": [
+    {
+      "id": "it-mgmt-rules",
+      "file": "/Users/yushen/Downloads/【179-4号】证券基金经营机构信息技术管理办法.pdf"
+    }
+  ],
+  "cases": [
+    {
+      "id": "reg-q1",
+      "question": "灾难恢复有什么要求",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "灾难应对能力",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q2",
+      "question": "客户信息保护",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "客户信息的安全",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q3",
+      "question": "我们公司信息系统备份要达到什么等级",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "数据备份能力应当达到第一级",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q4",
+      "question": "首席信息官要满足什么条件才能当",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "从事信息技术相关工作十年以上",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q5",
+      "question": "出了故障该怎么办，有没有规定要搞演练",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "应急演练",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q6",
+      "question": "新上线一个重要系统要不要向监管报备",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "五个工作日内向中国证监会报送",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q7",
+      "question": "公司的数据要怎么分类管理",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "按照重要性和敏感性进行分类分级",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q8",
+      "question": "信息技术方面的审计多久要做一次",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "频率不低于每年一次",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q9",
+      "question": "重要信息系统要能被审计吗",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "具备可审计功能",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q10",
+      "question": "哪些做法是明令禁止的",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "禁止的其他行为",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q11",
+      "question": "信息技术治理委员会要审哪些事",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "信息技术应急预案",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q12",
+      "question": "数据安全上要做哪些技术防护",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "网络隔离、用户认证",
+      "status": "approved"
+    },
+    {
+      "id": "reg-q13",
+      "question": "备份系统的处理能力有什么规定",
+      "expectDocId": "it-mgmt-rules",
+      "expectText": "备份系统与生产系统具备同等的处理能力",
+      "status": "approved"
+    }
+  ],
+  "noiseQuestions": [
+    "帮我写个周报",
+    "明天合肥天气怎么样",
+    "帮我把这个 excel 里的重复行删掉",
+    "docker 容器起不来怎么排查",
+    "给我讲个笑话"
+  ]
+}

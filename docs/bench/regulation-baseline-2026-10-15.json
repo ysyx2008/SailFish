@@ -1,0 +1,170 @@
+{
+  "name": "监管法规基线",
+  "runAt": "2026-10-15T07:06:22.848Z",
+  "embedding": {
+    "mode": "local",
+    "model": "auto"
+  },
+  "recallParams": {
+    "autoLimit": 5,
+    "autoSimilarity": 0.6,
+    "minRrfScore": 0.02,
+    "manualTopN": 5
+  },
+  "corpusCount": 1,
+  "caseCount": 13,
+  "metrics": {
+    "manualTop1": 0.46153846153846156,
+    "manualTop5": 0.9230769230769231,
+    "autoHit": 0.15384615384615385,
+    "autoAvgChars": 209,
+    "noiseRecall": 0,
+    "sectionAccuracy": 0.75
+  },
+  "cases": [
+    {
+      "caseId": "reg-q1",
+      "question": "灾难恢复有什么要求",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 2,
+      "autoHit": false,
+      "autoChars": 0,
+      "sectionHit": true
+    },
+    {
+      "caseId": "reg-q2",
+      "question": "客户信息保护",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 3,
+      "autoHit": false,
+      "autoChars": 0,
+      "sectionHit": false
+    },
+    {
+      "caseId": "reg-q3",
+      "question": "我们公司信息系统备份要达到什么等级",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": true,
+      "autoChars": 990,
+      "sectionHit": true
+    },
+    {
+      "caseId": "reg-q4",
+      "question": "首席信息官要满足什么条件才能当",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 2,
+      "autoHit": false,
+      "autoChars": 0,
+      "sectionHit": true
+    },
+    {
+      "caseId": "reg-q5",
+      "question": "出了故障该怎么办，有没有规定要搞演练",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": false,
+      "autoChars": 0,
+      "sectionHit": true
+    },
+    {
+      "caseId": "reg-q6",
+      "question": "新上线一个重要系统要不要向监管报备",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": false,
+      "autoChars": 0,
+      "sectionHit": true
+    },
+    {
+      "caseId": "reg-q7",
+      "question": "公司的数据要怎么分类管理",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": false,
+      "autoChars": 0,
+      "sectionHit": true
+    },
+    {
+      "caseId": "reg-q8",
+      "question": "信息技术方面的审计多久要做一次",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 2,
+      "autoHit": false,
+      "autoChars": 687,
+      "sectionHit": false
+    },
+    {
+      "caseId": "reg-q9",
+      "question": "重要信息系统要能被审计吗",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": null,
+      "autoHit": false,
+      "autoChars": 0,
+      "sectionHit": false
+    },
+    {
+      "caseId": "reg-q10",
+      "question": "哪些做法是明令禁止的",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": false,
+      "autoChars": 0,
+      "sectionHit": false
+    },
+    {
+      "caseId": "reg-q11",
+      "question": "信息技术治理委员会要审哪些事",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 1,
+      "autoHit": true,
+      "autoChars": 1040,
+      "sectionHit": true
+    },
+    {
+      "caseId": "reg-q12",
+      "question": "数据安全上要做哪些技术防护",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 2,
+      "autoHit": false,
+      "autoChars": 0,
+      "sectionHit": true
+    },
+    {
+      "caseId": "reg-q13",
+      "question": "备份系统的处理能力有什么规定",
+      "expectDocId": "it-mgmt-rules",
+      "manualRank": 3,
+      "autoHit": false,
+      "autoChars": 0,
+      "sectionHit": true
+    }
+  ],
+  "noise": [
+    {
+      "question": "帮我写个周报",
+      "recalled": false,
+      "chars": 0
+    },
+    {
+      "question": "明天合肥天气怎么样",
+      "recalled": false,
+      "chars": 0
+    },
+    {
+      "question": "帮我把这个 excel 里的重复行删掉",
+      "recalled": false,
+      "chars": 0
+    },
+    {
+      "question": "docker 容器起不来怎么排查",
+      "recalled": false,
+      "chars": 0
+    },
+    {
+      "question": "给我讲个笑话",
+      "recalled": false,
+      "chars": 0
+    }
+  ]
+}
