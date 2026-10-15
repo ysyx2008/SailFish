@@ -51,6 +51,12 @@ export interface ResolvedIdentity {
   cliName: string
 }
 
+export interface ResolvedModels {
+  /** null = 不自带模型 */
+  catalogUrl: string | null
+  auth: 'none' | 'login'
+}
+
 export interface ResolvedOem {
   distribution: ResolvedDistribution
   links: ResolvedLinks
@@ -59,6 +65,7 @@ export interface ResolvedOem {
   icons: { app: string | null; tray: string | null }
   communitySkillMarket: boolean
   inAppUpdateEnabled: boolean
+  models: ResolvedModels
 }
 
 function absentOrEmpty(value: string | undefined, fallback: string): string | null {
@@ -95,6 +102,26 @@ function normalizeProtocol(value: string): string {
   return value.replace(/:\/?\/?$/, '').replace(/[^a-z0-9+-]/gi, '').toLowerCase() || SAILFISH_PROTOCOL
 }
 
+/** 不写、写成空、或不是 http(s) 地址，都是不自带模型。 */
+function resolveModels(config: OemConfig): ResolvedModels {
+  const raw = config.models?.catalogUrl
+  if (raw === undefined) return { catalogUrl: null, auth: 'none' }
+  const trimmed = raw.trim()
+  if (!trimmed) return { catalogUrl: null, auth: 'none' }
+  try {
+    const url = new URL(trimmed)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return { catalogUrl: null, auth: 'none' }
+    }
+  } catch {
+    return { catalogUrl: null, auth: 'none' }
+  }
+  return {
+    catalogUrl: trimmed,
+    auth: config.models?.auth === 'login' ? 'login' : 'none',
+  }
+}
+
 export function resolveOem(config: OemConfig): ResolvedOem {
   const repository = absentOrEmpty(config.distribution?.repository, SAILFISH_GITHUB_REPOSITORY)
   const updateRootRaw = absentOrEmpty(config.distribution?.updateRoot, SAILFISH_UPDATE_ROOT)
@@ -127,6 +154,7 @@ export function resolveOem(config: OemConfig): ResolvedOem {
     },
     communitySkillMarket: config.communitySkillMarket !== false,
     inAppUpdateEnabled: Boolean(github || updateRoot),
+    models: resolveModels(config),
   }
 }
 

@@ -1,3 +1,5 @@
+import { oemResolved } from '@shared/oem-resolve'
+import { bundledRequestAuth } from '@shared/oem-model-catalog'
 import { ConfigService, getConfigService } from './config.service'
 import { HttpsProxyAgent } from 'https-proxy-agent'
 import { SocksProxyAgent } from 'socks-proxy-agent'
@@ -1014,6 +1016,26 @@ function getRequestHeaders(profile: AiProfile): Record<string, string> {
   }
 }
 
+/** 公司清单里的模型没另填钥匙时，按清单约定带登录令牌或不带凭证。其余仍走原来的请求头。 */
+async function resolveRequestHeaders(profile: Pick<AiProfile, 'apiUrl' | 'apiKey'> & Partial<AiProfile>): Promise<Record<string, string>> {
+  let token: string | null = null
+  if (profile.oemCatalogId && !(profile.apiKey ?? '').trim() && oemResolved.models.auth === 'login') {
+    try {
+      const { getAuthService } = await import('./auth/auth.service')
+      token = await getAuthService().getAccessToken()
+    } catch (err) {
+      log.warn('公司模型要用的登录令牌没有取到:', err)
+      token = null
+    }
+  }
+  const decision = bundledRequestAuth(profile, oemResolved.models.auth, token)
+  if (decision.type === 'omit') return { 'Content-Type': 'application/json' }
+  if (decision.type === 'bearer') {
+    return getRequestHeaders({ ...profile, apiKey: decision.token } as AiProfile)
+  }
+  return getRequestHeaders(profile as AiProfile)
+}
+
 /**
  * 清洗字符串中的孤立 UTF-16 surrogate（high surrogate 缺 low / low surrogate 缺 high）。
  * 上层若用 substring/slice 按 UTF-16 code unit 截断包含 emoji 的文本，可能切出孤立
@@ -1576,17 +1598,25 @@ export class AiService {
       return { models: [], error: t('error.ai_no_config') }
     }
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    }
-    if (profile.apiKey) {
-      // Anthropic 使用 x-api-key，其余用 Bearer
-      const isAnthropic = isAnthropicApi({ apiUrl: profile.apiUrl, apiFormat: profile.apiFormat })
-      if (isAnthropic) {
-        headers['x-api-key'] = profile.apiKey
-        headers['anthropic-version'] = '2023-06-01'
-      } else {
-        headers['Authorization'] = `Bearer ${profile.apiKey}`
+    let headers: Record<string, string>
+    if (profile.oemCatalogId && !(profile.apiKey ?? '').trim()) {
+      headers = await resolveRequestHeaders({
+        apiUrl: profile.apiUrl,
+        apiKey: profile.apiKey ?? '',
+        apiFormat: profile.apiFormat,
+        oemCatalogId: profile.oemCatalogId,
+      })
+    } else {
+      headers = { 'Content-Type': 'application/json' }
+      if (profile.apiKey) {
+        // Anthropic 使用 x-api-key，其余用 Bearer
+        const isAnthropic = isAnthropicApi({ apiUrl: profile.apiUrl, apiFormat: profile.apiFormat })
+        if (isAnthropic) {
+          headers['x-api-key'] = profile.apiKey
+          headers['anthropic-version'] = '2023-06-01'
+        } else {
+          headers['Authorization'] = `Bearer ${profile.apiKey}`
+        }
       }
     }
 
@@ -1675,7 +1705,14 @@ export class AiService {
    * 发送单次 HTTP 请求（支持代理，带超时处理）
    * 抛出 ApiRequestError 携带 statusCode / retryAfter / apiErrorCode，供 withApiRetry 分类重试
    */
-  private makeRequestOnce<T>(profile: AiProfile, body: object, signal?: AbortSignal): Promise<T> {
+  private async makeRequestOnce<T>(profile: AiProfile, body: object, signal?: AbortSignal): Promise<T> {
+    if (signal?.aborted) {
+      throw toApiRequestError(new Error(t('error.request_aborted')))
+    }
+    const headers = await resolveRequestHeaders(profile)
+    if (signal?.aborted) {
+      throw toApiRequestError(new Error(t('error.request_aborted')))
+    }
     return new Promise((resolve, reject) => {
       const url = new URL(profile.apiUrl)
       const isHttps = url.protocol === 'https:'
@@ -1686,7 +1723,7 @@ export class AiService {
         port: url.port || (isHttps ? 443 : 80),
         path: url.pathname + url.search,
         method: 'POST',
-        headers: getRequestHeaders(profile),
+        headers,
         timeout: AI_TIMEOUT.CONNECT,
         agent: profile.proxy ? this.getProxyAgent(profile.proxy) : (isHttps ? this.httpsAgent : this.httpAgent)
       }
@@ -1934,10 +1971,24 @@ export class AiService {
       return false
     }
 
-    const doRequest = () => {
+    const doRequest = async () => {
     isCompleted = false
 
     // 重试等待期间用户可能已取消请求
+    if (abortController.signal.aborted) {
+      this.abortControllers.delete(reqId)
+      onDone()
+      return
+    }
+
+    let headers: Record<string, string>
+    try {
+      headers = await resolveRequestHeaders(profile)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      complete(() => onError(message))
+      return
+    }
     if (abortController.signal.aborted) {
       this.abortControllers.delete(reqId)
       onDone()
@@ -1954,7 +2005,7 @@ export class AiService {
         port: url.port || (isHttps ? 443 : 80),
         path: url.pathname + url.search,
         method: 'POST',
-        headers: getRequestHeaders(profile),
+        headers,
         timeout: AI_TIMEOUT.CONNECT,
         agent: profile.proxy ? this.getProxyAgent(profile.proxy) : (isHttps ? this.httpsAgent : this.httpAgent)
       }
@@ -2610,7 +2661,7 @@ export class AiService {
       return false
     }
 
-    const doRequest = () => {
+    const doRequest = async () => {
     if (settled) return
     const gen = requestGeneration
     const isStale = () => gen !== requestGeneration
@@ -2618,6 +2669,25 @@ export class AiService {
     isCompleted = false
 
     // 重试等待期间用户可能已取消请求
+    if (abortController.signal.aborted) {
+      getAiDebugService().logResponseDone(reqId, { finishReason: 'aborted' })
+      complete(() => onDone({
+        content: undefined,
+        tool_calls: undefined,
+        finish_reason: 'stop',
+        aborted: true
+      }))
+      return
+    }
+
+    let headers: Record<string, string>
+    try {
+      headers = await resolveRequestHeaders(profile)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      complete(() => onError(message))
+      return
+    }
     if (abortController.signal.aborted) {
       getAiDebugService().logResponseDone(reqId, { finishReason: 'aborted' })
       complete(() => onDone({
@@ -2639,7 +2709,7 @@ export class AiService {
         port: url.port || (isHttps ? 443 : 80),
         path: url.pathname + url.search,
         method: 'POST',
-        headers: getRequestHeaders(profile),
+        headers,
         timeout: AI_TIMEOUT.CONNECT,
         agent: profile.proxy ? this.getProxyAgent(profile.proxy) : (isHttps ? this.httpsAgent : this.httpAgent)
       }

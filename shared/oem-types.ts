@@ -115,6 +115,25 @@ export interface OemConfig {
    * 不是地址。旗鱼自己的技能清单在 links.skillRegistry。
    */
   communitySkillMarket?: boolean
+  /**
+   * 公司自带的模型清单。不写或地址为空 = 不自带，用户仍自己配。
+   * 清单本身是公司放在这个地址上的一份小文档，不写进安装包。
+   */
+  models?: OemModelsConfig
+}
+
+/**
+ * 公司模型清单从哪里取、取的时候带不带登录。
+ * 不写地址或写成空 = 不自带模型。没有「退回旗鱼清单」这一档，开源本来就没有。
+ */
+export interface OemModelsConfig {
+  catalogUrl?: string
+  /**
+   * none：取清单和之后的对话都不带登录凭证。
+   * login：用这个人登录后的访问令牌。
+   * 不写 = none。
+   */
+  auth?: 'none' | 'login'
 }
 
 /** SSO 登录门控：hard 全屏挡；soft 可进主界面；none 无登录 UI */

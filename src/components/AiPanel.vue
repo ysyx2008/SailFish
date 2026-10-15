@@ -11,6 +11,7 @@ import { Virtualizer } from 'virtua/vue'
 import type { VirtualizerHandle } from 'virtua/vue'
 import type { MessageScrollerHandle } from '../types/message-scroller'
 import { useConfigStore } from '../stores/config'
+import { oemResolved } from '@shared/oem-resolve'
 import { useTerminalStore } from '../stores/terminal'
 import { useComposerQuoteStore } from '../stores/composer-quote'
 import AgentPlanView from './AgentPlanView.vue'
@@ -939,6 +940,12 @@ const cacheBarWidth = computed(() => {
 // ==================== 配置相关 ====================
 
 const hasAiConfig = computed(() => configStore.hasAiConfig)
+const oemCatalogMessage = computed(() => {
+  if (hasAiConfig.value || !oemResolved.models.catalogUrl) return ''
+  return configStore.oemModelNotice === 'need-login'
+    ? t('ai.oemCatalogNeedLogin')
+    : t('ai.oemCatalogUnavailable')
+})
 const aiProfiles = computed(() => configStore.aiProfiles)
 
 // 当前终端的 AI 配置档案（基于 per-tab activeProfileId）
@@ -2442,7 +2449,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
     <!-- 未配置 AI 提示 -->
     <div v-if="!hasAiConfig" class="ai-no-config">
       <HelpCircle :size="48" :stroke-width="1.5" />
-      <p>{{ t('ai.noConfig') }}</p>
+      <p>{{ oemCatalogMessage || t('ai.noConfig') }}</p>
       <button class="btn btn-primary btn-sm" @click="showSettings?.()">
         {{ t('ai.goToSettings') }}
       </button>

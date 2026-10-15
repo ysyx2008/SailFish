@@ -32,6 +32,13 @@ export interface AiProfile {
   visionProfileId?: string
   /** API 协议格式，默认 auto（自动检测） */
   apiFormat?: ApiFormat
+  /**
+   * 来自公司模型清单的稳定编号。有这个编号、又没填钥匙时，对话按清单约定带登录令牌或不带凭证。
+   * 用户后来改过这条时仍留着，用来认出「这是公司给的那条」，避免升级时再塞一份。
+   */
+  oemCatalogId?: string
+  /** 用户改过这条之后，清单再更新也不再改它的地址、名字和文本/视觉。 */
+  oemDetached?: boolean
 }
 
 /** 从供应商模型列表解析出的条目（选模型时回填上下文 / 输出上限） */

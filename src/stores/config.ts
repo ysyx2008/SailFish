@@ -310,6 +310,8 @@ export const useConfigStore = defineStore('config', () => {
   // AI 配置
   const aiProfiles = ref<AiProfile[]>([])
   const activeAiProfileId = ref<string>('')
+  /** 公司模型清单还没放进来时，空状态下要说的话。空 = 按「还没配模型」说 */
+  const oemModelNotice = ref<'' | 'need-login' | 'unavailable'>('')
 
   // SSH 会话
   const sshSessions = ref<SshSession[]>([])
@@ -522,6 +524,12 @@ export const useConfigStore = defineStore('config', () => {
       // 批量赋值
       aiProfiles.value = profiles || []
       activeAiProfileId.value = activeId || ''
+      try {
+        const notice = await window.electronAPI.config.get('oemModelNotice')
+        oemModelNotice.value = notice === 'need-login' || notice === 'unavailable' ? notice : ''
+      } catch {
+        oemModelNotice.value = ''
+      }
       sshSessions.value = sessions || []
       sessionGroups.value = (groups || []).map(group => {
         if (!group.jumpHost) return group
@@ -1303,6 +1311,7 @@ export const useConfigStore = defineStore('config', () => {
     // 状态
     aiProfiles,
     activeAiProfileId,
+    oemModelNotice,
     activeAiProfile,
     hasAiConfig,
     sshSessions,

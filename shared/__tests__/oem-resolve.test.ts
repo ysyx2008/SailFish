@@ -38,6 +38,8 @@ describe('resolveOem', () => {
     expect(resolved.identity.protocol).toBe('sailfish')
     expect(resolved.identity.dataDirName).toBe('SailFish')
     expect(resolved.icons.app).toBeNull()
+    expect(resolved.models.catalogUrl).toBeNull()
+    expect(resolved.models.auth).toBe('none')
   })
 
   it('两处更新地址都写成空时不做应用内更新，也不退回旗鱼仓库', () => {
@@ -103,5 +105,18 @@ describe('resolveOem', () => {
     expect(resolved.identity.protocol).toBe('example')
     expect(resolved.identity.cliName).toBe('example')
     expect(resolved.icons.app).toBe('oem/logo.png')
+  })
+
+  it('模型清单不写或写成空就是不自带；写成地址才打开，登录与否另算', () => {
+    expect(resolveOem(config({ models: { catalogUrl: '' } })).models.catalogUrl).toBeNull()
+    expect(resolveOem(config({ models: { catalogUrl: 'not a url' } })).models.catalogUrl).toBeNull()
+    const resolved = resolveOem(config({
+      models: { catalogUrl: 'https://llm.example/models.json', auth: 'login' },
+    }))
+    expect(resolved.models.catalogUrl).toBe('https://llm.example/models.json')
+    expect(resolved.models.auth).toBe('login')
+    expect(resolveOem(config({
+      models: { catalogUrl: 'https://llm.example/models.json' },
+    })).models.auth).toBe('none')
   })
 })

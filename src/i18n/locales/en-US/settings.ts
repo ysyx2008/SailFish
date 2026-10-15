@@ -448,6 +448,7 @@ export default {
     groupProfiles: 'Model Profiles',
     groupAuto: 'Automatic Switching',
     noProfiles: 'No AI model configured',
+    oemCatalogHidden: 'Models from your organization are not edited here. You can still choose them in the chat. This list is only for ones you add.',
     addProfile: 'Add Profile',
     editProfile: 'Edit Profile',
     currentlyUsing: 'Currently using',

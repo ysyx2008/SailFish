@@ -17,6 +17,8 @@ export default {
       cannotExport: '找不到原始内容，无法另存',
     },
     noConfig: '尚未配置 AI 模型',
+    oemCatalogNeedLogin: '公司的模型要登录之后才能用。请先登录，不用再填地址和模型名。',
+    oemCatalogUnavailable: '还没取到公司的模型清单。可以稍后再打开，也可以先自己配一个。',
     goToSettings: '前往设置',
     switchModel: '切换 AI 模型',
     timeout: '超时',

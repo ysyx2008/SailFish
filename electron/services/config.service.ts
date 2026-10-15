@@ -8,6 +8,7 @@ import { DEFAULT_KNOWLEDGE_SETTINGS } from './knowledge/types'
 import { DEFAULT_CONTEXT_KNOWLEDGE_MAX_CHARS } from './knowledge/context-knowledge-budget'
 import type { CueSoundSettings, TtsSettings, UiThemeMode, UiThemeName, WebSearchSettings } from '@shared/types'
 import { COMMAND_RISK_POLICY_ALLOWED_LEVELS, DEFAULT_COMMAND_RISK_POLICY, DEFAULT_CUE_SOUND_SETTINGS, DEFAULT_PROACTIVE_COMPACT, DEFAULT_TTS_SETTINGS, DEFAULT_UI_THEME, DEFAULT_UI_THEME_MODE, DEFAULT_WEB_SEARCH_SETTINGS, normalizeProactiveCompact } from '@shared/types'
+import type { OemCatalogModel, OemModelNotice, OemModelSyncState } from '@shared/oem-model-catalog'
 import { createLogger, type LogLevel } from '../utils/logger'
 import { normalizeTerminalSettings, normalizeKeyboardShortcuts } from '../utils/normalize'
 import {
@@ -290,6 +291,12 @@ interface StoreSchema {
   commandRiskPolicy: CommandRiskPolicy
   /** scratch/ 临时区自动清理：文件 mtime 超过 N 天则删，0 表示禁用自动清理 */
   scratchCleanupMaxAgeDays: number
+  /** 公司模型清单：有没有给过、删过哪些、上次写进去时长什么样 */
+  oemModelSync: OemModelSyncState
+  /** 清单还没取到时，界面上要说的那句话。空 = 没什么要说的 */
+  oemModelNotice: OemModelNotice
+  /** 上次成功取到的清单，这次失败时继续用 */
+  oemModelCatalogCache: OemCatalogModel[]
 }
 
 const defaultConfig: StoreSchema = {
@@ -409,6 +416,9 @@ const defaultConfig: StoreSchema = {
   conversationDisplayTitles: {},
   commandRiskPolicy: { ...DEFAULT_COMMAND_RISK_POLICY },
   scratchCleanupMaxAgeDays: 7,
+  oemModelSync: { decided: null, dismissed: [], fingerprints: {} },
+  oemModelNotice: '',
+  oemModelCatalogCache: [],
 }
 
 export class ConfigService {

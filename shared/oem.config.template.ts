@@ -80,4 +80,10 @@ export { oemConfig } from './oem-defaults'
 //     app: 'oem/logo.png',
 //     tray: 'oem/trayTemplate.png',
 //   },
+//   // 公司自带模型。不写或地址为空 = 用户仍自己配。清单是公司放在这个地址上的一份文档，不写进安装包。
+//   // auth: 'none' 不带登录凭证；'login' 用这个人登录后的访问令牌。详见 docs/oem-models-guide.md
+//   models: {
+//     catalogUrl: 'https://llm.example.com/sailfish/models.json',
+//     auth: 'login',
+//   },
 // }

@@ -17,6 +17,8 @@ export default {
       cannotExport: 'Original content is not available to save',
     },
     noConfig: 'No AI model configured',
+    oemCatalogNeedLogin: 'The company models are available after you sign in. Sign in first — you do not need to enter an address or model name.',
+    oemCatalogUnavailable: 'The company model list is not here yet. Open the app again later, or add your own model for now.',
     goToSettings: 'Go to Settings',
     switchModel: 'Switch AI Model',
     timeout: 'Timeout',

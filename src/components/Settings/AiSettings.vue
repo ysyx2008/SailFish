@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Plus, Pencil, Trash2, X, ExternalLink, Eye, Copy, GripVertical, RefreshCw, ChevronDown, Camera } from 'lucide-vue-next'
 import { useConfigStore, type AiProfile, type AiModelType, type ApiFormat } from '../../stores/config'
+import { oemResolved } from '@shared/oem-resolve'
 import { showAlert, showConfirm } from '../../composables/useConfirm'
 import type { FetchedAiModel } from '@shared/types'
 import { AI_TEMPLATES, RECOMMENDED_MIN_CONTEXT } from '../../config/ai-templates'
@@ -49,7 +50,8 @@ const formData = ref<Partial<AiProfile>>({
   apiFormat: 'auto' as ApiFormat
 })
 
-const profiles = computed(() => configStore.aiProfiles)
+const allProfiles = computed(() => configStore.aiProfiles)
+const profiles = computed(() => allProfiles.value.filter(profile => !profile.oemCatalogId))
 const activeProfileId = computed(() => configStore.activeAiProfileId)
 
 const resetForm = () => {
@@ -71,7 +73,7 @@ const resetForm = () => {
 
 // 可选的视觉模型列表（排除正在编辑的自身）
 const visionProfileOptions = computed(() => {
-  return profiles.value.filter(p => 
+  return allProfiles.value.filter(p => 
     p.modelType === 'vision' && p.id !== editingProfile.value?.id
   )
 })
@@ -120,7 +122,7 @@ const openEditProfile = (profile: AiProfile) => {
 // 基于现有配置创建新配置：预填内容、名称附"副本"后缀，由用户确认后保存为新配置
 const openCopyProfile = (profile: AiProfile) => {
   editingProfile.value = null
-  const { id: _id, ...rest } = profile
+  const { id: _id, oemCatalogId: _catalogId, oemDetached: _detached, ...rest } = profile
   formData.value = {
     ...rest,
     name: `${profile.name} ${t('aiSettings.copySuffix')}`,
@@ -282,7 +284,7 @@ const saveProfile = async () => {
 }
 
 const deleteProfile = async (profile: AiProfile) => {
-  if (profiles.value.length <= 1) {
+  if (allProfiles.value.length <= 1) {
     await showAlert(t('aiSettings.deleteProfile'), t('aiSettings.cannotDeleteLast'))
     return
   }
@@ -290,13 +292,13 @@ const deleteProfile = async (profile: AiProfile) => {
     await showAlert(t('aiSettings.deleteProfile'), t('aiSettings.cannotDeleteActive'))
     return
   }
-  const active = profiles.value.find(p => p.id === activeProfileId.value)
+  const active = allProfiles.value.find(p => p.id === activeProfileId.value)
   if (active?.visionProfileId === profile.id) {
     await showAlert(t('aiSettings.deleteProfile'), t('aiSettings.cannotDeleteActiveVision'))
     return
   }
 
-  const referrers = profiles.value.filter(p => p.id !== profile.id && p.visionProfileId === profile.id)
+  const referrers = allProfiles.value.filter(p => p.id !== profile.id && p.visionProfileId === profile.id)
   const names = referrers.map(p => p.name).join(locale.value.startsWith('zh') ? '、' : ', ')
   const confirmed = await showConfirm({
     type: 'danger',
@@ -356,7 +358,12 @@ const handleProfileDrop = async (event: DragEvent) => {
   if (ins === from || ins === from + 1) return
   // 先删后插：目标实际索引需要减去被移出的位置
   const to = ins > from ? ins - 1 : ins
-  await configStore.reorderAiProfiles(from, to)
+  const fromId = profiles.value[from]?.id
+  const toId = profiles.value[to]?.id
+  const fullFrom = allProfiles.value.findIndex(profile => profile.id === fromId)
+  const fullTo = allProfiles.value.findIndex(profile => profile.id === toId)
+  if (fullFrom < 0 || fullTo < 0) return
+  await configStore.reorderAiProfiles(fullFrom, fullTo)
 }
 
 const handleProfileDragEnd = () => {
@@ -411,7 +418,7 @@ const openKeyUrl = (url: string) => {
       <SettingsGroup
         variant="plain"
         :title="t('aiSettings.groupProfiles')"
-        :desc="t('aiSettings.apiKeyNotRequired')"
+        :desc="oemResolved.models.catalogUrl ? t('aiSettings.oemCatalogHidden') : t('aiSettings.apiKeyNotRequired')"
       >
         <!-- 配置列表 -->
         <div class="profile-list">

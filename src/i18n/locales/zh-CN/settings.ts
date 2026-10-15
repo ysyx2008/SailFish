@@ -448,6 +448,7 @@ export default {
     groupProfiles: '模型配置',
     groupAuto: '自动切换',
     noProfiles: '尚未配置 AI 模型',
+    oemCatalogHidden: '公司提供的模型不用在这里改，对话里可以直接选。下面只放你自己加的。',
     addProfile: '添加配置',
     editProfile: '编辑配置',
     currentlyUsing: '当前使用',

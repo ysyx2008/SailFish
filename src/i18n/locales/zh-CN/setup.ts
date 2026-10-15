@@ -40,6 +40,8 @@ export default {
       fillRequired: '请填写完整的配置信息',
       saveFailed: '保存失败',
       required: '请先配置至少一个 AI 模型才能继续',
+      oemNeedLogin: '公司的模型要登录之后才会放进来。可以先继续，登录后不用再填地址和模型名。',
+      oemUnavailable: '还没取到公司的模型清单。可以先继续，稍后再打开就会再取一次；也可以在下面自己配一个。',
       alreadyConfigured: '已配置：{name}',
       configured: '已配置',
       enterApiKey: '请输入 API Key',

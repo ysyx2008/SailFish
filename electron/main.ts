@@ -2030,6 +2030,8 @@ app.whenReady().then(async () => {
       log.warn('SSO restoreSession failed:', e)
     }
 
+    void refreshOemModels()
+
     // 后端 init 才加载 Agent/终端原生模块与远程会话栈（首屏不触发）
     const { ptyService, sshService, agentService } = await rt()
     await ensureSftpProgressBridge(agentRuntimeDeps())
@@ -4102,15 +4104,31 @@ ipcMain.handle('auth:getGateMode', async () => {
   return getAuthService().getGateMode()
 })
 
+/** 公司模型清单：启动后、以及登录成功后再取一次。没配地址时什么都不做。 */
+async function refreshOemModels(): Promise<void> {
+  try {
+    const { syncOemModelCatalog } = await import('./services/oem-model-catalog.service')
+    const { notifyFrontendConfigChanged } = await import('./services/agent/skills/config/executor')
+    const changed = await syncOemModelCatalog(configService)
+    if (changed) notifyFrontendConfigChanged()
+  } catch (e) {
+    log.warn('OEM model catalog sync failed:', e)
+  }
+}
+
 /** 一条龙登录：弹窗 + 换 token + 落盘，返回脱敏会话 */
 ipcMain.handle('auth:startLogin', async () => {
   const { getAuthService } = await import('./services/auth/auth.service')
-  return getAuthService().login()
+  const session = await getAuthService().login()
+  void refreshOemModels()
+  return session
 })
 
 ipcMain.handle('auth:completeLogin', async (_event, code: string, state: string) => {
   const { getAuthService } = await import('./services/auth/auth.service')
-  return getAuthService().completeLogin(code, state)
+  const session = await getAuthService().completeLogin(code, state)
+  void refreshOemModels()
+  return session
 })
 
 ipcMain.handle('auth:logout', async () => {

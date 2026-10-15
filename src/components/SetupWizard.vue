@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ExternalLink, FolderInput, Database, Plug, Check, ChevronDown, ChevronUp } from 'lucide-vue-next'
 import { useConfigStore, type AiProfile } from '../stores/config'
+import { oemResolved } from '@shared/oem-resolve'
 import { AI_TEMPLATES, RECOMMENDED_MIN_CONTEXT, type AiTemplate } from '../config/ai-templates'
 import { v4 as uuidv4 } from 'uuid'
 import { showAlert, showConfirm } from '../composables/useConfirm'
@@ -347,8 +348,10 @@ const skipWizard = async () => {
 }
 
 const nextStep = async () => {
-  // 非 Steam 版第 2 步：必须至少配置一个 AI 模型才能继续
-  if (!isSteamBuild && currentStep.value === 2 && configStore.aiProfiles.length === 0) {
+  // 非 Steam 版第 2 步：必须至少配置一个 AI 模型才能继续。
+  // 公司清单还没取到时不拦在手填这一步，登录或下次打开会再取。
+  const oemCatalogPending = Boolean(oemResolved.models.catalogUrl) && configStore.aiProfiles.length === 0
+  if (!isSteamBuild && currentStep.value === 2 && configStore.aiProfiles.length === 0 && !oemCatalogPending) {
     await showAlert(t('common.warning'), t('setup.aiConfig.required'))
     return
   }
@@ -435,7 +438,10 @@ onMounted(async () => {
         <div v-if="currentStep === 2 && !isSteamBuild" class="step-panel">
           <div class="step-header">
             <h2>{{ t('setup.aiConfig.title') }}</h2>
-            <p class="step-intro">{{ t('setup.aiConfig.subtitleSimple') }}</p>
+            <p v-if="oemResolved.models.catalogUrl && configStore.aiProfiles.length === 0" class="step-intro">
+              {{ configStore.oemModelNotice === 'need-login' ? t('setup.aiConfig.oemNeedLogin') : t('setup.aiConfig.oemUnavailable') }}
+            </p>
+            <p v-else class="step-intro">{{ t('setup.aiConfig.subtitleSimple') }}</p>
           </div>
           <div class="config-content">
             <!-- 已配置提示 -->

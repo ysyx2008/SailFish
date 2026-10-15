@@ -31,6 +31,7 @@ function profileLine(p: AiProfile, activeId: string): string {
   const flags = [redactKey(!!p.apiKey)]
   if (p.id === activeId) flags.push('当前默认')
   if (p.modelType && p.modelType !== 'general') flags.push(p.modelType)
+  if (p.oemCatalogId) flags.push('公司提供，不能改')
   return `    - **${p.name}** \`${p.id}\` · ${p.model || '_(无模型名)_'} · \`${p.apiUrl || '_(无地址)_'}\` · ${flags.join(' · ')}`
 }
 
@@ -65,6 +66,7 @@ export function formatAiProfilesDetail(store: AiProfileStore): string {
     if (p.temperature != null) parts.push(`- temperature: \`${p.temperature}\``)
     if (p.proxy) parts.push('- proxy: _(已配置)_')
     if (p.visionProfileId) parts.push(`- visionProfileId: \`${p.visionProfileId}\``)
+    if (p.oemCatalogId) parts.push('- 公司提供的模型，不能改、不能删')
     return parts.join('\n')
   })
   return `共 ${profiles.length} 个：\n\n${blocks.join('\n\n')}\n\n增删改请用 \`config_ai_profile\`（action=add/update/delete），勿用 \`config_set\` 写入整表。`
@@ -237,6 +239,9 @@ export async function updateAiProfileConfig(
   if (!existing) {
     return { success: false, output: '', error: `未找到 id 为 "${profileId}" 的模型配置` }
   }
+  if (existing.oemCatalogId) {
+    return { success: false, output: '', error: `**${existing.name}** 是公司提供的模型，不能改。要换用自己的，请另加一条。` }
+  }
 
   const name = args.name !== undefined ? argStr(args, 'name') : existing.name
   if (!name) return { success: false, output: '', error: 'name 不能为空' }
@@ -348,6 +353,9 @@ export function deleteAiProfileConfig(
   const found = profiles.find(p => p.id === profileId)
   if (!found) {
     return { success: false, output: '', error: `未找到 id 为 "${profileId}" 的模型配置` }
+  }
+  if (found.oemCatalogId) {
+    return { success: false, output: '', error: `**${found.name}** 是公司提供的模型，不能删。不用它时，换一条自己的即可。` }
   }
 
   if (profiles.length <= 1) {
