@@ -39,7 +39,7 @@ async function createFolder(args: Record<string, unknown>, executor: ToolExecuto
   })
   try {
     const created = getKnowledgeService()!.createFolder(folder)
-    const output = `已建目录：${created}。里面还没有文件也会留下来。`
+    const output = `已建目录：${created}。`
     executor.addStep({ type: 'tool_result', content: output, toolName: 'archive_create_folder' })
     return { success: true, output }
   } catch (error) {
@@ -110,12 +110,13 @@ async function deleteFolder(
   const folder = typeof args.folder === 'string' ? args.folder : ''
   if (!folder.trim()) return { success: false, output: '', error: '缺少 folder 参数' }
   const service = getKnowledgeService()!
-  let needsConfirm = false
+  let fileCount = 0
   try {
-    needsConfirm = service.folderDeleteNeedsConfirm(folder)
+    fileCount = service.countLibraryFilesInFolder(folder)
   } catch (error) {
     return fail(error, '删除失败')
   }
+  const needsConfirm = fileCount > 0
   executor.addStep({
     type: 'tool_call',
     content: t('knowledge.removing_folder', { folder }),
@@ -129,7 +130,7 @@ async function deleteFolder(
       'archive_delete_folder',
       args,
       'dangerous',
-      t('knowledge.confirm_remove_folder', { folder }),
+      t('knowledge.confirm_remove_folder', { folder, count: fileCount }),
     )
     if (!approved) return { success: false, output: '', error: '用户未同意删除' }
   }

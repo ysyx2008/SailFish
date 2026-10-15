@@ -71,13 +71,14 @@ describe('整理目录', () => {
     expect(() => planFolderRename(['公司制度'], docs, '公司制度', '内控')).toThrow(/同名/)
   })
 
-  it('目录里有用户放进去的文件才要先问', () => {
+  it('目录里只要还有文件就先问，空目录不问', () => {
     const docs = [
-      { folder: '公司制度/差旅', addedBy: 'agent' as const },
-      { folder: '公司制度', addedBy: 'user' as const },
+      { folder: '公司制度/差旅' },
+      { folder: '公司制度' },
     ]
     expect(folderDeleteNeedsConfirm(docs, '公司制度')).toBe(true)
-    expect(folderDeleteNeedsConfirm(docs, '公司制度/差旅')).toBe(false)
+    expect(folderDeleteNeedsConfirm(docs, '公司制度/差旅')).toBe(true)
+    expect(folderDeleteNeedsConfirm(docs, '规章')).toBe(false)
   })
 })
 

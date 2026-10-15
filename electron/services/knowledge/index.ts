@@ -1910,9 +1910,14 @@ export class KnowledgeService extends EventEmitter {
   folderDeleteNeedsConfirm(raw: string): boolean {
     const folder = normalizeFolder(raw)
     return docsNeedConfirmToDeleteFolder(
-      this.listLibraryDocuments().map(doc => ({ folder: doc.folder || '', addedBy: doc.addedBy })),
+      this.listLibraryDocuments().map(doc => ({ folder: doc.folder || '' })),
       folder,
     )
+  }
+
+  countLibraryFilesInFolder(raw: string): number {
+    const folder = normalizeFolder(raw)
+    return this.listLibraryDocuments().filter(doc => inFolder(doc.folder || '', folder)).length
   }
 
   async deleteFolder(raw: string): Promise<number> {

@@ -207,11 +207,12 @@ export function visibleFolders(explicit: string[], docFolders: string[]): string
   return [...set].sort((a, b) => a.localeCompare(b, 'zh'))
 }
 
+/** 目录里还有文件就要先问。空目录没有可误删的文件。 */
 export function folderDeleteNeedsConfirm(
-  docs: { folder: string; addedBy?: string }[],
+  docs: { folder: string }[],
   folder: string,
 ): boolean {
-  return docs.some(doc => inFolder(doc.folder || '', folder) && doc.addedBy !== 'agent')
+  return docs.some(doc => inFolder(doc.folder || '', folder))
 }
 
 export interface FolderDocRef {

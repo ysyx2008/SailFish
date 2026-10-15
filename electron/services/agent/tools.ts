@@ -693,46 +693,6 @@ ${execWaitAndUsage}`
     {
       type: 'function',
       function: {
-        name: 'add_knowledge',
-        description: '把本机上的一个文件放进档案室。只收本机路径，文件正文不会出现在这次对话里。可指定目录。',
-        parameters: {
-          type: 'object',
-          properties: {
-            path: {
-              type: 'string',
-              description: '本机文件路径（跑着旗鱼的这台电脑，不是远程主机）'
-            },
-            folder: {
-              type: 'string',
-              description: '放进哪个目录，例如「公司制度/差旅」。不填则放在根上。'
-            }
-          },
-          required: ['path']
-        }
-      },
-      _meta: { supportedModes: ['local', 'assistant', 'ssh'], parallelizable: false, allowedForSubAgent: false }
-    } as ToolDefinitionWithMeta,
-    {
-      type: 'function',
-      function: {
-        name: 'remove_knowledge',
-        description: '从档案室删除一份文档。自己放进去的可以直接删；用户放进去的会先征得同意。没有回收站。',
-        parameters: {
-          type: 'object',
-          properties: {
-            doc_id: {
-              type: 'string',
-              description: '文档 ID'
-            }
-          },
-          required: ['doc_id']
-        }
-      },
-      _meta: { parallelizable: false, allowedForSubAgent: false }
-    } as ToolDefinitionWithMeta,
-    {
-      type: 'function',
-      function: {
         name: 'focus_knowledge_folder',
         description: '把这场对话之后自动翻档案的范围限定在某个目录（含下级）。folder 为空则这场改看全库。范围外的文档不会自动出现，仍可以搜索或列目录。',
         parameters: {
