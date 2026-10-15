@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RefreshCw, FolderOpen, Eye, X, Download, Trash2, ArrowUpCircle, Search, Star } from 'lucide-vue-next'
 import { showConfirm, showAlert } from '../../composables/useConfirm'
+import { oemResolved } from '@shared/oem-resolve'
 
 const props = defineProps<{
   pendingInstallSkillId?: string
@@ -822,7 +823,7 @@ enabled: true
       </div>
 
       <!-- ClawHub 引导 -->
-      <div class="clawhub-section">
+      <div v-if="oemResolved.communitySkillMarket" class="clawhub-section">
         <div class="clawhub-header">
           <span class="clawhub-icon">🦞</span>
           <h5>{{ t('skillSettings.clawhubTitle') }}</h5>

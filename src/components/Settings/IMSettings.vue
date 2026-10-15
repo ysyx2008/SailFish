@@ -5,8 +5,15 @@ import type { ExecutionMode, IMProcessMode } from '@shared/types'
 import { useTerminalStore } from '../../stores/terminal'
 import WeChatQrConnect from '../WeChatQrConnect.vue'
 import { SettingsPage, SettingsGroup, SettingRow, SettingToggle, SettingSegmented, SettingHelp } from './kit'
+import { messagingGuideUrl } from '@shared/oem-resolve'
 
 const { t, locale } = useI18n()
+const guideDocUrl = computed(() => messagingGuideUrl('readme', locale.value))
+const guideDocUrlFeishu = computed(() => messagingGuideUrl('feishu', locale.value))
+const guideDocUrlDingtalk = computed(() => messagingGuideUrl('dingtalk', locale.value))
+const guideDocUrlWecom = computed(() => messagingGuideUrl('wecom', locale.value))
+const guideDocUrlSlack = computed(() => messagingGuideUrl('slack', locale.value))
+const guideDocUrlTelegram = computed(() => messagingGuideUrl('telegram', locale.value))
 const terminalStore = useTerminalStore()
 const emit = defineEmits<{ close: [] }>()
 
@@ -527,7 +534,7 @@ function cancelFreeMode() {
 <template>
   <SettingsPage :title="t('settings.tabs.im')" :desc="t('settings.im.description')">
     <template #actions>
-      <a class="guide-doc-link" :href="t('settings.im.guideDocUrl')" target="_blank" rel="noopener noreferrer">
+      <a v-if="guideDocUrl" class="guide-doc-link" :href="guideDocUrl" target="_blank" rel="noopener noreferrer">
         {{ t('settings.im.guideDocLink') }} ↗
       </a>
     </template>
@@ -626,7 +633,7 @@ function cancelFreeMode() {
                     <li>{{ t('settings.im.guideFeishuStep8') }}</li>
                   </ol>
                 </SettingHelp>
-                <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlFeishu')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+                <a v-if="guideDocUrlFeishu" class="im-channel-help-link" :href="guideDocUrlFeishu" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
               </div>
             </div>
           </div>
@@ -723,7 +730,7 @@ function cancelFreeMode() {
                     <li>{{ t('settings.im.guideDingtalkStep5') }}</li>
                   </ol>
                 </SettingHelp>
-                <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlDingtalk')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+                <a v-if="guideDocUrlDingtalk" class="im-channel-help-link" :href="guideDocUrlDingtalk" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
               </div>
             </div>
           </div>
@@ -800,7 +807,7 @@ function cancelFreeMode() {
                     <li>{{ t('settings.im.guideWecomStep5') }}</li>
                   </ol>
                 </SettingHelp>
-                <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlWecom')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+                <a v-if="guideDocUrlWecom" class="im-channel-help-link" :href="guideDocUrlWecom" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
               </div>
             </div>
           </div>
@@ -877,7 +884,7 @@ function cancelFreeMode() {
                     <li>{{ t('settings.im.guideSlackStep5') }}</li>
                   </ol>
                 </SettingHelp>
-                <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlSlack')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+                <a v-if="guideDocUrlSlack" class="im-channel-help-link" :href="guideDocUrlSlack" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
               </div>
             </div>
           </div>
@@ -953,7 +960,7 @@ function cancelFreeMode() {
                     <li>{{ t('settings.im.guideTelegramStep3') }}</li>
                   </ol>
                 </SettingHelp>
-                <a class="im-channel-help-link" :href="t('settings.im.guideDocUrlTelegram')" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
+                <a v-if="guideDocUrlTelegram" class="im-channel-help-link" :href="guideDocUrlTelegram" target="_blank" rel="noopener noreferrer">{{ t('settings.im.guideDetailLink') }} ↗</a>
               </div>
             </div>
           </div>

@@ -8,9 +8,11 @@ import { applyCjkFriendlyMarkdown } from '../../utils/cjk-friendly-marked'
 applyCjkFriendlyMarkdown()
 
 const { t } = useI18n()
+const shellCommand = oemResolved.identity.cliName
 const isSteamBuild = __STEAM_BUILD__
 
 import type { AgentRecord } from '@shared/types'
+import { oemResolved } from '@shared/oem-resolve'
 import { showConfirm } from '../../composables/useConfirm'
 import { SettingsPage, SettingsGroup, SettingRow, SettingInput, SettingNotice } from './kit'
 
@@ -62,9 +64,9 @@ const installShellCli = async () => {
       showMessage('error', t('dataSettings.shellCliFailed', { error: res.error || '' }))
       return
     }
-    showMessage('success', t('dataSettings.shellCliInstallOk'))
+    showMessage('success', t('dataSettings.shellCliInstallOk', { command: res.command || shellCommand }))
     if (res.pathHint && res.binDir) {
-      showMessage('success', t('dataSettings.shellCliPathHint', { binDir: res.binDir }))
+      showMessage('success', t('dataSettings.shellCliPathHint', { binDir: res.binDir, command: res.command || shellCommand }))
     }
     await loadShellCliStatus()
   } finally {
@@ -81,7 +83,7 @@ const uninstallShellCli = async () => {
       showMessage('error', t('dataSettings.shellCliFailed', { error: res.error || '' }))
       return
     }
-    showMessage('success', t('dataSettings.shellCliUninstallOk'))
+    showMessage('success', t('dataSettings.shellCliUninstallOk', { command: shellCommand }))
     await loadShellCliStatus()
   } finally {
     shellCliBusy.value = false
@@ -843,19 +845,19 @@ onUnmounted(() => {
     </SettingsGroup>
 
     <!-- 命令行工具 sailfish（macOS） -->
-    <SettingsGroup v-if="isDarwin" :title="t('dataSettings.shellCli')" :desc="t('dataSettings.shellCliHint')">
+    <SettingsGroup v-if="isDarwin" :title="t('dataSettings.shellCli')" :desc="t('dataSettings.shellCliHint', { command: shellCommand })">
       <SettingRow
-        label="sailfish"
+        :label="shellCommand"
         :desc="shellCliStatus?.installed && shellCliStatus.shimPath
           ? t('dataSettings.shellCliInstalled', { path: shellCliStatus.shimPath })
           : t('dataSettings.shellCliNotInstalled')"
       >
         <button v-if="!shellCliStatus?.installed" class="btn btn-sm" :disabled="shellCliBusy" @click="installShellCli">
           <Terminal :size="14" />
-          {{ t('dataSettings.shellCliInstall') }}
+          {{ t('dataSettings.shellCliInstall', { command: shellCommand }) }}
         </button>
         <button v-else class="btn btn-sm" :disabled="shellCliBusy" @click="uninstallShellCli">
-          {{ t('dataSettings.shellCliUninstall') }}
+          {{ t('dataSettings.shellCliUninstall', { command: shellCommand }) }}
         </button>
       </SettingRow>
     </SettingsGroup>

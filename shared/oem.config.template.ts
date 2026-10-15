@@ -52,4 +52,32 @@ export { oemConfig } from './oem-defaults'
 //     verifyIdToken: 'claims',       // claims | jwks
 //     enterpriseApiHosts: [],        // 精确 hostname；空 = 永不自动带 Bearer
 //   },
+//   // 不写某项 = 旗鱼默认。写成空字符串 = 关掉该项，不退回旗鱼。
+//   // 更新地址两处都写成空：不做应用内更新，由企业自己分发。
+//   distribution: {
+//     repository: 'your-org/YourApp',
+//     updateRoot: 'https://download.example.com/releases/',
+//   },
+//   links: {
+//     website: 'https://www.example.com',
+//     docs: 'https://www.example.com/docs',
+//     issues: 'https://www.example.com/support',
+//     qqGroup: '',
+//     contactEmail: 'support@example.com',
+//     license: '',                 // 空 = 关于页不显示协议
+//     skillRegistry: '',           // 空 = 只用内置技能，不连旗鱼的技能站
+//   },
+//   communitySkillMarket: false,   // 公开社区技能市场，默认开
+//   identity: {
+//     appId: 'com.example.app',
+//     productName: 'Example',
+//     dataDirName: 'Example',      // 选定后不要再改
+//     protocol: 'example',
+//     cliName: 'example',
+//   },
+//   // 图放在仓库的 oem/ 目录（上游没有这个目录），不要替换 resources 里的旗鱼图标
+//   icons: {
+//     app: 'oem/logo.png',
+//     tray: 'oem/trayTemplate.png',
+//   },
 // }

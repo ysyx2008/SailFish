@@ -16,13 +16,15 @@
 const fs = require('fs')
 const path = require('path')
 const os = require('os')
+const { readOemIdentity } = require('./oem-identity.js')
+const oemIdentity = readOemIdentity()
 
 const CONFIG_FILE = 'qiyu-terminal-config.json'
 const CREDENTIAL_FILES = ['credentials.json', 'master.key']
 const BORROW_CONFIG_KEYS = ['aiProfiles', 'activeAiProfile', 'autoVisionModel', 'autoFailoverModel', 'aiRules']
 
 function getDefaultUserDataPath() {
-  const appName = 'SailFish'
+  const appName = oemIdentity.productName
   switch (process.platform) {
     case 'darwin':
       return path.join(os.homedir(), 'Library', 'Application Support', appName)
@@ -51,7 +53,7 @@ function getAppDataPath() {
 }
 
 function getPointerPath() {
-  return path.join(getAppDataPath(), 'SailFish', 'data-location.json')
+  return path.join(getAppDataPath(), oemIdentity.dataDirName, 'data-location.json')
 }
 
 function resolveDesktopUserData() {

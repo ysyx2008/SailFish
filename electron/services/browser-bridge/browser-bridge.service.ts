@@ -15,7 +15,7 @@ import {
   type BrowserBridgeStatus,
 } from '@shared/types/browser-bridge'
 import { createLogger } from '../../utils/logger'
-import { getBridgeRoot, getExtensionGuideUrls, installBrowserBridge, detectInstallStatus, uninstallBrowserBridge, writeBridgePointer } from './installer'
+import { getBridgeRoot, getExtensionGuideUrls, installBrowserBridge, detectInstallStatus, uninstallBrowserBridge, writeBridgePointer, releaseBridgePointer } from './installer'
 import { openBrowserInternalUrl } from './browser-launcher'
 import {
   inferBrowserFromOrigin,
@@ -115,6 +115,7 @@ export class BrowserBridgeService {
     this.started = false
     this.startPromise = null
     this.port = null
+    releaseBridgePointer()
   }
 
   private persistGateway(): void {

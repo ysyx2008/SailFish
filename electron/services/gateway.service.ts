@@ -31,6 +31,7 @@ import { getEventBus } from './sensor/event-bus'
 import type { HttpRouteEntry } from './plugin/types'
 import { PLUGIN_ROUTE_PREFIX, isCanonicalPluginRouteEntry } from './plugin/loader'
 import { resolvePluginRouteConflicts } from './plugin/registry'
+import { oemConfig } from '@shared/oem-runtime'
 
 const log = createLogger('Gateway')
 
@@ -742,9 +743,9 @@ export class GatewayService {
 
     // 双语文本
     const i18n = isZh ? {
-      title: '旗鱼 - 远程助手',
-      brand: '旗鱼',
-      authTitle: '旗鱼',
+      title: `${oemConfig.brand.name.zh} - 远程助手`,
+      brand: oemConfig.brand.name.zh,
+      authTitle: oemConfig.brand.name.zh,
       authSubtitle: '远程 Agent 访问',
       tokenPlaceholder: '请输入 API Token',
       connect: '连接',
@@ -788,9 +789,9 @@ export class GatewayService {
       askUser: '等待回复',
       waiting: '等待中'
     } : {
-      title: 'SailFish - Remote Agent',
-      brand: 'SailFish',
-      authTitle: 'SailFish',
+      title: `${oemConfig.brand.name.en} - Remote Agent`,
+      brand: oemConfig.brand.name.en,
+      authTitle: oemConfig.brand.name.en,
       authSubtitle: 'Remote Agent Access',
       tokenPlaceholder: 'Enter API Token',
       connect: 'Connect',

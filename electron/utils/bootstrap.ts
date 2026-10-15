@@ -35,6 +35,7 @@ import {
   validateBackupArchive,
 } from './data-backup'
 import { CrashRecorder, DEV_STATE_FILE, PACKAGED_STATE_FILE, markCleanExitInDir } from '../services/diagnostics/crash-recorder'
+import { oemResolved, SAILFISH_DATA_DIR_NAME } from '@shared/oem-resolve'
 
 /** 指针文件名 */
 const POINTER_FILENAME = 'data-location.json'
@@ -42,8 +43,8 @@ const POINTER_FILENAME = 'data-location.json'
 /** 默认 userData 目录：必须在任何 setPath 之前捕获，依赖 app.getName()（dev/prod 不同） */
 const DEFAULT_USERDATA = app.getPath('userData')
 
-/** 指针文件所在固定目录：平台级 appData 下的 `SailFish` 子目录。 */
-const POINTER_DIR = path.join(app.getPath('appData'), 'SailFish')
+/** 指针文件所在固定目录：平台级 appData 下、以安装身份里的数据目录名为名的子目录。 */
+const POINTER_DIR = path.join(app.getPath('appData'), oemResolved.identity.dataDirName)
 
 /** 指针文件绝对路径（恒定在固定目录，与 app.getName() 无关） */
 const POINTER_PATH = path.join(POINTER_DIR, POINTER_FILENAME)
@@ -199,6 +200,8 @@ function cleanupOldDir(dir: string): void {
  * 完成复制 + 重启 + 旧目录清理。迁移成功后由该函数标记 legacyMigrationDone。
  */
 function migrateLegacyDefaultDataDir(): void {
+  // 厂商换了数据目录名就是另一款软件，不把旗鱼旧目录里的数据迁过去。
+  if (oemResolved.identity.dataDirName !== SAILFISH_DATA_DIR_NAME) return
   const p = readPointer()
   // 已迁移过 / 有自定义目录 / 正在迁移 / 上次失败待确认 -> 跳过
   if (p.legacyMigrationDone || p.dataDir || p.pendingMigration || p.lastError) return

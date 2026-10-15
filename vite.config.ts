@@ -6,11 +6,31 @@ import { resolve } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import type { ChildProcess } from 'node:child_process'
 import { BUNDLED_GRAMMARS, BUNDLED_WASM_DIR, grammarSourceDir } from './electron/services/agent/skills/coding/grammars'
+import { oemResolved } from './shared/oem-resolve'
 
 /**
  * OEM 可选配置：有 shared/oem.config.ts 则打包进覆盖配置，没有则用 oem-defaults。
  * 不强制生成该文件（开源主线不提交）。
  */
+function oemAppLogoPlugin(): Plugin {
+  let file = resolve(__dirname, 'resources/logo.png')
+  const custom = oemResolved.icons.app
+  if (custom) {
+    const abs = resolve(__dirname, custom)
+    if (existsSync(abs)) file = abs
+  }
+  return {
+    name: 'oem-app-logo',
+    resolveId(id) {
+      if (id === 'virtual:oem-app-logo') return '\0virtual:oem-app-logo'
+    },
+    load(id) {
+      if (id !== '\0virtual:oem-app-logo') return null
+      return `import url from ${JSON.stringify(file)}; export default url\n`
+    },
+  }
+}
+
 function optionalOemConfig(): Plugin {
   const runtimeFile = resolve(__dirname, 'shared/oem-runtime.ts')
   const overrideFile = resolve(__dirname, 'shared/oem.config.ts')
@@ -266,6 +286,7 @@ export default defineConfig({
   },
   plugins: [
     optionalOemConfig(),
+    oemAppLogoPlugin(),
     vue({
       template: {
         compilerOptions: {

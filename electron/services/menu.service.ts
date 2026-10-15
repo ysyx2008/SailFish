@@ -11,6 +11,8 @@
 
 import { Menu, MenuItemConstructorOptions, shell, clipboard, BrowserWindow, app } from 'electron'
 import { type KeyboardShortcuts, DEFAULT_KEYBOARD_SHORTCUTS } from './config.service'
+import { oemResolved } from '@shared/oem-resolve'
+import { oemConfig } from '@shared/oem-runtime'
 
 // 菜单翻译
 const menuI18n = {
@@ -85,7 +87,7 @@ const menuI18n = {
     documentation: '文档',
     reportIssue: '报告问题',
     github: 'GitHub',
-    qqGroup: 'QQ 交流群 (1078041072)',
+    qqGroup: 'QQ 交流群',
     website: '官方网站',
     restartToUpdate: '重启并更新',
     downloadingUpdate: '正在下载更新…',
@@ -172,7 +174,7 @@ const menuI18n = {
     documentation: 'Documentation',
     reportIssue: 'Report Issue',
     github: 'GitHub',
-    qqGroup: 'QQ Group (1078041072)',
+    qqGroup: 'QQ Group',
     website: 'Website',
     restartToUpdate: 'Restart to Update',
     downloadingUpdate: 'Downloading Update…',
@@ -214,6 +216,11 @@ export class MenuService {
    */
   private t(key: MenuKey): string {
     return menuI18n[this.language][key] || key
+  }
+
+  private aboutLabel(): string {
+    const brand = this.language === 'zh-CN' ? oemConfig.brand.name.zh : oemConfig.brand.name.en
+    return this.language === 'zh-CN' ? `关于${brand}` : `About ${brand}`
   }
 
   /**
@@ -279,7 +286,7 @@ export class MenuService {
       label: app.name,
       submenu: [
         {
-          label: this.t('about'),
+          label: this.aboutLabel(),
           click: () => this.sendCommand('showAbout')
         },
         { type: 'separator' },
@@ -657,43 +664,58 @@ export class MenuService {
    * 构建帮助菜单
    */
   private buildHelpMenu(): MenuItemConstructorOptions {
-    const submenu: MenuItemConstructorOptions[] = [
-      {
+    const links = oemResolved.links
+    const github = oemResolved.distribution.github
+    const submenu: MenuItemConstructorOptions[] = []
+    if (links.docs) {
+      submenu.push({
         label: this.t('documentation'),
-        click: () => shell.openExternal('http://www.sfterm.com/docs')
-      },
-      {
+        click: () => shell.openExternal(links.docs as string)
+      })
+    }
+    if (links.issues) {
+      submenu.push({
         label: this.t('reportIssue'),
-        click: () => shell.openExternal('https://github.com/ysyx2008/SailFish/issues')
-      },
-      { type: 'separator' },
-      {
+        click: () => shell.openExternal(links.issues as string)
+      })
+    }
+    if (github || links.qqGroup || links.website) {
+      submenu.push({ type: 'separator' })
+    }
+    if (github) {
+      submenu.push({
         label: this.t('github'),
-        click: () => shell.openExternal('https://github.com/ysyx2008/SailFish')
-      },
-      {
-        label: this.t('qqGroup'),
-        click: () => clipboard.writeText('1078041072')
-      },
-      {
+        click: () => shell.openExternal(`https://github.com/${github.owner}/${github.repo}`)
+      })
+    }
+    if (links.qqGroup) {
+      const group = links.qqGroup
+      submenu.push({
+        label: `${this.t('qqGroup')} (${group})`,
+        click: () => clipboard.writeText(group)
+      })
+    }
+    if (links.website) {
+      submenu.push({
         label: this.t('website'),
-        click: () => shell.openExternal('http://www.sfterm.com')
-      }
-    ]
+        click: () => shell.openExternal(links.website as string)
+      })
+    }
 
     // 非 macOS 添加关于选项
     if (process.platform !== 'darwin') {
       submenu.unshift(
         {
-          label: this.t('about'),
+          label: this.aboutLabel(),
           click: () => this.sendCommand('showAbout')
         },
         { type: 'separator' }
       )
     }
 
-    // 检查更新 / 重启并更新
+    // 检查更新 / 重启并更新。两处更新地址都空着时，这个版本不做应用内更新。
     // macOS 无签名公证，不支持自动下载安装，统一走设置页面手动下载
+    if (oemResolved.inAppUpdateEnabled) {
     submenu.push({ type: 'separator' })
     if (process.platform === 'darwin') {
       submenu.push({
@@ -716,6 +738,7 @@ export class MenuService {
         enabled: this._updateStatus !== 'checking',
         click: () => this.sendCommand('checkUpdate')
       })
+    }
     }
 
     return {

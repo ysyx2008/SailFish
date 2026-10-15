@@ -18,6 +18,11 @@ declare module '*.vue' {
   export default component
 }
 
+declare module 'virtual:oem-app-logo' {
+  const url: string
+  export default url
+}
+
 // 共享类型（从 @shared/types 导入，保持全局可用）
 type TerminalType = import('@shared/types').TerminalType
 type ExecutionMode = import('@shared/types').ExecutionMode

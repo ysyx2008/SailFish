@@ -31,7 +31,8 @@ import RiskPolicySettings from './RiskPolicySettings.vue'
 import ShortcutSettings from './ShortcutSettings.vue'
 import PluginSettings from './PluginSettings.vue'
 import { provideUnsavedGuard } from './composables/useUnsavedGuard'
-import sailfishLogo from '../../../resources/logo.png'
+import sailfishLogo from 'virtual:oem-app-logo'
+import { oemResolved } from '@shared/oem-resolve'
 
 const { t, locale } = useI18n()
 
@@ -63,7 +64,10 @@ const showBadgeWithAnimation = ref(false)
 const aboutContentRef = ref<HTMLElement | null>(null)
 const qqGroupCopied = ref(false)
 
-const QQ_GROUP_NUMBER = '1078041072'
+const inAppUpdateEnabled = oemResolved.inAppUpdateEnabled
+const contactEmail = oemResolved.links.contactEmail
+const licenseUrl = oemResolved.links.license
+const qqGroupNumber = oemResolved.links.qqGroup
 
 const writeClipboardReliable = async (text: string): Promise<boolean> => {
   try {
@@ -86,7 +90,7 @@ const writeClipboardReliable = async (text: string): Promise<boolean> => {
 }
 
 const copyQQGroup = async () => {
-  const ok = await writeClipboardReliable(QQ_GROUP_NUMBER)
+  const ok = qqGroupNumber ? await writeClipboardReliable(qqGroupNumber) : false
   if (ok) {
     qqGroupCopied.value = true
     setTimeout(() => { qqGroupCopied.value = false }, 2000)
@@ -664,7 +668,7 @@ const onQrImageError = (event: Event) => {
             <p class="version">{{ t('common.version') }} {{ oemConfig.brand.version || appVersion }}</p>
             
             <!-- 更新检测区域 -->
-            <div class="update-section">
+            <div v-if="inAppUpdateEnabled" class="update-section">
               <!-- 检查更新按钮 -->
               <button
                 type="button"
@@ -688,10 +692,11 @@ const onQrImageError = (event: Event) => {
                   <span>{{ t('about.newVersionAvailable', { version: updateStatus.info?.version }) }}</span>
                 </div>
                 <p v-if="releaseSummary" class="update-summary">{{ releaseSummary }}</p>
-                <a :href="changelogPageUrl" target="_blank" class="update-changelog-link">{{ t('about.viewChangelog') }}</a>
+                <a v-if="changelogPageUrl" :href="changelogPageUrl" target="_blank" class="update-changelog-link">{{ t('about.viewChangelog') }}</a>
                 <!-- macOS：前往下载页手动更新 -->
                 <template v-if="isMac">
                   <a 
+                    v-if="downloadPageUrl"
                     :href="downloadPageUrl" 
                     target="_blank"
                     class="btn btn-outline update-btn"
@@ -747,7 +752,7 @@ const onQrImageError = (event: Event) => {
                   <span>{{ t('about.updateReady', { version: updateStatus.info?.version }) }}</span>
                 </div>
                 <p v-if="releaseSummary" class="update-summary">{{ releaseSummary }}</p>
-                <a :href="changelogPageUrl" target="_blank" class="update-changelog-link">{{ t('about.viewChangelog') }}</a>
+                <a v-if="changelogPageUrl" :href="changelogPageUrl" target="_blank" class="update-changelog-link">{{ t('about.viewChangelog') }}</a>
                 <button type="button" class="btn btn-primary update-btn" @click="installUpdate">
                   🚀 {{ t('about.installAndRestart') }}
                 </button>
@@ -768,17 +773,18 @@ const onQrImageError = (event: Event) => {
               {{ t('about.description') }}
             </p>
             <div class="about-links">
-              <a :href="websiteUrl" target="_blank" class="about-link">{{ t('about.website') }}</a>
-              <a href="mailto:nuoyan_cfan@163.com" class="about-link">{{ t('about.contact') }}</a>
+              <a v-if="websiteUrl" :href="websiteUrl" target="_blank" class="about-link">{{ t('about.website') }}</a>
+              <a v-if="contactEmail" :href="`mailto:${contactEmail}`" class="about-link">{{ t('about.contact') }}</a>
               <button
+                v-if="qqGroupNumber"
                 type="button"
                 class="about-link about-link-action"
-                :title="`QQ: ${QQ_GROUP_NUMBER}`"
+                :title="`QQ: ${qqGroupNumber}`"
                 @click="copyQQGroup"
               >
                 {{ qqGroupCopied ? t('about.qqGroupCopied') : t('about.qqGroup') }}
               </button>
-              <a href="http://www.gnu.org/licenses/agpl-3.0.html" target="_blank" class="about-link">{{ t('about.license') }}</a>
+              <a v-if="licenseUrl" :href="licenseUrl" target="_blank" class="about-link">{{ t('about.license') }}</a>
             </div>
             
             <!-- 赞助者徽章（放大醒目版） -->

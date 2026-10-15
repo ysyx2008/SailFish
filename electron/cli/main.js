@@ -59,10 +59,7 @@ for (let i = 0; i < rawArgv.length; i++) {
 }
 process.argv = [process.argv[0], process.argv[1], ...filtered]
 
-require('./cli-data.js').setupCliDataDir({ defaultSandbox: true })
-
-// ==================== Step 3: TypeScript ====================
-
+// TypeScript 必须先于数据目录：数据目录要读 OEM 配置（.ts）。
 try {
   require('tsx/cjs')
 } catch (e) {
@@ -77,6 +74,8 @@ try {
     process.exit(1)
   }
 }
+
+require('./cli-data.js').setupCliDataDir({ defaultSandbox: true })
 
 // ==================== Step 4: Run CLI ====================
 

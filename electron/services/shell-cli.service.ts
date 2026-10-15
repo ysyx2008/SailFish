@@ -13,11 +13,13 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import { createLogger } from '../utils/logger'
+import { oemResolved } from '@shared/oem-resolve'
 
 const log = createLogger('ShellCli')
 
-const COMMAND_NAME = 'sailfish'
-const BUNDLE_ID = 'com.sfterm.terminal'
+const COMMAND_NAME = oemResolved.identity.cliName
+const BUNDLE_ID = oemResolved.identity.appId
+const PRODUCT_NAME = oemResolved.identity.productName
 
 export interface ShellCliStatus {
   installed: boolean
@@ -47,8 +49,7 @@ export function resolvePackagedAppPath(): string | null {
   if (contents.endsWith('.app') || contents.endsWith('.app/')) {
     return contents.endsWith('.app') ? contents : contents.slice(0, -1)
   }
-  // fallback: /Applications/SailFish.app
-  const fallback = '/Applications/SailFish.app'
+  const fallback = `/Applications/${PRODUCT_NAME}.app`
   return fs.existsSync(fallback) ? fallback : null
 }
 
@@ -71,7 +72,7 @@ function getPackagedCliJs(appPath: string): string {
 }
 
 function getPackagedElectronBin(appPath: string): string {
-  return path.join(appPath, 'Contents', 'MacOS', 'SailFish')
+  return path.join(appPath, 'Contents', 'MacOS', PRODUCT_NAME)
 }
 
 function buildPackagedShim(appPath: string): string {
@@ -84,12 +85,12 @@ APP=${JSON.stringify(appPath)}
 ELECTRON=${JSON.stringify(electronBin)}
 CLI=${JSON.stringify(cliJs)}
 if [[ ! -x "$ELECTRON" ]]; then
-  echo "sailfish: Electron binary not found: $ELECTRON" >&2
+  echo "${COMMAND_NAME}: Electron binary not found: $ELECTRON" >&2
   exit 127
 fi
 export ELECTRON_RUN_AS_NODE=1
 export SFT_CLI_MODE=1
-export SFT_CLI_NAME=sailfish
+export SFT_CLI_NAME=${COMMAND_NAME}
 exec "$ELECTRON" "$CLI" "$@"
 `
 }
@@ -102,12 +103,12 @@ set -euo pipefail
 NODE="\${NODE_BINARY:-node}"
 MAIN=${JSON.stringify(mainJs)}
 if [[ ! -f "$MAIN" ]]; then
-  echo "sailfish: CLI entry not found: $MAIN" >&2
+  echo "${COMMAND_NAME}: CLI entry not found: $MAIN" >&2
   echo "Re-run Install Shell Command from a valid SailFish checkout." >&2
   exit 127
 fi
 export SFT_CLI_MODE=1
-export SFT_CLI_NAME=sailfish
+export SFT_CLI_NAME=${COMMAND_NAME}
 cd ${JSON.stringify(repoRoot)}
 exec "$NODE" "$MAIN" "$@"
 `
@@ -140,7 +141,7 @@ export function getShellCliStatus(): ShellCliStatus {
   }
 }
 
-export function installShellCli(): { ok: boolean; shimPath?: string; binDir?: string; error?: string; pathHint?: boolean } {
+export function installShellCli(): { ok: boolean; shimPath?: string; binDir?: string; command?: string; error?: string; pathHint?: boolean } {
   if (process.platform !== 'darwin') {
     return { ok: false, error: 'Shell CLI install is currently supported on macOS only' }
   }
@@ -155,7 +156,7 @@ export function installShellCli(): { ok: boolean; shimPath?: string; binDir?: st
     if (app.isPackaged) {
       const appPath = resolvePackagedAppPath() || findAppViaMdfind()
       if (!appPath) {
-        return { ok: false, error: 'Could not locate SailFish.app' }
+        return { ok: false, error: `Could not locate ${PRODUCT_NAME}.app` }
       }
       const cliJs = getPackagedCliJs(appPath)
       // asar 内文件 existsSync 对 asar 路径通常为 true
@@ -181,7 +182,7 @@ export function installShellCli(): { ok: boolean; shimPath?: string; binDir?: st
     const pathEnv = process.env.PATH || ''
     const pathHint = !pathEnv.split(path.delimiter).some(p => path.resolve(p) === path.resolve(binDir))
 
-    return { ok: true, shimPath, binDir, pathHint }
+    return { ok: true, shimPath, binDir, command: COMMAND_NAME, pathHint }
   } catch (err: any) {
     log.error('installShellCli failed:', err)
     return { ok: false, error: err?.message || String(err) }

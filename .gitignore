@@ -40,6 +40,10 @@ Thumbs.db
 
 # OEM 运行时配置（由 oem.config.template.ts 生成；Fork 可强制加入自己的副本）
 shared/oem.config.ts
+# 厂商自有图标（上游不提交；Fork 把图放这里后可 git add -f）
+/oem/
+# 打包时按品牌生成的显示名和安装说明
+/build/oem-branding/
 
 # TypeScript
 *.tsbuildinfo

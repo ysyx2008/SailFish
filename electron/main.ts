@@ -14,6 +14,7 @@ import { createTerminalDataCoalescer } from './utils/terminal-data-coalescer'
 import type { AttachmentInfo, DocumentParseProgress, UiThemeMode, UiThemeName, WebSearchSettings, IMProcessMode, SayResult } from '@shared/types'
 import { clampUiZoomFactor, isApprovalMode, stepUiZoomFactor, UI_ZOOM_DEFAULT } from '@shared/types'
 import { getAppTitle as buildAppTitle, getBrandName } from '@shared/brand'
+import { oemResolved } from '@shared/oem-resolve'
 import { isOemFeatureEnabled } from '@shared/oem-features'
 import { startCrashReporter, initCrashDiagnostics, recordMainProcessError, getCrashRecorder, markCleanExit } from './services/diagnostics/collector'
 import { getDiagnosticsService } from './services/diagnostics/diagnostics.service'
@@ -71,10 +72,11 @@ registerArtifactPreviewScheme()
 
 // 注册自定义协议，让系统将 sailfish:// 链接路由到本应用
 // 开发模式需要传入 Electron 可执行文件路径
+const APP_PROTOCOL = oemResolved.identity.protocol
 if (!app.isPackaged) {
-  app.setAsDefaultProtocolClient('sailfish', process.execPath, [path.resolve(process.argv[1])])
+  app.setAsDefaultProtocolClient(APP_PROTOCOL, process.execPath, [path.resolve(process.argv[1])])
 } else {
-  app.setAsDefaultProtocolClient('sailfish')
+  app.setAsDefaultProtocolClient(APP_PROTOCOL)
 }
 
 // 单实例锁：仅打包后启用，防止用户从 Spotlight/Launchpad 重复启动
@@ -117,7 +119,7 @@ const MAX_DEEP_LINK_TASK_LENGTH = 5000
 function parseDeepLinkUrl(url: string): { action: string; task?: string; skillId?: string } | null {
   try {
     const parsed = new URL(url)
-    if (parsed.protocol !== 'sailfish:') return null
+    if (parsed.protocol !== `${APP_PROTOCOL}:`) return null
     const action = parsed.hostname || parsed.pathname.replace(/^\/+/, '')
     if (action === 'run') {
       const task = parsed.searchParams.get('task')
@@ -1165,14 +1167,25 @@ mcpService.on('refreshed', (serverId: string) => {
 
 // ==================== 系统托盘 ====================
 
+function resourceFile(name: string): string {
+  const resDir = app.isPackaged ? process.resourcesPath : join(__dirname, '../resources')
+  return join(resDir, name)
+}
+
+function customIconFile(relative: string | null): string | null {
+  if (!relative || app.isPackaged) return null
+  const abs = path.isAbsolute(relative) ? relative : join(process.cwd(), relative)
+  return fs.existsSync(abs) ? abs : null
+}
+
 function createTray() {
   if (tray) return
 
-  // dev 模式从项目 resources/ 读取，打包后从 app Resources/ 读取
-  const resDir = app.isPackaged ? process.resourcesPath : join(__dirname, '../resources')
+  // dev 模式从项目 resources/ 读取，打包后从 app Resources/ 读取。
+  // 厂商图标在打包时写进安装包，开发时直接读配置里的文件。
   const trayIconPath = process.platform === 'darwin'
-    ? join(resDir, 'icon_trayTemplate.png')
-    : join(resDir, 'icon.png')
+    ? (customIconFile(oemResolved.icons.tray) ?? resourceFile('icon_trayTemplate.png'))
+    : (customIconFile(oemResolved.icons.app) ?? resourceFile('icon.png'))
 
   const icon = nativeImage.createFromPath(trayIconPath)
   if (process.platform === 'darwin') {
@@ -1180,7 +1193,7 @@ function createTray() {
   }
 
   tray = new Tray(icon)
-  tray.setToolTip('SailFish')
+  tray.setToolTip(getAppName())
   updateTrayMenu()
 
   tray.on('click', () => {
@@ -1369,13 +1382,17 @@ function registerDevHotReloadGracefulShutdown(): void {
 
 // ==================== 主窗口 ====================
 
+function platformWindowIcon(): string {
+  return customIconFile(oemResolved.icons.app)
+    ?? (process.platform === 'darwin'
+      ? join(__dirname, '../resources/icon.icns')
+      : process.platform === 'win32'
+        ? join(__dirname, '../resources/icon.ico')
+        : join(__dirname, '../resources/icon.png'))
+}
+
 function createWindow() {
-  // 根据平台选择图标
-  const iconPath = process.platform === 'darwin'
-    ? join(__dirname, '../resources/icon.icns')
-    : process.platform === 'win32'
-      ? join(__dirname, '../resources/icon.ico')
-      : join(__dirname, '../resources/icon.png')
+  const iconPath = platformWindowIcon()
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -1577,12 +1594,7 @@ function createFileManagerWindow(params?: {
   // 保存初始化参数
   fileManagerParams = params || null
 
-  // 根据平台选择图标
-  const iconPath = process.platform === 'darwin'
-    ? join(__dirname, '../resources/icon.icns')
-    : process.platform === 'win32'
-      ? join(__dirname, '../resources/icon.ico')
-      : join(__dirname, '../resources/icon.png')
+  const iconPath = platformWindowIcon()
 
   fileManagerWindow = new BrowserWindow({
     width: 1200,
@@ -1644,12 +1656,7 @@ function createAiDebugWindow(): void {
     return
   }
 
-  // 根据平台选择图标
-  const iconPath = process.platform === 'darwin'
-    ? join(__dirname, '../resources/icon.icns')
-    : process.platform === 'win32'
-      ? join(__dirname, '../resources/icon.ico')
-      : join(__dirname, '../resources/icon.png')
+  const iconPath = platformWindowIcon()
 
   aiDebugWindow = new BrowserWindow({
     width: 1000,
@@ -1707,11 +1714,7 @@ function createLlmBenchWindow(): void {
     return
   }
 
-  const iconPath = process.platform === 'darwin'
-    ? join(__dirname, '../resources/icon.icns')
-    : process.platform === 'win32'
-      ? join(__dirname, '../resources/icon.ico')
-      : join(__dirname, '../resources/icon.png')
+  const iconPath = platformWindowIcon()
 
   llmBenchWindow = new BrowserWindow({
     width: 920,
@@ -2338,7 +2341,7 @@ app.whenReady().then(async () => {
     showMainWindow()
     const deepLinkUrl = argv.find(arg => {
       try {
-        return arg.startsWith('sailfish://') || decodeURIComponent(arg).startsWith('sailfish://')
+        return arg.startsWith(`${APP_PROTOCOL}://`) || decodeURIComponent(arg).startsWith(`${APP_PROTOCOL}://`)
       } catch {
         return false
       }
@@ -2934,18 +2937,26 @@ autoUpdater.autoInstallOnAppQuit = false
 // 更新源定义
 type UpdateSource = import('@shared/types').UpdateSource
 
-const GITHUB_FEED: GithubOptions = {
-  provider: 'github',
-  owner: 'ysyx2008',
-  repo: 'SailFish',
+function githubFeed(): GithubOptions | null {
+  const github = oemResolved.distribution.github
+  if (!github) return null
+  return { provider: 'github', owner: github.owner, repo: github.repo }
 }
 
-const OSS_FEED: GenericServerOptions = {
-  provider: 'generic',
-  url: 'https://sfterm-download.oss-cn-wuhan-lr.aliyuncs.com/releases/',
-  channel: 'latest',
-  // 阿里云 OSS 不支持 multipart Range（多段只回第一段），开着会导致差分校验失败并回退全量
-  useMultipleRangeRequest: false,
+function ossFeed(): GenericServerOptions | null {
+  const url = oemResolved.distribution.updateRoot
+  if (!url) return null
+  return {
+    provider: 'generic',
+    url,
+    channel: 'latest',
+    // 阿里云 OSS 不支持 multipart Range（多段只回第一段），开着会导致差分校验失败并回退全量
+    useMultipleRangeRequest: false,
+  }
+}
+
+function updateSourceEnabled(source: UpdateSource): boolean {
+  return source === 'github' ? Boolean(githubFeed()) : Boolean(ossFeed())
 }
 
 const UPDATE_SOURCE_LABELS: Record<UpdateSource, { zh: string; en: string }> = {
@@ -2983,14 +2994,23 @@ const LATENCY_FILE = process.platform === 'darwin' ? 'latest-mac.yml'
   : 'latest-linux.yml'
 
 async function selectFastestSource(): Promise<{ recommended: UpdateSource; latency: Record<UpdateSource, number> }> {
+  const github = oemResolved.distribution.github
+  const updateRoot = oemResolved.distribution.updateRoot
   const [githubLatency, ossLatency] = await Promise.all([
-    measureLatency(`https://github.com/ysyx2008/SailFish/releases/latest/download/${LATENCY_FILE}`),
-    measureLatency(`https://sfterm-download.oss-cn-wuhan-lr.aliyuncs.com/releases/${LATENCY_FILE}`),
+    github
+      ? measureLatency(`https://github.com/${github.owner}/${github.repo}/releases/latest/download/${LATENCY_FILE}`)
+      : Promise.resolve(Infinity),
+    updateRoot
+      ? measureLatency(`${updateRoot}${LATENCY_FILE}`)
+      : Promise.resolve(Infinity),
   ])
 
   log.info(`AutoUpdater: 测速 — GitHub: ${githubLatency}ms, OSS: ${ossLatency}ms`)
 
   const latency: Record<UpdateSource, number> = { github: githubLatency, oss: ossLatency }
+
+  if (!updateSourceEnabled('github')) return { recommended: 'oss', latency }
+  if (!updateSourceEnabled('oss')) return { recommended: 'github', latency }
 
   if (ossLatency === Infinity && githubLatency === Infinity) {
     return { recommended: isLikelyChinaTimezone() ? 'oss' : 'github', latency }
@@ -3006,7 +3026,9 @@ async function selectFastestSource(): Promise<{ recommended: UpdateSource; laten
 }
 
 function applyUpdateSource(source: UpdateSource) {
-  autoUpdater.setFeedURL(source === 'oss' ? OSS_FEED : GITHUB_FEED)
+  const feed = source === 'oss' ? ossFeed() : githubFeed()
+  if (!feed) return
+  autoUpdater.setFeedURL(feed)
   log.info(`AutoUpdater: 使用更新源: ${source}`)
 }
 
@@ -3195,6 +3217,10 @@ autoUpdater.on('error', (error) => {
 
 // 检查更新核心逻辑（含测速选源），供 IPC handler 和自动检查共用
 async function performUpdateCheck(): Promise<{ success: boolean; updateInfo?: any; error?: string }> {
+  if (!oemResolved.inAppUpdateEnabled) {
+    log.info('AutoUpdater: 未配置更新地址，跳过检查')
+    return { success: true }
+  }
   if (!app.isPackaged) {
     log.info('AutoUpdater: 开发模式，跳过检查')
     return { success: true }
@@ -3216,6 +3242,9 @@ async function performUpdateCheck(): Promise<{ success: boolean; updateInfo?: an
 // IPC: 手动检查更新
 ipcMain.handle('updater:checkForUpdates', async () => {
   try {
+    if (!oemResolved.inAppUpdateEnabled) {
+      return { success: true, status: updateStatus }
+    }
     if (!app.isPackaged) {
       log.info('AutoUpdater: 开发模式，模拟检查更新')
       updateStatus = { status: 'checking' }
@@ -3239,7 +3268,7 @@ const AUTO_CHECK_DELAY_MS = 60_000
 const AUTO_CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000
 
 function scheduleAutoUpdateCheck() {
-  if (IS_STEAM_BUILD || !app.isPackaged) return
+  if (IS_STEAM_BUILD || !app.isPackaged || !oemResolved.inAppUpdateEnabled) return
 
   const enabled = configService?.get('autoCheckUpdate') ?? true
   if (!enabled) {
@@ -3302,6 +3331,7 @@ ipcMain.handle('updater:downloadUpdate', async (_event, preferredSource?: Update
       return { success: true, source: currentUpdateSource }
     } catch (primaryError) {
       const fallback: UpdateSource = currentUpdateSource === 'oss' ? 'github' : 'oss'
+      if (!updateSourceEnabled(fallback)) throw primaryError
       log.warn(`AutoUpdater: ${currentUpdateSource} 下载失败，回退到 ${fallback}:`, primaryError)
       currentUpdateSource = fallback
       applyUpdateSource(fallback)

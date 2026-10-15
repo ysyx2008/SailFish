@@ -12,13 +12,14 @@ import type { ExecutionMode } from '../services/agent/types'
 import { createLogger, initLogging } from '../utils/logger'
 import { getDefaultShell, getLocalOS } from '../utils/platform'
 import { clampAskUserTimeout } from '@shared/types/agent'
+import { oemResolved } from '@shared/oem-resolve'
 import { t, type TranslationKey } from '../services/agent/i18n'
 
 const log = createLogger('CLI')
 
 /** 对外命令名；薄壳导出 SFT_CLI_NAME=sailfish，默认亦为 sailfish */
 function cliName(): string {
-  return process.env.SFT_CLI_NAME?.trim() || 'sailfish'
+  return process.env.SFT_CLI_NAME?.trim() || oemResolved.identity.cliName
 }
 
 // ==================== Helpers ====================
@@ -1969,7 +1970,7 @@ function printHelp(): void {
   const version = getVersion()
 
   console.log(`
-SailFish CLI v${version}
+${oemResolved.identity.productName} CLI v${version}
 ============================
 
   默认使用桌面真实数据（配置 / 凭据 / 历史）。

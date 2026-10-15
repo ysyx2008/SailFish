@@ -10,7 +10,7 @@
 import type { OemConfig } from './oem-types'
 import { oemConfig as defaultOemConfig } from './oem-defaults'
 
-export type { OemConfig, OemFeatures, OemFeatureKey, OemBrand, OemSsoConfig, OemSsoGateMode, OemSsoVerifyIdToken } from './oem-types'
+export type { OemConfig, OemFeatures, OemFeatureKey, OemBrand, OemSsoConfig, OemSsoGateMode, OemSsoVerifyIdToken, OemDistribution, OemLinks, OemIdentity, OemIcons } from './oem-types'
 export { OEM_FEATURE_DEFAULTS } from './oem-types'
 
 function tryLoadOemOverride(): OemConfig | undefined {

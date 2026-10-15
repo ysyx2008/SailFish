@@ -1,18 +1,21 @@
 #!/usr/bin/env node
 /**
- * 开发态安装 sailfish → ~/.local/bin/sailfish（不启 Electron）
- * 装机用户请用 App「设置 → 数据管理 → 安装 sailfish 命令」
+ * 开发态安装命令行薄壳到 ~/.local/bin（不启 Electron）。
+ * 命令名来自 OEM 安装身份，开源默认仍是 sailfish。
+ * 装机用户请用 App「设置 → 数据管理」里的安装命令。
  */
 'use strict'
 
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+const { readOemIdentity } = require('../electron/cli/oem-identity.js')
 
+const identity = readOemIdentity()
 const repoRoot = path.resolve(__dirname, '..')
 const mainJs = path.join(repoRoot, 'electron', 'cli', 'main.js')
 const binDir = path.join(os.homedir(), '.local', 'bin')
-const shimPath = path.join(binDir, 'sailfish')
+const shimPath = path.join(binDir, identity.cliName)
 
 if (!fs.existsSync(mainJs)) {
   console.error('CLI entry not found:', mainJs)
@@ -26,7 +29,7 @@ set -euo pipefail
 NODE="\${NODE_BINARY:-node}"
 MAIN=${JSON.stringify(mainJs)}
 export SFT_CLI_MODE=1
-export SFT_CLI_NAME=sailfish
+export SFT_CLI_NAME=${identity.cliName}
 cd ${JSON.stringify(repoRoot)}
 exec "$NODE" "$MAIN" "$@"
 `
@@ -39,4 +42,4 @@ const onPath = pathEnv.split(path.delimiter).some(p => path.resolve(p) === path.
 if (!onPath) {
   console.log(`\nAdd to PATH, then reopen the terminal:\n  export PATH="${binDir}:$PATH"`)
 }
-console.log('\nTry: sailfish --help')
+console.log(`\nTry: ${identity.cliName} --help`)

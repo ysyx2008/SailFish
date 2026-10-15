@@ -10,6 +10,7 @@ import * as path from 'path'
 import { app, BrowserWindow } from 'electron'
 import { createLogger } from '../../utils/logger'
 import { extractZipFile } from '../../utils/zip-extract'
+import { speechPackUrls } from '@shared/oem-resolve'
 
 const log = createLogger('SpeechPack')
 
@@ -24,10 +25,9 @@ export const LEGACY_PUNCT_DIR_NAME =
 /** 约 290MB；设置页展示用 */
 export const SPEECH_PACK_APPROX_BYTES = 305_000_000
 
-const GITHUB_PACK_URL =
-  `https://github.com/ysyx2008/SailFish/releases/download/speech-pack-v${RECOMMENDED_PACK_VERSION}/speech-pack-${RECOMMENDED_PACK_VERSION}.zip`
-const OSS_PACK_URL =
-  `https://sfterm-download.oss-cn-wuhan-lr.aliyuncs.com/optional/speech/speech-pack-${RECOMMENDED_PACK_VERSION}.zip`
+function packSourceUrls(): { github: string | null; oss: string | null } {
+  return speechPackUrls(RECOMMENDED_PACK_VERSION)
+}
 
 export interface SpeechPackModelPaths {
   dir: string
@@ -71,9 +71,10 @@ export interface SpeechPackProgress {
 }
 
 export function getPackDownloadUrls(): { github: string; oss: string; version: string } {
+  const urls = packSourceUrls()
   return {
-    github: GITHUB_PACK_URL,
-    oss: OSS_PACK_URL,
+    github: urls.github ?? '',
+    oss: urls.oss ?? '',
     version: RECOMMENDED_PACK_VERSION,
   }
 }
@@ -329,16 +330,26 @@ function measureLatency(url: string, timeoutMs = 3000): Promise<number> {
   })
 }
 
-async function pickDownloadUrl(): Promise<string> {
+async function pickDownloadUrl(): Promise<{ primary: string; fallback: string | null }> {
+  const { github, oss } = packSourceUrls()
+  const candidates = [oss, github].filter((url): url is string => Boolean(url))
+  if (candidates.length === 0) {
+    throw new Error('没有可用的语音包下载地址')
+  }
+  if (candidates.length === 1) {
+    return { primary: candidates[0], fallback: null }
+  }
   const [ossMs, ghMs] = await Promise.all([
-    measureLatency(OSS_PACK_URL),
-    measureLatency(GITHUB_PACK_URL),
+    measureLatency(candidates[0]),
+    measureLatency(candidates[1]),
   ])
   log.info(`Speech pack latency — OSS: ${ossMs}ms, GitHub: ${ghMs}ms`)
   if (ossMs === Number.POSITIVE_INFINITY && ghMs === Number.POSITIVE_INFINITY) {
-    return OSS_PACK_URL
+    return { primary: candidates[0], fallback: candidates[1] }
   }
-  return ossMs <= ghMs ? OSS_PACK_URL : GITHUB_PACK_URL
+  return ossMs <= ghMs
+    ? { primary: candidates[0], fallback: candidates[1] }
+    : { primary: candidates[1], fallback: candidates[0] }
 }
 
 function downloadFile(
@@ -461,11 +472,11 @@ export async function installPack(): Promise<SpeechPackStatus> {
     const tmpZip = path.join(os.tmpdir(), `sailfish-speech-pack-${RECOMMENDED_PACK_VERSION}.zip`)
     try {
       broadcastProgress({ phase: 'download', percent: 0, message: '正在选择下载源…' })
-      const primary = await pickDownloadUrl()
-      const fallback = primary === OSS_PACK_URL ? GITHUB_PACK_URL : OSS_PACK_URL
+      const { primary, fallback } = await pickDownloadUrl()
       try {
         await downloadFile(primary, tmpZip, createDownloadProgressReporter())
       } catch (err) {
+        if (!fallback) throw err
         log.warn('Primary download failed, trying fallback:', err)
         broadcastProgress({ phase: 'download', percent: 0, message: '主源失败，切换备用源…' })
         await downloadFile(fallback, tmpZip, createDownloadProgressReporter())

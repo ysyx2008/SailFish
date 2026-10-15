@@ -38,7 +38,7 @@ import { useImageActions } from '../composables/useImageActions'
 import { useAttachmentActions } from '../composables/useAttachmentActions'
 import { parseThinking } from '../utils/thinking-block'
 import { createLogger } from '../utils/logger'
-import sailfishLogo from '../../resources/logo.png'
+import sailfishLogo from 'virtual:oem-app-logo'
 
 const log = createLogger('AiPanel')
 

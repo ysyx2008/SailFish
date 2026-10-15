@@ -15,15 +15,17 @@ const path = require('path')
 const os = require('os')
 
 const fs = require('fs')
+const { readOemIdentity } = require('./oem-identity.js')
+const oemIdentity = readOemIdentity()
 
 /**
  * Compute the *default* userData path that Electron would use.
  * 注意：此值仅作为“无自定义指针时的回退默认目录”，依赖应用名。
  * 指针文件不放在这里（见 {@link getPointerPath}），因为应用名在 dev/prod 下不同。
- * CLI shim 始终模拟 production 环境行为，故 appName 固定为 'SailFish'（productName）。
+ * CLI shim 始终模拟 production 环境行为，应用名取安装身份里的产品名。
  */
 function getDefaultUserDataPath() {
-  const appName = 'SailFish'
+  const appName = oemIdentity.productName
   switch (process.platform) {
     case 'darwin':
       return path.join(os.homedir(), 'Library', 'Application Support', appName)
@@ -55,12 +57,12 @@ function getAppDataPath() {
 }
 
 /**
- * 指针文件固定位置：appData/SailFish/data-location.json。
+ * 指针文件固定位置：appData/<数据目录名>/data-location.json。
  * 与 electron/utils/bootstrap.ts 中的 POINTER_PATH 保持一致，确保 CLI 和 GUI
  * 读到同一个指针，无论 dev/prod。
  */
 function getPointerPath() {
-  return path.join(getAppDataPath(), 'SailFish', 'data-location.json')
+  return path.join(getAppDataPath(), oemIdentity.dataDirName, 'data-location.json')
 }
 
 /**
@@ -69,6 +71,7 @@ function getPointerPath() {
  * 老指针。dev 和 prod 各自迁移自己的遗留指针，互不干扰。
  */
 function migrateLegacyPointerIfNeeded() {
+  if (oemIdentity.dataDirName !== 'SailFish') return
   const pointerPath = getPointerPath()
   if (fs.existsSync(pointerPath)) return // 新位置已有指针
   const legacyPath = path.join(getDefaultUserDataPath(), 'data-location.json')
@@ -125,7 +128,7 @@ const app = {
     }
   },
   isPackaged: false,
-  getName() { return 'SailFish' },
+  getName() { return oemIdentity.productName },
   getAppPath() { return path.resolve(__dirname, '../..') },
   getVersion() {
     try { return require('../../package.json').version } catch { return '0.0.0' }

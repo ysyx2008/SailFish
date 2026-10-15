@@ -29,7 +29,8 @@ export function useAppUpdaterPrompts() {
   let lastPresentedKey = ''
 
   function openChangelog(): void {
-    window.open(getChangelogPageUrl(locale.value as LocaleType), '_blank')
+    const url = getChangelogPageUrl(locale.value as LocaleType)
+    if (url) window.open(url, '_blank')
   }
 
   async function loadSummary(version: string): Promise<string> {
@@ -102,7 +103,8 @@ export function useAppUpdaterPrompts() {
       {
         onPrimary: async () => {
           if (isMac) {
-            window.open(getDownloadPageUrl(locale.value as LocaleType), '_blank')
+            const url = getDownloadPageUrl(locale.value as LocaleType)
+            if (url) window.open(url, '_blank')
             hideUpdateNotify()
             return
           }

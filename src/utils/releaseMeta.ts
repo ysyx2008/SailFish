@@ -1,4 +1,5 @@
 import type { LocaleType } from '../i18n'
+import { releaseMetaUrls } from '@shared/oem-resolve'
 
 export interface ReleaseMeta {
   version: string
@@ -7,11 +8,6 @@ export interface ReleaseMeta {
     en: string
   }
 }
-
-const META_URLS = [
-  'https://sfterm-download.oss-cn-wuhan-lr.aliyuncs.com/releases/release-meta.json',
-  'https://github.com/ysyx2008/SailFish/releases/latest/download/release-meta.json',
-] as const
 
 let cached: ReleaseMeta | null = null
 let fetchPromise: Promise<ReleaseMeta | null> | null = null
@@ -27,7 +23,7 @@ export async function fetchReleaseMeta(force = false): Promise<ReleaseMeta | nul
   if (!force && fetchPromise) return fetchPromise
 
   fetchPromise = (async () => {
-    for (const url of META_URLS) {
+    for (const url of releaseMetaUrls()) {
       try {
         const res = await fetch(url, { cache: 'no-store' })
         if (!res.ok) continue

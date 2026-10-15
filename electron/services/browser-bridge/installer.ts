@@ -11,6 +11,8 @@ import {
   type BrowserBridgeInstallStatus,
 } from '@shared/types/browser-bridge'
 import { createLogger } from '../../utils/logger'
+import { oemResolved } from '@shared/oem-resolve'
+import { oemConfig } from '@shared/oem-runtime'
 
 const log = createLogger('BrowserBridgeInstaller')
 const execFileAsync = promisify(execFile)
@@ -26,14 +28,137 @@ export function getBridgePointerPath(): string {
   return path.join(app.getPath('home'), BRIDGE_POINTER_BASENAME)
 }
 
-export function writeBridgePointer(): void {
+interface BridgePointerFile {
+  bridgeRoot?: string
+  gatewayFile?: string
+  userData?: string
+  updatedAt?: number
+  pid?: number
+  holderName?: string
+  execPath?: string
+}
+
+function isPidAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  if (pid === process.pid) return true
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
+
+function readBridgePointer(): BridgePointerFile | null {
+  try {
+    const raw = fs.readFileSync(getBridgePointerPath(), 'utf8')
+    const data = JSON.parse(raw) as BridgePointerFile
+    return data && typeof data === 'object' ? data : null
+  } catch {
+    return null
+  }
+}
+
+function holderName(): string {
+  return oemConfig.brand.name.zh || oemResolved.identity.productName
+}
+
+function executableOf(pid: number): string | null {
+  try {
+    if (process.platform === 'linux') {
+      return fs.readlinkSync(`/proc/${pid}/exe`)
+    }
+    if (process.platform === 'darwin') {
+      const out = execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8' }).trim()
+      if (!out) return null
+      if (out.startsWith('"')) {
+        const end = out.indexOf('"', 1)
+        return end > 1 ? out.slice(1, end) : null
+      }
+      return out.split(' ')[0] || null
+    }
+    if (process.platform === 'win32') {
+      const out = execFileSync(
+        'powershell.exe',
+        ['-NoProfile', '-Command', `(Get-Process -Id ${pid} -ErrorAction SilentlyContinue).Path`],
+        { encoding: 'utf8', windowsHide: true },
+      ).trim()
+      return out || null
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+/** 进程还在，且可执行文件仍是当初占住连接的那一个。对不上就当作已经不在。 */
+function holderStillRunning(existing: BridgePointerFile): boolean {
+  if (typeof existing.pid !== 'number' || existing.pid === process.pid) return false
+  if (!isPidAlive(existing.pid)) return false
+  if (!existing.execPath) return true
+  const actual = executableOf(existing.pid)
+  if (!actual) return true
+  return path.normalize(actual) === path.normalize(existing.execPath)
+}
+
+function foreignHolder(): BridgePointerFile | null {
+  const existing = readBridgePointer()
+  if (!existing || !holderStillRunning(existing)) return null
+  return existing
+}
+
+function pointerBody(): string {
   const root = getBridgeRoot()
-  writeJson(getBridgePointerPath(), {
+  return `${JSON.stringify({
     bridgeRoot: root,
     gatewayFile: path.join(root, 'gateway.json'),
     userData: app.getPath('userData'),
     updatedAt: Date.now(),
-  })
+    pid: process.pid,
+    holderName: holderName(),
+    execPath: process.execPath,
+  }, null, 2)}\n`
+}
+
+/**
+ * 先启动的占住。别人还活着时返回 false，不改指针。
+ * 文件还不存在时用独占创建，同时启动时先创建成功的那一个留下。
+ */
+export function writeBridgePointer(): boolean {
+  const pointerPath = getBridgePointerPath()
+  fs.mkdirSync(path.dirname(pointerPath), { recursive: true })
+  const body = pointerBody()
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const existing = readBridgePointer()
+    if (existing?.pid === process.pid) {
+      fs.writeFileSync(pointerPath, body)
+    } else if (existing && holderStillRunning(existing)) {
+      return false
+    } else if (existing) {
+      try { fs.unlinkSync(pointerPath) } catch { /* 下一轮再独占创建 */ }
+      continue
+    } else {
+      try {
+        fs.writeFileSync(pointerPath, body, { flag: 'wx' })
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EEXIST') continue
+        throw error
+      }
+    }
+    if (readBridgePointer()?.pid === process.pid) return true
+  }
+  return readBridgePointer()?.pid === process.pid
+}
+
+function ownsBridgePointer(): boolean {
+  const existing = readBridgePointer()
+  return !!existing && existing.pid === process.pid
+}
+
+export function releaseBridgePointer(): void {
+  if (!ownsBridgePointer()) return
+  removeBridgePointer()
 }
 
 export function removeBridgePointer(): void {
@@ -45,6 +170,10 @@ export function removeBridgePointer(): void {
     log.warn('Failed to remove bridge pointer:', error)
   }
 }
+
+process.on('exit', () => {
+  try { releaseBridgePointer() } catch { /* 退出时不再抛 */ }
+})
 
 export function getBundledBridgeRoot(): string {
   const base = app.isPackaged
@@ -466,10 +595,12 @@ export async function uninstallBrowserBridge(): Promise<{ errors: string[] }> {
   const browsers: BrowserBridgeBrowser[] = ['chrome', 'edge', 'firefox']
 
   try {
-    if (process.platform === 'win32') await unregisterWindowsNativeHost(browsers)
-    else unregisterMacLinuxNativeHost(browsers)
-    removeNativeHostHelper()
-    removeBridgePointer()
+    if (ownsBridgePointer()) {
+      if (process.platform === 'win32') await unregisterWindowsNativeHost(browsers)
+      else unregisterMacLinuxNativeHost(browsers)
+      removeNativeHostHelper()
+      releaseBridgePointer()
+    }
   } catch (error) {
     errors.push(`Native host unregister failed: ${error instanceof Error ? error.message : String(error)}`)
   }
@@ -528,13 +659,26 @@ export async function installBrowserBridge(options?: {
   writeHostEnvScripts(hostDest, electronExe, gatewayFile)
 
   const manifestPath = path.join(hostDest, `${BROWSER_BRIDGE_NATIVE_HOST}.json`)
+  const browsers: BrowserBridgeBrowser[] = ['chrome', 'edge', 'firefox']
+  if (!writeBridgePointer()) {
+    const name = foreignHolder()?.holderName?.trim()
+    errors.push(name
+      ? `浏览器连接正由「${name}」占用，本程序不会抢占。`
+      : '浏览器连接已被其他正在运行的程序占用，本程序不会抢占。')
+    return {
+      chromiumExtensionPath: chromiumDest,
+      firefoxExtensionPath: firefoxDest,
+      nativeHostManifestPath: manifestPath,
+      registeredBrowsers,
+      errors,
+    }
+  }
+
   const hostPath = resolveManifestHostPath(hostDest)
   const chromiumManifest = buildChromiumNativeHostManifest(hostPath, BROWSER_BRIDGE_CHROMIUM_EXTENSION_IDS)
   const firefoxManifest = buildFirefoxNativeHostManifest(hostPath, BROWSER_BRIDGE_FIREFOX_EXTENSION_ID)
-  // 供 detectInstallStatus 读取的副本（Chrome 版）
   writeJson(manifestPath, { ...chromiumManifest, path: hostPath })
 
-  const browsers: BrowserBridgeBrowser[] = ['chrome', 'edge', 'firefox']
   try {
     if (process.platform === 'win32') {
       const winChromium = path.join(hostDest, `${BROWSER_BRIDGE_NATIVE_HOST}-chrome.json`)

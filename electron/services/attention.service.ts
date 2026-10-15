@@ -2,6 +2,7 @@ import { app, Notification, type BrowserWindow } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import { createLogger } from '../utils/logger'
+import { oemConfig } from '@shared/oem-runtime'
 
 const log = createLogger('attention')
 
@@ -83,8 +84,9 @@ class AttentionService {
         return
       }
 
+      const brand = app.getLocale().startsWith('zh') ? oemConfig.brand.name.zh : oemConfig.brand.name.en
       const notif = new Notification({
-        title: 'SailFish',
+        title: brand,
         body: '允许通知后，任务完成时 Dock 图标可以显示提醒角标。',
         silent: true,
       })

@@ -9,10 +9,11 @@ import AdmZip from 'adm-zip'
 import type { ConfigService } from './config.service'
 import type { UserSkillService } from './user-skill.service'
 import { createLogger } from '../utils/logger'
+import { oemResolved, SAILFISH_SKILL_REGISTRY } from '@shared/oem-resolve'
 
 const log = createLogger('SkillMarket')
 
-const DEFAULT_REGISTRY_URL = 'https://www.sfterm.com/skill-registry.json'
+const DEFAULT_REGISTRY_URL = SAILFISH_SKILL_REGISTRY
 const CLAWHUB_API_BASE = 'https://wry-manatee-359.convex.site'
 
 const SAFE_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/
@@ -243,7 +244,9 @@ export class SkillMarketService {
   ) {}
 
   getRegistryUrl(): string {
-    return this.configService.get('skillMarketRegistryUrl') || DEFAULT_REGISTRY_URL
+    const user = this.configService.get('skillMarketRegistryUrl')
+    if (typeof user === 'string' && user.trim()) return user.trim()
+    return oemResolved.links.skillRegistry ?? ''
   }
 
   setRegistryUrl(url: string): void {
@@ -322,7 +325,7 @@ export class SkillMarketService {
 
     const url = this.getRegistryUrl()
     if (!url) {
-      throw new Error('Registry URL is not configured')
+      return { version: 2, updated: '', categories: [], skills: [] }
     }
 
     try {
@@ -344,8 +347,13 @@ export class SkillMarketService {
     } catch (error) {
       // 网络失败时使用内置 fallback，保证用户不会看到空白市场
       if (!this.registryCache) {
-        log.warn('Remote registry unavailable, using bundled fallback')
-        this.registryCache = BUNDLED_REGISTRY
+        if (url === DEFAULT_REGISTRY_URL) {
+          log.warn('Remote registry unavailable, using bundled fallback')
+          this.registryCache = BUNDLED_REGISTRY
+        } else {
+          log.warn('Remote registry unavailable')
+          this.registryCache = { version: 2, updated: '', categories: [], skills: [] }
+        }
         this.cacheTime = Date.now()
       }
       return this.registryCache
@@ -476,6 +484,7 @@ export class SkillMarketService {
    * 搜索 ClawHub 社区技能
    */
   async searchClawHub(query: string): Promise<MarketSkill[]> {
+    if (!oemResolved.communitySkillMarket) return []
     if (!query.trim()) return []
     const trimmedQuery = query.trim().slice(0, 200)
 
@@ -526,6 +535,9 @@ export class SkillMarketService {
   async previewSkill(skillId: string, source: SkillSource = 'sailfish'): Promise<SkillPreviewResult> {
     try {
       if (source === 'clawhub') {
+        if (!oemResolved.communitySkillMarket) {
+          return { success: false, error: 'Community skill market is disabled' }
+        }
         return this.previewClawHubSkill(skillId)
       }
 
@@ -593,6 +605,9 @@ export class SkillMarketService {
    * 从 ClawHub 下载 ZIP 并解压安装（包含所有附属文件）
    */
   async installClawHubSkill(skillId: string): Promise<SkillOperationResult> {
+    if (!oemResolved.communitySkillMarket) {
+      return { success: false, error: 'Community skill market is disabled' }
+    }
     if (!validateSkillId(skillId)) {
       return { success: false, error: `Invalid skill ID: "${skillId}"` }
     }
