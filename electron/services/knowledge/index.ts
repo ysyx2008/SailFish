@@ -849,6 +849,12 @@ export class KnowledgeService extends EventEmitter {
   /** 整表重建进行中时，检索需等待或短暂让路，避免 clear 与 search 并发 */
   private vectorRebuildPromise: Promise<void> | null = null
 
+  /** 正在入库的文档数：孤儿清理要给入库让路，否则会把刚写进去的 chunk 连带清掉 */
+  private activeIngestCount = 0
+
+  /** 孤儿清理进行中时，入库要等它结束，避免 compact 与写入交错 */
+  private orphanCleanupPromise: Promise<void> | null = null
+
   /**
    * 后台清理孤儿 chunk（索引里有、documents.json 里没有的 docId）。
    */
@@ -874,13 +880,41 @@ export class KnowledgeService extends EventEmitter {
    * 才 fallback 到 rebuildVectorTable，避免为个位数孤儿 risk 整表 drop+写回。
    */
   private async cleanupOrphanData(): Promise<void> {
-    try {
-      const validDocIds = new Set(this.documentsIndex.keys())
+    // 有文档正在入库就这轮不清：孤儿不占用户可见的东西，等下次启动或下次空闲再清都来得及，
+    // 而删除 + compact 撞上写入会毁掉刚入库的文档
+    if (this.activeIngestCount > 0) {
+      log.info('有文档正在入库，本轮跳过孤儿清理')
+      return
+    }
 
-      const orphanDocIds = await this.findOrphanDocIds(validDocIds)
+    if (this.orphanCleanupPromise) {
+      return this.orphanCleanupPromise
+    }
+
+    const running = this.runOrphanCleanup()
+    this.orphanCleanupPromise = running
+    try {
+      await running
+    } finally {
+      this.orphanCleanupPromise = null
+    }
+  }
+
+  private async runOrphanCleanup(): Promise<void> {
+    try {
+      // 清理在后台跑，期间用户可能正在入库。documentsIndex 必须每次现取：
+      // 拿开头那一份快照去判定，会把清理期间新入库的文档当成孤儿删掉——
+      // 文档列表里还在，chunk 已经没了，表现为「看得见搜不到」
+      const currentValidDocIds = () => new Set(this.documentsIndex.keys())
+
+      const orphanDocIds = await this.findOrphanDocIds(currentValidDocIds())
       if (orphanDocIds.length === 0) {
         return
       }
+
+      // 删除目标在这里锁定。重试只负责确认这批删干净，不收编期间新出现的 docId
+      // （那种 docId 更可能是正在入库、documents.json 还没落盘的正常文档）
+      const targets = new Set(orphanDocIds)
 
       log.info(`发现 ${orphanDocIds.length} 个孤儿 docId（索引有 chunk、documents.json 无对应文档），开始定向清理...`)
 
@@ -892,13 +926,19 @@ export class KnowledgeService extends EventEmitter {
         await this.vectorStorage.compact(aggressiveCompact)
       }
 
+      const findRemainingTargets = async (): Promise<string[]> => {
+        const valid = currentValidDocIds()
+        // 期间被重新入库的（已回到 documents.json）也不再算残留
+        return (await this.findOrphanDocIds(valid)).filter(docId => targets.has(docId))
+      }
+
       await purgeOrphans(orphanDocIds, true)
 
-      let remaining = await this.findOrphanDocIds(validDocIds)
+      let remaining = await findRemainingTargets()
       for (let retry = 0; retry < KnowledgeService.ORPHAN_DELETE_MAX_RETRIES && remaining.length > 0; retry++) {
         log.info(`孤儿 chunk 残留 ${remaining.length} 个，定向删除重试 ${retry + 1}/${KnowledgeService.ORPHAN_DELETE_MAX_RETRIES}...`)
         await purgeOrphans(remaining, true)
-        remaining = await this.findOrphanDocIds(validDocIds)
+        remaining = await findRemainingTargets()
       }
 
       if (remaining.length === 0) {
@@ -911,7 +951,8 @@ export class KnowledgeService extends EventEmitter {
           `软删除后仍有 ${remaining.length} 个孤儿 docId 残留，` +
           '将重建向量表彻底清除...'
         )
-        await this.rebuildVectorTable(validDocIds)
+        // 整表重建按当下的 documents.json 保留有效记录，否则会连带丢掉清理期间入库的文档
+        await this.rebuildVectorTable(currentValidDocIds())
         log.info('向量表重建完成，孤儿数据已彻底清除')
         return
       }
@@ -1032,13 +1073,31 @@ export class KnowledgeService extends EventEmitter {
    * 添加文档到知识库
    */
   async addDocument(
-    doc: ParsedDocument, 
+    doc: ParsedDocument,
     options?: AddDocumentOptions
   ): Promise<string> {
     if (!this.isInitialized) {
       await this.initialize()
     }
 
+    // 孤儿清理要删 chunk 再 compact，与入库写入交错时会把刚写进去的 chunk 一起清掉，
+    // 表现为文档列表里有、搜索却搜不到。两者必须互斥：入库优先，清理让路
+    if (this.orphanCleanupPromise) {
+      await this.orphanCleanupPromise
+    }
+
+    this.activeIngestCount++
+    try {
+      return await this.ingestDocument(doc, options)
+    } finally {
+      this.activeIngestCount--
+    }
+  }
+
+  private async ingestDocument(
+    doc: ParsedDocument,
+    options?: AddDocumentOptions
+  ): Promise<string> {
     // 检查重复
     const contentHash = this.computeContentHash(doc.content)
     const duplicateCheck = this.isDuplicate(doc.content)

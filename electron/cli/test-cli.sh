@@ -274,12 +274,33 @@ if [[ "$MODE" != "quick" ]]; then
   assert_contains "knowledge bench:compare"     "读法" \
     $CLI knowledge:bench:compare "$BENCH_REPORT" "$BENCH_REPORT"
 
+  # 库里留着孤儿（上次异常退出就会留）时，启动后的后台清理会和入库并发。
+  # 曾经的 bug 是清理把刚入库文档的 chunk 一起删掉——列表里看得见，搜索永远搜不到
+  ORPHAN_DOC="$TEST_DOC_DIR/orphan-guard.md"
+  echo "海水稻在滨海盐碱地的育种试验记录，含耐盐碱品系的产量对比。" > "$ORPHAN_DOC"
+  node -e '
+    const fs = require("fs")
+    const raw = JSON.parse(fs.readFileSync(process.argv[1], "utf-8"))
+    const docs = Array.isArray(raw) ? raw : (raw.documents || [])
+    const victim = docs.find(d => d.filename === "kubernetes.md")
+    if (!victim) { console.error("找不到可摘的文档，孤儿场景没造出来"); process.exit(1) }
+    const kept = docs.filter(d => d.id !== victim.id)
+    fs.writeFileSync(process.argv[1], JSON.stringify(Array.isArray(raw) ? kept : { ...raw, documents: kept }, null, 2))
+  ' "$SFT_DATA_DIR/knowledge/documents.json"
+
+  run_test "孤儿残留时仍能入库"                $CLI knowledge:add "$ORPHAN_DOC"
+
+  assert_contains "孤儿清理不误删新入库文档"    "orphan-guard.md" \
+    $CLI knowledge:search "盐碱地 育种"
+
 else
   skip_test "knowledge:add 添加文档"
   skip_test "knowledge:list 返回表格"
   skip_test "knowledge:search 命中验证"
   skip_test "knowledge:add PDF 走解析器"
   skip_test "knowledge bench 跑出基线"
+  skip_test "孤儿残留时仍能入库"
+  skip_test "孤儿清理不误删新入库文档"
 fi
 
 # 搜索不存在的内容
