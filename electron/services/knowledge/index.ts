@@ -32,6 +32,7 @@ import { deduplicateByEmbeddingCluster as deduplicateMemories } from './memory-u
 import { createReranker, Reranker } from './reranker'
 import { getBM25Index, BM25Index } from './bm25'
 import { encrypt, decrypt, isEncrypted } from './crypto'
+import { IngestGate } from './ingest-gate'
 import {
   createBackup as doCreateBackup,
   saveBackupTo as doSaveBackupTo,
@@ -849,11 +850,8 @@ export class KnowledgeService extends EventEmitter {
   /** 整表重建进行中时，检索需等待或短暂让路，避免 clear 与 search 并发 */
   private vectorRebuildPromise: Promise<void> | null = null
 
-  /** 正在入库的文档数：孤儿清理要给入库让路，否则会把刚写进去的 chunk 连带清掉 */
-  private activeIngestCount = 0
-
-  /** 孤儿清理进行中时，入库要等它结束，避免 compact 与写入交错 */
-  private orphanCleanupPromise: Promise<void> | null = null
+  /** 入库与孤儿清理的让路闸：入库优先，清理让路后补做 */
+  private readonly ingestGate = new IngestGate(() => this.scheduleOrphanCleanupAsync())
 
   /**
    * 后台清理孤儿 chunk（索引里有、documents.json 里没有的 docId）。
@@ -880,23 +878,12 @@ export class KnowledgeService extends EventEmitter {
    * 才 fallback 到 rebuildVectorTable，避免为个位数孤儿 risk 整表 drop+写回。
    */
   private async cleanupOrphanData(): Promise<void> {
-    // 有文档正在入库就这轮不清：孤儿不占用户可见的东西，等下次启动或下次空闲再清都来得及，
-    // 而删除 + compact 撞上写入会毁掉刚入库的文档
-    if (this.activeIngestCount > 0) {
-      log.info('有文档正在入库，本轮跳过孤儿清理')
-      return
-    }
-
-    if (this.orphanCleanupPromise) {
-      return this.orphanCleanupPromise
-    }
-
-    const running = this.runOrphanCleanup()
-    this.orphanCleanupPromise = running
-    try {
-      await running
-    } finally {
-      this.orphanCleanupPromise = null
+    // 有写入正在进行就让路：孤儿不占用户看得见的东西，晚点清都来得及，
+    // 而删除 + compact 撞上写入会毁掉刚存进去的内容。让路会登记待办，
+    // 等写入收尾时补做
+    const ran = await this.ingestGate.cleanup(() => this.runOrphanCleanup())
+    if (!ran && this.ingestGate.ingesting) {
+      log.info('有内容正在入库，孤儿清理让路，入库结束后补做')
     }
   }
 
@@ -918,12 +905,20 @@ export class KnowledgeService extends EventEmitter {
 
       log.info(`发现 ${orphanDocIds.length} 个孤儿 docId（索引有 chunk、documents.json 无对应文档），开始定向清理...`)
 
-      const purgeOrphans = async (docIds: string[], aggressiveCompact: boolean): Promise<void> => {
+      /** @returns 是否删完了；false 表示有写入插了进来，已让路 */
+      const purgeOrphans = async (docIds: string[], aggressiveCompact: boolean): Promise<boolean> => {
+        // 动手前的最后一道门：扫描到这里隔着好几次 await，期间可能有内容刚写完
+        // 向量、还没登记进 documents.json，那种不是孤儿
+        if (this.ingestGate.shouldYield()) {
+          log.info('入库插了进来，孤儿清理让路，入库结束后补做')
+          return false
+        }
         for (const docId of docIds) {
           await this.vectorStorage.removeDocumentChunks(docId, false)
           await this.bm25Index.removeDocumentChunks(docId)
         }
         await this.vectorStorage.compact(aggressiveCompact)
+        return true
       }
 
       const findRemainingTargets = async (): Promise<string[]> => {
@@ -932,12 +927,15 @@ export class KnowledgeService extends EventEmitter {
         return (await this.findOrphanDocIds(valid)).filter(docId => targets.has(docId))
       }
 
-      await purgeOrphans(orphanDocIds, true)
-
+      // 首轮也先复核一遍，别拿首次扫描的名单直接删
       let remaining = await findRemainingTargets()
-      for (let retry = 0; retry < KnowledgeService.ORPHAN_DELETE_MAX_RETRIES && remaining.length > 0; retry++) {
-        log.info(`孤儿 chunk 残留 ${remaining.length} 个，定向删除重试 ${retry + 1}/${KnowledgeService.ORPHAN_DELETE_MAX_RETRIES}...`)
-        await purgeOrphans(remaining, true)
+      for (let round = 0; round <= KnowledgeService.ORPHAN_DELETE_MAX_RETRIES && remaining.length > 0; round++) {
+        if (round > 0) {
+          log.info(`孤儿 chunk 残留 ${remaining.length} 个，定向删除重试 ${round}/${KnowledgeService.ORPHAN_DELETE_MAX_RETRIES}...`)
+        }
+        if (!await purgeOrphans(remaining, true)) {
+          return
+        }
         remaining = await findRemainingTargets()
       }
 
@@ -947,6 +945,11 @@ export class KnowledgeService extends EventEmitter {
       }
 
       if (remaining.length >= KnowledgeService.ORPHAN_FULL_TABLE_REBUILD_THRESHOLD) {
+        // 整表重建是 drop + 全量写回，大库上耗时可观，期间入库都得等着
+        if (this.ingestGate.shouldYield()) {
+          log.info('入库插了进来，整表重建推迟到入库结束后')
+          return
+        }
         log.warn(
           `软删除后仍有 ${remaining.length} 个孤儿 docId 残留，` +
           '将重建向量表彻底清除...'
@@ -1080,18 +1083,7 @@ export class KnowledgeService extends EventEmitter {
       await this.initialize()
     }
 
-    // 孤儿清理要删 chunk 再 compact，与入库写入交错时会把刚写进去的 chunk 一起清掉，
-    // 表现为文档列表里有、搜索却搜不到。两者必须互斥：入库优先，清理让路
-    if (this.orphanCleanupPromise) {
-      await this.orphanCleanupPromise
-    }
-
-    this.activeIngestCount++
-    try {
-      return await this.ingestDocument(doc, options)
-    } finally {
-      this.activeIngestCount--
-    }
+    return this.ingestGate.ingest(() => this.ingestDocument(doc, options))
   }
 
   private async ingestDocument(
@@ -1786,6 +1778,7 @@ export class KnowledgeService extends EventEmitter {
     this.embeddingService.dispose()
     this.isInitialized = false
     this.permanentInitError = null
+    this.ingestGate.reset()
     this.emit('disposed')
   }
 
@@ -1805,6 +1798,7 @@ export class KnowledgeService extends EventEmitter {
     } finally {
       this.isInitialized = false
       this.permanentInitError = null
+      this.ingestGate.reset()
       this.emit('disposed')
     }
   }
@@ -1967,7 +1961,7 @@ export class KnowledgeService extends EventEmitter {
    * @param options 可选的元数据（volatility、source）
    */
   async addHostMemory(
-    hostId: string, 
+    hostId: string,
     memory: string,
     options?: { volatility?: MemoryVolatility; source?: string }
   ): Promise<string | null> {
@@ -1975,6 +1969,15 @@ export class KnowledgeService extends EventEmitter {
       return null
     }
 
+    // 和文档入库同一条路：先写向量再登记清单，中间那段窗口不能让孤儿清理动手
+    return this.ingestGate.ingest(() => this.writeHostMemory(hostId, memory, options))
+  }
+
+  private async writeHostMemory(
+    hostId: string,
+    memory: string,
+    options?: { volatility?: MemoryVolatility; source?: string }
+  ): Promise<string | null> {
     try {
       if (!this.isInitialized) {
         await this.initialize()
@@ -2363,6 +2366,10 @@ export class KnowledgeService extends EventEmitter {
   async indexConversation(entry: ConversationIndexEntry): Promise<string | null> {
     if (!entry.userRequest || !entry.hostId) return null
 
+    return this.ingestGate.ingest(() => this.writeConversationIndex(entry))
+  }
+
+  private async writeConversationIndex(entry: ConversationIndexEntry): Promise<string | null> {
     try {
       if (!this.isInitialized) {
         await this.initialize()
