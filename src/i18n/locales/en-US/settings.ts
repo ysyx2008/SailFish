@@ -1,4 +1,6 @@
 // 控制面板：主设置入口与各 *Settings 子面板
+import { builtinSkillNames as builtinSkillNameTable } from '@shared/builtin-skill-names'
+
 export default {
 
   // Console
@@ -805,30 +807,7 @@ export default {
     skillDetailNotInstalled: 'Install to preview full content',
     builtinSkills: 'Built-in Skills',
     builtinSkillsDesc: 'Built-in skills provide core capabilities like Excel, browser, and terminal. Agent loads them on demand. Disabling a skill prevents the Agent from using it.',
-    builtinSkillNames: {
-      excel: 'Excel',
-      email: 'Email',
-      browser: 'Browser Automation',
-      word: 'Word Documents',
-      calendar: 'Calendar',
-      todo: 'Local Todos',
-      contact: 'Local Contacts',
-      watch: 'Watch',
-      config: 'SailFish Settings',
-      'skill-manager': 'Skill Manager',
-      terminal: 'Terminal',
-      personality: 'Personality',
-      pdf: 'PDF Reader',
-      chart: 'Chart Generation',
-      ppt: 'Slides / PPT',
-      feishu: 'Feishu (Lark)',
-      wecom: 'WeCom',
-      dingtalk: 'DingTalk',
-      'chinese-writing': 'Chinese Writing',
-      'chinese-document-official': 'Chinese Official Document Writing',
-      'chinese-document-regulation': 'Regulation Document Writing',
-      coding: 'Coding',
-    },
+    builtinSkillNames: builtinSkillNameTable['en-US'],
     builtinSkillDescs: {
       excel: 'Read and write Excel files interactively. Supports opening files, reading data, modifying cells, adding/removing sheets, saving and closing. Ideal for data analysis and report processing.',
       email: 'Send, receive and manage emails. Connects to configured email accounts for reading, searching, sending and deleting emails. Suitable for email processing and auto-reply scenarios.',

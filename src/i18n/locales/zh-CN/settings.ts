@@ -1,4 +1,6 @@
 // 控制面板：主设置入口与各 *Settings 子面板
+import { builtinSkillNames as builtinSkillNameTable } from '@shared/builtin-skill-names'
+
 export default {
 
   // 控制台
@@ -805,30 +807,7 @@ export default {
     skillDetailNotInstalled: '安装后即可预览完整内容',
     builtinSkills: '内置技能',
     builtinSkillsDesc: '内置技能提供 Excel、浏览器、终端等核心能力，Agent 按需加载。禁用后 Agent 将无法使用对应能力。',
-    builtinSkillNames: {
-      excel: 'Excel 处理',
-      email: '邮箱管理',
-      browser: '浏览器自动化',
-      word: 'Word 文档处理',
-      calendar: '日程管理',
-      todo: '本地待办',
-      contact: '本地联系人',
-      watch: '关切',
-      config: '旗鱼配置管理',
-      'skill-manager': '技能管理',
-      terminal: '终端',
-      personality: '个性定义',
-      pdf: 'PDF 阅读',
-      chart: '图表生成',
-      ppt: '幻灯片 / PPT',
-      feishu: '飞书',
-      wecom: '企业微信',
-      dingtalk: '钉钉',
-      'chinese-writing': '中文写作',
-      'chinese-document-official': '党政机关公文写作',
-      'chinese-document-regulation': '制度文件写作',
-      coding: '编程',
-    },
+    builtinSkillNames: builtinSkillNameTable['zh-CN'],
     builtinSkillDescs: {
       excel: '提供会话式 Excel 文件读写能力。支持打开文件、读取数据、修改单元格、添加/删除 Sheet、保存和关闭等操作。适用于数据分析、报表处理等场景。',
       email: '提供邮件收发和管理能力，支持连接到配置的邮箱账户，读取、搜索、发送和删除邮件。适用于邮件处理、自动回复等场景。**注意**需要收发邮件时，除非用户明确要求，否则一般应当优先使用此技能工具。',

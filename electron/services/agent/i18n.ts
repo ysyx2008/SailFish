@@ -4,6 +4,7 @@
  */
 
 import { ConfigService } from '../config.service'
+import { builtinSkillNames } from '@shared/builtin-skill-names'
 
 // 翻译键类型
 export type TranslationKey = keyof typeof translations['zh-CN']
@@ -3702,6 +3703,15 @@ export function updateLocale(locale: 'zh-CN' | 'en-US'): void {
  * @param key 翻译键
  * @param params 替换参数，如 { count: 10 }
  */
+/**
+ * 界面上怎么称呼这个内置技能。没有译文时用技能自己的名字，再没有才用编号。
+ * 用户自己装的技能不在这张表里，调用方把作者起的名字当作 fallback。
+ */
+export function builtinSkillDisplayName(id: string, fallback?: string): string {
+  const table = builtinSkillNames[getLocale()] as Record<string, string>
+  return table[id] || fallback || id
+}
+
 export function t(key: TranslationKey, params?: Record<string, string | number>): string {
   const locale = getLocale()
   let text: string = translations[locale][key] || translations['zh-CN'][key] || key

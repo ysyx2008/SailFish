@@ -3,7 +3,7 @@
  * 包括：等待、向用户提问、MCP 工具、技能工具
  */
 import { clampAskUserTimeout } from '@shared/types/agent'
-import { t } from '../i18n'
+import { builtinSkillDisplayName, t } from '../i18n'
 import { createLogger } from '../../../utils/logger'
 const log = createLogger('tools/misc')
 import { executeExcelTool } from '../skills/excel/executor'
@@ -892,7 +892,7 @@ export async function loadSkillTool(
 
   executor.addStep({
     type: 'tool_call',
-    content: t('skill.loading', { id: skillId }),
+    content: t('skill.loading', { id: visibleSkillName(skillId) }),
     toolName: 'load_skill',
     toolArgs: args,
     riskLevel: 'safe'
@@ -905,7 +905,7 @@ export async function loadSkillTool(
     const toolsList = result.toolsAdded?.join(', ') || ''
     const skill = getSkill(skillId)
     const skillContent = skill?.content || ''
-    const simpleOutput = t('skill.loaded_simple', { name: skillName })
+    const simpleOutput = t('skill.loaded_simple', { name: visibleSkillName(skillId, skillName) })
     const detailOutput = skillContent
       ? `## ${skillName}\n\n${skillContent}`
       : t('skill.loaded', { name: skillName, tools: toolsList })
@@ -964,7 +964,7 @@ export async function unloadSkillTool(
   // 检查技能是否已加载
   const loadedSkills = executor.skillSession.getLoadedSkills()
   if (!loadedSkills.includes(skillId)) {
-    const output = t('skill.not_loaded', { id: skillId })
+    const output = t('skill.not_loaded', { id: visibleSkillName(skillId) })
     executor.addStep({
       type: 'tool_result',
       content: output,
@@ -980,7 +980,7 @@ export async function unloadSkillTool(
 
   executor.addStep({
     type: 'tool_call',
-    content: t('skill.unloading', { id: skillId }),
+    content: t('skill.unloading', { id: visibleSkillName(skillId) }),
     toolName: 'unload_skill',
     toolArgs: args,
     riskLevel: 'safe'
@@ -990,7 +990,7 @@ export async function unloadSkillTool(
     await executor.skillSession.unloadSkill(skillId)
     executor.markSkillUnloaded?.(skillId)
     
-    const output = t('skill.unloaded', { id: skillId })
+    const output = t('skill.unloaded', { id: visibleSkillName(skillId) })
     executor.addStep({
       type: 'tool_result',
       content: output,
@@ -1012,6 +1012,13 @@ export async function unloadSkillTool(
   }
 }
 
+/** 对话里给人看的技能名：内置技能按界面语言，用户技能用作者起的名字 */
+function visibleSkillName(skillId: string, authoredName?: string): string {
+  const authored = authoredName ?? getSkill(skillId)?.name
+  if (getSkill(skillId)) return builtinSkillDisplayName(skillId, authored)
+  return authored || skillId
+}
+
 function resolveUserSkillRawId(skillId: string): string | null {
   const prefixed = parseUserSkillId(skillId)
   if (prefixed) return prefixed
@@ -1023,10 +1030,11 @@ async function unloadUserSkillTool(
   executor: ToolExecutorConfig
 ): Promise<ToolResult> {
   const rawId = resolveUserSkillRawId(skillId) ?? skillId
+  const label = visibleSkillName(rawId, getUserSkillService().getSkill(rawId)?.name)
   const loaded = executor.isUserSkillLoaded?.(rawId) || executor.isUserSkillLoaded?.(toUserSkillId(rawId))
 
   if (!loaded) {
-    const output = t('skill.not_loaded', { id: rawId })
+    const output = t('skill.not_loaded', { id: label })
     executor.addStep({
       type: 'tool_result',
       content: output,
@@ -1038,14 +1046,14 @@ async function unloadUserSkillTool(
 
   executor.addStep({
     type: 'tool_call',
-    content: t('skill.unloading', { id: rawId }),
+    content: t('skill.unloading', { id: label }),
     toolName: 'skill',
     toolArgs: { action: 'unload', skill_id: rawId },
     riskLevel: 'safe'
   })
 
   executor.markSkillUnloaded?.(toUserSkillId(rawId))
-  const output = t('skill.unloaded', { id: rawId })
+  const output = t('skill.unloaded', { id: label })
   executor.addStep({
     type: 'tool_result',
     content: output,
@@ -1069,17 +1077,16 @@ export async function loadUserSkillTool(
   }
 
   const rawId = parseUserSkillId(skillId) ?? skillId
+  const userSkillService = getUserSkillService()
+  const skill = userSkillService.getSkill(rawId)
 
   executor.addStep({
     type: 'tool_call',
-    content: t('skill.loading', { id: rawId }),
+    content: t('skill.loading', { id: visibleSkillName(rawId, skill?.name) }),
     toolName: 'skill',
     toolArgs: { action: 'load', skill_id: rawId },
     riskLevel: 'safe'
   })
-
-  const userSkillService = getUserSkillService()
-  const skill = userSkillService.getSkill(rawId)
   
   if (!skill) {
     const errorMsg = t('user_skill.not_found', { id: rawId })
@@ -1179,7 +1186,7 @@ export async function loadUserSkillTool(
   
   executor.addStep({
     type: 'tool_result',
-    content: t('skill.loaded_simple', { name: skill.name }),
+    content: t('skill.loaded_simple', { name: visibleSkillName(rawId, skill.name) }),
     toolName: 'skill',
     toolResult: output
   })
