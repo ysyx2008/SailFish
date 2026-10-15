@@ -109,13 +109,9 @@ export interface ConversationSearchResult extends RecalledConversation {
  * - 双通道命中时分数叠加 ≈ 0.032
  * 0.02 表示至少在一个通道排名靠前，或在两个通道都有匹配
  */
-/**
- * 自动到场（每轮对话按用户消息检索并注入上下文）的召回实参。
- * 导出是为了让召回基线量的就是线上这几个数，不另抄一份。
- */
-export const MIN_RRF_SCORE = 0.02
-export const AUTO_RECALL_LIMIT = 5
-export const AUTO_RECALL_SIMILARITY = 0.6
+import { MIN_RRF_SCORE, AUTO_RECALL_LIMIT, AUTO_RECALL_SIMILARITY } from './recall-params'
+
+export { MIN_RRF_SCORE, AUTO_RECALL_LIMIT, AUTO_RECALL_SIMILARITY }
 
 export class KnowledgeService extends EventEmitter {
   private modelManager: ModelManager

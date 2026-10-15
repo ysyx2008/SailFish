@@ -9,7 +9,7 @@
  * 代价是无关内容挤进每一轮对话；所以噪音率和篇幅占用必须同时在场。
  */
 
-import { AUTO_RECALL_LIMIT, AUTO_RECALL_SIMILARITY, MIN_RRF_SCORE } from '../index'
+import { AUTO_RECALL_LIMIT, AUTO_RECALL_SIMILARITY, MIN_RRF_SCORE } from '../recall-params'
 import type { KnowledgeService } from '../index'
 import type { DocumentParserService } from '../../document-parser.service'
 import type { SearchResult } from '../types'
