@@ -19,11 +19,12 @@ import { executeContactTool } from '../executor'
 import { loadStore, resetWriteQueueForTest } from '../store'
 import { ensureAgentWorkspaceDirs } from '../../../tools/file'
 
-function mockExecutor(steps?: string[]): ToolExecutorConfig {
+function mockExecutor(steps?: string[], visible?: string[]): ToolExecutorConfig {
   return {
     agentId: 'agent-1',
-    addStep: (step: { content?: string }) => {
+    addStep: (step: { content?: string; toolResult?: string }) => {
       if (step.content) steps?.push(step.content)
+      if (step.toolResult) visible?.push(step.toolResult)
       return { id: 's', timestamp: Date.now() }
     },
     updateStep: () => undefined,
@@ -170,8 +171,9 @@ describe('contact executor', () => {
     )
     const id = loadStore().contacts[0].id
     const steps: string[] = []
-    const exec = mockExecutor(steps)
-    await executeContactTool(
+    const visible: string[] = []
+    const exec = mockExecutor(steps, visible)
+    const updated = await executeContactTool(
       'contact_update',
       '',
       { id, name: '周立军', add_aliases: ['周总'] },
@@ -180,12 +182,47 @@ describe('contact executor', () => {
       exec
     )
     expect(steps[0]).toBe('更新联系人: 周总 · 国元证券 → 周立军')
-    expect(steps[0]).not.toContain(id)
+    expect(steps.join('\n') + visible.join('\n')).not.toContain(id)
+    expect(updated.output).toContain(id)
 
     steps.length = 0
-    await executeContactTool('contact_delete', '', { id }, 'c13', {} as never, exec)
+    visible.length = 0
+    const removed = await executeContactTool('contact_delete', '', { id }, 'c13', {} as never, exec)
     expect(steps[0]).toBe('删除联系人: 周立军 · 国元证券')
-    expect(steps[0]).not.toContain(id)
+    expect(steps.join('\n') + visible.join('\n')).not.toContain(id)
+    expect(removed.output).toContain(id)
+  })
+
+  it('a person with no unit is shown by a phone, and lookups hide the id from the chat', async () => {
+    await executeContactTool(
+      'contact_add',
+      '',
+      { name: '（未命名）', channels: [{ kind: 'phone', value: '15255459369' }] },
+      'c14',
+      {} as never,
+      mockExecutor()
+    )
+    const id = loadStore().contacts[0].id
+    const steps: string[] = []
+    const visible: string[] = []
+    const exec = mockExecutor(steps, visible)
+    const listed = await executeContactTool('contact_list', '', {}, 'c15', {} as never, exec)
+    expect(listed.output).toContain(id)
+    expect(visible.join('\n')).toContain('（未命名）')
+    expect(visible.join('\n')).toContain('15255459369')
+    expect(visible.join('\n')).not.toContain(id)
+
+    steps.length = 0
+    visible.length = 0
+    await executeContactTool('contact_delete', '', { id }, 'c16', {} as never, exec)
+    expect(steps[0]).toBe('删除联系人: （未命名） · 15255459369')
+    expect(steps.join('\n') + visible.join('\n')).not.toContain(id)
+
+    const missing = await executeContactTool('contact_delete', '', { id: 'gone' }, 'c17', {} as never, exec)
+    expect(missing.success).toBe(false)
+    expect(missing.error).toBe('找不到这位联系人')
+    expect(missing.error).not.toContain('gone')
+    expect(steps.some(line => line.includes('gone'))).toBe(false)
   })
 
   it('contact_search finds by alias', async () => {
