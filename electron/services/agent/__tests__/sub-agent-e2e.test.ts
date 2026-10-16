@@ -1016,7 +1016,11 @@ describe('子智能体端到端（真实 SailFish.run）', () => {
     expect(fs.existsSync(victim)).toBe(false)
     expect(result).toContain('飞书这边删掉了')
     expect(imNotices.some(n => n.startsWith('正在替你看') && n.includes(victim))).toBe(true)
-    expect(imNotices.some(n => n.includes('替你放行') && n.includes(victim))).toBe(true)
+    const approved = imNotices.find(n => n.includes('替你放行') && n.includes(victim))
+    expect(approved).toBeTruthy()
+    expect(approved).toContain('你明确说过要做')
+    expect(approved).toContain('用户在这场里明确交代了删这份草稿')
+    expect(approved).not.toContain('风险高')
   })
 
   /** 第一轮只交代不动手；关掉重开（新实例按会话编号从历史装回）后说「继续」才删 */

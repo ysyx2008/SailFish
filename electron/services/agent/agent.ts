@@ -6004,7 +6004,10 @@ export abstract class Agent {
   private formatAutoReviewTrail(trail: AutoReviewTrail, action: string): string {
     const lines = [t(trail.outcome === 'approved' ? 'autoReview.approved' : 'autoReview.handed_over', { action })]
     if (trail.reason && trail.reason !== 'not_approved') lines.push(t(`autoReview.reason.${trail.reason}` as TranslationKey))
-    if (trail.risk && trail.authorization) {
+    // 已经放行不写危险程度，仍写授权到哪一步。危险程度留在没放、交回用户看的那一行。
+    if (trail.outcome === 'approved') {
+      if (trail.authorization) lines.push(t(`autoReview.auth.${trail.authorization}` as TranslationKey))
+    } else if (trail.risk && trail.authorization) {
       lines.push(t('autoReview.scores', {
         risk: t(`autoReview.risk.${trail.risk}` as TranslationKey),
         authorization: t(`autoReview.auth.${trail.authorization}` as TranslationKey),

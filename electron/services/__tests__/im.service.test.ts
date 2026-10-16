@@ -502,7 +502,7 @@ describe('替我审批在 IM 里只发桌面那一行，不发确认卡', () => 
   const approvedStep = {
     id: 'review-1',
     type: 'auto_review',
-    content: '替你放行：执行命令 `rm -f ~/draft.txt`\n风险高 · 明确授权过\n> 用户刚说了删这份草稿',
+    content: '替你放行：执行命令 `rm -f ~/draft.txt`\n\n你明确说过要做\n\n> 用户刚说了删这份草稿',
     isStreaming: false,
     autoReview: { outcome: 'approved' as const, risk: 'high' as const, authorization: 'high' as const, rationale: '用户刚说了删这份草稿' },
   }
