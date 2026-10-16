@@ -529,6 +529,11 @@ export class Conversation {
       ...(extractedSkills?.length ? { loadedSkills: [...extractedSkills] } : {})
     }
 
+    // 带过来的是历史对话，不是上一轮发出去的请求。不接联络的交接检查点，
+    // 继续说的第一轮才会冷启动、按这场任务重做系统提示。
+    delete record.workingContext
+    delete record.compressedArchives
+
     const conversation = Conversation.fromRecord(record)
     return { conversation, record }
   }

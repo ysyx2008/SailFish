@@ -600,12 +600,8 @@ export class AgentService {
     }
     const { conversation: newConversation, record: newRecord } = forked
 
-    // companion 恒为 assistant 模式，cache snapshot 总能传递
-    const cachePrefix = newRecord.messages && newRecord.messages.length > 0
-      ? (newRecord.messages as AiMessage[])
-      : undefined
-
-    this.startTaskFromConversation(newConversation, newRecord, opts.newAgentId, { cachePrefix })
+    // 不把存档当成上一轮请求。继续说时冷启动一次，系统提示按这场任务重做，历史从工作记忆装。
+    this.startTaskFromConversation(newConversation, newRecord, opts.newAgentId)
 
     log.info(
       `Extracted task from companion: new=${opts.newAgentId}, ` +

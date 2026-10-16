@@ -6,7 +6,7 @@
  *   ② fork 产物的 kind 恒为 'task'（脱离源 kind）
  *   ③ toolCallId 经 fork 透传到新会话的 steps（stepRecord→step→stepRecord 往返不丢）
  *   ④ 截断 fork（untilTaskCount）只保留前 N 个 task，新 Agent 续聊不带截断后的内容
- *   ⑤ companion extractTask 端到端：N 条 companion record → 合并 → 新 task Agent 续聊
+ *   ⑤ companion extractTask 端到端：N 条 companion record → 合并 → 新 task 续聊时冷启动一次
  *
  * 与 fork.test.ts 的区别：那个文件用 injectSession 注入数据 + mock fs，测的是 fork 逻辑本身；
  * 本文件用真实 HistoryService 写盘 + 真实 ConversationManager + 真实 run()，测的是「跑通」。
@@ -346,8 +346,11 @@ describe('Fork 端到端（真实 run() + 真实磁盘写盘）', () => {
     messagesByCall = []
     await extractedAgent.run('续聊', ctx())
 
-    // 续聊应携带早段对话（cache prefix），不含晚段
-    const content = JSON.stringify(messagesByCall[0])
+    // 续聊冷启动：重新组系统提示，早段当历史装上，不含晚段
+    const sent = messagesByCall[0]
+    expect(sent[0].role).toBe('system')
+    expect(sent[0].content).toContain('test system prompt')
+    const content = JSON.stringify(sent)
     expect(content).toContain('早段对话')
     expect(content).not.toContain('晚段对话')
 

@@ -1313,7 +1313,41 @@ describe('AgentService.extractTaskFromCompanion', () => {
     expect(result).toBeNull()
   })
 
-  it('end-to-end: merges companion records, saves new task record, creates new agent with cache snapshot', async () => {
+  it('不把联络的交接检查点带进新任务，历史留在工作记忆里', () => {
+    const rec = buildCompanionRecord({
+      id: 'sess_c1',
+      timestamp: 1000,
+      userTask: '早段问题',
+      messages: [
+        { role: 'user', content: '早段问题' },
+        { role: 'assistant', content: '早段回答' }
+      ],
+      steps: [
+        { id: 'ut1', type: 'user_task', content: '早段问题', timestamp: 1000 },
+        { id: 'fr1', type: 'final_result', content: '早段回答', timestamp: 1100 }
+      ]
+    })
+    rec.workingContext = [
+      { role: 'system', content: '联络当时的系统提示' },
+      { role: 'user', content: '早段问题' }
+    ]
+    rec.compressedArchives = [{
+      id: 'arc1',
+      messages: [{ role: 'user', content: '已压掉的原文' }],
+      summary: '旧归档',
+      timestamp: 900
+    }]
+
+    const result = Conversation.extractTaskFromRecords([rec], 'sess_no_prefix')!
+
+    expect(result.record.workingContext).toBeUndefined()
+    expect(result.record.compressedArchives).toBeUndefined()
+    expect(result.conversation.getCachePrefix()).toBeUndefined()
+    expect(result.conversation.hasHandoff()).toBe(false)
+    expect(result.conversation.taskMemory.getTaskCount()).toBe(1)
+  })
+
+  it('end-to-end: merges companion records, saves new task record, creates new agent without cache prefix', async () => {
     const ai = { chatWithToolsStream: vi.fn(), abort: vi.fn() } as any
     const pty = { onData: vi.fn().mockReturnValue(() => {}), write: vi.fn() } as any
     const service = new AgentService(ai, pty)
@@ -1357,5 +1391,8 @@ describe('AgentService.extractTaskFromCompanion', () => {
     // 新 Agent 应已创建（createAssistantAgent 注册到 agents map）
     const newAgent = service.getAgent('new-extracted')
     expect(newAgent).toBeTruthy()
+    // 不把存档当成上一轮请求，继续说时才会冷启动
+    expect((newAgent as any)._previousRunMessages).toBeUndefined()
+    expect(savedRecords[0].workingContext).toBeUndefined()
   })
 })
