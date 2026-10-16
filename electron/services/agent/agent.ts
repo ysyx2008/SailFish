@@ -2713,7 +2713,18 @@ export abstract class Agent {
     // 跳过条件：首次任务、唤醒 run（Watch 等，上下文差异大）、上下文预算不足，
     // 以及「新图首投无图前缀」的跨模型视觉路由（避免把主模型长前缀塞给视觉模型多模态请求；
     // 前缀已有图则说明视觉模型接受过它，照常复用）。
-    if (this._previousRunMessages && this._previousRunMessages.length > 0 && !run.context.wakeup) {
+    // 前缀里没有系统提示，就不是一份能接着用的完整请求。
+    // 有交接检查点：对话照旧接着用，只在前面补上系统提示，不把已交原文再展开。
+    // 没有检查点（例如另开一聊带过来的存档）：落到下面冷启动，按这场重做。
+    const previousRun = this._previousRunMessages
+    const prefixHasSystem = !!previousRun?.some(
+      m => m.role === 'system' && typeof m.content === 'string' && m.content.trim().length > 0
+    )
+    const preserveCheckpoint = !!previousRun?.length
+      && !run.context.wakeup
+      && !prefixHasSystem
+      && !!this._conversation?.hasHandoff()
+    if (previousRun && previousRun.length > 0 && !run.context.wakeup && prefixHasSystem) {
       const contextLength = this._contextWindow.getContextLength()
       // 锚点 + 上轮末尾新增：纯锚点会漏掉上一轮的 assistant 回复（它已进前缀）
       const prevTokens = this._contextWindow.estimateCurrentPromptTokens(this._previousRunMessages)
@@ -2761,9 +2772,14 @@ export abstract class Agent {
     }
 
     // ── Cold start path: 从零构建上下文 ──
+    // 没有系统提示的检查点：系统提示在这里重做，检查点里的对话在后面原样接上。
+    if (preserveCheckpoint) {
+      log.info('[Cache] Checkpoint has no system prompt; rebuild system prompt and keep the checkpoint')
+    } else if (previousRun && previousRun.length > 0 && !run.context.wakeup && !prefixHasSystem) {
+      log.info('[Cache] Skip reuse: prefix has no system prompt, cold start')
+    }
 
-    // messages 即将被重建（无检查点带原文）。有检查点的不会走到这里。
-    // 上一轮的 prompt_tokens 不再对应新序列——留着当锚点会对不上这次装配。
+    // messages 即将被重建。上一轮的 prompt_tokens 不再对应新序列——留着当锚点会对不上这次装配。
     this._conversation?.setLastPromptTokens(undefined)
 
     // 提前并行启动两个异步操作（均需 embedding + 向量搜索，相互独立）
@@ -2808,7 +2824,7 @@ export abstract class Agent {
     let recentTaskMessages: AiMessage[] = []
     let availableTaskIds: Array<{ id: string; summary: string }> = []
     
-    if (this.taskMemory.getTaskCount() > 0) {
+    if (!preserveCheckpoint && this.taskMemory.getTaskCount() > 0) {
       const contextLength = this._contextWindow.getContextLength()
       // wakeup：广度优先 + 一句话概要，最多 30 条。见 SPEC。
       // 历史预算在「窗口减去固定开销（工具 schema + system prompt）」的剩余空间里分配
@@ -2884,8 +2900,15 @@ export abstract class Agent {
     // 量下本轮规模，供下一轮预算分配（打破「预算→摘要→system prompt→预算」的循环）
     this._contextWindow.recordSystemPromptTokens(systemPrompt, this.systemPromptScope(run.context))
     run.messages.push({ role: 'system', content: systemPrompt })
-    
-    if (recentTaskMessages.length > 0) {
+
+    if (preserveCheckpoint && previousRun) {
+      for (const msg of previousRun) {
+        if (msg.role === 'system') continue
+        const copy = { ...msg }
+        delete copy._cacheBreakpoint
+        run.messages.push(copy)
+      }
+    } else if (recentTaskMessages.length > 0) {
       for (const msg of recentTaskMessages) {
         run.messages.push(msg)
       }

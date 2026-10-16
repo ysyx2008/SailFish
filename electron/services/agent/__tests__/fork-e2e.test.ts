@@ -2,7 +2,7 @@
  * Fork 端到端测试：真实 Agent.run() → fork → 新 Agent 续聊
  *
  * 目的：钉死 fork 重构后的端到端语义不变量——
- *   ① 源 Agent 跑真实 run() 产生会话 → forkTask 产新会话 → 新 Agent 续聊能命中 cache prefix
+ *   ① 源 Agent 跑真实 run() 产生会话 → forkTask 产新会话 → 新 Agent 续聊带上源内容，并补上系统提示
  *   ② fork 产物的 kind 恒为 'task'（脱离源 kind）
  *   ③ toolCallId 经 fork 透传到新会话的 steps（stepRecord→step→stepRecord 往返不丢）
  *   ④ 截断 fork（untilTaskCount）只保留前 N 个 task，新 Agent 续聊不带截断后的内容
@@ -148,7 +148,7 @@ describe('Fork 端到端（真实 run() + 真实磁盘写盘）', () => {
     expect(forkedRecord).toBeTruthy()
     expect(forkedRecord!.kind).toBe('task')
 
-    // 新 Agent 续聊：首次 run 应复用 cache prefix（fork 时注入的 previousRunMessages）
+    // 带过去的存档没有系统提示，续聊先冷启动一次，再把源会话当历史装上
     const forkedAgent = agentService.getAgent('forked-tab') as unknown as TestAgent
     Object.setPrototypeOf(forkedAgent, TestAgent.prototype)
     ;(forkedAgent as any).services = services
@@ -156,9 +156,10 @@ describe('Fork 端到端（真实 run() + 真实磁盘写盘）', () => {
     messagesByCall = [] // 清空，只看续聊这次
     await forkedAgent.run('续聊问题', ctx())
 
-    // 续聊的 messages 应包含 fork 出来的历史（cache prefix 命中）
+    // 续聊的 messages 应包含 fork 出来的历史，并且以系统提示开头
     expect(messagesByCall.length).toBeGreaterThanOrEqual(1)
     const continuationMessages = messagesByCall[0]
+    expect(continuationMessages[0].role).toBe('system')
     // 应能找到源会话的内容（cache prefix 携带）
     const allContent = JSON.stringify(continuationMessages)
     expect(allContent).toContain('源问题')
@@ -203,7 +204,7 @@ describe('Fork 端到端（真实 run() + 真实磁盘写盘）', () => {
     expect(forkedContent).not.toContain('第二个问题')
     expect(forkedContent).not.toContain('第三个问题')
 
-    // 新 Agent 续聊：cache prefix 应只含第 1 个 task
+    // 新 Agent 续聊：只带第 1 个 task，并补上系统提示
     const forkedAgent = agentService.getAgent('forked-trunc') as unknown as TestAgent
     Object.setPrototypeOf(forkedAgent, TestAgent.prototype)
     ;(forkedAgent as any).services = services
@@ -211,6 +212,7 @@ describe('Fork 端到端（真实 run() + 真实磁盘写盘）', () => {
     messagesByCall = []
     await forkedAgent.run('续聊', ctx())
 
+    expect(messagesByCall[0][0].role).toBe('system')
     const continuationContent = JSON.stringify(messagesByCall[0])
     expect(continuationContent).toContain('第一个问题')
     expect(continuationContent).not.toContain('第二个问题')
@@ -357,5 +359,66 @@ describe('Fork 端到端（真实 run() + 真实磁盘写盘）', () => {
     // 回归：续聊 checkpoint 落盘后 agentKey 仍是新 Agent，不被 companion 污染
     const afterRun = history.getAgentRecordById(result!.newSessionId)
     expect(afterRun?.agentKey).toBe('extracted-tab')
+  })
+
+  it('重启后接着说：检查点里没有系统提示时先补上，对话照旧接着用', async () => {
+    const history = new HistoryService()
+    const baseTs = Date.now()
+    const carried = [
+      { role: 'user' as const, content: '带过来的历史' },
+      { role: 'assistant' as const, content: '当时的回答' }
+    ]
+    history.saveAgentRecord({
+      id: 'sess_broken',
+      kind: 'task',
+      timestamp: baseTs,
+      terminalId: '',
+      agentKey: 'reopen-tab',
+      terminalType: 'assistant',
+      userTask: '带过来的历史',
+      steps: [
+        { id: 'ut', type: 'user_task', content: '带过来的历史', timestamp: baseTs },
+        { id: 'fr', type: 'final_result', content: '当时的回答', timestamp: baseTs + 100 }
+      ],
+      messages: carried.map(m => ({ ...m })),
+      // 创建时从联络带过来、接着说时又写回的检查点：没有系统提示
+      workingContext: carried.map(m => ({ ...m })),
+      duration: 0,
+      status: 'completed'
+    })
+
+    const services = makeServices(history, () => ({ content: '补上之后的回答' }))
+    const agentService = new AgentService(services.aiService, services.ptyService)
+    agentService.setHistoryService(history)
+
+    const agent = agentService.createAssistantAgent('reopen-tab') as unknown as TestAgent
+    Object.setPrototypeOf(agent, TestAgent.prototype)
+    ;(agent as any).services = services
+
+    await agent.run('接着说', ctx({ sessionId: 'sess_broken' }))
+
+    const sent = messagesByCall[0]
+    expect(sent[0].role).toBe('system')
+    expect(sent[0].content).toContain('test system prompt')
+    expect(JSON.stringify(sent)).toContain('带过来的历史')
+
+    const repaired = history.getAgentRecordById('sess_broken')
+    expect(repaired?.workingContext?.[0]?.role).toBe('system')
+    expect(repaired?.workingContext?.[0]?.content).toContain('test system prompt')
+
+    // 新进程重开：检查点里已经有系统提示，接着用，不再丢掉
+    const reopened = agentService.createAssistantAgent('reopen-tab-2') as unknown as TestAgent
+    Object.setPrototypeOf(reopened, TestAgent.prototype)
+    ;(reopened as any).services = services
+    messagesByCall = []
+    await reopened.run('再接着说', ctx({ sessionId: 'sess_broken' }))
+
+    const resumed = messagesByCall[0]
+    expect(resumed[0].role).toBe('system')
+    expect(resumed[0].content).toContain('test system prompt')
+    const resumedText = JSON.stringify(resumed)
+    expect(resumedText).toContain('带过来的历史')
+    expect(resumedText).toContain('补上之后的回答')
+    expect(resumedText).toContain('再接着说')
   })
 })

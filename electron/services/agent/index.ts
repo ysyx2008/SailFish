@@ -506,9 +506,8 @@ export class AgentService {
     }
     const { conversation: newConversation, record: newRecord } = forked
 
-    // 同模式 fork 时携带 cache snapshot 让下一次 run 命中 LLM provider 的前缀缓存。
-    // cache snapshot 必须与新 record.messages 一致——直接用 newRecord.messages 作为 snapshot。
-    // 跨模式 fork（terminal→assistant）system prompt 必然不同，cache 物理上无法命中，走 cold start。
+    // 存档消息里没有系统提示。同模式也先带着这份历史；接着说时发现前缀没有系统提示，会冷启动补上。
+    // 跨模式（terminal→assistant）系统提示本来就不同，不传这份前缀。
     const targetMode = 'assistant'
     const sourceIsAssistant = sourceTerminalType === undefined || sourceTerminalType === 'assistant'
     const isSameMode = targetMode === 'assistant' && sourceIsAssistant
