@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['electron/**/*.test.ts', 'src/**/*.test.ts', 'shared/**/*.test.ts', 'packages/**/*.test.ts'],
+    include: ['electron/**/*.test.ts', 'src/**/*.test.ts', 'shared/**/*.test.ts', 'packages/**/*.test.ts', 'docs/examples/plugin-hol-guard/**/*.test.js'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
