@@ -27,6 +27,7 @@ export type {
 
 // 本文件内部也要用（AgentRun.context），故单独 import 一份
 import type { AgentContext } from '@shared/types'
+import type { FailureRepeatState, RepeatNotice } from './failure-repeat'
 export type { AgentContext }
 
 import type { ExecutionMode, PendingConfirmation, PendingSecureInput, AgentStep, AgentContextBar, AgentPlan, AttachmentInfo, TokenUsage, CommandRiskPolicy, PendingUserHandoff, AgentRunSessionInfo } from '@shared/types'
@@ -240,6 +241,13 @@ export interface AgentRun {
    * user 消息追加到 messages 末尾。
    */
   pendingToolImages?: string[]
+  /**
+   * 同一失败是否在连着重复。只在这一轮里记账，不落盘。
+   * 点明的句子先攒在 pendingRepeatNotices，等这批 tool 消息写完再追加，
+   * 避免夹在 tool 消息中间破坏工具调用协议。
+   */
+  failureRepeat?: FailureRepeatState
+  pendingRepeatNotices?: RepeatNotice[]
 
   /**
    * 本轮 AI 请求触发过「剥图降级」（视觉模型拒收图片后剥离 images 重试成功）。

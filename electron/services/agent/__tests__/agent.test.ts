@@ -118,6 +118,10 @@ class TestAgent extends Agent {
     return (this as any).flushPendingToolImages(run)
   }
 
+  public testFlushRepeatNotices(run: any) {
+    return (this as any).flushRepeatNotices(run)
+  }
+
   // 注入 currentRun，便于直接针对 addStep/updateStep/finalizeToolCallStep 做单元测试
   // 而不必真正启动 agent.run 流程
   public injectCurrentRun(run: any) {
@@ -988,6 +992,146 @@ describe('Agent', () => {
       agent.testFlushPendingToolImages(run)
       const userMsg = run.messages.find((m: any) => m.role === 'user')
       expect(userMsg?._systemInjected).toBe(true)
+    })
+  })
+
+  describe('同一失败连着重复', () => {
+    function makeRun(): any {
+      return {
+        id: 'fake-run',
+        steps: [],
+        messages: [],
+        taskMessageLog: [],
+        requestId: undefined,
+      }
+    }
+
+    function makeToolCall(id: string) {
+      return { id, type: 'function', function: { name: 'exec', arguments: '{}' } }
+    }
+
+    const sameArgs = { command: 'node -e "x"' }
+
+    it('五次相同失败不夹进 tool 消息中间，这批写完才补一句；接着再失败不再补', () => {
+      const run = makeRun()
+      agent.injectCurrentRun(run)
+      for (let i = 0; i < 5; i++) {
+        agent.testProcessToolResult(
+          run,
+          makeToolCall(`tc-${i}`),
+          { success: false, output: '', error: 'boom' },
+          sameArgs,
+        )
+      }
+
+      expect(run.messages.map((m: any) => m.role)).toEqual(['tool', 'tool', 'tool', 'tool', 'tool'])
+      expect(run.pendingRepeatNotices).toHaveLength(1)
+
+      agent.testFlushRepeatNotices(run)
+
+      expect(run.messages.map((m: any) => m.role)).toEqual(['tool', 'tool', 'tool', 'tool', 'tool', 'user'])
+      expect(run.messages[5]._systemInjected).toBe(true)
+      expect(run.messages[5].content).toContain('exec')
+      expect(run.messages[5].content).toContain('5')
+      expect(run.taskMessageLog[5]).toMatchObject({ role: 'user', _systemInjected: true })
+      expect(run.pendingRepeatNotices).toBeUndefined()
+      expect(run.steps.some((s: any) => s.content?.includes('5'))).toBe(true)
+
+      agent.testProcessToolResult(
+        run,
+        makeToolCall('tc-5'),
+        { success: false, output: '', error: 'boom' },
+        sameArgs,
+      )
+      agent.testFlushRepeatNotices(run)
+      expect(run.messages.filter((m: any) => m.role === 'user')).toHaveLength(1)
+    })
+
+    it('同一个工具用两组参数交替失败，点明时不把名字说两遍', () => {
+      const run = makeRun()
+      agent.injectCurrentRun(run)
+      const argsA = { command: 'node -e "a"' }
+      const argsB = { command: 'node -e "b"' }
+      for (let i = 0; i < 3; i++) {
+        agent.testProcessToolResult(run, makeToolCall(`a-${i}`), { success: false, output: '', error: 'boom' }, argsA)
+        agent.testProcessToolResult(run, makeToolCall(`b-${i}`), { success: false, output: '', error: 'boom' }, argsB)
+      }
+      agent.testFlushRepeatNotices(run)
+      const notice = run.messages.find((m: any) => m.role === 'user')
+      expect(notice.content).toContain('两组不同的参数')
+      expect(notice.content).not.toContain('「exec」和「exec」')
+    })
+
+    it('命令还在跑，不记成失败；终端忙、这次没启动，算失败', () => {
+      const running = makeRun()
+      agent.injectCurrentRun(running)
+      for (let i = 0; i < 5; i++) {
+        agent.testProcessToolResult(
+          running,
+          makeToolCall(`tc-${i}`),
+          { success: true, output: 'still going', isRunning: true },
+          sameArgs,
+        )
+      }
+      expect(running.pendingRepeatNotices).toBeUndefined()
+
+      const busy = makeRun()
+      agent.injectCurrentRun(busy)
+      for (let i = 0; i < 5; i++) {
+        agent.testProcessToolResult(
+          busy,
+          makeToolCall(`busy-${i}`),
+          { success: false, output: '', error: '终端正在执行命令', isRunning: true },
+          sameArgs,
+        )
+      }
+      expect(busy.pendingRepeatNotices).toHaveLength(1)
+    })
+
+    it('这批工具结果还没写全时不插话，写全之后补在最后', () => {
+      const run = makeRun()
+      agent.injectCurrentRun(run)
+      const ids = ['tc-0', 'tc-1', 'tc-2', 'tc-3', 'tc-4', 'tc-5']
+      run.messages.push({
+        role: 'assistant',
+        content: '',
+        tool_calls: ids.map(id => ({ id, type: 'function', function: { name: 'exec', arguments: '{}' } })),
+      })
+      for (let i = 0; i < 5; i++) {
+        agent.testProcessToolResult(
+          run,
+          makeToolCall(ids[i]),
+          { success: false, output: '', error: 'boom' },
+          sameArgs,
+        )
+      }
+      agent.testFlushRepeatNotices(run)
+      expect(run.messages.some((m: any) => m.role === 'user')).toBe(false)
+      expect(run.pendingRepeatNotices).toHaveLength(1)
+
+      run.messages.push({ role: 'tool', tool_call_id: 'tc-5', content: 'boom' })
+      agent.testFlushRepeatNotices(run)
+      expect(run.messages.map((m: any) => m.role)).toEqual([
+        'assistant', 'tool', 'tool', 'tool', 'tool', 'tool', 'tool', 'user',
+      ])
+    })
+
+    it('调用方没带上参数时，按模型原文判断是不是同一次', () => {
+      const run = makeRun()
+      agent.injectCurrentRun(run)
+      for (let i = 0; i < 5; i++) {
+        agent.testProcessToolResult(
+          run,
+          {
+            id: `raw-${i}`,
+            type: 'function',
+            function: { name: 'exec', arguments: JSON.stringify({ command: `node -e "${i}"` }) },
+          },
+          { success: false, output: '', error: 'boom' },
+          {},
+        )
+      }
+      expect(run.pendingRepeatNotices).toBeUndefined()
     })
   })
 })

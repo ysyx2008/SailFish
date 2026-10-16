@@ -94,6 +94,7 @@ import { consumeProactiveContext } from './proactive-store'
 import { BackgroundWatchList, HOLD_CHECKPOINT_MS, type HoldWake } from './background-watch'
 import { applyParallelShare, computeToolOutputBudget } from './tool-output-budget'
 import { collapseRepeatedToolOutputs, reduceRepeatedToolOutput } from './repeated-tool-output'
+import { emptyFailureRepeatState, noteFailureRepeat } from './failure-repeat'
 import { SUMMARY_MAX_OUTPUT_TOKENS } from '../ai-request-budget'
 import { t, getLocale, type TranslationKey } from './i18n'
 import { AutoApprovalReviewer, buildInspectorDeps, resolveInspectPtyId, type AutoReviewResult } from './auto-review'
@@ -3310,6 +3311,9 @@ export abstract class Agent {
     run: AgentRun, 
     toolExecutorConfig: ToolExecutorConfig
   ): Promise<{ response: ChatWithToolsResult | null; hasToolCalls: boolean; truncated?: boolean }> {
+    // 上一批若没写完，提醒先留着，等悬空的工具结果补上再给模型看
+    this.flushRepeatNotices(run)
+
     // 更新上下文状态（注入 Context Status + 渐进式提醒）
     // 旧 tool 结果不再做每步微压缩（会提前丢信息并打掉 prompt cache）；
     // 上下文紧张时走 compress_context / proactiveCompress / emergencyCompress。
@@ -3439,6 +3443,7 @@ export abstract class Agent {
       } finally {
         run.streamEarlyFailures.clear()
       }
+      this.flushRepeatNotices(run)
       return { response, hasToolCalls: true }
     }
 
@@ -4586,6 +4591,7 @@ export abstract class Agent {
     }
 
     if (validToolCalls.length === 0) {
+      this.flushRepeatNotices(run)
       run.executionPhase = 'thinking'
       run.currentToolName = undefined
       return
@@ -4625,6 +4631,7 @@ export abstract class Agent {
       // 此时把工具返回的图片合并为一条 user 消息追加到末尾（见 flushPendingToolImages）。
       // 用 try/finally 保证即便中途抛异常也不会留下未 flush 的图片污染下一批次。
       this.flushPendingToolImages(run)
+      this.flushRepeatNotices(run)
       run.executionPhase = 'thinking'
       run.currentToolName = undefined
     }
@@ -4696,6 +4703,7 @@ export abstract class Agent {
       // 兜底 flush：streaming 全部预执行（无 remaining）路径不会经过 executeToolCalls；
       // 异常路径也不能留下未 flush 的图片污染下一批次。
       this.flushPendingToolImages(run)
+      this.flushRepeatNotices(run)
       run.executionPhase = 'thinking'
       run.currentToolName = undefined
     }
@@ -4977,7 +4985,7 @@ export abstract class Agent {
     run: AgentRun,
     toolCall: ToolCall,
     result: ToolResult,
-    _toolArgs: Record<string, unknown>
+    toolArgs: Record<string, unknown>
   ): void {
     const errorText = !result.success
       ? t('agent.tool_error', { error: result.error || t('agent.unknown_error') })
@@ -5013,6 +5021,8 @@ export abstract class Agent {
       if (!run.pendingToolImages) run.pendingToolImages = []
       run.pendingToolImages.push(...result.images)
     }
+
+    this.noteSettledToolAttempt(run, toolCall, toolArgs, result)
   }
 
   /**
@@ -5070,6 +5080,73 @@ export abstract class Agent {
     run.taskMessageLog.push({ role: 'user', content: imageMsg.content, _systemInjected: true })
 
     run.pendingToolImages = []
+  }
+
+  /**
+   * 记下这一次有没有在重复同一次失败。只记账，不往对话里插话——
+   * 插话要等这批 tool 消息写完，见 flushRepeatNotices。
+   */
+  private noteSettledToolAttempt(
+    run: AgentRun,
+    toolCall: ToolCall,
+    toolArgs: Record<string, unknown>,
+    result: ToolResult,
+  ): void {
+    const noted = noteFailureRepeat(run.failureRepeat ?? emptyFailureRepeatState(), {
+      toolName: toolCall.function.name,
+      args: toolArgs,
+      rawArguments: toolCall.function.arguments,
+      failed: !result.success,
+      // 真在跑（成功转后台）才跳过。终端忙、这次根本没启动，也是一次失败。
+      unsettled: result.isRunning === true && result.success,
+    })
+    run.failureRepeat = noted.state
+    if (!noted.notice) return
+    if (!run.pendingRepeatNotices) run.pendingRepeatNotices = []
+    run.pendingRepeatNotices.push(noted.notice)
+  }
+
+  /**
+   * 这批工具结果都已写入之后，把攒下的「这是在重复」补进对话。幂等。
+   * 这批还有工具结果没写上时先留着：此刻插一句，后面补占位结果会插不进去，或插到这句话后面。
+   */
+  private flushRepeatNotices(run: AgentRun): void {
+    const pending = run.pendingRepeatNotices
+    if (!pending || pending.length === 0) return
+    if (!this.toolTurnIsComplete(run.messages)) return
+    run.pendingRepeatNotices = undefined
+    for (const notice of pending) {
+      const content = notice.kind === 'identical'
+        ? t('agent.repeat_same_call', { tool: notice.toolName, times: notice.times })
+        : notice.firstName === notice.secondName
+          ? t('agent.repeat_alternating_same_tool', { tool: notice.firstName, times: notice.rounds })
+          : t('agent.repeat_alternating', {
+              first: notice.firstName,
+              second: notice.secondName,
+              times: notice.rounds,
+            })
+      const msg: AiMessage = { role: 'user', content, _systemInjected: true }
+      run.messages.push(msg)
+      run.taskMessageLog.push({ ...msg })
+      this.addStep({ type: 'thinking', content })
+      log.info(`Repeated failure noticed: ${content}`)
+    }
+  }
+
+  /** 最近一次带工具调用的回复，它要的每个结果是不是都已经写上了。 */
+  private toolTurnIsComplete(messages: AiMessage[]): boolean {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i]
+      if (msg.role === 'user') return true
+      if (msg.role !== 'assistant' || !msg.tool_calls || msg.tool_calls.length === 0) continue
+      const missing = new Set(msg.tool_calls.map(call => call.id))
+      for (let j = i + 1; j < messages.length; j++) {
+        const later = messages[j]
+        if (later.role === 'tool' && later.tool_call_id) missing.delete(later.tool_call_id)
+      }
+      return missing.size === 0
+    }
+    return true
   }
   
   /**
