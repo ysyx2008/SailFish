@@ -27,6 +27,16 @@ export class WechatOutboundProgress {
     this.buffer.pushBody(text)
   }
 
+  /** 开始等用户回复：攒着的马上发，之后也不再定时攒。 */
+  beginUserWait(): void {
+    this.buffer.beginUserWait()
+  }
+
+  /** 用户已经回复，过程消息恢复节流。 */
+  endUserWait(): void {
+    this.buffer.endUserWait()
+  }
+
   flush(): Promise<void> {
     return this.buffer.flush()
   }

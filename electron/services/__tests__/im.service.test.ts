@@ -600,6 +600,67 @@ describe('替我审批在 IM 里只发桌面那一行，不发确认卡', () => 
   })
 })
 
+describe('提问和确认不等过程消息', () => {
+  const media = { images: [], previewImages: [], attachments: [], consumedPaths: new Set<string>() }
+
+  it('过程消息还卡着时，提问已经发给用户', async () => {
+    const service = new IMService() as any
+    service.config.processMode = 'messages'
+    let releaseFlush: () => void = () => {}
+    const flushGate = new Promise<void>(resolve => {
+      releaseFlush = resolve
+    })
+    const adapter = {
+      ...createAdapter(true),
+      sendProgressMarkdown: vi.fn().mockResolvedValue(undefined),
+      flushProgress: vi.fn(() => flushGate),
+      beginUserWait: vi.fn(),
+      endUserWait: vi.fn(),
+    }
+    const runAssistant = vi.fn(async (_agentId, _message, _context, _config, _profileId, callbacks) => {
+      callbacks.onStep('run-1', {
+        id: 'msg-1',
+        type: 'message',
+        content: '建好了：今晚和张翌吃饭。',
+        isStreaming: false,
+      })
+      callbacks.onStep('run-1', {
+        id: 'ask-1',
+        type: 'asking',
+        content: '是哪位？',
+        toolArgs: {
+          question: '「公司的，我兄弟」是指哪位？',
+          options: ['章小飞', '郜广银'],
+        },
+      })
+      callbacks.onComplete('run-1', '先记着')
+    })
+    service.deps = { agentService: { runAssistant }, mainWindow: null }
+
+    const runPromise = service.runAgentTask(adapter, { chatId: 'wx' }, {
+      platform: 'wechat',
+      text: '也是公司的，我兄弟',
+      userId: 'user-1',
+      userName: 'me',
+      chatId: 'wx',
+      chatType: 'single',
+      replyContext: { chatId: 'wx' },
+    }, media)
+
+    try {
+      await vi.waitFor(() => {
+        const bodies = adapter.sendMarkdown.mock.calls.map(c => String(c[2]))
+        expect(bodies.some(body => body.includes('「公司的，我兄弟」是指哪位？') && body.includes('1. 章小飞'))).toBe(true)
+        expect(adapter.beginUserWait).toHaveBeenCalled()
+        expect(adapter.flushProgress).toHaveBeenCalled()
+      })
+    } finally {
+      releaseFlush()
+    }
+    await runPromise
+  })
+})
+
 describe('IMService 插件 adapter 注册事务性', () => {
   function makePluginAdapter(platform: string) {
     return {

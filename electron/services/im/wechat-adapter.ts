@@ -612,6 +612,16 @@ export class WeChatAdapter implements IMAdapter, IMProgressOutboundCapable {
     if (result.softFailed) this.reportSoftSendFailure(ctx.userId)
   }
 
+  /** 开始等用户回复：过程消息不再定时攒，已经攒下的马上发。 */
+  beginUserWait(replyContext: WeChatReplyContext): void {
+    this.progressByUser.get(replyContext.userId)?.beginUserWait()
+  }
+
+  /** 用户已经回复，过程消息恢复节流。 */
+  endUserWait(replyContext: WeChatReplyContext): void {
+    this.progressByUser.get(replyContext.userId)?.endUserWait()
+  }
+
   private reportSoftSendFailure(userId: string): void {
     if (!userId || this.softFailNotifiedUsers.has(userId)) return
     this.softFailNotifiedUsers.add(userId)

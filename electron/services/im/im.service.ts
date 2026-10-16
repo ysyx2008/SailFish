@@ -1584,6 +1584,54 @@ export class IMService {
       }
     }
 
+    /**
+     * 等用户回复时，后面不会再有新的过程消息可以合并，节流就停。
+     * 已经攒下的马上发出，问题和确认紧跟着发出；用户回完再恢复节流。
+     */
+    let waitingForUser = false
+
+    const beginUserWait = (): void => {
+      if (waitingForUser) return
+      waitingForUser = true
+      adapter.beginUserWait?.(replyContext)
+    }
+
+    const endUserWait = (): void => {
+      if (!waitingForUser) return
+      waitingForUser = false
+      adapter.endUserWait?.(replyContext)
+    }
+
+    const askStillOpen = (step: { type?: string; askingStatus?: string }): boolean =>
+      step.type === 'asking'
+      && step.askingStatus !== 'received'
+      && step.askingStatus !== 'timeout'
+      && step.askingStatus !== 'cancelled'
+
+    const deliverUserText = async (title: string, content: string): Promise<void> => {
+      await adapter.sendMarkdown(replyContext, title, content)
+    }
+
+    const sendWhileUserWaits = (deliver: () => Promise<void>): void => {
+      beginUserWait()
+      enqueueSend(async () => {
+        beginUserWait()
+        if (sendMessages) {
+          await flushTextBuffer()
+        } else {
+          textBuffer = ''
+        }
+        const pendingFlush = flushOutboundProgress()
+        try {
+          await deliver()
+        } catch (err) {
+          log.error('Failed to send user prompt:', err)
+          await notifyWechatSendFailure(err)
+        }
+        await pendingFlush
+      })
+    }
+
     const mainWindow = this.deps.mainWindow
 
     try {
@@ -1620,6 +1668,8 @@ export class IMService {
             })
           }
 
+          if (waitingForUser && !askStillOpen(step)) endUserWait()
+
           if (step.type === 'message' && step.content) {
             if (step.isStreaming) {
               messageStreaming = true
@@ -1644,33 +1694,24 @@ export class IMService {
             if (notifiedToolCalls.has(askKey)) return
             notifiedToolCalls.add(askKey)
 
-            const sendAsk = async () => {
-              if (sendMessages) {
-                await flushTextBuffer()
-              } else {
-                textBuffer = ''
+            const question = (step.toolArgs.question as string) || step.content || ''
+            const options = step.toolArgs.options as string[] | undefined
+            const allowMultiple = !!step.toolArgs.allow_multiple
+            sendWhileUserWaits(async () => {
+              if (options && options.length > 0 && adapter.sendAskCard) {
+                await adapter.sendAskCard(replyContext, question, options, allowMultiple)
+                return
               }
-              await flushOutboundProgress()
-              const question = step.toolArgs.question || step.content || ''
-              const options = step.toolArgs.options as string[] | undefined
-              const allowMultiple = step.toolArgs.allow_multiple as boolean | undefined
-              try {
-                if (options && options.length > 0 && adapter.sendAskCard) {
-                  await adapter.sendAskCard(replyContext, question, options, !!allowMultiple)
-                } else {
-                  const lines = [t('im.need_reply'), '', question]
-                  if (options && options.length > 0) {
-                    lines.push('')
-                    options.forEach((opt: string, i: number) => { lines.push(`${i + 1}. ${opt}`) })
-                    lines.push('', t('im.need_reply_select'))
-                  } else {
-                    lines.push('', t('im.need_reply_input'))
-                  }
-                  await adapter.sendMarkdown(replyContext, t('im.need_reply_title'), lines.join('\n'))
-                }
-              } catch { /* ignore */ }
-            }
-            enqueueSend(sendAsk)
+              const lines = [t('im.need_reply'), '', question]
+              if (options && options.length > 0) {
+                lines.push('')
+                options.forEach((opt: string, i: number) => { lines.push(`${i + 1}. ${opt}`) })
+                lines.push('', t('im.need_reply_select'))
+              } else {
+                lines.push('', t('im.need_reply_input'))
+              }
+              await deliverUserText(t('im.need_reply_title'), lines.join('\n'))
+            })
           } else if (step.type === 'auto_review') {
             const notice = formatAutoReviewImNotice(step)
             const reviewKey = `auto_review:${step.id}:${notice}`
@@ -1825,45 +1866,36 @@ export class IMService {
           // 替我审批这一下，对话里已经有「正在替你看 / 交给你定」，不再发确认卡
           if (confirmation.autoReview) return
 
-          const sendConfirm = async () => {
-            if (sendMessages) {
-              await flushTextBuffer()
-            } else {
-              textBuffer = ''
+          const argsText = JSON.stringify(confirmation.toolArgs, null, 2)
+            .substring(0, 500)
+          sendWhileUserWaits(async () => {
+            if (adapter.sendConfirmCard) {
+              await adapter.sendConfirmCard(
+                replyContext,
+                confirmation.toolName,
+                argsText,
+                confirmation.riskLevel
+              )
+              return
             }
-            await flushOutboundProgress()
-            const argsText = JSON.stringify(confirmation.toolArgs, null, 2)
-              .substring(0, 500)
-            try {
-              // 优先使用交互卡片（带按钮），回退到纯 Markdown
-              if (adapter.sendConfirmCard) {
-                await adapter.sendConfirmCard(
-                  replyContext,
-                  confirmation.toolName,
-                  argsText,
-                  confirmation.riskLevel
-                )
-              } else {
-                const riskEmoji = confirmation.riskLevel === 'dangerous' ? '🔴' : '🟡'
-                await adapter.sendMarkdown(replyContext, t('im.need_confirm'), [
-                  t('im.need_confirm_title', { riskEmoji }),
-                  '',
-                  t('im.need_confirm_tool', { toolName: confirmation.toolName }),
-                  t('im.need_confirm_risk', { riskLevel: confirmation.riskLevel }),
-                  t('im.need_confirm_args'),
-                  '```',
-                  argsText,
-                  '```',
-                  '',
-                  t('im.need_confirm_action'),
-                ].join('\n'))
-              }
-            } catch { /* ignore */ }
-          }
-          enqueueSend(sendConfirm)
+            const riskEmoji = confirmation.riskLevel === 'dangerous' ? '🔴' : '🟡'
+            await deliverUserText(t('im.need_confirm'), [
+              t('im.need_confirm_title', { riskEmoji }),
+              '',
+              t('im.need_confirm_tool', { toolName: confirmation.toolName }),
+              t('im.need_confirm_risk', { riskLevel: confirmation.riskLevel }),
+              t('im.need_confirm_args'),
+              '```',
+              argsText,
+              '```',
+              '',
+              t('im.need_confirm_action'),
+            ].join('\n'))
+          })
         },
 
         onComplete: (_runId: string, result: string) => {
+          endUserWait()
           // 兜底：若 task 在 message 流式中途结束（罕见，但 onComplete 触发时若有遗留），
           // 把 pendingAfterMessage 刷掉，避免工具通知永远卡住
           messageStreaming = false
@@ -1934,6 +1966,7 @@ export class IMService {
         },
 
         onError: (_runId: string, error: string) => {
+          endUserWait()
           // 同 onComplete：兜底刷掉流式期间挂起的工具通知
           messageStreaming = false
           flushPendingAfterMessage()

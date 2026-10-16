@@ -2,7 +2,9 @@
  * 微信 IM 过程消息合并缓冲：累积工具进度 / 中间正文，定时或任务结束时
  * 合并为一条 digest 发出，降低个人号出站频率、缓解 errcode=-2 风控。
  *
- * 不缓冲：最终结果、ask/confirm 卡片、投递失败、任务级错误（由 IMService 直发）。
+ * 不缓冲：最终结果、提问、确认、投递失败、任务级错误（由 IMService 直发）。
+ * 一开始等用户回复，节流就停：后面不会再有新消息可以合并，已经攒下的马上发出，
+ * 等待期间新来的也不再定时攒。等用户回完再恢复节流。
  *
  * 首条正文即时发出：本会话（一次 beginOutboundSession）内第一条 body
  * 立刻 flush，让用户在发消息后尽快看到 AI 在工作；后续 body / 工具进度仍走节流。
@@ -13,7 +15,7 @@
  * - 非首条 body 入队后 scheduleFlush，行为是"合并优先、定时兜底"：
  *   ① 若 25s 内来了工具通知 push（'all' 模式）且 timer 未 fire，body 与工具通知并入同一 digest
  *   ② 若 25s 内没来工具通知（'messages' 模式或多轮间隔长），timer fire 把 body 切出
- *   ③ flushProgress 调用（任务结束 / ask / confirm 前）无条件切
+ *   ③ 任务结束，或开始等用户回复时，马上 flush。等回复期间不再定时攒
  */
 
 /** 距首条入队后多久自动 flush（毫秒） */
@@ -48,6 +50,8 @@ export class WechatProgressBuffer {
   private flushChain: Promise<void> = Promise.resolve()
   /** 本会话是否已发出过至少一条正文（首条即时，后续节流） */
   private firstBodySent = false
+  /** 正在等用户回复：不会再有后续消息可合并，不再定时攒 */
+  private waitingForUser = false
 
   constructor(
     private readonly send: (text: string) => Promise<void>,
@@ -70,8 +74,7 @@ export class WechatProgressBuffer {
     if (last?.kind === 'tool' && last.text === trimmed) return
 
     this.entries.push({ kind: 'tool', text: trimmed })
-    const toolCount = this.countTools()
-    if (toolCount >= this.maxLines) {
+    if (this.waitingForUser || this.countTools() >= this.maxLines) {
       void this.flush().catch(() => undefined)
       return
     }
@@ -97,7 +100,7 @@ export class WechatProgressBuffer {
       void this.flush().catch(() => undefined)
     }
     this.entries.push({ kind: 'body', text: trimmed })
-    if (!this.firstBodySent) {
+    if (this.waitingForUser || !this.firstBodySent) {
       this.firstBodySent = true
       void this.flush().catch(() => undefined)
       return
@@ -126,6 +129,17 @@ export class WechatProgressBuffer {
     }
   }
 
+  /** 开始等用户回复：后面不会再来新消息，攒着的马上发，之后也不再定时攒。 */
+  beginUserWait(): void {
+    this.waitingForUser = true
+    void this.flush().catch(() => undefined)
+  }
+
+  /** 用户已经回复，过程消息恢复节流。 */
+  endUserWait(): void {
+    this.waitingForUser = false
+  }
+
   /** 立即发送当前缓冲（若无内容则 no-op）。entries 清空是同步的，可 fire-and-forget。 */
   flush(): Promise<void> {
     this.clearTimer()
@@ -136,14 +150,17 @@ export class WechatProgressBuffer {
     const text = formatWechatProgressDigest(this.entries)
     this.entries = []
 
-    const run = async () => {
-      try {
-        await this.send(text)
-      } catch {
-        // 出站失败由 send 路径自己上报；缓冲必须继续排空，不能把链卡成拒绝。
-      }
+    // 立刻开始发送，让紧跟着的提问排在这条后面，而不是再等一轮定时器。
+    let started: Promise<void>
+    try {
+      started = this.send(text)
+    } catch {
+      started = Promise.resolve()
     }
-    this.flushChain = this.flushChain.then(run, run)
+    const sendPromise = Promise.resolve(started).catch(() => {
+      // 出站失败由 send 路径自己上报；缓冲必须继续排空，不能把链卡成拒绝。
+    })
+    this.flushChain = this.flushChain.then(() => sendPromise, () => sendPromise)
     return this.flushChain
   }
 

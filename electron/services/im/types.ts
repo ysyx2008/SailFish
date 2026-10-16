@@ -150,6 +150,13 @@ export interface IMAdapter {
   sendText(replyContext: any, text: string): Promise<void>
   /** 发送 Markdown 消息 */
   sendMarkdown(replyContext: any, title: string, content: string): Promise<void>
+  /**
+   * 开始等用户回复（提问、确认）。
+   * 过程消息不再定时攒，已经攒下的马上发出；用户回复后调 endUserWait 恢复节流。
+   */
+  beginUserWait?(replyContext: any): void
+  /** 用户已经回复，过程消息恢复节流。 */
+  endUserWait?(replyContext: any): void
   /** 发送图片消息（内联显示） */
   sendImage(replyContext: any, filePath: string): Promise<void>
   /** 发送文件消息 */
@@ -177,7 +184,7 @@ export interface IMAdapter {
    * 发送过程类 Markdown 正文（中间 message step 等）。实现方可缓冲合并，未实现则回退 sendMarkdown。
    */
   sendProgressMarkdown?(replyContext: any, title: string, content: string): Promise<void>
-  /** 立即 flush 缓冲中的过程消息（ask/confirm/任务结束前由 IMService 调用） */
+  /** 立即 flush 缓冲中的过程消息（任务结束，或开始等用户回复时） */
   flushProgress?(replyContext: any): Promise<void>
   /**
    * 微信：发送结构化工具进度（TOOL_CALL_START/RESULT），替代纯文本刷屏。

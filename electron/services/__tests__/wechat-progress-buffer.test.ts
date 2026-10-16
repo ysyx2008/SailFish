@@ -207,6 +207,36 @@ describe('WechatProgressBuffer', () => {
       expect(send.mock.calls[1][0]).toBe('第二条')
     })
 
+    it('beginUserWait flushes what is already buffered and stops throttling until the user replies', async () => {
+      const send = vi.fn().mockResolvedValue(undefined)
+      const buffer = new WechatProgressBuffer(send, {})
+
+      buffer.pushBody('首条')
+      await buffer.flush()
+      expect(send).toHaveBeenCalledTimes(1)
+
+      buffer.pushBody('建好了：今晚和张翌吃饭。')
+      expect(send).toHaveBeenCalledTimes(1)
+
+      buffer.beginUserWait()
+      await buffer.flush()
+      expect(send).toHaveBeenCalledTimes(2)
+      expect(send.mock.calls[1][0]).toBe('建好了：今晚和张翌吃饭。')
+
+      buffer.pushBody('还在等你选')
+      await buffer.flush()
+      expect(send).toHaveBeenCalledTimes(3)
+      expect(send.mock.calls[2][0]).toBe('还在等你选')
+
+      buffer.endUserWait()
+      buffer.pushBody('你选完了，这条再攒一会儿')
+      expect(send).toHaveBeenCalledTimes(3)
+
+      await vi.advanceTimersByTimeAsync(WECHAT_PROGRESS_FLUSH_INTERVAL_MS)
+      expect(send).toHaveBeenCalledTimes(4)
+      expect(send.mock.calls[3][0]).toBe('你选完了，这条再攒一会儿')
+    })
+
     it('flushProgress (flush) on task end sends subsequent body even without follow-up tool', async () => {
       const send = vi.fn().mockResolvedValue(undefined)
       const buffer = new WechatProgressBuffer(send, {})
