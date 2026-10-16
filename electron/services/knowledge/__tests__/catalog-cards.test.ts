@@ -11,6 +11,8 @@ import {
   inFolder,
   normalizeFolder,
   planFolderRename,
+  pickCatalogNameHits,
+  planNameVectorUpdates,
   renderLibraryRecall,
   resolveRecallFolder,
   visibleFolders,
@@ -69,6 +71,16 @@ describe('整理目录', () => {
       { id: 'b', filename: '办法.pdf', folder: '公司制度' },
     ]
     expect(() => planFolderRename(['公司制度'], docs, '公司制度', '内控')).toThrow(/同名/)
+  })
+
+  it('别处已经有两份同名文件时，空目录仍能改名', () => {
+    const docs = [
+      { id: 'a', filename: '办法.pdf', folder: '规章' },
+      { id: 'b', filename: '办法.pdf', folder: '规章' },
+    ]
+    const plan = planFolderRename(['临时空目录'], docs, '临时空目录', '临时空目录-已改名')
+    expect(plan.updates).toEqual([])
+    expect(plan.explicit).toContain('临时空目录-已改名')
   })
 
   it('目录里只要还有文件就先问，空目录不问', () => {
@@ -155,6 +167,44 @@ describe('目录印象', () => {
       charBudget: 400,
     })
     expect(huge.length).toBeLessThanOrEqual(500)
+  })
+
+  it('对上的目录只带目录本身，范围外的不进来', () => {
+    const picked = pickCatalogNameHits([
+      { kind: 'folder', score: 0.95, folder: '公司制度' },
+      { kind: 'folder', score: 0.9, folder: '公司制度/差旅' },
+      { kind: 'file', score: 0.8, folder: '公司制度/差旅', docId: 'leave' },
+      { kind: 'folder', score: 0.7, folder: '个人' },
+      { kind: 'file', score: 0.6, folder: '个人', docId: 'menu' },
+    ], '公司制度')
+    expect(picked.folders).toEqual(['公司制度/差旅'])
+    expect(picked.fileIds).toEqual(['leave'])
+
+    const docs = new Map([
+      ['leave', { id: 'leave', filename: '差旅报销.md', folder: '公司制度/差旅' }],
+      ['menu', { id: 'menu', filename: '菜单.md', folder: '公司制度/差旅' }],
+    ])
+    const text = renderLibraryRecall({
+      fused: [{ docId: 'leave', score: 1, fromCard: false, fromKeyword: false }],
+      docs,
+      excerpts: [],
+      folders: picked.folders,
+    })
+    expect(text).toContain('目录：公司制度/差旅')
+    expect(text).toContain('差旅报销.md')
+    expect(text).not.toContain('菜单.md')
+  })
+
+  it('文件挪了目录，标题没变也要改记它所在的位置', () => {
+    const have = new Map([
+      ['file:leave', { text: '差旅报销.md', folder: '公司制度/差旅' }],
+    ])
+    const plan = planNameVectorUpdates([
+      { id: 'file:leave', text: '差旅报销.md', folder: '规章' },
+    ], have)
+    expect(plan.embed).toEqual([])
+    expect(plan.reuse).toEqual(['file:leave'])
+    expect(plan.stale).toEqual([])
   })
 })
 

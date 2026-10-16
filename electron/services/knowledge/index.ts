@@ -118,11 +118,14 @@ import {
   MAX_IMPRESSIONS,
   MAX_KEYWORD_DOCS,
   MIN_KEYWORD_SCORE,
+  NAME_SIMILARITY,
   RECALL_CHAR_BUDGET,
   bestKeywordPerDoc,
   capChunkText,
   formatCatalog,
   fuseByDocument,
+  pickCatalogNameHits,
+  planNameVectorUpdates,
   FolderPathError,
   folderDeleteNeedsConfirm as docsNeedConfirmToDeleteFolder,
   inFolder,
@@ -154,6 +157,7 @@ import {
 } from './card-policy'
 import { CardVectorStore } from './card-vectors'
 import { CardQuota } from './card-quota'
+import { fileNameKey, folderNameKey, type NameVectorRecord } from './name-vectors'
 import { normalizeKnowledgeDocument } from '../../utils/normalize'
 import type { AiMessage } from '../ai.service'
 
@@ -178,6 +182,7 @@ export class KnowledgeService extends EventEmitter {
   /** 人建过、或放过文件的目录。文件挪走后还在，直到被删掉 */
   private explicitFolders: string[] = []
   private cardVectors: CardVectorStore
+  private nameSync: Promise<void> | null = null
   private cardQuota: CardQuota
   private cardTimer: ReturnType<typeof setInterval> | null = null
   private cardFirstTick: ReturnType<typeof setTimeout> | null = null
@@ -325,6 +330,11 @@ export class KnowledgeService extends EventEmitter {
       this.permanentInitError = null
       this.emit('initialized')
       this.startCardMaintenance()
+      try {
+        await this.syncCatalogNames()
+      } catch (error) {
+        log.warn('目录和文件名的相似度没能补上:', error)
+      }
       
       // 检查是否需要重建索引（有文档但向量库是空的）
       await this.checkAndRebuildIndex()
@@ -1264,6 +1274,9 @@ export class KnowledgeService extends EventEmitter {
     this.saveDocumentsIndex()
 
     this.emit('documentAdded', document)
+    await this.syncCatalogNames().catch(error => {
+      log.warn('目录和文件名的相似度没能补上:', error)
+    })
 
     return docId
   }
@@ -1287,6 +1300,9 @@ export class KnowledgeService extends EventEmitter {
     // 删除 BM25 索引记录
     await this.bm25Index.removeDocumentChunks(docId)
     this.cardVectors.remove(docId)
+    await this.vectorStorage.removeNames([fileNameKey(docId)]).catch(error => {
+      log.warn('删档案时没能清掉文件名向量:', error)
+    })
 
     // 删除文档索引
     this.documentsIndex.delete(docId)
@@ -1495,9 +1511,12 @@ export class KnowledgeService extends EventEmitter {
     }
   ): Promise<string> {
     if (!this.isInitialized) await this.initialize()
+    await this.syncCatalogNames().catch(error => {
+      log.warn('目录和文件名的相似度没能补上:', error)
+    })
     const folder = resolveRecallFolder(options?.pathPrefix, this.getSettings().recallFolder)
     try {
-      if (await this.cardsUsable(folder)) {
+      if (await this.namesUsable(folder) || await this.cardsUsable(folder)) {
         return await this.buildImpressionContext(query, { ...options, pathPrefix: folder })
       }
     } catch (error) {
@@ -1519,6 +1538,96 @@ export class KnowledgeService extends EventEmitter {
     )
     if (ready.length === 0) return false
     return ready.some(doc => this.cardVectors.has(doc.id))
+  }
+
+  private async namesUsable(scope: string): Promise<boolean> {
+    if (this.vectorStorage.isNameIndexBroken()) return false
+    const listed = await this.vectorStorage.listNameMeta()
+    if (!listed) return false
+    const docs = new Set(this.libraryDocs(scope).map(doc => doc.id))
+    return listed.some(row => {
+      if (row.kind === 'file') return !!row.docId && docs.has(row.docId)
+      return !!row.folder && row.folder !== scope && inFolder(row.folder, scope)
+    })
+  }
+
+  private syncCatalogNames(): Promise<void> {
+    if (!this.isInitialized) return Promise.resolve()
+    const run = (this.nameSync ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() => this.writeCatalogNames())
+    this.nameSync = run
+    return run
+  }
+
+  private catalogNameDrafts(): NameVectorRecord[] {
+    const desired: NameVectorRecord[] = []
+    for (const folder of this.listFolders()) {
+      desired.push({
+        id: folderNameKey(folder),
+        kind: 'folder',
+        text: folder,
+        folder,
+        vector: [],
+      })
+    }
+    for (const doc of this.listLibraryDocuments()) {
+      const folder = doc.folder || ''
+      desired.push({
+        id: fileNameKey(doc.id),
+        kind: 'file',
+        text: doc.filename,
+        folder,
+        docId: doc.id,
+        vector: [],
+      })
+    }
+    return desired
+  }
+
+  private forgetLegacyNameFile(): void {
+    const legacy = path.join(path.dirname(this.documentsMetaPath), 'name-vectors.json')
+    if (!fs.existsSync(legacy)) return
+    try {
+      fs.rmSync(legacy, { force: true })
+    } catch (error) {
+      log.warn('旧的目录文件名文本索引没能删掉:', error)
+    }
+  }
+
+  private async writeCatalogNames(): Promise<void> {
+    this.forgetLegacyNameFile()
+    if (this.vectorStorage.isNameIndexBroken()) return
+    const listed = await this.vectorStorage.listNameMeta()
+    if (!listed) return
+    const have = new Map(listed.map(row => [row.id, { text: row.text, folder: row.folder }]))
+    const firstPlan = planNameVectorUpdates(this.catalogNameDrafts(), have)
+    if (firstPlan.embed.length === 0 && firstPlan.reuse.length === 0 && firstPlan.stale.length === 0) return
+    const pending = this.catalogNameDrafts().filter(row => firstPlan.embed.includes(row.id))
+    const vectors = pending.length > 0
+      ? await this.embeddingService.embed(pending.map(row => row.text))
+      : []
+    if (vectors.length !== pending.length) {
+      throw new Error('目录和文件名的向量数量对不上')
+    }
+    const embedded = new Map(pending.map((row, index) => [row.id, vectors[index]]))
+    const desired = this.catalogNameDrafts()
+    const plan = planNameVectorUpdates(desired, have)
+    await this.vectorStorage.applyNameEdits({
+      removeIds: plan.stale,
+      updates: desired.filter(row => plan.reuse.includes(row.id)).map(row => ({
+        id: row.id,
+        kind: row.kind,
+        text: row.text,
+        folder: row.folder,
+        docId: row.docId || '',
+      })),
+      inserts: desired.flatMap(row => {
+        if (!plan.embed.includes(row.id)) return []
+        const vector = embedded.get(row.id)
+        return vector?.length ? [{ ...row, vector }] : []
+      }),
+    })
   }
 
   private plainChunk(content: string): string | undefined {
@@ -1557,6 +1666,11 @@ export class KnowledgeService extends EventEmitter {
       .filter(hit => hit.score >= CARD_SIMILARITY && scoped.has(hit.docId))
       .slice(0, MAX_IMPRESSIONS)
 
+    const nameHits = (await this.vectorStorage.searchNames(embedding))
+      .filter(hit => hit.score >= NAME_SIMILARITY)
+    const pickedNames = pickCatalogNameHits(nameHits, folder)
+    const cardIds = cardHits.map(hit => hit.docId).filter(id => !pickedNames.fileIds.includes(id))
+
     let keyword: { docId: string; score: number; excerpt: string }[] = []
     if (this.bm25Index.isReady()) {
       const raw = await this.bm25Index.search(query, 30, { hostId: options?.hostId })
@@ -1569,7 +1683,7 @@ export class KnowledgeService extends EventEmitter {
       )
     }
 
-    const fused = fuseByDocument(cardHits.map(hit => hit.docId), keyword)
+    const fused = fuseByDocument([...pickedNames.fileIds, ...cardIds], keyword)
     const docs = new Map([...scoped.values()].map(doc => [doc.id, this.impressionDoc(doc)]))
 
     const hybrid = await this.vectorStorage.hybridSearch(query, embedding, {
@@ -1612,7 +1726,7 @@ export class KnowledgeService extends EventEmitter {
 
     this.noteCardTouches(fused.map(hit => hit.docId))
 
-    const body = renderLibraryRecall({ fused, docs, excerpts })
+    const body = renderLibraryRecall({ fused, docs, excerpts, folders: pickedNames.folders })
     const parts: string[] = []
     if (body) parts.push(body)
     if (memoryParts.length > 0) parts.push(memoryParts.join('\n'))
@@ -1868,6 +1982,9 @@ export class KnowledgeService extends EventEmitter {
     this.documentsIndex.set(docId, doc)
     this.rememberFolder(next)
     this.saveDocumentsIndex()
+    await this.syncCatalogNames().catch(error => {
+      log.warn('目录和文件名的相似度没能补上:', error)
+    })
     return true
   }
 
@@ -1943,6 +2060,9 @@ export class KnowledgeService extends EventEmitter {
     }
     this.explicitFolders = this.explicitFolders.filter(item => !inFolder(item, folder))
     this.saveDocumentsIndex()
+    await this.syncCatalogNames().catch(error => {
+      log.warn('目录和文件名的相似度没能补上:', error)
+    })
     return docs.length
   }
 
