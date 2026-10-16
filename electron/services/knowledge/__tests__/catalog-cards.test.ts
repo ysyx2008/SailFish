@@ -11,6 +11,8 @@ import {
   inFolder,
   normalizeFolder,
   planFolderRename,
+  pickCatalogNameHits,
+  planNameVectorUpdates,
   renderLibraryRecall,
   resolveRecallFolder,
   visibleFolders,
@@ -28,6 +30,7 @@ import {
   resumeInterrupted,
 } from '../card-policy'
 import { CardVectorStore } from '../card-vectors'
+import { NameVectorStore } from '../name-vectors'
 import { CardQuota } from '../card-quota'
 import { normalizeKnowledgeDocument } from '../../../utils/normalize'
 import type { KnowledgeDocument } from '../types'
@@ -156,6 +159,44 @@ describe('目录印象', () => {
     })
     expect(huge.length).toBeLessThanOrEqual(500)
   })
+
+  it('对上的目录只带目录本身，范围外的不进来', () => {
+    const picked = pickCatalogNameHits([
+      { kind: 'folder', score: 0.95, folder: '公司制度' },
+      { kind: 'folder', score: 0.9, folder: '公司制度/差旅' },
+      { kind: 'file', score: 0.8, folder: '公司制度/差旅', docId: 'leave' },
+      { kind: 'folder', score: 0.7, folder: '个人' },
+      { kind: 'file', score: 0.6, folder: '个人', docId: 'menu' },
+    ], '公司制度')
+    expect(picked.folders).toEqual(['公司制度/差旅'])
+    expect(picked.fileIds).toEqual(['leave'])
+
+    const docs = new Map([
+      ['leave', { id: 'leave', filename: '差旅报销.md', folder: '公司制度/差旅' }],
+      ['menu', { id: 'menu', filename: '菜单.md', folder: '公司制度/差旅' }],
+    ])
+    const text = renderLibraryRecall({
+      fused: [{ docId: 'leave', score: 1, fromCard: false, fromKeyword: false }],
+      docs,
+      excerpts: [],
+      folders: picked.folders,
+    })
+    expect(text).toContain('目录：公司制度/差旅')
+    expect(text).toContain('差旅报销.md')
+    expect(text).not.toContain('菜单.md')
+  })
+
+  it('文件挪了目录，标题没变也要改记它所在的位置', () => {
+    const have = new Map([
+      ['file:leave', { text: '差旅报销.md', folder: '公司制度/差旅' }],
+    ])
+    const plan = planNameVectorUpdates([
+      { id: 'file:leave', text: '差旅报销.md', folder: '规章' },
+    ], have)
+    expect(plan.embed).toEqual([])
+    expect(plan.reuse).toEqual(['file:leave'])
+    expect(plan.stale).toEqual([])
+  })
 })
 
 describe('检索说明的状态', () => {
@@ -270,6 +311,46 @@ describe('说明向量和每日额度', () => {
     const again = new CardQuota(file)
     expect(again.usedToday(today)).toBe(1)
     expect(again.take(tomorrow, 1)).toBe(true)
+  })
+})
+
+describe('目录和文件名的向量', () => {
+  it('文件坏了就当作没有', () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sf-names-')), 'name-vectors.json')
+    fs.writeFileSync(file, '{', 'utf-8')
+    const store = new NameVectorStore(file)
+    expect(store.isBroken()).toBe(true)
+    expect(store.search([1, 0], 0)).toEqual([])
+  })
+
+  it('改了字就换向量，删掉的名字不再留下', () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sf-names-')), 'name-vectors.json')
+    const store = new NameVectorStore(file)
+    store.replace([], [{
+      id: 'folder:公司制度/差旅',
+      kind: 'folder',
+      text: '公司制度/差旅',
+      folder: '公司制度/差旅',
+      vector: [1, 0],
+    }, {
+      id: 'file:leave',
+      kind: 'file',
+      text: '差旅报销.md',
+      folder: '公司制度/差旅',
+      docId: 'leave',
+      vector: [0, 1],
+    }])
+    const again = new NameVectorStore(file)
+    again.replace(['file:leave'], [{
+      id: 'folder:公司制度/差旅',
+      kind: 'folder',
+      text: '公司制度/差旅',
+      folder: '公司制度/差旅',
+      vector: [1, 0],
+    }])
+    const hits = again.search([0, 1], 0)
+    expect(hits.map(hit => hit.kind)).toEqual(['folder'])
+    expect(again.texts().has('file:leave')).toBe(false)
   })
 })
 

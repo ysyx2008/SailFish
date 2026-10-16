@@ -18,6 +18,12 @@ export const RECALL_CHAR_BUDGET = 4000
 /** 卡片向量命中的余弦下限。正文片段那条路的 0.6 不动，这是另一条路自己的数 */
 export const CARD_SIMILARITY = 0.5
 
+/** 目录名、文件名的余弦下限。短文本，和正文 0.6、说明 0.5 都分开 */
+export const NAME_SIMILARITY = 0.45
+
+/** 一轮里最多带几个对上的目录。只带目录本身，不带它下面的文件 */
+export const MAX_FOLDER_IMPRESSIONS = 8
+
 export const MAX_IMPRESSIONS = 30
 export const MAX_KEYWORD_DOCS = 5
 export const MIN_KEYWORD_SCORE = 1.2
@@ -126,10 +132,68 @@ export interface ImpressionDoc {
   cardSummary?: string
 }
 
+export interface CatalogNameHit {
+  kind: 'file' | 'folder'
+  score: number
+  folder: string
+  docId?: string
+}
+
+/**
+ * 对上的目录只留下目录本身。文件只留下自己标题对上的那几份。
+ * 范围外的不进这一个池子；当前范围自己那一级目录不再重复带出来。
+ */
+export interface NameIdentity {
+  id: string
+  text: string
+  folder: string
+}
+
+/** 标题没变、目录变了，向量可以留用，但必须改记它所在的目录。 */
+export function planNameVectorUpdates(
+  desired: NameIdentity[],
+  have: Map<string, { text: string; folder: string }>,
+): { embed: string[]; reuse: string[]; stale: string[] } {
+  const keep = new Set(desired.map(row => row.id))
+  const embed: string[] = []
+  const reuse: string[] = []
+  for (const row of desired) {
+    const prev = have.get(row.id)
+    if (!prev || prev.text !== row.text) embed.push(row.id)
+    else if (prev.folder !== row.folder) reuse.push(row.id)
+  }
+  const stale = [...have.keys()].filter(id => !keep.has(id))
+  return { embed, reuse, stale }
+}
+
+export function pickCatalogNameHits(
+  hits: CatalogNameHit[],
+  scope: string,
+): { folders: string[]; fileIds: string[] } {
+  const folders: string[] = []
+  const fileIds: string[] = []
+  const sorted = [...hits].sort((a, b) => b.score - a.score)
+  for (const hit of sorted) {
+    if (hit.kind === 'folder') {
+      if (!hit.folder || hit.folder === scope) continue
+      if (!inFolder(hit.folder, scope)) continue
+      if (folders.length >= MAX_FOLDER_IMPRESSIONS) continue
+      if (!folders.includes(hit.folder)) folders.push(hit.folder)
+      continue
+    }
+    if (!hit.docId) continue
+    if (!inFolder(hit.folder, scope)) continue
+    if (fileIds.length >= MAX_IMPRESSIONS) continue
+    if (!fileIds.includes(hit.docId)) fileIds.push(hit.docId)
+  }
+  return { folders, fileIds }
+}
+
 export function renderLibraryRecall(args: {
   fused: FusedDoc[]
   docs: Map<string, ImpressionDoc>
   excerpts: { docId: string; text: string }[]
+  folders?: string[]
   charBudget?: number
 }): string {
   const budget = args.charBudget ?? RECALL_CHAR_BUDGET
@@ -139,6 +203,15 @@ export function renderLibraryRecall(args: {
   ]
   let used = lines.join('\n').length
   let shown = 0
+
+  for (const folder of args.folders ?? []) {
+    if (shown >= MAX_FOLDER_IMPRESSIONS) break
+    const block = `- 目录：${folder}`
+    if (used + block.length + 1 > budget) break
+    lines.push(block)
+    used += block.length + 1
+    shown++
+  }
 
   for (const hit of args.fused) {
     if (shown >= MAX_IMPRESSIONS) break

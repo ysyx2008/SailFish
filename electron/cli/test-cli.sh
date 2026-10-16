@@ -378,9 +378,10 @@ if [[ "$MODE" != "quick" ]]; then
     process.stdout.write(doc.id)
   ' "$SFT_DATA_DIR/knowledge/documents.json")
 
-  assert_contains "没写说明时召回退回正文" "kubernetes.md" \
+  assert_contains "没写说明时文件名也能到场" "kubernetes.md" \
     $CLI knowledge:context "这是一份关于 Kubernetes 容器编排部署的技术文档"
-  assert_last_excludes "没写说明时不是目录印象" "按相关度从档案室翻到的线索"
+  assert_last_contains "没写说明时也按目录印象到场" "按相关度从档案室翻到的线索"
+  assert_last_excludes "正文问法不带出无关目录" "公司制度"
 
   assert_contains "写上检索说明" "已写说明" \
     $CLI knowledge:card "$K8S_ID" --text "航海图：Kubernetes 容器编排"
@@ -389,9 +390,29 @@ if [[ "$MODE" != "quick" ]]; then
   assert_last_contains "目录印象带上那行说明" "航海图：Kubernetes 容器编排"
 
   echo '{' > "$SFT_DATA_DIR/knowledge/card-vectors.json"
-  assert_contains "说明向量坏了仍能召回正文" "kubernetes.md" \
+  assert_contains "说明向量坏了文件名还在" "kubernetes.md" \
     $CLI knowledge:context "这是一份关于 Kubernetes 容器编排部署的技术文档"
-  assert_last_excludes "说明向量坏了退回正文" "按相关度从档案室翻到的线索"
+  assert_last_contains "说明向量坏了仍是目录印象" "按相关度从档案室翻到的线索"
+
+  echo '{' > "$SFT_DATA_DIR/knowledge/name-vectors.json"
+  assert_contains "目录索引也坏了仍能召回正文" "kubernetes.md" \
+    $CLI knowledge:context "这是一份关于 Kubernetes 容器编排部署的技术文档"
+  assert_last_excludes "目录索引也坏了退回正文片段" "按相关度从档案室翻到的线索"
+  rm -f "$SFT_DATA_DIR/knowledge/name-vectors.json"
+
+  TITLE_DOC="$TEST_DOC_DIR/差旅报销.md"
+  MENU_DOC="$TEST_DOC_DIR/菜单.md"
+  echo "今天天气晴朗适合散步。" > "$TITLE_DOC"
+  echo "食堂每周一换菜。" > "$MENU_DOC"
+  assert_contains "按标题放入差旅" "公司制度/差旅" \
+    $CLI knowledge:add "$TITLE_DOC" --folder "公司制度/差旅"
+  run_test "旁边放一份无关文件" \
+    $CLI knowledge:add "$MENU_DOC" --folder "公司制度/差旅"
+  assert_contains "按文件名召回，不靠正文" "差旅报销.md" \
+    $CLI knowledge:context "公司制度里的差旅报销"
+  assert_last_contains "对上的目录只带目录本身" "目录：公司制度/差旅"
+  assert_last_excludes "目录对上也不倒出旁边的文件" "菜单.md"
+  assert_last_excludes "文件名对上的不带出无关正文" "天气晴朗"
 
   # 二进制格式必须走解析器。用例一直只用 .md，所以「PDF 入库成字节流还报成功」长期没被发现
   assert_contains "knowledge:add PDF 走解析器"  "type: pdf" \
@@ -435,13 +456,22 @@ else
   skip_test "knowledge:add 放进目录"
   skip_test "knowledge:list 显示目录"
   skip_test "knowledge:search 命中验证"
-  skip_test "没写说明时召回退回正文"
-  skip_test "没写说明时不是目录印象"
+  skip_test "没写说明时文件名也能到场"
+  skip_test "没写说明时也按目录印象到场"
+  skip_test "正文问法不带出无关目录"
   skip_test "写上检索说明"
   skip_test "有说明时召回是目录印象"
   skip_test "目录印象带上那行说明"
-  skip_test "说明向量坏了仍能召回正文"
-  skip_test "说明向量坏了退回正文"
+  skip_test "说明向量坏了文件名还在"
+  skip_test "说明向量坏了仍是目录印象"
+  skip_test "目录索引也坏了仍能召回正文"
+  skip_test "目录索引也坏了退回正文片段"
+  skip_test "按标题放入差旅"
+  skip_test "旁边放一份无关文件"
+  skip_test "按文件名召回，不靠正文"
+  skip_test "对上的目录只带目录本身"
+  skip_test "目录对上也不倒出旁边的文件"
+  skip_test "文件名对上的不带出无关正文"
   skip_test "老档案缺字段会补上"
   skip_test "删除用户放入的要先确认"
   skip_test "自己放入的可以直接删"

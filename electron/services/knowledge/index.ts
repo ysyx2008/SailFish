@@ -118,11 +118,14 @@ import {
   MAX_IMPRESSIONS,
   MAX_KEYWORD_DOCS,
   MIN_KEYWORD_SCORE,
+  NAME_SIMILARITY,
   RECALL_CHAR_BUDGET,
   bestKeywordPerDoc,
   capChunkText,
   formatCatalog,
   fuseByDocument,
+  pickCatalogNameHits,
+  planNameVectorUpdates,
   FolderPathError,
   folderDeleteNeedsConfirm as docsNeedConfirmToDeleteFolder,
   inFolder,
@@ -154,6 +157,7 @@ import {
 } from './card-policy'
 import { CardVectorStore } from './card-vectors'
 import { CardQuota } from './card-quota'
+import { fileNameKey, folderNameKey, NameVectorStore, type NameVectorRecord } from './name-vectors'
 import { normalizeKnowledgeDocument } from '../../utils/normalize'
 import type { AiMessage } from '../ai.service'
 
@@ -178,6 +182,8 @@ export class KnowledgeService extends EventEmitter {
   /** 人建过、或放过文件的目录。文件挪走后还在，直到被删掉 */
   private explicitFolders: string[] = []
   private cardVectors: CardVectorStore
+  private nameVectors: NameVectorStore
+  private nameSync: Promise<void> | null = null
   private cardQuota: CardQuota
   private cardTimer: ReturnType<typeof setInterval> | null = null
   private cardFirstTick: ReturnType<typeof setTimeout> | null = null
@@ -227,6 +233,7 @@ export class KnowledgeService extends EventEmitter {
     this.documentsMetaPath = path.join(app.getPath('userData'), 'knowledge', 'documents.json')
     const knowledgeDir = path.dirname(this.documentsMetaPath)
     this.cardVectors = new CardVectorStore(path.join(knowledgeDir, 'card-vectors.json'))
+    this.nameVectors = new NameVectorStore(path.join(knowledgeDir, 'name-vectors.json'))
     this.cardQuota = new CardQuota(path.join(knowledgeDir, 'card-quota.json'))
     
     // 加载文档索引
@@ -325,6 +332,11 @@ export class KnowledgeService extends EventEmitter {
       this.permanentInitError = null
       this.emit('initialized')
       this.startCardMaintenance()
+      try {
+        await this.syncCatalogNames()
+      } catch (error) {
+        log.warn('目录和文件名的相似度没能补上:', error)
+      }
       
       // 检查是否需要重建索引（有文档但向量库是空的）
       await this.checkAndRebuildIndex()
@@ -1264,6 +1276,9 @@ export class KnowledgeService extends EventEmitter {
     this.saveDocumentsIndex()
 
     this.emit('documentAdded', document)
+    await this.syncCatalogNames().catch(error => {
+      log.warn('目录和文件名的相似度没能补上:', error)
+    })
 
     return docId
   }
@@ -1287,6 +1302,7 @@ export class KnowledgeService extends EventEmitter {
     // 删除 BM25 索引记录
     await this.bm25Index.removeDocumentChunks(docId)
     this.cardVectors.remove(docId)
+    this.nameVectors.remove(fileNameKey(docId))
 
     // 删除文档索引
     this.documentsIndex.delete(docId)
@@ -1495,9 +1511,12 @@ export class KnowledgeService extends EventEmitter {
     }
   ): Promise<string> {
     if (!this.isInitialized) await this.initialize()
+    await this.syncCatalogNames().catch(error => {
+      log.warn('目录和文件名的相似度没能补上:', error)
+    })
     const folder = resolveRecallFolder(options?.pathPrefix, this.getSettings().recallFolder)
     try {
-      if (await this.cardsUsable(folder)) {
+      if (this.namesUsable(folder) || await this.cardsUsable(folder)) {
         return await this.buildImpressionContext(query, { ...options, pathPrefix: folder })
       }
     } catch (error) {
@@ -1519,6 +1538,76 @@ export class KnowledgeService extends EventEmitter {
     )
     if (ready.length === 0) return false
     return ready.some(doc => this.cardVectors.has(doc.id))
+  }
+
+  private namesUsable(scope: string): boolean {
+    if (this.nameVectors.isBroken()) return false
+    const docs = new Set(this.libraryDocs(scope).map(doc => doc.id))
+    return this.nameVectors.listMeta().some(row => {
+      if (row.kind === 'file') return !!row.docId && docs.has(row.docId)
+      return !!row.folder && row.folder !== scope && inFolder(row.folder, scope)
+    })
+  }
+
+  private syncCatalogNames(): Promise<void> {
+    if (!this.isInitialized) return Promise.resolve()
+    const run = (this.nameSync ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() => this.writeCatalogNames())
+    this.nameSync = run
+    return run
+  }
+
+  private catalogNameDrafts(): NameVectorRecord[] {
+    const desired: NameVectorRecord[] = []
+    for (const folder of this.listFolders()) {
+      desired.push({
+        id: folderNameKey(folder),
+        kind: 'folder',
+        text: folder,
+        folder,
+        vector: [],
+      })
+    }
+    for (const doc of this.listLibraryDocuments()) {
+      const folder = doc.folder || ''
+      desired.push({
+        id: fileNameKey(doc.id),
+        kind: 'file',
+        text: doc.filename,
+        folder,
+        docId: doc.id,
+        vector: [],
+      })
+    }
+    return desired
+  }
+
+  private async writeCatalogNames(): Promise<void> {
+    if (this.nameVectors.isBroken()) return
+    const have = this.nameVectors.snapshot()
+    const firstPlan = planNameVectorUpdates(this.catalogNameDrafts(), have)
+    if (firstPlan.embed.length === 0 && firstPlan.reuse.length === 0 && firstPlan.stale.length === 0) return
+    const pending = this.catalogNameDrafts().filter(row => firstPlan.embed.includes(row.id))
+    const vectors = pending.length > 0
+      ? await this.embeddingService.embed(pending.map(row => row.text))
+      : []
+    if (vectors.length !== pending.length) {
+      throw new Error('目录和文件名的向量数量对不上')
+    }
+    const embedded = new Map(pending.map((row, index) => [row.id, vectors[index]]))
+    const desired = this.catalogNameDrafts()
+    const plan = planNameVectorUpdates(desired, have)
+    const upserts = desired.flatMap(row => {
+      if (plan.reuse.includes(row.id)) {
+        const vector = have.get(row.id)?.vector
+        return vector?.length ? [{ ...row, vector }] : []
+      }
+      if (!plan.embed.includes(row.id)) return []
+      const vector = embedded.get(row.id)
+      return vector?.length ? [{ ...row, vector }] : []
+    })
+    this.nameVectors.replace(plan.stale, upserts)
   }
 
   private plainChunk(content: string): string | undefined {
@@ -1557,6 +1646,11 @@ export class KnowledgeService extends EventEmitter {
       .filter(hit => hit.score >= CARD_SIMILARITY && scoped.has(hit.docId))
       .slice(0, MAX_IMPRESSIONS)
 
+    const nameHits = this.nameVectors.search(embedding, 0)
+      .filter(hit => hit.score >= NAME_SIMILARITY)
+    const pickedNames = pickCatalogNameHits(nameHits, folder)
+    const cardIds = cardHits.map(hit => hit.docId).filter(id => !pickedNames.fileIds.includes(id))
+
     let keyword: { docId: string; score: number; excerpt: string }[] = []
     if (this.bm25Index.isReady()) {
       const raw = await this.bm25Index.search(query, 30, { hostId: options?.hostId })
@@ -1569,7 +1663,7 @@ export class KnowledgeService extends EventEmitter {
       )
     }
 
-    const fused = fuseByDocument(cardHits.map(hit => hit.docId), keyword)
+    const fused = fuseByDocument([...pickedNames.fileIds, ...cardIds], keyword)
     const docs = new Map([...scoped.values()].map(doc => [doc.id, this.impressionDoc(doc)]))
 
     const hybrid = await this.vectorStorage.hybridSearch(query, embedding, {
@@ -1612,7 +1706,7 @@ export class KnowledgeService extends EventEmitter {
 
     this.noteCardTouches(fused.map(hit => hit.docId))
 
-    const body = renderLibraryRecall({ fused, docs, excerpts })
+    const body = renderLibraryRecall({ fused, docs, excerpts, folders: pickedNames.folders })
     const parts: string[] = []
     if (body) parts.push(body)
     if (memoryParts.length > 0) parts.push(memoryParts.join('\n'))
@@ -1868,6 +1962,9 @@ export class KnowledgeService extends EventEmitter {
     this.documentsIndex.set(docId, doc)
     this.rememberFolder(next)
     this.saveDocumentsIndex()
+    await this.syncCatalogNames().catch(error => {
+      log.warn('目录和文件名的相似度没能补上:', error)
+    })
     return true
   }
 
@@ -1943,6 +2040,9 @@ export class KnowledgeService extends EventEmitter {
     }
     this.explicitFolders = this.explicitFolders.filter(item => !inFolder(item, folder))
     this.saveDocumentsIndex()
+    await this.syncCatalogNames().catch(error => {
+      log.warn('目录和文件名的相似度没能补上:', error)
+    })
     return docs.length
   }
 
@@ -2242,6 +2342,7 @@ export class KnowledgeService extends EventEmitter {
     await this.vectorStorage.clear()
     await this.bm25Index.clear()
     this.cardVectors.clear()
+    this.nameVectors.clear()
     this.documentsIndex.clear()
     this.explicitFolders = []
     const saved = this.saveDocumentsIndex()
