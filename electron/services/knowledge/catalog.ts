@@ -325,7 +325,10 @@ export function planFolderRename(
     return doc
   })
   const seen = new Set<string>()
-  for (const doc of nextDocs) {
+  for (let index = 0; index < nextDocs.length; index++) {
+    const before = docs[index].folder
+    if (before !== source && !before.startsWith(`${source}/`)) continue
+    const doc = nextDocs[index]
     const key = `${doc.folder}\0${doc.filename}`
     if (seen.has(key)) throw new FolderPathError('改名后会有两份同名文件在同一目录')
     seen.add(key)

@@ -73,6 +73,16 @@ describe('整理目录', () => {
     expect(() => planFolderRename(['公司制度'], docs, '公司制度', '内控')).toThrow(/同名/)
   })
 
+  it('别处已经有两份同名文件时，空目录仍能改名', () => {
+    const docs = [
+      { id: 'a', filename: '办法.pdf', folder: '规章' },
+      { id: 'b', filename: '办法.pdf', folder: '规章' },
+    ]
+    const plan = planFolderRename(['临时空目录'], docs, '临时空目录', '临时空目录-已改名')
+    expect(plan.updates).toEqual([])
+    expect(plan.explicit).toContain('临时空目录-已改名')
+  })
+
   it('目录里只要还有文件就先问，空目录不问', () => {
     const docs = [
       { folder: '公司制度/差旅' },
