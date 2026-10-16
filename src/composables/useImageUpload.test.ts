@@ -74,4 +74,10 @@ describe('buildShrinkPasses', () => {
     expect(passes[0].maxEdge).toBe(640)
     expect(new Set(passes.map((pass) => pass.maxEdge))).toEqual(new Set([640]))
   })
+
+  it('很长的图也从 2560 长边开始缩', () => {
+    const passes = buildShrinkPasses(4500, 25171)
+    expect(passes[0]).toEqual({ maxEdge: 2560, quality: 0.85 })
+    expect(passes[passes.length - 1].maxEdge).toBeGreaterThanOrEqual(800)
+  })
 })

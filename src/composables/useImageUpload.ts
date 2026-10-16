@@ -23,7 +23,6 @@ const IMAGE_MAX_BYTES = IMAGE_LIMITS.MAX_SIZE_MB * 1024 * 1024
 /** 超过这个体积不解码、也不把剪贴板原图整份读进内存 */
 const IMAGE_DECODE_MAX_BYTES = 50 * 1024 * 1024
 const IMAGE_KEEP_MAX_BYTES = IMAGE_DECODE_MAX_BYTES
-const IMAGE_DECODE_MAX_PIXELS = 40_000_000
 const SHRINK_QUALITIES = [0.85, 0.7, 0.55]
 
 export interface ShrinkPass {
@@ -107,7 +106,10 @@ type ShrinkOutcome =
   | { ok: true; image: FittedImage }
   | { ok: false; reason: 'too-large' | 'unreadable' }
 
-/** 把位图压到上限以内。超大、读不出、压完仍超限，原因分开返回。 */
+/**
+ * 把位图压到上限以内。文件过大不解码；读不出、压完仍超限，原因分开返回。
+ * 长图像素可以远超输出尺寸：画布只按长边来缩，不按原图像素放弃。
+ */
 async function shrinkToByteLimit(source: Blob, maxBytes: number): Promise<ShrinkOutcome> {
   if (source.size > IMAGE_DECODE_MAX_BYTES) return { ok: false, reason: 'too-large' }
   if (typeof createImageBitmap !== 'function') return { ok: false, reason: 'unreadable' }
@@ -119,7 +121,6 @@ async function shrinkToByteLimit(source: Blob, maxBytes: number): Promise<Shrink
   }
   try {
     if (bitmap.width < 1 || bitmap.height < 1) return { ok: false, reason: 'unreadable' }
-    if (bitmap.width * bitmap.height > IMAGE_DECODE_MAX_PIXELS) return { ok: false, reason: 'too-large' }
     for (const pass of buildShrinkPasses(bitmap.width, bitmap.height)) {
       const canvas = drawToEdge(bitmap, pass.maxEdge)
       const blob = await canvasToJpegBlob(canvas, pass.quality)
